@@ -15,7 +15,7 @@
 		?>
 	</div>
 	<div class="upper_manu">
-		<a href="data_register.php" class="inline_button">データ登録</a>
+		<a href="data_upload.php" class="inline_button">データ登録</a>
 		<a href="user_compile.php" class="inline_button">ユーザー情報編集</a>
 	</div>
 
