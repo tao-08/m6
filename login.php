@@ -22,12 +22,6 @@
 </head>
 <body style="background-color: aliceblue;">
     <?php
-        //DB設定
-        $dsn = 'mysql:dbname=tb270684db;host=localhost';
-        $user = 'tb-270684';
-        $password = 'YxeP8FDwdZ';
-        $pdo = new PDO($dsn, $user, $password, array(PDO::ATTR_ERRMODE => PDO::ERRMODE_WARNING));    
-
         //ユーザー認証
         if(!empty($_POST["id"]) && !empty($_POST["password"])){
             $sql = "SELECT * FROM user_index WHERE id = :id AND password = :password";
@@ -45,10 +39,8 @@
 
                 //sessionにユーザー情報をDBから引っ張る
                 //DB設定
-                $dsn = 'mysql:dbname=**DBname**;host=localhost';
-                $user = '**user**';
-                $password = '**password**';
-                $pdo = new PDO($dsn, $user, $password, array(PDO::ATTR_ERRMODE => PDO::ERRMODE_WARNING));    
+                require_once "DB_info.php";
+                $pdo = new PDO(dsn, user, password, array(PDO::ATTR_ERRMODE => PDO::ERRMODE_WARNING));    
 
                 //DB操作
                 $sql = "SELECT auto_id,name,ruby from user_index WHERE id = :id";
