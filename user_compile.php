@@ -13,10 +13,8 @@
                 
                 //DBで編集
                 //DB設定
-                $dsn = 'mysql:dbname=**DBname**;host=localhost';
-                $user = '**username**';
-                $password = '**password**';
-                $pdo = new PDO($dsn, $user, $password, array(PDO::ATTR_ERRMODE => PDO::ERRMODE_WARNING));    
+                require_once "DB_info.php";
+                $pdo = new PDO(dsn, user, password, array(PDO::ATTR_ERRMODE => PDO::ERRMODE_WARNING));    
 
                 //idで検索してauto_idを取得
                 $id = $_SESSION["id"];
@@ -50,8 +48,6 @@
                 $_SESSION["name"] = $name;
                 $_SESSION["ruby"] = $ruby;
                 $_SESSION["password"] = $password;
-
-                echo $_SESSION["name"];
 
                 $alert = "更新しました";
 

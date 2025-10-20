@@ -44,10 +44,8 @@
 <body>
 	<?php
 		//DB設定
-        $dsn = 'mysql:dbname=**DBname**;host=localhost';
-        $user = '**user**';
-        $password = '**password**';
-        $pdo = new PDO($dsn, $user, $password, array(PDO::ATTR_ERRMODE => PDO::ERRMODE_WARNING)); 
+        require_once "DB_info.php";
+        $pdo = new PDO(dsn, user, password, array(PDO::ATTR_ERRMODE => PDO::ERRMODE_WARNING)); 
 		
 		//登録ボタン押されたら
 		if(isset($_POST["new_register"])){
