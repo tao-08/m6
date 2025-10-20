@@ -22,6 +22,11 @@
 </head>
 <body style="background-color: aliceblue;">
     <?php
+
+        //DB設定
+        require_once "DB_info.php";
+        $pdo = new PDO(dsn, user, password, array(PDO::ATTR_ERRMODE => PDO::ERRMODE_WARNING));    
+
         //ユーザー認証
         if(!empty($_POST["id"]) && !empty($_POST["password"])){
             $sql = "SELECT * FROM user_index WHERE id = :id AND password = :password";
@@ -38,9 +43,6 @@
                 $_SESSION["password"] = $_POST["password"];
 
                 //sessionにユーザー情報をDBから引っ張る
-                //DB設定
-                require_once "DB_info.php";
-                $pdo = new PDO(dsn, user, password, array(PDO::ATTR_ERRMODE => PDO::ERRMODE_WARNING));    
 
                 //DB操作
                 $sql = "SELECT auto_id,name,ruby from user_index WHERE id = :id";
