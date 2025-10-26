@@ -62,7 +62,7 @@
 
     <h1>ユーザー情報編集</h1>
     <div class="box">
-        <table>
+        <table class="separate">
             <tr>
                 <th>
                     ログインID
