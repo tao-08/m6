@@ -23,10 +23,10 @@
 <body style="background-color: aliceblue;">
     <?php
 
-        //DB設定
-        require_once "DB_info.php";
-        $pdo = new PDO(dsn, user, password, array(PDO::ATTR_ERRMODE => PDO::ERRMODE_WARNING));    
-
+    //DB設定
+    require("DB_connect.php");
+    $pdo = DBconnect();
+    
         //ユーザー認証
         if(!empty($_POST["id"]) && !empty($_POST["password"])){
             $sql = "SELECT * FROM user_index WHERE id = :id AND password = :password";

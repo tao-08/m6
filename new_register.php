@@ -43,10 +43,10 @@
 </head>
 <body>
 	<?php
-		//DB設定
-        require_once "DB_info.php";
-        $pdo = new PDO(dsn, user, password, array(PDO::ATTR_ERRMODE => PDO::ERRMODE_WARNING)); 
-		
+    //DB設定
+	require("DB_connect.php");
+	$pdo = DBconnect();
+	
 		//登録ボタン押されたら
 		if(isset($_POST["new_register"])){
 

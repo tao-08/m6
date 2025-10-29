@@ -1,8 +1,8 @@
 <?php
 
 //DB設定
-require_once "DB_info.php";
-$pdo = new PDO(dsn, user, password, array(PDO::ATTR_ERRMODE => PDO::ERRMODE_WARNING));    
+require("DB_connect.php");
+$pdo = DBconnect();
 
 $response = ["exists" => false];
 
