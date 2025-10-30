@@ -1,8 +1,12 @@
-<?php session_start() ?>
+<?php session_start();
+ini_set('display_errors', 1);
+error_reporting(E_ALL);
+?>
 <!doctype HTML>
 <head>
     <title>ログイン</title>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
         .box {
             border: 1px solid gray;
@@ -27,45 +31,45 @@
     require("DB_connect.php");
     $pdo = DBconnect();
     
-        //ユーザー認証
-        if(!empty($_POST["id"]) && !empty($_POST["password"])){
-            $sql = "SELECT * FROM user_index WHERE id = :id AND password = :password";
+    //ユーザー認証
+    if(!empty($_POST["id"]) && !empty($_POST["password"])){
+        $sql = "SELECT * FROM user_index WHERE id = :id AND password = :password";
+        $stmt = $pdo->prepare($sql);
+        $stmt -> bindParam(":id",$_POST["id"],pdo::PARAM_STR);
+        $stmt -> bindParam(":password",$_POST["password"],pdo::PARAM_STR);
+        $stmt -> execute();
+
+        $results = $stmt->rowCount();
+        if($results == 1){
+            
+            //ログイン成功したらindex.phpへ
+            $_SESSION["id"] = $_POST["id"];
+            $_SESSION["password"] = $_POST["password"];
+
+            //sessionにユーザー情報をDBから引っ張る
+
+            //DB操作
+            $sql = "SELECT auto_id,name,ruby from user_index WHERE id = :id";
             $stmt = $pdo->prepare($sql);
-            $stmt -> bindParam(":id",$_POST["id"],pdo::PARAM_STR);
-            $stmt -> bindParam(":password",$_POST["password"],pdo::PARAM_STR);
-            $stmt -> execute();
+            $stmt->bindParam(":id",$_POST["id"],pdo::PARAM_STR);
+            $stmt->execute();
+            $result = $stmt->fetchAll();
 
-            $results = $stmt->rowCount();
-            if($results == 1){
-                
-                //ログイン成功したらmain.phpへ
-                $_SESSION["id"] = $_POST["id"];
-                $_SESSION["password"] = $_POST["password"];
-
-                //sessionにユーザー情報をDBから引っ張る
-
-                //DB操作
-                $sql = "SELECT auto_id,name,ruby from user_index WHERE id = :id";
-                $stmt = $pdo->prepare($sql);
-                $stmt->bindParam(":id",$_POST["id"],pdo::PARAM_STR);
-                $stmt->execute();
-                $result = $stmt->fetchAll();
-
-                //sessionに保存
-                foreach($result as $row){
-                    $_SESSION["ruby"] = $row["ruby"];
-                    $_SESSION["name"] = $row["name"];
-                    $_SESSION["auto_id"] = $row["auto_id"];
-                }
-
-                header("Location: mainpage.php");
-
-                exit();
-            }else{
-                //ログイン失敗
-                $alert = "IDかパスワードが違います";
+            //sessionに保存
+            foreach($result as $row){
+                $_SESSION["ruby"] = $row["ruby"];
+                $_SESSION["name"] = $row["name"];
+                $_SESSION["auto_id"] = $row["auto_id"];
             }
+
+            header("Location: index.php");
+
+            exit();
+        }else{
+            //ログイン失敗
+            $alert = "IDかパスワードが違います";
         }
+    }
 
     ?>
 
