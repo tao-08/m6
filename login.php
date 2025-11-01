@@ -50,61 +50,55 @@ if(!empty($_POST["id"]) && !empty($_POST["password"])){
 <!doctype HTML>
 <head>
     <title>ログイン</title>
+    <link rel="stylesheet" href="style.css?v=<?= date("Y:m:d:t H:i:s")?>">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
-        .box {
-            border: 1px solid gray;
+        /* .box {
+            border:none;
 			background-color: white;
-			width: 50%;
-            border-radius: 8px;
-            padding: 10px;
+			width: 30%;
+            border-radius: 20px;
+            padding: 50px;
 			margin: 0 auto;
 			margin-top: 50px;
 			text-align: center;
 
-        }
-		.input_content{
-			padding: 8px;
-		}
+        } */
     </style>
+
 </head>
 
 
-<body style="background-color: aliceblue;">
-    <form action="" method="post">
-        <div class="box">
-			<div>
-				<div class="input_content">
-					<div>
-						ユーザーID
-					</div>
-					<div>
-						<input type="text" name="id">
-					</div>
-				</div>
-				<div class="input_content">
-					<div>
-						パスワード
-					</div>
-					<div>
-						<input type="password" name="password">
-					</div>
-				</div>
-				<div class="input_content">
-					<strong style="color: red;">
-					<?php
-					if(!empty($alert)){
-						echo $alert;
-					}?>
-					</strong>
-					<input type="submit" name="login" value="ログイン">
-				</div>
-			</div>
-        </div>
-        <div style="padding: 5px; text-align: center;">
-            <a href="new_register.php">新規ユーザー登録</a>
-        </div>
-    </form>
+<body id="login">
+    <div class="center" style="margin-top:50px">
+            <img src="material/online.png" alt="AbbeyRoad.online" width="1000px" height="274px" id="logo_login">
+        <form action="" method="post">
+            <div class="box">
+                <div class="bigger">
+                    <div class="input_content">
+                        ユーザーID
+                        <input type="text" name="id" >
+                    </div>
+                    <div class="input_content">
+                        パスワード  
+                        <input type="password" name="password">
+                    </div>
+                    <div class="input_content">
+                        <strong style="color: red;">
+                        <?php
+                        if(!empty($alert)){
+                            echo $alert;
+                        }?>
+                        </strong>
+                        <input type="submit" name="login" value="ログイン" class="submit_button">
+                    </div>
+                </div>
+            </div>
+            <div style="padding: 5px; text-align: center;">
+                <a href="new_register.php">新規ユーザー登録</a>
+            </div>
+        </form>
+    </div>
 </body>
 </html>

@@ -1,6 +1,79 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+.drop_hover :hover{
+    filter:drop-shadow(1px 1px 3px rgb(180, 180, 180));
+    transition: 0.4s;
+}
+.shadow_hover :hover{
+    box-shadow:(0 0 5px 5px gray);
+}
 body{
-    background-color: aliceblue;
-    }
+    background-color: rgb(245, 245, 245);
+}
+/* login.php */
+#login{
+    background-color: rgb(247, 247, 247);
+    text-align: center;
+}
+.flex{
+    display: flex;
+    align-content: center;
+    flex-direction: column;
+    justify-content: center;
+}
+#logo_login{
+    margin: 0 auto;
+    max-width: 40%;
+    height: auto;
+}
+.input_content{
+    padding: 8px;
+}
+.input_content input{
+    width: 10em;
+    height: 2em;
+    font-size: 100%;
+    padding-left: 0.5em;
+    padding-right: 0.5em;
+    border-radius: 10px;
+    border: 1px solid rgb(201, 201, 201);
+}
+.center{
+    margin: 0 auto;
+}
+.bigger{
+    font-size: 150%;
+}
+
+/* index.php */
+.site_header{
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 20px;
+    background-color: #ffffff;
+    color: white;
+}
+.main_nav{
+    list-style: none;
+    font-size: 1.5em;
+    font-weight: bold;
+    text-decoration: none;
+}
+.main-nav li{
+    margin-left: 20px;
+}
+.main-nav a{
+    color: black;
+}
+.main-nav a:hover{
+    color: rgb(235, 57, 57);
+    transition: 0.3s;
+}
+
 h1{
     border-bottom: 1px gray solid;
     padding: 10px;
@@ -9,12 +82,18 @@ h2{
     padding-left:8px;
 }
 .box{
-    width: 60%;
-    border: 1px gray solid;
-    border-radius: 10px;
-    margin: 0 auto;
+    max-width: 60%;
+    border:none;
+    border-radius: 20px;
     background-color: white;
-    margin-bottom: 15px;
+    margin: 20px auto;
+    text-align: center;
+    box-shadow: 0 0 0.5em 0.05em rgb(184, 184, 184);
+}
+#login .box{
+    max-width: 30%;
+    padding: 30px;
+    margin-top: 50px;
 }
 table.separate{
     border-collapse:separate;
@@ -30,8 +109,10 @@ table.separate{
 .submit_button{
     width: 150px;
     height: 40px;
-    background-color: deepskyblue;
-    color: white;
+    background-color: #aee9ff;
+    color: rgb(0, 62, 90);
+    border: none;
+    border-radius: 15px;
 }
 .upper_manu{
     padding: 20px;
@@ -152,4 +233,18 @@ span.circle{
 }
 .text_preview.invalid{
     background-color: rgb(255, 223, 227);
+}
+@media (max-width:767px) {
+    #logo_login{
+        max-width: 90%;
+    }
+    #login .box{
+        max-width: 90%;
+    }
+    .input_content input[type="text"],.input_content input[type="password"]{
+        width: 100%;
+    }
+    .input_content input[type="submit"]{
+        width: auto;
+    }
 }

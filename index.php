@@ -4,15 +4,11 @@ if(empty($_SESSION["id"])){
 	header("location:login.php");
 	exit;
 }
+$title_name = "ホーム";
 ?>
 
 <!DOCTYPE html>
-<head>
-	<title>データベース</title>
-    <link rel="stylesheet" href="style.css">
-	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-</head>
-<body>
+<?php require_once("src/component/header.php");?>
 	<h1>データベース</h1>
 	<div>
 		ログイン：

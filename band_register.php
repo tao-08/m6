@@ -1,6 +1,6 @@
 <?php
 //DB設定
-require("DB_connect.php")
+require("DB_connect.php");
 $pdo = DBconnect();
 
 $n = $_POST["number"] + 1;
