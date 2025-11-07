@@ -3,29 +3,8 @@
 *::after {
   box-sizing: border-box;
 }
-.drop_hover{
-    transition: 0.2s ease-out;
-}
-.drop_hover:hover{
-    filter:drop-shadow(0 0 0.3em rgb(180, 180, 180));
-}
-.shadow_hover :hover{
-    box-shadow:(0 0 5px 5px gray);
-}
 body{
-    background-color: rgb(245, 245, 245);
-}
-.shadow_1{
-    box-shadow: 0 0 0.5em 0.05em rgb(184, 184, 184);
-}
-.shadow_2{
-    box-shadow: 0 0 0.3em 0.01em rgb(184, 184, 184);    
-}
-input{
-    box-shadow: 0 0 0.3em 0.01em rgb(184, 184, 184);    
-}
-input:focus{
-    outline: solid rgb(170, 170, 170) 1px;
+    background-color: rgb(230, 230, 230);
 }
 /* login.php */
 #login{
@@ -45,7 +24,6 @@ input:focus{
 }
 .input_content{
     padding: 8px;
-    margin: 0.5em auto;
 }
 .input_content input{
     width: 10em;
@@ -53,9 +31,8 @@ input:focus{
     font-size: 100%;
     padding-left: 0.5em;
     padding-right: 0.5em;
-    border: none;
-    border-radius: 0.3em;
-    margin: 0 0.5em;
+    border-radius: 10px;
+    border: 1px solid rgb(201, 201, 201);
 }
 .center{
     margin: 0 auto;
@@ -63,32 +40,9 @@ input:focus{
 .bigger{
     font-size: 150%;
 }
-.submit_button{
-    width: 150px;
-    height: auto;
-    background-color: #6dd8ff;
-    border: none;
-    border-radius: 15px;
-    transition-duration: 0.2s;
-    color: black;
-    text-decoration: none;
-    margin: 0.5em;
-    
-}
-.submit_button:hover{
-    background-color: #aee9ff;
-    transition-duration: 0.2s;
-    box-shadow: 0 0 0.5em 0.05em rgb(184, 184, 184);
-}
-/* new_register.php */
-
-
-/* index.php */
-
 h1{
     border-bottom: 1px gray solid;
-    padding: 1% 1% 1% 20%;
-    margin: 1%;
+    padding: 10px;
 }
 h2{
     padding-left:8px;
@@ -100,14 +54,12 @@ h2{
     background-color: white;
     margin: 20px auto;
     text-align: center;
+    box-shadow: 0 0 0.5em 0.05em rgb(184, 184, 184);
 }
 #login .box{
-    width: 40em;
-    padding: 2em;
+    max-width: 30%;
+    padding: 30px;
     margin-top: 50px;
-}
-#login .submit_button{
-    margin: 1.5em auto 0.5em auto;
 }
 table.separate{
     border-collapse:separate;
@@ -120,7 +72,14 @@ table.separate{
 .separate.tr{
     background-color: ghostwhite;
 }
-
+.submit_button{
+    width: 150px;
+    height: 40px;
+    background-color: #aee9ff;
+    color: rgb(0, 62, 90);
+    border: none;
+    border-radius: 15px;
+}
 .upper_manu{
     padding: 20px;
 }
@@ -138,18 +97,13 @@ table.separate{
 .back_button{
     display: inline-block;
     background-color: rgb(87, 87, 87);
-    width: 150px;
-    height: auto;
+    width: 23%;
+    height: 35px;
+    font-weight: bold;
     color: white;
+    padding: 10px;
     text-decoration: none;
     text-align: center;
-    box-shadow: 0 0 0.3em 0.01em rgb(184, 184, 184);    
-
-    
-}
-.back_button:hover{
-    background-color: rgb(128, 128, 128);
-    box-shadow: 0 0 0.5em 0.05em rgb(184, 184, 184);    
 
 }
 .input_label{

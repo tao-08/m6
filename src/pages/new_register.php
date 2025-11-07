@@ -1,10 +1,9 @@
 <!DOCTYPE html>
-<html lang="ja">
 <head>
     <title>新規ユーザー登録</title>
     <link rel="stylesheet" href="style.css">
 <style>
-    /* body{
+    body{
         background-color: aliceblue;
     }
 	.box{
@@ -18,8 +17,8 @@
 		width: 150px;
 		height: 40px;
 		background-color: deepskyblue;
-		color: white; */
-	/* }? */
+		color: white;
+	}
 	.submit{
 		padding: 15px;
 	}
@@ -31,17 +30,14 @@
 	th,td{
 		padding: 12px;
 	}
-	th{
-		text-align: left;
-	}
-	/* tr{
+	tr{
 		background-color: ghostwhite;
-	} */
+	}
 	#alert{
 		color: red;
-		text-align: center;
+		text-align: right;
 		font-weight: bold;
-		padding-bottom: 1em;
+		padding-left: 10%;
 	}
 </style>
 </head>
@@ -91,9 +87,9 @@
 
 
     <h1>新規ユーザー登録</h1>
-    <div class="box shadow_1">
+    <div class="box">
         <form action="" method="POST">
-            <table class="input_content">
+            <table>
                 <tr>
                     <th>
                         ログインID
@@ -135,11 +131,11 @@
 					</td>
 				</tr>
             </table>
-			<div class="input_content bigger">
-				<input type="submit" name="new_register" value="新規登録" class="bigger submit_button">
-			</div>
-			<div id="alert">
+			<span id="alert">
 				<?php if(!empty($alert)){ echo $alert; }?>
+			</span>
+			<div class="submit">
+				<input type="submit" name="new_register" value="新規登録" class="submit_button">
 			</div>
         </form>
     </div>

@@ -54,17 +54,6 @@ if(!empty($_POST["id"]) && !empty($_POST["password"])){
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
-        /* .box {
-            border:none;
-			background-color: white;
-			width: 30%;
-            border-radius: 20px;
-            padding: 50px;
-			margin: 0 auto;
-			margin-top: 50px;
-			text-align: center;
-
-        } */
     </style>
 
 </head>
@@ -72,9 +61,9 @@ if(!empty($_POST["id"]) && !empty($_POST["password"])){
 
 <body id="login">
     <div class="center" style="margin-top:50px">
-            <img src="material/online.png" alt="AbbeyRoad.online" width="1000px" height="274px" id="logo_login">
+            <img src="/src/assets/online.png" alt="AbbeyRoad.online" width="1000px" height="274px" id="logo_login">
         <form action="" method="post">
-            <div class="box">
+            <div class="box shadow_1">
                 <div class="bigger">
                     <div class="input_content">
                         ユーザーID
@@ -91,7 +80,7 @@ if(!empty($_POST["id"]) && !empty($_POST["password"])){
                             echo $alert;
                         }?>
                         </strong>
-                        <input type="submit" name="login" value="ログイン" class="submit_button">
+                        <input type="submit" name="login" value="ログイン" class="submit_button shadow_2">
                     </div>
                 </div>
             </div>
