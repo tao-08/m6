@@ -1,9 +1,27 @@
 <?php
-session_start()?>
+session_start();
+if(empty($_SESSION["id"])){
+	header("location:../login.php");
+	exit;
+}
+?>
 <!doctype html>
 <html lang="ja">
     <head>
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta property="og:title" content="AbbeyRoad.online - アビーの自主製作データベースサイト" />
+        <meta property="og:description" content="軽音楽アビーロードのライブデータベース・便利ツール集を配信（よてい）" />
+        <meta property="og:type" content="website" />
+        <meta property="og:url" content="https://www.abbeyroad.online" />
+        <meta property="og:image" content="https://www.abbeyroad.online/src/assets/1200-630.png" />
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:site" content="@meiji_abbeyroad" />
+        <link rel="icon" href="/src/assets/favicons/240.png" sizes="any">
+        <link rel="icon" type="image/png" href="/src/assets/favicons/48.png" sizes="48x48">
+        <link rel="apple-touch-icon" href="/src/assets/favicons/240.png" sizes="240x240">
+        <link rel="manifest" href="/manifest.json">
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:site" content="@YourTwitterID" />
         <title>AbbeyRoad<?php if(!empty($page_title)){echo " - ".$page_title;}?></title>
         <link rel="stylesheet" href="style.css?v=<?= date("Y:m:d:t H:i:s")?>">
         <style>
@@ -24,10 +42,11 @@ session_start()?>
             }
             .logo__box{
                 max-width: 13%;
+                margin-top: 0.2%;
             }
             .header__box{
                 width: 75%;
-                padding: 0 7%;
+                padding: 1.2% 7%;
                 display: flex;
                 justify-content: space-between;
             }

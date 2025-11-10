@@ -1,10 +1,7 @@
 <?php
+	require_once("src/component/header.php");
 $page_title = "ホーム";
-require_once("src/component/header.php");
-if(empty($_SESSION["id"])){
-	header("location:login.php");
-	exit;
-}
+
 ?>
 <h1>データベース</h1>
 

@@ -1,0 +1,20 @@
+{
+  "name": "AbbeyRoad.online",
+  "short_name": "Abbey.online",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
+  "icons": [
+    {
+      "src": "/src/asets/favicons/960.png",
+      "sizes": "960x960",
+      "type": "image/png"
+    },
+    {
+      "src": "/src/asets/favicons/480.png",
+      "sizes": "480x480",
+      "type": "image/png"
+    }
+  ]
+}

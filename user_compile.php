@@ -96,7 +96,7 @@ if(isset($_POST["submit"])){
 
         </table>
         <div>
-                <a href="mainpage.php" class="submit_button bigger back_button">戻る</a>
+                <a href="index.php" class="submit_button bigger back_button">戻る</a>
                 <input type="submit" name="submit" class="submit_button bigger" value="更新">
                 <?php if(!empty($alert)){echo $alert;}?>
         </div>
