@@ -10,4 +10,5 @@ $page_title = "ホーム";
 </div>
 
 </body>
+
 </html>

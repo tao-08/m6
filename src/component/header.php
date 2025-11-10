@@ -66,6 +66,27 @@ if(empty($_SESSION["id"])){
                 color: rgba(82, 82, 82, 1);
                 margin-left: auto;
             }
+            .user__menu{
+                background-color: #ff3939ff;
+                text-align: center;
+                display: none;
+            }
+            .user__menu .visible{
+                display: block;
+            }
+            .user__menu li{
+                list-style-type: none;
+            }
+            .user__menu a{
+                transition:0.2s ease;
+                color: #ffffffff;
+                text-decoration: none;                
+            }
+            .user__menu a:hover{
+                color: rgb(255, 255, 255);
+                text-decoration: underline;
+                transition:0.2s ease;
+            }
             @media (max-width:767px) {
                 .site_header{
                     display: block;
@@ -99,9 +120,17 @@ if(empty($_SESSION["id"])){
                 <div class="header__card"><a href="database_live.php">ツール《準備中》</a></div>
                 <div class="header__card"><a href="/user_compile.php">ユーザー情報編集</a></div>
             </div>
-            <div class="user">
+            <div class="user" id="user">
                 ログイン：<?=$_SESSION["name"]?>
+            </div>
+            <div class="user__menu">
+                <li>
+                    <ul><a href="/user_compile.php">ユーザー情報変更</a></ul>
+                    <ul><a href="/logout.php">ログアウト</a></ul>
+                </li>
             </div>
             
         </header>
+        <script src="/src/component/header.js"></script>
+
     <main>
