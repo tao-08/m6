@@ -4,7 +4,7 @@
     padding: 10px 10px;
     background-color: #ffffff;
     color: white;
-    position: sticky;
+    /* position: sticky; */
     top: 0;
     border-bottom: 1px solid rgba(221, 221, 221, 1);
     margin: -8px -8px 0 -8px;

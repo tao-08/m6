@@ -1,5 +1,4 @@
 <?php
-    session_start();
     $band_label = "バンド名";
     $vocal_label = "Vo(Gt.)";
     $guiter_1_label = "Gt.1";
@@ -9,58 +8,21 @@
     $keybord_label = "Key.";
     $songs_label = "曲数";
 
-    //DB設定
-    require_once("DB_connect.php");
-    $pdo = DBconnect();
-
+    $css = "data_upload";
+    $page_title = "新規データ登録";
+    require_once("src/component/header.php");
 ?>
-<!DOCTYPE HTML>
-<head>
-    <title>新規データ登録</title>
-    <style>
-        .banner {
-            width: 100%;
-            text-align: left;
-            padding: 10px;
-            background-color: #007bff;
-            color: white;
-            border: none;
-            cursor: pointer;
-            font-size: 16px;
-        }
-        .toggle_content{
-            max-height: 0;
-            overflow: hidden;
-            transition: max-height 0.4s ease-out;
-            border: 1px solid #ccc;
-            padding: 0 10px;
-        }
-        .toggle_content.active{
-            max-height: 200px;
-            padding: 10px;
-        }
-        .input_label{
-            width: 4em;
-            max-width: 100%;
-        }
-        
-
-    </style>
-    <link rel="stylesheet" href="style.css">
-
-</head>
-<body>
     <h1>新規データ登録</h1>
-    <div class="box">
+    <div class="box shadow_1">
         <form action="" method="post">
-            <div class="row">
+            <div class="input_content">
                 <b>ライブ名</b>
                 <input type="text" name="title" class="text_input" value="<?php if(!empty($_POST["title"])){echo $_POST["title"];}?>" placeholder="◯月ライブ">
             </div>
-            <div class="row">
+            <div class="input_content">
                 <hr>
                 <b>列名の設定</b>
-                    <table class="not_border">
+                    <table class="small_table shadow_2">
                         <tr class="label">
                             <td>バンド名</td>
                             <td>Vo(Gt.)</td>
@@ -71,7 +33,7 @@
                             <td>Key.</td>
                             <td>曲数</td>
                         </tr>
-                        <tr>
+                        <tr class="label_2">
                             <td><input type="text" name="band_label" class="input_label" value="<?php echo $band_label?>"></td>
                             <td><input type="text" name="vocal_label" class="input_label" value="<?php echo $vocal_label?>"></td>
                             <td><input type="text" name="guiter_1_label" class="input_label" value="<?php echo $guiter_1_label?>"></td>
@@ -134,7 +96,7 @@
             <!-- プレビューテーブルの見出しだけ（フォームの値反映） -->
             <div>
                 <form action='band_register.php' method='POST'>
-                    <table class='table_preview'>
+                    <table class='table_preview shadow_1'>
                         <tr>
                             <th><?= $band_label ?></th>
                             <th><?= $vocal_label ?></th>
@@ -173,7 +135,7 @@
                                 <td><input type='text' class='text_preview' name='<?= $n."_"; ?>preview_bass' data-master-name='<?= $n."_"; ?>preview_bass' value="<?= $band[$n]['bass']?>"></td>
                                 <td><input type='text' class='text_preview' name='<?= $n."_"; ?>preview_drum' data-master-name='<?= $n."_"; ?>preview_drum' value="<?= $band[$n]['drum']?>"></td>
                                 <td><input type='text' class='text_preview' name='<?= $n."_"; ?>preview_keybord' data-master-name='<?= $n."_"; ?>preview_keybord' value="<?= $band[$n]['keybord']?>"></td>
-                                <td><input type='number' class='songs_preview' name='<?= $n."_"; ?>preview_songs' value="<?= $band[$n]['songs']?>"></td>
+                                <td><input type='tel' class='songs_preview' name='<?= $n."_"; ?>preview_songs' value="<?= $band[$n]['songs']?>"></td>
                             </tr>
                             <?php
                             $n++;
@@ -186,7 +148,7 @@
                         <!-- アップロードボタンフィールド -->
                         <tr id="uplord_submit">
                             <td colspan="8">
-                                    <input type='submit' name='preview_submit' class='preview_submit' value='アップロード'>
+                                    <input type='submit' name='preview_submit' class='submit_button bigger' value='アップロード'>
                                     <input type="hidden" name="number" value="<?=$n?>">
                                     <input type="hidden" name="new" id="new" value="">
                                 </td>
@@ -199,7 +161,7 @@
                 require_once "band_register.php";
             }?>
 
-            <?=$result;?>
+            <!-- <?=$result;?> -->
         <?php endif;?>
     <?php endif;?>
 		
