@@ -4,6 +4,8 @@ if(empty($_SESSION["id"])){
 	header("location:../login.php");
 	exit;
 }
+require_once("DB_connect.php");
+$pdo = DBconnect();
 ?>
 <!doctype html>
 <html lang="ja">
@@ -129,8 +131,9 @@ if(empty($_SESSION["id"])){
                 <div class="header__card"><a href="database_live.php">ツール《準備中》</a></div>
                 <div class="header__card"><a href="/user_compile.php">ユーザー情報編集</a></div>
             </div>
-            <div class="user" id="user">
-                ログイン：<?=$_SESSION["name"]?>
+            <div class="toggle_and_menu">
+            <div class="user " id="user">
+                ログイン：<?=$_SESSION["name"]?><span style="padding-left: 0.4em;">▼</span>
             </div>
             <div class="user__menu shadow_1 ">
                 <li>
