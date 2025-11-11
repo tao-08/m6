@@ -9,6 +9,9 @@ if(empty($_SESSION["id"])){
 <html lang="ja">
     <head>
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta charset="utf-8">
+        
+        <!-- リンクプレビュー -->
         <meta property="og:title" content="AbbeyRoad.online - アビーの自主製作データベースサイト" />
         <meta property="og:description" content="軽音楽アビーロードのライブデータベース・便利ツール集を配信（よてい）" />
         <meta property="og:type" content="website" />
@@ -16,13 +19,19 @@ if(empty($_SESSION["id"])){
         <meta property="og:image" content="https://www.abbeyroad.online/src/assets/1200-630.png" />
         <meta name="twitter:card" content="summary_large_image" />
         <meta name="twitter:site" content="@meiji_abbeyroad" />
+
+        <!-- ファビコン設定 -->
         <link rel="icon" href="/src/assets/favicons/240.png" sizes="any">
         <link rel="icon" type="image/png" href="/src/assets/favicons/48.png" sizes="48x48">
         <link rel="apple-touch-icon" href="/src/assets/favicons/240.png" sizes="240x240">
         <link rel="manifest" href="/manifest.json">
         <meta name="twitter:card" content="summary_large_image" />
         <meta name="twitter:site" content="@YourTwitterID" />
+        
+        <!-- タイトル -->
         <title>AbbeyRoad<?php if(!empty($page_title)){echo " - ".$page_title;}?></title>
+        
+        <!-- CSS -->
         <link rel="stylesheet" href="style.css?v=<?= date("Y:m:d:t H:i:s")?>">
         <style>
             .site_header{
