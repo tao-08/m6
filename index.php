@@ -1,12 +1,12 @@
 <?php
-	require_once("src/component/header.php");
 $page_title = "ホーム";
+require_once("src/component/header.php");
 
 ?>
-<h1>データベース</h1>
+<h2>お知らせ</h2>
 
 <div class="box shadow_1">
-	準備中
+	<h3>12月ライブ バンド申請受付中！</h3>
 </div>
 
 </body>
