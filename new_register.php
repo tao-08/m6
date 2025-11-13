@@ -50,6 +50,9 @@
     //DB設定
 	require("DB_connect.php");
 	$pdo = DBconnect();
+	ini_set('display_errors', 1);
+	error_reporting(E_ALL);
+
 	
 		//登録ボタン押されたら
 		if(isset($_POST["new_register"])){
@@ -66,7 +69,7 @@
 					$stmt->bindParam(":new_id",$_POST["new_id"], pdo::PARAM_STR);
 					$stmt->bindParam(":new_name",$_POST["new_name"], pdo::PARAM_STR);
 					$stmt->bindParam(":new_ruby",$_POST["new_ruby"], pdo::PARAM_STR);
-					$stmt->bindParam(":new_password",$_POST["new_pass_1"], pdo::PARAM_STR);
+					$stmt->bindParam(":new_password",password_hash($_POST["new_pass_1"],PASSWORD_DEFAULT), pdo::PARAM_STR);
 					$stmt->execute();
 
 					//確認ページへ
