@@ -19,8 +19,8 @@ $pdo = DBconnect();
         <meta charset="utf-8">
         
         <!-- リンクプレビュー -->
-        <meta property="og:title" content="AbbeyRoad.online - アビーの自主製作データベースサイト" />
-        <meta property="og:description" content="軽音楽アビーロードのライブデータベース・便利ツール集を配信（よてい）" />
+        <meta property="og:title" content="AbbeyRoad.online - アビーのデータベースサイト" />
+        <meta property="og:description" content="アビーロードのライブデータベース・便利ツール集を配信（よてい）" />
         <meta property="og:type" content="website" />
         <meta property="og:url" content="https://www.abbeyroad.online" />
         <meta property="og:image" content="https://www.abbeyroad.online/src/assets/1200-630.png" />

@@ -1,3 +1,8 @@
+<?php session_start();
+ini_set('display_errors', 1);
+error_reporting(E_ALL);
+?>
+
 <!DOCTYPE html>
 <head>
     <title>
@@ -17,36 +22,20 @@
         <table>
 			<tr>
 				<th>ID</th>
-				<td>
-					<?php
-						session_start();
-						echo $_SESSION["id"]
-					?>
-				</td>
+				<td><?=$_SESSION["id"]?></td>
 			</tr>
 			<tr>
 				<th>氏名</th>
-				<td>
-					<?php
-						echo $_SESSION["name"]
-					?>
-				</td>
+				<td><?=$_SESSION["name"]?></td>
 			</tr>
 			<tr>
 				<th>ふりがな</th>
-				<td>
-					<?php
-						echo $_SESSION["ruby"]
-					?>
-				</td>
+				<td><?=$_SESSION["ruby"]?></td>
 			</tr>
 			<tr>
 				<th>パスワード</th>
-				<td>
-					<?php
-						echo $_SESSION["password"]
-					?>
-				</td>
+				<td><?= $_SESSION["password"];
+						$_SESSION["password"] = "";?></td>
 			</tr>
         </table>
 		<div>

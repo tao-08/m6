@@ -63,7 +63,7 @@ input:focus{
     justify-content: center;
 }
 #logo_login{
-    margin: 0 auto;
+    margin: 2rem auto;
     max-width: 40%;
     height: auto;
 }
@@ -128,14 +128,6 @@ h2{
     margin: 20px auto;
     text-align: center;
     padding: 1em;
-}
-#login .box{
-    width: 40em;
-    padding: 2em;
-    margin-top: 50px;
-}
-#login .submit_button{
-    margin: 1.5em auto 0.5em auto;
 }
 table.separate{
     border-collapse:separate;
