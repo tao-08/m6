@@ -6,7 +6,7 @@ ini_set('display_errors', 1);
 error_reporting(E_ALL);
 
 if(empty($_SESSION["id"])){
-	header("location:../login.php");
+	header("location:../login");
 	exit;
 }
 require_once("DB_connect.php");
@@ -40,16 +40,16 @@ $pdo = DBconnect();
         
         <!-- CSS 共通+ヘッダー+ページ固有-->
         <link rel="stylesheet" href="css/style.css?v=<?= date("Y:m:d:t H:i:s")?>">
-        <link rel="stylesheet" href="/src/component/header.css">
+        <link rel="stylesheet" href="/src/component/header.css?v=<?= date("Y:m:d:t H:i:s")?>">
         <link rel="stylesheet" href="/css/<?php if(!empty($css)){echo $css;}?>.css">
     </head>
     <body>
         <header class="site_header">
-            <div class="drop_hover logo__box"><a href="/index.php"><img src="/src/assets/online.png" alt="AbbeyRoad.online" class="logo"></a></div>
+            <div class="drop_hover logo__box"><a href="/"><img src="/src/assets/online.png" alt="AbbeyRoad.online" class="logo"></a></div>
             <div class="header__box">
-                <div class="header__card"><a href="/data_upload.php">ライブデータ登録</a></div>
-                <div class="header__card"><a href="database_live.php">ライブデータベース《準備中》</a></div>
-                <div class="header__card"><a href="database_live.php">ツール《準備中》</a></div>
+                <div class="header__card"><a href="/data_upload">ライブデータ登録</a></div>
+                <div class="header__card"><a href="database_live">ライブデータベース《準備中》</a></div>
+                <div class="header__card"><a href="database_live">ツール《準備中》</a></div>
             </div>
             <div class="toggle_and_menu">
                 <div class="user" id="user">
@@ -57,8 +57,8 @@ $pdo = DBconnect();
                 </div>
                 <div class="user__menu shadow_1 ">
                     <li>
-                        <ul><a href="/user_compile.php">ユーザー情報変更</a></ul>
-                        <ul><a href="/logout.php">ログアウト</a></ul>
+                        <ul><a href="/user_compile">ユーザー情報変更</a></ul>
+                        <ul><a href="/logout">ログアウト</a></ul>
                     </li>
                 </div>
             </div>

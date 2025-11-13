@@ -6,7 +6,7 @@
     body{
         background-color: aliceblue;
     }
-	.box{
+	.box_2{
 		width: 60%;
 		border: 1px gray solid;
 		border-radius: 10px;
@@ -72,7 +72,7 @@
 					$_SESSION["name"] = $_POST["new_name"];
 					$_SESSION["password"] = $_POST["new_pass_1"];
 					$_SESSION["ruby"] = $_POST["new_ruby"];
-					header("location: new_complete.php");
+					header("location: new_complete");
 					exit();
 
 				}else{
@@ -87,7 +87,7 @@
 
 
     <h1>新規ユーザー登録</h1>
-    <div class="box">
+    <div class="box_2">
         <form action="" method="POST">
             <table>
                 <tr>

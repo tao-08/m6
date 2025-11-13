@@ -14,34 +14,34 @@ if(isset($_POST["login"])){
     //ユーザー認証
     if(!empty($_POST["id"]) && !empty($_POST["password"])){
         $password = $_POST["password"];
+
+        // 入力されたIDで検索
         $sql = "SELECT * FROM user_index WHERE id = :id";
         $stmt = $pdo->prepare($sql);
         $stmt -> bindParam(":id",$_POST["id"],pdo::PARAM_STR);
         $stmt -> execute();
         
-        $password_results = $stmt -> fetchAll(pdo::FETCH_ASSOC);
+        $password_results = $stmt -> fetch(pdo::FETCH_ASSOC);
         if(!empty($password_results)){
             
-            foreach($password_results as $row){
-                if(password_verify($password,$row["password"])){
+            if(password_verify($password,$password_results["password"])){
                     
-                    //sessionにユーザー情報をDBから引っ張る
-                    $_SESSION["id"] = $_POST["id"];
-                    $_SESSION["ruby"] = $row["ruby"];
-                    $_SESSION["name"] = $row["name"];
-                    $_SESSION["auto_id"] = $row["auto_id"];
-                    $_SESSION["admin"] = $row["admin"];
-                    $_SESSION["id_member"] = $row["id_member"];
-                    
-                    //ログイン成功したらindex.phpへ
-                    header("Location: index.php");
-                    exit();
-                    
-                }else{
-                    
-                    //ログイン失敗
-                    $alert = "パスワードが違います";
-                }
+                //sessionにユーザー情報をDBから引っ張る
+                $_SESSION["id"] = $_POST["id"];
+                $_SESSION["ruby"] = $password_results["ruby"];
+                $_SESSION["name"] = $password_results["name"];
+                $_SESSION["auto_id"] = $password_results["auto_id"];
+                $_SESSION["admin"] = $password_results["admin"];
+                $_SESSION["id_member"] = $password_results["id_member"];
+                
+                //ログイン成功したらindex.phpへ
+                header("Location:/");
+                exit();
+                
+            }else{
+                
+                //ログイン失敗
+                $alert = "パスワードが違います";
             }
         }else{
             $alert="IDが違います";
@@ -67,7 +67,7 @@ if(isset($_POST["login"])){
     <div class="center">
             <img src="/src/assets/online.png" alt="AbbeyRoad.online" width="1000px" height="274px" id="logo_login">
         <form action="" method="post">
-            <div class="box shadow_1">
+            <div class="box_2 shadow_1">
                 <div class="bigger">
                     <div class="input_content">
                         ユーザーID
@@ -91,7 +91,7 @@ if(isset($_POST["login"])){
                 </div>
             </div>
             <div style="padding: 5px; text-align: center;">
-                <a href="new_register.php">新規ユーザー登録</a>
+                <a href="new_register">新規ユーザー登録</a>
             </div>
         </form>
     </div>

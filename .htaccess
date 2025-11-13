@@ -1,1 +1,6 @@
+# リライトエンジンをオンにする
+RewriteEngine On
+RewriteCond %{REQUEST_FILENAME}.php -f
+RewriteRule ^(.+)$ $1.php [L]
+
 DirectoryIndex index.php

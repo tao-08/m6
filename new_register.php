@@ -36,13 +36,11 @@ error_reporting(E_ALL);
 					$stmt->execute();
 
 					//確認ページへ
-					session_start();
-					//echo $_COOKIE["PHPSESSID"];
 					$_SESSION["id"] = $_POST["new_id"];
 					$_SESSION["name"] = $_POST["new_name"];
 					$_SESSION["password"] = $_POST["new_pass_1"];
 					$_SESSION["ruby"] = $_POST["new_ruby"];
-					header("location: new_complete.php");
+					header("location: new_complete");
 					exit();
 
 				}else{
@@ -56,7 +54,6 @@ error_reporting(E_ALL);
 		}
 	}
 ?>
-
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -68,7 +65,7 @@ error_reporting(E_ALL);
     /* body{
         background-color: aliceblue;
     }
-	.box{
+	.box_2{
 		width: 60%;
 		border: 1px gray solid;
 		border-radius: 10px;
@@ -83,11 +80,6 @@ error_reporting(E_ALL);
 	/* }? */
 	.submit{
 		padding: 15px;
-	}
-	table{
-		border-collapse:separate;
-		border-radius: 10px;
-		border-spacing: 20px;
 	}
 	th,td{
 		padding: 12px;
@@ -108,9 +100,9 @@ error_reporting(E_ALL);
 </head>
 <body>
 	<h1>新規ユーザー登録</h1>
-	<div class="box shadow_1">
+	<div class="box_2 shadow_1">
 		<form action="" method="POST">
-			<table class="input_content">
+			<table class="separate input_content">
 				<tr>
 					<th>ログインID</th>
 					<td><input type="text" name="new_id" placeholder="半角英数字16文字以内"></td>
@@ -133,6 +125,7 @@ error_reporting(E_ALL);
 				</tr>
 			</table>
 			<div class="input_content bigger">
+                <a href="login" class="submit_button back_button">戻る</a>
 				<input type="submit" name="new_register" value="新規登録" class="bigger submit_button">
 			</div>
 			<div id="alert">

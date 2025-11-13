@@ -49,6 +49,7 @@
 }
 .user__menu{
     background-color: #ff3939ff;
+    width: 10em;
     text-align: center;
     transition: opacity 0.2s ease,visibility 0.2s ease;
     visibility: hidden;

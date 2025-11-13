@@ -40,7 +40,7 @@ body{
 .shadow_2{
     box-shadow: 0 0 0.3em 0.01em rgb(184, 184, 184);    
 }
-input{
+input,select,option{
     box-shadow: 0 0 0.3em 0.01em rgb(184, 184, 184);
     background-color: none;
     padding-left: 0.5em;
@@ -48,7 +48,7 @@ input{
     border: none;
     border-radius: 0.3em;
 }
-input:focus{
+input:focus,option:focus,select:focus{
     outline: solid rgb(170, 170, 170) 1px;
 }
 /* login.php */
@@ -71,7 +71,7 @@ input:focus{
     padding: 8px;
     margin: 0.5em auto;
 }
-.input_content input{
+.input_content input,select,option{
     width: 10em;
     height: 2em;
     font-size: 100%;
@@ -120,8 +120,17 @@ h2{
     padding: 1% 1% 1% 20%;
     margin-bottom: 0.2em;
 }
-.box{
-    max-width: 60%;
+.box_1{
+    max-width: 70%;
+    border:none;
+    border-radius: 20px;
+    background-color: white;
+    margin: 20px auto;
+    text-align: center;
+    padding: 1em;
+}
+.box_2{
+    max-width: 45%;
     border:none;
     border-radius: 20px;
     background-color: white;
@@ -132,28 +141,13 @@ h2{
 table.separate{
     border-collapse:separate;
     border-radius: 10px;
-    border-spacing: 20px;
+    border-spacing: 1.5rem;
 }
 .separate.th,.separate.td{
     padding: 12px;
 }
 .separate.tr{
     background-color: ghostwhite;
-}
-
-.upper_manu{
-    padding: 20px;
-}
-.inline_button{
-    display: inline-block;
-    background-color: deepskyblue;
-    width: 23%;
-    height: 35px;
-    font-weight:bold;
-    color: white;
-    padding: 10px;
-    text-decoration: none;
-    text-align: center;
 }
 .back_button{
     display: inline-block;
@@ -177,9 +171,8 @@ table.separate{
     max-width: 100%;
 }
 span.circle{
-    background-color: rgb(231, 231, 231);
-    border: 1px gray solid;
     border-radius: 10px;
+    width: 2em;
     font-size: smaller;
     padding: 7px;
     margin: 7px;
@@ -237,7 +230,7 @@ span.circle{
     #logo_login{
         max-width: 90%;
     }
-    #login .box{
+    #login .box_2{
         max-width: 90%;
     }
     .input_content input[type="text"],.input_content input[type="password"]{
@@ -246,7 +239,7 @@ span.circle{
     .input_content input[type="submit"]{
         width: auto;
     }
-    .box{
+    .box_2{
         max-width: 95%;
     }
     .input_content{

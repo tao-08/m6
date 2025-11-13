@@ -13,15 +13,15 @@
     require_once("src/component/header.php");
 ?>
     <h1>新規データ登録</h1>
-    <div class="box shadow_1">
+    <div class="box_1 shadow_1">
         <form action="" method="post">
-            <div class="input_content">
+            <!-- <div class="input_content">
                 <b>ライブ名</b>
                 <input type="text" name="title" class="text_input" value="<?php if(!empty($_POST["title"])){echo $_POST["title"];}?>" placeholder="◯月ライブ">
-            </div>
+            </div> -->
             <div class="input_content">
-                <hr>
-                <b>列名の設定</b>
+                <!-- <hr> -->
+                <b>csvファイル 列名の設定</b>
                     <div class="scroll">
                         <table class="small_table shadow_2">
                             <tr class="label">
@@ -168,42 +168,51 @@
     <?php endif;?>
 		
     <!-- タイムテーブルアップロード -->
-    <div class="box">
-        <hr>
-        <div class="row">
-            <b>日程</b>
-            <select name="category">
-                <option value="day1">1日目・1日のみ</option>
-                <option value="day2">2日目</option>
-                <option value="day3">3日目</option>
-                <option value="day4">4日目</option>
-                <option value="day5">5日目</option>
-            </select>
-        </div>
-        <hr>
-        <div class="row">
+    <div class="box_2 shadow_1">
+        <table class="separate input_content">
+            <tr>
+                <th>日程</th>
+                <td>
+                    <select name="category">
+                        <option value="day1">1日目・1日のみ</option>
+                        <option value="day2">2日目</option>
+                        <option value="day3">3日目</option>
+                        <option value="day4">4日目</option>
+                        <option value="day5">5日目</option>
+                    </select>
+                </td>
+            </tr>
+            <tr>
+                <th>会場</th>
+                <!-- 会場の選択肢をDBから取得 -->
+                <td>
+                    <select name="venue" id="venue">
+                        <option value=""></option>
+                        <?php
+                            $sql="SELECT id_venue,name FROM venue";
+                            $stmt = $pdo->query($sql);
+                            $result = $stmt->fetchAll();
+                            foreach ($result as $row) : ?>
+                                <option value='<?=$row["id_venue"]?>'><?=$row["name"]?></option>
+                            <?php endforeach;?>
+                        <option value="new">新規作成する</option>
+                    </select>
+                </td>
+            </tr>
+            <tr id="new_venue">
+                <th>新規会場</th>
+                <td>
+                    <input type="text" name="new_venue" class="text_input" placeholder="会場名">
 
-            <!-- 会場の選択肢をDBから取得 -->
-            <b>会場</b>
-            <select name="venue">
-                <option value=""></option>
-                <?php
-                    $sql="SELECT id_venue,name FROM venue";
-                    $stmt = $pdo->query($sql);
-                    $result = $stmt->fetchAll();
-                    foreach ($result as $row) : ?>
-                        <option value='<?=$row["id_venue"]?>'><?=$row["name"]?></option>
-                    <?php endforeach;?>
-                <option name="new">新規作成する</option>
-            </select>
-            <span class="circle">新規作成 <input type="text" name="new_venue" class="text_input" placeholder="会場名"></span>
-        </div>
-        <hr>
-        <div class="row">
-            <b>日付</b>
-            <input type="date" name="date">
-        </div>
-
+                </td>
+            </tr>
+            <tr>
+                <th>日付</th>
+                <td>
+                    <input type="date" name="date" style="width: 12.25em;height:2.5em">
+                </td>
+            </tr>
+        </table>
     </div>
 
     <script>
@@ -291,6 +300,18 @@
                 const content = button.nextElementSibling;
                 content.classList.toggle("active");
             })
+        });
+        
+        // 会場新規作成
+        const venueSelect = document.getElementById("venue");
+        const newVenueInput = document.getElementById("new_venue");
+        venueSelect.addEventListener("change",()=>{
+            const venueValue = venueSelect.value;
+            if(venueValue === "new"){
+            newVenueInput.classList.add("visible");
+            }else{
+                newVenueInput.classList.remove("visible");
+            };
         });
     </script>
 </body>

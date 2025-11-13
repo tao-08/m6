@@ -60,6 +60,17 @@ input.submit_button{
     margin: 0px;
     padding: 30px;
 }
+#new_venue{
+    display: none;
+}
+#new_venue.visible{
+    display: table-row;
+}
+th.separate{
+    width: 6em;
+    margin: 2em;
+}
+
 @media (max-width:767px) {
     table.small_table{
         width: 800px;

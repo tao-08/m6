@@ -55,7 +55,7 @@ if(isset($_POST["submit"])){
     <form action="" method="POST">
 
     <h1>ユーザー情報編集</h1>
-    <div class="box shadow_1">
+    <div class="box_2 shadow_1">
         <table class="separate input_content">
             <tr>
                 <th>
@@ -96,7 +96,7 @@ if(isset($_POST["submit"])){
 
         </table>
         <div>
-                <a href="index.php" class="submit_button bigger back_button">戻る</a>
+                <a href="/" class="submit_button bigger back_button">戻る</a>
                 <input type="submit" name="submit" class="submit_button bigger" value="更新">
                 <?php if(!empty($alert)){echo $alert;}?>
         </div>

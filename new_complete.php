@@ -14,7 +14,7 @@ error_reporting(E_ALL);
     <h1>
         登録完了
     </h1>
-    <div class="box">
+    <div class="box_2">
         <h2>
             以下のユーザー情報で登録しました
         </h2>
@@ -39,7 +39,7 @@ error_reporting(E_ALL);
 			</tr>
         </table>
 		<div>
-			<a href="index.php" class="submit_button">ログインする</a>
+			<a href="/" class="submit_button">ログインする</a>
 		</div>
 	</div>
 </body>
