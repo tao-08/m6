@@ -70,6 +70,9 @@ th.separate{
     width: 6em;
     margin: 2em;
 }
+.timetable input[file]{
+    width: auto;
+}
 
 @media (max-width:767px) {
     table.small_table{

@@ -6,9 +6,6 @@ if(isset($_POST["submit"])){
     if(!empty($_POST["compile_id"]) && !empty($_POST["compile_name"]) && !empty($_POST["compile_ruby"]) && !empty($_POST["compile_pass"])){
         
         //DBで編集
-        //DB設定
-        require_once "DB_info.php";
-        $pdo = new PDO(dsn, user, password, array(PDO::ATTR_ERRMODE => PDO::ERRMODE_WARNING));    
 
         //idで検索してauto_idを取得
         $id = $_SESSION["id"];
@@ -25,7 +22,7 @@ if(isset($_POST["submit"])){
         $id = $_POST["compile_id"];
         $name = $_POST["compile_name"];
         $ruby = $_POST["compile_ruby"];
-        $password = $_POST["compile_pass"];
+        $password = password_hash($_POST["compile_pass"],PASSWORD_DEFAULT);
 
         //auto_idの場所に変更内容をDBで更新
         $sql = "UPDATE user_index SET name = :name,ruby = :ruby,password = :password,id = :id WHERE auto_id =:compile_id";
@@ -41,7 +38,6 @@ if(isset($_POST["submit"])){
         $_SESSION["id"] = $id;
         $_SESSION["name"] = $name;
         $_SESSION["ruby"] = $ruby;
-        $_SESSION["password"] = $password;
 
         $alert = "更新しました";
 
@@ -89,7 +85,7 @@ if(isset($_POST["submit"])){
                     パスワード
                 </th>
                 <td>
-                    <input type="text" name="compile_pass" value="<?php if(!empty($_SESSION["password"])) echo $_SESSION["password"];?>">
+                    <input type="text" name="compile_pass" value="<?php if(!empty($_SESSION["password"])) echo $_SESSION["password"];?>" placeholder="変更後のパスワード">
                 </td>
             </tr>
 

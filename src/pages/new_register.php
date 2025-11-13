@@ -44,7 +44,7 @@
 <body>
 	<?php
     //DB設定
-	require("DB_connect.php");
+	require("src/setting/DB_connect.php");
 	$pdo = DBconnect();
 	
 		//登録ボタン押されたら

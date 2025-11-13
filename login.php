@@ -5,7 +5,7 @@ error_reporting(E_ALL);
 $alert = "";
 
 //DB設定
-require("DB_connect.php");
+require("src/setting/DB_connect.php");
 $pdo = DBconnect();
 
 if(isset($_POST["login"])){

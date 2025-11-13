@@ -1,7 +1,7 @@
 <?php
 session_start();
 //DB設定
-require_once("DB_connect.php");
+require_once("src/setting/DB_connect.php");
 $pdo = DBconnect();
 
 ini_set('display_errors', 1);
