@@ -4,6 +4,7 @@ table.small_table{
     margin: 1rem auto;
     border-radius: 10px;
     background-color: rgb(202, 242, 255);
+    width: auto;
 }
 tbody.small_table{
     padding: 3px;
@@ -44,7 +45,8 @@ tbody.small_table{
     border-radius: 20px;
 }
 .table_preview td,.table_preview th{
-    padding: 0 0.4em;
+    padding: 0.05em 0.4em;
+    margin: 0.2em 0;
 }
 input.submit_button{
     border-radius: 10px;
@@ -52,4 +54,27 @@ input.submit_button{
     padding: 0.2em;
     height: auto;
     margin-top: 1em;
+}
+.scroll{
+    overflow-x: auto;
+    margin: 0px;
+    padding: 30px;
+}
+@media (max-width:767px) {
+    table.small_table{
+        width: 800px;
+        margin:1rem 0.5rem;
+    }
+    .label td{
+        width: 200px;
+        font-size: 75%;
+    }
+    .label_2 input[type="text"]{
+        width: 5rem;
+    }
+    /* table.table_preview{
+        margin: 1rem 1rem;
+    } */
+
+
 }

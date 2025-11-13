@@ -22,28 +22,30 @@
             <div class="input_content">
                 <hr>
                 <b>列名の設定</b>
-                    <table class="small_table shadow_2">
-                        <tr class="label">
-                            <td>バンド名</td>
-                            <td>Vo(Gt.)</td>
-                            <td>Gt.1</td>
-                            <td>Gt.2</td>
-                            <td>Ba.</td>
-                            <td>Dr.</td>
-                            <td>Key.</td>
-                            <td>曲数</td>
-                        </tr>
-                        <tr class="label_2">
-                            <td><input type="text" name="band_label" class="input_label" value="<?php echo $band_label?>"></td>
-                            <td><input type="text" name="vocal_label" class="input_label" value="<?php echo $vocal_label?>"></td>
-                            <td><input type="text" name="guiter_1_label" class="input_label" value="<?php echo $guiter_1_label?>"></td>
-                            <td><input type="text" name="guiter_2_label" class="input_label" value="<?php echo $guiter_2_label?>"></td>
-                            <td><input type="text" name="bass_label" class="input_label" value="<?php echo $bass_label?>"></td>
-                            <td><input type="text" name="drum_label" class="input_label" value="<?php echo $drum_label?>"></td>
-                            <td><input type="text" name="keybord_label" class="input_label" value="<?php echo $keybord_label?>"></td>
-                            <td><input type="text" name="songs_label" class="input_label" value="<?php echo $songs_label?>"></td>
-                        </tr>
-                    </table>            
+                    <div class="scroll">
+                        <table class="small_table shadow_2">
+                            <tr class="label">
+                                <td>バンド名</td>
+                                <td>Vo(Gt.)</td>
+                                <td>Gt.1</td>
+                                <td>Gt.2</td>
+                                <td>Ba.</td>
+                                <td>Dr.</td>
+                                <td>Key.</td>
+                                <td>曲数</td>
+                            </tr>
+                            <tr class="label_2">
+                                <td><input type="text" name="band_label" class="input_label" value="<?php echo $band_label?>"></td>
+                                <td><input type="text" name="vocal_label" class="input_label" value="<?php echo $vocal_label?>"></td>
+                                <td><input type="text" name="guiter_1_label" class="input_label" value="<?php echo $guiter_1_label?>"></td>
+                                <td><input type="text" name="guiter_2_label" class="input_label" value="<?php echo $guiter_2_label?>"></td>
+                                <td><input type="text" name="bass_label" class="input_label" value="<?php echo $bass_label?>"></td>
+                                <td><input type="text" name="drum_label" class="input_label" value="<?php echo $drum_label?>"></td>
+                                <td><input type="text" name="keybord_label" class="input_label" value="<?php echo $keybord_label?>"></td>
+                                <td><input type="text" name="songs_label" class="input_label" value="<?php echo $songs_label?>"></td>
+                            </tr>
+                        </table>
+                    </div>            
             </div>
         </form>
 		<hr>
@@ -94,7 +96,7 @@
 
 
             <!-- プレビューテーブルの見出しだけ（フォームの値反映） -->
-            <div>
+            <div class="scroll">
                 <form action='band_register.php' method='POST'>
                     <table class='table_preview shadow_1'>
                         <tr>

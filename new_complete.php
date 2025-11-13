@@ -3,7 +3,7 @@
     <title>
         登録完了
     </title>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
     <h1>
@@ -50,7 +50,7 @@
 			</tr>
         </table>
 		<div>
-			<a href="mainpage.php" class="submit_button">ログインする</a>
+			<a href="index.php" class="submit_button">ログインする</a>
 		</div>
 	</div>
 </body>

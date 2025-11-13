@@ -1,4 +1,5 @@
 <?php
+session_start();
 //DB設定
 require("DB_connect.php");
 $pdo = DBconnect();
