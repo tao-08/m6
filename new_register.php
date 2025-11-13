@@ -89,7 +89,53 @@ session_start();
 </style>
 </head>
 <body>
-	<h1>新規ユーザー登録</h1>
+	<?php
+    //DB設定
+	require("DB_connect.php");
+	$pdo = DBconnect();
+	ini_set('display_errors', 1);
+	error_reporting(E_ALL);
+	
+		//登録ボタン押されたら
+		if(isset($_POST["new_register"])){
+
+			//フォーム入力を確認
+			if(!empty($_POST["new_id"]) && !empty($_POST["new_name"]) && !empty($_POST["new_ruby"]) &&!empty($_POST["new_pass_1"])){
+
+				//パスワード一致を確認
+				if ($_POST["new_pass_1"] == $_POST["new_pass_2"]) {
+				
+					//DBに登録
+					$sql = "INSERT INTO user_index (id,name,ruby,password) values (:new_id,:new_name,:new_ruby,:new_password)";
+					$stmt = $pdo->prepare($sql);
+					$stmt->bindParam(":new_id",$_POST["new_id"], pdo::PARAM_STR);
+					$stmt->bindParam(":new_name",$_POST["new_name"], pdo::PARAM_STR);
+					$stmt->bindParam(":new_ruby",$_POST["new_ruby"], pdo::PARAM_STR);
+					$stmt->bindParam(":new_password",password_hash($_POST["new_pass_1"],PASSWORD_DEFAULT), pdo::PARAM_STR);
+					$stmt->execute();
+
+					//確認ページへ
+					session_start();
+					//echo $_COOKIE["PHPSESSID"];
+					$_SESSION["id"] = $_POST["new_id"];
+					$_SESSION["name"] = $_POST["new_name"];
+					$_SESSION["password"] = $_POST["new_pass_1"];
+					$_SESSION["ruby"] = $_POST["new_ruby"];
+					header("location: new_complete.php");
+					exit();
+
+				}else{
+					$alert = "パスワードが一致しません";
+				}
+			}else{
+				$alert = "未入力の項目があります";
+			}
+		}
+	?>
+
+
+
+    <h1>新規ユーザー登録</h1>
     <div class="box shadow_1">
         <form action="" method="POST">
             <table class="input_content">

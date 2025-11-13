@@ -9,11 +9,16 @@ $pdo = DBconnect();
 
 //ユーザー認証
 if(!empty($_POST["id"]) && !empty($_POST["password"])){
-    $sql = "SELECT * FROM user_index WHERE id = :id AND password = :password";
+    $sql = "SELECT ,password FROM user_index WHERE id = :id";
     $stmt = $pdo->prepare($sql);
     $stmt -> bindParam(":id",$_POST["id"],pdo::PARAM_STR);
-    $stmt -> bindParam(":password",$_POST["password"],pdo::PARAM_STR);
+    // $stmt -> bindParam(":password",$_POST["password"],pdo::PARAM_STR);
     $stmt -> execute();
+
+    $password_results = $stmt -> fetchAll();
+    foreach($password_results as $row_password){
+
+    }
     
     $results = $stmt->rowCount();
     if($results == 1){
