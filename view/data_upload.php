@@ -1,9 +1,72 @@
-    <h1>新規データ登録</h1>
+<h1>新規ライブデータ登録</h1>
+
+<!-- タイムテーブルアップロード -->
+<div class="box_2 shadow_1">
+    <div class="scroll_2">
+        <table class="separate input_content table_timetable_upload">
+            <tr>
+                <th class="bigger">日付</th>
+                <td>
+                    <input type="date" name="date" style="width: 12.25em;height:2.5em">
+                </td>
+                </tr>
+                <form action="" method="POST" enctype="multipart/form-data">
+                    <tr>
+                        <th>タイムテーブル.csv</th>
+                        <td>
+                            <input type="file" name="file_timetable" class="file_timetable" accept=".csv">
+                        </td>
+                    </tr>
+                    <tr>
+                        <td colspan="2" style="text-align: center;">
+                            <input type="submit" name="preview_timetable" value="プレビュー" class="button_1">
+                        </td>
+                    </tr>
+                </form>
+                <tr>
+                    <td class="border-top" style="color: gray; text-align: center;" colspan="2">以下の項目はプレビューで自動選択されます</td>
+                </tr>
+                <tr>
+                    <th class="bigger">日程</th>
+                    <td>
+                        <select name="category">
+                            <option value="day1">1日目・1日のみ</option>
+                            <option value="day2">2日目</option>
+                            <option value="day3">3日目</option>
+                            <option value="day4">4日目</option>
+                            <option value="day5">5日目</option>
+                        </select>
+                    </td>
+                </tr>
+                <tr>
+                    <th class="bigger">会場</th>
+                    <!-- 会場の選択肢をDBから取得 -->
+                    <td>
+                        <select name="venue" id="venue">
+                            <option value=""></option>
+                            <?php foreach ($result as $row) : ?>
+                                <option value='<?=$row["id_venue"]?>'><?=$row["name"]?></option>
+                            <?php endforeach;?>
+                            <option value="new">新規作成する</option>
+                        </select>
+                    </td>
+                </tr>
+                <tr id="new_venue">
+                    <th class="bigger">新規会場</th>
+                    <td>
+                        <input type="text" name="new_venue" class="text_input" placeholder="会場名">
+                    </td>
+                </tr>
+            </table>
+        </div>
+    </div>
+    <?php if(isset($_POST["preview_timetable"]) && isset($_FILES["file_timetable"])){require_once __DIR__."/../tools/timetable_preview.php";} ?>
+
     <div class="box_1 shadow_1">
         <form action="" method="post">
             <div class="input_content">
                 <b>csvファイル 列名の設定</b>
-                <div class="scroll">
+                <div class="scroll_2">
                     <table class="small_table shadow_2">
                         <tr class="label">
                             <td>バンド名</td>
@@ -29,20 +92,20 @@
                 </div>            
             </div>
         </form>
-		<hr>
-		<div class="row">
-			<form action="" method="POST" enctype="multipart/form-data">
-				<b>名簿.SCV アップロード</b>
-				<input type="file" name="file_member" class="button_big" accept=".csv">
-				<input type="submit" name="preview" value="プレビュー" class="button_1">
-			</form>
-		</div>
+        <hr>
+        <div class="row">
+            <form action="" method="POST" enctype="multipart/form-data">
+                <b>名簿.SCV アップロード</b>
+                <input type="file" name="file_member" class="button_big" accept=".csv">
+                <input type="submit" name="preview" value="プレビュー" class="button_1">
+            </form>
+        </div>
     </div>
     <!-- プレビューテーブルの見出しだけ（フォームの値反映） -->
     <?php if(isset($_POST["preview"]) && isset($_FILES['file_member']) && is_uploaded_file($_FILES['file_member']['tmp_name'])):?>
 
     <div class='banner'>インポートファイルの編集</div>
-    <div class="scroll">
+    <div class="scroll_1">
         <form action='band_register.php' method='POST'>
             <table class='table_preview shadow_1'>
                 <tr>
@@ -83,78 +146,22 @@
                         <td><input type='text' class='text_preview' name='<?= $n."_"; ?>preview_keybord' data-master-name='<?= $n."_"; ?>preview_keybord' value="<?= $band[$n]['keybord']?>"></td>
                         <td><input type='tel' class='songs_preview' name='<?= $n."_"; ?>preview_songs' value="<?= $band[$n]['songs']?>"></td>
                     </tr>
-
+                    
                     <?php $n++;?>
-                <?php endwhile;?>
-                
-                <!-- アップロードボタンフィールド -->
-                <tr id="uplord_submit">
-                    <td colspan="8">
-                        <input type='submit' name='preview_submit' class='submit_button bigger' value='アップロード'>
-                        <input type="hidden" name="number" value="<?=$n?>">
-                        <input type="hidden" name="new" id="new" value="">
-                    </td>
-                </tr>
-            </table>
+                    <?php endwhile;?>
+                    
+                    <!-- アップロードボタンフィールド -->
+                    <tr id="uplord_submit text_center">
+                        <td colspan="8" class="text_center">
+                            <input type='submit' name='preview_submit' class='submit_button bigger' value='アップロード'>
+                            <input type="hidden" name="number" value="<?=$n?>">
+                            <input type="hidden" name="new" id="new" value="">
+                        </td>
+                    </tr>
+                </table>
         </form>
     </div>
     <?php endif;?>
-    
-    <!-- タイムテーブルアップロード -->
-    <div class="box_2 shadow_1">
-        <table class="separate input_content">
-            <tr>
-                <th>日程</th>
-                <td>
-                    <select name="category">
-                        <option value="day1">1日目・1日のみ</option>
-                        <option value="day2">2日目</option>
-                        <option value="day3">3日目</option>
-                        <option value="day4">4日目</option>
-                        <option value="day5">5日目</option>
-                    </select>
-                </td>
-            </tr>
-            <tr>
-                <th>会場</th>
-                <!-- 会場の選択肢をDBから取得 -->
-                <td>
-                    <select name="venue" id="venue">
-                        <option value=""></option>
-                        <?php foreach ($result as $row) : ?>
-                            <option value='<?=$row["id_venue"]?>'><?=$row["name"]?></option>
-                        <?php endforeach;?>
-                        <option value="new">新規作成する</option>
-                    </select>
-                </td>
-            </tr>
-            <form action="" method="POST" enctype="multipart/form-data">
-            <tr id="new_venue">
-                <th>新規会場</th>
-                <td>
-                    <input type="text" name="new_venue" class="text_input" placeholder="会場名">
-                </td>
-            </tr>
-            <tr>
-                <th>日付</th>
-                <td>
-                    <input type="date" name="date" style="width: 12.25em;height:2.5em">
-                </td>
-            </tr>
-            <tr>
-                <th>タイムテーブル.csv</th>
-                <td>
-                        <input type="file" name="file_timetable" class="timetable" accept=".csv">
-                    </td>
-                </tr>
-                <td colspan="2">
-                    <input type="submit" name="preview_timetable" value="プレビュー" class="button_1">
-                </td>
-            </form>
-            </table>
-    </div>
-    <?php if(isset($_POST["preview_timetable"]) && isset($_FILES["file_timetable"])){require_once("tools/timetable_preview.php");} ?>
-
     <script src="scripts/data_upload.js"></script>
 </body>
 </html>

@@ -1,4 +1,6 @@
 <?php
+
+// 
 $file_timetable = new SplFileObject($_FILES["file_timetable"]["tmp_name"],"r");
 $timetable_label = false;
 $file_timetable->setFlags(SplFileObject::READ_CSV|SplFileObject::SKIP_EMPTY);

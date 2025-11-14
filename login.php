@@ -54,7 +54,8 @@ if(isset($_POST["login"])){
 <!doctype HTML>
 <head>
     <title>ログイン</title>
-    <link rel="stylesheet" href="css/style.css?v=<?= date("Y:m:d:t H:i:s")?>">
+    <link rel="stylesheet" href="/css/style.css?v=<?= date("Y:m:d:t H:i:s")?>">
+    <link rel="stylesheet" href="/css/login.css?v=<?= date("Y:m:d:t H:i:s")?>">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>

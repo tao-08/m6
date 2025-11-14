@@ -3,6 +3,20 @@
 *::after {
   box-sizing: border-box;
 }
+.scroll_1{
+    overflow-x: auto;
+    margin: 0px;
+    padding: 30px;
+}
+.scroll_2{
+    overflow-x: auto;
+    margin: 0px;
+    padding: 5px;
+    width: 100%;
+}
+.center{
+    width: auto;
+}
 .drop_hover{
     transition: 0.2s ease-out;
 }
@@ -11,6 +25,12 @@
 }
 .shadow_hover :hover{
     box-shadow:(0 0 5px 5px gray);
+}
+.shadow_1{
+    box-shadow: 0 0 0.5em 0.05em rgb(184, 184, 184);
+}
+.shadow_2{
+    box-shadow: 0 0 0.3em 0.01em rgb(184, 184, 184);    
 }
 .underline{
     position: relative;
@@ -34,12 +54,6 @@
 body{
     background-color: rgb(245, 245, 245);
 }
-.shadow_1{
-    box-shadow: 0 0 0.5em 0.05em rgb(184, 184, 184);
-}
-.shadow_2{
-    box-shadow: 0 0 0.3em 0.01em rgb(184, 184, 184);    
-}
 input,select,option{
     box-shadow: 0 0 0.3em 0.01em rgb(184, 184, 184);
     background-color: none;
@@ -52,20 +66,11 @@ input:focus,option:focus,select:focus{
     outline: solid rgb(170, 170, 170) 1px;
 }
 /* login.php */
-#login{
-    background-color: rgb(247, 247, 247);
-    text-align: center;
-}
 .flex{
     display: flex;
     align-content: center;
     flex-direction: column;
     justify-content: center;
-}
-#logo_login{
-    margin: 2rem auto;
-    max-width: 40%;
-    height: auto;
 }
 .input_content{
     padding: 8px;
@@ -106,11 +111,6 @@ b{
     transition-duration: 0.2s;
     box-shadow: 0 0 0.5em 0.05em rgb(184, 184, 184);
 }
-/* new_register.php */
-
-
-/* index.php */
-
 h1{
     border-bottom: 1px gray solid;
     padding: 1% 1% 1% 20%;
@@ -121,7 +121,7 @@ h2{
     margin-bottom: 0.2em;
 }
 .box_1{
-    max-width: 70%;
+    max-width: 1000px;
     border:none;
     border-radius: 20px;
     background-color: white;
@@ -130,7 +130,7 @@ h2{
     padding: 1em;
 }
 .box_2{
-    max-width: 45%;
+    max-width: 700px;
     border:none;
     border-radius: 20px;
     background-color: white;
@@ -141,7 +141,7 @@ h2{
 table.separate{
     border-collapse:separate;
     border-radius: 10px;
-    border-spacing: 1.5rem;
+    border-spacing: 0 1.5rem;
 }
 .separate.th,.separate.td{
     padding: 12px;
@@ -158,17 +158,10 @@ table.separate{
     text-decoration: none;
     text-align: center;
     box-shadow: 0 0 0.3em 0.01em rgb(184, 184, 184);    
-
-    
 }
 .back_button:hover{
     background-color: rgb(128, 128, 128);
     box-shadow: 0 0 0.5em 0.05em rgb(184, 184, 184);    
-
-}
-.input_label{
-    width: 4em;
-    max-width: 100%;
 }
 span.circle{
     border-radius: 10px;
@@ -180,30 +173,18 @@ span.circle{
 .button_1{
     background-color: lightblue;
 }
-.text_preview{
-    width: 7em;
-}
-.band_preview{
-    width: 16em;
-}
-.songs_preview{
-    width: 2em;
-}
-#uplord_submit{
+.text_center{
     text-align: center;
+}
+.text_left{
+    text-align: left;
+}
+.text_right{
+    text-align: right;
 }
 #uplord_submit td{
     margin: 3em 3em;
 }
-/* #uplord_submit input{
-    background-color: rgb(183, 255, 177);
-    font-size: 150%;
-    border-radius: 10px;
-    margin-top: 1em;
-    box-shadow:0 0 10px rgb(153, 153, 153);
-    width: 8em;
-    height: 2em;    
-} */
 .banner {
     width: 100%;
     text-align: left;
@@ -225,6 +206,10 @@ span.circle{
     max-height: 200px;
     padding: 10px;
 }
+.border-top{
+    border-top: 1px gray solid;
+    padding-top: 5px;
+}
 
 @media (max-width:767px) {
     #logo_login{
@@ -239,8 +224,10 @@ span.circle{
     .input_content input[type="submit"]{
         width: auto;
     }
-    .box_2{
+    .box_2,.box_1{
         max-width: 95%;
+        padding-right: 5px;
+        padding-left: 5px;
     }
     .input_content{
         padding: 0;

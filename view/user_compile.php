@@ -42,9 +42,11 @@
 
         </table>
         <div>
+            <?php if(!empty($alert)){echo $alert;}?>
+        </div>
+        <div>
                 <a href="/" class="submit_button bigger back_button">戻る</a>
                 <input type="submit" name="submit" class="submit_button bigger" value="更新">
-                <?php if(!empty($alert)){echo $alert;}?>
         </div>
     </div>
 
