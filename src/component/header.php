@@ -48,8 +48,8 @@ $pdo = DBconnect();
             <div class="drop_hover logo__box"><a href="/"><img src="/src/assets/online.png" alt="AbbeyRoad.online" class="logo"></a></div>
             <div class="header__box">
                 <div class="header__card"><a href="/data_upload">ライブデータ登録</a></div>
-                <div class="header__card"><a href="database_live">ライブデータベース《準備中》</a></div>
-                <div class="header__card"><a href="database_live">ツール《準備中》</a></div>
+                <div class="header__card"><a href="/database_live">ライブデータベース《準備中》</a></div>
+                <div class="header__card"><a href="/database_live">ツール《準備中》</a></div>
             </div>
             <div class="toggle_and_menu">
                 <div class="user" id="user">

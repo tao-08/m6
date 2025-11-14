@@ -91,7 +91,7 @@ if(isset($_POST["login"])){
                 </div>
             </div>
             <div style="padding: 5px; text-align: center;">
-                <a href="new_register">新規ユーザー登録</a>
+                <a href="/new_register">新規ユーザー登録</a>
             </div>
         </form>
     </div>

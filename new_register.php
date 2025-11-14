@@ -125,7 +125,7 @@ error_reporting(E_ALL);
 				</tr>
 			</table>
 			<div class="input_content bigger">
-                <a href="login" class="submit_button back_button">戻る</a>
+                <a href="/login" class="submit_button back_button">戻る</a>
 				<input type="submit" name="new_register" value="新規登録" class="bigger submit_button">
 			</div>
 			<div id="alert">
