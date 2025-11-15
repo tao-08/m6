@@ -65,6 +65,9 @@ input,select,option{
 input:focus,option:focus,select:focus{
     outline: solid rgb(170, 170, 170) 1px;
 }
+.only_row{
+    white-space: nowrap;
+}
 /* login.php */
 .flex{
     display: flex;
@@ -111,6 +114,12 @@ b{
     background-color: #aee9ff;
     transition-duration: 0.2s;
     box-shadow: 0 0 0.5em 0.05em rgb(184, 184, 184);
+}
+input.button_color_yellow{
+    background-color: #fff173;
+}
+input.button_color_yellow:hover{
+    background-color: #fff8b7;
 }
 h1{
     border-bottom: 1px gray solid;

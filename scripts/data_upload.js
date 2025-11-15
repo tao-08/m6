@@ -1,3 +1,6 @@
+const elementID = document.getElementById("date");
+elementID.addEventListener()
+
 //プレビューテーブルがDBの名前と一致
 // 一致するか検証してクラス変える関数の定義
 const validateUsername = async(inputElement) => {
@@ -86,11 +89,13 @@ togglebuttons.forEach(button => {
 // 会場新規作成
 const venueSelect = document.getElementById("venue");
 const newVenueInput = document.getElementById("new_venue");
-venueSelect.addEventListener("change",()=>{
-    const venueValue = venueSelect.value;
+function selectNewVenue(){
+const venueValue = venueSelect.value;
     if(venueValue === "new"){
-    newVenueInput.classList.add("visible");
+        newVenueInput.classList.add("visible");
     }else{
         newVenueInput.classList.remove("visible");
     };
-});
+}
+document.addEventListener("DOMContentLoaded",selectNewVenue);
+venueSelect.addEventListener("change",selectNewVenue);

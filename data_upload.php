@@ -8,20 +8,46 @@ if(isset($_POST["preview_timetable"]) && isset($_FILES["file_timetable"])){
 	// 一時ファイルからタイテファイルを取得
 	$file_timetable = new SplFileObject($_FILES["file_timetable"]["tmp_name"],"r");
 	$file_timetable->setFlags(SplFileObject::READ_CSV|SplFileObject::SKIP_EMPTY);
-
+	
 	// ライブ名取得->$live_name
 	// "ライブ" "日目"が含まれているセルを検索して#日目を削除
 	$label_timetable = $file_timetable->current();
 	$column_live_name= preg_grep("/.*ライブ.*|.*日目.*/",$label_timetable);
 	$original_live_name = reset($column_live_name);
 	$live_name = preg_replace('/\d日目/',"",$original_live_name);
-
+	
 	// 日程取得->$live_day
 	$live_day = preg_replace("/.*(?=\d日目)|日目/","",$original_live_name);
-
+	$live_day_selected =["","","","","",""];
+	if(empty($live_day)){
+		$live_day_selected[1] = "selected";
+	}else{
+		$live_day_selected[$live_day] = "selected";
+	}
+	
 	// 会場取得->$live_venue
 	$live_venue = $label_timetable[array_search("会場",$label_timetable)+1];
-
+	$sql="SELECT id_venue,name FROM venue";
+	$stmt = $pdo->query($sql);
+	$result = $stmt->fetchAll();
+	$new_venue = "selected";
+	foreach($result as $key=>$row_venue){
+		// ファイルの会場名と一致すればそのまま使う->$venue_complete
+		if($live_venue === $row_venue["name"]){
+			$venue_complete["n".$key] = "selected";
+			$new_venue = "";
+			continue;
+		}
+		// 類似した会場名を補完して送信
+		similar_text($row_venue["name"],$live_venue,$venue_similar);
+		if($venue_similar > 60){
+			$venue_complete ["n".$key] ="selected";
+			$new_venue = "";
+			continue;
+		}
+		$venue_complete["n".$key] = "";
+	}
+	
 	// バンド名取得
 	// 指定したラベルか最後の行まで読み込んだら止まる
 	$lines = 1;
@@ -73,8 +99,9 @@ if(isset($_POST["preview_timetable"]) && isset($_FILES["file_timetable"])){
 $band_count = 0;
 
 //DBに一致する会場名を検索
-$sql="SELECT id_venue,name FROM venue";
-$stmt = $pdo->query($sql);
-$result = $stmt->fetchAll();
-if($result[])
+// $venue_name_result = null;
+// $venue_name_list = array_column($result,"name");
+// if(in_array($live_venue,$venue_name_list)){
+// 	$venue_name_result = $live_venue;
+// }
 require_once("view/data_upload.php");
