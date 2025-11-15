@@ -99,6 +99,6 @@
         </form>
     </div>
     <?php endif;?>
-    <a href="/data_upload.php" class="center back_button bigger">戻る</a>
+    <a href="/data_upload" class="center back_button bigger">戻る</a>
 </body>
 </html>

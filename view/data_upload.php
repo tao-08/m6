@@ -96,7 +96,7 @@
 </div>
 <?php endif;
 // var_dump($live_venue);echo PHP_EOL;
-var_dump($venue_complete,$result);
+// var_dump($venue_complete,$result);
 // echo $row_venue["name"]?>
 
 <script src="/scripts/data_upload.js"></script>

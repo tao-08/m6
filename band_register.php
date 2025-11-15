@@ -71,5 +71,10 @@ foreach($_POST["band_data"] as $band_data){
     $stmt->execute();
 }
 
-var_dump($_POST,$year);
-var_dump($_SESSION,$result,$live_detail_id);
+// var_dump($_POST,$year);
+// var_dump($_SESSION,$result,$live_detail_id);
+if(isset($_POST["next"])){
+    header("location:/member_upload");
+}elseif(isset($_POST["next_day"])){
+    header("location:/data_upload");
+}
