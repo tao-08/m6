@@ -58,7 +58,7 @@ tbody.small_table{
 .band_preview{
     width: 16em;
 }
-.songs_preview{
+.number_preview{
     width: 2em;
 }
 
@@ -95,6 +95,12 @@ input.file_timetable{
     white-space: nowrap;
     width: 50%;
     padding: 0 1em;
+}
+.timetable_preview{
+    max-width: 500px;
+}
+.timetable_preview th{
+    padding: 0.2em 0;
 }
 @media (max-width:767px) {
     table.small_table{

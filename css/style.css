@@ -94,6 +94,7 @@ b{
     font-size: 130%;
 }
 .submit_button{
+    display: inline-block;
     width: 150px;
     height: auto;
     background-color: #6dd8ff;
@@ -152,12 +153,16 @@ table.separate{
 .back_button{
     display: inline-block;
     background-color: rgb(87, 87, 87);
+    border-radius: 15px;
+    transition: 0.2s ease;
     width: 150px;
     height: auto;
     color: white;
     text-decoration: none;
     text-align: center;
-    box-shadow: 0 0 0.3em 0.01em rgb(184, 184, 184);    
+    box-shadow: 0 0 0.3em 0.01em rgb(184, 184, 184);  
+    margin: 0.5em;
+    padding: 0.1em; 
 }
 .back_button:hover{
     background-color: rgb(128, 128, 128);
@@ -208,7 +213,7 @@ span.circle{
 }
 .border-top{
     border-top: 1px gray solid;
-    padding-top: 5px;
+    padding-top: px;
 }
 
 @media (max-width:767px) {
