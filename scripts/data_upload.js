@@ -27,28 +27,30 @@ const validateUsername = async(inputElement) => {
         // 結果に応じてクラスとname変更
         // もとのname属性を保存
         const master_name = inputElement.getAttribute("data-master-name");
-
+        
         // DBにいる
         if (result.exists) {
             inputElement.classList.add("valid");
             inputElement.classList.remove("invalid");
-            inputElement.setAttribute("name",master_name);
-
-        // DBにいない
+            // inputElement.setAttribute("name",master_name);
+            inputElement.setAttribute("name",input_content);
+            
+            // DBにいない
         }else{
+            const input_content = inputElement.getAttribute("name");
             inputElement.classList.add("invalid");
             inputElement.classList.remove("valid");
 
             // const new_input = document.getElementById("new");
             // new_input.value = 
-            const new_name = inputElement.getAttribute("name");
+            // const new_name = inputElement.getAttribute("name");
             if(!new_array.includes(new_name)){
                 new_array.push(new_name);
             }
 
             // inputのname属性を変更
-            // const new_name = master_name + "_new";
-            // inputElement.setAttribute("name",new_name);
+            const new_name = input_content.replace(/.*,]/,",new]")
+            inputElement.setAttribute("name",new_name);
         }
     }catch(error){
         console.error("通信エラー:",error);

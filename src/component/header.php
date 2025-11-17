@@ -9,7 +9,7 @@ if(empty($_SESSION["id"])){
 	header("location:../login");
 	exit;
 }
-require_once("src\setting\DB_connect.php");
+require_once(__DIR__."/../setting/DB_connect.php");
 $pdo = DBconnect();
 ?>
 <!doctype html>

@@ -74,14 +74,14 @@
                     ];?>
 
                     <tr>
-                        <td><input type='text' class='band_preview' name='<?= $n."_"; ?>preview_band' data-master-name='<?= $n."_"; ?>preview_band' value="<?= htmlspecialchars($row[$key_band],ENT_QUOTES,'UTF-8')?>"></td>
-                        <td><input type='text' class='text_preview' name='<?= $n."_"; ?>preview_vocal' data-master-name='<?= $n."_"; ?>preview_vocal' value="<?= $band[$n]['vocal']?>"></td>
-                        <td><input type='text' class='text_preview' name='<?= $n."_"; ?>preview_guiter_1' data-master-name='<?= $n."_"; ?>preview_guiter_1' value="<?= $band[$n]['guiter_1']?>"></td>
-                        <td><input type='text' class='text_preview' name='<?= $n."_"; ?>preview_guiter_2' data-master-name='<?= $n."_"; ?>preview_guiter_2' value="<?= $band[$n]['guiter_2']?>"></td>
-                        <td><input type='text' class='text_preview' name='<?= $n."_"; ?>preview_bass' data-master-name='<?= $n."_"; ?>preview_bass' value="<?= $band[$n]['bass']?>"></td>
-                        <td><input type='text' class='text_preview' name='<?= $n."_"; ?>preview_drum' data-master-name='<?= $n."_"; ?>preview_drum' value="<?= $band[$n]['drum']?>"></td>
-                        <td><input type='text' class='text_preview' name='<?= $n."_"; ?>preview_keybord' data-master-name='<?= $n."_"; ?>preview_keybord' value="<?= $band[$n]['keybord']?>"></td>
-                        <td><input type='tel' class='number_preview' name='<?= $n."_"; ?>preview_songs' value="<?= $band[$n]['songs']?>"></td>
+                        <td><input type='text' class='band_preview' name='member[<?= $n ?>][band,]' data-master-name='member[<?= $n ?>][band,]' value="<?= htmlspecialchars($row[$key_band],ENT_QUOTES,'UTF-8')?>"></td>
+                        <td><input type='text' class='text_preview' name='mamber[<?= $n ?>][vocal,]' data-master-name='mamber[<?= $n ?>][vocal,]' value="<?= $band[$n]['vocal']?>"></td>
+                        <td><input type='text' class='text_preview' name='mamber[<?= $n ?>][guiter_1,]' data-master-name='mamber[<?= $n ?>][guiter_1,]' value="<?= $band[$n]['guiter_1']?>"></td>
+                        <td><input type='text' class='text_preview' name='mamber[<?= $n ?>][guiter_2,]' data-master-name='mamber[<?= $n ?>][guiter_2,]' value="<?= $band[$n]['guiter_2']?>"></td>
+                        <td><input type='text' class='text_preview' name='mamber[<?= $n ?>][bass,]' data-master-name='mamber[<?= $n ?>][bass,]' value="<?= $band[$n]['bass']?>"></td>
+                        <td><input type='text' class='text_preview' name='mamber[<?= $n ?>][drum,]' data-master-name='mamber[<?= $n ?>][drum,]' value="<?= $band[$n]['drum']?>"></td>
+                        <td><input type='text' class='text_preview' name='mamber[<?= $n ?>][keybord,]' data-master-name='mamber[<?= $n ?>][keybord,]' value="<?= $band[$n]['keybord']?>"></td>
+                        <td><input type='tel' class='number_preview' name='mamber[<?= $n ?>][songs,]' value="<?= $band[$n]['songs']?>"></td>
                     </tr>
                     
                     <?php $n++;?>
