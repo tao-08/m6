@@ -26,13 +26,13 @@ tbody.small_table{
     width: 4em;
     max-width: 100%;
 }
-.text_preview.valid{
+input[type="text"].text_preview.valid{
     background-color: rgb(199, 255, 191);
 }
-.text_preview.invalid{
+input[type="text"].text_preview.invalid{
     background-color: rgb(250, 209, 214);
 }
-.table_preview table:not(.timetable_select) input{
+.table_preview input[type="text"]{
     height: 1.5em;
     border: none;
     border-radius: 3px;

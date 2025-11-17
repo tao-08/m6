@@ -1,5 +1,5 @@
-const elementID = document.getElementById("date");
-elementID.addEventListener()
+// const elementID = document.getElementById("date");
+// elementID.addEventListener()
 
 //プレビューテーブルがDBの名前と一致
 // 一致するか検証してクラス変える関数の定義
@@ -25,31 +25,21 @@ const validateUsername = async(inputElement) => {
         const result = await responce.json();
         
         // 結果に応じてクラスとname変更
-        // もとのname属性を保存
-        const master_name = inputElement.getAttribute("data-master-name");
-        
         // DBにいる
         if (result.exists) {
             inputElement.classList.add("valid");
             inputElement.classList.remove("invalid");
-            // inputElement.setAttribute("name",master_name);
-            inputElement.setAttribute("name",input_content);
+            const input_content = inputElement.getAttribute("name");
+            const new_name = input_content.replace(/-new\]$/,"]")
+            inputElement.setAttribute("name",new_name);
             
             // DBにいない
         }else{
             const input_content = inputElement.getAttribute("name");
             inputElement.classList.add("invalid");
             inputElement.classList.remove("valid");
-
-            // const new_input = document.getElementById("new");
-            // new_input.value = 
-            // const new_name = inputElement.getAttribute("name");
-            if(!new_array.includes(new_name)){
-                new_array.push(new_name);
-            }
-
             // inputのname属性を変更
-            const new_name = input_content.replace(/.*,]/,",new]")
+            const new_name = input_content.replace(/\]$/,"-new]")
             inputElement.setAttribute("name",new_name);
         }
     }catch(error){
@@ -87,17 +77,3 @@ togglebuttons.forEach(button => {
         content.classList.toggle("active");
     })
 });
-
-// 会場新規作成
-const venueSelect = document.getElementById("venue");
-const newVenueInput = document.getElementById("new_venue");
-function selectNewVenue(){
-const venueValue = venueSelect.value;
-    if(venueValue === "new"){
-        newVenueInput.classList.add("visible");
-    }else{
-        newVenueInput.classList.remove("visible");
-    };
-}
-document.addEventListener("DOMContentLoaded",selectNewVenue);
-venueSelect.addEventListener("change",selectNewVenue);

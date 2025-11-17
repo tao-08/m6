@@ -99,6 +99,6 @@
 // var_dump($venue_complete,$result);
 // echo $row_venue["name"]?>
 
-<script src="/scripts/data_upload.js"></script>
+<script src="/scripts/band_upload.js"></script>
 </body>
 </html>

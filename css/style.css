@@ -162,7 +162,7 @@ table.separate{
 .back_button{
     display: inline-block;
     background-color: rgb(87, 87, 87);
-    border-radius: 15px;
+    border-radius: 10px;
     transition: 0.2s ease;
     width: 150px;
     height: auto;

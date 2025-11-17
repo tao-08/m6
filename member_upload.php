@@ -1,7 +1,7 @@
 <?php
 $css = "data_upload";
 $page_title = "新規データ登録";
-require_once("src/component/header.php");
+require_once __DIR__."/src/component/header.php";
 
 
 $band_label = "バンド名";
@@ -11,7 +11,6 @@ $guiter_2_label = "Gt.2";
 $bass_label = "Ba.";
 $drum_label = "Dr.";
 $keybord_label = "Key.";
-$songs_label = "曲数";
 
 //フォームから列名を変数に
 if(!empty($_post["preview"])){
@@ -22,7 +21,6 @@ if(!empty($_post["preview"])){
 	$bass_label = $_POST["bass_label"];
 	$keybord_label = $_POST["keybord_label"];
 	$drum_label = $_POST["drum_label"];
-	$songs_label = $_POST["songs_label"];
 }
 
 //プレビューモード
@@ -44,9 +42,8 @@ if(isset($_POST["preview"]) && isset($_FILES['file_member']) && is_uploaded_file
 		$key_bass = array_search($bass_label,$header);
 		$key_drum = array_search($drum_label,$header);
 		$key_keybord = array_search($keybord_label,$header);
-		$key_songs = array_search($songs_label,$header);
 	}
 }
 
 
-require_once "view/member_upload.php";
+require_once __DIR__."/view/member_upload.php";

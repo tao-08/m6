@@ -13,17 +13,15 @@
                             <td>Ba.</td>
                             <td>Dr.</td>
                             <td>Key.</td>
-                            <td>曲数</td>
                         </tr>
                         <tr class="label_2">
-                            <td><input type="text" name="band_label" class="input_label" value="<?php echo $band_label?>"></td>
-                            <td><input type="text" name="vocal_label" class="input_label" value="<?php echo $vocal_label?>"></td>
-                            <td><input type="text" name="guiter_1_label" class="input_label" value="<?php echo $guiter_1_label?>"></td>
-                            <td><input type="text" name="guiter_2_label" class="input_label" value="<?php echo $guiter_2_label?>"></td>
-                            <td><input type="text" name="bass_label" class="input_label" value="<?php echo $bass_label?>"></td>
-                            <td><input type="text" name="drum_label" class="input_label" value="<?php echo $drum_label?>"></td>
-                            <td><input type="text" name="keybord_label" class="input_label" value="<?php echo $keybord_label?>"></td>
-                            <td><input type="text" name="songs_label" class="input_label" value="<?php echo $songs_label?>"></td>
+                            <td><input type="text" name="band_label" class="input_label" value="<?= $band_label?>"></td>
+                            <td><input type="text" name="vocal_label" class="input_label" value="<?= $vocal_label?>"></td>
+                            <td><input type="text" name="guiter_1_label" class="input_label" value="<?= $guiter_1_label?>"></td>
+                            <td><input type="text" name="guiter_2_label" class="input_label" value="<?= $guiter_2_label?>"></td>
+                            <td><input type="text" name="bass_label" class="input_label" value="<?= $bass_label?>"></td>
+                            <td><input type="text" name="drum_label" class="input_label" value="<?= $drum_label?>"></td>
+                            <td><input type="text" name="keybord_label" class="input_label" value="<?= $keybord_label?>"></td>
                         </tr>
                     </table>
                 </div>            
@@ -43,7 +41,7 @@
 
     <div class='banner'>インポートファイルの編集</div>
     <div class="scroll_1">
-        <form action='band_register.php' method='POST'>
+        <form action='/tools/data_upload/member_register.php' method='POST'>
             <table class='table_preview shadow_1'>
                 <tr>
                     <th><?= $band_label ?></th>
@@ -53,7 +51,6 @@
                     <th><?= $bass_label ?></th>
                     <th><?= $drum_label ?></th>
                     <th><?= $keybord_label?></th>
-                    <th><?= $songs_label ?></th>
                 </tr>
                 <!-- プレビューテーブル -->
                 <!-- 配列変数にバンド情報入れる -->
@@ -70,18 +67,16 @@
                         "bass"=>preg_replace("/[\s　]+/u","",$row[$key_bass]),
                         "drum"=>preg_replace("/[\s　]+/u","",$row[$key_drum]),
                         "keybord"=>preg_replace("/[\s　]+/u","",$row[$key_keybord]),
-                        "songs"=>preg_replace("/[\s　]+/u","",$row[$key_songs])
                     ];?>
 
                     <tr>
-                        <td><input type='text' class='band_preview' name='member[<?= $n ?>][band,]' data-master-name='member[<?= $n ?>][band,]' value="<?= htmlspecialchars($row[$key_band],ENT_QUOTES,'UTF-8')?>"></td>
-                        <td><input type='text' class='text_preview' name='mamber[<?= $n ?>][vocal,]' data-master-name='mamber[<?= $n ?>][vocal,]' value="<?= $band[$n]['vocal']?>"></td>
-                        <td><input type='text' class='text_preview' name='mamber[<?= $n ?>][guiter_1,]' data-master-name='mamber[<?= $n ?>][guiter_1,]' value="<?= $band[$n]['guiter_1']?>"></td>
-                        <td><input type='text' class='text_preview' name='mamber[<?= $n ?>][guiter_2,]' data-master-name='mamber[<?= $n ?>][guiter_2,]' value="<?= $band[$n]['guiter_2']?>"></td>
-                        <td><input type='text' class='text_preview' name='mamber[<?= $n ?>][bass,]' data-master-name='mamber[<?= $n ?>][bass,]' value="<?= $band[$n]['bass']?>"></td>
-                        <td><input type='text' class='text_preview' name='mamber[<?= $n ?>][drum,]' data-master-name='mamber[<?= $n ?>][drum,]' value="<?= $band[$n]['drum']?>"></td>
-                        <td><input type='text' class='text_preview' name='mamber[<?= $n ?>][keybord,]' data-master-name='mamber[<?= $n ?>][keybord,]' value="<?= $band[$n]['keybord']?>"></td>
-                        <td><input type='tel' class='number_preview' name='mamber[<?= $n ?>][songs,]' value="<?= $band[$n]['songs']?>"></td>
+                        <td><input type='text' class='band_preview' name='member[<?= $n ?>][band]' value="<?= htmlspecialchars($row[$key_band],ENT_QUOTES,'UTF-8')?>"></td>
+                        <td><input type='text' class='text_preview' name='member[<?= $n ?>][vocal]' value="<?= $band[$n]['vocal']?>"></td>
+                        <td><input type='text' class='text_preview' name='member[<?= $n ?>][guiter_1]' value="<?= $band[$n]['guiter_1']?>"></td>
+                        <td><input type='text' class='text_preview' name='member[<?= $n ?>][guiter_2]' value="<?= $band[$n]['guiter_2']?>"></td>
+                        <td><input type='text' class='text_preview' name='member[<?= $n ?>][bass]' value="<?= $band[$n]['bass']?>"></td>
+                        <td><input type='text' class='text_preview' name='member[<?= $n ?>][drum]' value="<?= $band[$n]['drum']?>"></td>
+                        <td><input type='text' class='text_preview' name='member[<?= $n ?>][keybord]' value="<?= $band[$n]['keybord']?>"></td>
                     </tr>
                     
                     <?php $n++;?>
@@ -101,4 +96,5 @@
     <?php endif;?>
     <a href="/data_upload" class="center back_button bigger">戻る</a>
 </body>
+<script src="/scripts/data_upload.js"></script>
 </html>
