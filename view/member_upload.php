@@ -1,41 +1,39 @@
 <h1>新規ライブデータ登録</h1>
-    <div class="box_1 shadow_1">
-        <form action="" method="post">
-            <div class="input_content">
-                <b>csvファイル 列名の設定</b>
-                <div class="scroll_2">
-                    <table class="small_table shadow_2">
-                        <tr class="label">
-                            <td>バンド名</td>
-                            <td>Vo(Gt.)</td>
-                            <td>Gt.1</td>
-                            <td>Gt.2</td>
-                            <td>Ba.</td>
-                            <td>Dr.</td>
-                            <td>Key.</td>
-                        </tr>
-                        <tr class="label_2">
-                            <td><input type="text" name="band_label" class="input_label" value="<?= $band_label?>"></td>
-                            <td><input type="text" name="vocal_label" class="input_label" value="<?= $vocal_label?>"></td>
-                            <td><input type="text" name="guiter_1_label" class="input_label" value="<?= $guiter_1_label?>"></td>
-                            <td><input type="text" name="guiter_2_label" class="input_label" value="<?= $guiter_2_label?>"></td>
-                            <td><input type="text" name="bass_label" class="input_label" value="<?= $bass_label?>"></td>
-                            <td><input type="text" name="drum_label" class="input_label" value="<?= $drum_label?>"></td>
-                            <td><input type="text" name="keybord_label" class="input_label" value="<?= $keybord_label?>"></td>
-                        </tr>
-                    </table>
-                </div>            
-            </div>
-        </form>
+<form action="" method="POST" enctype="multipart/form-data">
+	<div class="box_1 shadow_1">
+		<div class="input_content">
+			<b>csvファイル 列名の設定</b>
+			<div class="scroll_2">
+				<table class="small_table shadow_2">
+					<tr class="label">
+						<td>バンド名</td>
+						<td>Vo(Gt.)</td>
+						<td>Gt.1</td>
+						<td>Gt.2</td>
+						<td>Ba.</td>
+						<td>Dr.</td>
+						<td>Key.</td>
+					</tr>
+					<tr class="label_2">
+						<td><input type="text" name="band_label" class="input_label" value="<?= $band_label?>"></td>
+						<td><input type="text" name="vocal_label" class="input_label" value="<?= $vocal_label?>"></td>
+						<td><input type="text" name="guiter_1_label" class="input_label" value="<?= $guiter_1_label?>"></td>
+						<td><input type="text" name="guiter_2_label" class="input_label" value="<?= $guiter_2_label?>"></td>
+						<td><input type="text" name="bass_label" class="input_label" value="<?= $bass_label?>"></td>
+						<td><input type="text" name="drum_label" class="input_label" value="<?= $drum_label?>"></td>
+						<td><input type="text" name="keybord_label" class="input_label" value="<?= $keybord_label?>"></td>
+					</tr>
+				</table>
+			</div>
+		</div>
         <hr>
         <div class="row">
-            <form action="" method="POST" enctype="multipart/form-data">
-                <b>名簿.SCV アップロード</b>
-                <input type="file" name="file_member" class="button_big" accept=".csv">
-                <input type="submit" name="preview" value="プレビュー" class="button_1">
-            </form>
-        </div>
-    </div>
+			<b>名簿.SCV アップロード</b>
+			<input type="file" name="file_member" class="button_big" accept=".csv">
+			<input type="submit" name="preview" value="プレビュー" class="button_1">
+		</div>
+	</div>
+</form>
     <!-- プレビューテーブルの見出しだけ（フォームの値反映） -->
     <?php if(isset($_POST["preview"]) && isset($_FILES['file_member']) && is_uploaded_file($_FILES['file_member']['tmp_name'])):?>
 

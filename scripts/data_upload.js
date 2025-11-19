@@ -1,6 +1,53 @@
 // const elementID = document.getElementById("date");
 // elementID.addEventListener()
 
+// バンド名一致しているか
+const validateBandname = async(inputElement) => {
+    const input_name = inputElement.value;
+
+    // なんもなかったらvalueを消す
+    if (input_name === "") {
+        inputElement.classList.remove("valid","invalid");
+        return;
+    }
+    // check.phpに入力内容送信
+    try{
+        const responce = await fetch("preview_name_check.php",{
+            method: "POST",
+            headers:{
+                "Content-Type":'application/x-www-form-urlencoded',
+            },
+            body: "band_name="+ encodeURIComponent(input_name)
+        });
+        
+        // サーバーからの結果受取
+        const result = await responce.json();
+        
+        // 結果に応じてクラス変更
+        // DBにいる
+        if (result.exists === true) {
+            inputElement.classList.add("valid");
+            inputElement.classList.remove("invalid","partial");
+
+            // DBにいない
+        }else if (result.exists === false) {
+            inputElement.classList.add("invalid");
+            inputElement.classList.remove("valid","partial");
+			
+			// 部分一致
+        }else if (result.exists == "partial"){
+            inputElement.classList.add("partial");
+            inputElement.classList.remove("valid","invalid");
+			
+		}
+    }catch(error){
+        console.error("通信エラー:",error);
+    }
+};
+
+
+
+
 //プレビューテーブルがDBの名前と一致
 // 一致するか検証してクラス変える関数の定義
 const validateUsername = async(inputElement) => {
@@ -48,7 +95,6 @@ const validateUsername = async(inputElement) => {
 };
 
 // ロード完了後
-let new_array = [];
 document.addEventListener("DOMContentLoaded",() =>{
 
     // text_previewクラスを持つ全要素取得
@@ -65,6 +111,24 @@ document.addEventListener("DOMContentLoaded",() =>{
             // タイマー切れたら検証
             typingTimer = setTimeout(() =>{
                 validateUsername(input);
+            },30);
+        });
+    });
+	
+    // band_previewクラスを持つ全要素取得
+    const band_preview_element = document.querySelectorAll(".band_preview");
+    band_preview_element.forEach((input) => {
+        validateBandname(input);               
+        // 入力待ちタイマー
+        let typingTimer;
+
+        // 入力を検知
+        input.addEventListener("input",() => {
+            clearTimeout(typingTimer);
+
+            // タイマー切れたら検証
+            typingTimer = setTimeout(() =>{
+                validateBandname(input);
             },30);
         });
     });

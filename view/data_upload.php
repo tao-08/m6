@@ -27,7 +27,7 @@
 <?php if(isset($_POST["preview_timetable"]) && isset($_FILES["file_timetable"])):?>
     <div class="table_preview timetable_preview shadow_1">
         <div class="scroll_2">
-            <form action="/tools/data_upload/band_register.php" method="post">
+		<form action="/tools/data_upload/band_register.php" method="post">
         <table class="center only_row">
             <tr>
                 <th>演奏順</th>

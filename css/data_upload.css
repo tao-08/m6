@@ -26,11 +26,14 @@ tbody.small_table{
     width: 4em;
     max-width: 100%;
 }
-input[type="text"].text_preview.valid{
+input[type="text"].text_preview.valid,input[type="text"].band_preview.valid{
     background-color: rgb(199, 255, 191);
 }
-input[type="text"].text_preview.invalid{
-    background-color: rgb(250, 209, 214);
+input[type="text"].text_preview.invalid,input[type="text"].band_preview.invalid{
+	background-color: rgb(250, 209, 214);
+}
+input[type="text"].band_preview.partial{
+	background-color: #fff6a4;
 }
 .table_preview input[type="text"]{
     height: 1.5em;

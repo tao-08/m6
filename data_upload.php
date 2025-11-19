@@ -3,6 +3,13 @@ $css = "data_upload";
 $page_title = "新規データ登録";
 require_once("src/component/header.php");
 
+// 
+if($_GET["multiple"] ?? null){
+	$registered_timetable = ($registered_timetable ?? 0)+1;
+}else{
+	$_SESSION["live_detail_id"] = [];
+}
+
 if(isset($_POST["preview_timetable"]) && isset($_FILES["file_timetable"])){
 	// require_once __DIR__."/tools/data_upload/timetable_preview.php";
 	// 一時ファイルからタイテファイルを取得
@@ -96,7 +103,7 @@ if(isset($_POST["preview_timetable"]) && isset($_FILES["file_timetable"])){
 		$lines++;
 	}
 }
-$band_count = 0;
+// $band_count = 0;
 
 //DBに一致する会場名を検索
 // $venue_name_result = null;
@@ -104,4 +111,4 @@ $band_count = 0;
 // if(in_array($live_venue,$venue_name_list)){
 // 	$venue_name_result = $live_venue;
 // }
-require_once("view/data_upload.php");
+require_once "view/data_upload.php";

@@ -13,14 +13,14 @@ $drum_label = "Dr.";
 $keybord_label = "Key.";
 
 //フォームから列名を変数に
-if(!empty($_post["preview"])){
-	$band_label = $_POST["band_label"];
-	$vocal_label = $_POST["vocal_label"];
-	$guiter_1_label = $_POST["guiter_1_label"];
-	$guiter_2_label = $_POST["guiter_2_label"];
-	$bass_label = $_POST["bass_label"];
-	$keybord_label = $_POST["keybord_label"];
-	$drum_label = $_POST["drum_label"];
+if(!empty($_POST["preview"])){
+	$band_label = $_POST["band_label"] ?? $band_label;
+	$vocal_label = $_POST["vocal_label"] ?? $vocal_label;
+	$guiter_1_label = $_POST["guiter_1_label"] ?? $guiter_1_label;
+	$guiter_2_label = $_POST["guiter_2_label"] ?? $guiter_2_label;
+	$bass_label = $_POST["bass_label"] ?? $bass_label;
+	$keybord_label = $_POST["keybord_label"] ?? $keybord_label;
+	$drum_label = $_POST["drum_label"] ?? $drum_label;
 }
 
 //プレビューモード
@@ -44,6 +44,4 @@ if(isset($_POST["preview"]) && isset($_FILES['file_member']) && is_uploaded_file
 		$key_keybord = array_search($keybord_label,$header);
 	}
 }
-
-
 require_once __DIR__."/view/member_upload.php";
