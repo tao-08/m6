@@ -10,7 +10,7 @@ if($_GET["multiple"] ?? null){
 	$_SESSION["live_detail_id"] = [];
 }
 
-if(isset($_POST["preview_timetable"]) && isset($_FILES["file_timetable"])){
+if(isset($_POST["preview_timetable"]) && !empty($_FILES["file_timetable"]["name"])){
 	// require_once __DIR__."/tools/data_upload/timetable_preview.php";
 	// 一時ファイルからタイテファイルを取得
 	$file_timetable = new SplFileObject($_FILES["file_timetable"]["tmp_name"],"r");

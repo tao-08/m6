@@ -65,6 +65,8 @@ $_SESSION["live_detail_id"][] = $live_detail_id;
 
 
 // バンドデータ登録
+// バンド名被りを検索
+
 $sql = "INSERT into band_master (name,id_live_detail,order_live,songs) values (:name,:id_live_detail,:order_live,:songs)";
 $stmt= $pdo->prepare($sql);
 $stmt->bindParam(":name",$band_name);

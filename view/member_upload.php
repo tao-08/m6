@@ -69,12 +69,12 @@
 
                     <tr>
                         <td><input type='text' class='band_preview' name='member[<?= $n ?>][band]' value="<?= htmlspecialchars($row[$key_band],ENT_QUOTES,'UTF-8')?>"></td>
-                        <td><input type='text' class='text_preview' name='member[<?= $n ?>][vocal]' value="<?= $band[$n]['vocal']?>"></td>
+                        <td><input type='text' class='text_preview' name='member[<?= $n ?>][vocal_1]' value="<?= $band[$n]['vocal']?>"></td>
                         <td><input type='text' class='text_preview' name='member[<?= $n ?>][guiter_1]' value="<?= $band[$n]['guiter_1']?>"></td>
                         <td><input type='text' class='text_preview' name='member[<?= $n ?>][guiter_2]' value="<?= $band[$n]['guiter_2']?>"></td>
-                        <td><input type='text' class='text_preview' name='member[<?= $n ?>][bass]' value="<?= $band[$n]['bass']?>"></td>
-                        <td><input type='text' class='text_preview' name='member[<?= $n ?>][drum]' value="<?= $band[$n]['drum']?>"></td>
-                        <td><input type='text' class='text_preview' name='member[<?= $n ?>][keybord]' value="<?= $band[$n]['keybord']?>"></td>
+                        <td><input type='text' class='text_preview' name='member[<?= $n ?>][bass_1]' value="<?= $band[$n]['bass']?>"></td>
+                        <td><input type='text' class='text_preview' name='member[<?= $n ?>][drum_1]' value="<?= $band[$n]['drum']?>"></td>
+                        <td><input type='text' class='text_preview' name='member[<?= $n ?>][keybord_1]' value="<?= $band[$n]['keybord']?>"></td>
                     </tr>
                     
                     <?php $n++;?>

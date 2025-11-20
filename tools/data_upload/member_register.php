@@ -2,6 +2,7 @@
 session_start();
 ini_set('display_errors', 1);
 error_reporting(E_ALL);
+$post_band_member = $_POST["member"];#バンド名とメンバーの名前の配列
 
 //DB設定
 require __DIR__ . "/../../src/setting/DB_connect.php";
@@ -11,7 +12,7 @@ $pdo = DBconnect();
 // $_POST["member"] = [0]=>[band]=>バンド名
 // 名前だけ取り出す
 array_walk_recursive(
-	$_POST["member"],
+	$post_band_member,
 	function ($value, $key) use (&$new_member) {
 		if (str_contains($key, "-new")) {
 			$new_member[] = $value;
@@ -22,34 +23,46 @@ if (isset($new_member)) {
 	$new_member = array_unique((array)$new_member);
 	$sql = "INSERT into member (name) values(?)";
 	$stmt = $pdo->prepare($sql);
-	foreach ((array)$new_member as $row) {
-		$stmt->execute([$row]);
+	foreach ((array)$new_member as $new_member_name) {
+		$stmt->execute([$new_member_name]);
 	}
 }
+// foreach ($post_band_member as $number => $match_name_array) {
+// 	$band_name_array[] = $match_name_array["band"]	
+// }
 
 // バンド詳細にメンバー登録
-foreach ($_POST["member"] as $key => $row) {
-	$column = array_keys($row);
+foreach ($post_band_member as $number => $name_array) {
+	// newがついたキーからnewとる
+	$column = array_keys($name_array);
 	$column = str_replace("-new", "", $column);
-	$member = array_combine($column, $row);
+	$band_member = array_combine($column, $name_array);
 
 	// メンバーID取得
 	$sql = "SELECT id from member WHERE name = ?";
-	$stmt = $pdo->prepare($sql);
-	foreach ($member as $key => $value) {
-		if($key === "band"){
-			$band_name = $value;
-		}else{
-			// 楽器にメンバーが登録されていたら$member_id[バンド名]=>idに登録
-			if ($value !== "") {
-				$stmt->execute([$value]);
-				$stmt->bindColumn("id", $member_id[$band_name][$value], pdo::PARAM_INT);
-				$stmt->fetch(pdo::FETCH_BOUND);
-			}
+	foreach ($band_member as $instrument => $name) {
+		if($instrument === "band"){
+			$band_name = $name;
+			continue;
 		}
+		// 楽器にメンバーが登録されていたら$member_id[バンド名][名前]=>idに登録
+		if ($name == "") {
+			continue;
+		}
+		$stmt = $pdo->prepare($sql);
+		$stmt->execute([$name]);
+		$stmt->bindColumn("id", $member_id, pdo::PARAM_INT);
+		$stmt->fetch(pdo::FETCH_BOUND);
+		// 一人ずつ登録
+		$placeholder = array_fill(0,count($_SESSION["live_detail_id"]),"?");
+		$placeholder = implode(",",$placeholder);
+		$parameter = array_merge([$band_name],$_SESSION["live_detail_id"]);
+		$sql_register = "UPDATE band_master SET {$instrument} = $member_id WHERE name = ? AND id_live_detail IN ({$placeholder})";
+		$stmt = $pdo->prepare($sql_register);
+		$stmt->execute($parameter);
 	}
 
-
+// idを検索して登録
 	// $member_id =
 
 	// $sql = "INSERT into band_detail (name id_live_detail $key )";
@@ -59,7 +72,7 @@ foreach ($_POST["member"] as $key => $row) {
 
 print_r(
 	// $_POST["member"],
-	$member
+	$band_member
 	// $column
 );
 var_dump(
