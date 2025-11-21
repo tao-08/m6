@@ -1,4 +1,9 @@
 <?php
+if($_GET["complete"] ?? null){
+	require_once __DIR__."\\view\data_complete.php";
+	exit();
+}
+
 $css = "data_upload";
 $page_title = "新規データ登録";
 require_once __DIR__."/src/component/header.php";

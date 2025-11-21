@@ -12,7 +12,7 @@ $pdo = DBconnect();
 // 
 
 // ライブマスターを初回だけ登録
-$_SESSION["live_master_id"] = null;
+$_SESSION["live_master_id"] = $_SESSION["live_master_id"] ?? [];
 $year = substr($_POST["date"],0,4);
 
 // live_masterにライブ名と年が一致するレコードがなければ登録
@@ -24,7 +24,7 @@ if(empty($_SESSION["live_master_id"])){
     $stmt->bindParam(":name_live",$_POST["live_name"]);
     $stmt ->execute();
     $result = $stmt->fetch();
-    $_SESSION["live_master_id"] = $result[0] ?? null;
+    $_SESSION["live_master_id"][] = $result[0] ?? null;
     // 登録
     if(empty($_SESSION["live_master_id"])){
         $sql = "INSERT INTO live_master (year,name_live) values (:year,:name_live)";
@@ -32,7 +32,7 @@ if(empty($_SESSION["live_master_id"])){
         $stmt->bindParam(":year",$year);
         $stmt->bindParam(":name_live",$_POST["live_name"]);
         $stmt->execute();
-        $_SESSION["live_master_id"] = $pdo->lastInsertId();
+        $_SESSION["live_master_id"][] = $pdo->lastInsertId();
     }
 }
 
@@ -46,11 +46,12 @@ if($_POST["venue"] === "new"){
     $stmt->execute();
     $new_venue_id = $pdo->lastInsertId();
 }
+$insert_live_master = end($_SESSION["live_master_id"]);
 $sql = "INSERT into live_detail 
         (id_live_master,date,day,id_venue) 
 values  (:id_live_master,:date,:day,:id_venue)";
 $stmt = $pdo->prepare($sql);
-$stmt->bindParam(":id_live_master",$_SESSION["live_master_id"]);
+$stmt->bindParam(":id_live_master",$insert_live_master);
 $stmt->bindParam(":date",$_POST["date"]);
 $stmt->bindParam(":day",$_POST["days"]);
 if($_POST["venue"] === "new"){

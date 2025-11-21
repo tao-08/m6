@@ -27,9 +27,6 @@ if (isset($new_member)) {
 		$stmt->execute([$new_member_name]);
 	}
 }
-// foreach ($post_band_member as $number => $match_name_array) {
-// 	$band_name_array[] = $match_name_array["band"]	
-// }
 
 // バンド詳細にメンバー登録
 foreach ($post_band_member as $number => $name_array) {
@@ -61,21 +58,5 @@ foreach ($post_band_member as $number => $name_array) {
 		$stmt = $pdo->prepare($sql_register);
 		$stmt->execute($parameter);
 	}
-
-// idを検索して登録
-	// $member_id =
-
-	// $sql = "INSERT into band_detail (name id_live_detail $key )";
-	// $stmt = $pdo->prepare($sql);
-
 }
-
-print_r(
-	// $_POST["member"],
-	$band_member
-	// $column
-);
-var_dump(
-	$member_id,
-	// $result,
-);
+header("location:/member_upload?complete=1");

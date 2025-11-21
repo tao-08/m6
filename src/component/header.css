@@ -32,9 +32,6 @@
     text-decoration: none;
     font-size: 120%;
 }
-.header__card a:hover{
-    color: rgb(235, 57, 57);
-}
 .user{
     display: flex;
     color: rgba(82, 82, 82, 1);
