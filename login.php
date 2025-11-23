@@ -53,7 +53,25 @@ if(isset($_POST["login"])){
 ?>
 <!doctype HTML>
 <head>
-    <title>ログイン</title>
+    <title>AbbeyRoad.online - ログイン</title>
+
+	<!-- リンクプレビュー -->
+	<meta property="og:title" content="AbbeyRoad.online - アビーのライブデータベース" />
+	<meta property="og:description" content="アビーロードのライブデータベース・便利ツール集を配信（よてい）" />
+	<meta property="og:type" content="website" />
+	<meta property="og:url" content="https://www.abbeyroad.online" />
+	<meta property="og:image" content="https://www.abbeyroad.online/src/assets/1200-630.png" />
+	<meta name="twitter:card" content="summary_large_image" />
+	<meta name="twitter:site" content="@meiji_abbeyroad" />
+
+	<!-- ファビコン設定 -->
+	<link rel="icon" href="/src/assets/favicons/240.png" sizes="any">
+	<link rel="icon" type="image/png" href="/src/assets/favicons/48.png" sizes="48x48">
+	<link rel="apple-touch-icon" href="/src/assets/favicons/240.png" sizes="240x240">
+	<link rel="manifest" href="/manifest.json">
+	<meta name="twitter:card" content="summary_large_image" />
+	<meta name="twitter:site" content="@YourTwitterID" />
+
     <link rel="stylesheet" href="/css/style.css?v=<?= date("Y:m:d:t H:i:s")?>">
     <link rel="stylesheet" href="/css/login.css?v=<?= date("Y:m:d:t H:i:s")?>">
     <meta charset="UTF-8">

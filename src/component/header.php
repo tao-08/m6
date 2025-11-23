@@ -19,7 +19,7 @@ $pdo = DBconnect();
         <meta charset="utf-8">
         
         <!-- リンクプレビュー -->
-        <meta property="og:title" content="AbbeyRoad.online - アビーのデータベースサイト" />
+        <meta property="og:title" content="AbbeyRoad.online - アビーのライブデータベース" />
         <meta property="og:description" content="アビーロードのライブデータベース・便利ツール集を配信（よてい）" />
         <meta property="og:type" content="website" />
         <meta property="og:url" content="https://www.abbeyroad.online" />
@@ -48,7 +48,7 @@ $pdo = DBconnect();
             <div class="drop_hover logo__box"><a href="/"><img src="/src/assets/online.png" alt="AbbeyRoad.online" class="logo"></a></div>
             <div class="header__box">
                 <div class="header__card link_hover"><a href="/data_upload">ライブデータ登録</a></div>
-                <div class="header__card link_hover"><a href="/database_live">ライブデータベース《準備中》</a></div>
+                <div class="header__card link_hover"><a href="/live_history">ライブデータベース《準備中》</a></div>
                 <div class="header__card link_hover"><a href="/database_live">ツール《準備中》</a></div>
             </div>
             <div class="toggle_and_menu">

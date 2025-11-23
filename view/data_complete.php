@@ -1,7 +1,8 @@
 <?php
 $page_title = "登録完了";
+$filter_live_master = $_SESSION["live_master_id"];
 require_once __DIR__ . "/../src/component/header.php";
-require __DIR__."/../tools/live_data_view.php"
+require_once __DIR__."/../tools/live_data_view.php"
 ?>
 <h1>新規ライブデータ登録</h1>
 <div class="center">
