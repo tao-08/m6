@@ -4,9 +4,10 @@ $page_title = "新規データ登録";
 require_once("src/component/header.php");
 
 // 
-if($_GET["multiple"] ?? null){
+if($_GET["multiple"] ?? false){
 	$registered_timetable = ($registered_timetable ?? 0)+1;
-}else{
+}elseif(!isset($_POST["nextday"] )){
+	$_SESSION["live_master_id"] = [];
 	$_SESSION["live_detail_id"] = [];
 }
 
@@ -28,6 +29,8 @@ if(isset($_POST["preview_timetable"]) && !empty($_FILES["file_timetable"]["name"
 	$live_day_selected =["","","","","",""];
 	if(empty($live_day)){
 		$live_day_selected[1] = "selected";
+	}elseif($live_day === "教室ライブ"){
+		$live_day_selected[5] = "selected";
 	}else{
 		$live_day_selected[$live_day] = "selected";
 	}

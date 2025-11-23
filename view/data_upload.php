@@ -57,11 +57,11 @@
                     <th class="bigger">日程</th>
                     <td>
                         <select name="days">
-                            <option value="1" <?= $live_day_selected[1] ?>>1日目・1日のみ</option>
-                            <option value="2" <?= $live_day_selected[2] ?>>2日目</option>
-                            <option value="3" <?= $live_day_selected[3] ?>>3日目</option>
-                            <option value="4" <?= $live_day_selected[4] ?>>4日目</option>
-                            <option value="5" <?= $live_day_selected[5] ?>>5日目</option>
+                            <option value="1日目" <?= $live_day_selected[1] ?>>1日目・1日のみ</option>
+                            <option value="2日目" <?= $live_day_selected[2] ?>>2日目</option>
+                            <option value="3日目" <?= $live_day_selected[3] ?>>3日目</option>
+                            <option value="4日目" <?= $live_day_selected[4] ?>>4日目</option>
+                            <option value="教室ライブ" <?= $live_day_selected[5] ?>>教室ライブ</option>
                         </select>
                     </td>
                 </tr>

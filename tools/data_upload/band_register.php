@@ -13,7 +13,13 @@ $pdo = DBconnect();
 
 // ライブマスターを初回だけ登録
 $_SESSION["live_master_id"] = $_SESSION["live_master_id"] ?? [];
+// 年度を登録
 $year = substr($_POST["date"],0,4);
+if(	substr($_POST["date"],5,2) == "01" ||
+	substr($_POST["date"],5,2) == "02" ||
+	substr($_POST["date"],5,2) == "03" ){
+	$year--;
+}
 
 // live_masterにライブ名と年が一致するレコードがなければ登録
 // 検索
@@ -24,7 +30,9 @@ if(empty($_SESSION["live_master_id"])){
     $stmt->bindParam(":name_live",$_POST["live_name"]);
     $stmt ->execute();
     $result = $stmt->fetch();
-    $_SESSION["live_master_id"][] = $result[0] ?? null;
+    if(!empty($_SESSION["live_master_id"])){
+		$_SESSION["live_master_id"][] = $result[0];
+	}
     // 登録
     if(empty($_SESSION["live_master_id"])){
         $sql = "INSERT INTO live_master (year,name_live) values (:year,:name_live)";
