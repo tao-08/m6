@@ -26,8 +26,8 @@ if($selected_year === "latest"){
 $sql = 
 "SELECT
 	-- lm.year,
-	lm.name_live,
 	lm.id_live,
+	lm.name_live,
 	ld.id_live_detail,
 	ld.day,
 	ld.date,
@@ -58,6 +58,11 @@ if($selected_year !== false){
 	
 }
 $result = $stmt->fetchAll(pdo::FETCH_GROUP|pdo::FETCH_ASSOC);
+
+foreach($result as $master_id => $row){
+	$live_data[$master_id][] = $row;
+
+}
 
 // 選択したライブメンバー取得のためライブID取得
 $live_detail_list = [];
