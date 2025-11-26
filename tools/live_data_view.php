@@ -59,10 +59,6 @@ if($selected_year !== false){
 }
 $result = $stmt->fetchAll(pdo::FETCH_GROUP|pdo::FETCH_ASSOC);
 
-foreach($result as $master_id => $row){
-	$live_data[$master_id][] = $row;
-
-}
 
 // 選択したライブメンバー取得のためライブID取得
 $live_detail_list = [];
@@ -92,7 +88,25 @@ order by id_band
 ";
 $stmt = $pdo->prepare($sql);
 $stmt->execute($live_detail_list);
-$member = $stmt->fetchAll(pdo::FETCH_GROUP|pdo::FETCH_ASSOC);
+$member = $stmt->fetchAll(pdo::FETCH_ASSOC);
+
+foreach($result as $master_id => $row){
+	$live_data[$master_id]["live_name"] = $row[0]["name_live"];
+	foreach($row as $detail){
+		$live_data[$master_id][$detail["id_live_detail"]] = [
+			"day" => $detail["day"],
+			"date" => $detail["date"],
+			"venue" => $detail["name"]
+		];
+		foreach($member as $member_list){
+			foreach($member_list as $column=>$member_row){
+				if($column === "id_live_detail"||$column === "id_band"){continue;}
+				$live_data[$master_id][$detail["id_live_detail"]][$member_row["id_band"]][$column] = $member_row;
+			}
+		}
+	}
+}
+
 
 var_dump($result);
 

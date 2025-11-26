@@ -30,18 +30,17 @@ if(empty($_SESSION["live_master_id"])){
     $stmt->bindParam(":name_live",$_POST["live_name"]);
     $stmt ->execute();
     $result = $stmt->fetch();
-    if(!empty($_SESSION["live_master_id"])){
-		$_SESSION["live_master_id"][] = $result[0];
-	}
+	$found_id = $result[0] ?? null;
     // 登録
-    if(empty($_SESSION["live_master_id"])){
-        $sql = "INSERT INTO live_master (year,name_live) values (:year,:name_live)";
+    if(empty($found_id)){
+		$sql = "INSERT INTO live_master (year,name_live) values (:year,:name_live)";
         $stmt = $pdo->prepare($sql);
         $stmt->bindParam(":year",$year);
         $stmt->bindParam(":name_live",$_POST["live_name"]);
         $stmt->execute();
-        $_SESSION["live_master_id"][] = $pdo->lastInsertId();
+        $found_id = $pdo->lastInsertId();
     }
+	$_SESSION["live_master_id"][] = $found_id;
 }
 
 

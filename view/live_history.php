@@ -21,6 +21,15 @@
 								</tr>
 						<?php endforeach?>
 					<?php endforeach?>
+					<?php foreach($live_detail['members'] as $band):?>
+						<tr class="bigger">
+							<th><?= htmlspecialchars($band["name"], ENT_QUOTES, 'UTF-8') ?></th>
+							<td><?= htmlspecialchars($band["songs"], ENT_QUOTES, 'UTF-8') ?>曲</td>
+					<?php foreach($band as $column => $value): if(in_array($column, ["id_live_detail", "id_band", "name", "order_live", "songs"])){continue;}?>
+								<td><?= htmlspecialchars($value, ENT_QUOTES, 'UTF-8') ?></td>
+								<?php endforeach?>
+							</tr>
+					<?php endforeach; ?>
 				</table>
 			</div>
 		</div>
