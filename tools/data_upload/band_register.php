@@ -24,19 +24,19 @@ if(	substr($_POST["date"],5,2) == "01" ||
 // live_masterにライブ名と年が一致するレコードがなければ登録
 // 検索
 if(empty($_SESSION["live_master_id"])){
-    $sql = "SELECT id_live from live_master where year = :year and name_live = :name_live";
+    $sql = "SELECT live_master_id from live_master where year = :year and live_name = :live_name";
     $stmt = $pdo->prepare($sql);
     $stmt->bindParam(":year",$year);
-    $stmt->bindParam(":name_live",$_POST["live_name"]);
+    $stmt->bindParam(":live_name",$_POST["live_name"]);
     $stmt ->execute();
     $result = $stmt->fetch();
 	$found_id = $result[0] ?? null;
     // 登録
     if(empty($found_id)){
-		$sql = "INSERT INTO live_master (year,name_live) values (:year,:name_live)";
+		$sql = "INSERT INTO live_master (year,live_name) values (:year,:live_name)";
         $stmt = $pdo->prepare($sql);
         $stmt->bindParam(":year",$year);
-        $stmt->bindParam(":name_live",$_POST["live_name"]);
+        $stmt->bindParam(":live_name",$_POST["live_name"]);
         $stmt->execute();
         $found_id = $pdo->lastInsertId();
     }
@@ -47,24 +47,24 @@ if(empty($_SESSION["live_master_id"])){
 // ライブ詳細登録
 // 新しい会場だった場合登録してID取得
 if($_POST["venue"] === "new"){
-    $sql = "INSERT into venue (name) values(:name_venue)";
+    $sql = "INSERT into venue (venue_name) values(:venue_name)";
     $stmt = $pdo->prepare($sql);
-    $stmt->bindParam(":name_venue",$_POST["new_venue"]);
+    $stmt->bindParam(":venue_name",$_POST["new_venue"]);
     $stmt->execute();
     $new_venue_id = $pdo->lastInsertId();
 }
 $insert_live_master = end($_SESSION["live_master_id"]);
-$sql = "INSERT into live_detail 
-        (id_live_master,date,day,id_venue) 
-values  (:id_live_master,:date,:day,:id_venue)";
+$sql = "INSERT into live_detail
+        (live_master_id,date,day,venue_id)
+values  (:live_master_id,:date,:day,:venue_id)";
 $stmt = $pdo->prepare($sql);
-$stmt->bindParam(":id_live_master",$insert_live_master);
+$stmt->bindParam(":live_master_id",$insert_live_master);
 $stmt->bindParam(":date",$_POST["date"]);
 $stmt->bindParam(":day",$_POST["days"]);
 if($_POST["venue"] === "new"){
-    $stmt->bindParam(":id_venue",$new_venue_id);
+    $stmt->bindParam(":venue_id",$new_venue_id);
 }else{
-    $stmt->bindParam(":id_venue",$_POST["venue"]);
+    $stmt->bindParam(":venue_id",$_POST["venue"]);
 }
 $stmt->execute();
 $live_detail_id = $pdo->lastInsertId();
@@ -75,11 +75,11 @@ $_SESSION["live_detail_id"][] = $live_detail_id;
 // バンドデータ登録
 // バンド名被りを検索
 
-$sql = "INSERT into band_master (name,id_live_detail,order_live,songs) values (:name,:id_live_detail,:order_live,:songs)";
+$sql = "INSERT into band_master (band_name,live_detail_id,live_order,songs) values (:band_name,:live_detail_id,:live_order,:songs)";
 $stmt= $pdo->prepare($sql);
-$stmt->bindParam(":name",$band_name);
-$stmt->bindParam(":id_live_detail",$live_detail_id);
-$stmt->bindParam(":order_live",$order);
+$stmt->bindParam(":band_name",$band_name);
+$stmt->bindParam(":live_detail_id",$live_detail_id);
+$stmt->bindParam(":live_order",$order);
 $stmt->bindParam(":songs",$songs);
 foreach($_POST["band_data"] as $band_data){
     $band_name = $band_data["band_name"];

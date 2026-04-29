@@ -1,26 +1,35 @@
+<?php
+/** @var array $band_info */
+/** @var string $live_name */
+/** @var array $live_day_selected */
+/** @var array $result */
+/** @var array $venue_complete */
+/** @var string $new_venue */
+/** @var string $live_venue */?>
+
 <h1>新規ライブデータ登録</h1>
 
 <!-- タイムテーブルアップロード -->
 <div class="box_2 shadow_1">
     <div class="scroll_2">
+        <form action="" method="POST" enctype="multipart/form-data">
         <table class="separate input_content table_timetable_upload">
             <tr>
                 <th>タイムテーブル.csv</th>
                 <td>
-                    <form action="" method="POST" enctype="multipart/form-data">
-                        <input type="file" name="file_timetable" class="file_timetable" accept=".csv">
+                                    <input type="file" name="file_timetable" class="file_timetable" accept=".csv,.pdf">
                     </td>
                 </tr>
             <tr>
                 <td colspan="2" style="text-align: center;">
                     <input type="submit" name="preview_timetable" value="プレビュー" class="button_1">
-                </form>
-            </td>
+                </td>
         </tr>
         <tr>
             <td class="border-top" style="color: gray; text-align: center;" colspan="2">以下の項目はプレビューで自動選択されます</td>
         </tr>
     </table>
+        </form>
 </div>
 </div>
 
@@ -36,16 +45,16 @@
             </tr>
             <?php foreach($band_info as $key=>$band_row): ?>
                 <tr>
-                    <td><input name="band_data[<?= $key ?>][band_number]" value="<?= $band_row["number"] ?>" type="tel"class="number_preview"></td>
-                    <td><input name="band_data[<?= $key ?>][band_name]" value="<?= $band_row["name"] ?>" type="text"class="band_preview"></td>
-                    <td><input name="band_data[<?= $key ?>][band_songs]" value="<?= $band_row["songs"] ?>" type="tel"class="number_preview"></td>
+                    <td><input name="band_data[<?= $key ?>][band_number]" value="<?= h($band_row["number"]) ?>" type="tel"class="number_preview"></td>
+                    <td><input name="band_data[<?= $key ?>][band_name]" value="<?= h($band_row["name"]) ?>" type="text"class="band_preview"></td>
+                    <td><input name="band_data[<?= $key ?>][band_songs]" value="<?= h($band_row["songs"]) ?>" type="tel"class="number_preview"></td>
                 </tr>
                 <?php endforeach?>
             </table>
             <table class="timetable_select center  only_row" style="border-top: 1px gray solid; padding-top: 1rem; margin-top: 1rem;">
                 <tr class="input_content">
                     <th class="bigger">ライブ名</th>
-                    <td><input type="text" class="text_input" style="width: 10em;" name="live_name" value="<?= $live_name ?>"></td>
+                    <td><input type="text" class="text_input" style="width: 10em;" name="live_name" value="<?= h($live_name) ?>"></td>
                 </tr>
                 <tr>
                     <th class="bigger">日付</th>
@@ -72,7 +81,7 @@
                         <select name="venue" id="venue">
                             <option value=""></option>
                             <?php foreach ($result as $key=>$row) : ?>
-                            <option value='<?=$row["id_venue"]?>'<?=$venue_complete["n".$key]?>><?=$row["name"]?></option>
+                            <option value='<?= h($row["venue_id"]) ?>'<?=$venue_complete["n".$key]?>><?= h($row["venue_name"]) ?></option>
                             <?php endforeach;?>
                             <option value="new" <?= $new_venue ?>>新規作成する</option>
                         </select>
@@ -81,7 +90,7 @@
                 <tr id="new_venue">
                     <th class="bigger">新規会場</th>
                     <td class="input_content">
-                        <input type="text" name="new_venue" class="text_input" placeholder="会場名" value="<?php if($new_venue = "selected"){echo $live_venue;} ?>">
+                        <input type="text" name="new_venue" class="text_input" placeholder="会場名" value="<?php if($new_venue === "selected"){echo h($live_venue);} ?>">
                     </td>
                 </tr>
                 <tr>

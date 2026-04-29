@@ -23,21 +23,21 @@ if($selected_year === "latest"){
 }
 
 // バンド→b ライブマスター→lm ライブ詳細→ld 会場→v メンバー→m
-$sql = 
+$sql =
 "SELECT
 	-- lm.year,
-	lm.id_live,
-	lm.name_live,
-	ld.id_live_detail,
+	lm.live_master_id,
+	lm.live_name,
+	ld.live_detail_id,
 	ld.day,
 	ld.date,
-	v.name
+	v.venue_name
 from
 	live_detail AS ld
 JOIN live_master AS lm
-	ON lm.id_live = ld.id_live_master
+	ON lm.live_master_id = ld.live_master_id
 JOIN venue AS v
-	ON ld.id_venue = v.id_venue";
+	ON ld.venue_id = v.venue_id";
 			// WHERE l.id_live IN ({$placeholder})";
 
 // 年度別でフィルター
@@ -64,7 +64,7 @@ $result = $stmt->fetchAll(pdo::FETCH_GROUP|pdo::FETCH_ASSOC);
 $live_detail_list = [];
 array_walk_recursive($result,function($value, $key) use(&$live_detail_list) 
 {
-	if($key === "id_live_detail"){
+	if($key === "live_detail_id"){
 		$live_detail_list[] = $value;
 	}
 });
@@ -74,34 +74,34 @@ $placeholder = placeholder($live_detail_list);
 // メンバー取得 b→band_master ld→live_detail
 $sql =
 "SELECT
-	id_live_detail,
-	id_band,
-	name,
-	order_live,
+	live_detail_id,
+	band_id,
+	band_name,
+	live_order,
 	songs,
 	vocal_1,vocal_2,vocal_3,vocal_guiter_1,vocal_guiter_2,vocal_bass,vocal_drum,guiter_1,guiter_2,guiter_3,guiter_4,bass_1,bass_2,drum_1,drum_2,keybord_1,keybord_2,keybord_3,other_1,other_2,other_3,other_1_name,other_2_name,other_3_name,comment
 from
 	band_master
 WHERE
-	id_live_detail IN ({$placeholder})
-order by id_band
+	live_detail_id IN ({$placeholder})
+order by band_id
 ";
 $stmt = $pdo->prepare($sql);
 $stmt->execute($live_detail_list);
 $member = $stmt->fetchAll(pdo::FETCH_ASSOC);
 
 foreach($result as $master_id => $row){
-	$live_data[$master_id]["live_name"] = $row[0]["name_live"];
+	$live_data[$master_id]["live_name"] = $row[0]["live_name"];
 	foreach($row as $detail){
-		$live_data[$master_id][$detail["id_live_detail"]] = [
+		$live_data[$master_id][$detail["live_detail_id"]] = [
 			"day" => $detail["day"],
 			"date" => $detail["date"],
-			"venue" => $detail["name"]
+			"venue" => $detail["venue_name"]
 		];
 		foreach($member as $member_list){
 			foreach($member_list as $column=>$member_row){
-				if($column === "id_live_detail"||$column === "id_band"){continue;}
-				$live_data[$master_id][$detail["id_live_detail"]][$member_row["id_band"]][$column] = $member_row;
+				if($column === "live_detail_id"||$column === "band_id"){continue;}
+				$live_data[$master_id][$detail["live_detail_id"]][$member_row["band_id"]][$column] = $member_row;
 			}
 		}
 	}

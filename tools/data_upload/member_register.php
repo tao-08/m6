@@ -21,7 +21,7 @@ array_walk_recursive(
 );
 if (isset($new_member)) {
 	$new_member = array_unique((array)$new_member);
-	$sql = "INSERT into member (name) values(?)";
+	$sql = "INSERT into member (member_name) values(?)";
 	$stmt = $pdo->prepare($sql);
 	foreach ((array)$new_member as $new_member_name) {
 		$stmt->execute([$new_member_name]);
@@ -36,7 +36,7 @@ foreach ($post_band_member as $number => $name_array) {
 	$band_member = array_combine($column, $name_array);
 
 	// メンバーID取得
-	$sql = "SELECT id from member WHERE name = ?";
+	$sql = "SELECT member_id from member WHERE member_name = ?";
 	foreach ($band_member as $instrument => $name) {
 		if($instrument === "band"){
 			$band_name = $name;
@@ -48,13 +48,13 @@ foreach ($post_band_member as $number => $name_array) {
 		}
 		$stmt = $pdo->prepare($sql);
 		$stmt->execute([$name]);
-		$stmt->bindColumn("id", $member_id, pdo::PARAM_INT);
+		$stmt->bindColumn("member_id", $member_id, pdo::PARAM_INT);
 		$stmt->fetch(pdo::FETCH_BOUND);
 		// 一人ずつ登録
 		$placeholder = array_fill(0,count($_SESSION["live_detail_id"]),"?");
 		$placeholder = implode(",",$placeholder);
 		$parameter = array_merge([$band_name],$_SESSION["live_detail_id"]);
-		$sql_register = "UPDATE band_master SET {$instrument} = $member_id WHERE name = ? AND id_live_detail IN ({$placeholder})";
+		$sql_register = "UPDATE band_master SET {$instrument} = $member_id WHERE band_name = ? AND live_detail_id IN ({$placeholder})";
 		$stmt = $pdo->prepare($sql_register);
 		$stmt->execute($parameter);
 	}

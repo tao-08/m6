@@ -18,7 +18,7 @@ error_reporting(E_ALL);
 			if ($_POST["new_pass_1"] == $_POST["new_pass_2"]) {
 				
 				// idの重複がないか確認
-				$sql ="SELECT auto_id from user_index WHERE id = ?";
+				$sql ="SELECT user_auto_id from user_index WHERE user_id = ?";
 				$stmt = $pdo->prepare($sql);
 				$stmt->execute([$_POST["new_id"]]);
 				if($stmt->rowCount() == 0){
@@ -27,7 +27,7 @@ error_reporting(E_ALL);
 					$hashed_pass = password_hash($_POST["new_pass_1"],PASSWORD_DEFAULT);
 
 					//DBに登録
-					$sql = "INSERT INTO user_index (id,name,ruby,password) values (:new_id,:new_name,:new_ruby,:new_password)";
+					$sql = "INSERT INTO user_index (user_id,user_name,user_ruby,user_password) values (:new_id,:new_name,:new_ruby,:new_password)";
 					$stmt = $pdo->prepare($sql);
 					$stmt->bindParam(":new_id",$_POST["new_id"], pdo::PARAM_STR);
 					$stmt->bindParam(":new_name",$_POST["new_name"], pdo::PARAM_STR);

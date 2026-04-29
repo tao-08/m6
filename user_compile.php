@@ -15,7 +15,7 @@ if(isset($_POST["submit"])){
         $password = password_hash($_POST["compile_pass"],PASSWORD_DEFAULT);
         
         //auto_idの場所に変更内容をDBで更新
-        $sql = "UPDATE user_index SET name = :name,ruby = :ruby,password = :password,id = :id WHERE auto_id =:compile_id";
+        $sql = "UPDATE user_index SET user_name = :name,user_ruby = :ruby,user_password = :password,user_id = :id WHERE user_auto_id =:compile_id";
         $stmt = $pdo->prepare($sql);
         $stmt -> bindParam(":name",$name,pdo::PARAM_STR);
         $stmt -> bindParam(":ruby",$ruby,pdo::PARAM_STR);

@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(Get-ChildItem \"D:\\\\\" | Select-Object Name, Mode; echo \"---\"; \\(Get-Item \"C:\\\\Users\\\\taoda\\\\.claude\" -ErrorAction SilentlyContinue\\) | Select-Object FullName)"
+    ]
+  }
+}

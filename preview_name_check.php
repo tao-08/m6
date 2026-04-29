@@ -13,7 +13,7 @@ $response = ["exists" => false];
 if(isset($_POST["input_name"])){
     $name_check = $_POST["input_name"];
     try{
-        $sql = "SELECT COUNT(*) FROM member WHERE name = ?";
+        $sql = "SELECT COUNT(*) FROM member WHERE member_name = ?";
         $stmt = $pdo->prepare($sql);
         $stmt->execute([$name_check]);
 
@@ -38,7 +38,7 @@ if(isset($_POST["input_name"])){
 		$placeholder = implode(",",$placeholder);
 		$parameter = array_merge([$name_check],$_SESSION["live_detail_id"]);
 
-		$sql = "SELECT id_band from band_master WHERE name = ? and id_live_detail IN ({$placeholder})";
+		$sql = "SELECT band_id from band_master WHERE band_name = ? and live_detail_id IN ({$placeholder})";
 		$stmt = $pdo->prepare($sql);
 		$stmt->execute($parameter);
 		$count = $stmt->fetchColumn();
@@ -49,7 +49,7 @@ if(isset($_POST["input_name"])){
 			// 部分一致
 			$name_check = "%{$name_check}%";
 			$parameter = array_merge([$name_check],$_SESSION["live_detail_id"]);
-			$sql = "SELECT id_band,name from band_master WHERE name like ? and id_live_detail IN ({$placeholder})";
+			$sql = "SELECT band_id,band_name from band_master WHERE band_name like ? and live_detail_id IN ({$placeholder})";
 			$stmt = $pdo->prepare($sql);
 			$stmt->execute($parameter);
 			$count = $stmt->fetchAll(pdo::FETCH_KEY_PAIR);
@@ -60,7 +60,7 @@ if(isset($_POST["input_name"])){
 				// 類似検索
 				$placeholder--;
 				array_shift($parameter);
-				$sql = "SELECT id_band,name from band_master WHERE id_live_detail IN ({$placeholder})";
+				$sql = "SELECT band_id,band_name from band_master WHERE live_detail_id IN ({$placeholder})";
 				$stmt = $pdo->prepare($sql);
 				$stmt->execute($parameter);
 				$idName_list = $stmt->fetchAll(pdo::FETCH_KEY_PAIR);

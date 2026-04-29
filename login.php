@@ -16,7 +16,7 @@ if(isset($_POST["login"])){
         $password = $_POST["password"];
 
         // 入力されたIDで検索
-        $sql = "SELECT * FROM user_index WHERE id = :id";
+        $sql = "SELECT * FROM user_index WHERE user_id = :id";
         $stmt = $pdo->prepare($sql);
         $stmt -> bindParam(":id",$_POST["id"],pdo::PARAM_STR);
         $stmt -> execute();
@@ -24,15 +24,15 @@ if(isset($_POST["login"])){
         $password_results = $stmt -> fetch(pdo::FETCH_ASSOC);
         if(!empty($password_results)){
             
-            if(password_verify($password,$password_results["password"])){
-                    
+            if(password_verify($password,$password_results["user_password"])){
+
                 //sessionにユーザー情報をDBから引っ張る
                 $_SESSION["id"] = $_POST["id"];
-                $_SESSION["ruby"] = $password_results["ruby"];
-                $_SESSION["name"] = $password_results["name"];
-                $_SESSION["auto_id"] = $password_results["auto_id"];
-                $_SESSION["admin"] = $password_results["admin"];
-                $_SESSION["id_member"] = $password_results["id_member"];
+                $_SESSION["ruby"] = $password_results["user_ruby"];
+                $_SESSION["name"] = $password_results["user_name"];
+                $_SESSION["auto_id"] = $password_results["user_auto_id"];
+                $_SESSION["admin"] = $password_results["user_admin"];
+                $_SESSION["id_member"] = $password_results["member_id"];
                 
                 //ログイン成功したらindex.phpへ
                 header("Location:/");

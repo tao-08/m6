@@ -9,12 +9,14 @@ if(empty($_SESSION["id"])){
 	header("location:../login");
 	exit;
 }
+function h($str){ return htmlspecialchars($str, ENT_QUOTES, 'UTF-8'); }
 require_once(__DIR__."/../setting/DB_connect.php");
 $pdo = DBconnect();
 ?>
 <!doctype html>
 <html lang="ja">
     <head>
+		<meta http-equiv="Content-Security-Policy" content="upgrade-insecure-requests">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <meta charset="utf-8">
         
@@ -53,13 +55,13 @@ $pdo = DBconnect();
             </div>
             <div class="toggle_and_menu">
                 <div class="user" id="user">
-                    ログイン：<?=$_SESSION["name"]?><span style="padding-left: 0.4em;">▼</span>
+                    ログイン：<?= h($_SESSION["name"]) ?><span style="padding-left: 0.4em;">▼</span>
                 </div>
                 <div class="user__menu shadow_1 ">
-                    <li>
-                        <ul><a href="/user_compile">ユーザー情報変更</a></ul>
-                        <ul><a href="/logout">ログアウト</a></ul>
-                    </li>
+                    <ul>
+                        <li><a href="/user_compile">ユーザー情報変更</a></li>
+                        <li><a href="/logout">ログアウト</a></li>
+                    </ul>
                 </div>
             </div>
         </header>

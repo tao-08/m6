@@ -14,7 +14,13 @@ if($_GET["multiple"] ?? false){
 if(isset($_POST["preview_timetable"]) && !empty($_FILES["file_timetable"]["name"])){
 	// require_once __DIR__."/tools/data_upload/timetable_preview.php";
 	// 一時ファイルからタイテファイルを取得
-	$file_timetable = new SplFileObject($_FILES["file_timetable"]["tmp_name"],"r");
+	$tmp_name = $_FILES["file_timetable"]["tmp_name"];
+	// PDFの場合scvに変換
+	$filename_timetable = strtolower($_FILES["file_timetable"]["name"]);
+if(pathinfo($filename_timetable,PATHINFO_EXTENSION) == "pdf"){
+		require_once("tools/data_upload/pdf_convert.php");
+	}
+	$file_timetable = new SplFileObject($tmp_name,"r");
 	$file_timetable->setFlags(SplFileObject::READ_CSV|SplFileObject::SKIP_EMPTY);
 	
 	// ライブ名取得->$live_name
@@ -37,7 +43,7 @@ if(isset($_POST["preview_timetable"]) && !empty($_FILES["file_timetable"]["name"
 	
 	// 会場取得->$live_venue
 	$live_venue = $label_timetable[array_search("会場",$label_timetable)+1];
-	$sql="SELECT id_venue,name FROM venue";
+	$sql="SELECT venue_id,venue_name FROM venue";
 	$stmt = $pdo->query($sql);
 	$result = $stmt->fetchAll();
 	$new_venue = "selected";
