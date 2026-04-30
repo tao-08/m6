@@ -94,8 +94,7 @@ foreach($_POST["band_data"] as $band_data){
 	// ];
 }
 
-// var_dump($_POST,$year);
-// var_dump($_SESSION,$result,$live_detail_id);
+$_SESSION["complete_file_name"] = $_POST["file_name"];
 if(isset($_POST["next"])){
     header("location:/member_upload");
 }elseif(isset($_POST["next_day"])){

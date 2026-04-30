@@ -49,13 +49,13 @@ if(pathinfo($filename_timetable,PATHINFO_EXTENSION) == "pdf"){
 	$new_venue = "selected";
 	foreach($result as $key=>$row_venue){
 		// ファイルの会場名と一致すればそのまま使う->$venue_complete
-		if($live_venue === $row_venue["name"]){
+		if($live_venue === $row_venue["venue_name"]){
 			$venue_complete["n".$key] = "selected";
 			$new_venue = "";
 			continue;
 		}
 		// 類似した会場名を補完して送信
-		similar_text($row_venue["name"],$live_venue,$venue_similar);
+		similar_text($row_venue["venue_name"],$live_venue,$venue_similar);
 		if($venue_similar > 60){
 			$venue_complete ["n".$key] ="selected";
 			$new_venue = "";
@@ -69,6 +69,7 @@ if(pathinfo($filename_timetable,PATHINFO_EXTENSION) == "pdf"){
 	$lines = 1;
 	$band_column = null;
 	$songs_column = null;
+	$people_column = null;
 	$start_band_row = null;
 	foreach($file_timetable as $row) {
 		if(!is_array($row)){
@@ -78,6 +79,7 @@ if(pathinfo($filename_timetable,PATHINFO_EXTENSION) == "pdf"){
 		if($band_column === null || $band_column === false){
 			$songs_column = array_search("曲数",$row);
 			$band_column = array_search("バンド名",$row);
+			$people_column = array_search("人数",$row);
 			if($songs_column === false){
 				$alert = '"曲数"列が見つかりませんでした';
 			}
@@ -90,8 +92,8 @@ if(pathinfo($filename_timetable,PATHINFO_EXTENSION) == "pdf"){
 				continue;
 			}
 		}
-		// "休憩"かつ曲数が書いてないとき飛ばす
-		if($row[$band_column] === "休憩" || $row[$songs_column] === ""){
+		// "休憩"もしくは曲数が書いてないとき飛ばす
+		if($row[$band_column] === "休憩" || $row[$songs_column] === "" && $row[$people_column] === ""){
 			continue;
 		}
 		// 括弧を全角に置き換え

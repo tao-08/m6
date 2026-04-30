@@ -17,7 +17,8 @@
             <tr>
                 <th>タイムテーブル.csv</th>
                 <td>
-                                    <input type="file" name="file_timetable" class="file_timetable" accept=".csv,.pdf">
+					<input type="file" name="file_timetable" class="file_timetable" accept=".csv,.pdf">
+					<input type="hidden" name="file_name" value="<?= $filename_timetable ?>">
                     </td>
                 </tr>
             <tr>
