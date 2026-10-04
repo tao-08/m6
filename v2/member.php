@@ -1,4 +1,13 @@
 <?php
+/**
+ * =====================================================================
+ *  member.php?id=メンバーID — メンバーの個人ページ
+ * =====================================================================
+ *  出演履歴 / 楽器の内訳 / よく組むメンバー を出す。
+ *  「よく組むメンバー」は band_member を自分自身と JOIN（自己結合）して、
+ *  同じ band_id にいる「自分以外の人」を数えている。
+ * =====================================================================
+ */
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 $user = require_login();
@@ -16,52 +25,63 @@ if (!$member) {
     exit;
 }
 
-// 出演履歴
-$st = $pdo->prepare('SELECT b.band_id, b.band_name, b.play_order, b.start_time,
-        GROUP_CONCAT(DISTINCT bm.part ORDER BY FIELD(bm.part, \'Vo\', \'Gt\', \'Ba\', \'Dr\', \'Key\', \'Other\') SEPARATOR \'/\') AS parts,
-        ld.day_no, ld.live_date, lm.live_id, lm.year, lm.live_name, v.venue_name,
-        (b.play_order = (SELECT MAX(b2.play_order) FROM band_master b2 WHERE b2.live_detail_id = b.live_detail_id)) AS is_last
-    FROM band_member bm
-    JOIN band_master b ON b.band_id = bm.band_id
+// ---- 出演履歴（新しい順） ----
+//   GROUP_CONCAT: 複数行の値を1つの文字列につなげる（Vo.と Ba.を兼任なら「Vo./Ba.」）
+//   is_last: その日の最大 play_order と同じなら 1（トリ）
+$st = $pdo->prepare('SELECT b.band_id, b.name AS band_name, b.play_order,
+        GROUP_CONCAT(DISTINCT i.instrument_short ORDER BY i.instrument_id SEPARATOR \' \') AS parts,
+        ld.live_detail_id, ld.label, ld.date, lm.live_id, lm.year, lm.name AS live_name, v.name AS venue_name,
+        (b.play_order = (SELECT MAX(b2.play_order) FROM band b2 WHERE b2.live_detail_id = b.live_detail_id)) AS is_last
+    FROM (' . MEMBERSHIP_SQL . ') bm
+    JOIN band b ON b.band_id = bm.band_id
     JOIN live_detail ld ON ld.live_detail_id = b.live_detail_id
     JOIN live_master lm ON lm.live_id = ld.live_id
     LEFT JOIN venue v ON v.venue_id = ld.venue_id
+    LEFT JOIN band_member_instrument bmi ON bmi.band_id = b.band_id AND bmi.member_id = bm.member_id
+    LEFT JOIN instrument i ON i.instrument_id = bmi.instrument_id
     WHERE bm.member_id = ?
     GROUP BY b.band_id
-    ORDER BY lm.year DESC, ld.live_date DESC, lm.live_id DESC, ld.day_no DESC, b.play_order');
+    ORDER BY lm.year DESC, ld.date DESC, ld.live_detail_id DESC, b.play_order');
 $st->execute([$memberId]);
 $history = $st->fetchAll();
 
-// パート内訳
-$st = $pdo->prepare('SELECT part, COUNT(*) AS n FROM band_member WHERE member_id = ? GROUP BY part ORDER BY n DESC');
+// ---- 楽器の内訳 ----
+$st = $pdo->prepare('SELECT i.instrument_short, i.instrument_name, COUNT(DISTINCT bmi.band_id) AS n
+    FROM band_member_instrument bmi JOIN instrument i ON i.instrument_id = bmi.instrument_id
+    WHERE bmi.member_id = ? GROUP BY i.instrument_id ORDER BY n DESC');
 $st->execute([$memberId]);
 $parts = $st->fetchAll();
 
-// よく組むメンバー
-$st = $pdo->prepare('SELECT m.member_id, m.member_name, COUNT(DISTINCT other.band_id) AS n
-    FROM band_member mine
-    JOIN band_member other ON other.band_id = mine.band_id AND other.member_id <> mine.member_id
+// ---- よく組むメンバー（自己結合） ----
+$st = $pdo->prepare('SELECT m.member_id, m.name, COUNT(DISTINCT other.band_id) AS n
+    FROM (' . MEMBERSHIP_SQL . ') mine
+    JOIN (' . MEMBERSHIP_SQL . ') other ON other.band_id = mine.band_id AND other.member_id <> mine.member_id
     JOIN member m ON m.member_id = other.member_id
     WHERE mine.member_id = ?
     GROUP BY m.member_id
-    ORDER BY n DESC, m.member_name
+    ORDER BY n DESC, m.name
     LIMIT 12');
 $st->execute([$memberId]);
 $partners = $st->fetchAll();
 
 $headliners = count(array_filter($history, static fn($h) => (int)$h['is_last'] === 1));
 $liveCount = count(array_unique(array_column($history, 'live_id')));
+$isMe = $memberId === $user['member_id'];
 
-render_header($member['member_name'], 'members');
+render_header($member['name'], 'members');
 ?>
-<nav class="crumbs"><a href="members.php">メンバー</a><span>/</span><?= h($member['member_name']) ?></nav>
+<nav class="crumbs"><a href="members.php">メンバー</a><span>/</span><?= h($member['name']) ?></nav>
 <section class="hero">
     <div>
-        <p class="eyebrow"><?= (int)$member['member_id'] === $user['member_id'] ? 'My Page' : 'Member' ?></p>
-        <h1 class="display"><?= h($member['member_name']) ?></h1>
+        <p class="eyebrow"><?= $isMe ? 'My Page' : 'Member' ?></p>
+        <h1 class="display"><?= h($member['name']) ?></h1>
+        <p class="muted small">
+            <?= $member['name_kana'] !== '' ? h($member['name_kana']) : '' ?>
+            <?= (int)$member['entry_year'] > 0 ? ' · ' . (int)$member['entry_year'] . '年度入部' : '' ?>
+        </p>
         <div class="partbar">
             <?php foreach ($parts as $p): ?>
-                <span class="part part--<?= h(strtolower($p['part'])) ?>"><?= h(part_label($p['part'])) ?> × <?= (int)$p['n'] ?></span>
+                <span class="part part--<?= h(instrument_class($p['instrument_short'])) ?>" title="<?= h($p['instrument_name']) ?>"><?= h($p['instrument_short']) ?> × <?= (int)$p['n'] ?></span>
             <?php endforeach; ?>
         </div>
     </div>
@@ -76,19 +96,19 @@ render_header($member['member_name'], 'members');
     <section>
         <h2 class="section-title">出演履歴</h2>
         <ol class="history">
-            <?php foreach ($history as $h): ?>
-                <li class="card history__item<?= $h['is_last'] ? ' is-last' : '' ?>">
+            <?php foreach ($history as $hi): ?>
+                <li class="card history__item<?= $hi['is_last'] ? ' is-last' : '' ?>">
                     <div class="history__when">
-                        <span><?= (int)$h['year'] ?>年度</span>
-                        <span class="muted"><?= h(fmt_date($h['live_date'])) ?></span>
+                        <span><?= h(fmt_year($hi['year'])) ?></span>
+                        <span class="muted"><?= h(fmt_date($hi['date'])) ?></span>
                     </div>
                     <div class="history__what">
-                        <a href="live.php?id=<?= (int)$h['live_id'] ?>#day-<?= (int)$h['day_no'] ?>" class="muted small"><?= h($h['live_name']) ?> DAY<?= (int)$h['day_no'] ?><?= $h['venue_name'] ? ' · ' . h($h['venue_name']) : '' ?></a>
-                        <strong><?= h($h['band_name']) ?></strong>
+                        <a href="live.php?id=<?= (int)$hi['live_id'] ?>#day-<?= (int)$hi['live_detail_id'] ?>" class="muted small"><?= h($hi['live_name']) ?> <?= h($hi['label']) ?><?= $hi['venue_name'] ? ' · ' . h($hi['venue_name']) : '' ?></a>
+                        <strong><?= h($hi['band_name']) ?></strong>
                     </div>
                     <div class="history__tags">
-                        <span class="pill"><?= h($h['parts']) ?></span>
-                        <?php if ($h['is_last']): ?><span class="tag tag--accent">トリ</span><?php endif; ?>
+                        <?php if ($hi['parts']): ?><span class="pill"><?= h($hi['parts']) ?></span><?php endif; ?>
+                        <?php if ($hi['is_last']): ?><span class="tag tag--accent">トリ</span><?php endif; ?>
                     </div>
                 </li>
             <?php endforeach; ?>
@@ -101,7 +121,7 @@ render_header($member['member_name'], 'members');
             <?php if (!$partners): ?><p class="muted">まだいません</p><?php endif; ?>
             <ol class="ranking">
                 <?php foreach ($partners as $p): ?>
-                    <li><a href="member.php?id=<?= (int)$p['member_id'] ?>"><?= h($p['member_name']) ?></a><span class="pill"><?= (int)$p['n'] ?>回</span></li>
+                    <li><a href="member.php?id=<?= (int)$p['member_id'] ?>"><?= h($p['name']) ?></a><span class="pill"><?= (int)$p['n'] ?>回</span></li>
                 <?php endforeach; ?>
             </ol>
         </div>

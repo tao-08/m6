@@ -43,11 +43,11 @@ $tt = parse_timetable([
     ['12:20', '12:50', '30', 'バンドB(山田)', '4', '5', '私物(エレピ)'],
 ]);
 check('ライブ名', $tt['live_name'], 'ライブハウス');
-check('日目', $tt['day_no'], 2);
+check('日程ラベル', $tt['label'], '2日目');
 check('会場', $tt['venue'], '新宿テスト');
 check('集合', $tt['meeting_time'], '11:00');
 check('バンド数', count(array_filter($tt['slots'], fn($s) => $s['is_band'])), 2);
-check('出演順', $tt['slots'][2]['play_order'], 2);
+check('休憩はバンドではない', $tt['slots'][1]['is_band'], false);
 check('終了時刻', $tt['slots'][2]['end_time'], '12:50');
 
 echo "roster\n";
@@ -57,7 +57,10 @@ $roster = parse_roster([
     ['バンドB（山田）', '山田太郎', '高橋次郎', '', '山田太郎', '鈴木一郎', '田中三郎', '4', '1', '私物'],
     ['バンドB（伊藤）', '伊藤四郎', '', '', '佐藤花子', '鈴木一郎', '', '4', '1', ''],
 ]);
+check('パート列', array_column($roster['columns'], 'part'), ['Vo', 'Gt', 'Gt', 'Ba', 'Dr', 'Key']);
+$roster = $roster['bands'];
 check('メンバー数', count($roster[1]['members']), 5);
+check('入力欄用のセル', $roster[1]['cells'][1], '山田太郎');
 check('兼任（Vo と Ba）', array_column(array_filter($roster[1]['members'], fn($m) => $m['name'] === '山田太郎'), 'part'), ['Vo', 'Ba']);
 check('照合: 完全一致', match_roster_band(['band_name' => 'バンドA', 'song_count' => 3, 'member_count' => 3], $roster), 0);
 check('照合: 括弧の表記ゆれ', match_roster_band(['band_name' => 'バンドB(山田)', 'song_count' => 4, 'member_count' => 5], $roster), 1);

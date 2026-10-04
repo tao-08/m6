@@ -1,15 +1,21 @@
 <?php
-// このファイルを config.php にコピーして値を書き換える (config.php は git 管理外)
+/**
+ * 設定ファイルのひな形。
+ * このファイルを config.php という名前でコピーして、自分の環境に合わせて書き換える。
+ * config.php はパスワードが入るので git に入れない（.gitignore 済み）。
+ */
 return [
     'db' => [
-        'dsn'  => 'mysql:host=localhost;dbname=m6_v2;charset=utf8mb4',
+        // 元の m6 と同じ DB（local_abbeydb）をそのまま使う
+        'dsn'  => 'mysql:host=127.0.0.1;dbname=local_abbeydb;charset=utf8mb4',
         'user' => 'root',
-        'pass' => '',
+        'pass' => '',   // XAMPP の初期状態は root / パスワードなし
     ],
-    // PDF読込に使う poppler の pdftotext。PATH が通っていれば 'pdftotext' のままでOK
-    // Windows例: 'C:\\poppler\\Library\\bin\\pdftotext.exe'
+    // PDF を読むときに使う poppler の pdftotext。PATH が通っていれば 'pdftotext' のままでOK
+    // Windows の例: 'C:\\poppler\\Library\\bin\\pdftotext.exe'
     'pdftotext' => 'pdftotext',
-    // true にすると最初に登録したユーザーを管理者にする
+    // true: 管理者が1人もいないとき、新規登録した人を管理者にする
     'first_user_is_admin' => true,
+    // true: エラーの詳細を画面に出す（開発中だけ。公開するときは false）
     'debug' => false,
 ];

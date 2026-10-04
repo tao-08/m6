@@ -1,34 +1,59 @@
 <?php
+/**
+ * =====================================================================
+ *  planner.php — 取り込みの「計画づくり」と「DBへの書き込み」
+ * =====================================================================
+ *  取り込みは2段階に分けている。
+ *
+ *   ① build_import_plan()  … ファイルを読んで「こう登録するつもり」という計画（配列）を作る。
+ *                             DB にはまだ何も書かない。計画はセッションに置いてプレビュー画面で見せる。
+ *   ② commit_import_plan() … プレビューで人間が直した値（フォームの送信内容）を使って DB に書く。
+ *
+ *  なぜ分ける？ → ファイルの読み取りは100%正しくはできない。
+ *  間違ったまま DB に入ると直すのが大変なので、必ず人の目で確認してから登録する。
+ * =====================================================================
+ */
 declare(strict_types=1);
 
 require_once __DIR__ . '/parsers.php';
+require_once __DIR__ . '/../repository.php';
 
-/** 4月始まりの年度 */
-function academic_year(?int $month = null, ?int $year = null): int
+/** 4月始まりの年度。1〜3月は前の年の年度になる（2026年1月のライブ → 2025年度） */
+function academic_year(int $month, int $year): int
 {
-    $month ??= (int)date('n');
-    $year ??= (int)date('Y');
     return $month >= 4 ? $year : $year - 1;
 }
 
-/** 既存メンバーを比較キーで引ける形に */
-function load_member_index(PDO $pdo): array
+/**
+ * パート（'Vo' 'Gt'…）→ instrument_id の初期値。
+ * instrument_short（'Vo.' 'Gt.'…）からピリオドを取って比べる。
+ * 'Other'（その他）は決められないので null → プレビューで選んでもらう。
+ */
+function default_instrument_id(string $part): ?int
 {
-    $index = [];
-    foreach ($pdo->query('SELECT member_id, member_name FROM member') as $row) {
-        $index[member_key($row['member_name'])] = ['id' => (int)$row['member_id'], 'name' => $row['member_name']];
+    foreach (instruments() as $ins) {
+        if (strtolower(rtrim($ins['instrument_short'], '.')) === strtolower($part)) {
+            return (int)$ins['instrument_id'];
+        }
     }
-    return $index;
+    return null;
 }
 
 /**
- * アップロードされたファイル群からプレビュー用の取り込み計画を作る。
- * @param array $files [['path' => tmp, 'name' => 元のファイル名], ...]
+ * ① ファイル群 → 取り込み計画
+ *
+ * @param array $files [['path' => 一時ファイル, 'name' => 元のファイル名], ...]
+ * @return array [
+ *   'timetables' => [ 1日分ずつ（parse_timetable の結果 + file, year, date） ],
+ *   'rosters'    => [ 名簿1ファイルずつ（parse_roster の結果 + file）],
+ *   'errors'     => [ 読めなかったファイルのメッセージ ],
+ * ]
  */
-function build_import_plan(PDO $pdo, array $files): array
+function build_import_plan(array $files): array
 {
-    $plan = ['timetables' => [], 'roster' => [], 'names' => [], 'errors' => []];
+    $plan = ['timetables' => [], 'rosters' => [], 'errors' => []];
 
+    // ---- 1. 1ファイルずつ読んで、タイムテーブルか名簿かで振り分け ----
     foreach ($files as $f) {
         try {
             $rows = read_table_file($f['path'], $f['name']);
@@ -37,194 +62,314 @@ function build_import_plan(PDO $pdo, array $files): array
                 $tt['file'] = $f['name'];
                 $plan['timetables'][] = $tt;
             } else {
-                foreach (parse_roster($rows) as $band) {
-                    $band['file'] = $f['name'];
-                    $plan['roster'][] = $band;
+                $roster = parse_roster($rows);
+                $roster['file'] = $f['name'];
+                foreach ($roster['columns'] as &$col) {
+                    $col['instrument_id'] = default_instrument_id($col['part']);
                 }
+                unset($col); // foreach の参照(&)は使い終わったら必ず unset（後で事故る）
+                $plan['rosters'][] = $roster;
             }
         } catch (Throwable $e) {
+            // 1ファイル読めなくても他のファイルは続ける
             $plan['errors'][] = $f['name'] . ': ' . $e->getMessage();
         }
     }
 
-    $year = academic_year();
+    // ---- 2. 日付と年度の初期値 ----
+    // タイムテーブルには「年」が書かれていないので、今日に一番近い過去の年を仮で入れる
     foreach ($plan['timetables'] as &$tt) {
-        $tt['year'] = $year;
         $tt['date'] = '';
-        if ($tt['month'] && $tt['day'] && checkdate($tt['month'], $tt['day'], $year)) {
-            $tt['date'] = sprintf('%04d-%02d-%02d', $tt['month'] >= 4 ? $year : $year + 1, $tt['month'], $tt['day']);
+        $tt['year'] = academic_year((int)date('n'), (int)date('Y'));
+        if ($tt['month'] && $tt['day']) {
+            $y = (int)date('Y');
+            // 例: 今が10月で「1月5日」と書いてあったら、たぶん今年の1月（未来の1月ではない）
+            if (mktime(0, 0, 0, $tt['month'], $tt['day'], $y) > time() + 86400 * 60) {
+                $y--;
+            }
+            if (checkdate($tt['month'], $tt['day'], $y)) {
+                $tt['date'] = sprintf('%04d-%02d-%02d', $y, $tt['month'], $tt['day']);
+                $tt['year'] = academic_year($tt['month'], $y);
+            }
         }
+        // バンドの枠は「取り込む」にチェック、休憩などは外しておく
+        $order = 0;
         foreach ($tt['slots'] as &$slot) {
-            $slot['roster_index'] = $slot['is_band'] ? match_roster_band($slot, $plan['roster']) : null;
+            $slot['include'] = $slot['is_band'];
+            $slot['order'] = $slot['is_band'] ? ++$order : null;
         }
         unset($slot);
     }
     unset($tt);
 
-    // ---- 人名の名寄せ候補 ----
-    $existing = load_member_index($pdo);
-    $names = [];
-    foreach ($plan['roster'] as $band) {
-        foreach ($band['members'] as $m) {
-            $names[member_key($m['name'])] ??= $m['name'];
+    // ---- 3. 名簿のバンド ↔ タイムテーブルの枠 を自動で対応付け ----
+    // 名簿が複数ファイルでも探せるように、いったん1本の配列にする（$ref で元の位置を覚えておく）
+    $flat = [];
+    $ref = [];
+    foreach ($plan['rosters'] as $ri => $roster) {
+        foreach ($roster['bands'] as $bi => $band) {
+            $flat[] = $band;
+            $ref[] = [$ri, $bi];
         }
     }
-    foreach ($names as $key => $name) {
-        $entry = ['name' => $name, 'existing' => $existing[$key] ?? null, 'suggest' => []];
-        if ($entry['existing'] === null) {
-            foreach ($existing as $eKey => $e) {
-                if (names_look_similar($key, $eKey)) {
-                    $entry['suggest'][] = ['value' => 'db:' . $e['id'], 'label' => $e['name'] . '（登録済み）'];
-                }
+    foreach ($plan['rosters'] as &$roster) {
+        foreach ($roster['bands'] as &$band) {
+            $band['slot'] = ''; // まだどの枠にも対応していない
+        }
+        unset($band);
+    }
+    unset($roster);
+
+    foreach ($plan['timetables'] as $ti => $tt) {
+        foreach ($tt['slots'] as $si => $slot) {
+            if (!$slot['is_band']) {
+                continue;
             }
-            foreach ($names as $oKey => $oName) {
-                if (!isset($existing[$oKey]) && names_look_similar($key, $oKey)) {
-                    $entry['suggest'][] = ['value' => 'same:' . $oKey, 'label' => $oName . '（今回の取り込み内）'];
-                }
+            $i = match_roster_band($slot, $flat);
+            if ($i === null) {
+                continue;
+            }
+            [$ri, $bi] = $ref[$i];
+            // 名簿の1バンドは1枠にだけ対応させる（先に見つかった枠が優先）
+            if ($plan['rosters'][$ri]['bands'][$bi]['slot'] === '') {
+                $plan['rosters'][$ri]['bands'][$bi]['slot'] = "$ti:$si"; // 「何日目の何番目の枠か」
             }
         }
-        $plan['names'][$key] = $entry;
     }
     return $plan;
 }
 
 /**
- * プレビューで確定した内容をDBへ書き込む。全部成功するか全部やめるか（トランザクション）。
+ * 名簿のセル（「村田侑斗、丸野友多郎」など）が DB の誰と一致するかを調べる。
+ * プレビューの入力欄の色分けに使う（緑=登録済み / 黄=似た人がいる / 赤=新しい人）。
+ *
+ * @param string[] $cells セルの文字列の配列
+ * @return array 同じ順番で ['status' => 'ok'|'similar'|'new'|'', 'hint' => 説明文]
+ */
+function classify_cells(PDO $pdo, array $cells): array
+{
+    $index = load_member_index($pdo);
+
+    // 今回の取り込みで新しく出てくる名前（DBにない名前）を集めておく
+    // → 「清水啓之介」と「清水啓乃介」のように、今回の中で表記がブレているのも見つけるため
+    $newKeys = [];
+    foreach ($cells as $cell) {
+        foreach (split_member_names((string)$cell) as $name) {
+            $key = member_key($name);
+            if (!isset($index[$key])) {
+                $newKeys[$key] = $name;
+            }
+        }
+    }
+
+    $result = [];
+    foreach ($cells as $cell) {
+        $names = split_member_names((string)$cell);
+        if ($names === []) {
+            $result[] = ['status' => '', 'hint' => ''];
+            continue;
+        }
+        $statuses = [];
+        $hints = [];
+        foreach ($names as $name) {
+            $key = member_key($name);
+            if (isset($index[$key])) {
+                $statuses[] = 'ok';
+                continue;
+            }
+            // DB の人と似ている？
+            $similar = [];
+            foreach ($index as $eKey => $e) {
+                if (names_look_similar($key, $eKey)) {
+                    $similar[] = $e['name'];
+                }
+            }
+            if ($similar) {
+                $statuses[] = 'similar';
+                $hints[] = "「{$name}」は未登録。登録済みの「" . implode('」「', array_slice($similar, 0, 3)) . '」の書き間違い？';
+                continue;
+            }
+            // 今回の取り込みの中の別の新しい名前と似ている？
+            $similarNew = [];
+            foreach ($newKeys as $nKey => $nName) {
+                if (names_look_similar($key, $nKey)) {
+                    $similarNew[] = $nName;
+                }
+            }
+            if ($similarNew) {
+                $statuses[] = 'similar';
+                $hints[] = "「{$name}」は未登録。今回の「" . implode('」「', $similarNew) . '」と表記ゆれ？';
+                continue;
+            }
+            $statuses[] = 'new';
+            $hints[] = "「{$name}」は未登録 → 新しいメンバーとして登録されます";
+        }
+        // 1つのセルに複数人いるときは、一番注意が必要な色にする
+        $status = in_array('new', $statuses, true) ? 'new' : (in_array('similar', $statuses, true) ? 'similar' : 'ok');
+        $result[] = ['status' => $status, 'hint' => implode("\n", $hints)];
+    }
+    return $result;
+}
+
+/**
+ * ② プレビューで確定した内容を DB に書き込む。
+ *
+ * 全体を1つのトランザクションにしている。
+ *   トランザクション = 「全部成功したら確定(commit)、途中で1つでも失敗したら全部取り消し(rollBack)」
+ *   → 途中でエラーになって「バンドは入ったけどメンバーは入っていない」という中途半端な状態を防ぐ。
+ *
+ * @param array $plan  build_import_plan() の結果（セッションに入っていたもの）
+ * @param array $input プレビューのフォームの送信内容
  * @return int[] 登録した live_id
  */
 function commit_import_plan(PDO $pdo, array $plan, array $input): array
 {
-    $members = load_member_index($pdo);
-    $choices = $input['name'] ?? [];
-    $resolving = [];
-
-    // 名前 → member_id（無ければ作る）
-    $resolve = static function (string $name) use (&$resolve, &$members, &$resolving, $choices, $plan, $pdo): int {
-        $key = member_key($name);
-        if (isset($members[$key])) {
-            return $members[$key]['id'];
-        }
-        $choice = (string)($choices[$key] ?? 'new');
-        if (str_starts_with($choice, 'db:')) {
-            return $members[$key]['id'] = (int)substr($choice, 3);
-        }
-        if (str_starts_with($choice, 'same:') && empty($resolving[$key])) {
-            $other = substr($choice, 5);
-            if (isset($plan['names'][$other])) {
-                $resolving[$key] = true;
-                $id = $resolve($plan['names'][$other]['name']);
-                $members[$key] = ['id' => $id, 'name' => $name];
-                return $id;
-            }
-        }
-        $pdo->prepare('INSERT INTO member (member_name) VALUES (?)')->execute([member_display($name)]);
-        $id = (int)$pdo->lastInsertId();
-        $members[$key] = ['id' => $id, 'name' => $name];
-        return $id;
-    };
-
+    $memberIndex = load_member_index($pdo);
+    $validInstruments = array_map('intval', array_column(instruments(), 'instrument_id'));
+    $bandIds = [];   // "日程番号:枠番号" → 登録した band_id
     $liveIds = [];
+
     $pdo->beginTransaction();
     try {
+        // ================= 1. ライブ・日程・バンド =================
         foreach ($plan['timetables'] as $ti => $tt) {
             $form = $input['tt'][$ti] ?? [];
             if (!empty($form['skip'])) {
-                continue;
+                continue; // 「この日程は取り込まない」
             }
-            $year = (int)($form['year'] ?? 0);
+            $where = "「{$tt['file']}」";
+
+            // ---- 入力チェック（DB の型・NOT NULL に合わせる） ----
+            $year     = (int)($form['year'] ?? 0);
             $liveName = trim((string)($form['live_name'] ?? ''));
-            $dayNo = max(1, (int)($form['day_no'] ?? 1));
-            $venueName = trim((string)($form['venue'] ?? ''));
-            $date = (string)($form['date'] ?? '');
-            $meeting = (string)($form['meeting_time'] ?? '');
-            if ($year < 1990 || $year > 2100 || $liveName === '') {
-                throw new RuntimeException("{$tt['file']}: 年度とライブ名は必須です");
-            }
-            $date = preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) ? $date : null;
-            $meeting = preg_match('/^\d{2}:\d{2}$/', $meeting) ? $meeting : null;
+            $label    = trim((string)($form['label'] ?? ''));
+            $date     = (string)($form['date'] ?? '');
+            $venue    = trim((string)($form['venue'] ?? ''));
+            $meeting  = (string)($form['meeting_time'] ?? '');
 
-            $venueId = null;
-            if ($venueName !== '') {
-                $st = $pdo->prepare('SELECT venue_id FROM venue WHERE venue_name = ?');
-                $st->execute([$venueName]);
-                $venueId = $st->fetchColumn();
-                if ($venueId === false) {
-                    $pdo->prepare('INSERT INTO venue (venue_name) VALUES (?)')->execute([$venueName]);
-                    $venueId = $pdo->lastInsertId();
-                }
+            if ($year < 1901 || $year > 2155) { // YEAR 型に入る範囲
+                throw new RuntimeException("{$where} 年度が正しくありません");
+            }
+            if ($liveName === '' || mb_strlen($liveName) > 50) { // varchar(50)
+                throw new RuntimeException("{$where} ライブ名は1〜50文字で入力してください");
+            }
+            if ($label === '' || mb_strlen($label) > 50) {
+                throw new RuntimeException("{$where} 日程（1日目など）は1〜50文字で入力してください");
+            }
+            // live_detail.date は NOT NULL。'2025-10-30' の形で、実在する日付か確認
+            if (!preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $date, $d) || !checkdate((int)$d[2], (int)$d[3], (int)$d[1])) {
+                throw new RuntimeException("{$where} 開催日を入力してください");
+            }
+            if ($venue === '' || mb_strlen($venue) > 50) { // venue_id も NOT NULL
+                throw new RuntimeException("{$where} 会場は1〜50文字で入力してください");
             }
 
-            $st = $pdo->prepare('SELECT live_id FROM live_master WHERE year = ? AND live_name = ?');
-            $st->execute([$year, $liveName]);
-            $liveId = $st->fetchColumn();
-            if ($liveId === false) {
-                $pdo->prepare('INSERT INTO live_master (year, live_name) VALUES (?, ?)')->execute([$year, $liveName]);
-                $liveId = $pdo->lastInsertId();
-            }
-            $liveId = (int)$liveId;
-
-            $st = $pdo->prepare('SELECT live_detail_id FROM live_detail WHERE live_id = ? AND day_no = ?');
-            $st->execute([$liveId, $dayNo]);
-            $existingDetail = $st->fetchColumn();
-            if ($existingDetail !== false) {
+            // ---- 同じ日程が登録済みか ----
+            $liveId = find_or_create_live($pdo, $year, $liveName);
+            $st = $pdo->prepare('SELECT live_detail_id FROM live_detail WHERE live_id = ? AND label = ?');
+            $st->execute([$liveId, $label]);
+            $existing = $st->fetchColumn();
+            if ($existing !== false) {
                 if (empty($form['overwrite'])) {
-                    throw new RuntimeException("{$year}年度「{$liveName}」{$dayNo}日目 は登録済みです。上書きする場合は「上書き」にチェックしてください");
+                    throw new RuntimeException("{$year}年度「{$liveName}」{$label} は登録済みです。置き換えるなら「上書き」にチェックしてください");
                 }
-                $pdo->prepare('DELETE FROM live_detail WHERE live_detail_id = ?')->execute([$existingDetail]);
+                delete_live_detail($pdo, (int)$existing);
+                // 消した日程が最後の1日だったら live_master ごと消えるので、もう一度作り直す
+                $liveId = find_or_create_live($pdo, $year, $liveName);
             }
 
-            $pdo->prepare('INSERT INTO live_detail (live_id, day_no, live_date, venue_id, meeting_time) VALUES (?, ?, ?, ?, ?)')
-                ->execute([$liveId, $dayNo, $date, $venueId, $meeting]);
+            // ---- live_detail ----
+            $note = preg_match('/^\d{2}:\d{2}$/', $meeting) ? "集合 {$meeting}" : null;
+            $pdo->prepare('INSERT INTO live_detail (live_id, date, label, venue_id, note) VALUES (?, ?, ?, ?, ?)')
+                ->execute([$liveId, $date, $label, find_or_create_venue($pdo, $venue), $note]);
             $detailId = (int)$pdo->lastInsertId();
 
-            $insBand = $pdo->prepare('INSERT INTO band_master
-                (live_detail_id, band_name, play_order, start_time, end_time, song_count, member_count, key_note)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
-            $insMember = $pdo->prepare('INSERT IGNORE INTO band_member (band_id, member_id, part) VALUES (?, ?, ?)');
-
+            // ---- band ----
+            // 「取り込む」にチェックがある枠だけ集めて、入力された出演順で並べ替える
+            $rows = [];
             foreach ($tt['slots'] as $si => $slot) {
-                if (!$slot['is_band']) {
+                $s = $form['s'][$si] ?? [];
+                if (empty($s['include'])) {
                     continue;
                 }
-                $pick = $form['band'][$si] ?? '';
-                $roster = ($pick !== '' && isset($plan['roster'][(int)$pick])) ? $plan['roster'][(int)$pick] : null;
-                $insBand->execute([
-                    $detailId,
-                    mb_substr($slot['band_name'], 0, 128),
-                    $slot['play_order'],
-                    $slot['start_time'],
-                    $slot['end_time'],
-                    $slot['song_count'] ?? $roster['song_count'] ?? null,
-                    $slot['member_count'] ?? $roster['member_count'] ?? ($roster ? count(array_unique(array_column($roster['members'], 'name'))) : null),
-                    mb_substr($slot['key_note'] !== '' ? $slot['key_note'] : ($roster['key_note'] ?? ''), 0, 128),
-                ]);
-                $bandId = (int)$pdo->lastInsertId();
-                foreach ($roster['members'] ?? [] as $m) {
-                    $insMember->execute([$bandId, $resolve($m['name']), $m['part']]);
+                $name = trim((string)($s['name'] ?? ''));
+                $songs = (string)($s['songs'] ?? '');
+                if ($name === '' || mb_strlen($name) > 50) {
+                    throw new RuntimeException("{$where} {$si}行目: バンド名は1〜50文字で入力してください");
                 }
+                if (!ctype_digit($songs)) { // band.song_count は NOT NULL
+                    throw new RuntimeException("{$where}「{$name}」の曲数を数字で入力してください");
+                }
+                $rows[] = [
+                    'si' => $si,
+                    'order' => (int)($s['order'] ?? 999),
+                    'name' => $name,
+                    'songs' => (int)$songs,
+                    'note' => trim((string)($s['note'] ?? '')),
+                ];
+            }
+            // 出演順 → 同じ番号なら元の並び順、で並べる。<=> は「宇宙船演算子」（大小比較で -1/0/1 を返す）
+            usort($rows, static fn($a, $b) => [$a['order'], $a['si']] <=> [$b['order'], $b['si']]);
+
+            $insBand = $pdo->prepare('INSERT INTO band (name, live_detail_id, play_order, song_count, note) VALUES (?, ?, ?, ?, ?)');
+            foreach ($rows as $n => $r) {
+                // 出演順は 1,2,3... と振り直す（入力で番号が飛んでいても大丈夫なように）
+                $insBand->execute([$r['name'], $detailId, $n + 1, $r['songs'], $r['note'] !== '' ? $r['note'] : null]);
+                $bandIds["$ti:{$r['si']}"] = (int)$pdo->lastInsertId();
             }
             $liveIds[] = $liveId;
         }
-        // 上書きで出番がなくなったメンバーを掃除
-        $pdo->exec('DELETE m FROM member m
-            LEFT JOIN band_member bm ON bm.member_id = m.member_id
-            LEFT JOIN user_index u ON u.member_id = m.member_id
-            WHERE bm.member_id IS NULL AND u.user_auto_id IS NULL');
-        $members = load_member_index($pdo);
-        // 先にアカウントだけ作っていた人を、今回できたメンバーと紐付ける
-        $link = $pdo->prepare('UPDATE user_index SET member_id = ? WHERE user_auto_id = ? AND member_id IS NULL');
-        $linked = array_map('intval', $pdo->query('SELECT member_id FROM user_index WHERE member_id IS NOT NULL')->fetchAll(PDO::FETCH_COLUMN));
-        foreach ($pdo->query('SELECT user_auto_id, user_name FROM user_index WHERE member_id IS NULL')->fetchAll() as $u) {
-            $m = $members[member_key($u['user_name'])] ?? null;
-            if ($m && !in_array($m['id'], $linked, true)) {
-                $link->execute([$m['id'], $u['user_auto_id']]);
-                $linked[] = $m['id'];
+
+        // ================= 2. 名簿 → メンバー =================
+        foreach ($plan['rosters'] as $ri => $roster) {
+            // 列ごとの楽器（プレビューの見出しのセレクトボックス）
+            $colInstrument = [];
+            foreach ($roster['columns'] as $col => $_) {
+                $id = (int)($input['inst'][$ri][$col] ?? 0);
+                $colInstrument[$col] = in_array($id, $validInstruments, true) ? $id : null;
+            }
+            foreach ($roster['bands'] as $bi => $band) {
+                $rb = $input['rb'][$ri][$bi] ?? [];
+                $slot = (string)($rb['slot'] ?? '');
+                if ($slot === '' || !isset($bandIds[$slot])) {
+                    continue; // どの出演バンドにも対応させなかった行 / 取り込まなかった枠
+                }
+                $assignments = [];
+                foreach ($roster['columns'] as $col => $_) {
+                    foreach (split_member_names((string)($rb['c'][$col] ?? '')) as $name) {
+                        $assignments[] = [$name, $colInstrument[$col]];
+                    }
+                }
+                attach_members($pdo, $memberIndex, $bandIds[$slot], $assignments);
             }
         }
+
+        // ================= 3. アカウントとメンバーの自動紐付け =================
+        // 先にアカウントだけ作っていた人を、今回できたメンバーと名前で紐付ける
+        link_users_to_members($pdo);
+
         $pdo->commit();
     } catch (Throwable $e) {
-        $pdo->rollBack();
+        $pdo->rollBack(); // 途中までの INSERT を全部なかったことにする
         throw $e;
     }
     return array_values(array_unique($liveIds));
+}
+
+/**
+ * member_id がまだ無いユーザーを、同じ名前のメンバーに紐付ける。
+ * （すでに別のユーザーに紐付いているメンバーには紐付けない）
+ */
+function link_users_to_members(PDO $pdo): void
+{
+    $index = load_member_index($pdo);
+    $taken = array_map('intval', $pdo->query('SELECT member_id FROM user_index WHERE member_id IS NOT NULL')->fetchAll(PDO::FETCH_COLUMN));
+    $update = $pdo->prepare('UPDATE user_index SET member_id = ? WHERE user_id = ?');
+    foreach ($pdo->query('SELECT user_id, name FROM user_index WHERE member_id IS NULL')->fetchAll() as $u) {
+        $m = $index[member_key($u['name'])] ?? null;
+        if ($m && !in_array($m['id'], $taken, true)) {
+            $update->execute([$m['id'], $u['user_id']]);
+            $taken[] = $m['id'];
+        }
+    }
 }

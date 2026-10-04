@@ -1,41 +1,63 @@
 <?php
+/**
+ * =====================================================================
+ *  login.php — ログイン
+ * =====================================================================
+ *  user_index から login_id で1件探し、password_verify() でパスワードを確認する。
+ *  パスワードは DB に「ハッシュ」（元に戻せない変換結果）でしか保存していないので、
+ *  入力されたパスワードを同じ方法で変換して一致するかを password_verify() が見てくれる。
+ * =====================================================================
+ */
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
+require_once __DIR__ . '/lib/import/planner.php'; // link_users_to_members() を使う
 
 if (current_user()) {
-    redirect('index.php');
+    redirect('index.php'); // ログイン済みならトップへ
 }
 
 $error = '';
-$userId = '';
+$loginId = '';
 if (is_post()) {
     verify_csrf();
-    $userId = trim((string)($_POST['user_id'] ?? ''));
+    $loginId = trim((string)($_POST['login_id'] ?? ''));
     $password = (string)($_POST['password'] ?? '');
 
-    $st = db()->prepare('SELECT * FROM user_index WHERE user_id = ?');
-    $st->execute([$userId]);
-    $row = $st->fetch();
+    $st = db()->prepare('SELECT * FROM user_index WHERE login_id = ?');
+    $st->execute([$loginId]);
+    $row = $st->fetch(); // 見つからなければ false
 
-    if ($row && password_verify($password, $row['user_password'])) {
-        if (password_needs_rehash($row['user_password'], PASSWORD_DEFAULT)) {
-            db()->prepare('UPDATE user_index SET user_password = ? WHERE user_auto_id = ?')
-                ->execute([password_hash($password, PASSWORD_DEFAULT), $row['user_auto_id']]);
+    if ($row && password_verify($password, $row['password_hash'])) {
+        // ハッシュの方式が古ければ（PHP が新しい方式を推奨していれば）作り直して保存
+        if (password_needs_rehash($row['password_hash'], PASSWORD_DEFAULT)) {
+            db()->prepare('UPDATE user_index SET password_hash = ? WHERE user_id = ?')
+                ->execute([password_hash($password, PASSWORD_DEFAULT), $row['user_id']]);
         }
-        session_regenerate_id(true); // セッション固定攻撃対策
+        // まだメンバーと紐付いていなければ、名前が同じメンバーと紐付ける
+        if ($row['member_id'] === null) {
+            link_users_to_members(db());
+            $st->execute([$loginId]);
+            $row = $st->fetch();
+        }
+
+        // セッション固定攻撃対策: ログインの瞬間にセッションIDを新しくする
+        // （ログイン前に盗まれた/仕込まれたセッションIDを使えなくする）
+        session_regenerate_id(true);
         $_SESSION['user'] = [
-            'auto_id'   => (int)$row['user_auto_id'],
-            'id'        => $row['user_id'],
-            'name'      => $row['user_name'],
-            'admin'     => (bool)$row['user_admin'],
+            'user_id'   => (int)$row['user_id'],
+            'login_id'  => $row['login_id'],
+            'name'      => $row['name'],
+            'admin'     => (bool)$row['is_admin'], // NULL も false 扱い
             'member_id' => $row['member_id'] === null ? null : (int)$row['member_id'],
         ];
         $next = $_SESSION['after_login'] ?? 'index.php';
         unset($_SESSION['after_login']);
-        // オープンリダイレクト防止: 同一サイト内のパスだけ許可
+        // オープンリダイレクト対策: 「/」で始まる同じサイト内の URL だけ許可する
+        // （//evil.com のような「別サイトへ飛ぶ URL」を弾く）
         redirect(preg_match('#^/(?![/\\\\])#', $next) ? $next : 'index.php');
     }
-    $error = 'ユーザーIDまたはパスワードが違います';
+    // IDが無いのかパスワードが違うのかは教えない（存在するIDを探られないように）
+    $error = 'ログインIDまたはパスワードが違います';
 }
 
 render_header('ログイン');
@@ -51,8 +73,8 @@ render_header('ログイン');
         <?= csrf_field() ?>
         <?php if ($error): ?><div class="flash flash--error"><?= h($error) ?></div><?php endif; ?>
         <label class="field">
-            <span>ユーザーID</span>
-            <input type="text" name="user_id" value="<?= h($userId) ?>" autocomplete="username" required autofocus>
+            <span>ログインID</span>
+            <input type="text" name="login_id" value="<?= h($loginId) ?>" autocomplete="username" required autofocus>
         </label>
         <label class="field">
             <span>パスワード</span>

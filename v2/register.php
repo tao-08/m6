@@ -1,14 +1,24 @@
 <?php
+/**
+ * =====================================================================
+ *  register.php — 新規登録
+ * =====================================================================
+ *  入力チェック → login_id の重複チェック → password_hash() して INSERT → そのままログイン状態にする。
+ *
+ *  ⚠ パスワードは絶対に平文（そのまま）で保存しない。必ず password_hash() を通す。
+ *    DB が流出しても、ハッシュからは元のパスワードを復元できない。
+ * =====================================================================
+ */
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
-require_once __DIR__ . '/lib/import/text.php';
+require_once __DIR__ . '/lib/import/planner.php';
 
 if (current_user()) {
     redirect('index.php');
 }
 
 $errors = [];
-$v = ['user_id' => '', 'user_name' => '', 'user_ruby' => ''];
+$v = ['login_id' => '', 'name' => '', 'name_kana' => '']; // 入力値（エラー時にフォームへ戻す用）
 if (is_post()) {
     verify_csrf();
     foreach ($v as $k => $_) {
@@ -17,14 +27,15 @@ if (is_post()) {
     $password = (string)($_POST['password'] ?? '');
     $confirm = (string)($_POST['password_confirm'] ?? '');
 
-    if (!preg_match('/^[A-Za-z0-9_\-]{3,32}$/', $v['user_id'])) {
-        $errors[] = 'ユーザーIDは半角英数字・_・- の3〜32文字にしてください';
+    // ---- 入力チェック（文字数は DB の varchar の長さに合わせる） ----
+    if (!preg_match('/^[A-Za-z0-9_\-]{3,25}$/', $v['login_id'])) {   // login_id varchar(25)
+        $errors[] = 'ログインIDは半角英数字・_・- の3〜25文字にしてください';
     }
-    if ($v['user_name'] === '' || mb_strlen($v['user_name']) > 64) {
-        $errors[] = '名前を入力してください（64文字以内）';
+    if ($v['name'] === '' || mb_strlen($v['name']) > 50) {           // name varchar(50)
+        $errors[] = '名前を入力してください（50文字以内）';
     }
-    if (mb_strlen($v['user_ruby']) > 64) {
-        $errors[] = 'ふりがなは64文字以内にしてください';
+    if (mb_strlen($v['name_kana']) > 50) {                            // name_kana varchar(50)
+        $errors[] = 'ふりがなは50文字以内にしてください';
     }
     if (strlen($password) < 8) {
         $errors[] = 'パスワードは8文字以上にしてください';
@@ -33,40 +44,35 @@ if (is_post()) {
         $errors[] = '確認用パスワードが一致しません';
     }
     if (!$errors) {
-        $st = db()->prepare('SELECT 1 FROM user_index WHERE user_id = ?');
-        $st->execute([$v['user_id']]);
+        $st = db()->prepare('SELECT 1 FROM user_index WHERE login_id = ?');
+        $st->execute([$v['login_id']]);
         if ($st->fetchColumn()) {
-            $errors[] = 'そのユーザーIDは使われています';
+            $errors[] = 'そのログインIDは使われています';
         }
     }
 
     if (!$errors) {
         $pdo = db();
-        $isFirst = (int)$pdo->query('SELECT COUNT(*) FROM user_index')->fetchColumn() === 0;
-        $admin = $isFirst && config('first_user_is_admin') ? 1 : 0;
+        // 管理者がまだ1人もいなければ、この人を管理者にする（最初の1人だけ）
+        $hasAdmin = (bool)$pdo->query('SELECT 1 FROM user_index WHERE is_admin = 1 LIMIT 1')->fetchColumn();
+        $admin = !$hasAdmin && config('first_user_is_admin') ? 1 : 0;
 
-        // 同じ名前のメンバーがいて、まだ誰のアカウントにも紐付いていなければ自動で紐付ける
-        $memberId = null;
-        $key = member_key($v['user_name']);
-        $rows = $pdo->query('SELECT m.member_id, m.member_name FROM member m
-            LEFT JOIN user_index u ON u.member_id = m.member_id WHERE u.user_auto_id IS NULL')->fetchAll();
-        foreach ($rows as $row) {
-            if (member_key($row['member_name']) === $key) {
-                $memberId = (int)$row['member_id'];
-                break;
-            }
-        }
+        $pdo->prepare('INSERT INTO user_index (login_id, name, name_kana, password_hash, is_admin) VALUES (?, ?, ?, ?, ?)')
+            ->execute([$v['login_id'], $v['name'], $v['name_kana'], password_hash($password, PASSWORD_DEFAULT), $admin]);
+        $userId = (int)$pdo->lastInsertId();
 
-        $pdo->prepare('INSERT INTO user_index (user_id, user_name, user_ruby, user_password, user_admin, member_id)
-            VALUES (?, ?, ?, ?, ?, ?)')
-            ->execute([$v['user_id'], $v['user_name'], $v['user_ruby'], password_hash($password, PASSWORD_DEFAULT), $admin, $memberId]);
+        // 同じ名前のメンバーがいれば自動で紐付け → マイページが使えるようになる
+        link_users_to_members($pdo);
+        $st = $pdo->prepare('SELECT member_id FROM user_index WHERE user_id = ?');
+        $st->execute([$userId]);
+        $memberId = $st->fetchColumn();
 
         session_regenerate_id(true);
         $_SESSION['user'] = [
-            'auto_id' => (int)$pdo->lastInsertId(), 'id' => $v['user_id'], 'name' => $v['user_name'],
-            'admin' => (bool)$admin, 'member_id' => $memberId,
+            'user_id' => $userId, 'login_id' => $v['login_id'], 'name' => $v['name'],
+            'admin' => (bool)$admin, 'member_id' => $memberId ? (int)$memberId : null,
         ];
-        flash('登録しました。ようこそ！' . ($admin ? '（最初のユーザーなので管理者になりました）' : ''));
+        flash('登録しました。ようこそ！' . ($admin ? '（管理者がいなかったので管理者になりました）' : ''));
         redirect('index.php');
     }
 }
@@ -77,18 +83,18 @@ render_header('新規登録');
     <div class="auth__hero">
         <p class="eyebrow">Join</p>
         <h1 class="display">アカウントを<br>作成する。</h1>
-        <p class="muted">名前をメンバー表と同じ表記にすると、自分の出演履歴と自動でつながります。</p>
+        <p class="muted">名前を名簿と同じ表記にすると、自分の出演履歴と自動でつながります。</p>
     </div>
     <form method="post" class="card auth__card" novalidate>
         <h2>新規登録</h2>
         <?= csrf_field() ?>
         <?php foreach ($errors as $e): ?><div class="flash flash--error"><?= h($e) ?></div><?php endforeach; ?>
-        <label class="field"><span>ユーザーID</span>
-            <input type="text" name="user_id" value="<?= h($v['user_id']) ?>" autocomplete="username" pattern="[A-Za-z0-9_\-]{3,32}" required></label>
+        <label class="field"><span>ログインID（半角英数字）</span>
+            <input type="text" name="login_id" value="<?= h($v['login_id']) ?>" autocomplete="username" maxlength="25" required></label>
         <label class="field"><span>名前（フルネーム）</span>
-            <input type="text" name="user_name" value="<?= h($v['user_name']) ?>" autocomplete="name" required></label>
+            <input type="text" name="name" value="<?= h($v['name']) ?>" autocomplete="name" maxlength="50" required></label>
         <label class="field"><span>ふりがな</span>
-            <input type="text" name="user_ruby" value="<?= h($v['user_ruby']) ?>"></label>
+            <input type="text" name="name_kana" value="<?= h($v['name_kana']) ?>" maxlength="50"></label>
         <label class="field"><span>パスワード（8文字以上）</span>
             <input type="password" name="password" autocomplete="new-password" minlength="8" required></label>
         <label class="field"><span>パスワード（確認）</span>

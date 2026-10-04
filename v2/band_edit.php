@@ -1,12 +1,23 @@
 <?php
+/**
+ * =====================================================================
+ *  band_edit.php?id=バンドID — バンドの手修正
+ * =====================================================================
+ *  取り込み後に見つかった誤字や、メンバーの入れ替わりを直すためのページ。
+ *
+ *  メンバーは「一度全部消して、フォームの内容で入れ直す」方式。
+ *  1行ずつ「追加された？消された？変わった？」を比べるより単純で、バグりにくい。
+ *  （トランザクションの中でやるので、途中で失敗しても消えたままにはならない）
+ * =====================================================================
+ */
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
-require_once __DIR__ . '/lib/import/text.php';
+require_once __DIR__ . '/lib/repository.php';
 require_login();
 
 $pdo = db();
 $bandId = (int)($_GET['id'] ?? $_POST['band_id'] ?? 0);
-$st = $pdo->prepare('SELECT b.*, ld.live_id, ld.day_no, lm.live_name, lm.year FROM band_master b
+$st = $pdo->prepare('SELECT b.*, ld.live_id, ld.label, lm.name AS live_name FROM band b
     JOIN live_detail ld ON ld.live_detail_id = b.live_detail_id
     JOIN live_master lm ON lm.live_id = ld.live_id WHERE b.band_id = ?');
 $st->execute([$bandId]);
@@ -15,67 +26,70 @@ if (!$band) {
     http_response_code(404);
     exit('バンドが見つかりません');
 }
+$backUrl = 'live.php?id=' . (int)$band['live_id'] . '#day-' . (int)$band['live_detail_id'];
+$validInstruments = array_map('intval', array_column(instruments(), 'instrument_id'));
 
 $errors = [];
 if (is_post()) {
     verify_csrf();
-    $name = trim((string)($_POST['band_name'] ?? ''));
-    $songs = ($_POST['song_count'] ?? '') === '' ? null : (int)$_POST['song_count'];
-    $count = ($_POST['member_count'] ?? '') === '' ? null : (int)$_POST['member_count'];
-    $keyNote = trim((string)($_POST['key_note'] ?? ''));
+    $name = trim((string)($_POST['name'] ?? ''));
+    $songs = (string)($_POST['song_count'] ?? '');
+    $note = trim((string)($_POST['note'] ?? ''));
+
+    // メンバーの行: m_name[] と m_inst[] は同じ番号同士がペア
     $rows = [];
     foreach ((array)($_POST['m_name'] ?? []) as $i => $memberName) {
         $memberName = member_display((string)$memberName);
-        $part = (string)($_POST['m_part'][$i] ?? '');
-        if ($memberName !== '' && isset(PART_ORDER[$part])) {
-            $rows[$memberName . "\0" . $part] = [$memberName, $part];
+        $inst = (int)($_POST['m_inst'][$i] ?? 0);
+        if ($memberName === '') {
+            continue; // 空欄の行は無視
         }
+        $rows[] = [$memberName, in_array($inst, $validInstruments, true) ? $inst : null];
     }
-    if ($name === '' || mb_strlen($name) > 128) {
-        $errors[] = 'バンド名を入力してください（128文字以内）';
+
+    if ($name === '' || mb_strlen($name) > 50) {
+        $errors[] = 'バンド名は1〜50文字で入力してください';
     }
-    if (($songs !== null && ($songs < 0 || $songs > 255)) || ($count !== null && ($count < 0 || $count > 255))) {
-        $errors[] = '曲数・人数は0〜255で入力してください';
+    if (!ctype_digit($songs)) {
+        $errors[] = '曲数を数字で入力してください';
     }
 
     if (!$errors) {
-        require_once __DIR__ . '/lib/import/planner.php';
         $index = load_member_index($pdo);
         $pdo->beginTransaction();
-        $pdo->prepare('UPDATE band_master SET band_name = ?, song_count = ?, member_count = ?, key_note = ? WHERE band_id = ?')
-            ->execute([$name, $songs, $count, mb_substr($keyNote, 0, 128), $bandId]);
-        $pdo->prepare('DELETE FROM band_member WHERE band_id = ?')->execute([$bandId]);
-        $ins = $pdo->prepare('INSERT INTO band_member (band_id, member_id, part) VALUES (?, ?, ?)');
-        foreach ($rows as [$memberName, $part]) {
-            $key = member_key($memberName);
-            if (!isset($index[$key])) {
-                $pdo->prepare('INSERT INTO member (member_name) VALUES (?)')->execute([$memberName]);
-                $index[$key] = ['id' => (int)$pdo->lastInsertId(), 'name' => $memberName];
-            }
-            $ins->execute([$bandId, $index[$key]['id'], $part]);
+        try {
+            $pdo->prepare('UPDATE band SET name = ?, song_count = ?, note = ? WHERE band_id = ?')
+                ->execute([$name, (int)$songs, $note !== '' ? $note : null, $bandId]);
+            detach_members($pdo, $bandId);              // 一度全部消して
+            attach_members($pdo, $index, $bandId, $rows); // 入れ直す
+            $pdo->commit();
+        } catch (Throwable $e) {
+            $pdo->rollBack();
+            throw $e;
         }
-        $pdo->exec('DELETE m FROM member m
-            LEFT JOIN band_member bm ON bm.member_id = m.member_id
-            LEFT JOIN user_index u ON u.member_id = m.member_id
-            WHERE bm.member_id IS NULL AND u.user_auto_id IS NULL');
-        $pdo->commit();
         flash('「' . $name . '」を更新しました');
-        redirect('live.php?id=' . (int)$band['live_id'] . '#day-' . (int)$band['day_no']);
+        redirect($backUrl);
     }
-    $band = array_merge($band, ['band_name' => $name, 'song_count' => $songs, 'member_count' => $count, 'key_note' => $keyNote]);
-    $members = array_map(static fn($r) => ['member_name' => $r[0], 'part' => $r[1]], array_values($rows));
+    // エラーのときは入力した値をそのまま表示し直す
+    $band = array_merge($band, ['name' => $name, 'song_count' => $songs, 'note' => $note]);
+    $members = array_map(static fn($r) => ['name' => $r[0], 'instrument_id' => $r[1]], $rows);
 } else {
-    $st = $pdo->prepare('SELECT m.member_name, bm.part FROM band_member bm JOIN member m ON m.member_id = bm.member_id
-        WHERE bm.band_id = ? ORDER BY FIELD(bm.part, \'Vo\', \'Gt\', \'Ba\', \'Dr\', \'Key\', \'Other\'), m.member_name');
+    // 今のメンバー（楽器が複数なら複数行になる）
+    $st = $pdo->prepare('SELECT m.name, bmi.instrument_id FROM (' . MEMBERSHIP_SQL . ') bm
+        JOIN member m ON m.member_id = bm.member_id
+        LEFT JOIN band_member_instrument bmi ON bmi.band_id = bm.band_id AND bmi.member_id = bm.member_id
+        WHERE bm.band_id = ?');
     $st->execute([$bandId]);
     $members = $st->fetchAll();
+    usort($members, static fn($a, $b) => instrument_sort_key($a['instrument_id'] === null ? null : (int)$a['instrument_id'])
+        <=> instrument_sort_key($b['instrument_id'] === null ? null : (int)$b['instrument_id']));
 }
-$members[] = ['member_name' => '', 'part' => 'Gt'];
-$allNames = $pdo->query('SELECT member_name FROM member ORDER BY member_name')->fetchAll(PDO::FETCH_COLUMN);
+$members[] = ['name' => '', 'instrument_id' => 2]; // 最後に空の行を1つ（追加用）
+$allNames = $pdo->query('SELECT name FROM member ORDER BY name')->fetchAll(PDO::FETCH_COLUMN);
 
 render_header('バンドを編集', 'lives');
 ?>
-<nav class="crumbs"><a href="live.php?id=<?= (int)$band['live_id'] ?>"><?= h($band['live_name']) ?></a><span>/</span>DAY <?= (int)$band['day_no'] ?></nav>
+<nav class="crumbs"><a href="<?= h($backUrl) ?>"><?= h($band['live_name']) ?></a><span>/</span><?= h($band['label']) ?></nav>
 <h1 class="display display--sm">バンドを編集</h1>
 <?php foreach ($errors as $e): ?><div class="flash flash--error"><?= h($e) ?></div><?php endforeach; ?>
 
@@ -83,23 +97,24 @@ render_header('バンドを編集', 'lives');
     <?= csrf_field() ?>
     <input type="hidden" name="band_id" value="<?= (int)$bandId ?>">
     <div class="form-grid">
-        <label class="field field--wide"><span>バンド名</span><input name="band_name" value="<?= h($band['band_name']) ?>" required></label>
-        <label class="field"><span>曲数</span><input type="number" min="0" max="255" name="song_count" value="<?= h($band['song_count']) ?>"></label>
-        <label class="field"><span>人数</span><input type="number" min="0" max="255" name="member_count" value="<?= h($band['member_count']) ?>"></label>
-        <label class="field field--wide"><span>鍵盤（私物/貸出など）</span><input name="key_note" value="<?= h($band['key_note']) ?>"></label>
+        <label class="field field--wide"><span>バンド名</span><input name="name" value="<?= h($band['name']) ?>" maxlength="50" required></label>
+        <label class="field"><span>曲数</span><input type="number" min="0" name="song_count" value="<?= h($band['song_count']) ?>" required></label>
+        <label class="field field--wide"><span>メモ（鍵盤の私物/貸出など）</span><input name="note" value="<?= h($band['note']) ?>"></label>
     </div>
 
     <h2 class="section-title">メンバー</h2>
-    <p class="muted small">名前が既存メンバーと同じ表記なら同一人物として扱われます。空欄の行は無視されます。</p>
+    <p class="muted small">名前が既存メンバーと同じ表記なら同一人物として扱われ、違えば新しいメンバーが作られます。入力すると色で分かります。</p>
     <div class="member-rows" data-rows>
         <?php foreach ($members as $m): ?>
             <div class="member-row-edit">
-                <select name="m_part[]" aria-label="パート">
-                    <?php foreach (array_keys(PART_ORDER) as $p): ?>
-                        <option value="<?= h($p) ?>"<?= $m['part'] === $p ? ' selected' : '' ?>><?= h($p) ?></option>
+                <select name="m_inst[]" aria-label="楽器">
+                    <option value="">楽器なし</option>
+                    <?php foreach (instruments() as $ins): ?>
+                        <option value="<?= (int)$ins['instrument_id'] ?>"<?= (int)$m['instrument_id'] === (int)$ins['instrument_id'] ? ' selected' : '' ?>><?= h($ins['instrument_short']) ?> <?= h($ins['instrument_name']) ?></option>
                     <?php endforeach; ?>
                 </select>
-                <input name="m_name[]" value="<?= h($m['member_name']) ?>" list="member-names" placeholder="名前" aria-label="名前">
+                <!-- list="member-names": 入力中に既存メンバーの名前を候補として出す -->
+                <input name="m_name[]" value="<?= h($m['name']) ?>" list="member-names" placeholder="名前" aria-label="名前" class="name-input" data-name-cell>
                 <button type="button" class="btn btn--ghost btn--sm" data-remove-row aria-label="この行を削除">✕</button>
             </div>
         <?php endforeach; ?>
@@ -110,7 +125,7 @@ render_header('バンドを編集', 'lives');
     </datalist>
 
     <div class="form-actions">
-        <a class="btn btn--ghost" href="live.php?id=<?= (int)$band['live_id'] ?>#day-<?= (int)$band['day_no'] ?>">キャンセル</a>
+        <a class="btn btn--ghost" href="<?= h($backUrl) ?>">キャンセル</a>
         <button class="btn btn--primary" type="submit">保存する</button>
     </div>
 </form>
