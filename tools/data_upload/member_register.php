@@ -5,7 +5,7 @@ error_reporting(E_ALL);
 $post_band_member = $_POST["member"];#バンド名とメンバーの名前の配列
 
 //DB設定
-require __DIR__ . "/../../src/setting/DB_connect.php";
+require __DIR__ . "/../../src/DB_connect.php";
 $pdo = DBconnect();
 
 // 未登録のメンバーを登録
