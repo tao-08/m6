@@ -10,7 +10,7 @@ if(empty($_SESSION["id"])){
 	exit;
 }
 function h($str){ return htmlspecialchars($str, ENT_QUOTES, 'UTF-8'); }
-require_once(__DIR__."/../DB_connect.php");
+require_once(__DIR__."/../setting/DB_connect.php");
 $pdo = DBconnect();
 ?>
 <!doctype html>

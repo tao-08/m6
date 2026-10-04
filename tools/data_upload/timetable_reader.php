@@ -121,7 +121,7 @@ function parseTimetableRows(array $rows, PDO $pdo): array
 
     $live_venue = findTimetableValueAfterLabel($label_timetable, '会場');
 
-    $sql = 'SELECT venue_id,venue_name FROM venue';
+    $sql = 'SELECT venue_id,name FROM venue';
     $stmt = $pdo->query($sql);
     $result = $stmt->fetchAll();
     $new_venue = 'selected';
@@ -129,7 +129,7 @@ function parseTimetableRows(array $rows, PDO $pdo): array
 
     foreach ($result as $key => $row_venue) {
         $venue_complete['n' . $key] = '';
-        $venue_name = $row_venue['venue_name'] ?? '';
+        $venue_name = $row_venue['name'] ?? '';
         if ($live_venue !== '' && $live_venue === $venue_name) {
             $venue_complete['n' . $key] = 'selected';
             $new_venue = '';

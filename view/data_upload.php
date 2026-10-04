@@ -34,7 +34,7 @@
 </div>
 </div>
 
-<?php if(isset($_POST["preview_timetable"]) && !empty($_FILES["file_timetable"]["name"])):?>
+<?php if(isset($_POST["preview_timetable"]) && isset($band_info)):?>
     <div class="table_preview timetable_preview shadow_1">
         <div class="scroll_2">
 		<form action="/tools/data_upload/band_register.php" method="post">
@@ -80,9 +80,9 @@
                     <!-- 会場の選択肢をDBから取得 -->
                     <td>
                         <select name="venue" id="venue">
-                            <option value=""></option>
+                            <!-- <option value=""></option> -->
                             <?php foreach ($result as $key=>$row) : ?>
-                            <option value='<?= h($row["venue_id"]) ?>'<?=$venue_complete["n".$key]?>><?= h($row["venue_name"]) ?></option>
+                            <option value='<?= h($row["venue_id"]) ?>'<?=$venue_complete["n".$key]?>><?= h($row["name"]) ?></option>
                             <?php endforeach;?>
                             <option value="new" <?= $new_venue ?>>新規作成する</option>
                         </select>

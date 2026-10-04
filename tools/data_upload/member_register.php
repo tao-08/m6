@@ -5,7 +5,7 @@ error_reporting(E_ALL);
 $post_band_member = $_POST["member"];#バンド名とメンバーの名前の配列
 
 //DB設定
-require __DIR__ . "/../../src/DB_connect.php";
+require __DIR__ . "/../../src/setting/DB_connect.php";
 $pdo = DBconnect();
 
 // 未登録のメンバーを登録
@@ -21,7 +21,7 @@ array_walk_recursive(
 );
 if (isset($new_member)) {
 	$new_member = array_unique((array)$new_member);
-	$sql = "INSERT into member (member_name) values(?)";
+	$sql = "INSERT into member (name) values(?)";
 	$stmt = $pdo->prepare($sql);
 	foreach ((array)$new_member as $new_member_name) {
 		$stmt->execute([$new_member_name]);
@@ -36,7 +36,7 @@ foreach ($post_band_member as $number => $name_array) {
 	$band_member = array_combine($column, $name_array);
 
 	// メンバーID取得
-	$sql = "SELECT member_id from member WHERE member_name = ?";
+	$sql = "SELECT member_id from member WHERE name = ?";
 	foreach ($band_member as $instrument => $name) {
 		if($instrument === "band"){
 			$band_name = $name;
