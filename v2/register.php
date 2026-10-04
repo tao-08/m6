@@ -43,6 +43,12 @@ if (is_post()) {
     if ($password !== $confirm) {
         $errors[] = '確認用パスワードが一致しません';
     }
+    // 招待コード（config.php の invite_code が空でなければ必須）
+    // サークル外の人が勝手に登録して、メンバーの実名を見られないようにするため
+    $invite = (string)config('invite_code');
+    if ($invite !== '' && !hash_equals($invite, (string)($_POST['invite_code'] ?? ''))) {
+        $errors[] = '招待コードが違います（サークルの管理者に聞いてください）';
+    }
     if (!$errors) {
         $st = db()->prepare('SELECT 1 FROM user_index WHERE login_id = ?');
         $st->execute([$v['login_id']]);
@@ -89,6 +95,10 @@ render_header('新規登録');
         <h2>新規登録</h2>
         <?= csrf_field() ?>
         <?php foreach ($errors as $e): ?><div class="flash flash--error"><?= h($e) ?></div><?php endforeach; ?>
+        <?php if ((string)config('invite_code') !== ''): ?>
+        <label class="field"><span>招待コード</span>
+            <input type="text" name="invite_code" autocomplete="off" required></label>
+        <?php endif; ?>
         <label class="field"><span>ログインID（半角英数字）</span>
             <input type="text" name="login_id" value="<?= h($v['login_id']) ?>" autocomplete="username" maxlength="25" required></label>
         <label class="field"><span>名前（フルネーム）</span>

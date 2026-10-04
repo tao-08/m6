@@ -12,8 +12,17 @@ DB は元の m6 と同じ `local_abbeydb` をそのまま使う（テーブル�
 | `live.php?id=` | 日程タブ付きのタイムテーブル（楽器別メンバー・曲数・鍵盤メモ・トリ・自分の出演） |
 | `members.php` / `member.php?id=` | 出演回数・トリ回数ランキング / 個人の出演履歴・楽器内訳・よく組むメンバー |
 | `import.php` | タイムテーブル＆名簿の取り込み（プレビューで全部編集できる） |
-| `band_edit.php?id=` | バンド名・曲数・メンバーと楽器の手修正 |
+| `band_edit.php?id=` / `?day=` | バンドの編集・追加・出演順の並べ替え・削除（削除は管理者） |
+| `live_edit.php?id=` | ライブ名・年度・各日程の日付/会場/メモの修正（`0000-00-00` の修正にも） |
+| `search.php` | バンド名・メンバー名・ライブ名・会場の横断検索（🔍） |
+| `stats.php` | 集計: よく組むペア・トリ回数・よくコピーされるアーティスト・楽器別・会場別（年度で絞り込み） |
+| `export.php?live=` | ライブを CSV でダウンロード（Excel で文字化けしない） / 印刷ボタンで紙用レイアウト |
+| `member_edit.php` | プロフィール（名前・ふりがな・入部年度）の編集（本人か管理者） |
+| `account.php` | アカウント設定（名前・パスワード変更・自分のメンバー紐付け） |
+| `users.php` | ユーザー管理（管理者の付け外し・紐付け解除・削除）※管理者のみ |
+| `members_merge.php` | 表記ゆれで重複したメンバーの統合（似た名前を自動で候補に出す）※管理者のみ |
 | 右上の 🌙 | ライト（白基調）/ ダーク切り替え（ブラウザに保存） |
+| ロゴ | 元の m6 の `src/assets/online.png`（ダーク時は文字を白くした `assets/logo-dark.png`） |
 
 ### 取り込みの流れ
 
@@ -30,11 +39,12 @@ DB は元の m6 と同じ `local_abbeydb` をそのまま使う（テーブル�
 
 1. `config.sample.php` を `config.php` にコピーし、DB 接続情報を書く（既定は `local_abbeydb` / root / パスワードなし）
 2. `http://localhost/m6/v2/` を開く
-3. 管理者にしたいアカウントがあれば phpMyAdmin で `UPDATE user_index SET is_admin = 1 WHERE login_id = 'tao_08';`
-4. PDF を使う場合は poppler を入れる
+3. 外部の人に登録されたくなければ `config.php` の `invite_code` に合言葉を設定（新規登録で必須になる）
+4. 管理者にしたいアカウントがあれば phpMyAdmin で `UPDATE user_index SET is_admin = 1 WHERE login_id = 'tao_08';`
+5. PDF を使う場合は poppler を入れる
    - Windows: <https://github.com/oschwartz10612/poppler-windows/releases> を展開し、`config.php` の `pdftotext` にフルパスを書く
    - Mac: `brew install poppler`
-5. （推奨）`migrations/001_recommended_keys.sql` を流して中間テーブルに複合主キーを付ける
+6. （任意）`migrations/001_recommended_keys.sql` を流して中間テーブルに複合主キーを付ける
 
 パーサーのテスト: `php v2/tests/run.php`
 
@@ -60,3 +70,5 @@ DB は元の m6 と同じ `local_abbeydb` をそのまま使う（テーブル�
 5. `lib/repository.php` — 「探して無ければ作る」と、外部キーを意識した削除
 6. `lib/import/text.php` → `parsers.php` → `planner.php` — 表記ゆれ吸収 → 表の読み取り → トランザクションで登録
 7. `import.php` + `assets/app.js` — プレビュー画面と、fetch() での色分け
+8. `stats.php` — 自己結合でペアを数える / SQL で数えにくいものは PHP で集計
+9. `lib/repository.php` の `merge_members()` — 重複を避けながら外部キーの付け替え

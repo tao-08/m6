@@ -162,3 +162,91 @@ function delete_live_detail(PDO $pdo, int $liveDetailId): void
         $pdo->prepare('DELETE FROM live_master WHERE live_id = ?')->execute([$liveId]);
     }
 }
+
+/**
+ * 2人のメンバーを1人にまとめる（表記ゆれで同じ人が2人登録されてしまったとき用）。
+ *
+ *   $fromId の出演記録をすべて $toId に付け替えてから、$fromId を消す。
+ *
+ * 注意点:
+ *   - 同じバンドに2人とも入っていた場合、そのまま UPDATE すると同じ行が2つになる。
+ *     → 「まだ $toId の行が無いものだけ」付け替えて、残った $fromId の行は消す。
+ *   - ふりがな・入部年度は、統合先が空なら統合元の値を引き継ぐ。
+ *   - アカウントの紐付けも引き継ぐ（統合先にまだ誰も紐付いていなければ）。
+ * ※ トランザクションは呼び出し側で張ること。
+ */
+function merge_members(PDO $pdo, int $fromId, int $toId): void
+{
+    if ($fromId === $toId) {
+        throw new RuntimeException('同じメンバー同士は統合できません');
+    }
+
+    // ---- band_member: 統合先がまだいないバンドだけ付け替え ----
+    $pdo->prepare('UPDATE band_member SET member_id = :to
+        WHERE member_id = :from
+          AND band_id NOT IN (SELECT band_id FROM (SELECT band_id FROM band_member WHERE member_id = :to2) t)')
+        ->execute(['to' => $toId, 'from' => $fromId, 'to2' => $toId]);
+    // ↑ MySQL は「UPDATE する表を同じ文のサブクエリで直接読む」のを禁止しているので、
+    //   もう1段サブクエリ（t）で包んで一時表にしている
+    $pdo->prepare('DELETE FROM band_member WHERE member_id = ?')->execute([$fromId]);
+
+    // ---- band_member_instrument: (バンド, 楽器) が重複しないものだけ付け替え ----
+    $pdo->prepare('UPDATE band_member_instrument SET member_id = :to
+        WHERE member_id = :from
+          AND (band_id, instrument_id) NOT IN (
+              SELECT band_id, instrument_id FROM (SELECT band_id, instrument_id FROM band_member_instrument WHERE member_id = :to2) t)')
+        ->execute(['to' => $toId, 'from' => $fromId, 'to2' => $toId]);
+    $pdo->prepare('DELETE FROM band_member_instrument WHERE member_id = ?')->execute([$fromId]);
+
+    // ---- プロフィールの引き継ぎ ----
+    $st = $pdo->prepare('SELECT * FROM member WHERE member_id = ?');
+    $st->execute([$fromId]);
+    $from = $st->fetch();
+    if ($from) {
+        $pdo->prepare("UPDATE member SET
+                name_kana  = IF(name_kana = '', ?, name_kana),
+                entry_year = IF(entry_year IS NULL OR entry_year = 0, ?, entry_year)
+            WHERE member_id = ?")
+            ->execute([$from['name_kana'], $from['entry_year'], $toId]);
+    }
+
+    // ---- アカウントの紐付け ----
+    $st = $pdo->prepare('SELECT COUNT(*) FROM user_index WHERE member_id = ?');
+    $st->execute([$toId]);
+    if ((int)$st->fetchColumn() === 0) {
+        $pdo->prepare('UPDATE user_index SET member_id = ? WHERE member_id = ?')->execute([$toId, $fromId]);
+    } else {
+        $pdo->prepare('UPDATE user_index SET member_id = NULL WHERE member_id = ?')->execute([$fromId]);
+    }
+
+    $pdo->prepare('DELETE FROM member WHERE member_id = ?')->execute([$fromId]);
+}
+
+/**
+ * ある日程のバンドの出演順を 1, 2, 3... に振り直す。
+ *
+ * @param int|null $movedBandId 並べ替えたバンド（そのバンドを $position 番目に差し込む）
+ */
+function renumber_bands(PDO $pdo, int $liveDetailId, ?int $movedBandId = null, ?int $position = null): void
+{
+    $st = $pdo->prepare('SELECT band_id FROM band WHERE live_detail_id = ? ORDER BY play_order, band_id');
+    $st->execute([$liveDetailId]);
+    $ids = array_map('intval', $st->fetchAll(PDO::FETCH_COLUMN));
+
+    if ($movedBandId !== null && $position !== null) {
+        $ids = array_values(array_diff($ids, [$movedBandId]));        // いったん抜いて
+        $position = max(1, min($position, count($ids) + 1));
+        array_splice($ids, $position - 1, 0, [$movedBandId]);        // 指定の位置に差し込む
+    }
+    $update = $pdo->prepare('UPDATE band SET play_order = ? WHERE band_id = ?');
+    foreach ($ids as $i => $id) {
+        $update->execute([$i + 1, $id]);
+    }
+}
+
+/** バンドを1組削除する（メンバー情報 → バンドの順に消す）。 */
+function delete_band(PDO $pdo, int $bandId): void
+{
+    detach_members($pdo, $bandId);
+    $pdo->prepare('DELETE FROM band WHERE band_id = ?')->execute([$bandId]);
+}

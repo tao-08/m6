@@ -28,15 +28,15 @@
   --border: #e5e2da;
   --text: #1b1a1f;
   --muted: #6c6a75;         /* 補足の文字 */
-  --accent: #e5432a;        /* アクセント（ステージライトの赤） */
+  --accent: #d90f0f;        /* アクセント（ロゴの赤に合わせた） */
   --accent-2: #f39a3d;
-  --accent-soft: rgba(229, 67, 42, .09);
+  --accent-soft: rgba(217, 15, 15, .08);
   --on-accent: #ffffff;
   --ok: #148a55;      --ok-bg: #e3f5ea;      /* 緑: DB に登録済み */
   --warn: #9a6a00;    --warn-bg: #fff3cf;    /* 黄: 似た人がいる */
   --danger: #c62f3e;  --danger-bg: #fde6e8;  /* 赤: 新しく登録される */
   /* 楽器の色 */
-  --vo: #e5432a; --gt: #c58a00; --ba: #1677c9; --dr: #7653d6; --key: #13915c; --other: #6c6a75;
+  --vo: #d90f0f; --gt: #c58a00; --ba: #1677c9; --dr: #7653d6; --key: #13915c; --other: #6c6a75;
   --radius: 16px;
   --radius-sm: 10px;
   --shadow: 0 1px 2px rgba(20, 18, 30, .04), 0 6px 20px rgba(20, 18, 30, .05);
@@ -52,9 +52,9 @@
   --border: #2b2b36;
   --text: #f1f0f5;
   --muted: #9d9cad;
-  --accent: #ff5c3d;
+  --accent: #ff4d4d;
   --accent-2: #ffb347;
-  --accent-soft: rgba(255, 92, 61, .14);
+  --accent-soft: rgba(255, 77, 77, .14);
   --ok: #49dc9a;      --ok-bg: rgba(73, 220, 154, .13);
   --warn: #ffcf5c;    --warn-bg: rgba(255, 207, 92, .14);
   --danger: #ff6b7d;  --danger-bg: rgba(255, 107, 125, .14);
@@ -97,21 +97,25 @@ a:hover { color: var(--accent); }
   border-bottom: 1px solid var(--border);
 }
 .topbar__inner { max-width: 1120px; margin: 0 auto; padding: 0 16px; height: 60px; display: flex; align-items: center; gap: 12px; }
-.brand { font-weight: 800; letter-spacing: -.02em; font-size: 17px; display: flex; align-items: center; gap: 8px; white-space: nowrap; margin-right: auto; }
-.brand__dot { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 10px var(--accent); }
-.brand__tld { color: var(--muted); font-weight: 500; }
+.brand { display: flex; align-items: center; margin-right: auto; flex: none; }
+.brand__logo { height: 34px; width: auto; display: block; transition: transform .2s ease; }
+.brand:hover .brand__logo { transform: translateY(-1px) rotate(-1deg); }
+.brand__logo--dark { display: none; }                         /* ダーク用は普段隠す */
+[data-theme="dark"] .brand__logo--light { display: none; }
+[data-theme="dark"] .brand__logo--dark { display: block; }
 .nav { display: flex; gap: 4px; }
 .nav__link { padding: 8px 14px; border-radius: 999px; color: var(--muted); font-weight: 600; font-size: 14px; white-space: nowrap; }
 .nav__link:hover { color: var(--text); background: var(--surface-2); }
 .nav__link.is-active { color: var(--text); background: var(--surface); box-shadow: inset 0 0 0 1px var(--border); }
 
-/* テーマ切り替えボタン: ライトのときは月、ダークのときは太陽を出す */
-.theme-toggle { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; cursor: pointer;
+/* 丸いアイコンボタン（検索・テーマ切り替え） */
+.icon-btn { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; cursor: pointer; flex: none;
   border: 1px solid var(--border); background: var(--surface); color: var(--text); }
-.theme-toggle:hover { color: var(--accent); }
-.theme-toggle .icon-sun { display: none; }
-[data-theme="dark"] .theme-toggle .icon-sun { display: block; }
-[data-theme="dark"] .theme-toggle .icon-moon { display: none; }
+.icon-btn:hover, .icon-btn.is-active { color: var(--accent); border-color: var(--accent); }
+/* テーマ切り替え: ライトのときは月、ダークのときは太陽を出す */
+[data-theme-toggle] .icon-sun { display: none; }
+[data-theme="dark"] [data-theme-toggle] .icon-sun { display: block; }
+[data-theme="dark"] [data-theme-toggle] .icon-moon { display: none; }
 
 .usermenu { position: relative; }
 .usermenu summary { list-style: none; cursor: pointer; }
@@ -160,7 +164,7 @@ h3 { font-size: 16px; }
   transition: transform .12s ease, box-shadow .2s ease; white-space: nowrap;
 }
 .btn:hover { color: var(--text); transform: translateY(-1px); }
-.btn--primary { background: linear-gradient(135deg, var(--accent), #f0663f); border-color: transparent; color: var(--on-accent); box-shadow: 0 6px 18px -8px var(--accent); }
+.btn--primary { background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 70%, var(--accent-2))); border-color: transparent; color: var(--on-accent); box-shadow: 0 6px 18px -8px var(--accent); }
 .btn--primary:hover { color: var(--on-accent); box-shadow: 0 10px 24px -8px var(--accent); }
 .btn--ghost { background: transparent; }
 .btn--danger { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, transparent); }
@@ -358,6 +362,44 @@ input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px;
   background: color-mix(in srgb, var(--surface) 88%, transparent); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
   border: 1px solid var(--border); box-shadow: var(--shadow); width: max-content; margin-left: auto; }
 
+/* ===== 8.5 追加ページ（検索・集計・設定・管理） ===== */
+.hero__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.add-band { margin: 14px 0 0 56px; }
+.danger-zone { margin-top: 16px; display: flex; justify-content: flex-end; }
+.chip-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip--lg { padding: 6px 14px; font-size: 14px; background: var(--surface); }
+.search-results section + section { margin-top: 8px; }
+.year-filter select { padding: 9px 12px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); font-weight: 700; }
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; margin-top: 14px; }
+.section-title--card { margin: 0 0 12px; }
+.bars { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.bars li { display: grid; grid-template-columns: minmax(0, 11em) 1fr auto; gap: 10px; align-items: center; font-size: 13px; }
+.bars__label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.ranking li > span:first-child { min-width: 0; }
+.settings { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; align-items: start; }
+.edit-box { margin-bottom: 18px; padding: 14px 20px; }
+.edit-box summary { cursor: pointer; font-weight: 700; color: var(--muted); }
+.edit-box[open] summary { margin-bottom: 14px; color: var(--text); }
+.merge-list { display: grid; gap: 10px; }
+.merge-item { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; padding: 14px 18px; }
+.merge-item__names { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; }
+.merge-item__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.inline-form { display: inline; }
+.table-scroll--flush { margin: 0; border-top: 0; }
+code { background: var(--surface-2); padding: 1px 6px; border-radius: 6px; font-size: .9em; }
+
+/* ===== 印刷（ライブ詳細の「印刷」ボタン） ===== */
+@media print {
+  :root, [data-theme="dark"] { --bg: #fff; --surface: #fff; --text: #000; --muted: #555; --border: #ccc; --shadow: none; --glow: none; }
+  .topbar, .footer, .no-print, .flash { display: none !important; }
+  .day[hidden] { display: block !important; }   /* タブで隠している日程も全部印刷する */
+  .day + .day { break-before: page; }          /* 日程ごとに改ページ */
+  .slot { break-inside: avoid; }               /* バンドの途中で改ページしない */
+  .container { padding: 0; max-width: none; }
+  body { font-size: 11px; }
+  .slot__body { padding: 8px 12px; }
+}
+
 /* ===== 9. スマホ対応（画面幅で切り替え） ===== */
 @media (max-width: 860px) {
   .split { grid-template-columns: 1fr; }
@@ -368,7 +410,7 @@ input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px;
 }
 @media (max-width: 600px) {
   body { font-size: 14px; }
-  .brand__tld { display: none; }
+  .brand__logo { height: 28px; }
   /* backdrop-filter があると、中の position: fixed（下のナビ）の基準がヘッダーになってしまうので外す */
   .topbar { backdrop-filter: none; -webkit-backdrop-filter: none; background: var(--bg); }
   /* スマホではナビを画面下のタブバーにする（親指で押しやすい） */
@@ -397,4 +439,7 @@ input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px;
   .sticky-actions { width: 100%; bottom: 76px; }
   .sticky-actions .btn { flex: 1; }
   .tabs { top: 66px; }
+  .add-band { margin-left: 38px; }
+  .bars li { grid-template-columns: minmax(0, 8em) 1fr auto; }
+  .stats-grid { grid-template-columns: 1fr; }
 }

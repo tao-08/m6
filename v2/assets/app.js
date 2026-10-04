@@ -15,6 +15,7 @@
  *    data-slot-select   … 名簿のバンド ↔ 出演バンドの対応
  *    data-pack          … 送信時に全項目を JSON 1個にまとめるフォーム
  *    data-rows          … バンド編集のメンバー行（追加・削除）
+ *    data-print / data-autosubmit … 印刷ボタン / 選んだら即送信
  * =====================================================================
  */
 
@@ -29,7 +30,18 @@ document.addEventListener('DOMContentLoaded', () => {
   setupImportPreview();
   setupPackedForm();
   setupMemberRows();
+  setupSmallThings();
 });
+
+/* ---------------------------------------------------------------------
+ * こまごました動き
+ *   data-print      … クリックで印刷ダイアログ
+ *   data-autosubmit … セレクトボックスを変えたらすぐフォームを送信（集計の年度切り替え）
+ * ------------------------------------------------------------------- */
+function setupSmallThings() {
+  document.querySelectorAll('[data-print]').forEach((btn) => btn.addEventListener('click', () => window.print()));
+  document.querySelectorAll('[data-autosubmit]').forEach((sel) => sel.addEventListener('change', () => sel.form.submit()));
+}
 
 /* ---------------------------------------------------------------------
  * ライト/ダーク切り替え

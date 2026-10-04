@@ -77,11 +77,17 @@ render_header($live['name'], 'lives');
         <p class="eyebrow"><?= h(fmt_year($live['year'])) ?> · <?= count($days) ?> DAYS · <?= $totalBands ?> BANDS</p>
         <h1 class="display"><?= h($live['name']) ?></h1>
     </div>
+    <!-- このライブでできること（編集・CSV・印刷）。印刷時は CSS で隠す -->
+    <div class="hero__actions no-print">
+        <a class="btn btn--sm" href="live_edit.php?id=<?= (int)$liveId ?>">✎ ライブを編集</a>
+        <a class="btn btn--sm" href="export.php?live=<?= (int)$liveId ?>">⇩ CSV</a>
+        <button class="btn btn--sm" type="button" data-print>🖨 印刷</button>
+    </div>
 </section>
 
 <?php if (count($days) > 1): ?>
 <!-- 日程タブ。JS が動けばタブ切り替え、動かなければ全日程が縦に並ぶ -->
-<div class="tabs" role="tablist">
+<div class="tabs no-print" role="tablist">
     <?php foreach ($days as $i => $d): ?>
         <a href="#day-<?= (int)$d['live_detail_id'] ?>" class="tab<?= $i === 0 ? ' is-active' : '' ?>" data-tab>
             <?= h($d['label'] ?: 'DAY ' . ($i + 1)) ?><small><?= h(fmt_date($d['date'])) ?></small>
@@ -106,7 +112,7 @@ render_header($live['name'], 'lives');
             <?php if ($d['note']): ?><div><dt>メモ</dt><dd><?= h($d['note']) ?></dd></div><?php endif; ?>
         </dl>
         <?php if (is_admin()): ?>
-            <form method="post" action="live_delete.php" class="day__danger" data-confirm="<?= h(($d['label'] ?: 'この日程') . ' のデータを削除します。元に戻せません。よろしいですか？') ?>">
+            <form method="post" action="live_delete.php" class="day__danger no-print" data-confirm="<?= h(($d['label'] ?: 'この日程') . ' のデータを削除します。元に戻せません。よろしいですか？') ?>">
                 <?= csrf_field() ?>
                 <input type="hidden" name="live_detail_id" value="<?= (int)$d['live_detail_id'] ?>">
                 <button class="btn btn--ghost btn--danger btn--sm" type="submit">この日程を削除</button>
@@ -133,7 +139,7 @@ render_header($live['name'], 'lives');
                         <h3 class="slot__name"><?= h($b['name']) ?></h3>
                         <?php if ($isLast): ?><span class="tag tag--accent">トリ</span><?php endif; ?>
                         <?php if ($isMine): ?><span class="tag">出演</span><?php endif; ?>
-                        <a class="slot__edit" href="band_edit.php?id=<?= (int)$b['band_id'] ?>" aria-label="<?= h($b['name']) ?> を編集">編集</a>
+                        <a class="slot__edit no-print" href="band_edit.php?id=<?= (int)$b['band_id'] ?>" aria-label="<?= h($b['name']) ?> を編集">編集</a>
                     </div>
                     <?php if ($lineup): ?>
                         <ul class="lineup">
@@ -158,6 +164,7 @@ render_header($live['name'], 'lives');
         <?php endforeach; ?>
     </ol>
     <?php if (!$bands): ?><p class="muted">バンドが登録されていません</p><?php endif; ?>
+    <p class="no-print add-band"><a class="btn btn--ghost btn--sm" href="band_edit.php?day=<?= (int)$d['live_detail_id'] ?>">＋ バンドを追加</a></p>
 </section>
 <?php endforeach; ?>
 <?php render_footer();
