@@ -1,0 +1,6 @@
+Options -MultiViews -Indexes
+DirectoryIndex index.php
+
+<FilesMatch "^(config(\.sample)?\.php|schema\.sql|README\.md)$">
+    Require all denied
+</FilesMatch>
