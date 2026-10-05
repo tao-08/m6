@@ -60,7 +60,7 @@ $nav = [
             ダークモードでは「.Online」の黒文字が背景に溶けるので、文字だけ白くした logo-dark.png に CSS で切り替える。
         -->
         <a class="brand" href="index.php" aria-label="AbbeyRoad.online トップへ">
-            <img src="../src/assets/online.png" alt="AbbeyRoad.online" class="brand__logo brand__logo--light" width="146" height="40">
+            <img src="../../src/assets/online.png" alt="AbbeyRoad.online" class="brand__logo brand__logo--light" width="146" height="40">
             <img src="assets/logo-dark.png" alt="" class="brand__logo brand__logo--dark" width="146" height="40">
         </a>
         <?php if ($user): ?>
