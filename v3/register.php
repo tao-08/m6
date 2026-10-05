@@ -5,6 +5,11 @@
  * =====================================================================
  *  入力チェック → login_id の重複チェック → password_hash() して INSERT → そのままログイン状態にする。
  *
+ *  入学年度は必須。保存先は user_account ではなく member.entry_year（学年の計算は member 側で一元管理する）。
+ *    ・名前が一致するメンバーがいる → そのメンバーに紐付けて、入学年度を入力値で上書き
+ *    ・いない                     → member を新しく作って紐付ける
+ *    ・一致するメンバーが別のアカウントに紐付き済み → 登録エラー（なりすまし・二重登録の防止）
+ *
  *  ⚠ パスワードは絶対に平文（そのまま）で保存しない。必ず password_hash() を通す。
  *    DB が流出しても、ハッシュからは元のパスワードを復元できない。
  * =====================================================================
@@ -17,8 +22,12 @@ if (current_user()) {
     redirect('index.php');
 }
 
+// 今年度（4月始まり）。入学年度の選択肢の上限に使う
+$thisYear = (int)date('n') >= 4 ? (int)date('Y') : (int)date('Y') - 1;
+$entryYears = range($thisYear, $thisYear - 30); // セレクトの選択肢（新しい順）
+
 $errors = [];
-$v = ['login_id' => '', 'name' => '']; // 入力値（エラー時にフォームへ戻す用）
+$v = ['login_id' => '', 'name' => '', 'entry_year' => '']; // 入力値（エラー時にフォームへ戻す用）
 if (is_post()) {
     verify_csrf();
     foreach ($v as $k => $_) {
@@ -33,6 +42,11 @@ if (is_post()) {
     }
     if ($v['name'] === '' || mb_strlen($v['name']) > 50) {           // name varchar(50)
         $errors[] = '名前を入力してください（50文字以内）';
+    }
+    // 入学年度: 選択肢にある年度だけ受け付ける（改造されたリクエストで 9999 などを送られても弾く）
+    $entryYear = filter_var($v['entry_year'], FILTER_VALIDATE_INT);
+    if (!is_int($entryYear) || !in_array($entryYear, $entryYears, true)) {
+        $errors[] = '入学年度を選んでください';
     }
     if (strlen($password) < 8) {
         $errors[] = 'パスワードは8文字以上にしてください';
@@ -54,21 +68,47 @@ if (is_post()) {
         }
     }
 
+    // 同じ名前のメンバーが、もう別のアカウントに紐付いていないか
+    //   user_account.member_id は UNIQUE なので、1人のメンバーに2つのアカウントは紐付けられない。
+    //   ここで先に確認しておかないと、INSERT した後で紐付けに失敗して「入学年度がどこにも保存されない」状態になる。
+    $memberIndex = [];
+    $matched = null;
+    if (!$errors) {
+        $memberIndex = load_member_index(db());
+        $matched = $memberIndex[member_key($v['name'])] ?? null; // 表記ゆれ（髙/高、空白）を吸収して探す
+        if ($matched) {
+            $st = db()->prepare('SELECT 1 FROM user_account WHERE member_id = ?');
+            $st->execute([$matched['id']]);
+            if ($st->fetchColumn()) {
+                $errors[] = '「' . $matched['name'] . '」さんは別のアカウントで登録済みです（心当たりがなければ管理者に連絡してください）';
+            }
+        }
+    }
+
     if (!$errors) {
         $pdo = db();
         // 管理者がまだ1人もいなければ、この人を管理者にする（最初の1人だけ）
         $hasAdmin = (bool)$pdo->query('SELECT 1 FROM user_account WHERE is_admin LIMIT 1')->fetchColumn();
         $admin = !$hasAdmin && config('first_user_is_admin') ? 1 : 0;
 
-        $pdo->prepare('INSERT INTO user_account (login_id, name, password_hash, is_admin) VALUES (?, ?, ?, ?)')
-            ->execute([$v['login_id'], $v['name'], password_hash($password, PASSWORD_DEFAULT), $admin]);
-        $userId = (int)$pdo->lastInsertId();
+        // アカウント作成・メンバー作成・入学年度の保存は「全部成功」か「全部なし」にしたいのでトランザクションにする。
+        // 途中で失敗したら rollBack() で、アカウントだけできてメンバーが無い…という中途半端な状態を残さない。
+        $pdo->beginTransaction();
+        try {
+            $pdo->prepare('INSERT INTO user_account (login_id, name, password_hash, is_admin) VALUES (?, ?, ?, ?)')
+                ->execute([$v['login_id'], $v['name'], password_hash($password, PASSWORD_DEFAULT), $admin]);
+            $userId = (int)$pdo->lastInsertId();
 
-        // 同じ名前のメンバーがいれば自動で紐付け → マイページが使えるようになる
-        link_users_to_members($pdo);
-        $st = $pdo->prepare('SELECT member_id FROM user_account WHERE user_id = ?');
-        $st->execute([$userId]);
-        $memberId = $st->fetchColumn();
+            // 名前が一致するメンバーがいればそれ、いなければ新しく作る → マイページや集計の学年が使えるようになる
+            $memberId = $matched ? $matched['id'] : find_or_create_member($pdo, $memberIndex, $v['name']);
+            // 入学年度は入力値で上書きする（本人の申告を正とする）
+            $pdo->prepare('UPDATE member SET entry_year = ? WHERE member_id = ?')->execute([$entryYear, $memberId]);
+            $pdo->prepare('UPDATE user_account SET member_id = ? WHERE user_id = ?')->execute([$memberId, $userId]);
+            $pdo->commit();
+        } catch (Throwable $e) {
+            $pdo->rollBack();
+            throw $e; // エラーはそのまま上に投げる（bootstrap のエラー表示に任せる）
+        }
 
         session_regenerate_id(true);
         $_SESSION['user'] = [
@@ -86,7 +126,7 @@ render_header('新規登録');
     <div class="auth__hero">
         <p class="eyebrow">Join</p>
         <h1 class="display">アカウントを<br>作成する。</h1>
-        <p class="muted">名前を名簿と同じ表記にすると、自分の出演履歴と自動でつながります。</p>
+        <p class="muted">名前を名簿と同じ表記にすると、自分の出演履歴と自動でつながります。入学年度は集計ページの学年の判定に使います。</p>
     </div>
     <form method="post" class="card auth__card" novalidate>
         <h2>新規登録</h2>
@@ -100,6 +140,13 @@ render_header('新規登録');
             <input type="text" name="login_id" value="<?= h($v['login_id']) ?>" autocomplete="username" maxlength="25" required></label>
         <label class="field"><span>名前（フルネーム）</span>
             <input type="text" name="name" value="<?= h($v['name']) ?>" autocomplete="name" maxlength="50" required></label>
+        <label class="field"><span>入学年度</span>
+            <select name="entry_year" required>
+                <option value="">選んでください</option>
+                <?php foreach ($entryYears as $y): ?>
+                    <option value="<?= $y ?>"<?= (string)$y === $v['entry_year'] ? ' selected' : '' ?>><?= $y ?>年度</option>
+                <?php endforeach; ?>
+            </select></label>
         <label class="field"><span>パスワード（8文字以上）</span>
             <input type="password" name="password" autocomplete="new-password" minlength="8" required></label>
         <label class="field"><span>パスワード（確認）</span>
