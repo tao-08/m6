@@ -82,7 +82,7 @@ function setupSongs() {
 /* ---------------------------------------------------------------------
  * こまごました動き
  *   data-print      … クリックで印刷ダイアログ
- *   data-autosubmit … セレクトボックスを変えたらすぐフォームを送信（集計の年度切り替え）
+ *   data-autosubmit … セレクトボックスやラジオボタンを変えたらすぐフォームを送信（集計の絞り込み）
  * ------------------------------------------------------------------- */
 function setupSmallThings() {
   document.querySelectorAll('[data-print]').forEach((btn) => btn.addEventListener('click', () => window.print()));
