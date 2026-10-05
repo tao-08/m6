@@ -23,9 +23,32 @@ date_default_timezone_set('Asia/Tokyo'); // date() を日本時間にする
 const APP_NAME = 'AbbeyRoad.online';
 
 /**
+ * いま動いている環境の名前（'local' か 'production'）を返す。
+ *
+ *   1. サーバーの環境変数 APP_ENV が 'local' / 'production' ならそれを使う
+ *   2. 無ければ OS で決める: Windows（XAMPP）なら local、それ以外は production
+ *
+ * $_SERVER['HTTP_HOST'] は使わない。Host ヘッダーはブラウザが送ってくる値なので、
+ * 本番に「Host: localhost」と送られると local 用の設定（debug ON など）に切り替わってしまう。
+ * 迷ったときは安全側の production に倒す。
+ */
+function app_env(): string
+{
+    $env = getenv('APP_ENV');
+    if ($env === 'local' || $env === 'production') {
+        return $env;
+    }
+    return PHP_OS_FAMILY === 'Windows' ? 'local' : 'production';
+}
+
+/**
  * config.php の値を取り出す。
  *   config()          → 配列まるごと
  *   config('db')      → ['dsn' => ..., 'user' => ..., 'pass' => ...]
+ *
+ * config.php に 'local' / 'production' の塊があれば、
+ * 'common' の値に「いまの環境の塊」を上書きしたものを使う。
+ * （塊が無い昔の書き方の config.php もそのまま使える）
  *
  * static 変数を使って「最初の1回だけファイルを読む」ようにしている。
  * （static 変数は関数を抜けても値が残る）
@@ -39,7 +62,18 @@ function config(?string $key = null): mixed
             http_response_code(500);
             exit('config.php がありません。config.sample.php をコピーして作成してください。');
         }
-        $config = require $path; // config.php は return [...] しているので、その配列が入る
+        $raw = require $path; // config.php は return [...] しているので、その配列が入る
+        if (isset($raw['local']) || isset($raw['production'])) {
+            $env = app_env();
+            if (!isset($raw[$env])) {
+                http_response_code(500);
+                exit("config.php に '{$env}' の設定がありません。");
+            }
+            // 'db' の中の 'pass' だけ上書き、のような入れ子の上書きもできるように _recursive を使う
+            $config = array_replace_recursive($raw['common'] ?? [], $raw[$env]);
+        } else {
+            $config = $raw;
+        }
     }
     return $key === null ? $config : ($config[$key] ?? null);
 }
