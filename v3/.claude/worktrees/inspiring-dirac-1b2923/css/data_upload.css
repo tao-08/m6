@@ -1,0 +1,134 @@
+table.small_table{
+    border-collapse: collapse;
+    padding: 10px;
+    margin: 1rem auto;
+    border-radius: 10px;
+    background-color: rgb(202, 242, 255);
+    width: auto;
+}
+tbody.small_table{
+    padding: 3px;
+
+}
+.small_table input{
+    height: 1.1rem;
+    width: 4.3rem;
+    font-size: 0.8rem;
+}
+.label_2 td{
+    padding-bottom: 4px;
+}
+.label td{
+    font-size: 90%;
+    padding-top: 4px;
+}
+.input_label{
+    width: 4em;
+    max-width: 100%;
+}
+input[type="text"].text_preview.valid,input[type="text"].band_preview.valid{
+    background-color: rgb(199, 255, 191);
+}
+input[type="text"].text_preview.invalid,input[type="text"].band_preview.invalid{
+	background-color: rgb(250, 209, 214);
+}
+input[type="text"].band_preview.partial{
+	background-color: #fff6a4;
+}
+.table_preview input[type="text"]{
+    height: 1.5em;
+    border: none;
+    border-radius: 3px;
+    background-color: rgb(255, 255, 255);
+    transition-duration: 0.3s;
+}
+.table_preview input:focus{
+    outline: solid rgb(170, 170, 170) 1px;
+}
+.table_preview{
+    background-color: rgb(226, 233, 243);
+    margin: 20px auto;
+    padding: 20px;
+    border-radius: 20px;
+}
+.table_preview td,.table_preview th{
+    padding: 0.05em 0.4em;
+    margin: 0.2em 0;
+}
+.text_preview{
+    width: 7em;
+}
+.band_preview{
+    width: 16em;
+}
+.number_preview{
+    width: 2em;
+}
+
+input.submit_button{
+    border-radius: 10px;
+    background-color: #6dd8ff;
+    padding: 0.2em;
+    height: auto;
+    margin-top: 1em;
+}
+input.button_color_yellow{
+    background-color: #fff173;
+}
+
+#new_venue{
+    display: none;
+}
+#new_venue.visible{
+    display: table-row;
+}
+th.separate{
+    width: 6em;
+    margin: 2em;
+}
+input.file_timetable{
+    width:18rem;
+    font-size: 0.8rem;
+}
+.table_timetable_upload tr{
+    width: 50%;
+}
+
+.table_timetable_upload td{
+    text-align: left;
+}
+.table_timetable_upload th{
+    text-align: center;
+    white-space: nowrap;
+    width: 50%;
+    padding: 0 1em;
+}
+.timetable_preview{
+    max-width: 500px;
+}
+.timetable_preview th{
+    padding: 0.2em 0;
+}
+.timetable_select input[type="text"],.timetable_select #venue{
+    width: 13rem;
+    height: 2rem;
+}
+
+@media (max-width:767px) {
+    table.small_table{
+        width: 800px;
+        margin:1rem 0.5rem;
+    }
+    .label td{
+        width: 200px;
+        font-size: 75%;
+    }
+    .label_2 input[type="text"]{
+        width: 5rem;
+    }
+    /* table.table_preview{
+        margin: 1rem 1rem;
+    } */
+
+
+}

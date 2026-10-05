@@ -1,0 +1,257 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+.scroll_1{
+    overflow-x: auto;
+    margin: 0px;
+    padding: 30px;
+}
+.scroll_2{
+    overflow-x: auto;
+    margin: 0px;
+    padding: 5px;
+    width: 100%;
+}
+.center{
+    width: auto;
+}
+.drop_hover{
+    transition: 0.2s ease-out;
+}
+.drop_hover:hover{
+    filter:drop-shadow(0 0 0.3em rgb(180, 180, 180));
+}
+.shadow_hover :hover{
+    box-shadow:(0 0 5px 5px gray);
+}
+.shadow_1{
+    box-shadow: 0 0 0.5em 0.05em rgb(184, 184, 184);
+}
+.shadow_2{
+    box-shadow: 0 0 0.3em 0.01em rgb(184, 184, 184);    
+}
+.underline{
+    position: relative;
+    text-decoration: none;
+}
+.underline::after{
+    content: "";
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    width: 100%;
+    height: 2px;
+    background-color: darkgrey;
+    transform: scaleX(0);
+    transform-origin: left;
+    transition:transform 0.3s ease-out;
+}
+.underline:hover::after{
+    transform: scaleX(1);
+}
+body{
+    background-color: rgb(245, 245, 245);
+}
+input,select,option{
+    box-shadow: 0 0 0.3em 0.01em rgb(184, 184, 184);
+    background-color: none;
+    padding-left: 0.5em;
+    padding-right: 0.5em;
+    border: none;
+    border-radius: 0.3em;
+}
+input:focus,option:focus,select:focus{
+    outline: solid rgb(170, 170, 170) 1px;
+}
+.only_row{
+    white-space: nowrap;
+}
+/* login.php */
+.flex{
+    display: flex;
+    align-content: center;
+    flex-direction: column;
+    justify-content: center;
+}
+.input_content{
+    padding: 8px;
+    margin: 0.5em auto;
+}
+.input_content input,select,option{
+    width: 10em;
+    height: 2em;
+    font-size: 100%;
+    margin: 0 0.5em;
+}
+b{
+    font-size: 120%;
+    padding: 8px;
+    margin-bottom: 5px;
+}
+.center{
+    margin: 0 auto;
+}
+.bigger{
+    font-size: 130%;
+}
+.submit_button{
+    display: inline-block;
+    width: 150px;
+    height: auto;
+    background-color: #6dd8ff;
+    border: none;
+    border-radius: 15px;
+    transition-duration: 0.2s;
+    color: black;
+    text-decoration: none;
+    margin: 0.5em;
+    padding: 0.1em;
+    
+}
+.submit_button:hover{
+    background-color: #aee9ff;
+    transition-duration: 0.2s;
+    box-shadow: 0 0 0.5em 0.05em rgb(184, 184, 184);
+}
+input.button_color_yellow{
+    background-color: #fff173;
+}
+input.button_color_yellow:hover{
+    background-color: #fff8b7;
+}
+h1{
+    border-bottom: 1px gray solid;
+    padding: 1% 1% 1% 20%;
+    margin: 1%;
+}
+h2{
+    padding: 1% 1% 1% 20%;
+    margin-bottom: 0.2em;
+}
+a{
+	color: rgb(34, 34, 34);
+	text-decoration: none;
+	transition: 0.2s ease;
+}
+.link_hover *:hover{
+    color: rgb(235, 57, 57);
+}
+.box_1{
+    max-width: 1000px;
+    border:none;
+    border-radius: 20px;
+    background-color: white;
+    margin: 20px auto;
+    text-align: center;
+    padding: 1em;
+}
+.box_2{
+    max-width: 700px;
+    border:none;
+    border-radius: 20px;
+    background-color: white;
+    margin: 20px auto;
+    text-align: center;
+    padding: 1em;
+}
+table.separate{
+    border-collapse:separate;
+    border-radius: 10px;
+    border-spacing: 0 1.5rem;
+}
+.separate.th,.separate.td{
+    padding: 12px;
+}
+.separate.tr{
+    background-color: ghostwhite;
+}
+.back_button{
+    display: inline-block;
+    background-color: rgb(87, 87, 87);
+    border-radius: 10px;
+    transition: 0.2s ease;
+    width: 150px;
+    height: auto;
+    color: white;
+    text-decoration: none;
+    text-align: center;
+    box-shadow: 0 0 0.3em 0.01em rgb(184, 184, 184);  
+    margin: 0.5em;
+    padding: 0.1em; 
+}
+.back_button:hover{
+    background-color: rgb(128, 128, 128);
+    box-shadow: 0 0 0.5em 0.05em rgb(184, 184, 184);    
+}
+span.circle{
+    border-radius: 10px;
+    width: 2em;
+    font-size: smaller;
+    padding: 7px;
+    margin: 7px;
+}
+.button_1{
+    background-color: lightblue;
+}
+.text_center{
+    text-align: center;
+}
+.text_left{
+    text-align: left;
+}
+.text_right{
+    text-align: right;
+}
+#uplord_submit td{
+    margin: 3em 3em;
+}
+.banner {
+    width: 100%;
+    text-align: left;
+    padding: 10px 10px 10px 20%;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    cursor: pointer;
+    font-size: 16px;
+}
+.toggle_content{
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.4s ease-out;
+    border: 1px solid #ccc;
+    padding: 0 10px;
+}
+.toggle_content.active{
+    max-height: 200px;
+    padding: 10px;
+}
+.border-top{
+    border-top: 1px gray solid;
+    padding-top: px;
+}
+
+@media (max-width:767px) {
+    #logo_login{
+        max-width: 90%;
+    }
+    #login .box_2{
+        max-width: 90%;
+    }
+    .input_content input[type="text"],.input_content input[type="password"]{
+        width: 100%;
+    }
+    .input_content input[type="submit"]{
+        width: auto;
+    }
+    .box_2,.box_1{
+        max-width: 95%;
+        padding-right: 5px;
+        padding-left: 5px;
+    }
+    .input_content{
+        padding: 0;
+    }
+}
