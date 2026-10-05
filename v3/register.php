@@ -23,7 +23,7 @@ if (current_user()) {
 }
 
 // 今年度（4月始まり）。入学年度の選択肢の上限に使う
-$thisYear = (int)date('n') >= 4 ? (int)date('Y') : (int)date('Y') - 1;
+$thisYear = current_fiscal_year();
 $entryYears = range($thisYear, $thisYear - 30); // セレクトの選択肢（新しい順）
 
 $errors = [];

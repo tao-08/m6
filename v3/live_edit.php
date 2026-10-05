@@ -21,7 +21,7 @@ $liveId = (int)($_GET['id'] ?? $_POST['live_id'] ?? 0);
 $isNew = $liveId === 0; // id が無ければ「新規追加」モード
 
 // 今年度（4月始まり）。新規追加のときの年度の初期値
-$thisYear = (int)date('n') >= 4 ? (int)date('Y') : (int)date('Y') - 1;
+$thisYear = current_fiscal_year();
 
 if ($isNew) {
     $live = ['live_id' => 0, 'fiscal_year' => $thisYear, 'name' => ''];

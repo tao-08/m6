@@ -224,6 +224,51 @@ function fmt_year(mixed $year): string
     return ((int)$year) > 0 ? (int)$year . '年度' : '年度未設定';
 }
 
+/* ---------------------------------------------------------------------
+ *  年度・学年
+ *    年度は4月始まり。学年 = 今年度 - 入学年度 + 1（例: 2026年度に 2023入学 → 4年）
+ *    集計（stats.php）とメンバー一覧（members.php）など、複数のページで使うのでここにまとめている。
+ * ------------------------------------------------------------------- */
+
+/** 今年度。1〜3月は前の年が今年度になる（2027年2月 → 2026年度） */
+function current_fiscal_year(): int
+{
+    return (int)date('n') >= 4 ? (int)date('Y') : (int)date('Y') - 1;
+}
+
+/** 入学年度 → 学年（1, 2, …）。入学年度が無い・未来になっている（データの誤り）なら null */
+function grade_of(?int $entryYear): ?int
+{
+    if ($entryYear === null) {
+        return null;
+    }
+    $grade = current_fiscal_year() - $entryYear + 1;
+    return $grade >= 1 ? $grade : null;
+}
+
+/** 学年 → 表示（1〜4年生は「3年」、それ以降は「OB1」「OB2」…） */
+function grade_label(int $grade): string
+{
+    return $grade <= 4 ? $grade . '年' : 'OB' . ($grade - 4);
+}
+
+/**
+ * ログイン中ユーザーの入学年度。アカウントがメンバーに紐付いていない・未登録なら null。
+ * セッションには member_id しか入っていないので member テーブルから引く。
+ * （セッションに entry_year を入れると、後で名簿を直したときに古い値が残るため毎回 DB を見る）
+ */
+function my_entry_year(): ?int
+{
+    $memberId = current_user()['member_id'] ?? null;
+    if ($memberId === null) {
+        return null;
+    }
+    $st = db()->prepare('SELECT entry_year FROM member WHERE member_id = ?');
+    $st->execute([$memberId]);
+    $v = $st->fetchColumn();
+    return ($v === false || $v === null) ? null : (int)$v;
+}
+
 /** '13:30:00' → '13:30' */
 function fmt_time(?string $time): string
 {

@@ -148,9 +148,10 @@ h3 { font-size: 16px; }
 .hero { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; flex-wrap: wrap; margin: 16px 0 28px; }
 .hero .muted { margin: 12px 0 0; max-width: 600px; }
 .stats { display: flex; gap: 8px; margin: 0; }
-.stats div { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 16px; min-width: 86px; box-shadow: var(--shadow); }
-.stats dt { font-size: 11px; color: var(--muted); font-weight: 600; letter-spacing: .06em; }
-.stats dd { margin: 0; font-size: 26px; font-weight: 800; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+/* ページ上部の小さな数字（ライブ数・出演者数など）。主役は下の一覧なので控えめにしている。集計ページ（stats.php）では使っていない */
+.stats div { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 6px 12px; min-width: 64px; }
+.stats dt { font-size: 10px; color: var(--muted); font-weight: 600; letter-spacing: .06em; }
+.stats dd { margin: 0; font-size: 17px; font-weight: 800; letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
 .crumbs { display: flex; gap: 8px; font-size: 13px; color: var(--muted); margin-top: 8px; }
 
 /* ===== 5. 部品 ===== */
@@ -398,7 +399,8 @@ input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px;
 /* 該当するタブが選ばれていないときは、年度セレクトを隠す */
 .stats-filter:not(:has(input[name="who"][value="custom"]:checked)) [data-show-when="who=custom"],
 .stats-filter:not(:has(input[name="period"][value="year"]:checked)) [data-show-when="period=year"],
-.stats-filter:not(:has(input[name="period"][value="range"]:checked)) [data-show-when="period=range"] { display: none; }
+.stats-filter:not(:has(input[name="period"][value="range"]:checked)) [data-show-when="period=range"],
+.stats-filter:not(:has(input[name="who"][value="grade"]:checked)) [data-show-when="who=grade"] { display: none; }
 .stats-scope { margin: 0 0 14px; }
 .stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; margin-top: 14px; }
 .section-title--card { margin: 0 0 12px; }
@@ -473,8 +475,8 @@ code { background: var(--surface-2); padding: 1px 6px; border-radius: 6px; font-
   .footer { padding-bottom: 84px; }
   .hero { margin: 8px 0 20px; }
   .stats { width: 100%; }
-  .stats div { flex: 1; min-width: 0; padding: 8px 12px; }
-  .stats dd { font-size: 22px; }
+  .stats div { flex: 1; min-width: 0; padding: 5px 10px; }
+  .stats dd { font-size: 16px; }
   .card { padding: 16px; }
   .table-scroll { margin: 0 -16px -16px; }
   .table--edit td:first-child, .table--edit th:first-child { padding-left: 16px; }

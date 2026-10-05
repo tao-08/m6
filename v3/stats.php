@@ -26,13 +26,12 @@
  */
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
-$user = require_login();
+require_login();
 
 $pdo = db();
 $years = array_map('intval', $pdo->query('SELECT DISTINCT fiscal_year FROM live ORDER BY fiscal_year DESC')->fetchAll(PDO::FETCH_COLUMN));
 
-// 今年度（4月始まり）。1〜3月は前の年が今年度になる
-$thisYear = (int)date('n') >= 4 ? (int)date('Y') : (int)date('Y') - 1;
+$thisYear = current_fiscal_year(); // 今年度（lib/bootstrap.php）
 
 /** $_GET から整数を取り出す。無い・数字じゃない → null */
 function get_int(string $key): ?int
@@ -42,29 +41,9 @@ function get_int(string $key): ?int
     return is_int($v) ? $v : null;
 }
 
-/** 入学年度 → 学年ラベル（1〜4年生は「3年」、それ以降は「OB1」「OB2」…） */
-function grade_label(int $grade): string
-{
-    return $grade <= 4 ? $grade . '年' : 'OB' . ($grade - 4);
-}
-
-// =====================================================================
-//  ログイン中ユーザーの入学年度と学年
-//    セッションには member_id しか入っていないので、member テーブルから引く。
-//    （セッションに entry_year を入れると、後で名簿を直したときに古い値が残るため毎回 DB を見る）
-// =====================================================================
-$myEntry = null;
-if ($user['member_id'] !== null) {
-    $st = $pdo->prepare('SELECT entry_year FROM member WHERE member_id = ?');
-    $st->execute([$user['member_id']]);
-    $v = $st->fetchColumn();
-    $myEntry = ($v === false || $v === null) ? null : (int)$v;
-}
-// 学年 = 今年度 - 入学年度 + 1（例: 2026年度に 2023入学 → 4年）
-$myGrade = $myEntry !== null ? $thisYear - $myEntry + 1 : null;
-if ($myGrade !== null && $myGrade < 1) {
-    $myGrade = null; // 入学年度が未来になっている＝データの誤り。学年は「不明」扱い
-}
+// ログイン中ユーザーの入学年度と学年（入学年度が不明なら両方 null）
+$myGrade = grade_of(my_entry_year());
+$myEntry = $myGrade !== null ? $thisYear - $myGrade + 1 : null; // 学年から逆算（DB を2回引かない）
 
 // =====================================================================
 //  メンバーの絞り込み（?who=）
