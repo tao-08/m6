@@ -33,6 +33,9 @@
 -- =====================================================================
 
 SET NAMES utf8mb4;
+-- 作り直し用: すでにテーブルがあれば消してから作る。
+-- まっさらな DB に流すと「Note: #1051 '〜' は不明な表です」が表の数だけ出るが、
+-- これは「消そうとした表が最初から無かった」というだけの“お知らせ”で、エラーではない。
 SET FOREIGN_KEY_CHECKS = 0;
 DROP TABLE IF EXISTS song_performer, song, band_member, band, artist, live_day, live, venue, instrument, user_account, member;
 SET FOREIGN_KEY_CHECKS = 1;
