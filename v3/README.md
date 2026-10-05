@@ -80,7 +80,16 @@ live ──< live_day ──< band >── band_member ──< member ── use
 ## セットアップ
 
 1. phpMyAdmin で DB `abbey_v3`（照合順序 `utf8mb4_general_ci`）を作り、`schema.sql` をインポート
-2. `config.sample.php` を `config.php` にコピー
+2. `config.sample.php` を `config.php` にコピーし、`local` と `production` の DB 接続情報を書く
 3. `http://localhost/m6/v3/` → 新規登録（最初の人が管理者）→「取り込み」でタイムテーブルと名簿を入れる
+
+### 本番サーバーへのアップロード
+
+`config.php` にはローカルと本番の両方の設定が入っているので、`v3/` フォルダを**そのまま**アップロードすればよい。
+
+- どちらの設定を使うかは `lib/bootstrap.php` の `app_env()` が決める（Windows → `local`、それ以外 → `production`）
+- 本番も Windows だったり、自動判定を変えたいときは、サーバー側で環境変数 `APP_ENV` を `local` / `production` に設定する
+- 判定に `Host` ヘッダー（`$_SERVER['HTTP_HOST']`）は使わない。外から書き換えられるので、本番が local 設定（debug ON）で動いてしまう
+- DB の中身はアップロードでは移らない。phpMyAdmin でローカルの `abbey_v3` をエクスポート → 本番でインポートする
 
 機能の一覧・PDF 対応・コードを読む順番は v2 の README と同じ。v3 だけの追加は `artist.php`（アーティスト別の歴代コピー一覧・表記ゆれの統合）。
