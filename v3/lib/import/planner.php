@@ -39,6 +39,34 @@ function default_instrument_id(string $part): ?int
 }
 
 /**
+ * 「Key/その他」列で選べる楽器 = Vo / Gt / Ba / Dr 以外の楽器（キーボード、ヴァイオリン、サックス…）。
+ * 名簿の Key 列には「鍵盤以外の人」もまとめて書かれることがあるので、セルごとに選べるようにする。
+ */
+function extra_instruments(): array
+{
+    return array_values(array_filter(instruments(), static fn($i) => !in_array($i['short_name'], ['Vo', 'Gt', 'Ba', 'Dr'], true)));
+}
+
+/**
+ * 名前の後ろに楽器を書く書き方に対応する: 「丸野友多郎(Sax)」「村田侑斗（キーボード）」
+ *   → ['丸野友多郎', サックスの instrument_id]
+ * 括弧の中が楽器名でなければ、ただの名前として扱う。
+ * 1つのセルに「村田侑斗、丸野友多郎(Sax)」と書けば、1人ずつ違う楽器にできる。
+ */
+function parse_name_instrument(string $name): array
+{
+    if (preg_match('/^(.+?)[(（]([^()（）]+)[)）]$/u', $name, $m)) {
+        $label = mb_strtolower(trim(tt_width($m[2])));
+        foreach (instruments() as $ins) {
+            if ($label === mb_strtolower($ins['short_name']) || $label === mb_strtolower($ins['name'])) {
+                return [$m[1], (int)$ins['instrument_id']];
+            }
+        }
+    }
+    return [$name, null];
+}
+
+/**
  * ① ファイル群 → 取り込み計画
  *
  * @param array $files [['path' => 一時ファイル, 'name' => 元のファイル名], ...]
@@ -154,6 +182,7 @@ function classify_cells(PDO $pdo, array $cells): array
     $newKeys = [];
     foreach ($cells as $cell) {
         foreach (split_member_names((string)$cell) as $name) {
+            [$name] = parse_name_instrument($name); // 「名前(Sax)」の楽器部分は外して照合
             $key = member_key($name);
             if (!isset($index[$key])) {
                 $newKeys[$key] = $name;
@@ -163,7 +192,7 @@ function classify_cells(PDO $pdo, array $cells): array
 
     $result = [];
     foreach ($cells as $cell) {
-        $names = split_member_names((string)$cell);
+        $names = array_map(static fn($n) => parse_name_instrument($n)[0], split_member_names((string)$cell));
         if ($names === []) {
             $result[] = ['status' => '', 'hint' => ''];
             continue;
@@ -342,8 +371,12 @@ function commit_import_plan(PDO $pdo, array $plan, array $input): array
                 }
                 $assignments = [];
                 foreach ($roster['columns'] as $col => $_) {
+                    // 楽器の決め方（優先順）: ① 名前の後ろの (Sax) → ② セルごとの選択（Key/その他列） → ③ 列の楽器
+                    $cellInstrument = (int)($rb['ci'][$col] ?? 0);
+                    $cellInstrument = in_array($cellInstrument, $validInstruments, true) ? $cellInstrument : $colInstrument[$col];
                     foreach (split_member_names((string)($rb['c'][$col] ?? '')) as $name) {
-                        $assignments[] = [$name, $colInstrument[$col]];
+                        [$name, $named] = parse_name_instrument($name);
+                        $assignments[] = [$name, $named ?? $cellInstrument];
                     }
                 }
                 attach_members($pdo, $memberIndex, $bandIds[$slot], $assignments);

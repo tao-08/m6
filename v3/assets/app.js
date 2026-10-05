@@ -16,6 +16,7 @@
  *    data-pack          … 送信時に全項目を JSON 1個にまとめるフォーム
  *    data-rows          … バンド編集のメンバー行（追加・削除）
  *    data-print / data-autosubmit … 印刷ボタン / 選んだら即送信
+ *    data-song-list / data-add-song … 曲の編集
  * =====================================================================
  */
 
@@ -31,7 +32,52 @@ document.addEventListener('DOMContentLoaded', () => {
   setupPackedForm();
   setupMemberRows();
   setupSmallThings();
+  setupSongs();
 });
+
+/* ---------------------------------------------------------------------
+ * 曲の編集（songs_edit.php）
+ *   data-add-song       … 最後のカードをコピーして空の曲カードを足す
+ *   data-toggle-all     … そのカードの全員のチェックを一括で ON / OFF
+ *   data-performer-on   … チェックを外した人を薄く表示
+ * ------------------------------------------------------------------- */
+function setupSongs() {
+  const list = document.querySelector('[data-song-list]');
+  if (!list) return;
+
+  document.querySelector('[data-add-song]').addEventListener('click', () => {
+    const cards = list.querySelectorAll('[data-song-card]');
+    const last = cards[cards.length - 1];
+    const card = last.cloneNode(true);
+    const newIndex = Date.now(); // name="songs[3][title]" の 3 の部分を、他と被らない番号にする
+    card.querySelectorAll('[name]').forEach((el) => {
+      el.name = el.name.replace(/^songs\[[^\]]+\]/, `songs[${newIndex}]`);
+    });
+    card.querySelector('[name$="[title]"]').value = '';
+    card.querySelector('[name$="[id]"]').value = '';                       // 新しい曲として保存させる
+    card.querySelector('[name$="[delete]"]')?.closest('label').remove();  // 新しい曲に「削除」は不要
+    const order = card.querySelector('[name$="[order]"]');
+    order.value = String(Number(order.value || cards.length) + 1);
+    card.querySelectorAll('[data-performer-on]').forEach((cb) => { cb.checked = true; cb.closest('.performer').classList.remove('is-off'); });
+    card.classList.add('song-card--new');
+    list.appendChild(card);
+    card.querySelector('[name$="[title]"]').focus();
+  });
+
+  // カードが後から増えるので、list でまとめてイベントを受ける（イベント委譲）
+  list.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-toggle-all]');
+    if (!btn) return;
+    const boxes = [...btn.closest('[data-song-card]').querySelectorAll('[data-performer-on]')];
+    const turnOn = boxes.some((b) => !b.checked); // 1人でもOFFなら全員ON、全員ONなら全員OFF
+    boxes.forEach((b) => { b.checked = turnOn; b.closest('.performer').classList.toggle('is-off', !turnOn); });
+  });
+  list.addEventListener('change', (e) => {
+    if (e.target.matches('[data-performer-on]')) {
+      e.target.closest('.performer').classList.toggle('is-off', !e.target.checked);
+    }
+  });
+}
 
 /* ---------------------------------------------------------------------
  * こまごました動き

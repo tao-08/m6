@@ -126,6 +126,92 @@ function detach_members(PDO $pdo, int $bandId): void
 }
 
 /**
+ * バンドのメンバーを「フォームの内容と同じ状態」にそろえる（差分だけ更新）。
+ *
+ * ⚠ なぜ「全部消して入れ直す」をやめたか:
+ *   song_performer は band_member に ON DELETE CASCADE でぶら下がっている。
+ *   全部消すと、曲ごとの演奏記録まで道連れで消えてしまう。
+ *   → 「フォームから消えた (人, 楽器)」だけ DELETE、「新しく増えたもの」だけ INSERT する。
+ */
+function sync_band_members(PDO $pdo, array &$index, int $bandId, array $assignments): void
+{
+    // ほしい状態: "member_id-instrument_id" => true
+    $want = [];
+    foreach ($assignments as [$name, $instrumentId]) {
+        $want[find_or_create_member($pdo, $index, $name) . '-' . ($instrumentId ?? OTHER_INSTRUMENT_ID)] = true;
+    }
+    // 今の状態
+    $st = $pdo->prepare('SELECT member_id, instrument_id FROM band_member WHERE band_id = ?');
+    $st->execute([$bandId]);
+    $have = [];
+    foreach ($st as $r) {
+        $have[$r['member_id'] . '-' . $r['instrument_id']] = true;
+    }
+
+    $del = $pdo->prepare('DELETE FROM band_member WHERE band_id = ? AND member_id = ? AND instrument_id = ?');
+    foreach (array_diff_key($have, $want) as $key => $_) {   // 今あるけど、ほしくないもの
+        [$m, $i] = explode('-', $key);
+        $del->execute([$bandId, $m, $i]);
+    }
+    $ins = $pdo->prepare('INSERT IGNORE INTO band_member (band_id, member_id, instrument_id) VALUES (?, ?, ?)');
+    foreach (array_diff_key($want, $have) as $key => $_) {   // ほしいけど、まだ無いもの
+        [$m, $i] = explode('-', $key);
+        $ins->execute([$bandId, $m, $i]);
+    }
+}
+
+/**
+ * バンドの曲（セットリスト）と、曲ごとの演奏者を保存する。
+ *
+ * @param array $songs 上から順に
+ *   [['song_id' => 既存ならID / 新規なら null, 'title' => '曲名',
+ *     'performers' => [[member_id, instrument_id], ...]], ...]
+ *
+ *  1. フォームから消えた曲を DELETE（演奏者は CASCADE で消える）
+ *  2. track_no を 1,2,3... に振り直す（UNIQUE なので、いったん +100 に逃がしてから）
+ *  3. 曲ごとに演奏者を入れ直す。曲だけ別の楽器を弾いた人は、先に band_member にその楽器を足す
+ *     （song_performer の外部キーが band_member を指しているので、足さないと INSERT できない）
+ *  4. band.song_count を曲数に合わせる
+ */
+function save_songs(PDO $pdo, int $bandId, array $songs): void
+{
+    $st = $pdo->prepare('SELECT song_id FROM song WHERE band_id = ?');
+    $st->execute([$bandId]);
+    $existing = array_map('intval', $st->fetchAll(PDO::FETCH_COLUMN));
+    $keep = array_filter(array_map(static fn($s) => $s['song_id'], $songs));
+
+    $del = $pdo->prepare('DELETE FROM song WHERE song_id = ? AND band_id = ?');
+    foreach (array_diff($existing, $keep) as $id) {
+        $del->execute([$id, $bandId]);
+    }
+
+    $pdo->prepare('UPDATE song SET track_no = track_no + 100 WHERE band_id = ?')->execute([$bandId]);
+    $update = $pdo->prepare('UPDATE song SET track_no = ?, title = ? WHERE song_id = ? AND band_id = ?');
+    $insert = $pdo->prepare('INSERT INTO song (band_id, track_no, title) VALUES (?, ?, ?)');
+    $addRole = $pdo->prepare('INSERT IGNORE INTO band_member (band_id, member_id, instrument_id) VALUES (?, ?, ?)');
+    $clear = $pdo->prepare('DELETE FROM song_performer WHERE song_id = ?');
+    $addPerformer = $pdo->prepare('INSERT IGNORE INTO song_performer (song_id, band_id, member_id, instrument_id) VALUES (?, ?, ?, ?)');
+
+    foreach (array_values($songs) as $i => $song) {
+        if ($song['song_id'] && in_array($song['song_id'], $existing, true)) {
+            $update->execute([$i + 1, $song['title'], $song['song_id'], $bandId]);
+            $songId = $song['song_id'];
+        } else {
+            $insert->execute([$bandId, $i + 1, $song['title']]);
+            $songId = (int)$pdo->lastInsertId();
+        }
+        $clear->execute([$songId]);
+        foreach ($song['performers'] as [$memberId, $instrumentId]) {
+            $addRole->execute([$bandId, $memberId, $instrumentId]);
+            $addPerformer->execute([$songId, $bandId, $memberId, $instrumentId]);
+        }
+    }
+    if ($songs) {
+        $pdo->prepare('UPDATE band SET song_count = ? WHERE band_id = ?')->execute([count($songs), $bandId]);
+    }
+}
+
+/**
  * 日程を削除する。band / band_member は ON DELETE CASCADE で DB が一緒に消す。
  * 日程が1つも無くなったライブも消す。
  */
@@ -152,7 +238,7 @@ function delete_band(PDO $pdo, int $bandId): void
 /**
  * 2人のメンバーを1人にまとめる（表記ゆれで同じ人が2人登録されたとき用）。
  *
- *   1. INSERT IGNORE ... SELECT で、統合元の出演記録を統合先の名前でコピー
+ *   1. INSERT IGNORE ... SELECT で、統合元の出演記録（バンド・曲）を統合先の名前でコピー
  *      （統合先にすでに同じ (バンド, 楽器) があれば主キーで弾かれる = 重複しない）
  *   2. 統合元の出演記録を消す
  *   3. ふりがな・入部年度は、統合先が空なら引き継ぐ
@@ -165,6 +251,10 @@ function merge_members(PDO $pdo, int $fromId, int $toId): void
     }
     $pdo->prepare('INSERT IGNORE INTO band_member (band_id, member_id, instrument_id)
         SELECT band_id, ?, instrument_id FROM band_member WHERE member_id = ?')->execute([$toId, $fromId]);
+    // 曲ごとの演奏記録も同じようにコピー（band_member を先にコピーしたので外部キーを満たせる）
+    $pdo->prepare('INSERT IGNORE INTO song_performer (song_id, band_id, member_id, instrument_id)
+        SELECT song_id, band_id, ?, instrument_id FROM song_performer WHERE member_id = ?')->execute([$toId, $fromId]);
+    // 統合元の band_member を消すと、統合元の song_performer も CASCADE で消える
     $pdo->prepare('DELETE FROM band_member WHERE member_id = ?')->execute([$fromId]);
 
     // COALESCE(a, b): a が NULL なら b を使う

@@ -83,7 +83,6 @@ $artists = rows($pdo, 'SELECT a.artist_id, a.name, COUNT(*) AS n
     JOIN live lm ON lm.live_id = ld.live_id
     WHERE 1 = 1' . $yearSql . '
     GROUP BY a.artist_id
-    HAVING n >= 2
     ORDER BY n DESC, a.name LIMIT 20', $yearParams);
 
 // ---- 楽器別 ----
@@ -105,6 +104,86 @@ $venues = rows($pdo, 'SELECT v.name, COUNT(DISTINCT ld.live_day_id) AS days, COU
     LEFT JOIN band b ON b.live_day_id = ld.live_day_id
     WHERE 1 = 1' . $yearSql . '
     GROUP BY v.venue_id ORDER BY days DESC, bands DESC', $yearParams);
+
+// =====================================================================
+//  個人ランキング
+// =====================================================================
+
+// ---- 最多出演（バンド数） ----
+$topBands = rows($pdo, 'SELECT m.member_id, m.name, COUNT(DISTINCT bm.band_id) AS n
+    FROM (' . MEMBERSHIP_SQL . ') bm
+    JOIN member m ON m.member_id = bm.member_id
+    JOIN band b ON b.band_id = bm.band_id
+    JOIN live_day ld ON ld.live_day_id = b.live_day_id
+    JOIN live lm ON lm.live_id = ld.live_id
+    WHERE 1 = 1' . $yearSql . '
+    GROUP BY m.member_id ORDER BY n DESC, m.name LIMIT 10', $yearParams);
+
+// ---- 最多演奏曲数 ----
+//   曲が登録されているバンド → その人が演奏した曲の数（song_performer）
+//   曲が未登録のバンド       → バンドの曲数（band.song_count）で代用
+//   CASE WHEN で「どちらを使うか」をバンドごとに切り替えている
+$topSongs = rows($pdo, 'SELECT m.member_id, m.name,
+        SUM(CASE WHEN sc.c IS NULL THEN b.song_count ELSE COALESCE(mine.n, 0) END) AS n
+    FROM (' . MEMBERSHIP_SQL . ') bm
+    JOIN member m ON m.member_id = bm.member_id
+    JOIN band b ON b.band_id = bm.band_id
+    JOIN live_day ld ON ld.live_day_id = b.live_day_id
+    JOIN live lm ON lm.live_id = ld.live_id
+    LEFT JOIN (SELECT band_id, COUNT(*) AS c FROM song GROUP BY band_id) sc ON sc.band_id = b.band_id
+    LEFT JOIN (SELECT band_id, member_id, COUNT(DISTINCT song_id) AS n FROM song_performer GROUP BY band_id, member_id) mine
+        ON mine.band_id = bm.band_id AND mine.member_id = bm.member_id
+    WHERE 1 = 1' . $yearSql . '
+    GROUP BY m.member_id ORDER BY n DESC, m.name LIMIT 10', $yearParams);
+
+// ---- 1日の最多掛け持ち ----
+$topMulti = rows($pdo, 'SELECT m.member_id, m.name, lm.name AS live_name, ld.label, COUNT(DISTINCT b.band_id) AS n
+    FROM (' . MEMBERSHIP_SQL . ') bm
+    JOIN member m ON m.member_id = bm.member_id
+    JOIN band b ON b.band_id = bm.band_id
+    JOIN live_day ld ON ld.live_day_id = b.live_day_id
+    JOIN live lm ON lm.live_id = ld.live_id
+    WHERE 1 = 1' . $yearSql . '
+    GROUP BY m.member_id, ld.live_day_id
+    HAVING n >= 2
+    ORDER BY n DESC, m.name LIMIT 10', $yearParams);
+
+// ---- レパートリーが広い人（コピーしたアーティストの種類） ----
+$topArtistsPerson = rows($pdo, 'SELECT m.member_id, m.name, COUNT(DISTINCT b.artist_id) AS n
+    FROM (' . MEMBERSHIP_SQL . ') bm
+    JOIN member m ON m.member_id = bm.member_id
+    JOIN band b ON b.band_id = bm.band_id
+    JOIN live_day ld ON ld.live_day_id = b.live_day_id
+    JOIN live lm ON lm.live_id = ld.live_id
+    WHERE b.artist_id IS NOT NULL' . $yearSql . '
+    GROUP BY m.member_id ORDER BY n DESC, m.name LIMIT 10', $yearParams);
+
+// ---- 楽器ごとの1位 ----
+//   楽器 × 人 で数えて、PHP で楽器ごとに一番多い人だけ残す
+$instrumentKings = [];
+foreach (rows($pdo, 'SELECT i.instrument_id, i.short_name, i.name AS instrument_name, m.member_id, m.name, COUNT(DISTINCT bm.band_id) AS n
+    FROM band_member bm
+    JOIN instrument i ON i.instrument_id = bm.instrument_id
+    JOIN member m ON m.member_id = bm.member_id
+    JOIN band b ON b.band_id = bm.band_id
+    JOIN live_day ld ON ld.live_day_id = b.live_day_id
+    JOIN live lm ON lm.live_id = ld.live_id
+    WHERE 1 = 1' . $yearSql . '
+    GROUP BY i.instrument_id, m.member_id
+    ORDER BY i.sort_order, n DESC, m.name', $yearParams) as $r) {
+    $instrumentKings[$r['instrument_id']] ??= $r; // ??= は「まだ無ければ入れる」→ 各楽器の最初の1行（=最多）だけ残る
+}
+
+// ---- よく演奏される曲（曲名 × アーティスト） ----
+$topTitles = rows($pdo, 'SELECT s.title, a.artist_id, a.name AS artist_name, COUNT(*) AS n
+    FROM song s
+    JOIN band b ON b.band_id = s.band_id
+    LEFT JOIN artist a ON a.artist_id = b.artist_id
+    JOIN live_day ld ON ld.live_day_id = b.live_day_id
+    JOIN live lm ON lm.live_id = ld.live_id
+    WHERE 1 = 1' . $yearSql . '
+    GROUP BY a.artist_id, s.title
+    ORDER BY n DESC, s.title LIMIT 15', $yearParams);
 
 $maxArtist = $artists ? max(array_column($artists, 'n')) : 1;
 $maxSlots = $instrumentStats ? max(array_column($instrumentStats, 'slots')) : 1;
@@ -142,6 +221,42 @@ render_header('集計', 'stats');
     </table>
 </div>
 
+<?php
+/** ランキング1枚分のカードを出す小さな関数（同じ HTML を何回も書かないため） */
+function ranking_card(string $title, array $rows, callable $label, string $unit, string $empty = 'データがありません'): void
+{ ?>
+    <section class="card">
+        <h2 class="section-title section-title--card"><?= h($title) ?></h2>
+        <?php if (!$rows): ?><p class="muted small"><?= h($empty) ?></p><?php endif; ?>
+        <ol class="ranking">
+            <?php foreach ($rows as $r): ?>
+                <li><span><?= $label($r) /* $label は HTML を返す。中で必ず h() すること */ ?></span><span class="pill"><?= (int)$r['n'] ?><?= h($unit) ?></span></li>
+            <?php endforeach; ?>
+        </ol>
+    </section>
+<?php }
+$memberLink = static fn($r) => '<a href="member.php?id=' . (int)$r['member_id'] . '">' . h($r['name']) . '</a>';
+?>
+
+<h2 class="section-title">👤 個人ランキング</h2>
+<div class="stats-grid">
+    <?php ranking_card('🎤 最多出演（バンド数）', $topBands, $memberLink, '組'); ?>
+    <?php ranking_card('🎵 最多演奏曲数', $topSongs, $memberLink, '曲'); ?>
+    <?php ranking_card('🔥 1日の最多掛け持ち', $topMulti,
+        static fn($r) => $memberLink($r) . ' <span class="muted small">' . h($r['live_name'] . ' ' . $r['label']) . '</span>', '組',
+        '1日に2バンド以上出た人はいません'); ?>
+    <?php ranking_card('🌈 レパートリーの広さ（アーティスト数）', $topArtistsPerson, $memberLink, '組'); ?>
+    <section class="card">
+        <h2 class="section-title section-title--card">🏅 楽器ごとの1位</h2>
+        <ul class="ranking ranking--plain">
+            <?php foreach ($instrumentKings as $k): ?>
+                <li><span><span class="part part--<?= h(instrument_class($k['short_name'])) ?>"><?= h($k['short_name']) ?></span> <?= $memberLink($k) ?></span><span class="pill"><?= (int)$k['n'] ?>組</span></li>
+            <?php endforeach; ?>
+        </ul>
+    </section>
+</div>
+
+<h2 class="section-title">🤝 組み合わせ・その他</h2>
 <div class="stats-grid">
     <section class="card">
         <h2 class="section-title section-title--card">🤝 よく組むペア</h2>
@@ -164,8 +279,8 @@ render_header('集計', 'stats');
     </section>
 
     <section class="card">
-        <h2 class="section-title section-title--card">🎸 よくコピーされるアーティスト</h2>
-        <?php if (!$artists): ?><p class="muted small">2回以上コピーされたアーティストはまだいません</p><?php endif; ?>
+        <h2 class="section-title section-title--card">🎸 コピーされたアーティスト ランキング</h2>
+        <?php if (!$artists): ?><p class="muted small">データがありません</p><?php endif; ?>
         <ul class="bars">
             <?php foreach ($artists as $a): ?>
                 <li>
@@ -176,6 +291,10 @@ render_header('集計', 'stats');
             <?php endforeach; ?>
         </ul>
     </section>
+
+    <?php ranking_card('💿 よく演奏される曲', $topTitles,
+        static fn($r) => h($r['title']) . ($r['artist_name'] ? ' <a class="muted small" href="artist.php?id=' . (int)$r['artist_id'] . '">' . h($r['artist_name']) . '</a>' : ''),
+        '回', '曲（セットリスト）がまだ登録されていません'); ?>
 
     <section class="card">
         <h2 class="section-title section-title--card">🥁 楽器別</h2>

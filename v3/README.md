@@ -10,8 +10,9 @@ v2（既存の `local_abbeydb` に合わせた版）と**画面・機能は同�
 
 ```
 live ──< live_day ──< band >── band_member ──< member ── user_account
-            │           │          │
-          venue       artist   instrument
+            │          │  │        │    ╲
+          venue   artist  │   instrument ╲
+                          └──< song ──< song_performer（曲ごとに誰が何を弾いたか）
 ```
 
 | テーブル | 主キー | ポイント |
@@ -24,6 +25,8 @@ live ──< live_day ──< band >── band_member ──< member ── use
 | `instrument` | instrument_id | `sort_order` で表示順を DB が持つ。「ギターボーカル」は作らない |
 | `band_member` | **(band_id, member_id, instrument_id)** | 唯一の中間テーブル。兼任は2行 |
 | `member` | member_id | `UNIQUE(name)`、ふりがな・入部年度は不明なら `NULL` |
+| `song` | song_id | **新設**。セットリスト。`UNIQUE(band_id, track_no)` |
+| `song_performer` | **(song_id, member_id, instrument_id)** | **新設**。外部キーを `band_member(band_id, member_id, instrument_id)` に張り、「バンドにいない人・楽器」を曲の演奏者にできないことを DB が保証 |
 | `user_account` | user_id | `UNIQUE(login_id)`、`UNIQUE(member_id)`（1メンバー1アカウント）、`is_admin` は `NOT NULL` |
 
 ## v2（local_abbeydb）から何を変えたか・なぜか
@@ -52,6 +55,27 @@ live ──< live_day ──< band >── band_member ──< member ── use
 - `renumber_bands()`: 出演順が UNIQUE なので、並べ替えは「いったん +1000 に逃がしてから振り直す」2段階
 - `live_edit.php`: UNIQUE 違反（SQLSTATE 23000）を catch してメッセージにしている
 - `INSERT IGNORE` は UNIQUE 以外のエラー（外部キー違反など）も黙って無視する。入れる値は事前にチェックすること
+
+## 曲（セットリスト）と曲ごとの演奏者
+
+- ライブ詳細の各バンドの「♪ 曲を登録」→ `songs_edit.php`
+- 1曲 = 1枚のカード。メンバーごとに ☑（演奏したか）と楽器1・楽器2（ギターボーカルなら Vo と Gt）
+- 曲だけ持ち替えた楽器は `band_member` にも自動で足される（`song_performer` の外部キーを満たすため）
+- ライブ詳細ではセットリストを開くと、「Aは不参加」「B: Key」など**いつもと違うところだけ**表示
+- バンド編集でメンバーを外すと、その人の曲ごとの記録も `ON DELETE CASCADE` で消える
+  → そのためバンド編集は「全部消して入れ直す」ではなく「差分だけ更新」（`sync_band_members()`）に変えた
+
+すでに `abbey_v3` を作ってある人は `migrations/002_songs.sql` を追加で流すこと。
+
+## 取り込みプレビューの Key / その他 列
+
+名簿の「Key./その他」列は、セルごとにキーボード・コーラス・パーカッション・ヴァイオリン・サックス・その他から楽器を選べる。
+1つのセルに2人いて楽器が違うときは `村田侑斗、丸野友多郎(Sax)` のように名前の後ろに書く。
+
+## 集計（stats.php）
+
+- 個人: 最多出演 / 最多演奏曲数（曲が登録されていればその人が弾いた曲数、無ければバンドの曲数）/ 1日の最多掛け持ち / レパートリーの広さ / 楽器ごとの1位
+- 組み合わせ・その他: よく組むペア / トリ回数 / コピーされたアーティスト ランキング / よく演奏される曲 / 楽器別 / 会場
 
 ## セットアップ
 

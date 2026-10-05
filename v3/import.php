@@ -344,7 +344,8 @@ if ($plan === null): // ==================== アップロード画面 ==========
         <span><i class="swatch swatch--ok"></i>DB に登録済み</span>
         <span><i class="swatch swatch--similar"></i>似た人がいる（書き間違い？）</span>
         <span><i class="swatch swatch--new"></i>新しいメンバーとして登録</span>
-        <span class="muted small">セルにマウスを乗せる（スマホはタップ）と理由が出ます。1つのセルに2人なら「、」で区切る。</span>
+        <span class="muted small">セルにマウスを乗せる（スマホはタップ）と理由が出ます。1つのセルに2人なら「、」で区切る。
+            Key/その他の列は下のセレクトで楽器（キーボード・ヴァイオリン・サックス…）を選べます。1人ずつ変えたいときは「丸野友多郎(Sax)」のように名前の後ろに書く。</span>
     </div>
 
     <?php foreach ($plan['rosters'] as $ri => $roster): ?>
@@ -393,13 +394,23 @@ if ($plan === null): // ==================== アップロード画面 ==========
                             <td class="strong nowrap"><?= h($band['band_name']) ?>
                                 <?php if ($band['key_note'] !== ''): ?><div class="muted small">🎹 <?= h($band['key_note']) ?></div><?php endif; ?>
                             </td>
-                            <?php foreach ($roster['columns'] as $col => $_):
+                            <?php foreach ($roster['columns'] as $col => $c):
                                 $k = "$ri-$bi-$col";
                                 $stt = $cellStatus[$k] ?? ['status' => '', 'hint' => '']; ?>
                                 <td>
                                     <input name="rb[<?= $ri ?>][<?= $bi ?>][c][<?= $col ?>]" value="<?= h($cellTexts[$k]) ?>"
                                            class="name-input<?= $stt['status'] ? ' is-' . h($stt['status']) : '' ?>"
                                            title="<?= h($stt['hint']) ?>" data-name-cell aria-label="メンバー">
+                                    <?php if (in_array($c['part'], ['Key', 'Other'], true)):
+                                        // Key/その他の列だけ、人（セル）ごとに楽器を選べる。初期値は「列の楽器」
+                                        $ci = (int)($form['rb'][$ri][$bi]['ci'][$col] ?? 0); ?>
+                                        <select name="rb[<?= $ri ?>][<?= $bi ?>][ci][<?= $col ?>]" class="select-sm cell-instrument" aria-label="この人の楽器">
+                                            <option value="">列の楽器</option>
+                                            <?php foreach (extra_instruments() as $ins): ?>
+                                                <option value="<?= (int)$ins['instrument_id'] ?>"<?= $ci === (int)$ins['instrument_id'] ? ' selected' : '' ?>><?= h($ins['short_name']) ?> <?= h($ins['name']) ?></option>
+                                            <?php endforeach; ?>
+                                        </select>
+                                    <?php endif; ?>
                                 </td>
                             <?php endforeach; ?>
                         </tr>

@@ -348,6 +348,8 @@ input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px;
 .table--roster td:first-child { min-width: 220px; }
 .col-head { margin-bottom: 4px; color: var(--text); }
 .select-sm { font-size: 12px !important; padding: 5px 6px !important; }
+.cell-instrument { margin-top: 4px; }
+.ranking--plain li::before { content: none; }
 .status { font-size: 12px; font-weight: 700; padding: 3px 9px; border-radius: 999px; }
 .status--ok { color: var(--ok); background: var(--ok-bg); }
 .status--new { color: var(--danger); background: var(--danger-bg); }
@@ -394,6 +396,28 @@ input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px;
 .inline-form { display: inline; }
 .table-scroll--flush { margin: 0; border-top: 0; }
 code { background: var(--surface-2); padding: 1px 6px; border-radius: 6px; font-size: .9em; }
+
+/* ===== 曲（セットリスト） ===== */
+.song-list { display: grid; gap: 12px; margin-bottom: 12px; }
+.song-card { display: grid; gap: 12px; padding: 16px 18px; }
+.song-card--new { border-style: dashed; }
+.song-card__head { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.song-card__no { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); font-weight: 700; }
+.song-card__no input { width: 56px !important; padding: 7px 8px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); }
+.song-card__title { flex: 1; min-width: 180px; padding: 9px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--surface); font-weight: 700; font-size: 16px; }
+.check--danger { color: var(--danger); font-size: 13px; }
+.performers { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 6px 14px; }
+.performers__tools { grid-column: 1 / -1; }
+.performer { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 6px; align-items: center; padding: 6px 8px; border-radius: 8px; background: var(--surface-2); }
+.performer.is-off { opacity: .45; }
+.performer select { padding: 4px 6px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); font-size: 12px; }
+.performer__name { font-size: 14px; font-weight: 600; min-width: 0; }
+/* ライブ詳細のセットリスト */
+.setlist { margin-top: 10px; font-size: 13px; }
+.setlist summary { cursor: pointer; color: var(--muted); font-weight: 700; }
+.setlist ol { margin: 8px 0 0; padding-left: 1.6em; display: grid; gap: 4px; }
+.setlist li::marker { color: var(--muted); font-weight: 700; }
+.setlist__who { color: var(--muted); font-size: 12px; margin-left: 6px; }
 
 /* ===== 印刷（ライブ詳細の「印刷」ボタン） ===== */
 @media print {

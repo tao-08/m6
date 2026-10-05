@@ -73,6 +73,8 @@ function split_member_names(string $cell): array
         if ($chunk === '') {
             continue;
         }
+        // 「丸野友多郎 (Sax)」のように括弧の前に空白があっても、別人として分けないよう詰める
+        $chunk = preg_replace('/\s+(?=[(（])/u', '', $chunk) ?? $chunk;
         $parts = preg_split('/\s+/u', $chunk) ?: [$chunk];
         $allLong = count($parts) > 1;
         foreach ($parts as $p) {

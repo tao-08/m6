@@ -6,8 +6,8 @@
  *    band_edit.php?id=バンドID   … 既存バンドの編集
  *    band_edit.php?day=日程ID    … その日程に新しいバンドを追加
  *
- *  メンバーは「一度全部消して、フォームの内容で入れ直す」方式。
- *  （トランザクションの中でやるので、途中で失敗しても消えたままにはならない）
+ *  メンバーは「フォームの内容との差分だけ」更新する（sync_band_members）。
+ *  曲ごとに誰が演奏したかは songs_edit.php で編集する。
  *
  *  出演順を変えると、同じ日のほかのバンドも 1,2,3... と振り直される（renumber_bands）。
  * =====================================================================
@@ -120,9 +120,9 @@ if (is_post()) {
             } else {
                 $pdo->prepare('UPDATE band SET artist_id = ?, name = ?, song_count = ?, start_time = ?, end_time = ?, note = ?
                     WHERE band_id = ?')->execute([...$values, $bandId]);
-                detach_members($pdo, $bandId);           // 一度全部消して
             }
-            attach_members($pdo, $index, $bandId, $rows); // 入れ直す
+            // 差分だけ更新（全部消すと曲ごとの演奏記録が CASCADE で消えるため。sync_band_members の説明参照）
+            sync_band_members($pdo, $index, $bandId, $rows);
             renumber_bands($pdo, $dayId, $bandId, $order);
             $pdo->commit();
         } catch (Throwable $e) {
@@ -190,6 +190,7 @@ render_header($isNew ? 'バンドを追加' : 'バンドを編集', 'lives');
     <datalist id="member-names"><?php foreach ($allNames as $n): ?><option value="<?= h($n) ?>"><?php endforeach; ?></datalist>
 
     <div class="form-actions">
+        <?php if (!$isNew): ?><a class="btn btn--ghost" href="songs_edit.php?band=<?= (int)$band['band_id'] ?>">♪ 曲・演奏者を編集</a><?php endif; ?>
         <a class="btn btn--ghost" href="<?= h($backUrl) ?>">キャンセル</a>
         <button class="btn btn--primary" type="submit"><?= $isNew ? '追加する' : '保存する' ?></button>
     </div>

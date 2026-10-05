@@ -7,6 +7,7 @@
  *    1. 日程（live_day）一覧
  *    2. その全日程のバンド（band）
  *    3. その全バンドのメンバーと楽器（band_member）
+ *    4. その全バンドの曲（song）と曲ごとの演奏者（song_performer）
  *  「バンドごとに SQL を1回ずつ投げる」と、バンド30組なら30回になって遅い（N+1問題）。
  *  まとめて取ってから PHP の配列で振り分けるほうが速い。
  *
@@ -52,7 +53,7 @@ foreach ($st as $b) { // PDOStatement はそのまま foreach で1行ずつ回�
 
 // ---- 3. メンバー（バンドごと → 楽器ごとに振り分け） ----
 // 楽器の並び順は instrument.sort_order（DB が持っている）で ORDER BY
-$st = $pdo->prepare('SELECT bm.band_id, m.member_id, m.name, i.short_name, i.name AS instrument_name, i.sort_order
+$st = $pdo->prepare('SELECT bm.band_id, m.member_id, m.name, bm.instrument_id, i.short_name, i.name AS instrument_name, i.sort_order
     FROM band_member bm
     JOIN member m ON m.member_id = bm.member_id
     JOIN instrument i ON i.instrument_id = bm.instrument_id
@@ -68,6 +69,74 @@ foreach ($st as $m) {
     $part['title'] = $m['instrument_name'];
     $part['members'][] = $m;
     unset($part);
+}
+
+// ---- 4. 曲（セットリスト）と曲ごとの演奏者 ----
+$st = $pdo->prepare('SELECT s.song_id, s.band_id, s.track_no, s.title FROM song s
+    JOIN band b ON b.band_id = s.band_id JOIN live_day d ON d.live_day_id = b.live_day_id
+    WHERE d.live_id = ? ORDER BY s.track_no');
+$st->execute([$liveId]);
+$songsByBand = [];
+foreach ($st as $s) {
+    $songsByBand[$s['band_id']][$s['song_id']] = $s + ['players' => []];
+}
+$st = $pdo->prepare('SELECT s.band_id, sp.song_id, sp.member_id, m.name, i.short_name, sp.instrument_id FROM song_performer sp
+    JOIN song s ON s.song_id = sp.song_id JOIN member m ON m.member_id = sp.member_id
+    JOIN instrument i ON i.instrument_id = sp.instrument_id
+    JOIN band b ON b.band_id = s.band_id JOIN live_day d ON d.live_day_id = b.live_day_id
+    WHERE d.live_id = ?');
+$st->execute([$liveId]);
+foreach ($st as $r) {
+    $songsByBand[$r['band_id']][$r['song_id']]['players'][(int)$r['member_id']][] = $r;
+}
+
+/**
+ * 曲ごとの「いつもと違うところ」だけを短い文にする。
+ *
+ * 「いつも」= そのバンドの曲の中で一番多い楽器の組み合わせ（最頻値）。
+ *   例: 4曲中3曲 Gt、1曲だけ Key → その1曲にだけ「鈴木: Key」と出す。
+ * band_member（バンドでの担当）と比べないのは、曲で持ち替えた楽器も band_member に足されるため
+ * （Gt と Key の両方が担当になり、どの曲も「いつもと違う」になってしまう）。
+ */
+function song_notes(array $songs, array $lineup): array
+{
+    $names = [];
+    foreach ($lineup as $part) {
+        foreach ($part['members'] as $m) {
+            $names[(int)$m['member_id']] = $m['name'];
+        }
+    }
+    // メンバーごとに「楽器の組み合わせ → 何曲あったか」を数える
+    $counts = [];
+    $sets = [];
+    foreach ($songs as $songId => $song) {
+        foreach ($song['players'] as $memberId => $rows) {
+            $shorts = array_column($rows, 'short_name');
+            sort($shorts);
+            $sets[$songId][$memberId] = implode('/', $shorts);
+            $counts[$memberId][$sets[$songId][$memberId]] = ($counts[$memberId][$sets[$songId][$memberId]] ?? 0) + 1;
+        }
+    }
+    $usual = array_map(static function ($c) {
+        arsort($c);              // 多い順に並べて
+        return array_key_first($c); // 一番多い組み合わせ
+    }, $counts);
+
+    $notes = [];
+    foreach ($songs as $songId => $song) {
+        $parts = [];
+        $absent = array_diff_key($names, $song['players']);
+        if ($absent) {
+            $parts[] = implode('・', $absent) . ' は不参加';
+        }
+        foreach ($sets[$songId] ?? [] as $memberId => $set) {
+            if ($set !== ($usual[$memberId] ?? $set)) {
+                $parts[] = $song['players'][$memberId][0]['name'] . ': ' . $set;
+            }
+        }
+        $notes[$songId] = implode('、', $parts);
+    }
+    return $notes;
 }
 
 $totalBands = array_sum(array_map('count', $bandsByDay));
@@ -174,7 +243,20 @@ render_header($live['name'], 'lives');
                     <?php else: ?>
                         <p class="muted small">メンバー未登録</p>
                     <?php endif; ?>
+                    <?php if (!empty($songsByBand[$b['band_id']])): ?>
+                        <!-- セットリスト。<details> なので普段は閉じていて、タップで開く -->
+                        <details class="setlist">
+                            <summary>♪ セットリスト（<?= count($songsByBand[$b['band_id']]) ?>曲）</summary>
+                            <ol>
+                                <?php $notes = song_notes($songsByBand[$b['band_id']], $lineup);
+                                foreach ($songsByBand[$b['band_id']] as $songId => $song): $diff = $notes[$songId]; ?>
+                                    <li><?= h($song['title']) ?><?php if ($diff !== ''): ?><span class="setlist__who"><?= h($diff) ?></span><?php endif; ?></li>
+                                <?php endforeach; ?>
+                            </ol>
+                        </details>
+                    <?php endif; ?>
                     <p class="slot__meta">
+                        <a class="no-print" href="songs_edit.php?band=<?= (int)$b['band_id'] ?>">♪ 曲を<?= empty($songsByBand[$b['band_id']]) ? '登録' : '編集' ?></a>
                         <?php if ($b['artist_name'] && $b['artist_name'] !== $b['name']): ?>
                             <a href="artist.php?id=<?= (int)$b['artist_id'] ?>">♪ <?= h($b['artist_name']) ?></a>
                         <?php elseif ($b['artist_id']): ?>
