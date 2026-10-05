@@ -188,7 +188,8 @@ h3 { font-size: 16px; }
 .flash--warn { background: var(--warn-bg); color: var(--warn); }
 .flash--info { background: var(--surface-2); color: var(--muted); }
 
-.toolbar { display: flex; gap: 10px; margin-bottom: 20px; align-items: center; }
+.toolbar { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; align-items: center; }
+.toolbar .search { min-width: 12em; } /* 狭い画面ではボタンが次の行に回る */
 input, select, textarea { font: inherit; color: inherit; }
 .search, .field input, .field select, .member-row-edit input, .member-row-edit select, .table--edit input, .table--edit select {
   width: 100%; padding: 10px 13px; border-radius: var(--radius-sm); border: 1px solid var(--border);
@@ -386,6 +387,7 @@ input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px;
 .stats-filter__row { border: 0; margin: 0; padding: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; min-width: 0; }
 .stats-filter__row legend { float: left; width: 4.5em; padding: 0; font-size: 12px; font-weight: 800; color: var(--muted); }
 .tabs--filter { position: static; margin: 0; box-shadow: none; }
+.tabs--static { position: static; box-shadow: none; } /* 新規追加ページのタブ（スクロールで追いかけてこない） */
 .tabs--filter .tab { cursor: pointer; }
 .tabs--filter .tab input { position: absolute; opacity: 0; pointer-events: none; }
 .tabs--filter .tab:has(input:checked) { background: var(--accent); color: var(--on-accent); }

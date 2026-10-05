@@ -1,7 +1,7 @@
 <?php
 /**
  * =====================================================================
- *  import.php — タイムテーブル & 名簿の取り込み
+ *  import.php — タイムテーブル & 名簿の取り込み（「新規追加」ページの「ファイルから取り込む」タブ）
  * =====================================================================
  *  画面の流れ（1つのファイルで3つの状態を切り替えている）
  *
@@ -165,16 +165,12 @@ if (is_post()) {
 $plan = $_SESSION['import_plan'] ?? null;
 $form = $_SESSION['import_form'] ?? []; // 登録失敗で戻ってきたときの入力内容
 
-render_header('取り込み', 'import');
+render_header($plan === null ? '新規追加' : '取り込み', 'import');
 
-if ($plan === null): // ==================== アップロード画面 ==================== ?>
-<section class="hero">
-    <div>
-        <p class="eyebrow">Import</p>
-        <h1 class="display">タイムテーブルを取り込む</h1>
-        <p class="muted">タイムテーブルと名簿をまとめて選べばOK。中身を見て自動で判別・照合し、登録前にプレビューで直せます。</p>
-    </div>
-</section>
+if ($plan === null): // ==================== アップロード画面 ====================
+    $addTab = 'file';
+    require __DIR__ . '/partials/add_tabs.php';
+?>
 
 <!-- enctype="multipart/form-data" が無いとファイルが送られない -->
 <form method="post" enctype="multipart/form-data" class="card upload">

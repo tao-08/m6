@@ -41,10 +41,14 @@ render_header('メンバー', 'members');
 </section>
 
 <?php if (!$rows && !$idle): ?>
-    <div class="empty card"><p class="empty__title">まだメンバーがいません</p></div>
+    <div class="empty card">
+        <p class="empty__title">まだメンバーがいません</p>
+        <a class="btn btn--primary" href="member_new.php">＋ メンバーを追加</a>
+    </div>
 <?php else: ?>
     <div class="toolbar">
         <input type="search" class="search" placeholder="名前で検索" data-filter=".member-row" aria-label="名前で検索">
+        <a class="btn btn--primary" href="member_new.php">＋ 新規追加</a>
     </div>
     <div class="card table-card">
         <table class="table">

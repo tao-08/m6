@@ -68,14 +68,14 @@ render_header('ライブ一覧', 'lives');
 <?php if (!$years): ?>
     <div class="empty card">
         <p class="empty__title">まだライブが登録されていません</p>
-        <p class="muted">タイムテーブルと名簿（CSV / PDF）をアップロードして登録しよう。</p>
-        <a class="btn btn--primary" href="import.php">タイムテーブルを取り込む</a>
+        <p class="muted">タイムテーブルと名簿（CSV / PDF）を取り込むか、手入力で登録しよう。</p>
+        <a class="btn btn--primary" href="import.php">＋ 新規追加</a>
     </div>
 <?php else: ?>
     <div class="toolbar">
         <!-- data-filter: 入力すると .live-card の data-text で絞り込む（assets/app.js） -->
         <input type="search" class="search" placeholder="ライブ名・会場で絞り込み" data-filter=".live-card" aria-label="絞り込み">
-        <a class="btn btn--primary" href="import.php">＋ 取り込み</a>
+        <a class="btn btn--primary" href="import.php">＋ 新規追加</a>
     </div>
     <?php foreach ($years as $year => $lives): ?>
         <section class="year">
