@@ -1,38 +1,143 @@
 <?php
 /**
  * =====================================================================
- *  stats.php?year=2025 — 集計ページ
+ *  stats.php — 集計ページ
  * =====================================================================
  *  README に書いてあった「特に多い組み合わせ」「出演回数が多い人」「トリが多い人」を見える化する。
- *  ?year= を付けるとその年度だけ、付けなければ全期間。
  *
- *  ポイント: 年度での絞り込みを全部の SQL で使い回すため、
- *  WHERE の部品（$yearSql）とパラメータ（$yearParams）を変数にしておいて SQL に足している。
+ *  絞り込みは2軸で独立している:
+ *    ■ メンバー（?who=）… 人で絞る。個人ランキング・ペア・トリ回数に効く
+ *        all    … 全メンバー
+ *        active … 現役（入学年度が 今年度-3 〜 今年度）
+ *        near   … 上下3学年（ログイン中ユーザーの入学年度 ±3）
+ *        custom … セルフフィルター（?efrom= 〜 ?eto= の入学年度）
+ *    ■ 期間（?period=）… ライブの年度で絞る。全部の集計に効く
+ *        all    … 全期間
+ *        year   … 単年度（?year=）
+ *        range  … ユーザーフィルター（?pfrom= 〜 ?pto= の年度）
+ *
+ *  ?who= が無いときは、ログイン中ユーザーの学年でデフォルトを決める:
+ *    1〜4年生 → 現役 / OB（5年目以降）→ 上下3学年 / 入学年度が不明 → 全メンバー
+ *
+ *  ポイント: 絞り込みを全部の SQL で使い回すため、
+ *  WHERE の部品（$yearSql / $memberSql）とパラメータ（$yearParams / $memberParams）を変数にしておいて SQL に足している。
  *  （値そのものを SQL 文字列に埋め込まず、? で渡しているので安全）
  * =====================================================================
  */
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
-require_login();
+$user = require_login();
 
 $pdo = db();
 $years = array_map('intval', $pdo->query('SELECT DISTINCT fiscal_year FROM live ORDER BY fiscal_year DESC')->fetchAll(PDO::FETCH_COLUMN));
+
 // 今年度（4月始まり）。1〜3月は前の年が今年度になる
 $thisYear = (int)date('n') >= 4 ? (int)date('Y') : (int)date('Y') - 1;
 
-// ?year=active → 現役モード（入学年度が今年度を含めて4年分のメンバー）
-$isActive = ($_GET['year'] ?? '') === 'active';
-$year = $isActive ? 0 : (int)($_GET['year'] ?? 0);
-if (!in_array($year, $years, true)) {
-    $year = 0; // 0 = 全期間
+/** $_GET から整数を取り出す。無い・数字じゃない → null */
+function get_int(string $key): ?int
+{
+    // filter_var(..., FILTER_VALIDATE_INT) は「整数として正しい文字列」なら int、ダメなら false を返す
+    $v = filter_var($_GET[$key] ?? null, FILTER_VALIDATE_INT);
+    return is_int($v) ? $v : null;
 }
-$yearSql = $year ? ' AND lm.fiscal_year = ?' : '';
-$yearParams = $year ? [$year] : [];
 
-// 現役: member.entry_year が [今年度-3, 今年度] の人だけ。entry_year が NULL の人は BETWEEN が成立しないので自動的に除外される
+/** 入学年度 → 学年ラベル（1〜4年生は「3年」、それ以降は「OB1」「OB2」…） */
+function grade_label(int $grade): string
+{
+    return $grade <= 4 ? $grade . '年' : 'OB' . ($grade - 4);
+}
+
+// =====================================================================
+//  ログイン中ユーザーの入学年度と学年
+//    セッションには member_id しか入っていないので、member テーブルから引く。
+//    （セッションに entry_year を入れると、後で名簿を直したときに古い値が残るため毎回 DB を見る）
+// =====================================================================
+$myEntry = null;
+if ($user['member_id'] !== null) {
+    $st = $pdo->prepare('SELECT entry_year FROM member WHERE member_id = ?');
+    $st->execute([$user['member_id']]);
+    $v = $st->fetchColumn();
+    $myEntry = ($v === false || $v === null) ? null : (int)$v;
+}
+// 学年 = 今年度 - 入学年度 + 1（例: 2026年度に 2023入学 → 4年）
+$myGrade = $myEntry !== null ? $thisYear - $myEntry + 1 : null;
+if ($myGrade !== null && $myGrade < 1) {
+    $myGrade = null; // 入学年度が未来になっている＝データの誤り。学年は「不明」扱い
+}
+
+// =====================================================================
+//  メンバーの絞り込み（?who=）
+// =====================================================================
 $activeFrom = $thisYear - 3;
-$memberSql = $isActive ? ' AND m.entry_year BETWEEN ? AND ?' : '';
-$memberParams = $isActive ? [$activeFrom, $thisYear] : [];
+$canNear = $myEntry !== null && $myGrade !== null;
+
+$defaultWho = match (true) {
+    $myGrade === null => 'all',
+    $myGrade <= 4     => 'active',
+    default           => 'near',
+};
+$who = $_GET['who'] ?? $defaultWho;
+if (!in_array($who, ['all', 'active', 'near', 'custom'], true) || ($who === 'near' && !$canNear)) {
+    $who = $defaultWho;
+}
+
+// セルフフィルター用の入学年度範囲。未指定なら「現役」と同じ範囲を初期値にする
+$entryMin = $thisYear - 15; // セレクトに出す一番古い入学年度（必要なら増やす）
+$efrom = get_int('efrom') ?? $activeFrom;
+$eto   = get_int('eto')   ?? $thisYear;
+if ($efrom > $eto) {
+    [$efrom, $eto] = [$eto, $efrom]; // 逆に選ばれたら入れ替える
+}
+
+// who ごとの「入学年度の範囲」。all は範囲なし（null）
+[$entryFrom, $entryTo] = match ($who) {
+    'active' => [$activeFrom, $thisYear],
+    'near'   => [$myEntry - 3, $myEntry + 3],
+    'custom' => [$efrom, $eto],
+    default  => [null, null],
+};
+// entry_year が NULL の人は BETWEEN が成立しないので、all 以外では自動的に除外される
+$memberSql = $entryFrom !== null ? ' AND m.entry_year BETWEEN ? AND ?' : '';
+$memberParams = $entryFrom !== null ? [$entryFrom, $entryTo] : [];
+
+// =====================================================================
+//  期間の絞り込み（?period=）
+// =====================================================================
+$period = $_GET['period'] ?? 'all';
+if (!in_array($period, ['all', 'year', 'range'], true)) {
+    $period = 'all';
+}
+$year = get_int('year');
+if ($year === null || !in_array($year, $years, true)) {
+    $year = $years[0] ?? $thisYear; // 単年度の初期値は一番新しい年度
+}
+$oldest = $years ? min($years) : $thisYear;
+$newest = $years ? max($years) : $thisYear;
+$pfrom = get_int('pfrom') ?? $oldest;
+$pto   = get_int('pto')   ?? $newest;
+if ($pfrom > $pto) {
+    [$pfrom, $pto] = [$pto, $pfrom];
+}
+
+[$yearSql, $yearParams] = match ($period) {
+    'year'  => [' AND lm.fiscal_year = ?', [$year]],
+    'range' => [' AND lm.fiscal_year BETWEEN ? AND ?', [$pfrom, $pto]],
+    default => ['', []],
+};
+
+// 画面に出す「いま何で絞っているか」
+$whoLabel = match ($who) {
+    'active' => "現役（{$activeFrom}〜{$thisYear}年度入学）",
+    'near'   => '上下3学年（' . ($myEntry - 3) . '〜' . ($myEntry + 3) . '年度入学）',
+    'custom' => "{$efrom}〜{$eto}年度入学",
+    default  => '全メンバー',
+};
+$periodLabel = match ($period) {
+    'year'  => fmt_year($year),
+    'range' => "{$pfrom}〜{$pto}年度",
+    default => '全期間',
+};
 
 /** SQL を実行して全行返す小さなヘルパー */
 function rows(PDO $pdo, string $sql, array $params): array
@@ -58,6 +163,8 @@ $overview = rows($pdo, 'SELECT lm.fiscal_year AS year,
 // ---- よく組むペア ----
 //   同じ表を2回 JOIN（自己結合）して、同じバンドにいた2人の組を数える。
 //   a.member_id < b.member_id にすると (A,B) と (B,A) の重複が消える。
+//   メンバー絞り込みは「2人とも対象メンバー」のペアだけ残す（ma と mb の両方に条件を付ける）。
+//   ? が2セット出てくるので、パラメータも $memberParams を2回渡す。順番は SQL の ? の並び順と同じにすること！
 $pairs = rows($pdo, 'SELECT ma.member_id AS a_id, ma.name AS a_name, mb.member_id AS b_id, mb.name AS b_name, COUNT(*) AS n
     FROM (' . MEMBERSHIP_SQL . ') a
     JOIN (' . MEMBERSHIP_SQL . ') b ON b.band_id = a.band_id AND a.member_id < b.member_id
@@ -66,10 +173,10 @@ $pairs = rows($pdo, 'SELECT ma.member_id AS a_id, ma.name AS a_name, mb.member_i
     JOIN band bd ON bd.band_id = a.band_id
     JOIN live_day ld ON ld.live_day_id = bd.live_day_id
     JOIN live lm ON lm.live_id = ld.live_id
-    WHERE 1 = 1' . $yearSql . '
+    WHERE 1 = 1' . $yearSql . str_replace('m.', 'ma.', $memberSql) . str_replace('m.', 'mb.', $memberSql) . '
     GROUP BY a.member_id, b.member_id
     HAVING n >= 2
-    ORDER BY n DESC, a_name LIMIT 15', $yearParams);
+    ORDER BY n DESC, a_name LIMIT 15', array_merge($yearParams, $memberParams, $memberParams));
 
 // ---- トリ回数 ----
 $headliners = rows($pdo, 'SELECT m.member_id, m.name, COUNT(DISTINCT b.band_id) AS n
@@ -80,8 +187,8 @@ $headliners = rows($pdo, 'SELECT m.member_id, m.name, COUNT(DISTINCT b.band_id) 
         ON last.live_day_id = b.live_day_id AND last.max_order = b.play_order
     JOIN live_day ld ON ld.live_day_id = b.live_day_id
     JOIN live lm ON lm.live_id = ld.live_id
-    WHERE 1 = 1' . $yearSql . '
-    GROUP BY m.member_id ORDER BY n DESC, m.name LIMIT 10', $yearParams);
+    WHERE 1 = 1' . $yearSql . $memberSql . '
+    GROUP BY m.member_id ORDER BY n DESC, m.name LIMIT 10', array_merge($yearParams, $memberParams));
 
 // ---- よくコピーされるアーティスト ----
 //   artist テーブルがあるので GROUP BY a.artist_id だけで数えられる
@@ -182,21 +289,72 @@ render_header('集計', 'stats');
     <div>
         <p class="eyebrow">Stats</p>
         <h1 class="display">集計</h1>
+        <?php if ($myGrade !== null): ?>
+            <p class="muted small">あなた: <?= h(grade_label($myGrade)) ?>（<?= (int)$myEntry ?>年度入学）</p>
+        <?php endif; ?>
     </div>
-    <!-- 年度の切り替え。onchange で JS がフォームを送信（JS なしでも「表示」ボタンで送れる） -->
-    <form method="get" class="year-filter">
-        <select name="year" aria-label="年度" data-autosubmit>
-            <option value="0">全期間</option>
-            <option value="active"<?= $isActive ? ' selected' : '' ?>>現役（<?= $activeFrom ?>〜<?= $thisYear ?>年度入学）</option>
-            <?php foreach ($years as $y): ?><option value="<?= $y ?>"<?= $y === $year ? ' selected' : '' ?>><?= $y ?>年度</option><?php endforeach; ?>
-        </select>
-        <noscript><button class="btn btn--sm" type="submit">表示</button></noscript>
-    </form>
 </section>
 
-<?php if ($isActive): ?>
-    <p class="muted small">現役モード: 個人ランキングだけ、入学年度 <?= $activeFrom ?>〜<?= $thisYear ?> のメンバーに絞っています（出演実績は全期間）。他の集計は全期間のままです。</p>
-<?php endif; ?>
+<?php
+/*
+ * 絞り込みフォーム（GET）
+ *   メンバーと期間を1つのフォームにまとめている → どちらを変えても、もう片方の選択が消えない。
+ *   ラジオボタンを「タブ」の見た目にしているだけなので、JS なしでも「適用」ボタンで送れる。
+ *   data-autosubmit を付けた入力は、変えた瞬間に送信される（assets/app.js）。
+ */
+$yearOptions = static function (int $selected, array $list): string {
+    $html = '';
+    foreach ($list as $y) {
+        $html .= '<option value="' . (int)$y . '"' . ($y === $selected ? ' selected' : '') . '>' . (int)$y . '</option>';
+    }
+    return $html;
+};
+$entryYears = range($thisYear, $entryMin); // 新しい順
+?>
+<form method="get" class="card stats-filter no-print">
+    <fieldset class="stats-filter__row">
+        <legend>メンバー</legend>
+        <div class="tabs tabs--filter" role="radiogroup" aria-label="メンバー">
+            <label class="tab"><input type="radio" name="who" value="all" data-autosubmit<?= $who === 'all' ? ' checked' : '' ?>>全メンバー</label>
+            <label class="tab"><input type="radio" name="who" value="active" data-autosubmit<?= $who === 'active' ? ' checked' : '' ?>>現役</label>
+            <label class="tab<?= $canNear ? '' : ' is-disabled' ?>"<?= $canNear ? '' : ' title="アカウントがメンバーに紐付いていないか、入学年度が未登録のため使えません"' ?>>
+                <input type="radio" name="who" value="near" data-autosubmit<?= $who === 'near' ? ' checked' : '' ?><?= $canNear ? '' : ' disabled' ?>>上下3学年
+            </label>
+            <label class="tab"><input type="radio" name="who" value="custom" data-autosubmit<?= $who === 'custom' ? ' checked' : '' ?>>セルフフィルター</label>
+        </div>
+        <div class="stats-filter__extra" data-show-when="who=custom">
+            <select name="efrom" aria-label="入学年度（から）" data-autosubmit><?= $yearOptions($efrom, $entryYears) ?></select>
+            <span>〜</span>
+            <select name="eto" aria-label="入学年度（まで）" data-autosubmit><?= $yearOptions($eto, $entryYears) ?></select>
+            <span class="muted small">年度入学</span>
+        </div>
+    </fieldset>
+
+    <fieldset class="stats-filter__row">
+        <legend>期間</legend>
+        <div class="tabs tabs--filter" role="radiogroup" aria-label="期間">
+            <label class="tab"><input type="radio" name="period" value="year" data-autosubmit<?= $period === 'year' ? ' checked' : '' ?>>単年度</label>
+            <label class="tab"><input type="radio" name="period" value="all" data-autosubmit<?= $period === 'all' ? ' checked' : '' ?>>全期間</label>
+            <label class="tab"><input type="radio" name="period" value="range" data-autosubmit<?= $period === 'range' ? ' checked' : '' ?>>ユーザーフィルター</label>
+        </div>
+        <div class="stats-filter__extra" data-show-when="period=year">
+            <select name="year" aria-label="年度" data-autosubmit><?= $yearOptions($year, $years) ?></select>
+            <span class="muted small">年度</span>
+        </div>
+        <div class="stats-filter__extra" data-show-when="period=range">
+            <select name="pfrom" aria-label="期間（から）" data-autosubmit><?= $yearOptions($pfrom, $years) ?></select>
+            <span>〜</span>
+            <select name="pto" aria-label="期間（まで）" data-autosubmit><?= $yearOptions($pto, $years) ?></select>
+            <span class="muted small">年度</span>
+        </div>
+    </fieldset>
+    <noscript><button class="btn btn--sm" type="submit">適用</button></noscript>
+</form>
+
+<p class="muted small stats-scope">
+    表示中: <strong><?= h($whoLabel) ?></strong> × <strong><?= h($periodLabel) ?></strong>
+    — メンバーの絞り込みは「個人ランキング」「よく組むペア」「トリ回数」に効きます。それ以外は期間だけで集計しています。
+</p>
 
 <div class="card table-card">
     <table class="table">

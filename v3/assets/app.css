@@ -379,6 +379,25 @@ input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px;
 .chip--lg { padding: 6px 14px; font-size: 14px; background: var(--surface); }
 .search-results section + section { margin-top: 8px; }
 .year-filter select { padding: 9px 12px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); font-weight: 700; }
+/* 集計ページの絞り込み（メンバー × 期間）
+   ラジオボタンを隠して、選ばれている label を .tab.is-active と同じ見た目にする。
+   :has() は「中に〇〇を持っている要素」を選ぶセレクタ（最近のブラウザは全部対応） */
+.stats-filter { display: grid; gap: 14px; margin-bottom: 10px; }
+.stats-filter__row { border: 0; margin: 0; padding: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; min-width: 0; }
+.stats-filter__row legend { float: left; width: 4.5em; padding: 0; font-size: 12px; font-weight: 800; color: var(--muted); }
+.tabs--filter { position: static; margin: 0; box-shadow: none; }
+.tabs--filter .tab { cursor: pointer; }
+.tabs--filter .tab input { position: absolute; opacity: 0; pointer-events: none; }
+.tabs--filter .tab:has(input:checked) { background: var(--accent); color: var(--on-accent); }
+.tabs--filter .tab:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tabs--filter .tab.is-disabled { opacity: .4; cursor: not-allowed; }
+.stats-filter__extra { display: flex; align-items: center; gap: 6px; }
+.stats-filter__extra select { padding: 7px 10px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font-weight: 700; }
+/* 該当するタブが選ばれていないときは、年度セレクトを隠す */
+.stats-filter:not(:has(input[name="who"][value="custom"]:checked)) [data-show-when="who=custom"],
+.stats-filter:not(:has(input[name="period"][value="year"]:checked)) [data-show-when="period=year"],
+.stats-filter:not(:has(input[name="period"][value="range"]:checked)) [data-show-when="period=range"] { display: none; }
+.stats-scope { margin: 0 0 14px; }
 .stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; margin-top: 14px; }
 .section-title--card { margin: 0 0 12px; }
 .bars { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
