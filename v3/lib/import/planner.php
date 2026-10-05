@@ -24,6 +24,79 @@ function academic_year(int $month, int $year): int
     return $month >= 4 ? $year : $year - 1;
 }
 
+/** "2026-01-12" → 2025（年度）。日付として正しくなければ null */
+function fiscal_year_from_date(string $date): ?int
+{
+    if (!preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $date, $d) || !checkdate((int)$d[2], (int)$d[3], (int)$d[1])) {
+        return null;
+    }
+    return academic_year((int)$d[2], (int)$d[1]);
+}
+
+/**
+ * タイムテーブルから読んだ会場名に一番近い、登録済みの会場を探す。
+ * 「渋谷ＣＬＵＢ ＱＵＡＴＴＲＯ」→「渋谷CLUB QUATTRO」のような表記ゆれを吸収する。
+ *
+ * @param array<int,string> $venues [venue_id => 会場名]
+ * @return int|null 似ている会場の venue_id。それっぽいものが無ければ null（= 新規作成）
+ */
+function guess_venue(string $parsed, array $venues): ?int
+{
+    $key = band_key($parsed); // 全角/半角・空白・大文字小文字をそろえた比較用キー
+    if ($key === '') {
+        return null;
+    }
+    $bestId = null;
+    $bestScore = 0.0;
+    foreach ($venues as $id => $name) {
+        $vKey = band_key($name);
+        if ($vKey === '') {
+            continue;
+        }
+        if ($vKey === $key) {
+            return (int)$id; // 完全一致なら即決
+        }
+        $longer = max(mb_strlen($key), mb_strlen($vKey));
+        // 似ている度合い（1 = 同じ, 0 = 全然違う）
+        $score = 1 - mb_levenshtein($key, $vKey) / $longer;
+        // 片方がもう片方を含む（「QUATTRO」と「渋谷QUATTRO」）なら、かなり似ている扱い
+        if (min(mb_strlen($key), mb_strlen($vKey)) >= 2 && (str_contains($vKey, $key) || str_contains($key, $vKey))) {
+            $score = max($score, 0.8);
+        }
+        if ($score > $bestScore) {
+            $bestScore = $score;
+            $bestId = (int)$id;
+        }
+    }
+    return $bestScore >= 0.6 ? $bestId : null;
+}
+
+/**
+ * 名簿の全バンドを「検索欄に出す文字 => 'ri:bi'（何番目の名簿の何番目のバンドか）」にする。
+ * 別ファイルに同じバンド名があるときだけ、区別のためにファイル名を付ける。
+ * 画面の表示と登録処理の両方でこの関数を使うので、文字と中身が必ず一致する。
+ */
+function roster_choices(array $plan): array
+{
+    $count = [];
+    foreach ($plan['rosters'] as $roster) {
+        foreach ($roster['bands'] as $band) {
+            $count[$band['band_name']] = ($count[$band['band_name']] ?? 0) + 1;
+        }
+    }
+    $choices = [];
+    foreach ($plan['rosters'] as $ri => $roster) {
+        foreach ($roster['bands'] as $bi => $band) {
+            $label = $count[$band['band_name']] > 1 ? "{$band['band_name']}（{$roster['file']}）" : $band['band_name'];
+            if (isset($choices[$label])) {
+                $label .= ' #' . ($bi + 1); // 同じファイルの中に同名バンドが2つある場合
+            }
+            $choices[$label] = "$ri:$bi";
+        }
+    }
+    return $choices;
+}
+
 /**
  * パート（'Vo' 'Gt'…）→ instrument_id の初期値。
  * instrument.short_name（'Vo' 'Gt'…）と比べる。'Other' は「その他(etc)」にする。
@@ -254,7 +327,8 @@ function commit_import_plan(PDO $pdo, array $plan, array $input): array
 {
     $memberIndex = load_member_index($pdo);
     $validInstruments = array_map('intval', array_column(instruments(), 'instrument_id'));
-    $bandIds = [];   // "日程番号:枠番号" → 登録した band_id
+    $rosterChoices = roster_choices($plan); // 「名簿」検索欄の文字 → 'ri:bi'
+    $bandRosters = [];                      // [登録した band_id, 'ri:bi'] のリスト
     $liveIds = [];
 
     $pdo->beginTransaction();
@@ -268,15 +342,20 @@ function commit_import_plan(PDO $pdo, array $plan, array $input): array
             $where = "「{$tt['file']}」";
 
             // ---- 入力チェック（DB の型・制約に合わせる） ----
-            $year     = (int)($form['year'] ?? 0);
             $liveName = trim((string)($form['live_name'] ?? ''));
             $label    = trim((string)($form['label'] ?? ''));
             $date     = (string)($form['date'] ?? '');
-            $venue    = trim((string)($form['venue'] ?? ''));
+            $venueSel = (string)($form['venue_id'] ?? '');            // venue_id / 'new' / ''（未設定）
+            $venueNew = trim((string)($form['venue_new'] ?? ''));     // 'new' のときの新しい会場名
             $meeting  = (string)($form['meeting_time'] ?? '');
 
+            // 年度は入力させず、開催日から決める（年度の入れ間違いが起きない）
+            $year = fiscal_year_from_date($date);
+            if ($year === null) {
+                throw new RuntimeException("{$where} 開催日を正しく入力してください（年度は開催日から自動で決まります）");
+            }
             if ($year < 1990 || $year > 2100) { // live.fiscal_year の CHECK 制約と同じ範囲
-                throw new RuntimeException("{$where} 年度が正しくありません");
+                throw new RuntimeException("{$where} 開催日の年が範囲外です");
             }
             if ($liveName === '' || mb_strlen($liveName) > 50) {
                 throw new RuntimeException("{$where} ライブ名は1〜50文字で入力してください");
@@ -284,12 +363,24 @@ function commit_import_plan(PDO $pdo, array $plan, array $input): array
             if ($label === '' || mb_strlen($label) > 50) {
                 throw new RuntimeException("{$where} 日程（1日目など）は1〜50文字で入力してください");
             }
-            // 日付は空なら NULL（分からないものは NULL）。入っているなら実在する日付か確認
-            if ($date !== '' && (!preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $date, $d) || !checkdate((int)$d[2], (int)$d[3], (int)$d[1]))) {
-                throw new RuntimeException("{$where} 開催日が正しくありません");
-            }
-            if (mb_strlen($venue) > 50) {
-                throw new RuntimeException("{$where} 会場は50文字以内で入力してください");
+
+            // ---- 会場: プルダウンで選んだ既存の会場 or 新規作成 ----
+            if ($venueSel === 'new') {
+                if ($venueNew === '' || mb_strlen($venueNew) > 50) {
+                    throw new RuntimeException("{$where} 新しい会場名は1〜50文字で入力してください");
+                }
+                $venueId = find_or_create_venue($pdo, $venueNew);
+            } elseif ($venueSel === '') {
+                $venueId = null;
+            } else {
+                // フォームの値は書き換えられる可能性があるので、本当に存在する会場か DB で確認する
+                $st = $pdo->prepare('SELECT venue_id FROM venue WHERE venue_id = ?');
+                $st->execute([ctype_digit($venueSel) ? (int)$venueSel : 0]);
+                $venueId = $st->fetchColumn();
+                if ($venueId === false) {
+                    throw new RuntimeException("{$where} 会場の選択が正しくありません");
+                }
+                $venueId = (int)$venueId;
             }
 
             // ---- 同じ日程が登録済みか ----
@@ -308,7 +399,7 @@ function commit_import_plan(PDO $pdo, array $plan, array $input): array
 
             // ---- live_day ----
             $pdo->prepare('INSERT INTO live_day (live_id, label, held_on, venue_id, meeting_time) VALUES (?, ?, ?, ?, ?)')
-                ->execute([$liveId, $label, $date !== '' ? $date : null, find_or_create_venue($pdo, $venue),
+                ->execute([$liveId, $label, $date, $venueId,
                     preg_match('/^\d{2}:\d{2}$/', $meeting) ? $meeting : null]);
             $dayId = (int)$pdo->lastInsertId();
 
@@ -332,6 +423,8 @@ function commit_import_plan(PDO $pdo, array $plan, array $input): array
                 $end = $slot['end_time'];
                 $rows[] = [
                     'si' => $si,
+                    // この枠のメンバーをどの名簿のバンドから取るか（検索欄の文字 → 'ri:bi'。一致しなければ名簿なし）
+                    'roster' => $rosterChoices[trim((string)($s['roster'] ?? ''))] ?? null,
                     'order' => (int)($s['order'] ?? 999),
                     'name' => $name,
                     'songs' => (int)$songs,
@@ -350,37 +443,33 @@ function commit_import_plan(PDO $pdo, array $plan, array $input): array
                 // 出演順は 1,2,3... と振り直す（(live_day_id, play_order) が UNIQUE なので重複させない）
                 $insBand->execute([$dayId, find_or_create_artist($pdo, $r['name']), $r['name'], $n + 1,
                     $r['start'], $r['end'], $r['songs'], $r['note'] !== '' ? $r['note'] : null]);
-                $bandIds["$ti:{$r['si']}"] = (int)$pdo->lastInsertId();
+                if ($r['roster'] !== null) {
+                    $bandRosters[] = [(int)$pdo->lastInsertId(), $r['roster']];
+                }
             }
             $liveIds[] = $liveId;
         }
 
         // ================= 2. 名簿 → メンバー =================
-        foreach ($plan['rosters'] as $ri => $roster) {
-            // 列ごとの楽器（プレビューの見出しのセレクトボックス）
-            $colInstrument = [];
+        // タイムテーブルの「名簿」欄で選んだ名簿のバンドから、メンバーを登録する。
+        // 同じ名簿のバンドを2日分の枠で選んでもOK（2日とも同じメンバーで出る場合）
+        foreach ($bandRosters as [$bandId, $rosterRef]) {
+            [$ri, $bi] = array_map('intval', explode(':', $rosterRef));
+            $roster = $plan['rosters'][$ri];
+            $rb = $input['rb'][$ri][$bi] ?? [];
+            $assignments = [];
             foreach ($roster['columns'] as $col => $_) {
-                $id = (int)($input['inst'][$ri][$col] ?? 0);
-                $colInstrument[$col] = in_array($id, $validInstruments, true) ? $id : null;
-            }
-            foreach ($roster['bands'] as $bi => $band) {
-                $rb = $input['rb'][$ri][$bi] ?? [];
-                $slot = (string)($rb['slot'] ?? '');
-                if ($slot === '' || !isset($bandIds[$slot])) {
-                    continue; // どの出演バンドにも対応させなかった行 / 取り込まなかった枠
+                // 楽器の決め方（優先順）: ① 名前の後ろの (Sax) → ② セルごとの選択（Key/その他列） → ③ 列の楽器（見出しのセレクト）
+                $colInstrument = (int)($input['inst'][$ri][$col] ?? 0);
+                $colInstrument = in_array($colInstrument, $validInstruments, true) ? $colInstrument : null;
+                $cellInstrument = (int)($rb['ci'][$col] ?? 0);
+                $cellInstrument = in_array($cellInstrument, $validInstruments, true) ? $cellInstrument : $colInstrument;
+                foreach (split_member_names((string)($rb['c'][$col] ?? '')) as $name) {
+                    [$name, $named] = parse_name_instrument($name);
+                    $assignments[] = [$name, $named ?? $cellInstrument];
                 }
-                $assignments = [];
-                foreach ($roster['columns'] as $col => $_) {
-                    // 楽器の決め方（優先順）: ① 名前の後ろの (Sax) → ② セルごとの選択（Key/その他列） → ③ 列の楽器
-                    $cellInstrument = (int)($rb['ci'][$col] ?? 0);
-                    $cellInstrument = in_array($cellInstrument, $validInstruments, true) ? $cellInstrument : $colInstrument[$col];
-                    foreach (split_member_names((string)($rb['c'][$col] ?? '')) as $name) {
-                        [$name, $named] = parse_name_instrument($name);
-                        $assignments[] = [$name, $named ?? $cellInstrument];
-                    }
-                }
-                attach_members($pdo, $memberIndex, $bandIds[$slot], $assignments);
             }
+            attach_members($pdo, $memberIndex, $bandId, $assignments);
         }
 
         // ================= 3. アカウントとメンバーの自動紐付け =================

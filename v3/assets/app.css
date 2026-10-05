@@ -192,6 +192,9 @@ h3 { font-size: 16px; }
 .toolbar { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; align-items: center; }
 .toolbar .search { min-width: 12em; } /* 狭い画面ではボタンが次の行に回る */
 input, select, textarea { font: inherit; color: inherit; }
+/* プルダウンの中身（option）は背景が透明のままだと、Windows の Chrome などで「白い背景に白い文字」になり
+   ダークモードで読めなくなる。文字色と背景色を両方テーマの色で指定しておく */
+option, optgroup { background-color: var(--surface); color: var(--text); }
 .search, .field input, .field select, .member-row-edit input, .member-row-edit select, .table--edit input, .table--edit select {
   width: 100%; padding: 10px 13px; border-radius: var(--radius-sm); border: 1px solid var(--border);
   background: var(--surface); color: var(--text); font-size: 15px; min-width: 0;
@@ -355,6 +358,7 @@ input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px;
 .status { font-size: 12px; font-weight: 700; padding: 3px 9px; border-radius: 999px; }
 .status--ok { color: var(--ok); background: var(--ok-bg); }
 .status--new { color: var(--danger); background: var(--danger-bg); }
+.status--warn { color: var(--warn); background: var(--warn-bg); }
 
 /* 名前の色分け（元の m6 の valid / invalid と同じ考え方） */
 .name-input.is-ok, .slot-select.is-ok { background: var(--ok-bg); border-color: color-mix(in srgb, var(--ok) 45%, transparent); }

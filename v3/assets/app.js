@@ -12,7 +12,7 @@
  *    data-confirm       … 送信前の確認ダイアログ
  *    data-dropzone      … ファイルのドラッグ&ドロップ
  *    data-name-cell     … 名前の入力欄（DB にいるかで色が変わる）
- *    data-slot-select   … 名簿のバンド ↔ 出演バンドの対応
+ *    data-roster-input  … タイムテーブルの枠 → 名簿のバンド（検索欄）
  *    data-pack          … 送信時に全項目を JSON 1個にまとめるフォーム
  *    data-rows          … バンド編集のメンバー行（追加・削除）
  *    data-print / data-autosubmit … 印刷ボタン / 選んだら即送信
@@ -247,61 +247,90 @@ function showHint(input) {
 /* ---------------------------------------------------------------------
  * 取り込みプレビュー
  *   - 「取込」のチェックを外した行を薄くする
- *   - 名簿の「対応する出演バンド」を変えたら、タイムテーブル側の「名簿」列を更新
- *   - タイムテーブルでバンド名を書き換えたら、名簿側の選択肢の文字も更新
+ *   - 「名簿」検索欄の値が名簿のバンドと一致したら緑、空/不一致なら赤
+ *   - 名簿側の「使っている出演枠」と「名簿なし ◯件」バッジを更新
+ *   - 開催日 → 年度の表示、会場「新規作成」で会場名の入力欄を出す
  * ------------------------------------------------------------------- */
 function setupImportPreview() {
-  const selects = [...document.querySelectorAll('[data-slot-select]')];
   const slotRows = [...document.querySelectorAll('tr[data-slot]')];
   if (!slotRows.length) return;
 
-  const refresh = () => {
-    // "日程:枠" → 名簿のバンド名
-    const assigned = {};
-    selects.forEach((sel) => {
-      sel.classList.toggle('is-ok', sel.value !== '');
-      sel.classList.toggle('is-new', sel.value === '');
-      if (sel.value !== '') {
-        assigned[sel.value] = sel.closest('tr').querySelector('td:nth-child(2)').firstChild.textContent.trim();
-      }
-    });
+  // 検索欄の文字 → 'ri:bi'（<datalist id="dl-roster"> の option から作る）
+  const rosterKeys = {};
+  document.querySelectorAll('#dl-roster option').forEach((opt) => { rosterKeys[opt.value] = opt.dataset.key; });
 
-    // タイムテーブルの各行の「名簿」列
+  const refresh = () => {
+    const usedBy = {}; // 'ri:bi' → [出演バンド名...]
+
+    // 1周目: どの名簿をどの枠が使っているか集める
     slotRows.forEach((tr) => {
       const include = tr.querySelector('[data-include]').checked;
       tr.classList.toggle('is-excluded', !include);
-      const cell = tr.querySelector('[data-roster-status]');
-      cell.replaceChildren();
-      const span = document.createElement('span');
-      if (assigned[tr.dataset.slot]) {
-        span.className = 'status status--ok';
-        span.textContent = '✓ ' + assigned[tr.dataset.slot];
-      } else if (include) {
-        span.className = 'status status--new';
-        span.textContent = '名簿なし';
+      const key = rosterKeys[tr.querySelector('[data-roster-input]').value.trim()];
+      if (key && include) {
+        (usedBy[key] ||= []).push(tr.querySelector('[data-band-name]').value);
       }
-      cell.appendChild(span);
+    });
+
+    // 2周目: 色を付ける。緑 = 名簿あり / 黄 = 同じ名簿を他の枠でも選んでいる / 赤 = 名簿なし
+    slotRows.forEach((tr) => {
+      const include = tr.querySelector('[data-include]').checked;
+      const input = tr.querySelector('[data-roster-input]');
+      const key = rosterKeys[input.value.trim()];
+      const dup = !!key && include && usedBy[key].length > 1;
+      input.classList.toggle('is-ok', !!key && !dup);
+      input.classList.toggle('is-similar', dup);
+      input.classList.toggle('is-new', !key && include);
+      input.title = dup ? `同じ名簿を ${usedBy[key].length} つの枠で選んでいます: ${usedBy[key].join(' / ')}` : '';
+    });
+
+    // 名簿側の「使っている出演枠」
+    document.querySelectorAll('tr[data-roster-key]').forEach((tr) => {
+      const names = usedBy[tr.dataset.rosterKey];
+      const span = document.createElement('span');
+      if (!names) {
+        span.className = 'status status--new';
+        span.textContent = '未使用';
+      } else if (names.length > 1) {
+        span.className = 'status status--warn';
+        span.textContent = `⚠ ${names.length}枠で重複: ${names.join(' / ')}`;
+      } else {
+        span.className = 'status status--ok';
+        span.textContent = '✓ ' + names[0];
+      }
+      tr.querySelector('[data-roster-used]').replaceChildren(span);
     });
 
     // 日程ごとの「名簿なし ◯件」バッジ
     document.querySelectorAll('[data-timetable]').forEach((card) => {
       const rows = [...card.querySelectorAll('tr[data-slot]')].filter((tr) => tr.querySelector('[data-include]').checked);
-      const missing = rows.filter((tr) => !assigned[tr.dataset.slot]).length;
+      const missing = rows.filter((tr) => !rosterKeys[tr.querySelector('[data-roster-input]').value.trim()]).length;
+      const dups = rows.filter((tr) => tr.querySelector('[data-roster-input]').classList.contains('is-similar')).length;
       const badge = card.querySelector('[data-unmatched-badge]');
-      badge.textContent = missing ? `名簿なし ${missing}` : '全バンド名簿あり';
-      badge.className = 'pill ' + (missing ? 'pill--warn' : 'pill--ok');
+      const msgs = [missing && `名簿なし ${missing}`, dups && `名簿重複 ${dups}`].filter(Boolean);
+      badge.textContent = msgs.length ? msgs.join(' · ') : '全バンド名簿あり';
+      badge.className = 'pill ' + (msgs.length ? 'pill--warn' : 'pill--ok');
     });
   };
 
-  document.addEventListener('change', (e) => {
-    if (e.target.matches('[data-slot-select], [data-include]')) refresh();
-  });
+  // 開催日 → 年度（4月始まり。1〜3月は前の年の年度）。PHP の academic_year() と同じ計算
+  const showFiscalYear = (input) => {
+    const out = input.closest('.field').querySelector('[data-fiscal-year]');
+    const m = /^(\d{4})-(\d{2})-\d{2}$/.exec(input.value);
+    out.textContent = m ? `→ ${Number(m[2]) >= 4 ? Number(m[1]) : Number(m[1]) - 1}年度` : '';
+  };
 
-  // バンド名の書き換え → 名簿側の <option> の文字を同じにする
+  document.addEventListener('change', (e) => {
+    if (e.target.matches('[data-include], [data-roster-input]')) refresh();
+    if (e.target.matches('[data-date-input]')) showFiscalYear(e.target);
+    if (e.target.matches('[data-venue-select]')) {
+      const box = e.target.closest('.field').querySelector('[data-venue-new]');
+      box.hidden = e.target.value !== 'new';
+      if (!box.hidden) box.focus();
+    }
+  });
   document.addEventListener('input', (e) => {
-    if (!e.target.matches('[data-band-name]')) return;
-    const key = e.target.closest('tr').dataset.slot;
-    document.querySelectorAll(`option[value="${CSS.escape(key)}"]`).forEach((opt) => { opt.textContent = e.target.value; });
+    if (e.target.matches('[data-roster-input], [data-band-name]')) refresh();
   });
 
   refresh();

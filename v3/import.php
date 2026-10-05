@@ -205,7 +205,8 @@ if ($plan === null): // ==================== アップロード画面 ==========
 
     // ---- 入力欄の候補（datalist）用に、既存のライブ名・会場を取っておく ----
     $liveNames = $pdo->query('SELECT DISTINCT name FROM live ORDER BY name')->fetchAll(PDO::FETCH_COLUMN);
-    $venues = $pdo->query('SELECT name FROM venue ORDER BY name')->fetchAll(PDO::FETCH_COLUMN);
+    // 会場はプルダウンで選ばせる（表記ゆれ防止）。FETCH_KEY_PAIR で [venue_id => name] の形になる
+    $venues = $pdo->query('SELECT venue_id, name FROM venue ORDER BY name')->fetchAll(PDO::FETCH_KEY_PAIR);
 
     // ---- 名簿の全セルを1回でまとめて色分け判定（1セルずつ SQL を投げると遅いので） ----
     $cellTexts = [];
@@ -218,13 +219,29 @@ if ($plan === null): // ==================== アップロード画面 ==========
     }
     $cellStatus = array_combine(array_keys($cellTexts), classify_cells($pdo, array_values($cellTexts)) ?: []) ?: [];
 
-    // ---- 「どの枠に名簿が対応しているか」の初期表示用 ----
-    $assigned = []; // "ti:si" => 名簿のバンド名
+    // ---- タイムテーブルの「名簿」検索欄の候補と初期値 ----
+    $rosterChoices = roster_choices($plan);          // 検索欄の文字 => 'ri:bi'
+    $rosterLabels = array_flip($rosterChoices);      // 'ri:bi' => 検索欄の文字
+    $autoRoster = [];                                // "ti:si" => 自動で対応付けた名簿のバンド（検索欄の文字）
     foreach ($plan['rosters'] as $ri => $roster) {
         foreach ($roster['bands'] as $bi => $band) {
-            $slot = (string)($form['rb'][$ri][$bi]['slot'] ?? $band['slot']);
-            if ($slot !== '') {
-                $assigned[$slot] = $band['band_name'];
+            if ($band['slot'] !== '') {
+                $autoRoster[$band['slot']] = $rosterLabels["$ri:$bi"];
+            }
+        }
+    }
+    // 各枠の「名簿」欄の値と、名簿のバンドごとに「どの枠が使っているか」を先に集めておく
+    // （先に全部見ないと、1行目を描く時点では「後ろの行とかぶっているか」が分からないため）
+    $slotRoster = []; // "ti:si" => 検索欄の文字
+    $usedBy = [];     // 'ri:bi' => [その名簿を選んだ出演バンド名...]
+    foreach ($plan['timetables'] as $ti => $tt) {
+        foreach ($tt['slots'] as $si => $s) {
+            $fs = $form['tt'][$ti]['s'][$si] ?? null; // 失敗して戻ってきたときの入力値
+            $roster = (string)($fs['roster'] ?? $autoRoster["$ti:$si"] ?? '');
+            $slotRoster["$ti:$si"] = $roster;
+            $include = $fs ? !empty($fs['include']) : $s['include'];
+            if ($include && isset($rosterChoices[$roster])) {
+                $usedBy[$rosterChoices[$roster]][] = (string)($fs['name'] ?? $s['band_name']);
             }
         }
     }
@@ -250,7 +267,8 @@ if ($plan === null): // ==================== アップロード画面 ==========
     <input type="hidden" name="action" value="commit">
 
     <datalist id="dl-live-names"><?php foreach ($liveNames as $n): ?><option value="<?= h($n) ?>"><?php endforeach; ?></datalist>
-    <datalist id="dl-venues"><?php foreach ($venues as $n): ?><option value="<?= h($n) ?>"><?php endforeach; ?></datalist>
+    <!-- 名簿の検索欄の候補。data-key は JS が「名簿」側の表示を更新するのに使う -->
+    <datalist id="dl-roster"><?php foreach ($rosterChoices as $label => $ref): ?><option value="<?= h($label) ?>" data-key="<?= h($ref) ?>"><?php endforeach; ?></datalist>
     <datalist id="dl-labels"><?php foreach (['1日目', '2日目', '3日目', '4日目', '教室ライブ'] as $n): ?><option value="<?= h($n) ?>"><?php endforeach; ?></datalist>
 
     <h2 class="section-title">① タイムテーブル</h2>
@@ -260,11 +278,29 @@ if ($plan === null): // ==================== アップロード画面 ==========
         // 「入力値があればそれ、無ければファイルから読んだ値」を返す小さな関数
         $val = static fn(string $k, $default) => $f[$k] ?? $default;
 
+        // 年度は開催日から自動で決める（入力欄は無い）
+        $date = (string)$val('date', $tt['date']);
+        $year = fiscal_year_from_date($date);
+
+        // 会場: 失敗して戻ってきたならその選択、初回はファイルの会場名に一番近い登録済みの会場
+        if (isset($f['venue_id'])) {
+            $venueSel = (string)$f['venue_id'];
+            $venueNew = (string)($f['venue_new'] ?? '');
+        } else {
+            $guess = guess_venue($tt['venue'], $venues);
+            // 近い会場が無く、ファイルに会場名があれば「新規作成」にしてその名前を入れておく
+            $venueSel = $guess !== null ? (string)$guess : ($tt['venue'] !== '' ? 'new' : '');
+            $venueNew = $guess === null ? $tt['venue'] : '';
+        }
+
         // 同じ日程がもう DB にあるか（あれば上書きの注意を出す）
-        $st = $pdo->prepare('SELECT 1 FROM live l JOIN live_day d ON d.live_id = l.live_id
-            WHERE l.fiscal_year = ? AND l.name = ? AND d.label = ?');
-        $st->execute([$val('year', $tt['year']), $val('live_name', $tt['live_name']), $val('label', $tt['label'])]);
-        $exists = (bool)$st->fetchColumn();
+        $exists = false;
+        if ($year !== null) {
+            $st = $pdo->prepare('SELECT 1 FROM live l JOIN live_day d ON d.live_id = l.live_id
+                WHERE l.fiscal_year = ? AND l.name = ? AND d.label = ?');
+            $st->execute([$year, $val('live_name', $tt['live_name']), $val('label', $tt['label'])]);
+            $exists = (bool)$st->fetchColumn();
+        }
         $bandSlots = array_filter($tt['slots'], static fn($s) => $s['is_band']); ?>
         <section class="card import-day" data-timetable="<?= $ti ?>">
             <header class="import-day__head">
@@ -282,18 +318,25 @@ if ($plan === null): // ==================== アップロード画面 ==========
                 <div class="flash flash--warn">この日程は登録済みです。「上書き」にチェックすると、今のデータを消して置き換えます。</div>
             <?php endif; ?>
 
-            <!-- name="tt[0][year]" のように書くと、PHP では $_POST['tt'][0]['year'] で受け取れる -->
+            <!-- name="tt[0][date]" のように書くと、PHP では $_POST['tt'][0]['date'] で受け取れる -->
             <div class="form-grid">
-                <label class="field"><span>年度</span>
-                    <input type="number" name="tt[<?= $ti ?>][year]" value="<?= h($val('year', $tt['year'])) ?>" min="1990" max="2100" required></label>
                 <label class="field field--wide"><span>ライブ名</span>
                     <input name="tt[<?= $ti ?>][live_name]" value="<?= h($val('live_name', $tt['live_name'])) ?>" list="dl-live-names" maxlength="50" placeholder="例: 文化祭ライブ" required></label>
                 <label class="field"><span>日程</span>
                     <input name="tt[<?= $ti ?>][label]" value="<?= h($val('label', $tt['label'])) ?>" list="dl-labels" maxlength="50" required></label>
-                <label class="field"><span>開催日</span>
-                    <input type="date" name="tt[<?= $ti ?>][date]" value="<?= h($val('date', $tt['date'])) ?>"></label>
-                <label class="field field--wide"><span>会場</span>
-                    <input name="tt[<?= $ti ?>][venue]" value="<?= h($val('venue', $tt['venue'])) ?>" list="dl-venues" maxlength="50"></label>
+                <label class="field"><span>開催日 <small class="muted" data-fiscal-year><?= $year !== null ? "→ {$year}年度" : '' ?></small></span>
+                    <input type="date" name="tt[<?= $ti ?>][date]" value="<?= h($date) ?>" required data-date-input></label>
+                <div class="field field--wide"><span>会場<?php if ($tt['venue'] !== ''): ?> <small class="muted">（ファイルの表記: <?= h($tt['venue']) ?>）</small><?php endif; ?></span>
+                    <select name="tt[<?= $ti ?>][venue_id]" aria-label="会場" data-venue-select>
+                        <option value="">— 未設定 —</option>
+                        <?php foreach ($venues as $id => $name): ?>
+                            <option value="<?= (int)$id ?>"<?= $venueSel === (string)$id ? ' selected' : '' ?>><?= h($name) ?></option>
+                        <?php endforeach; ?>
+                        <option value="new"<?= $venueSel === 'new' ? ' selected' : '' ?>>＋ 新しい会場を作る</option>
+                    </select>
+                    <!-- 「新しい会場を作る」を選んだときだけ表示（JS で切り替え） -->
+                    <input name="tt[<?= $ti ?>][venue_new]" value="<?= h($venueNew) ?>" maxlength="50" placeholder="新しい会場名" aria-label="新しい会場名" data-venue-new<?= $venueSel === 'new' ? '' : ' hidden' ?>>
+                </div>
                 <label class="field"><span>集合</span>
                     <input type="time" name="tt[<?= $ti ?>][meeting_time]" value="<?= h($val('meeting_time', $tt['meeting_time'] ?? '')) ?>"></label>
             </div>
@@ -305,27 +348,29 @@ if ($plan === null): // ==================== アップロード画面 ==========
             <div class="table-scroll">
                 <table class="table table--edit">
                     <thead><tr>
-                        <th title="チェックした行だけ登録">取込</th><th>順</th><th>時間</th><th>バンド名</th><th>曲数</th><th>鍵盤メモ</th><th>名簿</th>
+                        <th title="チェックした行だけ登録">取込</th><th>順</th><th>時間</th><th>バンド名</th><th>曲数</th>
+                        <th title="名簿ファイルのバンド名で検索して選ぶ">名簿</th><th title="バンド全体の補足事項">メモ</th>
                     </tr></thead>
                     <tbody>
                     <?php foreach ($tt['slots'] as $si => $s):
                         $fs = $f['s'][$si] ?? null;               // 失敗して戻ってきたときの入力値
                         $include = $fs ? !empty($fs['include']) : $s['include'];
-                        $key = "$ti:$si"; ?>
+                        $key = "$ti:$si";
+                        $roster = $slotRoster[$key];
+                        $users = isset($rosterChoices[$roster]) ? ($usedBy[$rosterChoices[$roster]] ?? []) : [];
+                        // 緑 = 名簿あり / 黄 = 同じ名簿を他の枠でも選んでいる / 赤 = 名簿なし
+                        $rosterClass = !isset($rosterChoices[$roster]) ? ($include ? 'is-new' : '')
+                            : ($include && count($users) > 1 ? 'is-similar' : 'is-ok');
+                        $rosterHint = $rosterClass === 'is-similar' ? '同じ名簿を ' . count($users) . ' つの枠で選んでいます: ' . implode(' / ', $users) : ''; ?>
                         <tr class="<?= $include ? '' : 'is-excluded' ?>" data-slot="<?= h($key) ?>">
                             <td><input type="checkbox" name="tt[<?= $ti ?>][s][<?= $si ?>][include]" value="1"<?= $include ? ' checked' : '' ?> data-include aria-label="取り込む"></td>
                             <td><input type="number" class="input-num" name="tt[<?= $ti ?>][s][<?= $si ?>][order]" value="<?= h($fs['order'] ?? $s['order'] ?? '') ?>" min="1" aria-label="出演順"></td>
                             <td class="mono nowrap muted"><?= h($s['start_time']) ?><?= $s['end_time'] ? '–' . h($s['end_time']) : '' ?></td>
                             <td><input name="tt[<?= $ti ?>][s][<?= $si ?>][name]" value="<?= h($fs['name'] ?? $s['band_name']) ?>" maxlength="100" data-band-name aria-label="バンド名"></td>
                             <td><input type="number" class="input-num" name="tt[<?= $ti ?>][s][<?= $si ?>][songs]" value="<?= h($fs['songs'] ?? $s['song_count'] ?? '') ?>" min="0" aria-label="曲数"></td>
-                            <td><input name="tt[<?= $ti ?>][s][<?= $si ?>][note]" value="<?= h($fs['note'] ?? $s['key_note']) ?>" aria-label="鍵盤メモ"></td>
-                            <td class="nowrap" data-roster-status>
-                                <?php if (isset($assigned[$key])): ?>
-                                    <span class="status status--ok">✓ <?= h($assigned[$key]) ?></span>
-                                <?php elseif ($include): ?>
-                                    <span class="status status--new">名簿なし</span>
-                                <?php endif; ?>
-                            </td>
+                            <td><input name="tt[<?= $ti ?>][s][<?= $si ?>][roster]" value="<?= h($roster) ?>" list="dl-roster"
+                                       class="name-input <?= $rosterClass ?>" title="<?= h($rosterHint) ?>" placeholder="名簿から検索" data-roster-input aria-label="名簿のバンド"></td>
+                            <td><input name="tt[<?= $ti ?>][s][<?= $si ?>][note]" value="<?= h($fs['note'] ?? '') ?>" maxlength="255" placeholder="補足事項" aria-label="メモ"></td>
                         </tr>
                     <?php endforeach; ?>
                     </tbody>
@@ -355,7 +400,7 @@ if ($plan === null): // ==================== アップロード画面 ==========
             <div class="table-scroll">
                 <table class="table table--edit table--roster">
                     <thead><tr>
-                        <th>対応する出演バンド</th>
+                        <th>使っている出演枠</th>
                         <th>名簿のバンド名</th>
                         <?php foreach ($roster['columns'] as $col => $c):
                             $selected = (int)($form['inst'][$ri][$col] ?? $c['instrument_id'] ?? 0); ?>
@@ -371,25 +416,19 @@ if ($plan === null): // ==================== アップロード画面 ==========
                         <?php endforeach; ?>
                     </tr></thead>
                     <tbody>
-                    <?php foreach ($roster['bands'] as $bi => $band):
-                        $slot = (string)($form['rb'][$ri][$bi]['slot'] ?? $band['slot']); ?>
-                        <tr>
-                            <td>
-                                <!-- タイムテーブルのどのバンドのメンバーか。全日程の全バンドから選べる -->
-                                <select name="rb[<?= $ri ?>][<?= $bi ?>][slot]" class="slot-select <?= $slot === '' ? 'is-new' : 'is-ok' ?>" data-slot-select aria-label="対応する出演バンド">
-                                    <option value="">— 取り込まない —</option>
-                                    <?php foreach ($plan['timetables'] as $ti => $tt): ?>
-                                        <optgroup label="<?= h(($tt['title'] ?: $tt['file'])) ?>">
-                                            <?php foreach ($tt['slots'] as $si => $s): if (!$s['is_band']) continue; ?>
-                                                <option value="<?= h("$ti:$si") ?>"<?= $slot === "$ti:$si" ? ' selected' : '' ?>><?= h($s['band_name']) ?></option>
-                                            <?php endforeach; ?>
-                                        </optgroup>
-                                    <?php endforeach; ?>
-                                </select>
+                    <?php foreach ($roster['bands'] as $bi => $band): ?>
+                        <tr data-roster-key="<?= h("$ri:$bi") ?>">
+                            <!-- どの出演枠がこの名簿を使っているか。タイムテーブルの「名簿」欄で選ぶと JS が書き換える -->
+                            <td class="nowrap" data-roster-used>
+                                <?php if (count($usedBy["$ri:$bi"] ?? []) > 1): ?>
+                                    <span class="status status--warn">⚠ <?= count($usedBy["$ri:$bi"]) ?>枠で重複: <?= h(implode(' / ', $usedBy["$ri:$bi"])) ?></span>
+                                <?php elseif (isset($usedBy["$ri:$bi"])): ?>
+                                    <span class="status status--ok">✓ <?= h(implode(' / ', $usedBy["$ri:$bi"])) ?></span>
+                                <?php else: ?>
+                                    <span class="status status--new">未使用</span>
+                                <?php endif; ?>
                             </td>
-                            <td class="strong nowrap"><?= h($band['band_name']) ?>
-                                <?php if ($band['key_note'] !== ''): ?><div class="muted small">🎹 <?= h($band['key_note']) ?></div><?php endif; ?>
-                            </td>
+                            <td class="strong nowrap"><?= h($band['band_name']) ?></td>
                             <?php foreach ($roster['columns'] as $col => $c):
                                 $k = "$ri-$bi-$col";
                                 $stt = $cellStatus[$k] ?? ['status' => '', 'hint' => '']; ?>
