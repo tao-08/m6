@@ -17,12 +17,22 @@ require_login();
 
 $pdo = db();
 $years = array_map('intval', $pdo->query('SELECT DISTINCT fiscal_year FROM live ORDER BY fiscal_year DESC')->fetchAll(PDO::FETCH_COLUMN));
-$year = (int)($_GET['year'] ?? 0);
+// 今年度（4月始まり）。1〜3月は前の年が今年度になる
+$thisYear = (int)date('n') >= 4 ? (int)date('Y') : (int)date('Y') - 1;
+
+// ?year=active → 現役モード（入学年度が今年度を含めて4年分のメンバー）
+$isActive = ($_GET['year'] ?? '') === 'active';
+$year = $isActive ? 0 : (int)($_GET['year'] ?? 0);
 if (!in_array($year, $years, true)) {
     $year = 0; // 0 = 全期間
 }
 $yearSql = $year ? ' AND lm.fiscal_year = ?' : '';
 $yearParams = $year ? [$year] : [];
+
+// 現役: member.entry_year が [今年度-3, 今年度] の人だけ。entry_year が NULL の人は BETWEEN が成立しないので自動的に除外される
+$activeFrom = $thisYear - 3;
+$memberSql = $isActive ? ' AND m.entry_year BETWEEN ? AND ?' : '';
+$memberParams = $isActive ? [$activeFrom, $thisYear] : [];
 
 /** SQL を実行して全行返す小さなヘルパー */
 function rows(PDO $pdo, string $sql, array $params): array
@@ -116,8 +126,8 @@ $topBands = rows($pdo, 'SELECT m.member_id, m.name, COUNT(DISTINCT bm.band_id) A
     JOIN band b ON b.band_id = bm.band_id
     JOIN live_day ld ON ld.live_day_id = b.live_day_id
     JOIN live lm ON lm.live_id = ld.live_id
-    WHERE 1 = 1' . $yearSql . '
-    GROUP BY m.member_id ORDER BY n DESC, m.name LIMIT 10', $yearParams);
+    WHERE 1 = 1' . $yearSql . $memberSql . '
+    GROUP BY m.member_id ORDER BY n DESC, m.name LIMIT 10', array_merge($yearParams, $memberParams));
 
 // ---- 最多演奏曲数 ----
 //   曲が登録されているバンド → その人が演奏した曲の数（song_performer）
@@ -133,30 +143,8 @@ $topSongs = rows($pdo, 'SELECT m.member_id, m.name,
     LEFT JOIN (SELECT band_id, COUNT(*) AS c FROM song GROUP BY band_id) sc ON sc.band_id = b.band_id
     LEFT JOIN (SELECT band_id, member_id, COUNT(DISTINCT song_id) AS n FROM song_performer GROUP BY band_id, member_id) mine
         ON mine.band_id = bm.band_id AND mine.member_id = bm.member_id
-    WHERE 1 = 1' . $yearSql . '
-    GROUP BY m.member_id ORDER BY n DESC, m.name LIMIT 10', $yearParams);
-
-// ---- 1日の最多掛け持ち ----
-$topMulti = rows($pdo, 'SELECT m.member_id, m.name, lm.name AS live_name, ld.label, COUNT(DISTINCT b.band_id) AS n
-    FROM (' . MEMBERSHIP_SQL . ') bm
-    JOIN member m ON m.member_id = bm.member_id
-    JOIN band b ON b.band_id = bm.band_id
-    JOIN live_day ld ON ld.live_day_id = b.live_day_id
-    JOIN live lm ON lm.live_id = ld.live_id
-    WHERE 1 = 1' . $yearSql . '
-    GROUP BY m.member_id, ld.live_day_id
-    HAVING n >= 2
-    ORDER BY n DESC, m.name LIMIT 10', $yearParams);
-
-// ---- レパートリーが広い人（コピーしたアーティストの種類） ----
-$topArtistsPerson = rows($pdo, 'SELECT m.member_id, m.name, COUNT(DISTINCT b.artist_id) AS n
-    FROM (' . MEMBERSHIP_SQL . ') bm
-    JOIN member m ON m.member_id = bm.member_id
-    JOIN band b ON b.band_id = bm.band_id
-    JOIN live_day ld ON ld.live_day_id = b.live_day_id
-    JOIN live lm ON lm.live_id = ld.live_id
-    WHERE b.artist_id IS NOT NULL' . $yearSql . '
-    GROUP BY m.member_id ORDER BY n DESC, m.name LIMIT 10', $yearParams);
+    WHERE 1 = 1' . $yearSql . $memberSql . '
+    GROUP BY m.member_id ORDER BY n DESC, m.name LIMIT 10', array_merge($yearParams, $memberParams));
 
 // ---- 楽器ごとの1位 ----
 //   楽器 × 人 で数えて、PHP で楽器ごとに一番多い人だけ残す
@@ -168,9 +156,9 @@ foreach (rows($pdo, 'SELECT i.instrument_id, i.short_name, i.name AS instrument_
     JOIN band b ON b.band_id = bm.band_id
     JOIN live_day ld ON ld.live_day_id = b.live_day_id
     JOIN live lm ON lm.live_id = ld.live_id
-    WHERE 1 = 1' . $yearSql . '
+    WHERE 1 = 1' . $yearSql . $memberSql . '
     GROUP BY i.instrument_id, m.member_id
-    ORDER BY i.sort_order, n DESC, m.name', $yearParams) as $r) {
+    ORDER BY i.sort_order, n DESC, m.name', array_merge($yearParams, $memberParams)) as $r) {
     $instrumentKings[$r['instrument_id']] ??= $r; // ??= は「まだ無ければ入れる」→ 各楽器の最初の1行（=最多）だけ残る
 }
 
@@ -199,11 +187,16 @@ render_header('集計', 'stats');
     <form method="get" class="year-filter">
         <select name="year" aria-label="年度" data-autosubmit>
             <option value="0">全期間</option>
+            <option value="active"<?= $isActive ? ' selected' : '' ?>>現役（<?= $activeFrom ?>〜<?= $thisYear ?>年度入学）</option>
             <?php foreach ($years as $y): ?><option value="<?= $y ?>"<?= $y === $year ? ' selected' : '' ?>><?= $y ?>年度</option><?php endforeach; ?>
         </select>
         <noscript><button class="btn btn--sm" type="submit">表示</button></noscript>
     </form>
 </section>
+
+<?php if ($isActive): ?>
+    <p class="muted small">現役モード: 個人ランキングだけ、入学年度 <?= $activeFrom ?>〜<?= $thisYear ?> のメンバーに絞っています（出演実績は全期間）。他の集計は全期間のままです。</p>
+<?php endif; ?>
 
 <div class="card table-card">
     <table class="table">
@@ -242,10 +235,6 @@ $memberLink = static fn($r) => '<a href="member.php?id=' . (int)$r['member_id'] 
 <div class="stats-grid">
     <?php ranking_card('🎤 最多出演（バンド数）', $topBands, $memberLink, '組'); ?>
     <?php ranking_card('🎵 最多演奏曲数', $topSongs, $memberLink, '曲'); ?>
-    <?php ranking_card('🔥 1日の最多掛け持ち', $topMulti,
-        static fn($r) => $memberLink($r) . ' <span class="muted small">' . h($r['live_name'] . ' ' . $r['label']) . '</span>', '組',
-        '1日に2バンド以上出た人はいません'); ?>
-    <?php ranking_card('🌈 レパートリーの広さ（アーティスト数）', $topArtistsPerson, $memberLink, '組'); ?>
     <section class="card">
         <h2 class="section-title section-title--card">🏅 楽器ごとの1位</h2>
         <ul class="ranking ranking--plain">
