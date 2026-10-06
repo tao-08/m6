@@ -105,7 +105,6 @@ function parse_timetable(array $rows): array
         'month' => null,
         'day' => null,
         'venue' => '',
-        'meeting_time' => null, // 「集合」の時刻
         'slots' => [],
     ];
 
@@ -171,8 +170,7 @@ function parse_timetable(array $rows): array
         }
         $times = extract_times(implode(' ', array_map(static fn($c) => $row[$c] ?? '', $timeCols)));
 
-        if (preg_match('/^集合/u', $name)) {
-            $result['meeting_time'] = $times[0] ?? null;
+        if (preg_match('/^集合/u', $name)) { // 集合時刻は記録しないので行ごと読み飛ばす
             continue;
         }
 

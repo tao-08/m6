@@ -107,7 +107,6 @@ CREATE TABLE live_day (
     label        VARCHAR(50)  NOT NULL,                -- 「1日目」「教室ライブ」
     held_on      DATE         NULL,                    -- 開催日。不明なら NULL
     venue_id     INT UNSIGNED NULL,                    -- 不明なら NULL
-    meeting_time TIME         NULL,                    -- 集合時刻（メモ欄に文字で書かず、型のある列にする）
     note         TEXT         NULL,
     PRIMARY KEY (live_day_id),
     UNIQUE KEY uq_live_day_label (live_id, label),     -- 同じライブに「1日目」が2つできない

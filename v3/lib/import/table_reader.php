@@ -3,11 +3,14 @@ declare(strict_types=1);
 
 /**
  * =====================================================================
- *  table_reader.php — CSV / PDF を「行×列の2次元配列」に変換する
+ *  table_reader.php — CSV / Excel / PDF を「行×列の2次元配列」に変換する
  * =====================================================================
- *  CSV でも PDF でも、ここで同じ形（2次元配列）にそろえてしまえば、
+ *  CSV でも Excel でも PDF でも、ここで同じ形（2次元配列）にそろえてしまえば、
  *  後ろの parsers.php は「ファイルの形式」を気にしなくて済む。
- *  → 新しい形式（例: Excel）に対応したくなったら、ここに関数を1つ足すだけで良い。
+ *  → 新しい形式に対応したくなったら、ここに関数を1つ足すだけで良い。
+ *
+ *  Excel は1ファイルに複数シートがあるので「シート名 => 表」の配列で返す。
+ *  （CSV / PDF は1ファイル = 1シート扱い）
  *
  *  PDF の読み方（read_pdf_table）
  *    1. pdftotext -bbox で「単語と、その単語がページのどこにあるか（座標）」を出す
@@ -17,13 +20,47 @@ declare(strict_types=1);
  *    5. セル内で2段に折り返した文字は1つのセルにまとめる
  * =====================================================================
  */
+require_once __DIR__ . '/xlsx_reader.php';
+
+/** 取り込みで受け付ける拡張子 */
+const IMPORT_EXTENSIONS = ['csv', 'txt', 'xlsx', 'xlsm', 'pdf'];
+
+/**
+ * @return array<string, array> 表示用の名前 => 2次元配列
+ *   CSV / PDF: ['live.csv' => 表]
+ *   Excel:     ['live.xlsx［1日目］' => 表, 'live.xlsx［名簿］' => 表, ...]
+ *              ただし「バンド名」の見出しが無いシート（メモ用など）は飛ばす
+ */
+function read_table_sheets(string $path, string $originalName): array
+{
+    $ext = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
+    if ($ext !== 'xlsx' && $ext !== 'xlsm') {
+        return [$originalName => read_table_file($path, $originalName)];
+    }
+    $sheets = read_xlsx_sheets($path);
+    $useful = array_filter($sheets, static fn($rows) => find_header_index($rows) !== null);
+    if ($useful === []) {
+        throw new RuntimeException('どのシートにも「バンド名」という見出しが見つかりませんでした');
+    }
+    if (count($sheets) === 1) {
+        return [$originalName => reset($sheets)];
+    }
+    $out = [];
+    foreach ($useful as $sheetName => $rows) {
+        $out["{$originalName}［{$sheetName}］"] = $rows;
+    }
+    return $out;
+}
+
 function read_table_file(string $path, string $originalName): array
 {
     $ext = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
     return match ($ext) {
-        'csv', 'txt' => read_csv_table($path),
-        'pdf'        => read_pdf_table($path),
-        default      => throw new RuntimeException("{$originalName}: 対応していない形式です（CSV または PDF）"),
+        'csv', 'txt'    => read_csv_table($path),
+        'xlsx', 'xlsm'  => array_values(read_table_sheets($path, $originalName))[0],
+        'xls'           => throw new RuntimeException("{$originalName}: 古い Excel 形式（.xls）は読めません。Excel で「.xlsx」として保存し直してください"),
+        'pdf'           => read_pdf_table($path),
+        default         => throw new RuntimeException("{$originalName}: 対応していない形式です（CSV / Excel / PDF）"),
     };
 }
 
@@ -82,7 +119,7 @@ function read_pdf_table(string $path): array
         array_push($rows, ...pdf_words_to_rows($words, $columns));
     }
     if ($rows === []) {
-        throw new RuntimeException('PDFから文字を取り出せませんでした。スキャン画像のPDFは非対応です。CSVに変換してください。');
+        throw new RuntimeException('PDFから文字を取り出せませんでした。スキャン画像のPDFは非対応です。CSV か Excel にしてください。');
     }
     return $rows;
 }

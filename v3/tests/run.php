@@ -45,7 +45,6 @@ $tt = parse_timetable([
 check('ライブ名', $tt['live_name'], 'ライブハウス');
 check('日程ラベル', $tt['label'], '2日目');
 check('会場', $tt['venue'], '新宿テスト');
-check('集合', $tt['meeting_time'], '11:00');
 check('バンド数', count(array_filter($tt['slots'], fn($s) => $s['is_band'])), 2);
 check('休憩はバンドではない', $tt['slots'][1]['is_band'], false);
 check('終了時刻', $tt['slots'][2]['end_time'], '12:50');
@@ -65,6 +64,21 @@ check('兼任（Vo と Ba）', array_column(array_filter($roster[1]['members'], 
 check('照合: 完全一致', match_roster_band(['band_name' => 'バンドA', 'song_count' => 3, 'member_count' => 3], $roster), 0);
 check('照合: 括弧の表記ゆれ', match_roster_band(['band_name' => 'バンドB(山田)', 'song_count' => 4, 'member_count' => 5], $roster), 1);
 check('照合: 括弧なし→代表者で特定不可', match_roster_band(['band_name' => 'バンドB', 'song_count' => 4, 'member_count' => 5], $roster), null);
+
+echo "excel\n";
+// fixtures/timetable.xlsx: 「1日目」「名簿」「メモ」(見出し無し)「隠し」(非表示) の4シート
+$sheets = read_table_sheets(__DIR__ . '/fixtures/timetable.xlsx', 'live.xlsx');
+check('使うシートだけ読む', array_keys($sheets), ['live.xlsx［1日目］', 'live.xlsx［名簿］']);
+$rows = $sheets['live.xlsx［1日目］'];
+check('日付セル → 「10月5日」', $rows[0][0], '10月5日');
+check('時刻セル（h:mm）', $rows[3][0], '11:30');
+check('時刻セル（h時mm分）', $rows[3][1], '11:50');
+check('数値セル', $rows[3][2], '20');
+check('書式が混ざった文字列', $rows[3][3], 'King Gnu');
+check('空セルを詰めない', $rows[1], ['時間', '', '持ち時間', 'バンド名', '曲数', '人数', 'key']);
+check('ふりがなは読まない', $sheets['live.xlsx［名簿］'][1][1], '山田太郎');
+$tt = parse_timetable($rows);
+check('Excel→タイムテーブル', [$tt['month'], $tt['day'], $tt['slots'][0]['start_time'], $tt['slots'][0]['end_time']], [10, 5, '11:30', '11:50']);
 
 echo $failed ? "\n{$failed} 件失敗\n" : "\nすべて成功\n";
 exit($failed ? 1 : 0);

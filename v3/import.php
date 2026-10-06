@@ -103,8 +103,13 @@ if (is_post()) {
                 flash("{$name}: 5MB を超えるファイルは読み込めません", 'error');
                 continue;
             }
-            if (!in_array(strtolower(pathinfo($name, PATHINFO_EXTENSION)), ['csv', 'pdf'], true)) {
-                flash("{$name}: CSV か PDF を選んでください", 'error');
+            $ext = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+            if ($ext === 'xls') {
+                flash("{$name}: 古い Excel 形式（.xls）は読めません。Excel で「.xlsx」として保存し直してください", 'error');
+                continue;
+            }
+            if (!in_array($ext, IMPORT_EXTENSIONS, true)) {
+                flash("{$name}: CSV / Excel(.xlsx) / PDF のどれかを選んでください", 'error');
                 continue;
             }
             $files[] = ['path' => $up['tmp_name'][$i], 'name' => $name];
@@ -177,10 +182,10 @@ if ($plan === null): // ==================== アップロード画面 ==========
     <?= csrf_field() ?>
     <input type="hidden" name="action" value="upload">
     <label class="dropzone" data-dropzone>
-        <input type="file" name="files[]" accept=".csv,.pdf,text/csv,application/pdf" multiple required data-file-input>
+        <input type="file" name="files[]" accept=".csv,.xlsx,.xlsm,.pdf,text/csv,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" multiple required data-file-input>
         <span class="dropzone__icon" aria-hidden="true">↑</span>
         <span class="dropzone__title">ここにファイルをドロップ</span>
-        <span class="muted small">またはクリックして選択 · CSV / PDF · 最大<?= MAX_FILES ?>ファイル</span>
+        <span class="muted small">またはクリックして選択 · CSV / Excel / PDF · 最大<?= MAX_FILES ?>ファイル</span>
         <ul class="dropzone__list" data-file-list></ul>
     </label>
     <button class="btn btn--primary btn--block" type="submit">読み込んでプレビュー</button>
@@ -189,15 +194,15 @@ if ($plan === null): // ==================== アップロード画面 ==========
 <section class="guide">
     <div class="card">
         <h3><span class="step">1</span>タイムテーブル</h3>
-        <p class="muted small">1ファイル = ライブ1日分。「時間 / 持ち時間 / バンド名 / 曲数 / 人数 / key」の列と、表の上の「○○ライブ2日目 / 会場 / △△」を読み取ります。何日分でもまとめてOK。</p>
+        <p class="muted small">1ファイル（Excel なら1シート）= ライブ1日分。「時間 / 持ち時間 / バンド名 / 曲数 / 人数 / key」の列と、表の上の「○○ライブ2日目 / 会場 / △△」を読み取ります。何日分でもまとめてOK。</p>
     </div>
     <div class="card">
         <h3><span class="step">2</span>名簿</h3>
         <p class="muted small">「バンド名 / Vo(Gt.) / Gt.1 / Gt.2 / Ba. / Dr. / Key.」の列を持つ表。バンド名でタイムテーブルと突き合わせ、名前が DB にいるかを色で表示します。</p>
     </div>
     <div class="card">
-        <h3><span class="step">3</span>PDF について</h3>
-        <p class="muted small">Excel から書き出した「文字を選択できる」PDF に対応。写真やスキャンの PDF は読めないので CSV にしてください。</p>
+        <h3><span class="step">3</span>Excel / PDF について</h3>
+        <p class="muted small">Excel（.xlsx）はそのままアップロードOK。シートが複数あれば1枚ずつ読み、「バンド名」の見出しが無いシートは飛ばします。古い .xls は .xlsx で保存し直してください。Excel から書き出した「文字を選択できる」PDF に対応。写真やスキャンの PDF は読めないので Excel か CSV にしてください。</p>
     </div>
 </section>
 
@@ -350,8 +355,6 @@ if ($plan === null): // ==================== アップロード画面 ==========
                     <!-- 「新しい会場を作る」を選んだときだけ表示（JS で切り替え） -->
                     <input name="tt[<?= $ti ?>][venue_new]" value="<?= h($venueNew) ?>" maxlength="50" placeholder="新しい会場名" aria-label="新しい会場名" data-venue-new<?= $venueSel === 'new' ? '' : ' hidden' ?>>
                 </div>
-                <label class="field"><span>集合</span>
-                    <input type="time" name="tt[<?= $ti ?>][meeting_time]" value="<?= h($val('meeting_time', $tt['meeting_time'] ?? '')) ?>"></label>
             </div>
             <div class="checks">
                 <label class="check"><input type="checkbox" name="tt[<?= $ti ?>][overwrite]" value="1"<?= !empty($f['overwrite']) ? ' checked' : '' ?>> 登録済みなら上書き</label>

@@ -183,7 +183,6 @@ render_header($live['name'], 'lives');
                     <a href="<?= h($d['website_url']) ?>" target="_blank" rel="noopener"><?= h($d['venue_name']) ?> ↗</a>
                 <?php else: ?><?= h($d['venue_name'] ?? '—') ?><?php endif; ?>
             </dd></div>
-            <div><dt>集合</dt><dd><?= h(fmt_time($d['meeting_time']) ?: '—') ?></dd></div>
             <div><dt>バンド</dt><dd><?= count($bands) ?></dd></div>
             <div><dt>曲数</dt><dd><?= $songs ?></dd></div>
             <?php if ($d['note']): ?><div><dt>メモ</dt><dd><?= h($d['note']) ?></dd></div><?php endif; ?>

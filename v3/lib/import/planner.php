@@ -197,25 +197,33 @@ function build_import_plan(array $files): array
     $plan = ['timetables' => [], 'rosters' => [], 'errors' => []];
 
     // ---- 1. 1ファイルずつ読んで、タイムテーブルか名簿かで振り分け ----
+    // Excel は1ファイルに複数シートがあるので、シート1枚を「1ファイル」とみなして同じ処理に流す
     foreach ($files as $f) {
         try {
-            $rows = read_table_file($f['path'], $f['name']);
-            if (detect_table_kind($rows) === 'timetable') {
-                $tt = parse_timetable($rows);
-                $tt['file'] = $f['name'];
-                $plan['timetables'][] = $tt;
-            } else {
-                $roster = parse_roster($rows);
-                $roster['file'] = $f['name'];
-                foreach ($roster['columns'] as &$col) {
-                    $col['instrument_id'] = default_instrument_id($col['part']);
-                }
-                unset($col); // foreach の参照(&)は使い終わったら必ず unset（後で事故る）
-                $plan['rosters'][] = spread_roster_cells($roster);
-            }
+            $sheets = read_table_sheets($f['path'], $f['name']);
         } catch (Throwable $e) {
-            // 1ファイル読めなくても他のファイルは続ける
             $plan['errors'][] = $f['name'] . ': ' . $e->getMessage();
+            continue;
+        }
+        foreach ($sheets as $label => $rows) {
+            try {
+                if (detect_table_kind($rows) === 'timetable') {
+                    $tt = parse_timetable($rows);
+                    $tt['file'] = $label;
+                    $plan['timetables'][] = $tt;
+                } else {
+                    $roster = parse_roster($rows);
+                    $roster['file'] = $label;
+                    foreach ($roster['columns'] as &$col) {
+                        $col['instrument_id'] = default_instrument_id($col['part']);
+                    }
+                    unset($col); // foreach の参照(&)は使い終わったら必ず unset（後で事故る）
+                    $plan['rosters'][] = spread_roster_cells($roster);
+                }
+            } catch (Throwable $e) {
+                // 1シート読めなくても他のシート・ファイルは続ける
+                $plan['errors'][] = $label . ': ' . $e->getMessage();
+            }
         }
     }
 
@@ -390,7 +398,6 @@ function commit_import_plan(PDO $pdo, array $plan, array $input): array
             $date     = (string)($form['date'] ?? '');
             $venueSel = (string)($form['venue_id'] ?? '');            // venue_id / 'new' / ''（未設定）
             $venueNew = trim((string)($form['venue_new'] ?? ''));     // 'new' のときの新しい会場名
-            $meeting  = (string)($form['meeting_time'] ?? '');
 
             // 年度は入力させず、開催日から決める（年度の入れ間違いが起きない）
             $year = fiscal_year_from_date($date);
@@ -441,9 +448,8 @@ function commit_import_plan(PDO $pdo, array $plan, array $input): array
             }
 
             // ---- live_day ----
-            $pdo->prepare('INSERT INTO live_day (live_id, label, held_on, venue_id, meeting_time) VALUES (?, ?, ?, ?, ?)')
-                ->execute([$liveId, $label, $date, $venueId,
-                    preg_match('/^\d{2}:\d{2}$/', $meeting) ? $meeting : null]);
+            $pdo->prepare('INSERT INTO live_day (live_id, label, held_on, venue_id) VALUES (?, ?, ?, ?)')
+                ->execute([$liveId, $label, $date, $venueId]);
             $dayId = (int)$pdo->lastInsertId();
 
             // ---- band ----

@@ -7,7 +7,7 @@
  *    live_edit.php?id=ID    … ライブ名・年度・各日程の情報を直す。日程の追加もここ
  *
  *  live（1行）と live_day（日程の数だけ）をまとめて1つのフォームで更新する。
- *  日付・会場・集合は「分からなければ空欄」= NULL で保存する。
+ *  日付・会場は「分からなければ空欄」= NULL で保存する。
  *  バンドとメンバーは、保存したあとライブページの「＋ バンドを追加」（band_edit.php）から入れる。
  * =====================================================================
  */
@@ -51,7 +51,6 @@ function read_day_input(mixed $in): array
     $label = trim((string)($in['label'] ?? ''));
     $date = (string)($in['held_on'] ?? '');
     $venue = trim((string)($in['venue'] ?? ''));
-    $meeting = (string)($in['meeting_time'] ?? '');
     $note = trim((string)($in['note'] ?? ''));
     $errors = [];
     if ($label === '' || mb_strlen($label) > 50) {
@@ -63,7 +62,7 @@ function read_day_input(mixed $in): array
     if (mb_strlen($venue) > 50) {
         $errors[] = "「{$label}」の会場は50文字以内にしてください";
     }
-    return [compact('label', 'date', 'venue', 'meeting', 'note'), $errors]; // compact は ['label' => $label, ...] と同じ
+    return [compact('label', 'date', 'venue', 'note'), $errors]; // compact は ['label' => $label, ...] と同じ
 }
 
 /** 日程1つ分の値を、SQL に渡す配列にする（空欄 → NULL） */
@@ -73,13 +72,12 @@ function day_params(PDO $pdo, array $in): array
         $in['label'],
         $in['date'] !== '' ? $in['date'] : null,          // 空欄 → NULL
         find_or_create_venue($pdo, $in['venue']),           // 空欄 → NULL
-        preg_match('/^\d{2}:\d{2}$/', $in['meeting']) ? $in['meeting'] : null,
         $in['note'] !== '' ? $in['note'] : null,
     ];
 }
 
 // 追加する日程の入力欄の初期値（新規ライブなら「1日目」を入れておく）
-$newDay = ['label' => $isNew ? '1日目' : '', 'date' => '', 'venue' => '', 'meeting' => '', 'note' => ''];
+$newDay = ['label' => $isNew ? '1日目' : '', 'date' => '', 'venue' => '', 'note' => ''];
 
 $errors = [];
 if (is_post()) {
@@ -118,12 +116,12 @@ if (is_post()) {
             } else {
                 $pdo->prepare('UPDATE live SET fiscal_year = ?, name = ? WHERE live_id = ?')->execute([$year, $name, $liveId]);
             }
-            $update = $pdo->prepare('UPDATE live_day SET label = ?, held_on = ?, venue_id = ?, meeting_time = ?, note = ? WHERE live_day_id = ?');
+            $update = $pdo->prepare('UPDATE live_day SET label = ?, held_on = ?, venue_id = ?, note = ? WHERE live_day_id = ?');
             foreach ($dayInputs as $id => $in) {
                 $update->execute([...day_params($pdo, $in), $id]); // ...（スプレッド構文）で配列を展開して、最後に id を足す
             }
             if ($wantsNewDay) {
-                $pdo->prepare('INSERT INTO live_day (label, held_on, venue_id, meeting_time, note, live_id) VALUES (?, ?, ?, ?, ?, ?)')
+                $pdo->prepare('INSERT INTO live_day (label, held_on, venue_id, note, live_id) VALUES (?, ?, ?, ?, ?)')
                     ->execute([...day_params($pdo, $newDay), $liveId]);
             }
             $pdo->commit();
@@ -147,7 +145,7 @@ if (is_post()) {
     foreach ($days as &$d) {
         $in = $dayInputs[(int)$d['live_day_id']];
         $d = array_merge($d, ['label' => $in['label'], 'held_on' => $in['date'], 'venue_name' => $in['venue'],
-            'meeting_time' => $in['meeting'], 'note' => $in['note']]);
+            'note' => $in['note']]);
     }
     unset($d);
 }
@@ -179,7 +177,6 @@ if ($isNew) {
         <div class="form-grid">
             <label class="field"><span>日程名</span><input name="d[<?= $id ?>][label]" value="<?= h($d['label']) ?>" maxlength="50" required></label>
             <label class="field"><span>日付（不明なら空欄）</span><input type="date" name="d[<?= $id ?>][held_on]" value="<?= h($d['held_on']) ?>"></label>
-            <label class="field"><span>集合</span><input type="time" name="d[<?= $id ?>][meeting_time]" value="<?= h(fmt_time($d['meeting_time'])) ?>"></label>
             <label class="field"><span>会場</span><input name="d[<?= $id ?>][venue]" value="<?= h($d['venue_name']) ?>" list="dl-venues" maxlength="50"></label>
             <label class="field field--wide"><span>メモ</span><input name="d[<?= $id ?>][note]" value="<?= h($d['note']) ?>"></label>
         </div>
@@ -192,7 +189,6 @@ if ($isNew) {
     <div class="form-grid">
         <label class="field"><span>日程名</span><input name="nd[label]" value="<?= h($newDay['label']) ?>" maxlength="50" placeholder="例: 2日目"<?= $isNew ? ' required' : '' ?>></label>
         <label class="field"><span>日付（不明なら空欄）</span><input type="date" name="nd[held_on]" value="<?= h($newDay['date']) ?>"></label>
-        <label class="field"><span>集合</span><input type="time" name="nd[meeting_time]" value="<?= h($newDay['meeting']) ?>"></label>
         <label class="field"><span>会場</span><input name="nd[venue]" value="<?= h($newDay['venue']) ?>" list="dl-venues" maxlength="50"></label>
         <label class="field field--wide"><span>メモ</span><input name="nd[note]" value="<?= h($newDay['note']) ?>"></label>
     </div>
