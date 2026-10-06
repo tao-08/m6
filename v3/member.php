@@ -65,6 +65,21 @@ $st = $pdo->prepare('SELECT m.member_id, m.name, COUNT(DISTINCT other.band_id) A
 $st->execute([$memberId]);
 $partners = $st->fetchAll();
 
+// ---- 出演履歴を「同じ日程（live_day）」ごとにまとめる ----
+//   SQL は1バンド1行で返ってくる。並び順は日程ごとに固まっているので、
+//   live_day_id をキーにした配列に入れていけば、順番を保ったままグループにできる
+$historyDays = [];
+foreach ($history as $hi) {
+    $dayId = (int)$hi['live_day_id'];
+    if (!isset($historyDays[$dayId])) {
+        $historyDays[$dayId] = $hi + ['bands' => [], 'has_last' => false];
+    }
+    $historyDays[$dayId]['bands'][] = $hi;
+    if ((int)$hi['is_last'] === 1) {
+        $historyDays[$dayId]['has_last'] = true;
+    }
+}
+
 $headliners = count(array_filter($history, static fn($h) => (int)$h['is_last'] === 1));
 $liveCount = count(array_unique(array_column($history, 'live_id')));
 $isMe = $memberId === $user['member_id'];
@@ -295,19 +310,29 @@ render_header($member['name'], 'members');
     <section>
         <h2 class="section-title">出演履歴</h2>
         <ol class="history">
-            <?php foreach ($history as $hi): ?>
-                <li class="card history__item<?= $hi['is_last'] ? ' is-last' : '' ?>">
+            <?php foreach ($historyDays as $day): ?>
+                <li class="card history__item<?= $day['has_last'] ? ' is-last' : '' ?>">
                     <div class="history__when">
-                        <span><?= h(fmt_year($hi['year'])) ?></span>
-                        <span class="muted"><?= h(fmt_date($hi['date'])) ?></span>
+                        <span><?= h(fmt_year($day['year'])) ?></span>
+                        <span class="muted"><?= h(fmt_date($day['date'])) ?></span>
                     </div>
                     <div class="history__what">
-                        <a href="live.php?id=<?= (int)$hi['live_id'] ?>#day-<?= (int)$hi['live_day_id'] ?>" class="muted small"><?= h($hi['live_name']) ?> <?= h($hi['label']) ?><?= $hi['venue_name'] ? ' · ' . h($hi['venue_name']) : '' ?></a>
-                        <strong><?= h($hi['band_name']) ?></strong>
-                    </div>
-                    <div class="history__tags">
-                        <?php if ($hi['parts']): ?><span class="pill"><?= h($hi['parts']) ?></span><?php endif; ?>
-                        <?php if ($hi['is_last']): ?><span class="tag tag--accent">トリ</span><?php endif; ?>
+                        <a href="live.php?id=<?= (int)$day['live_id'] ?>#day-<?= (int)$day['live_day_id'] ?>" class="muted small"><?= h($day['live_name']) ?> <?= h($day['label']) ?><?= $day['venue_name'] ? ' · ' . h($day['venue_name']) : '' ?></a>
+                        <!-- その日に出たバンドを出演順に並べる。バンド名からバンド詳細へ -->
+                        <ul class="history__bands">
+                            <?php foreach ($day['bands'] as $b): ?>
+                                <li class="history__band">
+                                    <a href="band.php?id=<?= (int)$b['band_id'] ?>"><?= h($b['band_name']) ?></a>
+                                    <span class="history__tags">
+                                        <!-- parts は SQL で「Vo/Ba」のように / でつないであるので、分けて1つずつ色付きのマークにする -->
+                                        <?php foreach ($b['parts'] ? explode('/', $b['parts']) : [] as $short): ?>
+                                            <span class="part part--<?= h(instrument_class($short)) ?>"><?= h($short) ?></span>
+                                        <?php endforeach; ?>
+                                        <?php if ($b['is_last']): ?><span class="tag tag--accent">トリ</span><?php endif; ?>
+                                    </span>
+                                </li>
+                            <?php endforeach; ?>
+                        </ul>
                     </div>
                 </li>
             <?php endforeach; ?>
