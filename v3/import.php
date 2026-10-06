@@ -70,6 +70,69 @@ function read_form_input(): array
     return $input;
 }
 
+/**
+ * 「Vo | Gt/Vo | ⋯」「Key | Vn | ⋯」のような切り替えボタン（中身はラジオボタン）の HTML を作る。
+ *   $options … [値 => ['label' => 表示, 'title' => 正式名, 'add' => true なら「選ぶと楽器を追加するモーダルが開く」], ...]（「⋯」の中はこの順）
+ *   $shown   … 「⋯」にしまわずに見せておく値（この順で並ぶ）
+ *   $kind    … 'inst' なら、モーダルで楽器を追加したとき JS がこのボタンにも新しい楽器を足す
+ * 開け閉めとモーダルは assets/app.js の setupPicks。
+ */
+function render_pick(string $name, array $options, array $shown, string $selected, string $ariaLabel, bool $collapsed, string $kind = ''): string
+{
+    if (!isset($options[$selected])) {
+        $selected = $shown[0] ?? ''; // 選択肢に無い値（消された楽器など）なら先頭を選んでおく
+    }
+    $radio = static function (string $value, array $o) use ($name, $selected): string {
+        return '<label title="' . h($o['title']) . '"><input type="radio" name="' . h($name) . '" value="' . h($value) . '"'
+            . ($value === $selected ? ' checked' : '') . (!empty($o['add']) ? ' data-pick-add' : '')
+            . ' aria-label="' . h($o['title']) . '"><span>' . h($o['label']) . '</span></label>';
+    };
+    $front = '';
+    foreach ($shown as $value) {
+        if (isset($options[$value])) {
+            $front .= $radio($value, $options[$value]);
+        }
+    }
+    $menu = '';
+    foreach ($options as $value => $o) {
+        if (!in_array((string)$value, $shown, true)) {
+            $menu .= $radio((string)$value, $o);
+        }
+    }
+    // しまってある選択肢を選んでいれば、「⋯」の代わりにその名前を出す。空なら CSS が「⋯」を描く（空白も入れないこと）
+    $toggleText = in_array($selected, $shown, true) ? '' : ($options[$selected]['label'] ?? '');
+    return '<div class="cell-instrument pick' . ($collapsed ? ' is-collapsed' : '') . '" role="radiogroup" aria-label="' . h($ariaLabel) . '" data-pick'
+        . ($kind !== '' ? ' data-pick-kind="' . h($kind) . '"' : '') . '>'
+        . $front
+        . '<div class="pick__more" data-pick-more>'
+        . '<button type="button" class="pick__toggle" aria-expanded="false" aria-label="ほかの選択肢" data-pick-toggle>' . h($toggleText) . '</button>'
+        . '<div class="pick__menu">' . $menu . '</div>'
+        . '</div></div>';
+}
+
+/**
+ * 名前欄が黄色（似た人がいる）のときの「もしかして」の候補を data-suggest 属性にする（JSON）。
+ * 名前欄をクリックすると、assets/app.js の showHint が「もしかして ◯◯？」を出す。
+ */
+function suggest_attr(array $status): string
+{
+    return !empty($status['suggest'])
+        ? ' data-suggest="' . h(json_encode($status['suggest'], JSON_UNESCAPED_UNICODE)) . '"'
+        : '';
+}
+
+/** 楽器の切り替えボタン用の選択肢。$list は instruments() か extra_instruments()。「etc」は選ぶと楽器追加のモーダルが開く */
+function instrument_pick_options(array $list): array
+{
+    $options = [];
+    foreach ($list as $ins) {
+        $isEtc = $ins['short_name'] === 'etc';
+        $options[(string)$ins['instrument_id']] = ['label' => $ins['short_name'], 'add' => $isEtc,
+            'title' => $isEtc ? 'その他（ここに無い楽器を追加）' : $ins['name']];
+    }
+    return $options;
+}
+
 /* =====================================================================
  *  POST の処理
  * ===================================================================== */
@@ -402,18 +465,19 @@ if ($plan === null): // ==================== アップロード画面 ==========
         <span><i class="swatch swatch--similar"></i>似た人がいる（書き間違い？）</span>
         <span><i class="swatch swatch--new"></i>新しいメンバーとして登録</span>
         <span class="muted small">セルにマウスを乗せる（スマホはタップ）と理由が出ます。1つのセルには1人。
-            名簿で1つのセルに2人以上書かれていたら、2人目からは右端の「Key./Other」列に移してあります（楽器はプルダウンで選ぶ）。
-            人が足りないときは「＋ 列を追加」。</span>
+            名簿で1つのセルに2人以上書かれていたら、2人目からは右端の「Other」列に移してあります（楽器は名前の下のボタンで選ぶ）。
+            人が足りないときは「＋ 列を追加」。Vo. 欄の下の「Vo / Gt/Vo / …」で兼任を選べます（「⋯」にマウスを乗せる・タップすると Ba/Vo / Key/Vo / Dr/Vo が出ます）。</span>
     </div>
 
     <!-- 「＋ 列を追加」で JS が複製するプルダウン（全部の楽器から選べる。初期値はキーボード） -->
-    <template id="tpl-extra-instrument">
-        <select class="select-sm cell-instrument" aria-label="この人の楽器">
-            <?php foreach (instruments() as $ins): ?>
-                <option value="<?= (int)$ins['instrument_id'] ?>"<?= (int)$ins['instrument_id'] === default_instrument_id('Key') ? ' selected' : '' ?>><?= h($ins['short_name']) ?> <?= h($ins['name']) ?></option>
-            <?php endforeach; ?>
-        </select>
-    </template>
+    <?php
+    // 楽器の切り替えボタン: 「Key」「Vn」だけ見せて、残りは「⋯」の中
+    $instShown = array_map('strval', array_filter([default_instrument_id('Key'), default_instrument_id('Vn')]));
+    $allInstOptions = instrument_pick_options(instruments());       // 右端の追加列用（全部の楽器）
+    $freeInstOptions = instrument_pick_options(extra_instruments()); // Key./Other 列用（Vo / Gt / Ba / Dr 以外）
+    ?>
+    <!-- 「＋ 列を追加」で JS が複製する楽器の切り替えボタン（name は JS が付け直す。初期値はキーボード） -->
+    <template id="tpl-extra-instrument"><?= render_pick('tpl', $allInstOptions, $instShown, (string)default_instrument_id('Key'), 'この人の楽器', true, 'inst') ?></template>
 
     <?php foreach ($plan['rosters'] as $ri => $roster): ?>
         <section class="card import-day">
@@ -435,7 +499,7 @@ if ($plan === null): // ==================== アップロード画面 ==========
                             <th title="名簿の見出し: <?= h($c['title']) ?>"><?= h(part_label($c['part'])) ?></th>
                         <?php endforeach; ?>
                         <?php for ($n = 0; $n < $extraCols[$ri]; $n++): ?>
-                            <th>Key./Other</th>
+                            <th title="右端に足した列。楽器は人ごとに選ぶ">Other</th>
                         <?php endfor; ?>
                     </tr></thead>
                     <tbody>
@@ -458,15 +522,18 @@ if ($plan === null): // ==================== アップロード画面 ==========
                                 <td>
                                     <input name="rb[<?= $ri ?>][<?= $bi ?>][c][<?= $col ?>]" value="<?= h($cellTexts[$k]) ?>"
                                            class="name-input<?= $stt['status'] ? ' is-' . h($stt['status']) : '' ?>"
-                                           title="<?= h($stt['hint']) ?>" data-name-cell aria-label="メンバー">
-                                    <?php if (is_free_part($c['part'])):
-                                        // Key./Other の列だけ、人（セル）ごとに楽器を選べる。初期値は Key 列ならキーボード、その他列ならその他
-                                        $ci = (int)($form['rb'][$ri][$bi]['ci'][$col] ?? $c['instrument_id'] ?? 0); ?>
-                                        <select name="rb[<?= $ri ?>][<?= $bi ?>][ci][<?= $col ?>]" class="select-sm cell-instrument" aria-label="この人の楽器">
-                                            <?php foreach (extra_instruments() as $ins): ?>
-                                                <option value="<?= (int)$ins['instrument_id'] ?>"<?= $ci === (int)$ins['instrument_id'] ? ' selected' : '' ?>><?= h($ins['short_name']) ?> <?= h($ins['name']) ?></option>
-                                            <?php endforeach; ?>
-                                        </select>
+                                           title="<?= h($stt['hint']) ?>" data-name-cell aria-label="メンバー"<?= suggest_attr($stt) ?>>
+                                    <?php if ($c['part'] === 'Vo'):
+                                        // Vo. 欄: 単体 / ギター / ベースボーカルを切り替える（初期値は名簿の「山田(Gt)」の書き方から）
+                                        $vr = vocal_role($form['rb'][$ri][$bi]['vr'][$col] ?? $band['vo_roles'][$col] ?? null); ?>
+                                        <!-- よく使う「Vo」「Gt/Vo」だけ見せて、残り（Ba/Vo / Key/Vo / Dr/Vo）は「⋯」の中にしまう -->
+                                        <?= render_pick("rb[$ri][$bi][vr][$col]", VOCAL_ROLES, ['vo', 'gt'], $vr, 'ボーカルの形', trim($cellTexts[$k]) === '') ?>
+                                    <?php elseif (is_free_part($c['part'])):
+                                        // Key./Other の列だけ、人（セル）ごとに楽器を選べる。
+                                        // 初期値: 名前の「(Vn)」→ 列の見出し（Cho. など）→ それ以外はキーボード（「その他」は初期値にしない）
+                                        $ci = (string)(int)($form['rb'][$ri][$bi]['ci'][$col] ?? $band['cell_insts'][$col] ?? $c['instrument_id'] ?? 0); ?>
+                                        <!-- 名前が空なら畳んでおく（入力されたら JS が開く） -->
+                                        <?= render_pick("rb[$ri][$bi][ci][$col]", $freeInstOptions, $instShown, $ci, 'この人の楽器', trim($cellTexts[$k]) === '', 'inst') ?>
                                     <?php endif; ?>
                                 </td>
                             <?php endforeach; ?>
@@ -477,12 +544,8 @@ if ($plan === null): // ==================== アップロード画面 ==========
                                 <td>
                                     <input name="rb[<?= $ri ?>][<?= $bi ?>][x][<?= $n ?>][name]" value="<?= h($cellTexts[$k]) ?>"
                                            class="name-input<?= $stt['status'] ? ' is-' . h($stt['status']) : '' ?>"
-                                           title="<?= h($stt['hint']) ?>" data-name-cell aria-label="メンバー">
-                                    <select name="rb[<?= $ri ?>][<?= $bi ?>][x][<?= $n ?>][inst]" class="select-sm cell-instrument" aria-label="この人の楽器">
-                                        <?php foreach (instruments() as $ins): ?>
-                                            <option value="<?= (int)$ins['instrument_id'] ?>"<?= $cellInsts[$k] === (int)$ins['instrument_id'] ? ' selected' : '' ?>><?= h($ins['short_name']) ?> <?= h($ins['name']) ?></option>
-                                        <?php endforeach; ?>
-                                    </select>
+                                           title="<?= h($stt['hint']) ?>" data-name-cell aria-label="メンバー"<?= suggest_attr($stt) ?>>
+                                    <?= render_pick("rb[$ri][$bi][x][$n][inst]", $allInstOptions, $instShown, (string)$cellInsts[$k], 'この人の楽器', trim($cellTexts[$k]) === '', 'inst') ?>
                                 </td>
                             <?php endfor; ?>
                         </tr>
@@ -501,5 +564,28 @@ if ($plan === null): // ==================== アップロード画面 ==========
 </form>
 <!-- 「やり直す」は別のフォーム。form="reset-form" 属性でボタンだけ上のフォームの中に置いている -->
 <form method="post" id="reset-form"><?= csrf_field() ?><input type="hidden" name="action" value="reset"></form>
+
+<?php if ($plan['rosters']): ?>
+<!--
+    楽器の「etc」を選んだときに開くモーダル（<dialog> は HTML 標準のモーダル部品）。
+    取り込みのフォームの「外」に置いている（フォームの中にフォームは入れられない & 取り込みの送信内容に混ざらないように）。
+    「追加する」で api_instrument.php に送って楽器マスタに登録し、その楽器を選んだ状態にする（assets/app.js の setupPicks）。
+-->
+<dialog class="modal" data-new-instrument aria-labelledby="new-instrument-title">
+    <form method="dialog" class="modal__body">
+        <h3 id="new-instrument-title" class="modal__title">ここに無い楽器を追加</h3>
+        <p class="muted small">追加した楽器は、ほかの人の欄でも選べるようになります。間違えて追加したものは、管理者が「楽器の管理」で消せます。</p>
+        <div class="form-grid">
+            <label class="field"><span>略称（例: Tp）</span><input name="short_name" maxlength="10" autocomplete="off" required></label>
+            <label class="field"><span>楽器名（例: トランペット）</span><input name="name" maxlength="30" autocomplete="off" required></label>
+        </div>
+        <p class="flash flash--error" data-modal-error hidden></p>
+        <div class="form-actions">
+            <button type="button" class="btn btn--ghost" data-modal-cancel>キャンセル</button>
+            <button type="submit" class="btn btn--primary">追加する</button>
+        </div>
+    </form>
+</dialog>
+<?php endif; ?>
 <?php endif;
 render_footer();

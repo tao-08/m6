@@ -99,12 +99,25 @@ function roster_choices(array $plan): array
 
 /**
  * パート（'Vo' 'Gt'…）→ instrument_id の初期値。
- * instrument.short_name（'Vo' 'Gt'…）と比べる。'Other' は「その他(etc)」にする。
+ * instrument.short_name（'Vo' 'Gt'…）と比べる。'Other'（Key./Other の列）はキーボードにする（「その他」を初期値にはしない）。
  */
 function default_instrument_id(string $part): ?int
 {
+    return instrument_id_by_short($part === 'Other' ? 'Key' : $part);
+}
+
+/**
+ * 名簿の列見出し（「Cho.」「Perc」など）→ instrument_id。楽器の略称か名前と一致しなければ null。
+ * 「その他」（etc）は一致させない（見出しが「その他」の列も、初期値はキーボードにするため）。
+ */
+function instrument_from_header(string $title): ?int
+{
+    $label = mb_strtolower(preg_replace('/[\s.．\d]/u', '', tt_width($title)) ?? '');
     foreach (instruments() as $ins) {
-        if (strtolower($ins['short_name']) === strtolower($part === 'Other' ? 'etc' : $part)) {
+        if ($ins['short_name'] === 'etc') {
+            continue;
+        }
+        if ($label !== '' && ($label === mb_strtolower($ins['short_name']) || $label === mb_strtolower($ins['name']))) {
             return (int)$ins['instrument_id'];
         }
     }
@@ -151,16 +164,127 @@ function spread_roster_cells(array $roster): array
         $band['extras'] = [];
         foreach ($roster['columns'] as $col => $c) {
             $names = split_member_names((string)($band['cells'][$col] ?? ''));
-            $band['cells'][$col] = array_shift($names) ?? '';
+            $first = array_shift($names) ?? '';
+            // Vo. 欄に「山田(Gt)」と書いてあれば、ギターボーカルを初期値にして名前から (Gt) を外す
+            if ($c['part'] === 'Vo') {
+                [$plain, $named] = parse_name_instrument($first);
+                $role = vocal_role_from_instrument($named);
+                if ($role !== null) {
+                    $first = $plain;
+                    $band['vo_roles'][$col] = $role;
+                }
+            }
+            // Key./Other 欄に「村田(Vn)」と書いてあれば、ヴァイオリンを初期値にして名前から (Vn) を外す
+            // （その欄の選択肢にある楽器だけ。Vo / Gt などは欄の選択肢に無いので、名前に残して登録時に読む）
+            if (is_free_part($c['part'])) {
+                [$plain, $named] = parse_name_instrument($first);
+                if ($named !== null && in_array($named, array_map('intval', array_column(extra_instruments(), 'instrument_id')), true)) {
+                    $first = $plain;
+                    $band['cell_insts'][$col] = $named;
+                }
+            }
+            $band['cells'][$col] = $first;
             foreach ($names as $name) {
                 [$plain, $named] = parse_name_instrument($name);
                 $band['extras'][] = ['name' => $plain, 'instrument_id' => $named ?? $c['instrument_id']];
             }
         }
+        // 「(Gt)」などの書き方で決まらなかった Vo. 欄は、ほかの欄から推測して選んでおく
+        $firstVo = true;
+        foreach ($roster['columns'] as $col => $c) {
+            if ($c['part'] !== 'Vo' || $band['cells'][$col] === '') {
+                continue;
+            }
+            $band['vo_roles'][$col] ??= guess_vocal_role($roster['columns'], $band, $band['cells'][$col], $firstVo);
+            $firstVo = false;
+        }
         $roster['extra_cols'] = max($roster['extra_cols'], count($band['extras']));
     }
     unset($band);
     return $roster;
+}
+
+/**
+ * 名簿の1バンドから「ボーカルの形」の初期値を推測する（プレビューで選んでおくだけ。あとで変えられる）
+ *   1. ボーカルと同じ名前が Gt / Ba / Key / Dr 欄にいる → その楽器のボーカル
+ *   2. 1人目のボーカルだけ、空欄から推測する（2人目以降のボーカルにまで当てはめると、全員ギターボーカルになってしまう）
+ *      - Gt.1 が空で Gt.2 に人がいる          → ギターボーカル（空いた Gt.1 がボーカル本人の分）
+ *      - Ba. が空で、メンバーが3人            → ベースボーカル（スリーピース）
+ *      - Gt.1 も Gt.2 も空で、メンバーが3人   → ギターボーカル（スリーピース）
+ *      「空欄」だけで決めないのは、ベースやギターがいない編成（アコースティックなど）まで巻き込むから
+ * @param array  $band    spread_roster_cells で1セル1人に分けた後のバンド（cells と extras）
+ * @param string $voName  ボーカルの名前
+ * @return string|null VOCAL_ROLES のキー。推測できなければ null（= 単体ボーカル）
+ */
+function guess_vocal_role(array $columns, array $band, string $voName, bool $firstVo): ?string
+{
+    // ---- 1. 同じ名前を探す（右端の追加列に移した2人目以降も見る） ----
+    $voKey = member_key(parse_name_instrument($voName)[0]);
+    $keysOf = []; // 楽器の略称 => [名前のキー => true]
+    foreach ($columns as $col => $c) {
+        $name = (string)($band['cells'][$col] ?? '');
+        if ($name !== '') {
+            $keysOf[$c['part']][member_key(parse_name_instrument($name)[0])] = true;
+        }
+    }
+    foreach ($band['extras'] as $x) {
+        foreach (array_filter(array_column(VOCAL_ROLES, 'also')) as $short) { // Gt / Ba / Key / Dr
+            if ($x['instrument_id'] === instrument_id_by_short($short)) {
+                $keysOf[$short][member_key($x['name'])] = true;
+            }
+        }
+    }
+    foreach (VOCAL_ROLES as $role => $r) {
+        if ($r['also'] !== null && isset($keysOf[$r['also']][$voKey])) {
+            return $role;
+        }
+    }
+    if (!$firstVo) {
+        return null;
+    }
+
+    // ---- 2. 空欄から推測 ----
+    // パートの列のセルを左から順に並べる（例: Gt なら [Gt.1 の名前, Gt.2 の名前]）
+    $cellsOf = static function (string $part) use ($columns, $band): array {
+        $cells = [];
+        foreach ($columns as $col => $c) {
+            if ($c['part'] === $part) {
+                $cells[] = (string)($band['cells'][$col] ?? '');
+            }
+        }
+        return $cells;
+    };
+    $gt = $cellsOf('Gt');
+    $ba = $cellsOf('Ba');
+    if (count($gt) >= 2 && $gt[0] === '' && $gt[1] !== '') {
+        return 'gt';
+    }
+    $trio = roster_band_size($band) === 3;
+    if ($trio && $ba && implode('', $ba) === '') {
+        return 'ba';
+    }
+    if ($trio && $gt && implode('', $gt) === '') {
+        return 'gt';
+    }
+    return null;
+}
+
+/** 名簿の1バンドの人数。「人数」列があればそれ、無ければ書かれている名前を数える（同じ人が2つの欄にいても1人） */
+function roster_band_size(array $band): int
+{
+    if (($band['member_count'] ?? null) !== null) {
+        return (int)$band['member_count'];
+    }
+    $keys = [];
+    foreach ($band['cells'] as $name) {
+        if ($name !== '') {
+            $keys[member_key(parse_name_instrument($name)[0])] = true;
+        }
+    }
+    foreach ($band['extras'] as $x) {
+        $keys[member_key($x['name'])] = true;
+    }
+    return count($keys);
 }
 
 /**
@@ -215,7 +339,9 @@ function build_import_plan(array $files): array
                     $roster = parse_roster($rows);
                     $roster['file'] = $label;
                     foreach ($roster['columns'] as &$col) {
-                        $col['instrument_id'] = default_instrument_id($col['part']);
+                        // 見出しが「Cho.」「Sax」のように楽器そのものなら、その楽器を列の初期値にする
+                        $col['instrument_id'] = (is_free_part($col['part']) ? instrument_from_header($col['title']) : null)
+                            ?? default_instrument_id($col['part']);
                     }
                     unset($col); // foreach の参照(&)は使い終わったら必ず unset（後で事故る）
                     $plan['rosters'][] = spread_roster_cells($roster);
@@ -318,11 +444,12 @@ function classify_cells(PDO $pdo, array $cells): array
     foreach ($cells as $cell) {
         $names = array_map(static fn($n) => parse_name_instrument($n)[0], split_member_names((string)$cell));
         if ($names === []) {
-            $result[] = ['status' => '', 'hint' => ''];
+            $result[] = ['status' => '', 'hint' => '', 'suggest' => []];
             continue;
         }
         $statuses = [];
         $hints = [];
+        $suggest = []; // 黄色のときの「もしかして」の候補（画面でクリックすると、その名前が入る）
         foreach ($names as $name) {
             $key = member_key($name);
             if (isset($index[$key])) {
@@ -339,6 +466,7 @@ function classify_cells(PDO $pdo, array $cells): array
             if ($similar) {
                 $statuses[] = 'similar';
                 $hints[] = "「{$name}」は未登録。登録済みの「" . implode('」「', array_slice($similar, 0, 3)) . '」の書き間違い？';
+                $suggest = [...$suggest, ...array_slice($similar, 0, 3)];
                 continue;
             }
             // 今回の取り込みの中の別の新しい名前と似ている？
@@ -351,6 +479,7 @@ function classify_cells(PDO $pdo, array $cells): array
             if ($similarNew) {
                 $statuses[] = 'similar';
                 $hints[] = "「{$name}」は未登録。今回の「" . implode('」「', $similarNew) . '」と表記ゆれ？';
+                $suggest = [...$suggest, ...array_slice($similarNew, 0, 3)];
                 continue;
             }
             $statuses[] = 'new';
@@ -358,7 +487,8 @@ function classify_cells(PDO $pdo, array $cells): array
         }
         // 1つのセルに複数人いるときは、一番注意が必要な色にする
         $status = in_array('new', $statuses, true) ? 'new' : (in_array('similar', $statuses, true) ? 'similar' : 'ok');
-        $result[] = ['status' => $status, 'hint' => implode("\n", $hints)];
+        // 候補で置きかえられるのは「1セルに1人」のときだけ（2人いると、どちらを置きかえるか決められない）
+        $result[] = ['status' => $status, 'hint' => implode("\n", $hints), 'suggest' => count($names) === 1 ? $suggest : []];
     }
     return $result;
 }
@@ -523,12 +653,28 @@ function commit_import_plan(PDO $pdo, array $plan, array $input): array
                 if (is_free_part($c['part'])) {
                     $instrument = $pick($rb['ci'][$col] ?? 0, $instrument);
                 }
-                $add((string)($rb['c'][$col] ?? ''), $instrument);
+                $cell = (string)($rb['c'][$col] ?? '');
+                if ($c['part'] === 'Vo') {
+                    // Vo. 欄: ボーカルは必ず登録し、ギター/ベースボーカルならその楽器の行も足す
+                    $also = VOCAL_ROLES[vocal_role($rb['vr'][$col] ?? null)]['also'];
+                    foreach (split_member_names($cell) as $name) {
+                        [$name, $named] = parse_name_instrument($name);
+                        $assignments[] = [$name, $instrument];
+                        if ($also !== null) {
+                            $assignments[] = [$name, default_instrument_id($also)];
+                        }
+                        if ($named !== null) { // 「山田(Key)」なら Vo + Key（同じ行が2回になっても INSERT IGNORE で1行）
+                            $assignments[] = [$name, $named];
+                        }
+                    }
+                    continue;
+                }
+                $add($cell, $instrument);
             }
             // 右端の追加列（2人目以降・自分で足した列）。楽器は全部の楽器から選べる
             foreach ((array)($rb['x'] ?? []) as $x) {
                 if (is_array($x)) {
-                    $add((string)($x['name'] ?? ''), $pick($x['inst'] ?? 0, null));
+                    $add((string)($x['name'] ?? ''), $pick($x['inst'] ?? 0, default_instrument_id('Key'))); // 変な値ならキーボード
                 }
             }
             attach_members($pdo, $memberIndex, $bandId, $assignments);

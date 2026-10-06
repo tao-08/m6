@@ -48,7 +48,6 @@ if ($isNew) {
 }
 $dayId = (int)$band['live_day_id'];
 $backUrl = 'live.php?id=' . (int)$band['live_id'] . '#day-' . $dayId;
-$validInstruments = array_map('intval', array_column(instruments(), 'instrument_id'));
 
 $errors = [];
 if (is_post()) {
@@ -77,12 +76,17 @@ if (is_post()) {
     $start = (string)($_POST['start_time'] ?? '');
     $end = (string)($_POST['end_time'] ?? '');
 
-    $rows = [];
+    $rows = [];    // 登録する [名前, instrument_id]（ギターボーカルは Vo と Gt の2つ）
+    $picked = [];  // エラーで画面に戻すとき用の [名前, 楽器欄の値]
     foreach ((array)($_POST['m_name'] ?? []) as $i => $memberName) {
         $memberName = member_display((string)$memberName);
-        $inst = (int)($_POST['m_inst'][$i] ?? 0);
-        if ($memberName !== '') {
-            $rows[] = [$memberName, in_array($inst, $validInstruments, true) ? $inst : OTHER_INSTRUMENT_ID];
+        $choice = $_POST['m_inst'][$i] ?? '';
+        if ($memberName === '') {
+            continue;
+        }
+        $picked[] = ['name' => $memberName, 'choice' => is_string($choice) ? $choice : ''];
+        foreach (instruments_for_choice($choice) as $inst) {
+            $rows[] = [$memberName, $inst];
         }
     }
 
@@ -135,18 +139,18 @@ if (is_post()) {
     // エラーのときは入力した値をそのまま表示し直す
     $band = array_merge($band, ['name' => $name, 'artist_name' => $artistName, 'song_count' => $songs, 'note' => $note,
         'play_order' => $order, 'start_time' => $start, 'end_time' => $end]);
-    $members = array_map(static fn($r) => ['name' => $r[0], 'instrument_id' => $r[1]], $rows);
+    $members = $picked;
 } elseif ($isNew) {
-    $members = array_map(static fn($i) => ['name' => '', 'instrument_id' => $i], [1, 2, 3, 4]); // Vo Gt Ba Dr の空欄
+    $members = array_map(static fn($i) => ['name' => '', 'choice' => (string)$i], [1, 2, 3, 4]); // Vo Gt Ba Dr の空欄
 } else {
     $st = $pdo->prepare('SELECT m.name, bm.instrument_id FROM band_member bm
         JOIN member m ON m.member_id = bm.member_id
         JOIN instrument i ON i.instrument_id = bm.instrument_id
         WHERE bm.band_id = ? ORDER BY i.sort_order, m.name');
     $st->execute([$bandId]);
-    $members = $st->fetchAll();
+    $members = merge_vocal_roles($st->fetchAll()); // Vo と Gt の2行を持つ人は「Gt/Vo」の1行にまとめて見せる
 }
-$members[] = ['name' => '', 'instrument_id' => 2]; // 最後に空の行を1つ（追加用）
+$members[] = ['name' => '', 'choice' => '2']; // 最後に空の行を1つ（追加用）
 $allNames = $pdo->query('SELECT name FROM member ORDER BY name')->fetchAll(PDO::FETCH_COLUMN);
 $allArtists = $pdo->query('SELECT name FROM artist ORDER BY name')->fetchAll(PDO::FETCH_COLUMN);
 
@@ -172,13 +176,22 @@ render_header($isNew ? 'バンドを追加' : 'バンドを編集', 'lives');
     <datalist id="artists"><?php foreach ($allArtists as $n): ?><option value="<?= h($n) ?>"><?php endforeach; ?></datalist>
 
     <h2 class="section-title">メンバー</h2>
-    <p class="muted small">ギターボーカルは「Vo」と「Gt」の2行で入れます。名前が既存メンバーと同じ表記なら同一人物、違えば新しいメンバーになります（色で分かります）。</p>
+    <p class="muted small">ギター・ベース・キーボードボーカルは楽器欄で「Gt/Vo」などを選びます。名前が既存メンバーと同じ表記なら同一人物、違えば新しいメンバーになります（色で分かります）。</p>
     <div class="member-rows" data-rows>
         <?php foreach ($members as $m): ?>
             <div class="member-row-edit">
                 <select name="m_inst[]" aria-label="楽器">
-                    <?php foreach (instruments() as $ins): ?>
-                        <option value="<?= (int)$ins['instrument_id'] ?>"<?= (int)$m['instrument_id'] === (int)$ins['instrument_id'] ? ' selected' : '' ?>><?= h($ins['short_name']) ?> <?= h($ins['name']) ?></option>
+                    <?php foreach (instruments() as $ins):
+                        $value = (string)$ins['instrument_id']; ?>
+                        <option value="<?= h($value) ?>"<?= $m['choice'] === $value ? ' selected' : '' ?>><?= h($ins['short_name']) ?> <?= h($ins['name']) ?></option>
+                        <?php if ($ins['short_name'] === 'Vo'):
+                            // ボーカルのすぐ下に「Gt/Vo ギターボーカル」などを並べる（保存すると Vo + Gt の2行になる）
+                            foreach (VOCAL_ROLES as $key => $role):
+                                if ($role['also'] === null) continue;
+                                $value = "vo:$key"; ?>
+                                <option value="<?= h($value) ?>"<?= $m['choice'] === $value ? ' selected' : '' ?>><?= h($role['label']) ?> <?= h($role['title']) ?></option>
+                            <?php endforeach;
+                        endif; ?>
                     <?php endforeach; ?>
                 </select>
                 <input name="m_name[]" value="<?= h($m['name']) ?>" list="member-names" placeholder="名前" aria-label="名前" class="name-input" data-name-cell>

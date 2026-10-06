@@ -49,8 +49,8 @@ $nav = [
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+JP:wght@400;500;700;900&display=swap" rel="stylesheet">
     <!-- ?v=2 はキャッシュ対策。CSS を変えたら数字を上げると、ブラウザが古い CSS を使い続けない -->
-    <link rel="stylesheet" href="assets/app.css?v=5">
-    <script src="assets/app.js?v=5" defer></script>
+    <link rel="stylesheet" href="assets/app.css?v=8">
+    <script src="assets/app.js?v=8" defer></script>
 </head>
 <body>
 <header class="topbar">
@@ -93,6 +93,7 @@ $nav = [
                 <?php if ($user['admin']): ?>
                     <a href="users.php">ユーザー管理</a>
                     <a href="members_merge.php">メンバーの統合</a>
+                    <a href="instruments.php">楽器の管理</a>
                 <?php endif; ?>
                 <form method="post" action="logout.php"><?= csrf_field() ?><button type="submit" class="linkbtn">ログアウト</button></form>
             </div>

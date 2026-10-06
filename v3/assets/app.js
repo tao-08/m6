@@ -13,7 +13,9 @@
  *    data-dropzone      … ファイルのドラッグ&ドロップ
  *    data-name-cell     … 名前の入力欄（DB にいるかで色が変わる）
  *    data-roster-input  … タイムテーブルの枠 → 名簿のバンド（検索欄）
- *    data-add-roster-col … 名簿の表の右端に「Key./Other」列を足す
+ *    data-add-roster-col … 名簿の表の右端に「Other」列を足す
+ *    data-pick          … 名簿の「Vo / Gt/Vo / ⋯」「Key / Vn / ⋯」の切り替えボタンと、etc の楽器追加モーダル
+ *    .table-scroll      … 横にはみ出す表をマウスのドラッグで左右に動かす
  *    data-pack          … 送信時に全項目を JSON 1個にまとめるフォーム
  *    data-rows          … バンド編集のメンバー行（追加・削除）
  *    data-print / data-autosubmit … 印刷ボタン / 選んだら即送信
@@ -31,6 +33,8 @@ document.addEventListener('DOMContentLoaded', () => {
   setupNameCheck();
   setupImportPreview();
   setupRosterColumns();
+  setupPicks();
+  setupDragScroll();
   setupPackedForm();
   setupMemberRows();
   setupSmallThings();
@@ -213,7 +217,10 @@ function setupNameCheck() {
         input.classList.remove('is-ok', 'is-similar', 'is-new');
         if (r.status) input.classList.add('is-' + r.status);
         input.title = r.hint; // マウスを乗せると理由が出る
+        input.dataset.suggest = JSON.stringify(r.suggest || []); // 黄色のときの「もしかして」の候補
       });
+      // 入力中の欄は、色が変わったのに合わせてポップアップ（もしかして / 理由）も出し直す
+      if (document.activeElement?.matches('[data-name-cell]')) showHint(document.activeElement);
     } catch (e) {
       console.error('名前チェックの通信エラー:', e);
     }
@@ -226,6 +233,7 @@ function setupNameCheck() {
     timer = setTimeout(check, 300);
   });
   // 名前の入力欄をタップしたら理由（title）を下に表示（スマホはマウスを乗せられないので）
+  // 黄色（似た人がいる）なら「もしかして ◯◯？」を出し、◯◯ を押すとその名前が入る
   document.addEventListener('focusin', (e) => {
     if (!e.target.matches('[data-name-cell]')) return;
     showHint(e.target);
@@ -235,15 +243,64 @@ function setupNameCheck() {
   if (!cells().some((i) => /is-(ok|similar|new)/.test(i.className))) check();
 }
 
-/** 入力欄の下に title の文章を小さく出す */
+/**
+ * 入力欄の真下に title の文章をポップアップで出す。
+ *   入力欄の隣に差し込むと行の幅・高さが変わり、表のスクロール枠（overflow）で切れるので、
+ *   body の直下に置いて座標で位置を合わせる。ページや表をスクロールしたら位置を合わせ直す。
+ *
+ * 黄色（is-similar）で候補（data-suggest）があるときは「もしかして ◯◯？」にする。
+ *   ◯◯ は下線付きのボタン。押すとその名前を入力欄に入れ、input イベントで色の判定をやり直す。
+ */
 function showHint(input) {
   document.querySelectorAll('.hint-pop').forEach((p) => p.remove());
-  if (!input.title) return;
+  let suggest = [];
+  try { suggest = JSON.parse(input.dataset.suggest || '[]'); } catch { suggest = []; }
+  const canSuggest = input.classList.contains('is-similar') && suggest.length > 0;
+  if (!canSuggest && !input.title) return;
+
   const pop = document.createElement('div');
   pop.className = 'hint-pop';
-  pop.textContent = input.title;
-  input.insertAdjacentElement('afterend', pop);
-  input.addEventListener('blur', () => pop.remove(), { once: true });
+  if (canSuggest) {
+    pop.classList.add('hint-pop--suggest');
+    pop.append('もしかして ');
+    suggest.forEach((name, i) => {
+      if (i > 0) pop.append(' / ');
+      // 名前は textContent で入れる（innerHTML に入れると、名前に < > が入っていたとき XSS になる）
+      const pick = document.createElement('button');
+      pick.type = 'button';
+      pick.className = 'hint-pop__pick';
+      pick.textContent = name;
+      pick.addEventListener('click', () => {
+        input.value = name;
+        input.dispatchEvent(new Event('input', { bubbles: true })); // 色の判定（300ms 後）と、楽器ボタンの開閉を動かす
+        pop.remove();
+      });
+      pop.append(pick);
+    });
+    pop.append('？');
+    // 押した瞬間に入力欄からフォーカスが外れると、下の blur でポップアップが消えて押せなくなる。
+    // mousedown / pointerdown の「フォーカスを移す」動きを止めて、入力欄にフォーカスを残す
+    ['mousedown', 'pointerdown'].forEach((ev) => pop.addEventListener(ev, (e) => e.preventDefault()));
+  } else {
+    pop.textContent = input.title;
+  }
+  document.body.appendChild(pop);
+
+  const place = () => {
+    const r = input.getBoundingClientRect();
+    const left = Math.min(r.left, document.documentElement.clientWidth - pop.offsetWidth - 8); // 画面の右端からはみ出さない
+    pop.style.top = `${r.bottom + window.scrollY + 4}px`;
+    pop.style.left = `${Math.max(8, left) + window.scrollX}px`;
+  };
+  place();
+  window.addEventListener('scroll', place, true); // true = 表の横スクロールも拾う
+  window.addEventListener('resize', place);
+  input.addEventListener('blur', () => {
+    // 候補のポップアップは少し待ってから消す（スマホはタップでフォーカスが先に外れることがあり、すぐ消すと押せない）
+    setTimeout(() => pop.remove(), canSuggest ? 200 : 0);
+    window.removeEventListener('scroll', place, true);
+    window.removeEventListener('resize', place);
+  }, { once: true });
 }
 
 /* ---------------------------------------------------------------------
@@ -364,7 +421,7 @@ function setupImportPreview() {
 /* ---------------------------------------------------------------------
  * 名簿の表に列を足す（「＋ 列を追加」ボタン）
  *   名簿に載っていない人や、1つのセルに書かれていた3人目以降のために、
- *   表の右端へ「Key./Other」列（名前の入力欄 + 全部の楽器のプルダウン）を足す。
+ *   表の右端へ「Other」列（名前の入力欄 + 全部の楽器の切り替えボタン）を足す。
  *   name="rb[名簿][バンド][x][列番号][name]" の形にしておけば、PHP 側は他の追加列と同じように受け取れる。
  * ------------------------------------------------------------------- */
 function setupRosterColumns() {
@@ -379,7 +436,7 @@ function setupRosterColumns() {
     table.dataset.extraCols = n + 1;
 
     const th = document.createElement('th');
-    th.textContent = 'Key./Other';
+    th.textContent = 'Other';
     table.querySelector('thead tr').appendChild(th);
 
     table.querySelectorAll('tbody tr[data-roster-key]').forEach((tr) => {
@@ -391,13 +448,244 @@ function setupRosterColumns() {
       input.className = 'name-input';
       input.dataset.nameCell = '';
       input.setAttribute('aria-label', 'メンバー');
-      const select = tpl.content.firstElementChild.cloneNode(true);
-      select.name = `${base}[inst]`;
-      td.append(input, select);
+      // 楽器の切り替えボタンを複製して、ラジオボタンの name をこのセル用に付け直す（初期値はキーボード、名前が入るまで畳む）
+      const pick = tpl.content.firstElementChild.cloneNode(true);
+      pick.querySelectorAll('input').forEach((radio) => { radio.name = `${base}[inst]`; });
+      pick.dataset.prev = pick.querySelector('input:checked')?.value || '';
+      td.append(input, pick);
       tr.appendChild(td);
     });
     // 1行目の新しい入力欄にカーソルを置く
     table.querySelector(`tbody tr [name$="[x][${n}][name]"]`)?.focus();
+  });
+
+  // 名前が入ったら下の切り替えボタンを出し、空にしたら畳む（アニメーションは CSS）
+  document.addEventListener('input', (e) => {
+    if (!e.target.matches('.table--roster [data-name-cell]')) return;
+    const select = e.target.parentElement.querySelector('.cell-instrument');
+    if (select) select.classList.toggle('is-collapsed', e.target.value.trim() === '');
+  });
+}
+
+/* ---------------------------------------------------------------------
+ * 名簿の切り替えボタン「Vo / Gt/Vo / ⋯」「Key / Vn / ⋯」（HTML は import.php の render_pick）
+ *   「⋯」で残りの選択肢を出す
+ *     マウス: 乗せると出る（CSS の :hover）。クリックでも開け閉めできる
+ *     スマホ: タップで開け閉め。選んだら閉じる。外をタップしても閉じる
+ *     開いた選択肢が表の横スクロールの外（スマホで右端の外）なら、見える所まで表をスクロールする
+ *   しまってある選択肢を選んだら、「⋯」のボタンにその名前（Ba/Vo など）を出す
+ *
+ *   楽器の「etc」を選んだら、モーダルで新しい楽器（略称・楽器名）を書いてもらう
+ *     追加する → api_instrument.php で楽器マスタに登録し、全部の楽器の欄に足して、この欄ではそれを選ぶ
+ *     キャンセル / Esc → 直前に選んでいたものに戻す（だから選ぶたびに data-prev に覚えておく）
+ * ------------------------------------------------------------------- */
+function setupPicks() {
+  if (!document.querySelector('[data-pick-more]')) return;
+
+  const setOpen = (more, open) => {
+    more.classList.toggle('is-open', open);
+    more.querySelector('[data-pick-toggle]').setAttribute('aria-expanded', String(open));
+    if (open) {
+      // nearest = 隠れているときだけ、ちょうど見える分だけ動かす（見えていれば動かない）
+      more.querySelector('.pick__menu').scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+    }
+  };
+
+  // 「⋯」の文字を今の選択に合わせる（しまってある方を選んでいればその名前、そうでなければ空 = CSS が「⋯」を描く）
+  const syncToggle = (group) => {
+    const hidden = group.querySelector('.pick__menu input:checked');
+    group.querySelector('[data-pick-toggle]').textContent = hidden ? hidden.nextElementSibling.textContent : '';
+  };
+
+  // 値を選んだ状態にする（直前の選択としても覚える）
+  const choose = (group, value) => {
+    const radio = [...group.querySelectorAll('input')].find((r) => r.value === value);
+    if (radio) radio.checked = true;
+    group.dataset.prev = value;
+    syncToggle(group);
+  };
+
+  document.querySelectorAll('[data-pick]').forEach((group) => {
+    group.dataset.prev = group.querySelector('input:checked')?.value || '';
+  });
+
+  document.addEventListener('click', (e) => {
+    const more = e.target.closest('[data-pick-more]');
+    // ほかの「⋯」は全部閉じる（外をタップしたときも、ここで閉じる）
+    document.querySelectorAll('[data-pick-more].is-open').forEach((m) => { if (m !== more) setOpen(m, false); });
+    if (e.target.closest('[data-pick-toggle]')) setOpen(more, !more.classList.contains('is-open'));
+  });
+
+  // ---- etc → 楽器追加のモーダル ----
+  const dialog = document.querySelector('[data-new-instrument]');
+  const token = document.querySelector('meta[name="csrf-token"]')?.content || '';
+  let pending = null; // モーダルを開いている間だけ { group: どの欄か, prev: 直前の選択 }
+
+  const showError = (message) => {
+    const box = dialog.querySelector('[data-modal-error]');
+    box.textContent = message;
+    box.hidden = message === '';
+  };
+
+  // モーダルを閉じて、この欄の選択を決める（value が null なら直前の選択に戻す）
+  const finish = (value) => {
+    if (!pending) return;
+    const { group, prev } = pending;
+    pending = null;
+    choose(group, value ?? prev);
+    if (dialog.open) dialog.close();
+  };
+
+  // 新しい楽器を、画面にある全部の楽器の欄（と「＋ 列を追加」のひな形）の「⋯」の中、etc の手前に足す
+  const addInstrumentOption = (ins) => {
+    const value = String(ins.instrument_id);
+    const groups = [...document.querySelectorAll('[data-pick-kind="inst"]')];
+    const tpl = document.getElementById('tpl-extra-instrument');
+    if (tpl) groups.push(...tpl.content.querySelectorAll('[data-pick-kind="inst"]'));
+    groups.forEach((group) => {
+      if ([...group.querySelectorAll('input')].some((r) => r.value === value)) return; // もうある（同じ略称の楽器が既にあった）
+      // textContent / createElement で作る（入力された文字を innerHTML に入れると XSS になる）
+      const label = document.createElement('label');
+      label.title = ins.name;
+      const radio = document.createElement('input');
+      radio.type = 'radio';
+      radio.name = group.querySelector('input').name;
+      radio.value = value;
+      radio.setAttribute('aria-label', ins.name);
+      const span = document.createElement('span');
+      span.textContent = ins.short_name;
+      label.append(radio, span);
+      const menu = group.querySelector('.pick__menu');
+      menu.insertBefore(label, menu.querySelector('[data-pick-add]')?.closest('label') ?? null);
+    });
+  };
+
+  const openDialog = (group) => {
+    pending = { group, prev: group.dataset.prev || '' };
+    dialog.querySelector('form').reset();
+    showError('');
+    dialog.showModal(); // showModal = 後ろの画面を触れなくする本物のモーダル。Esc で閉じる
+  };
+
+  document.addEventListener('change', (e) => {
+    const group = e.target.closest('[data-pick]');
+    if (!group) return;
+    setOpen(group.querySelector('[data-pick-more]'), false); // 選んだら閉じる
+    syncToggle(group);
+    if (e.target.matches('[data-pick-add]') && dialog) {
+      openDialog(group);
+      return;
+    }
+    group.dataset.prev = e.target.value;
+  });
+
+  // もう etc を選んでいる欄で etc を押し直したとき。選択が変わらないので change が起きない → ここでモーダルを開く
+  // （click は change より先に起きる。data-prev がまだ etc = 「押す前から etc だった」）
+  document.addEventListener('click', (e) => {
+    if (!dialog || !e.target.matches('[data-pick-add]')) return;
+    const group = e.target.closest('[data-pick]');
+    if (group.dataset.prev === e.target.value) {
+      setOpen(group.querySelector('[data-pick-more]'), false);
+      openDialog(group);
+    }
+  });
+
+  if (!dialog) return;
+  const form = dialog.querySelector('form');
+
+  dialog.querySelector('[data-modal-cancel]').addEventListener('click', () => finish(null));
+  // Esc キーで閉じたとき（cancel は Esc を押した瞬間に起きる）。直前の選択に戻す
+  dialog.addEventListener('cancel', () => finish(null));
+  // それ以外の閉じ方の保険。まだ決まっていなければ（= キャンセル扱い）直前の選択に戻す
+  dialog.addEventListener('close', () => finish(null));
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const shortName = form.elements.short_name.value.trim();
+    const name = form.elements.name.value.trim();
+    if (shortName === '' || name === '') {
+      showError('略称と楽器名の両方を入力してください');
+      return;
+    }
+    const submit = form.querySelector('[type="submit"]');
+    submit.disabled = true; // 二重送信防止
+    try {
+      const res = await fetch('api_instrument.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': token },
+        body: JSON.stringify({ short_name: shortName, name }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.error) {
+        showError(data.error || '追加できませんでした。ページを再読み込みしてやり直してください');
+        return;
+      }
+      addInstrumentOption(data);
+      finish(String(data.instrument_id));
+    } catch {
+      showError('通信できませんでした。もう一度押してください');
+    } finally {
+      submit.disabled = false;
+    }
+  });
+}
+
+/* ---------------------------------------------------------------------
+ * 横にはみ出す表（.table-scroll）をマウスでつかんで左右に動かす
+ *   入力欄・プルダウン・ボタンの上で押したときは、いつもどおり文字選択や操作をさせる。
+ *   5px 以上動かしたら「ドラッグ」とみなし、離したときのクリックは無効にする（誤クリック防止）。
+ *   スマホ（タッチ）は元々指でスクロールできるので、マウスのときだけ動かす。
+ * ------------------------------------------------------------------- */
+function setupDragScroll() {
+  const boxes = [...document.querySelectorAll('.table-scroll')];
+  if (!boxes.length) return;
+
+  // はみ出しているときだけ「つかめる」カーソルにする（列の追加や画面幅で変わるので毎回見直す）
+  const markDraggable = () => boxes.forEach((box) => box.classList.toggle('is-draggable', box.scrollWidth > box.clientWidth));
+  markDraggable();
+  window.addEventListener('resize', markDraggable);
+  document.addEventListener('click', (e) => { if (e.target.closest('[data-add-roster-col]')) setTimeout(markDraggable); });
+
+  boxes.forEach((box) => {
+    let startX = 0;
+    let startScroll = 0;
+    let pressed = false;
+    let moved = false;
+
+    box.addEventListener('pointerdown', (e) => {
+      if (e.pointerType !== 'mouse' || e.button !== 0) return;
+      if (e.target.closest('input, select, textarea, button, a, label')) return;
+      if (box.scrollWidth <= box.clientWidth) return;
+      pressed = true;
+      moved = false;
+      startX = e.clientX;
+      startScroll = box.scrollLeft;
+    });
+    box.addEventListener('pointermove', (e) => {
+      if (!pressed) return;
+      const dx = e.clientX - startX;
+      if (!moved && Math.abs(dx) < 5) return;
+      if (!moved) {
+        moved = true;
+        box.classList.add('is-dragging');
+        box.setPointerCapture(e.pointerId); // 表の外までマウスが出ても追いかける
+        window.getSelection()?.removeAllRanges(); // 押した瞬間に始まった文字選択を消す
+      }
+      box.scrollLeft = startScroll - dx;
+    });
+    const release = () => {
+      pressed = false;
+      box.classList.remove('is-dragging');
+      setTimeout(() => { moved = false; }); // 直後のクリックを捨て終わったら戻す
+    };
+    box.addEventListener('pointerup', release);
+    box.addEventListener('pointercancel', release);
+    // ドラッグの終わりに起きるクリックを捨てる（チェックボックスなどが勝手に切り替わらないように）
+    box.addEventListener('click', (e) => {
+      if (!moved) return;
+      e.preventDefault();
+      e.stopPropagation();
+    }, true);
   });
 }
 

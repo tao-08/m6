@@ -120,6 +120,136 @@ function attach_members(PDO $pdo, array &$index, int $bandId, array $assignments
 /** 楽器が分からないときに使う「その他」 */
 const OTHER_INSTRUMENT_ID = 10;
 
+/**
+ * 最初から入っている楽器（schema.sql の INSERT）の略称。
+ * プログラムが略称で探している楽器（Vo / Gt / Key / etc など）もあるので、楽器の管理画面でも消せないようにする。
+ * 消せるのは、名簿の取り込みで「etc」から追加された楽器だけ。
+ */
+const BUILTIN_INSTRUMENTS = ['Vo', 'Gt', 'Ba', 'Dr', 'Key', 'Cho', 'Perc', 'Vn', 'Sax', 'etc'];
+
+/**
+ * 楽器を追加する（名簿の取り込みで「etc」を選んだときのモーダルから）。
+ * 同じ略称がもうあれば、新しく作らずにそれを返す（instrument.short_name は UNIQUE）。
+ * 表示順は「その他（99）」の手前に並べる。
+ * @return array ['instrument_id' => ..., 'short_name' => ..., 'name' => ..., 'existed' => bool]
+ */
+function create_instrument(PDO $pdo, string $shortName, string $name): array
+{
+    $find = $pdo->prepare('SELECT instrument_id, short_name, name FROM instrument WHERE short_name = ?');
+    $find->execute([$shortName]);
+    if ($row = $find->fetch()) {
+        return ['instrument_id' => (int)$row['instrument_id'], 'short_name' => $row['short_name'], 'name' => $row['name'], 'existed' => true];
+    }
+    $order = (int)$pdo->query('SELECT COALESCE(MAX(sort_order), 9) FROM instrument WHERE sort_order < 99')->fetchColumn() + 1;
+    try {
+        $pdo->prepare('INSERT INTO instrument (name, short_name, sort_order) VALUES (?, ?, ?)')
+            ->execute([$name, $shortName, min($order, 98)]);
+    } catch (PDOException $e) {
+        // 23000 = UNIQUE 違反。同じ瞬間に別の人が同じ略称を追加したときだけ起きる → その楽器を返す
+        if ($e->getCode() !== '23000') {
+            throw $e;
+        }
+        $find->execute([$shortName]);
+        $row = $find->fetch();
+        return ['instrument_id' => (int)$row['instrument_id'], 'short_name' => $row['short_name'], 'name' => $row['name'], 'existed' => true];
+    }
+    return ['instrument_id' => (int)$pdo->lastInsertId(), 'short_name' => $shortName, 'name' => $name, 'existed' => false];
+}
+
+/** 略称（'Vo' 'Gt'…）→ instrument_id。大文字小文字は区別しない。無ければ null */
+function instrument_id_by_short(string $short): ?int
+{
+    foreach (instruments() as $ins) {
+        if (strtolower($ins['short_name']) === strtolower($short)) {
+            return (int)$ins['instrument_id'];
+        }
+    }
+    return null;
+}
+
+/**
+ * 「ボーカルの形」。名簿取り込み（import.php）の Vo. 欄と、バンド編集（band_edit.php）の楽器欄で使う。
+ *   also = ボーカルと一緒に登録する楽器（instrument.short_name）。単体ボーカルは null。
+ *   ギターボーカルは band_member に「Vo」と「Gt」の2行を入れる（schema.sql の方針どおり。楽器マスタに組み合わせは作らない）
+ */
+const VOCAL_ROLES = [
+    'vo'  => ['label' => 'Vo',     'title' => 'ボーカルのみ',       'also' => null],
+    'gt'  => ['label' => 'Gt/Vo',  'title' => 'ギターボーカル',     'also' => 'Gt'],
+    'ba'  => ['label' => 'Ba/Vo',  'title' => 'ベースボーカル',     'also' => 'Ba'],
+    'key' => ['label' => 'Key/Vo', 'title' => 'キーボードボーカル', 'also' => 'Key'],
+    'dr'  => ['label' => 'Dr/Vo',  'title' => 'ドラムボーカル',     'also' => 'Dr'],
+];
+
+/** フォームから来た値をボーカルの形のキーにする。知らない値（書き換えられた値など）は単体ボーカル扱い */
+function vocal_role(mixed $value): string
+{
+    return is_string($value) && isset(VOCAL_ROLES[$value]) ? $value : 'vo';
+}
+
+/** 楽器（「山田(Gt)」の Gt など）→ ボーカルの形。当てはまらなければ null */
+function vocal_role_from_instrument(?int $instrumentId): ?string
+{
+    foreach (VOCAL_ROLES as $key => $role) {
+        if ($role['also'] !== null && $instrumentId === instrument_id_by_short($role['also'])) {
+            return $key;
+        }
+    }
+    return null;
+}
+
+/**
+ * バンド編集の楽器欄の値 → 登録する instrument_id の配列。
+ *   '2'      → [2]（ふつうの楽器）
+ *   'vo:gt'  → [Vo の id, Gt の id]（ギターボーカル = 2行）
+ *   それ以外（書き換えられた値など）→ [その他]
+ */
+function instruments_for_choice(mixed $value): array
+{
+    if (is_string($value) && preg_match('/^vo:(\w+)$/', $value, $m) && isset(VOCAL_ROLES[$m[1]])) {
+        $also = VOCAL_ROLES[$m[1]]['also'];
+        return array_values(array_filter([instrument_id_by_short('Vo'), $also === null ? null : instrument_id_by_short($also)]));
+    }
+    $id = filter_var($value, FILTER_VALIDATE_INT);
+    $valid = array_map('intval', array_column(instruments(), 'instrument_id'));
+    return [is_int($id) && in_array($id, $valid, true) ? $id : OTHER_INSTRUMENT_ID];
+}
+
+/**
+ * DB の行（1人1楽器）→ バンド編集の行。
+ * 同じ人が「Vo」と「Gt」を両方持っていたら、1行の「vo:gt（Gt/Vo）」にまとめる。
+ * @param array $rows [['name' => ..., 'instrument_id' => ...], ...]（楽器の sort_order 順。Vo が先頭に来る前提）
+ * @return array [['name' => ..., 'choice' => '2' | 'vo:gt'], ...]
+ */
+function merge_vocal_roles(array $rows): array
+{
+    $has = []; // 名前 => [instrument_id => true]
+    foreach ($rows as $r) {
+        $has[$r['name']][(int)$r['instrument_id']] = true;
+    }
+    $vo = instrument_id_by_short('Vo');
+    $merged = []; // 名前 => [Vo にまとめた instrument_id => true]
+    $out = [];
+    foreach ($rows as $r) {
+        $id = (int)$r['instrument_id'];
+        if (isset($merged[$r['name']][$id])) {
+            continue; // Vo の行にまとめ済み
+        }
+        $choice = (string)$id;
+        if ($id === $vo) {
+            foreach (VOCAL_ROLES as $key => $role) {
+                $also = $role['also'] === null ? null : instrument_id_by_short($role['also']);
+                if ($also !== null && isset($has[$r['name']][$also])) {
+                    $choice = "vo:$key";
+                    $merged[$r['name']][$also] = true;
+                    break; // 1人につきまとめるのは1つだけ（Vo + Gt + Key なら Gt/Vo と Key の2行）
+                }
+            }
+        }
+        $out[] = ['name' => $r['name'], 'choice' => $choice];
+    }
+    return $out;
+}
+
 function detach_members(PDO $pdo, int $bandId): void
 {
     $pdo->prepare('DELETE FROM band_member WHERE band_id = ?')->execute([$bandId]);

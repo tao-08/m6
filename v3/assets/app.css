@@ -312,7 +312,7 @@ input:focus, select:focus { outline: none; border-color: var(--accent); box-shad
 .field--wide { grid-column: span 2; }
 .form-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
 .member-rows { display: grid; gap: 8px; margin-bottom: 10px; }
-.member-row-edit { display: grid; grid-template-columns: 180px minmax(0, 1fr) auto; gap: 8px; align-items: start; }
+.member-row-edit { display: grid; grid-template-columns: 232px minmax(0, 1fr) auto; /* 232px =「Key.Vo キーボードボーカル」が切れない幅 */ gap: 8px; align-items: start; }
 .checks { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 12px 0 4px; }
 .check { display: flex; gap: 8px; align-items: center; font-size: 14px; cursor: pointer; }
 input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px; }
@@ -354,6 +354,94 @@ input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px;
 .col-head { margin-bottom: 4px; color: var(--text); }
 .select-sm { font-size: 12px !important; padding: 5px 6px !important; }
 .cell-instrument { margin-top: 4px; }
+/* 名簿の Key./Other 欄: 名前が空のあいだ楽器のプルダウンを隠し、名前の欄をセルの上下中央に置く。
+   名前が入ったら、名前の欄が上へスライドし、その下からプルダウンが出てくる。
+   高さは縮めずに「場所だけ確保して透明にする」ので、プルダウンが出ている行と出ていない行で上下の余白が揃う。
+   --inst-shift = (切り替えボタンの高さ 26px + 間の 4px) ÷ 2 … 名前の欄を下げればちょうどセルの中央に来る量 */
+.table--roster { --inst-shift: 15px; }
+.table--roster td > .name-input, .table--roster td > .cell-instrument { display: block; }
+.table--roster td > .name-input { position: relative; z-index: 1; /* プルダウンより手前 */
+  transition: transform .25s ease, background-color .3s ease, border-color .3s ease; } /* 下の .name-input の transition を上書きしてしまうので、色のフェードもここに書く */
+.table--roster td > .name-input:has(+ .cell-instrument.is-collapsed) { transform: translateY(var(--inst-shift)); }
+.table--roster .cell-instrument {
+  height: 26px;
+  transition: opacity .2s ease, transform .25s ease, visibility 0s;
+}
+.table--roster .cell-instrument.is-collapsed {
+  opacity: 0; transform: translateY(calc(var(--inst-shift) * -1)); /* 名前の欄の裏に隠れている位置 */
+  visibility: hidden; pointer-events: none; /* 見えない間はクリックも Tab キーのフォーカスもさせない */
+  transition: opacity .15s ease, transform .25s ease, visibility 0s .25s;
+}
+@media (prefers-reduced-motion: reduce) {
+  .table--roster td > .name-input, .table--roster .cell-instrument, .table--roster .cell-instrument.is-collapsed { transition: none; }
+}
+/* 名簿の Vo. 欄: 「Vo / Gt/Vo / …」の切り替えボタン（中身はラジオボタン。見た目だけボタン風にしている）
+   class="cell-instrument" も付けているので、名前が空のあいだ畳む動きはプルダウンと同じ */
+/* width: 0 + min-width: 100% … このボタンは列の幅を決めない（名前の欄の幅にぴったり合わせる）。ほかの列と同じ幅にするため */
+.table--roster td > .pick { display: flex; gap: 1px; padding: 2px; border-radius: 8px; width: 0; min-width: 100%;
+  background: var(--surface-2); border: 1px solid var(--border); }
+.pick label { position: relative; flex: 1 1 auto; min-width: 0; display: flex; } /* 文字の長さに合わせて配分（「Gt/Vo」が窮屈にならない） */
+.pick input { position: absolute; inset: 0; opacity: 0; margin: 0; pointer-events: none; } /* 本物のラジオは隠す（キーボード操作はそのまま効く） */
+.pick span { flex: 1; display: grid; place-items: center; padding: 0 2px; border-radius: 6px; cursor: pointer;
+  font-size: 11px; font-weight: 700; white-space: nowrap; color: var(--muted); transition: background .15s, color .15s; }
+@media (hover: hover) { .pick span:hover { color: var(--text); } } /* スマホはタップ後に :hover が残って色が戻らないので、マウスの端末だけ */
+.pick input:checked + span { background: var(--surface); color: var(--accent); box-shadow: 0 1px 3px rgb(0 0 0 / .14); }
+.pick input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* 「⋯」ボタンと、そこから右に出る残りの選択肢（Ba/Vo / Key/Vo / Dr/Vo、Cho / Perc / Sax / etc …）。開け閉めは JS: setupPicks */
+.pick__more { position: relative; flex: 1 1 auto; display: flex; }
+.pick__toggle { flex: 1; padding: 0 6px; border: 0; border-radius: 6px; background: none; cursor: pointer;
+  font: inherit; font-size: 11px; font-weight: 700; white-space: nowrap; color: var(--muted);
+  transition: background .15s, color .15s, box-shadow .15s; }
+.pick__more.is-open .pick__toggle { color: var(--text); }
+@media (hover: hover) { .pick__toggle:hover { color: var(--text); } }
+/* 中身が空（しまってある選択肢を選んでいない）ときは「⋯」を CSS で描く。
+   文字の「…」は下寄りで点が小さいので、丸を3つ並べて上下中央に置いている（currentColor = 文字色と同じ色） */
+.pick__toggle:empty::before { content: ""; display: block; width: 18px; height: 4px; margin: auto;
+  background: radial-gradient(circle, currentColor 1.8px, transparent 2.2px) 0 0 / 6px 4px repeat-x; }
+/* しまってある選択肢を選んでいるときは、「⋯」の場所を選択中の見た目にする */
+.pick__more:has(.pick__menu input:checked) .pick__toggle { background: var(--surface); color: var(--accent); box-shadow: 0 1px 3px rgb(0 0 0 / .14); }
+.pick__toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* 行の高さの中で右へ出す（下に出すと、最後の行で表のスクロール枠に切られるため） */
+/* 開け閉めのアニメーション: 「⋯」の位置から右へすべり出てくる。
+   display: none は普通アニメーションできないが、transition-behavior: allow-discrete（閉じるとき）と
+   @starting-style（開くときの最初の見た目）を使うと、出る・消えるの両方をなめらかにできる（対応していないブラウザではパッと出るだけ） */
+.pick__menu { display: none; position: absolute; z-index: 5; left: calc(100% + 6px); top: -3px; height: 26px; gap: 1px; padding: 2px;
+  border-radius: 8px; background: var(--surface-2); border: 1px solid var(--border); box-shadow: 0 6px 18px rgb(0 0 0 / .18);
+  opacity: 0; transform: translateX(-8px) scale(.94); transform-origin: left center;
+  transition: opacity .16s ease, transform .2s cubic-bezier(.2, .9, .3, 1.2), display .2s allow-discrete; }
+.pick__menu::before { content: ""; position: absolute; right: 100%; top: 0; bottom: 0; width: 8px; } /* 「⋯」から右へマウスを動かす途中で閉じないための透明な橋 */
+.pick__menu { scroll-margin: 8px 16px; } /* JS で見える所へスクロールしたとき、画面の端にぴったり付かないように */
+.pick__menu span { padding: 0 8px; }
+.pick__more.is-open .pick__menu,
+.pick__more:has(:focus-visible) .pick__menu { display: flex; opacity: 1; transform: none; } /* タップ・クリックで開く / キーボードで中に入ったとき */
+@media (hover: hover) { .pick__more:hover .pick__menu { display: flex; opacity: 1; transform: none; } } /* マウスがある端末だけ、乗せたら開く（スマホはタップ） */
+@starting-style { /* 開いた瞬間はこの見た目から始める */
+  .pick__more.is-open .pick__menu,
+  .pick__more:has(:focus-visible) .pick__menu { opacity: 0; transform: translateX(-8px) scale(.94); }
+}
+@media (hover: hover) { @starting-style { .pick__more:hover .pick__menu { opacity: 0; transform: translateX(-8px) scale(.94); } } }
+@media (prefers-reduced-motion: reduce) { .pick__menu, .pick__toggle { transition: none; } }
+/* モーダル（<dialog>）: 楽器の「etc」を選んだときの「ここに無い楽器を追加」。開け閉めは JS: setupPicks
+   ふわっと出る・消えるのは、選択肢のメニューと同じ allow-discrete + @starting-style の仕組み */
+.modal { width: min(440px, calc(100vw - 32px)); padding: 0; border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface); color: var(--text); box-shadow: 0 24px 60px rgb(0 0 0 / .3);
+  opacity: 0; transform: translateY(8px) scale(.97);
+  transition: opacity .18s ease, transform .2s ease, overlay .2s allow-discrete, display .2s allow-discrete; }
+.modal[open] { opacity: 1; transform: none; }
+@starting-style { .modal[open] { opacity: 0; transform: translateY(8px) scale(.97); } }
+.modal::backdrop { background: rgb(0 0 0 / 0); transition: background .2s ease, overlay .2s allow-discrete, display .2s allow-discrete; }
+.modal[open]::backdrop { background: rgb(0 0 0 / .45); }
+@starting-style { .modal[open]::backdrop { background: rgb(0 0 0 / 0); } }
+.modal__body { padding: 22px; }
+.modal__title { margin: 0 0 6px; font-size: 17px; }
+.modal .form-grid { grid-template-columns: 1fr 1.6fr; margin-top: 14px; }
+.modal .flash { margin: 12px 0 0; }
+.modal .form-actions { flex-wrap: wrap; }
+@media (max-width: 480px) { .modal .form-grid { grid-template-columns: 1fr; } }
+@media (prefers-reduced-motion: reduce) { .modal, .modal::backdrop { transition: none; } }
+/* 横にはみ出す表はマウスでつかんで左右に動かせる（JS: setupDragScroll） */
+.table-scroll.is-draggable { cursor: grab; }
+.table-scroll.is-dragging { cursor: grabbing; user-select: none; }
 .ranking--plain li::before { content: none; }
 .status { font-size: 12px; font-weight: 700; padding: 3px 9px; border-radius: 999px; }
 .status--ok { color: var(--ok); background: var(--ok-bg); }
@@ -361,6 +449,9 @@ input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px;
 .status--warn { color: var(--warn); background: var(--warn-bg); }
 
 /* 名前の色分け（元の m6 の valid / invalid と同じ考え方） */
+/* DB 照合の色（緑・黄・赤）が変わるときは、パッと変えずにフェードさせる */
+.name-input, .slot-select { transition: background-color .3s ease, border-color .3s ease; }
+@media (prefers-reduced-motion: reduce) { .name-input, .slot-select { transition: none; } }
 .name-input.is-ok, .slot-select.is-ok { background: var(--ok-bg); border-color: color-mix(in srgb, var(--ok) 45%, transparent); }
 .name-input.is-similar { background: var(--warn-bg); border-color: color-mix(in srgb, var(--warn) 55%, transparent); }
 .name-input.is-new, .slot-select.is-new { background: var(--danger-bg); border-color: color-mix(in srgb, var(--danger) 45%, transparent); }
@@ -370,8 +461,19 @@ input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px;
 .swatch--ok { background: var(--ok-bg); border-color: var(--ok); }
 .swatch--similar { background: var(--warn-bg); border-color: var(--warn); }
 .swatch--new { background: var(--danger-bg); border-color: var(--danger); }
-.hint-pop { margin-top: 4px; font-size: 12px; line-height: 1.5; white-space: pre-line; color: var(--text); background: var(--surface-2);
-  border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; max-width: 280px; grid-column: 2; }
+/* 名前欄の注意書き: body 直下に浮かせる半透明のポップアップ（表の行の幅・高さを変えない。位置は JS が入力欄の真下に合わせる） */
+.hint-pop { position: absolute; z-index: 50; font-size: 12px; line-height: 1.5; white-space: pre-line; color: var(--text);
+  background: color-mix(in srgb, var(--surface-2) 78%, transparent); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; max-width: 280px;
+  box-shadow: 0 6px 18px rgb(0 0 0 / .18); pointer-events: none; /* 下の入力欄をそのままクリックできるように */
+  animation: hint-pop-in .15s ease-out; }
+@keyframes hint-pop-in { from { opacity: 0; transform: translateY(-4px); } }
+/* 黄色の名前欄の「もしかして ◯◯？」: 候補の名前は押せる（下の入力欄ではなく、ポップアップ自体をクリックできるようにする） */
+.hint-pop--suggest { pointer-events: auto; }
+.hint-pop__pick { padding: 0; border: 0; background: none; font: inherit; font-weight: 700; color: var(--accent);
+  text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.hint-pop__pick:hover { text-decoration-thickness: 2px; }
+@media (prefers-reduced-motion: reduce) { .hint-pop { animation: none; } }
 
 .sticky-actions { position: sticky; bottom: 16px; z-index: 10; display: flex; justify-content: flex-end; gap: 10px; padding: 10px; border-radius: 999px;
   background: color-mix(in srgb, var(--surface) 88%, transparent); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
