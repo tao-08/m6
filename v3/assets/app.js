@@ -27,6 +27,7 @@
  *    data-song-list / data-add-song … 曲の編集
  *    data-track-search  … 曲の編集の🔍（Spotify / iTunes の曲を探して紐付ける）
  *    data-toasts        … お知らせのポップアップ（4秒で消える）
+ *    data-album-tip     … メンバー一覧のジャケットに乗せるとアルバム名・アーティスト名を出す
  * =====================================================================
  */
 
@@ -53,7 +54,49 @@ document.addEventListener('DOMContentLoaded', () => {
   setupSmallThings();
   setupSongs();
   setupTrackSearch();
+  setupAlbumTip();
 });
+
+/* ---------------------------------------------------------------------
+ * メンバー一覧のジャケットにマウスを乗せたら、アルバム名とアーティスト名をポップアップで出す（[data-album-tip]）
+ *   表のカード（.table-card）は overflow: hidden なので、ジャケットの中に置くと端で切れる。
+ *   → ページに1個だけ position: fixed のポップアップを作り、乗せたジャケットの上に動かして使い回す。
+ *   文字は textContent で入れる（innerHTML だとアルバム名に < があったとき HTML として解釈される＝XSS）。
+ * ------------------------------------------------------------------- */
+function setupAlbumTip() {
+  if (!document.querySelector('[data-album-tip]')) return;
+  const tip = document.createElement('div');
+  tip.className = 'album-tip';
+  tip.setAttribute('role', 'tooltip');
+  tip.innerHTML = '<strong class="album-tip__title"></strong><span class="album-tip__artist"></span>';
+  document.body.appendChild(tip);
+
+  const show = (img) => {
+    tip.querySelector('.album-tip__title').textContent = img.dataset.tipTitle;
+    tip.querySelector('.album-tip__artist').textContent = img.dataset.tipArtist;
+    tip.classList.add('is-visible');
+    // ジャケットの真上に出す。上に入らないときは下に出し、左右は画面からはみ出さないように寄せる
+    const r = img.getBoundingClientRect();
+    const t = tip.getBoundingClientRect();
+    let top = r.top - t.height - 8;
+    if (top < 8) top = r.bottom + 8;
+    const left = Math.min(Math.max(8, r.left + r.width / 2 - t.width / 2), window.innerWidth - t.width - 8);
+    tip.style.top = `${top}px`;
+    tip.style.left = `${left}px`;
+  };
+  const hide = () => tip.classList.remove('is-visible');
+
+  // mouseover / focusin は子要素から親へ伝わる（バブリング）ので、document に1個付けるだけで全部のジャケットに効く
+  document.addEventListener('mouseover', (e) => {
+    const img = e.target.closest('[data-album-tip] [data-tip-title]');
+    if (img) show(img); else hide();
+  });
+  document.addEventListener('focusin', (e) => {
+    const img = e.target.closest('[data-album-tip] [data-tip-title]');
+    if (img) show(img); else hide();
+  });
+  window.addEventListener('scroll', hide, { passive: true }); // fixed なのでスクロールするとずれる → 隠す
+}
 
 /* ---------------------------------------------------------------------
  * お知らせのポップアップ（partials/header.php の [data-toasts]）
