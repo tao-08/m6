@@ -10,7 +10,7 @@
  */
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
-require_once __DIR__ . '/lib/itunes.php';
+require_once __DIR__ . '/lib/albums.php';
 $user = require_login();
 
 $memberId = (int)($_GET['id'] ?? 0);
@@ -70,8 +70,8 @@ $liveCount = count(array_unique(array_column($history, 'live_id')));
 $isMe = $memberId === $user['member_id'];
 
 // ---- 好きなアルバム（登録順） ----
-//   登録時に保存した内容（スナップショット）を出すだけなので、ここでは iTunes に通信しない
-$st = $pdo->prepare('SELECT sort_order, title, artist_name, artwork_url, release_year
+//   登録時に保存した内容（スナップショット）を出すだけなので、ここでは Spotify / iTunes に通信しない
+$st = $pdo->prepare('SELECT source, album_id, title, artist_name, artwork_url, release_year
     FROM member_favorite_album WHERE member_id = ? ORDER BY sort_order');
 $st->execute([$memberId]);
 $albums = $st->fetchAll();
@@ -82,18 +82,21 @@ $albums = $st->fetchAll();
 $albumQuery = $isMe ? trim((string)($_GET['album_q'] ?? '')) : '';
 $albumResults = null;  // null = まだ検索していない
 $albumSearchFailed = false;
+$albumSource = null;   // 実際に検索に使ったサービス（'spotify' / 'itunes'）
+$albumFellBack = false; // Spotify が失敗して iTunes で探し直したか
 if ($albumQuery !== '') {
     $albumQuery = mb_substr($albumQuery, 0, 100); // 長すぎる入力は切る
-    $albumResults = itunes_search_albums($albumQuery);
+    // Spotify か iTunes かは lib/albums.php が決める（Spotify のキーが無い・失敗したら iTunes）
+    ['albums' => $albumResults, 'source' => $albumSource, 'fell_back' => $albumFellBack] = album_search($albumQuery);
     if ($albumResults === null) {
-        $albumSearchFailed = true; // iTunes に繋がらなかった
+        $albumSearchFailed = true; // どのサービスにも繋がらなかった
         $albumResults = [];
     }
-    // 登録済みのアルバムは「追加」ボタンの代わりに「登録済み」と出したいので、ID の一覧を作る
-    $st = $pdo->prepare('SELECT itunes_collection_id FROM member_favorite_album WHERE member_id = ?');
+    // 登録済みのアルバムは「追加」ボタンの代わりに「登録済み」と出したいので、キーの一覧を作る
+    $st = $pdo->prepare('SELECT CONCAT(source, ":", album_id) FROM member_favorite_album WHERE member_id = ?');
     $st->execute([$memberId]);
-    // array_flip: [値 => 番号] に入れ替える → isset($registered[ID]) で「あるか」を一瞬で調べられる
-    $registered = array_flip(array_map('intval', $st->fetchAll(PDO::FETCH_COLUMN)));
+    // array_flip: [値 => 番号] に入れ替える → isset($registered[キー]) で「あるか」を一瞬で調べられる
+    $registered = array_flip($st->fetchAll(PDO::FETCH_COLUMN));
 }
 
 render_header($member['name'], 'members');
@@ -137,17 +140,27 @@ render_header($member['name'], 'members');
 
 <!-- ===== 好きなアルバム ===== -->
 <section id="albums">
-    <h2 class="section-title">好きなアルバム <span class="muted small"><?= count($albums) ?> / <?= FAVORITE_ALBUM_LIMIT ?></span></h2>
+    <div class="album-head">
+        <h2 class="section-title">好きなアルバム <span class="muted small"><?= count($albums) ?> / <?= FAVORITE_ALBUM_LIMIT ?></span></h2>
+        <?php if ($isMe && count($albums) > 1): ?>
+            <!-- 並び替えは JS で動く（assets/app.js の setupAlbumSort）。JS が無いと並び替えられないので、案内は JS が出す -->
+            <span class="album-sort__status muted small" data-album-sort-status role="status"></span>
+        <?php endif; ?>
+    </div>
 
     <?php if ($albums): ?>
-        <ul class="albums">
-            <?php foreach ($albums as $a): ?>
-                <li class="album">
+        <!-- data-album-sort: 本人だけドラッグで並び替えできる。data-id は保存のときに送るキー（"spotify:ID" など） -->
+        <ul class="albums"<?= $isMe ? ' data-album-sort data-member-id="' . $memberId . '"' : '' ?>>
+            <?php foreach ($albums as $i => $a): ?>
+                <li class="album" data-id="<?= h(album_key($a['source'], $a['album_id'])) ?>">
+                    <span class="album__rank" aria-hidden="true"><?= $i + 1 ?></span>
                     <!-- loading="lazy": 画面に近づくまで画像を読み込まない（30枚あっても最初の表示が重くならない） -->
                     <!-- alt: 画像が出ないときや読み上げソフト用の説明文。img には必ず付けるのがマナー -->
                     <img class="album__art" src="<?= h($a['artwork_url']) ?>" alt="<?= h($a['title']) ?> のジャケット" loading="lazy" width="600" height="600">
                     <div class="album__meta">
-                        <strong class="album__title"><?= h($a['title']) ?></strong>
+                        <!-- 元のサービス（Spotify / Apple Music）のページへリンク。target="_blank" は新しいタブで開く -->
+                        <!-- rel="noopener": 開いた先のページから、このページを操作されないようにする（target="_blank" とセットで付ける） -->
+                        <a class="album__title" href="<?= h(album_page_url($a['source'], $a['album_id'])) ?>" target="_blank" rel="noopener"><?= h($a['title']) ?></a>
                         <span class="muted small"><?= h($a['artist_name']) ?><?= $a['release_year'] ? ' · ' . (int)$a['release_year'] : '' ?></span>
                     </div>
                     <?php if ($isMe || is_admin()): ?>
@@ -155,7 +168,7 @@ render_header($member['name'], 'members');
                             <?= csrf_field() ?>
                             <input type="hidden" name="action" value="delete">
                             <input type="hidden" name="member_id" value="<?= $memberId ?>">
-                            <input type="hidden" name="sort_order" value="<?= (int)$a['sort_order'] ?>">
+                            <input type="hidden" name="album" value="<?= h(album_key($a['source'], $a['album_id'])) ?>">
                             <button type="submit" class="btn btn--danger btn--sm" title="削除" aria-label="削除">×</button>
                         </form>
                     <?php endif; ?>
@@ -173,7 +186,7 @@ render_header($member['name'], 'members');
         <?php if (count($albums) >= FAVORITE_ALBUM_LIMIT): ?>
             <p class="muted small">上限の<?= FAVORITE_ALBUM_LIMIT ?>枚に達しています。追加するにはどれかを削除してください。</p>
         <?php else: ?>
-            <!-- 検索は GET。送信すると member.php?id=..&album_q=.. に移動し、上の PHP が iTunes を検索する -->
+            <!-- 検索は GET。送信すると member.php?id=..&album_q=.. に移動し、上の PHP が検索する -->
             <form method="get" action="member.php#albums" class="album-search__form">
                 <input type="hidden" name="id" value="<?= $memberId ?>">
                 <input class="search" type="search" name="album_q" value="<?= h($albumQuery) ?>" placeholder="アルバム名やアーティスト名で検索" maxlength="100" required>
@@ -181,10 +194,13 @@ render_header($member['name'], 'members');
             </form>
 
             <?php if ($albumSearchFailed): ?>
-                <p class="muted small">iTunes に接続できませんでした。時間をおいてもう一度試してください。</p>
+                <p class="muted small">検索サービスに接続できませんでした。時間をおいてもう一度試してください。</p>
             <?php elseif ($albumResults === []): ?>
                 <p class="muted small">「<?= h($albumQuery) ?>」に一致するアルバムが見つかりませんでした。</p>
             <?php elseif ($albumResults): ?>
+                <?php if ($albumFellBack): ?>
+                    <p class="muted small">Spotify に接続できなかったので、iTunes で探しました（アルバム名がローマ字のことがあります）。</p>
+                <?php endif; ?>
                 <ul class="albums albums--pick">
                     <?php foreach ($albumResults as $r): ?>
                         <li class="album">
@@ -193,23 +209,23 @@ render_header($member['name'], 'members');
                                 <strong class="album__title"><?= h($r['title']) ?></strong>
                                 <span class="muted small"><?= h($r['artist_name']) ?><?= $r['release_year'] ? ' · ' . (int)$r['release_year'] : '' ?></span>
                             </div>
-                            <?php if (isset($registered[$r['collection_id']])): ?>
+                            <?php if (isset($registered[album_key($r['source'], $r['album_id'])])): ?>
                                 <span class="pill">登録済み</span>
                             <?php else: ?>
-                                <!-- 送るのは collection_id だけ。タイトルや画像URLはサーバー側で取り直す -->
+                                <!-- 送るのはキー（どのサービスの何番か）だけ。タイトルや画像URLはサーバー側で取り直す -->
                                 <form method="post" action="member_album_save.php">
                                     <?= csrf_field() ?>
                                     <input type="hidden" name="action" value="add">
                                     <input type="hidden" name="member_id" value="<?= $memberId ?>">
-                                    <input type="hidden" name="collection_id" value="<?= (int)$r['collection_id'] ?>">
+                                    <input type="hidden" name="album" value="<?= h(album_key($r['source'], $r['album_id'])) ?>">
                                     <button type="submit" class="btn btn--primary btn--sm">追加</button>
                                 </form>
                             <?php endif; ?>
                         </li>
                     <?php endforeach; ?>
                 </ul>
-                <!-- iTunes の画像を使うので、出典を明記しておく -->
-                <p class="muted small">検索結果・ジャケット画像: iTunes Search API</p>
+                <!-- 外部サービスの画像を使うので、出典を明記しておく -->
+                <p class="muted small">検索結果・ジャケット画像: <?= $albumSource === 'spotify' ? 'Spotify' : 'iTunes Search API' ?></p>
             <?php endif; ?>
         <?php endif; ?>
     </details>

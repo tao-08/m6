@@ -24,6 +24,13 @@ return [
         'invite_code' => '',
         // true: 管理者が1人もいないとき、新規登録した人を管理者にする
         'first_user_is_admin' => true,
+        // 好きなアルバムの検索に使う Spotify のキー（https://developer.spotify.com/dashboard でアプリを作ると出る）
+        //   空なら iTunes で検索する（キー不要。ただし邦楽のアルバム名がローマ字のことがある）
+        //   ※ client_secret はパスワードと同じ。人に見せない・git に入れない
+        'spotify' => [
+            'client_id'     => '',
+            'client_secret' => '',
+        ],
         // true: エラーの詳細を画面に出す（開発中だけ）
         'debug' => false,
     ],

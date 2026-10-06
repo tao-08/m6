@@ -49,8 +49,8 @@ $nav = [
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+JP:wght@400;500;700;900&display=swap" rel="stylesheet">
     <!-- ?v=2 はキャッシュ対策。CSS を変えたら数字を上げると、ブラウザが古い CSS を使い続けない -->
-    <link rel="stylesheet" href="assets/app.css?v=8">
-    <script src="assets/app.js?v=8" defer></script>
+    <link rel="stylesheet" href="assets/app.css?v=10">
+    <script src="assets/app.js?v=10" defer></script>
 </head>
 <body>
 <header class="topbar">
@@ -88,6 +88,9 @@ $nav = [
                 <div class="usermenu__name"><?= h($user['name']) ?><?= $user['admin'] ? ' <span class="tag">管理者</span>' : '' ?></div>
                 <?php if (!empty($user['member_id'])): ?>
                     <a href="member.php?id=<?= (int)$user['member_id'] ?>">マイページ</a>
+                <?php else: ?>
+                    <!-- メンバー未紐付けだとマイページが無いので、紐付け欄へ案内する -->
+                    <a href="account.php#link-member">マイページ <span class="muted small">（要メンバー設定）</span></a>
                 <?php endif; ?>
                 <a href="account.php">アカウント設定</a>
                 <?php if ($user['admin']): ?>

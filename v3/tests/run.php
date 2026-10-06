@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 function config($key = null) { return $key === 'pdftotext' ? 'pdftotext' : null; }
 require __DIR__ . '/../lib/import/parsers.php';
-require __DIR__ . '/../lib/itunes.php';
+require __DIR__ . '/../lib/albums.php'; // itunes.php と spotify.php も読み込まれる
 
 $failed = 0;
 function check(string $label, mixed $actual, mixed $expected): void
@@ -89,12 +89,42 @@ $sample = [
     'artworkUrl100' => 'https://is1-ssl.mzstatic.com/image/thumb/Music/v4/aa/bb/cc/source/100x100bb.jpg',
 ];
 $norm = itunes_normalize_album($sample);
+check('iTunesのキー', album_key($norm['source'], $norm['album_id']), 'itunes:1441164426');
 check('ジャケットを600x600に', $norm['artwork_url'], 'https://is1-ssl.mzstatic.com/image/thumb/Music/v4/aa/bb/cc/source/600x600bb.jpg');
 check('発売年', $norm['release_year'], 1969);
 check('曲（アルバム以外）は捨てる', itunes_normalize_album(['wrapperType' => 'track'] + $sample), null);
 check('Apple以外の画像URLは拒否', itunes_normalize_album(['artworkUrl100' => 'https://evil.example.com/100x100bb.jpg'] + $sample), null);
 check('httpは拒否', itunes_normalize_album(['artworkUrl100' => 'http://is1.mzstatic.com/100x100bb.jpg'] + $sample), null);
 check('なりすましドメインは拒否', itunes_normalize_album(['artworkUrl100' => 'https://mzstatic.com.evil.example/100x100bb.jpg'] + $sample), null);
+
+echo "spotify
+";
+// Spotify の返事（の一部）を真似したデータ（通信はしない）
+$sp = [
+    'id' => '0ETFjACtuP2ADo6LFhL6HN', 'name' => '魚図鑑', 'release_date' => '2018-03-28',
+    'artists' => [['name' => 'サカナクション'], ['name' => 'ゲスト']],
+    'images' => [['url' => 'https://i.scdn.co/image/ab67616d0000b273aaaa', 'width' => 640], ['url' => 'https://i.scdn.co/image/small', 'width' => 64]],
+];
+$spNorm = spotify_normalize_album($sp);
+check('Spotifyのキー', album_key($spNorm['source'], $spNorm['album_id']), 'spotify:0ETFjACtuP2ADo6LFhL6HN');
+check('一番大きい画像', $spNorm['artwork_url'], 'https://i.scdn.co/image/ab67616d0000b273aaaa');
+check('複数アーティストはつなぐ', $spNorm['artist_name'], 'サカナクション, ゲスト');
+check('年だけの発売日', spotify_normalize_album(['release_date' => '1969'] + $sp)['release_year'], 1969);
+check('Spotify以外の画像URLは拒否', spotify_normalize_album(['images' => [['url' => 'https://evil.example.com/a.jpg']]] + $sp), null);
+check('なりすましドメインは拒否', spotify_normalize_album(['images' => [['url' => 'https://i.scdn.co.evil.example/a.jpg']]] + $sp), null);
+check('おかしなIDは拒否', spotify_normalize_album(['id' => '../../me'] + $sp), null);
+check('画像なしは捨てる', spotify_normalize_album(['images' => []] + $sp), null);
+
+echo "album keys
+";
+check('Spotifyのキーを分解', album_parse_key('spotify:0ETFjACtuP2ADo6LFhL6HN'), ['spotify', '0ETFjACtuP2ADo6LFhL6HN']);
+check('iTunesのキーを分解', album_parse_key('itunes:1441164426'), ['itunes', '1441164426']);
+check('知らないサービスは拒否', album_parse_key('evil:1441164426'), null);
+check('iTunesのIDに文字は拒否', album_parse_key('itunes:12ab'), null);
+check('SpotifyのIDの長さ違いは拒否', album_parse_key('spotify:abc'), null);
+check('末尾の改行は拒否', album_parse_key("spotify:0ETFjACtuP2ADo6LFhL6HN
+"), null);
+check('文字列以外は拒否', album_parse_key(['spotify', 'x']), null);
 
 echo $failed ? "\n{$failed} 件失敗\n" : "\nすべて成功\n";
 exit($failed ? 1 : 0);

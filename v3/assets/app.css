@@ -585,6 +585,37 @@ code { background: var(--surface-2); padding: 1px 6px; border-radius: 6px; font-
 .albums--pick { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); margin-top: 6px; }
 .albums--pick .btn, .albums--pick .pill { justify-self: start; }
 
+/* ---- 好きなアルバムの並び替え（JS: setupAlbumSort） ---- */
+.album-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.album-head .section-title { margin-right: auto; }
+.album-sort__status { transition: opacity .3s; }
+.album-sort__status:empty { opacity: 0; }
+/* position: relative … カードの offsetLeft / offsetTop を「この ul の左上から」の距離にするため */
+.albums[data-album-sort] { position: relative; }
+/* 順位バッジ。ドラッグ中だけ出す */
+.album__rank { position: absolute; top: 6px; left: 6px; z-index: 1; min-width: 24px; height: 24px; padding: 0 6px;
+  display: grid; place-items: center; border-radius: 999px; background: var(--accent); color: #fff;
+  font-size: 12px; font-weight: 800; box-shadow: var(--shadow); opacity: 0; transform: scale(.6);
+  transition: opacity .2s, transform .2s; pointer-events: none; }
+.albums.is-sorting .album__rank { opacity: 1; transform: none; }
+/* 本人のページでは、いつでもカードをつかめる（JS: マウスは動かしたら、指は長押しでドラッグ開始） */
+.albums[data-album-sort] .album { cursor: grab; user-select: none; -webkit-user-select: none;
+  -webkit-touch-callout: none; /* iPhone で長押ししたとき「画像を保存」メニューを出さない */ }
+.albums[data-album-sort] .album:hover .album__art { transform: translateY(-2px); }
+.albums[data-album-sort] .album:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: var(--radius-sm); }
+/* ドラッグ中は削除ボタンを隠す（誤って押さないように） */
+.albums.is-sorting .album__delete { display: none; }
+/* 指で長押ししている間: 少し沈ませて「つかもうとしている」ことを見せる */
+.album.is-pressing .album__art { transform: scale(.96); }
+/* つかんでいるカード: 少し大きく、影を濃くして浮かせる */
+.album.is-dragging { z-index: 5; }
+.album.is-dragging .album__art { transform: scale(1.06); box-shadow: 0 18px 36px -10px rgb(0 0 0 / .45); }
+.album .album__art { transition: transform .15s ease-out, box-shadow .15s ease-out; }
+body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; }
+@media (prefers-reduced-motion: reduce) {
+  .album__rank, .album .album__art { transition: none; }
+}
+
 @media print {
   :root, [data-theme="dark"] { --bg: #fff; --surface: #fff; --text: #000; --muted: #555; --border: #ccc; --shadow: none; --glow: none; }
   .topbar, .footer, .no-print, .flash { display: none !important; }

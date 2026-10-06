@@ -14,6 +14,7 @@
  *    data-name-cell     … 名前の入力欄（DB にいるかで色が変わる）
  *    data-roster-input  … タイムテーブルの枠 → 名簿のバンド（検索欄）
  *    data-sortable      … タイムテーブルの行を ≡ のドラッグで並び替え（時間の列は動かない）
+ *    data-album-sort    … マイページの好きなアルバムをドラッグで並び替えて保存
  *    data-add-roster-col … 名簿の表の右端に「Other」列を足す
  *    data-pick          … 名簿の「Vo / Gt/Vo / ⋯」「Key / Vn / ⋯」の切り替えボタンと、etc の楽器追加モーダル
  *    .table-scroll      … 横にはみ出す表をマウスのドラッグで左右に動かす
@@ -34,6 +35,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupNameCheck();
   setupImportPreview();
   setupSlotSort();
+  setupAlbumSort();
   setupRosterColumns();
   setupPicks();
   setupDragScroll();
@@ -562,6 +564,236 @@ function setupSlotSort() {
       settle(tbody);
     });
     handle.focus(); // insertBefore で動かすとフォーカスが外れるブラウザがあるので戻す
+  });
+}
+
+/* ---------------------------------------------------------------------
+ * 好きなアルバムの並び替え（member.php。本人だけ）
+ *   カードをつかんで動かすだけ。ボタンを押して「並び替えモード」にする必要はない。
+ *     マウス … 押したまま 5px 以上動かしたらドラッグ開始（動かさずに離せば普通のクリック。× ボタンも押せる）
+ *     指     … 0.35 秒長押しでドラッグ開始（すぐ指を動かしたら、いつもどおりページのスクロール）
+ *   離したら api_album_order.php に新しい順番を fetch() で送って保存する（保存ボタンは無い）。
+ *   キーボード: カードにフォーカス（Tab）して ← → ↑ ↓ で1つずつ動かす。
+ *
+ * アニメーションは setupSlotSort と同じ FLIP。ただし表の行と違って「縦横」に動くので translate(x, y)。
+ *   つかんだカード … 少し大きく浮いて、ポインタに付いてくる。離すと定位置へ滑って戻る
+ *   ほかのカード   … 場所が入れ替わるとき、元の位置から新しい位置へスッと滑る
+ * ------------------------------------------------------------------- */
+function setupAlbumSort() {
+  const list = document.querySelector('[data-album-sort]');
+  if (!list || list.children.length < 2) return;
+  const status = document.querySelector('[data-album-sort-status]');
+  const token = document.querySelector('meta[name="csrf-token"]').content;
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const cards = () => [...list.children];
+  const idsOf = () => cards().map((li) => li.dataset.id); // "spotify:xxxx" のようなキーの並び
+  let saved = idsOf().join(); // 最後に保存できた並び。これと比べて、変わったときだけ送る
+
+  // 何もしていないときに出しておく案内（指で操作する端末かどうかで言い方を変える）
+  const hint = window.matchMedia('(pointer: coarse)').matches ? '長押しで並び替え' : 'ドラッグで並び替え';
+  let statusTimer = null;
+  const showStatus = (text, backToHintAfter = 0) => {
+    clearTimeout(statusTimer);
+    status.textContent = text;
+    if (backToHintAfter) statusTimer = setTimeout(() => { status.textContent = hint; }, backToHintAfter);
+  };
+  showStatus(hint);
+  // tabindex=0: Tab キーでカードに移れるようにする（キーボードで並び替えるため）
+  cards().forEach((li) => { li.tabIndex = 0; });
+
+  // 左上の順位バッジを今の並びに合わせる
+  const renumber = () => cards().forEach((li, i) => { li.querySelector('.album__rank').textContent = i + 1; });
+
+  // change() で DOM を入れ替え、skip 以外のカードを「元の見た目の位置」から「新しい位置」へ滑らせる（FLIP）
+  const flip = (change, skip) => {
+    const before = new Map(cards().map((li) => [li, li.getBoundingClientRect()])); // First（動いている途中ならその位置）
+    change();
+    renumber();
+    if (reduceMotion) return;
+    cards().forEach((li) => {
+      if (li === skip) return;
+      li.getAnimations().forEach((a) => a.cancel()); // 前のアニメーションを止めてから測る（止めないと途中の位置を測ってしまう）
+      const now = li.getBoundingClientRect();         // Last
+      const dx = before.get(li).left - now.left;      // Invert
+      const dy = before.get(li).top - now.top;
+      if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return;
+      li.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }], { duration: 200, easing: 'ease-out' }); // Play
+    });
+  };
+
+  // ---- 保存（fetch） ----
+  let saving = false;
+  let again = false; // 保存中にまた動かされたら、終わってからもう一度保存する
+  const save = async () => {
+    const order = idsOf();
+    if (order.join() === saved) return;
+    if (saving) { again = true; return; }
+    saving = true;
+    showStatus('保存中…');
+    try {
+      const res = await fetch('api_album_order.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': token },
+        body: JSON.stringify({ member_id: Number(list.dataset.memberId), order }),
+      }).catch(() => null); // 通信そのものが失敗したら null
+      if (!res) throw new Error('通信できませんでした。もう一度動かしてみてください');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.error) throw new Error(data.error || '保存できませんでした。ページを再読み込みしてください');
+      saved = order.join();
+      showStatus('✓ 保存しました', 2000);
+    } catch (err) {
+      showStatus(err.message, 6000);
+      // 保存できなかったので、最後に保存できた並びへ戻す（画面と DB がずれたままにしない）
+      const byId = new Map(cards().map((li) => [li.dataset.id, li]));
+      flip(() => saved.split(',').forEach((id) => list.appendChild(byId.get(id))));
+    } finally {
+      saving = false;
+      if (again) { again = false; save(); }
+    }
+  };
+
+  // ---- ドラッグ ----
+  //   press … 押した直後〜ドラッグが始まるまで { li, pointerId, type, x, y, startX, startY, timer }
+  //   drag  … ドラッグ中だけ                  { li, pointerId, x, y, grabX, grabY, timer }
+  let press = null;
+  let drag = null;
+
+  // つかんだカードをポインタに付いてこさせる。
+  //   offsetLeft / offsetTop は transform の影響を受けない「本来の位置」（ul の左上から）。
+  //   そこから「ポインタ − つかんだ点」までの差だけ translate でずらして見せる
+  const follow = () => {
+    const box = list.getBoundingClientRect();
+    const { li } = drag;
+    const dx = drag.x - drag.grabX - box.left - li.offsetLeft;
+    const dy = drag.y - drag.grabY - box.top - li.offsetTop;
+    li.style.transform = `translate(${dx}px, ${dy}px)`;
+  };
+
+  // ポインタが乗っている「ほかのカードの本来の場所」に割り込む。
+  //   前から来たならそのカードの後ろ、後ろから来たなら前へ（どちらも、そのカードの場所に自分が入る）
+  //   見た目の位置（アニメーション中）ではなく本来の位置で判定するので、行ったり来たりのブルブルが起きない
+  const moveTo = () => {
+    const { li, x, y } = drag;
+    const box = list.getBoundingClientRect();
+    const all = cards();
+    const target = all.find((c) => {
+      if (c === li) return false;
+      const left = box.left + c.offsetLeft;
+      const top = box.top + c.offsetTop;
+      return x >= left && x < left + c.offsetWidth && y >= top && y < top + c.offsetHeight;
+    });
+    if (target) {
+      const fromBehind = all.indexOf(li) > all.indexOf(target);
+      flip(() => list.insertBefore(li, fromBehind ? target : target.nextElementSibling), li);
+    }
+    follow(); // 自分の本来の位置が変わったので、ずらす量を計算し直す
+  };
+
+  const cancelPress = () => {
+    if (!press) return;
+    clearTimeout(press.timer);
+    press.li.classList.remove('is-pressing');
+    press = null;
+  };
+
+  // press → drag に切り替える（マウスは動かしたとき、指は長押しが終わったとき）
+  const startDrag = () => {
+    const { li, pointerId, x, y, startX, startY, type } = press;
+    cancelPress();
+    li.getAnimations().forEach((a) => a.cancel());
+    const r = li.getBoundingClientRect();
+    // grabX / grabY = カードの左上から、押した所までの距離（これを保ったまま付いてこさせる）
+    drag = { li, pointerId, x, y, grabX: startX - r.left, grabY: startY - r.top };
+    try { li.setPointerCapture(pointerId); } catch { /* もう離されていたら何もしない */ }
+    li.classList.add('is-dragging');
+    list.classList.add('is-sorting'); // 順位バッジを出す
+    document.body.classList.add('is-album-dragging');
+    if (type === 'touch') navigator.vibrate?.(10); // 対応している端末だけ短く震わせて、つかんだことを伝える
+    follow();
+    // 画面の上端・下端に近づけたら自動でスクロール（30枚あると画面に収まらないので）
+    drag.timer = setInterval(() => {
+      if (!drag) return;
+      const edge = 60;
+      const dy = drag.y < edge ? -12 : drag.y > window.innerHeight - edge ? 12 : 0;
+      if (dy) {
+        window.scrollBy(0, dy);
+        moveTo();
+      }
+    }, 16);
+  };
+
+  const end = (e) => {
+    if (press && e.pointerId === press.pointerId) cancelPress(); // 動かさずに離した = ただのクリック / タップ
+    if (!drag || e.pointerId !== drag.pointerId) return;
+    const { li, timer } = drag;
+    clearInterval(timer);
+    drag = null;
+    list.classList.remove('is-sorting');
+    document.body.classList.remove('is-album-dragging');
+    // 離した場所から定位置へ滑って戻る。戻り終わってから「浮いている」見た目を外す
+    const from = li.style.transform;
+    li.style.transform = '';
+    if (!reduceMotion && from) li.animate([{ transform: from }, { transform: 'none' }], { duration: 180, easing: 'ease-out' });
+    setTimeout(() => { if (drag?.li !== li) li.classList.remove('is-dragging'); }, reduceMotion ? 0 : 180);
+    save();
+  };
+
+  list.addEventListener('pointerdown', (e) => {
+    const li = e.target.closest('.album');
+    // × ボタン（削除フォーム）の上で押したときは、ドラッグではなく普通にボタンとして使わせる
+    if (!li || press || drag || e.target.closest('form, button')) return;
+    if (e.pointerType === 'mouse' && e.button !== 0) return; // 左クリック以外は無視
+    if (e.pointerType === 'mouse') e.preventDefault(); // マウスでの文字選択を始めさせない（指のときはスクロールのために止めない）
+    press = { li, pointerId: e.pointerId, type: e.pointerType, x: e.clientX, y: e.clientY, startX: e.clientX, startY: e.clientY, timer: null };
+    if (e.pointerType === 'touch') {
+      li.classList.add('is-pressing'); // 長押し中は少し沈ませて「今つかもうとしている」ことを見せる
+      press.timer = setTimeout(startDrag, 350);
+    }
+  });
+  document.addEventListener('pointermove', (e) => {
+    if (press && e.pointerId === press.pointerId) {
+      press.x = e.clientX;
+      press.y = e.clientY;
+      const moved = Math.hypot(e.clientX - press.startX, e.clientY - press.startY);
+      if (press.type === 'touch') {
+        if (moved > 8) cancelPress(); // 長押しの前に指が動いた = スクロールしたい
+      } else if (moved > 5) {
+        startDrag();
+      }
+      return;
+    }
+    if (!drag || e.pointerId !== drag.pointerId) return;
+    drag.x = e.clientX;
+    drag.y = e.clientY;
+    moveTo();
+  });
+  document.addEventListener('pointerup', end);
+  document.addEventListener('pointercancel', end); // 指でスクロールが始まったときもここに来る
+  // ドラッグ中に指を動かしても、ページがスクロールしないようにする。
+  //   passive: false にしないと preventDefault() が効かない（ブラウザがスクロールを優先する）
+  list.addEventListener('touchmove', (e) => { if (drag) e.preventDefault(); }, { passive: false });
+  // 画像はブラウザ標準の「画像のドラッグ」や、長押しメニュー（画像を保存…）が出てしまうので止める
+  list.addEventListener('dragstart', (e) => e.preventDefault());
+  list.addEventListener('contextmenu', (e) => { if (press || drag) e.preventDefault(); });
+
+  // ---- キーボード ----
+  let keyTimer = null;
+  list.addEventListener('keydown', (e) => {
+    if (drag) return;
+    const li = e.target.closest('.album');
+    const back = e.key === 'ArrowLeft' || e.key === 'ArrowUp';
+    const forward = e.key === 'ArrowRight' || e.key === 'ArrowDown';
+    // カードそのものにフォーカスがあるときだけ（× ボタンにフォーカスがあるときは動かさない）
+    if (!li || li !== e.target || (!back && !forward)) return;
+    e.preventDefault();
+    const prev = li.previousElementSibling;
+    const next = li.nextElementSibling;
+    if (back ? !prev : !next) return; // 端なのでもう動けない
+    flip(() => (back ? list.insertBefore(li, prev) : list.insertBefore(next, li)));
+    li.focus(); // insertBefore で動かすとフォーカスが外れるブラウザがあるので戻す
+    // 1回押すごとに送ると多すぎるので、押し終わって 0.5 秒たったらまとめて保存
+    clearTimeout(keyTimer);
+    keyTimer = setTimeout(save, 500);
   });
 }
 

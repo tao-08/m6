@@ -251,9 +251,9 @@ CREATE TABLE song_performer (
 --  member_favorite_album — メンバーが登録した「好きなアルバム」
 --
 --    ・1人で最大30枚（上限はアプリ側 member_album_save.php で数えて止める）
---    ・アルバムの情報は iTunes Search API から取ってきて「登録した瞬間の内容」を保存する
---      （スナップショット保存。ページを開くたびに iTunes に聞きに行かない
---        → 表示が速い & iTunes が止まってもページは壊れない）
+--    ・アルバムの情報は Spotify（無ければ iTunes）から取ってきて「登録した瞬間の内容」を保存する
+--      （スナップショット保存。ページを開くたびに外部サービスに聞きに行かない
+--        → 表示が速い & 外部サービスが止まってもページは壊れない）
 --
 --    主キー (member_id, sort_order)
 --      → 「同じ人の3枚目」が2つできない。並び順そのものが行の住所になる。
@@ -261,8 +261,10 @@ CREATE TABLE song_performer (
 --        予約語を列名にすると毎回 `rank` とバッククォートで囲む必要があり、事故の元。
 --        instrument テーブルの sort_order と名前を揃えた。
 --
---    UNIQUE (member_id, itunes_collection_id)
+--    UNIQUE (member_id, source, album_id)
 --      → 同じ人が同じアルバムを2回登録できない、を DB が保証する。
+--      source = どのサービスから取ったか（'itunes' / 'spotify'）。ID の形がサービスごとに違うので2列で決める。
+--      album_id は ascii_bin: Spotify の ID は大文字小文字を区別するので、区別して比べる照合順序にする
 --
 --    外部キー member_id → member
 --      ON DELETE CASCADE: メンバーが消えたら（統合など）アルバムも一緒に消える（孤児データを残さない）
@@ -271,15 +273,17 @@ CREATE TABLE song_performer (
 CREATE TABLE member_favorite_album (
     member_id            INT UNSIGNED      NOT NULL,
     sort_order           SMALLINT UNSIGNED NOT NULL,          -- 表示順 1, 2, 3...（小さいほど前）
-    itunes_collection_id BIGINT UNSIGNED   NOT NULL,          -- iTunes 側のアルバムID（collectionId）
+    source               VARCHAR(10) CHARACTER SET ascii COLLATE ascii_bin NOT NULL, -- 'itunes' か 'spotify'
+    album_id             VARCHAR(40) CHARACTER SET ascii COLLATE ascii_bin NOT NULL, -- そのサービスでのアルバムID
     title                VARCHAR(255)      NOT NULL,          -- アルバム名
     artist_name          VARCHAR(255)      NOT NULL,          -- アーティスト名
     artwork_url          VARCHAR(500)      NOT NULL,          -- ジャケット画像のURL（600x600）
     release_year         SMALLINT UNSIGNED NULL,              -- 発売年。分からなければ NULL
     created_at           DATETIME          NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (member_id, sort_order),
-    UNIQUE KEY uq_fav_album (member_id, itunes_collection_id),
+    UNIQUE KEY uq_fav_album (member_id, source, album_id),
     CONSTRAINT fk_fav_member FOREIGN KEY (member_id) REFERENCES member (member_id)
         ON UPDATE CASCADE ON DELETE CASCADE,
-    CONSTRAINT ck_fav_order CHECK (sort_order >= 1)
+    CONSTRAINT ck_fav_order CHECK (sort_order >= 1),
+    CONSTRAINT ck_fav_source CHECK (source IN ('itunes', 'spotify'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;

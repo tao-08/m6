@@ -406,8 +406,8 @@ function merge_members(PDO $pdo, int $fromId, int $toId): void
     $st->execute([$toId]);
     $offset = (int)$st->fetchColumn();
     $pdo->prepare('INSERT IGNORE INTO member_favorite_album
-            (member_id, sort_order, itunes_collection_id, title, artist_name, artwork_url, release_year, created_at)
-        SELECT ?, sort_order + ?, itunes_collection_id, title, artist_name, artwork_url, release_year, created_at
+            (member_id, sort_order, source, album_id, title, artist_name, artwork_url, release_year, created_at)
+        SELECT ?, sort_order + ?, source, album_id, title, artist_name, artwork_url, release_year, created_at
         FROM member_favorite_album WHERE member_id = ?')->execute([$toId, $offset, $fromId]);
     // ↑ 重複で飛ばした行があると番号に隙間ができる（1,2,4…）が、表示は ORDER BY なので問題ない
 

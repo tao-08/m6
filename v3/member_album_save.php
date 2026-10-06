@@ -13,13 +13,13 @@
  *  送られてくる値（POST）:
  *    action        'add' か 'delete'
  *    member_id     誰のアルバムか
- *    collection_id 追加: 追加したいアルバムの iTunes ID（タイトルや画像URLは受け取らない！）
- *    sort_order    削除: 何番目を消すか
+ *    album         どのアルバムか。"spotify:ID" や "itunes:ID" の形のキー（lib/albums.php）
+ *                  追加でも、タイトルや画像URLは受け取らない！（サーバーが取り直す）
  * =====================================================================
  */
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
-require_once __DIR__ . '/lib/itunes.php';
+require_once __DIR__ . '/lib/albums.php';
 $user = require_login();
 
 if (!is_post()) {
@@ -42,11 +42,13 @@ if ($action === 'add') {
         exit('好きなアルバムを追加できるのは本人だけです');
     }
 
-    $collectionId = (int)($_POST['collection_id'] ?? 0);
-    if ($collectionId <= 0) {
+    // album_parse_key: 形がおかしければ null（ブラウザから来た値は信用しない）
+    $key = album_parse_key($_POST['album'] ?? null);
+    if ($key === null) {
         flash('アルバムが選ばれていません', 'error');
         redirect($back);
     }
+    [$source, $albumId] = $key;
 
     // 上限チェック。COUNT(*) は条件に合う行の数を数える
     $st = $pdo->prepare('SELECT COUNT(*) FROM member_favorite_album WHERE member_id = ?');
@@ -57,17 +59,17 @@ if ($action === 'add') {
     }
 
     // 二重登録チェック（DB の UNIQUE でも止まるが、分かりやすいメッセージを出すために先に確認）
-    $st = $pdo->prepare('SELECT 1 FROM member_favorite_album WHERE member_id = ? AND itunes_collection_id = ?');
-    $st->execute([$memberId, $collectionId]);
+    $st = $pdo->prepare('SELECT 1 FROM member_favorite_album WHERE member_id = ? AND source = ? AND album_id = ?');
+    $st->execute([$memberId, $source, $albumId]);
     if ($st->fetchColumn()) {
         flash('そのアルバムはもう登録されています', 'info');
         redirect($back);
     }
 
-    // ★ ブラウザから来たのは ID だけ。中身はサーバーが iTunes に聞き直す（偽装対策）
-    $album = itunes_lookup_album($collectionId);
+    // ★ ブラウザから来たのは ID だけ。中身はサーバーが Spotify / iTunes に聞き直す（偽装対策）
+    $album = album_lookup($source, $albumId);
     if ($album === null) {
-        flash('iTunes からアルバムの情報を取得できませんでした。時間をおいてもう一度試してください', 'error');
+        flash('アルバムの情報を取得できませんでした。時間をおいてもう一度試してください', 'error');
         redirect($back);
     }
 
@@ -79,10 +81,10 @@ if ($action === 'add') {
         $nextOrder = (int)$st->fetchColumn();
 
         $pdo->prepare('INSERT INTO member_favorite_album
-                (member_id, sort_order, itunes_collection_id, title, artist_name, artwork_url, release_year)
-                VALUES (?, ?, ?, ?, ?, ?, ?)')
+                (member_id, sort_order, source, album_id, title, artist_name, artwork_url, release_year)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
             ->execute([
-                $memberId, $nextOrder, $album['collection_id'],
+                $memberId, $nextOrder, $album['source'], $album['album_id'],
                 $album['title'], $album['artist_name'], $album['artwork_url'], $album['release_year'],
             ]);
     } catch (PDOException $e) {
@@ -107,17 +109,25 @@ if ($action === 'delete') {
         http_response_code(403);
         exit('自分のアルバムか、管理者だけが削除できます');
     }
-    $order = (int)($_POST['sort_order'] ?? 0);
+    // 何番目か（sort_order）ではなくアルバムのキーで消す。
+    //   ドラッグで並び替えた後の画面では番号が変わっているので、番号で指定すると別のアルバムを消してしまう
+    // 形がおかしいキーは、どの行にも当たらない値にしておく（→ 「もう無かった」扱いで何も消さない）
+    [$source, $albumId] = album_parse_key($_POST['album'] ?? null) ?? ['', ''];
 
     // トランザクション: 「消す」と「番号を詰める」をひとまとめにする。
     //   途中で失敗したら rollBack() で両方なかったことになる（片方だけ実行された中途半端な状態を作らない）
     $pdo->beginTransaction();
     try {
-        $st = $pdo->prepare('DELETE FROM member_favorite_album WHERE member_id = ? AND sort_order = ?');
-        $st->execute([$memberId, $order]);
+        // FOR UPDATE: 読んだ行をこの処理が終わるまでロックし、同時に並び替えられて番号がずれるのを防ぐ
+        $st = $pdo->prepare('SELECT sort_order FROM member_favorite_album
+            WHERE member_id = ? AND source = ? AND album_id = ? FOR UPDATE');
+        $st->execute([$memberId, $source, $albumId]);
+        $order = $st->fetchColumn(); // 無ければ false（もう消えていた。2連打など）
 
-        // rowCount(): 今の SQL で何行変わったか。0 なら「もう無かった」（2連打など）
-        if ($st->rowCount() > 0) {
+        if ($order !== false) {
+            $order = (int)$order;
+            $pdo->prepare('DELETE FROM member_favorite_album WHERE member_id = ? AND sort_order = ?')
+                ->execute([$memberId, $order]);
             // 後ろの番号を1つずつ詰める（3番を消したら 4→3, 5→4 ...）
             //   ⚠ 主キーが (member_id, sort_order) なので、5→4 を先にやると「4番が2つ」になりエラー。
             //     ORDER BY sort_order（小さい順）で 4→3, 5→4 の順に更新させて衝突を避けている。

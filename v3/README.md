@@ -27,7 +27,7 @@ live ──< live_day ──< band >── band_member ──< member ── use
 | `member` | member_id | `UNIQUE(name)`、ふりがな・入部年度は不明なら `NULL` |
 | `song` | song_id | **新設**。セットリスト。`UNIQUE(band_id, track_no)` |
 | `song_performer` | **(song_id, member_id, instrument_id)** | **新設**。外部キーを `band_member(band_id, member_id, instrument_id)` に張り、「バンドにいない人・楽器」を曲の演奏者にできないことを DB が保証 |
-| `member_favorite_album` | **(member_id, sort_order)** | **新設**。好きなアルバム（最大30枚）。iTunes Search API から取った内容をスナップショット保存。`UNIQUE(member_id, itunes_collection_id)` |
+| `member_favorite_album` | **(member_id, sort_order)** | **新設**。好きなアルバム（最大30枚）。Spotify（キーが無い・失敗したら iTunes）から取った内容をスナップショット保存。`UNIQUE(member_id, source, album_id)` |
 | `user_account` | user_id | `UNIQUE(login_id)`、`UNIQUE(member_id)`（1メンバー1アカウント）、`is_admin` は `NOT NULL` |
 
 ## v2（local_abbeydb）から何を変えたか・なぜか

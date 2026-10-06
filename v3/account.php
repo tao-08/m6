@@ -100,7 +100,7 @@ render_header('アカウント設定');
         <div class="form-actions"><button class="btn btn--primary btn--sm" type="submit">保存</button></div>
     </form>
 
-    <form method="post" class="card form-card">
+    <form method="post" class="card form-card" id="link-member">
         <h2 class="section-title section-title--card">自分はどのメンバー？</h2>
         <p class="muted small">選ぶと、ヘッダーに「マイページ」が出て、自分の出演バンドが強調表示されます。</p>
         <?= csrf_field() ?><input type="hidden" name="action" value="member">

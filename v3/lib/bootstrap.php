@@ -206,6 +206,15 @@ function require_login(): array
         flash('ログインしてください', 'info');
         redirect('login.php');
     }
+    // DB を作り直した・管理者に削除された等でアカウントが消えていたら、古いセッションを捨てる
+    $st = db()->prepare('SELECT 1 FROM user_account WHERE user_id = ?');
+    $st->execute([$user['user_id']]);
+    if (!$st->fetchColumn()) {
+        $_SESSION = [];
+        session_regenerate_id(true);
+        flash('アカウントが見つかりません。もう一度ログインしてください', 'error');
+        redirect('login.php');
+    }
     return $user;
 }
 
