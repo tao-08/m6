@@ -145,6 +145,7 @@ CREATE TABLE band (
     end_time    TIME              NULL,
     song_count  TINYINT UNSIGNED  NOT NULL DEFAULT 0,
     note        VARCHAR(255)      NULL,                -- 鍵盤の私物/貸出など
+    is_omnibus  TINYINT(1)        NOT NULL DEFAULT 0,  -- 1 = いろんなアーティストの曲をやるバンド（曲ごとに song.artist_id を持つ）
     PRIMARY KEY (band_id),
     UNIQUE KEY uq_band_order (live_day_id, play_order), -- 同じ日に「3番目」が2組できない
     KEY idx_band_artist (artist_id),
@@ -205,21 +206,52 @@ CREATE TABLE band_member (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- ---------------------------------------------------------------------
+--  track — Spotify / iTunes の曲1つ（曲の編集画面で🔍検索して紐付けたもの）
+--    登録した瞬間の内容を保存する（スナップショット）。表示のたびに外部 API へ聞きに行かない。
+--    主キー (source, track_id): 「どのサービスの何番の曲か」。同じ曲を何バンドが紐付けても1行
+--    source / track_id は ascii_bin（Spotify の ID は大文字小文字を区別するため。004 と同じ理由）
+-- ---------------------------------------------------------------------
+CREATE TABLE track (
+    source       VARCHAR(10)  CHARACTER SET ascii COLLATE ascii_bin NOT NULL, -- 'itunes' / 'spotify'
+    track_id     VARCHAR(40)  CHARACTER SET ascii COLLATE ascii_bin NOT NULL, -- そのサービスでの曲ID
+    title        VARCHAR(255)      NOT NULL,                                  -- 曲名（サービスでの表記）
+    artist_name  VARCHAR(255)      NOT NULL,
+    album_title  VARCHAR(255)      NOT NULL,
+    artwork_url  VARCHAR(500)      NOT NULL,                                  -- ジャケット（小さめ）
+    release_year SMALLINT UNSIGNED NULL,
+    PRIMARY KEY (source, track_id),
+    CONSTRAINT ck_track_source CHECK (source IN ('itunes', 'spotify'))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- ---------------------------------------------------------------------
 --  song — バンドが演奏した曲（セットリスト）
 --    UNIQUE (band_id, track_no): 同じバンドの「2曲目」が2つできない
 --    UNIQUE (song_id, band_id) : song_id だけで一意なので意味は同じだが、
 --      下の song_performer から「(曲, バンド) の組」で外部キーを張るために必要
+--    artist_id: オムニバスのバンド（band.is_omnibus = 1）のときだけ入れる。
+--      NULL = バンドのアーティスト（band.artist_id）と同じ。同じ値を全曲にコピーしないため
+--    (track_source, track_id): 紐付けた Spotify / iTunes の曲。両方 NULL = 紐付けなし
 -- ---------------------------------------------------------------------
 CREATE TABLE song (
-    song_id  INT UNSIGNED     NOT NULL AUTO_INCREMENT,
-    band_id  INT UNSIGNED     NOT NULL,
-    track_no TINYINT UNSIGNED NOT NULL,                -- 何曲目か
-    title    VARCHAR(100)     NOT NULL,
+    song_id      INT UNSIGNED     NOT NULL AUTO_INCREMENT,
+    band_id      INT UNSIGNED     NOT NULL,
+    track_no     TINYINT UNSIGNED NOT NULL,            -- 何曲目か
+    title        VARCHAR(100)     NOT NULL,
+    artist_id    INT UNSIGNED     NULL,                -- その曲のアーティスト（NULL = バンドと同じ）
+    track_source VARCHAR(10) CHARACTER SET ascii COLLATE ascii_bin NULL,
+    track_id     VARCHAR(40) CHARACTER SET ascii COLLATE ascii_bin NULL,
     PRIMARY KEY (song_id),
     UNIQUE KEY uq_song_track (band_id, track_no),
     UNIQUE KEY uq_song_band (song_id, band_id),
+    KEY idx_song_artist (artist_id),
+    KEY idx_song_ext_track (track_source, track_id),
     CONSTRAINT fk_song_band FOREIGN KEY (band_id) REFERENCES band (band_id)
         ON UPDATE CASCADE ON DELETE CASCADE,
+    CONSTRAINT fk_song_artist FOREIGN KEY (artist_id) REFERENCES artist (artist_id)
+        ON UPDATE CASCADE ON DELETE SET NULL,
+    CONSTRAINT fk_song_ext_track FOREIGN KEY (track_source, track_id) REFERENCES track (source, track_id)
+        ON UPDATE CASCADE ON DELETE SET NULL,
+    CONSTRAINT ck_song_ext_track CHECK ((track_source IS NULL) = (track_id IS NULL)), -- 片方だけ入っている行を作らない
     CONSTRAINT ck_song_track CHECK (track_no >= 1)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
@@ -315,4 +347,22 @@ CREATE TABLE album_link_cache (
     PRIMARY KEY (source, album_id, app),
     CONSTRAINT ck_alc_source CHECK (source IN ('itunes', 'spotify')),
     CONSTRAINT ck_alc_app CHECK (app IN ('spotify', 'apple_music', 'youtube_music', 'line_music'))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- ---------------------------------------------------------------------
+--  track_link_cache — 「この曲は、このアプリだとこの URL」の覚え書き（album_link_cache の曲版）
+--    Spotify で紐付けた曲を Apple Music の人が押したとき、iTunes で探した結果を覚えておく（song_go.php）。
+--    url が NULL = 探したけど見つからなかった。
+--    こちらは親の track テーブルがあるので外部キーを張る（曲が消えたら覚え書きも消える）
+-- ---------------------------------------------------------------------
+CREATE TABLE track_link_cache (
+    source     VARCHAR(10)  CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+    track_id   VARCHAR(40)  CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+    app        VARCHAR(20)  CHARACTER SET ascii NOT NULL,                   -- 開くアプリ（member.music_app と同じ値）
+    url        VARCHAR(500) NULL,                                           -- 見つかった URL。NULL = 見つからなかった
+    checked_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (source, track_id, app),
+    CONSTRAINT fk_tlc_track FOREIGN KEY (source, track_id) REFERENCES track (source, track_id)
+        ON UPDATE CASCADE ON DELETE CASCADE,
+    CONSTRAINT ck_tlc_app CHECK (app IN ('spotify', 'apple_music', 'youtube_music', 'line_music'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;

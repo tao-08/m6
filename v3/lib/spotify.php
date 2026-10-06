@@ -227,3 +227,68 @@ function spotify_lookup_album(string $albumId): ?array
     $album = is_array($json) ? spotify_normalize_album($json) : null;
     return ($album !== null && $album['album_id'] === $albumId) ? $album : null;
 }
+
+/* =====================================================================
+ *  曲（トラック）— 曲の編集画面の🔍検索で使う（lib/tracks.php から呼ぶ）
+ *    検索   https://api.spotify.com/v1/search?q=曲名&type=track&market=JP
+ *    ID指定 https://api.spotify.com/v1/tracks/{id}?market=JP
+ *    曲の ID もアルバムと同じ英数字22文字なので、spotify_valid_id で確かめられる
+ * ===================================================================== */
+
+/**
+ * Spotify の曲1件を、このサイトで使う形（lib/tracks.php の説明を参照）にそろえる。
+ * 使えないデータ（ID がおかしい・画像がない・URLが怪しい）なら null。
+ */
+function spotify_normalize_track(array $t): ?array
+{
+    $id = (string)($t['id'] ?? '');
+    $title = trim((string)($t['name'] ?? ''));
+    $artists = array_filter(array_map(
+        static fn($artist) => is_array($artist) ? trim((string)($artist['name'] ?? '')) : '',
+        is_array($t['artists'] ?? null) ? $t['artists'] : []
+    ));
+    $album = is_array($t['album'] ?? null) ? $t['album'] : [];
+    // ジャケットは大きい順（640px, 300px, 64px）に並んでいる。小さく出すので 300px のもの（無ければ一番大きいもの）
+    $images = is_array($album['images'] ?? null) ? $album['images'] : [];
+    $art = (string)($images[1]['url'] ?? $images[0]['url'] ?? '');
+    if (!spotify_valid_id($id) || $title === '' || $art === '') {
+        return null;
+    }
+    $parts = parse_url($art);
+    if (($parts['scheme'] ?? '') !== 'https' || strtolower((string)($parts['host'] ?? '')) !== 'i.scdn.co') {
+        return null; // Spotify の画像サーバー以外の URL は受け付けない（アルバムと同じ）
+    }
+    $year = (int)substr((string)($album['release_date'] ?? ''), 0, 4);
+    return [
+        'source'       => 'spotify',
+        'track_id'     => $id,
+        'title'        => mb_substr($title, 0, 255),
+        'artist_name'  => mb_substr(implode(', ', $artists), 0, 255),
+        'album_title'  => mb_substr(trim((string)($album['name'] ?? '')), 0, 255),
+        'artwork_url'  => $art,
+        'release_year' => ($year >= 1900 && $year <= 2100) ? $year : null,
+    ];
+}
+
+/** 曲を検索する。正常なら曲の配列（0件なら []）、失敗なら null */
+function spotify_search_tracks(string $term, int $limit = 10): ?array
+{
+    $json = spotify_request('search', ['q' => $term, 'type' => 'track', 'market' => SPOTIFY_MARKET, 'limit' => $limit]);
+    $items = $json['tracks']['items'] ?? null;
+    if (!is_array($items)) {
+        return null;
+    }
+    $tracks = array_map(static fn($t) => is_array($t) ? spotify_normalize_track($t) : null, $items);
+    return array_values(array_filter($tracks));
+}
+
+/** 曲ID から1件を取り直す（保存するとき用）。見つからない・失敗なら null */
+function spotify_lookup_track(string $trackId): ?array
+{
+    if (!spotify_valid_id($trackId)) {
+        return null;
+    }
+    $json = spotify_request('tracks/' . $trackId, ['market' => SPOTIFY_MARKET]);
+    $track = is_array($json) ? spotify_normalize_track($json) : null;
+    return ($track !== null && $track['track_id'] === $trackId) ? $track : null;
+}

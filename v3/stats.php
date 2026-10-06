@@ -26,7 +26,8 @@
  */
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
-require_login();
+require_once __DIR__ . '/lib/tracks.php';
+$user = require_login();
 
 $pdo = db();
 $years = array_map('intval', $pdo->query('SELECT DISTINCT fiscal_year FROM live ORDER BY fiscal_year DESC')->fetchAll(PDO::FETCH_COLUMN));
@@ -260,16 +261,66 @@ foreach (rows($pdo, 'SELECT i.instrument_id, i.short_name, i.name AS instrument_
     $instrumentKings[$r['instrument_id']] ??= $r; // ??= は「まだ無ければ入れる」→ 各楽器の最初の1行（=最多）だけ残る
 }
 
-// ---- よく演奏される曲（曲名 × アーティスト） ----
-$topTitles = rows($pdo, 'SELECT s.title, a.artist_id, a.name AS artist_name, COUNT(*) AS n
+// ---- よく演奏される曲（アーティスト × 曲名の本体） ----
+//   "Lemon" と "Lemon - Acoustic ver." のような版違いも同じ曲として数える（lib/tracks.php の song_title_key）。
+//   この「本体」は SQL では作りにくいので、期間内の曲を全部読んで PHP で数える（1回の演奏 = 1件）。
+//   アーティストは、オムニバスの曲なら曲のアーティスト、それ以外はバンドのアーティスト（COALESCE = 最初の NULL でない方）
+$topTitles = [];
+foreach (rows($pdo, 'SELECT s.title, a.artist_id, a.name AS artist_name,
+        t.source, t.track_id, t.title AS track_title, t.artist_name AS track_artist, t.artwork_url
     FROM song s
     JOIN band b ON b.band_id = s.band_id
-    LEFT JOIN artist a ON a.artist_id = b.artist_id
+    LEFT JOIN artist a ON a.artist_id = COALESCE(s.artist_id, b.artist_id)
+    LEFT JOIN track t ON t.source = s.track_source AND t.track_id = s.track_id
     JOIN live_day ld ON ld.live_day_id = b.live_day_id
     JOIN live lm ON lm.live_id = ld.live_id
-    WHERE 1 = 1' . $yearSql . '
-    GROUP BY a.artist_id, s.title
-    ORDER BY n DESC, s.title LIMIT 15', $yearParams);
+    WHERE 1 = 1' . $yearSql, $yearParams) as $r) {
+    $titleKey = song_title_key($r['title'], $r['artist_name']);
+    $key = ($r['artist_id'] ?? 0) . ':' . ($titleKey !== '' ? $titleKey : $r['title']); // 記号だけの曲名はそのまま比べる
+    $g = &$topTitles[$key]; // & = 配列の中身を直接書き換える（参照）
+    $g['n'] = ($g['n'] ?? 0) + 1;
+    $g['artist_id'] = $r['artist_id'];
+    $g['artist_name'] = $r['artist_name'];
+    $g['titles'][$r['title']] = ($g['titles'][$r['title']] ?? 0) + 1; // 表記ごとの回数（一番多い表記を出すため）
+    if ($r['track_id'] !== null) {
+        $trackKey = album_key($r['source'], $r['track_id']);
+        $g['tracks'][$trackKey] ??= $r; // 紐付けてある版（ジャケットとリンクに使う）
+        $g['trackCount'][$trackKey] = ($g['trackCount'][$trackKey] ?? 0) + 1;
+    }
+    unset($g); // 参照を切る（次の周で前のグループを書き換えないため）
+}
+// 回数の多い順に15曲。表示する曲名・紐付けは、その中で一番多いもの
+foreach ($topTitles as &$g) {
+    arsort($g['titles']); // 値（回数）の大きい順に並べる。キー（表記）は残る
+    $g['title'] = (string)array_key_first($g['titles']);
+    $g['track'] = null;
+    if (!empty($g['trackCount'])) {
+        arsort($g['trackCount']);
+        $g['track'] = $g['tracks'][array_key_first($g['trackCount'])];
+    }
+}
+unset($g);
+uasort($topTitles, static fn($a, $b) => [$b['n'], $a['title']] <=> [$a['n'], $b['title']]);
+$topTitles = array_slice($topTitles, 0, 15);
+
+// 曲のリンク先（見ている人の音楽アプリで開く。band.php と同じやり方）
+$viewerApp = member_music_app($pdo, $user['member_id']);
+$trackCache = track_link_cache_for($pdo, $viewerApp, array_map(
+    static fn($g) => album_key($g['track']['source'], $g['track']['track_id']),
+    array_filter($topTitles, static fn($g) => $g['track'] !== null)
+));
+$songLabel = static function (array $g) use ($viewerApp, $trackCache): string {
+    $artist = $g['artist_name'] ? ' <a class="muted small" href="artist.php?id=' . (int)$g['artist_id'] . '">' . h($g['artist_name']) . '</a>' : '';
+    $t = $g['track'];
+    if ($t === null) {
+        return '<span class="setlist__song"><span class="setlist__art setlist__art--none">♪</span>' . h($g['title']) . '</span>' . $artist;
+    }
+    $key = album_key($t['source'], $t['track_id']);
+    $url = track_listen_url($viewerApp, ['source' => $t['source'], 'track_id' => $t['track_id'], 'title' => $t['track_title'], 'artist_name' => $t['track_artist']],
+        array_key_exists($key, $trackCache) ? $trackCache[$key] : false);
+    return '<a class="setlist__song" href="' . h($url) . '" target="_blank" rel="noopener" title="' . h($t['track_title'] . ' / ' . $t['track_artist']) . ' を聴く">'
+        . '<img class="setlist__art" src="' . h($t['artwork_url']) . '" alt="" loading="lazy" width="28" height="28">' . h($g['title']) . '</a>' . $artist;
+};
 
 $maxArtist = $artists ? max(array_column($artists, 'n')) : 1;
 $maxSlots = $instrumentStats ? max(array_column($instrumentStats, 'slots')) : 1;
@@ -435,9 +486,7 @@ $memberLink = static fn($r) => '<a href="member.php?id=' . (int)$r['member_id'] 
         </ul>
     </section>
 
-    <?php ranking_card('💿 よく演奏される曲', $topTitles,
-        static fn($r) => h($r['title']) . ($r['artist_name'] ? ' <a class="muted small" href="artist.php?id=' . (int)$r['artist_id'] . '">' . h($r['artist_name']) . '</a>' : ''),
-        '回', '曲（セットリスト）がまだ登録されていません'); ?>
+    <?php ranking_card('💿 よく演奏される曲', $topTitles, $songLabel, '回', '曲（セットリスト）がまだ登録されていません'); ?>
 
     <section class="card">
         <h2 class="section-title section-title--card">🥁 楽器別</h2>

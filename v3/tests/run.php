@@ -179,5 +179,89 @@ check('一覧から: その年に1枚だけならローマ字表記違いで選�
 check('一覧から: その年に2枚あればローマ字表記違いでは選ばない',
     album_match_in_catalog($mk('spotify', '1', '金字塔', '中村一義', 1997), [$mk('itunes', '5', 'Kinjitou', '中村一義', 1997), $mk('itunes', '7', 'Ikiru', '中村一義', 1997)]), null);
 
+echo "song titles\n";
+// 版違いを同じ曲にまとめる（lib/tracks.php の song_title_key）。
+// ほとんどは Spotify / iTunes に実際にある曲名（40アーティスト・約4000曲と、有名曲の検索結果で確かめた）
+require_once __DIR__ . '/../lib/tracks.php';
+$same = [
+    // (2020 Remaster) の書き方いろいろ
+    'Let It Be' => ['Let It Be (2020 Remaster)', 'Let It Be (Remastered 2020)', 'Let It Be - 2020 Remaster', 'Let It Be -2020 Remaster-',
+        'Let It Be [2020 Remaster]', 'Let It Be【2020 Remaster】', 'Let It Be（2020 リマスター）', 'Let It Be ～2020 Remaster～',
+        'Let It Be (2020 Remastered Version)', 'Let It Be (2020 Digital Remaster)', 'Let It Be - Remastered 2020', 'Let It Be 2020 Remaster',
+        'Let It Be Remastered 2009', 'Let It Be ‐ 2020 Remaster', 'Let It Be – 2020 Remaster', 'Let It Be / 2020 Remaster',
+        'Let It Be - Single Version / 2021 Mix', 'Let It Be (Single Version) [2021 Mix]', 'Let It Be (Take 28)',
+        'Let It Be (feat. Paul McCartney) [Live at Shea Stadium, Queens, NY - July 2008]', 'Let It Be (Apple Studio - Remastered)', 'ＬＥＴ ＩＴ ＢＥ'],
+    'Lemon' => ['Lemon - Acoustic ver.', 'Lemon (Piano Ver.)', 'Lemon(「アンナチュラル」より) [inst version]', 'Lemon ~ドラマ「アンナチュラル」主題歌~ (オルゴール)',
+        'Lemon Originally Performed By 米津玄師(オルゴール)', 'Lemon(カラオケ)[原曲歌手:米津玄師]', 'Lemon -Album ver.-', 'Lemon Piano Version'],
+    'Hotel California' => ['Hotel California (Eagles) 1976', 'Hotel California[Eagles] (from Guitar☆Man LIVE #001)', 'Hotel California - Live; 1999 Remaster'],
+    'Bohemian Rhapsody' => ['Bohemian Rhapsody - Live At The Montreal Forum / November 1981', 'Bohemian Rhapsody (Operatic Section / 2011 A Cappella Mix)'],
+    'Smells Like Teen Spirit' => ['Smells Like Teen Spirit - 1992/Live at Reading'],
+    'Love Story' => ['Love Story (Taylor’s Version)', "Love Story (Taylor's Version) - Elvira Remix", 'Love Story - Taylor Swift Cover - Piano Version'],
+    'Wonderwall' => ['Wonderwall - Unplugged', "Wonderwall - Live at Knebworth, 10 August '96"],
+    'Basket Case' => ['Basket Case - Live at The Point, Dublin, Ireland - March 2003'],
+    'Bling-Bang-Bang-Born' => ['Bling - Bang - Bang - Born (Mashle) [Sped Up]', 'Bling-Bang-Bang-Born - Slowed & Reverb', 'Bling-Bang-Bang-Born (マッシュル-MASHLE- OP)'],
+    'Paradise Has No Border' => ['Paradise Has No Border -SKY-HI Remix-', 'Paradise Has No Border feat.さかなクン [2020 Remaster]', 'Paradise Has No Border - feat.NO BORDER ALL STARS',
+        '「Paradise Has No Border」(キリン氷結)ORIGINAL COVER'],
+    'Link' => ['Link -KISS Mix-/- Remastered 2022'],
+    'Pretender' => ['Pretender ~映画「コンフィデンスマンJP」主題歌~(オルゴール)', 'Pretender(ONLINE LIVE 2020 - Arena Travelers -) - Live', 'Pretender Instrumental'],
+    'ピースサイン' => ['ピースサイン - Peace Sign'],
+    'がらくた' => ['がらくた - JUNK'],
+    '天体観測' => ['天体観測 - BUMP OF CHICKEN TOUR 2024 Sphery Rendezvous at The Kanazawa Theatre', '天体観測 (2022 Rerecording Version)',
+        '天体観測 オリジナルアーティスト: BUMP OF CHICKEN (カラオケ)', '天体観測 Originally Performed By  BUMP OF CHICKEN (アンティークオルゴール)'],
+    'ひこうき雲' => ['ひこうき雲 (Instrumental Version) 『風立ちぬ』より', 'ひこうき雲 - 2022 mix'],
+    '群青日和' => ['群青日和 - Bon Voyageより', '群青日和 (Dynamite outより)'],
+    '愛にできることはまだあるかい' => ['愛にできることはまだあるかい (Movie edit) 映画『天気の子』主題歌(バック演奏編)', '愛にできることはまだあるかい - サンライトLIVE 2 (Cover)',
+        '愛にできることはまだあるかい（『天気の子』より） - Piano Echoes Ver.'],
+    'シルエット' => ['シルエット-TV SIZE-', 'シルエット New Go-Line ver. - From THE FIRST TAKE'],
+    'ないものねだり' => ['ないものねだり +1Key(原曲歌手:KANA-BOON)', 'ないものねだり -5Key(原曲歌手:KANA-BOON)', 'ないものねだり - Revenge THE FIRST TAKE (feat. もっさ)'],
+    '道なき道、反骨の。' => ['道なき道、反骨の。feat.Ken Yokoyama'],
+    'めくったオレンジ' => ['めくったオレンジ feat.尾崎世界観(クリープハイプ)'],
+    'ミュージック・アワー' => ['ミュージック・アワー  Ver.164'],
+    'ムーンライトステーション' => ['ムーンライトステーション remixed by Dux Content from London'],
+    '君の中で踊りたい' => ['君の中で踊りたい 2023'],
+    'いとをかし' => ['いとをかし album ver.'],
+    '丸ノ内サディスティック' => ['丸ノ内サディスティック ～Marunouchi Sadistic～ - Miso Remix', '丸ノ内サディスティック (EXPO Ver.)'],
+    'チェリー' => ['チェリー（オルゴールver.）', 'チェリー(オリジナルアーティスト:スピッツ)[ガイドメロディ無しカラオケ]', 'チェリー - Cover Ver.'],
+    'Highway Star' => ['Highway Star〜エレキギターソロ〜 (Cover)', 'Highway Star (Live in Osaka, Japan, 8/16/1972) - Steven Wilson Remix'],
+    'Ame(B)' => ['Ame(B) -SAKANATRIBE × ATM version-'],
+];
+foreach ($same as $base => $variants) {
+    foreach ($variants as $v) {
+        check("同じ曲: {$v}", song_title_key($v), song_title_key($base));
+    }
+}
+check('アーティスト名がくっついている', song_title_key('First Love/宇多田ヒカル(オルゴール)', '宇多田ヒカル'), song_title_key('First Love'));
+check('アーティスト名がくっついている（スラッシュ）', song_title_key('ハナミズキ/一青窈', '一青窈'), song_title_key('ハナミズキ'));
+check('曲名=アーティスト名でも消えない', song_title_key('andymori', 'andymori'), 'andymori');
+
+// 別の曲を同じにしない
+$different = [
+    ['Bling-Bang-Bang-Born', 'Bling'],                  // 曲名そのものに - がある
+    ['Hello - Goodbye', 'Hello'],
+    ['Ame(A)', 'Ame(B)'],                               // かっこの中の1〜2文字は曲名の一部
+    ['Live Forever', 'Forever'],
+    ['1980', '1981'],                                   // 西暦だけの曲名は残る
+    // ※ "20/20" と "2020"、"¡Viva la Gloria!" と "¿Viva la Gloria?" のように記号だけが違う別の曲は、見分けられない（限界）
+    ['Ex-fan des sixties', 'Ex'],
+    ['1/3の純情な感情', '1'],
+];
+foreach ($different as [$a, $b]) {
+    check("別の曲: {$a} ≠ {$b}", song_title_key($a) === song_title_key($b), false);
+}
+check('西暦だけの曲名はそのまま', song_title_key('1980'), '1980');
+check('先頭のかっこは曲名の一部', song_title_key("(I Can't Get No) Satisfaction (Live)"), song_title_key("I Can't Get No Satisfaction"));
+
+echo "track matching\n";
+$tr = fn(string $source, string $id, string $title, string $artist) => ['source' => $source, 'track_id' => $id, 'title' => $title, 'artist_name' => $artist];
+$letItBe = $tr('spotify', '7iN1s7xHE4ifF5povM6A48', 'Let It Be - Remastered 2009', 'The Beatles');
+check('版の注記まで同じものを優先', track_match_in_results($letItBe, [
+    $tr('itunes', '1', 'Let It Be (Live)', 'The Beatles'), $tr('itunes', '2', 'Let It Be (Remastered 2009)', 'The Beatles')]), 'https://music.apple.com/jp/song/2');
+check('無ければ同じ曲の別の版', track_match_in_results($letItBe, [$tr('itunes', '1', 'Let It Be (Live)', 'The Beatles')]), 'https://music.apple.com/jp/song/1');
+check('アーティストが違えば選ばない', track_match_in_results($letItBe, [$tr('itunes', '3', 'Let It Be', 'Glee Cast')]), null);
+check('Spotify の複数アーティスト表記', track_match_in_results($tr('itunes', '9', 'Fin (feat. クリープハイプ)', '10-FEET'),
+    [$tr('spotify', '4uLU6hMCjMI75M1A2tKUQC', 'Fin', '10-FEET, クリープハイプ')]), 'https://open.spotify.com/track/4uLU6hMCjMI75M1A2tKUQC');
+check('またぐときは song_go', track_listen_url('apple_music', $letItBe), 'song_go.php?track=spotify%3A7iN1s7xHE4ifF5povM6A48');
+check('同じアプリは直接', track_listen_url('spotify', $letItBe), 'https://open.spotify.com/track/7iN1s7xHE4ifF5povM6A48');
+
 echo $failed ? "\n{$failed} 件失敗\n" : "\nすべて成功\n";
 exit($failed ? 1 : 0);

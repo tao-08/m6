@@ -25,6 +25,7 @@
  *    data-rows          … バンド編集のメンバー行（追加・削除）
  *    data-print / data-autosubmit … 印刷ボタン / 選んだら即送信
  *    data-song-list / data-add-song … 曲の編集
+ *    data-track-search  … 曲の編集の🔍（Spotify / iTunes の曲を探して紐付ける）
  *    data-toasts        … お知らせのポップアップ（4秒で消える）
  * =====================================================================
  */
@@ -51,6 +52,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupMemberRows();
   setupSmallThings();
   setupSongs();
+  setupTrackSearch();
 });
 
 /* ---------------------------------------------------------------------
@@ -88,10 +90,26 @@ function setupToasts() {
  *   data-add-song       … 最後のカードをコピーして空の曲カードを足す
  *   data-toggle-all     … そのカードの全員のチェックを一括で ON / OFF
  *   data-performer-on   … チェックを外した人を薄く表示
+ *   data-omnibus        … オムニバスのチェック。外すとアーティスト欄をバンドのアーティストに戻して編集不可にする
  * ------------------------------------------------------------------- */
 function setupSongs() {
   const list = document.querySelector('[data-song-list]');
   if (!list) return;
+
+  const omnibus = document.querySelector('[data-omnibus]');
+  const defaultArtist = list.dataset.defaultArtist;
+  omnibus.addEventListener('change', () => {
+    list.querySelectorAll('[data-song-artist]').forEach((input) => {
+      if (omnibus.checked) {
+        input.readOnly = false;
+        if (input.dataset.typed !== undefined) input.value = input.dataset.typed; // 前に書いていた名前を戻す
+      } else {
+        input.dataset.typed = input.value; // チェックを付け直したときのために覚えておく
+        input.value = defaultArtist;
+        input.readOnly = true;
+      }
+    });
+  });
 
   document.querySelector('[data-add-song]').addEventListener('click', () => {
     const cards = list.querySelectorAll('[data-song-card]');
@@ -103,9 +121,14 @@ function setupSongs() {
     });
     card.querySelector('[name$="[title]"]').value = '';
     card.querySelector('[name$="[id]"]').value = '';                       // 新しい曲として保存させる
-    card.querySelector('[name$="[delete]"]')?.closest('label').remove();  // 新しい曲に「削除」は不要
-    const order = card.querySelector('[name$="[order]"]');
-    order.value = String(Number(order.value || cards.length) + 1);
+    card.querySelector('[data-song-delete]')?.remove();      // 新しい曲に「削除」は不要
+    card.querySelector('[data-song-delete-btn]')?.remove();
+    card.classList.remove('is-deleted');
+    card.querySelector('[data-song-no]').textContent = String(cards.length + 1);
+    const artist = card.querySelector('[data-song-artist]');
+    artist.value = defaultArtist; // コピー元の曲のアーティストは引き継がない
+    delete artist.dataset.typed;
+    setTrack(card, null); // コピー元の曲の紐付けも引き継がない
     card.querySelectorAll('[data-performer-on]').forEach((cb) => { cb.checked = true; cb.closest('.performer').classList.remove('is-off'); });
     card.classList.add('song-card--new');
     list.appendChild(card);
@@ -114,6 +137,17 @@ function setupSongs() {
 
   // カードが後から増えるので、list でまとめてイベントを受ける（イベント委譲）
   list.addEventListener('click', (e) => {
+    // 🗑 削除の印を付ける / 外す（消えるのは保存したとき）
+    const del = e.target.closest('[data-song-delete-btn]');
+    if (del) {
+      const card = del.closest('[data-song-card]');
+      const on = !card.classList.contains('is-deleted');
+      card.classList.toggle('is-deleted', on);
+      card.querySelector('[data-song-delete]').value = on ? '1' : '';
+      del.setAttribute('aria-pressed', String(on));
+      del.setAttribute('aria-label', on ? '削除を取り消す' : 'この曲を削除');
+      return;
+    }
     const btn = e.target.closest('[data-toggle-all]');
     if (!btn) return;
     const boxes = [...btn.closest('[data-song-card]').querySelectorAll('[data-performer-on]')];
@@ -123,6 +157,138 @@ function setupSongs() {
   list.addEventListener('change', (e) => {
     if (e.target.matches('[data-performer-on]')) {
       e.target.closest('.performer').classList.toggle('is-off', !e.target.checked);
+    }
+  });
+}
+
+/* ---------------------------------------------------------------------
+ * 曲を Spotify / iTunes の曲と紐付ける（songs_edit.php）
+ *   data-track-search  … 🔍「曲名 アーティスト」で api_track_search.php に聞いて、候補をカードの中に出す
+ *   data-track-results … 候補の一覧。押すとその曲を紐付ける（隠し項目 data-track-key にキーを入れる）
+ *   data-track-clear   … 紐付けを外す（ジャケットに重なったリンクが切れるマーク）
+ *   ここで入れるのはキー（"spotify:xxxx"）だけ。曲名やジャケットは保存するときにサーバーが取り直す
+ * ------------------------------------------------------------------- */
+
+/** カードの紐付けを変える。track = 候補1件（{key, title, artist_name, artwork_url}）/ null = 外す */
+function setTrack(card, track) {
+  card.querySelector('[data-track-key]').value = track ? track.key : '';
+  const thumb = card.querySelector('[data-track-thumb]'); // ジャケットの中身（画像か ♪）
+  thumb.replaceChildren();
+  if (track) {
+    const img = document.createElement('img');
+    img.src = track.artwork_url;
+    img.alt = '';
+    thumb.appendChild(img);
+    thumb.parentElement.title = `${track.title} / ${track.artist_name}`;
+  } else {
+    thumb.textContent = '♪';
+    thumb.parentElement.title = '';
+  }
+  card.querySelector('[data-track-clear]').hidden = !track;
+  closeResults(card.querySelector('[data-track-results]'));
+}
+
+/**
+ * 検索結果の窓を、アニメーションしてから閉じる。
+ *   hidden を付けると一瞬で消えてしまうので、先に is-closing（CSS で縮みながら消える）を付けて、
+ *   アニメーションが終わってから hidden を付ける。
+ *   閉じている途中でまた開いたら（openResults）、閉じるのをやめる。
+ */
+function closeResults(results) {
+  if (results.hidden || results.classList.contains('is-closing')) return;
+  results.classList.add('is-closing');
+  const done = () => {
+    if (!results.classList.contains('is-closing')) return; // 途中で開き直された
+    results.classList.remove('is-closing');
+    results.hidden = true;
+    results.replaceChildren();
+  };
+  // 中の候補のアニメーションの終わり（泡のように上がってくる）では閉じないよう、窓そのもののときだけ
+  const onEnd = (e) => {
+    if (e.target !== results) return;
+    results.removeEventListener('animationend', onEnd);
+    done();
+  };
+  results.addEventListener('animationend', onEnd);
+  setTimeout(done, 300); // 動きを減らす設定などで animationend が来ないときの保険
+}
+
+function openResults(results) {
+  results.classList.remove('is-closing');
+  results.hidden = false;
+}
+
+function setupTrackSearch() {
+  const list = document.querySelector('[data-song-list]');
+  if (!list) return;
+
+  // 候補1件ぶんのボタンを作る。外から来た文字は textContent で入れる（innerHTML だと XSS になりうる）
+  const optionButton = (track) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'track-option';
+    const img = document.createElement('img');
+    img.src = track.artwork_url;
+    img.alt = '';
+    img.loading = 'lazy';
+    const text = document.createElement('span');
+    const title = document.createElement('div');
+    title.className = 'track-option__title';
+    title.textContent = track.title;
+    const sub = document.createElement('div');
+    sub.className = 'track-option__sub';
+    sub.textContent = `${track.artist_name} ・ ${track.album_title}`;
+    text.append(title, sub);
+    btn.append(img, text);
+    return btn;
+  };
+  const message = (results, text) => {
+    const p = document.createElement('p');
+    p.className = 'track-results__msg';
+    p.textContent = text;
+    results.replaceChildren(p);
+    openResults(results);
+  };
+
+  list.addEventListener('click', async (e) => {
+    const card = e.target.closest('[data-song-card]');
+    if (!card) return;
+
+    if (e.target.closest('[data-track-clear]')) {
+      setTrack(card, null);
+      return;
+    }
+
+    const searchBtn = e.target.closest('[data-track-search]');
+    if (!searchBtn) return;
+    const results = card.querySelector('[data-track-results]');
+    if (!results.hidden && !results.classList.contains('is-closing')) { closeResults(results); return; } // もう一度押したら閉じる
+    const title = card.querySelector('[name$="[title]"]').value.trim();
+    if (title === '') {
+      message(results, '先に曲名を入れてから探してください');
+      return;
+    }
+    const q = `${title} ${card.querySelector('[data-song-artist]').value.trim()}`;
+    message(results, '検索中…');
+    searchBtn.disabled = true;
+    try {
+      // encodeURIComponent: 日本語や & などを URL で使える形にする
+      const res = await fetch(`api_track_search.php?q=${encodeURIComponent(q)}`, { credentials: 'same-origin' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      if (data.tracks.length === 0) {
+        message(results, '見つかりませんでした。曲名やアーティスト名を変えて探してください');
+        return;
+      }
+      results.replaceChildren(...data.tracks.map((track) => {
+        const btn = optionButton(track);
+        btn.addEventListener('click', () => setTrack(card, track));
+        return btn;
+      }));
+    } catch (err) {
+      message(results, err.message || '検索できませんでした');
+    } finally {
+      searchBtn.disabled = false;
     }
   });
 }

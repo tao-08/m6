@@ -49,8 +49,8 @@ $nav = [
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+JP:wght@400;500;700;900&display=swap" rel="stylesheet">
     <!-- ?v=2 はキャッシュ対策。CSS を変えたら数字を上げると、ブラウザが古い CSS を使い続けない -->
-    <link rel="stylesheet" href="assets/app.css?v=19">
-    <script src="assets/app.js?v=16" defer></script>
+    <link rel="stylesheet" href="assets/app.css?v=21">
+    <script src="assets/app.js?v=18" defer></script>
 </head>
 <body>
 <header class="topbar">

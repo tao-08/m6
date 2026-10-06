@@ -47,7 +47,9 @@ if ($isNew) {
     }
 }
 $dayId = (int)$band['live_day_id'];
-$backUrl = 'live.php?id=' . (int)$band['live_id'] . '#day-' . $dayId;
+$liveUrl = 'live.php?id=' . (int)$band['live_id'] . '#day-' . $dayId;
+// 戻り先: 既存のバンドはバンド詳細、新しく追加するときはライブページ
+$backUrl = $isNew ? $liveUrl : 'band.php?id=' . $bandId;
 
 $errors = [];
 if (is_post()) {
@@ -64,7 +66,7 @@ if (is_post()) {
         renumber_bands($pdo, $dayId); // 抜けた番号を詰める
         $pdo->commit();
         flash('「' . $band['name'] . '」を削除しました');
-        redirect($backUrl);
+        redirect($liveUrl);
     }
 
     // ---------- 保存 ----------
@@ -134,7 +136,7 @@ if (is_post()) {
             throw $e;
         }
         flash('「' . $name . '」を' . ($isNew ? '追加' : '更新') . 'しました');
-        redirect($backUrl);
+        redirect('band.php?id=' . $bandId);
     }
     // エラーのときは入力した値をそのまま表示し直す
     $band = array_merge($band, ['name' => $name, 'artist_name' => $artistName, 'song_count' => $songs, 'note' => $note,
@@ -158,7 +160,7 @@ $allArtists = $pdo->query('SELECT name FROM artist ORDER BY name')->fetchAll(PDO
 
 render_header($isNew ? 'バンドを追加' : 'バンドを編集', 'lives');
 ?>
-<nav class="crumbs"><a href="<?= h($backUrl) ?>"><?= h($band['live_name']) ?></a><span>/</span><?= h($band['label']) ?></nav>
+<nav class="crumbs"><a href="<?= h($liveUrl) ?>"><?= h($band['live_name']) ?></a><span>/</span><?= h($band['label']) ?></nav>
 <h1 class="display display--sm"><?= $isNew ? 'バンドを追加' : 'バンドを編集' ?></h1>
 <?php foreach ($errors as $e): ?><div class="flash flash--error"><?= h($e) ?></div><?php endforeach; ?>
 

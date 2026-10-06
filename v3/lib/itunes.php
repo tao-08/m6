@@ -177,3 +177,69 @@ function itunes_lookup_album(string $albumId): ?array
     }
     return null;
 }
+
+/* =====================================================================
+ *  曲（トラック）— 曲の編集画面の🔍検索で使う（lib/tracks.php から呼ぶ）
+ *    検索   https://itunes.apple.com/search?term=曲名&entity=song&country=jp
+ *    ID指定 https://itunes.apple.com/lookup?id=曲ID&country=jp
+ *    曲の ID（trackId）もアルバムと同じく数字だけなので、itunes_valid_id で確かめられる
+ * ===================================================================== */
+
+/** iTunes の曲1件をこのサイトの形にそろえる。曲でない・画像がない・URLが怪しいなら null */
+function itunes_normalize_track(array $r): ?array
+{
+    if (($r['wrapperType'] ?? '') !== 'track' || ($r['kind'] ?? '') !== 'song') {
+        return null; // ミュージックビデオなどは除く
+    }
+    $id = (string)($r['trackId'] ?? '');
+    $title = trim((string)($r['trackName'] ?? ''));
+    $art = (string)($r['artworkUrl100'] ?? '');
+    if (!itunes_valid_id($id) || $title === '' || $art === '') {
+        return null;
+    }
+    // 小さく出すので 200x200 で十分（高解像度の画面でもぼやけない大きさ）
+    $art = preg_replace('/\d+x\d+bb/', '200x200bb', $art);
+    $parts = parse_url($art);
+    $host = strtolower((string)($parts['host'] ?? ''));
+    if (($parts['scheme'] ?? '') !== 'https' || !str_ends_with($host, '.mzstatic.com')) {
+        return null; // Apple の画像サーバー以外の URL は受け付けない（アルバムと同じ）
+    }
+    $year = (int)substr((string)($r['releaseDate'] ?? ''), 0, 4);
+    return [
+        'source'       => 'itunes',
+        'track_id'     => $id,
+        'title'        => mb_substr($title, 0, 255),
+        'artist_name'  => mb_substr(trim((string)($r['artistName'] ?? '')), 0, 255),
+        'album_title'  => mb_substr(trim((string)($r['collectionName'] ?? '')), 0, 255),
+        'artwork_url'  => $art,
+        'release_year' => ($year >= 1900 && $year <= 2100) ? $year : null,
+    ];
+}
+
+/** 曲を検索する。正常なら曲の配列（0件なら []）、通信失敗なら null */
+function itunes_search_tracks(string $term, int $limit = 10): ?array
+{
+    $results = itunes_request('search', ['term' => $term, 'entity' => 'song', 'country' => 'jp', 'limit' => $limit]);
+    if ($results === null) {
+        return null;
+    }
+    return array_values(array_filter(array_map(
+        static fn($r) => is_array($r) ? itunes_normalize_track($r) : null,
+        $results
+    )));
+}
+
+/** 曲ID（trackId）から1件を取り直す（保存するとき用）。見つからない・通信失敗なら null */
+function itunes_lookup_track(string $trackId): ?array
+{
+    if (!itunes_valid_id($trackId)) {
+        return null;
+    }
+    foreach (itunes_request('lookup', ['id' => $trackId, 'country' => 'jp']) ?? [] as $r) {
+        $track = is_array($r) ? itunes_normalize_track($r) : null;
+        if ($track !== null && $track['track_id'] === $trackId) {
+            return $track;
+        }
+    }
+    return null;
+}

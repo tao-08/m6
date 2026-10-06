@@ -324,11 +324,14 @@ function fmt_time(?string $time): string
 function instrument_class(?string $short): string
 {
     return match (strtolower((string)$short)) {
-        'vo', 'cho' => 'vo',
+        'vo' => 'vo',
+        'cho' => 'cho',
         'gt' => 'gt',
         'ba' => 'ba',
         'dr', 'perc' => 'dr',
         'key' => 'key',
+        'vn' => 'vn',
+        'sax' => 'sax',
         default => 'other',
     };
 }

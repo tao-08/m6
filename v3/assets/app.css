@@ -36,7 +36,7 @@
   --warn: #9a6a00;    --warn-bg: #fff3cf;    /* 黄: 似た人がいる */
   --danger: #c62f3e;  --danger-bg: #fde6e8;  /* 赤: 新しく登録される */
   /* 楽器の色 */
-  --vo: #d90f0f; --gt: #c58a00; --ba: #1677c9; --dr: #7653d6; --key: #13915c; --other: #6c6a75;
+  --vo: #13915c; --gt: #c58a00; --ba: #7653d6; --dr: #d90f0f; --key: #d6338a; --vn: #e8590c; --sax: #9c7a2e; --cho: #6fa31a; --other: #6c6a75;
   --radius: 16px;
   --radius-sm: 10px;
   --shadow: 0 1px 2px rgba(20, 18, 30, .04), 0 6px 20px rgba(20, 18, 30, .05);
@@ -58,7 +58,7 @@
   --ok: #49dc9a;      --ok-bg: rgba(73, 220, 154, .13);
   --warn: #ffcf5c;    --warn-bg: rgba(255, 207, 92, .14);
   --danger: #ff6b7d;  --danger-bg: rgba(255, 107, 125, .14);
-  --vo: #ff7a59; --gt: #ffc857; --ba: #5cc8ff; --dr: #a78bfa; --key: #3ddc97; --other: #9d9cad;
+  --vo: #3ddc97; --gt: #ffc857; --ba: #a78bfa; --dr: #ff6b6b; --key: #ff7eb6; --vn: #ff9f43; --sax: #d4b26a; --cho: #b5e655; --other: #9d9cad;
   --shadow: 0 1px 0 rgba(255, 255, 255, .03) inset, 0 10px 30px rgba(0, 0, 0, .3);
   --glow: radial-gradient(1100px 520px at 90% -12%, rgba(255, 92, 61, .16), transparent 60%);
   color-scheme: dark;
@@ -261,8 +261,8 @@ input:focus, select:focus { outline: none; border-color: var(--accent); box-shad
 .slot__body { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; min-width: 0; box-shadow: var(--shadow); }
 .slot__head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .slot__name { font-size: 18px; font-weight: 800; overflow-wrap: anywhere; }
-.slot__edit { margin-left: auto; font-size: 12px; color: var(--muted); padding: 4px 8px; border-radius: 6px; }
-.slot__edit:hover { background: var(--surface-2); }
+.slot__name a { color: inherit; text-decoration: none; }  /* バンド名 → バンド詳細（band.php） */
+.slot__name a:hover { color: var(--accent); text-decoration: underline; }
 .slot__meta { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 10px 0 0; font-size: 12px; color: var(--muted); }
 .keynote { color: var(--text); }
 .slot--headliner .slot__body { border-color: color-mix(in srgb, var(--accent) 55%, transparent);
@@ -277,6 +277,7 @@ input:focus, select:focus { outline: none; border-color: var(--accent); box-shad
   color: var(--part-c, var(--other)); background: color-mix(in srgb, var(--part-c, var(--other)) 13%, transparent); white-space: nowrap; }
 .part--vo { --part-c: var(--vo); } .part--gt { --part-c: var(--gt); } .part--ba { --part-c: var(--ba); }
 .part--dr { --part-c: var(--dr); } .part--key { --part-c: var(--key); } .part--other { --part-c: var(--other); }
+.part--vn { --part-c: var(--vn); } .part--sax { --part-c: var(--sax); } .part--cho { --part-c: var(--cho); }
 .chip { padding: 3px 10px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border); font-size: 13px; font-weight: 500; }
 .chip:hover { border-color: var(--accent); }
 .chip--me { background: var(--accent-soft); border-color: var(--accent); }
@@ -561,21 +562,110 @@ code { background: var(--surface-2); padding: 1px 6px; border-radius: 6px; font-
 .song-card--new { border-style: dashed; }
 .song-card__head { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 .song-card__no { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); font-weight: 700; }
-.song-card__no input { width: 56px !important; padding: 7px 8px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); }
-.song-card__title { flex: 1; min-width: 180px; padding: 9px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--surface); font-weight: 700; font-size: 16px; }
-.check--danger { color: var(--danger); font-size: 13px; }
+.song-card__no [data-song-no] { font-size: 18px; color: var(--text); font-weight: 800; min-width: 1.4em; text-align: right; }
+.song-card__title, .song-card__artist { padding: 9px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--surface); color: var(--text); }
+.song-card__title { flex: 0 1 320px; min-width: 160px; font-weight: 700; font-size: 16px; } /* 伸ばしすぎない（余った幅は右へ） */
+.song-card__artist { flex: 0 1 220px; min-width: 140px; font-size: 14px; transition: opacity .2s ease; }
+/* オムニバスでないとき: バンドのアーティストで固定。薄くして「ここは変えられない」と分かるように */
+.song-card__artist[readonly] { opacity: .45; cursor: not-allowed; }
+.song-omnibus { margin: 0 0 14px; font-weight: 700; }
+/* 曲の編集: 紐付けた曲のジャケット（紐付けていなければ ♪） */
+.song-thumb { position: relative; width: 40px; height: 40px; flex: none; border-radius: 6px; overflow: hidden;
+  background: var(--surface-2); color: var(--muted); font-size: 16px; }
+.song-thumb__art { width: 100%; height: 100%; display: grid; place-items: center; }
+.song-thumb__art img { width: 100%; height: 100%; object-fit: cover; }
+/* 紐付けを外すボタン: ジャケットにぴったり重ねて、普段は透明。マウスを乗せる（キーボードで選ぶ）と、リンクが切れるマークが出る */
+.song-thumb__clear { position: absolute; inset: 0; display: grid; place-items: center; padding: 0; border: 0; cursor: pointer;
+  background: rgba(0, 0, 0, .55); color: #fff; opacity: 0; transition: opacity .15s ease; }
+.song-thumb__clear[hidden] { display: none; }
+.song-thumb:hover .song-thumb__clear, .song-thumb__clear:focus-visible { opacity: 1; }
+.song-thumb__clear:hover { background: color-mix(in srgb, var(--danger) 80%, transparent); }
+/* スマホなどマウスが無い端末では「乗せる」ができないので、右下に小さく常に出しておく */
+@media (hover: none) {
+  .song-thumb__clear { inset: auto 0 0 auto; width: 18px; height: 18px; border-radius: 6px 0 0 0; opacity: 1; }
+  .song-thumb__clear svg { width: 12px; height: 12px; }
+}
+/* 🗑 曲の削除。押すとカードが薄くなり（保存で消える）、ボタンだけ赤く残す */
+.song-card__delete { width: 36px; height: 36px; flex: none; margin-left: auto; display: grid; place-items: center; padding: 0; cursor: pointer;
+  border-radius: 8px; border: 1px solid transparent; background: transparent; color: var(--muted); }
+.song-card__delete:hover, .song-card__delete:focus-visible { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, transparent); }
+.song-card__delete[aria-pressed="true"] { color: #fff; background: var(--danger); }
+.song-card.is-deleted { border-color: var(--danger); }
+.song-card.is-deleted > :not(.song-card__head), .song-card.is-deleted .song-card__head > :not(.song-card__delete) { opacity: .35; }
+/* 🔍 の検索結果。押すとその曲を紐付ける */
+.track-results { display: grid; gap: 4px; max-height: 360px; overflow-y: auto; padding: 6px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border); background: var(--surface-2); }
+.track-results[hidden] { display: none; }
+.track-option { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 10px; align-items: center; width: 100%; padding: 6px 8px;
+  border: 0; border-radius: 6px; background: transparent; color: var(--text); text-align: left; cursor: pointer; font: inherit; }
+.track-option:hover, .track-option:focus-visible { background: var(--surface); }
+.track-option img { width: 40px; height: 40px; border-radius: 4px; object-fit: cover; }
+.track-option__title { font-weight: 700; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.track-option__sub { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.track-results__msg { color: var(--muted); font-size: 13px; padding: 6px 8px; }
+/* 検索結果の窓: 開くときに上からふわっと出す。候補は1件ずつ少しずらして出す（最初の8件まで。それ以降はまとめて） */
+.track-results:not([hidden]) { animation: track-results-in .22s ease-out; transform-origin: top; }
+.track-option { animation: track-option-in .25s ease-out both; }
+.track-option:nth-child(2) { animation-delay: 30ms; } .track-option:nth-child(3) { animation-delay: 60ms; }
+.track-option:nth-child(4) { animation-delay: 90ms; } .track-option:nth-child(5) { animation-delay: 120ms; }
+.track-option:nth-child(6) { animation-delay: 150ms; } .track-option:nth-child(7) { animation-delay: 180ms; }
+.track-option:nth-child(n+8) { animation-delay: 210ms; }
+.track-results__msg { animation: track-option-in .2s ease-out both; }
+/* 閉じるとき（JS の closeResults が is-closing を付け、終わったら hidden にする） */
+.track-results.is-closing { animation: track-results-out .18s ease-in forwards; pointer-events: none; }
+@keyframes track-results-in { from { opacity: 0; transform: translateY(-6px) scaleY(.96); } }
+@keyframes track-results-out { to { opacity: 0; transform: translateY(-6px) scaleY(.96); } }
+@keyframes track-option-in { from { opacity: 0; transform: translateY(4px); } }
+@media (prefers-reduced-motion: reduce) { .track-results:not([hidden]), .track-results.is-closing, .track-option, .track-results__msg { animation: none; } }
 .performers { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 6px 14px; }
 .performers__tools { grid-column: 1 / -1; }
 .performer { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 6px; align-items: center; padding: 6px 8px; border-radius: 8px; background: var(--surface-2); }
 .performer.is-off { opacity: .45; }
 .performer select { padding: 4px 6px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); font-size: 12px; }
 .performer__name { font-size: 14px; font-weight: 600; min-width: 0; }
-/* ライブ詳細のセットリスト */
+/* バンド詳細（band.php）のセットリスト */
 .setlist { margin-top: 10px; font-size: 13px; }
 .setlist summary { cursor: pointer; color: var(--muted); font-weight: 700; }
 .setlist ol { margin: 8px 0 0; padding-left: 1.6em; display: grid; gap: 4px; }
 .setlist li::marker { color: var(--muted); font-weight: 700; }
 .setlist__who { color: var(--muted); font-size: 12px; margin-left: 6px; }
+/* 曲名の左の小さいジャケット。紐付けた曲は曲名ごとリンク（見ている人の音楽アプリで開く） */
+.setlist li { line-height: 28px; }
+.setlist__song { display: inline-flex; align-items: center; gap: 8px; vertical-align: middle; color: inherit; text-decoration: none; }
+a.setlist__song:hover { color: var(--accent); text-decoration: underline; }
+.setlist__art { width: 28px; height: 28px; flex: none; border-radius: 4px; object-fit: cover; background: var(--surface-2); }
+.setlist__art--none { display: inline-grid; place-items: center; color: var(--muted); font-size: 12px; }
+.setlist__artist { color: var(--muted); font-size: 12px; margin-left: 4px; }
+/* バンド詳細ページ */
+.band-section { margin-top: 16px; }
+.band-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 10px 0 0; font-size: 13px; }
+/* バンド詳細のセットリストは主役なので大きく（stats.php の小さい一覧はそのまま） */
+.band-section .setlist { font-size: 19px; }
+.band-section .setlist ol { gap: 10px; padding-left: 1.8em; }
+.band-section .setlist li { line-height: 56px; }
+.band-section .setlist li::marker { font-size: 16px; }
+.band-section .setlist__song { gap: 14px; font-weight: 700; }
+.band-section .setlist__art { width: 56px; height: 56px; border-radius: 6px; font-size: 18px; }
+.band-section .setlist__artist, .band-section .setlist__who { font-size: 13px; margin-left: 8px; }
+/* 「聴く」アイコン: 曲の行にマウスを乗せると薄く出て、アイコンに乗せると濃く・少し大きく。押すと音楽アプリへ */
+.setlist__listen { display: inline-grid; place-items: center; vertical-align: middle; margin-left: 10px; border-radius: 50%;
+  opacity: 0; transition: opacity .15s ease, transform .15s ease; }
+.setlist__listen svg { display: block; }
+.band-section .setlist li:hover .setlist__listen, .setlist__listen:focus-visible { opacity: .45; }
+.band-section .setlist li .setlist__listen:hover, .band-section .setlist li .setlist__listen:focus-visible { opacity: 1; transform: scale(1.1); } /* 乗せたら透けない */
+/* アプリの色。:hover も並べるのは、全体の a:hover（赤くする）の方が強くて、乗せたときにロゴが赤く塗られてしまうため */
+.setlist__listen--spotify, .setlist__listen--spotify:hover { color: #1db954; }
+.setlist__listen--apple_music, .setlist__listen--apple_music:hover { color: #fa243c; }
+.setlist__listen--youtube_music, .setlist__listen--youtube_music:hover { color: #ff0000; }
+.setlist__listen--line_music, .setlist__listen--line_music:hover { color: #0ee071; } /* 公式ロゴの緑 */
+/* スマホなど「乗せる」ができない端末では、常に薄く出しておく */
+@media (hover: none) { .setlist__listen { opacity: .45; } }
+@media (prefers-reduced-motion: reduce) { .setlist__listen { transition: none; } }
+@media (max-width: 640px) {
+  .band-section .setlist { font-size: 17px; }
+  .band-section .setlist li { line-height: 44px; }
+  .band-section .setlist__art { width: 44px; height: 44px; }
+}
 
 /* ===== 印刷（ライブ詳細の「印刷」ボタン） ===== */
 /* ===== 好きなアルバム（member.php） =====

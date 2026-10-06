@@ -9,8 +9,12 @@
  *  を選ぶ。
  *
  *  曲の追加: 空のカードに曲名を書けば追加。曲名が空のカードは無視される。
- *  曲の削除: 「この曲を削除」にチェック。
- *  並び順  : 「何曲目」の数字の順に並べ直して、1,2,3... と振り直す。
+ *  曲の削除: 🗑 ボタン（押すとカードが薄くなり、保存したときに消える。もう一度押すと取り消し）。
+ *  並び順  : 画面の上から順に 1,2,3... と振る（番号は手で変えない）。
+ *  アーティスト: 一番上の「オムニバス」にチェックしたときだけ、曲ごとに書ける。
+ *    チェックなし → 全曲バンドのアーティスト（song.artist_id は NULL）。
+ *  曲の紐付け: 🔍で Spotify / iTunes の曲を検索して選ぶ（assets/app.js の setupTrackSearch → api_track_search.php）。
+ *    選んだ曲のキー（"spotify:xxxx"）だけが送られてくるので、曲名・ジャケットはサーバーが取り直す。
  *
  *  保存の中身は lib/repository.php の save_songs()。
  * =====================================================================
@@ -18,19 +22,25 @@
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/repository.php';
+require_once __DIR__ . '/lib/tracks.php';
 require_login();
 
 $pdo = db();
 $bandId = (int)($_GET['band'] ?? $_POST['band_id'] ?? 0);
-$st = $pdo->prepare('SELECT b.*, d.live_id, d.label, l.name AS live_name FROM band b
-    JOIN live_day d ON d.live_day_id = b.live_day_id JOIN live l ON l.live_id = d.live_id WHERE b.band_id = ?');
+$st = $pdo->prepare('SELECT b.*, a.name AS artist_name, d.live_id, d.label, l.name AS live_name FROM band b
+    JOIN live_day d ON d.live_day_id = b.live_day_id JOIN live l ON l.live_id = d.live_id
+    LEFT JOIN artist a ON a.artist_id = b.artist_id WHERE b.band_id = ?');
 $st->execute([$bandId]);
 $band = $st->fetch();
 if (!$band) {
     http_response_code(404);
     exit('バンドが見つかりません');
 }
-$backUrl = 'live.php?id=' . (int)$band['live_id'] . '#day-' . (int)$band['live_day_id'];
+$liveUrl = 'live.php?id=' . (int)$band['live_id'] . '#day-' . (int)$band['live_day_id'];
+$backUrl = 'band.php?id=' . $bandId; // 保存・キャンセルの戻り先はバンド詳細
+// オムニバスでないときにアーティスト欄に出す名前（アーティスト未設定のバンドはバンド名）
+$defaultArtist = $band['artist_name'] ?? $band['name'];
+$bandArtistId = $band['artist_id'] === null ? null : (int)$band['artist_id'];
 
 // ---- バンドのメンバー（人ごと）と、バンドでの楽器（初期値に使う） ----
 $st = $pdo->prepare('SELECT m.member_id, m.name, bm.instrument_id FROM band_member bm
@@ -50,6 +60,7 @@ $validInstruments = array_map('intval', array_column(instruments(), 'instrument_
 $errors = [];
 if (is_post()) {
     verify_csrf();
+    $omnibus = !empty($_POST['omnibus']);
     $songs = [];
     foreach ((array)($_POST['songs'] ?? []) as $k => $in) {
         $title = trim((string)($in['title'] ?? ''));
@@ -58,6 +69,19 @@ if (is_post()) {
         }
         if (mb_strlen($title) > 100) {
             $errors[] = "「{$title}」: 曲名は100文字以内にしてください";
+            continue;
+        }
+        // オムニバスでなければ、送られてきたアーティスト欄は見ない（全曲バンドのアーティスト）
+        $artist = $omnibus ? trim((string)($in['artist'] ?? '')) : '';
+        if (mb_strlen($artist) > 100) {
+            $errors[] = "「{$title}」: アーティスト名は100文字以内にしてください";
+            continue;
+        }
+        // 紐付けた曲（空 = 紐付けなし）。形がおかしいキーは受け付けない
+        $trackKey = (string)($in['track'] ?? '');
+        $track = $trackKey === '' ? null : album_parse_key($trackKey);
+        if ($trackKey !== '' && $track === null) {
+            $errors[] = "「{$title}」: 紐付けた曲の指定がおかしいです";
             continue;
         }
         $performers = [];
@@ -76,7 +100,8 @@ if (is_post()) {
         $songs[] = [
             'song_id' => ctype_digit((string)($in['id'] ?? '')) ? (int)$in['id'] : null,
             'title' => $title,
-            'order' => (int)($in['order'] ?? 99),
+            'artist' => $artist,
+            'track' => $track,
             'k' => (int)$k,
             'performers' => array_values($performers),
         ];
@@ -84,11 +109,41 @@ if (is_post()) {
     if (count($songs) > 50) {
         $errors[] = '曲は50曲までです';
     }
+    // まだ track テーブルに無い曲は、Spotify / iTunes から取り直す（ブラウザから来た曲名や画像URLは使わない）。
+    //   通信するので、トランザクションの外で先にやっておく（DB をロックしたまま外部の返事を待たないため）
+    $newTracks = []; // "source:id" => 曲の情報
+    $exists = $pdo->prepare('SELECT 1 FROM track WHERE source = ? AND track_id = ?');
+    foreach ($errors ? [] : $songs as $song) {
+        if ($song['track'] === null) {
+            continue;
+        }
+        $key = album_key(...$song['track']); // ...$配列 = 配列の中身を引数として順に渡す（source, track_id）
+        $exists->execute($song['track']);
+        if (isset($newTracks[$key]) || $exists->fetchColumn()) {
+            continue;
+        }
+        $info = track_lookup(...$song['track']);
+        if ($info === null) {
+            $errors[] = "「{$song['title']}」: 紐付けた曲の情報を取得できませんでした。時間をおいてもう一度試してください";
+            continue;
+        }
+        $newTracks[$key] = $info;
+    }
     if (!$errors) {
-        // 「何曲目」の数字順 → 同じなら画面の並び順
-        usort($songs, static fn($a, $b) => [$a['order'], $a['k']] <=> [$b['order'], $b['k']]);
+        // 画面の並び順（songs[番号] の番号順。JS で足したカードは大きい番号なので最後になる）
+        usort($songs, static fn($a, $b) => $a['k'] <=> $b['k']);
         $pdo->beginTransaction();
         try {
+            foreach ($songs as &$song) {
+                // アーティスト名 → artist_id（無ければ作る）。空欄・バンドと同じなら NULL
+                $artistId = $song['artist'] === '' ? null : find_or_create_artist($pdo, $song['artist']);
+                $song['artist_id'] = $artistId === $bandArtistId ? null : $artistId;
+            }
+            unset($song); // foreach の & を切っておく（後で $song を使ったときに最後の曲を書き換えないため）
+            foreach ($newTracks as $info) {
+                save_track($pdo, $info); // song から外部キーで指すので、先に track に入れる
+            }
+            $pdo->prepare('UPDATE band SET is_omnibus = ? WHERE band_id = ?')->execute([(int)$omnibus, $bandId]);
             save_songs($pdo, $bandId, $songs);
             $pdo->commit();
         } catch (Throwable $e) {
@@ -103,7 +158,12 @@ if (is_post()) {
 /* =====================================================================
  *  表示用データ
  * ===================================================================== */
-$st = $pdo->prepare('SELECT song_id, track_no, title FROM song WHERE band_id = ? ORDER BY track_no');
+$st = $pdo->prepare('SELECT s.song_id, s.track_no, s.title, a.name AS artist_name,
+        s.track_source, s.track_id, t.title AS track_title, t.artist_name AS track_artist, t.artwork_url
+    FROM song s
+    LEFT JOIN artist a ON a.artist_id = s.artist_id
+    LEFT JOIN track t ON t.source = s.track_source AND t.track_id = s.track_id
+    WHERE s.band_id = ? ORDER BY s.track_no');
 $st->execute([$bandId]);
 $songs = $st->fetchAll();
 
@@ -121,12 +181,19 @@ foreach ($st as $r) {
 $blankCount = $songs ? 1 : max(1, min(10, (int)$band['song_count']));
 $cards = $songs;
 for ($i = 0; $i < $blankCount; $i++) {
-    $cards[] = ['song_id' => null, 'track_no' => count($songs) + $i + 1, 'title' => ''];
+    $cards[] = ['song_id' => null, 'track_no' => count($songs) + $i + 1, 'title' => '', 'artist_name' => null,
+        'track_source' => null, 'track_id' => null, 'track_title' => null, 'track_artist' => null, 'artwork_url' => null];
 }
+$omnibus = (bool)$band['is_omnibus'];
+$artistNames = $pdo->query('SELECT name FROM artist ORDER BY name')->fetchAll(PDO::FETCH_COLUMN);
+
+// アイコン（Lucide の trash-2 / unlink）。自分で書いた固定の SVG なので h() は通さない
+const ICON_TRASH = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>';
+const ICON_UNLINK = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m18.84 12.25 1.72-1.71h-.02a5.004 5.004 0 0 0-.12-7.07 5.006 5.006 0 0 0-6.95 0l-1.72 1.71"/><path d="m5.17 11.75-1.71 1.71a5.004 5.004 0 0 0 .12 7.07 5.006 5.006 0 0 0 6.95 0l1.71-1.71"/><line x1="8" x2="8" y1="2" y2="5"/><line x1="2" x2="5" y1="8" y2="8"/><line x1="16" x2="16" y1="19" y2="22"/><line x1="19" x2="22" y1="16" y2="16"/></svg>';
 
 render_header('曲を編集', 'lives');
 ?>
-<nav class="crumbs"><a href="<?= h($backUrl) ?>"><?= h($band['live_name']) ?> <?= h($band['label']) ?></a><span>/</span><?= h($band['name']) ?></nav>
+<nav class="crumbs"><a href="<?= h($liveUrl) ?>"><?= h($band['live_name']) ?> <?= h($band['label']) ?></a><span>/</span><a href="<?= h($backUrl) ?>"><?= h($band['name']) ?></a></nav>
 <h1 class="display display--sm">♪ <?= h($band['name']) ?> の曲</h1>
 <?php foreach ($errors as $e): ?><div class="flash flash--error"><?= h($e) ?></div><?php endforeach; ?>
 
@@ -138,17 +205,37 @@ render_header('曲を編集', 'lives');
 <form method="post" class="songs-form">
     <?= csrf_field() ?>
     <input type="hidden" name="band_id" value="<?= $bandId ?>">
-    <div class="song-list" data-song-list>
+    <!-- チェックなし: アーティスト欄はバンドのアーティストで固定（薄く表示）。チェックあり: 曲ごとに書ける（assets/app.js の setupSongs） -->
+    <label class="check song-omnibus"><input type="checkbox" name="omnibus" value="1"<?= $omnibus ? ' checked' : '' ?> data-omnibus> オムニバスバンド</label>
+    <datalist id="artists"><?php foreach ($artistNames as $n): ?><option value="<?= h($n) ?>"><?php endforeach; ?></datalist>
+    <div class="song-list" data-song-list data-default-artist="<?= h($defaultArtist) ?>">
         <?php foreach ($cards as $k => $song):
             $isNew = $song['song_id'] === null;
-            $base = "songs[$k]"; ?>
+            $base = "songs[$k]";
+            $artist = $omnibus ? ($song['artist_name'] ?? $defaultArtist) : $defaultArtist;
+            $trackKey = $song['track_id'] === null ? '' : album_key($song['track_source'], $song['track_id']); ?>
             <section class="card song-card<?= $isNew ? ' song-card--new' : '' ?>" data-song-card>
                 <div class="song-card__head">
-                    <label class="song-card__no" title="何曲目"><input type="number" name="<?= $base ?>[order]" value="<?= (int)$song['track_no'] ?>" min="1" max="99" class="input-num" aria-label="何曲目"><span>曲目</span></label>
+                    <span class="song-card__no"><span data-song-no><?= (int)$song['track_no'] ?></span>曲目</span>
+                    <!-- ジャケット: 紐付けた曲の画像。紐付けていなければ ♪。
+                         紐付けているときは、マウスを乗せると「リンクが切れるマーク」が重なり、押すと紐付けを外す -->
+                    <span class="song-thumb" title="<?= $trackKey === '' ? '' : h($song['track_title'] . ' / ' . $song['track_artist']) ?>">
+                        <span class="song-thumb__art" data-track-thumb><?php if ($trackKey !== ''): ?><img src="<?= h($song['artwork_url']) ?>" alt="" loading="lazy"><?php else: ?>♪<?php endif; ?></span>
+                        <button type="button" class="song-thumb__clear" data-track-clear aria-label="紐付けを外す"<?= $trackKey === '' ? ' hidden' : '' ?>><?= ICON_UNLINK ?></button>
+                    </span>
                     <input name="<?= $base ?>[title]" value="<?= h($song['title']) ?>" maxlength="100" placeholder="<?= $isNew ? '曲名を入力して追加' : '曲名' ?>" class="song-card__title" aria-label="曲名">
+                    <input name="<?= $base ?>[artist]" value="<?= h($artist) ?>" maxlength="100" list="artists" placeholder="アーティスト" class="song-card__artist" aria-label="アーティスト" data-song-artist<?= $omnibus ? '' : ' readonly' ?>>
+                    <input type="hidden" name="<?= $base ?>[track]" value="<?= h($trackKey) ?>" data-track-key>
+                    <button type="button" class="btn btn--ghost btn--sm" data-track-search>🔍 曲を探す</button>
                     <input type="hidden" name="<?= $base ?>[id]" value="<?= $isNew ? '' : (int)$song['song_id'] ?>">
-                    <?php if (!$isNew): ?><label class="check check--danger"><input type="checkbox" name="<?= $base ?>[delete]" value="1"> この曲を削除</label><?php endif; ?>
+                    <?php if (!$isNew): ?>
+                        <!-- 🗑 押すと「削除する」印（隠し項目を 1）が付いてカードが薄くなる。もう一度押すと取り消し。消えるのは保存したとき -->
+                        <input type="hidden" name="<?= $base ?>[delete]" value="" data-song-delete>
+                        <button type="button" class="song-card__delete" data-song-delete-btn aria-label="この曲を削除" aria-pressed="false"><?= ICON_TRASH ?></button>
+                    <?php endif; ?>
                 </div>
+                <!-- 🔍 の検索結果（assets/app.js の setupTrackSearch が中身を入れる） -->
+                <div class="track-results" data-track-results hidden></div>
                 <div class="performers">
                     <div class="performers__tools"><button type="button" class="linkbtn small" data-toggle-all>全員 ON / OFF</button></div>
                     <?php foreach ($members as $memberId => $m):
