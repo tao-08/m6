@@ -267,6 +267,20 @@ function merge_members(PDO $pdo, int $fromId, int $toId): void
         WHERE member_id = ? AND NOT EXISTS (SELECT 1 FROM (SELECT member_id FROM user_account WHERE member_id = ?) t)')
         ->execute([$toId, $fromId, $toId]);
 
+    // 好きなアルバムも統合先へ引っ越す（統合先のアルバムの後ろに付け足す）
+    //   ・統合先の今の最大番号を先に調べ、統合元の番号にその分を足して重ならないようにする
+    //   ・INSERT IGNORE: 統合先がすでに同じアルバムを登録していたら（UNIQUE 違反）その行は飛ばす
+    //   ・上限30枚はここではチェックしない（統合は管理者の操作なので、超えても消さずに残す）
+    //   ・統合元の行は、下で統合元の member を消したときに ON DELETE CASCADE で自動的に消える
+    $st = $pdo->prepare('SELECT COALESCE(MAX(sort_order), 0) FROM member_favorite_album WHERE member_id = ?');
+    $st->execute([$toId]);
+    $offset = (int)$st->fetchColumn();
+    $pdo->prepare('INSERT IGNORE INTO member_favorite_album
+            (member_id, sort_order, itunes_collection_id, title, artist_name, artwork_url, release_year, created_at)
+        SELECT ?, sort_order + ?, itunes_collection_id, title, artist_name, artwork_url, release_year, created_at
+        FROM member_favorite_album WHERE member_id = ?')->execute([$toId, $offset, $fromId]);
+    // ↑ 重複で飛ばした行があると番号に隙間ができる（1,2,4…）が、表示は ORDER BY なので問題ない
+
     // 統合元を消す（まだアカウントが紐付いていても ON DELETE SET NULL で外れる）
     $pdo->prepare('DELETE FROM member WHERE member_id = ?')->execute([$fromId]);
 }

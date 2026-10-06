@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 function config($key = null) { return $key === 'pdftotext' ? 'pdftotext' : null; }
 require __DIR__ . '/../lib/import/parsers.php';
+require __DIR__ . '/../lib/itunes.php';
 
 $failed = 0;
 function check(string $label, mixed $actual, mixed $expected): void
@@ -79,6 +80,21 @@ check('空セルを詰めない', $rows[1], ['時間', '', '持ち時間', 'バ�
 check('ふりがなは読まない', $sheets['live.xlsx［名簿］'][1][1], '山田太郎');
 $tt = parse_timetable($rows);
 check('Excel→タイムテーブル', [$tt['month'], $tt['day'], $tt['slots'][0]['start_time'], $tt['slots'][0]['end_time']], [10, 5, '11:30', '11:50']);
+
+echo "itunes\n";
+// iTunes の返事（の一部）を真似したデータで、整形処理が正しいかを確かめる（通信はしない）
+$sample = [
+    'wrapperType' => 'collection', 'collectionId' => 1441164426, 'collectionName' => 'Abbey Road (Remastered)',
+    'artistName' => 'The Beatles', 'releaseDate' => '1969-09-26T07:00:00Z',
+    'artworkUrl100' => 'https://is1-ssl.mzstatic.com/image/thumb/Music/v4/aa/bb/cc/source/100x100bb.jpg',
+];
+$norm = itunes_normalize_album($sample);
+check('ジャケットを600x600に', $norm['artwork_url'], 'https://is1-ssl.mzstatic.com/image/thumb/Music/v4/aa/bb/cc/source/600x600bb.jpg');
+check('発売年', $norm['release_year'], 1969);
+check('曲（アルバム以外）は捨てる', itunes_normalize_album(['wrapperType' => 'track'] + $sample), null);
+check('Apple以外の画像URLは拒否', itunes_normalize_album(['artworkUrl100' => 'https://evil.example.com/100x100bb.jpg'] + $sample), null);
+check('httpは拒否', itunes_normalize_album(['artworkUrl100' => 'http://is1.mzstatic.com/100x100bb.jpg'] + $sample), null);
+check('なりすましドメインは拒否', itunes_normalize_album(['artworkUrl100' => 'https://mzstatic.com.evil.example/100x100bb.jpg'] + $sample), null);
 
 echo $failed ? "\n{$failed} 件失敗\n" : "\nすべて成功\n";
 exit($failed ? 1 : 0);
