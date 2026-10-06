@@ -320,7 +320,30 @@ function setupImportPreview() {
     out.textContent = m ? `→ ${Number(m[2]) >= 4 ? Number(m[1]) : Number(m[1]) - 1}年度` : '';
   };
 
+  // 取込のチェックを切り替えたら、同じ日程の出演順を詰め直す
+  //   外す → その行の番号を消して、後ろの行を1つずつ繰り上げ
+  //   付ける → 上にある取込行の数+1 を入れて、それ以降の行を1つずつ繰り下げ
+  const renumber = (checkbox) => {
+    const tr = checkbox.closest('tr[data-slot]');
+    const others = [...tr.closest('[data-timetable]').querySelectorAll('tr[data-slot]')]
+      .filter((row) => row !== tr && row.querySelector('[data-include]').checked)
+      .map((row) => row.querySelector('[name$="[order]"]'))
+      .filter((input) => input.value !== '');
+    const order = tr.querySelector('[name$="[order]"]');
+    if (checkbox.checked) {
+      const rows = [...tr.parentElement.children];
+      const pos = rows.slice(0, rows.indexOf(tr)).filter((row) => row.querySelector('[data-include]').checked).length + 1;
+      others.forEach((input) => { if (Number(input.value) >= pos) input.value = Number(input.value) + 1; });
+      order.value = pos;
+    } else {
+      const old = Number(order.value);
+      if (old) others.forEach((input) => { if (Number(input.value) > old) input.value = Number(input.value) - 1; });
+      order.value = '';
+    }
+  };
+
   document.addEventListener('change', (e) => {
+    if (e.target.matches('[data-include]')) renumber(e.target);
     if (e.target.matches('[data-include], [data-roster-input]')) refresh();
     if (e.target.matches('[data-date-input]')) showFiscalYear(e.target);
     if (e.target.matches('[data-venue-select]')) {

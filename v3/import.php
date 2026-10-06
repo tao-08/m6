@@ -348,8 +348,8 @@ if ($plan === null): // ==================== アップロード画面 ==========
             <div class="table-scroll">
                 <table class="table table--edit">
                     <thead><tr>
-                        <th title="チェックした行だけ登録">取込</th><th>順</th><th>時間</th><th>バンド名</th><th>曲数</th>
-                        <th title="名簿ファイルのバンド名で検索して選ぶ">名簿</th><th title="バンド全体の補足事項">メモ</th>
+                        <th title="チェックした行だけ登録">取込</th><th>順</th><th>時間</th><th>登録バンド名</th>
+                        <th title="名簿ファイルのバンド名で検索して選ぶ">名簿ファイル内バンド名</th><th>曲数</th><th title="バンド全体の補足事項">メモ</th>
                     </tr></thead>
                     <tbody>
                     <?php foreach ($tt['slots'] as $si => $s):
@@ -367,10 +367,10 @@ if ($plan === null): // ==================== アップロード画面 ==========
                             <td><input type="number" class="input-num" name="tt[<?= $ti ?>][s][<?= $si ?>][order]" value="<?= h($fs['order'] ?? $s['order'] ?? '') ?>" min="1" aria-label="出演順"></td>
                             <td class="mono nowrap muted"><?= h($s['start_time']) ?><?= $s['end_time'] ? '–' . h($s['end_time']) : '' ?></td>
                             <td><input name="tt[<?= $ti ?>][s][<?= $si ?>][name]" value="<?= h($fs['name'] ?? $s['band_name']) ?>" maxlength="100" data-band-name aria-label="バンド名"></td>
-                            <td><input type="number" class="input-num" name="tt[<?= $ti ?>][s][<?= $si ?>][songs]" value="<?= h($fs['songs'] ?? $s['song_count'] ?? '') ?>" min="0" aria-label="曲数"></td>
                             <td><input name="tt[<?= $ti ?>][s][<?= $si ?>][roster]" value="<?= h($roster) ?>" list="dl-roster"
-                                       class="name-input <?= $rosterClass ?>" title="<?= h($rosterHint) ?>" placeholder="名簿から検索" data-roster-input aria-label="名簿のバンド"></td>
-                            <td><input name="tt[<?= $ti ?>][s][<?= $si ?>][note]" value="<?= h($fs['note'] ?? '') ?>" maxlength="255" placeholder="補足事項" aria-label="メモ"></td>
+							class="name-input <?= $rosterClass ?>" title="<?= h($rosterHint) ?>" placeholder="名簿から検索" data-roster-input aria-label="名簿のバンド"></td>
+                            <td><input type="number" class="input-num" name="tt[<?= $ti ?>][s][<?= $si ?>][songs]" value="<?= h($fs['songs'] ?? $s['song_count'] ?? '') ?>" min="0" aria-label="曲数"></td>
+                            <td><input name="tt[<?= $ti ?>][s][<?= $si ?>][note]" value="<?= h($fs['note'] ?? '') ?>" maxlength="255" aria-label="メモ"></td>
                         </tr>
                     <?php endforeach; ?>
                     </tbody>
