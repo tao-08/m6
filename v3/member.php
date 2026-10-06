@@ -69,12 +69,34 @@ $headliners = count(array_filter($history, static fn($h) => (int)$h['is_last'] =
 $liveCount = count(array_unique(array_column($history, 'live_id')));
 $isMe = $memberId === $user['member_id'];
 
-// ---- 好きなアルバム（登録順） ----
+// ---- マイアルバム（登録順） ----
 //   登録時に保存した内容（スナップショット）を出すだけなので、ここでは Spotify / iTunes に通信しない
 $st = $pdo->prepare('SELECT source, album_id, title, artist_name, artwork_url, release_year
     FROM member_favorite_album WHERE member_id = ? ORDER BY sort_order');
 $st->execute([$memberId]);
 $albums = $st->fetchAll();
+
+// ---- マイアルバムのリンクを、見ている人（ログイン中の人）の音楽アプリで開く ----
+//   $viewerApp: プロフィール編集で選んだアプリ。選んでいなければ null（登録元のページを開く）
+//   $linkCache: Spotify ⇔ Apple Music をまたぐときに、前に album_go.php が探した結果。
+//     アルバムごとに SQL を投げると30回になるので、このページのアルバムの分を1回でまとめて読む。
+//     キー → URL（見つからなかったなら null）。キーが無い = まだ探していない
+$viewerApp = member_music_app($pdo, $user['member_id']);
+$linkCache = [];
+if ($viewerApp !== null && $albums) {
+    $st = $pdo->prepare('SELECT CONCAT(c.source, ":", c.album_id) AS album_key, c.url
+        FROM album_link_cache c
+        JOIN member_favorite_album f ON f.source = c.source AND f.album_id = c.album_id
+        WHERE f.member_id = ? AND c.app = ?
+          AND (c.url IS NOT NULL OR c.checked_at > NOW() - INTERVAL ' . ALBUM_NOT_FOUND_RETRY_DAYS . ' DAY)');
+    // ↑ 「見つからなかった」は期限切れなら読まない → リンクが album_go.php に戻り、押されたときに探し直す
+    $st->execute([$memberId, $viewerApp]);
+    foreach ($st->fetchAll() as $row) {
+        $linkCache[$row['album_key']] = $row['url'];
+    }
+}
+// どのアプリで開くか（リンクに乗せたときのツールチップ用）
+$listenLabel = static fn(array $a): string => MUSIC_APPS[$viewerApp] ?? ($a['source'] === 'spotify' ? 'Spotify' : 'Apple Music');
 
 // ---- アルバム検索（本人が検索欄に入力して送信したときだけ） ----
 //   検索は「データを読むだけ」なので GET（URL に ?album_q=... が付く）。
@@ -133,23 +155,45 @@ render_header($member['name'], 'members');
         <label class="field field--wide"><span>名前</span><input name="name" value="<?= h($member['name']) ?>" maxlength="50" required></label>
         <label class="field"><span>ふりがな</span><input name="name_kana" value="<?= h($member['name_kana']) ?>" maxlength="50"></label>
         <label class="field"><span>入部年度</span><input type="number" name="entry_year" min="1950" max="2100" value="<?= (int)$member['entry_year'] ?: '' ?>"></label>
+        <label class="field field--wide"><span>使っている音楽アプリ（マイアルバムのリンクをこのアプリで開きます）</span>
+            <select name="music_app">
+                <option value="">選ばない</option>
+                <?php foreach (MUSIC_APPS as $value => $label): ?>
+                    <option value="<?= h($value) ?>"<?= $member['music_app'] === $value ? ' selected' : '' ?>><?= h($label) ?></option>
+                <?php endforeach; ?>
+            </select>
+        </label>
         <div class="form-actions field--wide"><button class="btn btn--primary btn--sm" type="submit">保存</button></div>
     </form>
 </details>
 <?php endif; ?>
 
-<!-- ===== 好きなアルバム ===== -->
-<section id="albums">
+<!-- ===== マイアルバム ===== -->
+<!--
+    最初は先頭5枚だけ見せて、「さらに表示」で全部（＋自分のページなら一番下に「アルバムを追加」）を出す。
+    開け閉めは JS（assets/app.js の setupAlbumBox）が is-open クラスを付け外しする。
+    <details> を使わないのは、閉じると中身が全部隠れてしまい「5枚だけ見せる」ができないため。
+    JS が無いときは何も隠さない（JS が js-collapsible クラスを付けたときだけ CSS が隠す）。
+    検索した直後・自分のページでまだ0枚のときは、最初から開いておく。
+-->
+<section id="albums" class="card album-box<?= ($albumQuery !== '' || ($isMe && !$albums)) ? ' is-open' : '' ?>" data-album-box>
     <div class="album-head">
-        <h2 class="section-title">好きなアルバム <span class="muted small"><?= count($albums) ?> / <?= FAVORITE_ALBUM_LIMIT ?></span></h2>
-        <?php if ($isMe && count($albums) > 1): ?>
+        <!-- 見出しを押しても開け閉めできる（プロフィール編集の欄と同じ操作感）。aria-expanded: 開いているかを読み上げソフトに伝える -->
+        <button type="button" class="album-box__toggle" data-album-toggle aria-expanded="false" aria-controls="albums">
+            <span class="album-box__chevron" aria-hidden="true">▸</span>
+            マイアルバム
+            <!-- data-album-count: 追加したとき JS が数を書き換える -->
+            <span class="muted small" data-album-count><?= count($albums) ?> / <?= FAVORITE_ALBUM_LIMIT ?></span>
+        </button>
+        <?php if ($isMe): ?>
             <!-- 並び替えは JS で動く（assets/app.js の setupAlbumSort）。JS が無いと並び替えられないので、案内は JS が出す -->
             <span class="album-sort__status muted small" data-album-sort-status role="status"></span>
         <?php endif; ?>
     </div>
 
-    <?php if ($albums): ?>
+    <?php if ($albums || $isMe): ?>
         <!-- data-album-sort: 本人だけドラッグで並び替えできる。data-id は保存のときに送るキー（"spotify:ID" など） -->
+        <!-- 本人のページでは0枚でも空の <ul> を置いておく（ページ移動なしで追加したカードを入れる場所。空なら CSS で隠す） -->
         <ul class="albums"<?= $isMe ? ' data-album-sort data-member-id="' . $memberId . '"' : '' ?>>
             <?php foreach ($albums as $i => $a): ?>
                 <li class="album" data-id="<?= h(album_key($a['source'], $a['album_id'])) ?>">
@@ -157,42 +201,55 @@ render_header($member['name'], 'members');
                     <!-- loading="lazy": 画面に近づくまで画像を読み込まない（30枚あっても最初の表示が重くならない） -->
                     <!-- alt: 画像が出ないときや読み上げソフト用の説明文。img には必ず付けるのがマナー -->
                     <img class="album__art" src="<?= h($a['artwork_url']) ?>" alt="<?= h($a['title']) ?> のジャケット" loading="lazy" width="600" height="600">
-                    <div class="album__meta">
-                        <!-- 元のサービス（Spotify / Apple Music）のページへリンク。target="_blank" は新しいタブで開く -->
-                        <!-- rel="noopener": 開いた先のページから、このページを操作されないようにする（target="_blank" とセットで付ける） -->
-                        <a class="album__title" href="<?= h(album_page_url($a['source'], $a['album_id'])) ?>" target="_blank" rel="noopener"><?= h($a['title']) ?></a>
+                    <!-- 文字の部分（タイトル・アーティスト・発売年）はまとめて1つのリンク。元のサービス（Spotify / Apple Music）のページへ飛ぶ -->
+                    <!-- target="_blank" は新しいタブで開く。rel="noopener": 開いた先のページから、このページを操作されないようにする（セットで付ける） -->
+                    <!-- ドラッグで並び替えられるのはジャケットの部分だけ（リンクの上で押してもドラッグは始まらない。assets/app.js） -->
+                    <?php $k = album_key($a['source'], $a['album_id']); ?>
+                    <!-- array_key_exists: キーがあれば値が null でも true（isset は null だと false になるので、ここでは使えない） -->
+                    <a class="album__meta" href="<?= h(album_listen_url($viewerApp, $a, array_key_exists($k, $linkCache) ? $linkCache[$k] : false)) ?>" target="_blank" rel="noopener" title="<?= h($listenLabel($a)) ?> で聴く">
+                        <span class="album__title"><?= h($a['title']) ?></span>
                         <span class="muted small"><?= h($a['artist_name']) ?><?= $a['release_year'] ? ' · ' . (int)$a['release_year'] : '' ?></span>
-                    </div>
+                    </a>
                     <?php if ($isMe || is_admin()): ?>
-                        <form method="post" action="member_album_save.php" class="album__delete" data-confirm="「<?= h($a['title']) ?>」を好きなアルバムから外します。よろしいですか？">
+                        <form method="post" action="member_album_save.php" class="album__delete" data-confirm="「<?= h($a['title']) ?>」をマイアルバムから外します。よろしいですか？">
                             <?= csrf_field() ?>
                             <input type="hidden" name="action" value="delete">
                             <input type="hidden" name="member_id" value="<?= $memberId ?>">
                             <input type="hidden" name="album" value="<?= h(album_key($a['source'], $a['album_id'])) ?>">
-                            <button type="submit" class="btn btn--danger btn--sm" title="削除" aria-label="削除">×</button>
+                            <!-- × は文字だとフォントによって上下にずれるので、SVG（線で描いた図形）で描く。stroke="currentColor" = 文字色と同じ色の線 -->
+                            <button type="submit" class="btn btn--danger btn--sm" title="削除" aria-label="削除">
+                                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+                            </button>
                         </form>
                     <?php endif; ?>
                 </li>
             <?php endforeach; ?>
         </ul>
-    <?php else: ?>
-        <p class="muted"><?= $isMe ? 'まだ登録されていません。下の「アルバムを追加」から探してみよう' : 'まだ登録されていません' ?></p>
+    <?php endif; ?>
+    <?php if (!$albums): ?>
+        <!-- data-album-empty: 1枚目を追加したとき JS が消す -->
+        <p class="muted" data-album-empty><?= $isMe ? 'まだ登録されていません。下の「アルバムを追加」から探してみよう' : 'まだ登録されていません' ?></p>
     <?php endif; ?>
 
+    <!-- 「さらに表示」/「閉じる」。文字と、出すかどうかは JS が決める（JS が無いときは全部見えているので要らない → hidden） -->
+    <button type="button" class="btn btn--ghost btn--sm album-box__more" data-album-more hidden>さらに表示</button>
+
     <?php if ($isMe): ?>
-    <!-- 検索した直後（album_q がある）は開いた状態で表示する -->
-    <details class="card edit-box album-search" <?= $albumQuery !== '' ? 'open' : '' ?>>
-        <summary>＋ アルバムを追加</summary>
+    <!-- アルバムを追加: 自分のページだけ。マイアルバムを開いたときの一番下に出る -->
+    <div class="album-search">
+        <h3 class="album-search__title">アルバムを追加</h3>
         <?php if (count($albums) >= FAVORITE_ALBUM_LIMIT): ?>
             <p class="muted small">上限の<?= FAVORITE_ALBUM_LIMIT ?>枚に達しています。追加するにはどれかを削除してください。</p>
         <?php else: ?>
             <!-- 検索は GET。送信すると member.php?id=..&album_q=.. に移動し、上の PHP が検索する -->
-            <form method="get" action="member.php#albums" class="album-search__form">
+            <!-- data-album-search: JS が動くときは移動せず、下の data-album-results の中身だけ差し替える（assets/app.js の setupAlbumSearch） -->
+            <form method="get" action="member.php#albums" class="album-search__form" data-album-search>
                 <input type="hidden" name="id" value="<?= $memberId ?>">
                 <input class="search" type="search" name="album_q" value="<?= h($albumQuery) ?>" placeholder="アルバム名やアーティスト名で検索" maxlength="100" required>
                 <button class="btn btn--primary btn--sm" type="submit">検索</button>
             </form>
 
+            <div data-album-results>
             <?php if ($albumSearchFailed): ?>
                 <p class="muted small">検索サービスに接続できませんでした。時間をおいてもう一度試してください。</p>
             <?php elseif ($albumResults === []): ?>
@@ -213,7 +270,8 @@ render_header($member['name'], 'members');
                                 <span class="pill">登録済み</span>
                             <?php else: ?>
                                 <!-- 送るのはキー（どのサービスの何番か）だけ。タイトルや画像URLはサーバー側で取り直す -->
-                                <form method="post" action="member_album_save.php">
+                                <!-- data-album-add: JS が動くときはページ移動せずに追加する（assets/app.js の setupAlbumAdd） -->
+                                <form method="post" action="member_album_save.php" data-album-add>
                                     <?= csrf_field() ?>
                                     <input type="hidden" name="action" value="add">
                                     <input type="hidden" name="member_id" value="<?= $memberId ?>">
@@ -227,8 +285,9 @@ render_header($member['name'], 'members');
                 <!-- 外部サービスの画像を使うので、出典を明記しておく -->
                 <p class="muted small">検索結果・ジャケット画像: <?= $albumSource === 'spotify' ? 'Spotify' : 'iTunes Search API' ?></p>
             <?php endif; ?>
+            </div>
         <?php endif; ?>
-    </details>
+    </div>
     <?php endif; ?>
 </section>
 

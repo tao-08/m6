@@ -1,7 +1,7 @@
 <?php
 /**
  * =====================================================================
- *  member_album_save.php — 好きなアルバムの「追加」と「削除」
+ *  member_album_save.php — マイアルバムの「追加」と「削除」
  * =====================================================================
  *  member.php のボタンの送信先。画面は持たない（処理して member.php に戻るだけ）。
  *  member_edit.php と同じ型: ログイン確認 → POST確認 → CSRF確認 → 権限確認 → 入力チェック → DB → 戻る
@@ -39,7 +39,7 @@ $pdo = db();
 if ($action === 'add') {
     if (!$isMe) {
         http_response_code(403);
-        exit('好きなアルバムを追加できるのは本人だけです');
+        exit('マイアルバムに追加できるのは本人だけです');
     }
 
     // album_parse_key: 形がおかしければ null（ブラウザから来た値は信用しない）
@@ -54,7 +54,7 @@ if ($action === 'add') {
     $st = $pdo->prepare('SELECT COUNT(*) FROM member_favorite_album WHERE member_id = ?');
     $st->execute([$memberId]);
     if ((int)$st->fetchColumn() >= FAVORITE_ALBUM_LIMIT) {
-        flash('好きなアルバムは' . FAVORITE_ALBUM_LIMIT . '枚までです。どれかを削除してから追加してください', 'error');
+        flash('マイアルバムは' . FAVORITE_ALBUM_LIMIT . '枚までです。どれかを削除してから追加してください', 'error');
         redirect($back);
     }
 

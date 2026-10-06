@@ -126,5 +126,58 @@ check('末尾の改行は拒否', album_parse_key("spotify:0ETFjACtuP2ADo6LFhL6H
 "), null);
 check('文字列以外は拒否', album_parse_key(['spotify', 'x']), null);
 
+echo "music apps\n";
+$sp = ['source' => 'spotify', 'album_id' => '0ETFjACtuP2ADo6LFhL6HN', 'title' => '魚図鑑', 'artist_name' => 'サカナクション'];
+$it = ['source' => 'itunes', 'album_id' => '1358578519', 'title' => 'IRIS OUT - Single', 'artist_name' => '米津玄師'];
+check('未設定は登録元のページ', album_listen_url(null, $sp), 'https://open.spotify.com/album/0ETFjACtuP2ADo6LFhL6HN');
+check('同じアプリは直接', album_listen_url('apple_music', $it), 'https://music.apple.com/jp/album/1358578519');
+check('またぐときはまず album_go', album_listen_url('apple_music', $sp), 'album_go.php?album=spotify%3A0ETFjACtuP2ADo6LFhL6HN');
+check('見つかっていたら直接', album_listen_url('apple_music', $sp, 'https://music.apple.com/jp/album/1'), 'https://music.apple.com/jp/album/1');
+check('見つからなかったら検索ページ', album_listen_url('spotify', $it, null), 'https://open.spotify.com/search/IRIS%20OUT%20%E7%B1%B3%E6%B4%A5%E7%8E%84%E5%B8%AB');
+check('YouTube Music は検索ページ', album_listen_url('youtube_music', $sp), 'https://music.youtube.com/search?q=%E9%AD%9A%E5%9B%B3%E9%91%91%20%E3%82%B5%E3%82%AB%E3%83%8A%E3%82%AF%E3%82%B7%E3%83%A7%E3%83%B3');
+check('LINE MUSIC は検索ページ', album_listen_url('line_music', $sp), 'https://music.line.me/webapp/search?query=%E9%AD%9A%E5%9B%B3%E9%91%91%20%E3%82%B5%E3%82%AB%E3%83%8A%E3%82%AF%E3%82%B7%E3%83%A7%E3%83%B3');
+check('- Single を除く', album_title_core('IRIS OUT - Single'), 'IRIS OUT');
+check('かっこの注記を除く', album_title_core('CAMERA TALK (Remastered 2006)'), 'CAMERA TALK');
+check('<> の注記を除く', album_title_core('JP<2016 リマスター>'), 'JP');
+check('全部かっこなら元のまま', album_title_core('(What)'), '(What)');
+check('大文字小文字と記号の違い', album_match_key("FLIPPER'S GUITAR"), album_match_key("Flipper's Guitar"));
+check('全角英数字の違い', album_match_key('ＡＢＣ　１２３'), album_match_key('abc 123'));
+check('別の名前は別', album_match_key('くるり') === album_match_key('ゆず'), false);
+
+echo "album matching\n";
+// 通信はしない。検索結果・アーティストのアルバム一覧を配列で作って、選び方だけ確かめる
+$mk = fn(string $source, string $id, string $title, string $artist, ?int $year) => ['source' => $source, 'album_id' => $id, 'title' => $title, 'artist_name' => $artist, 'release_year' => $year];
+check('アルバム名=アーティスト名なら検索語は1回だけ', album_search_query($mk('itunes', '1', 'andymori', 'andymori', 2009)), 'andymori');
+check('普通は「アルバム名 アーティスト名」', album_search_query($mk('itunes', '1', 'GAME', 'Perfume', 2008)), 'GAME Perfume');
+check('英単語（飾り語は除く）', album_title_words('Touhou Eiyasho - Imperishable Night. SoundTrack'), ['touhou', 'eiyasho', 'imperishable', 'night']);
+check('日本語の中の英単語', album_title_words('東方永夜抄 ～ Imperishable Night. サウンドトラック'), ['imperishable', 'night']);
+
+$nee = $mk('spotify', '0ETFjACtuP2ADo6LFhL6HN', 'NEE', 'NEE', 2021);
+check('検索語からアーティストを外したときは、別人の同名アルバムを選ばない',
+    album_match_in_results($nee, [$mk('itunes', '1444855531', 'Nee - Single', 'DREAMS COME TRUE', 2010)]), null);
+$oasis = $mk('itunes', '1', '(What\'s the Story) Morning Glory?', 'オアシス', 1995);
+check('アーティストの表記違いでも、アルバム名が同じなら選ぶ',
+    album_match_in_results($oasis, [$mk('spotify', '2zw9FrFHDh3IlHKg6osNdo', "(What's The Story) Morning Glory?", 'Oasis', 1995)]), 'https://open.spotify.com/album/2zw9FrFHDh3IlHKg6osNdo');
+check('同じ名前が複数なら発売年が同じ版',
+    album_match_in_results($oasis, [$mk('spotify', '3UsWuvyuXkospeI9nLdVem', "(What's The Story) Morning Glory (Remastered, Deluxe)", 'オアシス', 2014), $mk('spotify', '2zw9FrFHDh3IlHKg6osNdo', "(What's The Story) Morning Glory?", 'オアシス', 1995)]),
+    'https://open.spotify.com/album/2zw9FrFHDh3IlHKg6osNdo');
+check('一番上がローマ字表記違いなら選ぶ',
+    album_match_in_results($mk('spotify', '1', 'おやすみモンスター', 'GOING UNDER GROUND', 2007), [$mk('itunes', '1512387976', 'Oyasumi Monster', 'GOING UNDER GROUND', 2007)]), 'https://music.apple.com/jp/album/1512387976');
+check('同じアーティストでも同じ文字の種類の別名は選ばない',
+    album_match_in_results($mk('spotify', '1', 'ハートビート', 'GOING UNDER GROUND', 2001), [$mk('itunes', '9', 'ホーム', 'GOING UNDER GROUND', 2001)]), null);
+
+$touhou = $mk('spotify', '0jaGJ0LfrD2jXvmuJ3RpRH', '東方永夜抄 ～ Imperishable Night. サウンドトラック', '上海アリス幻樂団', 2004);
+$catalog = [
+    $mk('itunes', '1580546929', 'Hifu Nightmare Diary - Violet Detector. SoundTrack', '上海アリス幻樂団', 2018),
+    $mk('itunes', '1581516007', 'Touhou Eiyasho - Imperishable Night. SoundTrack', '上海アリス幻樂団', 2004),
+    $mk('itunes', '1581516008', 'Touhou Youyoumu - Perfect Cherry Blossom. SoundTrack', '上海アリス幻樂団', 2003),
+];
+check('一覧から: 発売年と英単語2つで選ぶ', album_match_in_catalog($touhou, $catalog), 'https://music.apple.com/jp/album/1581516007');
+check('一覧から: 発売年が違えば選ばない', album_match_in_catalog(['release_year' => 2005] + $touhou, $catalog), null);
+check('一覧から: その年に1枚だけならローマ字表記違いで選ぶ',
+    album_match_in_catalog($mk('spotify', '1', '金字塔', '中村一義', 1997), [$mk('itunes', '5', 'Kinjitou', '中村一義', 1997), $mk('itunes', '6', 'Shudaika', '中村一義', 1998)]), 'https://music.apple.com/jp/album/5');
+check('一覧から: その年に2枚あればローマ字表記違いでは選ばない',
+    album_match_in_catalog($mk('spotify', '1', '金字塔', '中村一義', 1997), [$mk('itunes', '5', 'Kinjitou', '中村一義', 1997), $mk('itunes', '7', 'Ikiru', '中村一義', 1997)]), null);
+
 echo $failed ? "\n{$failed} 件失敗\n" : "\nすべて成功\n";
 exit($failed ? 1 : 0);

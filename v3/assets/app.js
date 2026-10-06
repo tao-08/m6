@@ -14,7 +14,10 @@
  *    data-name-cell     … 名前の入力欄（DB にいるかで色が変わる）
  *    data-roster-input  … タイムテーブルの枠 → 名簿のバンド（検索欄）
  *    data-sortable      … タイムテーブルの行を ≡ のドラッグで並び替え（時間の列は動かない）
- *    data-album-sort    … マイページの好きなアルバムをドラッグで並び替えて保存
+ *    data-album-box     … マイアルバムの開け閉め（閉じているときは先頭5枚だけ）
+ *    data-album-sort    … マイアルバムをドラッグで並び替えて保存
+ *    data-album-search  … アルバム検索をページ移動なしで（結果の部分だけ差し替える）
+ *    data-album-add     … アルバムの追加をページ移動なしで（追加したカードを一覧に足す）
  *    data-add-roster-col … 名簿の表の右端に「Other」列を足す
  *    data-pick          … 名簿の「Vo / Gt/Vo / ⋯」「Key / Vn / ⋯」の切り替えボタンと、etc の楽器追加モーダル
  *    .table-scroll      … 横にはみ出す表をマウスのドラッグで左右に動かす
@@ -35,7 +38,10 @@ document.addEventListener('DOMContentLoaded', () => {
   setupNameCheck();
   setupImportPreview();
   setupSlotSort();
+  setupAlbumBox();
   setupAlbumSort();
+  setupAlbumSearch();
+  setupAlbumAdd();
   setupRosterColumns();
   setupPicks();
   setupDragScroll();
@@ -161,10 +167,11 @@ function setupTabs() {
  * 削除などの前に「本当に？」と聞く
  * ------------------------------------------------------------------- */
 function setupConfirm() {
-  document.querySelectorAll('form[data-confirm]').forEach((form) => {
-    form.addEventListener('submit', (e) => {
-      if (!confirm(form.dataset.confirm)) e.preventDefault();
-    });
+  // フォーム1つ1つではなく document で待ち受ける（submit イベントは外側へ伝わってくる = バブリング）。
+  //   → 後から JS で足したフォーム（ページ移動なしで追加したアルバムの × など）にも効く
+  document.addEventListener('submit', (e) => {
+    const form = e.target.closest('form[data-confirm]');
+    if (form && !confirm(form.dataset.confirm)) e.preventDefault();
   });
 }
 
@@ -581,7 +588,7 @@ function setupSlotSort() {
  * ------------------------------------------------------------------- */
 function setupAlbumSort() {
   const list = document.querySelector('[data-album-sort]');
-  if (!list || list.children.length < 2) return;
+  if (!list) return; // 0枚・1枚でも準備しておく（ページ移動なしで追加されて2枚以上になることがあるので）
   const status = document.querySelector('[data-album-sort-status]');
   const token = document.querySelector('meta[name="csrf-token"]').content;
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -590,19 +597,28 @@ function setupAlbumSort() {
   let saved = idsOf().join(); // 最後に保存できた並び。これと比べて、変わったときだけ送る
 
   // 何もしていないときに出しておく案内（指で操作する端末かどうかで言い方を変える）
-  const hint = window.matchMedia('(pointer: coarse)').matches ? '長押しで並び替え' : 'ドラッグで並び替え';
+  //   1枚以下なら並び替えるものが無いので出さない
+  const hintText = window.matchMedia('(pointer: coarse)').matches ? '長押しで並び替え' : 'ドラッグで並び替え';
+  const hint = () => (list.children.length > 1 ? hintText : '');
   let statusTimer = null;
   const showStatus = (text, backToHintAfter = 0) => {
     clearTimeout(statusTimer);
     status.textContent = text;
-    if (backToHintAfter) statusTimer = setTimeout(() => { status.textContent = hint; }, backToHintAfter);
+    if (backToHintAfter) statusTimer = setTimeout(() => { status.textContent = hint(); }, backToHintAfter);
   };
-  showStatus(hint);
-  // tabindex=0: Tab キーでカードに移れるようにする（キーボードで並び替えるため）
-  cards().forEach((li) => { li.tabIndex = 0; });
 
   // 左上の順位バッジを今の並びに合わせる
   const renumber = () => cards().forEach((li, i) => { li.querySelector('.album__rank').textContent = i + 1; });
+
+  // カードが増えたとき（setupAlbumAdd が 'albums:changed' を送ってくる）にも呼ぶ準備
+  //   tabindex=0: Tab キーでカードに移れるようにする（キーボードで並び替えるため）
+  const prepare = () => {
+    cards().forEach((li) => { li.tabIndex = 0; });
+    renumber();
+    saved = idsOf().join(); // 追加された分も「保存済みの並び」に含める
+    if (!saving) showStatus(hint());
+  };
+  list.addEventListener('albums:changed', prepare);
 
   // change() で DOM を入れ替え、skip 以外のカードを「元の見た目の位置」から「新しい位置」へ滑らせる（FLIP）
   const flip = (change, skip) => {
@@ -740,8 +756,9 @@ function setupAlbumSort() {
 
   list.addEventListener('pointerdown', (e) => {
     const li = e.target.closest('.album');
-    // × ボタン（削除フォーム）の上で押したときは、ドラッグではなく普通にボタンとして使わせる
-    if (!li || press || drag || e.target.closest('form, button')) return;
+    // × ボタン（削除フォーム）や文字のリンクの上で押したときは、ドラッグではなく普通にボタン・リンクとして使わせる
+    //   → ドラッグできるのはジャケットの部分だけ
+    if (!li || press || drag || e.target.closest('form, button, a')) return;
     if (e.pointerType === 'mouse' && e.button !== 0) return; // 左クリック以外は無視
     if (e.pointerType === 'mouse') e.preventDefault(); // マウスでの文字選択を始めさせない（指のときはスクロールのために止めない）
     press = { li, pointerId: e.pointerId, type: e.pointerType, x: e.clientX, y: e.clientY, startX: e.clientX, startY: e.clientY, timer: null };
@@ -772,7 +789,7 @@ function setupAlbumSort() {
   // ドラッグ中に指を動かしても、ページがスクロールしないようにする。
   //   passive: false にしないと preventDefault() が効かない（ブラウザがスクロールを優先する）
   list.addEventListener('touchmove', (e) => { if (drag) e.preventDefault(); }, { passive: false });
-  // 画像はブラウザ標準の「画像のドラッグ」や、長押しメニュー（画像を保存…）が出てしまうので止める
+  // 画像やリンクはブラウザ標準の「ドラッグ」（URL や画像を他の場所へ運ぶ機能）が始まってしまうので止める
   list.addEventListener('dragstart', (e) => e.preventDefault());
   list.addEventListener('contextmenu', (e) => { if (press || drag) e.preventDefault(); });
 
@@ -794,6 +811,200 @@ function setupAlbumSort() {
     // 1回押すごとに送ると多すぎるので、押し終わって 0.5 秒たったらまとめて保存
     clearTimeout(keyTimer);
     keyTimer = setTimeout(save, 500);
+  });
+
+  prepare(); // 最初の準備（let で宣言した変数を使うので、全部の宣言が終わったこの位置で呼ぶ）
+}
+
+/* ---------------------------------------------------------------------
+ * アルバム検索をページ移動なしで（member.php の「＋ アルバムを追加」）
+ *   普通に送信するとページごと読み直しになり、スクロール位置も変わってしまう。
+ *   そこで送信を止めて、同じ URL（member.php?id=..&album_q=..）を fetch() で裏で取りに行き、
+ *   返ってきた HTML から [data-album-results] の部分だけ抜き出して、今の画面の同じ部分と入れ替える。
+ *   → 検索や表示の処理は PHP のものをそのまま使える（JS で同じ表示を作り直さなくていい）
+ *   うまくいかなかったとき（通信エラー・ログインが切れた等）は、今までどおり普通に送信する。
+ * ------------------------------------------------------------------- */
+function setupAlbumSearch() {
+  const form = document.querySelector('form[data-album-search]');
+  if (!form) return;
+  const button = form.querySelector('[type="submit"]');
+  let busy = false;
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (busy) return; // 検索中にもう一度押されても無視（二重送信防止）
+    busy = true;
+    const label = button.textContent;
+    button.disabled = true;
+    button.textContent = '検索中…';
+
+    // FormData: フォームの入力をまとめて取り出す → URLSearchParams で "id=1&album_q=..." の形にする
+    //   getAttribute('action') は "member.php#albums"。# 以降は要らないので切り落とす
+    const url = `${form.getAttribute('action').split('#')[0]}?${new URLSearchParams(new FormData(form))}`;
+    try {
+      const res = await fetch(url, { credentials: 'same-origin' });
+      if (!res.ok) throw new Error();
+      // DOMParser: 文字列の HTML を、画面に出さずに「部品の木（DOM）」として読み込む
+      const doc = new DOMParser().parseFromString(await res.text(), 'text/html');
+      const fresh = doc.querySelector('[data-album-results]');
+      // 見つからない = 別のページ（ログイン切れで login.php に飛ばされた等）が返ってきた
+      if (!fresh) throw new Error();
+      document.querySelector('[data-album-results]').replaceWith(fresh);
+      fresh.classList.add('is-fresh'); // ふわっと出す（CSS）
+      // アドレスバーの URL だけ書き換える（移動はしない）。再読み込みしても同じ検索結果が出るように
+      history.replaceState(null, '', url);
+    } catch {
+      form.submit(); // 普通の送信（ページ移動）でやり直す。submit() は submit イベントを起こさないので、ここに戻ってこない
+      return;
+    } finally {
+      busy = false;
+      button.disabled = false;
+      button.textContent = label;
+    }
+  });
+}
+
+/* ---------------------------------------------------------------------
+ * マイアルバムの開け閉め（member.php）
+ *   閉じているとき … 先頭5枚だけ（6枚目以降と「アルバムを追加」は CSS で隠す）
+ *   開いているとき … 全部 ＋ 自分のページなら一番下に「アルバムを追加」
+ *   見出しボタンと、一覧の下の「さらに表示」/「閉じる」ボタンのどちらでも切り替えられる。
+ *   js-collapsible クラスを付けたときだけ CSS が隠す → JS が動かない環境では全部見えたまま。
+ * ------------------------------------------------------------------- */
+function setupAlbumBox() {
+  const box = document.querySelector('[data-album-box]');
+  if (!box) return;
+  const list = box.querySelector('.albums');
+  const toggle = box.querySelector('[data-album-toggle]');
+  const more = box.querySelector('[data-album-more]');
+  const SHOWN = 5; // 閉じているときに見せる枚数（CSS の nth-child(n+6) と合わせる）
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // 画面の表示を「開いているか」に合わせる
+  const render = () => {
+    const open = box.classList.contains('is-open');
+    const count = list ? list.children.length : 0;
+    // 閉じると隠れるものがあるか（6枚目以降 or 自分のページの「アルバムを追加」）。無ければボタンは要らない
+    const hasHidden = count > SHOWN || box.querySelector('.album-search') !== null;
+    toggle.setAttribute('aria-expanded', String(open));
+    more.hidden = !hasHidden;
+    more.textContent = open ? '閉じる' : 'さらに表示';
+  };
+
+  const setOpen = (open) => {
+    box.classList.toggle('is-open', open);
+    render();
+    // 開いたとき、隠れていたカード（6枚目以降）をふわっと出す
+    if (open && list && !reduceMotion) {
+      [...list.children].slice(SHOWN).forEach((li, i) => {
+        li.animate([{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }],
+          { duration: 220, delay: Math.min(i, 10) * 20, easing: 'ease-out', fill: 'backwards' });
+      });
+    }
+  };
+
+  box.classList.add('js-collapsible');
+  toggle.addEventListener('click', () => setOpen(!box.classList.contains('is-open')));
+  more.addEventListener('click', () => {
+    const closing = box.classList.contains('is-open');
+    setOpen(!closing);
+    // 閉じると下の方が無くなって画面が飛ぶので、見出しが見える位置まで戻す
+    if (closing && box.getBoundingClientRect().top < 0) box.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth' });
+  });
+  // JS を使わずに追加・削除したあとは member.php#albums に戻ってくる → 開いた状態にする
+  if (location.hash === '#albums') box.classList.add('is-open');
+  // 枚数が変わったら（ページ移動なしで追加したとき）ボタンの出し方を見直す
+  list?.addEventListener('albums:changed', render);
+  render();
+}
+
+/* ---------------------------------------------------------------------
+ * アルバムの「追加」をページ移動なしで（member.php の検索結果の「追加」ボタン）
+ *   member_album_save.php に fetch() で POST する。保存が終わると member.php へリダイレクトされ、
+ *   fetch はそれに自動で付いていくので、最後は「追加後の member.php の HTML」が返ってくる。
+ *   その中から次のものを取り出して、今の画面に反映する:
+ *     ・追加されたアルバムのカード（data-id が送ったキーと同じ <li>）→ 一覧の最後に足す
+ *     ・「◯ / 30」の枚数
+ *     ・サーバーのメッセージ（.flash。「追加しました」「30枚までです」など）
+ *   検索結果は差し替えた後の要素なので、document で待ち受ける（後から増えた「追加」ボタンにも効く）。
+ * ------------------------------------------------------------------- */
+function setupAlbumAdd() {
+  const list = document.querySelector('[data-album-sort]');
+  if (!list) return;
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // サーバーのメッセージを検索欄の上に出す（前のメッセージは消す）
+  const showFlashes = (flashes) => {
+    let box = document.querySelector('[data-album-flash]');
+    if (!box) {
+      box = document.createElement('div');
+      box.dataset.albumFlash = '';
+      document.querySelector('.album-search__title')?.after(box);
+    }
+    box.replaceChildren(...flashes);
+  };
+
+  document.addEventListener('submit', async (e) => {
+    const form = e.target.closest('form[data-album-add]');
+    if (!form || e.defaultPrevented) return;
+    e.preventDefault();
+    const button = form.querySelector('[type="submit"]');
+    if (button.disabled) return; // 追加中にもう一度押されても無視（二重送信防止）
+    button.disabled = true;
+    button.textContent = '追加中…';
+    const key = form.elements.album.value;
+    const item = form.closest('li');
+
+    try {
+      // ⚠ form.action と書くと、<input name="action"> の方が返ってきてしまう（名前がかぶるため）。
+      //   なので getAttribute('action') で「action 属性の文字列」を取る
+      const res = await fetch(form.getAttribute('action'), { method: 'POST', body: new FormData(form), credentials: 'same-origin' });
+      if (!res.ok) throw new Error();
+      const doc = new DOMParser().parseFromString(await res.text(), 'text/html');
+      const freshList = doc.querySelector('[data-album-sort]');
+      if (!freshList) throw new Error(); // 別のページ（ログイン切れで login.php など）が返ってきた
+
+      // 検索結果の位置がずれないように、変更前の位置を覚えておく（上の一覧が1行増えると、下が押し下げられるため）
+      const before = item.getBoundingClientRect().top;
+
+      showFlashes([...doc.querySelectorAll('.flash')].map((f) => document.importNode(f, true)));
+      const card = [...freshList.children].find((li) => li.dataset.id === key);
+      if (!card) {
+        // 追加されていない（30枚の上限・Spotify から情報を取れなかった など）。理由は上のメッセージに出ている
+        button.disabled = false;
+        button.textContent = '追加';
+        return;
+      }
+
+      // CSS.escape: キーに記号が入っていてもセレクタ（[data-id="..."]）が壊れないようにする
+      if (!list.querySelector(`[data-id="${CSS.escape(key)}"]`)) {
+        const newCard = document.importNode(card, true); // 別の文書（doc）の要素を、この画面で使える形にコピー
+        list.appendChild(newCard);
+        list.dispatchEvent(new CustomEvent('albums:changed')); // 並び替えの準備をし直してもらう（setupAlbumSort）
+        if (!reduceMotion) newCard.animate([{ opacity: 0, transform: 'scale(.9)' }, { opacity: 1, transform: 'none' }], { duration: 250, easing: 'ease-out' });
+      }
+      document.querySelector('[data-album-empty]')?.remove();
+      document.querySelector('[data-album-count]').textContent = doc.querySelector('[data-album-count]').textContent;
+
+      // 「追加」ボタンを「登録済み」に変える
+      const pill = document.createElement('span');
+      pill.className = 'pill';
+      pill.textContent = '登録済み';
+      form.replaceWith(pill);
+
+      // 30枚に達したら、検索欄の代わりに「上限です」の案内を出す（サーバーが返したものに入れ替える）
+      const freshSearch = doc.querySelector('.album-search');
+      if (freshSearch && !freshSearch.querySelector('form[data-album-search]')) {
+        document.querySelector('.album-search').replaceWith(document.importNode(freshSearch, true));
+        return;
+      }
+
+      // 位置がずれた分だけスクロールして戻す（ブラウザが自動で直してくれていれば差は0なので何もしない）
+      const shift = item.getBoundingClientRect().top - before;
+      if (Math.abs(shift) >= 1) window.scrollBy(0, shift);
+    } catch {
+      form.submit(); // 普通の送信（ページ移動）でやり直す
+    }
   });
 }
 

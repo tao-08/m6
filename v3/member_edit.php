@@ -1,7 +1,7 @@
 <?php
 /**
  * =====================================================================
- *  member_edit.php — メンバーのプロフィール（名前・ふりがな・入部年度）を更新する
+ *  member_edit.php — メンバーのプロフィール（名前・ふりがな・入部年度・音楽アプリ）を更新する
  * =====================================================================
  *  member.php の「プロフィールを編集」フォームの送信先。画面は持たない（処理して戻るだけ）。
  *  編集できるのは「本人（アカウントと紐付いている人）」か「管理者」だけ。
@@ -9,6 +9,7 @@
  */
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
+require_once __DIR__ . '/lib/albums.php'; // MUSIC_APPS（選べる音楽アプリの一覧）
 $user = require_login();
 
 if (!is_post()) {
@@ -26,6 +27,7 @@ if (!is_admin() && $user['member_id'] !== $memberId) {
 $name = trim((string)($_POST['name'] ?? ''));
 $kana = trim((string)($_POST['name_kana'] ?? ''));
 $entry = trim((string)($_POST['entry_year'] ?? ''));
+$musicApp = (string)($_POST['music_app'] ?? ''); // '' = 選ばない
 
 $pdo = db();
 $errors = [];
@@ -37,6 +39,10 @@ if (mb_strlen($kana) > 50) {
 }
 if ($entry !== '' && (!ctype_digit($entry) || (int)$entry < 1950 || (int)$entry > 2100)) {
     $errors[] = '入部年度は西暦4桁で入力してください';
+}
+// 選択肢に無い値（HTML を書き換えて送られてきた値など）は受け付けない
+if ($musicApp !== '' && !isset(MUSIC_APPS[$musicApp])) {
+    $errors[] = '音楽アプリの選び方がおかしいです';
 }
 // member.name は UNIQUE。別の人と同じ名前にはできない（同一人物なら「メンバーの統合」を使う）
 $st = $pdo->prepare('SELECT 1 FROM member WHERE name = ? AND member_id <> ?');
@@ -53,7 +59,7 @@ if ($errors) {
 }
 
 // 空欄は NULL（「分からない」）で保存する
-$pdo->prepare('UPDATE member SET name = ?, name_kana = ?, entry_year = ? WHERE member_id = ?')
-    ->execute([$name, $kana !== '' ? $kana : null, $entry === '' ? null : (int)$entry, $memberId]);
+$pdo->prepare('UPDATE member SET name = ?, name_kana = ?, entry_year = ?, music_app = ? WHERE member_id = ?')
+    ->execute([$name, $kana !== '' ? $kana : null, $entry === '' ? null : (int)$entry, $musicApp !== '' ? $musicApp : null, $memberId]);
 flash('プロフィールを更新しました');
 redirect($back);

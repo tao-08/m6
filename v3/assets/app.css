@@ -579,15 +579,46 @@ code { background: var(--surface-2); padding: 1px 6px; border-radius: 6px; font-
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 /* 削除ボタンはジャケットの右上に重ねる */
 .album__delete { position: absolute; top: 6px; right: 6px; margin: 0; }
-.album__delete .btn { background: var(--surface); padding: 4px 9px; line-height: 1; }
-.album-search__form { display: flex; gap: 8px; margin: 12px 0; }
-.album-search__form .search { flex: 1; min-width: 0; }
+/* 幅と高さを同じにして border-radius: 50% → まん丸。padding は 0 にして、中の × は .btn の flex で真ん中に置く */
+.album__delete .btn { width: 26px; height: 26px; padding: 0; border-radius: 50%; background: var(--surface);
+  box-shadow: 0 2px 6px rgb(0 0 0 / .18); }
+/* ↑ で background を上書きしているので、ホバーで赤くなる .btn--danger:hover も書き直す（後に書いた方が勝つため） */
+.album__delete .btn:hover { background: var(--danger); color: #fff; }
+/* max-width: 広い画面でも検索欄が横に伸びすぎないようにする（狭い画面では今までどおり横いっぱい） */
+.album-search__form { display: flex; gap: 8px; margin: 12px 0; max-width: 420px; }
+/* 縦幅を詰める。flex の中の子は高さがそろう（align-items: stretch が初期値）ので、
+   検索欄を低くすれば、横の検索ボタンも同じ高さまで低くなる */
+.album-search__form .search { flex: 1; min-width: 0; padding-top: 6px; padding-bottom: 6px; font-size: 14px; }
 .albums--pick { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); margin-top: 6px; }
+/* 本人のページの空の一覧（0枚のとき）は隠す。:empty = 中に何も入っていない要素 */
+.albums:empty { display: none; }
+/* ページ移動なしで追加したときのメッセージ（JS: setupAlbumAdd） */
+[data-album-flash] .flash { margin: 12px 0 0; }
+/* ページ移動なしで差し替えた検索結果（JS: setupAlbumSearch）を、下からふわっと出す */
+[data-album-results].is-fresh { animation: album-results-in .25s ease-out; }
+@keyframes album-results-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { [data-album-results].is-fresh { animation: none; } }
 .albums--pick .btn, .albums--pick .pill { justify-self: start; }
 
 /* ---- 好きなアルバムの並び替え（JS: setupAlbumSort） ---- */
-.album-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.album-head .section-title { margin-right: auto; }
+/* ---- マイアルバムのカード（JS: setupAlbumBox）。プロフィール編集の欄（.edit-box）と同じ雰囲気に ---- */
+.album-box { margin: 18px 0; padding: 14px 20px; }
+.album-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+/* 見出しボタン: ボタンの見た目（枠・背景）を消して、見出しの文字のように見せる */
+.album-box__toggle { margin-right: auto; display: inline-flex; align-items: baseline; gap: 8px; padding: 0; border: 0;
+  background: none; color: var(--text); font: 800 16px/1.4 var(--font); cursor: pointer; }
+.album-box__toggle:hover { color: var(--accent); }
+.album-box__chevron { display: inline-block; font-size: 12px; color: var(--muted); transition: transform .2s ease; }
+.album-box.is-open .album-box__chevron { transform: rotate(90deg); } /* ▸ を90度回して ▾ にする */
+/* 閉じているとき: 6枚目以降と「アルバムを追加」を隠す。
+   js-collapsible は JS が付けるクラス → JS が動かないときは何も隠れない（全部見える） */
+.album-box.js-collapsible:not(.is-open) .albums > li:nth-child(n+6),
+.album-box.js-collapsible:not(.is-open) .album-search { display: none; }
+.album-box__more { display: flex; margin: 0 auto 4px; }
+/* 「アルバムを追加」: 一覧との間に線を引いて区切る */
+.album-search { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
+.album-search__title { margin: 0; font-size: 14px; font-weight: 700; }
+@media (prefers-reduced-motion: reduce) { .album-box__chevron { transition: none; } }
 .album-sort__status { transition: opacity .3s; }
 .album-sort__status:empty { opacity: 0; }
 /* position: relative … カードの offsetLeft / offsetTop を「この ul の左上から」の距離にするため */
@@ -601,7 +632,11 @@ code { background: var(--surface-2); padding: 1px 6px; border-radius: 6px; font-
 /* 本人のページでは、いつでもカードをつかめる（JS: マウスは動かしたら、指は長押しでドラッグ開始） */
 .albums[data-album-sort] .album { cursor: grab; user-select: none; -webkit-user-select: none;
   -webkit-touch-callout: none; /* iPhone で長押ししたとき「画像を保存」メニューを出さない */ }
-.albums[data-album-sort] .album:hover .album__art { transform: translateY(-2px); }
+/* つかめるのはジャケットだけなので、浮く動きもジャケットに乗せたときだけ */
+.albums[data-album-sort] .album__art:hover { transform: translateY(-2px); }
+/* 文字の部分はリンク（JS はここではドラッグを始めない）。指マークのカーソルにして、乗せたらタイトルに下線 */
+.albums[data-album-sort] .album__meta { cursor: pointer; }
+a.album__meta:hover .album__title { text-decoration: underline; }
 .albums[data-album-sort] .album:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: var(--radius-sm); }
 /* ドラッグ中は削除ボタンを隠す（誤って押さないように） */
 .albums.is-sorting .album__delete { display: none; }

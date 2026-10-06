@@ -389,7 +389,8 @@ function merge_members(PDO $pdo, int $fromId, int $toId): void
 
     // COALESCE(a, b): a が NULL なら b を使う
     $pdo->prepare('UPDATE member t JOIN member f ON f.member_id = ?
-        SET t.name_kana = COALESCE(t.name_kana, f.name_kana), t.entry_year = COALESCE(t.entry_year, f.entry_year)
+        SET t.name_kana = COALESCE(t.name_kana, f.name_kana), t.entry_year = COALESCE(t.entry_year, f.entry_year),
+            t.music_app = COALESCE(t.music_app, f.music_app)
         WHERE t.member_id = ?')->execute([$fromId, $toId]);
 
     // 統合先にアカウントが紐付いていなければ、統合元のアカウントを付け替える

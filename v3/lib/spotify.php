@@ -167,6 +167,56 @@ function spotify_search_albums(string $term, int $limit = 10): ?array
     return array_values(array_filter($albums));
 }
 
+/**
+ * アーティストのアルバム一覧（Spotify で「検索しても出てこない」アルバムを探すとき用。lib/albums.php の album_find_on）。
+ *   ① アーティストを名前で検索 → ② 名前が一致したアーティストのアルバム一覧
+ *   ※ 開発モードのアプリは1回10枚までしか取れない（limit=50 はエラーになる）ので、
+ *     offset（何枚目から）をずらして最大5回 = 50枚まで取る
+ * 戻り値: アルバムの配列（アーティストが見つからなければ []）、通信失敗なら null
+ */
+function spotify_artist_albums(string $artistName): ?array
+{
+    if (!spotify_enabled()) {
+        return null;
+    }
+    $json = spotify_request('search', ['q' => $artistName, 'type' => 'artist', 'market' => SPOTIFY_MARKET, 'limit' => 5]);
+    $artists = $json['artists']['items'] ?? null;
+    if (!is_array($artists)) {
+        return null;
+    }
+    $key = album_match_key($artistName);
+    $albums = [];
+    $tried = 0;
+    foreach ($artists as $a) {
+        // 名前が一致するアーティストだけ。同じ名前のアーティストが複数いることがある（上海アリス幻樂団など）ので、2人まで見る
+        if (!is_array($a) || album_match_key((string)($a['name'] ?? '')) !== $key || $tried >= 2 || !spotify_valid_id((string)($a['id'] ?? ''))) {
+            continue;
+        }
+        $tried++;
+        for ($offset = 0; $offset < 50; $offset += 10) {
+            $page = spotify_request('artists/' . $a['id'] . '/albums', [
+                'include_groups' => 'album,single,compilation', // 参加作品（appears_on）は除く
+                'market'         => SPOTIFY_MARKET,
+                'limit'          => 10,
+                'offset'         => $offset,
+            ]);
+            if ($page === null) {
+                return null;
+            }
+            foreach ($page['items'] ?? [] as $item) {
+                $album = is_array($item) ? spotify_normalize_album($item) : null;
+                if ($album !== null) {
+                    $albums[] = $album;
+                }
+            }
+            if (empty($page['next'])) {
+                break; // もう次のページが無い
+            }
+        }
+    }
+    return $albums;
+}
+
 /** アルバムID から1件を取り直す（保存するとき用）。見つからない・失敗なら null */
 function spotify_lookup_album(string $albumId): ?array
 {

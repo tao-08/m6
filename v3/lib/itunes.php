@@ -114,6 +114,52 @@ function itunes_search_albums(string $term, int $limit = 12): ?array
 }
 
 /**
+ * アーティストのアルバム一覧（Apple Music で「検索しても出てこない」アルバムを探すとき用。lib/albums.php の album_find_on）。
+ *   Apple はアルバム名をローマ字で登録していることがあり（例: 東方永夜抄 → "Touhou Eiyasho - Imperishable Night. SoundTrack"）、
+ *   日本語の名前で検索しても出てこない。アーティストの一覧からなら見つけられる。
+ *   ① アーティストを名前で検索 → ② 名前が一致したアーティストの全アルバム（lookup は1回で200枚まで取れる）
+ * 戻り値: アルバムの配列（アーティストが見つからなければ []）、通信失敗なら null
+ */
+function itunes_artist_albums(string $artistName): ?array
+{
+    // アーティストの ID を集める。2通りで探す:
+    //   ・アーティスト検索で名前が一致したもの
+    //   ・アルバム検索で、アルバムのアーティスト名が一致したもの
+    //   アーティスト検索だけだと見つからないことがある。上海アリス幻樂団は、アーティスト検索では
+    //   英語名 "Team Shanghai Alice" で返ってくるのに、アルバムには "上海アリス幻樂団" と書かれている（実際に確認済み）
+    $key = album_match_key($artistName);
+    $ids = [];
+    foreach ([['entity' => 'musicArtist', 'limit' => 5], ['entity' => 'album', 'limit' => 25]] as $opt) {
+        $results = itunes_request('search', ['term' => $artistName, 'country' => 'jp'] + $opt);
+        if ($results === null) {
+            return null;
+        }
+        foreach ($results as $r) {
+            if (is_array($r) && album_match_key((string)($r['artistName'] ?? '')) === $key && (int)($r['artistId'] ?? 0) > 0) {
+                $ids[(int)$r['artistId']] = true; // キーにして重複を消す
+            }
+        }
+    }
+
+    $albums = [];
+    // 同じ名前の別人がいることがあるので、2人まで見る
+    foreach (array_slice(array_keys($ids), 0, 2) as $artistId) {
+        $results = itunes_request('lookup', ['id' => $artistId, 'entity' => 'album', 'country' => 'jp', 'limit' => 200]);
+        if ($results === null) {
+            return null;
+        }
+        // lookup の結果の先頭はアーティスト自身（wrapperType = artist）なので、normalize が捨ててくれる
+        foreach ($results as $r) {
+            $album = is_array($r) ? itunes_normalize_album($r) : null;
+            if ($album !== null) {
+                $albums[] = $album;
+            }
+        }
+    }
+    return $albums;
+}
+
+/**
  * アルバムID（collectionId）から1件を取り直す（保存するとき用）。
  * 見つからない・通信失敗なら null。
  */
