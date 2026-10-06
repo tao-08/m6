@@ -327,6 +327,19 @@ if ($plan === null): // ==================== アップロード画面 ==========
         }
     }
     $rosterBandCount = array_sum(array_map(static fn($r) => count($r['bands']), $plan['rosters']));
+
+    // タイムテーブルのどの枠にも対応していない名簿のバンド（チェックは付けておくが、枠が無いので登録されない）
+    // 最初にプレビューを開いたときだけポップアップで知らせる（登録失敗で戻ってきたときは出さない）
+    $missingBands = [];
+    if (!$form) {
+        foreach ($plan['rosters'] as $ri => $roster) {
+            foreach ($roster['bands'] as $bi => $band) {
+                if (!isset($usedBy["$ri:$bi"])) {
+                    $missingBands[] = $band['band_name'];
+                }
+            }
+        }
+    }
 ?>
 <section class="hero">
     <div>
@@ -421,19 +434,33 @@ if ($plan === null): // ==================== アップロード画面 ==========
             </div>
             <div class="checks">
                 <label class="check"><input type="checkbox" name="tt[<?= $ti ?>][overwrite]" value="1"<?= !empty($f['overwrite']) ? ' checked' : '' ?>> 登録済みなら上書き</label>
-                <label class="check"><input type="checkbox" name="tt[<?= $ti ?>][skip]" value="1"<?= !empty($f['skip']) ? ' checked' : '' ?>> この日程は取り込まない</label>
+                <label class="check"><input type="checkbox" name="tt[<?= $ti ?>][skip]" value="1"<?= !empty($f['skip']) ? ' checked' : '' ?> data-skip> この日程は取り込まない</label>
             </div>
 
             <div class="table-scroll">
                 <table class="table table--edit">
                     <thead><tr>
-                        <th title="チェックした行だけ登録">取込</th><th>順</th><th>時間</th><th>登録バンド名</th>
+                        <th aria-label="並び替え"></th>
+                        <th title="チェックした行だけ登録">取込</th><th>順</th><th title="並び替えても時間は動かない">時間</th><th>登録バンド名</th>
                         <th title="名簿ファイルのバンド名で検索して選ぶ">名簿ファイル内バンド名</th><th>曲数</th><th title="バンド全体の補足事項">メモ</th>
                     </tr></thead>
-                    <tbody>
-                    <?php foreach ($tt['slots'] as $si => $s):
+                    <!-- data-sortable: 左端の ≡ をドラッグで行を並び替える（assets/app.js の setupSlotSort）。時間の列は動かない -->
+                    <tbody data-sortable>
+                    <?php
+                    // 時間は「表の何行目か」に固定。並び替えると、行（バンド）はその位置の枠の時間を使う
+                    //   at = その行が使う時間の枠の番号（JS が並び替えのたびに書き換える）
+                    // 並び替えて送った後に登録失敗で戻ってきたら、at の順に並べて元の並びを再現する
+                    $slotKeys = array_keys($tt['slots']);
+                    $rowOrder = $slotKeys;
+                    usort($rowOrder, static fn($a, $b) => [(int)($f['s'][$a]['at'] ?? $a), $a] <=> [(int)($f['s'][$b]['at'] ?? $b), $b]);
+                    $order = 0; // 出演順は入力させず、取込にチェックがある行を上から 1, 2, 3… と振る（並び替えたら JS が振り直す）
+                    foreach ($rowOrder as $pos => $si):
+                        $s = $tt['slots'][$si];
+                        $timeSi = $slotKeys[$pos];                // この位置の時間の枠
+                        $ts = $tt['slots'][$timeSi];
                         $fs = $f['s'][$si] ?? null;               // 失敗して戻ってきたときの入力値
                         $include = $fs ? !empty($fs['include']) : $s['include'];
+                        $orderNo = $include ? (string)++$order : '';
                         $key = "$ti:$si";
                         $roster = $slotRoster[$key];
                         $users = isset($rosterChoices[$roster]) ? ($usedBy[$rosterChoices[$roster]] ?? []) : [];
@@ -442,9 +469,12 @@ if ($plan === null): // ==================== アップロード画面 ==========
                             : ($include && count($users) > 1 ? 'is-similar' : 'is-ok');
                         $rosterHint = $rosterClass === 'is-similar' ? '同じ名簿を ' . count($users) . ' つの枠で選んでいます: ' . implode(' / ', $users) : ''; ?>
                         <tr class="<?= $include ? '' : 'is-excluded' ?>" data-slot="<?= h($key) ?>">
+                            <td><button type="button" class="drag-handle" data-drag-handle aria-label="ドラッグで並び替え（↑↓キーでも動く）" title="ドラッグで並び替え">≡</button>
+                                <input type="hidden" name="tt[<?= $ti ?>][s][<?= $si ?>][at]" value="<?= (int)$timeSi ?>" data-at></td>
                             <td><input type="checkbox" name="tt[<?= $ti ?>][s][<?= $si ?>][include]" value="1"<?= $include ? ' checked' : '' ?> data-include aria-label="取り込む"></td>
-                            <td><input type="number" class="input-num" name="tt[<?= $ti ?>][s][<?= $si ?>][order]" value="<?= h($fs['order'] ?? $s['order'] ?? '') ?>" min="1" aria-label="出演順"></td>
-                            <td class="mono nowrap muted"><?= h($s['start_time']) ?><?= $s['end_time'] ? '–' . h($s['end_time']) : '' ?></td>
+                            <td class="mono nowrap"><span data-order-text><?= $orderNo ?></span>
+                                <input type="hidden" name="tt[<?= $ti ?>][s][<?= $si ?>][order]" value="<?= $orderNo ?>" data-order></td>
+                            <td class="mono nowrap muted" data-time><?= h($ts['start_time']) ?><?= $ts['end_time'] ? '–' . h($ts['end_time']) : '' ?></td>
                             <td><input name="tt[<?= $ti ?>][s][<?= $si ?>][name]" value="<?= h($fs['name'] ?? $s['band_name']) ?>" maxlength="100" data-band-name aria-label="バンド名"></td>
                             <td><input name="tt[<?= $ti ?>][s][<?= $si ?>][roster]" value="<?= h($roster) ?>" list="dl-roster"
 							class="name-input <?= $rosterClass ?>" title="<?= h($rosterHint) ?>" placeholder="名簿から検索" data-roster-input aria-label="名簿のバンド"></td>
@@ -492,7 +522,7 @@ if ($plan === null): // ==================== アップロード画面 ==========
                 <!-- data-extra-cols: 今ある追加列の数。JS が列を足すときの番号に使う -->
                 <table class="table table--edit table--roster" data-roster-table="<?= $ri ?>" data-extra-cols="<?= $extraCols[$ri] ?>">
                     <thead><tr>
-                        <th>使っている出演枠</th>
+                        <th title="チェックしたバンドだけメンバーを登録">登録</th>
                         <th>名簿のバンド名</th>
                         <?php foreach ($roster['columns'] as $col => $c): ?>
                             <!-- 見出しは略称で固定。マウスを乗せると名簿ファイルの元の見出しが出る -->
@@ -503,19 +533,18 @@ if ($plan === null): // ==================== アップロード画面 ==========
                         <?php endfor; ?>
                     </tr></thead>
                     <tbody>
-                    <?php foreach ($roster['bands'] as $bi => $band): ?>
-                        <tr data-roster-key="<?= h("$ri:$bi") ?>">
-                            <!-- どの出演枠がこの名簿を使っているか。タイムテーブルの「名簿」欄で選ぶと JS が書き換える -->
-                            <td class="nowrap" data-roster-used>
-                                <?php if (count($usedBy["$ri:$bi"] ?? []) > 1): ?>
-                                    <span class="status status--warn">⚠ <?= count($usedBy["$ri:$bi"]) ?>枠で重複: <?= h(implode(' / ', $usedBy["$ri:$bi"])) ?></span>
-                                <?php elseif (isset($usedBy["$ri:$bi"])): ?>
-                                    <span class="status status--ok">✓ <?= h(implode(' / ', $usedBy["$ri:$bi"])) ?></span>
-                                <?php else: ?>
-                                    <span class="status status--new">未使用</span>
-                                <?php endif; ?>
+                    <?php foreach ($roster['bands'] as $bi => $band):
+                        // 登録のチェック: 初回は全部 ON（タイムテーブルに無いバンドも ON にして、⚠ で知らせる）
+                        $rbForm = $form['rb'][$ri][$bi] ?? null; // 失敗して戻ってきたときの入力値
+                        $on = $rbForm ? !empty($rbForm['on']) : true;
+                        $missing = $on && !isset($usedBy["$ri:$bi"]); ?>
+                        <tr class="<?= $on ? '' : 'is-excluded' ?>" data-roster-key="<?= h("$ri:$bi") ?>">
+                            <!-- タイムテーブル側の「取込」を外すと、JS がこちらも外す -->
+                            <td><input type="checkbox" name="rb[<?= $ri ?>][<?= $bi ?>][on]" value="1"<?= $on ? ' checked' : '' ?> data-roster-on aria-label="このバンドのメンバーを登録する"></td>
+                            <td class="strong nowrap"><?= h($band['band_name']) ?>
+                                <!-- どの出演枠もこの名簿を選んでいなければ出す（JS がタイムテーブルの変更に合わせて出し入れする） -->
+                                <span class="status status--warn" title="タイムテーブルの「名簿ファイル内バンド名」でこのバンドを選ぶと登録されます" data-roster-missing<?= $missing ? '' : ' hidden' ?>>⚠ タイムテーブルにないため登録されません</span>
                             </td>
-                            <td class="strong nowrap"><?= h($band['band_name']) ?></td>
                             <?php foreach ($roster['columns'] as $col => $c):
                                 $k = "$ri-$bi-$col";
                                 $stt = $cellStatus[$k] ?? ['status' => '', 'hint' => '']; ?>
@@ -559,11 +588,29 @@ if ($plan === null): // ==================== アップロード画面 ==========
 
     <div class="sticky-actions">
         <button class="btn btn--ghost" type="submit" form="reset-form">やり直す</button>
-        <button class="btn btn--primary" type="submit"<?= $plan['timetables'] ? '' : ' disabled' ?>>登録する</button>
+        <!-- 名簿の重複があるあいだは JS が「登録する」を押せなくして、この文を出す -->
+        <span class="sticky-actions__note" data-submit-block hidden>⚠ 名簿の重複を直すと登録できます</span>
+        <button class="btn btn--primary" type="submit"<?= $plan['timetables'] ? '' : ' disabled' ?> data-submit>登録する</button>
     </div>
 </form>
 <!-- 「やり直す」は別のフォーム。form="reset-form" 属性でボタンだけ上のフォームの中に置いている -->
 <form method="post" id="reset-form"><?= csrf_field() ?><input type="hidden" name="action" value="reset"></form>
+
+<?php if ($missingBands): ?>
+<!-- タイムテーブルに無い名簿のバンドがあるとき、プレビューを開いた直後に1回だけ出す注意（JS の setupImportPreview が開く） -->
+<dialog class="modal" data-roster-missing-dialog aria-labelledby="roster-missing-title">
+    <form method="dialog" class="modal__body">
+        <h3 id="roster-missing-title" class="modal__title">⚠ タイムテーブルにないため登録されません</h3>
+        <p class="muted small">名簿にある次のバンドは、タイムテーブルのどの枠にも対応していません。登録するには、タイムテーブルの「名簿ファイル内バンド名」でこのバンドを選んでください。</p>
+        <ul class="modal__list">
+            <?php foreach ($missingBands as $name): ?><li><?= h($name) ?></li><?php endforeach; ?>
+        </ul>
+        <div class="form-actions">
+            <button type="submit" class="btn btn--primary">OK</button>
+        </div>
+    </form>
+</dialog>
+<?php endif; ?>
 
 <?php if ($plan['rosters']): ?>
 <!--

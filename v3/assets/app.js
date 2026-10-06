@@ -13,6 +13,7 @@
  *    data-dropzone      … ファイルのドラッグ&ドロップ
  *    data-name-cell     … 名前の入力欄（DB にいるかで色が変わる）
  *    data-roster-input  … タイムテーブルの枠 → 名簿のバンド（検索欄）
+ *    data-sortable      … タイムテーブルの行を ≡ のドラッグで並び替え（時間の列は動かない）
  *    data-add-roster-col … 名簿の表の右端に「Other」列を足す
  *    data-pick          … 名簿の「Vo / Gt/Vo / ⋯」「Key / Vn / ⋯」の切り替えボタンと、etc の楽器追加モーダル
  *    .table-scroll      … 横にはみ出す表をマウスのドラッグで左右に動かす
@@ -32,6 +33,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupDropzone();
   setupNameCheck();
   setupImportPreview();
+  setupSlotSort();
   setupRosterColumns();
   setupPicks();
   setupDragScroll();
@@ -307,7 +309,9 @@ function showHint(input) {
  * 取り込みプレビュー
  *   - 「取込」のチェックを外した行を薄くする
  *   - 「名簿」検索欄の値が名簿のバンドと一致したら緑、空/不一致なら赤
- *   - 名簿側の「使っている出演枠」と「名簿なし ◯件」バッジを更新
+ *   - 名簿側の「登録」チェック（外すと薄く。タイムテーブルの「取込」を外すと連動して外れる）
+ *     どの枠にも選ばれていない名簿のバンドに「タイムテーブルにないため登録されません」を出す
+ *   - 「名簿なし ◯件」バッジを更新
  *   - 開催日 → 年度の表示、会場「新規作成」で会場名の入力欄を出す
  * ------------------------------------------------------------------- */
 function setupImportPreview() {
@@ -318,46 +322,44 @@ function setupImportPreview() {
   const rosterKeys = {};
   document.querySelectorAll('#dl-roster option').forEach((opt) => { rosterKeys[opt.value] = opt.dataset.key; });
 
+  const submit = document.querySelector('[data-submit]');
+  const submitBlock = document.querySelector('[data-submit-block]');
+  const submitDisabled = submit.disabled; // PHP が最初から押せなくしていた（タイムテーブルが無い）なら、ずっとそのまま
+
   const refresh = () => {
     const usedBy = {}; // 'ri:bi' → [出演バンド名...]
+    // 本当に登録される枠か（「取込」にチェック & 「この日程は取り込まない」ではない）。PHP の重複チェックと同じ条件
+    const counted = (tr) => tr.querySelector('[data-include]').checked
+      && !tr.closest('[data-timetable]').querySelector('[data-skip]').checked;
 
     // 1周目: どの名簿をどの枠が使っているか集める
     slotRows.forEach((tr) => {
-      const include = tr.querySelector('[data-include]').checked;
-      tr.classList.toggle('is-excluded', !include);
+      tr.classList.toggle('is-excluded', !tr.querySelector('[data-include]').checked);
       const key = rosterKeys[tr.querySelector('[data-roster-input]').value.trim()];
-      if (key && include) {
+      if (key && counted(tr)) {
         (usedBy[key] ||= []).push(tr.querySelector('[data-band-name]').value);
       }
     });
 
     // 2周目: 色を付ける。緑 = 名簿あり / 黄 = 同じ名簿を他の枠でも選んでいる / 赤 = 名簿なし
+    let dupCount = 0;
     slotRows.forEach((tr) => {
       const include = tr.querySelector('[data-include]').checked;
       const input = tr.querySelector('[data-roster-input]');
       const key = rosterKeys[input.value.trim()];
-      const dup = !!key && include && usedBy[key].length > 1;
+      const dup = !!key && counted(tr) && usedBy[key].length > 1;
+      if (dup) dupCount++;
       input.classList.toggle('is-ok', !!key && !dup);
       input.classList.toggle('is-similar', dup);
       input.classList.toggle('is-new', !key && include);
       input.title = dup ? `同じ名簿を ${usedBy[key].length} つの枠で選んでいます: ${usedBy[key].join(' / ')}` : '';
     });
 
-    // 名簿側の「使っている出演枠」
+    // 名簿側: 「登録」を外した行を薄くし、どの枠にも選ばれていない（= 登録されない）行に ⚠ を出す
     document.querySelectorAll('tr[data-roster-key]').forEach((tr) => {
-      const names = usedBy[tr.dataset.rosterKey];
-      const span = document.createElement('span');
-      if (!names) {
-        span.className = 'status status--new';
-        span.textContent = '未使用';
-      } else if (names.length > 1) {
-        span.className = 'status status--warn';
-        span.textContent = `⚠ ${names.length}枠で重複: ${names.join(' / ')}`;
-      } else {
-        span.className = 'status status--ok';
-        span.textContent = '✓ ' + names[0];
-      }
-      tr.querySelector('[data-roster-used]').replaceChildren(span);
+      const on = tr.querySelector('[data-roster-on]').checked;
+      tr.classList.toggle('is-excluded', !on);
+      tr.querySelector('[data-roster-missing]').hidden = !on || !!usedBy[tr.dataset.rosterKey];
     });
 
     // 日程ごとの「名簿なし ◯件」バッジ
@@ -370,6 +372,18 @@ function setupImportPreview() {
       badge.textContent = msgs.length ? msgs.join(' · ') : '全バンド名簿あり';
       badge.className = 'pill ' + (msgs.length ? 'pill--warn' : 'pill--ok');
     });
+
+    // 名簿の重複が1つでもあれば「登録する」を押せなくする（同じバンドが2回出ることは無いので入力ミス）
+    submit.disabled = submitDisabled || dupCount > 0;
+    submitBlock.hidden = dupCount === 0;
+  };
+
+  // タイムテーブルの「取込」を切り替えたら、その枠が選んでいる名簿の「登録」も合わせる
+  //   （同じバンドが2日とも出ることは無いので、名簿の1バンドを使うのは1枠だけ、という前提）
+  const syncRosterOn = (checkbox) => {
+    const key = rosterKeys[checkbox.closest('tr[data-slot]').querySelector('[data-roster-input]').value.trim()];
+    const row = key && document.querySelector(`tr[data-roster-key="${key}"]`);
+    if (row) row.querySelector('[data-roster-on]').checked = checkbox.checked;
   };
 
   // 開催日 → 年度（4月始まり。1〜3月は前の年の年度）。PHP の academic_year() と同じ計算
@@ -379,31 +393,12 @@ function setupImportPreview() {
     out.textContent = m ? `→ ${Number(m[2]) >= 4 ? Number(m[1]) : Number(m[1]) - 1}年度` : '';
   };
 
-  // 取込のチェックを切り替えたら、同じ日程の出演順を詰め直す
-  //   外す → その行の番号を消して、後ろの行を1つずつ繰り上げ
-  //   付ける → 上にある取込行の数+1 を入れて、それ以降の行を1つずつ繰り下げ
-  const renumber = (checkbox) => {
-    const tr = checkbox.closest('tr[data-slot]');
-    const others = [...tr.closest('[data-timetable]').querySelectorAll('tr[data-slot]')]
-      .filter((row) => row !== tr && row.querySelector('[data-include]').checked)
-      .map((row) => row.querySelector('[name$="[order]"]'))
-      .filter((input) => input.value !== '');
-    const order = tr.querySelector('[name$="[order]"]');
-    if (checkbox.checked) {
-      const rows = [...tr.parentElement.children];
-      const pos = rows.slice(0, rows.indexOf(tr)).filter((row) => row.querySelector('[data-include]').checked).length + 1;
-      others.forEach((input) => { if (Number(input.value) >= pos) input.value = Number(input.value) + 1; });
-      order.value = pos;
-    } else {
-      const old = Number(order.value);
-      if (old) others.forEach((input) => { if (Number(input.value) > old) input.value = Number(input.value) - 1; });
-      order.value = '';
-    }
-  };
-
   document.addEventListener('change', (e) => {
-    if (e.target.matches('[data-include]')) renumber(e.target);
-    if (e.target.matches('[data-include], [data-roster-input]')) refresh();
+    if (e.target.matches('[data-include]')) {
+      renumberSlots(e.target.closest('tbody')); // 取込を切り替えたら出演順を振り直す
+      syncRosterOn(e.target);
+    }
+    if (e.target.matches('[data-include], [data-roster-input], [data-roster-on], [data-skip]')) refresh();
     if (e.target.matches('[data-date-input]')) showFiscalYear(e.target);
     if (e.target.matches('[data-venue-select]')) {
       const box = e.target.closest('.field').querySelector('[data-venue-new]');
@@ -416,6 +411,158 @@ function setupImportPreview() {
   });
 
   refresh();
+  // タイムテーブルに無い名簿のバンドがあれば注意を出す（PHP が初回だけ <dialog> を置く）
+  document.querySelector('[data-roster-missing-dialog]')?.showModal();
+}
+
+/* ---------------------------------------------------------------------
+ * タイムテーブルの出演順を振り直す（並び替え・取込の切り替えのあとに呼ぶ）
+ *   取込にチェックがある行を上から 1, 2, 3…。チェックが無い行（休憩など）は空。
+ *   表示用の文字と、送信用の hidden（PHP の commit_import_plan が並べ替えに使う）の両方を書き換える。
+ * ------------------------------------------------------------------- */
+function renumberSlots(tbody) {
+  let n = 0;
+  [...tbody.rows].forEach((tr) => {
+    const no = tr.querySelector('[data-include]').checked ? String(++n) : '';
+    tr.querySelector('[data-order]').value = no;
+    tr.querySelector('[data-order-text]').textContent = no;
+  });
+}
+
+/* ---------------------------------------------------------------------
+ * タイムテーブルの行の並び替え（左端の ≡ をドラッグ。↑↓キーでも動く）
+ *   時間の列は「何行目か」に固定: 行を動かしたら、各行の時間の表示と
+ *   hidden の at（どの枠の時間を使うか。PHP の commit_import_plan が見る）を位置に合わせて付け直す。
+ *   pointer イベントなのでマウスでも指でも動く（≡ には CSS で touch-action: none）。
+ *
+ * アニメーション（時間のセルは動かさない。動くのは時間以外のセルだけ）
+ *   つかんだ行 … ポインタに合わせて transform で上下に付いてくる。離すと定位置へ滑って戻る
+ *   ほかの行   … FLIP という手法で、場所が入れ替わるときにスッと滑らせる
+ *     First: 動かす前の位置を測る → Last: DOM を入れ替えて新しい位置を測る
+ *     → Invert: 差の分だけ元の位置へ戻して見せる → Play: 0 までアニメーション
+ * ------------------------------------------------------------------- */
+function setupSlotSort() {
+  const bodies = [...document.querySelectorAll('tbody[data-sortable]')];
+  if (!bodies.length) return;
+
+  // 「動きを減らす」設定の人にはアニメーションしない
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const cellsOf = (tr) => [...tr.querySelectorAll('td:not([data-time])')]; // 動かすセル（時間以外）
+
+  // 最初の並びで「n 行目の時間」を覚えておく（並び替えても n 行目の時間はこれのまま）
+  const times = new Map(bodies.map((tbody) => [tbody, [...tbody.rows].map((tr) => ({
+    text: tr.querySelector('[data-time]').textContent,
+    at: tr.querySelector('[data-at]').value,
+  }))]));
+
+  // 並びが変わったあとの後始末: 時間を位置に戻し、出演順を振り直す
+  const settle = (tbody) => {
+    [...tbody.rows].forEach((tr, i) => {
+      tr.querySelector('[data-time]').textContent = times.get(tbody)[i].text;
+      tr.querySelector('[data-at]').value = times.get(tbody)[i].at;
+    });
+    renumberSlots(tbody);
+  };
+
+  // change() で DOM を入れ替え、skip 以外の行を元の見た目の位置から新しい位置へ滑らせる（FLIP）
+  const flip = (tbody, change, skip) => {
+    // 動いている途中の行もあるので、行（動かない）ではなく最初のセル（動いている）で見た目の位置を測る
+    const before = new Map([...tbody.rows].map((tr) => [tr, cellsOf(tr)[0].getBoundingClientRect().top]));
+    change();
+    if (reduceMotion) return;
+    [...tbody.rows].forEach((tr) => {
+      if (tr === skip) return;
+      const dy = before.get(tr) - tr.getBoundingClientRect().top;
+      if (Math.abs(dy) < 1) return;
+      cellsOf(tr).forEach((td) => {
+        td.getAnimations().forEach((a) => a.cancel()); // 前のアニメーションの途中なら止めて、今の位置から始め直す
+        td.animate([{ transform: `translateY(${dy}px)` }, { transform: 'none' }], { duration: 180, easing: 'ease-out' });
+      });
+    });
+  };
+
+  let drag = null; // ドラッグ中だけ { row, tbody, pointerId, y, grab, off, timer }
+
+  // つかんだ行をポインタに付いてこさせる。off = 定位置からどれだけずらして見せているか
+  const follow = () => {
+    drag.off = drag.y - drag.grab - drag.row.getBoundingClientRect().top;
+    cellsOf(drag.row).forEach((td) => { td.style.transform = `translateY(${drag.off}px)`; });
+  };
+
+  // ポインタの高さに合わせて行を差し込む: 自分以外で「真ん中がポインタより下」の最初の行の前へ（無ければ一番下）
+  const moveTo = (y) => {
+    const { row, tbody } = drag;
+    const target = [...tbody.rows].find((r) => r !== row && y < r.getBoundingClientRect().top + r.offsetHeight / 2);
+    if (!(target ? row.nextElementSibling === target : tbody.lastElementChild === row)) { // 位置が変わるときだけ
+      flip(tbody, () => {
+        tbody.insertBefore(row, target || null);
+        settle(tbody);
+      }, row);
+    }
+    follow(); // 行の定位置が変わったので、ずらす量を計算し直す
+  };
+
+  const end = () => {
+    if (!drag) return;
+    const { row, off, timer } = drag;
+    clearInterval(timer);
+    drag = null;
+    document.body.classList.remove('is-row-dragging');
+    // 離した場所から定位置へ滑って戻る。戻り終わってから「浮いている」見た目を外す
+    cellsOf(row).forEach((td) => {
+      td.style.transform = '';
+      if (!reduceMotion && off) td.animate([{ transform: `translateY(${off}px)` }, { transform: 'none' }], { duration: 150, easing: 'ease-out' });
+    });
+    setTimeout(() => { if (drag?.row !== row) row.classList.remove('is-dragging'); }, reduceMotion ? 0 : 150);
+  };
+
+  document.addEventListener('pointerdown', (e) => {
+    const handle = e.target.closest('[data-drag-handle]');
+    if (!handle || drag || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    e.preventDefault(); // 文字選択やスクロールを始めさせない
+    const row = handle.closest('tr');
+    cellsOf(row).forEach((td) => td.getAnimations().forEach((a) => a.cancel()));
+    // grab = 行の上端から、つかんだ所までの高さ（これを保ったまま付いてこさせる）
+    drag = { row, tbody: row.parentElement, pointerId: e.pointerId, y: e.clientY, grab: e.clientY - row.getBoundingClientRect().top, off: 0 };
+    handle.setPointerCapture(e.pointerId); // 指やマウスが ≡ の外に出ても追いかける
+    row.classList.add('is-dragging');
+    document.body.classList.add('is-row-dragging');
+    // 画面の上端・下端に近づけたら自動でスクロール（長い表を一度に動かせるように）
+    drag.timer = setInterval(() => {
+      if (!drag) return;
+      const edge = 60;
+      const dy = drag.y < edge ? -12 : drag.y > window.innerHeight - edge ? 12 : 0;
+      if (dy) {
+        window.scrollBy(0, dy);
+        moveTo(drag.y);
+      }
+    }, 16);
+  });
+  document.addEventListener('pointermove', (e) => {
+    if (!drag || e.pointerId !== drag.pointerId) return;
+    drag.y = e.clientY;
+    moveTo(e.clientY);
+  });
+  document.addEventListener('pointerup', end);
+  document.addEventListener('pointercancel', end);
+
+  // キーボード: ≡ にフォーカスして ↑↓ で1行ずつ動かす
+  document.addEventListener('keydown', (e) => {
+    const handle = e.target.closest?.('[data-drag-handle]');
+    if (!handle || drag || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
+    e.preventDefault();
+    const row = handle.closest('tr');
+    const tbody = row.parentElement;
+    const prev = row.previousElementSibling;
+    const next = row.nextElementSibling;
+    if (e.key === 'ArrowUp' ? !prev : !next) return; // 端なのでもう動けない
+    flip(tbody, () => {
+      if (e.key === 'ArrowUp') tbody.insertBefore(row, prev);
+      else tbody.insertBefore(next, row);
+      settle(tbody);
+    });
+    handle.focus(); // insertBefore で動かすとフォーカスが外れるブラウザがあるので戻す
+  });
 }
 
 /* ---------------------------------------------------------------------

@@ -348,9 +348,20 @@ input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px;
 .table--edit input[type="checkbox"] { width: 18px; height: 18px; padding: 0; }
 .input-num { width: 64px !important; }
 .table--edit tr.is-excluded td { opacity: .45; }
+/* タイムテーブルの行の並び替え（JS: setupSlotSort）。≡ を押している間は行を浮かせる */
+.drag-handle { padding: 4px 6px; border: 0; border-radius: 6px; background: none; color: var(--muted); font-size: 18px; line-height: 1;
+  cursor: grab; touch-action: none; /* 指で押したとき、ページのスクロールではなくドラッグにする */ }
+.drag-handle:hover, .drag-handle:focus-visible { color: var(--text); background: var(--surface-2); }
+/* つかんだ行（時間以外のセル）は浮かせて、ほかの行より手前に描く。時間のセルは動かないので普段どおり */
+.table--edit tr.is-dragging td:not([data-time]) { position: relative; z-index: 2; opacity: 1; background: var(--surface-2);
+  box-shadow: 0 8px 18px -6px rgb(0 0 0 / .25); }
+body.is-row-dragging, body.is-row-dragging * { cursor: grabbing !important; user-select: none; }
 .table--edit td:has(input[data-band-name]) { min-width: 200px; }
 .table--roster td { min-width: 130px; }
-.table--roster td:first-child { min-width: 220px; }
+.table--roster td:first-child { min-width: 0; } /* 「登録」のチェックボックス列 */
+.table--roster [data-roster-missing] { display: block; width: fit-content; margin-top: 4px; font-weight: 400; }
+.table--roster [data-roster-missing][hidden] { display: none; }
+.modal__list { margin: 12px 0 0; padding-left: 1.2em; max-height: 40vh; overflow: auto; }
 .col-head { margin-bottom: 4px; color: var(--text); }
 .select-sm { font-size: 12px !important; padding: 5px 6px !important; }
 .cell-instrument { margin-top: 4px; }
@@ -478,6 +489,8 @@ input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px;
 .sticky-actions { position: sticky; bottom: 16px; z-index: 10; display: flex; justify-content: flex-end; gap: 10px; padding: 10px; border-radius: 999px;
   background: color-mix(in srgb, var(--surface) 88%, transparent); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
   border: 1px solid var(--border); box-shadow: var(--shadow); width: max-content; margin-left: auto; }
+.sticky-actions__note { align-self: center; padding: 0 6px; font-size: 12px; font-weight: 600; color: var(--warn); }
+.sticky-actions__note[hidden] { display: none; }
 
 /* ===== 8.5 追加ページ（検索・集計・設定・管理） ===== */
 .hero__actions { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -621,6 +634,8 @@ code { background: var(--surface-2); padding: 1px 6px; border-radius: 6px; font-
   .member-row-edit { grid-template-columns: 110px minmax(0, 1fr) auto; }
   .sticky-actions { width: 100%; bottom: 76px; }
   .sticky-actions .btn { flex: 1; }
+  .sticky-actions:has(.sticky-actions__note:not([hidden])) { flex-wrap: wrap; border-radius: var(--radius); }
+  .sticky-actions__note { flex-basis: 100%; text-align: center; }
   .tabs { top: 66px; }
   .add-band { margin-left: 54px; }
   .bars li { grid-template-columns: minmax(0, 8em) 1fr auto; }

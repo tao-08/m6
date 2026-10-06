@@ -512,6 +512,27 @@ function commit_import_plan(PDO $pdo, array $plan, array $input): array
     $bandRosters = [];                      // [登録した band_id, 'ri:bi'] のリスト
     $liveIds = [];
 
+    // 名簿の1バンドを2つ以上の枠で選んでいたら登録しない（同じバンドが2回出ることは無いので、入力ミス）
+    // 画面では JS が「登録する」を押せなくしているが、JS が動かない・書き換えられたときのためにここでも止める
+    $rosterUsers = []; // 'ri:bi' => [その名簿を選んだ枠のバンド名...]
+    foreach ($plan['timetables'] as $ti => $tt) {
+        if (!empty($input['tt'][$ti]['skip'])) {
+            continue;
+        }
+        foreach (array_keys($tt['slots']) as $si) {
+            $s = $input['tt'][$ti]['s'][$si] ?? [];
+            $ref = $rosterChoices[trim((string)($s['roster'] ?? ''))] ?? null;
+            if (!empty($s['include']) && $ref !== null) {
+                $rosterUsers[$ref][] = trim((string)($s['name'] ?? ''));
+            }
+        }
+    }
+    foreach ($rosterUsers as $names) {
+        if (count($names) > 1) {
+            throw new RuntimeException('名簿の同じバンドを ' . count($names) . ' つの枠で選んでいます（' . implode(' / ', $names) . '）。1つの枠だけにしてください');
+        }
+    }
+
     $pdo->beginTransaction();
     try {
         // ================= 1. ライブ・日程・バンド =================
@@ -598,8 +619,12 @@ function commit_import_plan(PDO $pdo, array $plan, array $input): array
                 if ($songs !== '' && (!ctype_digit($songs) || (int)$songs > 255)) {
                     throw new RuntimeException("{$where}「{$name}」の曲数は0〜255の数字で入力してください");
                 }
-                $start = $slot['start_time'];
-                $end = $slot['end_time'];
+                // 時間は表の位置に固定（並び替えたら、その位置の枠の時間を使う）。at = どの枠の時間か
+                // フォームの値は書き換えられる可能性があるので、本当にある枠の番号だけ受け付ける
+                $at = (string)($s['at'] ?? '');
+                $timeSlot = ctype_digit($at) && isset($tt['slots'][(int)$at]) ? $tt['slots'][(int)$at] : $slot;
+                $start = $timeSlot['start_time'];
+                $end = $timeSlot['end_time'];
                 $rows[] = [
                     'si' => $si,
                     // この枠のメンバーをどの名簿のバンドから取るか（検索欄の文字 → 'ri:bi'。一致しなければ名簿なし）
@@ -631,11 +656,14 @@ function commit_import_plan(PDO $pdo, array $plan, array $input): array
 
         // ================= 2. 名簿 → メンバー =================
         // タイムテーブルの「名簿」欄で選んだ名簿のバンドから、メンバーを登録する。
-        // 同じ名簿のバンドを2日分の枠で選んでもOK（2日とも同じメンバーで出る場合）
+        // 名簿の1バンドを選べるのは1枠だけ（上の重複チェックで止めている）
         foreach ($bandRosters as [$bandId, $rosterRef]) {
             [$ri, $bi] = array_map('intval', explode(':', $rosterRef));
             $roster = $plan['rosters'][$ri];
             $rb = $input['rb'][$ri][$bi] ?? [];
+            if (empty($rb['on'])) {
+                continue; // 名簿の「登録」のチェックを外したバンドはメンバーを登録しない（バンド自体は登録済み）
+            }
             // 楽器の決め方（優先順）: ① 名前の後ろの (Sax) → ② セルのプルダウン → ③ 列のパートの楽器
             // フォームの値は書き換えられる可能性があるので、instrument テーブルにある ID だけ受け付ける
             $pick = static fn($id, ?int $default) => in_array((int)$id, $validInstruments, true) ? (int)$id : $default;
