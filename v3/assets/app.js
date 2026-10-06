@@ -13,6 +13,7 @@
  *    data-dropzone      … ファイルのドラッグ&ドロップ
  *    data-name-cell     … 名前の入力欄（DB にいるかで色が変わる）
  *    data-roster-input  … タイムテーブルの枠 → 名簿のバンド（検索欄）
+ *    data-add-roster-col … 名簿の表の右端に「Key./Other」列を足す
  *    data-pack          … 送信時に全項目を JSON 1個にまとめるフォーム
  *    data-rows          … バンド編集のメンバー行（追加・削除）
  *    data-print / data-autosubmit … 印刷ボタン / 選んだら即送信
@@ -29,6 +30,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupDropzone();
   setupNameCheck();
   setupImportPreview();
+  setupRosterColumns();
   setupPackedForm();
   setupMemberRows();
   setupSmallThings();
@@ -357,6 +359,46 @@ function setupImportPreview() {
   });
 
   refresh();
+}
+
+/* ---------------------------------------------------------------------
+ * 名簿の表に列を足す（「＋ 列を追加」ボタン）
+ *   名簿に載っていない人や、1つのセルに書かれていた3人目以降のために、
+ *   表の右端へ「Key./Other」列（名前の入力欄 + 全部の楽器のプルダウン）を足す。
+ *   name="rb[名簿][バンド][x][列番号][name]" の形にしておけば、PHP 側は他の追加列と同じように受け取れる。
+ * ------------------------------------------------------------------- */
+function setupRosterColumns() {
+  const tpl = document.getElementById('tpl-extra-instrument');
+  if (!tpl) return;
+
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-add-roster-col]');
+    if (!btn) return;
+    const table = btn.closest('section').querySelector('[data-roster-table]');
+    const n = Number(table.dataset.extraCols); // 新しい列の番号（0 始まり）
+    table.dataset.extraCols = n + 1;
+
+    const th = document.createElement('th');
+    th.textContent = 'Key./Other';
+    table.querySelector('thead tr').appendChild(th);
+
+    table.querySelectorAll('tbody tr[data-roster-key]').forEach((tr) => {
+      const [ri, bi] = tr.dataset.rosterKey.split(':');
+      const base = `rb[${ri}][${bi}][x][${n}]`;
+      const td = document.createElement('td');
+      const input = document.createElement('input');
+      input.name = `${base}[name]`;
+      input.className = 'name-input';
+      input.dataset.nameCell = '';
+      input.setAttribute('aria-label', 'メンバー');
+      const select = tpl.content.firstElementChild.cloneNode(true);
+      select.name = `${base}[inst]`;
+      td.append(input, select);
+      tr.appendChild(td);
+    });
+    // 1行目の新しい入力欄にカーソルを置く
+    table.querySelector(`tbody tr [name$="[x][${n}][name]"]`)?.focus();
+  });
 }
 
 /* ---------------------------------------------------------------------

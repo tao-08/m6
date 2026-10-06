@@ -120,6 +120,49 @@ function extra_instruments(): array
     return array_values(array_filter(instruments(), static fn($i) => !in_array($i['short_name'], ['Vo', 'Gt', 'Ba', 'Dr'], true)));
 }
 
+/** 名簿の見出しに出す略称。Key とその他は同じ扱い（人ごとに楽器を選ぶ列） */
+function part_label(string $part): string
+{
+    return match ($part) {
+        'Vo' => 'Vo.', 'Gt' => 'Gt.', 'Ba' => 'Ba.', 'Dr' => 'Dr.',
+        default => 'Key./Other',
+    };
+}
+
+/** 人ごとに楽器を選べる列か（Key / その他） */
+function is_free_part(string $part): bool
+{
+    return in_array($part, ['Key', 'Other'], true);
+}
+
+/**
+ * 名簿の「1つのセルに2人以上」（「村田侑斗、丸野友多郎」など）を、1セル1人に分ける。
+ *   1人目 → 元の列にそのまま
+ *   2人目以降 → 表の右端の「追加列」へ。楽器は元の列の楽器を初期値にする（あとでプルダウンで変えられる）
+ * 「丸野友多郎(Sax)」のように楽器が書いてあれば、その楽器を初期値にする。
+ *
+ * 結果: 各バンドに 'extras' => [['name' => ..., 'instrument_id' => ...], ...]、
+ *       名簿に 'extra_cols' => 追加列の数（一番多いバンドに合わせる）
+ */
+function spread_roster_cells(array $roster): array
+{
+    $roster['extra_cols'] = 0;
+    foreach ($roster['bands'] as &$band) {
+        $band['extras'] = [];
+        foreach ($roster['columns'] as $col => $c) {
+            $names = split_member_names((string)($band['cells'][$col] ?? ''));
+            $band['cells'][$col] = array_shift($names) ?? '';
+            foreach ($names as $name) {
+                [$plain, $named] = parse_name_instrument($name);
+                $band['extras'][] = ['name' => $plain, 'instrument_id' => $named ?? $c['instrument_id']];
+            }
+        }
+        $roster['extra_cols'] = max($roster['extra_cols'], count($band['extras']));
+    }
+    unset($band);
+    return $roster;
+}
+
 /**
  * 名前の後ろに楽器を書く書き方に対応する: 「丸野友多郎(Sax)」「村田侑斗（キーボード）」
  *   → ['丸野友多郎', サックスの instrument_id]
@@ -168,7 +211,7 @@ function build_import_plan(array $files): array
                     $col['instrument_id'] = default_instrument_id($col['part']);
                 }
                 unset($col); // foreach の参照(&)は使い終わったら必ず unset（後で事故る）
-                $plan['rosters'][] = $roster;
+                $plan['rosters'][] = spread_roster_cells($roster);
             }
         } catch (Throwable $e) {
             // 1ファイル読めなくても他のファイルは続ける
@@ -457,16 +500,29 @@ function commit_import_plan(PDO $pdo, array $plan, array $input): array
             [$ri, $bi] = array_map('intval', explode(':', $rosterRef));
             $roster = $plan['rosters'][$ri];
             $rb = $input['rb'][$ri][$bi] ?? [];
+            // 楽器の決め方（優先順）: ① 名前の後ろの (Sax) → ② セルのプルダウン → ③ 列のパートの楽器
+            // フォームの値は書き換えられる可能性があるので、instrument テーブルにある ID だけ受け付ける
+            $pick = static fn($id, ?int $default) => in_array((int)$id, $validInstruments, true) ? (int)$id : $default;
             $assignments = [];
-            foreach ($roster['columns'] as $col => $_) {
-                // 楽器の決め方（優先順）: ① 名前の後ろの (Sax) → ② セルごとの選択（Key/その他列） → ③ 列の楽器（見出しのセレクト）
-                $colInstrument = (int)($input['inst'][$ri][$col] ?? 0);
-                $colInstrument = in_array($colInstrument, $validInstruments, true) ? $colInstrument : null;
-                $cellInstrument = (int)($rb['ci'][$col] ?? 0);
-                $cellInstrument = in_array($cellInstrument, $validInstruments, true) ? $cellInstrument : $colInstrument;
-                foreach (split_member_names((string)($rb['c'][$col] ?? '')) as $name) {
+            $add = static function (string $cell, ?int $instrument) use (&$assignments): void {
+                // 1セルに「、」で2人書かれていても、1人ずつ登録する
+                foreach (split_member_names($cell) as $name) {
                     [$name, $named] = parse_name_instrument($name);
-                    $assignments[] = [$name, $named ?? $cellInstrument];
+                    $assignments[] = [$name, $named ?? $instrument];
+                }
+            };
+            // 名簿の元の列（Vo. Gt. Ba. Dr. は楽器固定、Key./Other はセルごとに選ぶ）
+            foreach ($roster['columns'] as $col => $c) {
+                $instrument = $c['instrument_id'] ?? default_instrument_id($c['part']);
+                if (is_free_part($c['part'])) {
+                    $instrument = $pick($rb['ci'][$col] ?? 0, $instrument);
+                }
+                $add((string)($rb['c'][$col] ?? ''), $instrument);
+            }
+            // 右端の追加列（2人目以降・自分で足した列）。楽器は全部の楽器から選べる
+            foreach ((array)($rb['x'] ?? []) as $x) {
+                if (is_array($x)) {
+                    $add((string)($x['name'] ?? ''), $pick($x['inst'] ?? 0, null));
                 }
             }
             attach_members($pdo, $memberIndex, $bandId, $assignments);

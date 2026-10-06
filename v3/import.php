@@ -209,11 +209,24 @@ if ($plan === null): // ==================== アップロード画面 ==========
     $venues = $pdo->query('SELECT venue_id, name FROM venue ORDER BY name')->fetchAll(PDO::FETCH_KEY_PAIR);
 
     // ---- 名簿の全セルを1回でまとめて色分け判定（1セルずつ SQL を投げると遅いので） ----
-    $cellTexts = [];
+    $cellTexts = [];   // "ri-bi-列番号" / "ri-bi-x追加列番号" => セルの文字
+    $cellInsts = [];   // "ri-bi-x追加列番号" => 追加列のプルダウンの初期値（instrument_id）
+    $extraCols = [];   // ri => 追加列の数
     foreach ($plan['rosters'] as $ri => $roster) {
+        // 追加列の数 = 名簿から作った数と、前回（登録失敗で戻ってきた）の入力の列数の多いほう
+        $extraCols[$ri] = (int)($roster['extra_cols'] ?? 0);
         foreach ($roster['bands'] as $bi => $band) {
+            $extraCols[$ri] = max($extraCols[$ri], count((array)($form['rb'][$ri][$bi]['x'] ?? [])));
+        }
+        foreach ($roster['bands'] as $bi => $band) {
+            $rb = $form['rb'][$ri][$bi] ?? null;
             foreach ($roster['columns'] as $col => $_) {
-                $cellTexts["$ri-$bi-$col"] = (string)($form['rb'][$ri][$bi]['c'][$col] ?? $band['cells'][$col] ?? '');
+                $cellTexts["$ri-$bi-$col"] = (string)($rb['c'][$col] ?? $band['cells'][$col] ?? '');
+            }
+            for ($n = 0; $n < $extraCols[$ri]; $n++) {
+                $extra = $band['extras'][$n] ?? ['name' => '', 'instrument_id' => null];
+                $cellTexts["$ri-$bi-x$n"] = (string)($rb ? ($rb['x'][$n]['name'] ?? '') : $extra['name']);
+                $cellInsts["$ri-$bi-x$n"] = (int)($rb ? ($rb['x'][$n]['inst'] ?? 0) : ($extra['instrument_id'] ?? 0));
             }
         }
     }
@@ -385,9 +398,19 @@ if ($plan === null): // ==================== アップロード画面 ==========
         <span><i class="swatch swatch--ok"></i>DB に登録済み</span>
         <span><i class="swatch swatch--similar"></i>似た人がいる（書き間違い？）</span>
         <span><i class="swatch swatch--new"></i>新しいメンバーとして登録</span>
-        <span class="muted small">セルにマウスを乗せる（スマホはタップ）と理由が出ます。1つのセルに2人なら「、」で区切る。
-            Key/その他の列は下のセレクトで楽器（キーボード・ヴァイオリン・サックス…）を選べます。1人ずつ変えたいときは「丸野友多郎(Sax)」のように名前の後ろに書く。</span>
+        <span class="muted small">セルにマウスを乗せる（スマホはタップ）と理由が出ます。1つのセルには1人。
+            名簿で1つのセルに2人以上書かれていたら、2人目からは右端の「Key./Other」列に移してあります（楽器はプルダウンで選ぶ）。
+            人が足りないときは「＋ 列を追加」。</span>
     </div>
+
+    <!-- 「＋ 列を追加」で JS が複製するプルダウン（全部の楽器から選べる。初期値はキーボード） -->
+    <template id="tpl-extra-instrument">
+        <select class="select-sm cell-instrument" aria-label="この人の楽器">
+            <?php foreach (instruments() as $ins): ?>
+                <option value="<?= (int)$ins['instrument_id'] ?>"<?= (int)$ins['instrument_id'] === default_instrument_id('Key') ? ' selected' : '' ?>><?= h($ins['short_name']) ?> <?= h($ins['name']) ?></option>
+            <?php endforeach; ?>
+        </select>
+    </template>
 
     <?php foreach ($plan['rosters'] as $ri => $roster): ?>
         <section class="card import-day">
@@ -396,24 +419,21 @@ if ($plan === null): // ==================== アップロード画面 ==========
                     <p class="file-name">📄 <?= h($roster['file']) ?></p>
                     <h3 class="import-day__title">名簿 <?= count($roster['bands']) ?> バンド</h3>
                 </div>
+                <button type="button" class="btn btn--ghost btn--sm" data-add-roster-col>＋ 列を追加</button>
             </header>
             <div class="table-scroll">
-                <table class="table table--edit table--roster">
+                <!-- data-extra-cols: 今ある追加列の数。JS が列を足すときの番号に使う -->
+                <table class="table table--edit table--roster" data-roster-table="<?= $ri ?>" data-extra-cols="<?= $extraCols[$ri] ?>">
                     <thead><tr>
                         <th>使っている出演枠</th>
                         <th>名簿のバンド名</th>
-                        <?php foreach ($roster['columns'] as $col => $c):
-                            $selected = (int)($form['inst'][$ri][$col] ?? $c['instrument_id'] ?? 0); ?>
-                            <th>
-                                <div class="col-head"><?= h($c['title']) ?></div>
-                                <!-- この列の人を何の楽器として登録するか（instrument テーブルから選ぶ） -->
-                                <select name="inst[<?= $ri ?>][<?= $col ?>]" class="select-sm" aria-label="<?= h($c['title']) ?> の楽器">
-                                    <?php foreach (instruments() as $ins): ?>
-                                        <option value="<?= (int)$ins['instrument_id'] ?>"<?= $selected === (int)$ins['instrument_id'] ? ' selected' : '' ?>><?= h($ins['short_name']) ?> <?= h($ins['name']) ?></option>
-                                    <?php endforeach; ?>
-                                </select>
-                            </th>
+                        <?php foreach ($roster['columns'] as $col => $c): ?>
+                            <!-- 見出しは略称で固定。マウスを乗せると名簿ファイルの元の見出しが出る -->
+                            <th title="名簿の見出し: <?= h($c['title']) ?>"><?= h(part_label($c['part'])) ?></th>
                         <?php endforeach; ?>
+                        <?php for ($n = 0; $n < $extraCols[$ri]; $n++): ?>
+                            <th>Key./Other</th>
+                        <?php endfor; ?>
                     </tr></thead>
                     <tbody>
                     <?php foreach ($roster['bands'] as $bi => $band): ?>
@@ -436,11 +456,10 @@ if ($plan === null): // ==================== アップロード画面 ==========
                                     <input name="rb[<?= $ri ?>][<?= $bi ?>][c][<?= $col ?>]" value="<?= h($cellTexts[$k]) ?>"
                                            class="name-input<?= $stt['status'] ? ' is-' . h($stt['status']) : '' ?>"
                                            title="<?= h($stt['hint']) ?>" data-name-cell aria-label="メンバー">
-                                    <?php if (in_array($c['part'], ['Key', 'Other'], true)):
-                                        // Key/その他の列だけ、人（セル）ごとに楽器を選べる。初期値は「列の楽器」
-                                        $ci = (int)($form['rb'][$ri][$bi]['ci'][$col] ?? 0); ?>
+                                    <?php if (is_free_part($c['part'])):
+                                        // Key./Other の列だけ、人（セル）ごとに楽器を選べる。初期値は Key 列ならキーボード、その他列ならその他
+                                        $ci = (int)($form['rb'][$ri][$bi]['ci'][$col] ?? $c['instrument_id'] ?? 0); ?>
                                         <select name="rb[<?= $ri ?>][<?= $bi ?>][ci][<?= $col ?>]" class="select-sm cell-instrument" aria-label="この人の楽器">
-                                            <option value="">列の楽器</option>
                                             <?php foreach (extra_instruments() as $ins): ?>
                                                 <option value="<?= (int)$ins['instrument_id'] ?>"<?= $ci === (int)$ins['instrument_id'] ? ' selected' : '' ?>><?= h($ins['short_name']) ?> <?= h($ins['name']) ?></option>
                                             <?php endforeach; ?>
@@ -448,6 +467,21 @@ if ($plan === null): // ==================== アップロード画面 ==========
                                     <?php endif; ?>
                                 </td>
                             <?php endforeach; ?>
+                            <?php for ($n = 0; $n < $extraCols[$ri]; $n++):
+                                // 右端の追加列: 1セル1人。楽器は全部の楽器から選べる
+                                $k = "$ri-$bi-x$n";
+                                $stt = $cellStatus[$k] ?? ['status' => '', 'hint' => '']; ?>
+                                <td>
+                                    <input name="rb[<?= $ri ?>][<?= $bi ?>][x][<?= $n ?>][name]" value="<?= h($cellTexts[$k]) ?>"
+                                           class="name-input<?= $stt['status'] ? ' is-' . h($stt['status']) : '' ?>"
+                                           title="<?= h($stt['hint']) ?>" data-name-cell aria-label="メンバー">
+                                    <select name="rb[<?= $ri ?>][<?= $bi ?>][x][<?= $n ?>][inst]" class="select-sm cell-instrument" aria-label="この人の楽器">
+                                        <?php foreach (instruments() as $ins): ?>
+                                            <option value="<?= (int)$ins['instrument_id'] ?>"<?= $cellInsts[$k] === (int)$ins['instrument_id'] ? ' selected' : '' ?>><?= h($ins['short_name']) ?> <?= h($ins['name']) ?></option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </td>
+                            <?php endfor; ?>
                         </tr>
                     <?php endforeach; ?>
                     </tbody>
