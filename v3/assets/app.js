@@ -25,11 +25,13 @@
  *    data-rows          … バンド編集のメンバー行（追加・削除）
  *    data-print / data-autosubmit … 印刷ボタン / 選んだら即送信
  *    data-song-list / data-add-song … 曲の編集
+ *    data-toasts        … お知らせのポップアップ（4秒で消える）
  * =====================================================================
  */
 
 // HTML の読み込みが終わってから動かす（まだ無い要素は探せないので）
 document.addEventListener('DOMContentLoaded', () => {
+  setupToasts();
   setupThemeToggle();
   setupFilter();
   setupTabs();
@@ -50,6 +52,36 @@ document.addEventListener('DOMContentLoaded', () => {
   setupSmallThings();
   setupSongs();
 });
+
+/* ---------------------------------------------------------------------
+ * お知らせのポップアップ（partials/header.php の [data-toasts]）
+ *   「更新しました」などを、ヘッダーの下に4秒だけ出す。クリックするとすぐ消える。
+ *   showToast(要素) で、ページ移動なしの処理（setupAlbumAdd）からも出せる。
+ * ------------------------------------------------------------------- */
+const TOAST_MS = 4000;
+
+function showToast(toast) {
+  const box = document.querySelector('[data-toasts]');
+  if (!box) return;
+  toast.classList.add('toast');
+  if (!toast.isConnected) box.appendChild(toast); // ページを開いた時点のお知らせは、もう入れ物の中にある
+
+  let gone = false;
+  const close = () => {
+    if (gone) return;
+    gone = true;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { toast.remove(); return; }
+    toast.classList.add('is-leaving');                          // CSS でフェードアウト
+    toast.addEventListener('transitionend', () => toast.remove(), { once: true });
+    setTimeout(() => toast.remove(), 500);                      // transitionend が来なかったとき用
+  };
+  setTimeout(close, TOAST_MS);
+  toast.addEventListener('click', close);
+}
+
+function setupToasts() {
+  document.querySelectorAll('[data-toasts] .toast').forEach(showToast);
+}
 
 /* ---------------------------------------------------------------------
  * 曲の編集（songs_edit.php）
@@ -103,6 +135,15 @@ function setupSongs() {
 function setupSmallThings() {
   document.querySelectorAll('[data-print]').forEach((btn) => btn.addEventListener('click', () => window.print()));
   document.querySelectorAll('[data-autosubmit]').forEach((sel) => sel.addEventListener('change', () => sel.form.submit()));
+
+  // data-fill-hint … 入学年度の一括編集で、空欄の入力欄に data-hint（初出演の年度）を入れる。保存はしない
+  document.querySelectorAll('[data-fill-hint]').forEach((btn) => btn.addEventListener('click', () => {
+    btn.form.querySelectorAll('input[data-hint]').forEach((input) => {
+      if (input.value === '') {
+        input.value = input.dataset.hint;
+      }
+    });
+  }));
 }
 
 /* ---------------------------------------------------------------------
@@ -933,17 +974,6 @@ function setupAlbumAdd() {
   if (!list) return;
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  // サーバーのメッセージを検索欄の上に出す（前のメッセージは消す）
-  const showFlashes = (flashes) => {
-    let box = document.querySelector('[data-album-flash]');
-    if (!box) {
-      box = document.createElement('div');
-      box.dataset.albumFlash = '';
-      document.querySelector('.album-search__title')?.after(box);
-    }
-    box.replaceChildren(...flashes);
-  };
-
   document.addEventListener('submit', async (e) => {
     const form = e.target.closest('form[data-album-add]');
     if (!form || e.defaultPrevented) return;
@@ -967,7 +997,8 @@ function setupAlbumAdd() {
       // 検索結果の位置がずれないように、変更前の位置を覚えておく（上の一覧が1行増えると、下が押し下げられるため）
       const before = item.getBoundingClientRect().top;
 
-      showFlashes([...doc.querySelectorAll('.flash')].map((f) => document.importNode(f, true)));
+      // サーバーのメッセージは、ほかのページと同じくヘッダーの下のポップアップで出す
+      doc.querySelectorAll('[data-toasts] .flash').forEach((f) => showToast(document.importNode(f, true)));
       const card = [...freshList.children].find((li) => li.dataset.id === key);
       if (!card) {
         // 追加されていない（30枚の上限・Spotify から情報を取れなかった など）。理由は上のメッセージに出ている
@@ -1326,6 +1357,7 @@ function setupMemberRows() {
     input.value = '';
     input.classList.remove('is-ok', 'is-similar', 'is-new');
     input.title = '';
+    row.querySelector('select').value = '2';           // 楽器はギターに戻す（2 = Gt。コピー元の楽器を引き継がない）
     rows.appendChild(row);                             // 末尾に足す
     input.focus();
   });

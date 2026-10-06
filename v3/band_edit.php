@@ -150,7 +150,9 @@ if (is_post()) {
     $st->execute([$bandId]);
     $members = merge_vocal_roles($st->fetchAll()); // Vo と Gt の2行を持つ人は「Gt/Vo」の1行にまとめて見せる
 }
-$members[] = ['name' => '', 'choice' => '2']; // 最後に空の行を1つ（追加用）
+if (!$members) {
+    $members[] = ['name' => '', 'choice' => '2']; // メンバー0人でも1行は出す（「＋ 行を追加」は最後の行をコピーして作るので）
+}
 $allNames = $pdo->query('SELECT name FROM member ORDER BY name')->fetchAll(PDO::FETCH_COLUMN);
 $allArtists = $pdo->query('SELECT name FROM artist ORDER BY name')->fetchAll(PDO::FETCH_COLUMN);
 
@@ -166,17 +168,17 @@ render_header($isNew ? 'バンドを追加' : 'バンドを編集', 'lives');
     <input type="hidden" name="day_id" value="<?= $dayId ?>">
     <div class="form-grid">
         <label class="field field--wide"><span>バンド名（タイムテーブルの表記）</span><input name="name" value="<?= h($band['name']) ?>" maxlength="100" required <?= $isNew ? 'autofocus' : '' ?>></label>
-        <label class="field field--wide"><span>コピー元アーティスト（空欄ならバンド名から自動）</span><input name="artist" value="<?= h($band['artist_name']) ?>" list="artists" maxlength="100"></label>
+        <label class="field field--wide"><span>コピー元アーティスト</span><input name="artist" value="<?= h($band['artist_name']) ?>" list="artists" maxlength="100"></label>
         <label class="field"><span>出演順</span><input type="number" min="1" name="play_order" value="<?= h($band['play_order']) ?>" required></label>
         <label class="field"><span>曲数</span><input type="number" min="0" max="255" name="song_count" value="<?= h($band['song_count']) ?>" required></label>
         <label class="field"><span>開始</span><input type="time" name="start_time" value="<?= h(fmt_time($band['start_time'])) ?>"></label>
         <label class="field"><span>終了</span><input type="time" name="end_time" value="<?= h(fmt_time($band['end_time'])) ?>"></label>
-        <label class="field field--wide"><span>メモ（鍵盤の私物/貸出など）</span><input name="note" value="<?= h($band['note']) ?>" maxlength="255"></label>
+        <label class="field field--wide"><span>メモ</span><input name="note" value="<?= h($band['note']) ?>" maxlength="255"></label>
     </div>
     <datalist id="artists"><?php foreach ($allArtists as $n): ?><option value="<?= h($n) ?>"><?php endforeach; ?></datalist>
 
     <h2 class="section-title">メンバー</h2>
-    <p class="muted small">ギター・ベース・キーボードボーカルは楽器欄で「Gt/Vo」などを選びます。名前が既存メンバーと同じ表記なら同一人物、違えば新しいメンバーになります（色で分かります）。</p>
+    <p class="muted small">サポートメンバーを含めて出演者を全員登録してください。<br>下のボタンからセットリストを登録すると曲ごとの楽器の持ち替えも記録できます。</p>
     <div class="member-rows" data-rows>
         <?php foreach ($members as $m): ?>
             <div class="member-row-edit">
@@ -199,11 +201,11 @@ render_header($isNew ? 'バンドを追加' : 'バンドを編集', 'lives');
             </div>
         <?php endforeach; ?>
     </div>
-    <button type="button" class="btn btn--ghost btn--sm" data-add-row>＋ 行を追加</button>
+    <button type="button" class="btn btn--ghost btn--sm" data-add-row>＋ メンバーを追加</button>
     <datalist id="member-names"><?php foreach ($allNames as $n): ?><option value="<?= h($n) ?>"><?php endforeach; ?></datalist>
 
     <div class="form-actions">
-        <?php if (!$isNew): ?><a class="btn btn--ghost" href="songs_edit.php?band=<?= (int)$band['band_id'] ?>">♪ 曲・演奏者を編集</a><?php endif; ?>
+        <?php if (!$isNew): ?><a class="btn btn--ghost" href="songs_edit.php?band=<?= (int)$band['band_id'] ?>">セットリストを編集</a><?php endif; ?>
         <a class="btn btn--ghost" href="<?= h($backUrl) ?>">キャンセル</a>
         <button class="btn btn--primary" type="submit"><?= $isNew ? '追加する' : '保存する' ?></button>
     </div>

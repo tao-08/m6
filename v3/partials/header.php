@@ -49,8 +49,8 @@ $nav = [
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+JP:wght@400;500;700;900&display=swap" rel="stylesheet">
     <!-- ?v=2 はキャッシュ対策。CSS を変えたら数字を上げると、ブラウザが古い CSS を使い続けない -->
-    <link rel="stylesheet" href="assets/app.css?v=17">
-    <script src="assets/app.js?v=14" defer></script>
+    <link rel="stylesheet" href="assets/app.css?v=19">
+    <script src="assets/app.js?v=16" defer></script>
 </head>
 <body>
 <header class="topbar">
@@ -96,6 +96,7 @@ $nav = [
                 <?php if ($user['admin']): ?>
                     <a href="users.php">ユーザー管理</a>
                     <a href="members_merge.php">メンバーの統合</a>
+                    <a href="members_entry.php">入学年度の一括編集</a>
                     <a href="instruments.php">楽器の管理</a>
                 <?php endif; ?>
                 <form method="post" action="logout.php"><?= csrf_field() ?><button type="submit" class="linkbtn">ログアウト</button></form>
@@ -104,7 +105,10 @@ $nav = [
         <?php endif; ?>
     </div>
 </header>
-<main class="container">
+<!-- お知らせ（「更新しました」など）はヘッダーの下に固定で出し、4秒で消す（assets/app.js の setupToasts） -->
+<div class="toasts" data-toasts aria-live="polite">
 <?php foreach (take_flashes() as $f): ?>
-    <div class="flash flash--<?= h($f['type']) ?>" role="status"><?= nl2br(h($f['message'])) ?></div>
+    <div class="flash flash--<?= h($f['type']) ?> toast" role="status"><?= nl2br(h($f['message'])) ?></div>
 <?php endforeach; ?>
+</div>
+<main class="container">

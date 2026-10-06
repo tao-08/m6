@@ -188,6 +188,17 @@ h3 { font-size: 16px; }
 .flash--error { background: var(--danger-bg); color: var(--danger); }
 .flash--warn { background: var(--warn-bg); color: var(--warn); }
 .flash--info { background: var(--surface-2); color: var(--muted); }
+/* お知らせのポップアップ（トースト）: ヘッダー（高さ60px）のすぐ下に固定。どこまでスクロールしていても見える
+   入れ物は透明 + pointer-events: none なので、下にあるボタンなどのクリックを邪魔しない */
+.toasts { position: fixed; top: 68px; left: 0; right: 0; z-index: 40; /* ヘッダー(20)・スマホの下ナビ(30)より手前 */
+  display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 0 16px; pointer-events: none; }
+.toast { margin: 0; max-width: min(560px, 100%); pointer-events: auto; cursor: pointer; box-shadow: var(--shadow);
+  animation: toast-in .25s ease-out; transition: opacity .3s ease, transform .3s ease; }
+.toast.is-leaving { opacity: 0; transform: translateY(-8px); }
+/* .flash--info の背景（--surface-2）は薄いので、浮かせたときに背景と混ざらないよう枠線を付ける */
+.toast.flash--info { border-color: var(--border); }
+@keyframes toast-in { from { opacity: 0; transform: translateY(-8px); } }
+@media (prefers-reduced-motion: reduce) { .toast { animation: none; transition: none; } }
 
 .toolbar { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; align-items: center; }
 .toolbar .search { min-width: 12em; } /* 狭い画面ではボタンが次の行に回る */
@@ -312,7 +323,9 @@ input:focus, select:focus { outline: none; border-color: var(--accent); box-shad
 .field--wide { grid-column: span 2; }
 .form-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
 .member-rows { display: grid; gap: 8px; margin-bottom: 10px; }
-.member-row-edit { display: grid; grid-template-columns: 232px minmax(0, 1fr) auto; /* 232px =「Key.Vo キーボードボーカル」が切れない幅 */ gap: 8px; align-items: start; }
+.member-row-edit { display: grid; grid-template-columns: 232px minmax(0, 260px) auto; /* 232px =「Key.Vo キーボードボーカル」が切れない幅 / 名前は 260px まで（人名にそれ以上はいらない） */ gap: 8px; align-items: center;
+  justify-content: center; /* 行をカードの中央に置く。これがないと余った幅が auto の列（✕ボタン）に配られて、ボタンが横に伸びる */ }
+.member-row-edit [data-remove-row] { width: 32px; height: 32px; padding: 0; border-radius: 50%; }
 .checks { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 12px 0 4px; }
 .check { display: flex; gap: 8px; align-items: center; font-size: 14px; cursor: pointer; }
 input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px; }
@@ -347,6 +360,8 @@ input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px;
 .table--edit td:first-child, .table--edit th:first-child { padding-left: 20px; }
 .table--edit input[type="checkbox"] { width: 18px; height: 18px; padding: 0; }
 .input-num { width: 64px !important; }
+.input-year { width: 110px !important; }
+.entry-actions { padding: 0 20px 18px; flex-wrap: wrap; }
 .table--edit tr.is-excluded td { opacity: .45; }
 /* タイムテーブルの行の並び替え（JS: setupSlotSort）。≡ を押している間は行を浮かせる */
 .drag-handle { padding: 4px 6px; border: 0; border-radius: 6px; background: none; color: var(--muted); font-size: 18px; line-height: 1;
@@ -519,7 +534,8 @@ body.is-row-dragging, body.is-row-dragging * { cursor: grabbing !important; user
 .stats-filter:not(:has(input[name="who"][value="custom"]:checked)) [data-show-when="who=custom"],
 .stats-filter:not(:has(input[name="period"][value="year"]:checked)) [data-show-when="period=year"],
 .stats-filter:not(:has(input[name="period"][value="range"]:checked)) [data-show-when="period=range"],
-.stats-filter:not(:has(input[name="who"][value="grade"]:checked)) [data-show-when="who=grade"] { display: none; }
+.stats-filter:not(:has(input[name="who"][value="grade"]:checked)) [data-show-when="who=grade"],
+.stats-filter:has(input[name="who"][value="all"]:checked) [data-hide-when="who=all"] { display: none; }
 .stats-scope { margin: 0 0 14px; }
 .stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; margin-top: 14px; }
 .section-title--card { margin: 0 0 12px; }
@@ -592,8 +608,6 @@ code { background: var(--surface-2); padding: 1px 6px; border-radius: 6px; font-
 .albums--pick { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); margin-top: 6px; }
 /* 本人のページの空の一覧（0枚のとき）は隠す。:empty = 中に何も入っていない要素 */
 .albums:empty { display: none; }
-/* ページ移動なしで追加したときのメッセージ（JS: setupAlbumAdd） */
-[data-album-flash] .flash { margin: 12px 0 0; }
 /* ページ移動なしで差し替えた検索結果（JS: setupAlbumSearch）を、下からふわっと出す */
 [data-album-results].is-fresh { animation: album-results-in .25s ease-out; }
 @keyframes album-results-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }

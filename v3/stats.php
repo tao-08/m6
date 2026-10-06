@@ -76,8 +76,17 @@ if ($efrom > $eto) {
     'custom' => [$efrom, $eto],
     default  => [null, null],
 };
-// entry_year が NULL の人は BETWEEN が成立しないので、all 以外では自動的に除外される
-$memberSql = $entryFrom !== null ? ' AND m.entry_year BETWEEN ? AND ?' : '';
+// 入学年度が未登録（entry_year が NULL）の人も含めるか（?unknown=）。
+//   入学年度はアカウント登録時に入るので、アカウントに紐付いていない名簿の人はほぼ全員 NULL。
+//   NULL は BETWEEN が成立せず消えてしまうので、初期値は「含める」にしている。
+//   チェックボックスは外すと何も送られないため、フォーム側で hidden の unknown=0 を先に置いている。
+$includeUnknown = ($_GET['unknown'] ?? '1') !== '0';
+
+$memberSql = match (true) {
+    $entryFrom === null => '',
+    $includeUnknown     => ' AND (m.entry_year BETWEEN ? AND ? OR m.entry_year IS NULL)',
+    default             => ' AND m.entry_year BETWEEN ? AND ?',
+};
 $memberParams = $entryFrom !== null ? [$entryFrom, $entryTo] : [];
 
 // =====================================================================
@@ -112,6 +121,9 @@ $whoLabel = match ($who) {
     'custom' => "{$efrom}〜{$eto}年度入学",
     default  => '全メンバー',
 };
+if ($who !== 'all' && $includeUnknown) {
+    $whoLabel .= ' ＋ 入学年度未登録の人';
+}
 $periodLabel = match ($period) {
     'year'  => fmt_year($year),
     'range' => "{$pfrom}〜{$pto}年度",
@@ -307,6 +319,11 @@ $entryYears = range($thisYear, $entryMin); // 新しい順
             <select name="eto" aria-label="入学年度（まで）" data-autosubmit><?= $yearOptions($eto, $entryYears) ?></select>
             <span class="muted small">年度入学</span>
         </div>
+        <label class="stats-filter__extra small" data-hide-when="who=all" title="アカウント未登録の名簿メンバーは入学年度が空のことが多いです">
+            <input type="hidden" name="unknown" value="0">
+            <input type="checkbox" name="unknown" value="1" data-autosubmit<?= $includeUnknown ? ' checked' : '' ?>>
+            入学年度が未登録の人も含める
+        </label>
     </fieldset>
 
     <fieldset class="stats-filter__row">
