@@ -549,6 +549,29 @@ code { background: var(--surface-2); padding: 1px 6px; border-radius: 6px; font-
 .setlist__who { color: var(--muted); font-size: 12px; margin-left: 6px; }
 
 /* ===== 印刷（ライブ詳細の「印刷」ボタン） ===== */
+/* ===== 好きなアルバム（member.php） =====
+ *  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr))
+ *    → 「140px 以上の列を、入るだけ並べる」。画面幅に合わせて列の数が勝手に変わるので、
+ *      スマホ用の @media を書かなくても 2列〜6列くらいに自動で収まる。
+ */
+.albums { list-style: none; padding: 0; margin: 0 0 18px; display: grid; gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+.album { position: relative; display: grid; gap: 6px; align-content: start; }
+/* aspect-ratio: 1 → 幅に合わせて高さも同じにする（正方形）。画像の読み込み前でもレイアウトがガタつかない */
+.album__art { width: 100%; height: auto; aspect-ratio: 1; object-fit: cover; display: block;
+  border-radius: var(--radius-sm); background: var(--surface-2); box-shadow: var(--shadow); }
+.album__meta { display: grid; gap: 2px; min-width: 0; }
+/* 長いアルバム名は2行で「…」にする */
+.album__title { font-size: 13px; line-height: 1.35; overflow: hidden;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+/* 削除ボタンはジャケットの右上に重ねる */
+.album__delete { position: absolute; top: 6px; right: 6px; margin: 0; }
+.album__delete .btn { background: var(--surface); padding: 4px 9px; line-height: 1; }
+.album-search__form { display: flex; gap: 8px; margin: 12px 0; }
+.album-search__form .search { flex: 1; min-width: 0; }
+.albums--pick { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); margin-top: 6px; }
+.albums--pick .btn, .albums--pick .pill { justify-self: start; }
+
 @media print {
   :root, [data-theme="dark"] { --bg: #fff; --surface: #fff; --text: #000; --muted: #555; --border: #ccc; --shadow: none; --glow: none; }
   .topbar, .footer, .no-print, .flash { display: none !important; }
