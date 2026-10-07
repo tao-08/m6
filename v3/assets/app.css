@@ -135,8 +135,8 @@ a:hover { color: var(--accent); }
 .usermenu { position: relative; }
 .usermenu summary { list-style: none; cursor: pointer; }
 .usermenu summary::-webkit-details-marker { display: none; }
-.avatar { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: 14px;
-  background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: var(--on-accent); }
+/* メニューを開いている間は、検索ボタンの「今いるページ」と同じく赤く光らせる */
+.usermenu[open] summary { color: var(--accent); border-color: var(--accent); }
 .usermenu__panel { position: absolute; right: 0; top: 46px; min-width: 210px; padding: 8px; border-radius: var(--radius-sm);
   background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); display: grid; gap: 2px; }
 .usermenu__panel a, .usermenu__panel .linkbtn { padding: 8px 10px; border-radius: 8px; text-align: left; }

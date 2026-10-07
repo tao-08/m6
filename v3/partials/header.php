@@ -52,7 +52,7 @@ $nav = [
          display=block: 読み込み中にアイコン名の英単語（edit など）が一瞬見えるのを防ぐ -->
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400..600,0..1,0&display=block" rel="stylesheet">
     <!-- ?v=2 はキャッシュ対策。CSS を変えたら数字を上げると、ブラウザが古い CSS を使い続けない -->
-    <link rel="stylesheet" href="assets/app.css?v=36">
+    <link rel="stylesheet" href="assets/app.css?v=37">
     <script src="assets/app.js?v=28" defer></script>
 </head>
 <body>
@@ -86,7 +86,8 @@ $nav = [
         <?php if ($user): ?>
         <!-- <details> はクリックで開閉する HTML 標準の部品。JS なしでメニューが作れる -->
         <details class="usermenu">
-            <summary aria-label="アカウント"><span class="avatar"><?= h(mb_substr($user['name'], 0, 1)) ?></span></summary>
+            <!-- 検索ボタンと同じ見た目の丸いボタンに、人型のアイコン（person）を出す -->
+            <summary class="icon-btn" aria-label="アカウント" title="アカウント"><?= icon('person') ?></summary>
             <div class="usermenu__panel">
                 <div class="usermenu__name"><?= h($user['name']) ?><?= $user['admin'] ? ' <span class="tag">管理者</span>' : '' ?></div>
                 <?php if (!empty($user['member_id'])): ?>
@@ -103,7 +104,7 @@ $nav = [
                         <div class="usermenu__admin-label">管理者専用メニュー</div>
                         <a href="users.php">ユーザー管理</a>
                         <a href="members_merge.php">メンバーの統合</a>
-                        <a href="members_entry.php">入学年度の一括編集</a>
+                        <a href="members_entry.php">メンバープロフィールの一括編集</a>
                         <a href="instruments.php">楽器の管理</a>
                         <a href="venues.php">会場の管理</a>
                     </div>
