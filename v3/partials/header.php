@@ -34,14 +34,14 @@ $nav = [
         ライト / ダークの切り替え。
         CSS が読み込まれる「前」に <html data-theme="..."> を決めておかないと、
         一瞬白く光ってから黒くなる（ちらつく）ので、ここだけ <head> の中に直接書いている。
-        保存先は localStorage（ブラウザごとの保存領域）。無ければ OS の設定に合わせる。
+        保存先は localStorage（ブラウザごとの保存領域）。無ければライト（白）で始める。
     -->
     <script>
         (function () {
             var theme = null;
             try { theme = localStorage.getItem('theme'); } catch (e) {}
             if (theme !== 'light' && theme !== 'dark') {
-                theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+                theme = 'light';
             }
             document.documentElement.dataset.theme = theme;
         })();

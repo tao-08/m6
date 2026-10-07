@@ -778,6 +778,8 @@ code { background: var(--surface-2); padding: 1px 6px; border-radius: 6px; font-
 .song-thumb__clear { position: absolute; inset: 0; display: grid; place-items: center; padding: 0; border: 0; cursor: pointer;
   background: rgba(0, 0, 0, .55); color: #fff; opacity: 0; transition: opacity .15s ease; }
 .song-thumb__clear[hidden] { display: none; }
+/* マークはジャケットの真ん中に大きく（40px の枠に対して 30px）。線も太めにして、小さいジャケットの上でもひと目で分かるように */
+.song-thumb__clear .icon { font-size: 30px; font-variation-settings: "FILL" 0, "wght" 600, "GRAD" 0, "opsz" 48; }
 .song-thumb:hover .song-thumb__clear, .song-thumb__clear:focus-visible { opacity: 1; }
 .song-thumb__clear:hover { background: color-mix(in srgb, var(--danger) 80%, transparent); }
 /* スマホなどマウスが無い端末では「乗せる」ができないので、右下に小さく常に出しておく */
