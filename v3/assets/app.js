@@ -366,7 +366,7 @@ function setupSmallThings() {
     if (!box.hidden) box.focus();
   });
 
-  // data-fill-hint … 入学年度の一括編集で、空欄の入力欄に data-hint（初出演の年度）を入れる。保存はしない
+  // data-fill-hint … メンバープロフィールの一括編集で、空欄の入力欄に data-hint（初出演の年度）を入れる。保存はしない
   document.querySelectorAll('[data-fill-hint]').forEach((btn) => btn.addEventListener('click', () => {
     btn.form.querySelectorAll('input[data-hint]').forEach((input) => {
       if (input.value === '') {
