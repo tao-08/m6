@@ -104,6 +104,8 @@ if (is_post()) {
             // 入学年度は入力値で上書きする（本人の申告を正とする）
             $pdo->prepare('UPDATE member SET entry_year = ? WHERE member_id = ?')->execute([$entryYear, $memberId]);
             $pdo->prepare('UPDATE user_account SET member_id = ? WHERE user_id = ?')->execute([$memberId, $userId]);
+            // 表記ゆれで既存メンバーと一致したときは、アカウント名をメンバー名にそろえる
+            sync_account_names($pdo, $memberId);
             $pdo->commit();
         } catch (Throwable $e) {
             $pdo->rollBack();

@@ -156,9 +156,13 @@ render_header($member['name'], 'members');
     </dl>
 </section>
 
-<?php $canEditAll = $isMe || is_admin(); ?>
-<!-- 編集フォーム。<details> なので普段は閉じている。
-     本人・管理者は全部の項目、それ以外のログイン中の人は「ふりがな」だけ編集できる -->
+<?php if ($isMe): ?>
+<!-- 自分のプロフィールはアカウント設定でまとめて編集する -->
+<a class="card edit-box edit-box--link" href="account.php#member-profile"><?= icon('edit') ?> プロフィールを編集（アカウント設定）</a>
+<?php else: ?>
+<?php $canEditAll = is_admin(); ?>
+<!-- 他の人のページの編集フォーム。<details> なので普段は閉じている。
+     管理者は全部の項目、それ以外のログイン中の人は「ふりがな」だけ編集できる -->
 <details class="card edit-box">
     <summary><?= icon('edit') ?> <?= $canEditAll ? 'プロフィールを編集' : 'ふりがなを編集' ?></summary>
     <form method="post" action="member_edit.php" class="form-grid edit-box__form">
@@ -182,6 +186,7 @@ render_header($member['name'], 'members');
         <div class="form-actions field--wide"><button class="btn btn--primary btn--sm" type="submit">保存</button></div>
     </form>
 </details>
+<?php endif; ?>
 
 <!-- ===== マイアルバム ===== -->
 <!--

@@ -437,6 +437,7 @@ function merge_members(PDO $pdo, int $fromId, int $toId): void
     $pdo->prepare('UPDATE user_account SET member_id = ?
         WHERE member_id = ? AND NOT EXISTS (SELECT 1 FROM (SELECT member_id FROM user_account WHERE member_id = ?) t)')
         ->execute([$toId, $fromId, $toId]);
+    sync_account_names($pdo, $toId); // 付け替えたアカウントの名前を統合先の名前にそろえる
 
     // 好きなアルバムも統合先へ引っ越す（統合先のアルバムの後ろに付け足す）
     //   ・統合先の今の最大番号を先に調べ、統合元の番号にその分を足して重ならないようにする
@@ -503,4 +504,21 @@ function link_users_to_members(PDO $pdo): void
             $update->execute([$m['id'], $u['user_id']]); // 既に使われていれば UNIQUE で無視される
         }
     }
+    // 表記ゆれ（髙/高・空白）で紐付いた人もいるので、名前をメンバー名にそろえる
+    sync_account_names($pdo);
+}
+
+/**
+ * メンバーと紐付いているアカウントの名前（user_account.name）を、メンバー名にそろえる。
+ * 名前の正は member.name。アカウント名はその写し（未紐付けの人だけ自分の名前を持つ）。
+ * $memberId を渡すとその人だけ、null なら紐付いている全員。
+ */
+function sync_account_names(PDO $pdo, ?int $memberId = null): void
+{
+    $sql = 'UPDATE user_account u JOIN member m ON m.member_id = u.member_id SET u.name = m.name';
+    if ($memberId === null) {
+        $pdo->exec($sql);
+        return;
+    }
+    $pdo->prepare($sql . ' WHERE u.member_id = ?')->execute([$memberId]);
 }

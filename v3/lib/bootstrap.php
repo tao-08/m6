@@ -261,15 +261,22 @@ function require_login(): array
         redirect('login.php');
     }
     // DB を作り直した・管理者に削除された等でアカウントが消えていたら、古いセッションを捨てる
-    $st = db()->prepare('SELECT 1 FROM user_account WHERE user_id = ?');
+    $st = db()->prepare('SELECT name, is_admin, member_id FROM user_account WHERE user_id = ?');
     $st->execute([$user['user_id']]);
-    if (!$st->fetchColumn()) {
+    $row = $st->fetch();
+    if (!$row) {
         $_SESSION = [];
         session_regenerate_id(true);
         flash('アカウントが見つかりません。もう一度ログインしてください', 'error');
         redirect('login.php');
     }
-    return $user;
+    // 名前・権限・メンバーの紐付けは、管理者が別の画面から変えることがある。
+    // セッションはログインした瞬間の写しなので、毎回 DB の値で上書きして古いままにしない
+    // （古いままだと、紐付けを外された人が前のメンバーのプロフィールを編集できてしまう）
+    $_SESSION['user']['name'] = $row['name'];
+    $_SESSION['user']['admin'] = (bool)$row['is_admin'];
+    $_SESSION['user']['member_id'] = $row['member_id'] === null ? null : (int)$row['member_id'];
+    return $_SESSION['user'];
 }
 
 /** 管理者専用ページで使う */

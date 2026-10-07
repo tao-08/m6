@@ -52,7 +52,7 @@ $nav = [
          display=block: 読み込み中にアイコン名の英単語（edit など）が一瞬見えるのを防ぐ -->
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400..600,0..1,0&display=block" rel="stylesheet">
     <!-- ?v=2 はキャッシュ対策。CSS を変えたら数字を上げると、ブラウザが古い CSS を使い続けない -->
-    <link rel="stylesheet" href="assets/app.css?v=37">
+    <link rel="stylesheet" href="assets/app.css?v=38">
     <script src="assets/app.js?v=28" defer></script>
 </head>
 <body>
@@ -93,8 +93,8 @@ $nav = [
                 <?php if (!empty($user['member_id'])): ?>
                     <a href="member.php?id=<?= (int)$user['member_id'] ?>">マイページ</a>
                 <?php else: ?>
-                    <!-- メンバー未紐付けだとマイページが無いので、紐付け欄へ案内する -->
-                    <a href="account.php#link-member">マイページ <span class="muted small">（要メンバー設定）</span></a>
+                    <!-- メンバー未紐付けだとマイページが無い。紐付けは管理者がユーザー管理で行う（アカウント設定に案内を出している） -->
+                    <a href="account.php">マイページ <span class="muted small">（管理者の紐付け待ち）</span></a>
                 <?php endif; ?>
                 <a href="account.php">アカウント設定</a>
                 <form method="post" action="logout.php"><?= csrf_field() ?><button type="submit" class="linkbtn">ログアウト</button></form>

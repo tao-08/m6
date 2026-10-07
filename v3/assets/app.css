@@ -717,6 +717,9 @@ body.is-row-dragging, body.is-row-dragging * { cursor: grabbing !important; user
 .edit-box { margin-bottom: 18px; padding: 14px 20px; }
 .edit-box summary { cursor: pointer; font-weight: 700; color: var(--muted); }
 .edit-box[open] summary { margin-bottom: 14px; color: var(--text); }
+/* 自分のページ: 開け閉めの代わりにアカウント設定へのリンク（summary と同じ見た目） */
+.edit-box--link { display: block; font-weight: 700; color: var(--muted); text-decoration: none; }
+.edit-box--link:hover { color: var(--text); }
 .merge-list { display: grid; gap: 10px; }
 .merge-item { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; padding: 14px 18px; }
 .merge-item__names { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; }

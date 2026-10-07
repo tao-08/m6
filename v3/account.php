@@ -3,14 +3,17 @@
  * =====================================================================
  *  account.php — アカウント設定（元の m6 の user_compile.php に当たるページ）
  * =====================================================================
- *  1つのページに3つのフォームがあるので、hidden の action で「どのフォームか」を見分けている。
- *    action=profile  … 名前
+ *  hidden の action で「どのフォームか」を見分けている。
+ *    action=profile  … 名前（メンバーと紐付いていない人だけ）
  *    action=password … パスワード変更（今のパスワードの確認つき）
- *    action=member   … 自分がどのメンバーか（マイページの紐付け）
+ *  メンバーと紐付いている人は、名前の代わりに「プロフィール」（送信先は member_edit.php）。
+ *    名前の正は member.name で、アカウント名はそれに自動でそろう（sync_account_names()）。
+ *  どのメンバーと紐付けるかは、管理者がユーザー管理（users.php）で選ぶ。
  * =====================================================================
  */
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
+require_once __DIR__ . '/lib/albums.php'; // MUSIC_APPS（選べる音楽アプリの一覧）
 $user = require_login();
 
 $pdo = db();
@@ -22,7 +25,8 @@ if (is_post()) {
     verify_csrf();
     $action = $_POST['action'] ?? '';
 
-    if ($action === 'profile') {
+    // 紐付いている人の名前はメンバー名で決まるので、ここでは変えさせない（HTML を書き換えて送られても弾く）
+    if ($action === 'profile' && $account['member_id'] === null) {
         $name = trim((string)($_POST['name'] ?? ''));
         if ($name === '' || mb_strlen($name) > 50) {
             flash('名前は1〜50文字で入力してください', 'error');
@@ -52,35 +56,17 @@ if (is_post()) {
         }
     }
 
-    if ($action === 'member') {
-        $memberId = (int)($_POST['member_id'] ?? 0);
-        if ($memberId === 0) {
-            $pdo->prepare('UPDATE user_account SET member_id = NULL WHERE user_id = ?')->execute([$user['user_id']]);
-            $_SESSION['user']['member_id'] = null;
-            flash('メンバーとの紐付けを外しました');
-        } else {
-            // 他のアカウントがすでに使っているメンバーは選べない
-            $st = $pdo->prepare('SELECT 1 FROM member m WHERE m.member_id = ?
-                AND NOT EXISTS (SELECT 1 FROM user_account u WHERE u.member_id = m.member_id AND u.user_id <> ?)');
-            $st->execute([$memberId, $user['user_id']]);
-            if (!$st->fetchColumn()) {
-                flash('そのメンバーは選べません（別のアカウントが紐付いています）', 'error');
-            } else {
-                $pdo->prepare('UPDATE user_account SET member_id = ? WHERE user_id = ?')->execute([$memberId, $user['user_id']]);
-                $_SESSION['user']['member_id'] = $memberId;
-                flash('メンバーと紐付けました。マイページが使えます');
-            }
-        }
-    }
     redirect('account.php');
 }
 
-// 紐付けできるメンバー（誰のアカウントにも紐付いていない人 + 今の自分）
-$st = $pdo->prepare('SELECT m.member_id, m.name FROM member m
-    WHERE NOT EXISTS (SELECT 1 FROM user_account u WHERE u.member_id = m.member_id AND u.user_id <> ?)
-    ORDER BY m.name');
-$st->execute([$user['user_id']]);
-$linkable = $st->fetchAll();
+// 紐付いているメンバーのプロフィール（マイページの「プロフィールを編集」をここに統合した）。
+// 保存は member_edit.php に任せる（検証を1か所にまとめるため。return=account でここに戻ってくる）
+$myMember = null;
+if ($account['member_id'] !== null) {
+    $st = $pdo->prepare('SELECT * FROM member WHERE member_id = ?');
+    $st->execute([$account['member_id']]);
+    $myMember = $st->fetch() ?: null;
+}
 
 render_header('アカウント設定');
 ?>
@@ -93,26 +79,35 @@ render_header('アカウント設定');
 </section>
 
 <div class="settings">
+    <?php if (!$myMember): ?>
     <form method="post" class="card form-card">
         <h2 class="section-title section-title--card">プロフィール</h2>
+        <p class="muted small">まだメンバーと紐付いていません。紐付けは管理者に頼んでください（紐付くとマイページが使えます）。</p>
         <?= csrf_field() ?><input type="hidden" name="action" value="profile">
         <label class="field"><span>名前</span><input name="name" value="<?= h($account['name']) ?>" maxlength="50" required></label>
         <div class="form-actions"><button class="btn btn--primary btn--sm" type="submit">保存</button></div>
     </form>
-
-    <form method="post" class="card form-card" id="link-member">
-        <h2 class="section-title section-title--card">自分はどのメンバー？</h2>
-        <p class="muted small">選ぶと、ヘッダーに「マイページ」が出て、自分の出演バンドが強調表示されます。</p>
-        <?= csrf_field() ?><input type="hidden" name="action" value="member">
-        <label class="field"><span>メンバー</span>
-            <select name="member_id">
-                <option value="0">紐付けない</option>
-                <?php foreach ($linkable as $m): ?>
-                    <option value="<?= (int)$m['member_id'] ?>"<?= (int)$m['member_id'] === (int)$account['member_id'] ? ' selected' : '' ?>><?= h($m['name']) ?></option>
+    <?php else: ?>
+    <form method="post" action="member_edit.php" class="card form-card" id="member-profile">
+        <h2 class="section-title section-title--card">プロフィール</h2>
+        <p class="muted small"><a href="member.php?id=<?= (int)$myMember['member_id'] ?>">マイページ</a>に表示される内容です。名前を変えるとアカウントの表示名も変わります。</p>
+        <?= csrf_field() ?>
+        <input type="hidden" name="member_id" value="<?= (int)$myMember['member_id'] ?>">
+        <input type="hidden" name="return" value="account">
+        <label class="field"><span>名前</span><input name="name" value="<?= h($myMember['name']) ?>" maxlength="50" required></label>
+        <label class="field"><span>ふりがな</span><input name="name_kana" value="<?= h($myMember['name_kana']) ?>" maxlength="50"></label>
+        <label class="field"><span>入部年度</span><input type="number" name="entry_year" min="1950" max="2100" value="<?= (int)$myMember['entry_year'] ?: '' ?>"></label>
+        <label class="field"><span>使っている音楽アプリ（マイアルバムのリンクをこのアプリで開きます）</span>
+            <select name="music_app">
+                <option value="">未選択</option>
+                <?php foreach (MUSIC_APPS as $value => $label): ?>
+                    <option value="<?= h($value) ?>"<?= $myMember['music_app'] === $value ? ' selected' : '' ?>><?= h($label) ?></option>
                 <?php endforeach; ?>
-            </select></label>
+            </select>
+        </label>
         <div class="form-actions"><button class="btn btn--primary btn--sm" type="submit">保存</button></div>
     </form>
+    <?php endif; ?>
 
     <form method="post" class="card form-card">
         <h2 class="section-title section-title--card">パスワード変更</h2>

@@ -3,7 +3,9 @@
  * =====================================================================
  *  member_edit.php — メンバーのプロフィール（名前・ふりがな・入部年度・音楽アプリ）を更新する
  * =====================================================================
- *  member.php の「プロフィールを編集」フォームの送信先。画面は持たない（処理して戻るだけ）。
+ *  送信元は2つ。画面は持たない（処理して戻るだけ）。
+ *    ・account.php の「メンバープロフィール」（自分のプロフィール。return=account が付いてくる）
+ *    ・member.php の「プロフィールを編集」（他の人のページ。管理者 or ふりがなだけ）
  *  全項目を編集できるのは「本人（アカウントと紐付いている人）」か「管理者」だけ。
  *  それ以外のログイン中の人は「ふりがな」だけ編集できる。
  * =====================================================================
@@ -11,6 +13,7 @@
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/albums.php'; // MUSIC_APPS（選べる音楽アプリの一覧）
+require_once __DIR__ . '/lib/repository.php'; // sync_account_names()
 $user = require_login();
 
 if (!is_post()) {
@@ -19,7 +22,9 @@ if (!is_post()) {
 verify_csrf();
 
 $memberId = (int)($_POST['member_id'] ?? 0);
-$back = 'member.php?id=' . $memberId;
+// 戻り先。URL をそのまま POST で受け取ると、外部サイトに飛ばされる（オープンリダイレクト）ので、
+// 「account」という決まった値のときだけアカウント設定に戻す
+$back = ($_POST['return'] ?? '') === 'account' ? 'account.php#member-profile' : 'member.php?id=' . $memberId;
 $pdo = db();
 
 $kana = trim((string)($_POST['name_kana'] ?? ''));
@@ -78,5 +83,7 @@ if ($errors) {
 // 空欄は NULL（「分からない」）で保存する
 $pdo->prepare('UPDATE member SET name = ?, name_kana = ?, entry_year = ?, music_app = ? WHERE member_id = ?')
     ->execute([$name, $kana !== '' ? $kana : null, $entry === '' ? null : (int)$entry, $musicApp !== '' ? $musicApp : null, $memberId]);
+// 紐付いているアカウントの名前も合わせる（ヘッダーの表示は次のページで require_login() が DB から読み直す）
+sync_account_names($pdo, $memberId);
 flash('プロフィールを更新しました');
 redirect($back);
