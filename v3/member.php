@@ -150,7 +150,7 @@ render_header($member['name'], 'members');
         <h1 class="display"><?= h($member['name']) ?></h1>
         <p class="muted small">
             <?= h($member['name_kana'] ?? '') ?>
-            <?= (int)$member['entry_year'] > 0 ? ' · ' . (int)$member['entry_year'] . '年度入部' : '' ?>
+            <?= (int)$member['entry_year'] > 0 ? ' · ' . (int)$member['entry_year'] . '年入学' : '' ?>
         </p>
         <?php if ($parts): ?><?= part_marks($parts, true) ?><?php endif; ?>
     </div>

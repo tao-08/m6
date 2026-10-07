@@ -246,7 +246,7 @@ render_header('メンバー', 'members');
                 <?= sort_th('name', '名前', $sort, $dir) ?>
                 <?= sort_th('entry', '入学', $sort, $dir, 'num') ?>
                 <th>担当楽器</th>
-                <th>マイアルバム</th>
+                <th>マイアルバム Top5</th>
                 <?= sort_th('bands', '出演', $sort, $dir, 'num') ?>
                 <?= sort_th('lives', 'ライブ', $sort, $dir, 'num hide-sm') ?>
                 <?= sort_th('headliners', 'トリ', $sort, $dir, 'num') ?>

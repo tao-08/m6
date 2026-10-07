@@ -81,7 +81,7 @@ render_header('ログイン');
             <input type="password" name="password" autocomplete="current-password" required>
         </label>
         <button class="btn btn--primary btn--block" type="submit">ログイン</button>
-        <p class="muted small center">アカウントがない？ <a href="register.php">新規登録</a></p>
+        <p class="muted small center"><a href="register.php">新規登録</a></p>
     </form>
 </section>
 <?php render_footer();

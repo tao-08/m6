@@ -113,8 +113,8 @@ if (is_post()) {
             'performers' => array_values($performers),
         ];
     }
-    if (count($songs) > 50) {
-        $errors[] = '曲は50曲までです';
+    if (count($songs) > 15) {
+        $errors[] = '曲は15曲までです';
     }
     // まだ track テーブルに無い曲は、Spotify / iTunes から取り直す（ブラウザから来た曲名や画像URLは使わない）。
     //   通信するので、トランザクションの外で先にやっておく（DB をロックしたまま外部の返事を待たないため）
@@ -205,13 +205,13 @@ render_header('曲を編集', 'lives');
 <?php if (!$members): ?>
     <div class="flash flash--warn">先にバンドのメンバーを登録してください（<a href="band_edit.php?id=<?= $bandId ?>">バンドを編集</a>）</div>
 <?php endif; ?>
-<p class="muted small">チェックを付けた人がその曲の演奏者になります。楽器はバンドでの担当が初期値（ギターボーカルは「Vo/Gt」）。曲だけ持ち替えた（例: ギターの人が1曲だけキーボード）ら、ここで変えてください。</p>
+<p class="muted small">曲ごとに演奏者と担当楽器が記録できます。 曲を検索して紐づけると対応アプリで再生できるようになります。</p>
 
 <form method="post" class="songs-form">
     <?= csrf_field() ?>
     <input type="hidden" name="band_id" value="<?= $bandId ?>">
     <!-- チェックなし: アーティスト欄はバンドのアーティストで固定（薄く表示）。チェックあり: 曲ごとに書ける（assets/app.js の setupSongs） -->
-    <label class="check song-omnibus"><input type="checkbox" name="omnibus" value="1"<?= $omnibus ? ' checked' : '' ?> data-omnibus> オムニバスバンド</label>
+    <label class="check song-omnibus"><input type="checkbox" name="omnibus" value="1"<?= $omnibus ? ' checked' : '' ?> data-omnibus> オムニバスバンド （複数アーティストを演奏）</label>
     <datalist id="artists"><?php foreach ($artistNames as $n): ?><option value="<?= h($n) ?>"><?php endforeach; ?></datalist>
     <div class="song-list" data-song-list data-default-artist="<?= h($defaultArtist) ?>">
         <?php foreach ($cards as $k => $song):

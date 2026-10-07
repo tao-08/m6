@@ -6,7 +6,8 @@
  *  README に書いてあった「特に多い組み合わせ」「出演回数が多い人」「トリが多い人」を見える化する。
  *
  *  絞り込みは2軸で独立している:
- *    ■ メンバー（?who=）… 人で絞る。個人ランキング・ペア・トリ回数に効く
+ *    ■ メンバー（?who=）… 人で絞る。全部の集計に効く
+ *        （人の集計はその人だけ、バンド単位の集計は「対象メンバーが1人でもいるバンド」だけを数える）
  *        all    … 全メンバー
  *        active … 現役（入学年度が 今年度-3 〜 今年度）
  *        near   … 上下3学年（ログイン中ユーザーの入学年度 ±3）
@@ -91,6 +92,12 @@ $memberSql = match (true) {
 };
 $memberParams = $entryFrom !== null ? [$entryFrom, $entryTo] : [];
 
+// バンド単位の集計（年度の概要・アーティスト・曲・会場）用:「対象メンバーが1人でもいるバンド」だけ残す条件。
+//   EXISTS (…) = カッコの中の SELECT が1行でも返れば真。b.band_id を外側から借りている（相関サブクエリ）。
+//   全メンバーのときは条件なし（空文字）にして、余計な検索をしない。
+$bandSql = $memberSql === '' ? '' : ' AND EXISTS (SELECT 1 FROM band_member fbm JOIN member m ON m.member_id = fbm.member_id
+    WHERE fbm.band_id = b.band_id' . $memberSql . ')';
+
 // 「楽器別」「楽器ごとの1位」の Vo の数え方（?vo=sum）
 //   初期値: Vo と Gt を両方やった人は「Vo/Gt」の行に数える（Vo はボーカル専任だけ）
 //   sum   : Vo/Gt の行を作らず、Vo と Gt の両方に1回ずつ数える（Vo = 歌った人全員）
@@ -123,9 +130,9 @@ if ($pfrom > $pto) {
 
 // 画面に出す「いま何で絞っているか」
 $whoLabel = match ($who) {
-    'active' => "現役（{$activeFrom}〜{$thisYear}年度入学）",
-    'near'   => '上下3学年（' . ($myEntry - 3) . '〜' . ($myEntry + 3) . '年度入学）',
-    'custom' => "{$efrom}〜{$eto}年度入学",
+    'active' => "現役（{$activeFrom}〜{$thisYear}年入学）",
+    'near'   => '上下3学年（' . ($myEntry - 3) . '〜' . ($myEntry + 3) . '年入学）',
+    'custom' => "{$efrom}〜{$eto}年入学",
     default  => '全メンバー',
 };
 if ($who !== 'all' && $includeUnknown) {
@@ -146,17 +153,20 @@ function rows(PDO $pdo, string $sql, array $params): array
 }
 
 // ---- 年度ごとの概要 ----
+//   メンバーで絞っているときは「対象メンバーがいるバンド」と、そのバンドが出たライブ・日程だけ数える。出演者も対象メンバーだけ。
+//   ? の順番: SELECT の中の出演者サブクエリ（$memberSql）→ WHERE（$yearSql → $bandSql）
 $overview = rows($pdo, 'SELECT lm.fiscal_year AS year,
         COUNT(DISTINCT lm.live_id) AS lives, COUNT(DISTINCT ld.live_day_id) AS days,
         COUNT(DISTINCT b.band_id) AS bands, COALESCE(SUM(b.song_count), 0) AS songs,
         (SELECT COUNT(DISTINCT bm.member_id) FROM (' . MEMBERSHIP_SQL . ') bm
+            JOIN member m ON m.member_id = bm.member_id
             JOIN band b2 ON b2.band_id = bm.band_id JOIN live_day ld2 ON ld2.live_day_id = b2.live_day_id
-            JOIN live lm2 ON lm2.live_id = ld2.live_id WHERE lm2.fiscal_year = lm.fiscal_year) AS members
+            JOIN live lm2 ON lm2.live_id = ld2.live_id WHERE lm2.fiscal_year = lm.fiscal_year' . $memberSql . ') AS members
     FROM live lm
     JOIN live_day ld ON ld.live_id = lm.live_id
     LEFT JOIN band b ON b.live_day_id = ld.live_day_id
-    WHERE 1 = 1' . $yearSql . '
-    GROUP BY lm.fiscal_year ORDER BY lm.fiscal_year DESC', $yearParams);
+    WHERE 1 = 1' . $yearSql . $bandSql . '
+    GROUP BY lm.fiscal_year ORDER BY lm.fiscal_year DESC', array_merge($memberParams, $yearParams, $memberParams));
 
 // ---- よく組むペア ----
 //   同じ表を2回 JOIN（自己結合）して、同じバンドにいた2人の組を数える。
@@ -196,15 +206,16 @@ $artists = rows($pdo, 'SELECT a.artist_id, a.name, COUNT(*) AS n
     JOIN artist a ON a.artist_id = b.artist_id
     JOIN live_day ld ON ld.live_day_id = b.live_day_id
     JOIN live lm ON lm.live_id = ld.live_id
-    WHERE 1 = 1' . $yearSql . '
+    WHERE 1 = 1' . $yearSql . $bandSql . '
     GROUP BY a.artist_id
-    ORDER BY n DESC, a.name LIMIT 20', $yearParams);
+    ORDER BY n DESC, a.name LIMIT 20', array_merge($yearParams, $memberParams));
 
 // ---- 楽器別 ----
 //   Vo と Gt を両方やった人は「Vo/Gt」の行に数える（「Vo」はボーカル専任だけ）。「Voを合算する」なら Vo と Gt の両方に数える。
 //   このまとめは SQL では書きにくいので、行を全部読んで PHP で数える（lineup_parts_by_band → tally_parts）
 //   slots = のべ出演数（バンド × 人）、people = 人数
 //   「Voを合算する」はページ移動なしで切り替えられるように、両方の数え方を作っておく（表示しない方は hidden）
+//   メンバーで絞っているときは、対象メンバーの出演だけ数える（下の「楽器ごとの1位」もこの行を使い回す）
 $instrumentRows = rows($pdo, 'SELECT bm.band_id, bm.member_id, m.name, i.short_name, i.name AS instrument_name, i.sort_order
     FROM band_member bm
     JOIN member m ON m.member_id = bm.member_id
@@ -212,8 +223,8 @@ $instrumentRows = rows($pdo, 'SELECT bm.band_id, bm.member_id, m.name, i.short_n
     JOIN band b ON b.band_id = bm.band_id
     JOIN live_day ld ON ld.live_day_id = b.live_day_id
     JOIN live lm ON lm.live_id = ld.live_id
-    WHERE 1 = 1' . $yearSql . '
-    ORDER BY i.sort_order', $yearParams);
+    WHERE 1 = 1' . $yearSql . $memberSql . '
+    ORDER BY i.sort_order', array_merge($yearParams, $memberParams));
 $instrumentStatsOf = static fn(bool $mergeVocal): array => array_map(
     static fn($t) => $t + ['slots' => $t['n'], 'people' => count($t['members'])],
     sort_tally_by_count(tally_parts(lineup_parts_by_band($instrumentRows, $mergeVocal))));
@@ -225,8 +236,8 @@ $venues = rows($pdo, 'SELECT v.name, COUNT(DISTINCT ld.live_day_id) AS days, COU
     JOIN live_day ld ON ld.venue_id = v.venue_id
     JOIN live lm ON lm.live_id = ld.live_id
     LEFT JOIN band b ON b.live_day_id = ld.live_day_id
-    WHERE 1 = 1' . $yearSql . '
-    GROUP BY v.venue_id ORDER BY days DESC, bands DESC', $yearParams);
+    WHERE 1 = 1' . $yearSql . $bandSql . '
+    GROUP BY v.venue_id ORDER BY days DESC, bands DESC', array_merge($yearParams, $memberParams));
 
 // =====================================================================
 //  個人ランキング
@@ -261,16 +272,8 @@ $topSongs = rows($pdo, 'SELECT m.member_id, m.name,
 
 // ---- 楽器ごとの1位 ----
 //   パート（Vo/Gt は Vo/Gt として。「Voを合算する」なら Vo と Gt の両方）× 人 で数えて、パートごとに一番多い人だけ残す（同じ数なら名前順）
-//   楽器別と同じく、両方の数え方を作っておく
-$kingRows = rows($pdo, 'SELECT bm.band_id, bm.member_id, m.name, i.short_name, i.name AS instrument_name, i.sort_order
-    FROM band_member bm
-    JOIN member m ON m.member_id = bm.member_id
-    JOIN instrument i ON i.instrument_id = bm.instrument_id
-    JOIN band b ON b.band_id = bm.band_id
-    JOIN live_day ld ON ld.live_day_id = b.live_day_id
-    JOIN live lm ON lm.live_id = ld.live_id
-    WHERE 1 = 1' . $yearSql . $memberSql . '
-    ORDER BY i.sort_order', array_merge($yearParams, $memberParams));
+//   楽器別と同じく、両方の数え方を作っておく（行は楽器別と同じものを使い回す）
+$kingRows = $instrumentRows;
 $names = array_column($kingRows, 'name', 'member_id'); // member_id => 名前
 $kingsOf = static function (bool $mergeVocal) use ($kingRows, $names): array {
     $kings = [];
@@ -300,7 +303,7 @@ foreach (rows($pdo, 'SELECT s.title, a.artist_id, a.name AS artist_name,
     LEFT JOIN track t ON t.source = s.track_source AND t.track_id = s.track_id
     JOIN live_day ld ON ld.live_day_id = b.live_day_id
     JOIN live lm ON lm.live_id = ld.live_id
-    WHERE 1 = 1' . $yearSql, $yearParams) as $r) {
+    WHERE 1 = 1' . $yearSql . $bandSql, array_merge($yearParams, $memberParams)) as $r) {
     $titleKey = song_title_key($r['title'], $r['artist_name']);
     $key = ($r['artist_id'] ?? 0) . ':' . ($titleKey !== '' ? $titleKey : $r['title']); // 記号だけの曲名はそのまま比べる
     $g = &$topTitles[$key]; // & = 配列の中身を直接書き換える（参照）
@@ -404,7 +407,7 @@ $entryYears = range($thisYear, $entryMin); // 新しい順
             <select name="efrom" aria-label="入学年度（から）" data-autosubmit><?= $yearOptions($efrom, $entryYears) ?></select>
             <span>〜</span>
             <select name="eto" aria-label="入学年度（まで）" data-autosubmit><?= $yearOptions($eto, $entryYears) ?></select>
-            <span class="muted small">年度入学</span>
+            <span class="muted small">年入学</span>
         </div>
         <label class="stats-filter__extra small" data-hide-when="who=all" title="アカウント未登録の名簿メンバーは入学年度が空のことが多いです">
             <input type="hidden" name="unknown" value="0">
@@ -437,7 +440,7 @@ $entryYears = range($thisYear, $entryMin); // 新しい順
 
 <p class="muted small stats-scope">
     表示中: <strong><?= h($whoLabel) ?></strong> × <strong><?= h($periodLabel) ?></strong>
-    — メンバーの絞り込みは「個人ランキング」「よく組むペア」「トリ回数」に効きます。それ以外は期間だけで集計しています。
+    — メンバーで絞ると、バンド単位の集計（概要・アーティスト・曲・会場）は「対象メンバーが1人でもいるバンド」、楽器別は対象メンバーの出演だけで数えます。
 </p>
 
 <div class="card table-card">

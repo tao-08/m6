@@ -38,7 +38,7 @@ if (is_post()) {
 
     // ---- 入力チェック（文字数は DB の varchar の長さに合わせる） ----
     if (!preg_match('/^[A-Za-z0-9_\-]{3,25}$/', $v['login_id'])) {   // login_id varchar(25)
-        $errors[] = 'ログインIDは半角英数字・_・- の3〜25文字にしてください';
+        $errors[] = 'ログインIDは半角英数字3〜25文字にしてください 記号は _ と ‐ のみ使用できます';
     }
     if ($v['name'] === '' || mb_strlen($v['name']) > 50) {           // name varchar(50)
         $errors[] = '名前を入力してください（50文字以内）';
@@ -154,7 +154,7 @@ render_header('新規登録');
         <label class="field"><span>パスワード（確認）</span>
             <input type="password" name="password_confirm" autocomplete="new-password" minlength="8" required></label>
         <button class="btn btn--primary btn--block" type="submit">登録する</button>
-        <p class="muted small center">登録済み？ <a href="login.php">ログイン</a></p>
+        <p class="muted small center"><a href="login.php">戻る</a></p>
     </form>
 </section>
 <?php render_footer();

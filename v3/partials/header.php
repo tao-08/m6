@@ -27,9 +27,9 @@ $nav = [
     <meta name="csrf-token" content="<?= h(csrf_token()) ?>">
     <title><?= h($pageTitle) ?> | <?= h(APP_NAME) ?></title>
     <!-- ファビコンは元の m6 と同じ画像を使う -->
-    <link rel="icon" href="../src/assets/favicons/240.png" sizes="any">
-    <link rel="icon" type="image/png" href="../src/assets/favicons/48.png" sizes="48x48">
-    <link rel="apple-touch-icon" href="../src/assets/favicons/240.png" sizes="240x240">
+    <link rel="icon" href="../assets/favicons/240.png" sizes="any">
+    <link rel="icon" type="image/png" href="../assets/favicons/48.png" sizes="48x48">
+    <link rel="apple-touch-icon" href="../assets/favicons/240.png" sizes="240x240">
     <!--
         ライト / ダークの切り替え。
         CSS が読み込まれる「前」に <html data-theme="..."> を決めておかないと、

@@ -82,7 +82,7 @@ render_header('アカウント設定');
     <?php if (!$myMember): ?>
     <form method="post" class="card form-card">
         <h2 class="section-title section-title--card">プロフィール</h2>
-        <p class="muted small">まだメンバーと紐付いていません。紐付けは管理者に頼んでください（紐付くとマイページが使えます）。</p>
+        <p class="muted small">まだメンバーと紐付いていません。管理者に依頼してください。（紐付くとマイページが使用できます）。</p>
         <?= csrf_field() ?><input type="hidden" name="action" value="profile">
         <label class="field"><span>名前</span><input name="name" value="<?= h($account['name']) ?>" maxlength="50" required></label>
         <div class="form-actions"><button class="btn btn--primary btn--sm" type="submit">保存</button></div>
@@ -90,14 +90,13 @@ render_header('アカウント設定');
     <?php else: ?>
     <form method="post" action="member_edit.php" class="card form-card" id="member-profile">
         <h2 class="section-title section-title--card">プロフィール</h2>
-        <p class="muted small"><a href="member.php?id=<?= (int)$myMember['member_id'] ?>">マイページ</a>に表示される内容です。名前を変えるとアカウントの表示名も変わります。</p>
         <?= csrf_field() ?>
         <input type="hidden" name="member_id" value="<?= (int)$myMember['member_id'] ?>">
         <input type="hidden" name="return" value="account">
         <label class="field"><span>名前</span><input name="name" value="<?= h($myMember['name']) ?>" maxlength="50" required></label>
         <label class="field"><span>ふりがな</span><input name="name_kana" value="<?= h($myMember['name_kana']) ?>" maxlength="50"></label>
         <label class="field"><span>入部年度</span><input type="number" name="entry_year" min="1950" max="2100" value="<?= (int)$myMember['entry_year'] ?: '' ?>"></label>
-        <label class="field"><span>使っている音楽アプリ（マイアルバムのリンクをこのアプリで開きます）</span>
+        <label class="field"><span>使用音楽アプリ（対応するリンクを選択したアプリで開きます）</span>
             <select name="music_app">
                 <option value="">未選択</option>
                 <?php foreach (MUSIC_APPS as $value => $label): ?>

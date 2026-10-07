@@ -254,13 +254,6 @@ render_header('タイムテーブルを編集', 'lives'); ?>
 <h1 class="display display--sm">タイムテーブルを編集</h1>
 <?php foreach ($errors as $e): ?><div class="flash flash--error"><?= h($e) ?></div><?php endforeach; ?>
 
-<div class="legend">
-    <span><i class="swatch swatch--ok"></i>DB に登録済み</span>
-    <span><i class="swatch swatch--similar"></i>似た人がいる（書き間違い？）</span>
-    <span><i class="swatch swatch--new"></i>新しいメンバーとして登録</span>
-    <span class="muted small">名前の欄にマウスを乗せる（スマホはタップ）と理由が出ます。1つのセルに1人、楽器は名前の下で選びます。人を外すときは名前を消すだけ。
-        左端の ≡ をドラッグ（↑↓キーでも可）すると出演順を入れ替えられます。時間はその位置に残ります。曲数・メモはバンドごとの編集画面で直せます。</span>
-</div>
 
 <?php if (count($days) > 1): ?>
 <!-- 日程タブ（live.php と同じ。JS が動かなければ全日程が縦に並ぶ）。隠れている日程の入力欄もちゃんと送信される -->
@@ -295,7 +288,13 @@ render_header('タイムテーブルを編集', 'lives'); ?>
                 <div>
                     <p class="eyebrow"><?= h($d['label']) ?></p>
                     <h2 class="import-day__title"><?= h(fmt_date($d['held_on']) ?: '日付未設定') ?> · <?= count($dayBands) ?> バンド</h2>
-                </div>
+				<div class="legend">
+					<span><i class="swatch swatch--ok"></i>DB に登録済み</span>
+					<span><i class="swatch swatch--similar"></i>類似氏名あり</span>
+					<span><i class="swatch swatch--new"></i>新しいメンバーとして登録</span>
+				</div>
+
+				</div>
                 <?php if ($dayBands): ?>
                     <div class="tt-actions">
                         <button type="button" class="btn btn--ghost btn--sm" data-add-tt-break data-day="<?= $dayId ?>">＋ 休憩を追加</button>
