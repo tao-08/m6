@@ -767,6 +767,11 @@ code { background: var(--surface-2); padding: 1px 6px; border-radius: 6px; font-
 .song-list { display: grid; gap: 12px; margin-bottom: 12px; }
 .song-card { display: grid; gap: 12px; padding: 16px 18px; }
 .song-card--new { border-style: dashed; }
+/* 「＋ 曲を追加」で出てきたカード: 上からふわっと出す（JS の setupSongs が is-entering を付け、終わったら外す）。
+   追加したばかりのカードを🗑で消すときの「縮んで消える」動きは、高さがカードごとに違うので JS（animate）でやっている */
+.song-card.is-entering { animation: song-card-in .22s ease-out; }
+@keyframes song-card-in { from { opacity: 0; transform: translateY(-8px) scale(.98); } }
+@media (prefers-reduced-motion: reduce) { .song-card.is-entering { animation: none; } }
 .song-card__head { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 .song-card__no { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); font-weight: 700; }
 .song-card__no [data-song-no] { font-size: 18px; color: var(--text); font-weight: 800; min-width: 1.4em; text-align: right; }
@@ -801,6 +806,9 @@ code { background: var(--surface-2); padding: 1px 6px; border-radius: 6px; font-
 .song-card__delete[aria-pressed="true"] { color: #fff; background: var(--danger); }
 .song-card.is-deleted { border-color: var(--danger); }
 .song-card.is-deleted > :not(.song-card__head), .song-card.is-deleted .song-card__head > :not(.song-card__delete) { opacity: .35; }
+/* 削除の印を付けた・外したときに、薄くなるのをパッと切り替えずに少しだけなめらかに */
+.song-card > :not(.song-card__head), .song-card__head > * { transition: opacity .18s ease; }
+@media (prefers-reduced-motion: reduce) { .song-card > :not(.song-card__head), .song-card__head > * { transition: none; } }
 /* 🔍 の検索結果。押すとその曲を紐付ける */
 .track-results { display: grid; gap: 4px; max-height: 360px; overflow-y: auto; padding: 6px; border-radius: var(--radius-sm);
   border: 1px solid var(--border); background: var(--surface-2); }
@@ -828,7 +836,9 @@ code { background: var(--surface-2); padding: 1px 6px; border-radius: 6px; font-
 @media (prefers-reduced-motion: reduce) { .track-results:not([hidden]), .track-results.is-closing, .track-option, .track-results__msg { animation: none; } }
 .performers { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 6px 14px; }
 .performers__tools { grid-column: 1 / -1; }
-.performer { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 6px; align-items: center; padding: 6px 8px; border-radius: 8px; background: var(--surface-2); }
+/* 1段目に名前、2段目に楽器1・楽器2（横並びだと、カードが細い PC で名前が折り返して崩れるため） */
+.performer { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; align-items: center; padding: 6px 8px; border-radius: 8px; background: var(--surface-2); }
+.performer > .performer__name { grid-column: 1 / -1; }
 .performer.is-off { opacity: .45; }
 .performer select { padding: 4px 6px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); font-size: 12px; }
 .performer__name { font-size: 14px; font-weight: 600; min-width: 0; }

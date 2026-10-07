@@ -137,7 +137,7 @@ function setupToasts() {
 
 /* ---------------------------------------------------------------------
  * 曲の編集（songs_edit.php）
- *   data-add-song       … 最後のカードをコピーして空の曲カードを足す
+ *   data-add-song       … <template data-song-template> をコピーして空の曲カードを足す
  *   data-toggle-all     … そのカードの全員のチェックを一括で ON / OFF
  *   data-performer-on   … チェックを外した人を薄く表示
  *   data-omnibus        … オムニバスのチェック。外すとアーティスト欄をバンドのアーティストに戻して編集不可にする
@@ -161,36 +161,62 @@ function setupSongs() {
     });
   });
 
+  // 「何曲目」を画面の上から 1, 2, 3... と振り直す（カードを足した・消したとき）。消えている途中のカードは数えない
+  const renumber = () => {
+    list.querySelectorAll('[data-song-card]:not(.is-leaving)').forEach((c, i) => {
+      c.querySelector('[data-song-no]').textContent = String(i + 1);
+    });
+  };
+
+  // 空のカードの元（songs_edit.php の <template>）。template の中身は画面に出ず、送信もされない
+  const template = list.querySelector('[data-song-template]');
+  // name="songs[3][title]" の 3 の部分。保存済みの曲（0, 1, 2...）より大きく、押すたびに 1 ずつ増やして被らないようにする
+  //   （Date.now() をそのまま使うと、同じミリ秒に2回押したとき同じ番号になり、2曲が1曲に混ざる）
+  let nextIndex = Date.now();
   document.querySelector('[data-add-song]').addEventListener('click', () => {
-    const cards = list.querySelectorAll('[data-song-card]');
-    const last = cards[cards.length - 1];
-    const card = last.cloneNode(true);
-    const newIndex = Date.now(); // name="songs[3][title]" の 3 の部分を、他と被らない番号にする
+    const card = template.content.firstElementChild.cloneNode(true);
+    const newIndex = nextIndex++;
     card.querySelectorAll('[name]').forEach((el) => {
       el.name = el.name.replace(/^songs\[[^\]]+\]/, `songs[${newIndex}]`);
     });
-    card.querySelector('[name$="[title]"]').value = '';
-    card.querySelector('[name$="[id]"]').value = '';                       // 新しい曲として保存させる
-    card.querySelector('[data-song-delete]')?.remove();      // 新しい曲に「削除」は不要
-    card.querySelector('[data-song-delete-btn]')?.remove();
-    card.classList.remove('is-deleted');
-    card.querySelector('[data-song-no]').textContent = String(cards.length + 1);
+    // テンプレートはページを開いたときのオムニバスの状態で作られているので、今のチェックに合わせる
     const artist = card.querySelector('[data-song-artist]');
-    artist.value = defaultArtist; // コピー元の曲のアーティストは引き継がない
-    delete artist.dataset.typed;
-    setTrack(card, null); // コピー元の曲の紐付けも引き継がない
-    card.querySelectorAll('[data-performer-on]').forEach((cb) => { cb.checked = true; cb.closest('.performer').classList.remove('is-off'); });
-    card.classList.add('song-card--new');
+    artist.value = defaultArtist;
+    artist.readOnly = !omnibus.checked;
+    // ふわっと出す（CSS の .song-card.is-entering）。終わったらクラスを外しておく
+    card.classList.add('is-entering');
+    card.addEventListener('animationend', () => card.classList.remove('is-entering'), { once: true });
     list.appendChild(card);
+    renumber();
     card.querySelector('[name$="[title]"]').focus();
   });
 
   // カードが後から増えるので、list でまとめてイベントを受ける（イベント委譲）
   list.addEventListener('click', (e) => {
-    // 🗑 削除の印を付ける / 外す（消えるのは保存したとき）
     const del = e.target.closest('[data-song-delete-btn]');
     if (del) {
       const card = del.closest('[data-song-card]');
+      // 追加したばかりの曲: まだ保存していないので、カードごと消すだけ
+      if (card.classList.contains('song-card--new')) {
+        if (card.classList.contains('is-leaving')) return; // 消えている途中にもう一度押された
+        card.classList.add('is-leaving');
+        // 消えるアニメーションの途中で保存されても送られないように、先に入力欄を無効にしておく（disabled の欄は送信されない）
+        card.querySelectorAll('[name]').forEach((el) => { el.disabled = true; });
+        renumber();
+        if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
+          card.remove();
+          return;
+        }
+        // 薄くなりながら高さを 0 まで縮める。高さはカードごとに違うので、今の高さを測ってから animate() で動かす。
+        //   margin-bottom: -12px … .song-list の gap（カードの間の 12px）のぶんも詰める
+        card.style.overflow = 'hidden';
+        card.animate([
+          { opacity: 1, transform: 'none', height: `${card.offsetHeight}px` },
+          { opacity: 0, transform: 'scale(.98)', height: '0px', paddingTop: '0px', paddingBottom: '0px', borderWidth: '0px', marginBottom: '-12px' },
+        ], { duration: 220, easing: 'ease-in' }).onfinish = () => card.remove();
+        return;
+      }
+      // 保存済みの曲: 削除の印を付ける / 外す（消えるのは保存したとき）
       const on = !card.classList.contains('is-deleted');
       card.classList.toggle('is-deleted', on);
       card.querySelector('[data-song-delete]').value = on ? '1' : '';

@@ -8,8 +8,9 @@
  *    楽器1 / 楽器2 … その曲で弾いた楽器（ギターボーカルなら「Vo/Gt」1つで Vo と Gt の両方になる）
  *  を選ぶ。
  *
- *  曲の追加: 空のカードに曲名を書けば追加。曲名が空のカードは無視される。
+ *  曲の追加: 「＋ 曲を追加」で空のカードを出し、曲名を書けば追加。曲名が空のカードは無視される。
  *  曲の削除: 🗑 ボタン（押すとカードが薄くなり、保存したときに消える。もう一度押すと取り消し）。
+ *            追加したばかりの（まだ保存していない）カードは、押すとその場で消える。
  *  並び順  : 画面の上から順に 1,2,3... と振る（番号は手で変えない）。
  *  アーティスト: 一番上の「オムニバス」にチェックしたときだけ、曲ごとに書ける。
  *    チェックなし → 全曲バンドのアーティスト（song.artist_id は NULL）。
@@ -183,13 +184,11 @@ foreach ($st as $r) {
     $played[$r['song_id']][$r['member_id']][] = (int)$r['instrument_id'];
 }
 
-// 空のカード: 曲が1つも無ければ「曲数」の分、あれば1枚
-$blankCount = $songs ? 1 : max(1, min(10, (int)$band['song_count']));
+// 空のカードは最初は出さない。最後に1枚だけ <template>（画面に出ない・送信もされない）の中に作っておき、
+// 「＋ 曲を追加」を押したら JS がコピーして並べる（assets/app.js の setupSongs）
 $cards = $songs;
-for ($i = 0; $i < $blankCount; $i++) {
-    $cards[] = ['song_id' => null, 'track_no' => count($songs) + $i + 1, 'title' => '', 'artist_name' => null,
-        'track_source' => null, 'track_id' => null, 'track_title' => null, 'track_artist' => null, 'artwork_url' => null];
-}
+$cards[] = ['song_id' => null, 'track_no' => 0, 'title' => '', 'artist_name' => null,
+    'track_source' => null, 'track_id' => null, 'track_title' => null, 'track_artist' => null, 'artwork_url' => null];
 $omnibus = (bool)$band['is_omnibus'];
 $artistNames = $pdo->query('SELECT name FROM artist ORDER BY name')->fetchAll(PDO::FETCH_COLUMN);
 
@@ -220,6 +219,7 @@ render_header('曲を編集', 'lives');
             $base = "songs[$k]";
             $artist = $omnibus ? ($song['artist_name'] ?? $defaultArtist) : $defaultArtist;
             $trackKey = $song['track_id'] === null ? '' : album_key($song['track_source'], $song['track_id']); ?>
+            <?php if ($isNew): ?><template data-song-template><?php endif; ?>
             <section class="card song-card<?= $isNew ? ' song-card--new' : '' ?>" data-song-card>
                 <div class="song-card__head">
                     <span class="song-card__no"><span data-song-no><?= (int)$song['track_no'] ?></span>曲目</span>
@@ -234,11 +234,10 @@ render_header('曲を編集', 'lives');
                     <input type="hidden" name="<?= $base ?>[track]" value="<?= h($trackKey) ?>" data-track-key>
                     <button type="button" class="btn btn--ghost btn--sm" data-track-search><?= icon('search') ?> 曲を探す</button>
                     <input type="hidden" name="<?= $base ?>[id]" value="<?= $isNew ? '' : (int)$song['song_id'] ?>">
-                    <?php if (!$isNew): ?>
-                        <!-- 🗑 押すと「削除する」印（隠し項目を 1）が付いてカードが薄くなる。もう一度押すと取り消し。消えるのは保存したとき -->
-                        <input type="hidden" name="<?= $base ?>[delete]" value="" data-song-delete>
-                        <button type="button" class="song-card__delete" data-song-delete-btn aria-label="この曲を削除" aria-pressed="false"><?= icon(ICON_TRASH) ?></button>
-                    <?php endif; ?>
+                    <!-- 🗑 保存済みの曲: 押すと「削除する」印（隠し項目を 1）が付いてカードが薄くなる。もう一度押すと取り消し。消えるのは保存したとき
+                         追加したばかりの曲: まだ保存していないので、押すとカードごとその場で消える -->
+                    <?php if (!$isNew): ?><input type="hidden" name="<?= $base ?>[delete]" value="" data-song-delete><?php endif; ?>
+                    <button type="button" class="song-card__delete" data-song-delete-btn aria-label="この曲を削除" aria-pressed="false"><?= icon(ICON_TRASH) ?></button>
                 </div>
                 <!-- 🔍 の検索結果（assets/app.js の setupTrackSearch が中身を入れる） -->
                 <div class="track-results" data-track-results hidden></div>
@@ -261,6 +260,7 @@ render_header('曲を編集', 'lives');
                     <?php endforeach; ?>
                 </div>
             </section>
+            <?php if ($isNew): ?></template><?php endif; ?>
         <?php endforeach; ?>
     </div>
     <button type="button" class="btn btn--ghost btn--sm" data-add-song>＋ 曲を追加</button>
