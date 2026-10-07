@@ -166,17 +166,17 @@ render_header($band['name'], 'lives');
         <p class="eyebrow"><?= h(implode(' · ', $when)) ?></p>
         <h1 class="display"><?= h($band['name']) ?></h1>
         <p class="band-tags">
-            <?php if ($isLast): ?><span class="tag tag--accent" aria-label="トリ">🐦</span><?php endif; ?>
+            <?php if ($isLast): ?><span class="tag tag--tori" aria-label="トリ" title="トリ"><?= icon('flutter_dash') ?></span><?php endif; ?>
             <?php if ($isMine): ?><span class="tag">出演</span><?php endif; ?>
             <?php if ($band['artist_id']): ?>
-                <a href="artist.php?id=<?= (int)$band['artist_id'] ?>">♪ <?= h($band['artist_name']) ?></a>
+                <a href="artist.php?id=<?= (int)$band['artist_id'] ?>"><?= icon('music_note') ?> <?= h($band['artist_name']) ?></a>
             <?php endif; ?>
             <?php if ($band['venue_name']): ?><span class="muted"><?= h($band['venue_name']) ?></span><?php endif; ?>
         </p>
     </div>
     <div class="hero__actions no-print">
-        <a class="btn btn--sm" href="band_edit.php?id=<?= $bandId ?>">✎ バンドを編集</a>
-        <a class="btn btn--sm" href="songs_edit.php?band=<?= $bandId ?>">♪ 曲を<?= $songs ? '編集' : '登録' ?></a>
+        <a class="btn btn--sm" href="band_edit.php?id=<?= $bandId ?>"><?= icon('edit') ?> バンドを編集</a>
+        <a class="btn btn--sm" href="songs_edit.php?band=<?= $bandId ?>"><?= icon('queue_music') ?> 曲を<?= $songs ? '編集' : '登録' ?></a>
     </div>
 </section>
 
@@ -195,7 +195,7 @@ render_header($band['name'], 'lives');
     <?php else: ?>
         <p class="muted small">メンバー未登録</p>
     <?php endif; ?>
-    <?php if ($band['note']): ?><p class="keynote">🎹 <?= h($band['note']) ?></p><?php endif; ?>
+    <?php if ($band['note']): ?><p class="keynote"><?= icon('piano') ?> <?= h($band['note']) ?></p><?php endif; ?>
 </section>
 
 <section class="card band-section">
@@ -214,7 +214,7 @@ render_header($band['name'], 'lives');
                         <span class="setlist__song"><img class="setlist__art" src="<?= h($song['artwork_url']) ?>" alt="" loading="lazy" width="56" height="56"><?= h($song['title']) ?></span>
                         <a class="setlist__listen setlist__listen--<?= h($listenApp) ?>" href="<?= h(track_listen_url($viewerApp, $track, array_key_exists($k, $linkCache) ? $linkCache[$k] : false)) ?>" target="_blank" rel="noopener" aria-label="<?= h(MUSIC_APPS[$listenApp]) ?> で聴く"><?= MUSIC_APP_ICONS[$listenApp] ?></a>
                     <?php else: ?>
-                        <span class="setlist__song"><span class="setlist__art setlist__art--none">♪</span><?= h($song['title']) ?></span>
+                        <span class="setlist__song"><span class="setlist__art setlist__art--none"><?= icon('music_note') ?></span><?= h($song['title']) ?></span>
                     <?php endif; ?>
                     <?php if ($songArtist): ?><span class="setlist__artist"><?= h($songArtist) ?></span><?php endif; ?>
                     <?php if ($notes[$songId] !== ''): ?><span class="setlist__who"><?= h($notes[$songId]) ?></span><?php endif; ?>
@@ -223,7 +223,7 @@ render_header($band['name'], 'lives');
         </ol></div>
     <?php else: ?>
         <p class="muted">まだ曲が登録されていません</p>
-        <p class="no-print"><a class="btn btn--ghost btn--sm" href="songs_edit.php?band=<?= $bandId ?>">♪ 曲を登録</a></p>
+        <p class="no-print"><a class="btn btn--ghost btn--sm" href="songs_edit.php?band=<?= $bandId ?>"><?= icon('queue_music') ?> 曲を登録</a></p>
     <?php endif; ?>
 </section>
 <?php render_footer();

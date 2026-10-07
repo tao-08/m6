@@ -82,15 +82,15 @@ render_header($live['name'], 'lives');
     </div>
     <!-- このライブでできること（編集・CSV・印刷）。印刷時は CSS で隠す -->
     <div class="hero__actions no-print">
-        <a class="btn btn--sm" href="live_edit.php?id=<?= (int)$liveId ?>">✎ ライブを編集</a>
-        <a class="btn btn--sm" href="export.php?live=<?= (int)$liveId ?>">⇩ CSV</a>
-        <button class="btn btn--sm" type="button" data-print>🖨 印刷</button>
+        <a class="btn btn--sm" href="live_edit.php?id=<?= (int)$liveId ?>"><?= icon('edit') ?> ライブを編集</a>
+        <a class="btn btn--sm" href="export.php?live=<?= (int)$liveId ?>"><?= icon('download') ?> CSV</a>
+        <button class="btn btn--sm" type="button" data-print><?= icon('print') ?> 印刷</button>
     </div>
 </section>
 
 <?php if (count($days) > 1): ?>
 <!-- 日程タブ。JS が動けばタブ切り替え、動かなければ全日程が縦に並ぶ -->
-<div class="tabs no-print" role="tablist">
+<div class="tabs tabs--days no-print" role="tablist">
     <?php foreach ($days as $i => $d): ?>
         <a href="#day-<?= (int)$d['live_day_id'] ?>" class="tab<?= $i === 0 ? ' is-active' : '' ?>" data-tab>
             <?= h($d['label']) ?><small><?= h(fmt_date($d['held_on'])) ?></small>
@@ -112,7 +112,7 @@ render_header($live['name'], 'lives');
             <div><dt>会場</dt><dd>
                 <?php if ($d['venue_name'] && $d['website_url'] && preg_match('#^https?://#', $d['website_url'])): ?>
                     <!-- URL は https:// で始まるものだけリンクにする（javascript: などを埋め込まれないように） -->
-                    <a href="<?= h($d['website_url']) ?>" target="_blank" rel="noopener"><?= h($d['venue_name']) ?> ↗</a>
+                    <a href="<?= h($d['website_url']) ?>" target="_blank" rel="noopener"><?= h($d['venue_name']) ?> <?= icon('open_in_new', 'icon--sm') ?></a>
                 <?php else: ?><?= h($d['venue_name'] ?? '—') ?><?php endif; ?>
             </dd></div>
             <div><dt>バンド</dt><dd><?= count($bands) ?></dd></div>
@@ -157,7 +157,7 @@ render_header($live['name'], 'lives');
                     <div class="slot__head">
                         <span class="slot__order"><?= sprintf('%02d', (int)$b['play_order']) ?></span>
                         <h3 class="slot__name"><a href="band.php?id=<?= (int)$b['band_id'] ?>"><?= h($b['name']) ?></a></h3>
-                        <?php if ($isLast): ?><span class="tag tag--accent" aria-label="トリ">🐦</span><?php endif; ?>
+                        <?php if ($isLast): ?><span class="tag tag--tori" aria-label="トリ" title="トリ"><?= icon('flutter_dash') ?></span><?php endif; ?>
                         <?php if ($isMine): ?><span class="tag">出演</span><?php endif; ?>
                     </div>
                     <?php if ($lineup): ?>
@@ -175,13 +175,13 @@ render_header($live['name'], 'lives');
                     <?php endif; ?>
                     <p class="slot__meta">
                         <?php if ($b['artist_name'] && $b['artist_name'] !== $b['name']): ?>
-                            <a href="artist.php?id=<?= (int)$b['artist_id'] ?>">♪ <?= h($b['artist_name']) ?></a>
+                            <a href="artist.php?id=<?= (int)$b['artist_id'] ?>"><?= icon('music_note') ?> <?= h($b['artist_name']) ?></a>
                         <?php elseif ($b['artist_id']): ?>
-                            <a href="artist.php?id=<?= (int)$b['artist_id'] ?>">♪ ほかのコピー</a>
+                            <a href="artist.php?id=<?= (int)$b['artist_id'] ?>"><?= icon('music_note') ?> ほかのコピー</a>
                         <?php endif; ?>
                         <span><?= (int)$b['song_count'] ?>曲</span>
                         <?php if ($memberIds): ?><span><?= count(array_unique($memberIds)) ?>人</span><?php endif; ?>
-                        <?php if ($b['note']): ?><span class="keynote">🎹 <?= h($b['note']) ?></span><?php endif; ?>
+                        <?php if ($b['note']): ?><span class="keynote"><?= icon('piano') ?> <?= h($b['note']) ?></span><?php endif; ?>
                     </p>
                 </div>
             </li>

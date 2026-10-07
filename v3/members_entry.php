@@ -120,7 +120,7 @@ render_header('入学年度の一括編集');
 </nav>
 
 <?php if (!$list): ?>
-    <div class="empty card"><p class="empty__title">入学年度が未登録の人はいません 🎉</p></div>
+    <div class="empty card"><p class="empty__title">入学年度が未登録の人はいません <?= icon('celebration') ?></p></div>
 <?php else: ?>
 <form method="post" action="<?= h($self) ?>" class="card table-card">
     <?= csrf_field() ?>

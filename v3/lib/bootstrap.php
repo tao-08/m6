@@ -129,6 +129,18 @@ function h(mixed $value): string
     return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
 }
 
+/**
+ * Google Fonts の Material Symbols のアイコンを出す。icon('edit') → ✎ の代わりの鉛筆。
+ *   アイコン名の一覧: https://fonts.google.com/icons
+ *   アイコン名を文字として書くと、フォントが絵に置き換えてくれる（リガチャ）。
+ *   aria-hidden: 読み上げで「edit」と英単語が読まれないようにする。意味はボタンの文字や aria-label で伝える。
+ *   $class で大きさなどを足せる（例: icon('star', 'icon--fill')）
+ */
+function icon(string $name, string $class = ''): string
+{
+    return '<span class="icon' . ($class !== '' ? ' ' . h($class) : '') . '" aria-hidden="true">' . h($name) . '</span>';
+}
+
 /** 別ページへ移動して処理を終える（exit を忘れると後ろの処理が動いてしまうので関数にまとめた） */
 function redirect(string $path): never
 {

@@ -199,7 +199,7 @@ render_header($isNew ? 'バンドを追加' : 'バンドを編集', 'lives');
                     <?php endforeach; ?>
                 </select>
                 <input name="m_name[]" value="<?= h($m['name']) ?>" list="member-names" placeholder="名前" aria-label="名前" class="name-input" data-name-cell>
-                <button type="button" class="btn btn--ghost btn--sm" data-remove-row aria-label="この行を削除">✕</button>
+                <button type="button" class="btn btn--ghost btn--sm" data-remove-row aria-label="この行を削除"><?= icon('close') ?></button>
             </div>
         <?php endforeach; ?>
     </div>

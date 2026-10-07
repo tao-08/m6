@@ -75,14 +75,14 @@ render_header('メンバーの統合');
 
 <h2 class="section-title">名前が似ているペア（<?= count($candidates) ?>）</h2>
 <?php if (!$candidates): ?>
-    <p class="muted">似ている名前のペアは見つかりませんでした 🎉</p>
+    <p class="muted">似ている名前のペアは見つかりませんでした <?= icon('celebration') ?></p>
 <?php else: ?>
     <div class="merge-list">
         <?php foreach ($candidates as [$a, $b]): ?>
             <div class="card merge-item">
                 <div class="merge-item__names">
                     <a href="member.php?id=<?= (int)$a['member_id'] ?>" class="strong"><?= h($a['name']) ?></a> <span class="muted small"><?= (int)$a['bands'] ?>組</span>
-                    <span class="muted">⇄</span>
+                    <span class="muted"><?= icon('swap_horiz') ?></span>
                     <a href="member.php?id=<?= (int)$b['member_id'] ?>" class="strong"><?= h($b['name']) ?></a> <span class="muted small"><?= (int)$b['bands'] ?>組</span>
                 </div>
                 <div class="merge-item__actions">

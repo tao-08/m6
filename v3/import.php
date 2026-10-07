@@ -246,7 +246,7 @@ if ($plan === null): // ==================== アップロード画面 ==========
     <input type="hidden" name="action" value="upload">
     <label class="dropzone" data-dropzone>
         <input type="file" name="files[]" accept=".csv,.xlsx,.xlsm,.pdf,text/csv,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" multiple required data-file-input>
-        <span class="dropzone__icon" aria-hidden="true">↑</span>
+        <span class="dropzone__icon" aria-hidden="true"><?= icon('upload_file') ?></span>
         <span class="dropzone__title">ここにファイルをドロップ</span>
         <span class="muted small">またはクリックして選択 · CSV / Excel / PDF · 最大<?= MAX_FILES ?>ファイル</span>
         <ul class="dropzone__list" data-file-list></ul>
@@ -399,7 +399,7 @@ if ($plan === null): // ==================== アップロード画面 ==========
         <section class="card import-day" data-timetable="<?= $ti ?>">
             <header class="import-day__head">
                 <div>
-                    <p class="file-name">📄 <?= h($tt['file']) ?></p>
+                    <p class="file-name"><?= icon('description') ?> <?= h($tt['file']) ?></p>
                     <h3 class="import-day__title"><?= h($tt['title'] ?: '（タイトルなし）') ?></h3>
                 </div>
                 <div class="import-day__badges">
@@ -469,7 +469,7 @@ if ($plan === null): // ==================== アップロード画面 ==========
                             : ($include && count($users) > 1 ? 'is-similar' : 'is-ok');
                         $rosterHint = $rosterClass === 'is-similar' ? '同じ名簿を ' . count($users) . ' つの枠で選んでいます: ' . implode(' / ', $users) : ''; ?>
                         <tr class="<?= $include ? '' : 'is-excluded' ?>" data-slot="<?= h($key) ?>">
-                            <td><button type="button" class="drag-handle" data-drag-handle aria-label="ドラッグで並び替え（↑↓キーでも動く）" title="ドラッグで並び替え">≡</button>
+                            <td><button type="button" class="drag-handle" data-drag-handle aria-label="ドラッグで並び替え（↑↓キーでも動く）" title="ドラッグで並び替え"><?= icon('drag_indicator') ?></button>
                                 <input type="hidden" name="tt[<?= $ti ?>][s][<?= $si ?>][at]" value="<?= (int)$timeSi ?>" data-at></td>
                             <td><input type="checkbox" name="tt[<?= $ti ?>][s][<?= $si ?>][include]" value="1"<?= $include ? ' checked' : '' ?> data-include aria-label="取り込む"></td>
                             <td class="mono nowrap"><span data-order-text><?= $orderNo ?></span>
@@ -513,7 +513,7 @@ if ($plan === null): // ==================== アップロード画面 ==========
         <section class="card import-day">
             <header class="import-day__head">
                 <div>
-                    <p class="file-name">📄 <?= h($roster['file']) ?></p>
+                    <p class="file-name"><?= icon('description') ?> <?= h($roster['file']) ?></p>
                     <h3 class="import-day__title">名簿 <?= count($roster['bands']) ?> バンド</h3>
                 </div>
                 <button type="button" class="btn btn--ghost btn--sm" data-add-roster-col>＋ 列を追加</button>
@@ -543,7 +543,7 @@ if ($plan === null): // ==================== アップロード画面 ==========
                             <td><input type="checkbox" name="rb[<?= $ri ?>][<?= $bi ?>][on]" value="1"<?= $on ? ' checked' : '' ?> data-roster-on aria-label="このバンドのメンバーを登録する"></td>
                             <td class="strong nowrap"><?= h($band['band_name']) ?>
                                 <!-- どの出演枠もこの名簿を選んでいなければ出す（JS がタイムテーブルの変更に合わせて出し入れする） -->
-                                <span class="status status--warn" title="タイムテーブルの「名簿ファイル内バンド名」でこのバンドを選ぶと登録されます" data-roster-missing<?= $missing ? '' : ' hidden' ?>>⚠ タイムテーブルにないため登録されません</span>
+                                <span class="status status--warn" title="タイムテーブルの「名簿ファイル内バンド名」でこのバンドを選ぶと登録されます" data-roster-missing<?= $missing ? '' : ' hidden' ?>><?= icon('warning') ?> タイムテーブルにないため登録されません</span>
                             </td>
                             <?php foreach ($roster['columns'] as $col => $c):
                                 $k = "$ri-$bi-$col";
@@ -589,7 +589,7 @@ if ($plan === null): // ==================== アップロード画面 ==========
     <div class="sticky-actions">
         <button class="btn btn--ghost" type="submit" form="reset-form">やり直す</button>
         <!-- 名簿の重複があるあいだは JS が「登録する」を押せなくして、この文を出す -->
-        <span class="sticky-actions__note" data-submit-block hidden>⚠ 名簿の重複を直すと登録できます</span>
+        <span class="sticky-actions__note" data-submit-block hidden><?= icon('warning') ?> 名簿の重複を直すと登録できます</span>
         <button class="btn btn--primary" type="submit"<?= $plan['timetables'] ? '' : ' disabled' ?> data-submit>登録する</button>
     </div>
 </form>
@@ -600,7 +600,7 @@ if ($plan === null): // ==================== アップロード画面 ==========
 <!-- タイムテーブルに無い名簿のバンドがあるとき、プレビューを開いた直後に1回だけ出す注意（JS の setupImportPreview が開く） -->
 <dialog class="modal" data-roster-missing-dialog aria-labelledby="roster-missing-title">
     <form method="dialog" class="modal__body">
-        <h3 id="roster-missing-title" class="modal__title">⚠ タイムテーブルにないため登録されません</h3>
+        <h3 id="roster-missing-title" class="modal__title"><?= icon('warning') ?> タイムテーブルにないため登録されません</h3>
         <p class="muted small">名簿にある次のバンドは、タイムテーブルのどの枠にも対応していません。登録するには、タイムテーブルの「名簿ファイル内バンド名」でこのバンドを選んでください。</p>
         <ul class="modal__list">
             <?php foreach ($missingBands as $name): ?><li><?= h($name) ?></li><?php endforeach; ?>

@@ -100,7 +100,7 @@ render_header($artist['name']);
 
 <?php if (is_admin()): ?>
 <details class="card edit-box" style="margin-top:18px">
-    <summary>✎ アーティストを編集（管理者）</summary>
+    <summary><?= icon('edit') ?> アーティストを編集（管理者）</summary>
     <form method="post" class="form-grid edit-box__form">
         <?= csrf_field() ?><input type="hidden" name="action" value="rename">
         <label class="field field--wide"><span>名前</span><input name="name" value="<?= h($artist['name']) ?>" maxlength="100" required></label>

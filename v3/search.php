@@ -104,7 +104,7 @@ render_header($q !== '' ? "「{$q}」の検索結果" : '検索', 'search');
             <h2 class="section-title">アーティスト <span class="muted"><?= count($artists) ?></span></h2>
             <div class="chip-list">
                 <?php foreach ($artists as $a): ?>
-                    <a class="chip chip--lg" href="artist.php?id=<?= (int)$a['artist_id'] ?>">♪ <?= h($a['name']) ?> <span class="muted small"><?= (int)$a['n'] ?>回</span></a>
+                    <a class="chip chip--lg" href="artist.php?id=<?= (int)$a['artist_id'] ?>"><?= icon('music_note') ?> <?= h($a['name']) ?> <span class="muted small"><?= (int)$a['n'] ?>回</span></a>
                 <?php endforeach; ?>
             </div>
         </section>

@@ -61,7 +61,7 @@ render_header('ユーザー管理');
         <p class="eyebrow">Admin</p>
         <h1 class="display">ユーザー管理</h1>
         <?php if (!config('invite_code')): ?>
-            <p class="muted">⚠ 今は誰でも新規登録できます。config.php の <code>invite_code</code> を設定すると、合言葉を知っている人だけが登録できるようになります。</p>
+            <p class="muted"><?= icon('warning') ?> 今は誰でも新規登録できます。config.php の <code>invite_code</code> を設定すると、合言葉を知っている人だけが登録できるようになります。</p>
         <?php endif; ?>
     </div>
     <dl class="stats"><div><dt>ユーザー</dt><dd><?= count($users) ?></dd></div></dl>

@@ -313,7 +313,7 @@ $songLabel = static function (array $g) use ($viewerApp, $trackCache): string {
     $artist = $g['artist_name'] ? ' <a class="muted small" href="artist.php?id=' . (int)$g['artist_id'] . '">' . h($g['artist_name']) . '</a>' : '';
     $t = $g['track'];
     if ($t === null) {
-        return '<span class="setlist__song"><span class="setlist__art setlist__art--none">♪</span>' . h($g['title']) . '</span>' . $artist;
+        return '<span class="setlist__song"><span class="setlist__art setlist__art--none">' . icon('music_note') . '</span>' . h($g['title']) . '</span>' . $artist;
     }
     $key = album_key($t['source'], $t['track_id']);
     $url = track_listen_url($viewerApp, ['source' => $t['source'], 'track_id' => $t['track_id'], 'title' => $t['track_title'], 'artist_name' => $t['track_artist']],
@@ -421,10 +421,10 @@ $entryYears = range($thisYear, $entryMin); // 新しい順
 
 <?php
 /** ランキング1枚分のカードを出す小さな関数（同じ HTML を何回も書かないため） */
-function ranking_card(string $title, array $rows, callable $label, string $unit, string $empty = 'データがありません'): void
+function ranking_card(string $icon, string $title, array $rows, callable $label, string $unit, string $empty = 'データがありません'): void
 { ?>
     <section class="card">
-        <h2 class="section-title section-title--card"><?= h($title) ?></h2>
+        <h2 class="section-title section-title--card"><?= icon($icon) ?> <?= h($title) ?></h2>
         <?php if (!$rows): ?><p class="muted small"><?= h($empty) ?></p><?php endif; ?>
         <ol class="ranking">
             <?php foreach ($rows as $r): ?>
@@ -436,12 +436,12 @@ function ranking_card(string $title, array $rows, callable $label, string $unit,
 $memberLink = static fn($r) => '<a href="member.php?id=' . (int)$r['member_id'] . '">' . h($r['name']) . '</a>';
 ?>
 
-<h2 class="section-title">👤 個人ランキング</h2>
+<h2 class="section-title"><?= icon('person') ?> 個人ランキング</h2>
 <div class="stats-grid">
-    <?php ranking_card('🎤 最多出演（バンド数）', $topBands, $memberLink, '組'); ?>
-    <?php ranking_card('🎵 最多演奏曲数', $topSongs, $memberLink, '曲'); ?>
+    <?php ranking_card('mic', '最多出演（バンド数）', $topBands, $memberLink, '組'); ?>
+    <?php ranking_card('music_note', '最多演奏曲数', $topSongs, $memberLink, '曲'); ?>
     <section class="card">
-        <h2 class="section-title section-title--card">🏅 楽器ごとの1位</h2>
+        <h2 class="section-title section-title--card"><?= icon('military_tech') ?> 楽器ごとの1位</h2>
         <ul class="ranking ranking--plain">
             <?php foreach ($instrumentKings as $k): ?>
                 <li><span><span class="part part--<?= h(instrument_class($k['short_name'])) ?>"><?= h($k['short_name']) ?></span> <?= $memberLink($k) ?></span><span class="pill"><?= (int)$k['n'] ?>組</span></li>
@@ -450,10 +450,10 @@ $memberLink = static fn($r) => '<a href="member.php?id=' . (int)$r['member_id'] 
     </section>
 </div>
 
-<h2 class="section-title">🤝 組み合わせ・その他</h2>
+<h2 class="section-title"><?= icon('handshake') ?> 組み合わせ・その他</h2>
 <div class="stats-grid">
     <section class="card">
-        <h2 class="section-title section-title--card">🤝 よく組むペア</h2>
+        <h2 class="section-title section-title--card"><?= icon('group') ?> よく組むペア</h2>
         <?php if (!$pairs): ?><p class="muted small">2回以上組んだペアはまだいません</p><?php endif; ?>
         <ol class="ranking">
             <?php foreach ($pairs as $p): ?>
@@ -463,7 +463,7 @@ $memberLink = static fn($r) => '<a href="member.php?id=' . (int)$r['member_id'] 
     </section>
 
     <section class="card">
-        <h2 class="section-title section-title--card">👑 トリ回数</h2>
+        <h2 class="section-title section-title--card"><?= icon('crown') ?> トリ回数</h2>
         <?php if (!$headliners): ?><p class="muted small">データがありません</p><?php endif; ?>
         <ol class="ranking">
             <?php foreach ($headliners as $hd): ?>
@@ -473,7 +473,7 @@ $memberLink = static fn($r) => '<a href="member.php?id=' . (int)$r['member_id'] 
     </section>
 
     <section class="card">
-        <h2 class="section-title section-title--card">🎸 コピーされたアーティスト ランキング</h2>
+        <h2 class="section-title section-title--card"><?= icon('artist') ?> コピーされたアーティスト ランキング</h2>
         <?php if (!$artists): ?><p class="muted small">データがありません</p><?php endif; ?>
         <ul class="bars">
             <?php foreach ($artists as $a): ?>
@@ -486,10 +486,10 @@ $memberLink = static fn($r) => '<a href="member.php?id=' . (int)$r['member_id'] 
         </ul>
     </section>
 
-    <?php ranking_card('💿 よく演奏される曲', $topTitles, $songLabel, '回', '曲（セットリスト）がまだ登録されていません'); ?>
+    <?php ranking_card('album', 'よく演奏される曲', $topTitles, $songLabel, '回', '曲（セットリスト）がまだ登録されていません'); ?>
 
     <section class="card">
-        <h2 class="section-title section-title--card">🥁 楽器別</h2>
+        <h2 class="section-title section-title--card"><?= icon('music_note') ?> 楽器別</h2>
         <ul class="bars">
             <?php foreach ($instrumentStats as $i): ?>
                 <li>
@@ -502,7 +502,7 @@ $memberLink = static fn($r) => '<a href="member.php?id=' . (int)$r['member_id'] 
     </section>
 
     <section class="card">
-        <h2 class="section-title section-title--card">📍 会場</h2>
+        <h2 class="section-title section-title--card"><?= icon('location_on') ?> 会場</h2>
         <ol class="ranking">
             <?php foreach ($venues as $v): ?>
                 <li><a href="search.php?q=<?= urlencode($v['name']) ?>"><?= h($v['name']) ?></a><span class="pill"><?= (int)$v['days'] ?>日 · <?= (int)$v['bands'] ?>組</span></li>

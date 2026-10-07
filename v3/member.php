@@ -163,7 +163,7 @@ render_header($member['name'], 'members');
 <?php if ($isMe || is_admin()): ?>
 <!-- 本人か管理者だけに見える編集フォーム。<details> なので普段は閉じている -->
 <details class="card edit-box">
-    <summary>✎ プロフィールを編集</summary>
+    <summary><?= icon('edit') ?> プロフィールを編集</summary>
     <form method="post" action="member_edit.php" class="form-grid edit-box__form">
         <?= csrf_field() ?>
         <input type="hidden" name="member_id" value="<?= $memberId ?>">
@@ -231,9 +231,8 @@ render_header($member['name'], 'members');
                             <input type="hidden" name="action" value="delete">
                             <input type="hidden" name="member_id" value="<?= $memberId ?>">
                             <input type="hidden" name="album" value="<?= h(album_key($a['source'], $a['album_id'])) ?>">
-                            <!-- × は文字だとフォントによって上下にずれるので、SVG（線で描いた図形）で描く。stroke="currentColor" = 文字色と同じ色の線 -->
                             <button type="submit" class="btn btn--danger btn--sm" title="削除" aria-label="削除">
-                                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+                                <?= icon('close', 'icon--sm') ?>
                             </button>
                         </form>
                     <?php endif; ?>

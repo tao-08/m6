@@ -187,14 +187,14 @@ for ($i = 0; $i < $blankCount; $i++) {
 $omnibus = (bool)$band['is_omnibus'];
 $artistNames = $pdo->query('SELECT name FROM artist ORDER BY name')->fetchAll(PDO::FETCH_COLUMN);
 
-// アイコン（Lucide の trash-2 / unlink）。自分で書いた固定の SVG なので h() は通さない
-const ICON_TRASH = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>';
-const ICON_UNLINK = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m18.84 12.25 1.72-1.71h-.02a5.004 5.004 0 0 0-.12-7.07 5.006 5.006 0 0 0-6.95 0l-1.72 1.71"/><path d="m5.17 11.75-1.71 1.71a5.004 5.004 0 0 0 .12 7.07 5.006 5.006 0 0 0 6.95 0l1.71-1.71"/><line x1="8" x2="8" y1="2" y2="5"/><line x1="2" x2="5" y1="8" y2="8"/><line x1="16" x2="16" y1="19" y2="22"/><line x1="19" x2="22" y1="16" y2="16"/></svg>';
+// アイコン（Material Symbols のアイコン名。lib/bootstrap.php の icon() で出す）
+const ICON_TRASH = 'delete';
+const ICON_UNLINK = 'link_off';
 
 render_header('曲を編集', 'lives');
 ?>
 <nav class="crumbs"><a href="<?= h($liveUrl) ?>"><?= h($band['live_name']) ?> <?= h($band['label']) ?></a><span>/</span><a href="<?= h($backUrl) ?>"><?= h($band['name']) ?></a></nav>
-<h1 class="display display--sm">♪ <?= h($band['name']) ?> の曲</h1>
+<h1 class="display display--sm"><?= icon('queue_music') ?> <?= h($band['name']) ?> の曲</h1>
 <?php foreach ($errors as $e): ?><div class="flash flash--error"><?= h($e) ?></div><?php endforeach; ?>
 
 <?php if (!$members): ?>
@@ -220,18 +220,18 @@ render_header('曲を編集', 'lives');
                     <!-- ジャケット: 紐付けた曲の画像。紐付けていなければ ♪。
                          紐付けているときは、マウスを乗せると「リンクが切れるマーク」が重なり、押すと紐付けを外す -->
                     <span class="song-thumb" title="<?= $trackKey === '' ? '' : h($song['track_title'] . ' / ' . $song['track_artist']) ?>">
-                        <span class="song-thumb__art" data-track-thumb><?php if ($trackKey !== ''): ?><img src="<?= h($song['artwork_url']) ?>" alt="" loading="lazy"><?php else: ?>♪<?php endif; ?></span>
-                        <button type="button" class="song-thumb__clear" data-track-clear aria-label="紐付けを外す"<?= $trackKey === '' ? ' hidden' : '' ?>><?= ICON_UNLINK ?></button>
+                        <span class="song-thumb__art" data-track-thumb><?php if ($trackKey !== ''): ?><img src="<?= h($song['artwork_url']) ?>" alt="" loading="lazy"><?php else: ?><?= icon('music_note') ?><?php endif; ?></span>
+                        <button type="button" class="song-thumb__clear" data-track-clear aria-label="紐付けを外す"<?= $trackKey === '' ? ' hidden' : '' ?>><?= icon(ICON_UNLINK) ?></button>
                     </span>
                     <input name="<?= $base ?>[title]" value="<?= h($song['title']) ?>" maxlength="100" placeholder="<?= $isNew ? '曲名を入力して追加' : '曲名' ?>" class="song-card__title" aria-label="曲名">
                     <input name="<?= $base ?>[artist]" value="<?= h($artist) ?>" maxlength="100" list="artists" placeholder="アーティスト" class="song-card__artist" aria-label="アーティスト" data-song-artist<?= $omnibus ? '' : ' readonly' ?>>
                     <input type="hidden" name="<?= $base ?>[track]" value="<?= h($trackKey) ?>" data-track-key>
-                    <button type="button" class="btn btn--ghost btn--sm" data-track-search>🔍 曲を探す</button>
+                    <button type="button" class="btn btn--ghost btn--sm" data-track-search><?= icon('search') ?> 曲を探す</button>
                     <input type="hidden" name="<?= $base ?>[id]" value="<?= $isNew ? '' : (int)$song['song_id'] ?>">
                     <?php if (!$isNew): ?>
                         <!-- 🗑 押すと「削除する」印（隠し項目を 1）が付いてカードが薄くなる。もう一度押すと取り消し。消えるのは保存したとき -->
                         <input type="hidden" name="<?= $base ?>[delete]" value="" data-song-delete>
-                        <button type="button" class="song-card__delete" data-song-delete-btn aria-label="この曲を削除" aria-pressed="false"><?= ICON_TRASH ?></button>
+                        <button type="button" class="song-card__delete" data-song-delete-btn aria-label="この曲を削除" aria-pressed="false"><?= icon(ICON_TRASH) ?></button>
                     <?php endif; ?>
                 </div>
                 <!-- 🔍 の検索結果（assets/app.js の setupTrackSearch が中身を入れる） -->

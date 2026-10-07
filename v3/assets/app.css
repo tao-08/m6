@@ -31,6 +31,7 @@
   --accent: #d90f0f;        /* アクセント（ロゴの赤に合わせた） */
   --accent-2: #f39a3d;
   --accent-soft: rgba(217, 15, 15, .08);
+  --headliner: #2563eb;     /* 青: トリの印 */
   --on-accent: #ffffff;
   --ok: #148a55;      --ok-bg: #e3f5ea;      /* 緑: DB に登録済み */
   --warn: #9a6a00;    --warn-bg: #fff3cf;    /* 黄: 似た人がいる */
@@ -55,6 +56,7 @@
   --accent: #ff4d4d;
   --accent-2: #ffb347;
   --accent-soft: rgba(255, 77, 77, .14);
+  --headliner: #60a5fa;
   --ok: #49dc9a;      --ok-bg: rgba(73, 220, 154, .13);
   --warn: #ffcf5c;    --warn-bg: rgba(255, 207, 92, .14);
   --danger: #ff6b7d;  --danger-bg: rgba(255, 107, 125, .14);
@@ -107,6 +109,19 @@ a:hover { color: var(--accent); }
 .nav__link { padding: 8px 14px; border-radius: 999px; color: var(--muted); font-weight: 600; font-size: 14px; white-space: nowrap; }
 .nav__link:hover { color: var(--text); background: var(--surface-2); }
 .nav__link.is-active { color: var(--text); background: var(--surface); box-shadow: inset 0 0 0 1px var(--border); }
+
+/* アイコン（Google Fonts の Material Symbols Rounded。HTML は lib/bootstrap.php の icon()、JS は iconEl()）
+   大きさは周りの文字に合わせる（1.2em = 文字より少し大きめ）。vertical-align で文字の真ん中にそろえる */
+.icon { font-family: "Material Symbols Rounded"; font-weight: normal; font-style: normal; font-size: 1.2em; line-height: 1;
+  display: inline-block; vertical-align: -.22em; letter-spacing: normal; text-transform: none; white-space: nowrap; direction: ltr;
+  -webkit-font-smoothing: antialiased; font-feature-settings: "liga"; user-select: none;
+  font-variation-settings: "FILL" 0, "wght" 500, "GRAD" 0, "opsz" 24; }
+.icon--sm { font-size: 1em; }
+.icon--fill { font-variation-settings: "FILL" 1, "wght" 500, "GRAD" 0, "opsz" 24; }
+.icon-btn .icon { font-size: 20px; vertical-align: 0; }
+.tag--tori .icon { font-variation-settings: "FILL" 1, "wght" 500, "GRAD" 0, "opsz" 24; } /* トリの鳥は塗りつぶしで目立たせる */
+.dropzone__icon .icon { font-size: 30px; vertical-align: 0; }
+.song-thumb__clear .icon, .song-card__delete .icon, .drag-handle .icon { vertical-align: 0; }
 
 /* 丸いアイコンボタン（検索・テーマ切り替え） */
 .icon-btn { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; cursor: pointer; flex: none;
@@ -182,6 +197,7 @@ h3 { font-size: 16px; }
 .tag { display: inline-flex; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 800; letter-spacing: .04em;
   background: var(--surface-2); color: var(--text); border: 1px solid var(--border); white-space: nowrap; }
 .tag--accent { background: var(--accent); color: var(--on-accent); border-color: transparent; }
+.tag--tori { font-size: 14px; line-height: 1; padding: 2px 6px; } /* トリの鳥アイコンは大きめに */
 
 .flash { padding: 12px 16px; border-radius: var(--radius-sm); margin-bottom: 12px; font-weight: 600; font-size: 14px; border: 1px solid transparent; }
 .flash--success { background: var(--ok-bg); color: var(--ok); }
@@ -240,6 +256,14 @@ input:focus, select:focus { outline: none; border-color: var(--accent); box-shad
 .tab { padding: 8px 16px; border-radius: 999px; font-weight: 800; font-size: 13px; color: var(--muted); display: flex; gap: 8px; align-items: baseline; white-space: nowrap; }
 .tab small { font-weight: 500; }
 .tab.is-active, .tab.is-active:hover { background: var(--accent); color: var(--on-accent); }
+/* ライブ詳細の日程タブは押しやすいよう大きめに */
+.tabs--days { gap: 6px; padding: 6px; }
+.tabs--days .tab { padding: 12px 24px; font-size: 16px; }
+.tabs--days .tab small { font-size: 13px; }
+/* 日程を切り替えたとき、表示された日程をふわっと出す（hidden が外れて表示されるたびにアニメーションが最初から動く） */
+.day:not([hidden]) { animation: day-fade .25s ease; }
+@keyframes day-fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .day:not([hidden]) { animation: none; } }
 
 .day__info { display: flex; flex-wrap: wrap; gap: 16px 32px; align-items: center; margin-bottom: 18px; }
 .day__info h2 { font-size: 24px; font-weight: 900; }
@@ -265,10 +289,10 @@ input:focus, select:focus { outline: none; border-color: var(--accent); box-shad
 .slot__name a:hover { color: var(--accent); text-decoration: underline; }
 .slot__meta { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 10px 0 0; font-size: 12px; color: var(--muted); }
 .keynote { color: var(--text); }
-.slot--headliner .slot__body { border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+.slot--mine .slot__body { border-color: color-mix(in srgb, var(--accent) 55%, transparent);
   background: linear-gradient(135deg, var(--accent-soft), transparent 60%), var(--surface); }
-.slot--headliner .slot__order { color: var(--accent); }
-.slot--mine .slot__body { box-shadow: inset 4px 0 0 var(--accent-2), var(--shadow); }
+.slot--mine .slot__order { color: var(--accent); }
+.slot--headliner .slot__body { box-shadow: inset 4px 0 0 var(--headliner), var(--shadow); }
 
 .lineup { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px 16px; }
 .lineup li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
@@ -602,9 +626,9 @@ code { background: var(--surface-2); padding: 1px 6px; border-radius: 6px; font-
 /* スマホなどマウスが無い端末では「乗せる」ができないので、右下に小さく常に出しておく */
 @media (hover: none) {
   .song-thumb__clear { inset: auto 0 0 auto; width: 18px; height: 18px; border-radius: 6px 0 0 0; opacity: 1; }
-  .song-thumb__clear svg { width: 12px; height: 12px; }
+  .song-thumb__clear .icon { font-size: 14px; }
 }
-/* 🗑 曲の削除。押すとカードが薄くなり（保存で消える）、ボタンだけ赤く残す */
+/* 曲の削除（ゴミ箱アイコン）。押すとカードが薄くなり（保存で消える）、ボタンだけ赤く残す */
 .song-card__delete { width: 36px; height: 36px; flex: none; margin-left: auto; display: grid; place-items: center; padding: 0; cursor: pointer;
   border-radius: 8px; border: 1px solid transparent; background: transparent; color: var(--muted); }
 .song-card__delete:hover, .song-card__delete:focus-visible { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, transparent); }

@@ -98,7 +98,7 @@ render_header('ライブ一覧', 'lives');
                                 </li>
                             <?php endforeach; ?>
                         </ul>
-                        <p class="live-card__foot"><strong><?= (int)$live['bands'] ?></strong> バンド出演 <span class="arrow">→</span></p>
+                        <p class="live-card__foot"><strong><?= (int)$live['bands'] ?></strong> バンド出演 <span class="arrow"><?= icon('arrow_forward') ?></span></p>
                     </a>
                 <?php endforeach; ?>
             </div>

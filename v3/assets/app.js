@@ -212,6 +212,15 @@ function setupSongs() {
  *   ここで入れるのはキー（"spotify:xxxx"）だけ。曲名やジャケットは保存するときにサーバーが取り直す
  * ------------------------------------------------------------------- */
 
+/** Material Symbols のアイコン（PHP の icon() と同じ形）を作る。名前は textContent で入れる */
+function iconEl(name) {
+  const span = document.createElement('span');
+  span.className = 'icon';
+  span.setAttribute('aria-hidden', 'true');
+  span.textContent = name;
+  return span;
+}
+
 /** カードの紐付けを変える。track = 候補1件（{key, title, artist_name, artwork_url}）/ null = 外す */
 function setTrack(card, track) {
   card.querySelector('[data-track-key]').value = track ? track.key : '';
@@ -224,7 +233,7 @@ function setTrack(card, track) {
     thumb.appendChild(img);
     thumb.parentElement.title = `${track.title} / ${track.artist_name}`;
   } else {
-    thumb.textContent = '♪';
+    thumb.appendChild(iconEl('music_note'));
     thumb.parentElement.title = '';
   }
   card.querySelector('[data-track-clear]').hidden = !track;
@@ -851,9 +860,11 @@ function setupAlbumSort() {
   const hintText = window.matchMedia('(pointer: coarse)').matches ? '長押しで並び替え' : 'ドラッグで並び替え';
   const hint = () => (list.children.length > 1 ? hintText : '');
   let statusTimer = null;
-  const showStatus = (text, backToHintAfter = 0) => {
+  // done = true なら頭にチェックのアイコンを付ける
+  const showStatus = (text, backToHintAfter = 0, done = false) => {
     clearTimeout(statusTimer);
     status.textContent = text;
+    if (done) status.prepend(iconEl('check'), ' ');
     if (backToHintAfter) statusTimer = setTimeout(() => { status.textContent = hint(); }, backToHintAfter);
   };
 
@@ -906,7 +917,7 @@ function setupAlbumSort() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok || data.error) throw new Error(data.error || '保存できませんでした。ページを再読み込みしてください');
       saved = order.join();
-      showStatus('✓ 保存しました', 2000);
+      showStatus('保存しました', 2000, true);
     } catch (err) {
       showStatus(err.message, 6000);
       // 保存できなかったので、最後に保存できた並びへ戻す（画面と DB がずれたままにしない）
