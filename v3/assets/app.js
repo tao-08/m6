@@ -921,48 +921,38 @@ function setupSelectPick() {
 }
 
 /* ---------------------------------------------------------------------
- * ライブ編集: 日程名のプルダウンと「＋ 日程を追加」
+ * ライブ編集: 日程名の重複チェックと「＋ 日程を追加」
  *
- *   ・同じライブのほかの日程が使っている日程名は disabled（グレーアウト）にして選べなくする
- *     （同じライブに「1日目」が2つあると DB の UNIQUE で保存できないので、選ぶ前に止める）
- *     日程名を選び直すたびに作り直す。PHP も最初の表示で同じように disabled を付けている
+ *   ・同じライブの日程どうしで日程名がかぶったら「重複しています」を出し、保存できないようにする
+ *     （選べなくはしない。「1日目 ⇄ 2日目」の入れ替えで、途中で一時的に重複するのは許す）
+ *     setCustomValidity を付けると、ブラウザが「保存する」を押したときに止めて吹き出しを出してくれる。
+ *     PHP 側（live_edit.php）でも同じチェックをしている
  *   ・「＋ 日程を追加」にチェックしたら、追加する日程の入力欄を開く
  *     閉じているあいだは日付の required も外す（見えない欄が「入力してください」で送信を止めないように）
  * ------------------------------------------------------------------- */
 function setupNewDayToggle() {
-  const syncLabels = (form) => {
-    const selects = [...form.querySelectorAll('[data-day-label]')];
-    const addOn = !!form.querySelector('[data-new-day-add]')?.checked;
-    const newDay = form.querySelector('[data-new-day]');
-    // 追加する日程の日程名は、チェックが入っているときだけ「使っている」に数える
-    const counted = selects.filter((s) => s !== newDay || addOn || !form.querySelector('[data-new-day-add]'));
-
-    // 追加する日程の日程名が、ほかの日程とかぶったら空いている日程名に選び直す
-    if (newDay && !newDay.disabled) {
-      const others = counted.filter((s) => s !== newDay).map((s) => s.value);
-      if (others.includes(newDay.value)) {
-        const free = [...newDay.options].find((o) => !others.includes(o.value));
-        if (free) {
-          newDay.value = free.value;
-          newDay.dispatchEvent(new Event('change', { bubbles: true })); // ボタンの文字・上書きの警告を更新
-        }
-      }
-    }
-    selects.forEach((select) => {
-      const taken = counted.filter((s) => s !== select).map((s) => s.value);
-      [...select.options].forEach((o) => { o.disabled = o.value !== select.value && taken.includes(o.value); });
+  const checkDuplicates = (form) => {
+    const addBox = form.querySelector('[data-new-day-add]');
+    // 追加する日程は、チェックが入っているとき（新規ライブなら常に）だけ数える
+    const selects = [...form.querySelectorAll('[data-day-label]')]
+      .filter((s) => !s.matches('[data-new-day]') || !addBox || addBox.checked);
+    form.querySelectorAll('[data-day-label]').forEach((select) => {
+      const dup = selects.includes(select) && selects.some((o) => o !== select && o.value === select.value);
+      select.setCustomValidity(dup ? `日程名「${select.value}」がほかの日程と重複しています` : '');
+      const note = select.closest('.field').querySelector('[data-dup-note]');
+      if (note) note.hidden = !dup;
     });
   };
 
-  document.querySelectorAll('[data-day-label]').forEach((s) => s.form && syncLabels(s.form));
+  document.querySelectorAll('[data-day-label]').forEach((s) => s.form && checkDuplicates(s.form));
   document.addEventListener('change', (e) => {
-    if (e.target.matches('[data-day-label]')) syncLabels(e.target.form);
+    if (e.target.matches('[data-day-label]')) checkDuplicates(e.target.form);
     if (!e.target.matches('[data-new-day-add]')) return;
     const fields = e.target.closest('form').querySelector('[data-new-day-fields]');
     const on = e.target.checked;
     fields.hidden = !on;
     fields.querySelector('input[type="date"]').required = on;
-    syncLabels(e.target.form);
+    checkDuplicates(e.target.form);
     if (on) fields.querySelector('.live-pick__btn, select')?.focus();
   });
 }

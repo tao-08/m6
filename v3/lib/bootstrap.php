@@ -170,19 +170,15 @@ function youtube_icon(): string
 /** live_day.label（日程名）に使える値。画面は選択式、保存時もこの中にあるかチェックする */
 const DAY_LABELS = ['1日目', '2日目', '3日目', '教室ライブ'];
 
-/**
- * 日程名の <select> の中身。$selected が一覧に無ければ先頭（1日目）を選ぶ
- *   $taken … 同じライブのほかの日程がもう使っている日程名。disabled（グレーアウト）にして選べなくする
- */
-function day_label_options(string $selected, array $taken = []): string
+/** 日程名の <select> の中身。$selected が一覧に無ければ先頭（1日目）を選ぶ */
+function day_label_options(string $selected): string
 {
     if (!in_array($selected, DAY_LABELS, true)) {
         $selected = DAY_LABELS[0];
     }
     $html = '';
     foreach (DAY_LABELS as $label) {
-        $html .= '<option value="' . h($label) . '"' . ($label === $selected ? ' selected' : '')
-            . ($label !== $selected && in_array($label, $taken, true) ? ' disabled' : '') . '>' . h($label) . '</option>';
+        $html .= '<option value="' . h($label) . '"' . ($label === $selected ? ' selected' : '') . '>' . h($label) . '</option>';
     }
     return $html;
 }

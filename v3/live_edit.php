@@ -139,6 +139,18 @@ if (is_post()) {
         $errors = array_merge($errors, $newDayErrors);
     }
 
+    // 日程名の重複チェック（同じライブに「1日目」が2つは保存できない）
+    //   プルダウンでは入れ替えのために一時的に重複させられるので、保存のときにここで止める
+    $labels = array_column($dayInputs, 'label');
+    if ($wantsNewDay) {
+        $labels[] = $newDay['label'];
+    }
+    foreach (array_count_values($labels) as $label => $count) {
+        if ($count > 1) {
+            $errors[] = "日程名「{$label}」が{$count}つあります。別々の日程名にしてください";
+        }
+    }
+
     // 年度は入力させず、日程の日付から決める（取り込みと同じ。年度の入れ間違いが起きない）
     //   一番早い日付の年度にする（日付は必須。日程が1つも無いときだけ今の年度のまま）
     $dates = array_filter(array_column($dayInputs, 'date'));
@@ -204,6 +216,12 @@ if (is_post()) {
                 $pdo->prepare('UPDATE live SET fiscal_year = ?, name = ?, youtube_url = ? WHERE live_id = ?')
                     ->execute([$year, $name, $youtube !== '' ? $youtube : null, $liveId]);
             }
+            // 「1日目 ⇄ 2日目」の入れ替えは、1行ずつ UPDATE すると途中で UNIQUE(live_id, label) にぶつかる
+            //   → いったん全部の日程名を重ならない仮の名前（#日程ID）にしてから、本当の値を入れる
+            $tmp = $pdo->prepare("UPDATE live_day SET label = CONCAT('#', live_day_id) WHERE live_day_id = ?");
+            foreach (array_keys($dayInputs) as $id) {
+                $tmp->execute([$id]);
+            }
             $update = $pdo->prepare('UPDATE live_day SET label = ?, held_on = ?, venue_id = ?, note = ? WHERE live_day_id = ?');
             foreach ($dayInputs as $id => $in) {
                 $update->execute([...day_params($pdo, $in), $id]); // ...（スプレッド構文）で配列を展開して、最後に id を足す
@@ -239,8 +257,6 @@ if (is_post()) {
 }
 
 $venues = $pdo->query('SELECT name FROM venue ORDER BY name')->fetchAll(PDO::FETCH_COLUMN);
-// このライブにもうある日程名。日程名のプルダウンではグレーアウトして選べなくする（JS が選び直しに合わせて更新する）
-$takenLabels = array_column($days, 'label');
 $canMerge = !$isNew && is_admin(); // 「他のライブに統合」ボタンは管理者だけに出す
 $merging = $canMerge && is_post() && !empty($_POST['merge']); // エラーで戻ったときもトグル ON のまま見せる
 if ($canMerge) {
@@ -299,8 +315,9 @@ if ($isNew) {
     <?php foreach ($days as $d): $id = (int)$d['live_day_id']; ?>
         <h2 class="section-title"><?= h($d['label'] ?: '日程') ?></h2>
         <div class="form-grid">
-            <label class="field"><span>日程名</span><select name="d[<?= $id ?>][label]" data-day-label><?= day_label_options((string)$d['label'], $takenLabels) ?></select>
-                <small class="merge-note merge-note--warn" data-overwrite-note hidden>⚠ 登録済の日程のため上書きされます</small></label>
+            <label class="field"><span>日程名</span><select name="d[<?= $id ?>][label]" data-day-label><?= day_label_options((string)$d['label']) ?></select>
+                <small class="merge-note merge-note--warn" data-overwrite-note hidden>⚠ 登録済の日程のため上書きされます</small>
+                <small class="merge-note merge-note--warn" data-dup-note hidden>⚠ 他の日程と重複しています</small></label>
             <label class="field"><span>日付</span><input type="date" name="d[<?= $id ?>][held_on]" value="<?= h($d['held_on']) ?>" required></label>
             <label class="field"><span>会場</span><input name="d[<?= $id ?>][venue]" value="<?= h($d['venue_name']) ?>" list="dl-venues" maxlength="50"></label>
             <label class="field field--wide"><span>メモ</span><input name="d[<?= $id ?>][note]" value="<?= h($d['note']) ?>"></label>
@@ -316,8 +333,9 @@ if ($isNew) {
         <label class="new-day-toggle"><input type="checkbox" name="nd[add]" value="1" data-new-day-add<?= $newDay['add'] ? ' checked' : '' ?>> ＋ 日程を追加</label>
     <?php endif; ?>
     <div class="form-grid" data-new-day-fields<?= !$isNew && !$newDay['add'] ? ' hidden' : '' ?>>
-        <label class="field"><span>日程名</span><select name="nd[label]" data-day-label data-new-day><?= day_label_options($newDay['label'], $takenLabels) ?></select>
-            <small class="merge-note merge-note--warn" data-overwrite-note hidden>⚠ 登録済の日程のため上書きされます</small></label>
+        <label class="field"><span>日程名</span><select name="nd[label]" data-day-label data-new-day><?= day_label_options($newDay['label']) ?></select>
+            <small class="merge-note merge-note--warn" data-overwrite-note hidden>⚠ 登録済の日程のため上書きされます</small>
+            <small class="merge-note merge-note--warn" data-dup-note hidden>⚠ ほかの日程と日程名が重複しています</small></label>
         <label class="field"><span>日付</span><input type="date" name="nd[held_on]" value="<?= h($newDay['date']) ?>"<?= $isNew || $newDay['add'] ? ' required' : '' ?>></label>
         <label class="field"><span>会場</span><input name="nd[venue]" value="<?= h($newDay['venue']) ?>" list="dl-venues" maxlength="50"></label>
         <label class="field field--wide"><span>メモ</span><input name="nd[note]" value="<?= h($newDay['note']) ?>"></label>
