@@ -44,6 +44,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupImportPreview();
   setupMergeToggle();
   setupSelectPick();
+  setupNewDayToggle();
   setupSlotSort();
   setupAlbumBox();
   setupAlbumSort();
@@ -917,6 +918,53 @@ function setupSelectPick() {
   // ページや表をスクロールしたら閉じる（fixed なのでボタンから離れてしまう）。ポップアップの中のスクロールは別
   window.addEventListener('scroll', (e) => { if (openPop && !openPop.pop.contains(e.target)) closePop(); }, true);
   window.addEventListener('resize', () => closePop());
+}
+
+/* ---------------------------------------------------------------------
+ * ライブ編集: 日程名のプルダウンと「＋ 日程を追加」
+ *
+ *   ・同じライブのほかの日程が使っている日程名は disabled（グレーアウト）にして選べなくする
+ *     （同じライブに「1日目」が2つあると DB の UNIQUE で保存できないので、選ぶ前に止める）
+ *     日程名を選び直すたびに作り直す。PHP も最初の表示で同じように disabled を付けている
+ *   ・「＋ 日程を追加」にチェックしたら、追加する日程の入力欄を開く
+ *     閉じているあいだは日付の required も外す（見えない欄が「入力してください」で送信を止めないように）
+ * ------------------------------------------------------------------- */
+function setupNewDayToggle() {
+  const syncLabels = (form) => {
+    const selects = [...form.querySelectorAll('[data-day-label]')];
+    const addOn = !!form.querySelector('[data-new-day-add]')?.checked;
+    const newDay = form.querySelector('[data-new-day]');
+    // 追加する日程の日程名は、チェックが入っているときだけ「使っている」に数える
+    const counted = selects.filter((s) => s !== newDay || addOn || !form.querySelector('[data-new-day-add]'));
+
+    // 追加する日程の日程名が、ほかの日程とかぶったら空いている日程名に選び直す
+    if (newDay && !newDay.disabled) {
+      const others = counted.filter((s) => s !== newDay).map((s) => s.value);
+      if (others.includes(newDay.value)) {
+        const free = [...newDay.options].find((o) => !others.includes(o.value));
+        if (free) {
+          newDay.value = free.value;
+          newDay.dispatchEvent(new Event('change', { bubbles: true })); // ボタンの文字・上書きの警告を更新
+        }
+      }
+    }
+    selects.forEach((select) => {
+      const taken = counted.filter((s) => s !== select).map((s) => s.value);
+      [...select.options].forEach((o) => { o.disabled = o.value !== select.value && taken.includes(o.value); });
+    });
+  };
+
+  document.querySelectorAll('[data-day-label]').forEach((s) => s.form && syncLabels(s.form));
+  document.addEventListener('change', (e) => {
+    if (e.target.matches('[data-day-label]')) syncLabels(e.target.form);
+    if (!e.target.matches('[data-new-day-add]')) return;
+    const fields = e.target.closest('form').querySelector('[data-new-day-fields]');
+    const on = e.target.checked;
+    fields.hidden = !on;
+    fields.querySelector('input[type="date"]').required = on;
+    syncLabels(e.target.form);
+    if (on) fields.querySelector('.live-pick__btn, select')?.focus();
+  });
 }
 
 /** 開催日 "2025-03-15" → 年度（4月始まり。1〜3月は前の年の年度）。PHP の academic_year() と同じ計算 */

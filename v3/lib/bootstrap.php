@@ -141,18 +141,48 @@ function icon(string $name, string $class = ''): string
     return '<span class="icon' . ($class !== '' ? ' ' . h($class) : '') . '" aria-hidden="true">' . h($name) . '</span>';
 }
 
+/**
+ * YouTube のリンクとして使ってよい URL か。https で、ホストが YouTube（youtube.com / youtu.be）のものだけ OK。
+ *   「javascript:alert(1)」や別サイトの URL を href に入れさせない（XSS・フィッシング対策）。
+ *   parse_url で分解してホスト名を完全一致で見る（「youtube.com.example.com」のような偽物を通さない）
+ */
+function youtube_url_valid(string $url): bool
+{
+    if ($url === '' || strlen($url) > 500 || preg_match('/\s/', $url)) {
+        return false;
+    }
+    $parts = parse_url($url);
+    if ($parts === false || ($parts['scheme'] ?? '') !== 'https') {
+        return false;
+    }
+    $host = strtolower($parts['host'] ?? '');
+    return in_array($host, ['youtube.com', 'www.youtube.com', 'm.youtube.com', 'music.youtube.com', 'youtu.be'], true);
+}
+
+/** YouTube のロゴ（赤い再生ボタン）。Material Symbols にブランドのロゴは無いので SVG で持つ */
+function youtube_icon(): string
+{
+    return '<svg class="youtube-icon" viewBox="0 3.55 24 16.9" width="34" height="24" aria-hidden="true">'
+        . '<path fill="#FF0000" d="M23.5 6.19a3.02 3.02 0 0 0-2.12-2.14C19.5 3.55 12 3.55 12 3.55s-7.5 0-9.38.5A3.02 3.02 0 0 0 .5 6.19C0 8.07 0 12 0 12s0 3.93.5 5.81a3.02 3.02 0 0 0 2.12 2.14c1.88.5 9.38.5 9.38.5s7.5 0 9.38-.5a3.02 3.02 0 0 0 2.12-2.14C24 15.93 24 12 24 12s0-3.93-.5-5.81z"/>'
+        . '<path fill="#FFFFFF" d="M9.55 15.57V8.43L15.82 12l-6.27 3.57z"/></svg>';
+}
+
 /** live_day.label（日程名）に使える値。画面は選択式、保存時もこの中にあるかチェックする */
 const DAY_LABELS = ['1日目', '2日目', '3日目', '教室ライブ'];
 
-/** 日程名の <select> の中身。$selected が一覧に無ければ先頭（1日目）を選ぶ */
-function day_label_options(string $selected): string
+/**
+ * 日程名の <select> の中身。$selected が一覧に無ければ先頭（1日目）を選ぶ
+ *   $taken … 同じライブのほかの日程がもう使っている日程名。disabled（グレーアウト）にして選べなくする
+ */
+function day_label_options(string $selected, array $taken = []): string
 {
     if (!in_array($selected, DAY_LABELS, true)) {
         $selected = DAY_LABELS[0];
     }
     $html = '';
     foreach (DAY_LABELS as $label) {
-        $html .= '<option value="' . h($label) . '"' . ($label === $selected ? ' selected' : '') . '>' . h($label) . '</option>';
+        $html .= '<option value="' . h($label) . '"' . ($label === $selected ? ' selected' : '')
+            . ($label !== $selected && in_array($label, $taken, true) ? ' disabled' : '') . '>' . h($label) . '</option>';
     }
     return $html;
 }

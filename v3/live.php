@@ -82,6 +82,9 @@ render_header($live['name'], 'lives');
     </div>
     <!-- このライブでできること（編集・CSV・印刷）。印刷時は CSS で隠す -->
     <div class="hero__actions no-print">
+        <?php if ($live['youtube_url'] !== null && youtube_url_valid($live['youtube_url'])): // 表示の前にもう一度チェック（DB を直接いじられても変なリンクを出さない） ?>
+            <a class="btn btn--sm btn--youtube" href="<?= h($live['youtube_url']) ?>" target="_blank" rel="noopener noreferrer" aria-label="YouTube で見る" title="YouTube で見る"><?= youtube_icon() ?></a>
+        <?php endif; ?>
         <a class="btn btn--sm" href="live_edit.php?id=<?= (int)$liveId ?>"><?= icon('edit') ?> ライブを編集</a>
         <a class="btn btn--sm" href="export.php?live=<?= (int)$liveId ?>"><?= icon('download') ?> CSV</a>
         <button class="btn btn--sm" type="button" data-print><?= icon('print') ?> 印刷</button>

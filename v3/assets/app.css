@@ -187,6 +187,9 @@ h3 { font-size: 16px; }
 .btn--danger:hover { color: #fff; background: var(--danger); }
 .btn--sm { padding: 7px 12px; font-size: 13px; }
 .btn--block { width: 100%; }
+/* ライブページの YouTube ボタン: ボタンの背景・枠は付けずロゴだけ見せる（高さはほかのボタンとそろえる） */
+.btn--youtube { background: none; border-color: transparent; padding: 5px 2px; }
+.btn--youtube svg { display: block; width: 34px; height: 24px; } /* viewBox をロゴの形ぴったりに切ってあるので、高さいっぱいに大きく出る */
 .btn[disabled] { opacity: .5; pointer-events: none; }
 
 .pill { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600;
@@ -365,6 +368,10 @@ input:focus, select:focus { outline: none; border-color: var(--accent); box-shad
 .req { font-style: normal; font-size: 10px; color: var(--accent); margin-left: 4px; }
 .form-card { display: grid; gap: 8px; }
 .form-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+/* ライブ編集の「＋ 日程を追加」チェックボックス（見出しと同じ大きさ） */
+.new-day-toggle { display: inline-flex; align-items: center; gap: 8px; width: fit-content; margin-top: 24px; font-size: 16px; font-weight: 800; color: var(--text); cursor: pointer; }
+.new-day-toggle input { width: 18px; height: 18px; accent-color: var(--accent); }
+[data-new-day-fields]:not([hidden]) { animation: soft-in .2s ease-out; }
 .field--wide { grid-column: span 2; }
 .form-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
 .member-rows { display: grid; gap: 8px; margin-bottom: 10px; }

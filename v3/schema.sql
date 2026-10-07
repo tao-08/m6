@@ -96,6 +96,7 @@ CREATE TABLE live (
     live_id     INT UNSIGNED      NOT NULL AUTO_INCREMENT,
     fiscal_year SMALLINT UNSIGNED NOT NULL,            -- 年度（4月始まり）。YEAR 型は 1901〜2155 しか入らず 0000 も入るので使わない
     name        VARCHAR(50)       NOT NULL,
+    youtube_url VARCHAR(500)      NULL,                -- ライブ映像などの YouTube のリンク。無ければ NULL（migrations/008）
     PRIMARY KEY (live_id),
     UNIQUE KEY uq_live (fiscal_year, name),
     CONSTRAINT ck_live_year CHECK (fiscal_year BETWEEN 1990 AND 2100)
