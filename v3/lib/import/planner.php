@@ -58,7 +58,9 @@ function guess_venue(string $parsed, array $venues): ?int
 
 /**
  * 名簿の全バンドを「検索欄に出す文字 => 'ri:bi'（何番目の名簿の何番目のバンドか）」にする。
- * 別ファイルに同じバンド名があるときだけ、区別のためにファイル名を付ける。
+ * 同じバンド名が2つ以上あるとき（1日目と2日目の「ELLEGARDEN」など）は、ボーカルの人の名前で区別する。
+ *   「ELLEGARDEN（Vo 岩崎太一）」  ← Vo が空なら名簿の最初の人「ELLEGARDEN（岩崎太一）」
+ *   それでも同じ文字になる（同じボーカル・メンバー無し）ときはファイル名、さらに同じなら「#番号」を付ける。
  * 画面の表示と登録処理の両方でこの関数を使うので、文字と中身が必ず一致する。
  */
 function roster_choices(array $plan): array
@@ -69,15 +71,36 @@ function roster_choices(array $plan): array
             $count[$band['band_name']] = ($count[$band['band_name']] ?? 0) + 1;
         }
     }
-    $choices = [];
+
+    // ---- 1. 名前だけ／名前＋ボーカル ----
+    $labels = [];
     foreach ($plan['rosters'] as $ri => $roster) {
         foreach ($roster['bands'] as $bi => $band) {
-            $label = $count[$band['band_name']] > 1 ? "{$band['band_name']}（{$roster['file']}）" : $band['band_name'];
-            if (isset($choices[$label])) {
-                $label .= ' #' . ($bi + 1); // 同じファイルの中に同名バンドが2つある場合
+            $label = $band['band_name'];
+            if ($count[$band['band_name']] > 1) {
+                $vocals = array_column(array_filter($band['members'], static fn($m) => $m['part'] === 'Vo'), 'name');
+                if ($vocals) {
+                    $label .= '（Vo ' . implode('・', $vocals) . '）';
+                } elseif ($band['members']) {
+                    $label .= '（' . $band['members'][0]['name'] . '）';
+                }
             }
-            $choices[$label] = "$ri:$bi";
+            $labels["$ri:$bi"] = $label;
         }
+    }
+
+    // ---- 2. それでも同じ文字になったものだけ、ファイル名 → #番号 で区別 ----
+    $labelCount = array_count_values($labels);
+    $choices = [];
+    foreach ($labels as $ref => $label) {
+        [$ri, $bi] = array_map('intval', explode(':', $ref));
+        if ($labelCount[$label] > 1) {
+            $label .= "（{$plan['rosters'][$ri]['file']}）";
+        }
+        if (isset($choices[$label])) {
+            $label .= ' #' . ($bi + 1); // 同じファイルの中に、ボーカルまで同じバンドが2つある場合
+        }
+        $choices[$label] = $ref;
     }
     return $choices;
 }

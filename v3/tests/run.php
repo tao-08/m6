@@ -264,5 +264,21 @@ check('Spotify の複数アーティスト表記', track_match_in_results($tr('i
 check('またぐときは song_go', track_listen_url('apple_music', $letItBe), 'song_go.php?track=spotify%3A7iN1s7xHE4ifF5povM6A48');
 check('同じアプリは直接', track_listen_url('spotify', $letItBe), 'https://open.spotify.com/track/7iN1s7xHE4ifF5povM6A48');
 
+echo "roster choices\n";
+require_once __DIR__ . '/../lib/import/planner.php';
+$rb = fn(string $name, array $members) => ['band_name' => $name, 'members' => array_map(fn($m) => ['name' => $m[0], 'part' => $m[1]], $members)];
+check('同名はボーカルで区別', roster_choices(['rosters' => [['file' => '名簿.pdf', 'bands' => [
+    $rb('ELLEGARDEN', [['岩崎太一', 'Vo'], ['山田花子', 'Gt']]),
+    $rb('ヨルシカ', [['佐藤一郎', 'Vo']]),
+    $rb('ELLEGARDEN', [['鈴木一郎', 'Vo'], ['田中次郎', 'Ba']]),
+]]]]), ['ELLEGARDEN（Vo 岩崎太一）' => '0:0', 'ヨルシカ' => '0:1', 'ELLEGARDEN（Vo 鈴木一郎）' => '0:2']);
+check('Vo が空なら最初の人', array_keys(roster_choices(['rosters' => [['file' => 'a.pdf', 'bands' => [
+    $rb('ENTH', [['高橋', 'Gt'], ['伊藤', 'Dr']]), $rb('ENTH', [['渡辺', 'Vo']]),
+]]]])), ['ENTH（高橋）', 'ENTH（Vo 渡辺）']);
+check('ボーカルも同じならファイル名', array_keys(roster_choices(['rosters' => [
+    ['file' => 'a.pdf', 'bands' => [$rb('ENTH', [['渡辺', 'Vo']])]],
+    ['file' => 'b.pdf', 'bands' => [$rb('ENTH', [['渡辺', 'Vo']])]],
+]])), ['ENTH（Vo 渡辺）（a.pdf）', 'ENTH（Vo 渡辺）（b.pdf）']);
+
 echo $failed ? "\n{$failed} 件失敗\n" : "\nすべて成功\n";
 exit($failed ? 1 : 0);
