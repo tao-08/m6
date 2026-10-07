@@ -280,8 +280,9 @@ function merge_vocal_roles(array $rows): array
  * @param array $rows [['member_id', 'name', 'short_name', 'instrument_name', 'sort_order'], ...]（sort_order 順。1つのバンドの分だけ）
  * @return array [['member_id', 'name', 'short', 'title', 'segments' => [['short' => 'Vo', 'class' => 'vo'], ...], 'order'], ...]
  *   order = 並び順（Vo/Gt などは Vo のすぐ後ろ。バンド編集の楽器欄と同じ並び）
+ * @param bool $mergeVocal false なら Vo/Gt にまとめず、1行 = 1パートのまま（統計の「Voを合算する」）
  */
-function lineup_parts(array $rows): array
+function lineup_parts(array $rows, bool $mergeVocal = true): array
 {
     $has = []; // member_id => [short_name => true]
     foreach ($rows as $r) {
@@ -296,7 +297,7 @@ function lineup_parts(array $rows): array
         }
         $part = ['member_id' => $id, 'name' => $r['name'], 'short' => $r['short_name'], 'title' => $r['instrument_name'],
             'segments' => [['short' => $r['short_name'], 'class' => instrument_class($r['short_name'])]], 'order' => (int)$r['sort_order'] * 10];
-        if ($r['short_name'] === 'Vo') {
+        if ($mergeVocal && $r['short_name'] === 'Vo') {
             $n = 0;
             foreach (VOCAL_ROLES as $role) {
                 $n++;
@@ -333,8 +334,9 @@ function lineup_by_part(array $rows): array
  * 「Vo/Gt」のまとめはバンドの中だけで考える（別のバンドで Vo と Gt をやった人をまとめない）。
  * 個人ページ・メンバー一覧・統計の集計で使う。
  * @param iterable $rows [['band_id', 'member_id', 'name', 'short_name', 'instrument_name', 'sort_order'], ...]（sort_order 順）
+ * @param bool $mergeVocal false なら Vo/Gt にまとめない（lineup_parts と同じ）
  */
-function lineup_parts_by_band(iterable $rows): array
+function lineup_parts_by_band(iterable $rows, bool $mergeVocal = true): array
 {
     $rowsByBand = [];
     foreach ($rows as $r) {
@@ -342,7 +344,7 @@ function lineup_parts_by_band(iterable $rows): array
     }
     $out = [];
     foreach ($rowsByBand as $bandId => $bandRows) {
-        foreach (lineup_parts($bandRows) as $p) {
+        foreach (lineup_parts($bandRows, $mergeVocal) as $p) {
             $out[] = $p + ['band_id' => $bandId];
         }
     }

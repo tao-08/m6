@@ -91,6 +91,11 @@ $memberSql = match (true) {
 };
 $memberParams = $entryFrom !== null ? [$entryFrom, $entryTo] : [];
 
+// 「楽器別」「楽器ごとの1位」の Vo の数え方（?vo=sum）
+//   初期値: Vo と Gt を両方やった人は「Vo/Gt」の行に数える（Vo はボーカル専任だけ）
+//   sum   : Vo/Gt の行を作らず、Vo と Gt の両方に1回ずつ数える（Vo = 歌った人全員）
+$voSum = ($_GET['vo'] ?? '') === 'sum';
+
 // =====================================================================
 //  期間の絞り込み（?period=）
 // =====================================================================
@@ -196,7 +201,7 @@ $artists = rows($pdo, 'SELECT a.artist_id, a.name, COUNT(*) AS n
     ORDER BY n DESC, a.name LIMIT 20', $yearParams);
 
 // ---- 楽器別 ----
-//   Vo と Gt を両方やった人は「Vo/Gt」の行に数える（「Vo」はボーカル専任だけ）。
+//   Vo と Gt を両方やった人は「Vo/Gt」の行に数える（「Vo」はボーカル専任だけ）。「Voを合算する」なら Vo と Gt の両方に数える。
 //   このまとめは SQL では書きにくいので、行を全部読んで PHP で数える（lineup_parts_by_band → tally_parts）
 //   slots = のべ出演数（バンド × 人）、people = 人数
 $instrumentStats = array_map(static fn($t) => $t + ['slots' => $t['n'], 'people' => count($t['members'])],
@@ -208,7 +213,7 @@ $instrumentStats = array_map(static fn($t) => $t + ['slots' => $t['n'], 'people'
     JOIN live_day ld ON ld.live_day_id = b.live_day_id
     JOIN live lm ON lm.live_id = ld.live_id
     WHERE 1 = 1' . $yearSql . '
-    ORDER BY i.sort_order', $yearParams)))));
+    ORDER BY i.sort_order', $yearParams), !$voSum))));
 
 // ---- 会場 ----
 $venues = rows($pdo, 'SELECT v.name, COUNT(DISTINCT ld.live_day_id) AS days, COUNT(b.band_id) AS bands
@@ -251,7 +256,7 @@ $topSongs = rows($pdo, 'SELECT m.member_id, m.name,
     GROUP BY m.member_id ORDER BY n DESC, m.name LIMIT 10', array_merge($yearParams, $memberParams));
 
 // ---- 楽器ごとの1位 ----
-//   パート（Vo/Gt は Vo/Gt として）× 人 で数えて、パートごとに一番多い人だけ残す（同じ数なら名前順）
+//   パート（Vo/Gt は Vo/Gt として。「Voを合算する」なら Vo と Gt の両方）× 人 で数えて、パートごとに一番多い人だけ残す（同じ数なら名前順）
 $names = [];
 $kingParts = lineup_parts_by_band(rows($pdo, 'SELECT bm.band_id, bm.member_id, m.name, i.short_name, i.name AS instrument_name, i.sort_order
     FROM band_member bm
@@ -261,7 +266,7 @@ $kingParts = lineup_parts_by_band(rows($pdo, 'SELECT bm.band_id, bm.member_id, m
     JOIN live_day ld ON ld.live_day_id = b.live_day_id
     JOIN live lm ON lm.live_id = ld.live_id
     WHERE 1 = 1' . $yearSql . $memberSql . '
-    ORDER BY i.sort_order', array_merge($yearParams, $memberParams)));
+    ORDER BY i.sort_order', array_merge($yearParams, $memberParams)), !$voSum);
 foreach ($kingParts as $p) {
     $names[$p['member_id']] = $p['name'];
 }
@@ -340,6 +345,16 @@ $songLabel = static function (array $g) use ($viewerApp, $trackCache): string {
 $maxArtist = $artists ? max(array_column($artists, 'n')) : 1;
 $maxSlots = $instrumentStats ? max(array_column($instrumentStats, 'slots')) : 1;
 
+// 「Voを合算する」の切り替えリンク。今の絞り込み（?who= や ?period=）はそのままで、vo だけ付け外しする
+//   http_build_query は値が null の項目を書かないので、外すときは null にする
+//   #◯◯ = 押したあと、そのカードの位置に戻る
+$voToggle = static function (string $anchor) use ($voSum): string {
+    $url = '?' . http_build_query(array_merge($_GET, ['vo' => $voSum ? null : 'sum'])) . '#' . $anchor;
+    return '<a class="vo-sum-toggle' . ($voSum ? ' is-on' : '') . '" href="' . h($url) . '" role="switch" aria-checked="' . ($voSum ? 'true' : 'false') . '"'
+        . ' title="オンにすると Vo/Gt の人を Vo と Gt の両方に数えます">'
+        . icon($voSum ? 'check_box' : 'check_box_outline_blank') . 'Voを合算する</a>';
+};
+
 render_header('集計', 'stats');
 ?>
 <section class="hero">
@@ -388,6 +403,7 @@ $entryYears = range($thisYear, $entryMin); // 新しい順
         <label class="stats-filter__extra small" data-hide-when="who=all" title="アカウント未登録の名簿メンバーは入学年度が空のことが多いです">
             <input type="hidden" name="unknown" value="0">
             <input type="checkbox" name="unknown" value="1" data-autosubmit<?= $includeUnknown ? ' checked' : '' ?>>
+            <?php if ($voSum): ?><input type="hidden" name="vo" value="sum"><?php endif; // 絞り込みを変えても「Voを合算する」を保つ ?>
             入学年度が未登録の人も含める
         </label>
     </fieldset>
@@ -456,7 +472,7 @@ $memberLink = static fn($r) => '<a href="member.php?id=' . (int)$r['member_id'] 
     <?php ranking_card('mic', '最多出演（バンド数）', $topBands, $memberLink, '組'); ?>
     <?php ranking_card('music_note', '最多演奏曲数', $topSongs, $memberLink, '曲'); ?>
     <section class="card">
-        <h2 class="section-title section-title--card"><?= icon('military_tech') ?> 楽器ごとの1位</h2>
+        <h2 class="section-title section-title--card section-title--tool" id="kings"><?= icon('military_tech') ?> 楽器ごとの1位<?= $voToggle('kings') ?></h2>
         <ul class="ranking ranking--plain">
             <?php foreach ($instrumentKings as $k): ?>
                 <li><span><?= part_badge($k) ?> <?= $memberLink($k) ?></span><span class="pill"><?= (int)$k['n'] ?>組</span></li>
@@ -504,7 +520,7 @@ $memberLink = static fn($r) => '<a href="member.php?id=' . (int)$r['member_id'] 
     <?php ranking_card('album', 'よく演奏される曲', $topTitles, $songLabel, '回', '曲（セットリスト）がまだ登録されていません'); ?>
 
     <section class="card">
-        <h2 class="section-title section-title--card"><?= icon('music_note') ?> 楽器別</h2>
+        <h2 class="section-title section-title--card section-title--tool" id="instruments"><?= icon('music_note') ?> 楽器別<?= $voToggle('instruments') ?></h2>
         <ul class="bars">
             <?php foreach ($instrumentStats as $i): ?>
                 <li>

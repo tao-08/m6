@@ -721,6 +721,13 @@ body.is-row-dragging, body.is-row-dragging * { cursor: grabbing !important; user
 .stats-scope { margin: 0 0 14px; }
 .stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; margin-top: 14px; }
 .section-title--card { margin: 0 0 12px; }
+/* 見出しの右端に小さな切り替え（統計の「Voを合算する」）を置く */
+.section-title--tool { display: flex; align-items: center; gap: 6px; scroll-margin-top: 80px; } /* 切り替えて戻ってきたとき上のヘッダーに隠れないように */
+.vo-sum-toggle { margin-left: auto; display: inline-flex; align-items: center; gap: 3px; padding: 2px 8px; border-radius: 999px;
+  border: 1px solid var(--border); color: var(--muted); font: 600 11px/1.4 var(--font); opacity: .75; white-space: nowrap; }
+.vo-sum-toggle .icon { font-size: 15px; }
+.vo-sum-toggle:hover { opacity: 1; color: var(--text); text-decoration: none; }
+.vo-sum-toggle.is-on { opacity: 1; color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
 .bars { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 .bars li { display: grid; grid-template-columns: minmax(0, 11em) 1fr auto; gap: 10px; align-items: center; font-size: 13px; }
 .bars__label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
