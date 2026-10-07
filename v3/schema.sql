@@ -37,7 +37,7 @@ SET NAMES utf8mb4;
 -- まっさらな DB に流すと「Note: #1051 '〜' は不明な表です」が表の数だけ出るが、
 -- これは「消そうとした表が最初から無かった」というだけの“お知らせ”で、エラーではない。
 SET FOREIGN_KEY_CHECKS = 0;
-DROP TABLE IF EXISTS member_favorite_album, song_performer, song, band_member, band, artist, live_day, live, venue, instrument, user_account, member;
+DROP TABLE IF EXISTS artist_alias, member_favorite_album, song_performer, song, band_member, band, artist, live_day, live, venue, instrument, user_account, member;
 SET FOREIGN_KEY_CHECKS = 1;
 
 -- ---------------------------------------------------------------------
@@ -129,6 +129,22 @@ CREATE TABLE artist (
     name      VARCHAR(100) NOT NULL,
     PRIMARY KEY (artist_id),
     UNIQUE KEY uq_artist_name (name)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- ---------------------------------------------------------------------
+--  artist_alias — アーティストの別名（Oasis ⇔ オアシス など）
+--    マイアルバムの artist_name は Spotify / iTunes の表記そのまま（Apple はカタカナのことがある）。
+--    文字列の比較だけでは結び付けられないので、管理者が artist.php で別名を登録する。
+--    主キー name: 1つの別名は1アーティストだけを指す
+--    外部キー artist_id → artist: アーティストが消えたら別名も消える（統合時は artist.php が先に付け替える）
+-- ---------------------------------------------------------------------
+CREATE TABLE artist_alias (
+    name      VARCHAR(255) NOT NULL,   -- 別名。マイアルバムの artist_name と同じ長さ
+    artist_id INT UNSIGNED NOT NULL,
+    PRIMARY KEY (name),
+    KEY idx_alias_artist (artist_id),
+    CONSTRAINT fk_alias_artist FOREIGN KEY (artist_id) REFERENCES artist (artist_id)
+        ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- ---------------------------------------------------------------------

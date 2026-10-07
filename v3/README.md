@@ -66,6 +66,7 @@ live ──< live_day ──< band >── band_member ──< member ── use
   → そのためバンド編集は「全部消して入れ直す」ではなく「差分だけ更新」（`sync_band_members()`）に変えた
 
 すでに `abbey_v3` を作ってある人は `migrations/002_songs.sql`・`migrations/003_drop_meeting_time.sql` を順に追加で流すこと。
+それ以降も `migrations/` のファイルを番号順に流す（例: アーティストの別名は `migrations/010_artist_alias.sql`）。
 
 ## 取り込みプレビューの Key / その他 列
 
