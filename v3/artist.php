@@ -89,7 +89,7 @@ render_header($artist['name']);
             <tr>
                 <td class="nowrap"><a href="live.php?id=<?= (int)$b['live_id'] ?>#day-<?= (int)$b['live_day_id'] ?>"><?= h(fmt_year($b['fiscal_year'])) ?> <?= h($b['live_name']) ?></a>
                     <div class="muted small"><?= h($b['label']) ?> <?= h(fmt_date($b['held_on'])) ?></div></td>
-                <td class="strong"><?= h($b['name']) ?></td>
+                <td class="strong"><a href="band.php?id=<?= (int)$b['band_id'] ?>"><?= h($b['name']) ?></a></td>
                 <td class="small"><?= h($b['members'] ?? '—') ?></td>
             </tr>
         <?php endforeach; ?>
