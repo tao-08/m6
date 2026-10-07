@@ -938,7 +938,7 @@ function setupNewDayToggle() {
       .filter((s) => !s.matches('[data-new-day]') || !addBox || addBox.checked);
     form.querySelectorAll('[data-day-label]').forEach((select) => {
       const dup = selects.includes(select) && selects.some((o) => o !== select && o.value === select.value);
-      select.setCustomValidity(dup ? `日程名「${select.value}」がほかの日程と重複しています` : '');
+      select.setCustomValidity(dup ? '他の日程と重複しています' : '');
       const note = select.closest('.field').querySelector('[data-dup-note]');
       if (note) note.hidden = !dup;
     });
