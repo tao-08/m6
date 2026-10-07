@@ -336,6 +336,11 @@ input:focus, select:focus { outline: none; border-color: var(--accent); box-shad
 .part--vo { --part-c: var(--vo); } .part--gt { --part-c: var(--gt); } .part--ba { --part-c: var(--ba); }
 .part--dr { --part-c: var(--dr); } .part--key { --part-c: var(--key); } .part--other { --part-c: var(--other); }
 .part--vn { --part-c: var(--vn); } .part--sax { --part-c: var(--sax); } .part--cho { --part-c: var(--cho); }
+/* 兼任（Vo/Gt）: 1つのラベルに「Vo/Gt」。文字はそれぞれの楽器の色、背景は左右の色をグラデーションでつなぐ（lib/repository.php の part_badge）。
+   横幅は他の楽器と同じ 40px に収める（左右の余白と字間を詰める） */
+.part--split { display: inline-flex; justify-content: center; align-items: center; width: 40px; padding: 2px 0; letter-spacing: -.04em; }
+.part__seg { color: var(--part-c); }
+.part__slash { color: var(--muted); font-weight: 600; margin: 0 .5px; }
 .chip { padding: 3px 10px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border); font-size: 13px; font-weight: 500; }
 .chip:hover { border-color: var(--accent); }
 .chip--me { background: var(--accent-soft); border-color: var(--accent); }
@@ -573,19 +578,19 @@ body.is-row-dragging, body.is-row-dragging * { cursor: grabbing !important; user
 @media (prefers-reduced-motion: reduce) {
   .table--roster td > .name-input, .table--roster .cell-instrument, .table--roster .cell-instrument.is-collapsed { transition: none; }
 }
-/* 名簿の Vo. 欄: 「Vo / Gt/Vo / …」の切り替えボタン（中身はラジオボタン。見た目だけボタン風にしている）
+/* 名簿の Vo. 欄: 「Vo / Vo/Gt / …」の切り替えボタン（中身はラジオボタン。見た目だけボタン風にしている）
    class="cell-instrument" も付けているので、名前が空のあいだ畳む動きはプルダウンと同じ */
 /* width: 0 + min-width: 100% … このボタンは列の幅を決めない（名前の欄の幅にぴったり合わせる）。ほかの列と同じ幅にするため */
 .table--roster td > .pick { display: flex; gap: 1px; padding: 2px; border-radius: 8px; width: 0; min-width: 100%;
   background: var(--surface-2); border: 1px solid var(--border); }
-.pick label { position: relative; flex: 1 1 auto; min-width: 0; display: flex; } /* 文字の長さに合わせて配分（「Gt/Vo」が窮屈にならない） */
+.pick label { position: relative; flex: 1 1 auto; min-width: 0; display: flex; } /* 文字の長さに合わせて配分（「Vo/Gt」が窮屈にならない） */
 .pick input { position: absolute; inset: 0; opacity: 0; margin: 0; pointer-events: none; } /* 本物のラジオは隠す（キーボード操作はそのまま効く） */
 .pick span { flex: 1; display: grid; place-items: center; padding: 0 2px; border-radius: 6px; cursor: pointer;
   font-size: 11px; font-weight: 700; white-space: nowrap; color: var(--muted); transition: background .15s, color .15s; }
 @media (hover: hover) { .pick span:hover { color: var(--text); } } /* スマホはタップ後に :hover が残って色が戻らないので、マウスの端末だけ */
 .pick input:checked + span { background: var(--surface); color: var(--accent); box-shadow: 0 1px 3px rgb(0 0 0 / .14); }
 .pick input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 1px; }
-/* 「⋯」ボタンと、そこから右に出る残りの選択肢（Ba/Vo / Key/Vo / Dr/Vo、Cho / Perc / Sax / etc …）。開け閉めは JS: setupPicks */
+/* 「⋯」ボタンと、そこから右に出る残りの選択肢（Vo/Ba / Vo/Key / Vo/Dr、Cho / Perc / Sax / etc …）。開け閉めは JS: setupPicks */
 .pick__more { position: relative; flex: 1 1 auto; display: flex; }
 .pick__toggle { flex: 1; padding: 0 6px; border: 0; border-radius: 6px; background: none; cursor: pointer;
   font: inherit; font-size: 11px; font-weight: 700; white-space: nowrap; color: var(--muted);

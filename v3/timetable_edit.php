@@ -55,7 +55,7 @@ foreach ($st as $r) {
     $rowsByBand[(int)$r['band_id']][] = $r;
 }
 foreach ($rowsByBand as $id => $rows) {
-    $bands[$id]['members'] = merge_vocal_roles($rows); // Vo + Gt の2行は「Gt/Vo」の1行にまとめて見せる
+    $bands[$id]['members'] = merge_vocal_roles($rows); // Vo + Gt の2行は「Vo/Gt」の1行にまとめて見せる
 }
 
 $errors = [];

@@ -150,7 +150,7 @@ if (is_post()) {
         JOIN instrument i ON i.instrument_id = bm.instrument_id
         WHERE bm.band_id = ? ORDER BY i.sort_order, m.name');
     $st->execute([$bandId]);
-    $members = merge_vocal_roles($st->fetchAll()); // Vo と Gt の2行を持つ人は「Gt/Vo」の1行にまとめて見せる
+    $members = merge_vocal_roles($st->fetchAll()); // Vo と Gt の2行を持つ人は「Vo/Gt」の1行にまとめて見せる
 }
 if (!$members) {
     $members[] = ['name' => '', 'choice' => '2']; // メンバー0人でも1行は出す（「＋ 行を追加」は最後の行をコピーして作るので）

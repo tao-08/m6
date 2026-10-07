@@ -17,6 +17,7 @@
  */
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
+require_once __DIR__ . '/lib/repository.php';
 $user = require_login();
 
 $liveId = (int)($_GET['id'] ?? 0); // (int) で数字以外が来ても 0 になる
@@ -62,14 +63,12 @@ $st = $pdo->prepare('SELECT bm.band_id, m.member_id, m.name, bm.instrument_id, i
     WHERE d.live_id = ?
     ORDER BY i.sort_order, m.name');
 $st->execute([$liveId]);
-$lineups = []; // [band_id][sort_order] = ['short' => 'Vo', 'members' => [...]]
+// 「Vo/Gt」のまとめは同じバンドの中だけで考える（別のバンドで Vo と Gt をやった人をまとめないように、先にバンドごとに分ける）
+$rowsByBand = [];
 foreach ($st as $m) {
-    $part = &$lineups[$m['band_id']][(int)$m['sort_order']];
-    $part['short'] = $m['short_name'];
-    $part['title'] = $m['instrument_name'];
-    $part['members'][] = $m;
-    unset($part);
+    $rowsByBand[$m['band_id']][] = $m;
 }
+$lineups = array_map('lineup_by_part', $rowsByBand); // [band_id][並び順] = ['short' => 'Vo/Gt', 'segments' => [Vo, Gt], 'members' => [...]]
 
 $totalBands = array_sum(array_map('count', $bandsByDay));
 render_header($live['name'], 'lives');
@@ -160,7 +159,7 @@ render_header($live['name'], 'lives');
                     <?php if ($lineup): ?>
                         <ul class="lineup">
                             <?php foreach ($lineup as $part): ?>
-                                <li><span class="part part--<?= h(instrument_class($part['short'])) ?>" title="<?= h($part['title']) ?>"><?= h($part['short']) ?></span>
+                                <li><?= part_badge($part) ?>
                                     <?php foreach ($part['members'] as $m): ?>
                                         <a class="chip<?= (int)$m['member_id'] === $user['member_id'] ? ' chip--me' : '' ?>" href="member.php?id=<?= (int)$m['member_id'] ?>"><?= h($m['name']) ?></a>
                                     <?php endforeach; ?>

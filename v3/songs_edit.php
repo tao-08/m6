@@ -5,7 +5,7 @@
  * =====================================================================
  *  1曲 = 1枚のカード。カードの中に「バンドのメンバー全員」が並び、
  *    ☑ チェック … その曲を演奏した
- *    楽器1 / 楽器2 … その曲で弾いた楽器（ギターボーカルなら「Gt/Vo」1つで Vo と Gt の両方になる）
+ *    楽器1 / 楽器2 … その曲で弾いた楽器（ギターボーカルなら「Vo/Gt」1つで Vo と Gt の両方になる）
  *  を選ぶ。
  *
  *  曲の追加: 空のカードに曲名を書けば追加。曲名が空のカードは無視される。
@@ -52,7 +52,7 @@ foreach ($st as $r) {
     $members[(int)$r['member_id']]['name'] = $r['name'];
     $members[(int)$r['member_id']]['roles'][] = (int)$r['instrument_id'];
 }
-// 楽器 ID の配列 → 楽器欄の値の配列。Vo と Gt を両方持っていたら 'vo:gt'（Gt/Vo）の1つにまとめる
+// 楽器 ID の配列 → 楽器欄の値の配列。Vo と Gt を両方持っていたら 'vo:gt'（Vo/Gt）の1つにまとめる
 //   例: [Vo, Gt] → ['vo:gt']、[Vo, Gt, Key] → ['vo:gt', 'Key の id']
 $choicesOf = static fn(array $ids): array => array_column(
     merge_vocal_roles(array_map(static fn(int $id) => ['name' => '', 'instrument_id' => $id], $ids)), 'choice');
@@ -97,7 +97,7 @@ if (is_post()) {
                 if (($p[$slot] ?? '') === '') {
                     continue; // 楽器2の「—」
                 }
-                // 'vo:gt'（Gt/Vo）なら Vo と Gt の2つになる
+                // 'vo:gt'（Vo/Gt）なら Vo と Gt の2つになる
                 foreach (instruments_for_choice($p[$slot]) as $inst) {
                     $performers["$memberId-$inst"] = [$memberId, $inst]; // キーにして重複を消す
                 }
@@ -206,7 +206,7 @@ render_header('曲を編集', 'lives');
 <?php if (!$members): ?>
     <div class="flash flash--warn">先にバンドのメンバーを登録してください（<a href="band_edit.php?id=<?= $bandId ?>">バンドを編集</a>）</div>
 <?php endif; ?>
-<p class="muted small">チェックを付けた人がその曲の演奏者になります。楽器はバンドでの担当が初期値（ギターボーカルは「Gt/Vo」）。曲だけ持ち替えた（例: ギターの人が1曲だけキーボード）ら、ここで変えてください。</p>
+<p class="muted small">チェックを付けた人がその曲の演奏者になります。楽器はバンドでの担当が初期値（ギターボーカルは「Vo/Gt」）。曲だけ持ち替えた（例: ギターの人が1曲だけキーボード）ら、ここで変えてください。</p>
 
 <form method="post" class="songs-form">
     <?= csrf_field() ?>

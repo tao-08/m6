@@ -16,6 +16,7 @@
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/tracks.php';
+require_once __DIR__ . '/lib/repository.php';
 $user = require_login();
 
 $bandId = (int)($_GET['id'] ?? 0);
@@ -54,16 +55,9 @@ $st = $pdo->prepare('SELECT m.member_id, m.name, i.short_name, i.name AS instrum
     WHERE bm.band_id = ?
     ORDER BY i.sort_order, m.name');
 $st->execute([$bandId]);
-$lineup = []; // [sort_order] = ['short' => 'Vo', 'title' => 'ボーカル', 'members' => [...]]
-$memberIds = [];
-foreach ($st as $m) {
-    $part = &$lineup[(int)$m['sort_order']];
-    $part['short'] = $m['short_name'];
-    $part['title'] = $m['instrument_name'];
-    $part['members'][] = $m;
-    unset($part);
-    $memberIds[] = (int)$m['member_id'];
-}
+$rows = $st->fetchAll();
+$lineup = lineup_by_part($rows); // [並び順] = ['short' => 'Vo/Gt', 'title' => 'ギターボーカル', 'segments' => [Vo, Gt], 'members' => [...]]
+$memberIds = array_map('intval', array_column($rows, 'member_id'));
 $isMine = $user['member_id'] && in_array($user['member_id'], $memberIds, true);
 
 // ---- 3. 曲 ----
@@ -86,7 +80,8 @@ $st = $pdo->prepare('SELECT sp.song_id, sp.member_id, m.name, i.short_name FROM 
     JOIN song s ON s.song_id = sp.song_id
     JOIN member m ON m.member_id = sp.member_id
     JOIN instrument i ON i.instrument_id = sp.instrument_id
-    WHERE s.band_id = ?');
+    WHERE s.band_id = ?
+    ORDER BY i.sort_order'); // 楽器の並び順（Vo が先頭）。下の song_notes で「Vo/Gt」の順に並べるため
 $st->execute([$bandId]);
 foreach ($st as $r) {
     $songs[$r['song_id']]['players'][(int)$r['member_id']][] = $r;
@@ -113,8 +108,7 @@ function song_notes(array $songs, array $lineup): array
     $sets = [];
     foreach ($songs as $songId => $song) {
         foreach ($song['players'] as $memberId => $rows) {
-            $shorts = array_column($rows, 'short_name');
-            sort($shorts);
+            $shorts = array_column($rows, 'short_name'); // 楽器の並び順で入っている（Vo/Gt）
             $sets[$songId][$memberId] = implode('/', $shorts);
             $counts[$memberId][$sets[$songId][$memberId]] = ($counts[$memberId][$sets[$songId][$memberId]] ?? 0) + 1;
         }
@@ -185,7 +179,7 @@ render_header($band['name'], 'lives');
     <?php if ($lineup): ?>
         <ul class="lineup">
             <?php foreach ($lineup as $part): ?>
-                <li><span class="part part--<?= h(instrument_class($part['short'])) ?>" title="<?= h($part['title']) ?>"><?= h($part['short']) ?></span>
+                <li><?= part_badge($part) ?>
                     <?php foreach ($part['members'] as $m): ?>
                         <a class="chip<?= (int)$m['member_id'] === $user['member_id'] ? ' chip--me' : '' ?>" href="member.php?id=<?= (int)$m['member_id'] ?>"><?= h($m['name']) ?></a>
                     <?php endforeach; ?>

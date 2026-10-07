@@ -10,6 +10,7 @@
  */
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
+require_once __DIR__ . '/lib/repository.php';
 $user = require_login();
 
 $pdo = db();
@@ -32,9 +33,8 @@ $st->execute([$artistId]);
 $bands = $st->fetchAll();
 
 // メンバー: バンドごとに「楽器ラベル + 名前」を1人1行（楽器の並び順 → 名前順）
-//   1人で Vo と Gt を持つ人は「Gt/Vo」の1行にまとめる。並び位置は最初のパート（Vo）の位置
-$lineups = []; // [band_id][member_id] = ['member_id', 'name', 'parts' => [['short', 'title'], ...]]
-$st = $pdo->prepare('SELECT bm.band_id, m.member_id, m.name, i.short_name, i.name AS instrument_name
+//   Vo と Gt を持つ人は「Vo/Gt」の1行（lineup_parts）。それ以外の兼任（Ba + Cho など）も「Cho/Ba」のように1行にまとめる
+$st = $pdo->prepare('SELECT bm.band_id, m.member_id, m.name, i.short_name, i.name AS instrument_name, i.sort_order
     FROM band b
     JOIN band_member bm ON bm.band_id = b.band_id
     JOIN member m ON m.member_id = bm.member_id
@@ -42,25 +42,28 @@ $st = $pdo->prepare('SELECT bm.band_id, m.member_id, m.name, i.short_name, i.nam
     WHERE b.artist_id = ?
     ORDER BY i.sort_order, m.name');
 $st->execute([$artistId]);
+$rowsByBand = [];
 foreach ($st as $m) {
-    $person = &$lineups[(int)$m['band_id']][(int)$m['member_id']];
-    $person['member_id'] = (int)$m['member_id'];
-    $person['name'] = $m['name'];
-    $person['parts'][] = ['short' => $m['short_name'], 'title' => $m['instrument_name']];
-    unset($person);
+    $rowsByBand[(int)$m['band_id']][] = $m;
 }
-// ラベルは「Gt/Vo」「Ba/Cho」のように、歌うパート（Vo / Cho）を後ろへ。色は先頭のパート（Gt/Vo ならギターの色）
-foreach ($lineups as &$people) {
-    foreach ($people as &$person) {
-        $sing = static fn(array $p): int => in_array(instrument_class($p['short']), ['vo', 'cho'], true) ? 1 : 0;
-        usort($person['parts'], static fn($a, $b) => $sing($a) <=> $sing($b)); // usort は同じ値の順番を保つ（PHP 8）
-        $person['label'] = implode('/', array_column($person['parts'], 'short'));
-        $person['title'] = implode('/', array_column($person['parts'], 'title'));
-        $person['class'] = instrument_class($person['parts'][0]['short']);
+$lineups = []; // [band_id][member_id] = ['member_id', 'name', 'title', 'segments' => [['short' => 'Vo', 'class' => 'vo'], ...]]
+foreach ($rowsByBand as $bandId => $rows) {
+    $byMember = [];
+    foreach (lineup_parts($rows) as $p) {
+        $byMember[$p['member_id']][] = $p; // 並び位置は、その人の最初のパートの位置
     }
-    unset($person);
+    foreach ($byMember as $memberId => $parts) {
+        // 歌うパート（Vo / Cho）を先に（Vo/Gt、Cho/Ba）。usort は同じ値の順番を保つ（PHP 8）
+        $sing = static fn(array $p): int => in_array($p['segments'][0]['class'], ['vo', 'cho'], true) ? 0 : 1;
+        usort($parts, static fn($a, $b) => $sing($a) <=> $sing($b));
+        $lineups[$bandId][$memberId] = [
+            'member_id' => $memberId,
+            'name' => $parts[0]['name'],
+            'title' => implode('/', array_column($parts, 'title')),
+            'segments' => array_merge(...array_column($parts, 'segments')), // 左右に色分けして並べる
+        ];
+    }
 }
-unset($people);
 
 // セットリスト: バンドごとに曲順で
 $setlists = []; // [band_id] = [曲名, ...]
@@ -132,7 +135,7 @@ render_header($artist['name']);
                     <?php if (!empty($lineups[(int)$b['band_id']])): ?>
                         <ul class="artist-lineup">
                             <?php foreach ($lineups[(int)$b['band_id']] as $m): ?>
-                                <li><span class="part part--<?= h($m['class']) ?>" title="<?= h($m['title']) ?>"><?= h($m['label']) ?></span>
+                                <li><?= part_badge($m) ?>
                                     <a href="member.php?id=<?= (int)$m['member_id'] ?>"><?= h($m['name']) ?></a></li>
                             <?php endforeach; ?>
                         </ul>

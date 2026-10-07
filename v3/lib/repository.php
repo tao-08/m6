@@ -174,10 +174,10 @@ function instrument_id_by_short(string $short): ?int
  */
 const VOCAL_ROLES = [
     'vo'  => ['label' => 'Vo',     'title' => 'ボーカルのみ',       'also' => null],
-    'gt'  => ['label' => 'Gt/Vo',  'title' => 'ギターボーカル',     'also' => 'Gt'],
-    'ba'  => ['label' => 'Ba/Vo',  'title' => 'ベースボーカル',     'also' => 'Ba'],
-    'key' => ['label' => 'Key/Vo', 'title' => 'キーボードボーカル', 'also' => 'Key'],
-    'dr'  => ['label' => 'Dr/Vo',  'title' => 'ドラムボーカル',     'also' => 'Dr'],
+    'gt'  => ['label' => 'Vo/Gt',  'title' => 'ギターボーカル',     'also' => 'Gt'],
+    'ba'  => ['label' => 'Vo/Ba',  'title' => 'ベースボーカル',     'also' => 'Ba'],
+    'key' => ['label' => 'Vo/Key', 'title' => 'キーボードボーカル', 'also' => 'Key'],
+    'dr'  => ['label' => 'Vo/Dr',  'title' => 'ドラムボーカル',     'also' => 'Dr'],
 ];
 
 /** フォームから来た値をボーカルの形のキーにする。知らない値（書き換えられた値など）は単体ボーカル扱い */
@@ -216,7 +216,7 @@ function instruments_for_choice(mixed $value): array
 
 /**
  * 楽器欄（<select>）の <option> を作る。バンド編集・タイムテーブル編集で共通。
- *   ボーカルのすぐ下に「Gt/Vo ギターボーカル」などを並べる（値は 'vo:gt'。保存すると Vo + Gt の2行になる）
+ *   ボーカルのすぐ下に「Vo/Gt ギターボーカル」などを並べる（値は 'vo:gt'。保存すると Vo + Gt の2行になる）
  * @param string $selected 選んでおく値（'2' や 'vo:gt'）
  */
 function instrument_choice_options(string $selected): string
@@ -239,7 +239,7 @@ function instrument_choice_options(string $selected): string
 
 /**
  * DB の行（1人1楽器）→ バンド編集の行。
- * 同じ人が「Vo」と「Gt」を両方持っていたら、1行の「vo:gt（Gt/Vo）」にまとめる。
+ * 同じ人が「Vo」と「Gt」を両方持っていたら、1行の「vo:gt（Vo/Gt）」にまとめる。
  * @param array $rows [['name' => ..., 'instrument_id' => ...], ...]（楽器の sort_order 順。Vo が先頭に来る前提）
  * @return array [['name' => ..., 'choice' => '2' | 'vo:gt'], ...]
  */
@@ -264,13 +264,94 @@ function merge_vocal_roles(array $rows): array
                 if ($also !== null && isset($has[$r['name']][$also])) {
                     $choice = "vo:$key";
                     $merged[$r['name']][$also] = true;
-                    break; // 1人につきまとめるのは1つだけ（Vo + Gt + Key なら Gt/Vo と Key の2行）
+                    break; // 1人につきまとめるのは1つだけ（Vo + Gt + Key なら Vo/Gt と Key の2行）
                 }
             }
         }
         $out[] = ['name' => $r['name'], 'choice' => $choice];
     }
     return $out;
+}
+
+/**
+ * 1つのバンドのメンバーの行（1人1楽器）→ 表示用の「人 + パート」の並び。
+ * 同じ人が「Vo」と「Gt」を両方持っていたら、1つの「Vo/Gt」にまとめる（ラベルは左右で Vo と Gt の色。part_badge()）。
+ * バンドページ・ライブページ・アーティストページの表示で共通。
+ * @param array $rows [['member_id', 'name', 'short_name', 'instrument_name', 'sort_order'], ...]（sort_order 順。1つのバンドの分だけ）
+ * @return array [['member_id', 'name', 'short', 'title', 'segments' => [['short' => 'Vo', 'class' => 'vo'], ...], 'order'], ...]
+ *   order = 並び順（Vo/Gt などは Vo のすぐ後ろ。バンド編集の楽器欄と同じ並び）
+ */
+function lineup_parts(array $rows): array
+{
+    $has = []; // member_id => [short_name => true]
+    foreach ($rows as $r) {
+        $has[(int)$r['member_id']][$r['short_name']] = true;
+    }
+    $merged = []; // member_id => [Vo にまとめた short_name => true]
+    $out = [];
+    foreach ($rows as $r) {
+        $id = (int)$r['member_id'];
+        if (isset($merged[$id][$r['short_name']])) {
+            continue; // Vo の方にまとめ済み
+        }
+        $part = ['member_id' => $id, 'name' => $r['name'], 'short' => $r['short_name'], 'title' => $r['instrument_name'],
+            'segments' => [['short' => $r['short_name'], 'class' => instrument_class($r['short_name'])]], 'order' => (int)$r['sort_order'] * 10];
+        if ($r['short_name'] === 'Vo') {
+            $n = 0;
+            foreach (VOCAL_ROLES as $role) {
+                $n++;
+                if ($role['also'] !== null && isset($has[$id][$role['also']])) {
+                    $part = ['short' => $role['label'], 'title' => $role['title'], 'order' => $part['order'] + $n,
+                        'segments' => [...$part['segments'], ['short' => $role['also'], 'class' => instrument_class($role['also'])]]] + $part;
+                    $merged[$id][$role['also']] = true;
+                    break; // 1人につきまとめるのは1つだけ（merge_vocal_roles と同じ）
+                }
+            }
+        }
+        $out[] = $part;
+    }
+    return $out;
+}
+
+/**
+ * lineup_parts() の結果を、パートごとにまとめる（バンドページ・ライブページの「Vo 鈴木 / Vo/Gt 山田 / Gt 田中…」）。
+ * @return array [order => ['short', 'title', 'segments', 'members' => [['member_id', 'name'], ...]], ...]（並び順どおり）
+ */
+function lineup_by_part(array $rows): array
+{
+    $lineup = [];
+    foreach (lineup_parts($rows) as $p) {
+        $lineup[$p['order']] ??= ['short' => $p['short'], 'title' => $p['title'], 'segments' => $p['segments'], 'members' => []];
+        $lineup[$p['order']]['members'][] = ['member_id' => $p['member_id'], 'name' => $p['name']];
+    }
+    ksort($lineup);
+    return $lineup;
+}
+
+/**
+ * 楽器ラベルの HTML。1つの楽器ならいつもの .part。
+ * 兼任（Vo/Gt）は1つのラベルの中に「Vo/Gt」と書き、文字も背景も左から順にそれぞれの楽器の色にする（境目は少しグラデーション）。
+ * @param array $part ['title' => 'ギターボーカル', 'segments' => [['short' => 'Vo', 'class' => 'vo'], ['short' => 'Gt', 'class' => 'gt']]]
+ */
+function part_badge(array $part): string
+{
+    $segs = $part['segments'];
+    if (count($segs) === 1) {
+        return '<span class="part part--' . h($segs[0]['class']) . '" title="' . h($part['title']) . '">' . h($segs[0]['short']) . '</span>';
+    }
+    // 背景: 楽器ごとに幅を等分して塗り、境目の前後 10% だけ色を混ぜる
+    //   class は instrument_class() が返す決まった名前（vo / gt …）だけなので、style に入れても安全
+    $n = count($segs);
+    $stops = [];
+    foreach ($segs as $i => $s) {
+        $color = 'color-mix(in srgb, var(--' . $s['class'] . ') 13%, transparent)';
+        $stops[] = $color . ' ' . ($i === 0 ? 0 : round($i / $n * 100 + 10)) . '%';
+        $stops[] = $color . ' ' . ($i === $n - 1 ? 100 : round(($i + 1) / $n * 100 - 10)) . '%';
+    }
+    $text = implode('<span class="part__slash">/</span>', array_map(
+        static fn(array $s): string => '<span class="part__seg part--' . h($s['class']) . '">' . h($s['short']) . '</span>', $segs));
+    return '<span class="part part--split" title="' . h($part['title']) . '" style="background: linear-gradient(90deg, '
+        . h(implode(', ', $stops)) . ')">' . $text . '</span>';
 }
 
 function detach_members(PDO $pdo, int $bandId): void
