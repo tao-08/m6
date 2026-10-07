@@ -41,6 +41,8 @@ document.addEventListener('DOMContentLoaded', () => {
   setupDropzone();
   setupNameCheck();
   setupImportPreview();
+  setupMergeToggle();
+  setupVenuePick();
   setupSlotSort();
   setupAlbumBox();
   setupAlbumSort();
@@ -624,10 +626,24 @@ function setupImportPreview() {
     });
 
     // 名簿側: 「登録」を外した行を薄くし、どの枠にも選ばれていない（= 登録されない）行に ⚠ を出す
+    //   どの枠にも選ばれていない行は、チェックを外して押せなくする（disabled は送信されない = 登録しない）
+    //   枠で選ばれたら押せるように戻し、自動で外したチェック（data-auto-off）だけ付け直す。自分で外したものは戻さない
     document.querySelectorAll('tr[data-roster-key]').forEach((tr) => {
-      const on = tr.querySelector('[data-roster-on]').checked;
-      tr.classList.toggle('is-excluded', !on);
-      tr.querySelector('[data-roster-missing]').hidden = !on || !!usedBy[tr.dataset.rosterKey];
+      const box = tr.querySelector('[data-roster-on]');
+      const unused = !usedBy[tr.dataset.rosterKey];
+      if (unused && !box.disabled) {
+        box.checked = false;
+        box.disabled = true;
+        box.dataset.autoOff = '';
+      } else if (!unused && box.disabled) {
+        box.disabled = false;
+        if ('autoOff' in box.dataset) {
+          box.checked = true;
+          delete box.dataset.autoOff;
+        }
+      }
+      tr.classList.toggle('is-excluded', !box.checked || unused);
+      tr.querySelector('[data-roster-missing]').hidden = !unused;
     });
 
     // 日程ごとの「名簿なし ◯件」バッジ
@@ -642,8 +658,18 @@ function setupImportPreview() {
     });
 
     // 名簿の重複が1つでもあれば「登録する」を押せなくする（同じバンドが2回出ることは無いので入力ミス）
-    submit.disabled = submitDisabled || dupCount > 0;
-    submitBlock.hidden = dupCount === 0;
+    // 「登録済みのライブと統合」が ON なのにライブを選んでいない日程（取り込まない日程は数えない）
+    const unpicked = [...document.querySelectorAll('[data-timetable]')].filter((card) =>
+      !card.querySelector('[data-skip]')?.checked
+      && card.querySelector('[data-merge-toggle]')?.getAttribute('aria-pressed') === 'true'
+      && !card.querySelector('[data-live-id]').value).length;
+
+    const blocks = [];
+    if (dupCount > 0) blocks.push('名簿の重複を直す');
+    if (unpicked > 0) blocks.push('統合するライブを選ぶ');
+    submit.disabled = submitDisabled || blocks.length > 0;
+    submitBlock.hidden = blocks.length === 0;
+    submitBlock.querySelector('[data-submit-block-text]').textContent = `${blocks.join('・')}と登録できます`;
   };
 
   // タイムテーブルの「取込」を切り替えたら、その枠が選んでいる名簿の「登録」も合わせる
@@ -654,18 +680,37 @@ function setupImportPreview() {
     if (row) row.querySelector('[data-roster-on]').checked = checkbox.checked;
   };
 
-  // 開催日 → 年度（4月始まり。1〜3月は前の年の年度）。PHP の academic_year() と同じ計算
   const showFiscalYear = (input) => {
     const out = input.closest('.field').querySelector('[data-fiscal-year]');
-    const m = /^(\d{4})-(\d{2})-\d{2}$/.exec(input.value);
-    out.textContent = m ? `→ ${Number(m[2]) >= 4 ? Number(m[1]) : Number(m[1]) - 1}年度` : '';
+    const year = fiscalYear(input.value);
+    out.textContent = year !== null ? `→ ${year}年度` : '';
   };
+
+  // 「この日程は取り込まない」: そのカードの入力欄を触れなくする（そのチェックボックス自身は除く）
+  //   disabled だと値が送信されず、登録失敗で戻ってきたときに「取込」などの状態が消えてしまう。
+  //   inert は「クリック・入力・フォーカスができない」だけで値はそのまま送られるので、状態を保ったまま固められる
+  const applySkip = (card) => {
+    const skip = card.querySelector('[data-skip]');
+    const on = skip.checked;
+    card.classList.toggle('is-skipped', on);
+    [...card.children].forEach((el) => {
+      if (el.matches('.import-day__head')) return; // 見出し（ファイル名）は読めるようにそのまま
+      if (el.contains(skip)) {
+        // チェックボックスの並び: 「取り込まない」以外（上書き）だけ固める
+        [...el.children].forEach((c) => { c.inert = on && !c.contains(skip); });
+      } else {
+        el.inert = on;
+      }
+    });
+  };
+  document.querySelectorAll('[data-timetable]').forEach(applySkip); // 失敗して戻ってきたときにチェック済みのことがある
 
   document.addEventListener('change', (e) => {
     if (e.target.matches('[data-include]')) {
       renumberSlots(e.target.closest('tbody')); // 取込を切り替えたら出演順を振り直す
       syncRosterOn(e.target);
     }
+    if (e.target.matches('[data-skip]')) applySkip(e.target.closest('[data-timetable]'));
     if (e.target.matches('[data-include], [data-roster-input], [data-roster-on], [data-skip]')) refresh();
     if (e.target.matches('[data-date-input]')) showFiscalYear(e.target);
     if (e.target.matches('[data-venue-select]')) {
@@ -677,10 +722,263 @@ function setupImportPreview() {
   document.addEventListener('input', (e) => {
     if (e.target.matches('[data-roster-input], [data-band-name]')) refresh();
   });
+  // 統合トグルの切り替え・ライブの選択（setupMergeToggle が知らせてくる）
+  document.addEventListener('merge-change', refresh);
 
   refresh();
   // タイムテーブルに無い名簿のバンドがあれば注意を出す（PHP が初回だけ <dialog> を置く）
   document.querySelector('[data-roster-missing-dialog]')?.showModal();
+}
+
+/* ---------------------------------------------------------------------
+ * 取り込み: 会場のプルダウンを「登録済みのライブと統合」と同じ見た目のポップアップにする
+ *
+ *   <select> の開いたときのリストは CSS で見た目を変えられないので、
+ *   <select> は隠して値の入れ物として残し（送信・PHP 側はそのまま）、ボタン + ポップアップを横に作る。
+ *   選んだら select.value を変えて change イベントを出す → 「新しい会場を作る」の欄の表示切り替えも今まで通り動く。
+ * ------------------------------------------------------------------- */
+function setupVenuePick() {
+  const selects = document.querySelectorAll('[data-venue-select]');
+  if (!selects.length) return;
+  let openPop = null;
+
+  const closePop = () => {
+    if (!openPop) return;
+    openPop.previousElementSibling.setAttribute('aria-expanded', 'false');
+    openPop.remove();
+    openPop = null;
+  };
+
+  selects.forEach((select) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'live-pick';
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'live-pick__btn';
+    btn.setAttribute('aria-haspopup', 'listbox');
+    btn.setAttribute('aria-expanded', 'false');
+    const text = document.createElement('span');
+    const icon = document.createElement('span');
+    icon.className = 'icon';
+    icon.setAttribute('aria-hidden', 'true');
+    icon.textContent = 'expand_more';
+    btn.append(text, icon);
+    wrap.append(btn);
+    select.hidden = true;
+    select.after(wrap);
+
+    // ボタンの文字を select の今の値に合わせる（未設定は薄く）
+    const sync = () => {
+      const opt = select.selectedOptions[0];
+      text.textContent = opt ? opt.textContent : '';
+      text.classList.toggle('is-placeholder', !select.value);
+    };
+    sync();
+    select.addEventListener('change', sync);
+
+    btn.addEventListener('click', () => {
+      if (openPop && wrap.contains(openPop)) { closePop(); return; }
+      closePop();
+      const pop = document.createElement('div');
+      pop.className = 'live-pop';
+      pop.setAttribute('role', 'listbox');
+      [...select.options].forEach((o) => {
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'live-pop__item';
+        item.setAttribute('role', 'option');
+        if (o.value === select.value) item.setAttribute('aria-selected', 'true');
+        const name = document.createElement('span');
+        name.className = 'live-pop__name';
+        name.textContent = o.textContent; // textContent なので XSS にならない
+        item.append(name);
+        item.addEventListener('click', () => {
+          select.value = o.value;
+          select.dispatchEvent(new Event('change', { bubbles: true })); // 既存の change の処理（新しい会場の欄）を動かす
+          closePop();
+          btn.focus();
+        });
+        pop.append(item);
+      });
+      btn.after(pop);
+      btn.setAttribute('aria-expanded', 'true');
+      openPop = pop;
+      // 選択中の会場が見える位置までスクロール
+      const cur = pop.querySelector('[aria-selected="true"]');
+      if (cur) pop.scrollTop = cur.offsetTop - pop.clientHeight / 2 + cur.offsetHeight / 2;
+    });
+  });
+
+  document.addEventListener('click', (e) => {
+    if (openPop && !openPop.parentElement.contains(e.target)) closePop();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && openPop) {
+      const btn = openPop.previousElementSibling;
+      closePop();
+      btn.focus();
+    }
+  });
+}
+
+/** 開催日 "2025-03-15" → 年度（4月始まり。1〜3月は前の年の年度）。PHP の academic_year() と同じ計算 */
+function fiscalYear(dateStr) {
+  const m = /^(\d{4})-(\d{2})-\d{2}$/.exec(dateStr || '');
+  if (!m) return null;
+  return Number(m[2]) >= 4 ? Number(m[1]) : Number(m[1]) - 1;
+}
+
+/* ---------------------------------------------------------------------
+ * 取り込み: 「登録済みのライブと統合」トグル
+ *
+ *   ON  … ライブ名の入力欄を隠して disabled（送信されない）にし、代わりに「ライブを選択 ▾」を出す。
+ *          押すと <template id="live-picker"> を複製したポップアップが開き、
+ *          開催日の年度の見出しまでスクロールした状態で表示される。選ぶと hidden の live_id に入る。
+ *   OFF … 元の入力欄に戻す（打ってあった文字はそのまま）。merge / live_id は disabled にして送らない。
+ * ------------------------------------------------------------------- */
+function setupMergeToggle() {
+  const tpl = document.getElementById('live-picker');
+  if (!tpl) return;
+  let openPop = null; // 今開いているポップアップ（同時に開くのは1つだけ）
+
+  const closePop = () => {
+    if (!openPop) return;
+    openPop.closest('[data-merge]').querySelector('[data-live-pick]').setAttribute('aria-expanded', 'false');
+    openPop.remove();
+    openPop = null;
+  };
+
+  // 登録済みのライブの一覧は、ポップアップの <template> の項目をそのまま使う（同じデータを二重に埋め込まない）
+  const lives = [...tpl.content.querySelectorAll('[data-live-option]')].map((o) => ({
+    year: o.dataset.year,
+    key: o.dataset.name.trim().toLowerCase(), // DB の照合順序（_general_ci）は大文字・小文字を区別しないので合わせる
+    labels: o.dataset.labels ? o.dataset.labels.split('・') : [],
+  }));
+
+  // 注意文: 選んだライブにもう同じ日程がある / 年度が開催日とずれている
+  // あわせて、カード上部の「この日程は登録済みです」の帯も出し入れする
+  const updateNote = (box) => {
+    const card = box.closest('[data-timetable]');
+    const note = box.querySelector('[data-merge-note]');
+    const btn = box.querySelector('[data-live-pick]');
+    const flash = card.querySelector('[data-exists-flash]');
+    const on = box.querySelector('[data-merge-toggle]').getAttribute('aria-pressed') === 'true';
+    const label = card.querySelector('input[name$="[label]"]').value.trim();
+    const year = fiscalYear(card.querySelector('[data-date-input]').value);
+    note.textContent = '';
+    note.className = 'merge-note';
+
+    if (!on) {
+      // 手入力: 「開催日の年度 + ライブ名」が同じライブに、同じ日程ラベルがあるか（PHP 側の判定と同じ）
+      const key = box.querySelector('[data-live-name]').value.trim().toLowerCase();
+      const hit = lives.find((l) => l.year === String(year) && l.key === key);
+      flash.hidden = !(hit && hit.labels.includes(label));
+      return;
+    }
+    if (!box.querySelector('[data-live-id]').value) {
+      flash.hidden = true;
+      return;
+    }
+    const msgs = [];
+    const exists = !!btn.dataset.labels && btn.dataset.labels.split('・').includes(label);
+    flash.hidden = !exists;
+    if (exists) {
+      msgs.push(`⚠ 「${label}」は登録済みです（「上書き」にチェックすると置き換え）`);
+    }
+    if (year !== null && String(year) !== btn.dataset.year) {
+      msgs.push(`⚠ 開催日は${year}年度ですが、${btn.dataset.year}年度のライブに統合します`);
+    }
+    if (msgs.length) {
+      note.textContent = msgs.join('\n');
+      note.classList.add('merge-note--warn');
+    } else {
+      note.textContent = `「${label}」として追加します`;
+    }
+  };
+
+  const setMode = (box, on) => {
+    box.querySelector('[data-merge-toggle]').setAttribute('aria-pressed', on ? 'true' : 'false');
+    const name = box.querySelector('[data-live-name]');
+    name.hidden = on;
+    name.disabled = on;
+    box.querySelector('[data-merge-flag]').disabled = !on;
+    box.querySelector('[data-live-id]').disabled = !on;
+    box.querySelector('[data-live-pick-wrap]').hidden = !on;
+    if (!on) {
+      closePop();
+      name.focus();
+    }
+    updateNote(box);
+    document.dispatchEvent(new Event('merge-change')); // 「登録する」を押せるかどうかを判定し直してもらう
+  };
+
+  const open = (box) => {
+    closePop();
+    const btn = box.querySelector('[data-live-pick]');
+    const pop = tpl.content.firstElementChild.cloneNode(true);
+    btn.after(pop);
+    btn.setAttribute('aria-expanded', 'true');
+    openPop = pop;
+
+    const current = box.querySelector('[data-live-id]').value;
+    pop.querySelector(`[data-live-option="${current}"]`)?.setAttribute('aria-selected', 'true');
+
+    // 開催日の年度の見出しまでスクロール。無ければそれより前で一番近い年度（リストは新しい年度が上）
+    const year = fiscalYear(box.closest('[data-timetable]').querySelector('[data-date-input]').value);
+    if (year !== null) {
+      const head = [...pop.querySelectorAll('[data-year-head]')].find((h) => Number(h.dataset.yearHead) <= year);
+      if (head) pop.scrollTop = head.offsetTop; // .live-pop は position: absolute なので、offsetTop はポップアップの上端からの距離
+    }
+  };
+
+  document.addEventListener('click', (e) => {
+    const toggle = e.target.closest('[data-merge-toggle]');
+    if (toggle) {
+      const box = toggle.closest('[data-merge]');
+      const on = toggle.getAttribute('aria-pressed') !== 'true';
+      setMode(box, on);
+      if (on && !box.querySelector('[data-live-id]').value) open(box); // まだ選んでいなければすぐ開く
+      return;
+    }
+    const pick = e.target.closest('[data-live-pick]');
+    if (pick) {
+      const box = pick.closest('[data-merge]');
+      if (openPop && box.contains(openPop)) closePop(); else open(box);
+      return;
+    }
+    const opt = e.target.closest('[data-live-option]');
+    if (opt) {
+      const box = opt.closest('[data-merge]');
+      const btn = box.querySelector('[data-live-pick]');
+      box.querySelector('[data-live-id]').value = opt.dataset.liveOption;
+      btn.dataset.year = opt.dataset.year;
+      btn.dataset.labels = opt.dataset.labels;
+      const text = box.querySelector('[data-live-pick-text]');
+      text.textContent = `${opt.dataset.year}年度 ${opt.dataset.name}`;
+      text.classList.remove('is-placeholder');
+      closePop();
+      updateNote(box);
+      document.dispatchEvent(new Event('merge-change'));
+      btn.focus();
+      return;
+    }
+    if (openPop && !openPop.contains(e.target)) closePop(); // 外側をクリックしたら閉じる
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && openPop) {
+      const btn = openPop.closest('[data-merge]').querySelector('[data-live-pick]');
+      closePop();
+      btn.focus();
+    }
+  });
+  // 開催日・日程ラベル・ライブ名を変えたら注意文と帯を作り直す
+  document.addEventListener('input', (e) => {
+    if (!e.target.matches('[data-date-input], input[name$="[label]"], [data-live-name]')) return;
+    const box = e.target.closest('[data-timetable]')?.querySelector('[data-merge]');
+    if (box) updateNote(box);
+  });
+
+  document.querySelectorAll('[data-merge]').forEach(updateNote);
 }
 
 /* ---------------------------------------------------------------------

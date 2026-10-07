@@ -558,9 +558,23 @@ function commit_import_plan(PDO $pdo, array $plan, array $input): array
             if ($year < 1990 || $year > 2100) { // live.fiscal_year の CHECK 制約と同じ範囲
                 throw new RuntimeException("{$where} 開催日の年が範囲外です");
             }
-            if ($liveName === '' || mb_strlen($liveName) > 50) {
+            // 「登録済みのライブと統合」ON: 選んだ live_id を使う。OFF: 年度＋ライブ名で探す（無ければ作る）
+            $mergeLive = null;
+            if (!empty($form['merge'])) {
+                // フォームの値は書き換えられる可能性があるので、本当に存在するライブか DB で確認する
+                $liveIdIn = (string)($form['live_id'] ?? '');
+                $st = $pdo->prepare('SELECT live_id, fiscal_year, name FROM live WHERE live_id = ?');
+                $st->execute([ctype_digit($liveIdIn) ? (int)$liveIdIn : 0]);
+                $mergeLive = $st->fetch();
+                if ($mergeLive === false) {
+                    throw new RuntimeException("{$where} 統合する登録済みのライブを選んでください");
+                }
+                $liveName = $mergeLive['name'];
+            } elseif ($liveName === '' || mb_strlen($liveName) > 50) {
                 throw new RuntimeException("{$where} ライブ名は1〜50文字で入力してください");
             }
+            // ライブごと消えたときに作り直すための年度（統合なら選んだライブの年度）
+            $liveYear = $mergeLive ? (int)$mergeLive['fiscal_year'] : $year;
             if ($label === '' || mb_strlen($label) > 50) {
                 throw new RuntimeException("{$where} 日程（1日目など）は1〜50文字で入力してください");
             }
@@ -585,17 +599,17 @@ function commit_import_plan(PDO $pdo, array $plan, array $input): array
             }
 
             // ---- 同じ日程が登録済みか ----
-            $liveId = find_or_create_live($pdo, $year, $liveName);
+            $liveId = $mergeLive ? (int)$mergeLive['live_id'] : find_or_create_live($pdo, $year, $liveName);
             $st = $pdo->prepare('SELECT live_day_id FROM live_day WHERE live_id = ? AND label = ?');
             $st->execute([$liveId, $label]);
             $existing = $st->fetchColumn();
             if ($existing !== false) {
                 if (empty($form['overwrite'])) {
-                    throw new RuntimeException("{$year}年度「{$liveName}」{$label} は登録済みです。置き換えるなら「上書き」にチェックしてください");
+                    throw new RuntimeException("{$liveYear}年度「{$liveName}」{$label} は登録済みです。置き換えるなら「上書き」にチェックしてください");
                 }
                 // 日程を消せば、バンド・出演記録は ON DELETE CASCADE で DB が消してくれる
                 delete_live_day($pdo, (int)$existing);
-                $liveId = find_or_create_live($pdo, $year, $liveName); // ライブごと消えた場合に作り直す
+                $liveId = find_or_create_live($pdo, $liveYear, $liveName); // ライブごと消えた場合に作り直す
             }
 
             // ---- live_day ----

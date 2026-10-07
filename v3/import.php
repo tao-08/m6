@@ -273,6 +273,14 @@ if ($plan === null): // ==================== アップロード画面 ==========
 
     // ---- 入力欄の候補（datalist）用に、既存のライブ名・会場を取っておく ----
     $liveNames = $pdo->query('SELECT DISTINCT name FROM live ORDER BY name')->fetchAll(PDO::FETCH_COLUMN);
+    // 「登録済みのライブと統合」のポップアップ用。登録済みの日程ラベルも一緒に取る
+    //   LEFT JOIN: 日程が無いライブも出す / GROUP_CONCAT: 複数行のラベルを「1日目・2日目」の1つの文字にまとめる
+    $lives = $pdo->query("SELECT l.live_id, l.fiscal_year, l.name,
+            GROUP_CONCAT(d.label ORDER BY d.label SEPARATOR '・') AS labels
+        FROM live l LEFT JOIN live_day d ON d.live_id = l.live_id
+        GROUP BY l.live_id, l.fiscal_year, l.name
+        ORDER BY l.fiscal_year DESC, l.name")->fetchAll();
+    $livesById = array_column($lives, null, 'live_id');
     // 会場はプルダウンで選ばせる（表記ゆれ防止）。FETCH_KEY_PAIR で [venue_id => name] の形になる
     $venues = $pdo->query('SELECT venue_id, name FROM venue ORDER BY name')->fetchAll(PDO::FETCH_KEY_PAIR);
 
@@ -363,6 +371,22 @@ if ($plan === null): // ==================== アップロード画面 ==========
     <datalist id="dl-live-names"><?php foreach ($liveNames as $n): ?><option value="<?= h($n) ?>"><?php endforeach; ?></datalist>
     <!-- 名簿の検索欄の候補。data-key は JS が「名簿」側の表示を更新するのに使う -->
     <datalist id="dl-roster"><?php foreach ($rosterChoices as $label => $ref): ?><option value="<?= h($label) ?>" data-key="<?= h($ref) ?>"><?php endforeach; ?></datalist>
+    <!-- 「登録済みのライブと統合」のポップアップの中身。1回だけ書いて、JS が開くたびに複製して使う -->
+    <template id="live-picker">
+        <div class="live-pop" role="listbox" aria-label="統合するライブ">
+            <?php if (!$lives): ?><p class="live-pop__empty">登録済みのライブはまだありません</p><?php endif; ?>
+            <?php $prevYear = null; foreach ($lives as $lv): ?>
+                <?php if ($lv['fiscal_year'] !== $prevYear): $prevYear = $lv['fiscal_year']; ?>
+                    <p class="live-pop__year" data-year-head="<?= (int)$lv['fiscal_year'] ?>"><?= (int)$lv['fiscal_year'] ?>年度</p>
+                <?php endif; ?>
+                <button type="button" class="live-pop__item" role="option" data-live-option="<?= (int)$lv['live_id'] ?>"
+                    data-year="<?= (int)$lv['fiscal_year'] ?>" data-name="<?= h($lv['name']) ?>" data-labels="<?= h((string)$lv['labels']) ?>">
+                    <span class="live-pop__name"><?= h($lv['name']) ?></span>
+                    <small class="muted"><?= $lv['labels'] !== null ? '登録済み: ' . h($lv['labels']) : '日程なし' ?></small>
+                </button>
+            <?php endforeach; ?>
+        </div>
+    </template>
     <datalist id="dl-labels"><?php foreach (['1日目', '2日目', '3日目', '4日目', '教室ライブ'] as $n): ?><option value="<?= h($n) ?>"><?php endforeach; ?></datalist>
 
     <h2 class="section-title">① タイムテーブル</h2>
@@ -387,9 +411,17 @@ if ($plan === null): // ==================== アップロード画面 ==========
             $venueNew = $guess === null ? $tt['venue'] : '';
         }
 
+        // 「登録済みのライブと統合」: 失敗して戻ってきたときだけ ON の可能性がある
+        $merge = !empty($f['merge']);
+        $mergeLive = $livesById[(int)($f['live_id'] ?? 0)] ?? null;
+
         // 同じ日程がもう DB にあるか（あれば上書きの注意を出す）
         $exists = false;
-        if ($year !== null) {
+        if ($merge) {
+            if ($mergeLive !== null) {
+                $exists = in_array($val('label', $tt['label']), explode('・', (string)$mergeLive['labels']), true);
+            }
+        } elseif ($year !== null) {
             $st = $pdo->prepare('SELECT 1 FROM live l JOIN live_day d ON d.live_id = l.live_id
                 WHERE l.fiscal_year = ? AND l.name = ? AND d.label = ?');
             $st->execute([$year, $val('live_name', $tt['live_name']), $val('label', $tt['label'])]);
@@ -408,14 +440,29 @@ if ($plan === null): // ==================== アップロード画面 ==========
                 </div>
             </header>
 
-            <?php if ($exists): ?>
-                <div class="flash flash--warn">この日程は登録済みです。「上書き」にチェックすると、今のデータを消して置き換えます。</div>
-            <?php endif; ?>
+            <!-- 常に置いておき、ライブ名・日程・開催日・統合の切り替えに合わせて JS が出し入れする（setupMergeToggle） -->
+            <div class="flash flash--warn" data-exists-flash<?= $exists ? '' : ' hidden' ?>>この日程は登録済みです。「上書き」にチェックすると、今のデータを消して置き換えます。</div>
 
             <!-- name="tt[0][date]" のように書くと、PHP では $_POST['tt'][0]['date'] で受け取れる -->
             <div class="form-grid">
-                <label class="field field--wide"><span>ライブ名</span>
-                    <input name="tt[<?= $ti ?>][live_name]" value="<?= h($val('live_name', $tt['live_name'])) ?>" list="dl-live-names" maxlength="50" placeholder="例: 文化祭ライブ" required></label>
+                <!-- data-merge: 「登録済みのライブと統合」の切り替え（assets/app.js の setupMergeToggle） -->
+                <div class="field field--wide" data-merge>
+                    <span class="live-name-head">ライブ名
+                        <button type="button" class="merge-toggle" aria-pressed="<?= $merge ? 'true' : 'false' ?>" data-merge-toggle><?= icon('merge') ?> 登録済みのライブと統合</button>
+                    </span>
+                    <input name="tt[<?= $ti ?>][live_name]" value="<?= h($val('live_name', $tt['live_name'])) ?>" list="dl-live-names" maxlength="50" placeholder="例: 文化祭ライブ" required data-live-name<?= $merge ? ' hidden disabled' : '' ?>>
+                    <!-- disabled の欄は送信されない → OFF のときは merge / live_id を送らない -->
+                    <input type="hidden" name="tt[<?= $ti ?>][merge]" value="1" data-merge-flag<?= $merge ? '' : ' disabled' ?>>
+                    <input type="hidden" name="tt[<?= $ti ?>][live_id]" value="<?= $mergeLive ? (int)$mergeLive['live_id'] : '' ?>" data-live-id<?= $merge ? '' : ' disabled' ?>>
+                    <div class="live-pick" data-live-pick-wrap<?= $merge ? '' : ' hidden' ?>>
+                        <button type="button" class="live-pick__btn" aria-haspopup="listbox" aria-expanded="false" data-live-pick
+                            data-year="<?= $mergeLive ? (int)$mergeLive['fiscal_year'] : '' ?>" data-labels="<?= $mergeLive ? h((string)$mergeLive['labels']) : '' ?>">
+                            <span data-live-pick-text<?= $mergeLive ? '' : ' class="is-placeholder"' ?>><?= $mergeLive ? h($mergeLive['fiscal_year'] . '年度 ' . $mergeLive['name']) : 'ライブを選択' ?></span>
+                            <?= icon('expand_more') ?>
+                        </button>
+                    </div>
+                    <small class="merge-note" data-merge-note></small>
+                </div>
                 <label class="field"><span>日程</span>
                     <input name="tt[<?= $ti ?>][label]" value="<?= h($val('label', $tt['label'])) ?>" list="dl-labels" maxlength="50" required></label>
                 <label class="field"><span>開催日 <small class="muted" data-fiscal-year><?= $year !== null ? "→ {$year}年度" : '' ?></small></span>
@@ -537,13 +584,16 @@ if ($plan === null): // ==================== アップロード画面 ==========
                         // 登録のチェック: 初回は全部 ON（タイムテーブルに無いバンドも ON にして、⚠ で知らせる）
                         $rbForm = $form['rb'][$ri][$bi] ?? null; // 失敗して戻ってきたときの入力値
                         $on = $rbForm ? !empty($rbForm['on']) : true;
-                        $missing = $on && !isset($usedBy["$ri:$bi"]); ?>
-                        <tr class="<?= $on ? '' : 'is-excluded' ?>" data-roster-key="<?= h("$ri:$bi") ?>">
+                        // どの出演枠にも選ばれていない = 登録されない → チェックを外して押せなくする
+                        //   data-auto-off: 「自動で外した」印。枠で選ばれたら JS がチェックを戻す
+                        $unused = !isset($usedBy["$ri:$bi"]); ?>
+                        <tr class="<?= $on && !$unused ? '' : 'is-excluded' ?>" data-roster-key="<?= h("$ri:$bi") ?>">
                             <!-- タイムテーブル側の「取込」を外すと、JS がこちらも外す -->
-                            <td><input type="checkbox" name="rb[<?= $ri ?>][<?= $bi ?>][on]" value="1"<?= $on ? ' checked' : '' ?> data-roster-on aria-label="このバンドのメンバーを登録する"></td>
-                            <td class="strong nowrap"><?= h($band['band_name']) ?>
+                            <td><input type="checkbox" name="rb[<?= $ri ?>][<?= $bi ?>][on]" value="1"<?= $unused ? ' disabled data-auto-off' : ($on ? ' checked' : '') ?> data-roster-on aria-label="このバンドのメンバーを登録する"></td>
+                            <!-- roster-band-cell: グレーアウト時もこの列の ⚠ だけは薄くしない（app.css） -->
+                            <td class="strong nowrap roster-band-cell"><span class="roster-band-name"><?= h($band['band_name']) ?></span>
                                 <!-- どの出演枠もこの名簿を選んでいなければ出す（JS がタイムテーブルの変更に合わせて出し入れする） -->
-                                <span class="status status--warn" title="タイムテーブルの「名簿ファイル内バンド名」でこのバンドを選ぶと登録されます" data-roster-missing<?= $missing ? '' : ' hidden' ?>><?= icon('warning') ?> タイムテーブルにないため登録されません</span>
+                                <span class="status status--warn" title="タイムテーブルの「名簿ファイル内バンド名」でこのバンドを選ぶと登録されます" data-roster-missing<?= $unused ? '' : ' hidden' ?>><?= icon('warning') ?> タイムテーブルにないため登録されません</span>
                             </td>
                             <?php foreach ($roster['columns'] as $col => $c):
                                 $k = "$ri-$bi-$col";
@@ -589,7 +639,7 @@ if ($plan === null): // ==================== アップロード画面 ==========
     <div class="sticky-actions">
         <button class="btn btn--ghost" type="submit" form="reset-form">やり直す</button>
         <!-- 名簿の重複があるあいだは JS が「登録する」を押せなくして、この文を出す -->
-        <span class="sticky-actions__note" data-submit-block hidden><?= icon('warning') ?> 名簿の重複を直すと登録できます</span>
+        <span class="sticky-actions__note" data-submit-block hidden><?= icon('warning') ?> <span data-submit-block-text>名簿の重複を直すと登録できます</span></span>
         <button class="btn btn--primary" type="submit"<?= $plan['timetables'] ? '' : ' disabled' ?> data-submit>登録する</button>
     </div>
 </form>

@@ -374,6 +374,70 @@ input:focus, select:focus { outline: none; border-color: var(--accent); box-shad
 .check { display: flex; gap: 8px; align-items: center; font-size: 14px; cursor: pointer; }
 input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px; }
 
+/* 取り込み: 「登録済みのライブと統合」トグルと、ライブを選ぶポップアップ */
+.live-name-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.merge-toggle { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--surface); color: var(--muted); font: 600 12px/1.4 var(--font); }
+.merge-toggle .icon { font-size: 16px; }
+.merge-toggle:hover { color: var(--text); }
+.merge-toggle[aria-pressed="true"] { background: var(--accent); border-color: transparent; color: var(--on-accent); }
+/* z-index: 出てくるときのアニメーション（transform）で .live-pick が「重なりの箱」（スタッキングコンテキスト）になると、
+   中のポップアップの z-index: 50 は箱の外に効かず、後ろの欄や表の下に隠れる → 箱そのものを手前に出しておく */
+/* ただし会場の選択も同じ .live-pick で z-index が同じだと、後ろ（下）に書かれた会場のボタンが上に重なる
+   → ふだんは 1、ポップアップを開いている箱だけ 40 にして、他の .live-pick より必ず手前にする */
+.live-pick { position: relative; z-index: 1; }
+.live-pick:has(> .live-pop) { z-index: 40; }
+.live-pick__btn { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px; cursor: pointer; text-align: left;
+  padding: 10px 13px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--surface); color: var(--text); font: inherit; font-size: 15px; font-weight: 400; }
+/* 高さを入力欄（.field input）とそろえる: input と同じく body の font（15px/1.65）を継ぐ、アイコンは行の高さに数えない（line-height: 0） */
+.live-pick__btn .icon { font-size: 20px; line-height: 0; }
+.live-pick__btn[aria-expanded="true"] { border-color: var(--accent); }
+.live-pick__btn .is-placeholder { color: var(--muted); opacity: .8; } /* 未選択の「ライブを選択」は薄く（placeholder と同じ扱い） */
+.live-pop { position: absolute; z-index: 50; top: calc(100% + 4px); left: 0; right: 0; max-height: 280px; overflow-y: auto;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); box-shadow: var(--shadow); padding-bottom: 4px; }
+.live-pop__year { position: sticky; top: 0; margin: 0; padding: 6px 12px; font-size: 12px; font-weight: 700; color: var(--accent);
+  background: var(--surface-2); border-bottom: 1px solid var(--border); }
+.live-pop__item { width: 100%; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 8px 12px; cursor: pointer;
+  border: 0; background: none; color: var(--text); font: 400 14px/1.4 var(--font); text-align: left; }
+.live-pop__item:hover, .live-pop__item:focus-visible { background: var(--accent-soft); }
+.live-pop__item[aria-selected="true"] .live-pop__name { color: var(--accent); font-weight: 700; }
+.live-pop__empty { margin: 0; padding: 12px; color: var(--muted); font-size: 13px; }
+.merge-note { font-weight: 400; white-space: pre-line; }
+.merge-note:empty { display: none; }
+.merge-note--warn { color: var(--warn); }
+
+/* ---- 薄いアニメーション（統合トグル・ライブ/会場の選択・注意文・登録済みの帯） ---- */
+.merge-toggle { transition: background-color .2s ease, color .2s ease, border-color .2s ease, transform .15s ease; }
+.merge-toggle:active { transform: scale(.96); }
+.merge-toggle .icon { transition: transform .25s ease; }
+.merge-toggle[aria-pressed="true"] .icon { transform: rotate(90deg); }
+.live-pick__btn { transition: border-color .2s ease, box-shadow .2s ease; }
+.live-pick__btn:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+.live-pick__btn[aria-expanded="true"] { box-shadow: 0 0 0 3px var(--accent-soft); }
+.live-pick__btn .icon { transition: transform .2s ease; }
+.live-pick__btn[aria-expanded="true"] .icon { transform: rotate(180deg); }
+.live-pick__btn [data-live-pick-text], .live-pick__btn > span:first-child { transition: color .2s ease; }
+.live-pop { animation: live-pop-in .16s ease-out; transform-origin: top; }
+@keyframes live-pop-in { from { opacity: 0; transform: translateY(-4px) scaleY(.97); } to { opacity: 1; transform: none; } }
+.live-pop__item { transition: background-color .12s ease; }
+[data-merge] > .live-pick:not([hidden]), [data-live-name]:not([hidden]) { animation: soft-in .2s ease-out; }
+.merge-note:not(:empty), [data-exists-flash]:not([hidden]) { animation: soft-in .25s ease-out; }
+@keyframes soft-in { from { opacity: 0; transform: translateY(-2px); } to { opacity: 1; transform: none; } }
+/* 右下の「やり直す / 登録する」のバー */
+.sticky-actions { animation: bar-in .35s cubic-bezier(.2, .8, .2, 1); }
+@keyframes bar-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.sticky-actions .btn { transition: transform .12s ease, box-shadow .2s ease, opacity .2s ease, background-color .2s ease, color .2s ease; }
+.sticky-actions .btn:active { transform: scale(.97); }
+.sticky-actions__note:not([hidden]) { animation: soft-in .25s ease-out; }
+.sticky-actions__note .icon { display: inline-block; animation: note-nudge .5s ease-out; }
+@keyframes note-nudge { 0%, 100% { transform: none; } 30% { transform: rotate(-12deg); } 60% { transform: rotate(8deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .sticky-actions, .sticky-actions__note, .sticky-actions__note .icon { animation: none !important; }
+  .sticky-actions .btn { transition: none; }
+  .merge-toggle, .merge-toggle .icon, .live-pick__btn, .live-pick__btn .icon, .live-pop__item { transition: none; }
+  .live-pop, [data-merge] > .live-pick, [data-live-name], .merge-note, [data-exists-flash] { animation: none !important; }
+}
+
 /* ===== 8. 取り込み ===== */
 .upload { display: grid; gap: 16px; }
 .dropzone { position: relative; display: grid; justify-items: center; gap: 6px; padding: 48px 20px; border-radius: var(--radius);
@@ -407,6 +471,12 @@ input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px;
 .input-year { width: 110px !important; }
 .entry-actions { padding: 0 20px 18px; flex-wrap: wrap; }
 .table--edit tr.is-excluded td { opacity: .45; }
+/* 「この日程は取り込まない」: JS が inert にした部分（入力できない）を薄くする */
+.import-day > *, .import-day .checks > * { transition: opacity .2s ease; } /* 戻すときもふわっと */
+.import-day [inert] { opacity: .45; user-select: none; }
+/* opacity は子要素ごと薄くなり、子で 1 に戻せない → バンド名の列だけはセルではなく名前の span を薄くし、⚠ はそのままの濃さで出す */
+.table--edit tr.is-excluded td.roster-band-cell { opacity: 1; }
+.table--edit tr.is-excluded .roster-band-name { opacity: .45; }
 /* タイムテーブルの行の並び替え（JS: setupSlotSort）。≡ を押している間は行を浮かせる */
 .drag-handle { padding: 4px 6px; border: 0; border-radius: 6px; background: none; color: var(--muted); font-size: 18px; line-height: 1;
   cursor: grab; touch-action: none; /* 指で押したとき、ページのスクロールではなくドラッグにする */ }
