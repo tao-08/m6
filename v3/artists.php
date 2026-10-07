@@ -1,7 +1,7 @@
 <?php
 /**
  * =====================================================================
- *  artists.php — アーティスト一覧（演奏回数 + 最後に演奏したライブ）
+ *  artists.php — アーティスト一覧（演奏回数 + 最多演奏の人 + 最後に演奏したライブ）
  * =====================================================================
  *  「演奏回数」= そのアーティストを演奏したバンドの数。
  *    バンドまるごとのコピー（band.artist_id）に加えて、
@@ -39,6 +39,23 @@ $st = $pdo->query('SELECT artist_id, live_id, fiscal_year, name, held_on FROM (
     WHERE rn = 1');
 foreach ($st as $r) {
     $lastLive[(int)$r['artist_id']] = $r;
+}
+
+// 最多演奏（artist_id => [['member_id' => .., 'name' => ..], ...]）。
+//   「アーティスト × 人」ごとに演奏したバンド数を数え、RANK() でアーティストごとの順位を付けて 1位だけ取る。
+//   ROW_NUMBER() だと同じ回数でも 1, 2 と番号が分かれてしまうが、RANK() は同率なら全員 1 になる → 同率1位を全員拾える
+$topPlayers = [];
+$st = $pdo->query('SELECT artist_id, member_id, name, n FROM (
+        SELECT p.artist_id, m.member_id, m.name, COUNT(*) AS n,
+            RANK() OVER (PARTITION BY p.artist_id ORDER BY COUNT(*) DESC) AS rk
+        FROM (' . PLAYED_SQL . ') p
+        JOIN (' . MEMBERSHIP_SQL . ') bm ON bm.band_id = p.band_id
+        JOIN member m ON m.member_id = bm.member_id
+        GROUP BY p.artist_id, m.member_id) x
+    WHERE rk = 1
+    ORDER BY artist_id, name');
+foreach ($st as $r) {
+    $topPlayers[(int)$r['artist_id']][] = $r;
 }
 
 // 別名（artist_id => [別名, ...]）
@@ -100,7 +117,7 @@ render_header('アーティスト', 'artists');
         <p class="eyebrow">Artists</p>
         <h1 class="display">アーティスト</h1>
     </div>
-    <dl class="stats"><div><dt>総アーティスト数</dt><dd><?= count($rows) ?></dd></div></dl>
+    <dl class="stats"><div><dt>総演奏アーティスト数</dt><dd><?= count($rows) ?></dd></div></dl>
 </section>
 
 <?php if (!$list): ?>
@@ -117,6 +134,7 @@ render_header('アーティスト', 'artists');
                 <?= sort_th('name', 'アーティスト', $sort, $dir) ?>
                 <?= sort_th('plays', '演奏回数', $sort, $dir, 'num') ?>
                 <?= sort_th('last', '最後に演奏したライブ', $sort, $dir) ?>
+                <th>最多演奏</th>
             </tr></thead>
             <tbody>
             <?php foreach ($list as $r): $id = (int)$r['artist_id']; $al = $aliases[$id] ?? []; $ll = $lastLive[$id] ?? null; ?>
@@ -130,6 +148,14 @@ render_header('アーティスト', 'artists');
                     <td>
                         <?php if ($ll): ?>
                             <a href="live.php?id=<?= (int)$ll['live_id'] ?>"><span class="muted"><?= (int)$ll['fiscal_year'] ?>年度</span> <?= h($ll['name']) ?></a>
+                        <?php else: ?>
+                            <span class="muted small">—</span>
+                        <?php endif; ?>
+                    </td>
+                    <td>
+                        <?php if ($tp = $topPlayers[$id] ?? []): ?>
+                            <?php foreach ($tp as $i => $m): ?><?= $i > 0 ? '・' : '' ?><a href="member.php?id=<?= (int)$m['member_id'] ?>"><?= h($m['name']) ?></a><?php endforeach; ?>
+                            <span class="muted small"><?= (int)$tp[0]['n'] ?>回</span>
                         <?php else: ?>
                             <span class="muted small">—</span>
                         <?php endif; ?>
