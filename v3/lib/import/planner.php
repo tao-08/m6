@@ -555,6 +555,30 @@ function finish_import_plan(array $plan): array
             }
         }
     }
+
+    // ---- 4. 名前で決まらなかった残り物どうしを、曲数と人数で対応付け（「アジカン」と「ASIAN KUNG-FU GENERATION」など） ----
+    $usedSlots = [];
+    $leftRoster = [];
+    foreach ($ref as $i => [$ri, $bi]) {
+        $slotKey = $plan['rosters'][$ri]['bands'][$bi]['slot'];
+        if ($slotKey === '') {
+            $leftRoster[$i] = $flat[$i];
+        } else {
+            $usedSlots[$slotKey] = true;
+        }
+    }
+    $leftSlots = [];
+    foreach ($plan['timetables'] as $ti => $tt) {
+        foreach ($tt['slots'] as $si => $slot) {
+            if ($slot['is_band'] && !isset($usedSlots["$ti:$si"])) {
+                $leftSlots["$ti:$si"] = $slot;
+            }
+        }
+    }
+    foreach (match_leftover_bands($leftSlots, $leftRoster) as $slotKey => $i) {
+        [$ri, $bi] = $ref[$i];
+        $plan['rosters'][$ri]['bands'][$bi]['slot'] = $slotKey;
+    }
     return $plan;
 }
 

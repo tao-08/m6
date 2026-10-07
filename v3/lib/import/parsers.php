@@ -310,16 +310,57 @@ function match_roster_band(array $slot, array $roster): ?int
     if ($suffix === '') {
         return count($candidates) === 1 ? array_key_first($candidates) : null;
     }
+    // 「ボカロバンド（瓜田・安田）」のように括弧の中に2人以上いたら、全員がメンバーにいるものを選ぶ
     $suffixKey = member_key($suffix);
+    $suffixNames = array_map('member_key', preg_split('/[・、,，\/／&＆]+/u', $suffix, -1, PREG_SPLIT_NO_EMPTY) ?: []);
     $hits = [];
     foreach ($candidates as $i => $rSuffix) {
         $hit = $rSuffix !== '' && member_key($rSuffix) === $suffixKey;
-        foreach ($roster[$i]['members'] as $m) {
-            $hit = $hit || str_starts_with(member_key($m['name']), $suffixKey);
+        $found = 0;
+        foreach ($suffixNames as $s) {
+            foreach ($roster[$i]['members'] as $m) {
+                if (str_starts_with(member_key($m['name']), $s)) {
+                    $found++;
+                    break;
+                }
+            }
         }
-        if ($hit) {
+        if ($hit || ($suffixNames !== [] && $found === count($suffixNames))) {
             $hits[] = $i;
         }
     }
     return count($hits) === 1 ? $hits[0] : null;
+}
+
+/**
+ * 名前では対応付けられなかった枠と名簿のバンドを、曲数と人数で対応付ける。
+ * タイムテーブルは「ASIAN KUNG-FU GENERATION」、名簿は「アジカン」のように、略称で書かれていることがあるため。
+ *
+ * 残り物どうしで「曲数も人数も同じ」相手がお互いに1つだけのときに限る（2つ以上あれば決めない → プレビューで手で選ぶ）。
+ * 名簿に人数の列が無ければ、名簿に書いてある人の数で比べる。
+ *
+ * @param array $slots  まだ対応していない枠    [キー => slot]
+ * @param array $roster まだ対応していない名簿のバンド [キー => band]
+ * @return array 枠のキー => 名簿のキー
+ */
+function match_leftover_bands(array $slots, array $roster): array
+{
+    $same = static function (array $slot, array $band): bool {
+        $members = $band['member_count'] ?? count($band['members']);
+        return $slot['song_count'] !== null && $slot['song_count'] === $band['song_count']
+            && ($slot['member_count'] === null || $slot['member_count'] === $members);
+    };
+    $pairs = [];
+    foreach ($slots as $sk => $slot) {
+        $hits = array_keys(array_filter($roster, static fn($band) => $same($slot, $band)));
+        if (count($hits) !== 1) {
+            continue;
+        }
+        $rk = $hits[0];
+        $rivals = array_filter($slots, static fn($other) => $same($other, $roster[$rk]));
+        if (count($rivals) === 1) {
+            $pairs[$sk] = $rk;
+        }
+    }
+    return $pairs;
 }

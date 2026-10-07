@@ -37,6 +37,22 @@ check('PDF で隣の欄にはみ出して接した文字を分ける', pdf_words
     $wd('バンド名', 10, 30, 10), $wd('Ba.', 100, 110, 10), $wd('Dr.', 150, 160, 10),
     $wd('GOING', 5, 15, 30), $wd('UNDER', 16.4, 26, 30), $wd('奥山航太郎', 92, 117, 30), $wd('小豆畑健吾・東哲平・福地龍之介', 117.2, 192, 30),
 ], $pdfCols), [['バンド名', 'Ba.', 'Dr.'], ['GOING UNDER', '奥山航太郎', '小豆畑健吾・東哲平・福地龍之介']]);
+$pdfCols = null;
+check('PDF の左寄せの短いバンド名を番号列に入れない', pdf_words_to_rows([
+    $wd('バンド名', 128, 157, 56), $wd('Vo(Gt.)', 200, 225, 56),
+    $wd('1', 68, 72, 71), $wd('kobore', 89, 114, 71), $wd('斉藤弘汰', 200, 230, 71),
+    $wd('3', 68, 72, 86), $wd('People', 89, 114, 86), $wd('In', 116, 122, 86), $wd('The', 124, 136, 86), $wd('Box', 138, 152, 86), $wd('室田紘志', 200, 230, 86),
+], $pdfCols), [['', 'バンド名', 'Vo(Gt.)'], ['1', 'kobore', '斉藤弘汰'], ['3', 'People In The Box', '室田紘志']]);
+$pdfCols = null;
+check('PDF で右の欄にはみ出して重なった長いバンド名を分ける', pdf_words_to_rows([
+    $wd('バンド名', 127, 155, 108), $wd('Vo(Gt.)', 185, 209, 108), $wd('Gt.1', 235, 249, 108),
+    $wd('1', 94, 98, 128), $wd('THEE', 108.7, 127.6, 128), $wd('MICHELLE', 129.7, 166.4, 128), $wd('GUN', 168.6, 184.6, 128),
+    $wd('長谷川優', 183.4, 210.8, 128), $wd('ELEPHANT', 186.6, 224.9, 128), $wd('齋藤恭平', 228.1, 255.6, 128),
+    $wd('2', 94, 98, 148), $wd('ハンブレ', 108.7, 135.9, 148), $wd('斉藤弘汰', 183.4, 210.8, 148), $wd('金井梨花', 228.1, 255.6, 148),
+    $wd('3', 94, 98, 168), $wd('マカえん', 108.7, 135.9, 168), $wd('斉藤弘汰', 183.4, 210.8, 168), $wd('藤本祥太', 228.1, 255.6, 168),
+    $wd('4', 94, 98, 188), $wd('羊文学', 108.7, 129.3, 188), $wd('黒澤梅乃', 183.4, 210.8, 188), $wd('鹿間裕己', 228.1, 255.6, 188),
+], $pdfCols), [['', 'バンド名', 'Vo(Gt.)', 'Gt.1'], ['1', 'THEE MICHELLE GUN ELEPHANT', '長谷川優', '齋藤恭平'],
+    ['2', 'ハンブレ', '斉藤弘汰', '金井梨花'], ['3', 'マカえん', '斉藤弘汰', '藤本祥太'], ['4', '羊文学', '黒澤梅乃', '鹿間裕己']]);
 check('PDF の康熙部首（⾧→長）', split_member_names("\u{2FA7}谷川優"), ['長谷川優']);
 check('パート見出し', array_map('normalize_part', ['Vo(Gt.)', 'Gt.1', 'Gt2', 'Ba.', 'Dr.', 'Key./その他', '曲数']), ['Vo', 'Gt', 'Gt', 'Ba', 'Dr', 'Key', null]);
 check('時刻（1セル）', extract_times('13:30〜14:00'), ['13:30', '14:00']);
@@ -75,6 +91,12 @@ check('兼任（Vo と Ba）', array_column(array_filter($roster[1]['members'], 
 check('照合: 完全一致', match_roster_band(['band_name' => 'バンドA', 'song_count' => 3, 'member_count' => 3], $roster), 0);
 check('照合: 括弧の表記ゆれ', match_roster_band(['band_name' => 'バンドB(山田)', 'song_count' => 4, 'member_count' => 5], $roster), 1);
 check('照合: 括弧なし→代表者で特定不可', match_roster_band(['band_name' => 'バンドB', 'song_count' => 4, 'member_count' => 5], $roster), null);
+check('照合: 括弧の中に2人', match_roster_band(['band_name' => 'バンドB（伊藤・佐藤）', 'song_count' => 4, 'member_count' => 3], $roster), 2);
+check('照合: 括弧の中の2人目がいない', match_roster_band(['band_name' => 'バンドB（伊藤・高橋）', 'song_count' => 4, 'member_count' => 3], $roster), null);
+$slot = fn(string $n, int $songs, ?int $people) => ['band_name' => $n, 'song_count' => $songs, 'member_count' => $people];
+check('残り物: 曲数と人数が同じ相手が1つ', match_leftover_bands(['0:1' => $slot('ASIAN KUNG-FU GENERATION', 3, 3)], [0 => $roster[0], 2 => $roster[2]]), ['0:1' => 0]);
+check('残り物: 候補が2つなら決めない', match_leftover_bands(['0:1' => $slot('別名', 4, null)], [1 => $roster[1], 2 => $roster[2]]), []);
+check('残り物: 枠が2つ同じ条件なら決めない', match_leftover_bands(['0:1' => $slot('別名1', 3, 3), '0:2' => $slot('別名2', 3, 3)], [0 => $roster[0]]), []);
 
 echo "excel\n";
 // fixtures/timetable.xlsx: 「1日目」「名簿」「メモ」(見出し無し)「隠し」(非表示) の4シート

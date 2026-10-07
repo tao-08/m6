@@ -197,7 +197,8 @@ function pdf_words_to_rows(array $words, ?array &$columns): array
     $cols = $columns;
     // 見出しの無い左端の通し番号列（1, 2, 3...）
     $numbers = array_filter($phrases, static fn($p) => $p['x1'] < $cols[0]['x0'] && preg_match('/^\d+$/', $p['text']));
-    if ($numbers !== []) {
+    $hasNumberCol = $numbers !== [];
+    if ($hasNumberCol) {
         $center = array_sum(array_map(static fn($p) => ($p['x0'] + $p['x1']) / 2, $numbers)) / count($numbers);
         array_unshift($cols, ['center' => $center, 'x0' => $center, 'title' => '']);
     }
@@ -217,30 +218,65 @@ function pdf_words_to_rows(array $words, ?array &$columns): array
     // 左の欄の名前（Ba. 欄の「奥山航太郎」）にくっついて1つのフレーズになっていたら、分け直す。
     //   分けるのは「すき間が空白1文字よりずっと狭い（= 空白ではなく、別々の欄の文字が接している）」
     //   かつ「単語ごとに見ると近い列が違う」ときだけ。長いバンド名などを途中で切らないように両方そろったときに限る
+    //
+    // 逆に、長いバンド名（「THEE MICHELLE GUN ELEPHANT」）が右の Vo 欄まではみ出して、
+    // Vo 欄の名前（「長谷川優」）と文字が重なっていることもある。
+    //   - 前の単語と横位置が重なる単語は、別の欄の文字 → 別のフレーズにする
+    //     （重なった先の「ELEPHANT」は、重ならずに続くバンド名の方へつなぐ）
+    //   - 多くの行で欄の書き出し位置になっている x（$edges）から始まる単語も、別の欄の文字
+    $starts = array_column($phrases, 'x0');
+    $edges = array_values(array_filter($starts, static fn($x) =>
+        count(array_filter($starts, static fn($y) => abs($y - $x) < 0.3)) >= 3));
+    $atEdge = static function (float $x) use ($edges): bool {
+        foreach ($edges as $e) {
+            if (abs($e - $x) < 0.3) {
+                return true;
+            }
+        }
+        return false;
+    };
     $split = [];
     foreach ($phrases as $p) {
-        $part = null;
-        foreach ($p['words'] as $w) {
-            if ($part !== null) {
+        $parts = [];
+        foreach ($p['words'] as $wi => $w) {
+            // つなぐ先: 最後に足したフレーズから順に、重ならずに続けられるもの
+            $to = null;
+            if ($wi > 0 && !$atEdge($w['x0'])) {
+                for ($k = count($parts) - 1; $k >= 0; $k--) {
+                    if ($w['x0'] >= $parts[$k]['x1'] - 0.5) {
+                        $to = $k;
+                        break;
+                    }
+                }
+            }
+            if ($to !== null) {
+                $part = $parts[$to];
                 $touching = $w['x0'] - $part['x1'] < $p['h'] * 0.15;
                 $prevCol = $nearestCol(($part['words'][count($part['words']) - 1]['x0'] + $part['x1']) / 2);
-                if (!$touching || $nearestCol(($w['x0'] + $w['x1']) / 2) === $prevCol) {
-                    $part['text'] .= ' ' . $w['text'];
-                    $part['x1'] = $w['x1'];
-                    $part['words'][] = $w;
-                    continue;
+                if ($touching && $nearestCol(($w['x0'] + $w['x1']) / 2) !== $prevCol) {
+                    $to = null;
                 }
-                $split[] = $part;
             }
-            $part = ['x0' => $w['x0'], 'x1' => $w['x1'], 'yc' => $p['yc'], 'h' => $p['h'], 'text' => $w['text'], 'words' => [$w]];
+            if ($to === null) {
+                $parts[] = ['x0' => $w['x0'], 'x1' => $w['x1'], 'yc' => $p['yc'], 'h' => $p['h'], 'text' => $w['text'], 'words' => [$w]];
+                continue;
+            }
+            $parts[$to]['text'] .= ' ' . $w['text'];
+            $parts[$to]['x1'] = $w['x1'];
+            $parts[$to]['words'][] = $w;
         }
-        $split[] = $part;
+        array_push($split, ...$parts);
     }
     $phrases = $split;
 
     // 各フレーズを一番近い列へ
+    // 通し番号列に入るのは数字だけ。「kobore」「BiS」のような短いバンド名は左寄せだと
+    // 文字の中心が見出し「バンド名」より番号列に近くなるが、数字でなければ隣（バンド名側）の列へ
     foreach ($phrases as &$p) {
         $p['col'] = $nearestCol(($p['x0'] + $p['x1']) / 2);
+        if ($hasNumberCol && $p['col'] === 0 && !preg_match('/^\d+$/', $p['text'])) {
+            $p['col'] = 1;
+        }
     }
     unset($p);
 
