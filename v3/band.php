@@ -193,7 +193,8 @@ render_header($band['name'], 'lives');
 </section>
 
 <section class="card band-section">
-    <h2 class="section-title section-title--card">セットリスト <small class="muted"><?= $songs ? count($songs) : (int)$band['song_count'] ?>曲</small></h2>
+    <?php // 曲が未登録のときは band.song_count（タイムテーブルの曲数）を「予定」として出す。登録済みの曲数と混ぜない ?>
+    <h2 class="section-title section-title--card">セットリスト <small class="muted"><?= $songs ? count($songs) . '曲' : ((int)$band['song_count'] ? '予定 ' . (int)$band['song_count'] . '曲' : '') ?></small></h2>
     <?php if ($songs): ?>
         <div class="setlist"><ol>
             <?php foreach ($songs as $songId => $song):

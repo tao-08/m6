@@ -863,7 +863,8 @@ a.setlist__song:hover { color: var(--accent); text-decoration: underline; }
 .band-section .setlist ol { gap: 10px; padding-left: 1.8em; }
 .band-section .setlist li { line-height: 56px; }
 .band-section .setlist li::marker { font-size: 16px; }
-.band-section .setlist__song { gap: 14px; font-weight: 700; }
+.band-section .setlist__song { gap: 18px; font-weight: 700; } /* ジャケットと曲名の間 */
+.band-section .setlist__song > :first-child { margin-left: 6px; } /* 番号とジャケットの間（ジャケットが番号にくっつかないように） */
 .band-section .setlist__art { width: 56px; height: 56px; border-radius: 6px; font-size: 18px; }
 .band-section .setlist__artist, .band-section .setlist__who { font-size: 13px; margin-left: 8px; }
 /* 「聴く」アイコン: ジャケットにマウスを乗せると、ジャケットが暗くなって真ん中にアプリのアイコンが出る。押すと音楽アプリへ
