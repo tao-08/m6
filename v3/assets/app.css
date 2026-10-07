@@ -520,6 +520,10 @@ input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px;
 .dropzone__icon { font-size: 26px; font-weight: 800; width: 56px; height: 56px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: var(--on-accent); margin-bottom: 6px; }
 .dropzone__title { font-weight: 800; font-size: 17px; }
 .dropzone__list { position: relative; z-index: 1; list-style: none; padding: 0; margin: 10px 0 0; display: grid; gap: 4px; font-size: 13px; font-weight: 600; } /* × を押せるように透明な input より上に出す */
+/* 別の日程の年を直したとき、合わせて変わった開催日の欄を一瞬光らせる（JS の syncYears） */
+.is-synced { animation: synced-flash 1.2s ease-out; }
+@keyframes synced-flash { from { background: var(--accent-soft); box-shadow: 0 0 0 3px var(--accent-soft); } }
+@media (prefers-reduced-motion: reduce) { .is-synced { animation: none; } }
 .dropzone__file { display: flex; align-items: center; gap: 8px; }
 .dropzone__remove { border: 0; background: var(--border); color: inherit; width: 22px; height: 22px; border-radius: 50%; padding: 0; display: grid; place-items: center; cursor: pointer; }
 .dropzone__remove .icon { font-size: 16px; vertical-align: 0; }

@@ -296,6 +296,23 @@ if ($plan === null): // ==================== アップロード画面 ==========
             }
         }
     }
+
+    // ファイルの「12月6日」から年を推測して入れた開催日（年はファイルに無いので、間違っていることがある）
+    // 最初にプレビューを開いたときだけ「年を確認してください」のポップアップで知らせる
+    $guessedDates = [];
+    if (!$form) {
+        foreach ($plan['timetables'] as $tt) {
+            if ($tt['date'] !== '') {
+                $ts = strtotime($tt['date']);
+                $guessedDates[] = [
+                    'title' => $tt['title'] !== '' ? $tt['title'] : $tt['file'],
+                    // 曜日も出す。「土曜のはずなのに火曜」なら年が違うとすぐ気づける
+                    'date' => date('Y年n月j日', $ts) . '（' . ['日', '月', '火', '水', '木', '金', '土'][(int)date('w', $ts)] . '）',
+                    'year' => academic_year((int)date('n', $ts), (int)date('Y', $ts)),
+                ];
+            }
+        }
+    }
 ?>
 <section class="hero">
     <div>
@@ -579,6 +596,24 @@ if ($plan === null): // ==================== アップロード画面 ==========
 </form>
 <!-- 「やり直す」は別のフォーム。form="reset-form" 属性でボタンだけ上のフォームの中に置いている -->
 <form method="post" id="reset-form"><?= csrf_field() ?><input type="hidden" name="action" value="reset"></form>
+
+<?php if ($guessedDates): ?>
+<!-- 開催日の年を推測で入れたとき、プレビューを開いた直後に1回だけ出す注意（JS の setupImportPreview が開く） -->
+<dialog class="modal" data-year-check-dialog aria-labelledby="year-check-title">
+    <form method="dialog" class="modal__body">
+        <h3 id="year-check-title" class="modal__title"><?= icon('event') ?> 年を確認してください</h3>
+        <p class="muted small">ファイルには「月日」しか書かれていないので、年は今日の日付から推測して入れました。違っていたら「開催日」を直してください（年度も開催日から決まります）。<?= count($guessedDates) > 1 ? '1つの年を直すと、ほかの日程も同じ年になります。' : '' ?></p>
+        <ul class="modal__list">
+            <?php foreach ($guessedDates as $g): ?>
+                <li><?= h($g['title']) ?> → <strong><?= h($g['date']) ?></strong> <span class="muted">（<?= (int)$g['year'] ?>年度）</span></li>
+            <?php endforeach; ?>
+        </ul>
+        <div class="form-actions">
+            <button type="submit" class="btn btn--primary">確認する</button>
+        </div>
+    </form>
+</dialog>
+<?php endif; ?>
 
 <?php if ($missingBands): ?>
 <!-- タイムテーブルに無い名簿のバンドがあるとき、プレビューを開いた直後に1回だけ出す注意（JS の setupImportPreview が開く） -->

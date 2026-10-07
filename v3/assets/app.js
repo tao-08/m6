@@ -827,6 +827,27 @@ function setupImportPreview() {
     out.textContent = year !== null ? `→ ${year}年度` : '';
   };
 
+  // 開催日の「年」を1つ直したら、ほかの日程も同じ年にそろえる（月・日はそのまま）
+  //   年はファイルに無く推測で入れているので、ずれるときは全部の日程が同じ年でずれている。
+  //   ※ 1回のライブの日程が年をまたぐことは無い前提（12/31 と 1/1 のような日程は無い）
+  const yearOf = (value) => (/^\d{4}-/.test(value) ? parseInt(value, 10) : null);
+  let syncing = false; // 下で他の欄に change を出す → またここに来る、の繰り返しを防ぐ
+  const syncYears = (input) => {
+    const year = yearOf(input.value);
+    // 年を1桁ずつ打っている途中（0002 → 0020 → 0202）は、ほかの欄を変な年にしない
+    if (syncing || year === null || year < 1990) return;
+    syncing = true;
+    document.querySelectorAll('[data-date-input]').forEach((other) => {
+      if (other === input || yearOf(other.value) === null || yearOf(other.value) === year) return;
+      other.value = String(year) + other.value.slice(4);
+      other.dispatchEvent(new Event('change', { bubbles: true })); // 年度の表示・統合の候補なども更新させる
+      other.classList.remove('is-synced');
+      void other.offsetWidth; // アニメーションを最初からやり直す
+      other.classList.add('is-synced');
+    });
+    syncing = false;
+  };
+
   // 「この日程は取り込まない」: そのカードの入力欄を触れなくする（そのチェックボックス自身は除く）
   //   disabled だと値が送信されず、登録失敗で戻ってきたときに「取込」などの状態が消えてしまう。
   //   inert は「クリック・入力・フォーカスができない」だけで値はそのまま送られるので、状態を保ったまま固められる
@@ -853,7 +874,10 @@ function setupImportPreview() {
     }
     if (e.target.matches('[data-skip]')) applySkip(e.target.closest('[data-timetable]'));
     if (e.target.matches('[data-include], [data-roster-input], [data-roster-on], [data-skip]')) refresh();
-    if (e.target.matches('[data-date-input]')) showFiscalYear(e.target);
+    if (e.target.matches('[data-date-input]')) {
+      showFiscalYear(e.target);
+      syncYears(e.target);
+    }
   });
   document.addEventListener('input', (e) => {
     if (e.target.matches('[data-roster-input], [data-band-name]')) refresh();
@@ -862,8 +886,24 @@ function setupImportPreview() {
   document.addEventListener('merge-change', refresh);
 
   refresh();
-  // タイムテーブルに無い名簿のバンドがあれば注意を出す（PHP が初回だけ <dialog> を置く）
-  document.querySelector('[data-roster-missing-dialog]')?.showModal();
+  // 最初に開いたときの注意（PHP が初回だけ <dialog> を置く）を1つずつ順番に出す
+  //   1. 年を確認してください（年はファイルに無いので推測で入れている）→ 閉じたら開催日の欄へ
+  //   2. タイムテーブルに無い名簿のバンド
+  const notices = ['[data-year-check-dialog]', '[data-roster-missing-dialog]']
+    .map((sel) => document.querySelector(sel)).filter(Boolean);
+  const showNext = () => {
+    const dialog = notices.shift();
+    if (!dialog) return;
+    dialog.addEventListener('close', () => {
+      if (dialog.matches('[data-year-check-dialog]')) {
+        document.querySelector('[data-date-input]')?.focus({ preventScroll: true });
+        document.querySelector('[data-date-input]')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      }
+      showNext();
+    }, { once: true });
+    dialog.showModal();
+  };
+  showNext();
 }
 
 /* ---------------------------------------------------------------------
