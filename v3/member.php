@@ -160,28 +160,32 @@ render_header($member['name'], 'members');
     </dl>
 </section>
 
-<?php if ($isMe || is_admin()): ?>
-<!-- 本人か管理者だけに見える編集フォーム。<details> なので普段は閉じている -->
+<?php $canEditAll = $isMe || is_admin(); ?>
+<!-- 編集フォーム。<details> なので普段は閉じている。
+     本人・管理者は全部の項目、それ以外のログイン中の人は「ふりがな」だけ編集できる -->
 <details class="card edit-box">
-    <summary><?= icon('edit') ?> プロフィールを編集</summary>
+    <summary><?= icon('edit') ?> <?= $canEditAll ? 'プロフィールを編集' : 'ふりがなを編集' ?></summary>
     <form method="post" action="member_edit.php" class="form-grid edit-box__form">
         <?= csrf_field() ?>
         <input type="hidden" name="member_id" value="<?= $memberId ?>">
-        <label class="field field--wide"><span>名前</span><input name="name" value="<?= h($member['name']) ?>" maxlength="50" required></label>
+        <?php if ($canEditAll): ?>
+            <label class="field field--wide"><span>名前</span><input name="name" value="<?= h($member['name']) ?>" maxlength="50" required></label>
+        <?php endif; ?>
         <label class="field"><span>ふりがな</span><input name="name_kana" value="<?= h($member['name_kana']) ?>" maxlength="50"></label>
-        <label class="field"><span>入部年度</span><input type="number" name="entry_year" min="1950" max="2100" value="<?= (int)$member['entry_year'] ?: '' ?>"></label>
-        <label class="field field--wide"><span>使っている音楽アプリ（マイアルバムのリンクをこのアプリで開きます）</span>
-            <select name="music_app">
-                <option value="">選ばない</option>
-                <?php foreach (MUSIC_APPS as $value => $label): ?>
-                    <option value="<?= h($value) ?>"<?= $member['music_app'] === $value ? ' selected' : '' ?>><?= h($label) ?></option>
-                <?php endforeach; ?>
-            </select>
-        </label>
+        <?php if ($canEditAll): ?>
+            <label class="field"><span>入部年度</span><input type="number" name="entry_year" min="1950" max="2100" value="<?= (int)$member['entry_year'] ?: '' ?>"></label>
+            <label class="field field--wide"><span>使っている音楽アプリ（マイアルバムのリンクをこのアプリで開きます）</span>
+                <select name="music_app">
+                    <option value="">未選択</option>
+                    <?php foreach (MUSIC_APPS as $value => $label): ?>
+                        <option value="<?= h($value) ?>"<?= $member['music_app'] === $value ? ' selected' : '' ?>><?= h($label) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </label>
+        <?php endif; ?>
         <div class="form-actions field--wide"><button class="btn btn--primary btn--sm" type="submit">保存</button></div>
     </form>
 </details>
-<?php endif; ?>
 
 <!-- ===== マイアルバム ===== -->
 <!--

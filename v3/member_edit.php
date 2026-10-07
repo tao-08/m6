@@ -4,7 +4,8 @@
  *  member_edit.php — メンバーのプロフィール（名前・ふりがな・入部年度・音楽アプリ）を更新する
  * =====================================================================
  *  member.php の「プロフィールを編集」フォームの送信先。画面は持たない（処理して戻るだけ）。
- *  編集できるのは「本人（アカウントと紐付いている人）」か「管理者」だけ。
+ *  全項目を編集できるのは「本人（アカウントと紐付いている人）」か「管理者」だけ。
+ *  それ以外のログイン中の人は「ふりがな」だけ編集できる。
  * =====================================================================
  */
 declare(strict_types=1);
@@ -19,17 +20,33 @@ verify_csrf();
 
 $memberId = (int)($_POST['member_id'] ?? 0);
 $back = 'member.php?id=' . $memberId;
+$pdo = db();
+
+$kana = trim((string)($_POST['name_kana'] ?? ''));
+
+// 本人でも管理者でもない人は「ふりがな」だけ更新できる。
+// ※ フォームで欄を隠しているだけでは、HTML を書き換えて name などを送られたら通ってしまう。
+//   なので、ここ（サーバー側）で name_kana 以外は一切読まないようにしている
 if (!is_admin() && $user['member_id'] !== $memberId) {
-    http_response_code(403);
-    exit('自分のプロフィールか、管理者だけが編集できます');
+    $st = $pdo->prepare('SELECT 1 FROM member WHERE member_id = ?');
+    $st->execute([$memberId]);
+    if (!$st->fetchColumn()) {
+        redirect('members.php');
+    }
+    if (mb_strlen($kana) > 50) {
+        flash('ふりがなは50文字以内にしてください', 'error');
+        redirect($back);
+    }
+    $pdo->prepare('UPDATE member SET name_kana = ? WHERE member_id = ?')
+        ->execute([$kana !== '' ? $kana : null, $memberId]);
+    flash('ふりがなを更新しました');
+    redirect($back);
 }
 
 $name = trim((string)($_POST['name'] ?? ''));
-$kana = trim((string)($_POST['name_kana'] ?? ''));
 $entry = trim((string)($_POST['entry_year'] ?? ''));
 $musicApp = (string)($_POST['music_app'] ?? ''); // '' = 選ばない
 
-$pdo = db();
 $errors = [];
 if ($name === '' || mb_strlen($name) > 50) {
     $errors[] = '名前は1〜50文字で入力してください';
