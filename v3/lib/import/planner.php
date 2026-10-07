@@ -234,6 +234,9 @@ function spread_roster_cells(array $roster): array
                 $band['extras'][] = ['name' => $plain, 'instrument_id' => $named ?? $c['instrument_id']];
             }
         }
+        // Gt. 欄の「茂田井教崇(Vn.)」などを Key./Other 欄へ。ボーカルの推測より先にやる
+        // （後にすると、推測のときにまだギターの欄に人がいるように見えて、ギターボーカルにならない）
+        $band = move_extra_instrument_players($roster['columns'], $band);
         // 「(Gt)」などの書き方で決まらなかった Vo. 欄は、ほかの欄から推測して選んでおく
         $firstVo = true;
         foreach ($roster['columns'] as $col => $c) {
@@ -243,7 +246,6 @@ function spread_roster_cells(array $roster): array
             $band['vo_roles'][$col] ??= guess_vocal_role($roster['columns'], $band, $band['cells'][$col], $firstVo);
             $firstVo = false;
         }
-        $band = move_extra_instrument_players($roster['columns'], $band);
         $roster['extra_cols'] = max($roster['extra_cols'], count($band['extras']));
     }
     unset($band);
@@ -256,8 +258,8 @@ function spread_roster_cells(array $roster): array
  *   2. 1人目のボーカルだけ、空欄から推測する（2人目以降のボーカルにまで当てはめると、全員ギターボーカルになってしまう）
  *      - Ba. が空                             → ベースボーカル（人数は見ない。ベースのいない編成でも選ばれるので、違えばプレビューで直す）
  *      - Gt.1 が空で Gt.2 に人がいる          → ギターボーカル（空いた Gt.1 がボーカル本人の分）
- *      - Gt.1 も Gt.2 も空で、メンバーが3人   → ギターボーカル（スリーピース）
- *      ギターの方は「空欄」だけで決めない。ギターがいない編成（キーボードバンドなど）まで巻き込むから
+ *      - Gt.1 も Gt.2 も空                    → ギターボーカル（人数は見ない。Key. に人がいる4人編成も）
+ *      どちらも空欄だけで決めるので、ベースやギターのいない編成なら、プレビューで直す
  * @param array  $band    spread_roster_cells で1セル1人に分けた後のバンド（cells と extras）
  * @param string $voName  ボーカルの名前
  * @return string|null VOCAL_ROLES のキー。推測できなければ null（= 単体ボーカル）
@@ -309,28 +311,11 @@ function guess_vocal_role(array $columns, array $band, string $voName, bool $fir
     if (count($gt) >= 2 && $gt[0] === '' && $gt[1] !== '') {
         return 'gt';
     }
-    if (roster_band_size($band) === 3 && $gt && implode('', $gt) === '') {
+    // ギターの欄が全部空 → ギターボーカル（Key. に人がいる4人編成なども。人数は見ない）
+    if ($gt && implode('', $gt) === '') {
         return 'gt';
     }
     return null;
-}
-
-/** 名簿の1バンドの人数。「人数」列があればそれ、無ければ書かれている名前を数える（同じ人が2つの欄にいても1人） */
-function roster_band_size(array $band): int
-{
-    if (($band['member_count'] ?? null) !== null) {
-        return (int)$band['member_count'];
-    }
-    $keys = [];
-    foreach ($band['cells'] as $name) {
-        if ($name !== '') {
-            $keys[member_key(parse_name_instrument($name)[0])] = true;
-        }
-    }
-    foreach ($band['extras'] as $x) {
-        $keys[member_key($x['name'])] = true;
-    }
-    return count($keys);
 }
 
 /**

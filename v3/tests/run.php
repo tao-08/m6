@@ -291,6 +291,8 @@ check('Ba 空なら人数に関係なくベースボーカル', guess_vocal_role
     ['cells' => [1 => 'A', 2 => 'B', 3 => '', 4 => '', 5 => 'C'], 'extras' => [], 'member_count' => 4], 'A', true), 'ba');
 check('Gt.1 も Ba も空ならベースボーカル（SHANK）', guess_vocal_role($cols,
     ['cells' => [1 => 'A', 2 => '', 3 => 'B', 4 => '', 5 => 'C'], 'extras' => []], 'A', true), 'ba');
+check('ギターが全員いない4人編成はギターボーカル', guess_vocal_role($cols + [6 => ['part' => 'Key']],
+    ['cells' => [1 => 'A', 2 => '', 3 => '', 4 => 'B', 5 => 'C', 6 => 'D'], 'extras' => [], 'member_count' => 4], 'A', true), 'gt');
 check('Ba がいて Gt.1 が空ならギターボーカル', guess_vocal_role($cols,
     ['cells' => [1 => 'A', 2 => '', 3 => 'B', 4 => 'D', 5 => 'C'], 'extras' => []], 'A', true), 'gt');
 check('ボーカルも同じならファイル名', array_keys(roster_choices(['rosters' => [
