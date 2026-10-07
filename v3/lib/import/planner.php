@@ -384,7 +384,117 @@ function build_import_plan(array $files): array
             }
         }
     }
+    return finish_import_plan($plan);
+}
 
+/** タイムテーブル手入力画面で、名簿のバンドの代わりに選べる「バンドではない枠」 */
+const MANUAL_BREAKS = ['休憩', '転換'];
+
+/**
+ * タイムテーブル手入力画面（import.php）の行 → タイムテーブル（日程ごと）
+ *
+ * 1行 = ['day' => '1'〜'3', 'pick' => 'ri:bi'（名簿のバンド）| 'break:休憩' | ''（使わない）,
+ *        'start' => '13:00', 'end' => '13:20', 'songs' => '4']
+ * 出演順は開始時刻の順（時刻が無い行は、その日の最後に画面の並び順のまま）。
+ * バンド名で突き合わせず「どの名簿のバンドを選んだか」を覚えておくので、同じ名前のバンドが2つあっても取り違えない。
+ *
+ * @return array [$timetables, $refs]  $refs = ['ti:si' => 'ri:bi']（finish_import_plan の自動対応付けを上書きする用）
+ * @throws RuntimeException 入力ミス（同じバンドを2回選んだ・時刻が変 など）。メッセージはそのまま画面に出す
+ */
+function build_manual_timetables(array $plan, array $rows): array
+{
+    $choices = array_flip(roster_choices($plan)); // 'ri:bi' => 画面に出しているバンド名（エラー文用）
+    $byDay = [];
+    $picked = [];
+    foreach (array_values($rows) as $i => $r) {
+        $pick = (string)($r['pick'] ?? '');
+        if ($pick === '') {
+            continue;
+        }
+        $day = (int)($r['day'] ?? 1);
+        $day = $day >= 1 && $day <= 3 ? $day : 1;
+        $label = $choices[$pick] ?? null;
+        $breakName = str_starts_with($pick, 'break:') ? substr($pick, 6) : null;
+        // フォームの値は書き換えられる可能性があるので、本当にある名簿のバンド・休憩の種類だけ受け付ける
+        if ($label === null && !in_array($breakName, MANUAL_BREAKS, true)) {
+            throw new RuntimeException(($i + 1) . '行目: 選んだバンドが名簿にありません');
+        }
+        $name = $label ?? $breakName;
+        if ($label !== null) {
+            if (isset($picked[$pick])) {
+                throw new RuntimeException("「{$label}」を2回選んでいます。1つの行だけにしてください");
+            }
+            $picked[$pick] = true;
+        }
+
+        $times = [];
+        foreach (['start', 'end'] as $k) {
+            $t = trim((string)($r[$k] ?? ''));
+            $found = extract_times($t);
+            if ($t !== '' && $found === []) {
+                throw new RuntimeException("「{$name}」の時刻が正しくありません");
+            }
+            $times[$k] = $found[0] ?? null;
+        }
+        if ($times['start'] === null && $times['end'] !== null) {
+            throw new RuntimeException("「{$name}」は開始時刻も入力してください");
+        }
+        if ($times['start'] !== null && $times['end'] !== null && $times['end'] <= $times['start']) {
+            throw new RuntimeException("「{$name}」の終了時刻は開始時刻より後にしてください");
+        }
+        $songs = trim((string)($r['songs'] ?? ''));
+        if ($songs !== '' && (!ctype_digit($songs) || (int)$songs > 255)) {
+            throw new RuntimeException("「{$name}」の曲数は0〜255の数字で入力してください");
+        }
+
+        $band = null;
+        if ($label !== null) {
+            [$ri, $bi] = array_map('intval', explode(':', $pick));
+            $band = $plan['rosters'][$ri]['bands'][$bi];
+        }
+        $byDay[$day][] = [
+            'i' => $i,
+            'ref' => $label !== null ? $pick : null,
+            'slot' => [
+                'is_band'      => $band !== null,
+                'band_name'    => $band['band_name'] ?? $breakName, // 登録するのは名簿のバンド名そのまま（区別用の（Vo ◯◯）は付けない）
+                'start_time'   => $times['start'],
+                'end_time'     => $times['end'],
+                'song_count'   => $songs !== '' ? (int)$songs : ($band['song_count'] ?? null),
+                'member_count' => $band['member_count'] ?? null,
+                'key_note'     => '',
+            ],
+        ];
+    }
+    if (!array_filter($byDay, static fn($items) => array_filter($items, static fn($x) => $x['ref'] !== null))) {
+        throw new RuntimeException('名簿のバンドを1つ以上選んでください');
+    }
+
+    ksort($byDay);
+    $timetables = [];
+    $refs = [];
+    foreach ($byDay as $day => $items) {
+        // 開始時刻の順。時刻が無い行は後ろへ（同じなら画面の並び順）
+        usort($items, static fn($a, $b) => [$a['slot']['start_time'] === null, $a['slot']['start_time'], $a['i']]
+            <=> [$b['slot']['start_time'] === null, $b['slot']['start_time'], $b['i']]);
+        $ti = count($timetables);
+        $timetables[] = ['title' => '', 'live_name' => '', 'label' => "{$day}日目", 'month' => null, 'day' => null,
+            'venue' => '', 'slots' => array_column($items, 'slot'), 'file' => "手入力（{$day}日目）"];
+        foreach ($items as $si => $x) {
+            if ($x['ref'] !== null) {
+                $refs["$ti:$si"] = $x['ref'];
+            }
+        }
+    }
+    return [$timetables, $refs];
+}
+
+/**
+ * 読み取ったタイムテーブルに日付・取り込みの初期値を入れ、名簿のバンドと対応付ける。
+ * タイムテーブルを手入力したとき（import.php の action=manual_tt）も、ここを通してからプレビューへ。
+ */
+function finish_import_plan(array $plan): array
+{
     // ---- 2. 日付と年度の初期値 ----
     // タイムテーブルには「年」が書かれていないので、今日に一番近い過去の年を仮で入れる
     foreach ($plan['timetables'] as &$tt) {

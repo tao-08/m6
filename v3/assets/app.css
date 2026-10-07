@@ -252,13 +252,13 @@ input, select, textarea { font: inherit; color: inherit; }
 /* プルダウンの中身（option）は背景が透明のままだと、Windows の Chrome などで「白い背景に白い文字」になり
    ダークモードで読めなくなる。文字色と背景色を両方テーマの色で指定しておく */
 option, optgroup { background-color: var(--surface); color: var(--text); }
-.search, .field input, .field select, .member-row-edit input, .member-row-edit select, .table--edit input, .table--edit select {
+.search, .field input, .field select, .field textarea, .member-row-edit input, .member-row-edit select, .table--edit input, .table--edit select {
   width: 100%; padding: 10px 13px; border-radius: var(--radius-sm); border: 1px solid var(--border);
   background: var(--surface); color: var(--text); font-size: 15px; min-width: 0;
 }
 .search { flex: 1; padding-left: 38px;
   background: var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%238a8894' stroke-width='2'%3E%3Ccircle cx='7' cy='7' r='5'/%3E%3Cpath d='m11 11 4 4'/%3E%3C/svg%3E") no-repeat 14px center; }
-input:focus, select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 
 .empty { text-align: center; padding: 48px 20px; display: grid; gap: 12px; justify-items: center; }
 .empty__title { font-size: 18px; font-weight: 800; margin: 0; }
@@ -1060,3 +1060,7 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
 .artist-lineup li { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
 .artist-setlist { margin: 0; padding-left: 1.8em; display: grid; gap: 4px; font-size: 13px; }
 .artist-setlist li::marker { color: var(--muted); font-weight: 700; }
+
+/* import.php のタイムテーブル手入力 */
+.manual-tt .table-scroll { margin-bottom: 12px; }
+.manual-tt ul { margin: 0 0 12px; padding-left: 1.2em; }

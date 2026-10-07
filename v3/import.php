@@ -9,6 +9,10 @@
  *    [プレビュー画面]   --(POST action=commit)--> DBに登録 --> ライブ詳細へ
  *                       --(POST action=reset)---> 計画を捨てる --> [アップロード画面]
  *
+ *    名簿だけでタイムテーブルのファイルが無いとき:
+ *    [アップロード画面] --(upload)--> [タイムテーブル手入力画面] --(POST action=manual_tt)--> [プレビュー画面]
+ *    [プレビュー画面]   --(POST action=edit_tt)--> [タイムテーブル手入力画面]（手入力したときだけ）
+ *
  *  POST の後は必ず redirect() している（PRG パターン: Post → Redirect → Get）。
  *  → 登録後にブラウザの「再読み込み」を押しても、二重登録されない。
  * =====================================================================
@@ -20,6 +24,7 @@ require_login();
 
 const MAX_FILES = 10;
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+const MAX_MANUAL_ROWS = 200;            // タイムテーブル手入力の行数の上限
 
 $pdo = db();
 
@@ -72,6 +77,38 @@ function suggest_attr(array $status): string
     return !empty($status['suggest'])
         ? ' data-suggest="' . h(json_encode($status['suggest'], JSON_UNESCAPED_UNICODE)) . '"'
         : '';
+}
+
+/**
+ * タイムテーブル手入力画面の1行（日程 / 名簿のバンドか休憩 / 開始 / 終了 / 曲数）。
+ * $rosterChoices は roster_choices() の結果、$rosterSongs は 'ri:bi' => 名簿の曲数。
+ */
+function manual_row_html(string $i, array $r, array $rosterChoices, array $rosterSongs): string
+{
+    $pick = (string)$r['pick'];
+    $sel = static fn(string $v, string $cur) => $v === $cur ? ' selected' : '';
+    $days = '';
+    foreach (['1', '2', '3'] as $d) {
+        $days .= '<option value="' . $d . '"' . $sel($d, (string)$r['day']) . ">{$d}日目</option>";
+    }
+    $opts = '<option value="">— 使わない —</option><optgroup label="名簿のバンド">';
+    foreach ($rosterChoices as $label => $ref) {
+        $opts .= '<option value="' . h($ref) . '"' . $sel($ref, $pick) . '>' . h((string)$label) . '</option>';
+    }
+    $opts .= '</optgroup><optgroup label="バンド以外">';
+    foreach (MANUAL_BREAKS as $b) {
+        $opts .= '<option value="' . h("break:$b") . '"' . $sel("break:$b", $pick) . '>' . h($b) . '</option>';
+    }
+    $opts .= '</optgroup>';
+    $songsHint = $rosterSongs[$pick] ?? null;
+    return '<tr' . ($pick === '' ? ' class="is-excluded"' : '') . '>'
+        . '<td><select name="r[' . $i . '][day]" aria-label="日程">' . $days . '</select></td>'
+        . '<td><select name="r[' . $i . '][pick]" aria-label="バンド" data-manual-pick>' . $opts . '</select></td>'
+        . '<td><input type="time" name="r[' . $i . '][start]" value="' . h((string)$r['start']) . '" aria-label="開始"></td>'
+        . '<td><input type="time" name="r[' . $i . '][end]" value="' . h((string)$r['end']) . '" aria-label="終了"></td>'
+        . '<td><input type="number" class="input-num" min="0" max="255" name="r[' . $i . '][songs]" value="' . h((string)$r['songs']) . '"'
+        . ($songsHint !== null ? ' placeholder="' . (int)$songsHint . '"' : '') . ' aria-label="曲数"></td>'
+        . '</tr>';
 }
 
 /** 楽器の切り替えボタン用の選択肢。$list は instruments() か extra_instruments()。「etc」は選ぶと楽器追加のモーダルが開く */
@@ -132,13 +169,68 @@ if (is_post()) {
         }
         if ($files) {
             $plan = build_import_plan($files);
-            if (!$plan['timetables']) {
+            if (!$plan['timetables'] && $plan['rosters']) {
+                // 名簿だけ → タイムテーブルを手入力する画面へ（名簿のバンドを1行ずつ並べた状態から始める）
+                $plan['needs_timetable'] = true;
+                $plan['manual_rows'] = [];
+                foreach ($plan['rosters'] as $ri => $r) {
+                    foreach (array_keys($r['bands']) as $bi) {
+                        // 名簿が複数ファイルなら「1ファイル目 = 1日目、2ファイル目 = 2日目…」と仮に置く（画面で直せる）
+                        $plan['manual_rows'][] = ['day' => (string)min($ri + 1, 3), 'pick' => "$ri:$bi", 'start' => '', 'end' => '', 'songs' => ''];
+                    }
+                }
+            } elseif (!$plan['timetables']) {
                 $plan['errors'][] = 'タイムテーブルが1つも含まれていません。タイムテーブル（時間・バンド名の表）も一緒にアップロードしてください。';
             }
             // ファイル自体は保存しない。読み取った結果（配列）だけセッションに置く
             $_SESSION['import_plan'] = $plan;
             unset($_SESSION['import_form']);
         }
+        redirect('import.php');
+    }
+
+    // ---------- タイムテーブルの手入力 → プレビューへ ----------
+    if ($action === 'manual_tt' && isset($_SESSION['import_plan'])) {
+        $plan = $_SESSION['import_plan'];
+        // 入力は文字列だけ取り出して残す（エラーで戻ったとき・プレビューから書き直すとき用）
+        $plan['manual_rows'] = [];
+        foreach (array_slice(array_values((array)($input['r'] ?? [])), 0, MAX_MANUAL_ROWS) as $r) {
+            $r = (array)$r;
+            $row = [];
+            foreach (['day', 'pick', 'start', 'end', 'songs'] as $k) {
+                $row[$k] = mb_substr(is_string($r[$k] ?? null) ? $r[$k] : '', 0, 20);
+            }
+            $plan['manual_rows'][] = $row;
+        }
+        try {
+            [$timetables, $refs] = build_manual_timetables($plan, $plan['manual_rows']);
+        } catch (RuntimeException $e) {
+            $_SESSION['import_plan'] = $plan;
+            flash($e->getMessage(), 'error');
+            redirect('import.php');
+        }
+        $plan['timetables'] = $timetables;
+        $plan['needs_timetable'] = false;
+        $plan = finish_import_plan($plan);
+        // バンド名での自動の対応付けは使わず、画面で選んだ名簿のバンドをそのまま枠に対応させる
+        foreach ($plan['rosters'] as $ri => $r) {
+            foreach (array_keys($r['bands']) as $bi) {
+                $plan['rosters'][$ri]['bands'][$bi]['slot'] = '';
+            }
+        }
+        foreach ($refs as $slotKey => $ref) {
+            [$ri, $bi] = array_map('intval', explode(':', $ref));
+            $plan['rosters'][$ri]['bands'][$bi]['slot'] = $slotKey;
+        }
+        $_SESSION['import_plan'] = $plan;
+        unset($_SESSION['import_form']);
+        redirect('import.php');
+    }
+
+    // ---------- プレビューから手入力の画面に戻る（プレビューで直した内容は捨てる） ----------
+    if ($action === 'edit_tt' && isset($_SESSION['import_plan']['manual_rows'])) {
+        $_SESSION['import_plan']['needs_timetable'] = true;
+        unset($_SESSION['import_form']);
         redirect('import.php');
     }
 
@@ -214,13 +306,82 @@ if ($plan === null): // ==================== アップロード画面 ==========
     </div>
     <div class="card">
         <h3><span class="step">2</span>名簿</h3>
-        <p class="muted small">「バンド名 / Vo(Gt.) / Gt.1 / Gt.2 / Ba. / Dr. / Key.」の列を持つ表。バンド名でタイムテーブルと突き合わせ、名前が DB にいるかを色で表示します。</p>
+        <p class="muted small">「バンド名 / Vo(Gt.) / Gt.1 / Gt.2 / Ba. / Dr. / Key.」の列を持つ表。バンド名でタイムテーブルと突き合わせ、名前が DB にいるかを色で表示します。タイムテーブルのファイルが無ければ、名簿だけ選ぶと次の画面でタイムテーブルを手入力できます。</p>
     </div>
     <div class="card">
         <h3><span class="step">3</span>Excel / PDF について</h3>
         <p class="muted small">Excel（.xlsx）はそのままアップロードOK。シートが複数あれば1枚ずつ読み、「バンド名」の見出しが無いシートは飛ばします。古い .xls は .xlsx で保存し直してください。Excel から書き出した「文字を選択できる」PDF に対応。写真やスキャンの PDF は読めないので Excel か CSV にしてください。</p>
     </div>
 </section>
+
+<?php elseif (!empty($plan['needs_timetable'])): // ==================== タイムテーブル手入力画面 ====================
+    $rosterChoices = roster_choices($plan); // 'ラベル' => 'ri:bi'。同じ名前のバンドは「（Vo ◯◯）」付きで区別されている
+    $rosterSongs = [];                      // 'ri:bi' => 名簿の曲数（曲数欄の薄い数字に出す）
+    foreach ($plan['rosters'] as $ri => $r) {
+        foreach ($r['bands'] as $bi => $b) {
+            $rosterSongs["$ri:$bi"] = $b['song_count'];
+        }
+    }
+    // 名簿のバンドの行のあとに、休憩などを入れる空の行を足しておく（足りなければ「＋ 行を追加」）
+    $emptyRow = ['day' => '1', 'pick' => '', 'start' => '', 'end' => '', 'songs' => ''];
+    $manualRows = array_merge($plan['manual_rows'], array_fill(0, 4, $emptyRow));
+?>
+<section class="hero">
+    <div>
+        <p class="eyebrow">Import · Timetable</p>
+        <h1 class="display">タイムテーブルを手入力</h1>
+        <p class="muted">名簿だけが読み込まれました。各バンドの時間を入れてください。出演順は開始時刻の順になります。</p>
+    </div>
+    <dl class="stats">
+        <div><dt>名簿のバンド</dt><dd><?= count($rosterChoices) ?></dd></div>
+    </dl>
+</section>
+
+<?php foreach ($plan['errors'] as $e): ?><div class="flash flash--error"><?= h($e) ?></div><?php endforeach; ?>
+
+<form method="post" class="card manual-tt">
+    <?= csrf_field() ?>
+    <input type="hidden" name="action" value="manual_tt">
+    <ul class="muted small">
+        <li>バンドは名簿から選びます。同じ名前のバンドが2つあるときは「（Vo ◯◯）」で見分けてください</li>
+        <li>休憩・転換は空の行で「バンド以外」から選ぶ。出ないバンドは「— 使わない —」に</li>
+        <li>時間・曲数は空でもOK（曲数の薄い数字は名簿の曲数。空ならそれを使います）。ライブ名・開催日・会場は次のプレビューで入力します</li>
+    </ul>
+    <div class="table-scroll">
+        <table class="table table--edit">
+            <thead><tr><th>日程</th><th>バンド</th><th>開始</th><th>終了</th><th>曲数</th></tr></thead>
+            <tbody data-manual-rows>
+            <?php foreach ($manualRows as $i => $r): ?><?= manual_row_html((string)$i, $r, $rosterChoices, $rosterSongs) ?><?php endforeach; ?>
+            </tbody>
+        </table>
+    </div>
+    <!-- 「＋ 行を追加」で複製する1行。name の __i__ を JS が次の番号に置きかえる -->
+    <template data-manual-template><?= manual_row_html('__i__', $emptyRow, $rosterChoices, $rosterSongs) ?></template>
+    <button type="button" class="btn btn--ghost btn--sm" data-manual-add>＋ 行を追加</button>
+    <div class="sticky-actions">
+        <button class="btn btn--ghost" type="submit" form="reset-form">やり直す</button>
+        <button class="btn btn--primary" type="submit">プレビューへ</button>
+    </div>
+</form>
+<form method="post" id="reset-form"><?= csrf_field() ?><input type="hidden" name="action" value="reset"></form>
+<script>
+// 「＋ 行を追加」と、「使わない」の行を薄く表示する切り替え（この画面でしか使わないのでここに書く）
+(() => {
+    const body = document.querySelector('[data-manual-rows]');
+    const tpl = document.querySelector('[data-manual-template]');
+    let next = body.rows.length;
+    document.querySelector('[data-manual-add]').addEventListener('click', () => {
+        if (body.rows.length < <?= MAX_MANUAL_ROWS ?>) {
+            body.insertAdjacentHTML('beforeend', tpl.innerHTML.replaceAll('__i__', String(next++)));
+        }
+    });
+    body.addEventListener('change', (e) => {
+        if (e.target.matches('[data-manual-pick]')) {
+            e.target.closest('tr').classList.toggle('is-excluded', e.target.value === '');
+        }
+    });
+})();
+</script>
 
 <?php else: // ==================== プレビュー画面 ====================
 
@@ -589,6 +750,9 @@ if ($plan === null): // ==================== アップロード画面 ==========
 
     <div class="sticky-actions">
         <button class="btn btn--ghost" type="submit" form="reset-form">やり直す</button>
+        <?php if (isset($plan['manual_rows'])): ?>
+            <button class="btn btn--ghost" type="submit" form="edit-tt-form">タイムテーブルを書き直す</button>
+        <?php endif; ?>
         <!-- 名簿の重複があるあいだは JS が「登録する」を押せなくして、この文を出す -->
         <span class="sticky-actions__note" data-submit-block hidden><?= icon('warning') ?> <span data-submit-block-text>名簿の重複を直すと登録できます</span></span>
         <button class="btn btn--primary" type="submit"<?= $plan['timetables'] ? '' : ' disabled' ?> data-submit>登録する</button>
@@ -596,6 +760,7 @@ if ($plan === null): // ==================== アップロード画面 ==========
 </form>
 <!-- 「やり直す」は別のフォーム。form="reset-form" 属性でボタンだけ上のフォームの中に置いている -->
 <form method="post" id="reset-form"><?= csrf_field() ?><input type="hidden" name="action" value="reset"></form>
+<form method="post" id="edit-tt-form"><?= csrf_field() ?><input type="hidden" name="action" value="edit_tt"></form>
 
 <?php if ($guessedDates): ?>
 <!-- 開催日の年を推測で入れたとき、プレビューを開いた直後に1回だけ出す注意（JS の setupImportPreview が開く） -->

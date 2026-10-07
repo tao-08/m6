@@ -300,5 +300,36 @@ check('ボーカルも同じならファイル名', array_keys(roster_choices(['
     ['file' => 'b.pdf', 'bands' => [$rb('ENTH', [['渡辺', 'Vo']])]],
 ]])), ['ENTH（Vo 渡辺）（a.pdf）', 'ENTH（Vo 渡辺）（b.pdf）']);
 
+echo "manual timetable\n";
+$mplan = ['rosters' => [['file' => 'a.pdf', 'bands' => [
+    $rb('ENTH', [['渡辺', 'Vo']]) + ['song_count' => 4, 'member_count' => 3],
+    $rb('ENTH', [['高橋', 'Vo']]) + ['song_count' => 5, 'member_count' => 3],
+    $rb('SHANK', [['庵原', 'Vo']]) + ['song_count' => null, 'member_count' => 3],
+]]]];
+[$mt, $refs] = build_manual_timetables($mplan, [
+    ['day' => '1', 'pick' => '0:1', 'start' => '13:30', 'end' => '13:50', 'songs' => ''],
+    ['day' => '1', 'pick' => '0:0', 'start' => '13:00', 'end' => '13:20', 'songs' => '3'],
+    ['day' => '1', 'pick' => 'break:休憩', 'start' => '13:20', 'end' => '', 'songs' => ''],
+    ['day' => '2', 'pick' => '0:2', 'start' => '', 'end' => '', 'songs' => ''],
+    ['day' => '1', 'pick' => '', 'start' => '15:00', 'end' => '', 'songs' => ''],
+]);
+check('手入力: 日程の数', array_column($mt, 'label'), ['1日目', '2日目']);
+check('手入力: 開始時刻の順', array_column($mt[0]['slots'], 'band_name'), ['ENTH', '休憩', 'ENTH']);
+check('手入力: 同じ名前でも選んだ名簿に対応', $refs, ['0:0' => '0:0', '0:2' => '0:1', '1:0' => '0:2']);
+check('手入力: 曲数（入力 > 名簿）', array_column($mt[0]['slots'], 'song_count'), [3, null, 5]);
+check('手入力: 休憩はバンドではない', $mt[0]['slots'][1]['is_band'], false);
+$err = static function (array $rows) use ($mplan): string {
+    try {
+        build_manual_timetables($mplan, $rows);
+        return '';
+    } catch (RuntimeException $e) {
+        return $e->getMessage();
+    }
+};
+check('手入力: 同じバンドを2回', $err([['pick' => '0:0'], ['pick' => '0:0']]), '「ENTH（Vo 渡辺）」を2回選んでいます。1つの行だけにしてください');
+check('手入力: 終了が開始より前', $err([['pick' => '0:0', 'start' => '14:00', 'end' => '13:00']]), '「ENTH（Vo 渡辺）」の終了時刻は開始時刻より後にしてください');
+check('手入力: 名簿に無い値', $err([['pick' => '9:9']]), '1行目: 選んだバンドが名簿にありません');
+check('手入力: 休憩だけ', $err([['pick' => 'break:休憩']]), '名簿のバンドを1つ以上選んでください');
+
 echo $failed ? "\n{$failed} 件失敗\n" : "\nすべて成功\n";
 exit($failed ? 1 : 0);
