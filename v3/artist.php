@@ -22,19 +22,57 @@ if (!$artist) {
     exit('アーティストが見つかりません');
 }
 
-$st = $pdo->prepare('SELECT b.band_id, b.name, b.song_count, d.live_day_id, d.label, d.held_on, l.live_id, l.fiscal_year, l.name AS live_name,
-        GROUP_CONCAT(DISTINCT m.name ORDER BY i.sort_order SEPARATOR \'、\') AS members
+$st = $pdo->prepare('SELECT b.band_id, b.name, d.live_day_id, d.label, d.held_on, l.live_id, l.fiscal_year, l.name AS live_name
     FROM band b
     JOIN live_day d ON d.live_day_id = b.live_day_id
     JOIN live l ON l.live_id = d.live_id
-    LEFT JOIN band_member bm ON bm.band_id = b.band_id
-    LEFT JOIN member m ON m.member_id = bm.member_id
-    LEFT JOIN instrument i ON i.instrument_id = bm.instrument_id
     WHERE b.artist_id = ?
-    GROUP BY b.band_id
     ORDER BY d.held_on DESC, l.fiscal_year DESC');
 $st->execute([$artistId]);
 $bands = $st->fetchAll();
+
+// メンバー: バンドごとに「楽器ラベル + 名前」を1人1行（楽器の並び順 → 名前順）
+//   1人で Vo と Gt を持つ人は「Gt/Vo」の1行にまとめる。並び位置は最初のパート（Vo）の位置
+$lineups = []; // [band_id][member_id] = ['member_id', 'name', 'parts' => [['short', 'title'], ...]]
+$st = $pdo->prepare('SELECT bm.band_id, m.member_id, m.name, i.short_name, i.name AS instrument_name
+    FROM band b
+    JOIN band_member bm ON bm.band_id = b.band_id
+    JOIN member m ON m.member_id = bm.member_id
+    JOIN instrument i ON i.instrument_id = bm.instrument_id
+    WHERE b.artist_id = ?
+    ORDER BY i.sort_order, m.name');
+$st->execute([$artistId]);
+foreach ($st as $m) {
+    $person = &$lineups[(int)$m['band_id']][(int)$m['member_id']];
+    $person['member_id'] = (int)$m['member_id'];
+    $person['name'] = $m['name'];
+    $person['parts'][] = ['short' => $m['short_name'], 'title' => $m['instrument_name']];
+    unset($person);
+}
+// ラベルは「Gt/Vo」「Ba/Cho」のように、歌うパート（Vo / Cho）を後ろへ。色は先頭のパート（Gt/Vo ならギターの色）
+foreach ($lineups as &$people) {
+    foreach ($people as &$person) {
+        $sing = static fn(array $p): int => in_array(instrument_class($p['short']), ['vo', 'cho'], true) ? 1 : 0;
+        usort($person['parts'], static fn($a, $b) => $sing($a) <=> $sing($b)); // usort は同じ値の順番を保つ（PHP 8）
+        $person['label'] = implode('/', array_column($person['parts'], 'short'));
+        $person['title'] = implode('/', array_column($person['parts'], 'title'));
+        $person['class'] = instrument_class($person['parts'][0]['short']);
+    }
+    unset($person);
+}
+unset($people);
+
+// セットリスト: バンドごとに曲順で
+$setlists = []; // [band_id] = [曲名, ...]
+$st = $pdo->prepare('SELECT s.band_id, s.title
+    FROM band b
+    JOIN song s ON s.band_id = b.band_id
+    WHERE b.artist_id = ?
+    ORDER BY s.track_no');
+$st->execute([$artistId]);
+foreach ($st as $s) {
+    $setlists[(int)$s['band_id']][] = $s['title'];
+}
 
 // 管理者はアーティスト名を直せる（表記ゆれで2つできたときは名前をそろえれば…ではなく、下の統合を使う）
 $others = [];
@@ -83,14 +121,32 @@ render_header($artist['name']);
 <div class="card table-card">
     <div class="table-scroll table-scroll--flush">
     <table class="table">
-        <thead><tr><th>ライブ</th><th>バンド名</th><th>メンバー</th></tr></thead>
+        <thead><tr><th>ライブ</th><th>バンド名</th><th>メンバー</th><th>セットリスト</th></tr></thead>
         <tbody>
         <?php foreach ($bands as $b): ?>
             <tr>
                 <td class="nowrap"><a href="live.php?id=<?= (int)$b['live_id'] ?>#day-<?= (int)$b['live_day_id'] ?>"><?= h(fmt_year($b['fiscal_year'])) ?> <?= h($b['live_name']) ?></a>
                     <div class="muted small"><?= h($b['label']) ?> <?= h(fmt_date($b['held_on'])) ?></div></td>
                 <td class="strong"><a href="band.php?id=<?= (int)$b['band_id'] ?>"><?= h($b['name']) ?></a></td>
-                <td class="small"><?= h($b['members'] ?? '—') ?></td>
+                <td>
+                    <?php if (!empty($lineups[(int)$b['band_id']])): ?>
+                        <ul class="artist-lineup">
+                            <?php foreach ($lineups[(int)$b['band_id']] as $m): ?>
+                                <li><span class="part part--<?= h($m['class']) ?>" title="<?= h($m['title']) ?>"><?= h($m['label']) ?></span>
+                                    <a href="member.php?id=<?= (int)$m['member_id'] ?>"><?= h($m['name']) ?></a></li>
+                            <?php endforeach; ?>
+                        </ul>
+                    <?php else: ?><span class="muted">—</span><?php endif; ?>
+                </td>
+                <td>
+                    <?php if (!empty($setlists[(int)$b['band_id']])): ?>
+                        <ol class="artist-setlist">
+                            <?php foreach ($setlists[(int)$b['band_id']] as $title): ?>
+                                <li><?= h($title) ?></li>
+                            <?php endforeach; ?>
+                        </ol>
+                    <?php else: ?><span class="muted">—</span><?php endif; ?>
+                </td>
             </tr>
         <?php endforeach; ?>
         </tbody>

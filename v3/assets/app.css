@@ -989,3 +989,9 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
   .bars li { grid-template-columns: minmax(0, 8em) 1fr auto; }
   .stats-grid { grid-template-columns: 1fr; }
 }
+
+/* アーティストページ: メンバー（楽器ラベル + 名前）とセットリストを縦に並べる */
+.artist-lineup { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 13px; }
+.artist-lineup li { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+.artist-setlist { margin: 0; padding-left: 1.8em; display: grid; gap: 4px; font-size: 13px; }
+.artist-setlist li::marker { color: var(--muted); font-weight: 700; }

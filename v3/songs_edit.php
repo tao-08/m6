@@ -5,7 +5,7 @@
  * =====================================================================
  *  1曲 = 1枚のカード。カードの中に「バンドのメンバー全員」が並び、
  *    ☑ チェック … その曲を演奏した
- *    楽器1 / 楽器2 … その曲で弾いた楽器（ギターボーカルなら Vo と Gt）
+ *    楽器1 / 楽器2 … その曲で弾いた楽器（ギターボーカルなら「Gt/Vo」1つで Vo と Gt の両方になる）
  *  を選ぶ。
  *
  *  曲の追加: 空のカードに曲名を書けば追加。曲名が空のカードは無視される。
@@ -52,7 +52,10 @@ foreach ($st as $r) {
     $members[(int)$r['member_id']]['name'] = $r['name'];
     $members[(int)$r['member_id']]['roles'][] = (int)$r['instrument_id'];
 }
-$validInstruments = array_map('intval', array_column(instruments(), 'instrument_id'));
+// 楽器 ID の配列 → 楽器欄の値の配列。Vo と Gt を両方持っていたら 'vo:gt'（Gt/Vo）の1つにまとめる
+//   例: [Vo, Gt] → ['vo:gt']、[Vo, Gt, Key] → ['vo:gt', 'Key の id']
+$choicesOf = static fn(array $ids): array => array_column(
+    merge_vocal_roles(array_map(static fn(int $id) => ['name' => '', 'instrument_id' => $id], $ids)), 'choice');
 
 /* =====================================================================
  *  保存
@@ -91,8 +94,11 @@ if (is_post()) {
                 continue; // チェックが付いていない = その曲は弾いていない
             }
             foreach (['i1', 'i2'] as $slot) {
-                $inst = (int)($p[$slot] ?? 0);
-                if (in_array($inst, $validInstruments, true)) {
+                if (($p[$slot] ?? '') === '') {
+                    continue; // 楽器2の「—」
+                }
+                // 'vo:gt'（Gt/Vo）なら Vo と Gt の2つになる
+                foreach (instruments_for_choice($p[$slot]) as $inst) {
                     $performers["$memberId-$inst"] = [$memberId, $inst]; // キーにして重複を消す
                 }
             }
@@ -200,7 +206,7 @@ render_header('曲を編集', 'lives');
 <?php if (!$members): ?>
     <div class="flash flash--warn">先にバンドのメンバーを登録してください（<a href="band_edit.php?id=<?= $bandId ?>">バンドを編集</a>）</div>
 <?php endif; ?>
-<p class="muted small">チェックを付けた人がその曲の演奏者になります。楽器はバンドでの担当が初期値。曲だけ持ち替えた（例: ギターの人が1曲だけキーボード）ら、ここで変えてください。</p>
+<p class="muted small">チェックを付けた人がその曲の演奏者になります。楽器はバンドでの担当が初期値（ギターボーカルは「Gt/Vo」）。曲だけ持ち替えた（例: ギターの人が1曲だけキーボード）ら、ここで変えてください。</p>
 
 <form method="post" class="songs-form">
     <?= csrf_field() ?>
@@ -242,15 +248,13 @@ render_header('曲を編集', 'lives');
                         // 既存の曲: 記録どおり / 新しい曲: バンドの担当を初期値にして全員ON
                         $insts = $isNew ? $m['roles'] : ($played[$song['song_id']][$memberId] ?? []);
                         $on = $isNew || $insts !== [];
-                        $defaults = $insts ?: $m['roles']; ?>
+                        $choices = $choicesOf($insts ?: $m['roles']); ?>
                         <div class="performer<?= $on ? '' : ' is-off' ?>">
                             <label class="check performer__name"><input type="checkbox" name="<?= $base ?>[p][<?= $memberId ?>][on]" value="1"<?= $on ? ' checked' : '' ?> data-performer-on> <?= h($m['name']) ?></label>
-                            <?php foreach (['i1', 'i2'] as $n => $slot): $selected = $defaults[$n] ?? 0; ?>
+                            <?php foreach (['i1', 'i2'] as $n => $slot): ?>
                                 <select name="<?= $base ?>[p][<?= $memberId ?>][<?= $slot ?>]" class="select-sm" aria-label="楽器<?= $n + 1 ?>">
                                     <?php if ($n === 1): ?><option value="">—</option><?php endif; ?>
-                                    <?php foreach (instruments() as $ins): ?>
-                                        <option value="<?= (int)$ins['instrument_id'] ?>"<?= $selected === (int)$ins['instrument_id'] ? ' selected' : '' ?>><?= h($ins['short_name']) ?></option>
-                                    <?php endforeach; ?>
+                                    <?= instrument_choice_options($choices[$n] ?? '') ?>
                                 </select>
                             <?php endforeach; ?>
                         </div>
