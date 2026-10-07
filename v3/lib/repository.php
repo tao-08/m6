@@ -350,6 +350,39 @@ function lineup_parts_by_band(iterable $rows): array
 }
 
 /**
+ * いくつものバンドの行 → バンドごとに「楽器ラベル + 名前」を1人1行（アーティストページ・検索結果）。
+ *   Vo と Gt を持つ人は「Vo/Gt」の1行（lineup_parts）。それ以外の兼任（Ba + Cho など）も「Cho/Ba」のように1行にまとめる
+ * @param iterable $rows [['band_id', 'member_id', 'name', 'short_name', 'instrument_name', 'sort_order'], ...]（sort_order, name 順）
+ * @return array [band_id][member_id] = ['member_id', 'name', 'title', 'segments' => [['short' => 'Vo', 'class' => 'vo'], ...]]
+ */
+function member_lineups_by_band(iterable $rows): array
+{
+    $rowsByBand = [];
+    foreach ($rows as $r) {
+        $rowsByBand[(int)$r['band_id']][] = $r;
+    }
+    // 歌うパート（Vo / Cho）を先に（Vo/Gt、Cho/Ba）。usort は同じ値の順番を保つ（PHP 8）
+    $sing = static fn(array $p): int => in_array($p['segments'][0]['class'], ['vo', 'cho'], true) ? 0 : 1;
+    $lineups = [];
+    foreach ($rowsByBand as $bandId => $bandRows) {
+        $byMember = [];
+        foreach (lineup_parts($bandRows) as $p) {
+            $byMember[$p['member_id']][] = $p; // 並び位置は、その人の最初のパートの位置
+        }
+        foreach ($byMember as $memberId => $parts) {
+            usort($parts, static fn($a, $b) => $sing($a) <=> $sing($b));
+            $lineups[$bandId][$memberId] = [
+                'member_id' => $memberId,
+                'name' => $parts[0]['name'],
+                'title' => implode('/', array_column($parts, 'title')),
+                'segments' => array_merge(...array_column($parts, 'segments')), // 左右に色分けして並べる
+            ];
+        }
+    }
+    return $lineups;
+}
+
+/**
  * パートをラベル（'Vo' 'Vo/Gt' …）ごとに数える。Vo/Gt の人は「Vo」ではなく「Vo/Gt」の方に数える。
  * @return array [ラベル => ['short', 'title', 'segments', 'order', 'n' => 何回, 'members' => [member_id => 何回]], ...]（並び順どおり）
  */

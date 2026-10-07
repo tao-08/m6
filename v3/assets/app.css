@@ -694,6 +694,8 @@ body.is-row-dragging, body.is-row-dragging * { cursor: grabbing !important; user
 .chip-list { display: flex; flex-wrap: wrap; gap: 8px; }
 .chip--lg { padding: 6px 14px; font-size: 14px; background: var(--surface); }
 .search-results section + section { margin-top: 8px; }
+.more-link { margin-top: 12px; text-align: center; }
+[id^="band-n"] { scroll-margin-top: 80px; } /* 「もっと見る」で飛んだ行が上のヘッダーに隠れないように */
 .year-filter select { padding: 9px 12px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); font-weight: 700; }
 /* 集計ページの絞り込み（メンバー × 期間）
    ラジオボタンを隠して、選ばれている label を .tab.is-active と同じ見た目にする。
