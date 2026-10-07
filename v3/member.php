@@ -225,13 +225,23 @@ render_header($member['name'], 'members');
                     <span class="album__rank" aria-hidden="true"><?= $i + 1 ?></span>
                     <!-- loading="lazy": 画面に近づくまで画像を読み込まない（30枚あっても最初の表示が重くならない） -->
                     <!-- alt: 画像が出ないときや読み上げソフト用の説明文。img には必ず付けるのがマナー -->
-                    <img class="album__art" src="<?= h($a['artwork_url']) ?>" alt="<?= h($a['title']) ?> のジャケット" loading="lazy" width="600" height="600">
-                    <!-- 文字の部分（タイトル・アーティスト・発売年）はまとめて1つのリンク。元のサービス（Spotify / Apple Music）のページへ飛ぶ -->
-                    <!-- target="_blank" は新しいタブで開く。rel="noopener": 開いた先のページから、このページを操作されないようにする（セットで付ける） -->
-                    <!-- ドラッグで並び替えられるのはジャケットの部分だけ（リンクの上で押してもドラッグは始まらない。assets/app.js） -->
                     <?php $k = album_key($a['source'], $a['album_id']); ?>
                     <!-- array_key_exists: キーがあれば値が null でも true（isset は null だと false になるので、ここでは使えない） -->
-                    <a class="album__meta" href="<?= h(album_listen_url($viewerApp, $a, array_key_exists($k, $linkCache) ? $linkCache[$k] : false)) ?>" target="_blank" rel="noopener" title="<?= h($listenLabel($a)) ?> で聴く">
+                    <?php $listenUrl = album_listen_url($viewerApp, $a, array_key_exists($k, $linkCache) ? $linkCache[$k] : false); ?>
+                    <?php if ($isMe): ?>
+                        <!-- 本人のページ: ジャケットはドラッグで並び替えるためのつかむ場所なので、リンクにしない -->
+                        <img class="album__art" src="<?= h($a['artwork_url']) ?>" alt="<?= h($a['title']) ?> のジャケット" loading="lazy" width="600" height="600">
+                    <?php else: ?>
+                        <!-- 他の人のページ: 並び替えがないので、ジャケットも聴くページへのリンクにする -->
+                        <!-- 下の文字リンクと行き先が同じなので、tabindex="-1" と aria-hidden でキーボード・読み上げでは1つ分にまとめる -->
+                        <a class="album__art-link" href="<?= h($listenUrl) ?>" target="_blank" rel="noopener" tabindex="-1" aria-hidden="true">
+                            <img class="album__art" src="<?= h($a['artwork_url']) ?>" alt="" loading="lazy" width="600" height="600">
+                        </a>
+                    <?php endif; ?>
+                    <!-- 文字の部分（タイトル・アーティスト・発売年）はまとめて1つのリンク。元のサービス（Spotify / Apple Music）のページへ飛ぶ -->
+                    <!-- target="_blank" は新しいタブで開く。rel="noopener": 開いた先のページから、このページを操作されないようにする（セットで付ける） -->
+                    <!-- 本人のページでドラッグで並び替えられるのはジャケットの部分だけ（リンクの上で押してもドラッグは始まらない。assets/app.js） -->
+                    <a class="album__meta" href="<?= h($listenUrl) ?>" target="_blank" rel="noopener" title="<?= h($listenLabel($a)) ?> で聴く">
                         <span class="album__title"><?= h($a['title']) ?></span>
                         <span class="muted small"><?= h($a['artist_name']) ?><?= $a['release_year'] ? ' · ' . (int)$a['release_year'] : '' ?></span>
                     </a>

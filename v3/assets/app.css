@@ -948,6 +948,10 @@ a.setlist__song:hover { color: var(--accent); text-decoration: underline; }
 /* 文字の部分はリンク（JS はここではドラッグを始めない）。指マークのカーソルにして、乗せたらタイトルに下線 */
 .albums[data-album-sort] .album__meta { cursor: pointer; }
 a.album__meta:hover .album__title { text-decoration: underline; }
+/* 他の人のページ: ジャケットもリンク。乗せたら少し浮かせて、押せることを見せる */
+.album__art-link { display: block; }
+.album__art-link:hover .album__art { transform: translateY(-2px); }
+.album__art-link:hover + .album__meta .album__title { text-decoration: underline; }
 .albums[data-album-sort] .album:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: var(--radius-sm); }
 /* ドラッグ中は削除ボタンを隠す（誤って押さないように） */
 .albums.is-sorting .album__delete { display: none; }
