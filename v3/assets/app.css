@@ -142,6 +142,12 @@ a:hover { color: var(--accent); }
 .usermenu__panel a, .usermenu__panel .linkbtn { padding: 8px 10px; border-radius: 8px; text-align: left; }
 .usermenu__panel a:hover, .usermenu__panel .linkbtn:hover { background: var(--surface-2); color: var(--text); }
 .usermenu__name { padding: 8px 10px; font-weight: 700; border-bottom: 1px solid var(--border); margin-bottom: 4px; }
+/* 管理者専用メニュー: ログアウトの下に、単色の背景で区切って一般メニューと見分けられるようにする */
+.usermenu__admin { display: grid; gap: 2px; margin-top: 6px; padding: 6px; border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-2); }
+.usermenu__admin-label { padding: 2px 4px 4px; font-size: 11px; font-weight: 700; letter-spacing: .04em; color: var(--muted); }
+.usermenu__panel .usermenu__admin a:hover { background: var(--surface); }
 .linkbtn { background: none; border: 0; color: inherit; font: inherit; cursor: pointer; width: 100%; }
 
 /* ===== 4. 文字・見出し ===== */
