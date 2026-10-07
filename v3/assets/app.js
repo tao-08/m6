@@ -52,6 +52,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupAlbumSearch();
   setupAlbumAdd();
   setupRosterColumns();
+  setupTimetableColumns();
   setupPicks();
   setupDragScroll();
   setupPackedForm();
@@ -1241,12 +1242,18 @@ function setupMergeToggle() {
 /* ---------------------------------------------------------------------
  * タイムテーブルの出演順を振り直す（並び替え・取込の切り替えのあとに呼ぶ）
  *   取込にチェックがある行を上から 1, 2, 3…。チェックが無い行（休憩など）は空。
+ *   タイムテーブル編集（timetable_edit.php）は取込のチェックが無い = バンドの行に全部番号を振る。
+ *     休憩の行（[data-order] が無い）は番号なし。全部の行の pos（上から何行目か）も振り直す。
  *   表示用の文字と、送信用の hidden（PHP の commit_import_plan が並べ替えに使う）の両方を書き換える。
  * ------------------------------------------------------------------- */
 function renumberSlots(tbody) {
   let n = 0;
-  [...tbody.rows].forEach((tr) => {
-    const no = tr.querySelector('[data-include]').checked ? String(++n) : '';
+  [...tbody.rows].forEach((tr, i) => {
+    const pos = tr.querySelector('[data-pos]');
+    if (pos) pos.value = i;
+    if (!tr.querySelector('[data-order]')) return; // 休憩の行
+    const include = tr.querySelector('[data-include]');
+    const no = !include || include.checked ? String(++n) : '';
     tr.querySelector('[data-order]').value = no;
     tr.querySelector('[data-order-text]').textContent = no;
   });
@@ -1254,8 +1261,12 @@ function renumberSlots(tbody) {
 
 /* ---------------------------------------------------------------------
  * タイムテーブルの行の並び替え（左端の ≡ をドラッグ。↑↓キーでも動く）
- *   時間の列は「何行目か」に固定: 行を動かしたら、各行の時間の表示と
- *   hidden の at（どの枠の時間を使うか。PHP の commit_import_plan が見る）を位置に合わせて付け直す。
+ *   時間の列（data-time のセル）は「何行目か」に固定: 行を動かしたら、時間のセルだけ元の位置の行に戻す。
+ *     取り込み（import.php）… hidden の at（どの枠の時間を使うか。PHP の commit_import_plan が見る）も位置に合わせて付け直す
+ *     タイムテーブル編集 … 時間が入力欄なので、name をその行（tr の data-name-prefix = b[ID] / k[番号]）に付け直す
+ *   data-free-time の行（タイムテーブル編集の「＋ 休憩を追加」で足した行）は例外で、時間を行に付けたまま動かす。
+ *     位置に固定する行だけで「n 番目の時間」を数える（足した休憩を差し込んでも、ほかの行の時間はずれない）
+ *   行を足したり消したりしたら、tbody に slots:changed イベントを出してもらい、今の並びで覚え直す
  *   pointer イベントなのでマウスでも指でも動く（≡ には CSS で touch-action: none）。
  *
  * アニメーション（時間のセルは動かさない。動くのは時間以外のセルだけ）
@@ -1270,19 +1281,33 @@ function setupSlotSort() {
 
   // 「動きを減らす」設定の人にはアニメーションしない
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const cellsOf = (tr) => [...tr.querySelectorAll('td:not([data-time])')]; // 動かすセル（時間以外）
+  // 動かすセル（時間以外。時間を行に付けたまま動かす行は全部）
+  const cellsOf = (tr) => [...tr.querySelectorAll(tr.hasAttribute('data-free-time') ? 'td' : 'td:not([data-time])')];
 
-  // 最初の並びで「n 行目の時間」を覚えておく（並び替えても n 行目の時間はこれのまま）
-  const times = new Map(bodies.map((tbody) => [tbody, [...tbody.rows].map((tr) => ({
-    text: tr.querySelector('[data-time]').textContent,
-    at: tr.querySelector('[data-at]').value,
-  }))]));
+  // 位置に固定する行（＝「＋ 休憩を追加」で足した行以外）
+  const pinnedRows = (tbody) => [...tbody.rows].filter((tr) => !tr.hasAttribute('data-free-time'));
+  // 今の並びで「n 番目の時間のセル」を覚えておく（並び替えても n 番目の時間はこのセルのまま）
+  //   index = 行の中で何列目にあったか（戻すときに同じ列へ差し込む）
+  const capture = (tbody) => pinnedRows(tbody).map((tr) => ({
+    cells: [...tr.querySelectorAll('td[data-time]')].map((td) => ({ td, index: td.cellIndex })),
+    at: tr.querySelector('[data-at]')?.value,
+  }));
+  const times = new Map(bodies.map((tbody) => [tbody, capture(tbody)]));
+  document.addEventListener('slots:changed', (e) => { if (times.has(e.target)) times.set(e.target, capture(e.target)); });
 
-  // 並びが変わったあとの後始末: 時間を位置に戻し、出演順を振り直す
+  // 並びが変わったあとの後始末: 時間のセルを位置に戻し、出演順を振り直す
   const settle = (tbody) => {
-    [...tbody.rows].forEach((tr, i) => {
-      tr.querySelector('[data-time]').textContent = times.get(tbody)[i].text;
-      tr.querySelector('[data-at]').value = times.get(tbody)[i].at;
+    const slots = times.get(tbody);
+    // いったん全部の時間のセルを外してから、n 番目の行に n 番目のセルを元の列へ差し込む
+    // （外さずに1行ずつ入れ替えると、まだ直していない行のセルが混ざって列がずれる）
+    slots.forEach((slot) => slot.cells.forEach(({ td }) => td.remove()));
+    pinnedRows(tbody).forEach((tr, i) => {
+      slots[i].cells.forEach(({ td, index }) => tr.insertBefore(td, tr.cells[index] || null));
+      if (slots[i].at !== undefined) tr.querySelector('[data-at]').value = slots[i].at;
+      // 時間の入力欄は「この位置に来た行」の値として送る
+      if (tr.dataset.namePrefix) {
+        tr.querySelectorAll('[data-time-field]').forEach((el) => { el.name = `${tr.dataset.namePrefix}[${el.dataset.timeField}]`; });
+      }
     });
     renumberSlots(tbody);
   };
@@ -1864,6 +1889,80 @@ function setupRosterColumns() {
 }
 
 /* ---------------------------------------------------------------------
+ * タイムテーブル編集（timetable_edit.php）: 出演者の列の追加、楽器のプルダウンの開け閉め、休憩の行の追加・削除
+ *   「＋ 列を追加」→ その日の表のバンドの行の右端に「名前 + 楽器」のセルを1つ足す（休憩の行は横に1マスつなげて伸ばす）
+ *     name は b[バンドID][m][列の番号][name / inst]。番号は data-cols（今ある列の数）から振る
+ *   名前が入ったら下のプルダウンを出し、空にしたら畳む（見た目は名簿と同じ .table--roster の CSS）
+ *   「＋ 休憩を追加」→ <template id="tpl-tt-break"> の行を表の一番下に足す（≡ で好きな所へ動かす）
+ *   「この行を消す」→ 休憩の行を消す
+ *   行を足す・消すときは slots:changed を出して、setupSlotSort に時間の並びを覚え直してもらう
+ * ------------------------------------------------------------------- */
+function setupTimetableColumns() {
+  const tpl = document.getElementById('tpl-tt-instrument');
+  if (!tpl) return;
+
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-add-tt-col]');
+    if (!btn) return;
+    const table = btn.closest('section').querySelector('[data-tt-table]');
+    const n = Number(table.dataset.cols); // 新しい列の番号（0 始まり）
+    table.dataset.cols = n + 1;
+    table.querySelectorAll('[data-tt-members-head], [data-break-fill]').forEach((td) => { td.colSpan = n + 1; });
+
+    table.querySelectorAll('tbody tr[data-name-prefix]:not(.tt-break)').forEach((tr) => {
+      const base = `${tr.dataset.namePrefix}[m][${n}]`;
+      const td = document.createElement('td');
+      const input = document.createElement('input');
+      input.name = `${base}[name]`;
+      input.className = 'name-input';
+      input.dataset.nameCell = '';
+      input.setAttribute('list', 'member-names');
+      input.setAttribute('aria-label', '出演者');
+      const box = tpl.content.firstElementChild.cloneNode(true);
+      box.querySelector('select').name = `${base}[inst]`;
+      td.append(input, box);
+      tr.appendChild(td);
+    });
+    table.querySelector(`tbody tr [name$="[m][${n}][name]"]`)?.focus();
+  });
+
+  const breakTpl = document.getElementById('tpl-tt-break');
+  const nextBreak = document.querySelector('[data-next-break]');
+  document.addEventListener('click', (e) => {
+    const add = e.target.closest('[data-add-tt-break]');
+    if (add) {
+      const table = add.closest('section').querySelector('[data-tt-table]');
+      const tbody = table.tBodies[0];
+      const n = nextBreak.value++;
+      const tr = breakTpl.content.querySelector('tr').cloneNode(true);
+      tr.dataset.namePrefix = `k[${n}]`;
+      tr.querySelectorAll('[name]').forEach((el) => { el.name = el.name.replace('k[__N__]', `k[${n}]`); });
+      tr.querySelector('[name$="[day]"]').value = add.dataset.day;
+      tr.querySelector('[data-break-fill]').colSpan = Number(table.dataset.cols);
+      tbody.appendChild(tr);
+      tbody.dispatchEvent(new Event('slots:changed', { bubbles: true }));
+      renumberSlots(tbody);
+      const name = tr.querySelector('[name$="[name]"]');
+      name.focus();
+      name.select();
+      return;
+    }
+    const remove = e.target.closest('[data-remove-break]');
+    if (remove) {
+      const tbody = remove.closest('tbody');
+      remove.closest('tr').remove();
+      tbody.dispatchEvent(new Event('slots:changed', { bubbles: true }));
+      renumberSlots(tbody);
+    }
+  });
+
+  document.addEventListener('input', (e) => {
+    if (!e.target.matches('[data-tt-table] [data-name-cell]')) return;
+    e.target.parentElement.querySelector('.cell-instrument')?.classList.toggle('is-collapsed', e.target.value.trim() === '');
+  });
+}
+
+/* ---------------------------------------------------------------------
  * 名簿の切り替えボタン「Vo / Vo/Gt / ⋯」「Key / Vn / ⋯」（HTML は import.php の render_pick）
  *   「⋯」で残りの選択肢を出す
  *     マウス: 乗せると出る（CSS の :hover）。クリックでも開け閉めできる
@@ -2040,7 +2139,7 @@ function setupDragScroll() {
   const markDraggable = () => boxes.forEach((box) => box.classList.toggle('is-draggable', box.scrollWidth > box.clientWidth));
   markDraggable();
   window.addEventListener('resize', markDraggable);
-  document.addEventListener('click', (e) => { if (e.target.closest('[data-add-roster-col]')) setTimeout(markDraggable); });
+  document.addEventListener('click', (e) => { if (e.target.closest('[data-add-roster-col], [data-add-tt-col]')) setTimeout(markDraggable); });
 
   boxes.forEach((box) => {
     let startX = 0;

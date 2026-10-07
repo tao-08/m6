@@ -37,7 +37,7 @@ SET NAMES utf8mb4;
 -- まっさらな DB に流すと「Note: #1051 '〜' は不明な表です」が表の数だけ出るが、
 -- これは「消そうとした表が最初から無かった」というだけの“お知らせ”で、エラーではない。
 SET FOREIGN_KEY_CHECKS = 0;
-DROP TABLE IF EXISTS artist_alias, member_favorite_album, song_performer, song, band_member, band, artist, live_day, live, venue, instrument, user_account, member;
+DROP TABLE IF EXISTS artist_alias, member_favorite_album, song_performer, song, band_member, live_break, band, artist, live_day, live, venue, instrument, user_account, member;
 SET FOREIGN_KEY_CHECKS = 1;
 
 -- ---------------------------------------------------------------------
@@ -172,6 +172,26 @@ CREATE TABLE band (
         ON UPDATE CASCADE ON DELETE SET NULL,
     CONSTRAINT ck_band_order CHECK (play_order >= 1),
     CONSTRAINT ck_band_time  CHECK (start_time IS NULL OR end_time IS NULL OR end_time > start_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- ---------------------------------------------------------------------
+--  live_break — タイムテーブルの「休憩・転換・撤収」などバンドではない枠
+--    band に混ぜると、バンドを数える所すべてで「休憩を除く」条件が要るので別テーブル。
+--    並び: 「出演順が after_order のバンドの後」（0 = 最初のバンドより前）。同じ場所に複数なら seq 順
+-- ---------------------------------------------------------------------
+CREATE TABLE live_break (
+    break_id    INT UNSIGNED      NOT NULL AUTO_INCREMENT,
+    live_day_id INT UNSIGNED      NOT NULL,
+    after_order SMALLINT UNSIGNED NOT NULL DEFAULT 0,  -- この出演順のバンドの後（0 = 最初のバンドより前）
+    seq         TINYINT UNSIGNED  NOT NULL DEFAULT 0,  -- 同じ場所に2つ以上あるときの並び
+    name        VARCHAR(50)       NOT NULL,            -- 休憩 / 転換 / 撤収 など
+    start_time  TIME              NULL,
+    end_time    TIME              NULL,
+    PRIMARY KEY (break_id),
+    KEY idx_break_day (live_day_id, after_order, seq),
+    CONSTRAINT fk_break_day FOREIGN KEY (live_day_id) REFERENCES live_day (live_day_id)
+        ON UPDATE CASCADE ON DELETE CASCADE,
+    CONSTRAINT ck_break_time CHECK (start_time IS NULL OR end_time IS NULL OR end_time > start_time)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- ---------------------------------------------------------------------

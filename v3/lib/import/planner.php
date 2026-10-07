@@ -604,10 +604,25 @@ function commit_import_plan(PDO $pdo, array $plan, array $input): array
 
             // ---- band ----
             // 「取り込む」にチェックがある枠だけ集めて、入力された出演順で並べ替える
+            // チェックが無く、ファイルで「休憩」などバンドではない枠だった所は、休憩（live_break）として残す
             $rows = [];
+            $breakRows = [];
+            // 枠が表の上から何行目にあるか（at = その位置の時間の枠の番号 = 位置）。休憩を「どのバンドの後か」に直すのに使う
+            $posOf = static function (array $s, $si) use ($tt): int {
+                $at = (string)($s['at'] ?? '');
+                return ctype_digit($at) && isset($tt['slots'][(int)$at]) ? (int)$at : (int)$si;
+            };
             foreach ($tt['slots'] as $si => $slot) {
                 $s = $form['s'][$si] ?? [];
                 if (empty($s['include'])) {
+                    $name = mb_substr(trim((string)($s['name'] ?? $slot['band_name'])), 0, 50);
+                    if (!$slot['is_band'] && $name !== '') {
+                        $timeSlot = $tt['slots'][$posOf($s, $si)];
+                        $start = $timeSlot['start_time'];
+                        $end = $timeSlot['end_time'];
+                        $breakRows[] = ['pos' => $posOf($s, $si), 'name' => $name, 'start' => $start,
+                            'end' => ($start && $end && $end > $start) ? $end : null];
+                    }
                     continue;
                 }
                 $name = trim((string)($s['name'] ?? ''));
@@ -626,6 +641,7 @@ function commit_import_plan(PDO $pdo, array $plan, array $input): array
                 $end = $timeSlot['end_time'];
                 $rows[] = [
                     'si' => $si,
+                    'pos' => $posOf($s, $si),
                     // この枠のメンバーをどの名簿のバンドから取るか（検索欄の文字 → 'ri:bi'。一致しなければ名簿なし）
                     'roster' => $rosterChoices[trim((string)($s['roster'] ?? ''))] ?? null,
                     'order' => (int)($s['order'] ?? 999),
@@ -639,6 +655,17 @@ function commit_import_plan(PDO $pdo, array $plan, array $input): array
             }
             // 出演順 → 同じ番号なら元の並び順、で並べる。<=> は「宇宙船演算子」（大小比較で -1/0/1 を返す）
             usort($rows, static fn($a, $b) => [$a['order'], $a['si']] <=> [$b['order'], $b['si']]);
+
+            // 休憩: 自分より上にあるバンドの数 = 「何番目のバンドの後か」（出演順は下で 1, 2, 3… と振るので数と一致する）
+            $bandPos = array_map(static fn($r) => $r['pos'], $rows);
+            usort($breakRows, static fn($a, $b) => $a['pos'] <=> $b['pos']);
+            $insBreak = $pdo->prepare('INSERT INTO live_break (live_day_id, after_order, seq, name, start_time, end_time) VALUES (?, ?, ?, ?, ?, ?)');
+            $seqAt = []; // after_order => 次の seq
+            foreach ($breakRows as $k) {
+                $after = count(array_filter($bandPos, static fn($pos) => $pos < $k['pos']));
+                $seqAt[$after] ??= 0;
+                $insBreak->execute([$dayId, $after, $seqAt[$after]++, $k['name'], $k['start'], $k['end']]);
+            }
 
             $insBand = $pdo->prepare('INSERT INTO band (live_day_id, artist_id, name, play_order, start_time, end_time, song_count, note)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)');

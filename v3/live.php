@@ -51,6 +51,8 @@ $bandsByDay = [];
 foreach ($st as $b) { // PDOStatement はそのまま foreach で1行ずつ回せる
     $bandsByDay[$b['live_day_id']][] = $b;
 }
+// 休憩・転換など（timetable_edit.php で登録したもの / 取り込みで「バンドではない枠」だったもの）
+$breaksByDay = load_breaks_by_day($pdo, $liveId);
 
 // ---- 3. メンバー（バンドごと → 楽器ごとに振り分け） ----
 // 楽器の並び順は instrument.sort_order（DB が持っている）で ORDER BY
@@ -125,16 +127,20 @@ render_header($live['name'], 'lives');
     </div>
 
     <ol class="timeline">
-        <?php $prevEnd = null;
-        foreach ($bands as $bi => $b):
-            // 前のバンドの終了より後に始まるなら、その間は休憩
-            if ($prevEnd && $b['start_time'] && $b['start_time'] > $prevEnd): ?>
+        <?php
+        // 休憩が1つも登録されていない日程は、前のバンドの終了から次のバンドの開始までの空きを休憩として出す
+        $breaks = $breaksByDay[(int)$d['live_day_id']] ?? gap_breaks($bands, 'BREAK');
+        foreach (timetable_rows($bands, $breaks) as $r):
+            if ($r['type'] === 'break'):
+                $k = $r['row']; ?>
                 <li class="slot slot--break">
-                    <div class="slot__time"><?= h(fmt_time($prevEnd)) ?><span><?= h(fmt_time($b['start_time'])) ?></span></div>
-                    <div class="slot__body"><span class="break-label">BREAK</span></div>
+                    <div class="slot__time"><?= h(fmt_time($k['start_time'])) ?><span><?= h(fmt_time($k['end_time'])) ?></span></div>
+                    <div class="slot__body"><span class="break-label"><?= h($k['name']) ?></span></div>
                 </li>
-            <?php endif;
-            $prevEnd = $b['end_time'] ?: $prevEnd;
+            <?php continue;
+            endif;
+            $bi = $r['key'];
+            $b = $r['row'];
             $lineup = $lineups[$b['band_id']] ?? [];
             $memberIds = [];
             foreach ($lineup as $part) {

@@ -302,9 +302,16 @@ input:focus, select:focus { outline: none; border-color: var(--accent); box-shad
 .facts dd { margin: 0; font-weight: 700; }
 .day-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .tt-form { display: grid; gap: 16px; margin-top: 16px; }
-.tt-members { display: grid; gap: 6px; justify-items: start; }
-.tt-members .member-rows { justify-self: stretch; margin-bottom: 0; }
-.tt-form .table--edit td { vertical-align: top; } /* 出演者が何人いても、時間・バンド名は行の上にそろえる */
+/* タイムテーブル編集の表（名簿と同じ .table--roster の見た目。1セル1人で横に並ぶ）。≡ と「順」の列は細いまま */
+.table--tt td:nth-child(2) { min-width: 0; }
+.table--tt td[data-time] { min-width: 0; }
+/* 楽器はボタン風の部品（JS: setupSelectPick）になるので、その高さに合わせて畳む量も変える */
+.table--tt { --inst-shift: 17px; }
+.table--tt .cell-instrument { height: 30px; }
+/* 休憩の行: バンドの行と見分けが付くように、背景を薄く塗って点線で区切る */
+.table--tt tr.tt-break td { background: var(--surface-2); border-top: 1px dashed var(--border); border-bottom: 1px dashed var(--border); }
+.table--tt tr.tt-break .icon { font-size: 18px; vertical-align: middle; }
+.tt-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
 
 .timeline { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
 .slot { display: grid; grid-template-columns: 60px 1fr; gap: 12px; }
@@ -548,7 +555,7 @@ input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px;
   cursor: grab; touch-action: none; /* 指で押したとき、ページのスクロールではなくドラッグにする */ }
 .drag-handle:hover, .drag-handle:focus-visible { color: var(--text); background: var(--surface-2); }
 /* つかんだ行（時間以外のセル）は浮かせて、ほかの行より手前に描く。時間のセルは動かないので普段どおり */
-.table--edit tr.is-dragging td:not([data-time]) { position: relative; z-index: 2; opacity: 1; background: var(--surface-2);
+.table--edit tr.is-dragging td:not([data-time]), .table--edit tr.is-dragging[data-free-time] td { position: relative; z-index: 2; opacity: 1; background: var(--surface-2);
   box-shadow: 0 8px 18px -6px rgb(0 0 0 / .25); }
 body.is-row-dragging, body.is-row-dragging * { cursor: grabbing !important; user-select: none; }
 .table--edit td:has(input[data-band-name]) { min-width: 200px; }

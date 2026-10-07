@@ -583,6 +583,67 @@ function delete_live_day(PDO $pdo, int $liveDayId): void
         ->execute([$liveId, $liveId]);
 }
 
+/**
+ * ライブの休憩・転換など（live_break）を日程ごとに取る。
+ * @return array live_day_id => [休憩の行, ...]（after_order, seq 順）
+ */
+function load_breaks_by_day(PDO $pdo, int $liveId): array
+{
+    $st = $pdo->prepare('SELECT k.* FROM live_break k
+        JOIN live_day d ON d.live_day_id = k.live_day_id
+        WHERE d.live_id = ? ORDER BY k.after_order, k.seq, k.break_id');
+    $st->execute([$liveId]);
+    $byDay = [];
+    foreach ($st as $k) {
+        $byDay[(int)$k['live_day_id']][] = $k;
+    }
+    return $byDay;
+}
+
+/**
+ * 休憩が登録されていない日程用: バンドとバンドの間が空いていたら、そこを休憩とみなして作る。
+ * （休憩を保存する前に取り込んだライブでも、タイムテーブルに休憩が出るように）
+ * @param array $bands 出演順に並んだバンド
+ */
+function gap_breaks(array $bands, string $name): array
+{
+    $breaks = [];
+    $prevEnd = null;
+    $prevOrder = 0;
+    foreach ($bands as $b) {
+        if ($prevEnd && $b['start_time'] && $b['start_time'] > $prevEnd) {
+            $breaks[] = ['after_order' => $prevOrder, 'seq' => 0, 'name' => $name, 'start_time' => $prevEnd, 'end_time' => $b['start_time']];
+        }
+        $prevEnd = $b['end_time'] ?: $prevEnd;
+        $prevOrder = (int)$b['play_order'];
+    }
+    return $breaks;
+}
+
+/**
+ * バンド（出演順）と休憩を、タイムテーブルの上から順の1列にまとめる。
+ * 休憩は「出演順が after_order 以下のバンドを出し終わった所」に入る（0 = 最初のバンドより前）。
+ * @param array $bands  出演順に並んだバンド（キーはそのまま 'key' に入れて返す）
+ * @param array $breaks after_order, seq 順に並んだ休憩
+ * @return array [['type' => 'band' | 'break', 'key' => 元のキー, 'row' => 行], ...]
+ */
+function timetable_rows(array $bands, array $breaks): array
+{
+    $rows = [];
+    $breaks = array_values($breaks);
+    $i = 0;
+    foreach ($bands as $key => $b) {
+        while (isset($breaks[$i]) && (int)$breaks[$i]['after_order'] < (int)$b['play_order']) {
+            $rows[] = ['type' => 'break', 'key' => $i, 'row' => $breaks[$i++]];
+        }
+        $rows[] = ['type' => 'band', 'key' => $key, 'row' => $b];
+    }
+    for (; isset($breaks[$i]); $i++) { // 最後のバンドより後（撤収など）
+        $rows[] = ['type' => 'break', 'key' => $i, 'row' => $breaks[$i]];
+    }
+    return $rows;
+}
+
 /** バンドを1組削除（band_member は CASCADE で消える） */
 function delete_band(PDO $pdo, int $bandId): void
 {
