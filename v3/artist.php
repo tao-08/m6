@@ -162,7 +162,7 @@ foreach ($rows as $r) {
 usort($fanAlbums, static fn(array $a, array $b): int => count($b['members']) <=> count($a['members']));
 $viewerApp = member_music_app($pdo, $user['member_id']);
 
-render_header($artist['name']);
+render_header($artist['name'], 'artists');
 ?>
 <nav class="crumbs"><a href="stats.php">集計</a><span>/</span>アーティスト</nav>
 <section class="hero">

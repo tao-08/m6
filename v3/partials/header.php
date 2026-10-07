@@ -13,6 +13,7 @@ $user = current_user();
 $nav = [
     'lives'   => ['index.php', 'ライブ'],
     'members' => ['members.php', 'メンバー'],
+    'artists' => ['artists.php', 'アーティスト'],
     'stats'   => ['stats.php', '集計'],
     'import'  => ['import.php', '新規追加'], // 取り込み・手入力の入口（partials/add_tabs.php のタブで切り替え）
 ];
