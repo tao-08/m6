@@ -73,12 +73,21 @@ render_header('ライブ一覧', 'lives');
     </div>
 <?php else: ?>
     <div class="toolbar">
+        <!-- data-year-slot: 縦にドラッグ（ホイール・↑↓キー）で年度を切り替えて、その年度の .year だけ表示する（assets/app.js） -->
+        <div class="year-slot" data-year-slot tabindex="0" role="spinbutton" aria-label="年度で絞り込み" title="上下にドラッグで年度を切り替え">
+            <div class="year-slot__reel">
+                <div class="year-slot__item" data-value="">すべて</div>
+                <?php foreach (array_keys($years) as $year): ?>
+                    <div class="year-slot__item" data-value="<?= (int)$year ?>"><?= $year > 0 ? (int)$year . '<small>年度</small>' : '未設定' ?></div>
+                <?php endforeach; ?>
+            </div>
+        </div>
         <!-- data-filter: 入力すると .live-card の data-text で絞り込む（assets/app.js） -->
         <input type="search" class="search" placeholder="ライブ名・会場で絞り込み" data-filter=".live-card" aria-label="絞り込み">
         <a class="btn btn--primary" href="import.php">＋ 新規追加</a>
     </div>
     <?php foreach ($years as $year => $lives): ?>
-        <section class="year">
+        <section class="year" data-year="<?= (int)$year ?>">
             <h2 class="year__title"><?= $year > 0 ? (int)$year . '<small>年度</small>' : '年度未設定' ?></h2>
             <div class="grid">
                 <?php foreach ($lives as $liveId => $live):

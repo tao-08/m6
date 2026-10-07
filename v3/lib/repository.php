@@ -420,7 +420,7 @@ function setlist_badge(int $registered, int $planned): string
         return '';
     }
     return '<span class="setlist-badge" title="セットリスト登録済（' . $registered . '曲）">'
-        . icon('queue_music') . 'セットリスト登録済</span>';
+        . icon('check') . 'セットリスト</span>'; // ✓ が「登録済」の意味。詳しくは title（マウスを乗せると出る）
 }
 
 /**

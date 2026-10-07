@@ -8,6 +8,7 @@
  *  data-◯◯ 属性（HTML 側に書いた目印）で「どの要素に何をするか」を決めている。
  *    data-theme-toggle  … ライト/ダーク切り替えボタン
  *    data-filter        … 一覧の絞り込み検索
+ *    data-year-slot     … ライブ一覧の年度スロット（縦ドラッグで年度を切り替える）
  *    data-tab           … ライブ詳細の日程タブ
  *    data-confirm       … 送信前の確認ダイアログ（data-dirty-check で未保存の変更も警告）
  *    data-dropzone      … ファイルのドラッグ&ドロップ
@@ -38,6 +39,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupToasts();
   setupThemeToggle();
   setupFilter();
+  setupYearSlot();
   setupTabs();
   setupConfirm();
   setupDropzone();
@@ -525,6 +527,95 @@ function setupFilter() {
       });
     });
   });
+}
+
+/* ---------------------------------------------------------------------
+ * 年度スロット: スロットのリールを縦にドラッグして年度を選ぶ
+ *   上にドラッグ → 古い年度へ / 下にドラッグ → 新しい年度（先頭は「すべて」）
+ *   ホイール・↑↓キー・上下の段のタップでも1つずつ動く
+ *   選んだ年度以外の <section data-year> を隠す
+ * ------------------------------------------------------------------- */
+function setupYearSlot() {
+  const slot = document.querySelector('[data-year-slot]');
+  if (!slot) return;
+  const reel = slot.querySelector('.year-slot__reel');
+  const items = [...reel.children];
+  const sections = document.querySelectorAll('section[data-year]');
+  const max = items.length - 1;
+  let index = 0;
+
+  const clamp = (n) => Math.max(0, Math.min(max, n));
+  // 1段の高さと、0番目を真ん中の段に置くためのずらし量（窓は3段ぶんの高さ）
+  const itemH = () => items[0].offsetHeight;
+  const top = () => (slot.clientHeight - itemH()) / 2;
+  const move = (px) => { reel.style.transform = `translateY(${top() + px}px)`; };
+
+  const select = (i) => {
+    index = clamp(i);
+    reel.classList.remove('is-dragging');
+    move(-index * itemH());
+    items.forEach((el, n) => el.classList.toggle('is-current', n === index));
+    const value = items[index].dataset.value;
+    sections.forEach((sec) => { sec.hidden = value !== '' && sec.dataset.year !== value; });
+    slot.setAttribute('aria-valuetext', items[index].textContent);
+    slot.classList.toggle('is-filtered', value !== '');
+  };
+
+  // ---- ドラッグ（マウスもタッチも pointer イベントでまとめて扱う） ----
+  let startY = null;
+  let dy = 0;
+  slot.addEventListener('pointerdown', (e) => {
+    startY = e.clientY;
+    dy = 0;
+    slot.setPointerCapture(e.pointerId);
+    reel.classList.add('is-dragging');
+  });
+  slot.addEventListener('pointermove', (e) => {
+    if (startY === null) return;
+    dy = e.clientY - startY;
+    const h = itemH();
+    let pos = -index * h + dy;
+    // 端より先はゴムのように 1/3 しか動かない
+    const min = -max * h;
+    if (pos > 0) pos /= 3;
+    if (pos < min) pos = min + (pos - min) / 3;
+    move(pos);
+  });
+  const end = (e) => {
+    if (startY === null) return;
+    startY = null;
+    const h = itemH();
+    if (Math.abs(dy) < 4) {
+      // ほぼ動いていない = タップ。上の段なら1つ前、下の段なら1つ次（真ん中はそのまま）
+      const r = slot.getBoundingClientRect();
+      const y = e.clientY - (r.top + r.height / 2);
+      if (Math.abs(y) > h / 2) select(index + Math.sign(y));
+      else select(index);
+    } else {
+      select(Math.round(index - dy / h));
+    }
+  };
+  slot.addEventListener('pointerup', end);
+  slot.addEventListener('pointercancel', end);
+
+  // ---- ホイール（連続で回りすぎないよう 120ms に1回） ----
+  let wheelAt = 0;
+  slot.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const now = Date.now();
+    if (now - wheelAt < 120 || e.deltaY === 0) return;
+    wheelAt = now;
+    select(index + Math.sign(e.deltaY));
+  }, { passive: false });
+
+  slot.addEventListener('keydown', (e) => {
+    const step = { ArrowUp: -1, ArrowDown: 1 }[e.key];
+    if (step) { e.preventDefault(); select(index + step); }
+    if (e.key === 'Home') { e.preventDefault(); select(0); }
+    if (e.key === 'End') { e.preventDefault(); select(max); }
+  });
+
+  select(0);
 }
 
 /* ---------------------------------------------------------------------

@@ -338,25 +338,19 @@ render_header($member['name'], 'members');
                         <span class="muted"><?= h(fmt_date($day['date'])) ?></span>
                     </div>
                     <div class="history__what">
-                        <!-- ライブ名の行。右端に1つ目のバンドの「セットリスト登録済」（楽器ラベルの真上に来る） -->
-                        <div class="history__head">
-                            <a href="live.php?id=<?= (int)$day['live_id'] ?>#day-<?= (int)$day['live_day_id'] ?>" class="muted small"><?= h($day['live_name']) ?> <?= h($day['label']) ?><?= $day['venue_name'] ? ' · ' . h($day['venue_name']) : '' ?></a>
-                            <?= setlist_badge((int)$day['bands'][0]['setlist_count'], (int)$day['bands'][0]['song_count']) ?>
-                        </div>
+                        <a href="live.php?id=<?= (int)$day['live_id'] ?>#day-<?= (int)$day['live_day_id'] ?>" class="muted small"><?= h($day['live_name']) ?> <?= h($day['label']) ?><?= $day['venue_name'] ? ' · ' . h($day['venue_name']) : '' ?></a>
                         <!-- その日に出たバンドを出演順に並べる。バンド名からバンド詳細へ -->
                         <ul class="history__bands">
-                            <?php foreach ($day['bands'] as $bi => $b):
-                                // 2つ目以降のバンドは、ライブ名の行が使えないのでバンドの行の上に右寄せで出す
-                                $badge = $bi > 0 ? setlist_badge((int)$b['setlist_count'], (int)$b['song_count']) : ''; ?>
+                            <?php foreach ($day['bands'] as $b): ?>
                                 <li class="history__band">
-                                    <?php if ($badge !== ''): ?><div class="history__badge"><?= $badge ?></div><?php endif; ?>
                                     <!-- バンド名と、トリならその横に小さな🐦️ -->
                                     <span class="history__name">
                                         <a href="band.php?id=<?= (int)$b['band_id'] ?>"><?= h($b['band_name']) ?></a>
                                         <?php if ($b['is_last']): ?><span class="tori-badge" aria-label="トリ" title="トリ">🐦️</span><?php endif; ?>
                                     </span>
                                     <span class="history__tags">
-                                        <!-- そのバンドでのパート（Vo と Gt なら「Vo/Gt」1つ） -->
+                                        <!-- セットリスト登録済なら楽器ラベルの左に ✓、その後にそのバンドでのパート（Vo と Gt なら「Vo/Gt」1つ） -->
+                                        <?= setlist_badge((int)$b['setlist_count'], (int)$b['song_count']) ?>
                                         <?php foreach ($partsByBand[(int)$b['band_id']] ?? [] as $p): ?><?= part_badge($p) ?><?php endforeach; ?>
                                     </span>
                                 </li>
