@@ -163,9 +163,7 @@ render_header($band['name'], 'lives');
         <p class="band-tags">
             <?php if ($isLast): ?><span class="tag tag--tori" aria-label="トリ" title="トリ">🐦️</span><?php endif; ?>
             <?php if ($isMine): ?><span class="tag">出演</span><?php endif; ?>
-            <?php if ($band['artist_id']): ?>
-                <a href="artist.php?id=<?= (int)$band['artist_id'] ?>"><?= icon('search') ?> <?= h($band['artist_name']) ?></a>
-            <?php endif; ?>
+            <?= band_artist_links($band, $band['is_omnibus'] ? omnibus_artists_by_band($pdo, [(int)$band['band_id']]) : []) // オムニバスなら曲のアーティストを全部 ?>
         </p>
     </div>
     <div class="hero__actions no-print">
@@ -201,8 +199,8 @@ render_header($band['name'], 'lives');
     <?php if ($songs): ?>
         <div class="setlist"><ol>
             <?php foreach ($songs as $songId => $song):
-                // オムニバスのときだけ、曲名の横にその曲のアーティスト（未設定ならバンドのアーティスト）
-                $songArtist = $band['is_omnibus'] ? ($song['artist_name'] ?? $band['artist_name']) : null; ?>
+                // オムニバスのときだけ、曲名の横にその曲のアーティスト（曲に付いていなければ出さない）
+                $songArtist = $band['is_omnibus'] ? $song['artist_name'] : null; ?>
                 <li>
                     <?php if ($song['source'] !== null):
                         // 紐付けた曲: 曲名はただの文字。ジャケットにマウスを乗せると音楽アプリのアイコンが重なって出て、押すと聴ける

@@ -14,10 +14,8 @@ require __DIR__ . '/lib/bootstrap.php';
 $user = require_login();
 $pdo = db();
 
-// 「アーティスト × 演奏したバンド」の組。UNION（ALL なし）なので同じ組は1つにまとまる
-const PLAYED_SQL = 'SELECT artist_id, band_id FROM band WHERE artist_id IS NOT NULL
-    UNION
-    SELECT artist_id, band_id FROM song WHERE artist_id IS NOT NULL';
+// 「アーティスト × 演奏したバンド」の組（lib/bootstrap.php の ARTIST_PLAYS_SQL。アーティストページ・集計・検索と同じ数え方）
+const PLAYED_SQL = ARTIST_PLAYS_SQL;
 
 $rows = $pdo->query('SELECT a.artist_id, a.name, COUNT(p.band_id) AS plays
     FROM artist a

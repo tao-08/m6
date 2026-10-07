@@ -51,9 +51,14 @@ $st = $pdo->prepare('SELECT b.*, a.name AS artist_name,
     WHERE d.live_id = ? ORDER BY b.play_order');
 $st->execute([$liveId]);
 $bandsByDay = [];
+$omnibusIds = []; // オムニバスのバンドだけ、あとで曲のアーティストをまとめて取る（バンドごとに SQL を投げない）
 foreach ($st as $b) { // PDOStatement はそのまま foreach で1行ずつ回せる
     $bandsByDay[$b['live_day_id']][] = $b;
+    if ($b['is_omnibus']) {
+        $omnibusIds[] = (int)$b['band_id'];
+    }
 }
+$omnibusArtists = omnibus_artists_by_band($pdo, $omnibusIds);
 // 休憩・転換など（timetable_edit.php で登録したもの / 取り込みで「バンドではない枠」だったもの）
 $breaksByDay = load_breaks_by_day($pdo, $liveId);
 
@@ -182,9 +187,7 @@ render_header($live['name'], 'lives');
                         <p class="muted small">メンバー未登録</p>
                     <?php endif; ?>
                     <p class="slot__meta">
-                        <?php if ($b['artist_id']): ?>
-                            <a href="artist.php?id=<?= (int)$b['artist_id'] ?>"><?= icon('search') ?> <?= h($b['artist_name']) ?></a>
-                        <?php endif; ?>
+                        <?= band_artist_links($b, $omnibusArtists) // オムニバスなら曲のアーティストを全部 ?>
                         <?php if ($memberIds): ?><span><?= count(array_unique($memberIds)) ?>名</span><?php endif; ?>
                         <span><?= (int)$b['song_count'] ?>曲</span>
                         <?= setlist_badge((int)$b['setlist_count'], (int)$b['song_count']) ?>

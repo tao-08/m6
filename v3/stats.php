@@ -201,9 +201,11 @@ $headliners = rows($pdo, 'SELECT m.member_id, m.name, COUNT(DISTINCT b.band_id) 
 // ---- よくコピーされるアーティスト ----
 //   artist テーブルがあるので GROUP BY a.artist_id だけで数えられる
 //   （v2 では「ヨルシカ（安田）」の括弧を PHP で外してから数える必要があった）
+//   オムニバスはバンドのアーティストではなく、曲に付いたアーティストを1バンド1回で数える（ARTIST_PLAYS_SQL）
 $artists = rows($pdo, 'SELECT a.artist_id, a.name, COUNT(*) AS n
-    FROM band b
-    JOIN artist a ON a.artist_id = b.artist_id
+    FROM (' . ARTIST_PLAYS_SQL . ') p
+    JOIN band b ON b.band_id = p.band_id
+    JOIN artist a ON a.artist_id = p.artist_id
     JOIN live_day ld ON ld.live_day_id = b.live_day_id
     JOIN live lm ON lm.live_id = ld.live_id
     WHERE 1 = 1' . $yearSql . $bandSql . '
@@ -293,13 +295,13 @@ $instrumentKings = ['combo' => $kingsOf(true), 'sum' => $kingsOf(false)];
 // ---- よく演奏される曲（アーティスト × 曲名の本体） ----
 //   "Lemon" と "Lemon - Acoustic ver." のような版違いも同じ曲として数える（lib/tracks.php の song_title_key）。
 //   この「本体」は SQL では作りにくいので、期間内の曲を全部読んで PHP で数える（1回の演奏 = 1件）。
-//   アーティストは、オムニバスの曲なら曲のアーティスト、それ以外はバンドのアーティスト（COALESCE = 最初の NULL でない方）
+//   アーティストは、オムニバスの曲なら曲のアーティスト（付いていなければ無し）、それ以外はバンドのアーティスト
 $topTitles = [];
 foreach (rows($pdo, 'SELECT s.title, a.artist_id, a.name AS artist_name,
         t.source, t.track_id, t.title AS track_title, t.artist_name AS track_artist, t.artwork_url
     FROM song s
     JOIN band b ON b.band_id = s.band_id
-    LEFT JOIN artist a ON a.artist_id = COALESCE(s.artist_id, b.artist_id)
+    LEFT JOIN artist a ON a.artist_id = CASE WHEN b.is_omnibus = 1 THEN s.artist_id ELSE b.artist_id END
     LEFT JOIN track t ON t.source = s.track_source AND t.track_id = s.track_id
     JOIN live_day ld ON ld.live_day_id = b.live_day_id
     JOIN live lm ON lm.live_id = ld.live_id

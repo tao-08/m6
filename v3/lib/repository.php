@@ -424,6 +424,56 @@ function setlist_badge(int $registered, int $planned): string
 }
 
 /**
+ * オムニバスのバンド（band.is_omnibus = 1）の、セットリストの曲に紐付いたアーティスト。
+ *   曲にアーティストが付いていない（song.artist_id が NULL）曲は数えない。
+ *   並びは初めて出てくる曲順（1曲目のアーティストが先頭）。同じアーティストは1回だけ（GROUP BY）。
+ * @param int[] $bandIds
+ * @return array<int, list<array{artist_id: int, name: string}>> band_id => アーティストの一覧
+ */
+function omnibus_artists_by_band(PDO $pdo, array $bandIds): array
+{
+    if ($bandIds === []) {
+        return [];
+    }
+    // IN (?, ?, ?) の ? をバンドの数だけ作る。値はプリペアドステートメントで渡す
+    $in = implode(',', array_fill(0, count($bandIds), '?'));
+    $st = $pdo->prepare("SELECT s.band_id, a.artist_id, a.name, MIN(s.track_no) AS first_no
+        FROM song s
+        JOIN band b ON b.band_id = s.band_id
+        JOIN artist a ON a.artist_id = s.artist_id
+        WHERE b.is_omnibus = 1 AND s.band_id IN ($in)
+        GROUP BY s.band_id, a.artist_id, a.name
+        ORDER BY s.band_id, first_no");
+    $st->execute(array_values(array_map('intval', $bandIds)));
+    $out = [];
+    foreach ($st as $r) {
+        $out[(int)$r['band_id']][] = ['artist_id' => (int)$r['artist_id'], 'name' => $r['name']];
+    }
+    return $out;
+}
+
+/**
+ * アーティストページへのリンク（🔍 名前）を並べた HTML。
+ *   オムニバス: 曲に紐付いたアーティストを全部（1つも無ければ何も出さない）
+ *   それ以外  : バンドのアーティスト1つ（未設定なら何も出さない）
+ * @param array $band  band の行（band_id, is_omnibus, artist_id, artist_name を使う）
+ * @param array $omnibusArtists omnibus_artists_by_band() の結果
+ */
+function band_artist_links(array $band, array $omnibusArtists): string
+{
+    if ($band['is_omnibus']) {
+        $artists = $omnibusArtists[(int)$band['band_id']] ?? [];
+    } else {
+        $artists = $band['artist_id'] ? [['artist_id' => (int)$band['artist_id'], 'name' => $band['artist_name']]] : [];
+    }
+    $html = '';
+    foreach ($artists as $a) {
+        $html .= '<a href="artist.php?id=' . $a['artist_id'] . '">' . icon('search') . ' ' . h($a['name']) . '</a>';
+    }
+    return $html;
+}
+
+/**
  * 楽器ラベルの HTML。1つの楽器ならいつもの .part。
  * 兼任（Vo/Gt）は1つのラベルの中に「Vo/Gt」と書き、文字も背景も左から順にそれぞれの楽器の色にする（境目は少しグラデーション）。
  * @param array  $part   ['title' => 'ギターボーカル', 'segments' => [['short' => 'Vo', 'class' => 'vo'], ['short' => 'Gt', 'class' => 'gt']]]

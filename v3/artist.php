@@ -24,11 +24,16 @@ if (!$artist) {
     exit('アーティストが見つかりません');
 }
 
+// このアーティストのバンド（数え方は lib/bootstrap.php の ARTIST_PLAYS_SQL。一覧・集計・検索と同じ）
+//   ふつうのバンド    : band.artist_id がこのアーティスト
+//   オムニバスのバンド: band.artist_id は見ない。セットリストにこのアーティストの曲（song.artist_id）が1曲でもあれば入る
+//     2曲やっていてもバンドは1回だけ（= 1回コピーした、と数える）
+$bandWhere = 'b.band_id IN (SELECT p.band_id FROM (' . ARTIST_PLAYS_SQL . ') p WHERE p.artist_id = ?)';
 $st = $pdo->prepare('SELECT b.band_id, b.name, d.live_day_id, d.label, d.held_on, l.live_id, l.fiscal_year, l.name AS live_name
     FROM band b
     JOIN live_day d ON d.live_day_id = b.live_day_id
     JOIN live l ON l.live_id = d.live_id
-    WHERE b.artist_id = ?
+    WHERE ' . $bandWhere . '
     ORDER BY d.held_on DESC, l.fiscal_year DESC');
 $st->execute([$artistId]);
 $bands = $st->fetchAll();
@@ -39,19 +44,19 @@ $st = $pdo->prepare('SELECT bm.band_id, m.member_id, m.name, i.short_name, i.nam
     JOIN band_member bm ON bm.band_id = b.band_id
     JOIN member m ON m.member_id = bm.member_id
     JOIN instrument i ON i.instrument_id = bm.instrument_id
-    WHERE b.artist_id = ?
+    WHERE ' . $bandWhere . '
     ORDER BY i.sort_order, m.name');
 $st->execute([$artistId]);
 $lineups = member_lineups_by_band($st);
 
-// セットリスト: バンドごとに曲順で
+// セットリスト: バンドごとに曲順で。オムニバスのバンドはこのアーティストの曲だけ
 $setlists = []; // [band_id] = [曲名, ...]
 $st = $pdo->prepare('SELECT s.band_id, s.title
     FROM band b
     JOIN song s ON s.band_id = b.band_id
-    WHERE b.artist_id = ?
+    WHERE ' . $bandWhere . ' AND (b.is_omnibus = 0 OR s.artist_id = ?)
     ORDER BY s.track_no');
-$st->execute([$artistId]);
+$st->execute([$artistId, $artistId]);
 foreach ($st as $s) {
     $setlists[(int)$s['band_id']][] = $s['title'];
 }
