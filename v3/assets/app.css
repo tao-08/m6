@@ -319,7 +319,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .slot__time { font: 700 15px/1.2 var(--font); font-variant-numeric: tabular-nums; padding-top: 18px; text-align: right; display: grid; gap: 2px; align-content: start; }
 .slot__time span { color: var(--muted); font-weight: 500; font-size: 12px; }
 .slot__time .slot__no { font-size: 15px; font-weight: 800; }
-.slot__order { font: 800 12px/1 var(--font); color: var(--muted); }
+.slot__order { font: 800 12px/1 var(--font); color: var(--muted); font-variant-numeric: tabular-nums; min-width: 2ch; } /* 数字の幅を固定（01 と 11 で後ろの位置がずれない） */
 .slot--break .slot__time { padding-top: 6px; opacity: .7; }
 .slot--break .slot__body { background: transparent; border-style: dashed; padding: 8px 18px; box-shadow: none; }
 .break-label { font-size: 11px; font-weight: 800; letter-spacing: .2em; color: var(--muted); }
@@ -328,6 +328,19 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .slot__name { font-size: 18px; font-weight: 800; overflow-wrap: anywhere; }
 .slot__name a { color: inherit; text-decoration: none; }  /* バンド名 → バンド詳細（band.php） */
 .slot__name a:hover { color: var(--accent); text-decoration: underline; }
+/* タイムテーブルの YouTube ロゴ（band.youtube_url があるときだけ）。バンド名・トリ🐦️・出演のタグのすぐ右
+   すき間は .slot__head の gap 10px + 8px = 18px */
+.slot__yt { display: inline-flex; align-items: center; line-height: 0; margin-left: 8px; }
+.slot__yt svg { width: 23px; height: 16px; }
+.slot__yt:hover svg { opacity: .8; }
+/* live_youtube.php: プレイリストの動画をバンドに割り当てる表 */
+.table-scroll--yt { margin: -20px -20px 0; border-top: 0; }
+.table--yt select { width: 100%; min-width: 220px; max-width: 420px; }
+.table--yt td:nth-child(5) { white-space: nowrap; }
+.table--yt tr.is-warn td { background: var(--warn-bg); }
+.yt-assign { margin: 0; }
+.yt-assign .youtube-icon { width: 20px; height: 14px; }
+.yt-leftover { margin: 0 0 8px; padding-left: 20px; line-height: 1.9; }
 .slot__meta { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 10px 0 0; font-size: 12px; color: var(--muted); }
 .keynote { color: var(--text); }
 .slot--mine .slot__body { border-color: color-mix(in srgb, var(--accent) 55%, transparent);
@@ -395,13 +408,24 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .history__when { display: grid; font-size: 12px; font-weight: 700; }
 .history__what { display: grid; min-width: 0; }
 .history__bands { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 6px; }
-.history__band { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.history__band { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+/* ライブ名の行。右端にセットリスト登録済バッジ */
+.history__head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.history__head > a { min-width: 0; overflow-wrap: anywhere; }
+/* 2つ目以降のバンドのバッジ。1行まるごと使って右寄せ（flex-wrap で次の行に名前と楽器が来る） */
+.history__badge { flex-basis: 100%; display: flex; justify-content: flex-end; margin-bottom: -6px; }
 .history__name { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .history__name > a { font-size: 16px; font-weight: 700; color: inherit; overflow-wrap: anywhere; min-width: 0; }
 .history__name > a:hover { color: var(--accent); }
 /* トリの印: バンド名の横に小さな灰色の四角 + 🐦️ */
 .tori-badge { flex-shrink: 0; font-size: 12px; line-height: 1; padding: 2px 4px; border-radius: 4px; background: var(--surface-2); }
 .history__tags { display: flex; gap: 6px; flex-shrink: 0; }
+/* セットリスト登録済み（live.php のバンドカード / member.php の出演履歴） */
+.setlist-badge { display: inline-flex; align-items: center; gap: 3px; flex-shrink: 0; padding: 2px 7px 2px 5px;
+  border-radius: 999px; font-size: 11px; font-weight: 700; line-height: 1.4; white-space: nowrap;
+  color: var(--ok); background: var(--ok-bg); }
+.setlist-badge .icon { font-size: 14px; }
+@media print { .setlist-badge { background: none; border: 1px solid currentColor; } }
 .ranking { list-style: none; margin: 0; padding: 0; counter-reset: r; }
 .ranking li { display: flex; align-items: center; gap: 10px; padding: 8px 4px; counter-increment: r; border-bottom: 1px solid var(--border); }
 .ranking li:last-child { border-bottom: 0; }
@@ -455,7 +479,7 @@ input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px;
 /* 高さを入力欄（.field input）とそろえる: input と同じく body の font（15px/1.65）を継ぐ、アイコンは行の高さに数えない（line-height: 0） */
 .live-pick__btn .icon { font-size: 20px; line-height: 0; }
 .live-pick__btn[aria-expanded="true"] { border-color: var(--accent); }
-.live-pick__btn .is-placeholder { color: var(--muted); opacity: .8; } /* 未選択の「ライブを選択」は薄く（placeholder と同じ扱い） */
+.live-pick__btn .is-placeholder { color: var(--muted); opacity: .8; font-weight: 400; } /* 未選択の「ライブを選択」は薄く（placeholder と同じ扱い） */
 .live-pop { position: absolute; z-index: 50; top: calc(100% + 4px); left: 0; right: 0; max-height: 280px; overflow-y: auto;
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); box-shadow: var(--shadow); padding-bottom: 4px; }
 .live-pop__year { position: sticky; top: 0; margin: 0; padding: 6px 12px; font-size: 12px; font-weight: 700; color: var(--accent);
@@ -464,6 +488,7 @@ input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px;
   border: 0; background: none; color: var(--text); font: 400 14px/1.4 var(--font); text-align: left; }
 .live-pop__item:hover, .live-pop__item:focus-visible { background: var(--accent-soft); }
 .live-pop__item[aria-selected="true"] .live-pop__name { color: var(--accent); font-weight: 700; }
+.live-pop__item.is-empty .live-pop__name { color: var(--muted); font-weight: 400; } /* 値が空の「なし」「— 未設定 —」 */
 .live-pop__empty { margin: 0; padding: 12px; color: var(--muted); font-size: 13px; }
 /* ---- 全部の <select> を上の見た目にする（assets/app.js の setupSelectPick） ---- */
 /* 元の select は値の入れ物。hidden ではなく「見えないだけ」にして、required の吹き出しはボタンの位置に出す */
@@ -871,6 +896,12 @@ a.setlist__song:hover { color: var(--accent); text-decoration: underline; }
 /* バンド詳細ページ */
 .band-section { margin-top: 16px; }
 .band-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 10px 0 0; font-size: 13px; }
+/* バンド詳細: 日付・ライブ名・日程・出演順・会場を1行に。eyebrow より大きく、本文と同じ色ではっきり */
+.band-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; margin: 12px 0 0; font-size: 15px; font-weight: 600; color: color-mix(in srgb, var(--text) 75%, var(--muted)); } /* 本文と muted の間くらい */
+.band-meta > * { display: inline-flex; align-items: center; gap: 4px; }
+.band-meta .icon { font-size: 18px; color: var(--muted); }
+.band-meta__live { font-weight: 800; color: inherit; }
+.band-meta__order { color: var(--muted); font-weight: 500; font-size: 13px; font-variant-numeric: tabular-nums; opacity: .7; }
 /* バンド詳細のセットリストは主役なので大きく（stats.php の小さい一覧はそのまま） */
 .band-section .setlist { font-size: 19px; }
 .band-section .setlist ol { gap: 10px; padding-left: 1.8em; }
@@ -1064,3 +1095,9 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
 /* import.php のタイムテーブル手入力 */
 .manual-tt .table-scroll { margin-bottom: 12px; }
 .manual-tt ul { margin: 0 0 12px; padding-left: 1.2em; }
+/* 日程の区切りの行（この行より下のバンドがその日程）。≡ で動かせる */
+.manual-divider td { background: var(--surface-2); }
+.manual-divider__inner { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.manual-divider__label { font-weight: 800; color: var(--accent); }
+.manual-tt [data-manual-no] { width: 2.5em; text-align: right; font-weight: 700; color: var(--muted); }
+.manual-tt__add { display: flex; flex-wrap: wrap; gap: 8px; }

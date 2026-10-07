@@ -68,7 +68,7 @@ render_header('ログイン');
             <img src="assets/online.png" alt="AbbeyRoad.online" class="brand__logo--light" width="146" height="40">
             <img src="assets/logo-dark.png" alt="" class="brand__logo--dark" width="146" height="40">
         </h1>
-        <p class="muted">サークルのライブとコピーバンドの記録をひとつに。</p>
+        <p class="muted">アビーロードのライブデータベース</p>
     </div>
     <form method="post" class="card auth__card" novalidate>
         <h2>ログイン</h2>

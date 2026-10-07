@@ -42,10 +42,11 @@ if (!$band) {
 }
 $liveUrl = 'live.php?id=' . (int)$band['live_id'] . '#day-' . (int)$band['live_day_id'];
 
-// トリ = その日程で出演順が一番うしろ
-$st = $pdo->prepare('SELECT MAX(play_order) FROM band WHERE live_day_id = ?');
+// トリ = その日程で出演順が一番うしろ。組数（COUNT）は「7/14」の分母に使う（MAX だと欠番があるとずれる）
+$st = $pdo->prepare('SELECT MAX(play_order), COUNT(*) FROM band WHERE live_day_id = ?');
 $st->execute([$band['live_day_id']]);
-$isLast = (int)$st->fetchColumn() === (int)$band['play_order'];
+[$maxOrder, $bandCount] = $st->fetch(PDO::FETCH_NUM);
+$isLast = (int)$maxOrder === (int)$band['play_order'];
 
 // ---- 2. メンバー（楽器ごとにまとめる。live.php と同じ形） ----
 $st = $pdo->prepare('SELECT m.member_id, m.name, i.short_name, i.name AS instrument_name, i.sort_order
@@ -146,29 +147,31 @@ foreach ($songs as $s) {
 }
 $linkCache = track_link_cache_for($pdo, $viewerApp, $trackKeys);
 
-$when = array_filter([
-    $band['label'],
-    fmt_date($band['held_on']),
-    sprintf('%02d', (int)$band['play_order']),
-    $band['start_time'] ? fmt_time($band['start_time']) . '–' . fmt_time($band['end_time']) : '',
-]);
 render_header($band['name'], 'lives');
 ?>
 <nav class="crumbs"><a href="index.php">ライブ</a><span>/</span><a href="<?= h($liveUrl) ?>"><?= h($band['live_name']) ?></a></nav>
 <section class="hero">
     <div>
-        <p class="eyebrow"><?= h(implode(' · ', $when)) ?></p>
         <h1 class="display"><?= h($band['name']) ?></h1>
+        <p class="band-meta">
+            <?php if ($band['held_on']): ?><span><?= icon('event') ?> <?= h(fmt_date($band['held_on'])) ?></span><?php endif; ?>
+            <a class="band-meta__live" href="<?= h($liveUrl) ?>"><?= h($band['live_name']) ?></a>
+            <?php if ($band['label']): ?><span><?= h($band['label']) ?></span><?php endif; ?>
+            <span class="band-meta__order" title="出演順"><?= (int)$band['play_order'] ?>/<?= (int)$bandCount ?></span>
+            <?php if ($band['venue_name']): ?><span><?= icon('location_on') ?> <?= h($band['venue_name']) ?></span><?php endif; ?>
+        </p>
         <p class="band-tags">
             <?php if ($isLast): ?><span class="tag tag--tori" aria-label="トリ" title="トリ">🐦️</span><?php endif; ?>
             <?php if ($isMine): ?><span class="tag">出演</span><?php endif; ?>
             <?php if ($band['artist_id']): ?>
                 <a href="artist.php?id=<?= (int)$band['artist_id'] ?>"><?= icon('search') ?> <?= h($band['artist_name']) ?></a>
             <?php endif; ?>
-            <?php if ($band['venue_name']): ?><span class="muted"><?= h($band['venue_name']) ?></span><?php endif; ?>
         </p>
     </div>
     <div class="hero__actions no-print">
+        <?php if ($band['youtube_url'] !== null && youtube_url_valid($band['youtube_url'])): // 表示の前にもう一度チェック（DB を直接いじられても変なリンクを出さない） ?>
+            <a class="btn btn--sm btn--youtube" href="<?= h($band['youtube_url']) ?>" target="_blank" rel="noopener noreferrer" aria-label="YouTube で見る" title="YouTube で見る"><?= youtube_icon() ?></a>
+        <?php endif; ?>
         <a class="btn btn--sm" href="band_edit.php?id=<?= $bandId ?>"><?= icon('edit') ?> バンドを編集</a>
         <a class="btn btn--sm" href="songs_edit.php?band=<?= $bandId ?>"><?= icon('queue_music') ?> 曲を<?= $songs ? '編集' : '登録' ?></a>
     </div>

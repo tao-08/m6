@@ -42,7 +42,10 @@ $st->execute([$liveId]);
 $days = $st->fetchAll();
 
 // ---- 2. バンド（日程ごとに振り分け） ----
-$st = $pdo->prepare('SELECT b.*, a.name AS artist_name FROM band b
+//   setlist_count: 登録済みの曲数（セトリ登録済バッジ用）。相関サブクエリなので SQL の回数は増えない
+$st = $pdo->prepare('SELECT b.*, a.name AS artist_name,
+        (SELECT COUNT(*) FROM song s WHERE s.band_id = b.band_id) AS setlist_count
+    FROM band b
     JOIN live_day d ON d.live_day_id = b.live_day_id
     LEFT JOIN artist a ON a.artist_id = b.artist_id
     WHERE d.live_id = ? ORDER BY b.play_order');
@@ -161,6 +164,9 @@ render_header($live['name'], 'lives');
                         <h3 class="slot__name"><a href="band.php?id=<?= (int)$b['band_id'] ?>"><?= h($b['name']) ?></a></h3>
                         <?php if ($isLast): ?><span class="tag tag--tori" aria-label="トリ" title="トリ">🐦️</span><?php endif; ?>
                         <?php if ($isMine): ?><span class="tag">出演</span><?php endif; ?>
+                        <?php if ($b['youtube_url'] !== null && youtube_url_valid($b['youtube_url'])): ?>
+                            <a class="slot__yt no-print" href="<?= h($b['youtube_url']) ?>" target="_blank" rel="noopener noreferrer" aria-label="「<?= h($b['name']) ?>」を YouTube で見る" title="YouTube で見る"><?= youtube_icon() ?></a>
+                        <?php endif; ?>
                     </div>
                     <?php if ($lineup): ?>
                         <ul class="lineup">
@@ -179,8 +185,9 @@ render_header($live['name'], 'lives');
                         <?php if ($b['artist_id']): ?>
                             <a href="artist.php?id=<?= (int)$b['artist_id'] ?>"><?= icon('search') ?> <?= h($b['artist_name']) ?></a>
                         <?php endif; ?>
+                        <?php if ($memberIds): ?><span><?= count(array_unique($memberIds)) ?>名</span><?php endif; ?>
                         <span><?= (int)$b['song_count'] ?>曲</span>
-                        <?php if ($memberIds): ?><span><?= count(array_unique($memberIds)) ?>人</span><?php endif; ?>
+                        <?= setlist_badge((int)$b['setlist_count'], (int)$b['song_count']) ?>
                         <?php if ($b['note']): ?><span class="keynote"><?= icon('piano') ?> <?= h($b['note']) ?></span><?php endif; ?>
                     </p>
                 </div>

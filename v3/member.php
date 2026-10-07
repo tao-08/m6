@@ -29,7 +29,9 @@ if (!$member) {
 
 // ---- 出演履歴（新しい順） ----
 //   is_last: その日の最大 play_order と同じなら 1（トリ）
-$st = $pdo->prepare('SELECT b.band_id, b.name AS band_name, b.play_order,
+//   setlist_count: 登録済みの曲数（song_count と一致すれば「セットリスト登録済」）
+$st = $pdo->prepare('SELECT b.band_id, b.name AS band_name, b.play_order, b.song_count,
+        (SELECT COUNT(*) FROM song s WHERE s.band_id = b.band_id) AS setlist_count,
         ld.live_day_id, ld.label, ld.held_on AS date, lm.live_id, lm.fiscal_year AS year, lm.name AS live_name, v.name AS venue_name,
         (b.play_order = (SELECT MAX(b2.play_order) FROM band b2 WHERE b2.live_day_id = b.live_day_id)) AS is_last
     FROM (' . MEMBERSHIP_SQL . ') bm
@@ -336,11 +338,18 @@ render_header($member['name'], 'members');
                         <span class="muted"><?= h(fmt_date($day['date'])) ?></span>
                     </div>
                     <div class="history__what">
-                        <a href="live.php?id=<?= (int)$day['live_id'] ?>#day-<?= (int)$day['live_day_id'] ?>" class="muted small"><?= h($day['live_name']) ?> <?= h($day['label']) ?><?= $day['venue_name'] ? ' · ' . h($day['venue_name']) : '' ?></a>
+                        <!-- ライブ名の行。右端に1つ目のバンドの「セットリスト登録済」（楽器ラベルの真上に来る） -->
+                        <div class="history__head">
+                            <a href="live.php?id=<?= (int)$day['live_id'] ?>#day-<?= (int)$day['live_day_id'] ?>" class="muted small"><?= h($day['live_name']) ?> <?= h($day['label']) ?><?= $day['venue_name'] ? ' · ' . h($day['venue_name']) : '' ?></a>
+                            <?= setlist_badge((int)$day['bands'][0]['setlist_count'], (int)$day['bands'][0]['song_count']) ?>
+                        </div>
                         <!-- その日に出たバンドを出演順に並べる。バンド名からバンド詳細へ -->
                         <ul class="history__bands">
-                            <?php foreach ($day['bands'] as $b): ?>
+                            <?php foreach ($day['bands'] as $bi => $b):
+                                // 2つ目以降のバンドは、ライブ名の行が使えないのでバンドの行の上に右寄せで出す
+                                $badge = $bi > 0 ? setlist_badge((int)$b['setlist_count'], (int)$b['song_count']) : ''; ?>
                                 <li class="history__band">
+                                    <?php if ($badge !== ''): ?><div class="history__badge"><?= $badge ?></div><?php endif; ?>
                                     <!-- バンド名と、トリならその横に小さな🐦️ -->
                                     <span class="history__name">
                                         <a href="band.php?id=<?= (int)$b['band_id'] ?>"><?= h($b['band_name']) ?></a>

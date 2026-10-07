@@ -31,6 +31,13 @@ return [
             'client_id'     => '',
             'client_secret' => '',
         ],
+        // ライブのプレイリストの動画をバンドに割り当てる（live_youtube.php）のに使う YouTube Data API v3 のキー
+        //   Google Cloud Console でプロジェクトを作り、YouTube Data API v3 を有効にして「APIキー」を作ると出る
+        //   キーの「APIの制限」は YouTube Data API v3 だけにしておく。空なら割り当て機能だけ使えない
+        //   ※ パスワードと同じ。人に見せない・git に入れない
+        'youtube' => [
+            'api_key' => '',
+        ],
         // true: エラーの詳細を画面に出す（開発中だけ）
         'debug' => false,
     ],

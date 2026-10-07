@@ -410,6 +410,20 @@ function sort_tally_by_count(array $tally): array
 }
 
 /**
+ * 「セットリスト登録済」のバッジ（live.php のバンドカード / member.php の出演履歴）。
+ *   登録した曲数（song の行数）がタイムテーブルの曲数（band.song_count）と一致したときだけ出す。
+ *   途中まで（3/5）や多すぎ（6/5）は何も出さない。
+ */
+function setlist_badge(int $registered, int $planned): string
+{
+    if ($registered <= 0 || $registered !== $planned) {
+        return '';
+    }
+    return '<span class="setlist-badge" title="セットリスト登録済（' . $registered . '曲）">'
+        . icon('queue_music') . 'セットリスト登録済</span>';
+}
+
+/**
  * 楽器ラベルの HTML。1つの楽器ならいつもの .part。
  * 兼任（Vo/Gt）は1つのラベルの中に「Vo/Gt」と書き、文字も背景も左から順にそれぞれの楽器の色にする（境目は少しグラデーション）。
  * @param array  $part   ['title' => 'ギターボーカル', 'segments' => [['short' => 'Vo', 'class' => 'vo'], ['short' => 'Gt', 'class' => 'gt']]]
@@ -510,7 +524,6 @@ function sync_band_members(PDO $pdo, array &$index, int $bandId, array $assignme
  *  2. track_no を 1,2,3... に振り直す（UNIQUE なので、いったん +100 に逃がしてから）
  *  3. 曲ごとに演奏者を入れ直す。曲だけ別の楽器を弾いた人は、先に band_member にその楽器を足す
  *     （song_performer の外部キーが band_member を指しているので、足さないと INSERT できない）
- *  4. band.song_count を曲数に合わせる
  */
 function save_songs(PDO $pdo, int $bandId, array $songs): void
 {
@@ -547,9 +560,8 @@ function save_songs(PDO $pdo, int $bandId, array $songs): void
             $addPerformer->execute([$songId, $bandId, $memberId, $instrumentId]);
         }
     }
-    if ($songs) {
-        $pdo->prepare('UPDATE band SET song_count = ? WHERE band_id = ?')->execute([count($songs), $bandId]);
-    }
+    // band.song_count（タイムテーブルの曲数）はここで上書きしない。
+    // 「登録した曲数 = タイムテーブルの曲数」でセトリが揃ったかを判定しているので（setlist_badge）
 }
 
 /**

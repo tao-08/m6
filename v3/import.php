@@ -80,17 +80,23 @@ function suggest_attr(array $status): string
 }
 
 /**
- * タイムテーブル手入力画面の1行（日程 / 名簿のバンドか休憩 / 開始 / 終了 / 曲数）。
- * $rosterChoices は roster_choices() の結果、$rosterSongs は 'ri:bi' => 名簿の曲数。
+ * タイムテーブル手入力画面の1行。上からの並びがそのまま出演順。
+ *   日程の区切りの行（$r['divider'] = '2日目' など）… この行より下のバンドがその日程になる。区切りも ≡ で動かせる
+ *   バンドの行（$r['pick'], $r['songs']）          … ≡ / 順番（JS が日程ごとに振る）/ 名簿のバンドか休憩 / 曲数
+ * $rosterChoices は roster_choices() の結果。
  */
-function manual_row_html(string $i, array $r, array $rosterChoices, array $rosterSongs): string
+function manual_row_html(string $i, array $r, array $rosterChoices): string
 {
-    $pick = (string)$r['pick'];
-    $sel = static fn(string $v, string $cur) => $v === $cur ? ' selected' : '';
-    $days = '';
-    foreach (['1', '2', '3'] as $d) {
-        $days .= '<option value="' . $d . '"' . $sel($d, (string)$r['day']) . ">{$d}日目</option>";
+    $handle = '<td><button type="button" class="drag-handle" data-drag-handle aria-label="ドラッグで並び替え（↑↓キーでも動く）" title="ドラッグで並び替え">'
+        . icon('drag_indicator') . '</button></td>';
+    if (isset($r['divider'])) {
+        return '<tr class="manual-divider" data-manual-divider>' . $handle
+            . '<td colspan="3"><div class="manual-divider__inner"><input type="hidden" name="r[' . $i . '][divider]" value="' . h((string)$r['divider']) . '">'
+            . '<span class="manual-divider__label">' . h((string)$r['divider']) . '</span>'
+            . '<button type="button" class="btn btn--ghost btn--sm" data-manual-remove aria-label="この区切りを消す">×</button></div></td></tr>';
     }
+    $pick = (string)($r['pick'] ?? '');
+    $sel = static fn(string $v, string $cur) => $v === $cur ? ' selected' : '';
     $opts = '<option value="">— 使わない —</option><optgroup label="名簿のバンド">';
     foreach ($rosterChoices as $label => $ref) {
         $opts .= '<option value="' . h($ref) . '"' . $sel($ref, $pick) . '>' . h((string)$label) . '</option>';
@@ -100,14 +106,10 @@ function manual_row_html(string $i, array $r, array $rosterChoices, array $roste
         $opts .= '<option value="' . h("break:$b") . '"' . $sel("break:$b", $pick) . '>' . h($b) . '</option>';
     }
     $opts .= '</optgroup>';
-    $songsHint = $rosterSongs[$pick] ?? null;
-    return '<tr' . ($pick === '' ? ' class="is-excluded"' : '') . '>'
-        . '<td><select name="r[' . $i . '][day]" aria-label="日程">' . $days . '</select></td>'
+    return '<tr' . ($pick === '' ? ' class="is-excluded"' : '') . '>' . $handle
+        . '<td class="mono nowrap" data-manual-no></td>'
         . '<td><select name="r[' . $i . '][pick]" aria-label="バンド" data-manual-pick>' . $opts . '</select></td>'
-        . '<td><input type="time" name="r[' . $i . '][start]" value="' . h((string)$r['start']) . '" aria-label="開始"></td>'
-        . '<td><input type="time" name="r[' . $i . '][end]" value="' . h((string)$r['end']) . '" aria-label="終了"></td>'
-        . '<td><input type="number" class="input-num" min="0" max="255" name="r[' . $i . '][songs]" value="' . h((string)$r['songs']) . '"'
-        . ($songsHint !== null ? ' placeholder="' . (int)$songsHint . '"' : '') . ' aria-label="曲数"></td>'
+        . '<td><input type="number" class="input-num" min="0" max="255" name="r[' . $i . '][songs]" value="' . h((string)($r['songs'] ?? '')) . '" aria-label="曲数"></td>'
         . '</tr>';
 }
 
@@ -174,9 +176,13 @@ if (is_post()) {
                 $plan['needs_timetable'] = true;
                 $plan['manual_rows'] = [];
                 foreach ($plan['rosters'] as $ri => $r) {
-                    foreach (array_keys($r['bands']) as $bi) {
-                        // 名簿が複数ファイルなら「1ファイル目 = 1日目、2ファイル目 = 2日目…」と仮に置く（画面で直せる）
-                        $plan['manual_rows'][] = ['day' => (string)min($ri + 1, 3), 'pick' => "$ri:$bi", 'start' => '', 'end' => '', 'songs' => ''];
+                    // 名簿が複数ファイルなら「1ファイル目 = 1日目、2ファイル目 = 2日目…」と仮に区切っておく（画面で動かせる）
+                    // 1日目の区切りは表の見出しに固定で出すので、行としては作らない
+                    if ($ri > 0 && $ri < 3) {
+                        $plan['manual_rows'][] = ['divider' => DAY_LABELS[$ri]];
+                    }
+                    foreach ($r['bands'] as $bi => $b) {
+                        $plan['manual_rows'][] = ['pick' => "$ri:$bi", 'songs' => (string)($b['song_count'] ?? '')]; // 曲数は名簿の値
                     }
                 }
             } elseif (!$plan['timetables']) {
@@ -196,11 +202,12 @@ if (is_post()) {
         $plan['manual_rows'] = [];
         foreach (array_slice(array_values((array)($input['r'] ?? [])), 0, MAX_MANUAL_ROWS) as $r) {
             $r = (array)$r;
-            $row = [];
-            foreach (['day', 'pick', 'start', 'end', 'songs'] as $k) {
-                $row[$k] = mb_substr(is_string($r[$k] ?? null) ? $r[$k] : '', 0, 20);
+            $str = static fn(string $k) => mb_substr(is_string($r[$k] ?? null) ? $r[$k] : '', 0, 20);
+            if (isset($r['divider'])) {
+                $plan['manual_rows'][] = ['divider' => $str('divider')];
+            } elseif ($str('pick') !== '') { // 「— 使わない —」の行は登録に関係ないので、書き直しの画面にも残さない
+                $plan['manual_rows'][] = ['pick' => $str('pick'), 'songs' => $str('songs')];
             }
-            $plan['manual_rows'][] = $row;
         }
         try {
             [$timetables, $refs] = build_manual_timetables($plan, $plan['manual_rows']);
@@ -316,21 +323,19 @@ if ($plan === null): // ==================== アップロード画面 ==========
 
 <?php elseif (!empty($plan['needs_timetable'])): // ==================== タイムテーブル手入力画面 ====================
     $rosterChoices = roster_choices($plan); // 'ラベル' => 'ri:bi'。同じ名前のバンドは「（Vo ◯◯）」付きで区別されている
-    $rosterSongs = [];                      // 'ri:bi' => 名簿の曲数（曲数欄の薄い数字に出す）
-    foreach ($plan['rosters'] as $ri => $r) {
-        foreach ($r['bands'] as $bi => $b) {
-            $rosterSongs["$ri:$bi"] = $b['song_count'];
-        }
+    // 空の行（「— 使わない —」）は最初は出さない。休憩などを入れたいときは「＋ 行を追加」
+    $emptyRow = ['pick' => '', 'songs' => ''];
+    $manualRows = $plan['manual_rows'];
+    // 1日目は見出しに固定（動かせない・消せない）。先頭の行が 1日目 の区切りなら、見出しと重なるので捨てる
+    if (($manualRows[0]['divider'] ?? null) === DAY_LABELS[0]) {
+        array_shift($manualRows);
     }
-    // 名簿のバンドの行のあとに、休憩などを入れる空の行を足しておく（足りなければ「＋ 行を追加」）
-    $emptyRow = ['day' => '1', 'pick' => '', 'start' => '', 'end' => '', 'songs' => ''];
-    $manualRows = array_merge($plan['manual_rows'], array_fill(0, 4, $emptyRow));
 ?>
 <section class="hero">
     <div>
         <p class="eyebrow">Import · Timetable</p>
         <h1 class="display">タイムテーブルを手入力</h1>
-        <p class="muted">名簿だけが読み込まれました。各バンドの時間を入れてください。出演順は開始時刻の順になります。</p>
+        <p class="muted">名簿だけが読み込まれました。出演順に並べてください。区切りの行（2日目など）より下のバンドが、その日程になります。</p>
     </div>
     <dl class="stats">
         <div><dt>名簿のバンド</dt><dd><?= count($rosterChoices) ?></dd></div>
@@ -343,21 +348,33 @@ if ($plan === null): // ==================== アップロード画面 ==========
     <?= csrf_field() ?>
     <input type="hidden" name="action" value="manual_tt">
     <ul class="muted small">
-        <li>バンドは名簿から選びます。同じ名前のバンドが2つあるときは「（Vo ◯◯）」で見分けてください</li>
-        <li>休憩・転換は空の行で「バンド以外」から選ぶ。出ないバンドは「— 使わない —」に</li>
-        <li>時間・曲数は空でもOK（曲数の薄い数字は名簿の曲数。空ならそれを使います）。ライブ名・開催日・会場は次のプレビューで入力します</li>
+        <li>左端の ≡ をドラッグ（または ≡ を選んで ↑↓キー）で並べ替え。2日目などの区切りの行も同じように動かせます（一番上の 1日目 は固定）</li>
+        <li>2日以上あるときは「＋ 2日目」などで区切りを足し、その下にバンドを動かす。番号は日程ごとの出演順です</li>
+        <li>同じ名前のバンドは「（Vo ◯◯）」で見分ける。休憩・転換は空の行で「バンド以外」から、出ないバンドは「— 使わない —」に</li>
+        <li>曲数は名簿の値が入っています（空なら名簿の曲数を使います）。時間・ライブ名・開催日・会場はあとで入力できます</li>
     </ul>
     <div class="table-scroll">
         <table class="table table--edit">
-            <thead><tr><th>日程</th><th>バンド</th><th>開始</th><th>終了</th><th>曲数</th></tr></thead>
-            <tbody data-manual-rows>
-            <?php foreach ($manualRows as $i => $r): ?><?= manual_row_html((string)$i, $r, $rosterChoices, $rosterSongs) ?><?php endforeach; ?>
+            <thead>
+                <tr><th aria-label="並び替え"></th><th>順</th><th>バンド</th><th>曲数</th></tr>
+                <!-- 1日目は固定の区切り（見出しの中なので、ドラッグしてもこの上には行が入らない）。区切りより上の行は 1日目 になる -->
+                <tr class="manual-divider manual-divider--fixed"><td></td><td colspan="3"><span class="manual-divider__label"><?= h(DAY_LABELS[0]) ?></span></td></tr>
+            </thead>
+            <!-- data-sortable: ≡ のドラッグで並び替え（assets/app.js の setupSlotSort。プレビューの表と同じ部品） -->
+            <tbody data-sortable data-manual-rows>
+            <?php foreach ($manualRows as $i => $r): ?><?= manual_row_html((string)$i, $r, $rosterChoices) ?><?php endforeach; ?>
             </tbody>
         </table>
     </div>
-    <!-- 「＋ 行を追加」で複製する1行。name の __i__ を JS が次の番号に置きかえる -->
-    <template data-manual-template><?= manual_row_html('__i__', $emptyRow, $rosterChoices, $rosterSongs) ?></template>
-    <button type="button" class="btn btn--ghost btn--sm" data-manual-add>＋ 行を追加</button>
+    <!-- 「＋」で足す行のひな形。__i__ を JS が次の番号に、__day__ を日程名に置きかえる -->
+    <template data-manual-template><?= manual_row_html('__i__', $emptyRow, $rosterChoices) ?></template>
+    <template data-manual-divider-template><?= manual_row_html('__i__', ['divider' => '__day__'], $rosterChoices) ?></template>
+    <div class="manual-tt__add">
+        <button type="button" class="btn btn--ghost btn--sm" data-manual-add>＋ 行を追加</button>
+        <?php foreach (array_slice(DAY_LABELS, 1) as $d): ?>
+            <button type="button" class="btn btn--ghost btn--sm" data-manual-add-day="<?= h($d) ?>">＋ <?= h($d) ?></button>
+        <?php endforeach; ?>
+    </div>
     <div class="sticky-actions">
         <button class="btn btn--ghost" type="submit" form="reset-form">やり直す</button>
         <button class="btn btn--primary" type="submit">プレビューへ</button>
@@ -365,21 +382,47 @@ if ($plan === null): // ==================== アップロード画面 ==========
 </form>
 <form method="post" id="reset-form"><?= csrf_field() ?><input type="hidden" name="action" value="reset"></form>
 <script>
-// 「＋ 行を追加」と、「使わない」の行を薄く表示する切り替え（この画面でしか使わないのでここに書く）
+// タイムテーブル手入力の表（この画面でしか使わないのでここに書く）
+//   ・「＋ 行を追加」「＋ 2日目」などで行を足す（下に足すので、≡ で好きな位置へ動かす）
+//   ・区切りの × で区切りを消す / 「使わない」の行は薄く表示
+//   ・左の番号は「日程ごとの出演順」。並び替え・追加・削除・バンドの選び直しのたびに振り直す
 (() => {
     const body = document.querySelector('[data-manual-rows]');
-    const tpl = document.querySelector('[data-manual-template]');
     let next = body.rows.length;
+    const add = (html) => {
+        if (body.rows.length >= <?= MAX_MANUAL_ROWS ?>) return;
+        body.insertAdjacentHTML('beforeend', html.replaceAll('__i__', String(next++)));
+        body.dispatchEvent(new Event('slots:changed', { bubbles: true })); // 並び替えの部品に行が増えたことを知らせる
+    };
+    const renumber = () => {
+        let n = 0;
+        [...body.rows].forEach((tr) => {
+            if (tr.hasAttribute('data-manual-divider')) { n = 0; return; }
+            const pick = tr.querySelector('[data-manual-pick]').value;
+            const isBand = pick !== '' && !pick.startsWith('break:'); // 休憩・使わない行には番号を付けない
+            tr.querySelector('[data-manual-no]').textContent = isBand ? String(++n) : '';
+        });
+    };
     document.querySelector('[data-manual-add]').addEventListener('click', () => {
-        if (body.rows.length < <?= MAX_MANUAL_ROWS ?>) {
-            body.insertAdjacentHTML('beforeend', tpl.innerHTML.replaceAll('__i__', String(next++)));
+        add(document.querySelector('[data-manual-template]').innerHTML);
+    });
+    document.querySelectorAll('[data-manual-add-day]').forEach((btn) => btn.addEventListener('click', () => {
+        add(document.querySelector('[data-manual-divider-template]').innerHTML.replaceAll('__day__', btn.dataset.manualAddDay));
+    }));
+    body.addEventListener('click', (e) => {
+        if (e.target.closest('[data-manual-remove]')) {
+            e.target.closest('tr').remove();
+            body.dispatchEvent(new Event('slots:changed', { bubbles: true }));
         }
     });
     body.addEventListener('change', (e) => {
         if (e.target.matches('[data-manual-pick]')) {
             e.target.closest('tr').classList.toggle('is-excluded', e.target.value === '');
+            renumber();
         }
     });
+    new MutationObserver(renumber).observe(body, { childList: true }); // 行が動いた・増えた・消えた
+    renumber();
 })();
 </script>
 

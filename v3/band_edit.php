@@ -31,7 +31,7 @@ if ($isNew) {
         http_response_code(404);
         exit('日程が見つかりません');
     }
-    $band += ['band_id' => 0, 'name' => '', 'artist_name' => '', 'song_count' => '', 'note' => '',
+    $band += ['band_id' => 0, 'name' => '', 'artist_name' => '', 'song_count' => '', 'note' => '', 'youtube_url' => '',
         'start_time' => null, 'end_time' => null, 'play_order' => next_play_order($pdo, $dayId)];
 } else {
     $st = $pdo->prepare('SELECT b.*, a.name AS artist_name, d.live_id, d.label, l.name AS live_name FROM band b
@@ -74,6 +74,7 @@ if (is_post()) {
     $artistName = trim((string)($_POST['artist'] ?? ''));
     $songs = (string)($_POST['song_count'] ?? '');
     $note = trim((string)($_POST['note'] ?? ''));
+    $youtube = trim((string)($_POST['youtube_url'] ?? ''));
     $order = max(1, (int)($_POST['play_order'] ?? 1));
     $start = (string)($_POST['start_time'] ?? '');
     $end = (string)($_POST['end_time'] ?? '');
@@ -109,22 +110,26 @@ if (is_post()) {
     if (mb_strlen($note) > 255) {
         $errors[] = 'メモは255文字以内にしてください';
     }
+    // 空欄はOK（リンクなし）。入れたなら YouTube の https のリンクだけ受け付ける（live_edit.php と同じ）
+    if ($youtube !== '' && !youtube_url_valid($youtube)) {
+        $errors[] = 'YouTube のリンクは https://www.youtube.com/… か https://youtu.be/… の形で入力してください';
+    }
 
     if (!$errors) {
         $index = load_member_index($pdo);
         // アーティスト欄が空ならバンド名から推測（「ヨルシカ（安田）」→ ヨルシカ）
         $artistId = find_or_create_artist($pdo, $artistName !== '' ? $artistName : $name);
-        $values = [$artistId, $name, (int)$songs, $start ?: null, $end ?: null, $note !== '' ? $note : null];
+        $values = [$artistId, $name, (int)$songs, $start ?: null, $end ?: null, $note !== '' ? $note : null, $youtube !== '' ? $youtube : null];
 
         $pdo->beginTransaction();
         try {
             if ($isNew) {
                 // 出演順は UNIQUE なので、いったん最後尾に入れてから renumber_bands で正しい位置に動かす
-                $pdo->prepare('INSERT INTO band (artist_id, name, song_count, start_time, end_time, note, live_day_id, play_order)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)')->execute([...$values, $dayId, next_play_order($pdo, $dayId)]);
+                $pdo->prepare('INSERT INTO band (artist_id, name, song_count, start_time, end_time, note, youtube_url, live_day_id, play_order)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')->execute([...$values, $dayId, next_play_order($pdo, $dayId)]);
                 $bandId = (int)$pdo->lastInsertId();
             } else {
-                $pdo->prepare('UPDATE band SET artist_id = ?, name = ?, song_count = ?, start_time = ?, end_time = ?, note = ?
+                $pdo->prepare('UPDATE band SET artist_id = ?, name = ?, song_count = ?, start_time = ?, end_time = ?, note = ?, youtube_url = ?
                     WHERE band_id = ?')->execute([...$values, $bandId]);
             }
             // 差分だけ更新（全部消すと曲ごとの演奏記録が CASCADE で消えるため。sync_band_members の説明参照）
@@ -139,7 +144,7 @@ if (is_post()) {
         redirect('band.php?id=' . $bandId);
     }
     // エラーのときは入力した値をそのまま表示し直す
-    $band = array_merge($band, ['name' => $name, 'artist_name' => $artistName, 'song_count' => $songs, 'note' => $note,
+    $band = array_merge($band, ['name' => $name, 'artist_name' => $artistName, 'song_count' => $songs, 'note' => $note, 'youtube_url' => $youtube,
         'play_order' => $order, 'start_time' => $start, 'end_time' => $end]);
     $members = $picked;
 } elseif ($isNew) {
@@ -176,6 +181,7 @@ render_header($isNew ? 'バンドを追加' : 'バンドを編集', 'lives');
         <label class="field"><span>開始</span><input type="time" name="start_time" value="<?= h(fmt_time($band['start_time'])) ?>"></label>
         <label class="field"><span>終了</span><input type="time" name="end_time" value="<?= h(fmt_time($band['end_time'])) ?>"></label>
         <label class="field field--wide"><span>メモ</span><input name="note" value="<?= h($band['note']) ?>" maxlength="255"></label>
+        <label class="field field--wide"><span>YouTube のリンク（任意）</span><input type="url" name="youtube_url" value="<?= h((string)$band['youtube_url']) ?>" maxlength="500" placeholder="https://www.youtube.com/watch?v=…" inputmode="url"></label>
     </div>
     <datalist id="artists"><?php foreach ($allArtists as $n): ?><option value="<?= h($n) ?>"><?php endforeach; ?></datalist>
 

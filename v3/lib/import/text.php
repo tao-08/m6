@@ -79,6 +79,7 @@ function member_display(string $name): string
  * 1セルに複数人書かれているケースを分割する。
  * 「谷ヶ崎脩伍・藤田真央」「村田侑斗、丸野友多郎」「村田侑斗 日野佑香」に対応しつつ、
  * 「岩﨑 太一」のような姓名間スペースは1人として扱う。
+ * 括弧が無く空白がちょうど3つの「林 咲太 石川 陽暉」は、2つ目の空白で分けて2人（PDF で1セルに縦に2人書いたもの）。
  */
 function split_member_names(string $cell): array
 {
@@ -102,7 +103,14 @@ function split_member_names(string $cell): array
                 $allLong = false;
             }
         }
-        foreach ($allLong ? $parts : [implode('', $parts)] as $name) {
+        if ($allLong) {
+            $people = $parts;                                            // 「村田侑斗 日野佑香」→ 2人
+        } elseif (count($parts) === 4 && !preg_match('/[()（）]/u', $chunk)) {
+            $people = [$parts[0] . $parts[1], $parts[2] . $parts[3]];    // 「林 咲太 石川 陽暉」→ 姓 名 / 姓 名 の2人
+        } else {
+            $people = [implode('', $parts)];                             // 「岩﨑 太一」→ 1人
+        }
+        foreach ($people as $name) {
             $name = member_display($name);
             if ($name !== '' && !preg_match('/^(未定|募集中?|なし|無し|-+|\?+|？+)$/u', $name)) {
                 $names[] = $name;

@@ -393,26 +393,32 @@ const MANUAL_BREAKS = ['休憩', '転換'];
 /**
  * タイムテーブル手入力画面（import.php）の行 → タイムテーブル（日程ごと）
  *
- * 1行 = ['day' => '1'〜'3', 'pick' => 'ri:bi'（名簿のバンド）| 'break:休憩' | ''（使わない）,
- *        'start' => '13:00', 'end' => '13:20', 'songs' => '4']
- * 出演順は開始時刻の順（時刻が無い行は、その日の最後に画面の並び順のまま）。
+ * 1行 = ['divider' => '2日目' など（日程の区切り。この下の行がその日程）] か ['pick' => 'ri:bi'（名簿のバンド）| 'break:休憩' | ''（使わない）, 'songs' => '4']
+ * 出演順は画面の上からの並び順。時間は入れない（あとでタイムテーブル編集 timetable_edit.php で入れる）。
  * バンド名で突き合わせず「どの名簿のバンドを選んだか」を覚えておくので、同じ名前のバンドが2つあっても取り違えない。
  *
  * @return array [$timetables, $refs]  $refs = ['ti:si' => 'ri:bi']（finish_import_plan の自動対応付けを上書きする用）
- * @throws RuntimeException 入力ミス（同じバンドを2回選んだ・時刻が変 など）。メッセージはそのまま画面に出す
+ * @throws RuntimeException 入力ミス（同じバンドを2回選んだ・曲数が変 など）。メッセージはそのまま画面に出す
  */
 function build_manual_timetables(array $plan, array $rows): array
 {
     $choices = array_flip(roster_choices($plan)); // 'ri:bi' => 画面に出しているバンド名（エラー文用）
     $byDay = [];
     $picked = [];
+    $day = 0; // 今どの日程の区切りの下か（DAY_LABELS の番号: 0 = 1日目 … 3 = 教室ライブ）。区切りより上の行は 1日目
     foreach (array_values($rows) as $i => $r) {
+        if (isset($r['divider'])) {
+            $found = array_search((string)$r['divider'], DAY_LABELS, true);
+            if ($found === false) { // フォームの値は書き換えられる可能性があるので、一覧にある日程だけ受け付ける
+                throw new RuntimeException(($i + 1) . '行目: 日程の区切りが正しくありません');
+            }
+            $day = $found;
+            continue;
+        }
         $pick = (string)($r['pick'] ?? '');
         if ($pick === '') {
             continue;
         }
-        $day = (int)($r['day'] ?? 1);
-        $day = $day >= 1 && $day <= 3 ? $day : 1;
         $label = $choices[$pick] ?? null;
         $breakName = str_starts_with($pick, 'break:') ? substr($pick, 6) : null;
         // フォームの値は書き換えられる可能性があるので、本当にある名簿のバンド・休憩の種類だけ受け付ける
@@ -427,21 +433,6 @@ function build_manual_timetables(array $plan, array $rows): array
             $picked[$pick] = true;
         }
 
-        $times = [];
-        foreach (['start', 'end'] as $k) {
-            $t = trim((string)($r[$k] ?? ''));
-            $found = extract_times($t);
-            if ($t !== '' && $found === []) {
-                throw new RuntimeException("「{$name}」の時刻が正しくありません");
-            }
-            $times[$k] = $found[0] ?? null;
-        }
-        if ($times['start'] === null && $times['end'] !== null) {
-            throw new RuntimeException("「{$name}」は開始時刻も入力してください");
-        }
-        if ($times['start'] !== null && $times['end'] !== null && $times['end'] <= $times['start']) {
-            throw new RuntimeException("「{$name}」の終了時刻は開始時刻より後にしてください");
-        }
         $songs = trim((string)($r['songs'] ?? ''));
         if ($songs !== '' && (!ctype_digit($songs) || (int)$songs > 255)) {
             throw new RuntimeException("「{$name}」の曲数は0〜255の数字で入力してください");
@@ -453,13 +444,12 @@ function build_manual_timetables(array $plan, array $rows): array
             $band = $plan['rosters'][$ri]['bands'][$bi];
         }
         $byDay[$day][] = [
-            'i' => $i,
             'ref' => $label !== null ? $pick : null,
             'slot' => [
                 'is_band'      => $band !== null,
                 'band_name'    => $band['band_name'] ?? $breakName, // 登録するのは名簿のバンド名そのまま（区別用の（Vo ◯◯）は付けない）
-                'start_time'   => $times['start'],
-                'end_time'     => $times['end'],
+                'start_time'   => null,
+                'end_time'     => null,
                 'song_count'   => $songs !== '' ? (int)$songs : ($band['song_count'] ?? null),
                 'member_count' => $band['member_count'] ?? null,
                 'key_note'     => '',
@@ -470,16 +460,14 @@ function build_manual_timetables(array $plan, array $rows): array
         throw new RuntimeException('名簿のバンドを1つ以上選んでください');
     }
 
-    ksort($byDay);
+    ksort($byDay); // 1日目 → 2日目 → 3日目 → 教室ライブ の順
     $timetables = [];
     $refs = [];
     foreach ($byDay as $day => $items) {
-        // 開始時刻の順。時刻が無い行は後ろへ（同じなら画面の並び順）
-        usort($items, static fn($a, $b) => [$a['slot']['start_time'] === null, $a['slot']['start_time'], $a['i']]
-            <=> [$b['slot']['start_time'] === null, $b['slot']['start_time'], $b['i']]);
         $ti = count($timetables);
-        $timetables[] = ['title' => '', 'live_name' => '', 'label' => "{$day}日目", 'month' => null, 'day' => null,
-            'venue' => '', 'slots' => array_column($items, 'slot'), 'file' => "手入力（{$day}日目）"];
+        $dayLabel = DAY_LABELS[$day];
+        $timetables[] = ['title' => '', 'live_name' => '', 'label' => $dayLabel, 'month' => null, 'day' => null,
+            'venue' => '', 'slots' => array_column($items, 'slot'), 'file' => "手入力（{$dayLabel}）"];
         foreach ($items as $si => $x) {
             if ($x['ref'] !== null) {
                 $refs["$ti:$si"] = $x['ref'];

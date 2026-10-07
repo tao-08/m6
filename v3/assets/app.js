@@ -62,6 +62,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupTrackSearch();
   setupAlbumTip();
   setupVoSum();
+  setupYoutubeLeftover();
 });
 
 /* ---------------------------------------------------------------------
@@ -427,6 +428,27 @@ function setupSmallThings() {
  *   両方の数え方の表はもうページに入っている（data-vo-view="combo" / "sum"）ので、hidden を付け替えるだけ。
  *   アドレスバーの URL と絞り込みフォームの vo もそろえる（再読み込み・絞り込みをしても切り替えた状態のまま）。
  * ------------------------------------------------------------------- */
+/* ---------------------------------------------------------------------
+ * live_youtube.php: 「どのバンドにも入っていない動画」の一覧を、プルダウンで選ぶたびに減らす（外せば戻る）
+ *   一覧には全部の動画が <li data-yt-video="動画ID"> で入っていて、どれかのバンドで選ばれているものを hidden にする
+ * ------------------------------------------------------------------- */
+function setupYoutubeLeftover() {
+  const form = document.querySelector('[data-yt-form]');
+  const box = form?.querySelector('[data-yt-leftover]');
+  if (!box) return;
+  const update = () => {
+    const picked = new Set([...form.querySelectorAll('select')].map((s) => s.value));
+    let left = 0;
+    box.querySelectorAll('[data-yt-video]').forEach((li) => {
+      li.hidden = picked.has(li.dataset.ytVideo);
+      if (!li.hidden) left++;
+    });
+    box.querySelector('[data-yt-left-count]').textContent = left;
+    box.hidden = left === 0;
+  };
+  form.addEventListener('change', update); // setupSelectPick のポップアップで選んでも change が出る
+}
+
 function setupVoSum() {
   const toggles = [...document.querySelectorAll('[data-vo-sum-toggle]')];
   if (!toggles.length) return;
@@ -1019,6 +1041,7 @@ function setupSelectPick() {
       const name = document.createElement('span');
       name.className = 'live-pop__name';
       name.textContent = o.textContent; // textContent なので XSS にならない
+      if (!o.value) item.classList.add('is-empty'); // 「なし」「— 未設定 —」など値が空のものは細く薄く（ボタンの is-placeholder と同じ扱い）
       item.append(name);
       item.addEventListener('click', () => {
         const changed = select.value !== o.value;

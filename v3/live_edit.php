@@ -14,6 +14,7 @@
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/repository.php';
+require_once __DIR__ . '/lib/youtube.php';
 require_login();
 
 $pdo = db();
@@ -106,6 +107,9 @@ function day_params(PDO $pdo, array $in): array
         $in['note'] !== '' ? $in['note'] : null,
     ];
 }
+
+// 保存済みのリンクがプレイリストなら「バンドに割り当てる」ボタンを出す（live_youtube.php）
+$savedPlaylist = !$isNew && youtube_playlist_id((string)$live['youtube_url']) !== null;
 
 // 追加する日程の初期値: まだ使っていない最初の日程名（新規ライブなら「1日目」）
 $usedLabels = array_column($days, 'label');
@@ -265,6 +269,11 @@ if (is_post()) {
             }
             $pdo->commit();
             flash($isNew ? 'ライブを追加しました。次は「＋ バンドを追加」から出演バンドを入れよう' : 'ライブ情報を更新しました');
+            // プレイリストのリンクを新しく貼った（変えた）ら、そのまま動画をバンドに割り当てる画面へ
+            //   バンドがまだいない（新規ライブ）なら割り当てる先がないので、いつもどおりライブページへ
+            if (!$isNew && $youtube !== (string)$live['youtube_url'] && youtube_playlist_id($youtube) !== null && $days) {
+                redirect('live_youtube.php?id=' . $liveId);
+            }
             redirect('live.php?id=' . $liveId);
         } catch (PDOException $e) {
             $pdo->rollBack();
@@ -313,7 +322,8 @@ if ($isNew) {
     <?php if (!$canMerge): ?>
         <div class="form-grid">
             <label class="field field--wide"><span>ライブ名</span><input name="name" value="<?= h($live['name']) ?>" maxlength="50" placeholder="例: 9月ライブ" required></label>
-            <label class="field field--wide"><span>YouTube のリンク（任意）</span><input type="url" name="youtube_url" value="<?= h((string)$live['youtube_url']) ?>" maxlength="500" placeholder="https://www.youtube.com/playlist?list=…" inputmode="url"></label>
+            <label class="field field--wide"><span>YouTubeプレイリストのリンク（任意）</span><input type="url" name="youtube_url" value="<?= h((string)$live['youtube_url']) ?>" maxlength="500" placeholder="https://www.youtube.com/playlist?list=…" inputmode="url"></label>
+            <?php if ($savedPlaylist): ?><p class="field--wide yt-assign"><a class="btn btn--ghost btn--sm" href="live_youtube.php?id=<?= $liveId ?>"><?= youtube_icon() ?> プレイリストの動画をバンドに割り当てる</a></p><?php endif; ?>
         </div>
     <?php else: ?>
         <!-- 取り込み画面と同じ「統合」トグル（assets/app.js の setupMergeToggle / setupLiveEditMerge）
@@ -340,6 +350,7 @@ if ($isNew) {
             </div>
             <!-- 統合するとこのライブは消えるので、統合 ON のときは隠す（data-merge-hide） -->
             <label class="field field--wide" data-merge-hide<?= $merging ? ' hidden' : '' ?>><span>YouTube のリンク（任意）</span><input type="url" name="youtube_url" value="<?= h((string)$live['youtube_url']) ?>" maxlength="500" placeholder="https://www.youtube.com/watch?v=…" inputmode="url"<?= $merging ? ' disabled' : '' ?>></label>
+            <?php if ($savedPlaylist): ?><p class="field--wide yt-assign" data-merge-hide<?= $merging ? ' hidden' : '' ?>><a class="btn btn--ghost btn--sm" href="live_youtube.php?id=<?= $liveId ?>"><?= youtube_icon() ?> プレイリストの動画をバンドに割り当てる</a></p><?php endif; ?>
         </div>
     <?php endif; ?>
 

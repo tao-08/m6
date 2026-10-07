@@ -5,6 +5,9 @@ declare(strict_types=1);
 function config($key = null) { return $key === 'pdftotext' ? 'pdftotext' : null; }
 require __DIR__ . '/../lib/import/parsers.php';
 require __DIR__ . '/../lib/albums.php'; // itunes.php と spotify.php も読み込まれる
+const DAY_LABELS = ['1日目', '2日目', '3日目', '教室ライブ']; // lib/bootstrap.php の定数（テストでは bootstrap を読まないので同じものを置く）
+function youtube_url_valid(string $url): bool { return true; } // lib/bootstrap.php の関数（テストでは bootstrap を読まないので仮のもの）
+require __DIR__ . '/../lib/youtube.php';
 
 $failed = 0;
 function check(string $label, mixed $actual, mixed $expected): void
@@ -26,6 +29,9 @@ check('代表者付き名称', band_split_suffix('ハンブレッダーズ（郡
 check('姓名間スペースは1人', split_member_names('岩﨑 太一'), ['岩﨑太一']);
 check('中黒区切り', split_member_names('山田太郎・佐藤花子'), ['山田太郎', '佐藤花子']);
 check('空白区切りの2人', split_member_names('山田太郎 佐藤花子'), ['山田太郎', '佐藤花子']);
+check('空白3つは姓名ずつ2人', split_member_names('林 咲太 石川 陽暉'), ['林咲太', '石川陽暉']);
+check('空白3つでも括弧つきは1人', split_member_names('林 咲太 石川 陽暉(Gt)'), ['林咲太石川陽暉(Gt)']);
+check('空白2つは1人のまま', split_member_names('林 咲太 石川陽暉'), ['林咲太石川陽暉']);
 check('未定は無視', split_member_names('未定'), []);
 check('異体字', member_key('岩﨑太一'), member_key('岩崎太一'));
 $ph = fn(string $t, float $y, float $x0, float $x1) => ['text' => $t, 'yc' => $y, 'x0' => $x0, 'x1' => $x1];
@@ -322,6 +328,26 @@ check('ボーカルも同じならファイル名', array_keys(roster_choices(['
     ['file' => 'b.pdf', 'bands' => [$rb('ENTH', [['渡辺', 'Vo']])]],
 ]])), ['ENTH（Vo 渡辺）（a.pdf）', 'ENTH（Vo 渡辺）（b.pdf）']);
 
+echo "youtube\n";
+// 2025年度 12月ライブのプレイリストの実際のタイトル（並びは出演順ではない）
+$yv = fn(string $id, string $title) => ['video_id' => str_pad($id, 11, '_'), 'title' => $title];
+$yb = fn(string $name, array $names = []) => ['name' => $name, 'names' => $names];
+$ym = youtube_match_bands([
+    $yv('seka', '12月 SEKAI NO OWARI'), $yv('spitz', '12月スピッツ'), $yv('fob', '12月 Fall Out Boy'),
+    $yv('mrs', '12月ライブ Mrs. GREEN APPLE'), $yv('sekamix', '12月ライブ SEKAI NO OWARI (mixed)'),
+    $yv('elle', '12月エルレ（鈴木）'), $yv('other', '12月 打ち上げ'),
+], [
+    1 => $yb('SEKAI NO OWARI'), 2 => $yb('スピッツ'), 3 => $yb('FALL OUT BOY'), 4 => $yb('Mrs. GREEN APPLE'),
+    5 => $yb('ELLEGARDEN(岩崎)', ['ELLEGARDEN', 'エルレ']), 6 => $yb('ELLEGARDEN(鈴木)', ['ELLEGARDEN', 'エルレ']),
+]);
+check('空白なし・大文字小文字の違いも当たる', [$ym['auto'][2] ?? null, $ym['auto'][3] ?? null, $ym['auto'][4] ?? null],
+    ['spitz______', 'fob________', 'mrs________']);
+check('2本あるバンドは自動で決めない', [$ym['bands'][1], isset($ym['auto'][1])], [['seka_______', 'sekamix____'], false]);
+check('別名＋括弧の名前で同名バンドを区別', [$ym['auto'][6] ?? null, $ym['bands'][5]], ['elle_______', []]);
+check('どれにも当たらない動画', $ym['unmatched'], ['other______']);
+$ym = youtube_match_bands([$yv('elle', '12月 エルレ')], [5 => $yb('ELLEGARDEN(岩崎)', ['エルレ']), 6 => $yb('ELLEGARDEN(鈴木)', ['エルレ'])]);
+check('括弧の名前が無ければ両方の候補にして自動では決めない', [$ym['bands'][5], $ym['bands'][6], $ym['auto']], [['elle_______'], ['elle_______'], []]);
+
 echo "manual timetable\n";
 $mplan = ['rosters' => [['file' => 'a.pdf', 'bands' => [
     $rb('ENTH', [['渡辺', 'Vo']]) + ['song_count' => 4, 'member_count' => 3],
@@ -329,14 +355,16 @@ $mplan = ['rosters' => [['file' => 'a.pdf', 'bands' => [
     $rb('SHANK', [['庵原', 'Vo']]) + ['song_count' => null, 'member_count' => 3],
 ]]]];
 [$mt, $refs] = build_manual_timetables($mplan, [
-    ['day' => '1', 'pick' => '0:1', 'start' => '13:30', 'end' => '13:50', 'songs' => ''],
-    ['day' => '1', 'pick' => '0:0', 'start' => '13:00', 'end' => '13:20', 'songs' => '3'],
-    ['day' => '1', 'pick' => 'break:休憩', 'start' => '13:20', 'end' => '', 'songs' => ''],
-    ['day' => '2', 'pick' => '0:2', 'start' => '', 'end' => '', 'songs' => ''],
-    ['day' => '1', 'pick' => '', 'start' => '15:00', 'end' => '', 'songs' => ''],
+    ['pick' => '0:0', 'songs' => '3'],                 // 区切りより上は 1日目
+    ['divider' => '教室ライブ'],
+    ['pick' => '0:2', 'songs' => ''],
+    ['divider' => '1日目'],                            // 同じ日程の区切りがもう一度出てきたら、その日の続き
+    ['pick' => 'break:休憩', 'songs' => ''],
+    ['pick' => '0:1', 'songs' => ''],
+    ['pick' => '', 'songs' => '9'],
 ]);
-check('手入力: 日程の数', array_column($mt, 'label'), ['1日目', '2日目']);
-check('手入力: 開始時刻の順', array_column($mt[0]['slots'], 'band_name'), ['ENTH', '休憩', 'ENTH']);
+check('手入力: 日程（教室ライブも）', array_column($mt, 'label'), ['1日目', '教室ライブ']);
+check('手入力: 上からの並び順', array_column($mt[0]['slots'], 'band_name'), ['ENTH', '休憩', 'ENTH']);
 check('手入力: 同じ名前でも選んだ名簿に対応', $refs, ['0:0' => '0:0', '0:2' => '0:1', '1:0' => '0:2']);
 check('手入力: 曲数（入力 > 名簿）', array_column($mt[0]['slots'], 'song_count'), [3, null, 5]);
 check('手入力: 休憩はバンドではない', $mt[0]['slots'][1]['is_band'], false);
@@ -349,9 +377,10 @@ $err = static function (array $rows) use ($mplan): string {
     }
 };
 check('手入力: 同じバンドを2回', $err([['pick' => '0:0'], ['pick' => '0:0']]), '「ENTH（Vo 渡辺）」を2回選んでいます。1つの行だけにしてください');
-check('手入力: 終了が開始より前', $err([['pick' => '0:0', 'start' => '14:00', 'end' => '13:00']]), '「ENTH（Vo 渡辺）」の終了時刻は開始時刻より後にしてください');
+check('手入力: 曲数が数字でない', $err([['pick' => '0:0', 'songs' => '-1']]), '「ENTH（Vo 渡辺）」の曲数は0〜255の数字で入力してください');
 check('手入力: 名簿に無い値', $err([['pick' => '9:9']]), '1行目: 選んだバンドが名簿にありません');
+check('手入力: 一覧に無い日程', $err([['divider' => '4日目'], ['pick' => '0:0']]), '1行目: 日程の区切りが正しくありません');
 check('手入力: 休憩だけ', $err([['pick' => 'break:休憩']]), '名簿のバンドを1つ以上選んでください');
 
-echo $failed ? "\n{$failed} 件失敗\n" : "\nすべて成功\n";
+echo $failed ?"\n{$failed} 件失敗\n" : "\nすべて成功\n";
 exit($failed ? 1 : 0);

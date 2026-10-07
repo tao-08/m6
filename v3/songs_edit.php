@@ -199,7 +199,7 @@ const ICON_UNLINK = 'link_off';
 render_header('曲を編集', 'lives');
 ?>
 <nav class="crumbs"><a href="<?= h($liveUrl) ?>"><?= h($band['live_name']) ?> <?= h($band['label']) ?></a><span>/</span><a href="<?= h($backUrl) ?>"><?= h($band['name']) ?></a></nav>
-<h1 class="display display--sm"><?= icon('queue_music') ?> <?= h($band['name']) ?> の曲</h1>
+<h1 class="display display--sm"><?= icon('queue_music') ?> <?= h($band['name']) ?> のセットリスト</h1>
 <?php foreach ($errors as $e): ?><div class="flash flash--error"><?= h($e) ?></div><?php endforeach; ?>
 
 <?php if (!$members): ?>
@@ -211,7 +211,7 @@ render_header('曲を編集', 'lives');
     <?= csrf_field() ?>
     <input type="hidden" name="band_id" value="<?= $bandId ?>">
     <!-- チェックなし: アーティスト欄はバンドのアーティストで固定（薄く表示）。チェックあり: 曲ごとに書ける（assets/app.js の setupSongs） -->
-    <label class="check song-omnibus"><input type="checkbox" name="omnibus" value="1"<?= $omnibus ? ' checked' : '' ?> data-omnibus> オムニバスバンド （複数アーティストを演奏）</label>
+    <label class="check song-omnibus"><input type="checkbox" name="omnibus" value="1"<?= $omnibus ? ' checked' : '' ?> data-omnibus> オムニバス （複数アーティストを演奏）</label>
     <datalist id="artists"><?php foreach ($artistNames as $n): ?><option value="<?= h($n) ?>"><?php endforeach; ?></datalist>
     <div class="song-list" data-song-list data-default-artist="<?= h($defaultArtist) ?>">
         <?php foreach ($cards as $k => $song):
