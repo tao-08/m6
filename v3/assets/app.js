@@ -29,6 +29,7 @@
  *    data-track-search  … 曲の編集の🔍（Spotify / iTunes の曲を探して紐付ける）
  *    data-toasts        … お知らせのポップアップ（4秒で消える）
  *    data-album-tip     … メンバー一覧のジャケットに乗せるとアルバム名・アーティスト名を出す
+ *    data-vo-sum-toggle … 統計の「Voを合算する」をページ移動なしで切り替える
  * =====================================================================
  */
 
@@ -59,6 +60,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupSongs();
   setupTrackSearch();
   setupAlbumTip();
+  setupVoSum();
 });
 
 /* ---------------------------------------------------------------------
@@ -373,6 +375,57 @@ function setupSmallThings() {
         input.value = input.dataset.hint;
       }
     });
+  }));
+}
+
+/* ---------------------------------------------------------------------
+ * 統計の「Voを合算する」（stats.php）
+ *   JS が無くてもリンク（?vo=sum）で切り替わるが、JS があればページを移動せずに切り替える。
+ *   両方の数え方の表はもうページに入っている（data-vo-view="combo" / "sum"）ので、hidden を付け替えるだけ。
+ *   アドレスバーの URL と絞り込みフォームの vo もそろえる（再読み込み・絞り込みをしても切り替えた状態のまま）。
+ * ------------------------------------------------------------------- */
+function setupVoSum() {
+  const toggles = [...document.querySelectorAll('[data-vo-sum-toggle]')];
+  if (!toggles.length) return;
+  toggles.forEach((toggle) => toggle.addEventListener('click', (e) => {
+    e.preventDefault();
+    const on = toggle.getAttribute('aria-checked') !== 'true';
+    document.querySelectorAll('[data-vo-view]').forEach((list) => {
+      list.hidden = (list.dataset.voView === 'sum') !== on;
+      // 出した方のアニメーション（CSS の .is-switched）を最初から。offsetWidth を読むとクラスを外した状態が一度反映される
+      list.classList.remove('is-switched');
+      if (!list.hidden) {
+        void list.offsetWidth;
+        list.classList.add('is-switched');
+      }
+    });
+
+    // 今の URL（#◯◯ は付けない）
+    const url = new URL(location.href);
+    url.hash = '';
+    if (on) url.searchParams.set('vo', 'sum'); else url.searchParams.delete('vo');
+    history.replaceState(null, '', url);
+
+    // 2つのボタンの見た目と、JS が無いとき・新しいタブで開いたとき用のリンク先（もう一度押したら戻る URL）
+    toggles.forEach((t) => {
+      t.classList.toggle('is-on', on);
+      t.setAttribute('aria-checked', String(on));
+      t.querySelector('.icon').textContent = on ? 'check_box' : 'check_box_outline_blank';
+      const next = new URL(url);
+      if (on) next.searchParams.delete('vo'); else next.searchParams.set('vo', 'sum');
+      next.hash = new URL(t.href).hash;
+      t.href = next.href;
+    });
+
+    // 絞り込みフォームの <input type="hidden" name="vo">
+    const form = document.querySelector('form.stats-filter');
+    let input = form?.querySelector('input[name="vo"]');
+    if (on && form && !input) {
+      input = Object.assign(document.createElement('input'), { type: 'hidden', name: 'vo', value: 'sum' });
+      form.append(input);
+    } else if (!on && input) {
+      input.remove();
+    }
   }));
 }
 

@@ -728,6 +728,15 @@ body.is-row-dragging, body.is-row-dragging * { cursor: grabbing !important; user
 .vo-sum-toggle .icon { font-size: 15px; }
 .vo-sum-toggle:hover { opacity: 1; color: var(--text); text-decoration: none; }
 .vo-sum-toggle.is-on { opacity: 1; color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+/* 切り替えたとき: 表をふわっと出し、棒グラフは左から伸ばす（JS の setupVoSum が is-switched を付け直す） */
+.vo-sum-toggle { transition: color .2s ease, border-color .2s ease, opacity .2s ease; }
+[data-vo-view].is-switched { animation: day-fade .25s ease; }
+[data-vo-view].is-switched .bar { transform-origin: left; animation: bar-grow .45s cubic-bezier(.2, .8, .2, 1); }
+@keyframes bar-grow { from { transform: scaleX(0); } }
+@media (prefers-reduced-motion: reduce) {
+  .vo-sum-toggle { transition: none; }
+  [data-vo-view].is-switched, [data-vo-view].is-switched .bar { animation: none; }
+}
 .bars { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 .bars li { display: grid; grid-template-columns: minmax(0, 11em) 1fr auto; gap: 10px; align-items: center; font-size: 13px; }
 .bars__label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
