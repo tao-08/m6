@@ -411,6 +411,11 @@ input:focus, select:focus { outline: none; border-color: var(--accent); box-shad
 /* ===== 7. フォーム・ログイン ===== */
 .auth { display: grid; grid-template-columns: 1.1fr 1fr; gap: 40px; align-items: center; min-height: calc(100vh - 220px); }
 .auth__hero .muted { margin-top: 16px; }
+.auth__logo { margin: 0; }
+.auth__logo img { width: 100%; max-width: 440px; height: auto; } /* ログイン画面はキャッチコピーの代わりにロゴを大きく出す */
+.auth__logo .brand__logo--dark { display: none; }
+[data-theme="dark"] .auth__logo .brand__logo--light { display: none; }
+[data-theme="dark"] .auth__logo .brand__logo--dark { display: block; }
 .auth__card { display: grid; gap: 14px; padding: 28px; }
 .auth__card h2 { font-size: 22px; font-weight: 800; }
 .field { display: grid; align-content: start; gap: 6px; font-size: 13px; font-weight: 600; color: var(--muted); }

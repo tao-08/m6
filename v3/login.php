@@ -64,8 +64,10 @@ render_header('ログイン');
 ?>
 <section class="auth">
     <div class="auth__hero">
-        <p class="eyebrow">Live Database</p>
-        <h1 class="display">誰と、どこで、<br>何を鳴らしたか。</h1>
+        <h1 class="auth__logo">
+            <img src="assets/online.png" alt="AbbeyRoad.online" class="brand__logo--light" width="146" height="40">
+            <img src="assets/logo-dark.png" alt="" class="brand__logo--dark" width="146" height="40">
+        </h1>
         <p class="muted">サークルのライブとコピーバンドの記録をひとつに。</p>
     </div>
     <form method="post" class="card auth__card" novalidate>
