@@ -18,21 +18,6 @@ declare(strict_types=1);
 require_once __DIR__ . '/parsers.php';
 require_once __DIR__ . '/../repository.php';
 
-/** 4月始まりの年度。1〜3月は前の年の年度になる（2026年1月のライブ → 2025年度） */
-function academic_year(int $month, int $year): int
-{
-    return $month >= 4 ? $year : $year - 1;
-}
-
-/** "2026-01-12" → 2025（年度）。日付として正しくなければ null */
-function fiscal_year_from_date(string $date): ?int
-{
-    if (!preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $date, $d) || !checkdate((int)$d[2], (int)$d[3], (int)$d[1])) {
-        return null;
-    }
-    return academic_year((int)$d[2], (int)$d[1]);
-}
-
 /**
  * タイムテーブルから読んだ会場名に一番近い、登録済みの会場を探す。
  * 「渋谷ＣＬＵＢ ＱＵＡＴＴＲＯ」→「渋谷CLUB QUATTRO」のような表記ゆれを吸収する。
@@ -575,8 +560,8 @@ function commit_import_plan(PDO $pdo, array $plan, array $input): array
             }
             // ライブごと消えたときに作り直すための年度（統合なら選んだライブの年度）
             $liveYear = $mergeLive ? (int)$mergeLive['fiscal_year'] : $year;
-            if ($label === '' || mb_strlen($label) > 50) {
-                throw new RuntimeException("{$where} 日程（1日目など）は1〜50文字で入力してください");
+            if (!in_array($label, DAY_LABELS, true)) { // 選択式だが、書き換えられたリクエストも弾く
+                throw new RuntimeException("{$where} 日程は一覧（1日目〜3日目・教室ライブ）から選んでください");
             }
 
             // ---- 会場: プルダウンで選んだ既存の会場 or 新規作成 ----

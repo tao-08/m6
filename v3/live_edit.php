@@ -53,8 +53,8 @@ function read_day_input(mixed $in): array
     $venue = trim((string)($in['venue'] ?? ''));
     $note = trim((string)($in['note'] ?? ''));
     $errors = [];
-    if ($label === '' || mb_strlen($label) > 50) {
-        $errors[] = '日程名は1〜50文字で入力してください';
+    if (!in_array($label, DAY_LABELS, true)) { // 選択式だが、書き換えられたリクエストも弾く
+        $errors[] = '日程名は一覧から選んでください';
     }
     if ($date !== '' && (!preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $date, $m) || !checkdate((int)$m[2], (int)$m[3], (int)$m[1]))) {
         $errors[] = "「{$label}」の日付が正しくありません";
@@ -76,18 +76,40 @@ function day_params(PDO $pdo, array $in): array
     ];
 }
 
-// 追加する日程の入力欄の初期値（新規ライブなら「1日目」を入れておく）
-$newDay = ['label' => $isNew ? '1日目' : '', 'date' => '', 'venue' => '', 'note' => ''];
+// 追加する日程の初期値: まだ使っていない最初の日程名（新規ライブなら「1日目」）
+$usedLabels = array_column($days, 'label');
+$freeLabels = array_values(array_diff(DAY_LABELS, $usedLabels));
+$newDay = ['label' => $freeLabels[0] ?? DAY_LABELS[0], 'date' => '', 'venue' => '', 'note' => '', 'add' => false];
+
+// 「他のライブに統合」で選んだライブ（統合しないなら null）
+$mergeLive = null;
 
 $errors = [];
 if (is_post()) {
     verify_csrf();
-    $year = (int)($_POST['year'] ?? 0);
-    $name = trim((string)($_POST['name'] ?? ''));
-    if ($year < 1990 || $year > 2100) {
-        $errors[] = '年度が正しくありません';
+    $name = trim((string)($_POST['name'] ?? $live['name'])); // 統合 ON のときはライブ名の欄は送られてこない
+
+    // ---- 他のライブに統合（管理者のみ。統合先の日程・バンドを消すことがあるので） ----
+    $merge = !$isNew && !empty($_POST['merge']);
+    if ($merge && !is_admin()) {
+        // ボタンは管理者にしか出さないが、リクエストを自作すれば送れてしまうのでサーバーでも止める
+        http_response_code(403);
+        exit('統合は管理者のみできます');
     }
-    if ($name === '' || mb_strlen($name) > 50) {
+    if ($merge) {
+        // フォームの値は書き換えられる可能性があるので、本当に存在するライブか DB で確認する
+        $mergeIdIn = (string)($_POST['merge_live_id'] ?? '');
+        $st = $pdo->prepare("SELECT l.live_id, l.fiscal_year, l.name,
+                GROUP_CONCAT(d.label ORDER BY d.label SEPARATOR '・') AS labels
+            FROM live l LEFT JOIN live_day d ON d.live_id = l.live_id
+            WHERE l.live_id = ? GROUP BY l.live_id, l.fiscal_year, l.name");
+        $st->execute([ctype_digit($mergeIdIn) ? (int)$mergeIdIn : 0]);
+        $mergeLive = $st->fetch() ?: null;
+        if ($mergeLive === null || (int)$mergeLive['live_id'] === $liveId) {
+            $errors[] = '統合先のライブを選んでください';
+            $mergeLive = null;
+        }
+    } elseif ($name === '' || mb_strlen($name) > 50) {
         $errors[] = 'ライブ名は1〜50文字で入力してください';
     }
 
@@ -98,16 +120,71 @@ if (is_post()) {
         $dayInputs[(int)$d['live_day_id']] = $in;
     }
 
-    // 追加する日程: 新規ライブなら必須。既存ライブでは「何か入力されたときだけ」追加する
+    // 追加する日程: 新規ライブなら必須。既存ライブでは「この日程を追加する」にチェックしたときだけ追加する
+    // （日程名は選択式で常に値が入るので、「何か入力されたか」では判定できない）
     $nd = is_array($_POST['nd'] ?? null) ? $_POST['nd'] : [];
-    // 全部の欄をつなげて空文字なら「何も入力されていない」
-    $wantsNewDay = $isNew || trim(implode('', array_filter($nd, 'is_string'))) !== '';
+    $wantsNewDay = $isNew || !empty($nd['add']);
     [$newDay, $newDayErrors] = read_day_input($nd);
+    $newDay['add'] = $wantsNewDay;
     if ($wantsNewDay) {
         $errors = array_merge($errors, $newDayErrors);
     }
 
-    if (!$errors) {
+    // 年度は入力させず、日程の日付から決める（取り込みと同じ。年度の入れ間違いが起きない）
+    //   一番早い日付の年度にする。日付が1つも無ければ今の年度のまま（新規なら今年度）
+    $dates = array_filter(array_column($dayInputs, 'date'));
+    if ($wantsNewDay && $newDay['date'] !== '') {
+        $dates[] = $newDay['date'];
+    }
+    $year = $dates ? (fiscal_year_from_date(min($dates)) ?? (int)$live['fiscal_year']) : (int)$live['fiscal_year'];
+    if (!$mergeLive && ($year < 1990 || $year > 2100)) { // live.fiscal_year の CHECK 制約と同じ範囲
+        $errors[] = '日付の年が範囲外です（年度は日付から自動で決まります）';
+    }
+
+    if (!$errors && $mergeLive !== null) {
+        // ---- 統合: このライブの日程を全部、統合先のライブへ移す ----
+        $targetId = (int)$mergeLive['live_id'];
+        $pdo->beginTransaction();
+        try {
+            // 統合先に同じ日程名があれば、統合先のその日程を消して置き換える（上書き）
+            //   バンド・出演記録は ON DELETE CASCADE で一緒に消える。
+            //   delete_live_day() は「日程が0になったライブも消す」ので、統合先が消えないようにここでは直接 DELETE する
+            $findSame = $pdo->prepare('SELECT live_day_id FROM live_day WHERE live_id = ? AND label = ?');
+            $deleteDay = $pdo->prepare('DELETE FROM live_day WHERE live_day_id = ?');
+            $moving = array_column($dayInputs, 'label');
+            if ($wantsNewDay) {
+                $moving[] = $newDay['label'];
+            }
+            foreach (array_unique($moving) as $label) {
+                $findSame->execute([$targetId, $label]);
+                $sameId = $findSame->fetchColumn();
+                if ($sameId !== false) {
+                    $deleteDay->execute([(int)$sameId]);
+                }
+            }
+            $move = $pdo->prepare('UPDATE live_day SET label = ?, held_on = ?, venue_id = ?, note = ?, live_id = ? WHERE live_day_id = ?');
+            foreach ($dayInputs as $id => $in) {
+                $move->execute([...day_params($pdo, $in), $targetId, $id]);
+            }
+            if ($wantsNewDay) {
+                $pdo->prepare('INSERT INTO live_day (label, held_on, venue_id, note, live_id) VALUES (?, ?, ?, ?, ?)')
+                    ->execute([...day_params($pdo, $newDay), $targetId]);
+            }
+            // 日程が全部いなくなった元のライブを消す
+            $pdo->prepare('DELETE FROM live WHERE live_id = ? AND NOT EXISTS (SELECT 1 FROM live_day WHERE live_id = ?)')
+                ->execute([$liveId, $liveId]);
+            $pdo->commit();
+            flash('「' . $mergeLive['fiscal_year'] . '年度 ' . $mergeLive['name'] . '」に統合しました');
+            redirect('live.php?id=' . $targetId);
+        } catch (PDOException $e) {
+            $pdo->rollBack();
+            if ($e->getCode() !== '23000') {
+                throw $e;
+            }
+            // 移す日程どうしで日程名がかぶっている（例: 2つとも「1日目」）
+            $errors[] = 'このライブの日程どうしで日程名が重複しています。別々の日程名にしてください';
+        }
+    } elseif (!$errors) {
         $pdo->beginTransaction();
         try {
             if ($isNew) {
@@ -151,6 +228,12 @@ if (is_post()) {
 }
 
 $venues = $pdo->query('SELECT name FROM venue ORDER BY name')->fetchAll(PDO::FETCH_COLUMN);
+$canMerge = !$isNew && is_admin(); // 「他のライブに統合」ボタンは管理者だけに出す
+$merging = $canMerge && is_post() && !empty($_POST['merge']); // エラーで戻ったときもトグル ON のまま見せる
+if ($canMerge) {
+    $lives = lives_with_labels($pdo); // 統合先のポップアップ用
+    $excludeLiveId = $liveId;         // 自分自身には統合させない
+}
 if ($isNew) {
     // 新規追加は「新規追加」ページの1タブとして見せる（見出しとタブは共通パーツ）
     render_header('新規追加', 'import');
@@ -166,16 +249,42 @@ if ($isNew) {
 <form method="post" class="card form-card">
     <?= csrf_field() ?>
     <input type="hidden" name="live_id" value="<?= $liveId ?>">
-    <div class="form-grid">
-        <label class="field"><span>年度</span><input type="number" name="year" min="1990" max="2100" value="<?= h($live['fiscal_year']) ?>" required></label>
-        <label class="field field--wide"><span>ライブ名</span><input name="name" value="<?= h($live['name']) ?>" maxlength="50" placeholder="例: 9月ライブ" required></label>
-    </div>
+    <?php if (!$canMerge): ?>
+        <div class="form-grid">
+            <label class="field field--wide"><span>ライブ名</span><input name="name" value="<?= h($live['name']) ?>" maxlength="50" placeholder="例: 9月ライブ" required></label>
+        </div>
+    <?php else: ?>
+        <!-- 取り込み画面と同じ「統合」トグル（assets/app.js の setupMergeToggle / setupLiveEditMerge）
+             ON: 年度・ライブ名の欄を隠して disabled（送信されない）にし、統合先のライブを選ばせる -->
+        <?php require __DIR__ . '/partials/live_picker.php'; ?>
+        <div class="form-grid" data-live-merge>
+            <div class="field field--wide" data-merge data-year="<?= (int)$live['fiscal_year'] ?>">
+                <span class="live-name-head">ライブ名
+                    <button type="button" class="merge-toggle" aria-pressed="<?= $merging ? 'true' : 'false' ?>" data-merge-toggle><?= icon('merge') ?> 他のライブに統合</button>
+                </span>
+                <input name="name" value="<?= h($live['name']) ?>" maxlength="50" placeholder="例: 9月ライブ" required data-live-name<?= $merging ? ' hidden disabled' : '' ?>>
+                <!-- disabled の欄は送信されない → OFF のときは merge / merge_live_id を送らない -->
+                <input type="hidden" name="merge" value="1" data-merge-flag<?= $merging ? '' : ' disabled' ?>>
+                <input type="hidden" name="merge_live_id" value="<?= $mergeLive ? (int)$mergeLive['live_id'] : '' ?>" data-live-id<?= $merging ? '' : ' disabled' ?>>
+                <div class="live-pick" data-live-pick-wrap<?= $merging ? '' : ' hidden' ?>>
+                    <button type="button" class="live-pick__btn" aria-haspopup="listbox" aria-expanded="false" data-live-pick
+                        data-year="<?= $mergeLive ? (int)$mergeLive['fiscal_year'] : '' ?>" data-labels="<?= $mergeLive ? h((string)$mergeLive['labels']) : '' ?>"
+                        data-name="<?= $mergeLive ? h($mergeLive['name']) : '' ?>">
+                        <span data-live-pick-text<?= $mergeLive ? '' : ' class="is-placeholder"' ?>><?= $mergeLive ? h($mergeLive['fiscal_year'] . '年度 ' . $mergeLive['name']) : 'ライブを選択' ?></span>
+                        <?= icon('expand_more') ?>
+                    </button>
+                </div>
+                <small class="merge-note" data-merge-note></small>
+            </div>
+        </div>
+    <?php endif; ?>
     <datalist id="dl-venues"><?php foreach ($venues as $v): ?><option value="<?= h($v) ?>"><?php endforeach; ?></datalist>
 
     <?php foreach ($days as $d): $id = (int)$d['live_day_id']; ?>
         <h2 class="section-title"><?= h($d['label'] ?: '日程') ?></h2>
         <div class="form-grid">
-            <label class="field"><span>日程名</span><input name="d[<?= $id ?>][label]" value="<?= h($d['label']) ?>" maxlength="50" required></label>
+            <label class="field"><span>日程名</span><select name="d[<?= $id ?>][label]" data-day-label><?= day_label_options((string)$d['label']) ?></select>
+                <small class="merge-note merge-note--warn" data-overwrite-note hidden>⚠ 登録済の日程のため上書きされます</small></label>
             <label class="field"><span>日付（不明なら空欄）</span><input type="date" name="d[<?= $id ?>][held_on]" value="<?= h($d['held_on']) ?>"></label>
             <label class="field"><span>会場</span><input name="d[<?= $id ?>][venue]" value="<?= h($d['venue_name']) ?>" list="dl-venues" maxlength="50"></label>
             <label class="field field--wide"><span>メモ</span><input name="d[<?= $id ?>][note]" value="<?= h($d['note']) ?>"></label>
@@ -185,9 +294,13 @@ if ($isNew) {
 
     <!-- 追加する日程。新規ライブでは最初の日程（必須）、既存ライブでは「入力したときだけ追加」 -->
     <h2 class="section-title"><?= $isNew ? '日程' : '＋ 日程を追加' ?></h2>
-    <?php if (!$isNew): ?><p class="muted small">合宿ライブの「2日目」など。追加しないなら空欄のままでOK。</p><?php endif; ?>
+    <?php if (!$isNew): ?>
+        <p><label><input type="checkbox" name="nd[add]" value="1" data-new-day-add<?= $newDay['add'] ? ' checked' : '' ?>> この日程を追加する</label>
+            <span class="muted small">（合宿ライブの「2日目」など。チェックしなければ追加しない）</span></p>
+    <?php endif; ?>
     <div class="form-grid">
-        <label class="field"><span>日程名</span><input name="nd[label]" value="<?= h($newDay['label']) ?>" maxlength="50" placeholder="例: 2日目"<?= $isNew ? ' required' : '' ?>></label>
+        <label class="field"><span>日程名</span><select name="nd[label]" data-day-label data-new-day><?= day_label_options($newDay['label']) ?></select>
+            <small class="merge-note merge-note--warn" data-overwrite-note hidden>⚠ 登録済の日程のため上書きされます</small></label>
         <label class="field"><span>日付（不明なら空欄）</span><input type="date" name="nd[held_on]" value="<?= h($newDay['date']) ?>"></label>
         <label class="field"><span>会場</span><input name="nd[venue]" value="<?= h($newDay['venue']) ?>" list="dl-venues" maxlength="50"></label>
         <label class="field field--wide"><span>メモ</span><input name="nd[note]" value="<?= h($newDay['note']) ?>"></label>

@@ -24,6 +24,7 @@
  *    data-pack          … 送信時に全項目を JSON 1個にまとめるフォーム
  *    data-rows          … バンド編集のメンバー行（追加・削除）
  *    data-print / data-autosubmit … 印刷ボタン / 選んだら即送信
+ *    <select>           … 全部のプルダウンをボタン + ポップアップの見た目にする（data-native で元のまま）
  *    data-song-list / data-add-song … 曲の編集
  *    data-track-search  … 曲の編集の🔍（Spotify / iTunes の曲を探して紐付ける）
  *    data-toasts        … お知らせのポップアップ（4秒で消える）
@@ -42,7 +43,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupNameCheck();
   setupImportPreview();
   setupMergeToggle();
-  setupVenuePick();
+  setupSelectPick();
   setupSlotSort();
   setupAlbumBox();
   setupAlbumSort();
@@ -731,94 +732,191 @@ function setupImportPreview() {
 }
 
 /* ---------------------------------------------------------------------
- * 取り込み: 会場のプルダウンを「登録済みのライブと統合」と同じ見た目のポップアップにする
+ * プルダウン（<select>）を全部「登録済みのライブと統合」と同じ見た目のポップアップにする
  *
  *   <select> の開いたときのリストは CSS で見た目を変えられないので、
- *   <select> は隠して値の入れ物として残し（送信・PHP 側はそのまま）、ボタン + ポップアップを横に作る。
- *   選んだら select.value を変えて change イベントを出す → 「新しい会場を作る」の欄の表示切り替えも今まで通り動く。
+ *   <select> は見えなくして値の入れ物として残し（送信・PHP 側はそのまま）、ボタン + ポップアップを横に作る。
+ *   選んだら select.value を変えて input / change イベントを出す → data-autosubmit などの今までの処理もそのまま動く。
+ *
+ *   ・これから作る <select> も、何もしなくても自動でこの見た目になる（後から JS で足した行も MutationObserver で拾う）
+ *   ・元のブラウザのプルダウンのままにしたいときは <select data-native> と書く
+ *   ・ポップアップは <body> の直下に position: fixed で出す（表の overflow で切れないように）
  * ------------------------------------------------------------------- */
-function setupVenuePick() {
-  const selects = document.querySelectorAll('[data-venue-select]');
-  if (!selects.length) return;
-  let openPop = null;
+function setupSelectPick() {
+  let openPop = null; // { pop, btn }
 
-  const closePop = () => {
+  const closePop = (focusBtn = false) => {
     if (!openPop) return;
-    openPop.previousElementSibling.setAttribute('aria-expanded', 'false');
-    openPop.remove();
+    const { pop, btn } = openPop;
+    btn.setAttribute('aria-expanded', 'false');
+    pop.remove();
     openPop = null;
+    if (focusBtn) btn.focus();
   };
 
-  selects.forEach((select) => {
-    const wrap = document.createElement('div');
-    wrap.className = 'live-pick';
+  // 対象外: data-native、複数選択（multiple）、リスト表示（size が2以上）
+  const isTarget = (el) => el instanceof HTMLSelectElement && !el.multiple && el.size <= 1 && !el.hasAttribute('data-native');
+
+  // ボタンの文字・状態を select に合わせる
+  const sync = (select) => {
+    const wrap = select.parentElement;
+    if (!wrap?.matches('.live-pick[data-select-pick]')) return;
+    const btn = wrap.querySelector(':scope > .live-pick__btn');
+    const text = btn.firstElementChild;
+    const opt = select.selectedOptions[0];
+    text.textContent = opt ? opt.textContent : '';
+    text.classList.toggle('is-placeholder', !select.value); // 「選択」「— 未設定 —」など値が空のものは薄く
+    btn.disabled = select.disabled;
+  };
+
+  const done = new WeakSet(); // 変換済みの select（同じものを2回変換しない）
+  const enhance = (select) => {
+    if (done.has(select)) return;
+    done.add(select);
+
+    // <div class="live-pick"> の中に select を入れて、その前にボタンを置く
+    // （select を箱の中に入れるので、グリッドの列もずれないし、required の吹き出しもボタンの位置に出る）
+    let wrap = select.parentElement;
+    if (wrap.matches('.live-pick[data-select-pick]')) {
+      // cloneNode でコピーされた行: 箱ごとコピーされているが、ボタンにイベントが付いていない → ボタンだけ作り直す
+      wrap.querySelector(':scope > .live-pick__btn')?.remove();
+    } else {
+      wrap = document.createElement('div');
+      wrap.className = 'live-pick';
+      wrap.dataset.selectPick = '';
+      // 入力欄の中（.field など）は横いっぱい、それ以外（絞り込みの年度など）は中身の幅
+      if (!select.closest('.field, .member-row-edit, .table--edit')) wrap.classList.add('live-pick--inline');
+      if (select.matches('.select-sm') || select.closest('.performer')) wrap.classList.add('live-pick--sm');
+      select.before(wrap);
+      wrap.append(select);
+    }
+
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'live-pick__btn';
     btn.setAttribute('aria-haspopup', 'listbox');
     btn.setAttribute('aria-expanded', 'false');
+    const label = select.getAttribute('aria-label');
+    if (label) btn.setAttribute('aria-label', label);
     const text = document.createElement('span');
     const icon = document.createElement('span');
     icon.className = 'icon';
     icon.setAttribute('aria-hidden', 'true');
     icon.textContent = 'expand_more';
     btn.append(text, icon);
-    wrap.append(btn);
-    select.hidden = true;
-    select.after(wrap);
+    wrap.prepend(btn);
 
-    // ボタンの文字を select の今の値に合わせる（未設定は薄く）
-    const sync = () => {
-      const opt = select.selectedOptions[0];
-      text.textContent = opt ? opt.textContent : '';
-      text.classList.toggle('is-placeholder', !select.value);
-    };
-    sync();
-    select.addEventListener('change', sync);
+    // hidden にすると required のチェックで「選択してください」が出せなくなるので、見えないだけにする
+    select.classList.add('select-native');
+    select.tabIndex = -1;
+    sync(select);
+  };
 
-    btn.addEventListener('click', () => {
-      if (openPop && wrap.contains(openPop)) { closePop(); return; }
-      closePop();
-      const pop = document.createElement('div');
-      pop.className = 'live-pop';
-      pop.setAttribute('role', 'listbox');
-      [...select.options].forEach((o) => {
-        const item = document.createElement('button');
-        item.type = 'button';
-        item.className = 'live-pop__item';
-        item.setAttribute('role', 'option');
-        if (o.value === select.value) item.setAttribute('aria-selected', 'true');
-        const name = document.createElement('span');
-        name.className = 'live-pop__name';
-        name.textContent = o.textContent; // textContent なので XSS にならない
-        item.append(name);
-        item.addEventListener('click', () => {
-          select.value = o.value;
-          select.dispatchEvent(new Event('change', { bubbles: true })); // 既存の change の処理（新しい会場の欄）を動かす
-          closePop();
-          btn.focus();
-        });
-        pop.append(item);
+  const open = (btn) => {
+    const select = btn.parentElement.querySelector(':scope > select');
+    const pop = document.createElement('div');
+    pop.className = 'live-pop live-pop--float';
+    pop.setAttribute('role', 'listbox');
+    if (btn.closest('.live-pick--sm')) pop.classList.add('live-pop--sm');
+    [...select.options].forEach((o) => {
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'live-pop__item';
+      item.setAttribute('role', 'option');
+      item.disabled = o.disabled;
+      if (o.selected) item.setAttribute('aria-selected', 'true');
+      const name = document.createElement('span');
+      name.className = 'live-pop__name';
+      name.textContent = o.textContent; // textContent なので XSS にならない
+      item.append(name);
+      item.addEventListener('click', () => {
+        const changed = select.value !== o.value;
+        select.value = o.value;
+        closePop(true);
+        if (changed) {
+          select.dispatchEvent(new Event('input', { bubbles: true }));
+          select.dispatchEvent(new Event('change', { bubbles: true })); // 既存の change の処理（新しい会場の欄・自動送信など）を動かす
+        }
       });
-      btn.after(pop);
-      btn.setAttribute('aria-expanded', 'true');
-      openPop = pop;
-      // 選択中の会場が見える位置までスクロール
-      const cur = pop.querySelector('[aria-selected="true"]');
-      if (cur) pop.scrollTop = cur.offsetTop - pop.clientHeight / 2 + cur.offsetHeight / 2;
+      pop.append(item);
     });
-  });
+    document.body.append(pop);
+
+    // ボタンの真下に出す。下に入りきらなければ上に出す
+    const r = btn.getBoundingClientRect();
+    pop.style.left = `${r.left}px`;
+    pop.style.minWidth = `${r.width}px`;
+    const below = window.innerHeight - r.bottom - 8;
+    if (below < Math.min(pop.offsetHeight, 200) && r.top > below) {
+      pop.style.bottom = `${window.innerHeight - r.top + 4}px`;
+      pop.style.maxHeight = `${Math.min(280, r.top - 8)}px`;
+    } else {
+      pop.style.top = `${r.bottom + 4}px`;
+      pop.style.maxHeight = `${Math.min(280, below)}px`;
+    }
+    // 右にはみ出すなら左にずらす
+    const over = pop.getBoundingClientRect().right - (window.innerWidth - 8);
+    if (over > 0) pop.style.left = `${Math.max(8, r.left - over)}px`;
+
+    btn.setAttribute('aria-expanded', 'true');
+    openPop = { pop, btn };
+    // 選択中の項目が見える位置までスクロールして、そこにフォーカス（↑↓ で動ける）
+    const cur = pop.querySelector('[aria-selected="true"]') || pop.querySelector('.live-pop__item:not(:disabled)');
+    if (cur) {
+      pop.scrollTop = cur.offsetTop - pop.clientHeight / 2 + cur.offsetHeight / 2;
+      cur.focus({ preventScroll: true });
+    }
+  };
+
+  document.querySelectorAll('select').forEach((s) => { if (isTarget(s)) enhance(s); });
+
+  // 後から足された <select>（メンバー行の追加など）も変換する
+  new MutationObserver((records) => {
+    records.forEach((rec) => rec.addedNodes.forEach((node) => {
+      if (!(node instanceof Element)) return;
+      [node, ...node.querySelectorAll('select')].forEach((s) => { if (isTarget(s)) enhance(s); });
+    }));
+  }).observe(document.body, { childList: true, subtree: true });
+
+  // 選んだあと・JS が値を変えて change を出したときに、ボタンの文字を合わせる
+  document.addEventListener('change', (e) => { if (isTarget(e.target)) sync(e.target); });
+  // フォームのリセットボタン（リセットが終わってから読む）
+  document.addEventListener('reset', (e) => setTimeout(() => e.target.querySelectorAll('select').forEach(sync)));
 
   document.addEventListener('click', (e) => {
-    if (openPop && !openPop.parentElement.contains(e.target)) closePop();
-  });
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && openPop) {
-      const btn = openPop.previousElementSibling;
+    const btn = e.target.closest('[data-select-pick] > .live-pick__btn');
+    if (btn) {
+      const same = openPop?.btn === btn;
       closePop();
-      btn.focus();
+      if (!same) open(btn);
+      return;
+    }
+    if (openPop && !openPop.pop.contains(e.target)) closePop();
+  });
+
+  document.addEventListener('keydown', (e) => {
+    // ボタンで ↓↑ を押しても開く（ふつうの select と同じ）
+    const btn = e.target.closest?.('[data-select-pick] > .live-pick__btn');
+    if (btn && !openPop && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+      e.preventDefault();
+      open(btn);
+      return;
+    }
+    if (!openPop) return;
+    if (e.key === 'Escape' || e.key === 'Tab') {
+      if (e.key === 'Escape') e.preventDefault();
+      closePop(e.key === 'Escape');
+    } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const items = [...openPop.pop.querySelectorAll('.live-pop__item:not(:disabled)')];
+      const i = items.indexOf(document.activeElement);
+      items[Math.min(items.length - 1, Math.max(0, i + (e.key === 'ArrowDown' ? 1 : -1)))]?.focus();
     }
   });
+
+  // ページや表をスクロールしたら閉じる（fixed なのでボタンから離れてしまう）。ポップアップの中のスクロールは別
+  window.addEventListener('scroll', (e) => { if (openPop && !openPop.pop.contains(e.target)) closePop(); }, true);
+  window.addEventListener('resize', () => closePop());
 }
 
 /** 開催日 "2025-03-15" → 年度（4月始まり。1〜3月は前の年の年度）。PHP の academic_year() と同じ計算 */
@@ -829,12 +927,15 @@ function fiscalYear(dateStr) {
 }
 
 /* ---------------------------------------------------------------------
- * 取り込み: 「登録済みのライブと統合」トグル
+ * 取り込み / ライブ編集: 「登録済みのライブと統合」「他のライブに統合」トグル
  *
- *   ON  … ライブ名の入力欄を隠して disabled（送信されない）にし、代わりに「ライブを選択 ▾」を出す。
- *          押すと <template id="live-picker"> を複製したポップアップが開き、
- *          開催日の年度の見出しまでスクロールした状態で表示される。選ぶと hidden の live_id に入る。
+ *   ON  … ライブ名の入力欄（と [data-merge-hide] の欄）を隠して disabled（送信されない）にし、代わりに「ライブを選択 ▾」を出す。
+ *          押すと <template id="live-picker">（partials/live_picker.php）を複製したポップアップが開き、
+ *          開催日（ライブ編集では今の年度）の年度の見出しまでスクロールした状態で表示される。選ぶと hidden の live_id に入る。
  *   OFF … 元の入力欄に戻す（打ってあった文字はそのまま）。merge / live_id は disabled にして送らない。
+ *
+ *   ライブ編集（[data-live-merge]）では、統合先にもうある日程名を選んでいる日程に
+ *   「登録済の日程のため上書きされます」を出し、保存前に確認ダイアログ（data-confirm）を出す。
  * ------------------------------------------------------------------- */
 function setupMergeToggle() {
   const tpl = document.getElementById('live-picker');
@@ -857,13 +958,43 @@ function setupMergeToggle() {
 
   // 注意文: 選んだライブにもう同じ日程がある / 年度が開催日とずれている
   // あわせて、カード上部の「この日程は登録済みです」の帯も出し入れする
+  // ライブ編集: 統合先にもうある日程名の日程に「上書き」の警告を出す + 保存前の確認文を付け外し
+  const updateLiveEdit = (box) => {
+    const form = box.closest('form');
+    const btn = box.querySelector('[data-live-pick]');
+    const note = box.querySelector('[data-merge-note]');
+    const on = box.querySelector('[data-merge-toggle]').getAttribute('aria-pressed') === 'true';
+    const chosen = on && !!box.querySelector('[data-live-id]').value;
+    const labels = chosen && btn.dataset.labels ? btn.dataset.labels.split('・') : [];
+    const addNew = form.querySelector('[data-new-day-add]')?.checked;
+    let overwrites = 0;
+    form.querySelectorAll('[data-day-label]').forEach((select) => {
+      const warn = select.closest('.field').querySelector('[data-overwrite-note]');
+      const hit = labels.includes(select.value) && (!select.matches('[data-new-day]') || addNew);
+      warn.hidden = !hit;
+      if (hit) overwrites++;
+    });
+    note.textContent = chosen ? 'このライブの日程を全部、選んだライブへ移します（このライブは消えます）' : '';
+    if (chosen) {
+      form.dataset.confirm = `このライブを「${btn.dataset.year}年度 ${btn.dataset.name}」に統合します。`
+        + (overwrites ? `\n登録済の日程 ${overwrites} 件は上書きされ、元のバンドは消えます。` : '')
+        + '\n元に戻せません。よろしいですか？';
+    } else {
+      delete form.dataset.confirm;
+    }
+  };
+
   const updateNote = (box) => {
     const card = box.closest('[data-timetable]');
+    if (!card) {
+      updateLiveEdit(box);
+      return;
+    }
     const note = box.querySelector('[data-merge-note]');
     const btn = box.querySelector('[data-live-pick]');
     const flash = card.querySelector('[data-exists-flash]');
     const on = box.querySelector('[data-merge-toggle]').getAttribute('aria-pressed') === 'true';
-    const label = card.querySelector('input[name$="[label]"]').value.trim();
+    const label = card.querySelector('[name$="[label]"]').value.trim();
     const year = fiscalYear(card.querySelector('[data-date-input]').value);
     note.textContent = '';
     note.className = 'merge-note';
@@ -904,6 +1035,11 @@ function setupMergeToggle() {
     box.querySelector('[data-merge-flag]').disabled = !on;
     box.querySelector('[data-live-id]').disabled = !on;
     box.querySelector('[data-live-pick-wrap]').hidden = !on;
+    // ライブ編集の年度の欄など、統合するときは使わない欄
+    box.parentElement.querySelectorAll('[data-merge-hide]').forEach((el) => {
+      el.hidden = on;
+      el.querySelectorAll('input, select').forEach((i) => { i.disabled = on; });
+    });
     if (!on) {
       closePop();
       name.focus();
@@ -924,7 +1060,8 @@ function setupMergeToggle() {
     pop.querySelector(`[data-live-option="${current}"]`)?.setAttribute('aria-selected', 'true');
 
     // 開催日の年度の見出しまでスクロール。無ければそれより前で一番近い年度（リストは新しい年度が上）
-    const year = fiscalYear(box.closest('[data-timetable]').querySelector('[data-date-input]').value);
+    const dateInput = box.closest('[data-timetable]')?.querySelector('[data-date-input]');
+    const year = dateInput ? fiscalYear(dateInput.value) : (Number(box.dataset.year) || null); // ライブ編集は今のライブの年度
     if (year !== null) {
       const head = [...pop.querySelectorAll('[data-year-head]')].find((h) => Number(h.dataset.yearHead) <= year);
       if (head) pop.scrollTop = head.offsetTop; // .live-pop は position: absolute なので、offsetTop はポップアップの上端からの距離
@@ -953,6 +1090,7 @@ function setupMergeToggle() {
       box.querySelector('[data-live-id]').value = opt.dataset.liveOption;
       btn.dataset.year = opt.dataset.year;
       btn.dataset.labels = opt.dataset.labels;
+      btn.dataset.name = opt.dataset.name;
       const text = box.querySelector('[data-live-pick-text]');
       text.textContent = `${opt.dataset.year}年度 ${opt.dataset.name}`;
       text.classList.remove('is-placeholder');
@@ -973,8 +1111,14 @@ function setupMergeToggle() {
   });
   // 開催日・日程ラベル・ライブ名を変えたら注意文と帯を作り直す
   document.addEventListener('input', (e) => {
-    if (!e.target.matches('[data-date-input], input[name$="[label]"], [data-live-name]')) return;
+    if (!e.target.matches('[data-date-input], [name$="[label]"], [data-live-name]')) return;
     const box = e.target.closest('[data-timetable]')?.querySelector('[data-merge]');
+    if (box) updateNote(box);
+  });
+  // ライブ編集: 日程名・「この日程を追加する」を変えたら警告を出し直す
+  document.addEventListener('change', (e) => {
+    if (!e.target.matches('[data-day-label], [data-new-day-add]')) return;
+    const box = e.target.closest('form')?.querySelector('[data-live-merge] [data-merge]');
     if (box) updateNote(box);
   });
 

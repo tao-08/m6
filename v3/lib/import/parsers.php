@@ -140,12 +140,16 @@ function parse_timetable(array $rows): array
     $title = $title ?: ($titleCandidates[0] ?? '');
     $result['title'] = $title;
 
-    // 「ライブハウス2日目」→ 名前「ライブハウス」+ ラベル「2日目」
-    if (preg_match('/^(.*?)\s*(\d+日目)\s*$/u', $title, $m)) {
+    // 日程名は「1日目」「2日目」「3日目」「教室ライブ」のどれか（DAY_LABELS）。画面ではこれが初期選択になる
+    if (preg_match('/^(.*?)\s*(\d+)日目\s*$/u', $title, $m)) {
+        // 「ライブハウス2日目」→ 名前「ライブハウス」+ ラベル「2日目」（4日目以降は選択肢に無いので「1日目」）
         $result['live_name'] = trim($m[1]);
-        $result['label'] = $m[2];
+        $result['label'] = in_array((int)$m[2], [1, 2, 3], true) ? (int)$m[2] . '日目' : '1日目';
+    } elseif (str_contains($title, '教室ライブ')) {
+        $result['live_name'] = $title;
+        $result['label'] = '教室ライブ';
     } else {
-        // 日目が無い（「教室ライブ」など）→ 1日だけのライブとみなす
+        // 日目が無い → 1日だけのライブとみなして「1日目」。画面で選び直せる
         $result['live_name'] = $title;
         $result['label'] = '1日目';
     }

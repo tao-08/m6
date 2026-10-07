@@ -141,6 +141,22 @@ function icon(string $name, string $class = ''): string
     return '<span class="icon' . ($class !== '' ? ' ' . h($class) : '') . '" aria-hidden="true">' . h($name) . '</span>';
 }
 
+/** live_day.label（日程名）に使える値。画面は選択式、保存時もこの中にあるかチェックする */
+const DAY_LABELS = ['1日目', '2日目', '3日目', '教室ライブ'];
+
+/** 日程名の <select> の中身。$selected が一覧に無ければ先頭（1日目）を選ぶ */
+function day_label_options(string $selected): string
+{
+    if (!in_array($selected, DAY_LABELS, true)) {
+        $selected = DAY_LABELS[0];
+    }
+    $html = '';
+    foreach (DAY_LABELS as $label) {
+        $html .= '<option value="' . h($label) . '"' . ($label === $selected ? ' selected' : '') . '>' . h($label) . '</option>';
+    }
+    return $html;
+}
+
 /** 別ページへ移動して処理を終える（exit を忘れると後ろの処理が動いてしまうので関数にまとめた） */
 function redirect(string $path): never
 {
@@ -289,6 +305,21 @@ function fmt_year(mixed $year): string
 function current_fiscal_year(): int
 {
     return (int)date('n') >= 4 ? (int)date('Y') : (int)date('Y') - 1;
+}
+
+/** 4月始まりの年度。1〜3月は前の年の年度になる（2026年1月のライブ → 2025年度） */
+function academic_year(int $month, int $year): int
+{
+    return $month >= 4 ? $year : $year - 1;
+}
+
+/** "2026-01-12" → 2025（年度）。日付として正しくなければ null */
+function fiscal_year_from_date(string $date): ?int
+{
+    if (!preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $date, $d) || !checkdate((int)$d[2], (int)$d[3], (int)$d[1])) {
+        return null;
+    }
+    return academic_year((int)$d[2], (int)$d[1]);
 }
 
 /** 入学年度 → 学年（1, 2, …）。入学年度が無い・未来になっている（データの誤り）なら null */

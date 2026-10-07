@@ -360,7 +360,8 @@ input:focus, select:focus { outline: none; border-color: var(--accent); box-shad
 .auth__hero .muted { margin-top: 16px; }
 .auth__card { display: grid; gap: 14px; padding: 28px; }
 .auth__card h2 { font-size: 22px; font-weight: 800; }
-.field { display: grid; gap: 6px; font-size: 13px; font-weight: 600; color: var(--muted); }
+.field { display: grid; align-content: start; gap: 6px; font-size: 13px; font-weight: 600; color: var(--muted); }
+/* align-content: start … 同じ行のほかの欄が高くなっても（下に注意文が出たときなど）、ラベルと入力欄は伸ばさず上に詰める */
 .req { font-style: normal; font-size: 10px; color: var(--accent); margin-left: 4px; }
 .form-card { display: grid; gap: 8px; }
 .form-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
@@ -402,6 +403,21 @@ input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px;
 .live-pop__item:hover, .live-pop__item:focus-visible { background: var(--accent-soft); }
 .live-pop__item[aria-selected="true"] .live-pop__name { color: var(--accent); font-weight: 700; }
 .live-pop__empty { margin: 0; padding: 12px; color: var(--muted); font-size: 13px; }
+/* ---- 全部の <select> を上の見た目にする（assets/app.js の setupSelectPick） ---- */
+/* 元の select は値の入れ物。hidden ではなく「見えないだけ」にして、required の吹き出しはボタンの位置に出す */
+.select-native { position: absolute !important; left: 50%; bottom: 0; width: 1px !important; height: 1px !important; padding: 0 !important; margin: 0 !important;
+  opacity: 0; pointer-events: none; border: 0 !important; }
+.live-pick[data-select-pick] { z-index: auto; }
+.live-pick__btn:disabled { opacity: .5; cursor: not-allowed; }
+.live-pick__btn > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.live-pick--inline { display: inline-block; vertical-align: middle; }
+.live-pick--inline .live-pick__btn { width: auto; min-width: 6em; padding: 7px 10px 7px 13px; font-weight: 700; }
+.live-pick--sm .live-pick__btn { min-width: 4.5em; padding: 4px 6px 4px 9px; font-size: 12px; border-radius: 8px; gap: 4px; }
+.live-pick--sm .live-pick__btn .icon { font-size: 16px; }
+.live-pop--float { position: fixed; top: auto; right: auto; z-index: 1000; max-width: calc(100vw - 16px); padding-bottom: 0; padding-block: 4px; }
+.live-pop--float .live-pop__item { white-space: nowrap; }
+.live-pop--float .live-pop__item:disabled { opacity: .45; cursor: not-allowed; }
+.live-pop--sm .live-pop__item { padding: 6px 10px; font-size: 13px; }
 .merge-note { font-weight: 400; white-space: pre-line; }
 .merge-note:empty { display: none; }
 .merge-note--warn { color: var(--warn); }

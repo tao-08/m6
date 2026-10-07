@@ -273,13 +273,8 @@ if ($plan === null): // ==================== アップロード画面 ==========
 
     // ---- 入力欄の候補（datalist）用に、既存のライブ名・会場を取っておく ----
     $liveNames = $pdo->query('SELECT DISTINCT name FROM live ORDER BY name')->fetchAll(PDO::FETCH_COLUMN);
-    // 「登録済みのライブと統合」のポップアップ用。登録済みの日程ラベルも一緒に取る
-    //   LEFT JOIN: 日程が無いライブも出す / GROUP_CONCAT: 複数行のラベルを「1日目・2日目」の1つの文字にまとめる
-    $lives = $pdo->query("SELECT l.live_id, l.fiscal_year, l.name,
-            GROUP_CONCAT(d.label ORDER BY d.label SEPARATOR '・') AS labels
-        FROM live l LEFT JOIN live_day d ON d.live_id = l.live_id
-        GROUP BY l.live_id, l.fiscal_year, l.name
-        ORDER BY l.fiscal_year DESC, l.name")->fetchAll();
+    // 「登録済みのライブと統合」のポップアップ用（登録済みの日程名つき）
+    $lives = lives_with_labels($pdo);
     $livesById = array_column($lives, null, 'live_id');
     // 会場はプルダウンで選ばせる（表記ゆれ防止）。FETCH_KEY_PAIR で [venue_id => name] の形になる
     $venues = $pdo->query('SELECT venue_id, name FROM venue ORDER BY name')->fetchAll(PDO::FETCH_KEY_PAIR);
@@ -371,23 +366,8 @@ if ($plan === null): // ==================== アップロード画面 ==========
     <datalist id="dl-live-names"><?php foreach ($liveNames as $n): ?><option value="<?= h($n) ?>"><?php endforeach; ?></datalist>
     <!-- 名簿の検索欄の候補。data-key は JS が「名簿」側の表示を更新するのに使う -->
     <datalist id="dl-roster"><?php foreach ($rosterChoices as $label => $ref): ?><option value="<?= h($label) ?>" data-key="<?= h($ref) ?>"><?php endforeach; ?></datalist>
-    <!-- 「登録済みのライブと統合」のポップアップの中身。1回だけ書いて、JS が開くたびに複製して使う -->
-    <template id="live-picker">
-        <div class="live-pop" role="listbox" aria-label="統合するライブ">
-            <?php if (!$lives): ?><p class="live-pop__empty">登録済みのライブはまだありません</p><?php endif; ?>
-            <?php $prevYear = null; foreach ($lives as $lv): ?>
-                <?php if ($lv['fiscal_year'] !== $prevYear): $prevYear = $lv['fiscal_year']; ?>
-                    <p class="live-pop__year" data-year-head="<?= (int)$lv['fiscal_year'] ?>"><?= (int)$lv['fiscal_year'] ?>年度</p>
-                <?php endif; ?>
-                <button type="button" class="live-pop__item" role="option" data-live-option="<?= (int)$lv['live_id'] ?>"
-                    data-year="<?= (int)$lv['fiscal_year'] ?>" data-name="<?= h($lv['name']) ?>" data-labels="<?= h((string)$lv['labels']) ?>">
-                    <span class="live-pop__name"><?= h($lv['name']) ?></span>
-                    <small class="muted"><?= $lv['labels'] !== null ? '登録済み: ' . h($lv['labels']) : '日程なし' ?></small>
-                </button>
-            <?php endforeach; ?>
-        </div>
-    </template>
-    <datalist id="dl-labels"><?php foreach (['1日目', '2日目', '3日目', '4日目', '教室ライブ'] as $n): ?><option value="<?= h($n) ?>"><?php endforeach; ?></datalist>
+    <!-- 「登録済みのライブと統合」のポップアップの中身（JS が開くたびに複製して使う） -->
+    <?php require __DIR__ . '/partials/live_picker.php'; ?>
 
     <h2 class="section-title">① タイムテーブル</h2>
 
@@ -464,7 +444,8 @@ if ($plan === null): // ==================== アップロード画面 ==========
                     <small class="merge-note" data-merge-note></small>
                 </div>
                 <label class="field"><span>日程</span>
-                    <input name="tt[<?= $ti ?>][label]" value="<?= h($val('label', $tt['label'])) ?>" list="dl-labels" maxlength="50" required></label>
+                    <!-- 初期選択はタイムテーブルのタイトルから検知した日程（lib/import/parsers.php） -->
+                    <select name="tt[<?= $ti ?>][label]"><?= day_label_options((string)$val('label', $tt['label'])) ?></select></label>
                 <label class="field"><span>開催日 <small class="muted" data-fiscal-year><?= $year !== null ? "→ {$year}年度" : '' ?></small></span>
                     <input type="date" name="tt[<?= $ti ?>][date]" value="<?= h($date) ?>" required data-date-input></label>
                 <div class="field field--wide"><span>会場<?php if ($tt['venue'] !== ''): ?> <small class="muted">（ファイルの表記: <?= h($tt['venue']) ?>）</small><?php endif; ?></span>

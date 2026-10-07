@@ -346,6 +346,19 @@ function save_songs(PDO $pdo, int $bandId, array $songs): void
 }
 
 /**
+ * 「登録済みのライブと統合」のポップアップ用（partials/live_picker.php）。登録済みの日程名も一緒に取る
+ *   LEFT JOIN: 日程が無いライブも出す / GROUP_CONCAT: 複数行のラベルを「1日目・2日目」の1つの文字にまとめる
+ */
+function lives_with_labels(PDO $pdo): array
+{
+    return $pdo->query("SELECT l.live_id, l.fiscal_year, l.name,
+            GROUP_CONCAT(d.label ORDER BY d.label SEPARATOR '・') AS labels
+        FROM live l LEFT JOIN live_day d ON d.live_id = l.live_id
+        GROUP BY l.live_id, l.fiscal_year, l.name
+        ORDER BY l.fiscal_year DESC, l.name")->fetchAll();
+}
+
+/**
  * 日程を削除する。band / band_member は ON DELETE CASCADE で DB が一緒に消す。
  * 日程が1つも無くなったライブも消す。
  */
