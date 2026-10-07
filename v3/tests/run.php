@@ -31,6 +31,12 @@ check('異体字', member_key('岩﨑太一'), member_key('岩崎太一'));
 $ph = fn(string $t, float $y, float $x0, float $x1) => ['text' => $t, 'yc' => $y, 'x0' => $x0, 'x1' => $x1];
 check('PDF の折り返しは詰める', pdf_join_cell([$ph('GENERATION（谷', 10, 100, 160), $ph('ヶ崎）', 20, 100, 120)]), 'GENERATION（谷ヶ崎）');
 check('PDF の縦に2人は分ける', pdf_join_cell([$ph('伊藤和奏', 10, 110, 131), $ph('小坂知都乃（Vn.）', 20, 98, 143)]), '伊藤和奏 小坂知都乃（Vn.）');
+$wd = fn(string $t, float $x0, float $x1, float $y) => ['text' => $t, 'x0' => $x0, 'x1' => $x1, 'y0' => $y, 'y1' => $y + 5];
+$pdfCols = null;
+check('PDF で隣の欄にはみ出して接した文字を分ける', pdf_words_to_rows([
+    $wd('バンド名', 10, 30, 10), $wd('Ba.', 100, 110, 10), $wd('Dr.', 150, 160, 10),
+    $wd('GOING', 5, 15, 30), $wd('UNDER', 16.4, 26, 30), $wd('奥山航太郎', 92, 117, 30), $wd('小豆畑健吾・東哲平・福地龍之介', 117.2, 192, 30),
+], $pdfCols), [['バンド名', 'Ba.', 'Dr.'], ['GOING UNDER', '奥山航太郎', '小豆畑健吾・東哲平・福地龍之介']]);
 check('PDF の康熙部首（⾧→長）', split_member_names("\u{2FA7}谷川優"), ['長谷川優']);
 check('パート見出し', array_map('normalize_part', ['Vo(Gt.)', 'Gt.1', 'Gt2', 'Ba.', 'Dr.', 'Key./その他', '曲数']), ['Vo', 'Gt', 'Gt', 'Ba', 'Dr', 'Key', null]);
 check('時刻（1セル）', extract_times('13:30〜14:00'), ['13:30', '14:00']);
@@ -278,6 +284,15 @@ check('同名はボーカルで区別', roster_choices(['rosters' => [['file' =>
 check('Vo が空なら最初の人', array_keys(roster_choices(['rosters' => [['file' => 'a.pdf', 'bands' => [
     $rb('ENTH', [['高橋', 'Gt'], ['伊藤', 'Dr']]), $rb('ENTH', [['渡辺', 'Vo']]),
 ]]]])), ['ENTH（高橋）', 'ENTH（Vo 渡辺）']);
+$cols = [1 => ['part' => 'Vo'], 2 => ['part' => 'Gt'], 3 => ['part' => 'Gt'], 4 => ['part' => 'Ba'], 5 => ['part' => 'Dr']];
+check('ギター2人埋まり・Ba 空ならベースボーカル', guess_vocal_role($cols,
+    ['cells' => [1 => '八木毬有', 2 => '木村剛', 3 => '郡山桃子', 4 => '', 5 => '煙山諒芽'], 'extras' => []], '八木毬有', true), 'ba');
+check('Ba 空なら人数に関係なくベースボーカル', guess_vocal_role($cols,
+    ['cells' => [1 => 'A', 2 => 'B', 3 => '', 4 => '', 5 => 'C'], 'extras' => [], 'member_count' => 4], 'A', true), 'ba');
+check('Gt.1 も Ba も空ならベースボーカル（SHANK）', guess_vocal_role($cols,
+    ['cells' => [1 => 'A', 2 => '', 3 => 'B', 4 => '', 5 => 'C'], 'extras' => []], 'A', true), 'ba');
+check('Ba がいて Gt.1 が空ならギターボーカル', guess_vocal_role($cols,
+    ['cells' => [1 => 'A', 2 => '', 3 => 'B', 4 => 'D', 5 => 'C'], 'extras' => []], 'A', true), 'gt');
 check('ボーカルも同じならファイル名', array_keys(roster_choices(['rosters' => [
     ['file' => 'a.pdf', 'bands' => [$rb('ENTH', [['渡辺', 'Vo']])]],
     ['file' => 'b.pdf', 'bands' => [$rb('ENTH', [['渡辺', 'Vo']])]],

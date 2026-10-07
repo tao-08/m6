@@ -254,10 +254,10 @@ function spread_roster_cells(array $roster): array
  * 名簿の1バンドから「ボーカルの形」の初期値を推測する（プレビューで選んでおくだけ。あとで変えられる）
  *   1. ボーカルと同じ名前が Gt / Ba / Key / Dr 欄にいる → その楽器のボーカル
  *   2. 1人目のボーカルだけ、空欄から推測する（2人目以降のボーカルにまで当てはめると、全員ギターボーカルになってしまう）
+ *      - Ba. が空                             → ベースボーカル（人数は見ない。ベースのいない編成でも選ばれるので、違えばプレビューで直す）
  *      - Gt.1 が空で Gt.2 に人がいる          → ギターボーカル（空いた Gt.1 がボーカル本人の分）
- *      - Ba. が空で、メンバーが3人            → ベースボーカル（スリーピース）
  *      - Gt.1 も Gt.2 も空で、メンバーが3人   → ギターボーカル（スリーピース）
- *      「空欄」だけで決めないのは、ベースやギターがいない編成（アコースティックなど）まで巻き込むから
+ *      ギターの方は「空欄」だけで決めない。ギターがいない編成（キーボードバンドなど）まで巻き込むから
  * @param array  $band    spread_roster_cells で1セル1人に分けた後のバンド（cells と extras）
  * @param string $voName  ボーカルの名前
  * @return string|null VOCAL_ROLES のキー。推測できなければ null（= 単体ボーカル）
@@ -302,14 +302,14 @@ function guess_vocal_role(array $columns, array $band, string $voName, bool $fir
     };
     $gt = $cellsOf('Gt');
     $ba = $cellsOf('Ba');
+    // Ba. が空 → ベースボーカル（ギターの欄より先に見る。SHANK のように Gt.1 も空いているバンドもベースボーカル）
+    if ($ba && implode('', $ba) === '') {
+        return 'ba';
+    }
     if (count($gt) >= 2 && $gt[0] === '' && $gt[1] !== '') {
         return 'gt';
     }
-    $trio = roster_band_size($band) === 3;
-    if ($trio && $ba && implode('', $ba) === '') {
-        return 'ba';
-    }
-    if ($trio && $gt && implode('', $gt) === '') {
+    if (roster_band_size($band) === 3 && $gt && implode('', $gt) === '') {
         return 'gt';
     }
     return null;

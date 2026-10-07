@@ -148,8 +148,9 @@ function pdf_group_lines(array $words): array
             if ($gap < ($w['y1'] - $w['y0']) * 0.8) {
                 $phrases[$p]['text'] .= ' ' . $w['text'];
                 $phrases[$p]['x1'] = $w['x1'];
+                $phrases[$p]['words'][] = $w;
             } else {
-                $phrases[] = ['x0' => $w['x0'], 'x1' => $w['x1'], 'yc' => $line['yc'], 'h' => $w['y1'] - $w['y0'], 'text' => $w['text']];
+                $phrases[] = ['x0' => $w['x0'], 'x1' => $w['x1'], 'yc' => $line['yc'], 'h' => $w['y1'] - $w['y0'], 'text' => $w['text'], 'words' => [$w]];
             }
         }
         $line['phrases'] = $phrases;
@@ -201,16 +202,45 @@ function pdf_words_to_rows(array $words, ?array &$columns): array
         array_unshift($cols, ['center' => $center, 'x0' => $center, 'title' => '']);
     }
 
-    // 各フレーズを一番近い列へ
-    foreach ($phrases as &$p) {
-        $pc = ($p['x0'] + $p['x1']) / 2;
+    // x 座標 → 一番近い列の番号
+    $nearestCol = static function (float $x) use ($cols): int {
         $best = 0;
         foreach ($cols as $ci => $c) {
-            if (abs($c['center'] - $pc) < abs($cols[$best]['center'] - $pc)) {
+            if (abs($c['center'] - $x) < abs($cols[$best]['center'] - $x)) {
                 $best = $ci;
             }
         }
-        $p['col'] = $best;
+        return $best;
+    };
+
+    // 隣の欄にはみ出した長い文字（Dr. 欄の「小豆畑健吾・東哲平・福地龍之介」など）が、
+    // 左の欄の名前（Ba. 欄の「奥山航太郎」）にくっついて1つのフレーズになっていたら、分け直す。
+    //   分けるのは「すき間が空白1文字よりずっと狭い（= 空白ではなく、別々の欄の文字が接している）」
+    //   かつ「単語ごとに見ると近い列が違う」ときだけ。長いバンド名などを途中で切らないように両方そろったときに限る
+    $split = [];
+    foreach ($phrases as $p) {
+        $part = null;
+        foreach ($p['words'] as $w) {
+            if ($part !== null) {
+                $touching = $w['x0'] - $part['x1'] < $p['h'] * 0.15;
+                $prevCol = $nearestCol(($part['words'][count($part['words']) - 1]['x0'] + $part['x1']) / 2);
+                if (!$touching || $nearestCol(($w['x0'] + $w['x1']) / 2) === $prevCol) {
+                    $part['text'] .= ' ' . $w['text'];
+                    $part['x1'] = $w['x1'];
+                    $part['words'][] = $w;
+                    continue;
+                }
+                $split[] = $part;
+            }
+            $part = ['x0' => $w['x0'], 'x1' => $w['x1'], 'yc' => $p['yc'], 'h' => $p['h'], 'text' => $w['text'], 'words' => [$w]];
+        }
+        $split[] = $part;
+    }
+    $phrases = $split;
+
+    // 各フレーズを一番近い列へ
+    foreach ($phrases as &$p) {
+        $p['col'] = $nearestCol(($p['x0'] + $p['x1']) / 2);
     }
     unset($p);
 
