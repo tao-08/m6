@@ -249,21 +249,18 @@ h3 { font-size: 16px; }
 .toolbar { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; align-items: center; }
 .toolbar .search { min-width: 12em; } /* 狭い画面ではボタンが次の行に回る */
 
-/* 年度スロット（ライブ一覧）: 3段見える窓。真ん中が選択中で、上下に前後の年度を薄く見せて「回せる」とわかるようにする */
-.year-slot { position: relative; flex: none; width: 7.2em; height: 74px; overflow: hidden;
+/* 年度スロット（ライブ一覧）: 真ん中の1段（26px）が選択中。上下に12pxずつ前後の年度の文字が半分ほど覗いて「回せる」とわかる */
+.year-slot { position: relative; flex: none; width: 6.6em; height: 52px; overflow: hidden;
   border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--surface);
   cursor: ns-resize; touch-action: none; user-select: none; -webkit-user-select: none; }
 .year-slot:focus-visible, .year-slot.is-filtered { border-color: var(--accent); }
 .year-slot.is-filtered { box-shadow: 0 0 0 3px var(--accent-soft); }
-/* 真ん中の段（選択中の位置）に薄い帯を敷く */
-.year-slot::before { content: ""; position: absolute; left: 4px; right: 4px; top: 50%; height: 26px; transform: translateY(-50%);
-  border-radius: 6px; background: var(--surface-2); pointer-events: none; }
 .year-slot__reel { position: relative; transition: transform .32s cubic-bezier(.2, 1.4, .4, 1); will-change: transform; }
 .year-slot__reel.is-dragging { transition: none; }
-.year-slot__item { height: 24px; display: flex; align-items: center; justify-content: center; gap: 2px;
-  font: 800 15px/1 var(--font); font-variant-numeric: tabular-nums; letter-spacing: -.02em; color: var(--muted);
-  opacity: .45; transition: opacity .2s, color .2s; }
-.year-slot__item small { font-size: 10px; font-weight: 700; }
+.year-slot__item { height: 26px; display: flex; align-items: center; justify-content: center; gap: 2px;
+  font: 600 20px/1 var(--font); font-variant-numeric: tabular-nums; letter-spacing: -.02em; color: var(--muted);
+  opacity: .3; transition: opacity .2s, color .2s; }
+.year-slot__item small { font-size: 11px; font-weight: 500; }
 /* 前後の段は同じ大きさのまま薄くするだけ。選択中だけ濃くする */
 .year-slot__item.is-current { color: var(--text); opacity: 1; }
 .year-slot.is-filtered .year-slot__item.is-current { color: var(--accent); }
