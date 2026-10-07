@@ -406,6 +406,25 @@ function instrument_class(?string $short): string
 }
 
 /**
+ * 担当楽器を色付きのマーク（.part）で並べる。メンバー一覧と個人ページで共通。
+ *   $parts の各行: ['short_name' => 'Vo', 'name' => 'ボーカル', 'n' => 回数（$withCount のときだけ使う）]
+ *   $class: .partbar に足すクラス（表のセルの中なら 'partbar--cell'）
+ *   楽器が無ければ「—」
+ */
+function part_marks(array $parts, bool $withCount = false, string $class = ''): string
+{
+    if (!$parts) {
+        return '<span class="muted small">—</span>';
+    }
+    $html = '<div class="' . h(trim('partbar ' . $class)) . '">';
+    foreach ($parts as $p) {
+        $html .= '<span class="part part--' . h(instrument_class($p['short_name'])) . '" title="' . h($p['name']) . '">'
+            . h($p['short_name']) . ($withCount ? ' × ' . (int)$p['n'] : '') . '</span>';
+    }
+    return $html . '</div>';
+}
+
+/**
  * instrument テーブルを全部取る（セレクトボックス用）。1リクエスト中は使い回す。
  * 表示順は DB の sort_order 列が持っている（PHP 側に並び順を書かなくて済む）。
  */
@@ -435,4 +454,52 @@ function render_header(string $title, string $active = ''): void
 function render_footer(): void
 {
     require __DIR__ . '/../partials/footer.php';
+}
+
+
+/**
+ * 取り込みのプレビュー・タイムテーブルの編集のフォームは入力欄が多い（数百個）。
+ * PHP には「1回の POST で受け取れる項目数」の上限（php.ini の max_input_vars、XAMPP では 1000）があり、
+ * 超えた分は「エラーも出さずに捨てられる」。名簿が大きいと登録内容が欠けてしまう。
+ *
+ * 対策: JavaScript が送信直前に全項目を JSON 1個（payload）にまとめて送る（assets/app.js）。
+ * ここで JSON を元の $_POST と同じ形の配列に戻す。
+ * JavaScript が動かないときは payload が無いので、普通の $_POST をそのまま使う。
+ */
+function read_form_input(): array
+{
+    $payload = $_POST['payload'] ?? null;
+    if (!is_string($payload) || $payload === '') {
+        return $_POST;
+    }
+    $pairs = json_decode($payload, true);
+    if (!is_array($pairs)) {
+        return $_POST;
+    }
+    // $pairs は [["tt[0][s][3][name]", "King Gnu"], ["action", "commit"], ...] の形
+    $input = [];
+    foreach ($pairs as $pair) {
+        if (!is_array($pair) || count($pair) !== 2 || !is_string($pair[0]) || !is_string($pair[1])) {
+            continue;
+        }
+        // "tt[0][s][3][name]" → ['tt', '0', 's', '3', 'name'] に分解
+        if (!preg_match('/^([^\[\]]+)((?:\[[^\[\]]*\])*)$/', $pair[0], $m)) {
+            continue;
+        }
+        preg_match_all('/\[([^\[\]]*)\]/', $m[2], $sub);
+        $keys = array_merge([$m[1]], $sub[1]);
+
+        // $input['tt']['0']['s']['3']['name'] = 'King Gnu' を、キーの数がいくつでも動くように書いたもの
+        // $ref は「今いる場所」を指す参照。1段ずつ奥へ進んでいく
+        $ref = &$input;
+        foreach ($keys as $k) {
+            if (!is_array($ref)) {
+                $ref = [];
+            }
+            $ref = &$ref[$k];
+        }
+        $ref = $pair[1];
+        unset($ref); // 参照を切っておかないと、次のループで上書き事故が起きる
+    }
+    return $input;
 }

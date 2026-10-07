@@ -24,53 +24,6 @@ const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 $pdo = db();
 
 /**
- * プレビューのフォームは入力欄が多い（数百個）。
- * PHP には「1回の POST で受け取れる項目数」の上限（php.ini の max_input_vars、XAMPP では 1000）があり、
- * 超えた分は「エラーも出さずに捨てられる」。名簿が大きいと登録内容が欠けてしまう。
- *
- * 対策: JavaScript が送信直前に全項目を JSON 1個（payload）にまとめて送る（assets/app.js）。
- * ここで JSON を元の $_POST と同じ形の配列に戻す。
- * JavaScript が動かないときは payload が無いので、普通の $_POST をそのまま使う。
- */
-function read_form_input(): array
-{
-    $payload = $_POST['payload'] ?? null;
-    if (!is_string($payload) || $payload === '') {
-        return $_POST;
-    }
-    $pairs = json_decode($payload, true);
-    if (!is_array($pairs)) {
-        return $_POST;
-    }
-    // $pairs は [["tt[0][s][3][name]", "King Gnu"], ["action", "commit"], ...] の形
-    $input = [];
-    foreach ($pairs as $pair) {
-        if (!is_array($pair) || count($pair) !== 2 || !is_string($pair[0]) || !is_string($pair[1])) {
-            continue;
-        }
-        // "tt[0][s][3][name]" → ['tt', '0', 's', '3', 'name'] に分解
-        if (!preg_match('/^([^\[\]]+)((?:\[[^\[\]]*\])*)$/', $pair[0], $m)) {
-            continue;
-        }
-        preg_match_all('/\[([^\[\]]*)\]/', $m[2], $sub);
-        $keys = array_merge([$m[1]], $sub[1]);
-
-        // $input['tt']['0']['s']['3']['name'] = 'King Gnu' を、キーの数がいくつでも動くように書いたもの
-        // $ref は「今いる場所」を指す参照。1段ずつ奥へ進んでいく
-        $ref = &$input;
-        foreach ($keys as $k) {
-            if (!is_array($ref)) {
-                $ref = [];
-            }
-            $ref = &$ref[$k];
-        }
-        $ref = $pair[1];
-        unset($ref); // 参照を切っておかないと、次のループで上書き事故が起きる
-    }
-    return $input;
-}
-
-/**
  * 「Vo | Gt/Vo | ⋯」「Key | Vn | ⋯」のような切り替えボタン（中身はラジオボタン）の HTML を作る。
  *   $options … [値 => ['label' => 表示, 'title' => 正式名, 'add' => true なら「選ぶと楽器を追加するモーダルが開く」], ...]（「⋯」の中はこの順）
  *   $shown   … 「⋯」にしまわずに見せておく値（この順で並ぶ）

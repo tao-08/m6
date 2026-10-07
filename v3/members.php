@@ -95,6 +95,18 @@ foreach ($st as $a) {
     $topAlbums[(int)$a['member_id']][] = $a;
 }
 
+// 担当楽器（member_id => ['Gt', 'Vo', ...]）。ライブで弾いたバンド数の多い順、同数なら楽器マスタの順。
+//   マイアルバムと同じく、全員ぶんを1回で取ってから PHP で振り分ける（N+1 を避ける）
+$instruments = [];
+$st = $pdo->query('SELECT bm.member_id, i.short_name, i.name, COUNT(*) AS times
+    FROM band_member bm
+    JOIN instrument i ON i.instrument_id = bm.instrument_id
+    GROUP BY bm.member_id, i.instrument_id
+    ORDER BY bm.member_id, times DESC, i.sort_order');
+foreach ($st as $ins) {
+    $instruments[(int)$ins['member_id']][] = $ins;
+}
+
 /** メンバー1人ぶんのジャケット（最大5枚）。無ければ「—」 */
 function album_thumbs(array $albums): string
 {
@@ -230,6 +242,7 @@ render_header('メンバー', 'members');
                 <th class="num">#</th>
                 <?= sort_th('name', '名前', $sort, $dir) ?>
                 <?= sort_th('entry', '入学', $sort, $dir, 'num') ?>
+                <th>担当楽器</th>
                 <th>マイアルバム</th>
                 <?= sort_th('bands', '出演', $sort, $dir, 'num') ?>
                 <?= sort_th('lives', 'ライブ', $sort, $dir, 'num hide-sm') ?>
@@ -242,6 +255,7 @@ render_header('メンバー', 'members');
                     <td><a href="member.php?id=<?= (int)$r['member_id'] ?>"<?= $r['rank'] ? ' class="strong"' : '' ?>><?= h($r['name']) ?></a></td>
                     <!-- 2023 → '23（下2桁だけ。sprintf の %02d で 2005 → '05 のように0を残す） -->
                     <td class="num muted"><?= $r['entry_year'] !== null ? sprintf("'%02d", (int)$r['entry_year'] % 100) : '—' ?></td>
+                    <td><?= part_marks($instruments[(int)$r['member_id']] ?? [], false, 'partbar--cell') ?></td>
                     <td><?= album_thumbs($topAlbums[(int)$r['member_id']] ?? []) ?></td>
                     <?php if ($r['rank']): ?>
                         <td class="num strong"><?= (int)$r['bands'] ?></td>

@@ -47,7 +47,7 @@ $st->execute([$memberId]);
 $history = $st->fetchAll();
 
 // ---- 楽器の内訳 ----
-$st = $pdo->prepare('SELECT i.short_name, i.name AS instrument_name, COUNT(*) AS n
+$st = $pdo->prepare('SELECT i.short_name, i.name, COUNT(*) AS n
     FROM band_member bm JOIN instrument i ON i.instrument_id = bm.instrument_id
     WHERE bm.member_id = ? GROUP BY i.instrument_id ORDER BY n DESC');
 $st->execute([$memberId]);
@@ -147,11 +147,7 @@ render_header($member['name'], 'members');
             <?= h($member['name_kana'] ?? '') ?>
             <?= (int)$member['entry_year'] > 0 ? ' · ' . (int)$member['entry_year'] . '年度入部' : '' ?>
         </p>
-        <div class="partbar">
-            <?php foreach ($parts as $p): ?>
-                <span class="part part--<?= h(instrument_class($p['short_name'])) ?>" title="<?= h($p['instrument_name']) ?>"><?= h($p['short_name']) ?> × <?= (int)$p['n'] ?></span>
-            <?php endforeach; ?>
-        </div>
+        <?php if ($parts): ?><?= part_marks($parts, true) ?><?php endif; ?>
     </div>
     <dl class="stats">
         <div><dt>出演バンド</dt><dd><?= count($history) ?></dd></div>

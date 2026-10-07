@@ -9,7 +9,7 @@
  *    data-theme-toggle  … ライト/ダーク切り替えボタン
  *    data-filter        … 一覧の絞り込み検索
  *    data-tab           … ライブ詳細の日程タブ
- *    data-confirm       … 送信前の確認ダイアログ
+ *    data-confirm       … 送信前の確認ダイアログ（data-dirty-check で未保存の変更も警告）
  *    data-dropzone      … ファイルのドラッグ&ドロップ
  *    data-name-cell     … 名前の入力欄（DB にいるかで色が変わる）
  *    data-roster-input  … タイムテーブルの枠 → 名簿のバンド（検索欄）
@@ -22,7 +22,7 @@
  *    data-pick          … 名簿の「Vo / Gt/Vo / ⋯」「Key / Vn / ⋯」の切り替えボタンと、etc の楽器追加モーダル
  *    .table-scroll      … 横にはみ出す表をマウスのドラッグで左右に動かす
  *    data-pack          … 送信時に全項目を JSON 1個にまとめるフォーム
- *    data-rows          … バンド編集のメンバー行（追加・削除）
+ *    data-rows          … バンド編集・タイムテーブル編集のメンバー行（追加・削除）
  *    data-print / data-autosubmit … 印刷ボタン / 選んだら即送信
  *    <select>           … 全部のプルダウンをボタン + ポップアップの見た目にする（data-native で元のまま）
  *    data-song-list / data-add-song … 曲の編集
@@ -430,11 +430,30 @@ function setupTabs() {
  * 削除などの前に「本当に？」と聞く
  * ------------------------------------------------------------------- */
 function setupConfirm() {
+  // data-dirty-check="フォームのid" … そのフォームに未保存の変更があれば、確認の文に警告を足す
+  //   （ライブ編集の「この日程を削除」: 削除するとページが移動して、書きかけの内容が消えるので）
+  //   変更があるかは「読み込み直後の入力値」と「今の入力値」を文字列にして比べる。
+  //   他の setup〜 が入力欄をいじり終わってから覚えたいので、setTimeout で一番最後に回す
+  const snapshot = (form) => new URLSearchParams(new FormData(form)).toString();
+  const initial = new Map();
+  setTimeout(() => {
+    document.querySelectorAll('form[data-dirty-check]').forEach((f) => {
+      const target = document.getElementById(f.dataset.dirtyCheck);
+      if (target && !initial.has(target)) initial.set(target, snapshot(target));
+    });
+  });
+
   // フォーム1つ1つではなく document で待ち受ける（submit イベントは外側へ伝わってくる = バブリング）。
   //   → 後から JS で足したフォーム（ページ移動なしで追加したアルバムの × など）にも効く
   document.addEventListener('submit', (e) => {
     const form = e.target.closest('form[data-confirm]');
-    if (form && !confirm(form.dataset.confirm)) e.preventDefault();
+    if (!form) return;
+    let message = form.dataset.confirm;
+    const target = form.dataset.dirtyCheck && document.getElementById(form.dataset.dirtyCheck);
+    if (target && initial.has(target) && initial.get(target) !== snapshot(target)) {
+      message = '⚠ 保存していない変更があります。続けると変更は失われます。\n\n' + message;
+    }
+    if (!confirm(message)) e.preventDefault();
   });
 }
 
@@ -2049,22 +2068,39 @@ function setupPackedForm() {
  * バンド編集: メンバー行の追加・削除
  * ------------------------------------------------------------------- */
 function setupMemberRows() {
-  const rows = document.querySelector('[data-rows]');
-  if (!rows) return;
-  document.querySelector('[data-add-row]').addEventListener('click', () => {
-    const row = rows.lastElementChild.cloneNode(true); // 最後の行をコピーして
-    const input = row.querySelector('input');
-    input.value = '';
-    input.classList.remove('is-ok', 'is-similar', 'is-new');
-    input.title = '';
-    row.querySelector('select').value = '2';           // 楽器はギターに戻す（2 = Gt。コピー元の楽器を引き継がない）
-    rows.appendChild(row);                             // 末尾に足す
-    input.focus();
-  });
-  rows.addEventListener('click', (e) => {
+  if (!document.querySelector('[data-rows]')) return;
+  // 行の集まり（[data-rows]）が1ページに何個あってもいいように、document で待ち受ける
+  //   バンド編集: 1個だけ / タイムテーブル編集: バンドの数だけ（[data-rows-wrap] の中のボタン → その中の [data-rows]）
+  document.addEventListener('click', (e) => {
+    const add = e.target.closest('[data-add-row]');
+    if (add) {
+      const rows = add.closest('[data-rows-wrap]')?.querySelector('[data-rows]') || document.querySelector('[data-rows]');
+      const row = rows.lastElementChild.cloneNode(true); // 最後の行をコピーして
+      const input = row.querySelector('input');
+      input.value = '';
+      input.classList.remove('is-ok', 'is-similar', 'is-new');
+      input.title = '';
+      row.querySelector('select').value = '2';           // 楽器はギターに戻す（2 = Gt。コピー元の楽器を引き継がない）
+      // data-next がある（name が b[ID][m][番号][…] の形）なら、番号を新しくする。
+      //   コピー元と同じ番号のままだと、送信したとき後の行が前の行を上書きしてしまう
+      if (rows.dataset.next) {
+        const n = rows.dataset.next++;
+        row.querySelectorAll('[name]').forEach((el) => { el.name = el.name.replace(/\[m\]\[\d+\]/, `[m][${n}]`); });
+      }
+      rows.appendChild(row);                             // 末尾に足す
+      input.focus();
+      return;
+    }
     const btn = e.target.closest('[data-remove-row]');
     if (!btn) return;
+    const rows = btn.closest('[data-rows]');
     const row = btn.closest('.member-row-edit');
-    if (rows.children.length > 1) row.remove(); else row.querySelector('input').value = '';
+    if (rows.children.length > 1) {
+      row.remove();
+    } else {
+      const input = row.querySelector('input');
+      input.value = '';
+      input.dispatchEvent(new Event('input', { bubbles: true })); // 色の判定をやり直す
+    }
   });
 }

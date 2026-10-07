@@ -215,6 +215,29 @@ function instruments_for_choice(mixed $value): array
 }
 
 /**
+ * 楽器欄（<select>）の <option> を作る。バンド編集・タイムテーブル編集で共通。
+ *   ボーカルのすぐ下に「Gt/Vo ギターボーカル」などを並べる（値は 'vo:gt'。保存すると Vo + Gt の2行になる）
+ * @param string $selected 選んでおく値（'2' や 'vo:gt'）
+ */
+function instrument_choice_options(string $selected): string
+{
+    $html = '';
+    $option = static fn(string $value, string $text) =>
+        '<option value="' . h($value) . '"' . ($selected === $value ? ' selected' : '') . '>' . h($text) . '</option>';
+    foreach (instruments() as $ins) {
+        $html .= $option((string)$ins['instrument_id'], $ins['short_name'] . ' ' . $ins['name']);
+        if ($ins['short_name'] === 'Vo') {
+            foreach (VOCAL_ROLES as $key => $role) {
+                if ($role['also'] !== null) {
+                    $html .= $option("vo:$key", $role['label'] . ' ' . $role['title']);
+                }
+            }
+        }
+    }
+    return $html;
+}
+
+/**
  * DB の行（1人1楽器）→ バンド編集の行。
  * 同じ人が「Vo」と「Gt」を両方持っていたら、1行の「vo:gt（Gt/Vo）」にまとめる。
  * @param array $rows [['name' => ..., 'instrument_id' => ...], ...]（楽器の sort_order 順。Vo が先頭に来る前提）

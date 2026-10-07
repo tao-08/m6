@@ -184,20 +184,7 @@ render_header($isNew ? 'バンドを追加' : 'バンドを編集', 'lives');
     <div class="member-rows" data-rows>
         <?php foreach ($members as $m): ?>
             <div class="member-row-edit">
-                <select name="m_inst[]" aria-label="楽器">
-                    <?php foreach (instruments() as $ins):
-                        $value = (string)$ins['instrument_id']; ?>
-                        <option value="<?= h($value) ?>"<?= $m['choice'] === $value ? ' selected' : '' ?>><?= h($ins['short_name']) ?> <?= h($ins['name']) ?></option>
-                        <?php if ($ins['short_name'] === 'Vo'):
-                            // ボーカルのすぐ下に「Gt/Vo ギターボーカル」などを並べる（保存すると Vo + Gt の2行になる）
-                            foreach (VOCAL_ROLES as $key => $role):
-                                if ($role['also'] === null) continue;
-                                $value = "vo:$key"; ?>
-                                <option value="<?= h($value) ?>"<?= $m['choice'] === $value ? ' selected' : '' ?>><?= h($role['label']) ?> <?= h($role['title']) ?></option>
-                            <?php endforeach;
-                        endif; ?>
-                    <?php endforeach; ?>
-                </select>
+                <select name="m_inst[]" aria-label="楽器"><?= instrument_choice_options($m['choice']) ?></select>
                 <input name="m_name[]" value="<?= h($m['name']) ?>" list="member-names" placeholder="名前" aria-label="名前" class="name-input" data-name-cell>
                 <button type="button" class="btn btn--ghost btn--sm" data-remove-row aria-label="この行を削除"><?= icon('close') ?></button>
             </div>

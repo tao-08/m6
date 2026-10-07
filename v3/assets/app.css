@@ -269,11 +269,15 @@ input:focus, select:focus { outline: none; border-color: var(--accent); box-shad
 @media (prefers-reduced-motion: reduce) { .day:not([hidden]) { animation: none; } }
 
 .day__info { display: flex; flex-wrap: wrap; gap: 16px 32px; align-items: center; margin-bottom: 18px; }
-.day__info h2 { font-size: 24px; font-weight: 900; }
+.day__info h2 { font-size: 24px; font-weight: 900; font-variant-numeric: tabular-nums; min-width: 6.5em; } /* 「1/5（月）」でも「12/31（水）」でも幅を固定して、右の会場などがずれないようにする */
 .facts { display: flex; flex-wrap: wrap; gap: 8px 28px; margin: 0; }
 .facts dt { font-size: 11px; color: var(--muted); font-weight: 600; letter-spacing: .06em; }
 .facts dd { margin: 0; font-weight: 700; }
-.day__danger { margin-left: auto; }
+.day-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.tt-form { display: grid; gap: 16px; margin-top: 16px; }
+.tt-members { display: grid; gap: 6px; justify-items: start; }
+.tt-members .member-rows { justify-self: stretch; margin-bottom: 0; }
+.tt-form .table--edit td { vertical-align: top; } /* 出演者が何人いても、時間・バンド名は行の上にそろえる */
 
 .timeline { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
 .slot { display: grid; grid-template-columns: 60px 1fr; gap: 12px; }
@@ -340,6 +344,7 @@ input:focus, select:focus { outline: none; border-color: var(--accent); box-shad
 @media (max-width: 600px) { .thumbs__img { width: 30px; height: 30px; } .thumbs__img:nth-child(n+4) { display: none; } }
 
 .partbar { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+.partbar--cell { margin-top: 0; gap: 4px; } /* 表のセルの中（メンバー一覧の担当楽器） */
 .split { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 28px; align-items: start; }
 .split aside { position: sticky; top: 80px; }
 .history { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
@@ -936,7 +941,6 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
   .history__when { grid-column: 1 / -1; display: flex; gap: 8px; }
   .table td, .table th { padding: 10px 12px; }
   .hide-sm { display: none; }
-  .day__danger { margin-left: 0; }
   .member-row-edit { grid-template-columns: 110px minmax(0, 1fr) auto; }
   .sticky-actions { width: 100%; bottom: 76px; }
   .sticky-actions .btn { flex: 1; }

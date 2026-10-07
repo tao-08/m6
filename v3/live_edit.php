@@ -275,7 +275,7 @@ if ($isNew) {
 <?php } ?>
 <?php foreach ($errors as $e): ?><div class="flash flash--error"><?= h($e) ?></div><?php endforeach; ?>
 
-<form method="post" class="card form-card">
+<form method="post" class="card form-card" id="live-form">
     <?= csrf_field() ?>
     <input type="hidden" name="live_id" value="<?= $liveId ?>">
     <?php if (!$canMerge): ?>
@@ -322,7 +322,14 @@ if ($isNew) {
             <label class="field"><span>会場</span><input name="d[<?= $id ?>][venue]" value="<?= h($d['venue_name']) ?>" list="dl-venues" maxlength="50"></label>
             <label class="field field--wide"><span>メモ</span><input name="d[<?= $id ?>][note]" value="<?= h($d['note']) ?>"></label>
         </div>
-        <p><a class="btn btn--ghost btn--sm" href="band_edit.php?day=<?= $id ?>">＋ この日程にバンドを追加</a></p>
+        <p class="day-actions">
+            <a class="btn btn--ghost btn--sm" href="band_edit.php?day=<?= $id ?>">＋ この日程にバンドを追加</a>
+            <?php if (is_admin()): ?>
+                <!-- form の中に form は入れられない（HTML のルール）ので、削除フォームは下の </form> の外に置き、
+                     form="del-day-ID" 属性でボタンとつなぐ -->
+                <button class="btn btn--ghost btn--danger btn--sm" type="submit" form="del-day-<?= $id ?>">この日程を削除</button>
+            <?php endif; ?>
+        </p>
     <?php endforeach; ?>
 
     <!-- 追加する日程。新規ライブでは最初の日程（必須）。
@@ -346,4 +353,10 @@ if ($isNew) {
         <button class="btn btn--primary" type="submit"><?= $isNew ? '追加する' : '保存する' ?></button>
     </div>
 </form>
+<?php if (is_admin()): foreach ($days as $d): ?>
+    <form method="post" action="live_delete.php" id="del-day-<?= (int)$d['live_day_id'] ?>" hidden data-dirty-check="live-form" data-confirm="<?= h($d['label'] . ' のデータを削除します。元に戻せません。よろしいですか？') ?>">
+        <?= csrf_field() ?>
+        <input type="hidden" name="live_day_id" value="<?= (int)$d['live_day_id'] ?>">
+    </form>
+<?php endforeach; endif; ?>
 <?php render_footer();

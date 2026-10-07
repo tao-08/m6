@@ -86,6 +86,7 @@ render_header($live['name'], 'lives');
             <a class="btn btn--sm btn--youtube" href="<?= h($live['youtube_url']) ?>" target="_blank" rel="noopener noreferrer" aria-label="YouTube で見る" title="YouTube で見る"><?= youtube_icon() ?></a>
         <?php endif; ?>
         <a class="btn btn--sm" href="live_edit.php?id=<?= (int)$liveId ?>"><?= icon('edit') ?> ライブを編集</a>
+        <a class="btn btn--sm" href="timetable_edit.php?id=<?= (int)$liveId ?>"><?= icon('schedule') ?> タイムテーブルを編集</a>
         <a class="btn btn--sm" href="export.php?live=<?= (int)$liveId ?>"><?= icon('download') ?> CSV</a>
         <button class="btn btn--sm" type="button" data-print><?= icon('print') ?> 印刷</button>
     </div>
@@ -122,13 +123,6 @@ render_header($live['name'], 'lives');
             <div><dt>曲数</dt><dd><?= $songs ?></dd></div>
             <?php if ($d['note']): ?><div><dt>メモ</dt><dd><?= h($d['note']) ?></dd></div><?php endif; ?>
         </dl>
-        <?php if (is_admin()): ?>
-            <form method="post" action="live_delete.php" class="day__danger no-print" data-confirm="<?= h($d['label'] . ' のデータを削除します。元に戻せません。よろしいですか？') ?>">
-                <?= csrf_field() ?>
-                <input type="hidden" name="live_day_id" value="<?= (int)$d['live_day_id'] ?>">
-                <button class="btn btn--ghost btn--danger btn--sm" type="submit">この日程を削除</button>
-            </form>
-        <?php endif; ?>
     </div>
 
     <ol class="timeline">
