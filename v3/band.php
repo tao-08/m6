@@ -169,7 +169,7 @@ render_header($band['name'], 'lives');
             <?php if ($isLast): ?><span class="tag tag--tori" aria-label="トリ" title="トリ"><?= icon('flutter_dash') ?></span><?php endif; ?>
             <?php if ($isMine): ?><span class="tag">出演</span><?php endif; ?>
             <?php if ($band['artist_id']): ?>
-                <a href="artist.php?id=<?= (int)$band['artist_id'] ?>"><?= icon('music_note') ?> <?= h($band['artist_name']) ?></a>
+                <a href="artist.php?id=<?= (int)$band['artist_id'] ?>"><?= icon('search') ?> <?= h($band['artist_name']) ?></a>
             <?php endif; ?>
             <?php if ($band['venue_name']): ?><span class="muted"><?= h($band['venue_name']) ?></span><?php endif; ?>
         </p>

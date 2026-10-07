@@ -171,10 +171,8 @@ render_header($live['name'], 'lives');
                         <p class="muted small">メンバー未登録</p>
                     <?php endif; ?>
                     <p class="slot__meta">
-                        <?php if ($b['artist_name'] && $b['artist_name'] !== $b['name']): ?>
-                            <a href="artist.php?id=<?= (int)$b['artist_id'] ?>"><?= icon('music_note') ?> <?= h($b['artist_name']) ?></a>
-                        <?php elseif ($b['artist_id']): ?>
-                            <a href="artist.php?id=<?= (int)$b['artist_id'] ?>"><?= icon('music_note') ?> ほかのコピー</a>
+                        <?php if ($b['artist_id']): ?>
+                            <a href="artist.php?id=<?= (int)$b['artist_id'] ?>"><?= icon('search') ?> <?= h($b['artist_name']) ?></a>
                         <?php endif; ?>
                         <span><?= (int)$b['song_count'] ?>曲</span>
                         <?php if ($memberIds): ?><span><?= count(array_unique($memberIds)) ?>人</span><?php endif; ?>
