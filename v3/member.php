@@ -10,6 +10,7 @@
  */
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
+require_once __DIR__ . '/lib/repository.php';
 require_once __DIR__ . '/lib/albums.php';
 $user = require_login();
 
@@ -27,10 +28,8 @@ if (!$member) {
 }
 
 // ---- 出演履歴（新しい順） ----
-//   GROUP_CONCAT: 複数行の値を1つの文字列につなげる（Vo.と Ba.を兼任なら「Vo./Ba.」）
 //   is_last: その日の最大 play_order と同じなら 1（トリ）
 $st = $pdo->prepare('SELECT b.band_id, b.name AS band_name, b.play_order,
-        GROUP_CONCAT(DISTINCT i.short_name ORDER BY i.sort_order SEPARATOR \'/\') AS parts,
         ld.live_day_id, ld.label, ld.held_on AS date, lm.live_id, lm.fiscal_year AS year, lm.name AS live_name, v.name AS venue_name,
         (b.play_order = (SELECT MAX(b2.play_order) FROM band b2 WHERE b2.live_day_id = b.live_day_id)) AS is_last
     FROM (' . MEMBERSHIP_SQL . ') bm
@@ -38,20 +37,26 @@ $st = $pdo->prepare('SELECT b.band_id, b.name AS band_name, b.play_order,
     JOIN live_day ld ON ld.live_day_id = b.live_day_id
     JOIN live lm ON lm.live_id = ld.live_id
     LEFT JOIN venue v ON v.venue_id = ld.venue_id
-    JOIN band_member bmi ON bmi.band_id = b.band_id AND bmi.member_id = bm.member_id
-    JOIN instrument i ON i.instrument_id = bmi.instrument_id
     WHERE bm.member_id = ?
     GROUP BY b.band_id
     ORDER BY lm.fiscal_year DESC, ld.held_on IS NULL, ld.held_on DESC, ld.live_day_id DESC, b.play_order');
 $st->execute([$memberId]);
 $history = $st->fetchAll();
 
-// ---- 楽器の内訳 ----
-$st = $pdo->prepare('SELECT i.short_name, i.name, COUNT(*) AS n
-    FROM band_member bm JOIN instrument i ON i.instrument_id = bm.instrument_id
-    WHERE bm.member_id = ? GROUP BY i.instrument_id ORDER BY n DESC');
+// ---- 楽器（バンドごと）と、その内訳 ----
+//   Vo と Gt を両方やったバンドは「Vo/Gt」1つにまとめる（lineup_parts_by_band）。内訳もその単位で数える
+$st = $pdo->prepare('SELECT bm.band_id, bm.member_id, m.name, i.short_name, i.name AS instrument_name, i.sort_order
+    FROM band_member bm
+    JOIN member m ON m.member_id = bm.member_id
+    JOIN instrument i ON i.instrument_id = bm.instrument_id
+    WHERE bm.member_id = ? ORDER BY i.sort_order');
 $st->execute([$memberId]);
-$parts = $st->fetchAll();
+$partsByBand = []; // [band_id] = [パート, ...]（出演履歴のマークに使う）
+$myParts = lineup_parts_by_band($st);
+foreach ($myParts as $p) {
+    $partsByBand[$p['band_id']][] = $p;
+}
+$parts = sort_tally_by_count(tally_parts($myParts)); // 「Vo/Gt × 3」「Gt × 2」…
 
 // ---- よく組むメンバー（自己結合） ----
 $st = $pdo->prepare('SELECT m.member_id, m.name, COUNT(DISTINCT other.band_id) AS n
@@ -332,10 +337,8 @@ render_header($member['name'], 'members');
                                         <?php if ($b['is_last']): ?><span class="tori-badge" aria-label="トリ" title="トリ">🐦️</span><?php endif; ?>
                                     </span>
                                     <span class="history__tags">
-                                        <!-- parts は SQL で「Vo/Ba」のように / でつないであるので、分けて1つずつ色付きのマークにする -->
-                                        <?php foreach ($b['parts'] ? explode('/', $b['parts']) : [] as $short): ?>
-                                            <span class="part part--<?= h(instrument_class($short)) ?>"><?= h($short) ?></span>
-                                        <?php endforeach; ?>
+                                        <!-- そのバンドでのパート（Vo と Gt なら「Vo/Gt」1つ） -->
+                                        <?php foreach ($partsByBand[(int)$b['band_id']] ?? [] as $p): ?><?= part_badge($p) ?><?php endforeach; ?>
                                     </span>
                                 </li>
                             <?php endforeach; ?>

@@ -14,6 +14,7 @@
  */
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
+require_once __DIR__ . '/lib/repository.php';
 $user = require_login();
 $pdo = db();
 $thisYear = current_fiscal_year();
@@ -95,17 +96,19 @@ foreach ($st as $a) {
     $topAlbums[(int)$a['member_id']][] = $a;
 }
 
-// 担当楽器（member_id => ['Gt', 'Vo', ...]）。ライブで弾いたバンド数の多い順、同数なら楽器マスタの順。
+// 担当楽器（member_id => tally_parts() の結果）。ライブで弾いたバンド数の多い順、同数なら楽器の並び順。
+//   Vo と Gt を両方やったバンドは「Vo/Gt」として数える（lineup_parts_by_band）。
 //   マイアルバムと同じく、全員ぶんを1回で取ってから PHP で振り分ける（N+1 を避ける）
-$instruments = [];
-$st = $pdo->query('SELECT bm.member_id, i.short_name, i.name, COUNT(*) AS times
+$st = $pdo->query('SELECT bm.band_id, bm.member_id, m.name, i.short_name, i.name AS instrument_name, i.sort_order
     FROM band_member bm
+    JOIN member m ON m.member_id = bm.member_id
     JOIN instrument i ON i.instrument_id = bm.instrument_id
-    GROUP BY bm.member_id, i.instrument_id
-    ORDER BY bm.member_id, times DESC, i.sort_order');
-foreach ($st as $ins) {
-    $instruments[(int)$ins['member_id']][] = $ins;
+    ORDER BY i.sort_order');
+$partsByMember = [];
+foreach (lineup_parts_by_band($st) as $p) {
+    $partsByMember[$p['member_id']][] = $p;
 }
+$instruments = array_map(static fn($parts) => sort_tally_by_count(tally_parts($parts)), $partsByMember);
 
 /** メンバー1人ぶんのジャケット（最大5枚）。無ければ「—」 */
 function album_thumbs(array $albums): string

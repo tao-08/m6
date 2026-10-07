@@ -413,25 +413,6 @@ function instrument_class(?string $short): string
 }
 
 /**
- * 担当楽器を色付きのマーク（.part）で並べる。メンバー一覧と個人ページで共通。
- *   $parts の各行: ['short_name' => 'Vo', 'name' => 'ボーカル', 'n' => 回数（$withCount のときだけ使う）]
- *   $class: .partbar に足すクラス（表のセルの中なら 'partbar--cell'）
- *   楽器が無ければ「—」
- */
-function part_marks(array $parts, bool $withCount = false, string $class = ''): string
-{
-    if (!$parts) {
-        return '<span class="muted small">—</span>';
-    }
-    $html = '<div class="' . h(trim('partbar ' . $class)) . '">';
-    foreach ($parts as $p) {
-        $html .= '<span class="part part--' . h(instrument_class($p['short_name'])) . '" title="' . h($p['name']) . '">'
-            . h($p['short_name']) . ($withCount ? ' × ' . (int)$p['n'] : '') . '</span>';
-    }
-    return $html . '</div>';
-}
-
-/**
  * instrument テーブルを全部取る（セレクトボックス用）。1リクエスト中は使い回す。
  * 表示順は DB の sort_order 列が持っている（PHP 側に並び順を書かなくて済む）。
  */

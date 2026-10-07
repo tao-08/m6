@@ -329,15 +329,62 @@ function lineup_by_part(array $rows): array
 }
 
 /**
+ * いくつものバンドの行 → lineup_parts() の結果を1つの配列に（各パートに band_id を付ける）。
+ * 「Vo/Gt」のまとめはバンドの中だけで考える（別のバンドで Vo と Gt をやった人をまとめない）。
+ * 個人ページ・メンバー一覧・統計の集計で使う。
+ * @param iterable $rows [['band_id', 'member_id', 'name', 'short_name', 'instrument_name', 'sort_order'], ...]（sort_order 順）
+ */
+function lineup_parts_by_band(iterable $rows): array
+{
+    $rowsByBand = [];
+    foreach ($rows as $r) {
+        $rowsByBand[(int)$r['band_id']][] = $r;
+    }
+    $out = [];
+    foreach ($rowsByBand as $bandId => $bandRows) {
+        foreach (lineup_parts($bandRows) as $p) {
+            $out[] = $p + ['band_id' => $bandId];
+        }
+    }
+    return $out;
+}
+
+/**
+ * パートをラベル（'Vo' 'Vo/Gt' …）ごとに数える。Vo/Gt の人は「Vo」ではなく「Vo/Gt」の方に数える。
+ * @return array [ラベル => ['short', 'title', 'segments', 'order', 'n' => 何回, 'members' => [member_id => 何回]], ...]（並び順どおり）
+ */
+function tally_parts(array $parts): array
+{
+    $tally = [];
+    foreach ($parts as $p) {
+        $t = &$tally[$p['short']];
+        $t ??= ['short' => $p['short'], 'title' => $p['title'], 'segments' => $p['segments'], 'order' => $p['order'], 'n' => 0, 'members' => []];
+        $t['n']++;
+        $t['members'][$p['member_id']] = ($t['members'][$p['member_id']] ?? 0) + 1;
+        unset($t);
+    }
+    uasort($tally, static fn($a, $b) => $a['order'] <=> $b['order']);
+    return $tally;
+}
+
+/** tally_parts() の結果を、回数の多い順に（同じ回数なら楽器の並び順）。uasort は同じ値の順番を保つ（PHP 8） */
+function sort_tally_by_count(array $tally): array
+{
+    uasort($tally, static fn($a, $b) => $b['n'] <=> $a['n']);
+    return $tally;
+}
+
+/**
  * 楽器ラベルの HTML。1つの楽器ならいつもの .part。
  * 兼任（Vo/Gt）は1つのラベルの中に「Vo/Gt」と書き、文字も背景も左から順にそれぞれの楽器の色にする（境目は少しグラデーション）。
- * @param array $part ['title' => 'ギターボーカル', 'segments' => [['short' => 'Vo', 'class' => 'vo'], ['short' => 'Gt', 'class' => 'gt']]]
+ * @param array  $part   ['title' => 'ギターボーカル', 'segments' => [['short' => 'Vo', 'class' => 'vo'], ['short' => 'Gt', 'class' => 'gt']]]
+ * @param string $suffix ラベルの後ろに付ける文字（個人ページの「 × 5」など）。付けると兼任ラベルの幅は中身に合わせる
  */
-function part_badge(array $part): string
+function part_badge(array $part, string $suffix = ''): string
 {
     $segs = $part['segments'];
     if (count($segs) === 1) {
-        return '<span class="part part--' . h($segs[0]['class']) . '" title="' . h($part['title']) . '">' . h($segs[0]['short']) . '</span>';
+        return '<span class="part part--' . h($segs[0]['class']) . '" title="' . h($part['title']) . '">' . h($segs[0]['short'] . $suffix) . '</span>';
     }
     // 背景: 楽器ごとに幅を等分して塗り、境目の前後 10% だけ色を混ぜる
     //   class は instrument_class() が返す決まった名前（vo / gt …）だけなので、style に入れても安全
@@ -350,8 +397,29 @@ function part_badge(array $part): string
     }
     $text = implode('<span class="part__slash">/</span>', array_map(
         static fn(array $s): string => '<span class="part__seg part--' . h($s['class']) . '">' . h($s['short']) . '</span>', $segs));
-    return '<span class="part part--split" title="' . h($part['title']) . '" style="background: linear-gradient(90deg, '
-        . h(implode(', ', $stops)) . ')">' . $text . '</span>';
+    if ($suffix !== '') {
+        $text .= '<span class="part__suffix">' . h($suffix) . '</span>';
+    }
+    return '<span class="part part--split' . ($suffix !== '' ? ' part--auto' : '') . '" title="' . h($part['title'])
+        . '" style="background: linear-gradient(90deg, ' . h(implode(', ', $stops)) . ')">' . $text . '</span>';
+}
+
+/**
+ * 担当楽器を色付きのマーク（part_badge）で並べる。メンバー一覧と個人ページで共通。
+ *   $tally: tally_parts() の結果（Vo/Gt の人は「Vo/Gt」1つ）
+ *   $class: .partbar に足すクラス（表のセルの中なら 'partbar--cell'）
+ *   楽器が無ければ「—」
+ */
+function part_marks(array $tally, bool $withCount = false, string $class = ''): string
+{
+    if (!$tally) {
+        return '<span class="muted small">—</span>';
+    }
+    $html = '<div class="' . h(trim('partbar ' . $class)) . '">';
+    foreach ($tally as $t) {
+        $html .= part_badge($t, $withCount ? ' × ' . (int)$t['n'] : '');
+    }
+    return $html . '</div>';
 }
 
 function detach_members(PDO $pdo, int $bandId): void

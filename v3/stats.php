@@ -27,6 +27,7 @@
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/tracks.php';
+require_once __DIR__ . '/lib/repository.php';
 $user = require_login();
 
 $pdo = db();
@@ -195,15 +196,19 @@ $artists = rows($pdo, 'SELECT a.artist_id, a.name, COUNT(*) AS n
     ORDER BY n DESC, a.name LIMIT 20', $yearParams);
 
 // ---- 楽器別 ----
-$instrumentStats = rows($pdo, 'SELECT i.short_name, i.name AS instrument_name,
-        COUNT(DISTINCT bm.member_id) AS people, COUNT(*) AS slots
+//   Vo と Gt を両方やった人は「Vo/Gt」の行に数える（「Vo」はボーカル専任だけ）。
+//   このまとめは SQL では書きにくいので、行を全部読んで PHP で数える（lineup_parts_by_band → tally_parts）
+//   slots = のべ出演数（バンド × 人）、people = 人数
+$instrumentStats = array_map(static fn($t) => $t + ['slots' => $t['n'], 'people' => count($t['members'])],
+    sort_tally_by_count(tally_parts(lineup_parts_by_band(rows($pdo, 'SELECT bm.band_id, bm.member_id, m.name, i.short_name, i.name AS instrument_name, i.sort_order
     FROM band_member bm
+    JOIN member m ON m.member_id = bm.member_id
     JOIN instrument i ON i.instrument_id = bm.instrument_id
     JOIN band b ON b.band_id = bm.band_id
     JOIN live_day ld ON ld.live_day_id = b.live_day_id
     JOIN live lm ON lm.live_id = ld.live_id
     WHERE 1 = 1' . $yearSql . '
-    GROUP BY i.instrument_id ORDER BY slots DESC', $yearParams);
+    ORDER BY i.sort_order', $yearParams)))));
 
 // ---- 会場 ----
 $venues = rows($pdo, 'SELECT v.name, COUNT(DISTINCT ld.live_day_id) AS days, COUNT(b.band_id) AS bands
@@ -246,19 +251,29 @@ $topSongs = rows($pdo, 'SELECT m.member_id, m.name,
     GROUP BY m.member_id ORDER BY n DESC, m.name LIMIT 10', array_merge($yearParams, $memberParams));
 
 // ---- 楽器ごとの1位 ----
-//   楽器 × 人 で数えて、PHP で楽器ごとに一番多い人だけ残す
-$instrumentKings = [];
-foreach (rows($pdo, 'SELECT i.instrument_id, i.short_name, i.name AS instrument_name, m.member_id, m.name, COUNT(DISTINCT bm.band_id) AS n
+//   パート（Vo/Gt は Vo/Gt として）× 人 で数えて、パートごとに一番多い人だけ残す（同じ数なら名前順）
+$names = [];
+$kingParts = lineup_parts_by_band(rows($pdo, 'SELECT bm.band_id, bm.member_id, m.name, i.short_name, i.name AS instrument_name, i.sort_order
     FROM band_member bm
-    JOIN instrument i ON i.instrument_id = bm.instrument_id
     JOIN member m ON m.member_id = bm.member_id
+    JOIN instrument i ON i.instrument_id = bm.instrument_id
     JOIN band b ON b.band_id = bm.band_id
     JOIN live_day ld ON ld.live_day_id = b.live_day_id
     JOIN live lm ON lm.live_id = ld.live_id
     WHERE 1 = 1' . $yearSql . $memberSql . '
-    GROUP BY i.instrument_id, m.member_id
-    ORDER BY i.sort_order, n DESC, m.name', array_merge($yearParams, $memberParams)) as $r) {
-    $instrumentKings[$r['instrument_id']] ??= $r; // ??= は「まだ無ければ入れる」→ 各楽器の最初の1行（=最多）だけ残る
+    ORDER BY i.sort_order', array_merge($yearParams, $memberParams)));
+foreach ($kingParts as $p) {
+    $names[$p['member_id']] = $p['name'];
+}
+$instrumentKings = [];
+foreach (tally_parts($kingParts) as $t) {
+    $best = null;
+    foreach ($t['members'] as $memberId => $n) {
+        if ($best === null || $n > $best['n'] || ($n === $best['n'] && strcmp($names[$memberId], $best['name']) < 0)) {
+            $best = ['member_id' => $memberId, 'name' => $names[$memberId], 'n' => $n];
+        }
+    }
+    $instrumentKings[] = $best + $t; // 人（member_id, name, n）+ パート（title, segments）
 }
 
 // ---- よく演奏される曲（アーティスト × 曲名の本体） ----
@@ -444,7 +459,7 @@ $memberLink = static fn($r) => '<a href="member.php?id=' . (int)$r['member_id'] 
         <h2 class="section-title section-title--card"><?= icon('military_tech') ?> 楽器ごとの1位</h2>
         <ul class="ranking ranking--plain">
             <?php foreach ($instrumentKings as $k): ?>
-                <li><span><span class="part part--<?= h(instrument_class($k['short_name'])) ?>"><?= h($k['short_name']) ?></span> <?= $memberLink($k) ?></span><span class="pill"><?= (int)$k['n'] ?>組</span></li>
+                <li><span><?= part_badge($k) ?> <?= $memberLink($k) ?></span><span class="pill"><?= (int)$k['n'] ?>組</span></li>
             <?php endforeach; ?>
         </ul>
     </section>
@@ -493,7 +508,7 @@ $memberLink = static fn($r) => '<a href="member.php?id=' . (int)$r['member_id'] 
         <ul class="bars">
             <?php foreach ($instrumentStats as $i): ?>
                 <li>
-                    <span class="bars__label"><span class="part part--<?= h(instrument_class($i['short_name'])) ?>"><?= h($i['short_name']) ?></span> <?= h($i['instrument_name']) ?></span>
+                    <span class="bars__label"><?= part_badge($i) ?> <?= h($i['title']) ?></span>
                     <span class="bar-track"><span class="bar" style="--w: <?= round($i['slots'] / $maxSlots * 100) ?>%"></span></span>
                     <span class="bar-num" title="のべ出演数 / 人数"><?= (int)$i['slots'] ?><small class="muted"> / <?= (int)$i['people'] ?>人</small></span>
                 </li>
