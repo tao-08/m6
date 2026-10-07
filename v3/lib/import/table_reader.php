@@ -279,15 +279,20 @@ function pdf_merge_stacked(array $phrases): array
 /**
  * 1セル内の複数フレーズを結合する。同じ行のフレーズは空白区切り。
  * 「GENERATION（谷」+「ヶ崎）」のような日本語の途中での折り返しは詰めて、それ以外は空白で区切る
+ *
+ * 折り返しなら上の行はセルの幅いっぱいまで埋まっている → 上の行が下の行より短ければ折り返しではない。
+ * （「伊藤和奏」の下に「小坂知都乃（Vn.）」のように、1セルに2人を縦に並べて書いたもの。詰めると1人の名前になってしまう）
  */
 function pdf_join_cell(array $phrases): string
 {
     $out = '';
     $prevY = null;
+    $prevWidth = 0.0;
     foreach ($phrases as $p) {
         $t = $p['text'];
-        $wrapped = $prevY !== null && abs($p['yc'] - $prevY) > 0.1;
+        $wrapped = $prevY !== null && abs($p['yc'] - $prevY) > 0.1 && $prevWidth >= ($p['x1'] - $p['x0']) - 1;
         $prevY = $p['yc'];
+        $prevWidth = $p['x1'] - $p['x0'];
         if ($out === '') {
             $out = $t;
         } elseif ($wrapped && preg_match('/[\p{Han}\p{Hiragana}\p{Katakana}ー（(〜~・]$/u', $out) && preg_match('/^[\p{Han}\p{Hiragana}\p{Katakana}ー）)]/u', $t)) {

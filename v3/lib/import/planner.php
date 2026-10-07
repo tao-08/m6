@@ -157,10 +157,47 @@ function is_free_part(string $part): bool
 }
 
 /**
+ * Gt. / Ba. / Dr. 欄に「茂田井教崇(Vn.)」のように Vo/Gt/Ba/Dr 以外の楽器が書いてある人を、Key./Other 欄へ移す。
+ *   名簿を作る人が、空いているギターの欄にヴァイオリンの人を書いてしまうことがあるため。
+ *   移し先: 左から見て最初の「空いている Key./Other 欄」。全部埋まっていれば表の右端の追加列（extras）。
+ *   楽器はその楽器を初期値にして、名前から (Vn.) を外す。
+ *   Vo. 欄は動かさない（歌う人なので。「山田(Gt)」= ギターボーカル の処理は spread_roster_cells にある）。
+ */
+function move_extra_instrument_players(array $columns, array $band): array
+{
+    $extraIds = array_map('intval', array_column(extra_instruments(), 'instrument_id'));
+    foreach ($columns as $col => $c) {
+        if ($c['part'] === 'Vo' || is_free_part($c['part']) || ($band['cells'][$col] ?? '') === '') {
+            continue;
+        }
+        [$plain, $named] = parse_name_instrument($band['cells'][$col]);
+        if ($named === null || !in_array($named, $extraIds, true)) {
+            continue; // 楽器が書いていない／「(Gt)」のような Vo/Gt/Ba/Dr → そのまま
+        }
+        $band['cells'][$col] = '';
+        $to = null;
+        foreach ($columns as $freeCol => $fc) {
+            if (is_free_part($fc['part']) && ($band['cells'][$freeCol] ?? '') === '') {
+                $to = $freeCol;
+                break;
+            }
+        }
+        if ($to !== null) {
+            $band['cells'][$to] = $plain;
+            $band['cell_insts'][$to] = $named;
+        } else {
+            $band['extras'][] = ['name' => $plain, 'instrument_id' => $named];
+        }
+    }
+    return $band;
+}
+
+/**
  * 名簿の「1つのセルに2人以上」（「村田侑斗、丸野友多郎」など）を、1セル1人に分ける。
  *   1人目 → 元の列にそのまま
  *   2人目以降 → 表の右端の「追加列」へ。楽器は元の列の楽器を初期値にする（あとでプルダウンで変えられる）
  * 「丸野友多郎(Sax)」のように楽器が書いてあれば、その楽器を初期値にする。
+ * Gt. / Ba. / Dr. 欄の「茂田井教崇(Vn.)」は Key./Other 欄へ移す（move_extra_instrument_players）。
  *
  * 結果: 各バンドに 'extras' => [['name' => ..., 'instrument_id' => ...], ...]、
  *       名簿に 'extra_cols' => 追加列の数（一番多いバンドに合わせる）
@@ -206,6 +243,7 @@ function spread_roster_cells(array $roster): array
             $band['vo_roles'][$col] ??= guess_vocal_role($roster['columns'], $band, $band['cells'][$col], $firstVo);
             $firstVo = false;
         }
+        $band = move_extra_instrument_players($roster['columns'], $band);
         $roster['extra_cols'] = max($roster['extra_cols'], count($band['extras']));
     }
     unset($band);
@@ -304,7 +342,8 @@ function roster_band_size(array $band): int
 function parse_name_instrument(string $name): array
 {
     if (preg_match('/^(.+?)[(（]([^()（）]+)[)）]$/u', $name, $m)) {
-        $label = mb_strtolower(trim(tt_width($m[2])));
+        // 「Vn.」「Gt .」のような点・空白は消してから比べる（instrument_from_header と同じ）
+        $label = mb_strtolower(preg_replace('/[\s.．]/u', '', tt_width($m[2])) ?? '');
         foreach (instruments() as $ins) {
             if ($label === mb_strtolower($ins['short_name']) || $label === mb_strtolower($ins['name'])) {
                 return [$m[1], (int)$ins['instrument_id']];

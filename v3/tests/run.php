@@ -28,6 +28,9 @@ check('中黒区切り', split_member_names('山田太郎・佐藤花子'), ['�
 check('空白区切りの2人', split_member_names('山田太郎 佐藤花子'), ['山田太郎', '佐藤花子']);
 check('未定は無視', split_member_names('未定'), []);
 check('異体字', member_key('岩﨑太一'), member_key('岩崎太一'));
+$ph = fn(string $t, float $y, float $x0, float $x1) => ['text' => $t, 'yc' => $y, 'x0' => $x0, 'x1' => $x1];
+check('PDF の折り返しは詰める', pdf_join_cell([$ph('GENERATION（谷', 10, 100, 160), $ph('ヶ崎）', 20, 100, 120)]), 'GENERATION（谷ヶ崎）');
+check('PDF の縦に2人は分ける', pdf_join_cell([$ph('伊藤和奏', 10, 110, 131), $ph('小坂知都乃（Vn.）', 20, 98, 143)]), '伊藤和奏 小坂知都乃（Vn.）');
 check('PDF の康熙部首（⾧→長）', split_member_names("\u{2FA7}谷川優"), ['長谷川優']);
 check('パート見出し', array_map('normalize_part', ['Vo(Gt.)', 'Gt.1', 'Gt2', 'Ba.', 'Dr.', 'Key./その他', '曲数']), ['Vo', 'Gt', 'Gt', 'Ba', 'Dr', 'Key', null]);
 check('時刻（1セル）', extract_times('13:30〜14:00'), ['13:30', '14:00']);
