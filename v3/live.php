@@ -154,7 +154,7 @@ render_header($live['name'], 'lives');
                     <div class="slot__head">
                         <span class="slot__order"><?= sprintf('%02d', (int)$b['play_order']) ?></span>
                         <h3 class="slot__name"><a href="band.php?id=<?= (int)$b['band_id'] ?>"><?= h($b['name']) ?></a></h3>
-                        <?php if ($isLast): ?><span class="tag tag--tori" aria-label="トリ" title="トリ"><?= icon('flutter_dash') ?></span><?php endif; ?>
+                        <?php if ($isLast): ?><span class="tag tag--tori" aria-label="トリ" title="トリ">🐦️</span><?php endif; ?>
                         <?php if ($isMine): ?><span class="tag">出演</span><?php endif; ?>
                     </div>
                     <?php if ($lineup): ?>

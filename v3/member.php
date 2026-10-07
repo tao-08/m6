@@ -326,13 +326,16 @@ render_header($member['name'], 'members');
                         <ul class="history__bands">
                             <?php foreach ($day['bands'] as $b): ?>
                                 <li class="history__band">
-                                    <a href="band.php?id=<?= (int)$b['band_id'] ?>"><?= h($b['band_name']) ?></a>
+                                    <!-- バンド名と、トリならその横に小さな🐦️ -->
+                                    <span class="history__name">
+                                        <a href="band.php?id=<?= (int)$b['band_id'] ?>"><?= h($b['band_name']) ?></a>
+                                        <?php if ($b['is_last']): ?><span class="tori-badge" aria-label="トリ" title="トリ">🐦️</span><?php endif; ?>
+                                    </span>
                                     <span class="history__tags">
                                         <!-- parts は SQL で「Vo/Ba」のように / でつないであるので、分けて1つずつ色付きのマークにする -->
                                         <?php foreach ($b['parts'] ? explode('/', $b['parts']) : [] as $short): ?>
                                             <span class="part part--<?= h(instrument_class($short)) ?>"><?= h($short) ?></span>
                                         <?php endforeach; ?>
-                                        <?php if ($b['is_last']): ?><span class="tag tag--accent">トリ</span><?php endif; ?>
                                     </span>
                                 </li>
                             <?php endforeach; ?>

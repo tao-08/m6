@@ -166,7 +166,7 @@ render_header($band['name'], 'lives');
         <p class="eyebrow"><?= h(implode(' · ', $when)) ?></p>
         <h1 class="display"><?= h($band['name']) ?></h1>
         <p class="band-tags">
-            <?php if ($isLast): ?><span class="tag tag--tori" aria-label="トリ" title="トリ"><?= icon('flutter_dash') ?></span><?php endif; ?>
+            <?php if ($isLast): ?><span class="tag tag--tori" aria-label="トリ" title="トリ">🐦️</span><?php endif; ?>
             <?php if ($isMine): ?><span class="tag">出演</span><?php endif; ?>
             <?php if ($band['artist_id']): ?>
                 <a href="artist.php?id=<?= (int)$band['artist_id'] ?>"><?= icon('search') ?> <?= h($band['artist_name']) ?></a>
