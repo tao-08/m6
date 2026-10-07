@@ -186,6 +186,28 @@ h3 { font-size: 16px; }
 .btn--danger { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, transparent); }
 .btn--danger:hover { color: #fff; background: var(--danger); }
 .btn--sm { padding: 7px 12px; font-size: 13px; }
+
+/* 表の1セルの中の「入力欄 + ボタン」を横に並べるフォーム（venues.php の名前変更・統合） */
+.row-form { display: flex; gap: 6px; align-items: center; }
+.row-form input, .row-form select { flex: 1; min-width: 10em; }
+.row-form .btn { flex: none; white-space: nowrap; }
+
+/* ゴミ箱マークの削除ボタン（venues.php）。消せないときは disabled でグレーアウト */
+.btn-trash { width: 32px; height: 32px; border-radius: 8px; display: inline-grid; place-items: center; cursor: pointer;
+  border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent); background: transparent; color: var(--danger); }
+.btn-trash .icon { font-size: 20px; }
+.btn-trash:hover:not(:disabled) { color: #fff; background: var(--danger); border-color: var(--danger); }
+.btn-trash:disabled { color: var(--muted); border-color: var(--border); opacity: .5; cursor: not-allowed;
+  pointer-events: none; /* マウスは外側の .tooltip に拾わせる */ }
+
+/* マウスを乗せる（キーボードならフォーカスする）と data-tooltip の文字を出す。
+   表は横スクロールの箱（overflow）の中にあり上にはみ出すと切れるので、ボタンの左側に出す */
+.tooltip { position: relative; display: inline-block; cursor: not-allowed; }
+.tooltip::after { content: attr(data-tooltip); position: absolute; right: calc(100% + 8px); top: 50%; transform: translateY(-50%);
+  white-space: nowrap; padding: 6px 10px; border-radius: 6px; font-size: 12px; font-weight: 600;
+  background: var(--text); color: var(--surface); box-shadow: var(--shadow);
+  opacity: 0; visibility: hidden; transition: opacity .15s; pointer-events: none; z-index: 10; }
+.tooltip:hover::after, .tooltip:focus-visible::after { opacity: 1; visibility: visible; }
 .btn--block { width: 100%; }
 /* ライブページの YouTube ボタン: ボタンの背景・枠は付けずロゴだけ見せる（高さはほかのボタンとそろえる） */
 .btn--youtube { background: none; border-color: transparent; padding: 5px 2px; }

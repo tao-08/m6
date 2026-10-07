@@ -45,12 +45,13 @@ if ($isNew) {
  * 既存の日程（d[ID][...]）と追加する日程（nd[...]）の両方で同じチェックを使うので関数にしている。
  * @return array{0: array, 1: string[]}  [入力値, エラーメッセージの配列]
  */
-function read_day_input(mixed $in): array
+function read_day_input(mixed $in, array $venues): array
 {
     $in = is_array($in) ? $in : []; // 改造されたリクエストで配列以外が来ても落ちないように
     $label = trim((string)($in['label'] ?? ''));
     $date = (string)($in['held_on'] ?? '');
-    $venue = trim((string)($in['venue'] ?? ''));
+    $venueSel = (string)($in['venue_id'] ?? '');      // venue_id / 'new' / ''（未設定）
+    $venueNew = trim((string)($in['venue_new'] ?? '')); // 'new' のときの新しい会場名
     $note = trim((string)($in['note'] ?? ''));
     $errors = [];
     if (!in_array($label, DAY_LABELS, true)) { // 選択式だが、書き換えられたリクエストも弾く
@@ -61,10 +62,38 @@ function read_day_input(mixed $in): array
     } elseif (!preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $date, $m) || !checkdate((int)$m[2], (int)$m[3], (int)$m[1])) {
         $errors[] = "「{$label}」の日付が正しくありません";
     }
-    if (mb_strlen($venue) > 50) {
-        $errors[] = "「{$label}」の会場は50文字以内にしてください";
+    // 会場: プルダウンで選んだ既存の会場 or 新規作成（取り込み画面と同じ）。後の処理は会場名で扱う
+    $venue = '';
+    if ($venueSel === 'new') {
+        $venue = $venueNew;
+        if ($venue === '' || mb_strlen($venue) > 50) {
+            $errors[] = "「{$label}」の新しい会場名は1〜50文字で入力してください";
+        }
+    } elseif ($venueSel !== '') {
+        // フォームの値は書き換えられる可能性があるので、本当にある会場か確かめる
+        if (ctype_digit($venueSel) && isset($venues[(int)$venueSel])) {
+            $venue = $venues[(int)$venueSel];
+        } else {
+            $errors[] = "「{$label}」の会場の選択が正しくありません";
+            $venueSel = '';
+        }
     }
-    return [compact('label', 'date', 'venue', 'note'), $errors]; // compact は ['label' => $label, ...] と同じ
+    // compact は ['label' => $label, ...] と同じ。venue_sel / venue_new はエラーで戻ったときの表示用
+    return [compact('label', 'date', 'venue', 'note') + ['venue_sel' => $venueSel, 'venue_new' => $venueNew], $errors];
+}
+
+/** 会場のプルダウン（＋「新しい会場を作る」を選んだときだけ出る入力欄）。$prefix は d[ID] / nd */
+function venue_field(string $prefix, string $sel, string $newName, array $venues): string
+{
+    $html = '<div class="field"><span>会場</span><select name="' . $prefix . '[venue_id]" aria-label="会場" data-venue-select>'
+        . '<option value="">— 未設定 —</option>';
+    foreach ($venues as $id => $name) {
+        $html .= '<option value="' . (int)$id . '"' . ($sel === (string)$id ? ' selected' : '') . '>' . h($name) . '</option>';
+    }
+    $html .= '<option value="new"' . ($sel === 'new' ? ' selected' : '') . '>＋ 新しい会場を作る</option></select>'
+        . '<input name="' . $prefix . '[venue_new]" value="' . h($newName) . '" maxlength="50" placeholder="新しい会場名"'
+        . ' aria-label="新しい会場名" data-venue-new' . ($sel === 'new' ? '' : ' hidden') . '></div>';
+    return $html;
 }
 
 /** 日程1つ分の値を、SQL に渡す配列にする（空欄 → NULL） */
@@ -81,7 +110,11 @@ function day_params(PDO $pdo, array $in): array
 // 追加する日程の初期値: まだ使っていない最初の日程名（新規ライブなら「1日目」）
 $usedLabels = array_column($days, 'label');
 $freeLabels = array_values(array_diff(DAY_LABELS, $usedLabels));
-$newDay = ['label' => $freeLabels[0] ?? DAY_LABELS[0], 'date' => '', 'venue' => '', 'note' => '', 'add' => false];
+$newDay = ['label' => $freeLabels[0] ?? DAY_LABELS[0], 'date' => '', 'venue' => '', 'note' => '', 'add' => false,
+    'venue_sel' => '', 'venue_new' => ''];
+
+// 会場はプルダウンで選ばせる（表記ゆれ防止）。FETCH_KEY_PAIR で [venue_id => name] の形になる
+$venues = $pdo->query('SELECT venue_id, name FROM venue ORDER BY name')->fetchAll(PDO::FETCH_KEY_PAIR);
 
 // 「他のライブに統合」で選んだライブ（統合しないなら null）
 $mergeLive = null;
@@ -124,7 +157,7 @@ if (is_post()) {
 
     $dayInputs = [];
     foreach ($days as $d) {
-        [$in, $dayErrors] = read_day_input($_POST['d'][$d['live_day_id']] ?? []);
+        [$in, $dayErrors] = read_day_input($_POST['d'][$d['live_day_id']] ?? [], $venues);
         $errors = array_merge($errors, $dayErrors);
         $dayInputs[(int)$d['live_day_id']] = $in;
     }
@@ -133,7 +166,7 @@ if (is_post()) {
     // （日程名は選択式で常に値が入るので、「何か入力されたか」では判定できない）
     $nd = is_array($_POST['nd'] ?? null) ? $_POST['nd'] : [];
     $wantsNewDay = $isNew || !empty($nd['add']);
-    [$newDay, $newDayErrors] = read_day_input($nd);
+    [$newDay, $newDayErrors] = read_day_input($nd, $venues);
     $newDay['add'] = $wantsNewDay;
     if ($wantsNewDay) {
         $errors = array_merge($errors, $newDayErrors);
@@ -250,13 +283,12 @@ if (is_post()) {
     $live = array_merge($live, ['fiscal_year' => $year, 'name' => $name, 'youtube_url' => $youtube]);
     foreach ($days as &$d) {
         $in = $dayInputs[(int)$d['live_day_id']];
-        $d = array_merge($d, ['label' => $in['label'], 'held_on' => $in['date'], 'venue_name' => $in['venue'],
+        $d = array_merge($d, ['label' => $in['label'], 'held_on' => $in['date'], 'venue_name' => $in['venue'], 'venue_sel' => $in['venue_sel'], 'venue_new' => $in['venue_new'],
             'note' => $in['note']]);
     }
     unset($d);
 }
 
-$venues = $pdo->query('SELECT name FROM venue ORDER BY name')->fetchAll(PDO::FETCH_COLUMN);
 $canMerge = !$isNew && is_admin(); // 「他のライブに統合」ボタンは管理者だけに出す
 $merging = $canMerge && is_post() && !empty($_POST['merge']); // エラーで戻ったときもトグル ON のまま見せる
 if ($canMerge) {
@@ -310,7 +342,6 @@ if ($isNew) {
             <label class="field field--wide" data-merge-hide<?= $merging ? ' hidden' : '' ?>><span>YouTube のリンク（任意）</span><input type="url" name="youtube_url" value="<?= h((string)$live['youtube_url']) ?>" maxlength="500" placeholder="https://www.youtube.com/watch?v=…" inputmode="url"<?= $merging ? ' disabled' : '' ?>></label>
         </div>
     <?php endif; ?>
-    <datalist id="dl-venues"><?php foreach ($venues as $v): ?><option value="<?= h($v) ?>"><?php endforeach; ?></datalist>
 
     <?php foreach ($days as $d): $id = (int)$d['live_day_id']; ?>
         <h2 class="section-title"><?= h($d['label'] ?: '日程') ?></h2>
@@ -319,7 +350,7 @@ if ($isNew) {
                 <small class="merge-note merge-note--warn" data-overwrite-note hidden>⚠ 登録済の日程のため上書きされます</small>
                 <small class="merge-note merge-note--warn" data-dup-note hidden>⚠ 他の日程と重複しています</small></label>
             <label class="field"><span>日付</span><input type="date" name="d[<?= $id ?>][held_on]" value="<?= h($d['held_on']) ?>" required></label>
-            <label class="field"><span>会場</span><input name="d[<?= $id ?>][venue]" value="<?= h($d['venue_name']) ?>" list="dl-venues" maxlength="50"></label>
+            <?= venue_field("d[$id]", $d['venue_sel'] ?? (string)$d['venue_id'], $d['venue_new'] ?? '', $venues) ?>
             <label class="field field--wide"><span>メモ</span><input name="d[<?= $id ?>][note]" value="<?= h($d['note']) ?>"></label>
         </div>
         <p class="day-actions">
@@ -344,7 +375,7 @@ if ($isNew) {
             <small class="merge-note merge-note--warn" data-overwrite-note hidden>⚠ 登録済の日程のため上書きされます</small>
             <small class="merge-note merge-note--warn" data-dup-note hidden>⚠ 他の日程と重複しています</small></label>
         <label class="field"><span>日付</span><input type="date" name="nd[held_on]" value="<?= h($newDay['date']) ?>"<?= $isNew || $newDay['add'] ? ' required' : '' ?>></label>
-        <label class="field"><span>会場</span><input name="nd[venue]" value="<?= h($newDay['venue']) ?>" list="dl-venues" maxlength="50"></label>
+        <?= venue_field('nd', $newDay['venue_sel'], $newDay['venue_new'], $venues) ?>
         <label class="field field--wide"><span>メモ</span><input name="nd[note]" value="<?= h($newDay['note']) ?>"></label>
     </div>
 

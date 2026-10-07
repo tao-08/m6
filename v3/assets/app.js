@@ -358,6 +358,14 @@ function setupSmallThings() {
   document.querySelectorAll('[data-print]').forEach((btn) => btn.addEventListener('click', () => window.print()));
   document.querySelectorAll('[data-autosubmit]').forEach((sel) => sel.addEventListener('change', () => sel.form.submit()));
 
+  // 会場のプルダウン（取り込み・ライブ編集）: 「＋ 新しい会場を作る」を選んだときだけ会場名の入力欄を出す
+  document.addEventListener('change', (e) => {
+    if (!e.target.matches('[data-venue-select]')) return;
+    const box = e.target.closest('.field').querySelector('[data-venue-new]');
+    box.hidden = e.target.value !== 'new';
+    if (!box.hidden) box.focus();
+  });
+
   // data-fill-hint … 入学年度の一括編集で、空欄の入力欄に data-hint（初出演の年度）を入れる。保存はしない
   document.querySelectorAll('[data-fill-hint]').forEach((btn) => btn.addEventListener('click', () => {
     btn.form.querySelectorAll('input[data-hint]').forEach((input) => {
@@ -734,11 +742,6 @@ function setupImportPreview() {
     if (e.target.matches('[data-skip]')) applySkip(e.target.closest('[data-timetable]'));
     if (e.target.matches('[data-include], [data-roster-input], [data-roster-on], [data-skip]')) refresh();
     if (e.target.matches('[data-date-input]')) showFiscalYear(e.target);
-    if (e.target.matches('[data-venue-select]')) {
-      const box = e.target.closest('.field').querySelector('[data-venue-new]');
-      box.hidden = e.target.value !== 'new';
-      if (!box.hidden) box.focus();
-    }
   });
   document.addEventListener('input', (e) => {
     if (e.target.matches('[data-roster-input], [data-band-name]')) refresh();
