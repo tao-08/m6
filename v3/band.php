@@ -207,12 +207,11 @@ render_header($band['name'], 'lives');
                 $songArtist = $band['is_omnibus'] ? ($song['artist_name'] ?? $band['artist_name']) : null; ?>
                 <li>
                     <?php if ($song['source'] !== null):
-                        // 紐付けた曲: 曲名はただの文字。右横の音楽アプリのアイコン（マウスを乗せると薄く出る）を押すと聴ける
+                        // 紐付けた曲: 曲名はただの文字。ジャケットにマウスを乗せると音楽アプリのアイコンが重なって出て、押すと聴ける
                         $k = album_key($song['source'], $song['track_id']);
                         $track = ['source' => $song['source'], 'track_id' => $song['track_id'], 'title' => $song['track_title'], 'artist_name' => $song['track_artist']];
                         $listenApp = listen_app($viewerApp, $song['source']); ?>
-                        <span class="setlist__song"><img class="setlist__art" src="<?= h($song['artwork_url']) ?>" alt="" loading="lazy" width="56" height="56"><?= h($song['title']) ?></span>
-                        <a class="setlist__listen setlist__listen--<?= h($listenApp) ?>" href="<?= h(track_listen_url($viewerApp, $track, array_key_exists($k, $linkCache) ? $linkCache[$k] : false)) ?>" target="_blank" rel="noopener" aria-label="<?= h(MUSIC_APPS[$listenApp]) ?> で聴く"><?= MUSIC_APP_ICONS[$listenApp] ?></a>
+                        <span class="setlist__song"><span class="setlist__artwrap"><img class="setlist__art" src="<?= h($song['artwork_url']) ?>" alt="" loading="lazy" width="56" height="56"><a class="setlist__listen setlist__listen--<?= h($listenApp) ?>" href="<?= h(track_listen_url($viewerApp, $track, array_key_exists($k, $linkCache) ? $linkCache[$k] : false)) ?>" target="_blank" rel="noopener" aria-label="<?= h(MUSIC_APPS[$listenApp]) ?> で聴く"><?= MUSIC_APP_ICONS[$listenApp] ?></a></span><?= h($song['title']) ?></span>
                     <?php else: ?>
                         <span class="setlist__song"><span class="setlist__art setlist__art--none"><?= icon('music_note') ?></span><?= h($song['title']) ?></span>
                     <?php endif; ?>

@@ -816,19 +816,26 @@ a.setlist__song:hover { color: var(--accent); text-decoration: underline; }
 .band-section .setlist__song { gap: 14px; font-weight: 700; }
 .band-section .setlist__art { width: 56px; height: 56px; border-radius: 6px; font-size: 18px; }
 .band-section .setlist__artist, .band-section .setlist__who { font-size: 13px; margin-left: 8px; }
-/* 「聴く」アイコン: 曲の行にマウスを乗せると薄く出て、アイコンに乗せると濃く・少し大きく。押すと音楽アプリへ */
-.setlist__listen { display: inline-grid; place-items: center; vertical-align: middle; margin-left: 10px; border-radius: 50%;
-  opacity: 0; transition: opacity .15s ease, transform .15s ease; }
-.setlist__listen svg { display: block; }
-.band-section .setlist li:hover .setlist__listen, .setlist__listen:focus-visible { opacity: .45; }
-.band-section .setlist li .setlist__listen:hover, .band-section .setlist li .setlist__listen:focus-visible { opacity: 1; transform: scale(1.1); } /* 乗せたら透けない */
+/* 「聴く」アイコン: ジャケットにマウスを乗せると、ジャケットが暗くなって真ん中にアプリのアイコンが出る。押すと音楽アプリへ
+ *  .setlist__artwrap を position: relative にして、リンクを position: absolute; inset: 0 でジャケットにぴったり重ねている */
+.setlist__artwrap { position: relative; display: inline-flex; flex: none; }
+.setlist__listen { position: absolute; inset: 0; display: grid; place-items: center; border-radius: 6px;
+  background: rgba(0, 0, 0, .3); opacity: 0; transition: opacity .15s ease; }
+/* アイコンはジャケットの 70% の大きさに（svg の width/height 属性を CSS で上書き） */
+.setlist__listen svg { display: block; width: 70%; height: 70%; border-radius: 50%; background: #fff; }
+/* Spotify のロゴは波線の部分が「穴」なので、後ろの色が透けて見える。白だと目立つので公式ロゴと同じ黒で塗りつぶす */
+/*   丸ごと黒にするとふちから黒がはみ出すので、radial-gradient で半径の 90% までだけ黒く塗る */
+.setlist__listen--spotify svg { background: radial-gradient(circle closest-side, #000 90%, transparent 91%); }
+/* YouTube Music も同じ作り（輪と再生マークが穴）なので、白を半径の 90% までにしてはみ出しを防ぐ */
+.setlist__listen--youtube_music svg { background: radial-gradient(circle closest-side, #fff 90%, transparent 91%); }
+/* Apple Music は公式アプリのアイコンに寄せて角丸の四角（色とグラデーションは svg の中で塗っている） */
+.setlist__listen--apple_music svg, .setlist__listen--line_music svg { border-radius: 22%; background: none; } /* LINE MUSIC も同じ */
+.setlist__artwrap:hover .setlist__listen, .setlist__listen:focus-visible { opacity: 1; }
 /* アプリの色。:hover も並べるのは、全体の a:hover（赤くする）の方が強くて、乗せたときにロゴが赤く塗られてしまうため */
 .setlist__listen--spotify, .setlist__listen--spotify:hover { color: #1db954; }
 .setlist__listen--apple_music, .setlist__listen--apple_music:hover { color: #fa243c; }
 .setlist__listen--youtube_music, .setlist__listen--youtube_music:hover { color: #ff0000; }
 .setlist__listen--line_music, .setlist__listen--line_music:hover { color: #0ee071; } /* 公式ロゴの緑 */
-/* スマホなど「乗せる」ができない端末では、常に薄く出しておく */
-@media (hover: none) { .setlist__listen { opacity: .45; } }
 @media (prefers-reduced-motion: reduce) { .setlist__listen { transition: none; } }
 @media (max-width: 640px) {
   .band-section .setlist { font-size: 17px; }
