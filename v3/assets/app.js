@@ -546,19 +546,51 @@ function setupConfirm() {
 }
 
 /* ---------------------------------------------------------------------
- * ファイル選択欄: 選んだファイル名を一覧表示 & ドラッグ中の見た目
+ * ファイル選択欄: 選んだファイルを「足していく」 & 一覧表示 & ドラッグ中の見た目
+ *
+ *   <input type="file"> は選び直すと前の選択が消える（ブラウザの仕様）。
+ *   そこで選んだファイルを配列 picked に貯めておき、DataTransfer で input.files に入れ直す。
+ *   → 1ファイルずつ選んでも、ドロップを何回かに分けても、全部まとめて送信される。
+ *   （input.files を JS で代入しても change は発生しないので、二重に足されることはない）
  * ------------------------------------------------------------------- */
 function setupDropzone() {
   const drop = document.querySelector('[data-dropzone]');
   if (!drop) return;
   const input = drop.querySelector('[data-file-input]');
   const list = drop.querySelector('[data-file-list]');
-  input.addEventListener('change', () => {
-    list.replaceChildren(...[...input.files].map((f) => {
+  let picked = [];
+  const sameFile = (a, b) => a.name === b.name && a.size === b.size && a.lastModified === b.lastModified;
+
+  const render = () => {
+    const dt = new DataTransfer();
+    picked.forEach((f) => dt.items.add(f));
+    input.files = dt.files;
+    list.replaceChildren(...picked.map((f, i) => {
       const li = document.createElement('li');
-      li.textContent = `${f.name.toLowerCase().endsWith('.pdf') ? 'PDF' : 'CSV'} · ${f.name}`; // textContent なので XSS にならない
+      li.className = 'dropzone__file';
+      const name = document.createElement('span');
+      const ext = f.name.includes('.') ? f.name.split('.').pop().toUpperCase() : '?';
+      name.textContent = `${ext} · ${f.name}`; // textContent なので XSS にならない
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'dropzone__remove';
+      remove.append(iconEl('close'));
+      remove.setAttribute('aria-label', `${f.name} を外す`);
+      remove.addEventListener('click', (e) => {
+        e.preventDefault(); // <label> の中なので、ファイル選択の画面が開かないように止める
+        picked.splice(i, 1);
+        render();
+      });
+      li.append(name, remove);
       return li;
     }));
+  };
+
+  input.addEventListener('change', () => {
+    [...input.files].forEach((f) => {
+      if (!picked.some((p) => sameFile(p, f))) picked.push(f);
+    });
+    render();
   });
   ['dragenter', 'dragover'].forEach((ev) => drop.addEventListener(ev, () => drop.classList.add('is-over')));
   ['dragleave', 'drop'].forEach((ev) => drop.addEventListener(ev, () => drop.classList.remove('is-over')));

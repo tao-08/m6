@@ -28,6 +28,7 @@ check('中黒区切り', split_member_names('山田太郎・佐藤花子'), ['�
 check('空白区切りの2人', split_member_names('山田太郎 佐藤花子'), ['山田太郎', '佐藤花子']);
 check('未定は無視', split_member_names('未定'), []);
 check('異体字', member_key('岩﨑太一'), member_key('岩崎太一'));
+check('PDF の康熙部首（⾧→長）', split_member_names("\u{2FA7}谷川優"), ['長谷川優']);
 check('パート見出し', array_map('normalize_part', ['Vo(Gt.)', 'Gt.1', 'Gt2', 'Ba.', 'Dr.', 'Key./その他', '曲数']), ['Vo', 'Gt', 'Gt', 'Ba', 'Dr', 'Key', null]);
 check('時刻（1セル）', extract_times('13:30〜14:00'), ['13:30', '14:00']);
 check('誤字候補', names_look_similar(member_key('清水啓之介'), member_key('清水啓乃介')), true);

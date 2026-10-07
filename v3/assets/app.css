@@ -519,7 +519,11 @@ input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px;
 .dropzone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; } /* 透明なファイル選択欄を全面に重ねる */
 .dropzone__icon { font-size: 26px; font-weight: 800; width: 56px; height: 56px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: var(--on-accent); margin-bottom: 6px; }
 .dropzone__title { font-weight: 800; font-size: 17px; }
-.dropzone__list { list-style: none; padding: 0; margin: 10px 0 0; display: grid; gap: 4px; font-size: 13px; font-weight: 600; }
+.dropzone__list { position: relative; z-index: 1; list-style: none; padding: 0; margin: 10px 0 0; display: grid; gap: 4px; font-size: 13px; font-weight: 600; } /* × を押せるように透明な input より上に出す */
+.dropzone__file { display: flex; align-items: center; gap: 8px; }
+.dropzone__remove { border: 0; background: var(--border); color: inherit; width: 22px; height: 22px; border-radius: 50%; padding: 0; display: grid; place-items: center; cursor: pointer; }
+.dropzone__remove .icon { font-size: 16px; vertical-align: 0; }
+.dropzone__remove:hover { background: var(--accent); color: var(--on-accent); }
 .guide { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-top: 18px; }
 .guide h3 { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
 .guide p { margin: 0; }
