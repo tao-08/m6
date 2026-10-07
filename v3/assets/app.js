@@ -335,6 +335,18 @@ function setupTrackSearch() {
     openResults(results);
   };
 
+  // 曲名の欄で Enter → その曲の「曲を探す」を押す（フォームは送信しない）
+  //   isComposing: 日本語入力の変換を確定する Enter では探さない
+  list.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' || e.isComposing || e.keyCode === 229) return;
+    if (!e.target.matches('[name$="[title]"]')) return;
+    e.preventDefault();
+    const card = e.target.closest('[data-song-card]');
+    // 候補が開いていたら閉じ始めておく。ボタンは「開いているときに押すと閉じる」ので、これで探し直しになる
+    closeResults(card.querySelector('[data-track-results]'));
+    card.querySelector('[data-track-search]').click();
+  });
+
   list.addEventListener('click', async (e) => {
     const card = e.target.closest('[data-song-card]');
     if (!card) return;
@@ -367,7 +379,11 @@ function setupTrackSearch() {
       }
       results.replaceChildren(...data.tracks.map((track) => {
         const btn = optionButton(track);
-        btn.addEventListener('click', () => setTrack(card, track));
+        btn.addEventListener('click', () => {
+          // 選んだ曲の正式な曲名で置き換える（打ち間違い・表記ゆれをそろえる）
+          card.querySelector('[name$="[title]"]').value = track.title;
+          setTrack(card, track);
+        });
         return btn;
       }));
     } catch (err) {
