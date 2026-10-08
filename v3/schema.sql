@@ -37,7 +37,7 @@ SET NAMES utf8mb4;
 -- まっさらな DB に流すと「Note: #1051 '〜' は不明な表です」が表の数だけ出るが、
 -- これは「消そうとした表が最初から無かった」というだけの“お知らせ”で、エラーではない。
 SET FOREIGN_KEY_CHECKS = 0;
-DROP TABLE IF EXISTS artist_alias, member_favorite_album, song_performer, song, band_member, live_break, band, artist, live_day, live, venue, instrument, user_account, member;
+DROP TABLE IF EXISTS member_role, role, artist_alias, member_favorite_album, song_performer, song, band_member, live_break, band, artist, live_day, live, venue, instrument, user_account, member;
 SET FOREIGN_KEY_CHECKS = 1;
 
 -- ---------------------------------------------------------------------
@@ -48,13 +48,40 @@ CREATE TABLE member (
     name       VARCHAR(50)       NOT NULL,             -- 表示名（空白なしで統一して保存）
     name_kana  VARCHAR(50)       NULL,                 -- 不明なら NULL（'' で代用しない）
     entry_year SMALLINT UNSIGNED NULL,                 -- 入部年度
+    faculty    VARCHAR(20)       NULL,                 -- 学部（FACULTIES のどれか）。NULL = 選んでいない
     music_app  VARCHAR(20) CHARACTER SET ascii NULL,  -- 使っている音楽アプリ（マイアルバムのリンクをこれで開く）。NULL = 選んでいない
     created_at DATETIME          NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (member_id),
     UNIQUE KEY uq_member_name (name),
     CONSTRAINT ck_member_entry CHECK (entry_year IS NULL OR entry_year BETWEEN 1950 AND 2100),
     CONSTRAINT ck_member_music_app
-        CHECK (music_app IS NULL OR music_app IN ('spotify', 'apple_music', 'youtube_music', 'line_music'))
+        CHECK (music_app IS NULL OR music_app IN ('spotify', 'apple_music', 'youtube_music', 'line_music')),
+    CONSTRAINT ck_member_faculty CHECK (faculty IS NULL OR faculty IN
+        ('法学部', '政治経済学部', '商学部', '経営学部', '文学部', '情報コミュニケーション学部',
+         '総合数理学部', '理工学部', '農学部', '国際日本学部'))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- ---------------------------------------------------------------------
+--  role — 係（会計・PA など）のマスタ。プロフィールの「新しい係」で増える
+--  member_role — 誰がどの係か（1人で複数の係を持てるので中間テーブル）
+--    主キー (member_id, role_id): 同じ人に同じ係を2回付けられない
+--    使われている係は消せない（ON DELETE RESTRICT。消すなら masters.php で統合）
+-- ---------------------------------------------------------------------
+CREATE TABLE role (
+    role_id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    name    VARCHAR(30)  NOT NULL,
+    PRIMARY KEY (role_id),
+    UNIQUE KEY uq_role_name (name)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE member_role (
+    member_id INT UNSIGNED NOT NULL,
+    role_id   INT UNSIGNED NOT NULL,
+    PRIMARY KEY (member_id, role_id),
+    CONSTRAINT fk_mr_member FOREIGN KEY (member_id) REFERENCES member (member_id)
+        ON UPDATE CASCADE ON DELETE CASCADE,
+    CONSTRAINT fk_mr_role FOREIGN KEY (role_id) REFERENCES role (role_id)
+        ON UPDATE CASCADE ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- ---------------------------------------------------------------------

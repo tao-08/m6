@@ -14,6 +14,7 @@
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/albums.php'; // MUSIC_APPS（選べる音楽アプリの一覧）
+require_once __DIR__ . '/lib/repository.php'; // profile_faculty_role_fields()
 $user = require_login();
 
 $pdo = db();
@@ -96,6 +97,7 @@ render_header('アカウント設定');
         <label class="field"><span>名前</span><input name="name" value="<?= h($myMember['name']) ?>" maxlength="50" required></label>
         <label class="field"><span>ふりがな</span><input name="name_kana" value="<?= h($myMember['name_kana']) ?>" maxlength="50"></label>
         <label class="field"><span>入部年度</span><input type="number" name="entry_year" min="1950" max="2100" value="<?= (int)$myMember['entry_year'] ?: '' ?>"></label>
+        <?= profile_faculty_role_fields($pdo, $myMember) ?>
         <label class="field"><span>対応するリンクを開く音楽アプリ</span>
             <select name="music_app">
                 <option value="">未選択</option>

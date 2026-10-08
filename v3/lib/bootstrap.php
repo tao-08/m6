@@ -173,6 +173,10 @@ function youtube_icon(): string
  */
 const DAY_LABELS = ['1日目', '2日目', '3日目', '教室ライブ'];
 
+/** プロフィールで選べる学部（member.faculty の CHECK 制約と同じ並び。変えるときは DB も一緒に） */
+const FACULTIES = ['法学部', '政治経済学部', '商学部', '経営学部', '文学部', '情報コミュニケーション学部',
+    '総合数理学部', '理工学部', '農学部', '国際日本学部'];
+
 /** 別ページへ移動して処理を終える（exit を忘れると後ろの処理が動いてしまうので関数にまとめた） */
 function redirect(string $path): never
 {

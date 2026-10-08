@@ -198,7 +198,11 @@ render_header($member['name'], 'members');
         <p class="muted small">
             <?= h($member['name_kana'] ?? '') ?>
             <?= (int)$member['entry_year'] > 0 ? ' · ' . (int)$member['entry_year'] . '年入学' : '' ?>
+            <?= $member['faculty'] !== null ? ' · ' . h($member['faculty']) : '' ?>
         </p>
+        <?php if ($roles = member_roles($pdo, $memberId)): ?>
+            <p class="tag-row"><?php foreach ($roles as $role): ?><span class="tag"><?= h($role) ?></span><?php endforeach; ?></p>
+        <?php endif; ?>
         <?php if ($parts): ?><?= part_marks($parts, true) ?><?php endif; ?>
     </div>
     <dl class="stats">
@@ -226,6 +230,7 @@ render_header($member['name'], 'members');
         <label class="field"><span>ふりがな</span><input name="name_kana" value="<?= h($member['name_kana']) ?>" maxlength="50"></label>
         <?php if ($canEditAll): ?>
             <label class="field"><span>入部年度</span><input type="number" name="entry_year" min="1950" max="2100" value="<?= (int)$member['entry_year'] ?: '' ?>"></label>
+            <?= profile_faculty_role_fields($pdo, $member) ?>
             <label class="field field--wide"><span>使っている音楽アプリ（マイアルバムのリンクをこのアプリで開きます）</span>
                 <select name="music_app">
                     <option value="">未選択</option>

@@ -1,9 +1,9 @@
 <?php
 /**
  * =====================================================================
- *  masters.php — 会場・日程名・楽器の管理（管理者のみ）
+ *  masters.php — 会場・日程名・楽器・係の管理（管理者のみ）
  * =====================================================================
- *  「選択肢として使い回す名前」をまとめて直す画面。上のタブで切り替える（?tab=venue / day / instrument）。
+ *  「選択肢として使い回す名前」をまとめて直す画面。上のタブで切り替える（?tab=venue / day / instrument / role）。
  *
  *  会場（venue テーブル）
  *    名前の変更 … venue.name は UNIQUE なので、他の会場と同じ名前にはできない（→ 統合を使う）
@@ -22,6 +22,10 @@
  *    削除       … 最初から入っている楽器（BUILTIN_INSTRUMENTS。プログラムが略称で探している）と、
  *                  出演記録で使われている楽器（band_member の外部キーが ON DELETE RESTRICT）は消せない
  *
+ *  係（role テーブル。プロフィールの「新しい係」で増える）
+ *    会場と同じく 名前の変更・統合・削除。統合は member_role を統合先に付け替えてから消す。
+ *    削除 … 誰かに付いている係は消せない（member_role の外部キーが ON DELETE RESTRICT）
+ *
  *  以前の venues.php / instruments.php は、このページのタブへ移動するだけのファイルとして残している。
  * =====================================================================
  */
@@ -36,6 +40,7 @@ $tabs = [
     'venue'      => ['会場', '会場の名前の変更・統合・削除ができます。表記ゆれで2つに分かれた会場は「統合」でまとめてください（日程は統合先に付け替わります）。日程で使われている会場は削除できません。'],
     'day'        => ['日程名', '新しく作られた日程名の変更ができます。もうある日程名に変えると、その日程名にまとまります（表記ゆれの統合）。「1日目」などのいつもの日程名は変えられません。'],
     'instrument' => ['楽器', '名簿の取り込みで「etc」から追加された楽器の名前の変更・削除ができます。最初から入っている楽器と、出演記録で使われている楽器は消せません。'],
+    'role'       => ['係', 'プロフィールで作られた係の名前の変更・統合・削除ができます。表記ゆれで2つに分かれた係は「統合」でまとめてください（付いている人は統合先に移ります）。誰かに付いている係は削除できません。'],
 ];
 $tab = (string)($_GET['tab'] ?? $_POST['tab'] ?? 'venue');
 if (!isset($tabs[$tab])) {
@@ -129,6 +134,59 @@ if (is_post()) {
                 }
             }
         }
+    } elseif ($tab === 'role') {
+        // ================= 係（会場とほぼ同じ） =================
+        $id = (int)($_POST['role_id'] ?? 0);
+        $st = $pdo->prepare('SELECT r.name, (SELECT COUNT(*) FROM member_role mr WHERE mr.role_id = r.role_id) AS used
+            FROM role r WHERE r.role_id = ?');
+        $st->execute([$id]);
+        $target = $st->fetch();
+
+        if (!$target) {
+            flash('係が見つかりません', 'error');
+        } elseif ($action === 'rename') {
+            $name = trim((string)($_POST['name'] ?? ''));
+            $dup = $pdo->prepare('SELECT 1 FROM role WHERE name = ? AND role_id <> ?');
+            $dup->execute([$name, $id]);
+            if ($name === '' || mb_strlen($name) > 30) {
+                flash('係の名前は1〜30文字で入力してください', 'error');
+            } elseif ($dup->fetchColumn()) {
+                flash("「{$name}」という係はすでにあります（まとめるときは「統合」を使ってください）", 'error');
+            } elseif ($name !== $target['name']) {
+                $pdo->prepare('UPDATE role SET name = ? WHERE role_id = ?')->execute([$name, $id]);
+                flash("「{$target['name']}」を「{$name}」に変更しました");
+            }
+        } elseif ($action === 'merge') {
+            $toId = (int)($_POST['to_id'] ?? 0);
+            $st = $pdo->prepare('SELECT name FROM role WHERE role_id = ?');
+            $st->execute([$toId]);
+            $toName = $st->fetchColumn();
+            if ($toName === false || $toId === $id) {
+                flash('統合先の係を選んでください（同じ係は選べません）', 'error');
+            } else {
+                // 会場のように UPDATE で付け替えると、両方の係を持っている人のところで主キー (member_id, role_id) が重なってエラーになる。
+                // なので INSERT IGNORE で統合先の行を作り（重なる人は飛ばす）、元の行はあとでまとめて消す
+                $pdo->beginTransaction();
+                try {
+                    $pdo->prepare('INSERT IGNORE INTO member_role (member_id, role_id)
+                        SELECT member_id, ? FROM member_role WHERE role_id = ?')->execute([$toId, $id]);
+                    $pdo->prepare('DELETE FROM member_role WHERE role_id = ?')->execute([$id]);
+                    $pdo->prepare('DELETE FROM role WHERE role_id = ?')->execute([$id]);
+                    $pdo->commit();
+                } catch (Throwable $e) {
+                    $pdo->rollBack();
+                    throw $e;
+                }
+                flash("「{$target['name']}」を「{$toName}」に統合しました（{$target['used']} 人を付け替え）");
+            }
+        } elseif ($action === 'delete') {
+            if ((int)$target['used'] > 0) {
+                flash("「{$target['name']}」は {$target['used']} 人に付いているので消せません", 'error');
+            } else {
+                $pdo->prepare('DELETE FROM role WHERE role_id = ?')->execute([$id]);
+                flash("「{$target['name']}」を消しました");
+            }
+        }
     } else {
         // ================= 楽器 =================
         $id = (int)($_POST['instrument_id'] ?? 0);
@@ -183,7 +241,12 @@ $instruments = $pdo->query('SELECT i.instrument_id, i.short_name, i.name, COUNT(
     FROM instrument i LEFT JOIN band_member bm ON bm.instrument_id = i.instrument_id
     GROUP BY i.instrument_id, i.short_name, i.name, i.sort_order
     ORDER BY i.sort_order, i.instrument_id')->fetchAll();
-$counts = ['venue' => count($venues), 'day' => count($days), 'instrument' => count($instruments)];
+// 係ごとに「何人に付いているか」
+$roles = $pdo->query('SELECT r.role_id, r.name, COUNT(mr.member_id) AS used
+    FROM role r LEFT JOIN member_role mr ON mr.role_id = r.role_id
+    GROUP BY r.role_id, r.name
+    ORDER BY r.name')->fetchAll();
+$counts = ['venue' => count($venues), 'day' => count($days), 'instrument' => count($instruments), 'role' => count($roles)];
 
 /** 消せないときのグレーアウトしたゴミ箱（disabled のボタンはマウスの反応が鈍いので、外側の span でツールチップを出す） */
 function trash_disabled(string $why): string
@@ -197,7 +260,7 @@ render_header($tabs[$tab][0] . 'の管理');
 <section class="hero">
     <div>
         <p class="eyebrow">Admin</p>
-        <h1 class="display">会場・日程名・楽器の管理</h1>
+        <h1 class="display">会場・日程名・楽器・係の管理</h1>
         <p class="muted"><?= h($tabs[$tab][1]) ?></p>
     </div>
     <dl class="stats"><div><dt><?= h($tabs[$tab][0]) ?></dt><dd><?= $counts[$tab] ?></dd></div></dl>
@@ -258,6 +321,56 @@ render_header($tabs[$tab][0] . 'の管理');
         <?php endforeach; ?>
         <?php if (!$venues): ?>
             <tr><td colspan="4" class="muted">まだ会場が登録されていません</td></tr>
+        <?php endif; ?>
+        </tbody>
+
+    <?php elseif ($tab === 'role'): ?>
+        <thead><tr><th>係の名前</th><th class="num">付いている人</th><th>他の係に統合</th><th></th></tr></thead>
+        <tbody>
+        <?php foreach ($roles as $r): ?>
+            <tr>
+                <td>
+                    <form method="post" class="row-form"><?= csrf_field() ?>
+                        <input type="hidden" name="tab" value="role">
+                        <input type="hidden" name="action" value="rename">
+                        <input type="hidden" name="role_id" value="<?= (int)$r['role_id'] ?>">
+                        <input name="name" value="<?= h($r['name']) ?>" maxlength="30" required aria-label="係の名前">
+                        <button class="btn btn--ghost btn--sm" type="submit">名前を変更</button>
+                    </form>
+                </td>
+                <td class="num"><?= (int)$r['used'] ?></td>
+                <td>
+                    <?php if (count($roles) > 1): ?>
+                        <form method="post" class="row-form" data-confirm="「<?= h($r['name']) ?>」を選んだ係に統合します。「<?= h($r['name']) ?>」は消えて元に戻せません。よろしいですか？"><?= csrf_field() ?>
+                            <input type="hidden" name="tab" value="role">
+                            <input type="hidden" name="action" value="merge">
+                            <input type="hidden" name="role_id" value="<?= (int)$r['role_id'] ?>">
+                            <select name="to_id" required aria-label="統合先の係">
+                                <option value="">統合先を選択</option>
+                                <?php foreach ($roles as $to): if ($to['role_id'] === $r['role_id']) continue; ?>
+                                    <option value="<?= (int)$to['role_id'] ?>"><?= h($to['name']) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                            <button class="btn btn--ghost btn--sm" type="submit">統合</button>
+                        </form>
+                    <?php endif; ?>
+                </td>
+                <td class="num">
+                    <?php if ((int)$r['used'] > 0): ?>
+                        <?= trash_disabled('付いている人がいるため削除できません') ?>
+                    <?php else: ?>
+                        <form method="post" class="inline-form" data-confirm="「<?= h($r['name']) ?>」を消します。よろしいですか？"><?= csrf_field() ?>
+                            <input type="hidden" name="tab" value="role">
+                            <input type="hidden" name="action" value="delete">
+                            <input type="hidden" name="role_id" value="<?= (int)$r['role_id'] ?>">
+                            <button class="btn-trash" type="submit" aria-label="「<?= h($r['name']) ?>」を削除" title="削除"><?= icon('delete') ?></button>
+                        </form>
+                    <?php endif; ?>
+                </td>
+            </tr>
+        <?php endforeach; ?>
+        <?php if (!$roles): ?>
+            <tr><td colspan="4" class="muted">まだ係がありません（プロフィールの「新しい係」で作れます）</td></tr>
         <?php endif; ?>
         </tbody>
 

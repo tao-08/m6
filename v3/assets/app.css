@@ -1241,3 +1241,11 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
 .manual-divider__input { flex: 1; max-width: 320px; font-weight: 800; color: var(--accent); }
 .manual-tt [data-manual-no] { width: 2.5em; text-align: right; font-weight: 700; color: var(--muted); }
 .manual-tt__add { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* プロフィールの「係」: 今ある係のチェックボックスを横に並べ、その下に新しい係の入力欄（lib/repository.php の profile_faculty_role_fields） */
+.role-checks { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 0; padding: 0; border: 0; min-width: 0; }
+.role-checks legend { padding: 0; margin-bottom: 6px; }
+.role-checks__item { display: inline-flex; align-items: center; gap: 4px; color: var(--text); font-weight: 600; cursor: pointer; }
+.role-checks input[name="new_roles"] { flex-basis: 100%; }
+/* メンバーページの名前の下の係タグ */
+.tag-row { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0 0; }

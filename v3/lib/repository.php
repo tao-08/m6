@@ -80,6 +80,48 @@ function find_or_create_venue(PDO $pdo, string $name): ?int
     return (int)$st->fetchColumn();
 }
 
+/** 係の名前 → role_id。無ければ作る（find_or_create_venue と同じやり方） */
+function find_or_create_role(PDO $pdo, string $name): int
+{
+    $pdo->prepare('INSERT IGNORE INTO role (name) VALUES (?)')->execute([$name]);
+    $st = $pdo->prepare('SELECT role_id FROM role WHERE name = ?');
+    $st->execute([$name]);
+    return (int)$st->fetchColumn();
+}
+
+/** そのメンバーの係 [role_id => 名前]（名前順） */
+function member_roles(PDO $pdo, int $memberId): array
+{
+    $st = $pdo->prepare('SELECT r.role_id, r.name FROM member_role mr JOIN role r ON r.role_id = mr.role_id
+        WHERE mr.member_id = ? ORDER BY r.name');
+    $st->execute([$memberId]);
+    return $st->fetchAll(PDO::FETCH_KEY_PAIR);
+}
+
+/**
+ * プロフィール編集フォームの「学部」「係」の欄（account.php と member.php で同じものを出す）。
+ * 係は、今ある係のチェックボックス ＋ 新しい係の入力欄（「、」区切りで複数）。保存は member_edit.php
+ */
+function profile_faculty_role_fields(PDO $pdo, array $member): string
+{
+    $mine = member_roles($pdo, (int)$member['member_id']);
+    $all = $pdo->query('SELECT role_id, name FROM role ORDER BY name')->fetchAll(PDO::FETCH_KEY_PAIR);
+
+    $html = '<label class="field"><span>学部</span><select name="faculty"><option value="">未選択</option>';
+    foreach (FACULTIES as $f) {
+        $html .= '<option value="' . h($f) . '"' . ($member['faculty'] === $f ? ' selected' : '') . '>' . h($f) . '</option>';
+    }
+    $html .= '</select></label>';
+
+    $html .= '<fieldset class="field field--wide role-checks"><legend>係</legend>';
+    foreach ($all as $id => $name) {
+        $html .= '<label class="role-checks__item"><input type="checkbox" name="roles[]" value="' . (int)$id . '"'
+            . (isset($mine[$id]) ? ' checked' : '') . '> ' . h($name) . '</label>';
+    }
+    $html .= '<input name="new_roles" maxlength="100" placeholder="新しい係（「、」区切りで複数可）" aria-label="新しい係">';
+    return $html . '</fieldset>';
+}
+
 /** (年度, ライブ名) → live_id。無ければ作る。 */
 function find_or_create_live(PDO $pdo, int $year, string $name): int
 {
@@ -790,8 +832,11 @@ function merge_members(PDO $pdo, int $fromId, int $toId): void
     // COALESCE(a, b): a が NULL なら b を使う
     $pdo->prepare('UPDATE member t JOIN member f ON f.member_id = ?
         SET t.name_kana = COALESCE(t.name_kana, f.name_kana), t.entry_year = COALESCE(t.entry_year, f.entry_year),
-            t.music_app = COALESCE(t.music_app, f.music_app)
+            t.music_app = COALESCE(t.music_app, f.music_app), t.faculty = COALESCE(t.faculty, f.faculty)
         WHERE t.member_id = ?')->execute([$fromId, $toId]);
+    // 係も統合先へ（両方に同じ係があれば主キー重複を INSERT IGNORE で飛ばす。統合元の行は member 削除の CASCADE で消える）
+    $pdo->prepare('INSERT IGNORE INTO member_role (member_id, role_id)
+        SELECT ?, role_id FROM member_role WHERE member_id = ?')->execute([$toId, $fromId]);
 
     // 統合先にアカウントが紐付いていなければ、統合元のアカウントを付け替える
     $pdo->prepare('UPDATE user_account SET member_id = ?

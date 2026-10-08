@@ -53,7 +53,7 @@ $nav = [
          display=block: 読み込み中にアイコン名の英単語（edit など）が一瞬見えるのを防ぐ -->
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400..600,0..1,0&display=block" rel="stylesheet">
     <!-- ?v=2 はキャッシュ対策。CSS を変えたら数字を上げると、ブラウザが古い CSS を使い続けない -->
-    <link rel="stylesheet" href="assets/app.css?v=124">
+    <link rel="stylesheet" href="assets/app.css?v=128">
     <script src="assets/app.js?v=63" defer></script>
 </head>
 <body>
@@ -106,7 +106,7 @@ $nav = [
                         <a href="users.php">ユーザー管理</a>
                         <a href="members_merge.php">メンバーの統合</a>
                         <a href="members_entry.php">メンバープロフィールの一括編集</a>
-                        <a href="masters.php">会場・日程名・楽器の管理</a>
+                        <a href="masters.php">会場・日程名・楽器・係の管理</a>
                     </div>
                 <?php endif; ?>
             </div>
