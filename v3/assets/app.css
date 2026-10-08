@@ -871,7 +871,7 @@ body.is-row-dragging, body.is-row-dragging * { cursor: grabbing !important; user
 .stats-filter:not(:has(input[name="period"][value="range"]:checked)) [data-show-when="period=range"],
 .stats-filter:not(:has(input[name="who"][value="grade"]:checked)) [data-show-when="who=grade"],
 .stats-filter:has(input[name="who"][value="all"]:checked) [data-hide-when="who=all"] { display: none; }
-.stats-scope { margin: 0 0 14px; }
+.stats-scope { margin: 0 0 14px; font-size: 15px; } /* 今どの範囲を見ているかは大事なので、.small（13px）より大きく */
 .stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; margin-top: 14px; }
 .section-title--card { margin: 0 0 12px; }
 /* 見出しの右端に小さな切り替え（統計の「Voを合算する」）を置く */
