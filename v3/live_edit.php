@@ -148,7 +148,7 @@ function total_bands_field(string $prefix, string $value, int $registered): stri
     return '<label class="field"><span>総バンド数（任意）</span>'
         . '<input type="number" name="' . $prefix . '[total_bands]" value="' . h($value) . '" min="' . $registered . '" max="999" step="1" inputmode="numeric"'
         . ' placeholder="' . $registered . '">'
-        . '<small class="merge-note">登録済み ' . $registered . ' 組より少ない数は保存できません。';
+        . '<small class="merge-note">登録済み ' . $registered . ' 組より少ない数は保存できません。</small></label>';
 }
 
 /** 日程1つ分の値を、SQL に渡す配列にする（空欄 → NULL） */
