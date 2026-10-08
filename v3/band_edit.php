@@ -160,7 +160,8 @@ if (is_post()) {
 if (!$members) {
     $members[] = ['name' => '', 'choice' => '2']; // メンバー0人でも1行は出す（「＋ 行を追加」は最後の行をコピーして作るので）
 }
-$allNames = $pdo->query('SELECT name FROM member ORDER BY name')->fetchAll(PDO::FETCH_COLUMN);
+// 名前の入力候補。ふりがな（name_kana）でも探せるように一緒に読む
+$allNames = $pdo->query('SELECT name, name_kana FROM member ORDER BY name')->fetchAll(PDO::FETCH_KEY_PAIR);
 $allArtists = $pdo->query('SELECT name FROM artist ORDER BY name')->fetchAll(PDO::FETCH_COLUMN);
 
 render_header($isNew ? 'バンドを追加' : 'バンドを編集', 'lives');
@@ -175,7 +176,7 @@ render_header($isNew ? 'バンドを追加' : 'バンドを編集', 'lives');
     <input type="hidden" name="day_id" value="<?= $dayId ?>">
     <div class="form-grid">
         <label class="field field--wide"><span>バンド名（タイムテーブルの表記）</span><input name="name" value="<?= h($band['name']) ?>" maxlength="100" required <?= $isNew ? 'autofocus' : '' ?>></label>
-        <label class="field field--wide"><span>コピー元アーティスト</span><input name="artist" value="<?= h($band['artist_name']) ?>" list="artists" maxlength="100"></label>
+        <label class="field field--wide"><span>コピー元アーティスト</span><input name="artist" value="<?= h($band['artist_name']) ?>" data-suggest-list="artists" autocomplete="off" maxlength="100"></label>
         <label class="field"><span>出演順</span><input type="number" min="1" name="play_order" value="<?= h($band['play_order']) ?>" required></label>
         <label class="field"><span>曲数</span><input type="number" min="0" max="255" name="song_count" value="<?= h($band['song_count']) ?>" required></label>
         <label class="field"><span>開始</span><input type="time" name="start_time" value="<?= h(fmt_time($band['start_time'])) ?>"></label>
@@ -191,13 +192,13 @@ render_header($isNew ? 'バンドを追加' : 'バンドを編集', 'lives');
         <?php foreach ($members as $m): ?>
             <div class="member-row-edit">
                 <select name="m_inst[]" aria-label="楽器"><?= instrument_choice_options($m['choice']) ?></select>
-                <input name="m_name[]" value="<?= h($m['name']) ?>" list="member-names" placeholder="名前" aria-label="名前" class="name-input" data-name-cell>
+                <input name="m_name[]" value="<?= h($m['name']) ?>" data-suggest-list="member-names" autocomplete="off" placeholder="名前" aria-label="名前" class="name-input" data-name-cell>
                 <button type="button" class="btn btn--ghost btn--sm" data-remove-row aria-label="この行を削除"><?= icon('close') ?></button>
             </div>
         <?php endforeach; ?>
     </div>
     <button type="button" class="btn btn--ghost btn--sm" data-add-row>＋ メンバーを追加</button>
-    <datalist id="member-names"><?php foreach ($allNames as $n): ?><option value="<?= h($n) ?>"><?php endforeach; ?></datalist>
+    <datalist id="member-names"><?php foreach ($allNames as $n => $kana): ?><option value="<?= h((string)$n) ?>" data-kana="<?= h((string)$kana) ?>"><?php endforeach; ?></datalist>
 
     <div class="form-actions">
         <?php if (!$isNew): ?><a class="btn btn--ghost" href="songs_edit.php?band=<?= (int)$band['band_id'] ?>">セットリストを編集</a><?php endif; ?>

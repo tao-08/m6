@@ -226,7 +226,8 @@ if (!isset($breaksByDay)) { // 初めて開いたとき（エラーで戻って�
         $breaksByDay[$dayId] ??= gap_breaks($dayBands, '休憩');
     }
 }
-$allNames = $pdo->query('SELECT name FROM member ORDER BY name')->fetchAll(PDO::FETCH_COLUMN);
+// 名前の入力候補。ふりがな（name_kana）でも探せるように一緒に読む（band_edit.php と同じ）
+$allNames = $pdo->query('SELECT name, name_kana FROM member ORDER BY name')->fetchAll(PDO::FETCH_KEY_PAIR);
 
 /**
  * 休憩の1行（ページの表と、JS が複製する <template> の両方で使う）
@@ -275,7 +276,7 @@ render_header('タイムテーブルを編集', 'lives'); ?>
 <!-- data-pack: 送信時に JS が全項目を JSON 1個にまとめる（read_form_input() の説明参照） -->
 <form method="post" class="tt-form" data-pack>
     <?= csrf_field() ?>
-    <datalist id="member-names"><?php foreach ($allNames as $n): ?><option value="<?= h($n) ?>"><?php endforeach; ?></datalist>
+    <datalist id="member-names"><?php foreach ($allNames as $n => $kana): ?><option value="<?= h((string)$n) ?>" data-kana="<?= h((string)$kana) ?>"><?php endforeach; ?></datalist>
 
     <?php $breakNo = 0; // 休憩の行の番号（name の k[番号]。ページ全体で通し番号。JS で足す行はこの続きから）
     foreach ($days as $i => $d):
@@ -336,7 +337,7 @@ render_header('タイムテーブルを編集', 'lives'); ?>
                             <?php for ($n = 0; $n < $cols; $n++):
                                 $m = $members[$n] ?? ['name' => '', 'choice' => '2']; ?>
                                 <td>
-                                    <input name="<?= $p ?>[m][<?= $n ?>][name]" value="<?= h($m['name']) ?>" list="member-names" class="name-input" data-name-cell aria-label="出演者">
+                                    <input name="<?= $p ?>[m][<?= $n ?>][name]" value="<?= h($m['name']) ?>" data-suggest-list="member-names" autocomplete="off" class="name-input" data-name-cell aria-label="出演者">
                                     <!-- 名前が空なら畳んでおく（入力されたら JS が開く）。select は JS がボタン風の部品に置き換えるので、箱ごと畳む -->
                                     <div class="cell-instrument<?= $m['name'] === '' ? ' is-collapsed' : '' ?>"><select name="<?= $p ?>[m][<?= $n ?>][inst]" class="select-sm" aria-label="楽器"><?= instrument_choice_options($m['choice']) ?></select></div>
                                 </td>

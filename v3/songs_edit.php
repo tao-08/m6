@@ -230,7 +230,7 @@ render_header('曲を編集', 'lives');
                         <button type="button" class="song-thumb__clear" data-track-clear aria-label="紐付けを外す"<?= $trackKey === '' ? ' hidden' : '' ?>><?= icon(ICON_UNLINK) ?></button>
                     </span>
                     <input name="<?= $base ?>[title]" value="<?= h($song['title']) ?>" maxlength="100" placeholder="<?= $isNew ? '曲名を入力して追加' : '曲名' ?>" class="song-card__title" aria-label="曲名">
-                    <input name="<?= $base ?>[artist]" value="<?= h($artist) ?>" maxlength="100" list="artists" placeholder="アーティスト" class="song-card__artist" aria-label="アーティスト" data-song-artist<?= $omnibus ? '' : ' readonly' ?>>
+                    <input name="<?= $base ?>[artist]" value="<?= h($artist) ?>" maxlength="100" data-suggest-list="artists" autocomplete="off" placeholder="アーティスト" class="song-card__artist" aria-label="アーティスト" data-song-artist<?= $omnibus ? '' : ' readonly' ?>>
                     <input type="hidden" name="<?= $base ?>[track]" value="<?= h($trackKey) ?>" data-track-key>
                     <button type="button" class="btn btn--ghost btn--sm" data-track-search><?= icon('search') ?> 曲を探す</button>
                     <input type="hidden" name="<?= $base ?>[id]" value="<?= $isNew ? '' : (int)$song['song_id'] ?>">

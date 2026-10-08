@@ -65,6 +65,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupDragScroll();
   setupPackedForm();
   setupMemberRows();
+  setupSuggest();
   setupSmallThings();
   setupSongs();
   setupTrackSearch();
@@ -937,6 +938,7 @@ function setupNameCheck() {
  */
 function showHint(input) {
   document.querySelectorAll('.hint-pop').forEach((p) => p.remove());
+  if (document.querySelector('.suggest-pop')) return; // 入力候補（setupSuggest）が開いているあいだは重ねない
   let suggest = [];
   try { suggest = JSON.parse(input.dataset.suggest || '[]'); } catch { suggest = []; }
   const canSuggest = input.classList.contains('is-similar') && suggest.length > 0;
@@ -2346,7 +2348,8 @@ function setupTimetableColumns() {
       input.name = `${base}[name]`;
       input.className = 'name-input';
       input.dataset.nameCell = '';
-      input.setAttribute('list', 'member-names');
+      input.dataset.suggestList = 'member-names'; // 入力候補（setupSuggest）
+      input.autocomplete = 'off';
       input.setAttribute('aria-label', '出演者');
       const box = tpl.content.firstElementChild.cloneNode(true);
       box.querySelector('select').name = `${base}[inst]`;
@@ -2690,4 +2693,189 @@ function setupMemberRows() {
       input.dispatchEvent(new Event('input', { bubbles: true })); // 色の判定をやり直す
     }
   });
+}
+
+/* ---------------------------------------------------------------------
+ * 入力候補のプルダウン（<input data-suggest-list="datalist の id">）
+ *
+ *   ブラウザ標準の <input list> は見た目が端末ごとにバラバラで、フォーカスしただけで全件出る。
+ *   そこで datalist は「候補の入れ物」としてだけ使い、1文字以上打ったときに
+ *   絞り込んだ候補を .live-pop（setupSelectPick と同じ見た目）で出す。
+ *
+ *   ・前方一致を先、部分一致を後に、最大 8 件
+ *   ・ひらがな/カタカナ、全角/半角、大文字/小文字は区別しない
+ *   ・<option data-kana="ふりがな"> があれば、ふりがなでも探す（「さと」→ 佐藤さくら）
+ *     日本語入力の変換前（下線が付いている「さと」の状態）でも input イベントは来るので、変換しなくても候補が出る
+ *   ・フォーカスは入力欄に残したまま ↑↓ で選び、Enter で確定、Esc で閉じる
+ *     （変換中の ↑↓ Enter は日本語入力のものなので横取りしない。変換中は候補を押して選ぶ）
+ *   ・行の追加で後から増えた入力欄も、document で待ち受けているので何もしなくても効く
+ * ------------------------------------------------------------------- */
+function setupSuggest() {
+  // 「入力欄が無ければ何もしない」の早期 return はしない。
+  //   曲編集で曲が0曲のとき、入力欄は <template> の中にしか無く querySelector で見つからないが、「＋ 曲を追加」で後から出てくるため
+  const MAX = 8;
+  let cur = null;        // { pop, input, items, names, active }
+  let skipNext = false;  // 候補を選んで input イベントを出したとき、もう一度開かないように
+  let composing = false; // 日本語入力の変換中か
+  let pending = null;    // 変換中に候補を押したとき { input, value }（変換が終わったら入れ直す）
+
+  // 比べる用に文字をそろえる（全角英数→半角、大文字→小文字、カタカナ→ひらがな）
+  const norm = (s) => s.normalize('NFKC').toLowerCase()
+    .replace(/[ァ-ヶ]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0x60));
+  // ふりがな用: さらに空白を取る（「やまだ たろう」を「やまだた」でも当てる）
+  const normKana = (s) => norm(s).replace(/\s+/g, '');
+
+  const close = () => {
+    if (!cur) return;
+    cur.pop.remove();
+    cur.input.removeAttribute('aria-activedescendant');
+    cur.input.setAttribute('aria-expanded', 'false');
+    cur = null;
+  };
+
+  const choose = (input, value) => {
+    // 変換中に値を書き換えると、変換が終わったときに日本語入力が打ちかけの文字を書き戻すことがある → 終わってから入れ直す
+    if (composing) pending = { input, value };
+    input.value = value;
+    close();
+    skipNext = true;
+    input.dispatchEvent(new Event('input', { bubbles: true })); // 名前の色判定などを動かす
+  };
+
+  const setActive = (i) => {
+    if (!cur) return;
+    cur.items.forEach((el, j) => el.classList.toggle('is-active', j === i));
+    cur.active = i;
+    const el = cur.items[i];
+    if (el) {
+      cur.input.setAttribute('aria-activedescendant', el.id);
+      el.scrollIntoView({ block: 'nearest' });
+    } else {
+      cur.input.removeAttribute('aria-activedescendant');
+    }
+  };
+
+  // 文字の中の一致した部分を <mark> で囲む（textContent で組むので XSS にならない）
+  const highlight = (span, text, q, normFn) => {
+    const n = normFn(text);
+    const at = q && n.length === text.length ? n.indexOf(q) : -1; // そろえると長さが変わる文字は強調しない（位置がずれるので）
+    if (at < 0) {
+      span.textContent = text;
+    } else {
+      const mark = document.createElement('mark');
+      mark.textContent = text.slice(at, at + q.length);
+      span.append(text.slice(0, at), mark, text.slice(at + q.length));
+    }
+    return span;
+  };
+
+  // 候補1行の中身: 名前（＋ ふりがなで当たったときは、右に小さくふりがな）
+  const label = (hit, q, kq) => {
+    const name = highlight(document.createElement('span'), hit.name, hit.byKana ? '' : q, norm);
+    name.className = 'live-pop__name';
+    if (!hit.byKana) return [name];
+    const kana = highlight(document.createElement('span'), hit.kana.replace(/\s+/g, ''), kq, normKana);
+    kana.className = 'suggest-pop__kana';
+    return [name, kana];
+  };
+
+  const open = (input) => {
+    close();
+    const q = norm(input.value.trim());
+    const kq = normKana(input.value);
+    const list = document.getElementById(input.dataset.suggestList);
+    if (!q || !list) return;
+
+    // 名前で当たったものを優先し、ふりがなだけで当たったものはその後ろに（それぞれ前方一致 → 部分一致の順）
+    const groups = [[], [], [], []]; // 名前の前方一致 / ふりがなの前方一致 / 名前の部分一致 / ふりがなの部分一致
+    for (const o of list.options) {
+      const n = norm(o.value);
+      const k = normKana(o.dataset.kana || '');
+      const hit = { name: o.value, kana: o.dataset.kana || '', byKana: false };
+      if (n.startsWith(q)) groups[0].push(hit);
+      else if (k && k.startsWith(kq)) groups[1].push({ ...hit, byKana: true });
+      else if (n.includes(q)) groups[2].push(hit);
+      else if (k && k.includes(kq)) groups[3].push({ ...hit, byKana: true });
+      if (groups[0].length >= MAX) break;
+    }
+    const hits = groups.flat().slice(0, MAX);
+    // 候補なし、または打った文字がそのまま唯一の候補なら出さない
+    if (!hits.length || (hits.length === 1 && norm(hits[0].name) === q)) return;
+
+    document.querySelectorAll('.hint-pop').forEach((p) => p.remove()); // 「もしかして」と重ならないように
+    const pop = document.createElement('div');
+    pop.className = 'live-pop live-pop--float suggest-pop';
+    pop.setAttribute('role', 'listbox');
+    pop.id = 'suggest-pop';
+    const items = hits.map((hit, i) => {
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.tabIndex = -1;
+      item.id = `suggest-pop-${i}`;
+      item.className = 'live-pop__item';
+      item.setAttribute('role', 'option');
+      item.append(...label(hit, q, kq));
+      item.addEventListener('click', () => choose(input, hit.name));
+      pop.append(item);
+      return item;
+    });
+    // 押した瞬間に入力欄からフォーカスが外れて（blur で）消えないように、フォーカスを移す動きを止める
+    ['mousedown', 'pointerdown'].forEach((ev) => pop.addEventListener(ev, (e) => e.preventDefault()));
+    document.body.append(pop);
+
+    // 入力欄の真下に出す。下に入りきらなければ上に（setupSelectPick と同じ）
+    const r = input.getBoundingClientRect();
+    pop.style.left = `${r.left}px`;
+    pop.style.minWidth = `${r.width}px`;
+    const below = window.innerHeight - r.bottom - 8;
+    if (below < Math.min(pop.offsetHeight, 200) && r.top > below) {
+      pop.style.bottom = `${window.innerHeight - r.top + 4}px`;
+      pop.style.maxHeight = `${Math.min(280, r.top - 8)}px`;
+    } else {
+      pop.style.top = `${r.bottom + 4}px`;
+      pop.style.maxHeight = `${Math.min(280, below)}px`;
+    }
+    const over = pop.getBoundingClientRect().right - (window.innerWidth - 8);
+    if (over > 0) pop.style.left = `${Math.max(8, r.left - over)}px`;
+
+    input.setAttribute('aria-expanded', 'true');
+    input.setAttribute('aria-controls', pop.id);
+    cur = { pop, input, items, names: hits.map((h) => h.name), active: -1 };
+  };
+
+  document.addEventListener('input', (e) => {
+    if (!e.target.matches?.('[data-suggest-list]')) return;
+    if (skipNext) { skipNext = false; return; }
+    open(e.target);
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (!cur || e.target !== cur.input || e.isComposing) return; // 日本語の変換中の ↑↓ Enter は IME のもの
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const n = cur.items.length;
+      setActive(e.key === 'ArrowDown' ? (cur.active + 1) % n : (cur.active - 1 + n) % n);
+    } else if (e.key === 'Enter' && cur.active >= 0) {
+      e.preventDefault(); // フォームを送信しない
+      choose(cur.input, cur.names[cur.active]);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      close();
+    }
+  });
+
+  // 日本語入力の変換中かどうか。変換中に候補を押したときは、変換が終わった直後に選んだ名前を入れ直す
+  document.addEventListener('compositionstart', (e) => { if (e.target.matches?.('[data-suggest-list]')) composing = true; });
+  document.addEventListener('compositionend', (e) => {
+    composing = false;
+    if (!pending || pending.input !== e.target) return;
+    const { input, value } = pending;
+    pending = null;
+    setTimeout(() => { if (input.value !== value) choose(input, value); });
+  });
+
+  document.addEventListener('focusout', (e) => { if (cur && e.target === cur.input) close(); });
+  // fixed で出しているので、ページをスクロールしたら閉じる（候補の中のスクロールは別）
+  window.addEventListener('scroll', (e) => { if (cur && !cur.pop.contains(e.target)) close(); }, true);
+  window.addEventListener('resize', close);
 }

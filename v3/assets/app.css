@@ -569,6 +569,10 @@ input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px;
 .live-pop--float .live-pop__item { white-space: nowrap; }
 .live-pop--float .live-pop__item:disabled { opacity: .45; cursor: not-allowed; }
 .live-pop--sm .live-pop__item { padding: 6px 10px; font-size: 13px; }
+/* 入力候補（setupSuggest）: ↑↓ で選んでいる候補、打った文字と一致した部分 */
+.suggest-pop .live-pop__item.is-active { background: var(--accent-soft); }
+.suggest-pop mark { background: none; color: var(--accent); font-weight: 700; }
+.suggest-pop__kana { color: var(--muted); font-size: 12px; } /* ふりがなで当たった候補の右に出すふりがな */
 .merge-note { font-weight: 400; white-space: pre-line; }
 .merge-note:empty { display: none; }
 .merge-note--warn { color: var(--warn); }
