@@ -166,6 +166,19 @@ $allArtists = $pdo->query('SELECT name FROM artist ORDER BY name')->fetchAll(PDO
 
 render_header($isNew ? 'バンドを追加' : 'バンドを編集', 'lives');
 ?>
+// バンド名の入力候補: 今までに使われたバンド名を新しい順（年度 → 開催日 → 登録順）に並べ、
+// そのあとに、まだバンド名として使われていないアーティスト名を名前順に足す。
+// 候補は最大8件しか出さないので、何年分も「ヨルシカ(〇〇)」がたまっても最近の代が先に出るようにする
+$allBandNames = $pdo->query('SELECT name FROM (
+        SELECT b.name, 0 AS grp, MAX(l.fiscal_year) AS y, MAX(d.held_on) AS held, MAX(b.band_id) AS id
+        FROM band b
+        JOIN live_day d ON d.live_day_id = b.live_day_id
+        JOIN live l ON l.live_id = d.live_id
+        GROUP BY b.name
+        UNION ALL
+        SELECT a.name, 1, NULL, NULL, NULL FROM artist a WHERE a.name NOT IN (SELECT name FROM band)
+    ) t
+    ORDER BY grp, y DESC, held DESC, id DESC, name')->fetchAll(PDO::FETCH_COLUMN);
 <nav class="crumbs"><a href="<?= h($liveUrl) ?>"><?= h($band['live_name']) ?></a><span>/</span><?= h($band['label']) ?></nav>
 <h1 class="display display--sm"><?= $isNew ? 'バンドを追加' : 'バンドを編集' ?></h1>
 <?php foreach ($errors as $e): ?><div class="flash flash--error"><?= h($e) ?></div><?php endforeach; ?>
@@ -175,7 +188,7 @@ render_header($isNew ? 'バンドを追加' : 'バンドを編集', 'lives');
     <input type="hidden" name="band_id" value="<?= (int)$band['band_id'] ?>">
     <input type="hidden" name="day_id" value="<?= $dayId ?>">
     <div class="form-grid">
-        <label class="field field--wide"><span>バンド名（タイムテーブルの表記）</span><input name="name" value="<?= h($band['name']) ?>" maxlength="100" required <?= $isNew ? 'autofocus' : '' ?>></label>
+        <label class="field field--wide"><span>バンド名（タイムテーブルの表記）</span><input name="name" value="<?= h($band['name']) ?>" data-suggest-list="band-names" autocomplete="off" maxlength="100" required <?= $isNew ? 'autofocus' : '' ?>></label>
         <label class="field field--wide"><span>コピー元アーティスト</span><input name="artist" value="<?= h($band['artist_name']) ?>" data-suggest-list="artists" autocomplete="off" maxlength="100"></label>
         <label class="field"><span>出演順</span><input type="number" min="1" name="play_order" value="<?= h($band['play_order']) ?>" required></label>
         <label class="field"><span>曲数</span><input type="number" min="0" max="255" name="song_count" value="<?= h($band['song_count']) ?>" required></label>
@@ -187,6 +200,7 @@ render_header($isNew ? 'バンドを追加' : 'バンドを編集', 'lives');
     <datalist id="artists"><?php foreach ($allArtists as $n): ?><option value="<?= h($n) ?>"><?php endforeach; ?></datalist>
 
     <h2 class="section-title">メンバー</h2>
+    <datalist id="band-names"><?php foreach ($allBandNames as $n): ?><option value="<?= h((string)$n) ?>"><?php endforeach; ?></datalist>
     <p class="muted small">サポートメンバーを含めて出演者を全員登録してください。<br>下のボタンからセットリストを登録すると曲ごとの楽器の持ち替えも記録できます。</p>
     <div class="member-rows" data-rows>
         <?php foreach ($members as $m): ?>

@@ -2823,17 +2823,19 @@ function setupSuggest() {
     ['mousedown', 'pointerdown'].forEach((ev) => pop.addEventListener(ev, (e) => e.preventDefault()));
     document.body.append(pop);
 
-    // 入力欄の真下に出す。下に入りきらなければ上に（setupSelectPick と同じ）
+    // 入力欄の真下に出す。下に入りきらなければ上に（setupSelectPick とほぼ同じ）
+    //   ただし高さの上限は 280px にしない。候補は最大 8 件（約 296px）なので、280px で切ると少しだけはみ出して
+    //   スクロールバーが出て、その幅のぶん候補のマウスオーバーの背景が右端まで届かなくなる → 8 件がそのまま入る高さにする
     const r = input.getBoundingClientRect();
     pop.style.left = `${r.left}px`;
     pop.style.minWidth = `${r.width}px`;
     const below = window.innerHeight - r.bottom - 8;
-    if (below < Math.min(pop.offsetHeight, 200) && r.top > below) {
+    if (below < full && r.top - 8 > below) {
       pop.style.bottom = `${window.innerHeight - r.top + 4}px`;
-      pop.style.maxHeight = `${Math.min(280, r.top - 8)}px`;
+      pop.style.maxHeight = `${Math.min(full, r.top - 8)}px`;
     } else {
       pop.style.top = `${r.bottom + 4}px`;
-      pop.style.maxHeight = `${Math.min(280, below)}px`;
+      pop.style.maxHeight = `${Math.min(full, below)}px`;
     }
     const over = pop.getBoundingClientRect().right - (window.innerWidth - 8);
     if (over > 0) pop.style.left = `${Math.max(8, r.left - over)}px`;
@@ -2879,3 +2881,5 @@ function setupSuggest() {
   window.addEventListener('scroll', (e) => { if (cur && !cur.pop.contains(e.target)) close(); }, true);
   window.addEventListener('resize', close);
 }
+    pop.style.maxHeight = 'none';
+    const full = pop.offsetHeight;
