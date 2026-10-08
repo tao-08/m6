@@ -67,8 +67,8 @@ $st = $pdo->prepare('SELECT m.member_id, m.name, COUNT(DISTINCT other.band_id) A
     JOIN member m ON m.member_id = other.member_id
     WHERE mine.member_id = ?
     GROUP BY m.member_id
-    ORDER BY n DESC, m.name
-    LIMIT 12');
+    ORDER BY n DESC, m.name');
+// ↑ LIMIT は付けずに全員取る。最初は上位5人だけ見せて、残りは「すべて表示」で出す（JS: setupPartnerBox）
 $st->execute([$memberId]);
 $partners = $st->fetchAll();
 
@@ -84,6 +84,35 @@ foreach ($history as $hi) {
     $historyDays[$dayId]['bands'][] = $hi;
     if ((int)$hi['is_last'] === 1) {
         $historyDays[$dayId]['has_last'] = true;
+    }
+}
+
+// ---- よく組むメンバーと「一緒に出たバンド」（名前の ▸ を開くと出す） ----
+//   年度・ライブ名・日目は出演履歴（$history）にもう入っているので、ここで読むのは
+//   「自分のバンドに、ほかに誰が何の楽器でいたか」だけ。SQL は1本で、相手ごとに投げない（21人で21回 = N+1 になる）。
+//   並びは楽器の順 → 名前（lineup_parts_by_band が Vo と Gt を「Vo/Gt」にまとめるときにこの順を使う）
+$st = $pdo->prepare('SELECT bm.band_id, bm.member_id, m.name, i.short_name, i.name AS instrument_name, i.sort_order
+    FROM band_member bm
+    JOIN member m ON m.member_id = bm.member_id
+    JOIN instrument i ON i.instrument_id = bm.instrument_id
+    WHERE bm.band_id IN (SELECT band_id FROM band_member WHERE member_id = ?) AND bm.member_id <> ?
+    ORDER BY i.sort_order, m.name');
+$st->execute([$memberId, $memberId]);
+$partnerParts = [];   // [相手の member_id][band_id] = [パート, ...]（開いた中身の、ライブ名の左の楽器ラベル）
+$partnerTally = [];   // [相手の member_id] = tally_parts の結果（名前の行の右の「Dr × 3」）
+foreach (lineup_parts_by_band($st) as $p) {
+    $partnerParts[(int)$p['member_id']][(int)$p['band_id']][] = $p;
+}
+foreach ($partnerParts as $pid => $byBand) {
+    $partnerTally[$pid] = sort_tally_by_count(tally_parts(array_merge(...array_values($byBand))));
+}
+// $history の並び（新しい順・出演順）のまま、相手ごと・年度ごとに振り分ける
+$sharedBands = []; // [相手の member_id][年度] = [出演履歴の行, ...]
+foreach ($history as $hi) {
+    foreach ($partnerParts as $pid => $byBand) {
+        if (isset($byBand[(int)$hi['band_id']])) {
+            $sharedBands[$pid][$hi['year']][] = $hi;
+        }
     }
 }
 
@@ -197,7 +226,7 @@ render_header($member['name'], 'members');
 
 <!-- ===== マイアルバム ===== -->
 <!--
-    最初は先頭5枚だけ見せて、「さらに表示」で全部（＋自分のページなら一番下に「アルバムを追加」）を出す。
+    最初は先頭5枚（スマホは4枚）だけ見せて、「さらに表示」で全部（＋自分のページなら一番下に「アルバムを追加」）を出す。
     開け閉めは JS（assets/app.js の setupAlbumBox）が is-open クラスを付け外しする。
     <details> を使わないのは、閉じると中身が全部隠れてしまい「5枚だけ見せる」ができないため。
     JS が無いときは何も隠さない（JS が js-collapsible クラスを付けたときだけ CSS が隠す）。
@@ -363,15 +392,50 @@ render_header($member['name'], 'members');
         <?php if (!$history): ?><p class="muted">出演データがありません</p><?php endif; ?>
     </section>
     <aside>
-        <h2 class="section-title">よく組むメンバー</h2>
-        <div class="card">
+        <!-- よく組むメンバー: マイアルバムと同じく、最初は上位5人だけ。見出しか「すべて表示」で全員を出す（JS: setupPartnerBox） -->
+        <section id="partners" class="card album-box partner-box" data-partner-box>
+            <div class="album-head">
+                <button type="button" class="album-box__toggle" data-partner-toggle aria-expanded="false" aria-controls="partners">
+                    <span class="album-box__chevron" aria-hidden="true">▸</span>
+                    よく組むメンバー
+                    <span class="muted small"><?= count($partners) ?>人</span>
+                </button>
+            </div>
             <?php if (!$partners): ?><p class="muted">まだいません</p><?php endif; ?>
+            <!-- 「1 [▸ 3回] 名前 … Dr × 3」（順位の数字は CSS）: ▸ と回数を押すと一緒に出たバンドを開け閉め、名前は今まで通り個人ページへのリンク
+                 （<summary> の中のリンクを押したときは、開け閉めせずにリンク先へ飛ぶ） -->
+            <?php $partnerRanks = tie_ranks($partners, static fn($p) => (int)$p['n']); // 同じ回数は同じ順位 ?>
             <ol class="ranking">
-                <?php foreach ($partners as $p): ?>
-                    <li><a href="member.php?id=<?= (int)$p['member_id'] ?>"><?= h($p['name']) ?></a><span class="pill"><?= (int)$p['n'] ?>回</span></li>
+                <?php foreach ($partners as $k => $p): ?>
+                    <li data-rank="<?= $partnerRanks[$k] ?>">
+                        <details class="partner">
+                            <summary>
+                                <span class="pill"><span class="partner__chevron" aria-hidden="true">▸</span><?= (int)$p['n'] ?>回</span>
+                                <a href="member.php?id=<?= (int)$p['member_id'] ?>"><?= h($p['name']) ?></a>
+                                <!-- 一緒に組んだバンドで、その人が何を何回やったか -->
+                                <?= part_marks($partnerTally[(int)$p['member_id']] ?? [], true, 'partbar--partner') ?>
+                            </summary>
+                            <dl class="partner__bands">
+                                <?php foreach ($sharedBands[(int)$p['member_id']] ?? [] as $year => $bands): ?>
+                                    <dt><?= h(fmt_year($year)) ?></dt>
+                                    <?php foreach ($bands as $b): ?>
+                                        <dd>
+                                            <a href="band.php?id=<?= (int)$b['band_id'] ?>"><?= h($b['band_name']) ?></a>
+                                            <span class="partner__live">
+                                                <a class="muted small" href="live.php?id=<?= (int)$b['live_id'] ?>#day-<?= (int)$b['live_day_id'] ?>"><?= h($b['live_name']) ?> <?= h($b['label']) ?></a>
+                                                <!-- そのバンドでその人がやった楽器（ライブ名の右） -->
+                                                <?php foreach ($partnerParts[(int)$p['member_id']][(int)$b['band_id']] ?? [] as $pp): ?><?= part_badge($pp) ?><?php endforeach; ?>
+                                            </span>
+                                        </dd>
+                                    <?php endforeach; ?>
+                                <?php endforeach; ?>
+                            </dl>
+                        </details>
+                    </li>
                 <?php endforeach; ?>
             </ol>
-        </div>
+            <button type="button" class="btn btn--ghost btn--sm album-box__more" data-partner-more hidden>すべて表示</button>
+        </section>
     </aside>
 </div>
 <?php render_footer();

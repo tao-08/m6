@@ -419,8 +419,11 @@ function setlist_badge(int $registered, int $planned): string
     if ($registered <= 0 || $registered !== $planned) {
         return '';
     }
-    return '<span class="setlist-badge" title="セットリスト登録済（' . $registered . '曲）">'
-        . icon('check') . 'セットリスト</span>'; // ✓ が「登録済」の意味。詳しくは title（マウスを乗せると出る）
+    // ✓ が「登録済」の意味。押すと「セットリスト登録済（◯曲）」のポップアップが出る（app.js の setupSetlistTip）。
+    // スマホでは「セットリスト」の文字を隠して ✓ だけ。押せる部品なので <span> ではなく <button>
+    $label = 'セットリスト登録済（' . $registered . '曲）';
+    return '<button type="button" class="setlist-badge" data-setlist-tip="' . h($label) . '" aria-label="' . h($label) . '">'
+        . icon('check') . '<span class="setlist-badge__text">セットリスト</span></button>';
 }
 
 /**

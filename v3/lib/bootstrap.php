@@ -322,6 +322,29 @@ function fmt_date(?string $date): string
     return date('n/j', $ts) . '（' . $w[(int)date('w', $ts)] . '）';
 }
 
+/**
+ * ランキングの順位。同じ値なら同じ順位にして、次はその人数分とばす（10, 8, 8, 5 → 1, 2, 2, 4）
+ *   $rows は並べ済みの配列。$score は1行から「比べる値」を取り出す関数（[日数, 組数] のような配列でもいい）。
+ *   戻り値は $rows と同じキーで順位を入れた配列。
+ */
+function tie_ranks(array $rows, callable $score): array
+{
+    $ranks = [];
+    $i = 0;
+    $rank = 0;
+    $prev = null;
+    foreach ($rows as $k => $r) {
+        $i++;
+        $s = $score($r);
+        if ($i === 1 || $s !== $prev) {
+            $rank = $i; // 前の行と値が違うときだけ、順位を「何番目か」に進める
+        }
+        $ranks[$k] = $rank;
+        $prev = $s;
+    }
+    return $ranks;
+}
+
 /** live.fiscal_year → '2025年度' */
 function fmt_year(mixed $year): string
 {

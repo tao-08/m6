@@ -16,6 +16,7 @@
  *    data-roster-input  … タイムテーブルの枠 → 名簿のバンド（検索欄）
  *    data-sortable      … タイムテーブルの行を ≡ のドラッグで並び替え（時間の列は動かない）
  *    data-album-box     … マイアルバムの開け閉め（閉じているときは先頭5枚だけ）
+ *    data-partner-box   … よく組むメンバーの開け閉め（閉じているときは上位5人だけ）
  *    data-album-sort    … マイアルバムをドラッグで並び替えて保存
  *    data-album-search  … アルバム検索をページ移動なしで（結果の部分だけ差し替える）
  *    data-album-add     … アルバムの追加をページ移動なしで（追加したカードを一覧に足す）
@@ -30,6 +31,7 @@
  *    data-track-search  … 曲の編集の🔍（Spotify / iTunes の曲を探して紐付ける）
  *    data-toasts        … お知らせのポップアップ（4秒で消える）
  *    data-album-tip     … メンバー一覧のジャケットに乗せるとアルバム名・アーティスト名を出す
+ *    data-setlist-tip   … セットリストの ✓ を押すと「セットリスト登録済（◯曲）」を出す
  *    data-vo-sum-toggle … 統計の「Voを合算する」をページ移動なしで切り替える
  * =====================================================================
  */
@@ -50,6 +52,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupNewDayToggle();
   setupSlotSort();
   setupAlbumBox();
+  setupPartnerBox();
   setupAlbumSort();
   setupAlbumSearch();
   setupAlbumAdd();
@@ -63,6 +66,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupSongs();
   setupTrackSearch();
   setupAlbumTip();
+  setupSetlistTip();
   setupVoSum();
   setupYoutubeLeftover();
 });
@@ -105,6 +109,53 @@ function setupAlbumTip() {
     const img = e.target.closest('[data-album-tip] [data-tip-title]');
     if (img) show(img); else hide();
   });
+  window.addEventListener('scroll', hide, { passive: true }); // fixed なのでスクロールするとずれる → 隠す
+}
+
+/* ---------------------------------------------------------------------
+ * セットリストの ✓（[data-setlist-tip]）を押したら「セットリスト登録済（◯曲）」をポップアップで出す
+ *   スマホには「マウスを乗せる」が無いので、title では出ない → 押したら出す。もう一度押すか、他の所を押すと消える。
+ *   見た目はジャケットのポップアップ（.album-tip）と同じ。1個だけ作って使い回す。
+ * ------------------------------------------------------------------- */
+function setupSetlistTip() {
+  if (!document.querySelector('[data-setlist-tip]')) return;
+  const tip = document.createElement('div');
+  tip.className = 'album-tip';
+  tip.setAttribute('role', 'tooltip');
+  document.body.appendChild(tip);
+  let current = null; // いま出しているバッジ
+
+  const hide = () => { tip.classList.remove('is-visible'); current = null; };
+  const show = (badge) => {
+    tip.textContent = badge.dataset.setlistTip; // textContent なので HTML として解釈されない
+    tip.classList.add('is-visible');
+    current = badge;
+    // バッジの真上に出す。上に入らないときは下。左右は画面からはみ出さないように寄せる
+    const r = badge.getBoundingClientRect();
+    const t = tip.getBoundingClientRect();
+    let top = r.top - t.height - 8;
+    if (top < 8) top = r.bottom + 8;
+    const left = Math.min(Math.max(8, r.left + r.width / 2 - t.width / 2), window.innerWidth - t.width - 8);
+    tip.style.top = `${top}px`;
+    tip.style.left = `${left}px`;
+  };
+
+  // PC（マウスがある端末）はマウスを乗せたら出して、外したら消す
+  const canHover = window.matchMedia('(hover: hover)');
+  document.addEventListener('mouseover', (e) => {
+    if (!canHover.matches) return;
+    const badge = e.target.closest('[data-setlist-tip]');
+    if (badge) { if (badge !== current) show(badge); } else if (current) hide();
+  });
+
+  // スマホは押したら出す。もう一度押すか、他の所を押すと消える
+  document.addEventListener('click', (e) => {
+    const badge = e.target.closest('[data-setlist-tip]');
+    if (!badge) { hide(); return; }
+    if (canHover.matches) { show(badge); return; } // PC で押しても消さない（乗せたまま押すと消えてしまうので）
+    if (badge === current) hide(); else show(badge);
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hide(); });
   window.addEventListener('scroll', hide, { passive: true }); // fixed なのでスクロールするとずれる → 隠す
 }
 
@@ -1946,7 +1997,8 @@ function setupAlbumBox() {
   const list = box.querySelector('.albums');
   const toggle = box.querySelector('[data-album-toggle]');
   const more = box.querySelector('[data-album-more]');
-  const SHOWN = 5; // 閉じているときに見せる枚数（CSS の nth-child(n+6) と合わせる）
+  // 閉じているときに見せる枚数。PC は5枚、スマホ（600px 以下）は1行4枚（CSS の nth-child と合わせる）
+  const shown = () => (window.matchMedia('(max-width: 600px)').matches ? 4 : 5);
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   // 画面の表示を「開いているか」に合わせる
@@ -1954,7 +2006,7 @@ function setupAlbumBox() {
     const open = box.classList.contains('is-open');
     const count = list ? list.children.length : 0;
     // 閉じると隠れるものがあるか（6枚目以降 or 自分のページの「アルバムを追加」）。無ければボタンは要らない
-    const hasHidden = count > SHOWN || box.querySelector('.album-search') !== null;
+    const hasHidden = count > shown() || box.querySelector('.album-search') !== null;
     toggle.setAttribute('aria-expanded', String(open));
     more.hidden = !hasHidden;
     more.textContent = open ? '閉じる' : 'さらに表示';
@@ -1965,7 +2017,7 @@ function setupAlbumBox() {
     render();
     // 開いたとき、隠れていたカード（6枚目以降）をふわっと出す
     if (open && list && !reduceMotion) {
-      [...list.children].slice(SHOWN).forEach((li, i) => {
+      [...list.children].slice(shown()).forEach((li, i) => {
         li.animate([{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }],
           { duration: 220, delay: Math.min(i, 10) * 20, easing: 'ease-out', fill: 'backwards' });
       });
@@ -1985,6 +2037,53 @@ function setupAlbumBox() {
   // 枚数が変わったら（ページ移動なしで追加したとき）ボタンの出し方を見直す
   list?.addEventListener('albums:changed', render);
   render();
+}
+
+/* ---------------------------------------------------------------------
+ * よく組むメンバーの開け閉め（member.php の data-partner-box）
+ *   マイアルバム（setupAlbumBox）と同じ操作感。閉じているときは上位5人だけ見せる（CSS の nth-child(n+6)）。
+ *   見出しボタンと、一覧の下の「すべて表示」/「閉じる」のどちらでも切り替えられる。
+ *   js-collapsible を付けたときだけ CSS が隠す → JS が動かないときは全員見えたまま。
+ * ------------------------------------------------------------------- */
+function setupPartnerBox() {
+  const box = document.querySelector('[data-partner-box]');
+  if (!box) return;
+  const toggle = box.querySelector('[data-partner-toggle]');
+  const more = box.querySelector('[data-partner-more]');
+  const count = box.querySelectorAll('.ranking > li').length;
+  const SHOWN = 5;
+
+  // 5人以下なら隠すものが無いので、▸ もボタンも出さずに全員見せる
+  if (count <= SHOWN) {
+    toggle.querySelector('.album-box__chevron')?.remove();
+    toggle.disabled = true;
+    return;
+  }
+
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const setOpen = (open) => {
+    box.classList.toggle('is-open', open);
+    toggle.setAttribute('aria-expanded', String(open));
+    more.textContent = open ? '閉じる' : 'すべて表示';
+    // 開いたとき、隠れていた6人目以降を上から順にふわっと出す（マイアルバムと同じ動き）
+    if (open && !reduceMotion) {
+      [...box.querySelectorAll('.ranking > li')].slice(SHOWN).forEach((li, i) => {
+        li.animate([{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }],
+          { duration: 220, delay: Math.min(i, 10) * 20, easing: 'ease-out', fill: 'backwards' });
+      });
+    }
+  };
+
+  box.classList.add('js-collapsible');
+  more.hidden = false;
+  toggle.addEventListener('click', () => setOpen(!box.classList.contains('is-open')));
+  more.addEventListener('click', () => {
+    const closing = box.classList.contains('is-open');
+    setOpen(!closing);
+    // 閉じると下の方が無くなって画面が飛ぶので、見出しが見える位置まで戻す
+    if (closing && box.getBoundingClientRect().top < 0) box.scrollIntoView({ behavior: 'smooth' });
+  });
+  setOpen(false);
 }
 
 /* ---------------------------------------------------------------------

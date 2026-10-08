@@ -464,13 +464,14 @@ $entryYears = range($thisYear, $entryMin); // 新しい順
 <?php
 /** ランキング1枚分のカードを出す小さな関数（同じ HTML を何回も書かないため） */
 function ranking_card(string $icon, string $title, array $rows, callable $label, string $unit, string $empty = 'データがありません'): void
-{ ?>
+{
+    $ranks = tie_ranks($rows, static fn($r) => (int)$r['n']); // 同じ数は同じ順位 ?>
     <section class="card">
         <h2 class="section-title section-title--card"><?= icon($icon) ?> <?= h($title) ?></h2>
         <?php if (!$rows): ?><p class="muted small"><?= h($empty) ?></p><?php endif; ?>
         <ol class="ranking">
-            <?php foreach ($rows as $r): ?>
-                <li><span><?= $label($r) /* $label は HTML を返す。中で必ず h() すること */ ?></span><span class="pill"><?= (int)$r['n'] ?><?= h($unit) ?></span></li>
+            <?php foreach ($rows as $k => $r): ?>
+                <li data-rank="<?= $ranks[$k] ?>"><span><?= $label($r) /* $label は HTML を返す。中で必ず h() すること */ ?></span><span class="pill"><?= (int)$r['n'] ?><?= h($unit) ?></span></li>
             <?php endforeach; ?>
         </ol>
     </section>
@@ -502,8 +503,9 @@ $voHidden = static fn(string $view): string => ($view === 'sum') === $voSum ? ''
         <h2 class="section-title section-title--card"><?= icon('group') ?> よく組むペア</h2>
         <?php if (!$pairs): ?><p class="muted small">2回以上組んだペアはまだいません</p><?php endif; ?>
         <ol class="ranking">
-            <?php foreach ($pairs as $p): ?>
-                <li><span><a href="member.php?id=<?= (int)$p['a_id'] ?>"><?= h($p['a_name']) ?></a> × <a href="member.php?id=<?= (int)$p['b_id'] ?>"><?= h($p['b_name']) ?></a></span><span class="pill"><?= (int)$p['n'] ?>回</span></li>
+            <?php $ranks = tie_ranks($pairs, static fn($p) => (int)$p['n']);
+            foreach ($pairs as $k => $p): ?>
+                <li data-rank="<?= $ranks[$k] ?>"><span><a href="member.php?id=<?= (int)$p['a_id'] ?>"><?= h($p['a_name']) ?></a> × <a href="member.php?id=<?= (int)$p['b_id'] ?>"><?= h($p['b_name']) ?></a></span><span class="pill"><?= (int)$p['n'] ?>回</span></li>
             <?php endforeach; ?>
         </ol>
     </section>
@@ -512,8 +514,9 @@ $voHidden = static fn(string $view): string => ($view === 'sum') === $voSum ? ''
         <h2 class="section-title section-title--card"><?= icon('crown') ?> トリ回数</h2>
         <?php if (!$headliners): ?><p class="muted small">データがありません</p><?php endif; ?>
         <ol class="ranking">
-            <?php foreach ($headliners as $hd): ?>
-                <li><a href="member.php?id=<?= (int)$hd['member_id'] ?>"><?= h($hd['name']) ?></a><span class="pill"><?= (int)$hd['n'] ?>回</span></li>
+            <?php $ranks = tie_ranks($headliners, static fn($hd) => (int)$hd['n']);
+            foreach ($headliners as $k => $hd): ?>
+                <li data-rank="<?= $ranks[$k] ?>"><a href="member.php?id=<?= (int)$hd['member_id'] ?>"><?= h($hd['name']) ?></a><span class="pill"><?= (int)$hd['n'] ?>回</span></li>
             <?php endforeach; ?>
         </ol>
     </section>
@@ -553,8 +556,9 @@ $voHidden = static fn(string $view): string => ($view === 'sum') === $voSum ? ''
     <section class="card">
         <h2 class="section-title section-title--card"><?= icon('location_on') ?> 会場</h2>
         <ol class="ranking">
-            <?php foreach ($venues as $v): ?>
-                <li><a href="search.php?q=<?= urlencode($v['name']) ?>"><?= h($v['name']) ?></a><span class="pill"><?= (int)$v['days'] ?>日 · <?= (int)$v['bands'] ?>組</span></li>
+            <?php $ranks = tie_ranks($venues, static fn($v) => [(int)$v['days'], (int)$v['bands']]); // 日数も組数も同じなら同じ順位
+            foreach ($venues as $k => $v): ?>
+                <li data-rank="<?= $ranks[$k] ?>"><a href="search.php?q=<?= urlencode($v['name']) ?>"><?= h($v['name']) ?></a><span class="pill"><?= (int)$v['days'] ?>日 · <?= (int)$v['bands'] ?>組</span></li>
             <?php endforeach; ?>
         </ol>
     </section>

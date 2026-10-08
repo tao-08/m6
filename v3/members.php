@@ -149,9 +149,11 @@ function name_reading(array $r): string
 }
 
 // 出演ありと出演なしを1つのリストにまとめる。# は出演回数の順位のまま（並べ替えても変えない）
+//   同じ出演回数なら同じ順位（lib/bootstrap.php の tie_ranks）
+$ranks = tie_ranks($rows, static fn($r) => (int)$r['bands']);
 $list = [];
 foreach ($rows as $i => $r) {
-    $list[] = $r + ['rank' => $i + 1];
+    $list[] = $r + ['rank' => $ranks[$i]];
 }
 foreach ($idle as $r) {
     $list[] = $r + ['bands' => 0, 'lives' => 0, 'headliners' => 0, 'rank' => null];

@@ -76,9 +76,11 @@ if (!is_string($sort) || !isset(SORT_COLUMNS[$sort])) {
 $dir = ($_GET['dir'] ?? '') === 'asc' ? 'asc' : (($_GET['dir'] ?? '') === 'desc' ? 'desc' : SORT_COLUMNS[$sort]);
 
 // # は演奏回数の順位のまま（並べ替えても変えない）。0回の人は順位なし
+//   同じ演奏回数なら同じ順位（lib/bootstrap.php の tie_ranks）
+$ranks = tie_ranks($rows, static fn($r) => (int)$r['plays']);
 $list = [];
 foreach ($rows as $i => $r) {
-    $list[] = $r + ['rank' => (int)$r['plays'] > 0 ? $i + 1 : null];
+    $list[] = $r + ['rank' => (int)$r['plays'] > 0 ? $ranks[$i] : null];
 }
 usort($list, static function (array $a, array $b) use ($sort, $dir, $lastLive): int {
     $la = $lastLive[(int)$a['artist_id']] ?? null;
