@@ -32,7 +32,7 @@ if ($user['member_id']) {
 //   GROUP BY d.live_day_id: 日程ごとに1行にまとめて COUNT(b.band_id) でバンド数を数える
 //   GROUP_CONCAT(b.note): その日のバンドのメモを1つの文字列にまとめる（絞り込み用。NULL は飛ばされる）
 //     ※ group_concat_max_len（初期値 1024 バイト）を超えた分は切れる。絞り込みに使うだけなので気にしない
-$rows = $pdo->query('SELECT l.live_id, l.fiscal_year AS year, l.name AS live_name,
+$rows = $pdo->query('SELECT l.live_id, l.fiscal_year AS year, l.name AS live_name, l.youtube_url,
         d.live_day_id, d.label, d.held_on AS date, d.note, v.name AS venue_name, COUNT(b.band_id) AS band_count,
         GROUP_CONCAT(b.note SEPARATOR \' \') AS band_notes
     FROM live l
@@ -48,6 +48,7 @@ foreach ($rows as $r) {
     // & は参照。$live を書き換えると $years の中身が直接書き換わる
     $live = &$years[(int)$r['year']][$r['live_id']];
     $live['name'] = $r['live_name'];
+    $live['youtube_url'] = $r['youtube_url'];
     $live['days'][] = $r;
     $live['bands'] = ($live['bands'] ?? 0) + (int)$r['band_count'];
     // 一番早い開催日（並べ替え用）。NULL は日付なし
@@ -136,10 +137,12 @@ render_header('ライブ一覧', 'lives');
                     $venues = array_unique(array_filter(array_column($live['days'], 'venue_name')));
                     // 絞り込みで当てる文字: ライブ名・会場・日程のメモ・バンドのメモ
                     $notes = array_filter(array_merge(array_column($live['days'], 'note'), array_column($live['days'], 'band_notes'))); ?>
-                    <a class="card live-card" href="live.php?id=<?= (int)$liveId ?>"
+                    <!-- カードの中に YouTube のリンクを置くため、カード自体は <div> にする（<a> の中に <a> は入れられない）。
+                         ライブページへのリンクはライブ名の <a> で、CSS の ::after でカード全体に広げて押せるようにしている -->
+                    <div class="card live-card"
                        data-text="<?= h($live['name'] . ' ' . implode(' ', $venues) . ' ' . implode(' ', $notes)) ?>">
                         <div class="live-card__head">
-                            <h3><?= h($live['name']) ?></h3>
+                            <h3><a class="live-card__link" href="live.php?id=<?= (int)$liveId ?>"><?= h($live['name']) ?></a></h3>
                             <span class="pill"><?= count($live['days']) ?>日程</span>
                         </div>
                         <ul class="live-card__days">
@@ -151,8 +154,12 @@ render_header('ライブ一覧', 'lives');
                                 </li>
                             <?php endforeach; ?>
                         </ul>
-                        <p class="live-card__foot"><strong><?= (int)$live['bands'] ?></strong> バンド出演 <span class="arrow"><?= icon('arrow_forward') ?></span></p>
-                    </a>
+                        <p class="live-card__foot"><strong><?= (int)$live['bands'] ?></strong> バンド出演
+                            <?php if ($live['youtube_url'] !== null && youtube_url_valid($live['youtube_url'])): // 表示の前にもう一度チェック（live.php と同じ） ?>
+                                <a class="live-card__yt" href="<?= h($live['youtube_url']) ?>" target="_blank" rel="noopener noreferrer" aria-label="「<?= h($live['name']) ?>」を YouTube で見る" title="YouTube で見る"><?= youtube_icon() ?></a>
+                            <?php endif; ?>
+                            <span class="arrow"><?= icon('arrow_forward') ?></span></p>
+                    </div>
                 <?php endforeach; ?>
             </div>
         </section>
