@@ -170,6 +170,13 @@ foreach ($songs as $s) {
 }
 $linkCache = track_link_cache_for($pdo, $viewerApp, $trackKeys);
 
+// ---- 演奏したアーティストをマイアルバムに入れているメンバー（artist.php と同じ部品。lib/albums.php） ----
+//   ふつうはバンドのアーティスト1組。オムニバスなら曲ごとのアーティスト全部
+$omnibus = $band['is_omnibus'] ? (omnibus_artists_by_band($pdo, [$bandId])[$bandId] ?? []) : [];
+$fanArtists = $omnibus ? array_column($omnibus, 'name', 'artist_id')
+    : ($band['artist_id'] !== null ? [(int)$band['artist_id'] => $band['artist_name']] : []);
+$fans = fan_albums($pdo, array_keys($fanArtists));
+
 render_header($band['name'], 'lives');
 ?>
 <nav class="crumbs"><a href="./">ライブ</a><span>/</span><a href="<?= h($liveUrl) ?>"><?= h($band['live_name']) ?></a></nav>
@@ -254,6 +261,8 @@ render_header($band['name'], 'lives');
         <p class="no-print"><a class="btn btn--ghost btn--sm" href="songs_edit?band=<?= $bandId ?>"><?= icon('queue_music') ?> 曲を登録</a></p>
     <?php endif; ?>
 </section>
+
+<?= fan_albums_html($fans, 'マイアルバムに入れているメンバー', $viewerApp, count($fanArtists) > 1) // 見出しはアーティストページと同じ。何組もいるとき（オムニバス）はアーティスト名も ?>
 
 <?php if ($prevBand || $nextBand): ?>
     <!-- 前後のバンド。日程が変わるときは「2日目」などを名前の上に出す -->

@@ -150,41 +150,8 @@ $st = $pdo->prepare('SELECT name FROM artist_alias WHERE artist_id = ? ORDER BY 
 $st->execute([$artistId]);
 $aliases = $st->fetchAll(PDO::FETCH_COLUMN);
 
-// ---- このアーティストのアルバムをマイアルバムに入れているメンバー ----
-//   マイアルバムには artist_id が無く、Spotify / iTunes のアーティスト名（文字列）しか無い。
-//   album_match_key で表記ゆれ（大文字小文字・全角半角・記号）をそろえて、本名か別名と一致する行を拾う。
-//   SQL の = では表記ゆれと「A, B」（Spotify の複数アーティスト）を拾えないので、PHP で絞る
-//   （行数は 人数 × 最大30枚 なので全部読んでも軽い）
-$artistKeys = [];
-foreach (array_merge([$artist['name']], $aliases) as $n) {
-    $artistKeys[album_match_key($n)] = true;
-}
-$fanAlbums = []; // [アルバムのキー] = ['album' => 行, 'members' => [[member_id, name], ...]]
-$fanIds = [];    // 入れている人の member_id（人数を数える用。1人が何枚入れていても1人）
-$rows = $pdo->query('SELECT f.source, f.album_id, f.title, f.artist_name, f.artwork_url, f.release_year,
-        m.member_id, m.name
-    FROM member_favorite_album f
-    JOIN member m ON m.member_id = f.member_id
-    ORDER BY f.release_year, m.name')->fetchAll();
-foreach ($rows as $r) {
-    $hit = false;
-    // 名前まるごと（"Crosby, Stills, Nash & Young" のように名前自体に ", " がある人用）＋ ", " で分けた1人ずつ
-    foreach (array_merge([$r['artist_name']], explode(', ', $r['artist_name'])) as $one) {
-        if (isset($artistKeys[album_match_key($one)])) {
-            $hit = true;
-            break;
-        }
-    }
-    if (!$hit) {
-        continue;
-    }
-    $k = album_key($r['source'], $r['album_id']);
-    $fanAlbums[$k] ??= ['album' => $r, 'members' => []]; // ??=: まだ無ければ入れる
-    $fanAlbums[$k]['members'][] = ['member_id' => (int)$r['member_id'], 'name' => $r['name']];
-    $fanIds[(int)$r['member_id']] = true;
-}
-// 入れている人が多いアルバムを先に（同じ人数なら発売年順のまま。usort は PHP 8 から安定ソート）
-usort($fanAlbums, static fn(array $a, array $b): int => count($b['members']) <=> count($a['members']));
+// ---- このアーティストのアルバムをマイアルバムに入れているメンバー（本名と別名で探す。lib/albums.php の fan_albums） ----
+$fans = fan_albums($pdo, [$artistId]);
 $viewerApp = member_music_app($pdo, $user['member_id']);
 
 render_header($artist['name'], 'artists');
@@ -199,30 +166,7 @@ render_header($artist['name'], 'artists');
     </div>
 </section>
 
-<?php if ($fanAlbums): ?>
-<!-- マイアルバムにこのアーティストのアルバムを入れているメンバー。見た目は member.php のマイアルバムと同じ（.albums。スマホでは横に3枚） -->
-<section class="card album-box">
-    <div class="album-head">
-        <h2 class="section-title section-title--card" style="margin:0">マイアルバムに入れているメンバー</h2>
-        <span class="muted small"><?= count($fanIds) ?>人</span>
-    </div>
-    <ul class="albums">
-        <?php foreach ($fanAlbums as $fa): $a = $fa['album']; ?>
-            <li class="album">
-                <img class="album__art" src="<?= h($a['artwork_url']) ?>" alt="<?= h($a['title']) ?> のジャケット" loading="lazy" width="600" height="600">
-                <!-- 見ている人の音楽アプリで開く（member.php と同じ。アプリをまたぐときは album_go.php が押されたときに探す） -->
-                <a class="album__meta" href="<?= h(album_listen_url($viewerApp, $a)) ?>" target="_blank" rel="noopener">
-                    <span class="album__title"><?= h($a['title']) ?></span>
-                    <?php if ($a['release_year']): ?><span class="muted small album__year"><?= (int)$a['release_year'] ?></span><?php endif; ?>
-                </a>
-                <span class="small">
-                    <?php foreach ($fa['members'] as $i => $m): ?><?= $i > 0 ? '・' : '' ?><a href="member?id=<?= $m['member_id'] ?>#albums"><?= h($m['name']) ?></a><?php endforeach; ?>
-                </span>
-            </li>
-        <?php endforeach; ?>
-    </ul>
-</section>
-<?php endif; ?>
+<?= fan_albums_html($fans, 'マイアルバムに入れているメンバー', $viewerApp) // lib/albums.php ?>
 
 <!-- よく演奏するメンバー: 最初は上位5人だけ。見出しの ▸ か「さらに表示」で15位まで（JS: setupPartnerBox） -->
 <?php if ($topPlayers): ?>

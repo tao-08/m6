@@ -469,3 +469,91 @@ function album_match_in_catalog(array $album, array $catalog): ?string
     }
     return null;
 }
+
+/**
+ * アーティスト（複数でもよい）のアルバムをマイアルバムに入れているメンバー。artist.php と band.php で使う。
+ *   $artistIds … artist.artist_id。本名と別名（artist_alias）の両方で探す
+ *   返り値: ['albums' => [['album' => 行, 'members' => [[member_id, name], ...]], ...], 'people' => 入れている人数]
+ *
+ *   マイアルバムには artist_id が無く、Spotify / iTunes のアーティスト名（文字列）しか無い。
+ *   album_match_key で表記ゆれ（大文字小文字・全角半角・記号）をそろえて、本名か別名と一致する行を拾う。
+ *   SQL の = では表記ゆれと「A, B」（Spotify の複数アーティスト）を拾えないので、PHP で絞る
+ *   （行数は 人数 × 最大30枚 なので全部読んでも軽い）
+ */
+function fan_albums(PDO $pdo, array $artistIds): array
+{
+    $artistIds = array_values(array_unique(array_map('intval', $artistIds)));
+    if ($artistIds === []) {
+        return ['albums' => [], 'people' => 0];
+    }
+    $in = implode(',', array_fill(0, count($artistIds), '?'));
+    $st = $pdo->prepare("SELECT name FROM artist WHERE artist_id IN ($in)
+        UNION SELECT name FROM artist_alias WHERE artist_id IN ($in)");
+    $st->execute(array_merge($artistIds, $artistIds));
+    $artistKeys = [];
+    foreach ($st->fetchAll(PDO::FETCH_COLUMN) as $n) {
+        $artistKeys[album_match_key($n)] = true;
+    }
+
+    $albums = []; // [アルバムのキー] = ['album' => 行, 'members' => [...]]
+    $people = []; // 入れている人の member_id（1人が何枚入れていても1人）
+    $rows = $pdo->query('SELECT f.source, f.album_id, f.title, f.artist_name, f.artwork_url, f.release_year,
+            m.member_id, m.name
+        FROM member_favorite_album f
+        JOIN member m ON m.member_id = f.member_id
+        ORDER BY f.release_year, m.name')->fetchAll();
+    foreach ($rows as $r) {
+        $hit = false;
+        // 名前まるごと（"Crosby, Stills, Nash & Young" のように名前自体に ", " がある人用）＋ ", " で分けた1人ずつ
+        foreach (array_merge([$r['artist_name']], explode(', ', $r['artist_name'])) as $one) {
+            if (isset($artistKeys[album_match_key($one)])) {
+                $hit = true;
+                break;
+            }
+        }
+        if (!$hit) {
+            continue;
+        }
+        $k = album_key($r['source'], $r['album_id']);
+        $albums[$k] ??= ['album' => $r, 'members' => []]; // ??=: まだ無ければ入れる
+        $albums[$k]['members'][] = ['member_id' => (int)$r['member_id'], 'name' => $r['name']];
+        $people[(int)$r['member_id']] = true;
+    }
+    // 入れている人が多いアルバムを先に（同じ人数なら発売年順のまま。usort は PHP 8 から安定ソート）
+    usort($albums, static fn(array $a, array $b): int => count($b['members']) <=> count($a['members']));
+    return ['albums' => $albums, 'people' => count($people)];
+}
+
+/**
+ * fan_albums() の結果をカードにする（見た目は member.php のマイアルバムと同じ .albums。スマホでは横に3枚）
+ *   $withArtist … アルバム名の下にアーティスト名も出す（オムニバスのバンドのように、何組ものアーティストのアルバムが混ざるとき。
+ *                  1組しかないアーティストページでは毎回同じ名前になるので出さない）
+ */
+function fan_albums_html(array $fans, string $title, ?string $viewerApp, bool $withArtist = false): string
+{
+    if (!$fans['albums']) {
+        return '';
+    }
+    $html = '<section class="card album-box"><div class="album-head">'
+        . '<h2 class="section-title section-title--card" style="margin:0">' . h($title) . '</h2>'
+        . '<span class="muted small">' . (int)$fans['people'] . '人</span></div><ul class="albums">';
+    foreach ($fans['albums'] as $fa) {
+        $a = $fa['album'];
+        $names = [];
+        foreach ($fa['members'] as $m) {
+            $names[] = '<a href="member?id=' . (int)$m['member_id'] . '#albums">' . h($m['name']) . '</a>';
+        }
+        // 見ている人の音楽アプリで開く（アプリをまたぐときは album_go が押されたときに探す）
+        $html .= '<li class="album">'
+            . '<img class="album__art" src="' . h($a['artwork_url']) . '" alt="' . h($a['title']) . ' のジャケット" loading="lazy" width="600" height="600">'
+            . '<a class="album__meta" href="' . h(album_listen_url($viewerApp, $a)) . '" target="_blank" rel="noopener">'
+            . '<span class="album__title">' . h($a['title']) . '</span>'
+            . ($withArtist
+                // member.php のマイアルバムと同じ「アーティスト · 年」の1行
+                ? '<span class="muted small">' . h($a['artist_name'])
+                    . ($a['release_year'] ? '<span class="album__year"> · ' . (int)$a['release_year'] . '</span>' : '') . '</span>'
+                : ($a['release_year'] ? '<span class="muted small album__year">' . (int)$a['release_year'] . '</span>' : ''))
+            . '</a><span class="small">' . implode('・', $names) . '</span></li>';
+    }
+    return $html . '</ul></section>';
+}
