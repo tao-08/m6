@@ -37,7 +37,7 @@ $nav = [
     <meta property="og:title" content="<?= h(APP_NAME) ?>">
     <meta property="og:description" content="<?= h(APP_DESCRIPTION) ?>">
     <meta property="og:url" content="<?= h(APP_URL) ?>">
-    <meta property="og:image" content="<?= h(APP_URL) ?>assets/og.png">
+    <meta property="og:image" content="<?= h(APP_URL) ?>assets/og.png?v=2"><!-- 画像を変えたら数字を上げる（SNS は同じ URL の画像を長く覚えている） -->
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
     <meta property="og:locale" content="ja_JP">
