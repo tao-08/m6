@@ -15,7 +15,7 @@ $nav = [
     'members' => ['members', 'メンバー'],
     'artists' => ['artists', 'アーティスト'],
     'stats'   => ['stats', '集計'],
-    'import'  => ['import', '新規追加'], // 取り込み・手入力の入口（partials/add_tabs.php のタブで切り替え）
+    // 「新規追加」（import）はメニューに出さない。入力するのは一部の人だけなので、入口はライブ一覧の「＋ 新規追加」ボタン
 ];
 ?>
 <!doctype html>
@@ -26,6 +26,22 @@ $nav = [
     <!-- JavaScript の fetch() から CSRF トークンを送るために置いておく（assets/app.js） -->
     <meta name="csrf-token" content="<?= h(csrf_token()) ?>">
     <title><?= h($pageTitle) ?> | <?= h(APP_NAME) ?></title>
+    <!--
+        X（Twitter）・LINE・Discord などに URL を貼ったときのカード（OGP）。
+        SNS のサーバーはログインしていないので、どのページの URL でもログイン画面に飛ばされる。
+        だから全ページ同じ中身にする（ページ名を出すと「ログイン | …」になる。ライブ名などを出すとログインの外に漏れる）
+    -->
+    <meta name="description" content="<?= h(APP_DESCRIPTION) ?>">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="<?= h(APP_NAME) ?>">
+    <meta property="og:title" content="<?= h(APP_NAME) ?>">
+    <meta property="og:description" content="<?= h(APP_DESCRIPTION) ?>">
+    <meta property="og:url" content="<?= h(APP_URL) ?>">
+    <meta property="og:image" content="<?= h(APP_URL) ?>assets/og.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:locale" content="ja_JP">
+    <meta name="twitter:card" content="summary_large_image">
     <!-- ファビコンは元の m6 と同じ画像を使う -->
     <link rel="icon" href="../assets/favicons/240.png" sizes="any">
     <link rel="icon" type="image/png" href="../assets/favicons/48.png" sizes="48x48">
@@ -53,7 +69,7 @@ $nav = [
          display=block: 読み込み中にアイコン名の英単語（edit など）が一瞬見えるのを防ぐ -->
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400..600,0..1,0&display=block" rel="stylesheet">
     <!-- ?v=2 はキャッシュ対策。CSS を変えたら数字を上げると、ブラウザが古い CSS を使い続けない -->
-    <link rel="stylesheet" href="assets/app.css?v=141">
+    <link rel="stylesheet" href="assets/app.css?v=143">
     <script src="assets/app.js?v=76" defer></script>
 </head>
 <body>

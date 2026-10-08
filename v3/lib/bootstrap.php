@@ -21,6 +21,10 @@ mb_internal_encoding('UTF-8');          // mb_ 系関数の既定の文字コー
 date_default_timezone_set('Asia/Tokyo'); // date() を日本時間にする
 
 const APP_NAME = 'AbbeyRoad.online';
+/** 本番の URL（最後は /）。SNS のカード（OGP）の画像は絶対 URL が必要なので使う。Host ヘッダーは信用しない（app_env() の説明と同じ理由） */
+const APP_URL = 'https://abbeyroad.online/';
+/** SNS のカードに出す説明文 */
+const APP_DESCRIPTION = 'アビーロードのライブデータベース';
 
 /**
  * いま動いている環境の名前（'local' か 'production'）を返す。
@@ -251,8 +255,7 @@ function require_login(): array
     $user = current_user();
     if ($user === null) {
         $_SESSION['after_login'] = $_SERVER['REQUEST_URI'] ?? './';
-        flash('ログインしてください', 'info');
-        redirect('login');
+        redirect('login'); // ログイン画面なのは見ればわかるので「ログインしてください」のお知らせは出さない
     }
     // DB を作り直した・管理者に削除された等でアカウントが消えていたら、古いセッションを捨てる
     $st = db()->prepare('SELECT name, is_admin, member_id FROM user_account WHERE user_id = ?');
