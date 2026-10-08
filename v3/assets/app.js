@@ -33,6 +33,7 @@
  *    data-toasts        … お知らせのポップアップ（4秒で消える）
  *    data-album-tip     … メンバー一覧のジャケットに乗せるとアルバム名・アーティスト名を出す
  *    data-setlist-tip   … セットリストの ✓ を押すと「セットリスト登録済（◯曲）」を出す
+ *    open.spotify.com のリンク … スマホでは Spotify のアプリで開く
  *    data-vo-sum-toggle … 統計の「Voを合算する」をページ移動なしで切り替える
  * =====================================================================
  */
@@ -69,6 +70,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupTrackSearch();
   setupAlbumTip();
   setupSetlistTip();
+  setupSpotifyAppLinks();
   setupVoSum();
   setupYoutubeLeftover();
 });
@@ -112,6 +114,62 @@ function setupAlbumTip() {
     if (img) show(img); else hide();
   });
   window.addEventListener('scroll', hide, { passive: true }); // fixed なのでスクロールするとずれる → 隠す
+}
+
+/* ---------------------------------------------------------------------
+ * スマホで Spotify のリンク（https://open.spotify.com/…）を押したら、Spotify のアプリで開く
+ *   https のリンクのままだと、target="_blank"（新しいタブ）やブラウザの設定しだいでアプリに飛ばず、ブラウザの Spotify が開くことがある。
+ *   → アプリ用の URL（spotify:album:ID のような「spotify:」で始まる形）に置き換えて開く。
+ *   1.5秒たってもこのページが見えたまま（アプリが入っていない）なら、元の https のページを開く。
+ *   album_go.php / song_go.php（Spotify ⇔ Apple Music をまたぐリンク）は、押してから飛び先が決まる
+ *   → ?json=1 で飛び先だけ聞いて、Spotify ならアプリで、それ以外はそのページを開く。
+ *   PC（マウスがある端末）は今までどおり（ブラウザの Spotify で困らないので）。
+ * ------------------------------------------------------------------- */
+function setupSpotifyAppLinks() {
+  const isPhone = window.matchMedia('(hover: none) and (pointer: coarse)');
+
+  // open.spotify.com/album/ID → spotify:album:ID（track・artist・search も同じ形）。当てはまらなければ null
+  const appUri = (url) => {
+    const u = new URL(url, window.location.href);
+    if (u.origin !== 'https://open.spotify.com') return null;
+    const m = u.pathname.match(/^\/(album|track|artist|playlist|search)\/([^/]+)/);
+    return m ? `spotify:${m[1]}:${m[2]}` : null;
+  };
+  const openInApp = (uri, webUrl) => {
+    let left = false; // アプリが開くと、このページは裏に回る（visibilitychange / pagehide が起きる）
+    const onLeave = () => { left = true; };
+    document.addEventListener('visibilitychange', onLeave, { once: true });
+    window.addEventListener('pagehide', onLeave, { once: true });
+    window.location.href = uri;
+    setTimeout(() => {
+      document.removeEventListener('visibilitychange', onLeave);
+      window.removeEventListener('pagehide', onLeave);
+      if (!left && document.visibilityState === 'visible') window.location.href = webUrl;
+    }, 1500);
+  };
+
+  document.addEventListener('click', async (e) => {
+    if (!isPhone.matches || e.defaultPrevented) return;
+    const a = e.target.closest('a[href]');
+    if (!a) return;
+    const uri = appUri(a.href);
+    if (uri) {
+      e.preventDefault();
+      openInApp(uri, a.href);
+      return;
+    }
+    const go = a.getAttribute('href').match(/^(album_go|song_go)\.php\?/);
+    if (!go) return;
+    e.preventDefault();
+    try {
+      const res = await fetch(`${a.getAttribute('href')}&json=1`, { credentials: 'same-origin' });
+      const { url } = await res.json();
+      const goUri = appUri(url);
+      if (goUri) openInApp(goUri, url); else window.location.href = url;
+    } catch {
+      window.location.href = a.href; // 聞けなかったら、今までどおりリダイレクトで飛ぶ
+    }
+  });
 }
 
 /* ---------------------------------------------------------------------

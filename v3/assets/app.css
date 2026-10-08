@@ -1026,6 +1026,13 @@ a.setlist__song:hover { color: var(--accent); text-decoration: underline; }
   box-shadow: 0 2px 6px rgb(0 0 0 / .18); }
 /* ↑ で background を上書きしているので、ホバーで赤くなる .btn--danger:hover も書き直す（後に書いた方が勝つため） */
 .album__delete .btn:hover { background: var(--danger); color: #fff; }
+/* × はアイコンの文字ではなく、線2本を CSS で描く。文字の × は端末（フォントの描き方）によって少し上にずれるため。
+   線は丸の真ん中（top/left 50% + translate(-50%, -50%)）に置いてから 45度・-45度に回すので、どの端末でもぴったり真ん中 */
+.album__delete .btn { position: relative; }
+.album__delete .btn .icon { display: none; }
+.album__delete .btn::before, .album__delete .btn::after { content: ""; position: absolute; top: 50%; left: 50%;
+  width: 52%; height: 2px; border-radius: 1px; background: currentColor; transform: translate(-50%, -50%) rotate(45deg); }
+.album__delete .btn::after { transform: translate(-50%, -50%) rotate(-45deg); }
 /* max-width: 広い画面でも検索欄が横に伸びすぎないようにする（狭い画面では今までどおり横いっぱい） */
 .album-search__form { display: flex; gap: 8px; margin: 12px 0; max-width: 420px; }
 /* 縦幅を詰める。flex の中の子は高さがそろう（align-items: stretch が初期値）ので、
@@ -1196,7 +1203,11 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
   .stats-grid { grid-template-columns: 1fr; }
   /* 個人ページのマイアルバム: スマホでは横に3枚並べる（検索結果の .albums--pick は今までどおり）。
      アーティスト名がなるべく切れないように、カードの間と枠の左右の余白を詰めて1枚の幅を広げる */
-  .album-box { padding: 12px 10px; }
+  /* 詰めるのはジャケットの並びだけ。見出し（▸ マイアルバム）は今までどおり左に余白を取る。
+     よく組むメンバー（同じ .album-box）は今までどおりの余白なので、[data-album-box] で絞る */
+  [data-album-box] { padding: 14px 10px; }
+  [data-album-box] .album-head { padding-inline: 12px; } /* 右の「長押しで並び替え」も同じだけ内側へ */
+  [data-partner-box] .album-head { padding-left: 6px; } /* 2つの見出しの ▸ を、カードの左端から同じくらい（22px）の所にそろえる */
   .albums:not(.albums--pick) { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 6px; }
   /* 閉じているときは1行（3枚）だけ見せる。app.js の setupAlbumBox の枚数と合わせる */
   .album-box.js-collapsible:not(.is-open) .albums > li:nth-child(n+4) { display: none; }

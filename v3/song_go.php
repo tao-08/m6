@@ -60,4 +60,11 @@ if ($app === 'spotify' || $app === 'apple_music') {
 }
 
 // ここで false を渡すと song_go.php へのリンクが返ってきて堂々巡りになるので、上で必ず URL か null にしている
-redirect(track_listen_url($app, $track, $found));
+$url = track_listen_url($app, $track, $found);
+// ?json=1 … スマホの app.js（setupSpotifyAppLinks）が飛び先だけを聞きに来る（album_go.php と同じ）
+if (($_GET['json'] ?? '') === '1') {
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode(['url' => $url], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+    exit;
+}
+redirect($url);
