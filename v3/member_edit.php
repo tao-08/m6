@@ -52,10 +52,9 @@ $name = trim((string)($_POST['name'] ?? ''));
 $entry = trim((string)($_POST['entry_year'] ?? ''));
 $musicApp = (string)($_POST['music_app'] ?? ''); // '' = 選ばない
 $faculty = (string)($_POST['faculty'] ?? '');    // '' = 選ばない
-// 係: チェックした今ある係（role_id の配列）＋ 新しく打った係（「、」「,」区切り）
+// 係: チェックした今ある係（role_id の配列）＋ 新しく打った係（1つ。空欄なら作らない）
 $roleIds = array_values(array_unique(array_filter(array_map('intval', (array)($_POST['roles'] ?? [])), static fn($id) => $id > 0)));
-$newRoles = array_values(array_unique(array_filter(array_map('trim',
-    preg_split('/[、,，]/u', (string)($_POST['new_roles'] ?? ''))), static fn($r) => $r !== '')));
+$newRole = trim((string)($_POST['new_role'] ?? ''));
 
 $errors = [];
 if ($name === '' || mb_strlen($name) > 50) {
@@ -75,10 +74,8 @@ if ($musicApp !== '' && !isset(MUSIC_APPS[$musicApp])) {
 if ($faculty !== '' && !in_array($faculty, FACULTIES, true)) {
     $errors[] = '学部の選び方がおかしいです';
 }
-foreach ($newRoles as $r) {
-    if (mb_strlen($r) > 30) {
-        $errors[] = "係「{$r}」は30文字以内にしてください";
-    }
+if (mb_strlen($newRole) > 30) {
+    $errors[] = '新しい係は30文字以内にしてください';
 }
 // member.name は UNIQUE。別の人と同じ名前にはできない（同一人物なら「メンバーの統合」を使う）
 $st = $pdo->prepare('SELECT 1 FROM member WHERE name = ? AND member_id <> ?');
@@ -111,8 +108,8 @@ try {
         $st->execute($roleIds);
         $keep = array_map('intval', $st->fetchAll(PDO::FETCH_COLUMN));
     }
-    foreach ($newRoles as $r) {
-        $keep[] = find_or_create_role($pdo, $r);
+    if ($newRole !== '') {
+        $keep[] = find_or_create_role($pdo, $newRole);
     }
     $pdo->prepare('DELETE FROM member_role WHERE member_id = ?')->execute([$memberId]);
     $ins = $pdo->prepare('INSERT IGNORE INTO member_role (member_id, role_id) VALUES (?, ?)');

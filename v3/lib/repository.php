@@ -100,7 +100,7 @@ function member_roles(PDO $pdo, int $memberId): array
 
 /**
  * プロフィール編集フォームの「学部」「係」の欄（account.php と member.php で同じものを出す）。
- * 係は、今ある係のチェックボックス ＋ 新しい係の入力欄（「、」区切りで複数）。保存は member_edit.php
+ * 係は、今ある係のチェックボックス ＋ 新しい係の入力欄（1つ）。保存は member_edit.php
  */
 function profile_faculty_role_fields(PDO $pdo, array $member): string
 {
@@ -113,12 +113,12 @@ function profile_faculty_role_fields(PDO $pdo, array $member): string
     }
     $html .= '</select></label>';
 
-    $html .= '<fieldset class="field field--wide role-checks"><legend>係</legend>';
+    $html .= '<fieldset class="field role-checks"><legend>係</legend>';
     foreach ($all as $id => $name) {
         $html .= '<label class="role-checks__item"><input type="checkbox" name="roles[]" value="' . (int)$id . '"'
             . (isset($mine[$id]) ? ' checked' : '') . '> ' . h($name) . '</label>';
     }
-    $html .= '<input name="new_roles" maxlength="100" placeholder="新しい係（「、」区切りで複数可）" aria-label="新しい係">';
+    $html .= '<input name="new_role" maxlength="30" placeholder="新しい係を追加" aria-label="新しい係">';
     return $html . '</fieldset>';
 }
 
