@@ -78,7 +78,7 @@ if (is_post()) {
             'user_id' => $userId, 'login_id' => $v['login_id'], 'name' => $v['name'],
             'admin' => (bool)$admin, 'member_id' => $memberId ? (int)$memberId : null,
         ];
-        flash('登録しました。ようこそ！' . ($admin ? '（管理者がいなかったので管理者になりました）' : ''));
+        flash('ようこそ！ 初めに右上からアカウント設定をしてください' . ($admin ? '（管理者がいなかったので管理者になりました）' : ''));
         redirect('index.php');
     }
 }
@@ -88,8 +88,8 @@ render_header('新規登録');
 <section class="auth">
     <div class="auth__hero">
         <p class="eyebrow">Join</p>
-        <h1 class="display">アカウントを<br>作成する。</h1>
-        <p class="muted">名前を名簿と同じ表記にすると、自分の出演履歴と自動でつながります。</p>
+        <h1 class="display">アカウント作成</h1>
+        <p class="muted">名前は姓と名の間にスペースを付けないでください。正しく登録されれば出演履歴に紐付けられます。</p>
     </div>
     <form method="post" class="card auth__card" novalidate>
         <h2>新規登録</h2>
@@ -102,7 +102,7 @@ render_header('新規登録');
         <label class="field"><span>ログインID（半角英数字）</span>
             <input type="text" name="login_id" value="<?= h($v['login_id']) ?>" autocomplete="username" maxlength="25" required></label>
         <label class="field"><span>名前（フルネーム）</span>
-            <input type="text" name="name" value="<?= h($v['name']) ?>" autocomplete="name" maxlength="50" required></label>
+            <input type="text" name="name" value="<?= h($v['name']) ?>" placeholder="例：垰田圭吾" autocomplete="name" maxlength="50" required></label>
         <label class="field"><span>ふりがな</span>
             <input type="text" name="name_kana" value="<?= h($v['name_kana']) ?>" maxlength="50"></label>
         <label class="field"><span>パスワード（8文字以上）</span>
