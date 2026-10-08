@@ -32,8 +32,16 @@ if (is_post()) {
     if ($display === '' || mb_strlen($display) > 50) {
         $errors[] = '名前を入力してください（50文字以内）';
     }
-    if (mb_strlen($v['name_kana']) > 50) {
+    // ふりがなは必須。カタカナ（半角も）で打たれたらひらがなに直してから、ひらがなだけかを確かめる
+    // （半角カナ → 全角カタカナ → ひらがなの順。mb_convert_kana は「ヴ」だけひらがなにしないので自分で直す）
+    $kana = str_replace('ヴ', 'ゔ', mb_convert_kana($v['name_kana'], 'KVs'));
+    $v['name_kana'] = mb_convert_kana($kana, 'c');
+    if ($v['name_kana'] === '') {
+        $errors[] = 'ふりがなを入力してください';
+    } elseif (mb_strlen($v['name_kana']) > 50) {
         $errors[] = 'ふりがなは50文字以内にしてください';
+    } elseif (!preg_match('/\A[ぁ-ゖー ]+\z/u', $v['name_kana'])) {
+        $errors[] = 'ふりがなはひらがなで入力してください';
     }
     // 入学年度は「わからない」（空欄）も OK。選ぶなら選択肢にある年度だけ
     $entryYear = null;
@@ -52,7 +60,7 @@ if (is_post()) {
 
     if (!$errors) {
         $pdo->prepare('INSERT INTO member (name, name_kana, entry_year) VALUES (?, ?, ?)')
-            ->execute([$display, $v['name_kana'] !== '' ? $v['name_kana'] : null, $entryYear]);
+            ->execute([$display, $v['name_kana'], $entryYear]);
         $newId = (int)$pdo->lastInsertId();
         flash('「' . $display . '」さんを追加しました');
         redirect('member.php?id=' . $newId);
@@ -72,18 +80,18 @@ require __DIR__ . '/partials/add_tabs.php';
     <?= csrf_field() ?>
     <div class="form-grid">
         <label class="field field--wide"><span>名前（フルネーム）</span>
-            <input name="name" value="<?= h($v['name']) ?>" maxlength="50" autocomplete="off" placeholder="例: 山田太郎" required></label>
-        <label class="field"><span>ふりがな（任意）</span>
-            <input name="name_kana" value="<?= h($v['name_kana']) ?>" maxlength="50" autocomplete="off"></label>
+            <input name="name" value="<?= h($v['name']) ?>" maxlength="50" autocomplete="off" placeholder="例: 垰田圭吾" required></label>
+        <label class="field"><span>ふりがな</span>
+            <input name="name_kana" value="<?= h($v['name_kana']) ?>" maxlength="50" autocomplete="off" placeholder="例: たおだけいご" required></label>
         <label class="field"><span>入学年度</span>
             <select name="entry_year">
-                <option value="">わからない</option>
+                <option value="">未入力</option>
                 <?php foreach ($entryYears as $y): ?>
                     <option value="<?= $y ?>"<?= (string)$y === $v['entry_year'] ? ' selected' : '' ?>><?= $y ?>年度</option>
                 <?php endforeach; ?>
             </select></label>
     </div>
-    <p class="muted small">入学年度が「わからない」のままだと、集計の「現役」「上下3学年」には出てきません。</p>
+    <p class="muted small">入学年度が未入力の場合、一部集計の対象外となります。</p>
     <div class="form-actions">
         <button class="btn btn--primary" type="submit">追加する</button>
     </div>
