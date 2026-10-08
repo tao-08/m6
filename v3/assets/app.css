@@ -836,7 +836,7 @@ body.is-row-dragging, body.is-row-dragging * { cursor: grabbing !important; user
 
 .sticky-actions { position: sticky; bottom: 16px; z-index: 10; display: flex; justify-content: flex-end; gap: 10px; padding: 10px; border-radius: 999px;
   background: color-mix(in srgb, var(--surface) 88%, transparent); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-  border: 1px solid var(--border); box-shadow: var(--shadow); width: max-content; margin-left: auto; }
+  border: 1px solid var(--border); box-shadow: var(--shadow); width: max-content; margin: 20px 0 0 auto; } /* 上: 直前の「＋ 曲を追加」などのボタンとくっつかないように */
 .sticky-actions__note { align-self: center; padding: 0 6px; font-size: 12px; font-weight: 600; color: var(--warn); }
 .sticky-actions__note[hidden] { display: none; }
 
