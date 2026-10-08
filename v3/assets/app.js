@@ -164,7 +164,7 @@ function setupSpotifyAppLinks() {
       openInApp(uri, a.href);
       return;
     }
-    const go = a.getAttribute('href').match(/^(album_go|song_go)\.php\?/);
+    const go = a.getAttribute('href').match(/^(album_go|song_go)\?/);
     if (!go) return;
     e.preventDefault();
     try {
@@ -493,7 +493,7 @@ function setupTrackSearch() {
     searchBtn.disabled = true;
     try {
       // encodeURIComponent: 日本語や & などを URL で使える形にする
-      const res = await fetch(`api_track_search.php?q=${encodeURIComponent(q)}`, { credentials: 'same-origin' });
+      const res = await fetch(`api_track_search?q=${encodeURIComponent(q)}`, { credentials: 'same-origin' });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       if (data.tracks.length === 0) {
@@ -919,7 +919,7 @@ function setupNameCheck() {
     const inputs = cells();
     const myNo = ++requestNo;
     try {
-      const res = await fetch('api_name_check.php', {
+      const res = await fetch('api_name_check', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': token },
         body: JSON.stringify({ cells: inputs.map((i) => i.value) }),
@@ -2050,7 +2050,7 @@ function setupAlbumSort() {
     saving = true;
     showStatus('保存中…');
     try {
-      const res = await fetch('api_album_order.php', {
+      const res = await fetch('api_album_order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': token },
         body: JSON.stringify({ member_id: Number(list.dataset.memberId), order }),
@@ -2242,7 +2242,7 @@ function setupAlbumSearch() {
     button.textContent = '検索中…';
 
     // FormData: フォームの入力をまとめて取り出す → URLSearchParams で "id=1&album_q=..." の形にする
-    //   getAttribute('action') は "member.php#albums"。# 以降は要らないので切り落とす
+    //   getAttribute('action') は "member#albums"。# 以降は要らないので切り落とす
     const url = `${form.getAttribute('action').split('#')[0]}?${new URLSearchParams(new FormData(form))}`;
     try {
       const res = await fetch(url, { credentials: 'same-origin' });
@@ -2753,7 +2753,7 @@ function setupPicks() {
     const submit = form.querySelector('[type="submit"]');
     submit.disabled = true; // 二重送信防止
     try {
-      const res = await fetch('api_instrument.php', {
+      const res = await fetch('api_instrument', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': token },
         body: JSON.stringify({ short_name: shortName, name }),

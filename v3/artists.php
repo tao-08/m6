@@ -152,13 +152,13 @@ render_header('アーティスト', 'artists');
                 <tr class="artist-row" data-text="<?= h($r['name'] . ' ' . implode(' ', $al)) ?>">
                     <td class="num muted"><?= $r['rank'] ?? '—' ?></td>
                     <td>
-                        <a href="artist.php?id=<?= $id ?>"<?= $r['rank'] ? ' class="strong"' : '' ?>><?= h($r['name']) ?></a>
+                        <a href="artist?id=<?= $id ?>"<?= $r['rank'] ? ' class="strong"' : '' ?>><?= h($r['name']) ?></a>
                         <?php if ($al): ?><div class="muted small">別名: <?= h(implode('、', $al)) ?></div><?php endif; ?>
                     </td>
                     <td class="num<?= $r['rank'] ? ' strong' : ' muted' ?>"><?= (int)$r['plays'] ?></td>
                     <td>
                         <?php if ($ll): ?>
-                            <a href="live.php?id=<?= (int)$ll['live_id'] ?>"><span class="muted"><?= (int)$ll['fiscal_year'] ?>年度</span> <?= h($ll['name']) ?></a>
+                            <a href="live?id=<?= (int)$ll['live_id'] ?>"><span class="muted"><?= (int)$ll['fiscal_year'] ?>年度</span> <?= h($ll['name']) ?></a>
                         <?php else: ?>
                             <span class="muted small">—</span>
                         <?php endif; ?>
@@ -168,7 +168,7 @@ render_header('アーティスト', 'artists');
                             <?php // 同率1位が多いとごちゃつくので、名前は3人まで。残りは「ほか◯人」にまとめ、乗せる（スマホは押す）と名前を出す（app.js の setupSetlistTip を使い回す）
                             $shown = array_slice($tp, 0, 3);
                             $rest = array_column(array_slice($tp, 3), 'name'); ?>
-                            <?php foreach ($shown as $i => $m): ?><?= $i > 0 ? ' ' : '' ?><a href="member.php?id=<?= (int)$m['member_id'] ?>"><?= h($m['name']) ?></a><?php endforeach; ?>
+                            <?php foreach ($shown as $i => $m): ?><?= $i > 0 ? ' ' : '' ?><a href="member?id=<?= (int)$m['member_id'] ?>"><?= h($m['name']) ?></a><?php endforeach; ?>
                             <?php if ($rest): ?><button type="button" class="more-names" data-setlist-tip="<?= h(implode(' ', $rest)) ?>" aria-label="<?= h('ほか: ' . implode(' ', $rest)) ?>">ほか<?= count($rest) ?>人</button><?php endif; ?>
                             <span class="muted small"><?= (int)$tp[0]['n'] ?>回</span>
                         <?php else: ?>

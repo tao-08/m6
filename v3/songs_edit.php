@@ -38,8 +38,8 @@ if (!$band) {
     http_response_code(404);
     exit('バンドが見つかりません');
 }
-$liveUrl = 'live.php?id=' . (int)$band['live_id'] . '#day-' . (int)$band['live_day_id'];
-$backUrl = 'band.php?id=' . $bandId; // 保存・キャンセルの戻り先はバンド詳細
+$liveUrl = 'live?id=' . (int)$band['live_id'] . '#day-' . (int)$band['live_day_id'];
+$backUrl = 'band?id=' . $bandId; // 保存・キャンセルの戻り先はバンド詳細
 // オムニバスでないときにアーティスト欄に出す名前（アーティスト未設定のバンドはバンド名）
 //   オムニバスのバンドはコピー元アーティストを持たない（band.artist_id = NULL）ので、バンド名から推測した名前になる
 //   （オムニバスを外して保存すると、この名前で find_or_create_artist() する）
@@ -209,7 +209,7 @@ render_header('曲を編集', 'lives');
 <?php foreach ($errors as $e): ?><div class="flash flash--error"><?= h($e) ?></div><?php endforeach; ?>
 
 <?php if (!$members): ?>
-    <div class="flash flash--warn">先にバンドのメンバーを登録してください（<a href="band_edit.php?id=<?= $bandId ?>">バンドを編集</a>）</div>
+    <div class="flash flash--warn">先にバンドのメンバーを登録してください（<a href="band_edit?id=<?= $bandId ?>">バンドを編集</a>）</div>
 <?php endif; ?>
 <p class="muted small">曲ごとに演奏者と担当楽器が記録できます。 曲を検索して紐づけると対応アプリで再生できるようになります。</p>
 

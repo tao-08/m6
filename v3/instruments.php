@@ -6,4 +6,4 @@
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 require_admin();
-redirect('masters.php?tab=instrument');
+redirect('masters?tab=instrument');

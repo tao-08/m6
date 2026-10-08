@@ -57,7 +57,7 @@ if (is_post()) {
         }
     }
 
-    redirect('account.php');
+    redirect('account');
 }
 
 // 紐付いているメンバーのプロフィール（マイページの「プロフィールを編集」をここに統合した）。
@@ -89,7 +89,7 @@ render_header('アカウント設定');
         <div class="form-actions"><button class="btn btn--primary btn--sm" type="submit">保存</button></div>
     </form>
     <?php else: ?>
-    <form method="post" action="member_edit.php" class="card form-card" id="member-profile">
+    <form method="post" action="member_edit" class="card form-card" id="member-profile">
         <h2 class="section-title section-title--card">プロフィール</h2>
         <?= csrf_field() ?>
         <input type="hidden" name="member_id" value="<?= (int)$myMember['member_id'] ?>">

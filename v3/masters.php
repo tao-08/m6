@@ -221,7 +221,7 @@ if (is_post()) {
             }
         }
     }
-    redirect('masters.php?tab=' . $tab);
+    redirect('masters?tab=' . $tab);
 }
 
 // ---- 一覧（3つとも数を出したいので全部読む。どれも数十行なので軽い） ----
@@ -267,7 +267,7 @@ render_header($tabs[$tab][0] . 'の管理');
 </section>
 <nav class="tabs tabs--static no-print" aria-label="管理するもの">
     <?php foreach ($tabs as $key => [$label]): ?>
-        <a class="tab<?= $key === $tab ? ' is-active' : '' ?>" href="masters.php?tab=<?= $key ?>"<?= $key === $tab ? ' aria-current="page"' : '' ?>><?= h($label) ?> <span class="muted small"><?= $counts[$key] ?></span></a>
+        <a class="tab<?= $key === $tab ? ' is-active' : '' ?>" href="masters?tab=<?= $key ?>"<?= $key === $tab ? ' aria-current="page"' : '' ?>><?= h($label) ?> <span class="muted small"><?= $counts[$key] ?></span></a>
     <?php endforeach; ?>
 </nav>
 

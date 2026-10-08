@@ -22,7 +22,7 @@ $member = $st->fetch();
 if (!$member) {
     http_response_code(404);
     render_header('見つかりません');
-    echo '<div class="empty card"><p class="empty__title">メンバーが見つかりません</p><a class="btn" href="members.php">一覧へ戻る</a></div>';
+    echo '<div class="empty card"><p class="empty__title">メンバーが見つかりません</p><a class="btn" href="members">一覧へ戻る</a></div>';
     render_footer();
     exit;
 }
@@ -204,18 +204,18 @@ if ($albumQuery !== '') {
 
 render_header($member['name'], 'members');
 ?>
-<nav class="crumbs"><a href="members.php">メンバー</a><span>/</span><?= h($member['name']) ?></nav>
+<nav class="crumbs"><a href="members">メンバー</a><span>/</span><?= h($member['name']) ?></nav>
 <section class="hero">
     <div>
         <p class="eyebrow"><?= $isMe ? 'My Page' : 'Member' ?></p>
         <h1 class="display"><?= h($member['name']) ?></h1>
         <p class="muted small">
             <?= h($member['name_kana'] ?? '') ?>
-            <?php if ((int)$member['entry_year'] > 0): ?> · <a class="meta-link" href="members.php?who=grade&amp;entry=<?= (int)$member['entry_year'] ?>"><?= (int)$member['entry_year'] ?>年入学</a><?php endif; ?>
-            <?php if ($member['faculty'] !== null): ?> · <a class="meta-link" href="search.php?<?= h(http_build_query(['faculty' => $member['faculty']])) ?>"><?= h($member['faculty']) ?></a><?php endif; ?>
+            <?php if ((int)$member['entry_year'] > 0): ?> · <a class="meta-link" href="members?who=grade&amp;entry=<?= (int)$member['entry_year'] ?>"><?= (int)$member['entry_year'] ?>年入学</a><?php endif; ?>
+            <?php if ($member['faculty'] !== null): ?> · <a class="meta-link" href="search?<?= h(http_build_query(['faculty' => $member['faculty']])) ?>"><?= h($member['faculty']) ?></a><?php endif; ?>
             <?php $roles = member_roles($pdo, $memberId); // [role_id => 名前] ?>
             <?php if ($roles): ?> ·
-                <?php $i = 0; foreach ($roles as $rid => $rname): ?><?= $i++ ? '・' : '' ?><a class="meta-link" href="search.php?role=<?= (int)$rid ?>"><?= h($rname) ?></a><?php endforeach; ?>
+                <?php $i = 0; foreach ($roles as $rid => $rname): ?><?= $i++ ? '・' : '' ?><a class="meta-link" href="search?role=<?= (int)$rid ?>"><?= h($rname) ?></a><?php endforeach; ?>
             <?php endif; ?>
         </p>
         <?php if ($parts): ?><?= part_marks($parts, true) ?><?php endif; ?>
@@ -229,14 +229,14 @@ render_header($member['name'], 'members');
 
 <?php if ($isMe): ?>
 <!-- 自分のプロフィールはアカウント設定でまとめて編集する -->
-<a class="card edit-box edit-box--link" href="account.php#member-profile"><?= icon('edit') ?> プロフィールを編集（アカウント設定）</a>
+<a class="card edit-box edit-box--link" href="account#member-profile"><?= icon('edit') ?> プロフィールを編集（アカウント設定）</a>
 <?php else: ?>
 <?php $canEditAll = is_admin(); ?>
 <!-- 他の人のページの編集フォーム。<details> なので普段は閉じている。
      管理者は全部の項目、それ以外のログイン中の人は「ふりがな」だけ編集できる -->
 <details class="card edit-box">
     <summary><?= icon('edit') ?> <?= $canEditAll ? 'プロフィールを編集' : 'ふりがなを編集' ?></summary>
-    <form method="post" action="member_edit.php" class="form-grid edit-box__form">
+    <form method="post" action="member_edit" class="form-grid edit-box__form">
         <?= csrf_field() ?>
         <input type="hidden" name="member_id" value="<?= $memberId ?>">
         <?php if ($canEditAll): ?>
@@ -313,7 +313,7 @@ render_header($member['name'], 'members');
                         <span class="muted small"><?= h($a['artist_name']) ?><?php if ($a['release_year']): ?><span class="album__year"> · <?= (int)$a['release_year'] ?></span><?php endif; ?></span>
                     </a>
                     <?php if ($isMe || is_admin()): ?>
-                        <form method="post" action="member_album_save.php" class="album__delete" data-confirm="「<?= h($a['title']) ?>」をマイアルバムから外します。よろしいですか？">
+                        <form method="post" action="member_album_save" class="album__delete" data-confirm="「<?= h($a['title']) ?>」をマイアルバムから外します。よろしいですか？">
                             <?= csrf_field() ?>
                             <input type="hidden" name="action" value="delete">
                             <input type="hidden" name="member_id" value="<?= $memberId ?>">
@@ -344,7 +344,7 @@ render_header($member['name'], 'members');
         <?php else: ?>
             <!-- 検索は GET。送信すると member.php?id=..&album_q=.. に移動し、上の PHP が検索する -->
             <!-- data-album-search: JS が動くときは移動せず、下の data-album-results の中身だけ差し替える（assets/app.js の setupAlbumSearch） -->
-            <form method="get" action="member.php#albums" class="album-search__form" data-album-search>
+            <form method="get" action="member#albums" class="album-search__form" data-album-search>
                 <input type="hidden" name="id" value="<?= $memberId ?>">
                 <input class="search" type="search" name="album_q" value="<?= h($albumQuery) ?>" placeholder="アルバム名やアーティスト名で検索" maxlength="100" required>
                 <button class="btn btn--primary btn--sm" type="submit">検索</button>
@@ -372,7 +372,7 @@ render_header($member['name'], 'members');
                             <?php else: ?>
                                 <!-- 送るのはキー（どのサービスの何番か）だけ。タイトルや画像URLはサーバー側で取り直す -->
                                 <!-- data-album-add: JS が動くときはページ移動せずに追加する（assets/app.js の setupAlbumAdd） -->
-                                <form method="post" action="member_album_save.php" data-album-add>
+                                <form method="post" action="member_album_save" data-album-add>
                                     <?= csrf_field() ?>
                                     <input type="hidden" name="action" value="add">
                                     <input type="hidden" name="member_id" value="<?= $memberId ?>">
@@ -434,14 +434,14 @@ render_header($member['name'], 'members');
                         <span class="muted"><?= h(fmt_date($day['date'])) ?></span>
                     </div>
                     <div class="history__what">
-                        <a href="live.php?id=<?= (int)$day['live_id'] ?>#day-<?= (int)$day['live_day_id'] ?>" class="muted small"><?= h($day['live_name']) ?> <?= h($day['label']) ?><?= $day['venue_name'] ? ' · ' . h($day['venue_name']) : '' ?></a>
+                        <a href="live?id=<?= (int)$day['live_id'] ?>#day-<?= (int)$day['live_day_id'] ?>" class="muted small"><?= h($day['live_name']) ?> <?= h($day['label']) ?><?= $day['venue_name'] ? ' · ' . h($day['venue_name']) : '' ?></a>
                         <!-- その日に出たバンドを出演順に並べる。バンド名からバンド詳細へ -->
                         <ul class="history__bands">
                             <?php foreach ($day['bands'] as $b): ?>
                                 <li class="history__band">
                                     <!-- バンド名と、トリならその横に小さな🐦️ -->
                                     <span class="history__name">
-                                        <a href="band.php?id=<?= (int)$b['band_id'] ?>"><?= h($b['band_name']) ?></a>
+                                        <a href="band?id=<?= (int)$b['band_id'] ?>"><?= h($b['band_name']) ?></a>
                                         <?php if ($b['is_last']): ?><span class="tori-badge" aria-label="トリ" title="トリ">🐦️</span><?php endif; ?>
                                     </span>
                                     <span class="history__tags">
@@ -482,7 +482,7 @@ render_header($member['name'], 'members');
                         <details class="partner">
                             <summary>
                                 <span class="pill"><span class="partner__chevron" aria-hidden="true">▸</span><?= (int)$p['n'] ?>回</span>
-                                <a href="member.php?id=<?= (int)$p['member_id'] ?>"><?= h($p['name']) ?></a>
+                                <a href="member?id=<?= (int)$p['member_id'] ?>"><?= h($p['name']) ?></a>
                                 <!-- 一緒に組んだバンドで、その人が何を何回やったか -->
                                 <?= part_marks($partnerTally[(int)$p['member_id']] ?? [], true, 'partbar--partner') ?>
                             </summary>
@@ -491,9 +491,9 @@ render_header($member['name'], 'members');
                                     <dt><?= h(fmt_year($year)) ?></dt>
                                     <?php foreach ($bands as $b): ?>
                                         <dd>
-                                            <a href="band.php?id=<?= (int)$b['band_id'] ?>"><?= h($b['band_name']) ?></a>
+                                            <a href="band?id=<?= (int)$b['band_id'] ?>"><?= h($b['band_name']) ?></a>
                                             <span class="partner__live">
-                                                <a class="muted small" href="live.php?id=<?= (int)$b['live_id'] ?>#day-<?= (int)$b['live_day_id'] ?>"><?= h($b['live_name']) ?> <?= h($b['label']) ?></a>
+                                                <a class="muted small" href="live?id=<?= (int)$b['live_id'] ?>#day-<?= (int)$b['live_day_id'] ?>"><?= h($b['live_name']) ?> <?= h($b['label']) ?></a>
                                                 <!-- そのバンドでその人がやった楽器（ライブ名の右） -->
                                                 <?php foreach ($partnerParts[(int)$p['member_id']][(int)$b['band_id']] ?? [] as $pp): ?><?= part_badge($pp) ?><?php endforeach; ?>
                                             </span>
@@ -521,7 +521,7 @@ render_header($member['name'], 'members');
             <ol class="ranking">
                 <?php foreach ($topArtists as $k => $a): ?>
                     <li data-rank="<?= $artistRanks[$k] ?>">
-                        <a href="artist.php?id=<?= (int)$a['artist_id'] ?>"><?= h($a['name']) ?></a>
+                        <a href="artist?id=<?= (int)$a['artist_id'] ?>"><?= h($a['name']) ?></a>
                         <span class="pill"><?= (int)$a['n'] ?>回</span>
                     </li>
                 <?php endforeach; ?>

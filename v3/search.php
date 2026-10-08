@@ -177,7 +177,7 @@ render_header($filterLabel ?? ($q !== '' ? "「{$q}」の検索結果" : '検索
         <?php if ($members): ?>
             <div class="chip-list">
                 <?php foreach ($members as $m): ?>
-                    <a class="chip chip--lg<?= (int)$m['member_id'] === $user['member_id'] ? ' chip--me' : '' ?>" href="member.php?id=<?= (int)$m['member_id'] ?>">
+                    <a class="chip chip--lg<?= (int)$m['member_id'] === $user['member_id'] ? ' chip--me' : '' ?>" href="member?id=<?= (int)$m['member_id'] ?>">
                         <?= h($m['name']) ?><?php if ((int)$m['entry_year'] > 0): ?> <span class="muted small"><?= (int)$m['entry_year'] ?></span><?php endif; ?>
                     </a>
                 <?php endforeach; ?>
@@ -197,7 +197,7 @@ render_header($filterLabel ?? ($q !== '' ? "「{$q}」の検索結果" : '検索
             <h2 class="section-title">メンバー <span class="muted"><?= count($members) ?></span></h2>
             <div class="chip-list">
                 <?php foreach ($members as $m): ?>
-                    <a class="chip chip--lg<?= (int)$m['member_id'] === $user['member_id'] ? ' chip--me' : '' ?>" href="member.php?id=<?= (int)$m['member_id'] ?>">
+                    <a class="chip chip--lg<?= (int)$m['member_id'] === $user['member_id'] ? ' chip--me' : '' ?>" href="member?id=<?= (int)$m['member_id'] ?>">
                         <?= h($m['name']) ?> <span class="muted small"><?= (int)$m['bands'] ?></span>
                     </a>
                 <?php endforeach; ?>
@@ -210,7 +210,7 @@ render_header($filterLabel ?? ($q !== '' ? "「{$q}」の検索結果" : '検索
             <h2 class="section-title">アーティスト <span class="muted"><?= count($artists) ?></span></h2>
             <div class="chip-list">
                 <?php foreach ($artists as $a): ?>
-                    <a class="chip chip--lg" href="artist.php?id=<?= (int)$a['artist_id'] ?>"><?= h($a['name']) ?> <span class="muted small"><?= (int)$a['n'] ?>回</span></a>
+                    <a class="chip chip--lg" href="artist?id=<?= (int)$a['artist_id'] ?>"><?= h($a['name']) ?> <span class="muted small"><?= (int)$a['n'] ?>回</span></a>
                 <?php endforeach; ?>
             </div>
         </section>
@@ -226,16 +226,16 @@ render_header($filterLabel ?? ($q !== '' ? "「{$q}」の検索結果" : '検索
                     <tbody>
                     <?php foreach ($bands as $i => $b): $bandId = (int)$b['band_id']; ?>
                         <tr id="band-n<?= $i + 1 ?>">
-                            <td class="strong"><a href="band.php?id=<?= $bandId ?>"><?= h($b['name']) ?></a>
+                            <td class="strong"><a href="band?id=<?= $bandId ?>"><?= h($b['name']) ?></a>
                                 <?php if ($b['note']): // メモで当たったときに理由が分かるように（live.php と同じ見た目） ?><div><span class="keynote"><?= icon('piano') ?> <?= h($b['note']) ?></span></div><?php endif; ?></td>
-                            <td class="nowrap"><a href="live.php?id=<?= (int)$b['live_id'] ?>#day-<?= (int)$b['live_day_id'] ?>"><?= h(fmt_year($b['year'])) ?> <?= h($b['live_name']) ?></a>
+                            <td class="nowrap"><a href="live?id=<?= (int)$b['live_id'] ?>#day-<?= (int)$b['live_day_id'] ?>"><?= h(fmt_year($b['year'])) ?> <?= h($b['live_name']) ?></a>
                                 <div class="muted small"><?= h($b['label']) ?> <?= h(fmt_date($b['date'])) ?></div></td>
                             <td>
                                 <?php if (!empty($lineups[$bandId])): ?>
                                     <ul class="artist-lineup">
                                         <?php foreach ($lineups[$bandId] as $m): ?>
                                             <li><?= part_badge($m) ?>
-                                                <a href="member.php?id=<?= (int)$m['member_id'] ?>"><?= h($m['name']) ?></a></li>
+                                                <a href="member?id=<?= (int)$m['member_id'] ?>"><?= h($m['name']) ?></a></li>
                                         <?php endforeach; ?>
                                     </ul>
                                 <?php else: ?><span class="muted">—</span><?php endif; ?>
@@ -257,7 +257,7 @@ render_header($filterLabel ?? ($q !== '' ? "「{$q}」の検索結果" : '検索
             </div>
             <?php if (count($bands) < $bandTotal && $bandPage < 50): ?>
                 <!-- 次のページは「今の続きの行」に飛ぶ（ページの一番上に戻されない） -->
-                <p class="more-link"><a class="btn btn--sm" href="search.php?<?= h(http_build_query(['q' => $q, 'bp' => $bandPage + 1])) ?>#band-n<?= count($bands) + 1 ?>">
+                <p class="more-link"><a class="btn btn--sm" href="search?<?= h(http_build_query(['q' => $q, 'bp' => $bandPage + 1])) ?>#band-n<?= count($bands) + 1 ?>">
                     もっと見る（残り <?= $bandTotal - count($bands) ?> 組）</a></p>
             <?php endif; ?>
         </section>
@@ -277,9 +277,9 @@ render_header($filterLabel ?? ($q !== '' ? "「{$q}」の検索結果" : '検索
                         foreach ($days as $i => $d): ?>
                         <tr>
                             <?php if ($i === 0): // ライブ名は日程の数だけ縦に結合して1回だけ出す ?>
-                                <td class="strong nowrap" rowspan="<?= count($days) ?>"><a href="live.php?id=<?= $liveId ?>"><?= h(fmt_year($l['year'])) ?> <?= h($l['name']) ?></a></td>
+                                <td class="strong nowrap" rowspan="<?= count($days) ?>"><a href="live?id=<?= $liveId ?>"><?= h(fmt_year($l['year'])) ?> <?= h($l['name']) ?></a></td>
                             <?php endif; ?>
-                            <td class="nowrap"><a href="live.php?id=<?= $liveId ?>#day-<?= (int)$d['live_day_id'] ?>"><?= h($d['label']) ?></a>
+                            <td class="nowrap"><a href="live?id=<?= $liveId ?>#day-<?= (int)$d['live_day_id'] ?>"><?= h($d['label']) ?></a>
                                 <?php if ($d['note']): ?><div class="muted small"><?= h($d['note']) ?></div><?php endif; ?></td>
                             <td class="muted nowrap"><?= $d['held_on'] !== null ? h(fmt_date($d['held_on'])) : '—' ?></td>
                             <td><?= $d['venue'] !== null ? h($d['venue']) : '<span class="muted">—</span>' ?></td>

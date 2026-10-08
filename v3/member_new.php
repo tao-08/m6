@@ -63,7 +63,7 @@ if (is_post()) {
             ->execute([$display, $v['name_kana'], $entryYear]);
         $newId = (int)$pdo->lastInsertId();
         flash('「' . $display . '」さんを追加しました');
-        redirect('member.php?id=' . $newId);
+        redirect('member?id=' . $newId);
     }
 }
 
@@ -73,7 +73,7 @@ require __DIR__ . '/partials/add_tabs.php';
 ?>
 <?php foreach ($errors as $e): ?><div class="flash flash--error"><?= h($e) ?></div><?php endforeach; ?>
 <?php if ($existing): ?>
-    <p><a class="btn btn--sm" href="member.php?id=<?= (int)$existing['id'] ?>">「<?= h($existing['name']) ?>」さんのページを開く</a></p>
+    <p><a class="btn btn--sm" href="member?id=<?= (int)$existing['id'] ?>">「<?= h($existing['name']) ?>」さんのページを開く</a></p>
 <?php endif; ?>
 
 <form method="post" class="card form-card">

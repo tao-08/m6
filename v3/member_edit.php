@@ -17,14 +17,14 @@ require_once __DIR__ . '/lib/repository.php'; // sync_account_names(), find_or_c
 $user = require_login();
 
 if (!is_post()) {
-    redirect('members.php');
+    redirect('members');
 }
 verify_csrf();
 
 $memberId = (int)($_POST['member_id'] ?? 0);
 // 戻り先。URL をそのまま POST で受け取ると、外部サイトに飛ばされる（オープンリダイレクト）ので、
 // 「account」という決まった値のときだけアカウント設定に戻す
-$back = ($_POST['return'] ?? '') === 'account' ? 'account.php#member-profile' : 'member.php?id=' . $memberId;
+$back = ($_POST['return'] ?? '') === 'account' ? 'account#member-profile' : 'member?id=' . $memberId;
 $pdo = db();
 
 $kana = trim((string)($_POST['name_kana'] ?? ''));
@@ -36,7 +36,7 @@ if (!is_admin() && $user['member_id'] !== $memberId) {
     $st = $pdo->prepare('SELECT 1 FROM member WHERE member_id = ?');
     $st->execute([$memberId]);
     if (!$st->fetchColumn()) {
-        redirect('members.php');
+        redirect('members');
     }
     if (mb_strlen($kana) > 50) {
         flash('ふりがなは50文字以内にしてください', 'error');

@@ -9,7 +9,7 @@ require_once __DIR__ . '/lib/repository.php';
 require_admin();
 
 if (!is_post()) { // 削除は必ず POST（GET だとリンクを踏ませるだけで消せてしまう）
-    redirect('index.php');
+    redirect('./');
 }
 verify_csrf();
 
@@ -20,7 +20,7 @@ $st->execute([$detailId]);
 $liveId = $st->fetchColumn();
 if ($liveId === false) {
     flash('削除対象が見つかりません', 'error');
-    redirect('index.php');
+    redirect('./');
 }
 
 $pdo->beginTransaction();
@@ -31,4 +31,4 @@ $pdo->commit();
 $st = $pdo->prepare('SELECT 1 FROM live WHERE live_id = ?');
 $st->execute([$liveId]);
 flash('削除しました');
-redirect($st->fetchColumn() ? 'live.php?id=' . (int)$liveId : 'index.php');
+redirect($st->fetchColumn() ? 'live?id=' . (int)$liveId : './');

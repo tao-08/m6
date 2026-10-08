@@ -19,7 +19,7 @@ require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/repository.php';
 
 if (current_user()) {
-    redirect('index.php');
+    redirect('./');
 }
 
 // 今年度（4月始まり）。入学年度の選択肢の上限に使う
@@ -118,7 +118,7 @@ if (is_post()) {
             'admin' => (bool)$admin, 'member_id' => $memberId ? (int)$memberId : null,
         ];
         flash('登録しました。ようこそ！' . ($admin ? '（管理者がいなかったので管理者になりました）' : ''));
-        redirect('index.php');
+        redirect('./');
     }
 }
 
@@ -154,7 +154,7 @@ render_header('新規登録');
         <label class="field"><span>パスワード（確認）</span>
             <input type="password" name="password_confirm" autocomplete="new-password" minlength="8" required></label>
         <button class="btn btn--primary btn--block" type="submit">登録する</button>
-        <p class="muted small center"><a href="login.php">戻る</a></p>
+        <p class="muted small center"><a href="login">戻る</a></p>
     </form>
 </section>
 <?php render_footer();

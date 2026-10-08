@@ -147,11 +147,11 @@ if (is_post()) {
         $count = is_array($up['name'] ?? null) ? count($up['name']) : 0;
         if ($count === 0 || ($count === 1 && $up['error'][0] === UPLOAD_ERR_NO_FILE)) {
             flash('ファイルを選んでください', 'error');
-            redirect('import.php');
+            redirect('import');
         }
         if ($count > MAX_FILES) {
             flash('一度にアップロードできるのは ' . MAX_FILES . ' ファイルまでです', 'error');
-            redirect('import.php');
+            redirect('import');
         }
         for ($i = 0; $i < $count; $i++) {
             $name = basename((string)$up['name'][$i]); // basename でパス部分（../ など）を除く
@@ -198,7 +198,7 @@ if (is_post()) {
             $_SESSION['import_plan'] = $plan;
             unset($_SESSION['import_form']);
         }
-        redirect('import.php');
+        redirect('import');
     }
 
     // ---------- タイムテーブルの手入力 → プレビューへ ----------
@@ -221,7 +221,7 @@ if (is_post()) {
         } catch (RuntimeException $e) {
             $_SESSION['import_plan'] = $plan;
             flash($e->getMessage(), 'error');
-            redirect('import.php');
+            redirect('import');
         }
         $plan['timetables'] = $timetables;
         $plan['needs_timetable'] = false;
@@ -238,20 +238,20 @@ if (is_post()) {
         }
         $_SESSION['import_plan'] = $plan;
         unset($_SESSION['import_form']);
-        redirect('import.php');
+        redirect('import');
     }
 
     // ---------- プレビューから手入力の画面に戻る（プレビューで直した内容は捨てる） ----------
     if ($action === 'edit_tt' && isset($_SESSION['import_plan']['manual_rows'])) {
         $_SESSION['import_plan']['needs_timetable'] = true;
         unset($_SESSION['import_form']);
-        redirect('import.php');
+        redirect('import');
     }
 
     // ---------- やり直し ----------
     if ($action === 'reset') {
         unset($_SESSION['import_plan'], $_SESSION['import_form']);
-        redirect('import.php');
+        redirect('import');
     }
 
     // ---------- 登録 ----------
@@ -268,10 +268,10 @@ if (is_post()) {
 
             if (!$liveIds) {
                 flash('取り込む日程がありませんでした（すべて「取り込まない」）', 'info');
-                redirect('import.php');
+                redirect('import');
             }
             flash('取り込みが完了しました！');
-            redirect(count($liveIds) === 1 ? 'live.php?id=' . $liveIds[0] : 'index.php');
+            redirect(count($liveIds) === 1 ? 'live?id=' . $liveIds[0] : './');
         } catch (Throwable $e) {
             // 失敗したら入力内容をセッションに残して、プレビューに戻ったとき復元する
             $_SESSION['import_form'] = $input;
@@ -280,10 +280,10 @@ if (is_post()) {
             if (config('debug') && !$e instanceof RuntimeException) {
                 flash($e->getMessage(), 'error');
             }
-            redirect('import.php');
+            redirect('import');
         }
     }
-    redirect('import.php');
+    redirect('import');
 }
 
 /* =====================================================================

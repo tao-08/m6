@@ -47,9 +47,9 @@ if ($isNew) {
     }
 }
 $dayId = (int)$band['live_day_id'];
-$liveUrl = 'live.php?id=' . (int)$band['live_id'] . '#day-' . $dayId;
+$liveUrl = 'live?id=' . (int)$band['live_id'] . '#day-' . $dayId;
 // 戻り先: 既存のバンドはバンド詳細、新しく追加するときはライブページ
-$backUrl = $isNew ? $liveUrl : 'band.php?id=' . $bandId;
+$backUrl = $isNew ? $liveUrl : 'band?id=' . $bandId;
 
 // 今のメンバー。セトリに出ている人（locked = 1）は楽器をセトリの実績で決めるので、この画面では変えられない
 //   （sync_band_members もその人の行には触らない）
@@ -169,7 +169,7 @@ if (is_post()) {
             throw $e;
         }
         flash('「' . $name . '」を' . ($isNew ? '追加' : '更新') . 'しました');
-        redirect('band.php?id=' . $bandId);
+        redirect('band?id=' . $bandId);
     }
     // エラーのときは入力した値をそのまま表示し直す
     $band = array_merge($band, ['name' => $name, 'artist_name' => $artistName, 'song_count' => $songs, 'note' => $note, 'youtube_url' => $youtube, 'needs_check' => $flag,
@@ -220,12 +220,12 @@ render_header($isNew ? 'バンドを追加' : 'バンドを編集', 'lives');
     <!-- 🚩 楽器の確認待ち（取り込み・タイムテーブル編集と同じ部品）。付けるとバンドページ・メンバーのトップで知らせる。
          いま付いているときは、確認をうながす文を一緒に出す（外して保存 = 確認した） -->
     <div class="check-flag<?= $band['needs_check'] ? ' flash flash--warn' : '' ?>">
-        <?php if ($band['needs_check']): ?><span><?= icon('flag', 'icon--fill flag-icon') ?> 楽器の登録があっているか確認してください。確認できたら旗を外して保存してください。</span><?php endif; ?>
+        <?php if ($band['needs_check']): ?><span><?= icon('flag', 'icon--fill flag-icon') ?> 楽器の登録があっているか確認してください。確認できたらフラッグを外して保存してください。</span><?php endif; ?>
         <label class="check"><span class="flag-toggle"><input type="checkbox" name="flag" value="1"<?= $band['needs_check'] ? ' checked' : '' ?>><?= icon('flag') ?></span> 楽器の確認をメンバーにお願いする</label>
     </div>
     <?php if ($lockedMembers): ?>
         <!-- セトリに出ている人: 楽器はセトリから自動で決まるので、ここでは見るだけ（disabled なので送信もされない） -->
-        <p class="muted small">セットリストに出ている人の楽器は、セットリストの内容から自動で設定されます。変えるときは<a href="songs_edit.php?band=<?= (int)$band['band_id'] ?>">セットリストを編集</a>してください。</p>
+        <p class="muted small">セットリストに出ている人の楽器は、セットリストの内容から自動で設定されます。変えるときは<a href="songs_edit?band=<?= (int)$band['band_id'] ?>">セットリストを編集</a>してください。</p>
         <div class="member-rows">
             <?php foreach ($lockedMembers as $m): ?>
                 <div class="member-row-edit member-row-edit--locked">
@@ -249,7 +249,7 @@ render_header($isNew ? 'バンドを追加' : 'バンドを編集', 'lives');
     <?= render_suggest_datalist('member-names', array_keys($allNames), $allNames) ?>
 
     <div class="form-actions">
-        <?php if (!$isNew): ?><a class="btn btn--ghost" href="songs_edit.php?band=<?= (int)$band['band_id'] ?>">セットリストを編集</a><?php endif; ?>
+        <?php if (!$isNew): ?><a class="btn btn--ghost" href="songs_edit?band=<?= (int)$band['band_id'] ?>">セットリストを編集</a><?php endif; ?>
         <a class="btn btn--ghost" href="<?= h($backUrl) ?>">キャンセル</a>
         <button class="btn btn--primary" type="submit"><?= $isNew ? '追加する' : '保存する' ?></button>
     </div>

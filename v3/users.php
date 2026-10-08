@@ -66,7 +66,7 @@ if (is_post()) {
             flash("{$target['name']} さんのアカウントを削除しました");
         }
     }
-    redirect('users.php');
+    redirect('users');
 }
 
 $users = $pdo->query('SELECT u.user_id, u.login_id, u.name, u.is_admin, u.member_id, m.name AS member_name
@@ -114,7 +114,7 @@ render_header('ユーザー管理');
                         <button class="btn btn--sm" type="submit">保存</button>
                     </form>
                     <?php if ($u['member_id']): ?>
-                        <a class="muted small" href="member.php?id=<?= (int)$u['member_id'] ?>">マイページ</a>
+                        <a class="muted small" href="member?id=<?= (int)$u['member_id'] ?>">マイページ</a>
                     <?php endif; ?>
                 </td>
                 <td>

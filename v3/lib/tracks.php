@@ -212,7 +212,7 @@ function track_listen_url(?string $app, array $track, string|false|null $cached 
     return match (true) {
         is_string($cached) => $cached,
         $cached === null   => track_search_url($app, $track),
-        default            => 'song_go.php?track=' . rawurlencode(album_key($track['source'], $track['track_id'])),
+        default            => 'song_go?track=' . rawurlencode(album_key($track['source'], $track['track_id'])),
     };
 }
 

@@ -23,13 +23,13 @@ require_once __DIR__ . '/lib/albums.php';
 $user = require_login();
 
 if (!is_post()) {
-    redirect('members.php');
+    redirect('members');
 }
 verify_csrf();
 
 $action = (string)($_POST['action'] ?? '');
 $memberId = (int)($_POST['member_id'] ?? 0);
-$back = 'member.php?id=' . $memberId . '#albums'; // #albums: 戻ったときアルバム欄までスクロールさせる
+$back = 'member?id=' . $memberId . '#albums'; // #albums: 戻ったときアルバム欄までスクロールさせる
 $isMe = $memberId === $user['member_id'];
 $pdo = db();
 

@@ -363,7 +363,7 @@ $trackCache = track_link_cache_for($pdo, $viewerApp, array_map(
     array_filter($topTitles, static fn($g) => $g['track'] !== null)
 ));
 $songLabel = static function (array $g) use ($viewerApp, $trackCache): string {
-    $artist = $g['artist_name'] ? ' <a class="muted small" href="artist.php?id=' . (int)$g['artist_id'] . '">' . h($g['artist_name']) . '</a>' : '';
+    $artist = $g['artist_name'] ? ' <a class="muted small" href="artist?id=' . (int)$g['artist_id'] . '">' . h($g['artist_name']) . '</a>' : '';
     $t = $g['track'];
     if ($t === null) {
         return '<span class="setlist__song"><span class="setlist__art setlist__art--none">' . icon('music_note') . '</span>' . h($g['title']) . '</span>' . $artist;
@@ -425,7 +425,7 @@ $entryYears = range($thisYear, $entryMin); // 新しい順
             <label class="tab<?= $canNear ? '' : ' is-disabled' ?>"<?= $canNear ? '' : ' title="アカウントがメンバーに紐付いていないか、入学年度が未登録のため使えません"' ?>>
                 <input type="radio" name="who" value="near" data-autosubmit<?= $who === 'near' ? ' checked' : '' ?><?= $canNear ? '' : ' disabled' ?>>上下3学年
             </label>
-            <label class="tab"><input type="radio" name="who" value="custom" data-autosubmit<?= $who === 'custom' ? ' checked' : '' ?>>セルフフィルター</label>
+            <label class="tab"><input type="radio" name="who" value="custom" data-autosubmit<?= $who === 'custom' ? ' checked' : '' ?>>ユーザーフィルター</label>
         </div>
         <div class="stats-filter__extra" data-show-when="who=custom">
             <select name="efrom" aria-label="入学年度（から）" data-autosubmit><?= $yearOptions($efrom, $entryYears) ?></select>
@@ -498,7 +498,7 @@ function ranking_card(string $icon, string $title, array $rows, callable $label,
         </ol>
     </section>
 <?php }
-$memberLink = static fn($r) => '<a href="member.php?id=' . (int)$r['member_id'] . '">' . h($r['name']) . '</a>';
+$memberLink = static fn($r) => '<a href="member?id=' . (int)$r['member_id'] . '">' . h($r['name']) . '</a>';
 // 2通りの表のうち、今見せない方に付ける hidden（data-vo-view で JS が付け替える）
 $voHidden = static fn(string $view): string => ($view === 'sum') === $voSum ? '' : ' hidden';
 ?>
@@ -541,7 +541,7 @@ $voHidden = static fn(string $view): string => ($view === 'sum') === $voSum ? ''
         <ol class="ranking">
             <?php $ranks = tie_ranks($pairs, static fn($p) => (int)$p['n']);
             foreach ($pairs as $k => $p): ?>
-                <li data-rank="<?= $ranks[$k] ?>"><span><a href="member.php?id=<?= (int)$p['a_id'] ?>"><?= h($p['a_name']) ?></a> × <a href="member.php?id=<?= (int)$p['b_id'] ?>"><?= h($p['b_name']) ?></a></span><span class="pill"><?= (int)$p['n'] ?>回</span></li>
+                <li data-rank="<?= $ranks[$k] ?>"><span><a href="member?id=<?= (int)$p['a_id'] ?>"><?= h($p['a_name']) ?></a> × <a href="member?id=<?= (int)$p['b_id'] ?>"><?= h($p['b_name']) ?></a></span><span class="pill"><?= (int)$p['n'] ?>回</span></li>
             <?php endforeach; ?>
         </ol>
     </section>
@@ -552,7 +552,7 @@ $voHidden = static fn(string $view): string => ($view === 'sum') === $voSum ? ''
         <ol class="ranking">
             <?php $ranks = tie_ranks($trios, static fn($t) => (int)$t['n']);
             foreach ($trios as $k => $t): ?>
-                <li data-rank="<?= $ranks[$k] ?>"><span><a href="member.php?id=<?= (int)$t['a_id'] ?>"><?= h($t['a_name']) ?></a> × <a href="member.php?id=<?= (int)$t['b_id'] ?>"><?= h($t['b_name']) ?></a> × <a href="member.php?id=<?= (int)$t['c_id'] ?>"><?= h($t['c_name']) ?></a></span><span class="pill"><?= (int)$t['n'] ?>回</span></li>
+                <li data-rank="<?= $ranks[$k] ?>"><span><a href="member?id=<?= (int)$t['a_id'] ?>"><?= h($t['a_name']) ?></a> × <a href="member?id=<?= (int)$t['b_id'] ?>"><?= h($t['b_name']) ?></a> × <a href="member?id=<?= (int)$t['c_id'] ?>"><?= h($t['c_name']) ?></a></span><span class="pill"><?= (int)$t['n'] ?>回</span></li>
             <?php endforeach; ?>
         </ol>
     </section>
@@ -563,7 +563,7 @@ $voHidden = static fn(string $view): string => ($view === 'sum') === $voSum ? ''
         <ol class="ranking">
             <?php $ranks = tie_ranks($headliners, static fn($hd) => (int)$hd['n']);
             foreach ($headliners as $k => $hd): ?>
-                <li data-rank="<?= $ranks[$k] ?>"><a href="member.php?id=<?= (int)$hd['member_id'] ?>"><?= h($hd['name']) ?></a><span class="pill"><?= (int)$hd['n'] ?>回</span></li>
+                <li data-rank="<?= $ranks[$k] ?>"><a href="member?id=<?= (int)$hd['member_id'] ?>"><?= h($hd['name']) ?></a><span class="pill"><?= (int)$hd['n'] ?>回</span></li>
             <?php endforeach; ?>
         </ol>
     </section>
@@ -576,7 +576,7 @@ $voHidden = static fn(string $view): string => ($view === 'sum') === $voSum ? ''
         <ul class="bars">
             <?php foreach ($artists as $a): ?>
                 <li>
-                    <a href="artist.php?id=<?= (int)$a['artist_id'] ?>" class="bars__label"><?= h($a['name']) ?></a>
+                    <a href="artist?id=<?= (int)$a['artist_id'] ?>" class="bars__label"><?= h($a['name']) ?></a>
                     <span class="bar-track"><span class="bar" style="--w: <?= round($a['n'] / $maxArtist * 100) ?>%"></span></span>
                     <span class="bar-num"><?= (int)$a['n'] ?></span>
                 </li>
@@ -589,7 +589,7 @@ $voHidden = static fn(string $view): string => ($view === 'sum') === $voSum ? ''
         <ol class="ranking">
             <?php $ranks = tie_ranks($venues, static fn($v) => [(int)$v['days'], (int)$v['bands']]); // 日数も組数も同じなら同じ順位
             foreach ($venues as $k => $v): ?>
-                <li data-rank="<?= $ranks[$k] ?>"><a href="search.php?q=<?= urlencode($v['name']) ?>"><?= h($v['name']) ?></a><span class="pill"><?= (int)$v['days'] ?>日 · <?= (int)$v['bands'] ?>組</span></li>
+                <li data-rank="<?= $ranks[$k] ?>"><a href="search?q=<?= urlencode($v['name']) ?>"><?= h($v['name']) ?></a><span class="pill"><?= (int)$v['days'] ?>日 · <?= (int)$v['bands'] ?>組</span></li>
             <?php endforeach; ?>
         </ol>
     </section>

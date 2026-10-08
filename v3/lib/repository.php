@@ -563,7 +563,7 @@ function band_artist_links(array $band, array $omnibusArtists): string
     }
     $html = '';
     foreach ($artists as $a) {
-        $html .= '<a href="artist.php?id=' . $a['artist_id'] . '">' . icon('search') . ' ' . h($a['name']) . '</a>';
+        $html .= '<a href="artist?id=' . $a['artist_id'] . '">' . icon('search') . ' ' . h($a['name']) . '</a>';
     }
     return $html;
 }

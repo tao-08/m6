@@ -73,7 +73,7 @@ if (is_post()) {
         throw $e;
     }
     flash($changed ? "{$changed} バンドの YouTube のリンクを更新しました" : 'YouTube のリンクは変わっていません');
-    redirect('live.php?id=' . $liveId);
+    redirect('live?id=' . $liveId);
 }
 
 // ---------- プレイリストを読んで割り当てる ----------
@@ -152,12 +152,12 @@ const YT_STATUS = [
 ];
 
 render_header('YouTube の動画を割り当て', 'lives'); ?>
-<nav class="crumbs"><a href="live.php?id=<?= $liveId ?>"><?= h($live['name']) ?></a><span>/</span><a href="live_edit.php?id=<?= $liveId ?>">編集</a><span>/</span>YouTube</nav>
+<nav class="crumbs"><a href="live?id=<?= $liveId ?>"><?= h($live['name']) ?></a><span>/</span><a href="live_edit?id=<?= $liveId ?>">編集</a><span>/</span>YouTube</nav>
 <h1 class="display display--sm">YouTube の動画をバンドに割り当て</h1>
 
 <?php if ($error !== null): ?>
     <div class="flash flash--error"><?= h($error) ?></div>
-    <p><a class="btn btn--ghost" href="live_edit.php?id=<?= $liveId ?>">ライブを編集に戻る</a></p>
+    <p><a class="btn btn--ghost" href="live_edit?id=<?= $liveId ?>">ライブを編集に戻る</a></p>
 <?php else: ?>
     <div class="flash flash--info">
         プレイリストの動画 <?= count($videos) ?> 本を読み込み、<?= $autoCount ?> バンドに自動で割り当てました。
@@ -217,7 +217,7 @@ render_header('YouTube の動画を割り当て', 'lives'); ?>
         </section>
 
         <div class="form-actions">
-            <a class="btn btn--ghost" href="live.php?id=<?= $liveId ?>">キャンセル</a>
+            <a class="btn btn--ghost" href="live?id=<?= $liveId ?>">キャンセル</a>
             <button class="btn btn--primary" type="submit">保存する</button>
         </div>
     </form>

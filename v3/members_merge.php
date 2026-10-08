@@ -27,7 +27,7 @@ if (is_post()) {
     $names = $st->fetchAll(PDO::FETCH_KEY_PAIR); // [member_id => name]
     if (count($names) !== 2) {
         flash('統合する2人を選んでください（同じ人は選べません）', 'error');
-        redirect('members_merge.php');
+        redirect('members_merge');
     }
     $pdo->beginTransaction();
     try {
@@ -42,7 +42,7 @@ if (is_post()) {
         $_SESSION['user']['member_id'] = $to;
     }
     flash("「{$names[$from]}」を「{$names[$to]}」に統合しました");
-    redirect('members_merge.php');
+    redirect('members_merge');
 }
 
 // ---- 全メンバーと出演数 ----
@@ -81,9 +81,9 @@ render_header('メンバーの統合');
         <?php foreach ($candidates as [$a, $b]): ?>
             <div class="card merge-item">
                 <div class="merge-item__names">
-                    <a href="member.php?id=<?= (int)$a['member_id'] ?>" class="strong"><?= h($a['name']) ?></a> <span class="muted small"><?= (int)$a['bands'] ?>組</span>
+                    <a href="member?id=<?= (int)$a['member_id'] ?>" class="strong"><?= h($a['name']) ?></a> <span class="muted small"><?= (int)$a['bands'] ?>組</span>
                     <span class="muted"><?= icon('swap_horiz') ?></span>
-                    <a href="member.php?id=<?= (int)$b['member_id'] ?>" class="strong"><?= h($b['name']) ?></a> <span class="muted small"><?= (int)$b['bands'] ?>組</span>
+                    <a href="member?id=<?= (int)$b['member_id'] ?>" class="strong"><?= h($b['name']) ?></a> <span class="muted small"><?= (int)$b['bands'] ?>組</span>
                 </div>
                 <div class="merge-item__actions">
                     <!-- 「◯◯に統合」= その人を残す。もう片方の出演記録がその人に移って、もう片方は消える -->

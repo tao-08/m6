@@ -11,11 +11,11 @@
 /** @var string $pageTitle @var string $activeNav */
 $user = current_user();
 $nav = [
-    'lives'   => ['index.php', 'ライブ'],
-    'members' => ['members.php', 'メンバー'],
-    'artists' => ['artists.php', 'アーティスト'],
-    'stats'   => ['stats.php', '集計'],
-    'import'  => ['import.php', '新規追加'], // 取り込み・手入力の入口（partials/add_tabs.php のタブで切り替え）
+    'lives'   => ['./', 'ライブ'],
+    'members' => ['members', 'メンバー'],
+    'artists' => ['artists', 'アーティスト'],
+    'stats'   => ['stats', '集計'],
+    'import'  => ['import', '新規追加'], // 取り込み・手入力の入口（partials/add_tabs.php のタブで切り替え）
 ];
 ?>
 <!doctype html>
@@ -54,7 +54,7 @@ $nav = [
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400..600,0..1,0&display=block" rel="stylesheet">
     <!-- ?v=2 はキャッシュ対策。CSS を変えたら数字を上げると、ブラウザが古い CSS を使い続けない -->
     <link rel="stylesheet" href="assets/app.css?v=140">
-    <script src="assets/app.js?v=75" defer></script>
+    <script src="assets/app.js?v=76" defer></script>
 </head>
 <body>
 <header class="topbar">
@@ -63,7 +63,7 @@ $nav = [
             ロゴは元の m6 のヘッダーと同じ src/assets/online.png。
             ダークモードでは「.Online」の黒文字が背景に溶けるので、文字だけ白くした logo-dark.png に CSS で切り替える。
         -->
-        <a class="brand" href="index.php" aria-label="AbbeyRoad.online トップへ">
+        <a class="brand" href="./" aria-label="AbbeyRoad.online トップへ">
             <img src="assets/online.png" alt="AbbeyRoad.online" class="brand__logo brand__logo--light" width="146" height="40">
             <img src="assets/logo-dark.png" alt="" class="brand__logo brand__logo--dark" width="146" height="40">
         </a>
@@ -75,7 +75,7 @@ $nav = [
         </nav>
         <?php endif; ?>
         <?php if ($user): ?>
-        <a href="search.php" class="icon-btn<?= $activeNav === 'search' ? ' is-active' : '' ?>" aria-label="検索" title="検索">
+        <a href="search" class="icon-btn<?= $activeNav === 'search' ? ' is-active' : '' ?>" aria-label="検索" title="検索">
             <?= icon('search') ?>
         </a>
         <?php endif; ?>
@@ -92,21 +92,21 @@ $nav = [
             <div class="usermenu__panel">
                 <div class="usermenu__name"><?= h($user['name']) ?><?= $user['admin'] ? ' <span class="tag">管理者</span>' : '' ?></div>
                 <?php if (!empty($user['member_id'])): ?>
-                    <a href="member.php?id=<?= (int)$user['member_id'] ?>">マイページ</a>
+                    <a href="member?id=<?= (int)$user['member_id'] ?>">マイページ</a>
                 <?php else: ?>
                     <!-- メンバー未紐付けだとマイページが無い。紐付けは管理者がユーザー管理で行う（アカウント設定に案内を出している） -->
-                    <a href="account.php">マイページ <span class="muted small">（管理者の紐付け待ち）</span></a>
+                    <a href="account">マイページ <span class="muted small">（管理者の紐付け待ち）</span></a>
                 <?php endif; ?>
-                <a href="account.php">アカウント設定</a>
-                <form method="post" action="logout.php"><?= csrf_field() ?><button type="submit" class="linkbtn">ログアウト</button></form>
+                <a href="account">アカウント設定</a>
+                <form method="post" action="logout"><?= csrf_field() ?><button type="submit" class="linkbtn">ログアウト</button></form>
                 <?php if ($user['admin']): ?>
                     <!-- 管理者専用のメニューは単色の背景の枠でまとめて、一般メニューと見分けられるようにする -->
                     <div class="usermenu__admin">
                         <div class="usermenu__admin-label">管理者専用メニュー</div>
-                        <a href="users.php">ユーザー管理</a>
-                        <a href="members_merge.php">メンバーの統合</a>
-                        <a href="members_entry.php">メンバープロフィールの一括編集</a>
-                        <a href="masters.php">会場・日程名・楽器・係の管理</a>
+                        <a href="users">ユーザー管理</a>
+                        <a href="members_merge">メンバーの統合</a>
+                        <a href="members_entry">メンバープロフィールの一括編集</a>
+                        <a href="masters">会場・日程名・楽器・係の管理</a>
                     </div>
                 <?php endif; ?>
             </div>

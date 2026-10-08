@@ -27,7 +27,7 @@ $minYear = 1950;
 $kanaMax = 50; // member.name_kana VARCHAR(50)
 
 $show = ($_GET['show'] ?? 'unknown') === 'all' ? 'all' : 'unknown';
-$self = 'members_entry.php' . ($show === 'all' ? '?show=all' : '');
+$self = 'members_entry' . ($show === 'all' ? '?show=all' : '');
 $unknownWhere = 'entry_year IS NULL OR name_kana IS NULL';
 
 if (is_post()) {
@@ -146,8 +146,8 @@ render_header('メンバープロフィールの一括編集');
 </section>
 
 <nav class="tabs tabs--static no-print" aria-label="表示する人">
-    <a class="tab<?= $show === 'unknown' ? ' is-active' : '' ?>" href="members_entry.php"<?= $show === 'unknown' ? ' aria-current="page"' : '' ?>>未登録の人だけ</a>
-    <a class="tab<?= $show === 'all' ? ' is-active' : '' ?>" href="members_entry.php?show=all"<?= $show === 'all' ? ' aria-current="page"' : '' ?>>全員</a>
+    <a class="tab<?= $show === 'unknown' ? ' is-active' : '' ?>" href="members_entry"<?= $show === 'unknown' ? ' aria-current="page"' : '' ?>>未登録の人だけ</a>
+    <a class="tab<?= $show === 'all' ? ' is-active' : '' ?>" href="members_entry?show=all"<?= $show === 'all' ? ' aria-current="page"' : '' ?>>全員</a>
 </nav>
 
 <?php if (!$list): ?>
@@ -163,7 +163,7 @@ render_header('メンバープロフィールの一括編集');
             $first = $m['first_year'] !== null ? (int)$m['first_year'] : null; ?>
             <tr>
                 <!-- tabindex="-1": Tab キーでふりがな → 入学年度 → 次の人… と入力欄だけを移動できるように、名前のリンクは飛ばす -->
-                <td><a class="strong" tabindex="-1" href="member.php?id=<?= (int)$m['member_id'] ?>"><?= h($m['name']) ?></a></td>
+                <td><a class="strong" tabindex="-1" href="member?id=<?= (int)$m['member_id'] ?>"><?= h($m['name']) ?></a></td>
                 <td>
                     <input type="text" name="kana[<?= (int)$m['member_id'] ?>]" maxlength="<?= $kanaMax ?>" autocomplete="off"
                            value="<?= h($m['name_kana'] ?? '') ?>"

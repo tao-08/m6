@@ -189,7 +189,7 @@ $sp = ['source' => 'spotify', 'album_id' => '0ETFjACtuP2ADo6LFhL6HN', 'title' =>
 $it = ['source' => 'itunes', 'album_id' => '1358578519', 'title' => 'IRIS OUT - Single', 'artist_name' => '米津玄師'];
 check('未設定は登録元のページ', album_listen_url(null, $sp), 'https://open.spotify.com/album/0ETFjACtuP2ADo6LFhL6HN');
 check('同じアプリは直接', album_listen_url('apple_music', $it), 'https://music.apple.com/jp/album/1358578519');
-check('またぐときはまず album_go', album_listen_url('apple_music', $sp), 'album_go.php?album=spotify%3A0ETFjACtuP2ADo6LFhL6HN');
+check('またぐときはまず album_go', album_listen_url('apple_music', $sp), 'album_go?album=spotify%3A0ETFjACtuP2ADo6LFhL6HN');
 check('見つかっていたら直接', album_listen_url('apple_music', $sp, 'https://music.apple.com/jp/album/1'), 'https://music.apple.com/jp/album/1');
 check('見つからなかったら検索ページ', album_listen_url('spotify', $it, null), 'https://open.spotify.com/search/IRIS%20OUT%20%E7%B1%B3%E6%B4%A5%E7%8E%84%E5%B8%AB');
 check('YouTube Music は検索ページ', album_listen_url('youtube_music', $sp), 'https://music.youtube.com/search?q=%E9%AD%9A%E5%9B%B3%E9%91%91%20%E3%82%B5%E3%82%AB%E3%83%8A%E3%82%AF%E3%82%B7%E3%83%A7%E3%83%B3');
@@ -318,7 +318,7 @@ check('無ければ同じ曲の別の版', track_match_in_results($letItBe, [$tr
 check('アーティストが違えば選ばない', track_match_in_results($letItBe, [$tr('itunes', '3', 'Let It Be', 'Glee Cast')]), null);
 check('Spotify の複数アーティスト表記', track_match_in_results($tr('itunes', '9', 'Fin (feat. クリープハイプ)', '10-FEET'),
     [$tr('spotify', '4uLU6hMCjMI75M1A2tKUQC', 'Fin', '10-FEET, クリープハイプ')]), 'https://open.spotify.com/track/4uLU6hMCjMI75M1A2tKUQC');
-check('またぐときは song_go', track_listen_url('apple_music', $letItBe), 'song_go.php?track=spotify%3A7iN1s7xHE4ifF5povM6A48');
+check('またぐときは song_go', track_listen_url('apple_music', $letItBe), 'song_go?track=spotify%3A7iN1s7xHE4ifF5povM6A48');
 check('同じアプリは直接', track_listen_url('spotify', $letItBe), 'https://open.spotify.com/track/7iN1s7xHE4ifF5povM6A48');
 
 echo "roster choices\n";

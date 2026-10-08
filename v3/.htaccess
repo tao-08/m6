@@ -4,3 +4,26 @@ DirectoryIndex index.php
 <FilesMatch "^(config(\.sample)?\.php|schema\.sql|README\.md)$">
     Require all denied
 </FilesMatch>
+
+# ---------------------------------------------------------------------
+#  URL から .php を消す（member.php?id=1 → member?id=1）
+#    1. 昔の .php 付き URL（ブックマーク・共有済みリンク）は .php なしへ 301 で飛ばす
+#       THE_REQUEST = ブラウザが送ってきた元のリクエスト行。下の 3. で中だけ .php を付けた後には
+#       引っかからないので、ループしない。POST は飛ばすと送った中身が消えるので GET / HEAD だけ
+#    2. index.php は「./」へ
+#    3. .php なしで来たら、同じ名前の .php があれば中だけでそれを動かす（URL はそのまま）
+# ---------------------------------------------------------------------
+RewriteEngine On
+
+RewriteCond %{THE_REQUEST} ^(GET|HEAD)\s[^?\s]*/index\.php[?\s]
+RewriteCond %{REQUEST_URI} ^(.*/)index\.php$
+RewriteRule ^index\.php$ %1 [R=301,L]
+
+RewriteCond %{THE_REQUEST} ^(GET|HEAD)\s[^?\s]*\.php[?\s]
+RewriteCond %{REQUEST_URI} ^(.*)\.php$
+RewriteRule ^[^/]+\.php$ %1 [R=301,L]
+
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteCond %{REQUEST_FILENAME}.php -f
+RewriteRule ^([^/.]+)$ $1.php [L]

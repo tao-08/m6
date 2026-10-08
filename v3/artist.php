@@ -111,7 +111,7 @@ if (is_admin()) {
                 $pdo->prepare('DELETE FROM artist WHERE artist_id = ?')->execute([$artistId]);
                 $pdo->commit();
                 flash('アーティストを統合しました');
-                redirect('artist.php?id=' . $to);
+                redirect('artist?id=' . $to);
             }
         } elseif ($action === 'alias_add') {
             // 別名: マイアルバムのアーティスト名が別の表記（オアシス など）でも、このアーティストとして拾うため
@@ -137,7 +137,7 @@ if (is_admin()) {
                 ->execute([(string)($_POST['alias'] ?? ''), $artistId]);
             flash('別名を削除しました');
         }
-        redirect('artist.php?id=' . $artistId);
+        redirect('artist?id=' . $artistId);
     }
     $others = $pdo->query('SELECT artist_id, name FROM artist ORDER BY name')->fetchAll();
     // 別名の入力候補: マイアルバムに出てくるアーティスト名（表記をそのまま選べるように）
@@ -189,7 +189,7 @@ $viewerApp = member_music_app($pdo, $user['member_id']);
 
 render_header($artist['name'], 'artists');
 ?>
-<nav class="crumbs"><a href="stats.php">集計</a><span>/</span>アーティスト</nav>
+<nav class="crumbs"><a href="stats">集計</a><span>/</span>アーティスト</nav>
 <section class="hero">
     <div>
         <p class="eyebrow">Artist</p>
@@ -216,7 +216,7 @@ render_header($artist['name'], 'artists');
                     <?php if ($a['release_year']): ?><span class="muted small album__year"><?= (int)$a['release_year'] ?></span><?php endif; ?>
                 </a>
                 <span class="small">
-                    <?php foreach ($fa['members'] as $i => $m): ?><?= $i > 0 ? '・' : '' ?><a href="member.php?id=<?= $m['member_id'] ?>#albums"><?= h($m['name']) ?></a><?php endforeach; ?>
+                    <?php foreach ($fa['members'] as $i => $m): ?><?= $i > 0 ? '・' : '' ?><a href="member?id=<?= $m['member_id'] ?>#albums"><?= h($m['name']) ?></a><?php endforeach; ?>
                 </span>
             </li>
         <?php endforeach; ?>
@@ -237,7 +237,7 @@ render_header($artist['name'], 'artists');
     <ol class="ranking">
         <?php foreach ($topPlayers as $k => $p): ?>
             <li data-rank="<?= $playerRanks[$k] ?>">
-                <a href="member.php?id=<?= (int)$p['member_id'] ?>"><?= h($p['name']) ?></a>
+                <a href="member?id=<?= (int)$p['member_id'] ?>"><?= h($p['name']) ?></a>
                 <!-- このアーティストのバンドで、その人が何を何回やったか -->
                 <?= part_marks($playerTally[(int)$p['member_id']] ?? [], true, 'partbar--partner') ?>
                 <span class="pill"><?= (int)$p['n'] ?>回</span>
@@ -256,15 +256,15 @@ render_header($artist['name'], 'artists');
         <tbody>
         <?php foreach ($bands as $b): ?>
             <tr>
-                <td class="nowrap"><a href="live.php?id=<?= (int)$b['live_id'] ?>#day-<?= (int)$b['live_day_id'] ?>"><span class="live-year"><?= h(fmt_year($b['fiscal_year'])) ?> </span><?= h($b['live_name']) ?></a>
+                <td class="nowrap"><a href="live?id=<?= (int)$b['live_id'] ?>#day-<?= (int)$b['live_day_id'] ?>"><span class="live-year"><?= h(fmt_year($b['fiscal_year'])) ?> </span><?= h($b['live_name']) ?></a>
                     <div class="muted small"><?= h($b['label']) ?> <?= h(fmt_date($b['held_on'])) ?></div></td>
-                <td class="strong"><a href="band.php?id=<?= (int)$b['band_id'] ?>"><?= h($b['name']) ?></a></td>
+                <td class="strong"><a href="band?id=<?= (int)$b['band_id'] ?>"><?= h($b['name']) ?></a></td>
                 <td>
                     <?php if (!empty($lineups[(int)$b['band_id']])): ?>
                         <ul class="artist-lineup">
                             <?php foreach ($lineups[(int)$b['band_id']] as $m): ?>
                                 <li><?= part_badge($m) ?>
-                                    <a href="member.php?id=<?= (int)$m['member_id'] ?>"><?= h($m['name']) ?></a></li>
+                                    <a href="member?id=<?= (int)$m['member_id'] ?>"><?= h($m['name']) ?></a></li>
                             <?php endforeach; ?>
                         </ul>
                     <?php else: ?><span class="muted">—</span><?php endif; ?>

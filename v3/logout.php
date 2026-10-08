@@ -13,4 +13,4 @@ if (is_post()) {
     session_regenerate_id(true);
     flash('ログアウトしました', 'info');
 }
-redirect('login.php');
+redirect('login');

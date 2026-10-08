@@ -95,7 +95,7 @@ render_header('ライブ一覧', 'lives');
         <p class="muted small">出演者に楽器の登録が正しいかの確認依頼が届いているバンドです。バンドページを開いて確認をお願いします。</p>
         <ul>
             <?php foreach ($flagged as $f): ?>
-                <li><a href="band.php?id=<?= (int)$f['band_id'] ?>"><?= h($f['name']) ?></a>
+                <li><a href="band?id=<?= (int)$f['band_id'] ?>"><?= h($f['name']) ?></a>
                     <span class="muted small"><?= (int)$f['fiscal_year'] ?>年度 <?= h($f['live_name']) ?> <?= h($f['label']) ?></span></li>
             <?php endforeach; ?>
         </ul>
@@ -106,7 +106,7 @@ render_header('ライブ一覧', 'lives');
     <div class="empty card">
         <p class="empty__title">まだライブが登録されていません</p>
         <p class="muted">タイムテーブルと名簿（CSV / PDF）を取り込むか、手入力で登録しよう。</p>
-        <a class="btn btn--primary" href="import.php">＋ 新規追加</a>
+        <a class="btn btn--primary" href="import">＋ 新規追加</a>
     </div>
 <?php else: ?>
     <div class="toolbar">
@@ -121,7 +121,7 @@ render_header('ライブ一覧', 'lives');
         </div>
         <!-- data-filter: 入力すると .live-card の data-text で絞り込む（assets/app.js） -->
         <input type="search" class="search" placeholder="ライブ名・会場・メモで絞り込み" data-filter=".live-card" aria-label="絞り込み">
-        <a class="btn btn--primary" href="import.php">＋ 新規追加</a>
+        <a class="btn btn--primary" href="import">＋ 新規追加</a>
     </div>
     <!-- .sorted-list: 並び替えボタンを、一番上の年度の見出しの右に重ねて置く（member.php の出演履歴と同じ） -->
     <div class="sorted-list sorted-list--live">
@@ -142,7 +142,7 @@ render_header('ライブ一覧', 'lives');
                     <div class="card live-card"
                        data-text="<?= h($live['name'] . ' ' . implode(' ', $venues) . ' ' . implode(' ', $notes)) ?>">
                         <div class="live-card__head">
-                            <h3><a class="live-card__link" href="live.php?id=<?= (int)$liveId ?>"><?= h($live['name']) ?></a></h3>
+                            <h3><a class="live-card__link" href="live?id=<?= (int)$liveId ?>"><?= h($live['name']) ?></a></h3>
                             <span class="pill"><?= count($live['days']) ?>日程</span>
                         </div>
                         <ul class="live-card__days">

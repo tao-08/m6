@@ -13,7 +13,7 @@ require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/repository.php'; // link_users_to_members() を使う
 
 if (current_user()) {
-    redirect('index.php'); // ログイン済みならトップへ
+    redirect('./'); // ログイン済みならトップへ
 }
 
 $error = '';
@@ -50,11 +50,11 @@ if (is_post()) {
             'admin'     => (bool)$row['is_admin'],
             'member_id' => $row['member_id'] === null ? null : (int)$row['member_id'],
         ];
-        $next = $_SESSION['after_login'] ?? 'index.php';
+        $next = $_SESSION['after_login'] ?? './';
         unset($_SESSION['after_login']);
         // オープンリダイレクト対策: 「/」で始まる同じサイト内の URL だけ許可する
         // （//evil.com のような「別サイトへ飛ぶ URL」を弾く）
-        redirect(preg_match('#^/(?![/\\\\])#', $next) ? $next : 'index.php');
+        redirect(preg_match('#^/(?![/\\\\])#', $next) ? $next : './');
     }
     // IDが無いのかパスワードが違うのかは教えない（存在するIDを探られないように）
     $error = 'ログインIDまたはパスワードが違います';
@@ -83,7 +83,7 @@ render_header('ログイン');
             <input type="password" name="password" autocomplete="current-password" required>
         </label>
         <button class="btn btn--primary btn--block" type="submit">ログイン</button>
-        <p class="muted small center"><a href="register.php">新規登録</a></p>
+        <p class="muted small center"><a href="register">新規登録</a></p>
     </form>
 </section>
 <?php render_footer();

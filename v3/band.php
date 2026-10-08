@@ -36,18 +36,18 @@ $band = $st->fetch();
 if (!$band) {
     http_response_code(404);
     render_header('見つかりません');
-    echo '<div class="empty card"><p class="empty__title">バンドが見つかりません</p><a class="btn" href="index.php">一覧へ戻る</a></div>';
+    echo '<div class="empty card"><p class="empty__title">バンドが見つかりません</p><a class="btn" href="./">一覧へ戻る</a></div>';
     render_footer();
     exit;
 }
-$liveUrl = 'live.php?id=' . (int)$band['live_id'] . '#day-' . (int)$band['live_day_id'];
+$liveUrl = 'live?id=' . (int)$band['live_id'] . '#day-' . (int)$band['live_day_id'];
 
 // 🚩「楽器の確認」の「確認した」ボタン（ログインしていれば誰でも外せる）
 if (is_post() && ($_POST['action'] ?? '') === 'checked') {
     verify_csrf();
     $pdo->prepare('UPDATE band SET needs_check = 0 WHERE band_id = ?')->execute([$bandId]);
     flash('確認済みにしました');
-    redirect('band.php?id=' . $bandId);
+    redirect('band?id=' . $bandId);
 }
 
 // トリ = その日程で出演順が一番うしろ。組数（COUNT）は「7/14」の分母に使う（MAX だと欠番があるとずれる）
@@ -160,7 +160,7 @@ $linkCache = track_link_cache_for($pdo, $viewerApp, $trackKeys);
 
 render_header($band['name'], 'lives');
 ?>
-<nav class="crumbs"><a href="index.php">ライブ</a><span>/</span><a href="<?= h($liveUrl) ?>"><?= h($band['live_name']) ?></a></nav>
+<nav class="crumbs"><a href="./">ライブ</a><span>/</span><a href="<?= h($liveUrl) ?>"><?= h($band['live_name']) ?></a></nav>
 <section class="hero">
     <div>
         <h1 class="display"><?= h($band['name']) ?></h1>
@@ -181,8 +181,8 @@ render_header($band['name'], 'lives');
         <?php if ($band['youtube_url'] !== null && youtube_url_valid($band['youtube_url'])): // 表示の前にもう一度チェック（DB を直接いじられても変なリンクを出さない） ?>
             <a class="btn btn--sm btn--youtube" href="<?= h($band['youtube_url']) ?>" target="_blank" rel="noopener noreferrer" aria-label="YouTube で見る" title="YouTube で見る"><?= youtube_icon() ?></a>
         <?php endif; ?>
-        <a class="btn btn--sm" href="band_edit.php?id=<?= $bandId ?>"><?= icon('edit') ?> バンドを編集</a>
-        <a class="btn btn--sm" href="songs_edit.php?band=<?= $bandId ?>"><?= icon('queue_music') ?> 曲を<?= $songs ? '編集' : '登録' ?></a>
+        <a class="btn btn--sm" href="band_edit?id=<?= $bandId ?>"><?= icon('edit') ?> バンドを編集</a>
+        <a class="btn btn--sm" href="songs_edit?band=<?= $bandId ?>"><?= icon('queue_music') ?> 曲を<?= $songs ? '編集' : '登録' ?></a>
     </div>
 </section>
 
@@ -203,7 +203,7 @@ render_header($band['name'], 'lives');
             <?php foreach ($lineup as $part): ?>
                 <li><?= part_badge($part) ?>
                     <?php foreach ($part['members'] as $m): ?>
-                        <a class="chip<?= (int)$m['member_id'] === $user['member_id'] ? ' chip--me' : '' ?>" href="member.php?id=<?= (int)$m['member_id'] ?>"><?= h($m['name']) ?></a>
+                        <a class="chip<?= (int)$m['member_id'] === $user['member_id'] ? ' chip--me' : '' ?>" href="member?id=<?= (int)$m['member_id'] ?>"><?= h($m['name']) ?></a>
                     <?php endforeach; ?>
                 </li>
             <?php endforeach; ?>
@@ -239,7 +239,7 @@ render_header($band['name'], 'lives');
         </ol></div>
     <?php else: ?>
         <p class="muted">まだ曲が登録されていません</p>
-        <p class="no-print"><a class="btn btn--ghost btn--sm" href="songs_edit.php?band=<?= $bandId ?>"><?= icon('queue_music') ?> 曲を登録</a></p>
+        <p class="no-print"><a class="btn btn--ghost btn--sm" href="songs_edit?band=<?= $bandId ?>"><?= icon('queue_music') ?> 曲を登録</a></p>
     <?php endif; ?>
 </section>
 <?php render_footer();

@@ -28,7 +28,7 @@ $live = $st->fetch();
 if (!$live) {
     http_response_code(404);
     render_header('見つかりません');
-    echo '<div class="empty card"><p class="empty__title">ライブが見つかりません</p><a class="btn" href="index.php">一覧へ戻る</a></div>';
+    echo '<div class="empty card"><p class="empty__title">ライブが見つかりません</p><a class="btn" href="./">一覧へ戻る</a></div>';
     render_footer();
     exit;
 }
@@ -86,7 +86,7 @@ $dayTotal = static fn(array $d): int => max(count($bandsByDay[$d['live_day_id']]
 $totalBands = array_sum(array_map($dayTotal, $days));
 render_header($live['name'], 'lives');
 ?>
-<nav class="crumbs"><a href="index.php">ライブ</a><span>/</span><?= h(fmt_year($live['fiscal_year'])) ?></nav>
+<nav class="crumbs"><a href="./">ライブ</a><span>/</span><?= h(fmt_year($live['fiscal_year'])) ?></nav>
 <section class="hero hero--live">
     <div>
         <p class="eyebrow"><?= h(fmt_year($live['fiscal_year'])) ?> · <?= count($days) ?> DAYS · <?= $totalBands ?> BANDS</p>
@@ -97,8 +97,8 @@ render_header($live['name'], 'lives');
         <?php if ($live['youtube_url'] !== null && youtube_url_valid($live['youtube_url'])): // 表示の前にもう一度チェック（DB を直接いじられても変なリンクを出さない） ?>
             <a class="btn btn--sm btn--youtube" href="<?= h($live['youtube_url']) ?>" target="_blank" rel="noopener noreferrer" aria-label="YouTube で見る" title="YouTube で見る"><?= youtube_icon() ?></a>
         <?php endif; ?>
-        <a class="btn btn--sm" href="live_edit.php?id=<?= (int)$liveId ?>"><?= icon('edit') ?> ライブを編集</a>
-        <a class="btn btn--sm" href="timetable_edit.php?id=<?= (int)$liveId ?>"><?= icon('schedule') ?> タイムテーブルを編集</a>
+        <a class="btn btn--sm" href="live_edit?id=<?= (int)$liveId ?>"><?= icon('edit') ?> ライブを編集</a>
+        <a class="btn btn--sm" href="timetable_edit?id=<?= (int)$liveId ?>"><?= icon('schedule') ?> タイムテーブルを編集</a>
     </div>
 </section>
 
@@ -169,9 +169,9 @@ render_header($live['name'], 'lives');
                 <div class="slot__body">
                     <div class="slot__head">
                         <span class="slot__order"><?= sprintf('%02d', (int)$b['play_order']) ?></span>
-                        <h3 class="slot__name"><a href="band.php?id=<?= (int)$b['band_id'] ?>"><?= h($b['name']) ?></a></h3>
+                        <h3 class="slot__name"><a href="band?id=<?= (int)$b['band_id'] ?>"><?= h($b['name']) ?></a></h3>
                         <?php if ($isLast): ?><span class="tag tag--tori" aria-label="トリ" title="トリ">🐦️</span><?php endif; ?>
-                        <?php if ($b['needs_check']): ?><a class="tag tag--flag no-print" href="band.php?id=<?= (int)$b['band_id'] ?>" title="楽器の確認待ち" aria-label="楽器の確認待ち"><?= icon('flag', 'icon--fill') ?></a><?php endif; ?>
+                        <?php if ($b['needs_check']): ?><a class="tag tag--flag no-print" href="band?id=<?= (int)$b['band_id'] ?>" title="楽器の確認待ち" aria-label="楽器の確認待ち"><?= icon('flag', 'icon--fill') ?></a><?php endif; ?>
                         <?php if ($isMine): ?><span class="tag">出演</span><?php endif; ?>
                         <?php if ($b['youtube_url'] !== null && youtube_url_valid($b['youtube_url'])): ?>
                             <a class="slot__yt no-print" href="<?= h($b['youtube_url']) ?>" target="_blank" rel="noopener noreferrer" aria-label="「<?= h($b['name']) ?>」を YouTube で見る" title="YouTube で見る"><?= youtube_icon() ?></a>
@@ -182,7 +182,7 @@ render_header($live['name'], 'lives');
                             <?php foreach ($lineup as $part): ?>
                                 <li><?= part_badge($part) ?>
                                     <?php foreach ($part['members'] as $m): ?>
-                                        <a class="chip<?= (int)$m['member_id'] === $user['member_id'] ? ' chip--me' : '' ?>" href="member.php?id=<?= (int)$m['member_id'] ?>"><?= h($m['name']) ?></a>
+                                        <a class="chip<?= (int)$m['member_id'] === $user['member_id'] ? ' chip--me' : '' ?>" href="member?id=<?= (int)$m['member_id'] ?>"><?= h($m['name']) ?></a>
                                     <?php endforeach; ?>
                                 </li>
                             <?php endforeach; ?>
@@ -202,7 +202,7 @@ render_header($live['name'], 'lives');
         <?php endforeach; ?>
     </ol>
     <?php if (!$bands): ?><p class="muted">バンドが登録されていません</p><?php endif; ?>
-    <p class="no-print add-band"><a class="btn btn--ghost btn--sm" href="band_edit.php?day=<?= (int)$d['live_day_id'] ?>">＋ バンドを追加</a></p>
+    <p class="no-print add-band"><a class="btn btn--ghost btn--sm" href="band_edit?day=<?= (int)$d['live_day_id'] ?>">＋ バンドを追加</a></p>
 </section>
 <?php endforeach; ?>
 <?php render_footer();

@@ -341,7 +341,7 @@ function album_listen_url(?string $app, array $album, string|false|null $cached 
     return match (true) {
         is_string($cached) => $cached,                                   // 前に見つけた URL
         $cached === null   => album_search_url($app, $album),            // 前に探して見つからなかった
-        default            => 'album_go.php?album=' . rawurlencode(album_key($album['source'], $album['album_id'])), // 押されたら探す
+        default            => 'album_go?album=' . rawurlencode(album_key($album['source'], $album['album_id'])), // 押されたら探す
     };
 }
 

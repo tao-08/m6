@@ -250,9 +250,9 @@ function require_login(): array
 {
     $user = current_user();
     if ($user === null) {
-        $_SESSION['after_login'] = $_SERVER['REQUEST_URI'] ?? 'index.php';
+        $_SESSION['after_login'] = $_SERVER['REQUEST_URI'] ?? './';
         flash('ログインしてください', 'info');
-        redirect('login.php');
+        redirect('login');
     }
     // DB を作り直した・管理者に削除された等でアカウントが消えていたら、古いセッションを捨てる
     $st = db()->prepare('SELECT name, is_admin, member_id FROM user_account WHERE user_id = ?');
@@ -262,7 +262,7 @@ function require_login(): array
         $_SESSION = [];
         session_regenerate_id(true);
         flash('アカウントが見つかりません。もう一度ログインしてください', 'error');
-        redirect('login.php');
+        redirect('login');
     }
     // 名前・権限・メンバーの紐付けは、管理者が別の画面から変えることがある。
     // セッションはログインした瞬間の写しなので、毎回 DB の値で上書きして古いままにしない

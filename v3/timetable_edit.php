@@ -208,7 +208,7 @@ if (is_post()) {
             throw $ex;
         }
         flash('タイムテーブルを更新しました');
-        redirect('live.php?id=' . $liveId);
+        redirect('live?id=' . $liveId);
     }
 }
 
@@ -252,7 +252,7 @@ function render_break_row(string $n, string $dayId, array $k, int $cols, bool $f
 <?php }
 
 render_header('タイムテーブルを編集', 'lives'); ?>
-<nav class="crumbs"><a href="live.php?id=<?= $liveId ?>"><?= h($live['name']) ?></a><span>/</span>タイムテーブルを編集</nav>
+<nav class="crumbs"><a href="live?id=<?= $liveId ?>"><?= h($live['name']) ?></a><span>/</span>タイムテーブルを編集</nav>
 <h1 class="display display--sm">タイムテーブルを編集</h1>
 <?php foreach ($errors as $e): ?><div class="flash flash--error"><?= h($e) ?></div><?php endforeach; ?>
 
@@ -358,7 +358,7 @@ render_header('タイムテーブルを編集', 'lives'); ?>
     <input type="hidden" value="<?= $breakNo ?>" data-next-break disabled>
 
     <div class="sticky-actions">
-        <a class="btn btn--ghost" href="live.php?id=<?= $liveId ?>">キャンセル</a>
+        <a class="btn btn--ghost" href="live?id=<?= $liveId ?>">キャンセル</a>
         <button class="btn btn--primary" type="submit">保存する</button>
     </div>
 </form>

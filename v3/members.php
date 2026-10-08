@@ -235,12 +235,12 @@ render_header('メンバー', 'members');
 <?php elseif (!$rows && !$idle): ?>
     <div class="empty card">
         <p class="empty__title">まだメンバーがいません</p>
-        <a class="btn btn--primary" href="member_new.php">＋ メンバーを追加</a>
+        <a class="btn btn--primary" href="member_new">＋ メンバーを追加</a>
     </div>
 <?php else: ?>
     <div class="toolbar">
         <input type="search" class="search" placeholder="名前で検索" data-filter=".member-row" aria-label="名前で検索">
-        <a class="btn btn--primary" href="member_new.php">＋ 新規追加</a>
+        <a class="btn btn--primary" href="member_new">＋ 新規追加</a>
     </div>
     <div class="card table-card">
         <table class="table">
@@ -258,7 +258,7 @@ render_header('メンバー', 'members');
             <?php foreach ($list as $r): ?>
                 <tr class="member-row<?= (int)$r['member_id'] === $user['member_id'] ? ' is-me' : '' ?>" data-text="<?= h($r['name'] . ' ' . ($r['name_kana'] ?? '')) ?>">
                     <td class="num muted"><?= $r['rank'] ?? '—' ?></td>
-                    <td><a href="member.php?id=<?= (int)$r['member_id'] ?>"<?= $r['rank'] ? ' class="strong"' : '' ?>><?= h($r['name']) ?></a></td>
+                    <td><a href="member?id=<?= (int)$r['member_id'] ?>"<?= $r['rank'] ? ' class="strong"' : '' ?>><?= h($r['name']) ?></a></td>
                     <!-- 2023 → '23（下2桁だけ。sprintf の %02d で 2005 → '05 のように0を残す） -->
                     <td class="num muted"><?= $r['entry_year'] !== null ? sprintf("'%02d", (int)$r['entry_year'] % 100) : '—' ?></td>
                     <td><?= part_marks($instruments[(int)$r['member_id']] ?? [], false, 'partbar--cell') ?></td>

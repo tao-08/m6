@@ -306,7 +306,7 @@ if (is_post()) {
                 ->execute([$liveId, $liveId]);
             $pdo->commit();
             flash('「' . $mergeLive['fiscal_year'] . '年度 ' . $mergeLive['name'] . '」に統合しました');
-            redirect('live.php?id=' . $targetId);
+            redirect('live?id=' . $targetId);
         } catch (PDOException $e) {
             $pdo->rollBack();
             if ($e->getCode() !== '23000') {
@@ -345,9 +345,9 @@ if (is_post()) {
             // プレイリストのリンクを新しく貼った（変えた）ら、そのまま動画をバンドに割り当てる画面へ
             //   バンドがまだいない（新規ライブ）なら割り当てる先がないので、いつもどおりライブページへ
             if (!$isNew && $youtube !== (string)$live['youtube_url'] && youtube_playlist_id($youtube) !== null && $days) {
-                redirect('live_youtube.php?id=' . $liveId);
+                redirect('live_youtube?id=' . $liveId);
             }
-            redirect('live.php?id=' . $liveId);
+            redirect('live?id=' . $liveId);
         } catch (PDOException $e) {
             $pdo->rollBack();
             if ($isNew) {
@@ -384,7 +384,7 @@ if ($isNew) {
     require __DIR__ . '/partials/add_tabs.php';
 } else {
     render_header('ライブを編集', 'lives'); ?>
-    <nav class="crumbs"><a href="live.php?id=<?= $liveId ?>"><?= h($live['name']) ?></a><span>/</span>編集</nav>
+    <nav class="crumbs"><a href="live?id=<?= $liveId ?>"><?= h($live['name']) ?></a><span>/</span>編集</nav>
     <h1 class="display display--sm">ライブを編集</h1>
 <?php } ?>
 <?php foreach ($errors as $e): ?><div class="flash flash--error"><?= h($e) ?></div><?php endforeach; ?>
@@ -396,7 +396,7 @@ if ($isNew) {
         <div class="form-grid">
             <label class="field field--wide"><span>ライブ名</span><input name="name" value="<?= h($live['name']) ?>" maxlength="50" placeholder="例: 9月ライブ" required></label>
             <label class="field field--wide"><span>YouTubeプレイリストのリンク（任意）</span><input type="url" name="youtube_url" value="<?= h((string)$live['youtube_url']) ?>" maxlength="500" placeholder="https://www.youtube.com/playlist?list=…" inputmode="url"></label>
-            <?php if ($savedPlaylist): ?><p class="field--wide yt-assign"><a class="btn btn--ghost btn--sm" href="live_youtube.php?id=<?= $liveId ?>"><?= youtube_icon() ?> プレイリストの動画をバンドに割り当てる</a></p><?php endif; ?>
+            <?php if ($savedPlaylist): ?><p class="field--wide yt-assign"><a class="btn btn--ghost btn--sm" href="live_youtube?id=<?= $liveId ?>"><?= youtube_icon() ?> プレイリストの動画をバンドに割り当てる</a></p><?php endif; ?>
         </div>
     <?php else: ?>
         <!-- 取り込み画面と同じ「統合」トグル（assets/app.js の setupMergeToggle / setupLiveEditMerge）
@@ -423,7 +423,7 @@ if ($isNew) {
             </div>
             <!-- 統合するとこのライブは消えるので、統合 ON のときは隠す（data-merge-hide） -->
             <label class="field field--wide" data-merge-hide<?= $merging ? ' hidden' : '' ?>><span>YouTubeプレイリストのリンク（任意）</span><input type="url" name="youtube_url" value="<?= h((string)$live['youtube_url']) ?>" maxlength="500" placeholder="https://www.youtube.com/watch?v=…" inputmode="url"<?= $merging ? ' disabled' : '' ?>></label>
-            <?php if ($savedPlaylist): ?><p class="field--wide yt-assign" data-merge-hide<?= $merging ? ' hidden' : '' ?>><a class="btn btn--ghost btn--sm" href="live_youtube.php?id=<?= $liveId ?>"><?= youtube_icon() ?> プレイリストの動画をバンドに割り当てる</a></p><?php endif; ?>
+            <?php if ($savedPlaylist): ?><p class="field--wide yt-assign" data-merge-hide<?= $merging ? ' hidden' : '' ?>><a class="btn btn--ghost btn--sm" href="live_youtube?id=<?= $liveId ?>"><?= youtube_icon() ?> プレイリストの動画をバンドに割り当てる</a></p><?php endif; ?>
         </div>
     <?php endif; ?>
 
@@ -437,7 +437,7 @@ if ($isNew) {
             <label class="field field--wide"><span>メモ</span><input name="d[<?= $id ?>][note]" value="<?= h($d['note']) ?>"></label>
         </div>
         <p class="day-actions">
-            <a class="btn btn--ghost btn--sm" href="band_edit.php?day=<?= $id ?>">＋ この日程にバンドを追加</a>
+            <a class="btn btn--ghost btn--sm" href="band_edit?day=<?= $id ?>">＋ この日程にバンドを追加</a>
             <?php if (is_admin()): ?>
                 <!-- form の中に form は入れられない（HTML のルール）ので、削除フォームは下の </form> の外に置き、
                      form="del-day-ID" 属性でボタンとつなぐ -->
@@ -468,12 +468,12 @@ if ($isNew) {
     <?php endif; ?>
 
     <div class="form-actions">
-        <?php if (!$isNew): ?><a class="btn btn--ghost" href="live.php?id=<?= $liveId ?>">キャンセル</a><?php endif; ?>
+        <?php if (!$isNew): ?><a class="btn btn--ghost" href="live?id=<?= $liveId ?>">キャンセル</a><?php endif; ?>
         <button class="btn btn--primary" type="submit"><?= $isNew ? '追加する' : '保存する' ?></button>
     </div>
 </form>
 <?php if (is_admin()): foreach ($days as $d): ?>
-    <form method="post" action="live_delete.php" id="del-day-<?= (int)$d['live_day_id'] ?>" hidden data-dirty-check="live-form" data-confirm="<?= h($d['label'] . ' のデータを削除します。元に戻せません。よろしいですか？') ?>">
+    <form method="post" action="live_delete" id="del-day-<?= (int)$d['live_day_id'] ?>" hidden data-dirty-check="live-form" data-confirm="<?= h($d['label'] . ' のデータを削除します。元に戻せません。よろしいですか？') ?>">
         <?= csrf_field() ?>
         <input type="hidden" name="live_day_id" value="<?= (int)$d['live_day_id'] ?>">
     </form>
