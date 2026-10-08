@@ -327,7 +327,8 @@ CREATE TABLE song (
 --
 --    外部キーを「(band_id, member_id, instrument_id) → band_member」に張っているのがポイント。
 --    → 「そのバンドのメンバーとして登録されていない人・楽器」は曲の演奏者にできない、を DB が保証する。
---      （曲だけ別の楽器を弾いた場合は、先に band_member にその楽器を足す。songs_edit.php が自動でやる）
+--      （曲だけ別の楽器を弾いた場合は、先に band_member にその楽器を足す。songs_edit.php が自動でやる。
+--        逆に、曲に出ている人がどの曲でも弾いていない楽器は band_member から消す = 担当楽器はセトリの実績どおりになる）
 --    → バンドからメンバーを外すと（band_member の行を消すと）、その人の曲ごとの記録も CASCADE で消える。
 --
 --    (song_id, band_id) も外部キーにしているので、

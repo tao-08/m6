@@ -54,6 +54,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupSelectPick();
   setupNewDayToggle();
   setupExtraDays();
+  setupSameYear();
   setupSlotSort();
   setupAlbumBox();
   setupPartnerBox();
@@ -1519,6 +1520,35 @@ function setupNewDayToggle() {
  *   日程名はまだ使っていないものを最初から選んでおく。全部使っていたら「＋ 新しい日程名を作る」にしておく。
  *   「この日程をやめる」で欄ごと消す（消した欄は送信されない）
  * ------------------------------------------------------------------- */
+/* ---------------------------------------------------------------------
+ * ライブの編集（live_edit.php）: どれかの日付の「年」を変えたら、ほかの日程の日付も同じ年にする
+ *   月日はそのまま。年が変わったときだけ動く（月日だけ変えたときは、ほかの日程に触らない）。
+ *   年を打っている途中（0002 → 0020 → 0202 → 2025）は動かさないよう、1990〜2100 年のときだけ。
+ *   2/29 → うるう年でない年なら 2/28 にする。空の日付欄は触らない
+ * ------------------------------------------------------------------- */
+function setupSameYear() {
+  const form = document.querySelector('[data-same-year]');
+  if (!form) return;
+  const prev = new WeakMap(); // 日付欄 => 変える前の値
+  const yearOf = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(v) ? Number(v.slice(0, 4)) : null);
+  const isLeap = (y) => (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
+  form.addEventListener('change', (e) => {
+    const input = e.target;
+    if (!input.matches('input[type="date"]')) return;
+    const before = prev.has(input) ? prev.get(input) : input.defaultValue;
+    prev.set(input, input.value);
+    const year = yearOf(input.value);
+    if (year === null || year < 1990 || year > 2100 || year === yearOf(before)) return;
+    form.querySelectorAll('input[type="date"]').forEach((other) => {
+      if (other === input || yearOf(other.value) === null) return;
+      let md = other.value.slice(5); // "MM-DD"
+      if (md === '02-29' && !isLeap(year)) md = '02-28';
+      other.value = `${year}-${md}`;
+      prev.set(other, other.value);
+    });
+  });
+}
+
 function setupExtraDays() {
   const btn = document.querySelector('[data-extra-day-add]');
   const tpl = document.getElementById('extra-day-tpl');

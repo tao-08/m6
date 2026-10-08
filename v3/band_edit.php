@@ -51,6 +51,28 @@ $liveUrl = 'live.php?id=' . (int)$band['live_id'] . '#day-' . $dayId;
 // 戻り先: 既存のバンドはバンド詳細、新しく追加するときはライブページ
 $backUrl = $isNew ? $liveUrl : 'band.php?id=' . $bandId;
 
+// 今のメンバー。セトリに出ている人（locked = 1）は楽器をセトリの実績で決めるので、この画面では変えられない
+//   （sync_band_members もその人の行には触らない）
+$editableRows = [];
+$lockedRows = [];
+if (!$isNew) {
+    $st = $pdo->prepare('SELECT m.name, bm.instrument_id,
+            EXISTS (SELECT 1 FROM song_performer sp WHERE sp.band_id = bm.band_id AND sp.member_id = bm.member_id) AS locked
+        FROM band_member bm
+        JOIN member m ON m.member_id = bm.member_id
+        JOIN instrument i ON i.instrument_id = bm.instrument_id
+        WHERE bm.band_id = ? ORDER BY i.sort_order, m.name');
+    $st->execute([$bandId]);
+    foreach ($st as $r) {
+        if ($r['locked']) {
+            $lockedRows[] = $r;
+        } else {
+            $editableRows[] = $r;
+        }
+    }
+}
+$lockedMembers = merge_vocal_roles($lockedRows); // Vo と Gt の2行を持つ人は「Vo/Gt」の1行にまとめて見せる
+
 $errors = [];
 if (is_post()) {
     verify_csrf();
@@ -155,12 +177,7 @@ if (is_post()) {
 } elseif ($isNew) {
     $members = array_map(static fn($i) => ['name' => '', 'choice' => (string)$i], [1, 2, 3, 4]); // Vo Gt Ba Dr の空欄
 } else {
-    $st = $pdo->prepare('SELECT m.name, bm.instrument_id FROM band_member bm
-        JOIN member m ON m.member_id = bm.member_id
-        JOIN instrument i ON i.instrument_id = bm.instrument_id
-        WHERE bm.band_id = ? ORDER BY i.sort_order, m.name');
-    $st->execute([$bandId]);
-    $members = merge_vocal_roles($st->fetchAll()); // Vo と Gt の2行を持つ人は「Vo/Gt」の1行にまとめて見せる
+    $members = merge_vocal_roles($editableRows);
 }
 if (!$members) {
     $members[] = ['name' => '', 'choice' => '2']; // メンバー0人でも1行は出す（「＋ 行を追加」は最後の行をコピーして作るので）
@@ -200,6 +217,19 @@ render_header($isNew ? 'バンドを追加' : 'バンドを編集', 'lives');
         <label class="field"><span>開始</span><input type="time" name="start_time" value="<?= h(fmt_time($band['start_time'])) ?>"></label>
         <label class="field"><span>終了</span><input type="time" name="end_time" value="<?= h(fmt_time($band['end_time'])) ?>"></label>
         <label class="field field--wide"><span>メモ</span><input name="note" value="<?= h($band['note']) ?>" maxlength="255"></label>
+    <?php if ($lockedMembers): ?>
+        <!-- セトリに出ている人: 楽器はセトリから自動で決まるので、ここでは見るだけ（disabled なので送信もされない） -->
+        <p class="muted small">セットリストに出ている人の楽器は、セットリストの内容から自動で設定されます。変えるときは<a href="songs_edit.php?band=<?= (int)$band['band_id'] ?>">セットリストを編集</a>してください。</p>
+        <div class="member-rows">
+            <?php foreach ($lockedMembers as $m): ?>
+                <div class="member-row-edit member-row-edit--locked">
+                    <select disabled aria-label="楽器"><?= instrument_choice_options($m['choice']) ?></select>
+                    <input value="<?= h($m['name']) ?>" disabled aria-label="名前" class="name-input">
+                    <span class="muted small"><?= icon('queue_music') ?></span>
+                </div>
+            <?php endforeach; ?>
+        </div>
+    <?php endif; ?>
         <label class="field field--wide"><span>YouTube のリンク（任意）</span><input type="url" name="youtube_url" value="<?= h((string)$band['youtube_url']) ?>" maxlength="500" placeholder="https://www.youtube.com/watch?v=…" inputmode="url"></label>
     </div>
     <datalist id="band-names"><?php foreach ($allBandNames as $n): ?><option value="<?= h((string)$n) ?>"><?php endforeach; ?></datalist>

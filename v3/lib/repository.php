@@ -628,9 +628,18 @@ function detach_members(PDO $pdo, int $bandId): void
  *   song_performer は band_member に ON DELETE CASCADE でぶら下がっている。
  *   全部消すと、曲ごとの演奏記録まで道連れで消えてしまう。
  *   → 「フォームから消えた (人, 楽器)」だけ DELETE、「新しく増えたもの」だけ INSERT する。
+ *
+ * セトリに出ている人（song_performer に行がある人）は、楽器を「セトリの実績」で決める（save_songs）。
+ *   → ここではその人の行を足しも消しもしない。フォームから消しても・楽器を変えても無視する
+ *     （消すと曲ごとの記録が CASCADE で消えてしまうため。変えたいときはセトリを編集する）
  */
 function sync_band_members(PDO $pdo, array &$index, int $bandId, array $assignments): void
 {
+    $st = $pdo->prepare('SELECT DISTINCT member_id FROM song_performer WHERE band_id = ?');
+    $st->execute([$bandId]);
+    $locked = array_flip(array_map('intval', $st->fetchAll(PDO::FETCH_COLUMN))); // member_id => 番号
+    $unlocked = static fn(string $key): bool => !isset($locked[(int)explode('-', $key)[0]]);
+
     // ほしい状態: "member_id-instrument_id" => true
     $want = [];
     foreach ($assignments as [$name, $instrumentId]) {
@@ -645,12 +654,13 @@ function sync_band_members(PDO $pdo, array &$index, int $bandId, array $assignme
     }
 
     $del = $pdo->prepare('DELETE FROM band_member WHERE band_id = ? AND member_id = ? AND instrument_id = ?');
-    foreach (array_diff_key($have, $want) as $key => $_) {   // 今あるけど、ほしくないもの
+    // array_filter(..., ARRAY_FILTER_USE_KEY): キー（"member_id-instrument_id"）を見て、セトリに出ている人を外す
+    foreach (array_filter(array_diff_key($have, $want), $unlocked, ARRAY_FILTER_USE_KEY) as $key => $_) { // 今あるけど、ほしくないもの
         [$m, $i] = explode('-', $key);
         $del->execute([$bandId, $m, $i]);
     }
     $ins = $pdo->prepare('INSERT IGNORE INTO band_member (band_id, member_id, instrument_id) VALUES (?, ?, ?)');
-    foreach (array_diff_key($want, $have) as $key => $_) {   // ほしいけど、まだ無いもの
+    foreach (array_filter(array_diff_key($want, $have), $unlocked, ARRAY_FILTER_USE_KEY) as $key => $_) { // ほしいけど、まだ無いもの
         [$m, $i] = explode('-', $key);
         $ins->execute([$bandId, $m, $i]);
     }
@@ -669,6 +679,7 @@ function sync_band_members(PDO $pdo, array &$index, int $bandId, array $assignme
  *  2. track_no を 1,2,3... に振り直す（UNIQUE なので、いったん +100 に逃がしてから）
  *  3. 曲ごとに演奏者を入れ直す。曲だけ別の楽器を弾いた人は、先に band_member にその楽器を足す
  *     （song_performer の外部キーが band_member を指しているので、足さないと INSERT できない）
+ *  4. 曲に出ている人の、どの曲でも弾いていない楽器を band_member から消す（担当楽器をセトリの実績にそろえる）
  */
 function save_songs(PDO $pdo, int $bandId, array $songs): void
 {
@@ -705,6 +716,17 @@ function save_songs(PDO $pdo, int $bandId, array $songs): void
             $addPerformer->execute([$songId, $bandId, $memberId, $instrumentId]);
         }
     }
+    // 4. バンドの担当楽器をセトリの実績にそろえる（1曲目 Gt・2曲目 Vo → Vo と Gt = 「Vo/Gt」）。
+    //    足すのは上の $addRole。ここでは「曲に出ているのに、どの曲でもその楽器を弾いていない」行を消す。
+    //    どの曲にも出ていない人は触らない（全部消すとバンドのメンバーから外れてしまうため）。
+    //    消す行には song_performer がぶら下がっていないので、CASCADE で曲の記録が消えることはない
+    $pdo->prepare('DELETE bm FROM band_member bm
+        WHERE bm.band_id = ?
+          AND EXISTS (SELECT 1 FROM song_performer sp
+                      WHERE sp.band_id = bm.band_id AND sp.member_id = bm.member_id)
+          AND NOT EXISTS (SELECT 1 FROM song_performer sp
+                      WHERE sp.band_id = bm.band_id AND sp.member_id = bm.member_id
+                        AND sp.instrument_id = bm.instrument_id)')->execute([$bandId]);
     // band.song_count（タイムテーブルの曲数）はここで上書きしない。
     // 「登録した曲数 = タイムテーブルの曲数」でセトリが揃ったかを判定しているので（setlist_badge）
 }

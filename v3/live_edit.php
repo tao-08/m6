@@ -389,7 +389,7 @@ if ($isNew) {
 <?php } ?>
 <?php foreach ($errors as $e): ?><div class="flash flash--error"><?= h($e) ?></div><?php endforeach; ?>
 
-<form method="post" class="card form-card" id="live-form">
+<form method="post" class="card form-card" id="live-form" data-same-year><!-- 日付の年を変えると、ほかの日程の年もそろう（assets/app.js の setupSameYear） -->
     <?= csrf_field() ?>
     <input type="hidden" name="live_id" value="<?= $liveId ?>">
     <?php if (!$canMerge): ?>
