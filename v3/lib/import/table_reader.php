@@ -13,7 +13,7 @@ declare(strict_types=1);
  *  （CSV / PDF は1ファイル = 1シート扱い）
  *
  *  PDF の読み方（read_pdf_table）
- *    1. pdftotext -bbox で「単語と、その単語がページのどこにあるか（座標）」を出す
+ *    1. pdf_words.php で「単語と、その単語がページのどこにあるか（座標）」を出す（pdftotext -bbox と同じ形）
  *    2. 同じ高さの単語を1行にまとめる
  *    3. 「バンド名」がある行を見出しとして、各列の横位置を覚える
  *    4. 本文の単語を「一番近い見出しの列」に入れる
@@ -21,6 +21,7 @@ declare(strict_types=1);
  * =====================================================================
  */
 require_once __DIR__ . '/xlsx_reader.php';
+require_once __DIR__ . '/pdf_words.php';
 
 /** 取り込みで受け付ける拡張子 */
 const IMPORT_EXTENSIONS = ['csv', 'txt', 'xlsx', 'xlsm', 'pdf'];
@@ -91,31 +92,25 @@ function read_csv_table(string $path): array
 }
 
 /**
- * PDF を poppler の pdftotext -bbox で単語ごとの座標付きテキストにし、
+ * PDF を pdf_words.php（PHP だけで pdftotext -bbox と同じことをする）で単語ごとの座標にし、
  * 「バンド名」を含む見出し行の列位置を基準にセルへ振り分けて表を復元する。
  * Excel から書き出した（文字を選択できる）PDF 用。スキャン画像の PDF は読めない。
  */
 function read_pdf_table(string $path): array
 {
-    $bin = (string)(config('pdftotext') ?? 'pdftotext');
-    $cmd = escapeshellarg($bin) . ' -bbox -enc UTF-8 ' . escapeshellarg($path) . ' - 2>&1';
-    $out = [];
-    $status = 0;
-    exec($cmd, $out, $status);
-    if ($status !== 0) {
-        throw new RuntimeException('PDFの読み込みに失敗しました。サーバーに pdftotext（poppler）が入っているか、config.php の pdftotext のパスを確認してください。');
+    $data = file_get_contents($path);
+    if ($data === false) {
+        throw new RuntimeException('ファイルを読み込めませんでした');
     }
-    $html = implode("\n", $out);
+    try {
+        $pages = pdf_extract_words($data);
+    } catch (RuntimeException $e) {
+        throw new RuntimeException('PDFの読み込みに失敗しました（' . $e->getMessage() . '）。CSV か Excel にしてください。');
+    }
 
-    preg_match_all('/<page\b[^>]*>(.*?)<\/page>/s', $html, $pages);
     $rows = [];
     $columns = null;
-    foreach ($pages[1] as $pageHtml) {
-        preg_match_all('/<word xMin="([\d.]+)" yMin="([\d.]+)" xMax="([\d.]+)" yMax="([\d.]+)">(.*?)<\/word>/s', $pageHtml, $m, PREG_SET_ORDER);
-        $words = array_map(static fn($w) => [
-            'x0' => (float)$w[1], 'y0' => (float)$w[2], 'x1' => (float)$w[3], 'y1' => (float)$w[4],
-            'text' => html_entity_decode($w[5], ENT_QUOTES | ENT_XML1, 'UTF-8'),
-        ], $m);
+    foreach ($pages as $words) {
         array_push($rows, ...pdf_words_to_rows($words, $columns));
     }
     if ($rows === []) {

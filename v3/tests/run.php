@@ -2,7 +2,7 @@
 // 取り込み処理の簡易テスト:  php v2/tests/run.php
 declare(strict_types=1);
 
-function config($key = null) { return $key === 'pdftotext' ? 'pdftotext' : null; }
+function config($key = null) { return null; }
 require __DIR__ . '/../lib/import/parsers.php';
 require __DIR__ . '/../lib/albums.php'; // itunes.php と spotify.php も読み込まれる
 const DAY_LABELS = ['1日目', '2日目', '3日目', '教室ライブ']; // lib/bootstrap.php の定数（テストでは bootstrap を読まないので同じものを置く）

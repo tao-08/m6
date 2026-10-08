@@ -17,8 +17,6 @@
  */
 return [
     'common' => [
-        // PDF を読むときに使う poppler の pdftotext。PATH が通っていれば 'pdftotext' のままでOK
-        'pdftotext' => 'pdftotext',
         // 新規登録に必要な招待コード（合言葉）。'' なら誰でも登録できる
         // サークルの LINE などで共有しておくと、外部の人がメンバーの実名を見られなくなる
         'invite_code' => '',
@@ -49,8 +47,6 @@ return [
             'user' => 'root',
             'pass' => '',   // XAMPP の初期状態は root / パスワードなし
         ],
-        // Windows の例: 'C:\\poppler\\Library\\bin\\pdftotext.exe'
-        'pdftotext' => 'pdftotext',
         'debug' => true,
     ],
 
