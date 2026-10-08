@@ -2,6 +2,7 @@
 /**
  * =====================================================================
  *  search.php?q=キーワード — ライブ・バンド・メンバーの横断検索
+ *  search.php?faculty=文学部 / ?role=係ID — その学部・係のメンバー一覧（メンバーページから飛んでくる）
  * =====================================================================
  *  LIKE '%キーワード%' で部分一致検索している。バンドのメモ（band.note）・日程のメモ（live_day.note）も対象。
  *
@@ -29,7 +30,42 @@ $bandPage = min(50, max(1, (int)($_GET['bp'] ?? 1)));
 $lives = $bands = $members = $artists = [];
 $bandTotal = 0;
 
-if ($q !== '') {
+// 学部・係で絞る（完全一致）。学部は決まった一覧にあるものだけ、係は DB にある ID だけ受け付ける
+$faculty = (string)($_GET['faculty'] ?? '');
+if (!in_array($faculty, FACULTIES, true)) {
+    $faculty = '';
+}
+$roleId = (int)($_GET['role'] ?? 0);
+$roleName = null;
+$filterLabel = null; // 「学部: 文学部」など。null なら普通のキーワード検索
+if ($roleId > 0) {
+    $st = db()->prepare('SELECT name FROM role WHERE role_id = ?');
+    $st->execute([$roleId]);
+    $roleName = $st->fetchColumn() ?: null;
+}
+
+if ($faculty !== '' || $roleName !== null) {
+    $where = $params = [];
+    if ($faculty !== '') {
+        $where[] = 'm.faculty = ?';
+        $params[] = $faculty;
+    }
+    if ($roleName !== null) {
+        $where[] = 'EXISTS (SELECT 1 FROM member_role mr WHERE mr.member_id = m.member_id AND mr.role_id = ?)';
+        $params[] = $roleId;
+    }
+    $st = db()->prepare('SELECT m.member_id, m.name, m.name_kana, m.entry_year,
+            (SELECT COUNT(DISTINCT x.band_id) FROM band_member x WHERE x.member_id = m.member_id) AS bands
+        FROM member m
+        WHERE ' . implode(' AND ', $where) . '
+        ORDER BY m.entry_year DESC, m.name_kana, m.name');
+    $st->execute($params);
+    $members = $st->fetchAll();
+    $filterLabel = implode(' · ', array_filter([
+        $faculty !== '' ? '学部: ' . $faculty : null,
+        $roleName !== null ? '係: ' . $roleName : null,
+    ]));
+} elseif ($q !== '') {
     $pdo = db();
     $like = '%' . escape_like(mb_substr($q, 0, 50)) . '%';
 
@@ -120,7 +156,7 @@ if ($q !== '') {
     $members = $st->fetchAll();
 }
 
-render_header($q !== '' ? "「{$q}」の検索結果" : '検索', 'search');
+render_header($filterLabel ?? ($q !== '' ? "「{$q}」の検索結果" : '検索'), 'search');
 ?>
 <section class="hero">
     <div>
@@ -135,7 +171,22 @@ render_header($q !== '' ? "「{$q}」の検索結果" : '検索', 'search');
     <button class="btn btn--primary" type="submit">検索</button>
 </form>
 
-<?php if ($q === ''): ?>
+<?php if ($filterLabel !== null): ?>
+    <section>
+        <h2 class="section-title"><?= h($filterLabel) ?> <span class="muted"><?= count($members) ?>人</span></h2>
+        <?php if ($members): ?>
+            <div class="chip-list">
+                <?php foreach ($members as $m): ?>
+                    <a class="chip chip--lg<?= (int)$m['member_id'] === $user['member_id'] ? ' chip--me' : '' ?>" href="member.php?id=<?= (int)$m['member_id'] ?>">
+                        <?= h($m['name']) ?><?php if ((int)$m['entry_year'] > 0): ?> <span class="muted small"><?= (int)$m['entry_year'] ?></span><?php endif; ?>
+                    </a>
+                <?php endforeach; ?>
+            </div>
+        <?php else: ?>
+            <p class="muted">該当するメンバーはいません</p>
+        <?php endif; ?>
+    </section>
+<?php elseif ($q === ''): ?>
     <p class="muted">例: 「ヨルシカ」で過去にヨルシカをコピーしたバンドが全部出ます。</p>
 <?php elseif (!$lives && !$bands && !$members && !$artists): ?>
     <div class="empty card"><p class="empty__title">見つかりませんでした</p><p class="muted">表記を変えて試してみてください（全角/半角、スペースの有無など）</p></div>

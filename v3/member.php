@@ -197,12 +197,13 @@ render_header($member['name'], 'members');
         <h1 class="display"><?= h($member['name']) ?></h1>
         <p class="muted small">
             <?= h($member['name_kana'] ?? '') ?>
-            <?= (int)$member['entry_year'] > 0 ? ' · ' . (int)$member['entry_year'] . '年入学' : '' ?>
-            <?= $member['faculty'] !== null ? ' · ' . h($member['faculty']) : '' ?>
+            <?php if ((int)$member['entry_year'] > 0): ?> · <a class="meta-link" href="members.php?who=grade&amp;entry=<?= (int)$member['entry_year'] ?>"><?= (int)$member['entry_year'] ?>年入学</a><?php endif; ?>
+            <?php if ($member['faculty'] !== null): ?> · <a class="meta-link" href="search.php?<?= h(http_build_query(['faculty' => $member['faculty']])) ?>"><?= h($member['faculty']) ?></a><?php endif; ?>
+            <?php $roles = member_roles($pdo, $memberId); // [role_id => 名前] ?>
+            <?php if ($roles): ?> ·
+                <?php $i = 0; foreach ($roles as $rid => $rname): ?><?= $i++ ? '・' : '' ?><a class="meta-link" href="search.php?role=<?= (int)$rid ?>"><?= h($rname) ?></a><?php endforeach; ?>
+            <?php endif; ?>
         </p>
-        <?php if ($roles = member_roles($pdo, $memberId)): ?>
-            <p class="tag-row"><?php foreach ($roles as $role): ?><span class="tag"><?= h($role) ?></span><?php endforeach; ?></p>
-        <?php endif; ?>
         <?php if ($parts): ?><?= part_marks($parts, true) ?><?php endif; ?>
     </div>
     <dl class="stats">

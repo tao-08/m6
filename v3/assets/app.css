@@ -164,6 +164,8 @@ h3 { font-size: 16px; }
 .display--sm { font-size: clamp(26px, 5vw, 36px); margin-bottom: 20px; }
 .eyebrow { margin: 0 0 8px; font-size: 12px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); }
 .muted { color: var(--muted); }
+.meta-link { color: inherit; text-decoration: underline dotted; text-underline-offset: 3px; }
+.meta-link:hover { color: var(--accent); text-decoration-style: solid; }
 .small { font-size: 13px; }
 .strong { font-weight: 700; }
 .center { text-align: center; }
