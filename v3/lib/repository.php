@@ -137,7 +137,7 @@ function profile_faculty_role_fields(PDO $pdo, array $member): string
     }
     $html .= '</select></label>';
 
-    $html .= '<fieldset class="field role-checks"><legend>係</legend>';
+    $html .= '<fieldset class="field role-checks"><legend>係（自称可）</legend>';
     foreach ($all as $id => $name) {
         $html .= '<label class="role-checks__item"><input type="checkbox" name="roles[]" value="' . (int)$id . '"'
             . (isset($mine[$id]) ? ' checked' : '') . '> ' . h($name) . '</label>';
