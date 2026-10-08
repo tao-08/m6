@@ -485,6 +485,10 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
   .setlist-badge { padding: 3px; }
   .setlist-badge__text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 }
+/* アーティスト一覧の最多演奏の「ほか◯人」（乗せる・押すと残りの名前をポップアップ） */
+.more-names { margin-left: 2px; padding: 0 2px; border: 0; background: none; font: inherit; font-size: 11px; color: var(--muted);
+  text-decoration: underline dotted; text-underline-offset: 2px; cursor: help; white-space: nowrap; }
+.more-names:hover { color: var(--text); }
 .ranking { list-style: none; margin: 0; padding: 0; counter-reset: r; }
 .ranking li { display: flex; align-items: center; gap: 10px; padding: 8px 4px; counter-increment: r; border-bottom: 1px solid var(--border); }
 .ranking li:last-child { border-bottom: 0; }
@@ -1190,13 +1194,16 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
   .add-band { margin-left: 54px; }
   .bars li { grid-template-columns: minmax(0, 8em) 1fr auto; }
   .stats-grid { grid-template-columns: 1fr; }
-  /* 個人ページのマイアルバム: スマホでは横に4枚並べる（検索結果の .albums--pick は今までどおり） */
-  .albums:not(.albums--pick) { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px 8px; }
-  /* 閉じているときは1行（4枚）だけ見せる。app.js の setupAlbumBox の枚数と合わせる */
-  .album-box.js-collapsible:not(.is-open) .albums > li:nth-child(5) { display: none; }
+  /* 個人ページのマイアルバム: スマホでは横に3枚並べる（検索結果の .albums--pick は今までどおり）。
+     アーティスト名がなるべく切れないように、カードの間と枠の左右の余白を詰めて1枚の幅を広げる */
+  .album-box { padding: 12px 10px; }
+  .albums:not(.albums--pick) { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 6px; }
+  /* 閉じているときは1行（3枚）だけ見せる。app.js の setupAlbumBox の枚数と合わせる */
+  .album-box.js-collapsible:not(.is-open) .albums > li:nth-child(n+4) { display: none; }
   .albums:not(.albums--pick) .album { gap: 4px; }
   .albums:not(.albums--pick) .album__title { font-size: 11px; line-height: 1.3; }
-  .albums:not(.albums--pick) .album__meta .small { font-size: 10px; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } /* アーティスト・年は1行で「…」 */
+  .albums:not(.albums--pick) .album__meta .small { font-size: 10px; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } /* アーティストは1行で「…」 */
+  .albums:not(.albums--pick) .album__year { display: none; } /* 年は消して、アーティスト名に幅を全部使う */
   .albums:not(.albums--pick) .album__delete { top: 2px; right: 2px; }
   .albums:not(.albums--pick) .album__delete .btn { width: 20px; height: 20px; font-size: 12px; }
   .albums:not(.albums--pick) .album__rank { top: 2px; left: 2px; min-width: 18px; height: 18px; padding: 0 4px; font-size: 10px; }

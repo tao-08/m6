@@ -2032,8 +2032,8 @@ function setupAlbumBox() {
   const list = box.querySelector('.albums');
   const toggle = box.querySelector('[data-album-toggle]');
   const more = box.querySelector('[data-album-more]');
-  // 閉じているときに見せる枚数。PC は5枚、スマホ（600px 以下）は1行4枚（CSS の nth-child と合わせる）
-  const shown = () => (window.matchMedia('(max-width: 600px)').matches ? 4 : 5);
+  // 閉じているときに見せる枚数。PC は5枚、スマホ（600px 以下）は1行3枚（CSS の nth-child と合わせる）
+  const shown = () => (window.matchMedia('(max-width: 600px)').matches ? 3 : 5);
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   // 画面の表示を「開いているか」に合わせる

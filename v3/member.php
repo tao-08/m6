@@ -289,7 +289,7 @@ render_header($member['name'], 'members');
                     <!-- 本人のページでドラッグで並び替えられるのはジャケットの部分だけ（リンクの上で押してもドラッグは始まらない。assets/app.js） -->
                     <a class="album__meta" href="<?= h($listenUrl) ?>" target="_blank" rel="noopener" title="<?= h($listenLabel($a)) ?> で聴く">
                         <span class="album__title"><?= h($a['title']) ?></span>
-                        <span class="muted small"><?= h($a['artist_name']) ?><?= $a['release_year'] ? ' · ' . (int)$a['release_year'] : '' ?></span>
+                        <span class="muted small"><?= h($a['artist_name']) ?><?php if ($a['release_year']): ?><span class="album__year"> · <?= (int)$a['release_year'] ?></span><?php endif; ?></span>
                     </a>
                     <?php if ($isMe || is_admin()): ?>
                         <form method="post" action="member_album_save.php" class="album__delete" data-confirm="「<?= h($a['title']) ?>」をマイアルバムから外します。よろしいですか？">
