@@ -191,8 +191,8 @@ render_header($band['name'], 'lives');
     <form method="post" class="flash flash--warn check-flag no-print">
         <?= csrf_field() ?>
         <input type="hidden" name="action" value="checked">
-        <span><?= icon('flag', 'icon--fill flag-icon') ?> メンバーの楽器の登録があっているか確認してください。違っていたら「バンドを編集」で直してください。</span>
-        <button class="btn btn--sm" type="submit">確認した</button>
+        <span><?= icon('flag', 'icon--fill flag-icon') ?> メンバーの楽器の登録が正しいか確認の依頼が届いています。 （特にボーカルかギターボーカルかどうか）</span>
+        <button class="btn btn--sm" type="submit">確認済み</button>
     </form>
 <?php endif; ?>
 
@@ -216,7 +216,7 @@ render_header($band['name'], 'lives');
 
 <section class="card band-section">
     <?php // 曲が未登録のときは band.song_count（タイムテーブルの曲数）を「予定」として出す。登録済みの曲数と混ぜない ?>
-    <h2 class="section-title section-title--card">セットリスト <small class="muted"><?= $songs ? count($songs) . '曲' : ((int)$band['song_count'] ? '予定 ' . (int)$band['song_count'] . '曲' : '') ?></small></h2>
+    <h2 class="section-title section-title--card">セットリスト <small class="muted"><?= $songs ? count($songs) . '曲' : '' ?></small></h2>
     <?php if ($songs): ?>
         <div class="setlist"><ol>
             <?php foreach ($songs as $songId => $song):

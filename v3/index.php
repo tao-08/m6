@@ -91,8 +91,8 @@ render_header('ライブ一覧', 'lives');
 
 <?php if ($flagged): ?>
     <section class="card check-list">
-        <h2 class="section-title section-title--card"><?= icon('flag', 'icon--fill flag-icon') ?> 楽器の確認をお願いします</h2>
-        <p class="muted small">取り込みのときに楽器があやしいと印が付いたバンドです。開いて確認し、違っていたら直してください。</p>
+        <h2 class="section-title section-title--card"><?= icon('flag', 'icon--fill flag-icon') ?> 確認依頼が届いています</h2>
+        <p class="muted small">出演者に楽器の登録が正しいかの確認依頼が届いているバンドです。バンドページを開いて確認をお願いします。</p>
         <ul>
             <?php foreach ($flagged as $f): ?>
                 <li><a href="band.php?id=<?= (int)$f['band_id'] ?>"><?= h($f['name']) ?></a>

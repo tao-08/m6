@@ -292,7 +292,7 @@ render_header('タイムテーブルを編集', 'lives'); ?>
                     <h2 class="import-day__title"><?= h(fmt_date($d['held_on']) ?: '日付未設定') ?> · <?= count($dayBands) ?> バンド</h2>
 				<div class="legend">
 					<span><i class="swatch swatch--ok"></i>DB に登録済み</span>
-					<span><i class="swatch swatch--similar"></i>類似氏名あり</span>
+					<span><i class="swatch swatch--similar"></i>候補あり</span>
 					<span><i class="swatch swatch--new"></i>新しいメンバーとして登録</span>
 					<span><?= icon('flag', 'icon--fill flag-icon') ?> 楽器の確認をメンバーにお願いする</span>
 				</div>

@@ -136,7 +136,7 @@ $whoLabel = match ($who) {
     default  => '全メンバー',
 };
 if ($who !== 'all' && $includeUnknown) {
-    $whoLabel .= ' ＋ 入学年度未登録の人';
+    $whoLabel .= '';
 }
 $periodLabel = match ($period) {
     'year'  => fmt_year($year),
@@ -429,7 +429,7 @@ $entryYears = range($thisYear, $entryMin); // 新しい順
     </fieldset>
 
     <fieldset class="stats-filter__row">
-        <legend>期間</legend>
+        <legend>集計期間</legend>
         <div class="tabs tabs--filter" role="radiogroup" aria-label="期間">
             <label class="tab"><input type="radio" name="period" value="year" data-autosubmit<?= $period === 'year' ? ' checked' : '' ?>>単年度</label>
             <label class="tab"><input type="radio" name="period" value="all" data-autosubmit<?= $period === 'all' ? ' checked' : '' ?>>全期間</label>
@@ -451,7 +451,7 @@ $entryYears = range($thisYear, $entryMin); // 新しい順
 
 <p class="muted small stats-scope">
     表示中: <strong><?= h($whoLabel) ?></strong> × <strong><?= h($periodLabel) ?></strong>
-    — メンバーで絞ると、バンド単位の集計（概要・アーティスト・曲・会場）は「対象メンバーが1人でもいるバンド」、楽器別は対象メンバーの出演だけで数えます。
+    — メンバーで絞ると対象メンバーの出演だけで数えます。
 </p>
 
 <div class="card table-card">
