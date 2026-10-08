@@ -8,7 +8,8 @@
  *  data-◯◯ 属性（HTML 側に書いた目印）で「どの要素に何をするか」を決めている。
  *    data-theme-toggle  … ライト/ダーク切り替えボタン
  *    data-filter        … 一覧の絞り込み検索
- *    data-year-slot     … ライブ一覧の年度スロット（縦ドラッグで年度を切り替える）
+ *    data-year-slot     … ライブ一覧・メンバーの出演履歴の年度スロット（縦ドラッグで年度を切り替える）
+ *    data-sort-toggle   … メンバーの出演履歴を新しい順 ⇔ 古い順に並び替える
  *    data-tab           … ライブ詳細の日程タブ
  *    data-confirm       … 送信前の確認ダイアログ（data-dirty-check で未保存の変更も警告）
  *    data-dropzone      … ファイルのドラッグ&ドロップ
@@ -42,6 +43,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupThemeToggle();
   setupFilter();
   setupYearSlot();
+  setupSortToggle();
   setupTabs();
   setupConfirm();
   setupDropzone();
@@ -585,13 +587,14 @@ function setupFilter() {
  *   上にドラッグ → 古い年度へ / 下にドラッグ → 新しい年度（先頭は「すべて」）
  *   ホイール・↑↓キー・上下の段のタップでも1つずつ動く
  *   選んだ年度以外の <section data-year> を隠す
+ *   data-year-slot="セレクタ" なら、それに当たる要素を隠す（メンバーの出演履歴: section[data-history-year]）
  * ------------------------------------------------------------------- */
 function setupYearSlot() {
   const slot = document.querySelector('[data-year-slot]');
   if (!slot) return;
   const reel = slot.querySelector('.year-slot__reel');
   const items = [...reel.children];
-  const sections = document.querySelectorAll('section[data-year]');
+  const sections = document.querySelectorAll(slot.dataset.yearSlot || 'section[data-year]');
   const max = items.length - 1;
   let index = 0;
 
@@ -607,7 +610,7 @@ function setupYearSlot() {
     move(-index * itemH());
     items.forEach((el, n) => el.classList.toggle('is-current', n === index));
     const value = items[index].dataset.value;
-    sections.forEach((sec) => { sec.hidden = value !== '' && sec.dataset.year !== value; });
+    sections.forEach((sec) => { sec.hidden = value !== '' && (sec.dataset.year || sec.dataset.historyYear) !== value; });
     slot.setAttribute('aria-valuetext', items[index].textContent);
     slot.classList.toggle('is-filtered', value !== '');
   };
@@ -667,6 +670,26 @@ function setupYearSlot() {
   });
 
   select(0);
+}
+
+/* ---------------------------------------------------------------------
+ * 並び替えボタン: 押すたびに新しい順 ⇔ 古い順
+ *   <button data-sort-toggle="#history-list"> → その中の年度 section と、各 <ol> の <li> の順番を逆にする
+ *   append は「今ある要素を最後に移動する」ので、逆順に append し直せば並びが逆になる（作り直さない）
+ * ------------------------------------------------------------------- */
+function setupSortToggle() {
+  document.querySelectorAll('[data-sort-toggle]').forEach((btn) => {
+    const list = document.querySelector(btn.dataset.sortToggle);
+    if (!list) return;
+    const reverse = (parent) => [...parent.children].reverse().forEach((el) => parent.append(el));
+    btn.addEventListener('click', () => {
+      reverse(list);
+      list.querySelectorAll('ol').forEach(reverse);
+      const asc = btn.getAttribute('aria-pressed') !== 'true';
+      btn.setAttribute('aria-pressed', String(asc));
+      btn.textContent = asc ? '古い順 ↑' : '新しい順 ↓';
+    });
+  });
 }
 
 /* ---------------------------------------------------------------------
@@ -2055,14 +2078,16 @@ function setupPartnerBox() {
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   // 名前の ▸ を開くたびに、一緒に出たバンドの一覧をふわっと出す。
-  //   toggle イベントは親に伝わらない（バブリングしない）ので、capture: true で box が先に受け取る
-  box.addEventListener('toggle', (e) => {
-    const details = e.target;
-    if (reduceMotion || !details.open || !details.matches('.partner')) return;
-    details.querySelector('.partner__bands')?.animate(
+  //   toggle イベントは開いて画面に描いた「あと」に届くので、そこで動かすと完成した表示が一瞬見えてしまう。
+  //   → 開く「前」の click で動かし始める（click のあとにブラウザが開く → 最初に描かれるのは透明な状態）。
+  //   summary の中の名前（リンク）を押したときはページを移るだけで開かないので、何もしない
+  box.addEventListener('click', (e) => {
+    const summary = e.target.closest('.partner > summary');
+    if (reduceMotion || !summary || e.target.closest('a') || summary.parentElement.open) return;
+    summary.parentElement.querySelector('.partner__bands')?.animate(
       [{ opacity: 0, transform: 'translateY(6px)' }, { opacity: 1, transform: 'none' }],
       { duration: 220, easing: 'ease-out' });
-  }, true);
+  });
 
   // 5人以下なら隠すものが無いので、▸ もボタンも出さずに全員見せる
   if (count <= SHOWN) {
@@ -2463,13 +2488,15 @@ function setupPicks() {
 }
 
 /* ---------------------------------------------------------------------
- * 横にはみ出す表（.table-scroll）をマウスでつかんで左右に動かす
+ * 横にはみ出す表（.table-scroll / 一覧の表のカード .table-card）をマウスでつかんで左右に動かす
+ *   .table-card の中に .table-scroll がある画面では、はみ出すのは中の .table-scroll だけ
+ *   （外のカードは scrollWidth <= clientWidth なので何もしない）
  *   入力欄・プルダウン・ボタンの上で押したときは、いつもどおり文字選択や操作をさせる。
  *   5px 以上動かしたら「ドラッグ」とみなし、離したときのクリックは無効にする（誤クリック防止）。
  *   スマホ（タッチ）は元々指でスクロールできるので、マウスのときだけ動かす。
  * ------------------------------------------------------------------- */
 function setupDragScroll() {
-  const boxes = [...document.querySelectorAll('.table-scroll')];
+  const boxes = [...document.querySelectorAll('.table-scroll, .table-card')];
   if (!boxes.length) return;
 
   // はみ出しているときだけ「つかめる」カーソルにする（列の追加や画面幅で変わるので毎回見直す）

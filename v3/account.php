@@ -96,7 +96,7 @@ render_header('アカウント設定');
         <label class="field"><span>名前</span><input name="name" value="<?= h($myMember['name']) ?>" maxlength="50" required></label>
         <label class="field"><span>ふりがな</span><input name="name_kana" value="<?= h($myMember['name_kana']) ?>" maxlength="50"></label>
         <label class="field"><span>入部年度</span><input type="number" name="entry_year" min="1950" max="2100" value="<?= (int)$myMember['entry_year'] ?: '' ?>"></label>
-        <label class="field"><span>使用音楽アプリ（対応するリンクを選択したアプリで開きます）</span>
+        <label class="field"><span>対応するリンクを開く音楽アプリ</span>
             <select name="music_app">
                 <option value="">未選択</option>
                 <?php foreach (MUSIC_APPS as $value => $label): ?>

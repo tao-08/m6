@@ -86,6 +86,11 @@ foreach ($history as $hi) {
         $historyDays[$dayId]['has_last'] = true;
     }
 }
+// さらに年度ごとにまとめる（年度の見出し・年度スロットで使う）。$history が年度の新しい順なので、この順のまま入る
+$historyByYear = []; // [年度] = [日程, ...]
+foreach ($historyDays as $day) {
+    $historyByYear[(int)$day['year']][] = $day;
+}
 
 // ---- よく組むメンバーと「一緒に出たバンド」（名前の ▸ を開くと出す） ----
 //   年度・ライブ名・日目は出演履歴（$history）にもう入っているので、ここで読むのは
@@ -359,11 +364,35 @@ render_header($member['name'], 'members');
 <div class="split">
     <section>
         <h2 class="section-title">出演履歴</h2>
+        <?php if ($history): ?>
+        <div class="toolbar history-toolbar">
+            <!-- 年度スロット: ライブ一覧（index.php）と同じ部品。data-year-slot の値 = 隠す対象（年度ごとの section） -->
+            <div class="year-slot" data-year-slot="section[data-history-year]" tabindex="0" role="spinbutton" aria-label="年度で絞り込み" title="上下にドラッグで年度を切り替え">
+                <div class="year-slot__reel">
+                    <div class="year-slot__item" data-value="">すべて</div>
+                    <?php foreach (array_keys($historyByYear) as $year): ?>
+                        <div class="year-slot__item" data-value="<?= (int)$year ?>"><?= $year > 0 ? (int)$year . '<small>年度</small>' : '未設定' ?></div>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+            <!-- 検索: .history__item の data-text で絞る（年度スロットは section、検索は li を隠すので、ぶつからない） -->
+            <input type="search" class="search" placeholder="ライブ名・バンド名・会場" data-filter=".history__item" aria-label="出演履歴を絞り込み">
+            <!-- 並び替え: 押すたびに新しい順 ⇔ 古い順（JS で並びを逆にするだけ。assets/app.js の setupSortToggle） -->
+            <button type="button" class="btn btn--ghost btn--sm" data-sort-toggle="#history-list" aria-pressed="false">新しい順 ↓</button>
+        </div>
+        <?php endif; ?>
+        <div id="history-list">
+        <?php foreach ($historyByYear as $year => $days): ?>
+        <section class="history-year" data-history-year="<?= (int)$year ?>">
+        <!-- 年度は、年度が変わるところに見出しで1回だけ出す -->
+        <h3 class="history__year"><?= $year > 0 ? (int)$year . '<small>年度</small>' : '年度未設定' ?></h3>
         <ol class="history">
-            <?php foreach ($historyDays as $day): ?>
-                <li class="card history__item<?= $day['has_last'] ? ' is-last' : '' ?>">
+            <?php foreach ($days as $day): ?>
+                <li class="card history__item<?= $day['has_last'] ? ' is-last' : '' ?>"
+                    data-text="<?= h($day['live_name'] . ' ' . $day['label'] . ' ' . ($day['venue_name'] ?? '') . ' ' . implode(' ', array_column($day['bands'], 'band_name'))) ?>">
                     <div class="history__when">
-                        <span><?= h(fmt_year($day['year'])) ?></span>
+                        <!-- カードには年度ではなく、実際に開催した年（2025年度の3月なら 2026年） -->
+                        <span><?= $day['date'] ? date('Y', strtotime($day['date'])) . '年' : '' ?></span>
                         <span class="muted"><?= h(fmt_date($day['date'])) ?></span>
                     </div>
                     <div class="history__what">
@@ -389,6 +418,9 @@ render_header($member['name'], 'members');
                 </li>
             <?php endforeach; ?>
         </ol>
+        </section>
+        <?php endforeach; ?>
+        </div>
         <?php if (!$history): ?><p class="muted">出演データがありません</p><?php endif; ?>
     </section>
     <aside>

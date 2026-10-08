@@ -397,6 +397,9 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .table th { text-align: left; font-size: 11px; font-weight: 700; letter-spacing: .06em; color: var(--muted); padding: 11px 14px;
   border-bottom: 1px solid var(--border); background: var(--surface-2); white-space: nowrap; vertical-align: bottom; }
 .table td { padding: 11px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+/* 表は縮めて折り返さず、入りきらなければカード（.table-card）の中で左右にスクロールさせる。
+   スマホだけにすると、タブレットや狭いウィンドウ（600〜1000px くらい）で名前が折り返される */
+.table:not(.table--edit) th, .table:not(.table--edit) td { white-space: nowrap; }
 .table tr:last-child td { border-bottom: 0; }
 .table .num { text-align: right; font-variant-numeric: tabular-nums; width: 1%; white-space: nowrap; }
 .table tr.is-me td { background: var(--accent-soft); }
@@ -430,6 +433,12 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 /* よく組むメンバーを全員開くと画面より高くなり、貼り付いたままだと下の方が見えない → 開いているあいだは貼り付けない */
 .split aside:has(.partner-box.is-open) { position: static; }
 .history { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+/* 出演履歴の年度見出し（年度が変わるところだけ）と、上の検索・年度スロット・並び替えボタン */
+.history-year + .history-year { margin-top: 22px; }
+.history__year { font-size: 18px; font-weight: 900; letter-spacing: -.02em; margin: 0 0 8px; display: flex; align-items: baseline; gap: 3px; }
+.history__year small { font-size: 12px; color: var(--muted); font-weight: 700; }
+.history-toolbar { margin-bottom: 14px; }
+.history-toolbar .search { flex: 1; min-width: 8em; }
 .history__item { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 14px; align-items: start; padding: 14px 18px; }
 .history__item.is-last { border-color: color-mix(in srgb, var(--accent) 50%, transparent); }
 .history__when { display: grid; font-size: 12px; font-weight: 700; }
@@ -726,8 +735,9 @@ body.is-row-dragging, body.is-row-dragging * { cursor: grabbing !important; user
 @media (max-width: 480px) { .modal .form-grid { grid-template-columns: 1fr; } }
 @media (prefers-reduced-motion: reduce) { .modal, .modal::backdrop { transition: none; } }
 /* 横にはみ出す表はマウスでつかんで左右に動かせる（JS: setupDragScroll） */
-.table-scroll.is-draggable { cursor: grab; }
-.table-scroll.is-dragging { cursor: grabbing; user-select: none; }
+/* PC でマウスをつかんで左右に動かせる表（JS: setupDragScroll）。はみ出しているときだけ is-draggable が付く */
+.table-scroll.is-draggable, .table-card.is-draggable { cursor: grab; }
+.table-scroll.is-dragging, .table-card.is-dragging { cursor: grabbing; user-select: none; }
 .ranking--plain li::before { content: none; }
 .status { font-size: 12px; font-weight: 700; padding: 3px 9px; border-radius: 999px; }
 .status--ok { color: var(--ok); background: var(--ok-bg); }
@@ -1148,10 +1158,8 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
   .history__item { grid-template-columns: 1fr; }
   .history__when { grid-column: 1 / -1; display: flex; gap: 8px; }
   .table td, .table th { padding: 10px 12px; }
-  /* スマホでは表を縮めて折り返さず、カードの中で左右にスクロールさせる（列は隠さない） */
   .card.table-card { padding: 0; }
   .table-scroll--flush { margin: 0; }
-  .table:not(.table--edit) th, .table:not(.table--edit) td { white-space: nowrap; }
   .member-row-edit { grid-template-columns: 110px minmax(0, 1fr) auto; }
   .sticky-actions { width: 100%; bottom: 76px; }
   .sticky-actions .btn { flex: 1; }
