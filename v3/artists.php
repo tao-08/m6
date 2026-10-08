@@ -71,6 +71,7 @@ const SORT_COLUMNS = [ // 列 => 最初にクリックしたときの向き
     'name'  => 'asc',
     'plays' => 'desc',
     'last'  => 'desc', // 最近演奏されたものから
+    'top'   => 'desc', // 最多演奏の人の回数が多いものから
 ];
 $sort = $_GET['sort'] ?? 'plays';
 if (!is_string($sort) || !isset(SORT_COLUMNS[$sort])) {
@@ -85,15 +86,22 @@ $list = [];
 foreach ($rows as $i => $r) {
     $list[] = $r + ['rank' => (int)$r['plays'] > 0 ? $ranks[$i] : null];
 }
-usort($list, static function (array $a, array $b) use ($sort, $dir, $lastLive): int {
+usort($list, static function (array $a, array $b) use ($sort, $dir, $lastLive, $topPlayers): int {
     $la = $lastLive[(int)$a['artist_id']] ?? null;
     $lb = $lastLive[(int)$b['artist_id']] ?? null;
     if ($sort === 'last' && ($la === null) !== ($lb === null)) {
         return ($la === null) <=> ($lb === null); // 演奏されていないものは、向きに関係なく一番下
     }
+    $ta = $topPlayers[(int)$a['artist_id']][0] ?? null;
+    $tb = $topPlayers[(int)$b['artist_id']][0] ?? null;
+    if ($sort === 'top' && ($ta === null) !== ($tb === null)) {
+        return ($ta === null) <=> ($tb === null); // 最多演奏の人がいないもの（メンバー未登録のバンドだけ）は一番下
+    }
     $cmp = match ($sort) {
         'name'  => strcmp(mb_convert_kana($a['name'], 'c'), mb_convert_kana($b['name'], 'c')),
         'last'  => [(string)$la['held_on'], (int)$la['fiscal_year']] <=> [(string)$lb['held_on'], (int)$lb['fiscal_year']],
+        // 1位の人の演奏回数 → 同じ回数なら同率1位の人数（1人で独占しているほうを上に）
+        'top'   => [(int)($ta['n'] ?? 0), -count($topPlayers[(int)$a['artist_id']] ?? [])] <=> [(int)($tb['n'] ?? 0), -count($topPlayers[(int)$b['artist_id']] ?? [])],
         default => (int)$a['plays'] <=> (int)$b['plays'],
     };
     if ($dir === 'desc') {
@@ -137,7 +145,7 @@ render_header('アーティスト', 'artists');
                 <?= sort_th('name', 'アーティスト', $sort, $dir) ?>
                 <?= sort_th('plays', '演奏回数', $sort, $dir, 'num') ?>
                 <?= sort_th('last', '最後に演奏したライブ', $sort, $dir) ?>
-                <th>最多演奏</th>
+                <?= sort_th('top', '最多演奏', $sort, $dir) ?>
             </tr></thead>
             <tbody>
             <?php foreach ($list as $r): $id = (int)$r['artist_id']; $al = $aliases[$id] ?? []; $ll = $lastLive[$id] ?? null; ?>

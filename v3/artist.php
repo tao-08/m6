@@ -174,7 +174,7 @@ render_header($artist['name'], 'artists');
     <div>
         <p class="eyebrow">Artist</p>
         <h1 class="display"><?= h($artist['name']) ?></h1>
-        <p class="muted">サークルで <?= count($bands) ?> 回コピーされました</p>
+        <p class="muted">サークルで <?= count($bands) ?> 回演奏されました</p>
         <?php if ($aliases): ?><p class="muted small">別名: <?= h(implode('、', $aliases)) ?></p><?php endif; ?>
     </div>
 </section>
