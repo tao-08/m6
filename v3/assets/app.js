@@ -26,7 +26,7 @@
  *    .table-scroll      … 横にはみ出す表をマウスのドラッグで左右に動かす
  *    data-pack          … 送信時に全項目を JSON 1個にまとめるフォーム
  *    data-rows          … バンド編集・タイムテーブル編集のメンバー行（追加・削除）
- *    data-print / data-autosubmit … 印刷ボタン / 選んだら即送信
+ *    data-autosubmit    … 選んだら即送信
  *    <select>           … 全部のプルダウンをボタン + ポップアップの見た目にする（data-native で元のまま）
  *    data-song-list / data-add-song … 曲の編集
  *    data-track-search  … 曲の編集の🔍（Spotify / iTunes の曲を探して紐付ける）
@@ -510,11 +510,9 @@ function setupTrackSearch() {
 
 /* ---------------------------------------------------------------------
  * こまごました動き
- *   data-print      … クリックで印刷ダイアログ
  *   data-autosubmit … セレクトボックスやラジオボタンを変えたらすぐフォームを送信（集計の絞り込み）
  * ------------------------------------------------------------------- */
 function setupSmallThings() {
-  document.querySelectorAll('[data-print]').forEach((btn) => btn.addEventListener('click', () => window.print()));
   document.querySelectorAll('[data-autosubmit]').forEach((sel) => sel.addEventListener('change', () => sel.form.submit()));
 
   // 会場のプルダウン（取り込み・ライブ編集）: 「＋ 新しい会場を作る」を選んだときだけ会場名の入力欄を出す
