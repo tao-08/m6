@@ -48,6 +48,26 @@ $st = $pdo->prepare('SELECT bm.band_id, m.member_id, m.name, i.short_name, i.nam
     ORDER BY i.sort_order, m.name');
 $st->execute([$artistId]);
 $lineups = member_lineups_by_band($st);
+// よく演奏するメンバーの名前の右の「Gt × 3」: 同じ行をもう一度読み、1パート1行（Vo と Gt は「Vo/Gt」）にして人ごとに数える（member.php のよく組むメンバーと同じ）
+$st->execute([$artistId]);
+$playerParts = []; // [member_id] = [パート, ...]
+foreach (lineup_parts_by_band($st) as $p) {
+    $playerParts[(int)$p['member_id']][] = $p;
+}
+$playerTally = array_map(static fn($parts) => sort_tally_by_count(tally_parts($parts)), $playerParts);
+
+// よく演奏するメンバー（上位15位）: このアーティストのバンドに何回入っていたか（同じバンドで2パートやっても1回）。
+//   最初は上位5人だけ見せて、残りは「さらに表示」（member.php のよく組むメンバーと同じ JS: setupPartnerBox）
+$st = $pdo->prepare('SELECT m.member_id, m.name, COUNT(DISTINCT b.band_id) AS n
+    FROM band b
+    JOIN band_member bm ON bm.band_id = b.band_id
+    JOIN member m ON m.member_id = bm.member_id
+    WHERE ' . $bandWhere . '
+    GROUP BY m.member_id
+    ORDER BY n DESC, m.name
+    LIMIT 15');
+$st->execute([$artistId]);
+$topPlayers = $st->fetchAll();
 
 // セットリスト: バンドごとに曲順で。オムニバスのバンドはこのアーティストの曲だけ
 $setlists = []; // [band_id] = [曲名, ...]
@@ -201,6 +221,30 @@ render_header($artist['name'], 'artists');
             </li>
         <?php endforeach; ?>
     </ul>
+</section>
+<?php endif; ?>
+
+<!-- よく演奏するメンバー: 最初は上位5人だけ。見出しの ▸ か「さらに表示」で15位まで（JS: setupPartnerBox） -->
+<?php if ($topPlayers): ?>
+<section id="top-players" class="card album-box partner-box top-players" data-partner-box data-shown="5" data-more-label="さらに表示">
+    <div class="album-head">
+        <button type="button" class="album-box__toggle" data-partner-toggle aria-expanded="false" aria-controls="top-players">
+            <span class="album-box__chevron" aria-hidden="true">▸</span>
+            よく演奏するメンバー
+        </button>
+    </div>
+    <?php $playerRanks = tie_ranks($topPlayers, static fn($p) => (int)$p['n']); // 同じ回数は同じ順位 ?>
+    <ol class="ranking">
+        <?php foreach ($topPlayers as $k => $p): ?>
+            <li data-rank="<?= $playerRanks[$k] ?>">
+                <a href="member.php?id=<?= (int)$p['member_id'] ?>"><?= h($p['name']) ?></a>
+                <!-- このアーティストのバンドで、その人が何を何回やったか -->
+                <?= part_marks($playerTally[(int)$p['member_id']] ?? [], true, 'partbar--partner') ?>
+                <span class="pill"><?= (int)$p['n'] ?>回</span>
+            </li>
+        <?php endforeach; ?>
+    </ol>
+    <button type="button" class="btn btn--ghost btn--sm album-box__more" data-partner-more hidden>さらに表示</button>
 </section>
 <?php endif; ?>
 
