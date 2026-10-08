@@ -299,6 +299,10 @@ form.row-form input, form.row-form select { flex: 1; min-width: 10em; }
 /* 前後の段は同じ大きさのまま薄くするだけ。選択中だけ濃くする */
 .year-slot__item.is-current { color: var(--text); opacity: 1; }
 .year-slot.is-filtered .year-slot__item.is-current { color: var(--accent); }
+/* 学年スロット（メンバー一覧の「学年別」）: 「OB2'21」が入る幅。隠した行は名前検索の hidden とは別のクラスで消す */
+.year-slot--grade { width: 6.6em; }
+.year-slot--grade .year-slot__item { font-size: 17px; }
+.member-row.is-grade-hidden { display: none; }
 input, select, textarea { font: inherit; color: inherit; }
 /* プルダウンの中身（option）は背景が透明のままだと、Windows の Chrome などで「白い背景に白い文字」になり
    ダークモードで読めなくなる。文字色と背景色を両方テーマの色で指定しておく */
@@ -888,6 +892,7 @@ body.is-row-dragging, body.is-row-dragging * { cursor: grabbing !important; user
 .stats-filter:not(:has(input[name="period"][value="year"]:checked)) [data-show-when="period=year"],
 .stats-filter:not(:has(input[name="period"][value="range"]:checked)) [data-show-when="period=range"],
 .stats-filter:not(:has(input[name="who"][value="grade"]:checked)) [data-show-when="who=grade"],
+.stats-filter:not(:has(input[name="who"][value="near"]:checked)) [data-show-when="who=near"],
 .stats-filter:has(input[name="who"][value="all"]:checked) [data-hide-when="who=all"] { display: none; }
 .stats-scope { margin: 0 0 14px; font-size: 15px; } /* 今どの範囲を見ているかは大事なので、.small（13px）より大きく */
 .stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; margin-top: 14px; }

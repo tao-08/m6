@@ -9,6 +9,7 @@
  *    data-theme-toggle  … ライト/ダーク切り替えボタン
  *    data-filter        … 一覧の絞り込み検索
  *    data-year-slot     … ライブ一覧・メンバーの出演履歴の年度スロット（縦ドラッグで年度を切り替える）
+ *    data-grade-filter  … メンバー一覧の学年の絞り込み（タブ + 学年別の学年スロット）
  *    data-sort-toggle   … メンバーの出演履歴を新しい順 ⇔ 古い順に並び替える
  *    data-tab           … ライブ詳細の日程タブ
  *    data-confirm       … 送信前の確認ダイアログ（data-dirty-check で未保存の変更も警告）
@@ -45,6 +46,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupThemeToggle();
   setupFilter();
   setupYearSlot();
+  setupGradeSlot();
   setupSortToggle();
   setupTabs();
   setupConfirm();
@@ -682,20 +684,17 @@ function animateIn(elements) {
 }
 
 /* ---------------------------------------------------------------------
- * 年度スロット: スロットのリールを縦にドラッグして年度を選ぶ
- *   上にドラッグ → 古い年度へ / 下にドラッグ → 新しい年度（先頭は「すべて」）
+ * スロット: リールを縦にドラッグして1つ選ぶ部品（年度スロット・学年スロットで共通）
+ *   上にドラッグ → 次の段へ / 下にドラッグ → 前の段へ
  *   ホイール・↑↓キー・上下の段のタップでも1つずつ動く
- *   選んだ年度以外の <section data-year> を隠し、残った年度の見出しとカードをふわっと出す（animateIn）
- *   data-year-slot="セレクタ" なら、それに当たる要素を隠す（メンバーの出演履歴: section[data-history-year]）
+ *   最初は .is-current が付いた段（無ければ先頭）を選ぶ
+ *   選ぶたびに onSelect(value, changed) を呼ぶ（changed = 前と違う段になったか。最初の1回は false）
  * ------------------------------------------------------------------- */
-function setupYearSlot() {
-  const slot = document.querySelector('[data-year-slot]');
-  if (!slot) return;
+function makeSlot(slot, onSelect) {
   const reel = slot.querySelector('.year-slot__reel');
   const items = [...reel.children];
-  const sections = document.querySelectorAll(slot.dataset.yearSlot || 'section[data-year]');
   const max = items.length - 1;
-  let index = 0;
+  let index = Math.max(0, items.findIndex((el) => el.classList.contains('is-current')));
 
   const clamp = (n) => Math.max(0, Math.min(max, n));
   // 1段の高さと、0番目を真ん中の段に置くためのずらし量（窓は3段ぶんの高さ）
@@ -703,22 +702,16 @@ function setupYearSlot() {
   const top = () => (slot.clientHeight - itemH()) / 2;
   const move = (px) => { reel.style.transform = `translateY(${top() + px}px)`; };
 
-  const select = (i) => {
-    const before = items[index].dataset.value;
+  const select = (i, first = false) => {
+    const before = index;
     index = clamp(i);
     reel.classList.remove('is-dragging');
     move(-index * itemH());
     items.forEach((el, n) => el.classList.toggle('is-current', n === index));
     const value = items[index].dataset.value;
-    sections.forEach((sec) => { sec.hidden = value !== '' && (sec.dataset.year || sec.dataset.historyYear) !== value; });
     slot.setAttribute('aria-valuetext', items[index].textContent);
     slot.classList.toggle('is-filtered', value !== '');
-    // 年度が変わったときだけ動かす（端でさらに回した・真ん中をタップした、では動かさない）
-    //   見出し（h2 / h3）→ カード（ライブ一覧は .grid の中、出演履歴は <ol> の <li>）の順
-    if (value !== before) {
-      animateIn([...sections].filter((sec) => !sec.hidden)
-        .flatMap((sec) => [...sec.querySelectorAll(':scope > :is(h2, h3), .grid > *, ol > li')]));
-    }
+    onSelect(value, !first && index !== before);
   };
 
   // ---- ドラッグ（マウスもタッチも pointer イベントでまとめて扱う） ----
@@ -775,7 +768,105 @@ function setupYearSlot() {
     if (e.key === 'End') { e.preventDefault(); select(max); }
   });
 
-  select(0);
+  select(index, true);
+  // 隠れていた（高さ 0 の）スロットを出したときに、位置を測り直すための関数を返す
+  return () => select(index, true);
+}
+
+/* ---------------------------------------------------------------------
+ * 年度スロット（ライブ一覧・メンバーの出演履歴）
+ *   上にドラッグ → 古い年度へ / 下にドラッグ → 新しい年度（先頭は「すべて」）
+ *   選んだ年度以外の <section data-year> を隠し、残った年度の見出しとカードをふわっと出す（animateIn）
+ *   data-year-slot="セレクタ" なら、それに当たる要素を隠す（メンバーの出演履歴: section[data-history-year]）
+ * ------------------------------------------------------------------- */
+function setupYearSlot() {
+  const slot = document.querySelector('[data-year-slot]');
+  if (!slot) return;
+  const sections = document.querySelectorAll(slot.dataset.yearSlot || 'section[data-year]');
+  makeSlot(slot, (value, changed) => {
+    sections.forEach((sec) => { sec.hidden = value !== '' && (sec.dataset.year || sec.dataset.historyYear) !== value; });
+    // 年度が変わったときだけ動かす（端でさらに回した・真ん中をタップした、では動かさない）
+    //   見出し（h2 / h3）→ カード（ライブ一覧は .grid の中、出演履歴は <ol> の <li>）の順
+    if (changed) {
+      animateIn([...sections].filter((sec) => !sec.hidden)
+        .flatMap((sec) => [...sec.querySelectorAll(':scope > :is(h2, h3), .grid > *, ol > li')]));
+    }
+  });
+}
+
+/* ---------------------------------------------------------------------
+ * 学年の絞り込み（メンバー一覧）: タブ（全学年 / 上下3学年 / 学年別）+ 学年別のときだけ出る学年スロット
+ *   今の絞り込みの値: '' = 全学年 / 'near' = 上下3学年（タブの data-min〜data-max の入学年度）/ 入学年度 / 'none' = 入学年度が不明
+ *   行（tr[data-entry]）は .is-grade-hidden で隠す（hidden は名前検索が使うので、ぶつからないよう別にする）
+ *   切り替えたら:
+ *     ・# の順位を、見えている人の中で付け直す（data-score の多い順。同じなら同じ順位。出演なしの人は —）
+ *     ・上の「出演者」「登録」の人数を数え直す
+ *     ・URL（?who=&entry=）と列見出しの並べ替えリンクに今の学年を入れる（再読み込み・並べ替えで戻らないように）
+ * ------------------------------------------------------------------- */
+function setupGradeSlot() {
+  const box = document.querySelector('[data-grade-filter]');
+  if (!box) return;
+  const slot = box.querySelector('[data-grade-slot]');
+  const radios = [...box.querySelectorAll('input[name="who"]')];
+  const rows = [...document.querySelectorAll('tr[data-entry]')];
+  const table = document.querySelector('[data-grade-table]');
+  const empty = document.querySelector('[data-grade-empty]');
+  const count = (name) => document.querySelector(`[data-grade-count="${name}"]`);
+  let slotValue = '';
+
+  const apply = (changed) => {
+    const radio = radios.find((r) => r.checked) || radios[0];
+    const who = radio.value;
+    const match = (entry) => {
+      if (who === 'all') return true;
+      if (who === 'near') return entry !== '' && +entry >= +radio.dataset.min && +entry <= +radio.dataset.max;
+      return slotValue === 'none' ? entry === '' : entry === slotValue;
+    };
+    rows.forEach((tr) => tr.classList.toggle('is-grade-hidden', !match(tr.dataset.entry)));
+    const shown = rows.filter((tr) => !tr.classList.contains('is-grade-hidden'));
+
+    // 順位 = 自分より data-score が多い人の数 + 1（出演なしの人は —）
+    const played = shown.filter((tr) => +tr.dataset.bands > 0).map((tr) => +tr.dataset.score);
+    shown.forEach((tr) => {
+      const n = +tr.dataset.score;
+      tr.querySelector('[data-rank]').textContent = +tr.dataset.bands > 0
+        ? played.filter((m) => m > n).length + 1 : '—';
+    });
+    if (count('played')) count('played').textContent = played.length;
+    if (count('all')) count('all').textContent = shown.length;
+    if (table) table.hidden = shown.length === 0;
+    if (empty) empty.hidden = shown.length > 0;
+
+    // URL と並べ替えリンクに今の学年を入れる
+    const setParams = (params) => {
+      params.delete('who');
+      params.delete('entry');
+      if (who !== 'all') params.set('who', who);
+      if (who === 'grade') params.set('entry', slotValue);
+    };
+    const url = new URL(location.href);
+    setParams(url.searchParams);
+    history.replaceState(history.state, '', url);
+    document.querySelectorAll('th.sortable a').forEach((a) => {
+      const u = new URL(a.href);
+      setParams(u.searchParams);
+      a.href = u;
+    });
+
+    if (changed) animateIn(shown);
+  };
+
+  // スロットは最初の1回（changed = false）で今の段を覚えるだけ。そのあと回したら絞り込み直す
+  const refreshSlot = slot ? makeSlot(slot, (value, changed) => {
+    slotValue = value;
+    if (changed) apply(true);
+  }) : () => {};
+  radios.forEach((r) => r.addEventListener('change', () => {
+    // 学年別にしたときは、隠れていて高さ 0 だったスロットの位置を測り直す
+    if (r.value === 'grade') refreshSlot();
+    apply(true);
+  }));
+  apply(false);
 }
 
 /* ---------------------------------------------------------------------
