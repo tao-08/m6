@@ -98,7 +98,7 @@ $memberParams = $entryFrom !== null ? [$entryFrom, $entryTo] : [];
 $bandSql = $memberSql === '' ? '' : ' AND EXISTS (SELECT 1 FROM band_member fbm JOIN member m ON m.member_id = fbm.member_id
     WHERE fbm.band_id = b.band_id' . $memberSql . ')';
 
-// 「楽器別」「楽器ごとの1位」の Vo の数え方（?vo=sum）
+// 「楽器別」「楽器別出演数ランキング」の Vo の数え方（?vo=sum）
 //   初期値: Vo と Gt を両方やった人は「Vo/Gt」の行に数える（Vo はボーカル専任だけ）
 //   sum   : Vo/Gt の行を作らず、Vo と Gt の両方に1回ずつ数える（Vo = 歌った人全員）
 $voSum = ($_GET['vo'] ?? '') === 'sum';
@@ -217,7 +217,7 @@ $artists = rows($pdo, 'SELECT a.artist_id, a.name, COUNT(*) AS n
 //   このまとめは SQL では書きにくいので、行を全部読んで PHP で数える（lineup_parts_by_band → tally_parts）
 //   slots = のべ出演数（バンド × 人）、people = 人数
 //   「Voを合算する」はページ移動なしで切り替えられるように、両方の数え方を作っておく（表示しない方は hidden）
-//   メンバーで絞っているときは、対象メンバーの出演だけ数える（下の「楽器ごとの1位」もこの行を使い回す）
+//   メンバーで絞っているときは、対象メンバーの出演だけ数える（下の「楽器別出演数ランキング」もこの行を使い回す）
 $instrumentRows = rows($pdo, 'SELECT bm.band_id, bm.member_id, m.name, i.short_name, i.name AS instrument_name, i.sort_order
     FROM band_member bm
     JOIN member m ON m.member_id = bm.member_id
@@ -272,21 +272,30 @@ $topSongs = rows($pdo, 'SELECT m.member_id, m.name,
     WHERE 1 = 1' . $yearSql . $memberSql . '
     GROUP BY m.member_id ORDER BY n DESC, m.name LIMIT 10', array_merge($yearParams, $memberParams));
 
-// ---- 楽器ごとの1位 ----
-//   パート（Vo/Gt は Vo/Gt として。「Voを合算する」なら Vo と Gt の両方）× 人 で数えて、パートごとに一番多い人だけ残す（同じ数なら名前順）
+// ---- 楽器別出演数ランキング ----
+//   パート（Vo/Gt は Vo/Gt として。「Voを合算する」なら Vo と Gt の両方）× 人 で数えて、パートごとに上位5位まで残す
+//   （同じ数は同じ順位 → 5位が同率なら全員入る。並びは回数の多い順、同じ数なら名前順）
 //   楽器別と同じく、両方の数え方を作っておく（行は楽器別と同じものを使い回す）
 $kingRows = $instrumentRows;
 $names = array_column($kingRows, 'name', 'member_id'); // member_id => 名前
 $kingsOf = static function (bool $mergeVocal) use ($kingRows, $names): array {
     $kings = [];
     foreach (tally_parts(lineup_parts_by_band($kingRows, $mergeVocal)) as $t) {
-        $best = null;
+        $people = [];
         foreach ($t['members'] as $memberId => $n) {
-            if ($best === null || $n > $best['n'] || ($n === $best['n'] && strcmp($names[$memberId], $best['name']) < 0)) {
-                $best = ['member_id' => $memberId, 'name' => $names[$memberId], 'n' => $n];
-            }
+            $people[] = ['member_id' => $memberId, 'name' => $names[$memberId], 'n' => $n];
         }
-        $kings[] = $best + $t; // 人（member_id, name, n）+ パート（title, segments）
+        usort($people, static fn($a, $b) => [$b['n'], $a['name']] <=> [$a['n'], $b['name']]);
+        $ranks = tie_ranks($people, static fn($p) => $p['n']);
+        $top = [];
+        foreach ($people as $k => $p) {
+            if ($ranks[$k] > 5) {
+                break; // 並びが回数順なので、6位が出たらそこから先は全部6位以下
+            }
+            $top[] = $p + ['rank' => $ranks[$k]];
+        }
+        // 人（1位の member_id, name, n）+ パート（title, segments）+ 上位5位（top）
+        $kings[] = $top[0] + $t + ['top' => $top];
     }
     return $kings;
 };
@@ -486,11 +495,25 @@ $voHidden = static fn(string $view): string => ($view === 'sum') === $voSum ? ''
     <?php ranking_card('mic', '最多出演（バンド数）', $topBands, $memberLink, '組'); ?>
     <?php ranking_card('music_note', '最多演奏曲数', $topSongs, $memberLink, '曲'); ?>
     <section class="card">
-        <h2 class="section-title section-title--card section-title--tool" id="kings"><?= icon('military_tech') ?> 楽器ごとの1位<?= $voToggle('kings') ?></h2>
+        <h2 class="section-title section-title--card section-title--tool" id="kings"><?= icon('military_tech') ?> 楽器別出演数ランキング<?= $voToggle('kings') ?></h2>
+        <!-- 「[Dr] [▸ 12組] 1位の名前」: ▸ と回数を押すと、そのパートの上位5位（同率含む）を開け閉め（よく組むメンバーと同じ作り） -->
         <?php foreach ($instrumentKings as $view => $kings): ?>
-            <ul class="ranking ranking--plain" data-vo-view="<?= $view ?>"<?= $voHidden($view) ?>>
+            <ul class="ranking ranking--plain kings" data-vo-view="<?= $view ?>"<?= $voHidden($view) ?>>
                 <?php foreach ($kings as $k): ?>
-                    <li><span><?= part_badge($k) ?> <?= $memberLink($k) ?></span><span class="pill"><?= (int)$k['n'] ?>組</span></li>
+                    <li>
+                        <details class="partner">
+                            <summary>
+                                <?= part_badge($k) ?>
+                                <span class="pill"><span class="partner__chevron" aria-hidden="true">▸</span><?= (int)$k['n'] ?>組</span>
+                                <span class="kings__first"><?= implode('・', array_map($memberLink, array_filter($k['top'], static fn($p) => $p['rank'] === 1))) ?></span>
+                            </summary>
+                            <ol class="ranking kings__top">
+                                <?php foreach ($k['top'] as $p): ?>
+                                    <li data-rank="<?= (int)$p['rank'] ?>"><span><?= $memberLink($p) ?></span><span class="pill"><?= (int)$p['n'] ?>組</span></li>
+                                <?php endforeach; ?>
+                            </ol>
+                        </details>
+                    </li>
                 <?php endforeach; ?>
             </ul>
         <?php endforeach; ?>

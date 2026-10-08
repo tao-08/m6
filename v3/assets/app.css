@@ -1145,6 +1145,12 @@ a.setlist__song:hover { color: var(--accent); text-decoration: underline; }
   display: grid; place-items: center; border-radius: 999px; background: var(--accent); color: #fff;
   font-size: 12px; font-weight: 800; box-shadow: var(--shadow); opacity: 0; transform: scale(.6);
   transition: opacity .2s, transform .2s; pointer-events: none; }
+/* 楽器別出演数ランキング（stats.php）:「[Dr] [▸ 12組] 1位の名前」。▸ を開くと上位5位（同率含む）。開け閉めはよく組むメンバーの .partner を使い回す */
+.kings > li { align-items: flex-start; }
+.kings__first { min-width: 0; overflow-wrap: anywhere; }
+.kings__top { margin: 6px 0 2px 8px; font-size: 13px; }
+.kings__top li { padding: 5px 4px; }
+.kings .kings__top li[data-rank]::before { content: attr(data-rank); } /* 外側の .ranking--plain が番号を消すので、中の一覧だけ出し直す */
 .albums.is-sorting .album__rank { opacity: 1; transform: none; }
 /* 本人のページでは、いつでもカードをつかめる（JS: マウスは動かしたら、指は長押しでドラッグ開始） */
 .albums[data-album-sort] .album { cursor: grab; user-select: none; -webkit-user-select: none;

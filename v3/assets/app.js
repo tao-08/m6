@@ -18,6 +18,7 @@
  *    data-sortable      … タイムテーブルの行を ≡ のドラッグで並び替え（時間の列は動かない）
  *    data-album-box     … マイアルバムの開け閉め（閉じているときは先頭5枚だけ）
  *    data-partner-box   … よく組むメンバーの開け閉め（閉じているときは上位5人だけ）
+ *    .kings             … 楽器別出演数ランキングの上位5位をふわっと出す
  *    data-album-sort    … マイアルバムをドラッグで並び替えて保存
  *    data-album-search  … アルバム検索をページ移動なしで（結果の部分だけ差し替える）
  *    data-album-add     … アルバムの追加をページ移動なしで（追加したカードを一覧に足す）
@@ -58,6 +59,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupSlotSort();
   setupAlbumBox();
   setupPartnerBox();
+  setupKings();
   setupAlbumSort();
   setupAlbumSearch();
   setupAlbumAdd();
@@ -2377,6 +2379,24 @@ function setupPartnerBox() {
     if (closing && box.getBoundingClientRect().top < 0) box.scrollIntoView({ behavior: 'smooth' });
   });
   setOpen(false);
+}
+
+/* ---------------------------------------------------------------------
+ * 楽器別出演数ランキング（stats.php の .kings）
+ *   ▸ を開いたとき、上位5位の行を上から順にふわっと出す（よく組むメンバーと同じく、開く「前」の click で動かし始める）
+ * ------------------------------------------------------------------- */
+function setupKings() {
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  document.querySelectorAll('.kings').forEach((list) => {
+    list.addEventListener('click', (e) => {
+      const summary = e.target.closest('.partner > summary');
+      if (!summary || e.target.closest('a') || summary.parentElement.open) return;
+      summary.parentElement.querySelectorAll('.kings__top > li').forEach((li, i) => {
+        li.animate([{ opacity: 0, transform: 'translateY(6px)' }, { opacity: 1, transform: 'none' }],
+          { duration: 200, delay: i * 30, easing: 'ease-out', fill: 'backwards' });
+      });
+    });
+  });
 }
 
 /* ---------------------------------------------------------------------
