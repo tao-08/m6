@@ -151,11 +151,13 @@ function name_reading(array $r): string
     return mb_convert_kana(($r['name_kana'] ?? '') ?: $r['name'], 'c');
 }
 
-// # の順位: 出演・ライブ・トリで並べ替えたときはその列の、それ以外（いつもの並び・名前・入学）は出演の、多い順のランキング
+// # の順位: 出演・ライブ・トリで並べ替えたときだけ、その列の多い順のランキングを # の列に出す（$showRank）
+//   それ以外（いつもの並び・名前・入学）は # の列を空にする（列の幅は残して、並びを変えても表がずれないように）。順位は同じ値のときの並びの決め手にだけ使う（出演の多い順）
 //   昇順に並べても順位は「多い人が1位」のまま（表の上から # が大きい順に並ぶ）
 //   同じ値なら同じ順位で、次はその人数分とばす（10, 8, 8, 5 → 1, 2, 2, 4）。出演なしの人は順位なし（—）
 //   学年で絞り込んだときは JS が同じ決まりで、見えている人の中で付け直す（data-score）
-$rankCol = in_array($sort, ['bands', 'lives', 'headliners'], true) ? $sort : 'bands';
+$showRank = in_array($sort, ['bands', 'lives', 'headliners'], true);
+$rankCol = $showRank ? $sort : 'bands';
 $scores = array_map(static fn($r) => (int)$r[$rankCol], $rows);
 $ranks = [];
 foreach ($scores as $i => $mine) {
@@ -274,7 +276,7 @@ render_header('メンバー', 'members');
     <div class="card table-card" data-grade-table>
         <table class="table table--list table--members">
             <thead><tr>
-                <th class="num">#</th>
+                <th class="num"><?= $showRank ? '#' : '' ?></th>
                 <?= sort_th('name', '名前', $sort, $dir) ?>
                 <?= sort_th('entry', '入学', $sort, $dir, 'num') ?>
                 <th>担当楽器</th>
@@ -283,6 +285,7 @@ render_header('メンバー', 'members');
                 <?= sort_th('lives', 'ライブ', $sort, $dir, 'num hide-sm') ?>
                 <?= sort_th('headliners', 'トリ', $sort, $dir, 'num') ?>
                 <th class="name-end">名前</th><!-- スマホだけ右端にも名前（横にスクロールして数字を見ているときに、誰の数字かわかるように） -->
+                <?php if ($showRank): ?><th class="num rank-end">#</th><?php endif; ?><!-- スマホでランキングのときだけ、右端の名前のさらに右にも # -->
             </tr></thead>
             <tbody>
             <?php foreach ($list as $r): ?>
@@ -290,7 +293,8 @@ render_header('メンバー', 'members');
                      data-entry / data-bands / data-score: 学年の絞り込みと順位の付け直しに使う（入学年度が不明なら空。data-score は順位を付ける列の値） -->
                 <tr class="member-row<?= (int)$r['member_id'] === $myId ? ' is-me' : '' ?>" data-text="<?= h($r['name'] . ' ' . ($r['name_kana'] ?? '')) ?>"
                     data-entry="<?= $r['entry_year'] !== null ? (int)$r['entry_year'] : '' ?>" data-bands="<?= (int)$r['bands'] ?>" data-score="<?= (int)$r[$rankCol] ?>">
-                    <td class="num muted" data-rank><?= $r['rank'] ?? '—' ?></td>
+                    <!-- data-rank: 学年で絞り込んだとき JS が順位を書き直す目印。ランキングでないときは付けない（空のまま） -->
+                    <?php if ($showRank): ?><td class="num muted" data-rank><?= $r['rank'] ?? '—' ?></td><?php else: ?><td class="num"></td><?php endif; ?>
                     <td><a href="member?id=<?= (int)$r['member_id'] ?>"<?= $r['rank'] ? ' class="strong"' : '' ?>><?= h($r['name']) ?></a></td>
                     <!-- 2023 → '23（下2桁だけ。sprintf の %02d で 2005 → '05 のように0を残す） -->
                     <td class="num muted"><?= $r['entry_year'] !== null ? sprintf("'%02d", (int)$r['entry_year'] % 100) : '—' ?></td>
@@ -304,6 +308,7 @@ render_header('メンバー', 'members');
                         <td class="num muted small">—</td><td class="hide-sm"></td><td></td>
                     <?php endif; ?>
                     <td class="name-end"><a href="member?id=<?= (int)$r['member_id'] ?>"<?= $r['rank'] ? ' class="strong"' : '' ?>><?= h($r['name']) ?></a></td>
+                    <?php if ($showRank): ?><td class="num muted rank-end" data-rank><?= $r['rank'] ?? '—' ?></td><?php endif; ?>
                 </tr>
             <?php endforeach; ?>
             </tbody>

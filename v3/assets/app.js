@@ -829,8 +829,10 @@ function setupGradeSlot() {
     const played = shown.filter((tr) => +tr.dataset.bands > 0).map((tr) => +tr.dataset.score);
     shown.forEach((tr) => {
       const n = +tr.dataset.score;
-      tr.querySelector('[data-rank]').textContent = +tr.dataset.bands > 0
-        ? played.filter((m) => m > n).length + 1 : '—';
+      // # に順位を出すのはランキングの並びのときだけ（それ以外は空のマスで data-rank が無い）。
+      //   左端の # と、スマホで右端に出す # の2つがある
+      const rank = +tr.dataset.bands > 0 ? played.filter((m) => m > n).length + 1 : '—';
+      tr.querySelectorAll('[data-rank]').forEach((cell) => { cell.textContent = rank; });
     });
     if (count('played')) count('played').textContent = played.length;
     if (count('all')) count('all').textContent = shown.length;

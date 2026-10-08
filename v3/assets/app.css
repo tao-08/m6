@@ -462,7 +462,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
   opacity: 0; visibility: hidden; transition: opacity .12s; box-shadow: 0 8px 20px -6px rgb(0 0 0 / .35); }
 .album-tip.is-visible { opacity: 1; visibility: visible; }
 /* メンバー一覧の右端の名前列。PC は表が画面に収まるので出さない（スマホは下の @media で出す） */
-.table--members .name-end { display: none; }
+.table--members .name-end, .table--members .rank-end { display: none; }
 /* メンバー一覧の担当楽器「ほか」: 楽器のバッジは色が薄いので、黒い背景ではなくカードと同じ白い背景に出す */
 .album-tip--parts { background: var(--surface); color: var(--text); border: 1px solid var(--border); padding: 8px; }
 .album-tip--parts .partbar { margin: 0; gap: 4px; }
@@ -1294,6 +1294,7 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
   .table--list td:first-child, .table--list th:first-child { padding-inline: 10px 4px; } /* # の列 */
   .table--members td:first-child, .table--members th:first-child { padding-left: 4px; } /* メンバー一覧は列が多いので # の左をさらに詰める */
   .table--members .name-end { display: table-cell; padding-left: 12px; } /* 横にスクロールして右端まで来たとき、数字の右に名前 */
+  .table--members .rank-end { display: table-cell; padding-right: 10px; text-align: left; } /* ランキングのときは、右端の名前のさらに右に #（名前に寄せて左寄せ） */
   .table--list .plays { text-align: left; } /* 見出し「演奏回数 ▼」が数字より広いので、右寄せだと名前との間が空く。左に寄せて名前の近くに */
   .card.table-card { padding: 0; }
   .table-scroll--flush { margin: 0; }
