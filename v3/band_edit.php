@@ -182,22 +182,9 @@ if (is_post()) {
 if (!$members) {
     $members[] = ['name' => '', 'choice' => '2']; // メンバー0人でも1行は出す（「＋ 行を追加」は最後の行をコピーして作るので）
 }
-// 名前の入力候補。ふりがな（name_kana）でも探せるように一緒に読む
-$allNames = $pdo->query('SELECT name, name_kana FROM member ORDER BY name')->fetchAll(PDO::FETCH_KEY_PAIR);
+$allNames = member_name_choices($pdo); // 名前の入力候補 [名前 => ふりがな]（lib/repository.php）
 $allArtists = $pdo->query('SELECT name FROM artist ORDER BY name')->fetchAll(PDO::FETCH_COLUMN);
-// バンド名の入力候補: 今までに使われたバンド名を新しい順（年度 → 開催日 → 登録順）に並べ、
-// そのあとに、まだバンド名として使われていないアーティスト名を名前順に足す。
-// 候補は最大8件しか出さないので、何年分も「ヨルシカ(〇〇)」がたまっても最近の代が先に出るようにする
-$allBandNames = $pdo->query('SELECT name FROM (
-        SELECT b.name, 0 AS grp, MAX(l.fiscal_year) AS y, MAX(d.held_on) AS held, MAX(b.band_id) AS id
-        FROM band b
-        JOIN live_day d ON d.live_day_id = b.live_day_id
-        JOIN live l ON l.live_id = d.live_id
-        GROUP BY b.name
-        UNION ALL
-        SELECT a.name, 1, NULL, NULL, NULL FROM artist a WHERE a.name NOT IN (SELECT name FROM band)
-    ) t
-    ORDER BY grp, y DESC, held DESC, id DESC, name')->fetchAll(PDO::FETCH_COLUMN);
+$allBandNames = band_name_choices($pdo); // バンド名の入力候補（新しい順。lib/repository.php）
 
 render_header($isNew ? 'バンドを追加' : 'バンドを編集', 'lives');
 ?>
@@ -217,6 +204,19 @@ render_header($isNew ? 'バンドを追加' : 'バンドを編集', 'lives');
         <label class="field"><span>開始</span><input type="time" name="start_time" value="<?= h(fmt_time($band['start_time'])) ?>"></label>
         <label class="field"><span>終了</span><input type="time" name="end_time" value="<?= h(fmt_time($band['end_time'])) ?>"></label>
         <label class="field field--wide"><span>メモ</span><input name="note" value="<?= h($band['note']) ?>" maxlength="255"></label>
+        <label class="field field--wide"><span>YouTube のリンク（任意）</span><input type="url" name="youtube_url" value="<?= h((string)$band['youtube_url']) ?>" maxlength="500" placeholder="https://www.youtube.com/watch?v=…" inputmode="url"></label>
+    </div>
+    <?= render_suggest_datalist('band-names', $allBandNames) ?>
+    <datalist id="artists"><?php foreach ($allArtists as $n): ?><option value="<?= h($n) ?>"><?php endforeach; ?></datalist>
+
+    <h2 class="section-title">メンバー</h2>
+    <p class="muted small">サポートメンバーを含めて出演者を全員登録してください。<br>セットリストを登録すると曲ごとの楽器の持ち替えも記録できます。</p>
+    <!-- 🚩 楽器の確認待ち（取り込み・タイムテーブル編集と同じ部品）。付けるとバンドページ・メンバーのトップで知らせる。
+         いま付いているときは、確認をうながす文を一緒に出す（外して保存 = 確認した） -->
+    <div class="check-flag<?= $band['needs_check'] ? ' flash flash--warn' : '' ?>">
+        <?php if ($band['needs_check']): ?><span><?= icon('flag', 'icon--fill flag-icon') ?> 楽器の登録があっているか確認してください。確認できたら旗を外して保存してください。</span><?php endif; ?>
+        <label class="check"><span class="flag-toggle"><input type="checkbox" name="flag" value="1"<?= $band['needs_check'] ? ' checked' : '' ?>><?= icon('flag') ?></span> 楽器の確認をメンバーにお願いする</label>
+    </div>
     <?php if ($lockedMembers): ?>
         <!-- セトリに出ている人: 楽器はセトリから自動で決まるので、ここでは見るだけ（disabled なので送信もされない） -->
         <p class="muted small">セットリストに出ている人の楽器は、セットリストの内容から自動で設定されます。変えるときは<a href="songs_edit.php?band=<?= (int)$band['band_id'] ?>">セットリストを編集</a>してください。</p>
@@ -230,19 +230,6 @@ render_header($isNew ? 'バンドを追加' : 'バンドを編集', 'lives');
             <?php endforeach; ?>
         </div>
     <?php endif; ?>
-        <label class="field field--wide"><span>YouTube のリンク（任意）</span><input type="url" name="youtube_url" value="<?= h((string)$band['youtube_url']) ?>" maxlength="500" placeholder="https://www.youtube.com/watch?v=…" inputmode="url"></label>
-    </div>
-    <datalist id="band-names"><?php foreach ($allBandNames as $n): ?><option value="<?= h((string)$n) ?>"><?php endforeach; ?></datalist>
-    <datalist id="artists"><?php foreach ($allArtists as $n): ?><option value="<?= h($n) ?>"><?php endforeach; ?></datalist>
-
-    <h2 class="section-title">メンバー</h2>
-    <p class="muted small">サポートメンバーを含めて出演者を全員登録してください。<br>セットリストを登録すると曲ごとの楽器の持ち替えも記録できます。</p>
-    <!-- 🚩 楽器の確認待ち（取り込み・タイムテーブル編集と同じ部品）。付けるとバンドページ・メンバーのトップで知らせる。
-         いま付いているときは、確認をうながす文を一緒に出す（外して保存 = 確認した） -->
-    <div class="check-flag<?= $band['needs_check'] ? ' flash flash--warn' : '' ?>">
-        <?php if ($band['needs_check']): ?><span><?= icon('flag', 'icon--fill flag-icon') ?> 楽器の登録があっているか確認してください。確認できたら旗を外して保存してください。</span><?php endif; ?>
-        <label class="check"><span class="flag-toggle"><input type="checkbox" name="flag" value="1"<?= $band['needs_check'] ? ' checked' : '' ?>><?= icon('flag') ?></span> 楽器の確認をメンバーにお願いする</label>
-    </div>
     <div class="member-rows" data-rows>
         <?php foreach ($members as $m): ?>
             <div class="member-row-edit">
@@ -253,7 +240,7 @@ render_header($isNew ? 'バンドを追加' : 'バンドを編集', 'lives');
         <?php endforeach; ?>
     </div>
     <button type="button" class="btn btn--ghost btn--sm" data-add-row>＋ メンバーを追加</button>
-    <datalist id="member-names"><?php foreach ($allNames as $n => $kana): ?><option value="<?= h((string)$n) ?>" data-kana="<?= h((string)$kana) ?>"><?php endforeach; ?></datalist>
+    <?= render_suggest_datalist('member-names', array_keys($allNames), $allNames) ?>
 
     <div class="form-actions">
         <?php if (!$isNew): ?><a class="btn btn--ghost" href="songs_edit.php?band=<?= (int)$band['band_id'] ?>">セットリストを編集</a><?php endif; ?>

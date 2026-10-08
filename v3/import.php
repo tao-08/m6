@@ -447,6 +447,8 @@ if ($plan === null): // ==================== アップロード画面 ==========
 
     // ---- 入力欄の候補（datalist）用に、既存のライブ名・会場を取っておく ----
     $liveNames = $pdo->query('SELECT DISTINCT name FROM live ORDER BY name')->fetchAll(PDO::FETCH_COLUMN);
+    $memberNames = member_name_choices($pdo); // 名簿のメンバー欄の候補 [名前 => ふりがな]（ふりがなでも探せる）
+    $bandNames = band_name_choices($pdo);     // タイムテーブルのバンド名の候補（新しい順）
     // 「登録済みのライブと統合」のポップアップ用（登録済みの日程名つき）
     $lives = lives_with_labels($pdo);
     $dayLabels = day_labels($pdo); // 日程名のプルダウンの中身
@@ -555,7 +557,10 @@ if ($plan === null): // ==================== アップロード画面 ==========
     <?= csrf_field() ?>
     <input type="hidden" name="action" value="commit">
 
-    <datalist id="dl-live-names"><?php foreach ($liveNames as $n): ?><option value="<?= h($n) ?>"><?php endforeach; ?></datalist>
+    <!-- 入力候補（data-suggest-list で使う。assets/app.js の setupSuggest） -->
+    <?= render_suggest_datalist('dl-live-names', $liveNames) ?>
+    <?= render_suggest_datalist('member-names', array_keys($memberNames), $memberNames) ?>
+    <?= render_suggest_datalist('band-names', $bandNames) ?>
     <!-- 名簿の検索欄の候補。data-key は JS が「名簿」側の表示を更新するのに使う -->
     <datalist id="dl-roster"><?php foreach ($rosterChoices as $label => $ref): ?><option value="<?= h($label) ?>" data-key="<?= h($ref) ?>"><?php endforeach; ?></datalist>
     <!-- 「登録済みのライブと統合」のポップアップの中身（JS が開くたびに複製して使う） -->
@@ -630,7 +635,7 @@ if ($plan === null): // ==================== アップロード画面 ==========
                     <span class="live-name-head">ライブ名
                         <button type="button" class="merge-toggle" aria-pressed="<?= $merge ? 'true' : 'false' ?>" data-merge-toggle><?= icon('merge') ?> 登録済みのライブと統合</button>
                     </span>
-                    <input name="tt[<?= $ti ?>][live_name]" value="<?= h($val('live_name', $tt['live_name'])) ?>" list="dl-live-names" maxlength="50" placeholder="例: 文化祭ライブ" required data-live-name<?= $merge ? ' hidden disabled' : '' ?>>
+                    <input name="tt[<?= $ti ?>][live_name]" value="<?= h($val('live_name', $tt['live_name'])) ?>" data-suggest-list="dl-live-names" autocomplete="off" maxlength="50" placeholder="例: 文化祭ライブ" required data-live-name<?= $merge ? ' hidden disabled' : '' ?>>
                     <!-- disabled の欄は送信されない → OFF のときは merge / live_id を送らない -->
                     <input type="hidden" name="tt[<?= $ti ?>][merge]" value="1" data-merge-flag<?= $merge ? '' : ' disabled' ?>>
                     <input type="hidden" name="tt[<?= $ti ?>][live_id]" value="<?= $mergeLive ? (int)$mergeLive['live_id'] : '' ?>" data-live-id<?= $merge ? '' : ' disabled' ?>>
@@ -704,8 +709,8 @@ if ($plan === null): // ==================== アップロード画面 ==========
                             <td class="mono nowrap"><span data-order-text><?= $orderNo ?></span>
                                 <input type="hidden" name="tt[<?= $ti ?>][s][<?= $si ?>][order]" value="<?= $orderNo ?>" data-order></td>
                             <td class="mono nowrap muted" data-time><?= h($ts['start_time']) ?><?= $ts['end_time'] ? '–' . h($ts['end_time']) : '' ?></td>
-                            <td><input name="tt[<?= $ti ?>][s][<?= $si ?>][name]" value="<?= h($fs['name'] ?? $s['band_name']) ?>" maxlength="100" data-band-name aria-label="バンド名"></td>
-                            <td><input name="tt[<?= $ti ?>][s][<?= $si ?>][roster]" value="<?= h($roster) ?>" list="dl-roster"
+                            <td><input name="tt[<?= $ti ?>][s][<?= $si ?>][name]" value="<?= h($fs['name'] ?? $s['band_name']) ?>" maxlength="100" data-suggest-list="band-names" autocomplete="off" data-band-name aria-label="バンド名"></td>
+                            <td><input name="tt[<?= $ti ?>][s][<?= $si ?>][roster]" value="<?= h($roster) ?>" data-suggest-list="dl-roster" data-suggest-seed="[data-band-name]" autocomplete="off"
 							class="name-input <?= $rosterClass ?>" title="<?= h($rosterHint) ?>" placeholder="名簿から検索" data-roster-input aria-label="名簿のバンド"></td>
                             <td><input type="number" class="input-num" name="tt[<?= $ti ?>][s][<?= $si ?>][songs]" value="<?= h($fs['songs'] ?? $s['song_count'] ?? '') ?>" min="0" aria-label="曲数"></td>
                             <td><input name="tt[<?= $ti ?>][s][<?= $si ?>][note]" value="<?= h($fs['note'] ?? '') ?>" maxlength="255" aria-label="メモ"></td>
@@ -781,7 +786,7 @@ if ($plan === null): // ==================== アップロード画面 ==========
                                 <td>
                                     <input name="rb[<?= $ri ?>][<?= $bi ?>][c][<?= $col ?>]" value="<?= h($cellTexts[$k]) ?>"
                                            class="name-input<?= $stt['status'] ? ' is-' . h($stt['status']) : '' ?>"
-                                           title="<?= h($stt['hint']) ?>" data-name-cell aria-label="メンバー"<?= suggest_attr($stt) ?>>
+                                           title="<?= h($stt['hint']) ?>" data-name-cell data-suggest-list="member-names" autocomplete="off" aria-label="メンバー"<?= suggest_attr($stt) ?>>
                                     <?php if ($c['part'] === 'Vo'):
                                         // Vo. 欄: 単体 / ギター / ベースボーカルを切り替える（初期値は名簿の「山田(Gt)」の書き方から）
                                         $vr = vocal_role($form['rb'][$ri][$bi]['vr'][$col] ?? $band['vo_roles'][$col] ?? null); ?>
@@ -803,7 +808,7 @@ if ($plan === null): // ==================== アップロード画面 ==========
                                 <td>
                                     <input name="rb[<?= $ri ?>][<?= $bi ?>][x][<?= $n ?>][name]" value="<?= h($cellTexts[$k]) ?>"
                                            class="name-input<?= $stt['status'] ? ' is-' . h($stt['status']) : '' ?>"
-                                           title="<?= h($stt['hint']) ?>" data-name-cell aria-label="メンバー"<?= suggest_attr($stt) ?>>
+                                           title="<?= h($stt['hint']) ?>" data-name-cell data-suggest-list="member-names" autocomplete="off" aria-label="メンバー"<?= suggest_attr($stt) ?>>
                                     <?= render_pick("rb[$ri][$bi][x][$n][inst]", $allInstOptions, $instShown, (string)$cellInsts[$k], 'この人の楽器', trim($cellTexts[$k]) === '', 'inst') ?>
                                 </td>
                             <?php endfor; ?>

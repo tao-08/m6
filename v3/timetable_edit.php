@@ -227,8 +227,7 @@ if (!isset($breaksByDay)) { // 初めて開いたとき（エラーで戻って�
         $breaksByDay[$dayId] ??= gap_breaks($dayBands, '休憩');
     }
 }
-// 名前の入力候補。ふりがな（name_kana）でも探せるように一緒に読む（band_edit.php と同じ）
-$allNames = $pdo->query('SELECT name, name_kana FROM member ORDER BY name')->fetchAll(PDO::FETCH_KEY_PAIR);
+$allNames = member_name_choices($pdo); // 名前の入力候補 [名前 => ふりがな]（lib/repository.php）
 
 /**
  * 休憩の1行（ページの表と、JS が複製する <template> の両方で使う）
@@ -277,7 +276,7 @@ render_header('タイムテーブルを編集', 'lives'); ?>
 <!-- data-pack: 送信時に JS が全項目を JSON 1個にまとめる（read_form_input() の説明参照） -->
 <form method="post" class="tt-form" data-pack>
     <?= csrf_field() ?>
-    <datalist id="member-names"><?php foreach ($allNames as $n => $kana): ?><option value="<?= h((string)$n) ?>" data-kana="<?= h((string)$kana) ?>"><?php endforeach; ?></datalist>
+    <?= render_suggest_datalist('member-names', array_keys($allNames), $allNames) ?>
 
     <?php $breakNo = 0; // 休憩の行の番号（name の k[番号]。ページ全体で通し番号。JS で足す行はこの続きから）
     foreach ($days as $i => $d):

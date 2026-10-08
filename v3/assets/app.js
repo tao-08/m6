@@ -2481,6 +2481,8 @@ function setupRosterColumns() {
       input.name = `${base}[name]`;
       input.className = 'name-input';
       input.dataset.nameCell = '';
+      input.dataset.suggestList = 'member-names'; // 入力候補（setupSuggest）
+      input.autocomplete = 'off';
       input.setAttribute('aria-label', 'メンバー');
       // 楽器の切り替えボタンを複製して、ラジオボタンの name をこのセル用に付け直す（初期値はキーボード、名前が入るまで畳む）
       const pick = tpl.content.firstElementChild.cloneNode(true);
@@ -2884,12 +2886,16 @@ function setupMemberRows() {
  *   絞り込んだ候補を .live-pop（setupSelectPick と同じ見た目）で出す。
  *
  *   ・前方一致を先、部分一致を後に、最大 8 件
+ *   ・それでも 8 件に足りなければ「ゆるい一致」で埋める: 先頭の何文字かが同じもの（一致が長い順）。
+ *     先頭 2 文字以上の一致を探し、1 件も無ければ 1 文字まで広げる（打ち間違い「佐藤さくや」→ 佐藤さくら）
  *   ・ひらがな/カタカナ、全角/半角、大文字/小文字は区別しない
  *   ・<option data-kana="ふりがな"> があれば、ふりがなでも探す（「さと」→ 佐藤さくら）
  *     日本語入力の変換前（下線が付いている「さと」の状態）でも input イベントは来るので、変換しなくても候補が出る
  *   ・フォーカスは入力欄に残したまま ↑↓ で選び、Enter で確定、Esc で閉じる
  *     （変換中の ↑↓ Enter は日本語入力のものなので横取りしない。変換中は候補を押して選ぶ）
  *   ・行の追加で後から増えた入力欄も、document で待ち受けているので何もしなくても効く
+ *   ・<input data-suggest-seed="セレクタ"> は、押したときに同じ行（tr）のその欄の文字で前方一致の候補を出す
+ *     （取り込み画面の「名簿内バンド」: 押すと、登録するバンド名で名簿のバンドを探して出す。部分一致は使わない）
  * ------------------------------------------------------------------- */
 function setupSuggest() {
   // 「入力欄が無ければ何もしない」の早期 return はしない。
@@ -2950,38 +2956,65 @@ function setupSuggest() {
     return span;
   };
 
+  // 先頭から何文字同じか（「さとうさくや」と「さとうさくら」→ 5）
+  const commonPrefix = (a, b) => {
+    let i = 0;
+    while (i < a.length && i < b.length && a[i] === b[i]) i++;
+    return i;
+  };
+
   // 候補1行の中身: 名前（＋ ふりがなで当たったときは、右に小さくふりがな）
-  const label = (hit, q, kq) => {
-    const name = highlight(document.createElement('span'), hit.name, hit.byKana ? '' : q, norm);
+  //   hit.mark = 赤くする文字（そろえた後の文字。ゆるい一致は一致した先頭の部分だけ）
+  const label = (hit) => {
+    const name = highlight(document.createElement('span'), hit.name, hit.byKana ? '' : hit.mark, norm);
     name.className = 'live-pop__name';
     if (!hit.byKana) return [name];
-    const kana = highlight(document.createElement('span'), hit.kana.replace(/\s+/g, ''), kq, normKana);
+    const kana = highlight(document.createElement('span'), hit.kana.replace(/\s+/g, ''), hit.mark, normKana);
     kana.className = 'suggest-pop__kana';
     return [name, kana];
   };
 
-  const open = (input) => {
+  // seed: 入力欄の文字の代わりに、この文字で探す（data-suggest-seed で押したとき）。前方一致だけにし、完全一致の1件でも出す
+  const open = (input, seed = null) => {
     close();
-    const q = norm(input.value.trim());
-    const kq = normKana(input.value);
+    const raw = seed ?? input.value;
+    const q = norm(raw.trim());
+    const kq = normKana(raw);
     const list = document.getElementById(input.dataset.suggestList);
     if (!q || !list) return;
 
     // 名前で当たったものを優先し、ふりがなだけで当たったものはその後ろに（それぞれ前方一致 → 部分一致の順）
     const groups = [[], [], [], []]; // 名前の前方一致 / ふりがなの前方一致 / 名前の部分一致 / ふりがなの部分一致
+    const loose = [];                // どれにも当たらなかったもの（ゆるい一致の材料）{ ...hit, len: 先頭の一致の長さ }
     for (const o of list.options) {
       const n = norm(o.value);
       const k = normKana(o.dataset.kana || '');
-      const hit = { name: o.value, kana: o.dataset.kana || '', byKana: false };
+      const hit = { name: o.value, kana: o.dataset.kana || '', byKana: false, mark: q };
       if (n.startsWith(q)) groups[0].push(hit);
-      else if (k && k.startsWith(kq)) groups[1].push({ ...hit, byKana: true });
-      else if (n.includes(q)) groups[2].push(hit);
-      else if (k && k.includes(kq)) groups[3].push({ ...hit, byKana: true });
-      if (groups[0].length >= MAX) break;
+      else if (k && k.startsWith(kq)) groups[1].push({ ...hit, byKana: true, mark: kq });
+      else if (seed === null && n.includes(q)) groups[2].push(hit);
+      else if (seed === null && k && k.includes(kq)) groups[3].push({ ...hit, byKana: true, mark: kq });
+      else {
+        // 名前とふりがなの、先頭が長く一致している方を使う
+        const ln = commonPrefix(n, q);
+        const lk = k ? commonPrefix(k, kq) : 0;
+        const byKana = lk > ln;
+        const len = Math.max(ln, lk);
+        if (len > 0) loose.push({ ...hit, byKana, len, mark: (byKana ? kq : q).slice(0, len) });
+      }
     }
-    const hits = groups.flat().slice(0, MAX);
+    // ゆるい一致: 先頭 2 文字以上を一致が長い順に。2 文字の一致が無ければ 1 文字まで広げる
+    //   sort は同じ長さなら元の並び（datalist の順 = 新しい順など）のまま
+    let fuzzy = loose.filter((h) => h.len >= 2);
+    if (!fuzzy.length) fuzzy = loose;
+    fuzzy.sort((a, b) => b.len - a.len);
+    let hits = [...groups.flat(), ...fuzzy].slice(0, MAX);
+    // 押して開いた（seed）のに先頭が合うものが1つも無ければ、候補を全部出す（押したのに何も出ないと選べないので。多ければスクロール）
+    if (seed !== null && !hits.length) {
+      hits = [...list.options].map((o) => ({ name: o.value, kana: o.dataset.kana || '', byKana: false, mark: '' }));
+    }
     // 候補なし、または打った文字がそのまま唯一の候補なら出さない
-    if (!hits.length || (hits.length === 1 && norm(hits[0].name) === q)) return;
+    if (!hits.length || (seed === null && hits.length === 1 && norm(hits[0].name) === q)) return;
 
     document.querySelectorAll('.hint-pop').forEach((p) => p.remove()); // 「もしかして」と重ならないように
     const pop = document.createElement('div');
@@ -2995,7 +3028,7 @@ function setupSuggest() {
       item.id = `suggest-pop-${i}`;
       item.className = 'live-pop__item';
       item.setAttribute('role', 'option');
-      item.append(...label(hit, q, kq));
+      item.append(...label(hit));
       item.addEventListener('click', () => choose(input, hit.name));
       pop.append(item);
       return item;
@@ -3032,6 +3065,14 @@ function setupSuggest() {
     if (!e.target.matches?.('[data-suggest-list]')) return;
     if (skipNext) { skipNext = false; return; }
     open(e.target);
+  });
+
+  // data-suggest-seed: 押したら、同じ行の別の欄（バンド名など）の文字で候補を出す。もう開いていれば何もしない
+  document.addEventListener('click', (e) => {
+    const input = e.target.closest?.('[data-suggest-seed]');
+    if (!input || cur?.input === input) return;
+    const src = input.closest('tr')?.querySelector(input.dataset.suggestSeed);
+    if (src?.value.trim()) open(input, src.value);
   });
 
   document.addEventListener('keydown', (e) => {

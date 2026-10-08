@@ -964,3 +964,51 @@ function sync_account_names(PDO $pdo, ?int $memberId = null): void
     }
     $pdo->prepare($sql . ' WHERE u.member_id = ?')->execute([$memberId]);
 }
+
+/* =====================================================================
+ *  入力候補（assets/app.js の setupSuggest）用のデータ
+ *    <input data-suggest-list="datalist の id"> が、同じ id の <datalist> の option を候補にする
+ * ===================================================================== */
+
+/**
+ * メンバー名の候補: [名前 => ふりがな（無ければ NULL）]。ふりがなでも探せるように一緒に読む
+ */
+function member_name_choices(PDO $pdo): array
+{
+    return $pdo->query('SELECT name, name_kana FROM member ORDER BY name')->fetchAll(PDO::FETCH_KEY_PAIR);
+}
+
+/**
+ * バンド名の候補: 今までに使われたバンド名を新しい順（年度 → 開催日 → 登録順）に並べ、
+ * そのあとに、まだバンド名として使われていないアーティスト名を名前順に足す。
+ * 候補は最大8件しか出さないので、何年分も「ヨルシカ(〇〇)」がたまっても最近の代が先に出るようにする
+ */
+function band_name_choices(PDO $pdo): array
+{
+    return $pdo->query('SELECT name FROM (
+            SELECT b.name, 0 AS grp, MAX(l.fiscal_year) AS y, MAX(d.held_on) AS held, MAX(b.band_id) AS id
+            FROM band b
+            JOIN live_day d ON d.live_day_id = b.live_day_id
+            JOIN live l ON l.live_id = d.live_id
+            GROUP BY b.name
+            UNION ALL
+            SELECT a.name, 1, NULL, NULL, NULL FROM artist a WHERE a.name NOT IN (SELECT name FROM band)
+        ) t
+        ORDER BY grp, y DESC, held DESC, id DESC, name')->fetchAll(PDO::FETCH_COLUMN);
+}
+
+/**
+ * <datalist> を作る。$values は候補の文字の配列。
+ * $kana（[値 => ふりがな]、member_name_choices の形）を渡すと data-kana に入れる（JS がふりがなでも探す）
+ *   例: render_suggest_datalist('member-names', array_keys($names), $names)
+ */
+function render_suggest_datalist(string $id, array $values, array $kana = []): string
+{
+    $html = '<datalist id="' . h($id) . '">';
+    foreach ($values as $value) {
+        $value = (string)$value; // 数字だけの名前は配列のキーにすると int になるので文字に戻す
+        $k = (string)($kana[$value] ?? '');
+        $html .= '<option value="' . h($value) . '"' . ($k !== '' ? ' data-kana="' . h($k) . '"' : '') . '>';
+    }
+    return $html . '</datalist>';
+}
