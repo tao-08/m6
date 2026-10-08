@@ -434,8 +434,8 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .album-tip.is-visible { opacity: 1; visibility: visible; }
 .album-tip__title { font-size: 13px; overflow-wrap: anywhere; }
 .album-tip__artist { opacity: .75; overflow-wrap: anywhere; }
-/* スマホでは少し小さくするだけで、5枚とも出す（はみ出した分は表ごと横にスクロールする） */
-@media (max-width: 600px) { .thumbs__img { width: 30px; height: 30px; } }
+/* スマホでも5枚とも出す（はみ出した分は表ごと横にスクロールする）。ジャケットの間を詰めて、そのぶん少しだけ小さくするのにとどめる */
+@media (max-width: 600px) { .thumbs { gap: 2px; } .thumbs__img { width: 36px; height: 36px; border-radius: 3px; } }
 
 .partbar { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
 .partbar--cell { margin-top: 0; gap: 4px; flex-wrap: nowrap; } /* 表のセルの中（メンバー一覧の担当楽器）。折り返さずに横一列に並べる */
