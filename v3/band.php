@@ -42,6 +42,14 @@ if (!$band) {
 }
 $liveUrl = 'live.php?id=' . (int)$band['live_id'] . '#day-' . (int)$band['live_day_id'];
 
+// 🚩「楽器の確認」の「確認した」ボタン（ログインしていれば誰でも外せる）
+if (is_post() && ($_POST['action'] ?? '') === 'checked') {
+    verify_csrf();
+    $pdo->prepare('UPDATE band SET needs_check = 0 WHERE band_id = ?')->execute([$bandId]);
+    flash('確認済みにしました');
+    redirect('band.php?id=' . $bandId);
+}
+
 // トリ = その日程で出演順が一番うしろ。組数（COUNT）は「7/14」の分母に使う（MAX だと欠番があるとずれる）
 //   総バンド数（live_day.total_bands）が入っていれば分母はそちら。登録済みが総バンド数に足りない日程は、
 //   登録済みの最後が本当の最後ではないのでトリにしない
@@ -177,6 +185,16 @@ render_header($band['name'], 'lives');
         <a class="btn btn--sm" href="songs_edit.php?band=<?= $bandId ?>"><?= icon('queue_music') ?> 曲を<?= $songs ? '編集' : '登録' ?></a>
     </div>
 </section>
+
+<?php if ($band['needs_check']): ?>
+    <!-- 🚩 取り込みで「楽器があやしい」と印が付いたバンド。直したら「確認した」で外す（バンド編集で保存しても外れる） -->
+    <form method="post" class="flash flash--warn check-flag no-print">
+        <?= csrf_field() ?>
+        <input type="hidden" name="action" value="checked">
+        <span><?= icon('flag', 'icon--fill flag-icon') ?> メンバーの楽器の登録があっているか確認してください。違っていたら「バンドを編集」で直してください。</span>
+        <button class="btn btn--sm" type="submit">確認した</button>
+    </form>
+<?php endif; ?>
 
 <section class="card band-section">
     <h2 class="section-title section-title--card">メンバー<?php if ($memberIds): ?> <small class="muted"><?= count(array_unique($memberIds)) ?>人</small><?php endif; ?></h2>

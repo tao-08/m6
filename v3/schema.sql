@@ -188,10 +188,11 @@ CREATE TABLE band (
     play_order  SMALLINT UNSIGNED NOT NULL,            -- 出演順。その日の最大がトリ
     start_time  TIME              NULL,
     end_time    TIME              NULL,
-    song_count  TINYINT UNSIGNED  NOT NULL DEFAULT 0,
+    song_count  TINYINT UNSIGNED  NULL,                -- 曲数。NULL = 不明（未入力）。0 = 0曲（migrations/014）
     note        VARCHAR(255)      NULL,                -- 鍵盤の私物/貸出など
     youtube_url VARCHAR(500)      NULL,                -- このバンドの演奏動画の YouTube のリンク。無ければ NULL（migrations/012）
     is_omnibus  TINYINT(1)        NOT NULL DEFAULT 0,  -- 1 = いろんなアーティストの曲をやるバンド（曲ごとに song.artist_id を持つ）
+    needs_check TINYINT(1)        NOT NULL DEFAULT 0,  -- 1 = 楽器の登録を確認してほしい（取り込みで🚩を付けた。migrations/015）
     PRIMARY KEY (band_id),
     UNIQUE KEY uq_band_order (live_day_id, play_order), -- 同じ日に「3番目」が2組できない
     KEY idx_band_artist (artist_id),

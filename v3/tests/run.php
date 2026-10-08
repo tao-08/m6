@@ -81,6 +81,26 @@ check('会場', $tt['venue'], '新宿テスト');
 check('バンド数', count(array_filter($tt['slots'], fn($s) => $s['is_band'])), 2);
 check('休憩はバンドではない', $tt['slots'][1]['is_band'], false);
 check('終了時刻', $tt['slots'][2]['end_time'], '12:50');
+check('中にライブ名があればファイル名は使わない', apply_filename_hints($tt, '2024年度_文化祭_1日目.pdf')['live_name'], 'ライブハウス');
+check('中に日程があればファイル名の日目は使わない', apply_filename_hints($tt, '2024年度_文化祭_1日目.pdf')['label'], '2日目');
+check('中に無い年はファイル名から', apply_filename_hints($tt, '2024年度_文化祭_1日目.pdf')['hint_year'], 2024);
+
+echo "filename hints\n";
+$header = [['時間', '', '持ち時間', 'バンド名', '曲数', '人数'], ['11:30', '11:50', '20', 'バンドA', '3', '4']];
+$bare = parse_timetable($header); // タイトル・日付・会場が何も無いタイムテーブル
+$h = apply_filename_hints($bare, '2024年度_文化祭ライブ_2日目_タイムテーブル(最終版).pdf');
+check('ファイル名からライブ名', $h['live_name'], '文化祭ライブ');
+check('ファイル名から日程', $h['label'], '2日目');
+check('ファイル名から年度', [$h['hint_year'], $h['hint_fiscal']], [2024, true]);
+$h = apply_filename_hints($bare, '20241206 クリスマスライブ.csv');
+check('8桁の日付', [$h['hint_year'], $h['month'], $h['day'], $h['live_name']], [2024, 12, 6, 'クリスマスライブ']);
+$h = apply_filename_hints($bare, '新歓ライブ 2025 4.12 TT.xlsx');
+check('西暦と月日', [$h['hint_year'], $h['hint_fiscal'], $h['month'], $h['day'], $h['live_name']], [2025, false, 4, 12, '新歓ライブ']);
+$h = apply_filename_hints($bare, 'ライブ.xlsx［3日目］');
+check('シート名から日程', [$h['label'], $h['live_name'], $h['hint_year']], ['3日目', 'ライブ', null]);
+$t = parse_timetable([['2023年度 追いコンライブ', '3月10日'], ...$header]);
+check('タイトルの年度はライブ名から外す', [$t['live_name'], $t['hint_year'], $t['hint_fiscal']], ['追いコンライブ', 2023, true]);
+check('数字だけの「12月」を年にしない', find_year_hint('12月ライブ')['year'], null);
 
 echo "roster\n";
 $roster = parse_roster([

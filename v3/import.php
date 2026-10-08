@@ -307,7 +307,7 @@ if ($plan === null): // ==================== アップロード画面 ==========
         <input type="file" name="files[]" accept=".csv,.xlsx,.xlsm,.pdf,text/csv,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" multiple required data-file-input>
         <span class="dropzone__icon" aria-hidden="true"><?= icon('upload_file') ?></span>
         <span class="dropzone__title">ここにファイルをドロップ</span>
-        <span class="muted small">またはクリックして選択 · CSV / Excel / PDF · 最大<?= MAX_FILES ?>ファイル</span>
+        <span class="muted small">クリックしてファイルを選択 · CSV / Excel / PDF · 最大<?= MAX_FILES ?>ファイル</span>
         <ul class="dropzone__list" data-file-list></ul>
     </label>
     <button class="btn btn--primary btn--block" type="submit">読み込んでプレビュー</button>
@@ -316,15 +316,15 @@ if ($plan === null): // ==================== アップロード画面 ==========
 <section class="guide">
     <div class="card">
         <h3><span class="step">1</span>タイムテーブル</h3>
-        <p class="muted small">1ファイル（Excel なら1シート）= ライブ1日分。「時間 / 持ち時間 / バンド名 / 曲数 / 人数 / key」の列と、表の上の「○○ライブ2日目 / 会場 / △△」を読み取ります。何日分でもまとめてOK。</p>
+        <p class="muted small">1ファイルにつきライブ1日分を読み込みます。画像ファイルは読み込めないのでCSVファイルかPDFファイルに変換してください。</p>
     </div>
     <div class="card">
         <h3><span class="step">2</span>名簿</h3>
-        <p class="muted small">「バンド名 / Vo(Gt.) / Gt.1 / Gt.2 / Ba. / Dr. / Key.」の列を持つ表。バンド名でタイムテーブルと突き合わせ、名前が DB にいるかを色で表示します。タイムテーブルのファイルが無ければ、名簿だけ選ぶと次の画面でタイムテーブルを手入力できます。</p>
+        <p class="muted small">タイムテーブルのバンドと演奏者を紐づけます。タイムテーブルのファイルが無ければ、名簿だけ選ぶと次の画面でタイムテーブルを手入力できます。</p>
     </div>
     <div class="card">
-        <h3><span class="step">3</span>Excel / PDF について</h3>
-        <p class="muted small">Excel（.xlsx）はそのままアップロードOK。シートが複数あれば1枚ずつ読み、「バンド名」の見出しが無いシートは飛ばします。古い .xls は .xlsx で保存し直してください。Excel から書き出した「文字を選択できる」PDF に対応。写真やスキャンの PDF は読めないので Excel か CSV にしてください。</p>
+        <h3><span class="step">3</span>アップロード</h3>
+        <p class="muted small">正しい形式の名簿とタイムテーブルのファイルをセットで選択してください。複数ライブ分まとめてアップロードできます。</p>
     </div>
 </section>
 
@@ -506,7 +506,7 @@ if ($plan === null): // ==================== アップロード画面 ==========
     }
     $rosterBandCount = array_sum(array_map(static fn($r) => count($r['bands']), $plan['rosters']));
 
-    // タイムテーブルのどの枠にも対応していない名簿のバンド（チェックは付けておくが、枠が無いので登録されない）
+    // タイムテーブルのどの枠にも対応していない名簿のバンド（枠が無いので登録されない）
     // 最初にプレビューを開いたときだけポップアップで知らせる（登録失敗で戻ってきたときは出さない）
     $missingBands = [];
     if (!$form) {
@@ -524,7 +524,7 @@ if ($plan === null): // ==================== アップロード画面 ==========
     $guessedDates = [];
     if (!$form) {
         foreach ($plan['timetables'] as $tt) {
-            if ($tt['date'] !== '') {
+            if ($tt['date'] !== '' && empty($tt['year_known'])) { // 年がタイトルかファイル名にあったものは聞かない
                 $ts = strtotime($tt['date']);
                 $guessedDates[] = [
                     'title' => $tt['title'] !== '' ? $tt['title'] : $tt['file'],
@@ -723,6 +723,7 @@ if ($plan === null): // ==================== アップロード画面 ==========
         <span><i class="swatch swatch--ok"></i>DB に登録済み</span>
         <span><i class="swatch swatch--similar"></i>似た人がいる（書き間違い？）</span>
         <span><i class="swatch swatch--new"></i>新しいメンバーとして登録</span>
+        <span><?= icon('flag', 'icon--fill flag-icon') ?> 楽器があやしいバンドに付けると、登録後にメンバーへ確認をお願いする</span>
         <span class="muted small">セルにマウスを乗せる（スマホはタップ）と理由が出ます。1つのセルには1人。
             名簿で1つのセルに2人以上書かれていたら、2人目からは右端の「Other」列に移してあります（楽器は名前の下のボタンで選ぶ）。
             人が足りないときは「＋ 列を追加」。Vo. 欄の下の「Vo / Vo/Gt / …」で兼任を選べます（「⋯」にマウスを乗せる・タップすると Vo/Ba / Vo/Key / Vo/Dr が出ます）。</span>
@@ -751,7 +752,7 @@ if ($plan === null): // ==================== アップロード画面 ==========
                 <!-- data-extra-cols: 今ある追加列の数。JS が列を足すときの番号に使う -->
                 <table class="table table--edit table--roster" data-roster-table="<?= $ri ?>" data-extra-cols="<?= $extraCols[$ri] ?>">
                     <thead><tr>
-                        <th title="チェックしたバンドだけメンバーを登録">登録</th>
+                        <th title="旗を付けると、登録後にバンドのメンバーへ「楽器があってるか確認して」と知らせる">確認</th>
                         <th>名簿のバンド名</th>
                         <?php foreach ($roster['columns'] as $col => $c): ?>
                             <!-- 見出しは略称で固定。マウスを乗せると名簿ファイルの元の見出しが出る -->
@@ -763,15 +764,13 @@ if ($plan === null): // ==================== アップロード画面 ==========
                     </tr></thead>
                     <tbody>
                     <?php foreach ($roster['bands'] as $bi => $band):
-                        // 登録のチェック: 初回は全部 ON（タイムテーブルに無いバンドも ON にして、⚠ で知らせる）
-                        $rbForm = $form['rb'][$ri][$bi] ?? null; // 失敗して戻ってきたときの入力値
-                        $on = $rbForm ? !empty($rbForm['on']) : true;
-                        // どの出演枠にも選ばれていない = 登録されない → チェックを外して押せなくする
-                        //   data-auto-off: 「自動で外した」印。枠で選ばれたら JS がチェックを戻す
+                        // 登録するかどうかはタイムテーブル側（取込 + 名簿ファイル内バンド名）だけで決まる。
+                        // ここで選べるのは 🚩（登録後に「楽器があってるか確認して」とバンドのメンバーに知らせる）だけ
+                        $flag = !empty($form['rb'][$ri][$bi]['flag']); // 失敗して戻ってきたときの入力値。初回は OFF
+                        // どの出演枠にも選ばれていない = 登録されない → 薄くして ⚠ を出す
                         $unused = !isset($usedBy["$ri:$bi"]); ?>
-                        <tr class="<?= $on && !$unused ? '' : 'is-excluded' ?>" data-roster-key="<?= h("$ri:$bi") ?>">
-                            <!-- タイムテーブル側の「取込」を外すと、JS がこちらも外す -->
-                            <td><input type="checkbox" name="rb[<?= $ri ?>][<?= $bi ?>][on]" value="1"<?= $unused ? ' disabled data-auto-off' : ($on ? ' checked' : '') ?> data-roster-on aria-label="このバンドのメンバーを登録する"></td>
+                        <tr class="<?= $unused ? 'is-excluded' : '' ?>" data-roster-key="<?= h("$ri:$bi") ?>">
+                            <td><label class="flag-toggle" title="楽器があってるか、バンドのメンバーに確認してもらう"><input type="checkbox" name="rb[<?= $ri ?>][<?= $bi ?>][flag]" value="1"<?= $flag ? ' checked' : '' ?> aria-label="楽器の確認をお願いする"><?= icon('flag') ?></label></td>
                             <!-- roster-band-cell: グレーアウト時もこの列の ⚠ だけは薄くしない（app.css） -->
                             <td class="strong nowrap roster-band-cell"><span class="roster-band-name"><?= h($band['band_name']) ?></span>
                                 <!-- どの出演枠もこの名簿を選んでいなければ出す（JS がタイムテーブルの変更に合わせて出し入れする） -->
@@ -836,8 +835,8 @@ if ($plan === null): // ==================== アップロード画面 ==========
 <!-- 開催日の年を推測で入れたとき、プレビューを開いた直後に1回だけ出す注意（JS の setupImportPreview が開く） -->
 <dialog class="modal" data-year-check-dialog aria-labelledby="year-check-title">
     <form method="dialog" class="modal__body">
-        <h3 id="year-check-title" class="modal__title"><?= icon('event') ?> 年を確認してください</h3>
-        <p class="muted small">ファイルには「月日」しか書かれていないので、年は今日の日付から推測して入れました。違っていたら「開催日」を直してください（年度も開催日から決まります）。<?= count($guessedDates) > 1 ? '1つの年を直すと、ほかの日程も同じ年になります。' : '' ?></p>
+        <h3 id="year-check-title" class="modal__title"><?= icon('event') ?> 開催年を確認してください</h3>
+        <p class="muted small">ファイルに年の記載がないため現在の西暦が入力されています。古いライブを登録する際は開催年を修正してください。<?= count($guessedDates) > 1 ? '1つの年を直すと、ほかの日程も同じ年になります。' : '' ?></p>
         <ul class="modal__list">
             <?php foreach ($guessedDates as $g): ?>
                 <li><?= h($g['title']) ?> → <strong><?= h($g['date']) ?></strong> <span class="muted">（<?= (int)$g['year'] ?>年度）</span></li>

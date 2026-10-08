@@ -106,6 +106,9 @@ function parse_timetable(array $rows): array
         'day' => null,
         'venue' => '',
         'slots' => [],
+        // 年のヒント（タイトルやファイル名に「2024年度」「2024」などがあったとき）。finish_import_plan が開催日の年に使う
+        'hint_year' => null,     // 見つかった年
+        'hint_fiscal' => false,  // true = 「2024年度」のように年度で書いてあった
     ];
 
     // ---- 1. 前置き行（見出しより上）からライブ名・日付・会場 ----
@@ -123,8 +126,12 @@ function parse_timetable(array $rows): array
             $result['venue'] = $m[1];                   // 「会場：〇〇」と1セルに書かれている場合
         } elseif (preg_match('/(\d{1,2})月(\d{1,2})日/u', $cell, $m)) {
             [$result['month'], $result['day']] = [(int)$m[1], (int)$m[2]];
-        } elseif (preg_match('/^(\d{1,2})\/(\d{1,2})$/', $cell, $m)) {
-            [$result['month'], $result['day']] = [(int)$m[1], (int)$m[2]];
+            $result = take_year_hint($result, find_year_hint($cell)); // 「2024年12月6日」なら年も
+        } elseif (preg_match('/^(?:(20\d{2})\/)?(\d{1,2})\/(\d{1,2})$/', $cell, $m)) {
+            [$result['month'], $result['day']] = [(int)$m[2], (int)$m[3]];
+            if ($m[1] !== '') {
+                [$result['hint_year'], $result['hint_fiscal']] = [(int)$m[1], false]; // 「2024/12/6」
+            }
         } else {
             $titleCandidates[] = $cell;
         }
@@ -152,6 +159,12 @@ function parse_timetable(array $rows): array
         // 日目が無い → 1日だけのライブとみなして「1日目」。画面で選び直せる
         $result['live_name'] = $title;
         $result['label'] = '1日目';
+    }
+    // タイトルに「2024年度」などが入っていたら年のヒントにして、ライブ名からは外す（年度は別の欄で持つので）
+    $hint = find_year_hint($result['live_name']);
+    if ($hint['year'] !== null) {
+        $result = take_year_hint($result, $hint);
+        $result['live_name'] = $hint['rest'];
     }
 
     // ---- 2. 見出しから列の位置を探す ----
@@ -195,6 +208,95 @@ function parse_timetable(array $rows): array
         ];
     }
     return $result;
+}
+
+/**
+ * 文字列から年（と日付）を探す。タイムテーブルのタイトル・ファイル名用
+ *   「2024年度」         → 年度 2024
+ *   「2024年」「2024」    → 西暦 2024
+ *   「20241206」「2024-12-06」「2024.12.6」「2024年12月6日」 → 2024年12月6日
+ * 2000〜2099 年だけを年とみなす（「1日目」「12月」などの数字を年と間違えないように）
+ *
+ * @return array{year: ?int, fiscal: bool, month: ?int, day: ?int, rest: string}  rest = 見つけた年・日付を取り除いた残り
+ */
+function find_year_hint(string $text): array
+{
+    $out = ['year' => null, 'fiscal' => false, 'month' => null, 'day' => null, 'rest' => $text];
+    // 年月日がそろっているもの。(?<!\d) / (?!\d) は「前後が数字ではない」（長い数字の途中を拾わない）
+    if (preg_match('/(?<!\d)(20\d{2})(?:([01]\d)([0-3]\d)|[-\/.年](\d{1,2})[-\/.月](\d{1,2})日?)(?!\d)/u', $text, $m)) {
+        $month = (int)(($m[2] ?? '') !== '' ? $m[2] : ($m[4] ?? 0));
+        $day = (int)(($m[3] ?? '') !== '' ? $m[3] : ($m[5] ?? 0));
+        if (checkdate($month, $day, (int)$m[1])) {
+            return ['year' => (int)$m[1], 'fiscal' => false, 'month' => $month, 'day' => $day,
+                'rest' => tidy_hint_rest(str_replace($m[0], ' ', $text))];
+        }
+    }
+    if (preg_match('/(?<!\d)(20\d{2})\s*(年度|年)?(?!\d)/u', $text, $m)) {
+        $out = ['year' => (int)$m[1], 'fiscal' => ($m[2] ?? '') === '年度', 'month' => null, 'day' => null,
+            'rest' => tidy_hint_rest(str_replace($m[0], ' ', $text))];
+    }
+    return $out;
+}
+
+/** 年などを取り除いた残りの、空白をまとめて端の区切り（_ - ・ 空白）を消す */
+function tidy_hint_rest(string $s): string
+{
+    $s = preg_replace('/\s+/u', ' ', $s) ?? $s;
+    return preg_replace('/^[\s_\-・]+|[\s_\-・]+$/u', '', $s) ?? $s;
+}
+
+/** find_year_hint の結果を、まだ年（月日）が分かっていないタイムテーブルにだけ入れる */
+function take_year_hint(array $tt, array $hint): array
+{
+    if ($hint['year'] !== null && $tt['hint_year'] === null) {
+        [$tt['hint_year'], $tt['hint_fiscal']] = [$hint['year'], $hint['fiscal']];
+    }
+    if ($hint['month'] !== null && $tt['month'] === null) {
+        [$tt['month'], $tt['day']] = [$hint['month'], $hint['day']];
+    }
+    return $tt;
+}
+
+/**
+ * ファイルの中にライブ名・年・日付・日程が無いとき、ファイル名から補う
+ *   「2024年度_文化祭ライブ_2日目_タイムテーブル.pdf」→ 年度 2024 / ライブ名「文化祭ライブ」/ 日程「2日目」
+ * ファイルの中に書いてあるものが優先（ファイル名は付け方が人それぞれなので、あくまで補助）
+ *
+ * @param string $file 元のファイル名。Excel の複数シートは「名前.xlsx［シート名］」（table_reader.php）
+ */
+function apply_filename_hints(array $tt, string $file): array
+{
+    // 拡張子を外す。シート名もヒントになるので［］の中身は残す
+    $base = preg_replace('/\.[A-Za-z0-9]{2,4}(?=［|$)/u', '', $file) ?? $file;
+    $base = tt_width(str_replace(['［', '］'], ' ', $base));
+    $hint = find_year_hint($base);
+    $tt = take_year_hint($tt, $hint);
+    $rest = $hint['rest'];
+
+    // 月日（「12月6日」「12.6」）。年が無いので find_year_hint では拾えない分
+    if (preg_match('/(?<!\d)(\d{1,2})月(\d{1,2})日/u', $rest, $m) || preg_match('/(?<![\d.])(\d{1,2})[.\/](\d{1,2})(?![\d.])/u', $rest, $m)) {
+        if ($tt['month'] === null && checkdate((int)$m[1], (int)$m[2], 2000)) {
+            [$tt['month'], $tt['day']] = [(int)$m[1], (int)$m[2]];
+        }
+        $rest = str_replace($m[0], ' ', $rest);
+    }
+    // 日程（中身のタイトルに日目・教室ライブが無いときだけ。parse_timetable と同じく 4日目以降は 1日目）
+    if (preg_match('/(\d+)日目/u', $rest, $m)) {
+        if (!preg_match('/日目|教室ライブ/u', $tt['title'])) {
+            $tt['label'] = in_array((int)$m[1], [1, 2, 3], true) ? (int)$m[1] . '日目' : '1日目';
+        }
+        $rest = str_replace($m[0], ' ', $rest);
+    }
+    // ライブ名: ファイルの中に無いときだけ。「タイムテーブル」「最終版」「(1)」などの、ライブ名ではない言葉を消した残り
+    if ($tt['live_name'] === '') {
+        $name = preg_replace('/タイムテーブル|タイテ|タイムスケジュール|time\s*table|\bTT\b|名簿|メンバー表|最終版?|確定版?|修正版?|最新版?|完成版?|ver\.?\s*\d+|\bv\d+\b|コピー|copy|\(\d+\)/iu', ' ', $rest) ?? $rest;
+        $name = preg_replace('/\(\s*\)|\[\s*\]|【\s*】/u', ' ', $name) ?? $name; // 中身を消して空になった括弧
+        $tt['live_name'] = tidy_hint_rest(preg_replace('/[_\s]+/u', ' ', $name) ?? $name); // _ は区切りとみなして空白に
+    }
+    if ($tt['title'] === '') {
+        $tt['title'] = $base; // プレビューの見出しが「（タイトルなし）」にならないように
+    }
+    return $tt;
 }
 
 /**

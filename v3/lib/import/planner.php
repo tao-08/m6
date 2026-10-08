@@ -364,7 +364,7 @@ function build_import_plan(array $files): array
         foreach ($sheets as $label => $rows) {
             try {
                 if (detect_table_kind($rows) === 'timetable') {
-                    $tt = parse_timetable($rows);
+                    $tt = apply_filename_hints(parse_timetable($rows), $label); // ファイルの中に無いライブ名・年はファイル名から
                     $tt['file'] = $label;
                     $plan['timetables'][] = $tt;
                 } else {
@@ -488,15 +488,25 @@ function build_manual_timetables(array $plan, array $rows): array
 function finish_import_plan(array $plan): array
 {
     // ---- 2. 日付と年度の初期値 ----
-    // タイムテーブルには「年」が書かれていないので、今日に一番近い過去の年を仮で入れる
+    // 年はタイトルかファイル名にあればそれ（hint_year。parsers.php の find_year_hint）。
+    // 無ければ、今日に一番近い過去の年を仮で入れる（year_known = false → プレビューで「年を確認して」と出す）
     foreach ($plan['timetables'] as &$tt) {
         $tt['date'] = '';
         $tt['year'] = academic_year((int)date('n'), (int)date('Y'));
+        $hintYear = $tt['hint_year'] ?? null; // 手入力のタイムテーブルには無い
+        $tt['year_known'] = $hintYear !== null;
+        if ($hintYear !== null) {
+            $tt['year'] = $tt['hint_fiscal'] ? $hintYear : ($tt['month'] ? academic_year($tt['month'], $hintYear) : $hintYear);
+        }
         if ($tt['month'] && $tt['day']) {
             $y = (int)date('Y');
             // 例: 今が10月で「1月5日」と書いてあったら、たぶん今年の1月（未来の1月ではない）
             if (mktime(0, 0, 0, $tt['month'], $tt['day'], $y) > time() + 86400 * 60) {
                 $y--;
+            }
+            if ($hintYear !== null) {
+                // 「2024年度」の1〜3月は、西暦では次の年（2025年1月）
+                $y = $tt['hint_fiscal'] && $tt['month'] <= 3 ? $hintYear + 1 : $hintYear;
             }
             if (checkdate($tt['month'], $tt['day'], $y)) {
                 $tt['date'] = sprintf('%04d-%02d-%02d', $y, $tt['month'], $tt['day']);
@@ -820,7 +830,7 @@ function commit_import_plan(PDO $pdo, array $plan, array $input): array
                     'roster' => $rosterChoices[trim((string)($s['roster'] ?? ''))] ?? null,
                     'order' => (int)($s['order'] ?? 999),
                     'name' => $name,
-                    'songs' => (int)$songs,
+                    'songs' => $songs !== '' ? (int)$songs : null, // 空欄は NULL（不明）。0 にしない（migrations/014）
                     'note' => mb_substr(trim((string)($s['note'] ?? '')), 0, 255),
                     // 終了が開始より前（日付またぎ・書き間違い）は CHECK 制約に引っかかるので終了を捨てる
                     'start' => $start,
@@ -857,12 +867,13 @@ function commit_import_plan(PDO $pdo, array $plan, array $input): array
         // ================= 2. 名簿 → メンバー =================
         // タイムテーブルの「名簿」欄で選んだ名簿のバンドから、メンバーを登録する。
         // 名簿の1バンドを選べるのは1枠だけ（上の重複チェックで止めている）
+        $flagBand = $pdo->prepare('UPDATE band SET needs_check = 1 WHERE band_id = ?');
         foreach ($bandRosters as [$bandId, $rosterRef]) {
             [$ri, $bi] = array_map('intval', explode(':', $rosterRef));
             $roster = $plan['rosters'][$ri];
             $rb = $input['rb'][$ri][$bi] ?? [];
-            if (empty($rb['on'])) {
-                continue; // 名簿の「登録」のチェックを外したバンドはメンバーを登録しない（バンド自体は登録済み）
+            if (!empty($rb['flag'])) {
+                $flagBand->execute([$bandId]); // 🚩: バンドのメンバーに「楽器があってるか確認して」と知らせる
             }
             // 楽器の決め方（優先順）: ① 名前の後ろの (Sax) → ② セルのプルダウン → ③ 列のパートの楽器
             // フォームの値は書き換えられる可能性があるので、instrument テーブルにある ID だけ受け付ける

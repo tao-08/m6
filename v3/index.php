@@ -9,9 +9,23 @@
  */
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
-require_login();
+$user = require_login();
 
 $pdo = db();
+
+// 🚩 自分が出たバンドのうち、取り込みで「楽器を確認して」と印が付いたもの（アカウントがメンバーと紐付いている人だけ）
+$flagged = [];
+if ($user['member_id']) {
+    $st = $pdo->prepare('SELECT DISTINCT b.band_id, b.name, b.play_order, l.fiscal_year, l.name AS live_name, d.label, d.held_on
+        FROM band b
+        JOIN band_member bm ON bm.band_id = b.band_id
+        JOIN live_day d ON d.live_day_id = b.live_day_id
+        JOIN live l ON l.live_id = d.live_id
+        WHERE b.needs_check = 1 AND bm.member_id = ?
+        ORDER BY l.fiscal_year DESC, d.held_on DESC, b.play_order');
+    $st->execute([$user['member_id']]);
+    $flagged = $st->fetchAll();
+}
 
 // 日程1行ごとに、そのライブの情報とバンド数をくっつけて取ってくる
 //   LEFT JOIN: 相手が無くても行を残す（バンドが0組の日程も表示するため）
@@ -64,6 +78,19 @@ render_header('ライブ一覧', 'lives');
         <div><dt>出演者</dt><dd><?= (int)$stats['members'] ?></dd></div>
     </dl>
 </section>
+
+<?php if ($flagged): ?>
+    <section class="card check-list">
+        <h2 class="section-title section-title--card"><?= icon('flag', 'icon--fill flag-icon') ?> 楽器の確認をお願いします</h2>
+        <p class="muted small">取り込みのときに楽器があやしいと印が付いたバンドです。開いて確認し、違っていたら直してください。</p>
+        <ul>
+            <?php foreach ($flagged as $f): ?>
+                <li><a href="band.php?id=<?= (int)$f['band_id'] ?>"><?= h($f['name']) ?></a>
+                    <span class="muted small"><?= (int)$f['fiscal_year'] ?>年度 <?= h($f['live_name']) ?> <?= h($f['label']) ?></span></li>
+            <?php endforeach; ?>
+        </ul>
+    </section>
+<?php endif; ?>
 
 <?php if (!$years): ?>
     <div class="empty card">

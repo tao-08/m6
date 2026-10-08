@@ -148,8 +148,7 @@ function total_bands_field(string $prefix, string $value, int $registered): stri
     return '<label class="field"><span>総バンド数（任意）</span>'
         . '<input type="number" name="' . $prefix . '[total_bands]" value="' . h($value) . '" min="' . $registered . '" max="999" step="1" inputmode="numeric"'
         . ' placeholder="' . $registered . '">'
-        . '<small class="merge-note">登録済み ' . $registered . ' 組。それより少ない数は保存できません。'
-        . '登録済みが総バンド数に足りないと、最後のバンドに🐦️（トリ）を付けません</small></label>';
+        . '<small class="merge-note">登録済み ' . $registered . ' 組より少ない数は保存できません。';
 }
 
 /** 日程1つ分の値を、SQL に渡す配列にする（空欄 → NULL） */
@@ -423,7 +422,7 @@ if ($isNew) {
                 <small class="merge-note" data-merge-note></small>
             </div>
             <!-- 統合するとこのライブは消えるので、統合 ON のときは隠す（data-merge-hide） -->
-            <label class="field field--wide" data-merge-hide<?= $merging ? ' hidden' : '' ?>><span>YouTube のリンク（任意）</span><input type="url" name="youtube_url" value="<?= h((string)$live['youtube_url']) ?>" maxlength="500" placeholder="https://www.youtube.com/watch?v=…" inputmode="url"<?= $merging ? ' disabled' : '' ?>></label>
+            <label class="field field--wide" data-merge-hide<?= $merging ? ' hidden' : '' ?>><span>YouTubeプレイリストのリンク（任意）</span><input type="url" name="youtube_url" value="<?= h((string)$live['youtube_url']) ?>" maxlength="500" placeholder="https://www.youtube.com/watch?v=…" inputmode="url"<?= $merging ? ' disabled' : '' ?>></label>
             <?php if ($savedPlaylist): ?><p class="field--wide yt-assign" data-merge-hide<?= $merging ? ' hidden' : '' ?>><a class="btn btn--ghost btn--sm" href="live_youtube.php?id=<?= $liveId ?>"><?= youtube_icon() ?> プレイリストの動画をバンドに割り当てる</a></p><?php endif; ?>
         </div>
     <?php endif; ?>

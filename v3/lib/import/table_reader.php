@@ -191,7 +191,16 @@ function pdf_words_to_rows(array $words, ?array &$columns): array
     $phrases = array_merge(...array_column($bodyLines, 'phrases'));
     $cols = $columns;
     // 見出しの無い左端の通し番号列（1, 2, 3...）
-    $numbers = array_filter($phrases, static fn($p) => $p['x1'] < $cols[0]['x0'] && preg_match('/^\d+$/', $p['text']));
+    // 番号は「バンド名の欄の文字の書き出し位置」より左で終わる数字だけ。
+    // 「171」のような数字だけのバンド名は書き出し位置が他のバンド名と同じなので番号にしない
+    $textStart = $cols[0]['x0'];
+    foreach ($phrases as $p) {
+        if ($p['x0'] < $textStart && !preg_match('/^\d+$/', $p['text'])) {
+            $textStart = $p['x0'];
+        }
+    }
+    $isNumber = static fn($p) => $p['x1'] < $textStart - 0.5 && preg_match('/^\d+$/', $p['text']);
+    $numbers = array_filter($phrases, $isNumber);
     $hasNumberCol = $numbers !== [];
     if ($hasNumberCol) {
         $center = array_sum(array_map(static fn($p) => ($p['x0'] + $p['x1']) / 2, $numbers)) / count($numbers);
@@ -265,11 +274,11 @@ function pdf_words_to_rows(array $words, ?array &$columns): array
     $phrases = $split;
 
     // 各フレーズを一番近い列へ
-    // 通し番号列に入るのは数字だけ。「kobore」「BiS」のような短いバンド名は左寄せだと
+    // 通し番号列に入るのは番号（$isNumber）だけ。「kobore」「BiS」のような短いバンド名は左寄せだと
     // 文字の中心が見出し「バンド名」より番号列に近くなるが、数字でなければ隣（バンド名側）の列へ
     foreach ($phrases as &$p) {
         $p['col'] = $nearestCol(($p['x0'] + $p['x1']) / 2);
-        if ($hasNumberCol && $p['col'] === 0 && !preg_match('/^\d+$/', $p['text'])) {
+        if ($hasNumberCol && $p['col'] === 0 && !$isNumber($p)) {
             $p['col'] = 1;
         }
     }

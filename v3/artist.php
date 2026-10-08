@@ -130,7 +130,7 @@ $st = $pdo->prepare('SELECT name FROM artist_alias WHERE artist_id = ? ORDER BY 
 $st->execute([$artistId]);
 $aliases = $st->fetchAll(PDO::FETCH_COLUMN);
 
-// ---- このアーティストのアルバムをマイアルバムに入れている人 ----
+// ---- このアーティストのアルバムをマイアルバムに入れているメンバー ----
 //   マイアルバムには artist_id が無く、Spotify / iTunes のアーティスト名（文字列）しか無い。
 //   album_match_key で表記ゆれ（大文字小文字・全角半角・記号）をそろえて、本名か別名と一致する行を拾う。
 //   SQL の = では表記ゆれと「A, B」（Spotify の複数アーティスト）を拾えないので、PHP で絞る
@@ -180,20 +180,20 @@ render_header($artist['name'], 'artists');
 </section>
 
 <?php if ($fanAlbums): ?>
-<!-- マイアルバムにこのアーティストのアルバムを入れている人。見た目は member.php のマイアルバムと同じ部品（.albums / .album） -->
+<!-- マイアルバムにこのアーティストのアルバムを入れているメンバー。見た目は member.php のマイアルバムと同じ（.albums。スマホでは横に3枚） -->
 <section class="card album-box">
     <div class="album-head">
-        <h2 class="section-title section-title--card" style="margin:0">マイアルバムに入れている人</h2>
+        <h2 class="section-title section-title--card" style="margin:0">マイアルバムに入れているメンバー</h2>
         <span class="muted small"><?= count($fanIds) ?>人</span>
     </div>
-    <ul class="albums albums--pick">
+    <ul class="albums">
         <?php foreach ($fanAlbums as $fa): $a = $fa['album']; ?>
             <li class="album">
                 <img class="album__art" src="<?= h($a['artwork_url']) ?>" alt="<?= h($a['title']) ?> のジャケット" loading="lazy" width="600" height="600">
                 <!-- 見ている人の音楽アプリで開く（member.php と同じ。アプリをまたぐときは album_go.php が押されたときに探す） -->
                 <a class="album__meta" href="<?= h(album_listen_url($viewerApp, $a)) ?>" target="_blank" rel="noopener">
                     <span class="album__title"><?= h($a['title']) ?></span>
-                    <?php if ($a['release_year']): ?><span class="muted small"><?= (int)$a['release_year'] ?></span><?php endif; ?>
+                    <?php if ($a['release_year']): ?><span class="muted small album__year"><?= (int)$a['release_year'] ?></span><?php endif; ?>
                 </a>
                 <span class="small">
                     <?php foreach ($fa['members'] as $i => $m): ?><?= $i > 0 ? '・' : '' ?><a href="member.php?id=<?= $m['member_id'] ?>#albums"><?= h($m['name']) ?></a><?php endforeach; ?>
@@ -204,6 +204,7 @@ render_header($artist['name'], 'artists');
 </section>
 <?php endif; ?>
 
+<h2 class="section-title">演奏履歴</h2>
 <div class="card table-card">
     <div class="table-scroll table-scroll--flush">
     <table class="table">
@@ -211,7 +212,7 @@ render_header($artist['name'], 'artists');
         <tbody>
         <?php foreach ($bands as $b): ?>
             <tr>
-                <td class="nowrap"><a href="live.php?id=<?= (int)$b['live_id'] ?>#day-<?= (int)$b['live_day_id'] ?>"><?= h(fmt_year($b['fiscal_year'])) ?> <?= h($b['live_name']) ?></a>
+                <td class="nowrap"><a href="live.php?id=<?= (int)$b['live_id'] ?>#day-<?= (int)$b['live_day_id'] ?>"><span class="live-year"><?= h(fmt_year($b['fiscal_year'])) ?> </span><?= h($b['live_name']) ?></a>
                     <div class="muted small"><?= h($b['label']) ?> <?= h(fmt_date($b['held_on'])) ?></div></td>
                 <td class="strong"><a href="band.php?id=<?= (int)$b['band_id'] ?>"><?= h($b['name']) ?></a></td>
                 <td>

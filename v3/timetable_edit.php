@@ -40,7 +40,7 @@ $st = $pdo->prepare('SELECT * FROM live_day WHERE live_id = ? ORDER BY held_on I
 $st->execute([$liveId]);
 $days = $st->fetchAll();
 
-$st = $pdo->prepare('SELECT b.band_id, b.live_day_id, b.artist_id, b.name, b.play_order, b.start_time, b.end_time FROM band b
+$st = $pdo->prepare('SELECT b.band_id, b.live_day_id, b.artist_id, b.name, b.play_order, b.start_time, b.end_time, b.needs_check FROM band b
     JOIN live_day d ON d.live_day_id = b.live_day_id
     WHERE d.live_id = ? ORDER BY b.play_order');
 $st->execute([$liveId]);
@@ -93,6 +93,7 @@ if (is_post()) {
         $start = (string)($row['start'] ?? '');
         $end = (string)($row['end'] ?? '');
         $order = filter_var($row['order'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 999]]);
+        $flag = (int)!empty($row['flag']); // 🚩 楽器の確認待ち（チェックが無ければ外す）
         $label = $b['play_order'] . '番目「' . ($name !== '' ? $name : $b['name']) . '」'; // エラー文でどのバンドか分かるように
 
         if ($name === '' || mb_strlen($name) > 100) {
@@ -127,9 +128,9 @@ if (is_post()) {
                 $assign[] = [$memberName, $inst];
             }
         }
-        $edits[$id] = compact('name', 'start', 'end', 'order', 'assign');
+        $edits[$id] = compact('name', 'start', 'end', 'order', 'flag', 'assign');
         // エラーで戻ったときに入力した値で表示し直すため、先に上書きしておく
-        $bands[$id] = array_merge($bands[$id], ['name' => $name, 'start_time' => $start, 'end_time' => $end, 'play_order' => $order, 'members' => $picked]);
+        $bands[$id] = array_merge($bands[$id], ['name' => $name, 'start_time' => $start, 'end_time' => $end, 'play_order' => $order, 'needs_check' => $flag, 'members' => $picked]);
     }
 
     // ---- 休憩 ----
@@ -174,7 +175,7 @@ if (is_post()) {
     if (!$errors) {
         $index = load_member_index($pdo);
         $old = $pdo->prepare('SELECT name, artist_id FROM band WHERE band_id = ?');
-        $update = $pdo->prepare('UPDATE band SET name = ?, artist_id = ?, start_time = ?, end_time = ?, play_order = ? WHERE band_id = ?');
+        $update = $pdo->prepare('UPDATE band SET name = ?, artist_id = ?, start_time = ?, end_time = ?, play_order = ?, needs_check = ? WHERE band_id = ?');
         // 出演順は UNIQUE (live_day_id, play_order)。1組ずつ書き換えると途中で「3番目が2組」になって弾かれるので、
         // 先に全部を使っていない大きい番号（1000 + 新しい番号）へ逃がしてから、本当の番号を入れる
         $park = $pdo->prepare('UPDATE band SET play_order = ? WHERE band_id = ?');
@@ -197,7 +198,7 @@ if (is_post()) {
                 $before = $old->fetch();
                 // バンド名を変えたときだけ、コピー元アーティストを新しい名前から決め直す（「ヨルシカ（安田）」→ ヨルシカ）
                 $artistId = $before['name'] === $e['name'] ? $before['artist_id'] : find_or_create_artist($pdo, $e['name']);
-                $update->execute([$e['name'], $artistId, $e['start'] ?: null, $e['end'] ?: null, $e['order'], $id]);
+                $update->execute([$e['name'], $artistId, $e['start'] ?: null, $e['end'] ?: null, $e['order'], $e['flag'], $id]);
                 sync_band_members($pdo, $index, $id, $e['assign']);
             }
             $pdo->commit();
@@ -293,6 +294,7 @@ render_header('タイムテーブルを編集', 'lives'); ?>
 					<span><i class="swatch swatch--ok"></i>DB に登録済み</span>
 					<span><i class="swatch swatch--similar"></i>類似氏名あり</span>
 					<span><i class="swatch swatch--new"></i>新しいメンバーとして登録</span>
+					<span><?= icon('flag', 'icon--fill flag-icon') ?> 楽器の確認をメンバーにお願いする</span>
 				</div>
 
 				</div>
@@ -333,7 +335,9 @@ render_header('タイムテーブルを編集', 'lives'); ?>
                                 <input type="hidden" name="<?= $p ?>[order]" value="<?= (int)$b['play_order'] ?>" data-order></td>
                             <td data-time><input type="time" name="<?= $p ?>[start]" value="<?= h(fmt_time($b['start_time'])) ?>" aria-label="開始" data-time-field="start"></td>
                             <td data-time><input type="time" name="<?= $p ?>[end]" value="<?= h(fmt_time($b['end_time'])) ?>" aria-label="終了" data-time-field="end"></td>
-                            <td><input name="<?= $p ?>[name]" value="<?= h($b['name']) ?>" maxlength="100" required data-band-name aria-label="バンド名"></td>
+                            <!-- バンド名の横に 🚩（楽器の確認待ち。取り込み画面の名簿と同じ部品）。列を増やすと並び替え・列の追加の JS に響くので同じセルに置く -->
+                            <td><div class="tt-band-name"><input name="<?= $p ?>[name]" value="<?= h($b['name']) ?>" maxlength="100" required data-band-name aria-label="バンド名">
+                                <label class="flag-toggle" title="楽器があってるか、バンドのメンバーに確認してもらう"><input type="checkbox" name="<?= $p ?>[flag]" value="1"<?= $b['needs_check'] ? ' checked' : '' ?> aria-label="楽器の確認をお願いする"><?= icon('flag') ?></label></div></td>
                             <?php for ($n = 0; $n < $cols; $n++):
                                 $m = $members[$n] ?? ['name' => '', 'choice' => '2']; ?>
                                 <td>

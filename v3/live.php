@@ -171,6 +171,7 @@ render_header($live['name'], 'lives');
                         <span class="slot__order"><?= sprintf('%02d', (int)$b['play_order']) ?></span>
                         <h3 class="slot__name"><a href="band.php?id=<?= (int)$b['band_id'] ?>"><?= h($b['name']) ?></a></h3>
                         <?php if ($isLast): ?><span class="tag tag--tori" aria-label="トリ" title="トリ">🐦️</span><?php endif; ?>
+                        <?php if ($b['needs_check']): ?><a class="tag tag--flag no-print" href="band.php?id=<?= (int)$b['band_id'] ?>" title="楽器の確認待ち" aria-label="楽器の確認待ち"><?= icon('flag', 'icon--fill') ?></a><?php endif; ?>
                         <?php if ($isMine): ?><span class="tag">出演</span><?php endif; ?>
                         <?php if ($b['youtube_url'] !== null && youtube_url_valid($b['youtube_url'])): ?>
                             <a class="slot__yt no-print" href="<?= h($b['youtube_url']) ?>" target="_blank" rel="noopener noreferrer" aria-label="「<?= h($b['name']) ?>」を YouTube で見る" title="YouTube で見る"><?= youtube_icon() ?></a>
@@ -192,7 +193,7 @@ render_header($live['name'], 'lives');
                     <p class="slot__meta">
                         <?= band_artist_links($b, $omnibusArtists) // オムニバスなら曲のアーティストを全部 ?>
                         <?php if ($memberIds): ?><span><?= count(array_unique($memberIds)) ?>名</span><?php endif; ?>
-                        <span><?= (int)$b['song_count'] ?>曲</span>
+                        <?php if ($b['song_count'] !== null): // NULL = 曲数不明なら出さない ?><span><?= (int)$b['song_count'] ?>曲</span><?php endif; ?>
                         <?= setlist_badge((int)$b['setlist_count'], (int)$b['song_count']) ?>
                         <?php if ($b['note']): ?><span class="keynote"><?= icon('piano') ?> <?= h($b['note']) ?></span><?php endif; ?>
                     </p>

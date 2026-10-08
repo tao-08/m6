@@ -31,7 +31,7 @@ if ($isNew) {
         http_response_code(404);
         exit('日程が見つかりません');
     }
-    $band += ['band_id' => 0, 'name' => '', 'artist_name' => '', 'song_count' => '', 'note' => '', 'youtube_url' => '',
+    $band += ['band_id' => 0, 'name' => '', 'artist_name' => '', 'song_count' => '', 'note' => '', 'youtube_url' => '', 'needs_check' => 0,
         'start_time' => null, 'end_time' => null, 'play_order' => next_play_order($pdo, $dayId)];
 } else {
     $st = $pdo->prepare('SELECT b.*, a.name AS artist_name, d.live_id, d.label, l.name AS live_name FROM band b
@@ -75,6 +75,7 @@ if (is_post()) {
     $songs = (string)($_POST['song_count'] ?? '');
     $note = trim((string)($_POST['note'] ?? ''));
     $youtube = trim((string)($_POST['youtube_url'] ?? ''));
+    $flag = (int)!empty($_POST['flag']); // 🚩 楽器の確認をお願いする（チェックが無ければ外す）
     $order = max(1, (int)($_POST['play_order'] ?? 1));
     $start = (string)($_POST['start_time'] ?? '');
     $end = (string)($_POST['end_time'] ?? '');
@@ -96,7 +97,8 @@ if (is_post()) {
     if ($name === '' || mb_strlen($name) > 100) {
         $errors[] = 'バンド名は1〜100文字で入力してください';
     }
-    if (!ctype_digit($songs) || (int)$songs > 255) {
+    // 曲数は任意。空欄なら NULL（不明）で保存する。0 は「0曲」の意味なので空欄と分ける（migrations/014）
+    if ($songs !== '' && (!ctype_digit($songs) || (int)$songs > 255)) {
         $errors[] = '曲数を0〜255の数字で入力してください';
     }
     foreach ([$start, $end] as $t) {
@@ -119,17 +121,17 @@ if (is_post()) {
         $index = load_member_index($pdo);
         // アーティスト欄が空ならバンド名から推測（「ヨルシカ（安田）」→ ヨルシカ）
         $artistId = find_or_create_artist($pdo, $artistName !== '' ? $artistName : $name);
-        $values = [$artistId, $name, (int)$songs, $start ?: null, $end ?: null, $note !== '' ? $note : null, $youtube !== '' ? $youtube : null];
+        $values = [$artistId, $name, $songs !== '' ? (int)$songs : null, $start ?: null, $end ?: null, $note !== '' ? $note : null, $youtube !== '' ? $youtube : null, $flag];
 
         $pdo->beginTransaction();
         try {
             if ($isNew) {
                 // 出演順は UNIQUE なので、いったん最後尾に入れてから renumber_bands で正しい位置に動かす
-                $pdo->prepare('INSERT INTO band (artist_id, name, song_count, start_time, end_time, note, youtube_url, live_day_id, play_order)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')->execute([...$values, $dayId, next_play_order($pdo, $dayId)]);
+                $pdo->prepare('INSERT INTO band (artist_id, name, song_count, start_time, end_time, note, youtube_url, needs_check, live_day_id, play_order)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')->execute([...$values, $dayId, next_play_order($pdo, $dayId)]);
                 $bandId = (int)$pdo->lastInsertId();
             } else {
-                $pdo->prepare('UPDATE band SET artist_id = ?, name = ?, song_count = ?, start_time = ?, end_time = ?, note = ?, youtube_url = ?
+                $pdo->prepare('UPDATE band SET artist_id = ?, name = ?, song_count = ?, start_time = ?, end_time = ?, note = ?, youtube_url = ?, needs_check = ?
                     WHERE band_id = ?')->execute([...$values, $bandId]);
             }
             // 差分だけ更新（全部消すと曲ごとの演奏記録が CASCADE で消えるため。sync_band_members の説明参照）
@@ -147,7 +149,7 @@ if (is_post()) {
         redirect('band.php?id=' . $bandId);
     }
     // エラーのときは入力した値をそのまま表示し直す
-    $band = array_merge($band, ['name' => $name, 'artist_name' => $artistName, 'song_count' => $songs, 'note' => $note, 'youtube_url' => $youtube,
+    $band = array_merge($band, ['name' => $name, 'artist_name' => $artistName, 'song_count' => $songs, 'note' => $note, 'youtube_url' => $youtube, 'needs_check' => $flag,
         'play_order' => $order, 'start_time' => $start, 'end_time' => $end]);
     $members = $picked;
 } elseif ($isNew) {
@@ -194,7 +196,7 @@ render_header($isNew ? 'バンドを追加' : 'バンドを編集', 'lives');
         <label class="field field--wide"><span>バンド名（タイムテーブルの表記）</span><input name="name" value="<?= h($band['name']) ?>" data-suggest-list="band-names" autocomplete="off" maxlength="100" required <?= $isNew ? 'autofocus' : '' ?>></label>
         <label class="field field--wide"><span>コピー元アーティスト</span><input name="artist" value="<?= h($band['artist_name']) ?>" data-suggest-list="artists" autocomplete="off" maxlength="100"></label>
         <label class="field"><span>出演順</span><input type="number" min="1" name="play_order" value="<?= h($band['play_order']) ?>" required></label>
-        <label class="field"><span>曲数</span><input type="number" min="0" max="255" name="song_count" value="<?= h($band['song_count']) ?>" required></label>
+        <label class="field"><span>曲数</span><input type="number" min="0" max="255" name="song_count" value="<?= h((string)$band['song_count']) ?>"></label>
         <label class="field"><span>開始</span><input type="time" name="start_time" value="<?= h(fmt_time($band['start_time'])) ?>"></label>
         <label class="field"><span>終了</span><input type="time" name="end_time" value="<?= h(fmt_time($band['end_time'])) ?>"></label>
         <label class="field field--wide"><span>メモ</span><input name="note" value="<?= h($band['note']) ?>" maxlength="255"></label>
@@ -205,6 +207,12 @@ render_header($isNew ? 'バンドを追加' : 'バンドを編集', 'lives');
 
     <h2 class="section-title">メンバー</h2>
     <p class="muted small">サポートメンバーを含めて出演者を全員登録してください。<br>セットリストを登録すると曲ごとの楽器の持ち替えも記録できます。</p>
+    <!-- 🚩 楽器の確認待ち（取り込み・タイムテーブル編集と同じ部品）。付けるとバンドページ・メンバーのトップで知らせる。
+         いま付いているときは、確認をうながす文を一緒に出す（外して保存 = 確認した） -->
+    <div class="check-flag<?= $band['needs_check'] ? ' flash flash--warn' : '' ?>">
+        <?php if ($band['needs_check']): ?><span><?= icon('flag', 'icon--fill flag-icon') ?> 楽器の登録があっているか確認してください。確認できたら旗を外して保存してください。</span><?php endif; ?>
+        <label class="check"><span class="flag-toggle"><input type="checkbox" name="flag" value="1"<?= $band['needs_check'] ? ' checked' : '' ?>><?= icon('flag') ?></span> 楽器の確認をメンバーにお願いする</label>
+    </div>
     <div class="member-rows" data-rows>
         <?php foreach ($members as $m): ?>
             <div class="member-row-edit">

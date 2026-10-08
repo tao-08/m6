@@ -136,7 +136,8 @@ function youtube_match_bands(array $videos, array $bands): array
                 $keys[$k] = true;
             }
         }
-        $prepared[$id] = ['keys' => array_keys($keys), 'suffix' => album_match_key($suffix)];
+        // "171" のような数字だけの名前は配列のキーにすると int になるので、文字列に戻す
+        $prepared[$id] = ['keys' => array_map('strval', array_keys($keys)), 'suffix' => album_match_key($suffix)];
     }
 
     $result = ['bands' => array_fill_keys(array_keys($bands), []), 'unmatched' => []];

@@ -236,6 +236,8 @@ h3 { font-size: 16px; }
   background: var(--surface-2); color: var(--text); border: 1px solid var(--border); white-space: nowrap; }
 .tag--accent { background: var(--accent); color: var(--on-accent); border-color: transparent; }
 .tag--tori { font-size: 14px; line-height: 1; padding: 2px 6px; } /* トリの🐦️は大きめに */
+.tag--flag { padding: 0 2px; background: none; border: 0; color: var(--warn); text-decoration: none; } /* 楽器の確認待ちの旗（live.php） */
+.tag--flag .icon { font-size: 18px; vertical-align: 0; }
 
 .flash { padding: 12px 16px; border-radius: var(--radius-sm); margin-bottom: 12px; font-weight: 600; font-size: 14px; border: 1px solid transparent; }
 .flash--success { background: var(--ok-bg); color: var(--ok); }
@@ -667,7 +669,23 @@ input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px;
 body.is-row-dragging, body.is-row-dragging * { cursor: grabbing !important; user-select: none; }
 .table--edit td:has(input[data-band-name]) { min-width: 200px; }
 .table--roster td { min-width: 130px; }
-.table--roster td:first-child { min-width: 0; } /* 「登録」のチェックボックス列 */
+.table--roster td:first-child { min-width: 0; text-align: center; } /* 🚩（楽器の確認）の列 */
+/* 旗（楽器の確認待ち）の切り替え: チェックボックスは隠して旗のアイコンだけ見せる。
+   OFF = 枠線だけの灰色 / ON = 塗りつぶしの warn 色（.icon--fill と同じ FILL 1） */
+.flag-toggle { position: relative; display: inline-flex; cursor: pointer; padding: 4px; border-radius: 6px; color: var(--muted);
+  transition: color .15s ease; }
+.flag-toggle .icon { font-size: 20px; vertical-align: 0; }
+.flag-toggle input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.flag-toggle:hover { color: var(--text); }
+.flag-toggle:has(input:checked) { color: var(--warn); }
+.flag-toggle:has(input:checked) .icon { font-variation-settings: "FILL" 1, "wght" 500, "GRAD" 0, "opsz" 24; }
+.flag-toggle:has(input:focus-visible) { outline: 2px solid var(--accent); }
+@media (prefers-reduced-motion: reduce) { .flag-toggle { transition: none; } }
+.flag-icon { color: var(--warn); } /* 表示だけの旗（注意の帯・見出し・凡例） */
+/* 旗の注意（band.php / band_edit.php）: 文とボタンを横に並べる */
+.check-flag { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.tt-band-name { display: flex; align-items: center; gap: 4px; } /* タイムテーブル編集: バンド名の横に旗 */
+.check-list ul { margin: 8px 0 0; padding-left: 1.2em; display: grid; gap: 4px; }
 .table--roster [data-roster-missing] { display: block; width: fit-content; margin-top: 4px; font-weight: 400; }
 .table--roster [data-roster-missing][hidden] { display: none; }
 .modal__list { margin: 12px 0 0; padding-left: 1.2em; max-height: 40vh; overflow: auto; }
@@ -1203,9 +1221,19 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
   .sticky-actions:has(.sticky-actions__note:not([hidden])) { flex-wrap: wrap; border-radius: var(--radius); }
   .sticky-actions__note { flex-basis: 100%; text-align: center; }
   .tabs { top: 66px; }
+  /* ライブ詳細の日程タブ（3日程以上）: 横スクロールさせず、画面の幅に全部の日程を等分に並べる（スクロールできると気づきにくいので）。
+     日付は消して「1日目」などの名前だけ（日付はタブの下の日程の見出しに出ている）。長い名前（教室ライブなど）は … で切る。
+     display: block にするのは、flex のままだと文字（「1日目」）に … が付かないため。
+     2日程までは今までの横並びのままで画面に収まるので変えない（:has(.tab:nth-child(3)) = 3つ目のタブがあるときだけ） */
+  .tabs--days:has(.tab:nth-child(3)) { width: 100%; overflow: visible; gap: 4px; padding: 4px; } /* 角の丸みは2日程と同じカプセル型のまま */
+  .tabs--days:has(.tab:nth-child(3)) .tab { display: block; flex: 1 1 0; min-width: 0; padding: 10px 6px; font-size: 15px;
+    text-align: center; overflow: hidden; text-overflow: ellipsis; }
+  .tabs--days:has(.tab:nth-child(3)) .tab small { display: none; }
   .add-band { margin-left: 54px; }
   .bars li { grid-template-columns: minmax(0, 8em) 1fr auto; }
   .stats-grid { grid-template-columns: 1fr; }
+  /* アーティストページの表: 「2025年度」のあとで改行して、ライブ名の列を細くする */
+  .live-year { display: block; }
   /* 個人ページのマイアルバム: スマホでは横に3枚並べる（検索結果の .albums--pick は今までどおり）。
      アーティスト名がなるべく切れないように、カードの間と枠の左右の余白を詰めて1枚の幅を広げる */
   /* 詰めるのはジャケットの並びだけ。見出し（▸ マイアルバム）は今までどおり左に余白を取る。

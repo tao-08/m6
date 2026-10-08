@@ -642,10 +642,27 @@ function setupFilter() {
 }
 
 /* ---------------------------------------------------------------------
+ * カードなどを上から順にふわっと出す（年度スロットの切り替え・並び替えボタンで共通）
+ *   画面の外の分まで動かすと遅れて見えるので、見えている所だけ。動きを減らす設定の人には何もしない
+ *   連続で切り替えたときは、前のアニメーションを止めてから出し直す（重なってチラつかないように）
+ * ------------------------------------------------------------------- */
+const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+function animateIn(elements) {
+  if (reduceMotion) return;
+  [...elements]
+    .filter((el) => el.offsetParent !== null && el.getBoundingClientRect().top < window.innerHeight)
+    .forEach((el, i) => {
+      el.getAnimations().forEach((a) => a.cancel());
+      el.animate([{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }],
+        { duration: 240, delay: Math.min(i, 12) * 25, easing: 'ease-out', fill: 'backwards' });
+    });
+}
+
+/* ---------------------------------------------------------------------
  * 年度スロット: スロットのリールを縦にドラッグして年度を選ぶ
  *   上にドラッグ → 古い年度へ / 下にドラッグ → 新しい年度（先頭は「すべて」）
  *   ホイール・↑↓キー・上下の段のタップでも1つずつ動く
- *   選んだ年度以外の <section data-year> を隠す
+ *   選んだ年度以外の <section data-year> を隠し、残った年度の見出しとカードをふわっと出す（animateIn）
  *   data-year-slot="セレクタ" なら、それに当たる要素を隠す（メンバーの出演履歴: section[data-history-year]）
  * ------------------------------------------------------------------- */
 function setupYearSlot() {
@@ -664,6 +681,7 @@ function setupYearSlot() {
   const move = (px) => { reel.style.transform = `translateY(${top() + px}px)`; };
 
   const select = (i) => {
+    const before = items[index].dataset.value;
     index = clamp(i);
     reel.classList.remove('is-dragging');
     move(-index * itemH());
@@ -672,6 +690,12 @@ function setupYearSlot() {
     sections.forEach((sec) => { sec.hidden = value !== '' && (sec.dataset.year || sec.dataset.historyYear) !== value; });
     slot.setAttribute('aria-valuetext', items[index].textContent);
     slot.classList.toggle('is-filtered', value !== '');
+    // 年度が変わったときだけ動かす（端でさらに回した・真ん中をタップした、では動かさない）
+    //   見出し（h2 / h3）→ カード（ライブ一覧は .grid の中、出演履歴は <ol> の <li>）の順
+    if (value !== before) {
+      animateIn([...sections].filter((sec) => !sec.hidden)
+        .flatMap((sec) => [...sec.querySelectorAll(':scope > :is(h2, h3), .grid > *, ol > li')]));
+    }
   };
 
   // ---- ドラッグ（マウスもタッチも pointer イベントでまとめて扱う） ----
@@ -739,7 +763,6 @@ function setupYearSlot() {
  *   並べ替えたら、見えているカードを上から順にふわっと出す（どこが動いたか分かるように）
  * ------------------------------------------------------------------- */
 function setupSortToggle() {
-  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   document.querySelectorAll('[data-sort-toggle]').forEach((btn) => {
     const list = document.querySelector(btn.dataset.sortToggle);
     if (!list) return;
@@ -751,14 +774,7 @@ function setupSortToggle() {
       const asc = btn.getAttribute('aria-pressed') !== 'true';
       btn.setAttribute('aria-pressed', String(asc));
       btn.textContent = asc ? '古い順 ↑' : '新しい順 ↓';
-      if (reduceMotion) return;
-      // 年度の見出しとカードを、上から順に。画面の外の分まで動かすと遅れて見えるので、見えている所だけ
-      const targets = [...list.querySelectorAll(`:scope > * > :is(h2, h3), ${itemsSel} > *`)]
-        .filter((el) => el.offsetParent !== null && el.getBoundingClientRect().top < window.innerHeight);
-      targets.forEach((el, i) => {
-        el.animate([{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }],
-          { duration: 240, delay: Math.min(i, 12) * 25, easing: 'ease-out', fill: 'backwards' });
-      });
+      animateIn(list.querySelectorAll(`:scope > * > :is(h2, h3), ${itemsSel} > *`)); // 年度の見出しとカードを、上から順に
     });
   });
 }
@@ -1041,24 +1057,10 @@ function setupImportPreview() {
       input.title = dup ? `同じ名簿を ${usedBy[key].length} つの枠で選んでいます: ${usedBy[key].join(' / ')}` : '';
     });
 
-    // 名簿側: 「登録」を外した行を薄くし、どの枠にも選ばれていない（= 登録されない）行に ⚠ を出す
-    //   どの枠にも選ばれていない行は、チェックを外して押せなくする（disabled は送信されない = 登録しない）
-    //   枠で選ばれたら押せるように戻し、自動で外したチェック（data-auto-off）だけ付け直す。自分で外したものは戻さない
+    // 名簿側: どの枠にも選ばれていない（= 登録されない）行を薄くして ⚠ を出す
     document.querySelectorAll('tr[data-roster-key]').forEach((tr) => {
-      const box = tr.querySelector('[data-roster-on]');
       const unused = !usedBy[tr.dataset.rosterKey];
-      if (unused && !box.disabled) {
-        box.checked = false;
-        box.disabled = true;
-        box.dataset.autoOff = '';
-      } else if (!unused && box.disabled) {
-        box.disabled = false;
-        if ('autoOff' in box.dataset) {
-          box.checked = true;
-          delete box.dataset.autoOff;
-        }
-      }
-      tr.classList.toggle('is-excluded', !box.checked || unused);
+      tr.classList.toggle('is-excluded', unused);
       tr.querySelector('[data-roster-missing]').hidden = !unused;
     });
 
@@ -1086,14 +1088,6 @@ function setupImportPreview() {
     submit.disabled = submitDisabled || blocks.length > 0;
     submitBlock.hidden = blocks.length === 0;
     submitBlock.querySelector('[data-submit-block-text]').textContent = `${blocks.join('・')}と登録できます`;
-  };
-
-  // タイムテーブルの「取込」を切り替えたら、その枠が選んでいる名簿の「登録」も合わせる
-  //   （同じバンドが2日とも出ることは無いので、名簿の1バンドを使うのは1枠だけ、という前提）
-  const syncRosterOn = (checkbox) => {
-    const key = rosterKeys[checkbox.closest('tr[data-slot]').querySelector('[data-roster-input]').value.trim()];
-    const row = key && document.querySelector(`tr[data-roster-key="${key}"]`);
-    if (row) row.querySelector('[data-roster-on]').checked = checkbox.checked;
   };
 
   const showFiscalYear = (input) => {
@@ -1145,10 +1139,9 @@ function setupImportPreview() {
   document.addEventListener('change', (e) => {
     if (e.target.matches('[data-include]')) {
       renumberSlots(e.target.closest('tbody')); // 取込を切り替えたら出演順を振り直す
-      syncRosterOn(e.target);
     }
     if (e.target.matches('[data-skip]')) applySkip(e.target.closest('[data-timetable]'));
-    if (e.target.matches('[data-include], [data-roster-input], [data-roster-on], [data-skip]')) refresh();
+    if (e.target.matches('[data-include], [data-roster-input], [data-skip]')) refresh();
     if (e.target.matches('[data-date-input]')) {
       showFiscalYear(e.target);
       syncYears(e.target);
