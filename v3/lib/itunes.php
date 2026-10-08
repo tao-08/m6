@@ -213,7 +213,23 @@ function itunes_normalize_track(array $r): ?array
         'album_title'  => mb_substr(trim((string)($r['collectionName'] ?? '')), 0, 255),
         'artwork_url'  => $art,
         'release_year' => ($year >= 1900 && $year <= 2100) ? $year : null,
+        'preview_url'  => itunes_preview_url((string)($r['previewUrl'] ?? '')), // 30秒試聴（band.php の ▶。無い曲もある）
     ];
+}
+
+/**
+ * 試聴の音源 URL（previewUrl）。https で、Apple の配信サーバー（audio-ssl.itunes.apple.com など）のものだけ通す。
+ *   <audio src> に入れるので、変なサイトの URL を鳴らさない（画像の URL と同じ考え方）。それ以外・空なら null
+ */
+function itunes_preview_url(string $url): ?string
+{
+    $parts = parse_url($url);
+    $host = strtolower((string)($parts['host'] ?? ''));
+    if (($parts['scheme'] ?? '') !== 'https' || strlen($url) > 500
+        || !(str_ends_with($host, '.apple.com') || str_ends_with($host, '.mzstatic.com'))) {
+        return null;
+    }
+    return $url;
 }
 
 /** 曲を検索する。正常なら曲の配列（0件なら []）、通信失敗なら null */
