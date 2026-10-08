@@ -673,21 +673,33 @@ function setupYearSlot() {
 }
 
 /* ---------------------------------------------------------------------
- * 並び替えボタン: 押すたびに新しい順 ⇔ 古い順
+ * 並び替えボタン: 押すたびに新しい順 ⇔ 古い順（メンバーの出演履歴・ライブ一覧）
  *   <button data-sort-toggle="#history-list"> → その中の年度 section と、各 <ol> の <li> の順番を逆にする
+ *   data-sort-items=".grid" なら、<ol> の代わりにそれの中身を逆にする（ライブ一覧の年度ごとのカード）
  *   append は「今ある要素を最後に移動する」ので、逆順に append し直せば並びが逆になる（作り直さない）
+ *   並べ替えたら、見えているカードを上から順にふわっと出す（どこが動いたか分かるように）
  * ------------------------------------------------------------------- */
 function setupSortToggle() {
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   document.querySelectorAll('[data-sort-toggle]').forEach((btn) => {
     const list = document.querySelector(btn.dataset.sortToggle);
     if (!list) return;
+    const itemsSel = btn.dataset.sortItems || 'ol';
     const reverse = (parent) => [...parent.children].reverse().forEach((el) => parent.append(el));
     btn.addEventListener('click', () => {
       reverse(list);
-      list.querySelectorAll('ol').forEach(reverse);
+      list.querySelectorAll(itemsSel).forEach(reverse);
       const asc = btn.getAttribute('aria-pressed') !== 'true';
       btn.setAttribute('aria-pressed', String(asc));
       btn.textContent = asc ? '古い順 ↑' : '新しい順 ↓';
+      if (reduceMotion) return;
+      // 年度の見出しとカードを、上から順に。画面の外の分まで動かすと遅れて見えるので、見えている所だけ
+      const targets = [...list.querySelectorAll(`:scope > * > :is(h2, h3), ${itemsSel} > *`)]
+        .filter((el) => el.offsetParent !== null && el.getBoundingClientRect().top < window.innerHeight);
+      targets.forEach((el, i) => {
+        el.animate([{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }],
+          { duration: 240, delay: Math.min(i, 12) * 25, easing: 'ease-out', fill: 'backwards' });
+      });
     });
   });
 }

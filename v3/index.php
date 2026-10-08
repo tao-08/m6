@@ -86,6 +86,11 @@ render_header('ライブ一覧', 'lives');
         <input type="search" class="search" placeholder="ライブ名・会場で絞り込み" data-filter=".live-card" aria-label="絞り込み">
         <a class="btn btn--primary" href="import.php">＋ 新規追加</a>
     </div>
+    <!-- .sorted-list: 並び替えボタンを、一番上の年度の見出しの右に重ねて置く（member.php の出演履歴と同じ） -->
+    <div class="sorted-list sorted-list--live">
+    <!-- 並び替え: 押すたびに新しい順 ⇔ 古い順。年度の順と、年度の中のカード（.grid の中）の順を逆にする（assets/app.js の setupSortToggle） -->
+    <button type="button" class="btn btn--ghost btn--sm sorted-list__btn" data-sort-toggle="#live-list" data-sort-items=".grid" aria-pressed="false">新しい順 ↓</button>
+    <div id="live-list">
     <?php foreach ($years as $year => $lives): ?>
         <section class="year" data-year="<?= (int)$year ?>">
             <h2 class="year__title"><?= $year > 0 ? (int)$year . '<small>年度</small>' : '年度未設定' ?></h2>
@@ -113,5 +118,7 @@ render_header('ライブ一覧', 'lives');
             </div>
         </section>
     <?php endforeach; ?>
+    </div>
+    </div>
 <?php endif; ?>
 <?php render_footer();

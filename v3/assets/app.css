@@ -255,6 +255,18 @@ h3 { font-size: 16px; }
 
 .toolbar { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; align-items: center; }
 .toolbar .search { min-width: 12em; } /* 狭い画面ではボタンが次の行に回る */
+/* 年度スロットがあるツールバー（ライブ一覧・メンバーの出演履歴）: [年度スロット][検索欄 …… 残りの幅いっぱい] */
+.toolbar:has(.year-slot) .search { flex: 1 1 10em; min-width: 0; }
+/* 並び替えボタンを、一番上の年度の見出しの右端に重ねる。
+   見出しは並び替え・年度スロットで入れ替わるが、いつも一覧の一番上にあるので、一覧の右上に置けば必ずその横に来る。
+   上の端どうしでそろえると、見出しより背の高いボタンの方が真ん中が下に来る → 真ん中どうしでそろえる:
+   top に「見出しの高さの半分」を入れ、translate で自分の高さの半分だけ上げる。
+   transform を使わないのは、.btn:hover の transform（1px 浮く）に上書きされて、マウスを乗せるとずれるから。
+   translate と transform は別の設定なので、両方かかる（足し算になる） */
+.sorted-list { position: relative; }
+.sorted-list__btn { position: absolute; right: 0; z-index: 1; translate: 0 -50%; }
+.sorted-list--history .sorted-list__btn { top: 11.25px; } /* 出演履歴の見出し: 18px × 行の高さ 1.25 = 22.5px の半分 */
+.sorted-list--live .sorted-list__btn { top: 17.5px; }     /* ライブ一覧の見出し: 高さ 35px の半分 */
 
 /* 年度スロット（ライブ一覧）: 真ん中の1段（26px）が選択中。上下に12pxずつ前後の年度の文字が半分ほど覗いて「回せる」とわかる */
 .year-slot { position: relative; flex: none; width: 6.6em; height: 52px; overflow: hidden;
@@ -435,7 +447,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .history { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
 /* 出演履歴の年度見出し（年度が変わるところだけ）と、上の検索・年度スロット・並び替えボタン */
 .history-year + .history-year { margin-top: 22px; }
-.history__year { font-size: 18px; font-weight: 900; letter-spacing: -.02em; margin: 0 0 8px; display: flex; align-items: baseline; gap: 3px; }
+.history__year { font-size: 18px; font-weight: 900; letter-spacing: -.02em; margin: 0 0 12px; /* 下の余白: 右に重ねた並び替えボタンは見出しより 3px ほどはみ出すので、カードとの間は 9px ほど */ display: flex; align-items: baseline; gap: 3px; }
 .history__year small { font-size: 12px; color: var(--muted); font-weight: 700; }
 .history-toolbar { margin-bottom: 14px; }
 .history-toolbar .search { flex: 1; min-width: 8em; }

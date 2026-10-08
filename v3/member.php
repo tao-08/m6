@@ -377,9 +377,14 @@ render_header($member['name'], 'members');
             </div>
             <!-- 検索: .history__item の data-text で絞る（年度スロットは section、検索は li を隠すので、ぶつからない） -->
             <input type="search" class="search" placeholder="ライブ名・バンド名・会場" data-filter=".history__item" aria-label="出演履歴を絞り込み">
-            <!-- 並び替え: 押すたびに新しい順 ⇔ 古い順（JS で並びを逆にするだけ。assets/app.js の setupSortToggle） -->
-            <button type="button" class="btn btn--ghost btn--sm" data-sort-toggle="#history-list" aria-pressed="false">新しい順 ↓</button>
         </div>
+        <?php endif; ?>
+        <!-- .sorted-list: 並び替えボタンを、一番上の年度の見出しの右に重ねて置く（CSS の position: absolute）。
+             ボタンを #history-list の中に入れると、並び替えのときに一緒に動いてしまうので外に置く -->
+        <div class="sorted-list sorted-list--history">
+        <?php if ($history): ?>
+            <!-- 並び替え: 押すたびに新しい順 ⇔ 古い順（JS で並びを逆にするだけ。assets/app.js の setupSortToggle） -->
+            <button type="button" class="btn btn--ghost btn--sm sorted-list__btn" data-sort-toggle="#history-list" aria-pressed="false">新しい順 ↓</button>
         <?php endif; ?>
         <div id="history-list">
         <?php foreach ($historyByYear as $year => $days): ?>
@@ -420,6 +425,7 @@ render_header($member['name'], 'members');
         </ol>
         </section>
         <?php endforeach; ?>
+        </div>
         </div>
         <?php if (!$history): ?><p class="muted">出演データがありません</p><?php endif; ?>
     </section>
