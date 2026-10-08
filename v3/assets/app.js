@@ -2323,18 +2323,23 @@ function setupAlbumBox() {
 }
 
 /* ---------------------------------------------------------------------
- * よく組むメンバーの開け閉め（member.php の data-partner-box）
- *   マイアルバム（setupAlbumBox）と同じ操作感。閉じているときは上位5人だけ見せる（CSS の nth-child(n+6)）。
+ * よく組むメンバー・よく演奏するアーティストの開け閉め（member.php の data-partner-box）
+ *   マイアルバム（setupAlbumBox）と同じ操作感。閉じているときは上位 data-shown 人（無ければ5人）だけ見せる
+ *   （CSS の nth-child と数を合わせる。よく組むメンバーは n+6、よく演奏するアーティストは n+4）。
+ *   ボタンの文字は data-more-label（無ければ「すべて表示」）。
  *   見出しボタンと、一覧の下の「すべて表示」/「閉じる」のどちらでも切り替えられる。
  *   js-collapsible を付けたときだけ CSS が隠す → JS が動かないときは全員見えたまま。
  * ------------------------------------------------------------------- */
 function setupPartnerBox() {
-  const box = document.querySelector('[data-partner-box]');
-  if (!box) return;
+  document.querySelectorAll('[data-partner-box]').forEach(setupOnePartnerBox);
+}
+
+function setupOnePartnerBox(box) {
   const toggle = box.querySelector('[data-partner-toggle]');
   const more = box.querySelector('[data-partner-more]');
   const count = box.querySelectorAll('.ranking > li').length;
-  const SHOWN = 5;
+  const SHOWN = Number(box.dataset.shown) || 5;
+  const moreLabel = box.dataset.moreLabel || 'すべて表示';
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   // 名前の ▸ を開くたびに、一緒に出たバンドの一覧をふわっと出す。
@@ -2359,7 +2364,7 @@ function setupPartnerBox() {
   const setOpen = (open) => {
     box.classList.toggle('is-open', open);
     toggle.setAttribute('aria-expanded', String(open));
-    more.textContent = open ? '閉じる' : 'すべて表示';
+    more.textContent = open ? '閉じる' : moreLabel;
     // 開いたとき、隠れていた6人目以降を上から順にふわっと出す（マイアルバムと同じ動き）
     if (open && !reduceMotion) {
       [...box.querySelectorAll('.ranking > li')].slice(SHOWN).forEach((li, i) => {

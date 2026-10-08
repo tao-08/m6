@@ -1147,6 +1147,12 @@ a.setlist__song:hover { color: var(--accent); text-decoration: underline; }
 .partner__live { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; }
 .partner__live .part { font-size: 10px; min-width: 0; padding: 0 6px; }
 .partner-box.js-collapsible:not(.is-open) .ranking > li:nth-child(5) { border-bottom: 0; } /* 5人目の下の線は「すべて表示」との間で要らない */
+/* よく演奏するアーティスト（member.php）: よく組むメンバーのカードを使い回し、閉じているときは上位3位だけ（app.js の data-shown="3" と合わせる） */
+.top-artists.js-collapsible:not(.is-open) .ranking > li:nth-child(n+4) { display: none; }
+.top-artists.js-collapsible:not(.is-open) .ranking > li:nth-child(3) { border-bottom: 0; }
+.top-artists .ranking li { align-items: center; gap: 0 10px; } /* 1行だけなので、よく組むメンバーの「上でそろえる」はやめて真ん中に */
+.top-artists .ranking li::before { line-height: inherit; }
+.top-artists .ranking a { min-width: 0; overflow-wrap: anywhere; }
 /* 楽器別出演数ランキング（stats.php）:「[Dr] [▸ 12組] 1位の名前」。▸ を開くと上位5位（同率含む）。開け閉めはよく組むメンバーの .partner を使い回す */
 .kings > li { align-items: flex-start; }
 .kings__first { min-width: 0; overflow-wrap: anywhere; }

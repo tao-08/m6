@@ -73,6 +73,20 @@ $st = $pdo->prepare('SELECT m.member_id, m.name, COUNT(DISTINCT other.band_id) A
 $st->execute([$memberId]);
 $partners = $st->fetchAll();
 
+// ---- よく演奏するアーティスト（上位10位） ----
+//   数え方はアーティスト一覧と同じ（ARTIST_PLAYS_SQL: オムニバスは曲に付いたアーティストを1バンド1回）。
+//   そのアーティストを演奏したバンドのうち、この人が入っていたバンドの数。最初は上位3位だけ見せて、残りは「さらに表示」（JS: setupPartnerBox）
+$st = $pdo->prepare('SELECT a.artist_id, a.name, COUNT(DISTINCT p.band_id) AS n
+    FROM (' . ARTIST_PLAYS_SQL . ') p
+    JOIN (' . MEMBERSHIP_SQL . ') mine ON mine.band_id = p.band_id
+    JOIN artist a ON a.artist_id = p.artist_id
+    WHERE mine.member_id = ?
+    GROUP BY a.artist_id
+    ORDER BY n DESC, a.name
+    LIMIT 10');
+$st->execute([$memberId]);
+$topArtists = $st->fetchAll();
+
 // ---- 出演履歴を「同じ日程（live_day）」ごとにまとめる ----
 //   SQL は1バンド1行で返ってくる。並び順は日程ごとに固まっているので、
 //   live_day_id をキーにした配列に入れていけば、順番を保ったままグループにできる
@@ -492,6 +506,27 @@ render_header($member['name'], 'members');
                 <?php endforeach; ?>
             </ol>
             <button type="button" class="btn btn--ghost btn--sm album-box__more" data-partner-more hidden>すべて表示</button>
+        </section>
+
+        <!-- よく演奏するアーティスト: 最初は上位3位だけ。見出しか「さらに表示」で10位まで出す（よく組むメンバーと同じ JS: setupPartnerBox） -->
+        <section id="top-artists" class="card album-box partner-box top-artists" data-partner-box data-shown="3" data-more-label="さらに表示">
+            <div class="album-head">
+                <button type="button" class="album-box__toggle" data-partner-toggle aria-expanded="false" aria-controls="top-artists">
+                    <span class="album-box__chevron" aria-hidden="true">▸</span>
+                    よく演奏するアーティスト
+                </button>
+            </div>
+            <?php if (!$topArtists): ?><p class="muted">まだいません</p><?php endif; ?>
+            <?php $artistRanks = tie_ranks($topArtists, static fn($a) => (int)$a['n']); // 同じ回数は同じ順位 ?>
+            <ol class="ranking">
+                <?php foreach ($topArtists as $k => $a): ?>
+                    <li data-rank="<?= $artistRanks[$k] ?>">
+                        <a href="artist.php?id=<?= (int)$a['artist_id'] ?>"><?= h($a['name']) ?></a>
+                        <span class="pill"><?= (int)$a['n'] ?>回</span>
+                    </li>
+                <?php endforeach; ?>
+            </ol>
+            <button type="button" class="btn btn--ghost btn--sm album-box__more" data-partner-more hidden>さらに表示</button>
         </section>
     </aside>
 </div>
