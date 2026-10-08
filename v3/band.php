@@ -23,7 +23,7 @@ $bandId = (int)($_GET['id'] ?? 0);
 $pdo = db();
 
 // ---- 1. バンド本体 ----
-$st = $pdo->prepare('SELECT b.*, a.name AS artist_name, d.live_id, d.label, d.held_on, l.name AS live_name, l.fiscal_year,
+$st = $pdo->prepare('SELECT b.*, a.name AS artist_name, d.live_id, d.label, d.held_on, d.total_bands, l.name AS live_name, l.fiscal_year,
         v.name AS venue_name
     FROM band b
     JOIN live_day d ON d.live_day_id = b.live_day_id
@@ -43,10 +43,13 @@ if (!$band) {
 $liveUrl = 'live.php?id=' . (int)$band['live_id'] . '#day-' . (int)$band['live_day_id'];
 
 // トリ = その日程で出演順が一番うしろ。組数（COUNT）は「7/14」の分母に使う（MAX だと欠番があるとずれる）
+//   総バンド数（live_day.total_bands）が入っていれば分母はそちら。登録済みが総バンド数に足りない日程は、
+//   登録済みの最後が本当の最後ではないのでトリにしない
 $st = $pdo->prepare('SELECT MAX(play_order), COUNT(*) FROM band WHERE live_day_id = ?');
 $st->execute([$band['live_day_id']]);
-[$maxOrder, $bandCount] = $st->fetch(PDO::FETCH_NUM);
-$isLast = (int)$maxOrder === (int)$band['play_order'];
+[$maxOrder, $registered] = $st->fetch(PDO::FETCH_NUM);
+$bandCount = max((int)$registered, (int)$band['total_bands']);
+$isLast = (int)$maxOrder === (int)$band['play_order'] && (int)$registered >= $bandCount;
 
 // ---- 2. メンバー（楽器ごとにまとめる。live.php と同じ形） ----
 $st = $pdo->prepare('SELECT m.member_id, m.name, i.short_name, i.name AS instrument_name, i.sort_order

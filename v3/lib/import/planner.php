@@ -405,14 +405,14 @@ function build_manual_timetables(array $plan, array $rows): array
     $choices = array_flip(roster_choices($plan)); // 'ri:bi' => 画面に出しているバンド名（エラー文用）
     $byDay = [];
     $picked = [];
-    $day = 0; // 今どの日程の区切りの下か（DAY_LABELS の番号: 0 = 1日目 … 3 = 教室ライブ）。区切りより上の行は 1日目
+    $day = DAY_LABELS[0]; // 今どの日程の区切りの下か（日程名）。区切りより上の行は 1日目
     foreach (array_values($rows) as $i => $r) {
         if (isset($r['divider'])) {
-            $found = array_search((string)$r['divider'], DAY_LABELS, true);
-            if ($found === false) { // フォームの値は書き換えられる可能性があるので、一覧にある日程だけ受け付ける
-                throw new RuntimeException(($i + 1) . '行目: 日程の区切りが正しくありません');
+            // 区切りの日程名は新しく作ってもいい。長さと「#」始まりだけチェックする（lib/repository.php）
+            [$day, $error] = resolve_day_label('__new__', (string)$r['divider'], []);
+            if ($error !== null) {
+                throw new RuntimeException(($i + 1) . '行目の区切り: ' . $error);
             }
-            $day = $found;
             continue;
         }
         $pick = (string)($r['pick'] ?? '');
@@ -460,12 +460,16 @@ function build_manual_timetables(array $plan, array $rows): array
         throw new RuntimeException('名簿のバンドを1つ以上選んでください');
     }
 
-    ksort($byDay); // 1日目 → 2日目 → 3日目 → 教室ライブ の順
+    // 1日目 → 2日目 → 3日目 → 教室ライブ の順。新しく作った日程名は、その後ろに出てきた順
+    //   uksort は「キー（日程名）どうしを比べる関数」で並べる。DAY_LABELS に無い名前は 99 番扱い
+    //   （PHP 8 の並べ替えは安定なので、同じ 99 番どうしは元の順 = 出てきた順のまま）
+    $order = array_flip(DAY_LABELS);
+    uksort($byDay, static fn($a, $b) => ($order[$a] ?? 99) <=> ($order[$b] ?? 99));
     $timetables = [];
     $refs = [];
-    foreach ($byDay as $day => $items) {
+    foreach ($byDay as $dayLabel => $items) {
+        $dayLabel = (string)$dayLabel; // 配列のキーにすると「123」のような名前は数値になるので文字列に戻す
         $ti = count($timetables);
-        $dayLabel = DAY_LABELS[$day];
         $timetables[] = ['title' => '', 'live_name' => '', 'label' => $dayLabel, 'month' => null, 'day' => null,
             'venue' => '', 'slots' => array_column($items, 'slot'), 'file' => "手入力（{$dayLabel}）"];
         foreach ($items as $si => $x) {
@@ -699,7 +703,8 @@ function commit_import_plan(PDO $pdo, array $plan, array $input): array
 
             // ---- 入力チェック（DB の型・制約に合わせる） ----
             $liveName = trim((string)($form['live_name'] ?? ''));
-            $label    = trim((string)($form['label'] ?? ''));
+            // 日程名: プルダウンで選んだ日程名 or 新規作成（'__new__' のときは label_new）
+            [$label, $labelError] = resolve_day_label((string)($form['label'] ?? ''), (string)($form['label_new'] ?? ''), $dayLabels ??= day_labels($pdo));
             $date     = (string)($form['date'] ?? '');
             $venueSel = (string)($form['venue_id'] ?? '');            // venue_id / 'new' / ''（未設定）
             $venueNew = trim((string)($form['venue_new'] ?? ''));     // 'new' のときの新しい会場名
@@ -729,8 +734,8 @@ function commit_import_plan(PDO $pdo, array $plan, array $input): array
             }
             // ライブごと消えたときに作り直すための年度（統合なら選んだライブの年度）
             $liveYear = $mergeLive ? (int)$mergeLive['fiscal_year'] : $year;
-            if (!in_array($label, DAY_LABELS, true)) { // 選択式だが、書き換えられたリクエストも弾く
-                throw new RuntimeException("{$where} 日程は一覧（1日目〜3日目・教室ライブ）から選んでください");
+            if ($labelError !== null) {
+                throw new RuntimeException("{$where} {$labelError}");
             }
 
             // ---- 会場: プルダウンで選んだ既存の会場 or 新規作成 ----

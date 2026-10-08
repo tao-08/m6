@@ -135,6 +135,9 @@ if (is_post()) {
             // 差分だけ更新（全部消すと曲ごとの演奏記録が CASCADE で消えるため。sync_band_members の説明参照）
             sync_band_members($pdo, $index, $bandId, $rows);
             renumber_bands($pdo, $dayId, $bandId, $order);
+            if ($isNew) {
+                sync_day_total_bands($pdo, $dayId); // バンドが増えて総バンド数を超えたら追いつかせる
+            }
             $pdo->commit();
         } catch (Throwable $e) {
             $pdo->rollBack();
@@ -163,9 +166,6 @@ if (!$members) {
 // 名前の入力候補。ふりがな（name_kana）でも探せるように一緒に読む
 $allNames = $pdo->query('SELECT name, name_kana FROM member ORDER BY name')->fetchAll(PDO::FETCH_KEY_PAIR);
 $allArtists = $pdo->query('SELECT name FROM artist ORDER BY name')->fetchAll(PDO::FETCH_COLUMN);
-
-render_header($isNew ? 'バンドを追加' : 'バンドを編集', 'lives');
-?>
 // バンド名の入力候補: 今までに使われたバンド名を新しい順（年度 → 開催日 → 登録順）に並べ、
 // そのあとに、まだバンド名として使われていないアーティスト名を名前順に足す。
 // 候補は最大8件しか出さないので、何年分も「ヨルシカ(〇〇)」がたまっても最近の代が先に出るようにする
@@ -179,6 +179,9 @@ $allBandNames = $pdo->query('SELECT name FROM (
         SELECT a.name, 1, NULL, NULL, NULL FROM artist a WHERE a.name NOT IN (SELECT name FROM band)
     ) t
     ORDER BY grp, y DESC, held DESC, id DESC, name')->fetchAll(PDO::FETCH_COLUMN);
+
+render_header($isNew ? 'バンドを追加' : 'バンドを編集', 'lives');
+?>
 <nav class="crumbs"><a href="<?= h($liveUrl) ?>"><?= h($band['live_name']) ?></a><span>/</span><?= h($band['label']) ?></nav>
 <h1 class="display display--sm"><?= $isNew ? 'バンドを追加' : 'バンドを編集' ?></h1>
 <?php foreach ($errors as $e): ?><div class="flash flash--error"><?= h($e) ?></div><?php endforeach; ?>
@@ -197,11 +200,11 @@ $allBandNames = $pdo->query('SELECT name FROM (
         <label class="field field--wide"><span>メモ</span><input name="note" value="<?= h($band['note']) ?>" maxlength="255"></label>
         <label class="field field--wide"><span>YouTube のリンク（任意）</span><input type="url" name="youtube_url" value="<?= h((string)$band['youtube_url']) ?>" maxlength="500" placeholder="https://www.youtube.com/watch?v=…" inputmode="url"></label>
     </div>
+    <datalist id="band-names"><?php foreach ($allBandNames as $n): ?><option value="<?= h((string)$n) ?>"><?php endforeach; ?></datalist>
     <datalist id="artists"><?php foreach ($allArtists as $n): ?><option value="<?= h($n) ?>"><?php endforeach; ?></datalist>
 
     <h2 class="section-title">メンバー</h2>
-    <datalist id="band-names"><?php foreach ($allBandNames as $n): ?><option value="<?= h((string)$n) ?>"><?php endforeach; ?></datalist>
-    <p class="muted small">サポートメンバーを含めて出演者を全員登録してください。<br>下のボタンからセットリストを登録すると曲ごとの楽器の持ち替えも記録できます。</p>
+    <p class="muted small">サポートメンバーを含めて出演者を全員登録してください。<br>セットリストを登録すると曲ごとの楽器の持ち替えも記録できます。</p>
     <div class="member-rows" data-rows>
         <?php foreach ($members as $m): ?>
             <div class="member-row-edit">

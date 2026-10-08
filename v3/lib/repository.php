@@ -16,6 +16,56 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/import/text.php';
 
+/**
+ * 日程名の候補: いつもの日程名（DAY_LABELS）＋ これまでに新しく作られた日程名
+ *   日程名のマスタ表は作らず、live_day に保存されている日程名をそのまま候補にする
+ *   （新しく作った日程名は、保存した時点で次から選べるようになる）
+ */
+function day_labels(PDO $pdo): array
+{
+    $saved = $pdo->query("SELECT DISTINCT label FROM live_day WHERE label NOT LIKE '#%' ORDER BY label")->fetchAll(PDO::FETCH_COLUMN);
+    return array_values(array_unique(array_merge(DAY_LABELS, $saved)));
+}
+
+/**
+ * 日程名のプルダウンの値（日程名 / '__new__'）と「新しい日程名」の入力から、保存する日程名を決める
+ * @return array{0: string, 1: ?string}  [日程名, エラーメッセージ（問題なければ null）]
+ */
+function resolve_day_label(string $sel, string $new, array $labels): array
+{
+    if ($sel === '__new__') {
+        $new = trim($new);
+        // 「#」で始まる名前は、ライブ編集で入れ替えに使う仮の名前（#日程ID）とぶつかるので使わせない
+        if ($new === '' || mb_strlen($new) > 50 || str_starts_with($new, '#')) {
+            return [$new, '新しい日程名は1〜50文字で入力してください（「#」で始まる名前は使えません）'];
+        }
+        return [$new, null];
+    }
+    if (!in_array($sel, $labels, true)) { // 選択式だが、書き換えられたリクエストも弾く
+        return [$sel, '日程名は一覧から選んでください'];
+    }
+    return [$sel, null];
+}
+
+/**
+ * 日程名のプルダウン ＋「＋ 新しい日程名を作る」を選んだときだけ出る入力欄（会場と同じ形）。$prefix は d[ID] / nd / tt[番号] など
+ *   値は '__new__'（「new」という日程名とぶつからないように）。出し入れは assets/app.js の setupSmallThings
+ *   $attrs は select に付ける属性（ライブ編集では重複チェック用の data-day-label など）
+ */
+function day_label_control(string $prefix, string $sel, string $newName, array $labels, string $attrs = ''): string
+{
+    if ($sel !== '__new__' && !in_array($sel, $labels, true)) {
+        $sel = $labels[0];
+    }
+    $html = '<select name="' . $prefix . '[label]" aria-label="日程名" data-new-select="__new__"' . $attrs . '>';
+    foreach ($labels as $label) {
+        $html .= '<option value="' . h($label) . '"' . ($sel === $label ? ' selected' : '') . '>' . h($label) . '</option>';
+    }
+    return $html . '<option value="__new__"' . ($sel === '__new__' ? ' selected' : '') . '>＋ 新しい日程名を作る</option></select>'
+        . '<input name="' . $prefix . '[label_new]" value="' . h($newName) . '" maxlength="50" placeholder="例: 野外ライブ"'
+        . ' aria-label="新しい日程名" data-new-input data-label-new' . ($sel === '__new__' ? '' : ' hidden') . '>';
+}
+
 /** 会場名 → venue_id。無ければ作る。空なら NULL（venue_id は NULL 可） */
 function find_or_create_venue(PDO $pdo, string $name): ?int
 {
@@ -790,6 +840,21 @@ function renumber_bands(PDO $pdo, int $liveDayId, ?int $movedBandId = null, ?int
     foreach ($ids as $i => $id) {
         $update->execute([$i + 1, $id]);
     }
+}
+
+/**
+ * 日程の総バンド数（live_day.total_bands）を、登録済みのバンド数に追いつかせる。
+ * バンドを追加したあと（band_edit.php）に呼ぶ。
+ *   総バンド数が登録済みより少ない、という矛盾した状態を DB に残さないため。
+ *   NULL（未入力）の日程は触らない（NULL = 登録済みの数を使う、なので矛盾しない）。
+ *   登録済みより多いときもそのまま（「本当は14組出た」の手入力を消さない）。
+ *   取り込みは日程を作り直す（total_bands は NULL）、統合は日程ごと移すので数が変わらない → どちらも呼ばなくてよい
+ */
+function sync_day_total_bands(PDO $pdo, int $liveDayId): void
+{
+    $pdo->prepare('UPDATE live_day SET total_bands = (SELECT COUNT(*) FROM band WHERE live_day_id = ?)
+        WHERE live_day_id = ? AND total_bands < (SELECT COUNT(*) FROM band WHERE live_day_id = ?)')
+        ->execute([$liveDayId, $liveDayId, $liveDayId]);
 }
 
 /** その日程の「次の出演順」（最後尾） */

@@ -191,7 +191,7 @@ $headliners = rows($pdo, 'SELECT m.member_id, m.name, COUNT(DISTINCT b.band_id) 
     FROM (' . MEMBERSHIP_SQL . ') bm
     JOIN member m ON m.member_id = bm.member_id
     JOIN band b ON b.band_id = bm.band_id
-    JOIN (SELECT live_day_id, MAX(play_order) AS max_order FROM band GROUP BY live_day_id) last
+    JOIN (' . HEADLINER_SQL . ') last
         ON last.live_day_id = b.live_day_id AND last.max_order = b.play_order
     JOIN live_day ld ON ld.live_day_id = b.live_day_id
     JOIN live lm ON lm.live_id = ld.live_id

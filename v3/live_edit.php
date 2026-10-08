@@ -4,6 +4,7 @@
  *  live_edit.php — ライブの新規追加 / 編集
  * =====================================================================
  *    live_edit.php          … 新しいライブを手入力で追加（タイムテーブルのファイルが無いとき用）
+ *                              「＋ 日程を追加」ボタンで、2日目以降の日程もまとめて入れられる（xd[番号][...]）
  *    live_edit.php?id=ID    … ライブ名・年度・各日程の情報を直す。日程の追加もここ
  *
  *  live（1行）と live_day（日程の数だけ）をまとめて1つのフォームで更新する。
@@ -35,7 +36,10 @@ if ($isNew) {
         http_response_code(404);
         exit('ライブが見つかりません');
     }
-    $st = $pdo->prepare('SELECT d.*, v.name AS venue_name FROM live_day d LEFT JOIN venue v ON v.venue_id = d.venue_id
+    // band_count: その日程に登録済みのバンド数。総バンド数はこれより少なくできない
+    $st = $pdo->prepare('SELECT d.*, v.name AS venue_name,
+            (SELECT COUNT(*) FROM band b WHERE b.live_day_id = d.live_day_id) AS band_count
+        FROM live_day d LEFT JOIN venue v ON v.venue_id = d.venue_id
         WHERE d.live_id = ? ORDER BY d.held_on IS NULL, d.held_on, d.live_day_id');
     $st->execute([$liveId]);
     $days = $st->fetchAll();
@@ -46,17 +50,21 @@ if ($isNew) {
  * 既存の日程（d[ID][...]）と追加する日程（nd[...]）の両方で同じチェックを使うので関数にしている。
  * @return array{0: array, 1: string[]}  [入力値, エラーメッセージの配列]
  */
-function read_day_input(mixed $in, array $venues): array
+function read_day_input(mixed $in, array $venues, array $labels, int $registered = 0): array
 {
     $in = is_array($in) ? $in : []; // 改造されたリクエストで配列以外が来ても落ちないように
-    $label = trim((string)($in['label'] ?? ''));
+    $labelSel = (string)($in['label'] ?? '');            // 日程名 / '__new__'（新しく作る）
+    $labelNew = trim((string)($in['label_new'] ?? ''));  // '__new__' のときの新しい日程名
     $date = (string)($in['held_on'] ?? '');
     $venueSel = (string)($in['venue_id'] ?? '');      // venue_id / 'new' / ''（未設定）
     $venueNew = trim((string)($in['venue_new'] ?? '')); // 'new' のときの新しい会場名
     $note = trim((string)($in['note'] ?? ''));
+    $total = trim(mb_convert_kana((string)($in['total_bands'] ?? ''), 'n')); // 総バンド数。全角数字も受け付ける。空欄 = 未入力
     $errors = [];
-    if (!in_array($label, DAY_LABELS, true)) { // 選択式だが、書き換えられたリクエストも弾く
-        $errors[] = '日程名は一覧から選んでください';
+    // 日程名: プルダウンで選んだ日程名 or 新規作成（lib/repository.php。取り込み画面と同じ）
+    [$label, $labelError] = resolve_day_label($labelSel, $labelNew, $labels);
+    if ($labelError !== null) {
+        $errors[] = $labelError;
     }
     if ($date === '') {
         $errors[] = "「{$label}」の日付を入力してください";
@@ -79,8 +87,15 @@ function read_day_input(mixed $in, array $venues): array
             $venueSel = '';
         }
     }
-    // compact は ['label' => $label, ...] と同じ。venue_sel / venue_new はエラーで戻ったときの表示用
-    return [compact('label', 'date', 'venue', 'note') + ['venue_sel' => $venueSel, 'venue_new' => $venueNew], $errors];
+    // 総バンド数: 登録済みより多いのはOK（タイムテーブルが一部しか無い日程用）、少ないのはNG
+    if ($total !== '' && (!ctype_digit($total) || (int)$total > 999)) {
+        $errors[] = "「{$label}」の総バンド数は 0〜999 の数字で入力してください";
+    } elseif ($total !== '' && (int)$total < $registered) {
+        $errors[] = "「{$label}」の総バンド数が登録済みのバンド数（{$registered}組）より少ないです。{$registered} 以上にするか、空欄にしてください";
+    }
+    // compact は ['label' => $label, ...] と同じ。*_sel / *_new はエラーで戻ったときの表示用
+    return [compact('label', 'date', 'venue', 'note', 'total') + ['venue_sel' => $venueSel, 'venue_new' => $venueNew,
+        'label_sel' => $labelSel, 'label_new' => $labelNew], $errors];
 }
 
 /** 会場のプルダウン（＋「新しい会場を作る」を選んだときだけ出る入力欄）。$prefix は d[ID] / nd */
@@ -97,6 +112,46 @@ function venue_field(string $prefix, string $sel, string $newName, array $venues
     return $html;
 }
 
+/**
+ * 日程名の欄（プルダウン ＋ 新しい日程名の入力欄 ＋ 警告）。$prefix は d[ID] / nd / xd[番号]
+ * $attrs は select に付ける属性（追加する日程には data-new-day を足す）
+ */
+function day_label_field(string $prefix, string $sel, string $newName, array $labels, string $attrs = ''): string
+{
+    return '<div class="field"><span>日程名</span>' . day_label_control($prefix, $sel, $newName, $labels, ' data-day-label' . $attrs)
+        . '<small class="merge-note merge-note--warn" data-overwrite-note hidden>⚠ 登録済の日程のため上書きされます</small>'
+        . '<small class="merge-note merge-note--warn" data-dup-note hidden>⚠ 他の日程と重複しています</small></div>';
+}
+
+/**
+ * 新規ライブの2つ目以降の日程の入力欄（「＋ 日程を追加」ボタンで増える）。$i は番号（<template> の中では __i__）
+ * 名前を xd[番号][...] にして、PHP では $_POST['xd'] の配列として受け取る
+ */
+function extra_day_block(string $i, array $d, array $venues, array $labels): string
+{
+    $p = "xd[$i]";
+    return '<div data-extra-day><h2 class="section-title">日程</h2><div class="form-grid">'
+        . day_label_field($p, $d['label_sel'], $d['label_new'], $labels)
+        . '<label class="field"><span>日付</span><input type="date" name="' . $p . '[held_on]" value="' . h($d['date']) . '" required></label>'
+        . venue_field($p, $d['venue_sel'], $d['venue_new'], $venues)
+        . total_bands_field($p, $d['total'], 0)
+        . '<label class="field field--wide"><span>メモ</span><input name="' . $p . '[note]" value="' . h($d['note']) . '"></label>'
+        . '</div><p class="day-actions"><button type="button" class="btn btn--ghost btn--danger btn--sm" data-extra-day-remove>この日程をやめる</button></p></div>';
+}
+
+/**
+ * 日程の総バンド数の欄。$prefix は d[ID] / nd / xd[番号]
+ * min に登録済みのバンド数を入れて、少ない数だとブラウザが送信前に止める（サーバーでも read_day_input でチェックする）
+ */
+function total_bands_field(string $prefix, string $value, int $registered): string
+{
+    return '<label class="field"><span>総バンド数（任意）</span>'
+        . '<input type="number" name="' . $prefix . '[total_bands]" value="' . h($value) . '" min="' . $registered . '" max="999" step="1" inputmode="numeric"'
+        . ' placeholder="' . $registered . '">'
+        . '<small class="merge-note">登録済み ' . $registered . ' 組。それより少ない数は保存できません。'
+        . '登録済みが総バンド数に足りないと、最後のバンドに🐦️（トリ）を付けません</small></label>';
+}
+
 /** 日程1つ分の値を、SQL に渡す配列にする（空欄 → NULL） */
 function day_params(PDO $pdo, array $in): array
 {
@@ -105,6 +160,7 @@ function day_params(PDO $pdo, array $in): array
         $in['date'],                                       // 必須（read_day_input でチェック済み）
         find_or_create_venue($pdo, $in['venue']),           // 空欄 → NULL
         $in['note'] !== '' ? $in['note'] : null,
+        $in['total'] !== '' ? (int)$in['total'] : null,    // 総バンド数。空欄 → NULL
     ];
 }
 
@@ -114,11 +170,18 @@ $savedPlaylist = !$isNew && youtube_playlist_id((string)$live['youtube_url']) !=
 // 追加する日程の初期値: まだ使っていない最初の日程名（新規ライブなら「1日目」）
 $usedLabels = array_column($days, 'label');
 $freeLabels = array_values(array_diff(DAY_LABELS, $usedLabels));
-$newDay = ['label' => $freeLabels[0] ?? DAY_LABELS[0], 'date' => '', 'venue' => '', 'note' => '', 'add' => false,
+$newDay = ['label' => $freeLabels[0] ?? DAY_LABELS[0], 'date' => '', 'venue' => '', 'note' => '', 'total' => '', 'add' => false,
     'venue_sel' => '', 'venue_new' => ''];
+$newDay += ['label_sel' => $newDay['label'], 'label_new' => ''];
+
+// 新規ライブで「＋ 日程を追加」ボタンで増やした日程（エラーで戻ったときに入力値を出し直す用）
+$extraDays = [];
 
 // 会場はプルダウンで選ばせる（表記ゆれ防止）。FETCH_KEY_PAIR で [venue_id => name] の形になる
 $venues = $pdo->query('SELECT venue_id, name FROM venue ORDER BY name')->fetchAll(PDO::FETCH_KEY_PAIR);
+
+// 日程名のプルダウンの中身: いつもの日程名 ＋ これまでに新しく作られた日程名（lib/repository.php）
+$dayLabels = day_labels($pdo);
 
 // 「他のライブに統合」で選んだライブ（統合しないなら null）
 $mergeLive = null;
@@ -161,7 +224,7 @@ if (is_post()) {
 
     $dayInputs = [];
     foreach ($days as $d) {
-        [$in, $dayErrors] = read_day_input($_POST['d'][$d['live_day_id']] ?? [], $venues);
+        [$in, $dayErrors] = read_day_input($_POST['d'][$d['live_day_id']] ?? [], $venues, $dayLabels, (int)$d['band_count']);
         $errors = array_merge($errors, $dayErrors);
         $dayInputs[(int)$d['live_day_id']] = $in;
     }
@@ -170,10 +233,19 @@ if (is_post()) {
     // （日程名は選択式で常に値が入るので、「何か入力されたか」では判定できない）
     $nd = is_array($_POST['nd'] ?? null) ? $_POST['nd'] : [];
     $wantsNewDay = $isNew || !empty($nd['add']);
-    [$newDay, $newDayErrors] = read_day_input($nd, $venues);
+    [$newDay, $newDayErrors] = read_day_input($nd, $venues, $dayLabels);
     $newDay['add'] = $wantsNewDay;
     if ($wantsNewDay) {
         $errors = array_merge($errors, $newDayErrors);
+    }
+    // 新規ライブの2つ目以降の日程。番号は途中で消されて飛ぶことがあるので、値だけ順に読む
+    //   リクエストを自作して大量に送られても困らないよう、20 日程より多い分は読まない
+    if ($isNew && is_array($_POST['xd'] ?? null)) {
+        foreach (array_slice($_POST['xd'], 0, 20) as $x) {
+            [$in, $xErrors] = read_day_input($x, $venues, $dayLabels);
+            $errors = array_merge($errors, $xErrors);
+            $extraDays[] = $in;
+        }
     }
 
     // 日程名の重複チェック（同じライブに「1日目」が2つは保存できない）
@@ -182,6 +254,7 @@ if (is_post()) {
     if ($wantsNewDay) {
         $labels[] = $newDay['label'];
     }
+    $labels = array_merge($labels, array_column($extraDays, 'label'));
     foreach (array_count_values($labels) as $label => $count) {
         if ($count > 1) {
             $errors[] = "日程名「{$label}」が{$count}つあります。別々の日程名にしてください";
@@ -194,6 +267,7 @@ if (is_post()) {
     if ($wantsNewDay && $newDay['date'] !== '') {
         $dates[] = $newDay['date'];
     }
+    $dates = array_merge($dates, array_filter(array_column($extraDays, 'date')));
     $year = $dates ? (fiscal_year_from_date(min($dates)) ?? (int)$live['fiscal_year']) : (int)$live['fiscal_year'];
     if (!$mergeLive && ($year < 1990 || $year > 2100)) { // live.fiscal_year の CHECK 制約と同じ範囲
         $errors[] = '日付の年が範囲外です（年度は日付から自動で決まります）';
@@ -220,12 +294,12 @@ if (is_post()) {
                     $deleteDay->execute([(int)$sameId]);
                 }
             }
-            $move = $pdo->prepare('UPDATE live_day SET label = ?, held_on = ?, venue_id = ?, note = ?, live_id = ? WHERE live_day_id = ?');
+            $move = $pdo->prepare('UPDATE live_day SET label = ?, held_on = ?, venue_id = ?, note = ?, total_bands = ?, live_id = ? WHERE live_day_id = ?');
             foreach ($dayInputs as $id => $in) {
                 $move->execute([...day_params($pdo, $in), $targetId, $id]);
             }
             if ($wantsNewDay) {
-                $pdo->prepare('INSERT INTO live_day (label, held_on, venue_id, note, live_id) VALUES (?, ?, ?, ?, ?)')
+                $pdo->prepare('INSERT INTO live_day (label, held_on, venue_id, note, total_bands, live_id) VALUES (?, ?, ?, ?, ?, ?)')
                     ->execute([...day_params($pdo, $newDay), $targetId]);
             }
             // 日程が全部いなくなった元のライブを消す
@@ -259,13 +333,13 @@ if (is_post()) {
             foreach (array_keys($dayInputs) as $id) {
                 $tmp->execute([$id]);
             }
-            $update = $pdo->prepare('UPDATE live_day SET label = ?, held_on = ?, venue_id = ?, note = ? WHERE live_day_id = ?');
+            $update = $pdo->prepare('UPDATE live_day SET label = ?, held_on = ?, venue_id = ?, note = ?, total_bands = ? WHERE live_day_id = ?');
             foreach ($dayInputs as $id => $in) {
                 $update->execute([...day_params($pdo, $in), $id]); // ...（スプレッド構文）で配列を展開して、最後に id を足す
             }
-            if ($wantsNewDay) {
-                $pdo->prepare('INSERT INTO live_day (label, held_on, venue_id, note, live_id) VALUES (?, ?, ?, ?, ?)')
-                    ->execute([...day_params($pdo, $newDay), $liveId]);
+            $insertDay = $pdo->prepare('INSERT INTO live_day (label, held_on, venue_id, note, total_bands, live_id) VALUES (?, ?, ?, ?, ?, ?)');
+            foreach ($wantsNewDay ? [$newDay, ...$extraDays] : [] as $in) {
+                $insertDay->execute([...day_params($pdo, $in), $liveId]);
             }
             $pdo->commit();
             flash($isNew ? 'ライブを追加しました。次は「＋ バンドを追加」から出演バンドを入れよう' : 'ライブ情報を更新しました');
@@ -292,8 +366,8 @@ if (is_post()) {
     $live = array_merge($live, ['fiscal_year' => $year, 'name' => $name, 'youtube_url' => $youtube]);
     foreach ($days as &$d) {
         $in = $dayInputs[(int)$d['live_day_id']];
-        $d = array_merge($d, ['label' => $in['label'], 'held_on' => $in['date'], 'venue_name' => $in['venue'], 'venue_sel' => $in['venue_sel'], 'venue_new' => $in['venue_new'],
-            'note' => $in['note']]);
+        $d = array_merge($d, ['label' => $in['label'], 'label_sel' => $in['label_sel'], 'label_new' => $in['label_new'], 'held_on' => $in['date'], 'venue_name' => $in['venue'], 'venue_sel' => $in['venue_sel'], 'venue_new' => $in['venue_new'],
+            'note' => $in['note'], 'total_bands' => $in['total']]);
     }
     unset($d);
 }
@@ -357,11 +431,10 @@ if ($isNew) {
     <?php foreach ($days as $d): $id = (int)$d['live_day_id']; ?>
         <h2 class="section-title"><?= h($d['label'] ?: '日程') ?></h2>
         <div class="form-grid">
-            <label class="field"><span>日程名</span><select name="d[<?= $id ?>][label]" data-day-label><?= day_label_options((string)$d['label']) ?></select>
-                <small class="merge-note merge-note--warn" data-overwrite-note hidden>⚠ 登録済の日程のため上書きされます</small>
-                <small class="merge-note merge-note--warn" data-dup-note hidden>⚠ 他の日程と重複しています</small></label>
+            <?= day_label_field("d[$id]", $d['label_sel'] ?? (string)$d['label'], $d['label_new'] ?? '', $dayLabels) ?>
             <label class="field"><span>日付</span><input type="date" name="d[<?= $id ?>][held_on]" value="<?= h($d['held_on']) ?>" required></label>
             <?= venue_field("d[$id]", $d['venue_sel'] ?? (string)$d['venue_id'], $d['venue_new'] ?? '', $venues) ?>
+            <?= total_bands_field("d[$id]", (string)$d['total_bands'], (int)$d['band_count']) ?>
             <label class="field field--wide"><span>メモ</span><input name="d[<?= $id ?>][note]" value="<?= h($d['note']) ?>"></label>
         </div>
         <p class="day-actions">
@@ -382,13 +455,18 @@ if ($isNew) {
         <label class="new-day-toggle"><input type="checkbox" name="nd[add]" value="1" data-new-day-add<?= $newDay['add'] ? ' checked' : '' ?>> ＋ 日程を追加</label>
     <?php endif; ?>
     <div class="form-grid" data-new-day-fields<?= !$isNew && !$newDay['add'] ? ' hidden' : '' ?>>
-        <label class="field"><span>日程名</span><select name="nd[label]" data-day-label data-new-day><?= day_label_options($newDay['label']) ?></select>
-            <small class="merge-note merge-note--warn" data-overwrite-note hidden>⚠ 登録済の日程のため上書きされます</small>
-            <small class="merge-note merge-note--warn" data-dup-note hidden>⚠ 他の日程と重複しています</small></label>
+        <?= day_label_field('nd', $newDay['label_sel'], $newDay['label_new'], $dayLabels, ' data-new-day') ?>
         <label class="field"><span>日付</span><input type="date" name="nd[held_on]" value="<?= h($newDay['date']) ?>"<?= $isNew || $newDay['add'] ? ' required' : '' ?>></label>
         <?= venue_field('nd', $newDay['venue_sel'], $newDay['venue_new'], $venues) ?>
+        <?= total_bands_field('nd', $newDay['total'], 0) ?>
         <label class="field field--wide"><span>メモ</span><input name="nd[note]" value="<?= h($newDay['note']) ?>"></label>
     </div>
+    <?php if ($isNew): ?>
+        <!-- 2つ目以降の日程。「＋ 日程を追加」で <template> を複製して増やす（assets/app.js の setupExtraDays） -->
+        <div data-extra-days><?php foreach ($extraDays as $i => $x) echo extra_day_block((string)$i, $x, $venues, $dayLabels); ?></div>
+        <template id="extra-day-tpl"><?= extra_day_block('__i__', ['label_sel' => '', 'label_new' => '', 'date' => '', 'venue_sel' => '', 'venue_new' => '', 'note' => '', 'total' => ''], $venues, $dayLabels) ?></template>
+        <p class="day-actions"><button type="button" class="btn btn--ghost btn--sm" data-extra-day-add>＋ 日程を追加</button></p>
+    <?php endif; ?>
 
     <div class="form-actions">
         <?php if (!$isNew): ?><a class="btn btn--ghost" href="live.php?id=<?= $liveId ?>">キャンセル</a><?php endif; ?>

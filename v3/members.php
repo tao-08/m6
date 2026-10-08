@@ -4,7 +4,8 @@
  *  members.php — メンバー一覧（出演回数ランキング + マイアルバム上位5枚）
  * =====================================================================
  *  「トリ」= その日の play_order が一番大きいバンド。
- *  日程ごとの最大の play_order をサブクエリ（last）で先に求めておき、JOIN して比べている。
+ *  日程ごとの最大の play_order をサブクエリ（last = HEADLINER_SQL）で先に求めておき、JOIN して比べている。
+ *  総バンド数まで登録されていない日程は last に出てこない（トリなし）ので LEFT JOIN。
  *
  *  上の「学年」タブで表示するメンバーを絞り込める（?who=）
  *    all   … 全学年（入学年度が不明な人も含む）
@@ -66,7 +67,7 @@ $st = $pdo->prepare('SELECT m.member_id, m.name, m.name_kana, m.entry_year,
     JOIN (' . MEMBERSHIP_SQL . ') bm ON bm.member_id = m.member_id
     JOIN band b ON b.band_id = bm.band_id
     JOIN live_day ld ON ld.live_day_id = b.live_day_id
-    JOIN (SELECT live_day_id, MAX(play_order) AS max_order FROM band GROUP BY live_day_id) last
+    LEFT JOIN (' . HEADLINER_SQL . ') last
         ON last.live_day_id = b.live_day_id
     WHERE 1 = 1' . $filterSql . '
     GROUP BY m.member_id

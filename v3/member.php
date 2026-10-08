@@ -28,14 +28,15 @@ if (!$member) {
 }
 
 // ---- 出演履歴（新しい順） ----
-//   is_last: その日の最大 play_order と同じなら 1（トリ）
+//   is_last: その日の最大 play_order と同じなら 1（トリ）。総バンド数まで登録されていない日程は 0（HEADLINER_SQL）
 //   setlist_count: 登録済みの曲数（song_count と一致すれば「セットリスト登録済」）
 $st = $pdo->prepare('SELECT b.band_id, b.name AS band_name, b.play_order, b.song_count,
         (SELECT COUNT(*) FROM song s WHERE s.band_id = b.band_id) AS setlist_count,
         ld.live_day_id, ld.label, ld.held_on AS date, lm.live_id, lm.fiscal_year AS year, lm.name AS live_name, v.name AS venue_name,
-        (b.play_order = (SELECT MAX(b2.play_order) FROM band b2 WHERE b2.live_day_id = b.live_day_id)) AS is_last
+        (last.max_order IS NOT NULL) AS is_last
     FROM (' . MEMBERSHIP_SQL . ') bm
     JOIN band b ON b.band_id = bm.band_id
+    LEFT JOIN (' . HEADLINER_SQL . ') last ON last.live_day_id = b.live_day_id AND last.max_order = b.play_order
     JOIN live_day ld ON ld.live_day_id = b.live_day_id
     JOIN live lm ON lm.live_id = ld.live_id
     LEFT JOIN venue v ON v.venue_id = ld.venue_id

@@ -167,21 +167,11 @@ function youtube_icon(): string
         . '<path fill="#FFFFFF" d="M9.55 15.57V8.43L15.82 12l-6.27 3.57z"/></svg>';
 }
 
-/** live_day.label（日程名）に使える値。画面は選択式、保存時もこの中にあるかチェックする */
+/**
+ * live_day.label（日程名）のいつもの値。プルダウンの先頭にこの順で出す
+ * これ以外の日程名も「＋ 新しい日程名を作る」で作れる（lib/repository.php の day_labels / resolve_day_label）
+ */
 const DAY_LABELS = ['1日目', '2日目', '3日目', '教室ライブ'];
-
-/** 日程名の <select> の中身。$selected が一覧に無ければ先頭（1日目）を選ぶ */
-function day_label_options(string $selected): string
-{
-    if (!in_array($selected, DAY_LABELS, true)) {
-        $selected = DAY_LABELS[0];
-    }
-    $html = '';
-    foreach (DAY_LABELS as $label) {
-        $html .= '<option value="' . h($label) . '"' . ($label === $selected ? ' selected' : '') . '>' . h($label) . '</option>';
-    }
-    return $html;
-}
 
 /** 別ページへ移動して処理を終える（exit を忘れると後ろの処理が動いてしまうので関数にまとめた） */
 function redirect(string $path): never
@@ -453,6 +443,18 @@ function instruments(): array
  *   使い方: FROM (" . MEMBERSHIP_SQL . ") bm
  */
 const MEMBERSHIP_SQL = 'SELECT DISTINCT band_id, member_id FROM band_member';
+
+/**
+ * 日程ごとの「トリの出演順」を表すサブクエリ（live_day_id, max_order）。
+ * トリ = その日程で出演順が一番うしろのバンド。
+ * ただし総バンド数（live_day.total_bands）より登録済みが少ない日程は、本当の最後のバンドが
+ * 登録されていない → 登録済みの最後はトリではないので、その日程の行を出さない（HAVING）。
+ *   使い方: JOIN (" . HEADLINER_SQL . ") last ON last.live_day_id = b.live_day_id AND last.max_order = b.play_order
+ */
+const HEADLINER_SQL = 'SELECT b.live_day_id, MAX(b.play_order) AS max_order
+    FROM band b JOIN live_day d ON d.live_day_id = b.live_day_id
+    GROUP BY b.live_day_id, d.total_bands
+    HAVING d.total_bands IS NULL OR COUNT(*) >= d.total_bands';
 
 /**
  * 「アーティスト × そのアーティストをコピーしたバンド」の組を表すサブクエリ。

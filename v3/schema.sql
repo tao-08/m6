@@ -112,6 +112,7 @@ CREATE TABLE live_day (
     held_on      DATE         NULL,                    -- 開催日。不明なら NULL
     venue_id     INT UNSIGNED NULL,                    -- 不明なら NULL
     note         TEXT         NULL,
+    total_bands  SMALLINT UNSIGNED NULL,               -- 総バンド数（手入力）。NULL = 登録済みのバンド数を使う。登録済みより少ないとトリ無し（migrations/013）
     PRIMARY KEY (live_day_id),
     UNIQUE KEY uq_live_day_label (live_id, label),     -- 同じライブに「1日目」が2つできない
     KEY idx_live_day_held_on (held_on),

@@ -82,17 +82,23 @@ function suggest_attr(array $status): string
 /**
  * タイムテーブル手入力画面の1行。上からの並びがそのまま出演順。
  *   日程の区切りの行（$r['divider'] = '2日目' など）… この行より下のバンドがその日程になる。区切りも ≡ で動かせる
+ *     日程名の候補（$dayLabels）に無い名前は「新しい日程名」なので、名前を打てる入力欄にする
  *   バンドの行（$r['pick'], $r['songs']）          … ≡ / 順番（JS が日程ごとに振る）/ 名簿のバンドか休憩 / 曲数
  * $rosterChoices は roster_choices() の結果。
  */
-function manual_row_html(string $i, array $r, array $rosterChoices): string
+function manual_row_html(string $i, array $r, array $rosterChoices, array $dayLabels): string
 {
     $handle = '<td><button type="button" class="drag-handle" data-drag-handle aria-label="ドラッグで並び替え（↑↓キーでも動く）" title="ドラッグで並び替え">'
         . icon('drag_indicator') . '</button></td>';
     if (isset($r['divider'])) {
+        $label = (string)$r['divider'];
+        // 決まった日程名（'__day__' は JS が置きかえるひな形）は文字だけ、新しい日程名は入力欄
+        $field = $label === '__day__' || in_array($label, $dayLabels, true)
+            ? '<input type="hidden" name="r[' . $i . '][divider]" value="' . h($label) . '"><span class="manual-divider__label">' . h($label) . '</span>'
+            : '<input class="manual-divider__input" name="r[' . $i . '][divider]" value="' . h($label) . '" maxlength="50" placeholder="新しい日程名（例: 野外ライブ）"'
+                . ' aria-label="新しい日程名" required data-manual-new-day>';
         return '<tr class="manual-divider" data-manual-divider>' . $handle
-            . '<td colspan="3"><div class="manual-divider__inner"><input type="hidden" name="r[' . $i . '][divider]" value="' . h((string)$r['divider']) . '">'
-            . '<span class="manual-divider__label">' . h((string)$r['divider']) . '</span>'
+            . '<td colspan="3"><div class="manual-divider__inner">' . $field
             . '<button type="button" class="btn btn--ghost btn--sm" data-manual-remove aria-label="この区切りを消す">×</button></div></td></tr>';
     }
     $pick = (string)($r['pick'] ?? '');
@@ -204,7 +210,8 @@ if (is_post()) {
             $r = (array)$r;
             $str = static fn(string $k) => mb_substr(is_string($r[$k] ?? null) ? $r[$k] : '', 0, 20);
             if (isset($r['divider'])) {
-                $plan['manual_rows'][] = ['divider' => $str('divider')];
+                // 日程名は 50 文字まで（live_day.label）。チェックは build_manual_timetables で
+                $plan['manual_rows'][] = ['divider' => trim(mb_substr(is_string($r['divider']) ? $r['divider'] : '', 0, 50))];
             } elseif ($str('pick') !== '') { // 「— 使わない —」の行は登録に関係ないので、書き直しの画面にも残さない
                 $plan['manual_rows'][] = ['pick' => $str('pick'), 'songs' => $str('songs')];
             }
@@ -326,6 +333,7 @@ if ($plan === null): // ==================== アップロード画面 ==========
     // 空の行（「— 使わない —」）は最初は出さない。休憩などを入れたいときは「＋ 行を追加」
     $emptyRow = ['pick' => '', 'songs' => ''];
     $manualRows = $plan['manual_rows'];
+    $dayLabels = day_labels($pdo); // 区切りのボタンに出す日程名（いつもの日程名 ＋ これまでに作られた日程名）
     // 1日目は見出しに固定（動かせない・消せない）。先頭の行が 1日目 の区切りなら、見出しと重なるので捨てる
     if (($manualRows[0]['divider'] ?? null) === DAY_LABELS[0]) {
         array_shift($manualRows);
@@ -362,18 +370,21 @@ if ($plan === null): // ==================== アップロード画面 ==========
             </thead>
             <!-- data-sortable: ≡ のドラッグで並び替え（assets/app.js の setupSlotSort。プレビューの表と同じ部品） -->
             <tbody data-sortable data-manual-rows>
-            <?php foreach ($manualRows as $i => $r): ?><?= manual_row_html((string)$i, $r, $rosterChoices) ?><?php endforeach; ?>
+            <?php foreach ($manualRows as $i => $r): ?><?= manual_row_html((string)$i, $r, $rosterChoices, $dayLabels) ?><?php endforeach; ?>
             </tbody>
         </table>
     </div>
-    <!-- 「＋」で足す行のひな形。__i__ を JS が次の番号に、__day__ を日程名に置きかえる -->
-    <template data-manual-template><?= manual_row_html('__i__', $emptyRow, $rosterChoices) ?></template>
-    <template data-manual-divider-template><?= manual_row_html('__i__', ['divider' => '__day__'], $rosterChoices) ?></template>
+    <!-- 「＋」で足す行のひな形。__i__ を JS が次の番号に、__day__ を日程名に置きかえる。
+         新しい日程名の区切りは名前を打つ入力欄（divider を空にすると候補に無い名前 = 入力欄になる） -->
+    <template data-manual-template><?= manual_row_html('__i__', $emptyRow, $rosterChoices, $dayLabels) ?></template>
+    <template data-manual-divider-template><?= manual_row_html('__i__', ['divider' => '__day__'], $rosterChoices, $dayLabels) ?></template>
+    <template data-manual-new-divider-template><?= manual_row_html('__i__', ['divider' => ''], $rosterChoices, $dayLabels) ?></template>
     <div class="manual-tt__add">
         <button type="button" class="btn btn--ghost btn--sm" data-manual-add>＋ 行を追加</button>
-        <?php foreach (array_slice(DAY_LABELS, 1) as $d): ?>
+        <?php foreach (array_slice($dayLabels, 1) as $d): ?>
             <button type="button" class="btn btn--ghost btn--sm" data-manual-add-day="<?= h($d) ?>">＋ <?= h($d) ?></button>
         <?php endforeach; ?>
+        <button type="button" class="btn btn--ghost btn--sm" data-manual-add-new-day>＋ 新しい日程名</button>
     </div>
     <div class="sticky-actions">
         <button class="btn btn--ghost" type="submit" form="reset-form">やり直す</button>
@@ -406,9 +417,15 @@ if ($plan === null): // ==================== アップロード画面 ==========
     document.querySelector('[data-manual-add]').addEventListener('click', () => {
         add(document.querySelector('[data-manual-template]').innerHTML);
     });
+    // 日程名は DB に保存された（誰かが作った）文字なので、HTML に埋め込む前にエスケープする（XSS 対策。PHP の h() と同じ）
+    const esc = (s) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
     document.querySelectorAll('[data-manual-add-day]').forEach((btn) => btn.addEventListener('click', () => {
-        add(document.querySelector('[data-manual-divider-template]').innerHTML.replaceAll('__day__', btn.dataset.manualAddDay));
+        add(document.querySelector('[data-manual-divider-template]').innerHTML.replaceAll('__day__', esc(btn.dataset.manualAddDay)));
     }));
+    document.querySelector('[data-manual-add-new-day]').addEventListener('click', () => {
+        add(document.querySelector('[data-manual-new-divider-template]').innerHTML);
+        body.querySelector('tr:last-child [data-manual-new-day]')?.focus();
+    });
     body.addEventListener('click', (e) => {
         if (e.target.closest('[data-manual-remove]')) {
             e.target.closest('tr').remove();
@@ -432,6 +449,7 @@ if ($plan === null): // ==================== アップロード画面 ==========
     $liveNames = $pdo->query('SELECT DISTINCT name FROM live ORDER BY name')->fetchAll(PDO::FETCH_COLUMN);
     // 「登録済みのライブと統合」のポップアップ用（登録済みの日程名つき）
     $lives = lives_with_labels($pdo);
+    $dayLabels = day_labels($pdo); // 日程名のプルダウンの中身
     $livesById = array_column($lives, null, 'live_id');
     // 会場はプルダウンで選ばせる（表記ゆれ防止）。FETCH_KEY_PAIR で [venue_id => name] の形になる
     $venues = $pdo->query('SELECT venue_id, name FROM venue ORDER BY name')->fetchAll(PDO::FETCH_KEY_PAIR);
@@ -550,6 +568,14 @@ if ($plan === null): // ==================== アップロード画面 ==========
         // 「入力値があればそれ、無ければファイルから読んだ値」を返す小さな関数
         $val = static fn(string $k, $default) => $f[$k] ?? $default;
 
+        // 日程名: 失敗して戻ってきたならその選択（'__new__' なら打った新しい日程名）、初回はファイルから検知した日程
+        $labelSel = (string)$val('label', $tt['label']);
+        $labelNew = (string)($f['label_new'] ?? '');
+        if ($labelSel !== '__new__' && !in_array($labelSel, $dayLabels, true)) {
+            [$labelSel, $labelNew] = ['__new__', $labelSel]; // 手入力の区切りで新しく作った日程名
+        }
+        $label = $labelSel === '__new__' ? trim($labelNew) : $labelSel;
+
         // 年度は開催日から自動で決める（入力欄は無い）
         $date = (string)$val('date', $tt['date']);
         $year = fiscal_year_from_date($date);
@@ -573,12 +599,12 @@ if ($plan === null): // ==================== アップロード画面 ==========
         $exists = false;
         if ($merge) {
             if ($mergeLive !== null) {
-                $exists = in_array($val('label', $tt['label']), explode('・', (string)$mergeLive['labels']), true);
+                $exists = in_array($label, explode('・', (string)$mergeLive['labels']), true);
             }
         } elseif ($year !== null) {
             $st = $pdo->prepare('SELECT 1 FROM live l JOIN live_day d ON d.live_id = l.live_id
                 WHERE l.fiscal_year = ? AND l.name = ? AND d.label = ?');
-            $st->execute([$year, $val('live_name', $tt['live_name']), $val('label', $tt['label'])]);
+            $st->execute([$year, $val('live_name', $tt['live_name']), $label]);
             $exists = (bool)$st->fetchColumn();
         }
         $bandSlots = array_filter($tt['slots'], static fn($s) => $s['is_band']); ?>
@@ -617,9 +643,10 @@ if ($plan === null): // ==================== アップロード画面 ==========
                     </div>
                     <small class="merge-note" data-merge-note></small>
                 </div>
-                <label class="field"><span>日程</span>
-                    <!-- 初期選択はタイムテーブルのタイトルから検知した日程（lib/import/parsers.php） -->
-                    <select name="tt[<?= $ti ?>][label]"><?= day_label_options((string)$val('label', $tt['label'])) ?></select></label>
+                <div class="field"><span>日程</span>
+                    <!-- 初期選択はタイムテーブルのタイトルから検知した日程（lib/import/parsers.php）。
+                         「＋ 新しい日程名を作る」を選ぶと入力欄が出る（会場と同じ。lib/repository.php の day_label_control） -->
+                    <?= day_label_control("tt[$ti]", $labelSel, $labelNew, $dayLabels) ?></div>
                 <label class="field"><span>開催日 <small class="muted" data-fiscal-year><?= $year !== null ? "→ {$year}年度" : '' ?></small></span>
                     <input type="date" name="tt[<?= $ti ?>][date]" value="<?= h($date) ?>" required data-date-input></label>
                 <div class="field field--wide"><span>会場<?php if ($tt['venue'] !== ''): ?> <small class="muted">（ファイルの表記: <?= h($tt['venue']) ?>）</small><?php endif; ?></span>

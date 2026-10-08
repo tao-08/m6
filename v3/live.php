@@ -80,7 +80,10 @@ foreach ($st as $m) {
 }
 $lineups = array_map('lineup_by_part', $rowsByBand); // [band_id][並び順] = ['short' => 'Vo/Gt', 'segments' => [Vo, Gt], 'members' => [...]]
 
-$totalBands = array_sum(array_map('count', $bandsByDay));
+// 日程ごとの組数: 総バンド数（live_day.total_bands）が入っていればそちら（タイムテーブルが一部しか無い日程用）
+//   総バンド数は登録済みより少なくならない（live_edit.php で止める / band_edit.php で追いつかせる）が、念のため max
+$dayTotal = static fn(array $d): int => max(count($bandsByDay[$d['live_day_id']] ?? []), (int)$d['total_bands']);
+$totalBands = array_sum(array_map($dayTotal, $days));
 render_header($live['name'], 'lives');
 ?>
 <nav class="crumbs"><a href="index.php">ライブ</a><span>/</span><?= h(fmt_year($live['fiscal_year'])) ?></nav>
@@ -126,7 +129,8 @@ render_header($live['name'], 'lives');
                     <a href="<?= h($d['website_url']) ?>" target="_blank" rel="noopener"><?= h($d['venue_name']) ?> <?= icon('open_in_new', 'icon--sm') ?></a>
                 <?php else: ?><?= h($d['venue_name'] ?? '—') ?><?php endif; ?>
             </dd></div>
-            <div><dt>バンド</dt><dd><?= count($bands) ?></dd></div>
+            <!-- 総バンド数より登録が少ない日程は「登録済み / 総バンド数」 -->
+            <div><dt>バンド</dt><dd><?= count($bands) ?><?= $dayTotal($d) > count($bands) ? ' / ' . $dayTotal($d) : '' ?></dd></div>
             <div><dt>曲数</dt><dd><?= $songs ?></dd></div>
             <?php if ($d['note']): ?><div><dt>メモ</dt><dd><?= h($d['note']) ?></dd></div><?php endif; ?>
         </dl>
@@ -155,7 +159,8 @@ render_header($live['name'], 'lives');
                 }
             }
             $isMine = $user['member_id'] && in_array($user['member_id'], $memberIds, true);
-            $isLast = $bi === count($bands) - 1; // 最後 = トリ ?>
+            // 最後 = トリ。ただし総バンド数まで登録されていない日程は、登録済みの最後が本当の最後ではないのでトリにしない
+            $isLast = $bi === count($bands) - 1 && count($bands) >= $dayTotal($d); ?>
             <li class="slot<?= $isLast ? ' slot--headliner' : '' ?><?= $isMine ? ' slot--mine' : '' ?>">
                 <div class="slot__time">
                     <?php if ($b['start_time']): ?><?= h(fmt_time($b['start_time'])) ?><span><?= h(fmt_time($b['end_time'])) ?></span>
