@@ -69,6 +69,13 @@
 /* ===== 2. 全体の基本 ===== */
 *, *::before, *::after { box-sizing: border-box; } /* width に padding と border を含める */
 html { -webkit-text-size-adjust: 100%; }
+/* スマホで押したとき・長押ししたときに出る水色の四角（タップハイライト）を消す */
+html { -webkit-tap-highlight-color: transparent; }
+/* 指の端末だけ: リンクやボタンを長押ししても文字が選択されて水色にならないようにし、iPhone のリンクのメニューも出さない
+   （入力欄・本文の文字は今までどおり長押しで選択・コピーできる） */
+@media (hover: none) {
+  a, button, label, summary, select, [role="button"], .btn { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+}
 body {
   margin: 0;
   min-height: 100vh;
@@ -385,7 +392,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .chip--me { background: var(--accent-soft); border-color: var(--accent); }
 
 /* ===== 6-3. メンバー ===== */
-.table-card { padding: 0; overflow: hidden; }
+.table-card { padding: 0; overflow-x: auto; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; } /* 横にはみ出す表はカードの中だけ左右にスクロール */
 .table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .table th { text-align: left; font-size: 11px; font-weight: 700; letter-spacing: .06em; color: var(--muted); padding: 11px 14px;
   border-bottom: 1px solid var(--border); background: var(--surface-2); white-space: nowrap; vertical-align: bottom; }
@@ -1088,7 +1095,10 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
   .history__item { grid-template-columns: 1fr; }
   .history__when { grid-column: 1 / -1; display: flex; gap: 8px; }
   .table td, .table th { padding: 10px 12px; }
-  .hide-sm { display: none; }
+  /* スマホでは表を縮めて折り返さず、カードの中で左右にスクロールさせる（列は隠さない） */
+  .card.table-card { padding: 0; }
+  .table-scroll--flush { margin: 0; }
+  .table:not(.table--edit) th, .table:not(.table--edit) td { white-space: nowrap; }
   .member-row-edit { grid-template-columns: 110px minmax(0, 1fr) auto; }
   .sticky-actions { width: 100%; bottom: 76px; }
   .sticky-actions .btn { flex: 1; }
