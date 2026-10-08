@@ -84,6 +84,16 @@ $lineups = array_map('lineup_by_part', $rowsByBand); // [band_id][並び順] = [
 //   総バンド数は登録済みより少なくならない（live_edit.php で止める / band_edit.php で追いつかせる）が、念のため max
 $dayTotal = static fn(array $d): int => max(count($bandsByDay[$d['live_day_id']] ?? []), (int)$d['total_bands']);
 $totalBands = array_sum(array_map($dayTotal, $days));
+
+// 「← 前のライブ / 次のライブ →」: ライブを開催順（年度 → 最初の日程の日付）に並べて、前後を取る（band.php と同じやり方）
+//   ライブは多くても数百件なので全部取ってきて PHP で探す。日付未設定のライブはその年度の最後
+$siblings = $pdo->query('SELECT l.live_id, l.name,
+        (SELECT MIN(d.held_on) FROM live_day d WHERE d.live_id = l.live_id) AS first_day
+    FROM live l
+    ORDER BY l.fiscal_year, first_day IS NULL, first_day, l.live_id')->fetchAll();
+$pos = array_search($liveId, array_map('intval', array_column($siblings, 'live_id')), true);
+$prevLive = $pos !== false && $pos > 0 ? $siblings[$pos - 1] : null;
+$nextLive = $pos !== false && $pos < count($siblings) - 1 ? $siblings[$pos + 1] : null;
 render_header($live['name'], 'lives');
 ?>
 <nav class="crumbs"><a href="./">ライブ</a><span>/</span><?= h(fmt_year($live['fiscal_year'])) ?></nav>
@@ -206,4 +216,23 @@ render_header($live['name'], 'lives');
     <p class="no-print add-band"><a class="btn btn--ghost btn--sm" href="band_edit?day=<?= (int)$d['live_day_id'] ?>">＋ バンドを追加</a></p>
 </section>
 <?php endforeach; ?>
+
+<?php if ($prevLive || $nextLive): ?>
+    <!-- 前後のライブ。見た目は band.php の前後のバンドと同じ（band-pager） -->
+    <nav class="band-pager no-print" aria-label="前後のライブ">
+        <?php foreach ([['prev', $prevLive, 'chevron_left', '前のライブ'], ['next', $nextLive, 'chevron_right', '次のライブ']] as [$dir, $l, $arrow, $label]): ?>
+            <?php if ($l): ?>
+                <a class="band-pager__link band-pager__link--<?= $dir ?>" href="live?id=<?= (int)$l['live_id'] ?>" rel="<?= $dir ?>">
+                    <?= icon($arrow) ?>
+                    <span class="band-pager__text">
+                        <span class="band-pager__label"><?= $label ?><?= $l['first_day'] ? '（' . h(fmt_date($l['first_day'])) . '）' : '' ?></span>
+                        <span class="band-pager__name"><?= h($l['name']) ?></span>
+                    </span>
+                </a>
+            <?php else: ?>
+                <span></span>
+            <?php endif; ?>
+        <?php endforeach; ?>
+    </nav>
+<?php endif; ?>
 <?php render_footer();
