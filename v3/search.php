@@ -3,7 +3,7 @@
  * =====================================================================
  *  search.php?q=キーワード — ライブ・バンド・メンバーの横断検索
  * =====================================================================
- *  LIKE '%キーワード%' で部分一致検索している。
+ *  LIKE '%キーワード%' で部分一致検索している。バンドのメモ（band.note）・日程のメモ（live_day.note）も対象。
  *
  *  ⚠ LIKE の落とし穴: ユーザーが「%」や「_」を入力すると、それ自体が
  *    「何でも一致」の記号として働いてしまう。escape_like() で \% \_ に変えてから使う。
@@ -33,14 +33,14 @@ if ($q !== '') {
     $pdo = db();
     $like = '%' . escape_like(mb_substr($q, 0, 50)) . '%';
 
-    // ---- ライブ（ライブ名・会場名） ----
+    // ---- ライブ（ライブ名・会場名・日程名・日程のメモ） ----
     $st = $pdo->prepare('SELECT DISTINCT lm.live_id, lm.fiscal_year AS year, lm.name
         FROM live lm
         JOIN live_day ld ON ld.live_id = lm.live_id
         LEFT JOIN venue v ON v.venue_id = ld.venue_id
-        WHERE lm.name LIKE ? OR v.name LIKE ? OR ld.label LIKE ?
+        WHERE lm.name LIKE ? OR v.name LIKE ? OR ld.label LIKE ? OR ld.note LIKE ?
         ORDER BY lm.fiscal_year DESC LIMIT 30');
-    $st->execute([$like, $like, $like]);
+    $st->execute([$like, $like, $like, $like]);
     $lives = $st->fetchAll();
 
     // 見つかったライブの日程（日程名・日付・会場）。会場で当たった日以外も、そのライブの日程は全部出す
@@ -48,7 +48,7 @@ if ($q !== '') {
     $daysByLive = []; // [live_id] = [['live_day_id', 'label', 'held_on', 'venue'], ...]
     if ($lives) {
         $ids = array_map('intval', array_column($lives, 'live_id'));
-        $st = $pdo->prepare('SELECT ld.live_id, ld.live_day_id, ld.label, ld.held_on, v.name AS venue
+        $st = $pdo->prepare('SELECT ld.live_id, ld.live_day_id, ld.label, ld.held_on, ld.note, v.name AS venue
             FROM live_day ld
             LEFT JOIN venue v ON v.venue_id = ld.venue_id
             WHERE ld.live_id IN (' . implode(',', array_fill(0, count($ids), '?')) . ')
@@ -62,19 +62,21 @@ if ($q !== '') {
     // ---- バンド（同じアーティストを何回コピーしたかも分かる） ----
     //   メンバーとセトリまで出すと1組が縦に長いので、最初は BANDS_PER_PAGE 組だけ。
     //   「もっと見る」を押すと ?bp=2, 3… になり、その分だけ多く出す（URL に残るので戻る・共有しても同じ表示）
-    $st = $pdo->prepare('SELECT COUNT(*) FROM band b WHERE b.name LIKE ?');
-    $st->execute([$like]);
+    //   バンド名だけでなくメモ（鍵盤の私物/貸出 など）でも当てる。COUNT と本体の WHERE は必ず同じにする（「もっと見る」の残り数がずれるので）
+    $st = $pdo->prepare('SELECT COUNT(*) FROM band b WHERE b.name LIKE ? OR b.note LIKE ?');
+    $st->execute([$like, $like]);
     $bandTotal = (int)$st->fetchColumn();
 
-    $st = $pdo->prepare('SELECT b.band_id, b.name, b.song_count, ld.live_day_id, ld.label, ld.held_on AS date,
+    $st = $pdo->prepare('SELECT b.band_id, b.name, b.song_count, b.note, ld.live_day_id, ld.label, ld.held_on AS date,
             lm.live_id, lm.fiscal_year AS year, lm.name AS live_name
         FROM band b
         JOIN live_day ld ON ld.live_day_id = b.live_day_id
         JOIN live lm ON lm.live_id = ld.live_id
-        WHERE b.name LIKE ?
+        WHERE b.name LIKE ? OR b.note LIKE ?
         ORDER BY ld.held_on DESC, b.play_order LIMIT ?');
     $st->bindValue(1, $like);
-    $st->bindValue(2, BANDS_PER_PAGE * $bandPage, PDO::PARAM_INT); // LIMIT は数値として渡す（文字列 '20' だとエラーになることがある）
+    $st->bindValue(2, $like);
+    $st->bindValue(3, BANDS_PER_PAGE * $bandPage, PDO::PARAM_INT); // LIMIT は数値として渡す（文字列 '20' だとエラーになることがある）
     $st->execute();
     $bands = $st->fetchAll();
 
@@ -128,7 +130,7 @@ render_header($q !== '' ? "「{$q}」の検索結果" : '検索', 'search');
 
 <!-- GET で送るので、検索結果の URL をそのまま共有・ブックマークできる -->
 <form method="get" class="toolbar">
-    <input type="search" name="q" value="<?= h($q) ?>" class="search" placeholder="バンド名・メンバー名・ライブ名・会場" autofocus aria-label="検索ワード">
+    <input type="search" name="q" value="<?= h($q) ?>" class="search" placeholder="バンド名・メンバー名・ライブ名・会場・メモ" autofocus aria-label="検索ワード">
     <button class="btn btn--primary" type="submit">検索</button>
 </form>
 
@@ -172,7 +174,8 @@ render_header($q !== '' ? "「{$q}」の検索結果" : '検索', 'search');
                     <tbody>
                     <?php foreach ($bands as $i => $b): $bandId = (int)$b['band_id']; ?>
                         <tr id="band-n<?= $i + 1 ?>">
-                            <td class="strong"><a href="band.php?id=<?= $bandId ?>"><?= h($b['name']) ?></a></td>
+                            <td class="strong"><a href="band.php?id=<?= $bandId ?>"><?= h($b['name']) ?></a>
+                                <?php if ($b['note']): // メモで当たったときに理由が分かるように（live.php と同じ見た目） ?><div><span class="keynote"><?= icon('piano') ?> <?= h($b['note']) ?></span></div><?php endif; ?></td>
                             <td class="nowrap"><a href="live.php?id=<?= (int)$b['live_id'] ?>#day-<?= (int)$b['live_day_id'] ?>"><?= h(fmt_year($b['year'])) ?> <?= h($b['live_name']) ?></a>
                                 <div class="muted small"><?= h($b['label']) ?> <?= h(fmt_date($b['date'])) ?></div></td>
                             <td>
@@ -224,7 +227,8 @@ render_header($q !== '' ? "「{$q}」の検索結果" : '検索', 'search');
                             <?php if ($i === 0): // ライブ名は日程の数だけ縦に結合して1回だけ出す ?>
                                 <td class="strong nowrap" rowspan="<?= count($days) ?>"><a href="live.php?id=<?= $liveId ?>"><?= h(fmt_year($l['year'])) ?> <?= h($l['name']) ?></a></td>
                             <?php endif; ?>
-                            <td class="nowrap"><a href="live.php?id=<?= $liveId ?>#day-<?= (int)$d['live_day_id'] ?>"><?= h($d['label']) ?></a></td>
+                            <td class="nowrap"><a href="live.php?id=<?= $liveId ?>#day-<?= (int)$d['live_day_id'] ?>"><?= h($d['label']) ?></a>
+                                <?php if ($d['note']): ?><div class="muted small"><?= h($d['note']) ?></div><?php endif; ?></td>
                             <td class="muted nowrap"><?= $d['held_on'] !== null ? h(fmt_date($d['held_on'])) : '—' ?></td>
                             <td><?= $d['venue'] !== null ? h($d['venue']) : '<span class="muted">—</span>' ?></td>
                         </tr>

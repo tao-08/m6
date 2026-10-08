@@ -30,14 +30,17 @@ if ($user['member_id']) {
 // 日程1行ごとに、そのライブの情報とバンド数をくっつけて取ってくる
 //   LEFT JOIN: 相手が無くても行を残す（バンドが0組の日程も表示するため）
 //   GROUP BY d.live_day_id: 日程ごとに1行にまとめて COUNT(b.band_id) でバンド数を数える
+//   GROUP_CONCAT(b.note): その日のバンドのメモを1つの文字列にまとめる（絞り込み用。NULL は飛ばされる）
+//     ※ group_concat_max_len（初期値 1024 バイト）を超えた分は切れる。絞り込みに使うだけなので気にしない
 $rows = $pdo->query('SELECT l.live_id, l.fiscal_year AS year, l.name AS live_name,
-        d.live_day_id, d.label, d.held_on AS date, v.name AS venue_name, COUNT(b.band_id) AS band_count
+        d.live_day_id, d.label, d.held_on AS date, d.note, v.name AS venue_name, COUNT(b.band_id) AS band_count,
+        GROUP_CONCAT(b.note SEPARATOR \' \') AS band_notes
     FROM live l
     JOIN live_day d ON d.live_id = l.live_id
     LEFT JOIN venue v ON v.venue_id = d.venue_id
     LEFT JOIN band b ON b.live_day_id = d.live_day_id
     GROUP BY d.live_day_id
-    ORDER BY l.fiscal_year DESC, d.held_on, d.live_day_id')->fetchAll();
+    ORDER BY l.fiscal_year, d.held_on, d.live_day_id')->fetchAll();
 
 // ---- [年度][live_id] の形に組み直す ----
 $years = [];
@@ -53,11 +56,17 @@ foreach ($rows as $r) {
     }
     unset($live); // 参照を切る（次のループで別の場所を指させるため）
 }
-// 年度の中は「開催日が新しい順」。日付なしは後ろ
+// 表示は「古い順」がデフォルト（並び替えボタンで新しい順にできる）
+// 年度は古い順。年度未設定（0）は一番後ろ
+uksort($years, static fn($a, $b) => [$a === 0, $a] <=> [$b === 0, $b]);
+// 年度の中は「開催日が古い順」。日付なしは後ろ
 foreach ($years as &$lives) {
-    uasort($lives, static fn($a, $b) => [isset($b['first_date']), $b['first_date'] ?? ''] <=> [isset($a['first_date']), $a['first_date'] ?? '']);
+    uasort($lives, static fn($a, $b) => [!isset($a['first_date']), $a['first_date'] ?? ''] <=> [!isset($b['first_date']), $b['first_date'] ?? '']);
 }
 unset($lives);
+// 年度スロットは新しい年度が先（よく見るのは最近の年度なので）
+$slotYears = array_keys($years);
+rsort($slotYears);
 
 // 上の数字（ライブ数・バンド数・出演者数）
 $stats = $pdo->query('SELECT
@@ -104,28 +113,31 @@ render_header('ライブ一覧', 'lives');
         <div class="year-slot" data-year-slot tabindex="0" role="spinbutton" aria-label="年度で絞り込み" title="上下にドラッグで年度を切り替え">
             <div class="year-slot__reel">
                 <div class="year-slot__item" data-value="">すべて</div>
-                <?php foreach (array_keys($years) as $year): ?>
+                <?php foreach ($slotYears as $year): ?>
                     <div class="year-slot__item" data-value="<?= (int)$year ?>"><?= $year > 0 ? (int)$year . '<small>年度</small>' : '未設定' ?></div>
                 <?php endforeach; ?>
             </div>
         </div>
         <!-- data-filter: 入力すると .live-card の data-text で絞り込む（assets/app.js） -->
-        <input type="search" class="search" placeholder="ライブ名・会場で絞り込み" data-filter=".live-card" aria-label="絞り込み">
+        <input type="search" class="search" placeholder="ライブ名・会場・メモで絞り込み" data-filter=".live-card" aria-label="絞り込み">
         <a class="btn btn--primary" href="import.php">＋ 新規追加</a>
     </div>
     <!-- .sorted-list: 並び替えボタンを、一番上の年度の見出しの右に重ねて置く（member.php の出演履歴と同じ） -->
     <div class="sorted-list sorted-list--live">
-    <!-- 並び替え: 押すたびに新しい順 ⇔ 古い順。年度の順と、年度の中のカード（.grid の中）の順を逆にする（assets/app.js の setupSortToggle） -->
-    <button type="button" class="btn btn--ghost btn--sm sorted-list__btn" data-sort-toggle="#live-list" data-sort-items=".grid" aria-pressed="false">新しい順 ↓</button>
+    <!-- 並び替え: 押すたびに古い順 ⇔ 新しい順。年度の順と、年度の中のカード（.grid の中）の順を逆にする（assets/app.js の setupSortToggle）
+         最初は古い順なので aria-pressed="true"（app.js は aria-pressed が true = 古い順 として扱う） -->
+    <button type="button" class="btn btn--ghost btn--sm sorted-list__btn" data-sort-toggle="#live-list" data-sort-items=".grid" aria-pressed="true">古い順 ↑</button>
     <div id="live-list">
     <?php foreach ($years as $year => $lives): ?>
         <section class="year" data-year="<?= (int)$year ?>">
             <h2 class="year__title"><?= $year > 0 ? (int)$year . '<small>年度</small>' : '年度未設定' ?></h2>
             <div class="grid">
                 <?php foreach ($lives as $liveId => $live):
-                    $venues = array_unique(array_filter(array_column($live['days'], 'venue_name'))); ?>
+                    $venues = array_unique(array_filter(array_column($live['days'], 'venue_name')));
+                    // 絞り込みで当てる文字: ライブ名・会場・日程のメモ・バンドのメモ
+                    $notes = array_filter(array_merge(array_column($live['days'], 'note'), array_column($live['days'], 'band_notes'))); ?>
                     <a class="card live-card" href="live.php?id=<?= (int)$liveId ?>"
-                       data-text="<?= h($live['name'] . ' ' . implode(' ', $venues)) ?>">
+                       data-text="<?= h($live['name'] . ' ' . implode(' ', $venues) . ' ' . implode(' ', $notes)) ?>">
                         <div class="live-card__head">
                             <h3><?= h($live['name']) ?></h3>
                             <span class="pill"><?= count($live['days']) ?>日程</span>
