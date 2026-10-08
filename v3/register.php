@@ -56,8 +56,12 @@ if (is_post()) {
     }
     // 招待コード（config.php の invite_code が空でなければ必須）
     // サークル外の人が勝手に登録して、メンバーの実名を見られないようにするため
+    //   招待コードも総当たりで当てられないように、失敗が続いたら受け付けない（ログインと同じ仕組み。ID の代わりに '#invite'）
     $invite = (string)config('invite_code');
-    if ($invite !== '' && !hash_equals($invite, (string)($_POST['invite_code'] ?? ''))) {
+    if ($invite !== '' && too_many_failures('#invite', INVITE_MAX)) {
+        $errors[] = '招待コードの失敗が続いたので、しばらく受け付けません。' . LOGIN_WINDOW_MINUTES . '分ほどたってからもう一度試してください';
+    } elseif ($invite !== '' && !hash_equals($invite, (string)($_POST['invite_code'] ?? ''))) {
+        record_failure('#invite');
         $errors[] = '招待コードが違います（サークルの管理者に聞いてください）';
     }
     if (!$errors) {

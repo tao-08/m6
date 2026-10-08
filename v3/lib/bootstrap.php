@@ -92,13 +92,67 @@ error_reporting(E_ALL);
  *   samesite: 他サイトからのリクエストに Cookie を付けにくくする（CSRF の軽減）
  *   secure  : https のときだけ Cookie を送る
  * ------------------------------------------------------------------- */
+/*
+ * ログインしたままでいられる日数（最後にサイトを開いてから）。
+ *   これを書かないと PHP の初期設定のままで、Cookie は「ブラウザを閉じたら消える」、サーバー側は「24分さわらないと消えることがある」。
+ *   スマホでブラウザのアプリをスワイプで消すだけでログアウトしてしまう。
+ *   長くするほど楽だが、スマホをなくしたときに拾った人に見られる期間も長くなる
+ */
+const SESSION_DAYS = 30;
+
 if (session_status() !== PHP_SESSION_ACTIVE) {
-    session_set_cookie_params([
+    // strict_mode: サーバーが発行していないセッションID（攻撃者が用意したもの）を受け付けない
+    ini_set('session.use_strict_mode', '1');
+    ini_set('session.use_only_cookies', '1'); // URL の ?PHPSESSID=… では受け付けない（URL ごと漏れると乗っ取られる）
+    // サーバー側: SESSION_DAYS 日さわられなかったセッションだけ消す
+    ini_set('session.gc_maxlifetime', (string)(SESSION_DAYS * 86400));
+    // 保存場所をこのサイト専用にする。共用のフォルダのままだと、同じサーバーの別のサイト（もっと短い設定）の掃除で
+    // こちらのセッションまで消されてしまう。storage/ は .htaccess で外から見えないようにしてある
+    $sessionDir = __DIR__ . '/../storage/sessions';
+    if (is_dir($sessionDir) || @mkdir($sessionDir, 0700, true)) {
+        session_save_path($sessionDir);
+        ini_set('session.gc_probability', '1'); // 専用の場所は誰も掃除してくれないので、PHP に掃除させる（1000回に1回くらい）
+        ini_set('session.gc_divisor', '1000');
+    }
+    $cookie = [
+        'lifetime' => SESSION_DAYS * 86400, // ブラウザを閉じても消えない
+        'path'     => '/',
         'httponly' => true,
         'samesite' => 'Lax',
         'secure'   => !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off',
-    ]);
+    ];
+    session_set_cookie_params($cookie);
     session_start();
+    // PHP は Cookie の期限を「作ったとき」にしか送らない → 開くたびに送り直して、期限を「最後に開いてから30日」にする
+    if (!empty($_SESSION['user']) && !headers_sent()) {
+        setcookie(session_name(), session_id(), ['expires' => time() + $cookie['lifetime']] + array_diff_key($cookie, ['lifetime' => 0]));
+    }
+}
+
+/* ---------------------------------------------------------------------
+ * セキュリティのヘッダー（全ページ共通。ブラウザに「こう守って」と伝える）
+ *   nosniff           : 画像や CSV を HTML / JS と勘違いして実行させない
+ *   frame-ancestors   : 他のサイトの <iframe> の中に表示させない（透明な枠を重ねてボタンを押させるクリックジャッキング対策）
+ *   form-action 'self': フォームの送り先をこのサイトだけにする（XSS で偽のフォームを仕込まれても外へ送れない）
+ *   Referrer-Policy   : 外のサイト（Spotify・YouTube など）へ移るとき、こちらの URL（member?id=… など）を渡さない。渡すのはドメインだけ
+ *   X-Robots-Tag      : 検索エンジンに載せない（ログイン画面も含めて。サークル内向けのサイトなので）
+ *   HSTS              : 一度 https で来たブラウザは、次から必ず https で来る（途中で http に書き換えられる攻撃を防ぐ）
+ * ------------------------------------------------------------------- */
+if (!headers_sent()) {
+    header_remove('X-Powered-By'); // 「PHP/8.2.12」とバージョンを教えない（古いバージョンの弱点を狙われる手がかりになる）
+    header('X-Content-Type-Options: nosniff');
+    header('X-Frame-Options: DENY'); // frame-ancestors を知らない古いブラウザ用
+    header("Content-Security-Policy: frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'");
+    header('Referrer-Policy: strict-origin-when-cross-origin');
+    header('Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()');
+    header('X-Robots-Tag: noindex, nofollow');
+    if (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') {
+        header('Strict-Transport-Security: max-age=31536000');
+    }
+    // ログイン中のページはブラウザに保存させない（共用 PC でログアウトしたあと「戻る」で名前などが見えないように）
+    if (!empty($_SESSION['user'])) {
+        header('Cache-Control: private, no-store');
+    }
 }
 
 /**
@@ -191,6 +245,52 @@ function redirect(string $path): never
 function is_post(): bool
 {
     return ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST';
+}
+
+/* =====================================================================
+ *  総当たり攻撃（ブルートフォース）対策
+ * ---------------------------------------------------------------------
+ *  何もしないと、プログラムでパスワード（招待コード）を何万回でも試せてしまう。
+ *  失敗を login_attempt テーブルに記録し、15分の間に失敗が多すぎたら、しばらく受け付けない。
+ *    同じログインID … 5回まで（1人のアカウントを狙い撃ちされるのを止める）
+ *    同じ IP アドレス … 30回まで（いろいろなIDを順番に試されるのを止める。サークルの部室など
+ *                         同じ回線から何人もログインすることがあるので、少し多めにしている）
+ * ===================================================================== */
+const LOGIN_WINDOW_MINUTES = 15;
+const LOGIN_MAX_PER_ID = 5;
+const LOGIN_MAX_PER_IP = 30;
+const INVITE_MAX = 20; // 招待コードは「みんなの失敗の合計」なので多め（新歓で何人も同時に登録して打ち間違えても止まらないように）
+
+function client_ip(): string
+{
+    return substr((string)($_SERVER['REMOTE_ADDR'] ?? ''), 0, 45);
+}
+
+/** このログインID（招待コードなら '#invite'）か、この IP の失敗が多すぎるか */
+function too_many_failures(string $loginId, int $maxPerId = LOGIN_MAX_PER_ID): bool
+{
+    $st = db()->prepare('SELECT
+            SUM(login_id = ?) AS by_id,
+            SUM(ip = ?) AS by_ip
+        FROM login_attempt
+        WHERE attempted_at > NOW() - INTERVAL ' . LOGIN_WINDOW_MINUTES . ' MINUTE AND (login_id = ? OR ip = ?)');
+    $st->execute([$loginId, client_ip(), $loginId, client_ip()]);
+    $row = $st->fetch();
+    return (int)$row['by_id'] >= $maxPerId || (int)$row['by_ip'] >= LOGIN_MAX_PER_IP;
+}
+
+function record_failure(string $loginId): void
+{
+    $pdo = db();
+    $pdo->prepare('INSERT INTO login_attempt (ip, login_id, attempted_at) VALUES (?, ?, NOW())')
+        ->execute([client_ip(), mb_substr($loginId, 0, 25)]);
+    $pdo->exec('DELETE FROM login_attempt WHERE attempted_at < NOW() - INTERVAL 1 DAY'); // 古い記録はためない
+}
+
+/** 成功したら、そのログインIDの失敗の記録を消す（次に1回間違えただけで止まらないように） */
+function clear_failures(string $loginId): void
+{
+    db()->prepare('DELETE FROM login_attempt WHERE login_id = ?')->execute([$loginId]);
 }
 
 /* =====================================================================

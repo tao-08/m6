@@ -436,3 +436,18 @@ CREATE TABLE track_link_cache (
         ON UPDATE CASCADE ON DELETE CASCADE,
     CONSTRAINT ck_tlc_app CHECK (app IN ('spotify', 'apple_music', 'youtube_music', 'line_music'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- ---------------------------------------------------------------------
+--  login_attempt — ログイン・招待コードの失敗の記録（総当たり攻撃を止める。lib/bootstrap.php の too_many_failures）
+--    login_id に外部キーは付けない: 「存在しないログインID」での失敗も数えたいので、user_account に無い値も入る
+--    パスワードは入れない
+-- ---------------------------------------------------------------------
+CREATE TABLE login_attempt (
+    attempt_id   BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    ip           VARCHAR(45)     NOT NULL,
+    login_id     VARCHAR(25)     NOT NULL,             -- 招待コードの失敗は '#invite'
+    attempted_at DATETIME        NOT NULL,
+    PRIMARY KEY (attempt_id),
+    KEY idx_attempt_ip (ip, attempted_at),
+    KEY idx_attempt_login (login_id, attempted_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;

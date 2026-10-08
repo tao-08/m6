@@ -1,0 +1,2 @@
+# セッションの保存場所（lib/bootstrap.php）。外から絶対に読ませない（ルートの .htaccess でも 404 にしている）
+Require all denied

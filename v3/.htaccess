@@ -15,6 +15,13 @@ DirectoryIndex index.php
 # ---------------------------------------------------------------------
 RewriteEngine On
 
+# 外から見えてはいけないものは 404（「ある」ことも教えない）
+#   . で始まるファイル・フォルダ（.claude/ .git/ .gitignore など）、DB の変更履歴（migrations/）、テスト（tests/。名簿の見本が入っている）、
+#   PHP の部品（lib/ partials/）、ログイン中のセッション（storage/。読まれたら他人になりすませる）、.sql / .md / .bak などの中身が読めてしまうファイル
+RewriteRule (^|/)\. - [R=404,L]
+RewriteRule ^(migrations|tests|lib|partials|storage)(/|$) - [R=404,L]
+RewriteRule \.(sql|md|bak|log|ini|sh|zip|xlsx|csv)$ - [R=404,L,NC]
+
 RewriteCond %{THE_REQUEST} ^(GET|HEAD)\s[^?\s]*/index\.php[?\s]
 RewriteCond %{REQUEST_URI} ^(.*/)index\.php$
 RewriteRule ^index\.php$ %1 [R=301,L]

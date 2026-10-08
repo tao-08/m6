@@ -27,7 +27,16 @@ if (is_post()) {
     $st->execute([$loginId]);
     $row = $st->fetch(); // 見つからなければ false
 
-    if ($row && password_verify($password, $row['password_hash'])) {
+    // 失敗が多すぎたら、パスワードが合っていても受け付けない（合っているかどうかも教えない）
+    $blocked = too_many_failures($loginId);
+    // ID が無いときもダミーのハッシュで password_verify する。しないと「無い ID はすぐ返ってくる」ので、
+    // 返ってくるまでの時間で「その ID があるか」がばれる
+    $ok = password_verify($password, $row ? $row['password_hash'] : '$2y$10$GRxTS/BQKei4SZMW5x37WuN5Lemm6Yz9M0RTZr2AOnKQYHxG1Xxfe') && $row;
+
+    if ($blocked) {
+        $error = 'ログインの失敗が続いたので、しばらく受け付けません。' . LOGIN_WINDOW_MINUTES . '分ほどたってからもう一度試してください';
+    } elseif ($ok) {
+        clear_failures($loginId);
         // ハッシュの方式が古ければ（PHP が新しい方式を推奨していれば）作り直して保存
         if (password_needs_rehash($row['password_hash'], PASSWORD_DEFAULT)) {
             db()->prepare('UPDATE user_account SET password_hash = ? WHERE user_id = ?')
@@ -55,9 +64,11 @@ if (is_post()) {
         // オープンリダイレクト対策: 「/」で始まる同じサイト内の URL だけ許可する
         // （//evil.com のような「別サイトへ飛ぶ URL」を弾く）
         redirect(preg_match('#^/(?![/\\\\])#', $next) ? $next : './');
+    } else {
+        record_failure($loginId);
+        // IDが無いのかパスワードが違うのかは教えない（存在するIDを探られないように）
+        $error = 'ログインIDまたはパスワードが違います';
     }
-    // IDが無いのかパスワードが違うのかは教えない（存在するIDを探られないように）
-    $error = 'ログインIDまたはパスワードが違います';
 }
 
 render_header('ログイン');
