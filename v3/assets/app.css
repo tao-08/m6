@@ -523,14 +523,15 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .field { display: grid; align-content: start; gap: 6px; font-size: 13px; font-weight: 600; color: var(--muted); }
 /* align-content: start … 同じ行のほかの欄が高くなっても（下に注意文が出たときなど）、ラベルと入力欄は伸ばさず上に詰める */
 .req { font-style: normal; font-size: 10px; color: var(--accent); margin-left: 4px; }
-.form-card { display: grid; gap: 8px; }
+.form-card { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+/* minmax(0, 1fr) … 列の幅を指定しないと中身の最小幅（折り返さないボタンの列など）に合わせて広がり、スマホで入力欄ごと右にはみ出す */
 .form-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
 /* ライブ編集の「＋ 日程を追加」チェックボックス（見出しと同じ大きさ） */
 .new-day-toggle { display: inline-flex; align-items: center; gap: 8px; width: fit-content; margin-top: 24px; font-size: 16px; font-weight: 800; color: var(--text); cursor: pointer; }
 .new-day-toggle input { width: 18px; height: 18px; accent-color: var(--accent); }
 [data-new-day-fields]:not([hidden]), [data-extra-day] { animation: soft-in .2s ease-out; }
 .field--wide { grid-column: span 2; }
-.form-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
+.form-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; margin-top: 18px; } /* ボタンが多いとスマホで横に入りきらないので折り返す */
 .member-rows { display: grid; gap: 8px; margin-bottom: 10px; }
 .member-row-edit { display: grid; grid-template-columns: 232px minmax(0, 260px) auto; /* 232px =「Key.Vo キーボードボーカル」が切れない幅 / 名前は 260px まで（人名にそれ以上はいらない） */ gap: 8px; align-items: center;
   justify-content: center; /* 行をカードの中央に置く。これがないと余った幅が auto の列（✕ボタン）に配られて、ボタンが横に伸びる */ }
