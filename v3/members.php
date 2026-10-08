@@ -157,6 +157,8 @@ function name_reading(array $r): string
 //   同じ値なら同じ順位で、次はその人数分とばす（10, 8, 8, 5 → 1, 2, 2, 4）。出演なしの人は順位なし（—）
 //   学年で絞り込んだときは JS が同じ決まりで、見えている人の中で付け直す（data-score）
 $showRank = in_array($sort, ['bands', 'lives', 'headliners'], true);
+// 表を右端まで動かした状態で開くか: ランキングの並び、またはその列の並べ替えを解除して来たとき（?scroll=end）
+$scrollEnd = $showRank || ($_GET['scroll'] ?? '') === 'end';
 $rankCol = $showRank ? $sort : 'bands';
 $scores = array_map(static fn($r) => (int)$r[$rankCol], $rows);
 $ranks = [];
@@ -210,7 +212,8 @@ function sort_th(string $col, string $label, string $sort, string $dir, string $
     $next = match (true) {
         $col !== $sort  => ['sort' => $col, 'dir' => $first],
         $dir === $first => ['sort' => $col, 'dir' => $first === 'asc' ? 'desc' : 'asc'],
-        default         => [], // 解除 → いつもの並び
+        // 解除 → いつもの並び。右側の列（出演・ライブ・トリ）からの解除なら、戻っても表を右端に置いておく
+        default         => in_array($col, ['bands', 'lives', 'headliners'], true) ? ['scroll' => 'end'] : [],
     };
     // 学年の絞り込み（who / entry）はそのまま引き継ぐ
     $query = http_build_query(array_intersect_key($_GET, ['who' => 1, 'entry' => 1]) + $next);
@@ -273,7 +276,9 @@ render_header('メンバー', 'members');
         <a class="btn btn--primary" href="member_new">＋ 新規追加</a>
     </div>
     <div class="empty card" data-grade-empty hidden><p class="empty__title">この学年のメンバーはいません</p></div>
-    <div class="card table-card" data-grade-table>
+    <!-- data-scroll-end: ランキングで並べたとき・その並べ替えを解除したときは、表を右端まで動かした状態で開く
+         （スマホで出演の数字と右端の名前・# がすぐ見えるように） -->
+    <div class="card table-card" data-grade-table<?= $scrollEnd ? ' data-scroll-end' : '' ?>>
         <table class="table table--list table--members">
             <thead><tr>
                 <th class="num"><?= $showRank ? '#' : '' ?></th>

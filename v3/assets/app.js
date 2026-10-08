@@ -26,6 +26,7 @@
  *    data-add-roster-col … 名簿の表の右端に「Other」列を足す
  *    data-pick          … 名簿の「Vo / Vo/Gt / ⋯」「Key / Vn / ⋯」の切り替えボタンと、etc の楽器追加モーダル
  *    .table-scroll      … 横にはみ出す表をマウスのドラッグで左右に動かす
+ *    data-scroll-end    … 横にはみ出す表を、右端まで動かした状態で開く（メンバー一覧のランキングの並び）
  *    data-pack          … 送信時に全項目を JSON 1個にまとめるフォーム
  *    data-rows          … バンド編集・タイムテーブル編集のメンバー行（追加・削除）
  *    data-autosubmit    … 選んだら即送信
@@ -47,6 +48,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupFilter();
   setupYearSlot();
   setupGradeSlot();
+  setupScrollEnd();
   setupSortToggle();
   setupTabs();
   setupConfirm();
@@ -869,6 +871,20 @@ function setupGradeSlot() {
     apply(true);
   }));
   apply(false);
+}
+
+/* ---------------------------------------------------------------------
+ * 横にはみ出す表を、右端まで動かした状態で開く（data-scroll-end）
+ *   はみ出していない（パソコンの幅）ときは、動かす先が無いので何も変わらない
+ * ------------------------------------------------------------------- */
+function setupScrollEnd() {
+  const boxes = document.querySelectorAll('[data-scroll-end]');
+  if (!boxes.length) return;
+  const toEnd = () => boxes.forEach((box) => { box.scrollLeft = box.scrollWidth; });
+  toEnd();
+  // 文字（Web フォント）が読み込まれると表の幅が広がって右端がずれるので、読み込み後にもう一度
+  document.fonts?.ready.then(toEnd);
+  window.addEventListener('load', toEnd, { once: true });
 }
 
 /* ---------------------------------------------------------------------
