@@ -53,6 +53,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupMergeToggle();
   setupSelectPick();
   setupNewDayToggle();
+  setupExtraDays();
   setupSlotSort();
   setupAlbumBox();
   setupPartnerBox();
@@ -516,11 +517,12 @@ function setupTrackSearch() {
 function setupSmallThings() {
   document.querySelectorAll('[data-autosubmit]').forEach((sel) => sel.addEventListener('change', () => sel.form.submit()));
 
-  // 会場のプルダウン（取り込み・ライブ編集）: 「＋ 新しい会場を作る」を選んだときだけ会場名の入力欄を出す
+  // 会場・日程名のプルダウン（取り込み・ライブ編集）: 「＋ 新しい○○を作る」を選んだときだけ名前の入力欄を出す
+  //   日程名は data-new-select="__new__"（「new」という日程名とぶつからないように）、会場は 'new'
   document.addEventListener('change', (e) => {
-    if (!e.target.matches('[data-venue-select]')) return;
-    const box = e.target.closest('.field').querySelector('[data-venue-new]');
-    box.hidden = e.target.value !== 'new';
+    if (!e.target.matches('[data-venue-select], [data-new-select]')) return;
+    const box = e.target.closest('.field').querySelector('[data-venue-new], [data-new-input]');
+    box.hidden = e.target.value !== (e.target.dataset.newSelect || 'new');
     if (!box.hidden) box.focus();
   });
 
@@ -1378,6 +1380,12 @@ function setupSelectPick() {
  *   ・「＋ 日程を追加」にチェックしたら、追加する日程の入力欄を開く
  *     閉じているあいだは日付の required も外す（見えない欄が「入力してください」で送信を止めないように）
  * ------------------------------------------------------------------- */
+/** 日程名のプルダウンが今表している日程名（「＋ 新しい日程名を作る」なら横の入力欄の文字） */
+function dayLabelOf(select) {
+  if (select.value !== '__new__') return select.value;
+  return select.closest('.field').querySelector('[data-label-new]').value.trim();
+}
+
 function setupNewDayToggle() {
   const checkDuplicates = (form) => {
     const addBox = form.querySelector('[data-new-day-add]');
@@ -1385,7 +1393,8 @@ function setupNewDayToggle() {
     const selects = [...form.querySelectorAll('[data-day-label]')]
       .filter((s) => !s.matches('[data-new-day]') || !addBox || addBox.checked);
     form.querySelectorAll('[data-day-label]').forEach((select) => {
-      const dup = selects.includes(select) && selects.some((o) => o !== select && o.value === select.value);
+      const label = dayLabelOf(select);
+      const dup = label !== '' && selects.includes(select) && selects.some((o) => o !== select && dayLabelOf(o) === label);
       select.setCustomValidity(dup ? '他の日程と重複しています' : '');
       const note = select.closest('.field').querySelector('[data-dup-note]');
       if (note) note.hidden = !dup;
@@ -1393,6 +1402,10 @@ function setupNewDayToggle() {
   };
 
   document.querySelectorAll('[data-day-label]').forEach((s) => s.form && checkDuplicates(s.form));
+  // 新しい日程名を打つたびにも重複を見直す
+  document.addEventListener('input', (e) => {
+    if (e.target.matches('[data-label-new]')) checkDuplicates(e.target.form);
+  });
   document.addEventListener('change', (e) => {
     if (e.target.matches('[data-day-label]')) checkDuplicates(e.target.form);
     if (!e.target.matches('[data-new-day-add]')) return;
@@ -1403,6 +1416,49 @@ function setupNewDayToggle() {
     checkDuplicates(e.target.form);
     if (on) fields.querySelector('.live-pick__btn, select')?.focus();
   });
+}
+
+/* ---------------------------------------------------------------------
+ * ライブの新規追加（live_edit.php）: 「＋ 日程を追加」で2つ目以降の日程の入力欄を増やす
+ *   <template id="extra-day-tpl"> を複製し、name の __i__ を番号に置き換える。
+ *   日程名はまだ使っていないものを最初から選んでおく。全部使っていたら「＋ 新しい日程名を作る」にしておく。
+ *   「この日程をやめる」で欄ごと消す（消した欄は送信されない）
+ * ------------------------------------------------------------------- */
+function setupExtraDays() {
+  const btn = document.querySelector('[data-extra-day-add]');
+  const tpl = document.getElementById('extra-day-tpl');
+  if (!btn || !tpl) return;
+  const form = btn.closest('form');
+  const list = form.querySelector('[data-extra-days]');
+  let next = list.children.length; // エラーで戻ってきたときは、出し直した分の続きの番号から
+  const selects = () => [...form.querySelectorAll('[data-day-label]')];
+
+  const refresh = () => {
+    // change を起こして、setupNewDayToggle の重複チェックをやり直させる
+    selects()[0].dispatchEvent(new Event('change', { bubbles: true }));
+  };
+
+  btn.addEventListener('click', () => {
+    const used = selects().map(dayLabelOf);
+    const block = tpl.content.firstElementChild.cloneNode(true);
+    block.querySelectorAll('[name]').forEach((el) => { el.name = el.name.replace('__i__', next); });
+    next++;
+    const select = block.querySelector('[data-day-label]');
+    const free = [...select.options].find((o) => o.value !== '__new__' && !used.includes(o.value));
+    select.value = free ? free.value : '__new__';
+    block.querySelector('[data-label-new]').hidden = !!free;
+    list.append(block);
+    refresh();
+    block.querySelector(free ? 'input[type="date"]' : '[data-label-new]').focus();
+  });
+
+  list.addEventListener('click', (e) => {
+    const rm = e.target.closest('[data-extra-day-remove]');
+    if (!rm) return;
+    rm.closest('[data-extra-day]').remove();
+    refresh();
+  });
+  refresh();
 }
 
 /** 開催日 "2025-03-15" → 年度（4月始まり。1〜3月は前の年の年度）。PHP の academic_year() と同じ計算 */
@@ -1456,7 +1512,7 @@ function setupMergeToggle() {
     let overwrites = 0;
     form.querySelectorAll('[data-day-label]').forEach((select) => {
       const warn = select.closest('.field').querySelector('[data-overwrite-note]');
-      const hit = labels.includes(select.value) && (!select.matches('[data-new-day]') || addNew);
+      const hit = labels.includes(dayLabelOf(select)) && (!select.matches('[data-new-day]') || addNew);
       warn.hidden = !hit;
       if (hit) overwrites++;
     });
@@ -1480,7 +1536,7 @@ function setupMergeToggle() {
     const btn = box.querySelector('[data-live-pick]');
     const flash = card.querySelector('[data-exists-flash]');
     const on = box.querySelector('[data-merge-toggle]').getAttribute('aria-pressed') === 'true';
-    const label = card.querySelector('[name$="[label]"]').value.trim();
+    const label = dayLabelOf(card.querySelector('[name$="[label]"]'));
     const year = fiscalYear(card.querySelector('[data-date-input]').value);
     note.textContent = '';
     note.className = 'merge-note';
@@ -1597,13 +1653,13 @@ function setupMergeToggle() {
   });
   // 開催日・日程ラベル・ライブ名を変えたら注意文と帯を作り直す
   document.addEventListener('input', (e) => {
-    if (!e.target.matches('[data-date-input], [name$="[label]"], [data-live-name]')) return;
+    if (!e.target.matches('[data-date-input], [name$="[label]"], [data-label-new], [data-live-name]')) return;
     const box = e.target.closest('[data-timetable]')?.querySelector('[data-merge]');
     if (box) updateNote(box);
   });
   // ライブ編集: 日程名・「この日程を追加する」を変えたら警告を出し直す
   document.addEventListener('change', (e) => {
-    if (!e.target.matches('[data-day-label], [data-new-day-add]')) return;
+    if (!e.target.matches('[data-day-label], [data-new-day-add], [data-label-new]')) return;
     const box = e.target.closest('form')?.querySelector('[data-live-merge] [data-merge]');
     if (box) updateNote(box);
   });
@@ -2829,6 +2885,8 @@ function setupSuggest() {
     const r = input.getBoundingClientRect();
     pop.style.left = `${r.left}px`;
     pop.style.minWidth = `${r.width}px`;
+    pop.style.maxHeight = 'none';
+    const full = pop.offsetHeight;
     const below = window.innerHeight - r.bottom - 8;
     if (below < full && r.top - 8 > below) {
       pop.style.bottom = `${window.innerHeight - r.top + 4}px`;
@@ -2881,5 +2939,3 @@ function setupSuggest() {
   window.addEventListener('scroll', (e) => { if (cur && !cur.pop.contains(e.target)) close(); }, true);
   window.addEventListener('resize', close);
 }
-    pop.style.maxHeight = 'none';
-    const full = pop.offsetHeight;

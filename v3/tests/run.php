@@ -303,6 +303,7 @@ check('同じアプリは直接', track_listen_url('spotify', $letItBe), 'https:
 
 echo "roster choices\n";
 require_once __DIR__ . '/../lib/import/planner.php';
+require_once __DIR__ . '/../lib/repository.php'; // resolve_day_label（手入力の区切りの日程名チェック）
 $rb = fn(string $name, array $members) => ['band_name' => $name, 'members' => array_map(fn($m) => ['name' => $m[0], 'part' => $m[1]], $members)];
 check('同名はボーカルで区別', roster_choices(['rosters' => [['file' => '名簿.pdf', 'bands' => [
     $rb('ELLEGARDEN', [['岩崎太一', 'Vo'], ['山田花子', 'Gt']]),
@@ -379,7 +380,14 @@ $err = static function (array $rows) use ($mplan): string {
 check('手入力: 同じバンドを2回', $err([['pick' => '0:0'], ['pick' => '0:0']]), '「ENTH（Vo 渡辺）」を2回選んでいます。1つの行だけにしてください');
 check('手入力: 曲数が数字でない', $err([['pick' => '0:0', 'songs' => '-1']]), '「ENTH（Vo 渡辺）」の曲数は0〜255の数字で入力してください');
 check('手入力: 名簿に無い値', $err([['pick' => '9:9']]), '1行目: 選んだバンドが名簿にありません');
-check('手入力: 一覧に無い日程', $err([['divider' => '4日目'], ['pick' => '0:0']]), '1行目: 日程の区切りが正しくありません');
+check('手入力: 区切りの日程名が空', $err([['divider' => ''], ['pick' => '0:0']]), '1行目の区切り: 新しい日程名は1〜50文字で入力してください（「#」で始まる名前は使えません）');
+check('手入力: 区切りの日程名が # 始まり', $err([['divider' => '#1'], ['pick' => '0:0']]), '1行目の区切り: 新しい日程名は1〜50文字で入力してください（「#」で始まる名前は使えません）');
+[$mt] = build_manual_timetables($mplan, [
+    ['divider' => '野外ライブ'], ['pick' => '0:0'],   // 新しく作った日程名は、いつもの日程名の後ろ
+    ['divider' => '2日目'], ['pick' => '0:1'],
+    ['divider' => '4日目'], ['pick' => '0:2'],
+]);
+check('手入力: 新しい日程名の区切り', array_column($mt, 'label'), ['2日目', '野外ライブ', '4日目']);
 check('手入力: 休憩だけ', $err([['pick' => 'break:休憩']]), '名簿のバンドを1つ以上選んでください');
 
 echo $failed ?"\n{$failed} 件失敗\n" : "\nすべて成功\n";

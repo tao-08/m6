@@ -203,6 +203,7 @@ h3 { font-size: 16px; }
 .row-form { display: flex; gap: 6px; align-items: center; }
 .row-form input, .row-form select { flex: 1; min-width: 10em; }
 .row-form .btn { flex: none; white-space: nowrap; }
+.row-form .input-short { flex: 0 0 6em; min-width: 0; } /* 楽器の略称（Tp など）は短いので狭くする */
 
 /* ゴミ箱マークの削除ボタン（venues.php）。消せないときは disabled でグレーアウト */
 .btn-trash { width: 32px; height: 32px; border-radius: 8px; display: inline-grid; place-items: center; cursor: pointer;
@@ -514,7 +515,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 /* ライブ編集の「＋ 日程を追加」チェックボックス（見出しと同じ大きさ） */
 .new-day-toggle { display: inline-flex; align-items: center; gap: 8px; width: fit-content; margin-top: 24px; font-size: 16px; font-weight: 800; color: var(--text); cursor: pointer; }
 .new-day-toggle input { width: 18px; height: 18px; accent-color: var(--accent); }
-[data-new-day-fields]:not([hidden]) { animation: soft-in .2s ease-out; }
+[data-new-day-fields]:not([hidden]), [data-extra-day] { animation: soft-in .2s ease-out; }
 .field--wide { grid-column: span 2; }
 .form-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
 .member-rows { display: grid; gap: 8px; margin-bottom: 10px; }
@@ -1237,5 +1238,6 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
 .manual-divider td { background: var(--surface-2); }
 .manual-divider__inner { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .manual-divider__label { font-weight: 800; color: var(--accent); }
+.manual-divider__input { flex: 1; max-width: 320px; font-weight: 800; color: var(--accent); }
 .manual-tt [data-manual-no] { width: 2.5em; text-align: right; font-weight: 700; color: var(--muted); }
 .manual-tt__add { display: flex; flex-wrap: wrap; gap: 8px; }
