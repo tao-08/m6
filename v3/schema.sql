@@ -70,6 +70,7 @@ CREATE TABLE member (
 CREATE TABLE role (
     role_id INT UNSIGNED NOT NULL AUTO_INCREMENT,
     name    VARCHAR(30)  NOT NULL,
+    sort_order INT UNSIGNED NOT NULL DEFAULT 0,          -- 並び順（masters.php の ↑↓）
     PRIMARY KEY (role_id),
     UNIQUE KEY uq_role_name (name)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
@@ -112,6 +113,7 @@ CREATE TABLE venue (
     name        VARCHAR(50)  NOT NULL,
     address     VARCHAR(255) NULL,
     website_url VARCHAR(255) NULL,
+    sort_order  INT UNSIGNED NOT NULL DEFAULT 0,       -- 並び順（masters.php の ↑↓）
     PRIMARY KEY (venue_id),
     UNIQUE KEY uq_venue_name (name)                    -- 同じ会場が2つできない
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;

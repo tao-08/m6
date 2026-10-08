@@ -51,6 +51,15 @@ if (is_post()) {
     verify_csrf();
     $action = (string)($_POST['action'] ?? '');
 
+    // ↑↓ の並び替え（会場・係）。テーブル名は SQL に直接入るので、ここに書いた決まった名前だけを渡す
+    $sortable = ['venue' => ['venue', 'venue_id'], 'role' => ['role', 'role_id']];
+    if ($action === 'move' && isset($sortable[$tab])) {
+        [$table, $idCol] = $sortable[$tab];
+        $id = (int)($_POST[$idCol] ?? 0);
+        move_sort_order($pdo, $table, $idCol, $id, ($_POST['dir'] ?? '') === 'up');
+        redirect('masters?tab=' . $tab . '#row-' . $id); // 動かした行の所に戻る（続けて押しやすいように）
+    }
+
     if ($tab === 'venue') {
         // ================= 会場 =================
         $id = (int)($_POST['venue_id'] ?? 0);
@@ -228,8 +237,8 @@ if (is_post()) {
 // 会場ごとに「何件の日程で使われているか」
 $venues = $pdo->query('SELECT v.venue_id, v.name, COUNT(d.live_day_id) AS used
     FROM venue v LEFT JOIN live_day d ON d.venue_id = v.venue_id
-    GROUP BY v.venue_id, v.name
-    ORDER BY v.name')->fetchAll();
+    GROUP BY v.venue_id, v.name, v.sort_order
+    ORDER BY v.sort_order, v.name')->fetchAll();
 // 日程名ごとの日程の数。いつもの日程名（DAY_LABELS）は使われていなくても出し、その順で先頭に並べる
 $dayCounts = $pdo->query("SELECT label, COUNT(*) FROM live_day WHERE label NOT LIKE '#%' GROUP BY label")->fetchAll(PDO::FETCH_KEY_PAIR);
 $days = [];
@@ -244,8 +253,8 @@ $instruments = $pdo->query('SELECT i.instrument_id, i.short_name, i.name, COUNT(
 // 係ごとに「何人に付いているか」
 $roles = $pdo->query('SELECT r.role_id, r.name, COUNT(mr.member_id) AS used
     FROM role r LEFT JOIN member_role mr ON mr.role_id = r.role_id
-    GROUP BY r.role_id, r.name
-    ORDER BY r.name')->fetchAll();
+    GROUP BY r.role_id, r.name, r.sort_order
+    ORDER BY r.sort_order, r.name')->fetchAll();
 $counts = ['venue' => count($venues), 'day' => count($days), 'instrument' => count($instruments), 'role' => count($roles)];
 
 /** 消せないときのグレーアウトしたゴミ箱（disabled のボタンはマウスの反応が鈍いので、外側の span でツールチップを出す） */
@@ -253,6 +262,20 @@ function trash_disabled(string $why): string
 {
     return '<span class="tooltip" data-tooltip="' . h($why) . '" tabindex="0">'
         . '<button class="btn-trash" type="button" disabled aria-label="削除（' . h($why) . '）">' . icon('delete') . '</button></span>';
+}
+
+/**
+ * 並び替えの ↑↓ ボタン（会場・係の行の左端）。1つのフォームに2つの送信ボタンを置き、押したほうの dir（up / down）が送られる。
+ * 一番上の ↑・一番下の ↓ は押せなくする
+ */
+function move_buttons(string $tab, string $idCol, int $id, string $name, int $index, int $count): string
+{
+    return '<form method="post" class="move-btns">' . csrf_field()
+        . '<input type="hidden" name="tab" value="' . h($tab) . '"><input type="hidden" name="action" value="move">'
+        . '<input type="hidden" name="' . h($idCol) . '" value="' . $id . '">'
+        . '<button class="btn-move" type="submit" name="dir" value="up" aria-label="「' . h($name) . '」を上へ"' . ($index === 0 ? ' disabled' : '') . '>' . icon('arrow_upward') . '</button>'
+        . '<button class="btn-move" type="submit" name="dir" value="down" aria-label="「' . h($name) . '」を下へ"' . ($index === $count - 1 ? ' disabled' : '') . '>' . icon('arrow_downward') . '</button>'
+        . '</form>';
 }
 
 render_header($tabs[$tab][0] . 'の管理');
@@ -275,10 +298,11 @@ render_header($tabs[$tab][0] . 'の管理');
     <div class="table-scroll table-scroll--flush">
     <table class="table table--edit">
     <?php if ($tab === 'venue'): ?>
-        <thead><tr><th>会場名</th><th class="num">使われている日程</th><th>他の会場に統合</th><th></th></tr></thead>
+        <thead><tr><th>順番</th><th>会場名</th><th class="num">使われている日程</th><th>他の会場に統合</th><th></th></tr></thead>
         <tbody>
-        <?php foreach ($venues as $v): ?>
-            <tr>
+        <?php foreach ($venues as $vi => $v): ?>
+            <tr id="row-<?= (int)$v['venue_id'] ?>">
+                <td><?= move_buttons('venue', 'venue_id', (int)$v['venue_id'], $v['name'], $vi, count($venues)) ?></td>
                 <td>
                     <form method="post" class="row-form"><?= csrf_field() ?>
                         <input type="hidden" name="tab" value="venue">
@@ -320,15 +344,16 @@ render_header($tabs[$tab][0] . 'の管理');
             </tr>
         <?php endforeach; ?>
         <?php if (!$venues): ?>
-            <tr><td colspan="4" class="muted">まだ会場が登録されていません</td></tr>
+            <tr><td colspan="5" class="muted">まだ会場が登録されていません</td></tr>
         <?php endif; ?>
         </tbody>
 
     <?php elseif ($tab === 'role'): ?>
-        <thead><tr><th>係の名前</th><th class="num">付いている人</th><th>他の係に統合</th><th></th></tr></thead>
+        <thead><tr><th>順番</th><th>係の名前</th><th class="num">付いている人</th><th>他の係に統合</th><th></th></tr></thead>
         <tbody>
-        <?php foreach ($roles as $r): ?>
-            <tr>
+        <?php foreach ($roles as $ri => $r): ?>
+            <tr id="row-<?= (int)$r['role_id'] ?>">
+                <td><?= move_buttons('role', 'role_id', (int)$r['role_id'], $r['name'], $ri, count($roles)) ?></td>
                 <td>
                     <form method="post" class="row-form"><?= csrf_field() ?>
                         <input type="hidden" name="tab" value="role">
@@ -370,7 +395,7 @@ render_header($tabs[$tab][0] . 'の管理');
             </tr>
         <?php endforeach; ?>
         <?php if (!$roles): ?>
-            <tr><td colspan="4" class="muted">まだ係がありません（プロフィールの「新しい係」で作れます）</td></tr>
+            <tr><td colspan="5" class="muted">まだ係がありません（プロフィールの「新しい係」で作れます）</td></tr>
         <?php endif; ?>
         </tbody>
 

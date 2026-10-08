@@ -243,16 +243,17 @@ render_header('メンバー', 'members');
         <a class="btn btn--primary" href="member_new">＋ 新規追加</a>
     </div>
     <div class="card table-card">
-        <table class="table">
+        <table class="table table--list table--members">
             <thead><tr>
                 <th class="num">#</th>
                 <?= sort_th('name', '名前', $sort, $dir) ?>
                 <?= sort_th('entry', '入学', $sort, $dir, 'num') ?>
-                <th>担当楽器</th>
                 <th>マイアルバム Top5</th>
+                <th>担当楽器</th><!-- 楽器を数字（出演）の隣に置く。横にスクロールして右端の名前と一緒に見えるように -->
                 <?= sort_th('bands', '出演', $sort, $dir, 'num') ?>
                 <?= sort_th('lives', 'ライブ', $sort, $dir, 'num hide-sm') ?>
                 <?= sort_th('headliners', 'トリ', $sort, $dir, 'num') ?>
+                <th class="name-end">名前</th><!-- スマホだけ右端にも名前（横にスクロールして数字を見ているときに、誰の数字かわかるように） -->
             </tr></thead>
             <tbody>
             <?php foreach ($list as $r): ?>
@@ -261,8 +262,8 @@ render_header('メンバー', 'members');
                     <td><a href="member?id=<?= (int)$r['member_id'] ?>"<?= $r['rank'] ? ' class="strong"' : '' ?>><?= h($r['name']) ?></a></td>
                     <!-- 2023 → '23（下2桁だけ。sprintf の %02d で 2005 → '05 のように0を残す） -->
                     <td class="num muted"><?= $r['entry_year'] !== null ? sprintf("'%02d", (int)$r['entry_year'] % 100) : '—' ?></td>
-                    <td><?= part_marks($instruments[(int)$r['member_id']] ?? [], false, 'partbar--cell') ?></td>
                     <td><?= album_thumbs($topAlbums[(int)$r['member_id']] ?? []) ?></td>
+                    <td><?= part_marks($instruments[(int)$r['member_id']] ?? [], false, 'partbar--cell', 3) ?></td>
                     <?php if ($r['rank']): ?>
                         <td class="num strong"><?= (int)$r['bands'] ?></td>
                         <td class="num hide-sm"><?= (int)$r['lives'] ?></td>
@@ -270,6 +271,7 @@ render_header('メンバー', 'members');
                     <?php else: ?>
                         <td class="num muted small">—</td><td class="hide-sm"></td><td></td>
                     <?php endif; ?>
+                    <td class="name-end"><a href="member?id=<?= (int)$r['member_id'] ?>"<?= $r['rank'] ? ' class="strong"' : '' ?>><?= h($r['name']) ?></a></td>
                 </tr>
             <?php endforeach; ?>
             </tbody>

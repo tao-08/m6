@@ -204,7 +204,9 @@ h3 { font-size: 16px; }
 
 /* 表の1セルの中の「入力欄 + ボタン」を横に並べるフォーム（venues.php の名前変更・統合） */
 .row-form { display: flex; gap: 6px; align-items: center; }
-.row-form input, .row-form select { flex: 1; min-width: 10em; }
+/* form. を付けて強くする: 後ろにある「.table--edit input { min-width: 0 }」と強さが同じだと後ろが勝ち、
+   スマホで表が狭くなると入力欄が 20px まで潰れて名前が見えなくなる（会場・係の管理） */
+form.row-form input, form.row-form select { flex: 1; min-width: 10em; }
 .row-form .btn { flex: none; white-space: nowrap; }
 .row-form .input-short { flex: 0 0 6em; min-width: 0; } /* 楽器の略称（Tp など）は短いので狭くする */
 
@@ -212,6 +214,14 @@ h3 { font-size: 16px; }
 .btn-trash { width: 32px; height: 32px; border-radius: 8px; display: inline-grid; place-items: center; cursor: pointer;
   border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent); background: transparent; color: var(--danger); }
 .btn-trash .icon { font-size: 20px; }
+/* 会場・係の並び替えの ↑↓（masters.php）。ゴミ箱と同じ大きさの四角 */
+.move-btns { display: flex; gap: 4px; }
+.btn-move { width: 32px; height: 32px; border-radius: 8px; display: inline-grid; place-items: center; cursor: pointer;
+  border: 1px solid var(--border); background: var(--surface); color: var(--text); }
+.btn-move .icon { font-size: 18px; }
+.btn-move:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.btn-move:disabled { opacity: .3; cursor: default; }
+[id^="row-"] { scroll-margin-top: 140px; } /* ↑↓ のあと #row-ID に戻ったとき、上のヘッダーに隠れないように */
 .btn-trash:hover:not(:disabled) { color: #fff; background: var(--danger); border-color: var(--danger); }
 .btn-trash:disabled { color: var(--muted); border-color: var(--border); opacity: .5; cursor: not-allowed;
   pointer-events: none; /* マウスは外側の .tooltip に拾わせる */ }
@@ -447,6 +457,11 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
   background: var(--text); color: var(--bg); font-size: 12px; line-height: 1.4; pointer-events: none;
   opacity: 0; visibility: hidden; transition: opacity .12s; box-shadow: 0 8px 20px -6px rgb(0 0 0 / .35); }
 .album-tip.is-visible { opacity: 1; visibility: visible; }
+/* メンバー一覧の右端の名前列。PC は表が画面に収まるので出さない（スマホは下の @media で出す） */
+.table--members .name-end { display: none; }
+/* メンバー一覧の担当楽器「ほか」: 楽器のバッジは色が薄いので、黒い背景ではなくカードと同じ白い背景に出す */
+.album-tip--parts { background: var(--surface); color: var(--text); border: 1px solid var(--border); padding: 8px; }
+.album-tip--parts .partbar { margin: 0; gap: 4px; }
 .album-tip__title { font-size: 13px; overflow-wrap: anywhere; }
 .album-tip__artist { opacity: .75; overflow-wrap: anywhere; }
 /* スマホでも5枚とも出す（はみ出した分は表ごと横にスクロールする）。ジャケットの間を詰めて、そのぶん少しだけ小さくするのにとどめる */
@@ -504,6 +519,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .more-names { margin-left: 2px; padding: 0 2px; border: 0; background: none; font: inherit; font-size: 11px; color: var(--muted);
   text-decoration: underline dotted; text-underline-offset: 2px; cursor: help; white-space: nowrap; }
 .more-names:hover { color: var(--text); }
+.partbar--cell .more-names { align-self: center; padding: 8px 6px; margin: -8px -6px -8px 0; } /* 担当楽器の「ほか」: 指で押せるよう押せる範囲だけ広げる（負の margin で行の高さは変えない） */
 .ranking { list-style: none; margin: 0; padding: 0; counter-reset: r; }
 .ranking li { display: flex; align-items: center; gap: 10px; padding: 8px 4px; counter-increment: r; border-bottom: 1px solid var(--border); }
 .ranking li:last-child { border-bottom: 0; }
@@ -1249,6 +1265,9 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
   body { font-size: 14px; }
   .brand__logo { height: 28px; }
   .hero { margin: 8px 0 20px; }
+  .pc-only { display: none; } /* スマホでは出さない文字（live.php の「ライブを編集」の「を」など） */
+  .hero__actions { gap: 6px; }
+  .hero__actions .btn--sm:not(.btn--youtube) { padding-inline: 10px; white-space: nowrap; } /* YouTube はロゴだけで余白 2px のまま */
   .stats { width: 100%; }
   .stats div { flex: 1; min-width: 0; padding: 5px 10px; }
   .stats dd { font-size: 16px; }
@@ -1264,6 +1283,13 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
   .history__item { grid-template-columns: 1fr; }
   .history__when { grid-column: 1 / -1; display: flex; gap: 8px; }
   .table td, .table th { padding: 10px 12px; }
+  /* アーティスト一覧・メンバー一覧（.table--list）: スマホは幅が足りないので、大事な数字（演奏回数・出演）が画面に入るよう余白を詰める */
+  .table-card:has(.table--list) { margin-inline: -10px; } /* 表の外側: 画面の端から 16px → 6px */
+  .table--list td, .table--list th { padding-inline: 6px; }  /* 列と列のあいだ: 24px → 12px（名前 ↔ 回数・入学） */
+  .table--list td:first-child, .table--list th:first-child { padding-inline: 10px 4px; } /* # の列 */
+  .table--members td:first-child, .table--members th:first-child { padding-left: 4px; } /* メンバー一覧は列が多いので # の左をさらに詰める */
+  .table--members .name-end { display: table-cell; padding-left: 12px; } /* 横にスクロールして右端まで来たとき、数字の右に名前 */
+  .table--list .plays { text-align: left; } /* 見出し「演奏回数 ▼」が数字より広いので、右寄せだと名前との間が空く。左に寄せて名前の近くに */
   .card.table-card { padding: 0; }
   .table-scroll--flush { margin: 0; }
   .member-row-edit { grid-template-columns: 110px minmax(0, 1fr) auto; }
@@ -1280,6 +1306,10 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
   .tabs--days:has(.tab:nth-child(3)) .tab { display: block; flex: 1 1 0; min-width: 0; padding: 10px 6px; font-size: 15px;
     text-align: center; overflow: hidden; text-overflow: ellipsis; }
   .tabs--days:has(.tab:nth-child(3)) .tab small { display: none; }
+  /* 4日程以上: 等分だと「教室…」「UNI…」と切れて読めないので、名前を全部出して横スクロールにする */
+  .tabs--days:has(.tab:nth-child(4)) { overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
+  .tabs--days:has(.tab:nth-child(4))::-webkit-scrollbar { display: none; }
+  .tabs--days:has(.tab:nth-child(4)) .tab { flex: none; padding: 10px 14px; overflow: visible; }
   .add-band { margin-left: 54px; }
   .bars li { grid-template-columns: minmax(0, 8em) 1fr auto; }
   .stats-grid { grid-template-columns: 1fr; }

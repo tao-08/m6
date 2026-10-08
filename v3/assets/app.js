@@ -119,7 +119,8 @@ function setupAlbumTip() {
     const img = e.target.closest('[data-album-tip] [data-tip-title]');
     if (img) show(img); else hide();
   });
-  window.addEventListener('scroll', hide, { passive: true }); // fixed なのでスクロールするとずれる → 隠す
+  // fixed なのでスクロールするとずれる → 隠す。capture: true で、ページだけでなく表の横スクロールでも隠す
+  document.addEventListener('scroll', hide, { passive: true, capture: true });
 }
 
 /* ---------------------------------------------------------------------
@@ -193,7 +194,17 @@ function setupSetlistTip() {
 
   const hide = () => { tip.classList.remove('is-visible'); current = null; };
   const show = (badge) => {
-    tip.textContent = badge.dataset.setlistTip; // textContent なので HTML として解釈されない
+    // 中に [data-tip-body]（メンバー一覧の担当楽器「ほか」）があれば、そのバッジを写して出す。
+    // サーバーが h() 済みで出した要素を複製するだけなので安全。無ければ文字だけ（textContent なので HTML として解釈されない）
+    const body = badge.querySelector('[data-tip-body]');
+    if (body) {
+      const copy = body.cloneNode(true);
+      copy.hidden = false;
+      tip.replaceChildren(copy);
+    } else {
+      tip.textContent = badge.dataset.setlistTip;
+    }
+    tip.classList.toggle('album-tip--parts', !!body);
     tip.classList.add('is-visible');
     current = badge;
     // バッジの真上に出す。上に入らないときは下。左右は画面からはみ出さないように寄せる
@@ -222,7 +233,8 @@ function setupSetlistTip() {
     if (badge === current) hide(); else show(badge);
   });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hide(); });
-  window.addEventListener('scroll', hide, { passive: true }); // fixed なのでスクロールするとずれる → 隠す
+  // fixed なのでスクロールするとずれる → 隠す。capture: true で、ページだけでなく表の横スクロールでも隠す
+  document.addEventListener('scroll', hide, { passive: true, capture: true });
 }
 
 /* ---------------------------------------------------------------------
@@ -803,6 +815,15 @@ function setupTabs() {
     if (!target || !target.classList.contains('day')) return;
     document.querySelectorAll('.day').forEach((d) => { d.hidden = d !== target; });
     tabs.forEach((t) => t.classList.toggle('is-active', t.getAttribute('href') === '#' + target.id));
+    // スマホで日程が4つ以上あるとタブのバーは横にスクロールする → 選んだタブがバーの外にあれば見える所まで動かす
+    //   scrollIntoView だとページごと縦に動くことがあるので、バーの scrollLeft だけを変える
+    const active = [...tabs].find((t) => t.classList.contains('is-active'));
+    const bar = active && active.parentElement;
+    if (bar && bar.scrollWidth > bar.clientWidth) {
+      const left = active.offsetLeft - bar.offsetLeft;
+      if (left < bar.scrollLeft) bar.scrollLeft = left - 8;
+      else if (left + active.offsetWidth > bar.scrollLeft + bar.clientWidth) bar.scrollLeft = left + active.offsetWidth - bar.clientWidth + 8;
+    }
   };
 
   // JS が動くときだけ2日目以降を隠す（動かなければ全日程が縦に並ぶ）

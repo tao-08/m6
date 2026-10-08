@@ -97,8 +97,9 @@ render_header($live['name'], 'lives');
         <?php if ($live['youtube_url'] !== null && youtube_url_valid($live['youtube_url'])): // 表示の前にもう一度チェック（DB を直接いじられても変なリンクを出さない） ?>
             <a class="btn btn--sm btn--youtube" href="<?= h($live['youtube_url']) ?>" target="_blank" rel="noopener noreferrer" aria-label="YouTube で見る" title="YouTube で見る"><?= youtube_icon() ?></a>
         <?php endif; ?>
-        <a class="btn btn--sm" href="live_edit?id=<?= (int)$liveId ?>"><?= icon('edit') ?> ライブを編集</a>
-        <a class="btn btn--sm" href="timetable_edit?id=<?= (int)$liveId ?>"><?= icon('schedule') ?> タイムテーブルを編集</a>
+        <a class="btn btn--sm" href="live_edit?id=<?= (int)$liveId ?>"><?= icon('edit') ?> <span>ライブ<span class="pc-only">を</span>編集</span></a>
+        <?php // スマホでは「を」を消して「ライブ編集」「タイムテーブル編集」にし、YouTube と3つを1段に収める ?>
+        <a class="btn btn--sm" href="timetable_edit?id=<?= (int)$liveId ?>"><?= icon('schedule') ?> <span>タイムテーブル<span class="pc-only">を</span>編集</span></a>
     </div>
 </section>
 

@@ -454,7 +454,7 @@ if ($plan === null): // ==================== アップロード画面 ==========
     $dayLabels = day_labels($pdo); // 日程名のプルダウンの中身
     $livesById = array_column($lives, null, 'live_id');
     // 会場はプルダウンで選ばせる（表記ゆれ防止）。FETCH_KEY_PAIR で [venue_id => name] の形になる
-    $venues = $pdo->query('SELECT venue_id, name FROM venue ORDER BY name')->fetchAll(PDO::FETCH_KEY_PAIR);
+    $venues = $pdo->query('SELECT venue_id, name FROM venue ORDER BY sort_order, name')->fetchAll(PDO::FETCH_KEY_PAIR);
 
     // ---- 名簿の全セルを1回でまとめて色分け判定（1セルずつ SQL を投げると遅いので） ----
     $cellTexts = [];   // "ri-bi-列番号" / "ri-bi-x追加列番号" => セルの文字

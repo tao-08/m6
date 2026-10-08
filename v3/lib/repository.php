@@ -73,8 +73,9 @@ function find_or_create_venue(PDO $pdo, string $name): ?int
     if ($name === '') {
         return null;
     }
-    // venue.name は UNIQUE なので、INSERT IGNORE で「無ければ作る」を1文で書ける
-    $pdo->prepare('INSERT IGNORE INTO venue (name) VALUES (?)')->execute([mb_substr($name, 0, 50)]);
+    // venue.name は UNIQUE なので、INSERT IGNORE で「無ければ作る」を1文で書ける。新しい会場は並び順の一番うしろ
+    $pdo->prepare('INSERT IGNORE INTO venue (name, sort_order) SELECT ?, COALESCE(MAX(sort_order), 0) + 1 FROM venue')
+        ->execute([mb_substr($name, 0, 50)]);
     $st = $pdo->prepare('SELECT venue_id FROM venue WHERE name = ?');
     $st->execute([mb_substr($name, 0, 50)]);
     return (int)$st->fetchColumn();
@@ -83,17 +84,40 @@ function find_or_create_venue(PDO $pdo, string $name): ?int
 /** 係の名前 → role_id。無ければ作る（find_or_create_venue と同じやり方） */
 function find_or_create_role(PDO $pdo, string $name): int
 {
-    $pdo->prepare('INSERT IGNORE INTO role (name) VALUES (?)')->execute([$name]);
+    $pdo->prepare('INSERT IGNORE INTO role (name, sort_order) SELECT ?, COALESCE(MAX(sort_order), 0) + 1 FROM role')->execute([$name]);
     $st = $pdo->prepare('SELECT role_id FROM role WHERE name = ?');
     $st->execute([$name]);
     return (int)$st->fetchColumn();
 }
 
-/** そのメンバーの係 [role_id => 名前]（名前順） */
+/**
+ * 会場・係の並び順を1つ上（$up = true）か下へ動かす（masters.php の ↑↓）。
+ *   全部を今の順に読んで、PHP の配列で隣と入れ替え、sort_order を 1, 2, 3 … で付け直す。
+ *   数十行しかないので全部書き直しても軽いし、sort_order が重なっていても（同じ数字が2つ）必ず正しく直る。
+ * $table / $idCol は SQL に直接入るので、プログラムに書いた決まった名前しか渡さないこと（ユーザーの入力は渡さない）
+ */
+function move_sort_order(PDO $pdo, string $table, string $idCol, int $id, bool $up): void
+{
+    $ids = array_map('intval', $pdo->query("SELECT $idCol FROM $table ORDER BY sort_order, name")->fetchAll(PDO::FETCH_COLUMN));
+    $i = array_search($id, $ids, true);
+    $j = $up ? $i - 1 : $i + 1;
+    if ($i === false || !isset($ids[$j])) {
+        return; // 見つからない・もう一番上（下）
+    }
+    [$ids[$i], $ids[$j]] = [$ids[$j], $ids[$i]];
+    $pdo->beginTransaction();
+    $st = $pdo->prepare("UPDATE $table SET sort_order = ? WHERE $idCol = ?");
+    foreach ($ids as $n => $rowId) {
+        $st->execute([$n + 1, $rowId]);
+    }
+    $pdo->commit();
+}
+
+/** そのメンバーの係 [role_id => 名前]（masters.php で決めた並び順） */
 function member_roles(PDO $pdo, int $memberId): array
 {
     $st = $pdo->prepare('SELECT r.role_id, r.name FROM member_role mr JOIN role r ON r.role_id = mr.role_id
-        WHERE mr.member_id = ? ORDER BY r.name');
+        WHERE mr.member_id = ? ORDER BY r.sort_order, r.name');
     $st->execute([$memberId]);
     return $st->fetchAll(PDO::FETCH_KEY_PAIR);
 }
@@ -105,7 +129,7 @@ function member_roles(PDO $pdo, int $memberId): array
 function profile_faculty_role_fields(PDO $pdo, array $member): string
 {
     $mine = member_roles($pdo, (int)$member['member_id']);
-    $all = $pdo->query('SELECT role_id, name FROM role ORDER BY name')->fetchAll(PDO::FETCH_KEY_PAIR);
+    $all = $pdo->query('SELECT role_id, name FROM role ORDER BY sort_order, name')->fetchAll(PDO::FETCH_KEY_PAIR);
 
     $html = '<label class="field"><span>学部</span><select name="faculty"><option value="">未選択</option>';
     foreach (FACULTIES as $f) {
@@ -604,14 +628,23 @@ function part_badge(array $part, string $suffix = ''): string
  *   $class: .partbar に足すクラス（表のセルの中なら 'partbar--cell'）
  *   楽器が無ければ「—」
  */
-function part_marks(array $tally, bool $withCount = false, string $class = ''): string
+function part_marks(array $tally, bool $withCount = false, string $class = '', int $limit = 0): string
 {
     if (!$tally) {
         return '<span class="muted small">—</span>';
     }
+    $badge = static fn(array $t): string => part_badge($t, $withCount ? ' × ' . (int)$t['n'] : '');
+    // $limit 個より多いときは、残りを「ほか」ボタンにしまう（メンバー一覧の担当楽器。スマホで横にはみ出さないように）
+    $rest = $limit > 0 && count($tally) > $limit ? array_slice($tally, $limit) : [];
     $html = '<div class="' . h(trim('partbar ' . $class)) . '">';
-    foreach ($tally as $t) {
-        $html .= part_badge($t, $withCount ? ' × ' . (int)$t['n'] : '');
+    foreach ($rest ? array_slice($tally, 0, $limit) : $tally as $t) {
+        $html .= $badge($t);
+    }
+    if ($rest) {
+        // 押す（PC は乗せる）と、中の [data-tip-body] のバッジをポップアップに写して出す（app.js の setupSetlistTip）
+        $names = implode(' ', array_column($rest, 'short'));
+        $html .= '<button type="button" class="more-names" data-setlist-tip="' . h($names) . '" aria-label="' . h('ほか: ' . $names) . '">ほか'
+            . '<span class="partbar" data-tip-body hidden>' . implode('', array_map($badge, $rest)) . '</span></button>';
     }
     return $html . '</div>';
 }

@@ -139,11 +139,11 @@ render_header('アーティスト', 'artists');
         <input type="search" class="search" placeholder="アーティスト名で検索" data-filter=".artist-row" aria-label="アーティスト名で検索">
     </div>
     <div class="card table-card">
-        <table class="table">
+        <table class="table table--list">
             <thead><tr>
                 <th class="num">#</th>
                 <?= sort_th('name', 'アーティスト', $sort, $dir) ?>
-                <?= sort_th('plays', '演奏回数', $sort, $dir, 'num') ?>
+                <?= sort_th('plays', '演奏回数', $sort, $dir, 'num plays') ?>
                 <?= sort_th('last', '最後に演奏したライブ', $sort, $dir) ?>
                 <?= sort_th('top', '最多演奏', $sort, $dir) ?>
             </tr></thead>
@@ -155,7 +155,7 @@ render_header('アーティスト', 'artists');
                         <a href="artist?id=<?= $id ?>"<?= $r['rank'] ? ' class="strong"' : '' ?>><?= h($r['name']) ?></a>
                         <?php if ($al): ?><div class="muted small">別名: <?= h(implode('、', $al)) ?></div><?php endif; ?>
                     </td>
-                    <td class="num<?= $r['rank'] ? ' strong' : ' muted' ?>"><?= (int)$r['plays'] ?></td>
+                    <td class="num plays<?= $r['rank'] ? ' strong' : ' muted' ?>"><?= (int)$r['plays'] ?></td>
                     <td>
                         <?php if ($ll): ?>
                             <a href="live?id=<?= (int)$ll['live_id'] ?>"><span class="muted"><?= (int)$ll['fiscal_year'] ?>年度</span> <?= h($ll['name']) ?></a>

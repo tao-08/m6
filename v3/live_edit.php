@@ -177,7 +177,7 @@ $newDay += ['label_sel' => $newDay['label'], 'label_new' => ''];
 $extraDays = [];
 
 // 会場はプルダウンで選ばせる（表記ゆれ防止）。FETCH_KEY_PAIR で [venue_id => name] の形になる
-$venues = $pdo->query('SELECT venue_id, name FROM venue ORDER BY name')->fetchAll(PDO::FETCH_KEY_PAIR);
+$venues = $pdo->query('SELECT venue_id, name FROM venue ORDER BY sort_order, name')->fetchAll(PDO::FETCH_KEY_PAIR);
 
 // 日程名のプルダウンの中身: いつもの日程名 ＋ これまでに新しく作られた日程名（lib/repository.php）
 $dayLabels = day_labels($pdo);
