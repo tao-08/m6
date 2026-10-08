@@ -230,31 +230,25 @@ render_header($member['name'], 'members');
 <?php if ($isMe): ?>
 <!-- 自分のプロフィールはアカウント設定でまとめて編集する -->
 <a class="card edit-box edit-box--link" href="account#member-profile"><?= icon('edit') ?> プロフィールを編集（アカウント設定）</a>
-<?php else: ?>
-<?php $canEditAll = is_admin(); ?>
-<!-- 他の人のページの編集フォーム。<details> なので普段は閉じている。
-     管理者は全部の項目、それ以外のログイン中の人は「ふりがな」だけ編集できる -->
+<?php elseif (is_admin()): ?>
+<!-- 他の人のページの編集フォーム（管理者だけ）。<details> なので普段は閉じている -->
 <details class="card edit-box">
-    <summary><?= icon('edit') ?> <?= $canEditAll ? 'プロフィールを編集' : 'ふりがなを編集' ?></summary>
+    <summary><?= icon('edit') ?> プロフィールを編集</summary>
     <form method="post" action="member_edit" class="form-grid edit-box__form">
         <?= csrf_field() ?>
         <input type="hidden" name="member_id" value="<?= $memberId ?>">
-        <?php if ($canEditAll): ?>
-            <label class="field field--wide"><span>名前</span><input name="name" value="<?= h($member['name']) ?>" maxlength="50" required></label>
-        <?php endif; ?>
+        <label class="field field--wide"><span>名前</span><input name="name" value="<?= h($member['name']) ?>" maxlength="50" required></label>
         <label class="field"><span>ふりがな</span><input name="name_kana" value="<?= h($member['name_kana']) ?>" maxlength="50"></label>
-        <?php if ($canEditAll): ?>
-            <label class="field"><span>入部年度</span><input type="number" name="entry_year" min="1950" max="2100" value="<?= (int)$member['entry_year'] ?: '' ?>"></label>
-            <?= profile_faculty_role_fields($pdo, $member) ?>
-            <label class="field field--wide"><span>使っている音楽アプリ（マイアルバムのリンクをこのアプリで開きます）</span>
-                <select name="music_app">
-                    <option value="">未選択</option>
-                    <?php foreach (MUSIC_APPS as $value => $label): ?>
-                        <option value="<?= h($value) ?>"<?= $member['music_app'] === $value ? ' selected' : '' ?>><?= h($label) ?></option>
-                    <?php endforeach; ?>
-                </select>
-            </label>
-        <?php endif; ?>
+        <label class="field"><span>入部年度</span><input type="number" name="entry_year" min="1950" max="2100" value="<?= (int)$member['entry_year'] ?: '' ?>"></label>
+        <?= profile_faculty_role_fields($pdo, $member) ?>
+        <label class="field field--wide"><span>使っている音楽アプリ（マイアルバムのリンクをこのアプリで開きます）</span>
+            <select name="music_app">
+                <option value="">未選択</option>
+                <?php foreach (MUSIC_APPS as $value => $label): ?>
+                    <option value="<?= h($value) ?>"<?= $member['music_app'] === $value ? ' selected' : '' ?>><?= h($label) ?></option>
+                <?php endforeach; ?>
+            </select>
+        </label>
         <div class="form-actions field--wide"><button class="btn btn--primary btn--sm" type="submit">保存</button></div>
     </form>
 </details>

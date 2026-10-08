@@ -5,9 +5,9 @@
  * =====================================================================
  *  送信元は2つ。画面は持たない（処理して戻るだけ）。
  *    ・account.php の「メンバープロフィール」（自分のプロフィール。return=account が付いてくる）
- *    ・member.php の「プロフィールを編集」（他の人のページ。管理者 or ふりがなだけ）
- *  全項目を編集できるのは「本人（アカウントと紐付いている人）」か「管理者」だけ。
- *  それ以外のログイン中の人は「ふりがな」だけ編集できる。
+ *    ・member.php の「プロフィールを編集」（他の人のページ。管理者だけ）
+ *  編集できるのは「本人（アカウントと紐付いている人）」か「管理者」だけ。
+ *  それ以外の人は、ふりがなも含めて何も編集できない。
  * =====================================================================
  */
 declare(strict_types=1);
@@ -27,27 +27,15 @@ $memberId = (int)($_POST['member_id'] ?? 0);
 $back = ($_POST['return'] ?? '') === 'account' ? 'account#member-profile' : 'member?id=' . $memberId;
 $pdo = db();
 
-$kana = trim((string)($_POST['name_kana'] ?? ''));
-
-// 本人でも管理者でもない人は「ふりがな」だけ更新できる。
-// ※ フォームで欄を隠しているだけでは、HTML を書き換えて name などを送られたら通ってしまう。
-//   なので、ここ（サーバー側）で name_kana 以外は一切読まないようにしている
+// 本人でも管理者でもない人は何も更新できない。
+// ※ member.php でフォームを出していないだけでは、POST を直接送られたら通ってしまう。
+//   なので、ここ（サーバー側）で必ず止める
 if (!is_admin() && $user['member_id'] !== $memberId) {
-    $st = $pdo->prepare('SELECT 1 FROM member WHERE member_id = ?');
-    $st->execute([$memberId]);
-    if (!$st->fetchColumn()) {
-        redirect('members');
-    }
-    if (mb_strlen($kana) > 50) {
-        flash('ふりがなは50文字以内にしてください', 'error');
-        redirect($back);
-    }
-    $pdo->prepare('UPDATE member SET name_kana = ? WHERE member_id = ?')
-        ->execute([$kana !== '' ? $kana : null, $memberId]);
-    flash('ふりがなを更新しました');
+    flash('このメンバーのプロフィールは編集できません', 'error');
     redirect($back);
 }
 
+$kana = trim((string)($_POST['name_kana'] ?? ''));
 $name = trim((string)($_POST['name'] ?? ''));
 $entry = trim((string)($_POST['entry_year'] ?? ''));
 $musicApp = (string)($_POST['music_app'] ?? ''); // '' = 選ばない
