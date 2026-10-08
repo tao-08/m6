@@ -2891,7 +2891,8 @@ function setupMemberRows() {
  *   ・ひらがな/カタカナ、全角/半角、大文字/小文字は区別しない
  *   ・<option data-kana="ふりがな"> があれば、ふりがなでも探す（「さと」→ 佐藤さくら）
  *     日本語入力の変換前（下線が付いている「さと」の状態）でも input イベントは来るので、変換しなくても候補が出る
- *   ・フォーカスは入力欄に残したまま ↑↓ で選び、Enter で確定、Esc で閉じる
+ *   ・フォーカスは入力欄に残したまま ↑↓ で選び、Enter で確定（選んでいなければ一番上）、Esc で閉じる
+ *     候補の欄では Enter でフォームを送信しない（打ちかけのまま「登録」されないように）
  *     （変換中の ↑↓ Enter は日本語入力のものなので横取りしない。変換中は候補を押して選ぶ）
  *   ・行の追加で後から増えた入力欄も、document で待ち受けているので何もしなくても効く
  *   ・<input data-suggest-seed="セレクタ"> は、押したときに同じ行（tr）のその欄の文字で前方一致の候補を出す
@@ -3076,14 +3077,20 @@ function setupSuggest() {
   });
 
   document.addEventListener('keydown', (e) => {
-    if (!cur || e.target !== cur.input || e.isComposing) return; // 日本語の変換中の ↑↓ Enter は IME のもの
+    if (!e.target.matches?.('[data-suggest-list]')) return;
+    if (e.isComposing || e.keyCode === 229) return; // 日本語の変換中の ↑↓ Enter は IME のもの
+    // 候補の欄の Enter はフォームを送信しない（打ちかけで「登録」されないように）。
+    //   候補が開いていれば、↑↓ で選んだもの（選んでいなければ一番上）を入れる
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (cur?.input === e.target) choose(cur.input, cur.names[Math.max(0, cur.active)]);
+      return;
+    }
+    if (!cur || e.target !== cur.input) return;
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault();
       const n = cur.items.length;
       setActive(e.key === 'ArrowDown' ? (cur.active + 1) % n : (cur.active - 1 + n) % n);
-    } else if (e.key === 'Enter' && cur.active >= 0) {
-      e.preventDefault(); // フォームを送信しない
-      choose(cur.input, cur.names[cur.active]);
     } else if (e.key === 'Escape') {
       e.preventDefault();
       close();
