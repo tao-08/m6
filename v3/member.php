@@ -125,6 +125,16 @@ $headliners = count(array_filter($history, static fn($h) => (int)$h['is_last'] =
 $liveCount = count(array_unique(array_column($history, 'live_id')));
 $isMe = $memberId === $user['member_id'];
 
+// ---- 見ている人（ログイン中の人）も一緒に出たバンド ----
+//   出演履歴で、そのバンドがある日程のカードを赤枠にする（live.php の「自分が出たバンド」と同じ見た目）。
+//   自分のページでは全部のカードが赤枠になって意味が無いので、他の人のページを見ているときだけ
+$viewerBandIds = []; // [band_id] = true
+if (!$isMe && $user['member_id']) {
+    $st = $pdo->prepare('SELECT DISTINCT band_id FROM band_member WHERE member_id = ?');
+    $st->execute([$user['member_id']]);
+    $viewerBandIds = array_fill_keys(array_map('intval', $st->fetchAll(PDO::FETCH_COLUMN)), true);
+}
+
 // ---- マイアルバム（登録順） ----
 //   登録時に保存した内容（スナップショット）を出すだけなので、ここでは Spotify / iTunes に通信しない
 $st = $pdo->prepare('SELECT source, album_id, title, artist_name, artwork_url, release_year
@@ -393,7 +403,9 @@ render_header($member['name'], 'members');
         <h3 class="history__year"><?= $year > 0 ? (int)$year . '<small>年度</small>' : '年度未設定' ?></h3>
         <ol class="history">
             <?php foreach ($days as $day): ?>
-                <li class="card history__item<?= $day['has_last'] ? ' is-last' : '' ?>"
+                <?php $dayMine = (bool)array_filter($day['bands'], static fn($b) => isset($viewerBandIds[(int)$b['band_id']])); ?>
+                <!-- is-last: その日にトリをやった（左に青い線）/ is-mine: 見ている人も一緒に出た（赤枠）。live.php のバンドカードと同じ -->
+                <li class="card history__item<?= $day['has_last'] ? ' is-last' : '' ?><?= $dayMine ? ' is-mine' : '' ?>"
                     data-text="<?= h($day['live_name'] . ' ' . $day['label'] . ' ' . ($day['venue_name'] ?? '') . ' ' . implode(' ', array_column($day['bands'], 'band_name'))) ?>">
                     <div class="history__when">
                         <!-- カードには年度ではなく、実際に開催した年（2025年度の3月なら 2026年） -->

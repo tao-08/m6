@@ -379,7 +379,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .slot__meta { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 10px 0 0; font-size: 12px; color: var(--muted); }
 .keynote { color: var(--text); }
 .slot--mine .slot__body { border-color: color-mix(in srgb, var(--accent) 55%, transparent);
-  background: linear-gradient(135deg, var(--accent-soft), transparent 60%), var(--surface); }
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface)); } /* 単色: カードの白にアクセントの赤を 7% だけ混ぜる */
 .slot--mine .slot__order { color: var(--accent); }
 .slot--headliner .slot__body { box-shadow: inset 4px 0 0 var(--headliner), var(--shadow); }
 
@@ -452,7 +452,11 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .history-toolbar { margin-bottom: 14px; }
 .history-toolbar .search { flex: 1; min-width: 8em; }
 .history__item { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 14px; align-items: start; padding: 14px 18px; }
-.history__item.is-last { border-color: color-mix(in srgb, var(--accent) 50%, transparent); }
+/* 出演履歴のカードの印は live.php のバンドカード（.slot--headliner / .slot--mine）と同じ:
+   トリ = 左に青い線、見ている人も一緒に出た = 赤枠と薄い赤の単色の背景（赤枠だけだと「自分が出た」と混同するので、トリは青） */
+.history__item.is-last { box-shadow: inset 4px 0 0 var(--headliner), var(--shadow); }
+.history__item.is-mine { border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface)); } /* 単色: カードの白にアクセントの赤を 7% だけ混ぜる */
 .history__when { display: grid; font-size: 12px; font-weight: 700; }
 .history__what { display: grid; min-width: 0; }
 .history__bands { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 6px; }
