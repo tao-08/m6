@@ -2052,6 +2052,17 @@ function setupPartnerBox() {
   const more = box.querySelector('[data-partner-more]');
   const count = box.querySelectorAll('.ranking > li').length;
   const SHOWN = 5;
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // 名前の ▸ を開くたびに、一緒に出たバンドの一覧をふわっと出す。
+  //   toggle イベントは親に伝わらない（バブリングしない）ので、capture: true で box が先に受け取る
+  box.addEventListener('toggle', (e) => {
+    const details = e.target;
+    if (reduceMotion || !details.open || !details.matches('.partner')) return;
+    details.querySelector('.partner__bands')?.animate(
+      [{ opacity: 0, transform: 'translateY(6px)' }, { opacity: 1, transform: 'none' }],
+      { duration: 220, easing: 'ease-out' });
+  }, true);
 
   // 5人以下なら隠すものが無いので、▸ もボタンも出さずに全員見せる
   if (count <= SHOWN) {
@@ -2060,7 +2071,6 @@ function setupPartnerBox() {
     return;
   }
 
-  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const setOpen = (open) => {
     box.classList.toggle('is-open', open);
     toggle.setAttribute('aria-expanded', String(open));

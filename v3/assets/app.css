@@ -1055,9 +1055,9 @@ a.setlist__song:hover { color: var(--accent); text-decoration: underline; }
 .partbar--partner .part { font-size: 10px; min-width: 0; padding: 1px 6px; }
 .partner summary a { min-width: 0; overflow-wrap: anywhere; }
 .partner[open] .partner__chevron { transform: rotate(90deg); }
-/* 名前の ▸ を開いたら、一緒に出たバンドの一覧を上からふわっと出す（day-fade は日程タブと同じ動き） */
-.partner[open] .partner__bands { animation: day-fade .22s ease-out; }
-@media (prefers-reduced-motion: reduce) { .partner__chevron { transition: none; } .partner[open] .partner__bands { animation: none; } }
+/* 名前の ▸ を開いたときのふわっと出る動きは JS（setupPartnerBox）。
+   CSS の animation だと、閉じた <details> の中身が display: none にならないブラウザ（今の Chrome）で2回目から動かない */
+@media (prefers-reduced-motion: reduce) { .partner__chevron { transition: none; } }
 /* 開いた中身: 年度の見出しと「バンド名 … ◯月ライブ ◯日目」 */
 .partner__bands { margin: 8px 0 4px 24px; display: grid; gap: 4px; font-size: 13px; }
 .partner__bands dt { margin-top: 4px; font-size: 11px; font-weight: 800; color: var(--muted); }
