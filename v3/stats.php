@@ -98,7 +98,7 @@ $memberParams = $entryFrom !== null ? [$entryFrom, $entryTo] : [];
 $bandSql = $memberSql === '' ? '' : ' AND EXISTS (SELECT 1 FROM band_member fbm JOIN member m ON m.member_id = fbm.member_id
     WHERE fbm.band_id = b.band_id' . $memberSql . ')';
 
-// 「楽器別」「楽器別出演数ランキング」の Vo の数え方（?vo=sum）
+// 「楽器別出演数ランキング」の Vo の数え方（?vo=sum）
 //   初期値: Vo と Gt を両方やった人は「Vo/Gt」の行に数える（Vo はボーカル専任だけ）
 //   sum   : Vo/Gt の行を作らず、Vo と Gt の両方に1回ずつ数える（Vo = 歌った人全員）
 $voSum = ($_GET['vo'] ?? '') === 'sum';
@@ -186,6 +186,26 @@ $pairs = rows($pdo, 'SELECT ma.member_id AS a_id, ma.name AS a_name, mb.member_i
     HAVING n >= 2
     ORDER BY n DESC, a_name LIMIT 15', array_merge($yearParams, $memberParams, $memberParams));
 
+// ---- よく組むトリオ ----
+//   ペアの自己結合をもう1段増やして、同じバンドにいた3人の組を数える。
+//   a < b < c にすると、同じ3人の並べ替え（6通り）が1つにまとまる。
+//   メンバー絞り込みは「3人とも対象メンバー」のトリオだけ残す → $memberParams を3回渡す
+$trios = rows($pdo, 'SELECT ma.member_id AS a_id, ma.name AS a_name, mb.member_id AS b_id, mb.name AS b_name,
+        mc.member_id AS c_id, mc.name AS c_name, COUNT(*) AS n
+    FROM (' . MEMBERSHIP_SQL . ') a
+    JOIN (' . MEMBERSHIP_SQL . ') b ON b.band_id = a.band_id AND a.member_id < b.member_id
+    JOIN (' . MEMBERSHIP_SQL . ') c ON c.band_id = a.band_id AND b.member_id < c.member_id
+    JOIN member ma ON ma.member_id = a.member_id
+    JOIN member mb ON mb.member_id = b.member_id
+    JOIN member mc ON mc.member_id = c.member_id
+    JOIN band bd ON bd.band_id = a.band_id
+    JOIN live_day ld ON ld.live_day_id = bd.live_day_id
+    JOIN live lm ON lm.live_id = ld.live_id
+    WHERE 1 = 1' . $yearSql . str_replace('m.', 'ma.', $memberSql) . str_replace('m.', 'mb.', $memberSql) . str_replace('m.', 'mc.', $memberSql) . '
+    GROUP BY a.member_id, b.member_id, c.member_id
+    HAVING n >= 2
+    ORDER BY n DESC, a_name LIMIT 15', array_merge($yearParams, $memberParams, $memberParams, $memberParams));
+
 // ---- トリ回数 ----
 $headliners = rows($pdo, 'SELECT m.member_id, m.name, COUNT(DISTINCT b.band_id) AS n
     FROM (' . MEMBERSHIP_SQL . ') bm
@@ -212,12 +232,8 @@ $artists = rows($pdo, 'SELECT a.artist_id, a.name, COUNT(*) AS n
     GROUP BY a.artist_id
     ORDER BY n DESC, a.name LIMIT 20', array_merge($yearParams, $memberParams));
 
-// ---- 楽器別 ----
-//   Vo と Gt を両方やった人は「Vo/Gt」の行に数える（「Vo」はボーカル専任だけ）。「Voを合算する」なら Vo と Gt の両方に数える。
-//   このまとめは SQL では書きにくいので、行を全部読んで PHP で数える（lineup_parts_by_band → tally_parts）
-//   slots = のべ出演数（バンド × 人）、people = 人数
-//   「Voを合算する」はページ移動なしで切り替えられるように、両方の数え方を作っておく（表示しない方は hidden）
-//   メンバーで絞っているときは、対象メンバーの出演だけ数える（下の「楽器別出演数ランキング」もこの行を使い回す）
+// ---- 楽器別出演数ランキング用の行 ----
+//   メンバーで絞っているときは、対象メンバーの出演だけ読む
 $instrumentRows = rows($pdo, 'SELECT bm.band_id, bm.member_id, m.name, i.short_name, i.name AS instrument_name, i.sort_order
     FROM band_member bm
     JOIN member m ON m.member_id = bm.member_id
@@ -227,10 +243,6 @@ $instrumentRows = rows($pdo, 'SELECT bm.band_id, bm.member_id, m.name, i.short_n
     JOIN live lm ON lm.live_id = ld.live_id
     WHERE 1 = 1' . $yearSql . $memberSql . '
     ORDER BY i.sort_order', array_merge($yearParams, $memberParams));
-$instrumentStatsOf = static fn(bool $mergeVocal): array => array_map(
-    static fn($t) => $t + ['slots' => $t['n'], 'people' => count($t['members'])],
-    sort_tally_by_count(tally_parts(lineup_parts_by_band($instrumentRows, $mergeVocal))));
-$instrumentStats = ['combo' => $instrumentStatsOf(true), 'sum' => $instrumentStatsOf(false)];
 
 // ---- 会場 ----
 $venues = rows($pdo, 'SELECT v.name, COUNT(DISTINCT ld.live_day_id) AS days, COUNT(b.band_id) AS bands
@@ -275,7 +287,8 @@ $topSongs = rows($pdo, 'SELECT m.member_id, m.name,
 // ---- 楽器別出演数ランキング ----
 //   パート（Vo/Gt は Vo/Gt として。「Voを合算する」なら Vo と Gt の両方）× 人 で数えて、パートごとに上位5位まで残す
 //   （同じ数は同じ順位 → 5位が同率なら全員入る。並びは回数の多い順、同じ数なら名前順）
-//   楽器別と同じく、両方の数え方を作っておく（行は楽器別と同じものを使い回す）
+//   Vo/Gt のまとめは SQL では書きにくいので、行を全部読んで PHP で数える（lineup_parts_by_band → tally_parts）
+//   「Voを合算する」はページ移動なしで切り替えられるように、両方の数え方を作っておく（表示しない方は hidden）
 $kingRows = $instrumentRows;
 $names = array_column($kingRows, 'name', 'member_id'); // member_id => 名前
 $kingsOf = static function (bool $mergeVocal) use ($kingRows, $names): array {
@@ -534,6 +547,17 @@ $voHidden = static fn(string $view): string => ($view === 'sum') === $voSum ? ''
     </section>
 
     <section class="card">
+        <h2 class="section-title section-title--card"><?= icon('groups') ?> よく組むトリオ</h2>
+        <?php if (!$trios): ?><p class="muted small">2回以上組んだトリオはまだいません</p><?php endif; ?>
+        <ol class="ranking">
+            <?php $ranks = tie_ranks($trios, static fn($t) => (int)$t['n']);
+            foreach ($trios as $k => $t): ?>
+                <li data-rank="<?= $ranks[$k] ?>"><span><a href="member.php?id=<?= (int)$t['a_id'] ?>"><?= h($t['a_name']) ?></a> × <a href="member.php?id=<?= (int)$t['b_id'] ?>"><?= h($t['b_name']) ?></a> × <a href="member.php?id=<?= (int)$t['c_id'] ?>"><?= h($t['c_name']) ?></a></span><span class="pill"><?= (int)$t['n'] ?>回</span></li>
+            <?php endforeach; ?>
+        </ol>
+    </section>
+
+    <section class="card">
         <h2 class="section-title section-title--card"><?= icon('crown') ?> トリ回数</h2>
         <?php if (!$headliners): ?><p class="muted small">データがありません</p><?php endif; ?>
         <ol class="ranking">
@@ -543,6 +567,8 @@ $voHidden = static fn(string $view): string => ($view === 'sum') === $voSum ? ''
             <?php endforeach; ?>
         </ol>
     </section>
+
+    <?php ranking_card('album', 'よく演奏される曲', $topTitles, $songLabel, '回', '曲（セットリスト）がまだ登録されていません'); ?>
 
     <section class="card">
         <h2 class="section-title section-title--card"><?= icon('artist') ?> コピーされたアーティスト ランキング</h2>
@@ -556,24 +582,6 @@ $voHidden = static fn(string $view): string => ($view === 'sum') === $voSum ? ''
                 </li>
             <?php endforeach; ?>
         </ul>
-    </section>
-
-    <?php ranking_card('album', 'よく演奏される曲', $topTitles, $songLabel, '回', '曲（セットリスト）がまだ登録されていません'); ?>
-
-    <section class="card">
-        <h2 class="section-title section-title--card section-title--tool" id="instruments"><?= icon('music_note') ?> 楽器別<?= $voToggle('instruments') ?></h2>
-        <?php foreach ($instrumentStats as $view => $list):
-            $maxSlots = $list ? max(array_column($list, 'slots')) : 1; ?>
-            <ul class="bars" data-vo-view="<?= $view ?>"<?= $voHidden($view) ?>>
-                <?php foreach ($list as $i): ?>
-                    <li>
-                        <span class="bars__label"><?= part_badge($i) ?> <?= h($i['title']) ?></span>
-                        <span class="bar-track"><span class="bar" style="--w: <?= round($i['slots'] / $maxSlots * 100) ?>%"></span></span>
-                        <span class="bar-num" title="のべ出演数 / 人数"><?= (int)$i['slots'] ?><small class="muted"> / <?= (int)$i['people'] ?>人</small></span>
-                    </li>
-                <?php endforeach; ?>
-            </ul>
-        <?php endforeach; ?>
     </section>
 
     <section class="card">
