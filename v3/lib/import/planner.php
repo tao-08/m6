@@ -133,8 +133,9 @@ function instrument_from_header(string $title): ?int
 }
 
 /**
- * 「Key/その他」列で選べる楽器 = Vo / Gt / Ba / Dr 以外の楽器（キーボード、ヴァイオリン、サックス…）。
- * 名簿の Key 列には「鍵盤以外の人」もまとめて書かれることがあるので、セルごとに選べるようにする。
+ * Vo / Gt / Ba / Dr 以外の楽器（キーボード、ヴァイオリン、サックス…）。
+ * Gt. / Ba. / Dr. 欄に書かれた「(Vn.)」の人を Key./Other 欄へ移すかの判定に使う（move_extra_instrument_players）。
+ * Key./Other 欄のセルで選べるのは全部の楽器（Vo / Gt も。import.php）
  */
 function extra_instruments(): array
 {
@@ -219,11 +220,11 @@ function spread_roster_cells(array $roster): array
                     $band['vo_roles'][$col] = $role;
                 }
             }
-            // Key./Other 欄に「村田(Vn)」と書いてあれば、ヴァイオリンを初期値にして名前から (Vn) を外す
-            // （その欄の選択肢にある楽器だけ。Vo / Gt などは欄の選択肢に無いので、名前に残して登録時に読む）
+            // Key./Other 欄に「村田(Vn)」「山田(Gt)」と書いてあれば、その楽器を初期値にして名前から (Vn) を外す
+            // （この欄では Vo / Gt / Ba / Dr も含めて全部の楽器を選べる）
             if (is_free_part($c['part'])) {
                 [$plain, $named] = parse_name_instrument($first);
-                if ($named !== null && in_array($named, array_map('intval', array_column(extra_instruments(), 'instrument_id')), true)) {
+                if ($named !== null) {
                     $first = $plain;
                     $band['cell_insts'][$col] = $named;
                 }

@@ -68,6 +68,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupMemberRows();
   setupSuggest();
   setupSmallThings();
+  setupVenueSuggest();
   setupSongs();
   setupTrackSearch();
   setupAlbumTip();
@@ -1005,6 +1006,107 @@ function showHint(input) {
     window.removeEventListener('scroll', place, true);
     window.removeEventListener('resize', place);
   }, { once: true });
+}
+
+/* ---------------------------------------------------------------------
+ * 会場の「もしかして」（取り込み・ライブ編集の「＋ 新しい会場を作る」）
+ *   新しい会場名の欄に入っている名前と、先頭が2文字以上同じ登録済みの会場があれば、
+ *   欄の真下に「もしかして ◯◯？」のポップアップを出す（モーダルではないので、ほかの入力はそのまま続けられる）。
+ *   ◯◯ を押すとプルダウンでその会場を選び（新しい会場の欄は閉じる）、× で閉じる。
+ *   候補は同じ欄のプルダウン（<select data-venue-select>）の選択肢から探すので、サーバーには聞かない。
+ *   比べるときは全角/半角・大文字/小文字・空白をそろえる（PHP の band_key とだいたい同じ）
+ * ------------------------------------------------------------------- */
+function setupVenueSuggest() {
+  const boxes = [...document.querySelectorAll('[data-venue-new]')];
+  if (!boxes.length) return;
+  const norm = (s) => s.normalize('NFKC').toLowerCase().replace(/\s+/g, '');
+  const prefixLen = (a, b) => {
+    const x = [...a];
+    const y = [...b]; // [...文字列] で1文字ずつ（絵文字などの2つで1文字も正しく数える）
+    let n = 0;
+    while (n < x.length && n < y.length && x[n] === y[n]) n++;
+    return n;
+  };
+  const pops = new Map();   // 入力欄 → 出しているポップアップ
+  const closed = new Map(); // 入力欄 → × で閉じたときの名前（同じ名前のあいだは出し直さない）
+
+  // 先頭が2文字以上同じ会場を、同じ文字数が多い順に最大3つ（完全に同じ名前は候補にしない）
+  const candidates = (box, select) => {
+    const key = norm(box.value);
+    if ([...key].length < 2) return [];
+    return [...select.options]
+      .filter((o) => o.value !== '' && o.value !== 'new')
+      .map((o) => ({ option: o, len: prefixLen(key, norm(o.textContent)) }))
+      .filter((c) => c.len >= 2 && norm(c.option.textContent) !== key)
+      .sort((a, b) => b.len - a.len)
+      .slice(0, 3)
+      .map((c) => c.option);
+  };
+
+  const place = (box, pop) => {
+    const r = box.getBoundingClientRect();
+    const left = Math.min(r.left, document.documentElement.clientWidth - pop.offsetWidth - 8); // 右端からはみ出さない
+    pop.style.top = `${r.bottom + window.scrollY + 4}px`;
+    pop.style.left = `${Math.max(8, left) + window.scrollX}px`;
+  };
+
+  const update = (box) => {
+    pops.get(box)?.remove();
+    pops.delete(box);
+    const select = box.closest('.field').querySelector('[data-venue-select]');
+    if (!select || box.hidden || select.value !== 'new' || closed.get(box) === box.value) return;
+    const options = candidates(box, select);
+    if (!options.length) return;
+
+    const pop = document.createElement('div');
+    pop.className = 'venue-pop';
+    pop.setAttribute('role', 'status');
+    pop.append('もしかして ');
+    options.forEach((o, i) => {
+      if (i > 0) pop.append(' / ');
+      // 会場名は textContent で入れる（innerHTML だと、名前に < > があったとき XSS になる）
+      const pick = document.createElement('button');
+      pick.type = 'button';
+      pick.className = 'hint-pop__pick';
+      pick.textContent = o.textContent;
+      pick.addEventListener('click', () => {
+        select.value = o.value;
+        select.dispatchEvent(new Event('change', { bubbles: true })); // 新しい会場の欄を閉じ、プルダウンのボタンの文字も合わせる
+        update(box);
+      });
+      pop.append(pick);
+    });
+    pop.append('？');
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'venue-pop__close';
+    close.setAttribute('aria-label', '閉じる');
+    close.textContent = '×';
+    close.addEventListener('click', () => {
+      closed.set(box, box.value);
+      update(box);
+    });
+    pop.append(close);
+    document.body.appendChild(pop);
+    place(box, pop);
+    pops.set(box, pop);
+  };
+
+  boxes.forEach(update); // プレビューを開いた直後（ファイルの会場名が新しいと判定されたとき）
+  document.addEventListener('input', (e) => { if (boxes.includes(e.target)) update(e.target); });
+  document.addEventListener('change', (e) => {
+    if (!e.target.matches('[data-venue-select]')) return;
+    const box = e.target.closest('.field').querySelector('[data-venue-new]');
+    if (box) update(box);
+  });
+  // ページや表のスクロール・画面の大きさが変わったら位置を合わせ直す。
+  // 「この日程は取り込まない」などで欄が見えなくなった（幅が0）ときは隠す
+  const replace = () => pops.forEach((pop, box) => {
+    pop.hidden = box.offsetParent === null;
+    if (!pop.hidden) place(box, pop);
+  });
+  window.addEventListener('scroll', replace, true);
+  window.addEventListener('resize', replace);
 }
 
 /* ---------------------------------------------------------------------

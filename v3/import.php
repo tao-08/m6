@@ -733,8 +733,7 @@ if ($plan === null): // ==================== アップロード画面 ==========
     <?php
     // 楽器の切り替えボタン: 「Key」「Vn」だけ見せて、残りは「⋯」の中
     $instShown = array_map('strval', array_filter([default_instrument_id('Key'), default_instrument_id('Vn')]));
-    $allInstOptions = instrument_pick_options(instruments());       // 右端の追加列用（全部の楽器）
-    $freeInstOptions = instrument_pick_options(extra_instruments()); // Key./Other 列用（Vo / Gt / Ba / Dr 以外）
+    $allInstOptions = instrument_pick_options(instruments()); // Key./Other 列・右端の追加列用（Vo / Gt / Ba / Dr も含む全部の楽器）
     ?>
     <!-- 「＋ 列を追加」で JS が複製する楽器の切り替えボタン（name は JS が付け直す。初期値はキーボード） -->
     <template id="tpl-extra-instrument"><?= render_pick('tpl', $allInstOptions, $instShown, (string)default_instrument_id('Key'), 'この人の楽器', true, 'inst') ?></template>
@@ -793,7 +792,7 @@ if ($plan === null): // ==================== アップロード画面 ==========
                                         // 初期値: 名前の「(Vn)」→ 列の見出し（Cho. など）→ それ以外はキーボード（「その他」は初期値にしない）
                                         $ci = (string)(int)($form['rb'][$ri][$bi]['ci'][$col] ?? $band['cell_insts'][$col] ?? $c['instrument_id'] ?? 0); ?>
                                         <!-- 名前が空なら畳んでおく（入力されたら JS が開く） -->
-                                        <?= render_pick("rb[$ri][$bi][ci][$col]", $freeInstOptions, $instShown, $ci, 'この人の楽器', trim($cellTexts[$k]) === '', 'inst') ?>
+                                        <?= render_pick("rb[$ri][$bi][ci][$col]", $allInstOptions, $instShown, $ci, 'この人の楽器', trim($cellTexts[$k]) === '', 'inst') ?>
                                     <?php endif; ?>
                                 </td>
                             <?php endforeach; ?>
