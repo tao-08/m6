@@ -211,7 +211,7 @@ render_header('曲を編集', 'lives');
 <?php if (!$members): ?>
     <div class="flash flash--warn">先にバンドのメンバーを登録してください（<a href="band_edit?id=<?= $bandId ?>">バンドを編集</a>）</div>
 <?php endif; ?>
-<p class="muted small">曲ごとに演奏者と担当楽器が記録できます。 曲を検索して紐づけると対応アプリで再生できるようになります。</p>
+<p class="muted small">曲ごとに演奏者と担当楽器が記録できます。 曲を検索して紐づけると対応アプリで開くリンクが作成されます。</p>
 
 <form method="post" class="songs-form">
     <?= csrf_field() ?>
