@@ -17,9 +17,12 @@ $pdo = db();
 // 「アーティスト × 演奏したバンド」の組（lib/bootstrap.php の ARTIST_PLAYS_SQL。アーティストページ・集計・検索と同じ数え方）
 const PLAYED_SQL = ARTIST_PLAYS_SQL;
 
+// 演奏0回のアーティストは出さない（JOIN = 演奏したバンドがあるものだけ）。
+//   オムニバスにしてコピー元アーティストを外したバンドの「ボカロバンド」のような、どこからも使われなくなった名前を一覧に残さないため
+//   （行は消さないので、artist.php?id= で直接開くことはできる）
 $rows = $pdo->query('SELECT a.artist_id, a.name, COUNT(p.band_id) AS plays
     FROM artist a
-    LEFT JOIN (' . PLAYED_SQL . ') p ON p.artist_id = a.artist_id
+    JOIN (' . PLAYED_SQL . ') p ON p.artist_id = a.artist_id
     GROUP BY a.artist_id
     ORDER BY plays DESC, a.name')->fetchAll();
 

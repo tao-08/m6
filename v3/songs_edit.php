@@ -14,6 +14,7 @@
  *  並び順  : 画面の上から順に 1,2,3... と振る（番号は手で変えない）。
  *  アーティスト: 一番上の「オムニバス」にチェックしたときだけ、曲ごとに書ける。
  *    チェックなし → 全曲バンドのアーティスト（song.artist_id は NULL）。
+ *    チェックあり → バンドのコピー元アーティストは外す（band.artist_id = NULL）。曲ごとのアーティストだけになる
  *  曲の紐付け: 🔍で Spotify / iTunes の曲を検索して選ぶ（assets/app.js の setupTrackSearch → api_track_search.php）。
  *    選んだ曲のキー（"spotify:xxxx"）だけが送られてくるので、曲名・ジャケットはサーバーが取り直す。
  *
@@ -40,8 +41,9 @@ if (!$band) {
 $liveUrl = 'live.php?id=' . (int)$band['live_id'] . '#day-' . (int)$band['live_day_id'];
 $backUrl = 'band.php?id=' . $bandId; // 保存・キャンセルの戻り先はバンド詳細
 // オムニバスでないときにアーティスト欄に出す名前（アーティスト未設定のバンドはバンド名）
-$defaultArtist = $band['artist_name'] ?? $band['name'];
-$bandArtistId = $band['artist_id'] === null ? null : (int)$band['artist_id'];
+//   オムニバスのバンドはコピー元アーティストを持たない（band.artist_id = NULL）ので、バンド名から推測した名前になる
+//   （オムニバスを外して保存すると、この名前で find_or_create_artist() する）
+$defaultArtist = $band['artist_name'] ?? band_split_suffix($band['name'])[0];
 
 // ---- バンドのメンバー（人ごと）と、バンドでの楽器（初期値に使う） ----
 $st = $pdo->prepare('SELECT m.member_id, m.name, bm.instrument_id FROM band_member bm
@@ -142,15 +144,19 @@ if (is_post()) {
         $pdo->beginTransaction();
         try {
             foreach ($songs as &$song) {
-                // アーティスト名 → artist_id（無ければ作る）。空欄・バンドと同じなら NULL
-                $artistId = $song['artist'] === '' ? null : find_or_create_artist($pdo, $song['artist']);
-                $song['artist_id'] = $artistId === $bandArtistId ? null : $artistId;
+                // アーティスト名 → artist_id（無ければ作る）。空欄なら NULL
+                //   オムニバスでなければ $song['artist'] は '' なので全曲 NULL（= バンドのアーティスト）
+                $song['artist_id'] = $song['artist'] === '' ? null : find_or_create_artist($pdo, $song['artist']);
             }
             unset($song); // foreach の & を切っておく（後で $song を使ったときに最後の曲を書き換えないため）
             foreach ($newTracks as $info) {
                 save_track($pdo, $info); // song から外部キーで指すので、先に track に入れる
             }
-            $pdo->prepare('UPDATE band SET is_omnibus = ? WHERE band_id = ?')->execute([(int)$omnibus, $bandId]);
+            // オムニバス: コピー元アーティストを外す（NULL）。バンド名から推測した「ボカロバンド」のような
+            //   アーティストが一覧に残らないようにするため（artists.php は演奏0回のアーティストを出さない）
+            // オムニバスを外したとき: コピー元アーティストが無ければ、バンド名から決め直す
+            $artistId = $omnibus ? null : ($band['artist_id'] ?? find_or_create_artist($pdo, $band['name']));
+            $pdo->prepare('UPDATE band SET is_omnibus = ?, artist_id = ? WHERE band_id = ?')->execute([(int)$omnibus, $artistId, $bandId]);
             save_songs($pdo, $bandId, $songs);
             $pdo->commit();
         } catch (Throwable $e) {
@@ -217,7 +223,7 @@ render_header('曲を編集', 'lives');
         <?php foreach ($cards as $k => $song):
             $isNew = $song['song_id'] === null;
             $base = "songs[$k]";
-            $artist = $omnibus ? ($song['artist_name'] ?? $defaultArtist) : $defaultArtist;
+            $artist = $omnibus ? ($song['artist_name'] ?? '') : $defaultArtist; // オムニバスはバンドのアーティストが無いので、曲に付いていなければ空欄
             $trackKey = $song['track_id'] === null ? '' : album_key($song['track_source'], $song['track_id']); ?>
             <?php if ($isNew): ?><template data-song-template><?php endif; ?>
             <section class="card song-card<?= $isNew ? ' song-card--new' : '' ?>" data-song-card>

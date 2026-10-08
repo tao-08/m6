@@ -103,8 +103,9 @@ if ($q !== '') {
 
     // ---- アーティスト ----
     // 回数はアーティストページと同じ数え方（オムニバスは曲に付いたアーティストを1バンド1回。ARTIST_PLAYS_SQL）
+    // 演奏0回のアーティストは出さない（artists.php と同じ）
     $st = $pdo->prepare('SELECT a.artist_id, a.name, COUNT(p.band_id) AS n FROM artist a
-        LEFT JOIN (' . ARTIST_PLAYS_SQL . ') p ON p.artist_id = a.artist_id
+        JOIN (' . ARTIST_PLAYS_SQL . ') p ON p.artist_id = a.artist_id
         WHERE a.name LIKE ? GROUP BY a.artist_id ORDER BY n DESC LIMIT 30');
     $st->execute([$like]);
     $artists = $st->fetchAll();

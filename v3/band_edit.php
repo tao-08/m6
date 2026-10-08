@@ -142,7 +142,8 @@ if (is_post()) {
     if (!$errors) {
         $index = load_member_index($pdo);
         // アーティスト欄が空ならバンド名から推測（「ヨルシカ（安田）」→ ヨルシカ）
-        $artistId = find_or_create_artist($pdo, $artistName !== '' ? $artistName : $name);
+        // オムニバスのバンドはコピー元アーティストを持たない（欄は入力できないので、送られてきても見ない）
+        $artistId = !empty($band['is_omnibus']) ? null : find_or_create_artist($pdo, $artistName !== '' ? $artistName : $name);
         $values = [$artistId, $name, $songs !== '' ? (int)$songs : null, $start ?: null, $end ?: null, $note !== '' ? $note : null, $youtube !== '' ? $youtube : null, $flag];
 
         $pdo->beginTransaction();
@@ -198,7 +199,12 @@ render_header($isNew ? 'バンドを追加' : 'バンドを編集', 'lives');
     <input type="hidden" name="day_id" value="<?= $dayId ?>">
     <div class="form-grid">
         <label class="field field--wide"><span>バンド名（タイムテーブルの表記）</span><input name="name" value="<?= h($band['name']) ?>" data-suggest-list="band-names" autocomplete="off" maxlength="100" required <?= $isNew ? 'autofocus' : '' ?>></label>
-        <label class="field field--wide"><span>コピー元アーティスト</span><input name="artist" value="<?= h($band['artist_name']) ?>" data-suggest-list="artists" autocomplete="off" maxlength="100"></label>
+        <!-- オムニバスのバンド（曲の編集でチェック）はコピー元アーティストを持たないので、空欄で入力できなくする -->
+        <?php if (!empty($band['is_omnibus'])): ?>
+            <label class="field field--wide"><span>コピー元アーティスト</span><input value="" placeholder="オムニバス" disabled title="曲の編集で「オムニバス」を外すと入力できます"></label>
+        <?php else: ?>
+            <label class="field field--wide"><span>コピー元アーティスト</span><input name="artist" value="<?= h($band['artist_name']) ?>" data-suggest-list="artists" autocomplete="off" maxlength="100"></label>
+        <?php endif; ?>
         <label class="field"><span>出演順</span><input type="number" min="1" name="play_order" value="<?= h($band['play_order']) ?>" required></label>
         <label class="field"><span>曲数</span><input type="number" min="0" max="255" name="song_count" value="<?= h((string)$band['song_count']) ?>"></label>
         <label class="field"><span>開始</span><input type="time" name="start_time" value="<?= h(fmt_time($band['start_time'])) ?>"></label>

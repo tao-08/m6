@@ -258,7 +258,8 @@ function setupToasts() {
  *   data-add-song       … <template data-song-template> をコピーして空の曲カードを足す
  *   data-toggle-all     … そのカードの全員のチェックを一括で ON / OFF
  *   data-performer-on   … チェックを外した人を薄く表示
- *   data-omnibus        … オムニバスのチェック。外すとアーティスト欄をバンドのアーティストに戻して編集不可にする
+ *   data-omnibus        … オムニバスのチェック。外すとアーティスト欄をバンドのアーティストに戻して編集不可にする。
+ *                         付けると空欄（前に書いていた名前があれば戻す）にして編集できるようにする
  * ------------------------------------------------------------------- */
 function setupSongs() {
   const list = document.querySelector('[data-song-list]');
@@ -270,7 +271,8 @@ function setupSongs() {
     list.querySelectorAll('[data-song-artist]').forEach((input) => {
       if (omnibus.checked) {
         input.readOnly = false;
-        if (input.dataset.typed !== undefined) input.value = input.dataset.typed; // 前に書いていた名前を戻す
+        // 前に書いていた名前を戻す。無ければ空欄（オムニバスはバンドのアーティストを持たないので、バンドの名前は入れない）
+        input.value = input.dataset.typed ?? '';
       } else {
         input.dataset.typed = input.value; // チェックを付け直したときのために覚えておく
         input.value = defaultArtist;
@@ -299,7 +301,7 @@ function setupSongs() {
     });
     // テンプレートはページを開いたときのオムニバスの状態で作られているので、今のチェックに合わせる
     const artist = card.querySelector('[data-song-artist]');
-    artist.value = defaultArtist;
+    artist.value = omnibus.checked ? '' : defaultArtist;
     artist.readOnly = !omnibus.checked;
     // ふわっと出す（CSS の .song-card.is-entering）。終わったらクラスを外しておく
     card.classList.add('is-entering');
@@ -359,6 +361,7 @@ function setupSongs() {
  * 曲を Spotify / iTunes の曲と紐付ける（songs_edit.php）
  *   data-track-search  … 🔍「曲名 アーティスト」で api_track_search.php に聞いて、候補をカードの中に出す
  *   data-track-results … 候補の一覧。押すとその曲を紐付ける（隠し項目 data-track-key にキーを入れる）
+ *                        オムニバスなら、アーティスト欄も選んだ曲のアーティストにする
  *   data-track-clear   … 紐付けを外す（ジャケットに重なったリンクが切れるマーク）
  *   ここで入れるのはキー（"spotify:xxxx"）だけ。曲名やジャケットは保存するときにサーバーが取り直す
  * ------------------------------------------------------------------- */
@@ -500,6 +503,10 @@ function setupTrackSearch() {
         btn.addEventListener('click', () => {
           // 選んだ曲の正式な曲名で置き換える（打ち間違い・表記ゆれをそろえる）
           card.querySelector('[name$="[title]"]').value = track.title;
+          // オムニバスのとき（アーティスト欄が編集できるとき）だけ、選んだ曲のアーティストを入れる。
+          //   Spotify は「A, B」と複数人をつないで返すので、先頭の1人だけ（"A, B" という新しいアーティストを作らないため）
+          const artist = card.querySelector('[data-song-artist]');
+          if (!artist.readOnly) artist.value = track.artist_name.split(', ')[0];
           setTrack(card, track);
         });
         return btn;

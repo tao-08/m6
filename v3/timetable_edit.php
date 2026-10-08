@@ -17,7 +17,7 @@
  *    まだ1つも登録されていない日程は、バンドの間の空き時間を「休憩」として出す（保存すると登録される）。
  *    「＋ 休憩を追加」で足した行だけは、時間を行に付けたまま動かす（位置に固定すると、差し込んだ所から下の時間が全部ずれるので）
  *  ・曲数・メモ・コピー元アーティストはここでは触らない（band_edit.php で直す）。
- *    ただしバンド名を変えたときは、コピー元アーティストも新しい名前から決め直す
+ *    ただしバンド名を変えたときは、コピー元アーティストも新しい名前から決め直す（オムニバスのバンドは無しのまま）
  * =====================================================================
  */
 declare(strict_types=1);
@@ -174,7 +174,7 @@ if (is_post()) {
 
     if (!$errors) {
         $index = load_member_index($pdo);
-        $old = $pdo->prepare('SELECT name, artist_id FROM band WHERE band_id = ?');
+        $old = $pdo->prepare('SELECT name, artist_id, is_omnibus FROM band WHERE band_id = ?');
         $update = $pdo->prepare('UPDATE band SET name = ?, artist_id = ?, start_time = ?, end_time = ?, play_order = ?, needs_check = ? WHERE band_id = ?');
         // 出演順は UNIQUE (live_day_id, play_order)。1組ずつ書き換えると途中で「3番目が2組」になって弾かれるので、
         // 先に全部を使っていない大きい番号（1000 + 新しい番号）へ逃がしてから、本当の番号を入れる
@@ -197,7 +197,8 @@ if (is_post()) {
                 $old->execute([$id]);
                 $before = $old->fetch();
                 // バンド名を変えたときだけ、コピー元アーティストを新しい名前から決め直す（「ヨルシカ（安田）」→ ヨルシカ）
-                $artistId = $before['name'] === $e['name'] ? $before['artist_id'] : find_or_create_artist($pdo, $e['name']);
+                // オムニバスのバンドはコピー元アーティストを持たないので、名前を変えても NULL のまま
+                $artistId = $before['is_omnibus'] || $before['name'] === $e['name'] ? $before['artist_id'] : find_or_create_artist($pdo, $e['name']);
                 $update->execute([$e['name'], $artistId, $e['start'] ?: null, $e['end'] ?: null, $e['order'], $e['flag'], $id]);
                 sync_band_members($pdo, $index, $id, $e['assign']);
             }
