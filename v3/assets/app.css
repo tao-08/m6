@@ -1483,6 +1483,9 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
 .artist-lineup li { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
 .artist-setlist { margin: 0; padding-left: 1.8em; display: grid; gap: 4px; font-size: 13px; }
 .artist-setlist li::marker { color: var(--muted); font-weight: 700; }
+/* オムニバスのバンドでは、このアーティストの曲だけ少し強調する */
+.artist-setlist li.is-mine { font-weight: 700; color: var(--accent); }
+.artist-setlist li.is-mine::marker { color: var(--accent); }
 
 /* import.php のタイムテーブル手入力 */
 .manual-tt .table-scroll { margin-bottom: 12px; }
