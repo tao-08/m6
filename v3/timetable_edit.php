@@ -323,7 +323,6 @@ render_header('タイムテーブルを編集', 'lives'); ?>
 					<span><i class="swatch swatch--similar"></i>候補あり</span>
 					<span><i class="swatch swatch--new"></i>新しいメンバーとして登録</span>
 					<span><?= icon('flag', 'icon--fill flag-icon') ?> 楽器の確認をメンバーにお願いする</span>
-					<span>楽器はバンドのページで編集します（新しく足した人は「その他」で登録して 🚩 を立てます）</span>
 				</div>
 
 				</div>
@@ -342,7 +341,7 @@ render_header('タイムテーブルを編集', 'lives'); ?>
                 <table class="table table--edit table--roster table--tt" data-tt-table data-cols="<?= $cols ?>">
                     <thead><tr>
                         <th aria-label="並び替え"></th><th>順</th><th title="並び替えても時間はその位置に残る">開始</th><th title="並び替えても時間はその位置に残る">終了</th><th>バンド名</th>
-                        <th colspan="<?= $cols ?>" data-tt-members-head>出演者（名前だけ。楽器はバンドのページで）</th>
+                        <th colspan="<?= $cols ?>" data-tt-members-head>出演者</th>
                     </tr></thead>
                     <!-- data-sortable: 左端の ≡ をドラッグで行を並び替える（assets/app.js の setupSlotSort）。
                          時間のセル（data-time）は動かない。JS が入力欄の name を、その位置に来た行の b[ID] / k[番号] に付け直す

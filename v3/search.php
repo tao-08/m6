@@ -185,7 +185,7 @@ render_header($filterLabel ?? ($q !== '' ? "「{$q}」の検索結果" : '検索
 
 <!-- GET で送るので、検索結果の URL をそのまま共有・ブックマークできる -->
 <form method="get" class="toolbar">
-    <input type="search" name="q" value="<?= h($q) ?>" class="search" placeholder="バンド名・メンバー名・アーティスト（別称も）・学部・係・ライブ名・会場・メモ・マイアルバムのアーティスト" autofocus aria-label="検索ワード">
+    <input type="search" name="q" value="<?= h($q) ?>" class="search" placeholder="バンド名・メンバー名・アーティスト・ライブ名・会場 etc..." autofocus aria-label="検索ワード">
     <button class="btn btn--primary" type="submit">検索</button>
 </form>
 
