@@ -1030,6 +1030,8 @@ code { background: var(--surface-2); padding: 1px 6px; border-radius: 6px; font-
 .setlist ol { margin: 8px 0 0; padding-left: 1.6em; display: grid; gap: 4px; }
 .setlist li::marker { color: var(--muted); font-weight: 700; }
 .setlist__who { color: var(--muted); font-size: 12px; margin-left: 6px; }
+.setlist__note { white-space: nowrap; } /* 「Cho. 山田・田中」の途中では折り返さない */
+.setlist__note + .setlist__note { margin-left: .9em; } /* 「、」の代わりのすき間 */
 /* 曲名の左の小さいジャケット。紐付けた曲は曲名ごとリンク（見ている人の音楽アプリで開く） */
 .setlist li { line-height: 28px; }
 .setlist__song { display: inline-flex; align-items: center; gap: 8px; vertical-align: middle; color: inherit; text-decoration: none; }

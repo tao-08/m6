@@ -178,7 +178,7 @@ function song_notes(array $songs, array $lineup): array
         if (isset($chorus[$songId])) {
             $parts[] = 'Cho. ' . implode('・', $chorus[$songId]);
         }
-        $notes[$songId] = implode('、', $parts);
+        $notes[$songId] = $parts; // 1つずつ <span> にして、すき間を空けて並べる（「、」でつながない）
     }
     return $notes;
 }
@@ -279,7 +279,7 @@ render_header($band['name'], 'lives');
                     <?php else: ?>
                         <span class="setlist__song"><span class="setlist__art setlist__art--none"><?= icon('music_note') ?></span><?= $songText ?></span>
                     <?php endif; ?>
-                    <?php if ($notes[$songId] !== ''): ?><span class="setlist__who"><?= h($notes[$songId]) ?></span><?php endif; ?>
+                    <?php if ($notes[$songId]): ?><span class="setlist__who"><?php foreach ($notes[$songId] as $note): ?><span class="setlist__note"><?= h($note) ?></span><?php endforeach; ?></span><?php endif; ?>
                 </li>
             <?php endforeach; ?>
         </ol></div>
