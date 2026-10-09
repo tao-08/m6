@@ -840,13 +840,16 @@ function setupBackButton() {
   if (up) box.append(make(up, '1つ上のページに戻る', false));
   document.body.append(box);
 
-  // スクロール中は隠し、止まって 0.4 秒たったら出す（読んでいる所にかぶらないように）。隠すのはスマホだけ（app.css）
+  // スクロール中は隠し、止まったらすぐ出す（読んでいる所にかぶらないように）。隠すのはスマホだけ（app.css）
+  //   scrollend（スクロールが止まった）が使えるブラウザはそれで出す。使えない Safari などは、0.12 秒スクロールが来なければ止まったとみなす
   let timer = 0;
+  const show = () => { clearTimeout(timer); box.classList.remove('is-scrolling'); };
   window.addEventListener('scroll', () => {
     box.classList.add('is-scrolling');
     clearTimeout(timer);
-    timer = setTimeout(() => box.classList.remove('is-scrolling'), 400);
+    timer = setTimeout(show, 120);
   }, { passive: true });
+  if ('onscrollend' in window) window.addEventListener('scrollend', show);
 }
 
 /* ---------------------------------------------------------------------
