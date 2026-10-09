@@ -466,6 +466,29 @@ function sings_while_playing(?int $bandId, int $memberId, string $also): bool
 }
 
 /**
+ * その人が、そのバンドで $shorts の楽器を「全部いっしょに」演奏した曲の数（Vo/Gt なら Vo と Gt を両方やった曲）。
+ * セトリ未登録なら 0。sings_while_playing() と同じく、song_performer を1回だけ読んで覚えておく
+ */
+function songs_played(int $bandId, int $memberId, array $shorts): int
+{
+    static $played = null; // ["band_id:member_id"][song_id][short_name] = true
+    if ($played === null) {
+        $played = [];
+        foreach (db()->query('SELECT sp.band_id, sp.member_id, sp.song_id, i.short_name FROM song_performer sp
+            JOIN instrument i ON i.instrument_id = sp.instrument_id') as $r) {
+            $played[$r['band_id'] . ':' . $r['member_id']][(int)$r['song_id']][$r['short_name']] = true;
+        }
+    }
+    $n = 0;
+    foreach ($played["$bandId:$memberId"] ?? [] as $songShorts) {
+        if (!array_diff($shorts, array_keys($songShorts))) {
+            $n++;
+        }
+    }
+    return $n;
+}
+
+/**
  * lineup_parts() の結果を、パートごとにまとめる（バンドページ・ライブページの「Vo 鈴木 / Vo/Gt 山田 / Gt 田中…」）。
  * @return array [order => ['short', 'title', 'segments', 'members' => [['member_id', 'name'], ...]], ...]（並び順どおり）
  */
@@ -474,9 +497,15 @@ function lineup_by_part(array $rows): array
     $lineup = [];
     foreach (lineup_parts($rows) as $p) {
         $lineup[$p['order']] ??= ['short' => $p['short'], 'title' => $p['title'], 'segments' => $p['segments'], 'members' => []];
-        $lineup[$p['order']]['members'][] = ['member_id' => $p['member_id'], 'name' => $p['name']];
+        $lineup[$p['order']]['members'][] = ['member_id' => $p['member_id'], 'name' => $p['name'],
+            'songs' => isset($p['band_id']) ? songs_played((int)$p['band_id'], $p['member_id'], array_column($p['segments'], 'short')) : 0];
     }
     ksort($lineup);
+    // 同じパートに何人もいたら、そのパートで演奏した曲が多い人から（同じ曲数なら今までどおり名前順。usort は順番を保つ）
+    foreach ($lineup as &$part) {
+        usort($part['members'], static fn($a, $b) => $b['songs'] <=> $a['songs']);
+    }
+    unset($part);
     return $lineup;
 }
 
