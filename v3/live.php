@@ -189,15 +189,7 @@ render_header($live['name'], 'lives');
                         <?php endif; ?>
                     </div>
                     <?php if ($lineup): ?>
-                        <ul class="lineup">
-                            <?php foreach ($lineup as $part): ?>
-                                <li><?= part_badge($part) ?>
-                                    <?php foreach ($part['members'] as $m): ?>
-                                        <a class="chip<?= (int)$m['member_id'] === $user['member_id'] ? ' chip--me' : '' ?>" href="member?id=<?= (int)$m['member_id'] ?>"><?= h($m['name']) ?></a>
-                                    <?php endforeach; ?>
-                                </li>
-                            <?php endforeach; ?>
-                        </ul>
+                        <?= lineup_html($lineup, $user['member_id']) // サポート（1曲だけ出た人）は最後の「サポート」枠 ?>
                     <?php else: ?>
                         <p class="muted small">メンバー未登録</p>
                     <?php endif; ?>

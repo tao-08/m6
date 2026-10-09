@@ -122,9 +122,14 @@ foreach ($st as $r) {
 function song_notes(array $songs, array $lineup): array
 {
     $names = [];
+    $support = []; // サポート（1曲だけ出た人）。ほかの曲に「不参加」と書かず、出た曲に「サポート：Gt. 〇〇」と書く
     foreach ($lineup as $part) {
         foreach ($part['members'] as $m) {
-            $names[(int)$m['member_id']] = $m['name'];
+            if ($m['support']) {
+                $support[(int)$m['member_id']] = true;
+            } else {
+                $names[(int)$m['member_id']] = $m['name'];
+            }
         }
     }
     // メンバーごとに「楽器の組み合わせ → 何曲あったか」を数える
@@ -145,12 +150,21 @@ function song_notes(array $songs, array $lineup): array
     $notes = [];
     foreach ($songs as $songId => $song) {
         $parts = [];
+        $helpers = [];
+        foreach ($sets[$songId] ?? [] as $memberId => $set) {
+            if (isset($support[$memberId])) {
+                $helpers[] = $set . '. ' . $song['players'][$memberId][0]['name'];
+            }
+        }
+        if ($helpers) {
+            $parts[] = 'サポート：' . implode('・', $helpers);
+        }
         $absent = array_diff_key($names, $song['players']);
         if ($absent) {
             $parts[] = implode('・', $absent) . ' は不参加';
         }
         foreach ($sets[$songId] ?? [] as $memberId => $set) {
-            if ($set !== ($usual[$memberId] ?? $set)) {
+            if (!isset($support[$memberId]) && $set !== ($usual[$memberId] ?? $set)) {
                 $parts[] = $song['players'][$memberId][0]['name'] . ': ' . $set;
             }
         }
@@ -220,15 +234,7 @@ render_header($band['name'], 'lives');
 <section class="card band-section">
     <h2 class="section-title section-title--card">メンバー<?php if ($memberIds): ?> <small class="muted"><?= count(array_unique($memberIds)) ?>人</small><?php endif; ?></h2>
     <?php if ($lineup): ?>
-        <ul class="lineup">
-            <?php foreach ($lineup as $part): ?>
-                <li><?= part_badge($part) ?>
-                    <?php foreach ($part['members'] as $m): ?>
-                        <a class="chip<?= (int)$m['member_id'] === $user['member_id'] ? ' chip--me' : '' ?>" href="member?id=<?= (int)$m['member_id'] ?>"><?= h($m['name']) ?></a>
-                    <?php endforeach; ?>
-                </li>
-            <?php endforeach; ?>
-        </ul>
+        <?= lineup_html($lineup, $user['member_id']) // サポート（1曲だけ出た人）は最後の「サポート」枠 ?>
     <?php else: ?>
         <p class="muted small">メンバー未登録</p>
     <?php endif; ?>
@@ -245,21 +251,24 @@ render_header($band['name'], 'lives');
         <div class="setlist"><ol>
             <?php foreach ($songs as $songId => $song):
                 // オムニバスのときだけ、曲名の横にその曲のアーティスト（曲に付いていなければ出さない）
-                $songArtist = $band['is_omnibus'] ? $song['artist_name'] : null; ?>
+                $songArtist = $band['is_omnibus'] ? $song['artist_name'] : null;
+                // 曲名の下にアーティスト（縦に2段）。▶ はこの2段の右に来る
+                $songText = $songArtist
+                    ? '<span class="setlist__text"><span>' . h($song['title']) . '</span><span class="setlist__artist">' . h($songArtist) . '</span></span>'
+                    : h($song['title']); ?>
                 <li>
                     <?php if ($song['source'] !== null):
                         // 紐付けた曲: 曲名はただの文字。ジャケットにマウスを乗せると音楽アプリのアイコンが重なって出て、押すと聴ける
                         $k = album_key($song['source'], $song['track_id']);
                         $track = ['source' => $song['source'], 'track_id' => $song['track_id'], 'title' => $song['track_title'], 'artist_name' => $song['track_artist']];
                         $listenApp = listen_app($viewerApp, $song['source']); ?>
-                        <span class="setlist__song"><span class="setlist__artwrap"><img class="setlist__art" src="<?= h($song['artwork_url']) ?>" alt="" loading="lazy" width="56" height="56"><a class="setlist__listen setlist__listen--<?= h($listenApp) ?>" href="<?= h(track_listen_url($viewerApp, $track, array_key_exists($k, $linkCache) ? $linkCache[$k] : false)) ?>" target="_blank" rel="noopener" aria-label="<?= h(MUSIC_APPS[$listenApp]) ?> で聴く"><?= MUSIC_APP_ICONS[$listenApp] ?></a></span><?= h($song['title']) ?></span>
+                        <span class="setlist__song"><span class="setlist__artwrap"><img class="setlist__art" src="<?= h($song['artwork_url']) ?>" alt="" loading="lazy" width="56" height="56"><a class="setlist__listen setlist__listen--<?= h($listenApp) ?>" href="<?= h(track_listen_url($viewerApp, $track, array_key_exists($k, $linkCache) ? $linkCache[$k] : false)) ?>" target="_blank" rel="noopener" aria-label="<?= h(MUSIC_APPS[$listenApp]) ?> で聴く"><?= MUSIC_APP_ICONS[$listenApp] ?></a></span><?= $songText ?></span>
                         <?php if (!array_key_exists($k, $previewCache) || $previewCache[$k] !== null): // 「試聴が無かった」と覚えてある曲には出さない ?>
                             <button type="button" class="setlist__play no-print" data-preview="<?= h($k) ?>"<?php if (isset($previewCache[$k])): ?> data-preview-url="<?= h($previewCache[$k]) ?>"<?php endif; ?> aria-label="<?= h($song['title']) ?> を30秒試聴" title="30秒試聴"><?= icon('play_arrow', 'icon--fill') ?></button>
                         <?php endif; ?>
                     <?php else: ?>
-                        <span class="setlist__song"><span class="setlist__art setlist__art--none"><?= icon('music_note') ?></span><?= h($song['title']) ?></span>
+                        <span class="setlist__song"><span class="setlist__art setlist__art--none"><?= icon('music_note') ?></span><?= $songText ?></span>
                     <?php endif; ?>
-                    <?php if ($songArtist): ?><span class="setlist__artist"><?= h($songArtist) ?></span><?php endif; ?>
                     <?php if ($notes[$songId] !== ''): ?><span class="setlist__who"><?= h($notes[$songId]) ?></span><?php endif; ?>
                 </li>
             <?php endforeach; ?>

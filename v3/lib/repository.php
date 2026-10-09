@@ -474,6 +474,50 @@ function songs_played(int $bandId, int $memberId, array $shorts, ?string $withou
 }
 
 /**
+ * そのバンドで一番たくさんの曲に出た人の曲数（セトリ = song_performer）。songs_of_member と同じく1回だけ全部読んで覚えておく
+ */
+function band_max_member_songs(int $bandId): int
+{
+    static $max = null; // [band_id => 曲数]
+    if ($max === null) {
+        $max = [];
+        foreach (db()->query('SELECT band_id, MAX(n) AS n FROM (
+                SELECT band_id, member_id, COUNT(DISTINCT song_id) AS n FROM song_performer GROUP BY band_id, member_id
+            ) t GROUP BY band_id') as $r) {
+            $max[(int)$r['band_id']] = (int)$r['n'];
+        }
+    }
+    return $max[$bandId] ?? 0;
+}
+
+/**
+ * そのバンドのセットリストに登録した曲の数（song の行数）。1回だけ全部読んで覚えておく
+ */
+function band_song_count(int $bandId): int
+{
+    static $counts = null; // [band_id => 曲数]
+    if ($counts === null) {
+        $counts = [];
+        foreach (db()->query('SELECT band_id, COUNT(*) AS n FROM song GROUP BY band_id') as $r) {
+            $counts[(int)$r['band_id']] = (int)$r['n'];
+        }
+    }
+    return $counts[$bandId] ?? 0;
+}
+
+/**
+ * その人がそのバンドの「サポート」か = セトリが3曲以上あって、その人は1曲だけ演奏した、かつ ほかに2曲以上出た人がいる。
+ *   2曲以下のバンドは「1曲だけ」でも半分は出ているのでサポートにしない
+ *   「全員が1曲ずつ」のバンド（曲ごとにメンバーが入れ替わる企画バンドなど）は全員サポートにならないように
+ *   セトリ未登録のバンドではサポートにしない
+ */
+function is_support(int $bandId, int $memberId): bool
+{
+    return band_song_count($bandId) >= 3
+        && count(songs_of_member($bandId, $memberId) ?? []) === 1 && band_max_member_songs($bandId) >= 2;
+}
+
+/**
  * その人が、そのバンドで「歌いながら $also を弾いた」と言えるか（Vo/Dr などにまとめてよいか）。
  *   セトリにその人の行がある → 同じ1曲で Vo と $also を両方選んだ曲があるときだけ true。
  *     例: 1曲目 Dr・2曲目 Vo → false（ドラムボーカルではない。Dr と Vo は別々に数える）
@@ -495,10 +539,13 @@ function sings_while_playing(?int $bandId, int $memberId, string $also): bool
 function lineup_by_part(array $rows): array
 {
     $lineup = [];
+    // $rows は1つのバンドの分だけなので、band_id は先頭の行から取る（lineup_parts の結果には band_id が入っていない）
+    $bandId = isset($rows[0]['band_id']) ? (int)$rows[0]['band_id'] : null;
     foreach (lineup_parts($rows) as $p) {
         $lineup[$p['order']] ??= ['short' => $p['short'], 'title' => $p['title'], 'segments' => $p['segments'], 'members' => []];
         $lineup[$p['order']]['members'][] = ['member_id' => $p['member_id'], 'name' => $p['name'],
-            'songs' => isset($p['band_id']) ? songs_played((int)$p['band_id'], $p['member_id'], array_column($p['segments'], 'short')) : 0];
+            'songs' => $bandId !== null ? songs_played($bandId, $p['member_id'], array_column($p['segments'], 'short')) : 0,
+            'support' => $bandId !== null && is_support($bandId, $p['member_id'])];
     }
     ksort($lineup);
     // 同じパートに何人もいたら、そのパートで演奏した曲が多い人から（同じ曲数なら今までどおり名前順。usort は順番を保つ）
@@ -507,6 +554,35 @@ function lineup_by_part(array $rows): array
     }
     unset($part);
     return $lineup;
+}
+
+/**
+ * lineup_by_part() の結果を HTML の「Vo 鈴木 / Gt 田中 … | サポート Key 佐藤」に（バンドページ・ライブページ）。
+ *   サポート（is_support）は最後の「サポート」枠にまとめる。通常メンバーがいなくなったパートは出さない
+ */
+function lineup_html(array $lineup, ?int $meId): string
+{
+    $chip = static fn(array $m, string $class = ''): string => '<a class="chip' . $class . ((int)$m['member_id'] === $meId ? ' chip--me' : '')
+        . '" href="member?id=' . (int)$m['member_id'] . '">' . h($m['name']) . '</a>';
+    $html = '';
+    $support = '';
+    foreach ($lineup as $part) {
+        $main = '';
+        foreach ($part['members'] as $m) {
+            if ($m['support']) {
+                $support .= part_badge($part) . $chip($m, ' chip--support');
+            } else {
+                $main .= $chip($m);
+            }
+        }
+        if ($main !== '') {
+            $html .= '<li>' . part_badge($part) . $main . '</li>';
+        }
+    }
+    if ($support !== '') {
+        $html .= '<li class="lineup__support"><span class="support-label">サポート</span>' . $support . '</li>';
+    }
+    return '<ul class="lineup">' . $html . '</ul>';
 }
 
 /**
