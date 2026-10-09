@@ -1344,6 +1344,30 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
   .back-fab.is-leaving { display: none; }
 }
 
+/* ===== ページを移るときの軽いアニメーション =====
+   View Transitions（ブラウザの機能）で、前のページをすっと消して、新しいページを少し下からふわっと出す。
+   CSS だけで動く（JS 不要）。対応していないブラウザ（Firefox など）は、新しいページの本文だけふわっと出す。
+   ヘッダー・スマホの下のナビは動かさない（毎ページ同じなので、動くとちらついて見える）。
+   左下の戻るボタンは自分でフェードする（setupBackButton）ので、ここでは動かさない */
+@view-transition { navigation: auto; }
+.topbar { view-transition-name: topbar; }
+.nav { view-transition-name: main-nav; }
+.back-fabs { view-transition-name: back-fabs; }
+::view-transition-group(topbar), ::view-transition-group(main-nav), ::view-transition-group(back-fabs),
+::view-transition-new(topbar), ::view-transition-new(main-nav), ::view-transition-new(back-fabs) { animation: none; }
+::view-transition-old(topbar), ::view-transition-old(main-nav), ::view-transition-old(back-fabs) { display: none; }
+::view-transition-old(root) { animation: page-out .12s cubic-bezier(.64, 0, .78, 0) both; }
+::view-transition-new(root) { animation: page-in .24s cubic-bezier(.22, 1, .36, 1) both; }
+@keyframes page-out { to { opacity: 0; } }
+@keyframes page-in { from { opacity: 0; transform: translateY(6px); } }
+@supports not (view-transition-name: none) {
+  .container { animation: page-in .24s cubic-bezier(.22, 1, .36, 1); } /* both を付けない: 終わった後も transform が残ると、中の position: fixed の基準が変わる */
+}
+@media (prefers-reduced-motion: reduce) {
+  @view-transition { navigation: none; }
+  .container { animation: none; }
+}
+
 @media print {
   :root, [data-theme="dark"] { --bg: #fff; --surface: #fff; --text: #000; --muted: #555; --border: #ccc; --shadow: none; --glow: none; }
   .topbar, .footer, .no-print, .flash, .back-fabs { display: none !important; }
