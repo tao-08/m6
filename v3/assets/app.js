@@ -2769,21 +2769,19 @@ function setupRosterColumns() {
 
 /* ---------------------------------------------------------------------
  * タイムテーブル編集（timetable_edit.php）: 休憩の行の追加・削除
- *   ※ 出演者（名前・楽器）の列はタイムテーブル編集から外した。下の「＋ 列を追加」は #tpl-tt-instrument が無いので動かない
- *   「＋ 列を追加」→ その日の表のバンドの行の右端に「名前 + 楽器」のセルを1つ足す（休憩の行は横に1マスつなげて伸ばす）
- *     name は b[バンドID][m][列の番号][name / inst]。番号は data-cols（今ある列の数）から振る
- *   名前が入ったら下のプルダウンを出し、空にしたら畳む（見た目は名簿と同じ .table--roster の CSS）
+ *   出演者は名前だけ（楽器はバンドのページで直す）
+ *   「＋ 列を追加」→ その日の表のバンドの行の右端に「名前」のセルを1つ足す（休憩の行は横に1マスつなげて伸ばす）
+ *     name は b[バンドID][m][列の番号][id / name]。番号は data-cols（今ある列の数）から振る
  *   「＋ 休憩を追加」→ <template id="tpl-tt-break"> の行を表の一番下に足す（≡ で好きな所へ動かす）
  *   「この行を消す」→ 休憩の行を消す
  *   行を足す・消すときは slots:changed を出して、setupSlotSort に時間の並びを覚え直してもらう
  * ------------------------------------------------------------------- */
 function setupTimetableColumns() {
   if (!document.querySelector('[data-tt-table]')) return;
-  const tpl = document.getElementById('tpl-tt-instrument'); // 出演者の列はもう無い（null）。「＋ 列を追加」も出していない
 
   document.addEventListener('click', (e) => {
     const btn = e.target.closest('[data-add-tt-col]');
-    if (!btn || !tpl) return;
+    if (!btn) return;
     const table = btn.closest('section').querySelector('[data-tt-table]');
     const n = Number(table.dataset.cols); // 新しい列の番号（0 始まり）
     table.dataset.cols = n + 1;
@@ -2799,10 +2797,10 @@ function setupTimetableColumns() {
       input.dataset.suggestList = 'member-names'; // 入力候補（setupSuggest）
       input.autocomplete = 'off';
       input.setAttribute('aria-label', '出演者');
-      const box = tpl.content.firstElementChild.cloneNode(true);
-      box.querySelector('select').name = `${base}[inst]`;
-      box.querySelector('[data-cho-toggle] input').name = `${base}[cho]`;
-      td.append(input, box);
+      const id = document.createElement('input'); // 元の人（新しく足した列なので空 = 新しい人。楽器は「その他」で登録される）
+      id.type = 'hidden';
+      id.name = `${base}[id]`;
+      td.append(id, input);
       tr.appendChild(td);
     });
     table.querySelector(`tbody tr [name$="[m][${n}][name]"]`)?.focus();
