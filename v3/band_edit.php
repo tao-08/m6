@@ -302,10 +302,11 @@ render_header($isNew ? 'バンドを追加' : 'バンドを編集', 'lives');
         <div class="member-rows">
             <?php foreach ($lockedMembers as $m): ?>
                 <div class="member-row-edit member-row-edit--locked">
-                    <select disabled aria-label="楽器"><?= instrument_choice_options($m['choice']) ?></select>
-                    <?= chorus_toggle('', $m['cho'], $m['choice'], true) ?>
+                    <!-- 上の段: 名前 / 印、下の段: 楽器 / Cho（下の編集できる行と同じ並び） -->
                     <input value="<?= h($m['name']) ?>" disabled aria-label="名前" class="name-input">
                     <span class="muted small"><?= icon('queue_music') ?></span>
+                    <select disabled aria-label="楽器"><?= instrument_choice_options($m['choice']) ?></select>
+                    <?= chorus_toggle('', $m['cho'], $m['choice'], true) ?>
                 </div>
             <?php endforeach; ?>
         </div>
@@ -313,10 +314,11 @@ render_header($isNew ? 'バンドを追加' : 'バンドを編集', 'lives');
     <div class="member-rows" data-rows>
         <?php foreach ($members as $m): ?>
             <div class="member-row-edit">
-                <select name="m_inst[]" aria-label="楽器"><?= instrument_choice_options($m['choice']) ?></select>
-                <?= chorus_toggle('m_cho[]', $m['cho'] ?? false, $m['choice']) ?>
+                <!-- 上の段: 名前 / ✕、下の段: 楽器 / Cho のトグル（2列のグリッドに上から順に入る。CSS の .member-row-edit） -->
                 <input name="m_name[]" value="<?= h($m['name']) ?>" data-suggest-list="member-names" autocomplete="off" placeholder="名前" aria-label="名前" class="name-input" data-name-cell>
                 <button type="button" class="btn btn--ghost btn--sm" data-remove-row aria-label="この行を削除"><?= icon('close') ?></button>
+                <select name="m_inst[]" aria-label="楽器"><?= instrument_choice_options($m['choice']) ?></select>
+                <?= chorus_toggle('m_cho[]', $m['cho'] ?? false, $m['choice']) ?>
             </div>
         <?php endforeach; ?>
     </div>
