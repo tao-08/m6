@@ -352,7 +352,7 @@ function chorus_blocked_choices(): array
 }
 
 /**
- * 楽器欄の横の「Cho」トグル（Gt/Cho = ギターを弾きながらコーラス）。バンド編集・タイムテーブル編集・セトリ編集で共通。
+ * 楽器欄の横の「コーラスあり」トグル（Gt/Cho = ギターを弾きながらコーラス）。バンド編集・タイムテーブル編集・セトリ編集で共通。
  *   押すと aria-pressed と隠し項目の値（0 / 1）が切り替わる（assets/app.js の setupChorusToggle）。
  *   チェックボックスにしないのは、バンド編集の m_name[] / m_inst[] が並んだ配列なので、
  *   チェックが無い行は送られずに行がずれてしまうから（隠し項目なら必ず 0 か 1 が送られる）
@@ -365,7 +365,7 @@ function chorus_toggle(string $name, bool $on, string $choice, bool $disabled = 
     $on = $on && $allowed;
     return '<span class="cho-toggle-wrap" data-cho-toggle data-cho-block="' . h(implode(',', chorus_blocked_choices())) . '">'
         . '<button type="button" class="cho-toggle" aria-pressed="' . ($on ? 'true' : 'false') . '" title="弾きながらコーラス（Gt/Cho など）"'
-        . ($allowed && !$disabled ? '' : ' disabled') . '>Cho</button>'
+        . ($allowed && !$disabled ? '' : ' disabled') . '>コーラスあり</button>'
         . ($disabled ? '' : '<input type="hidden" name="' . h($name) . '" value="' . ($on ? '1' : '0') . '">') . '</span>';
 }
 

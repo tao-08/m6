@@ -737,8 +737,9 @@ body.is-row-dragging, body.is-row-dragging * { cursor: grabbing !important; user
 .cho-toggle-wrap { display: inline-flex; }
 .cho-toggle { height: 26px; padding: 0 8px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); color: var(--muted);
   font-size: 12px; font-weight: 700; cursor: pointer; transition: background-color .15s ease, color .15s ease, border-color .15s ease; }
-.cho-toggle[aria-pressed="true"] { /* ON: セトリ編集では曲×人の数だけ並ぶので、ギラつかない柔らかい色（どの画面も同じ） */
-  background: color-mix(in srgb, var(--cho) 12%, transparent); border-color: color-mix(in srgb, var(--cho) 45%, var(--border)); color: color-mix(in srgb, var(--cho) 55%, var(--text)); }
+.cho-toggle { white-space: nowrap; }
+.cho-toggle[aria-pressed="true"] { /* ON: パステルの黄緑（白を多めに混ぜる）＋濃い緑の文字。ライト・ダークどちらも同じ見た目 */
+  background: color-mix(in srgb, var(--cho) 30%, #fff); border-color: color-mix(in srgb, var(--cho) 50%, #fff); color: color-mix(in srgb, var(--cho) 55%, #1f2a10); }
 .cho-toggle:disabled { opacity: .35; cursor: not-allowed; }
 /* 名簿の Key./Other 欄: 名前が空のあいだ楽器のプルダウンを隠し、名前の欄をセルの上下中央に置く。
    名前が入ったら、名前の欄が上へスライドし、その下からプルダウンが出てくる。
