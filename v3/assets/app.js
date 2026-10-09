@@ -870,7 +870,7 @@ function setupBackButton() {
     setTimeout(remove, 400);
   });
 
-  // スクロール中は隠し、止まったらすぐ出す（読んでいる所にかぶらないように）。隠すのはスマホだけ（app.css）
+  // スクロール中は隠し、止まったらすぐ出す（読んでいる所にかぶらないように）。隠すのはスマホと、左の余白が無い幅の PC だけ（app.css）
   //   scrollend（スクロールが止まった）が使えるブラウザはそれで出す。使えない Safari などは、0.12 秒スクロールが来なければ止まったとみなす
   let timer = 0;
   const show = () => { clearTimeout(timer); box.classList.remove('is-scrolling'); };
