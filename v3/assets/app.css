@@ -383,10 +383,10 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .timeline { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
 .slot { display: grid; grid-template-columns: 60px 1fr; gap: 12px; }
 /* 左の時刻（開始 / 終了）。時刻が無いバンドは出演順の番号を出す */
-.slot__time { font: 700 15px/1.2 var(--font); font-variant-numeric: tabular-nums; padding-top: 6px; text-align: right; display: grid; gap: 2px; align-content: start; }
-.slot__time span { color: var(--muted); font-weight: 500; font-size: 12px; }
-.slot__time .slot__no { font-size: 12px; font-weight: 800; letter-spacing: .04em; } /* 出演順の番号（時刻の上） */
-.slot__time .slot__no:only-child { font-size: 15px; color: inherit; }   /* 時刻が無いバンドは番号だけなので大きく */
+.slot__time { font: 700 12px/1.2 var(--font); font-variant-numeric: tabular-nums; padding-top: 6px; text-align: right; display: grid; gap: 2px; align-content: start; }
+.slot__time span { color: var(--muted); font-weight: 500; font-size: 11px; }
+/* 出演順の番号（時刻の上）。時刻が有っても無くても同じ大きさ。時刻はその下に小さく */
+.slot__time .slot__no { font-size: 15px; font-weight: 800; color: inherit; }
 /* 番号と時刻のあいだに線（時刻があるときだけ。番号だけのバンドは線なし） */
 .slot__time .slot__no:not(:only-child) { padding-bottom: 1px; margin-bottom: 7px; border-bottom: 1px solid var(--border); }
 .slot--break .slot__time { padding-top: 6px; opacity: .7; }
@@ -1460,10 +1460,9 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
   .table-scroll { margin: 0 -16px -16px; }
   .table--edit td:first-child, .table--edit th:first-child { padding-left: 16px; }
   .slot { grid-template-columns: 36px 1fr; gap: 6px; } /* 36px =「13:00」がちょうど入る幅。カードを広くして名前を折り返しにくくする */
-  .slot__time { font-size: 12px; padding-top: 6px; }
-  .slot__time span { font-size: 11px; }
-  .slot__time .slot__no { font-size: 11px; }
-  .slot__time .slot__no:only-child { font-size: 13px; }
+  .slot__time { font-size: 11px; padding-top: 6px; }
+  .slot__time span { font-size: 10px; }
+  .slot__time .slot__no { font-size: 13px; }
   .slot__body { padding: 14px; }
   .slot__name { font-size: 16px; }
   .slot__name--long { font-size: 14px; }  /* 長い名前は小さくして1行に収める（live.php で幅を見て付ける） */
