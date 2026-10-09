@@ -118,6 +118,9 @@ foreach ($st as $r) {
  *   例: 4曲中3曲 Gt、1曲だけ Key → その1曲にだけ「鈴木: Key」と出す。
  * band_member（バンドでの担当）と比べないのは、曲で持ち替えた楽器も band_member に足されるため
  * （Gt と Key の両方が担当になり、どの曲も「いつもと違う」になってしまう）。
+ *
+ * 弾きながらのコーラス（Gt + Cho）は、基本を Gt として比べ、コーラスした曲にだけ「Cho.：〇〇・〇〇」と書く。
+ *   （Gt/Cho の曲と Gt だけの曲で「いつもと違う」にならないように、Cho を外してから比べる）
  */
 function song_notes(array $songs, array $lineup): array
 {
@@ -135,9 +138,15 @@ function song_notes(array $songs, array $lineup): array
     // メンバーごとに「楽器の組み合わせ → 何曲あったか」を数える
     $counts = [];
     $sets = [];
+    $chorus = []; // [song_id][member_id] = 名前（その曲で弾きながらコーラスした人）
     foreach ($songs as $songId => $song) {
         foreach ($song['players'] as $memberId => $rows) {
             $shorts = array_column($rows, 'short_name'); // 楽器の並び順で入っている（Vo/Gt）
+            // Gt + Cho → Gt として数えて、コーラスは別に覚えておく（ボーカルの人・Cho だけの人はそのまま）
+            if (!isset($support[$memberId]) && chorus_host($shorts) !== null) {
+                $chorus[$songId][$memberId] = $rows[0]['name'];
+                $shorts = array_values(array_diff($shorts, ['Cho']));
+            }
             $sets[$songId][$memberId] = implode('/', $shorts);
             $counts[$memberId][$sets[$songId][$memberId]] = ($counts[$memberId][$sets[$songId][$memberId]] ?? 0) + 1;
         }
@@ -167,6 +176,9 @@ function song_notes(array $songs, array $lineup): array
             if (!isset($support[$memberId]) && $set !== ($usual[$memberId] ?? $set)) {
                 $parts[] = $song['players'][$memberId][0]['name'] . ': ' . $set;
             }
+        }
+        if (isset($chorus[$songId])) {
+            $parts[] = 'Cho.：' . implode('・', $chorus[$songId]);
         }
         $notes[$songId] = implode('、', $parts);
     }
