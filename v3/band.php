@@ -112,20 +112,20 @@ foreach ($st as $r) {
 }
 
 /**
- * 曲ごとの「いつもと違うところ」だけを短い文にする。
+ * 曲ごとの「いつもと違うところ」だけを短い文にする。書き方は「名前：楽器.」でそろえる（山田：Gt.）
  *
  * 「いつも」= そのバンドの曲の中で一番多い楽器の組み合わせ（最頻値）。
  *   例: 4曲中3曲 Gt、1曲だけ Key → その1曲にだけ「鈴木: Key」と出す。
  * band_member（バンドでの担当）と比べないのは、曲で持ち替えた楽器も band_member に足されるため
  * （Gt と Key の両方が担当になり、どの曲も「いつもと違う」になってしまう）。
  *
- * 弾きながらのコーラス（Gt + Cho）は、基本を Gt として比べ、コーラスした曲にだけ「Cho.：〇〇・〇〇」と書く。
+ * 弾きながらのコーラス（Gt + Cho）は、基本を Gt として比べ、コーラスした曲にだけ「〇〇・〇〇：Cho.」と書く。
  *   （Gt/Cho の曲と Gt だけの曲で「いつもと違う」にならないように、Cho を外してから比べる）
  */
 function song_notes(array $songs, array $lineup): array
 {
     $names = [];
-    $support = []; // サポート（1曲だけ出た人）。ほかの曲に「不参加」と書かず、出た曲に「サポート：Gt. 〇〇」と書く
+    $support = []; // サポート（1曲だけ出た人）。ほかの曲に「不参加」と書かず、出た曲に「〇〇：Gt.（サポート）」と書く
     foreach ($lineup as $part) {
         foreach ($part['members'] as $m) {
             if ($m['support']) {
@@ -162,23 +162,21 @@ function song_notes(array $songs, array $lineup): array
         $helpers = [];
         foreach ($sets[$songId] ?? [] as $memberId => $set) {
             if (isset($support[$memberId])) {
-                $helpers[] = $set . '. ' . $song['players'][$memberId][0]['name'];
+                $helpers[] = $song['players'][$memberId][0]['name'] . '：' . $set . '.（サポート）';
             }
         }
-        if ($helpers) {
-            $parts[] = 'サポート：' . implode('・', $helpers);
-        }
+        array_push($parts, ...$helpers);
         $absent = array_diff_key($names, $song['players']);
         if ($absent) {
             $parts[] = implode('・', $absent) . ' は不参加';
         }
         foreach ($sets[$songId] ?? [] as $memberId => $set) {
             if (!isset($support[$memberId]) && $set !== ($usual[$memberId] ?? $set)) {
-                $parts[] = $song['players'][$memberId][0]['name'] . ': ' . $set . '.'; // 楽器はピリオド付き（Gt.）。サポート・Cho. と同じ書き方
+                $parts[] = $song['players'][$memberId][0]['name'] . '：' . $set . '.';
             }
         }
         if (isset($chorus[$songId])) {
-            $parts[] = 'Cho.：' . implode('・', $chorus[$songId]);
+            $parts[] = implode('・', $chorus[$songId]) . '：Cho.';
         }
         $notes[$songId] = implode('、', $parts);
     }
