@@ -158,8 +158,9 @@ function is_free_part(string $part): bool
 }
 
 /**
- * Gt. / Ba. / Dr. 欄に「茂田井教崇(Vn.)」のように Vo/Gt/Ba/Dr 以外の楽器が書いてある人を、Key./Other 欄へ移す。
+ * Gt. / Ba. / Dr. 欄に「茂田井教崇(Vn.)」のように Gt/Ba/Dr 以外の楽器が書いてある人を、Key./Other 欄へ移す。
  *   名簿を作る人が、空いているギターの欄にヴァイオリンの人を書いてしまうことがあるため。
+ *   「佐藤(Vo.2)」のように Vo と書いてある人（2人目のボーカル）も移す（Vo. 欄は1つしかない名簿が多いので）。
  *   移し先: 左から見て最初の「空いている Key./Other 欄」。全部埋まっていれば表の右端の追加列（extras）。
  *   楽器はその楽器を初期値にして、名前から (Vn.) を外す。
  *   Vo. 欄は動かさない（歌う人なので。「山田(Gt)」= ギターボーカル の処理は spread_roster_cells にある）。
@@ -167,13 +168,14 @@ function is_free_part(string $part): bool
 function move_extra_instrument_players(array $columns, array $band): array
 {
     $extraIds = array_map('intval', array_column(extra_instruments(), 'instrument_id'));
+    $extraIds[] = instrument_id_by_short('Vo');
     foreach ($columns as $col => $c) {
         if ($c['part'] === 'Vo' || is_free_part($c['part']) || ($band['cells'][$col] ?? '') === '') {
             continue;
         }
         [$plain, $named] = parse_name_instrument($band['cells'][$col]);
         if ($named === null || !in_array($named, $extraIds, true)) {
-            continue; // 楽器が書いていない／「(Gt)」のような Vo/Gt/Ba/Dr → そのまま
+            continue; // 楽器が書いていない／「(Gt)」のような Gt/Ba/Dr → そのまま
         }
         $band['cells'][$col] = '';
         $to = null;
@@ -329,7 +331,8 @@ function parse_name_instrument(string $name): array
 {
     if (preg_match('/^(.+?)[(（]([^()（）]+)[)）]$/u', $name, $m)) {
         // 「Vn.」「Gt .」のような点・空白は消してから比べる（instrument_from_header と同じ）
-        $label = mb_strtolower(preg_replace('/[\s.．]/u', '', tt_width($m[2])) ?? '');
+        // 「Vo.2」「Gt2」のような番号も外す（2人目のボーカル = Vo）
+        $label = mb_strtolower(preg_replace('/[\s.．]|\d+$/u', '', tt_width($m[2])) ?? '');
         foreach (instruments() as $ins) {
             if ($label === mb_strtolower($ins['short_name']) || $label === mb_strtolower($ins['name'])) {
                 return [$m[1], (int)$ins['instrument_id']];
