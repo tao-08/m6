@@ -174,7 +174,7 @@ function song_notes(array $songs, array $lineup): array
         }
         foreach ($sets[$songId] ?? [] as $memberId => $set) {
             if (!isset($support[$memberId]) && $set !== ($usual[$memberId] ?? $set)) {
-                $parts[] = $song['players'][$memberId][0]['name'] . ': ' . $set;
+                $parts[] = $song['players'][$memberId][0]['name'] . ': ' . $set . '.'; // 楽器はピリオド付き（Gt.）。サポート・Cho. と同じ書き方
             }
         }
         if (isset($chorus[$songId])) {
