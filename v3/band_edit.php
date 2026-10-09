@@ -15,6 +15,7 @@
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/repository.php';
+require_once __DIR__ . '/lib/youtube.php'; // プレイリストの動画から選ぶプルダウン
 require_login();
 
 $pdo = db();
@@ -23,7 +24,7 @@ $dayId = (int)($_GET['day'] ?? $_POST['day_id'] ?? 0);
 $isNew = $bandId === 0; // id が無ければ「新規追加」モード
 
 if ($isNew) {
-    $st = $pdo->prepare('SELECT d.live_day_id, d.live_id, d.label, l.name AS live_name
+    $st = $pdo->prepare('SELECT d.live_day_id, d.live_id, d.label, l.name AS live_name, l.youtube_url AS live_youtube_url
         FROM live_day d JOIN live l ON l.live_id = d.live_id WHERE d.live_day_id = ?');
     $st->execute([$dayId]);
     $band = $st->fetch();
@@ -34,7 +35,7 @@ if ($isNew) {
     $band += ['band_id' => 0, 'name' => '', 'artist_name' => '', 'song_count' => '', 'note' => '', 'youtube_url' => '', 'needs_check' => 0,
         'start_time' => null, 'end_time' => null, 'play_order' => next_play_order($pdo, $dayId)];
 } else {
-    $st = $pdo->prepare('SELECT b.*, a.name AS artist_name, d.live_id, d.label, l.name AS live_name FROM band b
+    $st = $pdo->prepare('SELECT b.*, a.name AS artist_name, d.live_id, d.label, l.name AS live_name, l.youtube_url AS live_youtube_url FROM band b
         JOIN live_day d ON d.live_day_id = b.live_day_id
         JOIN live l ON l.live_id = d.live_id
         LEFT JOIN artist a ON a.artist_id = b.artist_id
@@ -188,6 +189,56 @@ $allNames = member_name_choices($pdo); // 名前の入力候補 [名前 => ふ�
 $allArtists = $pdo->query('SELECT name FROM artist ORDER BY name')->fetchAll(PDO::FETCH_COLUMN);
 $allBandNames = band_name_choices($pdo); // バンド名の入力候補（新しい順。lib/repository.php）
 
+// ---------- ライブの YouTube がプレイリストなら、その動画から選べるプルダウンを出す ----------
+//   後からバンドを追加したとき、URL を手で探して貼らなくて済むように。
+//   並び: 候補（タイトルにバンド名が入っている）→ まだどのバンドにも入っていない動画 → ほかのバンドに入っている動画
+//   プルダウンは選ぶと URL 欄に入れるだけ（assets/app.js）。保存するのは今までどおり URL 欄
+$ytVideos = [];     // video_id => タイトル（プレイリストの順）
+$ytError = null;    // 読めなかった理由（プルダウンの代わりに出す）
+$ytCandidates = []; // 候補の video_id
+$ytTaken = [];      // video_id => その動画が入っているほかのバンドの名前
+$ytPlaylist = youtube_playlist_id((string)$band['live_youtube_url']);
+if ($ytPlaylist !== null) {
+    try {
+        foreach (youtube_playlist_items($ytPlaylist) as $v) {
+            $ytVideos[$v['video_id']] = $v['title'];
+        }
+    } catch (RuntimeException $e) {
+        $ytError = $e->getMessage();
+    }
+}
+if ($ytVideos) {
+    $st = $pdo->prepare('SELECT b.name, b.youtube_url FROM band b JOIN live_day d ON d.live_day_id = b.live_day_id
+        WHERE d.live_id = ? AND b.band_id <> ? AND b.youtube_url IS NOT NULL');
+    $st->execute([(int)$band['live_id'], (int)$band['band_id']]);
+    foreach ($st as $r) {
+        $vid = youtube_video_id((string)$r['youtube_url']);
+        if ($vid !== null) {
+            $ytTaken[$vid] = $r['name'];
+        }
+    }
+    // 名前が入っているとき（既存のバンド・保存に失敗して戻ったとき）だけ、タイトルにバンド名が入っている動画を候補にする
+    //   探す名前は live_youtube.php と同じ: バンド名・アーティスト名・アーティストの別称
+    if ($band['name'] !== '') {
+        $names = [];
+        if ($band['artist_name'] !== '' && $band['artist_name'] !== null) {
+            $names[] = (string)$band['artist_name'];
+            $st = $pdo->prepare('SELECT al.name FROM artist_alias al JOIN artist a ON a.artist_id = al.artist_id WHERE a.name = ?');
+            $st->execute([$band['artist_name']]);
+            array_push($names, ...$st->fetchAll(PDO::FETCH_COLUMN));
+        }
+        $list = [];
+        foreach ($ytVideos as $vid => $title) {
+            $list[] = ['video_id' => $vid, 'title' => $title];
+        }
+        $ytCandidates = youtube_match_bands($list, [0 => ['name' => $band['name'], 'names' => $names]])['bands'][0] ?? [];
+    }
+}
+$ytCurrent = youtube_video_id((string)$band['youtube_url']); // 今の URL の動画（プレイリストにあれば選んだ状態にする）
+/** プルダウンの1行。value は URL（こちらで組み立てる）、表示はタイトル */
+$ytOption = static fn(string $vid, string $label) => '<option value="' . h(youtube_watch_url($vid)) . '"'
+    . ($vid === $ytCurrent ? ' selected' : '') . '>' . h($label) . '</option>';
+
 render_header($isNew ? 'バンドを追加' : 'バンドを編集', 'lives');
 ?>
 <nav class="crumbs"><a href="<?= h($liveUrl) ?>"><?= h($band['live_name']) ?></a><span>/</span><?= h($band['label']) ?></nav>
@@ -212,6 +263,27 @@ render_header($isNew ? 'バンドを追加' : 'バンドを編集', 'lives');
         <label class="field"><span>終了</span><input type="time" name="end_time" value="<?= h(fmt_time($band['end_time'])) ?>"></label>
         <label class="field field--wide"><span>メモ</span><input name="note" value="<?= h($band['note']) ?>" maxlength="255"></label>
         <label class="field field--wide"><span>YouTube のリンク（任意）</span><input type="url" name="youtube_url" value="<?= h((string)$band['youtube_url']) ?>" maxlength="500" placeholder="https://www.youtube.com/watch?v=…" inputmode="url"></label>
+        <?php if ($ytVideos): ?>
+            <!-- name を付けない（送信しない）。選ぶと JS が上の URL 欄に入れる -->
+            <label class="field field--wide"><span>ライブのプレイリストから選ぶ</span>
+                <select data-yt-pick>
+                    <option value="">— 動画を選ぶ —</option>
+                    <?php if ($ytCandidates): ?>
+                        <optgroup label="候補（タイトルにバンド名が入っている）">
+                            <?php foreach ($ytCandidates as $vid): ?><?= $ytOption($vid, $ytVideos[$vid]) ?><?php endforeach; ?>
+                        </optgroup>
+                    <?php endif; ?>
+                    <optgroup label="まだどのバンドにも入っていない動画">
+                        <?php foreach ($ytVideos as $vid => $title): if (in_array($vid, $ytCandidates, true) || isset($ytTaken[$vid])) continue; ?><?= $ytOption($vid, $title) ?><?php endforeach; ?>
+                    </optgroup>
+                    <optgroup label="ほかのバンドに入っている動画">
+                        <?php foreach ($ytVideos as $vid => $title): if (in_array($vid, $ytCandidates, true) || !isset($ytTaken[$vid])) continue; ?><?= $ytOption($vid, $title . ' — ' . $ytTaken[$vid]) ?><?php endforeach; ?>
+                    </optgroup>
+                </select>
+            </label>
+        <?php elseif ($ytError !== null): ?>
+            <p class="field--wide muted small">ライブのプレイリストを読めなかったので、動画から選べません（<?= h($ytError) ?>）。リンクを直接貼ってください。</p>
+        <?php endif; ?>
     </div>
     <?= render_suggest_datalist('band-names', $allBandNames) ?>
     <datalist id="artists"><?php foreach ($allArtists as $n): ?><option value="<?= h($n) ?>"><?php endforeach; ?></datalist>

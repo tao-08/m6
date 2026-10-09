@@ -748,6 +748,14 @@ function setupSmallThings() {
     if (!box.hidden) box.focus();
   });
 
+  // data-yt-pick … バンド編集の「ライブのプレイリストから選ぶ」。選んだ動画の URL を、同じフォームの URL 欄に入れる（保存はしない）
+  //   「— 動画を選ぶ —」（空）に戻しても、URL 欄は消さない
+  document.addEventListener('change', (e) => {
+    if (!e.target.matches('[data-yt-pick]') || e.target.value === '') return;
+    const input = e.target.form?.querySelector('[name="youtube_url"]');
+    if (input) input.value = e.target.value;
+  });
+
   // data-fill-hint … メンバープロフィールの一括編集で、空欄の入力欄に data-hint（初出演の年度）を入れる。保存はしない
   document.querySelectorAll('[data-fill-hint]').forEach((btn) => btn.addEventListener('click', () => {
     btn.form.querySelectorAll('input[data-hint]').forEach((input) => {
