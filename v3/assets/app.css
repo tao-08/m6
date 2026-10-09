@@ -1345,6 +1345,20 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
   .back-fab.is-leaving { display: none; }
 }
 
+/* ===== スマホの右下の「上へ」ボタン（assets/app.js の setupToTop） =====
+   左下の戻るボタン（.back-fab）と同じ色・同じ 0.25 秒のフェード。丸いボタンで、下のナビの上（右下）に出す。PC では出さない */
+.to-top { display: none; }
+@media (max-width: 760px) {
+  .to-top { position: fixed; right: 12px; bottom: calc(76px + env(safe-area-inset-bottom)); z-index: 25;
+    display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border-radius: 50%; cursor: pointer;
+    background: #dfe9fb; color: #1d3766; border: 1px solid #c3d4f2; box-shadow: var(--shadow); transition: opacity .25s ease; }
+  [data-theme="dark"] .to-top { background: var(--text); color: var(--bg); border-color: transparent; }
+  .to-top .icon { font-size: 22px; }
+  .to-top--lift { bottom: calc(150px + env(safe-area-inset-bottom)); } /* 下に固定の保存ボタン（右寄せ）のさらに上 */
+  .to-top.is-hidden { opacity: 0; pointer-events: none; }
+}
+@media (prefers-reduced-motion: reduce) { .to-top { transition: none; } }
+
 /* ===== ページを移るときの軽いアニメーション =====
    View Transitions（ブラウザの機能）で、前のページと新しいページを同時にフェードで入れ替える（普通のクロスフェード）。
    CSS だけで動く（JS 不要）。対応していないブラウザ（Firefox など）は、新しいページの本文だけふわっと出す。
@@ -1372,7 +1386,7 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
 
 @media print {
   :root, [data-theme="dark"] { --bg: #fff; --surface: #fff; --text: #000; --muted: #555; --border: #ccc; --shadow: none; --glow: none; }
-  .topbar, .footer, .no-print, .flash, .back-fabs { display: none !important; }
+  .topbar, .footer, .no-print, .flash, .back-fabs, .to-top { display: none !important; }
   .day[hidden] { display: block !important; }   /* タブで隠している日程も全部印刷する */
   .day + .day { break-before: page; }          /* 日程ごとに改ページ */
   .slot { break-inside: avoid; }               /* バンドの途中で改ページしない */

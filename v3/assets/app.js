@@ -87,6 +87,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupVoSum();
   setupYoutubeLeftover();
   setupBackButton();
+  setupToTop();
 });
 
 /* ---------------------------------------------------------------------
@@ -919,6 +920,42 @@ function setupBackButton() {
     timer = setTimeout(show, 120);
   }, { passive: true });
   if ('onscrollend' in window) window.addEventListener('scrollend', show);
+}
+
+/* ---------------------------------------------------------------------
+ * スマホの右下の「上へ」ボタン（押すとページの一番上へ）
+ *   少し下まで読んだら出す（一番上の近くでは要らないので出さない）。見た目と動きは左下の戻るボタンと同じ:
+ *   スクロール中は消して、止まったら出す（.is-hidden）。下に固定の保存ボタン（.sticky-actions。右寄せ）があるページでは、その上に出す。
+ *   PC では出さない（app.css。キーボードの Home や、マウスのホイールですぐ戻れるので）
+ * ------------------------------------------------------------------- */
+function setupToTop() {
+  const SHOW_AFTER = 600; // これより下までスクロールしたら出す（px）
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'to-top is-hidden';
+  btn.setAttribute('aria-label', 'ページの一番上へ');
+  btn.title = 'ページの一番上へ';
+  const icon = document.createElement('span');
+  icon.className = 'icon';
+  icon.setAttribute('aria-hidden', 'true');
+  icon.textContent = 'arrow_upward';
+  btn.append(icon);
+  if (document.querySelector('.sticky-actions')) btn.classList.add('to-top--lift');
+  document.body.append(btn);
+
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)');
+  btn.addEventListener('click', () => window.scrollTo({ top: 0, behavior: reduce.matches ? 'auto' : 'smooth' }));
+
+  // スクロール中は消し、止まったら（一番上の近くでなければ）出す。止まったの判定は戻るボタンと同じ
+  let timer = 0;
+  const update = () => { clearTimeout(timer); btn.classList.toggle('is-hidden', window.scrollY < SHOW_AFTER); };
+  window.addEventListener('scroll', () => {
+    btn.classList.add('is-hidden');
+    clearTimeout(timer);
+    timer = setTimeout(update, 120);
+  }, { passive: true });
+  if ('onscrollend' in window) window.addEventListener('scrollend', update);
+  update(); // 再読み込みでページの途中から始まったとき
 }
 
 /* ---------------------------------------------------------------------
