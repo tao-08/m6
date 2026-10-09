@@ -142,14 +142,19 @@ if ($faculty !== '' || $roleName !== null) {
     // ---- アーティスト ----
     // 回数はアーティストページと同じ数え方（オムニバスは曲に付いたアーティストを1バンド1回。ARTIST_PLAYS_SQL）
     // 演奏0回のアーティストは出さない（artists.php と同じ）
-    $st = $pdo->prepare('SELECT a.artist_id, a.name, COUNT(p.band_id) AS n FROM artist a
+    // 別称（artist_alias。エルレ → ELLEGARDEN など）でも当てる。別称だけで当たったときは、どの別称で当たったかも出す（alias_hit）
+    $st = $pdo->prepare('SELECT a.artist_id, a.name, COUNT(p.band_id) AS n,
+            (SELECT al.name FROM artist_alias al WHERE al.artist_id = a.artist_id AND al.name LIKE ? LIMIT 1) AS alias_hit
+        FROM artist a
         JOIN (' . ARTIST_PLAYS_SQL . ') p ON p.artist_id = a.artist_id
-        WHERE a.name LIKE ? GROUP BY a.artist_id ORDER BY n DESC LIMIT 30');
-    $st->execute([$like]);
+        WHERE a.name LIKE ? OR EXISTS (SELECT 1 FROM artist_alias al WHERE al.artist_id = a.artist_id AND al.name LIKE ?)
+        GROUP BY a.artist_id ORDER BY n DESC LIMIT 30');
+    $st->execute([$like, $like, $like]);
     $artists = $st->fetchAll();
 
     // ---- マイアルバム（アーティスト名。マイアルバムのアーティスト名を押すとここに来る） ----
-    $albums = albums_by_artist_name($pdo, $like);
+    //   当たったアーティストの本名・別称の表記のアルバムも足す（「エルレ」で ELLEGARDEN のアルバムも。fan_albums）
+    $albums = merge_fan_albums(albums_by_artist_name($pdo, $like), fan_albums($pdo, array_column($artists, 'artist_id')));
 
     // ---- 学部・係（名前で当たったら、その学部・係の一覧ページへのリンクを出す） ----
     $matchedFaculties = array_values(array_filter(FACULTIES, fn($f) => mb_strpos($f, mb_substr($q, 0, 50)) !== false));
@@ -180,7 +185,7 @@ render_header($filterLabel ?? ($q !== '' ? "「{$q}」の検索結果" : '検索
 
 <!-- GET で送るので、検索結果の URL をそのまま共有・ブックマークできる -->
 <form method="get" class="toolbar">
-    <input type="search" name="q" value="<?= h($q) ?>" class="search" placeholder="バンド名・メンバー名・学部・係・ライブ名・会場・メモ・マイアルバムのアーティスト" autofocus aria-label="検索ワード">
+    <input type="search" name="q" value="<?= h($q) ?>" class="search" placeholder="バンド名・メンバー名・アーティスト（別称も）・学部・係・ライブ名・会場・メモ・マイアルバムのアーティスト" autofocus aria-label="検索ワード">
     <button class="btn btn--primary" type="submit">検索</button>
 </form>
 
@@ -237,7 +242,9 @@ render_header($filterLabel ?? ($q !== '' ? "「{$q}」の検索結果" : '検索
             <h2 class="section-title">アーティスト <span class="muted"><?= count($artists) ?></span></h2>
             <div class="chip-list">
                 <?php foreach ($artists as $a): ?>
-                    <a class="chip chip--lg" href="artist?id=<?= (int)$a['artist_id'] ?>"><?= h($a['name']) ?> <span class="muted small"><?= (int)$a['n'] ?>回</span></a>
+                    <a class="chip chip--lg" href="artist?id=<?= (int)$a['artist_id'] ?>"><?= h($a['name']) ?>
+                        <?php if ($a['alias_hit'] !== null && mb_stripos($a['name'], mb_substr($q, 0, 50)) === false): // 別称だけで当たったとき ?><span class="muted small">（<?= h($a['alias_hit']) ?>）</span><?php endif; ?>
+                        <span class="muted small"><?= (int)$a['n'] ?>回</span></a>
                 <?php endforeach; ?>
             </div>
         </section>

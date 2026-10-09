@@ -9,7 +9,7 @@
  *
  *  動画とバンドは「タイトルにバンド名が入っているか」で結び付ける（並び順は出演順とは限らないので使わない）。
  *    「12月 SEKAI NO OWARI」「12月スピッツ」「12月ライブ Fall Out Boy」→ 記号・空白・大文字小文字をそろえて部分一致
- *    「12月エルレ（鈴木）」のような略称は、artist.php でアーティストの別名（エルレ → ELLEGARDEN）を登録すれば当たる
+ *    「12月エルレ（鈴木）」のような略称は、artist.php でアーティストの別称（エルレ → ELLEGARDEN）を登録すれば当たる
  *  自動で決めきれないもの（1バンドに2本ある・同じ名前のバンドが2組ある）は、確認画面（live_youtube.php）で人が選ぶ。
  * =====================================================================
  */
@@ -117,7 +117,7 @@ function youtube_playlist_items(string $playlistId): array
  *
  * @param array $videos [['video_id' => ..., 'title' => ...], ...]
  * @param array $bands  [band_id => ['name' => 'ELLEGARDEN(鈴木)', 'names' => ['ELLEGARDEN', 'エルレ', ...]], ...]
- *                      names = タイトルの中で探す名前（バンド名の括弧の前・アーティスト名・アーティストの別名）
+ *                      names = タイトルの中で探す名前（バンド名の括弧の前・アーティスト名・アーティストの別称）
  * @return array{bands: array<int, string[]>, auto: array<int, string>, unmatched: string[]}
  *   bands[band_id] = そのバンドの候補の動画 ID（プレイリストの順）
  *   auto[band_id]  = 迷わず決められた動画 ID（候補が1本だけで、その動画を取り合うバンドもいない）
