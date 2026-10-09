@@ -830,51 +830,63 @@ function setupBackButton() {
     }
     return a;
   };
-  // 前のページで出していたボタンと比べて、増えたボタンは入ってくる・無くなったボタンは出ていくアニメーションをする
-  //   （ページを移るたびに作り直すので、何もしないとボタンの数がパッと変わる）
-  //   同じページを指すボタンは動かさない。前のページで出していたボタンは SHOWN に覚えておく
+  // 前のページで出していたボタンと比べて、変わったボタンだけその場でフェードする（ボタンは動かさない）
+  //   ページを移るたびに作り直すので、何もしないとボタンがパッと入れ替わる。
+  //   前のページのボタンを、同じ位置にもう1組（.back-fabs--ghost。押せない）並べて消し、新しいボタンは今の位置で出す。
+  //   前と同じボタンが同じ位置にあるときは、どちらも動かさない（そのまま見えている）
   const SHOWN = 'back-shown';
   const before = load(SHOWN, []);
   const items = [prev && { ...prev, label: '前のページに戻る', useBack: back }, up && { ...up, label: '1つ上のページに戻る', useBack: false }]
     .filter(Boolean);
   save(SHOWN, items.map((t) => ({ url: t.url, title: t.title })));
+  if (!items.length && !before.length) return;
   const same = (a, b) => keyOf(a.url) === keyOf(b.url) && a.title === b.title;
-  const leaving = before.filter((t) => !items.some((i) => same(i, t)));
-  if (!items.length && !leaving.length) return;
+  const lift = !!document.querySelector('.sticky-actions'); // 下に固定の保存ボタンがあるページでは、スマホで重ならないように上にずらす（app.css）
 
   const box = document.createElement('nav');
-  box.className = 'back-fabs';
-  // 下に固定の保存ボタン（.sticky-actions）があるページでは、スマホで重ならないように上にずらす（app.css）
-  if (document.querySelector('.sticky-actions')) box.classList.add('back-fabs--lift');
+  box.className = 'back-fabs' + (lift ? ' back-fabs--lift' : '');
   box.setAttribute('aria-label', '戻る');
-  items.forEach((t) => {
+  const shown = items.map((t) => {
     const a = make(t, t.label, t.useBack);
-    if (!before.some((b) => same(b, t))) a.classList.add('is-entering');
+    a.classList.add('is-entering');
     box.append(a);
-  });
-  // 無くなったボタン: 前と同じ位置に、押せない形で一瞬だけ出して消す
-  leaving.forEach((t) => {
-    const ghost = make(t, '', false);
-    ghost.classList.add('is-leaving');
-    ghost.removeAttribute('href');
-    ghost.setAttribute('aria-hidden', 'true');
-    ghost.tabIndex = -1;
-    box.insertBefore(ghost, box.children[before.indexOf(t)] ?? null);
+    return a;
   });
   document.body.append(box);
-  box.querySelectorAll('.is-entering').forEach((a) => a.addEventListener('animationend', () => a.classList.remove('is-entering'), { once: true }));
-  // 消えるボタン: 本当の高さから 0 まで、透明度と一緒に滑らかに詰める（残ったボタンがスッと寄る）
-  //   CSS の max-height で詰めると、実際の高さより大きい値から縮めるので最初の一瞬止まって見える → 高さを測って Web Animations で動かす
-  //   ボタンどうしのすき間（gap）も、下（最後のボタンなら上）の margin をマイナスにして一緒に詰める
+
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  box.querySelectorAll('.is-leaving').forEach((g) => {
-    if (reduce || !g.animate) { g.remove(); return; }
-    const gap = parseFloat(getComputedStyle(box).rowGap) || 0;
-    const side = g.nextElementSibling ? 'marginBottom' : 'marginTop';
-    const from = { height: `${g.offsetHeight}px`, opacity: getComputedStyle(g).opacity };
-    const to = { height: '0px', paddingTop: '0px', paddingBottom: '0px', borderTopWidth: '0px', borderBottomWidth: '0px', opacity: 0, [side]: `${-gap}px` };
-    g.animate([from, to], { duration: 250, easing: 'cubic-bezier(.4, 0, .2, 1)', fill: 'forwards' }).finished.then(() => g.remove(), () => g.remove());
-  });
+  if (before.length && !reduce) {
+    const ghostBox = document.createElement('div');
+    ghostBox.className = 'back-fabs back-fabs--ghost' + (lift ? ' back-fabs--lift' : '');
+    ghostBox.setAttribute('aria-hidden', 'true');
+    const ghosts = before.map((t) => {
+      const g = make(t, '', false);
+      g.removeAttribute('href');
+      g.tabIndex = -1;
+      ghostBox.append(g);
+      return g;
+    });
+    document.body.append(ghostBox);
+    // 同じボタンが同じ位置にある → 新しい方はフェードしない、古い方は最初から隠す（位置は測って比べる）
+    const near = (a, b) => Math.abs(a.top - b.top) < 1 && Math.abs(a.left - b.left) < 1;
+    shown.forEach((a, i) => {
+      const r = a.getBoundingClientRect();
+      ghosts.forEach((g, j) => {
+        if (!g.hidden && same(items[i], before[j]) && near(r, g.getBoundingClientRect())) {
+          a.classList.remove('is-entering');
+          g.hidden = true;
+        }
+      });
+    });
+    ghosts.forEach((g) => { if (!g.hidden) g.classList.add('is-leaving'); });
+    // 消え終わったら（動きを減らす設定などでアニメーションが無いときも残らないように、時間でも）片付ける
+    const clean = () => ghostBox.remove();
+    ghostBox.addEventListener('animationend', (e) => { if (e.target.classList.contains('is-leaving')) clean(); });
+    setTimeout(clean, 600);
+  }
+  shown.forEach((a) => a.addEventListener('animationend', () => a.classList.remove('is-entering'), { once: true }));
+  if (reduce) shown.forEach((a) => a.classList.remove('is-entering'));
+  if (!items.length) return;
 
   // スクロール中は隠し、止まったらすぐ出す（読んでいる所にかぶらないように）。隠すのはスマホと、左の余白が無い幅の PC だけ（app.css）
   //   scrollend（スクロールが止まった）が使えるブラウザはそれで出す。使えない Safari などは、0.12 秒スクロールが来なければ止まったとみなす

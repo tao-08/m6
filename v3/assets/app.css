@@ -1291,21 +1291,22 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
    上: 前に見ていたページ / 下: パンくずの1つ上。
    色: ライトモードは薄い青（白・灰色のカードに重なっても埋もれず、赤い「保存」・黄色の注意とも見分けがつく）、
        ダークモードは文字色と背景色を反対にした明るいボタン
-   ページを移ってボタンが増えた・減ったときは、フェードで出す（.is-entering）・消す（.is-leaving）（JS が付ける）
-     動きは等速にせず加速度を付ける: 出るときは速く始まってゆっくり止まる、消えるときはゆっくり始まって速く消える
+   ページを移ってボタンが変わったときは、その場でフェードする（ボタンは動かさない）。JS が付ける:
+     新しいボタン .is-entering = 今の位置でふわっと出る / 前のページのボタン .back-fabs--ghost の .is-leaving = 前の位置でふわっと消える
    マウスが使える端末では、乗っていないときは半透明（本文に重なっても読める）、乗ったら不透明
    スクロール中は消す（.is-scrolling。JS が付け外し）。ただし PC で左の余白に入っているときは読む邪魔にならないので消さない */
 .back-fabs { position: fixed; left: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); z-index: 25; /* ヘッダー(20)より手前、スマホの下ナビ(30)より奥 */
   display: flex; flex-direction: column; align-items: flex-start; gap: 8px;
-  --fab-in: cubic-bezier(.22, 1, .36, 1); /* ページを移って出てくるとき: 減速 */
-  transition: opacity .25s ease; } /* スクロールで消える・戻るは同じ動き（0.25 秒の ease） */
+  transition: opacity .25s ease; } /* スクロールで消える・戻る、ボタンが出る・消えるは全部同じ 0.25 秒の ease */
 .back-fab { display: inline-flex; align-items: center; gap: 4px; max-width: min(50vw, 260px); padding: 8px 14px 8px 10px; border-radius: 999px;
   background: #dfe9fb; color: #1d3766; border: 1px solid #c3d4f2; box-shadow: var(--shadow); font-size: 13px; font-weight: 600; text-decoration: none;
-  transition: transform .12s ease, opacity .25s var(--fab-in); }
+  transition: transform .12s ease, opacity .25s ease; }
 [data-theme="dark"] .back-fab { background: var(--text); color: var(--bg); border-color: transparent; }
-.back-fab.is-entering { animation: back-fab-in .25s var(--fab-in) both; }
-.back-fab.is-leaving { overflow: hidden; pointer-events: none; } /* 消える動き（高さを詰める）は JS（Web Animations）で、本当の高さから動かす */
+.back-fab.is-entering { animation: back-fab-in .25s ease both; }
+.back-fab.is-leaving { animation: back-fab-out .25s ease both; }
 @keyframes back-fab-in { from { opacity: 0; } } /* to を書かない = いつもの透明度（PC の半透明）まで */
+@keyframes back-fab-out { to { opacity: 0; } }
+.back-fabs--ghost { z-index: 24; pointer-events: none; } /* 前のページのボタン（消えるだけ）。今のボタンの後ろ */
 .back-fab:hover { text-decoration: none; color: #1d3766; } /* リンク共通の a:hover の赤にしない */
 @media (any-hover: hover) {
   .back-fab { opacity: .45; }
@@ -1341,13 +1342,10 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
   .back-fabs, .back-fab { transition: none; }
   .back-fab.is-entering { animation: none; }
   .back-fab.is-leaving { display: none; }
-  ::view-transition-old(root), ::view-transition-new(root) { animation: none; }
 }
 
 /* ===== ページを移るときの軽いアニメーション =====
-   View Transitions（ブラウザの機能）で、前のページを消してから新しいページを出す（フェードスルー）。
-   どちらもその場から動かさない（位置はそのまま、透明度だけ）。同時に重ねる普通のクロスフェードは、
-   似たページどうしだと違いが見えにくいので、一度背景色に近づけてから出す。
+   View Transitions（ブラウザの機能）で、前のページと新しいページを同時にフェードで入れ替える（普通のクロスフェード）。
    CSS だけで動く（JS 不要）。対応していないブラウザ（Firefox など）は、新しいページの本文だけふわっと出す。
    ヘッダー・スマホの下のナビは動かさない（毎ページ同じなので、動くとちらついて見える）。
    左下の戻るボタンは自分でフェードする（setupBackButton）ので、ここでは動かさない */
@@ -1355,15 +1353,16 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
 .topbar { view-transition-name: topbar; }
 .nav { view-transition-name: main-nav; }
 .back-fabs { view-transition-name: back-fabs; }
-::view-transition-group(topbar), ::view-transition-group(main-nav), ::view-transition-group(back-fabs),
-::view-transition-new(topbar), ::view-transition-new(main-nav), ::view-transition-new(back-fabs) { animation: none; }
-::view-transition-old(topbar), ::view-transition-old(main-nav), ::view-transition-old(back-fabs) { display: none; }
-::view-transition-old(root) { animation: page-out .16s cubic-bezier(.4, 0, 1, 1) both; }       /* だんだん速く消える */
-::view-transition-new(root) { animation: page-in .28s cubic-bezier(0, 0, .2, 1) .1s both; }   /* 少し遅れて、速く出てゆっくり止まる */
+.back-fabs--ghost { view-transition-name: back-fabs-ghost; }
+::view-transition-group(topbar), ::view-transition-group(main-nav), ::view-transition-group(back-fabs), ::view-transition-group(back-fabs-ghost),
+::view-transition-new(topbar), ::view-transition-new(main-nav), ::view-transition-new(back-fabs), ::view-transition-new(back-fabs-ghost) { animation: none; }
+::view-transition-old(topbar), ::view-transition-old(main-nav), ::view-transition-old(back-fabs), ::view-transition-old(back-fabs-ghost) { display: none; }
+::view-transition-old(root) { animation: page-out .2s ease both; }
+::view-transition-new(root) { animation: page-in .2s ease both; }
 @keyframes page-out { to { opacity: 0; } }
 @keyframes page-in { from { opacity: 0; } }
 @supports not (view-transition-name: none) {
-  .container { animation: page-in .28s cubic-bezier(0, 0, .2, 1); } /* both を付けない: 終わった後も transform が残ると、中の position: fixed の基準が変わる */
+  .container { animation: page-in .2s ease; } /* both を付けない: 終わった後も transform が残ると、中の position: fixed の基準が変わる */
 }
 @media (prefers-reduced-motion: reduce) {
   @view-transition { navigation: none; }
