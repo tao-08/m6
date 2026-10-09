@@ -69,10 +69,11 @@ function member_key(string $name): string
     return strtr($n, ['﨑' => '崎', '髙' => '高', 'ケ' => 'ヶ', 'ヵ' => 'ヶ']);
 }
 
-/** 表示・保存用の人名（空白を詰める） */
+/** 表示・保存用の人名（空白を詰める。ただし「Jung Yeonwoo」のようにローマ字どうしの間の空白は1つ残す） */
 function member_display(string $name): string
 {
-    return preg_replace('/\s+/u', '', tt_width($name)) ?? '';
+    $name = trim(preg_replace('/\s+/u', ' ', tt_width($name)) ?? '');
+    return preg_replace('/(?<![A-Za-z]) | (?![A-Za-z])/u', '', $name) ?? '';
 }
 
 /**
@@ -97,6 +98,10 @@ function split_member_names(string $cell): array
         // 「丸野友多郎 (Sax)」のように括弧の前に空白があっても、別人として分けないよう詰める
         $chunk = preg_replace('/\s+(?=[(（])/u', '', $chunk) ?? $chunk;
         $parts = preg_split('/\s+/u', $chunk) ?: [$chunk];
+        if (count($parts) > 1 && preg_match('/^[A-Za-z][A-Za-z\s\'.-]*([(（][^)）]*[)）])?$/u', $chunk)) {
+            // 「Jung Yeonwoo」「LEE JUNGHOO」のようにローマ字だけの名前は、空白で区切っても1人（空白も残す）
+            $parts = [preg_replace('/\s+/u', ' ', $chunk) ?? $chunk];
+        }
         $allLong = count($parts) > 1;
         foreach ($parts as $p) {
             if (mb_strlen($p) < 3) {

@@ -33,6 +33,9 @@ check('空白3つは姓名ずつ2人', split_member_names('林 咲太 石川 陽
 check('空白3つでも括弧つきは1人', split_member_names('林 咲太 石川 陽暉(Gt)'), ['林咲太石川陽暉(Gt)']);
 check('空白2つは1人のまま', split_member_names('林 咲太 石川陽暉'), ['林咲太石川陽暉']);
 check('未定は無視', split_member_names('未定'), []);
+check('ローマ字の名前は1人', split_member_names('Jung Yeonwoo'), ['Jung Yeonwoo']);
+check('ローマ字の名前+楽器は1人', split_member_names('CHOI JEONGIN(Vn)'), ['CHOI JEONGIN(Vn)']);
+check('ローマ字の名前を読点で2人', split_member_names('LEE JUNGHOO、日野佑香'), ['LEE JUNGHOO', '日野佑香']);
 check('異体字', member_key('岩﨑太一'), member_key('岩崎太一'));
 $ph = fn(string $t, float $y, float $x0, float $x1) => ['text' => $t, 'yc' => $y, 'x0' => $x0, 'x1' => $x1];
 check('PDF の折り返しは詰める', pdf_join_cell([$ph('GENERATION（谷', 10, 100, 160), $ph('ヶ崎）', 20, 100, 120)]), 'GENERATION（谷ヶ崎）');
