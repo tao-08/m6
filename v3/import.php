@@ -363,7 +363,7 @@ if ($plan === null): // ==================== アップロード画面 ==========
 <?php foreach ($plan['errors'] as $e): ?><div class="flash flash--error"><?= h($e) ?></div><?php endforeach; ?>
 <?php if (!empty($plan['notes'])): ?>
 <div class="flash flash--warn ai-notes">
-    <p>AI の読み取りで確認してほしいところ（<?= count($plan['notes']) ?>件）</p>
+    <p>AI からのおしらせ（<?= count($plan['notes']) ?>件）</p>
     <ul><?php foreach ($plan['notes'] as $n): ?><li><?= h($n) ?></li><?php endforeach; ?></ul>
 </div>
 <?php endif; ?>
@@ -569,7 +569,7 @@ if ($plan === null): // ==================== アップロード画面 ==========
 <?php foreach ($plan['errors'] as $e): ?><div class="flash flash--error"><?= h($e) ?></div><?php endforeach; ?>
 <?php if (!empty($plan['notes'])): ?>
 <div class="flash flash--warn ai-notes">
-    <p>AI の読み取りで確認してほしいところ（<?= count($plan['notes']) ?>件）</p>
+    <p>AI からのおしらせ（<?= count($plan['notes']) ?>件）</p>
     <ul><?php foreach ($plan['notes'] as $n): ?><li><?= h($n) ?></li><?php endforeach; ?></ul>
 </div>
 <?php endif; ?>
