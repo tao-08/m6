@@ -1303,6 +1303,19 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
   .back-fabs { left: 12px; bottom: calc(76px + env(safe-area-inset-bottom)); } /* 画面下のタブバーの上 */
   .back-fabs--lift { bottom: calc(150px + env(safe-area-inset-bottom)); }      /* 下に固定の保存ボタン（.sticky-actions）のさらに上 */
 }
+/* PC: 大きめにする */
+@media (min-width: 761px) {
+  .back-fabs { left: 20px; bottom: 24px; gap: 10px; }
+  .back-fab { max-width: 320px; padding: 11px 20px 11px 14px; gap: 6px; font-size: 15px; }
+  .back-fab .icon { font-size: 22px; }
+}
+/* 左の余白にボタンが入る幅では、余白の右端（本文のすぐ左）に寄せる
+   本文は幅 1120px の中央寄せ（.container）で、中に 16px の余白がある → 本文の左端は 50% - 560px + 16px。
+   right = 100% - (本文の左端 - 16px) = 50% + 560px。幅は余白から左右 16px ずつ引いたぶんまで */
+@media (min-width: 1560px) {
+  .back-fabs { left: auto; right: calc(50% + 560px); align-items: flex-end; }
+  .back-fab { max-width: calc(50vw - 576px); }
+}
 @media (prefers-reduced-motion: reduce) { .back-fab { transition: none; } }
 
 @media print {
