@@ -595,8 +595,11 @@ function songs_of_member(int $bandId, int $memberId): ?array
     static $played = null; // ["band_id:member_id"][song_id][short_name] = true
     if ($played === null) {
         $played = [];
+        // 曲順（track_no）で読む。main_part_shorts() の「同じ曲数なら最初の曲」に使う
         foreach (db()->query('SELECT sp.band_id, sp.member_id, sp.song_id, i.short_name FROM song_performer sp
-            JOIN instrument i ON i.instrument_id = sp.instrument_id') as $r) {
+            JOIN song s ON s.song_id = sp.song_id
+            JOIN instrument i ON i.instrument_id = sp.instrument_id
+            ORDER BY s.track_no') as $r) {
             $played[$r['band_id'] . ':' . $r['member_id']][(int)$r['song_id']][$r['short_name']] = true;
         }
     }
@@ -617,6 +620,35 @@ function songs_played(int $bandId, int $memberId, array $shorts, ?string $withou
         }
     }
     return $n;
+}
+
+/**
+ * その人がそのバンドで一番たくさんの曲でやった楽器の組み合わせ（1曲目 Vo/Gt・2曲目 Gt・3曲目 Gt → ['Gt']）。
+ *   同じ曲数なら、先にやった曲（曲順で最初）の組み合わせ。セトリ未登録なら null
+ * @return string[]|null short_name の一覧
+ */
+function main_part_shorts(int $bandId, int $memberId): ?array
+{
+    $songs = songs_of_member($bandId, $memberId);
+    if ($songs === null) {
+        return null;
+    }
+    $count = []; // [組み合わせのキー => 曲数]。曲順に入るので、同じ曲数なら先に入った方が勝つ
+    $shortsByKey = [];
+    foreach ($songs as $songShorts) {
+        $shorts = array_keys($songShorts);
+        sort($shorts);
+        $key = implode('+', $shorts);
+        $count[$key] = ($count[$key] ?? 0) + 1;
+        $shortsByKey[$key] = $shorts;
+    }
+    $best = null;
+    foreach ($count as $key => $n) {
+        if ($best === null || $n > $count[$best]) {
+            $best = $key;
+        }
+    }
+    return $shortsByKey[$best];
 }
 
 /**
@@ -777,6 +809,7 @@ function lineup_parts_by_band(iterable $rows, bool $mergeVocal = true, string $c
 
 /**
  * いくつものバンドの行 → バンドごとに「楽器ラベル + 名前」を1人1行（アーティストページ・検索結果）。
+ *   楽器は、セトリがある人なら一番たくさんの曲でやった組み合わせだけ（同じ曲数なら曲順で最初の曲。main_part_shorts）
  *   Vo と Gt を持つ人は「Vo/Gt」、Gt と Cho を持つ人は「Gt/Cho」の1行（lineup_parts）。それ以外の兼任（Gt + Key など）も「Gt/Key」のように1行にまとめる
  * @param iterable $rows [['band_id', 'member_id', 'name', 'short_name', 'instrument_name', 'sort_order'], ...]（sort_order, name 順）
  * @return array [band_id][member_id] = ['member_id', 'name', 'title', 'segments' => [['short' => 'Vo', 'class' => 'vo'], ...]]
@@ -791,8 +824,24 @@ function member_lineups_by_band(iterable $rows): array
     $sing = static fn(array $p): int => in_array($p['segments'][0]['class'], ['vo', 'cho'], true) ? 0 : 1;
     $lineups = [];
     foreach ($rowsByBand as $bandId => $bandRows) {
+        // セトリがある人は「一番たくさんの曲でやった楽器」だけ見せる（main_part_shorts）。
+        //   残した行から band_id を外して、lineup_parts() にはその組み合わせを「全曲でやった」ものとして渡す
+        //   （外さないと、Vo/Gt の人の「Gt だけの曲」までセトリから拾って Gt の行を足してしまう）
+        $main = [];
+        foreach ($bandRows as $i => $r) {
+            $memberId = (int)$r['member_id'];
+            $main[$memberId] ??= main_part_shorts($bandId, $memberId) ?? false;
+            if ($main[$memberId] === false) {
+                continue; // セトリ未登録 → band_member の楽器を全部（今までどおり）
+            }
+            if (!in_array($r['short_name'], $main[$memberId], true)) {
+                unset($bandRows[$i]);
+                continue;
+            }
+            unset($bandRows[$i]['band_id']);
+        }
         $byMember = [];
-        foreach (lineup_parts($bandRows) as $p) {
+        foreach (lineup_parts(array_values($bandRows)) as $p) {
             $byMember[$p['member_id']][] = $p; // 並び位置は、その人の最初のパートの位置
         }
         foreach ($byMember as $memberId => $parts) {
