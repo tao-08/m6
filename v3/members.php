@@ -9,10 +9,12 @@
  *
  *  上の「学年」タブで表示するメンバーを絞り込める（assets/app.js の setupGradeSlot）
  *    全学年    … 入学年度が不明な人も含む
+ *    現役      … 1〜4年（入学年度が 今年度-3 〜 今年度）
+ *    卒業生    … 5年目以上（OB。入学年度が 今年度-4 以前）。入学年度が不明な人はどちらにも入れない
  *    上下3学年 … ログイン中ユーザーの入学年度 ±3（自分の学年も含む）
  *    学年別    … 学年スロット（縦ドラッグ）で選んだ入学年度の人 / 不明 … 入学年度が不明な人
  *  全員ぶんの行を出しておき、JS で隠すだけ（ページを読み直さない）。順位・人数も JS で数え直す。
- *  ?who=all|near|grade&entry=入学年度|none は「最初にどの段を選んでおくか」にだけ使う
+ *  ?who=all|active|alumni|near|grade&entry=入学年度|none は「最初にどの段を選んでおくか」にだけ使う
  *  （JS が切り替えのたびに URL に書くので、再読み込み・並べ替えしても学年が戻らない）
  * =====================================================================
  */
@@ -34,7 +36,7 @@ $entryYears = array_map('intval', $pdo->query('SELECT DISTINCT entry_year FROM m
 $hasUnknown = (bool)$pdo->query('SELECT 1 FROM member WHERE entry_year IS NULL LIMIT 1')->fetchColumn();
 
 $who = $_GET['who'] ?? 'all';
-if (!in_array($who, ['all', 'near', 'grade'], true) || ($who === 'near' && !$canNear)) {
+if (!in_array($who, ['all', 'active', 'alumni', 'near', 'grade'], true) || ($who === 'near' && !$canNear)) {
     $who = 'all';
 }
 // 学年スロットで最初に選んでおく段（入学年度 / 'none'）: ?entry= → 自分の学年 → 一番新しい学年
@@ -247,6 +249,9 @@ render_header('メンバー', 'members');
             <legend>学年</legend>
             <div class="tabs tabs--filter" role="radiogroup" aria-label="学年">
                 <label class="tab"><input type="radio" name="who" value="all"<?= $who === 'all' ? ' checked' : '' ?>>全学年</label>
+                <?php $fy = current_fiscal_year(); // data-min / data-max: この入学年度の範囲の人だけ出す（app.js の setupGradeSlot。片方だけなら上限・下限なし） ?>
+                <label class="tab"><input type="radio" name="who" value="active"<?= $who === 'active' ? ' checked' : '' ?> data-min="<?= $fy - 3 ?>" data-max="<?= $fy ?>">現役</label>
+                <label class="tab"><input type="radio" name="who" value="alumni"<?= $who === 'alumni' ? ' checked' : '' ?> data-max="<?= $fy - 4 ?>">卒業生</label>
                 <label class="tab<?= $canNear ? '' : ' is-disabled' ?>"<?= $canNear ? '' : ' title="アカウントがメンバーに紐付いていないか、入学年度が未登録のため使えません"' ?>>
                     <input type="radio" name="who" value="near"<?= $who === 'near' ? ' checked' : '' ?><?= $canNear ? ' data-min="' . ($myEntry - 3) . '" data-max="' . ($myEntry + 3) . '"' : ' disabled' ?>>上下3学年
                 </label>
