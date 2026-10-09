@@ -3058,6 +3058,10 @@ function setupPicks() {
   const form = dialog.querySelector('form');
 
   dialog.querySelector('[data-modal-cancel]').addEventListener('click', () => finish(null));
+  // 楽器は追加せず、この欄の etc を選んだまま閉じる
+  dialog.querySelector('[data-modal-keep-etc]').addEventListener('click', () => {
+    finish(pending?.group.querySelector('[data-pick-add]')?.value ?? null);
+  });
   // Esc キーで閉じたとき（cancel は Esc を押した瞬間に起きる）。直前の選択に戻す
   dialog.addEventListener('cancel', () => finish(null));
   // それ以外の閉じ方の保険。まだ決まっていなければ（= キャンセル扱い）直前の選択に戻す

@@ -874,6 +874,7 @@ if ($plan === null): // ==================== アップロード画面 ==========
     楽器の「etc」を選んだときに開くモーダル（<dialog> は HTML 標準のモーダル部品）。
     取り込みのフォームの「外」に置いている（フォームの中にフォームは入れられない & 取り込みの送信内容に混ざらないように）。
     「追加する」で api_instrument.php に送って楽器マスタに登録し、その楽器を選んだ状態にする（assets/app.js の setupPicks）。
+    「etc のまま」は何も追加せず、etc を選んだ状態で閉じる。
 -->
 <dialog class="modal" data-new-instrument aria-labelledby="new-instrument-title">
     <form method="dialog" class="modal__body">
@@ -886,6 +887,8 @@ if ($plan === null): // ==================== アップロード画面 ==========
         <p class="flash flash--error" data-modal-error hidden></p>
         <div class="form-actions">
             <button type="button" class="btn btn--ghost" data-modal-cancel>キャンセル</button>
+            <!-- 楽器名がわからない・追加するほどでもないとき。楽器は追加せず「etc」のまま選んでおく -->
+            <button type="button" class="btn" data-modal-keep-etc>etc のまま</button>
             <button type="submit" class="btn btn--primary">追加する</button>
         </div>
     </form>
