@@ -1287,25 +1287,27 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
   .album__rank, .album .album__art { transition: none; }
 }
 
-/* ===== 左下の「← ページ名」ボタン（assets/app.js の setupBackButton） =====
-   上: 前に見ていたページ / 下: パンくずの1つ上。.sticky-actions（右下の保存ボタン）と同じ見た目の部品 */
+/* ===== 「← ページ名」ボタン（assets/app.js の setupBackButton） =====
+   上: 前に見ていたページ / 下: パンくずの1つ上。
+   色は文字色と背景色を反対にする（白いカードの上に重なっても埋もれないように。ダークモードでは明るいボタンになる）
+   スマホではスクロール中は消す（.is-scrolling。JS が付け外し。PC は余白にあって読む邪魔にならないので消さない） */
 .back-fabs { position: fixed; left: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); z-index: 25; /* ヘッダー(20)より手前、スマホの下ナビ(30)より奥 */
-  display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+  display: flex; flex-direction: column; align-items: flex-start; gap: 8px; transition: opacity .2s ease; }
 .back-fab { display: inline-flex; align-items: center; gap: 4px; max-width: min(50vw, 260px); padding: 8px 14px 8px 10px; border-radius: 999px;
-  background: color-mix(in srgb, var(--surface) 88%, transparent); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-  border: 1px solid var(--border); box-shadow: var(--shadow); color: var(--text); font-size: 13px; font-weight: 600; text-decoration: none;
-  transition: transform .12s ease; }
-.back-fab:hover { text-decoration: none; }
+  background: var(--text); color: var(--bg); box-shadow: var(--shadow); font-size: 13px; font-weight: 600; text-decoration: none;
+  transition: transform .12s ease, opacity .15s ease; }
+.back-fab:hover { text-decoration: none; opacity: .88; }
 .back-fab:active { transform: scale(.97); }
 .back-fab .icon { flex: none; font-size: 18px; }
 .back-fab__text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } /* 長いページ名は「…」 */
 @media (max-width: 760px) {
   .back-fabs { left: 12px; bottom: calc(76px + env(safe-area-inset-bottom)); } /* 画面下のタブバーの上 */
   .back-fabs--lift { bottom: calc(150px + env(safe-area-inset-bottom)); }      /* 下に固定の保存ボタン（.sticky-actions）のさらに上 */
+  .back-fabs.is-scrolling { opacity: 0; pointer-events: none; }
 }
-/* PC: 大きめにする */
+/* PC: 大きめにして、上のボタンの上辺を画面の上下のまん中にそろえる */
 @media (min-width: 761px) {
-  .back-fabs { left: 20px; bottom: 24px; gap: 10px; }
+  .back-fabs { left: 20px; top: 50%; bottom: auto; gap: 10px; }
   .back-fab { max-width: 320px; padding: 11px 20px 11px 14px; gap: 6px; font-size: 15px; }
   .back-fab .icon { font-size: 22px; }
 }
@@ -1316,7 +1318,7 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
   .back-fabs { left: auto; right: calc(50% + 560px); align-items: flex-end; }
   .back-fab { max-width: calc(50vw - 576px); }
 }
-@media (prefers-reduced-motion: reduce) { .back-fab { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .back-fabs, .back-fab { transition: none; } }
 
 @media print {
   :root, [data-theme="dark"] { --bg: #fff; --surface: #fff; --text: #000; --muted: #555; --border: #ccc; --shadow: none; --glow: none; }

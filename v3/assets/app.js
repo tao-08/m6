@@ -839,6 +839,14 @@ function setupBackButton() {
   if (prev) box.append(make(prev, '前のページに戻る', back));
   if (up) box.append(make(up, '1つ上のページに戻る', false));
   document.body.append(box);
+
+  // スクロール中は隠し、止まって 0.4 秒たったら出す（読んでいる所にかぶらないように）。隠すのはスマホだけ（app.css）
+  let timer = 0;
+  window.addEventListener('scroll', () => {
+    box.classList.add('is-scrolling');
+    clearTimeout(timer);
+    timer = setTimeout(() => box.classList.remove('is-scrolling'), 400);
+  }, { passive: true });
 }
 
 /* ---------------------------------------------------------------------
