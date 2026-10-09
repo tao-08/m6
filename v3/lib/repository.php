@@ -984,7 +984,7 @@ function like_button(int $bandId, ?array $like, string $class = ''): string
         . ' data-like="' . $bandId . '" aria-pressed="' . ($liked ? 'true' : 'false') . '"'
         . ' aria-label="お気に入り（' . $count . '）" title="お気に入り（匿名）">'
         . '<span class="like__count" data-like-count>' . $count . '</span>'
-        . '<svg class="like__heart" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-7.5-4.6-10-9.3C.4 8.6 2.2 4.5 6 4.5c2.3 0 3.6 1.3 4.5 2.6l1.5 2 1.5-2c.9-1.3 2.2-2.6 4.5-2.6 3.8 0 5.6 4.1 4 7.2C19.5 16.4 12 21 12 21z"/></svg>'
+        . '<svg class="like__heart" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>'
         . '</button>';
 }
 

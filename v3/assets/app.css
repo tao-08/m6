@@ -409,7 +409,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .like__count::before, .like__count::after { content: ''; position: absolute; top: 50%; transform: translateY(-50%); border: 5px solid transparent; border-right: 0; }
 .like__count::before { right: -6px; border-left-color: var(--border); }
 .like__count::after  { right: -5px; border-left-color: var(--surface); }
-.like__heart { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; transition: transform .15s, fill .15s, stroke .15s; }
+.like__heart { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linejoin: round; overflow: visible; transition: transform .15s, fill .15s, stroke .15s; }
 .like:hover { color: var(--accent); }
 .like:hover .like__heart { transform: scale(1.12); }
 .like.is-liked { color: var(--accent); }
