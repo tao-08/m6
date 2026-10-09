@@ -863,11 +863,17 @@ function setupBackButton() {
   });
   document.body.append(box);
   box.querySelectorAll('.is-entering').forEach((a) => a.addEventListener('animationend', () => a.classList.remove('is-entering'), { once: true }));
+  // 消えるボタン: 本当の高さから 0 まで、透明度と一緒に滑らかに詰める（残ったボタンがスッと寄る）
+  //   CSS の max-height で詰めると、実際の高さより大きい値から縮めるので最初の一瞬止まって見える → 高さを測って Web Animations で動かす
+  //   ボタンどうしのすき間（gap）も、下（最後のボタンなら上）の margin をマイナスにして一緒に詰める
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
   box.querySelectorAll('.is-leaving').forEach((g) => {
-    // 動きを減らす設定などでアニメーションが無いときも残らないように、時間でも消す
-    const remove = () => g.remove();
-    g.addEventListener('animationend', remove, { once: true });
-    setTimeout(remove, 400);
+    if (reduce || !g.animate) { g.remove(); return; }
+    const gap = parseFloat(getComputedStyle(box).rowGap) || 0;
+    const side = g.nextElementSibling ? 'marginBottom' : 'marginTop';
+    const from = { height: `${g.offsetHeight}px`, opacity: getComputedStyle(g).opacity };
+    const to = { height: '0px', paddingTop: '0px', paddingBottom: '0px', borderTopWidth: '0px', borderBottomWidth: '0px', opacity: 0, [side]: `${-gap}px` };
+    g.animate([from, to], { duration: 250, easing: 'cubic-bezier(.4, 0, .2, 1)', fill: 'forwards' }).finished.then(() => g.remove(), () => g.remove());
   });
 
   // スクロール中は隠し、止まったらすぐ出す（読んでいる所にかぶらないように）。隠すのはスマホと、左の余白が無い幅の PC だけ（app.css）
