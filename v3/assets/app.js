@@ -830,15 +830,45 @@ function setupBackButton() {
     }
     return a;
   };
-  if (!prev && !up) return;
+  // 前のページで出していたボタンと比べて、増えたボタンは入ってくる・無くなったボタンは出ていくアニメーションをする
+  //   （ページを移るたびに作り直すので、何もしないとボタンの数がパッと変わる）
+  //   同じページを指すボタンは動かさない。前のページで出していたボタンは SHOWN に覚えておく
+  const SHOWN = 'back-shown';
+  const before = load(SHOWN, []);
+  const items = [prev && { ...prev, label: '前のページに戻る', useBack: back }, up && { ...up, label: '1つ上のページに戻る', useBack: false }]
+    .filter(Boolean);
+  save(SHOWN, items.map((t) => ({ url: t.url, title: t.title })));
+  const same = (a, b) => keyOf(a.url) === keyOf(b.url) && a.title === b.title;
+  const leaving = before.filter((t) => !items.some((i) => same(i, t)));
+  if (!items.length && !leaving.length) return;
+
   const box = document.createElement('nav');
   box.className = 'back-fabs';
   // 下に固定の保存ボタン（.sticky-actions）があるページでは、スマホで重ならないように上にずらす（app.css）
   if (document.querySelector('.sticky-actions')) box.classList.add('back-fabs--lift');
   box.setAttribute('aria-label', '戻る');
-  if (prev) box.append(make(prev, '前のページに戻る', back));
-  if (up) box.append(make(up, '1つ上のページに戻る', false));
+  items.forEach((t) => {
+    const a = make(t, t.label, t.useBack);
+    if (!before.some((b) => same(b, t))) a.classList.add('is-entering');
+    box.append(a);
+  });
+  // 無くなったボタン: 前と同じ位置に、押せない形で一瞬だけ出して消す
+  leaving.forEach((t) => {
+    const ghost = make(t, '', false);
+    ghost.classList.add('is-leaving');
+    ghost.removeAttribute('href');
+    ghost.setAttribute('aria-hidden', 'true');
+    ghost.tabIndex = -1;
+    box.insertBefore(ghost, box.children[before.indexOf(t)] ?? null);
+  });
   document.body.append(box);
+  box.querySelectorAll('.is-entering').forEach((a) => a.addEventListener('animationend', () => a.classList.remove('is-entering'), { once: true }));
+  box.querySelectorAll('.is-leaving').forEach((g) => {
+    // 動きを減らす設定などでアニメーションが無いときも残らないように、時間でも消す
+    const remove = () => g.remove();
+    g.addEventListener('animationend', remove, { once: true });
+    setTimeout(remove, 400);
+  });
 
   // スクロール中は隠し、止まったらすぐ出す（読んでいる所にかぶらないように）。隠すのはスマホだけ（app.css）
   //   scrollend（スクロールが止まった）が使えるブラウザはそれで出す。使えない Safari などは、0.12 秒スクロールが来なければ止まったとみなす
