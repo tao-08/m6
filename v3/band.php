@@ -72,7 +72,7 @@ $prevBand = $pos !== false && $pos > 0 ? $siblings[$pos - 1] : null;
 $nextBand = $pos !== false && $pos < count($siblings) - 1 ? $siblings[$pos + 1] : null;
 
 // ---- 2. メンバー（楽器ごとにまとめる。live.php と同じ形） ----
-$st = $pdo->prepare('SELECT m.member_id, m.name, i.short_name, i.name AS instrument_name, i.sort_order
+$st = $pdo->prepare('SELECT bm.band_id, m.member_id, m.name, i.short_name, i.name AS instrument_name, i.sort_order
     FROM band_member bm
     JOIN member m ON m.member_id = bm.member_id
     JOIN instrument i ON i.instrument_id = bm.instrument_id
