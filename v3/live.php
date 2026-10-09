@@ -151,7 +151,8 @@ render_header($live['name'], 'lives');
         <?php
         // 休憩が1つも登録されていない日程は、前のバンドの終了から次のバンドの開始までの空きを休憩として出す
         $breaks = $breaksByDay[(int)$d['live_day_id']] ?? gap_breaks($bands, 'BREAK');
-        foreach (timetable_rows($bands, $breaks) as $r):
+        // 同じ名前の休憩が続くとき（休憩・休憩など）は1つにまとめて出す
+        foreach (merge_same_breaks(timetable_rows($bands, $breaks)) as $r):
             if ($r['type'] === 'break'):
                 $k = $r['row']; ?>
                 <li class="slot slot--break">

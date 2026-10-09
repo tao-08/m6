@@ -1166,6 +1166,30 @@ function timetable_rows(array $bands, array $breaks): array
     return $rows;
 }
 
+/**
+ * timetable_rows() の結果で、同じ名前の休憩が続いていたら1つにまとめる（ライブページの表示用）。
+ *   例: 「休憩」「休憩」と2つ続けて登録されていたら、1つ目の開始〜2つ目の終了の「休憩」1つにする。
+ *   間にバンドが入っていれば別の休憩のまま。DB はそのまま（編集画面では別々に直せるように）。
+ */
+function merge_same_breaks(array $rows): array
+{
+    $merged = [];
+    foreach ($rows as $r) {
+        $last = $merged ? $merged[array_key_last($merged)] : null;
+        if ($r['type'] === 'break' && $last && $last['type'] === 'break'
+            && trim((string)$last['row']['name']) === trim((string)$r['row']['name'])) {
+            // 時刻は「最初の開始」と「最後の終了」。片方が空なら、ある方を使う
+            $prev = &$merged[array_key_last($merged)]['row'];
+            $prev['start_time'] = $prev['start_time'] ?: $r['row']['start_time'];
+            $prev['end_time'] = $r['row']['end_time'] ?: $prev['end_time'];
+            unset($prev); // 参照を切る（切らないと次の代入で書き換わってしまう）
+            continue;
+        }
+        $merged[] = $r;
+    }
+    return $merged;
+}
+
 /** バンドを1組削除（band_member は CASCADE で消える） */
 function delete_band(PDO $pdo, int $bandId): void
 {
