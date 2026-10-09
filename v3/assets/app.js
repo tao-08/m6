@@ -1467,7 +1467,7 @@ function setupLoading() {
       const files = [...form.querySelectorAll('input[type=file]')].flatMap((i) => [...i.files]);
       const images = files.filter((f) => /\.(jpe?g|png|webp|gif)$/i.test(f.name)).length;
       if (images > 0) {
-        form.querySelector('[data-loading-title]').textContent = `AI 解析中…`;
+        form.querySelector('[data-loading-title]').textContent = `解析中…`;
         form.querySelector('[data-loading-sub]').textContent = '30秒〜1分ほどかかります。このままお待ちください';
       }
       box.hidden = false;
