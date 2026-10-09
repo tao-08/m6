@@ -417,7 +417,8 @@ function lineup_parts(array $rows, bool $mergeVocal = true): array
             $n = 0;
             foreach (VOCAL_ROLES as $role) {
                 $n++;
-                if ($role['also'] !== null && isset($has[$id][$role['also']])) {
+                if ($role['also'] !== null && isset($has[$id][$role['also']])
+                    && sings_while_playing(isset($r['band_id']) ? (int)$r['band_id'] : null, $id, $role['also'])) {
                     $part = ['short' => $role['label'], 'title' => $role['title'], 'order' => $part['order'] + $n,
                         'segments' => [...$part['segments'], ['short' => $role['also'], 'class' => instrument_class($role['also'])]]] + $part;
                     $merged[$id][$role['also']] = true;
@@ -428,6 +429,40 @@ function lineup_parts(array $rows, bool $mergeVocal = true): array
         $out[] = $part;
     }
     return $out;
+}
+
+/**
+ * その人が、そのバンドで「歌いながら $also を弾いた」と言えるか（Vo/Dr などにまとめてよいか）。
+ *   セトリ（song_performer）にその人の行がある → 同じ1曲で Vo と $also を両方選んだ曲があるときだけ true。
+ *     例: 1曲目 Dr・2曲目 Vo → false（ドラムボーカルではない。Dr と Vo は別々に数える）
+ *   セトリに行がない（曲が未登録）→ band_member しか手がかりがないので true（バンド編集で Vo/Dr を選んだとみなす）
+ *   band_id が分からない → true（今までどおり）
+ * 1リクエストで何度も呼ばれるので、song_performer を1回だけ読んで覚えておく（サークルの規模なら全件でも軽い）
+ */
+function sings_while_playing(?int $bandId, int $memberId, string $also): bool
+{
+    static $performers = null; // ["band_id:member_id"] = true（セトリに行がある人）
+    static $together = null;   // ["band_id:member_id:Dr"] = true（同じ曲で Vo と Dr を両方やった）
+    if ($bandId === null) {
+        return true;
+    }
+    if ($performers === null) {
+        $performers = $together = [];
+        foreach (db()->query('SELECT DISTINCT band_id, member_id FROM song_performer') as $p) {
+            $performers[$p['band_id'] . ':' . $p['member_id']] = true;
+        }
+        // 同じ曲・同じ人で、Vo の行と別の楽器の行がある組
+        $st = db()->prepare('SELECT DISTINCT v.band_id, v.member_id, i.short_name
+            FROM song_performer v
+            JOIN song_performer o ON o.song_id = v.song_id AND o.member_id = v.member_id AND o.instrument_id <> v.instrument_id
+            JOIN instrument i ON i.instrument_id = o.instrument_id
+            WHERE v.instrument_id = ?');
+        $st->execute([instrument_id_by_short('Vo')]);
+        foreach ($st as $p) {
+            $together[$p['band_id'] . ':' . $p['member_id'] . ':' . $p['short_name']] = true;
+        }
+    }
+    return !isset($performers["$bandId:$memberId"]) || isset($together["$bandId:$memberId:$also"]);
 }
 
 /**
