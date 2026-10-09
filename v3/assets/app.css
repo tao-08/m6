@@ -739,6 +739,8 @@ body.is-row-dragging, body.is-row-dragging * { cursor: grabbing !important; user
   font-size: 12px; font-weight: 700; cursor: pointer; transition: background-color .15s ease, color .15s ease, border-color .15s ease; }
 .cho-toggle[aria-pressed="true"] { background: color-mix(in srgb, var(--cho) 18%, transparent); border-color: var(--cho); color: var(--text); }
 .cho-toggle:disabled { opacity: .35; cursor: not-allowed; }
+.performer .cho-toggle[aria-pressed="true"] { /* セトリ編集は曲×人の数だけ並ぶので、ON の色を柔らかく */
+  background: color-mix(in srgb, var(--cho) 12%, transparent); border-color: color-mix(in srgb, var(--cho) 45%, var(--border)); color: color-mix(in srgb, var(--cho) 55%, var(--text)); }
 /* 名簿の Key./Other 欄: 名前が空のあいだ楽器のプルダウンを隠し、名前の欄をセルの上下中央に置く。
    名前が入ったら、名前の欄が上へスライドし、その下からプルダウンが出てくる。
    高さは縮めずに「場所だけ確保して透明にする」ので、プルダウンが出ている行と出ていない行で上下の余白が揃う。
