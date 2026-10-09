@@ -151,7 +151,11 @@ function song_notes(array $songs, array $lineup): array
             $counts[$memberId][$sets[$songId][$memberId]] = ($counts[$memberId][$sets[$songId][$memberId]] ?? 0) + 1;
         }
     }
+    // 2曲以上出て全部ちがう楽器（Gt・Key・Vn）の人は「いつもの楽器」が無い → null（1曲目も含めて全曲にメモを出す）
     $usual = array_map(static function ($c) {
+        if (count($c) >= 2 && max($c) === 1) {
+            return null;
+        }
         arsort($c);              // 多い順に並べて
         return array_key_first($c); // 一番多い組み合わせ
     }, $counts);
@@ -171,7 +175,7 @@ function song_notes(array $songs, array $lineup): array
             $parts[] = implode('・', $absent) . ' は不参加';
         }
         foreach ($sets[$songId] ?? [] as $memberId => $set) {
-            if (!isset($support[$memberId]) && $set !== ($usual[$memberId] ?? $set)) {
+            if (!isset($support[$memberId]) && array_key_exists($memberId, $usual) && $set !== $usual[$memberId]) {
                 $parts[] = $set . '. ' . $song['players'][$memberId][0]['name'];
             }
         }
