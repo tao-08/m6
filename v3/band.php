@@ -112,20 +112,20 @@ foreach ($st as $r) {
 }
 
 /**
- * 曲ごとの「いつもと違うところ」だけを短い文にする。書き方は「名前：楽器.」でそろえる（山田：Gt.）
+ * 曲ごとの「いつもと違うところ」だけを短い文にする。書き方は「楽器. 名前」でそろえる（Gt. 山田。フライヤーと同じで、ピリオドが区切り）
  *
  * 「いつも」= そのバンドの曲の中で一番多い楽器の組み合わせ（最頻値）。
  *   例: 4曲中3曲 Gt、1曲だけ Key → その1曲にだけ「鈴木: Key」と出す。
  * band_member（バンドでの担当）と比べないのは、曲で持ち替えた楽器も band_member に足されるため
  * （Gt と Key の両方が担当になり、どの曲も「いつもと違う」になってしまう）。
  *
- * 弾きながらのコーラス（Gt + Cho）は、基本を Gt として比べ、コーラスした曲にだけ「〇〇・〇〇：Cho.」と書く。
+ * 弾きながらのコーラス（Gt + Cho）は、基本を Gt として比べ、コーラスした曲にだけ「Cho. 〇〇・〇〇」と書く。
  *   （Gt/Cho の曲と Gt だけの曲で「いつもと違う」にならないように、Cho を外してから比べる）
  */
 function song_notes(array $songs, array $lineup): array
 {
     $names = [];
-    $support = []; // サポート（1曲だけ出た人）。ほかの曲に「不参加」と書かず、出た曲に「〇〇：Gt.（サポート）」と書く
+    $support = []; // サポート（1曲だけ出た人）。ほかの曲に「不参加」と書かず、出た曲に「Gt. 〇〇（サポート）」と書く
     foreach ($lineup as $part) {
         foreach ($part['members'] as $m) {
             if ($m['support']) {
@@ -162,7 +162,7 @@ function song_notes(array $songs, array $lineup): array
         $helpers = [];
         foreach ($sets[$songId] ?? [] as $memberId => $set) {
             if (isset($support[$memberId])) {
-                $helpers[] = $song['players'][$memberId][0]['name'] . '：' . $set . '.（サポート）';
+                $helpers[] = $set . '. ' . $song['players'][$memberId][0]['name'] . '（サポート）';
             }
         }
         array_push($parts, ...$helpers);
@@ -172,11 +172,11 @@ function song_notes(array $songs, array $lineup): array
         }
         foreach ($sets[$songId] ?? [] as $memberId => $set) {
             if (!isset($support[$memberId]) && $set !== ($usual[$memberId] ?? $set)) {
-                $parts[] = $song['players'][$memberId][0]['name'] . '：' . $set . '.';
+                $parts[] = $set . '. ' . $song['players'][$memberId][0]['name'];
             }
         }
         if (isset($chorus[$songId])) {
-            $parts[] = implode('・', $chorus[$songId]) . '：Cho.';
+            $parts[] = 'Cho. ' . implode('・', $chorus[$songId]);
         }
         $notes[$songId] = implode('、', $parts);
     }
