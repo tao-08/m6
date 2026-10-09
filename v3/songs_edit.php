@@ -262,7 +262,7 @@ render_header('曲を編集', 'lives');
                             <!-- 楽器1は横いっぱい。右端の ＋ で下に楽器2を出す（3つ目以降は無し。JS: setupSongs の data-add-inst） -->
                             <div class="performer__inst">
                                 <select name="<?= $base ?>[p][<?= $memberId ?>][i1]" class="select-sm" aria-label="楽器1"><?= instrument_choice_options($choices[0]['choice'] ?? '') ?></select>
-                                <button type="button" class="performer__add" data-add-inst aria-label="楽器を追加" title="楽器を追加"<?= $hasSecond ? ' hidden' : '' ?>>＋</button>
+                                <button type="button" class="performer__add" data-add-inst aria-label="楽器を追加" title="楽器を追加"<?= $hasSecond ? ' hidden' : '' ?>><?= icon('add') ?></button>
                             </div>
                             <!-- 楽器2: 隠れていても送信される。値が「—」（空）なら保存されない -->
                             <div class="performer__inst" data-inst2<?= $hasSecond ? '' : ' hidden' ?>>

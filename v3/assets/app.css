@@ -1026,8 +1026,9 @@ code { background: var(--surface-2); padding: 1px 6px; border-radius: 6px; font-
 .performer > .cho-toggle-wrap { justify-self: end; } /* 楽器の段に置くと、楽器のボタンが縮みきれずに重なる */
 .performer__inst { grid-column: 1 / -1; display: flex; gap: 6px; align-items: center; min-width: 0; }
 .performer__inst[hidden] { display: none; }
-.performer__add { flex: none; width: 26px; height: 26px; padding: 0; border-radius: 50%; border: 1px solid var(--border); background: var(--surface);
-  color: var(--muted); font-size: 15px; font-weight: 700; line-height: 1; cursor: pointer; }
+.performer__add { flex: none; display: inline-grid; place-items: center; /* ＋ を丸の真ん中に（文字の「＋」はフォントで上下がずれるのでアイコンにした） */
+  width: 26px; height: 26px; padding: 0; border-radius: 50%; border: 1px solid var(--border); background: var(--surface); color: var(--muted); cursor: pointer; }
+.performer__add .icon { font-size: 18px; vertical-align: 0; }
 .performer__add:hover { color: var(--text); border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
 .performer__add[hidden] { display: none; }
 /* 楽器のボタンはマスの幅に収める（長い「Vo/Gt ギターボーカル」は … で切る。はみ出して隣と重ならないように） */
