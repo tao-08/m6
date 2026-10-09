@@ -54,6 +54,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupSortToggle();
   setupTabs();
   setupConfirm();
+  setupLeaveCheck();
   setupDropzone();
   setupLoading();
   setupNameCheck();
@@ -1363,6 +1364,38 @@ function setupConfirm() {
       message = '⚠ 保存していない変更があります。続けると変更は失われます。\n\n' + message;
     }
     if (!confirm(message)) e.preventDefault();
+  });
+}
+
+/* ---------------------------------------------------------------------
+ * <a data-leave-check="フォームのid"> … そのフォームに未保存の変更があれば、
+ *   移動する前にモーダル（[data-leave-dialog]）で「保存されていません。よろしいですか？」と聞く
+ * ------------------------------------------------------------------- */
+function setupLeaveCheck() {
+  const dialog = document.querySelector('[data-leave-dialog]');
+  if (!dialog) return;
+  const snapshot = (form) => new URLSearchParams(new FormData(form)).toString();
+  const initial = new Map();
+  setTimeout(() => { // setupConfirm と同じく、他の setup〜 が入力欄をいじり終わってから覚える
+    document.querySelectorAll('a[data-leave-check]').forEach((a) => {
+      const form = document.getElementById(a.dataset.leaveCheck);
+      if (form && !initial.has(form)) initial.set(form, snapshot(form));
+    });
+  });
+  let href = null;
+  document.addEventListener('click', (e) => {
+    const a = e.target.closest('a[data-leave-check]');
+    if (!a) return;
+    const form = document.getElementById(a.dataset.leaveCheck);
+    if (!form || !initial.has(form) || initial.get(form) === snapshot(form)) return; // 変更なし → そのまま移動
+    e.preventDefault();
+    href = a.href;
+    dialog.returnValue = '';
+    dialog.showModal();
+  });
+  dialog.addEventListener('close', () => {
+    if (dialog.returnValue === 'leave' && href) location.href = href;
+    href = null;
   });
 }
 

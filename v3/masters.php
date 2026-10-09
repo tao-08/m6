@@ -1,9 +1,9 @@
 <?php
 /**
  * =====================================================================
- *  masters.php — 会場・日程名・楽器・係の管理（管理者のみ）
+ *  masters.php — 会場・日程名・楽器・係・アーティストの管理（管理者のみ）
  * =====================================================================
- *  「選択肢として使い回す名前」をまとめて直す画面。上のタブで切り替える（?tab=venue / day / instrument / role）。
+ *  「選択肢として使い回す名前」をまとめて直す画面。上のタブで切り替える（?tab=venue / day / instrument / role / artist）。
  *
  *  会場（venue テーブル）
  *    名前の変更 … venue.name は UNIQUE なので、他の会場と同じ名前にはできない（→ 統合を使う）
@@ -26,6 +26,13 @@
  *    会場と同じく 名前の変更・統合・削除。統合は member_role を統合先に付け替えてから消す。
  *    削除 … 誰かに付いている係は消せない（member_role の外部キーが ON DELETE RESTRICT）
  *
+ *  アーティスト（artist テーブル）
+ *    名前の変更 … artist.name は UNIQUE なので、他のアーティストと同じ名前にはできない（→ 統合を使う）
+ *    統合       … 統合先のアーティスト名を入れる。バンド・オムニバスの曲・別称を付け替えてから消す（merge_artist）
+ *    オムニバスにする … チェックしたアーティストをコピー元にしているバンドを、まとめてオムニバスにする（make_bands_omnibus）。
+ *                  「ボカロバンド」のような、アーティストではない名前で登録されたバンドを片付けるため
+ *    削除       … どのバンド・曲にも使われていないアーティストだけ
+ *
  *  以前の venues.php / instruments.php は、このページのタブへ移動するだけのファイルとして残している。
  * =====================================================================
  */
@@ -40,6 +47,7 @@ $tabs = [
     'venue'      => ['会場', '会場の名前の変更・統合・削除ができます。表記ゆれで2つに分かれた会場は「統合」でまとめてください（日程は統合先に付け替わります）。日程で使われている会場は削除できません。'],
     'day'        => ['日程名', '新しく作られた日程名の変更ができます。もうある日程名に変えると、その日程名にまとまります（表記ゆれの統合）。「1日目」などのいつもの日程名は変えられません。'],
     'instrument' => ['楽器', '名簿の取り込みで「etc」から追加された楽器の名前の変更・削除ができます。最初から入っている楽器と、出演記録で使われている楽器は消せません。'],
+    'artist'     => ['アーティスト', 'コピー元アーティストの名前の変更・統合・削除ができます。表記ゆれで2つに分かれたアーティストは「統合」でまとめてください（バンドと曲は統合先に付け替わり、消える側の名前は別称として残ります）。チェックしたアーティストのバンドは、まとめてオムニバスにできます。'],
     'role'       => ['係', 'プロフィールで作られた係の名前の変更・統合・削除ができます。表記ゆれで2つに分かれた係は「統合」でまとめてください（付いている人は統合先に移ります）。誰かに付いている係は削除できません。'],
 ];
 $tab = (string)($_GET['tab'] ?? $_POST['tab'] ?? 'venue');
@@ -196,6 +204,73 @@ if (is_post()) {
                 flash("「{$target['name']}」を消しました");
             }
         }
+    } elseif ($tab === 'artist') {
+        // ================= アーティスト =================
+        if ($action === 'omnibus') {
+            // チェックボックスは name="artist_ids[]" なので配列で届く（配列でなければ何もしない）
+            $ids = is_array($_POST['artist_ids'] ?? null) ? $_POST['artist_ids'] : [];
+            if (!$ids) {
+                flash('オムニバスにするアーティストにチェックを入れてください', 'error');
+            } else {
+                $pdo->beginTransaction();
+                try {
+                    $n = make_bands_omnibus($pdo, $ids);
+                    $pdo->commit();
+                } catch (Throwable $e) {
+                    $pdo->rollBack();
+                    throw $e;
+                }
+                flash("バンド {$n} 組をオムニバスにしました（曲のアーティストはそのまま残っています）");
+            }
+            redirect('masters?tab=artist');
+        }
+        $id = (int)($_POST['artist_id'] ?? 0);
+        $st = $pdo->prepare('SELECT a.name, (SELECT COUNT(*) FROM (' . ARTIST_PLAYS_SQL . ') p WHERE p.artist_id = a.artist_id) AS used
+            FROM artist a WHERE a.artist_id = ?');
+        $st->execute([$id]);
+        $target = $st->fetch();
+
+        if (!$target) {
+            flash('アーティストが見つかりません', 'error');
+        } elseif ($action === 'rename') {
+            $name = trim((string)($_POST['name'] ?? ''));
+            $dup = $pdo->prepare('SELECT 1 FROM artist WHERE name = ? AND artist_id <> ?');
+            $dup->execute([$name, $id]);
+            if ($name === '' || mb_strlen($name) > 100) {
+                flash('アーティスト名は1〜100文字で入力してください', 'error');
+            } elseif ($dup->fetchColumn()) {
+                flash("「{$name}」というアーティストはすでにあります（まとめるときは「統合」を使ってください）", 'error');
+            } elseif ($name !== $target['name']) {
+                $pdo->prepare('UPDATE artist SET name = ? WHERE artist_id = ?')->execute([$name, $id]);
+                flash("「{$target['name']}」を「{$name}」に変更しました");
+            }
+        } elseif ($action === 'merge') {
+            // 統合先は名前で受け取る（アーティストは数百あるので、行ごとに <select> を置くと重い。datalist で候補を出す）
+            $toName = trim((string)($_POST['to_name'] ?? ''));
+            $st = $pdo->prepare('SELECT artist_id FROM artist WHERE name = ?');
+            $st->execute([$toName]);
+            $toId = (int)$st->fetchColumn();
+            if ($toId === 0 || $toId === $id) {
+                flash('統合先のアーティストを一覧にある名前で入力してください（同じアーティストは選べません）', 'error');
+            } else {
+                $pdo->beginTransaction();
+                try {
+                    merge_artist($pdo, $id, $toId);
+                    $pdo->commit();
+                } catch (Throwable $e) {
+                    $pdo->rollBack();
+                    throw $e;
+                }
+                flash("「{$target['name']}」を「{$toName}」に統合しました（バンド {$target['used']} 組を付け替え）");
+            }
+        } elseif ($action === 'delete') {
+            if ((int)$target['used'] > 0) {
+                flash("「{$target['name']}」は {$target['used']} 組のバンドで使われているので消せません", 'error');
+            } else {
+                $pdo->prepare('DELETE FROM artist WHERE artist_id = ?')->execute([$id]);
+                flash("「{$target['name']}」を消しました");
+            }
+        }
     } else {
         // ================= 楽器 =================
         $id = (int)($_POST['instrument_id'] ?? 0);
@@ -255,7 +330,12 @@ $roles = $pdo->query('SELECT r.role_id, r.name, COUNT(mr.member_id) AS used
     FROM role r LEFT JOIN member_role mr ON mr.role_id = r.role_id
     GROUP BY r.role_id, r.name, r.sort_order
     ORDER BY r.sort_order, r.name')->fetchAll();
-$counts = ['venue' => count($venues), 'day' => count($days), 'instrument' => count($instruments), 'role' => count($roles)];
+// アーティストごとに「何組のバンドがコピーしたか」（オムニバスは曲ごとのアーティストで数える）
+$artists = $pdo->query('SELECT a.artist_id, a.name, COUNT(p.band_id) AS used
+    FROM artist a LEFT JOIN (' . ARTIST_PLAYS_SQL . ') p ON p.artist_id = a.artist_id
+    GROUP BY a.artist_id, a.name
+    ORDER BY a.name')->fetchAll();
+$counts = ['venue' => count($venues), 'day' => count($days), 'instrument' => count($instruments), 'role' => count($roles), 'artist' => count($artists)];
 
 /** 消せないときのグレーアウトしたゴミ箱（disabled のボタンはマウスの反応が鈍いので、外側の span でツールチップを出す） */
 function trash_disabled(string $why): string
@@ -283,7 +363,7 @@ render_header($tabs[$tab][0] . 'の管理');
 <section class="hero">
     <div>
         <p class="eyebrow">Admin</p>
-        <h1 class="display">会場・日程名・楽器・係の管理</h1>
+        <h1 class="display">会場・日程名・楽器・係・アーティストの管理</h1>
         <p class="muted"><?= h($tabs[$tab][1]) ?></p>
     </div>
     <dl class="stats"><div><dt><?= h($tabs[$tab][0]) ?></dt><dd><?= $counts[$tab] ?></dd></div></dl>
@@ -293,6 +373,17 @@ render_header($tabs[$tab][0] . 'の管理');
         <a class="tab<?= $key === $tab ? ' is-active' : '' ?>" href="masters?tab=<?= $key ?>"<?= $key === $tab ? ' aria-current="page"' : '' ?>><?= h($label) ?> <span class="muted small"><?= $counts[$key] ?></span></a>
     <?php endforeach; ?>
 </nav>
+
+<?php if ($tab === 'artist'): ?>
+    <!-- 行の中にも名前の変更などのフォームがある（フォームは入れ子にできない）ので、チェックボックスは form="omnibus-form" でこのフォームに属させる -->
+    <form method="post" id="omnibus-form" class="form-actions no-print"
+          data-confirm="チェックしたアーティストをコピー元にしているバンドを、すべてオムニバスにします。よろしいですか？"><?= csrf_field() ?>
+        <input type="hidden" name="tab" value="artist">
+        <input type="hidden" name="action" value="omnibus">
+        <input type="search" placeholder="アーティスト名で絞り込み" data-filter="[data-artist-row]" aria-label="アーティスト名で絞り込み">
+        <button class="btn btn--primary btn--sm" type="submit">チェックしたアーティストのバンドをオムニバスにする</button>
+    </form>
+<?php endif; ?>
 
 <div class="card table-card">
     <div class="table-scroll table-scroll--flush">
@@ -423,6 +514,46 @@ render_header($tabs[$tab][0] . 'の管理');
         <?php endforeach; ?>
         </tbody>
 
+    <?php elseif ($tab === 'artist'): ?>
+        <thead><tr><th>オムニバス</th><th>アーティスト名</th><th class="num">バンド</th><th>他のアーティストに統合</th><th></th></tr></thead>
+        <tbody>
+        <?php foreach ($artists as $a): ?>
+            <tr id="row-<?= (int)$a['artist_id'] ?>" data-artist-row data-text="<?= h($a['name']) ?>">
+                <td><input type="checkbox" name="artist_ids[]" value="<?= (int)$a['artist_id'] ?>" form="omnibus-form" aria-label="「<?= h($a['name']) ?>」のバンドをオムニバスにする"<?= (int)$a['used'] === 0 ? ' disabled' : '' ?>></td>
+                <td>
+                    <form method="post" class="row-form"><?= csrf_field() ?>
+                        <input type="hidden" name="tab" value="artist">
+                        <input type="hidden" name="action" value="rename">
+                        <input type="hidden" name="artist_id" value="<?= (int)$a['artist_id'] ?>">
+                        <input name="name" value="<?= h($a['name']) ?>" maxlength="100" required aria-label="アーティスト名">
+                        <button class="btn btn--ghost btn--sm" type="submit">名前を変更</button>
+                    </form>
+                </td>
+                <td class="num"><a href="artist?id=<?= (int)$a['artist_id'] ?>"><?= (int)$a['used'] ?></a></td>
+                <td>
+                    <form method="post" class="row-form" data-confirm="「<?= h($a['name']) ?>」を入力したアーティストに統合します。「<?= h($a['name']) ?>」は消えて（別称として残ります）元に戻せません。よろしいですか？"><?= csrf_field() ?>
+                        <input type="hidden" name="tab" value="artist">
+                        <input type="hidden" name="action" value="merge">
+                        <input type="hidden" name="artist_id" value="<?= (int)$a['artist_id'] ?>">
+                        <input name="to_name" list="dl-artists" required placeholder="統合先" aria-label="統合先のアーティスト">
+                        <button class="btn btn--ghost btn--sm" type="submit">統合</button>
+                    </form>
+                </td>
+                <td class="num">
+                    <?php if ((int)$a['used'] > 0): ?>
+                        <?= trash_disabled('使用されているため削除できません') ?>
+                    <?php else: ?>
+                        <form method="post" class="inline-form" data-confirm="「<?= h($a['name']) ?>」を消します。よろしいですか？"><?= csrf_field() ?>
+                            <input type="hidden" name="tab" value="artist">
+                            <input type="hidden" name="action" value="delete">
+                            <input type="hidden" name="artist_id" value="<?= (int)$a['artist_id'] ?>">
+                            <button class="btn-trash" type="submit" aria-label="「<?= h($a['name']) ?>」を削除" title="削除"><?= icon('delete') ?></button>
+                        </form>
+                    <?php endif; ?>
+                </td>
+            </tr>
+        <?php endforeach; ?>
+        </tbody>
     <?php else: ?>
         <thead><tr><th>略称・楽器名</th><th class="num">使われている数</th><th></th></tr></thead>
         <tbody>
@@ -468,5 +599,9 @@ render_header($tabs[$tab][0] . 'の管理');
 <?php if ($tab === 'day'): ?>
     <!-- 日程名の変更欄の入力候補（もうある日程名を選ぶと、そこにまとめられる） -->
     <datalist id="dl-day-labels"><?php foreach ($days as $d): ?><option value="<?= h($d['label']) ?>"><?php endforeach; ?></datalist>
+<?php endif; ?>
+<?php if ($tab === 'artist'): ?>
+    <!-- 統合先の入力候補 -->
+    <datalist id="dl-artists"><?php foreach ($artists as $a): ?><option value="<?= h($a['name']) ?>"><?php endforeach; ?></datalist>
 <?php endif; ?>
 <?php render_footer();

@@ -161,6 +161,47 @@ function find_or_create_live(PDO $pdo, int $year, string $name): int
  * 表記ゆれ（KingGnu / King Gnu、全角/半角）は band_key() でそろえて既存アーティストを探し、
  * 見つからなければ新しく作る。
  */
+/**
+ * アーティスト $fromId を $toId に統合する（表記ゆれの片付け）。呼ぶ側でトランザクションにすること。
+ *   バンド（band.artist_id）・オムニバスの曲（song.artist_id）・別称を統合先に付け替えてから消す。
+ *   先に付け替える: 外部キーが ON DELETE SET NULL / CASCADE なので、先に消すと紐付けや別称が消えてしまう
+ *   消える側の名前は統合先の別称にしておく（その表記のマイアルバムを拾い続けるため。既にあれば INSERT IGNORE で何もしない）
+ */
+function merge_artist(PDO $pdo, int $fromId, int $toId): void
+{
+    $st = $pdo->prepare('SELECT name FROM artist WHERE artist_id = ?');
+    $st->execute([$fromId]);
+    $fromName = $st->fetchColumn();
+    if ($fromName === false || $fromId === $toId) {
+        return;
+    }
+    $pdo->prepare('UPDATE band SET artist_id = ? WHERE artist_id = ?')->execute([$toId, $fromId]);
+    $pdo->prepare('UPDATE song SET artist_id = ? WHERE artist_id = ?')->execute([$toId, $fromId]);
+    $pdo->prepare('UPDATE artist_alias SET artist_id = ? WHERE artist_id = ?')->execute([$toId, $fromId]);
+    $pdo->prepare('INSERT IGNORE INTO artist_alias (name, artist_id) VALUES (?, ?)')->execute([$fromName, $toId]);
+    $pdo->prepare('DELETE FROM artist WHERE artist_id = ?')->execute([$fromId]);
+}
+
+/**
+ * $artistIds のアーティストをコピー元にしているバンドを、まとめてオムニバスにする。呼ぶ側でトランザクションにすること。
+ *   曲の song.artist_id が NULL（= バンドと同じ）だと、オムニバスにした途端に曲のアーティストが分からなくなる。
+ *   なので先に、NULL の曲へ元のバンドのアーティストを書き込んでから band.artist_id を外す（songs_edit と同じ形）
+ * @return int オムニバスにしたバンドの数
+ */
+function make_bands_omnibus(PDO $pdo, array $artistIds): int
+{
+    $artistIds = array_values(array_unique(array_map('intval', $artistIds)));
+    if (!$artistIds) {
+        return 0;
+    }
+    $in = implode(',', array_fill(0, count($artistIds), '?'));
+    $pdo->prepare("UPDATE song s JOIN band b ON b.band_id = s.band_id SET s.artist_id = b.artist_id
+        WHERE b.is_omnibus = 0 AND b.artist_id IN ($in) AND s.artist_id IS NULL")->execute($artistIds);
+    $st = $pdo->prepare("UPDATE band SET is_omnibus = 1, artist_id = NULL WHERE is_omnibus = 0 AND artist_id IN ($in)");
+    $st->execute($artistIds);
+    return $st->rowCount();
+}
+
 function find_or_create_artist(PDO $pdo, string $bandName): ?int
 {
     [$base] = band_split_suffix($bandName);

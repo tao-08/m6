@@ -99,17 +99,11 @@ if (is_admin()) {
                 flash('アーティスト名を変更しました');
             }
         } elseif ($action === 'merge') {
-            // このアーティストのバンドを、別のアーティストに付け替えてから消す
+            // このアーティストを、別のアーティストに付け替えてから消す（lib/repository.php の merge_artist）
             $to = (int)($_POST['to'] ?? 0);
             if ($to !== $artistId) {
                 $pdo->beginTransaction();
-                $pdo->prepare('UPDATE band SET artist_id = ? WHERE artist_id = ?')->execute([$to, $artistId]);
-                // 別称も統合先へ（先に付け替えないと、下の DELETE の CASCADE で消えてしまう）
-                $pdo->prepare('UPDATE artist_alias SET artist_id = ? WHERE artist_id = ?')->execute([$to, $artistId]);
-                // 消える側の名前も統合先の別称にしておく（その表記のマイアルバムを拾い続けるため）。
-                //   INSERT IGNORE: 既に同じ別称があれば何もしない
-                $pdo->prepare('INSERT IGNORE INTO artist_alias (name, artist_id) VALUES (?, ?)')->execute([$artist['name'], $to]);
-                $pdo->prepare('DELETE FROM artist WHERE artist_id = ?')->execute([$artistId]);
+                merge_artist($pdo, $artistId, $to); // バンド・オムニバスの曲・別称を付け替えてから消す
                 $pdo->commit();
                 flash('アーティストを統合しました');
                 redirect('artist?id=' . $to);

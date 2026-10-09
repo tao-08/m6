@@ -124,7 +124,7 @@ $nav = [
                         <a href="users">ユーザー管理</a>
                         <a href="members_merge">メンバーの統合</a>
                         <a href="members_entry">メンバープロフィールの一括編集</a>
-                        <a href="masters">会場・日程名・楽器・係の管理</a>
+                        <a href="masters">会場・日程名・楽器・係・アーティストの管理</a>
                     </div>
                 <?php endif; ?>
             </div>

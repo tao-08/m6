@@ -245,7 +245,7 @@ render_header($isNew ? 'バンドを追加' : 'バンドを編集', 'lives');
 <h1 class="display display--sm"><?= $isNew ? 'バンドを追加' : 'バンドを編集' ?></h1>
 <?php foreach ($errors as $e): ?><div class="flash flash--error"><?= h($e) ?></div><?php endforeach; ?>
 
-<form method="post" class="card form-card">
+<form method="post" class="card form-card" id="band-form">
     <?= csrf_field() ?>
     <input type="hidden" name="band_id" value="<?= (int)$band['band_id'] ?>">
     <input type="hidden" name="day_id" value="<?= $dayId ?>">
@@ -324,7 +324,7 @@ render_header($isNew ? 'バンドを追加' : 'バンドを編集', 'lives');
     <?= render_suggest_datalist('member-names', array_keys($allNames), $allNames) ?>
 
     <div class="form-actions">
-        <?php if (!$isNew): ?><a class="btn btn--ghost" href="songs_edit?band=<?= (int)$band['band_id'] ?>">セットリストを編集</a><?php endif; ?>
+        <?php if (!$isNew): ?><a class="btn btn--ghost" href="songs_edit?band=<?= (int)$band['band_id'] ?>" data-leave-check="band-form">セットリストを編集</a><?php endif; ?>
         <a class="btn btn--ghost" href="<?= h($backUrl) ?>">キャンセル</a>
         <button class="btn btn--primary" type="submit"><?= $isNew ? '追加する' : '保存する' ?></button>
     </div>
@@ -339,4 +339,15 @@ render_header($isNew ? 'バンドを追加' : 'バンドを編集', 'lives');
         <button class="btn btn--ghost btn--danger btn--sm" type="submit">このバンドを削除</button>
     </form>
 <?php endif; ?>
+<!-- 未保存の変更があるままページを移動しようとしたときの確認（JS の setupLeaveCheck が開く） -->
+<dialog class="modal" data-leave-dialog aria-labelledby="leave-title">
+    <form method="dialog" class="modal__body">
+        <h3 id="leave-title" class="modal__title">保存されていません</h3>
+        <p class="muted small">変更が保存されていません。このまま移動すると変更は失われます。よろしいですか？</p>
+        <div class="form-actions">
+            <button type="submit" class="btn btn--ghost" value="cancel">戻る</button>
+            <button type="submit" class="btn btn--primary" value="leave">移動する</button>
+        </div>
+    </form>
+</dialog>
 <?php render_footer();
