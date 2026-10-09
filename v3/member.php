@@ -59,6 +59,30 @@ $myParts = lineup_parts_by_band($st);
 foreach ($myParts as $p) {
     $partsByBand[$p['band_id']][] = $p;
 }
+// 1つのバンドで楽器が2つ以上なら、演奏した曲が多い順に（同じ曲数なら楽器の並び順のまま。usort は順番を保つ）
+//   「Vo/Gt」と「Gt」の両方があるときは、Gt は「Vo なしで Gt だけ」の曲を数える（Vo/Gt の曲を二重に数えない）
+foreach ($partsByBand as $bandId => &$bandParts) {
+    if (count($bandParts) < 2) {
+        continue;
+    }
+    $shortsOf = static fn(array $p): array => array_column($p['segments'], 'short');
+    $count = [];
+    foreach ($bandParts as $i => $p) {
+        $without = null;
+        if (count($p['segments']) === 1) {
+            foreach ($bandParts as $other) {
+                if (count($other['segments']) > 1 && in_array($p['short'], $shortsOf($other), true)) {
+                    $without = array_values(array_diff($shortsOf($other), [$p['short']]))[0];
+                }
+            }
+        }
+        $count[$i] = songs_played((int)$bandId, $memberId, $shortsOf($p), $without);
+    }
+    $order = array_keys($bandParts);
+    usort($order, static fn($a, $b) => $count[$b] <=> $count[$a]);
+    $bandParts = array_map(static fn($i) => $bandParts[$i], $order);
+}
+unset($bandParts);
 $parts = sort_tally_by_count(tally_parts($myParts)); // 「Vo/Gt × 3」「Gt × 2」…
 
 // ---- よく組むメンバー（自己結合） ----
