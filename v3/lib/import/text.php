@@ -131,8 +131,9 @@ function normalize_part(string $header): ?string
     $h = mb_strtolower(preg_replace('/[\s.．]/u', '', tt_width($header)) ?? '');
     return match (true) {
         $h === '' => null,
-        str_starts_with($h, 'vo') => 'Vo',
-        str_starts_with($h, 'gt'), str_starts_with($h, 'gu'), str_starts_with($h, 'ギ') => 'Gt',
+        str_starts_with($h, 'vo'), str_starts_with($h, 'ボーカル'), str_starts_with($h, 'ヴォーカル') => 'Vo',
+        str_starts_with($h, 'gt'), str_starts_with($h, 'gu'), str_starts_with($h, 'ギ'),
+        str_starts_with($h, 'バッキング'), str_starts_with($h, 'リード') => 'Gt',
         str_starts_with($h, 'ba'), str_starts_with($h, 'ベ') => 'Ba',
         str_starts_with($h, 'dr'), str_starts_with($h, 'ドラ') => 'Dr',
         str_starts_with($h, 'key'), str_starts_with($h, 'kb'), str_starts_with($h, 'syn'), str_starts_with($h, 'キ') => 'Key',

@@ -39,6 +39,7 @@ check('ローマ字の名前を読点で2人', split_member_names('LEE JUNGHOO�
 $r = parse_roster([['バンド名', 'Vo(Gt.)', 'Gt.1', 'Ba.', 'Dr.', '曲数', '人数'], ['X', '山田太郎', '山田 太郎', '佐藤花子', '鈴木一郎', '3', '9']]);
 check('名簿の人数: 同じ人が2つの欄にいても1人（人数の列は使わない）', $r['bands'][0]['member_count'], 3);
 check('名簿の曲数は読む', $r['bands'][0]['song_count'], 3);
+check('見出しの日本語', array_map('normalize_part', ['ボーカル（ギタボ）', 'ギター１', 'バッキング', 'リード', 'ベース', 'ドラム', 'キーボード']), ['Vo', 'Gt', 'Gt', 'Gt', 'Ba', 'Dr', 'Key']);
 check('異体字', member_key('岩﨑太一'), member_key('岩崎太一'));
 $ph = fn(string $t, float $y, float $x0, float $x1) => ['text' => $t, 'yc' => $y, 'x0' => $x0, 'x1' => $x1];
 check('PDF の折り返しは詰める', pdf_join_cell([$ph('GENERATION（谷', 10, 100, 160), $ph('ヶ崎）', 20, 100, 120)]), 'GENERATION（谷ヶ崎）');
