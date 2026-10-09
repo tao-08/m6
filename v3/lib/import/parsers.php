@@ -311,7 +311,7 @@ function apply_filename_hints(array $tt, string $file): array
  *       ['band_name' => 'King Gnu',
  *        'cells'     => [列番号 => '遠藤翔吾', ...],   ← プレビューの入力欄にそのまま出す
  *        'members'   => [['name' => '遠藤翔吾', 'part' => 'Vo'], ...], ← 照合に使う
- *        'song_count' => 3, 'member_count' => null, 'key_note' => ''],
+ *        'song_count' => 3, 'member_count' => 4（同じ人は1人と数える）, 'key_note' => ''],
  *       ...]
  */
 function parse_roster(array $rows): array
@@ -354,7 +354,8 @@ function parse_roster(array $rows): array
             'cells'        => $cells,
             'members'      => $members,
             'song_count'   => $cSongs === null ? null : extract_int($row[$cSongs] ?? ''),
-            'member_count' => $cCount === null ? null : extract_int($row[$cCount] ?? ''),
+            // 人数は名簿の「人数」列を使わず、書いてある人を数える（ギタボのように同じ人が2つの欄にいても1人）
+            'member_count' => count(array_unique(array_map(static fn($m) => member_key($m['name']), $members))),
             'key_note'     => trim($spill . ' ' . $keyNote),
         ];
     }
@@ -390,7 +391,7 @@ function match_roster_band(array $slot, array $roster): ?int
     if (count($exact) > 1) {
         $same = array_values(array_filter($exact, static fn($i) =>
             $roster[$i]['song_count'] === $slot['song_count']
-            && ($roster[$i]['member_count'] === null || $roster[$i]['member_count'] === $slot['member_count'])));
+            && ($slot['member_count'] === null || $roster[$i]['member_count'] === $slot['member_count'])));
         if (count($same) === 1) {
             return $same[0];
         }
@@ -439,7 +440,7 @@ function match_roster_band(array $slot, array $roster): ?int
  * タイムテーブルは「ASIAN KUNG-FU GENERATION」、名簿は「アジカン」のように、略称で書かれていることがあるため。
  *
  * 残り物どうしで「曲数も人数も同じ」相手がお互いに1つだけのときに限る（2つ以上あれば決めない → プレビューで手で選ぶ）。
- * 名簿に人数の列が無ければ、名簿に書いてある人の数で比べる。
+ * 名簿の人数は parse_roster が数えた「書いてある人の数」（タイムテーブルの人数も人の数なので、そのまま比べられる）。
  *
  * @param array $slots  まだ対応していない枠    [キー => slot]
  * @param array $roster まだ対応していない名簿のバンド [キー => band]
