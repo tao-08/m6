@@ -468,6 +468,8 @@ render_header($member['name'], 'members');
                                     <span class="history__name">
                                         <a href="band?id=<?= (int)$b['band_id'] ?>"><?= h($b['band_name']) ?></a>
                                         <?php if ($b['is_last']): ?><span class="tori-badge" aria-label="トリ" title="トリ">🐦️</span><?php endif; ?>
+                                        <?php // 見ている人も一緒に出たバンド（カードの赤枠の理由がどのバンドか分かるように）。live.php の「出演」と同じタグ ?>
+                                        <?php if (isset($viewerBandIds[(int)$b['band_id']])): ?><span class="tag history__mine">出演</span><?php endif; ?>
                                     </span>
                                     <span class="history__tags">
                                         <!-- セットリスト登録済なら楽器ラベルの左に ✓、その後にそのバンドでのパート（Vo と Gt なら「Vo/Gt」1つ） -->

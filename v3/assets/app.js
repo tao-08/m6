@@ -1213,7 +1213,11 @@ function setupGradeSlot() {
     const who = radio.value;
     const match = (entry) => {
       if (who === 'all') return true;
-      if (who === 'near') return entry !== '' && +entry >= +radio.dataset.min && +entry <= +radio.dataset.max;
+      // 上下3学年・現役・卒業生: 入学年度が data-min 〜 data-max の人（無い側は制限なし）。入学年度が不明な人は出さない
+      if (who !== 'grade') {
+        const { min, max } = radio.dataset;
+        return entry !== '' && (min === undefined || +entry >= +min) && (max === undefined || +entry <= +max);
+      }
       return slotValue === 'none' ? entry === '' : entry === slotValue;
     };
     rows.forEach((tr) => tr.classList.toggle('is-grade-hidden', !match(tr.dataset.entry)));
@@ -1237,7 +1241,7 @@ function setupGradeSlot() {
     const setParams = (params) => {
       params.delete('who');
       params.delete('entry');
-      if (who !== 'all') params.set('who', who);
+      params.set('who', who); // 全学年も書く（書かないと、再読み込みで最初のタブ = 現役の人は「現役」に戻ってしまう）
       if (who === 'grade') params.set('entry', slotValue);
     };
     const url = new URL(location.href);
