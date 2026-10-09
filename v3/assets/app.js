@@ -84,6 +84,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupSongs();
   setupTrackSearch();
   setupPreview();
+  setupLikes();
   setupAlbumTip();
   setupSetlistTip();
   setupSpotifyAppLinks();
@@ -3768,4 +3769,45 @@ function setupSuggest() {
   // fixed で出しているので、ページをスクロールしたら閉じる（候補の中のスクロールは別）
   window.addEventListener('scroll', (e) => { if (cur && !cur.pop.contains(e.target)) close(); }, true);
   window.addEventListener('resize', close);
+}
+
+/* ---------------------------------------------------------------------
+ * お気に入り（❤）（live.php のタイムテーブル / band.php のバンド名の右）
+ *   data-like="バンドID" のボタンを押すと api_band_like.php に送って、付ける ⇔ 外す。
+ *   返ってきた数と状態で書き換える（同じバンドのボタンが1ページに複数あっても全部そろえる）
+ * ------------------------------------------------------------------- */
+function setupLikes() {
+  const token = document.querySelector('meta[name="csrf-token"]')?.content || '';
+  document.addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-like]');
+    if (!btn || btn.disabled) return;
+    btn.disabled = true; // 通信中の連打を止める
+    try {
+      const res = await fetch('api_band_like', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': token },
+        body: JSON.stringify({ band_id: Number(btn.dataset.like) }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '保存できませんでした');
+      document.querySelectorAll(`[data-like="${btn.dataset.like}"]`).forEach((b) => {
+        b.classList.toggle('is-liked', data.liked);
+        b.setAttribute('aria-pressed', String(data.liked));
+        b.setAttribute('aria-label', `お気に入り（${data.count}）`);
+        b.querySelector('[data-like-count]').textContent = data.count;
+      });
+      if (data.liked) { // 付けたときだけハートをぽんと弾ませる
+        btn.classList.remove('is-pop');
+        void btn.offsetWidth; // 一度描き直させて、アニメーションを最初からやり直す
+        btn.classList.add('is-pop');
+      }
+    } catch (err) {
+      console.error('お気に入りの通信エラー:', err);
+      const toast = document.createElement('div');
+      toast.textContent = 'お気に入りを保存できませんでした。ページを再読み込みしてやり直してください';
+      showToast(toast);
+    } finally {
+      btn.disabled = false;
+    }
+  });
 }

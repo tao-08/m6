@@ -28,6 +28,7 @@ live ──< live_day ──< band >── band_member ──< member ── use
 | `song` | song_id | **新設**。セットリスト。`UNIQUE(band_id, track_no)` |
 | `song_performer` | **(song_id, member_id, instrument_id)** | **新設**。外部キーを `band_member(band_id, member_id, instrument_id)` に張り、「バンドにいない人・楽器」を曲の演奏者にできないことを DB が保証 |
 | `member_favorite_album` | **(member_id, sort_order)** | **新設**。好きなアルバム（最大30枚）。Spotify（キーが無い・失敗したら iTunes）から取った内容をスナップショット保存。`UNIQUE(member_id, source, album_id)` |
+| `band_like` | **(band_id, user_id)** | **新設**。バンドのお気に入り（❤）。画面には数だけ出す（匿名）。複合主キーで1人1バンド1回 |
 | `user_account` | user_id | `UNIQUE(login_id)`、`UNIQUE(member_id)`（1メンバー1アカウント）、`is_admin` は `NOT NULL` |
 
 ## v2（local_abbeydb）から何を変えたか・なぜか

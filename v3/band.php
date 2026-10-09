@@ -212,7 +212,10 @@ render_header($band['name'], 'lives');
 <nav class="crumbs"><a href="./">ライブ</a><span>/</span><a href="<?= h($liveUrl) ?>"><?= h($band['live_name']) ?></a></nav>
 <section class="hero">
     <div>
-        <h1 class="display"><?= h($band['name']) ?></h1>
+        <div class="band-title">
+            <h1 class="display"><?= h($band['name']) ?></h1>
+            <?= like_button($bandId, band_likes($pdo, [$bandId], (int)$user['user_id'])[$bandId] ?? null, 'like--lg no-print') ?>
+        </div>
         <p class="band-meta">
             <?php if ($band['held_on']): ?><span><?= icon('event') ?> <?= h(fmt_date($band['held_on'])) ?></span><?php endif; ?>
             <a class="band-meta__live" href="<?= h($liveUrl) ?>"><?= h($band['live_name']) ?></a>

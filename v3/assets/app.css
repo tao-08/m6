@@ -400,6 +400,31 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .slot__yt { display: inline-flex; align-items: center; line-height: 0; margin-left: 8px; }
 .slot__yt svg { width: 23px; height: 16px; }
 .slot__yt:hover svg { opacity: .8; }
+/* お気に入り（❤）: 吹き出し（数）＞ハート。タイムテーブルでは行の右端、バンドページではバンド名の右（lib/repository.php の like_button）
+   押すとハートと吹き出しが赤くなる（.is-liked）。誰が押したかは出さない */
+.like { display: inline-flex; align-items: center; gap: 8px; padding: 2px; border: 0; background: none; color: var(--muted); cursor: pointer; font: inherit; line-height: 1; }
+.like__count { position: relative; min-width: 2.2em; padding: 4px 8px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface);
+  font-size: 12px; font-weight: 800; font-variant-numeric: tabular-nums; text-align: center; transition: color .15s, border-color .15s, background .15s; }
+/* 吹き出しのしっぽ（右向き ＞ でハートを指す）。枠線の三角 + 中を塗る三角の2枚重ね */
+.like__count::before, .like__count::after { content: ''; position: absolute; top: 50%; transform: translateY(-50%); border: 5px solid transparent; border-right: 0; }
+.like__count::before { right: -6px; border-left-color: var(--border); }
+.like__count::after  { right: -5px; border-left-color: var(--surface); }
+.like__heart { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; transition: transform .15s, fill .15s, stroke .15s; }
+.like:hover { color: var(--accent); }
+.like:hover .like__heart { transform: scale(1.12); }
+.like.is-liked { color: var(--accent); }
+.like.is-liked .like__heart { fill: var(--accent); stroke: var(--accent); }
+.like.is-liked .like__count { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--surface)); }
+.like.is-liked .like__count::before { border-left-color: var(--accent); }
+.like.is-liked .like__count::after { border-left-color: color-mix(in srgb, var(--accent) 10%, var(--surface)); } /* 吹き出しの中と同じ色 */
+.like.is-pop .like__heart { animation: like-pop .3s ease; }
+@keyframes like-pop { 50% { transform: scale(1.35); } }
+@media (prefers-reduced-motion: reduce) { .like.is-pop .like__heart { animation: none; } }
+.like:disabled { opacity: .6; cursor: progress; }
+.slot__like { margin-left: auto; }             /* タイムテーブルの行の右端に寄せる */
+.like--lg .like__count { font-size: 15px; padding: 6px 12px; }
+.like--lg .like__heart { width: 28px; height: 28px; }
+.band-title { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; } /* band.php: バンド名とその右の ❤ */
 /* live_youtube.php: プレイリストの動画をバンドに割り当てる表 */
 .table-scroll--yt { margin: -20px -20px 0; border-top: 0; }
 .table--yt select { width: 100%; min-width: 220px; max-width: 420px; }

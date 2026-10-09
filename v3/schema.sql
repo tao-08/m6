@@ -481,3 +481,19 @@ CREATE TABLE app_setting (
     CONSTRAINT fk_setting_user FOREIGN KEY (updated_by) REFERENCES user_account (user_id)
         ON UPDATE CASCADE ON DELETE SET NULL                                   -- 変えた人のアカウントが消えても設定は残す
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- ---------------------------------------------------------------------
+--  band_like — バンドのお気に入り（❤）。画面には数だけ出す（誰が押したかは出さない = 匿名。migrations/022）
+--    複合主キー (band_id, user_id): 同じ人が同じバンドに2回付けられない
+-- ---------------------------------------------------------------------
+CREATE TABLE band_like (
+    band_id    INT UNSIGNED NOT NULL,
+    user_id    INT UNSIGNED NOT NULL,
+    created_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (band_id, user_id),
+    KEY idx_like_user (user_id),
+    CONSTRAINT fk_like_band FOREIGN KEY (band_id) REFERENCES band (band_id)
+        ON UPDATE CASCADE ON DELETE CASCADE,
+    CONSTRAINT fk_like_user FOREIGN KEY (user_id) REFERENCES user_account (user_id)
+        ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;

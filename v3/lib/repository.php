@@ -941,6 +941,54 @@ function setlist_badge(int $registered, int $planned): string
 }
 
 /**
+ * バンドのお気に入り（❤）の数と、自分が付けているか。
+ *   誰が付けたかは返さない（画面に出すのは数だけ = 匿名）。
+ *   band_like テーブルがまだ無い DB（migrations/022 を流していない）では空の配列を返す（ページは止めない）。
+ * @param int[] $bandIds
+ * @return array<int, array{count: int, liked: bool}> band_id => 数と自分が付けたか（0件のバンドは入らない）
+ */
+function band_likes(PDO $pdo, array $bandIds, int $userId): array
+{
+    if (!$bandIds) {
+        return [];
+    }
+    // IN (?, ?, ?) の ? をバンドの数だけ作る（値はプリペアドステートメントで渡す）
+    $marks = implode(',', array_fill(0, count($bandIds), '?'));
+    try {
+        // SUM(user_id = ?): 自分の行なら 1、それ以外は 0 を足す → 1 以上なら自分が付けている
+        $st = $pdo->prepare("SELECT band_id, COUNT(*) AS cnt, SUM(user_id = ?) AS mine
+            FROM band_like WHERE band_id IN ($marks) GROUP BY band_id");
+        $st->execute([$userId, ...array_map('intval', $bandIds)]);
+    } catch (PDOException $e) {
+        if ($e->getCode() === '42S02') {
+            return [];
+        }
+        throw $e;
+    }
+    $likes = [];
+    foreach ($st as $r) {
+        $likes[(int)$r['band_id']] = ['count' => (int)$r['cnt'], 'liked' => (int)$r['mine'] > 0];
+    }
+    return $likes;
+}
+
+/**
+ * お気に入り（❤）のボタン。吹き出しに数、その右にハート。押すと api_band_like.php に送る（app.js の setupLikes）
+ * @param array{count: int, liked: bool}|null $like band_likes() の1件（無ければ 0件）
+ */
+function like_button(int $bandId, ?array $like, string $class = ''): string
+{
+    $count = $like['count'] ?? 0;
+    $liked = $like['liked'] ?? false;
+    return '<button type="button" class="like' . ($class !== '' ? ' ' . h($class) : '') . ($liked ? ' is-liked' : '') . '"'
+        . ' data-like="' . $bandId . '" aria-pressed="' . ($liked ? 'true' : 'false') . '"'
+        . ' aria-label="お気に入り（' . $count . '）" title="お気に入り（匿名）">'
+        . '<span class="like__count" data-like-count>' . $count . '</span>'
+        . '<svg class="like__heart" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-7.5-4.6-10-9.3C.4 8.6 2.2 4.5 6 4.5c2.3 0 3.6 1.3 4.5 2.6l1.5 2 1.5-2c.9-1.3 2.2-2.6 4.5-2.6 3.8 0 5.6 4.1 4 7.2C19.5 16.4 12 21 12 21z"/></svg>'
+        . '</button>';
+}
+
+/**
  * オムニバスのバンド（band.is_omnibus = 1）の、セットリストの曲に紐付いたアーティスト。
  *   曲にアーティストが付いていない（song.artist_id が NULL）曲は数えない。
  *   並びは初めて出てくる曲順（1曲目のアーティストが先頭）。同じアーティストは1回だけ（GROUP BY）。
@@ -1350,7 +1398,17 @@ function merge_band_into(PDO $pdo, int $fromId, int $toId): void
         $pdo->prepare("UPDATE band SET $sql WHERE band_id = ?")->execute([...array_values($set), $toId]);
     }
 
-    // 4. 統合元を消す
+    // 4. お気に入り（❤）も統合先へ（同じ人が両方に付けていたら主キーで1つになる）
+    try {
+        $pdo->prepare('INSERT IGNORE INTO band_like (band_id, user_id, created_at)
+            SELECT ?, user_id, created_at FROM band_like WHERE band_id = ?')->execute([$toId, $fromId]);
+    } catch (PDOException $e) {
+        if ($e->getCode() !== '42S02') { // 42S02 = テーブルが無い（migrations/022 をまだ流していない）。それ以外は本当のエラー
+            throw $e;
+        }
+    }
+
+    // 5. 統合元を消す
     delete_band($pdo, $fromId);
 }
 
