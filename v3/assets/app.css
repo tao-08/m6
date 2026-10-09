@@ -558,7 +558,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .field--wide { grid-column: span 2; }
 .form-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; margin-top: 18px; } /* ボタンが多いとスマホで横に入りきらないので折り返す */
 .member-rows { display: grid; gap: 8px; margin-bottom: 10px; }
-.member-row-edit { display: grid; grid-template-columns: 232px minmax(0, 260px) auto; /* 232px =「Key.Vo キーボードボーカル」が切れない幅 / 名前は 260px まで（人名にそれ以上はいらない） */ gap: 8px; align-items: center;
+.member-row-edit { display: grid; grid-template-columns: 232px auto minmax(0, 260px) auto; /* 楽器 / Cho のトグル / 名前 / ✕ */ /* 232px =「Key.Vo キーボードボーカル」が切れない幅 / 名前は 260px まで（人名にそれ以上はいらない） */ gap: 8px; align-items: center;
   justify-content: center; /* 行をカードの中央に置く。これがないと余った幅が auto の列（✕ボタン）に配られて、ボタンが横に伸びる */ }
 .member-row-edit [data-remove-row] { width: 32px; height: 32px; padding: 0; border-radius: 50%; }
 .checks { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 12px 0 4px; }
@@ -729,6 +729,15 @@ body.is-row-dragging, body.is-row-dragging * { cursor: grabbing !important; user
 .col-head { margin-bottom: 4px; color: var(--text); }
 .select-sm { font-size: 12px !important; padding: 5px 6px !important; }
 .cell-instrument { margin-top: 4px; }
+/* タイムテーブル編集: 楽器の横に Cho のトグル */
+.table--tt .cell-instrument { display: flex; gap: 4px; align-items: center; }
+.table--tt .cell-instrument > .live-pick, .table--tt .cell-instrument > select { flex: 1; min-width: 0; }
+/* 「Cho」トグル（chorus_toggle）。ON でコーラスの色。ボーカルを選んでいるときは押せない */
+.cho-toggle-wrap { display: inline-flex; }
+.cho-toggle { height: 26px; padding: 0 8px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); color: var(--muted);
+  font-size: 12px; font-weight: 700; cursor: pointer; transition: background-color .15s ease, color .15s ease, border-color .15s ease; }
+.cho-toggle[aria-pressed="true"] { background: color-mix(in srgb, var(--cho) 18%, transparent); border-color: var(--cho); color: var(--text); }
+.cho-toggle:disabled { opacity: .35; cursor: not-allowed; }
 /* 名簿の Key./Other 欄: 名前が空のあいだ楽器のプルダウンを隠し、名前の欄をセルの上下中央に置く。
    名前が入ったら、名前の欄が上へスライドし、その下からプルダウンが出てくる。
    高さは縮めずに「場所だけ確保して透明にする」ので、プルダウンが出ている行と出ていない行で上下の余白が揃う。
@@ -1010,7 +1019,7 @@ code { background: var(--surface-2); padding: 1px 6px; border-radius: 6px; font-
 .performers { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 6px 14px; }
 .performers__tools { grid-column: 1 / -1; }
 /* 1段目に名前、2段目に楽器1・楽器2（横並びだと、カードが細い PC で名前が折り返して崩れるため） */
-.performer { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; align-items: center; padding: 6px 8px; border-radius: 8px; background: var(--surface-2); }
+.performer { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)) auto; /* 楽器1 / 楽器2 / Cho のトグル */ gap: 6px; align-items: center; padding: 6px 8px; border-radius: 8px; background: var(--surface-2); }
 .performer > .performer__name { grid-column: 1 / -1; }
 .performer.is-off { opacity: .45; }
 .performer select { padding: 4px 6px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); font-size: 12px; }
@@ -1323,7 +1332,7 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
   .table--list .plays { text-align: left; } /* 見出し「演奏回数 ▼」が数字より広いので、右寄せだと名前との間が空く。左に寄せて名前の近くに */
   .card.table-card { padding: 0; }
   .table-scroll--flush { margin: 0; }
-  .member-row-edit { grid-template-columns: 110px minmax(0, 1fr) auto; }
+  .member-row-edit { grid-template-columns: 110px auto minmax(0, 1fr) auto; }
   .sticky-actions { width: 100%; }
   .sticky-actions .btn { flex: 1; }
   .sticky-actions:has(.sticky-actions__note:not([hidden])) { flex-wrap: wrap; border-radius: var(--radius); }

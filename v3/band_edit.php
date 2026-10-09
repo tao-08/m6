@@ -102,16 +102,17 @@ if (is_post()) {
     $start = (string)($_POST['start_time'] ?? '');
     $end = (string)($_POST['end_time'] ?? '');
 
-    $rows = [];    // 登録する [名前, instrument_id]（ギターボーカルは Vo と Gt の2つ）
+    $rows = [];    // 登録する [名前, instrument_id]（ギターボーカルは Vo と Gt の2つ、Gt/Cho は Gt と Cho の2つ）
     $picked = [];  // エラーで画面に戻すとき用の [名前, 楽器欄の値]
     foreach ((array)($_POST['m_name'] ?? []) as $i => $memberName) {
         $memberName = member_display((string)$memberName);
         $choice = $_POST['m_inst'][$i] ?? '';
+        $cho = ($_POST['m_cho'][$i] ?? '') === '1'; // Cho のトグル（Gt/Cho）。m_inst[] と同じ番号の行
         if ($memberName === '') {
             continue;
         }
-        $picked[] = ['name' => $memberName, 'choice' => is_string($choice) ? $choice : ''];
-        foreach (instruments_for_choice($choice) as $inst) {
+        $picked[] = ['name' => $memberName, 'choice' => is_string($choice) ? $choice : '', 'cho' => $cho];
+        foreach (instruments_for_choice($choice, $cho) as $inst) {
             $rows[] = [$memberName, $inst];
         }
     }
@@ -230,6 +231,7 @@ render_header($isNew ? 'バンドを追加' : 'バンドを編集', 'lives');
             <?php foreach ($lockedMembers as $m): ?>
                 <div class="member-row-edit member-row-edit--locked">
                     <select disabled aria-label="楽器"><?= instrument_choice_options($m['choice']) ?></select>
+                    <?= chorus_toggle('', $m['cho'], $m['choice'], true) ?>
                     <input value="<?= h($m['name']) ?>" disabled aria-label="名前" class="name-input">
                     <span class="muted small"><?= icon('queue_music') ?></span>
                 </div>
@@ -240,6 +242,7 @@ render_header($isNew ? 'バンドを追加' : 'バンドを編集', 'lives');
         <?php foreach ($members as $m): ?>
             <div class="member-row-edit">
                 <select name="m_inst[]" aria-label="楽器"><?= instrument_choice_options($m['choice']) ?></select>
+                <?= chorus_toggle('m_cho[]', $m['cho'] ?? false, $m['choice']) ?>
                 <input name="m_name[]" value="<?= h($m['name']) ?>" data-suggest-list="member-names" autocomplete="off" placeholder="名前" aria-label="名前" class="name-input" data-name-cell>
                 <button type="button" class="btn btn--ghost btn--sm" data-remove-row aria-label="この行を削除"><?= icon('close') ?></button>
             </div>

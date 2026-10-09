@@ -293,7 +293,8 @@ $kingRows = $instrumentRows;
 $names = array_column($kingRows, 'name', 'member_id'); // member_id => 名前
 $kingsOf = static function (bool $mergeVocal) use ($kingRows, $names): array {
     $kings = [];
-    foreach (tally_parts(lineup_parts_by_band($kingRows, $mergeVocal)) as $t) {
+    // Gt/Cho（弾きながらコーラス）は、どちらの数え方でも Gt と Cho に1回ずつ数える（'split'）
+    foreach (tally_parts(lineup_parts_by_band($kingRows, $mergeVocal, 'split')) as $t) {
         $people = [];
         foreach ($t['members'] as $memberId => $n) {
             $people[] = ['member_id' => $memberId, 'name' => $names[$memberId], 'n' => $n];

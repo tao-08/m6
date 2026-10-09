@@ -98,6 +98,7 @@ foreach ($st as $a) {
 
 // 担当楽器（member_id => tally_parts() の結果）。ライブで弾いたバンド数の多い順、同数なら楽器の並び順。
 //   Vo と Gt を両方やったバンドは「Vo/Gt」として数える（lineup_parts_by_band）。
+//   Gt/Cho（弾きながらコーラス）は Gt として数えて、Cho は出さない（コーラスだけで出たバンドは Cho）
 //   マイアルバムと同じく、全員ぶんを1回で取ってから PHP で振り分ける（N+1 を避ける）
 $st = $pdo->query('SELECT bm.band_id, bm.member_id, m.name, i.short_name, i.name AS instrument_name, i.sort_order
     FROM band_member bm
@@ -105,7 +106,7 @@ $st = $pdo->query('SELECT bm.band_id, bm.member_id, m.name, i.short_name, i.name
     JOIN instrument i ON i.instrument_id = bm.instrument_id
     ORDER BY i.sort_order');
 $partsByMember = [];
-foreach (lineup_parts_by_band($st) as $p) {
+foreach (lineup_parts_by_band($st, true, 'drop') as $p) {
     $partsByMember[$p['member_id']][] = $p;
 }
 $instruments = array_map(static fn($parts) => sort_tally_by_count(tally_parts($parts)), $partsByMember);

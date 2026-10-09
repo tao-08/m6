@@ -55,10 +55,10 @@ foreach ($st as $r) {
     $members[(int)$r['member_id']]['name'] = $r['name'];
     $members[(int)$r['member_id']]['roles'][] = (int)$r['instrument_id'];
 }
-// 楽器 ID の配列 → 楽器欄の値の配列。Vo と Gt を両方持っていたら 'vo:gt'（Vo/Gt）の1つにまとめる
-//   例: [Vo, Gt] → ['vo:gt']、[Vo, Gt, Key] → ['vo:gt', 'Key の id']
-$choicesOf = static fn(array $ids): array => array_column(
-    merge_vocal_roles(array_map(static fn(int $id) => ['name' => '', 'instrument_id' => $id], $ids)), 'choice');
+// 楽器 ID の配列 → 楽器欄の行 [['choice' => ..., 'cho' => bool], ...]。Vo と Gt を両方持っていたら 'vo:gt'（Vo/Gt）の1つにまとめる
+//   例: [Vo, Gt] → ['vo:gt']、[Vo, Gt, Key] → ['vo:gt', 'Key の id']、[Gt, Cho] → ['Gt の id'（Cho トグル ON）]
+$choicesOf = static fn(array $ids): array =>
+    merge_vocal_roles(array_map(static fn(int $id) => ['name' => '', 'instrument_id' => $id], $ids));
 
 /* =====================================================================
  *  保存
@@ -100,8 +100,9 @@ if (is_post()) {
                 if (($p[$slot] ?? '') === '') {
                     continue; // 楽器2の「—」
                 }
-                // 'vo:gt'（Vo/Gt）なら Vo と Gt の2つになる
-                foreach (instruments_for_choice($p[$slot]) as $inst) {
+                // 'vo:gt'（Vo/Gt）なら Vo と Gt の2つになる。Cho のトグルは楽器1に付く（Gt/Cho なら Gt と Cho の2つ）
+                $cho = $slot === 'i1' && ($p['cho'] ?? '') === '1';
+                foreach (instruments_for_choice($p[$slot], $cho) as $inst) {
                     $performers["$memberId-$inst"] = [$memberId, $inst]; // キーにして重複を消す
                 }
             }
@@ -259,9 +260,10 @@ render_header('曲を編集', 'lives');
                             <?php foreach (['i1', 'i2'] as $n => $slot): ?>
                                 <select name="<?= $base ?>[p][<?= $memberId ?>][<?= $slot ?>]" class="select-sm" aria-label="楽器<?= $n + 1 ?>">
                                     <?php if ($n === 1): ?><option value="">—</option><?php endif; ?>
-                                    <?= instrument_choice_options($choices[$n] ?? '') ?>
+                                    <?= instrument_choice_options($choices[$n]['choice'] ?? '') ?>
                                 </select>
                             <?php endforeach; ?>
+                            <?= chorus_toggle("{$base}[p][{$memberId}][cho]", $choices[0]['cho'] ?? false, $choices[0]['choice'] ?? '') ?>
                         </div>
                     <?php endforeach; ?>
                 </div>

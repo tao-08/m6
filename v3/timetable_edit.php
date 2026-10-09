@@ -117,14 +117,15 @@ if (is_post()) {
             }
             $memberName = member_display((string)($m['name'] ?? ''));
             $choice = is_string($m['inst'] ?? null) ? $m['inst'] : '';
+            $cho = ($m['cho'] ?? '') === '1'; // Cho のトグル（Gt/Cho）
             if ($memberName === '') {
                 continue;
             }
             if (mb_strlen($memberName) > 50) {
                 $errors[] = "{$label}: 名前は50文字以内にしてください（{$memberName}）";
             }
-            $picked[] = ['name' => $memberName, 'choice' => $choice];
-            foreach (instruments_for_choice($choice) as $inst) {
+            $picked[] = ['name' => $memberName, 'choice' => $choice, 'cho' => $cho];
+            foreach (instruments_for_choice($choice, $cho) as $inst) {
                 $assign[] = [$memberName, $inst];
             }
         }
@@ -269,7 +270,7 @@ render_header('タイムテーブルを編集', 'lives'); ?>
 <?php endif; ?>
 
 <!-- 「＋ 列を追加」で JS が複製する楽器のプルダウン（name は JS が付ける。初期値はギター。名前が入るまで畳む） -->
-<template id="tpl-tt-instrument"><div class="cell-instrument is-collapsed"><select class="select-sm" aria-label="楽器"><?= instrument_choice_options('2') ?></select></div></template>
+<template id="tpl-tt-instrument"><div class="cell-instrument is-collapsed"><select class="select-sm" aria-label="楽器"><?= instrument_choice_options('2') ?></select><?= chorus_toggle('', false, '2') ?></div></template>
 <!-- 「＋ 休憩を追加」で JS が複製する行。__N__ = 休憩の番号、__DAY__ = 日程の ID（JS が置き換える）
      data-free-time: この行の時間は位置に固定せず、行と一緒に動かす -->
 <template id="tpl-tt-break"><table><tbody><?php render_break_row('__N__', '__DAY__', ['name' => '休憩', 'start_time' => null, 'end_time' => null], 1, true); ?></tbody></table></template>
@@ -343,7 +344,7 @@ render_header('タイムテーブルを編集', 'lives'); ?>
                                 <td>
                                     <input name="<?= $p ?>[m][<?= $n ?>][name]" value="<?= h($m['name']) ?>" data-suggest-list="member-names" autocomplete="off" class="name-input" data-name-cell aria-label="出演者">
                                     <!-- 名前が空なら畳んでおく（入力されたら JS が開く）。select は JS がボタン風の部品に置き換えるので、箱ごと畳む -->
-                                    <div class="cell-instrument<?= $m['name'] === '' ? ' is-collapsed' : '' ?>"><select name="<?= $p ?>[m][<?= $n ?>][inst]" class="select-sm" aria-label="楽器"><?= instrument_choice_options($m['choice']) ?></select></div>
+                                    <div class="cell-instrument<?= $m['name'] === '' ? ' is-collapsed' : '' ?>"><select name="<?= $p ?>[m][<?= $n ?>][inst]" class="select-sm" aria-label="楽器"><?= instrument_choice_options($m['choice']) ?></select><?= chorus_toggle("{$p}[m][{$n}][cho]", $m['cho'] ?? false, $m['choice']) ?></div>
                                 </td>
                             <?php endfor; ?>
                         </tr>

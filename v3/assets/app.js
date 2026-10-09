@@ -58,6 +58,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupImportPreview();
   setupMergeToggle();
   setupSelectPick();
+  setupChorusToggle();
   setupNewDayToggle();
   setupExtraDays();
   setupSameYear();
@@ -2799,6 +2800,7 @@ function setupTimetableColumns() {
       input.setAttribute('aria-label', '出演者');
       const box = tpl.content.firstElementChild.cloneNode(true);
       box.querySelector('select').name = `${base}[inst]`;
+      box.querySelector('[data-cho-toggle] input').name = `${base}[cho]`;
       td.append(input, box);
       tr.appendChild(td);
     });
@@ -3101,6 +3103,41 @@ function setupPackedForm() {
 }
 
 /* ---------------------------------------------------------------------
+ * 楽器欄の横の「Cho」トグル（HTML は lib/repository.php の chorus_toggle）
+ *   押すと ON / OFF（aria-pressed と隠し項目の 0 / 1）を切り替える
+ *   楽器欄がボーカル（Vo / Vo/Gt など）・Cho・その他のときは押せない（data-cho-block の値と 'vo:◯◯'）→ OFF に戻す
+ *   バンド編集・タイムテーブル編集・セトリ編集で共通。行を足しても効くように document で待ち受ける
+ * ------------------------------------------------------------------- */
+function setChorus(wrap, on, enabled) {
+  const btn = wrap.querySelector('button');
+  const hidden = wrap.querySelector('input');
+  btn.disabled = !enabled;
+  btn.setAttribute('aria-pressed', on && enabled ? 'true' : 'false');
+  if (hidden) hidden.value = on && enabled ? '1' : '0';
+}
+
+function setupChorusToggle() {
+  if (!document.querySelector('[data-cho-toggle]')) return;
+  // トグルが見る楽器欄 = 同じ行の最初の select（セトリ編集なら楽器1）
+  const rowOf = (el) => el.closest('.member-row-edit, .cell-instrument, .performer');
+  const allowed = (wrap, value) => !value.startsWith('vo:') && !wrap.dataset.choBlock.split(',').includes(value);
+
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-cho-toggle] button');
+    if (!btn || btn.disabled) return;
+    setChorus(btn.parentElement, btn.getAttribute('aria-pressed') !== 'true', true);
+  });
+  document.addEventListener('change', (e) => {
+    if (!e.target.matches('select')) return;
+    const row = rowOf(e.target);
+    const wrap = row?.querySelector('[data-cho-toggle]');
+    if (!wrap || row.querySelector('select') !== e.target || !wrap.querySelector('input')) return;
+    const ok = allowed(wrap, e.target.value);
+    setChorus(wrap, ok && wrap.querySelector('button').getAttribute('aria-pressed') === 'true', ok);
+  });
+}
+
+/* ---------------------------------------------------------------------
  * バンド編集: メンバー行の追加・削除
  * ------------------------------------------------------------------- */
 function setupMemberRows() {
@@ -3112,11 +3149,13 @@ function setupMemberRows() {
     if (add) {
       const rows = add.closest('[data-rows-wrap]')?.querySelector('[data-rows]') || document.querySelector('[data-rows]');
       const row = rows.lastElementChild.cloneNode(true); // 最後の行をコピーして
-      const input = row.querySelector('input');
+      const input = row.querySelector('[data-name-cell]') || row.querySelector('input');
       input.value = '';
       input.classList.remove('is-ok', 'is-similar', 'is-new');
       input.title = '';
       row.querySelector('select').value = '2';           // 楽器はギターに戻す（2 = Gt。コピー元の楽器を引き継がない）
+      const cho = row.querySelector('[data-cho-toggle]');
+      if (cho) setChorus(cho, false, true);               // Cho のトグルも OFF に（ギターなので押せる）
       // data-next がある（name が b[ID][m][番号][…] の形）なら、番号を新しくする。
       //   コピー元と同じ番号のままだと、送信したとき後の行が前の行を上書きしてしまう
       if (rows.dataset.next) {

@@ -319,7 +319,7 @@ function vocal_role_from_instrument(?int $instrumentId): ?string
  *   'vo:gt'  → [Vo の id, Gt の id]（ギターボーカル = 2行）
  *   それ以外（書き換えられた値など）→ [その他]
  */
-function instruments_for_choice(mixed $value): array
+function instruments_for_choice(mixed $value, bool $cho = false): array
 {
     if (is_string($value) && preg_match('/^vo:(\w+)$/', $value, $m) && isset(VOCAL_ROLES[$m[1]])) {
         $also = VOCAL_ROLES[$m[1]]['also'];
@@ -327,7 +327,46 @@ function instruments_for_choice(mixed $value): array
     }
     $id = filter_var($value, FILTER_VALIDATE_INT);
     $valid = array_map('intval', array_column(instruments(), 'instrument_id'));
-    return [is_int($id) && in_array($id, $valid, true) ? $id : OTHER_INSTRUMENT_ID];
+    $id = is_int($id) && in_array($id, $valid, true) ? $id : OTHER_INSTRUMENT_ID;
+    // Cho のトグル（Gt/Cho）。ボーカル・Cho そのもの・その他にはコーラスを付けない（書き換えられたリクエストでも）
+    $choId = instrument_id_by_short('Cho');
+    if ($cho && $choId !== null && chorus_allowed((string)$id)) {
+        return [$id, $choId];
+    }
+    return [$id];
+}
+
+/**
+ * 楽器欄の値（'2' や 'vo:gt'）に Cho のトグルを付けられるか。
+ *   ボーカル（Vo / Vo/Gt など）は付けられない。Cho そのもの・その他（楽器が分からない）も付けない
+ */
+function chorus_allowed(string $choice): bool
+{
+    return !str_starts_with($choice, 'vo:') && !in_array($choice, chorus_blocked_choices(), true);
+}
+
+/** Cho のトグルを付けられない楽器欄の値（'vo:◯◯' 以外）。JS にも data-cho-block で渡す */
+function chorus_blocked_choices(): array
+{
+    return array_map('strval', array_filter([instrument_id_by_short('Vo'), instrument_id_by_short('Cho'), OTHER_INSTRUMENT_ID]));
+}
+
+/**
+ * 楽器欄の横の「Cho」トグル（Gt/Cho = ギターを弾きながらコーラス）。バンド編集・タイムテーブル編集・セトリ編集で共通。
+ *   押すと aria-pressed と隠し項目の値（0 / 1）が切り替わる（assets/app.js の setupChorusToggle）。
+ *   チェックボックスにしないのは、バンド編集の m_name[] / m_inst[] が並んだ配列なので、
+ *   チェックが無い行は送られずに行がずれてしまうから（隠し項目なら必ず 0 か 1 が送られる）
+ *   ボーカル系の楽器を選んでいるときは押せない（JS が楽器欄の変更に合わせて切り替える）
+ * @param string $name 隠し項目の name（'m_cho[]' など）
+ */
+function chorus_toggle(string $name, bool $on, string $choice, bool $disabled = false): string
+{
+    $allowed = chorus_allowed($choice);
+    $on = $on && $allowed;
+    return '<span class="cho-toggle-wrap" data-cho-toggle data-cho-block="' . h(implode(',', chorus_blocked_choices())) . '">'
+        . '<button type="button" class="cho-toggle" aria-pressed="' . ($on ? 'true' : 'false') . '" title="弾きながらコーラス（Gt/Cho など）"'
+        . ($allowed && !$disabled ? '' : ' disabled') . '>Cho</button>'
+        . ($disabled ? '' : '<input type="hidden" name="' . h($name) . '" value="' . ($on ? '1' : '0') . '">') . '</span>';
 }
 
 /**
@@ -357,7 +396,8 @@ function instrument_choice_options(string $selected): string
  * DB の行（1人1楽器）→ バンド編集の行。
  * 同じ人が「Vo」と「Gt」を両方持っていたら、1行の「vo:gt（Vo/Gt）」にまとめる。
  * @param array $rows [['name' => ..., 'instrument_id' => ...], ...]（楽器の sort_order 順。Vo が先頭に来る前提）
- * @return array [['name' => ..., 'choice' => '2' | 'vo:gt'], ...]
+ *   Gt と Cho を持つ人（ボーカルではない人）は、Gt の行の Cho トグルを ON にして Cho の行は出さない（cho => true）
+ * @return array [['name' => ..., 'choice' => '2' | 'vo:gt', 'cho' => bool], ...]
  */
 function merge_vocal_roles(array $rows): array
 {
@@ -366,12 +406,23 @@ function merge_vocal_roles(array $rows): array
         $has[$r['name']][(int)$r['instrument_id']] = true;
     }
     $vo = instrument_id_by_short('Vo');
+    $cho = instrument_id_by_short('Cho');
+    $choHost = []; // 名前 => Cho トグルを付ける instrument_id（chorus_host() と同じ決め方。並び順で最初の楽器）
+    foreach ($rows as $r) {
+        $id = (int)$r['instrument_id'];
+        if ($cho !== null && isset($has[$r['name']][$cho]) && !isset($has[$r['name']][$vo]) && $id !== $cho) {
+            $choHost[$r['name']] ??= $id;
+        }
+    }
     $merged = []; // 名前 => [Vo にまとめた instrument_id => true]
     $out = [];
     foreach ($rows as $r) {
         $id = (int)$r['instrument_id'];
         if (isset($merged[$r['name']][$id])) {
             continue; // Vo の行にまとめ済み
+        }
+        if ($id === $cho && isset($choHost[$r['name']])) {
+            continue; // Gt の行の Cho トグルにまとめ済み
         }
         $choice = (string)$id;
         if ($id === $vo) {
@@ -384,7 +435,7 @@ function merge_vocal_roles(array $rows): array
                 }
             }
         }
-        $out[] = ['name' => $r['name'], 'choice' => $choice];
+        $out[] = ['name' => $r['name'], 'choice' => $choice, 'cho' => ($choHost[$r['name']] ?? null) === $id];
     }
     return $out;
 }
@@ -397,12 +448,23 @@ function merge_vocal_roles(array $rows): array
  * @return array [['member_id', 'name', 'short', 'title', 'segments' => [['short' => 'Vo', 'class' => 'vo'], ...], 'order'], ...]
  *   order = 並び順（Vo/Gt などは Vo のすぐ後ろ。バンド編集の楽器欄と同じ並び）
  * @param bool $mergeVocal false なら Vo/Gt にまとめず、1行 = 1パートのまま（統計の「Voを合算する」）
+ * @param string $chorus 楽器を弾きながらのコーラス（Gt + Cho の2行）をどう扱うか（chorus_host() の人だけ）
+ *   'merge' = 「Gt/Cho」1つにまとめる（表示用。1曲でもコーラスがあれば Gt/Cho）
+ *   'drop'  = Cho を消して「Gt」だけ（メンバー一覧の担当楽器・よく組むメンバーの回数。Cho 単体の出演は Cho のまま）
+ *   'split' = まとめない。Gt と Cho を別々に数える（個人ページの「Gt × 3」・統計）
  */
-function lineup_parts(array $rows, bool $mergeVocal = true): array
+function lineup_parts(array $rows, bool $mergeVocal = true, string $chorus = 'merge'): array
 {
     $has = []; // member_id => [short_name => true]
     foreach ($rows as $r) {
         $has[(int)$r['member_id']][$r['short_name']] = true;
+    }
+    $choHost = []; // member_id => Cho をくっつける楽器の short_name（Gt/Cho の Gt）
+    foreach ($rows as $r) {
+        $id = (int)$r['member_id'];
+        if ($chorus !== 'split' && !isset($choHost[$id]) && ($host = chorus_host(array_keys($has[$id]))) !== null) {
+            $choHost[$id] = $host;
+        }
     }
     $merged = []; // member_id => [Vo にまとめた short_name => true]
     $out = [];
@@ -411,8 +473,16 @@ function lineup_parts(array $rows, bool $mergeVocal = true): array
         if (isset($merged[$id][$r['short_name']])) {
             continue; // Vo の方にまとめ済み
         }
+        if ($r['short_name'] === 'Cho' && isset($choHost[$id])) {
+            continue; // Gt/Cho の方にまとめ済み（drop なら消す）
+        }
         $part = ['member_id' => $id, 'name' => $r['name'], 'short' => $r['short_name'], 'title' => $r['instrument_name'],
             'segments' => [['short' => $r['short_name'], 'class' => instrument_class($r['short_name'])]], 'order' => (int)$r['sort_order'] * 10];
+        if ($chorus === 'merge' && ($choHost[$id] ?? null) === $r['short_name']) {
+            // Gt/Cho: Gt のすぐ後ろ（Gt と Ba の間）に並べる
+            $part = ['short' => $r['short_name'] . '/Cho', 'title' => $r['instrument_name'] . '＋コーラス', 'order' => $part['order'] + 5,
+                'segments' => [...$part['segments'], ['short' => 'Cho', 'class' => instrument_class('Cho')]]] + $part;
+        }
         if ($mergeVocal && $r['short_name'] === 'Vo') {
             $bandId = isset($r['band_id']) ? (int)$r['band_id'] : null;
             $n = 0;
@@ -437,6 +507,36 @@ function lineup_parts(array $rows, bool $mergeVocal = true): array
         $out[] = $part;
     }
     return $out;
+}
+
+/**
+ * 「楽器を弾きながらコーラス」の、Cho をくっつける楽器（Gt/Cho の Gt）。当てはまらなければ null。
+ *   Cho と、Vo と Cho 以外の楽器を持っている人だけ。ボーカルの人（Vo を持つ人）は Cho を付けられない（入力でも選べない）
+ *   楽器が2つ以上あれば、並び順で最初の楽器にくっつける（Gt + Key + Cho → Gt/Cho と Key）
+ * @param string[] $shorts その人がそのバンドで持っている楽器の short_name（sort_order 順）
+ */
+function chorus_host(array $shorts): ?string
+{
+    if (!in_array('Cho', $shorts, true) || in_array('Vo', $shorts, true)) {
+        return null;
+    }
+    foreach ($shorts as $short) {
+        if ($short !== 'Cho') {
+            return $short;
+        }
+    }
+    return null;
+}
+
+/**
+ * そのパートで「演奏した曲」を数えるときの楽器（songs_played() に渡す）。
+ *   Gt/Cho は「Gt を弾いた曲」（1曲でもコーラスがあれば Gt/Cho なので、Gt と Cho を同じ曲でやった曲だけに絞らない）
+ *   Vo/Gt は今までどおり「Vo と Gt を同じ曲でやった曲」
+ */
+function part_play_shorts(array $part): array
+{
+    $shorts = array_column($part['segments'], 'short');
+    return count($shorts) > 1 ? array_values(array_diff($shorts, ['Cho'])) : $shorts;
 }
 
 /**
@@ -544,7 +644,7 @@ function lineup_by_part(array $rows): array
     foreach (lineup_parts($rows) as $p) {
         $lineup[$p['order']] ??= ['short' => $p['short'], 'title' => $p['title'], 'segments' => $p['segments'], 'members' => []];
         $lineup[$p['order']]['members'][] = ['member_id' => $p['member_id'], 'name' => $p['name'],
-            'songs' => $bandId !== null ? songs_played($bandId, $p['member_id'], array_column($p['segments'], 'short')) : 0,
+            'songs' => $bandId !== null ? songs_played($bandId, $p['member_id'], part_play_shorts($p)) : 0,
             'support' => $bandId !== null && is_support($bandId, $p['member_id'])];
     }
     ksort($lineup);
@@ -591,8 +691,9 @@ function lineup_html(array $lineup, ?int $meId): string
  * 個人ページ・メンバー一覧・統計の集計で使う。
  * @param iterable $rows [['band_id', 'member_id', 'name', 'short_name', 'instrument_name', 'sort_order'], ...]（sort_order 順）
  * @param bool $mergeVocal false なら Vo/Gt にまとめない（lineup_parts と同じ）
+ * @param string $chorus Gt/Cho の扱い（lineup_parts と同じ。'merge' | 'drop' | 'split'）
  */
-function lineup_parts_by_band(iterable $rows, bool $mergeVocal = true): array
+function lineup_parts_by_band(iterable $rows, bool $mergeVocal = true, string $chorus = 'merge'): array
 {
     $rowsByBand = [];
     foreach ($rows as $r) {
@@ -600,7 +701,7 @@ function lineup_parts_by_band(iterable $rows, bool $mergeVocal = true): array
     }
     $out = [];
     foreach ($rowsByBand as $bandId => $bandRows) {
-        foreach (lineup_parts($bandRows, $mergeVocal) as $p) {
+        foreach (lineup_parts($bandRows, $mergeVocal, $chorus) as $p) {
             $out[] = $p + ['band_id' => $bandId];
         }
     }
@@ -609,7 +710,7 @@ function lineup_parts_by_band(iterable $rows, bool $mergeVocal = true): array
 
 /**
  * いくつものバンドの行 → バンドごとに「楽器ラベル + 名前」を1人1行（アーティストページ・検索結果）。
- *   Vo と Gt を持つ人は「Vo/Gt」の1行（lineup_parts）。それ以外の兼任（Ba + Cho など）も「Cho/Ba」のように1行にまとめる
+ *   Vo と Gt を持つ人は「Vo/Gt」、Gt と Cho を持つ人は「Gt/Cho」の1行（lineup_parts）。それ以外の兼任（Gt + Key など）も「Gt/Key」のように1行にまとめる
  * @param iterable $rows [['band_id', 'member_id', 'name', 'short_name', 'instrument_name', 'sort_order'], ...]（sort_order, name 順）
  * @return array [band_id][member_id] = ['member_id', 'name', 'title', 'segments' => [['short' => 'Vo', 'class' => 'vo'], ...]]
  */
@@ -619,7 +720,7 @@ function member_lineups_by_band(iterable $rows): array
     foreach ($rows as $r) {
         $rowsByBand[(int)$r['band_id']][] = $r;
     }
-    // 歌うパート（Vo / Cho）を先に（Vo/Gt、Cho/Ba）。usort は同じ値の順番を保つ（PHP 8）
+    // 歌うパート（Vo / Cho）を先に（Vo/Gt など）。usort は同じ値の順番を保つ（PHP 8）
     $sing = static fn(array $p): int => in_array($p['segments'][0]['class'], ['vo', 'cho'], true) ? 0 : 1;
     $lineups = [];
     foreach ($rowsByBand as $bandId => $bandRows) {

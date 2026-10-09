@@ -49,9 +49,10 @@ $st = $pdo->prepare('SELECT bm.band_id, m.member_id, m.name, i.short_name, i.nam
 $st->execute([$artistId]);
 $lineups = member_lineups_by_band($st);
 // よく演奏するメンバーの名前の右の「Gt × 3」: 同じ行をもう一度読み、1パート1行（Vo と Gt は「Vo/Gt」）にして人ごとに数える（member.php のよく組むメンバーと同じ）
+//   Gt/Cho は Gt として数える（Cho はコーラスだけで出たときだけ数える）
 $st->execute([$artistId]);
 $playerParts = []; // [member_id] = [パート, ...]
-foreach (lineup_parts_by_band($st) as $p) {
+foreach (lineup_parts_by_band($st, true, 'drop') as $p) {
     $playerParts[(int)$p['member_id']][] = $p;
 }
 $playerTally = array_map(static fn($parts) => sort_tally_by_count(tally_parts($parts)), $playerParts);

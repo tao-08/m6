@@ -54,9 +54,9 @@ $st = $pdo->prepare('SELECT bm.band_id, bm.member_id, m.name, i.short_name, i.na
     JOIN instrument i ON i.instrument_id = bm.instrument_id
     WHERE bm.member_id = ? ORDER BY i.sort_order');
 $st->execute([$memberId]);
+$myRows = $st->fetchAll(); // 出演履歴のマーク（Gt/Cho にまとめる）と「Gt × 3」（Gt と Cho を別々に数える）の2通りに使う
 $partsByBand = []; // [band_id] = [パート, ...]（出演履歴のマークに使う）
-$myParts = lineup_parts_by_band($st);
-foreach ($myParts as $p) {
+foreach (lineup_parts_by_band($myRows) as $p) {
     $partsByBand[$p['band_id']][] = $p;
 }
 // 1つのバンドで楽器が2つ以上なら、演奏した曲が多い順に（同じ曲数なら楽器の並び順のまま。usort は順番を保つ）
@@ -65,25 +65,25 @@ foreach ($partsByBand as $bandId => &$bandParts) {
     if (count($bandParts) < 2) {
         continue;
     }
-    $shortsOf = static fn(array $p): array => array_column($p['segments'], 'short');
     $count = [];
     foreach ($bandParts as $i => $p) {
         $without = null;
         if (count($p['segments']) === 1) {
             foreach ($bandParts as $other) {
-                if (count($other['segments']) > 1 && in_array($p['short'], $shortsOf($other), true)) {
-                    $without = array_values(array_diff($shortsOf($other), [$p['short']]))[0];
+                if (count($other['segments']) > 1 && in_array($p['short'], part_play_shorts($other), true)) {
+                    $without = array_values(array_diff(part_play_shorts($other), [$p['short']]))[0] ?? null;
                 }
             }
         }
-        $count[$i] = songs_played((int)$bandId, $memberId, $shortsOf($p), $without);
+        $count[$i] = songs_played((int)$bandId, $memberId, part_play_shorts($p), $without);
     }
     $order = array_keys($bandParts);
     usort($order, static fn($a, $b) => $count[$b] <=> $count[$a]);
     $bandParts = array_map(static fn($i) => $bandParts[$i], $order);
 }
 unset($bandParts);
-$parts = sort_tally_by_count(tally_parts($myParts)); // 「Vo/Gt × 3」「Gt × 2」…
+// 「Vo/Gt × 3」「Gt × 2」…。Gt/Cho は Gt と Cho に1回ずつ数える（'split'）
+$parts = sort_tally_by_count(tally_parts(lineup_parts_by_band($myRows, true, 'split')));
 
 // ---- よく組むメンバー（自己結合） ----
 $st = $pdo->prepare('SELECT m.member_id, m.name, COUNT(DISTINCT other.band_id) AS n
@@ -142,13 +142,19 @@ $st = $pdo->prepare('SELECT bm.band_id, bm.member_id, m.name, i.short_name, i.na
     WHERE bm.band_id IN (SELECT band_id FROM band_member WHERE member_id = ?) AND bm.member_id <> ?
     ORDER BY i.sort_order, m.name');
 $st->execute([$memberId, $memberId]);
-$partnerParts = [];   // [相手の member_id][band_id] = [パート, ...]（開いた中身の、ライブ名の左の楽器ラベル）
+$partnerRows = $st->fetchAll();
+$partnerParts = [];   // [相手の member_id][band_id] = [パート, ...]（開いた中身の、ライブ名の左の楽器ラベル。Gt/Cho にまとめる）
 $partnerTally = [];   // [相手の member_id] = tally_parts の結果（名前の行の右の「Dr × 3」）
-foreach (lineup_parts_by_band($st) as $p) {
+foreach (lineup_parts_by_band($partnerRows) as $p) {
     $partnerParts[(int)$p['member_id']][(int)$p['band_id']][] = $p;
 }
-foreach ($partnerParts as $pid => $byBand) {
-    $partnerTally[$pid] = sort_tally_by_count(tally_parts(array_merge(...array_values($byBand))));
+// 「Dr × 3」は Gt/Cho を Gt として数える（Cho はコーラスだけで出たときだけ）
+$partnerCount = [];
+foreach (lineup_parts_by_band($partnerRows, true, 'drop') as $p) {
+    $partnerCount[(int)$p['member_id']][] = $p;
+}
+foreach ($partnerCount as $pid => $countParts) {
+    $partnerTally[$pid] = sort_tally_by_count(tally_parts($countParts));
 }
 // $history の並び（新しい順・出演順）のまま、相手ごと・年度ごとに振り分ける
 $sharedBands = []; // [相手の member_id][年度] = [出演履歴の行, ...]
