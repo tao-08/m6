@@ -926,7 +926,9 @@ function part_badge(array $part, string $suffix = ''): string
     if ($suffix !== '') {
         $text .= '<span class="part__suffix">' . h($suffix) . '</span>';
     }
-    return '<span class="part part--split' . ($suffix !== '' ? ' part--auto' : '') . '" title="' . h($part['title'])
+    // 組み合わせのクラス（part--key-cho など）。CSS で組み合わせごとに幅を変えるため
+    $combo = 'part--' . implode('-', array_column($segs, 'class'));
+    return '<span class="part part--split ' . h($combo) . ($suffix !== '' ? ' part--auto' : '') . '" title="' . h($part['title'])
         . '" style="background: linear-gradient(90deg, ' . h(implode(', ', $stops)) . ')">' . $text . '</span>';
 }
 
