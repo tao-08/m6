@@ -33,6 +33,7 @@
  *    <select>           … 全部のプルダウンをボタン + ポップアップの見た目にする（data-native で元のまま）
  *    data-song-list / data-add-song … 曲の編集
  *    data-track-search  … 曲の編集の🔍（Spotify / iTunes の曲を探して紐付ける）
+ *    data-preview       … バンドページのセットリストの ▶（30秒試聴）
  *    data-toasts        … お知らせのポップアップ（4秒で消える）
  *    data-album-tip     … メンバー一覧のジャケットに乗せるとアルバム名・アーティスト名を出す
  *    data-setlist-tip   … セットリストの ✓ を押すと「セットリスト登録済（◯曲）」を出す
@@ -78,6 +79,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupVenueSuggest();
   setupSongs();
   setupTrackSearch();
+  setupPreview();
   setupAlbumTip();
   setupSetlistTip();
   setupSpotifyAppLinks();
@@ -534,6 +536,105 @@ function setupTrackSearch() {
     } finally {
       searchBtn.disabled = false;
     }
+  });
+}
+
+/* ---------------------------------------------------------------------
+ * 30秒試聴（バンドページのセットリストの ▶）
+ *   data-preview="spotify:xxxx" … 押すと試聴を鳴らす。もう一度押すと止める。鳴るのは1曲ずつ
+ *   data-preview-url             … 覚えてある音源の URL。無ければ api_track_preview.php に聞きに行く
+ *   ・<audio> はページに1個だけ作って使い回す。押すまで何も読み込まない（通信量は1曲 約1MB）
+ *   ・iPhone の Safari は「押したその瞬間」に play() しないと鳴らさない。URL を聞きに行っている間に
+ *     その瞬間が過ぎてしまうので、押した瞬間に無音を鳴らして <audio> を使える状態にしておく
+ *   ・覚えてある URL で鳴らなかったら（Apple 側で URL が変わったなど）、1回だけ探し直す
+ *   ・どこまで聴いたかを --p（0〜1）に入れて、ボタンの丸い枠に出す（app.css の .setlist__play）
+ * ------------------------------------------------------------------- */
+function setupPreview() {
+  const buttons = document.querySelectorAll('[data-preview]');
+  if (!buttons.length) return;
+  // 0.01秒の無音（8kHz・8bit の WAV）。iPhone の Safari 用
+  const SILENCE = 'data:audio/wav;base64,UklGRnQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YVAAAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgA==';
+  const audio = new Audio();
+  audio.preload = 'none';
+  let current = null;   // 今鳴らしている（読み込み中の）ボタン
+  let retried = false;  // 探し直しは1曲につき1回だけ
+  const isSilence = () => audio.src.startsWith('data:');
+
+  const setState = (btn, state) => { // 'loading' | 'play' | 'stop'
+    btn.classList.toggle('is-loading', state === 'loading');
+    btn.classList.toggle('is-playing', state === 'play');
+    btn.querySelector('.icon').textContent = state === 'stop' ? 'play_arrow' : 'pause';
+    if (state === 'stop') btn.style.removeProperty('--p');
+  };
+  const stop = () => {
+    audio.pause();
+    if (current) setState(current, 'stop');
+    current = null;
+  };
+  const noPreview = (btn) => {
+    btn.disabled = true;
+    btn.classList.add('is-none');
+    btn.title = '試聴がありません';
+    btn.setAttribute('aria-label', '試聴がありません');
+    btn.querySelector('.icon').textContent = 'music_off';
+  };
+  const fail = (text) => {
+    const toast = document.createElement('div');
+    toast.className = 'flash flash--warn';
+    toast.textContent = text;
+    showToast(toast);
+  };
+
+  const start = async (btn, refresh = false) => {
+    current = btn;
+    setState(btn, 'loading');
+    let url = refresh ? null : btn.dataset.previewUrl;
+    if (!url) {
+      try {
+        const res = await fetch(`api_track_preview?track=${encodeURIComponent(btn.dataset.preview)}${refresh ? '&refresh=1' : ''}`,
+          { credentials: 'same-origin' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        url = data.url;
+      } catch (err) {
+        if (current === btn) stop();
+        fail(err.message || '試聴を探せませんでした');
+        return;
+      }
+    }
+    if (current !== btn) return; // 待っている間に止められた・別の曲が押された
+    if (!url) {
+      stop();
+      noPreview(btn);
+      return;
+    }
+    btn.dataset.previewUrl = url;
+    audio.src = url;
+    audio.play().catch(() => {}); // 鳴らなかったときは下の 'error' で扱う
+  };
+
+  buttons.forEach((btn) => btn.addEventListener('click', () => {
+    if (current === btn) { stop(); return; }
+    stop();
+    retried = false;
+    if (!btn.dataset.previewUrl) { // URL を聞きに行く間に「押した瞬間」が過ぎるので、先に無音を鳴らしておく
+      audio.src = SILENCE;
+      audio.play().catch(() => {});
+    }
+    start(btn);
+  }));
+
+  audio.addEventListener('playing', () => { if (current && !isSilence()) setState(current, 'play'); });
+  audio.addEventListener('timeupdate', () => {
+    if (current && !isSilence() && audio.duration) current.style.setProperty('--p', audio.currentTime / audio.duration);
+  });
+  audio.addEventListener('ended', () => { if (!isSilence()) stop(); });
+  audio.addEventListener('error', () => {
+    if (!current || isSilence()) return;
+    if (!retried) { retried = true; start(current, true); return; }
+    const btn = current;
+    stop();
+    noPreview(btn);
   });
 }
 

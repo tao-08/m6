@@ -239,8 +239,15 @@ function track_find_on(string $app, array $track): string|false|null
     return track_match_in_results($track, $results);
 }
 
-/** 検索結果の中から同じ曲らしいものを選ぶ（通信しない）。見つからなければ null */
+/** 検索結果の中から同じ曲らしいものを選んで、その曲のページの URL を返す（通信しない）。見つからなければ null */
 function track_match_in_results(array $track, array $results): ?string
+{
+    $r = track_pick_in_results($track, $results);
+    return $r === null ? null : track_page_url($r['source'], $r['track_id']);
+}
+
+/** 検索結果の中から同じ曲らしいもの（結果の1件そのまま）を選ぶ。選び方は track_find_on の説明のとおり */
+function track_pick_in_results(array $track, array $results): ?array
 {
     $titleKey = song_title_key($track['title'], $track['artist_name']);
     $fullKey = album_match_key($track['title']);
@@ -256,11 +263,61 @@ function track_match_in_results(array $track, array $results): ?string
             continue;
         }
         if (album_match_key($r['title']) === $fullKey) {
-            return track_page_url($r['source'], $r['track_id']); // 版の注記まで同じ → これで決まり
+            return $r; // 版の注記まで同じ → これで決まり
         }
         $best ??= $r; // ??= は「まだ無ければ入れる」→ 検索の上位を残す
     }
-    return $best === null ? null : track_page_url($best['source'], $best['track_id']);
+    return $best;
+}
+
+/**
+ * 30秒試聴の音源 URL を iTunes で探す（api_track_preview.php から呼ぶ）。
+ *   iTunes で紐付けた曲 → その曲を lookup。Spotify で紐付けた曲 → iTunes で同じ曲らしいものを探す（取り違え防止は track_find_on と同じ）
+ *   戻り値: URL / null（無かった）/ false（通信できなかった → 覚えておかない）
+ *   ※ Spotify の API は2024年11月から、新しいアプリには試聴の URL（preview_url）を返さなくなったので、試聴は iTunes だけ
+ */
+function track_preview_find(array $track): string|false|null
+{
+    if ($track['source'] === 'itunes') {
+        $results = itunes_request('lookup', ['id' => $track['track_id'], 'country' => 'jp']);
+        if ($results === null) {
+            return false;
+        }
+        foreach ($results as $r) {
+            $t = is_array($r) ? itunes_normalize_track($r) : null;
+            if ($t !== null && $t['track_id'] === $track['track_id']) {
+                return $t['preview_url'];
+            }
+        }
+        return null;
+    }
+    $results = itunes_search_tracks(track_search_query($track));
+    if ($results === null) {
+        return false;
+    }
+    // 同じ曲らしいものの中で試聴があるものを選ぶ（いちばん合う版に試聴が無いこともあるので、無いものを外してから選ぶ）
+    $withPreview = array_values(array_filter($results, static fn($r) => $r['preview_url'] !== null));
+    return track_pick_in_results($track, $withPreview)['preview_url'] ?? null;
+}
+
+/**
+ * 覚えてある試聴の URL をまとめて読む（band.php の表示用。通信しない）。
+ *   戻り値: [キー => URL または null（無かった）]。覚えていない曲・探し直す時期の曲は入らない
+ */
+function track_preview_cache_for(PDO $pdo, array $keys): array
+{
+    $cache = [];
+    $st = $pdo->prepare('SELECT preview_url FROM track_preview WHERE source = ? AND track_id = ?
+        AND (preview_url IS NOT NULL OR checked_at > NOW() - INTERVAL ' . ALBUM_NOT_FOUND_RETRY_DAYS . ' DAY)');
+    foreach (array_unique($keys) as $key) {
+        [$source, $trackId] = explode(':', $key, 2);
+        $st->execute([$source, $trackId]);
+        $row = $st->fetch();
+        if ($row) {
+            $cache[$key] = $row['preview_url'];
+        }
+    }
+    return $cache;
 }
 
 /**

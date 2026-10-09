@@ -320,6 +320,12 @@ check('Spotify の複数アーティスト表記', track_match_in_results($tr('i
     [$tr('spotify', '4uLU6hMCjMI75M1A2tKUQC', 'Fin', '10-FEET, クリープハイプ')]), 'https://open.spotify.com/track/4uLU6hMCjMI75M1A2tKUQC');
 check('またぐときは song_go', track_listen_url('apple_music', $letItBe), 'song_go?track=spotify%3A7iN1s7xHE4ifF5povM6A48');
 check('同じアプリは直接', track_listen_url('spotify', $letItBe), 'https://open.spotify.com/track/7iN1s7xHE4ifF5povM6A48');
+$pv = fn(string $id, string $title, ?string $url) => $tr('itunes', $id, $title, 'The Beatles') + ['preview_url' => $url];
+check('試聴: 同じ曲らしいものを選ぶ', track_pick_in_results($letItBe, [$pv('1', 'Let It Be (Live)', 'https://a.apple.com/1.m4a'),
+    $pv('2', 'Let It Be (Remastered 2009)', 'https://a.apple.com/2.m4a')])['preview_url'], 'https://a.apple.com/2.m4a');
+check('試聴は Apple の配信サーバーだけ', itunes_preview_url('https://audio-ssl.itunes.apple.com/itunes-assets/a.m4a'), 'https://audio-ssl.itunes.apple.com/itunes-assets/a.m4a');
+check('試聴: 偽物のホストは通さない', itunes_preview_url('https://apple.com.example.com/a.m4a'), null);
+check('試聴: http は通さない', itunes_preview_url('http://audio-ssl.itunes.apple.com/a.m4a'), null);
 
 echo "roster choices\n";
 require_once __DIR__ . '/../lib/import/planner.php';
