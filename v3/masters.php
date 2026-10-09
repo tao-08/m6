@@ -331,10 +331,29 @@ $roles = $pdo->query('SELECT r.role_id, r.name, COUNT(mr.member_id) AS used
     GROUP BY r.role_id, r.name, r.sort_order
     ORDER BY r.sort_order, r.name')->fetchAll();
 // アーティストごとに「何組のバンドがコピーしたか」（オムニバスは曲ごとのアーティストで数える）
-$artists = $pdo->query('SELECT a.artist_id, a.name, COUNT(p.band_id) AS used
-    FROM artist a LEFT JOIN (' . ARTIST_PLAYS_SQL . ') p ON p.artist_id = a.artist_id
+//   setlist = そのうちセットリストを登録し終えたバンドの数（曲数がタイムテーブルの曲数と一致。setlist_badge と同じ基準）
+// 並べ替え（?sort=name|used|setlist&dir=asc|desc）。列名は SQL に直接入るので、この表にある決まった名前だけを使う
+const ARTIST_SORTS = ['name' => ['a.name', 'asc'], 'used' => ['used', 'desc'], 'setlist' => ['setlist', 'desc']];
+$sort = is_string($_GET['sort'] ?? null) && isset(ARTIST_SORTS[$_GET['sort']]) ? $_GET['sort'] : 'name';
+$dir = in_array($_GET['dir'] ?? '', ['asc', 'desc'], true) ? $_GET['dir'] : ARTIST_SORTS[$sort][1];
+$artists = $pdo->query('SELECT a.artist_id, a.name, COUNT(p.band_id) AS used,
+        COUNT(CASE WHEN b.song_count > 0 AND b.song_count = (SELECT COUNT(*) FROM song s WHERE s.band_id = b.band_id) THEN 1 END) AS setlist
+    FROM artist a
+    LEFT JOIN (' . ARTIST_PLAYS_SQL . ') p ON p.artist_id = a.artist_id
+    LEFT JOIN band b ON b.band_id = p.band_id
     GROUP BY a.artist_id, a.name
-    ORDER BY a.name')->fetchAll();
+    ORDER BY ' . ARTIST_SORTS[$sort][0] . ' ' . strtoupper($dir) . ', a.name')->fetchAll();
+
+/** アーティストタブの並べ替えできる見出し（押すたびに 昇順 ⇔ 降順。artists.php の sort_th と同じ作り） */
+function artist_sort_th(string $col, string $label, string $sort, string $dir, string $class = ''): string
+{
+    $next = $col === $sort ? ($dir === 'asc' ? 'desc' : 'asc') : ARTIST_SORTS[$col][1];
+    $query = http_build_query(['tab' => 'artist', 'sort' => $col, 'dir' => $next]);
+    $aria = $col === $sort ? ' aria-sort="' . ($dir === 'asc' ? 'ascending' : 'descending') . '"' : '';
+    $arrow = $col === $sort ? ($dir === 'asc' ? ' ▲' : ' ▼') : '';
+    return '<th class="' . h(trim('sortable ' . $class)) . '"' . $aria . '><a href="?' . h($query) . '">' . h($label)
+        . '<span class="sortable__arrow">' . $arrow . '</span></a></th>';
+}
 $counts = ['venue' => count($venues), 'day' => count($days), 'instrument' => count($instruments), 'role' => count($roles), 'artist' => count($artists)];
 
 /** 消せないときのグレーアウトしたゴミ箱（disabled のボタンはマウスの反応が鈍いので、外側の span でツールチップを出す） */
@@ -515,7 +534,7 @@ render_header($tabs[$tab][0] . 'の管理');
         </tbody>
 
     <?php elseif ($tab === 'artist'): ?>
-        <thead><tr><th>オムニバス</th><th>アーティスト名</th><th class="num">バンド</th><th>他のアーティストに統合</th><th></th></tr></thead>
+        <thead><tr><th>オムニバス</th><?= artist_sort_th('name', 'アーティスト名', $sort, $dir) ?><?= artist_sort_th('used', 'バンド', $sort, $dir, 'num') ?><?= artist_sort_th('setlist', 'セットリスト', $sort, $dir) ?><th>他のアーティストに統合</th><th></th></tr></thead>
         <tbody>
         <?php foreach ($artists as $a): ?>
             <tr id="row-<?= (int)$a['artist_id'] ?>" data-artist-row data-text="<?= h($a['name']) ?>">
@@ -530,6 +549,14 @@ render_header($tabs[$tab][0] . 'の管理');
                     </form>
                 </td>
                 <td class="num"><a href="artist?id=<?= (int)$a['artist_id'] ?>"><?= (int)$a['used'] ?></a></td>
+                <td>
+                    <?php if ((int)$a['used'] > 0 && (int)$a['setlist'] === (int)$a['used']): // 全部のバンドが登録済 → ✓ ?>
+                        <?php $label = 'セットリスト登録済（全' . (int)$a['used'] . '組）'; // 見た目と押したときのポップアップは setlist_badge と同じ ?>
+                        <button type="button" class="setlist-badge" data-setlist-tip="<?= h($label) ?>" aria-label="<?= h($label) ?>"><?= icon('check') ?><span class="setlist-badge__text">セットリスト</span></button>
+                    <?php elseif ((int)$a['setlist'] > 0): ?>
+                        <span class="muted small"><?= (int)$a['setlist'] ?>/<?= (int)$a['used'] ?> 組</span>
+                    <?php endif; ?>
+                </td>
                 <td>
                     <form method="post" class="row-form" data-confirm="「<?= h($a['name']) ?>」を入力したアーティストに統合します。「<?= h($a['name']) ?>」は消えて（別称として残ります）元に戻せません。よろしいですか？"><?= csrf_field() ?>
                         <input type="hidden" name="tab" value="artist">
