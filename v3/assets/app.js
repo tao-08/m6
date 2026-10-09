@@ -3773,41 +3773,59 @@ function setupSuggest() {
 
 /* ---------------------------------------------------------------------
  * お気に入り（❤）（live.php のタイムテーブル / band.php のバンド名の右）
- *   data-like="バンドID" のボタンを押すと api_band_like.php に送って、付ける ⇔ 外す。
- *   返ってきた数と状態で書き換える（同じバンドのボタンが1ページに複数あっても全部そろえる）
+ *   data-like="バンドID" のボタンを押すと、通信の結果を待たずに先に見た目を変える（赤くして数を +1 / 戻して -1）。
+ *   そのあと api_band_like.php に送り、返ってきた本当の数と状態で書き直す（ほかの人が同時に押した分もここで反映）。
+ *   失敗したら押す前の見た目に戻す。同じバンドのボタンが1ページに複数あっても全部そろえる
  * ------------------------------------------------------------------- */
 function setupLikes() {
   const token = document.querySelector('meta[name="csrf-token"]')?.content || '';
+  const pending = new Set(); // 通信中のバンドID（結果が返るまで同じバンドの2回目は受け付けない）
+
+  // 同じバンドの ❤ を全部、liked / count の見た目にする
+  const paint = (id, liked, count) => {
+    document.querySelectorAll(`[data-like="${id}"]`).forEach((b) => {
+      b.classList.toggle('is-liked', liked);
+      b.setAttribute('aria-pressed', String(liked));
+      b.setAttribute('aria-label', `お気に入り（${count}）`);
+      b.querySelector('[data-like-count]').textContent = count;
+    });
+  };
+
   document.addEventListener('click', async (e) => {
     const btn = e.target.closest('[data-like]');
-    if (!btn || btn.disabled) return;
-    btn.disabled = true; // 通信中の連打を止める
+    if (!btn) return;
+    const id = btn.dataset.like;
+    if (pending.has(id)) return;
+    pending.add(id);
+
+    // 1. 先に見た目を変える（押した瞬間に数字が動く）
+    const before = { liked: btn.classList.contains('is-liked'), count: Number(btn.querySelector('[data-like-count]').textContent) };
+    const liked = !before.liked;
+    paint(id, liked, Math.max(0, before.count + (liked ? 1 : -1)));
+    if (liked) { // 付けたときだけハートをぽんと弾ませる
+      btn.classList.remove('is-pop');
+      void btn.offsetWidth; // 一度描き直させて、アニメーションを最初からやり直す
+      btn.classList.add('is-pop');
+    }
+
+    // 2. サーバーに送って、本当の値で書き直す
     try {
       const res = await fetch('api_band_like', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': token },
-        body: JSON.stringify({ band_id: Number(btn.dataset.like) }),
+        body: JSON.stringify({ band_id: Number(id) }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || '保存できませんでした');
-      document.querySelectorAll(`[data-like="${btn.dataset.like}"]`).forEach((b) => {
-        b.classList.toggle('is-liked', data.liked);
-        b.setAttribute('aria-pressed', String(data.liked));
-        b.setAttribute('aria-label', `お気に入り（${data.count}）`);
-        b.querySelector('[data-like-count]').textContent = data.count;
-      });
-      if (data.liked) { // 付けたときだけハートをぽんと弾ませる
-        btn.classList.remove('is-pop');
-        void btn.offsetWidth; // 一度描き直させて、アニメーションを最初からやり直す
-        btn.classList.add('is-pop');
-      }
+      paint(id, data.liked, data.count);
     } catch (err) {
       console.error('お気に入りの通信エラー:', err);
+      paint(id, before.liked, before.count); // 失敗したので押す前に戻す
       const toast = document.createElement('div');
       toast.textContent = 'お気に入りを保存できませんでした。ページを再読み込みしてやり直してください';
       showToast(toast);
     } finally {
-      btn.disabled = false;
+      pending.delete(id);
     }
   });
 }

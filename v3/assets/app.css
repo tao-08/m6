@@ -420,7 +420,6 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .like.is-pop .like__heart { animation: like-pop .3s ease; }
 @keyframes like-pop { 50% { transform: scale(1.35); } }
 @media (prefers-reduced-motion: reduce) { .like.is-pop .like__heart { animation: none; } }
-.like:disabled { opacity: .6; cursor: progress; }
 .slot__like { margin-left: auto; }             /* タイムテーブルの行の右端に寄せる */
 .like--lg .like__count { font-size: 15px; padding: 6px 12px; }
 .like--lg .like__heart { font-size: 30px; }
