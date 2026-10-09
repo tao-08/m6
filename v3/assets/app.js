@@ -2768,7 +2768,8 @@ function setupRosterColumns() {
 }
 
 /* ---------------------------------------------------------------------
- * タイムテーブル編集（timetable_edit.php）: 出演者の列の追加、楽器のプルダウンの開け閉め、休憩の行の追加・削除
+ * タイムテーブル編集（timetable_edit.php）: 休憩の行の追加・削除
+ *   ※ 出演者（名前・楽器）の列はタイムテーブル編集から外した。下の「＋ 列を追加」は #tpl-tt-instrument が無いので動かない
  *   「＋ 列を追加」→ その日の表のバンドの行の右端に「名前 + 楽器」のセルを1つ足す（休憩の行は横に1マスつなげて伸ばす）
  *     name は b[バンドID][m][列の番号][name / inst]。番号は data-cols（今ある列の数）から振る
  *   名前が入ったら下のプルダウンを出し、空にしたら畳む（見た目は名簿と同じ .table--roster の CSS）
@@ -2777,12 +2778,12 @@ function setupRosterColumns() {
  *   行を足す・消すときは slots:changed を出して、setupSlotSort に時間の並びを覚え直してもらう
  * ------------------------------------------------------------------- */
 function setupTimetableColumns() {
-  const tpl = document.getElementById('tpl-tt-instrument');
-  if (!tpl) return;
+  if (!document.querySelector('[data-tt-table]')) return;
+  const tpl = document.getElementById('tpl-tt-instrument'); // 出演者の列はもう無い（null）。「＋ 列を追加」も出していない
 
   document.addEventListener('click', (e) => {
     const btn = e.target.closest('[data-add-tt-col]');
-    if (!btn) return;
+    if (!btn || !tpl) return;
     const table = btn.closest('section').querySelector('[data-tt-table]');
     const n = Number(table.dataset.cols); // 新しい列の番号（0 始まり）
     table.dataset.cols = n + 1;
