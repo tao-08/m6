@@ -385,14 +385,18 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 /* 左の時刻（開始 / 終了）。時刻が無いバンドは出演順の番号を出す */
 .slot__time { font: 700 15px/1.2 var(--font); font-variant-numeric: tabular-nums; padding-top: 18px; text-align: right; display: grid; gap: 2px; align-content: start; }
 .slot__time span { color: var(--muted); font-weight: 500; font-size: 12px; }
-.slot__time .slot__no { font-size: 15px; font-weight: 800; }
-.slot__order { font: 800 12px/1 var(--font); color: var(--muted); font-variant-numeric: tabular-nums; min-width: 2ch; } /* 数字の幅を固定（01 と 11 で後ろの位置がずれない） */
+.slot__time .slot__no { font-size: 12px; font-weight: 800; letter-spacing: .04em; margin-bottom: 2px; } /* 出演順の番号（時刻の上） */
+.slot__time .slot__no:only-child { font-size: 15px; color: inherit; }   /* 時刻が無いバンドは番号だけなので大きく */
 .slot--break .slot__time { padding-top: 6px; opacity: .7; }
 .slot--break .slot__body { background: transparent; border-style: dashed; padding: 8px 18px; box-shadow: none; }
 .break-label { font-size: 11px; font-weight: 800; letter-spacing: .2em; color: var(--muted); }
 .slot__body { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; min-width: 0; box-shadow: var(--shadow); }
-.slot__head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.slot__name { font-size: 18px; font-weight: 800; overflow-wrap: anywhere; }
+/* バンド名をなるべく1行に: 左（.slot__title = 名前 + タグ）と右（❤）の2つに分ける。
+   名前が長いときはタグ（トリ・出演・YouTube）のほうを次の行へ回して、名前には ❤ 以外の横幅を全部使わせる */
+.slot__head { display: flex; align-items: center; gap: 8px; }
+.slot__title { flex: 1; min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; }
+.slot__like { flex: none; }
+.slot__name { font-size: 18px; font-weight: 800; overflow-wrap: anywhere; min-width: 0; line-height: 1.3; }
 .slot__name a { color: inherit; text-decoration: none; }  /* バンド名 → バンド詳細（band.php） */
 .slot__name a:hover { color: var(--accent); text-decoration: underline; }
 /* タイムテーブルの YouTube ロゴ（band.youtube_url があるときだけ）。バンド名・トリ🐦️・出演のタグのすぐ右
@@ -436,7 +440,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .keynote { color: var(--text); }
 .slot--mine .slot__body { border-color: color-mix(in srgb, var(--accent) 55%, transparent);
   background: color-mix(in srgb, var(--accent) 7%, var(--surface)); } /* 単色: カードの白にアクセントの赤を 7% だけ混ぜる */
-.slot--mine .slot__order { color: var(--accent); }
+.slot--mine .slot__time .slot__no { color: var(--accent); }
 .slot--headliner .slot__body { box-shadow: inset 4px 0 0 var(--headliner), var(--shadow); }
 
 .lineup { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px 16px; }
@@ -1456,9 +1460,18 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
   .slot { grid-template-columns: 36px 1fr; gap: 6px; } /* 36px =「13:00」がちょうど入る幅。カードを広くして名前を折り返しにくくする */
   .slot__time { font-size: 12px; padding-top: 16px; }
   .slot__time span { font-size: 11px; }
-  .slot__time .slot__no { font-size: 13px; }
+  .slot__time .slot__no { font-size: 11px; }
+  .slot__time .slot__no:only-child { font-size: 13px; }
   .slot__body { padding: 14px; }
   .slot__name { font-size: 16px; }
+  .slot__name--long { font-size: 14px; }  /* 長い名前は小さくして1行に収める（live.php で幅を見て付ける） */
+  .slot__name--xlong { font-size: 13px; }
+  .slot__head { gap: 6px; }
+  .slot__title { column-gap: 6px; }
+  .slot__yt { margin-left: 2px; }
+  .slot__like { gap: 5px; }
+  .slot__like .like__count { min-width: 1.8em; padding: 3px 6px; }
+  .slot__like .like__heart { font-size: 20px; }
   .history__item { grid-template-columns: 1fr; }
   .history__when { grid-column: 1 / -1; display: flex; gap: 8px; }
   .table td, .table th { padding: 10px 12px; }

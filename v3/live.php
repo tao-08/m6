@@ -178,20 +178,27 @@ render_header($live['name'], 'lives');
             // 最後 = トリ。ただし総バンド数まで登録されていない日程は、登録済みの最後が本当の最後ではないのでトリにしない
             $isLast = $bi === count($bands) - 1 && count($bands) >= $dayTotal($d); ?>
             <li class="slot<?= $isLast ? ' slot--headliner' : '' ?><?= $isMine ? ' slot--mine' : '' ?>">
+                <!-- 左の列: 出演順の番号 → 開始 → 終了（時刻が無いバンドは番号だけ）。
+                     番号をカードの中ではなくここに置いて、バンド名に横幅を回す（なるべく1行で出す） -->
                 <div class="slot__time">
-                    <?php if ($b['start_time']): ?><?= h(fmt_time($b['start_time'])) ?><span><?= h(fmt_time($b['end_time'])) ?></span>
-                    <?php else: ?><span class="slot__no"><?= sprintf('%02d', (int)$b['play_order']) ?></span><?php endif; ?>
+                    <span class="slot__no"><?= sprintf('%02d', (int)$b['play_order']) ?></span>
+                    <?php if ($b['start_time']): ?><?= h(fmt_time($b['start_time'])) ?><span><?= h(fmt_time($b['end_time'])) ?></span><?php endif; ?>
                 </div>
                 <div class="slot__body">
                     <div class="slot__head">
-                        <span class="slot__order"><?= sprintf('%02d', (int)$b['play_order']) ?></span>
-                        <h3 class="slot__name"><a href="band?id=<?= (int)$b['band_id'] ?>"><?= h($b['name']) ?></a></h3>
+                        <!-- 左: バンド名とタグ（入りきらなければタグが名前の下に回る） / 右: ❤ -->
+                        <div class="slot__title">
+                        <?php // 長い名前は文字を小さくして、なるべく1行に収める（スマホだけ。CSS の .slot__name--long / --xlong）
+                        //   mb_strwidth: 全角を2・半角を1と数えた幅（「King Gnu」と「ヨルシカ」の見た目の長さを同じものさしで比べる）
+                        $nameWidth = mb_strwidth($b['name']); ?>
+                        <h3 class="slot__name<?= $nameWidth > 22 ? ' slot__name--xlong' : ($nameWidth > 16 ? ' slot__name--long' : '') ?>"><a href="band?id=<?= (int)$b['band_id'] ?>"><?= h($b['name']) ?></a></h3>
                         <?php if ($isLast): ?><span class="tag tag--tori" aria-label="トリ" title="トリ">🐦️</span><?php endif; ?>
                         <?php if ($b['needs_check']): ?><a class="tag tag--flag no-print" href="band?id=<?= (int)$b['band_id'] ?>" title="楽器の確認待ち" aria-label="楽器の確認待ち"><?= icon('flag', 'icon--fill') ?></a><?php endif; ?>
                         <?php if ($isMine): ?><span class="tag">出演</span><?php endif; ?>
                         <?php if ($b['youtube_url'] !== null && youtube_url_valid($b['youtube_url'])): ?>
                             <a class="slot__yt no-print" href="<?= h($b['youtube_url']) ?>" target="_blank" rel="noopener noreferrer" aria-label="「<?= h($b['name']) ?>」を YouTube で見る" title="YouTube で見る"><?= youtube_icon() ?></a>
                         <?php endif; ?>
+                        </div>
                         <?= like_button((int)$b['band_id'], $likes[(int)$b['band_id']] ?? null, 'slot__like no-print') // 行の右端（CSS の margin-left: auto） ?>
                     </div>
                     <?php if ($lineup): ?>
