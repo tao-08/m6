@@ -1306,8 +1306,7 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
 .back-fab.is-leaving { animation: back-fab-out .25s ease both; }
 @keyframes back-fab-in { from { opacity: 0; } } /* to を書かない = いつもの透明度（PC の半透明）まで */
 @keyframes back-fab-out { to { opacity: 0; } }
-.back-fabs--ghost { z-index: 24; pointer-events: none; }
-.back-fab.is-covered { visibility: hidden; } /* スマホで下のメニューに重なるボタン（2つのうち1つだけ出す。JS の fit） */ /* 前のページのボタン（消えるだけ）。今のボタンの後ろ */
+.back-fabs--ghost { z-index: 24; pointer-events: none; } /* 前のページのボタン（消えるだけ）。今のボタンの後ろ */
 .back-fab:hover { text-decoration: none; color: #1d3766; } /* リンク共通の a:hover の赤にしない */
 @media (any-hover: hover) {
   .back-fab { opacity: .45; }

@@ -836,8 +836,15 @@ function setupBackButton() {
   //   前と同じボタンが同じ位置にあるときは、どちらも動かさない（そのまま見えている）
   const SHOWN = 'back-shown';
   const before = load(SHOWN, []);
-  const items = [prev && { ...prev, label: '前のページに戻る', useBack: back }, up && { ...up, label: '1つ上のページに戻る', useBack: false }]
+  let items = [prev && { ...prev, label: '前のページに戻る', useBack: back }, up && { ...up, label: '1つ上のページに戻る', useBack: false }]
     .filter(Boolean);
+  // スマホ: 2つ出るとき、片方が下のメニューの項目（ライブ・メンバー・アーティスト・集計）と同じページなら、そちらは出さない（1つだけ）
+  //   メニューから1回で行けるページなので、ボタンにしなくても困らない。両方ともメニューと同じなら、前のページの方を残す
+  if (items.length === 2 && matchMedia('(max-width: 760px)').matches) {
+    const menu = [...document.querySelectorAll('.nav a[href]')].map((a) => keyOf(a.href));
+    const dup = items.filter((t) => menu.includes(keyOf(t.url)));
+    if (dup.length) items = items.filter((t) => t !== (dup.length === 2 ? items[1] : dup[0]));
+  }
   save(SHOWN, items.map((t) => ({ url: t.url, title: t.title })));
   if (!items.length && !before.length) return;
   const same = (a, b) => keyOf(a.url) === keyOf(b.url) && a.title === b.title;
@@ -890,29 +897,8 @@ function setupBackButton() {
 
   // スクロール中は隠し、止まったらすぐ出す（読んでいる所にかぶらないように）。隠すのはスマホと、左の余白が無い幅の PC だけ（app.css）
   //   scrollend（スクロールが止まった）が使えるブラウザはそれで出す。使えない Safari などは、0.12 秒スクロールが来なければ止まったとみなす
-  // スマホ: ボタンが2つあって、どちらかが下のメニュー（下のナビ・下に固定の保存ボタン）に重なるときは、重なる方を出さない（1つだけ）
-  //   消すのは visibility: hidden（.is-covered）。場所は残すので、残ったボタンが重なる位置へずれない
-  //   保存ボタンはスクロールで位置が変わる（下に貼り付くのはスクロールしたときだけ）ので、スクロールが止まるたびに見直す
-  const mobile = matchMedia('(max-width: 760px)');
-  const fit = () => {
-    const fabs = [...box.children];
-    fabs.forEach((a) => a.classList.remove('is-covered'));
-    if (!mobile.matches || fabs.length < 2) return;
-    const menus = [...document.querySelectorAll('.nav, .sticky-actions')].map((m) => m.getBoundingClientRect()).filter((r) => r.height > 0);
-    const hits = (a) => {
-      const r = a.getBoundingClientRect();
-      return menus.some((m) => r.left < m.right && r.right > m.left && r.top < m.bottom && r.bottom > m.top);
-    };
-    const covered = fabs.filter(hits);
-    // 全部重なるときも1つ（一番上 = メニューから一番遠いもの）は残す
-    const hide = covered.length === fabs.length ? fabs.slice(1) : covered;
-    hide.forEach((a) => a.classList.add('is-covered'));
-  };
-  fit();
-  window.addEventListener('resize', fit);
-
   let timer = 0;
-  const show = () => { clearTimeout(timer); fit(); box.classList.remove('is-scrolling'); };
+  const show = () => { clearTimeout(timer); box.classList.remove('is-scrolling'); };
   window.addEventListener('scroll', () => {
     box.classList.add('is-scrolling');
     clearTimeout(timer);
