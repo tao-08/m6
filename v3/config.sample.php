@@ -44,7 +44,7 @@ return [
         //   ※ 画像はAnthropic のサーバーに送られる（名簿なら部員の実名も）。サークルで了承を取ってから使う
         'anthropic' => [
             'api_key' => '',
-            'model'   => 'claude-opus-5-5', // 1回 10円前後。安くしたいなら 'claude-sonnet-5-5'（精度は実物で比べて決める）
+            'model'   => 'claude-opus-5-5', // 1回 10円前後。安くしたいなら 'claude-sonnet-5-5'（約6円）/ 'claude-haiku-5-5'（1円未満）。精度は実物で比べて決める
         ],
         // true: エラーの詳細を画面に出す（開発中だけ）
         'debug' => false,

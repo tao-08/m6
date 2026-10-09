@@ -210,9 +210,13 @@ function ai_call_claude(array $content): array
             'effort' => 'medium',
             'format' => ['type' => 'json_schema', 'schema' => ai_output_schema()],
         ],
-        // AI が安全上の理由で断ったとき、自動で別のモデルに回してもらう
-        'fallbacks' => 'default',
     ];
+    // AI が安全上の理由で断ったとき、自動で別のモデルに回してもらう
+    // Haiku にはこの仕組みが無い（送るとエラーになる）ので、Haiku 以外のときだけ付ける
+    $useFallback = !str_starts_with($body['model'], 'claude-haiku');
+    if ($useFallback) {
+        $body['fallbacks'] = 'default';
+    }
     if (!function_exists('curl_init')) {
         throw new RuntimeException('サーバーで cURL が使えないため、AI を呼び出せません');
     }
@@ -230,7 +234,7 @@ function ai_call_claude(array $content): array
             'content-type: application/json',
             'x-api-key: ' . (string)$cfg['api_key'],
             'anthropic-version: 2023-06-01',
-            'anthropic-beta: server-side-fallback-2026-07-01',
+            ...($useFallback ? ['anthropic-beta: server-side-fallback-2026-07-01'] : []),
         ],
     ]);
     $raw = curl_exec($ch);
