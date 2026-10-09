@@ -932,9 +932,10 @@ function setupSmallThings() {
   });
 
   // 右上のメニュー（<details class="usermenu">）: 開くたびに、右上から少し下りながらふわっと出す
-  //   toggle は開いた後に来る。動きを減らす設定の人には動かさない
-  document.querySelectorAll('.usermenu').forEach((menu) => menu.addEventListener('toggle', () => {
-    if (!menu.open || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  //   toggle イベントは開いて1回描画した後に来る（そこから動かすと、一瞬全部見えてから消えて出直す）ので、
+  //   開く直前の summary のクリックで動かし始める（Enter / スペースで開いたときも click が来る）。動きを減らす設定の人には動かさない
+  document.querySelectorAll('.usermenu').forEach((menu) => menu.querySelector('summary')?.addEventListener('click', () => {
+    if (menu.open || matchMedia('(prefers-reduced-motion: reduce)').matches) return; // menu.open = これから閉じる
     menu.querySelector('.usermenu__panel')?.animate(
       [{ opacity: 0, transform: 'translateY(-6px) scale(.96)' }, { opacity: 1, transform: 'none' }],
       { duration: 180, easing: 'cubic-bezier(.2, .9, .3, 1.1)' });
