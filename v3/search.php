@@ -14,6 +14,7 @@
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/repository.php';
+require_once __DIR__ . '/lib/albums.php';
 $user = require_login();
 
 /** LIKE で特別な意味を持つ文字（\ % _）を、ただの文字として扱わせる */
@@ -28,6 +29,7 @@ $q = trim((string)($_GET['q'] ?? ''));
 // 何ページ目まで出すか。変な値（0、マイナス、文字）は 1 に、大きすぎる値は 50 に丸める
 $bandPage = min(50, max(1, (int)($_GET['bp'] ?? 1)));
 $lives = $bands = $members = $artists = $matchedFaculties = $matchedRoles = [];
+$albums = ['albums' => [], 'people' => 0]; // マイアルバム（アーティスト名で当たったもの）
 $bandTotal = 0;
 
 // 学部・係で絞る（完全一致）。学部は決まった一覧にあるものだけ、係は DB にある ID だけ受け付ける
@@ -146,6 +148,9 @@ if ($faculty !== '' || $roleName !== null) {
     $st->execute([$like]);
     $artists = $st->fetchAll();
 
+    // ---- マイアルバム（アーティスト名。マイアルバムのアーティスト名を押すとここに来る） ----
+    $albums = albums_by_artist_name($pdo, $like);
+
     // ---- 学部・係（名前で当たったら、その学部・係の一覧ページへのリンクを出す） ----
     $matchedFaculties = array_values(array_filter(FACULTIES, fn($f) => mb_strpos($f, mb_substr($q, 0, 50)) !== false));
     $st = $pdo->prepare('SELECT role_id, name FROM role WHERE name LIKE ? ORDER BY sort_order, name');
@@ -175,7 +180,7 @@ render_header($filterLabel ?? ($q !== '' ? "「{$q}」の検索結果" : '検索
 
 <!-- GET で送るので、検索結果の URL をそのまま共有・ブックマークできる -->
 <form method="get" class="toolbar">
-    <input type="search" name="q" value="<?= h($q) ?>" class="search" placeholder="バンド名・メンバー名・学部・係・ライブ名・会場・メモ" autofocus aria-label="検索ワード">
+    <input type="search" name="q" value="<?= h($q) ?>" class="search" placeholder="バンド名・メンバー名・学部・係・ライブ名・会場・メモ・マイアルバムのアーティスト" autofocus aria-label="検索ワード">
     <button class="btn btn--primary" type="submit">検索</button>
 </form>
 
@@ -196,7 +201,7 @@ render_header($filterLabel ?? ($q !== '' ? "「{$q}」の検索結果" : '検索
     </section>
 <?php elseif ($q === ''): ?>
     <p class="muted">例: 「ヨルシカ」で過去にヨルシカをコピーしたバンドが全部出ます。</p>
-<?php elseif (!$lives && !$bands && !$members && !$artists && !$matchedFaculties && !$matchedRoles): ?>
+<?php elseif (!$lives && !$bands && !$members && !$artists && !$matchedFaculties && !$matchedRoles && !$albums['albums']): ?>
     <div class="empty card"><p class="empty__title">見つかりませんでした</p><p class="muted">表記を変えて試してみてください（全角/半角、スペースの有無など）</p></div>
 <?php else: ?>
     <div class="search-results">
@@ -237,6 +242,8 @@ render_header($filterLabel ?? ($q !== '' ? "「{$q}」の検索結果" : '検索
             </div>
         </section>
         <?php endif; ?>
+
+        <?= fan_albums_html($albums, 'マイアルバム', member_music_app(db(), $user['member_id']), true) // アーティスト名で当たったアルバムと、入れている人 ?>
 
         <?php if ($bands): ?>
         <section>
