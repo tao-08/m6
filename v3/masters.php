@@ -344,6 +344,21 @@ $artists = $pdo->query('SELECT a.artist_id, a.name, COUNT(p.band_id) AS used,
     GROUP BY a.artist_id, a.name
     ORDER BY ' . ARTIST_SORTS[$sort][0] . ' ' . strtoupper($dir) . ', a.name')->fetchAll();
 
+// ---- 名前が似ているアーティストのペア（members_merge と同じ作り。全部 × 全部を比べる） ----
+$artistPairs = [];
+if ($tab === 'artist') {
+    $byName = $artists;
+    usort($byName, static fn($x, $y) => strcmp($x['name'], $y['name'])); // 並べ替えに関係なく、ペアの順番は名前順
+    $keys = array_map(static fn($a) => artist_key($a['name']), $byName);
+    for ($i = 0; $i < count($byName); $i++) {
+        for ($j = $i + 1; $j < count($byName); $j++) {
+            if (artists_look_similar($keys[$i], $keys[$j])) {
+                $artistPairs[] = [$byName[$i], $byName[$j]];
+            }
+        }
+    }
+}
+
 /** アーティストタブの並べ替えできる見出し（押すたびに 昇順 ⇔ 降順。artists.php の sort_th と同じ作り） */
 function artist_sort_th(string $col, string $label, string $sort, string $dir, string $class = ''): string
 {
@@ -394,6 +409,36 @@ render_header($tabs[$tab][0] . 'の管理');
 </nav>
 
 <?php if ($tab === 'artist'): ?>
+    <h2 class="section-title">名前が似ているアーティスト（<?= count($artistPairs) ?>）</h2>
+    <?php if (!$artistPairs): ?>
+        <p class="muted">似ている名前のアーティストは見つかりませんでした <?= icon('celebration') ?></p>
+    <?php else: ?>
+        <div class="merge-list">
+            <?php foreach ($artistPairs as [$a, $b]): ?>
+                <div class="card merge-item">
+                    <div class="merge-item__names">
+                        <a href="artist?id=<?= (int)$a['artist_id'] ?>" class="strong"><?= h($a['name']) ?></a> <span class="muted small"><?= (int)$a['used'] ?>組</span>
+                        <span class="muted"><?= icon('swap_horiz') ?></span>
+                        <a href="artist?id=<?= (int)$b['artist_id'] ?>" class="strong"><?= h($b['name']) ?></a> <span class="muted small"><?= (int)$b['used'] ?>組</span>
+                    </div>
+                    <div class="merge-item__actions">
+                        <!-- 「◯◯に統合」= そっちの名前を残す。もう片方のバンド・曲が付け替わり、もう片方の名前は別称として残る -->
+                        <?php foreach ([[$b, $a], [$a, $b]] as [$from, $to]): ?>
+                            <form method="post" data-confirm="「<?= h($from['name']) ?>」を「<?= h($to['name']) ?>」に統合します。元に戻せません。"><?= csrf_field() ?>
+                                <input type="hidden" name="tab" value="artist">
+                                <input type="hidden" name="action" value="merge">
+                                <input type="hidden" name="artist_id" value="<?= (int)$from['artist_id'] ?>">
+                                <input type="hidden" name="to_name" value="<?= h($to['name']) ?>">
+                                <button class="btn btn--sm" type="submit">「<?= h($to['name']) ?>」に統合</button>
+                            </form>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+            <?php endforeach; ?>
+        </div>
+    <?php endif; ?>
+
+    <h2 class="section-title">すべてのアーティスト</h2>
     <!-- 行の中にも名前の変更などのフォームがある（フォームは入れ子にできない）ので、チェックボックスは form="omnibus-form" でこのフォームに属させる -->
     <form method="post" id="omnibus-form" class="form-actions no-print"
           data-confirm="チェックしたアーティストをコピー元にしているバンドを、すべてオムニバスにします。よろしいですか？"><?= csrf_field() ?>

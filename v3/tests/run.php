@@ -72,6 +72,12 @@ check('時刻（1セル）', extract_times('13:30〜14:00'), ['13:30', '14:00'])
 check('誤字候補', names_look_similar(member_key('清水啓之介'), member_key('清水啓乃介')), true);
 check('苗字だけ', names_look_similar(member_key('皆川'), member_key('皆川桜')), true);
 check('別人', names_look_similar(member_key('斉藤豪'), member_key('斉藤弘汰')), false);
+check('アーティスト: 記号・空白・全角の違い', artists_look_similar(artist_key('Mrs. GREEN APPLE'), artist_key('ｍｒｓ green apple')), true);
+check('アーティスト: 先頭の The', artists_look_similar(artist_key('The BAWDIES'), artist_key('BAWDIES')), true);
+check('アーティスト: 1文字違い', artists_look_similar(artist_key('Official髭男dism'), artist_key('Offical髭男dism')), true);
+check('アーティスト: 括弧付き', artists_look_similar(artist_key('ヨルシカ'), artist_key('ヨルシカ(安田)')), true);
+check('アーティスト: 別物', artists_look_similar(artist_key('YUI'), artist_key('YUKI')), false);
+check('アーティスト: 短すぎる頭一致は拾わない', artists_look_similar(artist_key('Mr.'), artist_key('Mrs. GREEN APPLE')), false);
 
 echo "timetable\n";
 $tt = parse_timetable([

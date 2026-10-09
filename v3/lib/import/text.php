@@ -184,3 +184,33 @@ function names_look_similar(string $keyA, string $keyB): bool
     }
     return min($la, $lb) >= 3 && mb_levenshtein($keyA, $keyB) <= 1;
 }
+
+/**
+ * アーティスト名の比較用キー（表記ゆれ探し用）
+ *   全角半角・大文字小文字・空白・記号（. ・ ' ! - など）・先頭の The を無視する
+ *   例: 「Mrs. GREEN APPLE」「Mrs.GREEN APPLE」「mrs green apple」→ 全部 "mrsgreenapple"
+ */
+function artist_key(string $name): string
+{
+    $k = preg_replace('/[^\p{L}\p{N}]/u', '', band_key($name)) ?? '';
+    return preg_replace('/^the(?=.{2,})/u', '', $k) ?? $k;
+}
+
+/** 同じアーティストの表記ゆれっぽいか（キーが同じ・1文字違い・片方がもう片方の頭と同じ） */
+function artists_look_similar(string $keyA, string $keyB): bool
+{
+    if ($keyA === '' || $keyB === '') {
+        return false;
+    }
+    if ($keyA === $keyB) {
+        return true;
+    }
+    $la = mb_strlen($keyA);
+    $lb = mb_strlen($keyB);
+    // 「ヨルシカ」と「ヨルシカ安田」のような頭一致は、短いほうが3文字以上のときだけ（「B」と「BUMP」を拾わない）
+    if (min($la, $lb) >= 3 && (str_starts_with($keyA, $keyB) || str_starts_with($keyB, $keyA))) {
+        return true;
+    }
+    // 長さが2文字以上違えば1文字違いにはならないので、重い距離計算を飛ばす
+    return abs($la - $lb) <= 1 && min($la, $lb) >= 4 && mb_levenshtein($keyA, $keyB) <= 1;
+}
