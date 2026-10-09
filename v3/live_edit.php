@@ -119,7 +119,7 @@ function venue_field(string $prefix, string $sel, string $newName, array $venues
 function day_label_field(string $prefix, string $sel, string $newName, array $labels, string $attrs = ''): string
 {
     return '<div class="field"><span>日程名</span>' . day_label_control($prefix, $sel, $newName, $labels, ' data-day-label' . $attrs)
-        . '<small class="merge-note merge-note--warn" data-overwrite-note hidden>⚠ 登録済の日程のため上書きされます</small>'
+        . '<small class="merge-note merge-note--warn" data-overwrite-note hidden>⚠ 統合先にもある日程です（両方にバンドがいれば、バンドごとに選べます）</small>'
         . '<small class="merge-note merge-note--warn" data-dup-note hidden>⚠ 他の日程と重複しています</small></div>';
 }
 
@@ -184,6 +184,9 @@ $dayLabels = day_labels($pdo);
 
 // 「他のライブに統合」で選んだライブ（統合しないなら null）
 $mergeLive = null;
+// 統合先と日程名がかぶった日程の、バンドごとの扱い（POST の中で作る。中身は下の説明）
+$bandPairs = [];
+$bandChoice = [];
 
 $errors = [];
 if (is_post()) {
@@ -272,32 +275,119 @@ if (is_post()) {
         $errors[] = '日付の年が範囲外です（年度は日付から自動で決まります）';
     }
 
+    // ---- 統合先に同じ日程名があり、両方にバンドがいる日程（$bandPairs）は、バンドごとに扱いを選ばせる ----
+    //   1回目の「保存」では統合せず、下に選択欄を出して画面に戻す。選んでもう一度「保存」で統合する。
+    //   扱い（bp[統合元の band_id]）: keep = 別のバンドとして統合先の日程に追加 / drop = 捨てる / m:ID = 統合先のバンド ID にまとめる
+    $bandPairs = [];    // 日程名 => ['source_day', 'target_day', 'source' => バンドの行..., 'target' => バンドの行...]
+    $bandChoice = [];   // 統合元の band_id => 扱い（画面の初期値・統合に使う値）
+    $bandReady = false; // 全部の扱いが送られてきた = 統合してよい
     if (!$errors && $mergeLive !== null) {
-        // ---- 統合: このライブの日程を全部、統合先のライブへ移す ----
         $targetId = (int)$mergeLive['live_id'];
-        $pdo->beginTransaction();
-        try {
-            // 統合先に同じ日程名があれば、統合先のその日程を消して置き換える（上書き）
-            //   バンド・出演記録は ON DELETE CASCADE で一緒に消える。
-            //   delete_live_day() は「日程が0になったライブも消す」ので、統合先が消えないようにここでは直接 DELETE する
-            $findSame = $pdo->prepare('SELECT live_day_id FROM live_day WHERE live_id = ? AND label = ?');
-            $deleteDay = $pdo->prepare('DELETE FROM live_day WHERE live_day_id = ?');
-            $moving = array_column($dayInputs, 'label');
-            if ($wantsNewDay) {
-                $moving[] = $newDay['label'];
+        $bandsOf = $pdo->prepare('SELECT band_id, name, play_order FROM band WHERE live_day_id = ? ORDER BY play_order');
+        $findSame = $pdo->prepare('SELECT live_day_id FROM live_day WHERE live_id = ? AND label = ?');
+        foreach ($dayInputs as $id => $in) {
+            $findSame->execute([$targetId, $in['label']]);
+            $sameId = $findSame->fetchColumn();
+            if ($sameId === false) {
+                continue;
             }
-            foreach (array_unique($moving) as $label) {
-                $findSame->execute([$targetId, $label]);
-                $sameId = $findSame->fetchColumn();
-                if ($sameId !== false) {
-                    $deleteDay->execute([(int)$sameId]);
+            $bandsOf->execute([$id]);
+            $source = $bandsOf->fetchAll();
+            $bandsOf->execute([(int)$sameId]);
+            $target = $bandsOf->fetchAll();
+            if ($source && $target) {
+                $bandPairs[$in['label']] = ['source_day' => $id, 'target_day' => (int)$sameId, 'source' => $source, 'target' => $target];
+            }
+        }
+        // 前の画面で選んだ扱い。統合先のライブを変えていたら（bp_for が違う）使わない
+        $posted = (int)($_POST['bp_for'] ?? 0) === $targetId && is_array($_POST['bp'] ?? null) ? $_POST['bp'] : [];
+        $bandReady = true;
+        foreach ($bandPairs as $pair) {
+            $targetIds = array_map(static fn($b) => (int)$b['band_id'], $pair['target']);
+            foreach ($pair['source'] as $b) {
+                $sid = (int)$b['band_id'];
+                $p = $posted[$sid] ?? null;
+                // 送られてきた値は、この日程の統合先のバンドだけ受け付ける（ほかのライブのバンドにまとめさせない）
+                $valid = is_string($p) && ($p === 'keep' || $p === 'drop'
+                    || (str_starts_with($p, 'm:') && in_array((int)substr($p, 2), $targetIds, true)));
+                if ($valid) {
+                    $bandChoice[$sid] = $p;
+                    continue;
+                }
+                $bandReady = false;
+                // 初期値: 統合先に同じ名前のバンド（括弧・全角半角などの違いは無視）があれば「まとめる」、無ければ「残す」
+                $bandChoice[$sid] = 'keep';
+                foreach ($pair['target'] as $t) {
+                    if (band_key($t['name']) === band_key($b['name'])) {
+                        $bandChoice[$sid] = 'm:' . (int)$t['band_id'];
+                        break;
+                    }
                 }
             }
+        }
+    }
+
+    if (!$errors && $mergeLive !== null && !$bandReady) {
+        // 1回目: 統合しないで、バンドごとの選択欄を出す（下の「入力値で表示し直す」で画面に戻る）
+    } elseif (!$errors && $mergeLive !== null) {
+        // ---- 統合: このライブの日程を全部、統合先のライブへ移す ----
+        $pdo->beginTransaction();
+        try {
+            // バンドごとに選んだ日程: 統合先の日程を残し、統合元のバンドを1組ずつ処理して、統合元の日程を消す
+            //   統合先の日程の日付・会場などはそのまま（統合元の日程の入力は使わない）
+            $deleteDay = $pdo->prepare('DELETE FROM live_day WHERE live_day_id = ?');
+            $moveBand = $pdo->prepare('UPDATE band SET live_day_id = ?, play_order = ? WHERE band_id = ?');
+            $handled = []; // 処理済みの統合元の日程 ID（下でもう移さない）
+            foreach ($bandPairs as $pair) {
+                $td = $pair['target_day'];
+                foreach ($pair['source'] as $b) { // 出演順に処理するので、「残す」バンドは統合先の最後に出演順のまま並ぶ
+                    $sid = (int)$b['band_id'];
+                    $choice = $bandChoice[$sid];
+                    if ($choice === 'drop') {
+                        delete_band($pdo, $sid);
+                    } elseif ($choice === 'keep') {
+                        $moveBand->execute([$td, next_play_order($pdo, $td), $sid]);
+                    } else {
+                        merge_band_into($pdo, $sid, (int)substr($choice, 2));
+                    }
+                }
+                renumber_bands($pdo, $td);
+                sync_day_total_bands($pdo, $td);
+                $deleteDay->execute([$pair['source_day']]); // 残った休憩なども一緒に消える
+                $handled[$pair['source_day']] = true;
+            }
+
+            // それ以外で統合先に同じ日程名がある日程
+            //   統合先にバンドがいない → 統合先の日程を消して、こちらの日程で置き換える
+            //   こちらにバンドがいない → 統合先の日程を残し、こちらの日程を消す（統合先のバンドを消さない）
+            //   delete_live_day() は「日程が0になったライブも消す」ので、統合先が消えないようにここでは直接 DELETE する
+            $countBands = $pdo->prepare('SELECT COUNT(*) FROM band WHERE live_day_id = ?');
+            $sameTargetDay = static function (string $label) use ($findSame, $targetId) {
+                $findSame->execute([$targetId, $label]);
+                $id = $findSame->fetchColumn();
+                return $id === false ? null : (int)$id;
+            };
+            $hasBands = static function (int $dayId) use ($countBands): bool {
+                $countBands->execute([$dayId]);
+                return (int)$countBands->fetchColumn() > 0;
+            };
             $move = $pdo->prepare('UPDATE live_day SET label = ?, held_on = ?, venue_id = ?, note = ?, total_bands = ?, live_id = ? WHERE live_day_id = ?');
             foreach ($dayInputs as $id => $in) {
+                if (isset($handled[$id])) {
+                    continue;
+                }
+                $sameId = $sameTargetDay($in['label']);
+                if ($sameId !== null && $hasBands($sameId)) {
+                    $deleteDay->execute([$id]);
+                    continue;
+                }
+                if ($sameId !== null) {
+                    $deleteDay->execute([$sameId]);
+                }
                 $move->execute([...day_params($pdo, $in), $targetId, $id]);
             }
-            if ($wantsNewDay) {
+            // 新しく追加する日程（バンドはいない）。統合先に同じ日程名があれば、統合先の日程を残す
+            if ($wantsNewDay && $sameTargetDay($newDay['label']) === null) {
                 $pdo->prepare('INSERT INTO live_day (label, held_on, venue_id, note, total_bands, live_id) VALUES (?, ?, ?, ?, ?, ?)')
                     ->execute([...day_params($pdo, $newDay), $targetId]);
             }
@@ -307,9 +397,9 @@ if (is_post()) {
             $pdo->commit();
             flash('「' . $mergeLive['fiscal_year'] . '年度 ' . $mergeLive['name'] . '」に統合しました');
             redirect('live?id=' . $targetId);
-        } catch (PDOException $e) {
+        } catch (Throwable $e) { // バンドの統合（merge_band_into）の RuntimeException でも、途中までの変更を戻す
             $pdo->rollBack();
-            if ($e->getCode() !== '23000') {
+            if (!$e instanceof PDOException || $e->getCode() !== '23000') {
                 throw $e;
             }
             // 移す日程どうしで日程名がかぶっている（例: 2つとも「1日目」）
@@ -425,6 +515,43 @@ if ($isNew) {
             <label class="field field--wide" data-merge-hide<?= $merging ? ' hidden' : '' ?>><span>YouTubeプレイリストのリンク（任意）</span><input type="url" name="youtube_url" value="<?= h((string)$live['youtube_url']) ?>" maxlength="500" placeholder="https://www.youtube.com/watch?v=…" inputmode="url"<?= $merging ? ' disabled' : '' ?>></label>
             <?php if ($savedPlaylist): ?><p class="field--wide yt-assign" data-merge-hide<?= $merging ? ' hidden' : '' ?>><a class="btn btn--ghost btn--sm" href="live_youtube?id=<?= $liveId ?>"><?= youtube_icon() ?> プレイリストの動画をバンドに割り当てる</a></p><?php endif; ?>
         </div>
+        <?php if ($bandPairs): ?>
+            <!-- 統合先にも同じ日程名があり、両方にバンドがいる日程: バンドごとに扱いを選んでから、もう一度「保存する」 -->
+            <div class="flash flash--warn">
+                統合先にも同じ日程があります。このライブのバンドを1組ずつ、どうするか選んでから、もう一度「保存する」を押してください。
+                統合先の日程の日付・会場などはそのまま使います。
+            </div>
+            <input type="hidden" name="bp_for" value="<?= (int)$mergeLive['live_id'] ?>">
+            <?php foreach ($bandPairs as $label => $pair): ?>
+                <h2 class="section-title"><?= h($label) ?>のバンド</h2>
+                <p class="muted small">統合先の「<?= h($label) ?>」: <?= h(implode(' / ', array_column($pair['target'], 'name'))) ?></p>
+                <div class="table-scroll">
+                    <table class="table">
+                        <thead><tr><th>順</th><th>このライブのバンド</th><th>どうする</th></tr></thead>
+                        <tbody>
+                        <?php foreach ($pair['source'] as $b): $sid = (int)$b['band_id']; $c = $bandChoice[$sid] ?? 'keep'; ?>
+                            <tr>
+                                <td class="num"><?= (int)$b['play_order'] ?></td>
+                                <td class="strong"><?= h($b['name']) ?></td>
+                                <td>
+                                    <select name="bp[<?= $sid ?>]" aria-label="「<?= h($b['name']) ?>」をどうするか">
+                                        <option value="keep"<?= $c === 'keep' ? ' selected' : '' ?>>残す（別のバンドとして統合先に追加）</option>
+                                        <optgroup label="統合する（統合先のこのバンドにまとめる）">
+                                            <?php foreach ($pair['target'] as $t): $v = 'm:' . (int)$t['band_id']; ?>
+                                                <option value="<?= $v ?>"<?= $c === $v ? ' selected' : '' ?>>統合 → <?= (int)$t['play_order'] ?>. <?= h($t['name']) ?></option>
+                                            <?php endforeach; ?>
+                                        </optgroup>
+                                        <option value="drop"<?= $c === 'drop' ? ' selected' : '' ?>>捨てる（このバンドを消す）</option>
+                                    </select>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            <?php endforeach; ?>
+            <p class="muted small">「統合する」: 統合先の内容を優先し、空いているところ（曲数・時刻・メモ・YouTube など）だけこのバンドの内容で埋めます。メンバーは両方を合わせ、セットリストは統合先に無いときだけ持っていきます。</p>
+        <?php endif; ?>
     <?php endif; ?>
 
     <?php foreach ($days as $d): $id = (int)$d['live_day_id']; ?>

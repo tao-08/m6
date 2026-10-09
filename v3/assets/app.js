@@ -1944,7 +1944,8 @@ function fiscalYear(dateStr) {
  *   OFF … 元の入力欄に戻す（打ってあった文字はそのまま）。merge / live_id は disabled にして送らない。
  *
  *   ライブ編集（[data-live-merge]）では、統合先にもうある日程名を選んでいる日程に
- *   「登録済の日程のため上書きされます」を出し、保存前に確認ダイアログ（data-confirm）を出す。
+ *   「統合先にもある日程です」を出し、保存前に確認ダイアログ（data-confirm）を出す。
+ *   両方にバンドがいる日程は、1回目の保存でバンドごとの選択欄が出る（live_edit.php）。
  * ------------------------------------------------------------------- */
 function setupMergeToggle() {
   const tpl = document.getElementById('live-picker');
@@ -1967,7 +1968,7 @@ function setupMergeToggle() {
 
   // 注意文: 選んだライブにもう同じ日程がある / 年度が開催日とずれている
   // あわせて、カード上部の「この日程は登録済みです」の帯も出し入れする
-  // ライブ編集: 統合先にもうある日程名の日程に「上書き」の警告を出す + 保存前の確認文を付け外し
+  // ライブ編集: 統合先にもうある日程名の日程に注意を出す + 保存前の確認文を付け外し
   const updateLiveEdit = (box) => {
     const form = box.closest('form');
     const btn = box.querySelector('[data-live-pick]');
@@ -1986,7 +1987,7 @@ function setupMergeToggle() {
     note.textContent = chosen ? 'このライブの日程を全部、選んだライブへ移します（このライブは消えます）' : '';
     if (chosen) {
       form.dataset.confirm = `このライブを「${btn.dataset.year}年度 ${btn.dataset.name}」に統合します。`
-        + (overwrites ? `\n登録済の日程 ${overwrites} 件は上書きされ、元のバンドは消えます。` : '')
+        + (overwrites ? `\n統合先にもある日程が ${overwrites} 件あります（両方にバンドがいれば、次の画面でバンドごとに残す・統合・捨てるを選べます）。` : '')
         + '\n元に戻せません。よろしいですか？';
     } else {
       delete form.dataset.confirm;

@@ -1190,6 +1190,80 @@ function merge_same_breaks(array $rows): array
     return $merged;
 }
 
+/**
+ * バンド $fromId を、バンド $toId にまとめる（ライブの統合で「統合する」を選んだバンド。live_edit.php）。
+ * 統合先を優先し、統合先が空のところだけ統合元の値で埋める。
+ *   ・曲数・メモ・YouTube・コピー元アーティスト … 統合先が空なら統合元の値
+ *   ・開始/終了時刻 … 2つで1組（片方だけ入れると「終了 > 開始」の CHECK に引っかかることがある）。統合先が両方空なら統合元の組
+ *   ・🚩（楽器の確認） … どちらかに付いていれば付ける
+ *   ・メンバー … 両方を合わせる（同じ人・同じ楽器は主キーで1つになる）
+ *   ・セットリスト … 統合先に1曲も無いときだけ、統合元の曲（と曲ごとの演奏者）をコピーする
+ * 最後に統合元のバンドを消す（band_member・song は CASCADE で一緒に消える）。
+ * トランザクションの中で呼ぶこと。
+ */
+function merge_band_into(PDO $pdo, int $fromId, int $toId): void
+{
+    $st = $pdo->prepare('SELECT * FROM band WHERE band_id = ?');
+    $st->execute([$fromId]);
+    $from = $st->fetch();
+    $st->execute([$toId]);
+    $to = $st->fetch();
+    if (!$from || !$to || $fromId === $toId) {
+        throw new RuntimeException('統合するバンドが見つかりません');
+    }
+    $empty = static fn($v) => $v === null || $v === '';
+
+    // 1. メンバー（先に入れる。曲ごとの演奏者は band_member を外部キーで参照しているため）
+    $pdo->prepare('INSERT IGNORE INTO band_member (band_id, member_id, instrument_id)
+        SELECT ?, member_id, instrument_id FROM band_member WHERE band_id = ?')->execute([$toId, $fromId]);
+
+    // 2. セットリスト: 統合先に曲が無いときだけコピー
+    $count = $pdo->prepare('SELECT COUNT(*) FROM song WHERE band_id = ?');
+    $count->execute([$toId]);
+    $copySongs = (int)$count->fetchColumn() === 0;
+    if ($copySongs) {
+        $songs = $pdo->prepare('SELECT * FROM song WHERE band_id = ? ORDER BY track_no');
+        $songs->execute([$fromId]);
+        $insertSong = $pdo->prepare('INSERT INTO song (band_id, track_no, title, artist_id, track_source, track_id) VALUES (?, ?, ?, ?, ?, ?)');
+        $copyPerformers = $pdo->prepare('INSERT INTO song_performer (song_id, band_id, member_id, instrument_id)
+            SELECT ?, ?, member_id, instrument_id FROM song_performer WHERE song_id = ?');
+        foreach ($songs->fetchAll() as $s) {
+            $insertSong->execute([$toId, $s['track_no'], $s['title'], $s['artist_id'], $s['track_source'], $s['track_id']]);
+            $copyPerformers->execute([(int)$pdo->lastInsertId(), $toId, $s['song_id']]);
+        }
+    }
+
+    // 3. バンドの情報: 統合先が空のところだけ埋める
+    $set = [];
+    foreach (['song_count', 'note', 'youtube_url'] as $col) {
+        if ($empty($to[$col]) && !$empty($from[$col])) {
+            $set[$col] = $from[$col];
+        }
+    }
+    if ($empty($to['start_time']) && $empty($to['end_time'])) {
+        $set['start_time'] = $from['start_time'];
+        $set['end_time'] = $from['end_time'];
+    }
+    if ($copySongs && $from['is_omnibus']) {
+        // オムニバスの曲（曲ごとにアーティストを持つ）を持ってきたので、統合先もオムニバスにする
+        $set['is_omnibus'] = 1;
+        $set['artist_id'] = null;
+    } elseif (!$to['is_omnibus'] && $empty($to['artist_id']) && !$from['is_omnibus'] && !$empty($from['artist_id'])) {
+        $set['artist_id'] = $from['artist_id'];
+    }
+    if ($from['needs_check'] && !$to['needs_check']) {
+        $set['needs_check'] = 1;
+    }
+    if ($set) {
+        // 列名は上で決めた固定の名前だけ（入力から来た文字は SQL に入らない）
+        $sql = implode(', ', array_map(static fn($c) => "$c = ?", array_keys($set)));
+        $pdo->prepare("UPDATE band SET $sql WHERE band_id = ?")->execute([...array_values($set), $toId]);
+    }
+
+    // 4. 統合元を消す
+    delete_band($pdo, $fromId);
+}
+
 /** バンドを1組削除（band_member は CASCADE で消える） */
 function delete_band(PDO $pdo, int $bandId): void
 {
