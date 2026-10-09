@@ -56,8 +56,9 @@ function read_images_with_ai(array $files): array
     $content = [];
     foreach ($files as $i => $f) {
         $content[] = ['type' => 'text', 'text' => '画像' . ($i + 1) . '（ファイル名: ' . $f['name'] . '）'];
+        $img = ai_prepare_image($f['path'], $f['name']);
         $content[] = ['type' => 'image', 'source' => [
-            'type' => 'base64', 'media_type' => 'image/jpeg', 'data' => base64_encode(ai_prepare_image($f['path'], $f['name'])),
+            'type' => 'base64', 'media_type' => $img['media_type'], 'data' => base64_encode($img['data']),
         ]];
     }
     $content[] = ['type' => 'text', 'text' => 'これらの画像を、取り込み用の CSV に変換してください。'];
@@ -88,22 +89,22 @@ function read_images_with_ai(array $files): array
 }
 
 /**
- * 画像を「長辺 AI_IMAGE_MAX_EDGE 以下の JPEG」のバイト列にする。
- * 拡張子は偽装できるので、getimagesize で中身が本当に画像か確かめる。
+ * 画像を「長辺 AI_IMAGE_MAX_EDGE 以下の JPEG」にする。
+ * 拡張子は偽装できるので、getimagesize で中身が本当に画像か確かめる（getimagesize は GD が無くても使える）。
+ * サーバーで GD（画像を扱う拡張機能）が使えないときは、縮小せずにそのまま送る（AI 側で縮小されるので読めるが、少し料金が増える）。
+ * @return array{data: string, media_type: string}
  */
-function ai_prepare_image(string $path, string $name): string
+function ai_prepare_image(string $path, string $name): array
 {
     $info = @getimagesize($path);
     $types = [IMAGETYPE_JPEG, IMAGETYPE_PNG, IMAGETYPE_GIF, IMAGETYPE_WEBP];
     if ($info === false || !in_array($info[2], $types, true)) {
         throw new RuntimeException("{$name}: 画像として読めません（JPEG / PNG / WebP / GIF のどれかにしてください）");
     }
-    if (!function_exists('imagecreatefromstring')) {
-        throw new RuntimeException('サーバーで画像を扱う機能（GD）が使えません');
-    }
-    $src = @imagecreatefromstring((string)file_get_contents($path));
+    $raw = (string)file_get_contents($path);
+    $src = function_exists('imagecreatefromstring') ? @imagecreatefromstring($raw) : false;
     if ($src === false) {
-        throw new RuntimeException("{$name}: 画像を開けませんでした");
+        return ['data' => $raw, 'media_type' => $info['mime']];
     }
     [$w, $h] = [imagesx($src), imagesy($src)];
     $scale = min(1.0, AI_IMAGE_MAX_EDGE / max($w, $h));
@@ -115,7 +116,7 @@ function ai_prepare_image(string $path, string $name): string
 
     ob_start(); // imagejpeg は画面に出力する関数なので、出力を横取りして文字列として受け取る
     imagejpeg($dst, null, 85);
-    return (string)ob_get_clean();
+    return ['data' => (string)ob_get_clean(), 'media_type' => 'image/jpeg'];
 }
 
 /** AI に渡す指示。v3 の取り込み（parsers.php）が読める CSV の形を、ここで1文字も崩さず伝える */
