@@ -409,11 +409,11 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .like__count::before, .like__count::after { content: ''; position: absolute; top: 50%; transform: translateY(-50%); border: 5px solid transparent; border-right: 0; }
 .like__count::before { right: -6px; border-left-color: var(--border); }
 .like__count::after  { right: -5px; border-left-color: var(--surface); }
-.like__heart { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linejoin: round; overflow: visible; transition: transform .15s, fill .15s, stroke .15s; }
+.like__heart { font-size: 22px; transition: transform .15s, font-variation-settings .15s; } /* Material Symbols の favorite（枠線だけ） */
 .like:hover { color: var(--accent); }
 .like:hover .like__heart { transform: scale(1.12); }
 .like.is-liked { color: var(--accent); }
-.like.is-liked .like__heart { fill: var(--accent); stroke: var(--accent); }
+.like.is-liked .like__heart { font-variation-settings: "FILL" 1, "wght" 500, "GRAD" 0, "opsz" 24; } /* 塗りつぶし（.icon--fill と同じ） */
 .like.is-liked .like__count { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--surface)); }
 .like.is-liked .like__count::before { border-left-color: var(--accent); }
 .like.is-liked .like__count::after { border-left-color: color-mix(in srgb, var(--accent) 10%, var(--surface)); } /* 吹き出しの中と同じ色 */
@@ -423,7 +423,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .like:disabled { opacity: .6; cursor: progress; }
 .slot__like { margin-left: auto; }             /* タイムテーブルの行の右端に寄せる */
 .like--lg .like__count { font-size: 15px; padding: 6px 12px; }
-.like--lg .like__heart { width: 28px; height: 28px; }
+.like--lg .like__heart { font-size: 30px; }
 .band-title { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; } /* band.php: バンド名とその右の ❤ */
 /* live_youtube.php: プレイリストの動画をバンドに割り当てる表 */
 .table-scroll--yt { margin: -20px -20px 0; border-top: 0; }
