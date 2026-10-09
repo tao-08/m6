@@ -365,7 +365,7 @@ function chorus_toggle(string $name, bool $on, string $choice, bool $disabled = 
     $on = $on && $allowed;
     return '<span class="cho-toggle-wrap" data-cho-toggle data-cho-block="' . h(implode(',', chorus_blocked_choices())) . '">'
         . '<button type="button" class="cho-toggle" aria-pressed="' . ($on ? 'true' : 'false') . '" title="弾きながらコーラス（Gt/Cho など）"'
-        . ($allowed && !$disabled ? '' : ' disabled') . '>Cho</button>'
+        . ($allowed && !$disabled ? '' : ' disabled') . '>Choあり</button>'
         . ($disabled ? '' : '<input type="hidden" name="' . h($name) . '" value="' . ($on ? '1' : '0') . '">') . '</span>';
 }
 
