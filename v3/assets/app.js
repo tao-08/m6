@@ -945,6 +945,15 @@ function setupSmallThings() {
     if (input) input.value = e.target.value;
   });
 
+  // 右上のメニュー（<details class="usermenu">）: 開くたびに、右上から少し下りながらふわっと出す
+  //   toggle は開いた後に来る。動きを減らす設定の人には動かさない
+  document.querySelectorAll('.usermenu').forEach((menu) => menu.addEventListener('toggle', () => {
+    if (!menu.open || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    menu.querySelector('.usermenu__panel')?.animate(
+      [{ opacity: 0, transform: 'translateY(-6px) scale(.96)' }, { opacity: 1, transform: 'none' }],
+      { duration: 180, easing: 'cubic-bezier(.2, .9, .3, 1.1)' });
+  }));
+
   // data-fill-hint … メンバープロフィールの一括編集で、空欄の入力欄に data-hint（初出演の年度）を入れる。保存はしない
   document.querySelectorAll('[data-fill-hint]').forEach((btn) => btn.addEventListener('click', () => {
     btn.form.querySelectorAll('input[data-hint]').forEach((input) => {
