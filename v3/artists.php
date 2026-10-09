@@ -59,7 +59,7 @@ foreach ($st as $r) {
     $topPlayers[(int)$r['artist_id']][] = $r;
 }
 
-// 別称（artist_id => [別称, ...]）
+// 別称（artist_id => [別称, ...]）。一覧には出さず、絞り込み（data-text）で別称でも当たるようにだけ使う
 $aliases = [];
 foreach ($pdo->query('SELECT artist_id, name FROM artist_alias ORDER BY name') as $r) {
     $aliases[(int)$r['artist_id']][] = $r['name'];
@@ -153,7 +153,6 @@ render_header('アーティスト', 'artists');
                     <td class="num muted"><?= $r['rank'] ?? '—' ?></td>
                     <td>
                         <a href="artist?id=<?= $id ?>"<?= $r['rank'] ? ' class="strong"' : '' ?>><?= h($r['name']) ?></a>
-                        <?php if ($al): ?><div class="muted small">別称: <?= h(implode('、', $al)) ?></div><?php endif; ?>
                     </td>
                     <td class="num plays<?= $r['rank'] ? ' strong' : ' muted' ?>"><?= (int)$r['plays'] ?></td>
                     <td>
