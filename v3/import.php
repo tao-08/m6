@@ -304,7 +304,7 @@ if ($plan === null): // ==================== アップロード画面 ==========
 ?>
 
 <!-- enctype="multipart/form-data" が無いとファイルが送られない -->
-<form method="post" enctype="multipart/form-data" class="card upload">
+<form method="post" enctype="multipart/form-data" class="card upload" data-loading>
     <?= csrf_field() ?>
     <input type="hidden" name="action" value="upload">
     <label class="dropzone" data-dropzone>
@@ -314,6 +314,12 @@ if ($plan === null): // ==================== アップロード画面 ==========
         <span class="muted small">クリックしてファイルを選択 · CSV / Excel / PDF<?= ai_reader_enabled() ? ' / 画像' : '' ?> · 最大<?= MAX_FILES ?>ファイル</span>
         <ul class="dropzone__list" data-file-list></ul>
     </label>
+    <!-- 送信したら JS（assets/app.js の setupLoading）が出す。画像があれば AI の読み取りで数十秒かかる -->
+    <div class="loading" data-loading-box hidden role="status" aria-live="polite">
+        <span class="loading__spinner" aria-hidden="true"></span>
+        <p class="loading__title" data-loading-title>読み込み中…</p>
+        <p class="muted small" data-loading-sub></p>
+    </div>
     <button class="btn btn--primary btn--block" type="submit">読み込んでプレビュー</button>
 </form>
 
@@ -355,7 +361,12 @@ if ($plan === null): // ==================== アップロード画面 ==========
 </section>
 
 <?php foreach ($plan['errors'] as $e): ?><div class="flash flash--error"><?= h($e) ?></div><?php endforeach; ?>
-<?php foreach ($plan['notes'] ?? [] as $n): ?><div class="flash flash--warn"><?= h($n) ?></div><?php endforeach; ?>
+<?php if (!empty($plan['notes'])): ?>
+<div class="flash flash--warn ai-notes">
+    <p>AI の読み取りで確認してほしいところ（<?= count($plan['notes']) ?>件）</p>
+    <ul><?php foreach ($plan['notes'] as $n): ?><li><?= h($n) ?></li><?php endforeach; ?></ul>
+</div>
+<?php endif; ?>
 
 <form method="post" class="card manual-tt">
     <?= csrf_field() ?>
@@ -556,7 +567,12 @@ if ($plan === null): // ==================== アップロード画面 ==========
 </section>
 
 <?php foreach ($plan['errors'] as $e): ?><div class="flash flash--error"><?= h($e) ?></div><?php endforeach; ?>
-<?php foreach ($plan['notes'] ?? [] as $n): ?><div class="flash flash--warn"><?= h($n) ?></div><?php endforeach; ?>
+<?php if (!empty($plan['notes'])): ?>
+<div class="flash flash--warn ai-notes">
+    <p>AI の読み取りで確認してほしいところ（<?= count($plan['notes']) ?>件）</p>
+    <ul><?php foreach ($plan['notes'] as $n): ?><li><?= h($n) ?></li><?php endforeach; ?></ul>
+</div>
+<?php endif; ?>
 
 <!-- data-pack: 送信時に JS が全項目を JSON 1個にまとめる（read_form_input() の説明参照） -->
 <form method="post" class="import-form" data-pack>

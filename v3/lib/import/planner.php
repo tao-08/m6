@@ -363,7 +363,7 @@ function build_import_plan(array $files): array
             $ai = read_images_with_ai($images);
             $sheetGroups[] = $ai['sheets'];
             foreach ($ai['notes'] as $n) {
-                $plan['notes'][] = 'AI の読み取りで確認が必要: ' . $n;
+                $plan['notes'][] = $n;
             }
         } catch (Throwable $e) {
             $plan['errors'][] = implode('・', array_column($images, 'name')) . ': ' . $e->getMessage();

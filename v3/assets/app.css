@@ -659,6 +659,16 @@ input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px;
   border: 2px dashed var(--border); background: var(--surface-2); text-align: center; cursor: pointer; transition: border-color .2s, background .2s; }
 .dropzone:hover, .dropzone.is-over { border-color: var(--accent); background: var(--accent-soft); }
 .dropzone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; } /* 透明なファイル選択欄を全面に重ねる */
+/* 取り込みの送信後に出す「読み込み中」（画面全体を覆って、二重送信も防ぐ） */
+.loading { position: fixed; inset: 0; z-index: 100; display: grid; place-content: center; justify-items: center; gap: 8px; padding: 16px;
+  text-align: center; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(2px); }
+.loading[hidden] { display: none; }
+.loading__spinner { width: 40px; height: 40px; border-radius: 50%; border: 4px solid var(--surface-2); border-top-color: var(--accent); animation: spin .9s linear infinite; }
+.loading__title { font-weight: 700; font-size: 16px; margin: 0; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .loading__spinner { animation-duration: 3s; } }
+.ai-notes p { margin: 0 0 6px; }
+.ai-notes ul { margin: 0; padding-left: 1.2em; font-weight: 500; }
 .dropzone__icon { font-size: 26px; font-weight: 800; width: 56px; height: 56px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: var(--on-accent); margin-bottom: 6px; }
 .dropzone__title { font-weight: 800; font-size: 17px; }
 .dropzone__list { position: relative; z-index: 1; list-style: none; padding: 0; margin: 10px 0 0; display: grid; gap: 4px; font-size: 13px; font-weight: 600; } /* × を押せるように透明な input より上に出す */

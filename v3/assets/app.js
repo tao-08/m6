@@ -30,6 +30,7 @@
  *    data-pack          … 送信時に全項目を JSON 1個にまとめるフォーム
  *    data-rows          … バンド編集・タイムテーブル編集のメンバー行（追加・削除）
  *    data-autosubmit    … 選んだら即送信
+ *    data-loading       … 送信したら「読み込み中」を出す（取り込みの AI 読み取りは数十秒かかる）
  *    <select>           … 全部のプルダウンをボタン + ポップアップの見た目にする（data-native で元のまま）
  *    data-song-list / data-add-song … 曲の編集
  *    data-track-search  … 曲の編集の🔍（Spotify / iTunes の曲を探して紐付ける）
@@ -54,6 +55,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupTabs();
   setupConfirm();
   setupDropzone();
+  setupLoading();
   setupNameCheck();
   setupImportPreview();
   setupMergeToggle();
@@ -1413,6 +1415,36 @@ function setupDropzone() {
   });
   ['dragenter', 'dragover'].forEach((ev) => drop.addEventListener(ev, () => drop.classList.add('is-over')));
   ['dragleave', 'drop'].forEach((ev) => drop.addEventListener(ev, () => drop.classList.remove('is-over')));
+}
+
+/* ---------------------------------------------------------------------
+ * 取り込みの送信後の「読み込み中」
+ *
+ *   ページはそのまま（サーバーの返事が来たら次のページに切り替わる）。返事を待つ間、
+ *   フォームの中の [data-loading-box] を出して画面を覆う。画像が入っていれば AI の読み取りなので時間の目安も出す。
+ *   ブラウザの「戻る」でこのページに戻ったとき（bfcache で前の見た目のまま復元される）は消す。
+ * ------------------------------------------------------------------- */
+function setupLoading() {
+  document.querySelectorAll('form[data-loading]').forEach((form) => {
+    const box = form.querySelector('[data-loading-box]');
+    if (!box) return;
+    form.addEventListener('submit', (e) => {
+      if (e.defaultPrevented) return; // 確認ダイアログでキャンセルされたなど
+      const files = [...form.querySelectorAll('input[type=file]')].flatMap((i) => [...i.files]);
+      const images = files.filter((f) => /\.(jpe?g|png|webp|gif)$/i.test(f.name)).length;
+      if (images > 0) {
+        form.querySelector('[data-loading-title]').textContent = `AI が画像${images}枚を読み取り中…`;
+        form.querySelector('[data-loading-sub]').textContent = '30秒〜1分ほどかかります。このままお待ちください';
+      }
+      box.hidden = false;
+      form.querySelectorAll('button[type=submit]').forEach((b) => { b.disabled = true; });
+    });
+  });
+  window.addEventListener('pageshow', (e) => {
+    if (!e.persisted) return;
+    document.querySelectorAll('[data-loading-box]').forEach((b) => { b.hidden = true; });
+    document.querySelectorAll('form[data-loading] button[type=submit]').forEach((b) => { b.disabled = false; });
+  });
 }
 
 /* ---------------------------------------------------------------------
