@@ -955,6 +955,9 @@ code { background: var(--surface-2); padding: 1px 6px; border-radius: 6px; font-
 /* 「＋ 曲を追加」で出てきたカード: 上からふわっと出す（JS の setupSongs が is-entering を付け、終わったら外す）。
    追加したばかりのカードを🗑で消すときの「縮んで消える」動きは、高さがカードごとに違うので JS（animate）でやっている */
 .song-card.is-entering { animation: song-card-in .22s ease-out; }
+.song-card.is-dragging { position: relative; z-index: 2; box-shadow: 0 10px 28px rgba(0, 0, 0, .18); } /* ≡ でつかんでいる曲を少し浮かせる */
+[data-song-handle] { cursor: grab; touch-action: none; } /* touch-action: スマホでドラッグ中に画面がスクロールしないように */
+.song-card.is-dragging [data-song-handle] { cursor: grabbing; }
 @keyframes song-card-in { from { opacity: 0; transform: translateY(-8px) scale(.98); } }
 @media (prefers-reduced-motion: reduce) { .song-card.is-entering { animation: none; } }
 .song-card__head { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }

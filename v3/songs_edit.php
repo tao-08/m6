@@ -113,6 +113,8 @@ if (is_post()) {
             'artist' => $artist,
             'track' => $track,
             'k' => (int)$k,
+            // 画面の上から何番目か（≡ で並び替えた順。JS が振り直す）。無い・数字でなければ songs[番号] の番号順
+            'pos' => is_int($pos = filter_var($in['pos'] ?? null, FILTER_VALIDATE_INT)) ? $pos : (int)$k,
             'performers' => array_values($performers),
         ];
     }
@@ -140,8 +142,8 @@ if (is_post()) {
         $newTracks[$key] = $info;
     }
     if (!$errors) {
-        // 画面の並び順（songs[番号] の番号順。JS で足したカードは大きい番号なので最後になる）
-        usort($songs, static fn($a, $b) => $a['k'] <=> $b['k']);
+        // 画面の並び順（≡ で並び替えた順 = pos。同じなら songs[番号] の番号順。JS で足したカードは大きい番号）
+        usort($songs, static fn($a, $b) => [$a['pos'], $a['k']] <=> [$b['pos'], $b['k']]);
         $pdo->beginTransaction();
         try {
             foreach ($songs as &$song) {
@@ -229,6 +231,9 @@ render_header('曲を編集', 'lives');
             <?php if ($isNew): ?><template data-song-template><?php endif; ?>
             <section class="card song-card<?= $isNew ? ' song-card--new' : '' ?>" data-song-card>
                 <div class="song-card__head">
+                    <!-- ≡: ドラッグ（↑↓キーでも）で曲の順番を入れ替える。pos = 上から何番目か（JS が振り直す。保存はこの順） -->
+                    <button type="button" class="drag-handle" data-song-handle aria-label="ドラッグで並び替え（↑↓キーでも動く）" title="ドラッグで並び替え"><?= icon('drag_indicator') ?></button>
+                    <input type="hidden" name="<?= $base ?>[pos]" value="<?= (int)$k ?>" data-song-pos>
                     <span class="song-card__no"><span data-song-no><?= (int)$song['track_no'] ?></span>曲目</span>
                     <!-- ジャケット: 紐付けた曲の画像。紐付けていなければ ♪。
                          紐付けているときは、マウスを乗せると「リンクが切れるマーク」が重なり、押すと紐付けを外す -->

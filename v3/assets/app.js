@@ -312,11 +312,62 @@ function setupSongs() {
   });
 
   // 「何曲目」を画面の上から 1, 2, 3... と振り直す（カードを足した・消したとき）。消えている途中のカードは数えない
+  //   並び順の隠し項目（data-song-pos）も同じ順に振り直す。保存はこの順（songs_edit.php）
+  const cards = () => [...list.querySelectorAll('[data-song-card]:not(.is-leaving)')];
   const renumber = () => {
-    list.querySelectorAll('[data-song-card]:not(.is-leaving)').forEach((c, i) => {
+    cards().forEach((c, i) => {
       c.querySelector('[data-song-no]').textContent = String(i + 1);
+      const pos = c.querySelector('[data-song-pos]');
+      if (pos) pos.value = String(i);
     });
   };
+  renumber();
+
+  // ---- 曲の並び替え（≡ をドラッグ / ≡ にフォーカスして ↑↓ キー） ----
+  //   指の位置が上か下のカードの真ん中を越えたら、そのカードと入れ替える
+  let drag = null; // ドラッグ中だけ { card, pointerId }
+  list.addEventListener('pointerdown', (e) => {
+    const handle = e.target.closest('[data-song-handle]');
+    if (!handle || drag || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    e.preventDefault(); // 文字の選択が始まらないように
+    drag = { card: handle.closest('[data-song-card]'), pointerId: e.pointerId };
+    drag.card.classList.add('is-dragging');
+    handle.setPointerCapture(e.pointerId); // 指やマウスが ≡ の外に出ても追いかける
+  });
+  list.addEventListener('pointermove', (e) => {
+    if (!drag || e.pointerId !== drag.pointerId) return;
+    const all = cards();
+    const i = all.indexOf(drag.card);
+    const prev = all[i - 1];
+    const next = all[i + 1];
+    const mid = (el) => { const r = el.getBoundingClientRect(); return r.top + r.height / 2; };
+    if (prev && e.clientY < mid(prev)) {
+      list.insertBefore(drag.card, prev);
+      renumber();
+    } else if (next && e.clientY > mid(next)) {
+      list.insertBefore(drag.card, next.nextElementSibling);
+      renumber();
+    }
+  });
+  const endDrag = (e) => {
+    if (!drag || e.pointerId !== drag.pointerId) return;
+    drag.card.classList.remove('is-dragging');
+    drag = null;
+  };
+  list.addEventListener('pointerup', endDrag);
+  list.addEventListener('pointercancel', endDrag);
+  list.addEventListener('keydown', (e) => {
+    const handle = e.target.closest('[data-song-handle]');
+    if (!handle || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
+    e.preventDefault(); // ページがスクロールしないように
+    const card = handle.closest('[data-song-card]');
+    const all = cards();
+    const i = all.indexOf(card);
+    if (e.key === 'ArrowUp' && all[i - 1]) list.insertBefore(card, all[i - 1]);
+    if (e.key === 'ArrowDown' && all[i + 1]) list.insertBefore(card, all[i + 1].nextElementSibling);
+    renumber();
+    handle.focus(); // 動かしたあともフォーカスを ≡ に残す（続けて押せるように）
+  });
 
   // 空のカードの元（songs_edit.php の <template>）。template の中身は画面に出ず、送信もされない
   const template = list.querySelector('[data-song-template]');
