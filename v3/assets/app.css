@@ -145,6 +145,10 @@ a:hover { color: var(--accent); }
 .usermenu[open] summary { color: var(--accent); border-color: var(--accent); }
 .usermenu__panel { position: absolute; right: 0; top: 46px; min-width: 210px; padding: 8px; border-radius: var(--radius-sm);
   background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); display: grid; gap: 2px; }
+/* 開いたとき: 右上（ボタンのある所）から少し下りながらふわっと出す。<details> は閉じると中身がすぐ消えるので、出るときだけ */
+.usermenu[open] .usermenu__panel { transform-origin: top right; animation: usermenu-in .18s cubic-bezier(.2, .9, .3, 1.1); }
+@keyframes usermenu-in { from { opacity: 0; transform: translateY(-6px) scale(.96); } }
+@media (prefers-reduced-motion: reduce) { .usermenu[open] .usermenu__panel { animation: none; } }
 .usermenu__panel a, .usermenu__panel .linkbtn { padding: 8px 10px; border-radius: 8px; text-align: left; }
 .usermenu__panel a:hover, .usermenu__panel .linkbtn:hover { background: var(--surface-2); color: var(--text); }
 .usermenu__name { padding: 8px 10px; font-weight: 700; border-bottom: 1px solid var(--border); margin-bottom: 4px; }
