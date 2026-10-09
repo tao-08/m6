@@ -37,6 +37,15 @@ return [
         'youtube' => [
             'api_key' => '',
         ],
+        // タイムテーブル・名簿の「画像」を AI（Claude）で読み取る（import.php）のに使う Anthropic の API キー
+        //   https://console.anthropic.com で作る。Console の「Limits」で月の利用上限を必ず設定しておく
+        //   空なら画像の読み取りだけ使えない（CSV / Excel / PDF はそのまま使える）
+        //   ※ パスワードと同じ。人に見せない・git に入れない
+        //   ※ 画像はAnthropic のサーバーに送られる（名簿なら部員の実名も）。サークルで了承を取ってから使う
+        'anthropic' => [
+            'api_key' => '',
+            'model'   => 'claude-opus-5-5', // 1回 10円前後。安くしたいなら 'claude-sonnet-5-5'（精度は実物で比べて決める）
+        ],
         // true: エラーの詳細を画面に出す（開発中だけ）
         'debug' => false,
     ],

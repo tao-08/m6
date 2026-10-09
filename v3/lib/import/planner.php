@@ -351,17 +351,35 @@ function parse_name_instrument(string $name): array
  */
 function build_import_plan(array $files): array
 {
-    $plan = ['timetables' => [], 'rosters' => [], 'errors' => []];
+    $plan = ['timetables' => [], 'rosters' => [], 'errors' => [], 'notes' => []];
+
+    // ---- 0. 画像は AI にまとめて読ませて CSV にする（2ページに分かれた表をつなげられるよう、1回でまとめて送る） ----
+    // 読めた表は「1シート」として、CSV / Excel と同じ 1. の処理に流す
+    $images = array_values(array_filter($files, static fn($f) => is_ai_image_name($f['name'])));
+    $files = array_values(array_filter($files, static fn($f) => !is_ai_image_name($f['name'])));
+    $sheetGroups = [];
+    if ($images) {
+        try {
+            $ai = read_images_with_ai($images);
+            $sheetGroups[] = $ai['sheets'];
+            foreach ($ai['notes'] as $n) {
+                $plan['notes'][] = 'AI の読み取りで確認が必要: ' . $n;
+            }
+        } catch (Throwable $e) {
+            $plan['errors'][] = implode('・', array_column($images, 'name')) . ': ' . $e->getMessage();
+        }
+    }
 
     // ---- 1. 1ファイルずつ読んで、タイムテーブルか名簿かで振り分け ----
     // Excel は1ファイルに複数シートがあるので、シート1枚を「1ファイル」とみなして同じ処理に流す
     foreach ($files as $f) {
         try {
-            $sheets = read_table_sheets($f['path'], $f['name']);
+            $sheetGroups[] = read_table_sheets($f['path'], $f['name']);
         } catch (Throwable $e) {
             $plan['errors'][] = $f['name'] . ': ' . $e->getMessage();
-            continue;
         }
+    }
+    foreach ($sheetGroups as $sheets) {
         foreach ($sheets as $label => $rows) {
             try {
                 if (detect_table_kind($rows) === 'timetable') {

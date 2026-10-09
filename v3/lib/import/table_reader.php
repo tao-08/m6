@@ -22,6 +22,7 @@ declare(strict_types=1);
  */
 require_once __DIR__ . '/xlsx_reader.php';
 require_once __DIR__ . '/pdf_words.php';
+require_once __DIR__ . '/ai_reader.php';
 
 /** 取り込みで受け付ける拡張子 */
 const IMPORT_EXTENSIONS = ['csv', 'txt', 'xlsx', 'xlsm', 'pdf'];
@@ -71,6 +72,12 @@ function read_csv_table(string $path): array
     if ($raw === false) {
         throw new RuntimeException('ファイルを読み込めませんでした');
     }
+    return read_csv_string($raw);
+}
+
+/** CSV の文字列 → 2次元配列（ファイルからでも、AI が書いた CSV からでも同じ読み方にする） */
+function read_csv_string(string $raw): array
+{
     $raw = preg_replace('/^\xEF\xBB\xBF/', '', $raw) ?? $raw; // BOM
     // Excel の「CSV」保存は Shift_JIS になることがある
     if (!mb_check_encoding($raw, 'UTF-8')) {

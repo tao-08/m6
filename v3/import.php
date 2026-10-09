@@ -169,8 +169,12 @@ if (is_post()) {
                 flash("{$name}: 古い Excel 形式（.xls）は読めません。Excel で「.xlsx」として保存し直してください", 'error');
                 continue;
             }
-            if (!in_array($ext, IMPORT_EXTENSIONS, true)) {
-                flash("{$name}: CSV / Excel(.xlsx) / PDF のどれかを選んでください", 'error');
+            if (in_array($ext, ['heic', 'heif'], true)) {
+                flash("{$name}: iPhone の HEIC 形式は読めません。スクリーンショットにするか、カメラの設定を「互換性優先」にして撮り直してください", 'error');
+                continue;
+            }
+            if (!in_array($ext, IMPORT_EXTENSIONS, true) && !(ai_reader_enabled() && in_array($ext, AI_IMAGE_EXTENSIONS, true))) {
+                flash("{$name}: " . (ai_reader_enabled() ? 'CSV / Excel(.xlsx) / PDF / 画像（JPEG・PNG）' : 'CSV / Excel(.xlsx) / PDF') . ' のどれかを選んでください', 'error');
                 continue;
             }
             $files[] = ['path' => $up['tmp_name'][$i], 'name' => $name];
@@ -304,10 +308,10 @@ if ($plan === null): // ==================== アップロード画面 ==========
     <?= csrf_field() ?>
     <input type="hidden" name="action" value="upload">
     <label class="dropzone" data-dropzone>
-        <input type="file" name="files[]" accept=".csv,.xlsx,.xlsm,.pdf,text/csv,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" multiple required data-file-input>
+        <input type="file" name="files[]" accept=".csv,.xlsx,.xlsm,.pdf,text/csv,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet<?= ai_reader_enabled() ? ',image/jpeg,image/png,image/webp,image/gif' : '' ?>" multiple required data-file-input>
         <span class="dropzone__icon" aria-hidden="true"><?= icon('upload_file') ?></span>
         <span class="dropzone__title">ここにファイルをドロップ</span>
-        <span class="muted small">クリックしてファイルを選択 · CSV / Excel / PDF · 最大<?= MAX_FILES ?>ファイル</span>
+        <span class="muted small">クリックしてファイルを選択 · CSV / Excel / PDF<?= ai_reader_enabled() ? ' / 画像' : '' ?> · 最大<?= MAX_FILES ?>ファイル</span>
         <ul class="dropzone__list" data-file-list></ul>
     </label>
     <button class="btn btn--primary btn--block" type="submit">読み込んでプレビュー</button>
@@ -316,7 +320,7 @@ if ($plan === null): // ==================== アップロード画面 ==========
 <section class="guide">
     <div class="card">
         <h3><span class="step">1</span>タイムテーブル</h3>
-        <p class="muted small">1ファイルにつきライブ1日分を読み込みます。画像ファイルは読み込めないのでCSVファイルかPDFファイルに変換してください。</p>
+        <p class="muted small">1ファイルにつきライブ1日分を読み込みます。<?php if (ai_reader_enabled()): ?>写真・スクリーンショット（画像は<?= AI_MAX_IMAGES ?>枚まで）は AI が読み取ります。読み間違いがあるので、プレビューで必ず確認してください。<?php else: ?>画像ファイルは読み込めないのでCSVファイルかPDFファイルに変換してください。<?php endif; ?></p>
     </div>
     <div class="card">
         <h3><span class="step">2</span>名簿</h3>
@@ -351,6 +355,7 @@ if ($plan === null): // ==================== アップロード画面 ==========
 </section>
 
 <?php foreach ($plan['errors'] as $e): ?><div class="flash flash--error"><?= h($e) ?></div><?php endforeach; ?>
+<?php foreach ($plan['notes'] ?? [] as $n): ?><div class="flash flash--warn"><?= h($n) ?></div><?php endforeach; ?>
 
 <form method="post" class="card manual-tt">
     <?= csrf_field() ?>
@@ -551,6 +556,7 @@ if ($plan === null): // ==================== アップロード画面 ==========
 </section>
 
 <?php foreach ($plan['errors'] as $e): ?><div class="flash flash--error"><?= h($e) ?></div><?php endforeach; ?>
+<?php foreach ($plan['notes'] ?? [] as $n): ?><div class="flash flash--warn"><?= h($n) ?></div><?php endforeach; ?>
 
 <!-- data-pack: 送信時に JS が全項目を JSON 1個にまとめる（read_form_input() の説明参照） -->
 <form method="post" class="import-form" data-pack>
