@@ -27,7 +27,7 @@ const BANDS_PER_PAGE = 20;
 $q = trim((string)($_GET['q'] ?? ''));
 // 何ページ目まで出すか。変な値（0、マイナス、文字）は 1 に、大きすぎる値は 50 に丸める
 $bandPage = min(50, max(1, (int)($_GET['bp'] ?? 1)));
-$lives = $bands = $members = $artists = [];
+$lives = $bands = $members = $artists = $matchedFaculties = $matchedRoles = [];
 $bandTotal = 0;
 
 // 学部・係で絞る（完全一致）。学部は決まった一覧にあるものだけ、係は DB にある ID だけ受け付ける
@@ -146,13 +146,21 @@ if ($faculty !== '' || $roleName !== null) {
     $st->execute([$like]);
     $artists = $st->fetchAll();
 
-    // ---- メンバー（名前・ふりがな） ----
+    // ---- 学部・係（名前で当たったら、その学部・係の一覧ページへのリンクを出す） ----
+    $matchedFaculties = array_values(array_filter(FACULTIES, fn($f) => mb_strpos($f, mb_substr($q, 0, 50)) !== false));
+    $st = $pdo->prepare('SELECT role_id, name FROM role WHERE name LIKE ? ORDER BY sort_order, name');
+    $st->execute([$like]);
+    $matchedRoles = $st->fetchAll();
+
+    // ---- メンバー（名前・ふりがな・学部・係） ----
     $st = $pdo->prepare('SELECT m.member_id, m.name, m.name_kana,
             (SELECT COUNT(DISTINCT x.band_id) FROM band_member x WHERE x.member_id = m.member_id) AS bands
         FROM member m
-        WHERE m.name LIKE ? OR m.name_kana LIKE ?
+        WHERE m.name LIKE ? OR m.name_kana LIKE ? OR m.faculty LIKE ?
+           OR EXISTS (SELECT 1 FROM member_role mr JOIN role r ON r.role_id = mr.role_id
+                      WHERE mr.member_id = m.member_id AND r.name LIKE ?)
         ORDER BY bands DESC, m.name LIMIT 60');
-    $st->execute([$like, $like]);
+    $st->execute([$like, $like, $like, $like]);
     $members = $st->fetchAll();
 }
 
@@ -167,7 +175,7 @@ render_header($filterLabel ?? ($q !== '' ? "「{$q}」の検索結果" : '検索
 
 <!-- GET で送るので、検索結果の URL をそのまま共有・ブックマークできる -->
 <form method="get" class="toolbar">
-    <input type="search" name="q" value="<?= h($q) ?>" class="search" placeholder="バンド名・メンバー名・ライブ名・会場・メモ" autofocus aria-label="検索ワード">
+    <input type="search" name="q" value="<?= h($q) ?>" class="search" placeholder="バンド名・メンバー名・学部・係・ライブ名・会場・メモ" autofocus aria-label="検索ワード">
     <button class="btn btn--primary" type="submit">検索</button>
 </form>
 
@@ -188,10 +196,24 @@ render_header($filterLabel ?? ($q !== '' ? "「{$q}」の検索結果" : '検索
     </section>
 <?php elseif ($q === ''): ?>
     <p class="muted">例: 「ヨルシカ」で過去にヨルシカをコピーしたバンドが全部出ます。</p>
-<?php elseif (!$lives && !$bands && !$members && !$artists): ?>
+<?php elseif (!$lives && !$bands && !$members && !$artists && !$matchedFaculties && !$matchedRoles): ?>
     <div class="empty card"><p class="empty__title">見つかりませんでした</p><p class="muted">表記を変えて試してみてください（全角/半角、スペースの有無など）</p></div>
 <?php else: ?>
     <div class="search-results">
+        <?php if ($matchedFaculties || $matchedRoles): ?>
+        <section>
+            <h2 class="section-title">学部・係</h2>
+            <div class="chip-list">
+                <?php foreach ($matchedFaculties as $f): ?>
+                    <a class="chip chip--lg" href="search?<?= h(http_build_query(['faculty' => $f])) ?>">学部: <?= h($f) ?></a>
+                <?php endforeach; ?>
+                <?php foreach ($matchedRoles as $r): ?>
+                    <a class="chip chip--lg" href="search?role=<?= (int)$r['role_id'] ?>">係: <?= h($r['name']) ?></a>
+                <?php endforeach; ?>
+            </div>
+        </section>
+        <?php endif; ?>
+
         <?php if ($members): ?>
         <section>
             <h2 class="section-title">メンバー <span class="muted"><?= count($members) ?></span></h2>
