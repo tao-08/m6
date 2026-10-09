@@ -248,6 +248,37 @@ function is_post(): bool
 }
 
 /* =====================================================================
+ *  招待コード（新規登録の合言葉）
+ * ---------------------------------------------------------------------
+ *  管理者が users.php から変えられるように、app_setting テーブルに置く。
+ *  行が無ければ（まだ一度も変えていない・021 のマイグレーション前）config.php の invite_code を使う。
+ *  '' なら誰でも登録できる。
+ * ===================================================================== */
+function invite_code(): string
+{
+    static $code = null;
+    if ($code === null) {
+        try {
+            $st = db()->prepare('SELECT setting_value FROM app_setting WHERE setting_key = ?');
+            $st->execute(['invite_code']);
+            $v = $st->fetchColumn();
+        } catch (PDOException $e) {
+            $v = false; // app_setting がまだ無い（migrations/021 を流していない）DB でも止まらないように
+        }
+        $code = $v === false ? (string)config('invite_code') : (string)$v;
+    }
+    return $code;
+}
+
+/** 招待コードを変える（'' で「誰でも登録できる」） */
+function set_invite_code(string $code, int $userId): void
+{
+    db()->prepare('INSERT INTO app_setting (setting_key, setting_value, updated_by) VALUES (?, ?, ?)
+        ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value), updated_by = VALUES(updated_by)')
+        ->execute(['invite_code', $code, $userId]);
+}
+
+/* =====================================================================
  *  総当たり攻撃（ブルートフォース）対策
  * ---------------------------------------------------------------------
  *  何もしないと、プログラムでパスワード（招待コード）を何万回でも試せてしまう。

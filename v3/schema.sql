@@ -467,3 +467,17 @@ CREATE TABLE login_attempt (
     KEY idx_attempt_ip (ip, attempted_at),
     KEY idx_attempt_login (login_id, attempted_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- ---------------------------------------------------------------------
+--  app_setting — サイトの設定（いまは招待コードだけ。users.php で管理者が変える）
+--    行が無い設定は config.php の値を使う（lib/bootstrap.php の invite_code()）
+-- ---------------------------------------------------------------------
+CREATE TABLE app_setting (
+    setting_key   VARCHAR(50)  CHARACTER SET ascii COLLATE ascii_bin NOT NULL, -- 'invite_code' など
+    setting_value VARCHAR(255) NOT NULL,
+    updated_by    INT UNSIGNED NULL,                                         -- 最後に変えた管理者
+    updated_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (setting_key),
+    CONSTRAINT fk_setting_user FOREIGN KEY (updated_by) REFERENCES user_account (user_id)
+        ON UPDATE CASCADE ON DELETE SET NULL                                   -- 変えた人のアカウントが消えても設定は残す
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;

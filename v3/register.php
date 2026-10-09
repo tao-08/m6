@@ -54,10 +54,10 @@ if (is_post()) {
     if ($password !== $confirm) {
         $errors[] = '確認用パスワードが一致しません';
     }
-    // 招待コード（config.php の invite_code が空でなければ必須）
+    // 招待コード（invite_code() が空でなければ必須。管理者が users.php で変えられる）
     // サークル外の人が勝手に登録して、メンバーの実名を見られないようにするため
     //   招待コードも総当たりで当てられないように、失敗が続いたら受け付けない（ログインと同じ仕組み。ID の代わりに '#invite'）
-    $invite = (string)config('invite_code');
+    $invite = invite_code();
     if ($invite !== '' && too_many_failures('#invite', INVITE_MAX)) {
         $errors[] = '招待コードの失敗が続いたので、しばらく受け付けません。' . LOGIN_WINDOW_MINUTES . '分ほどたってからもう一度試してください';
     } elseif ($invite !== '' && !hash_equals($invite, (string)($_POST['invite_code'] ?? ''))) {
@@ -138,7 +138,7 @@ render_header('新規登録');
         <h2>新規登録</h2>
         <?= csrf_field() ?>
         <?php foreach ($errors as $e): ?><div class="flash flash--error"><?= h($e) ?></div><?php endforeach; ?>
-        <?php if ((string)config('invite_code') !== ''): ?>
+        <?php if (invite_code() !== ''): ?>
         <label class="field"><span>招待コード</span>
             <input type="text" name="invite_code" autocomplete="off" required></label>
         <?php endif; ?>

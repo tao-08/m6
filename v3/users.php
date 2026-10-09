@@ -7,6 +7,7 @@
  *  ・メンバーとの紐付け（どのアカウントがどのメンバーか。選び直し・解除もここ）
  *    紐付けると、アカウント名はメンバー名に自動でそろう（sync_account_names()）
  *  ・アカウント削除
+ *  ・招待コード（新規登録の合言葉）の変更（app_setting テーブル。lib/bootstrap.php の invite_code()）
  *  「最後の管理者」が自分の権限を外してしまうと誰も管理できなくなるので、それだけは止める。
  * =====================================================================
  */
@@ -19,6 +20,18 @@ $pdo = db();
 
 if (is_post()) {
     verify_csrf();
+    // 招待コードの変更は「どのユーザーか」が無いので、先に処理して終わる
+    if (($_POST['action'] ?? '') === 'invite_code') {
+        $code = trim((string)($_POST['invite_code'] ?? ''));
+        if (mb_strlen($code) > 50) {
+            flash('招待コードは50文字以内にしてください', 'error');
+        } else {
+            set_invite_code($code, $me['user_id']);
+            clear_failures('#invite'); // 古いコードでの失敗の記録で、新しいコードまで止まらないように
+            flash($code === '' ? '招待コードを無しにしました（誰でも新規登録できます）' : '招待コードを変更しました');
+        }
+        redirect('users');
+    }
     $userId = (int)($_POST['user_id'] ?? 0);
     $action = $_POST['action'] ?? '';
     $adminCount = (int)$pdo->query('SELECT COUNT(*) FROM user_account WHERE is_admin')->fetchColumn();
@@ -77,18 +90,29 @@ $freeMembers = $pdo->query('SELECT m.member_id, m.name FROM member m
     WHERE NOT EXISTS (SELECT 1 FROM user_account u WHERE u.member_id = m.member_id)
     ORDER BY m.name')->fetchAll();
 
+$invite = invite_code();
+
 render_header('ユーザー管理');
 ?>
 <section class="hero">
     <div>
         <p class="eyebrow">Admin</p>
         <h1 class="display">ユーザー管理</h1>
-        <?php if (!config('invite_code')): ?>
-            <p class="muted"><?= icon('warning') ?> 今は誰でも新規登録できます。config.php の <code>invite_code</code> を設定すると、合言葉を知っている人だけが登録できるようになります。</p>
+        <?php if ($invite === ''): ?>
+            <p class="muted"><?= icon('warning') ?> 今は誰でも新規登録できます。下の「招待コード」を設定すると、合言葉を知っている人だけが登録できるようになります。</p>
         <?php endif; ?>
     </div>
     <dl class="stats"><div><dt>ユーザー</dt><dd><?= count($users) ?></dd></div></dl>
 </section>
+
+<!-- 招待コード: 管理者はサークルの LINE などで共有するので、そのまま見えてよい（ログインのパスワードとは別物） -->
+<form method="post" class="card form-card" style="margin-bottom:18px">
+    <h2 class="section-title section-title--card">招待コード</h2>
+    <p class="muted small">新規登録するときに必要な合言葉です。空にすると誰でも登録できます。変えても、登録済みの人はそのままログインできます。</p>
+    <?= csrf_field() ?><input type="hidden" name="action" value="invite_code">
+    <label class="field"><span>招待コード（50文字以内）</span><input name="invite_code" value="<?= h($invite) ?>" maxlength="50" autocomplete="off"></label>
+    <div class="form-actions"><button class="btn btn--primary btn--sm" type="submit">保存</button></div>
+</form>
 
 <div class="card table-card">
     <div class="table-scroll table-scroll--flush">
