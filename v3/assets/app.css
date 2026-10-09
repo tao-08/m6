@@ -1346,14 +1346,14 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
 }
 
 /* ===== スマホの右下の「上へ」ボタン（assets/app.js の setupToTop） =====
-   左下の戻るボタン（.back-fab）と同じ色・同じ 0.25 秒のフェード。丸いボタンで、下のナビの上（右下）に出す。PC では出さない */
+   色はグレー。左下の戻るボタン（.back-fab）と同じ 0.25 秒のフェード。丸いボタンで、下のナビの上（右下）に出す。PC では出さない */
 .to-top { display: none; }
 @media (max-width: 760px) {
   .to-top { position: fixed; right: 12px; bottom: calc(76px + env(safe-area-inset-bottom)); z-index: 25;
-    display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border-radius: 50%; cursor: pointer;
-    background: #dfe9fb; color: #1d3766; border: 1px solid #c3d4f2; box-shadow: var(--shadow); transition: opacity .25s ease; }
-  [data-theme="dark"] .to-top { background: var(--text); color: var(--bg); border-color: transparent; }
-  .to-top .icon { font-size: 22px; }
+    display: grid; place-items: center; width: 36px; height: 36px; padding: 0; /* 左下の戻るボタンと同じ高さ */ border-radius: 50%; cursor: pointer;
+    background: #e6e6e9; color: #45454d; border: 1px solid #d3d3d8; box-shadow: var(--shadow); transition: opacity .25s ease; } /* グレー */
+  [data-theme="dark"] .to-top { background: #3a3a43; color: #e6e6ec; border-color: #4a4a54; }
+  .to-top .icon { font-size: 18px; }
   .to-top--lift { bottom: calc(150px + env(safe-area-inset-bottom)); } /* 下に固定の保存ボタン（右寄せ）のさらに上 */
   .to-top.is-hidden { opacity: 0; pointer-events: none; }
 }
