@@ -325,7 +325,9 @@ function setupSongs() {
 
   // ---- 曲の並び替え（≡ をドラッグ / ≡ にフォーカスして ↑↓ キー） ----
   //   指の位置が上か下のカードの真ん中を越えたら、そのカードと入れ替える
-  let drag = null; // ドラッグ中だけ { card, pointerId }
+  let drag = null; // ドラッグ中だけ { card, pointerId, grab（カードの上端からつかんだ所までの距離） }
+  // 滑っている途中・指に付いている途中のずれ（transform の translateY）を引いた「本当の位置」の上端
+  const layoutTop = (el) => el.getBoundingClientRect().top - new DOMMatrixReadOnly(getComputedStyle(el).transform).m42;
   // 入れ替えのアニメーション（FLIP）: 動かす前の位置を測る → DOM を入れ替える → 前の位置から今の位置へ滑らせる
   //   skip = ドラッグ中のカード（指に付いているので滑らせない）
   const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -346,7 +348,8 @@ function setupSongs() {
     const handle = e.target.closest('[data-song-handle]');
     if (!handle || drag || (e.pointerType === 'mouse' && e.button !== 0)) return;
     e.preventDefault(); // 文字の選択が始まらないように
-    drag = { card: handle.closest('[data-song-card]'), pointerId: e.pointerId };
+    const card = handle.closest('[data-song-card]');
+    drag = { card, pointerId: e.pointerId, grab: e.clientY - card.getBoundingClientRect().top };
     drag.card.classList.add('is-dragging');
     handle.setPointerCapture(e.pointerId); // 指やマウスが ≡ の外に出ても追いかける
   });
@@ -356,21 +359,29 @@ function setupSongs() {
     const i = all.indexOf(drag.card);
     const prev = all[i - 1];
     const next = all[i + 1];
-    // 真ん中の位置は、滑っている途中のずれ（transform）を引いた「本当の位置」で測る（途中の位置で測ると行ったり来たりする）
-    const mid = (el) => {
-      const r = el.getBoundingClientRect();
-      return r.top - new DOMMatrixReadOnly(getComputedStyle(el).transform).m42 + r.height / 2;
-    };
+    // 真ん中の位置は、滑っている途中のずれを引いた「本当の位置」で測る（途中の位置で測ると行ったり来たりする）
+    const mid = (el) => layoutTop(el) + el.offsetHeight / 2;
     if (prev && e.clientY < mid(prev)) {
       move(() => list.insertBefore(drag.card, prev), drag.card);
     } else if (next && e.clientY > mid(next)) {
       move(() => list.insertBefore(drag.card, next.nextElementSibling), drag.card);
     }
+    // つかんでいるカードを指に付いてこさせる（本当の位置からのずれを transform で付ける）
+    drag.card.style.transform = `translateY(${e.clientY - drag.grab - layoutTop(drag.card)}px)`;
   });
   const endDrag = (e) => {
     if (!drag || e.pointerId !== drag.pointerId) return;
-    drag.card.classList.remove('is-dragging');
+    const { card } = drag;
     drag = null;
+    // 離したら、指の位置から並びの位置へスッと戻す
+    const dy = new DOMMatrixReadOnly(getComputedStyle(card).transform).m42;
+    card.style.transform = '';
+    const done = () => card.classList.remove('is-dragging');
+    if (reduceMotion || Math.abs(dy) < 1) {
+      done();
+      return;
+    }
+    card.animate([{ transform: `translateY(${dy}px)` }, { transform: 'none' }], { duration: 150, easing: 'ease-out' }).onfinish = done;
   };
   list.addEventListener('pointerup', endDrag);
   list.addEventListener('pointercancel', endDrag);
