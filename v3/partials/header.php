@@ -26,6 +26,8 @@ $nav = [
     <!-- JavaScript の fetch() から CSRF トークンを送るために置いておく（assets/app.js） -->
     <meta name="csrf-token" content="<?= h(csrf_token()) ?>">
     <title><?= h($pageTitle) ?> | <?= h(APP_NAME) ?></title>
+    <!-- 左下の「← 前のページ」ボタンに出すページ名（assets/app.js の setupBackButton） -->
+    <meta name="page-title" content="<?= h($pageTitle) ?>">
     <!--
         X（Twitter）・LINE・Discord などに URL を貼ったときのカード（OGP）。
         SNS のサーバーはログインしていないので、どのページの URL でもログイン画面に飛ばされる。
@@ -69,8 +71,8 @@ $nav = [
          display=block: 読み込み中にアイコン名の英単語（edit など）が一瞬見えるのを防ぐ -->
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400..600,0..1,0&display=block" rel="stylesheet">
     <!-- ?v=2 はキャッシュ対策。CSS を変えたら数字を上げると、ブラウザが古い CSS を使い続けない -->
-    <link rel="stylesheet" href="assets/app.css?v=165">
-    <script src="assets/app.js?v=97" defer></script>
+    <link rel="stylesheet" href="assets/app.css?v=166">
+    <script src="assets/app.js?v=98" defer></script>
 </head>
 <body>
 <header class="topbar">

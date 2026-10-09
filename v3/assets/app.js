@@ -86,6 +86,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupSpotifyAppLinks();
   setupVoSum();
   setupYoutubeLeftover();
+  setupBackButton();
 });
 
 /* ---------------------------------------------------------------------
@@ -730,6 +731,114 @@ function setupPreview() {
     stop();
     noPreview(btn);
   });
+}
+
+/* ---------------------------------------------------------------------
+ * 左下の「← ページ名」ボタン（2つまで。上下に並べる）
+ *   上: 前に見ていたページ（ブラウザの戻ると同じ。ホーム画面に追加したアプリには戻るボタンが無いので）
+ *   下: パンくず（nav.crumbs）の最後のリンク = 1つ上の階層のページ
+ *   2つが同じページなら、下の1つだけ出す
+ *
+ *   ブラウザは前のページの URL（document.referrer）は教えてくれるが、タイトルは教えてくれない。
+ *   そこで開いたページの「URL → ページ名」を sessionStorage（このタブの間だけ残る）に覚えておき、referrer から引く。
+ *   フォームを送信して来たとき（編集 → 保存）は、編集画面を飛ばしてその前のページを出す
+ *   （「← バンドを編集」に戻っても、もう用は無いので）。そのときは history.back() ではなくリンクで移動する。
+ *   ページ名は textContent で入れる（バンド名などユーザーが入れた文字が入るので、innerHTML は使わない）
+ * ------------------------------------------------------------------- */
+function setupBackButton() {
+  const KEY = 'back-pages';      // { URL: { title, prev: { url, title } | null } }
+  const SUBMIT = 'back-submitted'; // フォームを送信したページの URL
+  const MAX = 50;
+  // 比べる用の URL（# 以降は無視。同じサイトでなければ null）
+  const keyOf = (u) => {
+    try {
+      const x = new URL(u, location.href);
+      return x.origin === location.origin ? x.origin + x.pathname + x.search : null;
+    } catch { return null; }
+  };
+  // sessionStorage はプライベートモードなどで使えないことがある。使えなければボタンを出さないだけ
+  const load = (k, fallback) => { try { return JSON.parse(sessionStorage.getItem(k)) ?? fallback; } catch { return fallback; } };
+  const save = (k, v) => { try { sessionStorage.setItem(k, JSON.stringify(v)); } catch { /* 何もしない */ } };
+  const drop = (k) => { try { sessionStorage.removeItem(k); } catch { /* 何もしない */ } };
+
+  // 次のページのために「フォームを送信した / リンクで移動した」を覚える
+  document.addEventListener('submit', (e) => {
+    if ((e.target.getAttribute('method') || '').toLowerCase() === 'post') save(SUBMIT, keyOf(location.href));
+  }, true);
+  document.addEventListener('click', (e) => { if (e.target.closest?.('a[href]')) drop(SUBMIT); }, true);
+
+  const title = document.querySelector('meta[name="page-title"]')?.content;
+  const here = keyOf(location.href);
+  if (!title || !here) return;
+  const pages = load(KEY, {});
+  const ref = keyOf(document.referrer);
+  const submitted = load(SUBMIT, null);
+  drop(SUBMIT);
+
+  // 前のページ（戻り先）。back = true なら history.back() で戻れる
+  //   戻る・進む・再読み込みで来たときは、referrer が最初に来たときのまま（編集画面のことがある）なので、
+  //   最初に来たときに覚えた戻り先を使う
+  const nav = performance.getEntriesByType?.('navigation')[0]?.type;
+  const remembered = pages[here]?.prev ?? null;
+  let prev = null;
+  let back = false;
+  if (pages[here] && (nav === 'back_forward' || nav === 'reload' || !ref)) {
+    prev = remembered;
+  } else if (ref && pages[ref]) {
+    if (ref === submitted) {
+      // 送信元（編集画面など）を飛ばして、その前のページへ。それが今のページなら（バンド → 編集 → 保存 → バンド）前に覚えた戻り先
+      prev = pages[ref].prev && keyOf(pages[ref].prev.url) !== here ? pages[ref].prev : remembered;
+    } else if (ref !== here) {
+      prev = { url: ref, title: pages[ref].title };
+      back = true;
+    }
+  }
+  if (prev && keyOf(prev.url) === here) prev = null;
+
+  // 今のページを覚える（古いものから捨てる。オブジェクトのキーは入れた順に並ぶ）
+  delete pages[here];
+  pages[here] = { title, prev };
+  const keys = Object.keys(pages);
+  keys.slice(0, Math.max(0, keys.length - MAX)).forEach((k) => delete pages[k]);
+  save(KEY, pages);
+
+  // パンくずの1つ上
+  const crumb = [...document.querySelectorAll('nav.crumbs a[href]')].pop();
+  const up = crumb ? { url: crumb.href, title: crumb.textContent.trim() } : null;
+  if (prev && up && keyOf(prev.url) === keyOf(up.url)) prev = null; // 同じページなら下の1つだけ
+
+  const make = (target, label, useBack) => {
+    const a = document.createElement('a');
+    a.className = 'back-fab';
+    a.href = target.url;
+    a.setAttribute('aria-label', `${label}: ${target.title}`);
+    a.title = `${label}: ${target.title}`;
+    const icon = document.createElement('span');
+    icon.className = 'icon';
+    icon.setAttribute('aria-hidden', 'true');
+    icon.textContent = 'arrow_back';
+    const text = document.createElement('span');
+    text.className = 'back-fab__text';
+    text.textContent = target.title;
+    a.append(icon, text);
+    if (useBack) {
+      a.addEventListener('click', (e) => {
+        if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return; // 新しいタブで開くときはリンクのまま
+        e.preventDefault();
+        history.back();
+      });
+    }
+    return a;
+  };
+  if (!prev && !up) return;
+  const box = document.createElement('nav');
+  box.className = 'back-fabs';
+  // 下に固定の保存ボタン（.sticky-actions）があるページでは、スマホで重ならないように上にずらす（app.css）
+  if (document.querySelector('.sticky-actions')) box.classList.add('back-fabs--lift');
+  box.setAttribute('aria-label', '戻る');
+  if (prev) box.append(make(prev, '前のページに戻る', back));
+  if (up) box.append(make(up, '1つ上のページに戻る', false));
+  document.body.append(box);
 }
 
 /* ---------------------------------------------------------------------

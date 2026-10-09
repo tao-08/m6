@@ -1287,9 +1287,27 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
   .album__rank, .album .album__art { transition: none; }
 }
 
+/* ===== 左下の「← ページ名」ボタン（assets/app.js の setupBackButton） =====
+   上: 前に見ていたページ / 下: パンくずの1つ上。.sticky-actions（右下の保存ボタン）と同じ見た目の部品 */
+.back-fabs { position: fixed; left: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); z-index: 25; /* ヘッダー(20)より手前、スマホの下ナビ(30)より奥 */
+  display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.back-fab { display: inline-flex; align-items: center; gap: 4px; max-width: min(50vw, 260px); padding: 8px 14px 8px 10px; border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 88%, transparent); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border); box-shadow: var(--shadow); color: var(--text); font-size: 13px; font-weight: 600; text-decoration: none;
+  transition: transform .12s ease; }
+.back-fab:hover { text-decoration: none; }
+.back-fab:active { transform: scale(.97); }
+.back-fab .icon { flex: none; font-size: 18px; }
+.back-fab__text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } /* 長いページ名は「…」 */
+@media (max-width: 760px) {
+  .back-fabs { left: 12px; bottom: calc(76px + env(safe-area-inset-bottom)); } /* 画面下のタブバーの上 */
+  .back-fabs--lift { bottom: calc(150px + env(safe-area-inset-bottom)); }      /* 下に固定の保存ボタン（.sticky-actions）のさらに上 */
+}
+@media (prefers-reduced-motion: reduce) { .back-fab { transition: none; } }
+
 @media print {
   :root, [data-theme="dark"] { --bg: #fff; --surface: #fff; --text: #000; --muted: #555; --border: #ccc; --shadow: none; --glow: none; }
-  .topbar, .footer, .no-print, .flash { display: none !important; }
+  .topbar, .footer, .no-print, .flash, .back-fabs { display: none !important; }
   .day[hidden] { display: block !important; }   /* タブで隠している日程も全部印刷する */
   .day + .day { break-before: page; }          /* 日程ごとに改ページ */
   .slot { break-inside: avoid; }               /* バンドの途中で改ページしない */
