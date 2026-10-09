@@ -537,6 +537,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .history__name { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .history__name > a { font-size: 16px; font-weight: 700; color: inherit; overflow-wrap: anywhere; min-width: 0; }
 .history__name > a:hover { color: var(--accent); }
+.history__mine { flex: none; } /* 名前が長くても「出演」は縮めない */
 /* トリの印: バンド名の横に小さな灰色の四角 + 🐦️ */
 .tori-badge { flex-shrink: 0; font-size: 12px; line-height: 1; padding: 2px 4px; border-radius: 4px; background: var(--surface-2); }
 .history__tags { display: flex; align-items: center; gap: 6px; flex-shrink: 0; } /* セットリストの ✓ と楽器ラベルの高さをそろえる */
