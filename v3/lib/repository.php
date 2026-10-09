@@ -704,29 +704,50 @@ function lineup_by_part(array $rows): array
 
 /**
  * lineup_by_part() の結果を HTML の「Vo 鈴木 / Gt 田中 … | サポート Key 佐藤」に（バンドページ・ライブページ）。
+ *   1人だけのパートを2つ以上やった人は「Vn Cho 田中」の1行にまとめる
  *   サポート（is_support）は最後の「サポート」枠にまとめる。通常メンバーがいなくなったパートは出さない
  */
 function lineup_html(array $lineup, ?int $meId): string
 {
     $chip = static fn(array $m, string $class = ''): string => '<a class="chip' . $class . ((int)$m['member_id'] === $meId ? ' chip--me' : '')
         . '" href="member?id=' . (int)$m['member_id'] . '">' . h($m['name']) . '</a>';
-    $html = '';
-    $support = '';
+    // その人1人だけのパートが2つ以上ある人は、楽器のマークをまとめて1行にする（「Vn Cho 田中」）
+    //   1人だけのパート = 通常メンバー（サポートでない人）が1人だけ
+    $mainOf = static fn(array $part): array => array_values(array_filter($part['members'], static fn($m) => !$m['support']));
+    $soloParts = []; // member_id => [パート, ...]
     foreach ($lineup as $part) {
-        $main = '';
-        foreach ($part['members'] as $m) {
-            if ($m['support']) {
-                $support .= part_badge($part) . $chip($m, ' chip--support');
-            } else {
-                $main .= $chip($m);
-            }
-        }
-        if ($main !== '') {
-            $html .= '<li>' . part_badge($part) . $main . '</li>';
+        $main = $mainOf($part);
+        if (count($main) === 1) {
+            $soloParts[(int)$main[0]['member_id']][] = $part;
         }
     }
-    if ($support !== '') {
-        $html .= '<li class="lineup__support"><span class="support-label">サポート</span>' . $support . '</li>';
+    $html = '';
+    $done = [];       // member_id => true（まとめた行をもう出した人）
+    $support = [];    // member_id => ['m' => 人, 'badges' => 楽器のマーク]（サポートも1人ぶんにまとめる）
+    foreach ($lineup as $part) {
+        foreach ($part['members'] as $m) {
+            if ($m['support']) {
+                $support[(int)$m['member_id']]['m'] = $m;
+                $support[(int)$m['member_id']]['badges'] = ($support[(int)$m['member_id']]['badges'] ?? '') . part_badge($part);
+            }
+        }
+        $main = $mainOf($part);
+        if (!$main) {
+            continue; // 通常メンバーがいなくなったパートは出さない
+        }
+        $id = (int)$main[0]['member_id'];
+        if (count($main) === 1 && count($soloParts[$id]) > 1) {
+            if (!isset($done[$id])) {
+                $done[$id] = true; // 最初のパートの位置に、その人のパートを全部並べる
+                $html .= '<li>' . implode('', array_map('part_badge', $soloParts[$id])) . $chip($main[0]) . '</li>';
+            }
+            continue;
+        }
+        $html .= '<li>' . part_badge($part) . implode('', array_map($chip, $main)) . '</li>';
+    }
+    if ($support) {
+        $html .= '<li class="lineup__support"><span class="support-label">サポート</span>'
+            . implode('', array_map(static fn($s) => $s['badges'] . $chip($s['m'], ' chip--support'), $support)) . '</li>';
     }
     return '<ul class="lineup">' . $html . '</ul>';
 }
