@@ -422,7 +422,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .part--vn { --part-c: var(--vn); } .part--sax { --part-c: var(--sax); } .part--cho { --part-c: var(--cho); }
 /* 兼任（Vo/Gt）: 1つのラベルに「Vo/Gt」。文字はそれぞれの楽器の色、背景は左右の色をグラデーションでつなぐ（lib/repository.php の part_badge）。
    横幅は他の楽器と同じ 40px に収める（左右の余白と字間を詰める） */
-.part--split { display: inline-flex; justify-content: center; align-items: center; width: 46px; padding: 2px 0; letter-spacing: -.04em; }
+.part--split { display: inline-flex; justify-content: center; align-items: center; width: 49px; padding: 2px 0; letter-spacing: -.04em; }
 .part__seg { color: var(--part-c); }
 .part__slash { color: var(--muted); font-weight: 600; margin: 0 .5px; }
 /* 後ろに「 × 5」を付けたとき（個人ページ）は、40px に詰めずに中身に合わせる */
