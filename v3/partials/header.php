@@ -69,8 +69,8 @@ $nav = [
          display=block: 読み込み中にアイコン名の英単語（edit など）が一瞬見えるのを防ぐ -->
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400..600,0..1,0&display=block" rel="stylesheet">
     <!-- ?v=2 はキャッシュ対策。CSS を変えたら数字を上げると、ブラウザが古い CSS を使い続けない -->
-    <link rel="stylesheet" href="assets/app.css?v=159">
-    <script src="assets/app.js?v=88" defer></script>
+    <link rel="stylesheet" href="assets/app.css?v=165">
+    <script src="assets/app.js?v=94" defer></script>
 </head>
 <body>
 <header class="topbar">

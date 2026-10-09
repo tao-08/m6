@@ -3,14 +3,17 @@
  * =====================================================================
  *  timetable_edit.php?id=ライブID — タイムテーブルをまとめて編集
  * =====================================================================
- *  ライブの全日程・全バンドの「時間・バンド名・出演者」を1画面で直す。
- *  1バンドずつ直すなら band_edit.php、ここは「表で一気に」直す用。
+ *  ライブの全日程・全バンドの「時間・バンド名・出演順・休憩・出演者の名前」を1画面で直す。
+ *  楽器はここでは触らない → バンドごとに band_edit.php（セトリがあれば songs_edit.php）で直す。
  *
+ *  ・出演者は「1セル1人」で横に並べる（名前だけ。足りなければ「＋ 列を追加」）。
+ *    名前を書き換えた人は、前の人の楽器をそのまま引き継ぐ（隠し項目 id = 元の member_id）。
+ *    新しく足した人は楽器が分からないので「その他」で登録し、バンドに 🚩（楽器の確認待ち）を立てる。
+ *    セトリに出ている人は、曲ごとの演奏記録とつながっているので名前を変えられない（readonly。sync_band_members も触らない）
  *  ・出演者の名前欄は取り込み画面と同じ色分け（緑 = DB に登録済み / 黄 = 似た人がいる / 赤 = 新しいメンバー）。
  *    色は JS が api_name_check.php に聞いて付ける（assets/app.js の setupNameCheck）
- *  ・入力欄が多い（20バンド × 5人 × 2欄 …）ので、取り込みと同じく JS が JSON 1個にまとめて送る（data-pack / read_form_input）
  *  ・メンバーは差分だけ更新する（sync_band_members）。曲ごとの演奏記録を消さないため
- *  ・出演者は名簿の取り込み画面と同じく「1セル1人」で横に並べる（名前の下に楽器のプルダウン）。足りなければ「＋ 列を追加」
+ *  ・入力欄が多い（20バンド × 5人 …）ので、取り込みと同じく JS が JSON 1個にまとめて送る（data-pack / read_form_input）
  *  ・左端の ≡ をドラッグで出演順を並び替える（assets/app.js の setupSlotSort。取り込み画面と同じ部品）。
  *    時間の欄は「何行目か」に固定 = 並び替えたバンドは、その位置の時間に出ることになる
  *  ・休憩・転換など（live_break）も同じ表に1行で出し、並び替え・名前の変更・追加・削除ができる。
@@ -49,19 +52,28 @@ foreach ($st as $b) {
     $bands[(int)$b['band_id']] = $b + ['members' => []];
 }
 
-$st = $pdo->prepare('SELECT bm.band_id, bm.member_id, m.name, bm.instrument_id FROM band_member bm
+// メンバー: 1人1セル（Vo と Gt の2行を持つ人も1セル）。楽器はセルに出さず、名前を変えたときに引き継ぐために覚えておく
+$st = $pdo->prepare('SELECT bm.band_id, bm.member_id, m.name, bm.instrument_id,
+        EXISTS (SELECT 1 FROM song_performer sp WHERE sp.band_id = bm.band_id AND sp.member_id = bm.member_id) AS locked
+    FROM band_member bm
     JOIN member m ON m.member_id = bm.member_id
     JOIN instrument i ON i.instrument_id = bm.instrument_id
     JOIN band b ON b.band_id = bm.band_id
     JOIN live_day d ON d.live_day_id = b.live_day_id
     WHERE d.live_id = ? ORDER BY i.sort_order, m.name');
 $st->execute([$liveId]);
-$rowsByBand = [];
+$instsOf = []; // [band_id][member_id] = [instrument_id, ...]（このライブのメンバーだけ。POST の id はここに有るかで確かめる）
+$lockedOf = []; // [band_id][member_id] = 名前（セトリに出ている人）
 foreach ($st as $r) {
-    $rowsByBand[(int)$r['band_id']][] = $r;
-}
-foreach ($rowsByBand as $id => $rows) {
-    $bands[$id]['members'] = merge_vocal_roles($rows); // Vo + Gt の2行は「Vo/Gt」の1行にまとめて見せる
+    $bandId = (int)$r['band_id'];
+    $memberId = (int)$r['member_id'];
+    if (!isset($instsOf[$bandId][$memberId])) {
+        $bands[$bandId]['members'][] = ['id' => $memberId, 'name' => $r['name'], 'locked' => (bool)$r['locked']];
+    }
+    $instsOf[$bandId][$memberId][] = (int)$r['instrument_id'];
+    if ($r['locked']) {
+        $lockedOf[$bandId][$memberId] = $r['name'];
+    }
 }
 
 $errors = [];
@@ -82,7 +94,7 @@ if (is_post()) {
     };
     $entries = []; // live_day_id => [[pos, 'band', band_id] | [pos, 'break', 休憩の行], ...]（表の上から何行目か）
 
-    $edits = [];        // band_id => [name, start, end, order, 登録する [名前, instrument_id] の配列]
+    $edits = [];        // band_id => [name, start, end, order, flag, 登録する [名前, instrument_id] の配列（null = メンバーは触らない）]
     $ordersByDay = [];  // live_day_id => [出演順 => band_id]（同じ日に同じ番号が2つないか確かめる）
     foreach ($bands as $id => $b) {
         $row = $in[$id] ?? null;
@@ -109,29 +121,44 @@ if (is_post()) {
         $ordersByDay[(int)$b['live_day_id']][$order] = $id;
         $entries[(int)$b['live_day_id']][] = [(int)($row['pos'] ?? 9999), 'band', $id];
 
-        $assign = [];  // 登録する [名前, instrument_id]（ギターボーカルは Vo と Gt の2つ）
-        $picked = [];  // エラーで画面に戻すとき用の [名前, 楽器欄の値]
-        foreach (is_array($row['m'] ?? null) ? $row['m'] : [] as $m) {
-            if (!is_array($m)) {
-                continue;
-            }
-            $memberName = member_display((string)($m['name'] ?? ''));
-            $choice = is_string($m['inst'] ?? null) ? $m['inst'] : '';
-            $cho = ($m['cho'] ?? '') === '1'; // Cho のトグル（Gt/Cho）
-            if ($memberName === '') {
-                continue;
-            }
-            if (mb_strlen($memberName) > 50) {
-                $errors[] = "{$label}: 名前は50文字以内にしてください（{$memberName}）";
-            }
-            $picked[] = ['name' => $memberName, 'choice' => $choice, 'cho' => $cho];
-            foreach (instruments_for_choice($choice, $cho) as $inst) {
-                $assign[] = [$memberName, $inst];
+        // ---- 出演者（名前だけ） ----
+        $assign = null; // 出演者の欄が送られてこなかったバンドはメンバーに触らない（消してしまわないように）
+        $picked = [];   // エラーで画面に戻すとき用
+        if (is_array($row['m'] ?? null)) {
+            $assign = [];
+            foreach ($row['m'] as $m) {
+                if (!is_array($m)) {
+                    continue;
+                }
+                $memberName = member_display((string)($m['name'] ?? ''));
+                // 元の人（このバンドのメンバーの member_id だけ受け付ける。書き換えられた値は「新しく足した人」扱い）
+                $origId = filter_var($m['id'] ?? null, FILTER_VALIDATE_INT);
+                $origId = is_int($origId) && isset($instsOf[$id][$origId]) ? $origId : null;
+                if ($origId !== null && isset($lockedOf[$id][$origId])) {
+                    // セトリに出ている人は変えられない（sync_band_members も触らない）。画面にはそのまま出す
+                    $picked[] = ['id' => $origId, 'name' => $lockedOf[$id][$origId], 'locked' => true];
+                    continue;
+                }
+                if ($memberName === '') {
+                    continue; // 名前を消した = バンドから外す
+                }
+                if (mb_strlen($memberName) > 50) {
+                    $errors[] = "{$label}: 名前は50文字以内にしてください（{$memberName}）";
+                }
+                $picked[] = ['id' => $origId, 'name' => $memberName, 'locked' => false];
+                if ($origId === null) {
+                    $flag = 1; // 新しく足した人は楽器が分からない → 🚩 で確認をお願いする
+                }
+                // 名前を書き換えた人は前の人の楽器を引き継ぐ。新しく足した人は「その他」
+                foreach ($origId !== null ? $instsOf[$id][$origId] : [OTHER_INSTRUMENT_ID] as $inst) {
+                    $assign[] = [$memberName, $inst];
+                }
             }
         }
         $edits[$id] = compact('name', 'start', 'end', 'order', 'flag', 'assign');
         // エラーで戻ったときに入力した値で表示し直すため、先に上書きしておく
-        $bands[$id] = array_merge($bands[$id], ['name' => $name, 'start_time' => $start, 'end_time' => $end, 'play_order' => $order, 'needs_check' => $flag, 'members' => $picked]);
+        $bands[$id] = array_merge($bands[$id], ['name' => $name, 'start_time' => $start, 'end_time' => $end, 'play_order' => $order, 'needs_check' => $flag]
+            + ($assign !== null ? ['members' => $picked] : []));
     }
 
     // ---- 休憩 ----
@@ -201,7 +228,9 @@ if (is_post()) {
                 // オムニバスのバンドはコピー元アーティストを持たないので、名前を変えても NULL のまま
                 $artistId = $before['is_omnibus'] || $before['name'] === $e['name'] ? $before['artist_id'] : find_or_create_artist($pdo, $e['name']);
                 $update->execute([$e['name'], $artistId, $e['start'] ?: null, $e['end'] ?: null, $e['order'], $e['flag'], $id]);
-                sync_band_members($pdo, $index, $id, $e['assign']);
+                if ($e['assign'] !== null) {
+                    sync_band_members($pdo, $index, $id, $e['assign']);
+                }
             }
             $pdo->commit();
         } catch (Throwable $ex) {
@@ -269,8 +298,6 @@ render_header('タイムテーブルを編集', 'lives'); ?>
 </div>
 <?php endif; ?>
 
-<!-- 「＋ 列を追加」で JS が複製する楽器のプルダウン（name は JS が付ける。初期値はギター。名前が入るまで畳む） -->
-<template id="tpl-tt-instrument"><div class="cell-instrument is-collapsed"><select class="select-sm" aria-label="楽器"><?= instrument_choice_options('2') ?></select><?= chorus_toggle('', false, '2') ?></div></template>
 <!-- 「＋ 休憩を追加」で JS が複製する行。__N__ = 休憩の番号、__DAY__ = 日程の ID（JS が置き換える）
      data-free-time: この行の時間は位置に固定せず、行と一緒に動かす -->
 <template id="tpl-tt-break"><table><tbody><?php render_break_row('__N__', '__DAY__', ['name' => '休憩', 'start_time' => null, 'end_time' => null], 1, true); ?></tbody></table></template>
@@ -296,6 +323,7 @@ render_header('タイムテーブルを編集', 'lives'); ?>
 					<span><i class="swatch swatch--similar"></i>候補あり</span>
 					<span><i class="swatch swatch--new"></i>新しいメンバーとして登録</span>
 					<span><?= icon('flag', 'icon--fill flag-icon') ?> 楽器の確認をメンバーにお願いする</span>
+					<span>楽器はバンドのページで編集します（新しく足した人は「その他」で登録して 🚩 を立てます）</span>
 				</div>
 
 				</div>
@@ -314,7 +342,7 @@ render_header('タイムテーブルを編集', 'lives'); ?>
                 <table class="table table--edit table--roster table--tt" data-tt-table data-cols="<?= $cols ?>">
                     <thead><tr>
                         <th aria-label="並び替え"></th><th>順</th><th title="並び替えても時間はその位置に残る">開始</th><th title="並び替えても時間はその位置に残る">終了</th><th>バンド名</th>
-                        <th colspan="<?= $cols ?>" data-tt-members-head>出演者</th>
+                        <th colspan="<?= $cols ?>" data-tt-members-head>出演者（名前だけ。楽器はバンドのページで）</th>
                     </tr></thead>
                     <!-- data-sortable: 左端の ≡ をドラッグで行を並び替える（assets/app.js の setupSlotSort）。
                          時間のセル（data-time）は動かない。JS が入力欄の name を、その位置に来た行の b[ID] / k[番号] に付け直す
@@ -340,11 +368,12 @@ render_header('タイムテーブルを編集', 'lives'); ?>
                             <td><div class="tt-band-name"><input name="<?= $p ?>[name]" value="<?= h($b['name']) ?>" maxlength="100" required data-band-name aria-label="バンド名">
                                 <label class="flag-toggle" title="楽器があってるか、バンドのメンバーに確認してもらう"><input type="checkbox" name="<?= $p ?>[flag]" value="1"<?= $b['needs_check'] ? ' checked' : '' ?> aria-label="楽器の確認をお願いする"><?= icon('flag') ?></label></div></td>
                             <?php for ($n = 0; $n < $cols; $n++):
-                                $m = $members[$n] ?? ['name' => '', 'choice' => '2']; ?>
+                                $m = $members[$n] ?? ['id' => null, 'name' => '', 'locked' => false]; ?>
                                 <td>
-                                    <input name="<?= $p ?>[m][<?= $n ?>][name]" value="<?= h($m['name']) ?>" data-suggest-list="member-names" autocomplete="off" class="name-input" data-name-cell aria-label="出演者">
-                                    <!-- 名前が空なら畳んでおく（入力されたら JS が開く）。select は JS がボタン風の部品に置き換えるので、箱ごと畳む -->
-                                    <div class="cell-instrument<?= $m['name'] === '' ? ' is-collapsed' : '' ?>"><select name="<?= $p ?>[m][<?= $n ?>][inst]" class="select-sm" aria-label="楽器"><?= instrument_choice_options($m['choice']) ?></select><?= chorus_toggle("{$p}[m][{$n}][cho]", $m['cho'] ?? false, $m['choice']) ?></div>
+                                    <!-- id: 元の人。名前を書き換えたら、その人の楽器を引き継ぐ。空 = 新しく足した人 -->
+                                    <input type="hidden" name="<?= $p ?>[m][<?= $n ?>][id]" value="<?= $m['id'] === null ? '' : (int)$m['id'] ?>">
+                                    <input name="<?= $p ?>[m][<?= $n ?>][name]" value="<?= h($m['name']) ?>" data-suggest-list="member-names" autocomplete="off" class="name-input" data-name-cell aria-label="出演者"
+                                        <?= $m['locked'] ? ' readonly title="セットリストに出ているので、ここでは変えられません（セットリストの編集で直してください）"' : '' ?>>
                                 </td>
                             <?php endfor; ?>
                         </tr>

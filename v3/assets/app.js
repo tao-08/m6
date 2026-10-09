@@ -283,6 +283,15 @@ function setupToasts() {
  *                         付けると空欄（前に書いていた名前があれば戻す）にして編集できるようにする
  * ------------------------------------------------------------------- */
 function setupSongs() {
+  // 演奏者の楽器の「＋」: 下に楽器2の段を出して、＋ は隠す（3つ目以降は無い）
+  document.addEventListener('click', (e) => {
+    const add = e.target.closest('[data-add-inst]');
+    if (!add) return;
+    const second = add.closest('.performer').querySelector('[data-inst2]');
+    second.hidden = false;
+    add.hidden = true;
+    (second.querySelector('.live-pick__btn') || second.querySelector('select')).focus();
+  });
   const list = document.querySelector('[data-song-list]');
   if (!list) return;
 
@@ -303,11 +312,91 @@ function setupSongs() {
   });
 
   // 「何曲目」を画面の上から 1, 2, 3... と振り直す（カードを足した・消したとき）。消えている途中のカードは数えない
+  //   並び順の隠し項目（data-song-pos）も同じ順に振り直す。保存はこの順（songs_edit.php）
+  const cards = () => [...list.querySelectorAll('[data-song-card]:not(.is-leaving)')];
   const renumber = () => {
-    list.querySelectorAll('[data-song-card]:not(.is-leaving)').forEach((c, i) => {
+    cards().forEach((c, i) => {
       c.querySelector('[data-song-no]').textContent = String(i + 1);
+      const pos = c.querySelector('[data-song-pos]');
+      if (pos) pos.value = String(i);
     });
   };
+  renumber();
+
+  // ---- 曲の並び替え（≡ をドラッグ / ≡ にフォーカスして ↑↓ キー） ----
+  //   指の位置が上か下のカードの真ん中を越えたら、そのカードと入れ替える
+  let drag = null; // ドラッグ中だけ { card, pointerId, grab（カードの上端からつかんだ所までの距離） }
+  // 滑っている途中・指に付いている途中のずれ（transform の translateY）を引いた「本当の位置」の上端
+  const layoutTop = (el) => el.getBoundingClientRect().top - new DOMMatrixReadOnly(getComputedStyle(el).transform).m42;
+  // 入れ替えのアニメーション（FLIP）: 動かす前の位置を測る → DOM を入れ替える → 前の位置から今の位置へ滑らせる
+  //   skip = ドラッグ中のカード（指に付いているので滑らせない）
+  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const move = (change, skip = null) => {
+    const before = new Map(cards().map((c) => [c, c.getBoundingClientRect().top]));
+    change();
+    renumber();
+    if (reduceMotion) return;
+    cards().forEach((c) => {
+      if (c === skip) return;
+      c.getAnimations().forEach((a) => a.cancel()); // 前のアニメーションの途中なら止めてから測る
+      const dy = before.get(c) - c.getBoundingClientRect().top;
+      if (Math.abs(dy) < 1) return;
+      c.animate([{ transform: `translateY(${dy}px)` }, { transform: 'none' }], { duration: 200, easing: 'ease-out' });
+    });
+  };
+  list.addEventListener('pointerdown', (e) => {
+    const handle = e.target.closest('[data-song-handle]');
+    if (!handle || drag || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    e.preventDefault(); // 文字の選択が始まらないように
+    const card = handle.closest('[data-song-card]');
+    drag = { card, pointerId: e.pointerId, grab: e.clientY - card.getBoundingClientRect().top };
+    drag.card.classList.add('is-dragging');
+    handle.setPointerCapture(e.pointerId); // 指やマウスが ≡ の外に出ても追いかける
+  });
+  list.addEventListener('pointermove', (e) => {
+    if (!drag || e.pointerId !== drag.pointerId) return;
+    const all = cards();
+    const i = all.indexOf(drag.card);
+    const prev = all[i - 1];
+    const next = all[i + 1];
+    // 真ん中の位置は、滑っている途中のずれを引いた「本当の位置」で測る（途中の位置で測ると行ったり来たりする）
+    const mid = (el) => layoutTop(el) + el.offsetHeight / 2;
+    if (prev && e.clientY < mid(prev)) {
+      move(() => list.insertBefore(drag.card, prev), drag.card);
+    } else if (next && e.clientY > mid(next)) {
+      move(() => list.insertBefore(drag.card, next.nextElementSibling), drag.card);
+    }
+    // つかんでいるカードを指に付いてこさせる（本当の位置からのずれを transform で付ける）
+    drag.card.style.transform = `translateY(${e.clientY - drag.grab - layoutTop(drag.card)}px)`;
+  });
+  const endDrag = (e) => {
+    if (!drag || e.pointerId !== drag.pointerId) return;
+    const { card } = drag;
+    drag = null;
+    // 離したら、指の位置から並びの位置へスッと戻す
+    const dy = new DOMMatrixReadOnly(getComputedStyle(card).transform).m42;
+    card.style.transform = '';
+    const done = () => card.classList.remove('is-dragging');
+    if (reduceMotion || Math.abs(dy) < 1) {
+      done();
+      return;
+    }
+    card.animate([{ transform: `translateY(${dy}px)` }, { transform: 'none' }], { duration: 150, easing: 'ease-out' }).onfinish = done;
+  };
+  list.addEventListener('pointerup', endDrag);
+  list.addEventListener('pointercancel', endDrag);
+  list.addEventListener('keydown', (e) => {
+    const handle = e.target.closest('[data-song-handle]');
+    if (!handle || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
+    e.preventDefault(); // ページがスクロールしないように
+    const card = handle.closest('[data-song-card]');
+    const all = cards();
+    const i = all.indexOf(card);
+    // キーボードのときは動かしたカードも滑らせる（skip なし）
+    if (e.key === 'ArrowUp' && all[i - 1]) move(() => list.insertBefore(card, all[i - 1]));
+    if (e.key === 'ArrowDown' && all[i + 1]) move(() => list.insertBefore(card, all[i + 1].nextElementSibling));
+    handle.focus(); // 動かしたあともフォーカスを ≡ に残す（続けて押せるように）
+  });
 
   // 空のカードの元（songs_edit.php の <template>）。template の中身は画面に出ず、送信もされない
   const template = list.querySelector('[data-song-template]');
@@ -2768,17 +2857,16 @@ function setupRosterColumns() {
 }
 
 /* ---------------------------------------------------------------------
- * タイムテーブル編集（timetable_edit.php）: 出演者の列の追加、楽器のプルダウンの開け閉め、休憩の行の追加・削除
- *   「＋ 列を追加」→ その日の表のバンドの行の右端に「名前 + 楽器」のセルを1つ足す（休憩の行は横に1マスつなげて伸ばす）
- *     name は b[バンドID][m][列の番号][name / inst]。番号は data-cols（今ある列の数）から振る
- *   名前が入ったら下のプルダウンを出し、空にしたら畳む（見た目は名簿と同じ .table--roster の CSS）
+ * タイムテーブル編集（timetable_edit.php）: 休憩の行の追加・削除
+ *   出演者は名前だけ（楽器はバンドのページで直す）
+ *   「＋ 列を追加」→ その日の表のバンドの行の右端に「名前」のセルを1つ足す（休憩の行は横に1マスつなげて伸ばす）
+ *     name は b[バンドID][m][列の番号][id / name]。番号は data-cols（今ある列の数）から振る
  *   「＋ 休憩を追加」→ <template id="tpl-tt-break"> の行を表の一番下に足す（≡ で好きな所へ動かす）
  *   「この行を消す」→ 休憩の行を消す
  *   行を足す・消すときは slots:changed を出して、setupSlotSort に時間の並びを覚え直してもらう
  * ------------------------------------------------------------------- */
 function setupTimetableColumns() {
-  const tpl = document.getElementById('tpl-tt-instrument');
-  if (!tpl) return;
+  if (!document.querySelector('[data-tt-table]')) return;
 
   document.addEventListener('click', (e) => {
     const btn = e.target.closest('[data-add-tt-col]');
@@ -2798,10 +2886,10 @@ function setupTimetableColumns() {
       input.dataset.suggestList = 'member-names'; // 入力候補（setupSuggest）
       input.autocomplete = 'off';
       input.setAttribute('aria-label', '出演者');
-      const box = tpl.content.firstElementChild.cloneNode(true);
-      box.querySelector('select').name = `${base}[inst]`;
-      box.querySelector('[data-cho-toggle] input').name = `${base}[cho]`;
-      td.append(input, box);
+      const id = document.createElement('input'); // 元の人（新しく足した列なので空 = 新しい人。楽器は「その他」で登録される）
+      id.type = 'hidden';
+      id.name = `${base}[id]`;
+      td.append(id, input);
       tr.appendChild(td);
     });
     table.querySelector(`tbody tr [name$="[m][${n}][name]"]`)?.focus();

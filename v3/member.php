@@ -332,10 +332,11 @@ render_header($member['name'], 'members');
                     <!-- 文字の部分（タイトル・アーティスト・発売年）はまとめて1つのリンク。元のサービス（Spotify / Apple Music）のページへ飛ぶ -->
                     <!-- target="_blank" は新しいタブで開く。rel="noopener": 開いた先のページから、このページを操作されないようにする（セットで付ける） -->
                     <!-- 本人のページでドラッグで並び替えられるのはジャケットの部分だけ（リンクの上で押してもドラッグは始まらない。assets/app.js） -->
-                    <a class="album__meta" href="<?= h($listenUrl) ?>" target="_blank" rel="noopener" title="<?= h($listenLabel($a)) ?> で聴く">
-                        <span class="album__title"><?= h($a['title']) ?></span>
-                        <span class="muted small"><?= h($a['artist_name']) ?><?php if ($a['release_year']): ?><span class="album__year"> · <?= (int)$a['release_year'] ?></span><?php endif; ?></span>
-                    </a>
+                    <!-- アルバム名は聴くページへ、アーティスト名は押すとその名前で検索（リンクの中にリンクは入れられないので別々の <a>） -->
+                    <div class="album__meta">
+                        <a class="album__title" href="<?= h($listenUrl) ?>" target="_blank" rel="noopener" title="<?= h($listenLabel($a)) ?> で聴く"><?= h($a['title']) ?></a>
+                        <span class="muted small"><?= album_artist_links($a['artist_name']) ?><?php if ($a['release_year']): ?><span class="album__year"> · <?= (int)$a['release_year'] ?></span><?php endif; ?></span>
+                    </div>
                     <?php if ($isMe || is_admin()): ?>
                         <form method="post" action="member_album_save" class="album__delete" data-confirm="「<?= h($a['title']) ?>」をマイアルバムから外します。よろしいですか？">
                             <?= csrf_field() ?>

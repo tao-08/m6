@@ -96,7 +96,7 @@ if ($playlistId === null) {
 }
 
 if ($error === null) {
-    // タイトルの中で探す名前: バンド名（lib 側で括弧の前を使う）・アーティスト名・アーティストの別名（エルレ → ELLEGARDEN など）
+    // タイトルの中で探す名前: バンド名（lib 側で括弧の前を使う）・アーティスト名・アーティストの別称（エルレ → ELLEGARDEN など）
     $st = $pdo->prepare('SELECT DISTINCT al.artist_id, al.name FROM artist_alias al
         JOIN band b ON b.artist_id = al.artist_id
         JOIN live_day d ON d.live_day_id = b.live_day_id
@@ -208,7 +208,7 @@ render_header('YouTube の動画を割り当て', 'lives'); ?>
              プルダウンを変えるたびに JS（assets/app.js の setupYoutubeLeftover）が出し入れ・本数を数え直す -->
         <section data-yt-leftover<?= $leftover ? '' : ' hidden' ?>>
             <h2 class="section-title">どのバンドにも入っていない動画（<span data-yt-left-count><?= count($leftover) ?></span> 本）</h2>
-            <p class="muted">略称のタイトル（例: エルレ）は、アーティストのページで別名を登録すると次から自動で当たります。</p>
+            <p class="muted">略称のタイトル（例: エルレ）は、アーティストのページで別称を登録すると次から自動で当たります。</p>
             <ul class="yt-leftover">
                 <?php foreach ($videos as $vid => $title): ?>
                     <li data-yt-video="<?= h($vid) ?>"<?= isset($leftover[$vid]) ? '' : ' hidden' ?>><a href="<?= h(youtube_watch_url($vid)) ?>" target="_blank" rel="noopener noreferrer"><?= h($title) ?></a></li>

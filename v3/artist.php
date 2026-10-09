@@ -5,7 +5,7 @@
  * =====================================================================
  *  artist テーブルを分けたから作れるページ（v3 で追加）。
  *  「ヨルシカ（安田）」「ヨルシカ（八木）」も artist_id が同じなので、WHERE 1つで全部出る。
- *  バンド名の文字列で LIKE 検索するより正確（「ヨルシカ」を含む別名のバンドを拾わない）。
+ *  バンド名の文字列で LIKE 検索するより正確（「ヨルシカ」を含む別称のバンドを拾わない）。
  * =====================================================================
  */
 declare(strict_types=1);
@@ -104,10 +104,10 @@ if (is_admin()) {
             if ($to !== $artistId) {
                 $pdo->beginTransaction();
                 $pdo->prepare('UPDATE band SET artist_id = ? WHERE artist_id = ?')->execute([$to, $artistId]);
-                // 別名も統合先へ（先に付け替えないと、下の DELETE の CASCADE で消えてしまう）
+                // 別称も統合先へ（先に付け替えないと、下の DELETE の CASCADE で消えてしまう）
                 $pdo->prepare('UPDATE artist_alias SET artist_id = ? WHERE artist_id = ?')->execute([$to, $artistId]);
-                // 消える側の名前も統合先の別名にしておく（その表記のマイアルバムを拾い続けるため）。
-                //   INSERT IGNORE: 既に同じ別名があれば何もしない
+                // 消える側の名前も統合先の別称にしておく（その表記のマイアルバムを拾い続けるため）。
+                //   INSERT IGNORE: 既に同じ別称があれば何もしない
                 $pdo->prepare('INSERT IGNORE INTO artist_alias (name, artist_id) VALUES (?, ?)')->execute([$artist['name'], $to]);
                 $pdo->prepare('DELETE FROM artist WHERE artist_id = ?')->execute([$artistId]);
                 $pdo->commit();
@@ -115,9 +115,9 @@ if (is_admin()) {
                 redirect('artist?id=' . $to);
             }
         } elseif ($action === 'alias_add') {
-            // 別名: マイアルバムのアーティスト名が別の表記（オアシス など）でも、このアーティストとして拾うため
+            // 別称: マイアルバムのアーティスト名が別の表記（オアシス など）でも、このアーティストとして拾うため
             $alias = trim((string)($_POST['alias'] ?? ''));
-            // 本名・ほかのアーティストの名前と同じ別名は付けない（どのアーティストか分からなくなる）
+            // 本名・ほかのアーティストの名前と同じ別称は付けない（どのアーティストか分からなくなる）
             $st = $pdo->prepare('SELECT 1 FROM artist WHERE name = ?');
             $st->execute([$alias]);
             $takenByArtist = (bool)$st->fetchColumn();
@@ -125,33 +125,33 @@ if (is_admin()) {
             $st->execute([$alias]);
             $takenByAlias = (bool)$st->fetchColumn();
             if ($alias === '' || mb_strlen($alias) > 255 || album_match_key($alias) === '') {
-                flash('別名を入力してください', 'error');
+                flash('別称を入力してください', 'error');
             } elseif ($takenByArtist || $takenByAlias) {
-                flash('「' . $alias . '」は既にアーティスト名か別名として使われています', 'error');
+                flash('「' . $alias . '」は既にアーティスト名か別称として使われています', 'error');
             } else {
                 $pdo->prepare('INSERT INTO artist_alias (name, artist_id) VALUES (?, ?)')->execute([$alias, $artistId]);
-                flash('別名「' . $alias . '」を追加しました');
+                flash('別称「' . $alias . '」を追加しました');
             }
         } elseif ($action === 'alias_delete') {
-            // artist_id も条件に入れる: 別のアーティストの別名を、このページから消せないように
+            // artist_id も条件に入れる: 別のアーティストの別称を、このページから消せないように
             $pdo->prepare('DELETE FROM artist_alias WHERE name = ? AND artist_id = ?')
                 ->execute([(string)($_POST['alias'] ?? ''), $artistId]);
-            flash('別名を削除しました');
+            flash('別称を削除しました');
         }
         redirect('artist?id=' . $artistId);
     }
     $others = $pdo->query('SELECT artist_id, name FROM artist ORDER BY name')->fetchAll();
-    // 別名の入力候補: マイアルバムに出てくるアーティスト名（表記をそのまま選べるように）
+    // 別称の入力候補: マイアルバムに出てくるアーティスト名（表記をそのまま選べるように）
     $albumArtistNames = $pdo->query('SELECT DISTINCT artist_name FROM member_favorite_album ORDER BY artist_name')
         ->fetchAll(PDO::FETCH_COLUMN);
 }
 
-// ---- 別名（オアシス など） ----
+// ---- 別称（オアシス など） ----
 $st = $pdo->prepare('SELECT name FROM artist_alias WHERE artist_id = ? ORDER BY name');
 $st->execute([$artistId]);
 $aliases = $st->fetchAll(PDO::FETCH_COLUMN);
 
-// ---- このアーティストのアルバムをマイアルバムに入れているメンバー（本名と別名で探す。lib/albums.php の fan_albums） ----
+// ---- このアーティストのアルバムをマイアルバムに入れているメンバー（本名と別称で探す。lib/albums.php の fan_albums） ----
 $fans = fan_albums($pdo, [$artistId]);
 $viewerApp = member_music_app($pdo, $user['member_id']);
 
@@ -163,7 +163,7 @@ render_header($artist['name'], 'artists');
         <p class="eyebrow">Artist</p>
         <h1 class="display"><?= h($artist['name']) ?></h1>
         <p class="muted">サークルで <?= count($bands) ?> 回演奏されました</p>
-        <?php if ($aliases): ?><p class="muted small">別名: <?= h(implode('、', $aliases)) ?></p><?php endif; ?>
+        <?php if ($aliases): ?><p class="muted small">別称: <?= h(implode('、', $aliases)) ?></p><?php endif; ?>
     </div>
 </section>
 
@@ -238,26 +238,26 @@ render_header($artist['name'], 'artists');
         <label class="field field--wide"><span>名前</span><input name="name" value="<?= h($artist['name']) ?>" maxlength="100" required></label>
         <div class="form-actions field--wide"><button class="btn btn--sm" type="submit">名前を変更</button></div>
     </form>
-    <!-- 別名: マイアルバムのアーティスト名がこの表記でも、このアーティストのアルバムとして上に出す -->
+    <!-- 別称: マイアルバムのアーティスト名がこの表記でも、このアーティストのアルバムとして上に出す -->
     <div class="edit-box__form">
-        <p class="muted small">別名（マイアルバムで「オアシス」のように別の表記になっているときに登録）</p>
+        <p class="muted small">別称（マイアルバムで「オアシス」のように別の表記になっているときに登録）</p>
         <?php foreach ($aliases as $al): ?>
             <form method="post" style="display:inline-flex;gap:6px;align-items:center;margin:0 12px 6px 0">
                 <?= csrf_field() ?><input type="hidden" name="action" value="alias_delete">
                 <input type="hidden" name="alias" value="<?= h($al) ?>">
                 <span><?= h($al) ?></span>
-                <button class="btn btn--ghost btn--sm" type="submit" aria-label="別名「<?= h($al) ?>」を削除">×</button>
+                <button class="btn btn--ghost btn--sm" type="submit" aria-label="別称「<?= h($al) ?>」を削除">×</button>
             </form>
         <?php endforeach; ?>
     </div>
     <form method="post" class="form-grid edit-box__form">
         <?= csrf_field() ?><input type="hidden" name="action" value="alias_add">
         <!-- list="...": 下の datalist（マイアルバムに出てくるアーティスト名）を入力候補に出す -->
-        <label class="field field--wide"><span>別名を追加</span><input name="alias" maxlength="255" list="album-artist-names" required></label>
+        <label class="field field--wide"><span>別称を追加</span><input name="alias" maxlength="255" list="album-artist-names" required></label>
         <datalist id="album-artist-names">
             <?php foreach ($albumArtistNames as $n): ?><option value="<?= h($n) ?>"><?php endforeach; ?>
         </datalist>
-        <div class="form-actions field--wide"><button class="btn btn--sm" type="submit">別名を追加</button></div>
+        <div class="form-actions field--wide"><button class="btn btn--sm" type="submit">別称を追加</button></div>
     </form>
     <form method="post" class="form-grid edit-box__form" data-confirm="このアーティストのバンドを選んだアーティストに付け替えて、このアーティストを消します。">
         <?= csrf_field() ?><input type="hidden" name="action" value="merge">

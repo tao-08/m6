@@ -472,11 +472,11 @@ function album_match_in_catalog(array $album, array $catalog): ?string
 
 /**
  * アーティスト（複数でもよい）のアルバムをマイアルバムに入れているメンバー。artist.php と band.php で使う。
- *   $artistIds … artist.artist_id。本名と別名（artist_alias）の両方で探す
+ *   $artistIds … artist.artist_id。本名と別称（artist_alias）の両方で探す
  *   返り値: ['albums' => [['album' => 行, 'members' => [[member_id, name], ...]], ...], 'people' => 入れている人数]
  *
  *   マイアルバムには artist_id が無く、Spotify / iTunes のアーティスト名（文字列）しか無い。
- *   album_match_key で表記ゆれ（大文字小文字・全角半角・記号）をそろえて、本名か別名と一致する行を拾う。
+ *   album_match_key で表記ゆれ（大文字小文字・全角半角・記号）をそろえて、本名か別称と一致する行を拾う。
  *   SQL の = では表記ゆれと「A, B」（Spotify の複数アーティスト）を拾えないので、PHP で絞る
  *   （行数は 人数 × 最大30枚 なので全部読んでも軽い）
  */
@@ -525,6 +525,65 @@ function fan_albums(PDO $pdo, array $artistIds): array
 }
 
 /**
+ * マイアルバムのアーティスト名 → 1人ずつ検索ページへのリンク（押すとその名前で検索）。
+ *   Spotify の複数アーティスト「A, B」は1人ずつのリンクにする（間の「, 」はそのまま文字で残す）
+ */
+function album_artist_links(string $artistName): string
+{
+    $links = [];
+    foreach (explode(', ', $artistName) as $one) {
+        $links[] = '<a class="album__artist" href="search?' . h(http_build_query(['q' => $one])) . '">' . h($one) . '</a>';
+    }
+    return implode(', ', $links);
+}
+
+/**
+ * マイアルバムのアーティスト名で探す（検索ページ）。返り値は fan_albums() と同じ形
+ *   ['albums' => [['album' => 行, 'members' => [[member_id, name], ...]], ...], 'people' => 入れている人数]
+ * @param string $like LIKE の形（'%キーワード%'。% _ \ はエスケープ済み）
+ */
+function albums_by_artist_name(PDO $pdo, string $like): array
+{
+    $st = $pdo->prepare('SELECT f.source, f.album_id, f.title, f.artist_name, f.artwork_url, f.release_year, m.member_id, m.name
+        FROM member_favorite_album f
+        JOIN member m ON m.member_id = f.member_id
+        WHERE f.artist_name LIKE ?
+        ORDER BY f.release_year, m.name');
+    $st->execute([$like]);
+    $albums = [];
+    $people = [];
+    foreach ($st as $r) {
+        $k = album_key($r['source'], $r['album_id']);
+        $albums[$k] ??= ['album' => $r, 'members' => []];
+        $albums[$k]['members'][] = ['member_id' => (int)$r['member_id'], 'name' => $r['name']];
+        $people[(int)$r['member_id']] = true;
+    }
+    // 入れている人が多いアルバムを先に（fan_albums と同じ）
+    usort($albums, static fn(array $a, array $b): int => count($b['members']) <=> count($a['members']));
+    return ['albums' => $albums, 'people' => count($people)];
+}
+
+/**
+ * fan_albums() の形の結果を2つ合わせる（同じアルバム・同じ人は1回だけ）。入れている人が多いアルバムを先に
+ */
+function merge_fan_albums(array $a, array $b): array
+{
+    $albums = [];
+    $people = [];
+    foreach ([...$a['albums'], ...$b['albums']] as $fa) {
+        $k = album_key($fa['album']['source'], $fa['album']['album_id']);
+        $albums[$k] ??= ['album' => $fa['album'], 'members' => []];
+        foreach ($fa['members'] as $m) {
+            $albums[$k]['members'][$m['member_id']] = $m; // member_id をキーにして重複を消す
+            $people[$m['member_id']] = true;
+        }
+    }
+    $albums = array_map(static fn($fa) => ['album' => $fa['album'], 'members' => array_values($fa['members'])], array_values($albums));
+    usort($albums, static fn(array $x, array $y): int => count($y['members']) <=> count($x['members']));
+    return ['albums' => $albums, 'people' => count($people)];
+}
+
+/**
  * fan_albums() の結果をカードにする（見た目は member.php のマイアルバムと同じ .albums。スマホでは横に3枚）
  *   $withArtist … アルバム名の下にアーティスト名も出す（オムニバスのバンドのように、何組ものアーティストのアルバムが混ざるとき。
  *                  1組しかないアーティストページでは毎回同じ名前になるので出さない）
@@ -544,16 +603,17 @@ function fan_albums_html(array $fans, string $title, ?string $viewerApp, bool $w
             $names[] = '<a href="member?id=' . (int)$m['member_id'] . '#albums">' . h($m['name']) . '</a>';
         }
         // 見ている人の音楽アプリで開く（アプリをまたぐときは album_go が押されたときに探す）
+        // アルバム名は聴くページへ、アーティスト名は検索へ（リンクの中にリンクは入れられないので、別々の <a> にする）
         $html .= '<li class="album">'
             . '<img class="album__art" src="' . h($a['artwork_url']) . '" alt="' . h($a['title']) . ' のジャケット" loading="lazy" width="600" height="600">'
-            . '<a class="album__meta" href="' . h(album_listen_url($viewerApp, $a)) . '" target="_blank" rel="noopener">'
-            . '<span class="album__title">' . h($a['title']) . '</span>'
+            . '<div class="album__meta">'
+            . '<a class="album__title" href="' . h(album_listen_url($viewerApp, $a)) . '" target="_blank" rel="noopener">' . h($a['title']) . '</a>'
             . ($withArtist
                 // member.php のマイアルバムと同じ「アーティスト · 年」の1行
-                ? '<span class="muted small">' . h($a['artist_name'])
+                ? '<span class="muted small">' . album_artist_links($a['artist_name'])
                     . ($a['release_year'] ? '<span class="album__year"> · ' . (int)$a['release_year'] . '</span>' : '') . '</span>'
                 : ($a['release_year'] ? '<span class="muted small album__year">' . (int)$a['release_year'] . '</span>' : ''))
-            . '</a><span class="small">' . implode('・', $names) . '</span></li>';
+            . '</div><span class="small">' . implode('・', $names) . '</span></li>';
     }
     return $html . '</ul></section>';
 }
