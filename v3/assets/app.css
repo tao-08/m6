@@ -1074,6 +1074,24 @@ a.setlist__song:hover { color: var(--accent); text-decoration: underline; }
 .setlist__listen--youtube_music, .setlist__listen--youtube_music:hover { color: #ff0000; }
 .setlist__listen--line_music, .setlist__listen--line_music:hover { color: #0ee071; } /* 公式ロゴの緑 */
 @media (prefers-reduced-motion: reduce) { .setlist__listen { transition: none; } }
+/* 30秒試聴の ▶（app.js の setupPreview）。曲名の右に丸いボタン。押すと ⏸ になる
+ *  --p（0〜1）= どこまで聴いたか。conic-gradient で丸い枠を時計回りに塗っていく（::before で真ん中をくり抜いて枠だけ見せる） */
+.setlist__play { --p: 0; position: relative; display: inline-grid; place-items: center; width: 34px; height: 34px; margin-left: 20px;
+  padding: 0; border: 0; border-radius: 50%; vertical-align: middle; cursor: pointer; color: var(--muted);
+  opacity: .55; transition: opacity .15s ease; /* 鳴らしていないときは控えめに。乗せる・鳴らすとはっきり */
+  background: conic-gradient(var(--accent) calc(var(--p) * 360deg), var(--border) 0); }
+.setlist__play::before { content: ""; position: absolute; inset: 3px; border-radius: 50%; background: var(--surface); }
+.setlist__play .icon { position: relative; font-size: 22px; }
+.setlist__play:hover, .setlist__play:focus-visible, .setlist__play.is-playing, .setlist__play.is-loading { opacity: 1; }
+.setlist__play:hover .icon, .setlist__play.is-playing .icon { color: var(--accent); }
+.setlist__play:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.setlist__play.is-loading { animation: preview-wait .7s ease-in-out infinite alternate; } /* 音源を探している・読み込み中 */
+@keyframes preview-wait { to { opacity: .35; } }
+.setlist__play.is-none { cursor: default; opacity: .3; } /* 試聴が無かった */
+.setlist__play.is-none .icon { color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { .setlist__play.is-loading { animation: none; opacity: .5; } }
+.setlist-hint { margin: 2px 0 0; }
+.setlist-hint .icon { font-size: 16px; vertical-align: -3px; }
 @media (max-width: 640px) {
   .band-section .setlist { font-size: 17px; }
   .band-section .setlist li { line-height: 44px; }

@@ -169,6 +169,8 @@ foreach ($songs as $s) {
     }
 }
 $linkCache = track_link_cache_for($pdo, $viewerApp, $trackKeys);
+// 30秒試聴（▶）の音源。覚えてある曲は URL を HTML に入れておく（押したらすぐ鳴る）。まだの曲は押されたら api_track_preview.php で探す
+$previewCache = track_preview_cache_for($pdo, $trackKeys);
 
 // ---- 演奏したアーティストをマイアルバムに入れているメンバー（artist.php と同じ部品。lib/albums.php） ----
 //   ふつうはバンドのアーティスト1組。オムニバスなら曲ごとのアーティスト全部
@@ -237,6 +239,9 @@ render_header($band['name'], 'lives');
     <?php // 曲が未登録のときは band.song_count（タイムテーブルの曲数）を「予定」として出す。登録済みの曲数と混ぜない ?>
     <h2 class="section-title section-title--card">セットリスト <small class="muted"><?= $songs ? count($songs) . '曲' : '' ?></small></h2>
     <?php if ($songs): ?>
+        <?php if ($trackKeys): // 紐付けた曲が1曲でもあるときだけ（ジャケットも ▶ も、紐付けた曲にしか出ないので） ?>
+            <p class="setlist-hint muted small no-print">ジャケットを押すと<?= h($viewerApp !== null ? MUSIC_APPS[$viewerApp] : '音楽アプリ') ?>で開き、 <?= icon('play_circle') ?> で試聴できます。</p>
+        <?php endif; ?>
         <div class="setlist"><ol>
             <?php foreach ($songs as $songId => $song):
                 // オムニバスのときだけ、曲名の横にその曲のアーティスト（曲に付いていなければ出さない）
@@ -248,6 +253,9 @@ render_header($band['name'], 'lives');
                         $track = ['source' => $song['source'], 'track_id' => $song['track_id'], 'title' => $song['track_title'], 'artist_name' => $song['track_artist']];
                         $listenApp = listen_app($viewerApp, $song['source']); ?>
                         <span class="setlist__song"><span class="setlist__artwrap"><img class="setlist__art" src="<?= h($song['artwork_url']) ?>" alt="" loading="lazy" width="56" height="56"><a class="setlist__listen setlist__listen--<?= h($listenApp) ?>" href="<?= h(track_listen_url($viewerApp, $track, array_key_exists($k, $linkCache) ? $linkCache[$k] : false)) ?>" target="_blank" rel="noopener" aria-label="<?= h(MUSIC_APPS[$listenApp]) ?> で聴く"><?= MUSIC_APP_ICONS[$listenApp] ?></a></span><?= h($song['title']) ?></span>
+                        <?php if (!array_key_exists($k, $previewCache) || $previewCache[$k] !== null): // 「試聴が無かった」と覚えてある曲には出さない ?>
+                            <button type="button" class="setlist__play no-print" data-preview="<?= h($k) ?>"<?php if (isset($previewCache[$k])): ?> data-preview-url="<?= h($previewCache[$k]) ?>"<?php endif; ?> aria-label="<?= h($song['title']) ?> を30秒試聴" title="30秒試聴"><?= icon('play_arrow', 'icon--fill') ?></button>
+                        <?php endif; ?>
                     <?php else: ?>
                         <span class="setlist__song"><span class="setlist__art setlist__art--none"><?= icon('music_note') ?></span><?= h($song['title']) ?></span>
                     <?php endif; ?>

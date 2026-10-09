@@ -438,6 +438,22 @@ CREATE TABLE track_link_cache (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- ---------------------------------------------------------------------
+--  track_preview — セットリストの曲の「30秒試聴」の音源 URL（band.php の ▶ ボタン。api_track_preview.php）
+--    試聴は iTunes のものだけ（Spotify の API は試聴の URL を返さなくなった）。
+--    Spotify で紐付けた曲は iTunes で同じ曲を探して、その試聴を使う。
+--    preview_url が NULL = 探したけど無かった
+-- ---------------------------------------------------------------------
+CREATE TABLE track_preview (
+    source      VARCHAR(10)  CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+    track_id    VARCHAR(40)  CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+    preview_url VARCHAR(500) NULL,                                           -- 試聴の音源（https://*.apple.com の m4a）
+    checked_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (source, track_id),
+    CONSTRAINT fk_tp_track FOREIGN KEY (source, track_id) REFERENCES track (source, track_id)
+        ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- ---------------------------------------------------------------------
 --  login_attempt — ログイン・招待コードの失敗の記録（総当たり攻撃を止める。lib/bootstrap.php の too_many_failures）
 --    login_id に外部キーは付けない: 「存在しないログインID」での失敗も数えたいので、user_account に無い値も入る
 --    パスワードは入れない
