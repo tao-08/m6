@@ -1241,7 +1241,7 @@ function setupGradeSlot() {
     const setParams = (params) => {
       params.delete('who');
       params.delete('entry');
-      if (who !== 'all') params.set('who', who);
+      params.set('who', who); // 全学年も書く（書かないと、再読み込みで最初のタブ = 現役の人は「現役」に戻ってしまう）
       if (who === 'grade') params.set('entry', slotValue);
     };
     const url = new URL(location.href);

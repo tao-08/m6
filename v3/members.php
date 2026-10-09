@@ -35,7 +35,9 @@ $entryYears = array_map('intval', $pdo->query('SELECT DISTINCT entry_year FROM m
     WHERE entry_year IS NOT NULL ORDER BY entry_year DESC')->fetchAll(PDO::FETCH_COLUMN));
 $hasUnknown = (bool)$pdo->query('SELECT 1 FROM member WHERE entry_year IS NULL LIMIT 1')->fetchColumn();
 
-$who = $_GET['who'] ?? 'all';
+// ?who= が無いときの最初のタブ: 自分が現役（1〜4年）なら「現役」、卒業生・入学年度が不明なら「全学年」
+$myGrade = grade_of($myEntry);
+$who = $_GET['who'] ?? ($myGrade !== null && $myGrade <= 4 ? 'active' : 'all');
 if (!in_array($who, ['all', 'active', 'alumni', 'near', 'grade'], true) || ($who === 'near' && !$canNear)) {
     $who = 'all';
 }
