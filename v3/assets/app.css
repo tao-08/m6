@@ -1481,6 +1481,8 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
 /* アーティストページ: メンバー（楽器ラベル + 名前）とセットリストを縦に並べる */
 .artist-lineup { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 13px; }
 .artist-lineup li { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+/* ラベルの幅を全部そろえる（Vo / Gt/Vo / Key/Cho で幅が違うと名前の頭がズレる）。いちばん広い Key/Cho の 51px に合わせ、文字は中央 */
+.artist-lineup .part { flex: none; width: 52px; min-width: 0; padding-left: 0; padding-right: 0; justify-content: center; }
 .artist-setlist { margin: 0; padding-left: 1.8em; display: grid; gap: 4px; font-size: 13px; }
 .artist-setlist li::marker { color: var(--muted); font-weight: 700; }
 /* オムニバスのバンドでは、このアーティストの曲だけ少し強調する */
