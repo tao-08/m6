@@ -326,6 +326,22 @@ function setupSongs() {
   // ---- 曲の並び替え（≡ をドラッグ / ≡ にフォーカスして ↑↓ キー） ----
   //   指の位置が上か下のカードの真ん中を越えたら、そのカードと入れ替える
   let drag = null; // ドラッグ中だけ { card, pointerId }
+  // 入れ替えのアニメーション（FLIP）: 動かす前の位置を測る → DOM を入れ替える → 前の位置から今の位置へ滑らせる
+  //   skip = ドラッグ中のカード（指に付いているので滑らせない）
+  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const move = (change, skip = null) => {
+    const before = new Map(cards().map((c) => [c, c.getBoundingClientRect().top]));
+    change();
+    renumber();
+    if (reduceMotion) return;
+    cards().forEach((c) => {
+      if (c === skip) return;
+      c.getAnimations().forEach((a) => a.cancel()); // 前のアニメーションの途中なら止めてから測る
+      const dy = before.get(c) - c.getBoundingClientRect().top;
+      if (Math.abs(dy) < 1) return;
+      c.animate([{ transform: `translateY(${dy}px)` }, { transform: 'none' }], { duration: 200, easing: 'ease-out' });
+    });
+  };
   list.addEventListener('pointerdown', (e) => {
     const handle = e.target.closest('[data-song-handle]');
     if (!handle || drag || (e.pointerType === 'mouse' && e.button !== 0)) return;
@@ -340,13 +356,15 @@ function setupSongs() {
     const i = all.indexOf(drag.card);
     const prev = all[i - 1];
     const next = all[i + 1];
-    const mid = (el) => { const r = el.getBoundingClientRect(); return r.top + r.height / 2; };
+    // 真ん中の位置は、滑っている途中のずれ（transform）を引いた「本当の位置」で測る（途中の位置で測ると行ったり来たりする）
+    const mid = (el) => {
+      const r = el.getBoundingClientRect();
+      return r.top - new DOMMatrixReadOnly(getComputedStyle(el).transform).m42 + r.height / 2;
+    };
     if (prev && e.clientY < mid(prev)) {
-      list.insertBefore(drag.card, prev);
-      renumber();
+      move(() => list.insertBefore(drag.card, prev), drag.card);
     } else if (next && e.clientY > mid(next)) {
-      list.insertBefore(drag.card, next.nextElementSibling);
-      renumber();
+      move(() => list.insertBefore(drag.card, next.nextElementSibling), drag.card);
     }
   });
   const endDrag = (e) => {
@@ -363,9 +381,9 @@ function setupSongs() {
     const card = handle.closest('[data-song-card]');
     const all = cards();
     const i = all.indexOf(card);
-    if (e.key === 'ArrowUp' && all[i - 1]) list.insertBefore(card, all[i - 1]);
-    if (e.key === 'ArrowDown' && all[i + 1]) list.insertBefore(card, all[i + 1].nextElementSibling);
-    renumber();
+    // キーボードのときは動かしたカードも滑らせる（skip なし）
+    if (e.key === 'ArrowUp' && all[i - 1]) move(() => list.insertBefore(card, all[i - 1]));
+    if (e.key === 'ArrowDown' && all[i + 1]) move(() => list.insertBefore(card, all[i + 1].nextElementSibling));
     handle.focus(); // 動かしたあともフォーカスを ≡ に残す（続けて押せるように）
   });
 
