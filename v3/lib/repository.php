@@ -407,11 +407,30 @@ function merge_vocal_roles(array $rows): array
     }
     $vo = instrument_id_by_short('Vo');
     $cho = instrument_id_by_short('Cho');
-    $choHost = []; // 名前 => Cho トグルを付ける instrument_id（chorus_host() と同じ決め方。並び順で最初の楽器）
+    // 名前 => Cho トグルを付ける instrument_id（lineup_parts() と同じ決め方: chorus_host_in_band）
+    //   行に band_id と member_id があればセトリも見る（1曲目 Cho だけ・2曲目 Vn だけ → Vn にトグルを付けない）
+    $shortOf = array_column(instruments(), 'short_name', 'instrument_id');
+    $idOf = array_flip($shortOf);
+    $choHost = [];
     foreach ($rows as $r) {
-        $id = (int)$r['instrument_id'];
-        if ($cho !== null && isset($has[$r['name']][$cho]) && !isset($has[$r['name']][$vo]) && $id !== $cho) {
-            $choHost[$r['name']] ??= $id;
+        if ($cho === null || array_key_exists($r['name'], $choHost)) {
+            continue;
+        }
+        $shorts = [];
+        foreach ($rows as $o) {
+            if ($o['name'] === $r['name']) {
+                $shorts[] = $shortOf[(int)$o['instrument_id']] ?? '';
+            }
+        }
+        $host = isset($r['band_id'], $r['member_id'])
+            ? chorus_host_in_band((int)$r['band_id'], (int)$r['member_id'], $shorts) : chorus_host($shorts);
+        $choHost[$r['name']] = $host === null ? null : (int)$idOf[$host];
+    }
+    $choAlone = []; // 名前 => true（コーラスだけの曲もあった → Cho の行も残す）
+    foreach ($rows as $r) {
+        if (($choHost[$r['name']] ?? null) !== null && isset($r['band_id'], $r['member_id'])
+            && songs_played((int)$r['band_id'], (int)$r['member_id'], ['Cho'], $shortOf[$choHost[$r['name']]]) > 0) {
+            $choAlone[$r['name']] = true;
         }
     }
     $merged = []; // 名前 => [Vo にまとめた instrument_id => true]
@@ -421,7 +440,7 @@ function merge_vocal_roles(array $rows): array
         if (isset($merged[$r['name']][$id])) {
             continue; // Vo の行にまとめ済み
         }
-        if ($id === $cho && isset($choHost[$r['name']])) {
+        if ($id === $cho && isset($choHost[$r['name']]) && !isset($choAlone[$r['name']])) {
             continue; // Gt の行の Cho トグルにまとめ済み
         }
         $choice = (string)$id;
@@ -459,11 +478,17 @@ function lineup_parts(array $rows, bool $mergeVocal = true, string $chorus = 'me
     foreach ($rows as $r) {
         $has[(int)$r['member_id']][$r['short_name']] = true;
     }
-    $choHost = []; // member_id => Cho をくっつける楽器の short_name（Gt/Cho の Gt）
+    $choHost = [];  // member_id => Cho をくっつける楽器の short_name（Gt/Cho の Gt）
+    $choAlone = []; // member_id => true（Gt/Cho のほかに、コーラスだけの曲もあった → Cho としても出す）
     foreach ($rows as $r) {
         $id = (int)$r['member_id'];
-        if ($chorus !== 'split' && !isset($choHost[$id]) && ($host = chorus_host(array_keys($has[$id]))) !== null) {
-            $choHost[$id] = $host;
+        if ($chorus === 'split' || array_key_exists($id, $choHost)) {
+            continue;
+        }
+        $bandId = isset($r['band_id']) ? (int)$r['band_id'] : null;
+        $choHost[$id] = chorus_host_in_band($bandId, $id, array_keys($has[$id]));
+        if ($choHost[$id] !== null && $bandId !== null && songs_played($bandId, $id, ['Cho'], $choHost[$id]) > 0) {
+            $choAlone[$id] = true;
         }
     }
     $merged = []; // member_id => [Vo にまとめた short_name => true]
@@ -473,7 +498,7 @@ function lineup_parts(array $rows, bool $mergeVocal = true, string $chorus = 'me
         if (isset($merged[$id][$r['short_name']])) {
             continue; // Vo の方にまとめ済み
         }
-        if ($r['short_name'] === 'Cho' && isset($choHost[$id])) {
+        if ($r['short_name'] === 'Cho' && isset($choHost[$id]) && !isset($choAlone[$id])) {
             continue; // Gt/Cho の方にまとめ済み（drop なら消す）
         }
         $part = ['member_id' => $id, 'name' => $r['name'], 'short' => $r['short_name'], 'title' => $r['instrument_name'],
@@ -522,6 +547,27 @@ function chorus_host(array $shorts): ?string
     }
     foreach ($shorts as $short) {
         if ($short !== 'Cho') {
+            return $short;
+        }
+    }
+    return null;
+}
+
+/**
+ * chorus_host() を、セトリ（song_performer）を見て決める版。lineup_parts() で使う。
+ *   セトリにその人の行がある → 「同じ1曲で その楽器 と Cho を両方やった」楽器だけ（並び順で最初のもの）。
+ *     例: 1曲目 Cho だけ・2曲目 Vn だけ → null（ヴァイオリンを弾きながらのコーラスではない。Vn と Cho は別々）
+ *   セトリ未登録・band_id が分からない → band_member しか手がかりがないので chorus_host() のまま
+ *   （sings_while_playing() の Vo/Gt と同じ考え方）
+ */
+function chorus_host_in_band(?int $bandId, int $memberId, array $shorts): ?string
+{
+    $host = chorus_host($shorts);
+    if ($host === null || $bandId === null || songs_of_member($bandId, $memberId) === null) {
+        return $host;
+    }
+    foreach ($shorts as $short) {
+        if ($short !== 'Cho' && songs_played($bandId, $memberId, [$short, 'Cho']) > 0) {
             return $short;
         }
     }

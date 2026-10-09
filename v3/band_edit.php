@@ -56,7 +56,7 @@ $backUrl = $isNew ? $liveUrl : 'band?id=' . $bandId;
 $editableRows = [];
 $lockedRows = [];
 if (!$isNew) {
-    $st = $pdo->prepare('SELECT m.name, bm.instrument_id,
+    $st = $pdo->prepare('SELECT bm.band_id, bm.member_id, m.name, bm.instrument_id,
             EXISTS (SELECT 1 FROM song_performer sp WHERE sp.band_id = bm.band_id AND sp.member_id = bm.member_id) AS locked
         FROM band_member bm
         JOIN member m ON m.member_id = bm.member_id

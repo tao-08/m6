@@ -49,7 +49,7 @@ foreach ($st as $b) {
     $bands[(int)$b['band_id']] = $b + ['members' => []];
 }
 
-$st = $pdo->prepare('SELECT bm.band_id, m.name, bm.instrument_id FROM band_member bm
+$st = $pdo->prepare('SELECT bm.band_id, bm.member_id, m.name, bm.instrument_id FROM band_member bm
     JOIN member m ON m.member_id = bm.member_id
     JOIN instrument i ON i.instrument_id = bm.instrument_id
     JOIN band b ON b.band_id = bm.band_id
