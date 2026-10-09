@@ -638,13 +638,17 @@ function setupTrackSearch() {
  *     その瞬間が過ぎてしまうので、押した瞬間に無音を鳴らして <audio> を使える状態にしておく
  *   ・覚えてある URL で鳴らなかったら（Apple 側で URL が変わったなど）、1回だけ探し直す
  *   ・どこまで聴いたかを --p（0〜1）に入れて、ボタンの丸い枠に出す（app.css の .setlist__play）
+ *   ・音量は VOLUME（0〜1）。試聴の音源は音が大きいので下げておく
+ *     iPhone の Safari は audio.volume を無視するので、本体の音量ボタンでしか変わらない
  * ------------------------------------------------------------------- */
 function setupPreview() {
   const buttons = document.querySelectorAll('[data-preview]');
   if (!buttons.length) return;
   // 0.01秒の無音（8kHz・8bit の WAV）。iPhone の Safari 用
   const SILENCE = 'data:audio/wav;base64,UklGRnQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YVAAAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgA==';
+  const VOLUME = 0.4;
   const audio = new Audio();
+  audio.volume = VOLUME; // 1回設定すれば src を替えても残る
   audio.preload = 'none';
   let current = null;   // 今鳴らしている（読み込み中の）ボタン
   let retried = false;  // 探し直しは1曲につき1回だけ
