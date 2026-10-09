@@ -430,7 +430,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .slot__like { margin-left: auto; }             /* タイムテーブルの行の右端に寄せる */
 .like--lg .like__count { font-size: 15px; padding: 6px 12px; }
 .like--lg .like__heart { font-size: 30px; }
-.band-title { display: flex; align-items: center; gap: 12px 28px; flex-wrap: wrap; } /* band.php: バンド名とその右の ❤ */
+.band-title { display: flex; align-items: center; gap: 12px 48px; flex-wrap: wrap; } /* band.php: バンド名とその右の ❤ */
 /* live_youtube.php: プレイリストの動画をバンドに割り当てる表 */
 .table-scroll--yt { margin: -20px -20px 0; border-top: 0; }
 .table--yt select { width: 100%; min-width: 220px; max-width: 420px; }
