@@ -1022,11 +1022,16 @@ code { background: var(--surface-2); padding: 1px 6px; border-radius: 6px; font-
 .performers { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 6px 14px; }
 .performers__tools { grid-column: 1 / -1; }
 /* 1段目に名前、2段目に楽器1・楽器2（横並びだと、カードが細い PC で名前が折り返して崩れるため） */
-.performer { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-areas: "name cho"; /* 1段目: 名前 / コーラスあり、2段目: 楽器1 / 楽器2 */ gap: 6px; align-items: center; padding: 6px 8px; border-radius: 8px; background: var(--surface-2); }
-.performer > .performer__name { grid-area: name; }
-.performer > .cho-toggle-wrap { grid-area: cho; justify-self: end; } /* 楽器の段に置くと、楽器のボタンが縮みきれずに重なる */
+.performer { display: grid; grid-template-columns: minmax(0, 1fr) auto; /* 1段目: 名前 / コーラスあり、2段目: 楽器1 ＋、3段目: 楽器2 */ align-content: start; /* 隣のカードが2段でも、中身は上に詰める */ gap: 6px; align-items: center; padding: 6px 8px; border-radius: 8px; background: var(--surface-2); }
+.performer > .cho-toggle-wrap { justify-self: end; } /* 楽器の段に置くと、楽器のボタンが縮みきれずに重なる */
+.performer__inst { grid-column: 1 / -1; display: flex; gap: 6px; align-items: center; min-width: 0; }
+.performer__inst[hidden] { display: none; }
+.performer__add { flex: none; width: 26px; height: 26px; padding: 0; border-radius: 50%; border: 1px solid var(--border); background: var(--surface);
+  color: var(--muted); font-size: 15px; font-weight: 700; line-height: 1; cursor: pointer; }
+.performer__add:hover { color: var(--text); border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+.performer__add[hidden] { display: none; }
 /* 楽器のボタンはマスの幅に収める（長い「Vo/Gt ギターボーカル」は … で切る。はみ出して隣と重ならないように） */
-.performer > .live-pick { display: block; min-width: 0; }
+.performer__inst > .live-pick { display: block; flex: 1; min-width: 0; }
 .performer .live-pick__btn { width: 100%; min-width: 0; }
 .performer.is-off { opacity: .45; }
 .performer select { padding: 4px 6px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); font-size: 12px; }

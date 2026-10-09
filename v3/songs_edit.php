@@ -257,13 +257,17 @@ render_header('曲を編集', 'lives');
                         $choices = $choicesOf($insts ?: $m['roles']); ?>
                         <div class="performer<?= $on ? '' : ' is-off' ?>">
                             <label class="check performer__name"><input type="checkbox" name="<?= $base ?>[p][<?= $memberId ?>][on]" value="1"<?= $on ? ' checked' : '' ?> data-performer-on> <?= h($m['name']) ?></label>
-                            <?php foreach (['i1', 'i2'] as $n => $slot): ?>
-                                <select name="<?= $base ?>[p][<?= $memberId ?>][<?= $slot ?>]" class="select-sm" aria-label="楽器<?= $n + 1 ?>">
-                                    <?php if ($n === 1): ?><option value="">—</option><?php endif; ?>
-                                    <?= instrument_choice_options($choices[$n]['choice'] ?? '') ?>
-                                </select>
-                            <?php endforeach; ?>
                             <?= chorus_toggle("{$base}[p][{$memberId}][cho]", $choices[0]['cho'] ?? false, $choices[0]['choice'] ?? '') ?>
+                            <?php $hasSecond = isset($choices[1]); // 2つ目の楽器がある人は、最初から2段で出す ?>
+                            <!-- 楽器1は横いっぱい。右端の ＋ で下に楽器2を出す（3つ目以降は無し。JS: setupSongs の data-add-inst） -->
+                            <div class="performer__inst">
+                                <select name="<?= $base ?>[p][<?= $memberId ?>][i1]" class="select-sm" aria-label="楽器1"><?= instrument_choice_options($choices[0]['choice'] ?? '') ?></select>
+                                <button type="button" class="performer__add" data-add-inst aria-label="楽器を追加" title="楽器を追加"<?= $hasSecond ? ' hidden' : '' ?>>＋</button>
+                            </div>
+                            <!-- 楽器2: 隠れていても送信される。値が「—」（空）なら保存されない -->
+                            <div class="performer__inst" data-inst2<?= $hasSecond ? '' : ' hidden' ?>>
+                                <select name="<?= $base ?>[p][<?= $memberId ?>][i2]" class="select-sm" aria-label="楽器2"><option value="">—</option><?= instrument_choice_options($choices[1]['choice'] ?? '') ?></select>
+                            </div>
                         </div>
                     <?php endforeach; ?>
                 </div>

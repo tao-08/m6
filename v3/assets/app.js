@@ -283,6 +283,15 @@ function setupToasts() {
  *                         付けると空欄（前に書いていた名前があれば戻す）にして編集できるようにする
  * ------------------------------------------------------------------- */
 function setupSongs() {
+  // 演奏者の楽器の「＋」: 下に楽器2の段を出して、＋ は隠す（3つ目以降は無い）
+  document.addEventListener('click', (e) => {
+    const add = e.target.closest('[data-add-inst]');
+    if (!add) return;
+    const second = add.closest('.performer').querySelector('[data-inst2]');
+    second.hidden = false;
+    add.hidden = true;
+    (second.querySelector('.live-pick__btn') || second.querySelector('select')).focus();
+  });
   const list = document.querySelector('[data-song-list]');
   if (!list) return;
 
