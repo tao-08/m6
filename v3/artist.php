@@ -70,16 +70,16 @@ $st = $pdo->prepare('SELECT m.member_id, m.name, COUNT(DISTINCT b.band_id) AS n
 $st->execute([$artistId]);
 $topPlayers = $st->fetchAll();
 
-// セットリスト: バンドごとに曲順で。オムニバスのバンドはこのアーティストの曲だけ
-$setlists = []; // [band_id] = [曲名, ...]
-$st = $pdo->prepare('SELECT s.band_id, s.title
+// セットリスト: バンドごとに曲順で全曲。オムニバスのバンドはこのアーティストの曲だけ少し強調する（mine）
+$setlists = []; // [band_id] = [['title' => 曲名, 'mine' => 強調するか], ...]
+$st = $pdo->prepare('SELECT s.band_id, s.title, (b.is_omnibus = 1 AND s.artist_id = ?) AS mine
     FROM band b
     JOIN song s ON s.band_id = b.band_id
-    WHERE ' . $bandWhere . ' AND (b.is_omnibus = 0 OR s.artist_id = ?)
+    WHERE ' . $bandWhere . '
     ORDER BY s.track_no');
 $st->execute([$artistId, $artistId]);
 foreach ($st as $s) {
-    $setlists[(int)$s['band_id']][] = $s['title'];
+    $setlists[(int)$s['band_id']][] = ['title' => $s['title'], 'mine' => (bool)$s['mine']];
 }
 
 // 管理者はアーティスト名を直せる（表記ゆれで2つできたときは名前をそろえれば…ではなく、下の統合を使う）
@@ -217,8 +217,8 @@ render_header($artist['name'], 'artists');
                 <td>
                     <?php if (!empty($setlists[(int)$b['band_id']])): ?>
                         <ol class="artist-setlist">
-                            <?php foreach ($setlists[(int)$b['band_id']] as $title): ?>
-                                <li><?= h($title) ?></li>
+                            <?php foreach ($setlists[(int)$b['band_id']] as $song): ?>
+                                <li<?= $song['mine'] ? ' class="is-mine"' : '' ?>><?= h($song['title']) ?></li>
                             <?php endforeach; ?>
                         </ol>
                     <?php else: ?><span class="muted">—</span><?php endif; ?>
