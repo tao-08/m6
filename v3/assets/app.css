@@ -1344,7 +1344,7 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
    ページを移ってボタンが変わったときは、その場でフェードする（ボタンは動かさない）。JS が付ける:
      新しいボタン .is-entering = 今の位置でふわっと出る / 前のページのボタン .back-fabs--ghost の .is-leaving = 前の位置でふわっと消える
    マウスが使える端末では、乗っていないときは半透明（本文に重なっても読める）、乗ったら不透明
-   スクロール中は消す（.is-scrolling。JS が付け外し）。ただし PC で左の余白に入っているときは読む邪魔にならないので消さない */
+   スクロール中は透明度 70%（うっすら見える。.is-scrolling。JS が付け外し）。ただし PC で左の余白に入っているときは読む邪魔にならないので消さない */
 .back-fabs { position: fixed; left: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); z-index: 25; /* ヘッダー(20)より手前、スマホの下ナビ(30)より奥 */
   display: flex; flex-direction: column; align-items: flex-start; gap: 8px;
   transition: opacity .25s ease; } /* スクロールで消える・戻る、ボタンが出る・消えるは全部同じ 0.25 秒の ease */
@@ -1375,10 +1375,10 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
   .back-fabs { left: 12px; bottom: calc(76px + env(safe-area-inset-bottom)); } /* 画面下のタブバーの上 */
   .back-fabs--lift { bottom: calc(150px + env(safe-area-inset-bottom)); }      /* 下に固定の保存ボタン（.sticky-actions）のさらに上 */
 }
-/* スクロール中は消す: スマホと、左の余白にボタンが入らない幅の PC（本文に重なるので）。余白に入る幅（下の 1560px 以上）では消さない
+/* スクロール中は透明度 70%（opacity .3）にする: スマホと、左の余白にボタンが入らない幅の PC（本文に重なるので）。余白に入る幅（下の 1560px 以上）では消さない
    消すときも戻すときも同じ 0.25 秒の ease */
 @media (max-width: 1559px) {
-  .back-fabs.is-scrolling { opacity: 0; pointer-events: none; }
+  .back-fabs.is-scrolling { opacity: .3; }
 }
 /* PC: 大きめにして、画面の上下のまん中より下に出す（余白が無く本文に重なる幅なので、読んでいる所から離す） */
 @media (min-width: 761px) {
