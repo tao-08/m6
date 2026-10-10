@@ -1357,10 +1357,10 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
 @keyframes back-fab-in { from { opacity: 0; } } /* to を書かない = いつもの透明度（PC の半透明）まで */
 @keyframes back-fab-out { to { opacity: 0; } }
 .back-fabs--ghost { z-index: 24; pointer-events: none; } /* 前のページのボタン（消えるだけ）。今のボタンの後ろ */
-/* スマホ（指で操作する画面）で文字を入力中（= キーボードが出ている）は、戻るボタンを隠す（入力欄や候補に重なって邪魔なので）
+/* スマホ（指で操作する画面）で文字を入力中（= キーボードが出ている）は、戻るボタンと下のナビを隠す（入力欄や候補に重なって邪魔なので）
    :has() = 「中にフォーカス中の入力欄がある body」。チェックボックスやボタンはキーボードが出ないので除く */
 @media (hover: none) and (pointer: coarse) {
-  body:has(:is(textarea, input:not([type="checkbox"], [type="radio"], [type="button"], [type="submit"], [type="reset"], [type="file"], [type="range"], [type="color"], [readonly])):focus) .back-fabs { display: none; }
+  body:has(:is(textarea, input:not([type="checkbox"], [type="radio"], [type="button"], [type="submit"], [type="reset"], [type="file"], [type="range"], [type="color"], [readonly])):focus) :is(.back-fabs, .nav) { display: none; } /* 戻るボタンと、一番下のナビ（.nav） */
 }
 .back-fab:hover { text-decoration: none; color: #1d3766; } /* リンク共通の a:hover の赤にしない */
 @media (any-hover: hover) {

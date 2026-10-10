@@ -3568,6 +3568,7 @@ function setupSuggest() {
   let skipNext = false;  // 候補を選んで input イベントを出したとき、もう一度開かないように
   let composing = false; // 日本語入力の変換中か
   let pending = null;    // 変換中に候補を押したとき { input, value }（変換が終わったら入れ直す）
+  let tappedInput = null; // スマホで候補が開いている入力欄を押して閉じたとき、その入力欄（直後の click で開き直さないため）
 
   // 比べる用に文字をそろえる（全角英数→半角、大文字→小文字、カタカナ→ひらがな）
   const norm = (s) => s.normalize('NFKC').toLowerCase()
@@ -3637,6 +3638,29 @@ function setupSuggest() {
     return [name, kana];
   };
 
+  // 候補の箱を入力欄の位置に合わせて置く（開いたとき・スマホでスクロールしたとき）
+  const place = (pop, input) => {
+    // 入力欄の真下に出す。下に入りきらなければ上に（setupSelectPick とほぼ同じ）
+    //   ただし高さの上限は 280px にしない。候補は最大 8 件（約 296px）なので、280px で切ると少しだけはみ出して
+    //   スクロールバーが出て、その幅のぶん候補のマウスオーバーの背景が右端まで届かなくなる → 8 件がそのまま入る高さにする
+    const r = input.getBoundingClientRect();
+    pop.style.top = pop.style.bottom = ''; // 置き直すときは前の位置を消してから
+    pop.style.left = `${r.left}px`;
+    pop.style.minWidth = `${r.width}px`;
+    pop.style.maxHeight = 'none';
+    const full = pop.offsetHeight;
+    const below = window.innerHeight - r.bottom - 8;
+    if (below < full && r.top - 8 > below) {
+      pop.style.bottom = `${window.innerHeight - r.top + 4}px`;
+      pop.style.maxHeight = `${Math.min(full, r.top - 8)}px`;
+    } else {
+      pop.style.top = `${r.bottom + 4}px`;
+      pop.style.maxHeight = `${Math.min(full, below)}px`;
+    }
+    const over = pop.getBoundingClientRect().right - (window.innerWidth - 8);
+    if (over > 0) pop.style.left = `${Math.max(8, r.left - over)}px`;
+  };
+
   // seed: 入力欄の文字の代わりに、この文字で探す（data-suggest-seed で押したとき）。前方一致だけにし、完全一致の1件でも出す
   const open = (input, seed = null) => {
     close();
@@ -3700,24 +3724,7 @@ function setupSuggest() {
     ['mousedown', 'pointerdown'].forEach((ev) => pop.addEventListener(ev, (e) => e.preventDefault()));
     document.body.append(pop);
 
-    // 入力欄の真下に出す。下に入りきらなければ上に（setupSelectPick とほぼ同じ）
-    //   ただし高さの上限は 280px にしない。候補は最大 8 件（約 296px）なので、280px で切ると少しだけはみ出して
-    //   スクロールバーが出て、その幅のぶん候補のマウスオーバーの背景が右端まで届かなくなる → 8 件がそのまま入る高さにする
-    const r = input.getBoundingClientRect();
-    pop.style.left = `${r.left}px`;
-    pop.style.minWidth = `${r.width}px`;
-    pop.style.maxHeight = 'none';
-    const full = pop.offsetHeight;
-    const below = window.innerHeight - r.bottom - 8;
-    if (below < full && r.top - 8 > below) {
-      pop.style.bottom = `${window.innerHeight - r.top + 4}px`;
-      pop.style.maxHeight = `${Math.min(full, r.top - 8)}px`;
-    } else {
-      pop.style.top = `${r.bottom + 4}px`;
-      pop.style.maxHeight = `${Math.min(full, below)}px`;
-    }
-    const over = pop.getBoundingClientRect().right - (window.innerWidth - 8);
-    if (over > 0) pop.style.left = `${Math.max(8, r.left - over)}px`;
+    place(pop, input);
 
     input.setAttribute('aria-expanded', 'true');
     input.setAttribute('aria-controls', pop.id);
@@ -3733,7 +3740,9 @@ function setupSuggest() {
   // data-suggest-seed: 押したら、同じ行の別の欄（バンド名など）の文字で候補を出す。もう開いていれば何もしない
   document.addEventListener('click', (e) => {
     const input = e.target.closest?.('[data-suggest-seed]');
-    if (!input || cur?.input === input) return;
+    const tapped = tappedInput === input;
+    tappedInput = null;
+    if (!input || cur?.input === input || tapped) return; // 開いていた候補を閉じるために押したときは開き直さない
     const src = input.closest('tr')?.querySelector(input.dataset.suggestSeed);
     if (src?.value.trim()) open(input, src.value);
   });
@@ -3770,9 +3779,25 @@ function setupSuggest() {
   });
 
   document.addEventListener('focusout', (e) => { if (cur && e.target === cur.input) close(); });
-  // fixed で出しているので、ページをスクロールしたら閉じる（候補の中のスクロールは別）
-  window.addEventListener('scroll', (e) => { if (cur && !cur.pop.contains(e.target)) close(); }, true);
-  window.addEventListener('resize', close);
+  // スマホ（指で操作する画面）: スクロールしても閉じずに入力欄についていく（候補を見ながら画面を動かせるように）。
+  //   キーボードの出し入れで画面の高さが変わる（resize）ときも同じ。
+  //   閉じるのは、候補を押したとき・入力欄をもう一度押したとき・ほかの場所を押したとき
+  // PC: fixed で出しているので、ページをスクロールしたら閉じる（候補の中のスクロールは別）
+  const touch = window.matchMedia('(hover: none) and (pointer: coarse)');
+  const follow = () => { if (cur) place(cur.pop, cur.input); };
+  window.addEventListener('scroll', (e) => {
+    if (!cur || cur.pop.contains(e.target)) return;
+    if (touch.matches) follow(); else close();
+  }, true);
+  window.addEventListener('resize', () => { if (touch.matches) follow(); else close(); });
+  window.visualViewport?.addEventListener('resize', () => { if (touch.matches) follow(); });
+  document.addEventListener('pointerdown', (e) => {
+    if (!cur || !touch.matches || cur.pop.contains(e.target)) return;
+    // 入力欄をもう一度押した / ほかの場所を押した → 閉じる（入力欄からフォーカスが外れなくても閉じる）
+    //   入力欄を押したときは、このあと文字を打てば input イベントでまた開く
+    tappedInput = cur.input === e.target ? e.target : null;
+    close();
+  }, true);
 }
 
 /* ---------------------------------------------------------------------
