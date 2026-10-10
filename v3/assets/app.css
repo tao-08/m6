@@ -596,6 +596,11 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .member-rows { display: grid; gap: 8px; margin-bottom: 10px; }
 .member-row-edit { display: grid; grid-template-columns: 232px auto minmax(0, 260px) auto; /* 楽器 / Cho のトグル / 名前 / ✕ */ /* 232px =「Key.Vo キーボードボーカル」が切れない幅 / 名前は 260px まで（人名にそれ以上はいらない） */ gap: 8px; align-items: center;
   justify-content: center; /* 行をカードの中央に置く。これがないと余った幅が auto の列（✕ボタン）に配られて、ボタンが横に伸びる */ }
+/* HTML の並びは「名前 / ✕ / 楽器 / Cho」（スマホの2段用）。PC の1段では order で「楽器 / Cho / 名前 / ✕」に並べ替える */
+.member-row-edit > :nth-child(3) { order: 1; }
+.member-row-edit > :nth-child(4) { order: 2; }
+.member-row-edit > :nth-child(1) { order: 3; }
+.member-row-edit > :nth-child(2) { order: 4; }
 .member-row-edit [data-remove-row] { width: 32px; height: 32px; padding: 0; border-radius: 50%; }
 .checks { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 12px 0 4px; }
 .check { display: flex; gap: 8px; align-items: center; font-size: 14px; cursor: pointer; }
@@ -1352,6 +1357,11 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
 @keyframes back-fab-in { from { opacity: 0; } } /* to を書かない = いつもの透明度（PC の半透明）まで */
 @keyframes back-fab-out { to { opacity: 0; } }
 .back-fabs--ghost { z-index: 24; pointer-events: none; } /* 前のページのボタン（消えるだけ）。今のボタンの後ろ */
+/* スマホ（指で操作する画面）で文字を入力中（= キーボードが出ている）は、戻るボタンを隠す（入力欄や候補に重なって邪魔なので）
+   :has() = 「中にフォーカス中の入力欄がある body」。チェックボックスやボタンはキーボードが出ないので除く */
+@media (hover: none) and (pointer: coarse) {
+  body:has(:is(textarea, input:not([type="checkbox"], [type="radio"], [type="button"], [type="submit"], [type="reset"], [type="file"], [type="range"], [type="color"], [readonly])):focus) .back-fabs { display: none; }
+}
 .back-fab:hover { text-decoration: none; color: #1d3766; } /* リンク共通の a:hover の赤にしない */
 @media (any-hover: hover) {
   .back-fab { opacity: .45; }
@@ -1488,7 +1498,12 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
   .table--list .plays { text-align: left; } /* 見出し「演奏回数 ▼」が数字より広いので、右寄せだと名前との間が空く。左に寄せて名前の近くに */
   .card.table-card { padding: 0; }
   .table-scroll--flush { margin: 0; }
-  .member-row-edit { grid-template-columns: 110px auto minmax(0, 1fr) auto; }
+  /* スマホは2段: 上の段に名前 / ✕、下の段に楽器 / Cho（HTML の並びのまま。order を戻す） */
+  .member-row-edit { grid-template-columns: minmax(0, 1fr) auto; justify-content: stretch; justify-items: start; gap: 6px 8px;
+    padding-bottom: 10px; border-bottom: 1px dashed var(--border); } /* 1人分（2段）の区切り */
+  .member-row-edit > :nth-child(n) { order: 0; } /* :nth-child(n) = 全部の子。上の order と同じ強さにして後ろに書くことで上書きする */
+  .member-row-edit > :first-child, .member-row-edit > :nth-child(3) { width: 100%; } /* 名前と楽器は左の列いっぱい */
+  .member-row-edit:last-child { border-bottom: 0; padding-bottom: 0; }
   .sticky-actions { width: 100%; }
   .sticky-actions .btn { flex: 1; }
   .sticky-actions:has(.sticky-actions__note:not([hidden])) { flex-wrap: wrap; border-radius: var(--radius); }
