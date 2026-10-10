@@ -330,7 +330,7 @@ function setupSongs() {
 
   // ---- 曲の並び替え（≡ をドラッグ / ≡ にフォーカスして ↑↓ キー） ----
   //   指の位置が上か下のカードの真ん中を越えたら、そのカードと入れ替える
-  let drag = null; // ドラッグ中だけ { card, pointerId, grab（カードの上端からつかんだ所までの距離） }
+  let drag = null; // ドラッグ中だけ { card, pointerId, grab（カードの上端からつかんだ所までの距離）, y（今の指の高さ）, raf（自動スクロールの予約） }
   // 滑っている途中・指に付いている途中のずれ（transform の translateY）を引いた「本当の位置」の上端
   const layoutTop = (el) => el.getBoundingClientRect().top - new DOMMatrixReadOnly(getComputedStyle(el).transform).m42;
   // 入れ替えのアニメーション（FLIP）: 動かす前の位置を測る → DOM を入れ替える → 前の位置から今の位置へ滑らせる
@@ -357,26 +357,50 @@ function setupSongs() {
     drag = { card, pointerId: e.pointerId, grab: e.clientY - card.getBoundingClientRect().top };
     drag.card.classList.add('is-dragging');
     handle.setPointerCapture(e.pointerId); // 指やマウスが ≡ の外に出ても追いかける
+    drag.y = e.clientY;
+    drag.raf = requestAnimationFrame(autoScroll);
   });
-  list.addEventListener('pointermove', (e) => {
-    if (!drag || e.pointerId !== drag.pointerId) return;
+  // 指の高さ y に合わせて、入れ替え（上下のカードの真ん中を越えたら）とカードの位置を更新する
+  const follow = (y) => {
     const all = cards();
     const i = all.indexOf(drag.card);
     const prev = all[i - 1];
     const next = all[i + 1];
     // 真ん中の位置は、滑っている途中のずれを引いた「本当の位置」で測る（途中の位置で測ると行ったり来たりする）
     const mid = (el) => layoutTop(el) + el.offsetHeight / 2;
-    if (prev && e.clientY < mid(prev)) {
+    if (prev && y < mid(prev)) {
       move(() => list.insertBefore(drag.card, prev), drag.card);
-    } else if (next && e.clientY > mid(next)) {
+    } else if (next && y > mid(next)) {
       move(() => list.insertBefore(drag.card, next.nextElementSibling), drag.card);
     }
     // つかんでいるカードを指に付いてこさせる（本当の位置からのずれを transform で付ける）
-    drag.card.style.transform = `translateY(${e.clientY - drag.grab - layoutTop(drag.card)}px)`;
+    drag.card.style.transform = `translateY(${y - drag.grab - layoutTop(drag.card)}px)`;
+  };
+  // 自動スクロール: 指が画面の上端・下端の近く（EDGE px 以内）にあるあいだ、ページを上下に動かす。端に近いほど速い
+  //   スクロールすると指の下のカードが変わるので、毎フレーム follow() で入れ替えとカードの位置をやり直す
+  //   EDGE は、スマホの下のナビ・上のヘッダーに指がかかっても届くように大きめ
+  const EDGE = 100;
+  const MAX_SPEED = 18; // 1フレーム（約 1/60 秒）に動かす最大の px
+  const autoScroll = () => {
+    if (!drag) return;
+    const y = drag.y;
+    const speed = y < EDGE ? -(EDGE - y) / EDGE : y > innerHeight - EDGE ? (y - (innerHeight - EDGE)) / EDGE : 0;
+    if (speed) {
+      const before = scrollY;
+      scrollBy(0, Math.round(Math.max(-1, Math.min(1, speed)) * MAX_SPEED));
+      if (scrollY !== before) follow(y); // 端まで行って動かなかったときはやり直さない
+    }
+    drag.raf = requestAnimationFrame(autoScroll);
+  };
+  list.addEventListener('pointermove', (e) => {
+    if (!drag || e.pointerId !== drag.pointerId) return;
+    drag.y = e.clientY;
+    follow(e.clientY);
   });
   const endDrag = (e) => {
     if (!drag || e.pointerId !== drag.pointerId) return;
     const { card } = drag;
+    cancelAnimationFrame(drag.raf); // 自動スクロールを止める
     drag = null;
     // 離したら、指の位置から並びの位置へスッと戻す
     const dy = new DOMMatrixReadOnly(getComputedStyle(card).transform).m42;
