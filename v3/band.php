@@ -224,7 +224,7 @@ render_header($band['name'], 'lives');
             <?php if ($band['venue_name']): ?><span><?= icon('location_on') ?> <?= h($band['venue_name']) ?></span><?php endif; ?>
         </p>
         <p class="band-tags">
-            <?php if ($isLast): ?><span class="tag tag--tori" aria-label="トリ" title="トリ">🐦️</span><?php endif; ?>
+            <?php if ($isLast): ?><span class="tag tag--tori" aria-label="トリ" title="トリ">🐔</span><?php endif; ?>
             <?php if ($isMine): ?><span class="tag">出演</span><?php endif; ?>
             <?= band_artist_links($band, $band['is_omnibus'] ? omnibus_artists_by_band($pdo, [(int)$band['band_id']]) : []) // オムニバスなら曲のアーティストを全部 ?>
         </p>
