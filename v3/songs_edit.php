@@ -38,6 +38,17 @@ if (!$band) {
     http_response_code(404);
     exit('バンドが見つかりません');
 }
+// 出演まで非公開のセットリストは、メンバーと管理者以外には編集画面でも見せない（曲名が見えてしまうので）
+$setlistVis = band_setlist_visibility($pdo, $bandId);
+if ($setlistVis['hidden']) {
+    http_response_code(403); // 403 = 「あるけど、あなたには見せられない」
+    render_header('曲を編集', 'lives');
+    echo '<div class="empty card"><p class="empty__title">' . icon('lock') . ' セットリストは出演まで非公開です</p>'
+        . '<p class="muted small">編集できるのはバンドのメンバーと管理者だけです</p>'
+        . '<a class="btn" href="band?id=' . $bandId . '">バンドへ戻る</a></div>';
+    render_footer();
+    exit;
+}
 $liveUrl = 'live?id=' . (int)$band['live_id'] . '#day-' . (int)$band['live_day_id'];
 $backUrl = 'band?id=' . $bandId; // 保存・キャンセルの戻り先はバンド詳細
 // オムニバスでないときにアーティスト欄に出す名前（アーティスト未設定のバンドはバンド名）
@@ -64,9 +75,24 @@ $choicesOf = static fn(array $ids): array =>
  *  保存
  * ===================================================================== */
 $errors = [];
-if (is_post()) {
+// セッティングシート（setting_sheet.php）の「DB に登録する」から来たとき: まだ保存しない。
+//   送られてきた曲名を、いつものカードに並べて表示するだけ（曲の紐付け・演奏者を確認してから「保存」してもらう）
+$fromSheet = is_post() && ($_POST['from_sheet'] ?? '') === '1';
+$sheetTitles = [];
+if ($fromSheet) {
+    verify_csrf();
+    foreach ((array)($_POST['titles'] ?? []) as $t) {
+        $t = trim((string)$t);
+        if ($t !== '') {
+            $sheetTitles[] = mb_substr($t, 0, 100); // 100文字を超える分は切る（DB の列の長さ）
+        }
+    }
+    $sheetTitles = array_slice($sheetTitles, 0, 15); // 曲は15曲まで（保存のときと同じ上限）
+}
+if (is_post() && !$fromSheet) {
     verify_csrf();
     $omnibus = !empty($_POST['omnibus']);
+    $private = !empty($_POST['setlist_private']); // 出演まで非公開
     $songs = [];
     foreach ((array)($_POST['songs'] ?? []) as $k => $in) {
         $title = trim((string)($in['title'] ?? ''));
@@ -159,7 +185,8 @@ if (is_post()) {
             //   アーティストが一覧に残らないようにするため（artists.php は演奏0回のアーティストを出さない）
             // オムニバスを外したとき: コピー元アーティストが無ければ、バンド名から決め直す
             $artistId = $omnibus ? null : ($band['artist_id'] ?? find_or_create_artist($pdo, $band['name']));
-            $pdo->prepare('UPDATE band SET is_omnibus = ?, artist_id = ? WHERE band_id = ?')->execute([(int)$omnibus, $artistId, $bandId]);
+            $pdo->prepare('UPDATE band SET is_omnibus = ?, artist_id = ?, setlist_private = ? WHERE band_id = ?')
+                ->execute([(int)$omnibus, $artistId, (int)$private, $bandId]);
             save_songs($pdo, $bandId, $songs);
             $pdo->commit();
         } catch (Throwable $e) {
@@ -195,9 +222,41 @@ foreach ($st as $r) {
 
 // 空のカードは最初は出さない。最後に1枚だけ <template>（画面に出ない・送信もされない）の中に作っておき、
 // 「＋ 曲を追加」を押したら JS がコピーして並べる（assets/app.js の setupSongs）
-$cards = $songs;
-$cards[] = ['song_id' => null, 'track_no' => 0, 'title' => '', 'artist_name' => null,
+$emptyCard = ['song_id' => null, 'track_no' => 0, 'title' => '', 'artist_name' => null,
     'track_source' => null, 'track_id' => null, 'track_title' => null, 'track_artist' => null, 'artwork_url' => null];
+$droppedTitles = []; // セッティングシートに無い、登録済みの曲（保存すると消える）
+if ($fromSheet) {
+    // シートの曲順でカードを作る。同じ曲名の登録済みの曲があれば、それを使う（紐付けた曲・演奏者の記録を残すため）
+    //   曲名の比べ方: 前後の空白を消して、大文字小文字を区別しない（mb_strtolower）
+    $norm = static fn(string $t): string => mb_strtolower(trim($t));
+    $pool = []; // 曲名 => [登録済みの曲, ...]（同じ曲名を2回やるバンドもあるので配列）
+    foreach ($songs as $song) {
+        $pool[$norm($song['title'])][] = $song;
+    }
+    $cards = [];
+    foreach ($sheetTitles as $i => $title) {
+        // array_shift: 配列の先頭を取り出す（同じ曲名の2回目には、2つ目の登録済みの曲を使う）
+        $match = isset($pool[$norm($title)]) ? array_shift($pool[$norm($title)]) : null;
+        $cards[] = $match ?? array_merge($emptyCard, ['title' => $title]);
+        $cards[$i]['track_no'] = $i + 1;
+    }
+    foreach ($pool as $left) {
+        foreach ($left as $song) {
+            $droppedTitles[] = $song['title'];
+        }
+    }
+} else {
+    $cards = $songs;
+}
+// 最後の1枚は「＋ 曲を追加」用のひな形（<template> の中に入れる）
+$cards[] = $emptyCard + ['template' => true];
+// 出演まで非公開: 保存済みの値。シートから来たときは、まだ公開時刻前なら最初からチェックを入れておく
+$private = $fromSheet
+    ? ($setlistVis['private'] || ($setlistVis['open_at'] !== null && strtotime($setlistVis['open_at']) > time()))
+    : $setlistVis['private'];
+if (is_post() && !$fromSheet) {
+    $private = !empty($_POST['setlist_private']); // 保存に失敗して画面を出し直すときは、送られてきた値のまま
+}
 $omnibus = (bool)$band['is_omnibus'];
 $artistNames = $pdo->query('SELECT name FROM artist ORDER BY name')->fetchAll(PDO::FETCH_COLUMN);
 
@@ -215,20 +274,29 @@ render_header('曲を編集', 'lives');
     <div class="flash flash--warn">先にバンドのメンバーを登録してください（<a href="band_edit?id=<?= $bandId ?>">バンドを編集</a>）</div>
 <?php endif; ?>
 <p class="muted small">曲ごとに演奏者と担当楽器が記録できます。 曲を検索して紐づけると対応アプリで開くリンクが作成されます。</p>
+<?php if ($fromSheet): ?>
+    <div class="flash flash--info"><?= icon('description') ?> セッティングシートの曲を並べました。曲を検索して紐づけ、演奏者を確認したら「保存」してください（まだ保存されていません）</div>
+    <?php if ($droppedTitles): ?>
+        <div class="flash flash--warn">シートに無い登録済みの曲は、保存すると消えます: <?= h(implode('、', $droppedTitles)) ?></div>
+    <?php endif; ?>
+<?php endif; ?>
 
 <form method="post" class="songs-form">
     <?= csrf_field() ?>
     <input type="hidden" name="band_id" value="<?= $bandId ?>">
     <!-- チェックなし: アーティスト欄はバンドのアーティストで固定（薄く表示）。チェックあり: 曲ごとに書ける（assets/app.js の setupSongs） -->
     <label class="check song-omnibus"><input type="checkbox" name="omnibus" value="1"<?= $omnibus ? ' checked' : '' ?> data-omnibus> オムニバス （複数アーティストを演奏）</label>
+    <!-- 出演まで非公開: 終演30分後まで、メンバーと管理者以外には曲名を見せない（lib/repository.php の setlist_hidden_sql） -->
+    <label class="check song-omnibus"><input type="checkbox" name="setlist_private" value="1"<?= $private ? ' checked' : '' ?>> <?= icon('lock') ?> 出演まで非公開 <span class="muted small">（終演30分後に公開<?= $setlistVis['open_at'] ? '：' . h(fmt_datetime($setlistVis['open_at'])) : '' ?>）</span></label>
     <datalist id="artists"><?php foreach ($artistNames as $n): ?><option value="<?= h($n) ?>"><?php endforeach; ?></datalist>
     <div class="song-list" data-song-list data-default-artist="<?= h($defaultArtist) ?>">
         <?php foreach ($cards as $k => $song):
-            $isNew = $song['song_id'] === null;
+            $isNew = $song['song_id'] === null;        // まだ DB に無い曲（シートから来た曲も含む）
+            $isTemplate = !empty($song['template']);     // 「＋ 曲を追加」用のひな形（画面には出ない）
             $base = "songs[$k]";
             $artist = $omnibus ? ($song['artist_name'] ?? '') : $defaultArtist; // オムニバスはバンドのアーティストが無いので、曲に付いていなければ空欄
             $trackKey = $song['track_id'] === null ? '' : album_key($song['track_source'], $song['track_id']); ?>
-            <?php if ($isNew): ?><template data-song-template><?php endif; ?>
+            <?php if ($isTemplate): ?><template data-song-template><?php endif; ?>
             <section class="card song-card<?= $isNew ? ' song-card--new' : '' ?>" data-song-card>
                 <div class="song-card__head">
                     <!-- ≡: ドラッグ（↑↓キーでも）で曲の順番を入れ替える。pos = 上から何番目か（JS が振り直す。保存はこの順） -->
@@ -277,7 +345,7 @@ render_header('曲を編集', 'lives');
                     <?php endforeach; ?>
                 </div>
             </section>
-            <?php if ($isNew): ?></template><?php endif; ?>
+            <?php if ($isTemplate): ?></template><?php endif; ?>
         <?php endforeach; ?>
     </div>
     <button type="button" class="btn btn--ghost btn--sm" data-add-song>＋ 曲を追加</button>

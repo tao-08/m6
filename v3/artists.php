@@ -12,17 +12,18 @@
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 $user = require_login();
+require_once __DIR__ . '/lib/repository.php'; // artist_plays_sql()
 $pdo = db();
 
-// 「アーティスト × 演奏したバンド」の組（lib/bootstrap.php の ARTIST_PLAYS_SQL。アーティストページ・集計・検索と同じ数え方）
-const PLAYED_SQL = ARTIST_PLAYS_SQL;
+// 「アーティスト × 演奏したバンド」の組（lib/repository.php の artist_plays_sql()。アーティストページ・集計・検索と同じ数え方）
+$playedSql = artist_plays_sql(); // 見る人によって変わる（出演まで非公開のバンド）ので定数ではなく変数
 
 // 演奏0回のアーティストは出さない（JOIN = 演奏したバンドがあるものだけ）。
 //   オムニバスにしてコピー元アーティストを外したバンドの「ボカロバンド」のような、どこからも使われなくなった名前を一覧に残さないため
 //   （行は消さないので、artist.php?id= で直接開くことはできる）
 $rows = $pdo->query('SELECT a.artist_id, a.name, COUNT(p.band_id) AS plays
     FROM artist a
-    JOIN (' . PLAYED_SQL . ') p ON p.artist_id = a.artist_id
+    JOIN (' . $playedSql . ') p ON p.artist_id = a.artist_id
     GROUP BY a.artist_id
     ORDER BY plays DESC, a.name')->fetchAll();
 
@@ -33,7 +34,7 @@ $lastLive = [];
 $st = $pdo->query('SELECT artist_id, live_id, fiscal_year, name, held_on FROM (
         SELECT p.artist_id, l.live_id, l.fiscal_year, l.name, d.held_on,
             ROW_NUMBER() OVER (PARTITION BY p.artist_id ORDER BY d.held_on DESC, l.fiscal_year DESC) AS rn
-        FROM (' . PLAYED_SQL . ') p
+        FROM (' . $playedSql . ') p
         JOIN band b ON b.band_id = p.band_id
         JOIN live_day d ON d.live_day_id = b.live_day_id
         JOIN live l ON l.live_id = d.live_id) x
@@ -49,7 +50,7 @@ $topPlayers = [];
 $st = $pdo->query('SELECT artist_id, member_id, name, n FROM (
         SELECT p.artist_id, m.member_id, m.name, COUNT(*) AS n,
             RANK() OVER (PARTITION BY p.artist_id ORDER BY COUNT(*) DESC) AS rk
-        FROM (' . PLAYED_SQL . ') p
+        FROM (' . $playedSql . ') p
         JOIN (' . MEMBERSHIP_SQL . ') bm ON bm.band_id = p.band_id
         JOIN member m ON m.member_id = bm.member_id
         GROUP BY p.artist_id, m.member_id) x

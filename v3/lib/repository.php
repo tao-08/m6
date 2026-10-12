@@ -940,6 +940,100 @@ function setlist_badge(int $registered, int $planned): string
         . icon('check') . '<span class="setlist-badge__text">セットリスト</span></button>';
 }
 
+/* =====================================================================
+ *  セットリストの「出演まで非公開」（band.setlist_private。migrations/023）
+ * =====================================================================
+ *  非公開にしたバンドは、公開時刻までは「曲名が出る画面」から曲を隠す。
+ *    公開時刻 = 出演日 + 終演時刻 + 30分
+ *             （終演時刻が無ければ 開始時刻 + 1時間、どちらも無ければ 出演日の翌日 0:00）
+ *    見える人 = 管理者と、そのバンドのメンバー（自分たちのセトリは確認・編集できる）
+ *    隠さないもの = 「登録済み ✓」のバッジと曲数（曲名は分からないので）
+ *
+ *  公開時刻は DB に保存せず、毎回 SQL で計算する。
+ *  保存すると、あとでタイムテーブルの時刻を直したときにズレる（同じ事実を2か所に持たない＝正規化の考え方）。
+ *
+ *  ここでは「SQL の部品（文字列）」を返し、各画面の SELECT の WHERE に足して使う。
+ *  曲を読む SQL が何か所もあるので、条件を1か所にまとめておく（どこか1つだけ直し忘れる、を防ぐ）
+ * ===================================================================== */
+
+/**
+ * セットリストを公開する日時を計算する SQL の式。$b は band の別名（FROM band b なら 'b'）。
+ *   TIMESTAMP(日付, 時刻) は「日付 + 時刻」の日時を作る MySQL の関数。+ INTERVAL 30 MINUTE で30分後
+ *   出演日は live_day にあるので、( SELECT … ) で横から取ってくる（相関サブクエリ）
+ */
+function setlist_open_sql(string $b = 'b'): string
+{
+    $held = "(SELECT hd.held_on FROM live_day hd WHERE hd.live_day_id = $b.live_day_id)";
+    return "(CASE
+        WHEN $held IS NULL THEN NULL
+        WHEN $b.end_time IS NOT NULL THEN TIMESTAMP($held, $b.end_time) + INTERVAL 30 MINUTE
+        WHEN $b.start_time IS NOT NULL THEN TIMESTAMP($held, $b.start_time) + INTERVAL 1 HOUR
+        ELSE TIMESTAMP($held) + INTERVAL 1 DAY END)";
+}
+
+/**
+ * 「いま、この人にはセットリストを隠すか」の SQL の条件式（真なら隠す）。
+ *   使い方: "... WHERE NOT " . setlist_hidden_sql('b')
+ *
+ *   ・現在時刻は MySQL の NOW() ではなく PHP の時刻を渡す。
+ *     レンタルサーバーの MySQL は時計が UTC（日本より9時間遅い）のことがあり、NOW() だと公開がずれるため。
+ *     date() の結果はユーザーが入力した値ではないので、quote()（安全な文字列にする）して埋め込んでよい
+ *   ・出演日が未登録（NULL）のときは、非公開のチェックを外すまで隠す
+ */
+function setlist_hidden_sql(string $b = 'b'): string
+{
+    if (is_admin()) {
+        return '(1 = 0)'; // 管理者には何も隠さない（常に偽の条件）
+    }
+    $me = (int)(current_user()['member_id'] ?? 0); // メンバーに紐付いていないアカウントは 0（誰とも一致しない）
+    $now = db()->quote(date('Y-m-d H:i:s'));
+    $open = setlist_open_sql($b);
+    return "($b.setlist_private = 1
+        AND NOT EXISTS (SELECT 1 FROM band_member hm WHERE hm.band_id = $b.band_id AND hm.member_id = $me)
+        AND ($open IS NULL OR $now < $open))";
+}
+
+/**
+ * 「アーティスト × そのアーティストをコピーしたバンド」の組を表すサブクエリ。
+ *   ふつうのバンド    : band.artist_id
+ *   オムニバスのバンド: band.artist_id は使わず、曲に付いたアーティスト（song.artist_id）。付いていない曲は数えない
+ *   UNION（ALL なし）なので同じ組は1つにまとまる → オムニバスで同じアーティストを2曲やっても1回
+ *   使い方: FROM (" . artist_plays_sql() . ") p   … p.artist_id, p.band_id
+ *
+ *   前は定数（ARTIST_PLAYS_SQL）だったが、「出演まで非公開」のオムニバスのバンドは
+ *   曲のアーティストから曲がバレるので数えない、という「見る人によって変わる条件」が入ったので関数にした
+ *   （定数は決まった文字しか持てない。見る人・時刻で変わるものは関数で作る）
+ */
+function artist_plays_sql(): string
+{
+    return 'SELECT artist_id, band_id FROM band WHERE is_omnibus = 0 AND artist_id IS NOT NULL
+    UNION
+    SELECT s.artist_id, s.band_id FROM song s JOIN band b ON b.band_id = s.band_id
+        WHERE b.is_omnibus = 1 AND s.artist_id IS NOT NULL AND NOT ' . setlist_hidden_sql('b');
+}
+
+/**
+ * 1つのバンドについて「隠すか」と「公開日時」をまとめて調べる（バンドページ・曲の編集画面用）
+ * @return array{hidden: bool, private: bool, open_at: ?string}
+ */
+function band_setlist_visibility(PDO $pdo, int $bandId): array
+{
+    $st = $pdo->prepare('SELECT b.setlist_private, ' . setlist_hidden_sql('b') . ' AS hidden, ' . setlist_open_sql('b') . ' AS open_at
+        FROM band b WHERE b.band_id = ?');
+    $st->execute([$bandId]);
+    $r = $st->fetch() ?: ['setlist_private' => 0, 'hidden' => 0, 'open_at' => null];
+    return ['hidden' => (bool)$r['hidden'], 'private' => (bool)$r['setlist_private'], 'open_at' => $r['open_at']];
+}
+
+/** 「10/25（土）21:30」の形。公開日時の案内に使う */
+function fmt_datetime(?string $dt): string
+{
+    if (!$dt) {
+        return '';
+    }
+    return fmt_date($dt) . ' ' . date('G:i', strtotime($dt));
+}
+
 /**
  * バンドのお気に入り（❤）の数と、自分が付けているか。
  *   誰が付けたかは返さない（画面に出すのは数だけ = 匿名）。
@@ -1007,6 +1101,7 @@ function omnibus_artists_by_band(PDO $pdo, array $bandIds): array
         JOIN band b ON b.band_id = s.band_id
         JOIN artist a ON a.artist_id = s.artist_id
         WHERE b.is_omnibus = 1 AND s.band_id IN ($in)
+          AND NOT " . setlist_hidden_sql('b') . " -- 出演まで非公開のバンドは、曲のアーティストからも曲がバレるので出さない
         GROUP BY s.band_id, a.artist_id, a.name
         ORDER BY s.band_id, first_no");
     $st->execute(array_values(array_map('intval', $bandIds)));

@@ -38,6 +38,10 @@
     const $$ = (sel) => Array.from(root.querySelectorAll(sel));
 
     const STORE_KEY = 'settingSheet:band:' + DATA.bandId; // localStorage の保存キー（バンドごと）
+    // プレビューを開いているか（下の「6.5 プレビュー」で使う）。save() から先に参照されるので、ここで宣言しておく
+    //   let で作った変数は、宣言の行より前で使うとエラーになる（TDZ: 一時的なデッドゾーン）
+    let previewOpen = false;
+    let previewTimer = 0;
 
     /** セット図の部品の「基準の大きさ」（pt）。大きさスライダー（scale）を掛けて使う */
     const BASE = {
@@ -64,7 +68,9 @@
             order: ini.order,
             // [...配列] でコピーしてから map。元の DATA を書き換えないため
             members: ini.members.map((m) => ({ part: m.part, name: m.name })),
-            setlist: ini.setlist,
+            // セットリスト。1曲 = { id, mc: false, title, sound, light } / MC = { id, mc: true }
+            songs: ini.songs.map((title, i) => ({ id: i + 1, mc: false, title, sound: '', light: '' })),
+            nextSongId: ini.songs.length + 1,
             mc: 'row',      // 'row' = MC で1行使う / 'line' = 曲の間の線に書く
             choices: {},    // { se: 'なし', start: 'ハケ', ... }。空 = どれも囲まない
             texts: {},      // その他の自由記入欄 { other: '...', se_title: '...' }
@@ -87,7 +93,14 @@
             }
             // { ...a, ...b } は「a に b を上書きしたコピー」（スプレッド構文）。
             // 古い保存データに新しい項目が無くても、defaultState の値で埋まる
-            return { ...defaultState(), ...JSON.parse(raw) };
+            const saved = { ...defaultState(), ...JSON.parse(raw) };
+            // 前の版（テキスト欄1つ）で保存したデータなら、1曲ずつの形に直す（データの移行＝マイグレーション）
+            if (typeof saved.setlist === 'string') {
+                saved.songs = parseSetlist(saved.setlist).map((e, i) => ({ id: i + 1, sound: '', light: '', title: '', ...e }));
+                saved.nextSongId = saved.songs.length + 1;
+                delete saved.setlist;
+            }
+            return saved;
         } catch (e) {
             return null;
         }
@@ -96,6 +109,7 @@
     let saveTimer = 0;
     /** 保存。入力のたびに書くと重いので「最後の入力から 300ms 後に1回だけ」にする（デバウンスという定番の技） */
     function save() {
+        schedulePreview(); // プレビューを開いていれば作り直す（下の「7. プレビュー」）
         clearTimeout(saveTimer);
         saveTimer = setTimeout(() => {
             try {
@@ -136,9 +150,6 @@
             // 'input' イベントは1文字打つたびに起きる（'change' は確定したときだけ）
             input.addEventListener('input', () => {
                 state[key] = input.value;
-                if (key === 'setlist') {
-                    renderRowsNote();
-                }
                 save();
             });
         });
@@ -401,10 +412,14 @@
      * ================================================================= */
 
     /** MC の行か？（MC / ＭＣ / mc / MC1 など。大文字小文字・全角半角を問わない） */
-    const isMc = (s) => /^(mc|ｍｃ)[0-9０-９]*$/i.test(s.replace(/[\s　]/g, ''));
+    //   function 宣言にしているのは「巻き上げ」のため。ファイルの上の方（loadState）から先に呼ばれても動く
+    //   （const で作った関数は、その行より前で呼ぶとエラーになる）
+    function isMc(s) {
+        return /^(mc|ｍｃ)[0-9０-９]*$/i.test(s.replace(/[\s　]/g, ''));
+    }
 
     /**
-     * テキスト → [{ mc: true } | { title, sound, light }]
+     * （前の版の保存データの移行用）テキスト → [{ mc: true } | { title, sound, light }]
      *   split(/\r?\n/): 改行で分ける（Windows の改行 \r\n にも対応する正規表現）
      *   | と ｜（全角）で「曲名 | 音響 | 照明」に分ける
      */
@@ -428,7 +443,8 @@
      *   mode : 実際に使った書き方（1行モードで入りきらないときは線モードに切り替える）
      */
     function layoutSetlist() {
-        const entries = parseSetlist(state.setlist || '');
+        // 曲名が空の行は数えない（追加したけどまだ書いていない行）
+        const entries = state.songs.filter((e) => e.mc || e.title.trim() !== '');
         const st = tpl().setlist;
         const max = rowCount(st);
         let mode = st.mc_line === false ? 'row' : state.mc; // 線に書けないシートは必ず1行
@@ -447,7 +463,7 @@
                 }
             } else {
                 no++;
-                rows.push({ no: String(no), ...e });
+                rows.push({ no: String(no), title: e.title, sound: e.sound, light: e.light });
             }
         }
         return { rows, lines, mode, max, songs: no };
@@ -475,6 +491,199 @@
         }
         note.textContent = msg;
     }
+
+
+    /* -----------------------------------------------------------------
+     *  セットリストの入力（1曲 = 1行、≡ をドラッグで並び替え）
+     * ----------------------------------------------------------------- */
+    const songList = $('[data-songs]');
+
+    /** Material Symbols のアイコン（PHP の icon() と同じ形の HTML 要素を作る） */
+    function iconEl(name) {
+        const span = document.createElement('span');
+        span.className = 'icon';
+        span.setAttribute('aria-hidden', 'true');
+        span.textContent = name;
+        return span;
+    }
+
+    /** 小さな丸ボタン（アイコンだけ）。aria-label: 文字の無いボタンを読み上げソフトに説明する */
+    function iconButton(name, label, className) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = className;
+        b.setAttribute('aria-label', label);
+        b.title = label;
+        b.append(iconEl(name));
+        return b;
+    }
+
+    /** 曲を1つ足す（after を渡すとその曲のすぐ下に。無ければ一番下） */
+    function addSong(mc, after = null) {
+        const song = mc ? { id: state.nextSongId++, mc: true } : { id: state.nextSongId++, mc: false, title: '', sound: '', light: '' };
+        const i = after ? state.songs.indexOf(after) + 1 : state.songs.length;
+        state.songs.splice(i, 0, song); // splice(位置, 消す数, 足すもの): 配列の途中に差し込む
+        renderSongs();
+        renderRowsNote();
+        save();
+        if (!mc) {
+            songList.querySelector(`[data-id="${song.id}"] .setlist__title`)?.focus(); // すぐ打てるように
+        }
+    }
+
+    /** セットリストの行を全部作り直す */
+    function renderSongs() {
+        songList.textContent = '';
+        let no = 0;
+        for (const song of state.songs) {
+            const li = document.createElement('li');
+            li.className = 'setlist__item' + (song.mc ? ' setlist__item--mc' : '');
+            li.dataset.id = String(song.id);
+
+            const handle = iconButton('drag_indicator', 'ドラッグで並び替え（↑↓キーでも動く）', 'setlist__handle');
+            const num = document.createElement('span');
+            num.className = 'setlist__no';
+            num.textContent = song.mc ? '' : String(++no); // ++no: 先に1足してから使う
+            li.append(handle, num);
+
+            if (song.mc) {
+                const mc = document.createElement('span');
+                mc.className = 'setlist__mc';
+                mc.textContent = 'MC';
+                li.append(mc);
+            } else {
+                const title = document.createElement('input');
+                title.type = 'text';
+                title.className = 'setlist__title';
+                title.placeholder = '曲名';
+                title.maxLength = 100;
+                title.value = song.title;
+                // enterKeyHint: スマホのキーボードの Enter キーの表示を「次へ」にする
+                title.enterKeyHint = 'next';
+                title.addEventListener('input', () => { song.title = title.value; renderRowsNote(); save(); });
+                // Enter で「下に新しい曲を足して、そこへ移る」（続けて打ち込める）
+                title.addEventListener('keydown', (e) => {
+                    // isComposing: 日本語変換中の Enter（確定）は無視する。これを忘れると変換するたびに行が増える
+                    if (e.key === 'Enter' && !e.isComposing) {
+                        e.preventDefault();
+                        addSong(false, song);
+                    }
+                });
+                const tune = iconButton('tune', '音響・照明への要望', 'setlist__btn');
+                const hasNote = song.sound !== '' || song.light !== '';
+                tune.classList.toggle('is-on', hasNote);
+                li.append(title, tune);
+
+                // 要望の欄（最初は隠す。書いてあれば開いておく）
+                const notes = document.createElement('div');
+                notes.className = 'setlist__notes';
+                notes.hidden = !hasNote;
+                for (const [key, label] of [['sound', '音響への要望'], ['light', '照明への要望']]) {
+                    const input = document.createElement('input');
+                    input.type = 'text';
+                    input.placeholder = label;
+                    input.maxLength = 100;
+                    input.value = song[key];
+                    input.addEventListener('input', () => {
+                        song[key] = input.value;
+                        tune.classList.toggle('is-on', song.sound !== '' || song.light !== '');
+                        save();
+                    });
+                    notes.append(input);
+                }
+                tune.addEventListener('click', () => { notes.hidden = !notes.hidden; });
+                li.append(notes);
+            }
+
+            const del = iconButton('delete', song.mc ? 'MC を消す' : '曲を消す', 'setlist__btn setlist__btn--del');
+            del.addEventListener('click', () => {
+                state.songs = state.songs.filter((x) => x !== song);
+                renderSongs();
+                renderRowsNote();
+                save();
+            });
+            // 消すボタンは1行目の右端に置きたいので、要望欄より前に差し込む
+            li.insertBefore(del, li.querySelector('.setlist__notes'));
+
+            bindSongDrag(li, handle, song);
+            songList.append(li);
+        }
+    }
+
+    /**
+     * ≡ を掴んで上下に動かす。
+     *   動かしている間は、指の位置より下にある最初の行の「前」へ実際に DOM を移動させる（見たまま並ぶ）。
+     *   指を離したら、画面の並び順を state.songs に写す。
+     *   ライブラリ（SortableJS など）を使うのが業界では普通だが、仕組みを学ぶために自分で書いている
+     */
+    function bindSongDrag(li, handle, song) {
+        handle.addEventListener('pointerdown', (e) => {
+            e.preventDefault();
+            handle.setPointerCapture(e.pointerId);
+            const grab = e.clientY - li.getBoundingClientRect().top; // 行の上端から指までの距離（ずれないように覚えておく）
+            li.classList.add('is-dragging');
+
+            const onMove = (ev) => {
+                const y = ev.clientY;
+                // 指の位置より「真ん中が下にある」最初の行を探す → その前に入れる
+                const others = [...songList.children].filter((el) => el !== li);
+                const target = others.find((el) => {
+                    const r = el.getBoundingClientRect();
+                    return y < r.top + r.height / 2;
+                });
+                songList.insertBefore(li, target || null); // null なら一番最後へ
+                // 指に吸い付いて見えるように、本来の位置から指の位置までずらして描く
+                li.style.transform = '';
+                const top = li.getBoundingClientRect().top;
+                li.style.transform = `translateY(${y - grab - top}px)`;
+                // 画面の端まで来たら自動でスクロール（スマホで長いリストを動かすとき用）
+                if (y < 90) window.scrollBy(0, -12);
+                else if (y > window.innerHeight - 140) window.scrollBy(0, 12); // 下はタブバーと PDF ボタンの分だけ広く
+            };
+            const onUp = () => {
+                handle.removeEventListener('pointermove', onMove);
+                handle.removeEventListener('pointerup', onUp);
+                handle.removeEventListener('pointercancel', onUp);
+                li.classList.remove('is-dragging');
+                li.style.transform = '';
+                commitOrder();
+            };
+            handle.addEventListener('pointermove', onMove);
+            handle.addEventListener('pointerup', onUp);
+            handle.addEventListener('pointercancel', onUp);
+        });
+
+        // キーボードでも動かせるように（↑↓）。ドラッグしかできない UI はアクセシビリティ的に NG
+        handle.addEventListener('keydown', (e) => {
+            if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') {
+                return;
+            }
+            e.preventDefault();
+            const i = state.songs.indexOf(song);
+            const j = e.key === 'ArrowUp' ? i - 1 : i + 1;
+            if (j < 0 || j >= state.songs.length) {
+                return;
+            }
+            // 分割代入で2つを入れ替える（[a, b] = [b, a] は値の交換の定番）
+            [state.songs[i], state.songs[j]] = [state.songs[j], state.songs[i]];
+            renderSongs();
+            renderRowsNote();
+            save();
+            songList.querySelector(`[data-id="${song.id}"] .setlist__handle`).focus();
+        });
+    }
+
+    /** 画面の並び順（data-id の順）を state.songs に写して描き直す */
+    function commitOrder() {
+        const byId = new Map(state.songs.map((x) => [x.id, x])); // Map: id → 曲 の対応表（探すのが速い）
+        state.songs = [...songList.children].map((el) => byId.get(Number(el.dataset.id)));
+        renderSongs();
+        renderRowsNote();
+        save();
+    }
+
+    $('[data-song-add]').addEventListener('click', () => addSong(false));
+    $('[data-mc-add]').addEventListener('click', () => addSong(true));
 
     /* =================================================================
      *  4. セット図（ドラッグ編集）
@@ -829,13 +1038,25 @@
         return scriptCache[src];
     }
 
-    /** ファイルをバイト列（ArrayBuffer）で取ってくる */
-    async function fetchBytes(url) {
-        const res = await fetch(url);
-        if (!res.ok) {
-            throw new Error(`ファイルを取得できませんでした (${res.status}): ${url}`);
+    /**
+     * ファイルをバイト列（ArrayBuffer）で取ってくる。
+     *   プレビューは入力のたびに PDF を作り直すので、取ってきたものは覚えておく（メモ化）。
+     *   4MB のフォントを毎回ダウンロード・読み込みし直すと重いため
+     */
+    const bytesCache = new Map();
+    function fetchBytes(url) {
+        if (!bytesCache.has(url)) {
+            const p = fetch(url).then((res) => {
+                if (!res.ok) {
+                    throw new Error(`ファイルを取得できませんでした (${res.status}): ${url}`);
+                }
+                return res.arrayBuffer();
+            });
+            p.catch(() => bytesCache.delete(url)); // 失敗したら覚えない（次に押したとき取り直す）
+            bytesCache.set(url, p);
         }
-        return res.arrayBuffer();
+        // pdf-lib に渡すと中身を使い回すことがあるので、毎回コピー（slice）を渡す
+        return bytesCache.get(url).then((buf) => buf.slice(0));
     }
 
     /**
@@ -1151,6 +1372,7 @@
             // Web Share API: スマホの「共有」シート（LINE などに送れる）。対応しているときだけボタンを出す
             const share = $('[data-share]');
             share.hidden = !(navigator.canShare && navigator.canShare({ files: [lastFile] }));
+            askRegister(); // 続けて「DB に登録しますか？」
         } catch (err) {
             console.error(err); // 開発者ツールのコンソールに詳しいエラーを出す
             setStatus('PDF を作れませんでした: ' + err.message, true);
@@ -1158,6 +1380,56 @@
             btn.disabled = false; // 成功しても失敗しても最後に必ず実行される
         }
     });
+
+    /**
+     * PDF を作ったあと「このセットリストを DB に登録しますか？」と聞く。
+     *   ・曲が1つも無い / DB と全く同じ → 聞かない（同じなら「登録済み ✓」と出すだけ）
+     *   ・「はい」→ 隠しフォームに曲名を titles[] として入れ、songs_edit.php に POST で送る
+     *     （GET の URL に曲名を並べると、長すぎたり履歴に残ったりするので POST。CSRF の合言葉も付く）
+     * <dialog> の中の <form method="dialog"> は、押したボタンの value を dialog.returnValue に入れて閉じる（HTML の標準機能）
+     */
+    function askRegister() {
+        const titles = state.songs.filter((x) => !x.mc && x.title.trim() !== '').map((x) => x.title.trim());
+        if (titles.length === 0) {
+            return;
+        }
+        const db = DATA.dbSongs.map((t) => t.trim());
+        const same = titles.length === db.length && titles.every((t, i) => t === db[i]);
+        if (same) {
+            setStatus('できました！ セットリストは DB に登録済みです ✓');
+            return;
+        }
+        // ダイアログは [data-sheet] の外にあるので document から探す
+        const dialog = document.querySelector('[data-register-dialog]');
+        const list = dialog.querySelector('[data-register-list]');
+        list.textContent = '';
+        titles.forEach((t) => {
+            const li = document.createElement('li');
+            li.textContent = t; // textContent なので曲名に < > が入っていても安全
+            list.append(li);
+        });
+        if (titles.length > 15) {
+            const li = document.createElement('li');
+            li.textContent = '※ 登録できるのは15曲までです（16曲目以降は入りません）';
+            list.append(li);
+        }
+        dialog.addEventListener('close', () => {
+            if (dialog.returnValue !== 'yes') {
+                return;
+            }
+            const form = document.querySelector('[data-register-form]');
+            form.querySelectorAll('[name="titles[]"]').forEach((el) => el.remove()); // 前に入れた分は消す
+            titles.forEach((t) => {
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = 'titles[]'; // [] を付けると PHP 側で配列 $_POST['titles'] として受け取れる
+                input.value = t;
+                form.append(input);
+            });
+            form.submit();
+        }, { once: true }); // once: 1回呼ばれたら自動で外れる（何回も PDF を作ったときに重ならない）
+        dialog.showModal();
+    }
 
     $('[data-share]').addEventListener('click', async () => {
         if (!lastFile) {
@@ -1197,6 +1469,7 @@
 
     function renderAll() {
         renderTemplateUi();
+        renderSongs();
         renderMembers();
         delete $('[data-texts]').dataset.tpl; // 自由記入欄は必ず作り直す（型紙が変わった・リセットした）
         renderTexts();
@@ -1205,6 +1478,107 @@
         renderStage();
         renderPanel();
     }
+
+
+    /* =================================================================
+     *  6.5 プレビュー（左下のフローティングボタンで開閉）
+     * =================================================================
+     *  完成形の PDF を実際に作り、pdf.js（Mozilla 製。Firefox の PDF ビューアの中身）で <canvas> に描く。
+     *  なぜ <iframe> で PDF をそのまま見せないのか:
+     *    Android の Chrome は <iframe> の中の PDF を表示できない（ダウンロードのボタンになる）。
+     *    canvas に描けば、どのスマホでも同じに見える
+     *  pdf.js は 1.7MB あるので、初めて開いたときに読み込む（遅延読み込み）
+     */
+    const fab = document.querySelector('[data-preview-fab]');
+    const previewBox = document.querySelector('[data-preview]');
+    const previewCanvas = previewBox.querySelector('canvas');
+    const previewNote = previewBox.querySelector('[data-preview-note]');
+    let rendering = false;   // いま描いている途中か
+    let renderAgain = false; // 描いている途中に入力があった → 終わったらもう一度
+    let pdfjs = null;
+
+    async function loadPdfjs() {
+        if (!pdfjs) {
+            // import(): JS のモジュールを後から読み込む。pdf.js は「モジュール形式」でしか配られていない
+            //   拡張子を .mjs から .js に変えて置いている。レンタルサーバーによっては .mjs を JS として配らず、
+            //   ブラウザが「これは JS じゃない」と読み込みを拒否するため
+            pdfjs = await import(new URL(DATA.pdfjs.lib, location.href).href);
+            pdfjs.GlobalWorkerOptions.workerSrc = new URL(DATA.pdfjs.worker, location.href).href;
+        }
+        return pdfjs;
+    }
+
+    async function renderPreview() {
+        if (rendering) {
+            renderAgain = true; // 今の描画が終わったら、最新の入力でもう一度
+            return;
+        }
+        rendering = true;
+        previewBox.classList.add('is-busy');
+        previewNote.textContent = '更新中…';
+        try {
+            const [lib, bytes] = await Promise.all([loadPdfjs(), buildPdf()]);
+            // getDocument は「読み込みの仕事（loadingTask）」を返す。.promise で読み終わりを待つ
+            const task = lib.getDocument({
+                data: bytes,
+                // 元の PDF に埋め込まれていない日本語フォント（サークル共通シート）を読むための対応表
+                cMapUrl: new URL(DATA.pdfjs.cmaps, location.href).href,
+                cMapPacked: true,
+                standardFontDataUrl: new URL(DATA.pdfjs.fonts, location.href).href,
+            });
+            const doc = await task.promise;
+            const page = await doc.getPage(1);
+            // 画面の幅ぴったりの大きさ × 画面の細かさ（devicePixelRatio。iPhone は 3）で描くと、文字がにじまない
+            const width = previewBox.clientWidth - 16;
+            const base = page.getViewport({ scale: 1 });
+            const ratio = Math.min(window.devicePixelRatio || 1, 3);
+            const viewport = page.getViewport({ scale: (width / base.width) * ratio });
+            previewCanvas.width = viewport.width;
+            previewCanvas.height = viewport.height;
+            previewCanvas.style.width = `${width}px`;
+            await page.render({ canvas: previewCanvas, viewport }).promise;
+            await task.destroy(); // 使い終わった PDF をメモリから捨てる（裏で動く worker の分も）
+            previewNote.textContent = '';
+        } catch (err) {
+            console.error(err);
+            previewNote.textContent = 'プレビューを作れませんでした: ' + err.message;
+        } finally {
+            rendering = false;
+            previewBox.classList.remove('is-busy');
+            if (renderAgain && previewOpen) {
+                renderAgain = false;
+                renderPreview();
+            }
+        }
+    }
+
+    /** 入力のたびに呼ばれる。最後の入力から 0.6 秒たったら1回だけ描き直す（デバウンス） */
+    function schedulePreview() {
+        if (!previewOpen) {
+            return;
+        }
+        clearTimeout(previewTimer);
+        previewTimer = setTimeout(renderPreview, 600);
+    }
+
+    function setPreview(open) {
+        previewOpen = open;
+        previewBox.hidden = !open;
+        fab.setAttribute('aria-expanded', String(open)); // 読み上げソフトに「開いている」を伝える
+        fab.querySelector('.icon').textContent = open ? 'close' : 'visibility';
+        fab.querySelector('[data-fab-text]').textContent = open ? '閉じる' : 'プレビュー';
+        document.documentElement.classList.toggle('is-previewing', open); // 開いている間は後ろの画面をスクロールさせない
+        if (open) {
+            renderPreview();
+        }
+    }
+    fab.addEventListener('click', () => setPreview(!previewOpen));
+    // Esc キーでも閉じる（PC 用）
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && previewOpen) {
+            setPreview(false);
+        }
+    });
 
     /* =================================================================
      *  7. 起動

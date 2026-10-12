@@ -221,9 +221,9 @@ $headliners = rows($pdo, 'SELECT m.member_id, m.name, COUNT(DISTINCT b.band_id) 
 // ---- よくコピーされるアーティスト ----
 //   artist テーブルがあるので GROUP BY a.artist_id だけで数えられる
 //   （v2 では「ヨルシカ（安田）」の括弧を PHP で外してから数える必要があった）
-//   オムニバスはバンドのアーティストではなく、曲に付いたアーティストを1バンド1回で数える（ARTIST_PLAYS_SQL）
+//   オムニバスはバンドのアーティストではなく、曲に付いたアーティストを1バンド1回で数える（artist_plays_sql()）
 $artists = rows($pdo, 'SELECT a.artist_id, a.name, COUNT(*) AS n
-    FROM (' . ARTIST_PLAYS_SQL . ') p
+    FROM (' . artist_plays_sql() . ') p
     JOIN band b ON b.band_id = p.band_id
     JOIN artist a ON a.artist_id = p.artist_id
     JOIN live_day ld ON ld.live_day_id = b.live_day_id
@@ -328,7 +328,7 @@ foreach (rows($pdo, 'SELECT s.title, a.artist_id, a.name AS artist_name,
     LEFT JOIN track t ON t.source = s.track_source AND t.track_id = s.track_id
     JOIN live_day ld ON ld.live_day_id = b.live_day_id
     JOIN live lm ON lm.live_id = ld.live_id
-    WHERE 1 = 1' . $yearSql . $bandSql, array_merge($yearParams, $memberParams)) as $r) {
+    WHERE NOT ' . setlist_hidden_sql('b') . $yearSql . $bandSql, array_merge($yearParams, $memberParams)) as $r) { // 出演まで非公開の曲は数えない
     $titleKey = song_title_key($r['title'], $r['artist_name']);
     $key = ($r['artist_id'] ?? 0) . ':' . ($titleKey !== '' ? $titleKey : $r['title']); // 記号だけの曲名はそのまま比べる
     $g = &$topTitles[$key]; // & = 配列の中身を直接書き換える（参照）

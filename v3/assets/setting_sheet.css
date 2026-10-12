@@ -31,7 +31,30 @@
 .sheet-texts:empty { display: none; }
 
 /* セットリスト */
-.sheet-setlist { width: 100%; min-height: 200px; line-height: 1.7; resize: vertical; }
+/* 1曲 = 1行: [≡][番号][曲名][要望][🗑] / 下に要望の欄 */
+.setlist-tools { display: flex; gap: 8px; }
+.setlist { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.setlist__item {
+  display: grid; grid-template-columns: 32px 22px minmax(0, 1fr) 32px 32px; gap: 4px 6px; align-items: center;
+  padding: 4px; border-radius: var(--radius-sm); background: var(--surface); border: 1px solid var(--border);
+}
+.setlist__item--mc { grid-template-columns: 32px 22px minmax(0, 1fr) 32px; background: var(--surface-2); }
+.setlist__item.is-dragging { position: relative; z-index: 3; box-shadow: var(--shadow); border-color: var(--accent); opacity: .95; }
+.setlist__handle, .setlist__btn {
+  width: 32px; height: 32px; display: inline-grid; place-items: center; padding: 0; cursor: pointer;
+  border: 0; border-radius: 8px; background: transparent; color: var(--muted);
+}
+.setlist__handle { cursor: grab; touch-action: none; } /* ≡ の上では指の動きをスクロールにしない（ドラッグに使う） */
+.setlist__btn.is-on { color: var(--accent); }        /* 要望が書いてある曲はアイコンを赤く */
+.setlist__btn--del:hover { color: var(--danger); }
+.setlist__no { font-weight: 700; color: var(--muted); text-align: center; font-size: 13px; }
+.setlist__title { min-width: 0; }
+.setlist__mc { font-weight: 800; letter-spacing: .1em; color: var(--muted); padding: 6px 4px; }
+.setlist__notes { grid-column: 3 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.setlist__notes[hidden] { display: none; }
+@media (max-width: 480px) {
+  .setlist__notes { grid-column: 1 / -1; grid-template-columns: 1fr; } /* スマホでは要望欄を縦に並べて広く */
+}
 .sheet-mc { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; }
 [data-rows-note].is-warn, .sheet-status.is-warn { color: var(--warn); font-weight: 700; }
 
@@ -93,3 +116,42 @@
 .sheet-actions { flex-wrap: wrap; align-items: center; }
 .sheet-status { margin: 0 auto 0 8px; flex: 1 1 160px; }
 .sheet-status:empty { display: none; } /* メッセージが無いときは場所を取らない */
+
+/* =====================================================================
+ *  プレビュー（左下のフローティングボタンと、完成形の PDF の表示）
+ * ===================================================================== */
+/* このページでは「← 前のページ」ボタン（app.js の setupBackButton）の代わりにプレビューのボタンを出す */
+.back-fabs { display: none !important; }
+
+/* 置き場所は戻るボタン（app.css の .back-fabs）と同じ: 左下。スマホではタブバーと PDF ボタンの上 */
+.preview-fab {
+  position: fixed; left: 16px; bottom: calc(96px + env(safe-area-inset-bottom)); z-index: 26;
+  display: inline-flex; align-items: center; gap: 6px; padding: 10px 16px 10px 12px; border-radius: 999px; cursor: pointer;
+  font: inherit; font-size: 14px; font-weight: 700;
+  background: var(--text); color: var(--bg); border: 0; box-shadow: var(--shadow);
+}
+.preview-fab:active { transform: scale(.97); }
+.preview-fab[aria-expanded="true"] { background: var(--accent); color: var(--on-accent); }
+@media (max-width: 760px) {
+  .preview-fab { left: 12px; bottom: calc(150px + env(safe-area-inset-bottom)); }
+}
+
+/* PDF の表示: 画面いっぱいの枠（上はヘッダーの下、下はボタンの上まで）。中はスクロールできる */
+.sheet-preview {
+  position: fixed; z-index: 25; left: 8px; right: 8px; top: 72px; bottom: calc(150px + env(safe-area-inset-bottom));
+  overflow: auto; padding: 8px; border-radius: var(--radius); border: 1px solid var(--border);
+  background: var(--surface-2); box-shadow: var(--shadow); overscroll-behavior: contain; /* 中のスクロールを後ろの画面に伝えない */
+}
+@media (max-width: 760px) {
+  .sheet-preview { bottom: calc(204px + env(safe-area-inset-bottom)); }
+}
+@media (min-width: 761px) {
+  .sheet-preview { left: auto; right: 24px; width: min(640px, calc(100vw - 48px)); bottom: 24px; }
+}
+.sheet-preview canvas { display: block; margin: 0 auto; background: #fff; box-shadow: 0 1px 4px rgb(0 0 0 / .2); }
+.sheet-preview.is-busy canvas { opacity: .6; transition: opacity .2s; }
+.sheet-preview__note { position: sticky; top: 0; margin: 0 0 6px; text-align: center; color: var(--muted); min-height: 1em; }
+.sheet-preview__note:empty { display: none; }
+@media (max-width: 760px) {
+  html.is-previewing { overflow: hidden; } /* スマホでは開いている間、後ろのページを動かさない（PC は横に並べて編集を続けられる） */
+}

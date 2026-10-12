@@ -225,7 +225,7 @@ if (is_post()) {
             redirect('masters?tab=artist');
         }
         $id = (int)($_POST['artist_id'] ?? 0);
-        $st = $pdo->prepare('SELECT a.name, (SELECT COUNT(*) FROM (' . ARTIST_PLAYS_SQL . ') p WHERE p.artist_id = a.artist_id) AS used
+        $st = $pdo->prepare('SELECT a.name, (SELECT COUNT(*) FROM (' . artist_plays_sql() . ') p WHERE p.artist_id = a.artist_id) AS used
             FROM artist a WHERE a.artist_id = ?');
         $st->execute([$id]);
         $target = $st->fetch();
@@ -339,7 +339,7 @@ $dir = in_array($_GET['dir'] ?? '', ['asc', 'desc'], true) ? $_GET['dir'] : ARTI
 $artists = $pdo->query('SELECT a.artist_id, a.name, COUNT(p.band_id) AS used,
         COUNT(CASE WHEN b.song_count > 0 AND b.song_count = (SELECT COUNT(*) FROM song s WHERE s.band_id = b.band_id) THEN 1 END) AS setlist
     FROM artist a
-    LEFT JOIN (' . ARTIST_PLAYS_SQL . ') p ON p.artist_id = a.artist_id
+    LEFT JOIN (' . artist_plays_sql() . ') p ON p.artist_id = a.artist_id
     LEFT JOIN band b ON b.band_id = p.band_id
     GROUP BY a.artist_id, a.name
     ORDER BY ' . ARTIST_SORTS[$sort][0] . ' ' . strtoupper($dir) . ', a.name')->fetchAll();
