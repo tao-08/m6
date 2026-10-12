@@ -1,0 +1,95 @@
+/* =====================================================================
+ *  assets/setting_sheet.css — セッティングシートのページだけの見た目
+ *  色・角丸などは app.css の変数（--surface, --border, --accent …）を使う。
+ *  → ダークモードでも app.css 側の切り替えに自動で付いてくる
+ * ===================================================================== */
+
+.sheet { display: grid; gap: 16px; }
+.sheet-card { display: grid; gap: 12px; }
+.sheet-card__title { margin: 0; font-size: 16px; font-weight: 800; display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; }
+
+/* 基本: スマホは2列、広い画面は4列。sheet-grid__wide は2列ぶん使う */
+.sheet-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.sheet-grid__wide { grid-column: span 2; }
+@media (min-width: 720px) {
+  .sheet-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
+/* メンバー: パート（狭い）+ 名前（広い） */
+.sheet-members { display: grid; gap: 6px; }
+.sheet-members__row { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 6px; }
+
+/* パートが印刷済みの表（サークル共通シート）: パート名 | 名前 | マイク✓ */
+.sheet-slots__row { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+.sheet-slots__label { font-size: 13px; font-weight: 700; color: var(--muted); }
+.sheet-slots__mic { font-size: 13px; white-space: nowrap; }
+.sheet-members .btn { justify-self: start; margin-top: 4px; }
+
+/* その他の自由記入欄 */
+.sheet-texts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.sheet-texts .field:has(textarea) { grid-column: 1 / -1; } /* 複数行の欄は横いっぱい（:has は「中に〜を持つ要素」を選ぶ） */
+.sheet-texts:empty { display: none; }
+
+/* セットリスト */
+.sheet-setlist { width: 100%; min-height: 200px; line-height: 1.7; resize: vertical; }
+.sheet-mc { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; }
+[data-rows-note].is-warn, .sheet-status.is-warn { color: var(--warn); font-weight: 700; }
+
+/* ○囲みの選択（セグメントボタン） */
+.sheet-choices { display: grid; gap: 8px; }
+.sheet-choice { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.sheet-choice__title { min-width: 72px; font-size: 13px; font-weight: 700; color: var(--muted); }
+.sheet-choice__btn {
+  font: inherit; font-size: 14px; padding: 6px 14px; border-radius: 999px; cursor: pointer;
+  background: var(--surface); color: var(--text); border: 1px solid var(--border);
+}
+.sheet-choice__btn[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 700; }
+
+/* ---- セット図 ---- */
+.stage-tools { display: flex; flex-wrap: wrap; gap: 8px; }
+.stage {
+  position: relative;            /* 中の部品を position: absolute で置く基準にする */
+  width: 100%;
+  max-width: 640px;
+  background: #fff center / 100% 100% no-repeat; /* 背景はシートの枠の画像。紙なのでダークモードでも白 */
+  border: 1px solid #000;
+  overflow: hidden;              /* 枠の外にはみ出た部分は見せない */
+  user-select: none; -webkit-user-select: none; /* 長押しで文字が選択されないように */
+  -webkit-touch-callout: none;   /* iPhone の長押しメニューを出さない */
+  color: #000;
+}
+.stage-hint { margin: -4px 0 0; }
+
+.st-item {
+  position: absolute;
+  box-sizing: border-box;
+  display: flex; align-items: center; justify-content: center;
+  text-align: center; white-space: pre; line-height: 1.2;
+  font-family: "Noto Sans JP", sans-serif;
+  touch-action: none;            /* 部品の上では指の動きをスクロールにしない（ドラッグに使う） */
+  cursor: grab;
+}
+.st-item--box { border: 1px solid #000; background: rgba(255, 255, 255, .6); }
+.st-item--circle { border: 1px solid #000; border-radius: 50%; background: rgba(255, 255, 255, .6); }
+.st-item--text { white-space: pre; padding: 2px; }
+.st-item--mic svg { width: 100%; height: 100%; display: block; overflow: visible; }
+/* 指で掴みやすいように、マイクは見た目より広い「当たり判定」を ::before で足す */
+.st-item--mic::before { content: ""; position: absolute; inset: 0 -10px; }
+.st-item.is-selected { outline: 2px dashed var(--accent); outline-offset: 3px; }
+.st-label {
+  position: absolute; transform: translate(-50%, -50%);
+  white-space: nowrap; pointer-events: none; /* 名前はドラッグの邪魔をしない */
+  font-family: "Noto Sans JP", sans-serif; line-height: 1;
+}
+
+/* 選んだ部品の設定パネル */
+.stage-panel { display: grid; gap: 10px; padding: 12px; border-radius: var(--radius-sm); background: var(--surface-2); border: 1px solid var(--border); }
+.stage-panel__row { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; }
+.stage-panel__row .field { flex: 1 1 140px; }
+.stage-panel [hidden] { display: none; }
+
+/* ---- 下に貼り付く出力ボタン ----
+ *  位置（sticky）や背景は app.css の .sticky-actions に任せ、ここでは中身の並びだけ決める */
+.sheet-actions { flex-wrap: wrap; align-items: center; }
+.sheet-status { margin: 0 auto 0 8px; flex: 1 1 160px; }
+.sheet-status:empty { display: none; } /* メッセージが無いときは場所を取らない */
