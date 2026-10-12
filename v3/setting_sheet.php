@@ -103,6 +103,13 @@ $sheetData = [
     'templates'   => SHEET_TEMPLATES,
     'choiceLabels'=> SHEET_CHOICE_LABELS,
     'initial'     => $initial,
+    // プレビュー用の pdf.js（Mozilla。Apache License 2.0）
+    'pdfjs'       => [
+        'lib'    => 'assets/vendor/pdfjs/pdf.min.js',
+        'worker' => 'assets/vendor/pdfjs/pdf.worker.min.js',
+        'cmaps'  => 'assets/vendor/pdfjs/cmaps/',
+        'fonts'  => 'assets/vendor/pdfjs/standard_fonts/',
+    ],
     'fontUrl'     => 'assets/fonts/BIZUDGothic-Regular.ttf',
     // pdf-lib（PDF に書き込む）と fontkit（日本語フォントを読む）。どちらも自分のサーバーに置く（CDN が止まっても動く）
     'vendor'      => ['assets/vendor/pdf-lib.min.js', 'assets/vendor/fontkit-shim.min.js'],
@@ -124,7 +131,7 @@ $bandUrl = 'band?id=' . $bandId;
 render_header('セッティングシート', 'lives');
 ?>
 <!-- このページだけの CSS。<link> は <body> の中に書いてもよい（HTML の仕様で許されている） -->
-<link rel="stylesheet" href="assets/setting_sheet.css?v=3">
+<link rel="stylesheet" href="assets/setting_sheet.css?v=4">
 
 <nav class="crumbs"><a href="./">ライブ</a><span>/</span><a href="<?= h($bandUrl) ?>"><?= h($band['name']) ?></a></nav>
 <h1 class="display display--sm"><?= icon('description') ?> セッティングシート</h1>
@@ -235,6 +242,17 @@ render_header('セッティングシート', 'lives');
     </div>
 </div>
 
+<!-- ===== プレビュー =====
+     左下のフローティングボタン（ほかのページの「← 前のページ」と同じ場所）で開閉する。
+     このページでは戻るボタンの代わりにこれを出す（戻るボタンは assets/setting_sheet.css で隠している） -->
+<div class="sheet-preview" data-preview hidden>
+    <p class="sheet-preview__note small" data-preview-note role="status"></p>
+    <canvas aria-label="完成した PDF のプレビュー"></canvas>
+</div>
+<button type="button" class="preview-fab" data-preview-fab aria-expanded="false">
+    <?= icon('visibility') ?><span data-fab-text>プレビュー</span>
+</button>
+
 <!-- PDF を作ったあとに「DB に登録しますか？」と聞く（JS が開く）。
      「はい」で下の隠しフォームに曲名を入れて songs_edit.php へ POST する（曲の紐付け・演奏者の確認はそちらの画面で） -->
 <dialog class="modal" data-register-dialog aria-labelledby="register-title">
@@ -255,5 +273,5 @@ render_header('セッティングシート', 'lives');
     <input type="hidden" name="from_sheet" value="1">
 </form>
 
-<script src="assets/setting_sheet.js?v=4" defer></script>
+<script src="assets/setting_sheet.js?v=5" defer></script>
 <?php render_footer();

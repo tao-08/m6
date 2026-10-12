@@ -116,3 +116,42 @@
 .sheet-actions { flex-wrap: wrap; align-items: center; }
 .sheet-status { margin: 0 auto 0 8px; flex: 1 1 160px; }
 .sheet-status:empty { display: none; } /* メッセージが無いときは場所を取らない */
+
+/* =====================================================================
+ *  プレビュー（左下のフローティングボタンと、完成形の PDF の表示）
+ * ===================================================================== */
+/* このページでは「← 前のページ」ボタン（app.js の setupBackButton）の代わりにプレビューのボタンを出す */
+.back-fabs { display: none !important; }
+
+/* 置き場所は戻るボタン（app.css の .back-fabs）と同じ: 左下。スマホではタブバーと PDF ボタンの上 */
+.preview-fab {
+  position: fixed; left: 16px; bottom: calc(96px + env(safe-area-inset-bottom)); z-index: 26;
+  display: inline-flex; align-items: center; gap: 6px; padding: 10px 16px 10px 12px; border-radius: 999px; cursor: pointer;
+  font: inherit; font-size: 14px; font-weight: 700;
+  background: var(--text); color: var(--bg); border: 0; box-shadow: var(--shadow);
+}
+.preview-fab:active { transform: scale(.97); }
+.preview-fab[aria-expanded="true"] { background: var(--accent); color: var(--on-accent); }
+@media (max-width: 760px) {
+  .preview-fab { left: 12px; bottom: calc(150px + env(safe-area-inset-bottom)); }
+}
+
+/* PDF の表示: 画面いっぱいの枠（上はヘッダーの下、下はボタンの上まで）。中はスクロールできる */
+.sheet-preview {
+  position: fixed; z-index: 25; left: 8px; right: 8px; top: 72px; bottom: calc(150px + env(safe-area-inset-bottom));
+  overflow: auto; padding: 8px; border-radius: var(--radius); border: 1px solid var(--border);
+  background: var(--surface-2); box-shadow: var(--shadow); overscroll-behavior: contain; /* 中のスクロールを後ろの画面に伝えない */
+}
+@media (max-width: 760px) {
+  .sheet-preview { bottom: calc(204px + env(safe-area-inset-bottom)); }
+}
+@media (min-width: 761px) {
+  .sheet-preview { left: auto; right: 24px; width: min(640px, calc(100vw - 48px)); bottom: 24px; }
+}
+.sheet-preview canvas { display: block; margin: 0 auto; background: #fff; box-shadow: 0 1px 4px rgb(0 0 0 / .2); }
+.sheet-preview.is-busy canvas { opacity: .6; transition: opacity .2s; }
+.sheet-preview__note { position: sticky; top: 0; margin: 0 0 6px; text-align: center; color: var(--muted); min-height: 1em; }
+.sheet-preview__note:empty { display: none; }
+@media (max-width: 760px) {
+  html.is-previewing { overflow: hidden; } /* スマホでは開いている間、後ろのページを動かさない（PC は横に並べて編集を続けられる） */
+}

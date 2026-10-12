@@ -38,6 +38,10 @@
     const $$ = (sel) => Array.from(root.querySelectorAll(sel));
 
     const STORE_KEY = 'settingSheet:band:' + DATA.bandId; // localStorage の保存キー（バンドごと）
+    // プレビューを開いているか（下の「6.5 プレビュー」で使う）。save() から先に参照されるので、ここで宣言しておく
+    //   let で作った変数は、宣言の行より前で使うとエラーになる（TDZ: 一時的なデッドゾーン）
+    let previewOpen = false;
+    let previewTimer = 0;
 
     /** セット図の部品の「基準の大きさ」（pt）。大きさスライダー（scale）を掛けて使う */
     const BASE = {
@@ -105,6 +109,7 @@
     let saveTimer = 0;
     /** 保存。入力のたびに書くと重いので「最後の入力から 300ms 後に1回だけ」にする（デバウンスという定番の技） */
     function save() {
+        schedulePreview(); // プレビューを開いていれば作り直す（下の「7. プレビュー」）
         clearTimeout(saveTimer);
         saveTimer = setTimeout(() => {
             try {
@@ -1033,13 +1038,25 @@
         return scriptCache[src];
     }
 
-    /** ファイルをバイト列（ArrayBuffer）で取ってくる */
-    async function fetchBytes(url) {
-        const res = await fetch(url);
-        if (!res.ok) {
-            throw new Error(`ファイルを取得できませんでした (${res.status}): ${url}`);
+    /**
+     * ファイルをバイト列（ArrayBuffer）で取ってくる。
+     *   プレビューは入力のたびに PDF を作り直すので、取ってきたものは覚えておく（メモ化）。
+     *   4MB のフォントを毎回ダウンロード・読み込みし直すと重いため
+     */
+    const bytesCache = new Map();
+    function fetchBytes(url) {
+        if (!bytesCache.has(url)) {
+            const p = fetch(url).then((res) => {
+                if (!res.ok) {
+                    throw new Error(`ファイルを取得できませんでした (${res.status}): ${url}`);
+                }
+                return res.arrayBuffer();
+            });
+            p.catch(() => bytesCache.delete(url)); // 失敗したら覚えない（次に押したとき取り直す）
+            bytesCache.set(url, p);
         }
-        return res.arrayBuffer();
+        // pdf-lib に渡すと中身を使い回すことがあるので、毎回コピー（slice）を渡す
+        return bytesCache.get(url).then((buf) => buf.slice(0));
     }
 
     /**
@@ -1461,6 +1478,107 @@
         renderStage();
         renderPanel();
     }
+
+
+    /* =================================================================
+     *  6.5 プレビュー（左下のフローティングボタンで開閉）
+     * =================================================================
+     *  完成形の PDF を実際に作り、pdf.js（Mozilla 製。Firefox の PDF ビューアの中身）で <canvas> に描く。
+     *  なぜ <iframe> で PDF をそのまま見せないのか:
+     *    Android の Chrome は <iframe> の中の PDF を表示できない（ダウンロードのボタンになる）。
+     *    canvas に描けば、どのスマホでも同じに見える
+     *  pdf.js は 1.7MB あるので、初めて開いたときに読み込む（遅延読み込み）
+     */
+    const fab = document.querySelector('[data-preview-fab]');
+    const previewBox = document.querySelector('[data-preview]');
+    const previewCanvas = previewBox.querySelector('canvas');
+    const previewNote = previewBox.querySelector('[data-preview-note]');
+    let rendering = false;   // いま描いている途中か
+    let renderAgain = false; // 描いている途中に入力があった → 終わったらもう一度
+    let pdfjs = null;
+
+    async function loadPdfjs() {
+        if (!pdfjs) {
+            // import(): JS のモジュールを後から読み込む。pdf.js は「モジュール形式」でしか配られていない
+            //   拡張子を .mjs から .js に変えて置いている。レンタルサーバーによっては .mjs を JS として配らず、
+            //   ブラウザが「これは JS じゃない」と読み込みを拒否するため
+            pdfjs = await import(new URL(DATA.pdfjs.lib, location.href).href);
+            pdfjs.GlobalWorkerOptions.workerSrc = new URL(DATA.pdfjs.worker, location.href).href;
+        }
+        return pdfjs;
+    }
+
+    async function renderPreview() {
+        if (rendering) {
+            renderAgain = true; // 今の描画が終わったら、最新の入力でもう一度
+            return;
+        }
+        rendering = true;
+        previewBox.classList.add('is-busy');
+        previewNote.textContent = '更新中…';
+        try {
+            const [lib, bytes] = await Promise.all([loadPdfjs(), buildPdf()]);
+            // getDocument は「読み込みの仕事（loadingTask）」を返す。.promise で読み終わりを待つ
+            const task = lib.getDocument({
+                data: bytes,
+                // 元の PDF に埋め込まれていない日本語フォント（サークル共通シート）を読むための対応表
+                cMapUrl: new URL(DATA.pdfjs.cmaps, location.href).href,
+                cMapPacked: true,
+                standardFontDataUrl: new URL(DATA.pdfjs.fonts, location.href).href,
+            });
+            const doc = await task.promise;
+            const page = await doc.getPage(1);
+            // 画面の幅ぴったりの大きさ × 画面の細かさ（devicePixelRatio。iPhone は 3）で描くと、文字がにじまない
+            const width = previewBox.clientWidth - 16;
+            const base = page.getViewport({ scale: 1 });
+            const ratio = Math.min(window.devicePixelRatio || 1, 3);
+            const viewport = page.getViewport({ scale: (width / base.width) * ratio });
+            previewCanvas.width = viewport.width;
+            previewCanvas.height = viewport.height;
+            previewCanvas.style.width = `${width}px`;
+            await page.render({ canvas: previewCanvas, viewport }).promise;
+            await task.destroy(); // 使い終わった PDF をメモリから捨てる（裏で動く worker の分も）
+            previewNote.textContent = '';
+        } catch (err) {
+            console.error(err);
+            previewNote.textContent = 'プレビューを作れませんでした: ' + err.message;
+        } finally {
+            rendering = false;
+            previewBox.classList.remove('is-busy');
+            if (renderAgain && previewOpen) {
+                renderAgain = false;
+                renderPreview();
+            }
+        }
+    }
+
+    /** 入力のたびに呼ばれる。最後の入力から 0.6 秒たったら1回だけ描き直す（デバウンス） */
+    function schedulePreview() {
+        if (!previewOpen) {
+            return;
+        }
+        clearTimeout(previewTimer);
+        previewTimer = setTimeout(renderPreview, 600);
+    }
+
+    function setPreview(open) {
+        previewOpen = open;
+        previewBox.hidden = !open;
+        fab.setAttribute('aria-expanded', String(open)); // 読み上げソフトに「開いている」を伝える
+        fab.querySelector('.icon').textContent = open ? 'close' : 'visibility';
+        fab.querySelector('[data-fab-text]').textContent = open ? '閉じる' : 'プレビュー';
+        document.documentElement.classList.toggle('is-previewing', open); // 開いている間は後ろの画面をスクロールさせない
+        if (open) {
+            renderPreview();
+        }
+    }
+    fab.addEventListener('click', () => setPreview(!previewOpen));
+    // Esc キーでも閉じる（PC 用）
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && previewOpen) {
+            setPreview(false);
+        }
+    });
 
     /* =================================================================
      *  7. 起動
