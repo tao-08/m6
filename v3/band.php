@@ -235,6 +235,8 @@ render_header($band['name'], 'lives');
         <?php endif; ?>
         <a class="btn btn--sm" href="band_edit?id=<?= $bandId ?>"><?= icon('edit') ?> バンドを編集</a>
         <a class="btn btn--sm" href="songs_edit?band=<?= $bandId ?>"><?= icon('queue_music') ?> 曲を<?= $songs ? '編集' : '登録' ?></a>
+        <!-- 会場の PDF にバンド名・メンバー・セットリストを書き込む（setting_sheet.php） -->
+        <a class="btn btn--sm" href="setting_sheet?band=<?= $bandId ?>"><?= icon('description') ?> セッティングシート</a>
     </div>
 </section>
 

@@ -1,0 +1,1424 @@
+/**
+ * =====================================================================
+ *  assets/setting_sheet.js — セッティングシートの画面と PDF 作成
+ * =====================================================================
+ *  setting_sheet.php だけで読み込む。やっていることは大きく3つ:
+ *    1. 入力欄（バンド名・メンバー・セットリスト・○囲み）と state（状態）を同期する
+ *    2. セット図: マイク・丸・四角・文字をドラッグで置く
+ *    3. PDF: 会場の PDF を読み込み、pdf-lib で上から書き込んでダウンロード
+ *
+ *  ---- 設計の考え方（業界でよく使う形）----
+ *  「state（状態）が唯一の正解。画面は state から描き直すだけ」
+ *    入力 → state を書き換える → render() で画面を描き直す → save() で保存
+ *  React や Vue などのフレームワークも、根っこはこの考え方。
+ *  画面（DOM）を直接いじって状態を覚えさせると「画面と中身がずれる」バグが起きやすい。
+ *
+ *  ---- 座標 ----
+ *  セット図の部品の位置は「セット図の枠の左上からの pt（PDF の単位）」で持つ。
+ *  画面に描くときだけ「枠の横幅(px) ÷ 枠の横幅(pt)」倍して px にする。
+ *  → 画面の大きさ（スマホ / PC）が変わっても、PDF に書く位置は同じになる。
+ * =====================================================================
+ */
+(() => {
+    'use strict'; // うっかりミス（宣言していない変数への代入など）をエラーにしてくれるモード
+
+    /* =================================================================
+     *  0. 準備: PHP から渡されたデータ・よく使う要素
+     * ================================================================= */
+    const dataEl = document.getElementById('sheet-data');
+    const root = document.querySelector('[data-sheet]');
+    if (!dataEl || !root) {
+        return; // このページではない（念のため）
+    }
+    /** PHP が json_encode したもの。templates（型紙）や initial（DB の初期値）が入っている */
+    const DATA = JSON.parse(dataEl.textContent);
+
+    // root.querySelector の短縮形。$('[data-stage]') のように使う
+    const $ = (sel) => root.querySelector(sel);
+    const $$ = (sel) => Array.from(root.querySelectorAll(sel));
+
+    const STORE_KEY = 'settingSheet:band:' + DATA.bandId; // localStorage の保存キー（バンドごと）
+
+    /** セット図の部品の「基準の大きさ」（pt）。大きさスライダー（scale）を掛けて使う */
+    const BASE = {
+        micLen: 30,   // マイクの長さ
+        circle: 24,   // 丸の直径
+        boxW: 42,     // 四角の横
+        boxH: 20,     // 四角の縦
+        text: 9,      // 文字の大きさ
+    };
+    const DEFAULT_LABEL = { mic: 'Vo', circle: '', box: 'Amp', text: '文字' };
+
+    /* =================================================================
+     *  1. state（状態）
+     * ================================================================= */
+
+    /** DB の内容から作る「まっさらな状態」 */
+    function defaultState() {
+        const ini = DATA.initial;
+        return {
+            template: DATA.templateKey,
+            band: ini.band,
+            kana: ini.kana,
+            date: ini.date,
+            order: ini.order,
+            // [...配列] でコピーしてから map。元の DATA を書き換えないため
+            members: ini.members.map((m) => ({ part: m.part, name: m.name })),
+            // セットリスト。1曲 = { id, mc: false, title, sound, light } / MC = { id, mc: true }
+            songs: ini.songs.map((title, i) => ({ id: i + 1, mc: false, title, sound: '', light: '' })),
+            nextSongId: ini.songs.length + 1,
+            mc: 'row',      // 'row' = MC で1行使う / 'line' = 曲の間の線に書く
+            choices: {},    // { se: 'なし', start: 'ハケ', ... }。空 = どれも囲まない
+            texts: {},      // その他の自由記入欄 { other: '...', se_title: '...' }
+            slots: null,    // パートが印刷済みの表の中身 { vo: { name, mic }, gt1: {...} }。null = まだ振り分けていない
+            items: [],      // セット図の部品 { id, type, x, y, rot, scale, stretch, label }
+            nextId: 1,      // 部品に振る通し番号
+        };
+    }
+
+    /**
+     * localStorage から前回の状態を読む。無い・壊れているときは null。
+     *   localStorage はブラウザの「端末ごとの小さな保存場所」（文字列しか入らないので JSON にして入れる）。
+     *   プライベートモードなどでは使えず例外が出ることがあるので try/catch で包む（業界の定石）
+     */
+    function loadState() {
+        try {
+            const raw = localStorage.getItem(STORE_KEY);
+            if (!raw) {
+                return null;
+            }
+            // { ...a, ...b } は「a に b を上書きしたコピー」（スプレッド構文）。
+            // 古い保存データに新しい項目が無くても、defaultState の値で埋まる
+            const saved = { ...defaultState(), ...JSON.parse(raw) };
+            // 前の版（テキスト欄1つ）で保存したデータなら、1曲ずつの形に直す（データの移行＝マイグレーション）
+            if (typeof saved.setlist === 'string') {
+                saved.songs = parseSetlist(saved.setlist).map((e, i) => ({ id: i + 1, sound: '', light: '', title: '', ...e }));
+                saved.nextSongId = saved.songs.length + 1;
+                delete saved.setlist;
+            }
+            return saved;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    let saveTimer = 0;
+    /** 保存。入力のたびに書くと重いので「最後の入力から 300ms 後に1回だけ」にする（デバウンスという定番の技） */
+    function save() {
+        clearTimeout(saveTimer);
+        saveTimer = setTimeout(() => {
+            try {
+                localStorage.setItem(STORE_KEY, JSON.stringify(state));
+            } catch (e) {
+                // 保存できなくても画面はそのまま使えるので何もしない
+            }
+        }, 300);
+    }
+
+    const restored = loadState();
+    let state = restored || defaultState();
+    if (!DATA.templates[state.template]) {
+        state.template = DATA.templateKey; // 保存した型紙が消えていたら（設定から削除された等）初期値に戻す
+    }
+
+    /** いま選んでいる型紙 */
+    const tpl = () => DATA.templates[state.template];
+    /** セット図の部品の大きさの倍率（枠が大きいシートでは部品も大きく） */
+    const stageScale = () => tpl().stage_scale || 1;
+    /** BASE の値に倍率を掛けたもの。base('micLen') のように使う */
+    const base = (key) => BASE[key] * stageScale();
+    /** セット図の枠の大きさ（pt） */
+    const stageSize = () => {
+        const [x0, y0, x1, y1] = tpl().stage;
+        return { w: x1 - x0, h: y1 - y0 };
+    };
+
+    /* =================================================================
+     *  2. 入力欄 ⇔ state
+     * ================================================================= */
+
+    /** 1行の入力欄（data-f="band" など）。state の同じ名前の値とつなぐ */
+    function bindFields() {
+        $$('[data-f]').forEach((input) => {
+            const key = input.dataset.f; // data-f="band" → dataset.f は "band"
+            input.value = state[key] ?? '';
+            // 'input' イベントは1文字打つたびに起きる（'change' は確定したときだけ）
+            input.addEventListener('input', () => {
+                state[key] = input.value;
+                save();
+            });
+        });
+    }
+
+    /** パート文字列（"Vo/Gt"）→ 小文字の配列 ['vo', 'gt'] */
+    const partList = (part) => part.toLowerCase().split(/[\/／・,、\s]+/).filter((x) => x !== '');
+
+    /**
+     * パートが印刷済みの表（slots）に、メンバーを振り分ける。
+     *   ・Vo（Vo/Gt も）→ Vo (Gt.) の行
+     *   ・Gt → Gt.1、埋まっていたら Gt.2、それも埋まっていたら「その他」
+     *   ・Ba / Dr / Key → それぞれの行（2人目以降は名前をつなぐ）
+     *   ・それ以外（Vn・Sax など）→「その他」に「名前(楽器)」で
+     *   ・マイク〇: Vo か Cho を持っている人
+     * 結果は state.slots に入れ、画面で手直しできる（自動はあくまで下書き）
+     */
+    function assignSlots() {
+        const slots = {};
+        for (const sl of tpl().members.slots) {
+            slots[sl.key] = { name: '', mic: false };
+        }
+        // 1つの欄に2人目が来たら「・」でつなぐ
+        const put = (key, name, mic) => {
+            if (!slots[key]) {
+                return;
+            }
+            slots[key].name = slots[key].name ? `${slots[key].name}・${name}` : name;
+            slots[key].mic = slots[key].mic || mic;
+        };
+        for (const m of state.members) {
+            const name = m.name.trim();
+            if (name === '') {
+                continue;
+            }
+            const parts = partList(m.part);
+            const mic = parts.includes('vo') || parts.includes('cho');
+            // どの楽器の行に入れるか（ボーカルは Vo 行が最優先。Vo/Ba の人は Ba 行にしてマイク〇）
+            const has = (x) => parts.includes(x);
+            if (has('vo') && !has('ba') && !has('dr') && !has('key')) {
+                put('vo', name, true);
+            } else if (has('gt')) {
+                if (!slots.gt1 || slots.gt1.name === '') put('gt1', name, mic);
+                else if (!slots.gt2 || slots.gt2.name === '') put('gt2', name, mic);
+                else put('other', `${name}(Gt)`, mic);
+            } else if (has('ba')) {
+                put('ba', name, mic);
+            } else if (has('dr')) {
+                put('dr', name, mic);
+            } else if (has('key')) {
+                put('key', name, mic);
+            } else {
+                // 楽器名が無い・その他の楽器。楽器名をかっこで残す
+                put('other', m.part.trim() ? `${name}(${m.part.trim()})` : name, mic);
+            }
+        }
+        state.slots = slots;
+    }
+
+    /** パートが印刷済みの表の画面（パート名 / 名前 / マイク〇） */
+    function renderSlots(box) {
+        const mt = tpl().members;
+        if (!state.slots) {
+            assignSlots();
+        }
+        for (const sl of mt.slots) {
+            const v = state.slots[sl.key] || (state.slots[sl.key] = { name: '', mic: false });
+            const row = document.createElement('div');
+            row.className = 'sheet-slots__row';
+            const label = document.createElement('span');
+            label.className = 'sheet-slots__label';
+            label.textContent = sl.label;
+            const name = document.createElement('input');
+            name.type = 'text';
+            name.maxLength = 60;
+            name.placeholder = '名前（2人なら・でつなぐ）';
+            name.value = v.name;
+            name.addEventListener('input', () => { v.name = name.value; renderTexts(); save(); });
+            // マイク〇のチェック。<label> で包むと文字を押してもチェックが切り替わる
+            const micWrap = document.createElement('label');
+            micWrap.className = 'check sheet-slots__mic';
+            const mic = document.createElement('input');
+            mic.type = 'checkbox';
+            mic.checked = v.mic;
+            mic.addEventListener('change', () => { v.mic = mic.checked; renderTexts(); save(); });
+            micWrap.append(mic, 'マイク');
+            row.append(label, name, micWrap);
+            box.append(row);
+        }
+        // 振り分け直しボタン（「基本」のメンバーは DB の内容なので、それを元にやり直す）
+        const redo = document.createElement('button');
+        redo.type = 'button';
+        redo.className = 'btn btn--sm btn--ghost';
+        redo.textContent = 'DB のメンバーから振り分け直す';
+        redo.addEventListener('click', () => {
+            state.members = DATA.initial.members.map((m) => ({ part: m.part, name: m.name }));
+            assignSlots();
+            renderMembers();
+            renderTexts();
+            save();
+        });
+        box.append(redo);
+    }
+
+    /** メンバー表の行を作る（型紙の行数ぶん） */
+    function renderMembers() {
+        const box = $('[data-members]');
+        box.textContent = ''; // 中身を空にする
+        const hint = $('[data-members-hint]');
+        if (tpl().members.mode === 'slots') {
+            hint.textContent = 'パートはシートに印刷済み。マイクを使う人に✓';
+            renderSlots(box);
+            return;
+        }
+        hint.textContent = 'パートは Vo / Gt / Ba / Dr / Key など';
+        const rows = tpl().members.rows;
+        for (let i = 0; i < rows; i++) {
+            if (!state.members[i]) {
+                state.members[i] = { part: '', name: '' }; // 足りない行は空で埋める
+            }
+            const m = state.members[i];
+            const row = document.createElement('div');
+            row.className = 'sheet-members__row';
+            // createElement + value 代入で作る。innerHTML に文字列で名前を埋め込むと、
+            // 名前に <script> などが入っていたときに実行されてしまう（XSS）。value なら安全
+            const part = document.createElement('input');
+            part.type = 'text';
+            part.placeholder = 'パート';
+            part.maxLength = 10;
+            part.value = m.part;
+            part.addEventListener('input', () => { m.part = part.value; save(); });
+            const name = document.createElement('input');
+            name.type = 'text';
+            name.placeholder = `${i + 1}人目の名前`;
+            name.maxLength = 50;
+            name.value = m.name;
+            name.addEventListener('input', () => { m.name = name.value; save(); });
+            row.append(part, name);
+            box.append(row);
+        }
+        if (state.members.filter((m) => m.name.trim() !== '').length > rows) {
+            setStatus(`メンバーが ${rows} 人を超えています。${rows + 1} 人目以降はシートに入りません`, true);
+        }
+    }
+
+    /** マイク〇の数（「マイク計」の自動の値） */
+    function micCount() {
+        if (tpl().members.mode !== 'slots' || !state.slots) {
+            return 0;
+        }
+        // 1つの欄に「A・B」と2人いてマイク〇なら2本と数える
+        return Object.values(state.slots)
+            .filter((v) => v.mic && v.name.trim() !== '')
+            .reduce((sum, v) => sum + v.name.split('・').length, 0); // reduce: 配列を1つの値（合計）にまとめる
+    }
+
+    /** 自由記入欄の値。空で auto がある欄は自動の値を使う */
+    function textValue(t) {
+        const v = (state.texts[t.key] || '').trim();
+        if (v === '' && t.auto === 'mic') {
+            const n = micCount();
+            return n > 0 ? String(n) : '';
+        }
+        return v;
+    }
+
+    /** その他の自由記入欄（型紙の texts から作る） */
+    function renderTexts() {
+        const box = $('[data-texts]');
+        const list = tpl().texts || [];
+        // 入力中の欄を作り直すとカーソルが外れるので、欄の構成が同じなら placeholder だけ更新する
+        if (box.dataset.tpl === state.template) {
+            list.forEach((t) => {
+                if (t.auto === 'mic') {
+                    box.querySelector(`[data-text="${t.key}"]`).placeholder = `空欄なら自動: ${micCount()}`;
+                }
+            });
+            return;
+        }
+        box.dataset.tpl = state.template;
+        box.textContent = '';
+        for (const t of list) {
+            const label = document.createElement('label');
+            label.className = 'field';
+            label.append(t.label);
+            const input = document.createElement(t.multiline ? 'textarea' : 'input');
+            if (!t.multiline) {
+                input.type = 'text';
+            } else {
+                input.rows = 2;
+            }
+            input.dataset.text = t.key;
+            input.maxLength = 200;
+            input.value = state.texts[t.key] || '';
+            if (t.auto === 'mic') {
+                input.inputMode = 'numeric';
+                input.placeholder = `空欄なら自動: ${micCount()}`;
+            }
+            input.addEventListener('input', () => { state.texts[t.key] = input.value; save(); });
+            label.append(input);
+            box.append(label);
+        }
+    }
+
+    /** 型紙に無い欄を隠す（出演日・MC の書き方・その他の項目 など） */
+    function renderTemplateUi() {
+        const t = tpl();
+        $$('[data-field]').forEach((el) => { el.hidden = !(el.dataset.field in t.fields); });
+        // MC を線に書けないシートでは、選択肢ごと隠して「1行使う」にする
+        $('[data-mc-wrap]').hidden = t.setlist.mc_line === false;
+        const hasExtras = (t.texts || []).length > 0 || Object.keys(t.choices || {}).length > 0;
+        $('[data-extras-card]').hidden = !hasExtras;
+    }
+
+    /** SE 有/なし などの○囲みボタン */
+    function renderChoices() {
+        const box = $('[data-choices]');
+        box.textContent = '';
+        // Object.entries({a: 1}) → [['a', 1]]。オブジェクトを for...of で回すときの定番
+        for (const [group, options] of Object.entries(tpl().choices || {})) {
+            const wrap = document.createElement('div');
+            wrap.className = 'sheet-choice';
+            const title = document.createElement('span');
+            title.className = 'sheet-choice__title';
+            title.textContent = DATA.choiceLabels[group] || group;
+            wrap.append(title);
+            // 「—」= どれも囲まない。それぞれの選択肢のボタンを並べる
+            for (const opt of ['', ...Object.keys(options)]) {
+                const b = document.createElement('button');
+                b.type = 'button';
+                b.className = 'sheet-choice__btn';
+                b.textContent = opt === '' ? '—' : opt;
+                // aria-pressed: 読み上げソフトに「押されている状態のボタン」と伝える。見た目の切り替えにも使う
+                b.setAttribute('aria-pressed', String((state.choices[group] || '') === opt));
+                b.addEventListener('click', () => {
+                    state.choices[group] = opt;
+                    renderChoices();
+                    save();
+                });
+                wrap.append(b);
+            }
+            box.append(wrap);
+        }
+    }
+
+    /** MC の書き方のラジオボタン */
+    function bindMc() {
+        $$('[data-mc]').forEach((r) => {
+            r.checked = r.value === state.mc;
+            r.addEventListener('change', () => {
+                state.mc = r.value;
+                renderRowsNote();
+                save();
+            });
+        });
+    }
+
+    /* =================================================================
+     *  3. セットリストの読み取り
+     * ================================================================= */
+
+    /** MC の行か？（MC / ＭＣ / mc / MC1 など。大文字小文字・全角半角を問わない） */
+    //   function 宣言にしているのは「巻き上げ」のため。ファイルの上の方（loadState）から先に呼ばれても動く
+    //   （const で作った関数は、その行より前で呼ぶとエラーになる）
+    function isMc(s) {
+        return /^(mc|ｍｃ)[0-9０-９]*$/i.test(s.replace(/[\s　]/g, ''));
+    }
+
+    /**
+     * （前の版の保存データの移行用）テキスト → [{ mc: true } | { title, sound, light }]
+     *   split(/\r?\n/): 改行で分ける（Windows の改行 \r\n にも対応する正規表現）
+     *   | と ｜（全角）で「曲名 | 音響 | 照明」に分ける
+     */
+    function parseSetlist(text) {
+        return text.split(/\r?\n/)
+            .map((s) => s.trim())
+            .filter((s) => s !== '')
+            .map((line) => {
+                if (isMc(line)) {
+                    return { mc: true };
+                }
+                const [title, sound = '', light = ''] = line.split(/[|｜]/).map((s) => s.trim());
+                return { title, sound, light };
+            });
+    }
+
+    /**
+     * シートの行への割り当てを決める。
+     *   rows : 表の行に書くもの（{ no: 曲順 or '', title, sound, light, mc }）
+     *   lines: 線の上に書く MC（「何行目の上の線か」の番号）
+     *   mode : 実際に使った書き方（1行モードで入りきらないときは線モードに切り替える）
+     */
+    function layoutSetlist() {
+        // 曲名が空の行は数えない（追加したけどまだ書いていない行）
+        const entries = state.songs.filter((e) => e.mc || e.title.trim() !== '');
+        const st = tpl().setlist;
+        const max = rowCount(st);
+        let mode = st.mc_line === false ? 'row' : state.mc; // 線に書けないシートは必ず1行
+        if (mode === 'row' && entries.length > max) {
+            mode = 'line'; // 入りきらない → MC を線に逃がす
+        }
+        const rows = [];
+        const lines = [];
+        let no = 0;
+        for (const e of entries) {
+            if (e.mc) {
+                if (mode === 'row') {
+                    rows.push({ no: '', title: 'MC', sound: '', light: '', mc: true });
+                } else {
+                    lines.push(rows.length); // 「いま埋まっている行数」= この番号の行の上の線
+                }
+            } else {
+                no++;
+                rows.push({ no: String(no), title: e.title, sound: e.sound, light: e.light });
+            }
+        }
+        return { rows, lines, mode, max, songs: no };
+    }
+
+    /** 表の行数（lines で書いた表は「境目の数 − 1」） */
+    const rowCount = (table) => (table.lines ? table.lines.length - 1 : table.rows);
+    /** i 行目の [上, 下] */
+    const rowRange = (table, i) => (table.lines
+        ? [table.lines[i], table.lines[i + 1]]
+        : [table.top + table.row_h * i, table.top + table.row_h * (i + 1)]);
+
+    /** 「使う行: 7 / 10」の案内 */
+    function renderRowsNote() {
+        const { rows, mode, max } = layoutSetlist();
+        const note = $('[data-rows-note]');
+        let msg = `シートの行: ${rows.length} / ${max}`;
+        note.classList.remove('is-warn');
+        if (rows.length > max) {
+            msg += ` — 曲が多すぎて ${rows.length - max} 曲入りません`;
+            note.classList.add('is-warn');
+        } else if (mode !== state.mc && tpl().setlist.mc_line !== false) {
+            msg += ' — 1行ずつだと入りきらないので、MC は線の上に書きます';
+            note.classList.add('is-warn');
+        }
+        note.textContent = msg;
+    }
+
+
+    /* -----------------------------------------------------------------
+     *  セットリストの入力（1曲 = 1行、≡ をドラッグで並び替え）
+     * ----------------------------------------------------------------- */
+    const songList = $('[data-songs]');
+
+    /** Material Symbols のアイコン（PHP の icon() と同じ形の HTML 要素を作る） */
+    function iconEl(name) {
+        const span = document.createElement('span');
+        span.className = 'icon';
+        span.setAttribute('aria-hidden', 'true');
+        span.textContent = name;
+        return span;
+    }
+
+    /** 小さな丸ボタン（アイコンだけ）。aria-label: 文字の無いボタンを読み上げソフトに説明する */
+    function iconButton(name, label, className) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = className;
+        b.setAttribute('aria-label', label);
+        b.title = label;
+        b.append(iconEl(name));
+        return b;
+    }
+
+    /** 曲を1つ足す（after を渡すとその曲のすぐ下に。無ければ一番下） */
+    function addSong(mc, after = null) {
+        const song = mc ? { id: state.nextSongId++, mc: true } : { id: state.nextSongId++, mc: false, title: '', sound: '', light: '' };
+        const i = after ? state.songs.indexOf(after) + 1 : state.songs.length;
+        state.songs.splice(i, 0, song); // splice(位置, 消す数, 足すもの): 配列の途中に差し込む
+        renderSongs();
+        renderRowsNote();
+        save();
+        if (!mc) {
+            songList.querySelector(`[data-id="${song.id}"] .setlist__title`)?.focus(); // すぐ打てるように
+        }
+    }
+
+    /** セットリストの行を全部作り直す */
+    function renderSongs() {
+        songList.textContent = '';
+        let no = 0;
+        for (const song of state.songs) {
+            const li = document.createElement('li');
+            li.className = 'setlist__item' + (song.mc ? ' setlist__item--mc' : '');
+            li.dataset.id = String(song.id);
+
+            const handle = iconButton('drag_indicator', 'ドラッグで並び替え（↑↓キーでも動く）', 'setlist__handle');
+            const num = document.createElement('span');
+            num.className = 'setlist__no';
+            num.textContent = song.mc ? '' : String(++no); // ++no: 先に1足してから使う
+            li.append(handle, num);
+
+            if (song.mc) {
+                const mc = document.createElement('span');
+                mc.className = 'setlist__mc';
+                mc.textContent = 'MC';
+                li.append(mc);
+            } else {
+                const title = document.createElement('input');
+                title.type = 'text';
+                title.className = 'setlist__title';
+                title.placeholder = '曲名';
+                title.maxLength = 100;
+                title.value = song.title;
+                // enterKeyHint: スマホのキーボードの Enter キーの表示を「次へ」にする
+                title.enterKeyHint = 'next';
+                title.addEventListener('input', () => { song.title = title.value; renderRowsNote(); save(); });
+                // Enter で「下に新しい曲を足して、そこへ移る」（続けて打ち込める）
+                title.addEventListener('keydown', (e) => {
+                    // isComposing: 日本語変換中の Enter（確定）は無視する。これを忘れると変換するたびに行が増える
+                    if (e.key === 'Enter' && !e.isComposing) {
+                        e.preventDefault();
+                        addSong(false, song);
+                    }
+                });
+                const tune = iconButton('tune', '音響・照明への要望', 'setlist__btn');
+                const hasNote = song.sound !== '' || song.light !== '';
+                tune.classList.toggle('is-on', hasNote);
+                li.append(title, tune);
+
+                // 要望の欄（最初は隠す。書いてあれば開いておく）
+                const notes = document.createElement('div');
+                notes.className = 'setlist__notes';
+                notes.hidden = !hasNote;
+                for (const [key, label] of [['sound', '音響への要望'], ['light', '照明への要望']]) {
+                    const input = document.createElement('input');
+                    input.type = 'text';
+                    input.placeholder = label;
+                    input.maxLength = 100;
+                    input.value = song[key];
+                    input.addEventListener('input', () => {
+                        song[key] = input.value;
+                        tune.classList.toggle('is-on', song.sound !== '' || song.light !== '');
+                        save();
+                    });
+                    notes.append(input);
+                }
+                tune.addEventListener('click', () => { notes.hidden = !notes.hidden; });
+                li.append(notes);
+            }
+
+            const del = iconButton('delete', song.mc ? 'MC を消す' : '曲を消す', 'setlist__btn setlist__btn--del');
+            del.addEventListener('click', () => {
+                state.songs = state.songs.filter((x) => x !== song);
+                renderSongs();
+                renderRowsNote();
+                save();
+            });
+            // 消すボタンは1行目の右端に置きたいので、要望欄より前に差し込む
+            li.insertBefore(del, li.querySelector('.setlist__notes'));
+
+            bindSongDrag(li, handle, song);
+            songList.append(li);
+        }
+    }
+
+    /**
+     * ≡ を掴んで上下に動かす。
+     *   動かしている間は、指の位置より下にある最初の行の「前」へ実際に DOM を移動させる（見たまま並ぶ）。
+     *   指を離したら、画面の並び順を state.songs に写す。
+     *   ライブラリ（SortableJS など）を使うのが業界では普通だが、仕組みを学ぶために自分で書いている
+     */
+    function bindSongDrag(li, handle, song) {
+        handle.addEventListener('pointerdown', (e) => {
+            e.preventDefault();
+            handle.setPointerCapture(e.pointerId);
+            const grab = e.clientY - li.getBoundingClientRect().top; // 行の上端から指までの距離（ずれないように覚えておく）
+            li.classList.add('is-dragging');
+
+            const onMove = (ev) => {
+                const y = ev.clientY;
+                // 指の位置より「真ん中が下にある」最初の行を探す → その前に入れる
+                const others = [...songList.children].filter((el) => el !== li);
+                const target = others.find((el) => {
+                    const r = el.getBoundingClientRect();
+                    return y < r.top + r.height / 2;
+                });
+                songList.insertBefore(li, target || null); // null なら一番最後へ
+                // 指に吸い付いて見えるように、本来の位置から指の位置までずらして描く
+                li.style.transform = '';
+                const top = li.getBoundingClientRect().top;
+                li.style.transform = `translateY(${y - grab - top}px)`;
+                // 画面の端まで来たら自動でスクロール（スマホで長いリストを動かすとき用）
+                if (y < 90) window.scrollBy(0, -12);
+                else if (y > window.innerHeight - 140) window.scrollBy(0, 12); // 下はタブバーと PDF ボタンの分だけ広く
+            };
+            const onUp = () => {
+                handle.removeEventListener('pointermove', onMove);
+                handle.removeEventListener('pointerup', onUp);
+                handle.removeEventListener('pointercancel', onUp);
+                li.classList.remove('is-dragging');
+                li.style.transform = '';
+                commitOrder();
+            };
+            handle.addEventListener('pointermove', onMove);
+            handle.addEventListener('pointerup', onUp);
+            handle.addEventListener('pointercancel', onUp);
+        });
+
+        // キーボードでも動かせるように（↑↓）。ドラッグしかできない UI はアクセシビリティ的に NG
+        handle.addEventListener('keydown', (e) => {
+            if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') {
+                return;
+            }
+            e.preventDefault();
+            const i = state.songs.indexOf(song);
+            const j = e.key === 'ArrowUp' ? i - 1 : i + 1;
+            if (j < 0 || j >= state.songs.length) {
+                return;
+            }
+            // 分割代入で2つを入れ替える（[a, b] = [b, a] は値の交換の定番）
+            [state.songs[i], state.songs[j]] = [state.songs[j], state.songs[i]];
+            renderSongs();
+            renderRowsNote();
+            save();
+            songList.querySelector(`[data-id="${song.id}"] .setlist__handle`).focus();
+        });
+    }
+
+    /** 画面の並び順（data-id の順）を state.songs に写して描き直す */
+    function commitOrder() {
+        const byId = new Map(state.songs.map((x) => [x.id, x])); // Map: id → 曲 の対応表（探すのが速い）
+        state.songs = [...songList.children].map((el) => byId.get(Number(el.dataset.id)));
+        renderSongs();
+        renderRowsNote();
+        save();
+    }
+
+    $('[data-song-add]').addEventListener('click', () => addSong(false));
+    $('[data-mc-add]').addEventListener('click', () => addSong(true));
+
+    /* =================================================================
+     *  4. セット図（ドラッグ編集）
+     * ================================================================= */
+    const stage = $('[data-stage]');
+    const panel = $('[data-panel]');
+    let selectedId = null;
+
+    /** 1pt が画面で何 px か */
+    const ptToPx = () => stage.clientWidth / stageSize().w;
+
+    /** 値を min〜max に収める（はみ出し防止） */
+    const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
+
+    /**
+     * 部品の「回転前の」大きさ（pt）。PDF と画面で同じ計算を使う
+     *   mic: 縦長の棒。w は細い
+     */
+    function itemSize(it) {
+        switch (it.type) {
+            case 'mic': return { w: base('micLen') * it.scale * 0.22, h: base('micLen') * it.scale };
+            case 'circle': return { w: base('circle') * it.scale * it.stretch, h: base('circle') * it.scale };
+            case 'box': return { w: base('boxW') * it.scale * it.stretch, h: base('boxH') * it.scale };
+            default: return { w: 0, h: 0 }; // text は文字の長さで決まる
+        }
+    }
+
+    /**
+     * 部品の中心を基準にした点 (lx, ly) を、回転させてセット図の座標（pt）にする。
+     *   画面は y が下向きなので、この式で「時計回り」に回る。
+     *   cos / sin は「角度 → 回したときの x, y の割合」。ラジアン（π = 180°）で渡す
+     */
+    function rotatePoint(it, lx, ly) {
+        const r = (it.rot * Math.PI) / 180;
+        return {
+            x: it.x + lx * Math.cos(r) - ly * Math.sin(r),
+            y: it.y + lx * Math.sin(r) + ly * Math.cos(r),
+        };
+    }
+
+    /** マイクの下（持ち手側の端の少し先）に名前（Vo など）を書く位置 */
+    function micLabelPoint(it) {
+        return rotatePoint(it, 0, base('micLen') * it.scale / 2 + 6 * stageScale());
+    }
+
+    /* ---- 文字の大きさを箱に収める（画面・PDF 共通の考え方）----
+     *   measure(文字, 大きさ) → 幅 を渡してもらい、
+     *   「全部の行が幅に収まり、行数ぶんの高さが箱に収まる」いちばん大きいサイズを探す
+     */
+    function fitSize(lines, maxW, maxH, maxSize, measure) {
+        let size = maxSize;
+        while (size > 4) {
+            const widest = Math.max(...lines.map((l) => measure(l, size)));
+            if (widest <= maxW && lines.length * size * 1.2 <= maxH) {
+                break;
+            }
+            size -= 0.25;
+        }
+        return size;
+    }
+
+    // 画面用の文字幅の測り方: <canvas> の measureText が速い（DOM に置かなくていい）
+    const measureCanvas = document.createElement('canvas').getContext('2d');
+    function measureScreen(text, size) {
+        measureCanvas.font = `${size}px "Noto Sans JP", sans-serif`;
+        return measureCanvas.measureText(text).width;
+    }
+
+    /** マイクの絵（SVG）。マイクの形は「中心が (0,0)、長さ 1」で書いて、viewBox で拡大する */
+    const MIC_SVG =
+        '<svg viewBox="-0.11 -0.5 0.22 1" preserveAspectRatio="none" aria-hidden="true">' +
+        '<line x1="0" y1="-0.45" x2="0" y2="0.5" stroke="#000" stroke-width="0.03"/>' +
+        '<circle cx="0" cy="-0.227" r="0.093" fill="none" stroke="#000" stroke-width="0.025"/>' +
+        '<polygon points="0,-0.5 -0.055,-0.39 0.055,-0.39" fill="#000"/>' +
+        '</svg>';
+
+    /** 部品を全部描き直す */
+    function renderStage() {
+        const { w, h } = stageSize();
+        // aspect-ratio: 横:縦 の比率を CSS に任せる（横幅が変わっても縦が自動で合う）
+        stage.style.aspectRatio = `${w} / ${h}`;
+        stage.style.backgroundImage = `url("${tpl().stage_image}")`;
+        stage.textContent = '';
+        for (const it of state.items) {
+            const el = document.createElement('div');
+            el.className = `st-item st-item--${it.type}`;
+            el.dataset.item = String(it.id);
+            if (it.id === selectedId) {
+                el.classList.add('is-selected');
+            }
+            if (it.type === 'mic') {
+                el.innerHTML = MIC_SVG; // 固定の文字列（ユーザーの入力を含まない）なので innerHTML でも安全
+            } else {
+                // 文字は textContent で入れる（HTML として解釈されないので XSS にならない）
+                const span = document.createElement('span');
+                span.textContent = it.label;
+                el.append(span);
+            }
+            stage.append(el);
+            if (it.type === 'mic' && it.label.trim() !== '') {
+                const lab = document.createElement('div');
+                lab.className = 'st-label';
+                lab.dataset.labelFor = String(it.id);
+                lab.textContent = it.label;
+                stage.append(lab);
+            }
+            place(it);
+        }
+    }
+
+    /** 部品1つの位置・大きさ・回転を画面に反映（ドラッグ中はこれだけ呼ぶので軽い） */
+    function place(it) {
+        const k = ptToPx();
+        const el = stage.querySelector(`[data-item="${it.id}"]`);
+        if (!el) {
+            return;
+        }
+        el.style.left = `${it.x * k}px`;
+        el.style.top = `${it.y * k}px`;
+        // translate(-50%, -50%): 要素の中心を left/top の点に合わせる。そのあと中心で回す
+        el.style.transform = `translate(-50%, -50%) rotate(${it.rot}deg)`;
+        if (it.type === 'text') {
+            el.style.fontSize = `${base('text') * it.scale * k}px`;
+        } else {
+            const { w, h } = itemSize(it);
+            el.style.width = `${w * k}px`;
+            el.style.height = `${h * k}px`;
+            if (it.type !== 'mic') {
+                const lines = it.label.split('\n');
+                const size = fitSize(lines, w - 4, h - 2, 10 * it.scale * stageScale(), measureScreen);
+                el.style.fontSize = `${size * k}px`;
+                el.style.borderWidth = `${Math.max(1, k)}px`;
+            }
+        }
+        const lab = stage.querySelector(`[data-label-for="${it.id}"]`);
+        if (lab) {
+            const p = micLabelPoint(it);
+            lab.style.left = `${p.x * k}px`;
+            lab.style.top = `${p.y * k}px`;
+            lab.style.fontSize = `${7 * stageScale() * k}px`;
+        }
+    }
+
+    const findItem = (id) => state.items.find((it) => it.id === id);
+
+    /** 部品を追加して選択する */
+    function addItem(type, props = {}) {
+        const { w, h } = stageSize();
+        const it = {
+            id: state.nextId++,
+            type,
+            x: w / 2,
+            y: h / 2,
+            rot: 0,
+            scale: 1,
+            stretch: 1,
+            label: DEFAULT_LABEL[type],
+            ...props, // 自動配置などで位置や文字を指定されたら上書き
+        };
+        state.items.push(it);
+        return it;
+    }
+
+    function select(id) {
+        selectedId = id;
+        renderStage();
+        renderPanel();
+    }
+
+    /** 選んだ部品の設定パネル */
+    function renderPanel() {
+        const it = findItem(selectedId);
+        panel.hidden = !it;
+        if (!it) {
+            return;
+        }
+        panel.querySelector('[data-p="label"]').value = it.label;
+        panel.querySelector('[data-p="scale"]').value = String(it.scale);
+        panel.querySelector('[data-p="stretch"]').value = String(it.stretch);
+        // data-only="box circle": その種類のときだけ見せる欄
+        panel.querySelectorAll('[data-only]').forEach((el) => {
+            el.hidden = !el.dataset.only.split(' ').includes(it.type);
+        });
+    }
+
+    function bindStage() {
+        // ---- 追加ボタン ----
+        $$('[data-add]').forEach((b) => b.addEventListener('click', () => {
+            const it = addItem(b.dataset.add);
+            select(it.id);
+            save();
+        }));
+
+        // ---- 自動配置 ----
+        $('[data-auto]').addEventListener('click', () => {
+            if (state.items.length && !confirm('今のセット図を消して、メンバーのパートから並べ直しますか？')) {
+                return;
+            }
+            autoLayout();
+            select(null);
+            save();
+        });
+
+        // ---- ドラッグ ----
+        // Pointer Events: マウス・指・ペンを1つの書き方で扱える（mouse/touch を別々に書かなくていい。今の標準）
+        stage.addEventListener('pointerdown', (e) => {
+            const el = e.target.closest('[data-item]'); // 押した場所から一番近い部品の要素を探す
+            if (!el) {
+                select(null); // 何もないところ → 選択を外す
+                return;
+            }
+            const it = findItem(Number(el.dataset.item));
+            if (it.id !== selectedId) {
+                select(it.id);
+            }
+            const target = stage.querySelector(`[data-item="${it.id}"]`); // select() で描き直したので取り直す
+            e.preventDefault();
+            // setPointerCapture: 指が要素の外に出ても、この要素に pointermove が届き続けるようにする
+            target.setPointerCapture(e.pointerId);
+            const k = ptToPx();
+            const { w, h } = stageSize();
+            const start = { px: e.clientX, py: e.clientY, x: it.x, y: it.y };
+
+            const onMove = (ev) => {
+                // 動いた px を pt に直して足す。枠の外には出さない
+                it.x = clamp(start.x + (ev.clientX - start.px) / k, 0, w);
+                it.y = clamp(start.y + (ev.clientY - start.py) / k, 0, h);
+                place(it);
+            };
+            const onUp = () => {
+                target.removeEventListener('pointermove', onMove);
+                target.removeEventListener('pointerup', onUp);
+                target.removeEventListener('pointercancel', onUp);
+                save();
+            };
+            target.addEventListener('pointermove', onMove);
+            target.addEventListener('pointerup', onUp);
+            target.addEventListener('pointercancel', onUp); // 電話が来た等で中断されたとき
+        });
+
+        // ---- 設定パネル ----
+        panel.querySelector('[data-p="label"]').addEventListener('input', (e) => {
+            const it = findItem(selectedId);
+            it.label = e.target.value;
+            renderStage();
+            save();
+        });
+        ['scale', 'stretch'].forEach((key) => {
+            panel.querySelector(`[data-p="${key}"]`).addEventListener('input', (e) => {
+                const it = findItem(selectedId);
+                it[key] = Number(e.target.value);
+                place(it);
+                save();
+            });
+        });
+        panel.querySelectorAll('[data-act]').forEach((b) => b.addEventListener('click', () => {
+            const it = findItem(selectedId);
+            if (!it) {
+                return;
+            }
+            switch (b.dataset.act) {
+                case 'rotL': it.rot = (it.rot - 45 + 360) % 360; break; // % 360: 0〜359 に収める
+                case 'rotR': it.rot = (it.rot + 45) % 360; break;
+                case 'dup': {
+                    const { id, ...rest } = it; // id 以外をコピー（分割代入の「残り」構文）
+                    const copy = addItem(it.type, { ...rest, x: it.x + 12, y: it.y + 12 });
+                    selectedId = copy.id;
+                    break;
+                }
+                case 'del':
+                    state.items = state.items.filter((x) => x.id !== it.id);
+                    selectedId = null;
+                    break;
+            }
+            renderStage();
+            renderPanel();
+            save();
+        }));
+
+        // 画面の大きさが変わったら（スマホの縦横回転など）描き直す。
+        // ResizeObserver: 要素の大きさの変化を見張る仕組み（window の resize より正確）
+        new ResizeObserver(() => renderStage()).observe(stage);
+    }
+
+    /**
+     * メンバーのパートから、ざっくり並べる。あとから手で直す前提の「下書き」。
+     *   奥（上）: ギターアンプ・ベースアンプ / 手前（下）: ボーカルのマイク / 左: キーボード
+     */
+    function autoLayout() {
+        const { w, h } = stageSize();
+        state.items = [];
+        // 印刷済みのドラムの箱（枠の中での位置）。アンプはこれの左右に置く
+        const [sx, sy] = tpl().stage;
+        const d = tpl().drum || [sx + w * 0.4, sy, sx + w * 0.6, sy + h * 0.2];
+        const drumL = d[0] - sx, drumR = d[2] - sx, ampY = (d[1] + d[3]) / 2 - sy;
+        const ampW = base('boxW');
+        const parts = state.members
+            .filter((m) => m.name.trim() !== '' || m.part.trim() !== '')
+            .map((m) => m.part.toLowerCase());
+        const count = (key) => parts.filter((p) => p.split('/').some((x) => x.trim() === key)).length;
+
+        const mics = [];
+        parts.forEach((p) => {
+            const list = p.split('/').map((x) => x.trim());
+            if (list.includes('vo')) {
+                mics.push('Vo');
+            } else if (list.includes('cho')) {
+                mics.push('Cho');
+            }
+        });
+        // 手前に等間隔で並べる: (i + 1) / (n + 1) で端を空けて均等に
+        mics.forEach((label, i) => {
+            addItem('mic', { x: (w * (i + 1)) / (mics.length + 1), y: h * 0.62, label });
+        });
+        // ギターアンプは左奥から右へ、ベースアンプは右奥
+        // ギターアンプ: ドラムの左側を等分した位置に並べる
+        //   ドラムに近い方から外へ、アンプの幅＋すき間ずつずらす。枠からはみ出す分は端で止める
+        for (let i = 0; i < count('gt'); i++) {
+            const x = drumL - (ampW / 2 + 6) - i * (ampW + 8);
+            addItem('box', { x: Math.max(ampW / 2, x), y: ampY, label: 'Gt Amp' });
+        }
+        // ベースアンプ: ドラムの右側の真ん中
+        if (count('ba') > 0) {
+            addItem('box', { x: drumR + (w - drumR) / 2, y: ampY, label: 'Ba Amp' });
+        }
+        if (count('key') > 0) {
+            addItem('box', { x: ampW * 0.8, y: h * 0.45, label: 'Key', stretch: 1.4 });
+        }
+    }
+
+    /* =================================================================
+     *  5. PDF を作る
+     * ================================================================= */
+
+    /**
+     * <script> を後から読み込む（遅延読み込み）。
+     *   pdf-lib などは合わせて 1MB 以上あるので、ページを開いた瞬間ではなく
+     *   「PDF を作る」を押したときに初めて読む。ページの表示が速くなる
+     */
+    const scriptCache = {};
+    function loadScript(src) {
+        if (!scriptCache[src]) {
+            // Promise: 「あとで終わる処理」を表すもの。resolve で成功、reject で失敗を知らせる
+            scriptCache[src] = new Promise((resolve, reject) => {
+                const s = document.createElement('script');
+                s.src = src;
+                s.onload = resolve;
+                s.onerror = () => reject(new Error(`読み込めませんでした: ${src}`));
+                document.head.append(s);
+            });
+        }
+        return scriptCache[src];
+    }
+
+    /** ファイルをバイト列（ArrayBuffer）で取ってくる */
+    async function fetchBytes(url) {
+        const res = await fetch(url);
+        if (!res.ok) {
+            throw new Error(`ファイルを取得できませんでした (${res.status}): ${url}`);
+        }
+        return res.arrayBuffer();
+    }
+
+    /**
+     * 本体: 書き込み済みの PDF のバイト列を返す。
+     *   async 関数の中では await で「終わるまで待つ」が書ける（コールバック地獄にならない）
+     */
+    async function buildPdf() {
+        // Promise.all: 複数の処理を「同時に」走らせて、全部終わるのを待つ（順番に待つより速い）
+        await Promise.all(DATA.vendor.map(loadScript));
+        const { PDFDocument, rgb, degrees } = window.PDFLib; // pdf-lib が window.PDFLib に入る
+        const t = tpl();
+        const [pdfBytes, fontBytes] = await Promise.all([fetchBytes(t.pdf), fetchBytes(DATA.fontUrl)]);
+
+        const doc = await PDFDocument.load(pdfBytes);
+        // 日本語を書くには、日本語の入ったフォントを PDF に埋め込む必要がある。
+        // fontkit は TTF / OTF を読むためのライブラリ（pdf-lib に「差し込んで」使う）
+        // ※ fontkit-shim.min.js は fontkit v2 版（v1 だと日本語の一部の文字が消えるため。assets/vendor/src/fontkit-shim.mjs 参照）
+        doc.registerFontkit(window.fontkit);
+        // subset: true → 使った文字だけを埋め込む（4MB のフォントでも PDF は数十 KB で済む）
+        const font = await doc.embedFont(fontBytes, { subset: true });
+        const page = doc.getPages()[0];
+        const H = page.getHeight();
+        const black = rgb(0, 0, 0);
+        const white = rgb(1, 1, 1);
+
+        // ---- 座標の変換 ----
+        // 型紙は「上から測った y」、PDF は「下から測った y」なので H − y にする
+        const Y = (top) => H - top;
+        const measure = (text, size) => font.widthOfTextAtSize(text, size);
+
+        /**
+         * 箱 [x0, top, x1, bottom] の中に文字を書く。
+         *   大きい文字から順に試して、箱に収まったサイズで書く。
+         *   wrap: true なら折り返して最大 maxLines 行まで使う。改行（\n）はそのまま改行になる
+         */
+        function drawInBox(text, box, opt = {}) {
+            const { size: maxSize = 10, min = 5, align = 'left', wrap = false, maxLines = 2, pad = 2 } = opt;
+            text = String(text || '').trim();
+            if (text === '') {
+                return;
+            }
+            const [x0, top, x1, bottom] = box;
+            const bw = x1 - x0 - pad * 2;
+            const bh = bottom - top;
+            const limit = wrap ? maxLines : text.split('\n').length;
+            let size = maxSize;
+            let lines = [];
+            // 0.25pt ずつ小さくしながら「幅・行数・高さ」が全部収まるサイズを探す
+            for (; size >= min; size -= 0.25) {
+                lines = wrap ? wrapText(text, bw, size) : text.split('\n');
+                const fits = lines.length <= limit
+                    && lines.length * size * 1.15 <= bh
+                    && lines.every((l) => measure(l, size) <= bw); // every: 全部が条件を満たすと true
+                if (fits) {
+                    break;
+                }
+            }
+            if (size < min) {
+                // いちばん小さくしても入らない → 最小サイズで、入る行数だけ書く（はみ出すより欠けた方がまし）
+                size = min;
+                lines = (wrap ? wrapText(text, bw, size) : text.split('\n')).slice(0, Math.max(1, Math.floor(bh / (size * 1.15))));
+            }
+            const lineH = size * 1.15;
+            // 縦の真ん中に置く。0.88 は「行の上端からベースライン（文字の底の線）まで」のだいたいの割合
+            let baseline = top + (bh - lineH * lines.length) / 2 + size * 0.88;
+            for (const line of lines) {
+                const w = measure(line, size);
+                const x = align === 'center' ? x0 + (x1 - x0 - w) / 2 : x0 + pad;
+                page.drawText(line, { x, y: Y(baseline), size, font, color: black });
+                baseline += lineH;
+            }
+        }
+
+        /**
+         * 文字を幅に合わせて折り返した行の配列にする。
+         *   日本語は単語の区切り（スペース）が無いので、1文字ずつ足して幅を超えたら次の行へ
+         */
+        function wrapText(text, maxW, size) {
+            const lines = [];
+            for (const para of text.split('\n')) { // 自分で入れた改行は必ず改行
+                let cur = '';
+                for (const ch of para) { // for...of は文字単位で回る（絵文字なども1文字として扱える）
+                    if (cur !== '' && measure(cur + ch, size) > maxW) {
+                        lines.push(cur);
+                        cur = ch;
+                    } else {
+                        cur += ch;
+                    }
+                }
+                lines.push(cur);
+            }
+            return lines;
+        }
+
+        // ---- 1. バンド名・フリガナ・出演日・出演順 ----
+        for (const [key, f] of Object.entries(t.fields)) {
+            drawInBox(state[key], f.box, { size: f.size, align: f.align, min: 5 });
+        }
+
+        // ---- 2. メンバー ----
+        const mt = t.members;
+        if (mt.mode === 'slots') {
+            // パートが印刷済みの表: 欄ごとに名前、マイク列に〇
+            for (const sl of mt.slots) {
+                const v = state.slots?.[sl.key];
+                if (!v) {
+                    continue;
+                }
+                const [top, bottom] = sl.box;
+                // 「A・B」の2人は2行に分けると読みやすい
+                drawInBox(v.name.split('・').join('\n'), [mt.name[0] + 4, top, mt.name[1], bottom], { size: 14, min: 6 });
+                if (v.mic && v.name.trim() !== '') {
+                    drawInBox('〇', [mt.mic[0], top, mt.mic[1], bottom], { size: 16, align: 'center' });
+                }
+            }
+        } else {
+            state.members
+                .filter((m) => m.name.trim() !== '' || m.part.trim() !== '')
+                .slice(0, mt.rows) // 行数を超えた人は書かない
+                .forEach((m, i) => {
+                    const top = mt.top + mt.row_h * i;
+                    const bottom = top + mt.row_h;
+                    drawInBox(m.part, [mt.part[0], top, mt.part[1], bottom], { size: 9, align: 'center', pad: 1 });
+                    drawInBox(m.name, [mt.name[0] + 3, top, mt.name[1], bottom], { size: 11 });
+                });
+        }
+
+        // ---- 3. セットリスト ----
+        const st = t.setlist;
+        const lay = layoutSetlist();
+        // 行の高さに合わせて文字の大きさを決める（Club Voice は 25pt、サークル共通は 44pt の行）
+        const rowH = rowRange(st, 0)[1] - rowRange(st, 0)[0];
+        const titleSize = Math.min(16, rowH * 0.48);
+        const noteSize = Math.min(11, rowH * 0.32);
+        lay.rows.slice(0, rowCount(st)).forEach((r, i) => {
+            const [top, bottom] = rowRange(st, i);
+            if (st.no) { // 曲順が印刷済みのシートには書かない
+                drawInBox(r.no, [st.no[0], top, st.no[1], bottom], { size: 11, align: 'center' });
+            }
+            if (r.mc) {
+                drawInBox('MC', [st.title[0], top, st.title[1], bottom], { size: titleSize * 0.85, align: 'center' });
+                return; // forEach の中の return は「次の行へ」（continue と同じ働き）
+            }
+            drawInBox(r.title, [st.title[0], top, st.title[1], bottom], { size: titleSize, min: 7, wrap: true, pad: 4 });
+            const note = { size: noteSize, min: 5, wrap: true, maxLines: 3, pad: 3 };
+            if (st.request) {
+                // 音響と照明が1つの欄: 両方あれば「音響 / 照明：…」の形でまとめる
+                //   filter(Boolean): 空の文字（''）を取り除く定番の書き方
+                const req = [r.sound, r.light && `照明：${r.light}`].filter(Boolean).join(' / ');
+                drawInBox(req, [st.request[0], top, st.request[1], bottom], note);
+            } else {
+                drawInBox(r.sound, [st.sound[0], top, st.sound[1], bottom], note);
+                drawInBox(r.light, [st.light[0], top, st.light[1], bottom], note);
+            }
+        });
+        // 線の上の MC: 白い四角で線を少し消して、その上に小さく「MC」
+        for (const n of lay.lines) {
+            const lineTop = rowRange(st, n)[0]; // n 行目の上の線
+            const size = 7;
+            const w = measure('MC', size) + 6;
+            const x = st.title[0] + 6;
+            page.drawRectangle({ x, y: Y(lineTop + size / 2 + 1), width: w, height: size + 2, color: white });
+            page.drawText('MC', { x: x + 3, y: Y(lineTop + size * 0.35), size, font, color: black });
+        }
+
+        // ---- 3.5 その他の自由記入欄 ----
+        for (const tx of t.texts || []) {
+            drawInBox(textValue(tx), tx.box, {
+                size: tx.size || 10, align: tx.align || 'left', wrap: !!tx.multiline, maxLines: 4, pad: 3,
+            });
+        }
+
+        // ---- 4. ○囲み（SE 有/なし など）----
+        for (const [group, opt] of Object.entries(state.choices)) {
+            const spec = t.choices?.[group]?.[opt]; // ?. : 途中が無くてもエラーにせず undefined を返す（オプショナルチェーン）
+            if (!spec) {
+                continue;
+            }
+            // 書き方は2通り: [箱] だけ（○で囲む）か { box: [箱], mark: 'check' }（✓を書く）
+            const box = Array.isArray(spec) ? spec : spec.box;
+            const [x0, top, x1, bottom] = box;
+            if (!Array.isArray(spec) && spec.mark === 'check') {
+                // ✓ を2本の線で描く（フォントの ✓ は入っていないことがあるので、線で描くほうが確実）
+                const w = x1 - x0, h = bottom - top;
+                const p1 = { x: x0 + w * 0.18, y: Y(top + h * 0.52) };
+                const p2 = { x: x0 + w * 0.42, y: Y(top + h * 0.8) };
+                const p3 = { x: x0 + w * 0.85, y: Y(top + h * 0.18) };
+                page.drawLine({ start: p1, end: p2, thickness: 2.5, color: black });
+                page.drawLine({ start: p2, end: p3, thickness: 2.5, color: black });
+                continue;
+            }
+            page.drawEllipse({
+                x: (x0 + x1) / 2,
+                y: Y((top + bottom) / 2),
+                xScale: (x1 - x0) / 2 + 4,
+                yScale: (bottom - top) / 2 + 2.5,
+                borderColor: black,
+                borderWidth: 0.9,
+                // color を書かない → 中は塗らない（線だけ）
+            });
+        }
+
+        // ---- 5. セット図 ----
+        const [sx, sy] = t.stage;
+        /** 部品の中心基準の点 → PDF の座標 */
+        const toPdf = (it, lx, ly) => {
+            const p = rotatePoint(it, lx, ly);
+            return { x: sx + p.x, y: Y(sy + p.y) };
+        };
+        /**
+         * PDF の座標の点の列 → drawSvgPath に渡す文字列。
+         *   drawSvgPath は SVG と同じく「y が下向き」として描くので、x:0, y:0 で呼び、y の符号を反転して渡す
+         *   M = そこへ移動、L = 線を引く、C = ベジェ曲線、Z = 閉じる
+         */
+        const svgNum = (n) => n.toFixed(2);
+        for (const it of state.items) {
+            const { w, h } = itemSize(it);
+            if (it.type === 'mic') {
+                const L = base('micLen') * it.scale;
+                const p = (lx, ly) => toPdf(it, lx * L, ly * L); // マイクの形は「長さ1」で書いてあるので L 倍
+                const a = p(0, -0.45), b = p(0, 0.5);
+                page.drawLine({ start: a, end: b, thickness: Math.max(0.8, 0.03 * L), color: black });
+                const c = p(0, -0.227);
+                page.drawCircle({ x: c.x, y: c.y, size: 0.093 * L, borderColor: black, borderWidth: Math.max(0.7, 0.025 * L) });
+                const t1 = p(0, -0.5), t2 = p(-0.055, -0.39), t3 = p(0.055, -0.39);
+                page.drawSvgPath(
+                    `M ${svgNum(t1.x)} ${svgNum(-t1.y)} L ${svgNum(t2.x)} ${svgNum(-t2.y)} L ${svgNum(t3.x)} ${svgNum(-t3.y)} Z`,
+                    { x: 0, y: 0, color: black },
+                );
+                if (it.label.trim() !== '') {
+                    const lp = micLabelPoint(it);
+                    const size = 7 * stageScale();
+                    const tw = measure(it.label, size);
+                    page.drawText(it.label, { x: sx + lp.x - tw / 2, y: Y(sy + lp.y + size * 0.35), size, font, color: black });
+                }
+                continue;
+            }
+            if (it.type === 'box' || it.type === 'circle') {
+                let path;
+                if (it.type === 'box') {
+                    const pts = [[-w / 2, -h / 2], [w / 2, -h / 2], [w / 2, h / 2], [-w / 2, h / 2]].map(([lx, ly]) => toPdf(it, lx, ly));
+                    path = `M ${pts.map((q) => `${svgNum(q.x)} ${svgNum(-q.y)}`).join(' L ')} Z`;
+                } else {
+                    // 楕円は4本のベジェ曲線で描く（0.5523 は円をベジェで近似するときの定番の係数）
+                    const rx = w / 2, ry = h / 2, kx = rx * 0.5523, ky = ry * 0.5523;
+                    const seg = [
+                        [[rx, 0]],
+                        [[rx, ky], [kx, ry], [0, ry]],
+                        [[-kx, ry], [-rx, ky], [-rx, 0]],
+                        [[-rx, -ky], [-kx, -ry], [0, -ry]],
+                        [[kx, -ry], [rx, -ky], [rx, 0]],
+                    ];
+                    const s = (q) => { const r = toPdf(it, q[0], q[1]); return `${svgNum(r.x)} ${svgNum(-r.y)}`; };
+                    path = `M ${s(seg[0][0])} ` + seg.slice(1).map((c3) => `C ${c3.map(s).join(' ')}`).join(' ') + ' Z';
+                }
+                page.drawSvgPath(path, { x: 0, y: 0, borderColor: black, borderWidth: 1 });
+            }
+            // 文字（box / circle / text 共通）。回転に合わせて文字も回す
+            const lines = it.label.split('\n').filter((l, i, arr) => l !== '' || arr.length === 1);
+            if (lines.join('') === '') {
+                continue;
+            }
+            const size = it.type === 'text'
+                ? base('text') * it.scale
+                : fitSize(lines, w - 4, h - 2, 10 * it.scale * stageScale(), measure);
+            const lineH = size * 1.2;
+            lines.forEach((line, i) => {
+                const tw = measure(line, size);
+                // 中心から見た「この行の左端・ベースライン」の位置
+                const ly = -(lineH * lines.length) / 2 + lineH * i + size * 0.88;
+                const o = toPdf(it, -tw / 2, ly);
+                // PDF の回転は反時計回りが +。画面は時計回りが + なので符号を反転
+                page.drawText(line, { x: o.x, y: o.y, size, font, color: black, rotate: degrees(-it.rot) });
+            });
+        }
+
+        return doc.save(); // Uint8Array（PDF のバイト列）
+    }
+
+    /* =================================================================
+     *  6. ボタン・メッセージ
+     * ================================================================= */
+    const statusEl = $('[data-status]');
+    function setStatus(msg, warn = false) {
+        statusEl.textContent = msg;
+        statusEl.classList.toggle('is-warn', warn);
+    }
+
+    /** ファイル名に使えない文字（\ / : * ? " < > |）を _ にする */
+    const fileName = () => `${DATA.fileBase}_セッティングシート.pdf`.replace(/[\\/:*?"<>|]/g, '_');
+
+    let lastFile = null; // 共有ボタン用に、最後に作った PDF を覚えておく
+
+    $('[data-make]').addEventListener('click', async (e) => {
+        const btn = e.currentTarget;
+        btn.disabled = true; // 二度押し防止
+        setStatus('PDF を作っています…（初回はフォントの読み込みで少しかかります）');
+        try {
+            const bytes = await buildPdf();
+            const blob = new Blob([bytes], { type: 'application/pdf' });
+            lastFile = new File([blob], fileName(), { type: 'application/pdf' });
+            // ダウンロード: 見えない <a download> を作ってクリックする（ブラウザで定番のやり方）
+            const url = URL.createObjectURL(blob); // メモリ上のデータを指す一時的な URL
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = fileName();
+            document.body.append(a);
+            a.click();
+            a.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 60_000); // 一時 URL は使い終わったら捨てる（メモリ解放）
+            const lay = layoutSetlist();
+            setStatus(lay.rows.length > lay.max ? `できました（${lay.rows.length - lay.max} 曲は入りませんでした）` : 'できました！', lay.rows.length > lay.max);
+            // Web Share API: スマホの「共有」シート（LINE などに送れる）。対応しているときだけボタンを出す
+            const share = $('[data-share]');
+            share.hidden = !(navigator.canShare && navigator.canShare({ files: [lastFile] }));
+        } catch (err) {
+            console.error(err); // 開発者ツールのコンソールに詳しいエラーを出す
+            setStatus('PDF を作れませんでした: ' + err.message, true);
+        } finally {
+            btn.disabled = false; // 成功しても失敗しても最後に必ず実行される
+        }
+    });
+
+    $('[data-share]').addEventListener('click', async () => {
+        if (!lastFile) {
+            return;
+        }
+        try {
+            await navigator.share({ files: [lastFile], title: lastFile.name });
+        } catch (err) {
+            // 共有シートを閉じただけ（AbortError）のときは何もしない
+        }
+    });
+
+    // 型紙の切り替え
+    const tplSelect = $('[data-template]');
+    tplSelect.value = state.template;
+    tplSelect.addEventListener('change', () => {
+        state.template = tplSelect.value;
+        renderAll();
+        save();
+    });
+
+    // 「DB の内容に戻す」
+    $('[data-reset]').addEventListener('click', () => {
+        if (!confirm('入力した内容とセット図を消して、DB の内容に戻しますか？')) {
+            return;
+        }
+        try { localStorage.removeItem(STORE_KEY); } catch (e) { /* 何もしない */ }
+        state = defaultState();
+        $('[data-saved-note]').hidden = true;
+        // 入力欄の値も入れ直す
+        $$('[data-f]').forEach((input) => { input.value = state[input.dataset.f] ?? ''; });
+        $$('[data-mc]').forEach((r) => { r.checked = r.value === state.mc; });
+        tplSelect.value = state.template;
+        selectedId = null;
+        renderAll();
+    });
+
+    function renderAll() {
+        renderTemplateUi();
+        renderSongs();
+        renderMembers();
+        delete $('[data-texts]').dataset.tpl; // 自由記入欄は必ず作り直す（型紙が変わった・リセットした）
+        renderTexts();
+        renderChoices();
+        renderRowsNote();
+        renderStage();
+        renderPanel();
+    }
+
+    /* =================================================================
+     *  7. 起動
+     * ================================================================= */
+    bindFields();
+    bindMc();
+    bindStage();
+    renderAll();
+    if (restored) {
+        $('[data-saved-note]').hidden = false;
+    }
+})();
