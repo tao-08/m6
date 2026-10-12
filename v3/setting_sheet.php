@@ -24,6 +24,7 @@
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/setting_sheet.php';
+require_once __DIR__ . '/lib/repository.php'; // band_setlist_visibility()
 require_login(); // ログインしていなければログイン画面へ
 
 $pdo = db();
@@ -75,6 +76,10 @@ $st = $pdo->prepare('SELECT title FROM song WHERE band_id = ? ORDER BY track_no'
 $st->execute([$bandId]);
 // fetchAll(PDO::FETCH_COLUMN): 1列目だけの配列 ['曲A', '曲B', ...] で受け取る
 $songTitles = $st->fetchAll(PDO::FETCH_COLUMN);
+// 出演まで非公開で、この人には見せられないときは、登録済みの曲を初期値に使わない（曲名がバレるので）
+if (band_setlist_visibility($pdo, $bandId)['hidden']) {
+    $songTitles = [];
+}
 
 // ---- 4. 型紙を選ぶ（会場名から自動。合わなければ1つ目）----
 $autoKey = sheet_template_for_venue($band['venue_name']);
@@ -101,6 +106,7 @@ $sheetData = [
     'fontUrl'     => 'assets/fonts/BIZUDGothic-Regular.ttf',
     // pdf-lib（PDF に書き込む）と fontkit（日本語フォントを読む）。どちらも自分のサーバーに置く（CDN が止まっても動く）
     'vendor'      => ['assets/vendor/pdf-lib.min.js', 'assets/vendor/fontkit-shim.min.js'],
+    'dbSongs'     => $songTitles, // DB に登録済みの曲（シートと同じなら「登録しますか？」を聞かない）
     'fileBase'    => ($band['held_on'] ? date('Ymd', strtotime($band['held_on'])) . '_' : '') . $band['name'],
 ];
 /*
@@ -229,5 +235,25 @@ render_header('セッティングシート', 'lives');
     </div>
 </div>
 
-<script src="assets/setting_sheet.js?v=3" defer></script>
+<!-- PDF を作ったあとに「DB に登録しますか？」と聞く（JS が開く）。
+     「はい」で下の隠しフォームに曲名を入れて songs_edit.php へ POST する（曲の紐付け・演奏者の確認はそちらの画面で） -->
+<dialog class="modal" data-register-dialog aria-labelledby="register-title">
+    <form method="dialog" class="modal__body">
+        <h3 id="register-title" class="modal__title"><?= icon('queue_music') ?> セットリストを DB に登録しますか？</h3>
+        <p class="muted small">次の画面で曲を検索してサブスクに紐づけ、演奏者を確認してから保存します。</p>
+        <ol class="modal__list" data-register-list></ol>
+        <div class="form-actions">
+            <button type="submit" class="btn btn--ghost" value="no">いいえ</button>
+            <button type="submit" class="btn btn--primary" value="yes">はい</button>
+        </div>
+    </form>
+</dialog>
+<!-- songs_edit.php は POST を受けるページなので、CSRF の合言葉（csrf_field）を付けて送る -->
+<form method="post" action="songs_edit?band=<?= $bandId ?>" data-register-form hidden>
+    <?= csrf_field() ?>
+    <input type="hidden" name="band_id" value="<?= $bandId ?>">
+    <input type="hidden" name="from_sheet" value="1">
+</form>
+
+<script src="assets/setting_sheet.js?v=4" defer></script>
 <?php render_footer();

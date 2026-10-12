@@ -98,6 +98,13 @@ $songs = [];
 foreach ($st as $s) {
     $songs[$s['song_id']] = $s + ['players' => []];
 }
+// 出演まで非公開（lib/repository.php の band_setlist_visibility）。隠すときは曲を空にして、曲数だけ覚えておく
+$setlistVis = band_setlist_visibility($pdo, $bandId);
+$hiddenSongCount = 0;
+if ($setlistVis['hidden']) {
+    $hiddenSongCount = count($songs);
+    $songs = []; // ここで空にしておけば、下の演奏者・ジャケット・試聴の処理にも曲名が流れない
+}
 
 // ---- 4. 曲ごとの演奏者 ----
 $st = $pdo->prepare('SELECT sp.song_id, sp.member_id, m.name, i.short_name FROM song_performer sp
@@ -262,8 +269,16 @@ render_header($band['name'], 'lives');
 
 <section class="card band-section">
     <?php // 曲が未登録のときは band.song_count（タイムテーブルの曲数）を「予定」として出す。登録済みの曲数と混ぜない ?>
-    <h2 class="section-title section-title--card">セットリスト <small class="muted"><?= $songs ? count($songs) . '曲' : '' ?></small></h2>
-    <?php if ($songs): ?>
+    <h2 class="section-title section-title--card">セットリスト <small class="muted"><?= $songs ? count($songs) . '曲' : ($hiddenSongCount ? $hiddenSongCount . '曲' : '') ?></small>
+        <?php if ($setlistVis['private']): ?><span class="tag" title="出演まで非公開"><?= icon('lock') ?> 非公開</span><?php endif; ?></h2>
+    <?php if ($setlistVis['private'] && !$setlistVis['hidden'] && $songs): // メンバー・管理者には見えている。いつ公開されるかを案内 ?>
+        <p class="muted small"><?= icon('lock') ?> <?= $setlistVis['open_at'] ? h(fmt_datetime($setlistVis['open_at'])) . ' に公開されます。' : '公開する時刻が決まっていません（出演日が未登録）。' ?>メンバーと管理者だけに見えています。</p>
+    <?php endif; ?>
+    <?php if ($setlistVis['hidden']): ?>
+        <!-- 非公開中: 曲名は出さない。登録済みかどうか（✓）と曲数だけ -->
+        <p class="setlist-locked"><?= icon('lock') ?> セットリストは出演まで非公開です<?php if ($hiddenSongCount): ?>（<?= icon('check') ?> 登録済み <?= $hiddenSongCount ?>曲）<?php endif; ?></p>
+        <?php if ($setlistVis['open_at']): ?><p class="muted small"><?= h(fmt_datetime($setlistVis['open_at'])) ?> ごろ公開されます</p><?php endif; ?>
+    <?php elseif ($songs): ?>
         <?php if ($trackKeys): // 紐付けた曲が1曲でもあるときだけ（ジャケットも ▶ も、紐付けた曲にしか出ないので） ?>
             <p class="setlist-hint muted small no-print">ジャケットを押すと<?= h($viewerApp !== null ? MUSIC_APPS[$viewerApp] : '音楽アプリ') ?>で開き、 <?= icon('play_circle') ?> で試聴できます。</p>
         <?php endif; ?>

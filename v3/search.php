@@ -132,7 +132,9 @@ if ($faculty !== '' || $roleName !== null) {
         $st->execute($ids);
         $lineups = member_lineups_by_band($st);
 
-        $st = $pdo->prepare("SELECT band_id, title FROM song WHERE band_id IN ($in) ORDER BY track_no");
+        // 出演まで非公開のバンドの曲は出さない（lib/repository.php の setlist_hidden_sql）
+        $st = $pdo->prepare("SELECT s.band_id, s.title FROM song s JOIN band b ON b.band_id = s.band_id
+            WHERE s.band_id IN ($in) AND NOT " . setlist_hidden_sql('b') . " ORDER BY s.track_no");
         $st->execute($ids);
         foreach ($st as $s) {
             $setlists[(int)$s['band_id']][] = $s['title'];
@@ -140,13 +142,13 @@ if ($faculty !== '' || $roleName !== null) {
     }
 
     // ---- アーティスト ----
-    // 回数はアーティストページと同じ数え方（オムニバスは曲に付いたアーティストを1バンド1回。ARTIST_PLAYS_SQL）
+    // 回数はアーティストページと同じ数え方（オムニバスは曲に付いたアーティストを1バンド1回。artist_plays_sql()）
     // 演奏0回のアーティストは出さない（artists.php と同じ）
     // 別称（artist_alias。エルレ → ELLEGARDEN など）でも当てる。別称だけで当たったときは、どの別称で当たったかも出す（alias_hit）
     $st = $pdo->prepare('SELECT a.artist_id, a.name, COUNT(p.band_id) AS n,
             (SELECT al.name FROM artist_alias al WHERE al.artist_id = a.artist_id AND al.name LIKE ? LIMIT 1) AS alias_hit
         FROM artist a
-        JOIN (' . ARTIST_PLAYS_SQL . ') p ON p.artist_id = a.artist_id
+        JOIN (' . artist_plays_sql() . ') p ON p.artist_id = a.artist_id
         WHERE a.name LIKE ? OR EXISTS (SELECT 1 FROM artist_alias al WHERE al.artist_id = a.artist_id AND al.name LIKE ?)
         GROUP BY a.artist_id ORDER BY n DESC LIMIT 30');
     $st->execute([$like, $like, $like]);

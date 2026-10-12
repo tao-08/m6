@@ -1575,3 +1575,7 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
 .role-checks legend { padding: 0; margin-bottom: 6px; }
 .role-checks__item { display: inline-flex; align-items: center; gap: 4px; color: var(--text); font-weight: 600; cursor: pointer; }
 .role-checks input[name="new_role"] { flex-basis: 100%; }
+
+/* セットリストが「出演まで非公開」のとき（band.php） */
+.setlist-locked { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0; font-weight: 700; color: var(--muted); }
+.setlist-locked .icon { font-size: 18px; }

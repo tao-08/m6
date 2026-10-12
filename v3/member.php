@@ -98,10 +98,10 @@ $st->execute([$memberId]);
 $partners = $st->fetchAll();
 
 // ---- よく演奏するアーティスト（上位10位） ----
-//   数え方はアーティスト一覧と同じ（ARTIST_PLAYS_SQL: オムニバスは曲に付いたアーティストを1バンド1回）。
+//   数え方はアーティスト一覧と同じ（artist_plays_sql(): オムニバスは曲に付いたアーティストを1バンド1回）。
 //   そのアーティストを演奏したバンドのうち、この人が入っていたバンドの数。最初は上位3位だけ見せて、残りは「さらに表示」（JS: setupPartnerBox）
 $st = $pdo->prepare('SELECT a.artist_id, a.name, COUNT(DISTINCT p.band_id) AS n
-    FROM (' . ARTIST_PLAYS_SQL . ') p
+    FROM (' . artist_plays_sql() . ') p
     JOIN (' . MEMBERSHIP_SQL . ') mine ON mine.band_id = p.band_id
     JOIN artist a ON a.artist_id = p.artist_id
     WHERE mine.member_id = ?

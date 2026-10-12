@@ -1355,6 +1355,7 @@
             // Web Share API: スマホの「共有」シート（LINE などに送れる）。対応しているときだけボタンを出す
             const share = $('[data-share]');
             share.hidden = !(navigator.canShare && navigator.canShare({ files: [lastFile] }));
+            askRegister(); // 続けて「DB に登録しますか？」
         } catch (err) {
             console.error(err); // 開発者ツールのコンソールに詳しいエラーを出す
             setStatus('PDF を作れませんでした: ' + err.message, true);
@@ -1362,6 +1363,56 @@
             btn.disabled = false; // 成功しても失敗しても最後に必ず実行される
         }
     });
+
+    /**
+     * PDF を作ったあと「このセットリストを DB に登録しますか？」と聞く。
+     *   ・曲が1つも無い / DB と全く同じ → 聞かない（同じなら「登録済み ✓」と出すだけ）
+     *   ・「はい」→ 隠しフォームに曲名を titles[] として入れ、songs_edit.php に POST で送る
+     *     （GET の URL に曲名を並べると、長すぎたり履歴に残ったりするので POST。CSRF の合言葉も付く）
+     * <dialog> の中の <form method="dialog"> は、押したボタンの value を dialog.returnValue に入れて閉じる（HTML の標準機能）
+     */
+    function askRegister() {
+        const titles = state.songs.filter((x) => !x.mc && x.title.trim() !== '').map((x) => x.title.trim());
+        if (titles.length === 0) {
+            return;
+        }
+        const db = DATA.dbSongs.map((t) => t.trim());
+        const same = titles.length === db.length && titles.every((t, i) => t === db[i]);
+        if (same) {
+            setStatus('できました！ セットリストは DB に登録済みです ✓');
+            return;
+        }
+        // ダイアログは [data-sheet] の外にあるので document から探す
+        const dialog = document.querySelector('[data-register-dialog]');
+        const list = dialog.querySelector('[data-register-list]');
+        list.textContent = '';
+        titles.forEach((t) => {
+            const li = document.createElement('li');
+            li.textContent = t; // textContent なので曲名に < > が入っていても安全
+            list.append(li);
+        });
+        if (titles.length > 15) {
+            const li = document.createElement('li');
+            li.textContent = '※ 登録できるのは15曲までです（16曲目以降は入りません）';
+            list.append(li);
+        }
+        dialog.addEventListener('close', () => {
+            if (dialog.returnValue !== 'yes') {
+                return;
+            }
+            const form = document.querySelector('[data-register-form]');
+            form.querySelectorAll('[name="titles[]"]').forEach((el) => el.remove()); // 前に入れた分は消す
+            titles.forEach((t) => {
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = 'titles[]'; // [] を付けると PHP 側で配列 $_POST['titles'] として受け取れる
+                input.value = t;
+                form.append(input);
+            });
+            form.submit();
+        }, { once: true }); // once: 1回呼ばれたら自動で外れる（何回も PDF を作ったときに重ならない）
+        dialog.showModal();
+    }
 
     $('[data-share]').addEventListener('click', async () => {
         if (!lastFile) {

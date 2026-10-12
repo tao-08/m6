@@ -594,18 +594,6 @@ const HEADLINER_SQL = 'SELECT b.live_day_id, MAX(b.play_order) AS max_order
     GROUP BY b.live_day_id, d.total_bands
     HAVING d.total_bands IS NULL OR COUNT(*) >= d.total_bands';
 
-/**
- * 「アーティスト × そのアーティストをコピーしたバンド」の組を表すサブクエリ。
- *   ふつうのバンド    : band.artist_id
- *   オムニバスのバンド: band.artist_id は使わず、曲に付いたアーティスト（song.artist_id）。付いていない曲は数えない
- *   UNION（ALL なし）なので同じ組は1つにまとまる → オムニバスで同じアーティストを2曲やっても1回
- *   使い方: FROM (" . ARTIST_PLAYS_SQL . ") p   … p.artist_id, p.band_id
- */
-const ARTIST_PLAYS_SQL = 'SELECT artist_id, band_id FROM band WHERE is_omnibus = 0 AND artist_id IS NOT NULL
-    UNION
-    SELECT s.artist_id, s.band_id FROM song s JOIN band b ON b.band_id = s.band_id
-        WHERE b.is_omnibus = 1 AND s.artist_id IS NOT NULL';
-
 /** ヘッダー（<html> 〜 <main>）を出す。$active はナビのどこを光らせるか */
 function render_header(string $title, string $active = ''): void
 {
