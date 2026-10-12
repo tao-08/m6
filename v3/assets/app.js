@@ -330,7 +330,7 @@ function setupSongs() {
 
   // ---- 曲の並び替え（≡ をドラッグ / ≡ にフォーカスして ↑↓ キー） ----
   //   指の位置が上か下のカードの真ん中を越えたら、そのカードと入れ替える
-  let drag = null; // ドラッグ中だけ { card, pointerId, grab（カードの上端からつかんだ所までの距離） }
+  let drag = null; // ドラッグ中だけ { card, pointerId, grab（カードの上端からつかんだ所までの距離）, y（今の指の高さ）, raf（自動スクロールの予約） }
   // 滑っている途中・指に付いている途中のずれ（transform の translateY）を引いた「本当の位置」の上端
   const layoutTop = (el) => el.getBoundingClientRect().top - new DOMMatrixReadOnly(getComputedStyle(el).transform).m42;
   // 入れ替えのアニメーション（FLIP）: 動かす前の位置を測る → DOM を入れ替える → 前の位置から今の位置へ滑らせる
@@ -357,26 +357,50 @@ function setupSongs() {
     drag = { card, pointerId: e.pointerId, grab: e.clientY - card.getBoundingClientRect().top };
     drag.card.classList.add('is-dragging');
     handle.setPointerCapture(e.pointerId); // 指やマウスが ≡ の外に出ても追いかける
+    drag.y = e.clientY;
+    drag.raf = requestAnimationFrame(autoScroll);
   });
-  list.addEventListener('pointermove', (e) => {
-    if (!drag || e.pointerId !== drag.pointerId) return;
+  // 指の高さ y に合わせて、入れ替え（上下のカードの真ん中を越えたら）とカードの位置を更新する
+  const follow = (y) => {
     const all = cards();
     const i = all.indexOf(drag.card);
     const prev = all[i - 1];
     const next = all[i + 1];
     // 真ん中の位置は、滑っている途中のずれを引いた「本当の位置」で測る（途中の位置で測ると行ったり来たりする）
     const mid = (el) => layoutTop(el) + el.offsetHeight / 2;
-    if (prev && e.clientY < mid(prev)) {
+    if (prev && y < mid(prev)) {
       move(() => list.insertBefore(drag.card, prev), drag.card);
-    } else if (next && e.clientY > mid(next)) {
+    } else if (next && y > mid(next)) {
       move(() => list.insertBefore(drag.card, next.nextElementSibling), drag.card);
     }
     // つかんでいるカードを指に付いてこさせる（本当の位置からのずれを transform で付ける）
-    drag.card.style.transform = `translateY(${e.clientY - drag.grab - layoutTop(drag.card)}px)`;
+    drag.card.style.transform = `translateY(${y - drag.grab - layoutTop(drag.card)}px)`;
+  };
+  // 自動スクロール: 指が画面の上端・下端の近く（EDGE px 以内）にあるあいだ、ページを上下に動かす。端に近いほど速い
+  //   スクロールすると指の下のカードが変わるので、毎フレーム follow() で入れ替えとカードの位置をやり直す
+  //   EDGE は、スマホの下のナビ・上のヘッダーに指がかかっても届くように大きめ
+  const EDGE = 100;
+  const MAX_SPEED = 18; // 1フレーム（約 1/60 秒）に動かす最大の px
+  const autoScroll = () => {
+    if (!drag) return;
+    const y = drag.y;
+    const speed = y < EDGE ? -(EDGE - y) / EDGE : y > innerHeight - EDGE ? (y - (innerHeight - EDGE)) / EDGE : 0;
+    if (speed) {
+      const before = scrollY;
+      scrollBy(0, Math.round(Math.max(-1, Math.min(1, speed)) * MAX_SPEED));
+      if (scrollY !== before) follow(y); // 端まで行って動かなかったときはやり直さない
+    }
+    drag.raf = requestAnimationFrame(autoScroll);
+  };
+  list.addEventListener('pointermove', (e) => {
+    if (!drag || e.pointerId !== drag.pointerId) return;
+    drag.y = e.clientY;
+    follow(e.clientY);
   });
   const endDrag = (e) => {
     if (!drag || e.pointerId !== drag.pointerId) return;
     const { card } = drag;
+    cancelAnimationFrame(drag.raf); // 自動スクロールを止める
     drag = null;
     // 離したら、指の位置から並びの位置へスッと戻す
     const dy = new DOMMatrixReadOnly(getComputedStyle(card).transform).m42;
@@ -3568,6 +3592,7 @@ function setupSuggest() {
   let skipNext = false;  // 候補を選んで input イベントを出したとき、もう一度開かないように
   let composing = false; // 日本語入力の変換中か
   let pending = null;    // 変換中に候補を押したとき { input, value }（変換が終わったら入れ直す）
+  let tappedInput = null; // スマホで候補が開いている入力欄を押して閉じたとき、その入力欄（直後の click で開き直さないため）
 
   // 比べる用に文字をそろえる（全角英数→半角、大文字→小文字、カタカナ→ひらがな）
   const norm = (s) => s.normalize('NFKC').toLowerCase()
@@ -3637,6 +3662,29 @@ function setupSuggest() {
     return [name, kana];
   };
 
+  // 候補の箱を入力欄の位置に合わせて置く（開いたとき・スマホでスクロールしたとき）
+  const place = (pop, input) => {
+    // 入力欄の真下に出す。下に入りきらなければ上に（setupSelectPick とほぼ同じ）
+    //   ただし高さの上限は 280px にしない。候補は最大 8 件（約 296px）なので、280px で切ると少しだけはみ出して
+    //   スクロールバーが出て、その幅のぶん候補のマウスオーバーの背景が右端まで届かなくなる → 8 件がそのまま入る高さにする
+    const r = input.getBoundingClientRect();
+    pop.style.top = pop.style.bottom = ''; // 置き直すときは前の位置を消してから
+    pop.style.left = `${r.left}px`;
+    pop.style.minWidth = `${r.width}px`;
+    pop.style.maxHeight = 'none';
+    const full = pop.offsetHeight;
+    const below = window.innerHeight - r.bottom - 8;
+    if (below < full && r.top - 8 > below) {
+      pop.style.bottom = `${window.innerHeight - r.top + 4}px`;
+      pop.style.maxHeight = `${Math.min(full, r.top - 8)}px`;
+    } else {
+      pop.style.top = `${r.bottom + 4}px`;
+      pop.style.maxHeight = `${Math.min(full, below)}px`;
+    }
+    const over = pop.getBoundingClientRect().right - (window.innerWidth - 8);
+    if (over > 0) pop.style.left = `${Math.max(8, r.left - over)}px`;
+  };
+
   // seed: 入力欄の文字の代わりに、この文字で探す（data-suggest-seed で押したとき）。前方一致だけにし、完全一致の1件でも出す
   const open = (input, seed = null) => {
     close();
@@ -3700,24 +3748,7 @@ function setupSuggest() {
     ['mousedown', 'pointerdown'].forEach((ev) => pop.addEventListener(ev, (e) => e.preventDefault()));
     document.body.append(pop);
 
-    // 入力欄の真下に出す。下に入りきらなければ上に（setupSelectPick とほぼ同じ）
-    //   ただし高さの上限は 280px にしない。候補は最大 8 件（約 296px）なので、280px で切ると少しだけはみ出して
-    //   スクロールバーが出て、その幅のぶん候補のマウスオーバーの背景が右端まで届かなくなる → 8 件がそのまま入る高さにする
-    const r = input.getBoundingClientRect();
-    pop.style.left = `${r.left}px`;
-    pop.style.minWidth = `${r.width}px`;
-    pop.style.maxHeight = 'none';
-    const full = pop.offsetHeight;
-    const below = window.innerHeight - r.bottom - 8;
-    if (below < full && r.top - 8 > below) {
-      pop.style.bottom = `${window.innerHeight - r.top + 4}px`;
-      pop.style.maxHeight = `${Math.min(full, r.top - 8)}px`;
-    } else {
-      pop.style.top = `${r.bottom + 4}px`;
-      pop.style.maxHeight = `${Math.min(full, below)}px`;
-    }
-    const over = pop.getBoundingClientRect().right - (window.innerWidth - 8);
-    if (over > 0) pop.style.left = `${Math.max(8, r.left - over)}px`;
+    place(pop, input);
 
     input.setAttribute('aria-expanded', 'true');
     input.setAttribute('aria-controls', pop.id);
@@ -3733,7 +3764,9 @@ function setupSuggest() {
   // data-suggest-seed: 押したら、同じ行の別の欄（バンド名など）の文字で候補を出す。もう開いていれば何もしない
   document.addEventListener('click', (e) => {
     const input = e.target.closest?.('[data-suggest-seed]');
-    if (!input || cur?.input === input) return;
+    const tapped = tappedInput === input;
+    tappedInput = null;
+    if (!input || cur?.input === input || tapped) return; // 開いていた候補を閉じるために押したときは開き直さない
     const src = input.closest('tr')?.querySelector(input.dataset.suggestSeed);
     if (src?.value.trim()) open(input, src.value);
   });
@@ -3770,9 +3803,25 @@ function setupSuggest() {
   });
 
   document.addEventListener('focusout', (e) => { if (cur && e.target === cur.input) close(); });
-  // fixed で出しているので、ページをスクロールしたら閉じる（候補の中のスクロールは別）
-  window.addEventListener('scroll', (e) => { if (cur && !cur.pop.contains(e.target)) close(); }, true);
-  window.addEventListener('resize', close);
+  // スマホ（指で操作する画面）: スクロールしても閉じずに入力欄についていく（候補を見ながら画面を動かせるように）。
+  //   キーボードの出し入れで画面の高さが変わる（resize）ときも同じ。
+  //   閉じるのは、候補を押したとき・入力欄をもう一度押したとき・ほかの場所を押したとき
+  // PC: fixed で出しているので、ページをスクロールしたら閉じる（候補の中のスクロールは別）
+  const touch = window.matchMedia('(hover: none) and (pointer: coarse)');
+  const follow = () => { if (cur) place(cur.pop, cur.input); };
+  window.addEventListener('scroll', (e) => {
+    if (!cur || cur.pop.contains(e.target)) return;
+    if (touch.matches) follow(); else close();
+  }, true);
+  window.addEventListener('resize', () => { if (touch.matches) follow(); else close(); });
+  window.visualViewport?.addEventListener('resize', () => { if (touch.matches) follow(); });
+  document.addEventListener('pointerdown', (e) => {
+    if (!cur || !touch.matches || cur.pop.contains(e.target)) return;
+    // 入力欄をもう一度押した / ほかの場所を押した → 閉じる（入力欄からフォーカスが外れなくても閉じる）
+    //   入力欄を押したときは、このあと文字を打てば input イベントでまた開く
+    tappedInput = cur.input === e.target ? e.target : null;
+    close();
+  }, true);
 }
 
 /* ---------------------------------------------------------------------
