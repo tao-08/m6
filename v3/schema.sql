@@ -52,6 +52,7 @@ CREATE TABLE member (
     entry_year SMALLINT UNSIGNED NULL,                 -- 入部年度
     faculty    VARCHAR(20)       NULL,                 -- 学部（FACULTIES のどれか）。NULL = 選んでいない
     music_app  VARCHAR(20) CHARACTER SET ascii NULL,  -- 使っている音楽アプリ（マイアルバムのリンクをこれで開く）。NULL = 選んでいない
+    retired    TINYINT(1)        NOT NULL DEFAULT 0,   -- 1 = 退会済み（行は消さずに印だけ。出演履歴を残すため）
     created_at DATETIME          NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (member_id),
     UNIQUE KEY uq_member_name (name),

@@ -242,6 +242,7 @@ render_header($member['name'], 'members');
         <p class="muted small">
             <?= h($member['name_kana'] ?? '') ?>
             <?php if ((int)$member['entry_year'] > 0): ?> · <a class="meta-link" href="members?who=grade&amp;entry=<?= (int)$member['entry_year'] ?>"><?= (int)$member['entry_year'] ?>年入学</a><?php endif; ?>
+            <?php if ((int)$member['retired'] === 1): ?> · 退会済み<?php endif; ?>
             <?php if ($member['faculty'] !== null): ?> · <a class="meta-link" href="search?<?= h(http_build_query(['faculty' => $member['faculty']])) ?>"><?= h($member['faculty']) ?></a><?php endif; ?>
             <?php $roles = member_roles($pdo, $memberId); // [role_id => 名前] ?>
             <?php if ($roles): ?> ·
@@ -271,6 +272,8 @@ render_header($member['name'], 'members');
         <label class="field"><span>ふりがな</span><input name="name_kana" value="<?= h($member['name_kana']) ?>" maxlength="50"></label>
         <label class="field"><span>入部年度</span><input type="number" name="entry_year" min="1950" max="2100" value="<?= (int)$member['entry_year'] ?: '' ?>"></label>
         <?= profile_faculty_role_fields($pdo, $member) ?>
+        <!-- 退会済み（管理者だけ）。チェックを外すと何も送られないので、先に hidden の 0 を置いておく -->
+        <label class="check field--wide"><input type="hidden" name="retired" value="0"><input type="checkbox" name="retired" value="1"<?= (int)$member['retired'] === 1 ? ' checked' : '' ?>> 退会済み（メンバー一覧の「退会した人を表示しない」で隠れます）</label>
         <label class="field field--wide"><span>使っている音楽アプリ（マイアルバムのリンクをこのアプリで開きます）</span>
             <select name="music_app">
                 <option value="">未選択</option>

@@ -13,6 +13,7 @@
  *    卒業生    … 5年目以上（OB。入学年度が 今年度-4 以前）。入学年度が不明な人はどちらにも入れない
  *    上下3学年 … ログイン中ユーザーの入学年度 ±3（自分の学年も含む）
  *    学年別    … 学年スロット（縦ドラッグ）で選んだ入学年度の人 / 不明 … 入学年度が不明な人
+ *  「退会した人を表示しない」にチェック（初期値）すると、member.retired = 1 の人も隠す（?retired=show で外した状態）
  *  全員ぶんの行を出しておき、JS で隠すだけ（ページを読み直さない）。順位・人数も JS で数え直す。
  *  ?who=all|active|alumni|near|grade&entry=入学年度|none は「最初にどの段を選んでおくか」にだけ使う
  *  （JS が切り替えのたびに URL に書くので、再読み込み・並べ替えしても学年が戻らない）
@@ -49,6 +50,9 @@ $slotValue = match (true) {
     in_array($myEntry, $entryYears, true)         => (string)$myEntry,
     default                                       => (string)($entryYears[0] ?? 'none'),
 };
+// 退会した人を隠すか。初期値は隠す。チェックを外すと JS が URL に ?retired=show を書く
+$hideRetired = ($_GET['retired'] ?? '') !== 'show';
+$hasRetired = (bool)$pdo->query('SELECT 1 FROM member WHERE retired = 1 LIMIT 1')->fetchColumn();
 
 /** 入学年度 → 「4年（2023年度入学）」のような表示 */
 function entry_option_label(int $entryYear): string
@@ -64,7 +68,7 @@ function grade_slot_item(string $value, string $labelHtml, string $current, stri
         . $attrs . '>' . $labelHtml . '</div>';
 }
 
-$st = $pdo->prepare('SELECT m.member_id, m.name, m.name_kana, m.entry_year,
+$st = $pdo->prepare('SELECT m.member_id, m.name, m.name_kana, m.entry_year, m.retired,
         COUNT(DISTINCT bm.band_id) AS bands,
         COUNT(DISTINCT CASE WHEN b.play_order = last.max_order THEN b.band_id END) AS headliners,
         COUNT(DISTINCT ld.live_id) AS lives
@@ -80,7 +84,7 @@ $st->execute();
 $rows = $st->fetchAll();
 
 // 一度も出演していないメンバー（名簿にだけいる人）も下に出す
-$st = $pdo->prepare('SELECT m.member_id, m.name, m.name_kana, m.entry_year FROM member m
+$st = $pdo->prepare('SELECT m.member_id, m.name, m.name_kana, m.entry_year, m.retired FROM member m
     WHERE m.member_id NOT IN (SELECT member_id FROM (' . MEMBERSHIP_SQL . ') x)
     ORDER BY m.name');
 $st->execute();
@@ -220,8 +224,8 @@ function sort_th(string $col, string $label, string $sort, string $dir, string $
         // 解除 → いつもの並び。右側の列（出演・ライブ・トリ）からの解除なら、戻っても表を右端に置いておく
         default         => in_array($col, ['bands', 'lives', 'headliners'], true) ? ['scroll' => 'end'] : [],
     };
-    // 学年の絞り込み（who / entry）はそのまま引き継ぐ
-    $query = http_build_query(array_intersect_key($_GET, ['who' => 1, 'entry' => 1]) + $next);
+    // 学年・退会の絞り込み（who / entry / retired）はそのまま引き継ぐ
+    $query = http_build_query(array_intersect_key($_GET, ['who' => 1, 'entry' => 1, 'retired' => 1]) + $next);
     $aria = $col === $sort ? ' aria-sort="' . ($dir === 'asc' ? 'ascending' : 'descending') . '"' : '';
     $arrow = $col === $sort ? ($dir === 'asc' ? ' ▲' : ' ▼') : '';
     return '<th class="' . h(trim('sortable ' . $class)) . '"' . $aria . '><a href="?' . h($query) . '">' . h($label)
@@ -277,6 +281,10 @@ render_header('メンバー', 'members');
             <?php if ($canNear): ?>
                 <span class="muted small" data-show-when="who=near"><?= h(entry_option_label($myEntry - 3)) ?> 〜 <?= h(entry_option_label($myEntry + 3)) ?></span>
             <?php endif; ?>
+            <?php if ($hasRetired): // 退会した人が1人もいなければ、押しても何も変わらないので出さない ?>
+                <!-- data-hide-retired: 切り替えたら JS が行を隠し直す（setupGradeSlot） -->
+                <label class="stats-filter__extra small"><input type="checkbox" data-hide-retired<?= $hideRetired ? ' checked' : '' ?>> 退会した人を表示しない</label>
+            <?php endif; ?>
         </fieldset>
     </div>
     <div class="toolbar">
@@ -303,12 +311,13 @@ render_header('メンバー', 'members');
             <tbody>
             <?php foreach ($list as $r): ?>
                 <!-- is-me: 自分の行はいつも背景を変える（一番上に固定するのは、いつもの並びのときだけ）
-                     data-entry / data-bands / data-score: 学年の絞り込みと順位の付け直しに使う（入学年度が不明なら空。data-score は順位を付ける列の値） -->
+                     data-entry / data-bands / data-score: 学年の絞り込みと順位の付け直しに使う（入学年度が不明なら空。data-score は順位を付ける列の値）
+                     data-retired: 退会済みの人だけ付ける（「退会した人を表示しない」で隠す） -->
                 <tr class="member-row<?= (int)$r['member_id'] === $myId ? ' is-me' : '' ?>" data-text="<?= h($r['name'] . ' ' . ($r['name_kana'] ?? '')) ?>"
-                    data-entry="<?= $r['entry_year'] !== null ? (int)$r['entry_year'] : '' ?>" data-bands="<?= (int)$r['bands'] ?>" data-score="<?= (int)$r[$rankCol] ?>">
+                    data-entry="<?= $r['entry_year'] !== null ? (int)$r['entry_year'] : '' ?>" data-bands="<?= (int)$r['bands'] ?>" data-score="<?= (int)$r[$rankCol] ?>"<?= (int)$r['retired'] === 1 ? ' data-retired' : '' ?>>
                     <!-- data-rank: 学年で絞り込んだとき JS が順位を書き直す目印。ランキングでないときは付けない（空のまま） -->
                     <?php if ($showRank): ?><td class="num muted" data-rank><?= $r['rank'] ?? '—' ?></td><?php else: ?><td class="num"></td><?php endif; ?>
-                    <td><a href="member?id=<?= (int)$r['member_id'] ?>"<?= $r['rank'] ? ' class="strong"' : '' ?>><?= h($r['name']) ?></a></td>
+                    <td><a href="member?id=<?= (int)$r['member_id'] ?>"<?= $r['rank'] ? ' class="strong"' : '' ?>><?= h($r['name']) ?></a><?= (int)$r['retired'] === 1 ? ' <span class="muted small">退会</span>' : '' ?></td>
                     <!-- 2023 → '23（下2桁だけ。sprintf の %02d で 2005 → '05 のように0を残す） -->
                     <td class="num muted"><?= $r['entry_year'] !== null ? sprintf("'%02d", (int)$r['entry_year'] % 100) : '—' ?></td>
                     <td><?= part_marks($instruments[(int)$r['member_id']] ?? [], false, 'partbar--cell', 3) ?></td>

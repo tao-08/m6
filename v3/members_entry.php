@@ -8,7 +8,9 @@
  *  入学年度が未登録のままだと、集計・メンバー一覧の学年の絞り込みに出てこない。
  *  1人ずつ member.php を開くのは大変なので、ここで表にまとめて直せるようにした。
  *
- *  ・送られてくるのは entry[メンバーID] = 年度、kana[メンバーID] = ふりがな（空欄 = 未登録に戻す）
+ *  ・送られてくるのは entry[メンバーID] = 年度、kana[メンバーID] = ふりがな（空欄 = 未登録に戻す）、
+ *    retired[メンバーID] = 0 / 1（退会済み。チェックを外すと何も送られないので、hidden の 0 を先に置いて、
+ *    チェックしたら同じ名前の 1 で上書きされる。PHP は同じ名前なら後ろの値を使う）
  *  ・変わった人だけ UPDATE する。全員分をトランザクションで1回にまとめるので、途中で失敗したら全部取り消し
  *  ・「初出演」は入学年度の目安。1年生で出るとは限らないので、自動では保存しない（JS で空欄に入れるだけ）
  *
@@ -35,18 +37,21 @@ if (is_post()) {
     // entry=文字列 のように形を変えて送られてきたら何もしない
     $entryInput = is_array($_POST['entry'] ?? null) ? $_POST['entry'] : [];
     $kanaInput = is_array($_POST['kana'] ?? null) ? $_POST['kana'] : [];
+    $retiredInput = is_array($_POST['retired'] ?? null) ? $_POST['retired'] : [];
 
     // 今の値と比べて「変わった人」だけ集める
     $current = [];
-    foreach ($pdo->query('SELECT member_id, entry_year, name_kana FROM member') as $r) {
+    foreach ($pdo->query('SELECT member_id, entry_year, name_kana, retired FROM member') as $r) {
         $current[(int)$r['member_id']] = [
-            'entry' => $r['entry_year'] === null ? null : (int)$r['entry_year'],
-            'kana'  => $r['name_kana'],
+            'entry'   => $r['entry_year'] === null ? null : (int)$r['entry_year'],
+            'kana'    => $r['name_kana'],
+            'retired' => (int)$r['retired'],
         ];
     }
 
     $entryChanges = [];
     $kanaChanges = [];
+    $retiredChanges = [];
     $errors = [];
     foreach ($entryInput as $id => $value) {
         $id = (int)$id;
@@ -82,6 +87,17 @@ if (is_post()) {
         }
     }
 
+    foreach ($retiredInput as $id => $value) {
+        $id = (int)$id;
+        if (!array_key_exists($id, $current)) {
+            continue;
+        }
+        $retired = (int)($value === '1'); // '1' 以外（0 や書き換えられた値）は「退会していない」
+        if ($retired !== $current[$id]['retired']) {
+            $retiredChanges[$id] = $retired;
+        }
+    }
+
     if ($errors) {
         foreach (array_unique($errors) as $e) {
             flash($e, 'error');
@@ -90,9 +106,10 @@ if (is_post()) {
         redirect($self);
     }
 
-    if ($entryChanges || $kanaChanges) {
+    if ($entryChanges || $kanaChanges || $retiredChanges) {
         $updateEntry = $pdo->prepare('UPDATE member SET entry_year = ? WHERE member_id = ?');
         $updateKana = $pdo->prepare('UPDATE member SET name_kana = ? WHERE member_id = ?');
+        $updateRetired = $pdo->prepare('UPDATE member SET retired = ? WHERE member_id = ?');
         $pdo->beginTransaction();
         try {
             foreach ($entryChanges as $id => $year) {
@@ -100,6 +117,9 @@ if (is_post()) {
             }
             foreach ($kanaChanges as $id => $kana) {
                 $updateKana->execute([$kana, $id]);
+            }
+            foreach ($retiredChanges as $id => $retired) {
+                $updateRetired->execute([$retired, $id]);
             }
             $pdo->commit();
         } catch (Throwable $e) {
@@ -113,6 +133,9 @@ if (is_post()) {
         if ($kanaChanges) {
             $done[] = 'ふりがな ' . count($kanaChanges) . '人';
         }
+        if ($retiredChanges) {
+            $done[] = '退会 ' . count($retiredChanges) . '人';
+        }
         flash(implode('・', $done) . 'を保存しました');
     } else {
         flash('変更はありませんでした', 'info');
@@ -123,7 +146,7 @@ if (is_post()) {
 // ---- 一覧 ----
 //   first_year: 初めて出演したライブの年度（入学年度の目安）
 //   linked: アカウントと紐付いているか（紐付いている人は本人がプロフィールで直せる）
-$list = $pdo->query('SELECT m.member_id, m.name, m.name_kana, m.entry_year,
+$list = $pdo->query('SELECT m.member_id, m.name, m.name_kana, m.entry_year, m.retired,
         (SELECT MIN(lm.fiscal_year) FROM (' . MEMBERSHIP_SQL . ') bm
             JOIN band b ON b.band_id = bm.band_id
             JOIN live_day ld ON ld.live_day_id = b.live_day_id
@@ -157,7 +180,7 @@ render_header('メンバープロフィールの一括編集');
     <?= csrf_field() ?>
     <div class="table-scroll table-scroll--flush">
     <table class="table table--edit">
-        <thead><tr><th>名前</th><th>ふりがな</th><th class="hide-sm">アカウント</th><th class="num">初出演</th><th>入学年度</th></tr></thead>
+        <thead><tr><th>名前</th><th>ふりがな</th><th class="hide-sm">アカウント</th><th class="num">初出演</th><th>入学年度</th><th class="num">退会</th></tr></thead>
         <tbody>
         <?php foreach ($list as $m):
             $first = $m['first_year'] !== null ? (int)$m['first_year'] : null; ?>
@@ -179,6 +202,11 @@ render_header('メンバープロフィールの一括編集');
                            placeholder="<?= $first ?? '' ?>"
                            <?= $first !== null ? 'data-hint="' . $first . '"' : '' ?>
                            aria-label="<?= h($m['name']) ?>の入学年度">
+                </td>
+                <td class="num">
+                    <input type="hidden" name="retired[<?= (int)$m['member_id'] ?>]" value="0">
+                    <input type="checkbox" name="retired[<?= (int)$m['member_id'] ?>]" value="1"<?= (int)$m['retired'] === 1 ? ' checked' : '' ?>
+                           aria-label="<?= h($m['name']) ?>は退会済み">
                 </td>
             </tr>
         <?php endforeach; ?>

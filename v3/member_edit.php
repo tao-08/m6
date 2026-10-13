@@ -1,13 +1,14 @@
 <?php
 /**
  * =====================================================================
- *  member_edit.php — メンバーのプロフィール（名前・ふりがな・入部年度・学部・係・音楽アプリ）を更新する
+ *  member_edit.php — メンバーのプロフィール（名前・ふりがな・入部年度・学部・係・音楽アプリ・退会済み）を更新する
  * =====================================================================
  *  送信元は2つ。画面は持たない（処理して戻るだけ）。
  *    ・account.php の「メンバープロフィール」（自分のプロフィール。return=account が付いてくる）
  *    ・member.php の「プロフィールを編集」（他の人のページ。管理者だけ）
  *  編集できるのは「本人（アカウントと紐付いている人）」か「管理者」だけ。
  *  それ以外の人は、ふりがなも含めて何も編集できない。
+ *  「退会済み」を変えられるのは管理者だけ（本人がアカウント設定から送ってきても無視する）。
  * =====================================================================
  */
 declare(strict_types=1);
@@ -43,6 +44,9 @@ $faculty = (string)($_POST['faculty'] ?? '');    // '' = 選ばない
 // 係: チェックした今ある係（role_id の配列）＋ 新しく打った係（1つ。空欄なら作らない）
 $roleIds = array_values(array_unique(array_filter(array_map('intval', (array)($_POST['roles'] ?? [])), static fn($id) => $id > 0)));
 $newRole = trim((string)($_POST['new_role'] ?? ''));
+// 退会済み: 管理者のフォーム（member.php）だけが retired を送ってくる（hidden の 0 → チェックしたら 1 で上書き）。
+//   送られてこない（アカウント設定から本人が保存した）ときや、管理者でないときは null = 変えない
+$retired = is_admin() && isset($_POST['retired']) ? (int)($_POST['retired'] === '1') : null;
 
 $errors = [];
 if ($name === '' || mb_strlen($name) > 50) {
@@ -86,6 +90,9 @@ try {
     $pdo->prepare('UPDATE member SET name = ?, name_kana = ?, entry_year = ?, faculty = ?, music_app = ? WHERE member_id = ?')
         ->execute([$name, $kana !== '' ? $kana : null, $entry === '' ? null : (int)$entry,
             $faculty !== '' ? $faculty : null, $musicApp !== '' ? $musicApp : null, $memberId]);
+    if ($retired !== null) {
+        $pdo->prepare('UPDATE member SET retired = ? WHERE member_id = ?')->execute([$retired, $memberId]);
+    }
 
     // 係は「全部消して、チェックされたものを入れ直す」。差分を計算するより単純で間違えにくい
     //   送られてきた role_id は HTML を書き換えられているかもしれないので、role に実在するものだけ使う

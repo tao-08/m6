@@ -1248,6 +1248,7 @@ function setupGradeSlot() {
   const table = document.querySelector('[data-grade-table]');
   const empty = document.querySelector('[data-grade-empty]');
   const count = (name) => document.querySelector(`[data-grade-count="${name}"]`);
+  const hideRetired = box.querySelector('[data-hide-retired]'); // 退会した人がいないときは出ていない（null）
   let slotValue = '';
 
   const apply = (changed) => {
@@ -1262,7 +1263,9 @@ function setupGradeSlot() {
       }
       return slotValue === 'none' ? entry === '' : entry === slotValue;
     };
-    rows.forEach((tr) => tr.classList.toggle('is-grade-hidden', !match(tr.dataset.entry)));
+    const retiredOff = hideRetired && hideRetired.checked;
+    rows.forEach((tr) => tr.classList.toggle('is-grade-hidden',
+      !match(tr.dataset.entry) || (retiredOff && 'retired' in tr.dataset)));
     const shown = rows.filter((tr) => !tr.classList.contains('is-grade-hidden'));
 
     // 順位 = 自分より data-score が多い人の数 + 1（出演なしの人は —）
@@ -1285,6 +1288,9 @@ function setupGradeSlot() {
       params.delete('entry');
       params.set('who', who); // 全学年も書く（書かないと、再読み込みで最初のタブ = 現役の人は「現役」に戻ってしまう）
       if (who === 'grade') params.set('entry', slotValue);
+      // 退会した人を表示する（チェックを外した）ときだけ書く。初期値は「隠す」
+      params.delete('retired');
+      if (hideRetired && !hideRetired.checked) params.set('retired', 'show');
     };
     const url = new URL(location.href);
     setParams(url.searchParams);
@@ -1308,6 +1314,7 @@ function setupGradeSlot() {
     if (r.value === 'grade') refreshSlot();
     apply(true);
   }));
+  hideRetired?.addEventListener('change', () => apply(true));
   apply(false);
 }
 
