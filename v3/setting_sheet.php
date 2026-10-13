@@ -131,7 +131,7 @@ $bandUrl = 'band?id=' . $bandId;
 render_header('セッティングシート作成', 'lives');
 ?>
 <!-- このページだけの CSS。<link> は <body> の中に書いてもよい（HTML の仕様で許されている） -->
-<link rel="stylesheet" href="assets/setting_sheet.css?v=23">
+<link rel="stylesheet" href="assets/setting_sheet.css?v=24">
 
 <nav class="crumbs"><a href="./">ライブ</a><span>/</span><a href="<?= h($bandUrl) ?>"><?= h($band['name']) ?></a></nav>
 <h1 class="display display--sm"><?= icon('description') ?> セッティングシート作成</h1>
