@@ -1019,6 +1019,9 @@ code { background: var(--surface-2); padding: 1px 6px; border-radius: 6px; font-
 /* オムニバスでないとき: バンドのアーティストで固定。薄くして「ここは変えられない」と分かるように */
 .song-card__artist[readonly] { opacity: .45; cursor: not-allowed; }
 .song-omnibus { margin: 0 0 14px; font-weight: 700; }
+/* 曲の編集の「曲を探す」: 曲を紐付けるときに必ず使うボタンなので、うっすら赤（アクセント色）にして少し目立たせる */
+.song-search-btn { background: var(--accent-soft); color: var(--accent); border-color: color-mix(in srgb, var(--accent) 35%, transparent); font-weight: 700; }
+.song-search-btn:hover { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); }
 /* 曲の編集: 紐付けた曲のジャケット（紐付けていなければ ♪） */
 .song-thumb { position: relative; width: 40px; height: 40px; flex: none; border-radius: 6px; overflow: hidden;
   background: var(--surface-2); color: var(--muted); font-size: 16px; }
@@ -1463,6 +1466,11 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
   .brand__logo { height: 28px; }
   .hero { margin: 8px 0 20px; }
   .pc-only { display: none; } /* スマホでは出さない文字（live.php の「ライブを編集」の「を」など） */
+  /* 曲の編集の「出演まで非公開（終演30分後に公開：…）」: かっこの中は長いので2行目へ。
+     .check は横並び（flex）なので <br> では改行できない。折り返しを許して、かっこの部分を横いっぱい（100%）にする
+     左の余白はチェックボックスの幅＋すき間の分（1行目の文字の頭にそろえる） */
+  .song-private { flex-wrap: wrap; row-gap: 2px; }
+  .song-private__note { flex-basis: 100%; padding-left: 26px; }
   .hero__actions { gap: 6px; }
   .hero__actions .btn--sm:not(.btn--youtube) { padding-inline: 10px; white-space: nowrap; } /* YouTube はロゴだけで余白 2px のまま */
   .stats { width: 100%; }

@@ -29,7 +29,7 @@ require_login();
 
 $pdo = db();
 $bandId = (int)($_GET['band'] ?? $_POST['band_id'] ?? 0);
-$st = $pdo->prepare('SELECT b.*, a.name AS artist_name, d.live_id, d.label, l.name AS live_name FROM band b
+$st = $pdo->prepare('SELECT b.*, a.name AS artist_name, d.live_id, d.label, d.held_on, l.name AS live_name FROM band b
     JOIN live_day d ON d.live_day_id = b.live_day_id JOIN live l ON l.live_id = d.live_id
     LEFT JOIN artist a ON a.artist_id = b.artist_id WHERE b.band_id = ?');
 $st->execute([$bandId]);
@@ -258,6 +258,9 @@ if (is_post() && !$fromSheet) {
     $private = !empty($_POST['setlist_private']); // 保存に失敗して画面を出し直すときは、送られてきた値のまま
 }
 $omnibus = (bool)$band['is_omnibus'];
+// 「出演まで非公開」のチェックは、ライブの日が今日か、これから（または日付未定）のときだけ出す。
+//   終わったライブを今から非公開にする意味はないので。held_on は 'YYYY-MM-DD' の文字列なので >= でそのまま日付を比べられる
+$canPrivate = $band['held_on'] === null || $band['held_on'] >= date('Y-m-d');
 $artistNames = $pdo->query('SELECT name FROM artist ORDER BY name')->fetchAll(PDO::FETCH_COLUMN);
 
 // アイコン（Material Symbols のアイコン名。lib/bootstrap.php の icon() で出す）
@@ -287,7 +290,10 @@ render_header('曲を編集', 'lives');
     <!-- チェックなし: アーティスト欄はバンドのアーティストで固定（薄く表示）。チェックあり: 曲ごとに書ける（assets/app.js の setupSongs） -->
     <label class="check song-omnibus"><input type="checkbox" name="omnibus" value="1"<?= $omnibus ? ' checked' : '' ?> data-omnibus> オムニバス （複数アーティストを演奏）</label>
     <!-- 出演まで非公開: 終演30分後まで、メンバーと管理者以外には曲名を見せない（lib/repository.php の setlist_hidden_sql） -->
-    <label class="check song-omnibus"><input type="checkbox" name="setlist_private" value="1"<?= $private ? ' checked' : '' ?>> <?= icon('lock') ?> 出演まで非公開 <span class="muted small">（終演30分後に公開<?= $setlistVis['open_at'] ? '：' . h(fmt_datetime($setlistVis['open_at'])) : '' ?>）</span></label>
+    <!-- スマホでは「（終演30分後に公開…）」を2行目に（assets/app.css の .song-private__note）。過去のライブには出さない（$canPrivate） -->
+    <?php if ($canPrivate): ?>
+    <label class="check song-omnibus song-private"><input type="checkbox" name="setlist_private" value="1"<?= $private ? ' checked' : '' ?>> <?= icon('lock') ?> 出演まで非公開 <span class="muted small song-private__note">（終演30分後に公開<?= $setlistVis['open_at'] ? '：' . h(fmt_datetime($setlistVis['open_at'])) : '' ?>）</span></label>
+    <?php endif; ?>
     <datalist id="artists"><?php foreach ($artistNames as $n): ?><option value="<?= h($n) ?>"><?php endforeach; ?></datalist>
     <div class="song-list" data-song-list data-default-artist="<?= h($defaultArtist) ?>">
         <?php foreach ($cards as $k => $song):
@@ -312,7 +318,7 @@ render_header('曲を編集', 'lives');
                     <input name="<?= $base ?>[title]" value="<?= h($song['title']) ?>" maxlength="100" placeholder="<?= $isNew ? '曲名を入力して追加' : '曲名' ?>" class="song-card__title" aria-label="曲名">
                     <input name="<?= $base ?>[artist]" value="<?= h($artist) ?>" maxlength="100" data-suggest-list="artists" autocomplete="off" placeholder="アーティスト" class="song-card__artist" aria-label="アーティスト" data-song-artist<?= $omnibus ? '' : ' readonly' ?>>
                     <input type="hidden" name="<?= $base ?>[track]" value="<?= h($trackKey) ?>" data-track-key>
-                    <button type="button" class="btn btn--ghost btn--sm" data-track-search><?= icon('search') ?> 曲を探す</button>
+                    <button type="button" class="btn btn--sm song-search-btn" data-track-search><?= icon('search') ?> 曲を探す</button>
                     <input type="hidden" name="<?= $base ?>[id]" value="<?= $isNew ? '' : (int)$song['song_id'] ?>">
                     <!-- 🗑 保存済みの曲: 押すと「削除する」印（隠し項目を 1）が付いてカードが薄くなる。もう一度押すと取り消し。消えるのは保存したとき
                          追加したばかりの曲: まだ保存していないので、押すとカードごとその場で消える -->
