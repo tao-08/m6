@@ -39,7 +39,7 @@ $unknownWhere = 'entry_year IS NULL OR name_kana IS NULL';
 if (is_post()) {
     verify_csrf();
     if (($_POST['complete'] ?? '') !== '1') {
-        flash('一度に送れる量を超えたため、何も保存していません。「未登録の人だけ」で少しずつ保存してください', 'error');
+        flash('一度に送れる量を超えたため、何も保存していません。ページを再読み込み（Ctrl + F5）してから、もう一度入力して保存してください', 'error');
         redirect($self);
     }
     // entry=文字列 のように形を変えて送られてきたら何もしない
