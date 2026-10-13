@@ -615,7 +615,8 @@ td .tag--plan { margin-top: 4px; } /* アーティストの演奏履歴: 日付�
 .member-row-edit [data-remove-row] { width: 32px; height: 32px; padding: 0; border-radius: 50%; }
 .checks { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 12px 0 4px; }
 .check { display: flex; gap: 8px; align-items: center; font-size: 14px; cursor: pointer; }
-input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px; }
+input[type="checkbox"], .field input[type="radio"] { accent-color: var(--accent); width: 16px; height: 16px; padding: 0; flex: none; }
+.field .check { color: var(--text); font-weight: 400; } /* .field の中のラジオ（contact.php の匿名の選択）は、ラベルの見出しより普通の文字に */
 
 /* 取り込み: 「登録済みのライブと統合」トグルと、ライブを選ぶポップアップ */
 .live-name-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }

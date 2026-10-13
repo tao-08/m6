@@ -6,6 +6,7 @@
  *  hidden の action で「どのフォームか」を見分けている。
  *    action=profile  … 名前（メンバーと紐付いていない人だけ）
  *    action=password … パスワード変更（今のパスワードの確認つき）
+ *    action=email    … 問い合わせの通知先メールアドレス（管理者だけ。contact.php）
  *  メンバーと紐付いている人は、名前の代わりに「プロフィール」（送信先は member_edit.php）。
  *    名前の正は member.name で、アカウント名はそれに自動でそろう（sync_account_names()）。
  *  どのメンバーと紐付けるかは、管理者がユーザー管理（users.php）で選ぶ。
@@ -54,6 +55,18 @@ if (is_post()) {
                 ->execute([password_hash($new, PASSWORD_DEFAULT), $user['user_id']]);
             session_regenerate_id(true);
             flash('パスワードを変更しました');
+        }
+    }
+
+    // 一般ユーザーのメールアドレスは使い道がないので集めない。HTML を書き換えて送られても管理者以外は弾く
+    if ($action === 'email' && $account['is_admin']) {
+        $email = trim((string)($_POST['email'] ?? ''));
+        if ($email !== '' && (strlen($email) > 254 || filter_var($email, FILTER_VALIDATE_EMAIL) === false)) {
+            flash('メールアドレスの形が正しくありません', 'error');
+        } else {
+            $pdo->prepare('UPDATE user_account SET email = ? WHERE user_id = ?')
+                ->execute([$email === '' ? null : $email, $user['user_id']]);
+            flash($email === '' ? '通知先のメールアドレスを消しました' : '通知先のメールアドレスを保存しました');
         }
     }
 
@@ -118,6 +131,15 @@ render_header('アカウント設定');
         <label class="field"><span>新しいパスワード（確認）</span><input type="password" name="confirm" autocomplete="new-password" minlength="8" required></label>
         <div class="form-actions"><button class="btn btn--primary btn--sm" type="submit">変更</button></div>
     </form>
+    <?php if ($account['is_admin']): ?>
+    <form method="post" class="card form-card">
+        <h2 class="section-title section-title--card">問い合わせの通知先 <span class="tag">管理者</span></h2>
+        <p class="muted small">「問い合わせ・要望」から送られた内容が、このアドレスにメールで届きます。空にすると届かなくなります（サイトの中には残ります）。</p>
+        <?= csrf_field() ?><input type="hidden" name="action" value="email">
+        <label class="field"><span>メールアドレス</span><input type="email" name="email" value="<?= h($account['email'] ?? '') ?>" maxlength="254" autocomplete="email"></label>
+        <div class="form-actions"><button class="btn btn--primary btn--sm" type="submit">保存</button></div>
+    </form>
+    <?php endif; ?>
     <div class="card form-card">
         <h2 class="section-title section-title--card">チュートリアル</h2>
         <p class="muted small">最初にログインしたときに出た、サイトの使い方の案内です。</p>

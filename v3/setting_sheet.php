@@ -278,5 +278,5 @@ render_header('セッティングシート作成', 'lives');
     <input type="hidden" name="from_sheet" value="1">
 </form>
 
-<script src="assets/setting_sheet.js?v=31" defer></script>
+<script src="assets/setting_sheet.js?v=32" defer></script>
 <?php render_footer();

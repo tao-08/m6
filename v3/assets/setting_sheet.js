@@ -1347,10 +1347,10 @@
         // ---- キーボード: 左側の真ん中の高さ ----
         const keyX = ampW * 0.8;
         const keyY = h * 0.5;
-        const keyW = ampW * 1.4; // stretch: 1.4 の分だけ横長
+        const keyW = ampW; // アンプの四角と同じ幅（前は 1.4 倍の横長で、長すぎた）
         const hasKey = count('key') > 0;
         if (hasKey) {
-            addItem('box', { x: keyX, y: keyY, label: 'Key', stretch: 1.4 });
+            addItem('box', { x: keyX, y: keyY, label: 'Key' });
         }
 
         // ---- メンバーの丸（立ち位置）----
@@ -1359,8 +1359,9 @@
         const micY = (y) => Math.min(y + circle / 2 + 2 + micLen / 2, h - micLen / 2); // 丸の真下のマイクの中心
         const sings = (pp) => pp.mic;
         // ベースの丸: キーボードがいるときは、四角の右端に丸が少しかかるくらいまで右へ（Ba Amp から離れすぎない）。
-        //   丸の左端は四角の真ん中より右なので、四角の真下に置くキーボードのマイクとは重ならない
-        const baCircleX = hasKey ? Math.max(baX, keyX + keyW / 2 - circle * 0.3) : baX;
+        //   ただし四角の真下に置くキーボードのマイク（幅は長さの 0.22 倍）とは重ならないように、その右にすき間を空ける
+        const keyMicRight = keyX + micLen * 0.22 + 4 * stageScale();
+        const baCircleX = hasKey ? Math.max(baX, keyX + keyW / 2 - circle * 0.3, keyMicRight + circle / 2) : baX;
         const others = []; // アンプの前に置けない人（Vo だけの人など）。あとで中央に並べる
         let gtNo = 0;
         for (const pp of people) {

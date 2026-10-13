@@ -96,6 +96,7 @@ CREATE TABLE user_account (
     name          VARCHAR(50)  NOT NULL,
     password_hash VARCHAR(255) NOT NULL,               -- password_hash() の結果だけ
     is_admin      BOOLEAN      NOT NULL DEFAULT FALSE, -- NULL を許さない（「NULL=管理者じゃない？」の曖昧さを消す）
+    email         VARCHAR(254) NULL,                    -- 問い合わせの通知先。管理者だけが登録できる（contact.php）
     member_id     INT UNSIGNED NULL,
     tutorial_seen_at DATETIME  NULL,                    -- チュートリアルを閉じた日時。NULL = まだ見ていない（partials/tutorial.php）
     created_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -498,4 +499,21 @@ CREATE TABLE band_like (
         ON UPDATE CASCADE ON DELETE CASCADE,
     CONSTRAINT fk_like_user FOREIGN KEY (user_id) REFERENCES user_account (user_id)
         ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- ---------------------------------------------------------------------
+--  inquiry — 問い合わせ・要望（contact.php。migrations/025）
+--    メールが届かなかったときも消えないように DB にも残す。mailed = 1人以上に送れたか
+-- ---------------------------------------------------------------------
+CREATE TABLE inquiry (
+    inquiry_id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    user_id    INT UNSIGNED NULL,          -- NULL = 匿名（誰が送ったかを残さない）
+    category   VARCHAR(20)  NOT NULL,
+    body       TEXT         NOT NULL,
+    mailed     TINYINT(1)   NOT NULL DEFAULT 0,
+    created_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (inquiry_id),
+    KEY idx_inquiry_user (user_id, created_at),
+    CONSTRAINT fk_inquiry_user FOREIGN KEY (user_id) REFERENCES user_account (user_id)
+        ON UPDATE CASCADE ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
