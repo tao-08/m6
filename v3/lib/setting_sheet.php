@@ -215,6 +215,41 @@ const SHEET_CHOICE_LABELS = [
 ];
 
 /**
+ * 型紙を全部返す = コードの SHEET_TEMPLATES ＋ 画面から追加した DB の型紙（sheet_template）。
+ *   DB の型紙のキーは 'db_' . template_id（コードのキーとぶつからないように）。
+ *   config の JSON に label / venue_words / pdf を足して、SHEET_TEMPLATES と同じ形にそろえる
+ *   → JS（assets/setting_sheet.js）はどちらから来た型紙か気にしなくていい
+ */
+function all_sheet_templates(): array
+{
+    static $all = null; // 1回のリクエストで何度呼ばれても、DB を読むのは1回だけ
+    if ($all !== null) {
+        return $all;
+    }
+    $all = SHEET_TEMPLATES;
+    try {
+        $rows = db()->query('SELECT template_id, label, venue_words, pdf_path, config
+                               FROM sheet_template ORDER BY label')->fetchAll();
+    } catch (PDOException $e) {
+        $rows = []; // sheet_template がまだ無い（migrations/031 を流していない）DB でも止まらないように
+    }
+    foreach ($rows as $r) {
+        $config = json_decode($r['config'], true);
+        if (!is_array($config)) {
+            continue; // 壊れた JSON の型紙は出さない（1つのせいでページ全体が止まらないように）
+        }
+        $all['db_' . $r['template_id']] = [
+            'label'       => $r['label'],
+            // 改行区切りの文字列 → 配列。空の行は捨てる
+            'venue_words' => array_values(array_filter(array_map('trim', explode("
+", $r['venue_words'])), 'strlen')),
+            'pdf'         => $r['pdf_path'],
+        ] + $config; // + : 左に無いキーだけ右から足す（config に label などが紛れていても DB の列が勝つ）
+    }
+    return $all;
+}
+
+/**
  * 会場名から型紙のキーを選ぶ。見つからなければ null。
  *   str_contains($haystack, $needle): $haystack の中に $needle が含まれていれば true（PHP 8 から）
  */
@@ -223,7 +258,7 @@ function sheet_template_for_venue(?string $venueName): ?string
     if ($venueName === null || $venueName === '') {
         return null;
     }
-    foreach (SHEET_TEMPLATES as $key => $tpl) {
+    foreach (all_sheet_templates() as $key => $tpl) {
         foreach ($tpl['venue_words'] as $word) {
             if (str_contains($venueName, $word)) {
                 return $key;

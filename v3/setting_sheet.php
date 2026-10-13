@@ -29,19 +29,26 @@ require_login(); // ログインしていなければログイン画面へ
 
 $pdo = db();
 $bandId = (int)($_GET['band'] ?? 0); // (int) で数字に変換。"abc" などは 0 になるので、SQL に変な値が入らない
+// ?band= が無い = ツールタブからの「白紙」。DB から何も読まず、全部空欄で始める
+//   （?band=abc のような変な値は 0 になるが、「見つかりません」にしたいので「パラメータがあるか」で分ける）
+$blank = !isset($_GET['band']);
 
 // ---- 1. バンド・日程・会場（JOIN で1回の SQL にまとめて取る）----
 //   LEFT JOIN: 会場が未登録（venue_id が NULL）の日程でもバンドを取りこぼさない
 //   ? はプレースホルダ。値は execute() で別に渡すので SQL インジェクションにならない
-$st = $pdo->prepare('SELECT b.band_id, b.name, b.play_order, d.live_id, d.live_day_id, d.label, d.held_on,
-        l.name AS live_name, v.name AS venue_name
-    FROM band b
-    JOIN live_day d ON d.live_day_id = b.live_day_id
-    JOIN live l ON l.live_id = d.live_id
-    LEFT JOIN venue v ON v.venue_id = d.venue_id
-    WHERE b.band_id = ?');
-$st->execute([$bandId]);
-$band = $st->fetch();
+if ($blank) {
+    $band = ['name' => '', 'play_order' => '', 'held_on' => null, 'venue_name' => null];
+} else {
+    $st = $pdo->prepare('SELECT b.band_id, b.name, b.play_order, d.live_id, d.live_day_id, d.label, d.held_on,
+            l.name AS live_name, v.name AS venue_name
+        FROM band b
+        JOIN live_day d ON d.live_day_id = b.live_day_id
+        JOIN live l ON l.live_id = d.live_id
+        LEFT JOIN venue v ON v.venue_id = d.venue_id
+        WHERE b.band_id = ?');
+    $st->execute([$bandId]);
+    $band = $st->fetch();
+}
 if (!$band) {
     http_response_code(404); // 「見つからない」をブラウザや検索エンジンに正しく伝える
     render_header('見つかりません');
@@ -52,6 +59,7 @@ if (!$band) {
 
 // ---- 2. メンバーとパート（1人が Vo と Gt なら「Vo/Gt」にまとめる）----
 //   ORDER BY i.sort_order: 楽器マスタの並び順（Vo → Gt → Ba → Dr → Key …）で並べる
+//   白紙のときは $bandId = 0 なので、2・3 の SQL は0件になる（band_id 0 のバンドは無い）
 $st = $pdo->prepare('SELECT m.member_id, m.name, i.short_name
     FROM band_member bm
     JOIN member m ON m.member_id = bm.member_id
@@ -77,13 +85,13 @@ $st->execute([$bandId]);
 // fetchAll(PDO::FETCH_COLUMN): 1列目だけの配列 ['曲A', '曲B', ...] で受け取る
 $songTitles = $st->fetchAll(PDO::FETCH_COLUMN);
 // 出演まで非公開で、この人には見せられないときは、登録済みの曲を初期値に使わない（曲名がバレるので）
-if (band_setlist_visibility($pdo, $bandId)['hidden']) {
+if (!$blank && band_setlist_visibility($pdo, $bandId)['hidden']) {
     $songTitles = [];
 }
 
 // ---- 4. 型紙を選ぶ（会場名から自動。合わなければ1つ目）----
 $autoKey = sheet_template_for_venue($band['venue_name']);
-$templateKey = $autoKey ?? array_key_first(SHEET_TEMPLATES); // ?? : 左が null なら右を使う（null 合体演算子）
+$templateKey = $autoKey ?? array_key_first(all_sheet_templates()); // ?? : 左が null なら右を使う（null 合体演算子）
 
 // ---- 5. JS に渡すデータ ----
 //   「初期値（DB の内容）」と「型紙」を1つの JSON にまとめて <script type="application/json"> に入れる。
@@ -99,8 +107,9 @@ $initial = [
 ];
 $sheetData = [
     'bandId'      => $bandId,
+    'blank'       => $blank, // true = バンドなしの白紙（DB への登録を聞かない・「DB のメンバーから…」ボタンを出さない）
     'templateKey' => $templateKey,
-    'templates'   => SHEET_TEMPLATES,
+    'templates'   => all_sheet_templates(), // コードの型紙＋DB の型紙
     'choiceLabels'=> SHEET_CHOICE_LABELS,
     'initial'     => $initial,
     // プレビュー用の pdf.js（Mozilla。Apache License 2.0）
@@ -128,12 +137,16 @@ $sheetData = [
 $json = json_encode($sheetData, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR);
 
 $bandUrl = 'band?id=' . $bandId;
-render_header('セッティングシート作成', 'lives');
+render_header('セッティングシート作成', $blank ? 'tools' : 'lives');
 ?>
 <!-- このページだけの CSS。<link> は <body> の中に書いてもよい（HTML の仕様で許されている） -->
 <link rel="stylesheet" href="assets/setting_sheet.css?v=24">
 
+<?php if ($blank): ?>
+<nav class="crumbs"><a href="tools">ツール</a></nav>
+<?php else: ?>
 <nav class="crumbs"><a href="./">ライブ</a><span>/</span><a href="<?= h($bandUrl) ?>"><?= h($band['name']) ?></a></nav>
+<?php endif; ?>
 <h1 class="display display--sm"><?= icon('description') ?> セッティングシート作成</h1>
 
 <!-- JS へ渡すデータ。type="application/json" はブラウザに「実行しないで」と伝える（ただのデータ置き場になる） -->
@@ -144,7 +157,7 @@ render_header('セッティングシート作成', 'lives');
     <section class="card sheet-card">
         <label class="field">会場のシート
             <select data-template>
-                <?php foreach (SHEET_TEMPLATES as $key => $tpl): ?>
+                <?php foreach (all_sheet_templates() as $key => $tpl): ?>
                     <option value="<?= h($key) ?>"<?= $key === $templateKey ? ' selected' : '' ?>><?= h($tpl['label']) ?></option>
                 <?php endforeach; ?>
             </select>
@@ -153,7 +166,7 @@ render_header('セッティングシート作成', 'lives');
             <p class="muted small">会場「<?= h($band['venue_name']) ?>」のシートは未登録なので、仮で上のシートを選んでいます。</p>
         <?php endif; ?>
         <p class="muted small sheet-saved" data-saved-note hidden>
-            前回の入力を復元しました。<button type="button" class="linkbtn" data-reset>DB の内容に戻す</button>
+            前回の入力を復元しました。<button type="button" class="linkbtn" data-reset><?= $blank ? '白紙に戻す' : 'DB の内容に戻す' ?></button>
         </p>
     </section>
 
@@ -260,6 +273,7 @@ render_header('セッティングシート作成', 'lives');
     <canvas aria-label="完成した PDF のプレビュー"></canvas>
 </div>
 
+<?php if (!$blank): // 白紙のときは登録先のバンドが無いので、登録の確認ごと出さない ?>
 <!-- PDF を作ったあとに「DB に登録しますか？」と聞く（JS が開く）。
      「はい」で下の隠しフォームに曲名を入れて songs_edit.php へ POST する（曲の紐付け・演奏者の確認はそちらの画面で） -->
 <dialog class="modal" data-register-dialog aria-labelledby="register-title">
@@ -279,6 +293,7 @@ render_header('セッティングシート作成', 'lives');
     <input type="hidden" name="band_id" value="<?= $bandId ?>">
     <input type="hidden" name="from_sheet" value="1">
 </form>
+<?php endif; ?>
 
-<script src="assets/setting_sheet.js?v=41" defer></script>
+<script src="assets/setting_sheet.js?v=43" defer></script>
 <?php render_footer();

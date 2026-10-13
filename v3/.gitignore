@@ -1,3 +1,7 @@
 config.php
 storage/sessions/
 .claude/worktrees/
+
+# 型紙の管理でアップロードした PDF（本番のデータ。置き場を守る .htaccess だけ管理する）
+assets/sheets/uploads/*
+!assets/sheets/uploads/.htaccess

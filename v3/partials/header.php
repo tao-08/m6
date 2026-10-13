@@ -15,6 +15,7 @@ $nav = [
     'members' => ['members', 'メンバー'],
     'artists' => ['artists', 'アーティスト'],
     'stats'   => ['stats', '集計'],
+    'tools'   => ['tools', 'ツール'], // バンドに紐づかない道具（白紙のセッティングシートなど）
     // 「新規追加」（import）はメニューに出さない。入力するのは一部の人だけなので、入口はライブ一覧の「＋ 新規追加」ボタン
 ];
 ?>
@@ -90,7 +91,7 @@ $nav = [
          display=block: 読み込み中にアイコン名の英単語（edit など）が一瞬見えるのを防ぐ -->
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400..600,0..1,0&display=block" rel="stylesheet">
     <!-- ?v=2 はキャッシュ対策。CSS を変えたら数字を上げると、ブラウザが古い CSS を使い続けない -->
-    <link rel="stylesheet" href="assets/app.css?v=233">
+    <link rel="stylesheet" href="assets/app.css?v=237">
     <script src="assets/app.js?v=127" defer></script>
 </head>
 <body>
@@ -149,6 +150,7 @@ $nav = [
                         <a href="members_merge">メンバーの統合</a>
                         <a href="members_entry">メンバープロフィールの一括編集</a>
                         <a href="masters">会場・日程名・楽器・係・アーティストの管理</a>
+                        <a href="sheet_templates">セッティングシートの型紙</a>
                     </div>
                 <?php endif; ?>
             </div>

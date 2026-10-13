@@ -239,16 +239,32 @@ render_header($member['name'], 'members');
     <div>
         <p class="eyebrow"><?= $isMe ? 'My Page' : 'Member' ?></p>
         <h1 class="display"><?= h($member['name']) ?></h1>
-        <p class="muted small">
-            <?= h($member['name_kana'] ?? '') ?>
-            <?php if ((int)$member['entry_year'] > 0): ?> · <a class="meta-link" href="members?who=grade&amp;entry=<?= (int)$member['entry_year'] ?>"><?= (int)$member['entry_year'] ?>年入学</a><?php endif; ?>
-            <?php if ((int)$member['retired'] === 1): ?> · 退会済み<?php endif; ?>
-            <?php if ($member['faculty'] !== null): ?> · <a class="meta-link" href="search?<?= h(http_build_query(['faculty' => $member['faculty']])) ?>"><?= h($member['faculty']) ?></a><?php endif; ?>
-            <?php $roles = member_roles($pdo, $memberId); // [role_id => 名前] ?>
-            <?php if ($roles): ?> ·
-                <?php $i = 0; foreach ($roles as $rid => $rname): ?><?= $i++ ? '・' : '' ?><a class="meta-link" href="search?role=<?= (int)$rid ?>"><?= h($rname) ?></a><?php endforeach; ?>
-            <?php endif; ?>
-        </p>
+        <?php
+        // ふりがな・入学年度・退会・学部・役職のうち、あるものだけを「 · 」でつなぐ
+        // （先頭に区切りを付ける書き方だと、ふりがなが無い人は「 · 2023年入学」と頭に · が残る）
+        $meta = [];
+        if (($member['name_kana'] ?? '') !== '') {
+            $meta[] = h($member['name_kana']);
+        }
+        if ((int)$member['entry_year'] > 0) {
+            $meta[] = '<a class="meta-link" href="members?who=grade&amp;entry=' . (int)$member['entry_year'] . '">' . (int)$member['entry_year'] . '年入学</a>';
+        }
+        if ((int)$member['retired'] === 1) {
+            $meta[] = '退会済み';
+        }
+        if ($member['faculty'] !== null) {
+            $meta[] = '<a class="meta-link" href="search?' . h(http_build_query(['faculty' => $member['faculty']])) . '">' . h($member['faculty']) . '</a>';
+        }
+        $roles = member_roles($pdo, $memberId); // [role_id => 名前]
+        if ($roles) {
+            $links = [];
+            foreach ($roles as $rid => $rname) {
+                $links[] = '<a class="meta-link" href="search?role=' . (int)$rid . '">' . h($rname) . '</a>';
+            }
+            $meta[] = implode('・', $links);
+        }
+        ?>
+        <?php if ($meta): ?><p class="muted small"><?= implode(' · ', $meta) ?></p><?php endif; ?>
         <?php if ($parts): ?><?= part_marks($parts, true) ?><?php endif; ?>
     </div>
     <dl class="stats">

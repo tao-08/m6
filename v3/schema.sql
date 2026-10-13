@@ -585,3 +585,20 @@ CREATE TABLE change_unit (
     CONSTRAINT fk_unit_op FOREIGN KEY (op_id) REFERENCES change_op (op_id)
         ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- ---------------------------------------------------------------------
+--  sheet_template — 画面から追加したセッティングシートの型紙（migrations/031）
+-- ---------------------------------------------------------------------
+CREATE TABLE sheet_template (
+    template_id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    label       VARCHAR(100) NOT NULL,             -- プルダウンに出す名前
+    venue_words VARCHAR(255) NOT NULL DEFAULT '',  -- 会場名の自動選択に使う言葉。改行区切り
+    pdf_path    VARCHAR(255) NOT NULL,             -- assets/sheets/uploads/xxx.pdf
+    config      JSON         NOT NULL,
+    created_by  INT UNSIGNED NULL,                 -- アカウントを消しても型紙は残す（NULL になる）
+    created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (template_id),
+    CONSTRAINT fk_sheet_template_user FOREIGN KEY (created_by) REFERENCES user_account (user_id)
+        ON UPDATE CASCADE ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;

@@ -1,0 +1,5 @@
+# 型紙の管理（sheet_templates.php）でアップロードした PDF と、セット図の背景の PNG の置き場。
+# PDF と PNG 以外は開かせない（万一 PHP などのファイルが置かれても、実行もダウンロードもさせない）
+<FilesMatch "(?<!\.pdf|\.png)$">
+    Require all denied
+</FilesMatch>

@@ -37,7 +37,8 @@
     const $ = (sel) => root.querySelector(sel);
     const $$ = (sel) => Array.from(root.querySelectorAll(sel));
 
-    const STORE_KEY = 'settingSheet:band:' + DATA.bandId; // localStorage の保存キー（バンドごと）
+    // localStorage の保存キー（バンドごと。白紙は1つだけ）
+    const STORE_KEY = DATA.blank ? 'settingSheet:blank' : 'settingSheet:band:' + DATA.bandId;
     // プレビューを開いているか（下の「6.5 プレビュー」で使う）。save() から先に参照されるので、ここで宣言しておく
     //   let で作った変数は、宣言の行より前で使うとエラーになる（TDZ: 一時的なデッドゾーン）
     let previewOpen = false;
@@ -262,7 +263,9 @@
             renderTexts();
             save();
         });
-        box.append(redo);
+        if (!DATA.blank) { // 白紙のときは DB のメンバーが居ないので出さない
+            box.append(redo);
+        }
     }
 
     /** メンバー表の行を作る（型紙の行数ぶん） */
@@ -864,7 +867,8 @@
         const { w, h } = stageSize();
         // aspect-ratio: 横:縦 の比率を CSS に任せる（横幅が変わっても縦が自動で合う）
         stage.style.aspectRatio = `${w} / ${h}`;
-        stage.style.backgroundImage = `url("${tpl().stage_image}")`;
+        // 背景の画像が無い型紙（エディタで PDF を読めずに保存した等）は、白いまま
+        stage.style.backgroundImage = tpl().stage_image ? `url("${tpl().stage_image}")` : "none";
         stage.textContent = '';
         for (const it of state.items) {
             const el = document.createElement('div');
@@ -1966,6 +1970,9 @@
      * <dialog> の中の <form method="dialog"> は、押したボタンの value を dialog.returnValue に入れて閉じる（HTML の標準機能）
      */
     function askRegister() {
+        if (DATA.blank) {
+            return; // 白紙（バンドなし）は登録先が無い
+        }
         const titles = state.songs.filter((x) => !x.mc && x.title.trim() !== '').map((x) => x.title.trim());
         if (titles.length === 0) {
             return;
@@ -2030,7 +2037,7 @@
 
     // 「DB の内容に戻す」
     $('[data-reset]').addEventListener('click', () => {
-        if (!confirm('入力した内容とセット図を消して、DB の内容に戻しますか？')) {
+        if (!confirm(DATA.blank ? '入力した内容とセット図を消して、白紙に戻しますか？' : '入力した内容とセット図を消して、DB の内容に戻しますか？')) {
             return;
         }
         try { localStorage.removeItem(STORE_KEY); } catch (e) { /* 何もしない */ }
