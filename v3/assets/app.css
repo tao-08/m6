@@ -270,6 +270,8 @@ form.row-form input, form.row-form select { flex: 1; min-width: 10em; }
 /* .flash--info の背景（--surface-2）は薄いので、浮かせたときに背景と混ざらないよう枠線を付ける */
 .toast.flash--info { border-color: var(--border); }
 @keyframes toast-in { from { opacity: 0; transform: translateY(-8px); } }
+/* 初回のチュートリアルが自動で開いている間はお知らせを隠す（閉じると data-tutorial-auto が外れて出てくる。JS: setupToasts） */
+body:has([data-tutorial-auto]) .toasts { display: none; }
 @media (prefers-reduced-motion: reduce) { .toast { animation: none; transition: none; } }
 
 .toolbar { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; align-items: center; }

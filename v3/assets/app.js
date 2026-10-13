@@ -277,7 +277,16 @@ function showToast(toast) {
 }
 
 function setupToasts() {
-  document.querySelectorAll('[data-toasts] .toast').forEach(showToast);
+  const toasts = document.querySelectorAll('[data-toasts] .toast');
+  // 初回のチュートリアルが自動で開くとき（新規登録の直後など）は、お知らせ（「ようこそ！」など）をチュートリアルを閉じてから出す。
+  //   チュートリアルの裏で 4 秒たって消えてしまわないように、消えるまでのタイマーも閉じてから始める。
+  //   閉じるまで見えないようにするのは CSS（body:has([data-tutorial-auto]) .toasts）
+  const tutorial = document.querySelector('[data-tutorial-dialog][data-tutorial-auto]');
+  if (tutorial) {
+    tutorial.addEventListener('close', () => toasts.forEach(showToast), { once: true });
+    return;
+  }
+  toasts.forEach(showToast);
 }
 
 /* ---------------------------------------------------------------------
