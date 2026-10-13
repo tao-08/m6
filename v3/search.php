@@ -265,7 +265,7 @@ render_header($filterLabel ?? ($q !== '' ? "「{$q}」の検索結果" : '検索
                     <?php foreach ($bands as $i => $b): $bandId = (int)$b['band_id']; ?>
                         <tr id="band-n<?= $i + 1 ?>">
                             <td class="strong"><a href="band?id=<?= $bandId ?>"><?= h($b['name']) ?></a>
-                                <?php if ($b['note']): // メモで当たったときに理由が分かるように（live.php と同じ見た目） ?><div><span class="keynote"><?= icon('piano') ?> <?= h($b['note']) ?></span></div><?php endif; ?></td>
+                                <?php if ($b['note']): // メモで当たったときに理由が分かるように（live.php と同じ見た目） ?><div><span class="keynote"><?= icon('sticky_note_2') ?> <?= h($b['note']) ?></span></div><?php endif; ?></td>
                             <td class="nowrap"><a href="live?id=<?= (int)$b['live_id'] ?>#day-<?= (int)$b['live_day_id'] ?>"><?= h(fmt_year($b['year'])) ?> <?= h($b['live_name']) ?></a>
                                 <div class="muted small"><?= h($b['label']) ?> <?= h(fmt_date($b['date'])) ?></div></td>
                             <td>

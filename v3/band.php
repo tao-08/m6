@@ -278,7 +278,7 @@ render_header($band['name'], 'lives');
     <?php else: ?>
         <p class="muted small">メンバー未登録</p>
     <?php endif; ?>
-    <?php if ($band['note']): ?><p class="keynote"><?= icon('piano') ?> <?= h($band['note']) ?></p><?php endif; ?>
+    <?php if ($band['note']): ?><p class="keynote"><?= icon('sticky_note_2') ?> <?= h($band['note']) ?></p><?php endif; ?>
 </section>
 
 <section class="card band-section">

@@ -211,7 +211,7 @@ render_header($live['name'], 'lives');
                         <?php if ($memberIds): ?><span><?= count(array_unique($memberIds)) ?>名</span><?php endif; ?>
                         <?php if ($b['song_count'] !== null): // NULL = 曲数不明なら出さない ?><span><?= (int)$b['song_count'] ?>曲</span><?php endif; ?>
                         <?= setlist_badge((int)$b['setlist_count'], (int)$b['song_count']) ?>
-                        <?php if ($b['note']): ?><span class="keynote"><?= icon('piano') ?> <?= h($b['note']) ?></span><?php endif; ?>
+                        <?php if ($b['note']): ?><span class="keynote"><?= icon('sticky_note_2') ?> <?= h($b['note']) ?></span><?php endif; ?>
                     </p>
                 </div>
             </li>
