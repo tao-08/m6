@@ -91,6 +91,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupVoSum();
   setupYoutubeLeftover();
   setupBackButton();
+  setupTutorial();
 });
 
 /* ---------------------------------------------------------------------
@@ -3881,4 +3882,72 @@ function setupLikes() {
       pending.delete(id);
     }
   });
+}
+
+/* ---------------------------------------------------------------------
+ * チュートリアル（[data-tutorial-dialog]。ログイン中は全ページに置いてある: partials/tutorial.php）
+ *   まだ見ていない人（data-tutorial-auto）には自動で開く。右上メニューなどの [data-tutorial-open] を押しても開く。
+ *   次へ / 戻る / 下の点 / ← → キー / 左右スワイプでページを送る。最後のページの「次へ」は「はじめる」になって閉じる。
+ *   自動で開いた回を閉じたら（スキップ・Esc も）api_tutorial_seen に「見た」と送る → 次からは自動では出ない
+ * ------------------------------------------------------------------- */
+function setupTutorial() {
+  const dialog = document.querySelector('[data-tutorial-dialog]');
+  if (!dialog) return;
+  const slides = [...dialog.querySelectorAll('[data-tutorial-slide]')];
+  const dots = [...dialog.querySelectorAll('[data-tutorial-dot]')];
+  const prev = dialog.querySelector('[data-tutorial-prev]');
+  const next = dialog.querySelector('[data-tutorial-next]');
+  const last = slides.length - 1;
+  let page = 0;
+
+  const show = (i) => {
+    page = Math.max(0, Math.min(last, i));
+    slides.forEach((s, j) => { s.hidden = j !== page; });
+    dots.forEach((d, j) => d.toggleAttribute('aria-current', j === page));
+    dialog.setAttribute('aria-labelledby', `tutorial-title-${page}`);
+    prev.hidden = page === 0;
+    // 中身を textContent で入れ替えるとアイコン（<span class="icon">）が消えるので、文字の部分だけ変える
+    next.firstChild.textContent = page === last ? 'はじめる' : '次へ';
+    next.querySelector('.icon')?.toggleAttribute('hidden', page === last);
+  };
+
+  prev.addEventListener('click', () => show(page - 1));
+  next.addEventListener('click', () => (page === last ? dialog.close() : show(page + 1)));
+  dialog.querySelector('[data-tutorial-skip]').addEventListener('click', () => dialog.close());
+  dots.forEach((d) => d.addEventListener('click', () => show(Number(d.dataset.tutorialDot))));
+  dialog.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowRight') show(page + 1);
+    if (e.key === 'ArrowLeft') show(page - 1);
+  });
+  // スマホ: 横に 50px 以上なぞったらページ送り（縦のスクロールと区別するため、横の動きが縦より大きいときだけ）
+  let startX = 0, startY = 0;
+  dialog.addEventListener('touchstart', (e) => { startX = e.touches[0].clientX; startY = e.touches[0].clientY; }, { passive: true });
+  dialog.addEventListener('touchend', (e) => {
+    const dx = e.changedTouches[0].clientX - startX;
+    const dy = e.changedTouches[0].clientY - startY;
+    if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)) show(page + (dx < 0 ? 1 : -1));
+  });
+  // 外側（背景）をクリックしても閉じる。<dialog> 自体がクリックされた = 中身の外側
+  dialog.addEventListener('click', (e) => { if (e.target === dialog) dialog.close(); });
+
+  dialog.addEventListener('close', () => {
+    if (!dialog.hasAttribute('data-tutorial-auto')) return; // 見たことがある人がメニューから開いた回は、送らなくていい
+    dialog.removeAttribute('data-tutorial-auto');
+    const token = document.querySelector('meta[name="csrf-token"]')?.content || '';
+    // keepalive: 閉じてすぐ別のページへ移っても送信が途中で切られない
+    fetch('api_tutorial_seen', { method: 'POST', headers: { 'X-CSRF-Token': token }, keepalive: true }).catch(() => {});
+  });
+
+  const open = () => {
+    // 画像は loading="lazy"。隠れているページの画像は読み込まれないので、開いた時点で全部読み込ませる（ページを送ったときに白く光らない）
+    dialog.querySelectorAll('img[loading="lazy"]').forEach((img) => { img.loading = 'eager'; });
+    show(0);
+    if (!dialog.open) dialog.showModal();
+    next.focus();
+  };
+  document.querySelectorAll('[data-tutorial-open]').forEach((btn) => btn.addEventListener('click', () => {
+    btn.closest('details')?.removeAttribute('open'); // 右上メニューは閉じておく
+    open();
+  }));
+  if (dialog.hasAttribute('data-tutorial-auto')) open();
 }

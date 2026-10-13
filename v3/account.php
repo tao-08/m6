@@ -118,5 +118,10 @@ render_header('アカウント設定');
         <label class="field"><span>新しいパスワード（確認）</span><input type="password" name="confirm" autocomplete="new-password" minlength="8" required></label>
         <div class="form-actions"><button class="btn btn--primary btn--sm" type="submit">変更</button></div>
     </form>
+    <div class="card form-card">
+        <h2 class="section-title section-title--card">チュートリアル</h2>
+        <p class="muted small">最初にログインしたときに出た、サイトの使い方の案内です。</p>
+        <div class="form-actions"><button type="button" class="btn btn--sm" data-tutorial-open>もう一度見る</button></div>
+    </div>
 </div>
 <?php render_footer();

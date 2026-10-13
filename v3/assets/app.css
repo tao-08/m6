@@ -876,6 +876,27 @@ body.is-row-dragging, body.is-row-dragging * { cursor: grabbing !important; user
 .modal .form-actions { flex-wrap: wrap; }
 @media (max-width: 480px) { .modal .form-grid { grid-template-columns: 1fr; } }
 @media (prefers-reduced-motion: reduce) { .modal, .modal::backdrop { transition: none; } }
+/* 初回ログインのチュートリアル（partials/tutorial.php、JS: setupTutorial）。上に画像、下に説明とページ送り */
+.tutorial { width: min(640px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow: hidden auto; }
+.tutorial__img { aspect-ratio: 16 / 10; background: var(--surface-2); border-bottom: 1px solid var(--border); overflow: hidden; }
+.tutorial__img img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: top center; }
+.tutorial__slide { animation: tutorial-in .25s ease; }
+@keyframes tutorial-in { from { opacity: 0; transform: translateX(12px); } }
+.tutorial__text { padding: 18px 22px 4px; }
+.tutorial__text p { margin: 0; line-height: 1.7; }
+.tutorial__step { font-size: 12px; font-weight: 700; color: var(--accent); letter-spacing: .06em; margin-bottom: 4px !important; }
+/* 左右を同じ幅（1fr）にして点を真ん中に固定する。flex の space-between だと、1枚目は「戻る」が無いぶん右が狭くなって点がずれる */
+.tutorial__nav { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 10px; padding: 14px 22px 20px; }
+.tutorial__nav > [data-tutorial-skip] { justify-self: start; }
+.tutorial__btns { display: flex; gap: 8px; justify-self: end; }
+.tutorial__dots { display: flex; gap: 6px; }
+.tutorial__dot { width: 8px; height: 8px; padding: 0; border: 0; border-radius: 99px; background: var(--border); cursor: pointer; transition: width .2s ease, background .2s ease; }
+.tutorial__dot[aria-current] { width: 22px; background: var(--accent); }
+@media (max-width: 480px) {
+  .tutorial__nav { grid-template-columns: auto 1fr; }
+  .tutorial__dots { grid-column: 1 / -1; grid-row: 1; justify-content: center; }
+}
+@media (prefers-reduced-motion: reduce) { .tutorial__slide { animation: none; } .tutorial__dot { transition: none; } }
 /* 横にはみ出す表はマウスでつかんで左右に動かせる（JS: setupDragScroll） */
 /* PC でマウスをつかんで左右に動かせる表（JS: setupDragScroll）。はみ出しているときだけ is-draggable が付く */
 .table-scroll.is-draggable, .table-card.is-draggable { cursor: grab; }
