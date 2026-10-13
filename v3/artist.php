@@ -114,6 +114,19 @@ if (is_admin()) {
                 flash('アーティストを統合しました');
                 redirect('artist?id=' . $to);
             }
+        } elseif ($action === 'delete') {
+            // バンドにも曲にも1つも使われていないアーティストだけ消せる（使われていたら統合を使う）
+            //   外部キーは ON DELETE SET NULL なので DB は止めてくれない → ここで必ず数える
+            //   別称（artist_alias）は ON DELETE CASCADE で一緒に消える
+            $st = $pdo->prepare('SELECT (SELECT COUNT(*) FROM band WHERE artist_id = ?) + (SELECT COUNT(*) FROM song WHERE artist_id = ?)');
+            $st->execute([$artistId, $artistId]);
+            if ((int)$st->fetchColumn() > 0) {
+                flash('このアーティストはバンドか曲で使われているので削除できません（表記ゆれなら統合してください）', 'error');
+            } else {
+                $pdo->prepare('DELETE FROM artist WHERE artist_id = ?')->execute([$artistId]);
+                flash("「{$artist['name']}」を削除しました");
+                redirect('artists');
+            }
         } elseif ($action === 'alias_add') {
             // 別称: マイアルバムのアーティスト名が別の表記（オアシス など）でも、このアーティストとして拾うため
             $alias = trim((string)($_POST['alias'] ?? ''));
@@ -265,6 +278,13 @@ render_header($artist['name'], 'artists');
             <input name="to_name" required data-suggest-list="artist-names" autocomplete="off" placeholder="アーティスト名を入力して候補から選ぶ"></label>
         <div class="form-actions field--wide"><button class="btn btn--sm btn--danger" type="submit">統合する</button></div>
     </form>
+    <!-- 削除: バンドの記録が1つもないときだけ出す（artist.php の delete でも、バンド・曲で使われていたら止める） -->
+    <?php if (!$bands): ?>
+        <form method="post" class="form-actions edit-box__form" data-confirm="「<?= h($artist['name']) ?>」を削除します（別称も消えます）。元に戻せません。よろしいですか？">
+            <?= csrf_field() ?><input type="hidden" name="action" value="delete">
+            <button class="btn btn--ghost btn--danger btn--sm" type="submit"><?= icon('delete') ?> このアーティストを削除</button>
+        </form>
+    <?php endif; ?>
     <!-- 名前・統合先の候補（自分以外のアーティスト） -->
     <?= render_suggest_datalist('artist-names', array_column(array_filter($others, static fn($o) => (int)$o['artist_id'] !== $artistId), 'name')) ?>
 </details>
