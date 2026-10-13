@@ -102,11 +102,11 @@ render_header('ライブ一覧', 'lives');
             <?php foreach ($flagged as $f): ?>
                 <li data-check-item><div class="check-list__text"><a href="band?id=<?= (int)$f['band_id'] ?>"><?= h($f['name']) ?></a>
                     <span class="muted small"><?= (int)$f['fiscal_year'] ?>年度 <?= h($f['live_name']) ?> <?= h($f['label']) ?></span>
-                    <?php if ($f['no_members']): // メンバーがいない = まず登録してほしい。理由（楽器など）は確かめようがないので出さない ?>
+                    <?php // 理由（楽器など）はここでは出さない。中身はバンドページで見てもらう ?>
+                    <?php if ($f['no_members']): ?>
                         <span class="chip chip--warn chip--xs"><?= icon('person_off') ?>メンバー未登録</span>
-                    <?php else: ?>
-                        <span class="small">— <?= h(implode(' / ', check_reason_labels((int)$f['needs_check']))) ?></span>
-                        <?php if ($f['about_me']): ?><span class="chip chip--me chip--xs">あなたについて</span><?php endif; ?>
+                    <?php elseif ($f['about_me']): ?>
+                        <span class="chip chip--me chip--xs">あなたについて</span>
                     <?php endif; ?></div>
                     <button type="button" class="check-list__close" data-check-dismiss="<?= (int)$f['band_id'] ?>" aria-label="「<?= h($f['name']) ?>」のお知らせを消す" title="消す"><?= icon('close') ?></button></li>
             <?php endforeach; ?>
