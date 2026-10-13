@@ -272,8 +272,8 @@ function render_break_row(string $n, string $dayId, array $k, int $cols, bool $f
             <input type="hidden" name="<?= h($p) ?>[pos]" value="<?= $pos ?>" data-pos>
             <input type="hidden" name="<?= h($p) ?>[day]" value="<?= h($dayId) ?>"></td>
         <td class="muted" title="休憩など（出演順には数えない）"><?= icon('coffee') ?></td>
-        <td data-time><input type="time" name="<?= h($p) ?>[start]" value="<?= h(fmt_time($k['start_time'])) ?>" aria-label="開始" data-time-field="start"></td>
-        <td data-time><input type="time" name="<?= h($p) ?>[end]" value="<?= h(fmt_time($k['end_time'])) ?>" aria-label="終了" data-time-field="end"></td>
+        <td data-time><input type="time" step="300" name="<?= h($p) ?>[start]" value="<?= h(fmt_time($k['start_time'])) ?>" aria-label="開始" data-time-field="start"></td>
+        <td data-time><input type="time" step="300" name="<?= h($p) ?>[end]" value="<?= h(fmt_time($k['end_time'])) ?>" aria-label="終了" data-time-field="end"></td>
         <td><input name="<?= h($p) ?>[name]" value="<?= h($k['name']) ?>" maxlength="50" required aria-label="休憩の名前" placeholder="休憩 / 転換 など"></td>
         <td colspan="<?= $cols ?>" data-break-fill>
             <button type="button" class="btn btn--ghost btn--sm" data-remove-break><?= icon('close') ?> この行を消す</button>
@@ -361,8 +361,8 @@ render_header('タイムテーブルを編集', 'lives'); ?>
                                 <input type="hidden" name="<?= $p ?>[pos]" value="<?= $pos ?>" data-pos></td>
                             <td class="mono nowrap"><span data-order-text><?= (int)$b['play_order'] ?></span>
                                 <input type="hidden" name="<?= $p ?>[order]" value="<?= (int)$b['play_order'] ?>" data-order></td>
-                            <td data-time><input type="time" name="<?= $p ?>[start]" value="<?= h(fmt_time($b['start_time'])) ?>" aria-label="開始" data-time-field="start"></td>
-                            <td data-time><input type="time" name="<?= $p ?>[end]" value="<?= h(fmt_time($b['end_time'])) ?>" aria-label="終了" data-time-field="end"></td>
+                            <td data-time><input type="time" step="300" name="<?= $p ?>[start]" value="<?= h(fmt_time($b['start_time'])) ?>" aria-label="開始" data-time-field="start"></td>
+                            <td data-time><input type="time" step="300" name="<?= $p ?>[end]" value="<?= h(fmt_time($b['end_time'])) ?>" aria-label="終了" data-time-field="end"></td>
                             <!-- バンド名の横に 🚩（楽器の確認待ち。取り込み画面の名簿と同じ部品）。列を増やすと並び替え・列の追加の JS に響くので同じセルに置く -->
                             <td><div class="tt-band-name"><input name="<?= $p ?>[name]" value="<?= h($b['name']) ?>" maxlength="100" required data-band-name aria-label="バンド名">
                                 <label class="flag-toggle" title="楽器があってるか、バンドのメンバーに確認してもらう"><input type="checkbox" name="<?= $p ?>[flag]" value="1"<?= $b['needs_check'] ? ' checked' : '' ?> aria-label="楽器の確認をお願いする"><?= icon('flag') ?></label></div></td>
