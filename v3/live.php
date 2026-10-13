@@ -114,6 +114,9 @@ render_header($live['name'], 'lives');
         <a class="btn btn--sm" href="live_edit?id=<?= (int)$liveId ?>"><?= icon('edit') ?> <span>ライブ<span class="pc-only">を</span>編集</span></a>
         <?php // スマホでは「を」を消して「ライブ編集」「タイムテーブル編集」にし、YouTube と3つを1段に収める ?>
         <a class="btn btn--sm" href="timetable_edit?id=<?= (int)$liveId ?>"><?= icon('schedule') ?> <span>タイムテーブル<span class="pc-only">を</span>編集</span></a>
+        <?php if (is_admin()): // このライブの変更履歴（元に戻す）。並びを1段に収めるためアイコンだけ ?>
+            <a class="btn btn--sm" href="history?live=<?= (int)$liveId ?>" aria-label="このライブの変更履歴" title="このライブの変更履歴"><?= icon('history') ?></a>
+        <?php endif; ?>
     </div>
 </section>
 

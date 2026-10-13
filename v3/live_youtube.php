@@ -17,6 +17,7 @@ declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/repository.php';
 require_once __DIR__ . '/lib/youtube.php';
+require_once __DIR__ . '/lib/history.php'; // 変更履歴（元に戻すための「変更前の状態」を残す）
 require_login();
 
 $pdo = db();
@@ -47,6 +48,7 @@ if (is_post()) {
     $picks = is_array($_POST['v'] ?? null) ? $_POST['v'] : [];
     $update = $pdo->prepare('UPDATE band SET youtube_url = ? WHERE band_id = ?');
     $changed = 0;
+    $op = null; // 変更履歴。実際に変わるバンドがあったときだけ作る
     $pdo->beginTransaction();
     try {
         // 回すのは DB から取った「このライブのバンド」だけ（POST の band_id を書き換えて他のライブのバンドを変えさせない）
@@ -63,6 +65,8 @@ if (is_post()) {
                 continue; // 改造されたリクエスト。黙って無視する
             }
             if ($url !== $b['youtube_url']) {
+                $op ??= change_begin($pdo, 'youtube', 'バンドの YouTube のリンク', $liveId);
+                change_capture($pdo, $op, 'band', $id); // 変更前のリンクを履歴に残す
                 $update->execute([$url, $id]);
                 $changed++;
             }

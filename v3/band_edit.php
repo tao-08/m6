@@ -16,6 +16,7 @@ declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/repository.php';
 require_once __DIR__ . '/lib/youtube.php'; // プレイリストの動画から選ぶプルダウン
+require_once __DIR__ . '/lib/history.php'; // 変更履歴（元に戻すための「変更前の状態」を残す）
 require_login();
 
 $pdo = db();
@@ -91,6 +92,8 @@ if (is_post()) {
             exit('削除は管理者のみできます');
         }
         $pdo->beginTransaction();
+        $op = change_begin($pdo, 'band_delete', '「' . $band['name'] . '」を削除', (int)$band['live_id']);
+        change_capture($pdo, $op, 'band', $bandId); // 消す前の状態（メンバー・セトリごと）を履歴に残す
         delete_band($pdo, $bandId);   // band_member は ON DELETE CASCADE で一緒に消える
         renumber_bands($pdo, $dayId); // 抜けた番号を詰める
         $pdo->commit();
@@ -159,12 +162,16 @@ if (is_post()) {
 
         $pdo->beginTransaction();
         try {
+            // 変更履歴: 編集なら変更前の状態を残す。追加なら「作った」ことを残す（元に戻す = 消す）
+            $op = change_begin($pdo, $isNew ? 'band_add' : 'band_edit', '「' . $name . '」を' . ($isNew ? '追加' : '更新'), (int)$band['live_id']);
             if ($isNew) {
                 // 出演順は UNIQUE なので、いったん最後尾に入れてから renumber_bands で正しい位置に動かす
                 $pdo->prepare('INSERT INTO band (artist_id, name, song_count, start_time, end_time, note, youtube_url, needs_check, live_day_id, play_order)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')->execute([...$values, $dayId, next_play_order($pdo, $dayId)]);
                 $bandId = (int)$pdo->lastInsertId();
+                change_created($pdo, $op, 'band', $bandId);
             } else {
+                change_capture($pdo, $op, 'band', $bandId);
                 $pdo->prepare('UPDATE band SET artist_id = ?, name = ?, song_count = ?, start_time = ?, end_time = ?, note = ?, youtube_url = ?, needs_check = ?
                     WHERE band_id = ?')->execute([...$values, $bandId]);
             }

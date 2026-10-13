@@ -25,6 +25,7 @@ declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/repository.php';
 require_once __DIR__ . '/lib/tracks.php';
+require_once __DIR__ . '/lib/history.php'; // 変更履歴（元に戻すための「変更前の状態」を残す）
 require_login();
 
 $pdo = db();
@@ -172,6 +173,8 @@ if (is_post() && !$fromSheet) {
         usort($songs, static fn($a, $b) => [$a['pos'], $a['k']] <=> [$b['pos'], $b['k']]);
         $pdo->beginTransaction();
         try {
+            $op = change_begin($pdo, 'setlist', '「' . $band['name'] . '」のセットリスト（' . count($songs) . '曲）', (int)$band['live_id']);
+            change_capture($pdo, $op, 'band', $bandId); // 変更前のセトリ・メンバーを履歴に残す
             foreach ($songs as &$song) {
                 // アーティスト名 → artist_id（無ければ作る）。空欄なら NULL
                 //   オムニバスでなければ $song['artist'] は '' なので全曲 NULL（= バンドのアーティスト）

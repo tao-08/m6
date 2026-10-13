@@ -16,6 +16,7 @@ declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/repository.php';
 require_once __DIR__ . '/lib/youtube.php';
+require_once __DIR__ . '/lib/history.php'; // 変更履歴（元に戻すための「変更前の状態」を残す）
 require_login();
 
 $pdo = db();
@@ -333,6 +334,10 @@ if (is_post()) {
         // ---- 統合: このライブの日程を全部、統合先のライブへ移す ----
         $pdo->beginTransaction();
         try {
+            // 変更前の統合元・統合先のライブ全体を履歴に残す（統合先のバンドにも曲などが足されるので両方）
+            $op = change_begin($pdo, 'live_merge', '「' . $live['fiscal_year'] . '年度 ' . $live['name'] . '」を「' . $mergeLive['fiscal_year'] . '年度 ' . $mergeLive['name'] . '」に統合', $targetId);
+            change_capture_live($pdo, $op, $liveId);
+            change_capture_live($pdo, $op, $targetId);
             // バンドごとに選んだ日程: 統合先の日程を残し、統合元のバンドを1組ずつ処理して、統合元の日程を消す
             //   統合先の日程の日付・会場などはそのまま（統合元の日程の入力は使わない）
             $deleteDay = $pdo->prepare('DELETE FROM live_day WHERE live_day_id = ?');
@@ -390,6 +395,7 @@ if (is_post()) {
             if ($wantsNewDay && $sameTargetDay($newDay['label']) === null) {
                 $pdo->prepare('INSERT INTO live_day (label, held_on, venue_id, note, total_bands, live_id) VALUES (?, ?, ?, ?, ?, ?)')
                     ->execute([...day_params($pdo, $newDay), $targetId]);
+                change_created($pdo, $op, 'day', (int)$pdo->lastInsertId());
             }
             // 日程が全部いなくなった元のライブを消す
             $pdo->prepare('DELETE FROM live WHERE live_id = ? AND NOT EXISTS (SELECT 1 FROM live_day WHERE live_id = ?)')
@@ -408,11 +414,19 @@ if (is_post()) {
     } elseif (!$errors) {
         $pdo->beginTransaction();
         try {
+            // 変更履歴: 編集ならライブの行と日程の変更前を残す。新しいライブ・日程は「作った」ことを残す
+            $op = change_begin($pdo, $isNew ? 'live_add' : 'live_edit', $year . '年度 ' . $name . ($isNew ? ' を追加' : ' のライブ情報・日程'), $isNew ? null : $liveId);
             if ($isNew) {
                 $pdo->prepare('INSERT INTO live (fiscal_year, name, youtube_url) VALUES (?, ?, ?)')
                     ->execute([$year, $name, $youtube !== '' ? $youtube : null]);
                 $liveId = (int)$pdo->lastInsertId();
+                change_created($pdo, $op, 'live', $liveId);
+                change_set_summary($pdo, $op, $year . '年度 ' . $name . ' を追加', $liveId);
             } else {
+                change_capture($pdo, $op, 'live', $liveId);
+                foreach (array_keys($dayInputs) as $id) {
+                    change_capture($pdo, $op, 'day', (int)$id);
+                }
                 $pdo->prepare('UPDATE live SET fiscal_year = ?, name = ?, youtube_url = ? WHERE live_id = ?')
                     ->execute([$year, $name, $youtube !== '' ? $youtube : null, $liveId]);
             }
@@ -429,6 +443,9 @@ if (is_post()) {
             $insertDay = $pdo->prepare('INSERT INTO live_day (label, held_on, venue_id, note, total_bands, live_id) VALUES (?, ?, ?, ?, ?, ?)');
             foreach ($wantsNewDay ? [$newDay, ...$extraDays] : [] as $in) {
                 $insertDay->execute([...day_params($pdo, $in), $liveId]);
+                if (!$isNew) {
+                    change_created($pdo, $op, 'day', (int)$pdo->lastInsertId()); // 新しいライブなら、ライブを消せば日程も消える
+                }
             }
             $pdo->commit();
             flash($isNew ? 'ライブを追加しました。次は「＋ バンドを追加」から出演バンドを入れよう' : 'ライブ情報を更新しました');

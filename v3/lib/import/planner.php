@@ -17,6 +17,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/parsers.php';
 require_once __DIR__ . '/../repository.php';
+require_once __DIR__ . '/../history.php'; // 変更履歴（取り込みを元に戻せるように）
 
 /**
  * タイムテーブルから読んだ会場名に一番近い、登録済みの会場を探す。
@@ -725,6 +726,9 @@ function commit_import_plan(PDO $pdo, array $plan, array $input): array
 
     $pdo->beginTransaction();
     try {
+        // 変更履歴: 上書きで消す日程は変更前の状態を、新しく作るライブ・日程は「作った」ことを残す（元に戻す = 消す）
+        $op = change_begin($pdo, 'import', '取り込み');
+        $imported = []; // 履歴の説明に出す「2024年度 2月ライブ 1日目」たち
         // ================= 1. ライブ・日程・バンド =================
         foreach ($plan['timetables'] as $ti => $tt) {
             $form = $input['tt'][$ti] ?? [];
@@ -790,7 +794,15 @@ function commit_import_plan(PDO $pdo, array $plan, array $input): array
             }
 
             // ---- 同じ日程が登録済みか ----
+            $st = $pdo->prepare('SELECT 1 FROM live WHERE fiscal_year = ? AND name = ?');
+            $st->execute([$year, $liveName]);
+            $liveExisted = $mergeLive !== null || (bool)$st->fetchColumn();
             $liveId = $mergeLive ? (int)$mergeLive['live_id'] : find_or_create_live($pdo, $year, $liveName);
+            if ($liveExisted) {
+                change_capture($pdo, $op, 'live', $liveId);
+            } else {
+                change_created($pdo, $op, 'live', $liveId);
+            }
             $st = $pdo->prepare('SELECT live_day_id FROM live_day WHERE live_id = ? AND label = ?');
             $st->execute([$liveId, $label]);
             $existing = $st->fetchColumn();
@@ -798,15 +810,22 @@ function commit_import_plan(PDO $pdo, array $plan, array $input): array
                 if (empty($form['overwrite'])) {
                     throw new RuntimeException("{$liveYear}年度「{$liveName}」{$label} は登録済みです。置き換えるなら「上書き」にチェックしてください");
                 }
+                // 上書き = 日程のバンド・セトリを全部消す操作。バンドの削除と同じく管理者だけ（画面で隠すだけでなくここで止める）
+                if (!is_admin()) {
+                    throw new RuntimeException("{$liveYear}年度「{$liveName}」{$label} は登録済みです。登録済みの日程の上書きは管理者だけができます");
+                }
+                change_capture_day($pdo, $op, (int)$existing); // 上書きで消える日程（バンド・セトリごと）を履歴に残す
                 // 日程を消せば、バンド・出演記録は ON DELETE CASCADE で DB が消してくれる
-                delete_live_day($pdo, (int)$existing);
-                $liveId = find_or_create_live($pdo, $liveYear, $liveName); // ライブごと消えた場合に作り直す
+                // delete_live_day() は使わない（日程が0になったライブも消すので、ライブが別の ID で作り直されてしまう）
+                $pdo->prepare('DELETE FROM live_day WHERE live_day_id = ?')->execute([(int)$existing]);
             }
 
             // ---- live_day ----
             $pdo->prepare('INSERT INTO live_day (live_id, label, held_on, venue_id) VALUES (?, ?, ?, ?)')
                 ->execute([$liveId, $label, $date, $venueId]);
             $dayId = (int)$pdo->lastInsertId();
+            change_created($pdo, $op, 'day', $dayId); // 元に戻すと、この日程（と中のバンド）を消す
+            $imported[] = "{$liveYear}年度 {$liveName} {$label}" . ($existing !== false ? '（上書き）' : '');
 
             // ---- band ----
             // 「取り込む」にチェックがある枠だけ集めて、入力された出演順で並べ替える
@@ -946,6 +965,7 @@ function commit_import_plan(PDO $pdo, array $plan, array $input): array
         // 先にアカウントだけ作っていた人を、今回できたメンバーと名前で紐付ける
         link_users_to_members($pdo);
 
+        change_set_summary($pdo, $op, implode(' / ', $imported) . ' を取り込み', $liveIds[0] ?? null);
         $pdo->commit();
     } catch (Throwable $e) {
         $pdo->rollBack(); // 途中までの INSERT を全部なかったことにする
