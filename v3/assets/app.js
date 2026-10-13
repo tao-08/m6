@@ -91,6 +91,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupLikes();
   setupAlbumTip();
   setupSetlistTip();
+  setupSetlistNames();
   setupSpotifyAppLinks();
   setupVoSum();
   setupYoutubeLeftover();
@@ -260,6 +261,32 @@ function setupSetlistTip() {
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hide(); });
   // fixed なのでスクロールするとずれる → 隠す。capture: true で、ページだけでなく表の横スクロールでも隠す
   document.addEventListener('scroll', hide, { passive: true, capture: true });
+}
+
+/* ---------------------------------------------------------------------
+ * バンドページのセトリ: 曲名が1行に入り切らず折り返したら、その曲名だけ少し小さくする（.is-wrapped → app.css）
+ *   CSS には「折り返したら」という条件が無いので、元の大きさで高さを測って、2行分以上あれば付ける。
+ *   画面の幅が変わると折り返す曲も変わるので、幅が変わるたびに測り直す
+ * ------------------------------------------------------------------- */
+function setupSetlistNames() {
+  const names = document.querySelectorAll('.band-section .setlist__name');
+  if (!names.length) return;
+  const check = () => {
+    names.forEach((el) => el.classList.remove('is-wrapped')); // 先に全部元の大きさに戻してから測る（小さくした後の高さで判定しない）
+    names.forEach((el) => {
+      const lineHeight = parseFloat(getComputedStyle(el).lineHeight);
+      el.classList.toggle('is-wrapped', el.getBoundingClientRect().height > lineHeight * 1.5);
+    });
+  };
+  document.fonts?.ready.then(check); // 文字のフォントが後から読み込まれると幅が変わるので、読み込み後にもう一度
+  // セトリの幅が変わったら測り直す（画面を回したとき・ウィンドウの幅を変えたとき）。
+  // window の resize ではなく ResizeObserver で、セトリそのものの幅を見張る。高さだけ変わったときは測らない（小さくすると高さが変わるので、無限ループになる）
+  let lastWidth = 0;
+  new ResizeObserver(([entry]) => {
+    if (entry.contentRect.width === lastWidth) return;
+    lastWidth = entry.contentRect.width;
+    check();
+  }).observe(names[0].closest('ol'));
 }
 
 /* ---------------------------------------------------------------------

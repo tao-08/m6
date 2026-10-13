@@ -1278,6 +1278,8 @@ a.setlist__song:hover { color: var(--accent); text-decoration: underline; }
 /* オムニバス: 曲名の下にアーティスト（band.php の $songText）。行の高さ（line-height 56px）を2段で分け合う */
 .setlist__text { display: inline-flex; flex-direction: column; line-height: 1.3; }
 .band-section .setlist__text .setlist__artist { margin-left: 0; font-weight: 500; }
+/* 曲名が折り返したら少し小さく、行の間も詰める（.is-wrapped は app.js の setupSetlistNames が付ける） */
+.band-section .setlist__name.is-wrapped { font-size: .85em; line-height: 1.3; }
 /* 「聴く」アイコン: ジャケットにマウスを乗せると、ジャケットが暗くなって真ん中にアプリのアイコンが出る。押すと音楽アプリへ
  *  .setlist__artwrap を position: relative にして、リンクを position: absolute; inset: 0 でジャケットにぴったり重ねている */
 .setlist__artwrap { position: relative; display: inline-flex; flex: none; }
@@ -1319,11 +1321,16 @@ a.setlist__song:hover { color: var(--accent); text-decoration: underline; }
 .setlist-hint .icon { font-size: 16px; vertical-align: -3px; }
 @media (max-width: 640px) {
   .band-section .setlist { font-size: 17px; }
-  .band-section .setlist ol { padding-left: 1.2em; } /* 番号の左の余白を詰めて、試聴ボタンの場所をあける */
+  .band-section .setlist ol { padding-left: 1.2em; margin-right: -10px; } /* 番号の左の余白を詰め、右はカードの余白に少しはみ出させて、試聴ボタンの場所をあける */
   .band-section .setlist li { line-height: 1.3; } /* 長い曲名が折り返したとき、行と行の間が空きすぎないように（行の高さはジャケットの 44px で決まる） */
   .band-section .setlist li::marker { font-size: 14px; } /* 余白を詰めても「10.」がはみ出さないように */
   .band-section .setlist__song { gap: 12px; max-width: calc(100% - 52px); overflow-wrap: anywhere; } /* 52px = ▶ の幅 34px + margin 8px + HTML の改行（空白1文字分）。曲名が長くても ▶ が次の行に落ちない */
   .band-section .setlist__play { margin-left: 8px; }
+  /* 備考（Cho. 山田 など）: 曲名の下に、曲名と行頭をそろえて置く（62px = ジャケットの左 6px + ジャケット 44px + すき間 12px）。
+     flex + column-gap にすると、折り返した2行目以降も同じ位置から始まる（margin-left だと行頭にすき間が残る） */
+  .band-section .setlist__who { display: flex; flex-wrap: wrap; column-gap: .9em; margin: 2px 0 0 62px; line-height: 1.5; }
+  .band-section .setlist__note + .setlist__note { margin-left: 0; }
+  .band-section .setlist__note { white-space: normal; } /* 1つの備考が1行に入り切らないときだけ、その中で折り返す */
   .band-section .setlist__art { width: 44px; height: 44px; }
 }
 

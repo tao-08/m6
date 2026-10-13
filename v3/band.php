@@ -313,8 +313,8 @@ render_header($band['name'], 'lives');
                 $songArtist = $band['is_omnibus'] ? $song['artist_name'] : null;
                 // 曲名の下にアーティスト（縦に2段）。▶ はこの2段の右に来る
                 $songText = $songArtist
-                    ? '<span class="setlist__text"><span>' . h($song['title']) . '</span><span class="setlist__artist">' . h($songArtist) . '</span></span>'
-                    : h($song['title']); ?>
+                    ? '<span class="setlist__text"><span class="setlist__name">' . h($song['title']) . '</span><span class="setlist__artist">' . h($songArtist) . '</span></span>'
+                    : '<span class="setlist__name">' . h($song['title']) . '</span>'; // .setlist__name: 折り返したら少し小さくする（app.js の setupSetlistNames） ?>
                 <li>
                     <?php if ($song['source'] !== null):
                         // 紐付けた曲: 曲名はただの文字。ジャケットにマウスを乗せると音楽アプリのアイコンが重なって出て、押すと聴ける
