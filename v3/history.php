@@ -34,6 +34,56 @@ if (is_post()) {
     redirect($result['live_id'] !== null ? 'live?id=' . $result['live_id'] : 'history');
 }
 
+/**
+ * 戻すと何がどう変わるか（change_preview の結果）を出す。確認画面と、一覧の「変わったもの」を開いたときの両方で使う
+ */
+function render_history_preview(array $preview): void
+{
+    $typeNames = ['live' => 'ライブ', 'day' => '日程', 'band' => 'バンド'];
+    $kinds = ['change' => '変わる', 'delete' => '消える', 'revive' => '復活する'];
+    $same = array_filter($preview, static fn($p) => $p['kind'] === 'same');
+    $name = static fn(array $p) => $p['url'] !== null ? '<a href="' . h($p['url']) . '">' . h($p['label']) . '</a>' : h($p['label']);
+    ?>
+    <div class="history-preview">
+        <?php foreach ($preview as $p): if ($p['kind'] === 'same') continue; ?>
+            <section class="card history-unit history-unit--<?= h($p['kind']) ?>">
+                <h2 class="history-unit__title"><span class="tag tag--<?= h($p['kind']) ?>"><?= h($kinds[$p['kind']]) ?></span>
+                    <span class="muted small"><?= h($typeNames[$p['type']]) ?></span> <?= $name($p) ?></h2>
+                <?php if ($p['kind'] === 'delete'): ?>
+                    <p class="small">この変更で追加されたものなので、<strong>中のバンド・メンバー・セトリごと消えます</strong>。</p>
+                <?php elseif ($p['kind'] === 'revive'): ?>
+                    <p class="small">今は削除されています。変更前の状態で<strong>同じ ID のまま復活します</strong>。</p>
+                <?php endif; ?>
+                <?php if ($p['changes']): ?>
+                    <div class="table-scroll table-scroll--flush">
+                        <table class="table history-diff">
+                            <thead><tr><th>項目</th><th>今</th><th>戻した後</th></tr></thead>
+                            <tbody>
+                                <?php foreach ($p['changes'] as [$item, $now, $after]): ?>
+                                    <tr><th scope="row"><?= h($item) ?></th><td class="history-diff__now"><?= change_cell_html($now) ?></td><td class="history-diff__after"><?= change_cell_html($after) ?></td></tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                <?php endif; ?>
+            </section>
+        <?php endforeach; ?>
+        <?php if ($same): ?>
+            <p class="muted small">ほかの <?= count($same) ?> 件（<?= implode('・', array_map($name, array_slice(array_values($same), 0, 5))) ?><?= count($same) > 5 ? ' など' : '' ?>）は、今と同じなので変わりません。</p>
+        <?php endif; ?>
+        <?php if (count($same) === count($preview)): ?>
+            <p><?= icon('info') ?> 戻しても、今と何も変わりません。</p>
+        <?php endif; ?>
+    </div>
+    <?php
+}
+
+// ---------- 一覧の「変わったもの」を開いたときに読み込む部分（?op=ID&part=1）: 確認画面と同じ比べる表だけ返す ----------
+if (ctype_digit((string)($_GET['op'] ?? '')) && isset($_GET['part'])) {
+    render_history_preview(change_preview($pdo, (int)$_GET['op']));
+    exit;
+}
+
 $liveFilter = ctype_digit((string)($_GET['live'] ?? '')) ? (int)$_GET['live'] : null;
 $backUrl = 'history' . ($liveFilter !== null ? '?live=' . $liveFilter : '');
 $typeNames = ['live' => 'ライブ', 'day' => '日程', 'band' => 'バンド'];
@@ -57,8 +107,6 @@ if (ctype_digit((string)($_GET['op'] ?? ''))) {
     $st->execute([$opId]);
     $later = $st->fetchAll();
     $preview = change_preview($pdo, $opId);
-    $same = array_filter($preview, static fn($p) => $p['kind'] === 'same');
-    $kinds = ['change' => '変わる', 'delete' => '消える', 'revive' => '復活する'];
 
     render_header('元に戻す前の確認');
     ?>
@@ -85,37 +133,7 @@ if (ctype_digit((string)($_GET['op'] ?? ''))) {
         </div>
     <?php endif; ?>
 
-    <div class="history-preview">
-        <?php foreach ($preview as $p): if ($p['kind'] === 'same') continue; ?>
-            <section class="card history-unit history-unit--<?= h($p['kind']) ?>">
-                <h2 class="history-unit__title"><span class="tag tag--<?= h($p['kind']) ?>"><?= h($kinds[$p['kind']]) ?></span>
-                    <span class="muted small"><?= h($typeNames[$p['type']]) ?></span> <?= h($p['label']) ?></h2>
-                <?php if ($p['kind'] === 'delete'): ?>
-                    <p class="small">この変更で追加されたものなので、<strong>中のバンド・メンバー・セトリごと消えます</strong>。</p>
-                <?php elseif ($p['kind'] === 'revive'): ?>
-                    <p class="small">今は削除されています。変更前の状態で<strong>同じ ID のまま復活します</strong>。</p>
-                <?php endif; ?>
-                <?php if ($p['changes']): ?>
-                    <div class="table-scroll table-scroll--flush">
-                        <table class="table history-diff">
-                            <thead><tr><th>項目</th><th>今</th><th>戻した後</th></tr></thead>
-                            <tbody>
-                                <?php foreach ($p['changes'] as [$name, $now, $after]): ?>
-                                    <tr><th scope="row"><?= h($name) ?></th><td class="history-diff__now"><?= h($now) ?></td><td class="history-diff__after"><?= h($after) ?></td></tr>
-                                <?php endforeach; ?>
-                            </tbody>
-                        </table>
-                    </div>
-                <?php endif; ?>
-            </section>
-        <?php endforeach; ?>
-        <?php if ($same): ?>
-            <p class="muted small">ほかの <?= count($same) ?> 件（<?= h(implode('・', array_map(static fn($p) => $p['label'], array_slice($same, 0, 5)))) ?><?= count($same) > 5 ? ' など' : '' ?>）は、今と同じなので変わりません。</p>
-        <?php endif; ?>
-        <?php if (count($same) === count($preview)): ?>
-            <p><?= icon('info') ?> 戻しても、今と何も変わりません。</p>
-        <?php endif; ?>
-    </div>
+    <?php render_history_preview($preview); ?>
 
     <form method="post" class="form-actions history-confirm">
         <?= csrf_field() ?><input type="hidden" name="op_id" value="<?= $opId ?>">
@@ -151,10 +169,14 @@ $laterOf = [];  // op_id => その後に、同じバンド・日程・ライブ�
 if ($ops) {
     $ids = array_map(static fn($o) => (int)$o['op_id'], $ops);
     $in = implode(',', array_fill(0, count($ids), '?'));
-    $st = $pdo->prepare("SELECT op_id, unit_type, label, snapshot IS NULL AS created FROM change_unit WHERE op_id IN ($in)
+    $st = $pdo->prepare("SELECT op_id, unit_type, unit_id, label, snapshot IS NULL AS created FROM change_unit WHERE op_id IN ($in)
         ORDER BY FIELD(unit_type, 'live', 'day', 'band'), label");
     $st->execute($ids);
-    foreach ($st as $u) {
+    $all = $st->fetchAll();
+    // 今もあるものはそのページへのリンクにする
+    $unitUrls = change_unit_urls($pdo, array_map(static fn($u) => ['type' => $u['unit_type'], 'id' => (int)$u['unit_id']], $all));
+    foreach ($all as $u) {
+        $u['url'] = $unitUrls[$u['unit_type'] . ':' . $u['unit_id']] ?? null;
         $units[(int)$u['op_id']][] = $u;
     }
     $st = $pdo->prepare("SELECT a.op_id, COUNT(DISTINCT b.op_id) AS n FROM change_unit a
@@ -201,13 +223,19 @@ render_header('変更履歴');
                 </div>
                 <p class="history-item__summary"><?= h($o['summary']) ?></p>
                 <?php if (!empty($units[$id])): ?>
-                    <details class="history-item__units">
+                    <!-- 開くと、確認画面と同じ「戻すと何がどう変わるか」の表を読み込む（下の script） -->
+                    <details class="history-item__units" data-preview="history?op=<?= $id ?>&amp;part=1">
                         <summary class="muted small">変わったもの（<?= count($units[$id]) ?>）</summary>
                         <ul>
                             <?php foreach ($units[$id] as $u): ?>
-                                <li class="small"><span class="muted"><?= h($typeNames[$u['unit_type']]) ?></span> <?= h($u['label']) ?><?= $u['created'] ? ' <span class="muted">（この変更で追加）</span>' : '' ?></li>
+                                <li class="small"><span class="muted"><?= h($typeNames[$u['unit_type']]) ?></span>
+                                    <?= $u['url'] !== null ? '<a href="' . h($u['url']) . '">' . h($u['label']) . '</a>' : h($u['label']) ?><?= $u['created'] ? ' <span class="muted">（この変更で追加）</span>' : '' ?></li>
                             <?php endforeach; ?>
                         </ul>
+                        <div class="history-item__compare" hidden>
+                            <p class="muted small">戻すとこう変わります（「この変更の前に戻す」の確認画面と同じ内容）</p>
+                            <div class="history-item__compare-body"><p class="muted small">読み込み中…</p></div>
+                        </div>
                     </details>
                 <?php endif; ?>
                 <div class="history-item__foot">
@@ -227,5 +255,25 @@ render_header('変更履歴');
         <?php if ($page > 1): ?><a class="btn btn--ghost btn--sm" href="<?= h($pageUrl($page - 1)) ?>">← 新しい履歴</a><?php endif; ?>
         <?php if ($hasMore): ?><a class="btn btn--ghost btn--sm" href="<?= h($pageUrl($page + 1)) ?>">古い履歴 →</a><?php endif; ?>
     </nav>
+    <script>
+    // 「変わったもの」を初めて開いたときに、戻すと何がどう変わるかの表を読み込む（一覧を開くたびに全部計算すると重いので）
+    document.querySelectorAll('.history-item__units[data-preview]').forEach((box) => {
+        box.addEventListener('toggle', async () => {
+            if (!box.open || box.dataset.loaded) return;
+            box.dataset.loaded = '1';
+            const compare = box.querySelector('.history-item__compare');
+            const body = box.querySelector('.history-item__compare-body');
+            compare.hidden = false;
+            try {
+                const res = await fetch(box.dataset.preview, { credentials: 'same-origin' });
+                if (!res.ok) throw new Error(res.status);
+                body.innerHTML = await res.text(); // サーバーが h() を通して作った HTML
+            } catch (e) {
+                body.innerHTML = '<p class="muted small">読み込めませんでした。「この変更の前に戻す」から確認できます。</p>';
+                delete box.dataset.loaded;
+            }
+        });
+    });
+    </script>
 <?php endif; ?>
 <?php render_footer();

@@ -556,12 +556,93 @@ function change_preview(PDO $pdo, int $opId): array
             $changes = change_diff($pdo, $type, $now, $before);
             $kind = $now === null ? 'revive' : ($changes ? 'change' : 'same');
         }
-        $out[] = ['type' => $type, 'label' => $label, 'kind' => $kind, 'changes' => $changes];
+        $out[] = ['type' => $type, 'id' => $id, 'label' => $label, 'kind' => $kind, 'changes' => $changes];
+    }
+    $urls = change_unit_urls($pdo, $out);
+    foreach ($out as &$p) {
+        $p['url'] = $urls[$p['type'] . ':' . $p['id']] ?? null;
+    }
+    unset($p);
+    return $out;
+}
+
+/**
+ * 変わったもの（バンド・日程・ライブ）のページの URL をまとめて引く。今は無いものは入らない
+ * @param array<int, array{type: string, id: int}> $units
+ * @return array<string, string> "band:12" => "band?id=12"（日程はそのライブのページ）
+ */
+function change_unit_urls(PDO $pdo, array $units): array
+{
+    $ids = ['live' => [], 'day' => [], 'band' => []];
+    foreach ($units as $u) {
+        $ids[$u['type']][] = (int)$u['id'];
+    }
+    $urls = [];
+    $sql = [
+        'live' => 'SELECT live_id AS id, live_id FROM live WHERE live_id IN (%s)',
+        'day'  => 'SELECT live_day_id AS id, live_id FROM live_day WHERE live_day_id IN (%s)',
+        'band' => 'SELECT band_id AS id, NULL AS live_id FROM band WHERE band_id IN (%s)',
+    ];
+    foreach ($ids as $type => $list) {
+        if (!$list) {
+            continue;
+        }
+        $list = array_values(array_unique($list));
+        $st = $pdo->prepare(sprintf($sql[$type], implode(',', array_fill(0, count($list), '?'))));
+        $st->execute($list);
+        foreach ($st as $r) {
+            $urls[$type . ':' . $r['id']] = $type === 'band' ? 'band?id=' . (int)$r['id'] : 'live?id=' . (int)$r['live_id'];
+        }
+    }
+    return $urls;
+}
+
+/**
+ * 比べる表の1マスを HTML にする。
+ * $v は文字か、「文字」と ['text' => 名前, 'href' => URL]（リンク）を並べた配列。どちらも h() を通す
+ */
+function change_cell_html(string|array $v): string
+{
+    if (is_string($v)) {
+        return h($v);
+    }
+    $html = '';
+    foreach ($v as $part) {
+        $html .= is_array($part) ? '<a href="' . h($part['href']) . '">' . h($part['text']) . '</a>' : h($part);
+    }
+    return $html;
+}
+
+/** メンバーの名前をリンクにする（消えていたら文字だけ）。$suffix は名前の後ろにつける文字（「（Gt）」など） */
+function change_member_part(PDO $pdo, int $id, string $suffix = ''): array|string
+{
+    $name = change_name($pdo, 'member', $id);
+    return $name === '（削除済み）' ? $name . $suffix : ['text' => $name . $suffix, 'href' => 'member?id=' . $id];
+}
+
+/** 部品を「、」でつなぐ（空なら「（なし）」） */
+function change_join_parts(array $parts, string $tail = ''): array|string
+{
+    if (!$parts) {
+        return '（なし）';
+    }
+    $out = [];
+    foreach ($parts as $i => $p) {
+        if ($i > 0) {
+            $out[] = '、';
+        }
+        $out[] = $p;
+    }
+    if ($tail !== '') {
+        $out[] = $tail;
     }
     return $out;
 }
 
-/** 2つの状態の違いを [項目名, 今, 戻した後] で返す（$now が null = 今は無い → 戻した後の中身を全部出す） */
+/**
+ * 2つの状態の違いを [項目名, 今, 戻した後] で返す（$now が null = 今は無い → 戻した後の中身を全部出す）
+ * 「今」「戻した後」は文字か、リンクを含む部品の配列（change_cell_html で HTML にする）
+ */
 function change_diff(PDO $pdo, string $type, ?array $now, array $before): array
 {
     $rows = [];
@@ -608,7 +689,16 @@ function change_diff(PDO $pdo, string $type, ?array $now, array $before): array
     $flag = static fn(?array $r) => $r === null ? '' : implode(' / ', check_reason_labels((int)$r['needs_check']));
     $onoff = static fn(?array $r, string $col) => $r === null ? '' : ((int)$r[$col] ? 'はい' : 'いいえ');
     $add('バンド名', $val($n, 'name'), $val($b, 'name'));
-    $add('日程', $day($n), $day($b));
+    if ($day($n) !== $day($b)) { // 日程はそのライブのページへのリンクにする
+        $dayPart = static function (?array $r) use ($pdo, $day): array|string {
+            if ($r === null) {
+                return '（なし）';
+            }
+            $url = change_unit_urls($pdo, [['type' => 'day', 'id' => (int)$r['live_day_id']]])['day:' . (int)$r['live_day_id']] ?? null;
+            return $url === null ? $day($r) : [['text' => $day($r), 'href' => $url]];
+        };
+        $rows[] = ['日程', $dayPart($n), $dayPart($b)];
+    }
     $add('出演順', $val($n, 'play_order'), $val($b, 'play_order'));
     $add('時間', $time($n), $time($b));
     $add('コピー元', $artist($n), $artist($b));
@@ -620,27 +710,42 @@ function change_diff(PDO $pdo, string $type, ?array $now, array $before): array
     $add('セトリ非公開', $onoff($n, 'setlist_private'), $onoff($b, 'setlist_private'));
 
     // メンバー: 「名前（楽器）」を、外れる人・入る人に分けて出す
+    //   比べるのは「名前（楽器）」の文字。画面では名前をメンバーのページへのリンクにする
     $members = static function (array $list) use ($pdo): array {
         $by = [];
         foreach ($list as $m) {
             $by[(int)$m['member_id']][] = change_instrument_short((int)$m['instrument_id']);
         }
-        $names = [];
+        $names = []; // member_id => 「（Gt/Vo）」
         foreach ($by as $id => $insts) {
-            $names[] = change_name($pdo, 'member', $id) . '（' . implode('/', $insts) . '）';
+            $names[$id] = '（' . implode('/', $insts) . '）';
         }
-        sort($names);
+        uksort($names, static fn($x, $y) => strcmp(change_name($pdo, 'member', $x), change_name($pdo, 'member', $y)));
         return $names;
     };
     $nowM = $members($now['band_member'] ?? []);
     $beforeM = $members($before['band_member']);
-    $leave = array_values(array_diff($nowM, $beforeM));
-    $join = array_values(array_diff($beforeM, $nowM));
+    $diffM = static function (array $a, array $b) use ($pdo): array {
+        $parts = [];
+        foreach ($a as $id => $insts) {
+            if (($b[$id] ?? null) !== $insts) {
+                $parts[] = change_member_part($pdo, $id, $insts);
+            }
+        }
+        return $parts;
+    };
+    $leave = $diffM($nowM, $beforeM);
+    $join = $diffM($beforeM, $nowM);
     if ($leave || $join) {
-        $rows[] = ['メンバー', $leave ? implode('、', $leave) . ' が外れる' : '（外れる人なし）', $join ? implode('、', $join) . ' が入る' : '（入る人なし）'];
+        $rows[] = ['メンバー', $leave ? change_join_parts($leave, ' が外れる') : '（外れる人なし）', $join ? change_join_parts($join, ' が入る') : '（入る人なし）'];
     }
-    $who = static fn(array $list) => implode('、', array_map(static fn($c) => change_name($pdo, 'member', (int)$c['member_id']), $list));
-    $add('確認の対象', $who($now['band_check_member'] ?? []), $who($before['band_check_member']));
+    $who = static fn(array $list) => array_map(static fn($c) => (int)$c['member_id'], $list);
+    $nowC = $who($now['band_check_member'] ?? []);
+    $beforeC = $who($before['band_check_member']);
+    if ($nowC !== $beforeC) {
+        $whoParts = static fn(array $ids) => change_join_parts(array_map(static fn($id) => change_member_part($pdo, $id), $ids));
+        $rows[] = ['確認の対象', $whoParts($nowC), $whoParts($beforeC)];
+    }
 
     // セトリ: 曲名を順番に並べて比べる
     $songs = static function (array $list): string {
