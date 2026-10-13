@@ -85,8 +85,8 @@ const SHEET_TEMPLATES = [
         // 下端は枠の中に印刷された「※エレピ、ワイヤレスマイク等を…」（上端 301.3）の上まで。部品が文字に重ならないように
         'stage' => [265.2, 138.4, 498.4, 300.1],
         'drum'  => [360.5, 148.8, 389.6, 170.5], // 印刷済みの「Dr」の箱。自動配置でアンプを重ねないために使う
-        'box_labels' => ['Marshall', 'JC', 'Twin Reverb', 'Ba Amp', 'Key'], // 四角を選んだときの候補（Voice には Twin Reverb がある）
-        'gt_amps'    => ['JC', 'Marshall', 'Twin Reverb'], // 自動配置でギターアンプに付ける名前（ドラムに近い方から）
+        'box_labels' => ['Marshall', 'JC', 'TwinReverb', 'Ba Amp', 'Key', 'E.Pf'], // 四角を選んだときの候補（Voice には Twin Reverb がある）
+        'gt_amps'    => ['JC', 'Marshall', 'TwinReverb'], // 自動配置でギターアンプに付ける名前（ドラムに近い方から）
         'setlist' => [
             'top'   => 371.4,         // 見出し行（曲順 / 曲名 …）の下の線
             'row_h' => 25.08,         // (622.2 − 371.4) ÷ 10

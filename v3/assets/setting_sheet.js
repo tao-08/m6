@@ -513,14 +513,16 @@
      */
     function layoutSetlist() {
         // 曲名が空の行は数えない（追加したけどまだ書いていない行）
-        const entries = state.songs.filter((e) => e.mc || e.title.trim() !== '');
+        //   テキストの行（{ mc: true, text }）も、まだ何も書いていなければ数えない
+        const entries = state.songs.filter((e) => (e.mc ? (e.text ?? 'MC').trim() !== '' : e.title.trim() !== ''));
         const st = tpl().setlist;
         const max = rowCount(st);
         const rows = [];
         let no = 0;
         for (const e of entries) {
             if (e.mc) {
-                rows.push({ no: '', title: 'MC', sound: '', light: '', mc: true });
+                // text がある行は「テキストの行」。MC と同じく曲順を付けず、書いた文字をそのまま出す
+                rows.push({ no: '', title: (e.text ?? 'MC').trim(), sound: '', light: '', mc: true });
             } else {
                 no++;
                 rows.push({ no: String(no), title: e.title, sound: e.sound, light: e.light });
@@ -575,15 +577,22 @@
         return b;
     }
 
-    /** 曲を1つ足す（after を渡すとその曲のすぐ下に。無ければ一番下） */
-    function addSong(mc, after = null) {
-        const song = mc ? { id: state.nextSongId++, mc: true } : { id: state.nextSongId++, mc: false, title: '', sound: '', light: '' };
+    /**
+     * 曲を1つ足す（after を渡すとその曲のすぐ下に。無ければ一番下）
+     *   kind: 'song' = 曲 / 'mc' = MC / 'text' = テキストの行（「転換」「SE」など、曲順を付けずに自由な文字を書く行）
+     *   テキストの行は MC の仲間（mc: true）にして、曲順・曲の登録から外れるようにしている
+     */
+    function addSong(kind, after = null) {
+        const id = state.nextSongId++;
+        const song = kind === 'mc' ? { id, mc: true }
+            : kind === 'text' ? { id, mc: true, text: '' }
+            : { id, mc: false, title: '', sound: '', light: '' };
         const i = after ? state.songs.indexOf(after) + 1 : state.songs.length;
         state.songs.splice(i, 0, song); // splice(位置, 消す数, 足すもの): 配列の途中に差し込む
         renderSongs();
         renderRowsNote();
         save();
-        if (!mc) {
+        if (kind !== 'mc') {
             songList.querySelector(`[data-id="${song.id}"] .setlist__title`)?.focus(); // すぐ打てるように
         }
     }
@@ -603,7 +612,17 @@
             num.textContent = song.mc ? '' : String(++no); // ++no: 先に1足してから使う
             li.append(handle, num);
 
-            if (song.mc) {
+            if (song.mc && song.text !== undefined) {
+                // テキストの行: 曲名と同じ見た目の入力欄（要望の欄は無し）
+                const text = document.createElement('input');
+                text.type = 'text';
+                text.className = 'setlist__title';
+                text.placeholder = 'テキスト（例: 転換、SE）';
+                text.maxLength = 100;
+                text.value = song.text;
+                text.addEventListener('input', () => { song.text = text.value; renderRowsNote(); save(); });
+                li.append(text);
+            } else if (song.mc) {
                 const mc = document.createElement('span');
                 mc.className = 'setlist__mc';
                 mc.textContent = 'MC';
@@ -623,7 +642,7 @@
                     // isComposing: 日本語変換中の Enter（確定）は無視する。これを忘れると変換するたびに行が増える
                     if (e.key === 'Enter' && !e.isComposing) {
                         e.preventDefault();
-                        addSong(false, song);
+                        addSong('song', song);
                     }
                 });
                 const tune = iconButton('tune', '音響・照明への要望', 'setlist__btn');
@@ -655,7 +674,7 @@
                 li.append(notes);
             }
 
-            const del = iconButton('delete', song.mc ? 'MC を消す' : '曲を消す', 'setlist__btn setlist__btn--del');
+            const del = iconButton('delete', song.text !== undefined ? 'テキストを消す' : song.mc ? 'MC を消す' : '曲を消す', 'setlist__btn setlist__btn--del');
             del.addEventListener('click', () => {
                 state.songs = state.songs.filter((x) => x !== song);
                 renderSongs();
@@ -755,8 +774,9 @@
         save();
     }
 
-    $('[data-song-add]').addEventListener('click', () => addSong(false));
-    $('[data-mc-add]').addEventListener('click', () => addSong(true));
+    $('[data-song-add]').addEventListener('click', () => addSong('song'));
+    $('[data-mc-add]').addEventListener('click', () => addSong('mc'));
+    $('[data-text-add]').addEventListener('click', () => addSong('text'));
 
     /* =================================================================
      *  4. セット図（ドラッグ編集）
@@ -955,12 +975,13 @@
     }
 
     /** 四角を選んだときに出す候補（アンプなど）。型紙に box_labels があればそちらを使う */
-    const BOX_LABELS = ['Marshall', 'JC', 'Ba Amp', 'Key'];
+    const BOX_LABELS = ['Marshall', 'JC', 'Ba Amp', 'Key', 'E.Pf'];
 
     /**
      * 丸・四角を選んだときの「名前ボタン」。押すとその名前が中の文字になる。
      *   丸: メンバー欄に入力されている人のパートだけ出す。
      *       「Vo/Gt」の人は Vo と Gt の2つに分ける。同じ楽器は1つにまとめる（大文字小文字は区別しない）
+     *       Vo/Gt は誰もいなくても先頭に出す。「Vo/Ba」など Vo + 楽器の人がいれば、その組み合わせも出す
      *   四角: BOX_LABELS をそのまま出す
      */
     function renderPartButtons() {
@@ -970,12 +991,21 @@
         if (it.type === 'box') {
             names = tpl().box_labels || BOX_LABELS;
         } else if (it.type === 'circle') {
-            const seen = new Map(); // 小文字 => 表示する名前（最初に出てきた書き方を使う）
+            const seen = new Map([['vo/gt', 'Vo/Gt']]); // 小文字 => 表示する名前（最初に出てきた書き方を使う）
             for (const m of state.members) {
                 if (m.name.trim() === '') {
                     continue;
                 }
-                for (const p of m.part.split(/[\/／・,、\s]+/)) {
+                const parts = m.part.split(/[\/／・,、\s]+/).filter((p) => p !== '');
+                // Vo + 楽器（Vo/Ba など）: 自動配置と同じ「Vo/楽器」の形で候補に足す
+                const inst = parts.find((p) => !['vo', 'cho', 'dr'].includes(p.toLowerCase()));
+                if (inst && parts.some((p) => p.toLowerCase() === 'vo')) {
+                    const combo = 'Vo/' + inst;
+                    if (!seen.has(combo.toLowerCase())) {
+                        seen.set(combo.toLowerCase(), combo);
+                    }
+                }
+                for (const p of parts) {
                     if (p !== '' && !seen.has(p.toLowerCase())) {
                         seen.set(p.toLowerCase(), p);
                     }
@@ -1305,6 +1335,10 @@
      *     マイクを使う人 = パートに Vo / Cho がある人（Voice）、マイクの欄に✓がある人（共通シート）
      *   左: キーボードの四角（丸は置かない）。マイクを使うなら四角の真下にマイク。
      *       キーボードがいるときは、ベースの丸をキーボードの右へずらす（マイクと重ならないように）
+     *   3人のバンド（Dr も数える）は上の通り。3人以外は、下の段を次のように並べ直す:
+     *     - Vo/Ba・Vo/Key の人は真ん中（ボーカルの位置）
+     *     - Gt がいなくて Key がいるときは、キーボードの四角を Gt の丸の位置に
+     *     - 左 → 真ん中 → 右 を同じ間隔で並べ、真ん中のグループを横の真ん中に。左が空なら Gt.1 を左へ
      */
     function autoLayout() {
         const { w, h } = stageSize();
@@ -1345,29 +1379,48 @@
             addItem('box', { x: baX, y: ampY, label: 'Ba Amp' });
         }
         // ---- キーボード: 左側の真ん中の高さ ----
+        //   3人以外のバンドで Gt がいないときは、左ではなく Gt の丸の位置（下の段の右）に置く（keyRight）
+        const small = people.length === 3; // 3人のバンド（Dr も数える）は今まで通りの並べ方
         const keyX = ampW * 0.8;
         const keyY = h * 0.5;
         const keyW = ampW; // アンプの四角と同じ幅（前は 1.4 倍の横長で、長すぎた）
-        const hasKey = count('key') > 0;
-        if (hasKey) {
-            addItem('box', { x: keyX, y: keyY, label: 'Key' });
+        const keyN = count('key');
+        const keyRight = !small && keyN > 0 && gtN === 0;
+        // キーボードの四角を置く場所（1台目, 2台目）。3台目からは四角を増やさず、左の四角を使う
+        //   row   : 下の段の Gt の丸の位置（Gt がいないバンドの1台目）
+        //   left  : 左の真ん中の高さ（いつもの位置）
+        //   mirror: left と左右対称の位置（Gt がいるバンドの2台目）
+        const keySlots = (keyRight ? ['row', 'left'] : ['left', 'mirror']).slice(0, keyN);
+        const keyPos = { left: keyX, mirror: w - keyX };
+        for (const slot of keySlots) {
+            if (keyPos[slot] !== undefined) {
+                addItem('box', { x: keyPos[slot], y: keyY, label: 'Key' });
+            }
         }
+        const hasKeyLeft = keySlots.includes('left');
+        const keyMicY = keyY + base('boxH') / 2 + 2 + micLen / 2; // 四角の真下のマイクの中心
 
         // ---- メンバーの丸（立ち位置）----
         //   下の端から「マイク1本分 + すき間」上に置く。ドラムは印刷済みなので、Dr の人は丸を置かない
         const circleY = h - micLen - 4 - circle / 2;
         const micY = (y) => Math.min(y + circle / 2 + 2 + micLen / 2, h - micLen / 2); // 丸の真下のマイクの中心
         const sings = (pp) => pp.mic;
-        // ベースの丸: キーボードがいるときは、四角の右端に丸が少しかかるくらいまで右へ（Ba Amp から離れすぎない）。
+        // ベースの丸: キーボードが左にいるときは、四角の右端に丸が少しかかるくらいまで右へ（Ba Amp から離れすぎない）。
         //   ただし四角の真下に置くキーボードのマイク（幅は長さの 0.22 倍）とは重ならないように、その右にすき間を空ける
         const keyMicRight = keyX + micLen * 0.22 + 4 * stageScale();
-        const baCircleX = hasKey ? Math.max(baX, keyX + keyW / 2 - circle * 0.3, keyMicRight + circle / 2) : baX;
-        const others = []; // アンプの前に置けない人（Vo だけの人など）。あとで中央に並べる
-        let gtNo = 0;
+        const baCircleX = hasKeyLeft ? Math.max(baX, keyX + keyW / 2 - circle * 0.3, keyMicRight + circle / 2) : baX;
+        // 下の段に置く人を「左・真ん中・右」に分けて集め、最後にまとめて置く
+        //   { label, mic, x: 今まで通りの位置（真ん中の人は無し）, key: キーボードの四角を置くか }
+        const left = [], others = [], right = []; // others: 真ん中（Vo だけの人など）
+        let keyMicLeft = false;   // 左のキーボードの下にマイクを置いたか（下の段の左端をそれより右にする）
+        let keyMicMirror = false; // 右（左右対称）のキーボードの下にマイクを置いたか（下の段の右端をそれより左にする）
+        let gtNo = 0, keyNo = 0;
         for (const pp of people) {
-            // vo / cho / dr 以外の最初の楽器。無ければ Vo（Dr の人は null）
+            // vo / cho / dr 以外の最初の楽器。歌いもするなら「Vo/楽器」（Vo/Gt・Vo/Ba）。楽器が無ければ Vo（Dr の人は null）
             const i = pp.parts.findIndex((x) => !['vo', 'cho', 'dr'].includes(x));
-            const label = i >= 0 ? pp.raw[i] : (pp.parts.includes('vo') ? 'Vo' : null);
+            const label = i >= 0
+                ? (pp.parts.includes('vo') ? 'Vo/' + pp.raw[i] : pp.raw[i])
+                : (pp.parts.includes('vo') ? 'Vo' : null);
             if (!label) {
                 // ドラムで歌う人: マイクだけドラムの下に置く
                 if (sings(pp)) {
@@ -1376,33 +1429,95 @@
                 continue;
             }
             const main = i >= 0 ? pp.parts[i] : 'vo';
-            let pos = null;
+            const vo = pp.parts.includes('vo');
+            const mic = sings(pp);
             if (main === 'gt' && gtNo < gtX.length) {
-                pos = { x: gtX[gtNo++], y: circleY };
-            } else if (main === 'ba') {
-                pos = { x: baCircleX, y: circleY };
+                right.push({ label, mic, x: gtX[gtNo++] });
+            } else if (main === 'ba' && !(vo && !small)) {
+                left.push({ label, mic, x: baCircleX });
             } else if (main === 'key') {
-                // キーボードの人は丸を置かない。マイクを使うなら四角の真下に
-                if (sings(pp)) {
-                    addItem('mic', { x: keyX, y: keyY + base('boxH') / 2 + 2 + micLen / 2, label: '' });
+                const slot = keySlots[keyNo++] || 'left'; // この人のキーボードの場所
+                if (vo) {
+                    // Vo/Key の人は、端のキーボードではなく、Vo だけの人と同じ真ん中に丸とマイクを置く（キーボードの四角はそのまま）
+                    others.push({ label, mic });
+                    if (slot === 'row') {
+                        right.push({ label: 'Key', mic: false, x: drumR + (w - drumR) / 2, key: true });
+                    }
+                } else if (slot === 'row') {
+                    // Gt がいないバンド: キーボードの四角を Gt の丸の位置に置く（丸は置かない）
+                    right.push({ label: 'Key', mic, x: drumR + (w - drumR) / 2, key: true });
+                } else if (mic) {
+                    // キーボードの人は丸を置かない。マイクを使うなら四角の真下に
+                    addItem('mic', { x: keyPos[slot], y: keyMicY, label: '' });
+                    if (slot === 'mirror') {
+                        keyMicMirror = true;
+                    } else {
+                        keyMicLeft = true;
+                    }
                 }
-                continue;
             } else {
-                others.push({ label, mic: sings(pp) });
-                continue;
-            }
-            addItem('circle', { ...pos, label });
-            if (sings(pp)) {
-                addItem('mic', { x: pos.x, y: micY(pos.y), label: '' });
+                // Vo だけの人・その他の楽器・（3人以外のバンドの）Vo/Ba は真ん中
+                others.push({ label, mic });
             }
         }
-        others.forEach((o, i) => {
-            const x = w * 0.3 + (w * 0.4 * (i + 1)) / (others.length + 1); // 枠の真ん中 4 割に等間隔
+
+        /** 下の段に1人分を置く（丸、またはキーボードの四角）。マイクを使うならその真下に */
+        const place = (o, x) => {
+            if (o.key) {
+                addItem('box', { x, y: circleY, label: 'Key' });
+                if (o.mic) {
+                    addItem('mic', { x, y: Math.min(circleY + base('boxH') / 2 + 2 + micLen / 2, h - micLen / 2), label: '' });
+                }
+                return;
+            }
             addItem('circle', { x, y: circleY, label: o.label });
             if (o.mic) {
                 addItem('mic', { x, y: micY(circleY), label: '' });
             }
-        });
+        };
+
+        if (small || others.length === 0) {
+            // 3人のバンド・真ん中に誰もいないバンド: 今まで通り（左右はアンプの前、真ん中の人は枠の真ん中 4 割に等間隔）
+            for (const o of [...left, ...right]) {
+                place(o, o.x);
+            }
+            others.forEach((o, i) => place(o, w * 0.3 + (w * 0.4 * (i + 1)) / (others.length + 1)));
+            return;
+        }
+
+        // 3人以外: 左 → 真ん中 → 右 の順に、同じ間隔 s で並べる。真ん中のグループの中央が枠の横の真ん中に来る
+        //   左に誰もいない（Vo/Ba が真ん中に行ったなど）で右に2人以上いるときは、右の先頭（Gt.1）を左へ回す
+        if (left.length === 0 && right.length >= 2) {
+            left.push(right.shift()); // shift(): 配列の先頭を取り出す
+        }
+        const row = [...left, ...others, ...right];
+        const cMid = left.length + (others.length - 1) / 2; // 真ん中のグループの中央の番号（0 始まり。半端もあり）
+        const half = (o) => (o.key ? keyW / 2 : circle / 2); // 横幅の半分
+        const gap = 4 * stageScale();
+        // 端の丸が枠からはみ出さない（左にキーボードのマイクがあればそれにも重ならない）ように、間隔の上限を決める
+        const minX = Math.max(half(row[0]) + gap, keyMicLeft ? keyMicRight + circle / 2 : 0);
+        const maxX = Math.min(w - half(row[row.length - 1]) - gap, keyMicMirror ? w - keyMicRight - circle / 2 : Infinity);
+        const stepsL = cMid, stepsR = row.length - 1 - cMid;
+        const s = Math.min(
+            row.length <= 3 ? w * 0.28 : w * 0.2, // 前に3人以下なら広めに離す
+            stepsL > 0 ? (w / 2 - minX) / stepsL : Infinity,
+            stepsR > 0 ? (maxX - w / 2) / stepsR : Infinity,
+        );
+        const xs = row.map((_, k) => w / 2 + (k - cMid) * s);
+        // 左右で人数が違うとき（Ba・Vo・Gt・Gt など）は、少ない側を「枠の端〜真ん中のグループの端」の間に等分して置く
+        //   （Ba は左端と Vo のちょうど中間になる）
+        const L = left.length, C = others.length, R = right.length;
+        if (L > 0 && L < R) {
+            for (let j = 0; j < L; j++) {
+                xs[j] = Math.max(minX, (xs[L] * (j + 1)) / (L + 1)); // 左のキーボードのマイクには重ねない
+            }
+        } else if (R > 0 && R < L) {
+            const from = xs[L + C - 1];
+            for (let j = 0; j < R; j++) {
+                xs[L + C + j] = Math.min(maxX, from + ((w - from) * (j + 1)) / (R + 1));
+            }
+        }
+        row.forEach((o, k) => place(o, xs[k]));
     }
 
     /**
@@ -1637,7 +1752,8 @@
                 drawInBox(r.no, [st.no[0], top, st.no[1], bottom], { size: 11, align: 'center' });
             }
             if (r.mc) {
-                drawInBox('MC', [st.title[0], top, st.title[1], bottom], { size: titleSize * 0.85, align: 'center' });
+                // MC・テキストの行（r.title に 'MC' か書いた文字が入っている）
+                drawInBox(r.title, [st.title[0], top, st.title[1], bottom], { size: titleSize * 0.85, min: 7, align: 'center', pad: 4 });
                 return; // forEach の中の return は「次の行へ」（continue と同じ働き）
             }
             drawInBox(r.title, [st.title[0], top, st.title[1], bottom], { size: titleSize, min: 7, wrap: true, pad: 4 });

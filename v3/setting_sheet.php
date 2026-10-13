@@ -222,6 +222,8 @@ render_header('セッティングシート作成', 'lives');
         <div class="setlist-tools">
             <button type="button" class="btn btn--sm" data-song-add><?= icon('add') ?> 曲</button>
             <button type="button" class="btn btn--sm" data-mc-add><?= icon('add') ?> MC</button>
+            <!-- 曲順を付けずに自由な文字を書く行（転換・SE など） -->
+            <button type="button" class="btn btn--sm" data-text-add><?= icon('add') ?> テキスト</button>
         </div>
         <!-- 1曲 = 1行。中身は JS が state.songs から作る -->
         <ol class="setlist" data-songs></ol>
@@ -278,5 +280,5 @@ render_header('セッティングシート作成', 'lives');
     <input type="hidden" name="from_sheet" value="1">
 </form>
 
-<script src="assets/setting_sheet.js?v=32" defer></script>
+<script src="assets/setting_sheet.js?v=41" defer></script>
 <?php render_footer();
