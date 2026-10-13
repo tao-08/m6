@@ -1662,10 +1662,13 @@ function sync_account_names(PDO $pdo, ?int $memberId = null): void
 
 /**
  * メンバー名の候補: [名前 => ふりがな（無ければ NULL）]。ふりがなでも探せるように一緒に読む
+ * アカウント設定で「退会した人を候補に出さない」にしている人には、退会済みの人を出さない
+ * （require_login() がセッションに入れた hide_retired を見る。候補から消えるだけで、打てば今まで通り使える）
  */
 function member_name_choices(PDO $pdo): array
 {
-    return $pdo->query('SELECT name, name_kana FROM member ORDER BY name')->fetchAll(PDO::FETCH_KEY_PAIR);
+    $where = !empty($_SESSION['user']['hide_retired']) ? ' WHERE retired = 0' : '';
+    return $pdo->query('SELECT name, name_kana FROM member' . $where . ' ORDER BY name')->fetchAll(PDO::FETCH_KEY_PAIR);
 }
 
 /**

@@ -7,6 +7,7 @@
  *    action=profile  … 名前（メンバーと紐付いていない人だけ）
  *    action=password … パスワード変更（今のパスワードの確認つき）
  *    action=email    … 問い合わせの通知先メールアドレス（管理者だけ。contact.php）
+ *    action=suggest  … 退会した人をメンバー名の候補（サジェスト）に出さないか（member_name_choices()）
  *  メンバーと紐付いている人は、名前の代わりに「プロフィール」（送信先は member_edit.php）。
  *    名前の正は member.name で、アカウント名はそれに自動でそろう（sync_account_names()）。
  *  どのメンバーと紐付けるかは、管理者がユーザー管理（users.php）で選ぶ。
@@ -68,6 +69,14 @@ if (is_post()) {
                 ->execute([$email === '' ? null : $email, $user['user_id']]);
             flash($email === '' ? '通知先のメールアドレスを消しました' : '通知先のメールアドレスを保存しました');
         }
+    }
+
+    // チェックを外すと何も送られないので、フォームに hidden の 0 を先に置いている（チェックすると 1 で上書き）
+    if ($action === 'suggest') {
+        $hide = ($_POST['hide_retired'] ?? '') === '1';
+        $pdo->prepare('UPDATE user_account SET hide_retired_suggest = ? WHERE user_id = ?')
+            ->execute([(int)$hide, $user['user_id']]);
+        flash($hide ? '退会した人を名前の候補に出さないようにしました' : '退会した人も名前の候補に出すようにしました');
     }
 
     redirect('account');
@@ -140,6 +149,13 @@ render_header('アカウント設定');
         <div class="form-actions"><button class="btn btn--primary btn--sm" type="submit">保存</button></div>
     </form>
     <?php endif; ?>
+    <form method="post" class="card form-card">
+        <h2 class="section-title section-title--card">名前の候補</h2>
+        <p class="muted small">バンド編集・タイムテーブル編集・取り込みで、メンバーの名前を打つと出てくる候補の設定です。</p>
+        <?= csrf_field() ?><input type="hidden" name="action" value="suggest">
+        <label class="check"><input type="hidden" name="hide_retired" value="0"><input type="checkbox" name="hide_retired" value="1"<?= $account['hide_retired_suggest'] ? ' checked' : '' ?>> 退会した人を候補に出さない</label>
+        <div class="form-actions"><button class="btn btn--primary btn--sm" type="submit">保存</button></div>
+    </form>
     <div class="card form-card">
         <h2 class="section-title section-title--card">チュートリアル</h2>
         <p class="muted small">最初にログインしたときに出た、サイトの使い方の案内です。</p>

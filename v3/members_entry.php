@@ -11,6 +11,10 @@
  *  ・送られてくるのは entry[メンバーID] = 年度、kana[メンバーID] = ふりがな（空欄 = 未登録に戻す）、
  *    retired[メンバーID] = 0 / 1（退会済み。チェックを外すと何も送られないので、hidden の 0 を先に置いて、
  *    チェックしたら同じ名前の 1 で上書きされる。PHP は同じ名前なら後ろの値を使う）
+ *  ・JS が「変えた欄」だけを送る（form の data-send-changed。assets/app.js）。全員分を送ると入力欄が
+ *    PHP の max_input_vars（初期値 1000）を超えて、後ろの人の分が黙って捨てられるため
+ *  ・それでも上限を超えたとき（JS が動かない等）のために、フォームの一番最後に complete=1 を置いてある。
+ *    これが届いていなければ途中で切れているので、何も保存しない（半端な保存で退会などが外れるのを防ぐ）
  *  ・変わった人だけ UPDATE する。全員分をトランザクションで1回にまとめるので、途中で失敗したら全部取り消し
  *  ・「初出演」は入学年度の目安。1年生で出るとは限らないので、自動では保存しない（JS で空欄に入れるだけ）
  *
@@ -34,6 +38,10 @@ $unknownWhere = 'entry_year IS NULL OR name_kana IS NULL';
 
 if (is_post()) {
     verify_csrf();
+    if (($_POST['complete'] ?? '') !== '1') {
+        flash('一度に送れる量を超えたため、何も保存していません。「未登録の人だけ」で少しずつ保存してください', 'error');
+        redirect($self);
+    }
     // entry=文字列 のように形を変えて送られてきたら何もしない
     $entryInput = is_array($_POST['entry'] ?? null) ? $_POST['entry'] : [];
     $kanaInput = is_array($_POST['kana'] ?? null) ? $_POST['kana'] : [];
@@ -176,15 +184,21 @@ render_header('メンバープロフィールの一括編集');
 <?php if (!$list): ?>
     <div class="empty card"><p class="muted">入学年度・ふりがなが未登録の人はいません</p></div>
 <?php else: ?>
-<form method="post" action="<?= h($self) ?>" class="card table-card">
+<form method="post" action="<?= h($self) ?>" class="card table-card" data-send-changed>
     <?= csrf_field() ?>
     <div class="table-scroll table-scroll--flush">
     <table class="table table--edit">
-        <thead><tr><th>名前</th><th>ふりがな</th><th class="hide-sm">アカウント</th><th class="num">初出演</th><th>入学年度</th><th class="num">退会</th></tr></thead>
+        <thead><tr><th>退会</th><th>名前</th><th>ふりがな</th><th class="hide-sm">アカウント</th><th class="num">初出演</th><th>入学年度</th></tr></thead>
         <tbody>
         <?php foreach ($list as $m):
             $first = $m['first_year'] !== null ? (int)$m['first_year'] : null; ?>
             <tr>
+                <!-- 退会のチェックも tabindex="-1"（Tab でふりがな・入学年度を続けて入力するときに止まらないように） -->
+                <td>
+                    <input type="hidden" name="retired[<?= (int)$m['member_id'] ?>]" value="0">
+                    <input type="checkbox" name="retired[<?= (int)$m['member_id'] ?>]" value="1"<?= (int)$m['retired'] === 1 ? ' checked' : '' ?> tabindex="-1"
+                           aria-label="<?= h($m['name']) ?>は退会済み">
+                </td>
                 <!-- tabindex="-1": Tab キーでふりがな → 入学年度 → 次の人… と入力欄だけを移動できるように、名前のリンクは飛ばす -->
                 <td><a class="strong" tabindex="-1" href="member?id=<?= (int)$m['member_id'] ?>"><?= h($m['name']) ?></a></td>
                 <td>
@@ -203,16 +217,12 @@ render_header('メンバープロフィールの一括編集');
                            <?= $first !== null ? 'data-hint="' . $first . '"' : '' ?>
                            aria-label="<?= h($m['name']) ?>の入学年度">
                 </td>
-                <td class="num">
-                    <input type="hidden" name="retired[<?= (int)$m['member_id'] ?>]" value="0">
-                    <input type="checkbox" name="retired[<?= (int)$m['member_id'] ?>]" value="1"<?= (int)$m['retired'] === 1 ? ' checked' : '' ?>
-                           aria-label="<?= h($m['name']) ?>は退会済み">
-                </td>
             </tr>
         <?php endforeach; ?>
         </tbody>
     </table>
     </div>
+    <input type="hidden" name="complete" value="1"><!-- 一番最後に置く（届いていなければ途中で切れている） -->
     <div class="form-actions entry-actions">
         <button class="btn btn--sm" type="button" data-fill-hint title="空欄の人に、初めて出演した年度を入れます（まだ保存はされません）">初出演の年度で空欄を埋める</button>
         <button class="btn btn--primary btn--sm" type="submit">保存</button>

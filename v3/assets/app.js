@@ -995,6 +995,24 @@ function setupSmallThings() {
       }
     });
   }));
+  // data-send-changed … 送る直前に、変えていない入力欄を disabled にして送らない（disabled の欄はフォームから送られない）
+  //   メンバープロフィールの一括編集は全員分だと入力欄が 1000 を超え、PHP の max_input_vars（初期値 1000）で
+  //   後ろの人の分が黙って捨てられていた。変えた人の分だけ送れば、何百人いても上限に届かない
+  //   チェックボックスは直前の hidden（外したときの 0）と組なので、変えていなければ両方送らない
+  document.querySelectorAll('form[data-send-changed]').forEach((form) => {
+    const fields = () => [...form.querySelectorAll('input[name]:not([type=hidden])')];
+    form.addEventListener('submit', () => {
+      fields().forEach((input) => {
+        const same = input.type === 'checkbox' ? input.checked === input.defaultChecked : input.value === input.defaultValue;
+        if (!same) return;
+        input.disabled = true;
+        const prev = input.previousElementSibling;
+        if (input.type === 'checkbox' && prev?.matches(`input[type=hidden][name="${CSS.escape(input.name)}"]`)) prev.disabled = true;
+      });
+    });
+    // 戻るボタンでこのページに戻ったとき（ブラウザがページをそのまま残している）に、disabled のままにしない
+    window.addEventListener('pageshow', () => form.querySelectorAll('input[name]').forEach((input) => { input.disabled = false; }));
+  });
 }
 
 /* ---------------------------------------------------------------------
