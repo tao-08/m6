@@ -16,6 +16,8 @@ if (!empty($_SESSION['user'])) {
     }
     $tutorialAuto = !$_SESSION['user']['tutorial_seen'];
     require __DIR__ . '/tutorial.php';
+    // 「ホーム画面に追加する」の説明。右上メニュー（スマホだけ）から開く
+    require __DIR__ . '/add_to_home.php';
 }
 ?>
 </body>

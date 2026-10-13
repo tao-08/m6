@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ja">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#f6f5f1">
+    <title>オフライン | AbbeyRoad.online</title>
+    <!--
+        電波が無いときに sw.js が代わりに出すページ。
+        PHP を通さない（サーバーに届かないときに出すので）・外部のフォントや CSS も読まない（それも届かない）。
+        色は assets/app.css の --bg / --text と同じにしてある
+    -->
+    <script>
+        (function () {
+            var theme = null;
+            try { theme = localStorage.getItem('theme'); } catch (e) {}
+            theme = theme === 'dark' ? 'dark' : 'light';
+            document.documentElement.dataset.theme = theme;
+            document.querySelector('meta[name="theme-color"]').content = theme === 'dark' ? '#0d0d11' : '#f6f5f1';
+        })();
+    </script>
+    <style>
+        :root { --bg: #f6f5f1; --text: #1b1a1f; --muted: #6c6a75; --accent: #d90f0f; }
+        [data-theme="dark"] { --bg: #0d0d11; --text: #f1f0f5; --muted: #9d9cad; --accent: #ff4d4d; }
+        body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px;
+            box-sizing: border-box; background: var(--bg); color: var(--text);
+            font: 15px/1.7 -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", sans-serif; text-align: center; }
+        h1, p { text-wrap: balance; word-break: auto-phrase; } /* 「ませ／ん」のように変な所で折り返さない */
+        h1 { font-size: 20px; margin: 0 0 8px; }
+        p { margin: 0 0 24px; color: var(--muted); }
+        button { font: 700 15px/1 inherit; padding: 14px 28px; border: 0; border-radius: 999px;
+            background: var(--accent); color: #fff; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <div>
+        <h1>インターネットにつながっていません</h1>
+        <p>電波状態を確認してもう一度開いてください。</p>
+        <button type="button" onclick="location.reload()">再読み込み</button>
+    </div>
+</body>
+</html>

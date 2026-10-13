@@ -22,7 +22,9 @@ $nav = [
 <html lang="ja">
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <!-- viewport-fit=cover: iPhone の画面の端（下のホームバーの所）まで使う。
+         はみ出す分は CSS の env(safe-area-inset-*) で避けている（下のタブバー・戻るボタン） -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <!-- JavaScript の fetch() から CSRF トークンを送るために置いておく（assets/app.js） -->
     <meta name="csrf-token" content="<?= h(csrf_token()) ?>">
     <title><?= h($pageTitle) ?> | <?= h(APP_NAME) ?></title>
@@ -45,15 +47,30 @@ $nav = [
     <meta property="og:image:height" content="630">
     <meta property="og:locale" content="ja_JP">
     <meta name="twitter:card" content="summary_large_image">
-    <!-- ファビコンは元の m6 と同じ画像を使う -->
-    <link rel="icon" href="../assets/favicons/240.png" sizes="any">
-    <link rel="icon" type="image/png" href="../assets/favicons/48.png" sizes="48x48">
-    <link rel="apple-touch-icon" href="../assets/favicons/240.png" sizes="240x240">
+    <!-- ファビコンは元の m6 の「A」に、角の丸い白い背景を付けたもの（ダークモードのタブでも埋もれない）。
+         ブラウザはファビコンを特にしつこく覚えているので、画像を変えたら ?v= の数字を上げる -->
+    <link rel="icon" href="assets/favicons/240.png?v=3" sizes="any">
+    <link rel="icon" type="image/png" href="assets/favicons/48.png?v=3" sizes="48x48">
+    <!--
+        ホーム画面に追加したとき「アプリ」として開く（PWA）。
+          manifest.json … アプリの名前・アイコン・開いたときの最初のページ（Android / PC の Chrome が読む。iPhone も読む）
+          apple-touch-icon … iPhone のホーム画面のアイコン。透明な所は iPhone が黒く塗るので、白い背景を付けた画像にしてある
+          *-web-app-capable … ホーム画面から開いたとき、Safari のアドレスバーを出さない
+    -->
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="assets/favicons/apple-touch-icon.png?v=2" sizes="180x180">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="AbbeyRoad">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <!-- 画面の一番上（時計・電池の所）の色。下の script でライト/ダークに合わせて書き換える -->
+    <meta name="theme-color" content="#f6f5f1">
     <!--
         ライト / ダークの切り替え。
         CSS が読み込まれる「前」に <html data-theme="..."> を決めておかないと、
         一瞬白く光ってから黒くなる（ちらつく）ので、ここだけ <head> の中に直接書いている。
         保存先は localStorage（ブラウザごとの保存領域）。無ければライト（白）で始める。
+        theme-color の色は assets/app.css の --bg と同じ（変えたら assets/app.js の THEME_COLORS も）
     -->
     <script>
         (function () {
@@ -63,6 +80,7 @@ $nav = [
                 theme = 'light';
             }
             document.documentElement.dataset.theme = theme;
+            document.querySelector('meta[name="theme-color"]').content = theme === 'dark' ? '#0d0d11' : '#f6f5f1';
         })();
     </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -72,8 +90,8 @@ $nav = [
          display=block: 読み込み中にアイコン名の英単語（edit など）が一瞬見えるのを防ぐ -->
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400..600,0..1,0&display=block" rel="stylesheet">
     <!-- ?v=2 はキャッシュ対策。CSS を変えたら数字を上げると、ブラウザが古い CSS を使い続けない -->
-    <link rel="stylesheet" href="assets/app.css?v=228">
-    <script src="assets/app.js?v=126" defer></script>
+    <link rel="stylesheet" href="assets/app.css?v=231">
+    <script src="assets/app.js?v=127" defer></script>
 </head>
 <body>
 <header class="topbar">
@@ -119,6 +137,8 @@ $nav = [
                 <a href="account">アカウント設定</a>
                 <a href="contact">問い合わせ・要望</a>
                 <button type="button" class="linkbtn" data-tutorial-open>チュートリアル</button>
+                <!-- スマホ・タブレットだけ出す（.touch-only）。ホーム画面から開いているときは、もう追加済みなので出さない。説明は partials/add_to_home.php -->
+                <button type="button" class="linkbtn touch-only" data-a2hs-open>ホーム画面に追加する</button>
                 <form method="post" action="logout"><?= csrf_field() ?><button type="submit" class="linkbtn">ログアウト</button></form>
                 <?php if ($user['admin']): ?>
                     <!-- 管理者専用のメニューは単色の背景の枠でまとめて、一般メニューと見分けられるようにする -->

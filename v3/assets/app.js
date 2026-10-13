@@ -94,6 +94,8 @@ document.addEventListener('DOMContentLoaded', () => {
   setupYoutubeLeftover();
   setupBackButton();
   setupTutorial();
+  setupAddToHome();
+  setupServiceWorker();
 });
 
 /* ---------------------------------------------------------------------
@@ -1103,16 +1105,88 @@ function setupThemeToggle() {
   });
 }
 
+// 画面の一番上（時計・電池の所）の色 = app.css の --bg。partials/header.php の <head> の script と同じ値
+const THEME_COLORS = { light: '#f6f5f1', dark: '#0d0d11' };
+
 /* ---------------------------------------------------------------------
  * 絞り込み検索: 入力した文字を含まない行（カード）を隠す
  *   <input data-filter=".member-row"> → .member-row の data-text を見て絞る
  * ------------------------------------------------------------------- */
 function setupFilter() {
+      const meta = document.querySelector('meta[name="theme-color"]');
+      if (meta) meta.content = THEME_COLORS[next];
   document.querySelectorAll('[data-filter]').forEach((input) => {
     const items = document.querySelectorAll(input.dataset.filter);
     input.addEventListener('input', () => {
       const q = input.value.trim().toLowerCase();
       items.forEach((el) => {
+/* ---------------------------------------------------------------------
+ * 「ホーム画面に追加する」の説明（[data-a2hs-dialog]。partials/add_to_home.php）
+ *   右上メニューの [data-a2hs-open] で開く。メニューにはスマホ・タブレットのときだけ出る（app.css の .touch-only）
+ *   開いたときは、使っているブラウザの説明を先に出す（iPhone・iPad の Safari → Safari、それ以外 → Chrome）
+ *   Android の Chrome は「インストールできる」と判断すると beforeinstallprompt を送ってくる
+ *     → それを取っておいて「今すぐインストール」ボタンを出す（押すと Chrome のインストール画面がすぐ出る）
+ * ------------------------------------------------------------------- */
+function setupAddToHome() {
+  const dialog = document.querySelector('[data-a2hs-dialog]');
+  if (!dialog) return;
+  const openers = document.querySelectorAll('[data-a2hs-open]');
+  const tabs = [...dialog.querySelectorAll('[data-a2hs-tab]')];
+  const panels = [...dialog.querySelectorAll('[data-a2hs-panel]')];
+  const installBtn = dialog.querySelector('[data-a2hs-install]');
+
+  // 古い iPhone は CSS の display-mode を知らないので、ホーム画面から開いているかを navigator.standalone でも見る
+  if (navigator.standalone) openers.forEach((btn) => { btn.hidden = true; });
+
+  const show = (name) => {
+    tabs.forEach((t) => t.setAttribute('aria-selected', String(t.dataset.a2hsTab === name)));
+    panels.forEach((p) => { p.hidden = p.dataset.a2hsPanel !== name; });
+  };
+  tabs.forEach((t) => t.addEventListener('click', () => show(t.dataset.a2hsTab)));
+
+  // iPad の Safari は「Mac です」と名乗るので、Mac なのに指で触れる → iPad とみなす
+  //   iPhone の Chrome（CriOS）・Firefox（FxiOS）・Edge（EdgiOS）は Chrome 側に出す（そこに iPhone の Chrome の手順を書いてある）
+  const ua = navigator.userAgent;
+  const isIOS = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+  const isSafari = isIOS && !/CriOS|FxiOS|EdgiOS/.test(ua);
+
+  let installEvent = null;
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault(); // Chrome が勝手に出す下のバナーは止めて、ボタンを押したときに出す
+    installEvent = e;
+    if (installBtn) installBtn.hidden = false;
+  });
+  installBtn?.addEventListener('click', async () => {
+    if (!installEvent) return;
+    installEvent.prompt();
+    const { outcome } = await installEvent.userChoice;
+    installEvent = null; // 1回しか使えない
+    installBtn.hidden = true;
+    if (outcome === 'accepted') dialog.close();
+  });
+  // インストールが終わったら、もうメニューに出さない
+  window.addEventListener('appinstalled', () => openers.forEach((btn) => { btn.hidden = true; }));
+
+  openers.forEach((btn) => btn.addEventListener('click', () => {
+    btn.closest('details')?.removeAttribute('open'); // 右上メニューは閉じておく
+    show(isSafari ? 'safari' : 'chrome');
+    dialog.showModal();
+  }));
+  dialog.querySelector('[data-a2hs-close]').addEventListener('click', () => dialog.close());
+  // 外側（背景）をクリックしても閉じる。<dialog> 自体がクリックされた = 中身の外側
+  dialog.addEventListener('click', (e) => { if (e.target === dialog) dialog.close(); });
+}
+
+/* ---------------------------------------------------------------------
+ * ホーム画面に追加したとき（PWA）の裏方 sw.js を登録する。
+ *   電波が無いときに offline.html を出すだけ（くわしくは sw.js の先頭）。
+ *   https か localhost でしか動かない（それ以外ではブラウザが serviceWorker を出さない）
+ * ------------------------------------------------------------------- */
+function setupServiceWorker() {
+  if (!('serviceWorker' in navigator)) return;
+  navigator.serviceWorker.register('sw.js').catch(() => { /* 登録できなくてもサイトは普通に使える */ });
+}
+
         const text = (el.dataset.text || el.textContent).toLowerCase();
         el.hidden = q !== '' && !text.includes(q);
       });
