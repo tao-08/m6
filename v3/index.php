@@ -13,21 +13,24 @@ $user = require_login();
 
 $pdo = db();
 
-// 🚩 自分が出たバンドのうち、取り込みで「楽器を確認して」と印が付いたもの（アカウントがメンバーと紐付いている人だけ）
-$flagged = [];
-if ($user['member_id']) {
-    // about_me: 「誰について」に自分が選ばれているか（band_check_member）
-    $st = $pdo->prepare('SELECT DISTINCT b.band_id, b.name, b.play_order, b.needs_check, l.fiscal_year, l.name AS live_name, d.label, d.held_on,
-            EXISTS (SELECT 1 FROM band_check_member c WHERE c.band_id = b.band_id AND c.member_id = bm.member_id) AS about_me
-        FROM band b
-        JOIN band_member bm ON bm.band_id = b.band_id
-        JOIN live_day d ON d.live_day_id = b.live_day_id
-        JOIN live l ON l.live_id = d.live_id
-        WHERE b.needs_check > 0 AND bm.member_id = ?
-        ORDER BY about_me DESC, l.fiscal_year DESC, d.held_on DESC, b.play_order');
-    $st->execute([$user['member_id']]);
-    $flagged = $st->fetchAll();
-}
+// 🚩 確認依頼のお知らせ。出すのは次のどちらか（✕ で消したもの = check_dismiss にあるものは出さない）
+//   ・自分が出たバンド（アカウントがメンバーと紐付いている人だけ）
+//   ・メンバーが1人も登録されていないバンド → 知らせる相手がいないので、全員に出す
+//   about_me: 「誰について」に自分が選ばれているか / no_members: メンバーが1人もいないか
+//   member_id が NULL（紐付いていない人）でも、「= NULL」はどの行とも一致しないので、全員向けの分だけになる
+$st = $pdo->prepare('SELECT b.band_id, b.name, b.needs_check, l.fiscal_year, l.name AS live_name, d.label,
+        EXISTS (SELECT 1 FROM band_check_member c WHERE c.band_id = b.band_id AND c.member_id = ?) AS about_me,
+        NOT EXISTS (SELECT 1 FROM band_member bm WHERE bm.band_id = b.band_id) AS no_members
+    FROM band b
+    JOIN live_day d ON d.live_day_id = b.live_day_id
+    JOIN live l ON l.live_id = d.live_id
+    WHERE b.needs_check > 0
+      AND (EXISTS (SELECT 1 FROM band_member bm WHERE bm.band_id = b.band_id AND bm.member_id = ?)
+           OR NOT EXISTS (SELECT 1 FROM band_member bm WHERE bm.band_id = b.band_id))
+      AND NOT EXISTS (SELECT 1 FROM check_dismiss x WHERE x.band_id = b.band_id AND x.user_id = ?)
+    ORDER BY about_me DESC, no_members, l.fiscal_year DESC, d.held_on DESC, b.play_order');
+$st->execute([$user['member_id'], $user['member_id'], $user['user_id']]);
+$flagged = $st->fetchAll();
 
 // 日程1行ごとに、そのライブの情報とバンド数をくっつけて取ってくる
 //   LEFT JOIN: 相手が無くても行を残す（バンドが0組の日程も表示するため）
@@ -92,15 +95,17 @@ render_header('ライブ一覧', 'lives');
 </section>
 
 <?php if ($flagged): ?>
-    <section class="card check-list">
+    <section class="card check-list" data-check-list>
         <h2 class="section-title section-title--card"><?= icon('flag', 'icon--fill flag-icon') ?> 確認依頼が届いています</h2>
-        <p class="muted small">出演者に登録内容の確認依頼が届いているバンドです。バンドページを開いて確認をお願いします。</p>
+        <p class="muted small">登録内容の確認依頼が届いているバンドです。バンドページを開いて確認をお願いします。<br>メンバーが登録されていないバンドは全員に表示しています。分かる人はお願いします。✕ で消せます。</p>
         <ul>
             <?php foreach ($flagged as $f): ?>
-                <li><a href="band?id=<?= (int)$f['band_id'] ?>"><?= h($f['name']) ?></a>
+                <li data-check-item><div class="check-list__text"><a href="band?id=<?= (int)$f['band_id'] ?>"><?= h($f['name']) ?></a>
                     <span class="muted small"><?= (int)$f['fiscal_year'] ?>年度 <?= h($f['live_name']) ?> <?= h($f['label']) ?></span>
                     <span class="small">— <?= h(implode(' / ', check_reason_labels((int)$f['needs_check']))) ?></span>
-                    <?php if ($f['about_me']): ?><span class="chip chip--me chip--xs">あなたについて</span><?php endif; ?></li>
+                    <?php if ($f['about_me']): ?><span class="chip chip--me chip--xs">あなたについて</span><?php endif; ?>
+                    <?php if ($f['no_members']): ?><span class="chip chip--warn chip--xs">メンバー未登録</span><?php endif; ?></div>
+                    <button type="button" class="check-list__close" data-check-dismiss="<?= (int)$f['band_id'] ?>" aria-label="「<?= h($f['name']) ?>」のお知らせを消す" title="消す"><?= icon('close') ?></button></li>
             <?php endforeach; ?>
         </ul>
     </section>

@@ -37,7 +37,7 @@ SET NAMES utf8mb4;
 -- まっさらな DB に流すと「Note: #1051 '〜' は不明な表です」が表の数だけ出るが、
 -- これは「消そうとした表が最初から無かった」というだけの“お知らせ”で、エラーではない。
 SET FOREIGN_KEY_CHECKS = 0;
-DROP TABLE IF EXISTS member_role, role, artist_alias, member_favorite_album, song_performer, song, band_member, live_break, band, artist, live_day, live, venue, instrument, user_account, member;
+DROP TABLE IF EXISTS check_dismiss, band_check_member, member_role, role, artist_alias, member_favorite_album, song_performer, song, band_member, live_break, band, artist, live_day, live, venue, instrument, user_account, member;
 SET FOREIGN_KEY_CHECKS = 1;
 
 -- ---------------------------------------------------------------------
@@ -288,6 +288,21 @@ CREATE TABLE band_check_member (
     CONSTRAINT fk_bcm_band   FOREIGN KEY (band_id)   REFERENCES band (band_id)
         ON UPDATE CASCADE ON DELETE CASCADE,
     CONSTRAINT fk_bcm_member FOREIGN KEY (member_id) REFERENCES member (member_id)
+        ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- ---------------------------------------------------------------------
+--  check_dismiss — 🚩 確認依頼のお知らせを ✕ で消した記録（ユーザー × バンド。migrations/027）
+--    旗を外すと、そのバンドの行は消す（立て直したらまた届くように）
+-- ---------------------------------------------------------------------
+CREATE TABLE check_dismiss (
+    user_id INT UNSIGNED NOT NULL,
+    band_id INT UNSIGNED NOT NULL,
+    PRIMARY KEY (user_id, band_id),
+    KEY idx_cd_band (band_id),
+    CONSTRAINT fk_cd_user FOREIGN KEY (user_id) REFERENCES user_account (user_id)
+        ON UPDATE CASCADE ON DELETE CASCADE,
+    CONSTRAINT fk_cd_band FOREIGN KEY (band_id) REFERENCES band (band_id)
         ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 

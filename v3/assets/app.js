@@ -63,6 +63,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupSelectPick();
   setupChorusToggle();
   setupCheckPicker();
+  setupCheckDismiss();
   setupNewDayToggle();
   setupExtraDays();
   setupSameYear();
@@ -3547,6 +3548,38 @@ function setupCheckPicker() {
     const reason = e.target;
     if (!reason.matches('.check-picker input[name$="[reason][]"][value="2"]') || !reason.checked) return;
     reason.closest('.check-picker').querySelectorAll('input[data-vocal]').forEach((who) => { who.checked = true; });
+  });
+}
+
+/* ---------------------------------------------------------------------
+ * トップの 🚩 確認依頼のお知らせ: ✕ を押したら、横にすべらせて消してから行を詰める（CSS の .is-leaving）
+ *   消したことは api_check_dismiss に送って DB に残す（次に開いても出ない）。最後の1つを消したらカードごと消す
+ * ------------------------------------------------------------------- */
+function setupCheckDismiss() {
+  const list = document.querySelector('[data-check-list]');
+  if (!list) return;
+  const token = document.querySelector('meta[name="csrf-token"]')?.content || '';
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)');
+  // アニメーションが終わったら消す（動きを減らす設定のときは、すぐ消す）
+  const leave = (el) => {
+    if (reduce.matches) { el.remove(); return; }
+    el.style.height = `${el.offsetHeight}px`; // 高さを数字で固定してから 0 へ → なめらかに詰まる
+    void el.offsetHeight; // ここで一度レイアウトを確定させる（しないと「固定した高さ」を飛ばしていきなり 0 になる）
+    el.classList.add('is-leaving');
+    // transitionend が来ない（タブが裏にある など）ときのために、時間でも消す
+    const done = () => el.remove();
+    el.addEventListener('transitionend', (e) => { if (e.target === el && e.propertyName === 'height') done(); });
+    setTimeout(done, 600);
+  };
+
+  list.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-check-dismiss]');
+    if (!btn) return;
+    btn.disabled = true;
+    const body = new URLSearchParams({ band_id: btn.dataset.checkDismiss });
+    fetch('api_check_dismiss', { method: 'POST', headers: { 'X-CSRF-Token': token }, body, keepalive: true }).catch(() => {});
+    const item = btn.closest('[data-check-item]');
+    if (list.querySelectorAll('[data-check-item]').length === 1) leave(list); else leave(item);
   });
 }
 

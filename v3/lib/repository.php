@@ -1705,7 +1705,7 @@ function render_suggest_datalist(string $id, array $values, array $kana = []): s
 
 /**
  * 🚩 バンドの「誰について確認してほしいか」（band_check_member）を入れ直す。
- *   $bits = 0（依頼なし）なら全部消す。
+ *   $bits = 0（依頼なし）なら全部消す（お知らせを ✕ で消した記録 check_dismiss も）。
  *   入れるのは「いまそのバンドの band_member にいる人」だけ（INSERT ... SELECT で DB に確かめさせる。
  *   書き換えられた id や、同じ保存でバンドから外した人は入らない）。
  *   履歴を持たない表なので、消して入れ直すだけでよい。
@@ -1713,6 +1713,10 @@ function render_suggest_datalist(string $id, array $values, array $kana = []): s
 function save_check_members(PDO $pdo, int $bandId, int $bits, array $memberIds): void
 {
     $pdo->prepare('DELETE FROM band_check_member WHERE band_id = ?')->execute([$bandId]);
+    if ($bits === 0) {
+        // 旗を外した = 確認が終わった。✕ で消した記録も消す（また旗を立てたら、みんなに届き直すように）
+        $pdo->prepare('DELETE FROM check_dismiss WHERE band_id = ?')->execute([$bandId]);
+    }
     $ids = array_values(array_unique(array_filter(array_map('intval', $memberIds), static fn($id) => $id > 0)));
     if ($bits === 0 || !$ids) {
         return;

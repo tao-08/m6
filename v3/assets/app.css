@@ -814,8 +814,21 @@ body.is-row-dragging, body.is-row-dragging * { cursor: grabbing !important; user
 .check-flag__text p { margin: 0 0 6px; }
 .chip--warn { border-color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, var(--surface)); }
 .chip .icon { font-size: 15px; vertical-align: -2px; margin-right: 2px; }
-.chip--xs { padding: 0 8px; font-size: 11px; }
-.check-list ul { margin: 8px 0 0; padding-left: 1.2em; display: grid; gap: 4px; }
+.chip--xs { display: inline-block; padding: 0 8px; font-size: 11px; white-space: nowrap; }
+.check-list ul { margin: 8px 0 0; padding: 0; list-style: none; display: grid; gap: 4px; }
+/* トップの確認依頼: 1件ごとに右端に ✕。消すときは右へすべらせながら薄くして、高さを 0 にして詰める（app.js の setupCheckDismiss） */
+.check-list li { display: flex; align-items: flex-start; gap: 8px; padding: 4px 0; overflow: hidden;
+  transition: opacity .2s ease, transform .25s ease, height .25s ease .15s, padding .25s ease .15s; }
+.check-list__text { flex: 1; min-width: 0; }
+.check-list__close { flex: none; display: inline-flex; padding: 4px; border: 0; border-radius: 999px; background: none; color: var(--muted); cursor: pointer; }
+.check-list__close .icon { font-size: 18px; vertical-align: 0; }
+.check-list__close:hover { background: var(--surface-2); color: var(--text); }
+.check-list__close:focus-visible { outline: 2px solid var(--accent); }
+.check-list li.is-leaving { opacity: 0; transform: translateX(24px); height: 0 !important; padding-top: 0; padding-bottom: 0; }
+/* 最後の1件を消すときはカードごと */
+.check-list.is-leaving { opacity: 0; transform: translateX(24px); height: 0 !important; padding-top: 0; padding-bottom: 0; margin-top: 0; margin-bottom: 0;
+  overflow: hidden; border-width: 0; transition: opacity .2s ease, transform .25s ease, height .3s ease .15s, padding .3s ease .15s, margin .3s ease .15s; }
+@media (prefers-reduced-motion: reduce) { .check-list li, .check-list.is-leaving { transition: none; } }
 .table--roster [data-roster-missing] { display: block; width: fit-content; margin-top: 4px; font-weight: 400; }
 .table--roster [data-roster-missing][hidden] { display: none; }
 .modal__list { margin: 12px 0 0; padding-left: 1.2em; max-height: 40vh; overflow: auto; }
