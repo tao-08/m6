@@ -12,6 +12,7 @@ declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/repository.php';
 require_once __DIR__ . '/lib/albums.php';
+require_once __DIR__ . '/lib/claude.php';
 $user = require_login();
 
 $pdo = db();
@@ -91,13 +92,18 @@ if (is_admin()) {
         $action = $_POST['action'] ?? '';
         if ($action === 'rename') {
             $name = trim((string)($_POST['name'] ?? ''));
+            $kana = trim((string)($_POST['name_kana'] ?? ''));
             $st = $pdo->prepare('SELECT 1 FROM artist WHERE name = ? AND artist_id <> ?');
             $st->execute([$name, $artistId]);
             if ($name === '' || mb_strlen($name) > 100 || $st->fetchColumn()) {
                 flash('名前が空か、同じ名前のアーティストが既にあります（その場合は統合してください）', 'error');
+            } elseif (mb_strlen($kana) > 100) {
+                flash('ふりがなは100文字以内にしてください', 'error');
             } else {
-                $pdo->prepare('UPDATE artist SET name = ? WHERE artist_id = ?')->execute([$name, $artistId]);
-                flash('アーティスト名を変更しました');
+                // ふりがなは空なら NULL（member_edit.php と同じ）
+                $pdo->prepare('UPDATE artist SET name = ?, name_kana = ? WHERE artist_id = ?')
+                    ->execute([$name, $kana !== '' ? $kana : null, $artistId]);
+                flash('アーティスト名・ふりがなを変更しました');
             }
         } elseif ($action === 'merge') {
             // このアーティストを、別のアーティストに付け替えてから消す（lib/repository.php の merge_artist）
@@ -175,6 +181,7 @@ render_header($artist['name'], 'artists');
     <div>
         <p class="eyebrow">Artist</p>
         <h1 class="display"><?= h($artist['name']) ?></h1>
+        <?php if (($artist['name_kana'] ?? '') !== ''): // ふりがな（member.php と同じく名前のすぐ下） ?><p class="muted small"><?= h($artist['name_kana']) ?></p><?php endif; ?>
         <p class="muted">サークルで <?= count($bands) ?> 回演奏されました</p>
         <?php if ($aliases): ?><p class="muted small">別称: <?= h(implode('、', $aliases)) ?></p><?php endif; ?>
     </div>
@@ -251,7 +258,11 @@ render_header($artist['name'], 'artists');
         <?= csrf_field() ?><input type="hidden" name="action" value="rename">
         <!-- 候補: ほかのアーティスト名（表記をそろえるときの参考。同じ名前にすると弾かれるので、そのときは下の統合を使う） -->
         <label class="field field--wide"><span>名前</span><input name="name" value="<?= h($artist['name']) ?>" maxlength="100" required data-suggest-list="artist-names" autocomplete="off"></label>
-        <div class="form-actions field--wide"><button class="btn btn--sm" type="submit">名前を変更</button></div>
+        <label class="field field--wide"><span>ふりがな（任意）</span><input name="name_kana" value="<?= h($artist['name_kana'] ?? '') ?>" maxlength="100" autocomplete="off"></label>
+        <?php if (claude_enabled()): // AI の読みは入力欄に入れるだけ。確かめてから下のボタンで保存する（api_artist_kana.php / app.js の setupKanaAi） ?>
+            <div class="form-actions field--wide"><button class="btn btn--ghost btn--sm" type="button" data-kana-ai>AI で読みを入れる</button><span class="muted small" data-kana-ai-status></span></div>
+        <?php endif; ?>
+        <div class="form-actions field--wide"><button class="btn btn--sm" type="submit">名前・ふりがなを変更</button></div>
     </form>
     <!-- 別称: マイアルバムのアーティスト名がこの表記でも、このアーティストのアルバムとして上に出す -->
     <div class="edit-box__form">

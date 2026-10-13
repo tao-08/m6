@@ -17,6 +17,7 @@ declare(strict_types=1);
  *  ※ API キーは config.php の anthropic.api_key（パスワードと同じ。git に入れない）
  * =====================================================================
  */
+require_once __DIR__ . '/../claude.php';
 
 /** AI で読む画像の拡張子（iPhone の HEIC は Claude が読めないので入れていない） */
 const AI_IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
@@ -34,7 +35,7 @@ function is_ai_image_name(string $name): bool
 
 function ai_reader_enabled(): bool
 {
-    return (string)(config('anthropic')['api_key'] ?? '') !== '';
+    return claude_enabled();
 }
 
 /**
@@ -203,83 +204,21 @@ function ai_output_schema(): array
 }
 
 /**
- * Claude の Messages API を呼ぶ。
- * composer（公式 SDK）が使えないレンタルサーバーでも動くように、cURL で直接 HTTP を送っている。
+ * Claude に画像を読ませる（呼び出し自体は lib/claude.php の claude_json）。
  * @return array{tables: array, notes: array}
  */
 function ai_call_claude(array $content): array
 {
-    $cfg = config('anthropic') ?? [];
-    $body = [
-        'model'      => (string)($cfg['model'] ?? 'claude-opus-5-5'),
-        'max_tokens' => 16000,
-        'system'     => AI_SYSTEM_PROMPT,
-        'messages'   => [['role' => 'user', 'content' => $content]],
-        'output_config' => [
-            'effort' => 'medium',
-            'format' => ['type' => 'json_schema', 'schema' => ai_output_schema()],
-        ],
-    ];
-    // AI が安全上の理由で断ったとき、自動で別のモデルに回してもらう
-    // Haiku にはこの仕組みが無い（送るとエラーになる）ので、Haiku 以外のときだけ付ける
-    $useFallback = !str_starts_with($body['model'], 'claude-haiku');
-    if ($useFallback) {
-        $body['fallbacks'] = 'default';
-    }
-    if (!function_exists('curl_init')) {
-        throw new RuntimeException('サーバーで cURL が使えないため、AI を呼び出せません');
-    }
-    // 返事を待つ間に PHP の実行時間の上限（レンタルサーバーだと 30 秒など）で止められないようにする
-    @set_time_limit(AI_HTTP_TIMEOUT_SEC + 30);
-
-    $ch = curl_init('https://api.anthropic.com/v1/messages');
-    curl_setopt_array($ch, [
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_POST           => true,
-        CURLOPT_POSTFIELDS     => json_encode($body, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR),
-        CURLOPT_TIMEOUT        => AI_HTTP_TIMEOUT_SEC,
-        CURLOPT_CONNECTTIMEOUT => 10,
-        CURLOPT_HTTPHEADER     => [
-            'content-type: application/json',
-            'x-api-key: ' . (string)$cfg['api_key'],
-            'anthropic-version: 2023-06-01',
-            ...($useFallback ? ['anthropic-beta: server-side-fallback-2026-07-01'] : []),
-        ],
-    ]);
-    $raw = curl_exec($ch);
-    $status = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
-    if ($raw === false) {
-        throw new RuntimeException('AI に接続できませんでした（' . curl_error($ch) . '）。時間をおいて試してください');
-    }
-    $res = json_decode((string)$raw, true);
-    if ($status !== 200 || !is_array($res)) {
-        // エラーの中身（API キーの間違いなど）は管理者にしか意味がないので、画面にはざっくり出してログに残す
-        error_log('Claude API error ' . $status . ': ' . substr((string)$raw, 0, 1000));
-        $msg = match (true) {
-            $status === 401 => 'AI の API キーが正しくありません（管理者に連絡してください）',
-            $status === 429 => 'AI が混み合っているか、利用上限に達しました。時間をおいて試してください',
-            $status >= 500  => 'AI 側で一時的なエラーが起きました。時間をおいて試してください',
-            default         => "AI の呼び出しに失敗しました（{$status}）",
+    try {
+        $data = claude_json(AI_SYSTEM_PROMPT, $content, ai_output_schema(), 16000, AI_HTTP_TIMEOUT_SEC);
+    } catch (RuntimeException $e) {
+        throw match ($e->getCode()) {
+            CLAUDE_ERR_REFUSAL    => new RuntimeException('AI がこの画像の読み取りを断りました。別の画像で試してください'),
+            CLAUDE_ERR_MAX_TOKENS => new RuntimeException('表が大きすぎて読み切れませんでした。画像を分けてアップロードしてください'),
+            default               => $e,
         };
-        throw new RuntimeException($msg);
     }
-
-    $stop = $res['stop_reason'] ?? '';
-    if ($stop === 'refusal') {
-        throw new RuntimeException('AI がこの画像の読み取りを断りました。別の画像で試してください');
-    }
-    if ($stop === 'max_tokens') {
-        throw new RuntimeException('表が大きすぎて読み切れませんでした。画像を分けてアップロードしてください');
-    }
-    // content には思考（thinking）のブロックなども入るので、最後の text ブロックを答えとして使う
-    $text = null;
-    foreach ($res['content'] ?? [] as $block) {
-        if (($block['type'] ?? '') === 'text') {
-            $text = (string)$block['text'];
-        }
-    }
-    $data = $text === null ? null : json_decode($text, true);
-    if (!is_array($data) || !is_array($data['tables'] ?? null)) {
+    if (!is_array($data['tables'] ?? null)) {
         throw new RuntimeException('AI の返事を読み取れませんでした。もう一度試してください');
     }
     return ['tables' => $data['tables'], 'notes' => is_array($data['notes'] ?? null) ? $data['notes'] : []];

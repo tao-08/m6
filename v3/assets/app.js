@@ -99,6 +99,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupTutorial();
   setupAddToHome();
   setupServiceWorker();
+  setupKanaAi();
 });
 
 /* ---------------------------------------------------------------------
@@ -4201,4 +4202,40 @@ function setupTutorial() {
     open();
   }));
   if (dialog.hasAttribute('data-tutorial-auto')) open();
+}
+/**
+ * アーティストの編集欄の「AI で読みを入れる」（artist.php → api_artist_kana.php）。
+ * 名前欄の今の値を送って、返ってきた読みをふりがな欄に入れるだけ。保存は「名前・ふりがなを変更」で人がする
+ */
+function setupKanaAi() {
+  const btn = document.querySelector('[data-kana-ai]');
+  if (!btn) return;
+  const form = btn.closest('form');
+  const nameInput = form.querySelector('input[name="name"]');
+  const kanaInput = form.querySelector('input[name="name_kana"]');
+  const status = form.querySelector('[data-kana-ai-status]');
+  const token = document.querySelector('meta[name="csrf-token"]')?.content || '';
+  btn.addEventListener('click', async () => {
+    const name = nameInput.value.trim();
+    if (!name) return;
+    btn.disabled = true;
+    status.textContent = 'AI に聞いています…';
+    try {
+      const res = await fetch('api_artist_kana', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': token },
+        body: JSON.stringify({ name }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.kana) throw new Error(data.error || 'AI の呼び出しに失敗しました');
+      kanaInput.value = data.kana;
+      // 値を JS で入れただけでは input イベントが出ない → 未保存の警告（form[data-unsaved]）が気づけるように出す
+      kanaInput.dispatchEvent(new Event('input', { bubbles: true }));
+      status.textContent = '入れました。確かめてから保存してください';
+    } catch (e) {
+      status.textContent = e.message;
+    } finally {
+      btn.disabled = false;
+    }
+  });
 }

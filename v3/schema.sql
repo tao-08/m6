@@ -164,6 +164,7 @@ CREATE TABLE live_day (
 CREATE TABLE artist (
     artist_id INT UNSIGNED NOT NULL AUTO_INCREMENT,
     name      VARCHAR(100) NOT NULL,
+    name_kana VARCHAR(100) NULL,       -- ふりがな。不明なら NULL（'' で代用しない）
     PRIMARY KEY (artist_id),
     UNIQUE KEY uq_artist_name (name)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;

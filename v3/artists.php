@@ -13,7 +13,47 @@ declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 $user = require_login();
 require_once __DIR__ . '/lib/repository.php'; // artist_plays_sql()
+require_once __DIR__ . '/lib/claude.php';
 $pdo = db();
+
+/** ふりがなが空で、付ける必要があるアーティスト名（かなだけの名前は付けないので除く。lib/claude.php の artist_kana_style） */
+function artists_needing_kana(PDO $pdo): array
+{
+    $names = $pdo->query('SELECT name FROM artist WHERE name_kana IS NULL ORDER BY artist_id')->fetchAll(PDO::FETCH_COLUMN);
+    return array_values(array_filter($names, static fn($n) => artist_kana_style($n) !== 'none'));
+}
+
+/** AI で一度にふりがなを付けるアーティストの数（多すぎると返事が途中で切れる・待ち時間が延びる） */
+const KANA_AI_BATCH = 150;
+
+// 管理者: ふりがなが空のアーティストに、AI でまとめてふりがなを付ける（lib/claude.php の claude_artist_kana）
+//   演奏0回で一覧に出ないアーティストも対象（artist.php?id= では名前の下に出るので）
+//   AI の読み間違いはあるので、付けた名前を画面に出して、違ったら artist.php で直してもらう
+if (is_admin() && is_post() && ($_POST['action'] ?? '') === 'kana_ai') {
+    verify_csrf();
+    $names = array_slice(artists_needing_kana($pdo), 0, KANA_AI_BATCH);
+    try {
+        $kana = claude_artist_kana($names);
+        $st = $pdo->prepare('UPDATE artist SET name_kana = ? WHERE name = ? AND name_kana IS NULL');
+        $done = [];
+        foreach ($kana as $name => $k) {
+            $st->execute([$k, $name]);
+            $done[] = "{$name}（{$k}）";
+        }
+        $left = count(artists_needing_kana($pdo));
+        flash($done
+            ? count($done) . '件にふりがなを付けました。違っていたらアーティストのページで直してください: ' . implode('、', $done)
+              . ($left > 0 ? "（まだ {$left} 件残っています。もう一度押してください）" : '')
+            : 'ふりがなを付けられませんでした', $done ? 'success' : 'error');
+    } catch (RuntimeException $e) {
+        flash($e->getMessage(), 'error');
+    }
+    redirect('artists');
+}
+// ボタンを出すかどうか（ふりがなが空のアーティストがいるときだけ）
+$kanaMissing = is_admin() && claude_enabled()
+    ? count(artists_needing_kana($pdo))
+    : 0;
 
 // 「アーティスト × 演奏したバンド」の組（lib/repository.php の artist_plays_sql()。アーティストページ・集計・検索と同じ数え方）
 $playedSql = artist_plays_sql(); // 見る人によって変わる（出演まで非公開のバンド）ので定数ではなく変数
@@ -21,7 +61,7 @@ $playedSql = artist_plays_sql(); // 見る人によって変わる（出演ま�
 // 演奏0回のアーティストは出さない（JOIN = 演奏したバンドがあるものだけ）。
 //   オムニバスにしてコピー元アーティストを外したバンドの「ボカロバンド」のような、どこからも使われなくなった名前を一覧に残さないため
 //   （行は消さないので、artist.php?id= で直接開くことはできる）
-$rows = $pdo->query('SELECT a.artist_id, a.name, COUNT(p.band_id) AS plays
+$rows = $pdo->query('SELECT a.artist_id, a.name, a.name_kana, COUNT(p.band_id) AS plays
     FROM artist a
     JOIN (' . $playedSql . ') p ON p.artist_id = a.artist_id
     GROUP BY a.artist_id
@@ -99,7 +139,8 @@ usort($list, static function (array $a, array $b) use ($sort, $dir, $lastLive, $
         return ($ta === null) <=> ($tb === null); // 最多演奏の人がいないもの（メンバー未登録のバンドだけ）は一番下
     }
     $cmp = match ($sort) {
-        'name'  => strcmp(mb_convert_kana($a['name'], 'c'), mb_convert_kana($b['name'], 'c')),
+        // ふりがながあればふりがなで並べる（「米津玄師」が漢字の読みと関係ない場所に行かないように）
+        'name'  => strcmp(mb_convert_kana($a['name_kana'] ?? $a['name'], 'c'), mb_convert_kana($b['name_kana'] ?? $b['name'], 'c')),
         'last'  => [(string)$la['held_on'], (int)$la['fiscal_year']] <=> [(string)$lb['held_on'], (int)$lb['fiscal_year']],
         // 1位の人の演奏回数 → 同じ回数なら同率1位の人数（1人で独占しているほうを上に）
         'top'   => [(int)($ta['n'] ?? 0), -count($topPlayers[(int)$a['artist_id']] ?? [])] <=> [(int)($tb['n'] ?? 0), -count($topPlayers[(int)$b['artist_id']] ?? [])],
@@ -132,6 +173,13 @@ render_header('アーティスト', 'artists');
     <dl class="stats"><div><dt>総演奏アーティスト数</dt><dd><?= count($rows) ?></dd></div></dl>
 </section>
 
+<?php if ($kanaMissing > 0): ?>
+    <form method="post" class="form-actions" data-confirm="ふりがなが空の <?= $kanaMissing ?> 件のうち、最大 <?= KANA_AI_BATCH ?> 件の名前を AI（Anthropic のサーバー）に送って、ふりがなを付けます。">
+        <?= csrf_field() ?><input type="hidden" name="action" value="kana_ai">
+        <button class="btn btn--sm" type="submit">ふりがなが空の <?= $kanaMissing ?> 件に AI でふりがなを付ける</button>
+    </form>
+<?php endif; ?>
+
 <?php if (!$list): ?>
     <div class="empty card"><p class="empty__title">まだアーティストがいません</p></div>
 <?php else: ?>
@@ -150,7 +198,7 @@ render_header('アーティスト', 'artists');
             </tr></thead>
             <tbody>
             <?php foreach ($list as $r): $id = (int)$r['artist_id']; $al = $aliases[$id] ?? []; $ll = $lastLive[$id] ?? null; ?>
-                <tr class="artist-row" data-text="<?= h($r['name'] . ' ' . implode(' ', $al)) ?>">
+                <tr class="artist-row" data-text="<?= h($r['name'] . ' ' . ($r['name_kana'] ?? '') . ' ' . implode(' ', $al)) ?>">
                     <td class="num muted"><?= $r['rank'] ?? '—' ?></td>
                     <td>
                         <a href="artist?id=<?= $id ?>"<?= $r['rank'] ? ' class="strong"' : '' ?>><?= h($r['name']) ?></a>

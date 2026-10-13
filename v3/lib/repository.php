@@ -179,6 +179,9 @@ function merge_artist(PDO $pdo, int $fromId, int $toId): void
     $pdo->prepare('UPDATE song SET artist_id = ? WHERE artist_id = ?')->execute([$toId, $fromId]);
     $pdo->prepare('UPDATE artist_alias SET artist_id = ? WHERE artist_id = ?')->execute([$toId, $fromId]);
     $pdo->prepare('INSERT IGNORE INTO artist_alias (name, artist_id) VALUES (?, ?)')->execute([$fromName, $toId]);
+    // ふりがなは、統合先が空なら統合元のものを引き継ぐ（merge_members と同じ）
+    $pdo->prepare('UPDATE artist t JOIN artist f ON f.artist_id = ? SET t.name_kana = COALESCE(t.name_kana, f.name_kana) WHERE t.artist_id = ?')
+        ->execute([$fromId, $toId]);
     $pdo->prepare('DELETE FROM artist WHERE artist_id = ?')->execute([$fromId]);
 }
 
