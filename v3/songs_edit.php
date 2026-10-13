@@ -42,7 +42,7 @@ if (!$band) {
 $setlistVis = band_setlist_visibility($pdo, $bandId);
 if ($setlistVis['hidden']) {
     http_response_code(403); // 403 = 「あるけど、あなたには見せられない」
-    render_header('曲を編集', 'lives');
+    render_header('セットリストを編集', 'lives');
     echo '<div class="empty card"><p class="empty__title">' . icon('lock') . ' セットリストは出演まで非公開です</p>'
         . '<p class="muted small">編集できるのはバンドのメンバーと管理者だけです</p>'
         . '<a class="btn" href="band?id=' . $bandId . '">バンドへ戻る</a></div>';
@@ -267,7 +267,7 @@ $artistNames = $pdo->query('SELECT name FROM artist ORDER BY name')->fetchAll(PD
 const ICON_TRASH = 'delete';
 const ICON_UNLINK = 'link_off';
 
-render_header('曲を編集', 'lives');
+render_header('セットリストを編集', 'lives');
 ?>
 <nav class="crumbs"><a href="<?= h($liveUrl) ?>"><?= h($band['live_name']) ?> <?= h($band['label']) ?></a><span>/</span><a href="<?= h($backUrl) ?>"><?= h($band['name']) ?></a></nav>
 <h1 class="display display--sm"><?= icon('queue_music') ?> <?= h($band['name']) ?> のセットリスト</h1>

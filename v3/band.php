@@ -242,7 +242,7 @@ render_header($band['name'], 'lives');
             <a class="btn btn--sm btn--youtube" href="<?= h($band['youtube_url']) ?>" target="_blank" rel="noopener noreferrer" aria-label="YouTube で見る" title="YouTube で見る"><?= youtube_icon() ?></a>
         <?php endif; ?>
         <a class="btn btn--sm" href="band_edit?id=<?= $bandId ?>"><?= icon('edit') ?> バンドを編集</a>
-        <a class="btn btn--sm" href="songs_edit?band=<?= $bandId ?>"><?= icon('queue_music') ?> 曲を<?= $songs ? '編集' : '登録' ?></a>
+        <a class="btn btn--sm" href="songs_edit?band=<?= $bandId ?>"><?= icon('queue_music') ?> セットリストを<?= $songs ? '編集' : '登録' ?></a>
         <?php
         // 会場の PDF にバンド名・メンバー・セットリストを書き込む（setting_sheet.php）。
         //   出すのは、これからのライブ（開催日が今日よりあと）だけ。終わったライブのシートは作らないので
@@ -316,7 +316,7 @@ render_header($band['name'], 'lives');
         </ol></div>
     <?php else: ?>
         <p class="muted">まだ曲が登録されていません</p>
-        <p class="no-print"><a class="btn btn--ghost btn--sm" href="songs_edit?band=<?= $bandId ?>"><?= icon('queue_music') ?> 曲を登録</a></p>
+        <p class="no-print"><a class="btn btn--ghost btn--sm" href="songs_edit?band=<?= $bandId ?>"><?= icon('queue_music') ?> セットリストを登録</a></p>
     <?php endif; ?>
 </section>
 
