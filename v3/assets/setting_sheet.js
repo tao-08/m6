@@ -704,7 +704,7 @@
      */
     function itemSize(it) {
         switch (it.type) {
-            case 'mic': return { w: base('micLen') * it.scale * 0.22, h: base('micLen') * it.scale };
+            case 'mic': return { w: base('micLen') * it.scale * 0.44, h: base('micLen') * it.scale };
             case 'circle': return { w: base('circle') * it.scale * it.stretch, h: base('circle') * it.scale };
             case 'box': return { w: base('boxW') * it.scale * it.stretch, h: base('boxH') * it.scale };
             default: return { w: 0, h: 0 }; // text は文字の長さで決まる
@@ -753,11 +753,12 @@
     }
 
     /** マイクの絵（SVG）。マイクの形は「中心が (0,0)、長さ 1」で書いて、viewBox で拡大する */
+    //   形はシートの凡例（↑ の付いた ⌀）に合わせ、下の棒だけ少し短くしている
     const MIC_SVG =
-        '<svg viewBox="-0.11 -0.5 0.22 1" preserveAspectRatio="none" aria-hidden="true">' +
-        '<line x1="0" y1="-0.45" x2="0" y2="0.5" stroke="#000" stroke-width="0.03"/>' +
-        '<circle cx="0" cy="-0.227" r="0.093" fill="none" stroke="#000" stroke-width="0.025"/>' +
-        '<polygon points="0,-0.5 -0.055,-0.39 0.055,-0.39" fill="#000"/>' +
+        '<svg viewBox="-0.22 -0.5 0.44 1" preserveAspectRatio="none" aria-hidden="true">' +
+        '<line x1="0" y1="-0.29" x2="0" y2="0.5" stroke="#000" stroke-width="0.045"/>' +
+        '<circle cx="0" cy="0.053" r="0.199" fill="none" stroke="#000" stroke-width="0.035"/>' +
+        '<polygon points="0,-0.5 -0.105,-0.285 0.105,-0.285" fill="#000"/>' +
         '</svg>';
 
     /** 部品を全部描き直す */
@@ -867,6 +868,44 @@
         panel.querySelectorAll('[data-only]').forEach((el) => {
             el.hidden = !el.dataset.only.split(' ').includes(it.type);
         });
+        renderPartButtons();
+    }
+
+    /**
+     * 丸を選んだときの「楽器名ボタン」。メンバー欄に入力されている人のパートだけ出す。
+     *   「Vo/Gt」の人は Vo と Gt の2つに分ける。同じ楽器は1つにまとめる（大文字小文字は区別しない）
+     */
+    function renderPartButtons() {
+        const box = panel.querySelector('[data-part-btns]');
+        const seen = new Map(); // 小文字 => 表示する名前（最初に出てきた書き方を使う）
+        for (const m of state.members) {
+            if (m.name.trim() === '') {
+                continue;
+            }
+            for (const p of m.part.split(/[\/／・,、\s]+/)) {
+                if (p !== '' && !seen.has(p.toLowerCase())) {
+                    seen.set(p.toLowerCase(), p);
+                }
+            }
+        }
+        box.replaceChildren(); // 中身を空にしてから作り直す
+        for (const name of seen.values()) {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'btn btn--sm';
+            b.textContent = name; // textContent なので、パートに < などが入っていても HTML にならない（XSS 対策）
+            b.addEventListener('click', () => {
+                const it = findItem(selectedId);
+                it.label = name;
+                panel.querySelector('[data-p="label"]').value = name;
+                renderStage();
+                save();
+            });
+            box.append(b);
+        }
+        if (seen.size === 0) {
+            box.innerHTML = '<span class="muted small">メンバー欄に名前とパートを入れると、ここに楽器名のボタンが出ます。</span>';
+        }
     }
 
     function bindStage() {
@@ -1093,7 +1132,7 @@
          *   wrap: true なら折り返して最大 maxLines 行まで使う。改行（\n）はそのまま改行になる
          */
         function drawInBox(text, box, opt = {}) {
-            const { size: maxSize = 10, min = 5, align = 'left', wrap = false, maxLines = 2, pad = 2 } = opt;
+            const { size: maxSize = 10, min = 5, align = 'center', wrap = false, maxLines = 2, pad = 2 } = opt;
             text = String(text || '').trim();
             if (text === '') {
                 return;
@@ -1153,7 +1192,7 @@
 
         // ---- 1. バンド名・フリガナ・出演日・出演順 ----
         for (const [key, f] of Object.entries(t.fields)) {
-            drawInBox(state[key], f.box, { size: f.size, align: f.align, min: 5 });
+            drawInBox(state[key], f.box, { size: f.size, min: 5 });
         }
 
         // ---- 2. メンバー ----
@@ -1201,7 +1240,7 @@
                 return; // forEach の中の return は「次の行へ」（continue と同じ働き）
             }
             drawInBox(r.title, [st.title[0], top, st.title[1], bottom], { size: titleSize, min: 7, wrap: true, pad: 4 });
-            const note = { size: noteSize, min: 5, wrap: true, maxLines: 3, pad: 3 };
+            const note = { size: noteSize, min: 5, wrap: true, maxLines: 3, pad: 3, align: 'left' }; // 音響・照明への要望だけは左揃え
             if (st.request) {
                 // 音響と照明が1つの欄: 両方あれば「音響 / 照明：…」の形でまとめる
                 //   filter(Boolean): 空の文字（''）を取り除く定番の書き方
@@ -1225,7 +1264,7 @@
         // ---- 3.5 その他の自由記入欄 ----
         for (const tx of t.texts || []) {
             drawInBox(textValue(tx), tx.box, {
-                size: tx.size || 10, align: tx.align || 'left', wrap: !!tx.multiline, maxLines: 4, pad: 3,
+                size: tx.size || 10, wrap: !!tx.multiline, maxLines: 4, pad: 3,
             });
         }
 
@@ -1277,11 +1316,12 @@
             if (it.type === 'mic') {
                 const L = base('micLen') * it.scale;
                 const p = (lx, ly) => toPdf(it, lx * L, ly * L); // マイクの形は「長さ1」で書いてあるので L 倍
-                const a = p(0, -0.45), b = p(0, 0.5);
-                page.drawLine({ start: a, end: b, thickness: Math.max(0.8, 0.03 * L), color: black });
-                const c = p(0, -0.227);
-                page.drawCircle({ x: c.x, y: c.y, size: 0.093 * L, borderColor: black, borderWidth: Math.max(0.7, 0.025 * L) });
-                const t1 = p(0, -0.5), t2 = p(-0.055, -0.39), t3 = p(0.055, -0.39);
+                // 数字は画面の MIC_SVG と同じ
+                const a = p(0, -0.29), b = p(0, 0.5);
+                page.drawLine({ start: a, end: b, thickness: Math.max(0.8, 0.045 * L), color: black });
+                const c = p(0, 0.053);
+                page.drawCircle({ x: c.x, y: c.y, size: 0.199 * L, borderColor: black, borderWidth: Math.max(0.7, 0.035 * L) });
+                const t1 = p(0, -0.5), t2 = p(-0.105, -0.285), t3 = p(0.105, -0.285);
                 page.drawSvgPath(
                     `M ${svgNum(t1.x)} ${svgNum(-t1.y)} L ${svgNum(t2.x)} ${svgNum(-t2.y)} L ${svgNum(t3.x)} ${svgNum(-t3.y)} Z`,
                     { x: 0, y: 0, color: black },

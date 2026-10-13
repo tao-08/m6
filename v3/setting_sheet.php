@@ -193,6 +193,7 @@ render_header('セッティングシート', 'lives');
         <!-- 選んだ部品の設定（何も選んでいないときは隠す） -->
         <div class="stage-panel" data-panel hidden>
             <label class="field">文字 <textarea rows="2" data-p="label" maxlength="40"></textarea></label>
+            <div class="stage-panel__row" data-only="circle" data-part-btns></div>
             <div class="stage-panel__row">
                 <label class="field">大きさ <input type="range" min="0.5" max="2.5" step="0.1" data-p="scale"></label>
                 <label class="field" data-only="box circle">横長さ <input type="range" min="0.5" max="3" step="0.1" data-p="stretch"></label>
