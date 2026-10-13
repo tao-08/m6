@@ -17,6 +17,7 @@ declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/tracks.php';
 require_once __DIR__ . '/lib/repository.php';
+require_once __DIR__ . '/lib/history.php'; // 「確認済み」を誰が押したかを変更履歴に残す
 $user = require_login();
 
 $bandId = (int)($_GET['id'] ?? 0);
@@ -45,8 +46,18 @@ $liveUrl = 'live?id=' . (int)$band['live_id'] . '#day-' . (int)$band['live_day_i
 // 🚩「楽器の確認」の「確認した」ボタン（ログインしていれば誰でも外せる）
 if (is_post() && ($_POST['action'] ?? '') === 'checked') {
     verify_csrf();
-    $pdo->prepare('UPDATE band SET needs_check = 0 WHERE band_id = ?')->execute([$bandId]);
-    save_check_members($pdo, $bandId, 0, []); // 「誰について」も消す
+    $pdo->beginTransaction();
+    try {
+        // 誰が確認済みにしたかを履歴に残す（間違い・いたずらでも、履歴から旗を元に戻せる）
+        $op = change_begin($pdo, 'flag_check', '「' . $band['name'] . '」の確認依頼を確認済みにした', (int)$band['live_id']);
+        change_capture($pdo, $op, 'band', $bandId);
+        $pdo->prepare('UPDATE band SET needs_check = 0 WHERE band_id = ?')->execute([$bandId]);
+        save_check_members($pdo, $bandId, 0, []); // 「誰について」も消す
+        $pdo->commit();
+    } catch (Throwable $e) {
+        $pdo->rollBack();
+        throw $e;
+    }
     flash('確認済みにしました');
     redirect('band?id=' . $bandId);
 }

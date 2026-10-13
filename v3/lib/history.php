@@ -26,6 +26,7 @@ const CHANGE_ACTIONS = [
     'band_edit'   => 'バンド編集',
     'band_delete' => 'バンド削除',
     'setlist'     => 'セットリスト編集',
+    'flag_check'  => '確認済み',
     'timetable'   => 'タイムテーブル編集',
     'youtube'     => 'YouTube のリンク',
     'live_add'    => 'ライブ追加',
