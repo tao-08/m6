@@ -1322,8 +1322,9 @@
         const circleY = h - micLen - 4 - circle / 2;
         const micY = (y) => Math.min(y + circle / 2 + 2 + micLen / 2, h - micLen / 2); // 丸の真下のマイクの中心
         const sings = (pp) => pp.mic;
-        // ベースの丸: キーボードがいるときは、キーボードの四角（とその下のマイク）より右へ
-        const baCircleX = hasKey ? Math.max(baX, keyX + keyW / 2 + circle / 2) : baX;
+        // ベースの丸: キーボードがいるときは、四角の右端に丸が少しかかるくらいまで右へ（Ba Amp から離れすぎない）。
+        //   丸の左端は四角の真ん中より右なので、四角の真下に置くキーボードのマイクとは重ならない
+        const baCircleX = hasKey ? Math.max(baX, keyX + keyW / 2 - circle * 0.3) : baX;
         const others = []; // アンプの前に置けない人（Vo だけの人など）。あとで中央に並べる
         let gtNo = 0;
         for (const pp of people) {
@@ -2085,6 +2086,42 @@
         }
     }
     fab.addEventListener('click', () => setPreview(!previewOpen));
+    // 入力中にプレビューのボタンを押しても、入力欄からフォーカスを外さない（キーボードを閉じない）。
+    //   ボタンを押すとふつうはボタンにフォーカスが移ってキーボードが閉じ、ボタンの位置が飛んでしまう
+    fab.addEventListener('pointerdown', (e) => {
+        if (document.documentElement.classList.contains('is-typing')) {
+            e.preventDefault();
+        }
+    });
+
+    /* ---- スマホのキーボード ----
+     *  キーボードが出ている間は html に is-typing を付け、キーボードの高さを --kb に入れる（CSS が使う）。
+     *  visualViewport = 「実際に見えている範囲」。キーボードが出るとその分だけ高さ（height）が減る。
+     *  window.innerHeight（ページの画面の高さ）から、見えている範囲の下の端（offsetTop + height）を引いた分がキーボード
+     */
+    const touchScreen = window.matchMedia('(hover: none) and (pointer: coarse)');
+    const TYPING_INPUT = 'textarea, input:not([type="checkbox"], [type="radio"], [type="button"], [type="submit"], [type="reset"], [type="file"], [type="range"], [type="color"], [readonly])';
+    function updateKeyboard() {
+        const el = document.activeElement;
+        const typing = touchScreen.matches && !!el && el.matches(TYPING_INPUT);
+        const html = document.documentElement;
+        if (typing && !html.classList.contains('is-typing')) {
+            // 入力を始める直前（まだふつうの位置にある）のバーの左端を覚えておき、入力中も同じ横の位置に出す
+            html.style.setProperty('--bar-left', `${Math.round($('.sheet-actions').getBoundingClientRect().left)}px`);
+        }
+        html.classList.toggle('is-typing', typing);
+        const vv = window.visualViewport;
+        const kb = typing && vv ? Math.max(0, window.innerHeight - (vv.offsetTop + vv.height)) : 0;
+        document.documentElement.style.setProperty('--kb', `${Math.round(kb)}px`);
+    }
+    document.addEventListener('focusin', updateKeyboard);
+    // focusout の瞬間は、まだ次の要素にフォーカスが移っていないので、少し待ってから調べる
+    document.addEventListener('focusout', () => setTimeout(updateKeyboard, 0));
+    if (window.visualViewport) {
+        // キーボードが出る・引っ込む（resize）、見えている範囲が動く（scroll）たびに位置を合わせ直す
+        window.visualViewport.addEventListener('resize', updateKeyboard);
+        window.visualViewport.addEventListener('scroll', updateKeyboard);
+    }
     // Esc キーでも閉じる（PC 用）
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape' && previewOpen) {

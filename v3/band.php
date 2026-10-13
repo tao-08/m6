@@ -242,8 +242,14 @@ render_header($band['name'], 'lives');
         <?php endif; ?>
         <a class="btn btn--sm" href="band_edit?id=<?= $bandId ?>"><?= icon('edit') ?> バンドを編集</a>
         <a class="btn btn--sm" href="songs_edit?band=<?= $bandId ?>"><?= icon('queue_music') ?> 曲を<?= $songs ? '編集' : '登録' ?></a>
-        <!-- 会場の PDF にバンド名・メンバー・セットリストを書き込む（setting_sheet.php） -->
-        <a class="btn btn--sm" href="setting_sheet?band=<?= $bandId ?>"><?= icon('description') ?> セッティングシート</a>
+        <?php
+        // 会場の PDF にバンド名・メンバー・セットリストを書き込む（setting_sheet.php）。
+        //   出すのは、これからのライブ（開催日が今日よりあと）だけ。終わったライブのシートは作らないので
+        //   held_on は 'YYYY-MM-DD' の文字列。同じ形の文字列どうしなら、> で日付の前後を比べられる
+        ?>
+        <?php if ($band['held_on'] !== null && $band['held_on'] > date('Y-m-d')): ?>
+            <a class="btn btn--sm" href="setting_sheet?band=<?= $bandId ?>"><?= icon('description') ?> セッティングシート作成</a>
+        <?php endif; ?>
     </div>
 </section>
 

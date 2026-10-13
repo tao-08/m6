@@ -144,6 +144,19 @@
 @media (max-width: 760px) {
   .sheet-actions .sheet-preview-btn { flex: 0 0 auto; } /* PDF ボタンを広く。プレビューは文字の幅だけ */
 }
+/* スマホで文字を入力中（キーボードが出ている。JS が html に is-typing を付ける）:
+ *  プレビューのボタンだけを、キーボードのすぐ上に出す。PDF・共有のボタンとメッセージは隠す。
+ *  横の位置は、入力していないときと同じ（バーの左端 --bar-left は JS が入力を始める直前に測る。内側の余白も同じ 10px）
+ *  ふつうの sticky のままだと、ブラウザはキーボードの裏まで「画面」と思っているので、スクロールするとキーボードの下に潜る。
+ *  そこで fixed にして、下からの位置をキーボードの高さ（--kb。JS が visualViewport で測る）だけ上げる */
+html.is-typing .sheet-actions {
+  position: fixed; left: var(--bar-left, 16px); right: auto; bottom: calc(var(--kb, 0px) + 8px); z-index: 27;
+  width: auto; margin: 0;
+}
+html.is-typing .sheet-actions > :not(.sheet-preview-btn) { display: none; }
+html.is-typing .sheet-actions .sheet-preview-btn { flex: none; }
+/* プレビューを開いたら、キーボードとボタンの上に収まるように */
+html.is-typing .sheet-preview { top: 8px; bottom: calc(var(--kb, 0px) + 64px); }
 @media (min-width: 761px) {
   .sheet-actions { flex-direction: column; align-items: stretch; border-radius: var(--radius); }
   .sheet-status { margin: 0; flex: none; max-width: 220px; }

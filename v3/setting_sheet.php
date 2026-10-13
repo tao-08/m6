@@ -128,13 +128,13 @@ $sheetData = [
 $json = json_encode($sheetData, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR);
 
 $bandUrl = 'band?id=' . $bandId;
-render_header('セッティングシート', 'lives');
+render_header('セッティングシート作成', 'lives');
 ?>
 <!-- このページだけの CSS。<link> は <body> の中に書いてもよい（HTML の仕様で許されている） -->
-<link rel="stylesheet" href="assets/setting_sheet.css?v=15">
+<link rel="stylesheet" href="assets/setting_sheet.css?v=19">
 
 <nav class="crumbs"><a href="./">ライブ</a><span>/</span><a href="<?= h($bandUrl) ?>"><?= h($band['name']) ?></a></nav>
-<h1 class="display display--sm"><?= icon('description') ?> セッティングシート</h1>
+<h1 class="display display--sm"><?= icon('description') ?> セッティングシート作成</h1>
 
 <!-- JS へ渡すデータ。type="application/json" はブラウザに「実行しないで」と伝える（ただのデータ置き場になる） -->
 <script type="application/json" id="sheet-data"><?= $json ?></script>
@@ -278,5 +278,5 @@ render_header('セッティングシート', 'lives');
     <input type="hidden" name="from_sheet" value="1">
 </form>
 
-<script src="assets/setting_sheet.js?v=25" defer></script>
+<script src="assets/setting_sheet.js?v=29" defer></script>
 <?php render_footer();
