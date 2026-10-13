@@ -600,7 +600,7 @@ function fan_albums_html(array $fans, string $title, ?string $viewerApp, bool $w
         $a = $fa['album'];
         $names = [];
         foreach ($fa['members'] as $m) {
-            $names[] = '<a href="member?id=' . (int)$m['member_id'] . '#albums">' . h($m['name']) . '</a>';
+            $names[] = '<a class="album__fan" href="member?id=' . (int)$m['member_id'] . '#albums">' . h($m['name']) . '</a>';
         }
         // 見ている人の音楽アプリで開く（アプリをまたぐときは album_go が押されたときに探す）
         // アルバム名は聴くページへ、アーティスト名は検索へ（リンクの中にリンクは入れられないので、別々の <a> にする）
@@ -613,7 +613,8 @@ function fan_albums_html(array $fans, string $title, ?string $viewerApp, bool $w
                 ? '<span class="muted small">' . album_artist_links($a['artist_name'])
                     . ($a['release_year'] ? '<span class="album__year"> · ' . (int)$a['release_year'] . '</span>' : '') . '</span>'
                 : ($a['release_year'] ? '<span class="muted small album__year">' . (int)$a['release_year'] . '</span>' : ''))
-            . '</div><span class="small">' . implode('・', $names) . '</span></li>';
+            // 「・」は CSS（.album__fan::before）で付ける。名前の途中では折り返さず、行の頭に来た「・」は隠す
+            . '</div><span class="small album__fans"><span>' . implode('', $names) . '</span></span></li>';
     }
     return $html . '</ul></section>';
 }
