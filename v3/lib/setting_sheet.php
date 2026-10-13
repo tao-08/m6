@@ -37,6 +37,7 @@ declare(strict_types=1);
  * 各項目の意味:
  *   label        : 画面のプルダウンに出す名前
  *   venue_words  : 会場名（venue.name）にこの文字のどれかが含まれていたら、この型紙を自動で選ぶ
+ *                  （画面から追加した型紙は venue_words ではなく venues = つないだ会場の名前。sheet_template_venue）
  *   pdf          : 元の PDF（この上に書き込む）
  *   stage_image  : セット図の枠の中を切り抜いた画像（画面のドラッグ編集の背景に使うだけ。PDF には使わない）
  *   fields       : 1行の文字を書く場所（箱）。align = left / center
@@ -228,10 +229,16 @@ function all_sheet_templates(): array
     }
     $all = SHEET_TEMPLATES;
     try {
-        $rows = db()->query('SELECT template_id, label, venue_words, pdf_path, config
+        $rows = db()->query('SELECT template_id, label, pdf_path, config
                                FROM sheet_template ORDER BY label')->fetchAll();
+        // 型紙ごとにつながっている会場の名前（今の名前。会場の名前を変えても venue_id でつながったまま）
+        $venueNames = [];
+        foreach (db()->query('SELECT tv.template_id, v.name FROM sheet_template_venue tv
+                                JOIN venue v ON v.venue_id = tv.venue_id ORDER BY v.sort_order, v.name') as $v) {
+            $venueNames[$v['template_id']][] = $v['name'];
+        }
     } catch (PDOException $e) {
-        $rows = []; // sheet_template がまだ無い（migrations/031 を流していない）DB でも止まらないように
+        $rows = []; // sheet_template がまだ無い（migrations/031・033 を流していない）DB でも止まらないように
     }
     foreach ($rows as $r) {
         $config = json_decode($r['config'], true);
@@ -240,9 +247,8 @@ function all_sheet_templates(): array
         }
         $all['db_' . $r['template_id']] = [
             'label'       => $r['label'],
-            // 改行区切りの文字列 → 配列。空の行は捨てる
-            'venue_words' => array_values(array_filter(array_map('trim', explode("
-", $r['venue_words'])), 'strlen')),
+            'venue_words' => [],                                  // 一部が含まれていたら…はコードの型紙だけ
+            'venues'      => $venueNames[$r['template_id']] ?? [], // 会場名がぴったり同じなら選ぶ
             'pdf'         => $r['pdf_path'],
         ] + $config; // + : 左に無いキーだけ右から足す（config に label などが紛れていても DB の列が勝つ）
     }
@@ -257,6 +263,12 @@ function sheet_template_for_venue(?string $venueName): ?string
 {
     if ($venueName === null || $venueName === '') {
         return null;
+    }
+    // 画面から会場を選んでつないだ型紙（ぴったり同じ名前）を先に見る。「ROKS」のような一部一致のコードの型紙より優先
+    foreach (all_sheet_templates() as $key => $tpl) {
+        if (in_array($venueName, $tpl['venues'] ?? [], true)) {
+            return $key;
+        }
     }
     foreach (all_sheet_templates() as $key => $tpl) {
         foreach ($tpl['venue_words'] as $word) {

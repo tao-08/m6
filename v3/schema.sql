@@ -593,7 +593,6 @@ CREATE TABLE change_unit (
 CREATE TABLE sheet_template (
     template_id INT UNSIGNED NOT NULL AUTO_INCREMENT,
     label       VARCHAR(100) NOT NULL,             -- プルダウンに出す名前
-    venue_words VARCHAR(255) NOT NULL DEFAULT '',  -- 会場名の自動選択に使う言葉。改行区切り
     pdf_path    VARCHAR(255) NOT NULL,             -- assets/sheets/uploads/xxx.pdf
     config      JSON         NOT NULL,
     created_by  INT UNSIGNED NULL,                 -- アカウントを消しても型紙は残す（NULL になる）
@@ -602,4 +601,18 @@ CREATE TABLE sheet_template (
     PRIMARY KEY (template_id),
     CONSTRAINT fk_sheet_template_user FOREIGN KEY (created_by) REFERENCES user_account (user_id)
         ON UPDATE CASCADE ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- ---------------------------------------------------------------------
+--  sheet_template_venue — 型紙 ↔ 会場（この会場のバンドは、この型紙を最初から選ぶ）（migrations/033）
+-- ---------------------------------------------------------------------
+CREATE TABLE sheet_template_venue (
+    template_id INT UNSIGNED NOT NULL,
+    venue_id    INT UNSIGNED NOT NULL,
+    PRIMARY KEY (template_id, venue_id),
+    KEY idx_stv_venue (venue_id),
+    CONSTRAINT fk_stv_template FOREIGN KEY (template_id) REFERENCES sheet_template (template_id)
+        ON UPDATE CASCADE ON DELETE CASCADE,
+    CONSTRAINT fk_stv_venue FOREIGN KEY (venue_id) REFERENCES venue (venue_id)
+        ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;

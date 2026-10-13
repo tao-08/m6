@@ -1738,6 +1738,8 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
 
 /* ---- セッティングシートの型紙の管理（sheet_templates.php）---- */
 .sheet-tpl-form { display: grid; gap: 14px; margin-bottom: 16px; }
+.sheet-tpl-form .chip__x { border: 0; background: none; padding: 0 0 0 4px; color: var(--muted); cursor: pointer; font-size: 14px; line-height: 1; }
+.sheet-tpl-form .chip__x:hover { color: var(--danger, #d33); }
 .sheet-tpl-form textarea.mono { font-size: 12px; line-height: 1.5; tab-size: 2; }
 /* 枠の配置エディタ（assets/sheet_editor.js）。PDF の canvas の上に、同じ大きさの SVG を重ねる */
 .sheet-ed { display: grid; gap: 8px; }
