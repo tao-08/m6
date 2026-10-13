@@ -997,6 +997,7 @@ function setupSmallThings() {
       }
     });
   }));
+
   // data-send-changed … 送る直前に、変えていない入力欄を disabled にして送らない（disabled の欄はフォームから送られない）
   //   メンバープロフィールの一括編集は全員分だと入力欄が 1000 を超え、PHP の max_input_vars（初期値 1000）で
   //   後ろの人の分が黙って捨てられていた。変えた人の分だけ送れば、何百人いても上限に届かない
@@ -1095,31 +1096,21 @@ function setupVoSum() {
  *   選んだテーマは localStorage に保存（次に開いたときも同じテーマ）。
  *   最初のテーマ決定は partials/header.php の <head> 内でやっている（ちらつき防止）。
  * ------------------------------------------------------------------- */
+// 画面の一番上（時計・電池の所）の色 = app.css の --bg。partials/header.php の <head> の script と同じ値
+const THEME_COLORS = { light: '#f6f5f1', dark: '#0d0d11' };
+
 function setupThemeToggle() {
   document.querySelectorAll('[data-theme-toggle]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
       document.documentElement.dataset.theme = next;
+      const meta = document.querySelector('meta[name="theme-color"]');
+      if (meta) meta.content = THEME_COLORS[next];
       try { localStorage.setItem('theme', next); } catch (e) { /* プライベートモード等で保存できなくても無視 */ }
     });
   });
 }
 
-// 画面の一番上（時計・電池の所）の色 = app.css の --bg。partials/header.php の <head> の script と同じ値
-const THEME_COLORS = { light: '#f6f5f1', dark: '#0d0d11' };
-
-/* ---------------------------------------------------------------------
- * 絞り込み検索: 入力した文字を含まない行（カード）を隠す
- *   <input data-filter=".member-row"> → .member-row の data-text を見て絞る
- * ------------------------------------------------------------------- */
-function setupFilter() {
-      const meta = document.querySelector('meta[name="theme-color"]');
-      if (meta) meta.content = THEME_COLORS[next];
-  document.querySelectorAll('[data-filter]').forEach((input) => {
-    const items = document.querySelectorAll(input.dataset.filter);
-    input.addEventListener('input', () => {
-      const q = input.value.trim().toLowerCase();
-      items.forEach((el) => {
 /* ---------------------------------------------------------------------
  * 「ホーム画面に追加する」の説明（[data-a2hs-dialog]。partials/add_to_home.php）
  *   右上メニューの [data-a2hs-open] で開く。メニューにはスマホ・タブレットのときだけ出る（app.css の .touch-only）
@@ -1187,6 +1178,16 @@ function setupServiceWorker() {
   navigator.serviceWorker.register('sw.js').catch(() => { /* 登録できなくてもサイトは普通に使える */ });
 }
 
+/* ---------------------------------------------------------------------
+ * 絞り込み検索: 入力した文字を含まない行（カード）を隠す
+ *   <input data-filter=".member-row"> → .member-row の data-text を見て絞る
+ * ------------------------------------------------------------------- */
+function setupFilter() {
+  document.querySelectorAll('[data-filter]').forEach((input) => {
+    const items = document.querySelectorAll(input.dataset.filter);
+    input.addEventListener('input', () => {
+      const q = input.value.trim().toLowerCase();
+      items.forEach((el) => {
         const text = (el.dataset.text || el.textContent).toLowerCase();
         el.hidden = q !== '' && !text.includes(q);
       });
