@@ -484,3 +484,154 @@ function change_band_day(PDO $pdo, int $bandId): ?int
     $id = $st->fetchColumn();
     return $id === false ? null : (int)$id;
 }
+
+// =====================================================================
+//  戻すと何が変わるか（history.php の確認画面）
+// =====================================================================
+
+/**
+ * 操作 $opId を元に戻すと、今の状態から何が変わるかを並べる。
+ * @return array<int, array{type: string, label: string, kind: string, changes: array<int, array{0: string, 1: string, 2: string}>}>
+ *   kind … change（中身が変わる）/ delete（その操作で作られたので消える）/ revive（今は無いので復活する）/ same（変わらない）
+ *   changes … [項目名, 今, 戻した後] の並び
+ */
+function change_preview(PDO $pdo, int $opId): array
+{
+    $st = $pdo->prepare("SELECT unit_type, unit_id, label, snapshot FROM change_unit WHERE op_id = ?
+        ORDER BY FIELD(unit_type, 'live', 'day', 'band'), label");
+    $st->execute([$opId]);
+    $out = [];
+    foreach ($st->fetchAll() as $u) {
+        $type = $u['unit_type'];
+        $id = (int)$u['unit_id'];
+        $before = change_decode($u['snapshot']); // 戻した後の状態（null = 消える）
+        $now = change_snapshot($pdo, $type, $id);
+        $label = $now !== null ? change_label($pdo, $type, $id) : $u['label'];
+        if ($before === null) {
+            $kind = $now === null ? 'same' : 'delete';
+            $changes = [];
+        } else {
+            $changes = change_diff($pdo, $type, $now, $before);
+            $kind = $now === null ? 'revive' : ($changes ? 'change' : 'same');
+        }
+        $out[] = ['type' => $type, 'label' => $label, 'kind' => $kind, 'changes' => $changes];
+    }
+    return $out;
+}
+
+/** 2つの状態の違いを [項目名, 今, 戻した後] で返す（$now が null = 今は無い → 戻した後の中身を全部出す） */
+function change_diff(PDO $pdo, string $type, ?array $now, array $before): array
+{
+    $rows = [];
+    $add = static function (string $name, string $a, string $b) use (&$rows): void {
+        if ($a !== $b) {
+            $rows[] = [$name, $a === '' ? '（なし）' : $a, $b === '' ? '（なし）' : $b];
+        }
+    };
+    $val = static fn(?array $row, string $col): string => $row === null ? '' : (string)($row[$col] ?? '');
+
+    if ($type === 'live') {
+        $n = $now['live'] ?? null;
+        $b = $before['live'];
+        $add('年度', $val($n, 'fiscal_year'), $val($b, 'fiscal_year'));
+        $add('ライブ名', $val($n, 'name'), $val($b, 'name'));
+        $add('YouTube', $val($n, 'youtube_url'), $val($b, 'youtube_url'));
+        return $rows;
+    }
+
+    if ($type === 'day') {
+        $n = $now['live_day'] ?? null;
+        $b = $before['live_day'];
+        $venue = static fn(?array $r) => $r === null || $r['venue_id'] === null ? '' : change_name($pdo, 'venue', (int)$r['venue_id']);
+        $add('日程名', $val($n, 'label'), $val($b, 'label'));
+        $add('開催日', $n === null ? '' : fmt_date($n['held_on']), fmt_date($b['held_on']));
+        $add('会場', $venue($n), $venue($b));
+        $add('メモ', $val($n, 'note'), $val($b, 'note'));
+        $add('総バンド数', $val($n, 'total_bands'), $val($b, 'total_bands'));
+        $breaks = static fn(array $list) => implode(' / ', array_map(
+            static fn($k) => $k['name'] . ($k['start_time'] ? ' ' . fmt_time($k['start_time']) : '') . '（' . $k['after_order'] . '組目の後）', $list));
+        $add('休憩', $breaks($now['live_break'] ?? []), $breaks($before['live_break']));
+        return $rows;
+    }
+
+    // ---- バンド ----
+    $n = $now['band'] ?? null;
+    $b = $before['band'];
+    $artist = static fn(?array $r) => $r === null || $r['artist_id'] === null ? '' : change_name($pdo, 'artist', (int)$r['artist_id']);
+    $day = static fn(?array $r) => $r === null ? '' : change_label($pdo, 'day', (int)$r['live_day_id']);
+    $time = static fn(?array $r) => $r === null || (!$r['start_time'] && !$r['end_time']) ? '' : fmt_time($r['start_time']) . '〜' . fmt_time($r['end_time']);
+    $flag = static fn(?array $r) => $r === null ? '' : implode(' / ', check_reason_labels((int)$r['needs_check']));
+    $onoff = static fn(?array $r, string $col) => $r === null ? '' : ((int)$r[$col] ? 'はい' : 'いいえ');
+    $add('バンド名', $val($n, 'name'), $val($b, 'name'));
+    $add('日程', $day($n), $day($b));
+    $add('出演順', $val($n, 'play_order'), $val($b, 'play_order'));
+    $add('時間', $time($n), $time($b));
+    $add('コピー元', $artist($n), $artist($b));
+    $add('曲数', $val($n, 'song_count'), $val($b, 'song_count'));
+    $add('メモ', $val($n, 'note'), $val($b, 'note'));
+    $add('YouTube', $val($n, 'youtube_url'), $val($b, 'youtube_url'));
+    $add('確認依頼', $flag($n), $flag($b));
+    $add('オムニバス', $onoff($n, 'is_omnibus'), $onoff($b, 'is_omnibus'));
+    $add('セトリ非公開', $onoff($n, 'setlist_private'), $onoff($b, 'setlist_private'));
+
+    // メンバー: 「名前（楽器）」を、外れる人・入る人に分けて出す
+    $members = static function (array $list) use ($pdo): array {
+        $by = [];
+        foreach ($list as $m) {
+            $by[(int)$m['member_id']][] = change_instrument_short((int)$m['instrument_id']);
+        }
+        $names = [];
+        foreach ($by as $id => $insts) {
+            $names[] = change_name($pdo, 'member', $id) . '（' . implode('/', $insts) . '）';
+        }
+        sort($names);
+        return $names;
+    };
+    $nowM = $members($now['band_member'] ?? []);
+    $beforeM = $members($before['band_member']);
+    $leave = array_values(array_diff($nowM, $beforeM));
+    $join = array_values(array_diff($beforeM, $nowM));
+    if ($leave || $join) {
+        $rows[] = ['メンバー', $leave ? implode('、', $leave) . ' が外れる' : '（外れる人なし）', $join ? implode('、', $join) . ' が入る' : '（入る人なし）'];
+    }
+    $who = static fn(array $list) => implode('、', array_map(static fn($c) => change_name($pdo, 'member', (int)$c['member_id']), $list));
+    $add('確認の対象', $who($now['band_check_member'] ?? []), $who($before['band_check_member']));
+
+    // セトリ: 曲名を順番に並べて比べる
+    $songs = static function (array $list): string {
+        usort($list, static fn($x, $y) => $x['track_no'] <=> $y['track_no']);
+        return implode(' / ', array_map(static fn($s) => $s['title'], $list));
+    };
+    $add('セットリスト', $songs($now['song'] ?? []), $songs($before['song']));
+    // 曲ごとの演奏者は数が多いので、変わるかどうかと件数だけ（曲の ID ではなく「何曲目・誰・何の楽器」で比べる）
+    $perf = static function (array $snap): array {
+        $no = array_column($snap['song'] ?? [], 'track_no', 'song_id');
+        $list = array_map(static fn($p) => ($no[$p['song_id']] ?? '?') . ':' . $p['member_id'] . ':' . $p['instrument_id'], $snap['song_performer'] ?? []);
+        sort($list);
+        return $list;
+    };
+    if ($perf($now ?? []) !== $perf($before)) {
+        $rows[] = ['曲ごとの演奏者', count($now['song_performer'] ?? []) . '件', count($before['song_performer']) . '件'];
+    }
+    return $rows;
+}
+
+/** 名前を1つ引く（会場・アーティスト・メンバー）。消えていたら「（削除済み）」 */
+function change_name(PDO $pdo, string $table, int $id): string
+{
+    static $cache = [];
+    $col = ['venue' => 'venue_id', 'artist' => 'artist_id', 'member' => 'member_id'][$table]; // 表の名前はこの3つだけ
+    if (!isset($cache[$table][$id])) {
+        $st = $pdo->prepare("SELECT name FROM `$table` WHERE `$col` = ?");
+        $st->execute([$id]);
+        $cache[$table][$id] = (string)($st->fetchColumn() ?: '（削除済み）');
+    }
+    return $cache[$table][$id];
+}
+
+/** 楽器の略称（Vo / Gt …） */
+function change_instrument_short(int $id): string
+{
+    $short = array_column(instruments(), 'short_name', 'instrument_id');
+    return (string)($short[$id] ?? '?');
+}

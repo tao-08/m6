@@ -34,8 +34,101 @@ if (is_post()) {
     redirect($result['live_id'] !== null ? 'live?id=' . $result['live_id'] : 'history');
 }
 
-// ---------- 一覧 ----------
 $liveFilter = ctype_digit((string)($_GET['live'] ?? '')) ? (int)$_GET['live'] : null;
+$backUrl = 'history' . ($liveFilter !== null ? '?live=' . $liveFilter : '');
+$typeNames = ['live' => 'ライブ', 'day' => '日程', 'band' => 'バンド'];
+
+// ---------- 確認画面（?op=ID）: 戻すと今の状態から何が変わるかを見せてから戻す ----------
+if (ctype_digit((string)($_GET['op'] ?? ''))) {
+    $opId = (int)$_GET['op'];
+    $st = $pdo->prepare('SELECT o.*, u.name AS user_name FROM change_op o LEFT JOIN user_account u ON u.user_id = o.user_id WHERE o.op_id = ?');
+    $st->execute([$opId]);
+    $op = $st->fetch();
+    if (!$op) {
+        flash('その変更履歴は見つかりません（1年より前のものは消えています）', 'error');
+        redirect($backUrl);
+    }
+    // この後に、同じバンド・日程・ライブを変えた操作（戻すと、それも取り消される）
+    $st = $pdo->prepare('SELECT DISTINCT o.op_id, o.action, o.summary, o.created_at, u.name AS user_name FROM change_unit a
+        JOIN change_unit b ON b.unit_type = a.unit_type AND b.unit_id = a.unit_id AND b.op_id > a.op_id
+        JOIN change_op o ON o.op_id = b.op_id
+        LEFT JOIN user_account u ON u.user_id = o.user_id
+        WHERE a.op_id = ? ORDER BY o.op_id');
+    $st->execute([$opId]);
+    $later = $st->fetchAll();
+    $preview = change_preview($pdo, $opId);
+    $same = array_filter($preview, static fn($p) => $p['kind'] === 'same');
+    $kinds = ['change' => '変わる', 'delete' => '消える', 'revive' => '復活する'];
+
+    render_header('元に戻す前の確認');
+    ?>
+    <section class="hero">
+        <div>
+            <p class="eyebrow">Admin · 変更履歴</p>
+            <h1 class="display display--sm">戻すと変わること</h1>
+            <p><span class="tag"><?= h(CHANGE_ACTIONS[$op['action']] ?? $op['action']) ?></span>
+                <span class="muted small mono">#<?= $opId ?></span>
+                <span class="small"><?= h(fmt_datetime($op['created_at'])) ?> · <?= $op['user_name'] !== null ? h($op['user_name']) : '削除済みのユーザー' ?></span></p>
+            <p><?= h($op['summary']) ?></p>
+            <p class="muted small">「元に戻す」を押すと、今の状態が下の「戻した後」になります。戻す前の状態も履歴に残るので、あとでやり直せます。</p>
+        </div>
+    </section>
+
+    <?php if ($later): ?>
+        <div class="flash flash--warn">
+            <p><?= icon('warning', 'flag-icon') ?> この後に、同じバンド・日程への変更が <?= count($later) ?> 件あります。戻すと、それも取り消されます。</p>
+            <ul class="small">
+                <?php foreach ($later as $l): ?>
+                    <li>#<?= (int)$l['op_id'] ?> <?= h(CHANGE_ACTIONS[$l['action']] ?? $l['action']) ?> · <?= h(fmt_datetime($l['created_at'])) ?> · <?= $l['user_name'] !== null ? h($l['user_name']) : '削除済みのユーザー' ?> · <?= h($l['summary']) ?></li>
+                <?php endforeach; ?>
+            </ul>
+        </div>
+    <?php endif; ?>
+
+    <div class="history-preview">
+        <?php foreach ($preview as $p): if ($p['kind'] === 'same') continue; ?>
+            <section class="card history-unit history-unit--<?= h($p['kind']) ?>">
+                <h2 class="history-unit__title"><span class="tag tag--<?= h($p['kind']) ?>"><?= h($kinds[$p['kind']]) ?></span>
+                    <span class="muted small"><?= h($typeNames[$p['type']]) ?></span> <?= h($p['label']) ?></h2>
+                <?php if ($p['kind'] === 'delete'): ?>
+                    <p class="small">この変更で追加されたものなので、<strong>中のバンド・メンバー・セトリごと消えます</strong>。</p>
+                <?php elseif ($p['kind'] === 'revive'): ?>
+                    <p class="small">今は削除されています。変更前の状態で<strong>同じ ID のまま復活します</strong>。</p>
+                <?php endif; ?>
+                <?php if ($p['changes']): ?>
+                    <div class="table-scroll table-scroll--flush">
+                        <table class="table history-diff">
+                            <thead><tr><th>項目</th><th>今</th><th>戻した後</th></tr></thead>
+                            <tbody>
+                                <?php foreach ($p['changes'] as [$name, $now, $after]): ?>
+                                    <tr><th scope="row"><?= h($name) ?></th><td class="history-diff__now"><?= h($now) ?></td><td class="history-diff__after"><?= h($after) ?></td></tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                <?php endif; ?>
+            </section>
+        <?php endforeach; ?>
+        <?php if ($same): ?>
+            <p class="muted small">ほかの <?= count($same) ?> 件（<?= h(implode('・', array_map(static fn($p) => $p['label'], array_slice($same, 0, 5)))) ?><?= count($same) > 5 ? ' など' : '' ?>）は、今と同じなので変わりません。</p>
+        <?php endif; ?>
+        <?php if (count($same) === count($preview)): ?>
+            <p><?= icon('info') ?> 戻しても、今と何も変わりません。</p>
+        <?php endif; ?>
+    </div>
+
+    <form method="post" class="form-actions history-confirm">
+        <?= csrf_field() ?><input type="hidden" name="op_id" value="<?= $opId ?>">
+        <?php if ($liveFilter !== null): ?><input type="hidden" name="live" value="<?= $liveFilter ?>"><?php endif; ?>
+        <a class="btn btn--ghost" href="<?= h($backUrl) ?>">やめる</a>
+        <button class="btn btn--primary" type="submit"><?= icon('undo') ?> 元に戻す</button>
+    </form>
+    <?php
+    render_footer();
+    exit;
+}
+
+// ---------- 一覧 ----------
 $page = max(1, (int)($_GET['page'] ?? 1));
 $where = $liveFilter !== null ? 'WHERE o.live_id = ?' : '';
 $params = $liveFilter !== null ? [$liveFilter] : [];
@@ -75,7 +168,6 @@ $filterName = null;
 if ($liveFilter !== null) {
     $filterName = change_label($pdo, 'live', $liveFilter);
 }
-$typeNames = ['live' => 'ライブ', 'day' => '日程', 'band' => 'バンド'];
 $pageUrl = static fn(int $p) => 'history?' . http_build_query(array_filter(['live' => $liveFilter, 'page' => $p > 1 ? $p : null]));
 
 render_header('変更履歴');
@@ -85,7 +177,7 @@ render_header('変更履歴');
         <p class="eyebrow">Admin</p>
         <h1 class="display">変更履歴</h1>
         <p class="muted small">誰が・いつ・何を変えたかの記録です（1年より前のものは自動で消えます）。<br>
-            「この変更の前に戻す」を押すと、その変更で変わったバンド・日程・ライブが変更前の状態に戻ります。
+            「この変更の前に戻す」を押すと、戻すと何がどう変わるかを確認してから、変更前の状態に戻せます。
             戻したことも履歴に残るので、間違えたらもう一度戻せます。</p>
         <?php if ($liveFilter !== null): ?>
             <p><?= icon('filter_alt') ?> <?= h($filterName) ?> の履歴だけ表示中 · <a href="history">すべて表示</a></p>
@@ -99,10 +191,7 @@ render_header('変更履歴');
     <ol class="history-list">
         <?php foreach ($ops as $o):
             $id = (int)$o['op_id'];
-            $later = $laterOf[$id] ?? 0;
-            $confirm = "#{$id}「" . (CHANGE_ACTIONS[$o['action']] ?? $o['action']) . "」の前の状態に戻します。"
-                . ($later ? "この後に、同じバンド・日程への変更が {$later} 件あります。それも取り消されます。" : '')
-                . 'よろしいですか？'; ?>
+            $later = $laterOf[$id] ?? 0; ?>
             <li class="card history-item<?= $o['restored_at'] ? ' is-restored' : '' ?>">
                 <div class="history-item__head">
                     <span class="tag"><?= h(CHANGE_ACTIONS[$o['action']] ?? $o['action']) ?></span>
@@ -126,11 +215,9 @@ render_header('変更履歴');
                         <span class="muted small"><?= icon('undo') ?> <?= h(fmt_datetime($o['restored_at'])) ?> に<?= $o['restored_name'] !== null ? h($o['restored_name']) . ' が' : '' ?>戻しました</span>
                     <?php endif; ?>
                     <?php if (!empty($units[$id])): ?>
-                        <form method="post" class="inline-form" data-confirm="<?= h($confirm) ?>">
-                            <?= csrf_field() ?><input type="hidden" name="op_id" value="<?= $id ?>">
-                            <?php if ($liveFilter !== null): ?><input type="hidden" name="live" value="<?= $liveFilter ?>"><?php endif; ?>
-                            <button class="btn btn--sm btn--ghost" type="submit"><?= icon('undo') ?> この変更の前に戻す</button>
-                        </form>
+                        <?php if ($later): ?><span class="muted small">この後の変更 <?= $later ?> 件</span><?php endif; ?>
+                        <!-- 押すと確認画面（戻すと何がどう変わるか）へ。戻すのはそこで -->
+                        <a class="btn btn--sm btn--ghost" href="history?<?= h(http_build_query(array_filter(['op' => $id, 'live' => $liveFilter]))) ?>"><?= icon('undo') ?> この変更の前に戻す</a>
                     <?php endif; ?>
                 </div>
             </li>

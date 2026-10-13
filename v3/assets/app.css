@@ -830,6 +830,20 @@ body.is-row-dragging, body.is-row-dragging * { cursor: grabbing !important; user
 .history-item__foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
 .history-item__foot .muted .icon { font-size: 16px; vertical-align: -3px; }
 .history-pager { display: flex; justify-content: space-between; gap: 8px; margin-top: 14px; }
+/* 戻す前の確認（history.php?op=ID）: 変わるもの1つ = 1枚。「今」は赤、「戻した後」は緑の薄い背景 */
+.history-preview { display: grid; gap: 10px; }
+.history-unit { display: grid; gap: 8px; }
+.history-unit__title { margin: 0; font-size: 15px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.history-unit--delete { border-color: var(--danger); }
+.tag--delete { color: var(--danger); background: var(--danger-bg); }
+.tag--revive { color: var(--ok); background: var(--ok-bg); }
+.history-diff { table-layout: fixed; } /* 「今」と「戻した後」を同じ幅に */
+.history-diff thead th:first-child { width: 8em; }
+.history-diff th[scope="row"] { white-space: nowrap; }
+.history-diff td { overflow-wrap: anywhere; }
+.history-diff__now { background: var(--danger-bg); }
+.history-diff__after { background: var(--ok-bg); }
+.history-confirm { margin-top: 16px; justify-content: flex-end; }
 .check-list { margin-bottom: 14px; } /* トップのお知らせカードと、下の検索・絞り込みの間 */
 .check-list ul { margin: 8px 0 0; padding: 0; list-style: none; display: grid; gap: 4px; }
 /* トップの確認依頼: 1件ごとに右端に ✕。消すときは右へすべらせながら薄くして、高さを 0 にして詰める（app.js の setupCheckDismiss） */
