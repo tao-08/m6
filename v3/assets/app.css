@@ -1192,13 +1192,16 @@ code { background: var(--surface-2); padding: 1px 6px; border-radius: 6px; font-
 .track-results { display: grid; gap: 4px; max-height: 360px; overflow-y: auto; padding: 6px; border-radius: var(--radius-sm);
   border: 1px solid var(--border); background: var(--surface-2); }
 .track-results[hidden] { display: none; }
-.track-option { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 10px; align-items: center; width: 100%; padding: 6px 8px;
+.track-option { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; gap: 10px; align-items: center; width: 100%; padding: 6px 8px;
   border: 0; border-radius: 6px; background: transparent; color: var(--text); text-align: left; cursor: pointer; font: inherit; }
 .track-option:hover, .track-option:focus-visible { background: var(--surface); }
 .track-option img { width: 40px; height: 40px; border-radius: 4px; object-fit: cover; }
 .track-option__title { font-weight: 700; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .track-option__sub { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .track-results__msg { color: var(--muted); font-size: 13px; padding: 6px 8px; }
+/* 候補の右の「試聴可」の印（app.js の optionButton。試聴がある曲だけ） */
+.track-option__preview { display: inline-flex; align-items: center; gap: 2px; font-size: 11px; font-weight: 700; color: var(--accent); white-space: nowrap; }
+.track-option__preview .icon { font-size: 16px; }
 /* 検索結果の窓: 開くときに上からふわっと出す。候補は1件ずつ少しずらして出す（最初の8件まで。それ以降はまとめて） */
 .track-results:not([hidden]) { animation: track-results-in .22s ease-out; transform-origin: top; }
 .track-option { animation: track-option-in .25s ease-out both; }

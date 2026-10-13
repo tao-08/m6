@@ -635,6 +635,14 @@ function setupTrackSearch() {
     sub.textContent = `${track.artist_name} ・ ${track.album_title}`;
     text.append(title, sub);
     btn.append(img, text);
+    // 試聴があるときだけ印を出す（api_track_search.php の preview が true のとき。無い・わからないときは出さない）
+    if (track.preview === true) {
+      const mark = document.createElement('span');
+      mark.className = 'track-option__preview';
+      mark.append(iconEl('play_circle'), '試聴可');
+      mark.title = '30秒試聴があります（バンドページの ▶ で聴けます）';
+      btn.append(mark);
+    }
     return btn;
   };
   const message = (results, text) => {

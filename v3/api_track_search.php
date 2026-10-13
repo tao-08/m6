@@ -7,7 +7,8 @@
  *
  *  リクエスト（GET）: ?q=曲名 アーティスト名
  *  レスポンス（JSON）: {"tracks": [{"key": "spotify:xxxx", "title": "...", "artist_name": "...",
- *                                   "album_title": "...", "artwork_url": "https://..."}, ...]}
+ *                                   "album_title": "...", "artwork_url": "https://...",
+ *                                   "preview": true（試聴あり）/ false（無し）/ null（わからない）}, ...]}
  *                     検索できなかったら {"error": "..."}
  *
  *  中身を読むだけで何も変えないので GET（CSRF 対策のトークンは要らない）。
@@ -40,10 +41,14 @@ if ($tracks === null) {
     exit;
 }
 
-echo json_encode(['tracks' => array_map(static fn($t) => [
+$tracks = array_slice($tracks, 0, 10);
+$previews = track_preview_marks(db(), $tracks, $q); // 試聴があるか（true / false / null = わからない）
+
+echo json_encode(['tracks' => array_map(static fn($t, $preview) => [
     'key'         => album_key($t['source'], $t['track_id']),
     'title'       => $t['title'],
     'artist_name' => $t['artist_name'],
     'album_title' => $t['album_title'],
     'artwork_url' => $t['artwork_url'],
-], array_slice($tracks, 0, 10))], JSON_UNESCAPED_UNICODE);
+    'preview'     => $preview,
+], $tracks, $previews)], JSON_UNESCAPED_UNICODE);
