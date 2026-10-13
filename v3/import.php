@@ -689,7 +689,11 @@ if ($plan === null): // ==================== アップロード画面 ==========
                 </div>
             </div>
             <div class="checks">
-                <label class="check"><input type="checkbox" name="tt[<?= $ti ?>][overwrite]" value="1"<?= !empty($f['overwrite']) ? ' checked' : '' ?>> 登録済みなら上書き</label>
+                <?php if (is_admin()): // 上書きは日程のバンドを全部消すので管理者だけ（lib/import/planner.php でも止めている） ?>
+                    <label class="check"><input type="checkbox" name="tt[<?= $ti ?>][overwrite]" value="1"<?= !empty($f['overwrite']) ? ' checked' : '' ?>> 登録済みなら上書き</label>
+                <?php else: ?>
+                    <span class="muted small">登録済みの日程を置き換えるときは管理者に頼んでください</span>
+                <?php endif; ?>
                 <label class="check"><input type="checkbox" name="tt[<?= $ti ?>][skip]" value="1"<?= !empty($f['skip']) ? ' checked' : '' ?> data-skip> この日程は取り込まない</label>
             </div>
 
