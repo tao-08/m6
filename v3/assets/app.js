@@ -893,6 +893,8 @@ function setupBackButton() {
     const dup = items.filter((t) => menu.includes(keyOf(t.url)));
     if (dup.length) items = items.filter((t) => t !== (dup.length === 2 ? items[1] : dup[0]));
   }
+  // アカウント設定で非表示にしている人（partials/header.php の meta）。戻り先は上で覚えたので、出さずに終わる
+  if (document.querySelector('meta[name="back-button"]')?.content === 'off') items = [];
   save(SHOWN, items.map((t) => ({ url: t.url, title: t.title })));
   if (!items.length && !before.length) return;
   const same = (a, b) => keyOf(a.url) === keyOf(b.url) && a.title === b.title;

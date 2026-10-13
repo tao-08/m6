@@ -8,6 +8,7 @@
  *    action=password … パスワード変更（今のパスワードの確認つき）
  *    action=email    … 問い合わせの通知先メールアドレス（管理者だけ。contact.php）
  *    action=suggest  … 退会した人をメンバー名の候補（サジェスト）に出さないか（member_name_choices()）
+ *    action=back_button … 左下の戻るボタンを出すか（assets/app.js の setupBackButton）
  *  メンバーと紐付いている人は、名前の代わりに「プロフィール」（送信先は member_edit.php）。
  *    名前の正は member.name で、アカウント名はそれに自動でそろう（sync_account_names()）。
  *  どのメンバーと紐付けるかは、管理者がユーザー管理（users.php）で選ぶ。
@@ -77,6 +78,14 @@ if (is_post()) {
         $pdo->prepare('UPDATE user_account SET hide_retired_suggest = ? WHERE user_id = ?')
             ->execute([(int)$hide, $user['user_id']]);
         flash($hide ? '退会した人を名前の候補に出さないようにしました' : '退会した人も名前の候補に出すようにしました');
+    }
+
+    // suggest と同じく、hidden の 0 → チェックで 1
+    if ($action === 'back_button') {
+        $show = ($_POST['show_back_button'] ?? '') === '1';
+        $pdo->prepare('UPDATE user_account SET show_back_button = ? WHERE user_id = ?')
+            ->execute([(int)$show, $user['user_id']]);
+        flash($show ? '戻るボタンを表示するようにしました' : '戻るボタンを表示しないようにしました');
     }
 
     redirect('account');
@@ -154,6 +163,13 @@ render_header('アカウント設定');
         <p class="muted small">バンド編集・タイムテーブル編集・取り込みで、メンバーの名前を打つと出てくる候補の設定です。</p>
         <?= csrf_field() ?><input type="hidden" name="action" value="suggest">
         <label class="check"><input type="hidden" name="hide_retired" value="0"><input type="checkbox" name="hide_retired" value="1"<?= $account['hide_retired_suggest'] ? ' checked' : '' ?>> 退会した人を候補に出さない</label>
+        <div class="form-actions"><button class="btn btn--primary btn--sm" type="submit">保存</button></div>
+    </form>
+    <form method="post" class="card form-card">
+        <h2 class="section-title section-title--card">戻るボタン</h2>
+        <p class="muted small">画面の左下に出る「← ページ名」のボタン（前のページ・1つ上のページに戻る）の設定です。</p>
+        <?= csrf_field() ?><input type="hidden" name="action" value="back_button">
+        <label class="check"><input type="hidden" name="show_back_button" value="0"><input type="checkbox" name="show_back_button" value="1"<?= $account['show_back_button'] ? ' checked' : '' ?>> 戻るボタンを表示する</label>
         <div class="form-actions"><button class="btn btn--primary btn--sm" type="submit">保存</button></div>
     </form>
     <div class="card form-card">

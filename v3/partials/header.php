@@ -32,6 +32,8 @@ $nav = [
     <!-- 左下の「← 前のページ」ボタンに出すページ名（assets/app.js の setupBackButton）。
          ログインしていないページ（ログイン・新規登録）には置かない → ボタンが出ない＆戻り先としても覚えない -->
     <?php if ($user): ?><meta name="page-title" content="<?= h($pageTitle) ?>"><?php endif; ?>
+    <!-- アカウント設定で「戻るボタンを表示する」を外した人。戻り先は覚え続ける（また表示にしたとき、すぐ出せるように） -->
+    <?php if ($user && ($user['back_button'] ?? true) === false): ?><meta name="back-button" content="off"><?php endif; ?>
     <!--
         X（Twitter）・LINE・Discord などに URL を貼ったときのカード（OGP）。
         SNS のサーバーはログインしていないので、どのページの URL でもログイン画面に飛ばされる。
@@ -92,7 +94,7 @@ $nav = [
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400..600,0..1,0&display=block" rel="stylesheet">
     <!-- ?v=2 はキャッシュ対策。CSS を変えたら数字を上げると、ブラウザが古い CSS を使い続けない -->
     <link rel="stylesheet" href="assets/app.css?v=237">
-    <script src="assets/app.js?v=127" defer></script>
+    <script src="assets/app.js?v=128" defer></script>
 </head>
 <body>
 <header class="topbar">

@@ -455,7 +455,7 @@ function require_login(): array
         redirect('login'); // ログイン画面なのは見ればわかるので「ログインしてください」のお知らせは出さない
     }
     // DB を作り直した・管理者に削除された等でアカウントが消えていたら、古いセッションを捨てる
-    $st = db()->prepare('SELECT name, is_admin, member_id, hide_retired_suggest FROM user_account WHERE user_id = ?');
+    $st = db()->prepare('SELECT name, is_admin, member_id, hide_retired_suggest, show_back_button FROM user_account WHERE user_id = ?');
     $st->execute([$user['user_id']]);
     $row = $st->fetch();
     if (!$row) {
@@ -471,6 +471,7 @@ function require_login(): array
     $_SESSION['user']['admin'] = (bool)$row['is_admin'];
     $_SESSION['user']['member_id'] = $row['member_id'] === null ? null : (int)$row['member_id'];
     $_SESSION['user']['hide_retired'] = (bool)$row['hide_retired_suggest']; // member_name_choices() が見る
+    $_SESSION['user']['back_button'] = (bool)$row['show_back_button']; // partials/header.php が見る
     return $_SESSION['user'];
 }
 
