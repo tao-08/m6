@@ -304,7 +304,7 @@ if ($plan === null): // ==================== アップロード画面 ==========
 ?>
 
 <!-- enctype="multipart/form-data" が無いとファイルが送られない -->
-<form method="post" enctype="multipart/form-data" class="card upload" data-loading>
+<form method="post" enctype="multipart/form-data" class="card upload" data-loading data-unsaved>
     <?= csrf_field() ?>
     <input type="hidden" name="action" value="upload">
     <label class="dropzone" data-dropzone>
@@ -368,7 +368,7 @@ if ($plan === null): // ==================== アップロード画面 ==========
 </div>
 <?php endif; ?>
 
-<form method="post" class="card manual-tt">
+<form method="post" class="card manual-tt" data-unsaved>
     <?= csrf_field() ?>
     <input type="hidden" name="action" value="manual_tt">
     <ul class="muted small">
@@ -575,7 +575,7 @@ if ($plan === null): // ==================== アップロード画面 ==========
 <?php endif; ?>
 
 <!-- data-pack: 送信時に JS が全項目を JSON 1個にまとめる（read_form_input() の説明参照） -->
-<form method="post" class="import-form" data-pack>
+<form method="post" class="import-form" data-pack data-unsaved>
     <?= csrf_field() ?>
     <input type="hidden" name="action" value="commit">
 

@@ -169,7 +169,7 @@ render_header('YouTube の動画を割り当て', 'lives'); ?>
         確認してから「保存する」を押してください。
     </div>
 
-    <form method="post" class="card form-card" data-yt-form>
+    <form method="post" class="card form-card" data-yt-form<?= unsaved_attr() ?>>
         <?= csrf_field() ?>
         <input type="hidden" name="live_id" value="<?= $liveId ?>">
         <div class="table-scroll table-scroll--yt">

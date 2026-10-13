@@ -13,6 +13,7 @@
  *    data-sort-toggle   … メンバーの出演履歴を新しい順 ⇔ 古い順に並び替える
  *    data-tab           … ライブ詳細の日程タブ
  *    data-confirm       … 送信前の確認ダイアログ（data-dirty-check で未保存の変更も警告）
+ *    data-unsaved       … 未保存の変更があるままページを離れようとしたら、ブラウザの警告を出す
  *    data-dropzone      … ファイルのドラッグ&ドロップ
  *    data-name-cell     … 名前の入力欄（DB にいるかで色が変わる）
  *    data-roster-input  … タイムテーブルの枠 → 名簿のバンド（検索欄）
@@ -55,6 +56,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupTabs();
   setupConfirm();
   setupLeaveCheck();
+  setupUnsavedGuard();
   setupDropzone();
   setupLoading();
   setupNameCheck();
@@ -1552,9 +1554,56 @@ function setupLeaveCheck() {
     dialog.showModal();
   });
   dialog.addEventListener('close', () => {
-    if (dialog.returnValue === 'leave' && href) location.href = href;
+    if (dialog.returnValue === 'leave' && href) { allowLeave(); location.href = href; } // モーダルで聞いたので、ブラウザの警告は出さない
     href = null;
   });
+}
+
+/* ---------------------------------------------------------------------
+ * <form data-unsaved> … 未保存の変更があるままページを離れようとしたら（リンク・戻る・タブを閉じる・再読み込み）、
+ *   ブラウザの「このサイトを離れますか？」を出す（beforeunload。文言はブラウザが決めるので変えられない）
+ *
+ *   変更があるかは setupConfirm と同じく「読み込み直後の入力値」と「今の入力値」を文字列にして比べる。
+ *   data-unsaved="posted" … 送信してエラーで戻ってきた画面。入力はまだ保存されていないので、最初から「変更あり」
+ *   data-unsaved-blank … この中の [data-unsaved-key] が空なら、中の入力欄は比べない（空のまま追加しただけの行。保存されないので）
+ *   フォームを送信するとき（保存・削除など）はページ移動が正しい動きなので、警告しない
+ * ------------------------------------------------------------------- */
+let leaveAllowed = false;
+function allowLeave() { leaveAllowed = true; }
+
+function setupUnsavedGuard() {
+  const forms = [...document.querySelectorAll('form[data-unsaved]')];
+  if (forms.length === 0) return;
+  // ファイル欄は FormData のままだと全部 "[object File]" になって比べられないので、名前と大きさにする
+  const snapshot = (form) => {
+    const skip = new Set();
+    form.querySelectorAll('[data-unsaved-blank]').forEach((box) => {
+      if (box.querySelector('[data-unsaved-key]')?.value.trim() !== '') return;
+      box.querySelectorAll('[name]').forEach((el) => skip.add(el.name));
+    });
+    return JSON.stringify([...new FormData(form).entries()]
+      .filter(([name]) => name !== 'csrf' && !skip.has(name))
+      .map(([name, v]) => [name, v instanceof File ? `${v.name}:${v.size}` : v]));
+  };
+  const initial = new Map();
+  setTimeout(() => { // 他の setup〜 が入力欄をいじり終わってから覚える
+    forms.forEach((f) => initial.set(f, f.dataset.unsaved === 'posted' ? null : snapshot(f)));
+  });
+  const dirty = () => forms.some((f) => initial.has(f) && initial.get(f) !== snapshot(f));
+
+  // 送信（キャンセルされなかったもの）はページ移動して良い。window で待ち受けると document の待ち受け
+  //   （setupConfirm の確認ダイアログ・ページ移動なしで送る setupAlbumAdd など）が全部終わった後に動くので、
+  //   キャンセルされた・JS で送った（ページ移動しない）かが e.defaultPrevented で分かる
+  window.addEventListener('submit', (e) => {
+    if (!e.defaultPrevented && (e.target.getAttribute('method') || 'get').toLowerCase() !== 'dialog') allowLeave();
+  });
+  window.addEventListener('beforeunload', (e) => {
+    if (leaveAllowed || !dirty()) return;
+    e.preventDefault();
+    e.returnValue = ''; // 古いブラウザ（Safari など）はこれが無いと警告を出さない
+  });
+  // bfcache（戻る・進むでページがそのまま復元される）で戻ってきたら、また警告できるようにする
+  window.addEventListener('pageshow', (e) => { if (e.persisted) leaveAllowed = false; });
 }
 
 /* ---------------------------------------------------------------------
@@ -2999,6 +3048,7 @@ function setupAlbumSearch() {
       // アドレスバーの URL だけ書き換える（移動はしない）。再読み込みしても同じ検索結果が出るように
       history.replaceState(null, '', url);
     } catch {
+      allowLeave();
       form.submit(); // 普通の送信（ページ移動）でやり直す。submit() は submit イベントを起こさないので、ここに戻ってこない
       return;
     } finally {
@@ -3221,6 +3271,7 @@ function setupAlbumAdd() {
       const shift = item.getBoundingClientRect().top - before;
       if (Math.abs(shift) >= 1) window.scrollBy(0, shift);
     } catch {
+      allowLeave();
       form.submit(); // 普通の送信（ページ移動）でやり直す
     }
   });
@@ -3609,6 +3660,7 @@ function setupPackedForm() {
       add('csrf', form.querySelector('input[name="csrf"]').value);
       add('payload', JSON.stringify(pairs));
       document.body.appendChild(packed);
+      allowLeave(); // packed.submit() は submit イベントを起こさないので、ここで「離れて良い」にする
       form.querySelectorAll('button[type="submit"]').forEach((b) => { b.disabled = true; }); // 二重送信防止
       packed.submit();
     });

@@ -263,7 +263,7 @@ render_header('セッティングシートの型紙', 'tools');
     <?php if ($error !== null): ?>
         <div class="flash flash--error"><?= h($error) ?></div>
     <?php endif; ?>
-    <form method="post" enctype="multipart/form-data" class="sheet-tpl-form">
+    <form method="post" enctype="multipart/form-data" class="sheet-tpl-form"<?= unsaved_attr() ?>>
         <?= csrf_field() ?>
         <input type="hidden" name="action" value="save">
         <?php if ($editing): ?><input type="hidden" name="template_id" value="<?= (int)$editing['template_id'] ?>"><?php endif; ?>

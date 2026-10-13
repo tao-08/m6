@@ -319,7 +319,7 @@ render_header('タイムテーブルを編集', 'lives'); ?>
 <template id="tpl-tt-break"><table><tbody><?php render_break_row('__N__', '__DAY__', ['name' => '休憩', 'start_time' => null, 'end_time' => null], 1, true); ?></tbody></table></template>
 
 <!-- data-pack: 送信時に JS が全項目を JSON 1個にまとめる（read_form_input() の説明参照） -->
-<form method="post" class="tt-form" data-pack>
+<form method="post" class="tt-form" data-pack<?= unsaved_attr() ?>>
     <?= csrf_field() ?>
     <?= render_suggest_datalist('member-names', array_keys($allNames), $allNames) ?>
 

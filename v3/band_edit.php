@@ -262,7 +262,7 @@ render_header($isNew ? 'バンドを追加' : 'バンドを編集', 'lives');
 <h1 class="display display--sm"><?= $isNew ? 'バンドを追加' : 'バンドを編集' ?></h1>
 <?php foreach ($errors as $e): ?><div class="flash flash--error"><?= h($e) ?></div><?php endforeach; ?>
 
-<form method="post" class="card form-card" id="band-form">
+<form method="post" class="card form-card" id="band-form"<?= unsaved_attr() ?>>
     <?= csrf_field() ?>
     <input type="hidden" name="band_id" value="<?= (int)$band['band_id'] ?>">
     <input type="hidden" name="day_id" value="<?= $dayId ?>">

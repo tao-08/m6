@@ -76,7 +76,7 @@ require __DIR__ . '/partials/add_tabs.php';
     <p><a class="btn btn--sm" href="member?id=<?= (int)$existing['id'] ?>">「<?= h($existing['name']) ?>」さんのページを開く</a></p>
 <?php endif; ?>
 
-<form method="post" class="card form-card">
+<form method="post" class="card form-card"<?= unsaved_attr() ?>>
     <?= csrf_field() ?>
     <div class="form-grid">
         <label class="field field--wide"><span>名前（フルネーム）</span>

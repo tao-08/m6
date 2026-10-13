@@ -204,7 +204,7 @@ render_header('メンバープロフィールの一括編集');
 <?php if (!$list): ?>
     <div class="empty card"><p class="muted">入学年度・ふりがなが未登録の人はいません</p></div>
 <?php else: ?>
-<form method="post" action="<?= h($self) ?>" class="card table-card" data-send-changed>
+<form method="post" action="<?= h($self) ?>" class="card table-card" data-send-changed data-unsaved>
     <?= csrf_field() ?>
     <div class="table-scroll table-scroll--flush">
     <table class="table table--edit">

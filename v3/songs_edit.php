@@ -293,7 +293,7 @@ render_header('セットリストを編集', 'lives');
     <?php endif; ?>
 <?php endif; ?>
 
-<form method="post" class="songs-form">
+<form method="post" class="songs-form"<?= unsaved_attr() ?>>
     <?= csrf_field() ?>
     <input type="hidden" name="band_id" value="<?= $bandId ?>">
     <!-- チェックなし: アーティスト欄はバンドのアーティストで固定（薄く表示）。チェックあり: 曲ごとに書ける（assets/app.js の setupSongs） -->
@@ -312,7 +312,8 @@ render_header('セットリストを編集', 'lives');
             $artist = $omnibus ? ($song['artist_name'] ?? '') : $defaultArtist; // オムニバスはバンドのアーティストが無いので、曲に付いていなければ空欄
             $trackKey = $song['track_id'] === null ? '' : album_key($song['track_source'], $song['track_id']); ?>
             <?php if ($isTemplate): ?><template data-song-template><?php endif; ?>
-            <section class="card song-card<?= $isNew ? ' song-card--new' : '' ?>" data-song-card>
+            <!-- data-unsaved-blank: 曲名が空の新しい曲は保存されないので、未保存の警告の対象にしない（assets/app.js の setupUnsavedGuard） -->
+            <section class="card song-card<?= $isNew ? ' song-card--new' : '' ?>" data-song-card<?= $isNew ? ' data-unsaved-blank' : '' ?>>
                 <div class="song-card__head">
                     <!-- ≡: ドラッグ（↑↓キーでも）で曲の順番を入れ替える。pos = 上から何番目か（JS が振り直す。保存はこの順） -->
                     <button type="button" class="drag-handle" data-song-handle aria-label="ドラッグで並び替え（↑↓キーでも動く）" title="ドラッグで並び替え"><?= icon('drag_indicator') ?></button>
@@ -324,7 +325,7 @@ render_header('セットリストを編集', 'lives');
                         <span class="song-thumb__art" data-track-thumb><?php if ($trackKey !== ''): ?><img src="<?= h($song['artwork_url']) ?>" alt="" loading="lazy"><?php else: ?><?= icon('music_note') ?><?php endif; ?></span>
                         <button type="button" class="song-thumb__clear" data-track-clear aria-label="紐付けを外す"<?= $trackKey === '' ? ' hidden' : '' ?>><?= icon(ICON_UNLINK) ?></button>
                     </span>
-                    <input name="<?= $base ?>[title]" value="<?= h($song['title']) ?>" maxlength="100" placeholder="<?= $isNew ? '曲名を入力して追加' : '曲名' ?>" class="song-card__title" aria-label="曲名">
+                    <input name="<?= $base ?>[title]" value="<?= h($song['title']) ?>" maxlength="100" placeholder="<?= $isNew ? '曲名を入力して追加' : '曲名' ?>" class="song-card__title" aria-label="曲名" data-unsaved-key>
                     <input name="<?= $base ?>[artist]" value="<?= h($artist) ?>" maxlength="100" data-suggest-list="artists" autocomplete="off" placeholder="アーティスト" class="song-card__artist" aria-label="アーティスト" data-song-artist<?= $omnibus ? '' : ' readonly' ?>>
                     <input type="hidden" name="<?= $base ?>[track]" value="<?= h($trackKey) ?>" data-track-key>
                     <button type="button" class="btn btn--ghost btn--sm song-search-btn" data-track-search><?= icon('search') ?> 曲を探す</button>

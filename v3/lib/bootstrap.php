@@ -188,6 +188,16 @@ function h(mixed $value): string
 }
 
 /**
+ * 編集フォームに付ける「未保存のまま離れたら警告」の目印（assets/app.js の setupUnsavedGuard）。
+ *   POST で画面が出ている = 送信したがエラーで戻ってきた（成功なら redirect している）。
+ *   入力はまだ保存されていないので、何も触っていなくても「変更あり」として扱う（data-unsaved="posted"）。
+ */
+function unsaved_attr(): string
+{
+    return $_SERVER['REQUEST_METHOD'] === 'POST' ? ' data-unsaved="posted"' : ' data-unsaved';
+}
+
+/**
  * Google Fonts の Material Symbols のアイコンを出す。icon('edit') → ✎ の代わりの鉛筆。
  *   アイコン名の一覧: https://fonts.google.com/icons
  *   アイコン名を文字として書くと、フォントが絵に置き換えてくれる（リガチャ）。

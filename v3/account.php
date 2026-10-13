@@ -112,7 +112,7 @@ render_header('アカウント設定');
 
 <div class="settings">
     <?php if (!$myMember): ?>
-    <form method="post" class="card form-card">
+    <form method="post" class="card form-card" data-unsaved>
         <h2 class="section-title section-title--card">プロフィール</h2>
         <p class="muted small">まだメンバーと紐付いていません。管理者に依頼してください。（紐付くとマイページが使用できます）。</p>
         <?= csrf_field() ?><input type="hidden" name="action" value="profile">
@@ -120,7 +120,7 @@ render_header('アカウント設定');
         <div class="form-actions"><button class="btn btn--primary btn--sm" type="submit">保存</button></div>
     </form>
     <?php else: ?>
-    <form method="post" action="member_edit" class="card form-card" id="member-profile">
+    <form method="post" action="member_edit" class="card form-card" id="member-profile" data-unsaved>
         <h2 class="section-title section-title--card">プロフィール</h2>
         <?= csrf_field() ?>
         <input type="hidden" name="member_id" value="<?= (int)$myMember['member_id'] ?>">
@@ -141,7 +141,7 @@ render_header('アカウント設定');
     </form>
     <?php endif; ?>
 
-    <form method="post" class="card form-card">
+    <form method="post" class="card form-card" data-unsaved>
         <h2 class="section-title section-title--card">パスワード変更</h2>
         <?= csrf_field() ?><input type="hidden" name="action" value="password">
         <label class="field"><span>今のパスワード</span><input type="password" name="current" autocomplete="current-password" required></label>
@@ -150,7 +150,7 @@ render_header('アカウント設定');
         <div class="form-actions"><button class="btn btn--primary btn--sm" type="submit">変更</button></div>
     </form>
     <?php if ($account['is_admin']): ?>
-    <form method="post" class="card form-card">
+    <form method="post" class="card form-card" data-unsaved>
         <h2 class="section-title section-title--card">問い合わせの通知先 <span class="tag">管理者</span></h2>
         <p class="muted small">「問い合わせ・要望」から送られた内容が、このアドレスにメールで届きます。空にすると届かなくなります（サイトの中には残ります）。</p>
         <?= csrf_field() ?><input type="hidden" name="action" value="email">
@@ -158,14 +158,14 @@ render_header('アカウント設定');
         <div class="form-actions"><button class="btn btn--primary btn--sm" type="submit">保存</button></div>
     </form>
     <?php endif; ?>
-    <form method="post" class="card form-card">
+    <form method="post" class="card form-card" data-unsaved>
         <h2 class="section-title section-title--card">名前の候補</h2>
         <p class="muted small">バンド編集・タイムテーブル編集・取り込みで、メンバーの名前を打つと出てくる候補の設定です。</p>
         <?= csrf_field() ?><input type="hidden" name="action" value="suggest">
         <label class="check"><input type="hidden" name="hide_retired" value="0"><input type="checkbox" name="hide_retired" value="1"<?= $account['hide_retired_suggest'] ? ' checked' : '' ?>> 退会した人を候補に出さない</label>
         <div class="form-actions"><button class="btn btn--primary btn--sm" type="submit">保存</button></div>
     </form>
-    <form method="post" class="card form-card">
+    <form method="post" class="card form-card" data-unsaved>
         <h2 class="section-title section-title--card">戻るボタン</h2>
         <p class="muted small">画面の左下に出る「← ページ名」のボタン（前のページ・1つ上のページに戻る）の設定です。</p>
         <?= csrf_field() ?><input type="hidden" name="action" value="back_button">

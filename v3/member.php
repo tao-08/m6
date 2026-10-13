@@ -281,7 +281,7 @@ render_header($member['name'], 'members');
 <!-- 他の人のページの編集フォーム（管理者だけ）。<details> なので普段は閉じている -->
 <details class="card edit-box">
     <summary><?= icon('edit') ?> プロフィールを編集</summary>
-    <form method="post" action="member_edit" class="form-grid edit-box__form">
+    <form method="post" action="member_edit" class="form-grid edit-box__form" data-unsaved>
         <?= csrf_field() ?>
         <input type="hidden" name="member_id" value="<?= $memberId ?>">
         <label class="field field--wide"><span>名前</span><input name="name" value="<?= h($member['name']) ?>" maxlength="50" required></label>

@@ -109,7 +109,7 @@ render_header('問い合わせ・要望');
 </section>
 
 <div class="settings">
-    <form method="post" class="card form-card">
+    <form method="post" class="card form-card"<?= unsaved_attr() ?>>
         <?= csrf_field() ?>
         <label class="field"><span>種類</span>
             <select name="category" required>
