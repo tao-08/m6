@@ -271,11 +271,11 @@
         box.textContent = ''; // 中身を空にする
         const hint = $('[data-members-hint]');
         if (tpl().members.mode === 'slots') {
-            hint.textContent = 'パートはシートに印刷済み。マイクを使う人に✓';
+            hint.textContent = 'マイクを使う人に✓';
             renderSlots(box);
             return;
         }
-        hint.textContent = 'パートは Vo / Gt / Ba / Dr / Key など';
+        hint.textContent = 'パートは Vo / Gt / Ba / Dr / Key などを入力';
         const rows = tpl().members.rows;
         for (let i = 0; i < rows; i++) {
             if (!state.members[i]) {

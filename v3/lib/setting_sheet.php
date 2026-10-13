@@ -127,7 +127,7 @@ const SHEET_TEMPLATES = [
         ],
     ],
     'club_common' => [
-        'label'       => 'サークル共通（和泉・合宿・G-ROKS など）',
+        'label'       => '共通フォーマット（教室ライブ・合宿など）',
         // DB の会場名は「和泉キャンバス」（バ）になっているので両方書いておく
         'venue_words' => ['和泉キャンパス', '和泉キャンバス', 'シェラリゾート', '湯沢', 'ゆうげん荘', 'G-ROKS', 'ROKS'],
         'pdf'         => 'assets/sheets/club_common.pdf',

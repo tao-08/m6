@@ -197,7 +197,8 @@ render_header($artist['name'], 'artists');
         <?php foreach ($bands as $b): ?>
             <tr>
                 <td class="nowrap"><a href="live?id=<?= (int)$b['live_id'] ?>#day-<?= (int)$b['live_day_id'] ?>"><span class="live-year"><?= h(fmt_year($b['fiscal_year'])) ?> </span><?= h($b['live_name']) ?></a>
-                    <div class="muted small"><?= h($b['label']) ?> <?= h(fmt_date($b['held_on'])) ?></div></td>
+                    <div class="muted small"><?= h($b['label']) ?> <?= h(fmt_date($b['held_on'])) ?></div>
+                    <?= upcoming_tag($b['held_on']) // まだ来ていないライブは日付の下に「予定」 ?></td>
                 <td class="strong"><a href="band?id=<?= (int)$b['band_id'] ?>"><?= h($b['name']) ?></a></td>
                 <td>
                     <?php if (!empty($lineups[(int)$b['band_id']])): ?>

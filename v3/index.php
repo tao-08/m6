@@ -142,7 +142,8 @@ render_header('ライブ一覧', 'lives');
                     <div class="card live-card"
                        data-text="<?= h($live['name'] . ' ' . implode(' ', $venues) . ' ' . implode(' ', $notes)) ?>">
                         <div class="live-card__head">
-                            <h3><a class="live-card__link" href="live?id=<?= (int)$liveId ?>"><?= h($live['name']) ?></a></h3>
+                            <h3 class="live-card__title"><a class="live-card__link" href="live?id=<?= (int)$liveId ?>"><?= h($live['name']) ?></a>
+                                <?= upcoming_tag(max(array_column($live['days'], 'date') ?: [null])) // 最後の日程がまだ来ていなければ「予定」 ?></h3>
                             <span class="pill"><?= count($live['days']) ?>日程</span>
                         </div>
                         <ul class="live-card__days">

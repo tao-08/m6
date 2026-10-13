@@ -131,7 +131,7 @@ $bandUrl = 'band?id=' . $bandId;
 render_header('セッティングシート作成', 'lives');
 ?>
 <!-- このページだけの CSS。<link> は <body> の中に書いてもよい（HTML の仕様で許されている） -->
-<link rel="stylesheet" href="assets/setting_sheet.css?v=20">
+<link rel="stylesheet" href="assets/setting_sheet.css?v=23">
 
 <nav class="crumbs"><a href="./">ライブ</a><span>/</span><a href="<?= h($bandUrl) ?>"><?= h($band['name']) ?></a></nav>
 <h1 class="display display--sm"><?= icon('description') ?> セッティングシート作成</h1>
@@ -177,7 +177,7 @@ render_header('セッティングシート作成', 'lives');
     </section>
 
     <!-- ===== セット図 ===== -->
-    <section class="card sheet-card">
+    <section class="card sheet-card sheet-card--stage">
         <h2 class="sheet-card__title">セット図 <span class="muted small">ドラッグで移動・タップで選択</span></h2>
         <div class="stage-tools">
             <button type="button" class="btn btn--sm" data-add="mic"><?= icon('mic') ?> マイク</button>

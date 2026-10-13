@@ -457,6 +457,7 @@ render_header($member['name'], 'members');
                         <!-- カードには年度ではなく、実際に開催した年（2025年度の3月なら 2026年） -->
                         <span><?= $day['date'] ? date('Y', strtotime($day['date'])) . '年' : '' ?></span>
                         <span class="muted"><?= h(fmt_date($day['date'])) ?></span>
+                        <?= upcoming_tag($day['date']) ?>
                     </div>
                     <div class="history__what">
                         <a href="live?id=<?= (int)$day['live_id'] ?>#day-<?= (int)$day['live_day_id'] ?>" class="muted small"><?= h($day['live_name']) ?> <?= h($day['label']) ?><?= $day['venue_name'] ? ' · ' . h($day['venue_name']) : '' ?></a>
@@ -469,7 +470,7 @@ render_header($member['name'], 'members');
                                         <a href="band?id=<?= (int)$b['band_id'] ?>"><?= h($b['band_name']) ?></a>
                                         <?php if ($b['is_last']): ?><span class="tori-badge" aria-label="トリ" title="トリ">🐔</span><?php endif; ?>
                                         <?php // 見ている人も一緒に出たバンド（カードの赤枠の理由がどのバンドか分かるように）。live.php の「出演」と同じタグ ?>
-                                        <?php if (isset($viewerBandIds[(int)$b['band_id']])): ?><span class="tag history__mine">出演</span><?php endif; ?>
+                                        <?php if (isset($viewerBandIds[(int)$b['band_id']])): ?><span class="tag tag--mine history__mine">出演</span><?php endif; ?>
                                     </span>
                                     <span class="history__tags">
                                         <!-- セットリスト登録済なら楽器ラベルの左に ✓、その後にそのバンドでのパート（Vo と Gt なら「Vo/Gt」1つ） -->

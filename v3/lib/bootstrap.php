@@ -98,7 +98,7 @@ error_reporting(E_ALL);
  *   スマホでブラウザのアプリをスワイプで消すだけでログアウトしてしまう。
  *   長くするほど楽だが、スマホをなくしたときに拾った人に見られる期間も長くなる
  */
-const SESSION_DAYS = 30;
+const SESSION_DAYS = 60;
 
 if (session_status() !== PHP_SESSION_ACTIVE) {
     // strict_mode: サーバーが発行していないセッションID（攻撃者が用意したもの）を受け付けない
@@ -123,7 +123,7 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
     ];
     session_set_cookie_params($cookie);
     session_start();
-    // PHP は Cookie の期限を「作ったとき」にしか送らない → 開くたびに送り直して、期限を「最後に開いてから30日」にする
+    // PHP は Cookie の期限を「作ったとき」にしか送らない → 開くたびに送り直して、期限を「最後に開いてから60日」にする
     if (!empty($_SESSION['user']) && !headers_sent()) {
         setcookie(session_name(), session_id(), ['expires' => time() + $cookie['lifetime']] + array_diff_key($cookie, ['lifetime' => 0]));
     }
@@ -440,6 +440,21 @@ function take_flashes(): array
  * ===================================================================== */
 
 /** '2025-10-30' → '10/30（木）'。NULL（日付不明）は空文字 */
+/**
+ * まだ来ていない日（今日も含む）か。「予定」タグを出すのに使う（index / live / band / member）。
+ *   held_on は 'YYYY-MM-DD' の文字列なので、>= でそのまま日付を比べられる。日付未設定（NULL）は予定にしない
+ */
+function is_upcoming(?string $date): bool
+{
+    return $date !== null && $date >= date('Y-m-d');
+}
+
+/** 「予定」タグ（出演タグと同じ見た目）。まだ来ていない日だけ出す */
+function upcoming_tag(?string $date): string
+{
+    return is_upcoming($date) ? '<span class="tag tag--plan">予定</span>' : '';
+}
+
 function fmt_date(?string $date): string
 {
     if (!$date) {

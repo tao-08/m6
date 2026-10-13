@@ -232,7 +232,8 @@ render_header($band['name'], 'lives');
         </p>
         <p class="band-tags">
             <?php if ($isLast): ?><span class="tag tag--tori" aria-label="トリ" title="トリ">🐔</span><?php endif; ?>
-            <?php if ($isMine): ?><span class="tag">出演</span><?php endif; ?>
+            <?php if ($isMine): ?><span class="tag tag--mine">出演</span><?php endif; ?>
+            <?= upcoming_tag($band['held_on']) ?>
             <?= band_artist_links($band, $band['is_omnibus'] ? omnibus_artists_by_band($pdo, [(int)$band['band_id']]) : []) // オムニバスなら曲のアーティストを全部 ?>
         </p>
     </div>

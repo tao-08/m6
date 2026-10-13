@@ -93,6 +93,17 @@
   color: #000;
 }
 .stage-hint { margin: -4px 0 0; }
+/* スマホ: セット図の枠を、カードの内側の余白をはみ出して画面の幅いっぱいに（左右に 6px だけ残す）。
+ *  スマホでは「本文の余白 16px（app.css の .container）+ カードの枠 1px + カードの内側の余白 16px（.card）」= 33px が
+ *  画面の端から枠までの距離。その 33px のうち 27px ぶん左右に出す（残り 6px）
+ *  100vw（画面の横幅）を使うと、PC のブラウザではスクロールバーの幅まで入って横にはみ出すので使わない
+ *  部品の大きさは枠の幅から計算し直す（JS の ResizeObserver）ので、広げても位置はずれない */
+@media (max-width: 600px) {
+  .stage { width: calc(100% + 54px); max-width: none; margin-left: -27px; }
+  /* セット図のカードも画面の端から端まで（本文の余白 16px ぶん外へ）。角の丸みと左右の枠は消す。
+   * 中の見出しやボタンは、ほかのカードと同じ位置（画面の端から 33px）に来るように内側の余白を 33px に */
+  .sheet-card--stage { margin-inline: -16px; border-radius: 0; border-left: 0; border-right: 0; padding-inline: 33px; }
+}
 .stage-history { display: flex; gap: 4px; margin-top: -4px; }
 /* 1つ戻す・やり直す: うっすら青。押せないときは薄く */
 .stage-history .btn { background: rgb(59 130 246 / .12); color: rgb(37 99 235); border-color: rgb(59 130 246 / .25); }

@@ -251,6 +251,10 @@ form.row-form input, form.row-form select { flex: 1; min-width: 10em; }
 .tag { display: inline-flex; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 800; letter-spacing: .04em;
   background: var(--surface-2); color: var(--text); border: 1px solid var(--border); white-space: nowrap; }
 .tag--accent { background: var(--accent); color: var(--on-accent); border-color: transparent; }
+/* 「出演」: 見ている人が出たバンド。is-mine の赤枠と同じアクセントの赤にそろえる */
+.tag--mine { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, transparent); background: var(--accent-soft); }
+/* 「予定」: まだ来ていないライブ（upcoming_tag()）。出演タグと同じ形で、青（トリの線と同じ色）にして見分ける */
+.tag--plan { color: var(--headliner); border-color: color-mix(in srgb, var(--headliner) 40%, transparent); background: color-mix(in srgb, var(--headliner) 10%, transparent); }
 .tag--tori { font-size: 14px; line-height: 1; padding: 2px 6px; } /* トリの🐔は大きめに */
 .tag--flag { padding: 0 2px; background: none; border: 0; color: var(--warn); text-decoration: none; } /* 楽器の確認待ちの旗（live.php） */
 .tag--flag .icon { font-size: 18px; vertical-align: 0; }
@@ -341,6 +345,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .live-card:hover { color: inherit; transform: translateY(-3px); border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); }
 .live-card__head { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; }
 .live-card__head h3 { font-size: 19px; font-weight: 800; }
+.live-card__title { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; } /* ライブ名と「予定」を上下中央でそろえる（長い名前ならタグは次の行へ） */
 .live-card__days { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 13px; }
 .live-card__days li { display: grid; grid-template-columns: 5.5em auto 1fr; gap: 10px; align-items: center; }
 .day-no { font-weight: 800; font-size: 12px; color: var(--accent); }
@@ -365,6 +370,8 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 @media (prefers-reduced-motion: reduce) { .day:not([hidden]) { animation: none; } }
 
 .day__info { display: flex; flex-wrap: wrap; gap: 16px 32px; align-items: center; margin-bottom: 18px; }
+/* 日付と「予定」タグを上下中央でそろえる */
+.day__date { display: flex; align-items: center; gap: 10px; }
 .day__info h2 { font-size: 24px; font-weight: 900; font-variant-numeric: tabular-nums; min-width: 6.5em; } /* 「1/5（月）」でも「12/31（水）」でも幅を固定して、右の会場などがずれないようにする */
 .facts { display: flex; flex-wrap: wrap; gap: 8px 28px; margin: 0; }
 .facts dt { font-size: 11px; color: var(--muted); font-weight: 600; letter-spacing: .06em; }
@@ -533,13 +540,15 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .history__item.is-mine { border-color: color-mix(in srgb, var(--accent) 55%, transparent);
   background: color-mix(in srgb, var(--accent) 7%, var(--surface)); } /* 単色: カードの白にアクセントの赤を 7% だけ混ぜる */
 .history__when { display: grid; font-size: 12px; font-weight: 700; }
+.history__when .tag { justify-self: start; margin-top: 4px; } /* grid の中だと横いっぱいに伸びるので、中身の幅にする */
 .history__what { display: grid; min-width: 0; }
 .history__bands { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 6px; }
 .history__band { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .history__name { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .history__name > a { font-size: 16px; font-weight: 700; color: inherit; overflow-wrap: anywhere; min-width: 0; }
 .history__name > a:hover { color: var(--accent); }
-.history__mine { flex: none; margin-left: 6px; } /* 名前が長くても「出演」は縮めない。名前とのすき間は gap 6px + 6px = 12px */
+.history__mine { flex: none; margin-left: 6px; }
+td .tag--plan { margin-top: 4px; } /* アーティストの演奏履歴: 日付の下に出す「予定」 */ /* 名前が長くても「出演」は縮めない。名前とのすき間は gap 6px + 6px = 12px */
 /* トリの印: バンド名の横に小さな灰色の四角 + 🐔 */
 .tori-badge { flex-shrink: 0; font-size: 12px; line-height: 1; padding: 2px 4px; border-radius: 4px; background: var(--surface-2); }
 .history__tags { display: flex; align-items: center; gap: 6px; flex-shrink: 0; } /* セットリストの ✓ と楽器ラベルの高さをそろえる */
@@ -1516,7 +1525,8 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
   .slot__like .like__count { min-width: 1.8em; padding: 3px 6px; }
   .slot__like .like__heart { font-size: 20px; }
   .history__item { grid-template-columns: 1fr; }
-  .history__when { grid-column: 1 / -1; display: flex; gap: 8px; }
+  .history__when { grid-column: 1 / -1; display: flex; gap: 8px; align-items: center; }
+  .history__when .tag { margin-top: 0; } /* スマホは日付と横並びなので、上の余白は要らない */
   .table td, .table th { padding: 10px 12px; }
   /* アーティスト一覧・メンバー一覧（.table--list）: スマホは幅が足りないので、大事な数字（演奏回数・出演）が画面に入るよう余白を詰める */
   .table-card:has(.table--list) { margin-inline: -10px; } /* 表の外側: 画面の端から 16px → 6px */
