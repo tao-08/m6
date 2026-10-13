@@ -101,8 +101,13 @@ if (is_admin()) {
             }
         } elseif ($action === 'merge') {
             // このアーティストを、別のアーティストに付け替えてから消す（lib/repository.php の merge_artist）
-            $to = (int)($_POST['to'] ?? 0);
-            if ($to !== $artistId) {
+            // 統合先は名前で入力する（候補から選ぶ）。名前がぴったり一致するアーティストだけ受け付ける
+            $st = $pdo->prepare('SELECT artist_id FROM artist WHERE name = ?');
+            $st->execute([trim((string)($_POST['to_name'] ?? ''))]);
+            $to = (int)$st->fetchColumn(); // 見つからなければ 0
+            if ($to === 0) {
+                flash('統合先のアーティストが見つかりません。候補から選んでください', 'error');
+            } elseif ($to !== $artistId) {
                 $pdo->beginTransaction();
                 merge_artist($pdo, $artistId, $to); // バンド・オムニバスの曲・別称を付け替えてから消す
                 $pdo->commit();
@@ -231,7 +236,8 @@ render_header($artist['name'], 'artists');
     <summary><?= icon('edit') ?> アーティストを編集（管理者）</summary>
     <form method="post" class="form-grid edit-box__form">
         <?= csrf_field() ?><input type="hidden" name="action" value="rename">
-        <label class="field field--wide"><span>名前</span><input name="name" value="<?= h($artist['name']) ?>" maxlength="100" required></label>
+        <!-- 候補: ほかのアーティスト名（表記をそろえるときの参考。同じ名前にすると弾かれるので、そのときは下の統合を使う） -->
+        <label class="field field--wide"><span>名前</span><input name="name" value="<?= h($artist['name']) ?>" maxlength="100" required data-suggest-list="artist-names" autocomplete="off"></label>
         <div class="form-actions field--wide"><button class="btn btn--sm" type="submit">名前を変更</button></div>
     </form>
     <!-- 別称: マイアルバムのアーティスト名がこの表記でも、このアーティストのアルバムとして上に出す -->
@@ -248,24 +254,19 @@ render_header($artist['name'], 'artists');
     </div>
     <form method="post" class="form-grid edit-box__form">
         <?= csrf_field() ?><input type="hidden" name="action" value="alias_add">
-        <!-- list="...": 下の datalist（マイアルバムに出てくるアーティスト名）を入力候補に出す -->
-        <label class="field field--wide"><span>別称を追加</span><input name="alias" maxlength="255" list="album-artist-names" required></label>
-        <datalist id="album-artist-names">
-            <?php foreach ($albumArtistNames as $n): ?><option value="<?= h($n) ?>"><?php endforeach; ?>
-        </datalist>
+        <!-- data-suggest-list: 打つと、マイアルバムに出てくるアーティスト名を候補に出す（assets/app.js の setupSuggest） -->
+        <label class="field field--wide"><span>別称を追加</span><input name="alias" maxlength="255" required data-suggest-list="album-artist-names" autocomplete="off"></label>
+        <?= render_suggest_datalist('album-artist-names', $albumArtistNames) ?>
         <div class="form-actions field--wide"><button class="btn btn--sm" type="submit">別称を追加</button></div>
     </form>
     <form method="post" class="form-grid edit-box__form" data-confirm="このアーティストのバンドを選んだアーティストに付け替えて、このアーティストを消します。">
         <?= csrf_field() ?><input type="hidden" name="action" value="merge">
         <label class="field field--wide"><span>表記ゆれで重複している場合: 統合先</span>
-            <select name="to" required>
-                <option value="">選択</option>
-                <?php foreach ($others as $o): if ((int)$o['artist_id'] === $artistId) continue; ?>
-                    <option value="<?= (int)$o['artist_id'] ?>"><?= h($o['name']) ?></option>
-                <?php endforeach; ?>
-            </select></label>
+            <input name="to_name" required data-suggest-list="artist-names" autocomplete="off" placeholder="アーティスト名を入力して候補から選ぶ"></label>
         <div class="form-actions field--wide"><button class="btn btn--sm btn--danger" type="submit">統合する</button></div>
     </form>
+    <!-- 名前・統合先の候補（自分以外のアーティスト） -->
+    <?= render_suggest_datalist('artist-names', array_column(array_filter($others, static fn($o) => (int)$o['artist_id'] !== $artistId), 'name')) ?>
 </details>
 <?php endif; ?>
 <?php render_footer();

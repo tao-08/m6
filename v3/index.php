@@ -97,14 +97,17 @@ render_header('ライブ一覧', 'lives');
 <?php if ($flagged): ?>
     <section class="card check-list" data-check-list>
         <h2 class="section-title section-title--card"><?= icon('flag', 'icon--fill flag-icon') ?> 確認依頼が届いています</h2>
-        <p class="muted small">登録内容の確認依頼が届いているバンドです。バンドページを開いて確認をお願いします。<br>メンバーが登録されていないバンドは全員に表示しています。分かる人はお願いします。✕ で消せます。</p>
+        <p class="muted small">登録内容の確認依頼が届いているバンドです。バンド詳細ページから確認をお願いします。<br>メンバーが未登録のバンドは全員に表示しています。 情報をお持ちの方は情報提供にご協力お願いします。</p>
         <ul>
             <?php foreach ($flagged as $f): ?>
                 <li data-check-item><div class="check-list__text"><a href="band?id=<?= (int)$f['band_id'] ?>"><?= h($f['name']) ?></a>
                     <span class="muted small"><?= (int)$f['fiscal_year'] ?>年度 <?= h($f['live_name']) ?> <?= h($f['label']) ?></span>
-                    <span class="small">— <?= h(implode(' / ', check_reason_labels((int)$f['needs_check']))) ?></span>
-                    <?php if ($f['about_me']): ?><span class="chip chip--me chip--xs">あなたについて</span><?php endif; ?>
-                    <?php if ($f['no_members']): ?><span class="chip chip--warn chip--xs">メンバー未登録</span><?php endif; ?></div>
+                    <?php if ($f['no_members']): // メンバーがいない = まず登録してほしい。理由（楽器など）は確かめようがないので出さない ?>
+                        <span class="chip chip--warn chip--xs"><?= icon('person_off') ?>メンバー未登録</span>
+                    <?php else: ?>
+                        <span class="small">— <?= h(implode(' / ', check_reason_labels((int)$f['needs_check']))) ?></span>
+                        <?php if ($f['about_me']): ?><span class="chip chip--me chip--xs">あなたについて</span><?php endif; ?>
+                    <?php endif; ?></div>
                     <button type="button" class="check-list__close" data-check-dismiss="<?= (int)$f['band_id'] ?>" aria-label="「<?= h($f['name']) ?>」のお知らせを消す" title="消す"><?= icon('close') ?></button></li>
             <?php endforeach; ?>
         </ul>

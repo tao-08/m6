@@ -449,7 +449,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .yt-assign .youtube-icon { width: 20px; height: 14px; }
 .yt-leftover { margin: 0 0 8px; padding-left: 20px; line-height: 1.9; }
 .slot__meta { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 10px 0 0; font-size: 12px; color: var(--muted); }
-.keynote { color: var(--text); }
+.band-note { color: var(--text); } /* バンドのメモ（band.note）。鍵盤の貸出だけでなく何でも書く */
 .slot--mine .slot__body { border-color: color-mix(in srgb, var(--accent) 55%, transparent);
   background: color-mix(in srgb, var(--accent) 7%, var(--surface)); } /* 単色: カードの白にアクセントの赤を 7% だけ混ぜる */
 .slot--mine .slot__time .slot__no { color: var(--accent); }
@@ -815,6 +815,7 @@ body.is-row-dragging, body.is-row-dragging * { cursor: grabbing !important; user
 .chip--warn { border-color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, var(--surface)); }
 .chip .icon { font-size: 15px; vertical-align: -2px; margin-right: 2px; }
 .chip--xs { display: inline-block; padding: 0 8px; font-size: 11px; white-space: nowrap; }
+.check-list { margin-bottom: 14px; } /* トップのお知らせカードと、下の検索・絞り込みの間 */
 .check-list ul { margin: 8px 0 0; padding: 0; list-style: none; display: grid; gap: 4px; }
 /* トップの確認依頼: 1件ごとに右端に ✕。消すときは右へすべらせながら薄くして、高さを 0 にして詰める（app.js の setupCheckDismiss） */
 .check-list li { display: flex; align-items: flex-start; gap: 8px; padding: 4px 0; overflow: hidden;
