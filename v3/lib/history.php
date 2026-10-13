@@ -142,6 +142,12 @@ function change_snapshot(PDO $pdo, string $type, int $id): ?array
     foreach (CHANGE_BAND_CHILDREN as $table) { // 表の名前は上の定数だけ
         $data[$table] = $rows("SELECT * FROM `$table` WHERE band_id = ?");
     }
+    // バンド・曲のアーティストの行も残す。オムニバスにしたとき使われなくなったアーティストは消える
+    //   （delete_artist_if_unused）ので、戻すときに作り直せるように名前ごと持っておく
+    $st = $pdo->prepare('SELECT * FROM artist WHERE artist_id IN (
+            SELECT artist_id FROM band WHERE band_id = ? UNION SELECT artist_id FROM song WHERE band_id = ?)');
+    $st->execute([$id, $id]);
+    $data['artist'] = $st->fetchAll(PDO::FETCH_ASSOC);
     return $data;
 }
 
@@ -355,9 +361,8 @@ function restore_band(PDO $pdo, int $id, array $snap): int
     // 今のバンドを消して（中身は CASCADE で消える）、同じ ID で入れ直す。出演順はいったん最後尾 → 元の位置へ
     $oldDay = change_band_day($pdo, $id);
     $pdo->prepare('DELETE FROM band WHERE band_id = ?')->execute([$id]);
-    if ($row['artist_id'] !== null && !change_row_exists($pdo, 'artist', 'artist_id', (int)$row['artist_id'])) {
-        $row['artist_id'] = null;
-    }
+    $artistIds = restore_artists($pdo, $snap['artist'] ?? []);
+    $row['artist_id'] = restore_artist_id($pdo, $row['artist_id'], $artistIds);
     $position = (int)$row['play_order'];
     $row['play_order'] = next_play_order($pdo, $dayId);
     change_insert($pdo, 'band', $row);
@@ -388,9 +393,7 @@ function restore_band(PDO $pdo, int $id, array $snap): int
     // 曲。song_id はなるべく同じにする（もう別の曲が使っていたら新しく振って、演奏者の行を付け替える）
     $songIds = []; // 前の song_id => 入れた song_id
     foreach ($snap['song'] as $s) {
-        if ($s['artist_id'] !== null && !change_row_exists($pdo, 'artist', 'artist_id', (int)$s['artist_id'])) {
-            $s['artist_id'] = null;
-        }
+        $s['artist_id'] = restore_artist_id($pdo, $s['artist_id'], $artistIds);
         if ($s['track_id'] !== null && !change_track_exists($pdo, (string)$s['track_source'], (string)$s['track_id'])) {
             $s['track_source'] = $s['track_id'] = null; // ck_song_ext_track: 2つとも NULL にする
         }
@@ -423,6 +426,45 @@ function restore_band(PDO $pdo, int $id, array $snap): int
     }
     sync_day_total_bands($pdo, $dayId);
     return $skipped;
+}
+
+/**
+ * snapshot のアーティストのうち、今は消えているものを作り直す（オムニバスにして消えたコピー元など）。
+ *   同じ名前のアーティストが今あれば（消えた後に作り直された）、そっちを使う。無ければ前と同じ ID で入れ直す
+ * @return array<int, int> 前の artist_id => 今の artist_id
+ */
+function restore_artists(PDO $pdo, array $artists): array
+{
+    $map = [];
+    $byName = $pdo->prepare('SELECT artist_id FROM artist WHERE name = ?');
+    foreach ($artists as $a) {
+        $old = (int)$a['artist_id'];
+        if (change_row_exists($pdo, 'artist', 'artist_id', $old)) {
+            $map[$old] = $old;
+            continue;
+        }
+        $byName->execute([$a['name']]);
+        $now = $byName->fetchColumn();
+        if ($now === false) {
+            change_insert($pdo, 'artist', $a);
+            $now = $old;
+        }
+        $map[$old] = (int)$now;
+    }
+    return $map;
+}
+
+/** 戻す行の artist_id を今の ID にする。snapshot に無く、今も無いアーティスト（前の形式の履歴）は NULL */
+function restore_artist_id(PDO $pdo, $artistId, array $map): ?int
+{
+    if ($artistId === null) {
+        return null;
+    }
+    $artistId = (int)$artistId;
+    if (isset($map[$artistId])) {
+        return $map[$artistId];
+    }
+    return change_row_exists($pdo, 'artist', 'artist_id', $artistId) ? $artistId : null;
 }
 
 // ---------------------------------------------------------------------
@@ -557,7 +599,10 @@ function change_diff(PDO $pdo, string $type, ?array $now, array $before): array
     // ---- バンド ----
     $n = $now['band'] ?? null;
     $b = $before['band'];
-    $artist = static fn(?array $r) => $r === null || $r['artist_id'] === null ? '' : change_name($pdo, 'artist', (int)$r['artist_id']);
+    // 戻した後の名前は snapshot の名前を優先する（今は消えていても、戻すときに作り直すので）
+    $snapArtists = array_column($before['artist'] ?? [], 'name', 'artist_id');
+    $artist = static fn(?array $r) => $r === null || $r['artist_id'] === null ? ''
+        : ($snapArtists[$r['artist_id']] ?? change_name($pdo, 'artist', (int)$r['artist_id']));
     $day = static fn(?array $r) => $r === null ? '' : change_label($pdo, 'day', (int)$r['live_day_id']);
     $time = static fn(?array $r) => $r === null || (!$r['start_time'] && !$r['end_time']) ? '' : fmt_time($r['start_time']) . '〜' . fmt_time($r['end_time']);
     $flag = static fn(?array $r) => $r === null ? '' : implode(' / ', check_reason_labels((int)$r['needs_check']));

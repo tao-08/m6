@@ -202,6 +202,23 @@ function make_bands_omnibus(PDO $pdo, array $artistIds): int
     return $st->rowCount();
 }
 
+/**
+ * アーティストを、どこからも使われていなければ消す。呼ぶ側でトランザクションにすること。
+ *   オムニバスにしてコピー元を外したバンドの「ボカロバンド」のような名前を、アーティストの表そのものから片付けるため。
+ *   消さないとき: 他のバンドのコピー元（= 同じ名前の非オムニバスのバンドがある）・どこかの曲のアーティスト・別称がある
+ *   （別称があるのは統合で手入れしたアーティストなので残す）
+ * @return bool 消したら true
+ */
+function delete_artist_if_unused(PDO $pdo, int $artistId): bool
+{
+    $st = $pdo->prepare('DELETE FROM artist WHERE artist_id = ?
+        AND NOT EXISTS (SELECT 1 FROM band WHERE artist_id = ?)
+        AND NOT EXISTS (SELECT 1 FROM song WHERE artist_id = ?)
+        AND NOT EXISTS (SELECT 1 FROM artist_alias WHERE artist_id = ?)');
+    $st->execute([$artistId, $artistId, $artistId, $artistId]);
+    return $st->rowCount() > 0;
+}
+
 function find_or_create_artist(PDO $pdo, string $bandName): ?int
 {
     [$base] = band_split_suffix($bandName);

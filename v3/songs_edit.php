@@ -191,6 +191,12 @@ if (is_post() && !$fromSheet) {
             $pdo->prepare('UPDATE band SET is_omnibus = ?, artist_id = ?, setlist_private = ? WHERE band_id = ?')
                 ->execute([(int)$omnibus, $artistId, (int)$private, $bandId]);
             save_songs($pdo, $bandId, $songs);
+            // オムニバスにしたら、外したコピー元アーティストが他で使われていなければ消す
+            //   同じ名前の非オムニバスのバンド（band.artist_id）や、曲のアーティストに使っていれば残す。
+            //   save_songs の後にやる: 曲のアーティスト欄に同じ名前を書いていたら、その曲が使っているので消さない
+            if ($omnibus && $band['artist_id'] !== null) {
+                delete_artist_if_unused($pdo, (int)$band['artist_id']);
+            }
             $pdo->commit();
         } catch (Throwable $e) {
             $pdo->rollBack();
