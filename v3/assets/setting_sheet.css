@@ -140,6 +140,9 @@
  *  位置（sticky）や背景は app.css の .sticky-actions に任せ、ここでは中身の並びだけ決める
  *  スマホ: 横に並べる（プレビューが左、PDF が右）/ PC: 縦に並べる（プレビューが上） */
 .sheet-actions { flex-wrap: wrap; align-items: center; }
+/* プレビューを開いても操作バーを必ず手前に保つ。
+ * ページ末尾では sticky-actions が上に移動することがあり、プレビューに隠れると閉じられなくなるため */
+.sheet-actions { z-index: 26; }
 .sheet-status { margin: 0 auto 0 8px; flex: 1 1 160px; }
 .sheet-status:empty { display: none; } /* メッセージが無いときは場所を取らない */
 .sheet-preview-btn[aria-expanded="true"] { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
