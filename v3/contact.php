@@ -82,7 +82,9 @@ function send_inquiry_mail(PDO $pdo, ?array $user, string $category, string $bod
     $sent = false;
     foreach ($to as $addr) {
         // 1人ずつ送る（To に全員並べると、管理者同士のアドレスが見えてしまう）
-        $sent = @mb_send_mail($addr, $subject, $text, 'From: ' . $from) || $sent;
+        // From の「Abbey Road」はメールソフトに出る送信者名。
+        // -f で封筒の差出人（Return-Path）も $from にする。付けないとサーバーの内部アドレスになり、SPF が合わずに捨てられやすい
+        $sent = @mb_send_mail($addr, $subject, $text, 'From: Abbey Road <' . $from . '>', '-f' . $from) || $sent;
     }
     return $sent;
 }
