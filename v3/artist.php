@@ -137,16 +137,16 @@ if (is_admin()) {
             // 別称: マイアルバムのアーティスト名が別の表記（オアシス など）でも、このアーティストとして拾うため
             $alias = trim((string)($_POST['alias'] ?? ''));
             // 本名・ほかのアーティストの名前と同じ別称は付けない（どのアーティストか分からなくなる）
-            $st = $pdo->prepare('SELECT 1 FROM artist WHERE name = ?');
-            $st->execute([$alias]);
-            $takenByArtist = (bool)$st->fetchColumn();
-            $st = $pdo->prepare('SELECT 1 FROM artist_alias WHERE name = ?');
-            $st->execute([$alias]);
-            $takenByAlias = (bool)$st->fetchColumn();
+            // どのアーティストが使っているかも取る（演奏0回のアーティストは検索に出ないので、名前を出さないと見つけられない）
+            $st = $pdo->prepare('SELECT artist_id, name FROM artist WHERE name = ?
+                UNION SELECT a.artist_id, a.name FROM artist_alias al JOIN artist a ON a.artist_id = al.artist_id WHERE al.name = ? LIMIT 1');
+            $st->execute([$alias, $alias]);
+            $owner = $st->fetch();
             if ($alias === '' || mb_strlen($alias) > 255 || album_match_key($alias) === '') {
                 flash('別称を入力してください', 'error');
-            } elseif ($takenByArtist || $takenByAlias) {
-                flash('「' . $alias . '」は既にアーティスト名か別称として使われています', 'error');
+            } elseif ($owner) {
+                flash('「' . $alias . '」は既にアーティスト「' . $owner['name'] . '」（ID ' . $owner['artist_id'] . '）'
+                    . ($owner['name'] === $alias ? 'の名前' : 'の別称') . 'として使われています。同じアーティストなら、そのアーティストをこのアーティストに統合してください', 'error');
             } else {
                 $pdo->prepare('INSERT INTO artist_alias (name, artist_id) VALUES (?, ?)')->execute([$alias, $artistId]);
                 flash('別称「' . $alias . '」を追加しました');

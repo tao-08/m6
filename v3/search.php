@@ -143,12 +143,12 @@ if ($faculty !== '' || $roleName !== null) {
 
     // ---- アーティスト ----
     // 回数はアーティストページと同じ数え方（オムニバスは曲に付いたアーティストを1バンド1回。artist_plays_sql()）
-    // 演奏0回のアーティストは出さない（artists.php と同じ）
+    // 演奏0回のアーティストは出さない（artists.php と同じ）。管理者には出す（重複して登録されたアーティストを見つけて統合できるように）
     // 別称（artist_alias。エルレ → ELLEGARDEN など）でも当てる。別称だけで当たったときは、どの別称で当たったかも出す（alias_hit）
     $st = $pdo->prepare('SELECT a.artist_id, a.name, COUNT(p.band_id) AS n,
             (SELECT al.name FROM artist_alias al WHERE al.artist_id = a.artist_id AND al.name LIKE ? LIMIT 1) AS alias_hit
         FROM artist a
-        JOIN (' . artist_plays_sql() . ') p ON p.artist_id = a.artist_id
+        ' . (is_admin() ? 'LEFT ' : '') . 'JOIN (' . artist_plays_sql() . ') p ON p.artist_id = a.artist_id
         WHERE a.name LIKE ? OR a.name_kana LIKE ? OR EXISTS (SELECT 1 FROM artist_alias al WHERE al.artist_id = a.artist_id AND al.name LIKE ?)
         GROUP BY a.artist_id ORDER BY n DESC LIMIT 30');
     $st->execute([$like, $like, $like, $like]);
