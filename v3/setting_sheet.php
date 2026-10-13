@@ -131,7 +131,7 @@ $bandUrl = 'band?id=' . $bandId;
 render_header('セッティングシート作成', 'lives');
 ?>
 <!-- このページだけの CSS。<link> は <body> の中に書いてもよい（HTML の仕様で許されている） -->
-<link rel="stylesheet" href="assets/setting_sheet.css?v=19">
+<link rel="stylesheet" href="assets/setting_sheet.css?v=20">
 
 <nav class="crumbs"><a href="./">ライブ</a><span>/</span><a href="<?= h($bandUrl) ?>"><?= h($band['name']) ?></a></nav>
 <h1 class="display display--sm"><?= icon('description') ?> セッティングシート作成</h1>
@@ -225,7 +225,7 @@ render_header('セッティングシート作成', 'lives');
         </div>
         <!-- 1曲 = 1行。中身は JS が state.songs から作る -->
         <ol class="setlist" data-songs></ol>
-        <p class="muted small">≡ を掴んで上下にドラッグで並び替え。<?= icon('tune') ?> で音響・照明への要望を書けます。</p>
+        <p class="muted small"><?= icon('tune') ?> で音響・照明の希望が書けます。</p>
         <p class="small" data-rows-note></p>
     </section>
 
@@ -278,5 +278,5 @@ render_header('セッティングシート作成', 'lives');
     <input type="hidden" name="from_sheet" value="1">
 </form>
 
-<script src="assets/setting_sheet.js?v=29" defer></script>
+<script src="assets/setting_sheet.js?v=31" defer></script>
 <?php render_footer();

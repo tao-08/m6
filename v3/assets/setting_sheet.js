@@ -359,13 +359,28 @@
             input.rows = 2;
         }
         input.dataset.text = t.key;
-        input.maxLength = 200;
+        input.maxLength = t.digits ? 3 : 200;
         input.value = state.texts[t.key] || '';
+        if (t.placeholder) {
+            input.placeholder = t.placeholder;
+        }
+        if (t.auto === 'mic' || t.digits) {
+            input.inputMode = 'numeric'; // スマホで数字のキーボードを出す
+        }
         if (t.auto === 'mic') {
-            input.inputMode = 'numeric';
             input.placeholder = `空欄なら自動: ${micCount()}`;
         }
-        input.addEventListener('input', () => { state.texts[t.key] = input.value; save(); });
+        input.addEventListener('input', () => {
+            if (t.digits) {
+                // 数字だけ残す。全角の数字（３）は半角（3）に直す
+                //   全角の ０〜９ は、半角の 0〜9 の文字コードに 0xFEE0 を足した位置にある
+                input.value = input.value
+                    .replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
+                    .replace(/[^0-9]/g, '');
+            }
+            state.texts[t.key] = input.value;
+            save();
+        });
         label.append(input);
         return label;
     }
@@ -377,6 +392,12 @@
     function isShown(group) {
         const cond = tpl().show_if?.[group];
         return !cond || cond[1].includes(state.choices[cond[0]]);
+    }
+
+    /** ○囲みと一緒に出す自由記入欄を見せるか（一緒に出すグループが見えていて、その欄の show_if も満たすとき） */
+    function isTextShown(t) {
+        return (!t.with_choice || isShown(t.with_choice))
+            && (!t.show_if || t.show_if[1].includes(state.choices[t.show_if[0]]));
     }
 
     /** 型紙に無い欄を隠す（出演日・その他の項目 など） */
@@ -433,10 +454,25 @@
                 wrap.append(b);
             }
             box.append(wrap);
+            // 選んでいる選択肢の説明（型紙の choice_notes）。ボタンの下に薄い文字で
+            const note = tpl().choice_notes?.[group]?.[state.choices[group]];
+            if (note) {
+                const p = document.createElement('p');
+                p.className = 'sheet-choice__note muted small';
+                p.textContent = note; // textContent なので HTML として読まれない
+                // 今押して出てきた説明はふわっと出す（ほかのボタンを押して描き直したときは動かさない）
+                p.classList.toggle('is-entering', !!pop && pop[0] === group);
+                box.append(p);
+            }
             // このグループと一緒に出す自由記入欄（レコーディングの「その他要望」など）
             for (const t of (tpl().texts || []).filter((x) => x.with_choice === group)) {
+                if (!isTextShown(t)) {
+                    continue;
+                }
+                const id = 'text:' + t.key; // グループと同じ Set で「前から見えていたか」を覚える
+                shownChoices.add(id);
                 const field = textField(t);
-                field.classList.toggle('is-entering', entering);
+                field.classList.toggle('is-entering', before !== null && !before.has(id));
                 box.append(field);
             }
         }
@@ -1618,11 +1654,11 @@
 
         // ---- 3.5 その他の自由記入欄 ----
         for (const tx of t.texts || []) {
-            if (tx.with_choice && !isShown(tx.with_choice)) {
+            if (!isTextShown(tx)) {
                 continue; // 画面で隠れている欄は書かない
             }
             drawInBox(textValue(tx), tx.box, {
-                size: tx.size || 10, wrap: !!tx.multiline, maxLines: 4, pad: 3,
+                size: tx.size || 10, wrap: !!tx.multiline, maxLines: 4, pad: tx.pad ?? 3,
             });
         }
 

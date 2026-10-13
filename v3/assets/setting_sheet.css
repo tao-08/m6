@@ -71,6 +71,8 @@
 .sheet-choices { display: grid; gap: 8px; }
 .sheet-choice { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .sheet-choice__title { min-width: 72px; font-size: 13px; font-weight: 700; color: var(--muted); }
+/* 選んだ選択肢の説明: ボタンの下。左はボタンの頭（見出しの幅 72px + すき間 6px）にそろえる */
+.sheet-choice__note { margin: -4px 0 0 78px; line-height: 1.5; }
 .sheet-choice__btn {
   font: inherit; font-size: 14px; padding: 6px 14px; border-radius: 999px; cursor: pointer;
   background: var(--surface); color: var(--text); border: 1px solid var(--border);
