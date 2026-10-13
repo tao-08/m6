@@ -334,8 +334,11 @@ $roles = $pdo->query('SELECT r.role_id, r.name, COUNT(mr.member_id) AS used
 //   setlist = そのうちセットリストを登録し終えたバンドの数（曲数がタイムテーブルの曲数と一致。setlist_badge と同じ基準）
 // 並べ替え（?sort=name|used|setlist&dir=asc|desc）。列名は SQL に直接入るので、この表にある決まった名前だけを使う
 const ARTIST_SORTS = ['name' => ['a.name', 'asc'], 'used' => ['used', 'desc'], 'setlist' => ['setlist', 'desc']];
-$sort = is_string($_GET['sort'] ?? null) && isset(ARTIST_SORTS[$_GET['sort']]) ? $_GET['sort'] : 'name';
-$dir = in_array($_GET['dir'] ?? '', ['asc', 'desc'], true) ? $_GET['dir'] : ARTIST_SORTS[$sort][1];
+// 選んだ並べ替えはセッションに覚えておく（統合・削除のあとや、ほかのタブから戻ってきても同じ並びのまま）
+if (is_string($_GET['sort'] ?? null) && isset(ARTIST_SORTS[$_GET['sort']])) {
+    $_SESSION['masters_artist_sort'] = [$_GET['sort'], in_array($_GET['dir'] ?? '', ['asc', 'desc'], true) ? $_GET['dir'] : ARTIST_SORTS[$_GET['sort']][1]];
+}
+[$sort, $dir] = $_SESSION['masters_artist_sort'] ?? ['name', ARTIST_SORTS['name'][1]];
 $artists = $pdo->query('SELECT a.artist_id, a.name, COUNT(p.band_id) AS used,
         COUNT(CASE WHEN b.song_count > 0 AND b.song_count = (SELECT COUNT(*) FROM song s WHERE s.band_id = b.band_id) THEN 1 END) AS setlist
     FROM artist a
