@@ -207,6 +207,35 @@ html.is-typing .sheet-preview { top: 8px; bottom: calc(var(--kb, 0px) + 64px); }
   html.is-previewing { overflow: hidden; } /* スマホでは開いている間、後ろのページを動かさない（PC は横に並べて編集を続けられる） */
 }
 
+
+/* プレビュー表示中はフローティングボタンをプレビュー枠のすぐ下に置き、常に押せるようにする */
+@media (max-width: 760px) {
+  html.is-previewing:not(.is-typing) .sheet-actions {
+    position: fixed;
+    left: 8px;
+    right: 8px;
+    bottom: max(8px, env(safe-area-inset-bottom));
+    z-index: 26;
+    justify-content: flex-start;
+    width: auto;
+    margin: 0;
+  }
+  html.is-previewing:not(.is-typing) .sheet-preview {
+    bottom: calc(68px + env(safe-area-inset-bottom));
+  }
+}
+@media (min-width: 761px) {
+  html.is-previewing .sheet-actions {
+    position: fixed;
+    right: 24px;
+    bottom: 24px;
+    z-index: 26;
+  }
+  html.is-previewing .sheet-preview {
+    bottom: 100px;
+  }
+}
+
 /* =====================================================================
  *  軽いアニメーション
  *    「動きを減らす」を端末で設定している人（prefers-reduced-motion: reduce）には動かさない。
