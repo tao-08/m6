@@ -300,6 +300,16 @@ render_header($member['name'], 'members');
         </label>
         <div class="form-actions field--wide"><button class="btn btn--primary btn--sm" type="submit">保存</button></div>
     </form>
+    <!-- 削除（管理者だけ）。出演記録がある人は消せない（member_delete.php でも止める） -->
+    <?php if (!$history): ?>
+        <form method="post" action="member_delete" class="form-actions" data-confirm="「<?= h($member['name']) ?>」を削除します。元に戻せません。よろしいですか？">
+            <?= csrf_field() ?>
+            <input type="hidden" name="member_id" value="<?= $memberId ?>">
+            <button class="btn btn--ghost btn--danger btn--sm" type="submit"><?= icon('delete') ?> このメンバーを削除</button>
+        </form>
+    <?php else: ?>
+        <p class="muted small">出演記録があるので削除できません（同じ人が2人いるなら<a href="members_merge">メンバーの統合</a>）</p>
+    <?php endif; ?>
 </details>
 <?php endif; ?>
 

@@ -82,7 +82,9 @@ if (is_post()) {
     redirect('users');
 }
 
-$users = $pdo->query('SELECT u.user_id, u.login_id, u.name, u.is_admin, u.member_id, m.name AS member_name
+// no_band: 紐付け先のメンバーが1バンドにも出ていない（紐付け間違いの疑い → ⚠ を出す）
+$users = $pdo->query('SELECT u.user_id, u.login_id, u.name, u.is_admin, u.member_id, m.name AS member_name,
+        (u.member_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM band_member bm WHERE bm.member_id = u.member_id)) AS no_band
     FROM user_account u LEFT JOIN member m ON m.member_id = u.member_id ORDER BY u.is_admin DESC, u.user_id')->fetchAll();
 
 // プルダウンの選択肢: まだ誰とも紐付いていないメンバー（各行では、その行の今のメンバーも足して出す）
@@ -139,6 +141,12 @@ render_header('ユーザー管理');
                     </form>
                     <?php if ($u['member_id']): ?>
                         <a class="muted small" href="member?id=<?= (int)$u['member_id'] ?>">マイページ</a>
+                        <?php if ($u['no_band']): ?>
+                            <span class="status status--warn small" title="このメンバーは1バンドにも出ていません。紐付け先が合っているか確認してください"><?= icon('warning') ?> 出演なし</span>
+                            <form method="post" action="member_delete" class="inline-form" data-confirm="メンバー「<?= h($u['member_name']) ?>」を削除します（<?= h($u['name']) ?> さんのアカウントは残り、紐付けなしになります）。元に戻せません。よろしいですか？"><?= csrf_field() ?><input type="hidden" name="member_id" value="<?= (int)$u['member_id'] ?>"><input type="hidden" name="return" value="users">
+                                <button class="btn btn--ghost btn--danger btn--sm" type="submit">メンバー削除</button>
+                            </form>
+                        <?php endif; ?>
                     <?php endif; ?>
                 </td>
                 <td>
