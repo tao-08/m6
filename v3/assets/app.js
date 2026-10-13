@@ -998,6 +998,15 @@ function setupSmallThings() {
     });
   }));
 
+  // data-check-inactive … メンバープロフィールの一括編集で、data-inactive（1年以上ライブに出ていない現役）の人に退会のチェックを入れる。
+  //   保存はしない（入ったチェックを見て、違う人は外してから保存してもらう）。何人に入れたかをボタンの横に出す
+  document.querySelectorAll('[data-check-inactive]').forEach((btn) => btn.addEventListener('click', () => {
+    const boxes = [...btn.form.querySelectorAll('input[type=checkbox][data-inactive]')].filter((cb) => !cb.checked);
+    boxes.forEach((cb) => { cb.checked = true; });
+    btn.textContent = boxes.length ? `${boxes.length}人にチェックしました（まだ保存していません）` : 'チェックする人はいませんでした';
+    boxes[0]?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }));
+
   // data-send-changed … 送る直前に、変えていない入力欄を disabled にして送らない（disabled の欄はフォームから送られない）
   //   メンバープロフィールの一括編集は全員分だと入力欄が 1000 を超え、PHP の max_input_vars（初期値 1000）で
   //   後ろの人の分が黙って捨てられていた。変えた人の分だけ送れば、何百人いても上限に届かない

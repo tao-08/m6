@@ -16,6 +16,10 @@
  *  ・それでも上限を超えたとき（JS が動かない等）のために、フォームの一番最後に complete=1 を置いてある。
  *    これが届いていなければ途中で切れているので、何も保存しない（半端な保存で退会などが外れるのを防ぐ）
  *  ・変わった人だけ UPDATE する。全員分をトランザクションで1回にまとめるので、途中で失敗したら全部取り消し
+ *  ・「1年以上出ていない現役に退会のチェック」ボタンは、data-inactive の付いた人のチェックを入れるだけ（保存はしない。JS）
+ *    対象: 卒業生ではない（1〜4年）人で、最後にライブに出た日が1年以上前の人。
+ *          一度も出ていない人は、メンバーとして登録されてから1年以上たっていたら対象。
+ *          入学年度が未登録の人は、卒業生かどうか分からないので対象にしない
  *  ・「初出演」は入学年度の目安。1年生で出るとは限らないので、自動では保存しない（JS で空欄に入れるだけ）
  *
  *  表示の絞り込み（?show=）
@@ -154,7 +158,13 @@ if (is_post()) {
 // ---- 一覧 ----
 //   first_year: 初めて出演したライブの年度（入学年度の目安）
 //   linked: アカウントと紐付いているか（紐付いている人は本人がプロフィールで直せる）
-$list = $pdo->query('SELECT m.member_id, m.name, m.name_kana, m.entry_year, m.retired,
+//   last_on: 最後にライブに出た日（開催日が未登録の日程は、その年度の初め 4/1 とみなす）
+$list = $pdo->query('SELECT m.member_id, m.name, m.name_kana, m.entry_year, m.retired, m.created_at,
+        (SELECT MAX(COALESCE(ld.held_on, MAKEDATE(lm.fiscal_year, 91))) FROM (' . MEMBERSHIP_SQL . ') bm
+            JOIN band b ON b.band_id = bm.band_id
+            JOIN live_day ld ON ld.live_day_id = b.live_day_id
+            JOIN live lm ON lm.live_id = ld.live_id
+            WHERE bm.member_id = m.member_id) AS last_on,
         (SELECT MIN(lm.fiscal_year) FROM (' . MEMBERSHIP_SQL . ') bm
             JOIN band b ON b.band_id = bm.band_id
             JOIN live_day ld ON ld.live_day_id = b.live_day_id
@@ -163,6 +173,16 @@ $list = $pdo->query('SELECT m.member_id, m.name, m.name_kana, m.entry_year, m.re
         EXISTS (SELECT 1 FROM user_account ua WHERE ua.member_id = m.member_id) AS linked
     FROM member m' . ($show === 'unknown' ? ' WHERE m.entry_year IS NULL OR m.name_kana IS NULL' : '') . '
     ORDER BY first_year IS NULL, first_year DESC, m.name')->fetchAll();
+
+// 「1年以上出ていない現役」か（上のコメントの対象の決まり）
+$yearAgo = date('Y-m-d', strtotime('-1 year'));
+$isInactive = static function (array $m) use ($yearAgo): bool {
+    $grade = grade_of($m['entry_year'] !== null ? (int)$m['entry_year'] : null);
+    if ($grade === null || $grade > 4) {
+        return false; // 入学年度が未登録・卒業生（OB）・入学年度が未来
+    }
+    return $m['last_on'] !== null ? $m['last_on'] <= $yearAgo : substr($m['created_at'], 0, 10) <= $yearAgo;
+};
 $unknownCount = (int)$pdo->query("SELECT COUNT(*) FROM member WHERE {$unknownWhere}")->fetchColumn();
 
 render_header('メンバープロフィールの一括編集');
@@ -196,7 +216,7 @@ render_header('メンバープロフィールの一括編集');
                 <!-- 退会のチェックも tabindex="-1"（Tab でふりがな・入学年度を続けて入力するときに止まらないように） -->
                 <td>
                     <input type="hidden" name="retired[<?= (int)$m['member_id'] ?>]" value="0">
-                    <input type="checkbox" name="retired[<?= (int)$m['member_id'] ?>]" value="1"<?= (int)$m['retired'] === 1 ? ' checked' : '' ?> tabindex="-1"
+                    <input type="checkbox" name="retired[<?= (int)$m['member_id'] ?>]" value="1"<?= (int)$m['retired'] === 1 ? ' checked' : '' ?><?= $isInactive($m) ? ' data-inactive' : '' ?> tabindex="-1"
                            aria-label="<?= h($m['name']) ?>は退会済み">
                 </td>
                 <!-- tabindex="-1": Tab キーでふりがな → 入学年度 → 次の人… と入力欄だけを移動できるように、名前のリンクは飛ばす -->
@@ -224,6 +244,7 @@ render_header('メンバープロフィールの一括編集');
     </div>
     <input type="hidden" name="complete" value="1"><!-- 一番最後に置く（届いていなければ途中で切れている） -->
     <div class="form-actions entry-actions">
+        <button class="btn btn--sm" type="button" data-check-inactive title="卒業生以外（1〜4年）で、最後にライブに出てから1年以上たった人に退会のチェックを入れます（まだ保存はされません）">1年以上出ていない現役に退会のチェック</button>
         <button class="btn btn--sm" type="button" data-fill-hint title="空欄の人に、初めて出演した年度を入れます（まだ保存はされません）">初出演の年度で空欄を埋める</button>
         <button class="btn btn--primary btn--sm" type="submit">保存</button>
     </div>

@@ -283,7 +283,7 @@ render_header('メンバー', 'members');
             <?php endif; ?>
             <?php if ($hasRetired): // 退会した人が1人もいなければ、押しても何も変わらないので出さない ?>
                 <!-- data-hide-retired: 切り替えたら JS が行を隠し直す（setupGradeSlot） -->
-                <label class="stats-filter__extra small"><input type="checkbox" data-hide-retired<?= $hideRetired ? ' checked' : '' ?>> 退会した人を表示しない</label>
+                <label class="stats-filter__extra small"><input type="checkbox" data-hide-retired<?= $hideRetired ? ' checked' : '' ?>> 退会者を非表示</label>
             <?php endif; ?>
         </fieldset>
     </div>
