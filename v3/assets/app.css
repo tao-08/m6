@@ -604,6 +604,8 @@ td .tag--plan { margin-top: 4px; } /* アーティストの演奏履歴: 日付�
 .auth__card h2 { font-size: 22px; font-weight: 800; }
 .field { display: grid; align-content: start; gap: 6px; font-size: 13px; font-weight: 600; color: var(--muted); }
 /* align-content: start … 同じ行のほかの欄が高くなっても（下に注意文が出たときなど）、ラベルと入力欄は伸ばさず上に詰める */
+.field__hint { font-size: 11px; font-weight: 400; } /* 見出しの下の薄い説明（.field の太字・13px より細く小さく） */
+.field__hint a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; } /* 説明の中のリンクは色と下線でリンクとわかるように */
 .req { font-style: normal; font-size: 10px; color: var(--accent); margin-left: 4px; }
 .form-card { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
 /* minmax(0, 1fr) … 列の幅を指定しないと中身の最小幅（折り返さないボタンの列など）に合わせて広がり、スマホで入力欄ごと右にはみ出す */

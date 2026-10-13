@@ -279,7 +279,7 @@ render_header($isNew ? 'バンドを追加' : 'バンドを編集', 'lives');
         <label class="field"><span>開始</span><input type="time" step="300" name="start_time" value="<?= h(fmt_time($band['start_time'])) ?>"></label>
         <label class="field"><span>終了</span><input type="time" step="300" name="end_time" value="<?= h(fmt_time($band['end_time'])) ?>"></label>
         <label class="field field--wide"><span>メモ</span><input name="note" value="<?= h($band['note']) ?>" maxlength="255"></label>
-        <label class="field field--wide"><span>YouTube のリンク（任意）</span><input type="url" name="youtube_url" value="<?= h((string)$band['youtube_url']) ?>" maxlength="500" placeholder="https://www.youtube.com/watch?v=…" inputmode="url"></label>
+        <label class="field field--wide"><span>YouTube のリンク（任意）</span><span class="field__hint"><a href="live_edit?id=<?= (int)$band['live_id'] ?>">ライブを編集</a>からプレイリストを追加すると各バンドのリンクを一括で登録できます</span><input type="url" name="youtube_url" value="<?= h((string)$band['youtube_url']) ?>" maxlength="500" placeholder="https://www.youtube.com/watch?v=…" inputmode="url"></label>
         <?php if ($ytVideos): ?>
             <!-- name を付けない（送信しない）。選ぶと JS が上の URL 欄に入れる -->
             <label class="field field--wide"><span>ライブのプレイリストから選ぶ</span>
