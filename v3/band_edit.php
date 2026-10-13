@@ -73,6 +73,12 @@ if (!$isNew) {
     }
 }
 $lockedMembers = merge_vocal_roles($lockedRows); // Vo と Gt の2行を持つ人は「Vo/Gt」の1行にまとめて見せる
+// 🚩「誰について」の候補（今のメンバー。Vo と Gt の2行を持つ人も1人）と、いま選ばれている人
+$checkCandidates = array_column(array_merge($lockedRows, $editableRows), 'name', 'member_id');
+$checkWho = $isNew ? [] : array_keys(load_check_members($pdo, $bandId));
+// ボーカル（Vo の行を持つ人 = Vo / Vo/Gt など）。「VoかVo/Gtか不明」を押すと自動で選ばれる
+$checkVocals = array_map('intval', array_column(array_filter(array_merge($lockedRows, $editableRows),
+    static fn($r) => (int)$r['instrument_id'] === instrument_id_by_short('Vo')), 'member_id'));
 
 $errors = [];
 if (is_post()) {
@@ -98,7 +104,10 @@ if (is_post()) {
     $songs = (string)($_POST['song_count'] ?? '');
     $note = trim((string)($_POST['note'] ?? ''));
     $youtube = trim((string)($_POST['youtube_url'] ?? ''));
-    $flag = (int)!empty($_POST['flag']); // 🚩 楽器の確認をお願いする（チェックが無ければ外す）
+    // 🚩 確認依頼（チェックが無ければ外す）。理由はビットで複数、誰についてはメンバーID の配列
+    $chk = is_array($_POST['chk'] ?? null) ? $_POST['chk'] : [];
+    $flag = check_bits($chk['flag'] ?? null, $chk['reason'] ?? []);
+    $checkWho = array_map('intval', (array)($chk['who'] ?? []));
     $order = max(1, (int)($_POST['play_order'] ?? 1));
     $start = (string)($_POST['start_time'] ?? '');
     $end = (string)($_POST['end_time'] ?? '');
@@ -161,6 +170,7 @@ if (is_post()) {
             }
             // 差分だけ更新（全部消すと曲ごとの演奏記録が CASCADE で消えるため。sync_band_members の説明参照）
             sync_band_members($pdo, $index, $bandId, $rows);
+            save_check_members($pdo, $bandId, $flag, $checkWho); // メンバーを入れ替えた後に（外した人は入らない）
             renumber_bands($pdo, $dayId, $bandId, $order);
             if ($isNew) {
                 sync_day_total_bands($pdo, $dayId); // バンドが増えて総バンド数を超えたら追いつかせる
@@ -293,18 +303,21 @@ render_header($isNew ? 'バンドを追加' : 'バンドを編集', 'lives');
     <!-- 🚩 楽器の確認待ち（取り込み・タイムテーブル編集と同じ部品）。付けるとバンドページ・メンバーのトップで知らせる。
          いま付いているときは、確認をうながす文を一緒に出す（外して保存 = 確認した） -->
     <div class="check-flag<?= $band['needs_check'] ? ' flash flash--warn' : '' ?>">
-        <?php if ($band['needs_check']): ?><span><?= icon('flag', 'icon--fill flag-icon') ?> 楽器の登録があっているか確認してください。確認できたらフラッグを外して保存してください。</span><?php endif; ?>
-        <label class="check"><span class="flag-toggle"><input type="checkbox" name="flag" value="1"<?= $band['needs_check'] ? ' checked' : '' ?>><?= icon('flag') ?></span> 楽器の確認をメンバーにお願いする</label>
+        <?php if ($band['needs_check']): ?><span>確認依頼： <?= h(implode(' / ', check_reason_labels((int)$band['needs_check']))) ?>。確認できたらフラッグを外して保存してください。</span><?php endif; ?>
+        <?= check_picker('chk', (int)$band['needs_check'], $checkCandidates, $checkWho, '確認をメンバーにお願いする', $checkVocals) ?>
     </div>
     <?php if ($lockedMembers): ?>
         <!-- セトリに出ている人: 楽器はセトリから自動で決まるので、ここでは見るだけ（disabled なので送信もされない） -->
-        <p class="muted small">セットリストに出ている人の楽器は、セットリストの内容から自動で設定されます。変えるときは<a href="songs_edit?band=<?= (int)$band['band_id'] ?>">セットリストを編集</a>してください。</p>
+        <!-- ⚠ のポップアップの中身（JS が複製して出す。ここ自体は hidden で見えない） -->
+        <div id="lock-tip" hidden data-tip-body>セットリストが登録されているので、ここでは編集できません。<a class="tip-link" href="songs_edit?band=<?= (int)$band['band_id'] ?>" data-leave-check="band-form">セットリスト編集画面</a>で編集してください。</div>
+        <p class="muted small">セットリストに出ている人の楽器は、セットリストの内容から自動で設定されます。変更する場合は<a href="songs_edit?band=<?= (int)$band['band_id'] ?>">セットリストを編集</a>してください。</p>
         <div class="member-rows">
             <?php foreach ($lockedMembers as $m): ?>
                 <div class="member-row-edit member-row-edit--locked">
                     <!-- 上の段: 名前 / 印、下の段: 楽器 / Cho（下の編集できる行と同じ並び） -->
                     <input value="<?= h($m['name']) ?>" disabled aria-label="名前" class="name-input">
-                    <span class="muted small"><?= icon('queue_music') ?></span>
+                    <!-- ⚠ マウスを乗せる・押すと、下の #lock-tip（リンク付き）をポップアップで出す（assets/app.js の setupSetlistTip） -->
+                    <button type="button" class="lock-warn" data-setlist-tip data-tip-from="#lock-tip" aria-label="編集できない理由を見る"><?= icon('warning') ?></button>
                     <select disabled aria-label="楽器"><?= instrument_choice_options($m['choice']) ?></select>
                     <?= chorus_toggle('', $m['cho'], $m['choice'], true) ?>
                 </div>

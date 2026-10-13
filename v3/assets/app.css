@@ -514,6 +514,12 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 /* メンバー一覧の担当楽器「ほか」: 楽器のバッジは色が薄いので、黒い背景ではなくカードと同じ白い背景に出す */
 .album-tip--parts { background: var(--surface); color: var(--text); border: 1px solid var(--border); padding: 8px; }
 .album-tip--parts .partbar { margin: 0; gap: 4px; }
+/* 中にリンクがあるポップアップ（バンド編集の ⚠）: 押せるようにして、リンクだけ青字＋下線 */
+.album-tip--link { pointer-events: auto; font-size: 13px; }
+.tip-link { color: #1a6fd6; text-decoration: underline; text-underline-offset: 2px; }
+.tip-link:hover { color: #0b4fa6; }
+[data-theme="dark"] .tip-link { color: #7ab4ff; }
+[data-theme="dark"] .tip-link:hover { color: #a9cdff; }
 .album-tip__title { font-size: 13px; overflow-wrap: anywhere; }
 .album-tip__artist { opacity: .75; overflow-wrap: anywhere; }
 /* スマホでも5枚とも出す（はみ出した分は表ごと横にスクロールする）。ジャケットの間を詰めて、そのぶん少しだけ小さくするのにとどめる */
@@ -784,7 +790,31 @@ body.is-row-dragging, body.is-row-dragging * { cursor: grabbing !important; user
 .flag-icon { color: var(--warn); } /* 表示だけの旗（注意の帯・見出し・凡例） */
 /* 旗の注意（band.php / band_edit.php）: 文とボタンを横に並べる */
 .check-flag { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
-.tt-band-name { display: flex; align-items: center; gap: 4px; } /* タイムテーブル編集: バンド名の横に旗 */
+.tt-band-name { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; } /* タイムテーブル編集: バンド名の横に旗 */
+/* 🚩 の入力部品（check_picker）: 旗を立てたときだけ「理由」「誰について」のトグルボタンを出す。中身はチェックボックス */
+.check-picker { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+.check-picker__body { display: none; flex-basis: 100%; flex-wrap: wrap; align-items: center; gap: 6px; }
+.check-picker:has(.flag-toggle input:checked) .check-picker__body { display: flex; }
+.check-picker__sep { margin-left: 4px; }
+.table--roster .check-picker__body { min-width: 180px; } /* 取り込みの名簿: 細い列でも読めるように */
+.table--tt .check-picker__body { min-width: 320px; } /* タイムテーブル編集: チップが1つずつ縦に並ばないように */
+/* バンド編集: セトリに出ている人の行の ⚠（押すとポップアップ） */
+.lock-warn { display: inline-flex; padding: 4px; border: 0; border-radius: 6px; background: none; color: var(--warn); cursor: pointer; }
+.lock-warn .icon { font-size: 20px; vertical-align: 0; }
+.lock-warn:focus-visible { outline: 2px solid var(--accent); }
+.pick-chip { position: relative; display: inline-flex; align-items: center; height: 28px; padding: 0 10px; border-radius: 999px;
+  border: 1px solid var(--border); background: var(--surface); color: var(--muted); font-size: 12px; font-weight: 500;
+  white-space: nowrap; cursor: pointer; transition: background .15s ease, color .15s ease, border-color .15s ease; }
+.pick-chip input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.pick-chip:hover { color: var(--text); border-color: var(--warn); }
+.pick-chip:has(input:checked) { background: color-mix(in srgb, var(--warn) 18%, var(--surface)); border-color: var(--warn); color: var(--text); }
+.pick-chip--who:has(input:checked) { background: var(--accent-soft); border-color: var(--accent); }
+.pick-chip:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 1px; }
+@media (prefers-reduced-motion: reduce) { .pick-chip { transition: none; } }
+.check-flag__text p { margin: 0 0 6px; }
+.chip--warn { border-color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, var(--surface)); }
+.chip .icon { font-size: 15px; vertical-align: -2px; margin-right: 2px; }
+.chip--xs { padding: 0 8px; font-size: 11px; }
 .check-list ul { margin: 8px 0 0; padding-left: 1.2em; display: grid; gap: 4px; }
 .table--roster [data-roster-missing] { display: block; width: fit-content; margin-top: 4px; font-weight: 400; }
 .table--roster [data-roster-missing][hidden] { display: none; }

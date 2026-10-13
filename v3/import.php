@@ -750,10 +750,9 @@ if ($plan === null): // ==================== アップロード画面 ==========
         <span><i class="swatch swatch--ok"></i>DB に登録済み</span>
         <span><i class="swatch swatch--similar"></i>似た人がいる（書き間違い？）</span>
         <span><i class="swatch swatch--new"></i>新しいメンバーとして登録</span>
-        <span><?= icon('flag', 'icon--fill flag-icon') ?> 楽器があやしいバンドに付けると、登録後にメンバーへ確認をお願いする</span>
-        <span class="muted small">セルにマウスを乗せる（スマホはタップ）と理由が出ます。1つのセルには1人。
-            名簿で1つのセルに2人以上書かれていたら、2人目からは右端の「Other」列に移してあります（楽器は名前の下のボタンで選ぶ）。
-            人が足りないときは「＋ 列を追加」。Vo. 欄の下の「Vo / Vo/Gt / …」で兼任を選べます（「⋯」にマウスを乗せる・タップすると Vo/Ba / Vo/Key / Vo/Dr が出ます）。</span>
+        <span><?= icon('flag', 'icon--fill flag-icon') ?> 登録事項が確かでないバンドに確認を依頼する</span>
+        <span class="muted small">
+            枠が足りないときは「＋ 列を追加」。Vo. 欄の下の「Vo / Vo/Gt / …」で兼任を選べます（「⋯」にマウスを乗せる・タップすると Vo/Ba / Vo/Key / Vo/Dr が出ます）。</span>
     </div>
 
     <!-- 「＋ 列を追加」で JS が複製するプルダウン（全部の楽器から選べる。初期値はキーボード） -->
@@ -792,11 +791,12 @@ if ($plan === null): // ==================== アップロード画面 ==========
                     <?php foreach ($roster['bands'] as $bi => $band):
                         // 登録するかどうかはタイムテーブル側（取込 + 名簿ファイル内バンド名）だけで決まる。
                         // ここで選べるのは 🚩（登録後に「楽器があってるか確認して」とバンドのメンバーに知らせる）だけ
-                        $flag = !empty($form['rb'][$ri][$bi]['flag']); // 失敗して戻ってきたときの入力値。初回は OFF
+                        // 🚩 の理由（失敗して戻ってきたときの入力値。初回は OFF）。メンバーはまだ DB に無いので「誰について」は登録後にバンド編集で選ぶ
+                        $flag = check_bits($form['rb'][$ri][$bi]['flag'] ?? null, $form['rb'][$ri][$bi]['reason'] ?? []);
                         // どの出演枠にも選ばれていない = 登録されない → 薄くして ⚠ を出す
                         $unused = !isset($usedBy["$ri:$bi"]); ?>
                         <tr class="<?= $unused ? 'is-excluded' : '' ?>" data-roster-key="<?= h("$ri:$bi") ?>">
-                            <td><label class="flag-toggle" title="楽器があってるか、バンドのメンバーに確認してもらう"><input type="checkbox" name="rb[<?= $ri ?>][<?= $bi ?>][flag]" value="1"<?= $flag ? ' checked' : '' ?> aria-label="楽器の確認をお願いする"><?= icon('flag') ?></label></td>
+                            <td><?= check_picker("rb[$ri][$bi]", $flag) ?></td>
                             <!-- roster-band-cell: グレーアウト時もこの列の ⚠ だけは薄くしない（app.css） -->
                             <td class="strong nowrap roster-band-cell"><span class="roster-band-name"><?= h($band['band_name']) ?></span>
                                 <!-- どの出演枠もこの名簿を選んでいなければ出す（JS がタイムテーブルの変更に合わせて出し入れする） -->

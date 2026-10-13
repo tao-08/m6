@@ -200,6 +200,72 @@ function icon(string $name, string $class = ''): string
 }
 
 /**
+ * 🚩 確認依頼の理由。band.needs_check に「ビットの足し算」で入れる（複数選べる。0 = 依頼なし）
+ *   並びは画面に出す順。1 は前からある「楽器を確認して」の意味のまま（migrations/026）
+ */
+const CHECK_REASONS = [
+    2 => 'VoかVo/Gtか不明',
+    4 => 'メンバーが合っているか不明',
+    1 => '担当楽器が合っているか不明',
+];
+
+/**
+ * フォームの🚩から band.needs_check に入れる値を作る。
+ *   $flag: 旗のチェック / $reasons: 選んだ理由（CHECK_REASONS のキー）の配列
+ *   旗が無ければ 0。旗があって理由を選んでいなければ「担当楽器」（1）にする（0 だと依頼なしになってしまうため）
+ */
+function check_bits(mixed $flag, mixed $reasons): int
+{
+    if (empty($flag)) {
+        return 0;
+    }
+    $bits = 0;
+    foreach ((array)$reasons as $r) {
+        $r = (int)$r;
+        if (isset(CHECK_REASONS[$r])) { // 知らない値は捨てる（書き換えられたリクエスト対策）
+            $bits |= $r;
+        }
+    }
+    return $bits ?: 1;
+}
+
+/** needs_check のビットから理由の文の配列を作る（表示用） */
+function check_reason_labels(int $bits): array
+{
+    return array_values(array_filter(CHECK_REASONS, static fn($bit) => ($bits & $bit) !== 0, ARRAY_FILTER_USE_KEY));
+}
+
+/**
+ * 🚩 の入力部品: 旗のトグル + 旗を立てたときだけ出る「理由」「誰について」のトグルボタン。
+ *   送信される名前: {$prefix}[flag] / {$prefix}[reason][] / {$prefix}[who][]
+ *   $members: [member_id => 名前]（空なら「誰について」は出さない） / $who: 選んでいる member_id の配列
+ *   $vocalIds: ボーカル（Vo / Vo/Gt など）の人の member_id。「VoかVo/Gtか不明」を押すと JS がこの人たちを選ぶ（app.js の setupCheckPicker）
+ *   チェックボックスを丸いボタンに見せている（assets/app.css の .check-picker）
+ */
+function check_picker(string $prefix, int $bits, array $members = [], array $who = [], string $label = '', array $vocalIds = []): string
+{
+    $p = h($prefix);
+    $html = '<div class="check-picker">'
+        . '<label class="flag-toggle" title="バンドのメンバーに確認してもらう"><input type="checkbox" name="' . $p . '[flag]" value="1"'
+        . ($bits ? ' checked' : '') . ' aria-label="確認をお願いする">' . icon('flag') . '</label>'
+        . ($label !== '' ? '<span class="check-picker__label">' . h($label) . '</span>' : '')
+        . '<div class="check-picker__body">';
+    foreach (CHECK_REASONS as $bit => $text) {
+        $html .= '<label class="pick-chip"><input type="checkbox" name="' . $p . '[reason][]" value="' . $bit . '"'
+            . (($bits & $bit) ? ' checked' : '') . '>' . h($text) . '</label>';
+    }
+    if ($members) {
+        $html .= '<span class="check-picker__sep muted small">対象：</span>';
+        foreach ($members as $id => $name) {
+            $html .= '<label class="pick-chip pick-chip--who"><input type="checkbox" name="' . $p . '[who][]" value="' . (int)$id . '"'
+                . (in_array((int)$id, $who, true) ? ' checked' : '') . (in_array((int)$id, $vocalIds, true) ? ' data-vocal' : '')
+                . '>' . h($name) . '</label>';
+        }
+    }
+    return $html . '</div></div>';
+}
+
+/**
  * YouTube のリンクとして使ってよい URL か。https で、ホストが YouTube（youtube.com / youtu.be）のものだけ OK。
  *   「javascript:alert(1)」や別サイトの URL を href に入れさせない（XSS・フィッシング対策）。
  *   parse_url で分解してホスト名を完全一致で見る（「youtube.com.example.com」のような偽物を通さない）
@@ -661,6 +727,11 @@ function read_form_input(): array
         foreach ($keys as $k) {
             if (!is_array($ref)) {
                 $ref = [];
+            }
+            if ($k === '') {
+                // "x[reason][]" の [] は「後ろに足す」（PHP の $_POST と同じ）。上書きすると最後の1つしか残らない
+                $ref[] = null;
+                $k = array_key_last($ref);
             }
             $ref = &$ref[$k];
         }

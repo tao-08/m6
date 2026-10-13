@@ -62,6 +62,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupMergeToggle();
   setupSelectPick();
   setupChorusToggle();
+  setupCheckPicker();
   setupNewDayToggle();
   setupExtraDays();
   setupSameYear();
@@ -204,12 +205,14 @@ function setupSetlistTip() {
   tip.setAttribute('role', 'tooltip');
   document.body.appendChild(tip);
   let current = null; // いま出しているバッジ
+  let hideTimer = 0;
 
   const hide = () => { tip.classList.remove('is-visible'); current = null; };
   const show = (badge) => {
     // 中に [data-tip-body]（メンバー一覧の担当楽器「ほか」）があれば、そのバッジを写して出す。
     // サーバーが h() 済みで出した要素を複製するだけなので安全。無ければ文字だけ（textContent なので HTML として解釈されない）
-    const body = badge.querySelector('[data-tip-body]');
+    // data-tip-from="#id" なら、ページ内の別の要素（バンド編集の ⚠ のリンク付きの文）を写す（<button> の中に <a> は置けないため）
+    const body = badge.querySelector('[data-tip-body]') || (badge.dataset.tipFrom ? document.querySelector(badge.dataset.tipFrom) : null);
     if (body) {
       const copy = body.cloneNode(true);
       copy.hidden = false;
@@ -218,6 +221,7 @@ function setupSetlistTip() {
       tip.textContent = badge.dataset.setlistTip;
     }
     tip.classList.toggle('album-tip--parts', !!body);
+    tip.classList.toggle('album-tip--link', !!tip.querySelector('a')); // リンクがあるときだけ、ポップアップを押せるようにする
     tip.classList.add('is-visible');
     current = badge;
     // バッジの真上に出す。上に入らないときは下。左右は画面からはみ出さないように寄せる
@@ -234,14 +238,17 @@ function setupSetlistTip() {
   const canHover = window.matchMedia('(hover: hover)');
   document.addEventListener('mouseover', (e) => {
     if (!canHover.matches) return;
+    // ポップアップの上にマウスがある間は消さない（中のリンクを押せるように）。
+    // バッジ → ポップアップへ動かす途中のすき間で消えないよう、消すのは少し待ってから
+    clearTimeout(hideTimer);
     const badge = e.target.closest('[data-setlist-tip]');
-    if (badge) { if (badge !== current) show(badge); } else if (current) hide();
+    if (badge) { if (badge !== current) show(badge); } else if (current && !tip.contains(e.target)) hideTimer = setTimeout(hide, 250);
   });
 
   // スマホは押したら出す。もう一度押すか、他の所を押すと消える
   document.addEventListener('click', (e) => {
     const badge = e.target.closest('[data-setlist-tip]');
-    if (!badge) { hide(); return; }
+    if (!badge) { if (!tip.contains(e.target)) hide(); return; } // ポップアップの中（リンク）を押したときは消さない
     if (canHover.matches) { show(badge); return; } // PC で押しても消さない（乗せたまま押すと消えてしまうので）
     if (badge === current) hide(); else show(badge);
   });
@@ -3528,6 +3535,18 @@ function setupChorusToggle() {
     if (!wrap || row.querySelector('select') !== e.target || !wrap.querySelector('input')) return;
     const ok = allowed(wrap, e.target.value);
     setChorus(wrap, ok && wrap.querySelector('button').getAttribute('aria-pressed') === 'true', ok);
+  });
+}
+
+/* ---------------------------------------------------------------------
+ * 🚩 確認依頼（check_picker）: 「VoかVo/Gtか不明」を ON にしたら、
+ * ボーカルの人（data-vocal の付いた「誰について」）を自動で選ぶ。OFF にしたときは外さない（手で選んだ人を消さないため）
+ * ------------------------------------------------------------------- */
+function setupCheckPicker() {
+  document.addEventListener('change', (e) => {
+    const reason = e.target;
+    if (!reason.matches('.check-picker input[name$="[reason][]"][value="2"]') || !reason.checked) return;
+    reason.closest('.check-picker').querySelectorAll('input[data-vocal]').forEach((who) => { who.checked = true; });
   });
 }
 

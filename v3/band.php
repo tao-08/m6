@@ -46,6 +46,7 @@ $liveUrl = 'live?id=' . (int)$band['live_id'] . '#day-' . (int)$band['live_day_i
 if (is_post() && ($_POST['action'] ?? '') === 'checked') {
     verify_csrf();
     $pdo->prepare('UPDATE band SET needs_check = 0 WHERE band_id = ?')->execute([$bandId]);
+    save_check_members($pdo, $bandId, 0, []); // 「誰について」も消す
     flash('確認済みにしました');
     redirect('band?id=' . $bandId);
 }
@@ -254,12 +255,18 @@ render_header($band['name'], 'lives');
     </div>
 </section>
 
-<?php if ($band['needs_check']): ?>
+<?php if ($band['needs_check']): $checkWho = load_check_members($pdo, $bandId); ?>
     <!-- 🚩 取り込みで「楽器があやしい」と印が付いたバンド。直したら「確認した」で外す（バンド編集で保存しても外れる） -->
     <form method="post" class="flash flash--warn check-flag no-print">
         <?= csrf_field() ?>
         <input type="hidden" name="action" value="checked">
-        <span><?= icon('flag', 'icon--fill flag-icon') ?> メンバーの楽器の登録が正しいか確認の依頼が届いています。 （特にボーカルかギターボーカルかどうか）</span>
+        <div class="check-flag__text">
+            <p><?= icon('flag', 'icon--fill flag-icon') ?> 登録情報の確認依頼が届いています</p>
+            <div class="chip-list chip-list--sm">
+                <?php foreach (check_reason_labels((int)$band['needs_check']) as $text): ?><span class="chip chip--warn"><?= h($text) ?></span><?php endforeach; ?>
+                <?php foreach ($checkWho as $id => $name): ?><span class="chip<?= (int)$id === (int)$user['member_id'] ? ' chip--me' : '' ?>"><?= icon('person') ?><?= h($name) ?></span><?php endforeach; ?>
+            </div>
+        </div>
         <button class="btn btn--sm" type="submit">確認済み</button>
     </form>
 <?php endif; ?>

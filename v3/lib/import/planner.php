@@ -889,13 +889,14 @@ function commit_import_plan(PDO $pdo, array $plan, array $input): array
         // ================= 2. 名簿 → メンバー =================
         // タイムテーブルの「名簿」欄で選んだ名簿のバンドから、メンバーを登録する。
         // 名簿の1バンドを選べるのは1枠だけ（上の重複チェックで止めている）
-        $flagBand = $pdo->prepare('UPDATE band SET needs_check = 1 WHERE band_id = ?');
+        $flagBand = $pdo->prepare('UPDATE band SET needs_check = ? WHERE band_id = ?');
         foreach ($bandRosters as [$bandId, $rosterRef]) {
             [$ri, $bi] = array_map('intval', explode(':', $rosterRef));
             $roster = $plan['rosters'][$ri];
             $rb = $input['rb'][$ri][$bi] ?? [];
-            if (!empty($rb['flag'])) {
-                $flagBand->execute([$bandId]); // 🚩: バンドのメンバーに「楽器があってるか確認して」と知らせる
+            $checkBits = check_bits($rb['flag'] ?? null, $rb['reason'] ?? []);
+            if ($checkBits) {
+                $flagBand->execute([$checkBits, $bandId]); // 🚩: バンドのメンバーに「ここを確認して」と知らせる（理由はビットで複数）
             }
             // 楽器の決め方（優先順）: ① 名前の後ろの (Sax) → ② セルのプルダウン → ③ 列のパートの楽器
             // フォームの値は書き換えられる可能性があるので、instrument テーブルにある ID だけ受け付ける

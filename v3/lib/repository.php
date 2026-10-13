@@ -1484,9 +1484,12 @@ function merge_band_into(PDO $pdo, int $fromId, int $toId): void
     } elseif (!$to['is_omnibus'] && $empty($to['artist_id']) && !$from['is_omnibus'] && !$empty($from['artist_id'])) {
         $set['artist_id'] = $from['artist_id'];
     }
-    if ($from['needs_check'] && !$to['needs_check']) {
-        $set['needs_check'] = 1;
+    // 🚩 理由は両方を合わせる（ビットの OR）。「誰について」も統合先へ（同じ人は主キーで飛ばす）
+    if ((int)$from['needs_check'] & ~(int)$to['needs_check']) {
+        $set['needs_check'] = (int)$from['needs_check'] | (int)$to['needs_check'];
     }
+    $pdo->prepare('INSERT IGNORE INTO band_check_member (band_id, member_id)
+        SELECT ?, member_id FROM band_check_member WHERE band_id = ?')->execute([$toId, $fromId]);
     if ($set) {
         // 列名は上で決めた固定の名前だけ（入力から来た文字は SQL に入らない）
         $sql = implode(', ', array_map(static fn($c) => "$c = ?", array_keys($set)));
@@ -1532,6 +1535,9 @@ function merge_members(PDO $pdo, int $fromId, int $toId): void
     // 曲ごとの演奏記録も同じようにコピー（band_member を先にコピーしたので外部キーを満たせる）
     $pdo->prepare('INSERT IGNORE INTO song_performer (song_id, band_id, member_id, instrument_id)
         SELECT song_id, band_id, ?, instrument_id FROM song_performer WHERE member_id = ?')->execute([$toId, $fromId]);
+    // 🚩「誰について」も統合先へ（統合元の行は member 削除の CASCADE で消える）
+    $pdo->prepare('INSERT IGNORE INTO band_check_member (band_id, member_id)
+        SELECT band_id, ? FROM band_check_member WHERE member_id = ?')->execute([$toId, $fromId]);
     // 統合元の band_member を消すと、統合元の song_performer も CASCADE で消える
     $pdo->prepare('DELETE FROM band_member WHERE member_id = ?')->execute([$fromId]);
 
@@ -1695,4 +1701,32 @@ function render_suggest_datalist(string $id, array $values, array $kana = []): s
         $html .= '<option value="' . h($value) . '"' . ($k !== '' ? ' data-kana="' . h($k) . '"' : '') . '>';
     }
     return $html . '</datalist>';
+}
+
+/**
+ * 🚩 バンドの「誰について確認してほしいか」（band_check_member）を入れ直す。
+ *   $bits = 0（依頼なし）なら全部消す。
+ *   入れるのは「いまそのバンドの band_member にいる人」だけ（INSERT ... SELECT で DB に確かめさせる。
+ *   書き換えられた id や、同じ保存でバンドから外した人は入らない）。
+ *   履歴を持たない表なので、消して入れ直すだけでよい。
+ */
+function save_check_members(PDO $pdo, int $bandId, int $bits, array $memberIds): void
+{
+    $pdo->prepare('DELETE FROM band_check_member WHERE band_id = ?')->execute([$bandId]);
+    $ids = array_values(array_unique(array_filter(array_map('intval', $memberIds), static fn($id) => $id > 0)));
+    if ($bits === 0 || !$ids) {
+        return;
+    }
+    $in = implode(',', array_fill(0, count($ids), '?')); // 数だけ ? を並べる（値はプリペアドで渡す）
+    $pdo->prepare("INSERT IGNORE INTO band_check_member (band_id, member_id)
+        SELECT DISTINCT band_id, member_id FROM band_member WHERE band_id = ? AND member_id IN ($in)")->execute([$bandId, ...$ids]);
+}
+
+/** 🚩 確認してほしいメンバー: [member_id => 名前] */
+function load_check_members(PDO $pdo, int $bandId): array
+{
+    $st = $pdo->prepare('SELECT m.member_id, m.name FROM band_check_member c JOIN member m ON m.member_id = c.member_id
+        WHERE c.band_id = ? ORDER BY m.name');
+    $st->execute([$bandId]);
+    return array_map('strval', $st->fetchAll(PDO::FETCH_KEY_PAIR));
 }

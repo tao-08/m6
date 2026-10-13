@@ -16,13 +16,15 @@ $pdo = db();
 // 🚩 自分が出たバンドのうち、取り込みで「楽器を確認して」と印が付いたもの（アカウントがメンバーと紐付いている人だけ）
 $flagged = [];
 if ($user['member_id']) {
-    $st = $pdo->prepare('SELECT DISTINCT b.band_id, b.name, b.play_order, l.fiscal_year, l.name AS live_name, d.label, d.held_on
+    // about_me: 「誰について」に自分が選ばれているか（band_check_member）
+    $st = $pdo->prepare('SELECT DISTINCT b.band_id, b.name, b.play_order, b.needs_check, l.fiscal_year, l.name AS live_name, d.label, d.held_on,
+            EXISTS (SELECT 1 FROM band_check_member c WHERE c.band_id = b.band_id AND c.member_id = bm.member_id) AS about_me
         FROM band b
         JOIN band_member bm ON bm.band_id = b.band_id
         JOIN live_day d ON d.live_day_id = b.live_day_id
         JOIN live l ON l.live_id = d.live_id
-        WHERE b.needs_check = 1 AND bm.member_id = ?
-        ORDER BY l.fiscal_year DESC, d.held_on DESC, b.play_order');
+        WHERE b.needs_check > 0 AND bm.member_id = ?
+        ORDER BY about_me DESC, l.fiscal_year DESC, d.held_on DESC, b.play_order');
     $st->execute([$user['member_id']]);
     $flagged = $st->fetchAll();
 }
@@ -92,11 +94,13 @@ render_header('ライブ一覧', 'lives');
 <?php if ($flagged): ?>
     <section class="card check-list">
         <h2 class="section-title section-title--card"><?= icon('flag', 'icon--fill flag-icon') ?> 確認依頼が届いています</h2>
-        <p class="muted small">出演者に楽器の登録が正しいかの確認依頼が届いているバンドです。バンドページを開いて確認をお願いします。</p>
+        <p class="muted small">出演者に登録内容の確認依頼が届いているバンドです。バンドページを開いて確認をお願いします。</p>
         <ul>
             <?php foreach ($flagged as $f): ?>
                 <li><a href="band?id=<?= (int)$f['band_id'] ?>"><?= h($f['name']) ?></a>
-                    <span class="muted small"><?= (int)$f['fiscal_year'] ?>年度 <?= h($f['live_name']) ?> <?= h($f['label']) ?></span></li>
+                    <span class="muted small"><?= (int)$f['fiscal_year'] ?>年度 <?= h($f['live_name']) ?> <?= h($f['label']) ?></span>
+                    <span class="small">— <?= h(implode(' / ', check_reason_labels((int)$f['needs_check']))) ?></span>
+                    <?php if ($f['about_me']): ?><span class="chip chip--me chip--xs">あなたについて</span><?php endif; ?></li>
             <?php endforeach; ?>
         </ul>
     </section>

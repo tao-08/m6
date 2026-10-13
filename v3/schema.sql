@@ -196,7 +196,7 @@ CREATE TABLE band (
     note        VARCHAR(255)      NULL,                -- 鍵盤の私物/貸出など
     youtube_url VARCHAR(500)      NULL,                -- このバンドの演奏動画の YouTube のリンク。無ければ NULL（migrations/012）
     is_omnibus  TINYINT(1)        NOT NULL DEFAULT 0,  -- 1 = いろんなアーティストの曲をやるバンド（曲ごとに song.artist_id を持つ。artist_id は NULL）
-    needs_check TINYINT(1)        NOT NULL DEFAULT 0,  -- 1 = 楽器の登録を確認してほしい（取り込みで🚩を付けた。migrations/015）
+    needs_check TINYINT UNSIGNED  NOT NULL DEFAULT 0,  -- 🚩 確認依頼の理由のビット（0 = なし / 1 担当楽器 / 2 Vo か Vo/Gt / 4 メンバー。migrations/015, 026）
     setlist_private TINYINT(1)    NOT NULL DEFAULT 0,  -- 1 = セットリストを終演30分後まで非公開（メンバーと管理者には見える。migrations/023）
     PRIMARY KEY (band_id),
     UNIQUE KEY uq_band_order (live_day_id, play_order), -- 同じ日に「3番目」が2組できない
@@ -275,6 +275,20 @@ CREATE TABLE band_member (
         ON UPDATE CASCADE ON DELETE RESTRICT,          -- 出演記録がある人は消せない
     CONSTRAINT fk_bm_instrument FOREIGN KEY (instrument_id) REFERENCES instrument (instrument_id)
         ON UPDATE CASCADE ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- ---------------------------------------------------------------------
+--  band_check_member — 🚩 確認依頼で「誰について確認してほしいか」（バンド × メンバー。migrations/026）
+-- ---------------------------------------------------------------------
+CREATE TABLE band_check_member (
+    band_id   INT UNSIGNED NOT NULL,
+    member_id INT UNSIGNED NOT NULL,
+    PRIMARY KEY (band_id, member_id),
+    KEY idx_bcm_member (member_id),
+    CONSTRAINT fk_bcm_band   FOREIGN KEY (band_id)   REFERENCES band (band_id)
+        ON UPDATE CASCADE ON DELETE CASCADE,
+    CONSTRAINT fk_bcm_member FOREIGN KEY (member_id) REFERENCES member (member_id)
+        ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- ---------------------------------------------------------------------

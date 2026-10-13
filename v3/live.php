@@ -193,7 +193,7 @@ render_header($live['name'], 'lives');
                         $nameWidth = mb_strwidth($b['name']); ?>
                         <h3 class="slot__name<?= $nameWidth > 22 ? ' slot__name--xlong' : ($nameWidth > 16 ? ' slot__name--long' : '') ?>"><a href="band?id=<?= (int)$b['band_id'] ?>"><?= h($b['name']) ?></a></h3>
                         <?php if ($isLast): ?><span class="tag tag--tori" aria-label="トリ" title="トリ">🐔</span><?php endif; ?>
-                        <?php if ($b['needs_check']): ?><a class="tag tag--flag no-print" href="band?id=<?= (int)$b['band_id'] ?>" title="楽器の確認待ち" aria-label="楽器の確認待ち"><?= icon('flag', 'icon--fill') ?></a><?php endif; ?>
+                        <?php if ($b['needs_check']): ?><a class="tag tag--flag no-print" href="band?id=<?= (int)$b['band_id'] ?>" title="確認待ち: <?= h(implode(' / ', check_reason_labels((int)$b['needs_check']))) ?>" aria-label="確認待ち"><?= icon('flag', 'icon--fill') ?></a><?php endif; ?>
                         <?php if ($isMine): ?><span class="tag tag--mine">出演</span><?php endif; ?>
                         <?php if ($b['youtube_url'] !== null && youtube_url_valid($b['youtube_url'])): ?>
                             <a class="slot__yt no-print" href="<?= h($b['youtube_url']) ?>" target="_blank" rel="noopener noreferrer" aria-label="「<?= h($b['name']) ?>」を YouTube で見る" title="YouTube で見る"><?= youtube_icon() ?></a>

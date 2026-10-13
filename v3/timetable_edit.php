@@ -76,6 +76,16 @@ foreach ($st as $r) {
     }
 }
 
+// 🚩「誰について」に選ばれている人: [band_id] => [member_id, ...]（このライブの分を1回で取る）
+$st = $pdo->prepare('SELECT c.band_id, c.member_id FROM band_check_member c
+    JOIN band b ON b.band_id = c.band_id
+    JOIN live_day d ON d.live_day_id = b.live_day_id
+    WHERE d.live_id = ?');
+$st->execute([$liveId]);
+foreach ($st as $r) {
+    $bands[(int)$r['band_id']]['check_who'][] = (int)$r['member_id'];
+}
+
 $errors = [];
 if (is_post()) {
     verify_csrf();
@@ -105,7 +115,8 @@ if (is_post()) {
         $start = (string)($row['start'] ?? '');
         $end = (string)($row['end'] ?? '');
         $order = filter_var($row['order'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 999]]);
-        $flag = (int)!empty($row['flag']); // 🚩 楽器の確認待ち（チェックが無ければ外す）
+        $flag = check_bits($row['flag'] ?? null, $row['reason'] ?? []); // 🚩 確認待ちの理由のビット（チェックが無ければ 0 = 外す）
+        $who = array_map('intval', (array)($row['who'] ?? [])); // 誰について（保存するときに band_member にいる人だけ残る）
         $label = $b['play_order'] . '番目「' . ($name !== '' ? $name : $b['name']) . '」'; // エラー文でどのバンドか分かるように
 
         if ($name === '' || mb_strlen($name) > 100) {
@@ -147,7 +158,7 @@ if (is_post()) {
                 }
                 $picked[] = ['id' => $origId, 'name' => $memberName, 'locked' => false];
                 if ($origId === null) {
-                    $flag = 1; // 新しく足した人は楽器が分からない → 🚩 で確認をお願いする
+                    $flag |= 1; // 新しく足した人は楽器が分からない → 🚩「担当楽器が合っているか不明」を足す
                 }
                 // 名前を書き換えた人は前の人の楽器を引き継ぐ。新しく足した人は「その他」
                 foreach ($origId !== null ? $instsOf[$id][$origId] : [OTHER_INSTRUMENT_ID] as $inst) {
@@ -155,9 +166,9 @@ if (is_post()) {
                 }
             }
         }
-        $edits[$id] = compact('name', 'start', 'end', 'order', 'flag', 'assign');
+        $edits[$id] = compact('name', 'start', 'end', 'order', 'flag', 'who', 'assign');
         // エラーで戻ったときに入力した値で表示し直すため、先に上書きしておく
-        $bands[$id] = array_merge($bands[$id], ['name' => $name, 'start_time' => $start, 'end_time' => $end, 'play_order' => $order, 'needs_check' => $flag]
+        $bands[$id] = array_merge($bands[$id], ['name' => $name, 'start_time' => $start, 'end_time' => $end, 'play_order' => $order, 'needs_check' => $flag, 'check_who' => $who]
             + ($assign !== null ? ['members' => $picked] : []));
     }
 
@@ -231,6 +242,7 @@ if (is_post()) {
                 if ($e['assign'] !== null) {
                     sync_band_members($pdo, $index, $id, $e['assign']);
                 }
+                save_check_members($pdo, $id, $e['flag'], $e['who']); // メンバーを入れ替えた後に（外した人は入らない）
             }
             $pdo->commit();
         } catch (Throwable $ex) {
@@ -322,7 +334,7 @@ render_header('タイムテーブルを編集', 'lives'); ?>
 					<span><i class="swatch swatch--ok"></i>DB に登録済み</span>
 					<span><i class="swatch swatch--similar"></i>候補あり</span>
 					<span><i class="swatch swatch--new"></i>新しいメンバーとして登録</span>
-					<span><?= icon('flag', 'icon--fill flag-icon') ?> 楽器の確認をメンバーにお願いする</span>
+					<span><?= icon('flag', 'icon--fill flag-icon') ?> 出演者に確認を依頼する</span>
 				</div>
 
 				</div>
@@ -365,7 +377,8 @@ render_header('タイムテーブルを編集', 'lives'); ?>
                             <td data-time><input type="time" step="300" name="<?= $p ?>[end]" value="<?= h(fmt_time($b['end_time'])) ?>" aria-label="終了" data-time-field="end"></td>
                             <!-- バンド名の横に 🚩（楽器の確認待ち。取り込み画面の名簿と同じ部品）。列を増やすと並び替え・列の追加の JS に響くので同じセルに置く -->
                             <td><div class="tt-band-name"><input name="<?= $p ?>[name]" value="<?= h($b['name']) ?>" maxlength="100" required data-band-name aria-label="バンド名">
-                                <label class="flag-toggle" title="楽器があってるか、バンドのメンバーに確認してもらう"><input type="checkbox" name="<?= $p ?>[flag]" value="1"<?= $b['needs_check'] ? ' checked' : '' ?> aria-label="楽器の確認をお願いする"><?= icon('flag') ?></label></div></td>
+                                <?= check_picker($p, (int)$b['needs_check'], array_column(array_filter($members, static fn($m) => $m['id'] !== null), 'name', 'id'), $b['check_who'] ?? [], '',
+                                    array_keys(array_filter($instsOf[$id] ?? [], static fn($insts) => in_array(instrument_id_by_short('Vo'), $insts, true)))) ?></div></td>
                             <?php for ($n = 0; $n < $cols; $n++):
                                 $m = $members[$n] ?? ['id' => null, 'name' => '', 'locked' => false]; ?>
                                 <td>
