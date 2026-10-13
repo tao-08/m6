@@ -57,12 +57,12 @@ foreach ($rows as $r) {
     }
     unset($live); // 参照を切る（次のループで別の場所を指させるため）
 }
-// 表示は「古い順」がデフォルト（並び替えボタンで新しい順にできる）
-// 年度は古い順。年度未設定（0）は一番後ろ
-uksort($years, static fn($a, $b) => [$a === 0, $a] <=> [$b === 0, $b]);
-// 年度の中は「開催日が古い順」。日付なしは後ろ
+// 表示は「新しい順」がデフォルト（並び替えボタンで古い順にできる）
+// 年度は新しい順。年度未設定（0）は一番後ろ（$b と $a を入れ替えると降順になる。0 を後ろにする部分だけは $a 側のまま）
+uksort($years, static fn($a, $b) => [$a === 0, $b] <=> [$b === 0, $a]);
+// 年度の中は「開催日が新しい順」。日付なしは後ろ
 foreach ($years as &$lives) {
-    uasort($lives, static fn($a, $b) => [!isset($a['first_date']), $a['first_date'] ?? ''] <=> [!isset($b['first_date']), $b['first_date'] ?? '']);
+    uasort($lives, static fn($a, $b) => [!isset($a['first_date']), $b['first_date'] ?? ''] <=> [!isset($b['first_date']), $a['first_date'] ?? '']);
 }
 unset($lives);
 // 年度スロットは新しい年度が先（よく見るのは最近の年度なので）
@@ -126,8 +126,8 @@ render_header('ライブ一覧', 'lives');
     <!-- .sorted-list: 並び替えボタンを、一番上の年度の見出しの右に重ねて置く（member.php の出演履歴と同じ） -->
     <div class="sorted-list sorted-list--live">
     <!-- 並び替え: 押すたびに古い順 ⇔ 新しい順。年度の順と、年度の中のカード（.grid の中）の順を逆にする（assets/app.js の setupSortToggle）
-         最初は古い順なので aria-pressed="true"（app.js は aria-pressed が true = 古い順 として扱う） -->
-    <button type="button" class="btn btn--ghost btn--sm sorted-list__btn" data-sort-toggle="#live-list" data-sort-items=".grid" aria-pressed="true">古い順 ↑</button>
+         最初は新しい順なので aria-pressed="false"（app.js は aria-pressed が true = 古い順 として扱う） -->
+    <button type="button" class="btn btn--ghost btn--sm sorted-list__btn" data-sort-toggle="#live-list" data-sort-items=".grid" aria-pressed="false">新しい順 ↓</button>
     <div id="live-list">
     <?php foreach ($years as $year => $lives): ?>
         <section class="year" data-year="<?= (int)$year ?>">

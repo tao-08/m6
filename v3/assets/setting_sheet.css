@@ -24,6 +24,16 @@
 .sheet-slots__label { font-size: 13px; font-weight: 700; color: var(--muted); }
 .sheet-slots__mic { font-size: 13px; white-space: nowrap; }
 .sheet-members .btn { justify-self: start; margin-top: 4px; }
+/* 名前・パート（とセットリストの曲名・要望）の入力欄の見た目を、ほかの欄（app.css の .field input）にそろえる。
+ *  ただし行が多いので、縦の余白（padding の上下）だけ小さくしてコンパクトに。行どうしのすき間（gap）は今のまま */
+.sheet-members input:not([type="checkbox"]), .setlist input {
+  width: 100%; min-width: 0; padding: 6px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border);
+  background: var(--surface); color: var(--text); font-size: 15px;
+  line-height: 1.65; /* 親から受け継ぐ行の高さが場所で違う（セットリストの中は高い）ので、ここで決めて高さをそろえる */
+}
+/* 選んだとき（フォーカス）の枠も app.css の input:focus と同じに。
+ *  上の border の指定の方が強い（詳細度が高い）ので、ここでもう一度書かないと枠の色が変わらない */
+.sheet-members input:not([type="checkbox"]):focus, .setlist input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 
 /* その他の自由記入欄 */
 .sheet-texts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
@@ -55,7 +65,6 @@
 @media (max-width: 480px) {
   .setlist__notes { grid-column: 1 / -1; grid-template-columns: 1fr; } /* スマホでは要望欄を縦に並べて広く */
 }
-.sheet-mc { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; }
 [data-rows-note].is-warn, .sheet-status.is-warn { color: var(--warn); font-weight: 700; }
 
 /* ○囲みの選択（セグメントボタン） */
@@ -82,6 +91,11 @@
   color: #000;
 }
 .stage-hint { margin: -4px 0 0; }
+.stage-history { display: flex; gap: 4px; margin-top: -4px; }
+/* 1つ戻す・やり直す: うっすら青。押せないときは薄く */
+.stage-history .btn { background: rgb(59 130 246 / .12); color: rgb(37 99 235); border-color: rgb(59 130 246 / .25); }
+.stage-history .btn:disabled { opacity: .4; }
+[data-theme="dark"] .stage-history .btn { background: rgb(96 165 250 / .14); color: rgb(147 197 253); border-color: rgb(96 165 250 / .3); }
 
 .st-item {
   position: absolute;
@@ -98,6 +112,15 @@
 .st-item--mic svg { width: 100%; height: 100%; display: block; overflow: visible; }
 /* 指で掴みやすいように、マイクは見た目より広い「当たり判定」を ::before で足す */
 .st-item--mic::before { content: ""; position: absolute; inset: 0 -10px; }
+/* 手で描いた線。四角い範囲全体ではなく、線の上だけ掴めるようにする（下の部品を邪魔しない） */
+.st-item--draw { pointer-events: none; }
+.st-item--draw svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.st-item--draw .st-draw-hit { pointer-events: stroke; cursor: grab; }
+/* 描画モード中: セット図の上で指を動かしてもスクロールしない。部品は掴めない（全部「描く」になる） */
+.stage.is-drawing { touch-action: none; cursor: crosshair; outline: 2px solid var(--accent); outline-offset: 2px; }
+.stage.is-drawing .st-item, .stage.is-drawing .st-draw-hit { pointer-events: none; }
+.st-draw-preview { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+[data-draw][aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
 .st-item.is-selected { outline: 2px dashed var(--accent); outline-offset: 3px; }
 .st-label {
   position: absolute; transform: translate(-50%, -50%);
@@ -111,42 +134,41 @@
 .stage-panel__row .field { flex: 1 1 140px; }
 .stage-panel [hidden] { display: none; }
 
-/* ---- 下に貼り付く出力ボタン ----
- *  位置（sticky）や背景は app.css の .sticky-actions に任せ、ここでは中身の並びだけ決める */
+/* ---- 下に貼り付く出力ボタン（プレビュー / PDF を作る / 共有）----
+ *  位置（sticky）や背景は app.css の .sticky-actions に任せ、ここでは中身の並びだけ決める
+ *  スマホ: 横に並べる（プレビューが左、PDF が右）/ PC: 縦に並べる（プレビューが上） */
 .sheet-actions { flex-wrap: wrap; align-items: center; }
 .sheet-status { margin: 0 auto 0 8px; flex: 1 1 160px; }
 .sheet-status:empty { display: none; } /* メッセージが無いときは場所を取らない */
+.sheet-preview-btn[aria-expanded="true"] { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+@media (max-width: 760px) {
+  .sheet-actions .sheet-preview-btn { flex: 0 0 auto; } /* PDF ボタンを広く。プレビューは文字の幅だけ */
+}
+@media (min-width: 761px) {
+  .sheet-actions { flex-direction: column; align-items: stretch; border-radius: var(--radius); }
+  .sheet-status { margin: 0; flex: none; max-width: 220px; }
+}
 
 /* =====================================================================
- *  プレビュー（左下のフローティングボタンと、完成形の PDF の表示）
+ *  プレビュー（完成形の PDF の表示）
  * ===================================================================== */
-/* このページでは「← 前のページ」ボタン（app.js の setupBackButton）の代わりにプレビューのボタンを出す */
+/* このページでは「← 前のページ」ボタン（app.js の setupBackButton）を出さない（前はここにプレビューのボタンがあった） */
 .back-fabs { display: none !important; }
-
-/* 置き場所は戻るボタン（app.css の .back-fabs）と同じ: 左下。スマホではタブバーと PDF ボタンの上 */
-.preview-fab {
-  position: fixed; left: 16px; bottom: calc(96px + env(safe-area-inset-bottom)); z-index: 26;
-  display: inline-flex; align-items: center; gap: 6px; padding: 10px 16px 10px 12px; border-radius: 999px; cursor: pointer;
-  font: inherit; font-size: 14px; font-weight: 700;
-  background: var(--text); color: var(--bg); border: 0; box-shadow: var(--shadow);
-}
-.preview-fab:active { transform: scale(.97); }
-.preview-fab[aria-expanded="true"] { background: var(--accent); color: var(--on-accent); }
-@media (max-width: 760px) {
-  .preview-fab { left: 12px; bottom: calc(150px + env(safe-area-inset-bottom)); }
-}
 
 /* PDF の表示: 画面いっぱいの枠（上はヘッダーの下、下はボタンの上まで）。中はスクロールできる */
 .sheet-preview {
   position: fixed; z-index: 25; left: 8px; right: 8px; top: 72px; bottom: calc(150px + env(safe-area-inset-bottom));
   overflow: auto; padding: 8px; border-radius: var(--radius); border: 1px solid var(--border);
   background: var(--surface-2); box-shadow: var(--shadow); overscroll-behavior: contain; /* 中のスクロールを後ろの画面に伝えない */
+  /* 1本指のスクロールはブラウザに任せ、2本指のピンチは JS で受け取る（ページ全体ではなくプレビューだけを拡大するため） */
+  touch-action: pan-x pan-y;
 }
+/* 下の端は、下に貼り付く出力ボタンの上まで（ボタンを隠すと「閉じる」が押せなくなる） */
 @media (max-width: 760px) {
-  .sheet-preview { bottom: calc(204px + env(safe-area-inset-bottom)); }
+  .sheet-preview { bottom: calc(150px + env(safe-area-inset-bottom)); }
 }
 @media (min-width: 761px) {
-  .sheet-preview { left: auto; right: 24px; width: min(640px, calc(100vw - 48px)); bottom: 24px; }
+  .sheet-preview { left: auto; right: 24px; width: min(640px, calc(100vw - 48px)); bottom: 150px; }
 }
 .sheet-preview canvas { display: block; margin: 0 auto; background: #fff; box-shadow: 0 1px 4px rgb(0 0 0 / .2); }
 .sheet-preview.is-busy canvas { opacity: .6; transition: opacity .2s; }
@@ -154,4 +176,30 @@
 .sheet-preview__note:empty { display: none; }
 @media (max-width: 760px) {
   html.is-previewing { overflow: hidden; } /* スマホでは開いている間、後ろのページを動かさない（PC は横に並べて編集を続けられる） */
+}
+
+/* =====================================================================
+ *  軽いアニメーション
+ *    「動きを減らす」を端末で設定している人（prefers-reduced-motion: reduce）には動かさない。
+ *    だから全部 no-preference（設定していない）の中に書く
+ *    soft-in は app.css にある「少し上からふわっと出る」動き
+ * ===================================================================== */
+@media (prefers-reduced-motion: no-preference) {
+  /* ボタンを押した瞬間に少し縮む（押した手ごたえ） */
+  .sheet-choice__btn, .stage-history .btn, .stage-tools .btn, .stage-panel .btn, .setlist-tools .btn {
+    transition: transform .12s ease, background-color .15s ease, border-color .15s ease, color .15s ease;
+  }
+  :is(.sheet-choice__btn, .stage-history .btn, .stage-tools .btn, .stage-panel .btn, .setlist-tools .btn):active:not(:disabled) { transform: scale(.95); }
+  /* 選んだボタンは「ぽん」と弾む */
+  .sheet-choice__btn.is-pop { animation: choice-pop .25s ease-out; }
+  @keyframes choice-pop { 50% { transform: scale(1.08); } }
+  /* SE「あり」などで新しく出てきた項目 */
+  .is-entering { animation: soft-in .25s ease-out both; }
+  /* 部品を選んだときの設定パネル（曲の要望欄は、開いたときだけ JS が is-entering を付ける） */
+  .stage-panel:not([hidden]) { animation: soft-in .2s ease-out; }
+  /* プレビュー: 下のボタンの方から広がって出る */
+  .sheet-preview:not([hidden]) { animation: preview-in .22s cubic-bezier(.2, .8, .2, 1); transform-origin: right bottom; }
+  @keyframes preview-in { from { opacity: 0; transform: scale(.96) translateY(8px); } }
+  /* 描画モードの枠は、ふわっと色が付く */
+  .stage { transition: outline-color .2s ease; }
 }

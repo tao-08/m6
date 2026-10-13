@@ -42,6 +42,12 @@
     //   let で作った変数は、宣言の行より前で使うとエラーになる（TDZ: 一時的なデッドゾーン）
     let previewOpen = false;
     let previewTimer = 0;
+    let pdfBytes = null;    // プレビュー用に最後に作った PDF。拡大・縮小だけのときは作り直さずにこれを描き直す
+    let pdfDirty = true;    // 入力が変わって、PDF を作り直す必要があるか
+    // 「1つ戻す」の履歴（下の「4.5」で使う）。save() から先に参照されるので、previewTimer と同じくここで宣言する
+    let history = null; // null = まだ準備できていない（準備前の save() では積まない）
+    let histPos = 0;
+    let histTimer = 0;
 
     /** セット図の部品の「基準の大きさ」（pt）。大きさスライダー（scale）を掛けて使う */
     const BASE = {
@@ -50,8 +56,9 @@
         boxW: 42,     // 四角の横
         boxH: 20,     // 四角の縦
         text: 9,      // 文字の大きさ
+        drawW: 1.5,   // 手で描いた線の太さ
     };
-    const DEFAULT_LABEL = { mic: 'Vo', circle: '', box: 'Amp', text: '文字' };
+    const DEFAULT_LABEL = { mic: '', circle: '', box: 'Amp', text: '文字', draw: '' };
 
     /* =================================================================
      *  1. state（状態）
@@ -71,7 +78,6 @@
             // セットリスト。1曲 = { id, mc: false, title, sound, light } / MC = { id, mc: true }
             songs: ini.songs.map((title, i) => ({ id: i + 1, mc: false, title, sound: '', light: '' })),
             nextSongId: ini.songs.length + 1,
-            mc: 'row',      // 'row' = MC で1行使う / 'line' = 曲の間の線に書く
             choices: {},    // { se: 'なし', start: 'ハケ', ... }。空 = どれも囲まない
             texts: {},      // その他の自由記入欄 { other: '...', se_title: '...' }
             slots: null,    // パートが印刷済みの表の中身 { vo: { name, mic }, gt1: {...} }。null = まだ振り分けていない
@@ -100,6 +106,10 @@
                 saved.nextSongId = saved.songs.length + 1;
                 delete saved.setlist;
             }
+            // SE の選択肢の名前を「有」→「あり」に変えたので、前の名前で保存したデータを直す
+            if (saved.choices?.se === '有') {
+                saved.choices.se = 'あり';
+            }
             return saved;
         } catch (e) {
             return null;
@@ -110,6 +120,7 @@
     /** 保存。入力のたびに書くと重いので「最後の入力から 300ms 後に1回だけ」にする（デバウンスという定番の技） */
     function save() {
         schedulePreview(); // プレビューを開いていれば作り直す（下の「7. プレビュー」）
+        scheduleHistory(); // セット図が変わっていれば「1つ戻す」の履歴に積む（下の「4.5 1つ戻す・やり直す」）
         clearTimeout(saveTimer);
         saveTimer = setTimeout(() => {
             try {
@@ -225,7 +236,7 @@
             const name = document.createElement('input');
             name.type = 'text';
             name.maxLength = 60;
-            name.placeholder = '名前（2人なら・でつなぐ）';
+            name.placeholder = '複数人は・で区切る';
             name.value = v.name;
             name.addEventListener('input', () => { v.name = name.value; renderTexts(); save(); });
             // マイク〇のチェック。<label> で包むと文字を押してもチェックが切り替わる
@@ -316,10 +327,10 @@
         return v;
     }
 
-    /** その他の自由記入欄（型紙の texts から作る） */
+    /** その他の自由記入欄（型紙の texts から作る）。with_choice の欄は renderChoices() が作る */
     function renderTexts() {
         const box = $('[data-texts]');
-        const list = tpl().texts || [];
+        const list = (tpl().texts || []).filter((t) => !t.with_choice);
         // 入力中の欄を作り直すとカーソルが外れるので、欄の構成が同じなら placeholder だけ更新する
         if (box.dataset.tpl === state.template) {
             list.forEach((t) => {
@@ -332,79 +343,103 @@
         box.dataset.tpl = state.template;
         box.textContent = '';
         for (const t of list) {
-            const label = document.createElement('label');
-            label.className = 'field';
-            label.append(t.label);
-            const input = document.createElement(t.multiline ? 'textarea' : 'input');
-            if (!t.multiline) {
-                input.type = 'text';
-            } else {
-                input.rows = 2;
-            }
-            input.dataset.text = t.key;
-            input.maxLength = 200;
-            input.value = state.texts[t.key] || '';
-            if (t.auto === 'mic') {
-                input.inputMode = 'numeric';
-                input.placeholder = `空欄なら自動: ${micCount()}`;
-            }
-            input.addEventListener('input', () => { state.texts[t.key] = input.value; save(); });
-            label.append(input);
-            box.append(label);
+            box.append(textField(t));
         }
     }
 
-    /** 型紙に無い欄を隠す（出演日・MC の書き方・その他の項目 など） */
+    /** 自由記入欄1つ（<label> の中に入力欄） */
+    function textField(t) {
+        const label = document.createElement('label');
+        label.className = 'field';
+        label.append(t.label);
+        const input = document.createElement(t.multiline ? 'textarea' : 'input');
+        if (!t.multiline) {
+            input.type = 'text';
+        } else {
+            input.rows = 2;
+        }
+        input.dataset.text = t.key;
+        input.maxLength = 200;
+        input.value = state.texts[t.key] || '';
+        if (t.auto === 'mic') {
+            input.inputMode = 'numeric';
+            input.placeholder = `空欄なら自動: ${micCount()}`;
+        }
+        input.addEventListener('input', () => { state.texts[t.key] = input.value; save(); });
+        label.append(input);
+        return label;
+    }
+
+    /**
+     * ○囲みのグループを見せるか。型紙の show_if に書いてあれば、別のグループの選択で決まる
+     *   例: show_if.live_feel = ['mix', ['する', 'おまかせ']] → ミックス希望が「する」「おまかせ」のときだけ
+     */
+    function isShown(group) {
+        const cond = tpl().show_if?.[group];
+        return !cond || cond[1].includes(state.choices[cond[0]]);
+    }
+
+    /** 型紙に無い欄を隠す（出演日・その他の項目 など） */
     function renderTemplateUi() {
         const t = tpl();
         $$('[data-field]').forEach((el) => { el.hidden = !(el.dataset.field in t.fields); });
-        // MC を線に書けないシートでは、選択肢ごと隠して「1行使う」にする
-        $('[data-mc-wrap]').hidden = t.setlist.mc_line === false;
         const hasExtras = (t.texts || []).length > 0 || Object.keys(t.choices || {}).length > 0;
         $('[data-extras-card]').hidden = !hasExtras;
+        $('[data-extras-title]').textContent = t.extras_title || 'その他の項目';
     }
 
-    /** SE 有/なし などの○囲みボタン */
-    function renderChoices() {
+    let shownChoices = null; // 前に描いたときに見えていたグループ（新しく出たものだけアニメーションするため）
+
+    /**
+     * SE 有/なし などの○囲みボタン
+     *   pop: 今押したボタン [グループ, 選択肢]。そのボタンだけ「ぽん」と弾ませる
+     */
+    function renderChoices(pop = null) {
         const box = $('[data-choices]');
         box.textContent = '';
+        const before = shownChoices;
+        shownChoices = new Set();
         // Object.entries({a: 1}) → [['a', 1]]。オブジェクトを for...of で回すときの定番
         for (const [group, options] of Object.entries(tpl().choices || {})) {
+            if (!isShown(group)) {
+                continue;
+            }
+            shownChoices.add(group);
+            // 前は隠れていて、今回出てきたグループ（SE「あり」で出る項目など）はふわっと出す。最初に描くときはしない
+            const entering = before !== null && !before.has(group);
             const wrap = document.createElement('div');
-            wrap.className = 'sheet-choice';
+            wrap.className = 'sheet-choice' + (entering ? ' is-entering' : '');
             const title = document.createElement('span');
             title.className = 'sheet-choice__title';
             title.textContent = DATA.choiceLabels[group] || group;
             wrap.append(title);
-            // 「—」= どれも囲まない。それぞれの選択肢のボタンを並べる
-            for (const opt of ['', ...Object.keys(options)]) {
+            // どのボタンも押されていない = どれも囲まない（未選択）。押されているボタンをもう一度押すと未選択に戻る
+            for (const opt of Object.keys(options)) {
                 const b = document.createElement('button');
                 b.type = 'button';
                 b.className = 'sheet-choice__btn';
-                b.textContent = opt === '' ? '—' : opt;
+                b.textContent = opt;
+                const pressed = state.choices[group] === opt;
                 // aria-pressed: 読み上げソフトに「押されている状態のボタン」と伝える。見た目の切り替えにも使う
-                b.setAttribute('aria-pressed', String((state.choices[group] || '') === opt));
+                b.setAttribute('aria-pressed', String(pressed));
+                if (pop && pop[0] === group && pop[1] === opt) {
+                    b.classList.add('is-pop');
+                }
                 b.addEventListener('click', () => {
-                    state.choices[group] = opt;
-                    renderChoices();
+                    state.choices[group] = pressed ? '' : opt;
+                    renderChoices([group, opt]);
                     save();
                 });
                 wrap.append(b);
             }
             box.append(wrap);
+            // このグループと一緒に出す自由記入欄（レコーディングの「その他要望」など）
+            for (const t of (tpl().texts || []).filter((x) => x.with_choice === group)) {
+                const field = textField(t);
+                field.classList.toggle('is-entering', entering);
+                box.append(field);
+            }
         }
-    }
-
-    /** MC の書き方のラジオボタン */
-    function bindMc() {
-        $$('[data-mc]').forEach((r) => {
-            r.checked = r.value === state.mc;
-            r.addEventListener('change', () => {
-                state.mc = r.value;
-                renderRowsNote();
-                save();
-            });
-        });
     }
 
     /* =================================================================
@@ -437,36 +472,25 @@
     }
 
     /**
-     * シートの行への割り当てを決める。
+     * シートの行への割り当てを決める。MC は必ず1行使う（曲の間の線に書く書き方はやめた）
      *   rows : 表の行に書くもの（{ no: 曲順 or '', title, sound, light, mc }）
-     *   lines: 線の上に書く MC（「何行目の上の線か」の番号）
-     *   mode : 実際に使った書き方（1行モードで入りきらないときは線モードに切り替える）
      */
     function layoutSetlist() {
         // 曲名が空の行は数えない（追加したけどまだ書いていない行）
         const entries = state.songs.filter((e) => e.mc || e.title.trim() !== '');
         const st = tpl().setlist;
         const max = rowCount(st);
-        let mode = st.mc_line === false ? 'row' : state.mc; // 線に書けないシートは必ず1行
-        if (mode === 'row' && entries.length > max) {
-            mode = 'line'; // 入りきらない → MC を線に逃がす
-        }
         const rows = [];
-        const lines = [];
         let no = 0;
         for (const e of entries) {
             if (e.mc) {
-                if (mode === 'row') {
-                    rows.push({ no: '', title: 'MC', sound: '', light: '', mc: true });
-                } else {
-                    lines.push(rows.length); // 「いま埋まっている行数」= この番号の行の上の線
-                }
+                rows.push({ no: '', title: 'MC', sound: '', light: '', mc: true });
             } else {
                 no++;
                 rows.push({ no: String(no), title: e.title, sound: e.sound, light: e.light });
             }
         }
-        return { rows, lines, mode, max, songs: no };
+        return { rows, max, songs: no };
     }
 
     /** 表の行数（lines で書いた表は「境目の数 − 1」） */
@@ -478,15 +502,12 @@
 
     /** 「使う行: 7 / 10」の案内 */
     function renderRowsNote() {
-        const { rows, mode, max } = layoutSetlist();
+        const { rows, max } = layoutSetlist();
         const note = $('[data-rows-note]');
         let msg = `シートの行: ${rows.length} / ${max}`;
         note.classList.remove('is-warn');
         if (rows.length > max) {
-            msg += ` — 曲が多すぎて ${rows.length - max} 曲入りません`;
-            note.classList.add('is-warn');
-        } else if (mode !== state.mc && tpl().setlist.mc_line !== false) {
-            msg += ' — 1行ずつだと入りきらないので、MC は線の上に書きます';
+            msg += ` — 多すぎて ${rows.length - max} 行入りません（MC も1行使います）`;
             note.classList.add('is-warn');
         }
         note.textContent = msg;
@@ -591,7 +612,10 @@
                     });
                     notes.append(input);
                 }
-                tune.addEventListener('click', () => { notes.hidden = !notes.hidden; });
+                tune.addEventListener('click', () => {
+                    notes.hidden = !notes.hidden;
+                    notes.classList.toggle('is-entering', !notes.hidden); // 開いたときだけふわっと出す
+                });
                 li.append(notes);
             }
 
@@ -615,6 +639,10 @@
      *   動かしている間は、指の位置より下にある最初の行の「前」へ実際に DOM を移動させる（見たまま並ぶ）。
      *   指を離したら、画面の並び順を state.songs に写す。
      *   ライブラリ（SortableJS など）を使うのが業界では普通だが、仕組みを学ぶために自分で書いている
+     *
+     *   動き・離したことは window で受け取る。
+     *     行を insertBefore で動かすと、ブラウザが setPointerCapture を解除してしまう。
+     *     ≡ で受け取っていると、指が ≡ から外れた（横にずれた）とたんに何も届かなくなり、行が固まる
      */
     function bindSongDrag(li, handle, song) {
         handle.addEventListener('pointerdown', (e) => {
@@ -624,6 +652,9 @@
             li.classList.add('is-dragging');
 
             const onMove = (ev) => {
+                if (ev.pointerId !== e.pointerId) {
+                    return; // ドラッグしている指以外の動きは無視
+                }
                 const y = ev.clientY;
                 // 指の位置より「真ん中が下にある」最初の行を探す → その前に入れる
                 const others = [...songList.children].filter((el) => el !== li);
@@ -631,7 +662,10 @@
                     const r = el.getBoundingClientRect();
                     return y < r.top + r.height / 2;
                 });
-                songList.insertBefore(li, target || null); // null なら一番最後へ
+                // 位置が変わるときだけ動かす（毎回動かすと無駄に描き直しが起きる）
+                if (li.nextElementSibling !== (target || null)) {
+                    songList.insertBefore(li, target || null); // null なら一番最後へ
+                }
                 // 指に吸い付いて見えるように、本来の位置から指の位置までずらして描く
                 li.style.transform = '';
                 const top = li.getBoundingClientRect().top;
@@ -640,17 +674,20 @@
                 if (y < 90) window.scrollBy(0, -12);
                 else if (y > window.innerHeight - 140) window.scrollBy(0, 12); // 下はタブバーと PDF ボタンの分だけ広く
             };
-            const onUp = () => {
-                handle.removeEventListener('pointermove', onMove);
-                handle.removeEventListener('pointerup', onUp);
-                handle.removeEventListener('pointercancel', onUp);
+            const onUp = (ev) => {
+                if (ev.pointerId !== e.pointerId) {
+                    return; // 別の指が離れただけ
+                }
+                window.removeEventListener('pointermove', onMove);
+                window.removeEventListener('pointerup', onUp);
+                window.removeEventListener('pointercancel', onUp);
                 li.classList.remove('is-dragging');
                 li.style.transform = '';
                 commitOrder();
             };
-            handle.addEventListener('pointermove', onMove);
-            handle.addEventListener('pointerup', onUp);
-            handle.addEventListener('pointercancel', onUp);
+            window.addEventListener('pointermove', onMove);
+            window.addEventListener('pointerup', onUp);
+            window.addEventListener('pointercancel', onUp);
         });
 
         // キーボードでも動かせるように（↑↓）。ドラッグしかできない UI はアクセシビリティ的に NG
@@ -707,6 +744,11 @@
             case 'mic': return { w: base('micLen') * it.scale * 0.44, h: base('micLen') * it.scale };
             case 'circle': return { w: base('circle') * it.scale * it.stretch, h: base('circle') * it.scale };
             case 'box': return { w: base('boxW') * it.scale * it.stretch, h: base('boxH') * it.scale };
+            case 'draw': { // 点の一番外側まで。点は中心からの位置なので、絶対値の最大 × 2
+                const mx = Math.max(1, ...it.pts.map((p) => Math.abs(p[0])));
+                const my = Math.max(1, ...it.pts.map((p) => Math.abs(p[1])));
+                return { w: mx * 2 * it.scale, h: my * 2 * it.scale };
+            }
             default: return { w: 0, h: 0 }; // text は文字の長さで決まる
         }
     }
@@ -777,6 +819,8 @@
             }
             if (it.type === 'mic') {
                 el.innerHTML = MIC_SVG; // 固定の文字列（ユーザーの入力を含まない）なので innerHTML でも安全
+            } else if (it.type === 'draw') {
+                el.append(drawSvg(it));
             } else {
                 // 文字は textContent で入れる（HTML として解釈されないので XSS にならない）
                 const span = document.createElement('span');
@@ -812,7 +856,10 @@
             const { w, h } = itemSize(it);
             el.style.width = `${w * k}px`;
             el.style.height = `${h * k}px`;
-            if (it.type !== 'mic') {
+            if (it.type === 'draw') {
+                // 線の太さは拡大しても同じにしたいので、vector-effect で倍率を無視させて px で指定
+                el.querySelector('.st-draw-line').setAttribute('stroke-width', String(base('drawW') * k));
+            } else if (it.type !== 'mic') {
                 const lines = it.label.split('\n');
                 const size = fitSize(lines, w - 4, h - 2, 10 * it.scale * stageScale(), measureScreen);
                 el.style.fontSize = `${size * k}px`;
@@ -871,42 +918,223 @@
         renderPartButtons();
     }
 
+    /** 四角を選んだときに出す候補（アンプなど）。型紙に box_labels があればそちらを使う */
+    const BOX_LABELS = ['Marshall', 'JC', 'Ba Amp', 'Key'];
+
     /**
-     * 丸を選んだときの「楽器名ボタン」。メンバー欄に入力されている人のパートだけ出す。
-     *   「Vo/Gt」の人は Vo と Gt の2つに分ける。同じ楽器は1つにまとめる（大文字小文字は区別しない）
+     * 丸・四角を選んだときの「名前ボタン」。押すとその名前が中の文字になる。
+     *   丸: メンバー欄に入力されている人のパートだけ出す。
+     *       「Vo/Gt」の人は Vo と Gt の2つに分ける。同じ楽器は1つにまとめる（大文字小文字は区別しない）
+     *   四角: BOX_LABELS をそのまま出す
      */
     function renderPartButtons() {
         const box = panel.querySelector('[data-part-btns]');
-        const seen = new Map(); // 小文字 => 表示する名前（最初に出てきた書き方を使う）
-        for (const m of state.members) {
-            if (m.name.trim() === '') {
-                continue;
-            }
-            for (const p of m.part.split(/[\/／・,、\s]+/)) {
-                if (p !== '' && !seen.has(p.toLowerCase())) {
-                    seen.set(p.toLowerCase(), p);
+        const it = findItem(selectedId);
+        let names = [];
+        if (it.type === 'box') {
+            names = tpl().box_labels || BOX_LABELS;
+        } else if (it.type === 'circle') {
+            const seen = new Map(); // 小文字 => 表示する名前（最初に出てきた書き方を使う）
+            for (const m of state.members) {
+                if (m.name.trim() === '') {
+                    continue;
+                }
+                for (const p of m.part.split(/[\/／・,、\s]+/)) {
+                    if (p !== '' && !seen.has(p.toLowerCase())) {
+                        seen.set(p.toLowerCase(), p);
+                    }
                 }
             }
+            names = [...seen.values()];
         }
         box.replaceChildren(); // 中身を空にしてから作り直す
-        for (const name of seen.values()) {
+        for (const name of names) {
             const b = document.createElement('button');
             b.type = 'button';
             b.className = 'btn btn--sm';
             b.textContent = name; // textContent なので、パートに < などが入っていても HTML にならない（XSS 対策）
             b.addEventListener('click', () => {
-                const it = findItem(selectedId);
-                it.label = name;
+                findItem(selectedId).label = name;
                 panel.querySelector('[data-p="label"]').value = name;
                 renderStage();
                 save();
             });
             box.append(b);
         }
-        if (seen.size === 0) {
+        if (it.type === 'circle' && names.length === 0) {
             box.innerHTML = '<span class="muted small">メンバー欄に名前とパートを入れると、ここに楽器名のボタンが出ます。</span>';
         }
     }
+
+    let drawMode = false; // 描画モード中か（保存しない。ページを開き直すとオフ）
+
+    /** 手で描いた線の SVG。点は「中心からの位置（pt）」なので、viewBox もその座標で書く */
+    function drawSvg(it) {
+        const NS = 'http://www.w3.org/2000/svg'; // SVG の要素は createElementNS で作る決まり
+        const { w, h } = itemSize(it);
+        const vw = w / it.scale, vh = h / it.scale; // 倍率を掛ける前の大きさ。拡大は要素の大きさで行う
+        const svg = document.createElementNS(NS, 'svg');
+        svg.setAttribute('viewBox', `${-vw / 2} ${-vh / 2} ${vw} ${vh}`);
+        svg.setAttribute('preserveAspectRatio', 'none');
+        const line = document.createElementNS(NS, 'polyline');
+        line.setAttribute('class', 'st-draw-line');
+        line.setAttribute('points', it.pts.map((p) => p.join(',')).join(' '));
+        line.setAttribute('fill', 'none');
+        line.setAttribute('stroke', '#000');
+        line.setAttribute('stroke-linecap', 'round');
+        line.setAttribute('stroke-linejoin', 'round');
+        line.setAttribute('vector-effect', 'non-scaling-stroke');
+        // 細い線は指で掴めないので、見えない太い線を重ねて「当たり判定」にする
+        const hit = line.cloneNode();
+        hit.setAttribute('class', 'st-draw-hit');
+        hit.setAttribute('stroke', 'transparent');
+        hit.setAttribute('stroke-width', '16');
+        svg.append(line, hit);
+        return svg;
+    }
+
+    /**
+     * 描画モードで指を置いた → 指の通った点を集めて、離したら1本の線の部品にする。
+     *   描いている間は、セット図に重ねた SVG（st-draw-preview）にそのまま描いて見せる
+     */
+    function startStroke(e) {
+        e.preventDefault();
+        const k = ptToPx();
+        const { w, h } = stageSize();
+        const rect = stage.getBoundingClientRect();
+        // 画面の px → セット図の pt。枠の外には出さない
+        const toPt = (ev) => [
+            clamp((ev.clientX - rect.left) / k, 0, w),
+            clamp((ev.clientY - rect.top) / k, 0, h),
+        ];
+        const pts = [toPt(e)];
+        const NS = 'http://www.w3.org/2000/svg';
+        const preview = document.createElementNS(NS, 'svg');
+        preview.setAttribute('class', 'st-draw-preview');
+        preview.setAttribute('viewBox', `0 0 ${w} ${h}`);
+        const line = document.createElementNS(NS, 'polyline');
+        line.setAttribute('fill', 'none');
+        line.setAttribute('stroke', '#000');
+        line.setAttribute('stroke-width', String(base('drawW')));
+        line.setAttribute('stroke-linecap', 'round');
+        line.setAttribute('stroke-linejoin', 'round');
+        preview.append(line);
+        stage.append(preview);
+
+        const onMove = (ev) => {
+            if (ev.pointerId !== e.pointerId) {
+                return;
+            }
+            const p = toPt(ev);
+            const last = pts[pts.length - 1];
+            // 前の点から 1pt 以上動いたときだけ足す（点が多すぎると保存データと PDF が重くなる）
+            if (Math.hypot(p[0] - last[0], p[1] - last[1]) >= 1) {
+                pts.push(p);
+                line.setAttribute('points', pts.map((q) => q.join(',')).join(' '));
+                if (!preview.isConnected) {
+                    stage.append(preview); // 途中で描き直し（renderStage）が起きて消えたら付け直す
+                }
+            }
+        };
+        const onUp = (ev) => {
+            if (ev.pointerId !== e.pointerId) {
+                return;
+            }
+            window.removeEventListener('pointermove', onMove);
+            window.removeEventListener('pointerup', onUp);
+            window.removeEventListener('pointercancel', onUp);
+            preview.remove();
+            if (pts.length < 2) {
+                return; // 点を打っただけ（線になっていない）
+            }
+            // 部品の中心 = 点が収まる四角の真ん中。点は中心からの位置で持つ（移動・回転を他の部品と同じ仕組みでできる）
+            const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
+            const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
+            const cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+            const r1 = (n) => Math.round(n * 10) / 10; // 小数第1位まで（保存データを小さく）
+            addItem('draw', { x: cx, y: cy, pts: pts.map((p) => [r1(p[0] - cx), r1(p[1] - cy)]) });
+            renderStage();
+            save();
+        };
+        // 指が動いた・離れたは window で受け取る（セットリストのドラッグと同じ理由）
+        window.addEventListener('pointermove', onMove);
+        window.addEventListener('pointerup', onUp);
+        window.addEventListener('pointercancel', onUp);
+    }
+
+    /* ---- 4.5 1つ戻す・やり直す（セット図の部品だけ）----
+     *  変更のたびに state.items を JSON の文字列にして配列（history）に積んでおき、
+     *  何番目を表示しているか（histPos）を前後に動かす。Word などの「元に戻す」と同じ考え方。
+     *  文字の入力やスライダーは1文字・1目盛りごとに積むと多すぎるので、
+     *  最後の変更から 400ms 止まったら1回だけ積む（save() と同じデバウンス）
+     */
+    const HISTORY_MAX = 50; // 覚えておく数（多すぎるとメモリを使う）
+    history = [JSON.stringify(state.items)];
+    const undoBtn = $('[data-undo]');
+    const redoBtn = $('[data-redo]');
+
+    function scheduleHistory() {
+        if (!history) {
+            return;
+        }
+        clearTimeout(histTimer);
+        histTimer = setTimeout(recordHistory, 400);
+    }
+
+    /** 今のセット図が、表示中の履歴と違えば積む */
+    function recordHistory() {
+        clearTimeout(histTimer);
+        const now = JSON.stringify(state.items);
+        if (now === history[histPos]) {
+            return;
+        }
+        // 戻した状態から新しく変更したら、それより先（やり直せた分）は捨てる
+        history = history.slice(0, histPos + 1);
+        history.push(now);
+        if (history.length > HISTORY_MAX) {
+            history.shift(); // 一番古いものを捨てる
+        }
+        histPos = history.length - 1;
+        updateHistoryButtons();
+    }
+
+    function updateHistoryButtons() {
+        undoBtn.disabled = histPos <= 0;
+        redoBtn.disabled = histPos >= history.length - 1;
+    }
+
+    /** step = -1 で1つ戻す、+1 でやり直す */
+    function moveHistory(step) {
+        recordHistory(); // まだ積んでいない変更（400ms 待ちの分）を先に積む
+        const next = histPos + step;
+        if (next < 0 || next >= history.length) {
+            return;
+        }
+        histPos = next;
+        state.items = JSON.parse(history[histPos]);
+        selectedId = null;
+        renderStage();
+        renderPanel();
+        updateHistoryButtons();
+        save(); // 履歴と同じ中身なので、ここで新しく積まれることはない
+    }
+
+    undoBtn.addEventListener('click', () => moveHistory(-1));
+    redoBtn.addEventListener('click', () => moveHistory(1));
+    // パソコンでは Ctrl+Z / Ctrl+Y（Mac は ⌘）でも。入力欄の中では、その欄の文字の「元に戻す」を優先する
+    document.addEventListener('keydown', (e) => {
+        if (!(e.ctrlKey || e.metaKey) || e.target.closest('input, textarea, select')) {
+            return;
+        }
+        const key = e.key.toLowerCase();
+        if (key === 'z' && !e.shiftKey) {
+            e.preventDefault();
+            moveHistory(-1);
+        } else if (key === 'y' || (key === 'z' && e.shiftKey)) {
+            e.preventDefault();
+            moveHistory(1);
+        }
+    });
 
     function bindStage() {
         // ---- 追加ボタン ----
@@ -926,9 +1154,35 @@
             save();
         });
 
+        // ---- リセット: 部品を全部消す ----
+        $('[data-stage-reset]').addEventListener('click', () => {
+            if (state.items.length === 0 || !confirm('セット図の部品を全部消します。元に戻せません。よろしいですか？')) {
+                return;
+            }
+            state.items = [];
+            select(null); // 選択を外して描き直す（パネルも隠れる）
+            save();
+        });
+
+        // ---- 描画モードのオン・オフ ----
+        const drawBtn = $('[data-draw]');
+        const hint = $('[data-stage-hint]');
+        const hintText = hint.textContent;
+        drawBtn.addEventListener('click', () => {
+            drawMode = !drawMode;
+            drawBtn.setAttribute('aria-pressed', String(drawMode));
+            stage.classList.toggle('is-drawing', drawMode);
+            hint.textContent = drawMode ? '指でなぞると線が描けます。終わったら「描画」をもう一度押してください。' : hintText;
+            select(null);
+        });
+
         // ---- ドラッグ ----
         // Pointer Events: マウス・指・ペンを1つの書き方で扱える（mouse/touch を別々に書かなくていい。今の標準）
         stage.addEventListener('pointerdown', (e) => {
+            if (drawMode) {
+                startStroke(e);
+                return;
+            }
             const el = e.target.closest('[data-item]'); // 押した場所から一番近い部品の要素を探す
             if (!el) {
                 select(null); // 何もないところ → 選択を外す
@@ -1009,7 +1263,12 @@
 
     /**
      * メンバーのパートから、ざっくり並べる。あとから手で直す前提の「下書き」。
-     *   奥（上）: ギターアンプ・ベースアンプ / 手前（下）: ボーカルのマイク / 左: キーボード
+     *   奥（上）: ベースアンプはドラムの左のすき間の真ん中、ギターアンプは右のすき間を等分（JC → Marshall）
+     *   下: メンバー1人につき1つ、楽器名を書いた丸（立ち位置）。その下にマイク1本分のすき間を残す
+     *   丸の真下: マイクを使う人のマイク。名前は入れない
+     *     マイクを使う人 = パートに Vo / Cho がある人（Voice）、マイクの欄に✓がある人（共通シート）
+     *   左: キーボードの四角（丸は置かない）。マイクを使うなら四角の真下にマイク。
+     *       キーボードがいるときは、ベースの丸をキーボードの右へずらす（マイクと重ならないように）
      */
     function autoLayout() {
         const { w, h } = stageSize();
@@ -1019,38 +1278,134 @@
         const d = tpl().drum || [sx + w * 0.4, sy, sx + w * 0.6, sy + h * 0.2];
         const drumL = d[0] - sx, drumR = d[2] - sx, ampY = (d[1] + d[3]) / 2 - sy;
         const ampW = base('boxW');
-        const parts = state.members
-            .filter((m) => m.name.trim() !== '' || m.part.trim() !== '')
-            .map((m) => m.part.toLowerCase());
-        const count = (key) => parts.filter((p) => p.split('/').some((x) => x.trim() === key)).length;
+        const micLen = base('micLen');
+        const circle = base('circle');
+        const people = autoPeople();
+        const count = (key) => people.filter((pp) => pp.parts.includes(key)).length;
+        const clampX = (x) => clamp(x, ampW / 2, w - ampW / 2);
 
-        const mics = [];
-        parts.forEach((p) => {
-            const list = p.split('/').map((x) => x.trim());
-            if (list.includes('vo')) {
-                mics.push('Vo');
-            } else if (list.includes('cho')) {
-                mics.push('Cho');
+        // ---- ギターアンプ: ドラムの右のすき間の真ん中に、すき間 gap で横に並べる ----
+        //   ドラムに近い方から JC → Marshall（型紙の gt_amps があればその順。足りない分は Gt Amp）。
+        //   （すき間を等分した点に置くと、点の間隔がアンプの幅より狭くなって重なるので、幅から並べる）
+        //   入りきらないときは、アンプを小さくして（scale）入れる
+        const gtN = count('gt');
+        const gtX = [];
+        if (gtN > 0) {
+            const gap = 4 * stageScale();
+            const room = w - drumR - gap * 2; // 右のすき間（ドラムと枠の端から gap ずつ空ける）
+            const scale = Math.min(1, (room - gap * (gtN - 1)) / (ampW * gtN));
+            const aw = ampW * scale;
+            const rowW = aw * gtN + gap * (gtN - 1);           // 並べたときの全体の幅
+            const left = drumR + (w - drumR) / 2 - rowW / 2;   // 全体の左端（右のすき間の真ん中に置く）
+            for (let i = 0; i < gtN; i++) {
+                const x = left + aw / 2 + i * (aw + gap);
+                gtX.push(x);
+                addItem('box', { x, y: ampY, scale, label: (tpl().gt_amps || ['JC', 'Marshall'])[i] || 'Gt Amp' });
+            }
+        }
+        // ---- ベースアンプ: ドラムの左のすき間の真ん中 ----
+        const baX = clampX(drumL / 2);
+        if (count('ba') > 0) {
+            addItem('box', { x: baX, y: ampY, label: 'Ba Amp' });
+        }
+        // ---- キーボード: 左側の真ん中の高さ ----
+        const keyX = ampW * 0.8;
+        const keyY = h * 0.5;
+        const keyW = ampW * 1.4; // stretch: 1.4 の分だけ横長
+        const hasKey = count('key') > 0;
+        if (hasKey) {
+            addItem('box', { x: keyX, y: keyY, label: 'Key', stretch: 1.4 });
+        }
+
+        // ---- メンバーの丸（立ち位置）----
+        //   下の端から「マイク1本分 + すき間」上に置く。ドラムは印刷済みなので、Dr の人は丸を置かない
+        const circleY = h - micLen - 4 - circle / 2;
+        const micY = (y) => Math.min(y + circle / 2 + 2 + micLen / 2, h - micLen / 2); // 丸の真下のマイクの中心
+        const sings = (pp) => pp.mic;
+        // ベースの丸: キーボードがいるときは、キーボードの四角（とその下のマイク）より右へ
+        const baCircleX = hasKey ? Math.max(baX, keyX + keyW / 2 + circle / 2) : baX;
+        const others = []; // アンプの前に置けない人（Vo だけの人など）。あとで中央に並べる
+        let gtNo = 0;
+        for (const pp of people) {
+            // vo / cho / dr 以外の最初の楽器。無ければ Vo（Dr の人は null）
+            const i = pp.parts.findIndex((x) => !['vo', 'cho', 'dr'].includes(x));
+            const label = i >= 0 ? pp.raw[i] : (pp.parts.includes('vo') ? 'Vo' : null);
+            if (!label) {
+                // ドラムで歌う人: マイクだけドラムの下に置く
+                if (sings(pp)) {
+                    addItem('mic', { x: (drumL + drumR) / 2, y: micY(d[3] - sy + circle / 2), label: '' });
+                }
+                continue;
+            }
+            const main = i >= 0 ? pp.parts[i] : 'vo';
+            let pos = null;
+            if (main === 'gt' && gtNo < gtX.length) {
+                pos = { x: gtX[gtNo++], y: circleY };
+            } else if (main === 'ba') {
+                pos = { x: baCircleX, y: circleY };
+            } else if (main === 'key') {
+                // キーボードの人は丸を置かない。マイクを使うなら四角の真下に
+                if (sings(pp)) {
+                    addItem('mic', { x: keyX, y: keyY + base('boxH') / 2 + 2 + micLen / 2, label: '' });
+                }
+                continue;
+            } else {
+                others.push({ label, mic: sings(pp) });
+                continue;
+            }
+            addItem('circle', { ...pos, label });
+            if (sings(pp)) {
+                addItem('mic', { x: pos.x, y: micY(pos.y), label: '' });
+            }
+        }
+        others.forEach((o, i) => {
+            const x = w * 0.3 + (w * 0.4 * (i + 1)) / (others.length + 1); // 枠の真ん中 4 割に等間隔
+            addItem('circle', { x, y: circleY, label: o.label });
+            if (o.mic) {
+                addItem('mic', { x, y: micY(circleY), label: '' });
             }
         });
-        // 手前に等間隔で並べる: (i + 1) / (n + 1) で端を空けて均等に
-        mics.forEach((label, i) => {
-            addItem('mic', { x: (w * (i + 1)) / (mics.length + 1), y: h * 0.62, label });
-        });
-        // ギターアンプは左奥から右へ、ベースアンプは右奥
-        // ギターアンプ: ドラムの左側を等分した位置に並べる
-        //   ドラムに近い方から外へ、アンプの幅＋すき間ずつずらす。枠からはみ出す分は端で止める
-        for (let i = 0; i < count('gt'); i++) {
-            const x = drumL - (ampW / 2 + 6) - i * (ampW + 8);
-            addItem('box', { x: Math.max(ampW / 2, x), y: ampY, label: 'Gt Amp' });
+    }
+
+    /**
+     * 自動配置に使う「1人ずつの情報」{ parts: 小文字のパート一覧（判定用）, raw: 元の書き方（丸に書く用）, mic: マイクを使うか }
+     *   Voice など（パート / 氏名を書く表）: メンバー欄のパートから。マイクはパートに Vo / Cho があれば
+     *   共通シート（パートが印刷済みの表）: 欄（Vo / Gt.1 …）がパート。マイクは欄の✓
+     */
+    function autoPeople() {
+        if (tpl().members.mode === 'slots') {
+            if (!state.slots) {
+                assignSlots();
+            }
+            // 欄のキー → [判定用のパート, 丸に書く名前]
+            const SLOT_PART = { vo: ['vo', 'Vo'], gt1: ['gt', 'Gt'], gt2: ['gt', 'Gt'], ba: ['ba', 'Ba'], dr: ['dr', 'Dr'], key: ['key', 'Key'] };
+            const people = [];
+            for (const [key, v] of Object.entries(state.slots)) {
+                if (!v || v.name.trim() === '') {
+                    continue;
+                }
+                if (SLOT_PART[key]) {
+                    const [part, label] = SLOT_PART[key];
+                    people.push({ parts: [part], raw: [label], mic: v.mic });
+                } else {
+                    // 「その他」の欄: 「名前(Gt)」のかっこの中を楽器として使う。無ければ楽器なし
+                    const m = v.name.match(/[（(]([^）)]+)[）)]\s*$/);
+                    const raw = m ? m[1].split(/[\/／・,、\s]+/).filter((x) => x !== '') : [];
+                    people.push({ parts: raw.map((x) => x.toLowerCase()), raw, mic: v.mic });
+                }
+            }
+            return people;
         }
-        // ベースアンプ: ドラムの右側の真ん中
-        if (count('ba') > 0) {
-            addItem('box', { x: drumR + (w - drumR) / 2, y: ampY, label: 'Ba Amp' });
-        }
-        if (count('key') > 0) {
-            addItem('box', { x: ampW * 0.8, y: h * 0.45, label: 'Key', stretch: 1.4 });
-        }
+        return state.members
+            .filter((m) => m.name.trim() !== '' || m.part.trim() !== '')
+            .map((m) => {
+                const parts = partList(m.part);
+                return {
+                    parts,
+                    raw: m.part.split(/[\/／・,、\s]+/).filter((x) => x !== ''),
+                    mic: parts.includes('vo') || parts.includes('cho'),
+                };
+            });
     }
 
     /* =================================================================
@@ -1099,6 +1454,13 @@
     }
 
     /**
+     * 文字の「見た目の縦の真ん中」が、ベースライン（文字の底の線）から上に文字の大きさの何倍の所にあるか。
+     *   Noto Sans JP の字形を測ると、あ 0.372 / 藤 0.379 / ア 0.344 / H・1 0.366 / 〇 0.38 だったので 0.37。
+     *   欄の真ん中にこの点を合わせると、文字が欄の縦の真ん中に見える
+     */
+    const GLYPH_MID = 0.37;
+
+    /**
      * 本体: 書き込み済みの PDF のバイト列を返す。
      *   async 関数の中では await で「終わるまで待つ」が書ける（コールバック地獄にならない）
      */
@@ -1119,7 +1481,6 @@
         const page = doc.getPages()[0];
         const H = page.getHeight();
         const black = rgb(0, 0, 0);
-        const white = rgb(1, 1, 1);
 
         // ---- 座標の変換 ----
         // 型紙は「上から測った y」、PDF は「下から測った y」なので H − y にする
@@ -1130,9 +1491,11 @@
          * 箱 [x0, top, x1, bottom] の中に文字を書く。
          *   大きい文字から順に試して、箱に収まったサイズで書く。
          *   wrap: true なら折り返して最大 maxLines 行まで使う。改行（\n）はそのまま改行になる
+         *   型紙に text_scale があれば、いちばん大きい文字（size）をその倍率にする（ページが大きいシートでは文字も大きく）
          */
         function drawInBox(text, box, opt = {}) {
-            const { size: maxSize = 10, min = 5, align = 'center', wrap = false, maxLines = 2, pad = 2 } = opt;
+            const { size: baseSize = 10, min = 5, align = 'center', wrap = false, maxLines = 2, pad = 2 } = opt;
+            const maxSize = baseSize * (t.text_scale || 1);
             text = String(text || '').trim();
             if (text === '') {
                 return;
@@ -1159,8 +1522,8 @@
                 lines = (wrap ? wrapText(text, bw, size) : text.split('\n')).slice(0, Math.max(1, Math.floor(bh / (size * 1.15))));
             }
             const lineH = size * 1.15;
-            // 縦の真ん中に置く。0.88 は「行の上端からベースライン（文字の底の線）まで」のだいたいの割合
-            let baseline = top + (bh - lineH * lines.length) / 2 + size * 0.88;
+            // 縦の真ん中に置く: 1行目の行の真ん中（行の上端 + lineH / 2）に、文字の見た目の真ん中（GLYPH_MID）を合わせる
+            let baseline = top + (bh - lineH * lines.length) / 2 + lineH / 2 + size * GLYPH_MID;
             for (const line of lines) {
                 const w = measure(line, size);
                 const x = align === 'center' ? x0 + (x1 - x0 - w) / 2 : x0 + pad;
@@ -1251,18 +1614,12 @@
                 drawInBox(r.light, [st.light[0], top, st.light[1], bottom], note);
             }
         });
-        // 線の上の MC: 白い四角で線を少し消して、その上に小さく「MC」
-        for (const n of lay.lines) {
-            const lineTop = rowRange(st, n)[0]; // n 行目の上の線
-            const size = 7;
-            const w = measure('MC', size) + 6;
-            const x = st.title[0] + 6;
-            page.drawRectangle({ x, y: Y(lineTop + size / 2 + 1), width: w, height: size + 2, color: white });
-            page.drawText('MC', { x: x + 3, y: Y(lineTop + size * 0.35), size, font, color: black });
-        }
 
         // ---- 3.5 その他の自由記入欄 ----
         for (const tx of t.texts || []) {
+            if (tx.with_choice && !isShown(tx.with_choice)) {
+                continue; // 画面で隠れている欄は書かない
+            }
             drawInBox(textValue(tx), tx.box, {
                 size: tx.size || 10, wrap: !!tx.multiline, maxLines: 4, pad: 3,
             });
@@ -1270,6 +1627,9 @@
 
         // ---- 4. ○囲み（SE 有/なし など）----
         for (const [group, opt] of Object.entries(state.choices)) {
+            if (!isShown(group)) {
+                continue; // 画面で隠れている項目は書かない
+            }
             const spec = t.choices?.[group]?.[opt]; // ?. : 途中が無くてもエラーにせず undefined を返す（オプショナルチェーン）
             if (!spec) {
                 continue;
@@ -1334,6 +1694,16 @@
                 }
                 continue;
             }
+            if (it.type === 'draw') {
+                const path = it.pts
+                    .map((q, i) => {
+                        const r = toPdf(it, q[0] * it.scale, q[1] * it.scale);
+                        return `${i === 0 ? 'M' : 'L'} ${svgNum(r.x)} ${svgNum(-r.y)}`;
+                    })
+                    .join(' ');
+                page.drawSvgPath(path, { x: 0, y: 0, borderColor: black, borderWidth: base('drawW') });
+                continue;
+            }
             if (it.type === 'box' || it.type === 'circle') {
                 let path;
                 if (it.type === 'box') {
@@ -1366,7 +1736,7 @@
             lines.forEach((line, i) => {
                 const tw = measure(line, size);
                 // 中心から見た「この行の左端・ベースライン」の位置
-                const ly = -(lineH * lines.length) / 2 + lineH * i + size * 0.88;
+                const ly = -(lineH * lines.length) / 2 + lineH * i + lineH / 2 + size * GLYPH_MID;
                 const o = toPdf(it, -tw / 2, ly);
                 // PDF の回転は反時計回りが +。画面は時計回りが + なので符号を反転
                 page.drawText(line, { x: o.x, y: o.y, size, font, color: black, rotate: degrees(-it.rot) });
@@ -1385,8 +1755,21 @@
         statusEl.classList.toggle('is-warn', warn);
     }
 
-    /** ファイル名に使えない文字（\ / : * ? " < > |）を _ にする */
-    const fileName = () => `${DATA.fileBase}_セッティングシート.pdf`.replace(/[\\/:*?"<>|]/g, '_');
+    /**
+     * 出力する PDF のファイル名。例: 1030_2番目_バンド名.pdf
+     *   画面の「出演日」「出演順」「バンド名」の欄から作る（欄を直して出すこともあるので DB ではなく欄の値）。
+     *   空の欄はその部分を飛ばす。ファイル名に使えない文字（\ / : * ? " < > |）は _ にする
+     */
+    const fileName = () => {
+        // 出演日 "2026/10/30" や "10/30" → 数字だけ取り出し、最後の2つを月・日として "1030" に
+        //   padStart(2, '0'): 2桁に満たなければ前に 0 を足す（"9" → "09"）
+        const nums = String(state.date || '').match(/\d+/g) || [];
+        const mmdd = nums.length >= 2 ? nums.slice(-2).map((n) => n.padStart(2, '0')).join('') : '';
+        const order = String(state.order || '').trim();
+        const parts = [mmdd, order && `${order}番目`, String(state.band || '').trim()].filter(Boolean);
+        const name = parts.length ? parts.join('_') : 'セッティングシート';
+        return `${name}.pdf`.replace(/[\\/:*?"<>|]/g, '_');
+    };
 
     let lastFile = null; // 共有ボタン用に、最後に作った PDF を覚えておく
 
@@ -1501,7 +1884,6 @@
         $('[data-saved-note]').hidden = true;
         // 入力欄の値も入れ直す
         $$('[data-f]').forEach((input) => { input.value = state[input.dataset.f] ?? ''; });
-        $$('[data-mc]').forEach((r) => { r.checked = r.value === state.mc; });
         tplSelect.value = state.template;
         selectedId = null;
         renderAll();
@@ -1530,9 +1912,11 @@
      *  pdf.js は 1.7MB あるので、初めて開いたときに読み込む（遅延読み込み）
      */
     const fab = document.querySelector('[data-preview-fab]');
-    const previewBox = document.querySelector('[data-preview]');
+    const previewBox = document.querySelector('[data-sheet-preview]');
     const previewCanvas = previewBox.querySelector('canvas');
     const previewNote = previewBox.querySelector('[data-preview-note]');
+    let zoom = 1;            // プレビューの拡大率（1 = 枠の幅ぴったり）
+    const ZOOM_MAX = 5;
     let rendering = false;   // いま描いている途中か
     let renderAgain = false; // 描いている途中に入力があった → 終わったらもう一度
     let pdfjs = null;
@@ -1554,13 +1938,21 @@
             return;
         }
         rendering = true;
-        previewBox.classList.add('is-busy');
-        previewNote.textContent = '更新中…';
+        // 入力が変わったときだけ「更新中」を出して薄くする。拡大・縮小の描き直しで出すと点滅して見える
+        const rebuild = pdfDirty || !pdfBytes;
+        if (rebuild) {
+            previewBox.classList.add('is-busy');
+            previewNote.textContent = '更新中…';
+        }
         try {
-            const [lib, bytes] = await Promise.all([loadPdfjs(), buildPdf()]);
+            const lib = await loadPdfjs();
+            if (rebuild) {
+                pdfDirty = false;
+                pdfBytes = await buildPdf();
+            }
             // getDocument は「読み込みの仕事（loadingTask）」を返す。.promise で読み終わりを待つ
             const task = lib.getDocument({
-                data: bytes,
+                data: pdfBytes.slice(), // pdf.js に渡すと中身を持っていかれることがあるのでコピーを渡す
                 // 元の PDF に埋め込まれていない日本語フォント（サークル共通シート）を読むための対応表
                 cMapUrl: new URL(DATA.pdfjs.cmaps, location.href).href,
                 cMapPacked: true,
@@ -1568,16 +1960,32 @@
             });
             const doc = await task.promise;
             const page = await doc.getPage(1);
-            // 画面の幅ぴったりの大きさ × 画面の細かさ（devicePixelRatio。iPhone は 3）で描くと、文字がにじまない
-            const width = previewBox.clientWidth - 16;
+            // 表示する幅 × 画面の細かさ（devicePixelRatio。iPhone は 3）で描くと、文字がにじまない。
+            //   拡大しているときは、その大きさで描き直すので拡大してもくっきり
+            const width = fitWidth() * zoom;
             const base = page.getViewport({ scale: 1 });
             const ratio = Math.min(window.devicePixelRatio || 1, 3);
-            const viewport = page.getViewport({ scale: (width / base.width) * ratio });
-            previewCanvas.width = viewport.width;
-            previewCanvas.height = viewport.height;
-            previewCanvas.style.width = `${width}px`;
-            await page.render({ canvas: previewCanvas, viewport }).promise;
+            let scale = (width / base.width) * ratio;
+            // canvas は大きすぎると描けない（iPhone は約 1600 万画素まで）。超えるなら細かさの方を下げる
+            const MAX_PIXELS = 16000000;
+            const pixels = base.width * base.height * scale * scale;
+            if (pixels > MAX_PIXELS) {
+                scale *= Math.sqrt(MAX_PIXELS / pixels);
+            }
+            const viewport = page.getViewport({ scale });
+            // 見えない canvas に描いてから、出来上がりを一度に写す。
+            //   見えている canvas の width を変えると、その瞬間に中身が消える（真っ白になる）ので、
+            //   そこに直接描くと「消える → 描き終わる」が点滅に見える
+            const off = document.createElement('canvas');
+            off.width = viewport.width;
+            off.height = viewport.height;
+            await page.render({ canvas: off, viewport }).promise;
             await task.destroy(); // 使い終わった PDF をメモリから捨てる（裏で動く worker の分も）
+            previewCanvas.width = off.width;   // ここで消えるが、
+            previewCanvas.height = off.height;
+            previewCanvas.getContext('2d').drawImage(off, 0, 0); // 同じ処理の中ですぐ描くので、画面には消えた瞬間が出ない
+            // 幅は「今の」拡大率で（描いている間にピンチで変わっていることがある）
+            previewCanvas.style.width = `${fitWidth() * zoom}px`;
             previewNote.textContent = '';
         } catch (err) {
             console.error(err);
@@ -1592,8 +2000,70 @@
         }
     }
 
+    /** 拡大率 1 のときの表示の幅（枠の幅 − 内側の余白） */
+    const fitWidth = () => previewBox.clientWidth - 16;
+
+    /**
+     * 拡大率を変える。指の真ん中（cx, cy: 枠の左上からの px）の場所が、拡大しても指の下に残るようにスクロールを合わせる。
+     *   まず CSS の幅だけ変えて（速い。少しぼやける）、指を止めてから描き直す（くっきり）
+     */
+    function setZoom(next, cx, cy) {
+        next = clamp(next, 1, ZOOM_MAX);
+        const f = next / zoom; // 何倍になるか
+        // 「枠の中の見えている位置 + スクロール量」= 絵の中の位置。それが f 倍の場所に動くので、その分スクロールする
+        const x = previewBox.scrollLeft + cx;
+        const y = previewBox.scrollTop + cy;
+        zoom = next;
+        previewCanvas.style.width = `${fitWidth() * zoom}px`;
+        previewBox.scrollLeft = x * f - cx;
+        previewBox.scrollTop = y * f - cy;
+        clearTimeout(previewTimer);
+        previewTimer = setTimeout(renderPreview, 300);
+    }
+
+    /* ---- ピンチで拡大・縮小、ダブルタップで拡大 ⇔ 元に戻す ----
+     *  Touch Events の touches（今さわっている指の一覧）が2本のとき、「2本の指の距離」の変化を拡大率にする。
+     *  Pointer Events ではなく Touch Events を使う理由:
+     *    1本指でスクロールが始まると、ブラウザがその指の pointer イベントを止めて（pointercancel）しまい、
+     *    あとから2本目を置いてもピンチを見つけられないことがある。touch イベントはスクロール中も届き続ける
+     */
+    let pinch = null; // ピンチ中の { 始めの距離, 始めの拡大率 }
+    const touchDist = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY); // hypot: 2点の距離
+    previewBox.addEventListener('touchstart', (e) => {
+        if (e.touches.length === 2) {
+            pinch = { dist: touchDist(e.touches), zoom };
+        }
+    });
+    // passive: false … preventDefault() を使うと宣言する（しないと、ブラウザは待たずにスクロールを始めてしまう）
+    previewBox.addEventListener('touchmove', (e) => {
+        if (!pinch || e.touches.length !== 2) {
+            return;
+        }
+        e.preventDefault(); // ピンチ中はスクロールさせない
+        const [a, b] = e.touches;
+        const r = previewBox.getBoundingClientRect();
+        setZoom(
+            pinch.zoom * (touchDist(e.touches) / pinch.dist),
+            (a.clientX + b.clientX) / 2 - r.left,
+            (a.clientY + b.clientY) / 2 - r.top,
+        );
+    }, { passive: false });
+    const pinchEnd = (e) => {
+        if (e.touches.length < 2) {
+            pinch = null;
+        }
+    };
+    previewBox.addEventListener('touchend', pinchEnd);
+    previewBox.addEventListener('touchcancel', pinchEnd);
+    // ダブルタップ（PC はダブルクリック）: 拡大していなければ 2.5 倍、していれば元に戻す
+    previewBox.addEventListener('dblclick', (e) => {
+        const r = previewBox.getBoundingClientRect();
+        setZoom(zoom > 1 ? 1 : 2.5, e.clientX - r.left, e.clientY - r.top);
+    });
+
     /** 入力のたびに呼ばれる。最後の入力から 0.6 秒たったら1回だけ描き直す（デバウンス） */
     function schedulePreview() {
+        pdfDirty = true; // 閉じている間の入力も、次に開いたとき作り直す
         if (!previewOpen) {
             return;
         }
@@ -1609,6 +2079,8 @@
         fab.querySelector('[data-fab-text]').textContent = open ? '閉じる' : 'プレビュー';
         document.documentElement.classList.toggle('is-previewing', open); // 開いている間は後ろの画面をスクロールさせない
         if (open) {
+            zoom = 1; // 開くたびに全体が見える大きさから
+            previewCanvas.style.width = `${fitWidth()}px`;
             renderPreview();
         }
     }
@@ -1624,7 +2096,6 @@
      *  7. 起動
      * ================================================================= */
     bindFields();
-    bindMc();
     bindStage();
     renderAll();
     if (restored) {

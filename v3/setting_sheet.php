@@ -110,7 +110,7 @@ $sheetData = [
         'cmaps'  => 'assets/vendor/pdfjs/cmaps/',
         'fonts'  => 'assets/vendor/pdfjs/standard_fonts/',
     ],
-    'fontUrl'     => 'assets/fonts/BIZUDGothic-Regular.ttf',
+    'fontUrl'     => 'assets/fonts/NotoSansJP-Regular.ttf', // サイトと同じ Noto Sans JP（assets/fonts/README.md）
     // pdf-lib（PDF に書き込む）と fontkit（日本語フォントを読む）。どちらも自分のサーバーに置く（CDN が止まっても動く）
     'vendor'      => ['assets/vendor/pdf-lib.min.js', 'assets/vendor/fontkit-shim.min.js'],
     'dbSongs'     => $songTitles, // DB に登録済みの曲（シートと同じなら「登録しますか？」を聞かない）
@@ -131,7 +131,7 @@ $bandUrl = 'band?id=' . $bandId;
 render_header('セッティングシート', 'lives');
 ?>
 <!-- このページだけの CSS。<link> は <body> の中に書いてもよい（HTML の仕様で許されている） -->
-<link rel="stylesheet" href="assets/setting_sheet.css?v=4">
+<link rel="stylesheet" href="assets/setting_sheet.css?v=15">
 
 <nav class="crumbs"><a href="./">ライブ</a><span>/</span><a href="<?= h($bandUrl) ?>"><?= h($band['name']) ?></a></nav>
 <h1 class="display display--sm"><?= icon('description') ?> セッティングシート</h1>
@@ -184,16 +184,24 @@ render_header('セッティングシート', 'lives');
             <button type="button" class="btn btn--sm" data-add="circle"><?= icon('circle') ?> 丸</button>
             <button type="button" class="btn btn--sm" data-add="box"><?= icon('crop_square') ?> 四角</button>
             <button type="button" class="btn btn--sm" data-add="text"><?= icon('title') ?> 文字</button>
+            <!-- 描画: オンの間は、セット図を指でなぞると線が描ける。もう一度押すとオフ -->
+            <button type="button" class="btn btn--sm" data-draw aria-pressed="false"><?= icon('draw') ?> 描画</button>
             <button type="button" class="btn btn--sm btn--ghost" data-auto title="メンバーのパートから、マイクとアンプを並べる"><?= icon('auto_awesome') ?> 自動配置</button>
+            <button type="button" class="btn btn--sm btn--ghost" data-stage-reset title="セット図の部品を全部消す"><?= icon('restart_alt') ?> リセット</button>
         </div>
         <!-- 背景はシートのセット図の枠を切り抜いた画像。上下＝客席の反対側（奥）が上 -->
         <div class="stage" data-stage></div>
-        <p class="muted small stage-hint">下が客席側です。何もないところをタップすると選択が外れます。</p>
+        <!-- 1つ戻す・やり直す（セット図の部品だけが対象。アイコンだけなので aria-label で読み上げ用の名前を付ける） -->
+        <div class="stage-history">
+            <button type="button" class="btn btn--sm btn--ghost" data-undo aria-label="1つ戻す" title="1つ戻す（Ctrl+Z）" disabled><?= icon('undo') ?></button>
+            <button type="button" class="btn btn--sm btn--ghost" data-redo aria-label="やり直す" title="やり直す（Ctrl+Y）" disabled><?= icon('redo') ?></button>
+        </div>
+        <p class="muted small stage-hint" data-stage-hint>下が客席側です。何もないところをタップすると選択が外れます。</p>
 
         <!-- 選んだ部品の設定（何も選んでいないときは隠す） -->
         <div class="stage-panel" data-panel hidden>
-            <label class="field">文字 <textarea rows="2" data-p="label" maxlength="40"></textarea></label>
-            <div class="stage-panel__row" data-only="circle" data-part-btns></div>
+            <div class="stage-panel__row" data-only="box circle" data-part-btns></div>
+            <label class="field" data-only="mic circle box text">文字 <textarea rows="1" data-p="label" maxlength="40"></textarea></label>
             <div class="stage-panel__row">
                 <label class="field">大きさ <input type="range" min="0.5" max="2.5" step="0.1" data-p="scale"></label>
                 <label class="field" data-only="box circle">横長さ <input type="range" min="0.5" max="3" step="0.1" data-p="stretch"></label>
@@ -218,17 +226,12 @@ render_header('セッティングシート', 'lives');
         <!-- 1曲 = 1行。中身は JS が state.songs から作る -->
         <ol class="setlist" data-songs></ol>
         <p class="muted small">≡ を掴んで上下にドラッグで並び替え。<?= icon('tune') ?> で音響・照明への要望を書けます。</p>
-        <div class="sheet-mc" data-mc-wrap>
-            <span class="field">MC の書き方</span>
-            <label class="check"><input type="radio" name="mc" value="row" data-mc> 1行使う</label>
-            <label class="check"><input type="radio" name="mc" value="line" data-mc> 曲の間の線に書く</label>
-        </div>
         <p class="small" data-rows-note></p>
     </section>
 
     <!-- ===== その他の項目（会場のシートごとに違う。中身は JS が型紙の texts / choices から作る）===== -->
     <section class="card sheet-card" data-extras-card>
-        <h2 class="sheet-card__title">その他の項目</h2>
+        <h2 class="sheet-card__title" data-extras-title>その他の項目</h2>
         <div class="sheet-texts" data-texts></div>
         <!-- SE 有/なし などの○囲み -->
         <div class="sheet-choices" data-choices></div>
@@ -238,21 +241,22 @@ render_header('セッティングシート', 'lives');
          sticky-actions は app.css の共通部品（曲の編集画面の保存ボタンと同じ）。スマホでは下のタブバーの上に出る -->
     <div class="sticky-actions sheet-actions">
         <p class="small sheet-status" data-status role="status"></p>
+        <!-- プレビューの開閉。スマホでは PDF ボタンの左、PC では上（assets/setting_sheet.css の .sheet-actions） -->
+        <button type="button" class="btn sheet-preview-btn" data-preview-fab aria-expanded="false">
+            <?= icon('visibility') ?><span data-fab-text>プレビュー</span>
+        </button>
         <button type="button" class="btn btn--primary" data-make><?= icon('picture_as_pdf') ?> PDF を作る</button>
         <button type="button" class="btn" data-share hidden><?= icon('ios_share') ?> 共有</button>
     </div>
 </div>
 
 <!-- ===== プレビュー =====
-     左下のフローティングボタン（ほかのページの「← 前のページ」と同じ場所）で開閉する。
-     このページでは戻るボタンの代わりにこれを出す（戻るボタンは assets/setting_sheet.css で隠している） -->
-<div class="sheet-preview" data-preview hidden>
+     下に貼り付く出力ボタンの中の「プレビュー」で開閉する -->
+<!-- data-preview は app.js の曲の試聴ボタンの目印と同じ名前でぶつかるので data-sheet-preview にしている -->
+<div class="sheet-preview" data-sheet-preview hidden>
     <p class="sheet-preview__note small" data-preview-note role="status"></p>
     <canvas aria-label="完成した PDF のプレビュー"></canvas>
 </div>
-<button type="button" class="preview-fab" data-preview-fab aria-expanded="false">
-    <?= icon('visibility') ?><span data-fab-text>プレビュー</span>
-</button>
 
 <!-- PDF を作ったあとに「DB に登録しますか？」と聞く（JS が開く）。
      「はい」で下の隠しフォームに曲名を入れて songs_edit.php へ POST する（曲の紐付け・演奏者の確認はそちらの画面で） -->
@@ -274,5 +278,5 @@ render_header('セッティングシート', 'lives');
     <input type="hidden" name="from_sheet" value="1">
 </form>
 
-<script src="assets/setting_sheet.js?v=5" defer></script>
+<script src="assets/setting_sheet.js?v=25" defer></script>
 <?php render_footer();
