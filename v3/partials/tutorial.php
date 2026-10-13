@@ -12,10 +12,10 @@
 $slides = [
     ['img' => 'lives.jpg', 'title' => 'AbbeyRoad.online へようこそ',
      'text'  => 'アビーロードのライブの記録を、みんなで残していくサイトです。トップにはライブが新しい順に並んでいます。'],
-    ['img' => 'setlist.jpg', 'title' => 'バンドページでセットリストを登録',
-     'text'  => 'バンドページ右上の「曲を編集」から、演奏した曲を登録できます。曲ごとに、誰がコーラスしたか・楽器を持ち替えたか・出ていないかも残せます。'],
     ['img' => 'timetable.jpg', 'title' => 'ライブ・バンドを見る',
      'text'  => 'ライブを開くとタイムテーブル、バンドを開くとメンバーやセットリストが見られます。気に入ったバンドには ❤ を。'],
+    ['img' => 'setlist.jpg', 'title' => 'バンドページでセットリストを登録',
+     'text'  => 'バンドページ右上の「曲を編集」から、演奏した曲を登録できます。曲ごとに、誰がコーラスしたか・楽器を持ち替えたか・出ていないかも残せます。'],
     ['img' => 'member.jpg', 'title' => 'メンバーとプロフィール',
      'text'  => 'メンバーのページでは、その人が出たバンドや弾いた楽器がまとまっています。自分のプロフィールは右上のアカウントから編集できます。'],
     ['img' => 'stats.jpg', 'title' => '集計で振り返る',
@@ -28,7 +28,7 @@ $last = count($slides) - 1;
         <?php foreach ($slides as $i => $s): ?>
         <section class="tutorial__slide" data-tutorial-slide <?= $i === 0 ? '' : 'hidden' ?>>
             <div class="tutorial__img">
-                <img src="assets/tutorial/<?= h($s['img']) ?>?v=1" alt="" loading="lazy"><!-- 開くまで読み込まない（全ページに置いているので）。開いたら JS が全部読み込ませる -->
+                <img src="assets/tutorial/<?= h($s['img']) ?>?v=2" alt="" loading="lazy"><!-- 開くまで読み込まない（全ページに置いているので）。開いたら JS が全部読み込ませる -->
             </div>
             <div class="tutorial__text">
                 <p class="tutorial__step"><?= $i + 1 ?> / <?= $last + 1 ?></p>
