@@ -267,6 +267,8 @@ function spotify_normalize_track(array $t): ?array
         'album_title'  => mb_substr(trim((string)($album['name'] ?? '')), 0, 255),
         'artwork_url'  => $art,
         'release_year' => ($year >= 1900 && $year <= 2100) ? $year : null,
+        // 曲の長さ（ミリ秒）。セッティングシートの「分数」に使う（DB には保存しない）
+        'duration_ms'  => is_int($t['duration_ms'] ?? null) && $t['duration_ms'] > 0 ? $t['duration_ms'] : null,
     ];
 }
 

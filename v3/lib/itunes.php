@@ -214,6 +214,8 @@ function itunes_normalize_track(array $r): ?array
         'artwork_url'  => $art,
         'release_year' => ($year >= 1900 && $year <= 2100) ? $year : null,
         'preview_url'  => itunes_preview_url((string)($r['previewUrl'] ?? '')), // 30秒試聴（band.php の ▶。無い曲もある）
+        // 曲の長さ（ミリ秒）。セッティングシートの「分数」に使う（DB には保存しない）
+        'duration_ms'  => is_int($r['trackTimeMillis'] ?? null) && $r['trackTimeMillis'] > 0 ? $r['trackTimeMillis'] : null,
     ];
 }
 

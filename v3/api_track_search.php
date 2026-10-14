@@ -8,7 +8,8 @@
  *  リクエスト（GET）: ?q=曲名 アーティスト名
  *  レスポンス（JSON）: {"tracks": [{"key": "spotify:xxxx", "title": "...", "artist_name": "...",
  *                                   "album_title": "...", "artwork_url": "https://...",
- *                                   "preview": true（試聴あり）/ false（無し）/ null（わからない）}, ...]}
+ *                                   "preview": true（試聴あり）/ false（無し）/ null（わからない）,
+ *                                   "duration": 曲の長さ（秒）/ null}, ...]}
  *                     検索できなかったら {"error": "..."}
  *
  *  中身を読むだけで何も変えないので GET（CSRF 対策のトークンは要らない）。
@@ -51,4 +52,5 @@ echo json_encode(['tracks' => array_map(static fn($t, $preview) => [
     'album_title' => $t['album_title'],
     'artwork_url' => $t['artwork_url'],
     'preview'     => $preview,
+    'duration'    => isset($t['duration_ms']) ? (int)round($t['duration_ms'] / 1000) : null, // 曲の長さ（秒）。セッティングシートの分数用
 ], $tracks, $previews)], JSON_UNESCAPED_UNICODE);

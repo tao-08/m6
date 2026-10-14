@@ -80,15 +80,19 @@ $errors = [];
 //   送られてきた曲名を、いつものカードに並べて表示するだけ（曲の紐付け・演奏者を確認してから「保存」してもらう）
 $fromSheet = is_post() && ($_POST['from_sheet'] ?? '') === '1';
 $sheetTitles = [];
+$sheetTracks = []; // 曲名と同じ順の、シートで紐付けたサブスクの曲 [source, track_id]（無い・形がおかしい = null）
 if ($fromSheet) {
     verify_csrf();
-    foreach ((array)($_POST['titles'] ?? []) as $t) {
+    $postedTracks = (array)($_POST['tracks'] ?? []);
+    foreach ((array)($_POST['titles'] ?? []) as $i => $t) {
         $t = trim((string)$t);
         if ($t !== '') {
             $sheetTitles[] = mb_substr($t, 0, 100); // 100文字を超える分は切る（DB の列の長さ）
+            $sheetTracks[] = album_parse_key($postedTracks[$i] ?? null); // ブラウザから来たキーは形を確かめる
         }
     }
     $sheetTitles = array_slice($sheetTitles, 0, 15); // 曲は15曲まで（保存のときと同じ上限）
+    $sheetTracks = array_slice($sheetTracks, 0, 15);
 }
 if (is_post() && !$fromSheet) {
     verify_csrf();
@@ -242,12 +246,33 @@ if ($fromSheet) {
     foreach ($songs as $song) {
         $pool[$norm($song['title'])][] = $song;
     }
+    // シートで紐付けた曲の表示用の名前・ジャケット: track テーブルにあればそこから、無ければ Spotify / iTunes に聞く
+    //   （ブラウザから来た曲名や画像 URL は使わない。保存のときは今まで通りサーバーが取り直す）
+    $trackInfo = static function (array $key) use ($pdo): ?array {
+        $st = $pdo->prepare('SELECT title, artist_name, artwork_url FROM track WHERE source = ? AND track_id = ?');
+        $st->execute($key);
+        $row = $st->fetch();
+        if ($row) {
+            return $row;
+        }
+        $t = track_lookup($key[0], $key[1]);
+        return $t === null ? null : ['title' => $t['title'], 'artist_name' => $t['artist_name'], 'artwork_url' => $t['artwork_url']];
+    };
     $cards = [];
     foreach ($sheetTitles as $i => $title) {
         // array_shift: 配列の先頭を取り出す（同じ曲名の2回目には、2つ目の登録済みの曲を使う）
         $match = isset($pool[$norm($title)]) ? array_shift($pool[$norm($title)]) : null;
-        $cards[] = $match ?? array_merge($emptyCard, ['title' => $title]);
-        $cards[$i]['track_no'] = $i + 1;
+        $card = $match ?? array_merge($emptyCard, ['title' => $title]);
+        // シートで紐付けた曲があれば、それを優先する（登録済みの紐付けと違っても）
+        $key = $sheetTracks[$i] ?? null;
+        if ($key !== null && [$card['track_source'], $card['track_id']] !== $key && ($info = $trackInfo($key)) !== null) {
+            $card = array_merge($card, [
+                'track_source' => $key[0], 'track_id' => $key[1],
+                'track_title' => $info['title'], 'track_artist' => $info['artist_name'], 'artwork_url' => $info['artwork_url'],
+            ]);
+        }
+        $card['track_no'] = $i + 1;
+        $cards[] = $card;
     }
     foreach ($pool as $left) {
         foreach ($left as $song) {
