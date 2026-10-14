@@ -96,11 +96,21 @@ $templateKey = $autoKey ?? array_key_first(all_sheet_templates()); // ?? : 左�
 // ---- 5. JS に渡すデータ ----
 //   「初期値（DB の内容）」と「型紙」を1つの JSON にまとめて <script type="application/json"> に入れる。
 //   JS は JSON.parse() で読むだけ。HTML の属性にバラバラに書くより扱いやすい（業界でもよく使う渡し方）
+// 代表者氏名の最初の値: メンバーに紐付いていればメンバーの名前（本名に近い）、無ければアカウント名
+$me = current_user();
+$repName = $me['name'];
+if (!empty($me['member_id'])) {
+    $st = $pdo->prepare('SELECT name FROM member WHERE member_id = ?');
+    $st->execute([$me['member_id']]);
+    $repName = $st->fetchColumn() ?: $repName; // fetchColumn: 1列目の値だけ。行が無ければ false
+}
+
 $initial = [
     'band'    => $band['name'],
     'kana'    => '',
     'date'    => $band['held_on'] ? date('Y/n/j', strtotime($band['held_on'])) : '',
     'order'   => (string)$band['play_order'],
+    'rep'     => $repName,
     'members' => $members,
     // 曲名の配列。JS が1曲ずつの入力欄にする
     'songs'   => $songTitles,
@@ -177,8 +187,10 @@ render_header('セッティングシート作成', $blank ? 'tools' : 'lives');
             <label class="field sheet-grid__wide">バンド名 <input type="text" data-f="band" maxlength="100"></label>
             <!-- data-field: シートにその欄が無い会場では JS が隠す（例: サークル共通シートには出演日が無い） -->
             <label class="field sheet-grid__wide" data-field="kana">フリガナ <input type="text" data-f="kana" maxlength="100" placeholder="バンド名の読み（カタカナ）"></label>
-            <label class="field" data-field="date">出演日 <input type="text" data-f="date" maxlength="20" placeholder="2026/10/12"></label>
+            <!-- 年・月・日が印刷済みのシートでも、入力は出演日の欄1つ（PDF に書くときに数字を取り出す） -->
+            <label class="field" data-field="date year month day">出演日 <input type="text" data-f="date" maxlength="20" placeholder="2026/10/12"></label>
             <label class="field" data-field="order">出演順 <input type="text" data-f="order" maxlength="3" inputmode="numeric"></label>
+            <label class="field" data-field="rep">代表者氏名 <input type="text" data-f="rep" maxlength="50"></label>
         </div>
     </section>
 
@@ -295,5 +307,5 @@ render_header('セッティングシート作成', $blank ? 'tools' : 'lives');
 </form>
 <?php endif; ?>
 
-<script src="assets/setting_sheet.js?v=43" defer></script>
+<script src="assets/setting_sheet.js?v=44" defer></script>
 <?php render_footer();

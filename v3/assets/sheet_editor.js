@@ -35,8 +35,9 @@
     const zoomSelect = root.querySelector('[data-ed-zoom]');
     const SVG_NS = 'http://www.w3.org/2000/svg';
 
-    const FIELD_LABELS = { band: 'バンド名', kana: 'フリガナ', date: '日付', order: '出演順' };
-    const COL_LABELS = { part: 'パート', name: '氏名', mic: 'マイク', no: '曲順', title: '曲名', sound: '音響', light: '照明', request: '要望' };
+    // 1行の欄。year / month / day は「年」「月」が印刷済みのシート用（出演日から数字だけ書く）
+    const FIELD_LABELS = { band: 'バンド名', kana: 'フリガナ', date: '出演日', year: '年', month: '月', day: '日', order: '出演順', rep: '代表者氏名' };
+    const COL_LABELS = { part: 'パート', name: '氏名', part2: 'パート', name2: '氏名', mic: 'マイク', no: '曲順', title: '曲名', sound: '音響', light: '照明', request: '備考（音響・照明）' };
 
     let cfg = null;        // 今の型紙（JSON を読んだもの）。ドラッグはこの中の数字を直接書き換える
     let items = [];        // 画面に出す枠の一覧（buildItems で cfg から作る）
@@ -73,9 +74,12 @@
         })).sort((a, b) => a.get() - b.get());
     }
 
-    function rectItem(id, label, kind, box, remove) {
-        return { id, label, kind, type: 'rect', box, remove };
+    function rectItem(id, label, kind, box, remove, extra = {}) {
+        return { id, label, kind, type: 'rect', box, remove, ...extra };
     }
+
+    /** 選択肢のグループの見出し（型紙ごとの choice_labels → 共通の名前 → キーそのまま） */
+    const groupLabel = (g) => cfg?.choice_labels?.[g] || DATA.choiceLabels[g] || g;
 
     /** メンバー表・セットリスト → table */
     function tableItem(id, label, kind, t) {
@@ -126,14 +130,17 @@
                 const box = isBox(v) ? v : (v && isBox(v.box) ? v.box : null);
                 if (!box) continue;
                 const mark = v.mark === 'check' ? '（✓）' : '';
-                out.push(rectItem(`choices.${g}.${name}`, `${DATA.choiceLabels[g] || g}: ${name}${mark}`, 'choices', box, () => {
+                out.push(rectItem(`choices.${g}.${name}`, `${groupLabel(g)}: ${name}${mark}`, 'choices', box, () => {
                     delete cfg.choices[g][name];
-                    if (Object.keys(cfg.choices[g]).length === 0) delete cfg.choices[g];
-                }));
+                    if (Object.keys(cfg.choices[g]).length === 0) {
+                        delete cfg.choices[g];
+                        if (cfg.choice_labels) delete cfg.choice_labels[g];
+                    }
+                }, { choice: { g, name } }));
             }
         }
         (cfg.texts || []).forEach((t, i) => {
-            if (t && isBox(t.box)) out.push(rectItem(`texts.${i}`, t.label || t.key || `欄${i + 1}`, 'texts', t.box, () => cfg.texts.splice(i, 1)));
+            if (t && isBox(t.box)) out.push(rectItem(`texts.${i}`, t.label || t.key || `欄${i + 1}`, 'texts', t.box, () => cfg.texts.splice(i, 1), { text: t }));
         });
         return out;
     }
@@ -252,11 +259,17 @@
                 it.t.rows = n;
                 it.t.row_h = +((b - it.t.top) / n).toFixed(3);
             });
+            if (it.id === 'members' && it.t.mode !== 'slots') membersPairPanel(it.t);
         } else {
             const s = document.createElement('span');
             s.className = 'muted small';
             s.textContent = '線を1本ずつドラッグして合わせます。行・列を増やすときは JSON を書き換えてください。';
             panel.append(s);
+        }
+        if (it.id === 'setlist') setlistNotePanel(it.t);
+        if (it.choice) choicePanel(it.choice);
+        if (it.text) {
+            textInput('欄の名前（画面に出る）', it.text.label || '', (v) => { it.text.label = v; changed(true); });
         }
         if (it.remove) {
             const del = document.createElement('button');
@@ -272,6 +285,144 @@
         }
     }
 
+    /** パネルに文字の入力欄を1つ足す。打ち終わって確定したとき（change）だけ onSet を呼ぶ */
+    function textInput(label, value, onSet) {
+        const l = document.createElement('label');
+        l.className = 'ed-num ed-text';
+        l.textContent = label;
+        const inp = document.createElement('input');
+        inp.type = 'text';
+        inp.maxLength = 50;
+        inp.value = value;
+        inp.addEventListener('change', () => {
+            const v = inp.value.trim();
+            if (v !== '') onSet(v);
+        });
+        l.append(inp);
+        panel.append(l);
+    }
+
+    /**
+     * メンバー表: 右にもう1組（パート・氏名）ある表（4列）にする・1組に戻す。
+     * 足すときは、今の組と同じ幅で氏名列のすぐ右に置く（あとで線をドラッグして合わせる）
+     */
+    function membersPairPanel(t) {
+        if (Array.isArray(t.part2) && Array.isArray(t.name2)) {
+            panelButton('右の組（パート・氏名）を消す', () => {
+                delete t.part2;
+                delete t.name2;
+                changed(true);
+            });
+            return;
+        }
+        if (!Array.isArray(t.part) || !Array.isArray(t.name)) return;
+        panelButton('＋ 右にもう1組（パート・氏名）を足す', () => {
+            const pw2 = t.part[1] - t.part[0];
+            const nw = t.name[1] - t.name[0];
+            const x = t.name[1];
+            t.part2 = [r1(x), r1(x + pw2)];
+            t.name2 = [r1(x + pw2), r1(x + pw2 + nw)];
+            note.textContent = '右にもう1組置きました。左の組が埋まったら、右の組の上から書きます。線をドラッグして合わせてください。';
+            changed(true);
+        });
+    }
+
+    /**
+     * セットリスト: 「音響」「照明」の2列 ⇔ 1つの「備考」列（request）を切り替える。
+     * 備考列のシートには、音響と照明への要望を「音響 / 照明：…」とつないで書く（setting_sheet.js）
+     */
+    function setlistNotePanel(t) {
+        if (isCol(t.request)) {
+            panelButton('音響と照明を別の列に分ける', () => {
+                const [l, r] = t.request;
+                const mid = r1((l + r) / 2);
+                delete t.request;
+                t.sound = [l, mid];
+                t.light = [mid, r];
+                changed(true);
+            });
+            return;
+        }
+        if (!isCol(t.sound) || !isCol(t.light)) return;
+        panelButton('音響・照明を1つの「備考」列にする', () => {
+            const l = Math.min(t.sound[0], t.light[0]);
+            const r = Math.max(t.sound[1], t.light[1]);
+            delete t.sound;
+            delete t.light;
+            t.request = [l, r];
+            note.textContent = '音響と照明を1つの「備考」列にしました。両方の要望があるときは「音響 / 照明：…」とつないで書きます。';
+            changed(true);
+        });
+    }
+
+    /** パネルにボタンを1つ足す */
+    function panelButton(text, onClick) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'btn btn--ghost btn--sm';
+        b.textContent = text;
+        b.addEventListener('click', onClick);
+        panel.append(b);
+    }
+
+    /** 選択肢の設定: グループの見出し・選択肢の名前・○/✓・このグループに選択肢を足す */
+    function choicePanel({ g, name }) {
+        textInput('グループの見出し', groupLabel(g), (v) => {
+            cfg.choice_labels = { ...(cfg.choice_labels || {}), [g]: v };
+            changed(true);
+        });
+        textInput('選択肢の名前', name, (v) => {
+            if (v === name) return;
+            if (v in cfg.choices[g]) {
+                note.textContent = `「${v}」はこのグループにもうあります。`;
+                drawPanel();
+                return;
+            }
+            renameOption(g, name, v);
+            selectedId = `choices.${g}.${v}`;
+            changed(true);
+        });
+        const spec = cfg.choices[g][name];
+        const isCheck = !Array.isArray(spec) && spec.mark === 'check';
+        panelButton(isCheck ? '○で囲む形にする' : '✓を書く形にする', () => {
+            const box = Array.isArray(spec) ? spec : spec.box;
+            cfg.choices[g][name] = isCheck ? box : { box, mark: 'check' };
+            changed(true);
+        });
+        panelButton('＋ このグループに選択肢を足す', () => {
+            // 最後の選択肢の箱の右に、同じ大きさで置く
+            const boxes = Object.values(cfg.choices[g]).map((v) => (Array.isArray(v) ? v : v.box));
+            const [x0, y0, x1, y1] = boxes[boxes.length - 1];
+            const w = x1 - x0;
+            let n = boxes.length + 1;
+            while (`選択肢${n}` in cfg.choices[g]) n++;
+            const newName = `選択肢${n}`;
+            const box = [r1(x1 + 6), y0, r1(x1 + 6 + w), y1];
+            cfg.choices[g][newName] = isCheck ? { box, mark: 'check' } : box;
+            selectedId = `choices.${g}.${newName}`;
+            changed(true);
+        });
+    }
+
+    /**
+     * 選択肢の名前を変える。並び順はそのまま（画面のボタンの順になるので）。
+     * show_if（この選択のときだけ見せる）・choice_notes（選んだときの説明）で前の名前を使っている所も直す
+     */
+    function renameOption(g, from, to) {
+        const swap = (list) => list.map((x) => (x === from ? to : x));
+        cfg.choices[g] = Object.fromEntries(Object.entries(cfg.choices[g]).map(([k, v]) => [k === from ? to : k, v]));
+        for (const cond of Object.values(cfg.show_if || {})) {
+            if (Array.isArray(cond) && cond[0] === g && Array.isArray(cond[1])) cond[1] = swap(cond[1]);
+        }
+        for (const t of cfg.texts || []) {
+            if (Array.isArray(t.show_if) && t.show_if[0] === g && Array.isArray(t.show_if[1])) t.show_if[1] = swap(t.show_if[1]);
+        }
+        const notes = cfg.choice_notes?.[g];
+        if (notes && from in notes) {
+            cfg.choice_notes[g] = Object.fromEntries(Object.entries(notes).map(([k, v]) => [k === from ? to : k, v]));
+        }
+    }
+
     function select(id) {
         selectedId = id;
         draw();
@@ -281,6 +432,7 @@
     function changed(rebuild = false) {
         textarea.value = JSON.stringify(cfg, null, 2);
         if (rebuild) items = buildItems();
+        if (rebuild) fillAddMenu();
         draw();
     }
 
@@ -373,6 +525,7 @@
         if (text === '') {
             cfg = null;
             items = [];
+            fillAddMenu();
             note.textContent = '「見本にする型紙」を選んで座標を入れると、枠が出ます。';
             draw();
             return;
@@ -383,6 +536,7 @@
             cfg = v;
             items = buildItems();
             if (!items.some((x) => x.id === selectedId)) selectedId = null;
+            fillAddMenu();
             note.textContent = '';
         } catch (err) {
             note.textContent = `JSON の書き方が間違っています（${err.message}）。直すまで枠は前のままです。`;
@@ -394,17 +548,61 @@
         timer = setTimeout(readJson, 400); // 打つたびに読むと重いので、手が止まってから
     });
 
-    // 「自由記入欄を足す」: ページの真ん中あたりに新しい欄を置く
-    root.querySelector('[data-ed-add-text]').addEventListener('click', () => {
+    /* -----------------------------------------------------------------
+     *  「＋ 枠を足す…」: 選んだものをページの真ん中あたりに置く
+     *    field:キー … 1行の欄（バンド名・年・月・日・代表者氏名 など。型紙にまだ無いものだけ選べる）
+     *    text       … 自由記入欄
+     *    choice     … 選択肢のグループ（「あり」「なし」の2つを横に並べて置く）
+     * ----------------------------------------------------------------- */
+    const addSelect = root.querySelector('[data-ed-add]');
+
+    /** プルダウンの中身を作り直す（もうある欄は出さない） */
+    function fillAddMenu() {
+        addSelect.textContent = '';
+        const opt = (value, text) => addSelect.append(new Option(text, value));
+        opt('', '＋ 枠を足す…');
+        for (const [k, label] of Object.entries(FIELD_LABELS)) {
+            if (!cfg?.fields?.[k]) opt(`field:${k}`, label);
+        }
+        opt('text', '自由記入欄');
+        opt('choice', '選択肢のグループ（○で囲む・✓を書く）');
+    }
+
+    addSelect.addEventListener('change', () => {
+        const what = addSelect.value;
+        if (!what) return;
         if (!cfg) cfg = { fields: {}, members: {}, stage: [0, 0, 100, 100], setlist: {} };
-        cfg.texts = Array.isArray(cfg.texts) ? cfg.texts : [];
-        let n = cfg.texts.length + 1;
-        while (cfg.texts.some((t) => t.key === `text${n}`)) n++;
         const cx = pw / 2, cy = ph / 2;
-        cfg.texts.push({ key: `text${n}`, label: `新しい欄${n}`, box: [r1(cx - 60), r1(cy - 8), r1(cx + 60), r1(cy + 8)], size: 10 });
-        selectedId = `texts.${cfg.texts.length - 1}`;
+        if (what.startsWith('field:')) {
+            const k = what.slice(6);
+            const narrow = ['year', 'month', 'day', 'order'].includes(k); // 数字だけの欄は小さく
+            const hw = narrow ? 15 : 80;
+            cfg.fields = cfg.fields && typeof cfg.fields === 'object' ? cfg.fields : {};
+            cfg.fields[k] = { box: [r1(cx - hw), r1(cy - 7), r1(cx + hw), r1(cy + 7)], size: 11, align: narrow ? 'center' : 'left' };
+            selectedId = `fields.${k}`;
+            note.textContent = `「${FIELD_LABELS[k]}」をページの真ん中に置きました。ドラッグで合わせてください。`;
+        } else if (what === 'text') {
+            cfg.texts = Array.isArray(cfg.texts) ? cfg.texts : [];
+            let n = cfg.texts.length + 1;
+            while (cfg.texts.some((t) => t.key === `text${n}`)) n++;
+            cfg.texts.push({ key: `text${n}`, label: `新しい欄${n}`, box: [r1(cx - 60), r1(cy - 8), r1(cx + 60), r1(cy + 8)], size: 10 });
+            selectedId = `texts.${cfg.texts.length - 1}`;
+            note.textContent = `「新しい欄${n}」をページの真ん中に置きました。名前は下で直せます。`;
+        } else if (what === 'choice') {
+            cfg.choices = cfg.choices && typeof cfg.choices === 'object' && !Array.isArray(cfg.choices) ? cfg.choices : {};
+            let n = 1;
+            while (`c${n}` in cfg.choices) n++;
+            const g = `c${n}`;
+            cfg.choices[g] = {
+                'あり': [r1(cx - 32), r1(cy - 7), r1(cx - 4), r1(cy + 7)],
+                'なし': [r1(cx + 4), r1(cy - 7), r1(cx + 32), r1(cy + 7)],
+            };
+            cfg.choice_labels = { ...(cfg.choice_labels || {}), [g]: `新しい選択肢${n}` };
+            selectedId = `choices.${g}.あり`;
+            note.textContent = '選択肢のグループを置きました。見出し・選択肢の名前は下で直せます。印刷されている文字にそれぞれの枠を重ねてください。';
+        }
+        addSelect.value = '';
         changed(true);
-        note.textContent = `「新しい欄${n}」をページの真ん中に置きました。名前（label）は JSON で直してください。`;
     });
 
     /* -----------------------------------------------------------------

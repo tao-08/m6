@@ -26,6 +26,7 @@
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/setting_sheet.php';
+require_once __DIR__ . '/lib/repository.php'; // render_suggest_datalist（会場名の入力候補）
 $user = require_admin();
 
 const SHEET_PDF_MAX_BYTES = 5 * 1024 * 1024; // 5MB。会場のシートは1〜2ページなので十分
@@ -300,12 +301,9 @@ render_header('セッティングシートの型紙', 'tools');
         </label>
         <div class="field" data-venue-picker>
             <span>自動で選ぶ会場（このライブ会場のバンドは、この型紙を最初から選ぶ。いくつでも）</span>
-            <select data-venue-select aria-label="会場を選ぶ">
-                <option value="">会場を選んで追加…</option>
-                <?php foreach ($venues as $vid => $vname): ?>
-                    <option value="<?= (int)$vid ?>"><?= h($vname) ?></option>
-                <?php endforeach; ?>
-            </select>
+            <!-- 会場名を打つと候補が出る（app.js の setupSuggest）。候補を選ぶと下にチップが付く -->
+            <input type="text" data-venue-input data-suggest-list="venue-names" autocomplete="off" placeholder="会場名を打って選ぶ…" aria-label="会場を選ぶ">
+            <?= render_suggest_datalist('venue-names', array_values($venues)) ?>
             <!-- 選んだ会場。× で外す。送るのは中の hidden の venue_ids[] -->
             <span class="chip-list" data-venue-chips>
                 <?php foreach ($form['venue_ids'] as $vid): ?>
@@ -342,7 +340,8 @@ render_header('セッティングシートの型紙', 'tools');
                         <option value="3">3 倍</option>
                     </select>
                 </label>
-                <button type="button" class="btn btn--ghost btn--sm" data-ed-add-text>＋ 自由記入欄を足す</button>
+                <!-- 中身は assets/sheet_editor.js の fillAddMenu() が作る（型紙にまだ無い欄だけ） -->
+                <select data-ed-add aria-label="枠を足す"><option value="">＋ 枠を足す…</option></select>
                 <span class="muted small sheet-ed__cursor" data-ed-cursor></span>
             </div>
             <p class="muted small" data-ed-note></p>
@@ -378,27 +377,36 @@ render_header('セッティングシートの型紙', 'tools');
 
 <script type="application/json" id="sheet-samples"><?= json_encode($samples, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP) ?></script>
 <script>
-// 会場のプルダウン: 選ぶと下にチップを足す（同じ会場は2回足さない）・× で外す
+// 会場の入力欄: 候補から選ぶと下にチップを足す（同じ会場は2回足さない）・× で外す
 (() => {
     const picker = document.querySelector('[data-venue-picker]');
-    const select = picker.querySelector('[data-venue-select]');
+    const box = picker.querySelector('[data-venue-input]');
     const chips = picker.querySelector('[data-venue-chips]');
+    const VENUES = <?= json_encode(array_flip($venues), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_FORCE_OBJECT) ?>; // 会場名 → ID
     const touched = () => picker.closest('form').dispatchEvent(new Event('input', { bubbles: true })); // 「保存していない変更」の印
-    select.addEventListener('change', () => {
-        const opt = select.selectedOptions[0];
-        if (opt && opt.value && !chips.querySelector(`input[value="${CSS.escape(opt.value)}"]`)) {
+    const add = () => {
+        const name = box.value.trim();
+        if (!Object.hasOwn(VENUES, name)) return false; // 一覧に無い名前（打ちかけ）は足さない
+        const id = String(VENUES[name]);
+        if (!chips.querySelector(`input[value="${CSS.escape(id)}"]`)) {
             const chip = document.createElement('span');
             chip.className = 'chip';
-            const input = Object.assign(document.createElement('input'), { type: 'hidden', name: 'venue_ids[]', value: opt.value });
+            const input = Object.assign(document.createElement('input'), { type: 'hidden', name: 'venue_ids[]', value: id });
             const x = Object.assign(document.createElement('button'), { type: 'button', className: 'chip__x', textContent: '×' });
             x.dataset.venueRemove = '';
             x.setAttribute('aria-label', '外す');
-            chip.append(input, opt.textContent, ' ', x); // 文字として入れるので、会場名に < があっても大丈夫
+            chip.append(input, name, ' ', x); // 文字として入れるので、会場名に < があっても大丈夫
             chips.append(chip);
             touched();
         }
-        select.value = '';
-    });
+        box.value = '';
+        return true;
+    };
+    // 候補を選んだとき: app.js が値を入れて input イベントを出す（isTrusted が false = 人が打った文字ではない）。
+    // 打っている途中で会場名とぴったり同じになっても足さない（「ROKS」と「下高井戸G-ROKS」のように、長い名前を打っている途中かもしれないので）
+    box.addEventListener('input', (e) => { if (!e.isTrusted) add(); });
+    // 候補を使わずに最後まで打って、欄から出たとき
+    box.addEventListener('change', add);
     chips.addEventListener('click', (e) => {
         if (!e.target.closest('[data-venue-remove]')) return;
         e.target.closest('.chip').remove();
@@ -431,5 +439,5 @@ $editorData = [
 ];
 ?>
 <script type="application/json" id="sheet-editor-data"><?= json_encode($editorData, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP) ?></script>
-<script src="assets/sheet_editor.js?v=2" defer></script>
+<script src="assets/sheet_editor.js?v=3" defer></script>
 <?php render_footer();

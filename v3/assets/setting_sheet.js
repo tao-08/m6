@@ -74,6 +74,7 @@
             kana: ini.kana,
             date: ini.date,
             order: ini.order,
+            rep: ini.rep || '',
             // [...配列] でコピーしてから map。元の DATA を書き換えないため
             members: ini.members.map((m) => ({ part: m.part, name: m.name })),
             // セットリスト。1曲 = { id, mc: false, title, sound, light } / MC = { id, mc: true }
@@ -268,7 +269,13 @@
         }
     }
 
-    /** メンバー表の行を作る（型紙の行数ぶん） */
+    /**
+     * メンバー表の「組」（パート列と氏名列の左右）。part2 / name2 があれば、表の右半分にもう1組ある（4列の表）。
+     * 左の組を上から埋めて、入り切らなければ右の組に続ける。書ける人数 = 行数 × 組の数
+     */
+    const memberCols = (mt) => [[mt.part, mt.name], ...(Array.isArray(mt.part2) && Array.isArray(mt.name2) ? [[mt.part2, mt.name2]] : [])];
+
+    /** メンバー表の行を作る（型紙に書ける人数ぶん） */
     function renderMembers() {
         const box = $('[data-members]');
         box.textContent = ''; // 中身を空にする
@@ -279,7 +286,7 @@
             return;
         }
         hint.textContent = 'パートは Vo / Gt / Ba / Dr / Key などを入力';
-        const rows = tpl().members.rows;
+        const rows = tpl().members.rows * memberCols(tpl().members).length; // 4列の表なら行数の2倍
         for (let i = 0; i < rows; i++) {
             if (!state.members[i]) {
                 state.members[i] = { part: '', name: '' }; // 足りない行は空で埋める
@@ -318,6 +325,21 @@
         return Object.values(state.slots)
             .filter((v) => v.mic && v.name.trim() !== '')
             .reduce((sum, v) => sum + v.name.split('・').length, 0); // reduce: 配列を1つの値（合計）にまとめる
+    }
+
+    /**
+     * PDF の1行の欄に書く値。year / month / day は出演日の欄（state.date）から数字だけ取り出す
+     *   「2026/10/12」「10/12」「10月12日」→ 月 10・日 12。年は4桁の数字があるときだけ
+     */
+    function fieldValue(key) {
+        if (key === 'year') {
+            return (state.date || '').match(/(\d{4})/)?.[1] ?? '';
+        }
+        if (key === 'month' || key === 'day') {
+            const m = (state.date || '').match(/(\d{1,2})\D+(\d{1,2})\D*$/);
+            return m ? String(+m[key === 'month' ? 1 : 2]) : ''; // +: 「01」→ 1
+        }
+        return state[key] ?? '';
     }
 
     /** 自由記入欄の値。空で auto がある欄は自動の値を使う */
@@ -406,7 +428,8 @@
     /** 型紙に無い欄を隠す（出演日・その他の項目 など） */
     function renderTemplateUi() {
         const t = tpl();
-        $$('[data-field]').forEach((el) => { el.hidden = !(el.dataset.field in t.fields); });
+        // data-field="date year month day" のように空白区切りで複数書ける。どれか1つでも型紙にあれば出す
+        $$('[data-field]').forEach((el) => { el.hidden = !el.dataset.field.split(' ').some((k) => k in t.fields); });
         const hasExtras = (t.texts || []).length > 0 || Object.keys(t.choices || {}).length > 0;
         $('[data-extras-card]').hidden = !hasExtras;
         $('[data-extras-title]').textContent = t.extras_title || 'その他の項目';
@@ -435,7 +458,7 @@
             wrap.className = 'sheet-choice' + (entering ? ' is-entering' : '');
             const title = document.createElement('span');
             title.className = 'sheet-choice__title';
-            title.textContent = DATA.choiceLabels[group] || group;
+            title.textContent = tpl().choice_labels?.[group] || DATA.choiceLabels[group] || group; // 型紙ごとの見出しが先
             wrap.append(title);
             // どのボタンも押されていない = どれも囲まない（未選択）。押されているボタンをもう一度押すと未選択に戻る
             for (const opt of Object.keys(options)) {
@@ -1712,7 +1735,7 @@
 
         // ---- 1. バンド名・フリガナ・出演日・出演順 ----
         for (const [key, f] of Object.entries(t.fields)) {
-            drawInBox(state[key], f.box, { size: f.size, min: 5 });
+            drawInBox(fieldValue(key), f.box, { size: f.size, min: 5 });
         }
 
         // ---- 2. メンバー ----
@@ -1734,12 +1757,14 @@
         } else {
             state.members
                 .filter((m) => m.name.trim() !== '' || m.part.trim() !== '')
-                .slice(0, mt.rows) // 行数を超えた人は書かない
+                .slice(0, mt.rows * memberCols(mt).length) // 書ける人数を超えた人は書かない
                 .forEach((m, i) => {
-                    const top = mt.top + mt.row_h * i;
+                    // 左の組を上から埋めて、続きは右の組の上から
+                    const [partCol, nameCol] = memberCols(mt)[Math.floor(i / mt.rows)];
+                    const top = mt.top + mt.row_h * (i % mt.rows);
                     const bottom = top + mt.row_h;
-                    drawInBox(m.part, [mt.part[0], top, mt.part[1], bottom], { size: 9, align: 'center', pad: 1 });
-                    drawInBox(m.name, [mt.name[0] + 3, top, mt.name[1], bottom], { size: 11 });
+                    drawInBox(m.part, [partCol[0], top, partCol[1], bottom], { size: 9, align: 'center', pad: 1 });
+                    drawInBox(m.name, [nameCol[0] + 3, top, nameCol[1], bottom], { size: 11 });
                 });
         }
 
