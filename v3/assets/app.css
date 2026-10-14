@@ -840,9 +840,9 @@ body.is-row-dragging, body.is-row-dragging * { cursor: grabbing !important; user
 .tag--delete { color: var(--danger); background: var(--danger-bg); }
 .tag--revive { color: var(--ok); background: var(--ok-bg); }
 .history-diff { table-layout: fixed; } /* 「今」と「戻した後」を同じ幅に */
-.history-diff thead th:first-child { width: 8em; }
-.history-diff th[scope="row"] { white-space: nowrap; }
-.history-diff td { overflow-wrap: anywhere; }
+.history-diff thead th:first-child { width: 10em; }
+/* .table の nowrap を打ち消して折り返す（列の幅が決まっているので、折り返さないと右の列にかぶる） */
+.table.history-diff th, .table.history-diff td { white-space: normal; overflow-wrap: anywhere; line-break: strict; } /* strict: 「ー」で始まる行を作らない */
 .history-diff__now { background: var(--danger-bg); }
 .history-diff__after { background: var(--ok-bg); }
 .history-confirm { margin-top: 16px; justify-content: flex-end; }
@@ -1658,6 +1658,7 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
   .history__when { grid-column: 1 / -1; display: flex; gap: 8px; align-items: center; }
   .history__when .tag { margin-top: 0; } /* スマホは日付と横並びなので、上の余白は要らない */
   .table td, .table th { padding: 10px 12px; }
+  .history-diff thead th:first-child { width: 7.5em; } /* スマホでは「今」「戻した後」に幅を回す */
   /* アーティスト一覧・メンバー一覧（.table--list）: スマホは幅が足りないので、大事な数字（演奏回数・出演）が画面に入るよう余白を詰める */
   .table-card:has(.table--list) { margin-inline: -10px; } /* 表の外側: 画面の端から 16px → 6px */
   .table--list td, .table--list th { padding-inline: 6px; }  /* 列と列のあいだ: 24px → 12px（名前 ↔ 回数・入学） */
