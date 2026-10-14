@@ -556,7 +556,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .split aside:has(.partner-box.is-open) { position: static; }
 .history { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
 /* 出演履歴の年度見出し（年度が変わるところだけ）と、上の検索・年度スロット・並び替えボタン */
-.history-year + .history-year { margin-top: 22px; }
+.history-year:not(.is-inst-hidden) ~ .history-year { margin-top: 22px; } /* 前に見えている年度があるときだけ（楽器フィルターで先頭の年度が隠れても余白が残らない） */
 .history__year { font-size: 18px; font-weight: 900; letter-spacing: -.02em; margin: 0 0 12px; /* 下の余白: 右に重ねた並び替えボタンは見出しより 3px ほどはみ出すので、カードとの間は 9px ほど */ display: flex; align-items: baseline; gap: 3px; }
 .history__year small { font-size: 12px; color: var(--muted); font-weight: 700; }
 .history-toolbar { margin-bottom: 14px; }
