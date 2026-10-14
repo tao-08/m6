@@ -308,6 +308,8 @@ body:has([data-tutorial-auto]) .toasts { display: none; }
 @keyframes inst-menu-in { from { opacity: 0; transform: translateY(-4px) scale(.96); } }
 @media (prefers-reduced-motion: reduce) { .inst-filter__menu { animation: none; } }
 .inst-filter__menu button { background: none; border: 0; padding: 2px; cursor: pointer; }
+.inst-filter__menu .tori-badge { font-size: 15px; } /* 🐔と解除はラベルより小さく見えるので少し大きく */
+.inst-filter__menu [data-inst=""] .icon { font-size: 20px; vertical-align: 0; }
 .sorted-list--live .sorted-list__btn { top: 17.5px; }     /* ライブ一覧の見出し: 高さ 35px の半分 */
 
 /* 年度スロット（ライブ一覧）: 真ん中の1段（26px）が選択中。上下に12pxずつ前後の年度の文字が半分ほど覗いて「回せる」とわかる */

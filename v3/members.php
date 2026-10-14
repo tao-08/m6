@@ -297,7 +297,7 @@ render_header('メンバー', 'members');
                 <th class="num" data-rank-head><?= $showRank ? '#' : '' ?></th>
                 <?= sort_button_th('name', '名前', $sort, $dir, SORT_COLUMNS['name']) ?>
                 <?= sort_button_th('entry', '入学', $sort, $dir, SORT_COLUMNS['entry'], 'num') ?>
-                <th><span class="th-inst"><?= inst_filter($instParts, '.table--members', false, '.member-row') ?>担当楽器</span></th>
+                <th><span class="th-inst">担当楽器<?= inst_filter($instParts, '.table--members', false, '.member-row') ?></span></th>
                 <th>マイアルバム Top5</th>
                 <?php // 右側の列（出演・ライブ・トリ）の並べ替えを解除したときは、再読み込みしても表を右端に置いておく（?scroll=end） ?>
                 <?= sort_button_th('bands', '出演', $sort, $dir, SORT_COLUMNS['bands'], 'num', ' data-sort-clear-scroll') ?>
