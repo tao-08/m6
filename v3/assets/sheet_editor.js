@@ -342,8 +342,10 @@
         if (it.remove) {
             const del = document.createElement('button');
             del.type = 'button';
-            del.className = 'btn btn--ghost btn--sm';
-            del.textContent = 'この枠を消す';
+            del.className = 'btn btn--ghost btn--danger btn--sm';
+            del.title = 'この枠を消す';
+            del.setAttribute('aria-label', 'この枠を消す');
+            del.innerHTML = '<span class="icon" aria-hidden="true">delete</span>';
             del.addEventListener('click', () => {
                 it.remove();
                 selectedId = null;
@@ -351,14 +353,16 @@
             });
             panel.append(del);
         }
+        // ⚙ 詳細設定は消すボタンの右（中身が無い枠では出さない）
+        panel.append(advBtn);
         syncAdv();
     }
 
-    /** 詳細設定の中身が無ければ ⚙ を押せなくして閉じる。開いていたら、別の枠を選んでも開いたまま */
+    /** 詳細設定の中身が無ければ ⚙ を隠して閉じる。開いていたら、別の枠を選んでも開いたまま */
     let advOpen = false;
     function syncAdv() {
         const has = advBox.childElementCount > 0;
-        advBtn.disabled = !has;
+        advBtn.hidden = !has;
         advBox.hidden = !(has && advOpen);
         advBtn.setAttribute('aria-expanded', String(has && advOpen));
     }
@@ -615,23 +619,44 @@
 
     /**
      * セットリストの分数（time）と、曲ごとの追加の列（cols: コーラス/CD・備考 など）
-     *   新しい列は、曲名の列の右端を縮めて、そこに置く（ほかの列の線は動かさない）
+     *   新しい列は、選んだ列（曲名・音響・照明・備考・分数）の右端を縮めて、そこに置く（ほかの列の線は動かさない）
      *   「分数と同じ列」に足すと、その列の行を上下に等分して上に積む（クラブ・ドロシーの「コーラス/CD トラック」と「分数」）
      */
     function setlistColsPanel(t) {
         if (!isCol(t.title)) return;
-        // 曲名の列の右端から w pt を切り取って新しい列にする。曲名が狭すぎるときは足さない
-        const takeFromTitle = (w) => {
-            const [l, r] = [Math.min(...t.title), Math.max(...t.title)];
-            if (r - l < w + 40) {
-                note.textContent = '曲名の列が狭すぎて足せません。先に曲名の列を広げてください。';
+        // 列（key）の右端から w pt（列の半分まで）を切り取って新しい列にする。狭すぎる列からは取らない。
+        // 分数と同じ左右に積んである列も一緒に縮める（積んだ形をくずさない）
+        const takeFrom = (key, w) => {
+            const [l, r] = [Math.min(...t[key]), Math.max(...t[key])];
+            if (r - l < 20) {
+                note.textContent = `「${COL_LABELS[key]}」の列が狭すぎて足せません。先に広げてください。`;
                 return null;
             }
-            t.title = [l, r1(r - w)];
-            return [r1(r - w), r];
+            const cut = r1(r - Math.min(w, (r - l) / 2));
+            const same = (c) => Math.abs(Math.min(...c) - l) <= 1 && Math.abs(Math.max(...c) - r) <= 1;
+            for (const c of [t[key], ...(key === 'time' ? extraCols(t).map((x) => x.col).filter(same) : [])]) {
+                c[c[1] >= c[0] ? 1 : 0] = cut;
+            }
+            return [cut, r];
+        };
+        // 消した列の幅を、隣の列（ふつうは切り取った元の曲名）に返す。線が残らないように。
+        // 同じ左右に積んである列がまだあれば、その列が使うので返さない
+        const giveBack = (col) => {
+            const near = (a, b) => Math.abs(a - b) <= 1;
+            const others = [...Object.keys(t).filter((k) => isCol(t[k]) && k !== 'lines').map((k) => t[k]), ...extraCols(t).map((c) => c.col)].filter((c) => c !== col);
+            const [l, r] = [Math.min(...col), Math.max(...col)];
+            if (others.some((c) => near(Math.min(...c), l) && near(Math.max(...c), r))) return;
+            // 隣が積んである列（分数とその上の段）なら、積んだ列ぜんぶに返す
+            const left = others.filter((c) => near(Math.max(...c), l));
+            if (left.length) {
+                left.forEach((c) => { c[c[1] >= c[0] ? 1 : 0] = r; });
+                return;
+            }
+            others.filter((c) => near(Math.min(...c), r)).forEach((c) => { c[c[0] <= c[1] ? 0 : 1] = l; });
         };
         if (isCol(t.time)) {
             panelButton('分数の列を消す', () => {
+                giveBack(t.time);
                 delete t.time;
                 delete t.time_colon;
                 changed(true);
@@ -644,7 +669,7 @@
             });
         } else {
             panelButton('＋ 分数の列を足す', () => {
-                const col = takeFromTitle(40);
+                const col = takeFrom('title', 40);
                 if (!col) return;
                 t.time = col;
                 note.textContent = '曲名の右に分数の列を足しました。線をドラッグして合わせてください。';
@@ -659,21 +684,24 @@
                 changed(true);
             });
             panelButton(`「${c.label || c.key}」の列を消す`, () => {
+                giveBack(c.col);
                 t.cols = extraCols(t).filter((x) => x !== c);
                 if (t.cols.length === 0) delete t.cols;
                 changed(true);
             });
         }
 
-        // 列を足す: 名前と置き方（新しい列 / 分数と同じ列）
+        // 列を足す: 名前と置き方（○○の右 / 分数と同じ列）
         const wrap = document.createElement('span');
         wrap.className = 'ed-num ed-text';
         const name = Object.assign(document.createElement('input'), { type: 'text', maxLength: 30, placeholder: '列の名前（例: コーラス/CD）' });
         name.setAttribute('aria-label', '足す列の名前');
         const where = document.createElement('select');
         where.setAttribute('aria-label', '足す列の置き方');
-        where.append(new Option('新しい列（曲名の右）', 'new'));
-        if (isCol(t.time)) where.append(new Option('分数と同じ列（上下に分ける）', 'time'));
+        for (const k of ['title', 'sound', 'light', 'request', 'time']) {
+            if (isCol(t[k])) where.append(new Option(`${COL_LABELS[k]}の右`, k));
+        }
+        if (isCol(t.time)) where.append(new Option('分数と同じ列（上下に分ける）', 'stack'));
         const add = Object.assign(document.createElement('button'), { type: 'button', className: 'btn btn--ghost btn--sm', textContent: '＋ 列を足す' });
         add.addEventListener('click', () => {
             const label = name.value.trim();
@@ -681,14 +709,15 @@
                 name.focus();
                 return;
             }
-            const col = where.value === 'time' && isCol(t.time) ? [...t.time] : takeFromTitle(50);
+            const stack = where.value === 'stack' && isCol(t.time);
+            const col = stack ? [...t.time] : isCol(t[where.value]) ? takeFrom(where.value, 50) : null;
             if (!col) return;
             // キーは型紙の中で重ならない名前（c1, c2 …）。作成画面の入力はこのキーで保存する
             const used = new Set(extraCols(t).map((c) => c.key));
             let n = 1;
             while (used.has(`c${n}`)) n++;
             t.cols = [...extraCols(t), { key: `c${n}`, label, col }];
-            note.textContent = where.value === 'time' ? `「${label}」を分数の上の段に足しました。` : `曲名の右に「${label}」の列を足しました。線をドラッグして合わせてください。`;
+            note.textContent = stack ? `「${label}」を分数の上の段に足しました。` : `${COL_LABELS[where.value]}の右に「${label}」の列を足しました。線をドラッグして合わせてください。`;
             changed(true);
         });
         wrap.append(name, where, add);

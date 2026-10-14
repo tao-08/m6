@@ -377,13 +377,14 @@ render_header('セッティングシート編集', 'tools');
                 <label class="ed-num" title="文字の大きさ（倍率）"><?= icon('format_size') ?>
                     <input type="number" data-ed-font step="0.1" min="0.3" max="5" value="1" aria-label="文字の大きさ（倍率）">
                 </label>
-                <!-- 詳細設定: 選んでいる枠ごとの設定（列を足す・印刷済みのもの など）。中身は sheet_editor.js の drawPanel() -->
-                <button type="button" class="btn btn--ghost btn--sm" data-ed-adv aria-expanded="false" title="詳細設定" disabled><?= icon('tune') ?> 詳細設定</button>
                 <span class="muted small sheet-ed__cursor" data-ed-cursor></span>
             </div>
             <p class="muted small" data-ed-note></p>
             <div class="sheet-ed__list" data-ed-list></div>
-            <div class="sheet-ed__panel" data-ed-panel></div>
+            <div class="sheet-ed__panel" data-ed-panel>
+                <!-- 詳細設定: 選んでいる枠ごとの設定（列を足す・印刷済みのもの など）。sheet_editor.js の drawPanel() が消すボタンの右に置き、中身を作る -->
+                <button type="button" class="btn btn--ghost btn--sm" data-ed-adv aria-expanded="false" title="詳細設定" aria-label="詳細設定" hidden><?= icon('tune') ?></button>
+            </div>
             <div class="ed-adv" data-ed-adv-box hidden></div>
             <div class="sheet-ed__scroll">
                 <div class="sheet-ed__wrap" data-ed-wrap>
@@ -503,5 +504,5 @@ $editorData = [
 ];
 ?>
 <script type="application/json" id="sheet-editor-data"><?= json_encode($editorData, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP) ?></script>
-<script src="assets/sheet_editor.js?v=18" defer></script>
+<script src="assets/sheet_editor.js?v=21" defer></script>
 <?php render_footer();
