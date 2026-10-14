@@ -512,6 +512,8 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .th-sort .sortable__arrow { display: inline-block; width: 1em; }
 /* ユーザー管理: 入学年（左端）と名前の間を詰める */
 .table--users th:first-child, .table--users td:first-child { padding-right: 4px; }
+/* メンバー一覧: 入学（名前の右）を左寄せにして、名前との間を詰める */
+.table--members th:nth-child(3), .table--members td:nth-child(3) { text-align: left; padding-left: 0; }
 /* メンバー一覧のマイアルバム上位5枚 */
 .thumbs { display: flex; gap: 4px; }
 .thumbs__img { width: 40px; height: 40px; flex: none; object-fit: cover; border-radius: 4px; background: var(--surface-2); }
