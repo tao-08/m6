@@ -127,7 +127,7 @@ $list = [];
 foreach ($rows as $i => $r) {
     $list[] = $r + ['rank' => (int)$r['plays'] > 0 ? $ranks[$i] : null];
 }
-usort($list, static function (array $a, array $b) use ($sort, $dir, $lastLive, $topPlayers): int {
+$artistCmp = static function (array $a, array $b, string $sort, string $dir) use ($lastLive, $topPlayers): int {
     $la = $lastLive[(int)$a['artist_id']] ?? null;
     $lb = $lastLive[(int)$b['artist_id']] ?? null;
     if ($sort === 'last' && ($la === null) !== ($lb === null)) {
@@ -149,19 +149,12 @@ usort($list, static function (array $a, array $b) use ($sort, $dir, $lastLive, $
     if ($dir === 'desc') {
         $cmp = -$cmp;
     }
-    return $cmp ?: (($a['rank'] ?? PHP_INT_MAX) <=> ($b['rank'] ?? PHP_INT_MAX)) ?: strcmp($a['name'], $b['name']);
-});
-
-/** 並べ替えできる列の見出し。今の並びの列には ▲▼ を付け、もう一度押すと逆向きになる */
-function sort_th(string $col, string $label, string $sort, string $dir, string $class = ''): string
-{
-    $next = $col === $sort ? ($dir === 'asc' ? 'desc' : 'asc') : SORT_COLUMNS[$col];
-    $query = http_build_query(['sort' => $col, 'dir' => $next]);
-    $aria = $col === $sort ? ' aria-sort="' . ($dir === 'asc' ? 'ascending' : 'descending') . '"' : '';
-    $arrow = $col === $sort ? ($dir === 'asc' ? ' ▲' : ' ▼') : '';
-    return '<th class="' . h(trim('sortable ' . $class)) . '"' . $aria . '><a href="?' . h($query) . '">' . h($label)
-        . '<span class="sortable__arrow">' . $arrow . '</span></a></th>';
-}
+    return $cmp ?: (($a['rank'] ?? PHP_INT_MAX) <=> ($b['rank'] ?? PHP_INT_MAX)) ?: strcmp($a['name'], $b['name'])
+        ?: (int)$a['artist_id'] <=> (int)$b['artist_id']; // 最後は ID（どこから並べても同じ順になるように）
+};
+usort($list, static fn($a, $b) => $artistCmp($a, $b, $sort, $dir));
+// ほかの並び方での位置（見出しを押したとき、JS が再読み込みなしで並べ替える）
+$positions = sort_positions($list, sort_keys(SORT_COLUMNS, false), $artistCmp);
 
 render_header('アーティスト', 'artists');
 ?>
@@ -188,17 +181,17 @@ render_header('アーティスト', 'artists');
         <input type="search" class="search" placeholder="アーティスト名で検索" data-filter=".artist-row" aria-label="アーティスト名で検索">
     </div>
     <div class="card table-card">
-        <table class="table table--list">
+        <table class="table table--list" data-client-sort data-sort-current="<?= h($sort) ?>" data-dir-current="<?= h($dir) ?>">
             <thead><tr>
                 <th class="num">#</th>
-                <?= sort_th('name', 'アーティスト', $sort, $dir) ?>
-                <?= sort_th('plays', '演奏回数', $sort, $dir, 'num plays') ?>
-                <?= sort_th('last', '最後に演奏したライブ', $sort, $dir) ?>
-                <?= sort_th('top', '最多演奏', $sort, $dir) ?>
+                <?= sort_button_th('name', 'アーティスト', $sort, $dir, SORT_COLUMNS['name']) ?>
+                <?= sort_button_th('plays', '演奏回数', $sort, $dir, SORT_COLUMNS['plays'], 'num plays') ?>
+                <?= sort_button_th('last', '最後に演奏したライブ', $sort, $dir, SORT_COLUMNS['last']) ?>
+                <?= sort_button_th('top', '最多演奏', $sort, $dir, SORT_COLUMNS['top']) ?>
             </tr></thead>
             <tbody>
-            <?php foreach ($list as $r): $id = (int)$r['artist_id']; $al = $aliases[$id] ?? []; $ll = $lastLive[$id] ?? null; ?>
-                <tr class="artist-row" data-text="<?= h($r['name'] . ' ' . ($r['name_kana'] ?? '') . ' ' . implode(' ', $al)) ?>">
+            <?php foreach ($list as $i => $r): $id = (int)$r['artist_id']; $al = $aliases[$id] ?? []; $ll = $lastLive[$id] ?? null; ?>
+                <tr class="artist-row" data-pos="<?= h(json_encode($positions[$i])) ?>" data-text="<?= h($r['name'] . ' ' . ($r['name_kana'] ?? '') . ' ' . implode(' ', $al)) ?>">
                     <td class="num muted"><?= $r['rank'] ?? '—' ?></td>
                     <td>
                         <a href="artist?id=<?= $id ?>"<?= $r['rank'] ? ' class="strong"' : '' ?>><?= h($r['name']) ?></a>

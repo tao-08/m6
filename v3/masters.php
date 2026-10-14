@@ -41,6 +41,18 @@ require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/repository.php';
 require_admin();
 
+// アーティストタブの並べ替え: 列 => [比べる列, 最初に押したときの向き]
+const ARTIST_SORTS = ['name' => ['a.name', 'asc'], 'used' => ['used', 'desc'], 'setlist' => ['setlist', 'desc']];
+// 選んだ並べ替えはセッションに覚えておく（統合・削除のあとや、ほかのタブから戻ってきても同じ並びのまま）
+if (is_string($_GET['sort'] ?? null) && isset(ARTIST_SORTS[$_GET['sort']])) {
+    $_SESSION['masters_artist_sort'] = [$_GET['sort'], in_array($_GET['dir'] ?? '', ['asc', 'desc'], true) ? $_GET['dir'] : ARTIST_SORTS[$_GET['sort']][1]];
+}
+// ?save_sort: 見出しを押して JS が並べ替えたときに、覚えるためだけに送ってくる。ページは返さない
+if (isset($_GET['save_sort'])) {
+    http_response_code(204);
+    exit;
+}
+
 $pdo = db();
 
 $tabs = [
@@ -332,12 +344,8 @@ $roles = $pdo->query('SELECT r.role_id, r.name, COUNT(mr.member_id) AS used
     ORDER BY r.sort_order, r.name')->fetchAll();
 // アーティストごとに「何組のバンドがコピーしたか」（オムニバスは曲ごとのアーティストで数える）
 //   setlist = そのうちセットリストを登録し終えたバンドの数（曲数がタイムテーブルの曲数と一致。setlist_badge と同じ基準）
-// 並べ替え（?sort=name|used|setlist&dir=asc|desc）。列名は SQL に直接入るので、この表にある決まった名前だけを使う
-const ARTIST_SORTS = ['name' => ['a.name', 'asc'], 'used' => ['used', 'desc'], 'setlist' => ['setlist', 'desc']];
-// 選んだ並べ替えはセッションに覚えておく（統合・削除のあとや、ほかのタブから戻ってきても同じ並びのまま）
-if (is_string($_GET['sort'] ?? null) && isset(ARTIST_SORTS[$_GET['sort']])) {
-    $_SESSION['masters_artist_sort'] = [$_GET['sort'], in_array($_GET['dir'] ?? '', ['asc', 'desc'], true) ? $_GET['dir'] : ARTIST_SORTS[$_GET['sort']][1]];
-}
+// 並べ替え（?sort=name|used|setlist&dir=asc|desc。覚えるのはファイルの最初）。
+//   SQL は名前の順で取って（_i）、ほかの並びは PHP で作る。見出しを押したら JS が再読み込みなしで並べ替える（sort_positions）
 [$sort, $dir] = $_SESSION['masters_artist_sort'] ?? ['name', ARTIST_SORTS['name'][1]];
 $artists = $pdo->query('SELECT a.artist_id, a.name, COUNT(p.band_id) AS used,
         COUNT(CASE WHEN b.song_count > 0 AND b.song_count = (SELECT COUNT(*) FROM song s WHERE s.band_id = b.band_id) THEN 1 END) AS setlist
@@ -345,7 +353,18 @@ $artists = $pdo->query('SELECT a.artist_id, a.name, COUNT(p.band_id) AS used,
     LEFT JOIN (' . artist_plays_sql() . ') p ON p.artist_id = a.artist_id
     LEFT JOIN band b ON b.band_id = p.band_id
     GROUP BY a.artist_id, a.name
-    ORDER BY ' . ARTIST_SORTS[$sort][0] . ' ' . strtoupper($dir) . ', a.name')->fetchAll();
+    ORDER BY a.name')->fetchAll();
+foreach ($artists as $i => &$a) {
+    $a['_i'] = $i;
+}
+unset($a);
+// 名前は DB の並び（_i）。バンド・セットリストは数 → 同じなら名前の順
+$artistCmp = static function (array $a, array $b, string $sort, string $dir): int {
+    $cmp = $sort === 'name' ? $a['_i'] <=> $b['_i'] : (int)$a[$sort] <=> (int)$b[$sort];
+    return ($dir === 'desc' ? -$cmp : $cmp) ?: $a['_i'] <=> $b['_i'];
+};
+usort($artists, static fn($a, $b) => $artistCmp($a, $b, $sort, $dir));
+$positions = sort_positions($artists, sort_keys(array_map(static fn($c) => $c[1], ARTIST_SORTS), false), $artistCmp);
 
 // ---- 名前が似ているアーティストのペア（members_merge と同じ作り。全部 × 全部を比べる） ----
 $artistPairs = [];
@@ -362,16 +381,6 @@ if ($tab === 'artist') {
     }
 }
 
-/** アーティストタブの並べ替えできる見出し（押すたびに 昇順 ⇔ 降順。artists.php の sort_th と同じ作り） */
-function artist_sort_th(string $col, string $label, string $sort, string $dir, string $class = ''): string
-{
-    $next = $col === $sort ? ($dir === 'asc' ? 'desc' : 'asc') : ARTIST_SORTS[$col][1];
-    $query = http_build_query(['tab' => 'artist', 'sort' => $col, 'dir' => $next]);
-    $aria = $col === $sort ? ' aria-sort="' . ($dir === 'asc' ? 'ascending' : 'descending') . '"' : '';
-    $arrow = $col === $sort ? ($dir === 'asc' ? ' ▲' : ' ▼') : '';
-    return '<th class="' . h(trim('sortable ' . $class)) . '"' . $aria . '><a href="?' . h($query) . '">' . h($label)
-        . '<span class="sortable__arrow">' . $arrow . '</span></a></th>';
-}
 $counts = ['venue' => count($venues), 'day' => count($days), 'instrument' => count($instruments), 'role' => count($roles), 'artist' => count($artists)];
 
 /** 消せないときのグレーアウトしたゴミ箱（disabled のボタンはマウスの反応が鈍いので、外側の span でツールチップを出す） */
@@ -454,7 +463,8 @@ render_header($tabs[$tab][0] . 'の管理');
 
 <div class="card table-card">
     <div class="table-scroll table-scroll--flush">
-    <table class="table table--edit">
+    <!-- アーティストタブだけ、見出しを押すと再読み込みなしで並べ替える。選んだ並びは data-sort-save に送って覚えてもらう -->
+    <table class="table table--edit"<?= $tab === 'artist' ? ' data-client-sort data-sort-save="masters?save_sort=1" data-sort-current="' . h($sort) . '" data-dir-current="' . h($dir) . '"' : '' ?>>
     <?php if ($tab === 'venue'): ?>
         <thead><tr><th>順番</th><th>会場名</th><th class="num">使われている日程</th><th>他の会場に統合</th><th></th></tr></thead>
         <tbody>
@@ -582,10 +592,10 @@ render_header($tabs[$tab][0] . 'の管理');
         </tbody>
 
     <?php elseif ($tab === 'artist'): ?>
-        <thead><tr><th>オムニバス</th><?= artist_sort_th('name', 'アーティスト名', $sort, $dir) ?><?= artist_sort_th('used', 'バンド', $sort, $dir, 'num') ?><?= artist_sort_th('setlist', 'セットリスト', $sort, $dir) ?><th>他のアーティストに統合</th><th></th></tr></thead>
+        <thead><tr><th>オムニバス</th><?= sort_button_th('name', 'アーティスト名', $sort, $dir, 'asc') ?><?= sort_button_th('used', 'バンド', $sort, $dir, 'desc', 'num') ?><?= sort_button_th('setlist', 'セットリスト', $sort, $dir, 'desc') ?><th>他のアーティストに統合</th><th></th></tr></thead>
         <tbody>
-        <?php foreach ($artists as $a): ?>
-            <tr id="row-<?= (int)$a['artist_id'] ?>" data-artist-row data-text="<?= h($a['name']) ?>">
+        <?php foreach ($artists as $i => $a): ?>
+            <tr id="row-<?= (int)$a['artist_id'] ?>" data-pos="<?= h(json_encode($positions[$i])) ?>" data-artist-row data-text="<?= h($a['name']) ?>">
                 <td><input type="checkbox" name="artist_ids[]" value="<?= (int)$a['artist_id'] ?>" form="omnibus-form" aria-label="「<?= h($a['name']) ?>」のバンドをオムニバスにする"<?= (int)$a['used'] === 0 ? ' disabled' : '' ?>></td>
                 <td>
                     <form method="post" class="row-form"><?= csrf_field() ?>

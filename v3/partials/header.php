@@ -94,7 +94,7 @@ $nav = [
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400..600,0..1,0&display=block" rel="stylesheet">
     <!-- ?v=2 はキャッシュ対策。CSS を変えたら数字を上げると、ブラウザが古い CSS を使い続けない -->
     <link rel="stylesheet" href="assets/app.css?v=254">
-    <script src="assets/app.js?v=141" defer></script>
+    <script src="assets/app.js?v=142" defer></script>
 </head>
 <body>
 <header class="topbar">
@@ -152,7 +152,6 @@ $nav = [
                         <a href="members_merge">メンバーの統合</a>
                         <a href="members_entry">メンバープロフィールの一括編集</a>
                         <a href="masters">会場・日程名・楽器・係・アーティストの管理</a>
-                        <a href="sheet_templates">セッティングシートの型紙</a>
                     </div>
                 <?php endif; ?>
             </div>

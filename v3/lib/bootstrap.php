@@ -320,7 +320,52 @@ function users_url(array $q): string
 {
     $sort = $q['sort'] ?? '';
     if (!in_array($sort, ['entry', 'name'], true)) return 'users';
-    return 'users?sort=' . $sort . '&order=' . (($q['order'] ?? '') === 'desc' ? 'desc' : 'asc');
+    return 'users?sort=' . $sort . '&dir=' . (($q['dir'] ?? '') === 'desc' ? 'desc' : 'asc');
+}
+
+/*
+ * ---- 再読み込みなしの並べ替え（assets/app.js の setupClientSort）----
+ *   並び方ごとの各行の位置を PHP が全部計算して、行の data-pos に入れておく。JS はその番号の順に行を並べ直すだけ。
+ *   比べ方を PHP にだけ書けば、開いたとき（GET）と押したとき（JS）の並びが必ず同じになる
+ *   並び方のキーは '列:asc' / '列:desc'。'' は並べ替えなし（いつもの並び）
+ */
+
+/** 列の一覧（列 => 最初に押したときの向き）から並び方のキーを全部作る。$withDefault なら '' も入れる */
+function sort_keys(array $columns, bool $withDefault): array
+{
+    $keys = $withDefault ? [''] : [];
+    foreach (array_keys($columns) as $col) {
+        $keys[] = $col . ':asc';
+        $keys[] = $col . ':desc';
+    }
+    return $keys;
+}
+
+/**
+ * 並び方ごとの各行の位置。$cmp($a, $b, $sort, $dir) は usort と同じ（負なら a が前）
+ * 戻り値: $rows の添字 => ['name:asc' => 3, ...]（行の data-pos に json_encode して入れる）
+ */
+function sort_positions(array $rows, array $keys, callable $cmp): array
+{
+    $pos = array_fill_keys(array_keys($rows), []);
+    foreach ($keys as $key) {
+        [$sort, $dir] = $key === '' ? ['', ''] : explode(':', $key);
+        $idx = array_keys($rows);
+        usort($idx, static fn($i, $j) => $cmp($rows[$i], $rows[$j], $sort, $dir));
+        foreach ($idx as $p => $i) {
+            $pos[$i][$key] = $p;
+        }
+    }
+    return $pos;
+}
+
+/** 並べ替えの見出し（押すと JS が並べ替える）。今の並びの列には aria-sort と ▲▼ を付けておく */
+function sort_button_th(string $col, string $label, string $sort, string $dir, string $first, string $class = '', string $extra = ''): string
+{
+    $on = $col === $sort;
+    return '<th class="' . h(trim('sortable ' . $class)) . '"' . ($on ? ' aria-sort="' . ($dir === 'asc' ? 'ascending' : 'descending') . '"' : '') . '>'
+        . '<button type="button" class="th-sort" data-sort="' . h($col) . '" data-sort-first="' . h($first) . '"' . $extra . '>'
+        . h($label) . '<span class="sortable__arrow">' . ($on ? ($dir === 'asc' ? '▲' : '▼') : '') . '</span></button></th>';
 }
 
 function redirect(string $path): never

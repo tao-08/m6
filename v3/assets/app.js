@@ -1380,7 +1380,7 @@ function setupYearSlot() {
  *   切り替えたら:
  *     ・# の順位を、見えている人の中で付け直す（data-score の多い順。同じなら同じ順位。出演なしの人は —）
  *     ・上の「出演者」「登録」の人数を数え直す
- *     ・URL（?who=&entry=）と列見出しの並べ替えリンクに今の学年を入れる（再読み込み・並べ替えで戻らないように）
+ *     ・URL（?who=&entry=）に今の学年を入れる（再読み込みで戻らないように）
  * ------------------------------------------------------------------- */
 function setupGradeSlot() {
   const box = document.querySelector('[data-grade-filter]');
@@ -1413,11 +1413,12 @@ function setupGradeSlot() {
 
     // 順位 = 自分より data-score が多い人の数 + 1（出演なしの人は —）
     const played = shown.filter((tr) => +tr.dataset.bands > 0).map((tr) => +tr.dataset.score);
+    const ranking = !!document.querySelector('.table--members.is-ranking');
     shown.forEach((tr) => {
       const n = +tr.dataset.score;
-      // # に順位を出すのはランキングの並びのときだけ（それ以外は空のマスで data-rank が無い）。
+      // # に順位を出すのはランキングの並びのときだけ（それ以外は空）。
       //   左端の # と、スマホで右端に出す # の2つがある
-      const rank = +tr.dataset.bands > 0 ? played.filter((m) => m > n).length + 1 : '—';
+      const rank = !ranking ? '' : +tr.dataset.bands > 0 ? played.filter((m) => m > n).length + 1 : '—';
       tr.querySelectorAll('[data-rank]').forEach((cell) => { cell.textContent = rank; });
     });
     if (count('played')) count('played').textContent = played.length;
@@ -1438,11 +1439,6 @@ function setupGradeSlot() {
     const url = new URL(location.href);
     setParams(url.searchParams);
     history.replaceState(history.state, '', url);
-    document.querySelectorAll('th.sortable a').forEach((a) => {
-      const u = new URL(a.href);
-      setParams(u.searchParams);
-      a.href = u;
-    });
 
     if (changed) animateIn(shown);
   };
@@ -1458,15 +1454,30 @@ function setupGradeSlot() {
     apply(true);
   }));
   hideRetired?.addEventListener('change', () => apply(true));
+  // 見出しで並べ替えたら（setupClientSort）: 出演・ライブ・トリならその列の順位を # に出す。ほかは # を空にする
+  const membersTable = document.querySelector('.table--members');
+  membersTable?.addEventListener('client-sort', (e) => {
+    const col = ['bands', 'lives', 'headliners'].includes(e.detail.sort) ? e.detail.sort : '';
+    membersTable.classList.toggle('is-ranking', !!col);
+    const head = membersTable.querySelector('[data-rank-head]');
+    if (head) head.textContent = col ? '#' : '';
+    const prop = 'score' + (col || 'bands').replace(/^./, (c) => c.toUpperCase());
+    rows.forEach((tr) => { tr.dataset.score = tr.dataset[prop]; });
+    apply(false);
+  });
   apply(false);
 }
 
 /* ---------------------------------------------------------------------
- * 再読み込みなしで並べ替える表（table[data-client-sort]）
- *   見出しの button[data-sort-col=列番号] を押すたびに 昇順 ⇔ 降順。data-sort-text なら文字で比べる
- *   セルの data-sort-value があればその値で比べる。空の値はいつも最後
- *   ボタンに data-sort-key があれば、URL を ?sort=キー&order=asc|desc に書き換える（再読み込みはしない）
- *   開いたときの並びは PHP が同じ GET を読んで ORDER BY で出す
+ * 再読み込みなしで並べ替える表（table[data-client-sort]。ユーザー管理・メンバー・アーティスト・マスター管理）
+ *   並び方ごとの行の位置は PHP が計算して tr[data-pos] に入れてある（lib/bootstrap.php の sort_positions）。
+ *   JS は比べ方を持たず、その番号の順に行を並べ直すだけ（開いたときの PHP の並びと必ず同じになる）
+ *   見出しの button[data-sort=列][data-sort-first=最初の向き] を押すたびに 最初の向き → 逆の向き
+ *     table[data-sort-clear] なら、その次で解除（いつもの並び = data-pos の '' ）
+ *   並べ替えたら URL を ?sort=&dir= に書き換える（再読み込み・共有しても同じ並び。PHP が同じ GET で並べる）
+ *     button[data-sort-clear-scroll] の列を解除したときは ?scroll=end も付ける（メンバー一覧: 表を右端に置いたまま開く）
+ *     table[data-sort-save=URL] なら、そこにも ?sort=&dir= を送ってサーバーに覚えてもらう（マスター管理）
+ *   並べ替えたら table に client-sort イベントを出す（メンバー一覧の # の付け直しが聞いている）
  * ------------------------------------------------------------------- */
 function setupClientSort() {
   // form[data-keep-query]: 別のページに送るフォームにも今の並び順（URL の ?…）を付けて、処理のあと同じ並びで戻れるように
@@ -1476,30 +1487,45 @@ function setupClientSort() {
   });
   document.querySelectorAll('table[data-client-sort]').forEach((table) => {
     const tbody = table.tBodies[0];
-    const btns = [...table.querySelectorAll('[data-sort-col]')];
+    const pos = new Map([...tbody.rows].map((tr) => [tr, JSON.parse(tr.dataset.pos)]));
+    const btns = [...table.querySelectorAll('button[data-sort]')];
+    let sort = table.dataset.sortCurrent || '';
+    let dir = table.dataset.dirCurrent || '';
     btns.forEach((btn) => btn.addEventListener('click', () => {
-      const col = +btn.dataset.sortCol;
-      const th = btn.closest('th');
-      const asc = th.getAttribute('aria-sort') !== 'ascending';
-      const isText = btn.hasAttribute('data-sort-text');
-      const key = (tr) => { const td = tr.cells[col]; return (td.dataset.sortValue ?? td.textContent).trim(); };
-      const rows = [...tbody.rows].sort((a, b) => {
-        const x = key(a), y = key(b);
-        if (x === '' || y === '') return (x === '') - (y === '');
-        const d = isText ? x.localeCompare(y, 'ja') : x - y;
-        return asc ? d : -d;
-      });
+      const col = btn.dataset.sort;
+      const first = btn.dataset.sortFirst || 'asc';
+      const flip = first === 'asc' ? 'desc' : 'asc';
+      let cleared = false;
+      if (sort !== col) [sort, dir] = [col, first];
+      else if (dir === first) dir = flip;
+      else if ('sortClear' in table.dataset) { [sort, dir] = ['', '']; cleared = true; }
+      else dir = first;
+
+      const key = sort ? `${sort}:${dir}` : '';
+      const rows = [...pos.keys()].sort((a, b) => pos.get(a)[key] - pos.get(b)[key]);
       tbody.append(...rows);
-      animateIn(rows, 120);
-      btns.forEach((b) => { const t = b.closest('th'); t.removeAttribute('aria-sort'); b.querySelector('.sortable__arrow').textContent = ''; });
-      th.setAttribute('aria-sort', asc ? 'ascending' : 'descending');
-      btn.querySelector('.sortable__arrow').textContent = asc ? '▲' : '▼';
-      if (btn.dataset.sortKey) {
-        const url = new URL(location.href);
-        url.searchParams.set('sort', btn.dataset.sortKey);
-        url.searchParams.set('order', asc ? 'asc' : 'desc');
-        history.replaceState(history.state, '', url);
+      btns.forEach((b) => {
+        const th = b.closest('th');
+        const on = b.dataset.sort === sort;
+        if (on) th.setAttribute('aria-sort', dir === 'asc' ? 'ascending' : 'descending');
+        else th.removeAttribute('aria-sort');
+        b.querySelector('.sortable__arrow').textContent = on ? (dir === 'asc' ? '▲' : '▼') : '';
+      });
+
+      const url = new URL(location.href);
+      ['sort', 'dir', 'scroll'].forEach((k) => url.searchParams.delete(k));
+      if (sort) {
+        url.searchParams.set('sort', sort);
+        url.searchParams.set('dir', dir);
+      } else if (cleared && 'sortClearScroll' in btn.dataset) {
+        url.searchParams.set('scroll', 'end');
       }
+      history.replaceState(history.state, '', url);
+      if (table.dataset.sortSave && sort) {
+        fetch(`${table.dataset.sortSave}&sort=${encodeURIComponent(sort)}&dir=${dir}`, { credentials: 'same-origin' });
+      }
+      table.dispatchEvent(new CustomEvent('client-sort', { bubbles: true, detail: { sort, dir } }));
+      animateIn(rows, 120);
     }));
   });
 }

@@ -136,7 +136,7 @@ function album_thumbs(array $albums): string
 }
 
 // ---- 並べ替え（?sort=列&dir=asc|desc）----
-//   列の見出しはただのリンクなので、JavaScript が無くても並べ替えられる。
+//   開いたときは PHP がこの GET で並べる。見出しを押したときは JS が再読み込みなしで並べ替える（data-pos。lib/bootstrap.php の sort_positions）
 //   値はホワイトリスト（SORT_COLUMNS）にあるものだけ使う。ブラウザから来た値は信用しない。
 //   見出しを押すたびに 最初の向き → 逆の向き → 解除（いつもの並び）。最初の向きは名前だけ昇順（あ→わ）、ほかは降順
 //   いつもの並び（$sort === ''）: 自分が一番上 → 学年の降順（上の学年から。入学年度が不明な人は一番下）→ 名前の昇順
@@ -169,20 +169,24 @@ $showRank = in_array($sort, ['bands', 'lives', 'headliners'], true);
 // 表を右端まで動かした状態で開くか: ランキングの並び、またはその列の並べ替えを解除して来たとき（?scroll=end）
 $scrollEnd = $showRank || ($_GET['scroll'] ?? '') === 'end';
 $rankCol = $showRank ? $sort : 'bands';
-$scores = array_map(static fn($r) => (int)$r[$rankCol], $rows);
-$ranks = [];
-foreach ($scores as $i => $mine) {
-    $ranks[$i] = 1 + count(array_filter($scores, static fn($n) => $n > $mine)); // 自分より多い人の数 + 1
+const RANK_COLUMNS = ['bands', 'lives', 'headliners'];
+// 3つの列それぞれの順位（JS で並べ替えたときに、# の列をその列の順位に書き換える）
+$ranksBy = [];
+foreach (RANK_COLUMNS as $col) {
+    $scores = array_map(static fn($r) => (int)$r[$col], $rows);
+    foreach ($scores as $i => $mine) {
+        $ranksBy[$i][$col] = 1 + count(array_filter($scores, static fn($n) => $n > $mine)); // 自分より多い人の数 + 1
+    }
 }
 $list = [];
 foreach ($rows as $i => $r) {
-    $list[] = $r + ['rank' => $ranks[$i]];
+    $list[] = $r + ['rank' => $ranksBy[$i][$rankCol], 'ranks' => $ranksBy[$i]];
 }
 foreach ($idle as $r) {
-    $list[] = $r + ['bands' => 0, 'lives' => 0, 'headliners' => 0, 'rank' => null];
+    $list[] = $r + ['bands' => 0, 'lives' => 0, 'headliners' => 0, 'rank' => null, 'ranks' => null];
 }
 // usort(配列, 比べる関数): 関数が負なら a が前、正なら b が前。<=> は「宇宙船演算子」で -1 / 0 / 1 を返す
-usort($list, static function (array $a, array $b) use ($sort, $dir, $myId): int {
+$memberCmp = static function (array $a, array $b, string $sort, string $dir) use ($myId): int {
     if ($sort === '' || $sort === 'entry') {
         if ($sort === '') {
             // いつもの並びでは自分が一番上（true <=> false で自分が前に来るよう、b と a を逆に比べる）
@@ -200,7 +204,8 @@ usort($list, static function (array $a, array $b) use ($sort, $dir, $myId): int 
     }
     if ($sort === '') {
         // 学年の降順 = 入学年度の古い順。同じ学年なら名前の順
-        return ((int)$a['entry_year'] <=> (int)$b['entry_year']) ?: strcmp(name_reading($a), name_reading($b));
+        return ((int)$a['entry_year'] <=> (int)$b['entry_year']) ?: strcmp(name_reading($a), name_reading($b))
+            ?: (int)$a['member_id'] <=> (int)$b['member_id'];
     }
     $cmp = match ($sort) {
         'name'  => strcmp(name_reading($a), name_reading($b)),
@@ -210,27 +215,15 @@ usort($list, static function (array $a, array $b) use ($sort, $dir, $myId): int 
     if ($dir === 'desc') {
         $cmp = -$cmp;
     }
-    // 同じ値なら、出演の順位 → ふりがなの順
-    return $cmp ?: (($a['rank'] ?? PHP_INT_MAX) <=> ($b['rank'] ?? PHP_INT_MAX)) ?: strcmp(name_reading($a), name_reading($b));
-});
+    // 同じ値なら、順位（ランキングの列ならその列、ほかは出演）→ ふりがなの順
+    $rc = in_array($sort, RANK_COLUMNS, true) ? $sort : 'bands';
+    // 最後に member_id（読みまで同じ人がいても、どこから並べても同じ順になるように。sort_positions の並びと GET の並びをそろえる）
+    return $cmp ?: (($a['ranks'][$rc] ?? PHP_INT_MAX) <=> ($b['ranks'][$rc] ?? PHP_INT_MAX)) ?: strcmp(name_reading($a), name_reading($b))
+        ?: (int)$a['member_id'] <=> (int)$b['member_id'];
+};
+usort($list, static fn($a, $b) => $memberCmp($a, $b, $sort, $dir));
+$positions = sort_positions($list, sort_keys(SORT_COLUMNS, true), $memberCmp);
 
-/** 並べ替えできる列の見出し。今の並びの列には ▲▼ を付ける。押すたびに 最初の向き → 逆の向き → 解除 */
-function sort_th(string $col, string $label, string $sort, string $dir, string $class = ''): string
-{
-    $first = SORT_COLUMNS[$col];
-    $next = match (true) {
-        $col !== $sort  => ['sort' => $col, 'dir' => $first],
-        $dir === $first => ['sort' => $col, 'dir' => $first === 'asc' ? 'desc' : 'asc'],
-        // 解除 → いつもの並び。右側の列（出演・ライブ・トリ）からの解除なら、戻っても表を右端に置いておく
-        default         => in_array($col, ['bands', 'lives', 'headliners'], true) ? ['scroll' => 'end'] : [],
-    };
-    // 学年・退会の絞り込み（who / entry / retired）はそのまま引き継ぐ
-    $query = http_build_query(array_intersect_key($_GET, ['who' => 1, 'entry' => 1, 'retired' => 1]) + $next);
-    $aria = $col === $sort ? ' aria-sort="' . ($dir === 'asc' ? 'ascending' : 'descending') . '"' : '';
-    $arrow = $col === $sort ? ($dir === 'asc' ? ' ▲' : ' ▼') : '';
-    return '<th class="' . h(trim('sortable ' . $class)) . '"' . $aria . '><a href="?' . h($query) . '">' . h($label)
-        . '<span class="sortable__arrow">' . $arrow . '</span></a></th>';
-}
 render_header('メンバー', 'members');
 ?>
 <section class="hero">
@@ -295,28 +288,32 @@ render_header('メンバー', 'members');
     <!-- data-scroll-end: ランキングで並べたとき・その並べ替えを解除したときは、表を右端まで動かした状態で開く
          （スマホで出演の数字と右端の名前・# がすぐ見えるように） -->
     <div class="card table-card" data-grade-table<?= $scrollEnd ? ' data-scroll-end' : '' ?>>
-        <table class="table table--list table--members">
+        <!-- data-sort-clear: 見出しを押すたびに 最初の向き → 逆の向き → 解除（いつもの並び）。is-ranking: 出演・ライブ・トリで並べているとき（# に順位を出す） -->
+        <table class="table table--list table--members<?= $showRank ? ' is-ranking' : '' ?>" data-client-sort data-sort-clear data-sort-current="<?= h($sort) ?>" data-dir-current="<?= h($sort === '' ? '' : $dir) ?>">
             <thead><tr>
-                <th class="num"><?= $showRank ? '#' : '' ?></th>
-                <?= sort_th('name', '名前', $sort, $dir) ?>
-                <?= sort_th('entry', '入学', $sort, $dir, 'num') ?>
+                <th class="num" data-rank-head><?= $showRank ? '#' : '' ?></th>
+                <?= sort_button_th('name', '名前', $sort, $dir, SORT_COLUMNS['name']) ?>
+                <?= sort_button_th('entry', '入学', $sort, $dir, SORT_COLUMNS['entry'], 'num') ?>
                 <th>担当楽器</th>
                 <th>マイアルバム Top5</th>
-                <?= sort_th('bands', '出演', $sort, $dir, 'num') ?>
-                <?= sort_th('lives', 'ライブ', $sort, $dir, 'num hide-sm') ?>
-                <?= sort_th('headliners', 'トリ', $sort, $dir, 'num') ?>
+                <?php // 右側の列（出演・ライブ・トリ）の並べ替えを解除したときは、再読み込みしても表を右端に置いておく（?scroll=end） ?>
+                <?= sort_button_th('bands', '出演', $sort, $dir, SORT_COLUMNS['bands'], 'num', ' data-sort-clear-scroll') ?>
+                <?= sort_button_th('lives', 'ライブ', $sort, $dir, SORT_COLUMNS['lives'], 'num hide-sm', ' data-sort-clear-scroll') ?>
+                <?= sort_button_th('headliners', 'トリ', $sort, $dir, SORT_COLUMNS['headliners'], 'num', ' data-sort-clear-scroll') ?>
                 <th class="name-end">名前</th><!-- スマホだけ右端にも名前（横にスクロールして数字を見ているときに、誰の数字かわかるように） -->
-                <?php if ($showRank): ?><th class="num rank-end">#</th><?php endif; ?><!-- スマホでランキングのときだけ、右端の名前のさらに右にも # -->
+                <th class="num rank-end">#</th><!-- スマホでランキングのときだけ（is-ranking）、右端の名前のさらに右にも # -->
             </tr></thead>
             <tbody>
-            <?php foreach ($list as $r): ?>
+            <?php foreach ($list as $i => $r): ?>
                 <!-- is-me: 自分の行はいつも背景を変える（一番上に固定するのは、いつもの並びのときだけ）
                      data-entry / data-bands / data-score: 学年の絞り込みと順位の付け直しに使う（入学年度が不明なら空。data-score は順位を付ける列の値）
                      data-retired: 退会済みの人だけ付ける（「退会した人を表示しない」で隠す） -->
                 <tr class="member-row<?= (int)$r['member_id'] === $myId ? ' is-me' : '' ?>" data-text="<?= h($r['name'] . ' ' . ($r['name_kana'] ?? '')) ?>"
-                    data-entry="<?= $r['entry_year'] !== null ? (int)$r['entry_year'] : '' ?>" data-bands="<?= (int)$r['bands'] ?>" data-score="<?= (int)$r[$rankCol] ?>"<?= (int)$r['retired'] === 1 ? ' data-retired' : '' ?>>
-                    <!-- data-rank: 学年で絞り込んだとき JS が順位を書き直す目印。ランキングでないときは付けない（空のまま） -->
-                    <?php if ($showRank): ?><td class="num muted" data-rank><?= $r['rank'] ?? '—' ?></td><?php else: ?><td class="num"></td><?php endif; ?>
+                    data-entry="<?= $r['entry_year'] !== null ? (int)$r['entry_year'] : '' ?>" data-bands="<?= (int)$r['bands'] ?>" data-score="<?= (int)$r[$rankCol] ?>"
+                    data-score-bands="<?= (int)$r['bands'] ?>" data-score-lives="<?= (int)$r['lives'] ?>" data-score-headliners="<?= (int)$r['headliners'] ?>"
+                    data-pos="<?= h(json_encode($positions[$i])) ?>"<?= (int)$r['retired'] === 1 ? ' data-retired' : '' ?>>
+                    <!-- data-rank: 学年で絞り込んだとき・並べ替えたとき JS が順位を書き直す目印。ランキングでないときは空 -->
+                    <td class="num muted" data-rank><?= $showRank ? ($r['rank'] ?? '—') : '' ?></td>
                     <td><a href="member?id=<?= (int)$r['member_id'] ?>"<?= $r['rank'] ? ' class="strong"' : '' ?>><?= h($r['name']) ?></a><?= (int)$r['retired'] === 1 ? ' <span class="muted small">退会</span>' : '' ?></td>
                     <!-- 2023 → '23（下2桁だけ。sprintf の %02d で 2005 → '05 のように0を残す） -->
                     <td class="num muted"><?= $r['entry_year'] !== null ? sprintf("'%02d", (int)$r['entry_year'] % 100) : '—' ?></td>
@@ -330,7 +327,7 @@ render_header('メンバー', 'members');
                         <td class="num muted small">—</td><td class="hide-sm"></td><td></td>
                     <?php endif; ?>
                     <td class="name-end"><a href="member?id=<?= (int)$r['member_id'] ?>"<?= $r['rank'] ? ' class="strong"' : '' ?>><?= h($r['name']) ?></a></td>
-                    <?php if ($showRank): ?><td class="num muted rank-end" data-rank><?= $r['rank'] ?? '—' ?></td><?php endif; ?>
+                    <td class="num muted rank-end" data-rank><?= $showRank ? ($r['rank'] ?? '—') : '' ?></td>
                 </tr>
             <?php endforeach; ?>
             </tbody>

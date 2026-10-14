@@ -82,18 +82,33 @@ if (is_post()) {
     redirect(users_url($_GET)); // フォームは今の URL（並び順付き）に送られる
 }
 
-// 並び順: ?sort=entry|name&order=asc|desc（列名は下の表からだけ選ぶ。GET の値は SQL に入れない）
-$sortCols = ['entry' => 'm.entry_year', 'name' => 'u.name'];
-$sort = array_key_exists($_GET['sort'] ?? '', $sortCols) ? $_GET['sort'] : null;
-$order = ($_GET['order'] ?? '') === 'desc' ? 'desc' : 'asc';
-$orderBy = $sort
-    ? $sortCols[$sort] . ' IS NULL, ' . $sortCols[$sort] . ($order === 'desc' ? ' DESC' : ' ASC') . ', u.user_id'
-    : 'u.is_admin DESC, u.user_id';
+// 並び順: ?sort=entry|name&dir=asc|desc（決まった値だけ受け付ける）。並べ替えは PHP でやる（sort_positions と同じ比べ方にするため）
+const USER_SORTS = ['entry' => 'asc', 'name' => 'asc']; // 列 => 最初に押したときの向き
+$sort = is_string($_GET['sort'] ?? null) && isset(USER_SORTS[$_GET['sort']]) ? $_GET['sort'] : '';
+$dir = $sort === '' ? '' : (($_GET['dir'] ?? '') === 'desc' ? 'desc' : 'asc');
 
 // no_band: 紐付け先のメンバーが1バンドにも出ていない（紐付け間違いの疑い → ⚠ を出す）
+// 名前の順は DB の並び（ORDER BY u.name）をそのまま使う（_i）
 $users = $pdo->query('SELECT u.user_id, u.login_id, u.name, u.is_admin, u.member_id, m.name AS member_name, m.entry_year,
         (u.member_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM band_member bm WHERE bm.member_id = u.member_id)) AS no_band
-    FROM user_account u LEFT JOIN member m ON m.member_id = u.member_id ORDER BY ' . $orderBy)->fetchAll();
+    FROM user_account u LEFT JOIN member m ON m.member_id = u.member_id ORDER BY u.name, u.user_id')->fetchAll();
+foreach ($users as $i => &$u) {
+    $u['_i'] = $i;
+}
+unset($u);
+// いつもの並び（''）: 管理者が上 → 登録順。入学年: 不明な人は向きに関係なく一番下
+$userCmp = static function (array $a, array $b, string $sort, string $dir): int {
+    if ($sort === '') {
+        return ((int)$b['is_admin'] <=> (int)$a['is_admin']) ?: ((int)$a['user_id'] <=> (int)$b['user_id']);
+    }
+    if ($sort === 'entry' && ($a['entry_year'] === null) !== ($b['entry_year'] === null)) {
+        return ($a['entry_year'] === null) <=> ($b['entry_year'] === null);
+    }
+    $cmp = $sort === 'entry' ? (int)$a['entry_year'] <=> (int)$b['entry_year'] : $a['_i'] <=> $b['_i'];
+    return ($dir === 'desc' ? -$cmp : $cmp) ?: ((int)$a['user_id'] <=> (int)$b['user_id']);
+};
+usort($users, static fn($a, $b) => $userCmp($a, $b, $sort, $dir));
+$positions = sort_positions($users, sort_keys(USER_SORTS, true), $userCmp);
 
 // プルダウンの選択肢: まだ誰とも紐付いていないメンバー（各行では、その行の今のメンバーも足して出す）
 $freeMembers = $pdo->query('SELECT m.member_id, m.name FROM member m
@@ -101,15 +116,6 @@ $freeMembers = $pdo->query('SELECT m.member_id, m.name FROM member m
     ORDER BY m.name')->fetchAll();
 
 $invite = invite_code();
-
-/** 並べ替えできる見出し。今の並び順の列には aria-sort と ▲▼ を付けておく（JS が押したときに付け替える） */
-function sort_btn(string $key, string $label, string $col, ?string $sort, string $order, bool $text = false): string
-{
-    $on = $sort === $key;
-    return '<th class="sortable"' . ($on ? ' aria-sort="' . ($order === 'desc' ? 'descending' : 'ascending') . '"' : '') . '>'
-        . '<button type="button" class="th-sort" data-sort-col="' . $col . '" data-sort-key="' . $key . '"' . ($text ? ' data-sort-text' : '') . '>'
-        . h($label) . '<span class="sortable__arrow">' . ($on ? ($order === 'desc' ? '▼' : '▲') : '') . '</span></button></th>';
-}
 
 render_header('ユーザー管理');
 ?>
@@ -135,12 +141,12 @@ render_header('ユーザー管理');
 
 <div class="card table-card">
     <div class="table-scroll table-scroll--flush">
-    <table class="table table--users" data-client-sort>
-        <thead><tr><?= sort_btn('entry', '入学年', '0', $sort, $order) ?><?= sort_btn('name', '名前', '1', $sort, $order, true) ?><th>ログインID</th><th>メンバー</th><th>権限</th><th></th></tr></thead>
+    <table class="table table--users" data-client-sort data-sort-current="<?= h($sort) ?>" data-dir-current="<?= h($dir) ?>">
+        <thead><tr><?= sort_button_th('entry', '入学年', $sort, $dir, 'asc') ?><?= sort_button_th('name', '名前', $sort, $dir, 'asc') ?><th>ログインID</th><th>メンバー</th><th>権限</th><th></th></tr></thead>
         <tbody>
-        <?php foreach ($users as $u): ?>
-            <tr<?= (int)$u['user_id'] === $me['user_id'] ? ' class="is-me"' : '' ?>>
-                <td class="muted" data-sort-value="<?= $u['entry_year'] !== null ? (int)$u['entry_year'] : '' ?>"><?= $u['entry_year'] !== null ? (int)$u['entry_year'] : '—' ?></td>
+        <?php foreach ($users as $i => $u): ?>
+            <tr<?= (int)$u['user_id'] === $me['user_id'] ? ' class="is-me"' : '' ?> data-pos="<?= h(json_encode($positions[$i])) ?>">
+                <td class="muted"><?= $u['entry_year'] !== null ? (int)$u['entry_year'] : '—' ?></td>
                 <td class="strong"><?= h($u['name']) ?></td>
                 <td class="muted"><?= h($u['login_id']) ?></td>
                 <td>
