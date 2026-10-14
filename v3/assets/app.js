@@ -1591,6 +1591,10 @@ function setupInstFilter() {
           y.classList.toggle('is-inst-hidden', !y.querySelector('.history__item:not(.is-inst-hidden)'));
         });
       }
+      // 絞り込み後の一覧をふわっと出す（動きを減らす設定なら出さない）
+      if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        list.animate([{ opacity: 0, transform: 'translateY(6px)' }, { opacity: 1, transform: 'none' }], { duration: 220, easing: 'ease-out' });
+      }
       open(false);
     });
   });

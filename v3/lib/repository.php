@@ -1178,9 +1178,9 @@ function inst_filter(array $segs, string $target, bool $tori = false, string $it
         return '';
     }
     $html = '<span class="inst-filter" data-inst-filter="' . h($target) . '"' . ($items !== '' ? ' data-inst-items="' . h($items) . '"' : '') . '>'
-        . '<button type="button" class="btn btn--ghost btn--sm inst-filter__btn" aria-label="楽器で絞り込み" aria-expanded="false">' . icon('filter_alt') . '</button>'
+        . '<button type="button" class="btn btn--ghost btn--sm inst-filter__btn" aria-label="楽器で絞り込み" aria-expanded="false">' . icon('filter_alt', 'icon--fill') . '</button>'
         . '<span class="inst-filter__menu" hidden>'
-        . '<button type="button" data-inst="" aria-label="すべて">' . icon('filter_alt_off') . '</button>';
+        . '<button type="button" data-inst="" aria-label="すべて">' . icon('filter_alt_off', 'icon--fill') . '</button>';
     foreach ($segs as $cls => $short) {
         $html .= '<button type="button" data-inst="' . h($cls) . '"><span class="part part--' . h($cls) . '">' . h($short) . '</span></button>';
     }
