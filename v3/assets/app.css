@@ -37,7 +37,7 @@
   --warn: #9a6a00;    --warn-bg: #fff3cf;    /* 黄: 似た人がいる */
   --danger: #c62f3e;  --danger-bg: #fde6e8;  /* 赤: 新しく登録される */
   /* 楽器の色 */
-  --vo: #13915c; --gt: #c58a00; --ba: #7653d6; --dr: #d90f0f; --key: #d6338a; --vn: #e8590c; --sax: #9c7a2e; --prog: #34508f; --harm: #4a6b85; --cho: #6fa31a; --other: #6c6a75;
+  --vo: #13915c; --gt: #c58a00; --ba: #7653d6; --dr: #d90f0f; --key: #d6338a; --vn: #e8590c; --sax: #9c7a2e; --prog: #1d6f96; --harm: #4a6b85; --cho: #6fa31a; --other: #6c6a75;
   --radius: 16px;
   --radius-sm: 10px;
   --shadow: 0 1px 2px rgba(20, 18, 30, .04), 0 6px 20px rgba(20, 18, 30, .05);
@@ -60,7 +60,7 @@
   --ok: #49dc9a;      --ok-bg: rgba(73, 220, 154, .13);
   --warn: #ffcf5c;    --warn-bg: rgba(255, 207, 92, .14);
   --danger: #ff6b7d;  --danger-bg: rgba(255, 107, 125, .14);
-  --vo: #3ddc97; --gt: #ffc857; --ba: #a78bfa; --dr: #ff6b6b; --key: #ff7eb6; --vn: #ff9f43; --sax: #d4b26a; --prog: #8fa8e0; --harm: #9fbad0; --cho: #b5e655; --other: #9d9cad;
+  --vo: #3ddc97; --gt: #ffc857; --ba: #a78bfa; --dr: #ff6b6b; --key: #ff7eb6; --vn: #ff9f43; --sax: #d4b26a; --prog: #74c4e6; --harm: #9fbad0; --cho: #b5e655; --other: #9d9cad;
   --shadow: 0 1px 0 rgba(255, 255, 255, .03) inset, 0 10px 30px rgba(0, 0, 0, .3);
   --glow: radial-gradient(1100px 520px at 90% -12%, rgba(255, 92, 61, .16), transparent 60%);
   color-scheme: dark;
@@ -301,10 +301,17 @@ body:has([data-tutorial-auto]) .toasts { display: none; }
 .th-inst { display: inline-flex; align-items: center; gap: 4px; }
 .th-inst .inst-filter { position: static; translate: none; display: inline-flex; align-items: center; height: 0; } /* 高さ 0 で、ボタンがあっても見出しの文字の高さが他と揃う */
 .th-inst .inst-filter__btn { padding: 0 4px; min-height: 0; height: 24px; }
-.inst-filter__menu { position: fixed; z-index: 50; display: flex; gap: 4px; padding: 6px; background: var(--card, #fff); border: 1px solid var(--line, #ddd); border-radius: 8px; box-shadow: 0 4px 12px rgb(0 0 0 / .15);
-  flex-direction: column; transform-origin: top left; animation: inst-menu-in .16s ease-out; }
+.inst-filter__menu { position: fixed; z-index: 50; display: grid; grid-template-columns: repeat(var(--cols, 4), auto); justify-items: center; align-items: center; gap: 4px;
+  padding: 6px; background: var(--card, #fff); border: 1px solid var(--line, #ddd); border-radius: 8px; box-shadow: 0 4px 12px rgb(0 0 0 / .15);
+  transform-origin: top left; animation: inst-menu-in .16s ease-out; }
 .inst-filter__menu[hidden] { display: none; }
-.inst-filter__group { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; } /* 楽器ごとに1行（単体・兼任・All） */
+.inst-filter__group { display: contents; } /* 楽器ごとに1行（単体・兼任・All）。中のボタンは .inst-filter__menu の列に並ぶ */
+.inst-filter__group > * { grid-row: var(--row); } /* 楽器ごとに決まった行に置く */
+.inst-filter__group > :first-child { grid-column: 1; }
+.inst-filter__group.is-no-solo > :first-child { grid-column: 2; }
+.inst-filter__group > [data-inst]:last-child:not(:first-child):has(.part--all) { grid-column: -2; } /* All は右端の列 */
+.inst-filter__group.is-no-solo > :only-child { grid-column: -2; } /* All だけの行（単体も兼任もない Vo など）も右端 */
+.part.part--all { min-width: 0; width: 51px; padding-inline: 0; letter-spacing: -.04em; } /* Key/Cho（.part--split）と同じくらいの幅 */
 @keyframes inst-menu-in { from { opacity: 0; transform: translateY(-4px) scale(.96); } }
 @media (prefers-reduced-motion: reduce) { .inst-filter__menu { animation: none; } }
 .inst-filter__menu button { background: none; border: 0; padding: 2px; cursor: pointer; }

@@ -1198,27 +1198,35 @@ function inst_filter(array $parts, string $target, bool $tori = false, string $i
     uasort($groups, static fn($a, $b) => $a['order'] <=> $b['order']);
     $opt = static fn(string $inst, string $label, string $aria = ''): string =>
         '<button type="button" data-inst="' . h($inst) . '"' . ($aria !== '' ? ' aria-label="' . h($aria) . '"' : '') . '>' . $label . '</button>';
-    $html = '<span class="inst-filter" data-inst-filter="' . h($target) . '"' . ($items !== '' ? ' data-inst-items="' . h($items) . '"' : '') . '>'
-        . '<button type="button" class="btn btn--ghost btn--sm inst-filter__btn" aria-label="楽器で絞り込み" aria-expanded="false">' . icon('filter_alt', 'icon--fill') . '</button>'
-        . '<span class="inst-filter__menu" hidden>'
-        . '<span class="inst-filter__group">' . $opt('', icon('filter_alt_off', 'icon--fill'), 'すべて')
-        . ($tori ? $opt('tori', '<span class="tori-badge">🐔</span>', 'トリ') : '') . '</span>';
+    // ポップアップは表（grid）。楽器ごとに1行で、単体は左端・兼任は真ん中・All は右端の列に揃える
+    $rows = [[$opt('', icon('filter_alt_off', 'icon--fill'), 'すべて') . ($tori ? $opt('tori', '<span class="tori-badge">🐔</span>', 'トリ') : '')]];
     $plain = ''; // 兼任がない楽器は最後に1行で横に並べる
+    $cols = 2;
     foreach ($groups as $cls => $g) {
         $single = '<span class="part part--' . h($cls) . '">' . h($g['short']) . '</span>';
         if (empty($g['combos'])) {
             $plain .= $opt($cls, $single);
             continue;
         }
-        $html .= '<span class="inst-filter__group">' . (isset($g['solo']) ? $opt($cls . '!', $single) : '');
         // Vo・Cho の行は兼任（Vo/Gt・Gt/Cho など）が他の楽器の行と重複するので、単体と All だけ
-        foreach (in_array($cls, ['vo', 'cho'], true) ? [] : $g['combos'] as $key => $p) {
-            $html .= $opt($key, part_badge($p));
+        $combos = in_array($cls, ['vo', 'cho'], true) ? [] : $g['combos'];
+        $row = isset($g['solo']) ? $opt($cls . '!', $single) : '';
+        foreach ($combos as $key => $p) {
+            $row .= $opt($key, part_badge($p));
         }
-        $html .= $opt($cls, '<span class="part part--' . h($cls) . '">' . h($g['short']) . ' All</span>') . '</span>';
+        $row .= $opt($cls, '<span class="part part--all part--' . h($cls) . '">' . h($g['short']) . ' All</span>');
+        $rows[] = [$row, isset($g['solo'])];
+        $cols = max($cols, count($combos) + 2);
     }
     if ($plain !== '') {
-        $html .= '<span class="inst-filter__group">' . $plain . '</span>';
+        $rows[] = [$plain];
+    }
+    $html = '<span class="inst-filter" data-inst-filter="' . h($target) . '"' . ($items !== '' ? ' data-inst-items="' . h($items) . '"' : '') . '>'
+        . '<button type="button" class="btn btn--ghost btn--sm inst-filter__btn" aria-label="楽器で絞り込み" aria-expanded="false">' . icon('filter_alt', 'icon--fill') . '</button>'
+        . '<span class="inst-filter__menu" style="--cols: ' . $cols . '" hidden>';
+    foreach ($rows as $i => $r) {
+        // --row: 行の番号（CSS の grid-row）。単体がない行は、兼任を2列目から始める（単体の列を空ける）
+        $html .= '<span class="inst-filter__group' . (isset($r[1]) && !$r[1] ? ' is-no-solo' : '') . '" style="--row: ' . ($i + 1) . '">' . $r[0] . '</span>';
     }
     return $html . '</span></span>';
 }
