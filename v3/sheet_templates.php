@@ -114,6 +114,17 @@ function parse_sheet_config(string $json): array
     if ($missing) {
         throw new RuntimeException('座標（JSON）に ' . implode(' / ', $missing) . ' がありません');
     }
+    // 中身も確かめる（エディタを通さずに空の {} などを送られても、作成画面が動かない型紙は保存しない）
+    $isTable = static fn($t): bool => is_array($t)
+        && (isset($t['top'], $t['row_h'], $t['rows']) || is_array($t['lines'] ?? null) || is_array($t['slots'] ?? null));
+    $isBox = static fn($b): bool => is_array($b) && count($b) === 4 && count(array_filter($b, 'is_numeric')) === 4;
+    $broken = [];
+    if (!$isTable($config['members'])) $broken[] = 'メンバー表（members）';
+    if (!$isTable($config['setlist']) || !is_array($config['setlist']['title'] ?? null)) $broken[] = 'セットリスト（setlist）';
+    if (!$isBox($config['stage'])) $broken[] = 'セット図の枠（stage）';
+    if ($broken) {
+        throw new RuntimeException(implode(' / ', $broken) . ' の書き方が足りません');
+    }
     // label / venue_words / venues / pdf は上の欄で、stage_image はエディタの切り抜きで決めるので、JSON の中にあっても捨てる
     unset($config['label'], $config['venue_words'], $config['venues'], $config['pdf'], $config['stage_image']);
     return $config;
@@ -342,7 +353,11 @@ render_header('セッティングシートの型紙', 'tools');
                     </select>
                 </label>
                 <!-- 中身は assets/sheet_editor.js の fillAddMenu() が作る（型紙にまだ無い欄だけ） -->
-                <select data-ed-add aria-label="枠を足す"><option value="">＋ 枠を足す…</option></select>                <span class="muted small sheet-ed__cursor" data-ed-cursor></span>
+                <select data-ed-add aria-label="枠を足す"><option value="">＋ 枠を足す…</option></select>
+                <!-- バンド名・日付・自由記入欄・固定の文字・選択肢の文字の大きさの倍率（型紙の font_scale）。枠に入らなければ自動で小さくなる -->
+                <label class="ed-num" title="文字の大きさ（倍率）"><?= icon('format_size') ?>
+                    <input type="number" data-ed-font step="0.1" min="0.3" max="5" value="1" aria-label="文字の大きさ（倍率）">
+                </label>                <span class="muted small sheet-ed__cursor" data-ed-cursor></span>
             </div>
             <p class="muted small" data-ed-note></p>
             <div class="sheet-ed__list" data-ed-list></div>
@@ -456,5 +471,5 @@ $editorData = [
 ];
 ?>
 <script type="application/json" id="sheet-editor-data"><?= json_encode($editorData, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP) ?></script>
-<script src="assets/sheet_editor.js?v=6" defer></script>
+<script src="assets/sheet_editor.js?v=13" defer></script>
 <?php render_footer();

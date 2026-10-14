@@ -18,6 +18,7 @@
 /* メンバー: パート（狭い）+ 名前（広い） */
 .sheet-members { display: grid; gap: 6px; }
 .sheet-members__row { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 6px; }
+.sheet-members__row.is-name-first { grid-template-columns: minmax(0, 1fr) 76px; } /* 名前が左のシート（MEMBER → Position） */
 
 /* パートが印刷済みの表（サークル共通シート）: パート名 | 名前 | マイク✓ */
 .sheet-slots__row { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; gap: 8px; align-items: center; }

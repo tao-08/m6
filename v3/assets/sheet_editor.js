@@ -33,11 +33,13 @@
     const list = root.querySelector('[data-ed-list]');
     const panel = root.querySelector('[data-ed-panel]');
     const zoomSelect = root.querySelector('[data-ed-zoom]');
+    const fontInput = root.querySelector('[data-ed-font]');
     const SVG_NS = 'http://www.w3.org/2000/svg';
 
     // 1行の欄。year / month / day は「年」「月」が印刷済みのシート用（出演日から数字だけ書く）
     const FIELD_LABELS = { band: 'バンド名', kana: 'フリガナ', date: '出演日', year: '年', month: '月', day: '日', order: '出演順', rep: '代表者氏名' };
     const COL_LABELS = { part: 'パート', name: '氏名', part2: 'パート', name2: '氏名', mic: 'マイク', no: '曲順', title: '曲名', sound: '音響', light: '照明', request: '備考（音響・照明）' };
+    const PAIR_LABELS = { part: 'パート1', name: '名前1', part2: 'パート2', name2: '名前2' };
 
     let cfg = null;        // 今の型紙（JSON を読んだもの）。ドラッグはこの中の数字を直接書き換える
     let items = [];        // 画面に出す枠の一覧（buildItems で cfg から作る）
@@ -134,15 +136,16 @@
         for (const [k, f] of Object.entries(cfg.fields || {})) {
             if (f && isBox(f.box)) out.push(rectItem(`fields.${k}`, FIELD_LABELS[k] || k, 'fields', f.box, () => delete cfg.fields[k]));
         }
+        // メンバー表・セットリスト・セット図の枠も消せる（消したら「＋ 枠を足す」から標準の形で出し直す。無いままは保存できない）
         if (cfg.members) {
             const it = tableItem('members', 'メンバー表', 'members', cfg.members);
-            if (it) out.push(it);
+            if (it) out.push({ ...it, remove: () => delete cfg.members });
         }
         if (cfg.setlist) {
             const it = tableItem('setlist', 'セットリスト', 'setlist', cfg.setlist);
-            if (it) out.push(it);
+            if (it) out.push({ ...it, remove: () => delete cfg.setlist });
         }
-        if (isBox(cfg.stage)) out.push(rectItem('stage', 'セット図の枠', 'stage', cfg.stage));
+        if (isBox(cfg.stage)) out.push(rectItem('stage', 'セット図の枠', 'stage', cfg.stage, () => delete cfg.stage));
         if (isBox(cfg.drum)) out.push(rectItem('drum', 'ドラム（自動配置で避ける）', 'drum', cfg.drum, () => delete cfg.drum));
         for (const [g, opts] of Object.entries(cfg.choices || {})) {
             for (const [name, v] of Object.entries(opts || {})) {
@@ -201,7 +204,7 @@
                 // which: 0=左 1=右 2=上 3=下
                 g.append(edge(x0, y0, x0, y1, 0), edge(x1, y0, x1, y1, 1), edge(x0, y0, x1, y0, 2), edge(x0, y1, x1, y1, 3));
                 if (it.id === selectedId || (x1 - x0) / k > 50) {
-                    const t = el('text', { x: x0 + 2 * k, y: y0 + 11 * k, class: 'ed-label', 'font-size': 10 * k });
+                    const t = el('text', { x: x0 + 2 * k, y: y0 + 11 * k, class: 'ed-label', 'font-size': 10 * k, 'stroke-width': 3 * k });
                     t.textContent = it.label;
                     g.append(t);
                 }
@@ -224,11 +227,13 @@
                 // 列の名前（パート・氏名…）を列の上に
                 for (const key of it.colKeys) {
                     const [l] = it.t[key];
-                    const t = el('text', { x: l + 2 * k, y: y0 - 3 * k, class: 'ed-label', 'font-size': 10 * k });
-                    t.textContent = COL_LABELS[key] || key;
+                    const t = el('text', { x: l + 2 * k, y: y0 - 3 * k, class: 'ed-label', 'font-size': 10 * k, 'stroke-width': 3 * k });
+                    // 2組ある表は「名前1 / パート1 / 名前2 / パート2」で見分ける
+                    const pair = it.colKeys.includes('part2') ? PAIR_LABELS[key] : null;
+                    t.textContent = pair || COL_LABELS[key] || key;
                     g.append(t);
                 }
-                const t = el('text', { x: x0 + 2 * k, y: y0 + 11 * k, class: 'ed-label', 'font-size': 10 * k });
+                const t = el('text', { x: x0 + 2 * k, y: y0 + 11 * k, class: 'ed-label', 'font-size': 10 * k, 'stroke-width': 3 * k });
                 t.textContent = it.label;
                 g.append(t);
             }
@@ -272,7 +277,10 @@
                 it.t.rows = n;
                 it.t.row_h = +((b - it.t.top) / n).toFixed(3);
             });
-            if (it.id === 'members' && it.t.mode !== 'slots') membersPairPanel(it.t);
+            if (it.id === 'members' && it.t.mode !== 'slots') {
+                membersPairPanel(it.t);
+                membersSwapPanel(it.t);
+            }
         } else {
             const s = document.createElement('span');
             s.className = 'muted small';
@@ -280,6 +288,14 @@
             panel.append(s);
         }
         if (it.id === 'setlist') setlistNotePanel(it.t);
+        if (it.id === 'stage') {
+            // 部品（アンプ・マイク・人）の大きさの倍率。枠が大きいシートで自動配置がすかすかになるときに上げる
+            num('部品の大きさ（倍率）', () => cfg.stage_scale || 1, (v) => {
+                const s = Math.min(5, Math.max(0.3, r1(v)));
+                if (s === 1) delete cfg.stage_scale;
+                else cfg.stage_scale = s;
+            });
+        }
         if (it.choice) choicePanel(it.choice);
         if (it.text) {
             textInput('欄の名前（画面に出る）', it.text.label || '', (v) => { it.text.label = v; changed(true); });
@@ -288,7 +304,6 @@
             // 空にすると図形だけ書く
             textInput('書く文字', it.stamp.text || '', (v) => { it.stamp.text = v; changed(true); }, true);
             if (it.stamp.text) {
-                num('文字の大きさ', () => it.stamp.size || 10, (v) => { it.stamp.size = Math.max(4, r1(v)); });
                 panelButton(it.stamp.align === 'center' ? '左寄せにする' : '中央寄せにする', () => {
                     it.stamp.align = it.stamp.align === 'center' ? 'left' : 'center';
                     changed(true);
@@ -372,12 +387,32 @@
         }
         if (!Array.isArray(t.part) || !Array.isArray(t.name)) return;
         panelButton('＋ 右にもう1組（パート・氏名）を足す', () => {
-            const pw2 = t.part[1] - t.part[0];
-            const nw = t.name[1] - t.name[0];
-            const x = t.name[1];
-            t.part2 = [r1(x), r1(x + pw2)];
-            t.name2 = [r1(x + pw2), r1(x + pw2 + nw)];
+            // 1組目のいちばん右の線から、1組目と同じ並び（名前が先 / パートが先）・同じ幅で置く。
+            // 1組目の列に重ねると線がくっついて（groupRefs）離せなくなる
+            const pw2 = Math.abs(t.part[1] - t.part[0]);
+            const nw = Math.abs(t.name[1] - t.name[0]);
+            const x = Math.max(...t.part, ...t.name);
+            const nameFirst = Math.min(...t.name) < Math.min(...t.part);
+            const [w1, w2] = nameFirst ? [nw, pw2] : [pw2, nw];
+            const first = [r1(x), r1(x + w1)];
+            const second = [r1(x + w1), r1(x + w1 + w2)];
+            [t.part2, t.name2] = nameFirst ? [second, first] : [first, second];
             note.textContent = '右にもう1組置きました。左の組が埋まったら、右の組の上から書きます。線をドラッグして合わせてください。';
+            changed(true);
+        });
+    }
+
+    /**
+     * メンバー表: パートの列と名前の列の役割を入れ替える（線の位置はそのまま）。
+     * 見本はパートが左なので、名前が左のシート（MEMBER → Position）はこれで合わせる。
+     * 真ん中の線はパートと名前で共有していて、ドラッグでは入れ替えられない
+     */
+    function membersSwapPanel(t) {
+        if (!Array.isArray(t.part) || !Array.isArray(t.name)) return;
+        panelButton('⇄ パートと名前を入れ替える', () => {
+            [t.part, t.name] = [t.name, t.part];
+            if (Array.isArray(t.part2) && Array.isArray(t.name2)) [t.part2, t.name2] = [t.name2, t.part2];
+            note.textContent = '線の位置はそのままです。真ん中の線をドラッグして幅を合わせてください。';
             changed(true);
         });
     }
@@ -387,6 +422,36 @@
      * 備考列のシートには、音響と照明への要望を「音響 / 照明：…」とつないで書く（setting_sheet.js）
      */
     function setlistNotePanel(t) {
+        // 表の左端・右端（任意の列を足す場所）
+        const cols = Object.keys(t).filter((k) => isCol(t[k]) && k !== 'lines').map((k) => t[k]);
+        const left = Math.min(...cols.flat());
+        const right = Math.max(...cols.flat());
+        // 曲順（印刷済みのシートは無くてよい）: 足すときは表の左に 30pt
+        if (isCol(t.no)) {
+            panelButton('曲順の列を消す', () => { delete t.no; changed(true); });
+        } else {
+            panelButton('＋ 曲順の列を足す', () => {
+                t.no = [r1(left - 30), r1(left)];
+                note.textContent = '表の左に曲順の列を足しました。線をドラッグして合わせてください。';
+                changed(true);
+            });
+        }
+        // 音響・照明（備考）の列が無いシート: 足すときは表の右に 60pt × 2
+        if (!isCol(t.request) && !(isCol(t.sound) && isCol(t.light))) {
+            panelButton('＋ 音響・照明の列を足す', () => {
+                t.sound = [r1(right), r1(right + 60)];
+                t.light = [r1(right + 60), r1(right + 120)];
+                note.textContent = '表の右に音響・照明の列を足しました。線をドラッグして合わせてください。';
+                changed(true);
+            });
+            return;
+        }
+        panelButton('音響・照明の列を消す', () => {
+            delete t.sound;
+            delete t.light;
+            delete t.request;
+            changed(true);
+        });
         if (isCol(t.request)) {
             panelButton('音響と照明を別の列に分ける', () => {
                 const [l, r] = t.request;
@@ -461,7 +526,6 @@
             }
             changed(true);
         }, true);
-        if (spec.text) numInput('文字の大きさ', () => spec.size || 10, (v) => writeOpt(g, name, { ...spec, size: Math.max(4, r1(v)) }));
         panelButton('＋ このグループに選択肢を足す', () => {
             // 最後の選択肢の箱の右に、同じ大きさ・同じ印で置く（書く文字は人によって違うので写さない）
             const boxes = Object.values(cfg.choices[g]).map((v) => (Array.isArray(v) ? v : v.box));
@@ -524,11 +588,20 @@
     /** つかんだ所（data-drag）→ 動かすものの一覧 [{start, set, axis}] */
     function dragOps(it, what) {
         const op = (get, set, axis) => ({ start: get(), set, axis });
+        // 線・辺1本のドラッグは、隣の線を追い越さない（GAP pt 手前で止める）。
+        //   追い越すと列の左右が逆になり、ぴったり重ねると groupRefs で1本にくっついて離せなくなる
+        const GAP = 2;
+        const limit = (set, lo, hi) => (v) => set(Math.min(hi, Math.max(lo, v)));
         if (it.type === 'rect') {
             const b = it.box;
             const side = (i, axis) => op(() => b[i], (v) => { b[i] = r1(v); }, axis);
             if (what === 'move') return [side(0, 'x'), side(2, 'x'), side(1, 'y'), side(3, 'y')];
-            return [[side(0, 'x')], [side(2, 'x')], [side(1, 'y')], [side(3, 'y')]][+what.slice(4)];
+            const i = [0, 2, 1, 3][+what.slice(4)]; // edge0〜3 = 左・右・上・下 → box の添字
+            const o = side(i, i % 2 === 0 ? 'x' : 'y');
+            // 左・上の辺は向かいの辺の GAP 手前まで、右・下の辺は向かいの辺の GAP 先から
+            const other = b[i < 2 ? i + 2 : i - 2];
+            o.set = limit(o.set, i < 2 ? -Infinity : other + GAP, i < 2 ? other - GAP : Infinity);
+            return [o];
         }
         if (what === 'move') {
             const ops = it.xs.map((x) => op(x.get, x.set, 'x'));
@@ -540,8 +613,13 @@
             }
             return ops;
         }
-        const g = (what[0] === 'x' ? it.xs : it.ys)[+what.slice(1)];
-        return [op(g.get, g.set, what[0])];
+        // xs / ys は位置の順に並んでいる（groupRefs）ので、前後が隣の線
+        const lines = what[0] === 'x' ? it.xs : it.ys;
+        const n = +what.slice(1);
+        const g = lines[n];
+        const lo = n > 0 ? lines[n - 1].get() + GAP : -Infinity;
+        const hi = n < lines.length - 1 ? lines[n + 1].get() - GAP : Infinity;
+        return [op(g.get, limit(g.set, lo, hi), what[0])];
     }
 
     let drag = null;
@@ -553,7 +631,10 @@
         if (!it) return;
         e.preventDefault();
         selectedId = it.id;
-        drag = { from: toPt(e), ops: dragOps(it, target.dataset.drag), moved: false };
+        const what = target.dataset.drag;
+        // 四角の枠の辺をつかんだときは、Ctrl / Shift で正方形にできるように辺の番号を覚えておく
+        const edge = it.type === 'rect' && what.startsWith('edge') ? +what.slice(4) : null;
+        drag = { from: toPt(e), ops: dragOps(it, what), moved: false, box: it.box, edge };
         svg.setPointerCapture(e.pointerId); // 枠の外までマウスが出ても、離すまで追いかける
         draw();
     });
@@ -564,9 +645,22 @@
         const dx = x - drag.from[0];
         const dy = y - drag.from[1];
         for (const o of drag.ops) o.set(o.start + (o.axis === 'x' ? dx : dy));
+        if (drag.edge !== null && (e.ctrlKey || e.shiftKey)) square(drag.box, drag.edge);
         drag.moved = true;
         draw();
     });
+
+    /**
+     * Ctrl / Shift を押しながら辺をドラッグ → 正方形にする（Office の図形と同じ。丸の図形なら円になる）。
+     * 左右の辺なら今の幅に高さを合わせて下の辺を動かし、上下の辺なら今の高さに幅を合わせて右の辺を動かす
+     */
+    function square(b, edge) {
+        if (edge < 2) {
+            b[3] = r1(b[1] + (b[2] - b[0])); // edge0 / 1 = 左・右の辺
+        } else {
+            b[2] = r1(b[0] + (b[3] - b[1])); // edge2 / 3 = 上・下の辺
+        }
+    }
     const endDrag = () => {
         if (drag && drag.moved) changed(true);
         drag = null;
@@ -612,6 +706,7 @@
             items = buildItems();
             if (!items.some((x) => x.id === selectedId)) selectedId = null;
             fillAddMenu();
+            fontInput.value = String(cfg.font_scale || 1);
             note.textContent = '';
         } catch (err) {
             note.textContent = `JSON の書き方が間違っています（${err.message}）。直すまで枠は前のままです。`;
@@ -631,11 +726,20 @@
      * ----------------------------------------------------------------- */
     const addSelect = root.querySelector('[data-ed-add]');
 
+    /** 型紙に必ず要る3つ（作成画面はこれがある前提で動く） */
+    const MAIN_PARTS = { members: 'メンバー表', setlist: 'セットリスト', stage: 'セット図の枠' };
+    /** その3つがちゃんとあるか（buildItems() で枠になる形か） */
+    const hasMain = (k) => (k === 'stage' ? isBox(cfg?.stage) : !!(cfg?.[k] && tableItem(k, '', k, cfg[k])));
+
     /** プルダウンの中身を作り直す（もうある欄は出さない） */
     function fillAddMenu() {
         addSelect.textContent = '';
         const opt = (value, text) => addSelect.append(new Option(text, value));
         opt('', '＋ 枠を足す…');
+        // 無いときだけ（消したとき・白紙から作るとき）
+        for (const [k, label] of Object.entries(MAIN_PARTS)) {
+            if (!hasMain(k)) opt(k, label);
+        }
         for (const [k, label] of Object.entries(FIELD_LABELS)) {
             if (!cfg?.fields?.[k]) opt(`field:${k}`, label);
         }
@@ -648,9 +752,28 @@
     addSelect.addEventListener('change', () => {
         const what = addSelect.value;
         if (!what) return;
-        if (!cfg) cfg = { fields: {}, members: {}, stage: [0, 0, 100, 100], setlist: {} };
+        if (!cfg) cfg = { fields: {} }; // 白紙から: メンバー表などもこのプルダウンから出す
         const cx = pw / 2, cy = ph / 2;
-        if (what.startsWith('field:')) {
+        const x = (v) => r1(cx + v);
+        const y = (v) => r1(cy + v);
+        if (what === 'members') {
+            // 標準の形: パート | 名前 の5行（名前が左のシートは「⇄ パートと名前を入れ替える」）
+            cfg.members = { top: y(-50), row_h: 20, rows: 5, part: [x(-120), x(-60)], name: [x(-60), x(120)] };
+            selectedId = 'members';
+            note.textContent = 'メンバー表をページの真ん中に置きました。線をドラッグしてシートの罫線に合わせてください。行数は下で変えられます。';
+        } else if (what === 'setlist') {
+            // 標準の形: 曲順 | 曲名 | 音響 | 照明 の10行（幅 320pt）
+            cfg.setlist = {
+                top: y(-100), row_h: 20, rows: 10,
+                no: [x(-160), x(-130)], title: [x(-130), x(40)], sound: [x(40), x(100)], light: [x(100), x(160)],
+            };
+            selectedId = 'setlist';
+            note.textContent = 'セットリストをページの真ん中に置きました。要らない列は下のボタンで消せます。';
+        } else if (what === 'stage') {
+            cfg.stage = [x(-150), y(-100), x(150), y(100)];
+            selectedId = 'stage';
+            note.textContent = 'セット図の枠をページの真ん中に置きました。シートのセット図の四角に合わせてください。';
+        } else if (what.startsWith('field:')) {
             const k = what.slice(6);
             const narrow = ['year', 'month', 'day', 'order'].includes(k); // 数字だけの欄は小さく
             const hw = narrow ? 15 : 80;
@@ -752,6 +875,16 @@
         renderPdf();
     });
 
+    // 文字の大きさの倍率（メンバー表・セットリスト以外の欄すべて）。1 なら設定ごと消す
+    fontInput.addEventListener('change', () => {
+        if (!cfg || fontInput.value === '' || !Number.isFinite(+fontInput.value)) return;
+        const s = Math.min(5, Math.max(0.3, r1(+fontInput.value)));
+        fontInput.value = String(s);
+        if (s === 1) delete cfg.font_scale;
+        else cfg.font_scale = s;
+        changed();
+    });
+
     zoomSelect.addEventListener('change', () => {
         zoom = +zoomSelect.value;
         wrap.style.width = `${zoom * 100}%`;
@@ -772,7 +905,15 @@
     }
 
     // 保存するとき: セット図の枠の中を PNG に切り抜いて一緒に送る
-    form.addEventListener('submit', () => {
+    form.addEventListener('submit', (e) => {
+        // メンバー表・セットリスト・セット図の枠が無い型紙は保存しない（作成画面が動かなくなる）
+        const missing = Object.keys(MAIN_PARTS).filter((k) => !hasMain(k));
+        if (cfg && missing.length) {
+            e.preventDefault();
+            note.textContent = `${missing.map((k) => MAIN_PARTS[k]).join(' / ')} がありません。「＋ 枠を足す」から出してください。`;
+            note.scrollIntoView({ block: 'center', behavior: 'smooth' });
+            return;
+        }
         pngInput.value = stagePng();
     });
 

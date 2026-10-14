@@ -277,7 +277,8 @@
      * メンバー表の「組」（パート列と氏名列の左右）。part2 / name2 があれば、表の右半分にもう1組ある（4列の表）。
      * 左の組を上から埋めて、入り切らなければ右の組に続ける。書ける人数 = 行数 × 組の数
      */
-    const memberCols = (mt) => [[mt.part, mt.name], ...(Array.isArray(mt.part2) && Array.isArray(mt.name2) ? [[mt.part2, mt.name2]] : [])];
+    const memberCols = (mt) => [[mt.part, mt.name], ...(Array.isArray(mt.part2) && Array.isArray(mt.name2) ? [[mt.part2, mt.name2]] : [])]
+        .map((pair) => pair.map((c) => [Math.min(...c), Math.max(...c)])); // 型紙で線を追い越して左右が逆になった列も書けるように
 
     /** メンバー表の行を作る（型紙に書ける人数ぶん） */
     function renderMembers() {
@@ -291,6 +292,8 @@
         }
         hint.textContent = 'パートは Vo / Gt / Ba / Dr / Key などを入力';
         const rows = tpl().members.rows * memberCols(tpl().members).length; // 4列の表なら行数の2倍
+        const [[partCol, nameCol]] = memberCols(tpl().members);
+        const nameFirst = nameCol[0] < partCol[0];
         for (let i = 0; i < rows; i++) {
             if (!state.members[i]) {
                 state.members[i] = { part: '', name: '' }; // 足りない行は空で埋める
@@ -312,7 +315,13 @@
             name.maxLength = 50;
             name.value = m.name;
             name.addEventListener('input', () => { m.name = name.value; save(); });
-            row.append(part, name);
+            // 入力欄の並びはシートの列と同じに（名前が左のシートは「名前 → パート」）
+            if (nameFirst) {
+                row.classList.add('is-name-first');
+                row.append(name, part);
+            } else {
+                row.append(part, name);
+            }
             box.append(row);
         }
         if (state.members.filter((m) => m.name.trim() !== '').length > rows) {
@@ -1737,9 +1746,13 @@
             return lines;
         }
 
+        // 型紙の font_scale: メンバー表・セットリスト以外の欄（1行の欄・自由記入欄・固定の文字・選択肢の文字）の文字の倍率。
+        //   大きくしても枠に入らなければ drawInBox が自動で小さくする
+        const fs = t.font_scale || 1;
+
         // ---- 1. バンド名・フリガナ・出演日・出演順 ----
         for (const [key, f] of Object.entries(t.fields)) {
-            drawInBox(fieldValue(key), f.box, { size: f.size, min: 5 });
+            drawInBox(fieldValue(key), f.box, { size: (f.size || 10) * fs, min: 5 });
         }
         // 型紙で決めた「いつも書く文字」（サークル名など。入力欄は無い）
         // shape があれば枠の大きさの四角・丸で囲む（文字が空なら図形だけ）
@@ -1751,7 +1764,7 @@
             } else if (s.shape === 'ellipse') {
                 page.drawEllipse({ x: (x0 + x1) / 2, y: Y((top + bottom) / 2), xScale: (x1 - x0) / 2, yScale: (bottom - top) / 2, ...line });
             }
-            if (s.text) drawInBox(s.text, s.box, { size: s.size || 10, align: s.align || 'left', min: 5 });
+            if (s.text) drawInBox(s.text, s.box, { size: (s.size || 10) * fs, align: s.align || 'left', min: 5 });
         }
 
         // ---- 2. メンバー ----
@@ -1808,7 +1821,7 @@
                 //   filter(Boolean): 空の文字（''）を取り除く定番の書き方
                 const req = [r.sound, r.light && `照明：${r.light}`].filter(Boolean).join(' / ');
                 drawInBox(req, [st.request[0], top, st.request[1], bottom], note);
-            } else {
+            } else if (st.sound && st.light) { // 音響・照明の列が無いシートには書かない
                 drawInBox(r.sound, [st.sound[0], top, st.sound[1], bottom], note);
                 drawInBox(r.light, [st.light[0], top, st.light[1], bottom], note);
             }
@@ -1820,7 +1833,7 @@
                 continue; // 画面で隠れている欄は書かない
             }
             drawInBox(textValue(tx), tx.box, {
-                size: tx.size || 10, wrap: !!tx.multiline, maxLines: 4, pad: tx.pad ?? 3,
+                size: (tx.size || 10) * fs, wrap: !!tx.multiline, maxLines: 4, pad: tx.pad ?? 3,
             });
         }
 
@@ -1842,7 +1855,7 @@
             const box = Array.isArray(spec) ? spec : spec.box;
             const [x0, top, x1, bottom] = box;
             if (!Array.isArray(spec) && spec.text && Array.isArray(spec.text_box)) {
-                drawInBox(spec.text, spec.text_box, { size: spec.size || 10, min: 5, pad: 1 });
+                drawInBox(spec.text, spec.text_box, { size: (spec.size || 10) * fs, min: 5, pad: 1 });
             }
             if (!Array.isArray(spec) && spec.mark === 'none') {
                 continue;
@@ -2150,6 +2163,12 @@
             renderAgain = true; // 今の描画が終わったら、最新の入力でもう一度
             return;
         }
+        // 枠を出した直後（型紙のプレビューの iframe を作った直後など）はまだ幅が 0 のことがある。
+        // 幅 0 の canvas は drawImage で失敗するので、幅が付くまで次のフレームを待つ
+        if (fitWidth() <= 0) {
+            requestAnimationFrame(() => { if (previewOpen) renderPreview(); });
+            return;
+        }
         rendering = true;
         // 入力が変わったときだけ「更新中」を出して薄くする。拡大・縮小の描き直しで出すと点滅して見える
         const rebuild = pdfDirty || !pdfBytes;
@@ -2364,10 +2383,28 @@
         s.members = [
             ['Vo', '山田 太郎'], ['Gt', '佐藤 花子'], ['Gt', '鈴木 一郎'], ['Ba', '高橋 次郎'], ['Dr', '田中 三郎'], ['Key', '伊藤 四郎'],
         ].map(([part, name]) => ({ part, name }));
+        // 書き込む表は、2組目まで全部の行を埋める（パートが印刷済みの表は上の6人を振り分けるだけ）
+        const mt = tpl().members;
+        if (mt.mode !== 'slots') {
+            const sei = ['渡辺', '中村', '小林', '加藤', '吉田', '山口', '松本', '井上', '木村', '清水'];
+            const mei = ['健太', '美咲', '翔', '結衣', '大輝', 'さくら', '蓮', '陽菜', '悠真', '凛'];
+            const parts = ['Cho', 'Gt', 'Perc', 'Sax', 'Tp', 'Vn'];
+            for (let k = 0; s.members.length < mt.rows * memberCols(mt).length; k++) {
+                s.members.push({ part: parts[k % parts.length], name: `${sei[k % sei.length]} ${mei[k % mei.length]}` });
+            }
+        }
         const n = rowCount(tpl().setlist);
+        // 音響・照明の要望: 1・3曲目は1行に収まる短いもの、2曲目は2行になる長めのもの
+        //   （備考1列のシートは「音響 / 照明：…」とつなぐので、短い方は片方だけにして1行に収める）
+        const notes = {
+            1: ['リバーブ深め', ''],
+            2: ['ギターソロで音量を上げてください。サビはコーラスを強めに', 'イントロは青一色、サビで全体を明るく。最後は暗転'],
+            3: ['', '暗転から'],
+        };
         s.songs = [];
         for (let i = 1; i < n; i++) {
-            s.songs.push({ id: i, mc: false, title: `サンプル曲${i}`, sound: i === 1 ? 'リバーブ深め' : '', light: i === 1 ? '暗転から' : '' });
+            const [sound, light] = notes[i] || ['', ''];
+            s.songs.push({ id: i, mc: false, title: `サンプル曲${i}`, sound, light });
             if (i === 1) s.songs.push({ id: 100, mc: true });
         }
         s.nextSongId = 101;

@@ -1814,7 +1814,7 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
 .ed-edge:hover { stroke: var(--c); stroke-opacity: .45; }
 .ed-edge--v { cursor: ew-resize; } .ed-edge--h { cursor: ns-resize; }
 .ed-inner { stroke: var(--c); stroke-width: 1; stroke-dasharray: 3 3; opacity: .6; pointer-events: none; }
-.ed-label { fill: var(--c); font-weight: 700; pointer-events: none; paint-order: stroke; stroke: #fff; stroke-width: 3px; }
+.ed-label { fill: var(--c); font-weight: 700; pointer-events: none; paint-order: stroke; stroke: #fff; stroke-linejoin: round; } /* 縁の太さは JS が表示の倍率に合わせて付ける（stroke-width） */
 .ed-chip { border: 1px solid var(--c); color: var(--c); background: transparent; border-radius: 999px; padding: 2px 10px; font-size: 12px; cursor: pointer; }
 .ed-chip.is-selected { background: var(--c); color: #fff; }
 /* 変更履歴の一覧: 「変わったもの」を開くと出る比べる表（history.php）。カードの中なので影は消して詰める */

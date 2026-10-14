@@ -61,8 +61,10 @@ declare(strict_types=1);
  *   drum         : 印刷済みのドラムの箱（自動配置でアンプを避ける）
  *   box_labels   : セット図の四角を選んだときに出す名前の候補（無ければ JS の BOX_LABELS）
  *   gt_amps      : 自動配置でギターアンプに付ける名前。ドラムに近い方から順に（無ければ JC, Marshall。足りない分は Gt Amp）
+ *   （setlist の no / sound・light / request は任意。無いシートには書かない。members / setlist / stage は必須で、型紙エディタも無いと保存しない）
  *   stage_scale  : セット図の部品の基準の大きさの倍率（枠が大きいシートは大きくする）
  *   text_scale   : 欄に書く文字の、いちばん大きいサイズの倍率（欄に入りきらなければ自動で小さくなる）
+ *   font_scale   : メンバー表・セットリスト以外の欄（fields / texts / stamps / 選択肢の文字）だけの文字の倍率（型紙エディタで変える）
  *
  *   members の書き方は2種類:
  *     mode なし（list）: 「パート」「氏名」を1行ずつ自由に書く表（Club Voice）
