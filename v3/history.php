@@ -37,10 +37,11 @@ if (is_post()) {
 /**
  * 戻すと何がどう変わるか（change_preview の結果）を出す。確認画面と、一覧の「変わったもの」を開いたときの両方で使う
  */
-function render_history_preview(array $preview): void
+function render_history_preview(array $preview, bool $asLog = false): void
 {
     $typeNames = ['live' => 'ライブ', 'day' => '日程', 'band' => 'バンド'];
-    $kinds = ['change' => '変わる', 'delete' => '消える', 'revive' => '復活する'];
+    // $asLog: 一覧用。その変更の「変更前 → 変更後」として見せる（変更前 = 戻した後、変更後 = 今）
+    $kinds = $asLog ? ['change' => '変更', 'delete' => '追加', 'revive' => '削除'] : ['change' => '変更', 'delete' => '削除', 'revive' => '復活'];
     $same = array_filter($preview, static fn($p) => $p['kind'] === 'same');
     $name = static fn(array $p) => $p['url'] !== null ? '<a href="' . h($p['url']) . '">' . h($p['label']) . '</a>' : h($p['label']);
     ?>
@@ -49,7 +50,8 @@ function render_history_preview(array $preview): void
             <section class="card history-unit history-unit--<?= h($p['kind']) ?>">
                 <h2 class="history-unit__title"><span class="tag tag--<?= h($p['kind']) ?>"><?= h($kinds[$p['kind']]) ?></span>
                     <span class="muted small"><?= h($typeNames[$p['type']]) ?></span> <?= $name($p) ?></h2>
-                <?php if ($p['kind'] === 'delete'): ?>
+                <?php if ($asLog): ?>
+                <?php elseif ($p['kind'] === 'delete'): ?>
                     <p class="small">この変更で追加されたものなので、<strong>中のバンド・メンバー・セトリごと消えます</strong>。</p>
                 <?php elseif ($p['kind'] === 'revive'): ?>
                     <p class="small">今は削除されています。変更前の状態で<strong>同じ ID のまま復活します</strong>。</p>
@@ -57,10 +59,10 @@ function render_history_preview(array $preview): void
                 <?php if ($p['changes']): ?>
                     <div class="table-scroll table-scroll--flush">
                         <table class="table history-diff">
-                            <thead><tr><th>項目</th><th>今</th><th>戻した後</th></tr></thead>
+                            <thead><tr><th>項目</th><?= $asLog ? '<th>変更前</th><th>変更後</th>' : '<th>現在</th><th>復元後</th>' ?></tr></thead>
                             <tbody>
                                 <?php foreach ($p['changes'] as [$item, $now, $after]): ?>
-                                    <tr><th scope="row"><?= h($item) ?></th><td class="history-diff__now"><?= change_cell_html($now) ?></td><td class="history-diff__after"><?= change_cell_html($after) ?></td></tr>
+                                    <tr><th scope="row"><?= h($item) ?></th><?php if ($asLog): ?><td class="history-diff__after"><?= change_cell_html($after) ?></td><td class="history-diff__now"><?= change_cell_html($now) ?></td><?php else: ?><td class="history-diff__now"><?= change_cell_html($now) ?></td><td class="history-diff__after"><?= change_cell_html($after) ?></td><?php endif; ?></tr>
                                 <?php endforeach; ?>
                             </tbody>
                         </table>
@@ -69,10 +71,10 @@ function render_history_preview(array $preview): void
             </section>
         <?php endforeach; ?>
         <?php if ($same): ?>
-            <p class="muted small">ほかの <?= count($same) ?> 件（<?= implode('・', array_map($name, array_slice(array_values($same), 0, 5))) ?><?= count($same) > 5 ? ' など' : '' ?>）は、今と同じなので変わりません。</p>
+            <p class="muted small">ほかの <?= count($same) ?> 件（<?= implode('・', array_map($name, array_slice(array_values($same), 0, 5))) ?><?= count($same) > 5 ? ' など' : '' ?>）は、変更なし。</p>
         <?php endif; ?>
         <?php if (count($same) === count($preview)): ?>
-            <p><?= icon('info') ?> 戻しても、今と何も変わりません。</p>
+            <p><?= icon('info') ?> 変更なし</p>
         <?php endif; ?>
     </div>
     <?php
@@ -80,7 +82,7 @@ function render_history_preview(array $preview): void
 
 // ---------- 一覧の「変わったもの」を開いたときに読み込む部分（?op=ID&part=1）: 確認画面と同じ比べる表だけ返す ----------
 if (ctype_digit((string)($_GET['op'] ?? '')) && isset($_GET['part'])) {
-    render_history_preview(change_preview($pdo, (int)$_GET['op']));
+    render_history_preview(change_preview($pdo, (int)$_GET['op']), true);
     exit;
 }
 
@@ -113,12 +115,12 @@ if (ctype_digit((string)($_GET['op'] ?? ''))) {
     <section class="hero">
         <div>
             <p class="eyebrow">Admin · 変更履歴</p>
-            <h1 class="display display--sm">戻すと変わること</h1>
+            <h1 class="display display--sm">復元内容</h1>
             <p><span class="tag"><?= h(CHANGE_ACTIONS[$op['action']] ?? $op['action']) ?></span>
                 <span class="muted small mono">#<?= $opId ?></span>
                 <span class="small"><?= h(fmt_datetime($op['created_at'])) ?> · <?= $op['user_name'] !== null ? h($op['user_name']) : '削除済みのユーザー' ?></span></p>
             <p><?= h($op['summary']) ?></p>
-            <p class="muted small">「元に戻す」を押すと、今の状態が下の「戻した後」になります。戻す前の状態も履歴に残るので、あとでやり直せます。</p>
+            <p class="muted small">「元に戻す」を押すと、今の状態が下の「復元後」になります。戻す前の状態も履歴に残るので、あとでやり直せます。</p>
         </div>
     </section>
 
@@ -225,7 +227,7 @@ render_header('変更履歴');
                 <?php if (!empty($units[$id])): ?>
                     <!-- 開くと、確認画面と同じ「戻すと何がどう変わるか」の表を読み込む（下の script） -->
                     <details class="history-item__units" data-preview="history?op=<?= $id ?>&amp;part=1">
-                        <summary class="muted small">変わったもの（<?= count($units[$id]) ?>）</summary>
+                        <summary class="muted small">変更内容（<?= count($units[$id]) ?>）</summary>
                         <ul>
                             <?php foreach ($units[$id] as $u): ?>
                                 <li class="small"><span class="muted"><?= h($typeNames[$u['unit_type']]) ?></span>
@@ -233,8 +235,7 @@ render_header('変更履歴');
                             <?php endforeach; ?>
                         </ul>
                         <div class="history-item__compare" hidden>
-                            <p class="muted small">戻すとこう変わります（「この変更の前に戻す」の確認画面と同じ内容）</p>
-                            <div class="history-item__compare-body"><p class="muted small">読み込み中…</p></div>
+                                                        <div class="history-item__compare-body"><p class="muted small">読み込み中…</p></div>
                         </div>
                     </details>
                 <?php endif; ?>
