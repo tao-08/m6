@@ -864,6 +864,9 @@
     /** セットリストの行を全部作り直す */
     function renderSongs() {
         songList.textContent = '';
+        // 🔍（サブスクで探す）は分数を入れるためのものなので、型紙に分数の列があるときだけ出す（説明文も）
+        const hasTime = Array.isArray(tpl().setlist.time);
+        $('[data-time-note]').hidden = !hasTime;
         let no = 0;
         for (const song of state.songs) {
             const li = document.createElement('li');
@@ -924,7 +927,7 @@
                 const cols = extraCols(st);
                 const hasNote = () => song.sound !== '' || song.light !== '' || cols.some((c) => (song.cols[c.key] || '') !== '');
                 tune.classList.toggle('is-on', hasNote());
-                li.append(title, link, tune);
+                li.append(title, ...(hasTime ? [link] : []), tune);
 
                 // 要望・分数・追加の列の欄（最初は隠す。書いてあれば開いておく。分数は紐付けると自動で入るので開く理由にしない）
                 const notes = document.createElement('div');

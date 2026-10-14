@@ -300,7 +300,7 @@ render_header('セッティングシート作成', $blank ? 'tools' : 'lives');
         </div>
         <!-- 1曲 = 1行。中身は JS が state.songs から作る -->
         <ol class="setlist" data-songs></ol>
-        <p class="muted small"><?= icon('tune') ?> で音響・照明等の希望が記入できます。<br><?= icon('search') ?> 曲を検索して演奏時間を自動で入力します。</p>
+        <p class="muted small"><?= icon('tune') ?> で音響・照明等の希望が記入できます。<span data-time-note><br><?= icon('search') ?> 曲を検索して演奏時間を自動で入力します。</span></p>
 
         <p class="small" data-rows-note></p>
     </section>
@@ -355,5 +355,5 @@ render_header('セッティングシート作成', $blank ? 'tools' : 'lives');
 </form>
 <?php endif; ?>
 
-<script src="assets/setting_sheet.js?v=69" defer></script>
+<script src="assets/setting_sheet.js?v=70" defer></script>
 <?php render_footer();

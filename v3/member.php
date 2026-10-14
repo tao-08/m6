@@ -278,7 +278,7 @@ render_header($member['name'], 'members');
             foreach ($roles as $rid => $rname) {
                 $links[] = '<a class="meta-link" href="search?role=' . (int)$rid . '">' . h($rname) . '</a>';
             }
-            $meta[] = implode('・', $links);
+            $meta[] = implode(' · ', $links);
         }
         ?>
         <?php if ($meta): ?><p class="muted small"><?= implode(' · ', $meta) ?></p><?php endif; ?>

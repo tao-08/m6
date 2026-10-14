@@ -73,27 +73,16 @@ if (is_post()) {
     }
 
     // チェックを外すと何も送られないので、フォームに hidden の 0 を先に置いている（チェックすると 1 で上書き）
-    if ($action === 'suggest') {
-        $hide = ($_POST['hide_retired'] ?? '') === '1';
-        $pdo->prepare('UPDATE user_account SET hide_retired_suggest = ? WHERE user_id = ?')
-            ->execute([(int)$hide, $user['user_id']]);
-        flash($hide ? '退会した人を名前の候補に出さないようにしました' : '退会した人も名前の候補に出すようにしました');
-    }
-
-    // suggest と同じく、hidden の 0 → チェックで 1
-    if ($action === 'back_button') {
-        $show = ($_POST['show_back_button'] ?? '') === '1';
-        $pdo->prepare('UPDATE user_account SET show_back_button = ? WHERE user_id = ?')
-            ->execute([(int)$show, $user['user_id']]);
-        flash($show ? '戻るボタンを表示するようにしました' : '戻るボタンを表示しないようにしました');
-    }
-
-    // suggest と同じく、hidden の 0 → チェックで 1
-    if ($action === 'count_upcoming') {
-        $count = ($_POST['count_upcoming'] ?? '') === '1';
-        $pdo->prepare('UPDATE user_account SET count_upcoming = ? WHERE user_id = ?')
-            ->execute([(int)$count, $user['user_id']]);
-        flash($count ? '予定されているライブを集計に含めるようにしました' : '予定されているライブを集計に含めないようにしました');
+    // チェックボックスは hidden の 0 → チェックで 1
+    if ($action === 'prefs') {
+        $pdo->prepare('UPDATE user_account SET hide_retired_suggest = ?, show_back_button = ?, count_upcoming = ? WHERE user_id = ?')
+            ->execute([
+                (int)(($_POST['hide_retired'] ?? '') === '1'),
+                (int)(($_POST['show_back_button'] ?? '') === '1'),
+                (int)(($_POST['count_upcoming'] ?? '') === '1'),
+                $user['user_id'],
+            ]);
+        flash('設定を保存しました');
     }
 
     redirect('account');
@@ -167,29 +156,14 @@ render_header('アカウント設定');
     </form>
     <?php endif; ?>
     <form method="post" class="card form-card" data-unsaved>
-        <h2 class="section-title section-title--card">名前の候補</h2>
-        <p class="muted small">バンド編集・タイムテーブル編集・取り込みで、メンバーの名前を打つと出てくる候補の設定です。</p>
-        <?= csrf_field() ?><input type="hidden" name="action" value="suggest">
-        <label class="check"><input type="hidden" name="hide_retired" value="0"><input type="checkbox" name="hide_retired" value="1"<?= $account['hide_retired_suggest'] ? ' checked' : '' ?>> 退会した人を候補に出さない</label>
-        <div class="form-actions"><button class="btn btn--primary btn--sm" type="submit">保存</button></div>
-    </form>
-    <form method="post" class="card form-card" data-unsaved>
-        <h2 class="section-title section-title--card">戻るボタン</h2>
-        <p class="muted small">画面の左下に出る「← ページ名」のボタン（前のページ・1つ上のページに戻る）の設定です。</p>
-        <?= csrf_field() ?><input type="hidden" name="action" value="back_button">
+        <h2 class="section-title section-title--card">表示・集計</h2>
+        <?= csrf_field() ?><input type="hidden" name="action" value="prefs">
+        <label class="check"><input type="hidden" name="hide_retired" value="0"><input type="checkbox" name="hide_retired" value="1"<?= $account['hide_retired_suggest'] ? ' checked' : '' ?>> 退会した人を入力時の候補に出さない</label>
+        <p class="muted small">名前の編集時に出る候補から退会した人を表示しません。</p>
         <label class="check"><input type="hidden" name="show_back_button" value="0"><input type="checkbox" name="show_back_button" value="1"<?= $account['show_back_button'] ? ' checked' : '' ?>> 戻るボタンを表示する</label>
-        <div class="form-actions"><button class="btn btn--primary btn--sm" type="submit">保存</button></div>
-    </form>
-    <form method="post" class="card form-card" data-unsaved>
-        <h2 class="section-title section-title--card">集計</h2>
-        <?= csrf_field() ?><input type="hidden" name="action" value="count_upcoming">
+        <p class="muted small">画面左下の戻るボタンを表示します。</p>
         <label class="check"><input type="hidden" name="count_upcoming" value="0"><input type="checkbox" name="count_upcoming" value="1"<?= $account['count_upcoming'] ? ' checked' : '' ?>> 予定されているライブを集計に含む</label>
         <div class="form-actions"><button class="btn btn--primary btn--sm" type="submit">保存</button></div>
     </form>
-    <div class="card form-card">
-        <h2 class="section-title section-title--card">チュートリアル</h2>
-        <p class="muted small">最初にログインしたときに出た、サイトの使い方の案内です。</p>
-        <div class="form-actions"><button type="button" class="btn btn--sm" data-tutorial-open>もう一度見る</button></div>
-    </div>
 </div>
 <?php render_footer();

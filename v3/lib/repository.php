@@ -302,7 +302,7 @@ const OTHER_INSTRUMENT_ID = 10;
  * プログラムが略称で探している楽器（Vo / Gt / Key / etc など）もあるので、楽器の管理画面でも消せないようにする。
  * 消せるのは、名簿の取り込みで「etc」から追加された楽器だけ。
  */
-const BUILTIN_INSTRUMENTS = ['Vo', 'Gt', 'Ba', 'Dr', 'Key', 'Cho', 'Perc', 'Vn', 'Sax', 'etc'];
+const BUILTIN_INSTRUMENTS = ['Vo', 'Gt', 'Ba', 'Dr', 'Key', 'Cho', 'Perc', 'Vn', 'Sax', 'Prog', 'Harm', 'etc'];
 
 /**
  * 楽器を追加する（名簿の取り込みで「etc」を選んだときのモーダルから）。

@@ -709,6 +709,8 @@ function instrument_class(?string $short): string
         'key' => 'key',
         'vn' => 'vn',
         'sax' => 'sax',
+        'prog' => 'prog',
+        'harm' => 'harm',
         default => 'other',
     };
 }

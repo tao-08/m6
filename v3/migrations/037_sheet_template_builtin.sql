@@ -4,7 +4,7 @@
 --
 --  これで画面（sheet_templates.php）から普通の型紙と同じように編集できる。
 --  コードの venue_words（会場名の一部一致）は無くなるので、その言葉を含む会場を sheet_template_venue でつなぐ。
---  created_by は NULL（だれが登録したでもない）→ 編集できるのは管理者だけ
+--  created_by は NULL → 038 で最初の管理者にする
 --  PDF・セット図の背景は assets/sheets/ のまま（差し替えても、uploads の外なので消されない）
 -- =====================================================================
 SET NAMES utf8mb4;
