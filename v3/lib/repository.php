@@ -1211,8 +1211,8 @@ function inst_filter(array $parts, string $target, bool $tori = false, string $i
             continue;
         }
         $html .= '<span class="inst-filter__group">' . (isset($g['solo']) ? $opt($cls . '!', $single) : '');
-        // Cho の行は兼任（Gt/Cho など）が他の楽器の行と重複するので、単体と All だけ
-        foreach ($cls === 'cho' ? [] : $g['combos'] as $key => $p) {
+        // Vo・Cho の行は兼任（Vo/Gt・Gt/Cho など）が他の楽器の行と重複するので、単体と All だけ
+        foreach (in_array($cls, ['vo', 'cho'], true) ? [] : $g['combos'] as $key => $p) {
             $html .= $opt($key, part_badge($p));
         }
         $html .= $opt($cls, '<span class="part part--' . h($cls) . '">' . h($g['short']) . ' All</span>') . '</span>';
