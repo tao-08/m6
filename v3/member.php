@@ -486,6 +486,10 @@ render_header($member['name'], 'members');
         <div class="sorted-list sorted-list--history">
         <?php if ($history): ?>
             <!-- 並び替え: 押すたびに新しい順 ⇔ 古い順（JS で並びを逆にするだけ。assets/app.js の setupSortToggle） -->
+            <?php // 楽器フィルター（トリのバンドがあれば🐔も）。lib/repository.php の inst_filter
+            $instSegs = [];
+            foreach ($partsByBand as $bps) { foreach ($bps as $bp) { foreach ($bp['segments'] as $sg) { $instSegs[$sg['class']] = $sg['short']; } } } ?>
+            <?= inst_filter($instSegs, '#history-list', (bool)array_filter($history, static fn($h) => $h['is_last'])) ?>
             <button type="button" class="btn btn--ghost btn--sm sorted-list__btn" data-sort-toggle="#history-list" aria-pressed="false">新しい順 ↓</button>
         <?php endif; ?>
         <div id="history-list">
@@ -510,7 +514,7 @@ render_header($member['name'], 'members');
                         <!-- その日に出たバンドを出演順に並べる。バンド名からバンド詳細へ -->
                         <ul class="history__bands">
                             <?php foreach ($day['bands'] as $b): ?>
-                                <li class="history__band">
+                                <li class="history__band" data-insts="<?= h(implode(' ', array_unique(array_merge($b['is_last'] ? ['tori'] : [], ...array_map(static fn($bp) => array_column($bp['segments'], 'class'), $partsByBand[(int)$b['band_id']] ?? []))))) ?>">
                                     <!-- バンド名と、トリならその横に小さな🐔 -->
                                     <span class="history__name">
                                         <a href="band?id=<?= (int)$b['band_id'] ?>"><?= h($b['band_name']) ?></a>

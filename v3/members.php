@@ -118,6 +118,19 @@ foreach (lineup_parts_by_band($st, true, 'drop') as $p) {
     $partsByMember[$p['member_id']][] = $p;
 }
 $instruments = array_map(static fn($parts) => sort_tally_by_count(tally_parts($parts)), $partsByMember);
+// 担当楽器フィルターの選択肢と、行ごとの楽器（data-insts）
+$instSegs = [];
+$instsByMember = [];
+foreach ($partsByMember as $mid => $parts) {
+    foreach ($parts as $p) {
+        foreach ($p['segments'] as $sg) {
+            $instSegs[$sg['class']] = [$sg['short'], $p['order']];
+            $instsByMember[$mid][$sg['class']] = true;
+        }
+    }
+}
+uasort($instSegs, static fn($a, $b) => $a[1] <=> $b[1]);
+$instSegs = array_map(static fn($v) => $v[0], $instSegs);
 
 /** メンバー1人ぶんのジャケット（最大5枚）。無ければ「—」 */
 function album_thumbs(array $albums): string
@@ -294,7 +307,7 @@ render_header('メンバー', 'members');
                 <th class="num" data-rank-head><?= $showRank ? '#' : '' ?></th>
                 <?= sort_button_th('name', '名前', $sort, $dir, SORT_COLUMNS['name']) ?>
                 <?= sort_button_th('entry', '入学', $sort, $dir, SORT_COLUMNS['entry'], 'num') ?>
-                <th>担当楽器</th>
+                <th><span class="th-inst"><?= inst_filter($instSegs, '.table--members', false, '.member-row') ?>担当楽器</span></th>
                 <th>マイアルバム Top5</th>
                 <?php // 右側の列（出演・ライブ・トリ）の並べ替えを解除したときは、再読み込みしても表を右端に置いておく（?scroll=end） ?>
                 <?= sort_button_th('bands', '出演', $sort, $dir, SORT_COLUMNS['bands'], 'num', ' data-sort-clear-scroll') ?>
@@ -311,7 +324,7 @@ render_header('メンバー', 'members');
                 <tr class="member-row<?= (int)$r['member_id'] === $myId ? ' is-me' : '' ?>" data-text="<?= h($r['name'] . ' ' . ($r['name_kana'] ?? '')) ?>"
                     data-entry="<?= $r['entry_year'] !== null ? (int)$r['entry_year'] : '' ?>" data-bands="<?= (int)$r['bands'] ?>" data-score="<?= (int)$r[$rankCol] ?>"
                     data-score-bands="<?= (int)$r['bands'] ?>" data-score-lives="<?= (int)$r['lives'] ?>" data-score-headliners="<?= (int)$r['headliners'] ?>"
-                    data-pos="<?= h(json_encode($positions[$i])) ?>"<?= (int)$r['retired'] === 1 ? ' data-retired' : '' ?>>
+                    data-pos="<?= h(json_encode($positions[$i])) ?>"<?= (int)$r['retired'] === 1 ? ' data-retired' : '' ?> data-insts="<?= h(implode(' ', array_keys($instsByMember[(int)$r['member_id']] ?? []))) ?>">
                     <!-- data-rank: 学年で絞り込んだとき・並べ替えたとき JS が順位を書き直す目印。ランキングでないときは空 -->
                     <td class="num muted" data-rank><?= $showRank ? ($r['rank'] ?? '—') : '' ?></td>
                     <td><a href="member?id=<?= (int)$r['member_id'] ?>"<?= $r['rank'] ? ' class="strong"' : '' ?>><?= h($r['name']) ?></a><?= (int)$r['retired'] === 1 ? ' <span class="muted small">退会</span>' : '' ?></td>

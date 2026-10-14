@@ -1167,6 +1167,29 @@ function band_artist_links(array $band, array $omnibusArtists): string
  * @param array  $part   ['title' => 'ギターボーカル', 'segments' => [['short' => 'Vo', 'class' => 'vo'], ['short' => 'Gt', 'class' => 'gt']]]
  * @param string $suffix ラベルの後ろに付ける文字（個人ページの「 × 5」など）。付けると兼任ラベルの幅は中身に合わせる
  */
+/**
+ * 楽器フィルター（漏斗 → 押すと楽器ラベル → 選ぶと漏斗がその楽器に変わって絞り込む）。app.js の setupInstFilter
+ *   $segs: [class => 短い名前]（vo => Vo …）/ $target: 絞り込む範囲 / $tori: 🐔（トリのバンドだけ）も出す
+ *   $items: 行ごとに隠すとき（メンバー一覧の .member-row）。空なら出演履歴の バンド → 日 → 年度 で隠す
+ */
+function inst_filter(array $segs, string $target, bool $tori = false, string $items = ''): string
+{
+    if (count($segs) + ($tori ? 1 : 0) < 2) {
+        return '';
+    }
+    $html = '<span class="inst-filter" data-inst-filter="' . h($target) . '"' . ($items !== '' ? ' data-inst-items="' . h($items) . '"' : '') . '>'
+        . '<button type="button" class="btn btn--ghost btn--sm inst-filter__btn" aria-label="楽器で絞り込み" aria-expanded="false">' . icon('filter_alt') . '</button>'
+        . '<span class="inst-filter__menu" hidden>'
+        . '<button type="button" data-inst="" aria-label="すべて">' . icon('filter_alt_off') . '</button>';
+    foreach ($segs as $cls => $short) {
+        $html .= '<button type="button" data-inst="' . h($cls) . '"><span class="part part--' . h($cls) . '">' . h($short) . '</span></button>';
+    }
+    if ($tori) {
+        $html .= '<button type="button" data-inst="tori" aria-label="トリ"><span class="tori-badge">🐔</span></button>';
+    }
+    return $html . '</span></span>';
+}
+
 function part_badge(array $part, string $suffix = ''): string
 {
     $segs = $part['segments'];

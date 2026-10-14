@@ -54,6 +54,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupScrollEnd();
   setupClientSort();
   setupSortToggle();
+  setupInstFilter();
   setupTabs();
   setupConfirm();
   setupLeaveCheck();
@@ -1545,6 +1546,55 @@ function setupScrollEnd() {
  *   append は「今ある要素を最後に移動する」ので、逆順に append し直せば並びが逆になる（作り直さない）
  *   並べ替えたら、見えているカードを上から順にふわっと出す（どこが動いたか分かるように）
  * ------------------------------------------------------------------- */
+/* ---------------------------------------------------------------------
+ * 楽器フィルター（lib/repository.php の inst_filter）
+ *   data-inst-items があれば、その行を data-insts で隠す（メンバー一覧）
+ *   無ければ出演履歴: バンド → 日のカード → 年度 の順に、残るものが無ければ隠す
+ *   メニューは position: fixed（表の横スクロールの枠で切れないように）
+ * ------------------------------------------------------------------- */
+function setupInstFilter() {
+  document.querySelectorAll('[data-inst-filter]').forEach((box) => {
+    const list = document.querySelector(box.dataset.instFilter);
+    const btn = box.querySelector('.inst-filter__btn');
+    const menu = box.querySelector('.inst-filter__menu');
+    if (!list) return;
+    const funnel = btn.innerHTML;
+    const open = (on) => {
+      menu.hidden = !on;
+      btn.setAttribute('aria-expanded', String(on));
+      if (!on) return;
+      const r = btn.getBoundingClientRect();
+      menu.style.top = `${r.bottom + 4}px`;
+      menu.style.left = `${Math.max(8, Math.min(r.left, innerWidth - menu.offsetWidth - 8))}px`;
+    };
+    const has = (el, inst) => (el.dataset.insts || '').split(' ').includes(inst);
+    btn.addEventListener('click', (e) => { e.stopPropagation(); open(menu.hidden); });
+    document.addEventListener('click', (e) => { if (!box.contains(e.target)) open(false); });
+    window.addEventListener('scroll', () => open(false), { passive: true, capture: true });
+    menu.addEventListener('click', (e) => {
+      const opt = e.target.closest('[data-inst]');
+      if (!opt) return;
+      const inst = opt.dataset.inst;
+      btn.innerHTML = inst ? opt.innerHTML : funnel;
+      btn.classList.toggle('is-active', !!inst);
+      if (box.dataset.instItems) {
+        list.querySelectorAll(box.dataset.instItems).forEach((row) => {
+          row.classList.toggle('is-inst-hidden', !!inst && !has(row, inst));
+        });
+      } else {
+        list.querySelectorAll('.history__band').forEach((b) => { b.hidden = !!inst && !has(b, inst); });
+        list.querySelectorAll('.history__item').forEach((d) => {
+          d.classList.toggle('is-inst-hidden', !d.querySelector('.history__band:not([hidden])'));
+        });
+        list.querySelectorAll('section').forEach((y) => {
+          y.classList.toggle('is-inst-hidden', !y.querySelector('.history__item:not(.is-inst-hidden)'));
+        });
+      }
+      open(false);
+    });
+  });
+}
+
 function setupSortToggle() {
   document.querySelectorAll('[data-sort-toggle]').forEach((btn) => {
     const list = document.querySelector(btn.dataset.sortToggle);
