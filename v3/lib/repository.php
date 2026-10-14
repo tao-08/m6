@@ -1203,10 +1203,11 @@ function inst_filter(array $parts, string $target, bool $tori = false, string $i
         . '<span class="inst-filter__menu" hidden>'
         . '<span class="inst-filter__group">' . $opt('', icon('filter_alt_off', 'icon--fill'), 'すべて')
         . ($tori ? $opt('tori', '<span class="tori-badge">🐔</span>', 'トリ') : '') . '</span>';
+    $plain = ''; // 兼任がない楽器は最後に1行で横に並べる
     foreach ($groups as $cls => $g) {
         $single = '<span class="part part--' . h($cls) . '">' . h($g['short']) . '</span>';
         if (empty($g['combos'])) {
-            $html .= '<span class="inst-filter__group">' . $opt($cls, $single) . '</span>';
+            $plain .= $opt($cls, $single);
             continue;
         }
         $html .= '<span class="inst-filter__group">' . (isset($g['solo']) ? $opt($cls . '!', $single) : '');
@@ -1214,6 +1215,9 @@ function inst_filter(array $parts, string $target, bool $tori = false, string $i
             $html .= $opt($key, part_badge($p));
         }
         $html .= $opt($cls, '<span class="part part--' . h($cls) . '">' . h($g['short']) . ' All</span>') . '</span>';
+    }
+    if ($plain !== '') {
+        $html .= '<span class="inst-filter__group">' . $plain . '</span>';
     }
     return $html . '</span></span>';
 }

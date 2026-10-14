@@ -113,14 +113,20 @@ $st = $pdo->query('SELECT bm.band_id, bm.member_id, m.name, i.short_name, i.name
     JOIN member m ON m.member_id = bm.member_id
     JOIN instrument i ON i.instrument_id = bm.instrument_id
     ORDER BY i.sort_order');
+$lineupRows = $st->fetchAll();
 $partsByMember = [];
-foreach (lineup_parts_by_band($st, true, 'drop') as $p) {
+foreach (lineup_parts_by_band($lineupRows, true, 'drop') as $p) {
     $partsByMember[$p['member_id']][] = $p;
 }
 $instruments = array_map(static fn($parts) => sort_tally_by_count(tally_parts($parts)), $partsByMember);
 // 担当楽器フィルターの選択肢と、行ごとの楽器（data-insts）
-$instParts = array_merge(...array_values($partsByMember));
-$instsByMember = array_map('inst_tokens', $partsByMember);
+//   フィルターは Cho の兼任（Gt/Cho など）も分けたいので、Cho を落とさずに作り直す（'merge'）
+$instPartsByMember = [];
+foreach (lineup_parts_by_band($lineupRows, true, 'merge') as $p) {
+    $instPartsByMember[$p['member_id']][] = $p;
+}
+$instParts = array_merge(...array_values($instPartsByMember));
+$instsByMember = array_map('inst_tokens', $instPartsByMember);
 
 /** メンバー1人ぶんのジャケット（最大5枚）。無ければ「—」 */
 function album_thumbs(array $albums): string
