@@ -618,18 +618,26 @@ function chorus_host(array $shorts): ?string
  * chorus_host() を、セトリ（song_performer）を見て決める版。lineup_parts() で使う。
  *   セトリにその人の行がある → 「同じ1曲で その楽器 と Cho を両方やった」楽器だけ（並び順で最初のもの）。
  *     例: 1曲目 Cho だけ・2曲目 Vn だけ → null（ヴァイオリンを弾きながらのコーラスではない。Vn と Cho は別々）
+ *     Vo を持つ人も、Vo をやっていない曲のコーラスは見る（1曲目 Vo・2曲目 Ba/Cho → Ba/Cho）
  *   セトリ未登録・band_id が分からない → band_member しか手がかりがないので chorus_host() のまま
  *   （sings_while_playing() の Vo/Gt と同じ考え方）
  */
 function chorus_host_in_band(?int $bandId, int $memberId, array $shorts): ?string
 {
-    $host = chorus_host($shorts);
-    if ($host === null || $bandId === null || songs_of_member($bandId, $memberId) === null) {
-        return $host;
+    $songs = $bandId === null ? null : songs_of_member($bandId, $memberId);
+    if ($songs === null) {
+        return chorus_host($shorts);
     }
-    foreach ($shorts as $short) {
-        if ($short !== 'Cho' && songs_played($bandId, $memberId, [$short, 'Cho']) > 0) {
-            return $short;
+    // セトリがあれば1曲ずつ見る。Vo を持つ人でも、Vo をやっていない曲で弾きながらコーラスしていれば Gt/Cho
+    //   例: 1曲目 Vo・2曲目 Ba/Cho → Vo と Ba/Cho
+    foreach ($shorts as $short) { // 楽器の並び順で最初のもの
+        if ($short === 'Cho' || $short === 'Vo') {
+            continue;
+        }
+        foreach ($songs as $songShorts) {
+            if (isset($songShorts[$short], $songShorts['Cho']) && !isset($songShorts['Vo'])) {
+                return $short;
+            }
         }
     }
     return null;
