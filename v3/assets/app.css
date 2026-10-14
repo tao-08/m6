@@ -1672,7 +1672,7 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
   .table--list td:first-child, .table--list th:first-child { padding-inline: 10px 4px; } /* # の列 */
   .table--members td:first-child, .table--members th:first-child { padding-left: 4px; } /* メンバー一覧は列が多いので # の左をさらに詰める */
   .table--members .name-end { display: table-cell; padding-left: 12px; } /* 横にスクロールして右端まで来たとき、数字の右に名前 */
-  .table--members .rank-end { display: table-cell; padding-right: 10px; text-align: left; } /* ランキングのときは、右端の名前のさらに右に #（名前に寄せて左寄せ） */
+  .table--members.is-ranking .rank-end { display: table-cell; padding-right: 10px; text-align: left; } /* ランキングのときは、右端の名前のさらに右に #（名前に寄せて左寄せ） */
   .table--list .plays { text-align: left; } /* 見出し「演奏回数 ▼」が数字より広いので、右寄せだと名前との間が空く。左に寄せて名前の近くに */
   .card.table-card { padding: 0; }
   .table-scroll--flush { margin: 0; }
@@ -1700,7 +1700,7 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
   .tabs--days:has(.tab:nth-child(4))::-webkit-scrollbar { display: none; }
   .tabs--days:has(.tab:nth-child(4)) .tab { flex: none; padding: 10px 14px; overflow: visible; }
   .add-band { margin-left: 54px; }
-  .bars li { grid-template-columns: minmax(0, 8em) 1fr auto; }
+  .bars li { grid-template-columns: minmax(0, 1fr) 28% auto; }
   .stats-grid { grid-template-columns: 1fr; }
   /* アーティストページの表: 「2025年度」のあとで改行して、ライブ名の列を細くする */
   .live-year { display: block; }
