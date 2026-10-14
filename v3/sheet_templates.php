@@ -124,12 +124,28 @@ function parse_sheet_config(string $json): array
     if (array_key_exists('members', $config) && !$isTable($config['members'])) $broken[] = 'メンバー表（members）';
     if (!$isTable($config['setlist']) || !is_array($config['setlist']['title'] ?? null)) $broken[] = 'セットリスト（setlist）';
     if (!$isBox($config['stage'])) $broken[] = 'セット図の枠（stage）';
-    // その他の項目の並び（extras_order）: 任意。['t:欄のキー', 'c:グループ', ...] の文字列の配列
+    // その他の項目の並び（extras_order）: 任意。['t:欄のキー', 'c:グループ', 'h:見出し', ...] の文字列の配列
     if (array_key_exists('extras_order', $config)) {
         $o = $config['extras_order'];
-        if (!is_array($o) || !array_is_list($o) || count(array_filter($o, static fn($v): bool => is_string($v) && preg_match('/\A[ct]:/', $v) === 1)) !== count($o)) {
+        if (!is_array($o) || !array_is_list($o) || count(array_filter($o, static fn($v): bool => is_string($v) && preg_match('/\A[cth]:/', $v) === 1)) !== count($o)) {
             $broken[] = 'その他の項目の並び（extras_order）';
         }
+    }
+    // 備え付けギターアンプ（gt_amps）: 任意。20文字までの文字列を 50 個まで
+    unset($config['box_labels']); // 前の版の「四角の候補」。今は使わない
+    if (array_key_exists('gt_amps', $config)) {
+        $bl = $config['gt_amps'];
+        if (!is_array($bl) || !array_is_list($bl) || count($bl) > 50
+            || count(array_filter($bl, static fn($v): bool => is_string($v) && trim($v) !== '' && mb_strlen($v) <= 20)) !== count($bl)) {
+            $broken[] = '備え付けギターアンプ（gt_amps）';
+        }
+    }
+    // 見出し（headings）: 任意。[{key: 'h1', label: 'SE'}, ...]。作成画面ではここから別のカードにする
+    if (array_key_exists('headings', $config)) {
+        $h = $config['headings'];
+        $hOk = static fn($x): bool => is_array($x) && is_string($x['key'] ?? null) && preg_match('/\A[a-z0-9_]{1,20}\z/', $x['key']) === 1
+            && is_string($x['label'] ?? '') && mb_strlen((string)($x['label'] ?? '')) <= 30;
+        if (!is_array($h) || !array_is_list($h) || count(array_filter($h, $hOk)) !== count($h)) $broken[] = '見出し（headings）';
     }
     // 自動配置の範囲（stage_auto）: 任意。あるならセット図の枠の内側（エディタははみ出させないが、JSON を手で書いたとき用）
     if (array_key_exists('stage_auto', $config)) {
@@ -522,5 +538,5 @@ $editorData = [
 ];
 ?>
 <script type="application/json" id="sheet-editor-data"><?= json_encode($editorData, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP) ?></script>
-<script src="assets/sheet_editor.js?v=25" defer></script>
+<script src="assets/sheet_editor.js?v=30" defer></script>
 <?php render_footer();

@@ -43,7 +43,9 @@
     // 1行の欄。year / month / day は「年」「月」が印刷済みのシート用（出演日から数字だけ書く）
     const FIELD_LABELS = { band: 'バンド名', kana: 'フリガナ', date: '出演日', year: '年', month: '月', day: '日', order: '出演順', rep: '代表者氏名', count: '出演人数' };
     const COL_LABELS = { part: 'パート', name: '氏名', part2: 'パート', name2: '氏名', mic: 'マイク', no: '曲順', title: '曲名', sound: '音響', light: '照明', request: '備考（音響・照明）', time: '分数' };
-    const PAIR_LABELS = { part: 'パート1', name: '名前1', part2: 'パート2', name2: '名前2' };
+    // 備え付けギターアンプの標準（assets/setting_sheet.js の gtAmps() と同じ。型紙に gt_amps が無いとき）
+    const GT_AMPS = ['JC', 'Marshall'];
+    const PAIR_LABELS ={ part: 'パート1', name: '名前1', part2: 'パート2', name2: '名前2' };
 
     let cfg = null;        // 今の型紙（JSON を読んだもの）。ドラッグはこの中の数字を直接書き換える
     let items = [];        // 画面に出す枠の一覧（buildItems で cfg から作る）
@@ -191,6 +193,7 @@
                     if (Object.keys(cfg.choices[g]).length === 0) {
                         delete cfg.choices[g];
                         if (cfg.choice_labels) delete cfg.choice_labels[g];
+                        if (cfg.choice_multi) delete cfg.choice_multi[g];
                     }
                 }, { choice: { g, name } }));
             }
@@ -339,6 +342,9 @@
                 const ok = Array.isArray(c) && c[0] in choices && c[0] !== g;
                 return { kind: 'c', key: g, parent: ok ? c[0] : null, opts: ok && Array.isArray(c[1]) ? c[1] : null };
             }),
+            // 見出し（作成画面ではここからカードを分ける）。いつも一番上の段
+            ...(Array.isArray(cfg?.headings) ? cfg.headings : []).filter((x) => x && typeof x.key === 'string')
+                .map((x) => ({ kind: 'h', key: x.key, heading: x, parent: null, opts: null })),
         ];
         nodes.forEach((n) => { n.id = `${n.kind}:${n.key}`; });
         const groupNode = new Map(nodes.filter((n) => n.kind === 'c').map((n) => [n.key, n]));
@@ -382,6 +388,10 @@
             if (!t || typeof t !== 'object') continue;
             if (t.with_choice !== undefined && !(t.with_choice in choices)) delete t.with_choice;
             if (t.show_if !== undefined && !optsOk(t.show_if)) delete t.show_if;
+        }
+        if (cfg.headings !== undefined) {
+            cfg.headings = Array.isArray(cfg.headings) ? cfg.headings.filter((h) => h && typeof h.key === 'string') : [];
+            if (cfg.headings.length === 0) delete cfg.headings;
         }
         if (Array.isArray(cfg.extras_order)) {
             const ids = new Set(extrasTree().nodes.map((n) => n.id));
@@ -460,6 +470,25 @@
         const textIndex = (n) => cfg.texts.indexOf(n.text);
         const addNode = (n, depth) => {
             shown.push(n.id);
+            if (n.kind === 'h') {
+                // 見出しの行: 名前をその場で直す・🗑 で消す（作成画面ではここから新しいカード）
+                const r = document.createElement('div');
+                r.className = 'ed-row ed-row--heading';
+                r.style.setProperty('--depth', 0);
+                const name = Object.assign(document.createElement('input'), { type: 'text', maxLength: 30, value: n.heading.label || '' });
+                name.setAttribute('aria-label', '見出し');
+                name.addEventListener('change', () => { n.heading.label = name.value.trim().slice(0, 30); changed(true); });
+                const del = document.createElement('button');
+                del.type = 'button';
+                del.className = 'ed-row__del';
+                del.setAttribute('aria-label', '見出しを消す');
+                del.innerHTML = '<span class="icon" aria-hidden="true">delete</span>';
+                del.addEventListener('click', () => { cfg.headings = cfg.headings.filter((x) => x !== n.heading); changed(true); });
+                r.append(name, del);
+                rows.append(r);
+                handle(r, n);
+                return;
+            }
             if (n.kind === 't') {
                 const id = `texts.${textIndex(n)}`;
                 const r = row(id === selectedId ? 'is-selected' : '', depth, n.text.label || n.key, 'texts', pickId(id));
@@ -485,11 +514,26 @@
             }
         };
         tree.nodes.filter((n) => n.parent === null).forEach((n) => addNode(n, 0));
-        if (shown.length) {
-            const h = document.createElement('p');
-            h.className = 'ed-pop__head small';
-            h.textContent = cfg.extras_title || 'その他の項目';
-            list.append(h, rows);
+        if (cfg) {
+            // 一番上のカードの見出し（extras_title）もここで直す
+            const h = Object.assign(document.createElement('input'), { type: 'text', maxLength: 30, value: cfg.extras_title || '', placeholder: 'その他の項目' });
+            h.className = 'ed-pop__head';
+            h.setAttribute('aria-label', '最初のカードの見出し');
+            h.addEventListener('change', () => {
+                const v = h.value.trim().slice(0, 30);
+                if (v) cfg.extras_title = v; else delete cfg.extras_title;
+                changed(true);
+            });
+            const addH = Object.assign(document.createElement('button'), { type: 'button', className: 'btn btn--ghost btn--sm', textContent: '＋ 見出し' });
+            addH.title = 'ここから下を別のカードにする';
+            addH.addEventListener('click', () => {
+                cfg.headings = Array.isArray(cfg.headings) ? cfg.headings : [];
+                let k = 1;
+                while (cfg.headings.some((x) => x.key === `h${k}`)) k++;
+                cfg.headings.push({ key: `h${k}`, label: `見出し${k}` });
+                changed(true);
+            });
+            list.append(h, rows, addH);
         }
         // ほかの枠（押すと選ぶ）
         const others = document.createElement('div');
@@ -520,11 +564,13 @@
         const target = (r, pos) => {
             const n = drag.n;
             if (r.dataset.opt !== undefined) {
+                if (n.kind === 'h') return null;
                 const g = r.dataset.optGroup;
                 return isUnder(tree, g, n) ? null : { parent: g, opts: [r.dataset.opt], after: `c:${g}` };
             }
             const t = byId.get(r.dataset.node);
             if (!t || t === n) return null;
+            if (n.kind === 'h' && (pos === 'into' || t.parent !== null)) return null; // 見出しは一番上の段だけ
             if (pos === 'into') {
                 return n.kind === 't' ? { parent: t.key, opts: null, after: t.id } : null;
             }
@@ -564,7 +610,7 @@
             clearMark();
             drag = null;
             if (!drop) return;
-            setParent(n, drop.parent, drop.opts);
+            if (n.kind !== 'h') setParent(n, drop.parent, drop.opts);
             const order = shown.filter((id) => id !== n.id);
             const at = drop.before ? order.indexOf(drop.before) : drop.after ? order.indexOf(drop.after) + 1 : 0;
             order.splice(Math.max(0, at), 0, n.id);
@@ -594,6 +640,7 @@
         panel.append(title);
         const num = numInput;
         drawBasic(it, num);
+        if (it.id === 'stage') gtAmpsPanel();
         out = advBox;
         drawAdvanced(it, num);
         out = panel;
@@ -745,6 +792,42 @@
             out.append(l);
             if (it.stamp.shape) num('線の太さ', () => it.stamp.line || 0.9, (v) => { it.stamp.line = Math.max(0.1, r1(v)); });
         }
+    }
+
+    /** 備え付けギターアンプ（gt_amps）: 作成画面の四角の候補・自動配置で並んでいる順に使う。セット図の枠を選んだとき詳細設定の外に出す */
+    function gtAmpsPanel() {
+        const ampsHead = document.createElement('div');
+        ampsHead.className = 'ed-amps__head';
+        ampsHead.textContent = '備え付けギターアンプ';
+        out.append(ampsHead);
+        const amps = document.createElement('div');
+        amps.className = 'ed-amps';
+        const now = Array.isArray(cfg.gt_amps) ? cfg.gt_amps : GT_AMPS;
+        const setAmps = (next) => {
+            if (next.length === 0 || next.join('\n') === GT_AMPS.join('\n')) delete cfg.gt_amps;
+            else cfg.gt_amps = next;
+            changed(true);
+        };
+        for (const name of now) {
+            const chip = document.createElement('span');
+            chip.className = 'ed-chip ed-amps__chip';
+            chip.textContent = name;
+            const x = Object.assign(document.createElement('button'), { type: 'button', textContent: '×' });
+            x.setAttribute('aria-label', `${name} を消す`);
+            x.addEventListener('click', () => setAmps(now.filter((v) => v !== name)));
+            chip.append(x);
+            amps.append(chip);
+        }
+        const input = Object.assign(document.createElement('input'), { type: 'text', maxLength: 20, placeholder: 'アンプを追加' });
+        input.setAttribute('aria-label', '備え付けギターアンプを追加');
+        input.addEventListener('keydown', (e) => {
+            if (e.key !== 'Enter') return;
+            e.preventDefault(); // フォームを送信しない
+            const v = input.value.trim();
+            if (v && !now.includes(v)) setAmps([...now, v]);
+        });
+        amps.append(input);
+        out.append(amps);
     }
 
     /** パネルに数字の入力欄を1つ足す */
@@ -1034,6 +1117,21 @@
         });
         l.append(sel);
         out.append(l);
+        // このグループは複数選べる（cfg.choice_multi[g] = true）
+        const ml = document.createElement('label');
+        ml.className = 'ed-check';
+        const mc = document.createElement('input');
+        mc.type = 'checkbox';
+        mc.checked = !!cfg.choice_multi?.[g];
+        mc.addEventListener('change', () => {
+            cfg.choice_multi = { ...(cfg.choice_multi || {}) };
+            if (mc.checked) cfg.choice_multi[g] = true;
+            else delete cfg.choice_multi[g];
+            if (Object.keys(cfg.choice_multi).length === 0) delete cfg.choice_multi;
+            changed(true);
+        });
+        ml.append(mc, ' 複数選択可');
+        out.append(ml);
         // 選んだときに書く文字。選択肢の枠の中に書く（別の枠は作らない）
         textInput('選んだときに書く文字', spec.text || '', (v) => {
             writeOpt(g, name, { ...spec, text: v });

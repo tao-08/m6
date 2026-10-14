@@ -482,7 +482,7 @@
      */
     function renderTexts() {
         for (const t of tpl().texts || []) {
-            const input = t.auto === 'mic' && $(`[data-choices] [data-text="${CSS.escape(t.key)}"]`);
+            const input = t.auto === 'mic' && $(`.sheet-choices [data-text="${CSS.escape(t.key)}"]`);
             if (input) {
                 input.placeholder = `空欄なら自動: ${micCount()}`;
             }
@@ -507,6 +507,9 @@
                 const p = t.show_if?.[g]?.[0];
                 return { kind: 'c', key: g, parent: p in choices && p !== g ? p : null };
             }),
+            // 見出し（ここからカードを分ける）。いつも一番上の段
+            ...(Array.isArray(t.headings) ? t.headings : []).filter((x) => x && typeof x.key === 'string')
+                .map((x) => ({ kind: 'h', key: x.key, label: String(x.label ?? ''), parent: null })),
         ];
         const groupNode = new Map(nodes.filter((n) => n.kind === 'c').map((n) => [n.key, n]));
         // 循環（A の親が B、B の親が A）を切る: 親をたどって自分に戻ってきたら一番上へ
@@ -565,16 +568,22 @@
      * ○囲みのグループを見せるか。型紙の show_if に書いてあれば、別のグループの選択で決まる
      *   例: show_if.live_feel = ['mix', ['する', 'おまかせ']] → ミックス希望が「する」「おまかせ」のときだけ
      */
+    /** グループで選んでいる選択肢（複数選択のグループは配列で持つ。1つだけのグループは文字列） */
+    function picks(group) {
+        const v = state.choices[group];
+        return Array.isArray(v) ? v : v ? [v] : [];
+    }
+
     function isShown(group, depth = 0) {
         const cond = tpl().show_if?.[group];
         // 親のグループが隠れていれば、その子も隠す（入れ子。depth は循環したときの止め）
-        return !cond || (cond[1].includes(state.choices[cond[0]]) && (depth > 10 || isShown(cond[0], depth + 1)));
+        return !cond || (picks(cond[0]).some((o) => cond[1].includes(o)) && (depth > 10 || isShown(cond[0], depth + 1)));
     }
 
     /** ○囲みと一緒に出す自由記入欄を見せるか（一緒に出すグループが見えていて、その欄の show_if も満たすとき） */
     function isTextShown(t) {
         return (!t.with_choice || isShown(t.with_choice))
-            && (!t.show_if || (t.show_if[1].includes(state.choices[t.show_if[0]]) && isShown(t.show_if[0])));
+            && (!t.show_if || (picks(t.show_if[0]).some((o) => t.show_if[1].includes(o)) && isShown(t.show_if[0])));
     }
 
     /** 型紙に無い欄を隠す（出演日・その他の項目 など） */
@@ -601,8 +610,12 @@
      *   pop: 今押したボタン [グループ, 選択肢]。そのボタンだけ「ぽん」と弾ませる
      */
     function renderChoices(pop = null) {
-        const box = $('[data-choices]');
+        let box = $('[data-choices]');
         box.textContent = '';
+        // 見出し（型紙の headings）ごとに分けたカード。描き直すたびに作り直す
+        document.querySelectorAll('[data-extras-more]').forEach((c) => c.remove());
+        let lastCard = $('[data-extras-card]');
+        const firstBox = box;
         const before = shownChoices;
         shownChoices = new Set();
         const tree = extrasTree(tpl());
@@ -625,7 +638,20 @@
         };
         // 木を上から描く。グループのすぐ下に、その子（選んだ選択肢で出るもの）を描く
         const addNode = (n) => {
-            if (n.kind === 't') {
+            if (n.kind === 'h') {
+                // 見出し: ここから新しいカード（中身が無ければ隠す）
+                const card = document.createElement('section');
+                card.className = 'card sheet-card';
+                card.dataset.extrasMore = '';
+                const h = document.createElement('h2');
+                h.className = 'sheet-card__title';
+                h.textContent = n.label;
+                box = document.createElement('div');
+                box.className = 'sheet-choices';
+                card.append(h, box);
+                lastCard.after(card);
+                lastCard = card;
+            } else if (n.kind === 't') {
                 addText(n.text);
             } else if (isShown(n.key)) {
                 addGroup(n.key, tpl().choices[n.key]);
@@ -648,14 +674,22 @@
                 b.type = 'button';
                 b.className = 'sheet-choice__btn';
                 b.textContent = opt;
-                const pressed = state.choices[group] === opt;
+                const multi = !!tpl().choice_multi?.[group];
+                const pressed = picks(group).includes(opt);
                 // aria-pressed: 読み上げソフトに「押されている状態のボタン」と伝える。見た目の切り替えにも使う
                 b.setAttribute('aria-pressed', String(pressed));
                 if (pop && pop[0] === group && pop[1] === opt) {
                     b.classList.add('is-pop');
                 }
                 b.addEventListener('click', () => {
-                    state.choices[group] = pressed ? '' : opt;
+                    if (multi) {
+                        // 押すたびに足す・外す。並びは選択肢の順にそろえる
+                        const now = new Set(picks(group));
+                        pressed ? now.delete(opt) : now.add(opt);
+                        state.choices[group] = Object.keys(options).filter((o) => now.has(o));
+                    } else {
+                        state.choices[group] = pressed ? '' : opt;
+                    }
                     renderChoices([group, opt]);
                     save();
                 });
@@ -663,7 +697,7 @@
             }
             box.append(wrap);
             // 選んでいる選択肢の説明（型紙の choice_notes）。ボタンの下に薄い文字で
-            const note = tpl().choice_notes?.[group]?.[state.choices[group]];
+            const note = picks(group).map((o) => tpl().choice_notes?.[group]?.[o]).filter(Boolean).join('\n');
             if (note) {
                 const p = document.createElement('p');
                 p.className = 'sheet-choice__note muted small';
@@ -674,6 +708,9 @@
             }
         };
         tree.roots.forEach(addNode);
+        // 中身の無いカードは隠す（最初のカードの上に見出しを置いたときなど）
+        $('[data-extras-card]').hidden = firstBox.childElementCount === 0;
+        document.querySelectorAll('[data-extras-more]').forEach((c) => { c.hidden = c.querySelector('.sheet-choices').childElementCount === 0; });
     }
 
     /* =================================================================
@@ -1339,6 +1376,7 @@
     function renderPanel() {
         const it = findItem(selectedId);
         panel.hidden = !it;
+        $('[data-acts]').hidden = !it;
         if (!it) {
             return;
         }
@@ -1352,22 +1390,24 @@
         renderPartButtons();
     }
 
-    /** 四角を選んだときに出す候補（アンプなど）。型紙に box_labels があればそちらを使う */
-    const BOX_LABELS = ['Marshall', 'JC', 'Ba Amp', 'Key', 'E.Pf'];
+    /** 備え付けギターアンプ（型紙の gt_amps。並んでいる順に、自動配置ではドラムに近い方から使う） */
+    const gtAmps = () => tpl().gt_amps || ['JC', 'Marshall'];
+    /** 四角を選んだときに出す候補: 備え付けギターアンプ + ベース・鍵盤 */
+    const boxLabels = () => [...gtAmps(), 'Ba Amp', 'Key', 'E.Pf'];
 
     /**
      * 丸・四角を選んだときの「名前ボタン」。押すとその名前が中の文字になる。
      *   丸: メンバー欄に入力されている人のパートだけ出す。
      *       「Vo/Gt」の人は Vo と Gt の2つに分ける。同じ楽器は1つにまとめる（大文字小文字は区別しない）
      *       Vo/Gt は誰もいなくても先頭に出す。「Vo/Ba」など Vo + 楽器の人がいれば、その組み合わせも出す
-     *   四角: BOX_LABELS をそのまま出す
+     *   四角: boxLabels() をそのまま出す
      */
     function renderPartButtons() {
         const box = panel.querySelector('[data-part-btns]');
         const it = findItem(selectedId);
         let names = [];
         if (it.type === 'box') {
-            names = tpl().box_labels || BOX_LABELS;
+            names = boxLabels();
         } else if (it.type === 'circle') {
             const seen = new Map([['vo/gt', 'Vo/Gt']]); // 小文字 => 表示する名前（最初に出てきた書き方を使う）
             for (const m of state.members) {
@@ -1676,7 +1716,7 @@
                 save();
             });
         });
-        panel.querySelectorAll('[data-act]').forEach((b) => b.addEventListener('click', () => {
+        document.querySelectorAll('[data-act]').forEach((b) => b.addEventListener('click', () => {
             const it = findItem(selectedId);
             if (!it) {
                 return;
@@ -1748,7 +1788,7 @@
         const clampX = (x) => clamp(x, ampW / 2, w - ampW / 2);
 
         // ---- ギターアンプ: ドラムの右のすき間の真ん中に、すき間 gap で横に並べる ----
-        //   ドラムに近い方から JC → Marshall（型紙の gt_amps があればその順。足りない分は Gt Amp）。
+        //   ドラムに近い方から、備え付けギターアンプ（gt_amps）を並んでいる順に（足りない分は Gt Amp）。
         //   （すき間を等分した点に置くと、点の間隔がアンプの幅より狭くなって重なるので、幅から並べる）
         //   入りきらないときは、アンプを小さくして（scale）入れる
         const gtN = count('gt');
@@ -1764,7 +1804,7 @@
                 const x = left + aw / 2 + i * (aw + gap);
                 gtX.push(x);
                 if (!tpl().amps_printed) { // アンプが印刷済みのシートは四角を置かない（位置は人の丸に使う）
-                    put('box', { x, y: ampY, scale, label: (tpl().gt_amps || ['JC', 'Marshall'])[i] || 'Gt Amp' });
+                    put('box', { x, y: ampY, scale, label: gtAmps()[i] || 'Gt Amp' });
                 }
             }
         }
@@ -2218,7 +2258,7 @@
         // 型紙のお試しは、全グループの全選択肢に印を付ける（本番ではあり得ないが、位置を一度に確かめられる）
         const picked = DATA.tplPreview
             ? Object.entries(t.choices || {}).flatMap(([g, opts]) => Object.keys(opts).map((o) => [g, o]))
-            : Object.entries(state.choices);
+            : Object.keys(state.choices).flatMap((g) => picks(g).map((o) => [g, o]));
         for (const [group, opt] of picked) {
             if (!DATA.tplPreview && !isShown(group)) {
                 continue; // 画面で隠れている項目は書かない

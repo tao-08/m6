@@ -186,7 +186,7 @@ $bandUrl = 'band?id=' . $bandId;
 render_header('セッティングシート作成', $blank ? 'tools' : 'lives');
 ?>
 <!-- このページだけの CSS。<link> は <body> の中に書いてもよい（HTML の仕様で許されている） -->
-<link rel="stylesheet" href="assets/setting_sheet.css?v=26">
+<link rel="stylesheet" href="assets/setting_sheet.css?v=27">
 <?php if ($tplPreview): ?>
 <style>
     /* iframe の中: サイトの上のバー・入力欄を隠して、PDF のプレビューを枠いっぱいに出す */
@@ -267,6 +267,13 @@ render_header('セッティングシート作成', $blank ? 'tools' : 'lives');
         <div class="stage-history">
             <button type="button" class="btn btn--sm btn--ghost" data-undo aria-label="1つ戻す" title="1つ戻す（Ctrl+Z）" disabled><?= icon('undo') ?></button>
             <button type="button" class="btn btn--sm btn--ghost" data-redo aria-label="やり直す" title="やり直す（Ctrl+Y）" disabled><?= icon('redo') ?></button>
+            <!-- 選んだ部品の操作（何も選んでいないときは隠す） -->
+            <span class="stage-acts" data-acts hidden>
+                <button type="button" class="btn btn--sm" data-act="rotL" aria-label="左に回す" title="左に回す"><?= icon('rotate_left') ?></button>
+                <button type="button" class="btn btn--sm" data-act="rotR" aria-label="右に回す" title="右に回す"><?= icon('rotate_right') ?></button>
+                <button type="button" class="btn btn--sm" data-act="dup" aria-label="複製" title="複製"><?= icon('content_copy') ?></button>
+                <button type="button" class="btn btn--sm btn--danger" data-act="del" aria-label="削除" title="削除"><?= icon('delete') ?></button>
+            </span>
         </div>
         <p class="muted small stage-hint" data-stage-hint>下が客席側です。何もないところをタップすると選択が外れます。</p>
 
@@ -277,12 +284,6 @@ render_header('セッティングシート作成', $blank ? 'tools' : 'lives');
             <div class="stage-panel__row">
                 <label class="field">大きさ <input type="range" min="0.5" max="2.5" step="0.1" data-p="scale"></label>
                 <label class="field" data-only="box circle">横長さ <input type="range" min="0.5" max="3" step="0.1" data-p="stretch"></label>
-            </div>
-            <div class="stage-panel__row">
-                <button type="button" class="btn btn--sm" data-act="rotL"><?= icon('rotate_left') ?> 左に回す</button>
-                <button type="button" class="btn btn--sm" data-act="rotR"><?= icon('rotate_right') ?> 右に回す</button>
-                <button type="button" class="btn btn--sm" data-act="dup"><?= icon('content_copy') ?> 複製</button>
-                <button type="button" class="btn btn--sm btn--danger" data-act="del"><?= icon('delete') ?> 削除</button>
             </div>
         </div>
     </section>
@@ -299,8 +300,7 @@ render_header('セッティングシート作成', $blank ? 'tools' : 'lives');
         </div>
         <!-- 1曲 = 1行。中身は JS が state.songs から作る -->
         <ol class="setlist" data-songs></ol>
-        <p class="muted small"><?= icon('tune') ?> で音響・照明等の希望が記入できます。</p>
-		<p class="muted small"><?= icon('search') ?> 曲を検索して演奏時間を自動で入力します。</p>
+        <p class="muted small"><?= icon('tune') ?> で音響・照明等の希望が記入できます。<br><?= icon('search') ?> 曲を検索して演奏時間を自動で入力します。</p>
 
         <p class="small" data-rows-note></p>
     </section>
@@ -355,5 +355,5 @@ render_header('セッティングシート作成', $blank ? 'tools' : 'lives');
 </form>
 <?php endif; ?>
 
-<script src="assets/setting_sheet.js?v=64" defer></script>
+<script src="assets/setting_sheet.js?v=69" defer></script>
 <?php render_footer();

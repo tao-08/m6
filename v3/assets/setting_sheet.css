@@ -81,7 +81,7 @@
 .sheet-choice { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .sheet-choice__title { min-width: 72px; font-size: 13px; font-weight: 700; color: var(--muted); }
 /* 選んだ選択肢の説明: ボタンの下。左はボタンの頭（見出しの幅 72px + すき間 6px）にそろえる */
-.sheet-choice__note { margin: -4px 0 0 78px; line-height: 1.5; }
+.sheet-choice__note { margin: -4px 0 0 78px; line-height: 1.5; white-space: pre-line; }
 .sheet-choice__btn {
   font: inherit; font-size: 14px; padding: 6px 14px; border-radius: 999px; cursor: pointer;
   background: var(--surface); color: var(--text); border: 1px solid var(--border);
@@ -115,9 +115,11 @@
 }
 .stage-history { display: flex; gap: 4px; margin-top: -4px; }
 /* 1つ戻す・やり直す: うっすら青。押せないときは薄く */
-.stage-history .btn { background: rgb(59 130 246 / .12); color: rgb(37 99 235); border-color: rgb(59 130 246 / .25); }
+.stage-history .btn:not(.btn--danger) { background: rgb(59 130 246 / .12); color: rgb(37 99 235); border-color: rgb(59 130 246 / .25); }
+.stage-acts { display: flex; gap: 4px; margin-left: 8px; }
+.stage-acts[hidden] { display: none; }
 .stage-history .btn:disabled { opacity: .4; }
-[data-theme="dark"] .stage-history .btn { background: rgb(96 165 250 / .14); color: rgb(147 197 253); border-color: rgb(96 165 250 / .3); }
+[data-theme="dark"] .stage-history .btn:not(.btn--danger) { background: rgb(96 165 250 / .14); color: rgb(147 197 253); border-color: rgb(96 165 250 / .3); }
 
 .st-item {
   position: absolute;
