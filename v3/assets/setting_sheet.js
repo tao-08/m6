@@ -38,6 +38,7 @@
     const $$ = (sel) => Array.from(root.querySelectorAll(sel));
 
     // localStorage の保存キー（バンドごと。白紙は1つだけ）
+    //   型紙のお試し（sheet_templates の「プレビュー」）は保存しない（save() を見る）
     const STORE_KEY = DATA.blank ? 'settingSheet:blank' : 'settingSheet:band:' + DATA.bandId;
     // プレビューを開いているか（下の「6.5 プレビュー」で使う）。save() から先に参照されるので、ここで宣言しておく
     //   let で作った変数は、宣言の行より前で使うとエラーになる（TDZ: 一時的なデッドゾーン）
@@ -124,6 +125,9 @@
         schedulePreview(); // プレビューを開いていれば作り直す（下の「7. プレビュー」）
         scheduleHistory(); // セット図が変わっていれば「1つ戻す」の履歴に積む（下の「4.5 1つ戻す・やり直す」）
         clearTimeout(saveTimer);
+        if (DATA.tplPreview) {
+            return; // 型紙のお試しは毎回同じ仮の値なので保存しない
+        }
         saveTimer = setTimeout(() => {
             try {
                 localStorage.setItem(STORE_KEY, JSON.stringify(state));
@@ -133,9 +137,9 @@
         }, 300);
     }
 
-    const restored = loadState();
+    const restored = DATA.tplPreview ? null : loadState();
     let state = restored || defaultState();
-    if (!DATA.templates[state.template]) {
+    if (!DATA.templates[state.template] || DATA.tplPreview) {
         state.template = DATA.templateKey; // 保存した型紙が消えていたら（設定から削除された等）初期値に戻す
     }
 
@@ -1737,6 +1741,18 @@
         for (const [key, f] of Object.entries(t.fields)) {
             drawInBox(fieldValue(key), f.box, { size: f.size, min: 5 });
         }
+        // 型紙で決めた「いつも書く文字」（サークル名など。入力欄は無い）
+        // shape があれば枠の大きさの四角・丸で囲む（文字が空なら図形だけ）
+        for (const s of t.stamps || []) {
+            const [x0, top, x1, bottom] = s.box;
+            const line = { borderColor: black, borderWidth: s.line || 0.9 };
+            if (s.shape === 'rect') {
+                page.drawRectangle({ x: x0, y: Y(bottom), width: x1 - x0, height: bottom - top, ...line });
+            } else if (s.shape === 'ellipse') {
+                page.drawEllipse({ x: (x0 + x1) / 2, y: Y((top + bottom) / 2), xScale: (x1 - x0) / 2, yScale: (bottom - top) / 2, ...line });
+            }
+            if (s.text) drawInBox(s.text, s.box, { size: s.size || 10, align: s.align || 'left', min: 5 });
+        }
 
         // ---- 2. メンバー ----
         const mt = t.members;
@@ -1800,7 +1816,7 @@
 
         // ---- 3.5 その他の自由記入欄 ----
         for (const tx of t.texts || []) {
-            if (!isTextShown(tx)) {
+            if (!DATA.tplPreview && !isTextShown(tx)) { // 型紙のお試しは全部の欄を書く
                 continue; // 画面で隠れている欄は書かない
             }
             drawInBox(textValue(tx), tx.box, {
@@ -1809,17 +1825,28 @@
         }
 
         // ---- 4. ○囲み（SE 有/なし など）----
-        for (const [group, opt] of Object.entries(state.choices)) {
-            if (!isShown(group)) {
+        // 型紙のお試しは、全グループの全選択肢に印を付ける（本番ではあり得ないが、位置を一度に確かめられる）
+        const picked = DATA.tplPreview
+            ? Object.entries(t.choices || {}).flatMap(([g, opts]) => Object.keys(opts).map((o) => [g, o]))
+            : Object.entries(state.choices);
+        for (const [group, opt] of picked) {
+            if (!DATA.tplPreview && !isShown(group)) {
                 continue; // 画面で隠れている項目は書かない
             }
             const spec = t.choices?.[group]?.[opt]; // ?. : 途中が無くてもエラーにせず undefined を返す（オプショナルチェーン）
             if (!spec) {
                 continue;
             }
-            // 書き方は2通り: [箱] だけ（○で囲む）か { box: [箱], mark: 'check' }（✓を書く）
+            // 書き方は2通り: [箱] だけ（○で囲む）か { box: [箱], mark: 'check' | 'none', text, text_box }
+            //   mark: 'check' = ✓ / 'none' = 印なし / 無し = ○。text があれば text_box に書く（例: 2タム →「（2Tom）」）
             const box = Array.isArray(spec) ? spec : spec.box;
             const [x0, top, x1, bottom] = box;
+            if (!Array.isArray(spec) && spec.text && Array.isArray(spec.text_box)) {
+                drawInBox(spec.text, spec.text_box, { size: spec.size || 10, min: 5, pad: 1 });
+            }
+            if (!Array.isArray(spec) && spec.mark === 'none') {
+                continue;
+            }
             if (!Array.isArray(spec) && spec.mark === 'check') {
                 // ✓ を2本の線で描く（フォントの ✓ は入っていないことがあるので、線で描くほうが確実）
                 const w = x1 - x0, h = bottom - top;
@@ -2322,5 +2349,67 @@
     renderAll();
     if (restored) {
         $('[data-saved-note]').hidden = false;
+    }
+
+    /* ---- 型紙のお試し（?tpl_preview=1&embed=1）----
+     *  型紙の編集画面（sheet_editor.js）が浮いた枠の中に <iframe> で開き、postMessage で「保存前の型紙」と PDF を送ってくる。
+     *  受け取ったら __preview の型紙を差し替え、仮の値（sampleState）を入れて PDF のプレビューだけ見せる。DB には何も保存しない。
+     *  送り主は「自分を埋め込んでいる画面（parent）」かつ同じサイト（origin）のときだけ信じる
+     */
+
+    /** 型紙のお試しに入れる仮の値（毎回同じ）。曲は型紙の行数ぶん、自由記入欄は欄の名前をそのまま書く */
+    function sampleState() {
+        const s = defaultState();
+        Object.assign(s, { band: 'サンプルバンド', kana: 'サンプルバンド', date: '2026/10/12', order: '3', rep: '山田 太郎' });
+        s.members = [
+            ['Vo', '山田 太郎'], ['Gt', '佐藤 花子'], ['Gt', '鈴木 一郎'], ['Ba', '高橋 次郎'], ['Dr', '田中 三郎'], ['Key', '伊藤 四郎'],
+        ].map(([part, name]) => ({ part, name }));
+        const n = rowCount(tpl().setlist);
+        s.songs = [];
+        for (let i = 1; i < n; i++) {
+            s.songs.push({ id: i, mc: false, title: `サンプル曲${i}`, sound: i === 1 ? 'リバーブ深め' : '', light: i === 1 ? '暗転から' : '' });
+            if (i === 1) s.songs.push({ id: 100, mc: true });
+        }
+        s.nextSongId = 101;
+        for (const t of tpl().texts || []) {
+            if (t.auto !== 'mic') s.texts[t.key] = t.digits ? '3' : t.label; // マイク計は空欄にして自動の値を出す
+        }
+        return s;
+    }
+
+    if (DATA.tplPreview) {
+        let pdfUrl = null;
+        let first = true;
+        window.addEventListener('message', (e) => {
+            if (e.origin !== location.origin || e.source !== window.parent || e.data?.type !== 'sheet-tpl') {
+                return;
+            }
+            const { cfg, label, pdf, pdfPath, stageImage } = e.data;
+            if (pdf) {
+                if (pdfUrl) URL.revokeObjectURL(pdfUrl);
+                pdfUrl = URL.createObjectURL(new Blob([pdf], { type: 'application/pdf' }));
+            }
+            const src = pdf ? pdfUrl : pdfPath;
+            if (!src || !cfg?.setlist || !cfg?.members || !cfg?.stage) {
+                previewBox.hidden = false;
+                previewNote.textContent = '会場の PDF と座標を入れると、ここに出ます';
+                return;
+            }
+            DATA.templates[DATA.templateKey] = { ...cfg, label: label || 'お試し', venue_words: [], pdf: src, stage_image: stageImage || cfg.stage_image };
+            state = sampleState();
+            if (tpl().members.mode === 'slots') {
+                assignSlots(); // パートが印刷済みの表は、仮のメンバーを振り分ける
+            }
+            autoLayout(); // セット図も仮のメンバーから並べる
+            delete $('[data-texts]').dataset.tpl;
+            renderAll();
+            if (first) {
+                first = false;
+                setPreview(true);
+            } else {
+                save(); // プレビューを作り直す（保存はしない）
+            }
+        });
+        window.parent.postMessage({ type: 'sheet-tpl-ready' }, location.origin);
     }
 })();

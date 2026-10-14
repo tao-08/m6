@@ -342,8 +342,7 @@ render_header('セッティングシートの型紙', 'tools');
                     </select>
                 </label>
                 <!-- 中身は assets/sheet_editor.js の fillAddMenu() が作る（型紙にまだ無い欄だけ） -->
-                <select data-ed-add aria-label="枠を足す"><option value="">＋ 枠を足す…</option></select>
-                <span class="muted small sheet-ed__cursor" data-ed-cursor></span>
+                <select data-ed-add aria-label="枠を足す"><option value="">＋ 枠を足す…</option></select>                <span class="muted small sheet-ed__cursor" data-ed-cursor></span>
             </div>
             <p class="muted small" data-ed-note></p>
             <div class="sheet-ed__list" data-ed-list></div>
@@ -355,6 +354,10 @@ render_header('セッティングシートの型紙', 'tools');
                 </div>
             </div>
             <input type="hidden" name="stage_png" value="">
+            <!-- 浮いたプレビュー。中身は setting_sheet?tpl_preview=1 の <iframe>（初めて開いたときに JS が作る）。
+                 保存前の型紙を postMessage で渡し、仮の値で書いた PDF を出す -->
+            <button type="button" class="btn tpl-preview-btn" data-ed-preview aria-expanded="false"><?= icon('visibility') ?><span data-ed-preview-text>プレビュー</span></button>
+            <div class="tpl-preview" data-ed-preview-box hidden></div>
         </div>
 
         <details class="sheet-ed__json"<?= $error !== null ? ' open' : '' ?>>
@@ -453,5 +456,5 @@ $editorData = [
 ];
 ?>
 <script type="application/json" id="sheet-editor-data"><?= json_encode($editorData, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP) ?></script>
-<script src="assets/sheet_editor.js?v=3" defer></script>
+<script src="assets/sheet_editor.js?v=6" defer></script>
 <?php render_footer();

@@ -52,6 +52,9 @@ declare(strict_types=1);
  *   choice_labels: [グループ => 見出し]。型紙ごとに見出しを変えるとき（無ければ SHEET_CHOICE_LABELS → キーそのまま）
  *   choices      : ○で囲む選択肢（SE 有/なし など）。選ばれたものの文字の箱を楕円で囲む
  *                  箱の代わりに ['box' => [...], 'mark' => 'check'] と書くと、○ではなく ✓ を書く（チェック欄用）
+ *                  'mark' => 'none' は印なし。'text' => '（2Tom）', 'text_box' => [...] で、選んだとき text_box に文字も書く
+ *   stamps       : いつも書く文字（入力欄なし）。[['text' => '〇〇大学 軽音', 'box' => [...], 'size' => 10, 'align' => 'left'], ...]
+ *                  'shape' => 'rect' | 'ellipse' で box の大きさの四角・丸で囲む（'line' は線の太さ）。text が空なら図形だけ書く
  *   texts        : そのほかの自由記入欄（その他の要望・SE の曲名 など）。auto => 'mic' は「空欄ならマイク〇の数」
  *                  with_choice => グループ: そのグループの下に出す / show_if => [グループ, [選択肢]]: その選択のときだけ出す
  *                  digits => true: 数字だけ / placeholder: 入力欄の薄い説明 / pad: PDF の箱の左右の余白（狭い箱用）

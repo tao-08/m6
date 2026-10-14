@@ -32,6 +32,17 @@ $bandId = (int)($_GET['band'] ?? 0); // (int) で数字に変換。"abc" など�
 // ?band= が無い = ツールタブからの「白紙」。DB から何も読まず、全部空欄で始める
 //   （?band=abc のような変な値は 0 になるが、「見つかりません」にしたいので「パラメータがあるか」で分ける）
 $blank = !isset($_GET['band']);
+// ?tpl_preview=1 … 型紙の編集画面の浮いたプレビューの中身（<iframe>）。保存前の型紙は JS が postMessage で受け取る（管理者だけ）
+//   入力欄は出さず、仮の値で作った PDF のプレビューだけ見せる
+$tplPreview = isset($_GET['tpl_preview']);
+if ($tplPreview) {
+    require_admin();
+    $blank = true;
+    // bootstrap.php は全ページで <iframe> の中に出すのを禁止している（クリックジャッキング対策）。
+    // このページだけ「同じサイトの中の iframe」は許す（他のサイトからは今までどおり禁止）
+    header('X-Frame-Options: SAMEORIGIN');
+    header("Content-Security-Policy: frame-ancestors 'self'; base-uri 'self'; form-action 'self'; object-src 'none'");
+}
 
 // ---- 1. バンド・日程・会場（JOIN で1回の SQL にまとめて取る）----
 //   LEFT JOIN: 会場が未登録（venue_id が NULL）の日程でもバンドを取りこぼさない
@@ -92,6 +103,12 @@ if (!$blank && band_setlist_visibility($pdo, $bandId)['hidden']) {
 // ---- 4. 型紙を選ぶ（会場名から自動。合わなければ1つ目）----
 $autoKey = sheet_template_for_venue($band['venue_name']);
 $templateKey = $autoKey ?? array_key_first(all_sheet_templates()); // ?? : 左が null なら右を使う（null 合体演算子）
+$templates = all_sheet_templates();
+if ($tplPreview) {
+    // 型紙が届くまでの仮。届いたら JS が __preview を差し替える
+    $templates = ['__preview' => ['label' => 'お試し（読み込み中…）'] + $templates[$templateKey]];
+    $templateKey = '__preview';
+}
 
 // ---- 5. JS に渡すデータ ----
 //   「初期値（DB の内容）」と「型紙」を1つの JSON にまとめて <script type="application/json"> に入れる。
@@ -118,8 +135,9 @@ $initial = [
 $sheetData = [
     'bandId'      => $bandId,
     'blank'       => $blank, // true = バンドなしの白紙（DB への登録を聞かない・「DB のメンバーから…」ボタンを出さない）
+    'tplPreview'  => $tplPreview,
     'templateKey' => $templateKey,
-    'templates'   => all_sheet_templates(), // コードの型紙＋DB の型紙
+    'templates'   => $templates, // コードの型紙＋DB の型紙（お試しのときは __preview だけ）
     'choiceLabels'=> SHEET_CHOICE_LABELS,
     'initial'     => $initial,
     // プレビュー用の pdf.js（Mozilla。Apache License 2.0）
@@ -151,8 +169,19 @@ render_header('セッティングシート作成', $blank ? 'tools' : 'lives');
 ?>
 <!-- このページだけの CSS。<link> は <body> の中に書いてもよい（HTML の仕様で許されている） -->
 <link rel="stylesheet" href="assets/setting_sheet.css?v=24">
+<?php if ($tplPreview): ?>
+<style>
+    /* iframe の中: サイトの上のバー・入力欄を隠して、PDF のプレビューを枠いっぱいに出す */
+    .topbar, .footer, .crumbs, h1, [data-sheet] { display: none !important; }
+    html, body { background: transparent; }
+    /* !important: setting_sheet.css の「画面の幅ごと・開いているとき」の位置より優先する */
+    .sheet-preview { inset: 0 !important; width: auto !important; border: 0; border-radius: 0; box-shadow: none; animation: none !important; }
+</style>
+<?php endif; ?>
 
-<?php if ($blank): ?>
+<?php if ($tplPreview): ?>
+<nav class="crumbs"><a href="tools">ツール</a><span>/</span><a href="sheet_templates">セッティングシートの型紙</a></nav>
+<?php elseif ($blank): ?>
 <nav class="crumbs"><a href="tools">ツール</a></nav>
 <?php else: ?>
 <nav class="crumbs"><a href="./">ライブ</a><span>/</span><a href="<?= h($bandUrl) ?>"><?= h($band['name']) ?></a></nav>
@@ -167,7 +196,7 @@ render_header('セッティングシート作成', $blank ? 'tools' : 'lives');
     <section class="card sheet-card">
         <label class="field">会場のシート
             <select data-template>
-                <?php foreach (all_sheet_templates() as $key => $tpl): ?>
+                <?php foreach ($templates as $key => $tpl): ?>
                     <option value="<?= h($key) ?>"<?= $key === $templateKey ? ' selected' : '' ?>><?= h($tpl['label']) ?></option>
                 <?php endforeach; ?>
             </select>
@@ -307,5 +336,5 @@ render_header('セッティングシート作成', $blank ? 'tools' : 'lives');
 </form>
 <?php endif; ?>
 
-<script src="assets/setting_sheet.js?v=44" defer></script>
+<script src="assets/setting_sheet.js?v=47" defer></script>
 <?php render_footer();

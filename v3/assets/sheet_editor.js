@@ -81,6 +81,25 @@
     /** 選択肢のグループの見出し（型紙ごとの choice_labels → 共通の名前 → キーそのまま） */
     const groupLabel = (g) => cfg?.choice_labels?.[g] || DATA.choiceLabels[g] || g;
 
+    /**
+     * 選択肢1つの設定を { box, mark, text, text_box } の形で読む。
+     *   型紙には [箱]（○で囲む）か { box, mark: 'check' | 'none', text, text_box } で書いてある
+     */
+    const optSpec = (v) => (Array.isArray(v) ? { box: v } : { ...v });
+    /** 選択肢1つの設定を書き戻す。○で囲むだけ（文字なし）なら [箱] の短い形にする */
+    function writeOpt(g, name, o) {
+        if (!o.text) {
+            delete o.text;
+            delete o.text_box;
+            delete o.size;
+        }
+        if (!o.mark || o.mark === 'circle') delete o.mark;
+        cfg.choices[g][name] = Object.keys(o).length === 1 ? o.box : o;
+    }
+    const MARKS = { circle: '○で囲む', check: '✓を書く', none: '印なし（文字だけ）' };
+    /** 固定の文字を囲む図形（枠の大きさそのまま） */
+    const SHAPES = { '': 'なし', rect: '四角', ellipse: '丸' };
+
     /** メンバー表・セットリスト → table */
     function tableItem(id, label, kind, t) {
         const colKeys = Object.keys(t).filter((k) => isCol(t[k]) && k !== 'lines');
@@ -129,7 +148,7 @@
             for (const [name, v] of Object.entries(opts || {})) {
                 const box = isBox(v) ? v : (v && isBox(v.box) ? v.box : null);
                 if (!box) continue;
-                const mark = v.mark === 'check' ? '（✓）' : '';
+                const mark = v.mark === 'check' ? '（✓）' : v.mark === 'none' ? '（印なし）' : '';
                 out.push(rectItem(`choices.${g}.${name}`, `${groupLabel(g)}: ${name}${mark}`, 'choices', box, () => {
                     delete cfg.choices[g][name];
                     if (Object.keys(cfg.choices[g]).length === 0) {
@@ -137,8 +156,17 @@
                         if (cfg.choice_labels) delete cfg.choice_labels[g];
                     }
                 }, { choice: { g, name } }));
+                // 選んだときに書く文字の枠（例: 2タム →「（2Tom）」）
+                if (v.text && isBox(v.text_box)) {
+                    out.push(rectItem(`ctext.${g}.${name}`, `${name} → ${v.text}`, 'ctext', v.text_box, () => {
+                        writeOpt(g, name, { ...optSpec(v), text: '' });
+                    }, { choice: { g, name } }));
+                }
             }
         }
+        (cfg.stamps || []).forEach((s, i) => {
+            if (s && isBox(s.box)) out.push(rectItem(`stamps.${i}`, s.text ? `「${s.text}」` : SHAPES[s.shape] || '（空）', 'stamps', s.box, () => cfg.stamps.splice(i, 1), { stamp: s }));
+        });
         (cfg.texts || []).forEach((t, i) => {
             if (t && isBox(t.box)) out.push(rectItem(`texts.${i}`, t.label || t.key || `欄${i + 1}`, 'texts', t.box, () => cfg.texts.splice(i, 1), { text: t }));
         });
@@ -233,22 +261,7 @@
         const title = document.createElement('strong');
         title.textContent = it.label;
         panel.append(title);
-        const num = (label, get, set) => {
-            const l = document.createElement('label');
-            l.className = 'ed-num';
-            l.textContent = label;
-            const inp = document.createElement('input');
-            inp.type = 'number';
-            inp.step = '0.1';
-            inp.value = String(+get().toFixed(3));
-            inp.addEventListener('change', () => {
-                if (inp.value === '' || !Number.isFinite(+inp.value)) return;
-                set(+inp.value);
-                changed();
-            });
-            l.append(inp);
-            panel.append(l);
-        };
+        const num = numInput;
         if (it.type === 'rect') {
             ['左', '上', '右', '下'].forEach((name, i) => num(name, () => it.box[i], (v) => { it.box[i] = r1(v); }));
         } else if (it.shiftY) {
@@ -271,6 +284,30 @@
         if (it.text) {
             textInput('欄の名前（画面に出る）', it.text.label || '', (v) => { it.text.label = v; changed(true); });
         }
+        if (it.stamp) {
+            // 空にすると図形だけ書く
+            textInput('書く文字', it.stamp.text || '', (v) => { it.stamp.text = v; changed(true); }, true);
+            if (it.stamp.text) {
+                num('文字の大きさ', () => it.stamp.size || 10, (v) => { it.stamp.size = Math.max(4, r1(v)); });
+                panelButton(it.stamp.align === 'center' ? '左寄せにする' : '中央寄せにする', () => {
+                    it.stamp.align = it.stamp.align === 'center' ? 'left' : 'center';
+                    changed(true);
+                });
+            }
+            const l = document.createElement('label');
+            l.className = 'ed-num ed-text';
+            l.textContent = '囲み';
+            const sel = document.createElement('select');
+            for (const [k, v] of Object.entries(SHAPES)) sel.append(new Option(v, k, false, (it.stamp.shape || '') === k));
+            sel.addEventListener('change', () => {
+                if (sel.value) it.stamp.shape = sel.value;
+                else delete it.stamp.shape;
+                changed(true);
+            });
+            l.append(sel);
+            panel.append(l);
+            if (it.stamp.shape) num('線の太さ', () => it.stamp.line || 0.9, (v) => { it.stamp.line = Math.max(0.1, r1(v)); });
+        }
         if (it.remove) {
             const del = document.createElement('button');
             del.type = 'button';
@@ -285,8 +322,26 @@
         }
     }
 
+    /** パネルに数字の入力欄を1つ足す */
+    function numInput(label, get, set) {
+        const l = document.createElement('label');
+        l.className = 'ed-num';
+        l.textContent = label;
+        const inp = document.createElement('input');
+        inp.type = 'number';
+        inp.step = '0.1';
+        inp.value = String(+get().toFixed(3));
+        inp.addEventListener('change', () => {
+            if (inp.value === '' || !Number.isFinite(+inp.value)) return;
+            set(+inp.value);
+            changed();
+        });
+        l.append(inp);
+        panel.append(l);
+    }
+
     /** パネルに文字の入力欄を1つ足す。打ち終わって確定したとき（change）だけ onSet を呼ぶ */
-    function textInput(label, value, onSet) {
+    function textInput(label, value, onSet, allowEmpty = false) {
         const l = document.createElement('label');
         l.className = 'ed-num ed-text';
         l.textContent = label;
@@ -296,7 +351,7 @@
         inp.value = value;
         inp.addEventListener('change', () => {
             const v = inp.value.trim();
-            if (v !== '') onSet(v);
+            if (v !== '' || allowEmpty) onSet(v);
         });
         l.append(inp);
         panel.append(l);
@@ -382,15 +437,33 @@
             selectedId = `choices.${g}.${v}`;
             changed(true);
         });
-        const spec = cfg.choices[g][name];
-        const isCheck = !Array.isArray(spec) && spec.mark === 'check';
-        panelButton(isCheck ? '○で囲む形にする' : '✓を書く形にする', () => {
-            const box = Array.isArray(spec) ? spec : spec.box;
-            cfg.choices[g][name] = isCheck ? box : { box, mark: 'check' };
+        const spec = optSpec(cfg.choices[g][name]);
+        // 選んだときの印（○ / ✓ / 印なし）
+        const l = document.createElement('label');
+        l.className = 'ed-num ed-text';
+        l.textContent = '選んだときの印';
+        const sel = document.createElement('select');
+        for (const [k, v] of Object.entries(MARKS)) sel.append(new Option(v, k, false, (spec.mark || 'circle') === k));
+        sel.addEventListener('change', () => {
+            writeOpt(g, name, { ...spec, mark: sel.value });
             changed(true);
         });
+        l.append(sel);
+        panel.append(l);
+        // 選んだときに書く文字。初めて入れたら、選択肢の枠の右に文字の枠を置く（空にすると枠ごと消える）
+        textInput('選んだときに書く文字', spec.text || '', (v) => {
+            const [x0, y0, x1, y1] = spec.box;
+            const textBox = isBox(spec.text_box) ? spec.text_box : [r1(x1 + 6), y0, r1(x1 + 6 + Math.max(x1 - x0, 40)), y1];
+            writeOpt(g, name, { ...spec, text: v, text_box: textBox });
+            if (v && !isBox(spec.text_box)) {
+                selectedId = `ctext.${g}.${name}`;
+                note.textContent = `「${v}」を書く枠を置きました。書きたい場所にドラッグしてください。`;
+            }
+            changed(true);
+        }, true);
+        if (spec.text) numInput('文字の大きさ', () => spec.size || 10, (v) => writeOpt(g, name, { ...spec, size: Math.max(4, r1(v)) }));
         panelButton('＋ このグループに選択肢を足す', () => {
-            // 最後の選択肢の箱の右に、同じ大きさで置く
+            // 最後の選択肢の箱の右に、同じ大きさ・同じ印で置く（書く文字は人によって違うので写さない）
             const boxes = Object.values(cfg.choices[g]).map((v) => (Array.isArray(v) ? v : v.box));
             const [x0, y0, x1, y1] = boxes[boxes.length - 1];
             const w = x1 - x0;
@@ -398,7 +471,8 @@
             while (`選択肢${n}` in cfg.choices[g]) n++;
             const newName = `選択肢${n}`;
             const box = [r1(x1 + 6), y0, r1(x1 + 6 + w), y1];
-            cfg.choices[g][newName] = isCheck ? { box, mark: 'check' } : box;
+            cfg.choices[g][newName] = box;
+            writeOpt(g, newName, { box, mark: spec.mark });
             selectedId = `choices.${g}.${newName}`;
             changed(true);
         });
@@ -434,6 +508,7 @@
         if (rebuild) items = buildItems();
         if (rebuild) fillAddMenu();
         draw();
+        queuePreview(); // プレビューのタブが開いていれば送り直す
     }
 
     /* -----------------------------------------------------------------
@@ -565,6 +640,8 @@
             if (!cfg?.fields?.[k]) opt(`field:${k}`, label);
         }
         opt('text', '自由記入欄');
+        opt('stamp', '固定の文字（いつも書く）');
+        opt('shape', '図形（四角・丸）');
         opt('choice', '選択肢のグループ（○で囲む・✓を書く）');
     }
 
@@ -588,6 +665,16 @@
             cfg.texts.push({ key: `text${n}`, label: `新しい欄${n}`, box: [r1(cx - 60), r1(cy - 8), r1(cx + 60), r1(cy + 8)], size: 10 });
             selectedId = `texts.${cfg.texts.length - 1}`;
             note.textContent = `「新しい欄${n}」をページの真ん中に置きました。名前は下で直せます。`;
+        } else if (what === 'stamp') {
+            cfg.stamps = Array.isArray(cfg.stamps) ? cfg.stamps : [];
+            cfg.stamps.push({ text: '文字', box: [r1(cx - 50), r1(cy - 7), r1(cx + 50), r1(cy + 7)], size: 10 });
+            selectedId = `stamps.${cfg.stamps.length - 1}`;
+            note.textContent = '固定の文字をページの真ん中に置きました。書く文字は下で直せます。';
+        } else if (what === 'shape') {
+            // 文字の無い固定の文字 = 図形だけ書く
+            cfg.stamps = Array.isArray(cfg.stamps) ? cfg.stamps : [];
+            cfg.stamps.push({ text: '', shape: 'rect', box: [r1(cx - 30), r1(cy - 20), r1(cx + 30), r1(cy + 20)] });
+            selectedId = `stamps.${cfg.stamps.length - 1}`;
         } else if (what === 'choice') {
             cfg.choices = cfg.choices && typeof cfg.choices === 'object' && !Array.isArray(cfg.choices) ? cfg.choices : {};
             let n = 1;
@@ -655,6 +742,7 @@
             note.textContent = `PDF を表示できませんでした（${err.message}）`;
         }
         draw();
+        queuePreview(); // セット図の背景の切り抜きが新しい PDF になった
     }
 
     fileInput.addEventListener('change', async () => {
@@ -670,19 +758,76 @@
         renderPdf();
     });
 
-    // 保存するとき: セット図の枠の中を PNG に切り抜いて一緒に送る
-    form.addEventListener('submit', () => {
-        pngInput.value = '';
-        if (!pdfScale || !cfg || !isBox(cfg.stage)) return;
+    /** セット図の枠の中を PNG（data URL）に切り抜く。PDF がまだ描けていなければ '' */
+    function stagePng() {
+        if (!pdfScale || !cfg || !isBox(cfg.stage)) return '';
         const [x0, y0, x1, y1] = cfg.stage.map((v) => v * pdfScale);
         const w = Math.round(x1 - x0), h = Math.round(y1 - y0);
-        if (w < 2 || h < 2) return;
+        if (w < 2 || h < 2) return '';
         const c = document.createElement('canvas');
         c.width = w;
         c.height = h;
         c.getContext('2d').drawImage(canvas, x0, y0, w, h, 0, 0, w, h);
-        pngInput.value = c.toDataURL('image/png');
+        return c.toDataURL('image/png');
+    }
+
+    // 保存するとき: セット図の枠の中を PNG に切り抜いて一緒に送る
+    form.addEventListener('submit', () => {
+        pngInput.value = stagePng();
     });
+
+    /* -----------------------------------------------------------------
+     *  プレビュー: 右下のボタンで浮いた枠を開き、中に本番のセッティングシートの画面（setting_sheet?tpl_preview=1）を
+     *  <iframe> で出す。保存前の型紙と PDF を postMessage で渡すと、仮の値（バンド名・メンバー・曲…）を入れた PDF が出る。
+     *  PDF を書く処理は本番と同じなので、文字の大きさの自動調整も本物どおり。
+     *  開いている間は、枠を動かすたびに送り直す（少し待ってから）
+     * ----------------------------------------------------------------- */
+    const previewBtn = root.querySelector('[data-ed-preview]');
+    const previewBox = root.querySelector('[data-ed-preview-box]');
+    let frame = null;
+    let sendTimer = 0;
+    const labelInput = form.querySelector('[data-template-label]');
+    function sendPreview() {
+        if (!frame || previewBox.hidden) return;
+        frame.contentWindow.postMessage({
+            type: 'sheet-tpl',
+            cfg: cfg ? JSON.parse(JSON.stringify(cfg)) : null,
+            label: labelInput.value.trim(),
+            pdf: fileInput.files[0] && pdfBytes ? pdfBytes.slice() : null, // 新しく選んだ PDF（まだ保存していない）
+            pdfPath: DATA.pdf,
+            stageImage: stagePng() || null,
+        }, location.origin);
+    }
+    function setPreview(open) {
+        previewBox.hidden = !open;
+        previewBtn.setAttribute('aria-expanded', String(open));
+        previewBtn.querySelector('.icon').textContent = open ? 'close' : 'visibility';
+        previewBtn.querySelector('[data-ed-preview-text]').textContent = open ? '閉じる' : 'プレビュー';
+        if (!open) return;
+        if (!frame) {
+            // 初めて開いたときだけ作る（閉じても残すので、次に開くのが速い）
+            frame = document.createElement('iframe');
+            frame.src = 'setting_sheet?tpl_preview=1';
+            frame.title = '型紙のプレビュー';
+            previewBox.append(frame);
+        } else {
+            sendPreview();
+        }
+    }
+    previewBtn.addEventListener('click', () => setPreview(previewBox.hidden));
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !previewBox.hidden) setPreview(false);
+    });
+    // iframe の中の準備ができた → 型紙を送る
+    window.addEventListener('message', (e) => {
+        if (e.origin === location.origin && frame && e.source === frame.contentWindow && e.data?.type === 'sheet-tpl-ready') sendPreview();
+    });
+    function queuePreview() {
+        clearTimeout(sendTimer);
+        sendTimer = setTimeout(sendPreview, 800);
+    }
+    form.addEventListener('input', queuePreview);
+    form.addEventListener('change', queuePreview); // PDF を選び直したとき
 
     // ---- 最初 ----
     readJson();

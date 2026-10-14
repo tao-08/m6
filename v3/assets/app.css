@@ -1791,6 +1791,22 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
 /* 枠の色は種類ごと（--c）。中は薄く塗って、PDF の文字が透けて見えるように */
 .ed-k-fields { --c: #2563eb; } .ed-k-members { --c: #16a34a; } .ed-k-setlist { --c: #9333ea; }
 .ed-k-stage { --c: #ea580c; } .ed-k-drum { --c: #64748b; } .ed-k-choices { --c: #db2777; } .ed-k-texts { --c: #0d9488; }
+.ed-k-ctext { --c: #be185d; } .ed-k-stamps { --c: #854d0e; }
+/* 型紙のプレビュー: 右下に浮くボタンと、その上に浮く枠（中は setting_sheet?tpl_preview=1 の iframe）。
+ * 見た目はセッティングシート作成の画面のプレビュー（setting_sheet.css の .sheet-preview）に合わせる */
+.tpl-preview-btn { position: fixed; right: 24px; bottom: calc(24px + env(safe-area-inset-bottom)); z-index: 26; gap: 4px; box-shadow: var(--shadow); }
+.tpl-preview-btn[aria-expanded="true"] { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+.tpl-preview { position: fixed; z-index: 25; right: 24px; bottom: 84px; top: 72px; width: min(640px, calc(100vw - 48px));
+  border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface-2); box-shadow: var(--shadow); overflow: hidden; }
+.tpl-preview iframe { display: block; width: 100%; height: 100%; border: 0; }
+@media (max-width: 760px) {
+  .tpl-preview-btn { right: 12px; bottom: calc(76px + env(safe-area-inset-bottom)); } /* 画面下のタブバーの上 */
+  .tpl-preview { left: 8px; right: 8px; width: auto; bottom: calc(136px + env(safe-area-inset-bottom)); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .tpl-preview:not([hidden]) { animation: tpl-preview-in .22s cubic-bezier(.2, .8, .2, 1); transform-origin: right bottom; }
+  @keyframes tpl-preview-in { from { opacity: 0; transform: scale(.96) translateY(8px); } }
+}
 .ed-body { fill: var(--c); fill-opacity: .1; stroke: var(--c); stroke-width: 1; vector-effect: non-scaling-stroke; cursor: move; }
 .ed-item.is-selected .ed-body { fill-opacity: .22; stroke-width: 2; }
 .ed-edge { stroke: transparent; stroke-width: 10; }
