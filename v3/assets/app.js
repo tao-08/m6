@@ -39,7 +39,7 @@
  *    data-toasts        … お知らせのポップアップ（4秒で消える）
  *    data-album-tip     … メンバー一覧のジャケットに乗せるとアルバム名・アーティスト名を出す
  *    data-setlist-tip   … セットリストの ✓ を押すと「セットリスト登録済（◯曲）」を出す
- *    open.spotify.com のリンク … スマホでは Spotify のアプリで開く
+ *    open.spotify.com のリンク … Spotify のアプリで開く（PC はデスクトップアプリ）
  *    data-vo-sum-toggle … 統計の「Voを合算する」をページ移動なしで切り替える
  * =====================================================================
  */
@@ -146,17 +146,16 @@ function setupAlbumTip() {
 }
 
 /* ---------------------------------------------------------------------
- * スマホで Spotify のリンク（https://open.spotify.com/…）を押したら、Spotify のアプリで開く
+ * Spotify のリンク（https://open.spotify.com/…）を押したら、Spotify のアプリで開く（スマホも PC のデスクトップアプリも）
  *   https のリンクのままだと、target="_blank"（新しいタブ）やブラウザの設定しだいでアプリに飛ばず、ブラウザの Spotify が開くことがある。
  *   → アプリ用の URL（spotify:album:ID のような「spotify:」で始まる形）に置き換えて開く。
  *   1.5秒たってもこのページが見えたまま（アプリが入っていない）なら、元の https のページを開く。
  *   album_go.php / song_go.php（Spotify ⇔ Apple Music をまたぐリンク）は、押してから飛び先が決まる
  *   → ?json=1 で飛び先だけ聞いて、Spotify ならアプリで、それ以外はそのページを開く。
- *   PC（マウスがある端末）は今までどおり（ブラウザの Spotify で困らないので）。
+ *   PC はアプリが開いてもページが見えたままのことがあるので、ウィンドウからフォーカスが外れた（blur）ことも「アプリが開いた」とみなす。
+ *   ブラウザの「Spotify を開きますか？」の確認が出たまま 1.5 秒たつと、ブラウザの Spotify も開くことがある。
  * ------------------------------------------------------------------- */
 function setupSpotifyAppLinks() {
-  const isPhone = window.matchMedia('(hover: none) and (pointer: coarse)');
-
   // open.spotify.com/album/ID → spotify:album:ID（track・artist・search も同じ形）。当てはまらなければ null
   const appUri = (url) => {
     const u = new URL(url, window.location.href);
@@ -169,16 +168,18 @@ function setupSpotifyAppLinks() {
     const onLeave = () => { left = true; };
     document.addEventListener('visibilitychange', onLeave, { once: true });
     window.addEventListener('pagehide', onLeave, { once: true });
+    window.addEventListener('blur', onLeave, { once: true }); // PC: デスクトップアプリが前に出る
     window.location.href = uri;
     setTimeout(() => {
       document.removeEventListener('visibilitychange', onLeave);
       window.removeEventListener('pagehide', onLeave);
+      window.removeEventListener('blur', onLeave);
       if (!left && document.visibilityState === 'visible') window.location.href = webUrl;
     }, 1500);
   };
 
   document.addEventListener('click', async (e) => {
-    if (!isPhone.matches || e.defaultPrevented) return;
+    if (e.defaultPrevented || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey) return; // Ctrl+クリックなど（新しいタブで開きたい）はブラウザに任せる
     const a = e.target.closest('a[href]');
     if (!a) return;
     const uri = appUri(a.href);

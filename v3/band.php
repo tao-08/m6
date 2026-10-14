@@ -140,6 +140,8 @@ foreach ($st as $r) {
  *
  * 弾きながらのコーラス（Gt + Cho）は、基本を Gt として比べ、コーラスした曲にだけ「Cho. 〇〇・〇〇」と書く。
  *   （Gt/Cho の曲と Gt だけの曲で「いつもと違う」にならないように、Cho を外してから比べる）
+ *   Vo 以外の2人以上が全員コーラスした曲は「Cho. All」。
+ * 同期音源（Prog）も同じ扱い: 他の楽器と一緒に出していれば Prog を外して比べ、出した曲にだけ「Prog. 〇〇」と書く。
  */
 function song_notes(array $songs, array $lineup): array
 {
@@ -158,9 +160,15 @@ function song_notes(array $songs, array $lineup): array
     $counts = [];
     $sets = [];
     $chorus = []; // [song_id][member_id] = 名前（その曲で弾きながらコーラスした人）
+    $prog = [];   // [song_id][member_id] = 名前（その曲で他の楽器と一緒に同期音源を出した人）
     foreach ($songs as $songId => $song) {
         foreach ($song['players'] as $memberId => $rows) {
             $shorts = array_column($rows, 'short_name'); // 楽器の並び順で入っている（Vo/Gt）
+            // Gt + Prog → Gt として数えて、同期音源は別に覚えておく（Prog だけの人はそのまま）。Gt/Cho/Prog でもコーラスを判定できるように先に外す
+            if (!isset($support[$memberId]) && count($shorts) >= 2 && in_array('Prog', $shorts, true)) {
+                $prog[$songId][$memberId] = $rows[0]['name'];
+                $shorts = array_values(array_diff($shorts, ['Prog']));
+            }
             // Gt + Cho → Gt として数えて、コーラスは別に覚えておく（ボーカルの人・Cho だけの人はそのまま）
             if (!isset($support[$memberId]) && chorus_host($shorts) !== null) {
                 $chorus[$songId][$memberId] = $rows[0]['name'];
@@ -175,7 +183,8 @@ function song_notes(array $songs, array $lineup): array
         if (count($c) >= 2 && max($c) === 1) {
             return null;
         }
-        arsort($c);              // 多い順に並べて
+        // 多い順。同じ曲数なら楽器の少ない組み合わせ（Gt と Vo/Gt が半分ずつ → Gt がいつも。Vo/Gt の曲にだけ書く）
+        uksort($c, static fn($x, $y) => [$c[$y], substr_count($x, '/')] <=> [$c[$x], substr_count($y, '/')]);
         return array_key_first($c); // 一番多い組み合わせ
     }, $counts);
 
@@ -199,7 +208,14 @@ function song_notes(array $songs, array $lineup): array
             }
         }
         if (isset($chorus[$songId])) {
-            $parts[] = 'Cho. ' . implode('・', $chorus[$songId]);
+            // その曲で Vo 以外（サポートを除く）の2人以上が全員コーラスしたら、名前を並べずに「Cho. All」
+            $canChorus = array_filter($song['players'], static fn($rows, $memberId) => !isset($support[$memberId])
+                && !in_array('Vo', array_column($rows, 'short_name'), true), ARRAY_FILTER_USE_BOTH);
+            $all = count($canChorus) >= 2 && count($chorus[$songId]) === count($canChorus);
+            $parts[] = 'Cho. ' . ($all ? 'All' : implode('・', $chorus[$songId]));
+        }
+        if (isset($prog[$songId])) {
+            $parts[] = 'Prog. ' . implode('・', $prog[$songId]);
         }
         $notes[$songId] = $parts; // 1つずつ <span> にして、すき間を空けて並べる（「、」でつながない）
     }
