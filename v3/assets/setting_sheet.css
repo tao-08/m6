@@ -278,4 +278,4 @@ html.is-typing .sheet-preview { top: 8px; bottom: calc(var(--kb, 0px) + 64px); }
 }
 
 /* シート内のボタンは白（元に戻す・やり直す・削除・PDF などの主ボタンは除く） */
-.sheet-card .btn:not(.btn--primary, .btn--danger, [data-undo], [data-redo], [aria-pressed="true"]) { background: #fff; color: #1a1a1a; }
+.sheet-card .btn:not(.btn--primary, .btn--danger, [data-undo], [data-redo], [aria-pressed="true"]) { background: #fff; color: #1a1a1a; border-color: var(--border); }
