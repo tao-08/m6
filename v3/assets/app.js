@@ -1550,7 +1550,7 @@ function setupScrollEnd() {
  * 楽器フィルター（lib/repository.php の inst_filter）
  *   data-inst-items があれば、その行を data-insts で隠す（メンバー一覧）
  *   無ければ出演履歴: バンド → 日のカード → 年度 の順に、残るものが無ければ隠す
- *   メニューは position: fixed（表の横スクロールの枠で切れないように）
+ *   メニューは body に移して position: fixed（表の横スクロールの枠で切れない・translate の親の中だと fixed がずれるため）
  * ------------------------------------------------------------------- */
 function setupInstFilter() {
   document.querySelectorAll('[data-inst-filter]').forEach((box) => {
@@ -1559,6 +1559,7 @@ function setupInstFilter() {
     const menu = box.querySelector('.inst-filter__menu');
     if (!list) return;
     const funnel = btn.innerHTML;
+    document.body.append(menu);
     const open = (on) => {
       menu.hidden = !on;
       btn.setAttribute('aria-expanded', String(on));
@@ -1569,7 +1570,7 @@ function setupInstFilter() {
     };
     const has = (el, inst) => (el.dataset.insts || '').split(' ').includes(inst);
     btn.addEventListener('click', (e) => { e.stopPropagation(); open(menu.hidden); });
-    document.addEventListener('click', (e) => { if (!box.contains(e.target)) open(false); });
+    document.addEventListener('click', (e) => { if (!box.contains(e.target) && !menu.contains(e.target)) open(false); });
     window.addEventListener('scroll', () => open(false), { passive: true, capture: true });
     menu.addEventListener('click', (e) => {
       const opt = e.target.closest('[data-inst]');
