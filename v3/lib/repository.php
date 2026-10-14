@@ -1169,25 +1169,65 @@ function band_artist_links(array $band, array $omnibusArtists): string
  */
 /**
  * 楽器フィルター（漏斗 → 押すと楽器ラベル → 選ぶと漏斗がその楽器に変わって絞り込む）。app.js の setupInstFilter
- *   $segs: [class => 短い名前]（vo => Vo …）/ $target: 絞り込む範囲 / $tori: 🐔（トリのバンドだけ）も出す
+ *   $parts: パート（segments・title・order）の一覧。兼任（Vo/Gt など）がある楽器は「単体・兼任・All」に分ける
+ *   $target: 絞り込む範囲 / $tori: 🐔（トリのバンドだけ）も出す
  *   $items: 行ごとに隠すとき（メンバー一覧の .member-row）。空なら出演履歴の バンド → 日 → 年度 で隠す
+ *   行の data-insts は inst_tokens() で作る
  */
-function inst_filter(array $segs, string $target, bool $tori = false, string $items = ''): string
+function inst_filter(array $parts, string $target, bool $tori = false, string $items = ''): string
 {
-    if (count($segs) + ($tori ? 1 : 0) < 2) {
+    // 楽器ごとに、単体があるか・兼任の組み合わせ（key => パート）を集める
+    $groups = [];
+    foreach ($parts as $p) {
+        $segs = $p['segments'];
+        foreach ($segs as $sg) {
+            $g = &$groups[$sg['class']];
+            $g['short'] ??= $sg['short'];
+            $g['order'] = min($g['order'] ?? PHP_INT_MAX, $p['order'] ?? 0);
+            if (count($segs) === 1) {
+                $g['solo'] = $p;
+            } else {
+                $g['combos'][implode('-', array_column($segs, 'class'))] = $p;
+            }
+            unset($g);
+        }
+    }
+    if (count($groups) + ($tori ? 1 : 0) < 2) {
         return '';
     }
+    uasort($groups, static fn($a, $b) => $a['order'] <=> $b['order']);
+    $opt = static fn(string $inst, string $label, string $aria = ''): string =>
+        '<button type="button" data-inst="' . h($inst) . '"' . ($aria !== '' ? ' aria-label="' . h($aria) . '"' : '') . '>' . $label . '</button>';
     $html = '<span class="inst-filter" data-inst-filter="' . h($target) . '"' . ($items !== '' ? ' data-inst-items="' . h($items) . '"' : '') . '>'
         . '<button type="button" class="btn btn--ghost btn--sm inst-filter__btn" aria-label="楽器で絞り込み" aria-expanded="false">' . icon('filter_alt', 'icon--fill') . '</button>'
         . '<span class="inst-filter__menu" hidden>'
-        . '<button type="button" data-inst="" aria-label="すべて">' . icon('filter_alt_off', 'icon--fill') . '</button>';
-    foreach ($segs as $cls => $short) {
-        $html .= '<button type="button" data-inst="' . h($cls) . '"><span class="part part--' . h($cls) . '">' . h($short) . '</span></button>';
-    }
-    if ($tori) {
-        $html .= '<button type="button" data-inst="tori" aria-label="トリ"><span class="tori-badge">🐔</span></button>';
+        . '<span class="inst-filter__group">' . $opt('', icon('filter_alt_off', 'icon--fill'), 'すべて')
+        . ($tori ? $opt('tori', '<span class="tori-badge">🐔</span>', 'トリ') : '') . '</span>';
+    foreach ($groups as $cls => $g) {
+        $single = '<span class="part part--' . h($cls) . '">' . h($g['short']) . '</span>';
+        if (empty($g['combos'])) {
+            $html .= '<span class="inst-filter__group">' . $opt($cls, $single) . '</span>';
+            continue;
+        }
+        $html .= '<span class="inst-filter__group">' . (isset($g['solo']) ? $opt($cls . '!', $single) : '');
+        foreach ($g['combos'] as $key => $p) {
+            $html .= $opt($key, part_badge($p));
+        }
+        $html .= $opt($cls, '<span class="part part--' . h($cls) . '">' . h($g['short']) . ' All</span>') . '</span>';
     }
     return $html . '</span></span>';
+}
+
+/** 楽器フィルター用の目印（data-insts）。楽器（vo）・単体（vo!）・兼任の組み合わせ（vo-gt） */
+function inst_tokens(array $parts): array
+{
+    $t = [];
+    foreach ($parts as $p) {
+        $classes = array_column($p['segments'], 'class');
+        array_push($t, ...$classes);
+        $t[] = count($classes) === 1 ? $classes[0] . '!' : implode('-', $classes);
+    }
+    return array_values(array_unique($t));
 }
 
 function part_badge(array $part, string $suffix = ''): string

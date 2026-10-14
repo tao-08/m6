@@ -301,8 +301,12 @@ body:has([data-tutorial-auto]) .toasts { display: none; }
 .th-inst { display: inline-flex; align-items: center; gap: 4px; }
 .th-inst .inst-filter { position: static; translate: none; }
 .th-inst .inst-filter__btn { padding: 0 4px; min-height: 0; height: 24px; }
-.inst-filter__menu { position: fixed; z-index: 50; display: flex; gap: 4px; padding: 6px; background: var(--card, #fff); border: 1px solid var(--line, #ddd); border-radius: 8px; box-shadow: 0 4px 12px rgb(0 0 0 / .15); }
+.inst-filter__menu { position: fixed; z-index: 50; display: flex; gap: 4px; padding: 6px; background: var(--card, #fff); border: 1px solid var(--line, #ddd); border-radius: 8px; box-shadow: 0 4px 12px rgb(0 0 0 / .15);
+  flex-direction: column; transform-origin: top left; animation: inst-menu-in .16s ease-out; }
 .inst-filter__menu[hidden] { display: none; }
+.inst-filter__group { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; } /* 楽器ごとに1行（単体・兼任・All） */
+@keyframes inst-menu-in { from { opacity: 0; transform: translateY(-4px) scale(.96); } }
+@media (prefers-reduced-motion: reduce) { .inst-filter__menu { animation: none; } }
 .inst-filter__menu button { background: none; border: 0; padding: 2px; cursor: pointer; }
 .sorted-list--live .sorted-list__btn { top: 17.5px; }     /* ライブ一覧の見出し: 高さ 35px の半分 */
 
