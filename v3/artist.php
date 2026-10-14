@@ -181,9 +181,10 @@ render_header($artist['name'], 'artists');
     <div>
         <p class="eyebrow">Artist</p>
         <h1 class="display"><?= h($artist['name']) ?></h1>
-        <?php if (($artist['name_kana'] ?? '') !== ''): // ふりがな（member.php と同じく名前のすぐ下） ?><p class="muted small"><?= h($artist['name_kana']) ?></p><?php endif; ?>
+        <?php // ふりがな（member.php と同じく名前のすぐ下）と、その右に別称（別称は管理者だけ）
+        $kanaLine = array_filter([($artist['name_kana'] ?? '') !== '' ? h($artist['name_kana']) : '', $aliases && is_admin() ? '別称: ' . h(implode('、', $aliases)) : '']); ?>
+        <?php if ($kanaLine): ?><p class="muted small"><?= implode('　', $kanaLine) ?></p><?php endif; ?>
         <p class="muted">サークルで <?= count($bands) ?> 回演奏されました</p>
-        <?php if ($aliases): ?><p class="muted small">別称: <?= h(implode('、', $aliases)) ?></p><?php endif; ?>
     </div>
 </section>
 
