@@ -37,7 +37,7 @@ $st->execute([$memberId]);
 $bands = (int)$st->fetchColumn();
 if ($bands > 0) {
     flash("「{$name}」は {$bands} バンドに出演しているので削除できません（同じ人が2人いるなら「メンバーの統合」を使ってください）", 'error');
-    redirect($fromUsers ? 'users' : 'member?id=' . $memberId);
+    redirect($fromUsers ? users_url($_GET) : 'member?id=' . $memberId);
 }
 
 $pdo->prepare('DELETE FROM member WHERE member_id = ?')->execute([$memberId]);
@@ -46,4 +46,4 @@ if (($_SESSION['user']['member_id'] ?? null) === $memberId) {
     $_SESSION['user']['member_id'] = null;
 }
 flash("「{$name}」を削除しました");
-redirect($fromUsers ? 'users' : 'members');
+redirect($fromUsers ? users_url($_GET) : 'members');

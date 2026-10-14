@@ -30,7 +30,7 @@ if (is_post()) {
             clear_failures('#invite'); // 古いコードでの失敗の記録で、新しいコードまで止まらないように
             flash($code === '' ? '招待コードを無しにしました（誰でも新規登録できます）' : '招待コードを変更しました');
         }
-        redirect('users');
+        redirect(users_url($_GET)); // フォームは今の URL（並び順付き）に送られる
     }
     $userId = (int)($_POST['user_id'] ?? 0);
     $action = $_POST['action'] ?? '';
@@ -79,13 +79,21 @@ if (is_post()) {
             flash("{$target['name']} さんのアカウントを削除しました");
         }
     }
-    redirect('users');
+    redirect(users_url($_GET)); // フォームは今の URL（並び順付き）に送られる
 }
 
+// 並び順: ?sort=entry|name&order=asc|desc（列名は下の表からだけ選ぶ。GET の値は SQL に入れない）
+$sortCols = ['entry' => 'm.entry_year', 'name' => 'u.name'];
+$sort = array_key_exists($_GET['sort'] ?? '', $sortCols) ? $_GET['sort'] : null;
+$order = ($_GET['order'] ?? '') === 'desc' ? 'desc' : 'asc';
+$orderBy = $sort
+    ? $sortCols[$sort] . ' IS NULL, ' . $sortCols[$sort] . ($order === 'desc' ? ' DESC' : ' ASC') . ', u.user_id'
+    : 'u.is_admin DESC, u.user_id';
+
 // no_band: 紐付け先のメンバーが1バンドにも出ていない（紐付け間違いの疑い → ⚠ を出す）
-$users = $pdo->query('SELECT u.user_id, u.login_id, u.name, u.is_admin, u.member_id, m.name AS member_name,
+$users = $pdo->query('SELECT u.user_id, u.login_id, u.name, u.is_admin, u.member_id, m.name AS member_name, m.entry_year,
         (u.member_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM band_member bm WHERE bm.member_id = u.member_id)) AS no_band
-    FROM user_account u LEFT JOIN member m ON m.member_id = u.member_id ORDER BY u.is_admin DESC, u.user_id')->fetchAll();
+    FROM user_account u LEFT JOIN member m ON m.member_id = u.member_id ORDER BY ' . $orderBy)->fetchAll();
 
 // プルダウンの選択肢: まだ誰とも紐付いていないメンバー（各行では、その行の今のメンバーも足して出す）
 $freeMembers = $pdo->query('SELECT m.member_id, m.name FROM member m
@@ -93,6 +101,15 @@ $freeMembers = $pdo->query('SELECT m.member_id, m.name FROM member m
     ORDER BY m.name')->fetchAll();
 
 $invite = invite_code();
+
+/** 並べ替えできる見出し。今の並び順の列には aria-sort と ▲▼ を付けておく（JS が押したときに付け替える） */
+function sort_btn(string $key, string $label, string $col, ?string $sort, string $order, bool $text = false): string
+{
+    $on = $sort === $key;
+    return '<th class="sortable"' . ($on ? ' aria-sort="' . ($order === 'desc' ? 'descending' : 'ascending') . '"' : '') . '>'
+        . '<button type="button" class="th-sort" data-sort-col="' . $col . '" data-sort-key="' . $key . '"' . ($text ? ' data-sort-text' : '') . '>'
+        . h($label) . '<span class="sortable__arrow">' . ($on ? ($order === 'desc' ? '▼' : '▲') : '') . '</span></button></th>';
+}
 
 render_header('ユーザー管理');
 ?>
@@ -118,11 +135,12 @@ render_header('ユーザー管理');
 
 <div class="card table-card">
     <div class="table-scroll table-scroll--flush">
-    <table class="table">
-        <thead><tr><th>名前</th><th>ログインID</th><th>メンバー</th><th>権限</th><th></th></tr></thead>
+    <table class="table" data-client-sort>
+        <thead><tr><?= sort_btn('entry', '入学年', '0', $sort, $order) ?><?= sort_btn('name', '名前', '1', $sort, $order, true) ?><th>ログインID</th><th>メンバー</th><th>権限</th><th></th></tr></thead>
         <tbody>
         <?php foreach ($users as $u): ?>
             <tr<?= (int)$u['user_id'] === $me['user_id'] ? ' class="is-me"' : '' ?>>
+                <td class="num muted" data-sort-value="<?= $u['entry_year'] !== null ? (int)$u['entry_year'] : '' ?>"><?= $u['entry_year'] !== null ? (int)$u['entry_year'] : '—' ?></td>
                 <td class="strong"><?= h($u['name']) ?></td>
                 <td class="muted"><?= h($u['login_id']) ?></td>
                 <td>
@@ -143,7 +161,7 @@ render_header('ユーザー管理');
                         <a class="muted small" href="member?id=<?= (int)$u['member_id'] ?>">マイページ</a>
                         <?php if ($u['no_band']): ?>
                             <span class="status status--warn small" title="このメンバーは1バンドにも出ていません。紐付け先が合っているか確認してください"><?= icon('warning') ?> 出演なし</span>
-                            <form method="post" action="member_delete" class="inline-form" data-confirm="メンバー「<?= h($u['member_name']) ?>」を削除します（<?= h($u['name']) ?> さんのアカウントは残り、紐付けなしになります）。元に戻せません。よろしいですか？"><?= csrf_field() ?><input type="hidden" name="member_id" value="<?= (int)$u['member_id'] ?>"><input type="hidden" name="return" value="users">
+                            <form method="post" action="member_delete" class="inline-form" data-keep-query data-confirm="メンバー「<?= h($u['member_name']) ?>」を削除します（<?= h($u['name']) ?> さんのアカウントは残り、紐付けなしになります）。元に戻せません。よろしいですか？"><?= csrf_field() ?><input type="hidden" name="member_id" value="<?= (int)$u['member_id'] ?>"><input type="hidden" name="return" value="users">
                                 <button class="btn btn--ghost btn--danger btn--sm" type="submit">メンバー削除</button>
                             </form>
                         <?php endif; ?>

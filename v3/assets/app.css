@@ -505,6 +505,9 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .table th.sortable a:hover { color: var(--accent); }
 .table th[aria-sort] { color: var(--accent); }
 .sortable__arrow { font-size: 9px; margin-left: 2px; }
+.th-sort { all: unset; cursor: pointer; display: inline-flex; align-items: baseline; }
+.th-sort:hover { color: var(--accent); }
+.th-sort:focus-visible { outline: 2px solid var(--accent); }
 /* メンバー一覧のマイアルバム上位5枚 */
 .thumbs { display: flex; gap: 4px; }
 .thumbs__img { width: 40px; height: 40px; flex: none; object-fit: cover; border-radius: 4px; background: var(--surface-2); }

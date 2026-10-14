@@ -52,6 +52,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupYearSlot();
   setupGradeSlot();
   setupScrollEnd();
+  setupClientSort();
   setupSortToggle();
   setupTabs();
   setupConfirm();
@@ -1458,6 +1459,49 @@ function setupGradeSlot() {
   }));
   hideRetired?.addEventListener('change', () => apply(true));
   apply(false);
+}
+
+/* ---------------------------------------------------------------------
+ * 再読み込みなしで並べ替える表（table[data-client-sort]）
+ *   見出しの button[data-sort-col=列番号] を押すたびに 昇順 ⇔ 降順。data-sort-text なら文字で比べる
+ *   セルの data-sort-value があればその値で比べる。空の値はいつも最後
+ *   ボタンに data-sort-key があれば、URL を ?sort=キー&order=asc|desc に書き換える（再読み込みはしない）
+ *   開いたときの並びは PHP が同じ GET を読んで ORDER BY で出す
+ * ------------------------------------------------------------------- */
+function setupClientSort() {
+  // form[data-keep-query]: 別のページに送るフォームにも今の並び順（URL の ?…）を付けて、処理のあと同じ並びで戻れるように
+  document.querySelectorAll('form[data-keep-query]').forEach((form) => {
+    const base = form.getAttribute('action');
+    form.addEventListener('submit', () => { form.action = base + location.search; });
+  });
+  document.querySelectorAll('table[data-client-sort]').forEach((table) => {
+    const tbody = table.tBodies[0];
+    const btns = [...table.querySelectorAll('[data-sort-col]')];
+    btns.forEach((btn) => btn.addEventListener('click', () => {
+      const col = +btn.dataset.sortCol;
+      const th = btn.closest('th');
+      const asc = th.getAttribute('aria-sort') !== 'ascending';
+      const isText = btn.hasAttribute('data-sort-text');
+      const key = (tr) => { const td = tr.cells[col]; return (td.dataset.sortValue ?? td.textContent).trim(); };
+      const rows = [...tbody.rows].sort((a, b) => {
+        const x = key(a), y = key(b);
+        if (x === '' || y === '') return (x === '') - (y === '');
+        const d = isText ? x.localeCompare(y, 'ja') : x - y;
+        return asc ? d : -d;
+      });
+      tbody.append(...rows);
+      animateIn(rows);
+      btns.forEach((b) => { const t = b.closest('th'); t.removeAttribute('aria-sort'); b.querySelector('.sortable__arrow').textContent = ''; });
+      th.setAttribute('aria-sort', asc ? 'ascending' : 'descending');
+      btn.querySelector('.sortable__arrow').textContent = asc ? '▲' : '▼';
+      if (btn.dataset.sortKey) {
+        const url = new URL(location.href);
+        url.searchParams.set('sort', btn.dataset.sortKey);
+        url.searchParams.set('order', asc ? 'asc' : 'desc');
+        history.replaceState(history.state, '', url);
+      }
+    }));
+  });
 }
 
 /* ---------------------------------------------------------------------
@@ -4211,6 +4255,7 @@ function setupTutorial() {
   }));
   if (dialog.hasAttribute('data-tutorial-auto')) open();
 }
+
 /**
  * アーティストの編集欄の「AI で読みを入れる」（artist.php → api_artist_kana.php）。
  * 名前欄の今の値を送って、返ってきた読みをふりがな欄に入れるだけ。保存は「名前・ふりがなを変更」で人がする

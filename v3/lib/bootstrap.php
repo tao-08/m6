@@ -312,6 +312,17 @@ const FACULTIES = ['法学部', '政治経済学部', '商学部', '経営学部
     '総合数理学部', '理工学部', '農学部', '国際日本学部'];
 
 /** 別ページへ移動して処理を終える（exit を忘れると後ろの処理が動いてしまうので関数にまとめた） */
+/**
+ * ユーザー管理へ戻る URL。今の並び順（?sort=entry|name&order=asc|desc）を付けたまま戻す。
+ * 決まった値だけ通す（GET/POST の値をそのまま URL に入れない）
+ */
+function users_url(array $q): string
+{
+    $sort = $q['sort'] ?? '';
+    if (!in_array($sort, ['entry', 'name'], true)) return 'users';
+    return 'users?sort=' . $sort . '&order=' . (($q['order'] ?? '') === 'desc' ? 'desc' : 'asc');
+}
+
 function redirect(string $path): never
 {
     header('Location: ' . $path);
