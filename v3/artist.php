@@ -84,6 +84,19 @@ foreach ($st as $s) {
     $setlists[(int)$s['band_id']][] = ['title' => $s['title'], 'mine' => (bool)$s['mine']];
 }
 
+// よく演奏される曲（上位15位）: 曲名ごとに何バンドが演奏したか。オムニバスのバンドはこのアーティストの曲だけ数える
+$st = $pdo->prepare('SELECT s.title, COUNT(DISTINCT b.band_id) AS n
+    FROM band b
+    JOIN song s ON s.band_id = b.band_id
+    WHERE ' . $bandWhere . '
+      AND (b.is_omnibus = 0 OR s.artist_id = ?)
+      AND NOT ' . setlist_hidden_sql('b') . '
+    GROUP BY s.title
+    ORDER BY n DESC, s.title
+    LIMIT 15');
+$st->execute([$artistId, $artistId]);
+$topSongs = $st->fetchAll();
+
 // 管理者はアーティスト名を直せる（表記ゆれで2つできたときは名前をそろえれば…ではなく、下の統合を使う）
 $others = [];
 if (is_admin()) {
@@ -208,6 +221,24 @@ render_header($artist['name'], 'artists');
                 <?= part_marks($playerTally[(int)$p['member_id']] ?? [], true, 'partbar--partner') ?>
                 <span class="pill"><?= (int)$p['n'] ?>回</span>
             </li>
+        <?php endforeach; ?>
+    </ol>
+    <button type="button" class="btn btn--ghost btn--sm album-box__more" data-partner-more hidden>さらに表示</button>
+</section>
+<?php endif; ?>
+
+<?php if ($topSongs): ?>
+<section id="top-songs" class="card album-box partner-box top-players" data-partner-box data-shown="5" data-more-label="さらに表示">
+    <div class="album-head">
+        <button type="button" class="album-box__toggle" data-partner-toggle aria-expanded="false" aria-controls="top-songs">
+            <span class="album-box__chevron" aria-hidden="true">▸</span>
+            よく演奏される曲
+        </button>
+    </div>
+    <?php $songRanks = tie_ranks($topSongs, static fn($s) => (int)$s['n']); ?>
+    <ol class="ranking">
+        <?php foreach ($topSongs as $k => $s): ?>
+            <li data-rank="<?= $songRanks[$k] ?>"><span><?= h($s['title']) ?></span> <span class="pill"><?= (int)$s['n'] ?>回</span></li>
         <?php endforeach; ?>
     </ol>
     <button type="button" class="btn btn--ghost btn--sm album-box__more" data-partner-more hidden>さらに表示</button>

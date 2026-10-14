@@ -70,13 +70,16 @@ if ($faculty !== '' || $roleName !== null) {
 } elseif ($q !== '') {
     $pdo = db();
     $like = '%' . escape_like(mb_substr($q, 0, 50)) . '%';
+    // 「トリ」「🐔」「🐦」で検索したら、各日程のトリ（play_order が一番大きいバンド）も出す。🐦️ の後ろの U+FE0F は外して比べる
+    $tori = in_array(str_replace("\u{FE0F}", '', $q), ['トリ', '🐔', '🐦'], true) ? 1 : 0;
+    $toriSql = ' OR (? = 1 AND b.play_order = (SELECT MAX(x.play_order) FROM band x WHERE x.live_day_id = b.live_day_id))';
 
     // ---- ライブ（ライブ名・会場名・日程名・日程のメモ） ----
     $st = $pdo->prepare('SELECT DISTINCT lm.live_id, lm.fiscal_year AS year, lm.name
         FROM live lm
         JOIN live_day ld ON ld.live_id = lm.live_id
         LEFT JOIN venue v ON v.venue_id = ld.venue_id
-        WHERE lm.name LIKE ? OR v.name LIKE ? OR ld.label LIKE ? OR ld.note LIKE ?
+        WHERE lm.name COLLATE utf8mb4_unicode_520_ci LIKE ? OR v.name COLLATE utf8mb4_unicode_520_ci LIKE ? OR ld.label COLLATE utf8mb4_unicode_520_ci LIKE ? OR ld.note COLLATE utf8mb4_unicode_520_ci LIKE ?
         ORDER BY lm.fiscal_year DESC LIMIT 30');
     $st->execute([$like, $like, $like, $like]);
     $lives = $st->fetchAll();
@@ -101,8 +104,8 @@ if ($faculty !== '' || $roleName !== null) {
     //   メンバーとセトリまで出すと1組が縦に長いので、最初は BANDS_PER_PAGE 組だけ。
     //   「もっと見る」を押すと ?bp=2, 3… になり、その分だけ多く出す（URL に残るので戻る・共有しても同じ表示）
     //   バンド名だけでなくメモ（鍵盤の私物/貸出 など）でも当てる。COUNT と本体の WHERE は必ず同じにする（「もっと見る」の残り数がずれるので）
-    $st = $pdo->prepare('SELECT COUNT(*) FROM band b WHERE b.name LIKE ? OR b.note LIKE ?');
-    $st->execute([$like, $like]);
+    $st = $pdo->prepare('SELECT COUNT(*) FROM band b WHERE b.name COLLATE utf8mb4_unicode_520_ci LIKE ? OR b.note COLLATE utf8mb4_unicode_520_ci LIKE ?' . $toriSql);
+    $st->execute([$like, $like, $tori]);
     $bandTotal = (int)$st->fetchColumn();
 
     $st = $pdo->prepare('SELECT b.band_id, b.name, b.song_count, b.note, ld.live_day_id, ld.label, ld.held_on AS date,
@@ -110,11 +113,12 @@ if ($faculty !== '' || $roleName !== null) {
         FROM band b
         JOIN live_day ld ON ld.live_day_id = b.live_day_id
         JOIN live lm ON lm.live_id = ld.live_id
-        WHERE b.name LIKE ? OR b.note LIKE ?
+        WHERE b.name COLLATE utf8mb4_unicode_520_ci LIKE ? OR b.note COLLATE utf8mb4_unicode_520_ci LIKE ?' . $toriSql . '
         ORDER BY ld.held_on DESC, b.play_order LIMIT ?');
     $st->bindValue(1, $like);
     $st->bindValue(2, $like);
-    $st->bindValue(3, BANDS_PER_PAGE * $bandPage, PDO::PARAM_INT); // LIMIT は数値として渡す（文字列 '20' だとエラーになることがある）
+    $st->bindValue(3, $tori, PDO::PARAM_INT);
+    $st->bindValue(4, BANDS_PER_PAGE * $bandPage, PDO::PARAM_INT); // LIMIT は数値として渡す（文字列 '20' だとエラーになることがある）
     $st->execute();
     $bands = $st->fetchAll();
 
@@ -146,10 +150,10 @@ if ($faculty !== '' || $roleName !== null) {
     // 演奏0回のアーティストは出さない（artists.php と同じ）。管理者には出す（重複して登録されたアーティストを見つけて統合できるように）
     // 別称（artist_alias。エルレ → ELLEGARDEN など）でも当てる。別称だけで当たったときは、どの別称で当たったかも出す（alias_hit）
     $st = $pdo->prepare('SELECT a.artist_id, a.name, COUNT(p.band_id) AS n,
-            (SELECT al.name FROM artist_alias al WHERE al.artist_id = a.artist_id AND al.name LIKE ? LIMIT 1) AS alias_hit
+            (SELECT al.name FROM artist_alias al WHERE al.artist_id = a.artist_id AND al.name COLLATE utf8mb4_unicode_520_ci LIKE ? LIMIT 1) AS alias_hit
         FROM artist a
         ' . (is_admin() ? 'LEFT ' : '') . 'JOIN (' . artist_plays_sql() . ') p ON p.artist_id = a.artist_id
-        WHERE a.name LIKE ? OR a.name_kana LIKE ? OR EXISTS (SELECT 1 FROM artist_alias al WHERE al.artist_id = a.artist_id AND al.name LIKE ?)
+        WHERE a.name COLLATE utf8mb4_unicode_520_ci LIKE ? OR a.name_kana COLLATE utf8mb4_unicode_520_ci LIKE ? OR EXISTS (SELECT 1 FROM artist_alias al WHERE al.artist_id = a.artist_id AND al.name COLLATE utf8mb4_unicode_520_ci LIKE ?)
         GROUP BY a.artist_id ORDER BY n DESC LIMIT 30');
     $st->execute([$like, $like, $like, $like]);
     $artists = $st->fetchAll();
@@ -160,7 +164,7 @@ if ($faculty !== '' || $roleName !== null) {
 
     // ---- 学部・係（名前で当たったら、その学部・係の一覧ページへのリンクを出す） ----
     $matchedFaculties = array_values(array_filter(FACULTIES, fn($f) => mb_strpos($f, mb_substr($q, 0, 50)) !== false));
-    $st = $pdo->prepare('SELECT role_id, name FROM role WHERE name LIKE ? ORDER BY sort_order, name');
+    $st = $pdo->prepare('SELECT role_id, name FROM role WHERE name COLLATE utf8mb4_unicode_520_ci LIKE ? ORDER BY sort_order, name');
     $st->execute([$like]);
     $matchedRoles = $st->fetchAll();
 
@@ -168,9 +172,9 @@ if ($faculty !== '' || $roleName !== null) {
     $st = $pdo->prepare('SELECT m.member_id, m.name, m.name_kana,
             (SELECT COUNT(DISTINCT x.band_id) FROM band_member x WHERE x.member_id = m.member_id) AS bands
         FROM member m
-        WHERE m.name LIKE ? OR m.name_kana LIKE ? OR m.faculty LIKE ?
+        WHERE m.name COLLATE utf8mb4_unicode_520_ci LIKE ? OR m.name_kana COLLATE utf8mb4_unicode_520_ci LIKE ? OR m.faculty COLLATE utf8mb4_unicode_520_ci LIKE ?
            OR EXISTS (SELECT 1 FROM member_role mr JOIN role r ON r.role_id = mr.role_id
-                      WHERE mr.member_id = m.member_id AND r.name LIKE ?)
+                      WHERE mr.member_id = m.member_id AND r.name COLLATE utf8mb4_unicode_520_ci LIKE ?)
         ORDER BY bands DESC, m.name LIMIT 60');
     $st->execute([$like, $like, $like, $like]);
     $members = $st->fetchAll();
