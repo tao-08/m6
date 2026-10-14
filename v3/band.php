@@ -180,12 +180,27 @@ function song_notes(array $songs, array $lineup): array
     }
     // 2曲以上出て全部ちがう楽器（Gt・Key・Vn）の人は「いつもの楽器」が無い → null（1曲目も含めて全曲にメモを出す）
     $usual = array_map(static function ($c) {
+        // 一番多い組み合わせ（同じ曲数で並んでいれば全部）
+        $top = array_keys($c, max($c));
+        // 並んだうち、ほかの全部に含まれる組み合わせがあればそれがいつも（Gt と Vo/Gt・Key と Vo/Key が半分ずつ
+        // → Gt / Key がいつも。Vo/Gt・Vo/Key の曲にだけ書く。1曲ずつでも同じ）
+        foreach ($top as $base) {
+            $baseParts = explode('/', $base);
+            $inAll = true;
+            foreach ($top as $other) {
+                if (array_diff($baseParts, explode('/', $other))) {
+                    $inAll = false;
+                    break;
+                }
+            }
+            if ($inAll) {
+                return $base;
+            }
+        }
         if (count($c) >= 2 && max($c) === 1) {
             return null;
         }
-        // 多い順。同じ曲数なら楽器の少ない組み合わせ（Gt と Vo/Gt が半分ずつ → Gt がいつも。Vo/Gt の曲にだけ書く）
-        uksort($c, static fn($x, $y) => [$c[$y], substr_count($x, '/')] <=> [$c[$x], substr_count($y, '/')]);
-        return array_key_first($c); // 一番多い組み合わせ
+        return $top[0]; // 含む・含まれるの関係が無い（Gt と Key が半分ずつなど）→ 先に出てきたほう
     }, $counts);
 
     $notes = [];
