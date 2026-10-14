@@ -295,6 +295,14 @@ body:has([data-tutorial-auto]) .toasts { display: none; }
 .sorted-list { position: relative; }
 .sorted-list__btn { position: absolute; right: 0; z-index: 1; translate: 0 -50%; }
 .sorted-list--history .sorted-list__btn { top: 11.25px; } /* 出演履歴の見出し: 18px × 行の高さ 1.25 = 22.5px の半分 */
+.inst-filter { position: absolute; right: 100px; top: 11.25px; translate: 0 -50%; z-index: 2; }
+.inst-filter__btn .part { margin: 0; }
+.th-inst { display: inline-flex; align-items: center; gap: 4px; }
+.th-inst .inst-filter { position: static; translate: none; }
+.th-inst .inst-filter__btn { padding: 0 4px; min-height: 0; }
+.inst-filter__menu { position: fixed; z-index: 50; display: flex; gap: 4px; padding: 6px; background: var(--card, #fff); border: 1px solid var(--line, #ddd); border-radius: 8px; box-shadow: 0 4px 12px rgb(0 0 0 / .15); }
+.inst-filter__menu[hidden] { display: none; }
+.inst-filter__menu button { background: none; border: 0; padding: 2px; cursor: pointer; }
 .sorted-list--live .sorted-list__btn { top: 17.5px; }     /* ライブ一覧の見出し: 高さ 35px の半分 */
 
 /* 年度スロット（ライブ一覧）: 真ん中の1段（26px）が選択中。上下に12pxずつ前後の年度の文字が半分ほど覗いて「回せる」とわかる */
@@ -1888,3 +1896,4 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
 .history-item__compare .history-unit { box-shadow: none; padding: 12px; }
 .history-item__compare .history-unit__title { font-size: 14px; }
 .ed-check { display: flex; align-items: center; gap: 4px; font-size: 13px; }
+.is-inst-hidden { display: none !important; }
