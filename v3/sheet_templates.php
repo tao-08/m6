@@ -296,9 +296,6 @@ render_header('セッティングシートの型紙', 'tools');
         <?= csrf_field() ?>
         <input type="hidden" name="action" value="save">
         <?php if ($editing): ?><input type="hidden" name="template_id" value="<?= (int)$editing['template_id'] ?>"><?php endif; ?>
-        <label class="field">名前（プルダウンに出る）
-            <input name="label" value="<?= h($form['label']) ?>" maxlength="100" required placeholder="例: 下北沢 〇〇">
-        </label>
         <div class="field" data-venue-picker>
             <span>自動で選ぶ会場（このライブ会場のバンドは、この型紙を最初から選ぶ。いくつでも）</span>
             <!-- 会場名を打つと候補が出る（app.js の setupSuggest）。候補を選ぶと下にチップが付く -->
@@ -307,12 +304,16 @@ render_header('セッティングシートの型紙', 'tools');
             <!-- 選んだ会場。× で外す。送るのは中の hidden の venue_ids[] -->
             <span class="chip-list" data-venue-chips>
                 <?php foreach ($form['venue_ids'] as $vid): ?>
-                    <span class="chip"><input type="hidden" name="venue_ids[]" value="<?= (int)$vid ?>"><?= h($venues[$vid]) ?>
+                    <span class="chip" data-venue-name="<?= h($venues[$vid]) ?>"><input type="hidden" name="venue_ids[]" value="<?= (int)$vid ?>"><?= h($venues[$vid]) ?>
                         <button type="button" class="chip__x" data-venue-remove aria-label="外す">×</button></span>
                 <?php endforeach; ?>
             </span>
             <?php if (!$venues): ?><span class="muted small">会場がまだありません（<a href="masters">会場の管理</a>で追加）</span><?php endif; ?>
         </div>
+        <!-- 会場を選ぶと、最初の会場の名前が自動で入る（登録済みの会場名なので表記揺れが無い）。書き換えたら、それからは自動で変えない -->
+        <label class="field">名前（プルダウンに出る。会場を選ぶと会場名が入る。必要なら書き換える）
+            <input name="label" value="<?= h($form['label']) ?>" maxlength="100" required placeholder="例: 下北沢 〇〇" data-template-label>
+        </label>
         <label class="field">会場の PDF<?= $editing ? '（差し替えるときだけ選ぶ）' : '' ?>（5MB まで）
             <input type="file" name="pdf" accept="application/pdf,.pdf"<?= $editing ? '' : ' required' ?>>
         </label>
@@ -383,7 +384,17 @@ render_header('セッティングシートの型紙', 'tools');
     const box = picker.querySelector('[data-venue-input]');
     const chips = picker.querySelector('[data-venue-chips]');
     const VENUES = <?= json_encode(array_flip($venues), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_FORCE_OBJECT) ?>; // 会場名 → ID
+    const label = document.querySelector('[data-template-label]');
     const touched = () => picker.closest('form').dispatchEvent(new Event('input', { bubbles: true })); // 「保存していない変更」の印
+    // 型紙の名前 = 最初の会場の名前（自動）。名前の欄が空か、前に自動で入れた名前のままのときだけ入れ直す
+    //   = 人が書き換えた名前は上書きしない
+    const firstVenue = () => chips.querySelector('[data-venue-name]')?.dataset.venueName ?? '';
+    let autoLabel = firstVenue();
+    const syncLabel = () => {
+        const next = firstVenue();
+        if (label.value.trim() === '' || label.value === autoLabel) label.value = next;
+        autoLabel = next;
+    };
     const add = () => {
         const name = box.value.trim();
         if (!Object.hasOwn(VENUES, name)) return false; // 一覧に無い名前（打ちかけ）は足さない
@@ -391,12 +402,14 @@ render_header('セッティングシートの型紙', 'tools');
         if (!chips.querySelector(`input[value="${CSS.escape(id)}"]`)) {
             const chip = document.createElement('span');
             chip.className = 'chip';
+            chip.dataset.venueName = name;
             const input = Object.assign(document.createElement('input'), { type: 'hidden', name: 'venue_ids[]', value: id });
             const x = Object.assign(document.createElement('button'), { type: 'button', className: 'chip__x', textContent: '×' });
             x.dataset.venueRemove = '';
             x.setAttribute('aria-label', '外す');
             chip.append(input, name, ' ', x); // 文字として入れるので、会場名に < があっても大丈夫
             chips.append(chip);
+            syncLabel();
             touched();
         }
         box.value = '';
@@ -410,6 +423,7 @@ render_header('セッティングシートの型紙', 'tools');
     chips.addEventListener('click', (e) => {
         if (!e.target.closest('[data-venue-remove]')) return;
         e.target.closest('.chip').remove();
+        syncLabel();
         touched();
     });
 })();
