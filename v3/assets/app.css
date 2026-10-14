@@ -1781,6 +1781,13 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
 .sheet-ed__panel { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; min-height: 34px; }
 .ed-num { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; }
 .ed-num input { width: 84px; }
+/* 詳細設定（印刷済みのアンプ・パート）。バーの下に開く */
+.ed-adv { display: grid; gap: 8px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); }
+.ed-adv[hidden] { display: none; }
+.ed-adv__head { margin: 4px 0 0; }
+.ed-adv__rows { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.ed-adv__rows .ed-num input { width: 56px; }
+[data-ed-adv][aria-expanded="true"] { background: var(--accent-soft); color: var(--accent); }
 .ed-text input { width: 160px; }
 .sheet-ed__bar select[data-ed-add] { width: auto; }
 .sheet-ed__scroll { overflow: auto; max-height: 80vh; border: 1px solid var(--border); border-radius: 8px; background: #fff; }
@@ -1792,16 +1799,25 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
 .ed-k-fields { --c: #2563eb; } .ed-k-members { --c: #16a34a; } .ed-k-setlist { --c: #9333ea; }
 .ed-k-stage { --c: #ea580c; } .ed-k-drum { --c: #64748b; } .ed-k-choices { --c: #db2777; } .ed-k-texts { --c: #0d9488; }
 .ed-k-ctext { --c: #be185d; } .ed-k-stamps { --c: #854d0e; }
-/* 型紙のプレビュー: 右下に浮くボタンと、その上に浮く枠（中は setting_sheet?tpl_preview=1 の iframe）。
+/* 型紙のプレビュー: ボタンは枠の下の行（.tpl-under）の右。開いている間は「閉じる」が右下に浮き、その上に枠が浮く（中は setting_sheet?tpl_preview=1 の iframe）。
  * 見た目はセッティングシート作成の画面のプレビュー（setting_sheet.css の .sheet-preview）に合わせる */
-.tpl-preview-btn { position: fixed; right: 24px; bottom: calc(24px + env(safe-area-inset-bottom)); z-index: 26; gap: 4px; box-shadow: var(--shadow); }
-.tpl-preview-btn[aria-expanded="true"] { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+.tpl-under { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; }
+.tpl-preview-btn { gap: 4px; box-shadow: var(--shadow); }
+.tpl-preview-btn[aria-expanded="true"] { position: fixed; right: 24px; bottom: calc(24px + env(safe-area-inset-bottom)); z-index: 26;
+  background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
 .tpl-preview { position: fixed; z-index: 25; right: 24px; bottom: 84px; top: 72px; width: min(640px, calc(100vw - 48px));
   border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface-2); box-shadow: var(--shadow); overflow: hidden; }
 .tpl-preview iframe { display: block; width: 100%; height: 100%; border: 0; }
+/* 1つ戻す・やり直す: PC は枠のすぐ下。スマホは左下に浮かせる（「← 前のページ」（.back-fabs）が出ているときはその上に積む） */
+.tpl-history { display: flex; gap: 6px; }
+.tpl-history .btn { background: color-mix(in srgb, rgb(59 130 246) 14%, var(--surface)); color: rgb(37 99 235); border-color: rgb(59 130 246 / .3); box-shadow: var(--shadow); }
+.tpl-history .btn:disabled { opacity: .4; }
+[data-theme="dark"] .tpl-history .btn { background: color-mix(in srgb, rgb(96 165 250) 16%, var(--surface)); color: rgb(147 197 253); border-color: rgb(96 165 250 / .3); }
 @media (max-width: 760px) {
-  .tpl-preview-btn { right: 12px; bottom: calc(76px + env(safe-area-inset-bottom)); } /* 画面下のタブバーの上 */
+  .tpl-preview-btn, .tpl-preview-btn[aria-expanded="true"] { position: fixed; z-index: 26; right: 12px; bottom: calc(76px + env(safe-area-inset-bottom)); } /* 画面下のタブバーの上 */
   .tpl-preview { left: 8px; right: 8px; width: auto; bottom: calc(136px + env(safe-area-inset-bottom)); }
+  .tpl-history { position: fixed; z-index: 26; margin: 0; left: 12px; bottom: calc(76px + env(safe-area-inset-bottom)); }
+  body:has(.back-fabs:not(.back-fabs--ghost) .back-fab) .tpl-history { bottom: calc(128px + env(safe-area-inset-bottom)); }
 }
 @media (prefers-reduced-motion: no-preference) {
   .tpl-preview:not([hidden]) { animation: tpl-preview-in .22s cubic-bezier(.2, .8, .2, 1); transform-origin: right bottom; }
@@ -1814,6 +1830,8 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
 .ed-edge:hover { stroke: var(--c); stroke-opacity: .45; }
 .ed-edge--v { cursor: ew-resize; } .ed-edge--h { cursor: ns-resize; }
 .ed-inner { stroke: var(--c); stroke-width: 1; stroke-dasharray: 3 3; opacity: .6; pointer-events: none; }
+.ed-stack { stroke-dasharray: 1 3; } /* 同じ列に積んだ段（コーラス/CD と分数など）の境目 */
+.ed-fixed { fill: #6b7280; opacity: .7; font-weight: 700; pointer-events: none; } /* パートが印刷済みの行（詳細設定）の薄い文字 */
 .ed-label { fill: var(--c); font-weight: 700; pointer-events: none; paint-order: stroke; stroke: #fff; stroke-linejoin: round; } /* 縁の太さは JS が表示の倍率に合わせて付ける（stroke-width） */
 .ed-chip { border: 1px solid var(--c); color: var(--c); background: transparent; border-radius: 999px; padding: 2px 10px; font-size: 12px; cursor: pointer; }
 .ed-chip.is-selected { background: var(--c); color: #fff; }

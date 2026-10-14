@@ -1,7 +1,8 @@
 <?php
 /**
  * =====================================================================
- *  sheet_templates.php — セッティングシートの型紙の登録・編集・削除（管理者のみ）
+ *  sheet_templates.php — セッティングシートの型紙の登録・編集・削除
+ *    登録はログインしている人なら誰でも。編集・削除は作った人と管理者だけ（can_edit_template）
  * =====================================================================
  *  ここで登録した型紙は sheet_template テーブルに入り、lib/setting_sheet.php の all_sheet_templates() が
  *  コードの型紙（SHEET_TEMPLATES）と合わせてセッティングシート作成の画面に出す。
@@ -27,7 +28,7 @@ declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/setting_sheet.php';
 require_once __DIR__ . '/lib/repository.php'; // render_suggest_datalist（会場名の入力候補）
-$user = require_admin();
+$user = require_login();
 
 const SHEET_PDF_MAX_BYTES = 5 * 1024 * 1024; // 5MB。会場のシートは1〜2ページなので十分
 const SHEET_PNG_MAX_BYTES = 3 * 1024 * 1024; // セット図の背景の PNG
@@ -122,12 +123,25 @@ function parse_sheet_config(string $json): array
     if (!$isTable($config['members'])) $broken[] = 'メンバー表（members）';
     if (!$isTable($config['setlist']) || !is_array($config['setlist']['title'] ?? null)) $broken[] = 'セットリスト（setlist）';
     if (!$isBox($config['stage'])) $broken[] = 'セット図の枠（stage）';
+    // 曲ごとの追加の列（setlist.cols）: [{key, label, col: [左, 右]}]。label は作成画面に出す名前（30文字まで）
+    $isCol = static fn($c): bool => is_array($c) && count($c) === 2 && count(array_filter($c, 'is_numeric')) === 2;
+    $cols = $config['setlist']['cols'] ?? [];
+    $colOk = static fn($c): bool => is_array($c) && is_string($c['key'] ?? null) && preg_match('/\A[a-z0-9_]{1,20}\z/', $c['key'])
+        && is_string($c['label'] ?? '') && mb_strlen((string)($c['label'] ?? '')) <= 30 && $isCol($c['col'] ?? null);
+    if (!is_array($cols) || !array_is_list($cols) || count(array_filter($cols, $colOk)) !== count($cols)) $broken[] = 'セットリストの追加の列（setlist.cols）';
+    if (isset($config['setlist']['time']) && !$isCol($config['setlist']['time'])) $broken[] = 'セットリストの分数の列（setlist.time）';
     if ($broken) {
         throw new RuntimeException(implode(' / ', $broken) . ' の書き方が足りません');
     }
     // label / venue_words / venues / pdf は上の欄で、stage_image はエディタの切り抜きで決めるので、JSON の中にあっても捨てる
     unset($config['label'], $config['venue_words'], $config['venues'], $config['pdf'], $config['stage_image']);
     return $config;
+}
+
+/** この型紙を編集・削除してよいか = 管理者か、作った本人 */
+function can_edit_template(array $tpl, array $user): bool
+{
+    return is_admin() || ($tpl['created_by'] !== null && (int)$tpl['created_by'] === (int)$user['user_id']);
 }
 
 /** アップロードした PDF・PNG を消す（uploads の中のものだけ。コードの型紙のファイルは消さない） */
@@ -147,6 +161,11 @@ if ($id > 0) {
     $editing = $st->fetch() ?: null;
     if ($editing === null) {
         flash('その型紙は見つかりません（削除された可能性があります）', 'error');
+        redirect('sheet_templates');
+    }
+    // 他の人の型紙は開けない（URL の id を書き換えても、保存・削除の POST も含めてここで止まる）
+    if (!can_edit_template($editing, $user)) {
+        flash('この型紙は作った人と管理者だけが編集できます', 'error');
         redirect('sheet_templates');
     }
 }
@@ -247,7 +266,7 @@ if (is_post()) {
 
 // ---- 一覧 ----
 // GROUP_CONCAT: つながっている会場の名前を「 / 」でつないで1つの文字にする（会場が無ければ NULL）
-$rows = $pdo->query("SELECT t.template_id, t.label, t.updated_at, u.name AS creator,
+$rows = $pdo->query("SELECT t.template_id, t.label, t.updated_at, t.created_by, u.name AS creator,
                             GROUP_CONCAT(v.name ORDER BY v.sort_order, v.name SEPARATOR ' / ') AS venue_names
                        FROM sheet_template t
                        LEFT JOIN user_account u ON u.user_id = t.created_by
@@ -264,10 +283,10 @@ foreach (all_sheet_templates() as $key => $tpl) {
 }
 $sampleLabels = array_map(fn($t) => $t['label'], all_sheet_templates());
 
-render_header('セッティングシートの型紙', 'tools');
+render_header('セッティングシート編集', 'tools');
 ?>
 <nav class="crumbs"><a href="tools">ツール</a></nav>
-<h1 class="display display--sm"><?= icon('description') ?> セッティングシートの型紙</h1>
+<h1 class="display display--sm"><?= icon('description') ?> セッティングシート編集</h1>
 
 <div class="card table-card">
     <div class="table-scroll table-scroll--flush">
@@ -278,7 +297,7 @@ render_header('セッティングシートの型紙', 'tools');
             <tr>
                 <td><?= h($tpl['label']) ?></td>
                 <td class="muted small"><?= h(implode(' / ', $tpl['venue_words'])) ?></td>
-                <td class="muted small" colspan="3">最初から入っている型紙（コードで管理。ここでは変えられません）</td>
+                <td class="muted small" colspan="3">初期テンプレート（編集不可）</td>
             </tr>
         <?php endforeach; ?>
         <?php foreach ($rows as $r): ?>
@@ -287,7 +306,7 @@ render_header('セッティングシートの型紙', 'tools');
                 <td class="muted small"><?= h($r['venue_names'] ?? '') ?></td>
                 <td class="small"><?= $r['creator'] === null ? '<span class="muted">削除済みのユーザー</span>' : h($r['creator']) ?></td>
                 <td class="small"><?= h(fmt_date($r['updated_at'])) ?></td>
-                <td><a class="btn btn--ghost btn--sm" href="sheet_templates?id=<?= (int)$r['template_id'] ?>">編集</a></td>
+                <td><?php if (can_edit_template($r, $user)): ?><a class="btn btn--ghost btn--sm" href="sheet_templates?id=<?= (int)$r['template_id'] ?>">編集</a><?php endif; ?></td>
             </tr>
         <?php endforeach; ?>
         </tbody>
@@ -308,9 +327,9 @@ render_header('セッティングシートの型紙', 'tools');
         <input type="hidden" name="action" value="save">
         <?php if ($editing): ?><input type="hidden" name="template_id" value="<?= (int)$editing['template_id'] ?>"><?php endif; ?>
         <div class="field" data-venue-picker>
-            <span>自動で選ぶ会場（このライブ会場のバンドは、この型紙を最初から選ぶ。いくつでも）</span>
+            <span>自動選択用の会場名（登録された会場名のとき自動で選択されます。複数選択可）</span>
             <!-- 会場名を打つと候補が出る（app.js の setupSuggest）。候補を選ぶと下にチップが付く -->
-            <input type="text" data-venue-input data-suggest-list="venue-names" autocomplete="off" placeholder="会場名を打って選ぶ…" aria-label="会場を選ぶ">
+            <input type="text" data-venue-input data-suggest-list="venue-names" autocomplete="off" placeholder="会場名を入力して選択…" aria-label="会場を選ぶ">
             <?= render_suggest_datalist('venue-names', array_values($venues)) ?>
             <!-- 選んだ会場。× で外す。送るのは中の hidden の venue_ids[] -->
             <span class="chip-list" data-venue-chips>
@@ -319,32 +338,32 @@ render_header('セッティングシートの型紙', 'tools');
                         <button type="button" class="chip__x" data-venue-remove aria-label="外す">×</button></span>
                 <?php endforeach; ?>
             </span>
-            <?php if (!$venues): ?><span class="muted small">会場がまだありません（<a href="masters">会場の管理</a>で追加）</span><?php endif; ?>
+            <?php if (!$venues): ?><span class="muted small">会場がまだありません<?= is_admin() ? '（<a href="masters">会場の管理</a>で追加）' : '' ?></span><?php endif; ?>
         </div>
         <!-- 会場を選ぶと、最初の会場の名前が自動で入る（登録済みの会場名なので表記揺れが無い）。書き換えたら、それからは自動で変えない -->
-        <label class="field">名前（プルダウンに出る。会場を選ぶと会場名が入る。必要なら書き換える）
+        <label class="field">表示用の会場名
             <input name="label" value="<?= h($form['label']) ?>" maxlength="100" required placeholder="例: 下北沢 〇〇" data-template-label>
         </label>
-        <label class="field">会場の PDF<?= $editing ? '（差し替えるときだけ選ぶ）' : '' ?>（5MB まで）
+        <label class="field">セッティングシート PDF ファイル<?= $editing ? '（差し替える場合のみアップロード）' : '' ?>（5MB まで）
             <input type="file" name="pdf" accept="application/pdf,.pdf"<?= $editing ? '' : ' required' ?>>
         </label>
         <div class="field">
-            <span>座標（どこに何を書くか）。似ている型紙を見本にして、PDF の上の枠をドラッグで合わせる</span>
+            <span>登録済テンプレートから編集する</span>
             <span class="row">
                 <select data-sample aria-label="見本にする型紙">
-                    <option value="">見本にする型紙を選ぶ…</option>
+                    <option value="">テンプレートを選択</option>
                     <?php foreach ($sampleLabels as $key => $label): ?>
                         <option value="<?= h($key) ?>"><?= h($label) ?></option>
                     <?php endforeach; ?>
                 </select>
-                <button type="button" class="btn btn--ghost btn--sm" data-sample-copy>この型紙の座標を入れる</button>
+                <button type="button" class="btn btn--ghost btn--sm" data-sample-copy>表示する</button>
             </span>
         </div>
 
         <!-- 枠の配置エディタ（assets/sheet_editor.js） -->
         <div class="sheet-ed" data-sheet-editor>
             <div class="sheet-ed__bar">
-                <label class="small">表示
+                <label class="small">表示倍率
                     <select data-ed-zoom>
                         <option value="1">幅に合わせる</option>
                         <option value="1.5">1.5 倍</option>
@@ -353,12 +372,15 @@ render_header('セッティングシートの型紙', 'tools');
                     </select>
                 </label>
                 <!-- 中身は assets/sheet_editor.js の fillAddMenu() が作る（型紙にまだ無い欄だけ） -->
-                <select data-ed-add aria-label="枠を足す"><option value="">＋ 枠を足す…</option></select>
+                <select data-ed-add aria-label="枠を足す"><option value="">＋ 要素を追加…</option></select>
                 <!-- バンド名・日付・自由記入欄・固定の文字・選択肢の文字の大きさの倍率（型紙の font_scale）。枠に入らなければ自動で小さくなる -->
                 <label class="ed-num" title="文字の大きさ（倍率）"><?= icon('format_size') ?>
                     <input type="number" data-ed-font step="0.1" min="0.3" max="5" value="1" aria-label="文字の大きさ（倍率）">
-                </label>                <span class="muted small sheet-ed__cursor" data-ed-cursor></span>
+                </label>
+                <!-- 詳細設定: シートに最初から印刷されているもの（アンプ・メンバー表のパート）。中身は sheet_editor.js の renderAdvanced() -->
+                <button type="button" class="btn btn--ghost btn--sm" data-ed-adv aria-expanded="false" title="詳細設定"><?= icon('tune') ?> 詳細設定</button>                <span class="muted small sheet-ed__cursor" data-ed-cursor></span>
             </div>
+            <div class="ed-adv" data-ed-adv-box hidden></div>
             <p class="muted small" data-ed-note></p>
             <div class="sheet-ed__list" data-ed-list></div>
             <div class="sheet-ed__panel" data-ed-panel></div>
@@ -369,9 +391,18 @@ render_header('セッティングシートの型紙', 'tools');
                 </div>
             </div>
             <input type="hidden" name="stage_png" value="">
-            <!-- 浮いたプレビュー。中身は setting_sheet?tpl_preview=1 の <iframe>（初めて開いたときに JS が作る）。
-                 保存前の型紙を postMessage で渡し、仮の値で書いた PDF を出す -->
-            <button type="button" class="btn tpl-preview-btn" data-ed-preview aria-expanded="false"><?= icon('visibility') ?><span data-ed-preview-text>プレビュー</span></button>
+            <!-- 枠の下の行: 左に 1つ戻す・やり直す、右にプレビューのボタン。
+                 PC はここに並べ、プレビューを開いている間だけ「閉じる」を右下に浮かせる。スマホはどちらも浮かせる（app.css の .tpl-under） -->
+            <div class="tpl-under">
+                <!-- 1つ戻す・やり直す（アイコンだけなので aria-label で読み上げ用の名前を付ける） -->
+                <div class="tpl-history">
+                    <button type="button" class="btn btn--sm" data-ed-undo aria-label="1つ戻す" title="1つ戻す（Ctrl+Z）" disabled><?= icon('undo') ?></button>
+                    <button type="button" class="btn btn--sm" data-ed-redo aria-label="やり直す" title="やり直す（Ctrl+Y）" disabled><?= icon('redo') ?></button>
+                </div>
+                <!-- 浮いたプレビュー。中身は setting_sheet?tpl_preview=1 の <iframe>（初めて開いたときに JS が作る）。
+                     保存前の型紙を postMessage で渡し、仮の値で書いた PDF を出す -->
+                <button type="button" class="btn tpl-preview-btn" data-ed-preview aria-expanded="false"><?= icon('visibility') ?><span data-ed-preview-text>プレビュー</span></button>
+            </div>
             <div class="tpl-preview" data-ed-preview-box hidden></div>
         </div>
 
@@ -471,5 +502,5 @@ $editorData = [
 ];
 ?>
 <script type="application/json" id="sheet-editor-data"><?= json_encode($editorData, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP) ?></script>
-<script src="assets/sheet_editor.js?v=13" defer></script>
+<script src="assets/sheet_editor.js?v=17" defer></script>
 <?php render_footer();

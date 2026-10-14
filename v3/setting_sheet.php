@@ -32,11 +32,11 @@ $bandId = (int)($_GET['band'] ?? 0); // (int) で数字に変換。"abc" など�
 // ?band= が無い = ツールタブからの「白紙」。DB から何も読まず、全部空欄で始める
 //   （?band=abc のような変な値は 0 になるが、「見つかりません」にしたいので「パラメータがあるか」で分ける）
 $blank = !isset($_GET['band']);
-// ?tpl_preview=1 … 型紙の編集画面の浮いたプレビューの中身（<iframe>）。保存前の型紙は JS が postMessage で受け取る（管理者だけ）
+// ?tpl_preview=1 … 型紙の編集画面の浮いたプレビューの中身（<iframe>）。保存前の型紙は JS が postMessage で受け取る（ログインしている人なら誰でも）
 //   入力欄は出さず、仮の値で作った PDF のプレビューだけ見せる
 $tplPreview = isset($_GET['tpl_preview']);
 if ($tplPreview) {
-    require_admin();
+    require_login();
     $blank = true;
     // bootstrap.php は全ページで <iframe> の中に出すのを禁止している（クリックジャッキング対策）。
     // このページだけ「同じサイトの中の iframe」は許す（他のサイトからは今までどおり禁止）
@@ -91,13 +91,29 @@ foreach ($st as $r) {
 $members = array_values($members); // キー（member_id）を捨てて 0,1,2… の配列にする（JSON で「配列」になるように）
 
 // ---- 3. セットリスト（曲が登録されていれば初期値にする）----
-$st = $pdo->prepare('SELECT title FROM song WHERE band_id = ? ORDER BY track_no');
+//   紐付けた Spotify / iTunes の曲（track）も取る。シートで「分数」を自動で入れる・登録画面に引き継ぐのに使う
+$st = $pdo->prepare('SELECT s.title, s.track_source, s.track_id, t.title AS track_title, t.artwork_url
+    FROM song s
+    LEFT JOIN track t ON t.source = s.track_source AND t.track_id = s.track_id
+    WHERE s.band_id = ? ORDER BY s.track_no');
 $st->execute([$bandId]);
-// fetchAll(PDO::FETCH_COLUMN): 1列目だけの配列 ['曲A', '曲B', ...] で受け取る
-$songTitles = $st->fetchAll(PDO::FETCH_COLUMN);
+$dbSongs = array_map(static fn($r) => [
+    'title'      => $r['title'],
+    'track'      => $r['track_source'] !== null ? $r['track_source'] . ':' . $r['track_id'] : '', // 'spotify:xxxx'（紐付けなし = 空）
+    'trackTitle' => $r['track_title'] ?? '',
+    'art'        => $r['artwork_url'] ?? '',
+], $st->fetchAll());
 // 出演まで非公開で、この人には見せられないときは、登録済みの曲を初期値に使わない（曲名がバレるので）
 if (!$blank && band_setlist_visibility($pdo, $bandId)['hidden']) {
-    $songTitles = [];
+    $dbSongs = [];
+}
+$songTitles = array_column($dbSongs, 'title');
+// 曲を探すときに曲名と一緒に送るアーティスト名（バンドのコピー元。オムニバスなど無ければ空）
+$bandArtist = '';
+if (!$blank) {
+    $st = $pdo->prepare('SELECT a.name FROM band b JOIN artist a ON a.artist_id = b.artist_id WHERE b.band_id = ?');
+    $st->execute([$bandId]);
+    $bandArtist = (string)($st->fetchColumn() ?: '');
 }
 
 // ---- 4. 型紙を選ぶ（会場名から自動。合わなければ1つ目）----
@@ -129,8 +145,8 @@ $initial = [
     'order'   => (string)$band['play_order'],
     'rep'     => $repName,
     'members' => $members,
-    // 曲名の配列。JS が1曲ずつの入力欄にする
-    'songs'   => $songTitles,
+    // 曲の配列 [{title, track, trackTitle, art}]。JS が1曲ずつの入力欄にする
+    'songs'   => $dbSongs,
 ];
 $sheetData = [
     'bandId'      => $bandId,
@@ -151,6 +167,8 @@ $sheetData = [
     // pdf-lib（PDF に書き込む）と fontkit（日本語フォントを読む）。どちらも自分のサーバーに置く（CDN が止まっても動く）
     'vendor'      => ['assets/vendor/pdf-lib.min.js', 'assets/vendor/fontkit-shim.min.js'],
     'dbSongs'     => $songTitles, // DB に登録済みの曲（シートと同じなら「登録しますか？」を聞かない）
+    'dbTracks'    => array_column($dbSongs, 'track'), // その曲の紐付け（シートで紐付けを変えたら、曲名が同じでも登録を聞く）
+    'bandArtist'  => $bandArtist,
     'fileBase'    => ($band['held_on'] ? date('Ymd', strtotime($band['held_on'])) . '_' : '') . $band['name'],
 ];
 /*
@@ -168,7 +186,7 @@ $bandUrl = 'band?id=' . $bandId;
 render_header('セッティングシート作成', $blank ? 'tools' : 'lives');
 ?>
 <!-- このページだけの CSS。<link> は <body> の中に書いてもよい（HTML の仕様で許されている） -->
-<link rel="stylesheet" href="assets/setting_sheet.css?v=25">
+<link rel="stylesheet" href="assets/setting_sheet.css?v=26">
 <?php if ($tplPreview): ?>
 <style>
     /* iframe の中: サイトの上のバー・入力欄を隠して、PDF のプレビューを枠いっぱいに出す */
@@ -180,7 +198,7 @@ render_header('セッティングシート作成', $blank ? 'tools' : 'lives');
 <?php endif; ?>
 
 <?php if ($tplPreview): ?>
-<nav class="crumbs"><a href="tools">ツール</a><span>/</span><a href="sheet_templates">セッティングシートの型紙</a></nav>
+<nav class="crumbs"><a href="tools">ツール</a><span>/</span><a href="sheet_templates">セッティングシート編集</a></nav>
 <?php elseif ($blank): ?>
 <nav class="crumbs"><a href="tools">ツール</a></nav>
 <?php else: ?>
@@ -215,7 +233,7 @@ render_header('セッティングシート作成', $blank ? 'tools' : 'lives');
         <div class="sheet-grid">
             <label class="field sheet-grid__wide">バンド名 <input type="text" data-f="band" maxlength="100"></label>
             <!-- data-field: シートにその欄が無い会場では JS が隠す（例: サークル共通シートには出演日が無い） -->
-            <label class="field sheet-grid__wide" data-field="kana">フリガナ <input type="text" data-f="kana" maxlength="100" placeholder="バンド名の読み（カタカナ）"></label>
+            <label class="field sheet-grid__wide" data-field="kana"><span data-kana-label>フリガナ</span> <input type="text" data-f="kana" maxlength="100" placeholder="バンド名の読み（カタカナ）"></label>
             <!-- 年・月・日が印刷済みのシートでも、入力は出演日の欄1つ（PDF に書くときに数字を取り出す） -->
             <label class="field" data-field="date year month day">出演日 <input type="text" data-f="date" maxlength="20" placeholder="2026/10/12"></label>
             <label class="field" data-field="order">出演順 <input type="text" data-f="order" maxlength="3" inputmode="numeric"></label>
@@ -336,5 +354,5 @@ render_header('セッティングシート作成', $blank ? 'tools' : 'lives');
 </form>
 <?php endif; ?>
 
-<script src="assets/setting_sheet.js?v=54" defer></script>
+<script src="assets/setting_sheet.js?v=59" defer></script>
 <?php render_footer();

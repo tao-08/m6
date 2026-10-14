@@ -3788,7 +3788,7 @@ function setChorus(wrap, on, enabled) {
 }
 
 function setupChorusToggle() {
-  if (!document.querySelector('[data-cho-toggle]')) return;
+  // 開いた時点でトグルが無くても待ち受ける（セトリ編集で曲が未登録だと、トグルは <template> の中にしか無く、「＋ 曲を追加」で後から出てくる）
   // トグルが見る楽器欄 = 同じ行の最初の select（セトリ編集なら楽器1）
   const rowOf = (el) => el.closest('.member-row-edit, .cell-instrument, .performer');
   const allowed = (wrap, value) => !value.startsWith('vo:') && !wrap.dataset.choBlock.split(',').includes(value);

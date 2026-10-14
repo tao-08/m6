@@ -38,7 +38,7 @@
 
     // 1行の欄。year / month / day は「年」「月」が印刷済みのシート用（出演日から数字だけ書く）
     const FIELD_LABELS = { band: 'バンド名', kana: 'フリガナ', date: '出演日', year: '年', month: '月', day: '日', order: '出演順', rep: '代表者氏名' };
-    const COL_LABELS = { part: 'パート', name: '氏名', part2: 'パート', name2: '氏名', mic: 'マイク', no: '曲順', title: '曲名', sound: '音響', light: '照明', request: '備考（音響・照明）' };
+    const COL_LABELS = { part: 'パート', name: '氏名', part2: 'パート', name2: '氏名', mic: 'マイク', no: '曲順', title: '曲名', sound: '音響', light: '照明', request: '備考（音響・照明）', time: '分数' };
     const PAIR_LABELS = { part: 'パート1', name: '名前1', part2: 'パート2', name2: '名前2' };
 
     let cfg = null;        // 今の型紙（JSON を読んだもの）。ドラッグはこの中の数字を直接書き換える
@@ -102,10 +102,32 @@
     /** 固定の文字を囲む図形（枠の大きさそのまま） */
     const SHAPES = { '': 'なし', rect: '四角', ellipse: '丸' };
 
+    /** メンバー表の組 [[パート列, 名前列], …]（2組目があれば2つ）。行の通し番号は左の組の上から下 → 右の組 */
+    const memberPairs = (t) => [[t.part, t.name], ...(isCol(t.part2) && isCol(t.name2) ? [[t.part2, t.name2]] : [])].filter(([p, n]) => isCol(p) && isCol(n));
+
+    /** セットリストの曲ごとの追加の列（setlist.cols = [{ key, label, col: [左, 右] }]）。形がおかしいものは除く */
+    const extraCols = (t) => (Array.isArray(t.cols) ? t.cols.filter((c) => c && typeof c.key === 'string' && isCol(c.col)) : []);
+
+    /**
+     * 分数（time）と追加の列のうち、左右がそろって（1pt 以内）同じ列に積んであるもの。
+     * 作成画面（setting_sheet.js の setlistCells）と同じ決め方で、行を上下に等分する。[[{ key, label, col }, …], …]
+     */
+    function stackedCols(t) {
+        const list = [...extraCols(t).map((c) => ({ key: c.key, label: c.label || c.key, col: c.col })), ...(isCol(t.time) ? [{ key: 'time', label: '分数', col: t.time }] : [])];
+        const groups = [];
+        for (const c of list) {
+            const g = groups.find((x) => Math.abs(x[0].col[0] - c.col[0]) <= 1 && Math.abs(x[0].col[1] - c.col[1]) <= 1);
+            if (g) g.push(c);
+            else groups.push([c]);
+        }
+        return groups;
+    }
+
     /** メンバー表・セットリスト → table */
     function tableItem(id, label, kind, t) {
         const colKeys = Object.keys(t).filter((k) => isCol(t[k]) && k !== 'lines');
-        const xs = groupRefs(colKeys.flatMap((k) => [ref(t[k], 0), ref(t[k], 1)]));
+        // 追加の列（cols）の線も、ほかの列と同じように1本ずつドラッグできる
+        const xs = groupRefs([...colKeys.flatMap((k) => [ref(t[k], 0), ref(t[k], 1)]), ...extraCols(t).flatMap((c) => [ref(c.col, 0), ref(c.col, 1)])]);
         let ys;
         let shiftY;
         let inner = []; // 動かせない線（row_h で等分している行の境目）
@@ -134,7 +156,7 @@
         const out = [];
         if (!cfg) return out;
         for (const [k, f] of Object.entries(cfg.fields || {})) {
-            if (f && isBox(f.box)) out.push(rectItem(`fields.${k}`, FIELD_LABELS[k] || k, 'fields', f.box, () => delete cfg.fields[k]));
+            if (f && isBox(f.box)) out.push(rectItem(`fields.${k}`, f.label || FIELD_LABELS[k] || k, 'fields', f.box, () => delete cfg.fields[k]));
         }
         // メンバー表・セットリスト・セット図の枠も消せる（消したら「＋ 枠を足す」から標準の形で出し直す。無いままは保存できない）
         if (cfg.members) {
@@ -224,18 +246,54 @@
                 };
                 it.ys.forEach((y, i) => line(x0, y.get(), x1, y.get(), 'h', `y${i}`));
                 it.xs.forEach((x, i) => line(x.get(), y0, x.get(), y1, 'v', `x${i}`));
-                // 列の名前（パート・氏名…）を列の上に
+                // 列の名前（パート・氏名…）を列の上に。同じ列に積んだもの（コーラス/CD と分数など）は「上 / 下」の順につなぐ
+                const heads = new Map(); // 列の左端 → [名前, …]
+                const addHead = (l, text) => {
+                    const key = Math.round(Math.min(...l) * 10) / 10;
+                    heads.set(key, [...(heads.get(key) || []), text]);
+                };
                 for (const key of it.colKeys) {
-                    const [l] = it.t[key];
-                    const t = el('text', { x: l + 2 * k, y: y0 - 3 * k, class: 'ed-label', 'font-size': 10 * k, 'stroke-width': 3 * k });
+                    if (key === 'time') continue; // 分数は下で（積んだ列と一緒に）
                     // 2組ある表は「名前1 / パート1 / 名前2 / パート2」で見分ける
                     const pair = it.colKeys.includes('part2') ? PAIR_LABELS[key] : null;
-                    t.textContent = pair || COL_LABELS[key] || key;
+                    addHead(it.t[key], pair || COL_LABELS[key] || key);
+                }
+                if (it.id === 'setlist') {
+                    const rowYs = Array.isArray(it.t.lines) ? it.t.lines : Array.from({ length: it.t.rows + 1 }, (_, i) => it.t.top + it.t.row_h * i);
+                    for (const grp of stackedCols(it.t)) {
+                        addHead(grp[0].col, grp.map((c) => c.label).join(' / '));
+                        // 積んだ列は、行の中の段の境目を点線で（どれが上の段か分かるように）
+                        if (grp.length < 2) continue;
+                        const [l, r] = [Math.min(...grp[0].col), Math.max(...grp[0].col)];
+                        for (let i = 0; i + 1 < rowYs.length; i++) {
+                            for (let n = 1; n < grp.length; n++) {
+                                const y = rowYs[i] + ((rowYs[i + 1] - rowYs[i]) * n) / grp.length;
+                                g.append(el('line', { x1: l, y1: y, x2: r, y2: y, class: 'ed-inner ed-stack', 'vector-effect': 'non-scaling-stroke' }));
+                            }
+                        }
+                    }
+                }
+                for (const [l, names] of heads) {
+                    const t = el('text', { x: l + 2 * k, y: y0 - 3 * k, class: 'ed-label', 'font-size': 10 * k, 'stroke-width': 3 * k });
+                    t.textContent = names.join(' / ');
                     g.append(t);
                 }
                 const t = el('text', { x: x0 + 2 * k, y: y0 + 11 * k, class: 'ed-label', 'font-size': 10 * k, 'stroke-width': 3 * k });
                 t.textContent = it.label;
                 g.append(t);
+                // パートが印刷済みの行（詳細設定）: パートのセルに薄くそのパートを出す
+                if (it.id === 'members' && it.shiftY) {
+                    const pairs = memberPairs(it.t);
+                    for (const [slot, label] of Object.entries(it.t.fixed || {})) {
+                        const pair = pairs[Math.floor(+slot / it.t.rows)];
+                        if (!pair || !label) continue;
+                        const [pl, pr] = [Math.min(...pair[0]), Math.max(...pair[0])];
+                        const fy = it.t.top + it.t.row_h * ((+slot % it.t.rows) + 0.5);
+                        const ft = el('text', { x: (pl + pr) / 2, y: fy, class: 'ed-fixed', 'font-size': Math.min(it.t.row_h * 0.6, 12 * k), 'text-anchor': 'middle', 'dominant-baseline': 'central' });
+                        ft.textContent = label;
+                        g.append(ft);
+                    }
+                }
             }
             svg.append(g);
         }
@@ -260,7 +318,7 @@
         const it = items.find((x) => x.id === selectedId);
         panel.textContent = '';
         if (!it) {
-            panel.innerHTML = '<span class="muted small">枠をクリックすると、ここで数字を直せます。矢印キーで 0.5pt（Shift で 5pt）ずつ動きます。</span>';
+            panel.innerHTML = '<span class="muted small">Ctrlキーをホールドして正方形に編集。矢印キーで 0.5pt（Shift で 5pt）ずつ調整可。</span>';
             return;
         }
         const title = document.createElement('strong');
@@ -287,7 +345,19 @@
             s.textContent = '線を1本ずつドラッグして合わせます。行・列を増やすときは JSON を書き換えてください。';
             panel.append(s);
         }
-        if (it.id === 'setlist') setlistNotePanel(it.t);
+        if (it.id === 'fields.kana') {
+            // 作成画面の欄の名前（シートの表記に合わせる）。省略 = フリガナ
+            const f = cfg.fields.kana;
+            panelButton(f.label === 'ふりがな' ? '欄の名前を「フリガナ」に' : '欄の名前を「ふりがな」に', () => {
+                if (f.label === 'ふりがな') delete f.label;
+                else f.label = 'ふりがな';
+                changed(true);
+            });
+        }
+        if (it.id === 'setlist') {
+            setlistNotePanel(it.t);
+            setlistColsPanel(it.t);
+        }
         if (it.id === 'stage') {
             // 部品（アンプ・マイク・人）の大きさの倍率。枠が大きいシートで自動配置がすかすかになるときに上げる
             num('部品の大きさ（倍率）', () => cfg.stage_scale || 1, (v) => {
@@ -475,6 +545,88 @@
         });
     }
 
+    /**
+     * セットリストの分数（time）と、曲ごとの追加の列（cols: コーラス/CD・備考 など）
+     *   新しい列は、曲名の列の右端を縮めて、そこに置く（ほかの列の線は動かさない）
+     *   「分数と同じ列」に足すと、その列の行を上下に等分して上に積む（クラブ・ドロシーの「コーラス/CD トラック」と「分数」）
+     */
+    function setlistColsPanel(t) {
+        if (!isCol(t.title)) return;
+        // 曲名の列の右端から w pt を切り取って新しい列にする。曲名が狭すぎるときは足さない
+        const takeFromTitle = (w) => {
+            const [l, r] = [Math.min(...t.title), Math.max(...t.title)];
+            if (r - l < w + 40) {
+                note.textContent = '曲名の列が狭すぎて足せません。先に曲名の列を広げてください。';
+                return null;
+            }
+            t.title = [l, r1(r - w)];
+            return [r1(r - w), r];
+        };
+        if (isCol(t.time)) {
+            panelButton('分数の列を消す', () => {
+                delete t.time;
+                delete t.time_colon;
+                changed(true);
+            });
+            // 「:」が印刷されているシートは、分と秒を「:」の左右に書く。無いシートは「3:45」と書く
+            panelButton(t.time_colon ? '「:」は印刷済み → 印刷なしにする' : '「:」は印刷なし → 印刷済みにする', () => {
+                if (t.time_colon) delete t.time_colon;
+                else t.time_colon = true;
+                changed(true);
+            });
+        } else {
+            panelButton('＋ 分数の列を足す', () => {
+                const col = takeFromTitle(40);
+                if (!col) return;
+                t.time = col;
+                note.textContent = '曲名の右に分数の列を足しました。線をドラッグして合わせてください。';
+                changed(true);
+            });
+        }
+
+        // 追加の列の一覧: 名前を変える・消す
+        for (const c of extraCols(t)) {
+            textInput('列の名前', c.label || '', (v) => {
+                c.label = v.slice(0, 30);
+                changed(true);
+            });
+            panelButton(`「${c.label || c.key}」の列を消す`, () => {
+                t.cols = extraCols(t).filter((x) => x !== c);
+                if (t.cols.length === 0) delete t.cols;
+                changed(true);
+            });
+        }
+
+        // 列を足す: 名前と置き方（新しい列 / 分数と同じ列）
+        const wrap = document.createElement('span');
+        wrap.className = 'ed-num ed-text';
+        const name = Object.assign(document.createElement('input'), { type: 'text', maxLength: 30, placeholder: '列の名前（例: コーラス/CD）' });
+        name.setAttribute('aria-label', '足す列の名前');
+        const where = document.createElement('select');
+        where.setAttribute('aria-label', '足す列の置き方');
+        where.append(new Option('新しい列（曲名の右）', 'new'));
+        if (isCol(t.time)) where.append(new Option('分数と同じ列（上下に分ける）', 'time'));
+        const add = Object.assign(document.createElement('button'), { type: 'button', className: 'btn btn--ghost btn--sm', textContent: '＋ 列を足す' });
+        add.addEventListener('click', () => {
+            const label = name.value.trim();
+            if (label === '') {
+                name.focus();
+                return;
+            }
+            const col = where.value === 'time' && isCol(t.time) ? [...t.time] : takeFromTitle(50);
+            if (!col) return;
+            // キーは型紙の中で重ならない名前（c1, c2 …）。作成画面の入力はこのキーで保存する
+            const used = new Set(extraCols(t).map((c) => c.key));
+            let n = 1;
+            while (used.has(`c${n}`)) n++;
+            t.cols = [...extraCols(t), { key: `c${n}`, label, col }];
+            note.textContent = where.value === 'time' ? `「${label}」を分数の上の段に足しました。` : `曲名の右に「${label}」の列を足しました。線をドラッグして合わせてください。`;
+            changed(true);
+        });
+        wrap.append(name, where, add);
+        panel.append(wrap);
+    }
+
     /** パネルにボタンを1つ足す */
     function panelButton(text, onClick) {
         const b = document.createElement('button');
@@ -569,8 +721,10 @@
     /** cfg を書き換えたあと: JSON の欄に書き戻して描き直す（rebuild: 枠の数が変わったとき） */
     function changed(rebuild = false) {
         textarea.value = JSON.stringify(cfg, null, 2);
+        record();
         if (rebuild) items = buildItems();
         if (rebuild) fillAddMenu();
+        renderAdvanced();
         draw();
         queuePreview(); // プレビューのタブが開いていれば送り直す
     }
@@ -696,6 +850,8 @@
             items = [];
             fillAddMenu();
             note.textContent = '「見本にする型紙」を選んで座標を入れると、枠が出ます。';
+            record();
+            renderAdvanced();
             draw();
             return;
         }
@@ -708,6 +864,8 @@
             fillAddMenu();
             fontInput.value = String(cfg.font_scale || 1);
             note.textContent = '';
+            record();
+            renderAdvanced();
         } catch (err) {
             note.textContent = `JSON の書き方が間違っています（${err.message}）。直すまで枠は前のままです。`;
         }
@@ -716,6 +874,51 @@
     textarea.addEventListener('input', () => {
         clearTimeout(timer);
         timer = setTimeout(readJson, 400); // 打つたびに読むと重いので、手が止まってから
+    });
+
+    /* -----------------------------------------------------------------
+     *  1つ戻す・やり直す（左下のボタン / Ctrl+Z・Ctrl+Y）
+     *  変わるたびに JSON の文字をまるごと履歴に積み、何番目を出しているか（histPos）を前後に動かす。
+     *  戻した所から新しく変えたら、それより先（やり直せた分）は捨てる
+     * ----------------------------------------------------------------- */
+    const undoBtn = root.querySelector('[data-ed-undo]');
+    const redoBtn = root.querySelector('[data-ed-redo]');
+    let hist = [];
+    let histPos = -1;
+    function record() {
+        const v = textarea.value;
+        if (hist[histPos] === v) return; // 戻した・やり直した直後に読み直したときなど、同じ中身は積まない
+        hist = hist.slice(0, histPos + 1);
+        hist.push(v);
+        if (hist.length > 200) hist.shift(); // 古いものから捨てる
+        histPos = hist.length - 1;
+        syncHistBtns();
+    }
+    function syncHistBtns() {
+        undoBtn.disabled = histPos <= 0;
+        redoBtn.disabled = histPos >= hist.length - 1;
+    }
+    /** step = -1 で1つ戻す、+1 でやり直す */
+    function moveHist(step) {
+        const next = histPos + step;
+        if (next < 0 || next >= hist.length) return;
+        histPos = next;
+        clearTimeout(timer); // 打ちかけの JSON を後から読み直して上書きしないように
+        textarea.value = hist[histPos];
+        readJson();
+        syncHistBtns();
+        form.dispatchEvent(new Event('input', { bubbles: true })); // プレビューを送り直す・「保存していない変更」の印
+    }
+    undoBtn.addEventListener('click', () => moveHist(-1));
+    redoBtn.addEventListener('click', () => moveHist(1));
+    // 入力欄の中では、その欄の文字の「元に戻す」を優先する（Mac は ⌘）
+    document.addEventListener('keydown', (e) => {
+        if (!(e.ctrlKey || e.metaKey) || e.altKey || e.target.closest('input, textarea, select')) return;
+        const k = e.key.toLowerCase();
+        if (k === 'z' && !e.shiftKey) moveHist(-1);
+        else if (k === 'y' || (k === 'z' && e.shiftKey)) moveHist(1);
+        else return;
+        e.preventDefault();
     });
 
     /* -----------------------------------------------------------------
@@ -884,6 +1087,71 @@
         else cfg.font_scale = s;
         changed();
     });
+
+    /* -----------------------------------------------------------------
+     *  詳細設定（バーの ⚙ ボタンで開く）: シートに最初から印刷されているもの
+     *    アンプが印刷済み（amps_printed）… 自動配置でギター・ベースのアンプの四角を置かない
+     *    メンバー表のパートが印刷済みの行（members.fixed = { 行の番号: 'Vo' }）… そのパートの人をその行に入れ、パートは書かない
+     *  曲順が印刷済みのときは、セットリストのパネルの「曲順の列を消す」を使う
+     * ----------------------------------------------------------------- */
+    const advBtn = root.querySelector('[data-ed-adv]');
+    const advBox = root.querySelector('[data-ed-adv-box]');
+    advBtn.addEventListener('click', () => {
+        advBox.hidden = !advBox.hidden;
+        advBtn.setAttribute('aria-expanded', String(!advBox.hidden));
+    });
+    function renderAdvanced() {
+        advBox.textContent = '';
+        if (!cfg) {
+            advBox.append(Object.assign(document.createElement('p'), { className: 'muted small', textContent: '型紙を入れると設定できます。' }));
+            return;
+        }
+        // アンプが印刷済み
+        const ampLabel = document.createElement('label');
+        ampLabel.className = 'check';
+        const amp = Object.assign(document.createElement('input'), { type: 'checkbox', checked: !!cfg.amps_printed });
+        amp.addEventListener('change', () => {
+            if (amp.checked) cfg.amps_printed = true;
+            else delete cfg.amps_printed;
+            changed();
+        });
+        ampLabel.append(amp, 'セット図のアンプが印刷済み（自動配置でアンプを置かない）');
+        advBox.append(ampLabel);
+
+        // メンバー表のパートが印刷済みの行（パートを自由に書く表だけ）
+        const t = cfg.members;
+        if (!t || t.mode === 'slots' || !isNum(t.rows) || !isNum(t.top) || !isNum(t.row_h)) return;
+        const pairs = memberPairs(t);
+        const head = document.createElement('p');
+        head.className = 'small ed-adv__head';
+        head.textContent = 'メンバー表でパートが印刷済みの行（空 = 印刷なし）';
+        advBox.append(head);
+        pairs.forEach((_, p) => {
+            const row = document.createElement('div');
+            row.className = 'ed-adv__rows';
+            if (pairs.length > 1) row.append(Object.assign(document.createElement('span'), { className: 'muted small', textContent: `パート${p + 1}` }));
+            for (let r = 0; r < t.rows; r++) {
+                const slot = p * t.rows + r;
+                const l = document.createElement('label');
+                l.className = 'ed-num';
+                l.textContent = String(r + 1);
+                const inp = Object.assign(document.createElement('input'), { type: 'text', maxLength: 10, value: t.fixed?.[slot] ?? '', placeholder: '—' });
+                inp.setAttribute('aria-label', `${pairs.length > 1 ? `パート${p + 1}の` : ''}${r + 1}行目に印刷されているパート`);
+                inp.addEventListener('change', () => {
+                    const v = inp.value.trim();
+                    const fixed = { ...(t.fixed || {}) };
+                    if (v) fixed[slot] = v;
+                    else delete fixed[slot];
+                    if (Object.keys(fixed).length) t.fixed = fixed;
+                    else delete t.fixed;
+                    changed();
+                });
+                l.append(inp);
+                row.append(l);
+            }
+            advBox.append(row);
+        });
+    }
 
     zoomSelect.addEventListener('change', () => {
         zoom = +zoomSelect.value;

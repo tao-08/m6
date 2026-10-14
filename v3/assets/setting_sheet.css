@@ -46,7 +46,7 @@
 .setlist-tools { display: flex; gap: 8px; }
 .setlist { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .setlist__item {
-  display: grid; grid-template-columns: 32px 22px minmax(0, 1fr) 32px 32px; gap: 4px 6px; align-items: center;
+  display: grid; grid-template-columns: 32px 22px minmax(0, 1fr) 32px 32px 32px; gap: 4px 6px; align-items: center;
   padding: 4px; border-radius: var(--radius-sm); background: var(--surface); border: 1px solid var(--border);
 }
 .setlist__item--mc { grid-template-columns: 32px 22px minmax(0, 1fr) 32px; background: var(--surface-2); }
@@ -63,6 +63,14 @@
 .setlist__mc { font-weight: 800; letter-spacing: .1em; color: var(--muted); padding: 6px 4px; }
 .setlist__notes { grid-column: 3 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
 .setlist__notes[hidden] { display: none; }
+/* 分数・型紙の追加の列（コーラス/CD など）: 名前付きの小さな欄 */
+.setlist__extra { display: grid; gap: 2px; font-size: 12px; color: var(--muted); }
+.setlist__extra--time input { max-width: 7em; }
+/* サブスクの曲の紐付け: 紐付けたらボタンにジャケットを小さく出す */
+.setlist__link img { width: 26px; height: 26px; border-radius: 4px; object-fit: cover; display: block; }
+.setlist__item .track-results { grid-column: 1 / -1; }
+.setlist__linked { grid-column: 3 / -1; display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); min-width: 0; }
+.setlist__linked span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 480px) {
   .setlist__notes { grid-column: 1 / -1; grid-template-columns: 1fr; } /* スマホでは要望欄を縦に並べて広く */
 }

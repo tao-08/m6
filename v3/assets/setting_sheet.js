@@ -66,6 +66,11 @@
      *  1. state（状態）
      * ================================================================= */
 
+    /** 1曲ぶんの形（無い項目は空で埋める）。前の版で保存した曲にも、足りない項目を足すのに使う */
+    function newSong(id, v = {}) {
+        return { title: '', sound: '', light: '', track: '', trackTitle: '', art: '', time: '', ...v, id, mc: false, cols: { ...(v.cols || {}) } };
+    }
+
     /** DB の内容から作る「まっさらな状態」 */
     function defaultState() {
         const ini = DATA.initial;
@@ -78,8 +83,9 @@
             rep: ini.rep || '',
             // [...配列] でコピーしてから map。元の DATA を書き換えないため
             members: ini.members.map((m) => ({ part: m.part, name: m.name })),
-            // セットリスト。1曲 = { id, mc: false, title, sound, light } / MC = { id, mc: true }
-            songs: ini.songs.map((title, i) => ({ id: i + 1, mc: false, title, sound: '', light: '' })),
+            // セットリスト。1曲 = { id, mc: false, title, sound, light, track, trackTitle, art, time, cols } / MC = { id, mc: true }
+            //   track: 紐付けた Spotify / iTunes の曲（'spotify:xxxx'。空 = なし）/ time: 分数（'3:45'）/ cols: 型紙の追加の列 { key: 文字 }
+            songs: ini.songs.map((s, i) => newSong(i + 1, { title: s.title, track: s.track, trackTitle: s.trackTitle, art: s.art })),
             nextSongId: ini.songs.length + 1,
             choices: {},    // { se: 'なし', start: 'ハケ', ... }。空 = どれも囲まない
             texts: {},      // その他の自由記入欄 { other: '...', se_title: '...' }
@@ -109,6 +115,8 @@
                 saved.nextSongId = saved.songs.length + 1;
                 delete saved.setlist;
             }
+            // 曲に紐付け・分数・追加の列が無い（前の版で保存した）データは、空で埋める
+            saved.songs = saved.songs.map((s) => (s.mc ? s : newSong(s.id, s)));
             // SE の選択肢の名前を「有」→「あり」に変えたので、前の名前で保存したデータを直す
             if (saved.choices?.se === '有') {
                 saved.choices.se = 'あり';
@@ -280,6 +288,72 @@
     const memberCols = (mt) => [[mt.part, mt.name], ...(Array.isArray(mt.part2) && Array.isArray(mt.name2) ? [[mt.part2, mt.name2]] : [])]
         .map((pair) => pair.map((c) => [Math.min(...c), Math.max(...c)])); // 型紙で線を追い越して左右が逆になった列も書けるように
 
+    /**
+     * メンバー表のどの行に誰を書くか（パートを自由に書く表だけ）。
+     *   枠の数 = 行数 × 組の数。行の番号は左の組の上から下 → 右の組の上から下の通し番号
+     *   1. パートが印刷済みの行（型紙の members.fixed = { 行の番号: 'Vo' }）に、そのパートの人を入れる。
+     *      パートがそれだけの人を先に、いなければそのパートを含む人（Vo の行が埋まっていれば Vo/Gt の人は Gt の行へ）
+     *   2. 残りの人を、印刷済みでない行に上から入れる
+     *   3. 入りきらないときは、印刷済みの行と同じパートの人をその行に足し、それでも多ければ同じパートの人を1行にまとめる（「・」でつなぐ）
+     *   印刷済みのパートと本人のパートが違うときは、名前の後ろに（Vo/Gt）のように本当のパートを付ける
+     * 戻り値: { rows: [{ slot, names, part, fixed }], dropped: 入らなかった人数 }
+     */
+    function memberPlacement(mt) {
+        const cap = mt.rows * memberCols(mt).length;
+        const fixed = mt.fixed && typeof mt.fixed === 'object' ? mt.fixed : {};
+        const key = (p) => partList(p).join('/'); // 同じパートかどうか（大文字小文字・区切りの違いは同じ）
+        const people = state.members.filter((m) => m.name.trim() !== '' || m.part.trim() !== '')
+            .map((m) => ({ name: m.name.trim(), part: m.part.trim(), parts: partList(m.part) }));
+        const used = new Set();
+        const rows = [];
+        // 印刷済みの行の人の名前。パートが違えば（Vo/Gt）を付ける
+        const fixedName = (p, label) => (p.part && key(p.part) !== key(label) ? `${p.name}（${p.part}）` : p.name);
+        // 1. 印刷済みの行
+        const fixedRows = Object.entries(fixed)
+            .map(([i, label]) => [+i, String(label).trim()])
+            .filter(([i, label]) => Number.isInteger(i) && i >= 0 && i < cap && label !== '')
+            .sort((a, b) => a[0] - b[0]);
+        for (const [slot, label] of fixedRows) {
+            const want = partList(label)[0];
+            const free = people.filter((p) => !used.has(p));
+            const p = free.find((x) => x.parts.length === 1 && x.parts[0] === want) || free.find((x) => x.parts.includes(want));
+            if (p) used.add(p);
+            rows.push({ slot, names: p ? [fixedName(p, label)] : [], part: label, fixed: true });
+        }
+        // 2. 残りの人（同じパートでまとめるときのために、1人ずつの行にしておく）
+        const fixedSlots = new Set(fixedRows.map(([i]) => i));
+        const freeSlots = [];
+        for (let i = 0; i < cap; i++) if (!fixedSlots.has(i)) freeSlots.push(i);
+        let rest = people.filter((p) => !used.has(p)).map((p) => ({ names: [p.name], part: p.part, people: [p] }));
+        // 3. 入りきらなければまとめる
+        while (rest.length > freeSlots.length) {
+            // 印刷済みの行と同じパートの人を、その行に足す（後ろの人から）
+            const idx = rest.findLastIndex((r) => r.people.length === 1 && rows.some((f) => f.fixed && r.people[0].parts.includes(partList(f.part)[0])));
+            if (idx >= 0) {
+                const p = rest[idx].people[0];
+                const f = rows.find((x) => x.fixed && p.parts.includes(partList(x.part)[0]));
+                f.names.push(fixedName(p, f.part));
+                rest.splice(idx, 1);
+                continue;
+            }
+            // 同じパートの行を1つにまとめる（後ろの行を、前にある同じパートの行に）
+            let merged = false;
+            for (let j = rest.length - 1; j > 0 && !merged; j--) {
+                const k = rest.findIndex((r, n) => n < j && r.part !== '' && key(r.part) === key(rest[j].part));
+                if (k >= 0) {
+                    rest[k].names.push(...rest[j].names);
+                    rest[k].people.push(...rest[j].people);
+                    rest.splice(j, 1);
+                    merged = true;
+                }
+            }
+            if (!merged) break; // まとめられる人がいない → 入らない人は書かない
+        }
+        const dropped = rest.slice(freeSlots.length).reduce((n, r) => n + r.names.length, 0);
+        rest.slice(0, freeSlots.length).forEach((r, n) => rows.push({ slot: freeSlots[n], names: r.names, part: r.part, fixed: false }));
+        return { rows, dropped };
+    }
+
     /** メンバー表の行を作る（型紙に書ける人数ぶん） */
     function renderMembers() {
         const box = $('[data-members]');
@@ -294,7 +368,8 @@
         const rows = tpl().members.rows * memberCols(tpl().members).length; // 4列の表なら行数の2倍
         const [[partCol, nameCol]] = memberCols(tpl().members);
         const nameFirst = nameCol[0] < partCol[0];
-        for (let i = 0; i < rows; i++) {
+        // 入力欄は枠の数ぶん。それより多い人（＋ で足した人・DB のメンバー）も出す（PDF では同じパートでまとめて書く）
+        for (let i = 0; i < Math.max(rows, state.members.length); i++) {
             if (!state.members[i]) {
                 state.members[i] = { part: '', name: '' }; // 足りない行は空で埋める
             }
@@ -324,8 +399,22 @@
             }
             box.append(row);
         }
-        if (state.members.filter((m) => m.name.trim() !== '').length > rows) {
-            setStatus(`メンバーが ${rows} 人を超えています。${rows + 1} 人目以降はシートに入りません`, true);
+        // 枠より多い人を書きたいとき（同じパートの人は1行にまとめて書く）
+        const more = document.createElement('button');
+        more.type = 'button';
+        more.className = 'btn btn--sm btn--ghost';
+        more.textContent = '＋ メンバーを足す';
+        more.addEventListener('click', () => {
+            state.members.push({ part: '', name: '' });
+            renderMembers();
+            save();
+            box.querySelector('.sheet-members__row:last-of-type input')?.focus();
+        });
+        box.append(more);
+        // 入りきらない人は同じパートでまとめる（memberPlacement）。まとめても入らない人がいるときだけ知らせる
+        const dropped = memberPlacement(tpl().members).dropped;
+        if (dropped > 0) {
+            setStatus(`メンバー欄に入りきらない人が ${dropped} 人います（同じパートの人はまとめて書きます）`, true);
         }
     }
 
@@ -443,6 +532,13 @@
         const t = tpl();
         // data-field="date year month day" のように空白区切りで複数書ける。どれか1つでも型紙にあれば出す
         $$('[data-field]').forEach((el) => { el.hidden = !el.dataset.field.split(' ').some((k) => k in t.fields); });
+        // フリガナの欄の名前は型紙で変えられる（fields.kana.label。シートの表記「ふりがな」に合わせるときなど）
+        const kanaLabel = $('[data-kana-label]');
+        if (kanaLabel) { // 型紙のお試し（tpl_preview）には入力欄が無い
+            const hira = t.fields.kana?.label === 'ふりがな';
+            kanaLabel.textContent = t.fields.kana?.label || 'フリガナ';
+            $('[data-f="kana"]').placeholder = `バンド名の読み（${hira ? 'ひらがな' : 'カタカナ'}）`;
+        }
         const hasExtras = (t.texts || []).length > 0 || Object.keys(t.choices || {}).length > 0;
         $('[data-extras-card]').hidden = !hasExtras;
         $('[data-extras-title]').textContent = t.extras_title || 'その他の項目';
@@ -564,7 +660,7 @@
                 rows.push({ no: '', title: (e.text ?? 'MC').trim(), sound: '', light: '', mc: true });
             } else {
                 no++;
-                rows.push({ no: String(no), title: e.title, sound: e.sound, light: e.light });
+                rows.push({ no: String(no), title: e.title, sound: e.sound, light: e.light, time: e.time || '', cols: e.cols || {} });
             }
         }
         return { rows, max, songs: no };
@@ -576,6 +672,35 @@
     const rowRange = (table, i) => (table.lines
         ? [table.lines[i], table.lines[i + 1]]
         : [table.top + table.row_h * i, table.top + table.row_h * (i + 1)]);
+
+    /** 型紙の曲ごとの追加の列（setlist.cols）。形がおかしいものは除く */
+    const extraCols = (st) => (Array.isArray(st.cols) ? st.cols : [])
+        .filter((c) => c && typeof c.key === 'string' && Array.isArray(c.col) && c.col.length === 2);
+
+    /**
+     * 分数（time）と追加の列（cols）のセル。左右がそろっている列（1pt 以内）は、行を上下に等分して積む
+     *   （クラブ・ドロシー: 上の段 = コーラス/CD、下の段 = 分数）。型紙に書いた順に上から（分数は最後）
+     * 戻り値: [{ key: 'time' | 列のキー, col: [左, 右], idx: 何段目, n: 何段中 }]
+     */
+    function setlistCells(st) {
+        const list = [...extraCols(st).map((c) => ({ key: c.key, col: c.col })), ...(Array.isArray(st.time) ? [{ key: 'time', col: st.time }] : [])];
+        const groups = [];
+        for (const c of list) {
+            const g = groups.find((x) => Math.abs(x[0].col[0] - c.col[0]) <= 1 && Math.abs(x[0].col[1] - c.col[1]) <= 1);
+            if (g) g.push(c);
+            else groups.push([c]);
+        }
+        return groups.flatMap((g) => g.map((c, idx) => ({ ...c, idx, n: g.length })));
+    }
+
+    /** 分数を「分」と「秒」に分ける。'3:45' / '3分45秒' / '3.45' → ['3', '45']。分けられなければ null */
+    function splitTime(v) {
+        const m = String(v).trim().match(/^(\d{1,2})\s*[:：.分]\s*(\d{1,2})\s*秒?$/);
+        return m ? [String(+m[1]), m[2].padStart(2, '0')] : null;
+    }
+
+    /** 秒 → '3:45' */
+    const fmtTime = (sec) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
 
     /** 「使う行: 7 / 10」の案内 */
     function renderRowsNote() {
@@ -625,7 +750,7 @@
         const id = state.nextSongId++;
         const song = kind === 'mc' ? { id, mc: true }
             : kind === 'text' ? { id, mc: true, text: '' }
-            : { id, mc: false, title: '', sound: '', light: '' };
+            : newSong(id);
         const i = after ? state.songs.indexOf(after) + 1 : state.songs.length;
         state.songs.splice(i, 0, song); // splice(位置, 消す数, 足すもの): 配列の途中に差し込む
         renderSongs();
@@ -684,15 +809,43 @@
                         addSong('song', song);
                     }
                 });
-                const tune = iconButton('tune', '音響・照明への要望', 'setlist__btn');
-                const hasNote = song.sound !== '' || song.light !== '';
-                tune.classList.toggle('is-on', hasNote);
-                li.append(title, tune);
+                // サブスク（Spotify / iTunes）の曲の紐付け。分数を自動で入れる・DB に登録するときに引き継ぐ
+                const link = iconButton('search', 'サブスクで曲を探す（分数が自動で入ります）', 'setlist__btn setlist__link');
+                if (song.art) {
+                    link.textContent = '';
+                    const img = document.createElement('img');
+                    img.src = song.art; // 画像の URL はサーバーが確かめたもの（api_track_search / DB の track）
+                    img.alt = '';
+                    link.append(img);
+                    link.title = `紐付け: ${song.trackTitle}（押すと探し直す）`;
+                }
+                const tune = iconButton('tune', '音響・照明への要望・分数など', 'setlist__btn');
+                const st = tpl().setlist;
+                const cols = extraCols(st);
+                const hasNote = () => song.sound !== '' || song.light !== '' || cols.some((c) => (song.cols[c.key] || '') !== '');
+                tune.classList.toggle('is-on', hasNote());
+                li.append(title, link, tune);
 
-                // 要望の欄（最初は隠す。書いてあれば開いておく）
+                // 要望・分数・追加の列の欄（最初は隠す。書いてあれば開いておく。分数は紐付けると自動で入るので開く理由にしない）
                 const notes = document.createElement('div');
                 notes.className = 'setlist__notes';
-                notes.hidden = !hasNote;
+                notes.hidden = !hasNote();
+                const extraInput = (label, value, onInput, cls = '') => {
+                    const wrap = document.createElement('label');
+                    wrap.className = `setlist__extra ${cls}`;
+                    const input = document.createElement('input');
+                    input.type = 'text';
+                    input.maxLength = 60;
+                    input.value = value;
+                    input.addEventListener('input', () => {
+                        onInput(input.value);
+                        tune.classList.toggle('is-on', hasNote());
+                        save();
+                    });
+                    wrap.append(label, input);
+                    notes.append(wrap);
+                    return input;
+                };
                 for (const [key, label] of [['sound', '音響への要望'], ['light', '照明への要望']]) {
                     const input = document.createElement('input');
                     input.type = 'text';
@@ -701,16 +854,31 @@
                     input.value = song[key];
                     input.addEventListener('input', () => {
                         song[key] = input.value;
-                        tune.classList.toggle('is-on', song.sound !== '' || song.light !== '');
+                        tune.classList.toggle('is-on', hasNote());
                         save();
                     });
                     notes.append(input);
                 }
+                // 型紙に分数の列があるとき（サブスクで紐付けると自動で入る。手で直せる）
+                if (Array.isArray(st.time)) {
+                    const time = extraInput('分数', song.time, (v) => { song.time = v; }, 'setlist__extra--time');
+                    time.placeholder = '3:45';
+                    time.inputMode = 'numeric';
+                }
+                // 型紙の曲ごとの追加の列（コーラス/CD・備考 など）
+                for (const c of cols) {
+                    extraInput(c.label || c.key, song.cols[c.key] || '', (v) => { song.cols[c.key] = v; });
+                }
+                // 候補の一覧（🔍 を押したら出す）
+                const results = document.createElement('div');
+                results.className = 'track-results';
+                results.hidden = true;
+                link.addEventListener('click', () => searchTrack(song, results));
                 tune.addEventListener('click', () => {
                     notes.hidden = !notes.hidden;
                     notes.classList.toggle('is-entering', !notes.hidden); // 開いたときだけふわっと出す
                 });
-                li.append(notes);
+                li.append(results, notes);
             }
 
             const del = iconButton('delete', song.text !== undefined ? 'テキストを消す' : song.mc ? 'MC を消す' : '曲を消す', 'setlist__btn setlist__btn--del');
@@ -721,10 +889,117 @@
                 save();
             });
             // 消すボタンは1行目の右端に置きたいので、要望欄より前に差し込む
-            li.insertBefore(del, li.querySelector('.setlist__notes'));
+            li.insertBefore(del, li.querySelector('.track-results, .setlist__notes'));
 
             bindSongDrag(li, handle, song);
             songList.append(li);
+        }
+    }
+
+    /**
+     * 🔍: 曲名（＋バンドのアーティスト名）でサブスクの曲を探して、行の下に候補を並べる（api_track_search.php）。
+     *   選んだら紐付けて、曲の長さを「分数」に入れる。もう一度押すと閉じる
+     *   外から来た文字（曲名など）は textContent で入れる（innerHTML だと XSS になりうる）
+     */
+    async function searchTrack(song, results) {
+        if (!results.hidden) {
+            results.hidden = true;
+            return;
+        }
+        const msg = (text) => {
+            const p = document.createElement('p');
+            p.className = 'track-results__msg';
+            p.textContent = text;
+            results.replaceChildren(p);
+            results.hidden = false;
+        };
+        const q = `${song.title} ${DATA.bandArtist || ''}`.trim();
+        if (song.title.trim() === '') {
+            msg('先に曲名を入れてください');
+            return;
+        }
+        msg('探しています…');
+        let data;
+        try {
+            const res = await fetch(`api_track_search.php?q=${encodeURIComponent(q)}`, { headers: { Accept: 'application/json' } });
+            data = await res.json();
+        } catch (e) {
+            data = { error: '通信できませんでした' };
+        }
+        if (data.error || !Array.isArray(data.tracks)) {
+            msg(data.error || '探せませんでした');
+            return;
+        }
+        results.textContent = '';
+        if (song.track) {
+            // 紐付けを外す
+            const off = document.createElement('button');
+            off.type = 'button';
+            off.className = 'btn btn--ghost btn--sm';
+            off.textContent = '紐付けを外す';
+            off.addEventListener('click', () => {
+                Object.assign(song, { track: '', trackTitle: '', art: '' });
+                renderSongs();
+                save();
+            });
+            results.append(off);
+        }
+        if (data.tracks.length === 0) {
+            const p = document.createElement('p');
+            p.className = 'track-results__msg';
+            p.textContent = '見つかりませんでした';
+            results.append(p);
+        }
+        for (const t of data.tracks) {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'track-option';
+            const img = document.createElement('img');
+            img.src = t.artwork_url;
+            img.alt = '';
+            img.loading = 'lazy';
+            const text = document.createElement('span');
+            const title = document.createElement('div');
+            title.className = 'track-option__title';
+            title.textContent = t.title;
+            const sub = document.createElement('div');
+            sub.className = 'track-option__sub';
+            sub.textContent = `${t.artist_name} ・ ${t.album_title}`;
+            text.append(title, sub);
+            const len = document.createElement('span');
+            len.className = 'track-option__preview';
+            len.textContent = t.duration ? fmtTime(t.duration) : '';
+            btn.append(img, text, len);
+            btn.addEventListener('click', () => {
+                Object.assign(song, { track: t.key, trackTitle: t.title, art: t.artwork_url });
+                if (t.duration) song.time = fmtTime(t.duration);
+                renderSongs();
+                save();
+            });
+            results.append(btn);
+        }
+        results.hidden = false;
+    }
+
+    /**
+     * 開いたとき: 紐付けてあるのに分数が空の曲（DB で紐付け済みの曲など）は、曲の長さを聞いて埋める（api_track_info.php）。
+     *   曲の長さは DB に保存していないので、1曲ずつ聞き直す。失敗したら何もしない（手で書ける）
+     */
+    async function fillTimes() {
+        if (DATA.tplPreview || !Array.isArray(tpl().setlist.time)) return;
+        for (const song of state.songs) {
+            if (song.mc || !song.track || song.time) continue;
+            try {
+                const res = await fetch(`api_track_info.php?key=${encodeURIComponent(song.track)}`, { headers: { Accept: 'application/json' } });
+                const d = await res.json();
+                if (d.duration && !song.time) {
+                    song.time = fmtTime(d.duration);
+                    renderSongs();
+                    save();
+                }
+            } catch (e) {
+                // 通信できなくても、分数は手で書ける
+            }
         }
     }
 
@@ -1410,12 +1685,14 @@
             for (let i = 0; i < gtN; i++) {
                 const x = left + aw / 2 + i * (aw + gap);
                 gtX.push(x);
-                addItem('box', { x, y: ampY, scale, label: (tpl().gt_amps || ['JC', 'Marshall'])[i] || 'Gt Amp' });
+                if (!tpl().amps_printed) { // アンプが印刷済みのシートは四角を置かない（位置は人の丸に使う）
+                    addItem('box', { x, y: ampY, scale, label: (tpl().gt_amps || ['JC', 'Marshall'])[i] || 'Gt Amp' });
+                }
             }
         }
         // ---- ベースアンプ: ドラムの左のすき間の真ん中 ----
         const baX = clampX(drumL / 2);
-        if (count('ba') > 0) {
+        if (count('ba') > 0 && !tpl().amps_printed) {
             addItem('box', { x: baX, y: ampY, label: 'Ba Amp' });
         }
         // ---- キーボード: 左側の真ん中の高さ ----
@@ -1719,7 +1996,7 @@
             let baseline = top + (bh - lineH * lines.length) / 2 + lineH / 2 + size * GLYPH_MID;
             for (const line of lines) {
                 const w = measure(line, size);
-                const x = align === 'center' ? x0 + (x1 - x0 - w) / 2 : x0 + pad;
+                const x = align === 'center' ? x0 + (x1 - x0 - w) / 2 : align === 'right' ? x1 - pad - w : x0 + pad;
                 page.drawText(line, { x, y: Y(baseline), size, font, color: black });
                 baseline += lineH;
             }
@@ -1784,17 +2061,17 @@
                 }
             }
         } else {
-            state.members
-                .filter((m) => m.name.trim() !== '' || m.part.trim() !== '')
-                .slice(0, mt.rows * memberCols(mt).length) // 書ける人数を超えた人は書かない
-                .forEach((m, i) => {
-                    // 左の組を上から埋めて、続きは右の組の上から
-                    const [partCol, nameCol] = memberCols(mt)[Math.floor(i / mt.rows)];
-                    const top = mt.top + mt.row_h * (i % mt.rows);
-                    const bottom = top + mt.row_h;
-                    drawInBox(m.part, [partCol[0], top, partCol[1], bottom], { size: 9, align: 'center', pad: 1 });
-                    drawInBox(m.name, [nameCol[0] + 3, top, nameCol[1], bottom], { size: 11 });
-                });
+            // どの行に誰を書くか（印刷済みのパートの行・入りきらないときのまとめ方は memberPlacement）
+            for (const r of memberPlacement(mt).rows) {
+                // 左の組を上から埋めて、続きは右の組の上から
+                const [partCol, nameCol] = memberCols(mt)[Math.floor(r.slot / mt.rows)];
+                const top = mt.top + mt.row_h * (r.slot % mt.rows);
+                const bottom = top + mt.row_h;
+                if (!r.fixed) { // パートが印刷済みの行には書かない
+                    drawInBox(r.part, [partCol[0], top, partCol[1], bottom], { size: 9, align: 'center', pad: 1 });
+                }
+                drawInBox(r.names.join('・'), [nameCol[0] + 3, top, nameCol[1], bottom], { size: 11 });
+            }
         }
 
         // ---- 3. セットリスト ----
@@ -1824,6 +2101,26 @@
             } else if (st.sound && st.light) { // 音響・照明の列が無いシートには書かない
                 drawInBox(r.sound, [st.sound[0], top, st.sound[1], bottom], note);
                 drawInBox(r.light, [st.light[0], top, st.light[1], bottom], note);
+            }
+            // 分数・追加の列（同じ列に積んだものは、行を上下に等分した段に書く）
+            for (const c of setlistCells(st)) {
+                const h = (bottom - top) / c.n;
+                const [l, rr] = [Math.min(...c.col), Math.max(...c.col)];
+                const y0 = top + h * c.idx, y1 = y0 + h;
+                const cellSize = Math.min(11, h * 0.6);
+                if (c.key !== 'time') {
+                    drawInBox(r.cols[c.key], [l, y0, rr, y1], { size: cellSize, min: 5, wrap: true, pad: 2 });
+                    continue;
+                }
+                const mmss = splitTime(r.time);
+                if (st.time_colon && mmss) {
+                    // 「:」が印刷済み: 列の真ん中を「:」とみなして、分を左に右寄せ・秒を右に左寄せ
+                    const mid = (l + rr) / 2, gap = cellSize * 0.35;
+                    drawInBox(mmss[0], [l, y0, mid - gap, y1], { size: cellSize, align: 'right', pad: 0 });
+                    drawInBox(mmss[1], [mid + gap, y0, rr, y1], { size: cellSize, align: 'left', pad: 0 });
+                } else {
+                    drawInBox(mmss ? `${mmss[0]}:${mmss[1]}` : r.time, [l, y0, rr, y1], { size: cellSize, min: 5 });
+                }
             }
         });
 
@@ -2038,12 +2335,15 @@
         if (DATA.blank) {
             return; // 白紙（バンドなし）は登録先が無い
         }
-        const titles = state.songs.filter((x) => !x.mc && x.title.trim() !== '').map((x) => x.title.trim());
+        const picked = state.songs.filter((x) => !x.mc && x.title.trim() !== '');
+        const titles = picked.map((x) => x.title.trim());
+        const tracks = picked.map((x) => x.track || ''); // シートで紐付けたサブスクの曲（登録画面に引き継ぐ。空 = なし）
         if (titles.length === 0) {
             return;
         }
         const db = DATA.dbSongs.map((t) => t.trim());
-        const same = titles.length === db.length && titles.every((t, i) => t === db[i]);
+        // 曲名も紐付けも DB と同じなら聞かない（紐付けだけ変えたときも登録を聞く）
+        const same = titles.length === db.length && titles.every((t, i) => t === db[i] && tracks[i] === (DATA.dbTracks[i] || ''));
         if (same) {
             setStatus('できました！ セットリストは DB に登録済みです ✓');
             return;
@@ -2067,13 +2367,16 @@
                 return;
             }
             const form = document.querySelector('[data-register-form]');
-            form.querySelectorAll('[name="titles[]"]').forEach((el) => el.remove()); // 前に入れた分は消す
-            titles.forEach((t) => {
-                const input = document.createElement('input');
-                input.type = 'hidden';
-                input.name = 'titles[]'; // [] を付けると PHP 側で配列 $_POST['titles'] として受け取れる
-                input.value = t;
-                form.append(input);
+            form.querySelectorAll('[name="titles[]"], [name="tracks[]"]').forEach((el) => el.remove()); // 前に入れた分は消す
+            titles.forEach((t, i) => {
+                // [] を付けると PHP 側で配列 $_POST['titles'] として受け取れる。tracks[] は同じ順の紐付け（空 = なし）
+                for (const [name, value] of [['titles[]', t], ['tracks[]', tracks[i]]]) {
+                    const input = document.createElement('input');
+                    input.type = 'hidden';
+                    input.name = name;
+                    input.value = value;
+                    form.append(input);
+                }
             });
             form.submit();
         }, { once: true }); // once: 1回呼ばれたら自動で外れる（何回も PDF を作ったときに重ならない）
@@ -2098,6 +2401,7 @@
         state.template = tplSelect.value;
         renderAll();
         save();
+        fillTimes(); // 分数の列がある型紙に替えたら、紐付け済みの曲の分数を埋める
     });
 
     // 「DB の内容に戻す」
@@ -2369,6 +2673,7 @@
     if (restored) {
         $('[data-saved-note]').hidden = false;
     }
+    fillTimes(); // 紐付け済みで分数が空の曲は、曲の長さを聞いて埋める
 
     /* ---- 型紙のお試し（?tpl_preview=1&embed=1）----
      *  型紙の編集画面（sheet_editor.js）が浮いた枠の中に <iframe> で開き、postMessage で「保存前の型紙」と PDF を送ってくる。
@@ -2376,21 +2681,28 @@
      *  送り主は「自分を埋め込んでいる画面（parent）」かつ同じサイト（origin）のときだけ信じる
      */
 
+    /** お試しのバンド（7人）。セット図はこの7人だけで並べる */
+    const SAMPLE_BAND = [
+        ['Vo', '山田 太郎'], ['Gt', '佐藤 花子'], ['Gt', '鈴木 一郎'], ['Key', '伊藤 四郎'], ['Key', '渡辺 美咲'], ['Ba', '高橋 次郎'], ['Dr', '田中 三郎'],
+    ];
+
     /** 型紙のお試しに入れる仮の値（毎回同じ）。曲は型紙の行数ぶん、自由記入欄は欄の名前をそのまま書く */
     function sampleState() {
         const s = defaultState();
         Object.assign(s, { band: 'サンプルバンド', kana: 'サンプルバンド', date: '2026/10/12', order: '3', rep: '山田 太郎' });
-        s.members = [
-            ['Vo', '山田 太郎'], ['Gt', '佐藤 花子'], ['Gt', '鈴木 一郎'], ['Ba', '高橋 次郎'], ['Dr', '田中 三郎'], ['Key', '伊藤 四郎'],
-        ].map(([part, name]) => ({ part, name }));
-        // 書き込む表は、2組目まで全部の行を埋める（パートが印刷済みの表は上の6人を振り分けるだけ）
+        s.members = SAMPLE_BAND.map(([part, name]) => ({ part, name }));
+        // 書き込む表は、2組目まで全部の行を埋める（枠の下の方まで確かめられるように。パートが印刷済みの表は上の7人を振り分けるだけ）
         const mt = tpl().members;
         if (mt.mode !== 'slots') {
-            const sei = ['渡辺', '中村', '小林', '加藤', '吉田', '山口', '松本', '井上', '木村', '清水'];
-            const mei = ['健太', '美咲', '翔', '結衣', '大輝', 'さくら', '蓮', '陽菜', '悠真', '凛'];
+            const sei = ['中村', '小林', '加藤', '吉田', '山口', '松本', '井上', '木村', '清水', '林'];
+            const mei = ['健太', '結衣', '翔', '大輝', 'さくら', '蓮', '陽菜', '悠真', '凛', '葵'];
             const parts = ['Cho', 'Gt', 'Perc', 'Sax', 'Tp', 'Vn'];
             for (let k = 0; s.members.length < mt.rows * memberCols(mt).length; k++) {
                 s.members.push({ part: parts[k % parts.length], name: `${sei[k % sei.length]} ${mei[k % mei.length]}` });
+            }
+            // パートが印刷済みの行がある型紙は、枠より多くして、まとめ方（同じパートで1行・印刷済みの行に足す・名前（Vo/Gt））も見せる
+            if (mt.fixed && Object.keys(mt.fixed).length) {
+                s.members.push({ part: 'Vo/Gt', name: '前田 拓海' }, { part: 'Dr', name: '岡田 優' });
             }
         }
         const n = rowCount(tpl().setlist);
@@ -2404,7 +2716,9 @@
         s.songs = [];
         for (let i = 1; i < n; i++) {
             const [sound, light] = notes[i] || ['', ''];
-            s.songs.push({ id: i, mc: false, title: `サンプル曲${i}`, sound, light });
+            // 分数は曲ごとに少しずつ変える。追加の列（コーラス/CD など）は1曲目だけ、列の名前をそのまま書く
+            const cols = i === 1 ? Object.fromEntries(extraCols(tpl().setlist).map((c) => [c.key, c.label || c.key])) : {};
+            s.songs.push(newSong(i, { title: `サンプル曲${i}`, sound, light, time: fmtTime(200 + i * 13), cols }));
             if (i === 1) s.songs.push({ id: 100, mc: true });
         }
         s.nextSongId = 101;
@@ -2437,7 +2751,11 @@
             if (tpl().members.mode === 'slots') {
                 assignSlots(); // パートが印刷済みの表は、仮のメンバーを振り分ける
             }
-            autoLayout(); // セット図も仮のメンバーから並べる
+            // セット図はお試しのバンドの7人だけで並べる（表を埋めるために足した人は置かない）
+            const all = state.members;
+            state.members = all.slice(0, SAMPLE_BAND.length);
+            autoLayout();
+            state.members = all;
             delete $('[data-texts]').dataset.tpl;
             renderAll();
             if (first) {
