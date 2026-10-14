@@ -325,13 +325,6 @@ render_header('セッティングシート編集', 'tools');
     <table class="table">
         <thead><tr><th>名前</th><th>自動で選ぶ会場名</th><th>登録した人</th><th>更新</th><th></th></tr></thead>
         <tbody>
-        <?php foreach (SHEET_TEMPLATES as $key => $tpl): ?>
-            <tr>
-                <td><?= h($tpl['label']) ?></td>
-                <td class="muted small"><?= h(implode(' / ', $tpl['venue_words'])) ?></td>
-                <td class="muted small" colspan="3">初期テンプレート（編集不可）</td>
-            </tr>
-        <?php endforeach; ?>
         <?php foreach ($rows as $r): ?>
             <tr<?= (int)$r['template_id'] === $id ? ' class="is-active"' : '' ?>>
                 <td><?= h($r['label']) ?></td>
@@ -390,6 +383,12 @@ render_header('セッティングシート編集', 'tools');
                 </select>
                 <button type="button" class="btn btn--ghost btn--sm" data-sample-copy>表示する</button>
             </span>
+        </div>
+        <!-- 備え付けギターアンプ（型紙の gt_amps）。中身は sheet_editor.js の gtAmpsPanel() が作る -->
+        <div class="field">
+            <span>備え付けギターアンプ（自動配置は左から順）</span>
+            <input type="text" maxlength="20" placeholder="アンプ名を入力して Enter…" aria-label="備え付けギターアンプを追加" data-gt-amps-input>
+            <span class="chip-list" data-gt-amps></span>
         </div>
 
         <!-- 枠の配置エディタ（assets/sheet_editor.js） -->
@@ -538,5 +537,5 @@ $editorData = [
 ];
 ?>
 <script type="application/json" id="sheet-editor-data"><?= json_encode($editorData, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP) ?></script>
-<script src="assets/sheet_editor.js?v=30" defer></script>
+<script src="assets/sheet_editor.js?v=31" defer></script>
 <?php render_footer();

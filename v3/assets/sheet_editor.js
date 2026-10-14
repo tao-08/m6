@@ -630,6 +630,7 @@
         panel.textContent = '';
         advBox.textContent = '';
         out = panel;
+        gtAmpsPanel();
         if (!it) {
             panel.innerHTML = '<span class="muted small">Ctrlキーをホールドして正方形に編集。矢印キーで 0.5pt（Shift で 5pt）ずつ調整可。</span>';
             syncAdv();
@@ -640,7 +641,6 @@
         panel.append(title);
         const num = numInput;
         drawBasic(it, num);
-        if (it.id === 'stage') gtAmpsPanel();
         out = advBox;
         drawAdvanced(it, num);
         out = panel;
@@ -794,40 +794,37 @@
         }
     }
 
-    /** 備え付けギターアンプ（gt_amps）: 作成画面の四角の候補・自動配置で並んでいる順に使う。セット図の枠を選んだとき詳細設定の外に出す */
+    /** 備え付けギターアンプ（gt_amps）: 作成画面の四角の候補・自動配置で並んでいる順に使う。フォームの「登録済テンプレートから編集する」の下に出す */
+    const ampChips = document.querySelector('[data-gt-amps]');
+    const ampInput = document.querySelector('[data-gt-amps-input]');
+    const nowAmps = () => (Array.isArray(cfg?.gt_amps) ? cfg.gt_amps : GT_AMPS);
+    const setAmps = (next) => {
+        if (next.length === 0 || next.join('\n') === GT_AMPS.join('\n')) delete cfg.gt_amps;
+        else cfg.gt_amps = next;
+        changed(true);
+    };
+    ampInput?.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter') return;
+        e.preventDefault(); // フォームを送信しない
+        const v = ampInput.value.trim();
+        if (!cfg || !v) return;
+        if (!nowAmps().includes(v)) setAmps([...nowAmps(), v]);
+        ampInput.value = '';
+    });
     function gtAmpsPanel() {
-        const ampsHead = document.createElement('div');
-        ampsHead.className = 'ed-amps__head';
-        ampsHead.textContent = '備え付けギターアンプ';
-        out.append(ampsHead);
-        const amps = document.createElement('div');
-        amps.className = 'ed-amps';
-        const now = Array.isArray(cfg.gt_amps) ? cfg.gt_amps : GT_AMPS;
-        const setAmps = (next) => {
-            if (next.length === 0 || next.join('\n') === GT_AMPS.join('\n')) delete cfg.gt_amps;
-            else cfg.gt_amps = next;
-            changed(true);
-        };
-        for (const name of now) {
+        if (!ampChips) return;
+        ampChips.textContent = '';
+        if (!cfg) return;
+        for (const name of nowAmps()) {
             const chip = document.createElement('span');
-            chip.className = 'ed-chip ed-amps__chip';
+            chip.className = 'chip';
             chip.textContent = name;
-            const x = Object.assign(document.createElement('button'), { type: 'button', textContent: '×' });
-            x.setAttribute('aria-label', `${name} を消す`);
-            x.addEventListener('click', () => setAmps(now.filter((v) => v !== name)));
+            const x = Object.assign(document.createElement('button'), { type: 'button', className: 'chip__x', textContent: '×' });
+            x.setAttribute('aria-label', '外す');
+            x.addEventListener('click', () => setAmps(nowAmps().filter((v) => v !== name)));
             chip.append(x);
-            amps.append(chip);
+            ampChips.append(chip);
         }
-        const input = Object.assign(document.createElement('input'), { type: 'text', maxLength: 20, placeholder: 'アンプを追加' });
-        input.setAttribute('aria-label', '備え付けギターアンプを追加');
-        input.addEventListener('keydown', (e) => {
-            if (e.key !== 'Enter') return;
-            e.preventDefault(); // フォームを送信しない
-            const v = input.value.trim();
-            if (v && !now.includes(v)) setAmps([...now, v]);
-        });
-        amps.append(input);
-        out.append(amps);
     }
 
     /** パネルに数字の入力欄を1つ足す */
