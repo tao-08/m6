@@ -363,7 +363,6 @@ render_header('セットリストを編集', 'lives');
                 <!-- 🔍 の検索結果（assets/app.js の setupTrackSearch が中身を入れる） -->
                 <div class="track-results" data-track-results hidden></div>
                 <div class="performers">
-                    <div class="performers__tools"><button type="button" class="linkbtn small" data-toggle-all>全員 ON / OFF</button></div>
                     <?php foreach ($members as $memberId => $m):
                         // 既存の曲: 記録どおり / 新しい曲: バンドの担当を初期値にして全員ON
                         $insts = $isNew ? $m['roles'] : ($played[$song['song_id']][$memberId] ?? []);

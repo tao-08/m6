@@ -753,9 +753,12 @@
         const st = tpl().setlist;
         const max = rowCount(st);
         const rows = [];
+        const marks = []; // 型紙に setlist.mc（枠の外の列）があるとき: MC を行にせず、この番号の行の上の境目に「MC＞」を書く
         let no = 0;
         for (const e of entries) {
-            if (e.mc) {
+            if (e.mc && e.text === undefined && Array.isArray(st.mc)) {
+                marks.push(rows.length);
+            } else if (e.mc) {
                 // text がある行は「テキストの行」。MC と同じく曲順を付けず、書いた文字をそのまま出す
                 rows.push({ no: '', title: (e.text ?? 'MC').trim(), sound: '', light: '', mc: true });
             } else {
@@ -763,7 +766,7 @@
                 rows.push({ no: String(no), title: e.title, sound: e.sound, light: e.light, time: e.time || '', cols: e.cols || {} });
             }
         }
-        return { rows, max, songs: no };
+        return { rows, marks, max, songs: no };
     }
 
     /** 表の行数（lines で書いた表は「境目の数 − 1」） */
@@ -809,7 +812,7 @@
         let msg = `シートの行: ${rows.length} / ${max}`;
         note.classList.remove('is-warn');
         if (rows.length > max) {
-            msg += ` — 多すぎて ${rows.length - max} 行入りません（MC も1行使います）`;
+            msg += ` — 多すぎて ${rows.length - max} 行入りません${Array.isArray(tpl().setlist.mc) ? '' : '（MC も1行使います）'}`;
             note.classList.add('is-warn');
         }
         note.textContent = msg;
@@ -2204,6 +2207,12 @@
         const rowH = rowRange(st, 0)[1] - rowRange(st, 0)[0];
         const titleSize = Math.min(16, rowH * 0.48);
         const noteSize = Math.min(11, rowH * 0.32);
+        // MC を枠の外に書くシート: 曲と曲の境目の高さに「MC＞」（最後の MC は最後の行の下の線）
+        for (const m of lay.marks) {
+            const n = Math.min(m, lay.rows.length, rowCount(st));
+            const y = n < rowCount(st) ? rowRange(st, n)[0] : rowRange(st, n - 1)[1];
+            drawInBox(st.mc_text || 'MC＞', [st.mc[0], y - rowH / 2, st.mc[1], y + rowH / 2], { size: Math.min(11, rowH * 0.5), min: 5, align: 'center', pad: 1 });
+        }
         lay.rows.slice(0, rowCount(st)).forEach((r, i) => {
             const [top, bottom] = rowRange(st, i);
             if (st.no) { // 曲順が印刷済みのシートには書かない
@@ -2661,6 +2670,11 @@
 
     /** 拡大率 1 のときの表示の幅（枠の幅 − 内側の余白） */
     const fitWidth = () => previewBox.clientWidth - 16;
+    // PC では枠を動かせる・大きさを変えられる（app.js の floatWin）。型紙エディタの中の iframe（画面いっぱい）では使わない
+    //   大きさを変えたら、拡大していないときは PDF を枠の幅に合わせ直す
+    const placePreview = DATA.tplPreview || typeof floatWin !== 'function' ? () => {} : floatWin(previewBox, 'sheet-preview-win', () => {
+        if (previewOpen && zoom === 1) previewCanvas.style.width = `${fitWidth()}px`;
+    });
 
     /**
      * 拡大率を変える。指の真ん中（cx, cy: 枠の左上からの px）の場所が、拡大しても指の下に残るようにスクロールを合わせる。
@@ -2738,6 +2752,7 @@
         fab.querySelector('[data-fab-text]').textContent = open ? '閉じる' : 'プレビュー';
         document.documentElement.classList.toggle('is-previewing', open); // 開いている間は後ろの画面をスクロールさせない
         if (open) {
+            placePreview(); // 前に動かした位置・大きさで出す（幅を測る前に）
             zoom = 1; // 開くたびに全体が見える大きさから
             previewCanvas.style.width = `${fitWidth()}px`;
             renderPreview();

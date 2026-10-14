@@ -334,7 +334,6 @@ function setupToasts() {
 /* ---------------------------------------------------------------------
  * 曲の編集（songs_edit.php）
  *   data-add-song       … <template data-song-template> をコピーして空の曲カードを足す
- *   data-toggle-all     … そのカードの全員のチェックを一括で ON / OFF
  *   data-performer-on   … チェックを外した人を薄く表示
  *   data-omnibus        … オムニバスのチェック。外すとアーティスト欄をバンドのアーティストに戻して編集不可にする。
  *                         付けると空欄（前に書いていた名前があれば戻す）にして編集できるようにする
@@ -533,13 +532,7 @@ function setupSongs() {
       card.querySelector('[data-song-delete]').value = on ? '1' : '';
       del.setAttribute('aria-pressed', String(on));
       del.setAttribute('aria-label', on ? '削除を取り消す' : 'この曲を削除');
-      return;
     }
-    const btn = e.target.closest('[data-toggle-all]');
-    if (!btn) return;
-    const boxes = [...btn.closest('[data-song-card]').querySelectorAll('[data-performer-on]')];
-    const turnOn = boxes.some((b) => !b.checked); // 1人でもOFFなら全員ON、全員ONなら全員OFF
-    boxes.forEach((b) => { b.checked = turnOn; b.closest('.performer').classList.toggle('is-off', !turnOn); });
   });
   list.addEventListener('change', (e) => {
     if (e.target.matches('[data-performer-on]')) {
@@ -4318,4 +4311,78 @@ function setupKanaAi() {
       btn.disabled = false;
     }
   });
+}
+
+/**
+ * プレビューの浮いた枠を、PC ではウィンドウのように動かせて、右下の角で大きさも変えられるようにする
+ * （セッティングシート作成 setting_sheet.js・型紙エディタ sheet_editor.js）。スマホは今のまま（画面いっぱい）。
+ *   上に「つかむバー」を足す。位置と大きさは localStorage（key）に覚えて、次に開いたときも同じ所に出す
+ *   onResize: 大きさが変わったとき（中の PDF の幅を合わせ直す用）
+ *   開いたあとに呼ぶ place() を返す（hidden の間は大きさが測れないので、開くたびに呼んでもらう）
+ */
+function floatWin(box, key, onResize = () => {}) {
+  const pc = window.matchMedia('(min-width: 761px)');
+  const bar = document.createElement('div');
+  bar.className = 'float-win__bar';
+  bar.innerHTML = '<span class="icon" aria-hidden="true">drag_indicator</span>';
+  bar.title = 'ドラッグで移動';
+  box.prepend(bar);
+  box.classList.add('float-win');
+  const load = () => { try { return JSON.parse(localStorage.getItem(key)); } catch { return null; } };
+  const store = () => {
+    if (!pc.matches || box.hidden) return;
+    const r = box.getBoundingClientRect();
+    try { localStorage.setItem(key, JSON.stringify({ x: r.left, y: r.top, w: r.width, h: r.height })); } catch { /* 覚えられなくても動く */ }
+  };
+  // 画面からはみ出さないように収めて、left / top / width / height で置く（right / bottom の指定は消す）
+  const put = (x, y, w, h) => {
+    w = Math.min(Math.max(w, 260), innerWidth - 16);
+    h = Math.min(Math.max(h, 200), innerHeight - 16);
+    x = Math.min(Math.max(x, 8), innerWidth - w - 8);
+    y = Math.min(Math.max(y, 8), innerHeight - h - 8);
+    Object.assign(box.style, { left: `${x}px`, top: `${y}px`, width: `${w}px`, height: `${h}px`, right: 'auto', bottom: 'auto' });
+  };
+  function place() {
+    if (!pc.matches) {
+      box.removeAttribute('style'); // スマホは CSS の置き方に戻す
+      return;
+    }
+    const s = load();
+    if (s) {
+      put(s.x, s.y, s.w, s.h);
+    } else {
+      const r = box.getBoundingClientRect(); // CSS の初期位置（右側）のまま、動かせる形にする
+      put(r.left, r.top, r.width, r.height);
+    }
+  }
+  let drag = null;
+  bar.addEventListener('pointerdown', (e) => {
+    if (!pc.matches) return;
+    e.preventDefault();
+    const r = box.getBoundingClientRect();
+    drag = { dx: e.clientX - r.left, dy: e.clientY - r.top, w: r.width, h: r.height };
+    bar.setPointerCapture(e.pointerId);
+    box.classList.add('is-moving'); // 中の iframe にマウスを取られないように
+  });
+  bar.addEventListener('pointermove', (e) => {
+    if (drag) put(e.clientX - drag.dx, e.clientY - drag.dy, drag.w, drag.h);
+  });
+  const end = () => {
+    if (!drag) return;
+    drag = null;
+    box.classList.remove('is-moving');
+    store();
+  };
+  bar.addEventListener('pointerup', end);
+  bar.addEventListener('pointercancel', end);
+  // 右下の角（CSS の resize）で大きさを変えたとき
+  let timer = 0;
+  new ResizeObserver(() => {
+    if (box.hidden) return;
+    onResize();
+    clearTimeout(timer);
+    timer = setTimeout(store, 300);
+  }).observe(box);
+  pc.addEventListener('change', place);
+  return place;
 }

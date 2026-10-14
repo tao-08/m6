@@ -38,6 +38,7 @@
 
 /* その他の自由記入欄 */
 .sheet-texts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 760px) { .sheet-texts textarea { resize: vertical; } } /* スマホは下にだけ伸ばせる（横に伸ばすと画面からはみ出す） */
 .sheet-texts .field:has(textarea) { grid-column: 1 / -1; } /* 複数行の欄は横いっぱい（:has は「中に〜を持つ要素」を選ぶ） */
 .sheet-texts:empty { display: none; }
 
@@ -210,6 +211,9 @@ html.is-typing .sheet-preview { top: 8px; bottom: calc(var(--kb, 0px) + 64px); }
 @media (min-width: 761px) {
   .sheet-preview { left: auto; right: 24px; width: min(640px, calc(100vw - 48px)); bottom: 150px; }
 }
+/* 動かせる枠のつかむバー（app.js の floatWin）は、内側の余白の外まで広げて上に貼り付ける */
+.sheet-preview .float-win__bar { margin: -8px -8px 6px; top: -8px; }
+@media (min-width: 761px) { .sheet-preview.float-win .sheet-preview__note { top: 14px; } } /* メッセージはバーの下に貼り付く */
 .sheet-preview canvas { display: block; margin: 0 auto; background: #fff; box-shadow: 0 1px 4px rgb(0 0 0 / .2); }
 .sheet-preview.is-busy canvas { opacity: .6; transition: opacity .2s; }
 .sheet-preview__note { position: sticky; top: 0; margin: 0 0 6px; text-align: center; color: var(--muted); min-height: 1em; }
@@ -272,3 +276,6 @@ html.is-typing .sheet-preview { top: 8px; bottom: calc(var(--kb, 0px) + 64px); }
   /* 描画モードの枠は、ふわっと色が付く */
   .stage { transition: outline-color .2s ease; }
 }
+
+/* シート内のボタンは白（元に戻す・やり直す・削除・PDF などの主ボタンは除く） */
+.sheet-card .btn:not(.btn--primary, .btn--danger, [data-undo], [data-redo], [aria-pressed="true"]) { background: #fff; color: #1a1a1a; }

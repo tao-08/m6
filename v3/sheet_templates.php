@@ -162,6 +162,8 @@ function parse_sheet_config(string $json): array
         && is_string($c['label'] ?? '') && mb_strlen((string)($c['label'] ?? '')) <= 30 && $isCol($c['col'] ?? null);
     if (!is_array($cols) || !array_is_list($cols) || count(array_filter($cols, $colOk)) !== count($cols)) $broken[] = 'セットリストの追加の列（setlist.cols）';
     if (isset($config['setlist']['time']) && !$isCol($config['setlist']['time'])) $broken[] = 'セットリストの分数の列（setlist.time）';
+    if (isset($config['setlist']['mc']) && !$isCol($config['setlist']['mc'])) $broken[] = 'セットリストの MC の列（setlist.mc）';
+    if (isset($config['setlist']['mc_text']) && (!is_string($config['setlist']['mc_text']) || mb_strlen($config['setlist']['mc_text']) > 10)) $broken[] = 'MC の印（setlist.mc_text。10文字まで）';
     if ($broken) {
         throw new RuntimeException(implode(' / ', $broken) . ' の書き方が足りません');
     }
@@ -170,9 +172,15 @@ function parse_sheet_config(string $json): array
     return $config;
 }
 
-/** この型紙を編集・削除してよいか = 管理者か、作った本人 */
+/** 誰も編集・削除できない型紙の PDF（サークル共通のセッティングシート。名前は変えられるので PDF で見分ける） */
+const LOCKED_SHEET_PDFS = ['assets/sheets/club_common.pdf'];
+
+/** この型紙を編集・削除してよいか = 管理者か、作った本人（共通のセッティングシートは誰もだめ） */
 function can_edit_template(array $tpl, array $user): bool
 {
+    if (in_array($tpl['pdf_path'], LOCKED_SHEET_PDFS, true)) {
+        return false;
+    }
     return is_admin() || ($tpl['created_by'] !== null && (int)$tpl['created_by'] === (int)$user['user_id']);
 }
 
@@ -197,7 +205,7 @@ if ($id > 0) {
     }
     // 他の人の型紙は開けない（URL の id を書き換えても、保存・削除の POST も含めてここで止まる）
     if (!can_edit_template($editing, $user)) {
-        flash('この型紙は作った人と管理者だけが編集できます', 'error');
+        flash(in_array($editing['pdf_path'], LOCKED_SHEET_PDFS, true) ? '共通のセッティングシートは編集できません' : 'この型紙は作った人と管理者だけが編集できます', 'error');
         redirect('sheet_templates');
     }
 }
@@ -298,7 +306,7 @@ if (is_post()) {
 
 // ---- 一覧 ----
 // GROUP_CONCAT: つながっている会場の名前を「 / 」でつないで1つの文字にする（会場が無ければ NULL）
-$rows = $pdo->query("SELECT t.template_id, t.label, t.updated_at, t.created_by, u.name AS creator,
+$rows = $pdo->query("SELECT t.template_id, t.label, t.updated_at, t.created_by, t.pdf_path, u.name AS creator,
                             GROUP_CONCAT(v.name ORDER BY v.sort_order, v.name SEPARATOR ' / ') AS venue_names
                        FROM sheet_template t
                        LEFT JOIN user_account u ON u.user_id = t.created_by
@@ -537,5 +545,5 @@ $editorData = [
 ];
 ?>
 <script type="application/json" id="sheet-editor-data"><?= json_encode($editorData, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP) ?></script>
-<script src="assets/sheet_editor.js?v=31" defer></script>
+<script src="assets/sheet_editor.js?v=38" defer></script>
 <?php render_footer();

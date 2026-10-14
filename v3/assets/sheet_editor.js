@@ -42,7 +42,7 @@
 
     // 1行の欄。year / month / day は「年」「月」が印刷済みのシート用（出演日から数字だけ書く）
     const FIELD_LABELS = { band: 'バンド名', kana: 'フリガナ', date: '出演日', year: '年', month: '月', day: '日', order: '出演順', rep: '代表者氏名', count: '出演人数' };
-    const COL_LABELS = { part: 'パート', name: '氏名', part2: 'パート', name2: '氏名', mic: 'マイク', no: '曲順', title: '曲名', sound: '音響', light: '照明', request: '備考（音響・照明）', time: '分数' };
+    const COL_LABELS = { part: 'パート', name: '氏名', part2: 'パート', name2: '氏名', mic: 'マイク', no: '曲順', title: '曲名', sound: '音響', light: '照明', request: '備考（音響・照明）', time: '分数', mc: 'MC' };
     // 備え付けギターアンプの標準（assets/setting_sheet.js の gtAmps() と同じ。型紙に gt_amps が無いとき）
     const GT_AMPS = ['JC', 'Marshall'];
     const PAIR_LABELS ={ part: 'パート1', name: '名前1', part2: 'パート2', name2: '名前2' };
@@ -223,8 +223,15 @@
         svg.setAttribute('viewBox', `0 0 ${pw} ${ph}`);
         svg.textContent = '';
         const k = ptPerPx();
-        // 選んでいる枠は最後に描く（上に重なって、つかみやすい）
-        const ordered = [...items.filter((it) => it.id !== selectedId), ...items.filter((it) => it.id === selectedId)];
+        // 大きい枠から先に描く（小さい枠が上に来て、セット図の中の選択肢なども押せる）。
+        // 選んでいる枠は、つかむ線だけを最後にもう1回描く（中身は下のままなので、中の小さい枠をクリックできる）
+        const area = (it) => {
+            if (it.type === 'rect') return Math.abs((it.box[2] - it.box[0]) * (it.box[3] - it.box[1]));
+            const xs = it.xs.map((x) => x.get());
+            const ys = it.ys.map((y) => y.get());
+            return (Math.max(...xs) - Math.min(...xs)) * (Math.max(...ys) - Math.min(...ys));
+        };
+        const ordered = [...items].sort((a, b) => area(b) - area(a));
         for (const it of ordered) {
             const g = el('g', { class: `ed-item ed-k-${it.kind}${it.id === selectedId ? ' is-selected' : ''}`, 'data-id': it.id });
             if (it.type === 'rect') {
@@ -305,6 +312,12 @@
                 }
             }
             svg.append(g);
+        }
+        const sel = svg.querySelector(`g.is-selected`);
+        if (sel) {
+            const top = el('g', { class: sel.getAttribute('class'), 'data-id': selectedId });
+            sel.querySelectorAll('.ed-edge').forEach((e) => top.append(e.cloneNode()));
+            svg.append(top);
         }
         drawList();
         drawPanel();
@@ -719,11 +732,26 @@
             // 空にすると図形だけ書く
             textInput('書く文字', it.stamp.text || '', (v) => { it.stamp.text = v; changed(true); }, true);
         }
+        // 文字の大きさ（pt。全体の倍率 font_scale をさらに掛ける）。10 なら設定ごと消す
+        //   選択肢は詳細設定の「選んだときに書く文字」の横（choicePanel）
+        const target = it.kind === 'fields' ? cfg.fields[it.id.slice(7)] : it.text || (it.stamp?.text ? it.stamp : null);
+        if (target) sizeInput(target);
+    }
+
+    /** 文字の大きさの欄（pt。10 なら設定ごと消す）。after: 変えたあとに書き戻す処理（選択肢） */
+    function sizeInput(target, after = () => {}) {
+        numInput('文字の大きさ', () => target.size || 10, (v) => {
+            const s = Math.min(72, Math.max(4, r1(v)));
+            if (s === 10) delete target.size;
+            else target.size = s;
+            after();
+        });
     }
 
     /** 詳細設定: 枠ごとの、列を足す・入れ替える・印刷済みのもの・印や囲み など */
     function drawAdvanced(it, num) {
         if (it.id === 'members' && it.t.mode !== 'slots') {
+            section('列');
             membersPairPanel(it.t);
             membersSwapPanel(it.t);
             membersFixedPanel(it.t);
@@ -749,16 +777,10 @@
                 else cfg.stage_scale = s;
             });
             // アンプが印刷済みのシート: 自動配置でギター・ベースのアンプの四角を置かない
-            const ampLabel = document.createElement('label');
-            ampLabel.className = 'check';
-            const amp = Object.assign(document.createElement('input'), { type: 'checkbox', checked: !!cfg.amps_printed });
-            amp.addEventListener('change', () => {
-                if (amp.checked) cfg.amps_printed = true;
+            toggle('セット図にアンプが配置済み', !!cfg.amps_printed, (on) => {
+                if (on) cfg.amps_printed = true;
                 else delete cfg.amps_printed;
-                changed();
             });
-            ampLabel.append(amp, 'アンプが印刷済み');
-            out.append(ampLabel);
             // 自動配置の範囲: セット図の枠の各辺から 10pt 内側に置く（狭い枠ならそのまま同じ大きさ）
             if (!isBox(cfg.stage_auto)) {
                 panelButton('＋ 自動配置の枠', () => {
@@ -769,6 +791,13 @@
                     changed(true);
                 });
             }
+        }
+        if (it.text) {
+            // 複数行: 作成画面の入力欄が改行できるボックスになり、シートには枠の中で折り返して書く（4行まで）
+            toggle('改行できるテキストボックス', !!it.text.multiline, (on) => {
+                if (on) it.text.multiline = true;
+                else delete it.text.multiline;
+            });
         }
         if (it.choice) choicePanel(it.choice);
         if (it.stamp) {
@@ -867,16 +896,13 @@
      * 足すときは、今の組と同じ幅で氏名列のすぐ右に置く（あとで線をドラッグして合わせる）
      */
     function membersPairPanel(t) {
-        if (Array.isArray(t.part2) && Array.isArray(t.name2)) {
-            panelButton('右の組（パート・氏名）を消す', () => {
+        if (!Array.isArray(t.part) || !Array.isArray(t.name)) return;
+        toggle('右にもう1組（パート・氏名）', Array.isArray(t.part2) && Array.isArray(t.name2), (on) => {
+            if (!on) {
                 delete t.part2;
                 delete t.name2;
-                changed(true);
-            });
-            return;
-        }
-        if (!Array.isArray(t.part) || !Array.isArray(t.name)) return;
-        panelButton('＋ 右にもう1組（パート・氏名）を足す', () => {
+                return;
+            }
             // 1組目のいちばん右の線から、1組目と同じ並び（名前が先 / パートが先）・同じ幅で置く。
             // 1組目の列に重ねると線がくっついて（groupRefs）離せなくなる
             const pw2 = Math.abs(t.part[1] - t.part[0]);
@@ -888,7 +914,6 @@
             const second = [r1(x + w1), r1(x + w1 + w2)];
             [t.part2, t.name2] = nameFirst ? [second, first] : [first, second];
             note.textContent = '右にもう1組置きました。左の組が埋まったら、右の組の上から書きます。線をドラッグして合わせてください。';
-            changed(true);
         });
     }
 
@@ -912,57 +937,65 @@
      * 備考列のシートには、音響と照明への要望を「音響 / 照明：…」とつないで書く（setting_sheet.js）
      */
     function setlistNotePanel(t) {
-        // 表の左端・右端（任意の列を足す場所）
-        const cols = Object.keys(t).filter((k) => isCol(t[k]) && k !== 'lines').map((k) => t[k]);
+        section('列の設定');
+        // 表の左端・右端（任意の列を足す場所）。MC の印の列は表の外なので数えない
+        const cols = Object.keys(t).filter((k) => isCol(t[k]) && k !== 'lines' && k !== 'mc').map((k) => t[k]);
         const left = Math.min(...cols.flat());
         const right = Math.max(...cols.flat());
         // 曲順（印刷済みのシートは無くてよい）: 足すときは表の左に 30pt
-        if (isCol(t.no)) {
-            panelButton('曲順の列を消す', () => { delete t.no; changed(true); });
-        } else {
-            panelButton('＋ 曲順の列を足す', () => {
-                t.no = [r1(left - 30), r1(left)];
-                note.textContent = '表の左に曲順の列を足しました。線をドラッグして合わせてください。';
-                changed(true);
-            });
-        }
-        // 音響・照明（備考）の列が無いシート: 足すときは表の右に 60pt × 2
-        if (!isCol(t.request) && !(isCol(t.sound) && isCol(t.light))) {
-            panelButton('＋ 音響・照明の列を足す', () => {
-                t.sound = [r1(right), r1(right + 60)];
-                t.light = [r1(right + 60), r1(right + 120)];
-                note.textContent = '表の右に音響・照明の列を足しました。線をドラッグして合わせてください。';
-                changed(true);
-            });
-            return;
-        }
-        panelButton('音響・照明の列を消す', () => {
-            delete t.sound;
-            delete t.light;
-            delete t.request;
-            changed(true);
+        toggle('曲順', isCol(t.no), (on) => {
+            if (!on) { delete t.no; return; }
+            t.no = [r1(left - 30), r1(left)];
+            note.textContent = '表の左に曲順の列を足しました。線をドラッグして合わせてください。';
         });
-        if (isCol(t.request)) {
-            panelButton('音響と照明を別の列に分ける', () => {
-                const [l, r] = t.request;
-                const mid = r1((l + r) / 2);
-                delete t.request;
-                t.sound = [l, mid];
-                t.light = [mid, r];
+        // 音響・照明（備考）: 足すときは表の右に 60pt × 2。別々の2列 ⇔ 1つの「備考」列（request）は横の選択で
+        const hasNote = isCol(t.request) || (isCol(t.sound) && isCol(t.light));
+        const noteRow = toggle('音響・照明', hasNote, (on) => {
+            if (!on) { delete t.sound; delete t.light; delete t.request; return; }
+            t.sound = [r1(right), r1(right + 60)];
+            t.light = [r1(right + 60), r1(right + 120)];
+            note.textContent = '表の右に音響・照明の列を足しました。線をドラッグして合わせてください。';
+        });
+        if (hasNote) {
+            const sel = document.createElement('select');
+            sel.setAttribute('aria-label', '音響・照明の列の分け方');
+            sel.append(new Option('別々の列', 'split', false, !isCol(t.request)), new Option('1つの備考列', 'request', false, isCol(t.request)));
+            sel.addEventListener('change', () => {
+                if (sel.value === 'request') {
+                    const l = Math.min(t.sound[0], t.light[0]);
+                    const r = Math.max(t.sound[1], t.light[1]);
+                    delete t.sound;
+                    delete t.light;
+                    t.request = [l, r];
+                    note.textContent = '両方の要望があるときは「音響 / 照明：…」とつないで書きます。';
+                } else {
+                    const [l, r] = t.request;
+                    const mid = r1((l + r) / 2);
+                    delete t.request;
+                    t.sound = [l, mid];
+                    t.light = [mid, r];
+                }
                 changed(true);
             });
-            return;
+            noteRow.append(sel);
         }
-        if (!isCol(t.sound) || !isCol(t.light)) return;
-        panelButton('音響・照明を1つの「備考」列にする', () => {
-            const l = Math.min(t.sound[0], t.light[0]);
-            const r = Math.max(t.sound[1], t.light[1]);
-            delete t.sound;
-            delete t.light;
-            t.request = [l, r];
-            note.textContent = '音響と照明を1つの「備考」列にしました。両方の要望があるときは「音響 / 照明：…」とつないで書きます。';
-            changed(true);
+        // MC を行に書かず、表の外（曲と曲の境目）に「MC＞」と書くシート。足すときは表の左外に 30pt
+        const mcRow = toggle('MC を枠の外に書く', isCol(t.mc), (on) => {
+            if (!on) { delete t.mc; delete t.mc_text; return; }
+            t.mc = [r1(left - 32), r1(left - 2)];
         });
+        if (isCol(t.mc)) {
+            const inp = Object.assign(document.createElement('input'), { type: 'text', maxLength: 10, value: t.mc_text || 'MC＞' });
+            inp.setAttribute('aria-label', 'MC の印');
+            inp.className = 'ed-short';
+            inp.addEventListener('change', () => {
+                const v = inp.value.trim();
+                if (v === '' || v === 'MC＞') delete t.mc_text;
+                else t.mc_text = v;
+                changed();
+            });
+            mcRow.append(inp);
+        }
     }
 
     /**
@@ -1016,59 +1049,60 @@
             }
             others.filter((c) => near(Math.min(...c), r)).forEach((c) => { c[c[0] <= c[1] ? 0 : 1] = l; });
         };
-        if (isCol(t.time)) {
-            panelButton('分数の列を消す', () => {
+        // 分数: 足すときはどの列の右に置くか、横の選択で決めてからチェック
+        const whereT = isCol(t.time) ? null : anchorSelect('分数の列の置き場所');
+        const timeRow = toggle('演奏時間', isCol(t.time), (on) => {
+            if (!on) {
                 giveBack(t.time);
                 delete t.time;
                 delete t.time_colon;
-                changed(true);
-            });
-            // 「:」が印刷されているシートは、分と秒を「:」の左右に書く。無いシートは「3:45」と書く
-            panelButton(t.time_colon ? '「:」は印刷済み → 印刷なしにする' : '「:」は印刷なし → 印刷済みにする', () => {
-                if (t.time_colon) delete t.time_colon;
-                else t.time_colon = true;
-                changed(true);
-            });
+                return;
+            }
+            const col = takeFrom(whereT.value, 40);
+            if (!col) return;
+            t.time = col;
+            note.textContent = `${labelOf(whereT.value)}の右に分数の列を足しました。線をドラッグして合わせてください。`;
+        });
+        if (whereT) {
+            timeRow.append(whereT);
         } else {
-            // 分数を足す: どの列の右に置くか選ぶ
-            const wrapT = document.createElement('span');
-            wrapT.className = 'ed-num ed-text';
-            const whereT = anchorSelect('分数の列の置き場所');
-            const addT = Object.assign(document.createElement('button'), { type: 'button', className: 'btn btn--ghost btn--sm', textContent: '＋ 分数の列を足す' });
-            addT.addEventListener('click', () => {
-                const col = takeFrom(whereT.value, 40);
-                if (!col) return;
-                t.time = col;
-                note.textContent = `${labelOf(whereT.value)}の右に分数の列を足しました。線をドラッグして合わせてください。`;
-                changed(true);
-            });
-            wrapT.append(whereT, addT);
-            out.append(wrapT);
+            // 「:」が印刷されているシートは、分と秒を「:」の左右に書く。無いシートは「3:45」と書く
+            timeRow.append(toggle('「:」がプリント済み', !!t.time_colon, (on) => {
+                if (on) t.time_colon = true;
+                else delete t.time_colon;
+            }, false));
         }
 
         // 追加の列の一覧: 名前を変える・消す
+        section('追加の列');
         for (const c of extraCols(t)) {
-            textInput('列の名前', c.label || '', (v) => {
-                c.label = v.slice(0, 30);
+            const row = document.createElement('div');
+            row.className = 'ed-set';
+            const inp = Object.assign(document.createElement('input'), { type: 'text', maxLength: 30, value: c.label || '' });
+            inp.setAttribute('aria-label', '列の名前');
+            inp.addEventListener('change', () => {
+                const v = inp.value.trim();
+                if (v === '') return;
+                c.label = v;
                 changed(true);
             });
-            panelButton(`「${c.label || c.key}」の列を消す`, () => {
+            row.append(inp, iconBtn('delete', `「${c.label || c.key}」の列を消す`, () => {
                 giveBack(c.col);
                 t.cols = extraCols(t).filter((x) => x !== c);
                 if (t.cols.length === 0) delete t.cols;
                 changed(true);
-            });
+            }));
+            out.append(row);
         }
 
         // 列を足す: 名前と置き方（○○の右 / 分数と同じ列）
-        const wrap = document.createElement('span');
-        wrap.className = 'ed-num ed-text';
+        const wrap = document.createElement('div');
+        wrap.className = 'ed-set';
         const name = Object.assign(document.createElement('input'), { type: 'text', maxLength: 30, placeholder: '列の名前（例: コーラス/CD）' });
         name.setAttribute('aria-label', '足す列の名前');
         const where = anchorSelect('足す列の置き方');
         if (isCol(t.time)) where.append(new Option('分数と同じ列（上下に分ける）', 'stack'));
-        const add = Object.assign(document.createElement('button'), { type: 'button', className: 'btn btn--ghost btn--sm', textContent: '＋ 列を足す' });
-        add.addEventListener('click', () => {
+        const add = iconBtn('add', '列を足す', () => {
             const label = name.value.trim();
             if (label === '') {
                 name.focus();
@@ -1097,6 +1131,51 @@
         b.textContent = text;
         b.addEventListener('click', onClick);
         out.append(b);
+    }
+
+    /** 詳細設定に小見出し付きの区切りを作り、ここから先の部品をその中に入れる */
+    function section(title) {
+        const sec = document.createElement('div');
+        sec.className = 'ed-sec';
+        const h = document.createElement('span');
+        h.className = 'ed-sec__head';
+        h.textContent = title;
+        sec.append(h);
+        advBox.append(sec);
+        out = sec;
+    }
+
+    /**
+     * ON / OFF のチェック。変えたら onChange(on) のあと描き直す。
+     * row = true: 1行（.ed-set）にして足し、その行を返す（横に選択欄などを足せる）/ false: ラベルだけ返す（足さない）
+     */
+    function toggle(label, checked, onChange, row = true) {
+        const l = document.createElement('label');
+        l.className = 'check';
+        const c = Object.assign(document.createElement('input'), { type: 'checkbox', checked });
+        c.addEventListener('change', () => {
+            onChange(c.checked);
+            changed(true);
+        });
+        l.append(c, label);
+        if (!row) return l;
+        const r = document.createElement('div');
+        r.className = 'ed-set';
+        r.append(l);
+        out.append(r);
+        return r;
+    }
+
+    /** アイコンだけのボタン（説明は title のツールチップ）。足さずに返す */
+    function iconBtn(icon, label, onClick) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'btn btn--ghost btn--sm';
+        b.title = label;
+        b.setAttribute('aria-label', label);
+        b.innerHTML = `<span class="icon" aria-hidden="true">${icon}</span>`;
+        b.addEventListener('click', onClick);
+        return b;
     }
 
     /** 選択肢の詳細設定: ○/✓・選んだときに書く文字・このグループに選択肢を足す（見出しと名前は drawBasic） */
@@ -1134,6 +1213,8 @@
             writeOpt(g, name, { ...spec, text: v });
             changed(true);
         }, true);
+        // 書く文字の大きさ（文字が無いときは保存しない: writeOpt が消す）
+        if (spec.text) sizeInput(spec, () => writeOpt(g, name, spec));
         panelButton('＋ このグループに選択肢を足す', () => {
             // 最後の選択肢の箱の右に、同じ大きさ・同じ印で置く（書く文字は人によって違うので写さない）
             const boxes = Object.values(cfg.choices[g]).map((v) => (Array.isArray(v) ? v : v.box));
@@ -1589,10 +1670,7 @@
     function membersFixedPanel(t) {
         if (!t || t.mode === 'slots' || !isNum(t.rows) || !isNum(t.top) || !isNum(t.row_h)) return;
         const pairs = memberPairs(t);
-        const head = document.createElement('p');
-        head.className = 'small ed-adv__head';
-        head.textContent = 'パートが印刷済みの行';
-        out.append(head);
+        section('パートが印刷済みの行');
         pairs.forEach((_, p) => {
             const row = document.createElement('div');
             row.className = 'ed-adv__rows';
@@ -1662,6 +1740,8 @@
     const previewBox = root.querySelector('[data-ed-preview-box]');
     let frame = null;
     let sendTimer = 0;
+    // PC では枠を動かせる・大きさを変えられる（app.js の floatWin）
+    const placePreview = typeof floatWin === 'function' ? floatWin(previewBox, 'tpl-preview-win') : () => {};
     const labelInput = form.querySelector('[data-template-label]');
     function sendPreview() {
         if (!frame || previewBox.hidden) return;
@@ -1676,6 +1756,7 @@
     }
     function setPreview(open) {
         previewBox.hidden = !open;
+        if (open) placePreview();
         previewBtn.setAttribute('aria-expanded', String(open));
         previewBtn.querySelector('.icon').textContent = open ? 'close' : 'visibility';
         previewBtn.querySelector('[data-ed-preview-text]').textContent = open ? '閉じる' : 'プレビュー';
