@@ -162,6 +162,14 @@
         const [x0, y0, x1, y1] = tpl().stage;
         return { w: x1 - x0, h: y1 - y0 };
     };
+    /** 自動配置で並べる範囲 [左, 上, 右, 下]（PDF の pt）。型紙の stage_auto がセット図の枠の内側にあればそれ、無ければ枠いっぱい */
+    const autoArea = () => {
+        const s = tpl().stage;
+        const a = tpl().stage_auto;
+        const ok = Array.isArray(a) && a.length === 4 && a.every(Number.isFinite)
+            && a[0] >= s[0] && a[1] >= s[1] && a[2] <= s[2] && a[3] <= s[3] && a[2] > a[0] && a[3] > a[1];
+        return ok ? a : s;
+    };
 
     /* =================================================================
      *  2. 入力欄 ⇔ state
@@ -359,14 +367,16 @@
         const box = $('[data-members]');
         box.textContent = ''; // 中身を空にする
         const hint = $('[data-members-hint]');
-        if (tpl().members.mode === 'slots') {
+        if (tpl().members?.mode === 'slots') {
             hint.textContent = 'マイクを使う人に✓';
             renderSlots(box);
             return;
         }
         hint.textContent = 'パートは Vo / Gt / Ba / Dr / Key などを入力';
-        const rows = tpl().members.rows * memberCols(tpl().members).length; // 4列の表なら行数の2倍
-        const [[partCol, nameCol]] = memberCols(tpl().members);
+        // メンバー表が無い型紙（PDF には書かない）でも、セット図の自動配置・出演人数に使うので入力欄は出す
+        const mt = tpl().members;
+        const rows = mt ? mt.rows * memberCols(mt).length : 5; // 4列の表なら行数の2倍
+        const [[partCol, nameCol]] = mt ? memberCols(mt) : [[[0], [1]]];
         const nameFirst = nameCol[0] < partCol[0];
         // 入力欄は枠の数ぶん。それより多い人（＋ で足した人・DB のメンバー）も出す（PDF では同じパートでまとめて書く）
         for (let i = 0; i < Math.max(rows, state.members.length); i++) {
@@ -412,7 +422,7 @@
         });
         box.append(more);
         // 入りきらない人は同じパートでまとめる（memberPlacement）。まとめても入らない人がいるときだけ知らせる
-        const dropped = memberPlacement(tpl().members).dropped;
+        const dropped = mt ? memberPlacement(mt).dropped : 0;
         if (dropped > 0) {
             setStatus(`メンバー欄に入りきらない人が ${dropped} 人います（同じパートの人はまとめて書きます）`, true);
         }
@@ -420,7 +430,7 @@
 
     /** マイク〇の数（「マイク計」の自動の値） */
     function micCount() {
-        if (tpl().members.mode !== 'slots' || !state.slots) {
+        if (tpl().members?.mode !== 'slots' || !state.slots) {
             return 0;
         }
         // 1つの欄に「A・B」と2人いてマイク〇なら2本と数える
@@ -450,7 +460,7 @@
 
     /** 出演人数: 名前が入っているメンバーの数。1つの欄に「A・B」と2人いれば2人と数える */
     function memberCount() {
-        const names = tpl().members.mode === 'slots'
+        const names = tpl().members?.mode === 'slots'
             ? Object.values(state.slots || {}).map((v) => v?.name || '')
             : state.members.map((m) => m.name);
         return names.filter((n) => n.trim() !== '').reduce((sum, n) => sum + n.split('・').length, 0);
@@ -466,24 +476,51 @@
         return v;
     }
 
-    /** その他の自由記入欄（型紙の texts から作る）。with_choice の欄は renderChoices() が作る */
+    /**
+     * 自由記入欄の「空欄なら自動: マイクの数」を今の人数に直す（メンバーを変えたとき）。
+     *   欄そのものは renderChoices() が作る。打っている途中にカーソルが外れないように、ここでは作り直さない
+     */
     function renderTexts() {
-        const box = $('[data-texts]');
-        const list = (tpl().texts || []).filter((t) => !t.with_choice);
-        // 入力中の欄を作り直すとカーソルが外れるので、欄の構成が同じなら placeholder だけ更新する
-        if (box.dataset.tpl === state.template) {
-            list.forEach((t) => {
-                if (t.auto === 'mic') {
-                    box.querySelector(`[data-text="${t.key}"]`).placeholder = `空欄なら自動: ${micCount()}`;
-                }
-            });
-            return;
+        for (const t of tpl().texts || []) {
+            const input = t.auto === 'mic' && $(`[data-choices] [data-text="${CSS.escape(t.key)}"]`);
+            if (input) {
+                input.placeholder = `空欄なら自動: ${micCount()}`;
+            }
         }
-        box.dataset.tpl = state.template;
-        box.textContent = '';
-        for (const t of list) {
-            box.append(textField(t));
+    }
+
+    /**
+     * その他の項目の木（選択肢グループ・自由記入欄の並びと入れ子）。型紙エディタの一覧と同じ決め方
+     *   親子: グループ → show_if[グループ] = [親, [選択肢…]] / 自由記入欄 → with_choice = 親（show_if = [親, [選択肢…]]）
+     *   並び: extras_order（['t:key', 'c:グループ', …]）の順。書いていないものは「自由記入欄 → グループ」の順で後ろに
+     *   親が無い・自分の子孫が親になっている（循環）ものは、一番上の段に出す
+     * @return {{ roots: Array, children: (g: string) => Array }} 要素は { kind: 'c' | 't', key, text? }
+     */
+    function extrasTree(t) {
+        const choices = t.choices || {};
+        const nodes = [
+            ...(t.texts || []).filter((x) => x && typeof x.key === 'string').map((x) => {
+                const p = x.with_choice ?? x.show_if?.[0];
+                return { kind: 't', key: x.key, text: x, parent: p in choices ? p : null };
+            }),
+            ...Object.keys(choices).map((g) => {
+                const p = t.show_if?.[g]?.[0];
+                return { kind: 'c', key: g, parent: p in choices && p !== g ? p : null };
+            }),
+        ];
+        const groupNode = new Map(nodes.filter((n) => n.kind === 'c').map((n) => [n.key, n]));
+        // 循環（A の親が B、B の親が A）を切る: 親をたどって自分に戻ってきたら一番上へ
+        for (const n of nodes) {
+            const seen = new Set(n.kind === 'c' ? [n.key] : []);
+            for (let p = n.parent; p !== null; p = groupNode.get(p)?.parent ?? null) {
+                if (seen.has(p)) { n.parent = null; break; }
+                seen.add(p);
+            }
         }
+        const order = new Map((Array.isArray(t.extras_order) ? t.extras_order : []).map((id, i) => [id, i]));
+        const rank = (n) => order.get(`${n.kind}:${n.key}`) ?? order.size + nodes.indexOf(n);
+        nodes.sort((a, b) => rank(a) - rank(b));
+        return { roots: nodes.filter((n) => n.parent === null), children: (g) => nodes.filter((n) => n.parent === g) };
     }
 
     /** 自由記入欄1つ（<label> の中に入力欄） */
@@ -528,15 +565,16 @@
      * ○囲みのグループを見せるか。型紙の show_if に書いてあれば、別のグループの選択で決まる
      *   例: show_if.live_feel = ['mix', ['する', 'おまかせ']] → ミックス希望が「する」「おまかせ」のときだけ
      */
-    function isShown(group) {
+    function isShown(group, depth = 0) {
         const cond = tpl().show_if?.[group];
-        return !cond || cond[1].includes(state.choices[cond[0]]);
+        // 親のグループが隠れていれば、その子も隠す（入れ子。depth は循環したときの止め）
+        return !cond || (cond[1].includes(state.choices[cond[0]]) && (depth > 10 || isShown(cond[0], depth + 1)));
     }
 
     /** ○囲みと一緒に出す自由記入欄を見せるか（一緒に出すグループが見えていて、その欄の show_if も満たすとき） */
     function isTextShown(t) {
         return (!t.with_choice || isShown(t.with_choice))
-            && (!t.show_if || t.show_if[1].includes(state.choices[t.show_if[0]]));
+            && (!t.show_if || (t.show_if[1].includes(state.choices[t.show_if[0]]) && isShown(t.show_if[0])));
     }
 
     /** 型紙に無い欄を隠す（出演日・その他の項目 など） */
@@ -567,11 +605,34 @@
         box.textContent = '';
         const before = shownChoices;
         shownChoices = new Set();
-        // Object.entries({a: 1}) → [['a', 1]]。オブジェクトを for...of で回すときの定番
-        for (const [group, options] of Object.entries(tpl().choices || {})) {
-            if (!isShown(group)) {
-                continue;
+        const tree = extrasTree(tpl());
+        // 自由記入欄: 続けて並ぶ欄は2列の入れ物（.sheet-texts）にまとめる
+        const addText = (t) => {
+            if (!isTextShown(t)) {
+                return;
             }
+            const id = 'text:' + t.key; // グループと同じ Set で「前から見えていたか」を覚える
+            shownChoices.add(id);
+            const field = textField(t);
+            field.classList.toggle('is-entering', before !== null && !before.has(id));
+            let grid = box.lastElementChild;
+            if (!grid?.classList.contains('sheet-texts')) {
+                grid = document.createElement('div');
+                grid.className = 'sheet-texts';
+                box.append(grid);
+            }
+            grid.append(field);
+        };
+        // 木を上から描く。グループのすぐ下に、その子（選んだ選択肢で出るもの）を描く
+        const addNode = (n) => {
+            if (n.kind === 't') {
+                addText(n.text);
+            } else if (isShown(n.key)) {
+                addGroup(n.key, tpl().choices[n.key]);
+                tree.children(n.key).forEach(addNode);
+            }
+        };
+        const addGroup = (group, options) => {
             shownChoices.add(group);
             // 前は隠れていて、今回出てきたグループ（SE「あり」で出る項目など）はふわっと出す。最初に描くときはしない
             const entering = before !== null && !before.has(group);
@@ -611,18 +672,8 @@
                 p.classList.toggle('is-entering', !!pop && pop[0] === group);
                 box.append(p);
             }
-            // このグループと一緒に出す自由記入欄（レコーディングの「その他要望」など）
-            for (const t of (tpl().texts || []).filter((x) => x.with_choice === group)) {
-                if (!isTextShown(t)) {
-                    continue;
-                }
-                const id = 'text:' + t.key; // グループと同じ Set で「前から見えていたか」を覚える
-                shownChoices.add(id);
-                const field = textField(t);
-                field.classList.toggle('is-entering', before !== null && !before.has(id));
-                box.append(field);
-            }
-        }
+        };
+        tree.roots.forEach(addNode);
     }
 
     /* =================================================================
@@ -1668,15 +1719,30 @@
      *     - 左 → 真ん中 → 右 を同じ間隔で並べ、真ん中のグループを横の真ん中に。左が空なら Gt.1 を左へ
      */
     function autoLayout() {
-        const { w, h } = stageSize();
         state.items = [];
-        // 印刷済みのドラムの箱（枠の中での位置）。アンプはこれの左右に置く
+        // 並べる範囲: 型紙に自動配置の枠（stage_auto）があればその中だけ、無ければセット図の枠いっぱい
+        //   ここから下の位置はぜんぶ「範囲の左上が 0」で計算し、put() でセット図の枠の中の位置（+ ox, oy）に直す
         const [sx, sy] = tpl().stage;
-        const d = tpl().drum || [sx + w * 0.4, sy, sx + w * 0.6, sy + h * 0.2];
-        const drumL = d[0] - sx, drumR = d[2] - sx, ampY = (d[1] + d[3]) / 2 - sy;
+        const area = autoArea();
+        const ox = area[0] - sx, oy = area[1] - sy;
+        const w = area[2] - area[0], h = area[3] - area[1];
+        // 印刷済みのドラムの箱（範囲の中での位置）。アンプはこれの左右に置く。
+        //   ドラムが範囲の外にはみ出していても、左右の端・アンプの高さは範囲の中に収める
+        const d = tpl().drum || [area[0] + w * 0.4, area[1], area[0] + w * 0.6, area[1] + h * 0.2];
+        const drumL = clamp(d[0] - area[0], 0, w), drumR = clamp(d[2] - area[0], 0, w);
+        const ampY = clamp((d[1] + d[3]) / 2 - area[1], base('boxH') / 2, Math.max(base('boxH') / 2, h - base('boxH') / 2));
         const ampW = base('boxW');
         const micLen = base('micLen');
         const circle = base('circle');
+        // 部品を置く（範囲の中の位置 → セット図の枠の中の位置）。部品の大きさの半分を空けて、範囲からはみ出さないようにする
+        const put = (type, props) => {
+            const s = props.scale ?? 1;
+            const [hw, hh] = type === 'box' ? [ampW / 2 * s, base('boxH') / 2 * s]
+                : type === 'circle' ? [circle / 2, circle / 2]
+                : [micLen * 0.11, micLen / 2]; // mic: 幅は長さの 0.22 倍
+            const fit = (v, half, size) => (size > half * 2 ? clamp(v, half, size - half) : size / 2);
+            return addItem(type, { ...props, x: fit(props.x, hw, w) + ox, y: fit(props.y, hh, h) + oy });
+        };
         const people = autoPeople();
         const count = (key) => people.filter((pp) => pp.parts.includes(key)).length;
         const clampX = (x) => clamp(x, ampW / 2, w - ampW / 2);
@@ -1698,14 +1764,14 @@
                 const x = left + aw / 2 + i * (aw + gap);
                 gtX.push(x);
                 if (!tpl().amps_printed) { // アンプが印刷済みのシートは四角を置かない（位置は人の丸に使う）
-                    addItem('box', { x, y: ampY, scale, label: (tpl().gt_amps || ['JC', 'Marshall'])[i] || 'Gt Amp' });
+                    put('box', { x, y: ampY, scale, label: (tpl().gt_amps || ['JC', 'Marshall'])[i] || 'Gt Amp' });
                 }
             }
         }
         // ---- ベースアンプ: ドラムの左のすき間の真ん中 ----
         const baX = clampX(drumL / 2);
         if (count('ba') > 0 && !tpl().amps_printed) {
-            addItem('box', { x: baX, y: ampY, label: 'Ba Amp' });
+            put('box', { x: baX, y: ampY, label: 'Ba Amp' });
         }
         // ---- キーボード: 左側の真ん中の高さ ----
         //   3人以外のバンドで Gt がいないときは、左ではなく Gt の丸の位置（下の段の右）に置く（keyRight）
@@ -1723,7 +1789,7 @@
         const keyPos = { left: keyX, mirror: w - keyX };
         for (const slot of keySlots) {
             if (keyPos[slot] !== undefined) {
-                addItem('box', { x: keyPos[slot], y: keyY, label: 'Key' });
+                put('box', { x: keyPos[slot], y: keyY, label: 'Key' });
             }
         }
         const hasKeyLeft = keySlots.includes('left');
@@ -1753,7 +1819,7 @@
             if (!label) {
                 // ドラムで歌う人: マイクだけドラムの下に置く
                 if (sings(pp)) {
-                    addItem('mic', { x: (drumL + drumR) / 2, y: micY(d[3] - sy + circle / 2), label: '' });
+                    put('mic', { x: (drumL + drumR) / 2, y: micY(d[3] - area[1] + circle / 2), label: '' });
                 }
                 continue;
             }
@@ -1777,7 +1843,7 @@
                     right.push({ label: 'Key', mic, x: drumR + (w - drumR) / 2, key: true });
                 } else if (mic) {
                     // キーボードの人は丸を置かない。マイクを使うなら四角の真下に
-                    addItem('mic', { x: keyPos[slot], y: keyMicY, label: '' });
+                    put('mic', { x: keyPos[slot], y: keyMicY, label: '' });
                     if (slot === 'mirror') {
                         keyMicMirror = true;
                     } else {
@@ -1793,15 +1859,15 @@
         /** 下の段に1人分を置く（丸、またはキーボードの四角）。マイクを使うならその真下に */
         const place = (o, x) => {
             if (o.key) {
-                addItem('box', { x, y: circleY, label: 'Key' });
+                put('box', { x, y: circleY, label: 'Key' });
                 if (o.mic) {
-                    addItem('mic', { x, y: Math.min(circleY + base('boxH') / 2 + 2 + micLen / 2, h - micLen / 2), label: '' });
+                    put('mic', { x, y: Math.min(circleY + base('boxH') / 2 + 2 + micLen / 2, h - micLen / 2), label: '' });
                 }
                 return;
             }
-            addItem('circle', { x, y: circleY, label: o.label });
+            put('circle', { x, y: circleY, label: o.label });
             if (o.mic) {
-                addItem('mic', { x, y: micY(circleY), label: '' });
+                put('mic', { x, y: micY(circleY), label: '' });
             }
         };
 
@@ -1855,7 +1921,7 @@
      *   共通シート（パートが印刷済みの表）: 欄（Vo / Gt.1 …）がパート。マイクは欄の✓
      */
     function autoPeople() {
-        if (tpl().members.mode === 'slots') {
+        if (tpl().members?.mode === 'slots') {
             if (!state.slots) {
                 assignSlots();
             }
@@ -2056,9 +2122,11 @@
             if (s.text) drawInBox(s.text, s.box, { size: (s.size || 10) * fs, align: s.align || 'left', min: 5 });
         }
 
-        // ---- 2. メンバー ----
+        // ---- 2. メンバー（メンバー表が無い型紙は書かない） ----
         const mt = t.members;
-        if (mt.mode === 'slots') {
+        if (!mt) {
+            // 何もしない
+        } else if (mt.mode === 'slots') {
             // パートが印刷済みの表: 欄ごとに名前、マイク列に〇
             for (const sl of mt.slots) {
                 const v = state.slots?.[sl.key];
@@ -2159,12 +2227,13 @@
             if (!spec) {
                 continue;
             }
-            // 書き方は2通り: [箱] だけ（○で囲む）か { box: [箱], mark: 'check' | 'none', text, text_box }
-            //   mark: 'check' = ✓ / 'none' = 印なし / 無し = ○。text があれば text_box に書く（例: 2タム →「（2Tom）」）
+            // 書き方は2通り: [箱] だけ（○で囲む）か { box: [箱], mark: 'check' | 'none', text }
+            //   mark: 'check' = ✓ / 'none' = 印なし / 無し = ○。text があれば箱の中に書く（例: 2タム →「（2Tom）」）
+            //   前の版の text_box（文字を書く別の枠）は使わない
             const box = Array.isArray(spec) ? spec : spec.box;
             const [x0, top, x1, bottom] = box;
-            if (!Array.isArray(spec) && spec.text && Array.isArray(spec.text_box)) {
-                drawInBox(spec.text, spec.text_box, { size: (spec.size || 10) * fs, min: 5, pad: 1 });
+            if (!Array.isArray(spec) && spec.text) {
+                drawInBox(spec.text, box, { size: (spec.size || 10) * fs, min: 5, pad: 1 });
             }
             if (!Array.isArray(spec) && spec.mark === 'none') {
                 continue;
@@ -2435,7 +2504,6 @@
         renderTemplateUi();
         renderSongs();
         renderMembers();
-        delete $('[data-texts]').dataset.tpl; // 自由記入欄は必ず作り直す（型紙が変わった・リセットした）
         renderTexts();
         renderChoices();
         renderRowsNote();
@@ -2705,7 +2773,7 @@
         s.members = SAMPLE_BAND.map(([part, name]) => ({ part, name }));
         // 書き込む表は、2組目まで全部の行を埋める（枠の下の方まで確かめられるように。パートが印刷済みの表は上の7人を振り分けるだけ）
         const mt = tpl().members;
-        if (mt.mode !== 'slots') {
+        if (mt && mt.mode !== 'slots') {
             const sei = ['中村', '小林', '加藤', '吉田', '山口', '松本', '井上', '木村', '清水', '林'];
             const mei = ['健太', '結衣', '翔', '大輝', 'さくら', '蓮', '陽菜', '悠真', '凛', '葵'];
             const parts = ['Cho', 'Gt', 'Perc', 'Sax', 'Tp', 'Vn'];
@@ -2753,14 +2821,14 @@
                 pdfUrl = URL.createObjectURL(new Blob([pdf], { type: 'application/pdf' }));
             }
             const src = pdf ? pdfUrl : pdfPath;
-            if (!src || !cfg?.setlist || !cfg?.members || !cfg?.stage) {
+            if (!src || !cfg?.setlist || !cfg?.stage) {
                 previewBox.hidden = false;
                 previewNote.textContent = '会場の PDF と座標を入れると、ここに出ます';
                 return;
             }
             DATA.templates[DATA.templateKey] = { ...cfg, label: label || 'お試し', venue_words: [], pdf: src, stage_image: stageImage || cfg.stage_image };
             state = sampleState();
-            if (tpl().members.mode === 'slots') {
+            if (tpl().members?.mode === 'slots') {
                 assignSlots(); // パートが印刷済みの表は、仮のメンバーを振り分ける
             }
             // セット図はお試しのバンドの7人だけで並べる（表を埋めるために足した人は置かない）
@@ -2768,7 +2836,6 @@
             state.members = all.slice(0, SAMPLE_BAND.length);
             autoLayout();
             state.members = all;
-            delete $('[data-texts]').dataset.tpl;
             renderAll();
             if (first) {
                 first = false;

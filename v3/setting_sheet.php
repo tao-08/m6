@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * =====================================================================
  *  setting_sheet.php?band=バンドID — セッティングシート（ステージプロット）を作る
@@ -299,14 +299,15 @@ render_header('セッティングシート作成', $blank ? 'tools' : 'lives');
         </div>
         <!-- 1曲 = 1行。中身は JS が state.songs から作る -->
         <ol class="setlist" data-songs></ol>
-        <p class="muted small"><?= icon('tune') ?> で音響・照明の希望が書けます。</p>
+        <p class="muted small"><?= icon('tune') ?> で音響・照明等の希望が記入できます。</p>
+		<p class="muted small"><?= icon('search') ?> 曲を検索して演奏時間を自動で入力します。</p>
+
         <p class="small" data-rows-note></p>
     </section>
 
-    <!-- ===== その他の項目（会場のシートごとに違う。中身は JS が型紙の texts / choices から作る）===== -->
+    <!-- ===== その他の項目（会場のシートごとに違う。中身は JS の renderChoices() が型紙の texts / choices / extras_order から作る）===== -->
     <section class="card sheet-card" data-extras-card>
         <h2 class="sheet-card__title" data-extras-title>その他の項目</h2>
-        <div class="sheet-texts" data-texts></div>
         <!-- SE 有/なし などの○囲み -->
         <div class="sheet-choices" data-choices></div>
     </section>
@@ -354,5 +355,5 @@ render_header('セッティングシート作成', $blank ? 'tools' : 'lives');
 </form>
 <?php endif; ?>
 
-<script src="assets/setting_sheet.js?v=60" defer></script>
+<script src="assets/setting_sheet.js?v=64" defer></script>
 <?php render_footer();

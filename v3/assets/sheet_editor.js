@@ -88,15 +88,20 @@
     const groupLabel = (g) => cfg?.choice_labels?.[g] || DATA.choiceLabels[g] || g;
 
     /**
-     * 選択肢1つの設定を { box, mark, text, text_box } の形で読む。
-     *   型紙には [箱]（○で囲む）か { box, mark: 'check' | 'none', text, text_box } で書いてある
+     * 選択肢1つの設定を { box, mark, text } の形で読む。
+     *   型紙には [箱]（○で囲む）か { box, mark: 'check' | 'none', text } で書いてある。text は選択肢の箱の中に書く
+     *   前の版の text_box（文字を書く別の枠）は使わないので落とす（保存し直すと消える）
      */
-    const optSpec = (v) => (Array.isArray(v) ? { box: v } : { ...v });
+    const optSpec = (v) => {
+        if (Array.isArray(v)) return { box: v };
+        const { text_box: _, ...o } = v;
+        return o;
+    };
     /** 選択肢1つの設定を書き戻す。○で囲むだけ（文字なし）なら [箱] の短い形にする */
     function writeOpt(g, name, o) {
+        delete o.text_box;
         if (!o.text) {
             delete o.text;
-            delete o.text_box;
             delete o.size;
         }
         if (!o.mark || o.mark === 'circle') delete o.mark;
@@ -162,7 +167,7 @@
         for (const [k, f] of Object.entries(cfg.fields || {})) {
             if (f && isBox(f.box)) out.push(rectItem(`fields.${k}`, f.label || FIELD_LABELS[k] || k, 'fields', f.box, () => delete cfg.fields[k]));
         }
-        // メンバー表・セットリスト・セット図の枠も消せる（消したら「＋ 枠を足す」から標準の形で出し直す。無いままは保存できない）
+        // メンバー表・セットリスト・セット図の枠も消せる（消したら「＋ 枠を足す」から標準の形で出し直す。セットリストとセット図は無いままだと保存できない）
         if (cfg.members) {
             const it = tableItem('members', 'メンバー表', 'members', cfg.members);
             if (it) out.push({ ...it, remove: () => delete cfg.members });
@@ -172,25 +177,22 @@
             if (it) out.push({ ...it, remove: () => delete cfg.setlist });
         }
         if (isBox(cfg.stage)) out.push(rectItem('stage', 'セット図の枠', 'stage', cfg.stage, () => delete cfg.stage));
+        // 自動配置で部品を並べる範囲（セット図の枠の内側。はみ出さないように fitAuto() で収める）
+        if (isBox(cfg.stage_auto)) out.push(rectItem('stage_auto', '自動配置の範囲', 'stage_auto', cfg.stage_auto, () => delete cfg.stage_auto));
         if (isBox(cfg.drum)) out.push(rectItem('drum', 'ドラム（自動配置で避ける）', 'drum', cfg.drum, () => delete cfg.drum));
         for (const [g, opts] of Object.entries(cfg.choices || {})) {
             for (const [name, v] of Object.entries(opts || {})) {
                 const box = isBox(v) ? v : (v && isBox(v.box) ? v.box : null);
                 if (!box) continue;
                 const mark = v.mark === 'check' ? '（✓）' : v.mark === 'none' ? '（印なし）' : '';
-                out.push(rectItem(`choices.${g}.${name}`, `${groupLabel(g)}: ${name}${mark}`, 'choices', box, () => {
+                const text = v.text ? ` →「${v.text}」` : ''; // 選んだときに書く文字（例: 2タム →「（2Tom）」）
+                out.push(rectItem(`choices.${g}.${name}`, `${groupLabel(g)}: ${name}${mark}${text}`, 'choices', box, () => {
                     delete cfg.choices[g][name];
                     if (Object.keys(cfg.choices[g]).length === 0) {
                         delete cfg.choices[g];
                         if (cfg.choice_labels) delete cfg.choice_labels[g];
                     }
                 }, { choice: { g, name } }));
-                // 選んだときに書く文字の枠（例: 2タム →「（2Tom）」）
-                if (v.text && isBox(v.text_box)) {
-                    out.push(rectItem(`ctext.${g}.${name}`, `${name} → ${v.text}`, 'ctext', v.text_box, () => {
-                        writeOpt(g, name, { ...optSpec(v), text: '' });
-                    }, { choice: { g, name } }));
-                }
             }
         }
         (cfg.stamps || []).forEach((s, i) => {
@@ -305,16 +307,272 @@
         drawPanel();
     }
 
+    /* -----------------------------------------------------------------
+     *  要素の一覧（ツールバーの ☰ で開くポップアップ）
+     *  ・その他の項目（選択肢グループ・自由記入欄）: 作成画面に出る順の木。≡ をドラッグで並べ替え・入れ子
+     *      グループ → その選択肢（あり / なし）→ その選択肢を選んだときに出す子。子の ☑ で出す選択肢を足す
+     *      自由記入欄をグループの行の真ん中に落とすと「グループの下にいつも出す」（with_choice だけ）
+     *  ・ほかの枠: 押すと選ぶだけ
+     *  並びは cfg.extras_order、親子は show_if / with_choice に書く（作成画面 setting_sheet.js の extrasTree と同じ決め方）
+     * ----------------------------------------------------------------- */
+    const listBtn = root.querySelector('[data-ed-list-btn]');
+    listBtn.addEventListener('click', () => {
+        list.hidden = !list.hidden;
+        listBtn.setAttribute('aria-expanded', String(!list.hidden));
+        drawList();
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !list.hidden) listBtn.click();
+    });
+
+    /** その他の項目の木。{ nodes: [{ kind: 'c' | 't', key, id: 'c:キー', parent, opts: [選択肢] | null }], children(g) } */
+    function extrasTree() {
+        const choices = cfg?.choices || {};
+        const nodes = [
+            ...(cfg?.texts || []).filter((x) => x && typeof x.key === 'string').map((x) => {
+                const p = x.with_choice ?? x.show_if?.[0];
+                const ok = p in choices;
+                return { kind: 't', key: x.key, text: x, parent: ok ? p : null, opts: ok && Array.isArray(x.show_if?.[1]) ? x.show_if[1] : null };
+            }),
+            ...Object.keys(choices).map((g) => {
+                const c = cfg.show_if?.[g];
+                const ok = Array.isArray(c) && c[0] in choices && c[0] !== g;
+                return { kind: 'c', key: g, parent: ok ? c[0] : null, opts: ok && Array.isArray(c[1]) ? c[1] : null };
+            }),
+        ];
+        nodes.forEach((n) => { n.id = `${n.kind}:${n.key}`; });
+        const groupNode = new Map(nodes.filter((n) => n.kind === 'c').map((n) => [n.key, n]));
+        for (const n of nodes) { // 循環していたら一番上へ
+            const seen = new Set(n.kind === 'c' ? [n.key] : []);
+            for (let p = n.parent; p !== null; p = groupNode.get(p)?.parent ?? null) {
+                if (seen.has(p)) { n.parent = null; n.opts = null; break; }
+                seen.add(p);
+            }
+        }
+        const order = new Map((Array.isArray(cfg?.extras_order) ? cfg.extras_order : []).map((id, i) => [id, i]));
+        const rank = (n) => order.get(n.id) ?? order.size + nodes.indexOf(n);
+        nodes.sort((a, b) => rank(a) - rank(b));
+        return { nodes, groupNode, children: (g) => nodes.filter((n) => n.parent === g) };
+    }
+
+    /** グループ g が n の子孫か（n 自身も含む。グループを自分の下には入れられない） */
+    const isUnder = (tree, g, n) => {
+        if (n.kind !== 'c') return false;
+        for (let p = g, i = 0; p !== null && i < 50; p = tree.groupNode.get(p)?.parent ?? null, i++) {
+            if (p === n.key) return true;
+        }
+        return false;
+    };
+
+    /**
+     * 消えたグループ・選択肢を指している親子の設定を片付ける（changed() のたびに）。
+     *   親が無くなった子は一番上へ、出す選択肢が全部消えた子も一番上へ。extras_order から無いものを外す
+     */
+    function cleanExtras() {
+        if (!cfg) return;
+        const choices = cfg.choices || {};
+        const optsOk = (c) => Array.isArray(c) && c[0] in choices && Array.isArray(c[1]) && (c[1] = c[1].filter((o) => o in choices[c[0]])).length > 0;
+        if (cfg.show_if && typeof cfg.show_if === 'object') {
+            for (const [g, c] of Object.entries(cfg.show_if)) {
+                if (!(g in choices) || !optsOk(c)) delete cfg.show_if[g];
+            }
+            if (Object.keys(cfg.show_if).length === 0) delete cfg.show_if;
+        }
+        for (const t of Array.isArray(cfg.texts) ? cfg.texts : []) {
+            if (!t || typeof t !== 'object') continue;
+            if (t.with_choice !== undefined && !(t.with_choice in choices)) delete t.with_choice;
+            if (t.show_if !== undefined && !optsOk(t.show_if)) delete t.show_if;
+        }
+        if (Array.isArray(cfg.extras_order)) {
+            const ids = new Set(extrasTree().nodes.map((n) => n.id));
+            cfg.extras_order = cfg.extras_order.filter((id) => ids.has(id));
+            if (cfg.extras_order.length === 0) delete cfg.extras_order;
+        }
+    }
+
+    /** 子 n の親子を書き換える（parent = null で一番上。opts = null は「グループの下にいつも出す」= 自由記入欄だけ） */
+    function setParent(n, parent, opts) {
+        if (n.kind === 'c') {
+            cfg.show_if = cfg.show_if && typeof cfg.show_if === 'object' ? cfg.show_if : {};
+            if (parent === null) delete cfg.show_if[n.key];
+            else cfg.show_if[n.key] = [parent, opts || [Object.keys(cfg.choices[parent])[0]]];
+            if (Object.keys(cfg.show_if).length === 0) delete cfg.show_if;
+            return;
+        }
+        delete n.text.with_choice;
+        delete n.text.show_if;
+        if (parent !== null) {
+            n.text.with_choice = parent;
+            if (opts) n.text.show_if = [parent, [...opts]];
+        }
+    }
+
     function drawList() {
+        if (list.hidden) return;
         list.textContent = '';
+        const tree = extrasTree();
+        const rows = document.createElement('div');
+        rows.className = 'ed-tree';
+        const shown = []; // 一覧に出した順の id（並びを保存するとき、これをそのまま extras_order にする）
+        const row = (cls, depth, label, kind, onPick) => {
+            const r = document.createElement('div');
+            r.className = `ed-row ed-k-${kind} ${cls}`;
+            r.style.setProperty('--depth', depth);
+            const name = document.createElement('button');
+            name.type = 'button';
+            name.className = 'ed-row__name';
+            name.textContent = label;
+            name.addEventListener('click', onPick);
+            r.append(name);
+            rows.append(r);
+            return r;
+        };
+        const handle = (r, n) => {
+            const h = document.createElement('span');
+            h.className = 'ed-row__handle';
+            h.dataset.dragNode = n.id;
+            h.innerHTML = '<span class="icon" aria-hidden="true">drag_indicator</span>';
+            h.title = 'ドラッグで並べ替え・入れ子';
+            r.prepend(h);
+            r.dataset.node = n.id;
+        };
+        // 子の行に、親の選択肢の ☑（どの選択肢を選んだときに出すか。少なくとも1つ）
+        const optChecks = (r, n) => {
+            if (n.parent === null || !n.opts) return;
+            const box = document.createElement('span');
+            box.className = 'ed-row__opts';
+            for (const o of Object.keys(cfg.choices[n.parent])) {
+                const l = document.createElement('label');
+                l.className = 'check';
+                const c = Object.assign(document.createElement('input'), { type: 'checkbox', checked: n.opts.includes(o) });
+                c.addEventListener('change', () => {
+                    const next = Object.keys(cfg.choices[n.parent]).filter((x) => (x === o ? c.checked : n.opts.includes(x)));
+                    if (next.length === 0) { c.checked = true; return; }
+                    setParent(n, n.parent, next);
+                    changed(true);
+                });
+                l.append(c, o);
+                box.append(l);
+            }
+            r.append(box);
+        };
+        const pickId = (id) => () => { if (items.some((x) => x.id === id)) select(id); };
+        const textIndex = (n) => cfg.texts.indexOf(n.text);
+        const addNode = (n, depth) => {
+            shown.push(n.id);
+            if (n.kind === 't') {
+                const id = `texts.${textIndex(n)}`;
+                const r = row(id === selectedId ? 'is-selected' : '', depth, n.text.label || n.key, 'texts', pickId(id));
+                handle(r, n);
+                optChecks(r, n);
+                return;
+            }
+            const opts = Object.keys(cfg.choices[n.key] || {});
+            const first = `choices.${n.key}.${opts[0]}`;
+            const r = row('ed-row--group', depth, groupLabel(n.key), 'choices', pickId(first));
+            handle(r, n);
+            optChecks(r, n);
+            r.dataset.group = n.key;
+            const kids = tree.children(n.key);
+            // 「いつも出す」子（自由記入欄の with_choice だけ）→ 選択肢ごとに、その選択肢で出す子
+            kids.filter((k) => !k.opts).forEach((k) => addNode(k, depth + 1));
+            for (const o of opts) {
+                const id = `choices.${n.key}.${o}`;
+                const orow = row(`ed-row--opt${id === selectedId ? ' is-selected' : ''}`, depth + 1, o, 'choices', pickId(id));
+                orow.dataset.optGroup = n.key;
+                orow.dataset.opt = o;
+                kids.filter((k) => k.opts && (k.opts.find((x) => opts.includes(x)) ?? opts[0]) === o).forEach((k) => addNode(k, depth + 2));
+            }
+        };
+        tree.nodes.filter((n) => n.parent === null).forEach((n) => addNode(n, 0));
+        if (shown.length) {
+            const h = document.createElement('p');
+            h.className = 'ed-pop__head small';
+            h.textContent = cfg.extras_title || 'その他の項目';
+            list.append(h, rows);
+        }
+        // ほかの枠（押すと選ぶ）
+        const others = document.createElement('div');
+        others.className = 'ed-pop__chips';
         for (const it of items) {
+            if (it.kind === 'choices' || it.kind === 'texts') continue;
             const b = document.createElement('button');
             b.type = 'button';
             b.className = `ed-chip ed-k-${it.kind}${it.id === selectedId ? ' is-selected' : ''}`;
             b.textContent = it.label;
             b.addEventListener('click', () => select(it.id));
-            list.append(b);
+            others.append(b);
         }
+        list.append(others);
+        setupTreeDrag(rows, tree, shown);
+    }
+
+    /**
+     * 一覧の木のドラッグ。指の下の行と、行の中の高さで落とす先を決める
+     *   選択肢の行 → その選択肢の子の先頭 / グループの行の真ん中（自由記入欄だけ）→ グループの下にいつも出す /
+     *   それ以外 → 行の上半分ならその前、下半分ならその後（その行と同じ親・同じ選択肢）
+     */
+    function setupTreeDrag(rows, tree, shown) {
+        let drag = null; // { n, row, drop: { row, pos: 'before' | 'after' | 'into' } }
+        const byId = new Map(tree.nodes.map((n) => [n.id, n]));
+        const clearMark = () => rows.querySelectorAll('.is-drop-before, .is-drop-after, .is-drop-into').forEach((r) => r.classList.remove('is-drop-before', 'is-drop-after', 'is-drop-into'));
+        // 落とす先 → { parent, opts, after: この id の直後に入れる（null = 先頭）, before: この id の直前 } / 落とせなければ null
+        const target = (r, pos) => {
+            const n = drag.n;
+            if (r.dataset.opt !== undefined) {
+                const g = r.dataset.optGroup;
+                return isUnder(tree, g, n) ? null : { parent: g, opts: [r.dataset.opt], after: `c:${g}` };
+            }
+            const t = byId.get(r.dataset.node);
+            if (!t || t === n) return null;
+            if (pos === 'into') {
+                return n.kind === 't' ? { parent: t.key, opts: null, after: t.id } : null;
+            }
+            if (t.parent !== null && isUnder(tree, t.parent, n)) return null;
+            const opts = t.parent === null ? null : (t.opts ? [...t.opts] : null);
+            if (n.kind === 'c' && t.parent !== null && !opts) return null; // グループは「いつも出す」には入れない
+            return pos === 'before' ? { parent: t.parent, opts, before: t.id } : { parent: t.parent, opts, after: t.id };
+        };
+        rows.addEventListener('pointerdown', (e) => {
+            const h = e.target.closest('[data-drag-node]');
+            if (!h || (e.pointerType === 'mouse' && e.button !== 0)) return;
+            e.preventDefault();
+            drag = { n: byId.get(h.dataset.dragNode), row: h.closest('.ed-row'), drop: null };
+            drag.row.classList.add('is-dragging');
+            h.setPointerCapture(e.pointerId);
+        });
+        rows.addEventListener('pointermove', (e) => {
+            if (!drag) return;
+            clearMark();
+            drag.drop = null;
+            const r = document.elementFromPoint(e.clientX, e.clientY)?.closest('.ed-row');
+            if (!r || !rows.contains(r) || r === drag.row) return;
+            const b = r.getBoundingClientRect();
+            const f = (e.clientY - b.top) / b.height;
+            const pos = r.dataset.opt !== undefined ? 'into'
+                : r.dataset.group !== undefined && drag.n.kind === 't' && f > 0.3 && f < 0.7 ? 'into'
+                    : f < 0.5 ? 'before' : 'after';
+            const to = target(r, pos);
+            if (!to) return;
+            drag.drop = to;
+            r.classList.add(`is-drop-${pos}`);
+        });
+        const end = () => {
+            if (!drag) return;
+            const { n, drop } = drag;
+            drag.row.classList.remove('is-dragging');
+            clearMark();
+            drag = null;
+            if (!drop) return;
+            setParent(n, drop.parent, drop.opts);
+            const order = shown.filter((id) => id !== n.id);
+            const at = drop.before ? order.indexOf(drop.before) : drop.after ? order.indexOf(drop.after) + 1 : 0;
+            order.splice(Math.max(0, at), 0, n.id);
+            cfg.extras_order = order;
+            changed(true);
+        };
+        rows.addEventListener('pointerup', end);
+        rows.addEventListener('pointercancel', end);
     }
 
     /**
@@ -454,6 +712,16 @@
             });
             ampLabel.append(amp, 'アンプが印刷済み');
             out.append(ampLabel);
+            // 自動配置の範囲: セット図の枠の各辺から 10pt 内側に置く（狭い枠ならそのまま同じ大きさ）
+            if (!isBox(cfg.stage_auto)) {
+                panelButton('＋ 自動配置の枠', () => {
+                    const [x0, y0, x1, y1] = cfg.stage;
+                    const m = Math.min(10, (x1 - x0) / 4, (y1 - y0) / 4);
+                    cfg.stage_auto = [r1(x0 + m), r1(y0 + m), r1(x1 - m), r1(y1 - m)];
+                    selectedId = 'stage_auto';
+                    changed(true);
+                });
+            }
         }
         if (it.choice) choicePanel(it.choice);
         if (it.stamp) {
@@ -624,20 +892,34 @@
      */
     function setlistColsPanel(t) {
         if (!isCol(t.title)) return;
+        // 列のキー（title・time・追加の列の c1 など）→ 列の左右 / 名前
+        const colOf = (key) => (isCol(t[key]) ? t[key] : extraCols(t).find((c) => c.key === key)?.col);
+        const labelOf = (key) => COL_LABELS[key] ?? (extraCols(t).find((c) => c.key === key)?.label || key);
+        // 新しい列を「○○の右」に置くときの候補（曲名・音響・照明・備考・分数・追加の列）
+        const anchors = () => [...['title', 'sound', 'light', 'request', 'time'].filter((k) => isCol(t[k])), ...extraCols(t).map((c) => c.key)];
         // 列（key）の右端から w pt（列の半分まで）を切り取って新しい列にする。狭すぎる列からは取らない。
-        // 分数と同じ左右に積んである列も一緒に縮める（積んだ形をくずさない）
+        // 分数・追加の列で、同じ左右に積んである列も一緒に縮める（積んだ形をくずさない）
         const takeFrom = (key, w) => {
-            const [l, r] = [Math.min(...t[key]), Math.max(...t[key])];
+            const src = colOf(key);
+            const [l, r] = [Math.min(...src), Math.max(...src)];
             if (r - l < 20) {
-                note.textContent = `「${COL_LABELS[key]}」の列が狭すぎて足せません。先に広げてください。`;
+                note.textContent = `「${labelOf(key)}」の列が狭すぎて足せません。先に広げてください。`;
                 return null;
             }
             const cut = r1(r - Math.min(w, (r - l) / 2));
-            const same = (c) => Math.abs(Math.min(...c) - l) <= 1 && Math.abs(Math.max(...c) - r) <= 1;
-            for (const c of [t[key], ...(key === 'time' ? extraCols(t).map((x) => x.col).filter(same) : [])]) {
+            const same = (c) => c !== src && Math.abs(Math.min(...c) - l) <= 1 && Math.abs(Math.max(...c) - r) <= 1;
+            const stacked = ['title', 'sound', 'light', 'request'].includes(key) ? [] : [...(isCol(t.time) ? [t.time] : []), ...extraCols(t).map((x) => x.col)].filter(same);
+            for (const c of [src, ...stacked]) {
                 c[c[1] >= c[0] ? 1 : 0] = cut;
             }
             return [cut, r];
+        };
+        // 「○○の右」の選択欄
+        const anchorSelect = (label) => {
+            const s = document.createElement('select');
+            s.setAttribute('aria-label', label);
+            for (const k of anchors()) s.append(new Option(`${labelOf(k)}の右`, k));
+            return s;
         };
         // 消した列の幅を、隣の列（ふつうは切り取った元の曲名）に返す。線が残らないように。
         // 同じ左右に積んである列がまだあれば、その列が使うので返さない
@@ -668,13 +950,20 @@
                 changed(true);
             });
         } else {
-            panelButton('＋ 分数の列を足す', () => {
-                const col = takeFrom('title', 40);
+            // 分数を足す: どの列の右に置くか選ぶ
+            const wrapT = document.createElement('span');
+            wrapT.className = 'ed-num ed-text';
+            const whereT = anchorSelect('分数の列の置き場所');
+            const addT = Object.assign(document.createElement('button'), { type: 'button', className: 'btn btn--ghost btn--sm', textContent: '＋ 分数の列を足す' });
+            addT.addEventListener('click', () => {
+                const col = takeFrom(whereT.value, 40);
                 if (!col) return;
                 t.time = col;
-                note.textContent = '曲名の右に分数の列を足しました。線をドラッグして合わせてください。';
+                note.textContent = `${labelOf(whereT.value)}の右に分数の列を足しました。線をドラッグして合わせてください。`;
                 changed(true);
             });
+            wrapT.append(whereT, addT);
+            out.append(wrapT);
         }
 
         // 追加の列の一覧: 名前を変える・消す
@@ -696,11 +985,7 @@
         wrap.className = 'ed-num ed-text';
         const name = Object.assign(document.createElement('input'), { type: 'text', maxLength: 30, placeholder: '列の名前（例: コーラス/CD）' });
         name.setAttribute('aria-label', '足す列の名前');
-        const where = document.createElement('select');
-        where.setAttribute('aria-label', '足す列の置き方');
-        for (const k of ['title', 'sound', 'light', 'request', 'time']) {
-            if (isCol(t[k])) where.append(new Option(`${COL_LABELS[k]}の右`, k));
-        }
+        const where = anchorSelect('足す列の置き方');
         if (isCol(t.time)) where.append(new Option('分数と同じ列（上下に分ける）', 'stack'));
         const add = Object.assign(document.createElement('button'), { type: 'button', className: 'btn btn--ghost btn--sm', textContent: '＋ 列を足す' });
         add.addEventListener('click', () => {
@@ -710,14 +995,14 @@
                 return;
             }
             const stack = where.value === 'stack' && isCol(t.time);
-            const col = stack ? [...t.time] : isCol(t[where.value]) ? takeFrom(where.value, 50) : null;
+            const col = stack ? [...t.time] : colOf(where.value) ? takeFrom(where.value, 50) : null;
             if (!col) return;
             // キーは型紙の中で重ならない名前（c1, c2 …）。作成画面の入力はこのキーで保存する
             const used = new Set(extraCols(t).map((c) => c.key));
             let n = 1;
             while (used.has(`c${n}`)) n++;
             t.cols = [...extraCols(t), { key: `c${n}`, label, col }];
-            note.textContent = stack ? `「${label}」を分数の上の段に足しました。` : `${COL_LABELS[where.value]}の右に「${label}」の列を足しました。線をドラッグして合わせてください。`;
+            note.textContent = stack ? `「${label}」を分数の上の段に足しました。` : `${labelOf(where.value)}の右に「${label}」の列を足しました。線をドラッグして合わせてください。`;
             changed(true);
         });
         wrap.append(name, where, add);
@@ -749,15 +1034,9 @@
         });
         l.append(sel);
         out.append(l);
-        // 選んだときに書く文字。初めて入れたら、選択肢の枠の右に文字の枠を置く（空にすると枠ごと消える）
+        // 選んだときに書く文字。選択肢の枠の中に書く（別の枠は作らない）
         textInput('選んだときに書く文字', spec.text || '', (v) => {
-            const [x0, y0, x1, y1] = spec.box;
-            const textBox = isBox(spec.text_box) ? spec.text_box : [r1(x1 + 6), y0, r1(x1 + 6 + Math.max(x1 - x0, 40)), y1];
-            writeOpt(g, name, { ...spec, text: v, text_box: textBox });
-            if (v && !isBox(spec.text_box)) {
-                selectedId = `ctext.${g}.${name}`;
-                note.textContent = `「${v}」を書く枠を置きました。書きたい場所にドラッグしてください。`;
-            }
+            writeOpt(g, name, { ...spec, text: v });
             changed(true);
         }, true);
         panelButton('＋ このグループに選択肢を足す', () => {
@@ -802,6 +1081,8 @@
 
     /** cfg を書き換えたあと: JSON の欄に書き戻して描き直す（rebuild: 枠の数が変わったとき） */
     function changed(rebuild = false) {
+        fitAuto(); // 枠を出し直したときなども、自動配置の範囲をセット図の枠の中に収めておく
+        cleanExtras(); // 選択肢・欄を消したら、それを親にしていた子の設定を片付ける
         textarea.value = JSON.stringify(cfg, null, 2);
         record();
         if (rebuild) items = buildItems();
@@ -830,7 +1111,15 @@
         if (it.type === 'rect') {
             const b = it.box;
             const side = (i, axis) => op(() => b[i], (v) => { b[i] = r1(v); }, axis);
-            if (what === 'move') return [side(0, 'x'), side(2, 'x'), side(1, 'y'), side(3, 'y')];
+            if (what === 'move') {
+                const ops = [side(0, 'x'), side(2, 'x'), side(1, 'y'), side(3, 'y')];
+                // セット図の枠を動かすときは、自動配置の範囲も一緒に動かす（中に入ったまま付いてくる）
+                if (it.id === 'stage' && isBox(cfg.stage_auto)) {
+                    const a = cfg.stage_auto;
+                    ops.push(...[0, 2, 1, 3].map((i) => op(() => a[i], (v) => { a[i] = r1(v); }, i % 2 === 0 ? 'x' : 'y')));
+                }
+                return ops;
+            }
             const i = [0, 2, 1, 3][+what.slice(4)]; // edge0〜3 = 左・右・上・下 → box の添字
             const o = side(i, i % 2 === 0 ? 'x' : 'y');
             // 左・上の辺は向かいの辺の GAP 手前まで、右・下の辺は向かいの辺の GAP 先から
@@ -881,6 +1170,7 @@
         const dy = y - drag.from[1];
         for (const o of drag.ops) o.set(o.start + (o.axis === 'x' ? dx : dy));
         if (drag.edge !== null && (e.ctrlKey || e.shiftKey)) square(drag.box, drag.edge);
+        fitAuto();
         drag.moved = true;
         draw();
     });
@@ -889,6 +1179,21 @@
      * Ctrl / Shift を押しながら辺をドラッグ → 正方形にする（Office の図形と同じ。丸の図形なら円になる）。
      * 左右の辺なら今の幅に高さを合わせて下の辺を動かし、上下の辺なら今の高さに幅を合わせて右の辺を動かす
      */
+    /**
+     * 自動配置の範囲（stage_auto）を、セット図の枠（stage）の内側に収める。
+     *   はみ出した辺は枠の辺まで戻す。枠を縮めたら一緒に縮む（左右・上下が 2pt より近づかないように）
+     */
+    function fitAuto() {
+        const a = cfg?.stage_auto;
+        if (!isBox(a) || !isBox(cfg.stage)) return;
+        const [l, t, r, b] = [Math.min(cfg.stage[0], cfg.stage[2]), Math.min(cfg.stage[1], cfg.stage[3]), Math.max(cfg.stage[0], cfg.stage[2]), Math.max(cfg.stage[1], cfg.stage[3])];
+        const GAP = 2;
+        a[0] = r1(Math.min(Math.max(a[0], l), r - GAP));
+        a[1] = r1(Math.min(Math.max(a[1], t), b - GAP));
+        a[2] = r1(Math.max(Math.min(a[2], r), a[0] + GAP));
+        a[3] = r1(Math.max(Math.min(a[3], b), a[1] + GAP));
+    }
+
     function square(b, edge) {
         if (edge < 2) {
             b[3] = r1(b[1] + (b[2] - b[0])); // edge0 / 1 = 左・右の辺
@@ -917,6 +1222,7 @@
         const dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0;
         const dy = e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0;
         for (const o of dragOps(it, 'move')) o.set(o.start + (o.axis === 'x' ? dx : dy));
+        fitAuto();
         changed(true);
     });
 
@@ -1001,16 +1307,17 @@
     });
 
     /* -----------------------------------------------------------------
-     *  「＋ 枠を足す…」: 選んだものをページの真ん中あたりに置く
+     *  「＋ 枠を足す…」: 選んだものを見えている所の真ん中に置く（visibleCenter）
      *    field:キー … 1行の欄（バンド名・年・月・日・代表者氏名 など。型紙にまだ無いものだけ選べる）
      *    text       … 自由記入欄
      *    choice     … 選択肢のグループ（「あり」「なし」の2つを横に並べて置く）
      * ----------------------------------------------------------------- */
     const addSelect = root.querySelector('[data-ed-add]');
 
-    /** 型紙に必ず要る3つ（作成画面はこれがある前提で動く） */
+    /** 型紙の大きな枠。セットリストとセット図は必ず要る（作成画面はこれがある前提で動く）。メンバー表は無いシートもある */
     const MAIN_PARTS = { members: 'メンバー表', setlist: 'セットリスト', stage: 'セット図の枠' };
-    /** その3つがちゃんとあるか（buildItems() で枠になる形か） */
+    const REQUIRED_PARTS = ['setlist', 'stage'];
+    /** その枠がちゃんとあるか（buildItems() で枠になる形か） */
     const hasMain = (k) => (k === 'stage' ? isBox(cfg?.stage) : !!(cfg?.[k] && tableItem(k, '', k, cfg[k])));
 
     /** プルダウンの中身を作り直す（もうある欄は出さない） */
@@ -1031,18 +1338,31 @@
         opt('choice', '選択肢のグループ（○で囲む・✓を書く）');
     }
 
+    /**
+     * 今見えている所の真ん中（pt）。拡大してスクロールしているときは、スクロールの枠と画面の両方に見えている範囲の真ん中。
+     *   ページが1つも見えていなければ、ページの真ん中
+     */
+    function visibleCenter() {
+        const r = wrap.getBoundingClientRect();
+        const s = wrap.parentElement.getBoundingClientRect(); // .sheet-ed__scroll（拡大したときにスクロールする枠）
+        const l = Math.max(r.left, s.left, 0), t = Math.max(r.top, s.top, 0);
+        const rr = Math.min(r.right, s.right, innerWidth), b = Math.min(r.bottom, s.bottom, innerHeight);
+        if (rr <= l || b <= t || r.width === 0) return [pw / 2, ph / 2];
+        return [((l + rr) / 2 - r.left) / r.width * pw, ((t + b) / 2 - r.top) / r.height * ph];
+    }
+
     addSelect.addEventListener('change', () => {
         const what = addSelect.value;
         if (!what) return;
         if (!cfg) cfg = { fields: {} }; // 白紙から: メンバー表などもこのプルダウンから出す
-        const cx = pw / 2, cy = ph / 2;
+        const [cx, cy] = visibleCenter();
         const x = (v) => r1(cx + v);
         const y = (v) => r1(cy + v);
         if (what === 'members') {
             // 標準の形: パート | 名前 の5行（名前が左のシートは「⇄ パートと名前を入れ替える」）
             cfg.members = { top: y(-50), row_h: 20, rows: 5, part: [x(-120), x(-60)], name: [x(-60), x(120)] };
             selectedId = 'members';
-            note.textContent = 'メンバー表をページの真ん中に置きました。線をドラッグしてシートの罫線に合わせてください。行数は下で変えられます。';
+            note.textContent = 'メンバー表を見えている所に置きました。線をドラッグしてシートの罫線に合わせてください。行数は下で変えられます。';
         } else if (what === 'setlist') {
             // 標準の形: 曲順 | 曲名 | 音響 | 照明 の10行（幅 320pt）
             cfg.setlist = {
@@ -1050,11 +1370,11 @@
                 no: [x(-160), x(-130)], title: [x(-130), x(40)], sound: [x(40), x(100)], light: [x(100), x(160)],
             };
             selectedId = 'setlist';
-            note.textContent = 'セットリストをページの真ん中に置きました。要らない列は下のボタンで消せます。';
+            note.textContent = 'セットリストを見えている所に置きました。要らない列は下のボタンで消せます。';
         } else if (what === 'stage') {
             cfg.stage = [x(-150), y(-100), x(150), y(100)];
             selectedId = 'stage';
-            note.textContent = 'セット図の枠をページの真ん中に置きました。シートのセット図の四角に合わせてください。';
+            note.textContent = 'セット図の枠を見えている所に置きました。シートのセット図の四角に合わせてください。';
         } else if (what.startsWith('field:')) {
             const k = what.slice(6);
             const narrow = ['year', 'month', 'day', 'order'].includes(k); // 数字だけの欄は小さく
@@ -1062,19 +1382,19 @@
             cfg.fields = cfg.fields && typeof cfg.fields === 'object' ? cfg.fields : {};
             cfg.fields[k] = { box: [r1(cx - hw), r1(cy - 7), r1(cx + hw), r1(cy + 7)], size: 11, align: narrow ? 'center' : 'left' };
             selectedId = `fields.${k}`;
-            note.textContent = `「${FIELD_LABELS[k]}」をページの真ん中に置きました。ドラッグで合わせてください。`;
+            note.textContent = `「${FIELD_LABELS[k]}」を見えている所に置きました。ドラッグで合わせてください。`;
         } else if (what === 'text') {
             cfg.texts = Array.isArray(cfg.texts) ? cfg.texts : [];
             let n = cfg.texts.length + 1;
             while (cfg.texts.some((t) => t.key === `text${n}`)) n++;
             cfg.texts.push({ key: `text${n}`, label: `新しい欄${n}`, box: [r1(cx - 60), r1(cy - 8), r1(cx + 60), r1(cy + 8)], size: 10 });
             selectedId = `texts.${cfg.texts.length - 1}`;
-            note.textContent = `「新しい欄${n}」をページの真ん中に置きました。名前は下で直せます。`;
+            note.textContent = `「新しい欄${n}」を見えている所に置きました。名前は下で直せます。`;
         } else if (what === 'stamp') {
             cfg.stamps = Array.isArray(cfg.stamps) ? cfg.stamps : [];
             cfg.stamps.push({ text: '文字', box: [r1(cx - 50), r1(cy - 7), r1(cx + 50), r1(cy + 7)], size: 10 });
             selectedId = `stamps.${cfg.stamps.length - 1}`;
-            note.textContent = '固定の文字をページの真ん中に置きました。書く文字は下で直せます。';
+            note.textContent = '固定の文字を見えている所に置きました。書く文字は下で直せます。';
         } else if (what === 'shape') {
             // 文字の無い固定の文字 = 図形だけ書く
             cfg.stamps = Array.isArray(cfg.stamps) ? cfg.stamps : [];
@@ -1226,8 +1546,8 @@
 
     // 保存するとき: セット図の枠の中を PNG に切り抜いて一緒に送る
     form.addEventListener('submit', (e) => {
-        // メンバー表・セットリスト・セット図の枠が無い型紙は保存しない（作成画面が動かなくなる）
-        const missing = Object.keys(MAIN_PARTS).filter((k) => !hasMain(k));
+        // セットリスト・セット図の枠が無い型紙は保存しない（作成画面が動かなくなる）
+        const missing = REQUIRED_PARTS.filter((k) => !hasMain(k));
         if (cfg && missing.length) {
             e.preventDefault();
             note.textContent = `${missing.map((k) => MAIN_PARTS[k]).join(' / ')} がありません。「＋ 枠を足す」から出してください。`;

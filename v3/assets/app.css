@@ -1777,7 +1777,27 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
 .sheet-ed { display: grid; gap: 8px; }
 .sheet-ed__bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
 .sheet-ed__cursor { margin-left: auto; font-variant-numeric: tabular-nums; }
-.sheet-ed__list { display: flex; flex-wrap: wrap; gap: 4px; }
+/* 要素の一覧（ツールバーの ☰ で開くポップアップ）。.ed-pop-anchor は高さ 0 の目印で、その真下に浮かせる */
+.ed-pop-anchor { position: relative; height: 0; }
+.ed-pop { position: absolute; z-index: 20; top: 0; left: 0; width: min(420px, 100%); max-height: 60vh; overflow: auto; display: grid; gap: 8px;
+  padding: 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); box-shadow: var(--shadow); }
+.ed-pop[hidden] { display: none; }
+.ed-pop__head { margin: 0; font-weight: 700; }
+.ed-pop__chips { display: flex; flex-wrap: wrap; gap: 4px; }
+[data-ed-list-btn][aria-expanded="true"] { background: var(--accent-soft); color: var(--accent); }
+.ed-tree { display: grid; gap: 2px; }
+.ed-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 2px 6px 2px calc(6px + var(--depth, 0) * 18px);
+  border-radius: 6px; border: 1px solid transparent; color: var(--c); }
+.ed-row.is-selected { background: color-mix(in srgb, var(--c) 14%, transparent); }
+.ed-row.is-dragging { opacity: .4; }
+.ed-row.is-drop-before { box-shadow: inset 0 2px 0 var(--accent); }
+.ed-row.is-drop-after { box-shadow: inset 0 -2px 0 var(--accent); }
+.ed-row.is-drop-into { border-color: var(--accent); background: var(--accent-soft); }
+.ed-row__handle { cursor: grab; touch-action: none; display: inline-flex; color: var(--muted, #888); }
+.ed-row__name { border: 0; background: none; padding: 2px 0; color: inherit; font: inherit; font-size: 13px; cursor: pointer; text-align: left; }
+.ed-row--group .ed-row__name { font-weight: 700; }
+.ed-row--opt .ed-row__name::before { content: "○ "; opacity: .6; }
+.ed-row__opts { display: inline-flex; flex-wrap: wrap; gap: 2px 8px; font-size: 12px; color: var(--text); }
 .sheet-ed__panel { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; min-height: 34px; }
 .ed-num { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; }
 .ed-num input { width: 84px; }
@@ -1798,7 +1818,8 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
 /* 枠の色は種類ごと（--c）。中は薄く塗って、PDF の文字が透けて見えるように */
 .ed-k-fields { --c: #2563eb; } .ed-k-members { --c: #16a34a; } .ed-k-setlist { --c: #9333ea; }
 .ed-k-stage { --c: #ea580c; } .ed-k-drum { --c: #64748b; } .ed-k-choices { --c: #db2777; } .ed-k-texts { --c: #0d9488; }
-.ed-k-ctext { --c: #be185d; } .ed-k-stamps { --c: #854d0e; }
+.ed-k-stamps { --c: #854d0e; } .ed-k-stage_auto { --c: #ca8a04; }
+.ed-k-stage_auto .ed-body { stroke-dasharray: 4 3; } /* 自動配置の範囲は点線（セット図の枠と見分ける） */
 /* 型紙のプレビュー: ボタンは枠の下の行（.tpl-under）の右。開いている間は「閉じる」が右下に浮き、その上に枠が浮く（中は setting_sheet?tpl_preview=1 の iframe）。
  * 見た目はセッティングシート作成の画面のプレビュー（setting_sheet.css の .sheet-preview）に合わせる */
 .tpl-under { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; }

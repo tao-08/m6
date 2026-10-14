@@ -34,7 +34,8 @@ const SHEET_PDF_MAX_BYTES = 5 * 1024 * 1024; // 5MB。会場のシートは1〜2
 const SHEET_PNG_MAX_BYTES = 3 * 1024 * 1024; // セット図の背景の PNG
 const SHEET_UPLOAD_DIR = 'assets/sheets/uploads';
 // JS（assets/setting_sheet.js）が必ず読むキー。無いとセッティングシートの画面が動かない
-const SHEET_REQUIRED_KEYS = ['fields', 'members', 'stage', 'setlist'];
+// members（メンバー表）は無いシートもあるので必須にしない（あれば形を確かめる）
+const SHEET_REQUIRED_KEYS = ['fields', 'stage', 'setlist'];
 
 $pdo = db();
 
@@ -120,9 +121,24 @@ function parse_sheet_config(string $json): array
         && (isset($t['top'], $t['row_h'], $t['rows']) || is_array($t['lines'] ?? null) || is_array($t['slots'] ?? null));
     $isBox = static fn($b): bool => is_array($b) && count($b) === 4 && count(array_filter($b, 'is_numeric')) === 4;
     $broken = [];
-    if (!$isTable($config['members'])) $broken[] = 'メンバー表（members）';
+    if (array_key_exists('members', $config) && !$isTable($config['members'])) $broken[] = 'メンバー表（members）';
     if (!$isTable($config['setlist']) || !is_array($config['setlist']['title'] ?? null)) $broken[] = 'セットリスト（setlist）';
     if (!$isBox($config['stage'])) $broken[] = 'セット図の枠（stage）';
+    // その他の項目の並び（extras_order）: 任意。['t:欄のキー', 'c:グループ', ...] の文字列の配列
+    if (array_key_exists('extras_order', $config)) {
+        $o = $config['extras_order'];
+        if (!is_array($o) || !array_is_list($o) || count(array_filter($o, static fn($v): bool => is_string($v) && preg_match('/\A[ct]:/', $v) === 1)) !== count($o)) {
+            $broken[] = 'その他の項目の並び（extras_order）';
+        }
+    }
+    // 自動配置の範囲（stage_auto）: 任意。あるならセット図の枠の内側（エディタははみ出させないが、JSON を手で書いたとき用）
+    if (array_key_exists('stage_auto', $config)) {
+        $a = $config['stage_auto'];
+        $s = $config['stage'];
+        if (!$isBox($a) || !$isBox($s) || $a[0] < $s[0] || $a[1] < $s[1] || $a[2] > $s[2] || $a[3] > $s[3] || $a[2] <= $a[0] || $a[3] <= $a[1]) {
+            $broken[] = '自動配置の枠（stage_auto。セット図の枠の内側に）';
+        }
+    }
     // 曲ごとの追加の列（setlist.cols）: [{key, label, col: [左, 右]}]。label は作成画面に出す名前（30文字まで）
     $isCol = static fn($c): bool => is_array($c) && count($c) === 2 && count(array_filter($c, 'is_numeric')) === 2;
     $cols = $config['setlist']['cols'] ?? [];
@@ -373,6 +389,8 @@ render_header('セッティングシート編集', 'tools');
                 </label>
                 <!-- 中身は assets/sheet_editor.js の fillAddMenu() が作る（型紙にまだ無い欄だけ） -->
                 <select data-ed-add aria-label="枠を足す"><option value="">＋ 要素を追加…</option></select>
+                <!-- 要素の一覧（ポップアップ）。その他の項目の並び替え・入れ子もここで（sheet_editor.js の drawList） -->
+                <button type="button" class="btn btn--ghost btn--sm" data-ed-list-btn aria-expanded="false" title="要素の一覧" aria-label="要素の一覧"><?= icon('list') ?></button>
                 <!-- バンド名・日付・自由記入欄・固定の文字・選択肢の文字の大きさの倍率（型紙の font_scale）。枠に入らなければ自動で小さくなる -->
                 <label class="ed-num" title="文字の大きさ（倍率）"><?= icon('format_size') ?>
                     <input type="number" data-ed-font step="0.1" min="0.3" max="5" value="1" aria-label="文字の大きさ（倍率）">
@@ -380,7 +398,7 @@ render_header('セッティングシート編集', 'tools');
                 <span class="muted small sheet-ed__cursor" data-ed-cursor></span>
             </div>
             <p class="muted small" data-ed-note></p>
-            <div class="sheet-ed__list" data-ed-list></div>
+            <div class="ed-pop-anchor"><div class="ed-pop" data-ed-list hidden></div></div>
             <div class="sheet-ed__panel" data-ed-panel>
                 <!-- 詳細設定: 選んでいる枠ごとの設定（列を足す・印刷済みのもの など）。sheet_editor.js の drawPanel() が消すボタンの右に置き、中身を作る -->
                 <button type="button" class="btn btn--ghost btn--sm" data-ed-adv aria-expanded="false" title="詳細設定" aria-label="詳細設定" hidden><?= icon('tune') ?></button>
@@ -410,7 +428,7 @@ render_header('セッティングシート編集', 'tools');
 
         <details class="sheet-ed__json"<?= $error !== null ? ' open' : '' ?>>
             <summary>JSON で直接書く（行・列・選択肢を増やすとき）</summary>
-            <p class="muted small">単位は pt、ページの左上が 0。fields / members / stage / setlist は必ず書く。書き方は lib/setting_sheet.php の上のコメントを見る</p>
+            <p class="muted small">単位は pt、ページの左上が 0。fields / stage / setlist は必ず書く（members は無いシートなら省く）。書き方は lib/setting_sheet.php の上のコメントを見る</p>
             <textarea name="config" rows="18" spellcheck="false" class="mono" data-config aria-label="座標（JSON）"><?= h($form['config']) ?></textarea>
         </details>
         <div class="row">
@@ -504,5 +522,5 @@ $editorData = [
 ];
 ?>
 <script type="application/json" id="sheet-editor-data"><?= json_encode($editorData, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP) ?></script>
-<script src="assets/sheet_editor.js?v=21" defer></script>
+<script src="assets/sheet_editor.js?v=25" defer></script>
 <?php render_footer();
