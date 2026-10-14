@@ -441,7 +441,19 @@
             const m = (state.date || '').match(/(\d{1,2})\D+(\d{1,2})\D*$/);
             return m ? String(+m[key === 'month' ? 1 : 2]) : ''; // +: 「01」→ 1
         }
+        if (key === 'count') {
+            const n = memberCount();
+            return n > 0 ? String(n) : '';
+        }
         return state[key] ?? '';
+    }
+
+    /** 出演人数: 名前が入っているメンバーの数。1つの欄に「A・B」と2人いれば2人と数える */
+    function memberCount() {
+        const names = tpl().members.mode === 'slots'
+            ? Object.values(state.slots || {}).map((v) => v?.name || '')
+            : state.members.map((m) => m.name);
+        return names.filter((n) => n.trim() !== '').reduce((sum, n) => sum + n.split('・').length, 0);
     }
 
     /** 自由記入欄の値。空で auto がある欄は自動の値を使う */

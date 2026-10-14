@@ -354,5 +354,5 @@ render_header('セッティングシート作成', $blank ? 'tools' : 'lives');
 </form>
 <?php endif; ?>
 
-<script src="assets/setting_sheet.js?v=59" defer></script>
+<script src="assets/setting_sheet.js?v=60" defer></script>
 <?php render_footer();

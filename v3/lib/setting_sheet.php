@@ -41,7 +41,7 @@ declare(strict_types=1);
  *   pdf          : 元の PDF（この上に書き込む）
  *   stage_image  : セット図の枠の中を切り抜いた画像（画面のドラッグ編集の背景に使うだけ。PDF には使わない）
  *   fields       : 1行の文字を書く場所（箱）。align = left / center
- *                  キー: band / kana / date / order / rep（代表者氏名）/ year・month・day（年・月が印刷済みのシート用。出演日から数字だけ書く）
+ *                  キー: band / kana / date / order / rep（代表者氏名）/ count（出演人数。メンバー表の名前の数から自動）/ year・month・day（年・月が印刷済みのシート用。出演日から数字だけ書く）
  *                  kana の label: 作成画面の欄の名前（省略 = フリガナ。シートが「ふりがな」なら 'ふりがな'）
  *   members     : メンバー表。1行目の上端・行の高さ・行数と、パート列・氏名列の左右
  *   stage        : セット図の枠（この中にマイクや箱を描く）

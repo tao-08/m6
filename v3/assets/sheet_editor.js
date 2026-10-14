@@ -32,12 +32,16 @@
     const cursorNote = root.querySelector('[data-ed-cursor]');
     const list = root.querySelector('[data-ed-list]');
     const panel = root.querySelector('[data-ed-panel]');
+    // 詳細設定（バーの ⚙ で開く）。中身は選んでいる枠ごとに drawPanel() が作る
+    const advBtn = root.querySelector('[data-ed-adv]');
+    const advBox = root.querySelector('[data-ed-adv-box]');
+    let out = panel;       // numInput / textInput / panelButton を足す先（panel か advBox）
     const zoomSelect = root.querySelector('[data-ed-zoom]');
     const fontInput = root.querySelector('[data-ed-font]');
     const SVG_NS = 'http://www.w3.org/2000/svg';
 
     // 1行の欄。year / month / day は「年」「月」が印刷済みのシート用（出演日から数字だけ書く）
-    const FIELD_LABELS = { band: 'バンド名', kana: 'フリガナ', date: '出演日', year: '年', month: '月', day: '日', order: '出演順', rep: '代表者氏名' };
+    const FIELD_LABELS = { band: 'バンド名', kana: 'フリガナ', date: '出演日', year: '年', month: '月', day: '日', order: '出演順', rep: '代表者氏名', count: '出演人数' };
     const COL_LABELS = { part: 'パート', name: '氏名', part2: 'パート', name2: '氏名', mic: 'マイク', no: '曲順', title: '曲名', sound: '音響', light: '照明', request: '備考（音響・照明）', time: '分数' };
     const PAIR_LABELS = { part: 'パート1', name: '名前1', part2: 'パート2', name2: '名前2' };
 
@@ -313,18 +317,58 @@
         }
     }
 
-    /** 選んでいる枠の数字（細かく合わせたいとき用）と削除ボタン */
+    /**
+     * 選んでいる枠のパネル（数字・名前・削除）と、詳細設定（列を足す・印刷済み・印 など）。
+     * 詳細設定の中身は選んでいる枠ごとに変わる。何も無い枠では ⚙ を押せなくする
+     */
     function drawPanel() {
         const it = items.find((x) => x.id === selectedId);
         panel.textContent = '';
+        advBox.textContent = '';
+        out = panel;
         if (!it) {
             panel.innerHTML = '<span class="muted small">Ctrlキーをホールドして正方形に編集。矢印キーで 0.5pt（Shift で 5pt）ずつ調整可。</span>';
+            syncAdv();
             return;
         }
         const title = document.createElement('strong');
         title.textContent = it.label;
         panel.append(title);
         const num = numInput;
+        drawBasic(it, num);
+        out = advBox;
+        drawAdvanced(it, num);
+        out = panel;
+        if (it.remove) {
+            const del = document.createElement('button');
+            del.type = 'button';
+            del.className = 'btn btn--ghost btn--sm';
+            del.textContent = 'この枠を消す';
+            del.addEventListener('click', () => {
+                it.remove();
+                selectedId = null;
+                changed(true);
+            });
+            panel.append(del);
+        }
+        syncAdv();
+    }
+
+    /** 詳細設定の中身が無ければ ⚙ を押せなくして閉じる。開いていたら、別の枠を選んでも開いたまま */
+    let advOpen = false;
+    function syncAdv() {
+        const has = advBox.childElementCount > 0;
+        advBtn.disabled = !has;
+        advBox.hidden = !(has && advOpen);
+        advBtn.setAttribute('aria-expanded', String(has && advOpen));
+    }
+    advBtn.addEventListener('click', () => {
+        advOpen = !advOpen;
+        syncAdv();
+    });
+
+    /** パネル: 位置の数字・名前 */
+    function drawBasic(it, num) {
         if (it.type === 'rect') {
             ['左', '上', '右', '下'].forEach((name, i) => num(name, () => it.box[i], (v) => { it.box[i] = r1(v); }));
         } else if (it.shiftY) {
@@ -335,15 +379,45 @@
                 it.t.rows = n;
                 it.t.row_h = +((b - it.t.top) / n).toFixed(3);
             });
-            if (it.id === 'members' && it.t.mode !== 'slots') {
-                membersPairPanel(it.t);
-                membersSwapPanel(it.t);
-            }
         } else {
             const s = document.createElement('span');
             s.className = 'muted small';
             s.textContent = '線を1本ずつドラッグして合わせます。行・列を増やすときは JSON を書き換えてください。';
             panel.append(s);
+        }
+        if (it.choice) {
+            const { g, name } = it.choice;
+            textInput('グループの見出し', groupLabel(g), (v) => {
+                cfg.choice_labels = { ...(cfg.choice_labels || {}), [g]: v };
+                changed(true);
+            });
+            textInput('選択肢の名前', name, (v) => {
+                if (v === name) return;
+                if (v in cfg.choices[g]) {
+                    note.textContent = `「${v}」はこのグループにもうあります。`;
+                    drawPanel();
+                    return;
+                }
+                renameOption(g, name, v);
+                selectedId = `choices.${g}.${v}`;
+                changed(true);
+            });
+        }
+        if (it.text) {
+            textInput('欄の名前（画面に出る）', it.text.label || '', (v) => { it.text.label = v; changed(true); });
+        }
+        if (it.stamp) {
+            // 空にすると図形だけ書く
+            textInput('書く文字', it.stamp.text || '', (v) => { it.stamp.text = v; changed(true); }, true);
+        }
+    }
+
+    /** 詳細設定: 枠ごとの、列を足す・入れ替える・印刷済みのもの・印や囲み など */
+    function drawAdvanced(it, num) {
+        if (it.id === 'members' && it.t.mode !== 'slots') {
+            membersPairPanel(it.t);
+            membersSwapPanel(it.t);
+            membersFixedPanel(it.t);
         }
         if (it.id === 'fields.kana') {
             // 作成画面の欄の名前（シートの表記に合わせる）。省略 = フリガナ
@@ -365,14 +439,20 @@
                 if (s === 1) delete cfg.stage_scale;
                 else cfg.stage_scale = s;
             });
+            // アンプが印刷済みのシート: 自動配置でギター・ベースのアンプの四角を置かない
+            const ampLabel = document.createElement('label');
+            ampLabel.className = 'check';
+            const amp = Object.assign(document.createElement('input'), { type: 'checkbox', checked: !!cfg.amps_printed });
+            amp.addEventListener('change', () => {
+                if (amp.checked) cfg.amps_printed = true;
+                else delete cfg.amps_printed;
+                changed();
+            });
+            ampLabel.append(amp, 'アンプが印刷済み');
+            out.append(ampLabel);
         }
         if (it.choice) choicePanel(it.choice);
-        if (it.text) {
-            textInput('欄の名前（画面に出る）', it.text.label || '', (v) => { it.text.label = v; changed(true); });
-        }
         if (it.stamp) {
-            // 空にすると図形だけ書く
-            textInput('書く文字', it.stamp.text || '', (v) => { it.stamp.text = v; changed(true); }, true);
             if (it.stamp.text) {
                 panelButton(it.stamp.align === 'center' ? '左寄せにする' : '中央寄せにする', () => {
                     it.stamp.align = it.stamp.align === 'center' ? 'left' : 'center';
@@ -390,20 +470,8 @@
                 changed(true);
             });
             l.append(sel);
-            panel.append(l);
+            out.append(l);
             if (it.stamp.shape) num('線の太さ', () => it.stamp.line || 0.9, (v) => { it.stamp.line = Math.max(0.1, r1(v)); });
-        }
-        if (it.remove) {
-            const del = document.createElement('button');
-            del.type = 'button';
-            del.className = 'btn btn--ghost btn--sm';
-            del.textContent = 'この枠を消す';
-            del.addEventListener('click', () => {
-                it.remove();
-                selectedId = null;
-                changed(true);
-            });
-            panel.append(del);
         }
     }
 
@@ -422,7 +490,7 @@
             changed();
         });
         l.append(inp);
-        panel.append(l);
+        out.append(l);
     }
 
     /** パネルに文字の入力欄を1つ足す。打ち終わって確定したとき（change）だけ onSet を呼ぶ */
@@ -439,7 +507,7 @@
             if (v !== '' || allowEmpty) onSet(v);
         });
         l.append(inp);
-        panel.append(l);
+        out.append(l);
     }
 
     /**
@@ -624,7 +692,7 @@
             changed(true);
         });
         wrap.append(name, where, add);
-        panel.append(wrap);
+        out.append(wrap);
     }
 
     /** パネルにボタンを1つ足す */
@@ -634,26 +702,11 @@
         b.className = 'btn btn--ghost btn--sm';
         b.textContent = text;
         b.addEventListener('click', onClick);
-        panel.append(b);
+        out.append(b);
     }
 
-    /** 選択肢の設定: グループの見出し・選択肢の名前・○/✓・このグループに選択肢を足す */
+    /** 選択肢の詳細設定: ○/✓・選んだときに書く文字・このグループに選択肢を足す（見出しと名前は drawBasic） */
     function choicePanel({ g, name }) {
-        textInput('グループの見出し', groupLabel(g), (v) => {
-            cfg.choice_labels = { ...(cfg.choice_labels || {}), [g]: v };
-            changed(true);
-        });
-        textInput('選択肢の名前', name, (v) => {
-            if (v === name) return;
-            if (v in cfg.choices[g]) {
-                note.textContent = `「${v}」はこのグループにもうあります。`;
-                drawPanel();
-                return;
-            }
-            renameOption(g, name, v);
-            selectedId = `choices.${g}.${v}`;
-            changed(true);
-        });
         const spec = optSpec(cfg.choices[g][name]);
         // 選んだときの印（○ / ✓ / 印なし）
         const l = document.createElement('label');
@@ -666,7 +719,7 @@
             changed(true);
         });
         l.append(sel);
-        panel.append(l);
+        out.append(l);
         // 選んだときに書く文字。初めて入れたら、選択肢の枠の右に文字の枠を置く（空にすると枠ごと消える）
         textInput('選んだときに書く文字', spec.text || '', (v) => {
             const [x0, y0, x1, y1] = spec.box;
@@ -724,7 +777,6 @@
         record();
         if (rebuild) items = buildItems();
         if (rebuild) fillAddMenu();
-        renderAdvanced();
         draw();
         queuePreview(); // プレビューのタブが開いていれば送り直す
     }
@@ -851,8 +903,7 @@
             fillAddMenu();
             note.textContent = '「見本にする型紙」を選んで座標を入れると、枠が出ます。';
             record();
-            renderAdvanced();
-            draw();
+                draw();
             return;
         }
         try {
@@ -865,8 +916,7 @@
             fontInput.value = String(cfg.font_scale || 1);
             note.textContent = '';
             record();
-            renderAdvanced();
-        } catch (err) {
+            } catch (err) {
             note.textContent = `JSON の書き方が間違っています（${err.message}）。直すまで枠は前のままです。`;
         }
         draw();
@@ -1088,44 +1138,17 @@
         changed();
     });
 
-    /* -----------------------------------------------------------------
-     *  詳細設定（バーの ⚙ ボタンで開く）: シートに最初から印刷されているもの
-     *    アンプが印刷済み（amps_printed）… 自動配置でギター・ベースのアンプの四角を置かない
-     *    メンバー表のパートが印刷済みの行（members.fixed = { 行の番号: 'Vo' }）… そのパートの人をその行に入れ、パートは書かない
-     *  曲順が印刷済みのときは、セットリストのパネルの「曲順の列を消す」を使う
-     * ----------------------------------------------------------------- */
-    const advBtn = root.querySelector('[data-ed-adv]');
-    const advBox = root.querySelector('[data-ed-adv-box]');
-    advBtn.addEventListener('click', () => {
-        advBox.hidden = !advBox.hidden;
-        advBtn.setAttribute('aria-expanded', String(!advBox.hidden));
-    });
-    function renderAdvanced() {
-        advBox.textContent = '';
-        if (!cfg) {
-            advBox.append(Object.assign(document.createElement('p'), { className: 'muted small', textContent: '型紙を入れると設定できます。' }));
-            return;
-        }
-        // アンプが印刷済み
-        const ampLabel = document.createElement('label');
-        ampLabel.className = 'check';
-        const amp = Object.assign(document.createElement('input'), { type: 'checkbox', checked: !!cfg.amps_printed });
-        amp.addEventListener('change', () => {
-            if (amp.checked) cfg.amps_printed = true;
-            else delete cfg.amps_printed;
-            changed();
-        });
-        ampLabel.append(amp, 'セット図のアンプが印刷済み（自動配置でアンプを置かない）');
-        advBox.append(ampLabel);
-
-        // メンバー表のパートが印刷済みの行（パートを自由に書く表だけ）
-        const t = cfg.members;
+    /**
+     * メンバー表の詳細設定: パートが印刷済みの行（members.fixed = { 行の番号: 'Vo' }）。
+     * そのパートの人をその行に入れ、パートは書かない（パートを自由に書く表だけ）
+     */
+    function membersFixedPanel(t) {
         if (!t || t.mode === 'slots' || !isNum(t.rows) || !isNum(t.top) || !isNum(t.row_h)) return;
         const pairs = memberPairs(t);
         const head = document.createElement('p');
         head.className = 'small ed-adv__head';
-        head.textContent = 'メンバー表でパートが印刷済みの行（空 = 印刷なし）';
-        advBox.append(head);
+        head.textContent = 'パートが印刷済みの行';
+        out.append(head);
         pairs.forEach((_, p) => {
             const row = document.createElement('div');
             row.className = 'ed-adv__rows';
@@ -1149,7 +1172,7 @@
                 l.append(inp);
                 row.append(l);
             }
-            advBox.append(row);
+            out.append(row);
         });
     }
 
