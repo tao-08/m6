@@ -1251,14 +1251,14 @@ function setupFilter() {
  *   連続で切り替えたときは、前のアニメーションを止めてから出し直す（重なってチラつかないように）
  * ------------------------------------------------------------------- */
 const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-function animateIn(elements) {
+function animateIn(elements, duration = 240) {
   if (reduceMotion) return;
   [...elements]
     .filter((el) => el.offsetParent !== null && el.getBoundingClientRect().top < window.innerHeight)
     .forEach((el, i) => {
       el.getAnimations().forEach((a) => a.cancel());
       el.animate([{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }],
-        { duration: 240, delay: Math.min(i, 12) * 25, easing: 'ease-out', fill: 'backwards' });
+        { duration, delay: Math.min(i, 12) * 25, easing: 'ease-out', fill: 'backwards' });
     });
 }
 
@@ -1490,7 +1490,7 @@ function setupClientSort() {
         return asc ? d : -d;
       });
       tbody.append(...rows);
-      animateIn(rows);
+      animateIn(rows, 120);
       btns.forEach((b) => { const t = b.closest('th'); t.removeAttribute('aria-sort'); b.querySelector('.sortable__arrow').textContent = ''; });
       th.setAttribute('aria-sort', asc ? 'ascending' : 'descending');
       btn.querySelector('.sortable__arrow').textContent = asc ? '▲' : '▼';

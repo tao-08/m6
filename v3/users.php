@@ -135,12 +135,12 @@ render_header('ユーザー管理');
 
 <div class="card table-card">
     <div class="table-scroll table-scroll--flush">
-    <table class="table" data-client-sort>
+    <table class="table table--users" data-client-sort>
         <thead><tr><?= sort_btn('entry', '入学年', '0', $sort, $order) ?><?= sort_btn('name', '名前', '1', $sort, $order, true) ?><th>ログインID</th><th>メンバー</th><th>権限</th><th></th></tr></thead>
         <tbody>
         <?php foreach ($users as $u): ?>
             <tr<?= (int)$u['user_id'] === $me['user_id'] ? ' class="is-me"' : '' ?>>
-                <td class="num muted" data-sort-value="<?= $u['entry_year'] !== null ? (int)$u['entry_year'] : '' ?>"><?= $u['entry_year'] !== null ? (int)$u['entry_year'] : '—' ?></td>
+                <td class="muted" data-sort-value="<?= $u['entry_year'] !== null ? (int)$u['entry_year'] : '' ?>"><?= $u['entry_year'] !== null ? (int)$u['entry_year'] : '—' ?></td>
                 <td class="strong"><?= h($u['name']) ?></td>
                 <td class="muted"><?= h($u['login_id']) ?></td>
                 <td>
