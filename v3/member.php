@@ -46,6 +46,23 @@ $st = $pdo->prepare('SELECT b.band_id, b.name AS band_name, b.play_order, b.song
 $st->execute([$memberId]);
 $history = $st->fetchAll();
 
+// ---- 集計に数えないバンド（予定されているライブ） ----
+//   アカウント設定「予定されているライブを集計に含む」がオフ（初期値）なら、まだ来ていない日程のバンドを
+//   楽器の × 回数・出演バンド/ライブ/トリの数・よく組むメンバー・よく演奏するアーティストから外す。出演履歴には出す
+$skipBandIds = []; // [band_id] = true
+if (empty($user['count_upcoming'])) {
+    foreach ($history as $hi) {
+        if (is_upcoming($hi['date'])) {
+            $skipBandIds[(int)$hi['band_id']] = true;
+        }
+    }
+}
+$countedHistory = array_values(array_filter($history, static fn($h) => !isset($skipBandIds[(int)$h['band_id']])));
+$counted = static fn(array $rows): array => array_values(array_filter($rows, static fn($r) => !isset($skipBandIds[(int)$r['band_id']])));
+// SQL 側で外すとき用（「AND mine.band_id NOT IN (?, ?)」。外すものが無ければ空文字）
+$skipSql = $skipBandIds ? ' AND mine.band_id NOT IN (' . implode(',', array_fill(0, count($skipBandIds), '?')) . ')' : '';
+$skipParams = array_keys($skipBandIds);
+
 // ---- 楽器（バンドごと）と、その内訳 ----
 //   Vo と Gt を両方やったバンドは「Vo/Gt」1つにまとめる（lineup_parts_by_band）。内訳もその単位で数える
 $st = $pdo->prepare('SELECT bm.band_id, bm.member_id, m.name, i.short_name, i.name AS instrument_name, i.sort_order
@@ -83,18 +100,18 @@ foreach ($partsByBand as $bandId => &$bandParts) {
 }
 unset($bandParts);
 // 「Vo/Gt × 3」「Gt × 2」…。Gt/Cho は Gt と Cho に1回ずつ数える（'split'）
-$parts = sort_tally_by_count(tally_parts(lineup_parts_by_band($myRows, true, 'split')));
+$parts = sort_tally_by_count(tally_parts(lineup_parts_by_band($counted($myRows), true, 'split')));
 
 // ---- よく組むメンバー（自己結合） ----
 $st = $pdo->prepare('SELECT m.member_id, m.name, COUNT(DISTINCT other.band_id) AS n
     FROM (' . MEMBERSHIP_SQL . ') mine
     JOIN (' . MEMBERSHIP_SQL . ') other ON other.band_id = mine.band_id AND other.member_id <> mine.member_id
     JOIN member m ON m.member_id = other.member_id
-    WHERE mine.member_id = ?
+    WHERE mine.member_id = ?' . $skipSql . '
     GROUP BY m.member_id
     ORDER BY n DESC, m.name');
 // ↑ LIMIT は付けずに全員取る。最初は上位5人だけ見せて、残りは「すべて表示」で出す（JS: setupPartnerBox）
-$st->execute([$memberId]);
+$st->execute([$memberId, ...$skipParams]);
 $partners = $st->fetchAll();
 
 // ---- よく演奏するアーティスト（上位10位） ----
@@ -104,11 +121,11 @@ $st = $pdo->prepare('SELECT a.artist_id, a.name, COUNT(DISTINCT p.band_id) AS n
     FROM (' . artist_plays_sql() . ') p
     JOIN (' . MEMBERSHIP_SQL . ') mine ON mine.band_id = p.band_id
     JOIN artist a ON a.artist_id = p.artist_id
-    WHERE mine.member_id = ?
+    WHERE mine.member_id = ?' . $skipSql . '
     GROUP BY a.artist_id
     ORDER BY n DESC, a.name
     LIMIT 10');
-$st->execute([$memberId]);
+$st->execute([$memberId, ...$skipParams]);
 $topArtists = $st->fetchAll();
 
 // ---- 出演履歴を「同じ日程（live_day）」ごとにまとめる ----
@@ -142,7 +159,7 @@ $st = $pdo->prepare('SELECT bm.band_id, bm.member_id, m.name, i.short_name, i.na
     WHERE bm.band_id IN (SELECT band_id FROM band_member WHERE member_id = ?) AND bm.member_id <> ?
     ORDER BY i.sort_order, m.name');
 $st->execute([$memberId, $memberId]);
-$partnerRows = $st->fetchAll();
+$partnerRows = $counted($st->fetchAll());
 $partnerParts = [];   // [相手の member_id][band_id] = [パート, ...]（開いた中身の、ライブ名の左の楽器ラベル。Gt/Cho にまとめる）
 $partnerTally = [];   // [相手の member_id] = tally_parts の結果（名前の行の右の「Dr × 3」）
 foreach (lineup_parts_by_band($partnerRows) as $p) {
@@ -158,7 +175,7 @@ foreach ($partnerCount as $pid => $countParts) {
 }
 // $history の並び（新しい順・出演順）のまま、相手ごと・年度ごとに振り分ける
 $sharedBands = []; // [相手の member_id][年度] = [出演履歴の行, ...]
-foreach ($history as $hi) {
+foreach ($countedHistory as $hi) {
     foreach ($partnerParts as $pid => $byBand) {
         if (isset($byBand[(int)$hi['band_id']])) {
             $sharedBands[$pid][$hi['year']][] = $hi;
@@ -166,8 +183,8 @@ foreach ($history as $hi) {
     }
 }
 
-$headliners = count(array_filter($history, static fn($h) => (int)$h['is_last'] === 1));
-$liveCount = count(array_unique(array_column($history, 'live_id')));
+$headliners = count(array_filter($countedHistory, static fn($h) => (int)$h['is_last'] === 1));
+$liveCount = count(array_unique(array_column($countedHistory, 'live_id')));
 $isMe = $memberId === $user['member_id'];
 
 // ---- 見ている人（ログイン中の人）も一緒に出たバンド ----
@@ -268,7 +285,7 @@ render_header($member['name'], 'members');
         <?php if ($parts): ?><?= part_marks($parts, true) ?><?php endif; ?>
     </div>
     <dl class="stats">
-        <div><dt>出演バンド</dt><dd><?= count($history) ?></dd></div>
+        <div><dt>出演バンド</dt><dd><?= count($countedHistory) ?></dd></div>
         <div><dt>ライブ</dt><dd><?= $liveCount ?></dd></div>
         <div><dt>トリ</dt><dd><?= $headliners ?></dd></div>
     </dl>

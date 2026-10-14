@@ -104,6 +104,7 @@ CREATE TABLE user_account (
     tutorial_seen_at DATETIME  NULL,                    -- チュートリアルを閉じた日時。NULL = まだ見ていない（partials/tutorial.php）
     hide_retired_suggest BOOLEAN NOT NULL DEFAULT TRUE, -- 退会した人をメンバー名の候補に出さない（account.php）
     show_back_button BOOLEAN NOT NULL DEFAULT TRUE,     -- 左下の戻るボタンを出す（account.php・assets/app.js の setupBackButton）
+    count_upcoming BOOLEAN NOT NULL DEFAULT FALSE,      -- まだ来ていない日程のバンドもメンバーページの集計に数える（account.php・member.php）
     created_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (user_id),
     UNIQUE KEY uq_user_login (login_id),
