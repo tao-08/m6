@@ -2108,6 +2108,11 @@ textarea.board-textarea { width: 100%; padding: 10px 14px; border-radius: var(--
 textarea.board-textarea:focus { border-color: var(--accent); } /* 上の border が共通の textarea:focus より後勝ちなので、枠色を戻す */
 @media (min-width: 761px) { .board-posts, .board-reply { max-width: 720px; margin-inline: auto; } } /* PC: 書き込みのカードと返信欄は幅を狭くして中央に（長い行は読みにくい） */
 [data-board-panel] .togglecard__body { padding-top: 12px; } /* スレッド作成・通知設定とも、カードの上端に余白 */
+.tag.board-title-tag { padding: 5px 10px; } /* スレ名の横のカテゴリラベル: 上下の余白を広めに */
+[data-board-free].is-entering { animation: board-slide .2s ease-out; } /* カテゴリを切り替えたとき */
+.board-row__name { line-height: 1.4; }
+.board-row__title .tag { line-height: 1; padding: 4px 8px; } /* 文字と上下中央がそろうように、行の高さを 1 にして余白で調整 */
+@media (prefers-reduced-motion: reduce) { [data-board-free].is-entering { animation: none; } }
 .board-panel__title { margin-top: 0; color: var(--muted); font-weight: 600; } /* 見出しはやや薄く */
 .board-panel__sub { margin: 4px 0 -6px; font-size: 13px; font-weight: 600; color: var(--muted); } /* 小見出し */
 [data-board-panel]:not([hidden]) { animation: board-slide .2s ease-out; } /* スレッド作成・通知設定のカードが開くとき */

@@ -123,11 +123,11 @@ $canDeleteThread = $thread['kind'] === 'free' && $thread['deleted_at'] === null 
 
 render_header($thread['title'], 'board');
 ?>
-<nav class="crumbs"><a href="board">掲示板</a><span>/</span><?= h($thread['title']) ?></nav>
+<nav class="crumbs"><a href="board">アビーボード</a><span>/</span><?= h($thread['title']) ?></nav>
 <h1 class="display display--sm notice-title">
     <?= icon(match ($thread['kind']) { 'active' => 'groups', 'cohort' => 'school', default => 'forum' }) ?>
     <?= h($thread['title']) ?>
-    <?php if ($thread['category_name'] !== null): ?><span class="tag tag--c-<?= h($thread['category_color']) ?>"><?= h($thread['category_name']) ?></span><?php endif; ?>
+    <?php if ($thread['category_name'] !== null): ?><span class="tag board-title-tag tag--c-<?= h($thread['category_color']) ?>"><?= h($thread['category_name']) ?></span><?php endif; ?>
     <!-- ミュート（トグル）。押すと api_board_mute に送る（assets/app.js の setupBoardMute） -->
     <button type="button" class="icon-btn icon-btn--sm board-mute<?= $muted ? ' is-active' : '' ?>" data-board-mute="<?= $id ?>" aria-pressed="<?= $muted ? 'true' : 'false' ?>" aria-label="ミュート" title="ミュート"><?= icon($muted ? 'notifications_off' : 'notifications') ?></button>
 </h1>

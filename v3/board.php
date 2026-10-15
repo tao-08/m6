@@ -143,10 +143,11 @@ if (!empty($user['admin'])) {
 }
 
 /** スレ一覧の1行 */
-$row = function (array $t) use ($categoryNames, $categoryColors, $myYear): string {
+$row = function (array $t) use ($categoryNames, $categoryColors, $myYear, $cat): string {
     $icon = match ($t['kind']) { 'active' => 'groups', 'cohort' => 'school', default => 'forum' };
     $tag = '';
-    if ($t['kind'] === 'free' && isset($categoryNames[$t['category_id']])) {
+    // カテゴリで絞り込んでいる（$cat <> 0）ときは、どれも同じカテゴリなのでラベルは出さない
+    if ($t['kind'] === 'free' && $cat === 0 && isset($categoryNames[$t['category_id']])) {
         $tag = '<span class="tag tag--c-' . h($categoryColors[$t['category_id']]) . '">' . h($categoryNames[$t['category_id']]) . '</span>';
     } elseif ($t['kind'] === 'cohort' && (int)$t['entry_year'] === $myYear) {
         $tag = '<span class="tag">同期</span>';
@@ -154,17 +155,17 @@ $row = function (array $t) use ($categoryNames, $categoryColors, $myYear): strin
     $meta = ($t['last_post_id'] ? h(substr($t['last_posted_at'], 0, 16)) : '') . ($t['author'] !== null ? ' · ' . h($t['author']) : '');
     return '<a class="board-row' . ($t['deleted_at'] !== null ? ' is-deleted' : '') . '" href="board_thread?id=' . (int)$t['thread_id'] . '">'
         . icon($icon, 'board-row__icon')
-        . '<span class="board-row__main"><span class="board-row__title">' . h($t['title']) . ' ' . $tag
+        . '<span class="board-row__main"><span class="board-row__title"><span class="board-row__name">' . h($t['title']) . '</span>' . $tag
         . ($t['is_new'] && $t['deleted_at'] === null ? ' <span class="tag tag--plan">NEW</span>' : '')
         . ($t['deleted_at'] !== null ? ' <span class="tag tag--c-red">削除済み</span>' : '') . '</span>'
         . '<span class="muted small">' . $meta . '</span></span>'
         . '<span class="board-row__count muted small">' . icon('chat_bubble') . (int)$t['posts'] . '</span></a>';
 };
 
-render_header('掲示板', 'board');
+render_header('アビーボード', 'board');
 ?>
 <div class="board-head">
-    <h1 class="display display--sm"><?= icon('forum') ?> 掲示板</h1>
+    <h1 class="display display--sm"><?= icon('forum') ?> アビーボード</h1>
     <!-- スレッド作成・通知設定は、アイコンを押すと下のカードが開く（assets/app.js の setupBoardPanels） -->
     <button type="button" class="icon-btn" data-board-panel-open="create" aria-label="スレッド作成" title="スレッド作成"><?= icon('add_comment') ?></button>
     <button type="button" class="icon-btn" data-board-panel-open="notify" aria-label="通知設定" title="通知設定"><?= icon('settings') ?></button>
@@ -197,9 +198,9 @@ render_header('掲示板', 'board');
     <?= csrf_field() ?>
     <input type="hidden" name="action" value="notify">
     <label class="check"><input type="hidden" name="notify_fixed" value="0"><input type="checkbox" name="notify_fixed" value="1"<?= $pref['cohort_active'] ? ' checked' : '' ?>>
-        <?= icon('groups') ?><?= icon('school') ?> 現役・同期の書き込み</label>
+        <?= icon('groups') ?><?= icon('school') ?> 現役・同期スレッドの新着</label>
     <label class="check" title="48時間以内に自分が書き込んだスレの新着"><input type="hidden" name="notify_part" value="0"><input type="checkbox" name="notify_part" value="1"<?= $pref['participating'] ? ' checked' : '' ?>>
-        <?= icon('edit_note') ?> 参加中のスレ（48時間）</label>
+        <?= icon('edit_note') ?> 48時間以内に書き込んだスレッドの新着</label>
     <h3 class="board-panel__sub">新規スレッドを通知</h3>
     <div class="checks">
         <?php foreach ($categories as $c): ?>
@@ -224,18 +225,21 @@ render_header('掲示板', 'board');
 </details>
 <?php endif; ?>
 
-<nav class="tabs tabs--static" aria-label="カテゴリ">
+<nav class="tabs tabs--static" aria-label="カテゴリ" data-board-tabs>
     <a class="tab<?= $cat === 0 ? ' is-active' : '' ?>" href="board"<?= $cat === 0 ? ' aria-current="page"' : '' ?>>すべて</a>
     <?php foreach ($categories as $c): ?>
         <a class="tab<?= $cat === (int)$c['category_id'] ? ' is-active' : '' ?>" href="board?cat=<?= (int)$c['category_id'] ?>"<?= $cat === (int)$c['category_id'] ? ' aria-current="page"' : '' ?>><?= h($c['name']) ?></a>
     <?php endforeach; ?>
 </nav>
 
+<!-- カテゴリのタブを押すと、ここだけ差し替える（assets/app.js の setupBoardTabs。選んでいるカテゴリは data-cat） -->
+<div data-board-free data-cat="<?= $cat ?>">
 <?php if ($free): ?>
 <div class="card board-list"><?php foreach ($free as $t) { echo $row($t); } ?></div>
 <?php else: ?>
 <p class="muted">スレッドはありません</p>
 <?php endif; ?>
+</div>
 
 <?php if ($user['admin']): ?>
 <details class="card togglecard" id="categories">

@@ -91,6 +91,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupBoardReply();
   setupBoardPanels();
   setupBoardMute();
+  setupBoardTabs();
   setupVenueSuggest();
   setupSongs();
   setupTrackSearch();
@@ -1054,6 +1055,54 @@ function setupBoardMute() {
       pending = false;
     }
   });
+}
+
+/* ---------------------------------------------------------------------
+ * 掲示板一覧のカテゴリ切り替え（board.php）
+ *   タブ [data-board-tabs] を押したら、ページ移動せずに同じ URL を取ってきて、一覧 [data-board-free] だけ差し替える。
+ *   差し替えたら軽くスッと出す。URL は pushState で変える（戻る・進むでも切り替わる）。
+ *   取れなかったときは普通にページ移動する。タブの名前は textContent ではなくサーバーが作った HTML を DOMParser 経由で移す
+ *   （自分のサーバーの同じページなので、中身はサーバー側で h() 済み）
+ * ------------------------------------------------------------------- */
+function setupBoardTabs() {
+  const tabs = document.querySelector('[data-board-tabs]');
+  const area = document.querySelector('[data-board-free]');
+  if (!tabs || !area) return;
+  let seq = 0; // 連打したとき、最後に押した分だけ反映する
+  const select = document.querySelector('form [name="category_id"]'); // スレッド作成のカテゴリ（選んでいるカテゴリに合わせる）
+
+  const show = (url) => {
+    const my = ++seq;
+    return fetch(url, { credentials: 'same-origin' })
+      .then((res) => { if (!res.ok) throw new Error(res.status); return res.text(); })
+      .then((html) => {
+        if (my !== seq) return;
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        const next = doc.querySelector('[data-board-free]');
+        if (!next) throw new Error('no list');
+        area.innerHTML = next.innerHTML;
+        area.dataset.cat = next.dataset.cat;
+        const hrefs = new Map([...doc.querySelectorAll('[data-board-tabs] .tab')].map((a) => [a.getAttribute('href'), a.classList.contains('is-active')]));
+        tabs.querySelectorAll('.tab').forEach((a) => {
+          const on = hrefs.get(a.getAttribute('href')) === true;
+          a.classList.toggle('is-active', on);
+          if (on) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
+        });
+        if (select && next.dataset.cat !== '0') select.value = next.dataset.cat;
+        area.classList.remove('is-entering');
+        void area.offsetWidth; // 一度描き直させて、アニメーションを最初からやり直す
+        area.classList.add('is-entering');
+      });
+  };
+
+  tabs.addEventListener('click', (e) => {
+    const a = e.target.closest('a.tab');
+    if (!a || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    e.preventDefault();
+    if (a.classList.contains('is-active')) return;
+    show(a.href).then(() => history.pushState(null, '', a.href)).catch(() => { location.href = a.href; });
+  });
+  window.addEventListener('popstate', () => { show(location.href).catch(() => location.reload()); });
 }
 
 /* ---------------------------------------------------------------------
