@@ -1,0 +1,37 @@
+name: Deploy
+
+# 手動実行（Actionsタブ → Deploy → Run workflow）
+# push で自動にしたい場合は下の on: に `push: { branches: [main] }` を追加
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: SSH 設定
+        run: |
+          install -m 700 -d ~/.ssh
+          echo "${{ secrets.SSH_KEY }}" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          ssh-keyscan -p "${{ secrets.SSH_PORT || 22 }}" "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts
+
+      # config.php は本番専用なので除外（--delete でも消えない）
+      - name: rsync
+        run: |
+          rsync -rltvz --delete \
+            -e "ssh -i ~/.ssh/id_deploy -p ${{ secrets.SSH_PORT || 22 }}" \
+            --exclude 'config.php' \
+            --exclude '.git*' \
+            --exclude '.claude/' \
+            --exclude '*.md' \
+            ./v3/ "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${{ secrets.SSH_PATH }}/"
