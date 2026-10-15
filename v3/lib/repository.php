@@ -1203,6 +1203,8 @@ function inst_filter(array $parts, string $target, bool $tori = false, string $i
     $rows = [[$opt('', icon('filter_alt_off', 'icon--fill'), 'すべて') . ($tori ? $opt('tori', '<span class="tori-badge">🐔</span>', 'トリ') : '')]];
     $plain = []; // 兼任がない楽器は最後に横4列で並べる（etc はさらにその下の段）
     $etc = '';
+    $comboRows = [];
+    $width = [0, 0, 0]; // 兼任の種類ごとの列数（Vo の兼任・Cho の兼任・その他の兼任）
     $cols = 2;
     foreach ($groups as $cls => $g) {
         $single = '<span class="part part--' . h($cls) . '">' . h($g['short']) . '</span>';
@@ -1216,16 +1218,33 @@ function inst_filter(array $parts, string $target, bool $tori = false, string $i
         }
         // Vo・Cho の行は兼任（Vo/Gt・Gt/Cho など）が他の楽器の行と重複するので、単体と All だけ
         $combos = in_array($cls, ['vo', 'cho'], true) ? [] : $g['combos'];
-        // 単体 → Vo の兼任 → Cho の兼任 → その他の兼任 → All の順
-        $rank = static fn(string $key): int => in_array('vo', explode('-', $key), true) ? 0 : (in_array('cho', explode('-', $key), true) ? 1 : 2);
-        uksort($combos, static fn($a, $b) => $rank($a) <=> $rank($b));
-        $row = isset($g['solo']) ? $opt($cls . '!', $single) : '';
+        // 兼任は Vo の兼任・Cho の兼任・その他の兼任 に分け、それぞれ決まった列に置く（無い行はその列を空ける）
+        $byRank = [[], [], []];
         foreach ($combos as $key => $p) {
-            $row .= $opt($key, part_badge($p));
+            $segs = explode('-', $key);
+            $byRank[in_array('vo', $segs, true) ? 0 : (in_array('cho', $segs, true) ? 1 : 2)][$key] = $p;
+        }
+        foreach ($byRank as $r => $list) {
+            $width[$r] = max($width[$r], count($list));
+        }
+        $comboRows[] = [$cls, $g, $single, $byRank];
+    }
+    // 列: 単体（1列目）→ Vo の兼任 → Cho の兼任 → その他の兼任 → All（右端）
+    $start = [2];
+    foreach ([1, 2] as $r) {
+        $start[$r] = $start[$r - 1] + $width[$r - 1];
+    }
+    $cols = max($cols, $start[2] + $width[2]);
+    foreach ($comboRows as [$cls, $g, $single, $byRank]) {
+        $row = isset($g['solo']) ? $opt($cls . '!', $single) : '';
+        foreach ($byRank as $r => $list) {
+            $c = $start[$r];
+            foreach ($list as $key => $p) {
+                $row .= str_replace('<button ', '<button style="grid-column: ' . $c++ . '" ', $opt($key, part_badge($p)));
+            }
         }
         $row .= $opt($cls, '<span class="part part--all part--' . h($cls) . '">' . h($g['short']) . ' All</span>');
         $rows[] = [$row, isset($g['solo'])];
-        $cols = max($cols, count($combos) + 2);
     }
     $cols = max($cols, min(4, count($plain)));
     foreach (array_chunk($plain, 4) as $chunk) {
