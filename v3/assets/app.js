@@ -342,7 +342,22 @@ function setupToasts() {
  *                         付けると空欄（前に書いていた名前があれば戻す）にして編集できるようにする
  * ------------------------------------------------------------------- */
 function setupSongs() {
-  // 演奏者の楽器の「＋」: 下に楽器2の段を出して、＋ は隠す（3つ目以降は無い）
+  // バンド編集の2つ目の楽器の「＋」: 1つ目の楽器の下に開閉。閉じたら値を空（なし）に戻す
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-inst2-toggle]');
+    if (!btn) return;
+    const row = btn.closest('.member-row-edit');
+    const slot = row.querySelector('[data-inst2-slot]');
+    const select = slot.querySelector('select');
+    const open = !slot.classList.contains('is-open');
+    slot.classList.toggle('is-open', open);
+    btn.classList.toggle('is-open', open);
+    btn.setAttribute('aria-expanded', open);
+    if (open) { (slot.querySelector('.live-pick__btn') || select).focus({ preventScroll: true }); }
+    else { select.value = ''; select.dispatchEvent(new Event('change', { bubbles: true })); }
+  });
+
+  // 演奏者の楽器の「＋」:下に楽器2の段を出して、＋ は隠す（3つ目以降は無い）
   document.addEventListener('click', (e) => {
     const add = e.target.closest('[data-add-inst]');
     if (!add) return;
@@ -998,15 +1013,22 @@ function setupBackButton() {
  *   data-autosubmit … セレクトボックスやラジオボタンを変えたらすぐフォームを送信（集計の絞り込み）
  * ------------------------------------------------------------------- */
 function setupSmallThings() {
-  document.querySelectorAll('[data-autosubmit]').forEach((sel) => sel.addEventListener('change', () => sel.form.submit()));
+  document.querySelectorAll('[data-autosubmit]').forEach((sel) => sel.addEventListener('change', () => submitKeepScroll(sel.form)));
+  // submitKeepScroll で送ったあとの読み直し: 送る前のスクロール位置に戻す（同じページのときだけ）
+  try {
+    const saved = JSON.parse(sessionStorage.getItem('keep-scroll') || 'null');
+    sessionStorage.removeItem('keep-scroll');
+    if (saved && saved.path === location.pathname) window.scrollTo(0, saved.y);
+  } catch { /* sessionStorage が使えないときは戻さないだけ */ }
   // 集計の絞り込み（スマホは段ごと横スクロール）: 年度・学年のセレクトやスロットが出ている段は、右端まで送って見えるようにする
   document.querySelectorAll('.stats-filter__row').forEach((row) => {
     if ([...row.querySelectorAll('.stats-filter__extra')].some((el) => el.offsetParent)) row.scrollLeft = row.scrollWidth;
   });
-  // 絞り込みがヘッダーの下に浮いている（sticky で止まっている）ときは .is-stuck を付ける（スマホは見出しを消す）
+  // 絞り込みが浮く位置（sticky の top）にどれだけ近いか → --stuck（0〜1）。残り 80px から近づくほど 1 に（スマホは見出しが薄くなる）
   document.querySelectorAll('.stats-filter').forEach((box) => {
     const check = () => {
-      box.classList.toggle('is-stuck', box.getBoundingClientRect().top <= parseFloat(getComputedStyle(box).top) + 1 && scrollY > 0);
+      const rest = box.getBoundingClientRect().top - parseFloat(getComputedStyle(box).top);
+      box.style.setProperty('--stuck', Math.min(1, Math.max(0, 1 - rest / 80)).toFixed(3));
     };
     window.addEventListener('scroll', check, { passive: true });
     check();
@@ -1293,8 +1315,10 @@ function makeSlot(slot, onSelect) {
   const select = (i, first = false) => {
     const before = index;
     index = clamp(i);
-    reel.classList.remove('is-dragging');
+    // 最初の1回（読み込み直後）はアニメーションなしでその段に置く（集計で送信したあと、上から回って見えないように）
+    reel.classList.toggle('is-dragging', first);
     move(-index * itemH());
+    if (first) { reel.offsetHeight; reel.classList.remove('is-dragging'); }
     items.forEach((el, n) => el.classList.toggle('is-current', n === index));
     const value = items[index].dataset.value;
     slot.setAttribute('aria-valuetext', items[index].textContent);
@@ -1302,10 +1326,55 @@ function makeSlot(slot, onSelect) {
     onSelect(value, !first && index !== before);
   };
 
+  // ---- タップで開くプルダウン（独自デザイン）: body 直下に固定位置で出す（スロットの overflow で切れないように） ----
+  let menu = null;
+  const closeMenu = () => {
+    if (!menu) return;
+    menu.remove();
+    menu = null;
+    document.removeEventListener('pointerdown', outside, true);
+    removeEventListener('scroll', onScroll, true);
+    removeEventListener('resize', closeMenu);
+  };
+  const onScroll = (e) => { if (!menu?.contains(e.target)) closeMenu(); };
+  const outside = (e) => { if (!menu.contains(e.target) && !slot.contains(e.target)) closeMenu(); };
+  const openMenu = () => {
+    if (menu) { closeMenu(); return; }
+    menu = document.createElement('div');
+    menu.className = 'slot-menu';
+    menu.setAttribute('role', 'listbox');
+    items.forEach((el, n) => {
+      const opt = document.createElement('button');
+      opt.type = 'button';
+      opt.className = 'slot-menu__item' + (n === index ? ' is-current' : '');
+      opt.setAttribute('role', 'option');
+      opt.textContent = el.dataset.label || el.textContent.trim();
+      opt.addEventListener('click', () => { closeMenu(); select(n); slot.focus(); });
+      menu.append(opt);
+    });
+    document.body.append(menu);
+    const r = slot.getBoundingClientRect();
+    const below = innerHeight - r.bottom - 8;
+    menu.style.minWidth = `${r.width}px`;
+    menu.style.left = `${Math.min(r.left, innerWidth - menu.offsetWidth - 8)}px`;
+    if (below < Math.min(menu.offsetHeight, 200) && r.top > below) {
+      menu.style.bottom = `${innerHeight - r.top + 4}px`;
+      menu.style.maxHeight = `${Math.min(r.top - 12, 340)}px`;
+    } else {
+      menu.style.top = `${r.bottom + 4}px`;
+      menu.style.maxHeight = `${Math.min(below, 340)}px`;
+    }
+    menu.querySelector('.is-current')?.scrollIntoView({ block: 'center' });
+    document.addEventListener('pointerdown', outside, true);
+    addEventListener('scroll', onScroll, true);
+    addEventListener('resize', closeMenu);
+  };
+
   // ---- ドラッグ（マウスもタッチも pointer イベントでまとめて扱う） ----
   let startY = null;
   let dy = 0;
   slot.addEventListener('pointerdown', (e) => {
+    closeMenu();
     startY = e.clientY;
     dy = 0;
     slot.setPointerCapture(e.pointerId);
@@ -1327,11 +1396,9 @@ function makeSlot(slot, onSelect) {
     startY = null;
     const h = itemH();
     if (Math.abs(dy) < 4) {
-      // ほぼ動いていない = タップ。上の段なら1つ前、下の段なら1つ次（真ん中はそのまま）
-      const r = slot.getBoundingClientRect();
-      const y = e.clientY - (r.top + r.height / 2);
-      if (Math.abs(y) > h / 2) select(index + Math.sign(y));
-      else select(index);
+            // ほぼ動いていない = タップ → プルダウンを開く
+      select(index);
+      openMenu();
     } else {
       select(Math.round(index - dy / h));
     }
@@ -1354,6 +1421,8 @@ function makeSlot(slot, onSelect) {
     if (step) { e.preventDefault(); select(index + step); }
     if (e.key === 'Home') { e.preventDefault(); select(0); }
     if (e.key === 'End') { e.preventDefault(); select(max); }
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openMenu(); }
+    if (e.key === 'Escape') closeMenu();
   });
 
   select(index, true);
@@ -1371,6 +1440,16 @@ function setupYearSlot() {
   const slot = document.querySelector('[data-year-slot]');
   if (!slot) return;
   const sections = document.querySelectorAll(slot.dataset.yearSlot || 'section[data-year]');
+  // 横に検索バーがあれば（ライブ一覧・メンバーの出演履歴）、縦横の比率はそのままで検索バーの高さに合わせて縮める
+  const search = slot.parentElement.querySelector('.search');
+  if (search && slot.classList.contains('year-slot--live')) {
+    // ライブ一覧: 縮めずに、高さだけ検索バーに合わせる（1段 = 高さの半分。幅と文字は CSS）
+    const h = search.offsetHeight;
+    slot.style.height = `${h}px`;
+    slot.querySelectorAll('.year-slot__item').forEach((el) => { el.style.height = `${h / 2}px`; });
+  } else if (search) {
+    slot.style.zoom = search.offsetHeight / slot.offsetHeight;
+  }
   makeSlot(slot, (value, changed) => {
     sections.forEach((sec) => { sec.hidden = value !== '' && (sec.dataset.year || sec.dataset.historyYear) !== value; });
     // 年度が変わったときだけ動かす（端でさらに回した・真ん中をタップした、では動かさない）
@@ -1382,6 +1461,12 @@ function setupYearSlot() {
   });
 }
 
+/* フォームを送る（ページを読み直す）けど、今のスクロール位置は保つ（集計の絞り込み）。戻すのは setupSmallThings */
+function submitKeepScroll(form) {
+  try { sessionStorage.setItem('keep-scroll', JSON.stringify({ path: location.pathname, y: scrollY })); } catch { /* 保てないだけ */ }
+  form.submit();
+}
+
 /* ---------------------------------------------------------------------
  * フォームの中のスロット（集計の学年別）: data-slot-input
  *   回したら、中の hidden input に選んだ値を入れてフォームを送信する
@@ -1391,7 +1476,7 @@ function setupSlotInput() {
     const input = slot.querySelector('input[type="hidden"]');
     makeSlot(slot, (value, changed) => {
       input.value = value;
-      if (changed) input.form.submit();
+      if (changed) submitKeepScroll(input.form);
     });
   });
 }
@@ -1420,6 +1505,7 @@ function setupGradeSlot() {
   const apply = (changed) => {
     const radio = radios.find((r) => r.checked) || radios[0];
     const who = radio.value;
+    box.classList.toggle('is-grade', who === 'grade'); // 学年スロットを出す（CSS の .grade-slot-wrap がアニメーションで広がる）
     const match = (entry) => {
       if (who === 'all') return true;
       // 上下3学年・現役・卒業生: 入学年度が data-min 〜 data-max の人（無い側は制限なし）。入学年度が不明な人は出さない
@@ -3946,6 +4032,10 @@ function setupMemberRows() {
       input.classList.remove('is-ok', 'is-similar', 'is-new');
       input.title = '';
       row.querySelector('select').value = '2';           // 楽器はギターに戻す（2 = Gt。コピー元の楽器を引き継がない）
+      const inst2 = row.querySelector('[data-inst2]');
+      if (inst2) inst2.value = '';                        // 2つ目の楽器は空に
+      row.querySelector('[data-inst2-slot]')?.classList.remove('is-open');
+      row.querySelector('[data-inst2-toggle]')?.classList.remove('is-open');
       const cho = row.querySelector('[data-cho-toggle]');
       if (cho) setChorus(cho, false, true);               // Cho のトグルも OFF に（ギターなので押せる）
       // data-next がある（name が b[ID][m][番号][…] の形）なら、番号を新しくする。

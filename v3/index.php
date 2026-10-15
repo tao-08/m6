@@ -97,7 +97,7 @@ render_header('ライブ一覧', 'lives');
 <?php if ($flagged): ?>
     <section class="card check-list" data-check-list>
         <h2 class="section-title section-title--card"><?= icon('flag', 'icon--fill flag-icon') ?> 確認依頼が届いています</h2>
-        <p class="muted small">登録内容の確認依頼が届いているバンドです。バンド詳細ページから確認をお願いします。<br>メンバーが未登録のバンドは全員に表示しています。 情報をお持ちの方は情報提供にご協力お願いします。</p>
+        <p class="muted small">登録内容の確認依頼が届いているバンドです。バンド詳細ページから確認をお願いします。<br>メンバーが未登録のバンドは全員に表示されています。 情報をお持ちの方は情報提供にご協力お願いします。</p>
         <ul>
             <?php foreach ($flagged as $f): ?>
                 <li data-check-item><div class="check-list__text"><a href="band?id=<?= (int)$f['band_id'] ?>"><?= h($f['name']) ?></a>
@@ -123,11 +123,11 @@ render_header('ライブ一覧', 'lives');
 <?php else: ?>
     <div class="toolbar">
         <!-- data-year-slot: 縦にドラッグ（ホイール・↑↓キー）で年度を切り替えて、その年度の .year だけ表示する（assets/app.js） -->
-        <div class="year-slot" data-year-slot tabindex="0" role="spinbutton" aria-label="年度で絞り込み" title="上下にドラッグで年度を切り替え">
+        <div class="year-slot year-slot--live" data-year-slot tabindex="0" role="spinbutton" aria-label="年度で絞り込み" title="上下にドラッグで年度を切り替え">
             <div class="year-slot__reel">
                 <div class="year-slot__item" data-value="">すべて</div>
                 <?php foreach ($slotYears as $year): ?>
-                    <div class="year-slot__item" data-value="<?= (int)$year ?>"><?= $year > 0 ? (int)$year . '<small>年度</small>' : '未設定' ?></div>
+                    <div class="year-slot__item" data-value="<?= (int)$year ?>" data-label="<?= $year > 0 ? (int)$year . '年度' : '未設定' ?>"><?= $year > 0 ? '<span class="year-slot__full">' . (int)$year . '<small>年度</small></span><span class="year-slot__short">' . sprintf("'%02d", $year % 100) . '</span>' : '未設定' ?></div>
                 <?php endforeach; ?>
             </div>
         </div>

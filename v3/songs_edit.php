@@ -312,7 +312,7 @@ render_header('セットリストを編集', 'lives');
 <?php endif; ?>
 <p class="muted small">曲ごとに演奏者と担当楽器が記録できます。 曲を検索して紐づけると対応アプリで開くリンクが作成されます。</p>
 <?php if ($fromSheet): ?>
-    <div class="flash flash--info"><?= icon('description') ?> セッティングシートの曲を並べました。曲を検索して紐づけ、演奏者を確認したら「保存」してください（まだ保存されていません）</div>
+    <div class="flash flash--info"><?= icon('description') ?> データベースにはまだ保存されていません。<br>曲を探す ボタンを押して楽曲情報を登録し、演奏者と担当楽器を確認したら保存してください。</div>
     <?php if ($droppedTitles): ?>
         <div class="flash flash--warn">シートに無い登録済みの曲は、保存すると消えます: <?= h(implode('、', $droppedTitles)) ?></div>
     <?php endif; ?>

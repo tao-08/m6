@@ -335,8 +335,32 @@ body:has([data-tutorial-auto]) .toasts { display: none; }
 .year-slot__item.is-current { color: var(--text); opacity: 1; }
 .year-slot.is-filtered .year-slot__item.is-current { color: var(--accent); }
 /* 学年スロット（メンバー一覧の「学年別」）: 「OB2'21」が入る幅。隠した行は名前検索の hidden とは別のクラスで消す */
-.year-slot--grade { width: 6.6em; }
-.year-slot--grade .year-slot__item { font-size: 17px; }
+:root { --grade-slot-w: 5.8em; --grade-slot-h: 44px; } /* 学年スロットの大きさ（.grade-slot-wrap が広がる大きさと同じ） */
+.year-slot--grade { width: var(--grade-slot-w); height: var(--grade-slot-h); } /* ライブ一覧の年度スロットより少し小さく */
+.year-slot--grade .year-slot__item { height: 22px; font-size: 15px; }
+.year-slot--fy .year-slot__item { font-size: 19px; } /* 集計の単年度: 「'26」だけなので大きめ */
+/* 集計の年度スロット: 幅を詰める。▼（左 6px・幅 8px）の左右と、字の左右の余白をそれぞれ同じにする */
+.year-slot--fy { width: 66px; }
+.year-slot--fy::before { left: 6px; width: 8px; text-align: center; }
+.year-slot--fy .year-slot__item { padding: 0 4px 0 20px; } /* 右だけ 4px 多めに空ける */
+.year-slot::before { content: '▼'; position: absolute; left: 9px; top: 50%; transform: translateY(-50%);
+  font-size: 8px; color: var(--muted); pointer-events: none; z-index: 1; }
+.year-slot__item { padding-left: 14px; }
+.year-slot__full { display: none; }
+.year-slot--live { width: 6.4em; } /* ライブ一覧: 高さは検索バーに合わせる（app.js） */
+.year-slot--live .year-slot__item { font-size: 21px; }
+.year-slot--live .year-slot__item[data-value=""] { font-size: 18px; } /* 「すべて」は小さめ */
+.slot-menu { position: fixed; z-index: 1000; overflow-y: auto; overscroll-behavior: contain; padding: 6px;
+  display: flex; flex-direction: column; gap: 2px; max-height: min(60vh, 340px);
+  background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .18); animation: slot-menu-in .14s ease-out; }
+@keyframes slot-menu-in { from { opacity: 0; transform: translateY(-4px); } }
+/* 1行ずつ大きめ・中央揃え。選択中はアクセント色の淡い背景＋太字、指を乗せた行は薄いグレー */
+.slot-menu__item { all: unset; box-sizing: border-box; min-height: 40px; padding: 0 20px; border-radius: 8px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  font: 600 16px/1 var(--font); font-variant-numeric: tabular-nums; color: var(--text); white-space: nowrap; }
+.slot-menu__item:hover, .slot-menu__item:focus-visible { background: color-mix(in srgb, var(--text) 7%, transparent); }
+.slot-menu__item.is-current { background: var(--accent-soft); color: var(--accent); font-weight: 800; }
 .member-row.is-grade-hidden { display: none; }
 input, select, textarea { font: inherit; color: inherit; }
 /* プルダウンの中身（option）は背景が透明のままだと、Windows の Chrome などで「白い背景に白い文字」になり
@@ -655,6 +679,15 @@ td .tag--plan { margin-top: 4px; } /* アーティストの演奏履歴: 日付�
 .member-row-edit > :nth-child(4) { order: 2; }
 .member-row-edit > :nth-child(1) { order: 3; }
 .member-row-edit > :nth-child(2) { order: 4; }
+.member-row-edit > .inst-tools { display: flex; align-items: center; gap: 6px; }
+.inst2-toggle { width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--border); background: var(--surface); color: var(--text);
+  display: inline-flex; align-items: center; justify-content: center; padding: 0; line-height: 1; cursor: pointer; transition: transform .25s ease, background .2s; }
+.inst2-toggle.is-open { background: rgba(46, 158, 91, .15); color: #2e9e5b; border-color: rgba(46, 158, 91, .5); } /* 緑 = 開いている（赤い ✕ の削除と区別するため回転もしない） */
+/* 2つ目の楽器: 1つ目の楽器の下（1列目）に、高さ 0 → 中身の高さでにゅっと出す */
+.member-row-edit > .inst2-slot { order: 5; grid-column: 1; display: grid; grid-template-rows: 0fr; opacity: 0; margin-top: -8px;
+  transition: grid-template-rows .25s ease, opacity .25s ease, margin-top .25s ease; }
+.inst2-slot > div { overflow: hidden; min-height: 0; }
+.member-row-edit > .inst2-slot.is-open { grid-template-rows: 1fr; opacity: 1; margin-top: 0; }
 .member-row-edit [data-remove-row] { width: 32px; height: 32px; padding: 0; border-radius: 50%; }
 .checks { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 12px 0 4px; }
 .check { display: flex; gap: 8px; align-items: center; font-size: 14px; cursor: pointer; }
@@ -1115,7 +1148,26 @@ body.is-row-dragging, body.is-row-dragging * { cursor: grabbing !important; user
 .stats-filter { display: grid; gap: 14px; margin-bottom: 10px; position: sticky; top: 70px; z-index: 15; } /* スクロールしてもヘッダーの下に浮いて残る */
 .stats-filter__row { border: 0; margin: 0; padding: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; min-width: 0; }
 .stats-filter__row legend { float: left; width: 4.5em; padding: 0; font-size: 12px; font-weight: 800; color: var(--muted); }
-.stats-filter__line { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; min-width: 0; } /* メンバー一覧: タブと「退会者を非表示」を1行に（スマホは2段） */
+.stats-filter__line { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; min-width: 0; } /* メンバー一覧: タブ・スロット・退会者を1行に（スマホは2段） */
+.stats-filter__sub { display: flex; align-items: center; gap: 12px; }
+.stats-filter__sub label { display: inline-flex; align-items: center; gap: 4px; } /* チェックボックスを文字の上下の真ん中に（そのままだと少し上に寄る） */
+/* 学年スロットの入れ物: 学年別のときだけ幅を広げて出す → 後ろの「退会者を非表示」が横にすべる。
+   幅は max-width ではなく width をスロットと同じ幅（--grade-slot-w）まで動かす
+   （max-width を大きめの値まで動かすと、途中で止まって見えてチェックの動きがカクつくため）。
+   padding 3px = スロットの光る枠（box-shadow 3px）が overflow で切れないように。同じだけ margin を引いて見た目の位置は変えない */
+.grade-slot-wrap { --ease: cubic-bezier(.25, .8, .25, 1); box-sizing: content-box; flex: none; display: flex; overflow: hidden;
+  width: 0; height: 0; padding: 3px; margin: -3px; margin-right: calc(-3px - 12px); opacity: 0; visibility: hidden;
+  transition: width .35s var(--ease), height .35s var(--ease), margin-right .35s var(--ease), opacity .3s ease, visibility .35s; }
+.grade-slot-wrap .year-slot { transform: scale(.85); opacity: 0; transition: transform .35s var(--ease), opacity .3s ease; }
+/* 学年別以外は幅も高さも0 → 下の段（カード）がスロットの分だけ詰まる。学年別にすると今の高さまでアニメーションで広がる
+   学年別のときだけ広げる。margin-right（閉じているとき）= 枠の3px + 段の gap 12px を引いて、チェックが左端までつめる
+   .is-grade は PHP の初期値と app.js の setupGradeSlot で付ける
+   （:has(input:checked) だと Chrome がタブの切り替えで見た目を更新しないことがあったのでクラスにしている） */
+.stats-filter.is-grade .grade-slot-wrap { width: var(--grade-slot-w); height: var(--grade-slot-h); margin-right: -3px; opacity: 1; visibility: visible; }
+.stats-filter.is-grade .grade-slot-wrap .year-slot { transform: none; opacity: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .grade-slot-wrap, .grade-slot-wrap .year-slot { transition: none; }
+}
 .tabs--filter { position: static; margin: 0; box-shadow: none; }
 .tabs--static { position: static; box-shadow: none; } /* 新規追加ページのタブ（スクロールで追いかけてこない） */
 .tabs--filter .tab { cursor: pointer; }
@@ -1125,9 +1177,29 @@ body.is-row-dragging, body.is-row-dragging * { cursor: grabbing !important; user
 .tabs--filter .tab.is-disabled { opacity: .4; cursor: not-allowed; }
 /* 集計の「よく組む学年区分」: ラジオで選んだ区分の表だけ出す（JS なし） */
 .grade-mix__tabs { display: inline-flex; margin-bottom: 10px; }
+/* % と「〇/〇回」は幅を固定して右寄せ（数字の桁数で % の列がずれないように） */
+.grade-mix .ranking .pill { justify-content: flex-end; min-width: 3.6em; font-variant-numeric: tabular-nums; }
+.grade-mix__count { flex: none; width: 5.5em; text-align: right; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .grade-mix:not(:has(input[value="junior"]:checked)) [data-grade-view="junior"],
 .grade-mix:not(:has(input[value="same"]:checked)) [data-grade-view="same"],
 .grade-mix:not(:has(input[value="senior"]:checked)) [data-grade-view="senior"] { display: none; }
+/* 切り替えたとき、出てきた表をふわっと出す（display: none から戻るたびに再生される） */
+[data-grade-view] { animation: grade-mix-in .25s ease-out; }
+@keyframes grade-mix-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { [data-grade-view] { animation: none; } }
+.section-title__note { margin-left: 8px; font-size: .7em; font-weight: 400; color: var(--muted); opacity: .8; }
+/* メンバーページの「よく組む学年区分」: 左に円グラフ、右に割合 */
+.grade-mix-card { --mix-pct: 40%; --mix-junior: color-mix(in srgb, var(--dr) var(--mix-pct), var(--surface)); --mix-same: color-mix(in srgb, var(--vo) var(--mix-pct), var(--surface)); --mix-senior: color-mix(in srgb, var(--gt) var(--mix-pct), var(--surface)); }
+[data-theme="dark"] .grade-mix-card { --mix-pct: 75%; } /* 暗い背景に混ぜると暗く沈むので、元の色を多めに */
+.grade-mix-card__link { color: inherit; text-decoration: none; display: inline-flex; align-items: center; gap: inherit; }
+.grade-mix-card__link:hover { color: var(--accent); }
+#grade-mix { scroll-margin-top: 220px; } /* 集計ページの浮いている絞り込みに隠れないように */
+.grade-mix-card__body { display: flex; align-items: center; gap: 20px; }
+.grade-mix-card__pie { flex: none; width: 110px; aspect-ratio: 1; border-radius: 50%; }
+.grade-mix-card__legend { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; flex: 1; }
+.grade-mix-card__legend li { display: flex; align-items: baseline; gap: 6px; }
+.grade-mix-card__legend b { margin-left: auto; font-size: 1.1em; }
+.grade-mix-card__dot { width: 10px; height: 10px; border-radius: 50%; align-self: center; }
 .stats-filter__extra { display: flex; align-items: center; gap: 6px; }
 .stats-filter__extra select { padding: 7px 10px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font-weight: 700; }
 /* 該当するタブが選ばれていないときは、年度セレクトを隠す */
@@ -1139,14 +1211,23 @@ body.is-row-dragging, body.is-row-dragging * { cursor: grabbing !important; user
 .stats-filter:has(input[name="who"][value="all"]:checked) [data-hide-when="who=all"] { display: none; }
 /* スマホ: 浮かせたまま高さを詰める（見出しを消して、各段を1行の横スクロールに） */
 @media (max-width: 600px) {
-  .card.stats-filter { gap: 6px; padding: 8px; top: 66px; } /* .card のスマホ用 padding より強く */
+  /* .card のスマホ用 padding より強く。上下の余白は浮く前は 14px、浮くと（--stuck）8px まで詰める */
+  .card.stats-filter { gap: 6px; padding: calc(14px - 6px * var(--stuck, 0)) 8px; top: 66px; }
   .stats-filter__row { flex-wrap: nowrap; overflow-x: auto; gap: 6px; padding-inline: 3px; scrollbar-width: none; } /* 3px = スロットの光る枠が切れないように */
   .stats-filter__row::-webkit-scrollbar { display: none; }
-  /* 見出し（メンバー・集計期間）: 浮いていないときだけ出す。浮いたら（.is-stuck、app.js）幅ごと縮めて消す */
-  .stats-filter__row legend { flex-shrink: 0; width: 4.5em; overflow: hidden; white-space: nowrap; transition: width .35s ease, opacity .35s ease, margin .35s ease; }
-  .stats-filter.is-stuck .stats-filter__row legend { width: 0; opacity: 0; margin-right: -6px; } /* -6px = 段の gap ぶん */
-  .stats-filter__line { display: grid; gap: 6px; }
-  .stats-filter__sub { padding-left: 3px; }
+  /* 見出し（メンバー・集計期間）: トグルの上の段に出す（float をやめると fieldset のいつもの見出し = 上に乗る）。
+     浮く位置に近づくほど高さごと縮めて薄くする。--stuck = 0（離れている）〜 1（浮いている）を app.js がスクロールに合わせて書く */
+  .stats-filter__row legend { float: none; width: auto; line-height: 18px; height: calc(18px * (1 - var(--stuck, 0)));
+    margin-bottom: calc(2px * (1 - var(--stuck, 0))); opacity: calc(1 - var(--stuck, 0)); overflow: hidden; white-space: nowrap; }
+  .stats-filter__row + .stats-filter__row { margin-top: calc(6px * (1 - var(--stuck, 0))); } /* 集計期間の見出しの上: 浮く前だけ少し空ける */
+  .stats-filter__line { gap: 6px; }
+  .stats-filter__line > .stats-filter__row { flex-basis: 100%; } /* タブの段を1行まるごと使う → スロットと退会者は下の段 */
+  /* 下の段: スロット・上下3学年の範囲・退会者。範囲の文字は長いので、はみ出すときはその中で折り返す（退会者は1行のまま） */
+  .stats-filter__sub { padding-left: 3px; min-width: 0; }
+  .stats-filter__sub > * { flex: none; white-space: nowrap; }
+  /* 学年別以外: 浮く位置に近づくほど（--stuck、app.js）下の段（退会者チェック）の高さを 25px → 22px に詰める。
+     チェックの上（タブとの間）と下（カードの下端）の余白がほぼ同じになる高さ。学年別はスロットがあるので詰めない */
+  .stats-filter:not(.is-grade) .stats-filter__sub { height: calc(25px - 3px * var(--stuck, 0)); }
   .stats-filter .tabs--filter { flex-shrink: 0; max-width: none; overflow: visible; padding: 2px; } /* タブではなく段ごと横スクロール */
   .stats-filter .tab { padding: 5px 8px; font-size: 12px; }
   .stats-filter__extra { flex-shrink: 0; }
@@ -1726,7 +1807,12 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
   .member-row-edit { grid-template-columns: minmax(0, 1fr) auto; justify-content: stretch; justify-items: start; gap: 6px 8px;
     padding-bottom: 10px; border-bottom: 1px dashed var(--border); } /* 1人分（2段）の区切り */
   .member-row-edit > :nth-child(n) { order: 0; } /* :nth-child(n) = 全部の子。上の order と同じ強さにして後ろに書くことで上書きする */
-  .member-row-edit > :first-child, .member-row-edit > :nth-child(3) { width: 100%; } /* 名前と楽器は左の列いっぱい */
+  /* スマホは開閉なし: ＋ は隠して、2つ目の楽器は常に表示 */
+  .inst2-toggle { display: none; }
+  .inst2-slot .live-pick__btn .is-placeholder { font-size: 0; } /* 未選択は「—」の代わりに「＋」を出す（PC は ＋ ボタンと重なるので「—」のまま） */
+  .inst2-slot .live-pick__btn .is-placeholder::after { content: '＋'; font-size: 15px; }
+  .member-row-edit > .inst2-slot { order: 0; grid-template-rows: 1fr; opacity: 1; margin-top: 0; transition: none; }
+  .member-row-edit > :first-child, .member-row-edit > :nth-child(3), .member-row-edit > .inst2-slot { width: 100%; } /* 名前と楽器は左の列いっぱい */
   .member-row-edit:last-child { border-bottom: 0; padding-bottom: 0; }
   .sticky-actions { width: 100%; }
   .sticky-actions .btn { flex: 1; }

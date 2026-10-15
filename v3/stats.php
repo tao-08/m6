@@ -131,6 +131,13 @@ if ($pfrom > $pto) {
     'range' => [' AND lm.fiscal_year BETWEEN ? AND ?', [$pfrom, $pto]],
     default => ['', []],
 };
+// アカウント設定「予定されているライブを集計に含む」がオフ（初期値）なら、まだ来ていない日程（今日を含む。is_upcoming() と同じ）を
+//   すべての集計から外す（メンバーページと同じ）。どのクエリも live_day ld を JOIN して $yearSql を使うので、そこに足す
+$skipUpcoming = empty($user['count_upcoming']);
+$upcomingSql = $skipUpcoming ? ' AND (ld.held_on IS NULL OR ld.held_on < ?)' : '';
+$upcomingParams = $skipUpcoming ? [date('Y-m-d')] : [];
+$yearSql .= $upcomingSql;
+$yearParams = [...$yearParams, ...$upcomingParams];
 
 // 画面に出す「いま何で絞っているか」
 $whoLabel = match ($who) {
@@ -163,12 +170,12 @@ $overview = rows($pdo, 'SELECT lm.fiscal_year AS year,
         (SELECT COUNT(DISTINCT bm.member_id) FROM (' . MEMBERSHIP_SQL . ') bm
             JOIN member m ON m.member_id = bm.member_id
             JOIN band b2 ON b2.band_id = bm.band_id JOIN live_day ld2 ON ld2.live_day_id = b2.live_day_id
-            JOIN live lm2 ON lm2.live_id = ld2.live_id WHERE lm2.fiscal_year = lm.fiscal_year' . $memberSql . ') AS members
+            JOIN live lm2 ON lm2.live_id = ld2.live_id WHERE lm2.fiscal_year = lm.fiscal_year' . $memberSql . str_replace('ld.', 'ld2.', $upcomingSql) . ') AS members
     FROM live lm
     JOIN live_day ld ON ld.live_id = lm.live_id
     LEFT JOIN band b ON b.live_day_id = ld.live_day_id
     WHERE 1 = 1' . $yearSql . $bandSql . '
-    GROUP BY lm.fiscal_year ORDER BY lm.fiscal_year DESC', array_merge($memberParams, $yearParams, $memberParams));
+    GROUP BY lm.fiscal_year ORDER BY lm.fiscal_year DESC', array_merge($memberParams, $upcomingParams, $yearParams, $memberParams));
 
 // ---- よく組むペア ----
 //   同じ表を2回 JOIN（自己結合）して、同じバンドにいた2人の組を数える。
@@ -444,6 +451,15 @@ $yearOptions = static function (int $selected, array $list): string {
     return $html;
 };
 $entryYears = range($thisYear, $entryMin); // 新しい順
+// 年度スロット（'26 表記・タップでプルダウン）。回したら hidden の name を書き換えて送信する（app.js の setupSlotInput）
+$yearSlot = static function (string $name, int $selected, array $list, string $label, string $unit = '年度'): string {
+    $html = '<div class="year-slot year-slot--grade year-slot--fy" data-slot-input tabindex="0" role="spinbutton" aria-label="' . h($label) . '"><div class="year-slot__reel">';
+    foreach ($list as $y) { // 新しい順（単年度のスロットと同じ）
+        $y = (int)$y;
+        $html .= '<div class="year-slot__item' . ($y === $selected ? ' is-current' : '') . '" data-value="' . $y . '" data-label="' . $y . h($unit) . '">' . sprintf("'%02d", $y % 100) . '</div>';
+    }
+    return $html . '</div><input type="hidden" name="' . h($name) . '" value="' . $selected . '"></div>';
+};
 ?>
 <form method="get" class="card stats-filter no-print">
     <fieldset class="stats-filter__row">
@@ -469,9 +485,9 @@ $entryYears = range($thisYear, $entryMin); // 新しい順
             </div>
         </div>
         <div class="stats-filter__extra" data-show-when="who=custom">
-            <select name="efrom" aria-label="入学年度（から）" data-autosubmit><?= $yearOptions($efrom, $entryYears) ?></select>
+            <?= $yearSlot('efrom', $efrom, $entryYears, '入学年度（から）', '年入学') ?>
             <span>〜</span>
-            <select name="eto" aria-label="入学年度（まで）" data-autosubmit><?= $yearOptions($eto, $entryYears) ?></select>
+            <?= $yearSlot('eto', $eto, $entryYears, '入学年度（まで）', '年入学') ?>
             <span class="muted small">年入学</span>
         </div>
         <?php if ($voSum): ?><input type="hidden" name="vo" value="sum"><?php endif; // 絞り込みを変えても「Voを合算する」を保つ ?>
@@ -480,18 +496,25 @@ $entryYears = range($thisYear, $entryMin); // 新しい順
     <fieldset class="stats-filter__row">
         <legend>集計期間</legend>
         <div class="tabs tabs--filter" role="radiogroup" aria-label="期間">
-            <label class="tab"><input type="radio" name="period" value="year" data-autosubmit<?= $period === 'year' ? ' checked' : '' ?>>単年度</label>
             <label class="tab"><input type="radio" name="period" value="all" data-autosubmit<?= $period === 'all' ? ' checked' : '' ?>>全期間</label>
+            <label class="tab"><input type="radio" name="period" value="year" data-autosubmit<?= $period === 'year' ? ' checked' : '' ?>>単年度</label>
             <label class="tab"><input type="radio" name="period" value="range" data-autosubmit<?= $period === 'range' ? ' checked' : '' ?>>期間指定</label>
         </div>
         <div class="stats-filter__extra" data-show-when="period=year">
-            <select name="year" aria-label="年度" data-autosubmit><?= $yearOptions($year, $years) ?></select>
+            <div class="year-slot year-slot--grade year-slot--fy" data-slot-input tabindex="0" role="spinbutton" aria-label="年度" title="上下にドラッグで年度を切り替え">
+                <div class="year-slot__reel">
+                    <?php foreach ($years as $y): ?>
+                        <div class="year-slot__item<?= $y === $year ? ' is-current' : '' ?>" data-value="<?= $y ?>" data-label="<?= $y ?>年度"><?= sprintf("'%02d", $y % 100) ?></div>
+                    <?php endforeach; ?>
+                </div>
+                <input type="hidden" name="year" value="<?= $year ?>">
+            </div>
             <span class="muted small">年度</span>
         </div>
         <div class="stats-filter__extra" data-show-when="period=range">
-            <select name="pfrom" aria-label="期間（から）" data-autosubmit><?= $yearOptions($pfrom, $years) ?></select>
+            <?= $yearSlot('pfrom', $pfrom, $years, '期間（から）', '年度') ?>
             <span>〜</span>
-            <select name="pto" aria-label="期間（まで）" data-autosubmit><?= $yearOptions($pto, $years) ?></select>
+            <?= $yearSlot('pto', $pto, $years, '期間（まで）', '年度') ?>
             <span class="muted small">年度</span>
         </div>
     </fieldset>
@@ -604,8 +627,8 @@ $voHidden = static fn(string $view): string => ($view === 'sum') === $voSum ? ''
         </ol>
     </section>
 
-    <section class="card grade-mix">
-        <h2 class="section-title section-title--card"><?= icon('diversity_3') ?> よく組む学年区分</h2>
+    <section id="grade-mix" class="card grade-mix">
+        <h2 class="section-title section-title--card"><?= icon('diversity_3') ?> よく組む学年区分<span class="section-title__note">10バンド以上の出演者を集計</span></h2>
         <!-- 切り替えは CSS だけ（.grade-mix:has(input:checked)）。フォームの外なので絞り込みは送信されない -->
         <div class="tabs tabs--filter grade-mix__tabs" role="radiogroup" aria-label="学年区分">
             <?php foreach ($gradeMix as $view => $g): ?>
@@ -617,7 +640,7 @@ $voHidden = static fn(string $view): string => ($view === 'sum') === $voSum ? ''
             <ol class="ranking" data-grade-view="<?= $view ?>">
                 <?php $ranks = tie_ranks($g['rows'], static fn($r) => $r['n']);
                 foreach ($g['rows'] as $k => $r): ?>
-                    <li data-rank="<?= $ranks[$k] ?>"><a href="member?id=<?= (int)$r['member_id'] ?>"><?= h($r['name']) ?></a><span class="pill"><?= (int)$r['n'] ?>%</span></li>
+                    <li data-rank="<?= $ranks[$k] ?>"><a href="member?id=<?= (int)$r['member_id'] ?>"><?= h($r['name']) ?></a><span class="pill"><?= (int)$r['n'] ?>%</span><span class="grade-mix__count"><?= (int)$r[$view] ?>/<?= (int)$r['total'] ?>回</span></li>
                 <?php endforeach; ?>
             </ol>
         <?php endforeach; ?>

@@ -124,9 +124,11 @@ if (is_post()) {
         if ($memberName === '') {
             continue;
         }
-        $picked[] = ['name' => $memberName, 'choice' => is_string($choice) ? $choice : '', 'cho' => $cho];
-        foreach (instruments_for_choice($choice, $cho) as $inst) {
-            $rows[] = [$memberName, $inst];
+        $choice2 = $_POST['m_inst2'][$i] ?? ''; // 2つ目の楽器（空 = なし）
+        $choice2 = is_string($choice2) ? $choice2 : '';
+        $picked[] = ['name' => $memberName, 'choice' => is_string($choice) ? $choice : '', 'cho' => $cho, 'choice2' => $choice2];
+        foreach ([...instruments_for_choice($choice, $cho), ...($choice2 !== '' ? instruments_for_choice($choice2) : [])] as $inst) {
+            $rows[] = [$memberName, $inst]; // 同じ楽器が重なっても sync_band_members のキーで1つになる
         }
     }
 
@@ -197,7 +199,18 @@ if (is_post()) {
 } elseif ($isNew) {
     $members = array_map(static fn($i) => ['name' => '', 'choice' => (string)$i], [1, 2, 3, 4]); // Vo Gt Ba Dr の空欄
 } else {
-    $members = merge_vocal_roles($editableRows);
+    // 同じ人の2つ目の行は、1つ目の行の「2つ目の楽器」欄にまとめる（3つ目以降は別の行のまま）
+    $members = [];
+    $firstOf = []; // 名前 => $members の番号
+    foreach (merge_vocal_roles($editableRows) as $m) {
+        $k = $firstOf[$m['name']] ?? null;
+        if ($k !== null && !isset($members[$k]['choice2']) && !$m['cho']) {
+            $members[$k]['choice2'] = $m['choice'];
+            continue;
+        }
+        $firstOf[$m['name']] ??= count($members);
+        $members[] = $m;
+    }
 }
 if (!$members) {
     $members[] = ['name' => '', 'choice' => '2']; // メンバー0人でも1行は出す（「＋ 行を追加」は最後の行をコピーして作るので）
@@ -338,7 +351,15 @@ render_header($isNew ? 'バンドを追加' : 'バンドを編集', 'lives');
                 <input name="m_name[]" value="<?= h($m['name']) ?>" data-suggest-list="member-names" autocomplete="off" placeholder="名前" aria-label="名前" class="name-input" data-name-cell>
                 <button type="button" class="btn btn--ghost btn--sm" data-remove-row aria-label="この行を削除"><?= icon('close') ?></button>
                 <select name="m_inst[]" aria-label="楽器"><?= instrument_choice_options($m['choice']) ?></select>
-                <?= chorus_toggle('m_cho[]', $m['cho'] ?? false, $m['choice']) ?>
+                <?php $open2 = ($m['choice2'] ?? '') !== ''; ?>
+                <div class="inst-tools">
+                    <?= chorus_toggle('m_cho[]', $m['cho'] ?? false, $m['choice']) ?>
+                    <button type="button" class="inst2-toggle<?= $open2 ? ' is-open' : '' ?>" data-inst2-toggle aria-label="2つ目の楽器" aria-expanded="<?= $open2 ? 'true' : 'false' ?>"><?= icon('add') ?></button>
+                </div>
+                <!-- 2つ目の楽器: ＋ で1つ目の楽器の下に開閉（閉じたら値は空 = なし） -->
+                <div class="inst2-slot<?= $open2 ? ' is-open' : '' ?>" data-inst2-slot><div>
+                    <select name="m_inst2[]" aria-label="2つ目の楽器" data-inst2><option value="">—</option><?= instrument_choice_options($m['choice2'] ?? '') ?></select>
+                </div></div>
             </div>
         <?php endforeach; ?>
     </div>

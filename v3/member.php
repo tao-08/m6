@@ -128,6 +128,21 @@ $st = $pdo->prepare('SELECT a.artist_id, a.name, COUNT(DISTINCT p.band_id) AS n
 $st->execute([$memberId, ...$skipParams]);
 $topArtists = $st->fetchAll();
 
+// ---- よく組む学年区分 ----
+//   集計ページと同じ数え方: 組んだメンバーの延べ人数（自分以外・入学年度が分かる人だけ）のうち 後輩・同期・先輩 の割合
+$gradeMix = ['junior' => 0, 'same' => 0, 'senior' => 0];
+if ((int)$member['entry_year'] > 0) {
+    $st = $pdo->prepare('SELECT SUM(p.entry_year > ?) AS junior, SUM(p.entry_year = ?) AS same, SUM(p.entry_year < ?) AS senior
+        FROM (' . MEMBERSHIP_SQL . ') mine
+        JOIN (' . MEMBERSHIP_SQL . ') o ON o.band_id = mine.band_id AND o.member_id <> mine.member_id
+        JOIN member p ON p.member_id = o.member_id AND p.entry_year IS NOT NULL
+        WHERE mine.member_id = ?' . $skipSql);
+    $y = (int)$member['entry_year'];
+    $st->execute([$y, $y, $y, $memberId, ...$skipParams]);
+    $gradeMix = array_map('intval', $st->fetch() ?: []) + $gradeMix;
+}
+$gradeMixTotal = array_sum($gradeMix);
+
 // ---- 出演履歴を「同じ日程（live_day）」ごとにまとめる ----
 //   SQL は1バンド1行で返ってくる。並び順は日程ごとに固まっているので、
 //   live_day_id をキーにした配列に入れていけば、順番を保ったままグループにできる
@@ -473,7 +488,7 @@ render_header($member['name'], 'members');
                 <div class="year-slot__reel">
                     <div class="year-slot__item" data-value="">すべて</div>
                     <?php foreach (array_keys($historyByYear) as $year): ?>
-                        <div class="year-slot__item" data-value="<?= (int)$year ?>"><?= $year > 0 ? (int)$year . '<small>年度</small>' : '未設定' ?></div>
+                        <div class="year-slot__item" data-value="<?= (int)$year ?>" data-label="<?= $year > 0 ? (int)$year . '年度' : '未設定' ?>"><?= $year > 0 ? sprintf("'%02d", $year % 100) : '未設定' ?></div>
                     <?php endforeach; ?>
                 </div>
             </div>
@@ -605,6 +620,31 @@ render_header($member['name'], 'members');
             </ol>
             <button type="button" class="btn btn--ghost btn--sm album-box__more" data-partner-more hidden>さらに表示</button>
         </section>
+
+        <?php if ($gradeMixTotal > 0):
+            // 円グラフ: conic-gradient の区切り（累積 %）を後輩 → 同期 → 先輩の順に作る
+            $mixLabels = ['junior' => '後輩', 'same' => '同期', 'senior' => '先輩'];
+            $stops = [];
+            $acc = 0;
+            foreach ($mixLabels as $k => $_) {
+                $from = $acc;
+                $acc += $gradeMix[$k] / $gradeMixTotal * 100;
+                $stops[] = 'var(--mix-' . $k . ') ' . round($from, 2) . '% ' . round($acc, 2) . '%';
+            } ?>
+        <section class="card album-box partner-box grade-mix-card">
+            <h2 class="section-title section-title--card"><a class="grade-mix-card__link" href="stats#grade-mix"><?= icon('diversity_3') ?> よく組む学年区分</a></h2>
+            <div class="grade-mix-card__body">
+                <div class="grade-mix-card__pie" style="background: conic-gradient(<?= implode(', ', $stops) ?>)" role="img"
+                     aria-label="<?= h(implode('・', array_map(static fn($k, $l) => $l . round($gradeMix[$k] / $gradeMixTotal * 100) . '%', array_keys($mixLabels), $mixLabels))) ?>"></div>
+                <ul class="grade-mix-card__legend">
+                    <?php foreach ($mixLabels as $k => $l): ?>
+                        <li><span class="grade-mix-card__dot" style="background: var(--mix-<?= $k ?>)"></span><?= $l ?>
+                            <b><?= round($gradeMix[$k] / $gradeMixTotal * 100) ?>%</b><span class="muted small"><?= $gradeMix[$k] ?>回</span></li>
+                    <?php endforeach; ?>
+                </ul>
+            </div>
+        </section>
+        <?php endif; ?>
     </aside>
 </div>
 <?php render_footer();

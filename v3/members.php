@@ -245,23 +245,25 @@ render_header('メンバー', 'members');
 <?php else: ?>
     <!-- 学年の絞り込み。見た目は集計ページと同じ部品（.stats-filter）。
          タブ・スロットを切り替えると、ページを読み直さずに JS が行を隠す（assets/app.js の setupGradeSlot） -->
-    <div class="card stats-filter no-print" data-grade-filter>
-        <!-- PC はタブと「退会者を非表示」を1行に、スマホは2段に（.stats-filter__line） -->
+    <div class="card stats-filter no-print<?= $who === 'grade' ? ' is-grade' : '' ?>" data-grade-filter>
+        <!-- PC はタブ → スロット → 「退会者を非表示」を1行に、スマホはタブの下の段に スロット・退会者 を並べる（.stats-filter__line） -->
         <div class="stats-filter__line">
         <fieldset class="stats-filter__row">
-            <legend>学年</legend>
             <div class="tabs tabs--filter" role="radiogroup" aria-label="学年">
                 <label class="tab"><input type="radio" name="who" value="all"<?= $who === 'all' ? ' checked' : '' ?>>全学年</label>
+                <label class="tab"><input type="radio" name="who" value="grade"<?= $who === 'grade' ? ' checked' : '' ?>>学年別</label>
                 <?php $fy = current_fiscal_year(); // data-min / data-max: この入学年度の範囲の人だけ出す（app.js の setupGradeSlot。片方だけなら上限・下限なし） ?>
                 <label class="tab"><input type="radio" name="who" value="active"<?= $who === 'active' ? ' checked' : '' ?> data-min="<?= $fy - 3 ?>" data-max="<?= $fy ?>">現役</label>
                 <label class="tab"><input type="radio" name="who" value="alumni"<?= $who === 'alumni' ? ' checked' : '' ?> data-max="<?= $fy - 4 ?>">卒業生</label>
                 <label class="tab<?= $canNear ? '' : ' is-disabled' ?>"<?= $canNear ? '' : ' title="アカウントがメンバーに紐付いていないか、入学年度が未登録のため使えません"' ?>>
                     <input type="radio" name="who" value="near"<?= $who === 'near' ? ' checked' : '' ?><?= $canNear ? ' data-min="' . ($myEntry - 3) . '" data-max="' . ($myEntry + 3) . '"' : ' disabled' ?>>上下3学年
                 </label>
-                <label class="tab"><input type="radio" name="who" value="grade"<?= $who === 'grade' ? ' checked' : '' ?>>学年別</label>
             </div>
-            <!-- data-grade-slot: 縦にドラッグ（ホイール・↑↓キー）で学年を切り替える。部品はライブ一覧の年度スロットと同じ -->
-            <div class="stats-filter__extra" data-show-when="who=grade">
+        </fieldset>
+        <div class="stats-filter__sub">
+            <!-- data-grade-slot: 縦にドラッグ（ホイール・↑↓キー）で学年を切り替える。部品はライブ一覧の年度スロットと同じ
+                 .grade-slot-wrap: 学年別のときだけ幅を広げて出す（display: none にしないのでアニメーションできる。退会者のチェックも横にすべる） -->
+            <div class="grade-slot-wrap">
                 <div class="year-slot year-slot--grade" data-grade-slot tabindex="0" role="spinbutton" aria-label="学年" title="上下にドラッグで学年を切り替え">
                     <div class="year-slot__reel">
                         <!-- 学年の降順（上の学年 = 古い入学年度が上）。表のいつもの並びとそろえる -->
@@ -275,14 +277,16 @@ render_header('メンバー', 'members');
                     </div>
                 </div>
             </div>
-            <?php if ($canNear): ?>
-                <span class="muted small" data-show-when="who=near"><?= h(entry_option_label($myEntry - 3)) ?> 〜 <?= h(entry_option_label($myEntry + 3)) ?></span>
+            <?php if ($hasRetired): // 退会した人が1人もいなければ、押しても何も変わらないので出さない ?>
+                <!-- data-hide-retired: 切り替えたら JS が行を隠し直す（setupGradeSlot） -->
+                <label class="small"><input type="checkbox" data-hide-retired<?= $hideRetired ? ' checked' : '' ?>> 退会者を非表示</label>
             <?php endif; ?>
-        </fieldset>
-        <?php if ($hasRetired): // 退会した人が1人もいなければ、押しても何も変わらないので出さない ?>
-            <!-- data-hide-retired: 切り替えたら JS が行を隠し直す（setupGradeSlot） -->
-            <label class="stats-filter__extra stats-filter__sub small"><input type="checkbox" data-hide-retired<?= $hideRetired ? ' checked' : '' ?>> 退会者を非表示</label>
-        <?php endif; ?>
+            <?php if ($canNear):
+                // 上下3学年の範囲: スロットと同じ「OB3'20」の短い書き方（スマホでも1行に収まる）
+                $nearLabel = static fn(int $y): string => (($g = grade_of($y)) !== null ? h(grade_label($g)) : '') . sprintf("<small>'%02d</small>", $y % 100); ?>
+                <span class="muted small" data-show-when="who=near"><?= $nearLabel($myEntry - 3) ?> 〜 <?= $nearLabel($myEntry + 3) ?></span>
+            <?php endif; ?>
+        </div>
         </div>
     </div>
     <div class="toolbar">
