@@ -10,6 +10,17 @@
  */
 /** @var string $pageTitle @var string $activeNav */
 $user = current_user();
+$unreadNotices = 0;
+if ($user) {
+    // 行が無いお知らせ＝未読（notice_read は読んだ記録）
+    $st = db()->prepare('SELECT COUNT(*) FROM notice n LEFT JOIN notice_read r ON r.notice_id = n.notice_id AND r.user_id = ? WHERE r.user_id IS NULL');
+    $st->execute([(int)$user['user_id']]);
+    $unreadNotices = (int)$st->fetchColumn();
+    // ベルのポップアップに出す直近3件
+    $st = db()->prepare('SELECT n.notice_id, n.title, n.created_at, (r.user_id IS NULL) AS is_new FROM notice n LEFT JOIN notice_read r ON r.notice_id = n.notice_id AND r.user_id = ? ORDER BY n.notice_id DESC LIMIT 3');
+    $st->execute([(int)$user['user_id']]);
+    $recentNotices = $st->fetchAll();
+}
 $nav = [
     'lives'   => ['./', 'ライブ'],
     'members' => ['members', 'メンバー'],
@@ -93,8 +104,8 @@ $nav = [
          display=block: 読み込み中にアイコン名の英単語（edit など）が一瞬見えるのを防ぐ -->
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400..600,0..1,0&display=block" rel="stylesheet">
     <!-- ?v=2 はキャッシュ対策。CSS を変えたら数字を上げると、ブラウザが古い CSS を使い続けない -->
-    <link rel="stylesheet" href="assets/app.css?v=321">
-    <script src="assets/app.js?v=167" defer></script>
+    <link rel="stylesheet" href="assets/app.css?v=323">
+    <script src="assets/app.js?v=168" defer></script>
 </head>
 <body>
 <header class="topbar">
@@ -119,18 +130,44 @@ $nav = [
             <?= icon('search') ?>
         </a>
         <?php endif; ?>
+        <?php if ($user): ?>
+        <details class="usermenu notifmenu">
+            <summary class="icon-btn<?= $activeNav === 'notices' ? ' is-active' : '' ?>" aria-label="お知らせ" title="お知らせ" data-notice-open>
+                <?= icon('notifications') ?>
+                <?php if ($unreadNotices > 0): ?><span class="badge-dot" data-notice-badge><?= $unreadNotices > 9 ? '9+' : $unreadNotices ?></span><?php endif; ?>
+            </summary>
+            <div class="usermenu__panel notifmenu__panel">
+                <?php foreach ($recentNotices as $n): ?>
+                    <a href="notices" class="notifmenu__item">
+                        <span class="notifmenu__title"><?= h($n['title']) ?><?= $n['is_new'] ? ' <span class="tag">NEW</span>' : '' ?></span>
+                        <span class="muted small"><?= h(substr($n['created_at'], 0, 10)) ?></span>
+                    </a>
+                <?php endforeach; ?>
+                <?php if (!$recentNotices): ?><p class="muted small notifmenu__empty">直近のお知らせはありません</p><?php endif; ?>
+                <a href="notices" class="notifmenu__all">すべて見る</a>
+            </div>
+        </details>
+        <?php else: ?>
         <!-- テーマ切り替えボタン（中身のアイコンは CSS で太陽/月を出し分け） -->
         <button type="button" class="icon-btn" data-theme-toggle aria-label="ライト/ダーク切り替え" title="ライト/ダーク切り替え">
             <?= icon('light_mode', 'icon-sun') ?>
             <?= icon('dark_mode', 'icon-moon') ?>
         </button>
+        <?php endif; ?>
         <?php if ($user): ?>
         <!-- <details> はクリックで開閉する HTML 標準の部品。JS なしでメニューが作れる -->
         <details class="usermenu">
             <!-- 検索ボタンと同じ見た目の丸いボタンに、人型のアイコン（person）を出す -->
             <summary class="icon-btn" aria-label="アカウント" title="アカウント"><?= icon('person') ?></summary>
             <div class="usermenu__panel">
-                <div class="usermenu__name"><?= h($user['name']) ?><?= $user['admin'] ? ' <span class="tag">管理者</span>' : '' ?></div>
+                <div class="usermenu__name">
+                    <span><?= h($user['name']) ?><?= $user['admin'] ? ' <span class="tag">管理者</span>' : '' ?></span>
+                    <!-- テーマ切り替え（中身のアイコンは CSS で太陽/月を出し分け） -->
+                    <button type="button" class="icon-btn icon-btn--sm" data-theme-toggle aria-label="ライト/ダーク切り替え" title="ライト/ダーク切り替え">
+                        <?= icon('light_mode', 'icon-sun') ?>
+                        <?= icon('dark_mode', 'icon-moon') ?>
+                    </button>
+                </div>
                 <?php if (!empty($user['member_id'])): ?>
                     <a href="member?id=<?= (int)$user['member_id'] ?>">マイページ</a>
                 <?php else: ?>

@@ -1061,6 +1061,26 @@ function setupSmallThings() {
       { duration: 180, easing: 'cubic-bezier(.2, .9, .3, 1.1)' });
   }));
 
+  // ベル（data-notice-open）を開いたら、ポップアップに出した直近3件を既読にしてバッジを消す。
+  //   どれを既読にするかはサーバーが決める（api_notice_read.php）。メニューは同時に1つだけ開く
+  const menus = [...document.querySelectorAll('.usermenu')];
+  menus.forEach((m) => m.addEventListener('toggle', () => {
+    if (m.open) menus.forEach((o) => { if (o !== m) o.open = false; });
+  }));
+  document.querySelector('[data-notice-open]')?.addEventListener('click', (e) => {
+    const badge = e.currentTarget.querySelector('[data-notice-badge]');
+    if (!badge || e.currentTarget.closest('details').open) return;
+    const token = document.querySelector('meta[name="csrf-token"]')?.content || '';
+    fetch('api_notice_read.php', { method: 'POST', headers: { 'X-CSRF-Token': token } })
+      .then((r) => r.json())
+      .then((d) => {
+        if (typeof d.unread !== 'number') return;
+        if (d.unread > 0) badge.textContent = d.unread > 9 ? '9+' : String(d.unread);
+        else badge.remove();
+      })
+      .catch(() => {});
+  });
+
   // data-fill-hint … メンバープロフィールの一括編集で、空欄の入力欄に data-hint（初出演の年度）を入れる。保存はしない
   document.querySelectorAll('[data-fill-hint]').forEach((btn) => btn.addEventListener('click', () => {
     btn.form.querySelectorAll('input[data-hint]').forEach((input) => {

@@ -37,7 +37,7 @@ SET NAMES utf8mb4;
 -- まっさらな DB に流すと「Note: #1051 '〜' は不明な表です」が表の数だけ出るが、
 -- これは「消そうとした表が最初から無かった」というだけの“お知らせ”で、エラーではない。
 SET FOREIGN_KEY_CHECKS = 0;
-DROP TABLE IF EXISTS change_unit, change_op, inquiry, band_like, app_setting, login_attempt, track_preview, track_link_cache, album_link_cache,
+DROP TABLE IF EXISTS notice_read, notice, change_unit, change_op, inquiry, band_like, app_setting, login_attempt, track_preview, track_link_cache, album_link_cache,
     check_dismiss, band_check_member, member_role, role, artist_alias, member_favorite_album, song_performer, song, track, band_member, live_break, band,
     artist, live_day, live, venue, instrument, user_account, member;
 SET FOREIGN_KEY_CHECKS = 1;
@@ -618,5 +618,31 @@ CREATE TABLE sheet_template_venue (
     CONSTRAINT fk_stv_template FOREIGN KEY (template_id) REFERENCES sheet_template (template_id)
         ON UPDATE CASCADE ON DELETE CASCADE,
     CONSTRAINT fk_stv_venue FOREIGN KEY (venue_id) REFERENCES venue (venue_id)
+        ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- ---------------------------------------------------------------------
+--  notice / notice_read — 管理者のお知らせと既読（notices.php。migrations/042）
+-- ---------------------------------------------------------------------
+CREATE TABLE notice (
+    notice_id  INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    user_id    INT UNSIGNED NULL,          -- 書いた管理者。アカウントが消えても残す
+    title      VARCHAR(100) NOT NULL,
+    body       TEXT         NOT NULL,
+    created_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (notice_id),
+    CONSTRAINT fk_notice_user FOREIGN KEY (user_id) REFERENCES user_account (user_id)
+        ON UPDATE CASCADE ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE notice_read (
+    user_id   INT UNSIGNED NOT NULL,
+    notice_id INT UNSIGNED NOT NULL,
+    read_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id, notice_id),
+    KEY idx_nr_notice (notice_id),
+    CONSTRAINT fk_nr_user FOREIGN KEY (user_id) REFERENCES user_account (user_id)
+        ON UPDATE CASCADE ON DELETE CASCADE,
+    CONSTRAINT fk_nr_notice FOREIGN KEY (notice_id) REFERENCES notice (notice_id)
         ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;

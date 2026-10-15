@@ -154,7 +154,7 @@ a:hover { color: var(--accent); }
 .usermenu__panel { transform-origin: top right; }
 .usermenu__panel a, .usermenu__panel .linkbtn { padding: 8px 10px; border-radius: 8px; text-align: left; }
 .usermenu__panel a:hover, .usermenu__panel .linkbtn:hover { background: var(--surface-2); color: var(--text); }
-.usermenu__name { padding: 8px 10px; font-weight: 700; border-bottom: 1px solid var(--border); margin-bottom: 4px; }
+.usermenu__name { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; font-weight: 700; border-bottom: 1px solid var(--border); margin-bottom: 4px; }
 /* 管理者専用メニュー: ログアウトの下に、単色の背景で区切って一般メニューと見分けられるようにする */
 .usermenu__admin { display: grid; gap: 2px; margin-top: 6px; padding: 6px; border-radius: 8px;
   border: 1px solid var(--border);
@@ -2018,3 +2018,16 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
 .history-item__compare .history-unit__title { font-size: 14px; }
 .ed-check { display: flex; align-items: center; gap: 4px; font-size: 13px; }
 .is-inst-hidden { display: none !important; }
+
+/* ベルの未読数バッジ（partials/header.php） */
+.icon-btn { position: relative; }
+.badge-dot { position: absolute; top: -4px; right: -4px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px;
+  background: var(--danger, #d93025); color: #fff; font: 700 10px/16px var(--font); text-align: center; }
+
+/* ベルのポップアップ（直近3件＋すべて見る） */
+.icon-btn--sm { width: 30px; height: 30px; }
+.notifmenu__panel { min-width: 240px; max-width: calc(100vw - 24px); }
+.notifmenu__item { display: grid; gap: 2px; }
+.notifmenu__title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.notifmenu__empty { padding: 8px 10px; margin: 0; }
+.notifmenu__all { margin-top: 4px; border-top: 1px solid var(--border); border-radius: 0 !important; text-align: center !important; color: var(--accent); font-size: 13px; font-weight: 600; }
