@@ -23,23 +23,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: SSH 設定
-        run: |
-          install -m 700 -d ~/.ssh
-          printf '%s\n' "${{ secrets.SSH_KEY }}" | tr -d '\r' > ~/.ssh/id_deploy
-          chmod 600 ~/.ssh/id_deploy
-          # 鍵の形式チェックと指紋表示（サーバー側の ssh-keygen -lf deploy_key.pub と比較）
-          ssh-keygen -y -f ~/.ssh/id_deploy > ~/.ssh/id_deploy.pub
-          ssh-keygen -lf ~/.ssh/id_deploy.pub
-          ssh-keyscan -p "${{ secrets.SSH_PORT || 22 }}" "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts
-
-      # config.php は本番専用なので除外（--delete でも消えない）
-      - name: rsync
-        run: |
-          rsync -rltvz --delete ${{ inputs.dry_run && '--dry-run' || '' }} \
-            -e "ssh -i ~/.ssh/id_deploy -p ${{ secrets.SSH_PORT || 22 }}" \
-            --exclude 'config.php' \
-            --exclude '.git*' \
-            --exclude '.claude/' \
-            --exclude '*.md' \
-            ./v3/ "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${{ secrets.SSH_PATH }}/"
+      # 前回との差分のみアップロード（状態ファイルがサーバーに作られる）
+      # config.php は本番専用なので除外
+      - name: FTP デプロイ
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USER }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          protocol: ${{ secrets.FTP_PROTOCOL || 'ftps' }}
+          port: ${{ secrets.FTP_PORT || 21 }}
+          local-dir: ./v3/
+          server-dir: ${{ secrets.FTP_DIR }}
+          dry-run: ${{ inputs.dry_run }}
+          exclude: |
+            **/.git*
+            **/.git*/**
+            **/.claude/**
+            **/*.md
+            config.php
+            **/config.php
