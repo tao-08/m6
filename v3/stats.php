@@ -208,6 +208,32 @@ $headliners = rows($pdo, 'SELECT m.member_id, m.name, COUNT(DISTINCT b.band_id) 
     WHERE 1 = 1' . $yearSql . $memberSql . '
     GROUP BY m.member_id ORDER BY n DESC, m.name LIMIT 10', array_merge($yearParams, $memberParams));
 
+// ---- よく組む学年区分 ----
+//   10バンド以上組んだ人について、組んだメンバーの延べ人数（自分は除く）のうち 後輩・同期・先輩 の割合。
+//   区分は入学年度（entry_year）で比べる。入学年度が不明な人は、本人でも相手でも数えない（3区分の合計 = 100%）
+//   メンバー絞り込みは本人だけに掛ける（相手まで絞ると割合の意味が変わる）
+//   o = 同じバンドの自分以外。LEFT JOIN なので相手がいなくても本人の行は残る（bands の数を正しく取るため）
+$gradeMixRows = rows($pdo, 'SELECT m.member_id, m.name, COUNT(DISTINCT bm.band_id) AS bands,
+        SUM(p.entry_year > m.entry_year) AS junior, SUM(p.entry_year = m.entry_year) AS same,
+        SUM(p.entry_year < m.entry_year) AS senior, COUNT(p.member_id) AS total
+    FROM (' . MEMBERSHIP_SQL . ') bm
+    JOIN member m ON m.member_id = bm.member_id
+    JOIN band b ON b.band_id = bm.band_id
+    JOIN live_day ld ON ld.live_day_id = b.live_day_id
+    JOIN live lm ON lm.live_id = ld.live_id
+    LEFT JOIN (' . MEMBERSHIP_SQL . ') o ON o.band_id = bm.band_id AND o.member_id <> bm.member_id
+    LEFT JOIN member p ON p.member_id = o.member_id AND p.entry_year IS NOT NULL
+    WHERE m.entry_year IS NOT NULL' . $yearSql . $memberSql . '
+    GROUP BY m.member_id
+    HAVING bands >= 10 AND total > 0', array_merge($yearParams, $memberParams));
+// 区分ごとに、割合の高い順（同じなら名前順）で上位10人。n = 表示する整数の %
+$gradeMix = [];
+foreach (['junior' => '後輩', 'same' => '同期', 'senior' => '先輩'] as $view => $label) {
+    $list = array_map(static fn($r) => $r + ['ratio' => $r[$view] / $r['total'], 'n' => (int)round($r[$view] / $r['total'] * 100)], $gradeMixRows);
+    usort($list, static fn($a, $b) => [$b['ratio'], $a['name']] <=> [$a['ratio'], $b['name']]);
+    $gradeMix[$view] = ['label' => $label, 'rows' => array_slice($list, 0, 10)];
+}
+
 // ---- よくコピーされるアーティスト ----
 //   artist テーブルがあるので GROUP BY a.artist_id だけで数えられる
 //   （v2 では「ヨルシカ（安田）」の括弧を PHP で外してから数える必要があった）
@@ -552,6 +578,25 @@ $voHidden = static fn(string $view): string => ($view === 'sum') === $voSum ? ''
                 <li data-rank="<?= $ranks[$k] ?>"><a href="member?id=<?= (int)$hd['member_id'] ?>"><?= h($hd['name']) ?></a><span class="pill"><?= (int)$hd['n'] ?>回</span></li>
             <?php endforeach; ?>
         </ol>
+    </section>
+
+    <section class="card grade-mix">
+        <h2 class="section-title section-title--card"><?= icon('diversity_3') ?> よく組む学年区分</h2>
+        <!-- 切り替えは CSS だけ（.grade-mix:has(input:checked)）。フォームの外なので絞り込みは送信されない -->
+        <div class="tabs tabs--filter grade-mix__tabs" role="radiogroup" aria-label="学年区分">
+            <?php foreach ($gradeMix as $view => $g): ?>
+                <label class="tab"><input type="radio" name="grade-mix" value="<?= $view ?>"<?= $view === 'junior' ? ' checked' : '' ?>><?= h($g['label']) ?></label>
+            <?php endforeach; ?>
+        </div>
+        <?php if (!$gradeMixRows): ?><p class="muted small">10バンド以上組んだ人がいません</p><?php endif; ?>
+        <?php foreach ($gradeMix as $view => $g): ?>
+            <ol class="ranking" data-grade-view="<?= $view ?>">
+                <?php $ranks = tie_ranks($g['rows'], static fn($r) => $r['n']);
+                foreach ($g['rows'] as $k => $r): ?>
+                    <li data-rank="<?= $ranks[$k] ?>"><a href="member?id=<?= (int)$r['member_id'] ?>"><?= h($r['name']) ?></a><span class="pill"><?= (int)$r['n'] ?>%</span></li>
+                <?php endforeach; ?>
+            </ol>
+        <?php endforeach; ?>
     </section>
 
     <?php ranking_card('album', 'よく演奏される曲', $topTitles, $songLabel, '回', '曲（セットリスト）がまだ登録されていません'); ?>

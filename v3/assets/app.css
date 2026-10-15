@@ -1122,6 +1122,11 @@ body.is-row-dragging, body.is-row-dragging * { cursor: grabbing !important; user
 .tabs--filter .tab:has(input:checked) { background: var(--accent); color: var(--on-accent); }
 .tabs--filter .tab:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
 .tabs--filter .tab.is-disabled { opacity: .4; cursor: not-allowed; }
+/* 集計の「よく組む学年区分」: ラジオで選んだ区分の表だけ出す（JS なし） */
+.grade-mix__tabs { display: inline-flex; margin-bottom: 10px; }
+.grade-mix:not(:has(input[value="junior"]:checked)) [data-grade-view="junior"],
+.grade-mix:not(:has(input[value="same"]:checked)) [data-grade-view="same"],
+.grade-mix:not(:has(input[value="senior"]:checked)) [data-grade-view="senior"] { display: none; }
 .stats-filter__extra { display: flex; align-items: center; gap: 6px; }
 .stats-filter__extra select { padding: 7px 10px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font-weight: 700; }
 /* 該当するタブが選ばれていないときは、年度セレクトを隠す */
