@@ -471,18 +471,17 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .like { display: inline-flex; align-items: center; gap: 8px; padding: 2px; border: 0; background: none; color: var(--muted); cursor: pointer; font: inherit; line-height: 1; }
 .like__count { position: relative; min-width: 2.2em; padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface);
   font-size: 12px; font-weight: 800; font-variant-numeric: tabular-nums; text-align: center; transition: color .15s, border-color .15s, background .15s; }
-/* 吹き出しのしっぽ（右向き ＞ でハートを指す）。枠線の三角 + 中を塗る三角の2枚重ね */
-.like__count::before, .like__count::after { content: ''; position: absolute; top: 50%; transform: translateY(-50%); border: 5px solid transparent; border-right: 0; }
-.like__count::before { right: -6px; border-left-color: var(--border); }
-.like__count::after  { right: -5px; border-left-color: var(--surface); }
+/* 吹き出しのしっぽ（右向き ＞ でハートを指す）。45°回した正方形の右上の2辺だけに枠線を付ける。
+   本体と同じ 1px の枠線・同じ背景なので、線の太さと色がそろい、本体との継ぎ目も消える（三角2枚重ねだと斜めの線だけ細く見えた） */
+.like__count::before { content: ''; position: absolute; top: 50%; right: -5px; width: 8px; height: 8px; box-sizing: border-box;
+  background: var(--surface); border: solid var(--border); border-width: 1px 1px 0 0; transform: translateY(-50%) rotate(45deg); transition: border-color .15s, background .15s; }
 .like__heart { font-size: 22px; transition: transform .15s, font-variation-settings .15s; } /* Material Symbols の favorite（枠線だけ） */
 .like:hover { color: var(--accent); }
 .like:hover .like__heart { transform: scale(1.12); }
 .like.is-liked { color: var(--accent); }
 .like.is-liked .like__heart { font-variation-settings: "FILL" 1, "wght" 500, "GRAD" 0, "opsz" 24; } /* 塗りつぶし（.icon--fill と同じ） */
 .like.is-liked .like__count { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--surface)); }
-.like.is-liked .like__count::before { border-left-color: var(--accent); }
-.like.is-liked .like__count::after { border-left-color: color-mix(in srgb, var(--accent) 10%, var(--surface)); } /* 吹き出しの中と同じ色 */
+.like.is-liked .like__count::before { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--surface)); border-width: 1px 1px 0 0; } /* 吹き出しの中と同じ色 */
 .like.is-pop .like__heart { animation: like-pop .3s ease; }
 @keyframes like-pop { 50% { transform: scale(1.35); } }
 @media (prefers-reduced-motion: reduce) { .like.is-pop .like__heart { animation: none; } }
@@ -2081,3 +2080,61 @@ html:has([data-notice-tabs]) { scrollbar-gutter: stable; }
 .togglecard--inline { margin: 4px 0 12px; border-top: 1px solid var(--border); }
 .togglecard--inline summary { padding: 12px 0; font-size: 14px; }
 .togglecard--inline .togglecard__body { padding: 0 0 8px; }
+
+/* 掲示板（board.php・board_thread.php） */
+.board-list { padding: 4px 0; margin-bottom: 16px; }
+.board-list--in { margin-bottom: 0; border-top: 1px solid var(--border); } /* トグルの中（他の年度） */
+.board-row { display: flex; align-items: center; gap: 12px; padding: 12px 16px; color: inherit; text-decoration: none; }
+.board-row + .board-row { border-top: 1px solid var(--border); }
+.board-row:hover { background: var(--surface-2); }
+.board-row.is-deleted { opacity: .55; }
+.board-row__icon { color: var(--muted); }
+.board-row__main { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.board-row__title { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; font-weight: 600; }
+.board-row__count { display: inline-flex; align-items: center; gap: 4px; }
+.board-row__count .icon { font-size: 16px; }
+.board-posts { display: grid; gap: 10px; margin-bottom: 16px; }
+.board-post { padding: 12px 16px; }
+.board-post.is-mine { border-left: 3px solid var(--accent); }
+.board-post.is-deleted { opacity: .7; border-style: dashed; }
+.board-post__meta { display: flex; align-items: center; gap: 8px; margin: 0 0 6px; }
+.board-post__no { font-variant-numeric: tabular-nums; }
+.board-post__del { margin-left: 4px; } /* 返信ボタンのすぐ右 */
+.board-post__del .icon-btn { color: var(--danger); }
+.board-post__del .icon-btn:hover { background: var(--danger-bg); }
+.board-post__body { margin: 0; overflow-wrap: anywhere; }
+.board-post__deleted { color: var(--danger); margin: 0 0 4px; display: flex; align-items: center; gap: 4px; }
+textarea.board-textarea { width: 100%; padding: 10px 14px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: 15px; resize: vertical; } /* 角丸・縦方向のみリサイズ */
+textarea.board-textarea:focus { border-color: var(--accent); } /* 上の border が共通の textarea:focus より後勝ちなので、枠色を戻す */
+@media (min-width: 761px) { .board-posts, .board-reply { max-width: 720px; margin-inline: auto; } } /* PC: 書き込みのカードと返信欄は幅を狭くして中央に（長い行は読みにくい） */
+[data-board-panel] .togglecard__body { padding-top: 12px; } /* スレッド作成・通知設定とも、カードの上端に余白 */
+.board-panel__title { margin-top: 0; color: var(--muted); font-weight: 600; } /* 見出しはやや薄く */
+.board-panel__sub { margin: 4px 0 -6px; font-size: 13px; font-weight: 600; color: var(--muted); } /* 小見出し */
+[data-board-panel]:not([hidden]) { animation: board-slide .2s ease-out; } /* スレッド作成・通知設定のカードが開くとき */
+@media (prefers-reduced-motion: reduce) { [data-board-panel]:not([hidden]) { animation: none; } }
+.board-mute { margin-left: 10px; }
+.board-mute.is-active { background: var(--accent-soft); color: var(--accent); }
+.board-mute.is-pop .icon { animation: like-pop .3s ease; } /* ❤ と同じ、ぽんと弾む動き */
+.board-reply__to:not([hidden]) { animation: board-slide .22s ease-out; } /* 返信先の行が最初に出るとき */
+.board-reply__chip.is-entering { animation: board-chip .25s ease-out; }
+@keyframes board-slide { from { opacity: 0; transform: translateY(-6px); } }
+@keyframes board-chip { from { opacity: 0; transform: scale(.6); } 60% { transform: scale(1.08); } }
+@media (prefers-reduced-motion: reduce) { .board-mute.is-pop .icon, .board-reply__to:not([hidden]), .board-reply__chip.is-entering { animation: none; } }
+.board-head { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.board-head h1 { flex: 1; margin: 0; }
+.board-head .icon-btn.is-active { background: var(--accent-soft); color: var(--accent); }
+.board-post__reply { margin-left: 10px; }
+.board-post__foot { display: flex; justify-content: flex-end; margin-top: 6px; }
+/* 返信先（>>N）へ飛ぶとき: ゆっくりスクロールして、上のヘッダーに隠れない位置で止め、飛んだ先を一瞬光らせる */
+html:has(.board-posts) { scroll-behavior: smooth; }
+.board-post { scroll-margin-top: 110px; }
+.board-post:target { animation: board-flash 1.6s ease-out; }
+@keyframes board-flash { 0%, 35% { background: var(--accent-soft); box-shadow: 0 0 0 3px var(--accent-soft); } 100% { background: var(--surface); box-shadow: var(--shadow); } }
+@media (prefers-reduced-motion: reduce) { html:has(.board-posts) { scroll-behavior: auto; } .board-post:target { animation: none; } }
+.board-post__reply.is-active { background: var(--accent-soft); color: var(--accent); }
+.board-post__to { margin: 0 0 4px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; color: var(--muted); }
+.board-post__to .icon { font-size: 16px; }
+.board-reply__to { display: flex; flex-wrap: wrap; gap: 6px; }
+.board-reply__to[hidden] { display: none; }
+.board-reply__chip { cursor: pointer; border: 0; font: inherit; }
+.board-reply { display: grid; gap: 10px; padding: 12px 16px; margin-bottom: 16px; }

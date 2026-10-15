@@ -8,7 +8,7 @@
  *    ・member.php の「プロフィールを編集」（他の人のページ。管理者だけ）
  *  編集できるのは「本人（アカウントと紐付いている人）」か「管理者」だけ。
  *  それ以外の人は、ふりがなも含めて何も編集できない。
- *  「退会済み」を変えられるのは管理者だけ（本人がアカウント設定から送ってきても無視する）。
+ *  「退会済み」「入部年度」を変えられるのは管理者だけ（本人がアカウント設定から送ってきても無視する）。
  * =====================================================================
  */
 declare(strict_types=1);
@@ -38,7 +38,9 @@ if (!is_admin() && $user['member_id'] !== $memberId) {
 
 $kana = trim((string)($_POST['name_kana'] ?? ''));
 $name = trim((string)($_POST['name'] ?? ''));
-$entry = trim((string)($_POST['entry_year'] ?? ''));
+// 入部年度は管理者だけが決められる。年度で入れる掲示板の同期スレが決まるので、
+//   本人が書き換えて別の年度のスレに入れないよう、管理者以外が送ってきても無視する（null = 変えない）
+$entry = is_admin() ? trim((string)($_POST['entry_year'] ?? '')) : null;
 $musicApp = (string)($_POST['music_app'] ?? ''); // '' = 選ばない
 $faculty = (string)($_POST['faculty'] ?? '');    // '' = 選ばない
 // 係: チェックした今ある係（role_id の配列）＋ 新しく打った係（1つ。空欄なら作らない）
@@ -55,7 +57,7 @@ if ($name === '' || mb_strlen($name) > 50) {
 if (mb_strlen($kana) > 50) {
     $errors[] = 'ふりがなは50文字以内にしてください';
 }
-if ($entry !== '' && (!ctype_digit($entry) || (int)$entry < 1950 || (int)$entry > 2100)) {
+if ($entry !== null && $entry !== '' && (!ctype_digit($entry) || (int)$entry < 1950 || (int)$entry > 2100)) {
     $errors[] = '入部年度は西暦4桁で入力してください';
 }
 // 選択肢に無い値（HTML を書き換えて送られてきた値など）は受け付けない
@@ -87,9 +89,12 @@ if ($errors) {
 $pdo->beginTransaction();
 try {
     // 空欄は NULL（「分からない」）で保存する
-    $pdo->prepare('UPDATE member SET name = ?, name_kana = ?, entry_year = ?, faculty = ?, music_app = ? WHERE member_id = ?')
-        ->execute([$name, $kana !== '' ? $kana : null, $entry === '' ? null : (int)$entry,
+    $pdo->prepare('UPDATE member SET name = ?, name_kana = ?, faculty = ?, music_app = ? WHERE member_id = ?')
+        ->execute([$name, $kana !== '' ? $kana : null,
             $faculty !== '' ? $faculty : null, $musicApp !== '' ? $musicApp : null, $memberId]);
+    if ($entry !== null) {
+        $pdo->prepare('UPDATE member SET entry_year = ? WHERE member_id = ?')->execute([$entry === '' ? null : (int)$entry, $memberId]);
+    }
     if ($retired !== null) {
         $pdo->prepare('UPDATE member SET retired = ? WHERE member_id = ?')->execute([$retired, $memberId]);
     }

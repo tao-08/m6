@@ -20,6 +20,9 @@ if ($user) {
     $st = db()->prepare('SELECT n.notice_id, n.title, n.publish_at, n.is_important, (r.user_id IS NULL) AS is_new FROM notice n LEFT JOIN notice_read r ON r.notice_id = n.notice_id AND r.user_id = ? WHERE n.publish_at <= NOW() ORDER BY n.is_important DESC, n.publish_at DESC, n.notice_id DESC LIMIT 3');
     $st->execute([(int)$user['user_id']]);
     $recentNotices = $st->fetchAll();
+    // 掲示板: 未読の書き込みがあるスレの数（見られるスレだけ。lib/board.php）
+    require_once __DIR__ . '/../lib/board.php';
+    $unreadBoard = board_unread_count($user);
 }
 $nav = [
     'lives'   => ['./', 'ライブ'],
@@ -104,8 +107,8 @@ $nav = [
          display=block: 読み込み中にアイコン名の英単語（edit など）が一瞬見えるのを防ぐ -->
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400..600,0..1,0&display=block" rel="stylesheet">
     <!-- ?v=2 はキャッシュ対策。CSS を変えたら数字を上げると、ブラウザが古い CSS を使い続けない -->
-    <link rel="stylesheet" href="assets/app.css?v=335">
-    <script src="assets/app.js?v=171" defer></script>
+    <link rel="stylesheet" href="assets/app.css?v=351">
+    <script src="assets/app.js?v=176" defer></script>
 </head>
 <body>
 <header class="topbar">
@@ -131,6 +134,10 @@ $nav = [
         </a>
         <?php endif; ?>
         <?php if ($user): ?>
+        <a href="board" class="icon-btn<?= $activeNav === 'board' ? ' is-active' : '' ?>" aria-label="掲示板" title="掲示板">
+            <?= icon('forum') ?>
+            <?php if ($unreadBoard > 0): ?><span class="badge-dot"><?= $unreadBoard > 9 ? '9+' : $unreadBoard ?></span><?php endif; ?>
+        </a>
         <details class="usermenu notifmenu">
             <summary class="icon-btn<?= $activeNav === 'notices' ? ' is-active' : '' ?>" aria-label="お知らせ" title="お知らせ" data-notice-open>
                 <?= icon('notifications') ?>

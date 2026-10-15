@@ -1098,12 +1098,13 @@ function band_likes(PDO $pdo, array $bandIds, int $userId): array
  * お気に入り（❤）のボタン。吹き出しに数、その右にハート。押すと api_band_like.php に送る（app.js の setupLikes）
  * @param array{count: int, liked: bool}|null $like band_likes() の1件（無ければ 0件）
  */
-function like_button(int $bandId, ?array $like, string $class = ''): string
+function like_button(int $bandId, ?array $like, string $class = '', string $api = ''): string
 {
     $count = $like['count'] ?? 0;
     $liked = $like['liked'] ?? false;
+    // $api: 送り先の API 名（掲示板の書き込みは 'api_board_like'）。空ならバンド用。assets/app.js の setupLikes が読む
     return '<button type="button" class="like' . ($class !== '' ? ' ' . h($class) : '') . ($liked ? ' is-liked' : '') . '"'
-        . ' data-like="' . $bandId . '" aria-pressed="' . ($liked ? 'true' : 'false') . '"'
+        . ' data-like="' . $bandId . '"' . ($api !== '' ? ' data-like-api="' . h($api) . '"' : '') . ' aria-pressed="' . ($liked ? 'true' : 'false') . '"'
         . ' aria-label="お気に入り（' . $count . '）" title="お気に入り（匿名）">'
         . '<span class="like__count" data-like-count>' . $count . '</span>'
         . icon('favorite', 'like__heart') // Google の Material Symbols の favorite。押すと塗りつぶし（CSS の FILL 1）

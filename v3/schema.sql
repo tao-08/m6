@@ -37,7 +37,7 @@ SET NAMES utf8mb4;
 -- まっさらな DB に流すと「Note: #1051 '〜' は不明な表です」が表の数だけ出るが、
 -- これは「消そうとした表が最初から無かった」というだけの“お知らせ”で、エラーではない。
 SET FOREIGN_KEY_CHECKS = 0;
-DROP TABLE IF EXISTS notice_read, notice, notice_category, change_unit, change_op, inquiry, band_like, app_setting, login_attempt, track_preview, track_link_cache, album_link_cache,
+DROP TABLE IF EXISTS board_thread_mute, board_notify_category, board_notify, board_post_like, board_post_reply, board_read, board_post, board_thread, board_category, notice_read, notice, notice_category, change_unit, change_op, inquiry, band_like, app_setting, login_attempt, track_preview, track_link_cache, album_link_cache,
     check_dismiss, band_check_member, member_role, role, artist_alias, member_favorite_album, song_performer, song, track, band_member, live_break, band,
     artist, live_day, live, venue, instrument, user_account, member;
 SET FOREIGN_KEY_CHECKS = 1;
@@ -661,5 +661,130 @@ CREATE TABLE notice_read (
     CONSTRAINT fk_nr_user FOREIGN KEY (user_id) REFERENCES user_account (user_id)
         ON UPDATE CASCADE ON DELETE CASCADE,
     CONSTRAINT fk_nr_notice FOREIGN KEY (notice_id) REFERENCES notice (notice_id)
+        ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- ---------------------------------------------------------------------
+--  board_* — 掲示板（board.php / board_thread.php。migrations/046）
+-- ---------------------------------------------------------------------
+CREATE TABLE board_category (
+    category_id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    name        VARCHAR(20)  NOT NULL,
+    color       VARCHAR(10)  NOT NULL DEFAULT 'gray',  -- 表示色（notices.php の NOTICE_COLORS と同じキー）
+    PRIMARY KEY (category_id),
+    UNIQUE KEY uq_board_category_name (name)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+INSERT INTO board_category (name, color) VALUES ('雑談', 'gray'), ('募集', 'blue'), ('機材', 'green'), ('質問', 'yellow');
+
+CREATE TABLE board_thread (
+    thread_id      INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    kind           VARCHAR(10)  NOT NULL DEFAULT 'free',
+    entry_year     SMALLINT UNSIGNED NULL,               -- cohort のときだけ。どの入部年度のスレか
+    fixed_key      VARCHAR(20)  NULL,                    -- 'active' / 'cohort:2025'。free は NULL（NULL は UNIQUE でも重複できる）
+    category_id    INT UNSIGNED NULL,                    -- free のときだけ
+    user_id        INT UNSIGNED NULL,                    -- 立てた人。active / cohort は NULL
+    title          VARCHAR(100) NOT NULL,
+    last_post_id   INT UNSIGNED NOT NULL DEFAULT 0,      -- 最後の書き込み（未読の判定用。書き込むたびに更新）
+    last_posted_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted_at     DATETIME     NULL,
+    deleted_by     INT UNSIGNED NULL,
+    created_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (thread_id),
+    UNIQUE KEY uq_board_fixed (fixed_key),
+    KEY idx_board_last (last_posted_at),
+    CONSTRAINT ck_board_kind CHECK (kind IN ('free', 'active', 'cohort')),
+    CONSTRAINT fk_bt_category FOREIGN KEY (category_id) REFERENCES board_category (category_id)
+        ON UPDATE CASCADE ON DELETE RESTRICT,
+    CONSTRAINT fk_bt_user FOREIGN KEY (user_id) REFERENCES user_account (user_id)
+        ON UPDATE CASCADE ON DELETE SET NULL,
+    CONSTRAINT fk_bt_deleted_by FOREIGN KEY (deleted_by) REFERENCES user_account (user_id)
+        ON UPDATE CASCADE ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE board_post (
+    post_id    INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    thread_id  INT UNSIGNED NOT NULL,
+    user_id    INT UNSIGNED NULL,
+    body       TEXT         NOT NULL,
+    deleted_at DATETIME     NULL,
+    deleted_by INT UNSIGNED NULL,
+    created_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (post_id),
+    KEY idx_bp_thread (thread_id, post_id),
+    CONSTRAINT fk_bp_thread FOREIGN KEY (thread_id) REFERENCES board_thread (thread_id)
+        ON UPDATE CASCADE ON DELETE CASCADE,
+    CONSTRAINT fk_bp_user FOREIGN KEY (user_id) REFERENCES user_account (user_id)
+        ON UPDATE CASCADE ON DELETE SET NULL,
+    CONSTRAINT fk_bp_deleted_by FOREIGN KEY (deleted_by) REFERENCES user_account (user_id)
+        ON UPDATE CASCADE ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE board_read (
+    user_id      INT UNSIGNED NOT NULL,
+    thread_id    INT UNSIGNED NOT NULL,
+    last_post_id INT UNSIGNED NOT NULL DEFAULT 0,        -- ここまで読んだ
+    PRIMARY KEY (user_id, thread_id),
+    KEY idx_br_thread (thread_id),
+    CONSTRAINT fk_br_user FOREIGN KEY (user_id) REFERENCES user_account (user_id)
+        ON UPDATE CASCADE ON DELETE CASCADE,
+    CONSTRAINT fk_br_thread FOREIGN KEY (thread_id) REFERENCES board_thread (thread_id)
+        ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- スレ単位のミュート（migrations/050）。行があるスレはバッジに数えない
+CREATE TABLE board_thread_mute (
+    user_id   INT UNSIGNED NOT NULL,
+    thread_id INT UNSIGNED NOT NULL,
+    PRIMARY KEY (user_id, thread_id),
+    KEY idx_btm_thread (thread_id),
+    CONSTRAINT fk_btm_user FOREIGN KEY (user_id) REFERENCES user_account (user_id)
+        ON UPDATE CASCADE ON DELETE CASCADE,
+    CONSTRAINT fk_btm_thread FOREIGN KEY (thread_id) REFERENCES board_thread (thread_id)
+        ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- 通知設定（migrations/049）。board_notify の行が無い人は初期設定（すべて通知）
+CREATE TABLE board_notify (
+    user_id       INT UNSIGNED NOT NULL,
+    cohort_active TINYINT(1)   NOT NULL DEFAULT 1,
+    participating TINYINT(1)   NOT NULL DEFAULT 1,       -- 48時間以内に自分が書き込んだスレの新着を通知するか（migrations/050）
+    PRIMARY KEY (user_id),
+    CONSTRAINT fk_bn_user FOREIGN KEY (user_id) REFERENCES user_account (user_id)
+        ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE board_notify_category (
+    user_id     INT UNSIGNED NOT NULL,
+    category_id INT UNSIGNED NOT NULL,
+    PRIMARY KEY (user_id, category_id),
+    KEY idx_bnc_category (category_id),
+    CONSTRAINT fk_bnc_user FOREIGN KEY (user_id) REFERENCES user_account (user_id)
+        ON UPDATE CASCADE ON DELETE CASCADE,
+    CONSTRAINT fk_bnc_category FOREIGN KEY (category_id) REFERENCES board_category (category_id)
+        ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- 書き込みのお気に入り（❤）。書き込み × ユーザーの中間テーブル（migrations/048）
+CREATE TABLE board_post_like (
+    post_id INT UNSIGNED NOT NULL,
+    user_id INT UNSIGNED NOT NULL,
+    PRIMARY KEY (post_id, user_id),
+    KEY idx_bpl_user (user_id),
+    CONSTRAINT fk_bpl_post FOREIGN KEY (post_id) REFERENCES board_post (post_id)
+        ON UPDATE CASCADE ON DELETE CASCADE,
+    CONSTRAINT fk_bpl_user FOREIGN KEY (user_id) REFERENCES user_account (user_id)
+        ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- 書き込みの返信先（1つの書き込みが複数に返信できる中間テーブル。migrations/047）
+CREATE TABLE board_post_reply (
+    post_id          INT UNSIGNED NOT NULL,
+    reply_to_post_id INT UNSIGNED NOT NULL,
+    PRIMARY KEY (post_id, reply_to_post_id),
+    KEY idx_bpr_to (reply_to_post_id),
+    CONSTRAINT fk_bpr_post FOREIGN KEY (post_id) REFERENCES board_post (post_id)
+        ON UPDATE CASCADE ON DELETE CASCADE,
+    CONSTRAINT fk_bpr_to FOREIGN KEY (reply_to_post_id) REFERENCES board_post (post_id)
         ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;

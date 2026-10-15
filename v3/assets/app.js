@@ -88,6 +88,9 @@ document.addEventListener('DOMContentLoaded', () => {
   setupMemberRows();
   setupSuggest();
   setupSmallThings();
+  setupBoardReply();
+  setupBoardPanels();
+  setupBoardMute();
   setupVenueSuggest();
   setupSongs();
   setupTrackSearch();
@@ -939,8 +942,9 @@ function setupBackButton() {
     .filter(Boolean);
   // スマホ: 2つ出るとき、片方が下のメニューの項目（ライブ・メンバー・アーティスト・集計）と同じページなら、そちらは出さない（1つだけ）
   //   メニューから1回で行けるページなので、ボタンにしなくても困らない。両方ともメニューと同じなら、前のページの方を残す
+  //   掲示板もメニューと同じ扱い（ヘッダーのアイコンから1回で行ける）
   if (items.length === 2 && matchMedia('(max-width: 760px)').matches) {
-    const menu = [...document.querySelectorAll('.nav a[href]')].map((a) => keyOf(a.href));
+    const menu = [...document.querySelectorAll('.nav a[href], .topbar a[href="board"]')].map((a) => keyOf(a.href));
     const dup = items.filter((t) => menu.includes(keyOf(t.url)));
     if (dup.length) items = items.filter((t) => t !== (dup.length === 2 ? items[1] : dup[0]));
   }
@@ -1006,6 +1010,127 @@ function setupBackButton() {
     timer = setTimeout(show, 120);
   }, { passive: true });
   if ('onscrollend' in window) window.addEventListener('scrollend', show);
+}
+
+/* ---------------------------------------------------------------------
+ * 掲示板のスレのミュート（board_thread.php のスレ名の右のベル）
+ *   お気に入り（setupLikes）と同じ流れ: 押した瞬間に見た目を変えて（ぽんと弾ませる）、api_board_mute に送り、
+ *   返ってきた本当の状態で書き直す。失敗したら押す前に戻す。ページは移動しない
+ * ------------------------------------------------------------------- */
+function setupBoardMute() {
+  const btn = document.querySelector('[data-board-mute]');
+  if (!btn) return;
+  const token = document.querySelector('meta[name="csrf-token"]')?.content || '';
+  const paint = (muted) => {
+    btn.classList.toggle('is-active', muted);
+    btn.setAttribute('aria-pressed', String(muted));
+    btn.querySelector('.icon').textContent = muted ? 'notifications_off' : 'notifications';
+  };
+  let pending = false;
+  btn.addEventListener('click', async () => {
+    if (pending) return;
+    pending = true;
+    const before = btn.classList.contains('is-active');
+    paint(!before);
+    btn.classList.remove('is-pop');
+    void btn.offsetWidth; // 一度描き直させて、アニメーションを最初からやり直す
+    btn.classList.add('is-pop');
+    try {
+      const res = await fetch('api_board_mute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': token },
+        body: JSON.stringify({ thread_id: Number(btn.dataset.boardMute) }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '保存できませんでした');
+      paint(data.muted);
+    } catch (err) {
+      console.error('ミュートの通信エラー:', err);
+      paint(before);
+      const toast = document.createElement('div');
+      toast.textContent = 'ミュートを保存できませんでした。ページを再読み込みしてやり直してください';
+      showToast(toast);
+    } finally {
+      pending = false;
+    }
+  });
+}
+
+/* ---------------------------------------------------------------------
+ * 掲示板一覧の「スレッド作成」「通知設定」（board.php）
+ *   見出し横のアイコン [data-board-panel-open="id"] を押すと、同じ id のカード [data-board-panel] が開く（もう一度で閉じる。同時に開くのは1つ）。
+ *   URL が #notify などのとき（保存して戻ってきたとき）は、最初からそのカードを開く
+ * ------------------------------------------------------------------- */
+function setupBoardPanels() {
+  const panels = [...document.querySelectorAll('[data-board-panel]')];
+  if (!panels.length) return;
+  const buttons = [...document.querySelectorAll('[data-board-panel-open]')];
+  const open = (id) => {
+    panels.forEach((p) => { p.hidden = p.id !== id; });
+    buttons.forEach((b) => {
+      const on = b.dataset.boardPanelOpen === id;
+      b.classList.toggle('is-active', on);
+      b.setAttribute('aria-expanded', String(on));
+    });
+  };
+  buttons.forEach((b) => b.addEventListener('click', () => {
+    const id = b.dataset.boardPanelOpen;
+    open(panels.find((p) => p.id === id && !p.hidden) ? '' : id);
+  }));
+  const first = location.hash.slice(1);
+  if (panels.some((p) => p.id === first)) open(first);
+}
+
+/* ---------------------------------------------------------------------
+ * 掲示板の返信先（board_thread.php）
+ *   各書き込みの返信ボタン [data-board-reply] で、返信先に追加・解除（複数可。最大 MAX 件）。
+ *   選んだものは返信欄の上にチップで並べ、送信用に hidden の reply_to[] を入れる。チップを押しても解除できる。
+ *   書き込み番号は textContent で入れる（innerHTML は使わない）
+ * ------------------------------------------------------------------- */
+function setupBoardReply() {
+  const box = document.querySelector('[data-board-reply-to]');
+  if (!box) return;
+  const MAX = 10;
+  const picked = new Map(); // post_id → 書き込み番号
+  const buttons = new Map(
+    [...document.querySelectorAll('[data-board-reply]')].map((b) => [b.dataset.boardReply, b]),
+  );
+  const shown = new Set(); // もう出しているチップ（新しく増えた分だけアニメーションさせる）
+  const render = () => {
+    box.replaceChildren();
+    shown.forEach((id) => { if (!picked.has(id)) shown.delete(id); });
+    picked.forEach((no, id) => {
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'tag board-reply__chip' + (shown.has(id) ? '' : ' is-entering');
+      shown.add(id);
+      chip.setAttribute('aria-label', `>>${no} の返信を解除`);
+      chip.textContent = `>>${no} ×`;
+      chip.addEventListener('click', () => toggle(id));
+      const input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = 'reply_to[]';
+      input.value = id;
+      box.append(chip, input);
+    });
+    box.hidden = picked.size === 0;
+    buttons.forEach((b, id) => {
+      const on = picked.has(id);
+      b.classList.toggle('is-active', on);
+      b.setAttribute('aria-pressed', String(on));
+    });
+  };
+  const toggle = (id) => {
+    if (picked.has(id)) picked.delete(id);
+    else if (picked.size < MAX) picked.set(id, buttons.get(id)?.dataset.no ?? '');
+    render();
+  };
+  buttons.forEach((b, id) => b.addEventListener('click', () => {
+    const first = picked.size === 0;
+    toggle(id);
+    // 最初の1件を選んだときだけ返信欄へ移す（続けて選ぶときは動かさない）
+    if (first && picked.has(id)) box.closest('form')?.querySelector('textarea')?.focus();
+  }));
 }
 
 /* ---------------------------------------------------------------------
@@ -4409,8 +4534,13 @@ function setupLikes() {
   const pending = new Set(); // 通信中のバンドID（結果が返るまで同じバンドの2回目は受け付けない）
 
   // 同じバンドの ❤ を全部、liked / count の見た目にする
-  const paint = (id, liked, count) => {
+  //   data-like-api … 送り先の API（無ければバンド用の api_band_like）。掲示板の書き込みは api_board_like。
+  //   バンドと書き込みで ID が重なっても混ざらないよう、同じ API のボタンだけそろえる
+  const apiOf = (b) => b.dataset.likeApi || 'api_band_like';
+  const KEYS = { api_band_like: 'band_id', api_board_like: 'post_id' };
+  const paint = (api, id, liked, count) => {
     document.querySelectorAll(`[data-like="${id}"]`).forEach((b) => {
+      if (apiOf(b) !== api) return;
       b.classList.toggle('is-liked', liked);
       b.setAttribute('aria-pressed', String(liked));
       b.setAttribute('aria-label', `お気に入り（${count}）`);
@@ -4422,13 +4552,16 @@ function setupLikes() {
     const btn = e.target.closest('[data-like]');
     if (!btn) return;
     const id = btn.dataset.like;
-    if (pending.has(id)) return;
-    pending.add(id);
+    const api = apiOf(btn);
+    const key = api + ':' + id;
+    if (!KEYS[api]) return;
+    if (pending.has(key)) return;
+    pending.add(key);
 
     // 1. 先に見た目を変える（押した瞬間に数字が動く）
     const before = { liked: btn.classList.contains('is-liked'), count: Number(btn.querySelector('[data-like-count]').textContent) };
     const liked = !before.liked;
-    paint(id, liked, Math.max(0, before.count + (liked ? 1 : -1)));
+    paint(api, id, liked, Math.max(0, before.count + (liked ? 1 : -1)));
     if (liked) { // 付けたときだけハートをぽんと弾ませる
       btn.classList.remove('is-pop');
       void btn.offsetWidth; // 一度描き直させて、アニメーションを最初からやり直す
@@ -4437,22 +4570,22 @@ function setupLikes() {
 
     // 2. サーバーに送って、本当の値で書き直す
     try {
-      const res = await fetch('api_band_like', {
+      const res = await fetch(api, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': token },
-        body: JSON.stringify({ band_id: Number(id) }),
+        body: JSON.stringify({ [KEYS[api]]: Number(id) }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || '保存できませんでした');
-      paint(id, data.liked, data.count);
+      paint(api, id, data.liked, data.count);
     } catch (err) {
       console.error('お気に入りの通信エラー:', err);
-      paint(id, before.liked, before.count); // 失敗したので押す前に戻す
+      paint(api, id, before.liked, before.count); // 失敗したので押す前に戻す
       const toast = document.createElement('div');
       toast.textContent = 'お気に入りを保存できませんでした。ページを再読み込みしてやり直してください';
       showToast(toast);
     } finally {
-      pending.delete(id);
+      pending.delete(key);
     }
   });
 }

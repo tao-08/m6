@@ -43,9 +43,10 @@ if (is_post()) {
     } elseif (!preg_match('/\A[ぁ-ゖー ]+\z/u', $v['name_kana'])) {
         $errors[] = 'ふりがなはひらがなで入力してください';
     }
-    // 入学年度は「わからない」（空欄）も OK。選ぶなら選択肢にある年度だけ
+    // 入学年度は管理者だけが決められる（一般ユーザーが送ってきても無視して未設定にする）。
+    //   「わからない」（空欄）も OK。選ぶなら選択肢にある年度だけ
     $entryYear = null;
-    if ($v['entry_year'] !== '') {
+    if (is_admin() && $v['entry_year'] !== '') {
         $entryYear = filter_var($v['entry_year'], FILTER_VALIDATE_INT);
         if (!is_int($entryYear) || !in_array($entryYear, $entryYears, true)) {
             $errors[] = '入学年度が正しくありません';
@@ -83,6 +84,7 @@ require __DIR__ . '/partials/add_tabs.php';
             <input name="name" value="<?= h($v['name']) ?>" maxlength="50" autocomplete="off" placeholder="例: 垰田圭吾" required></label>
         <label class="field"><span>ふりがな</span>
             <input name="name_kana" value="<?= h($v['name_kana']) ?>" maxlength="50" autocomplete="off" placeholder="例: たおだけいご" required></label>
+        <?php if (is_admin()): ?>
         <label class="field"><span>入学年度</span>
             <select name="entry_year">
                 <option value="">未入力</option>
@@ -90,8 +92,9 @@ require __DIR__ . '/partials/add_tabs.php';
                     <option value="<?= $y ?>"<?= (string)$y === $v['entry_year'] ? ' selected' : '' ?>><?= $y ?>年度</option>
                 <?php endforeach; ?>
             </select></label>
+        <?php endif; ?>
     </div>
-    <p class="muted small">入学年度が未入力の場合、一部集計の対象外となります。</p>
+    <p class="muted small">入学年度は管理者が設定します。未設定の場合、一部集計の対象外となります。</p>
     <div class="form-actions">
         <button class="btn btn--primary" type="submit">追加する</button>
     </div>

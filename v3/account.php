@@ -124,7 +124,7 @@ render_header('アカウント設定');
         <input type="hidden" name="return" value="account">
         <label class="field"><span>名前</span><input name="name" value="<?= h($myMember['name']) ?>" maxlength="50" required></label>
         <label class="field"><span>ふりがな</span><input name="name_kana" value="<?= h($myMember['name_kana']) ?>" maxlength="50"></label>
-        <label class="field"><span>入部年度</span><input type="number" name="entry_year" min="1950" max="2100" value="<?= (int)$myMember['entry_year'] ?: '' ?>"></label>
+        <label class="field"><span>入部年度</span><input type="number" name="entry_year" min="1950" max="2100" value="<?= (int)$myMember['entry_year'] ?: '' ?>"<?= $account['is_admin'] ? '' : ' disabled title="管理者のみ変更可"' ?>></label>
         <?= profile_faculty_role_fields($pdo, $myMember) ?>
         <label class="field"><span>対応するリンクを開く音楽アプリ</span>
             <select name="music_app">

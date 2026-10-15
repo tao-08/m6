@@ -20,9 +20,6 @@ require __DIR__ . '/lib/bootstrap.php';
 $user = require_login();
 $pdo = db();
 
-// カテゴリの色（保存するのはキーだけ。CSS のクラス名 tag--c-◯◯ に使うので、ここにある名前以外は受け付けない）
-const NOTICE_COLORS = ['gray' => 'グレー', 'blue' => '青', 'green' => '緑', 'yellow' => '黄', 'red' => '赤', 'purple' => '紫', 'pink' => 'ピンク'];
-
 $categories = $pdo->query('SELECT c.category_id, c.name, c.color, (SELECT COUNT(*) FROM notice n WHERE n.category_id = c.category_id) AS used
     FROM notice_category c ORDER BY c.category_id')->fetchAll();
 $categoryNames = array_column($categories, 'name', 'category_id');
