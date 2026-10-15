@@ -1195,21 +1195,30 @@ function inst_filter(array $parts, string $target, bool $tori = false, string $i
     if (count($groups) + ($tori ? 1 : 0) < 2) {
         return '';
     }
-    uasort($groups, static fn($a, $b) => $a['order'] <=> $b['order']);
+    // Cho の行は Dr の下（兼任のある楽器の最後）
+    uasort($groups, static fn($a, $b) => [$a['short'] === 'Cho', $a['order']] <=> [$b['short'] === 'Cho', $b['order']]);
     $opt = static fn(string $inst, string $label, string $aria = ''): string =>
         '<button type="button" data-inst="' . h($inst) . '"' . ($aria !== '' ? ' aria-label="' . h($aria) . '"' : '') . '>' . $label . '</button>';
     // ポップアップは表（grid）。楽器ごとに1行で、単体は左端・兼任は真ん中・All は右端の列に揃える
     $rows = [[$opt('', icon('filter_alt_off', 'icon--fill'), 'すべて') . ($tori ? $opt('tori', '<span class="tori-badge">🐔</span>', 'トリ') : '')]];
-    $plain = ''; // 兼任がない楽器は最後に1行で横に並べる
+    $plain = []; // 兼任がない楽器は最後に横4列で並べる（etc はさらにその下の段）
+    $etc = '';
     $cols = 2;
     foreach ($groups as $cls => $g) {
         $single = '<span class="part part--' . h($cls) . '">' . h($g['short']) . '</span>';
         if (empty($g['combos'])) {
-            $plain .= $opt($cls, $single);
+            if ($cls === 'other') {
+                $etc = $opt($cls, $single);
+            } else {
+                $plain[] = $opt($cls, $single);
+            }
             continue;
         }
         // Vo・Cho の行は兼任（Vo/Gt・Gt/Cho など）が他の楽器の行と重複するので、単体と All だけ
         $combos = in_array($cls, ['vo', 'cho'], true) ? [] : $g['combos'];
+        // 単体 → Vo の兼任 → Cho の兼任 → その他の兼任 → All の順
+        $rank = static fn(string $key): int => in_array('vo', explode('-', $key), true) ? 0 : (in_array('cho', explode('-', $key), true) ? 1 : 2);
+        uksort($combos, static fn($a, $b) => $rank($a) <=> $rank($b));
         $row = isset($g['solo']) ? $opt($cls . '!', $single) : '';
         foreach ($combos as $key => $p) {
             $row .= $opt($key, part_badge($p));
@@ -1218,8 +1227,12 @@ function inst_filter(array $parts, string $target, bool $tori = false, string $i
         $rows[] = [$row, isset($g['solo'])];
         $cols = max($cols, count($combos) + 2);
     }
-    if ($plain !== '') {
-        $rows[] = [$plain];
+    $cols = max($cols, min(4, count($plain)));
+    foreach (array_chunk($plain, 4) as $chunk) {
+        $rows[] = [implode('', $chunk)];
+    }
+    if ($etc !== '') {
+        $rows[] = [$etc];
     }
     $html = '<span class="inst-filter" data-inst-filter="' . h($target) . '"' . ($items !== '' ? ' data-inst-items="' . h($items) . '"' : '') . '>'
         . '<button type="button" class="btn btn--ghost btn--sm inst-filter__btn" aria-label="楽器で絞り込み" aria-expanded="false">' . icon('filter_alt', 'icon--fill') . '</button>'
