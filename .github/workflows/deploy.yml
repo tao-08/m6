@@ -26,8 +26,12 @@ jobs:
       - name: SSH 設定
         run: |
           install -m 700 -d ~/.ssh
-          echo "${{ secrets.SSH_KEY }}" > ~/.ssh/id_deploy
+          printf '%s
+' "${{ secrets.SSH_KEY }}" | tr -d '' > ~/.ssh/id_deploy
           chmod 600 ~/.ssh/id_deploy
+          # 鍵の形式チェックと指紋表示（サーバー側の ssh-keygen -lf deploy_key.pub と比較）
+          ssh-keygen -y -f ~/.ssh/id_deploy > ~/.ssh/id_deploy.pub
+          ssh-keygen -lf ~/.ssh/id_deploy.pub
           ssh-keyscan -p "${{ secrets.SSH_PORT || 22 }}" "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts
 
       # config.php は本番専用なので除外（--delete でも消えない）
