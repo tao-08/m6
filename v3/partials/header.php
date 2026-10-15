@@ -13,11 +13,11 @@ $user = current_user();
 $unreadNotices = 0;
 if ($user) {
     // 行が無いお知らせ＝未読（notice_read は読んだ記録）
-    $st = db()->prepare('SELECT COUNT(*) FROM notice n LEFT JOIN notice_read r ON r.notice_id = n.notice_id AND r.user_id = ? WHERE r.user_id IS NULL');
+    $st = db()->prepare('SELECT COUNT(*) FROM notice n LEFT JOIN notice_read r ON r.notice_id = n.notice_id AND r.user_id = ? WHERE r.user_id IS NULL AND n.publish_at <= NOW()');
     $st->execute([(int)$user['user_id']]);
     $unreadNotices = (int)$st->fetchColumn();
     // ベルのポップアップに出す直近3件
-    $st = db()->prepare('SELECT n.notice_id, n.title, n.created_at, n.is_important, (r.user_id IS NULL) AS is_new FROM notice n LEFT JOIN notice_read r ON r.notice_id = n.notice_id AND r.user_id = ? ORDER BY n.is_important DESC, n.notice_id DESC LIMIT 3');
+    $st = db()->prepare('SELECT n.notice_id, n.title, n.publish_at, n.is_important, (r.user_id IS NULL) AS is_new FROM notice n LEFT JOIN notice_read r ON r.notice_id = n.notice_id AND r.user_id = ? WHERE n.publish_at <= NOW() ORDER BY n.is_important DESC, n.publish_at DESC, n.notice_id DESC LIMIT 3');
     $st->execute([(int)$user['user_id']]);
     $recentNotices = $st->fetchAll();
 }
@@ -104,8 +104,8 @@ $nav = [
          display=block: 読み込み中にアイコン名の英単語（edit など）が一瞬見えるのを防ぐ -->
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400..600,0..1,0&display=block" rel="stylesheet">
     <!-- ?v=2 はキャッシュ対策。CSS を変えたら数字を上げると、ブラウザが古い CSS を使い続けない -->
-    <link rel="stylesheet" href="assets/app.css?v=324">
-    <script src="assets/app.js?v=168" defer></script>
+    <link rel="stylesheet" href="assets/app.css?v=335">
+    <script src="assets/app.js?v=171" defer></script>
 </head>
 <body>
 <header class="topbar">
@@ -139,8 +139,8 @@ $nav = [
             <div class="usermenu__panel notifmenu__panel">
                 <?php foreach ($recentNotices as $n): ?>
                     <a href="notices" class="notifmenu__item">
-                        <span class="notifmenu__title"><?= $n['is_important'] ? icon('priority_high', 'notice__mark') : '' ?><?= h($n['title']) ?><?= $n['is_new'] ? ' <span class="tag">NEW</span>' : '' ?></span>
-                        <span class="muted small"><?= h(substr($n['created_at'], 0, 10)) ?></span>
+                        <span class="notifmenu__title"><?= $n['is_important'] ? icon('priority_high', 'notice__mark') : '' ?><?= h($n['title']) ?><?= $n['is_new'] ? ' <span class="tag tag--plan">NEW</span>' : '' ?></span>
+                        <span class="muted small"><?= h(substr($n['publish_at'], 0, 16)) ?></span>
                     </a>
                 <?php endforeach; ?>
                 <?php if (!$recentNotices): ?><p class="muted small notifmenu__empty">直近のお知らせはありません</p><?php endif; ?>
@@ -161,7 +161,7 @@ $nav = [
             <summary class="icon-btn" aria-label="アカウント" title="アカウント"><?= icon('person') ?></summary>
             <div class="usermenu__panel">
                 <div class="usermenu__name">
-                    <span><?= h($user['name']) ?><?= $user['admin'] ? ' <span class="tag">管理者</span>' : '' ?></span>
+                    <span class="usermenu__who"><?= h($user['name']) ?><?= $user['admin'] ? ' <span class="tag">管理者</span>' : '' ?></span>
                     <!-- テーマ切り替え（中身のアイコンは CSS で太陽/月を出し分け） -->
                     <button type="button" class="icon-btn icon-btn--sm" data-theme-toggle aria-label="ライト/ダーク切り替え" title="ライト/ダーク切り替え">
                         <?= icon('light_mode', 'icon-sun') ?>

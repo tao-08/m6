@@ -2025,8 +2025,8 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
   background: var(--danger, #d93025); color: #fff; font: 700 10px/16px var(--font); text-align: center; }
 
 /* ベルのポップアップ（直近3件＋すべて見る） */
-.icon-btn--sm { width: 30px; height: 30px; }
-.notifmenu__panel { min-width: 240px; max-width: calc(100vw - 24px); }
+.icon-btn--sm { width: 30px; height: 30px; padding: 0; } /* button の初期の左右余白(6px)で中身の入る幅が足りず、アイコンが右に寄っていた */
+.notifmenu__panel { width: 300px; max-width: calc(100vw - 24px); }
 .notifmenu__item { display: grid; gap: 2px; }
 .notifmenu__title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .notifmenu__empty { padding: 8px 10px; margin: 0; }
@@ -2034,10 +2034,50 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
 
 /* お知らせの重要・カテゴリ管理・ホームのバナー */
 .notice__mark { color: var(--danger, #d93025); }
-.notice--important { border-color: var(--danger, #d93025); }
-.notice-banner { display: flex; align-items: center; gap: 10px; padding: 12px 16px; margin-bottom: 16px; border-color: var(--danger, #d93025); }
+.notice-item { padding: 22px 20px; margin-bottom: 16px; }
+.notice--important { border: 2px solid var(--danger); background: color-mix(in srgb, var(--danger) 6%, var(--surface)); }
+.notice-banner { display: flex; align-items: center; gap: 10px; padding: 12px 16px; margin-bottom: 16px; border: 2px solid var(--danger); background: color-mix(in srgb, var(--danger) 6%, var(--surface)); }
 .notice-banner__text { flex: 1; min-width: 0; display: grid; font-weight: 600; font-size: 14px; }
 .notice-banner__text span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .notice-cat { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
 .notice-cat__rename { display: flex; gap: 6px; flex: 1; }
 .notice-cat__rename input { flex: 1; min-width: 0; }
+
+/* お知らせ: カテゴリ切り替えのふわっと表示（hidden が外れるたびに動く）と、管理者用のトグルカード */
+/* 切り替えの動きは JS（setupNotice のタブ）。CSS の animation だと、切り替え前後で表示されたままの記事が動かない */
+/* 記事の数でページの高さが変わっても、スクロールバーの出入りで画面が左右にずれないよう、場所を空けておく */
+html:has([data-notice-tabs]) { scrollbar-gutter: stable; }
+.togglecard { padding: 0; margin-bottom: 16px; }
+.togglecard summary { display: flex; align-items: center; gap: 8px; padding: 14px 16px; cursor: pointer; list-style: none; font-weight: 700; }
+.togglecard summary::-webkit-details-marker { display: none; }
+.togglecard__title { flex: 1; }
+.togglecard__chevron { transition: transform .2s ease; }
+.togglecard[open] .togglecard__chevron { transform: rotate(180deg); }
+.togglecard__body { display: grid; gap: 14px; padding: 4px 16px 16px; }
+@media (prefers-reduced-motion: reduce) { .togglecard__chevron { transition: none; } }
+#categories { margin-top: 16px; }
+
+/* お知らせのカテゴリ色（notices.php の NOTICE_COLORS。.tag--plan と同じ作りで色だけ変える） */
+.tag--c-gray   { --c: var(--other); }
+.tag--c-blue   { --c: var(--headliner); }
+.tag--c-green  { --c: var(--ok); }
+.tag--c-yellow { --c: var(--warn); }
+.tag--c-red    { --c: var(--danger); }
+.tag--c-purple { --c: var(--ba); }
+.tag--c-pink   { --c: var(--key); }
+[class*="tag--c-"] { color: var(--c); border-color: color-mix(in srgb, var(--c) 40%, transparent); background: color-mix(in srgb, var(--c) 10%, transparent); }
+
+/* 文字・タグ・アイコンの上下中央をそろえる（inline のままだと、タグが文字の基準線に乗って数px ずれる） */
+.notice-title { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; }
+.notice-meta { display: flex; align-items: center; gap: 6px; }
+.usermenu__who { display: inline-flex; align-items: center; gap: 6px; }
+.icon-btn--sm .icon-moon { transform: translateX(1px); } /* 三日月は図形の重心が左に寄っているので、見た目の中心に合わせて少し右へ */
+
+/* 予約のチェック＋日時入力（チェックを入れたときだけ日時が出る。assets/app.js） */
+.notice-schedule { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; }
+.notice-schedule input[type="datetime-local"] { flex: 1; min-width: 200px; }
+
+/* 記事カードの中に置く、予約の編集用トグル（枠は記事カードのものを使う） */
+.togglecard--inline { margin: 4px 0 12px; border-top: 1px solid var(--border); }
+.togglecard--inline summary { padding: 12px 0; font-size: 14px; }
+.togglecard--inline .togglecard__body { padding: 0 0 8px; }

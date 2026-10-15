@@ -627,6 +627,7 @@ CREATE TABLE sheet_template_venue (
 CREATE TABLE notice_category (
     category_id INT UNSIGNED NOT NULL AUTO_INCREMENT,
     name        VARCHAR(20)  NOT NULL,
+    color       VARCHAR(10)  NOT NULL DEFAULT 'gray',  -- 表示色（NOTICE_COLORS。migrations/044）
     PRIMARY KEY (category_id),
     UNIQUE KEY uq_notice_category_name (name)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
@@ -640,8 +641,10 @@ CREATE TABLE notice (
     is_important TINYINT(1)   NOT NULL DEFAULT 0,  -- 重要: 一覧で上に固定・ホームにバナー（migrations/043）
     title      VARCHAR(100) NOT NULL,
     body       TEXT         NOT NULL,
+    publish_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,  -- 公開日時。未来なら予約（migrations/045）
     created_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (notice_id),
+    KEY idx_notice_publish (publish_at),
     KEY idx_notice_important (is_important, notice_id),
     CONSTRAINT fk_notice_user FOREIGN KEY (user_id) REFERENCES user_account (user_id)
         ON UPDATE CASCADE ON DELETE SET NULL,

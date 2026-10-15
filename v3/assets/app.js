@@ -1081,6 +1081,62 @@ function setupSmallThings() {
       .catch(() => {});
   });
 
+  // お知らせのカテゴリタブ（data-notice-tabs）: ページを移動せず、data-notice-cat が合う記事だけ表示する。
+  //   表示の動きは CSS（.notice-item:not([hidden]) のアニメーション）。URL の ?cat= も書きかえて、共有・再読み込みしても同じタブになる
+  const noticeTabs = document.querySelector('[data-notice-tabs]');
+  if (noticeTabs) {
+    const items = document.querySelectorAll('[data-notice-cat]');
+    const empty = document.querySelector('[data-notice-empty]');
+    const show = (cat, animate = true) => {
+      let count = 0;
+      items.forEach((it) => {
+        const match = cat === '0' || it.dataset.noticeCat === cat;
+        it.hidden = !match;
+        if (match) count++;
+      });
+      if (empty) empty.hidden = count > 0;
+      if (animate && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        // 表示される記事を全部ふわっと出す（「すべて」⇔各カテゴリのように、前後で表示されたままの記事も動かすため JS で動かす）
+        [...items, empty].filter((el) => el && !el.hidden).forEach((el) => el.animate(
+          [{ opacity: 0, transform: 'translateY(6px)' }, { opacity: 1, transform: 'none' }],
+          { duration: 250, easing: 'ease' }));
+      }
+      noticeTabs.querySelectorAll('.tab').forEach((t) => {
+        const on = t.dataset.cat === cat;
+        t.classList.toggle('is-active', on);
+        on ? t.setAttribute('aria-current', 'page') : t.removeAttribute('aria-current');
+      });
+    };
+    noticeTabs.addEventListener('click', (e) => {
+      const tab = e.target.closest('.tab');
+      if (!tab) return;
+      e.preventDefault();
+      show(tab.dataset.cat);
+      history.replaceState(null, '', tab.getAttribute('href'));
+    });
+    show(noticeTabs.querySelector('.tab.is-active')?.dataset.cat ?? '0', false); // 最初のタブが空のときの「お知らせはありません」もここで出す
+  }
+
+  // お知らせの予約: 「予約」にチェックを入れたときだけ日時の入力欄を出す（隠している間は disabled で送らない）
+  document.querySelectorAll('[data-notice-schedule]').forEach((box) => {
+    const input = box.closest('form').querySelector('[data-notice-schedule-at]');
+    const sync = () => { input.hidden = !box.checked; input.disabled = !box.checked; input.required = box.checked; };
+    box.addEventListener('change', sync);
+    sync();
+  });
+
+  // 管理者用のトグルカード（<details class="togglecard">）: 開くたびに中身をふわっと出す（動きを減らす設定の人には動かさない）。
+  //   #categories で来たとき（カテゴリを操作した直後）は最初から開いておく
+  document.querySelectorAll('.togglecard').forEach((card) => {
+    if (card.id && location.hash === '#' + card.id) card.open = true;
+    card.querySelector('summary')?.addEventListener('click', () => {
+      if (card.open || matchMedia('(prefers-reduced-motion: reduce)').matches) return; // card.open = これから閉じる
+      card.querySelector('.togglecard__body')?.animate(
+        [{ opacity: 0, transform: 'translateY(-8px)' }, { opacity: 1, transform: 'none' }],
+        { duration: 220, easing: 'cubic-bezier(.2, .9, .3, 1.1)' });
+    });
+  });
+
   // data-fill-hint … メンバープロフィールの一括編集で、空欄の入力欄に data-hint（初出演の年度）を入れる。保存はしない
   document.querySelectorAll('[data-fill-hint]').forEach((btn) => btn.addEventListener('click', () => {
     btn.form.querySelectorAll('input[data-hint]').forEach((input) => {
