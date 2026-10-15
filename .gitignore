@@ -3,3 +3,6 @@ vue-project
 src/assets/documents
 # Claude Code の作業用フォルダ（どの階層にあっても無視する）
 **/.claude/worktrees/
+
+# FTP 接続設定（サーバー情報を含むのでコミットしない）
+.vscode/sftp.json
