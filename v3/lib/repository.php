@@ -1201,7 +1201,7 @@ function inst_filter(array $parts, string $target, bool $tori = false, string $i
         '<button type="button" data-inst="' . h($inst) . '"' . ($aria !== '' ? ' aria-label="' . h($aria) . '"' : '') . '>' . $label . '</button>';
     // ポップアップは表（grid）。楽器ごとに1行で、単体は左端・兼任は真ん中・All は右端の列に揃える
     $rows = [[$opt('', icon('filter_alt_off', 'icon--fill'), 'すべて') . ($tori ? $opt('tori', '<span class="tori-badge">🐔</span>', 'トリ') : '')]];
-    $plain = []; // 兼任がない楽器は最後に横4列で並べる（etc はさらにその下の段）
+    $plain = []; // 兼任がない楽器は最後に横4列で並べる（etc は一番最後）
     $etc = '';
     $top = [];       // Vo / Vo All / Cho / Cho All（[data-inst, ラベル]）
     $comboRows = [];
@@ -1262,12 +1262,12 @@ function inst_filter(array $parts, string $target, bool $tori = false, string $i
         $row .= $opt($cls, '<span class="part part--all part--' . h($cls) . '">' . h($g['short']) . ' All</span>');
         $rows[] = [$row, isset($g['solo'])];
     }
+    if ($etc !== '') {
+        $plain[] = $etc;
+    }
     $cols = max($cols, min(4, count($plain)));
     foreach (array_chunk($plain, 4) as $chunk) {
         $rows[] = [implode('', $chunk)];
-    }
-    if ($etc !== '') {
-        $rows[] = [$etc];
     }
     $html = '<span class="inst-filter" data-inst-filter="' . h($target) . '"' . ($items !== '' ? ' data-inst-items="' . h($items) . '"' : '') . '>'
         . '<button type="button" class="btn btn--ghost btn--sm inst-filter__btn" aria-label="楽器で絞り込み" aria-expanded="false">' . icon('filter_alt', 'icon--fill') . '</button>'
