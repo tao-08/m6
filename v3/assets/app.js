@@ -46,7 +46,12 @@
  */
 
 // HTML の読み込みが終わってから動かす（まだ無い要素は探せないので）
-document.addEventListener('DOMContentLoaded', () => {
+//   async: 先に window.pageHydrate()（assets/live_list.js）を待つ。
+//     ライブ一覧は端末に保存したデータから JS が描画するので、カードができてから
+//     年度スロット・絞り込み・並び替えを組み立てる（それらは「画面にある要素」を探して動くため）。
+//     pageHydrate が無いページ・失敗したときも、あとの処理は必ず動かす（try/catch）
+document.addEventListener('DOMContentLoaded', async () => {
+  try { if (window.pageHydrate) await window.pageHydrate(); } catch { /* 描画に失敗しても、他の部品は動かす */ }
   setupToasts();
   setupThemeToggle();
   setupFilter();

@@ -94,7 +94,11 @@ $nav = [
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400..600,0..1,0&display=block" rel="stylesheet">
     <!-- ?v=2 はキャッシュ対策。CSS を変えたら数字を上げると、ブラウザが古い CSS を使い続けない -->
     <link rel="stylesheet" href="assets/app.css?v=321">
-    <script src="assets/app.js?v=167" defer></script>
+    <!-- 端末の DB（IndexedDB）に保存する部品とライブ一覧の描画。defer は書いた順に実行されるので、必ず app.js より前に置く
+         JSON の形や描画を変えたら ?v= の数字を上げる -->
+    <script src="assets/local_cache.js?v=1" defer></script>
+    <script src="assets/live_list.js?v=1" defer></script>
+    <script src="assets/app.js?v=168" defer></script>
 </head>
 <body>
 <header class="topbar">
