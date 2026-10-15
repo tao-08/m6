@@ -1203,6 +1203,7 @@ function inst_filter(array $parts, string $target, bool $tori = false, string $i
     $rows = [[$opt('', icon('filter_alt_off', 'icon--fill'), 'すべて') . ($tori ? $opt('tori', '<span class="tori-badge">🐔</span>', 'トリ') : '')]];
     $plain = []; // 兼任がない楽器は最後に横4列で並べる（etc はさらにその下の段）
     $etc = '';
+    $top = [];       // Vo / Vo All / Cho / Cho All（[data-inst, ラベル]）
     $comboRows = [];
     $width = [0, 0, 0]; // 兼任の種類ごとの列数（Vo の兼任・Cho の兼任・その他の兼任）
     $cols = 2;
@@ -1216,8 +1217,15 @@ function inst_filter(array $parts, string $target, bool $tori = false, string $i
             }
             continue;
         }
-        // Vo・Cho の行は兼任（Vo/Gt・Gt/Cho など）が他の楽器の行と重複するので、単体と All だけ
-        $combos = in_array($cls, ['vo', 'cho'], true) ? [] : $g['combos'];
+        // Vo・Cho は兼任（Vo/Gt・Gt/Cho など）が他の楽器の行と重複するので、単体と All だけを解除の下の段に横に並べる
+        if (in_array($cls, ['vo', 'cho'], true)) {
+            if (isset($g['solo'])) {
+                $top[] = [$cls . '!', $single];
+            }
+            $top[] = [$cls, '<span class="part part--all part--' . h($cls) . '">' . h($g['short']) . ' All</span>'];
+            continue;
+        }
+        $combos = $g['combos'];
         // 兼任は Vo の兼任・Cho の兼任・その他の兼任 に分け、それぞれ決まった列に置く（無い行はその列を空ける）
         $byRank = [[], [], []];
         foreach ($combos as $key => $p) {
@@ -1235,6 +1243,14 @@ function inst_filter(array $parts, string $target, bool $tori = false, string $i
         $start[$r] = $start[$r - 1] + $width[$r - 1];
     }
     $cols = max($cols, $start[2] + $width[2]);
+    if ($top) {
+        $row = '';
+        foreach ($top as $c => [$inst, $label]) { // 決まった列に置く（CSS の「All は右端」などより優先）
+            $row .= str_replace('<button ', '<button style="grid-column: ' . ($c + 1) . '" ', $opt($inst, $label));
+        }
+        $rows[] = [$row];
+        $cols = max($cols, count($top));
+    }
     foreach ($comboRows as [$cls, $g, $single, $byRank]) {
         $row = isset($g['solo']) ? $opt($cls . '!', $single) : '';
         foreach ($byRank as $r => $list) {
