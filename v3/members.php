@@ -61,13 +61,6 @@ function entry_option_label(int $entryYear): string
     return ($grade !== null ? grade_label($grade) . '（' : '（') . $entryYear . '年度入学）';
 }
 
-/** 学年スロットの1段。$value が今の段なら is-current を付ける（app.js はそこから始める） */
-function grade_slot_item(string $value, string $labelHtml, string $current, string $attrs = ''): string
-{
-    return '<div class="year-slot__item' . ($value === $current ? ' is-current' : '') . '" data-value="' . h($value) . '"'
-        . $attrs . '>' . $labelHtml . '</div>';
-}
-
 $st = $pdo->prepare('SELECT m.member_id, m.name, m.name_kana, m.entry_year, m.retired,
         COUNT(DISTINCT bm.band_id) AS bands,
         COUNT(DISTINCT CASE WHEN b.play_order = last.max_order THEN b.band_id END) AS headliners,
@@ -253,6 +246,8 @@ render_header('メンバー', 'members');
     <!-- 学年の絞り込み。見た目は集計ページと同じ部品（.stats-filter）。
          タブ・スロットを切り替えると、ページを読み直さずに JS が行を隠す（assets/app.js の setupGradeSlot） -->
     <div class="card stats-filter no-print" data-grade-filter>
+        <!-- PC はタブと「退会者を非表示」を1行に、スマホは2段に（.stats-filter__line） -->
+        <div class="stats-filter__line">
         <fieldset class="stats-filter__row">
             <legend>学年</legend>
             <div class="tabs tabs--filter" role="radiogroup" aria-label="学年">
@@ -283,11 +278,12 @@ render_header('メンバー', 'members');
             <?php if ($canNear): ?>
                 <span class="muted small" data-show-when="who=near"><?= h(entry_option_label($myEntry - 3)) ?> 〜 <?= h(entry_option_label($myEntry + 3)) ?></span>
             <?php endif; ?>
-            <?php if ($hasRetired): // 退会した人が1人もいなければ、押しても何も変わらないので出さない ?>
-                <!-- data-hide-retired: 切り替えたら JS が行を隠し直す（setupGradeSlot） -->
-                <label class="stats-filter__extra small"><input type="checkbox" data-hide-retired<?= $hideRetired ? ' checked' : '' ?>> 退会者を非表示</label>
-            <?php endif; ?>
         </fieldset>
+        <?php if ($hasRetired): // 退会した人が1人もいなければ、押しても何も変わらないので出さない ?>
+            <!-- data-hide-retired: 切り替えたら JS が行を隠し直す（setupGradeSlot） -->
+            <label class="stats-filter__extra stats-filter__sub small"><input type="checkbox" data-hide-retired<?= $hideRetired ? ' checked' : '' ?>> 退会者を非表示</label>
+        <?php endif; ?>
+        </div>
     </div>
     <div class="toolbar">
         <input type="search" class="search" placeholder="名前で検索" data-filter=".member-row" aria-label="名前で検索">

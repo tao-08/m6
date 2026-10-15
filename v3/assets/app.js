@@ -10,6 +10,7 @@
  *    data-filter        … 一覧の絞り込み検索
  *    data-year-slot     … ライブ一覧・メンバーの出演履歴の年度スロット（縦ドラッグで年度を切り替える）
  *    data-grade-filter  … メンバー一覧の学年の絞り込み（タブ + 学年別の学年スロット）
+ *    data-slot-input    … 集計の学年スロット（回したら hidden に入れて送信）
  *    data-sort-toggle   … メンバーの出演履歴を新しい順 ⇔ 古い順に並び替える
  *    data-tab           … ライブ詳細の日程タブ
  *    data-confirm       … 送信前の確認ダイアログ（data-dirty-check で未保存の変更も警告）
@@ -51,6 +52,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupFilter();
   setupYearSlot();
   setupGradeSlot();
+  setupSlotInput();
   setupScrollEnd();
   setupClientSort();
   setupSortToggle();
@@ -997,6 +999,18 @@ function setupBackButton() {
  * ------------------------------------------------------------------- */
 function setupSmallThings() {
   document.querySelectorAll('[data-autosubmit]').forEach((sel) => sel.addEventListener('change', () => sel.form.submit()));
+  // 集計の絞り込み（スマホは段ごと横スクロール）: 年度・学年のセレクトやスロットが出ている段は、右端まで送って見えるようにする
+  document.querySelectorAll('.stats-filter__row').forEach((row) => {
+    if ([...row.querySelectorAll('.stats-filter__extra')].some((el) => el.offsetParent)) row.scrollLeft = row.scrollWidth;
+  });
+  // 絞り込みがヘッダーの下に浮いている（sticky で止まっている）ときは .is-stuck を付ける（スマホは見出しを消す）
+  document.querySelectorAll('.stats-filter').forEach((box) => {
+    const check = () => {
+      box.classList.toggle('is-stuck', box.getBoundingClientRect().top <= parseFloat(getComputedStyle(box).top) + 1 && scrollY > 0);
+    };
+    window.addEventListener('scroll', check, { passive: true });
+    check();
+  });
 
   // 会場・日程名のプルダウン（取り込み・ライブ編集）: 「＋ 新しい○○を作る」を選んだときだけ名前の入力欄を出す
   //   日程名は data-new-select="__new__"（「new」という日程名とぶつからないように）、会場は 'new'
@@ -1365,6 +1379,20 @@ function setupYearSlot() {
       animateIn([...sections].filter((sec) => !sec.hidden)
         .flatMap((sec) => [...sec.querySelectorAll(':scope > :is(h2, h3), .grid > *, ol > li')]));
     }
+  });
+}
+
+/* ---------------------------------------------------------------------
+ * フォームの中のスロット（集計の学年別）: data-slot-input
+ *   回したら、中の hidden input に選んだ値を入れてフォームを送信する
+ * ------------------------------------------------------------------- */
+function setupSlotInput() {
+  document.querySelectorAll('[data-slot-input]').forEach((slot) => {
+    const input = slot.querySelector('input[type="hidden"]');
+    makeSlot(slot, (value, changed) => {
+      input.value = value;
+      if (changed) input.form.submit();
+    });
   });
 }
 

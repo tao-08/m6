@@ -672,6 +672,13 @@ function grade_label(int $grade): string
     return $grade <= 4 ? $grade . '年' : 'OB' . ($grade - 4);
 }
 
+/** 学年スロットの1段（メンバー一覧・集計）。$value が今の段なら is-current を付ける（app.js はそこから始める） */
+function grade_slot_item(string $value, string $labelHtml, string $current, string $attrs = ''): string
+{
+    return '<div class="year-slot__item' . ($value === $current ? ' is-current' : '') . '" data-value="' . h($value) . '"'
+        . $attrs . '>' . $labelHtml . '</div>';
+}
+
 /**
  * ログイン中ユーザーの入学年度。アカウントがメンバーに紐付いていない・未登録なら null。
  * セッションには member_id しか入っていないので member テーブルから引く。

@@ -1112,9 +1112,10 @@ body.is-row-dragging, body.is-row-dragging * { cursor: grabbing !important; user
 /* 集計ページの絞り込み（メンバー × 期間）
    ラジオボタンを隠して、選ばれている label を .tab.is-active と同じ見た目にする。
    :has() は「中に〇〇を持っている要素」を選ぶセレクタ（最近のブラウザは全部対応） */
-.stats-filter { display: grid; gap: 14px; margin-bottom: 10px; }
+.stats-filter { display: grid; gap: 14px; margin-bottom: 10px; position: sticky; top: 70px; z-index: 15; } /* スクロールしてもヘッダーの下に浮いて残る */
 .stats-filter__row { border: 0; margin: 0; padding: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; min-width: 0; }
 .stats-filter__row legend { float: left; width: 4.5em; padding: 0; font-size: 12px; font-weight: 800; color: var(--muted); }
+.stats-filter__line { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; min-width: 0; } /* メンバー一覧: タブと「退会者を非表示」を1行に（スマホは2段） */
 .tabs--filter { position: static; margin: 0; box-shadow: none; }
 .tabs--static { position: static; box-shadow: none; } /* 新規追加ページのタブ（スクロールで追いかけてこない） */
 .tabs--filter .tab { cursor: pointer; }
@@ -1136,6 +1137,21 @@ body.is-row-dragging, body.is-row-dragging * { cursor: grabbing !important; user
 .stats-filter:not(:has(input[name="who"][value="grade"]:checked)) [data-show-when="who=grade"],
 .stats-filter:not(:has(input[name="who"][value="near"]:checked)) [data-show-when="who=near"],
 .stats-filter:has(input[name="who"][value="all"]:checked) [data-hide-when="who=all"] { display: none; }
+/* スマホ: 浮かせたまま高さを詰める（見出しを消して、各段を1行の横スクロールに） */
+@media (max-width: 600px) {
+  .card.stats-filter { gap: 6px; padding: 8px; top: 66px; } /* .card のスマホ用 padding より強く */
+  .stats-filter__row { flex-wrap: nowrap; overflow-x: auto; gap: 6px; padding-inline: 3px; scrollbar-width: none; } /* 3px = スロットの光る枠が切れないように */
+  .stats-filter__row::-webkit-scrollbar { display: none; }
+  /* 見出し（メンバー・集計期間）: 浮いていないときだけ出す。浮いたら（.is-stuck、app.js）幅ごと縮めて消す */
+  .stats-filter__row legend { flex-shrink: 0; width: 4.5em; overflow: hidden; white-space: nowrap; transition: width .35s ease, opacity .35s ease, margin .35s ease; }
+  .stats-filter.is-stuck .stats-filter__row legend { width: 0; opacity: 0; margin-right: -6px; } /* -6px = 段の gap ぶん */
+  .stats-filter__line { display: grid; gap: 6px; }
+  .stats-filter__sub { padding-left: 3px; }
+  .stats-filter .tabs--filter { flex-shrink: 0; max-width: none; overflow: visible; padding: 2px; } /* タブではなく段ごと横スクロール */
+  .stats-filter .tab { padding: 5px 8px; font-size: 12px; }
+  .stats-filter__extra { flex-shrink: 0; }
+  .stats-filter__extra select { padding: 4px 8px; font-size: 12px; }
+}
 .stats-scope { margin: 0 0 14px; font-size: 15px; } /* 今どの範囲を見ているかは大事なので、.small（13px）より大きく */
 .stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; margin-top: 14px; }
 .section-title--card { margin: 0 0 12px; }

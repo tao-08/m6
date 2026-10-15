@@ -10,12 +10,13 @@
  *        （人の集計はその人だけ、バンド単位の集計は「対象メンバーが1人でもいるバンド」だけを数える）
  *        all    … 全メンバー
  *        active … 現役（入学年度が 今年度-3 〜 今年度）
+ *        grade  … 学年別（学年スロットで選んだ ?entry= の入学年度）
  *        near   … 上下3学年（ログイン中ユーザーの入学年度 ±3）
- *        custom … セルフフィルター（?efrom= 〜 ?eto= の入学年度）
+ *        custom … 範囲指定（?efrom= 〜 ?eto= の入学年度）
  *    ■ 期間（?period=）… ライブの年度で絞る。全部の集計に効く
  *        all    … 全期間
  *        year   … 単年度（?year=）
- *        range  … ユーザーフィルター（?pfrom= 〜 ?pto= の年度）
+ *        range  … 期間指定（?pfrom= 〜 ?pto= の年度）
  *
  *  ?who= が無いときは、ログイン中ユーザーの学年でデフォルトを決める:
  *    1〜4年生 → 現役 / OB（5年目以降）→ 上下3学年 / 入学年度が不明 → 全メンバー
@@ -60,11 +61,20 @@ $defaultWho = match (true) {
     default           => 'near',
 };
 $who = $_GET['who'] ?? $defaultWho;
-if (!in_array($who, ['all', 'active', 'near', 'custom'], true) || ($who === 'near' && !$canNear)) {
+if (!in_array($who, ['all', 'active', 'grade', 'near', 'custom'], true) || ($who === 'near' && !$canNear)) {
     $who = $defaultWho;
 }
 
-// セルフフィルター用の入学年度範囲。未指定なら「現役」と同じ範囲を初期値にする
+// 学年別: 学年スロットに出す入学年度（実際にいるメンバーの年度だけ、新しい順）と、選んでいる年度
+//   ?entry= → 自分の学年 → 一番新しい学年 の順で決める
+$slotEntries = array_map('intval', db()->query('SELECT DISTINCT entry_year FROM member
+    WHERE entry_year IS NOT NULL ORDER BY entry_year DESC')->fetchAll(PDO::FETCH_COLUMN));
+$entry = get_int('entry');
+if (!in_array($entry, $slotEntries, true)) {
+    $entry = in_array($myEntry, $slotEntries, true) ? $myEntry : ($slotEntries[0] ?? $thisYear);
+}
+
+// 範囲指定用の入学年度範囲。未指定なら「現役」と同じ範囲を初期値にする
 $entryMin = $thisYear - 15; // セレクトに出す一番古い入学年度（必要なら増やす）
 $efrom = get_int('efrom') ?? $activeFrom;
 $eto   = get_int('eto')   ?? $thisYear;
@@ -75,6 +85,7 @@ if ($efrom > $eto) {
 // who ごとの「入学年度の範囲」。all は範囲なし（null）
 [$entryFrom, $entryTo] = match ($who) {
     'active' => [$activeFrom, $thisYear],
+    'grade'  => [$entry, $entry],
     'near'   => [$myEntry - 3, $myEntry + 3],
     'custom' => [$efrom, $eto],
     default  => [null, null],
@@ -124,6 +135,7 @@ if ($pfrom > $pto) {
 // 画面に出す「いま何で絞っているか」
 $whoLabel = match ($who) {
     'active' => "現役（{$activeFrom}〜{$thisYear}年入学）",
+    'grade'  => (grade_of($entry) !== null ? grade_label(grade_of($entry)) : '') . "（{$entry}年入学）",
     'near'   => '上下3学年（' . ($myEntry - 3) . '〜' . ($myEntry + 3) . '年入学）',
     'custom' => "{$efrom}〜{$eto}年入学",
     default  => '全メンバー',
@@ -439,10 +451,22 @@ $entryYears = range($thisYear, $entryMin); // 新しい順
         <div class="tabs tabs--filter" role="radiogroup" aria-label="メンバー">
             <label class="tab"><input type="radio" name="who" value="all" data-autosubmit<?= $who === 'all' ? ' checked' : '' ?>>全メンバー</label>
             <label class="tab"><input type="radio" name="who" value="active" data-autosubmit<?= $who === 'active' ? ' checked' : '' ?>>現役</label>
+            <label class="tab"><input type="radio" name="who" value="grade" data-autosubmit<?= $who === 'grade' ? ' checked' : '' ?>>学年別</label>
             <label class="tab<?= $canNear ? '' : ' is-disabled' ?>"<?= $canNear ? '' : ' title="アカウントがメンバーに紐付いていないか、入学年度が未登録のため使えません"' ?>>
                 <input type="radio" name="who" value="near" data-autosubmit<?= $who === 'near' ? ' checked' : '' ?><?= $canNear ? '' : ' disabled' ?>>上下3学年
             </label>
-            <label class="tab"><input type="radio" name="who" value="custom" data-autosubmit<?= $who === 'custom' ? ' checked' : '' ?>>ユーザーフィルター</label>
+            <label class="tab"><input type="radio" name="who" value="custom" data-autosubmit<?= $who === 'custom' ? ' checked' : '' ?>>範囲指定</label>
+        </div>
+        <!-- 学年スロット（メンバー一覧と同じ部品）。回したら hidden の entry を書き換えて送信する（app.js の setupSlotInput） -->
+        <div class="stats-filter__extra" data-show-when="who=grade">
+            <div class="year-slot year-slot--grade" data-slot-input tabindex="0" role="spinbutton" aria-label="学年" title="上下にドラッグで学年を切り替え">
+                <div class="year-slot__reel">
+                    <?php foreach (array_reverse($slotEntries) as $y): $grade = grade_of($y); ?>
+                        <?= grade_slot_item((string)$y, ($grade !== null ? h(grade_label($grade)) : '') . sprintf("<small>'%02d</small>", $y % 100), (string)$entry) ?>
+                    <?php endforeach; ?>
+                </div>
+                <input type="hidden" name="entry" value="<?= $entry ?>">
+            </div>
         </div>
         <div class="stats-filter__extra" data-show-when="who=custom">
             <select name="efrom" aria-label="入学年度（から）" data-autosubmit><?= $yearOptions($efrom, $entryYears) ?></select>
@@ -458,7 +482,7 @@ $entryYears = range($thisYear, $entryMin); // 新しい順
         <div class="tabs tabs--filter" role="radiogroup" aria-label="期間">
             <label class="tab"><input type="radio" name="period" value="year" data-autosubmit<?= $period === 'year' ? ' checked' : '' ?>>単年度</label>
             <label class="tab"><input type="radio" name="period" value="all" data-autosubmit<?= $period === 'all' ? ' checked' : '' ?>>全期間</label>
-            <label class="tab"><input type="radio" name="period" value="range" data-autosubmit<?= $period === 'range' ? ' checked' : '' ?>>ユーザーフィルター</label>
+            <label class="tab"><input type="radio" name="period" value="range" data-autosubmit<?= $period === 'range' ? ' checked' : '' ?>>期間指定</label>
         </div>
         <div class="stats-filter__extra" data-show-when="period=year">
             <select name="year" aria-label="年度" data-autosubmit><?= $yearOptions($year, $years) ?></select>
