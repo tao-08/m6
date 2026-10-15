@@ -35,7 +35,7 @@ verify_csrf(); // JS から X-CSRF-Token ヘッダーで送られてくる
 
 $pdo = db();
 $uid = (int)$user['user_id'];
-$ids = $pdo->query('SELECT notice_id FROM notice ORDER BY notice_id DESC LIMIT 3')->fetchAll(PDO::FETCH_COLUMN);
+$ids = $pdo->query('SELECT notice_id FROM notice ORDER BY is_important DESC, notice_id DESC LIMIT 3')->fetchAll(PDO::FETCH_COLUMN);
 $mark = $pdo->prepare('INSERT IGNORE INTO notice_read (user_id, notice_id) VALUES (?, ?)');
 foreach ($ids as $id) {
     $mark->execute([$uid, (int)$id]);

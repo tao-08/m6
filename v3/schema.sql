@@ -37,7 +37,7 @@ SET NAMES utf8mb4;
 -- まっさらな DB に流すと「Note: #1051 '〜' は不明な表です」が表の数だけ出るが、
 -- これは「消そうとした表が最初から無かった」というだけの“お知らせ”で、エラーではない。
 SET FOREIGN_KEY_CHECKS = 0;
-DROP TABLE IF EXISTS notice_read, notice, change_unit, change_op, inquiry, band_like, app_setting, login_attempt, track_preview, track_link_cache, album_link_cache,
+DROP TABLE IF EXISTS notice_read, notice, notice_category, change_unit, change_op, inquiry, band_like, app_setting, login_attempt, track_preview, track_link_cache, album_link_cache,
     check_dismiss, band_check_member, member_role, role, artist_alias, member_favorite_album, song_performer, song, track, band_member, live_break, band,
     artist, live_day, live, venue, instrument, user_account, member;
 SET FOREIGN_KEY_CHECKS = 1;
@@ -624,15 +624,29 @@ CREATE TABLE sheet_template_venue (
 -- ---------------------------------------------------------------------
 --  notice / notice_read — 管理者のお知らせと既読（notices.php。migrations/042）
 -- ---------------------------------------------------------------------
+CREATE TABLE notice_category (
+    category_id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    name        VARCHAR(20)  NOT NULL,
+    PRIMARY KEY (category_id),
+    UNIQUE KEY uq_notice_category_name (name)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+INSERT INTO notice_category (name) VALUES ('お知らせ'), ('イベント'), ('システム');
+
 CREATE TABLE notice (
     notice_id  INT UNSIGNED NOT NULL AUTO_INCREMENT,
     user_id    INT UNSIGNED NULL,          -- 書いた管理者。アカウントが消えても残す
+    category_id  INT UNSIGNED NOT NULL,
+    is_important TINYINT(1)   NOT NULL DEFAULT 0,  -- 重要: 一覧で上に固定・ホームにバナー（migrations/043）
     title      VARCHAR(100) NOT NULL,
     body       TEXT         NOT NULL,
     created_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (notice_id),
+    KEY idx_notice_important (is_important, notice_id),
     CONSTRAINT fk_notice_user FOREIGN KEY (user_id) REFERENCES user_account (user_id)
-        ON UPDATE CASCADE ON DELETE SET NULL
+        ON UPDATE CASCADE ON DELETE SET NULL,
+    CONSTRAINT fk_notice_category FOREIGN KEY (category_id) REFERENCES notice_category (category_id)
+        ON UPDATE CASCADE ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE notice_read (

@@ -17,7 +17,7 @@ if ($user) {
     $st->execute([(int)$user['user_id']]);
     $unreadNotices = (int)$st->fetchColumn();
     // ベルのポップアップに出す直近3件
-    $st = db()->prepare('SELECT n.notice_id, n.title, n.created_at, (r.user_id IS NULL) AS is_new FROM notice n LEFT JOIN notice_read r ON r.notice_id = n.notice_id AND r.user_id = ? ORDER BY n.notice_id DESC LIMIT 3');
+    $st = db()->prepare('SELECT n.notice_id, n.title, n.created_at, n.is_important, (r.user_id IS NULL) AS is_new FROM notice n LEFT JOIN notice_read r ON r.notice_id = n.notice_id AND r.user_id = ? ORDER BY n.is_important DESC, n.notice_id DESC LIMIT 3');
     $st->execute([(int)$user['user_id']]);
     $recentNotices = $st->fetchAll();
 }
@@ -104,7 +104,7 @@ $nav = [
          display=block: 読み込み中にアイコン名の英単語（edit など）が一瞬見えるのを防ぐ -->
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400..600,0..1,0&display=block" rel="stylesheet">
     <!-- ?v=2 はキャッシュ対策。CSS を変えたら数字を上げると、ブラウザが古い CSS を使い続けない -->
-    <link rel="stylesheet" href="assets/app.css?v=323">
+    <link rel="stylesheet" href="assets/app.css?v=324">
     <script src="assets/app.js?v=168" defer></script>
 </head>
 <body>
@@ -139,7 +139,7 @@ $nav = [
             <div class="usermenu__panel notifmenu__panel">
                 <?php foreach ($recentNotices as $n): ?>
                     <a href="notices" class="notifmenu__item">
-                        <span class="notifmenu__title"><?= h($n['title']) ?><?= $n['is_new'] ? ' <span class="tag">NEW</span>' : '' ?></span>
+                        <span class="notifmenu__title"><?= $n['is_important'] ? icon('priority_high', 'notice__mark') : '' ?><?= h($n['title']) ?><?= $n['is_new'] ? ' <span class="tag">NEW</span>' : '' ?></span>
                         <span class="muted small"><?= h(substr($n['created_at'], 0, 10)) ?></span>
                     </a>
                 <?php endforeach; ?>

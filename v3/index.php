@@ -32,6 +32,13 @@ $st = $pdo->prepare('SELECT b.band_id, b.name, b.needs_check, l.fiscal_year, l.n
 $st->execute([$user['member_id'], $user['member_id'], $user['user_id']]);
 $flagged = $st->fetchAll();
 
+// 重要なお知らせ（未読のものだけ。notices.php やベルで読むと、notice_read に行が入って出なくなる）
+$st = $pdo->prepare('SELECT n.notice_id, n.title FROM notice n
+    LEFT JOIN notice_read r ON r.notice_id = n.notice_id AND r.user_id = ?
+    WHERE n.is_important = 1 AND r.user_id IS NULL ORDER BY n.notice_id DESC LIMIT 3');
+$st->execute([$user['user_id']]);
+$importantNotices = $st->fetchAll();
+
 // 日程1行ごとに、そのライブの情報とバンド数をくっつけて取ってくる
 //   LEFT JOIN: 相手が無くても行を残す（バンドが0組の日程も表示するため）
 //   GROUP BY d.live_day_id: 日程ごとに1行にまとめて COUNT(b.band_id) でバンド数を数える
@@ -93,6 +100,14 @@ render_header('ライブ一覧', 'lives');
         <div><dt>出演者</dt><dd><?= (int)$stats['members'] ?></dd></div>
     </dl>
 </section>
+
+<?php if ($importantNotices): ?>
+    <a class="card notice-banner" href="notices">
+        <?= icon('priority_high', 'notice__mark') ?>
+        <span class="notice-banner__text"><?php foreach ($importantNotices as $n): ?><span><?= h($n['title']) ?></span><?php endforeach; ?></span>
+        <?= icon('chevron_right') ?>
+    </a>
+<?php endif; ?>
 
 <?php if ($flagged): ?>
     <section class="card check-list" data-check-list>
