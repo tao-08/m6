@@ -4,6 +4,11 @@ name: Deploy
 # push で自動にしたい場合は下の on: に `push: { branches: [main] }` を追加
 on:
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'ドライラン（転送せず確認のみ）'
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -28,7 +33,7 @@ jobs:
       # config.php は本番専用なので除外（--delete でも消えない）
       - name: rsync
         run: |
-          rsync -rltvz --delete \
+          rsync -rltvz --delete ${{ inputs.dry_run && '--dry-run' || '' }} \
             -e "ssh -i ~/.ssh/id_deploy -p ${{ secrets.SSH_PORT || 22 }}" \
             --exclude 'config.php' \
             --exclude '.git*' \
