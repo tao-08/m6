@@ -694,6 +694,7 @@ td .tag--plan { margin-top: 4px; } /* アーティストの演奏履歴: 日付�
 /* アプリ通知（account.php）: チェックを均等な間隔で縦に並べる */
 .push-card, .push-card form { display: grid; gap: 14px; }
 .push-card .section-title { margin: 0; }
+@media (display-mode: standalone) { .push-card__hint { display: none; } } /* インストール済み（ホーム画面から開いたとき）は案内不要 */
 input[type="checkbox"], .field input[type="radio"] { accent-color: var(--accent); width: 16px; height: 16px; padding: 0; flex: none; }
 .field .check { color: var(--text); font-weight: 400; } /* .field の中のラジオ（contact.php の匿名の選択）は、ラベルの見出しより普通の文字に */
 
@@ -1135,7 +1136,8 @@ body.is-row-dragging, body.is-row-dragging * { cursor: grabbing !important; user
 .sticky-actions__note[hidden] { display: none; }
 
 /* ===== 8.5 追加ページ（検索・集計・設定・管理） ===== */
-.hero__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.hero__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.hero__actions .btn.is-active { color: var(--accent); border-color: var(--accent); } /* アビーボード: 開いているパネルのボタン */
 .add-band { margin: 14px 0 0 72px; }
 .danger-zone { margin-top: 16px; display: flex; justify-content: flex-end; }
 .chip-list { display: flex; flex-wrap: wrap; gap: 8px; }

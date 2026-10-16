@@ -174,7 +174,7 @@ render_header('アビーボード', 'board');
     </div>
     <!-- スレッド作成・通知設定は、アイコンを押すと下のカードが開く（assets/app.js の setupBoardPanels） -->
     <div class="hero__actions">
-        <button type="button" class="icon-btn" data-board-panel-open="create" aria-label="スレッド作成" title="スレッド作成"><?= icon('add_comment') ?></button>
+        <button type="button" class="btn btn--sm" data-board-panel-open="create"><?= icon('add_comment') ?> スレッド作成</button>
         <button type="button" class="icon-btn" data-board-panel-open="notify" aria-label="通知設定" title="通知設定"><?= icon('settings') ?></button>
     </div>
 </section>

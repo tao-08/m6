@@ -172,6 +172,7 @@ render_header('アカウント設定');
     <?php if (push_enabled()): ?>
     <div class="card form-card push-card">
         <h2 class="section-title section-title--card"><?= icon('notifications_active') ?> アプリ通知</h2>
+        <p class="muted small push-card__hint">Webアプリ化していない場合は、右上のメニューの「ホーム画面に追加する」からWebアプリとしてインストールすると利用できます。</p>
         <!-- この端末で受け取る / 受け取らない。押した瞬間に登録・解除する（assets/app.js の setupPush）。下の保存ボタンとは別 -->
         <label class="check" data-push="<?= h(push_public_key()) ?>" title="この端末で通知を受け取る" hidden>
             <input type="checkbox" data-push-toggle> <?= icon('smartphone') ?> この端末
