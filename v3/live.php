@@ -19,6 +19,7 @@ declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/repository.php';
 require_once __DIR__ . '/lib/comments.php';
+require_once __DIR__ . '/lib/live_image.php';
 $user = require_login();
 
 $liveId = (int)($_GET['id'] ?? 0); // (int) で数字以外が来ても 0 になる
@@ -34,6 +35,7 @@ if (!$live) {
     exit;
 }
 
+$liveImages = live_images($pdo, [$liveId])[$liveId] ?? []; // 添付画像（最大5枚）
 comments_handle_post('live', $liveId, 'live?id=' . $liveId); // コメントの投稿・削除
 
 // ---- 1. 日程 ----
@@ -109,6 +111,22 @@ render_header($live['name'], 'lives');
     <div>
         <p class="eyebrow"><?= h(fmt_year($live['fiscal_year'])) ?> · <?= count($days) ?> DAYS · <?= $totalBands ?> BANDS</p>
         <h1 class="display"><?= h($live['name']) ?></h1>
+        <?php if ($liveImages): // サムネイルを押すとモーダルで大きく見られる（assets/app.js の setupLiveImages） ?>
+            <ul class="live-thumbs no-print">
+                <?php foreach ($liveImages as $im): ?>
+                    <li><button type="button" class="live-thumbs__btn" data-live-img="<?= (int)$im['image_id'] ?>" data-taken="<?= $im['taken_at'] ? h(fmt_date(substr($im['taken_at'], 0, 10)) . ' ' . substr($im['taken_at'], 11, 5)) : '' ?>" aria-label="画像を表示">
+                        <img src="live_image?id=<?= (int)$im['image_id'] ?>&amp;t=1" alt="" loading="lazy"></button></li>
+                <?php endforeach; ?>
+            </ul>
+            <dialog class="modal live-modal" data-live-modal>
+                <img alt="" data-live-modal-img>
+                <p class="live-modal__bar">
+                    <span class="muted small" data-live-modal-taken></span>
+                    <a class="btn btn--sm" href="#" download data-live-modal-dl aria-label="ダウンロード" title="ダウンロード"><?= icon('download') ?></a>
+                    <button type="button" class="btn btn--ghost btn--sm" data-live-modal-close aria-label="閉じる" title="閉じる"><?= icon('close') ?></button>
+                </p>
+            </dialog>
+        <?php endif; ?>
     </div>
     <!-- このライブでできること（YouTube・編集）。印刷時は CSS で隠す -->
     <div class="hero__actions no-print">

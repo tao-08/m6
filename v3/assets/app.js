@@ -83,6 +83,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupRosterColumns();
   setupTimetableColumns();
   setupPicks();
+  setupLiveImages();
   setupDragScroll();
   setupPackedForm();
   setupMemberRows();
@@ -5013,4 +5014,80 @@ function floatWin(box, key, onResize = () => {}) {
   }).observe(box);
   pc.addEventListener('change', place);
   return place;
+}
+
+/* -------------------------------------------------------------------
+ * ライブの添付画像
+ *   ライブページ: サムネイル（[data-live-img]）を押すと <dialog> で大きく表示。ダウンロードボタン付き。
+ *   編集画面: 5枚の上限を数える。追加する枚数が超えるとき・5枚のときは追加ボタンを無効にして知らせる
+ * ------------------------------------------------------------------- */
+function setupLiveImages() {
+  const modal = document.querySelector('[data-live-modal]');
+  if (modal) {
+    const img = modal.querySelector('[data-live-modal-img]');
+    const taken = modal.querySelector('[data-live-modal-taken]');
+    const dl = modal.querySelector('[data-live-modal-dl]');
+    document.querySelectorAll('[data-live-img]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const id = btn.dataset.liveImg;
+        img.src = `live_image?id=${id}`;
+        dl.href = `live_image?id=${id}&dl=1`;
+        taken.textContent = btn.dataset.taken || '';
+        modal.showModal();
+      });
+    });
+    modal.querySelector('[data-live-modal-close]').addEventListener('click', () => modal.close());
+    modal.addEventListener('click', (e) => { if (e.target === modal) modal.close(); });
+    modal.addEventListener('close', () => { img.removeAttribute('src'); });
+  }
+
+  const edit = document.querySelector('[data-live-img-edit]');
+  if (!edit) return;
+  const max = Number(edit.dataset.max);
+  const input = edit.querySelector('[data-live-img-input]');
+  const note = edit.querySelector('[data-live-img-note]');
+  const addBtn = edit.querySelector('.live-img-edit__add');
+  const list = edit.querySelector('.live-img-edit__list');
+  // 選んだ画像をためておく入れ物。ファイル選択は選ぶたびに前の選択が消えるので、ここに足していって、input.files に入れ直す
+  const picked = new DataTransfer();
+  const pending = []; // 追加予定のプレビュー（✕で取り消せる）
+  const sync = () => {
+    input.files = picked.files;
+    pending.splice(0).forEach((el) => { URL.revokeObjectURL(el.dataset.url); el.remove(); });
+    [...picked.files].forEach((f, i) => {
+      const url = URL.createObjectURL(f);
+      const el = document.createElement('button');
+      el.type = 'button';
+      el.className = 'live-img-edit__item live-img-edit__item--new';
+      el.dataset.url = url;
+      el.setAttribute('aria-label', '追加を取り消し');
+      el.innerHTML = `<img src="${url}" alt=""><span class="live-img-edit__x"><span class="icon" aria-hidden="true">close</span></span>`;
+      el.addEventListener('click', () => {
+        const next = new DataTransfer();
+        [...picked.files].forEach((g, j) => { if (j !== i) next.items.add(g); });
+        picked.items.clear();
+        [...next.files].forEach((g) => picked.items.add(g));
+        sync();
+      });
+      list.appendChild(el);
+      pending.push(el);
+    });
+    update();
+  };
+  const room = () => max - edit.querySelectorAll('[data-live-img-remove]:not(:checked)').length - picked.files.length;
+  function update() {
+    const left = room();
+    addBtn.classList.toggle('is-disabled', left <= 0);
+    note.textContent = picked.files.length ? `${picked.files.length} 枚を追加（保存で反映）` : '';
+  }
+  input.addEventListener('change', () => {
+    const over = [...input.files].length > room();
+    // 今回選んだ分を足す（上限を超える分は入れない）
+    for (const f of [...input.files]) { if (room() > 0) picked.items.add(f); }
+    sync();
+    if (over) note.textContent = `${max} 枚までです`;
+  });
+  // 削除のチェックを外すと空きが減るので数え直す
+  edit.querySelectorAll('[data-live-img-remove]').forEach((c) => c.addEventListener('change', update));
+  update();
 }

@@ -872,3 +872,16 @@ CREATE TABLE comment_like (
     CONSTRAINT fk_cl_user FOREIGN KEY (user_id) REFERENCES user_account (user_id)
         ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- ライブの添付画像（migrations/058）。ファイル本体は storage/live_images/
+CREATE TABLE live_image (
+    image_id   INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    live_id    INT UNSIGNED NOT NULL,
+    file_name  VARCHAR(40)  NOT NULL,
+    taken_at   DATETIME     NULL,
+    sort_order SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+    PRIMARY KEY (image_id),
+    KEY idx_live_image_live (live_id, sort_order),
+    CONSTRAINT fk_live_image_live FOREIGN KEY (live_id) REFERENCES live (live_id)
+        ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;

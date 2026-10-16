@@ -7,3 +7,6 @@ vendor/
 # 型紙の管理でアップロードした PDF（本番のデータ。置き場を守る .htaccess だけ管理する）
 assets/sheets/uploads/*
 !assets/sheets/uploads/.htaccess
+
+# ライブの添付画像（本番のデータ）
+storage/live_images/

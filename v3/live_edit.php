@@ -16,6 +16,7 @@ declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/repository.php';
 require_once __DIR__ . '/lib/youtube.php';
+require_once __DIR__ . '/lib/live_image.php'; // 添付画像（最大5枚）
 require_once __DIR__ . '/lib/history.php'; // 変更履歴（元に戻すための「変更前の状態」を残す）
 require_login();
 
@@ -45,6 +46,7 @@ if ($isNew) {
     $st->execute([$liveId]);
     $days = $st->fetchAll();
 }
+$images = $isNew ? [] : (live_images($pdo, [$liveId])[$liveId] ?? []); // 添付済みの画像
 
 /**
  * フォームの日程1つ分を取り出してチェックする。
@@ -164,6 +166,24 @@ function day_params(PDO $pdo, array $in): array
     ];
 }
 
+/**
+ * 画像の欄: 添付済みのサムネイル（✕で削除にチェック）＋ 追加ボタン。5枚に達したら追加ボタンは無効
+ * 統合 ON のとき（$hidden）は隠して、画像の欄ごと送らない（data-merge-hide）
+ */
+function live_image_field(array $images, bool $hidden = false): string
+{
+    $html = '<div class="field field--wide live-img-edit" data-merge-hide data-live-img-edit data-max="' . LIVE_IMAGE_MAX . '"' . ($hidden ? ' hidden' : '') . '>'
+        . '<span>画像（最大' . LIVE_IMAGE_MAX . '枚）</span><div class="live-img-edit__list">';
+    foreach ($images as $im) {
+        $id = (int)$im['image_id'];
+        $html .= '<label class="live-img-edit__item" title="削除"><img src="live_image?id=' . $id . '&amp;t=1" alt="" loading="lazy">'
+            . '<input type="checkbox" name="image_remove[]" value="' . $id . '" data-live-img-remove' . ($hidden ? ' disabled' : '') . '>'
+            . '<span class="live-img-edit__x">' . icon('delete') . '</span></label>';
+    }
+    return $html . '</div><label class="btn btn--ghost btn--sm live-img-edit__add">' . icon('add_photo_alternate') . '<input type="file" name="images[]" accept="image/*" multiple hidden data-live-img-input' . ($hidden ? ' disabled' : '') . '></label>'
+        . '<small class="merge-note" data-live-img-note></small></div>';
+}
+
 // 保存済みのリンクがプレイリストなら「バンドに割り当てる」ボタンを出す（live_youtube.php）
 $savedPlaylist = !$isNew && youtube_playlist_id((string)$live['youtube_url']) !== null;
 
@@ -261,6 +281,18 @@ if (is_post()) {
     foreach (array_count_values($labels) as $label => $count) {
         if ($count > 1) {
             $errors[] = "日程名「{$label}」が{$count}つあります。別々の日程名にしてください";
+        }
+    }
+
+    // 添付画像: 削除にチェックされた分を引いて、新しく選んだ分を足して5枚まで（統合のときは触らない）
+    $removeIds = [];
+    $uploads = [];
+    if (!$isNew && !$mergeLive) {
+        $own = array_map('intval', array_column($images, 'image_id'));
+        $removeIds = array_values(array_intersect($own, array_map('intval', (array)($_POST['image_remove'] ?? [])))); // 自分のライブの画像だけ
+        $uploads = live_image_uploads($_FILES['images'] ?? null);
+        if (count($images) - count($removeIds) + count($uploads) > LIVE_IMAGE_MAX) {
+            $errors[] = '画像は ' . LIVE_IMAGE_MAX . ' 枚までです';
         }
     }
 
@@ -397,10 +429,21 @@ if (is_post()) {
                     ->execute([...day_params($pdo, $newDay), $targetId]);
                 change_created($pdo, $op, 'day', (int)$pdo->lastInsertId());
             }
+            // 元のライブの画像は統合先へ移す（統合先が5枚になったら、入りきらない分は消す）
+            $moveFiles = [];
+            $room = LIVE_IMAGE_MAX - (int)$pdo->query('SELECT COUNT(*) FROM live_image WHERE live_id = ' . $targetId)->fetchColumn();
+            foreach (live_images($pdo, [$liveId])[$liveId] ?? [] as $im) {
+                if ($room-- > 0) {
+                    $pdo->prepare('UPDATE live_image SET live_id = ? WHERE image_id = ?')->execute([$targetId, $im['image_id']]);
+                } else {
+                    $moveFiles[] = $im['file_name'];
+                }
+            }
             // 日程が全部いなくなった元のライブを消す
             $pdo->prepare('DELETE FROM live WHERE live_id = ? AND NOT EXISTS (SELECT 1 FROM live_day WHERE live_id = ?)')
                 ->execute([$liveId, $liveId]);
             $pdo->commit();
+            array_map('live_image_unlink', $moveFiles);
             flash('「' . $mergeLive['fiscal_year'] . '年度 ' . $mergeLive['name'] . '」に統合しました');
             redirect('live?id=' . $targetId);
         } catch (Throwable $e) { // バンドの統合（merge_band_into）の RuntimeException でも、途中までの変更を戻す
@@ -413,6 +456,7 @@ if (is_post()) {
         }
     } elseif (!$errors) {
         $pdo->beginTransaction();
+        $newFiles = []; // この保存で作った画像ファイル（失敗したら消す）
         try {
             // 変更履歴: 編集ならライブの行と日程の変更前を残す。新しいライブ・日程は「作った」ことを残す
             $op = change_begin($pdo, $isNew ? 'live_add' : 'live_edit', $year . '年度 ' . $name . ($isNew ? ' を追加' : ' のライブ情報・日程'), $isNew ? null : $liveId);
@@ -447,7 +491,25 @@ if (is_post()) {
                     change_created($pdo, $op, 'day', (int)$pdo->lastInsertId()); // 新しいライブなら、ライブを消せば日程も消える
                 }
             }
+            // 添付画像: 削除 → 追加（コミット前に失敗したら、作ったファイルを catch で消す）
+            $removeFiles = [];
+            foreach ($removeIds as $rid) {
+                foreach ($images as $im) {
+                    if ((int)$im['image_id'] === $rid) {
+                        $removeFiles[] = $im['file_name'];
+                    }
+                }
+                $pdo->prepare('DELETE FROM live_image WHERE image_id = ? AND live_id = ?')->execute([$rid, $liveId]);
+            }
+            $order = (int)$pdo->query('SELECT COALESCE(MAX(sort_order), 0) FROM live_image WHERE live_id = ' . $liveId)->fetchColumn();
+            foreach ($uploads as $up) {
+                $saved = live_image_store($up);
+                $newFiles[] = $saved['file_name'];
+                $pdo->prepare('INSERT INTO live_image (live_id, file_name, taken_at, sort_order) VALUES (?, ?, ?, ?)')
+                    ->execute([$liveId, $saved['file_name'], $saved['taken_at'], ++$order]);
+            }
             $pdo->commit();
+            array_map('live_image_unlink', $removeFiles);
             flash($isNew ? 'ライブを追加しました。次は「＋ バンドを追加」から出演バンドを入れよう' : 'ライブ情報を更新しました');
             // プレイリストのリンクを新しく貼った（変えた）ら、そのまま動画をバンドに割り当てる画面へ
             //   バンドがまだいない（新規ライブ）なら割り当てる先がないので、いつもどおりライブページへ
@@ -455,8 +517,13 @@ if (is_post()) {
                 redirect('live_youtube?id=' . $liveId);
             }
             redirect('live?id=' . $liveId);
+        } catch (RuntimeException $e) { // 画像のエラー（形式・大きさなど）
+            $pdo->rollBack();
+            array_map('live_image_unlink', $newFiles);
+            $errors[] = $e->getMessage();
         } catch (PDOException $e) {
             $pdo->rollBack();
+            array_map('live_image_unlink', $newFiles);
             if ($isNew) {
                 $liveId = 0; // ロールバックで INSERT は取り消されているので、新規モードに戻す
             }
@@ -496,7 +563,7 @@ if ($isNew) {
 <?php } ?>
 <?php foreach ($errors as $e): ?><div class="flash flash--error"><?= h($e) ?></div><?php endforeach; ?>
 
-<form method="post" class="card form-card" id="live-form" data-same-year<?= unsaved_attr() ?>><!-- 日付の年を変えると、ほかの日程の年もそろう（assets/app.js の setupSameYear） -->
+<form method="post" enctype="multipart/form-data" class="card form-card" id="live-form" data-same-year<?= unsaved_attr() ?>><!-- 日付の年を変えると、ほかの日程の年もそろう（assets/app.js の setupSameYear） -->
     <?= csrf_field() ?>
     <input type="hidden" name="live_id" value="<?= $liveId ?>">
     <?php if (!$canMerge): ?>
@@ -504,6 +571,7 @@ if ($isNew) {
             <label class="field field--wide"><span>ライブ名</span><input name="name" value="<?= h($live['name']) ?>" maxlength="50" placeholder="例: 9月ライブ" required></label>
             <label class="field field--wide"><span>YouTubeプレイリストのリンク（任意）</span><input type="url" name="youtube_url" value="<?= h((string)$live['youtube_url']) ?>" maxlength="500" placeholder="https://www.youtube.com/playlist?list=…" inputmode="url"></label>
             <?php if ($savedPlaylist): ?><p class="field--wide yt-assign"><a class="btn btn--ghost btn--sm" href="live_youtube?id=<?= $liveId ?>"><?= youtube_icon() ?> プレイリストの動画をバンドに割り当てる</a></p><?php endif; ?>
+            <?php if (!$isNew): ?><?= live_image_field($images) ?><?php endif; ?>
         </div>
     <?php else: ?>
         <!-- 取り込み画面と同じ「統合」トグル（assets/app.js の setupMergeToggle / setupLiveEditMerge）
@@ -531,6 +599,7 @@ if ($isNew) {
             <!-- 統合するとこのライブは消えるので、統合 ON のときは隠す（data-merge-hide） -->
             <label class="field field--wide" data-merge-hide<?= $merging ? ' hidden' : '' ?>><span>YouTubeプレイリストのリンク（任意）</span><input type="url" name="youtube_url" value="<?= h((string)$live['youtube_url']) ?>" maxlength="500" placeholder="https://www.youtube.com/watch?v=…" inputmode="url"<?= $merging ? ' disabled' : '' ?>></label>
             <?php if ($savedPlaylist): ?><p class="field--wide yt-assign" data-merge-hide<?= $merging ? ' hidden' : '' ?>><a class="btn btn--ghost btn--sm" href="live_youtube?id=<?= $liveId ?>"><?= youtube_icon() ?> プレイリストの動画をバンドに割り当てる</a></p><?php endif; ?>
+            <?= live_image_field($images, $merging) ?>
         </div>
         <?php if ($bandPairs): ?>
             <!-- 統合先にも同じ日程名があり、両方にバンドがいる日程: バンドごとに扱いを選んでから、もう一度「保存する」 -->
