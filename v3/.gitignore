@@ -1,5 +1,7 @@
 config.php
 storage/sessions/
+# composer の中身（composer install で作る。本番にはこのフォルダごとアップロードする）
+vendor/
 .claude/worktrees/
 
 # 型紙の管理でアップロードした PDF（本番のデータ。置き場を守る .htaccess だけ管理する）

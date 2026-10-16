@@ -37,7 +37,7 @@ SET NAMES utf8mb4;
 -- まっさらな DB に流すと「Note: #1051 '〜' は不明な表です」が表の数だけ出るが、
 -- これは「消そうとした表が最初から無かった」というだけの“お知らせ”で、エラーではない。
 SET FOREIGN_KEY_CHECKS = 0;
-DROP TABLE IF EXISTS board_thread_mute, board_notify_category, board_notify, board_post_like, board_post_reply, board_read, board_post, board_thread, board_category, notice_read, notice, notice_category, change_unit, change_op, inquiry, band_like, app_setting, login_attempt, track_preview, track_link_cache, album_link_cache,
+DROP TABLE IF EXISTS push_subscription, comment_like, comment_reply, comment, board_thread_mute, board_notify_category, board_notify, board_post_like, board_post_reply, board_read, board_post, board_thread, board_category, notice_read, notice, notice_category, change_unit, change_op, inquiry, band_like, app_setting, login_attempt, track_preview, track_link_cache, album_link_cache,
     check_dismiss, band_check_member, member_role, role, artist_alias, member_favorite_album, song_performer, song, track, band_member, live_break, band,
     artist, live_day, live, venue, instrument, user_account, member;
 SET FOREIGN_KEY_CHECKS = 1;
@@ -105,6 +105,9 @@ CREATE TABLE user_account (
     hide_retired_suggest BOOLEAN NOT NULL DEFAULT TRUE, -- 退会した人をメンバー名の候補に出さない（account.php）
     show_back_button BOOLEAN NOT NULL DEFAULT TRUE,     -- 左下の戻るボタンを出す（account.php・assets/app.js の setupBackButton）
     count_upcoming BOOLEAN NOT NULL DEFAULT FALSE,      -- まだ来ていない日程のバンドもメンバーページの集計に数える（account.php・member.php）
+    push_board     BOOLEAN NOT NULL DEFAULT FALSE,      -- 掲示板をアプリ通知にする（account.php・lib/push.php。migrations/054）
+    push_important BOOLEAN NOT NULL DEFAULT FALSE,      -- 重要なお知らせをアプリ通知にする
+    push_notice    BOOLEAN NOT NULL DEFAULT FALSE,      -- その他のお知らせをアプリ通知にする
     created_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (user_id),
     UNIQUE KEY uq_user_login (login_id),
@@ -633,19 +636,27 @@ CREATE TABLE notice_category (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 INSERT INTO notice_category (name) VALUES ('お知らせ'), ('イベント'), ('システム');
+INSERT INTO notice_category (name, color) VALUES ('コメント', 'pink'); -- バンドへのコメントの通知（migrations/052）
 
 CREATE TABLE notice (
     notice_id  INT UNSIGNED NOT NULL AUTO_INCREMENT,
     user_id    INT UNSIGNED NULL,          -- 書いた管理者。アカウントが消えても残す
+    target_user_id INT UNSIGNED NULL,      -- 宛先。NULL = 全員。入っていればその人にだけ見える（migrations/052）
     category_id  INT UNSIGNED NOT NULL,
     is_important TINYINT(1)   NOT NULL DEFAULT 0,  -- 重要: 一覧で上に固定・ホームにバナー（migrations/043）
     title      VARCHAR(100) NOT NULL,
     body       TEXT         NOT NULL,
+    link_url   VARCHAR(255) NULL,          -- お知らせから飛ぶ先（サイト内の相対 URL。migrations/052）
     publish_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,  -- 公開日時。未来なら予約（migrations/045）
+    pushed_at  DATETIME     NULL,          -- プッシュ通知を処理した日時。NULL = まだ（migrations/053）
     created_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (notice_id),
     KEY idx_notice_publish (publish_at),
+    KEY idx_notice_pushed (pushed_at, publish_at),
     KEY idx_notice_important (is_important, notice_id),
+    KEY idx_notice_target (target_user_id),
+    CONSTRAINT fk_notice_target FOREIGN KEY (target_user_id) REFERENCES user_account (user_id)
+        ON UPDATE CASCADE ON DELETE CASCADE,
     CONSTRAINT fk_notice_user FOREIGN KEY (user_id) REFERENCES user_account (user_id)
         ON UPDATE CASCADE ON DELETE SET NULL,
     CONSTRAINT fk_notice_category FOREIGN KEY (category_id) REFERENCES notice_category (category_id)
@@ -661,6 +672,22 @@ CREATE TABLE notice_read (
     CONSTRAINT fk_nr_user FOREIGN KEY (user_id) REFERENCES user_account (user_id)
         ON UPDATE CASCADE ON DELETE CASCADE,
     CONSTRAINT fk_nr_notice FOREIGN KEY (notice_id) REFERENCES notice (notice_id)
+        ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- push_subscription — プッシュ通知を受け取る端末（lib/push.php。migrations/053）
+CREATE TABLE push_subscription (
+    subscription_id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    user_id         INT UNSIGNED NOT NULL,
+    endpoint        VARCHAR(500) NOT NULL,
+    endpoint_hash   CHAR(64)     NOT NULL,
+    p256dh          VARCHAR(255) NOT NULL,
+    auth            VARCHAR(64)  NOT NULL,
+    created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (subscription_id),
+    UNIQUE KEY uq_ps_endpoint (endpoint_hash),
+    KEY idx_ps_user (user_id),
+    CONSTRAINT fk_ps_user FOREIGN KEY (user_id) REFERENCES user_account (user_id)
         ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
@@ -786,5 +813,50 @@ CREATE TABLE board_post_reply (
     CONSTRAINT fk_bpr_post FOREIGN KEY (post_id) REFERENCES board_post (post_id)
         ON UPDATE CASCADE ON DELETE CASCADE,
     CONSTRAINT fk_bpr_to FOREIGN KEY (reply_to_post_id) REFERENCES board_post (post_id)
+        ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- ライブ・バンドのコメント（migrations/051）
+CREATE TABLE comment (
+    comment_id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    live_id    INT UNSIGNED NULL,
+    band_id    INT UNSIGNED NULL,
+    user_id    INT UNSIGNED NULL,
+    body       TEXT         NOT NULL,
+    deleted_at DATETIME     NULL,
+    deleted_by INT UNSIGNED NULL,
+    created_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (comment_id),
+    KEY idx_comment_live (live_id, comment_id),
+    KEY idx_comment_band (band_id, comment_id),
+    CONSTRAINT fk_comment_live FOREIGN KEY (live_id) REFERENCES live (live_id)
+        ON UPDATE CASCADE ON DELETE CASCADE,
+    CONSTRAINT fk_comment_band FOREIGN KEY (band_id) REFERENCES band (band_id)
+        ON UPDATE CASCADE ON DELETE CASCADE,
+    CONSTRAINT fk_comment_user FOREIGN KEY (user_id) REFERENCES user_account (user_id)
+        ON UPDATE CASCADE ON DELETE SET NULL,
+    CONSTRAINT fk_comment_deleted_by FOREIGN KEY (deleted_by) REFERENCES user_account (user_id)
+        ON UPDATE CASCADE ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE comment_reply (
+    comment_id       INT UNSIGNED NOT NULL,
+    reply_to_comment_id INT UNSIGNED NOT NULL,
+    PRIMARY KEY (comment_id, reply_to_comment_id),
+    KEY idx_cr_to (reply_to_comment_id),
+    CONSTRAINT fk_cr_comment FOREIGN KEY (comment_id) REFERENCES comment (comment_id)
+        ON UPDATE CASCADE ON DELETE CASCADE,
+    CONSTRAINT fk_cr_to FOREIGN KEY (reply_to_comment_id) REFERENCES comment (comment_id)
+        ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE comment_like (
+    comment_id INT UNSIGNED NOT NULL,
+    user_id    INT UNSIGNED NOT NULL,
+    PRIMARY KEY (comment_id, user_id),
+    KEY idx_cl_user (user_id),
+    CONSTRAINT fk_cl_comment FOREIGN KEY (comment_id) REFERENCES comment (comment_id)
+        ON UPDATE CASCADE ON DELETE CASCADE,
+    CONSTRAINT fk_cl_user FOREIGN KEY (user_id) REFERENCES user_account (user_id)
         ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;

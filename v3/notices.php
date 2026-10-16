@@ -127,14 +127,14 @@ if (!isset($categoryNames[$cat])) {
 
 // 未読を先に調べてから既読にする（NEW の目印用）。行が無いものが未読。重要を先頭に固定する
 $st = $pdo->prepare(
-    'SELECT n.notice_id, n.category_id, n.is_important, n.title, n.body, n.publish_at, (r.user_id IS NULL) AS is_new,
+    'SELECT n.notice_id, n.category_id, n.is_important, n.title, n.body, n.publish_at, n.link_url, (r.user_id IS NULL) AS is_new,
             (n.publish_at > NOW()) AS is_scheduled
        FROM notice n
        LEFT JOIN notice_read r ON r.notice_id = n.notice_id AND r.user_id = ?
-      WHERE n.publish_at <= NOW() OR ? = 1
+      WHERE (n.publish_at <= NOW() OR ? = 1) AND (n.target_user_id IS NULL OR n.target_user_id = ?)
       ORDER BY n.is_important DESC, n.publish_at DESC, n.notice_id DESC LIMIT 100'
 );
-$st->execute([$user['user_id'], $user['admin'] ? 1 : 0]);
+$st->execute([$user['user_id'], $user['admin'] ? 1 : 0, $user['user_id']]);
 $notices = $st->fetchAll();
 
 // 表示した分だけ既読にする（101件目以降を勝手に既読にしない）。管理者にだけ見えている予約中のものは除く
@@ -194,7 +194,8 @@ render_header('お知らせ', 'notices');
             <?= $n['is_scheduled'] ? '<span class="tag tag--plan">予約</span>' : ($n['is_new'] ? '<span class="tag tag--plan">NEW</span>' : '') ?>
         </h2>
         <p class="muted small notice-meta"><?= h(substr($n['publish_at'], 0, 16)) ?><?= $n['is_scheduled'] ? ' に公開' : '' ?> <span>·</span> <span class="tag tag--c-<?= h($categoryColors[$n['category_id']] ?? 'gray') ?>"><?= h($categoryNames[$n['category_id']] ?? '') ?></span></p>
-        <p><?= nl2br(h($n['body'])) ?></p>
+        <p><?= notice_body_html($n['body']) ?></p>
+        <?php if ($n['link_url'] !== null): ?><p><a class="btn btn--sm" href="<?= h($n['link_url']) ?>" aria-label="開く" title="開く"><?= icon('open_in_new') ?></a></p><?php endif; ?>
         <?php if ($user['admin'] && $n['is_scheduled']): ?>
         <details class="togglecard togglecard--inline">
             <summary><?= icon('edit') ?> <span class="togglecard__title">予約を編集</span><?= icon('expand_more', 'togglecard__chevron') ?></summary>

@@ -13,6 +13,7 @@
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 require __DIR__ . '/lib/board.php';
+require_once __DIR__ . '/lib/push.php'; // board_push_post()（アプリ通知）
 require_once __DIR__ . '/lib/repository.php'; // like_button()
 $user = require_login();
 $pdo = db();
@@ -60,6 +61,7 @@ if (is_post()) {
                 $ins->execute([$postId, $toId]);
             }
             $pdo->commit();
+            board_push_post($id, $postId); // アプリ通知（lib/push.php）。応答を返し終わってから送る
             $back .= '#p' . $postId;
         }
     } elseif ($action === 'delete_post') {
@@ -81,7 +83,7 @@ if (is_post()) {
     redirect($back);
 }
 
-$st = $pdo->prepare('SELECT p.post_id, p.user_id, p.body, p.created_at, p.deleted_at, u.name AS author, d.name AS deleted_by_name
+$st = $pdo->prepare('SELECT p.post_id, p.user_id, p.body, p.created_at, p.deleted_at, u.name AS author, u.member_id AS author_member_id, d.name AS deleted_by_name
     FROM board_post p
     LEFT JOIN user_account u ON u.user_id = p.user_id
     LEFT JOIN user_account d ON d.user_id = p.deleted_by
@@ -142,7 +144,7 @@ render_header($thread['title'], 'board');
     <article class="card board-post<?= $deleted ? ' is-deleted' : '' ?><?= (int)$p['user_id'] === $uid ? ' is-mine' : '' ?>" id="p<?= (int)$p['post_id'] ?>">
         <div class="muted small board-post__meta">
             <span class="board-post__no"><?= $i + 1 ?></span>
-            <strong><?= h($p['author'] ?? '退会ユーザー') ?></strong>
+            <strong><?= $p['author_member_id'] !== null ? '<a href="member?id=' . (int)$p['author_member_id'] . '">' . h($p['author']) . '</a>' : h($p['author'] ?? '退会ユーザー') ?></strong>
             <span><?= h(substr($p['created_at'], 0, 16)) ?></span>
             <?php if ($canPost && !$deleted): ?>
             <button type="button" class="icon-btn icon-btn--sm board-post__reply" data-board-reply="<?= (int)$p['post_id'] ?>" data-no="<?= $i + 1 ?>" aria-label="返信" title="返信" aria-pressed="false"><?= icon('reply') ?></button>

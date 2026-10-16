@@ -35,12 +35,14 @@ verify_csrf(); // JS から X-CSRF-Token ヘッダーで送られてくる
 
 $pdo = db();
 $uid = (int)$user['user_id'];
-$ids = $pdo->query('SELECT notice_id FROM notice WHERE publish_at <= NOW() ORDER BY is_important DESC, publish_at DESC, notice_id DESC LIMIT 3')->fetchAll(PDO::FETCH_COLUMN);
+$st = $pdo->prepare('SELECT n.notice_id FROM notice n WHERE n.publish_at <= NOW() AND (n.target_user_id IS NULL OR n.target_user_id = ?) ORDER BY n.is_important DESC, n.publish_at DESC, n.notice_id DESC LIMIT 3');
+$st->execute([$uid]);
+$ids = $st->fetchAll(PDO::FETCH_COLUMN);
 $mark = $pdo->prepare('INSERT IGNORE INTO notice_read (user_id, notice_id) VALUES (?, ?)');
 foreach ($ids as $id) {
     $mark->execute([$uid, (int)$id]);
 }
-$st = $pdo->prepare('SELECT COUNT(*) FROM notice n LEFT JOIN notice_read r ON r.notice_id = n.notice_id AND r.user_id = ? WHERE r.user_id IS NULL AND n.publish_at <= NOW()');
-$st->execute([$uid]);
+$st = $pdo->prepare('SELECT COUNT(*) FROM notice n LEFT JOIN notice_read r ON r.notice_id = n.notice_id AND r.user_id = ? WHERE r.user_id IS NULL AND n.publish_at <= NOW() AND (n.target_user_id IS NULL OR n.target_user_id = ?)');
+$st->execute([$uid, $uid]);
 
 echo json_encode(['ok' => true, 'unread' => (int)$st->fetchColumn()], JSON_UNESCAPED_UNICODE);

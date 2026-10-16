@@ -35,8 +35,8 @@ $flagged = $st->fetchAll();
 // 重要なお知らせ（未読のものだけ。notices.php やベルで読むと、notice_read に行が入って出なくなる）
 $st = $pdo->prepare('SELECT n.notice_id, n.title FROM notice n
     LEFT JOIN notice_read r ON r.notice_id = n.notice_id AND r.user_id = ?
-    WHERE n.is_important = 1 AND r.user_id IS NULL AND n.publish_at <= NOW() ORDER BY n.notice_id DESC LIMIT 3');
-$st->execute([$user['user_id']]);
+    WHERE n.is_important = 1 AND r.user_id IS NULL AND n.publish_at <= NOW() AND (n.target_user_id IS NULL OR n.target_user_id = ?) ORDER BY n.notice_id DESC LIMIT 3');
+$st->execute([$user['user_id'], $user['user_id']]);
 $importantNotices = $st->fetchAll();
 
 // 日程1行ごとに、そのライブの情報とバンド数をくっつけて取ってくる

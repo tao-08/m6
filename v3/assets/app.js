@@ -89,6 +89,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupSuggest();
   setupSmallThings();
   setupBoardReply();
+  setupComments();
   setupBoardPanels();
   setupBoardMute();
   setupBoardTabs();
@@ -107,6 +108,8 @@ document.addEventListener('DOMContentLoaded', () => {
   setupTutorial();
   setupAddToHome();
   setupServiceWorker();
+  setupPush();
+  setupPushLogout();
   setupKanaAi();
 });
 
@@ -1183,6 +1186,59 @@ function setupBoardReply() {
 }
 
 /* ---------------------------------------------------------------------
+ * ライブ・バンドのコメント（lib/comments.php）
+ *   返信先の選び方は setupBoardReply と同じ（[data-comment-reply] で追加・解除、チップと hidden の reply_to[]）。
+ *   #c12 のようなリンク（投稿後・>>N）で来たら、閉じているトグルカードを開いてから飛ぶ
+ * ------------------------------------------------------------------- */
+function setupComments() {
+  const root = document.querySelector('[data-comments]');
+  if (!root) return;
+  const openFor = () => {
+    if (!/^#(c\d+|comments)$/.test(location.hash)) return;
+    root.open = true;
+    document.querySelector(location.hash)?.scrollIntoView({ block: 'start' });
+  };
+  openFor();
+  window.addEventListener('hashchange', openFor);
+
+  const box = root.querySelector('[data-comment-reply-to]');
+  const MAX = 10;
+  const picked = new Map(); // comment_id → 番号
+  const buttons = new Map([...root.querySelectorAll('[data-comment-reply]')].map((b) => [b.dataset.commentReply, b]));
+  const render = () => {
+    box.replaceChildren();
+    picked.forEach((no, id) => {
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'tag board-reply__chip';
+      chip.setAttribute('aria-label', `>>${no} の返信を解除`);
+      chip.textContent = `>>${no} ×`;
+      chip.addEventListener('click', () => toggle(id));
+      const input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = 'reply_to[]';
+      input.value = id;
+      box.append(chip, input);
+    });
+    box.hidden = picked.size === 0;
+    buttons.forEach((b, id) => {
+      b.classList.toggle('is-active', picked.has(id));
+      b.setAttribute('aria-pressed', String(picked.has(id)));
+    });
+  };
+  const toggle = (id) => {
+    if (picked.has(id)) picked.delete(id);
+    else if (picked.size < MAX) picked.set(id, buttons.get(id)?.dataset.no ?? '');
+    render();
+  };
+  buttons.forEach((b, id) => b.addEventListener('click', () => {
+    const first = picked.size === 0;
+    toggle(id);
+    if (first && picked.has(id)) box.closest('form')?.querySelector('textarea')?.focus();
+  }));
+}
+
+/* ---------------------------------------------------------------------
  * こまごました動き
  *   data-autosubmit … セレクトボックスやラジオボタンを変えたらすぐフォームを送信（集計の絞り込み）
  * ------------------------------------------------------------------- */
@@ -1507,6 +1563,123 @@ function setupAddToHome() {
 function setupServiceWorker() {
   if (!('serviceWorker' in navigator)) return;
   navigator.serviceWorker.register('sw.js').catch(() => { /* 登録できなくてもサイトは普通に使える */ });
+}
+
+/* ---------------------------------------------------------------------
+ * アプリ通知（プッシュ）の「この端末」スイッチ（account.php のアプリ通知。[data-push]）
+ *   ON : 許可を聞く → 端末の購読を作る → api_push_subscribe に送る。OFF: 購読を消して api に伝える
+ *   許可のダイアログは「ボタンを押した直後」でないと出ないので、ページを開いたときには聞かない。
+ *   iPhone は「ホーム画面に追加」したアプリでだけ使える（Safari で開いただけだと PushManager が無い）。
+ * ------------------------------------------------------------------- */
+function setupPush() {
+  const wrap = document.querySelector('[data-push]');
+  if (!wrap) return;
+  const box = wrap.querySelector('[data-push-toggle]');
+  const token = document.querySelector('meta[name="csrf-token"]')?.content || '';
+  wrap.hidden = false;
+  // 端末の登録・解除が終わるまで、下の保存ボタンは押せない
+  const saveBtns = document.querySelectorAll('[data-push-form] button[type="submit"]');
+  const setBusy = (on) => saveBtns.forEach((b) => { b.disabled = on; });
+
+  const lock = (message) => {
+    box.disabled = true;
+    box.checked = false;
+    wrap.title = message;
+  };
+  if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+    lock('ホーム画面に追加すると使えます');
+    return;
+  }
+  if (Notification.permission === 'denied') {
+    lock('ブラウザの設定で通知がブロックされています');
+    return;
+  }
+
+  // 公開鍵（base64url）→ subscribe() が求める Uint8Array
+  const keyBytes = (b64) => {
+    const raw = atob(b64.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(b64.length / 4) * 4, '='));
+    return Uint8Array.from(raw, (c) => c.charCodeAt(0));
+  };
+  const post = async (body) => {
+    const res = await fetch('api_push_subscribe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': token },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || '保存できませんでした');
+  };
+  const toast = (text) => {
+    const el = document.createElement('div');
+    el.textContent = text;
+    showToast(el);
+  };
+
+  // いまの状態を反映（この端末がすでに購読していれば ON）
+  navigator.serviceWorker.ready
+    .then((reg) => reg.pushManager.getSubscription())
+    .then((sub) => { box.checked = sub !== null && Notification.permission === 'granted'; })
+    .catch(() => {});
+
+  box.addEventListener('change', async () => {
+    const want = box.checked;
+    box.disabled = true;
+    setBusy(true);
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      if (want) {
+        if ((await Notification.requestPermission()) !== 'granted') throw new Error('denied');
+        const sub = (await reg.pushManager.getSubscription())
+          || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(wrap.dataset.push) });
+        const json = sub.toJSON();
+        await post({ action: 'subscribe', endpoint: json.endpoint, p256dh: json.keys.p256dh, auth: json.keys.auth });
+      } else {
+        const sub = await reg.pushManager.getSubscription();
+        if (sub) {
+          await post({ action: 'unsubscribe', endpoint: sub.endpoint });
+          await sub.unsubscribe();
+        }
+      }
+    } catch (err) {
+      console.error('プッシュ通知の設定エラー:', err);
+      box.checked = !want;
+      if (Notification.permission === 'denied') lock('ブラウザの設定で通知がブロックされています');
+      toast('プッシュ通知を設定できませんでした');
+    } finally {
+      if (Notification.permission !== 'denied') box.disabled = false;
+      setBusy(false);
+    }
+  });
+}
+
+/* ---------------------------------------------------------------------
+ * ログアウトするとき、この端末のプッシュ通知を解除する（form[action="logout"]）
+ *   解除しないと、共有の端末で次に使う人にも、前の人宛ての通知が届き続けてしまう。
+ *   サーバーは「どの端末か」を知らないので、ログアウトの前に端末側から解除を伝える（ログイン中でないと API が通らない）。
+ *   失敗・遅延してもログアウトは必ず進める（最長 3 秒待つ）。
+ * ------------------------------------------------------------------- */
+function setupPushLogout() {
+  const form = document.querySelector('form[action="logout"]');
+  if (!form || !('serviceWorker' in navigator) || !('PushManager' in window)) return;
+  const token = document.querySelector('meta[name="csrf-token"]')?.content || '';
+  let done = false;
+  form.addEventListener('submit', async (e) => {
+    if (done) return;
+    e.preventDefault();
+    const work = (async () => {
+      const reg = await navigator.serviceWorker.getRegistration();
+      const sub = await reg?.pushManager.getSubscription();
+      if (!sub) return;
+      await fetch('api_push_subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': token },
+        body: JSON.stringify({ action: 'unsubscribe', endpoint: sub.endpoint }),
+      });
+      await sub.unsubscribe();
+    })().catch(() => { /* 解除できなくてもログアウトは続ける */ });
+    await Promise.race([work, new Promise((resolve) => setTimeout(resolve, 3000))]);
+    done = true;
+    form.submit();
+  });
 }
 
 /* ---------------------------------------------------------------------
@@ -4586,7 +4759,7 @@ function setupLikes() {
   //   data-like-api … 送り先の API（無ければバンド用の api_band_like）。掲示板の書き込みは api_board_like。
   //   バンドと書き込みで ID が重なっても混ざらないよう、同じ API のボタンだけそろえる
   const apiOf = (b) => b.dataset.likeApi || 'api_band_like';
-  const KEYS = { api_band_like: 'band_id', api_board_like: 'post_id' };
+  const KEYS = { api_band_like: 'band_id', api_board_like: 'post_id', api_comment_like: 'comment_id' };
   const paint = (api, id, liked, count) => {
     document.querySelectorAll(`[data-like="${id}"]`).forEach((b) => {
       if (apiOf(b) !== api) return;

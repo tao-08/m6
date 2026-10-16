@@ -12,6 +12,7 @@
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 require __DIR__ . '/lib/board.php';
+require_once __DIR__ . '/lib/push.php'; // board_push_post()（アプリ通知）
 $user = require_login();
 $pdo = db();
 board_ensure_fixed();
@@ -42,8 +43,9 @@ if (is_post()) {
             $pdo->prepare("INSERT INTO board_thread (kind, category_id, user_id, title) VALUES ('free', ?, ?, ?)")
                 ->execute([$categoryId, $user['user_id'], $title]);
             $threadId = (int)$pdo->lastInsertId();
-            board_add_post($threadId, (int)$user['user_id'], $body);
+            $postId = board_add_post($threadId, (int)$user['user_id'], $body);
             $pdo->commit();
+            board_push_post($threadId, $postId); // アプリ通知（lib/push.php）。応答を返し終わってから送る
             flash('作成しました');
             $back = 'board_thread?id=' . $threadId;
         }
@@ -164,12 +166,18 @@ $row = function (array $t) use ($categoryNames, $categoryColors, $myYear, $cat):
 
 render_header('アビーボード', 'board');
 ?>
-<div class="board-head">
-    <h1 class="display display--sm"><?= icon('forum') ?> アビーボード</h1>
+<section class="hero">
+    <div>
+        <p class="eyebrow">Abbey Board</p>
+        <h1 class="display">アビーボード</h1>
+        <p class="muted">アビーの何でも掲示板</p>
+    </div>
     <!-- スレッド作成・通知設定は、アイコンを押すと下のカードが開く（assets/app.js の setupBoardPanels） -->
-    <button type="button" class="icon-btn" data-board-panel-open="create" aria-label="スレッド作成" title="スレッド作成"><?= icon('add_comment') ?></button>
-    <button type="button" class="icon-btn" data-board-panel-open="notify" aria-label="通知設定" title="通知設定"><?= icon('settings') ?></button>
-</div>
+    <div class="hero__actions">
+        <button type="button" class="icon-btn" data-board-panel-open="create" aria-label="スレッド作成" title="スレッド作成"><?= icon('add_comment') ?></button>
+        <button type="button" class="icon-btn" data-board-panel-open="notify" aria-label="通知設定" title="通知設定"><?= icon('settings') ?></button>
+    </div>
+</section>
 
 <div class="card togglecard" id="create" data-board-panel hidden>
 <form method="post" class="togglecard__body"<?= unsaved_attr() ?>>
@@ -194,14 +202,14 @@ render_header('アビーボード', 'board');
 
 <div class="card togglecard" id="notify" data-board-panel hidden>
 <form method="post" class="togglecard__body">
-    <h2 class="section-title section-title--card board-panel__title">通知設定</h2>
+    <h2 class="section-title section-title--card board-panel__title">アプリ内通知設定</h2>
     <?= csrf_field() ?>
     <input type="hidden" name="action" value="notify">
     <label class="check"><input type="hidden" name="notify_fixed" value="0"><input type="checkbox" name="notify_fixed" value="1"<?= $pref['cohort_active'] ? ' checked' : '' ?>>
         <?= icon('groups') ?><?= icon('school') ?> 現役・同期スレッドの新着</label>
     <label class="check" title="48時間以内に自分が書き込んだスレの新着"><input type="hidden" name="notify_part" value="0"><input type="checkbox" name="notify_part" value="1"<?= $pref['participating'] ? ' checked' : '' ?>>
         <?= icon('edit_note') ?> 48時間以内に書き込んだスレッドの新着</label>
-    <h3 class="board-panel__sub">新規スレッドを通知</h3>
+    <h3 class="board-panel__sub">新規スレッドの書き込みを通知</h3>
     <div class="checks">
         <?php foreach ($categories as $c): ?>
             <label class="check"><input type="checkbox" name="notify_cat[]" value="<?= (int)$c['category_id'] ?>"<?= $pref['categories'] === null || in_array((int)$c['category_id'], $pref['categories'], true) ? ' checked' : '' ?>>

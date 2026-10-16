@@ -691,6 +691,9 @@ td .tag--plan { margin-top: 4px; } /* アーティストの演奏履歴: 日付�
 .checks { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 12px 0 4px; }
 .check { display: flex; gap: 8px; align-items: center; font-size: 14px; cursor: pointer; }
 .form-card .check + .muted.small { margin: -6px 0 0 24px; } /* チェックの下の説明（account.php）: 余白を詰めて、チェックの文字の位置にそろえる */
+/* アプリ通知（account.php）: チェックを均等な間隔で縦に並べる */
+.push-card, .push-card form { display: grid; gap: 14px; }
+.push-card .section-title { margin: 0; }
 input[type="checkbox"], .field input[type="radio"] { accent-color: var(--accent); width: 16px; height: 16px; padding: 0; flex: none; }
 .field .check { color: var(--text); font-weight: 400; } /* .field の中のラジオ（contact.php の匿名の選択）は、ラベルの見出しより普通の文字に */
 
@@ -2025,7 +2028,7 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
 
 /* ベルのポップアップ（直近3件＋すべて見る） */
 .icon-btn--sm { width: 30px; height: 30px; padding: 0; } /* button の初期の左右余白(6px)で中身の入る幅が足りず、アイコンが右に寄っていた */
-.notifmenu__panel { width: 300px; max-width: calc(100vw - 24px); }
+.notifmenu__panel { width: 300px; max-width: calc(100vw - 24px); position: fixed; right: 12px; top: 56px; } /* ベルの真下ではなく、画面の右端に出す */
 .notifmenu__item { display: grid; gap: 2px; }
 .notifmenu__title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .notifmenu__empty { padding: 8px 10px; margin: 0; }
@@ -2033,7 +2036,10 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
 
 /* お知らせの重要・カテゴリ管理・ホームのバナー */
 .notice__mark { color: var(--danger, #d93025); }
-.notice-item { padding: 22px 20px; margin-bottom: 16px; }
+.notice-item { padding: 18px 20px; margin-bottom: 14px; gap: 4px; }
+.notice-item .section-title--card { margin-bottom: 4px; }
+.notice-item p { margin-block: 6px; }
+.notice-item p a:not(.btn) { text-decoration: underline dotted; text-underline-offset: 3px; } /* 本文中のリンク（コメント通知のライブ名・バンド名・名前）をリンクとわかるように */
 .notice--important { border: 2px solid var(--danger); background: color-mix(in srgb, var(--danger) 6%, var(--surface)); }
 .notice-banner { display: flex; align-items: center; gap: 10px; padding: 12px 16px; margin-bottom: 16px; border: 2px solid var(--danger); background: color-mix(in srgb, var(--danger) 6%, var(--surface)); }
 .notice-banner__text { flex: 1; min-width: 0; display: grid; font-weight: 600; font-size: 14px; }
@@ -2143,3 +2149,9 @@ html:has(.board-posts) { scroll-behavior: smooth; }
 .board-reply__to[hidden] { display: none; }
 .board-reply__chip { cursor: pointer; border: 0; font: inherit; }
 .board-reply { display: grid; gap: 10px; padding: 12px 16px; margin-bottom: 16px; }
+
+/* ライブ・バンドのコメント（lib/comments.php）。書き込みのカードは掲示板の .board-post を流用 */
+.comments { margin-top: 18px; }
+.comments .board-posts, .comments .board-reply { max-width: none; margin: 0; width: 100%; } /* 親が grid なので、auto の余白があると中身の幅に縮む */
+.comments .board-post { box-shadow: none; background: var(--bg, var(--surface)); }
+.comments__body { padding-top: 12px; }

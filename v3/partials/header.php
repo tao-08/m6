@@ -13,16 +13,19 @@ $user = current_user();
 $unreadNotices = 0;
 if ($user) {
     // 行が無いお知らせ＝未読（notice_read は読んだ記録）
-    $st = db()->prepare('SELECT COUNT(*) FROM notice n LEFT JOIN notice_read r ON r.notice_id = n.notice_id AND r.user_id = ? WHERE r.user_id IS NULL AND n.publish_at <= NOW()');
-    $st->execute([(int)$user['user_id']]);
+    $st = db()->prepare('SELECT COUNT(*) FROM notice n LEFT JOIN notice_read r ON r.notice_id = n.notice_id AND r.user_id = ? WHERE r.user_id IS NULL AND n.publish_at <= NOW() AND (n.target_user_id IS NULL OR n.target_user_id = ?)');
+    $st->execute([(int)$user['user_id'], (int)$user['user_id']]);
     $unreadNotices = (int)$st->fetchColumn();
     // ベルのポップアップに出す直近3件
-    $st = db()->prepare('SELECT n.notice_id, n.title, n.publish_at, n.is_important, (r.user_id IS NULL) AS is_new FROM notice n LEFT JOIN notice_read r ON r.notice_id = n.notice_id AND r.user_id = ? WHERE n.publish_at <= NOW() ORDER BY n.is_important DESC, n.publish_at DESC, n.notice_id DESC LIMIT 3');
-    $st->execute([(int)$user['user_id']]);
+    $st = db()->prepare('SELECT n.notice_id, n.title, n.link_url, n.publish_at, n.is_important, (r.user_id IS NULL) AS is_new FROM notice n LEFT JOIN notice_read r ON r.notice_id = n.notice_id AND r.user_id = ? WHERE n.publish_at <= NOW() AND (n.target_user_id IS NULL OR n.target_user_id = ?) ORDER BY n.is_important DESC, n.publish_at DESC, n.notice_id DESC LIMIT 3');
+    $st->execute([(int)$user['user_id'], (int)$user['user_id']]);
     $recentNotices = $st->fetchAll();
     // 掲示板: 未読の書き込みがあるスレの数（見られるスレだけ。lib/board.php）
     require_once __DIR__ . '/../lib/board.php';
     $unreadBoard = board_unread_count($user);
+    // 公開されたお知らせのプッシュ通知は、応答を返し終わってから送る（lib/push.php）
+    require_once __DIR__ . '/../lib/push.php';
+    push_dispatch_after_response();
 }
 $nav = [
     'lives'   => ['./', 'ライブ'],
@@ -108,7 +111,7 @@ $nav = [
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400..600,0..1,0&display=block" rel="stylesheet">
     <!-- ?v=2 はキャッシュ対策。CSS を変えたら数字を上げると、ブラウザが古い CSS を使い続けない -->
     <link rel="stylesheet" href="assets/app.css?v=353">
-    <script src="assets/app.js?v=177" defer></script>
+    <script src="assets/app.js?v=178" defer></script>
 </head>
 <body>
 <header class="topbar">
@@ -145,7 +148,7 @@ $nav = [
             </summary>
             <div class="usermenu__panel notifmenu__panel">
                 <?php foreach ($recentNotices as $n): ?>
-                    <a href="notices" class="notifmenu__item">
+                    <a href="<?= h($n['link_url'] ?? 'notices') ?>" class="notifmenu__item">
                         <span class="notifmenu__title"><?= $n['is_important'] ? icon('priority_high', 'notice__mark') : '' ?><?= h($n['title']) ?><?= $n['is_new'] ? ' <span class="tag tag--plan">NEW</span>' : '' ?></span>
                         <span class="muted small"><?= h(substr($n['publish_at'], 0, 16)) ?></span>
                     </a>

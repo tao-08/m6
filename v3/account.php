@@ -9,6 +9,7 @@
  *    action=email    … 問い合わせの通知先メールアドレス（管理者だけ。contact.php）
  *    action=suggest  … 退会した人をメンバー名の候補（サジェスト）に出さないか（member_name_choices()）
  *    action=back_button … 左下の戻るボタンを出すか（assets/app.js の setupBackButton）
+ *    action=push_prefs  … アプリ通知（プッシュ）で受け取る種類: 掲示板 / 重要なお知らせ / その他のお知らせ（lib/push.php）
  *  メンバーと紐付いている人は、名前の代わりに「プロフィール」（送信先は member_edit.php）。
  *    名前の正は member.name で、アカウント名はそれに自動でそろう（sync_account_names()）。
  *  どのメンバーと紐付けるかは、管理者がユーザー管理（users.php）で選ぶ。
@@ -18,6 +19,7 @@ declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/albums.php'; // MUSIC_APPS（選べる音楽アプリの一覧）
 require_once __DIR__ . '/lib/repository.php'; // profile_faculty_role_fields()
+require_once __DIR__ . '/lib/push.php'; // push_enabled() / push_public_key()（アプリ通知）
 $user = require_login();
 
 $pdo = db();
@@ -83,6 +85,18 @@ if (is_post()) {
                 $user['user_id'],
             ]);
         flash('設定を保存しました');
+    }
+
+    // アプリ通知（プッシュ通知）で受け取る種類。この端末で受け取るかどうかは、フォームではなくスイッチ（assets/app.js の setupPush）
+    if ($action === 'push_prefs') {
+        $pdo->prepare('UPDATE user_account SET push_board = ?, push_important = ?, push_notice = ? WHERE user_id = ?')
+            ->execute([
+                (int)(($_POST['push_board'] ?? '') === '1'),
+                (int)(($_POST['push_important'] ?? '') === '1'),
+                (int)(($_POST['push_notice'] ?? '') === '1'),
+                $user['user_id'],
+            ]);
+        flash('通知設定を保存しました');
     }
 
     redirect('account');
@@ -154,6 +168,22 @@ render_header('アカウント設定');
         <label class="field"><span>メールアドレス</span><input type="email" name="email" value="<?= h($account['email'] ?? '') ?>" maxlength="254" autocomplete="email"></label>
         <div class="form-actions"><button class="btn btn--primary btn--sm" type="submit">保存</button></div>
     </form>
+    <?php endif; ?>
+    <?php if (push_enabled()): ?>
+    <div class="card form-card push-card">
+        <h2 class="section-title section-title--card"><?= icon('notifications_active') ?> アプリ通知</h2>
+        <!-- この端末で受け取る / 受け取らない。押した瞬間に登録・解除する（assets/app.js の setupPush）。下の保存ボタンとは別 -->
+        <label class="check" data-push="<?= h(push_public_key()) ?>" title="この端末で通知を受け取る" hidden>
+            <input type="checkbox" data-push-toggle> <?= icon('smartphone') ?> この端末
+        </label>
+        <form method="post" data-unsaved data-push-form>
+            <?= csrf_field() ?><input type="hidden" name="action" value="push_prefs">
+            <label class="check" title="掲示板の通知設定で通知される書き込み"><input type="hidden" name="push_board" value="0"><input type="checkbox" name="push_board" value="1"<?= $account['push_board'] ? ' checked' : '' ?>> <?= icon('forum') ?> 掲示板</label>
+            <label class="check"><input type="hidden" name="push_important" value="0"><input type="checkbox" name="push_important" value="1"<?= $account['push_important'] ? ' checked' : '' ?>> <?= icon('priority_high') ?> 重要なお知らせ</label>
+            <label class="check"><input type="hidden" name="push_notice" value="0"><input type="checkbox" name="push_notice" value="1"<?= $account['push_notice'] ? ' checked' : '' ?>> <?= icon('campaign') ?> その他のお知らせ</label>
+            <div class="form-actions"><button class="btn btn--primary btn--sm" type="submit">保存</button></div>
+        </form>
+    </div>
     <?php endif; ?>
     <form method="post" class="card form-card" data-unsaved>
         <h2 class="section-title section-title--card">表示・集計</h2>

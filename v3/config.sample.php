@@ -49,6 +49,15 @@ return [
         // 問い合わせ（contact.php）のメールの差出人。サイトと同じドメインのアドレスにする
         //   （違うドメインだと迷惑メール扱いされやすい）。空ならメールは送らず、サイトの中に残すだけ
         'mail_from' => '',
+        // プッシュ通知（lib/push.php）の VAPID 鍵。空 or vendor/ が無ければ、プッシュ通知の機能だけ休む
+        //   鍵の作り方: php -r '$k=openssl_pkey_new(["private_key_type"=>OPENSSL_KEYTYPE_EC,"curve_name"=>"prime256v1"]);$d=openssl_pkey_get_details($k)["ec"];$b=fn($s)=>rtrim(strtr(base64_encode($s),"+/","-_"),"=");echo $b("\x04".$d["x"].$d["y"]),"\n",$b($d["d"]),"\n";'
+        //   （1行目 = public_key、2行目 = private_key）。private_key はパスワードと同じ。人に見せない・git に入れない
+        //   ※ public_key を変えると、登録済みの端末はすべて無効になる
+        'push' => [
+            'public_key'  => '',
+            'private_key' => '',
+            'subject'     => 'mailto:', // 連絡先のメールアドレス（例: mailto:contact@example.com）
+        ],
         // true: エラーの詳細を画面に出す（開発中だけ）
         'debug' => false,
     ],

@@ -188,6 +188,22 @@ function h(mixed $value): string
 }
 
 /**
+ * お知らせの本文を HTML にする。1行目だけ [[リンク先|文字]] をリンクにできる（コメント通知用。lib/comments.php）。
+ *   先に h() で全部エスケープしてから置き換える。リンク先はサイト内の「ページ名?id=数字#c数字」の形だけ（それ以外は文字のまま）。
+ *   2行目から先（コメント本文など）は、[[ ]] を書かれてもリンクにしない
+ */
+function notice_body_html(string $body): string
+{
+    [$first, $rest] = array_pad(explode("\n", $body, 2), 2, null);
+    $html = preg_replace_callback(
+        '/\[\[([a-z_]+(?:\?id=\d+)?(?:#c\d+)?)\|([^\]]+)\]\]/u',
+        static fn(array $m) => '<a href="' . $m[1] . '">' . $m[2] . '</a>',
+        h($first)
+    );
+    return $rest === null ? $html : $html . '<br>' . nl2br(h($rest));
+}
+
+/**
  * 編集フォームに付ける「未保存のまま離れたら警告」の目印（assets/app.js の setupUnsavedGuard）。
  *   POST で画面が出ている = 送信したがエラーで戻ってきた（成功なら redirect している）。
  *   入力はまだ保存されていないので、何も触っていなくても「変更あり」として扱う（data-unsaved="posted"）。

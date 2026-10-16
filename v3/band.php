@@ -17,6 +17,7 @@ declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/tracks.php';
 require_once __DIR__ . '/lib/repository.php';
+require_once __DIR__ . '/lib/comments.php';
 require_once __DIR__ . '/lib/history.php'; // 「確認済み」を誰が押したかを変更履歴に残す
 $user = require_login();
 
@@ -42,6 +43,8 @@ if (!$band) {
     exit;
 }
 $liveUrl = 'live?id=' . (int)$band['live_id'] . '#day-' . (int)$band['live_day_id'];
+
+comments_handle_post('band', $bandId, 'band?id=' . $bandId); // コメントの投稿・削除
 
 // 🚩「楽器の確認」の「確認した」ボタン（ログインしていれば誰でも外せる）
 if (is_post() && ($_POST['action'] ?? '') === 'checked') {
@@ -370,6 +373,8 @@ render_header($band['name'], 'lives');
 </section>
 
 <?= fan_albums_html($fans, 'マイアルバムに入れているメンバー', $viewerApp, count($fanArtists) > 1) // 見出しはアーティストページと同じ。何組もいるとき（オムニバス）はアーティスト名も ?>
+
+<?php comments_render('band', $bandId, $user); ?>
 
 <?php if ($prevBand || $nextBand): ?>
     <!-- 前後のバンド。日程が変わるときは「2日目」などを名前の上に出す -->

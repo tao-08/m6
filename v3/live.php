@@ -18,6 +18,7 @@
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/repository.php';
+require_once __DIR__ . '/lib/comments.php';
 $user = require_login();
 
 $liveId = (int)($_GET['id'] ?? 0); // (int) で数字以外が来ても 0 になる
@@ -32,6 +33,8 @@ if (!$live) {
     render_footer();
     exit;
 }
+
+comments_handle_post('live', $liveId, 'live?id=' . $liveId); // コメントの投稿・削除
 
 // ---- 1. 日程 ----
 $st = $pdo->prepare('SELECT d.*, v.name AS venue_name, v.website_url FROM live_day d
@@ -224,6 +227,8 @@ render_header($live['name'], 'lives');
     <p class="no-print add-band"><a class="btn btn--ghost btn--sm" href="band_edit?day=<?= (int)$d['live_day_id'] ?>">＋ バンドを追加</a></p>
 </section>
 <?php endforeach; ?>
+
+<?php comments_render('live', $liveId, $user); ?>
 
 <?php if ($prevLive || $nextLive): ?>
     <!-- 前後のライブ。見た目は band.php の前後のバンドと同じ（band-pager） -->
