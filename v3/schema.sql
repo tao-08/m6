@@ -731,8 +731,6 @@ CREATE TABLE board_thread (
         ON UPDATE CASCADE ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
-CREATE TABLE board_post (
-    post_id    INT UNSIGNED NOT NULL AUTO_INCREMENT,
 -- 自由スレに参加できる入部年度（行なし = 制限なし。migrations/056）
 CREATE TABLE board_thread_year (
     thread_id  INT UNSIGNED      NOT NULL,
@@ -742,6 +740,8 @@ CREATE TABLE board_thread_year (
         ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+CREATE TABLE board_post (
+    post_id    INT UNSIGNED NOT NULL AUTO_INCREMENT,
     thread_id  INT UNSIGNED NOT NULL,
     user_id    INT UNSIGNED NULL,
     body       TEXT         NOT NULL,
