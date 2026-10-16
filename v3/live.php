@@ -47,7 +47,8 @@ $days = $st->fetchAll();
 // ---- 2. バンド（日程ごとに振り分け） ----
 //   setlist_count: 登録済みの曲数（セトリ登録済バッジ用）。相関サブクエリなので SQL の回数は増えない
 $st = $pdo->prepare('SELECT b.*, a.name AS artist_name,
-        (SELECT COUNT(*) FROM song s WHERE s.band_id = b.band_id) AS setlist_count
+        (SELECT COUNT(*) FROM song s WHERE s.band_id = b.band_id AND s.is_se = 0) AS setlist_count,
+        EXISTS (SELECT 1 FROM song se WHERE se.band_id = b.band_id AND se.is_se = 1 AND NOT ' . setlist_hidden_sql('b') . ') AS has_se
     FROM band b
     JOIN live_day d ON d.live_day_id = b.live_day_id
     LEFT JOIN artist a ON a.artist_id = b.artist_id
@@ -234,6 +235,7 @@ render_header($live['name'], 'lives');
     <!-- 前後のライブ。見た目は band.php の前後のバンドと同じ（band-pager） -->
     <nav class="band-pager no-print" aria-label="前後のライブ">
         <?php foreach ([['prev', $prevLive, 'chevron_left', '前のライブ'], ['next', $nextLive, 'chevron_right', '次のライブ']] as [$dir, $l, $arrow, $label]): ?>
+                        <?php if ($b['has_se']): ?><span class="se-mark" title="SE">SE</span><?php endif; ?>
             <?php if ($l): ?>
                 <a class="band-pager__link band-pager__link--<?= $dir ?>" href="live?id=<?= (int)$l['live_id'] ?>" rel="<?= $dir ?>">
                     <?= icon($arrow) ?>

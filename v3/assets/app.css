@@ -32,6 +32,7 @@
   --accent-2: #f39a3d;
   --accent-soft: rgba(217, 15, 15, .08);
   --headliner: #2563eb;     /* 青: トリの印 */
+  --se: #3f6b8e;  --se-bg: rgba(63, 107, 142, .14); /* くすんだ青: SE ありの印（薄い地に青い文字） */
   --on-accent: #ffffff;
   --ok: #148a55;      --ok-bg: #e3f5ea;      /* 緑: DB に登録済み */
   --warn: #9a6a00;    --warn-bg: #fff3cf;    /* 黄: 似た人がいる */
@@ -57,6 +58,7 @@
   --accent-2: #ffb347;
   --accent-soft: rgba(255, 77, 77, .14);
   --headliner: #60a5fa;
+  --se: #8fb8d8;  --se-bg: rgba(106, 160, 200, .2);
   --ok: #49dc9a;      --ok-bg: rgba(73, 220, 154, .13);
   --warn: #ffcf5c;    --warn-bg: rgba(255, 207, 92, .14);
   --danger: #ff6b7d;  --danger-bg: rgba(255, 107, 125, .14);
@@ -616,6 +618,9 @@ td .tag--plan { margin-top: 4px; } /* アーティストの演奏履歴: 日付�
 /* トリの印: バンド名の横に小さな灰色の四角 + 🐔 */
 .tori-badge { flex-shrink: 0; font-size: 12px; line-height: 1; padding: 2px 4px; border-radius: 4px; background: var(--surface-2); }
 .history__tags { display: flex; align-items: center; gap: 6px; flex-shrink: 0; } /* セットリストの ✓ と楽器ラベルの高さをそろえる */
+/* SE ありのマーク（live.php のバンドカード）。透け感のある青地（登録済バッジと同じ作り） */
+.se-mark { display: inline-flex; align-items: center; flex-shrink: 0; padding: 3px 7px; border-radius: 4px; font-size: 11px; font-weight: 800; line-height: 1; letter-spacing: .03em; color: var(--se); background: var(--se-bg); }
+@media print { .se-mark { background: none; border: 1px solid currentColor; } }
 /* セットリスト登録済み（live.php のバンドカード / member.php の出演履歴） */
 .setlist-badge { display: inline-flex; align-items: center; gap: 3px; flex-shrink: 0; padding: 2px 7px 2px 5px;
   border-radius: 999px; font-size: 11px; font-weight: 700; line-height: 1.4; white-space: nowrap;
@@ -1291,6 +1296,9 @@ code { background: var(--surface-2); padding: 1px 6px; border-radius: 6px; font-
 .song-card__no { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); font-weight: 700; }
 .song-card__no [data-song-no] { font-size: 18px; color: var(--text); font-weight: 800; min-width: 1.4em; text-align: right; }
 .song-card__title, .song-card__artist { padding: 9px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--surface); color: var(--text); }
+.song-card__se-sp { font-size: 18px; font-weight: 800; min-width: 1.4em; visibility: hidden; } /* 他の曲の番号と同じ幅だけ空ける */
+.song-card__se { display: flex; justify-content: flex-end; width: 24px; white-space: nowrap; font-size: 18px; font-weight: 800; color: var(--accent); } /* 「曲目」の位置に右寄せ（大きさは番号と同じ。はみ出す分は左へ） */
+.song-add-se { margin: 0 0 14px; }
 .song-card__title { flex: 0 1 320px; min-width: 160px; font-weight: 700; font-size: 16px; } /* 伸ばしすぎない（余った幅は右へ） */
 .song-card__artist { flex: 0 1 220px; min-width: 140px; font-size: 14px; transition: opacity .2s ease; }
 /* オムニバスでないとき: バンドのアーティストで固定。薄くして「ここは変えられない」と分かるように */
@@ -1379,6 +1387,18 @@ code { background: var(--surface-2); padding: 1px 6px; border-radius: 6px; font-
 .setlist li::marker { color: var(--muted); font-weight: 700; }
 .setlist__who { color: var(--muted); font-size: 12px; margin-left: 6px; }
 .setlist__note { white-space: nowrap; } /* 「Cho. 山田・田中」の途中では折り返さない */
+.setlist li.setlist__se { list-style: decimal; } /* SE は番号の代わりに「SE」を、番号と同じ位置（::marker）に出す */
+.setlist li.setlist__se::marker { content: "SE  "; color: var(--muted); }
+/* 演奏曲との間に区切り線。線は SE の文字（番号の位置）の下から始め、右は少し手前で止める。
+   線は上下の余白の真ん中に来るよう、上下の余白（padding）を同じにする。先頭・末尾の SE は外側の線なし、SE が続くときは間の線なし */
+.setlist { --gutter: 1.6em; }
+.band-section .setlist { --gutter: 1.8em; }
+.setlist li.setlist__se { position: relative; padding: 10px 0; }
+.setlist li.setlist__se::before { content: ""; position: absolute; left: calc(-1 * var(--gutter)); right: 24px; top: 0; bottom: 0;
+  border-block: 1px solid var(--border); pointer-events: none; }
+.setlist li.setlist__se:first-child::before { border-top: 0; }
+.setlist li.setlist__se:last-child::before { border-bottom: 0; }
+.setlist li.setlist__se + li.setlist__se::before { border-top: 0; }
 .setlist__note + .setlist__note { margin-left: .9em; } /* 「、」の代わりのすき間 */
 /* 曲名の左の小さいジャケット。紐付けた曲は曲名ごとリンク（見ている人の音楽アプリで開く） */
 .setlist li { line-height: 28px; }
@@ -1464,6 +1484,7 @@ a.setlist__song:hover { color: var(--accent); text-decoration: underline; }
   .band-section .setlist { font-size: 17px; }
   .band-section .setlist ol { padding-left: 1.2em; margin-right: -10px; } /* 番号の左の余白を詰め、右はカードの余白に少しはみ出させて、試聴ボタンの場所をあける */
   .band-section .setlist li { line-height: 1.3; } /* 長い曲名が折り返したとき、行と行の間が空きすぎないように（行の高さはジャケットの 44px で決まる） */
+  .band-section .setlist { --gutter: 1.2em; }
   .band-section .setlist li::marker { font-size: 14px; } /* 余白を詰めても「10.」がはみ出さないように */
   .band-section .setlist__song { gap: 12px; max-width: calc(100% - 52px); overflow-wrap: anywhere; } /* 52px = ▶ の幅 34px + margin 8px + HTML の改行（空白1文字分）。曲名が長くても ▶ が次の行に落ちない */
   .band-section .setlist__play { margin-left: 8px; }
@@ -1869,6 +1890,8 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
 /* オムニバスのバンドでは、このアーティストの曲だけ少し強調する */
 .artist-setlist li.is-mine { font-weight: 700; color: var(--accent); }
 .artist-setlist li.is-mine::marker { color: var(--accent); }
+.artist-setlist li.is-se { list-style: decimal; } /* SE は番号の位置に「SE」（band.php のセットリストと同じ） */
+.artist-setlist li.is-se::marker { content: "SE  "; color: var(--muted); }
 
 /* import.php のタイムテーブル手入力 */
 .manual-tt .table-scroll { margin-bottom: 12px; }

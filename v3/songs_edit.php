@@ -121,8 +121,12 @@ if (is_post() && !$fromSheet) {
             $errors[] = "「{$title}」: 紐付けた曲の指定がおかしいです";
             continue;
         }
+        $isSe = !empty($in['se']); // SE: 演奏者・アーティストなし（曲の紐付けだけ可）
+        if ($isSe) {
+            $artist = '';
+        }
         $performers = [];
-        foreach ($members as $memberId => $_) {
+        foreach ($isSe ? [] : $members as $memberId => $_) {
             $p = $in['p'][$memberId] ?? [];
             if (empty($p['on'])) {
                 continue; // チェックが付いていない = その曲は弾いていない
@@ -141,6 +145,7 @@ if (is_post() && !$fromSheet) {
         $songs[] = [
             'song_id' => ctype_digit((string)($in['id'] ?? '')) ? (int)$in['id'] : null,
             'title' => $title,
+            'is_se' => $isSe,
             'artist' => $artist,
             'track' => $track,
             'k' => (int)$k,
@@ -149,8 +154,8 @@ if (is_post() && !$fromSheet) {
             'performers' => array_values($performers),
         ];
     }
-    if (count($songs) > 15) {
-        $errors[] = '曲は15曲までです';
+    if (count(array_filter($songs, static fn($s) => !$s['is_se'])) > 15) { // SE は曲数に数えない
+        $errors[] = '曲は15曲までです（SE は除く）';
     }
     // まだ track テーブルに無い曲は、Spotify / iTunes から取り直す（ブラウザから来た曲名や画像URLは使わない）。
     //   通信するので、トランザクションの外で先にやっておく（DB をロックしたまま外部の返事を待たないため）
@@ -214,7 +219,7 @@ if (is_post() && !$fromSheet) {
 /* =====================================================================
  *  表示用データ
  * ===================================================================== */
-$st = $pdo->prepare('SELECT s.song_id, s.track_no, s.title, a.name AS artist_name,
+$st = $pdo->prepare('SELECT s.song_id, s.track_no, s.title, s.is_se, a.name AS artist_name,
         s.track_source, s.track_id, t.title AS track_title, t.artist_name AS track_artist, t.artwork_url
     FROM song s
     LEFT JOIN artist a ON a.artist_id = s.artist_id
@@ -235,7 +240,7 @@ foreach ($st as $r) {
 
 // 空のカードは最初は出さない。最後に1枚だけ <template>（画面に出ない・送信もされない）の中に作っておき、
 // 「＋ 曲を追加」を押したら JS がコピーして並べる（assets/app.js の setupSongs）
-$emptyCard = ['song_id' => null, 'track_no' => 0, 'title' => '', 'artist_name' => null,
+$emptyCard = ['song_id' => null, 'track_no' => 0, 'title' => '', 'is_se' => 0, 'artist_name' => null,
     'track_source' => null, 'track_id' => null, 'track_title' => null, 'track_artist' => null, 'artwork_url' => null];
 $droppedTitles = []; // セッティングシートに無い、登録済みの曲（保存すると消える）
 if ($fromSheet) {
@@ -284,6 +289,7 @@ if ($fromSheet) {
 }
 // 最後の1枚は「＋ 曲を追加」用のひな形（<template> の中に入れる）
 $cards[] = $emptyCard + ['template' => true];
+$cards[] = array_merge($emptyCard, ['template' => true, 'is_se' => 1, 'template_se' => true]); // 「＋ SE を追加」用
 // 出演まで非公開: 保存済みの値。シートから来たときは、まだ公開時刻前なら最初からチェックを入れておく
 $private = $fromSheet
     ? ($setlistVis['private'] || ($setlistVis['open_at'] !== null && strtotime($setlistVis['open_at']) > time()))
@@ -328,30 +334,34 @@ render_header('セットリストを編集', 'lives');
     <?php if ($canPrivate): ?>
     <label class="check song-omnibus song-private"><input type="checkbox" name="setlist_private" value="1"<?= $private ? ' checked' : '' ?>> <?= icon('lock') ?> 出演まで非公開 <span class="muted small song-private__note">（終演30分後に公開<?= $setlistVis['open_at'] ? '：' . h(fmt_datetime($setlistVis['open_at'])) : '' ?>）</span></label>
     <?php endif; ?>
+    <button type="button" class="btn btn--ghost btn--sm song-add-se" data-add-song-se>＋ SE を追加</button>
     <datalist id="artists"><?php foreach ($artistNames as $n): ?><option value="<?= h($n) ?>"><?php endforeach; ?></datalist>
     <div class="song-list" data-song-list data-default-artist="<?= h($defaultArtist) ?>">
         <?php foreach ($cards as $k => $song):
             $isNew = $song['song_id'] === null;        // まだ DB に無い曲（シートから来た曲も含む）
-            $isTemplate = !empty($song['template']);     // 「＋ 曲を追加」用のひな形（画面には出ない）
+            $isTemplate = !empty($song['template']);     // 「＋ 曲を追加」「＋ SE を追加」用のひな形（画面には出ない）
+            $isSe = !empty($song['is_se']);              // SE（演奏者・アーティスト欄なし）
             $base = "songs[$k]";
             $artist = $omnibus ? ($song['artist_name'] ?? '') : $defaultArtist; // オムニバスはバンドのアーティストが無いので、曲に付いていなければ空欄
             $trackKey = $song['track_id'] === null ? '' : album_key($song['track_source'], $song['track_id']); ?>
-            <?php if ($isTemplate): ?><template data-song-template><?php endif; ?>
+            <?php if ($isTemplate): ?><template <?= $isSe ? 'data-song-template-se' : 'data-song-template' ?>><?php endif; ?>
             <!-- data-unsaved-blank: 曲名が空の新しい曲は保存されないので、未保存の警告の対象にしない（assets/app.js の setupUnsavedGuard） -->
-            <section class="card song-card<?= $isNew ? ' song-card--new' : '' ?>" data-song-card<?= $isNew ? ' data-unsaved-blank' : '' ?>>
+            <section class="card song-card<?= $isNew ? ' song-card--new' : '' ?><?= $isSe ? ' song-card--se' : '' ?>" data-song-card<?= $isNew ? ' data-unsaved-blank' : '' ?>>
                 <div class="song-card__head">
                     <!-- ≡: ドラッグ（↑↓キーでも）で曲の順番を入れ替える。pos = 上から何番目か（JS が振り直す。保存はこの順） -->
                     <button type="button" class="drag-handle" data-song-handle aria-label="ドラッグで並び替え（↑↓キーでも動く）" title="ドラッグで並び替え"><?= icon('drag_indicator') ?></button>
                     <input type="hidden" name="<?= $base ?>[pos]" value="<?= (int)$k ?>" data-song-pos>
-                    <span class="song-card__no"><span data-song-no><?= (int)$song['track_no'] ?></span>曲目</span>
+                    <input type="hidden" name="<?= $base ?>[se]" value="<?= $isSe ? '1' : '' ?>">
+                    <?php if ($isSe): ?><span class="song-card__no" title="SE"><span class="song-card__se-sp" aria-hidden="true">0</span><span class="song-card__se">SE</span></span><?php else: ?><span class="song-card__no"><span data-song-no><?= (int)$song['track_no'] ?></span>曲目</span><?php endif; ?>
                     <!-- ジャケット: 紐付けた曲の画像。紐付けていなければ ♪。
                          紐付けているときは、マウスを乗せると「リンクが切れるマーク」が重なり、押すと紐付けを外す -->
                     <span class="song-thumb" title="<?= $trackKey === '' ? '' : h($song['track_title'] . ' / ' . $song['track_artist']) ?>">
                         <span class="song-thumb__art" data-track-thumb><?php if ($trackKey !== ''): ?><img src="<?= h($song['artwork_url']) ?>" alt="" loading="lazy"><?php else: ?><?= icon('music_note') ?><?php endif; ?></span>
                         <button type="button" class="song-thumb__clear" data-track-clear aria-label="紐付けを外す"<?= $trackKey === '' ? ' hidden' : '' ?>><?= icon(ICON_UNLINK) ?></button>
                     </span>
-                    <input name="<?= $base ?>[title]" value="<?= h($song['title']) ?>" maxlength="100" placeholder="<?= $isNew ? '曲名を入力して追加' : '曲名' ?>" class="song-card__title" aria-label="曲名" data-unsaved-key>
-                    <input name="<?= $base ?>[artist]" value="<?= h($artist) ?>" maxlength="100" data-suggest-list="artists" autocomplete="off" placeholder="アーティスト" class="song-card__artist" aria-label="アーティスト" data-song-artist<?= $omnibus ? '' : ' readonly' ?>>
+                    <input name="<?= $base ?>[title]" value="<?= h($song['title']) ?>" maxlength="100" placeholder="<?= $isNew ? ($isSe ? 'SE名を入力して追加' : '曲名を入力して追加') : ($isSe ? 'SE名' : '曲名') ?>" class="song-card__title" aria-label="曲名" data-unsaved-key>
+                    <?php if ($isSe): ?><input type="hidden" name="<?= $base ?>[artist]" value="">
+                    <?php else: ?><input name="<?= $base ?>[artist]" value="<?= h($artist) ?>" maxlength="100" data-suggest-list="artists" autocomplete="off" placeholder="アーティスト" class="song-card__artist" aria-label="アーティスト" data-song-artist<?= $omnibus ? '' : ' readonly' ?>><?php endif; ?>
                     <input type="hidden" name="<?= $base ?>[track]" value="<?= h($trackKey) ?>" data-track-key>
                     <button type="button" class="btn btn--ghost btn--sm song-search-btn" data-track-search><?= icon('search') ?> 曲を探す</button>
                     <input type="hidden" name="<?= $base ?>[id]" value="<?= $isNew ? '' : (int)$song['song_id'] ?>">
@@ -362,8 +372,8 @@ render_header('セットリストを編集', 'lives');
                 </div>
                 <!-- 🔍 の検索結果（assets/app.js の setupTrackSearch が中身を入れる） -->
                 <div class="track-results" data-track-results hidden></div>
-                <div class="performers">
-                    <?php foreach ($members as $memberId => $m):
+                <div class="performers"<?= $isSe ? ' hidden' : '' ?>>
+                    <?php foreach ($isSe ? [] : $members as $memberId => $m):
                         // 既存の曲: 記録どおり / 新しい曲: バンドの担当を初期値にして全員ON
                         $insts = $isNew ? $m['roles'] : ($played[$song['song_id']][$memberId] ?? []);
                         $on = $isNew || $insts !== [];

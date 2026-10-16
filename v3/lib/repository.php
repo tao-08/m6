@@ -745,7 +745,7 @@ function band_song_count(int $bandId): int
     static $counts = null; // [band_id => 曲数]
     if ($counts === null) {
         $counts = [];
-        foreach (db()->query('SELECT band_id, COUNT(*) AS n FROM song GROUP BY band_id') as $r) {
+        foreach (db()->query('SELECT band_id, COUNT(*) AS n FROM song WHERE is_se = 0 GROUP BY band_id') as $r) {
             $counts[(int)$r['band_id']] = (int)$r['n'];
         }
     }
@@ -1423,9 +1423,9 @@ function save_songs(PDO $pdo, int $bandId, array $songs): void
     }
 
     $pdo->prepare('UPDATE song SET track_no = track_no + 100 WHERE band_id = ?')->execute([$bandId]);
-    $update = $pdo->prepare('UPDATE song SET track_no = ?, title = ?, artist_id = ?, track_source = ?, track_id = ?
+    $update = $pdo->prepare('UPDATE song SET track_no = ?, title = ?, is_se = ?, artist_id = ?, track_source = ?, track_id = ?
         WHERE song_id = ? AND band_id = ?');
-    $insert = $pdo->prepare('INSERT INTO song (band_id, track_no, title, artist_id, track_source, track_id) VALUES (?, ?, ?, ?, ?, ?)');
+    $insert = $pdo->prepare('INSERT INTO song (band_id, track_no, title, is_se, artist_id, track_source, track_id) VALUES (?, ?, ?, ?, ?, ?, ?)');
     $addRole = $pdo->prepare('INSERT IGNORE INTO band_member (band_id, member_id, instrument_id) VALUES (?, ?, ?)');
     $clear = $pdo->prepare('DELETE FROM song_performer WHERE song_id = ?');
     $addPerformer = $pdo->prepare('INSERT IGNORE INTO song_performer (song_id, band_id, member_id, instrument_id) VALUES (?, ?, ?, ?)');
@@ -1433,10 +1433,10 @@ function save_songs(PDO $pdo, int $bandId, array $songs): void
     foreach (array_values($songs) as $i => $song) {
         [$trackSource, $trackId] = $song['track'] ?? [null, null];
         if ($song['song_id'] && in_array($song['song_id'], $existing, true)) {
-            $update->execute([$i + 1, $song['title'], $song['artist_id'], $trackSource, $trackId, $song['song_id'], $bandId]);
+            $update->execute([$i + 1, $song['title'], (int)!empty($song['is_se']), $song['artist_id'], $trackSource, $trackId, $song['song_id'], $bandId]);
             $songId = $song['song_id'];
         } else {
-            $insert->execute([$bandId, $i + 1, $song['title'], $song['artist_id'], $trackSource, $trackId]);
+            $insert->execute([$bandId, $i + 1, $song['title'], (int)!empty($song['is_se']), $song['artist_id'], $trackSource, $trackId]);
             $songId = (int)$pdo->lastInsertId();
         }
         $clear->execute([$songId]);
@@ -1610,11 +1610,11 @@ function merge_band_into(PDO $pdo, int $fromId, int $toId): void
     if ($copySongs) {
         $songs = $pdo->prepare('SELECT * FROM song WHERE band_id = ? ORDER BY track_no');
         $songs->execute([$fromId]);
-        $insertSong = $pdo->prepare('INSERT INTO song (band_id, track_no, title, artist_id, track_source, track_id) VALUES (?, ?, ?, ?, ?, ?)');
+        $insertSong = $pdo->prepare('INSERT INTO song (band_id, track_no, title, is_se, artist_id, track_source, track_id) VALUES (?, ?, ?, ?, ?, ?, ?)');
         $copyPerformers = $pdo->prepare('INSERT INTO song_performer (song_id, band_id, member_id, instrument_id)
             SELECT ?, ?, member_id, instrument_id FROM song_performer WHERE song_id = ?');
         foreach ($songs->fetchAll() as $s) {
-            $insertSong->execute([$toId, $s['track_no'], $s['title'], $s['artist_id'], $s['track_source'], $s['track_id']]);
+            $insertSong->execute([$toId, $s['track_no'], $s['title'], $s['is_se'], $s['artist_id'], $s['track_source'], $s['track_id']]);
             $copyPerformers->execute([(int)$pdo->lastInsertId(), $toId, $s['song_id']]);
         }
     }

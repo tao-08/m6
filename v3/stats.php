@@ -313,7 +313,7 @@ $topSongs = rows($pdo, 'SELECT m.member_id, m.name,
     JOIN band b ON b.band_id = bm.band_id
     JOIN live_day ld ON ld.live_day_id = b.live_day_id
     JOIN live lm ON lm.live_id = ld.live_id
-    LEFT JOIN (SELECT band_id, COUNT(*) AS c FROM song GROUP BY band_id) sc ON sc.band_id = b.band_id
+    LEFT JOIN (SELECT band_id, COUNT(*) AS c FROM song WHERE is_se = 0 GROUP BY band_id) sc ON sc.band_id = b.band_id
     LEFT JOIN (SELECT band_id, member_id, COUNT(DISTINCT song_id) AS n FROM song_performer GROUP BY band_id, member_id) mine
         ON mine.band_id = bm.band_id AND mine.member_id = bm.member_id
     WHERE 1 = 1' . $yearSql . $memberSql . '
@@ -363,7 +363,7 @@ foreach (rows($pdo, 'SELECT s.title, a.artist_id, a.name AS artist_name,
     LEFT JOIN track t ON t.source = s.track_source AND t.track_id = s.track_id
     JOIN live_day ld ON ld.live_day_id = b.live_day_id
     JOIN live lm ON lm.live_id = ld.live_id
-    WHERE NOT ' . setlist_hidden_sql('b') . $yearSql . $bandSql, array_merge($yearParams, $memberParams)) as $r) { // 出演まで非公開の曲は数えない
+    WHERE s.is_se = 0 AND NOT ' . setlist_hidden_sql('b') . $yearSql . $bandSql, array_merge($yearParams, $memberParams)) as $r) { // 出演まで非公開の曲は数えない
     $titleKey = song_title_key($r['title'], $r['artist_name']);
     $key = ($r['artist_id'] ?? 0) . ':' . ($titleKey !== '' ? $titleKey : $r['title']); // 記号だけの曲名はそのまま比べる
     $g = &$topTitles[$key]; // & = 配列の中身を直接書き換える（参照）

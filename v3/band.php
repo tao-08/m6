@@ -101,7 +101,7 @@ $isMine = $user['member_id'] && in_array($user['member_id'], $memberIds, true);
 
 // ---- 3. 曲 ----
 // オムニバスのときだけ曲ごとのアーティストを出す。song.artist_id が NULL = バンドのアーティストと同じ
-$st = $pdo->prepare('SELECT s.song_id, s.track_no, s.title, a.name AS artist_name,
+$st = $pdo->prepare('SELECT s.song_id, s.track_no, s.title, s.is_se, a.name AS artist_name,
         t.source, t.track_id, t.title AS track_title, t.artist_name AS track_artist, t.artwork_url
     FROM song s
     LEFT JOIN artist a ON a.artist_id = s.artist_id
@@ -117,7 +117,7 @@ foreach ($st as $s) {
 $setlistVis = band_setlist_visibility($pdo, $bandId);
 $hiddenSongCount = 0;
 if ($setlistVis['hidden']) {
-    $hiddenSongCount = count($songs);
+    $hiddenSongCount = count(array_filter($songs, static fn($s) => !$s['is_se']));
     $songs = []; // ここで空にしておけば、下の演奏者・ジャケット・試聴の処理にも曲名が流れない
 }
 
@@ -208,6 +208,10 @@ function song_notes(array $songs, array $lineup): array
 
     $notes = [];
     foreach ($songs as $songId => $song) {
+        if ($song['is_se']) {
+            $notes[$songId] = []; // SE に演奏者はいない（「不参加」を出さない）
+            continue;
+        }
         $parts = [];
         $helpers = [];
         foreach ($sets[$songId] ?? [] as $memberId => $set) {
@@ -328,7 +332,7 @@ render_header($band['name'], 'lives');
 
 <section class="card band-section">
     <?php // 曲が未登録のときは band.song_count（タイムテーブルの曲数）を「予定」として出す。登録済みの曲数と混ぜない ?>
-    <h2 class="section-title section-title--card">セットリスト <small class="muted"><?= $songs ? count($songs) . '曲' : ($hiddenSongCount ? $hiddenSongCount . '曲' : '') ?></small>
+    <h2 class="section-title section-title--card">セットリスト <small class="muted"><?= $songs ? count(array_filter($songs, static fn($s) => !$s['is_se'])) . '曲' : ($hiddenSongCount ? $hiddenSongCount . '曲' : '') ?></small>
         <?php if ($setlistVis['private']): ?><span class="tag" title="出演まで非公開"><?= icon('lock') ?> 非公開</span><?php endif; ?></h2>
     <?php if ($setlistVis['private'] && !$setlistVis['hidden'] && $songs): // メンバー・管理者には見えている。いつ公開されるかを案内 ?>
         <p class="muted small"><?= icon('lock') ?> <?= $setlistVis['open_at'] ? h(fmt_datetime($setlistVis['open_at'])) . ' に公開されます。' : '公開する時刻が決まっていません（出演日が未登録）。' ?>メンバーと管理者だけに見えています。</p>
@@ -342,14 +346,27 @@ render_header($band['name'], 'lives');
             <p class="setlist-hint muted small no-print">ジャケットを押すと<?= h($viewerApp !== null ? MUSIC_APPS[$viewerApp] : '音楽アプリ') ?>で開き、 <?= icon('play_circle') ?> で試聴できます。</p>
         <?php endif; ?>
         <div class="setlist"><ol>
-            <?php foreach ($songs as $songId => $song):
+            <?php $songNo = 0; // SE は番号を振らない（曲だけ 1, 2, 3...）
+            foreach ($songs as $songId => $song):
+                $isSe = (bool)$song['is_se'];
+                if (!$isSe) {
+                    $songNo++;
+                }
                 // オムニバスのときだけ、曲名の横にその曲のアーティスト（曲に付いていなければ出さない）
-                $songArtist = $band['is_omnibus'] ? $song['artist_name'] : null;
+                $songArtist = $band['is_omnibus'] && !$isSe ? $song['artist_name'] : null;
+                if ($isSe && $song['track_artist'] !== null) {
+                    // SE: 紐付けた曲のアーティストがバンドのアーティストと違うときだけ、SE名の下に出す
+                    $norm = static fn(string $n): string => mb_strtolower(trim($n));
+                    $bandArtist = (string)($band['artist_name'] ?? $band['name']);
+                    if ($norm($song['track_artist']) !== $norm($bandArtist)) {
+                        $songArtist = $song['track_artist'];
+                    }
+                }
                 // 曲名の下にアーティスト（縦に2段）。▶ はこの2段の右に来る
                 $songText = $songArtist
                     ? '<span class="setlist__text"><span class="setlist__name">' . h($song['title']) . '</span><span class="setlist__artist">' . h($songArtist) . '</span></span>'
                     : '<span class="setlist__name">' . h($song['title']) . '</span>'; // .setlist__name: 折り返したら少し小さくする（app.js の setupSetlistNames） ?>
-                <li>
+                <li<?= $isSe ? ' class="setlist__se"' : ' value="' . $songNo . '"' ?>>
                     <?php if ($song['source'] !== null):
                         // 紐付けた曲: 曲名はただの文字。ジャケットにマウスを乗せると音楽アプリのアイコンが重なって出て、押すと聴ける
                         $k = album_key($song['source'], $song['track_id']);

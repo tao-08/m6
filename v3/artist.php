@@ -73,7 +73,7 @@ $topPlayers = $st->fetchAll();
 
 // セットリスト: バンドごとに曲順で全曲。オムニバスのバンドはこのアーティストの曲だけ少し強調する（mine）
 $setlists = []; // [band_id] = [['title' => 曲名, 'mine' => 強調するか], ...]
-$st = $pdo->prepare('SELECT s.band_id, s.title, (b.is_omnibus = 1 AND s.artist_id = ?) AS mine
+$st = $pdo->prepare('SELECT s.band_id, s.title, s.is_se, (b.is_omnibus = 1 AND s.artist_id = ?) AS mine
     FROM band b
     JOIN song s ON s.band_id = b.band_id
     WHERE ' . $bandWhere . '
@@ -81,7 +81,7 @@ $st = $pdo->prepare('SELECT s.band_id, s.title, (b.is_omnibus = 1 AND s.artist_i
     ORDER BY s.track_no');
 $st->execute([$artistId, $artistId]);
 foreach ($st as $s) {
-    $setlists[(int)$s['band_id']][] = ['title' => $s['title'], 'mine' => (bool)$s['mine']];
+    $setlists[(int)$s['band_id']][] = ['title' => $s['title'], 'mine' => (bool)$s['mine'], 'se' => (bool)$s['is_se']];
 }
 
 // よく演奏される曲（上位15位）: 曲名ごとに何バンドが演奏したか。オムニバスのバンドはこのアーティストの曲だけ数える
@@ -89,6 +89,7 @@ $st = $pdo->prepare('SELECT s.title, COUNT(DISTINCT b.band_id) AS n
     FROM band b
     JOIN song s ON s.band_id = b.band_id
     WHERE ' . $bandWhere . '
+      AND s.is_se = 0
       AND (b.is_omnibus = 0 OR s.artist_id = ?)
       AND NOT ' . setlist_hidden_sql('b') . '
     GROUP BY s.title
@@ -270,8 +271,12 @@ render_header($artist['name'], 'artists');
                 <td>
                     <?php if (!empty($setlists[(int)$b['band_id']])): ?>
                         <ol class="artist-setlist">
-                            <?php foreach ($setlists[(int)$b['band_id']] as $song): ?>
-                                <li<?= $song['mine'] ? ' class="is-mine"' : '' ?>><?= h($song['title']) ?></li>
+                            <?php $songNo = 0; // SE は番号を振らない（曲だけ 1, 2, 3...）
+                            foreach ($setlists[(int)$b['band_id']] as $song):
+                                if (!$song['se']) {
+                                    $songNo++;
+                                } ?>
+                                <li<?= $song['se'] ? ' class="is-se"' : ($song['mine'] ? ' class="is-mine"' : '') ?><?= $song['se'] ? '' : ' value="' . $songNo . '"' ?>><?= h($song['title']) ?></li>
                             <?php endforeach; ?>
                         </ol>
                     <?php else: ?><span class="muted">—</span><?php endif; ?>

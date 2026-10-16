@@ -350,6 +350,7 @@ CREATE TABLE song (
     band_id      INT UNSIGNED     NOT NULL,
     track_no     TINYINT UNSIGNED NOT NULL,            -- 何曲目か
     title        VARCHAR(100)     NOT NULL,
+    is_se        TINYINT(1)       NOT NULL DEFAULT 0,  -- 1 = SE（曲数・演奏者・統計に数えない。migrations/057）
     artist_id    INT UNSIGNED     NULL,                -- その曲のアーティスト（NULL = バンドと同じ）
     track_source VARCHAR(10) CHARACTER SET ascii COLLATE ascii_bin NULL,
     track_id     VARCHAR(40) CHARACTER SET ascii COLLATE ascii_bin NULL,

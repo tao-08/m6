@@ -343,7 +343,7 @@ function setupToasts() {
 
 /* ---------------------------------------------------------------------
  * 曲の編集（songs_edit.php）
- *   data-add-song       … <template data-song-template> をコピーして空の曲カードを足す
+ *   data-add-song       … <template data-song-template> をコピーして空の曲カードを足す（data-add-song-se は SE 用）
  *   data-performer-on   … チェックを外した人を薄く表示
  *   data-omnibus        … オムニバスのチェック。外すとアーティスト欄をバンドのアーティストに戻して編集不可にする。
  *                         付けると空欄（前に書いていた名前があれば戻す）にして編集できるようにする
@@ -397,7 +397,9 @@ function setupSongs() {
   const cards = () => [...list.querySelectorAll('[data-song-card]:not(.is-leaving)')];
   const renumber = () => {
     cards().forEach((c, i) => {
-      c.querySelector('[data-song-no]').textContent = String(i + 1);
+    let n = 1; // SE は数えない（曲の番号は 1, 2, 3...）
+      const no = c.querySelector('[data-song-no]'); // SE のカードには番号が無い
+      if (no) no.textContent = String(n++);
       const pos = c.querySelector('[data-song-pos]');
       if (pos) pos.value = String(i);
     });
@@ -506,25 +508,30 @@ function setupSongs() {
   // 空のカードの元（songs_edit.php の <template>）。template の中身は画面に出ず、送信もされない
   const template = list.querySelector('[data-song-template]');
   // name="songs[3][title]" の 3 の部分。保存済みの曲（0, 1, 2...）より大きく、押すたびに 1 ずつ増やして被らないようにする
+  const templateSe = list.querySelector('[data-song-template-se]'); // SE 用（演奏者・アーティスト欄なし）
   //   （Date.now() をそのまま使うと、同じミリ秒に2回押したとき同じ番号になり、2曲が1曲に混ざる）
   let nextIndex = Date.now();
-  document.querySelector('[data-add-song]').addEventListener('click', () => {
-    const card = template.content.firstElementChild.cloneNode(true);
+  const addCard = (tpl) => {
+    const card = tpl.content.firstElementChild.cloneNode(true);
     const newIndex = nextIndex++;
     card.querySelectorAll('[name]').forEach((el) => {
       el.name = el.name.replace(/^songs\[[^\]]+\]/, `songs[${newIndex}]`);
     });
     // テンプレートはページを開いたときのオムニバスの状態で作られているので、今のチェックに合わせる
-    const artist = card.querySelector('[data-song-artist]');
-    artist.value = omnibus.checked ? '' : defaultArtist;
-    artist.readOnly = !omnibus.checked;
+    const artist = card.querySelector('[data-song-artist]'); // SE には無い
+    if (artist) {
+      artist.value = omnibus.checked ? '' : defaultArtist;
+      artist.readOnly = !omnibus.checked;
+    }
     // ふわっと出す（CSS の .song-card.is-entering）。終わったらクラスを外しておく
     card.classList.add('is-entering');
     card.addEventListener('animationend', () => card.classList.remove('is-entering'), { once: true });
     list.appendChild(card);
     renumber();
     card.querySelector('[name$="[title]"]').focus();
-  });
+  };
+  document.querySelector('[data-add-song]').addEventListener('click', () => addCard(template));
+  document.querySelector('[data-add-song-se]').addEventListener('click', () => addCard(templateSe));
 
   // カードが後から増えるので、list でまとめてイベントを受ける（イベント委譲）
   list.addEventListener('click', (e) => {
@@ -703,7 +710,8 @@ function setupTrackSearch() {
       message(results, '先に曲名を入れてから探してください');
       return;
     }
-    const q = `${title} ${card.querySelector('[data-song-artist]').value.trim()}`;
+    const artistInput = card.querySelector('[data-song-artist]'); // SE には無い
+    const q = `${title} ${artistInput ? artistInput.value.trim() : ''}`.trim();
     message(results, '検索中…');
     searchBtn.disabled = true;
     try {
@@ -722,8 +730,8 @@ function setupTrackSearch() {
           card.querySelector('[name$="[title]"]').value = track.title;
           // オムニバスのとき（アーティスト欄が編集できるとき）だけ、選んだ曲のアーティストを入れる。
           //   Spotify は「A, B」と複数人をつないで返すので、先頭の1人だけ（"A, B" という新しいアーティストを作らないため）
-          const artist = card.querySelector('[data-song-artist]');
-          if (!artist.readOnly) artist.value = track.artist_name.split(', ')[0];
+          const artist = card.querySelector('[data-song-artist]'); // SE には無い
+          if (artist && !artist.readOnly) artist.value = track.artist_name.split(', ')[0];
           setTrack(card, track);
         });
         return btn;
