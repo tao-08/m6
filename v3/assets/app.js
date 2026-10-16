@@ -397,8 +397,8 @@ function setupSongs() {
   //   並び順の隠し項目（data-song-pos）も同じ順に振り直す。保存はこの順（songs_edit.php）
   const cards = () => [...list.querySelectorAll('[data-song-card]:not(.is-leaving)')];
   const renumber = () => {
-    cards().forEach((c, i) => {
     let n = 1; // SE は数えない（曲の番号は 1, 2, 3...）
+    cards().forEach((c, i) => {
       const no = c.querySelector('[data-song-no]'); // SE のカードには番号が無い
       if (no) no.textContent = String(n++);
       const pos = c.querySelector('[data-song-pos]');
@@ -508,8 +508,8 @@ function setupSongs() {
 
   // 空のカードの元（songs_edit.php の <template>）。template の中身は画面に出ず、送信もされない
   const template = list.querySelector('[data-song-template]');
-  // name="songs[3][title]" の 3 の部分。保存済みの曲（0, 1, 2...）より大きく、押すたびに 1 ずつ増やして被らないようにする
   const templateSe = list.querySelector('[data-song-template-se]'); // SE 用（演奏者・アーティスト欄なし）
+  // name="songs[3][title]" の 3 の部分。保存済みの曲（0, 1, 2...）より大きく、押すたびに 1 ずつ増やして被らないようにする
   //   （Date.now() をそのまま使うと、同じミリ秒に2回押したとき同じ番号になり、2曲が1曲に混ざる）
   let nextIndex = Date.now();
   const addCard = (tpl) => {
@@ -1140,14 +1140,6 @@ function setupBoardPanels() {
   }));
   const first = location.hash.slice(1);
   if (panels.some((p) => p.id === first)) open(first);
-}
-
-/* ---------------------------------------------------------------------
- * 掲示板の返信先（board_thread.php）
- *   各書き込みの返信ボタン [data-board-reply] で、返信先に追加・解除（複数可。最大 MAX 件）。
- *   選んだものは返信欄の上にチップで並べ、送信用に hidden の reply_to[] を入れる。チップを押しても解除できる。
- *   書き込み番号は textContent で入れる（innerHTML は使わない）
- * ------------------------------------------------------------------- */
 
   // 現役のみ・同期のみは、どちらかを ON にするともう片方と年度の範囲をグレーアウトする（展開は CSS。.restrict）
   document.querySelectorAll('[data-board-restrict]').forEach((box) => {
@@ -1164,6 +1156,14 @@ function setupBoardPanels() {
   });
 
 
+}
+
+/* ---------------------------------------------------------------------
+ * 掲示板の返信先（board_thread.php）
+ *   各書き込みの返信ボタン [data-board-reply] で、返信先に追加・解除（複数可。最大 MAX 件）。
+ *   選んだものは返信欄の上にチップで並べ、送信用に hidden の reply_to[] を入れる。チップを押しても解除できる。
+ *   書き込み番号は textContent で入れる（innerHTML は使わない）
+ * ------------------------------------------------------------------- */
 function setupBoardReply() {
   const box = document.querySelector('[data-board-reply-to]');
   if (!box) return;
@@ -1316,25 +1316,51 @@ function setupSmallThings() {
       { duration: 180, easing: 'cubic-bezier(.2, .9, .3, 1.1)' });
   }));
 
-  // ベル（data-notice-open）を開いたら、ポップアップに出した直近3件を既読にしてバッジを消す。
+  // ベル（data-notice-open）を開いたら・タブ（data-notif-tab）を切り替えたら、そのタブの直近の分を既読にしてバッジを減らす。
   //   どれを既読にするかはサーバーが決める（api_notice_read.php）。メニューは同時に1つだけ開く
   const menus = [...document.querySelectorAll('.usermenu')];
   menus.forEach((m) => m.addEventListener('toggle', () => {
     if (m.open) menus.forEach((o) => { if (o !== m) o.open = false; });
   }));
-  document.querySelector('[data-notice-open]')?.addEventListener('click', (e) => {
-    const badge = e.currentTarget.querySelector('[data-notice-badge]');
-    if (!badge || e.currentTarget.closest('details').open) return;
+  const bell = document.querySelector('[data-notice-open]');
+  const markRead = (tab) => {
+    const count = tab.querySelector('[data-notif-count]');
+    if (!count) return;
     const token = document.querySelector('meta[name="csrf-token"]')?.content || '';
-    fetch('api_notice_read.php', { method: 'POST', headers: { 'X-CSRF-Token': token } })
+    const body = new URLSearchParams({ kind: tab.dataset.notifTab });
+    fetch('api_notice_read.php', { method: 'POST', headers: { 'X-CSRF-Token': token }, body })
       .then((r) => r.json())
       .then((d) => {
         if (typeof d.unread !== 'number') return;
-        if (d.unread > 0) badge.textContent = d.unread > 9 ? '9+' : String(d.unread);
-        else badge.remove();
+        const fmt = (n) => (n > 9 ? '9+' : String(n));
+        if (d.tab > 0) count.textContent = fmt(d.tab); else count.remove();
+        const badge = bell.querySelector('[data-notice-badge]');
+        if (!badge) return;
+        if (d.unread > 0) badge.textContent = fmt(d.unread); else badge.remove();
       })
       .catch(() => {});
+  };
+  bell?.addEventListener('click', (e) => {
+    if (e.currentTarget.closest('details').open) return;
+    const active = bell.closest('details').querySelector('[data-notif-tab].is-active');
+    if (active) markRead(active);
   });
+  bell?.closest('details').querySelectorAll('[data-notif-tab]').forEach((tab, _, tabs) => tab.addEventListener('click', () => {
+    tabs.forEach((t) => {
+      const on = t === tab;
+      t.classList.toggle('is-active', on);
+      t.setAttribute('aria-selected', String(on));
+      bell.closest('details').querySelector(`[data-notif-pane="${t.dataset.notifTab}"]`).hidden = !on;
+    });
+    // 切り替えた先のタブを、タブの並びの向き（通知=左 / お知らせ=右）から軽くスライドして出す
+    if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      const dir = tab === tabs[0] ? -12 : 12;
+      bell.closest('details').querySelector(`[data-notif-pane="${tab.dataset.notifTab}"]`).animate(
+        [{ opacity: 0, transform: `translateX(${dir}px)` }, { opacity: 1, transform: 'none' }],
+        { duration: 180, easing: 'ease-out' });
+    }
+    markRead(tab);
+  }));
 
   // お知らせのカテゴリタブ（data-notice-tabs）: ページを移動せず、data-notice-cat が合う記事だけ表示する。
   //   表示の動きは CSS（.notice-item:not([hidden]) のアニメーション）。URL の ?cat= も書きかえて、共有・再読み込みしても同じタブになる
@@ -1386,7 +1412,7 @@ function setupSmallThings() {
     if (card.id && location.hash === '#' + card.id) card.open = true;
     card.querySelector('summary')?.addEventListener('click', () => {
       if (card.open || matchMedia('(prefers-reduced-motion: reduce)').matches) return; // card.open = これから閉じる
-      card.querySelector('.togglecard__body')?.animate(
+      card.querySelector('.togglecard__body, .notice-body')?.animate(
         [{ opacity: 0, transform: 'translateY(-8px)' }, { opacity: 1, transform: 'none' }],
         { duration: 220, easing: 'cubic-bezier(.2, .9, .3, 1.1)' });
     });
@@ -1605,11 +1631,16 @@ function setupPush() {
   // 端末の登録・解除が終わるまで、下の保存ボタンは押せない
   const saveBtns = document.querySelectorAll('[data-push-form] button[type="submit"]');
   const setBusy = (on) => saveBtns.forEach((b) => { b.disabled = on; });
+  // 通知オンが外れている間は、下の受け取り設定をグレーにして触れなくする（inert。disabled だと保存で 0 に上書きされるため使わない）
+  const prefChecks = document.querySelectorAll('[data-push-form] .check');
+  const syncPrefs = () => prefChecks.forEach((l) => { l.inert = !box.checked; });
+  syncPrefs();
 
   const lock = (message) => {
     box.disabled = true;
     box.checked = false;
     wrap.title = message;
+    syncPrefs();
   };
   if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
     lock('ホーム画面に追加すると使えます');
@@ -1642,7 +1673,7 @@ function setupPush() {
   // いまの状態を反映（この端末がすでに購読していれば ON）
   navigator.serviceWorker.ready
     .then((reg) => reg.pushManager.getSubscription())
-    .then((sub) => { box.checked = sub !== null && Notification.permission === 'granted'; })
+    .then((sub) => { box.checked = sub !== null && Notification.permission === 'granted'; syncPrefs(); })
     .catch(() => {});
 
   box.addEventListener('change', async () => {
@@ -1672,6 +1703,7 @@ function setupPush() {
     } finally {
       if (Notification.permission !== 'denied') box.disabled = false;
       setBusy(false);
+      syncPrefs();
     }
   });
 }

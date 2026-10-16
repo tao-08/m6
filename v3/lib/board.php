@@ -177,6 +177,68 @@ function board_unread_count(array $user): int
     return (int)$st->fetchColumn();
 }
 
+const BOARD_PER_PAGE = 100; // スレの中身は、書き込み100件ごとにページを分ける
+
+/** その書き込みが、スレの何ページ目にあるか（削除された書き込みも番号に数える） */
+function board_post_page(int $threadId, int $postId): int
+{
+    $st = db()->prepare('SELECT COUNT(*) FROM board_post WHERE thread_id = ? AND post_id <= ?');
+    $st->execute([$threadId, $postId]);
+    return max(1, (int)ceil((int)$st->fetchColumn() / BOARD_PER_PAGE));
+}
+
+/**
+ * 掲示板の書き込みを、個人宛てのお知らせ（カテゴリ「掲示板」）にする。呼ぶのは lib/push.php の board_push_send()。
+ *   $to … お知らせを出す user_id の一覧（誰に出すかは呼ぶ側で決める）/ $replied … そのうち、書き込みへ返信された人
+ *   ・自分への返信は毎回出す。それ以外は、同じスレの未読のお知らせが残っている人には足さない（現役・同期スレで山にならないように）
+ *   ・アプリ通知は board_push_send() が別に送るので、ここでは pushed_at を入れて、お知らせ側の通知（push_dispatch_due）で二重に飛ばない
+ *   ・スレ名・本文は通知のときの文字を保存する（あとで消しても残る。表示側で h() する）
+ */
+function board_notice_add(array $thread, int $postId, int $authorId, ?int $authorMemberId, string $authorName, string $body, array $to, array $replied): void
+{
+    if (!$to) {
+        return;
+    }
+    $pdo = db();
+    $threadId = (int)$thread['thread_id'];
+    $cat = board_notice_category();
+
+    $in = implode(',', array_fill(0, count($to), '?'));
+    $st = $pdo->prepare("SELECT DISTINCT n.target_user_id FROM notice n
+        LEFT JOIN notice_read r ON r.notice_id = n.notice_id AND r.user_id = n.target_user_id
+        WHERE n.category_id = ? AND r.user_id IS NULL AND n.link_url LIKE ? AND n.target_user_id IN ($in)");
+    $st->execute([$cat, 'board_thread?id=' . $threadId . '&%', ...$to]);
+    $pending = array_flip(array_map('intval', $st->fetchAll(PDO::FETCH_COLUMN)));
+
+    $link = 'board_thread?id=' . $threadId . '&page=' . board_post_page($threadId, $postId) . '#p' . $postId;
+    $who = $authorMemberId !== null ? '[[member?id=' . $authorMemberId . '|' . $authorName . ']]' : ($authorName !== '' ? $authorName : '退会ユーザー');
+    $excerpt = "\n\n" . mb_substr($body, 0, 200) . (mb_strlen($body) > 200 ? '…' : '');
+    $threadName = mb_substr((string)$thread['title'], 0, 70);
+    $head = '[[board_thread?id=' . $threadId . '|' . $thread['title'] . ']] に' . $who;
+    $ins = $pdo->prepare('INSERT INTO notice (user_id, target_user_id, category_id, is_important, title, body, link_url, pushed_at)
+        VALUES (?, ?, ?, 0, ?, ?, ?, NOW())');
+    foreach ($to as $uid) {
+        $isReply = in_array($uid, $replied, true);
+        if (!$isReply && isset($pending[$uid])) {
+            continue;
+        }
+        $ins->execute([
+            $authorId > 0 ? $authorId : null, $uid, $cat,
+            $threadName . ($isReply ? ' に返信がありました' : ' に書き込みがありました'),
+            $head . ($isReply ? 'が返信しました' : 'が書き込みました') . $excerpt,
+            $link,
+        ]);
+    }
+}
+
+/** お知らせのカテゴリ「掲示板」の ID（名前で探す。無ければ作る。NOTICE_SYSTEM_CATEGORIES なので画面からは変えられない） */
+function board_notice_category(): int
+{
+    $pdo = db();
+    $pdo->exec("INSERT IGNORE INTO notice_category (name, color) VALUES ('掲示板', 'purple')");
+    return (int)$pdo->query("SELECT category_id FROM notice_category WHERE name = '掲示板'")->fetchColumn();
+}
+
 /** ここまで読んだ、を記録する（戻ることはしない） */
 function board_mark_read(int $userId, int $threadId, int $postId): void
 {

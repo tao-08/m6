@@ -235,6 +235,7 @@ render_header($live['name'], 'lives');
                         <?= band_artist_links($b, $omnibusArtists) // オムニバスなら曲のアーティストを全部 ?>
                         <?php if ($memberIds): ?><span><?= count(array_unique($memberIds)) ?>名</span><?php endif; ?>
                         <?php if ($b['song_count'] !== null): // NULL = 曲数不明なら出さない ?><span><?= (int)$b['song_count'] ?>曲</span><?php endif; ?>
+                        <?php if ($b['has_se']): ?><span class="se-mark" title="SE">SE</span><?php endif; ?>
                         <?= setlist_badge((int)$b['setlist_count'], (int)$b['song_count']) ?>
                         <?php if ($b['note']): ?><span class="band-note"><?= icon('sticky_note_2') ?> <?= h($b['note']) ?></span><?php endif; ?>
                     </p>
@@ -253,7 +254,6 @@ render_header($live['name'], 'lives');
     <!-- 前後のライブ。見た目は band.php の前後のバンドと同じ（band-pager） -->
     <nav class="band-pager no-print" aria-label="前後のライブ">
         <?php foreach ([['prev', $prevLive, 'chevron_left', '前のライブ'], ['next', $nextLive, 'chevron_right', '次のライブ']] as [$dir, $l, $arrow, $label]): ?>
-                        <?php if ($b['has_se']): ?><span class="se-mark" title="SE">SE</span><?php endif; ?>
             <?php if ($l): ?>
                 <a class="band-pager__link band-pager__link--<?= $dir ?>" href="live?id=<?= (int)$l['live_id'] ?>" rel="<?= $dir ?>">
                     <?= icon($arrow) ?>

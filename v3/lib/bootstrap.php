@@ -510,6 +510,43 @@ function verify_csrf(): void
 // お知らせ・掲示板のカテゴリの色（保存するのはキーだけ。CSS のクラス名 tag--c-◯◯ に使うので、ここにある名前以外は受け付けない）
 const NOTICE_COLORS = ['gray' => 'グレー', 'blue' => '青', 'green' => '緑', 'yellow' => '黄', 'red' => '赤', 'purple' => '紫', 'pink' => 'ピンク'];
 
+// お知らせのカテゴリのうち、サイトが自動で出す通知専用のもの（lib/comments.php・lib/board.php が名前で探す）。
+// 名前・色の変更と削除はできず、管理者の手動投稿でも選べない（notices.php）
+const NOTICE_SYSTEM_CATEGORIES = ['コメント', '掲示板'];
+
+/**
+ * お知らせを「通知」（自動。ベル・notifications.php）と「お知らせ」（管理者の告知。notices.php）に分ける WHERE 句。n は notice の別名。
+ * 混ぜると掲示板の通知で告知が押し流されるので、未読数・一覧・既読はそれぞれ別に数える
+ */
+function notice_kind_sql(bool $system): string
+{
+    $names = implode(',', array_map(static fn(string $s) => db()->quote($s), NOTICE_SYSTEM_CATEGORIES));
+    return 'n.category_id ' . ($system ? 'IN' : 'NOT IN') . " (SELECT category_id FROM notice_category WHERE name IN ($names))";
+}
+
+/** 公開済みで自分に見える未読の数（通知 or お知らせ） */
+function notice_unread_count(int $userId, bool $system): int
+{
+    $st = db()->prepare('SELECT COUNT(*) FROM notice n LEFT JOIN notice_read r ON r.notice_id = n.notice_id AND r.user_id = ?
+        WHERE r.user_id IS NULL AND n.publish_at <= NOW() AND (n.target_user_id IS NULL OR n.target_user_id = ?) AND ' . notice_kind_sql($system));
+    $st->execute([$userId, $userId]);
+    return (int)$st->fetchColumn();
+}
+
+// ベルのポップアップの各タブに出す件数（api_notice_read.php も同じ件数だけ既読にする）
+const NOTIF_POPUP_LIMIT = 5;
+
+/** ベルのポップアップのタブ（通知 or お知らせ）に出す直近の分。お知らせは重要（4日以内）を先頭に固定 */
+function notice_recent(int $userId, bool $system): array
+{
+    $st = db()->prepare('SELECT n.notice_id, n.title, n.link_url, n.publish_at, n.is_important, (r.user_id IS NULL) AS is_new FROM notice n
+        LEFT JOIN notice_read r ON r.notice_id = n.notice_id AND r.user_id = ?
+        WHERE n.publish_at <= NOW() AND (n.target_user_id IS NULL OR n.target_user_id = ?) AND ' . notice_kind_sql($system) . '
+        ORDER BY (n.is_important = 1 AND n.publish_at > NOW() - INTERVAL 4 DAY) DESC, n.publish_at DESC, n.notice_id DESC LIMIT ' . NOTIF_POPUP_LIMIT);
+    $st->execute([$userId, $userId]);
+    return $st->fetchAll();
+}
+
 /* =====================================================================
  *  ログイン関係
  * ---------------------------------------------------------------------

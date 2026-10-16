@@ -699,6 +699,8 @@ td .tag--plan { margin-top: 4px; } /* アーティストの演奏履歴: 日付�
 /* アプリ通知（account.php）: チェックを均等な間隔で縦に並べる */
 .push-card, .push-card form { display: grid; gap: 14px; }
 .push-card .section-title { margin: 0; }
+.push-card .check { transition: opacity .15s; }
+.push-card .check[inert] { opacity: .45; } /* アプリ通知オンが外れている間のグレーアウト */
 @media (display-mode: standalone) { .push-card__hint { display: none; } } /* インストール済み（ホーム画面から開いたとき）は案内不要 */
 input[type="checkbox"], .field input[type="radio"] { accent-color: var(--accent); width: 16px; height: 16px; padding: 0; flex: none; }
 .field .check { color: var(--text); font-weight: 400; } /* .field の中のラジオ（contact.php の匿名の選択）は、ラベルの見出しより普通の文字に */
@@ -1294,11 +1296,11 @@ code { background: var(--surface-2); padding: 1px 6px; border-radius: 6px; font-
 @media (prefers-reduced-motion: reduce) { .song-card.is-entering { animation: none; } }
 .song-card__head { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 .song-card__no { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); font-weight: 700; }
-.song-card__no [data-song-no] { font-size: 18px; color: var(--text); font-weight: 800; min-width: 1.4em; text-align: right; }
-.song-card__title, .song-card__artist { padding: 9px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--surface); color: var(--text); }
 .song-card__se-sp { font-size: 18px; font-weight: 800; min-width: 1.4em; visibility: hidden; } /* 他の曲の番号と同じ幅だけ空ける */
 .song-card__se { display: flex; justify-content: flex-end; width: 24px; white-space: nowrap; font-size: 18px; font-weight: 800; color: var(--accent); } /* 「曲目」の位置に右寄せ（大きさは番号と同じ。はみ出す分は左へ） */
 .song-add-se { margin: 0 0 14px; }
+.song-card__no [data-song-no] { font-size: 18px; color: var(--text); font-weight: 800; min-width: 1.4em; text-align: right; }
+.song-card__title, .song-card__artist { padding: 9px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--surface); color: var(--text); }
 .song-card__title { flex: 0 1 320px; min-width: 160px; font-weight: 700; font-size: 16px; } /* 伸ばしすぎない（余った幅は右へ） */
 .song-card__artist { flex: 0 1 220px; min-width: 140px; font-size: 14px; transition: opacity .2s ease; }
 /* オムニバスでないとき: バンドのアーティストで固定。薄くして「ここは変えられない」と分かるように */
@@ -1385,8 +1387,6 @@ code { background: var(--surface-2); padding: 1px 6px; border-radius: 6px; font-
 .setlist summary { cursor: pointer; color: var(--muted); font-weight: 700; }
 .setlist ol { margin: 8px 0 0; padding-left: 1.6em; display: grid; gap: 4px; }
 .setlist li::marker { color: var(--muted); font-weight: 700; }
-.setlist__who { color: var(--muted); font-size: 12px; margin-left: 6px; }
-.setlist__note { white-space: nowrap; } /* 「Cho. 山田・田中」の途中では折り返さない */
 .setlist li.setlist__se { list-style: decimal; } /* SE は番号の代わりに「SE」を、番号と同じ位置（::marker）に出す */
 .setlist li.setlist__se::marker { content: "SE  "; color: var(--muted); }
 /* 演奏曲との間に区切り線。線は SE の文字（番号の位置）の下から始め、右は少し手前で止める。
@@ -1399,6 +1399,8 @@ code { background: var(--surface-2); padding: 1px 6px; border-radius: 6px; font-
 .setlist li.setlist__se:first-child::before { border-top: 0; }
 .setlist li.setlist__se:last-child::before { border-bottom: 0; }
 .setlist li.setlist__se + li.setlist__se::before { border-top: 0; }
+.setlist__who { color: var(--muted); font-size: 12px; margin-left: 6px; }
+.setlist__note { white-space: nowrap; } /* 「Cho. 山田・田中」の途中では折り返さない */
 .setlist__note + .setlist__note { margin-left: .9em; } /* 「、」の代わりのすき間 */
 /* 曲名の左の小さいジャケット。紐付けた曲は曲名ごとリンク（見ている人の音楽アプリで開く） */
 .setlist li { line-height: 28px; }
@@ -1482,9 +1484,9 @@ a.setlist__song:hover { color: var(--accent); text-decoration: underline; }
 .setlist-hint .icon { font-size: 16px; vertical-align: -3px; }
 @media (max-width: 640px) {
   .band-section .setlist { font-size: 17px; }
+  .band-section .setlist { --gutter: 1.2em; }
   .band-section .setlist ol { padding-left: 1.2em; margin-right: -10px; } /* 番号の左の余白を詰め、右はカードの余白に少しはみ出させて、試聴ボタンの場所をあける */
   .band-section .setlist li { line-height: 1.3; } /* 長い曲名が折り返したとき、行と行の間が空きすぎないように（行の高さはジャケットの 44px で決まる） */
-  .band-section .setlist { --gutter: 1.2em; }
   .band-section .setlist li::marker { font-size: 14px; } /* 余白を詰めても「10.」がはみ出さないように */
   .band-section .setlist__song { gap: 12px; max-width: calc(100% - 52px); overflow-wrap: anywhere; } /* 52px = ▶ の幅 34px + margin 8px + HTML の改行（空白1文字分）。曲名が長くても ▶ が次の行に落ちない */
   .band-section .setlist__play { margin-left: 8px; }
@@ -1888,10 +1890,10 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
 .artist-setlist { margin: 0; padding-left: 1.8em; display: grid; gap: 4px; font-size: 13px; }
 .artist-setlist li::marker { color: var(--muted); font-weight: 700; }
 /* オムニバスのバンドでは、このアーティストの曲だけ少し強調する */
-.artist-setlist li.is-mine { font-weight: 700; color: var(--accent); }
-.artist-setlist li.is-mine::marker { color: var(--accent); }
 .artist-setlist li.is-se { list-style: decimal; } /* SE は番号の位置に「SE」（band.php のセットリストと同じ） */
 .artist-setlist li.is-se::marker { content: "SE  "; color: var(--muted); }
+.artist-setlist li.is-mine { font-weight: 700; color: var(--accent); }
+.artist-setlist li.is-mine::marker { color: var(--accent); }
 
 /* import.php のタイムテーブル手入力 */
 .manual-tt .table-scroll { margin-bottom: 12px; }
@@ -2053,15 +2055,37 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
 
 /* ベルのポップアップ（直近3件＋すべて見る） */
 .icon-btn--sm { width: 30px; height: 30px; padding: 0; } /* button の初期の左右余白(6px)で中身の入る幅が足りず、アイコンが右に寄っていた */
-.notifmenu__panel { width: 300px; max-width: calc(100vw - 24px); position: fixed; right: 12px; top: 56px; } /* ベルの真下ではなく、画面の右端に出す */
+.notifmenu__panel { width: 300px; max-width: calc(100vw - 24px); }
+@media (max-width: 760px) { .notifmenu__panel { position: fixed; right: 12px; top: 56px; } } /* スマホ: ベルの真下だと左にはみ出すので、画面の右端に出す。PCはベルの真下 */
 .notifmenu__item { display: grid; gap: 2px; }
-.notifmenu__title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.notifmenu__title { font-weight: 600; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow-wrap: anywhere; } /* 最大2段、超過は… */
 .notifmenu__empty { padding: 8px 10px; margin: 0; }
+.notifmenu__tabs { margin: 0 0 6px; padding: 3px; }
+.notifmenu__tabs .tab { flex: 1; justify-content: center; align-items: center; padding: 6px 10px; cursor: pointer; border: 0; font: inherit; font-weight: 800; font-size: 13px; }
+.notifmenu__tabs .tab:not(.is-active) { background: none; }
+.notifmenu__count { position: static; }
 .notifmenu__all { margin-top: 4px; border-top: 1px solid var(--border); border-radius: 0 !important; text-align: center !important; color: var(--accent); font-size: 13px; font-weight: 600; }
 
 /* お知らせの重要・カテゴリ管理・ホームのバナー */
 .notice__mark { color: var(--danger, #d93025); }
-.notice-item { padding: 18px 20px; margin-bottom: 14px; gap: 4px; }
+.notice-item { padding: 0; margin-bottom: 12px; font-size: 14px; }
+.notice-item > summary { align-items: center; padding: 14px 16px; font-weight: 400; }
+.notice-summary { flex: 1; min-width: 0; display: grid; gap: 4px; }
+.notice-item .section-title--card.notice-title { font-size: 15px; font-weight: 680; }
+.notice-item .notice-meta { font-size: 12px; }
+.notice-body { padding: 0 16px 14px; display: grid; gap: 4px; }
+@media (max-width: 760px) { /* スマホ: お知らせのカテゴリタブをコンパクトに（5つ並んでも横スクロールしにくい） */
+  [data-notice-tabs] { gap: 2px; padding: 3px; margin-bottom: 12px; }
+  [data-notice-tabs] .tab { padding: 5px 10px; font-size: 12px; }
+  /* 閉じているカードを低くして、1画面に出る件数を増やす */
+  .notice-item { margin-bottom: 7px; }
+  .togglecard.notice-item > summary { padding: 8px 12px; gap: 6px; }
+  .notice-summary { gap: 1px; }
+  .notice-item .section-title--card.notice-title { font-size: 14px; gap: 2px 6px; line-height: 1.35; margin-bottom: 0; }
+  .notice-item .notice-meta { font-size: 11px; gap: 4px; }
+  .notice-item .tag { padding-block: 0; font-size: 10px; }
+  .notice-body { padding: 0 12px 10px; }
+}
 .notice-item .section-title--card { margin-bottom: 4px; }
 .notice-item p { margin-block: 6px; }
 .notice-item p a:not(.btn) { text-decoration: underline dotted; text-underline-offset: 3px; } /* 本文中のリンク（コメント通知のライブ名・バンド名・名前）をリンクとわかるように */
@@ -2070,7 +2094,7 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
 .notice-banner__text { flex: 1; min-width: 0; display: grid; font-weight: 600; font-size: 14px; }
 .notice-banner__text span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .notice-cat { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-.notice-cat__rename { display: flex; gap: 6px; flex: 1; }
+.notice-cat__rename { display: flex; align-items: center; gap: 6px; flex: 1; }
 .notice-cat__rename input { flex: 1; min-width: 0; }
 
 /* お知らせ: カテゴリ切り替えのふわっと表示（hidden が外れるたびに動く）と、管理者用のトグルカード */
@@ -2124,7 +2148,20 @@ html:has([data-notice-tabs]) { scrollbar-gutter: stable; }
 .board-row__title { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; font-weight: 600; }
 .board-row__count { display: inline-flex; align-items: center; gap: 4px; }
 .board-row__count .icon { font-size: 16px; }
+/* 参加できる学年を絞る: チェックで軽く展開（grid の行を 0fr → 1fr） */
+.restrict__panel { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows .25s ease, opacity .25s ease; }
+.restrict:has([data-board-restrict-toggle]:checked) .restrict__panel { grid-template-rows: 1fr; opacity: 1; }
+.restrict__inner { overflow: hidden; min-height: 0; display: grid; gap: 10px; }
+.restrict:has([data-board-restrict-toggle]:checked) .restrict__inner { padding-top: 10px; }
+.restrict .check:has(input:disabled), .restrict__range:has(select:disabled) { opacity: .4; cursor: not-allowed; }
+.restrict__range { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.restrict__range select { max-width: 100%; }
+.restrict__to { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; } /* 〜 は下（2つ目）のプルダウンと一緒に折り返す */
+@media (prefers-reduced-motion: reduce) { .restrict__panel { transition: none; } }
+.board-row__lock { font-size: 16px; color: var(--muted, #888); vertical-align: middle; }
 .board-posts { display: grid; gap: 10px; margin-bottom: 16px; }
+.board-pager { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; }
+.board-pager .is-disabled { opacity: .35; pointer-events: none; }
 .board-post { padding: 12px 16px; }
 .board-post.is-mine { border-left: 3px solid var(--accent); }
 .board-post.is-deleted { opacity: .7; border-style: dashed; }
@@ -2158,17 +2195,6 @@ textarea.board-textarea:focus { border-color: var(--accent); } /* 上の border 
 @media (prefers-reduced-motion: reduce) { .board-mute.is-pop .icon, .board-reply__to:not([hidden]), .board-reply__chip.is-entering { animation: none; } }
 .board-head { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
 .board-head h1 { flex: 1; margin: 0; }
-/* 参加できる学年を絞る: チェックで軽く展開（grid の行を 0fr → 1fr） */
-.restrict__panel { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows .25s ease, opacity .25s ease; }
-.restrict:has([data-board-restrict-toggle]:checked) .restrict__panel { grid-template-rows: 1fr; opacity: 1; }
-.restrict__inner { overflow: hidden; min-height: 0; display: grid; gap: 10px; }
-.restrict:has([data-board-restrict-toggle]:checked) .restrict__inner { padding-top: 10px; }
-.restrict .check:has(input:disabled), .restrict__range:has(select:disabled) { opacity: .4; cursor: not-allowed; }
-.restrict__range { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.restrict__range select { max-width: 100%; }
-.restrict__to { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; } /* 〜 は下（2つ目）のプルダウンと一緒に折り返す */
-@media (prefers-reduced-motion: reduce) { .restrict__panel { transition: none; } }
-.board-row__lock { font-size: 16px; color: var(--muted, #888); vertical-align: middle; }
 .board-head .icon-btn.is-active { background: var(--accent-soft); color: var(--accent); }
 .board-post__reply { margin-left: 10px; }
 .board-post__foot { display: flex; justify-content: flex-end; margin-top: 6px; }
@@ -2191,6 +2217,10 @@ html:has(.board-posts) { scroll-behavior: smooth; }
 .comments .board-posts, .comments .board-reply { max-width: none; margin: 0; width: 100%; } /* 親が grid なので、auto の余白があると中身の幅に縮む */
 .comments .board-post { box-shadow: none; background: var(--bg, var(--surface)); }
 .comments__body { padding-top: 12px; }
+
+/* 通知一覧（notifications.php）: カード全体がリンク */
+.notif-item { display: grid; gap: 2px; color: inherit; text-decoration: none; }
+.notif-item:hover { border-color: var(--accent); }
 
 /* ライブの添付画像: ライブページのサムネイル・モーダル / 編集画面の一覧（assets/app.js の setupLiveImages） */
 .live-thumbs { display: flex; flex-wrap: wrap; gap: 6px; margin: 14px 0 0; padding: 0; list-style: none; }

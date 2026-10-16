@@ -12,14 +12,15 @@
 $user = current_user();
 $unreadNotices = 0;
 if ($user) {
-    // 行が無いお知らせ＝未読（notice_read は読んだ記録）
-    $st = db()->prepare('SELECT COUNT(*) FROM notice n LEFT JOIN notice_read r ON r.notice_id = n.notice_id AND r.user_id = ? WHERE r.user_id IS NULL AND n.publish_at <= NOW() AND (n.target_user_id IS NULL OR n.target_user_id = ?)');
-    $st->execute([(int)$user['user_id'], (int)$user['user_id']]);
-    $unreadNotices = (int)$st->fetchColumn();
-    // ベルのポップアップに出す直近3件
-    $st = db()->prepare('SELECT n.notice_id, n.title, n.link_url, n.publish_at, n.is_important, (r.user_id IS NULL) AS is_new FROM notice n LEFT JOIN notice_read r ON r.notice_id = n.notice_id AND r.user_id = ? WHERE n.publish_at <= NOW() AND (n.target_user_id IS NULL OR n.target_user_id = ?) ORDER BY n.is_important DESC, n.publish_at DESC, n.notice_id DESC LIMIT 3');
-    $st->execute([(int)$user['user_id'], (int)$user['user_id']]);
-    $recentNotices = $st->fetchAll();
+    // 行が無いお知らせ＝未読（notice_read は読んだ記録）。告知（お知らせ）と自動の通知（ベル）は別に数える
+    $unreadNotices = notice_unread_count((int)$user['user_id'], false);
+    $unreadNotifs = notice_unread_count((int)$user['user_id'], true);
+    // ベルのポップアップのタブ（key は api_notice_read.php の kind と同じ）
+    $notifTabs = [
+        'notif'  => ['label' => '通知', 'href' => 'notices', 'unread' => $unreadNotifs, 'items' => notice_recent((int)$user['user_id'], true)],
+        'notice' => ['label' => 'お知らせ', 'href' => 'notices', 'unread' => $unreadNotices, 'items' => notice_recent((int)$user['user_id'], false)],
+    ];
+    $notifTab = $unreadNotices > 0 ? 'notice' : 'notif';
     // 掲示板: 未読の書き込みがあるスレの数（見られるスレだけ。lib/board.php）
     require_once __DIR__ . '/../lib/board.php';
     $unreadBoard = board_unread_count($user);
@@ -142,19 +143,29 @@ $nav = [
             <?php if ($unreadBoard > 0): ?><span class="badge-dot"><?= $unreadBoard > 9 ? '9+' : $unreadBoard ?></span><?php endif; ?>
         </a>
         <details class="usermenu notifmenu">
-            <summary class="icon-btn<?= $activeNav === 'notices' ? ' is-active' : '' ?>" aria-label="お知らせ" title="お知らせ" data-notice-open>
+            <summary class="icon-btn<?= $activeNav === 'notices' ? ' is-active' : '' ?>" aria-label="通知" title="通知" data-notice-open>
                 <?= icon('notifications') ?>
-                <?php if ($unreadNotices > 0): ?><span class="badge-dot" data-notice-badge><?= $unreadNotices > 9 ? '9+' : $unreadNotices ?></span><?php endif; ?>
+                <?php $unreadAll = $unreadNotices + $unreadNotifs; if ($unreadAll > 0): ?><span class="badge-dot" data-notice-badge><?= $unreadAll > 9 ? '9+' : $unreadAll ?></span><?php endif; ?>
             </summary>
             <div class="usermenu__panel notifmenu__panel">
-                <?php foreach ($recentNotices as $n): ?>
-                    <a href="<?= h($n['link_url'] ?? 'notices') ?>" class="notifmenu__item">
-                        <span class="notifmenu__title"><?= $n['is_important'] ? icon('priority_high', 'notice__mark') : '' ?><?= h($n['title']) ?><?= $n['is_new'] ? ' <span class="tag tag--plan">NEW</span>' : '' ?></span>
-                        <span class="muted small"><?= h(substr($n['publish_at'], 0, 16)) ?></span>
-                    </a>
+                <!-- タブ: 通知（自動）とお知らせ（告知）。未読のお知らせがあればお知らせのタブから開く（告知を埋もれさせない） -->
+                <div class="tabs tabs--static notifmenu__tabs" role="tablist">
+                    <?php foreach ($notifTabs as $key => $t): ?>
+                        <button type="button" class="tab<?= $key === $notifTab ? ' is-active' : '' ?>" role="tab" data-notif-tab="<?= $key ?>" aria-selected="<?= $key === $notifTab ? 'true' : 'false' ?>"><?= $t['label'] ?><?php if ($t['unread'] > 0): ?> <span class="badge-dot notifmenu__count" data-notif-count><?= $t['unread'] > 9 ? '9+' : $t['unread'] ?></span><?php endif; ?></button>
+                    <?php endforeach; ?>
+                </div>
+                <?php foreach ($notifTabs as $key => $t): ?>
+                <div data-notif-pane="<?= $key ?>"<?= $key === $notifTab ? '' : ' hidden' ?>>
+                    <?php foreach ($t['items'] as $n): ?>
+                        <a href="<?= h($n['link_url'] ?? $t['href']) ?>" class="notifmenu__item">
+                            <span class="notifmenu__title"><?= $n['is_important'] ? icon('priority_high', 'notice__mark') : '' ?><?= h($n['title']) ?><?= $n['is_new'] ? ' <span class="tag tag--plan">NEW</span>' : '' ?></span>
+                            <span class="muted small"><?= h(substr($n['publish_at'], 0, 16)) ?></span>
+                        </a>
+                    <?php endforeach; ?>
+                    <?php if (!$t['items']): ?><p class="muted small notifmenu__empty"><?= $t['label'] ?>はありません</p><?php endif; ?>
+                    <a href="<?= $t['href'] ?>" class="notifmenu__all">すべて見る</a>
+                </div>
                 <?php endforeach; ?>
-                <?php if (!$recentNotices): ?><p class="muted small notifmenu__empty">直近のお知らせはありません</p><?php endif; ?>
-                <a href="notices" class="notifmenu__all">すべて見る</a>
             </div>
         </details>
         <?php else: ?>

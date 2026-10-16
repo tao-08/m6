@@ -638,6 +638,7 @@ CREATE TABLE notice_category (
 
 INSERT INTO notice_category (name) VALUES ('お知らせ'), ('イベント'), ('システム');
 INSERT INTO notice_category (name, color) VALUES ('コメント', 'pink'); -- バンドへのコメントの通知（migrations/052）
+INSERT INTO notice_category (name, color) VALUES ('掲示板', 'purple'); -- 掲示板の書き込みの通知（migrations/055）
 
 CREATE TABLE notice (
     notice_id  INT UNSIGNED NOT NULL AUTO_INCREMENT,

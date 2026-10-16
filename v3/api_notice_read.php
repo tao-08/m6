@@ -1,13 +1,13 @@
 <?php
 /**
  * =====================================================================
- *  api_notice_read.php — ベルのポップアップに出した直近3件を既読にする API（JSON を返す）
+ *  api_notice_read.php — ベルのポップアップで開いたタブの直近 NOTIF_POPUP_LIMIT 件を既読にする API（JSON を返す）
  * =====================================================================
- *  partials/header.php のベルを開いたとき、assets/app.js が fetch() で呼ぶ。
- *  どのお知らせを既読にするかは JS から受け取らず、サーバーが「直近3件」を決める（ポップアップと同じ条件）。
+ *  partials/header.php のベルを開いたとき・タブを切り替えたとき、assets/app.js が fetch() で呼ぶ。
+ *  どのお知らせを既読にするかは JS から受け取らず、サーバーが決める（ポップアップと同じ条件）。
  *
- *  リクエスト（POST）:  本文なし
- *  レスポンス（JSON）:  {"ok": true, "unread": 残りの未読数}
+ *  リクエスト（POST）:  kind=notif（通知のタブ）/ notice（お知らせのタブ）
+ *  レスポンス（JSON）:  {"ok": true, "tab": そのタブの残りの未読数, "unread": 全体の残りの未読数}
  *  エラー           :  {"error": "..."}（401 / 405）
  * =====================================================================
  */
@@ -35,14 +35,10 @@ verify_csrf(); // JS から X-CSRF-Token ヘッダーで送られてくる
 
 $pdo = db();
 $uid = (int)$user['user_id'];
-$st = $pdo->prepare('SELECT n.notice_id FROM notice n WHERE n.publish_at <= NOW() AND (n.target_user_id IS NULL OR n.target_user_id = ?) ORDER BY n.is_important DESC, n.publish_at DESC, n.notice_id DESC LIMIT 3');
-$st->execute([$uid]);
-$ids = $st->fetchAll(PDO::FETCH_COLUMN);
 $mark = $pdo->prepare('INSERT IGNORE INTO notice_read (user_id, notice_id) VALUES (?, ?)');
-foreach ($ids as $id) {
-    $mark->execute([$uid, (int)$id]);
+$system = ($_POST['kind'] ?? '') !== 'notice'; // 開いているタブ（notif = 通知 / notice = お知らせ）
+foreach (notice_recent($uid, $system) as $n) {
+    $mark->execute([$uid, (int)$n['notice_id']]);
 }
-$st = $pdo->prepare('SELECT COUNT(*) FROM notice n LEFT JOIN notice_read r ON r.notice_id = n.notice_id AND r.user_id = ? WHERE r.user_id IS NULL AND n.publish_at <= NOW() AND (n.target_user_id IS NULL OR n.target_user_id = ?)');
-$st->execute([$uid, $uid]);
 
-echo json_encode(['ok' => true, 'unread' => (int)$st->fetchColumn()], JSON_UNESCAPED_UNICODE);
+echo json_encode(['ok' => true, 'tab' => notice_unread_count($uid, $system), 'unread' => notice_unread_count($uid, true) + notice_unread_count($uid, false)], JSON_UNESCAPED_UNICODE);

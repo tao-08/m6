@@ -58,7 +58,7 @@ function comment_notify_band_members(int $bandId, int $commentId, int $authorId,
 
     // 1行目の [[リンク先|文字]] は notice_body_html()（lib/bootstrap.php）がリンクにする。3行目から先がコメント
     $who = $authorMemberId !== null ? '[[member?id=' . $authorMemberId . '|' . $authorName . ']]' : $authorName;
-    $title = mb_substr($info['band_name'], 0, 70) . 'にコメントが追加されました';
+    $title = mb_substr($info['band_name'], 0, 70) . ' にコメントが追加されました';
     $text = '[[live?id=' . (int)$info['live_id'] . '|' . $info['live_name'] . ']] [[band?id=' . $bandId . '|' . $info['band_name'] . ']] に' . $who . 'がコメントしました'
         . "\n\n" . mb_substr($body, 0, 200) . (mb_strlen($body) > 200 ? '…' : '');
     $ins = $pdo->prepare('INSERT INTO notice (user_id, target_user_id, category_id, is_important, title, body, link_url)

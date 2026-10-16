@@ -13,6 +13,7 @@
  *        一般ユーザー・未読数・ベル・ホームには、公開日時になるまで出ない（cron は使わず、表示時に publish_at <= NOW() で出し分ける）。
  *  投稿・削除・カテゴリの管理は管理者だけ（POST の中で確認）。
  *  カテゴリの削除は、使われているものは止める（notice.category_id が ON DELETE RESTRICT）。
+ *  「コメント」「掲示板」は自動で出す通知専用（NOTICE_SYSTEM_CATEGORIES）。名前・色の変更、削除、手動投稿での選択はできない。
  * =====================================================================
  */
 declare(strict_types=1);
@@ -24,6 +25,9 @@ $categories = $pdo->query('SELECT c.category_id, c.name, c.color, (SELECT COUNT(
     FROM notice_category c ORDER BY c.category_id')->fetchAll();
 $categoryNames = array_column($categories, 'name', 'category_id');
 $categoryColors = array_column($categories, 'color', 'category_id');
+// 自動で出す通知専用のカテゴリ（NOTICE_SYSTEM_CATEGORIES）は、変更・削除・手動投稿での選択ができない
+$systemIds = array_keys(array_intersect($categoryNames, NOTICE_SYSTEM_CATEGORIES));
+$manualCategories = array_values(array_filter($categories, static fn($c) => !in_array((int)$c['category_id'], $systemIds, true)));
 
 if (is_post()) {
     verify_csrf();
@@ -42,7 +46,9 @@ if (is_post()) {
         $color = (string)($_POST['color'] ?? 'gray');
         $dup = $pdo->prepare('SELECT 1 FROM notice_category WHERE name = ? AND category_id <> ?');
         $dup->execute([$name, $id]);
-        if ($name === '' || mb_strlen($name) > 20) {
+        if (in_array($id, $systemIds, true) || in_array($name, NOTICE_SYSTEM_CATEGORIES, true)) {
+            flash('このカテゴリは変更できません', 'error');
+        } elseif ($name === '' || mb_strlen($name) > 20) {
             flash('カテゴリ名は1〜20文字で入力してください', 'error');
         } elseif (!isset(NOTICE_COLORS[$color])) {
             flash('色を選択してください', 'error');
@@ -66,6 +72,8 @@ if (is_post()) {
         }
         if (!isset($categoryNames[$id])) {
             flash('カテゴリが見つかりません', 'error');
+        } elseif (in_array($id, $systemIds, true)) {
+            flash('このカテゴリは削除できません', 'error');
         } elseif ($used > 0) {
             flash("{$used} 件のお知らせで使われているので削除できません", 'error');
         } else {
@@ -90,7 +98,7 @@ if (is_post()) {
                 $publishAt = $dt->format('Y-m-d H:i:s');
             }
         }
-        if (!isset($categoryNames[$categoryId])) {
+        if (!isset($categoryNames[$categoryId]) || in_array($categoryId, $systemIds, true)) {
             flash('カテゴリを選択してください', 'error');
         } elseif ($scheduleError) {
             flash('日時の形式が正しくありません', 'error');
@@ -132,7 +140,7 @@ $st = $pdo->prepare(
        FROM notice n
        LEFT JOIN notice_read r ON r.notice_id = n.notice_id AND r.user_id = ?
       WHERE (n.publish_at <= NOW() OR ? = 1) AND (n.target_user_id IS NULL OR n.target_user_id = ?)
-      ORDER BY n.is_important DESC, n.publish_at DESC, n.notice_id DESC LIMIT 100'
+      ORDER BY (n.is_important = 1 AND n.publish_at > NOW() - INTERVAL 4 DAY) DESC, n.publish_at DESC, n.notice_id DESC LIMIT 100'
 );
 $st->execute([$user['user_id'], $user['admin'] ? 1 : 0, $user['user_id']]);
 $notices = $st->fetchAll();
@@ -157,7 +165,7 @@ render_header('お知らせ', 'notices');
     <?= csrf_field() ?>
     <label class="field"><span>カテゴリ</span>
         <select name="category_id" required>
-            <?php foreach ($categories as $c): ?>
+            <?php foreach ($manualCategories as $c): ?>
                 <option value="<?= (int)$c['category_id'] ?>"><?= h($c['name']) ?></option>
             <?php endforeach; ?>
         </select>
@@ -187,13 +195,19 @@ render_header('お知らせ', 'notices');
 
 <p class="muted" data-notice-empty<?= $notices ? ' hidden' : '' ?>>お知らせはありません</p>
 <?php foreach ($notices as $n): ?>
-    <article class="card form-card notice-item<?= $n['is_important'] ? ' notice--important' : '' ?>" data-notice-cat="<?= (int)$n['category_id'] ?>"<?= $cat !== 0 && $cat !== (int)$n['category_id'] ? ' hidden' : '' ?>>
-        <h2 class="section-title section-title--card notice-title">
-            <?= $n['is_important'] ? icon('priority_high', 'notice__mark') : '' ?>
-            <?= h($n['title']) ?>
-            <?= $n['is_scheduled'] ? '<span class="tag tag--plan">予約</span>' : ($n['is_new'] ? '<span class="tag tag--plan">NEW</span>' : '') ?>
-        </h2>
-        <p class="muted small notice-meta"><?= h(substr($n['publish_at'], 0, 16)) ?><?= $n['is_scheduled'] ? ' に公開' : '' ?> <span>·</span> <span class="tag tag--c-<?= h($categoryColors[$n['category_id']] ?? 'gray') ?>"><?= h($categoryNames[$n['category_id']] ?? '') ?></span></p>
+    <details class="card togglecard notice-item<?= $n['is_important'] ? ' notice--important' : '' ?>" data-notice-cat="<?= (int)$n['category_id'] ?>"<?= $cat !== 0 && $cat !== (int)$n['category_id'] ? ' hidden' : '' ?>>
+        <summary>
+            <span class="notice-summary">
+                <span class="section-title section-title--card notice-title">
+                    <?= $n['is_important'] ? icon('priority_high', 'notice__mark') : '' ?>
+                    <?= h($n['title']) ?>
+                    <?= $n['is_scheduled'] ? '<span class="tag tag--plan">予約</span>' : ($n['is_new'] ? '<span class="tag tag--plan">NEW</span>' : '') ?>
+                </span>
+                <span class="muted small notice-meta"><?= h(substr($n['publish_at'], 0, 16)) ?><?= $n['is_scheduled'] ? ' に公開' : '' ?> <span>·</span> <span class="tag tag--c-<?= h($categoryColors[$n['category_id']] ?? 'gray') ?>"><?= h($categoryNames[$n['category_id']] ?? '') ?></span></span>
+            </span>
+            <?= icon('expand_more', 'togglecard__chevron') ?>
+        </summary>
+        <div class="notice-body">
         <p><?= notice_body_html($n['body']) ?></p>
         <?php if ($n['link_url'] !== null): ?><p><a class="btn btn--sm" href="<?= h($n['link_url']) ?>" aria-label="開く" title="開く"><?= icon('open_in_new') ?></a></p><?php endif; ?>
         <?php if ($user['admin'] && $n['is_scheduled']): ?>
@@ -205,7 +219,7 @@ render_header('お知らせ', 'notices');
                 <input type="hidden" name="notice_id" value="<?= (int)$n['notice_id'] ?>">
                 <label class="field"><span>カテゴリ</span>
                     <select name="category_id" required>
-                        <?php foreach ($categories as $c): ?>
+                        <?php foreach ($manualCategories as $c): ?>
                             <option value="<?= (int)$c['category_id'] ?>"<?= (int)$c['category_id'] === (int)$n['category_id'] ? ' selected' : '' ?>><?= h($c['name']) ?></option>
                         <?php endforeach; ?>
                     </select>
@@ -233,7 +247,8 @@ render_header('お知らせ', 'notices');
             <button class="btn btn--sm" type="submit" aria-label="削除" title="削除"><?= icon('delete') ?></button>
         </form>
         <?php endif; ?>
-    </article>
+        </div>
+    </details>
 <?php endforeach; ?>
 
 <?php if ($user['admin']): ?>
@@ -241,6 +256,13 @@ render_header('お知らせ', 'notices');
 <summary><?= icon('admin_panel_settings') ?> <span class="togglecard__title">カテゴリ管理</span><?= icon('expand_more', 'togglecard__chevron') ?></summary>
 <div class="togglecard__body">
     <?php foreach ($categories as $c): ?>
+        <?php if (in_array((int)$c['category_id'], $systemIds, true)): ?>
+        <!-- 自動で出す通知専用: 変更・削除できない -->
+        <div class="notice-cat">
+            <span class="notice-cat__rename"><?= icon('lock') ?> <span class="tag tag--c-<?= h($c['color']) ?>"><?= h($c['name']) ?></span></span>
+            <span class="muted small"><?= (int)$c['used'] ?> 件</span>
+        </div>
+        <?php continue; endif; ?>
         <div class="notice-cat">
             <form method="post" class="notice-cat__rename">
                 <?= csrf_field() ?>

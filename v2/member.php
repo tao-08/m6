@@ -77,7 +77,7 @@ render_header($member['name'], 'members');
         <h1 class="display"><?= h($member['name']) ?></h1>
         <p class="muted small">
             <?= $member['name_kana'] !== '' ? h($member['name_kana']) : '' ?>
-            <?= (int)$member['entry_year'] > 0 ? ' · ' . (int)$member['entry_year'] . '年度入部' : '' ?>
+            <?= (int)$member['entry_year'] > 0 ? ' · ' . (int)$member['entry_year'] . '年度入会' : '' ?>
         </p>
         <div class="partbar">
             <?php foreach ($parts as $p): ?>

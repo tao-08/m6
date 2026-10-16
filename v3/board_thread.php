@@ -7,7 +7,8 @@
  *  削除は本人と管理者。行は消さずに deleted_at / deleted_by を入れるだけ。
  *    一般の人には「削除されました」とだけ出し、管理者には中身と、誰がいつ消したかを出す。
  *  スレの削除は自由スレだけ（現役・同期スレは消せない）。立てた人と管理者。
- *  開いた時点で、最後の書き込みまで既読にする（board_read）。
+ *  書き込みは100件ごとにページを分ける（?page=。無ければ最新ページ。番号はページをまたいで通し）。
+ *  開いた時点で、開いているページの最後の書き込みまで既読にする（board_read）。
  * =====================================================================
  */
 declare(strict_types=1);
@@ -62,7 +63,7 @@ if (is_post()) {
             }
             $pdo->commit();
             board_push_post($id, $postId); // アプリ通知（lib/push.php）。応答を返し終わってから送る
-            $back .= '#p' . $postId;
+            $back .= '&page=' . board_post_page($id, $postId) . '#p' . $postId; // 書き込みは最後のページに入る
         }
     } elseif ($action === 'delete_post') {
         // 本人か管理者だけ。条件を UPDATE の WHERE に入れて、他人の書き込みの ID を送られても消えないようにする
@@ -70,6 +71,9 @@ if (is_post()) {
             WHERE post_id = ? AND thread_id = ? AND deleted_at IS NULL AND (user_id = ? OR ? = 1)');
         $st->execute([$uid, (int)($_POST['post_id'] ?? 0), $id, $uid, $user['admin'] ? 1 : 0]);
         flash($st->rowCount() ? '削除しました' : '削除できませんでした', $st->rowCount() ? 'success' : 'error');
+        if (($backPage = (int)($_POST['page'] ?? 0)) > 0) {
+            $back .= '&page=' . $backPage; // 削除したページに戻る
+        }
     } elseif ($action === 'delete_thread') {
         $st = $pdo->prepare("UPDATE board_thread SET deleted_at = NOW(), deleted_by = ?
             WHERE thread_id = ? AND kind = 'free' AND deleted_at IS NULL AND (user_id = ? OR ? = 1)");
@@ -83,19 +87,58 @@ if (is_post()) {
     redirect($back);
 }
 
+// 書き込み番号（post_id → 1 から数えた番号。削除された書き込みも数える。ページをまたいでも変わらない）
+$st = $pdo->prepare('SELECT post_id FROM board_post WHERE thread_id = ? ORDER BY post_id');
+$st->execute([$id]);
+$numbers = [];
+foreach ($st->fetchAll(PDO::FETCH_COLUMN) as $i => $pid) {
+    $numbers[(int)$pid] = $i + 1;
+}
+// ページ分け。?page= が無ければ最新（最後）のページ
+$pages = max(1, (int)ceil(count($numbers) / BOARD_PER_PAGE));
+$page = isset($_GET['page']) ? min(max(1, (int)$_GET['page']), $pages) : $pages;
+$offset = ($page - 1) * BOARD_PER_PAGE;
+$pageUrl = static fn(int $n): string => 'board_thread?id=' . $id . '&page=' . $n;
+
 $st = $pdo->prepare('SELECT p.post_id, p.user_id, p.body, p.created_at, p.deleted_at, u.name AS author, u.member_id AS author_member_id, d.name AS deleted_by_name
     FROM board_post p
     LEFT JOIN user_account u ON u.user_id = p.user_id
     LEFT JOIN user_account d ON d.user_id = p.deleted_by
-    WHERE p.thread_id = ? ORDER BY p.post_id');
+    WHERE p.thread_id = ? ORDER BY p.post_id LIMIT ' . BOARD_PER_PAGE . ' OFFSET ' . $offset);
 $st->execute([$id]);
 $posts = $st->fetchAll();
 
-// 書き込み番号（post_id → 1 から数えた番号）と、返信先の一覧（post_id → [返信先の post_id, ...]）
-$numbers = [];
-foreach ($posts as $i => $p) {
-    $numbers[(int)$p['post_id']] = $i + 1;
-}
+/** ページ送り（2ページ以上あるときだけ）。現在のページの前後2つと、最初・最後を出す */
+$pager = static function () use ($page, $pages, $pageUrl): string {
+    if ($pages < 2) {
+        return '';
+    }
+    $link = static fn(int $n, string $inner, string $label, bool $on): string => $on
+        ? '<a class="btn btn--sm btn--ghost" href="' . h($pageUrl($n)) . '" aria-label="' . h($label) . '" title="' . h($label) . '">' . $inner . '</a>'
+        : '<span class="btn btn--sm btn--ghost is-disabled" aria-hidden="true">' . $inner . '</span>';
+    $html = '<nav class="board-pager" aria-label="ページ">'
+        . $link(1, icon('first_page'), '最初', $page > 1)
+        . $link($page - 1, icon('chevron_left'), '前', $page > 1);
+    $prev = 0;
+    for ($n = 1; $n <= $pages; $n++) {
+        if ($n !== 1 && $n !== $pages && abs($n - $page) > 2) {
+            continue;
+        }
+        if ($n - $prev > 1) {
+            $html .= '<span class="muted">…</span>';
+        }
+        $html .= $n === $page
+            ? '<span class="btn btn--sm btn--primary" aria-current="page">' . $n . '</span>'
+            : '<a class="btn btn--sm btn--ghost" href="' . h($pageUrl($n)) . '">' . $n . '</a>';
+        $prev = $n;
+    }
+    return $html
+        . $link($page + 1, icon('chevron_right'), '次', $page < $pages)
+        . $link($pages, icon('last_page'), '最新', $page < $pages)
+        . '</nav>';
+};
+
+// 返信先の一覧（post_id → [返信先の post_id, ...]）
 $replyTo = [];
 $st = $pdo->prepare('SELECT r.post_id, r.reply_to_post_id FROM board_post_reply r
     JOIN board_post p ON p.post_id = r.post_id WHERE p.thread_id = ? ORDER BY r.reply_to_post_id');
@@ -117,8 +160,9 @@ foreach ($st->fetchAll() as $r) {
 }
 $canPost = $thread['deleted_at'] === null;
 
-if ($thread['deleted_at'] === null && (int)$thread['last_post_id'] > 0) {
-    board_mark_read($uid, $id, (int)$thread['last_post_id']);
+// 既読にするのは、開いているページの最後の書き込みまで（古いページを開いただけで、新着まで既読にしない）
+if ($thread['deleted_at'] === null && $posts) {
+    board_mark_read($uid, $id, (int)end($posts)['post_id']);
 }
 
 $canDeleteThread = $thread['kind'] === 'free' && $thread['deleted_at'] === null && ($user['admin'] || (int)$thread['user_id'] === $uid);
@@ -138,21 +182,23 @@ render_header($thread['title'], 'board');
 <?php endif; ?>
 
 <?php if (!$posts): ?><p class="muted">書き込みはありません</p><?php endif; ?>
+<?= $pager() ?>
 <div class="board-posts">
-<?php foreach ($posts as $i => $p): ?>
-    <?php $deleted = $p['deleted_at'] !== null; ?>
+<?php foreach ($posts as $p): ?>
+    <?php $deleted = $p['deleted_at'] !== null; $no = $numbers[(int)$p['post_id']]; ?>
     <article class="card board-post<?= $deleted ? ' is-deleted' : '' ?><?= (int)$p['user_id'] === $uid ? ' is-mine' : '' ?>" id="p<?= (int)$p['post_id'] ?>">
         <div class="muted small board-post__meta">
-            <span class="board-post__no"><?= $i + 1 ?></span>
+            <span class="board-post__no"><?= $no ?></span>
             <strong><?= $p['author_member_id'] !== null ? '<a href="member?id=' . (int)$p['author_member_id'] . '">' . h($p['author']) . '</a>' : h($p['author'] ?? '退会ユーザー') ?></strong>
             <span><?= h(substr($p['created_at'], 0, 16)) ?></span>
             <?php if ($canPost && !$deleted): ?>
-            <button type="button" class="icon-btn icon-btn--sm board-post__reply" data-board-reply="<?= (int)$p['post_id'] ?>" data-no="<?= $i + 1 ?>" aria-label="返信" title="返信" aria-pressed="false"><?= icon('reply') ?></button>
+            <button type="button" class="icon-btn icon-btn--sm board-post__reply" data-board-reply="<?= (int)$p['post_id'] ?>" data-no="<?= $no ?>" aria-label="返信" title="返信" aria-pressed="false"><?= icon('reply') ?></button>
             <?php endif; ?>
             <?php if (!$deleted && $thread['deleted_at'] === null && ($user['admin'] || (int)$p['user_id'] === $uid)): ?>
             <form method="post" class="board-post__del" onsubmit="return confirm('削除しますか？')">
                 <?= csrf_field() ?>
                 <input type="hidden" name="thread_id" value="<?= $id ?>">
+                <input type="hidden" name="page" value="<?= $page ?>">
                 <input type="hidden" name="action" value="delete_post">
                 <input type="hidden" name="post_id" value="<?= (int)$p['post_id'] ?>">
                 <button class="icon-btn icon-btn--sm" type="submit" aria-label="削除" title="削除"><?= icon('delete') ?></button>
@@ -162,7 +208,8 @@ render_header($thread['title'], 'board');
         <?php if (!$deleted && !empty($replyTo[(int)$p['post_id']])): ?>
             <p class="small board-post__to"><?= icon('subdirectory_arrow_right') ?>
                 <?php foreach ($replyTo[(int)$p['post_id']] as $toId): ?>
-                    <a href="#p<?= $toId ?>">&gt;&gt;<?= (int)($numbers[$toId] ?? 0) ?></a>
+                    <?php $toNo = (int)($numbers[$toId] ?? 0); $toPage = max(1, (int)ceil($toNo / BOARD_PER_PAGE)); ?>
+                    <a href="<?= $toPage === $page ? '' : h($pageUrl($toPage)) ?>#p<?= $toId ?>">&gt;&gt;<?= $toNo ?></a>
                 <?php endforeach; ?>
             </p>
         <?php endif; ?>
@@ -178,6 +225,7 @@ render_header($thread['title'], 'board');
     </article>
 <?php endforeach; ?>
 </div>
+<?= $pager() ?>
 
 <?php if ($thread['deleted_at'] === null): ?>
 <form method="post" class="card board-reply"<?= unsaved_attr() ?>>

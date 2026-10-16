@@ -235,22 +235,22 @@ function push_dispatch_after_response(): void
     push_defer('push_dispatch_due');
 }
 
-/** 掲示板に書き込んだあと、ページを返し終わってから通知を送る（board.php・board_thread.php から） */
+/** 掲示板に書き込んだあと、ページを返し終わってから通知（お知らせ＋アプリ通知）を出す（board.php・board_thread.php から） */
 function board_push_post(int $threadId, int $postId): void
 {
-    if (push_enabled()) {
-        push_defer(static fn() => board_push_send($threadId, $postId));
-    }
+    push_defer(static fn() => board_push_send($threadId, $postId)); // アプリ通知が使えなくても、お知らせは作る
 }
 
 /**
- * 掲示板の書き込みを、アプリ通知にする設定（push_board）の人に送る。
- * 誰に送るかは、アプリ内の通知（ヘッダーのバッジ。board_unread_count）と同じ条件:
+ * 掲示板の書き込みを、通知する。誰に出すかは、アプリ内の通知（ヘッダーのバッジ。board_unread_count）と同じ条件:
  *   ・自分の書き込みへの返信（>>N）                 … いつも
  *   ・48時間以内に自分が書き込んだスレの新着        … 通知設定の participating が ON のとき
  *   ・現役 / 自分の同期スレの新着                    … 通知設定の cohort_active が ON のとき
  *   ・自由スレの「新しく立ったスレ」                 … 通知設定で選んだカテゴリ（無設定なら全部）
- * ミュートしたスレ・読めないスレ・書いた本人には送らない。
+ * ミュートしたスレ・読めないスレ・書いた本人には出さない。
+ * 出し方は2つ:
+ *   ・お知らせ（カテゴリ「掲示板」の個人宛て。board_notice_add）… 全員
+ *   ・アプリ通知 … 掲示板のアプリ通知（push_board）が ON で端末がある人だけ
  */
 function board_push_send(int $threadId, int $postId): void
 {
@@ -259,7 +259,7 @@ function board_push_send(int $threadId, int $postId): void
     $st = $pdo->prepare('SELECT * FROM board_thread WHERE thread_id = ? AND deleted_at IS NULL');
     $st->execute([$threadId]);
     $thread = $st->fetch();
-    $st = $pdo->prepare('SELECT p.user_id, p.body, u.name FROM board_post p LEFT JOIN user_account u ON u.user_id = p.user_id
+    $st = $pdo->prepare('SELECT p.user_id, p.body, u.name, u.member_id FROM board_post p LEFT JOIN user_account u ON u.user_id = p.user_id
         WHERE p.post_id = ? AND p.thread_id = ? AND p.deleted_at IS NULL');
     $st->execute([$postId, $threadId]);
     $post = $st->fetch();
@@ -281,10 +281,9 @@ function board_push_send(int $threadId, int $postId): void
     $st->execute([$postId]);
     $replied = array_flip(array_map('intval', $st->fetchAll(PDO::FETCH_COLUMN)));
 
-    // 候補: 掲示板のアプリ通知が ON で、端末があって、このスレをミュートしていない人
+    // 候補: 書いた本人以外で、このスレをミュートしていない人（アプリ通知の ON / 端末は、送るときに push_subscriptions が絞る）
     $st = $pdo->prepare('SELECT u.user_id, u.member_id, u.is_admin FROM user_account u
-        WHERE u.push_board = 1 AND u.user_id <> ?
-          AND EXISTS (SELECT 1 FROM push_subscription s WHERE s.user_id = u.user_id)
+        WHERE u.user_id <> ?
           AND NOT EXISTS (SELECT 1 FROM board_thread_mute m WHERE m.thread_id = ? AND m.user_id = u.user_id)');
     $st->execute([$authorId, $threadId]);
     $to = [];
@@ -309,10 +308,14 @@ function board_push_send(int $threadId, int $postId): void
         }
     }
     $name = (string)($post['name'] ?? '');
+    board_notice_add($thread, $postId, $authorId, $post['member_id'] === null ? null : (int)$post['member_id'], $name, (string)$post['body'], $to, array_keys($replied));
+    if (!push_enabled()) {
+        return;
+    }
     push_send(push_subscriptions('push_board', $to), [
         'title' => (string)$thread['title'],
         'body'  => ($name !== '' ? $name . ': ' : '') . push_excerpt((string)$post['body'], 100),
-        'url'   => 'board_thread?id=' . $threadId . '#p' . $postId,
+        'url'   => 'board_thread?id=' . $threadId . '&page=' . board_post_page($threadId, $postId) . '#p' . $postId,
         'tag'   => 'board-' . $threadId, // 同じスレの通知は 1 つにまとまる
     ]);
 }
