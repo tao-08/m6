@@ -1139,6 +1139,22 @@ function setupBoardPanels() {
  *   選んだものは返信欄の上にチップで並べ、送信用に hidden の reply_to[] を入れる。チップを押しても解除できる。
  *   書き込み番号は textContent で入れる（innerHTML は使わない）
  * ------------------------------------------------------------------- */
+
+  // 現役のみ・同期のみは、どちらかを ON にするともう片方と年度の範囲をグレーアウトする（展開は CSS。.restrict）
+  document.querySelectorAll('[data-board-restrict]').forEach((box) => {
+    const active = box.querySelector('[name="only_active"]');
+    const cohort = box.querySelector('[data-board-cohort]');
+    const sync = () => {
+      active.disabled = cohort.checked;
+      cohort.disabled = active.checked;
+      box.querySelectorAll('[data-board-range] select').forEach((s) => { s.disabled = active.checked || cohort.checked; });
+    };
+    active.addEventListener('change', sync);
+    cohort.addEventListener('change', sync);
+    sync();
+  });
+
+
 function setupBoardReply() {
   const box = document.querySelector('[data-board-reply-to]');
   if (!box) return;

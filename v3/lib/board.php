@@ -45,9 +45,15 @@ function board_visible_sql(array $user): array
         return ['1 = 1', []];
     }
     $s = board_scope($user);
+    $a = $s['active'] ? 1 : 0;
+    $y = $s['entry_year'] ?? 0;
+    // 自由スレは、立てた人本人か、現役のみ・同期のみ・入部年度の指定（board_thread_year。行なし = 制限なし）をすべて満たす人
     return [
-        "t.deleted_at IS NULL AND (t.kind = 'free' OR (t.kind = 'active' AND ? = 1) OR (t.kind = 'cohort' AND t.entry_year = ?))",
-        [$s['active'] ? 1 : 0, $s['entry_year'] ?? 0],
+        "t.deleted_at IS NULL AND ((t.kind = 'free' AND (t.user_id = ? OR ((t.only_active = 0 OR ? = 1) AND (t.cohort_year IS NULL OR t.cohort_year = ?)
+            AND (NOT EXISTS (SELECT 1 FROM board_thread_year y WHERE y.thread_id = t.thread_id)
+                OR EXISTS (SELECT 1 FROM board_thread_year y WHERE y.thread_id = t.thread_id AND y.entry_year = ?)))))
+            OR (t.kind = 'active' AND ? = 1) OR (t.kind = 'cohort' AND t.entry_year = ?))",
+        [(int)$user['user_id'], $a, $y, $y, $a, $y],
     ];
 }
 
@@ -62,11 +68,34 @@ function board_can_view(array $user, array $thread): bool
     }
     $s = board_scope($user);
     return match ($thread['kind']) {
-        'free'   => true,
+        'free'   => board_can_view_free($user, $thread, $s),
         'active' => $s['active'],
         'cohort' => $s['entry_year'] !== null && (int)$thread['entry_year'] === $s['entry_year'],
         default  => false,
     };
+}
+
+/** 自由スレの参加制限（board_visible_sql と同じ決まり。制限は $thread ではなく DB から読む） */
+function board_can_view_free(array $user, array $thread, array $scope): bool
+{
+    static $cache = [];
+    $id = (int)$thread['thread_id'];
+    if (!isset($cache[$id])) {
+        $st = db()->prepare('SELECT user_id, only_active, cohort_year FROM board_thread WHERE thread_id = ?');
+        $st->execute([$id]);
+        $t = $st->fetch() ?: ['user_id' => null, 'only_active' => 0, 'cohort_year' => null];
+        $st = db()->prepare('SELECT entry_year FROM board_thread_year WHERE thread_id = ?');
+        $st->execute([$id]);
+        $cache[$id] = $t + ['years' => array_map('intval', $st->fetchAll(PDO::FETCH_COLUMN))];
+    }
+    $t = $cache[$id];
+    if ($t['user_id'] !== null && (int)$t['user_id'] === (int)$user['user_id']) {
+        return true;
+    }
+    $y = $scope['entry_year'];
+    return (!$t['only_active'] || $scope['active'])
+        && ($t['cohort_year'] === null || $y === (int)$t['cohort_year'])
+        && (!$t['years'] || ($y !== null && in_array($y, $t['years'], true)));
 }
 
 /**

@@ -21,6 +21,9 @@ $categories = $pdo->query('SELECT c.category_id, c.name, c.color, (SELECT COUNT(
     FROM board_category c ORDER BY c.category_id')->fetchAll();
 $categoryNames = array_column($categories, 'name', 'category_id');
 $categoryColors = array_column($categories, 'color', 'category_id');
+// 参加範囲に選べる入部年度（メンバーにいる最古の年度 〜 今年度）
+$yearMax = current_fiscal_year();
+$yearMin = min((int)($pdo->query('SELECT MIN(entry_year) FROM member')->fetchColumn() ?: $yearMax), $yearMax);
 
 if (is_post()) {
     verify_csrf();
@@ -34,15 +37,31 @@ if (is_post()) {
         $title = trim((string)($_POST['title'] ?? ''));
         $body = trim((string)($_POST['body'] ?? ''));
         $categoryId = (int)($_POST['category_id'] ?? 0);
+        $restrict = ($_POST['restrict'] ?? '') === '1';
+        $yFrom = (int)($_POST['year_from'] ?? 0);
+        $yTo = (int)($_POST['year_to'] ?? 0);
         if (!isset($categoryNames[$categoryId])) {
             flash('カテゴリを選択してください', 'error');
         } elseif ($title === '' || mb_strlen($title) > 100 || $body === '' || mb_strlen($body) > 2000) {
             flash('タイトルは1〜100文字、本文は1〜2000文字で入力してください', 'error');
+        } elseif ($restrict && ($_POST['only_cohort'] ?? '') === '1' && board_scope($user)['entry_year'] === null) {
+            flash('入部年度が未設定のため、同期のみは選べません', 'error');
+        } elseif ($restrict && ($_POST['only_cohort'] ?? '') !== '1' && ($yFrom || $yTo) && !($yFrom && $yTo && $yFrom <= $yTo && $yFrom >= $yearMin && $yTo <= $yearMax)) {
+            flash('学年の範囲が正しくありません', 'error');
         } else {
+            // 制限（「参加できる学年を絞る」ON のときだけ）: 現役のみ / 同期のみ（立てた人の入部年度）/ 入部年度の範囲。
+            // 同期のみのときは範囲を無視。範囲は入部年度で保存する（進級しても同じ人たちのまま）
+            $onlyActive = (int)($restrict && ($_POST['only_active'] ?? '') === '1');
+            $cohortYear = $restrict && ($_POST['only_cohort'] ?? '') === '1' ? board_scope($user)['entry_year'] : null;
+            $years = ($restrict && $cohortYear === null && $yFrom && $yTo) ? range($yFrom, $yTo) : [];
             $pdo->beginTransaction();
-            $pdo->prepare("INSERT INTO board_thread (kind, category_id, user_id, title) VALUES ('free', ?, ?, ?)")
-                ->execute([$categoryId, $user['user_id'], $title]);
+            $pdo->prepare("INSERT INTO board_thread (kind, category_id, only_active, cohort_year, user_id, title) VALUES ('free', ?, ?, ?, ?, ?)")
+                ->execute([$categoryId, $onlyActive, $cohortYear, $user['user_id'], $title]);
             $threadId = (int)$pdo->lastInsertId();
+            $insYear = $pdo->prepare('INSERT INTO board_thread_year (thread_id, entry_year) VALUES (?, ?)');
+            foreach ($years as $yr) {
+                $insYear->execute([$threadId, $yr]);
+            }
             $postId = board_add_post($threadId, (int)$user['user_id'], $body);
             $pdo->commit();
             board_push_post($threadId, $postId); // アプリ通知（lib/push.php）。応答を返し終わってから送る
@@ -113,6 +132,7 @@ if (!isset($categoryNames[$cat])) {
 [$where, $params] = board_visible_sql($user);
 $st = $pdo->prepare("SELECT t.thread_id, t.kind, t.entry_year, t.category_id, t.title, t.last_post_id, t.last_posted_at, t.deleted_at,
         u.name AS author,
+        (t.only_active = 1 OR t.cohort_year IS NOT NULL OR EXISTS (SELECT 1 FROM board_thread_year y WHERE y.thread_id = t.thread_id)) AS restricted,
         (SELECT COUNT(*) FROM board_post p WHERE p.thread_id = t.thread_id AND p.deleted_at IS NULL) AS posts,
         (t.last_post_id > COALESCE(r.last_post_id, 0)) AS is_new
     FROM board_thread t
@@ -158,6 +178,7 @@ $row = function (array $t) use ($categoryNames, $categoryColors, $myYear, $cat):
     return '<a class="board-row' . ($t['deleted_at'] !== null ? ' is-deleted' : '') . '" href="board_thread?id=' . (int)$t['thread_id'] . '">'
         . icon($icon, 'board-row__icon')
         . '<span class="board-row__main"><span class="board-row__title"><span class="board-row__name">' . h($t['title']) . '</span>' . $tag
+        . ($t['restricted'] ? ' ' . icon('lock', 'board-row__lock') : '')
         . ($t['is_new'] && $t['deleted_at'] === null ? ' <span class="tag tag--plan">NEW</span>' : '')
         . ($t['deleted_at'] !== null ? ' <span class="tag tag--c-red">削除済み</span>' : '') . '</span>'
         . '<span class="muted small">' . $meta . '</span></span>'
@@ -190,6 +211,19 @@ render_header('アビーボード', 'board');
             <?php endforeach; ?>
         </select>
     </label>
+    <div class="restrict" data-board-restrict>
+        <label class="check" title="参加できる学年を限定する"><input type="checkbox" name="restrict" value="1" data-board-restrict-toggle><?= icon('lock') ?> 参加できる学年を限定する</label>
+        <div class="restrict__panel"><div class="restrict__inner">
+            <div class="checks">
+                <label class="check" title="現役のみ"><input type="checkbox" name="only_active" value="1"><?= icon('groups') ?> 現役のみ</label>
+                <label class="check" title="同期のみ"><input type="checkbox" name="only_cohort" value="1" data-board-cohort><?= icon('school') ?> 同期のみ</label>
+            </div>
+            <div class="restrict__range" data-board-range>
+                <select name="year_from" aria-label="開始年度"><?php for ($y = $yearMin; $y <= $yearMax; $y++): ?><option value="<?= $y ?>"<?= $y === $yearMin ? ' selected' : '' ?>><?= $y ?>年度（<?= h(grade_label(grade_of($y) ?? 1)) ?>）</option><?php endfor; ?></select>
+                <span class="restrict__to">〜 <select name="year_to" aria-label="終了年度"><?php for ($y = $yearMin; $y <= $yearMax; $y++): ?><option value="<?= $y ?>"<?= $y === $yearMax ? ' selected' : '' ?>><?= $y ?>年度（<?= h(grade_label(grade_of($y) ?? 1)) ?>）</option><?php endfor; ?></select></span>
+            </div>
+        </div></div>
+    </div>
     <label class="field"><span>タイトル</span>
         <input type="text" name="title" maxlength="100" required>
     </label>

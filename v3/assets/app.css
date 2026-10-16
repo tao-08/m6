@@ -2135,6 +2135,17 @@ textarea.board-textarea:focus { border-color: var(--accent); } /* 上の border 
 @media (prefers-reduced-motion: reduce) { .board-mute.is-pop .icon, .board-reply__to:not([hidden]), .board-reply__chip.is-entering { animation: none; } }
 .board-head { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
 .board-head h1 { flex: 1; margin: 0; }
+/* 参加できる学年を絞る: チェックで軽く展開（grid の行を 0fr → 1fr） */
+.restrict__panel { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows .25s ease, opacity .25s ease; }
+.restrict:has([data-board-restrict-toggle]:checked) .restrict__panel { grid-template-rows: 1fr; opacity: 1; }
+.restrict__inner { overflow: hidden; min-height: 0; display: grid; gap: 10px; }
+.restrict:has([data-board-restrict-toggle]:checked) .restrict__inner { padding-top: 10px; }
+.restrict .check:has(input:disabled), .restrict__range:has(select:disabled) { opacity: .4; cursor: not-allowed; }
+.restrict__range { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.restrict__range select { max-width: 100%; }
+.restrict__to { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; } /* 〜 は下（2つ目）のプルダウンと一緒に折り返す */
+@media (prefers-reduced-motion: reduce) { .restrict__panel { transition: none; } }
+.board-row__lock { font-size: 16px; color: var(--muted, #888); vertical-align: middle; }
 .board-head .icon-btn.is-active { background: var(--accent-soft); color: var(--accent); }
 .board-post__reply { margin-left: 10px; }
 .board-post__foot { display: flex; justify-content: flex-end; margin-top: 6px; }

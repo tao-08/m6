@@ -710,7 +710,9 @@ CREATE TABLE board_thread (
     entry_year     SMALLINT UNSIGNED NULL,               -- cohort のときだけ。どの入部年度のスレか
     fixed_key      VARCHAR(20)  NULL,                    -- 'active' / 'cohort:2025'。free は NULL（NULL は UNIQUE でも重複できる）
     category_id    INT UNSIGNED NULL,                    -- free のときだけ
-    user_id        INT UNSIGNED NULL,                    -- 立てた人。active / cohort は NULL
+    only_active    TINYINT(1)   NOT NULL DEFAULT 0,      -- free のとき 1 = 現役だけ
+    cohort_year    SMALLINT UNSIGNED NULL,               -- free のとき値あり = その入部年度（立てた人の同期）だけ
+    user_id       INT UNSIGNED NULL,                    -- 立てた人。active / cohort は NULL
     title          VARCHAR(100) NOT NULL,
     last_post_id   INT UNSIGNED NOT NULL DEFAULT 0,      -- 最後の書き込み（未読の判定用。書き込むたびに更新）
     last_posted_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -731,6 +733,15 @@ CREATE TABLE board_thread (
 
 CREATE TABLE board_post (
     post_id    INT UNSIGNED NOT NULL AUTO_INCREMENT,
+-- 自由スレに参加できる入部年度（行なし = 制限なし。migrations/056）
+CREATE TABLE board_thread_year (
+    thread_id  INT UNSIGNED      NOT NULL,
+    entry_year SMALLINT UNSIGNED NOT NULL,
+    PRIMARY KEY (thread_id, entry_year),
+    CONSTRAINT fk_bty_thread FOREIGN KEY (thread_id) REFERENCES board_thread (thread_id)
+        ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
     thread_id  INT UNSIGNED NOT NULL,
     user_id    INT UNSIGNED NULL,
     body       TEXT         NOT NULL,
