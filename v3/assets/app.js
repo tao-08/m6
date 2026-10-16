@@ -5059,10 +5059,12 @@ function setupLiveImages() {
     const img = modal.querySelector('[data-live-modal-img]');
     const taken = modal.querySelector('[data-live-modal-taken]');
     const dl = modal.querySelector('[data-live-modal-dl]');
+    let clearTimer = 0;
     document.querySelectorAll('[data-live-img]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const id = btn.dataset.liveImg;
         const base = btn.dataset.liveSrc || 'live_image?id='; // 掲示板・お知らせ・バンドは attach_image?k=…&id=
+        clearTimeout(clearTimer); // 閉じてすぐ開き直したとき、前の「外す」予約で画像が消えないように
         img.src = `${base}${id}`;
         dl.href = `${base}${id}&dl=1`;
         taken.textContent = btn.dataset.taken || '';
@@ -5071,7 +5073,8 @@ function setupLiveImages() {
     });
     modal.querySelector('[data-live-modal-close]').addEventListener('click', () => modal.close());
     modal.addEventListener('click', (e) => { if (e.target === modal) modal.close(); });
-    modal.addEventListener('close', () => { img.removeAttribute('src'); });
+    // 閉じるアニメーション（.modal の transition 0.2秒）が終わってから画像を外す。すぐ外すと、枠が縮む前に画像だけ消える
+    modal.addEventListener('close', () => { clearTimer = setTimeout(() => img.removeAttribute('src'), 250); });
   }
 
   document.querySelectorAll('[data-live-img-edit]').forEach(setupLiveImageEdit);
@@ -5086,6 +5089,7 @@ function setupLiveImageEdit(edit) {
   // 選んだ画像をためておく入れ物。ファイル選択は選ぶたびに前の選択が消えるので、ここに足していって、input.files に入れ直す
   const picked = new DataTransfer();
   const pending = []; // 追加予定のプレビュー（✕で取り消せる）
+  const shown = new WeakSet(); // もう出したファイル。新しく足した分だけアニメーションさせる（作り直しで全部が動かないように）
   const sync = () => {
     input.files = picked.files;
     pending.splice(0).forEach((el) => { URL.revokeObjectURL(el.dataset.url); el.remove(); });
@@ -5093,7 +5097,8 @@ function setupLiveImageEdit(edit) {
       const url = URL.createObjectURL(f);
       const el = document.createElement('button');
       el.type = 'button';
-      el.className = 'live-img-edit__item live-img-edit__item--new';
+      el.className = 'live-img-edit__item live-img-edit__item--new' + (shown.has(f) ? '' : ' is-pop');
+      shown.add(f);
       el.dataset.url = url;
       el.setAttribute('aria-label', '追加を取り消し');
       el.innerHTML = `<img src="${url}" alt=""><span class="live-img-edit__x"><span class="icon" aria-hidden="true">close</span></span>`;
@@ -5113,7 +5118,7 @@ function setupLiveImageEdit(edit) {
   function update() {
     const left = room();
     addBtn.classList.toggle('is-disabled', left <= 0);
-    note.textContent = picked.files.length ? `${picked.files.length} 枚を追加（保存で反映）` : '';
+    note.textContent = '';
   }
   input.addEventListener('change', () => {
     const over = [...input.files].length > room();

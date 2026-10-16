@@ -17,6 +17,7 @@ require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/repository.php';
 require_once __DIR__ . '/lib/youtube.php'; // プレイリストの動画から選ぶプルダウン
 require_once __DIR__ . '/lib/history.php'; // 変更履歴（元に戻すための「変更前の状態」を残す）
+require_once __DIR__ . '/lib/attach_image.php'; // バンドの添付画像（最大5枚）
 require_login();
 
 $pdo = db();
@@ -82,6 +83,7 @@ $checkVocals = array_map('intval', array_column(array_filter(array_merge($locked
     static fn($r) => (int)$r['instrument_id'] === instrument_id_by_short('Vo')), 'member_id'));
 
 $errors = [];
+$images = $isNew ? [] : (attach_images($pdo, 'band', [$bandId])[$bandId] ?? []); // 添付済みの画像
 if (is_post()) {
     verify_csrf();
 
@@ -150,6 +152,12 @@ if (is_post()) {
     if (mb_strlen($note) > 255) {
         $errors[] = 'メモは255文字以内にしてください';
     }
+    // 添付画像: 削除にチェックされた分を引いて、新しく選んだ分を足して5枚まで
+    $removeIds = array_values(array_intersect(array_map('intval', array_column($images, 'image_id')), array_map('intval', (array)($_POST['image_remove'] ?? []))));
+    $uploads = live_image_uploads($_FILES['images'] ?? null);
+    if (count($images) - count($removeIds) + count($uploads) > ATTACH_KINDS['band']['max']) {
+        $errors[] = '画像は ' . ATTACH_KINDS['band']['max'] . ' 枚までです';
+    }
     // 空欄はOK（リンクなし）。入れたなら YouTube の https のリンクだけ受け付ける（live_edit.php と同じ）
     if ($youtube !== '' && !youtube_url_valid($youtube)) {
         $errors[] = 'YouTube のリンクは https://www.youtube.com/… か https://youtu.be/… の形で入力してください';
@@ -162,6 +170,7 @@ if (is_post()) {
         $artistId = !empty($band['is_omnibus']) ? null : find_or_create_artist($pdo, $artistName !== '' ? $artistName : $name);
         $values = [$artistId, $name, $songs !== '' ? (int)$songs : null, $start ?: null, $end ?: null, $note !== '' ? $note : null, $youtube !== '' ? $youtube : null, $flag];
 
+        $newFiles = [];
         $pdo->beginTransaction();
         try {
             // 変更履歴: 編集なら変更前の状態を残す。追加なら「作った」ことを残す（元に戻す = 消す）
@@ -184,11 +193,24 @@ if (is_post()) {
             if ($isNew) {
                 sync_day_total_bands($pdo, $dayId); // バンドが増えて総バンド数を超えたら追いつかせる
             }
+            $removeFiles = $isNew ? [] : attach_remove($pdo, 'band', $bandId, $removeIds);
+            attach_add($pdo, 'band', $bandId, $uploads, (int)current_user()['user_id'], $newFiles);
             $pdo->commit();
+            array_map('live_image_unlink', $removeFiles);
+        } catch (RuntimeException $e) { // 画像のエラー（形式・大きさなど）。保存ごと取り消して、入力を表示し直す
+            $pdo->rollBack();
+            array_map('live_image_unlink', $newFiles);
+            if ($isNew) {
+                $bandId = 0;
+            }
+            $errors[] = $e->getMessage();
         } catch (Throwable $e) {
             $pdo->rollBack();
+            array_map('live_image_unlink', $newFiles);
             throw $e;
         }
+    }
+    if (!$errors) {
         flash('「' . $name . '」を' . ($isNew ? '追加' : '更新') . 'しました');
         redirect('band?id=' . $bandId);
     }
@@ -275,7 +297,7 @@ render_header($isNew ? 'バンドを追加' : 'バンドを編集', 'lives');
 <h1 class="display display--sm"><?= $isNew ? 'バンドを追加' : 'バンドを編集' ?></h1>
 <?php foreach ($errors as $e): ?><div class="flash flash--error"><?= h($e) ?></div><?php endforeach; ?>
 
-<form method="post" class="card form-card" id="band-form"<?= unsaved_attr() ?>>
+<form method="post" enctype="multipart/form-data" class="card form-card" id="band-form"<?= unsaved_attr() ?>>
     <?= csrf_field() ?>
     <input type="hidden" name="band_id" value="<?= (int)$band['band_id'] ?>">
     <input type="hidden" name="day_id" value="<?= $dayId ?>">
@@ -292,6 +314,7 @@ render_header($isNew ? 'バンドを追加' : 'バンドを編集', 'lives');
         <label class="field"><span>開始</span><input type="time" step="300" name="start_time" value="<?= h(fmt_time($band['start_time'])) ?>"></label>
         <label class="field"><span>終了</span><input type="time" step="300" name="end_time" value="<?= h(fmt_time($band['end_time'])) ?>"></label>
         <label class="field field--wide"><span>メモ</span><input name="note" value="<?= h($band['note']) ?>" maxlength="255"></label>
+        <div class="field field--wide"><span>画像の追加・削除</span><?= attach_field_html('band', $images) ?></div>
         <label class="field field--wide"><span>YouTube のリンク（任意）</span><span class="field__hint"><a href="live_edit?id=<?= (int)$band['live_id'] ?>">ライブを編集</a>からプレイリストを追加すると各バンドのリンクを一括で登録できます</span><input type="url" name="youtube_url" value="<?= h((string)$band['youtube_url']) ?>" maxlength="500" placeholder="https://www.youtube.com/watch?v=…" inputmode="url"></label>
         <?php if ($ytVideos): ?>
             <!-- name を付けない（送信しない）。選ぶと JS が上の URL 欄に入れる -->

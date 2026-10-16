@@ -173,7 +173,7 @@ function day_params(PDO $pdo, array $in): array
 function live_image_field(array $images, bool $hidden = false): string
 {
     $html = '<div class="field field--wide live-img-edit" data-merge-hide data-live-img-edit data-max="' . LIVE_IMAGE_MAX . '"' . ($hidden ? ' hidden' : '') . '>'
-        . '<span>画像（最大' . LIVE_IMAGE_MAX . '枚）</span><div class="live-img-edit__list">';
+        . '<span>画像の追加・削除</span><div class="live-img-edit__list">';
     foreach ($images as $im) {
         $id = (int)$im['image_id'];
         $html .= '<label class="live-img-edit__item" title="削除"><img src="live_image?id=' . $id . '&amp;t=1" alt="" loading="lazy">'
