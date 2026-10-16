@@ -19,6 +19,7 @@ require_once __DIR__ . '/lib/tracks.php';
 require_once __DIR__ . '/lib/repository.php';
 require_once __DIR__ . '/lib/comments.php';
 require_once __DIR__ . '/lib/history.php'; // 「確認済み」を誰が押したかを変更履歴に残す
+require_once __DIR__ . '/lib/attach_image.php'; // バンドの添付画像（最大5枚）
 $user = require_login();
 
 $bandId = (int)($_GET['id'] ?? 0);
@@ -45,6 +46,43 @@ if (!$band) {
 $liveUrl = 'live?id=' . (int)$band['live_id'] . '#day-' . (int)$band['live_day_id'];
 
 comments_handle_post('band', $bandId, 'band?id=' . $bandId); // コメントの投稿・削除
+
+// 添付画像の追加・削除（ログインしていれば誰でも追加できる。削除は追加した本人・出演メンバー・管理者）
+//   出演メンバーかどうかはこのあと $isMine で分かるので、先にここで調べる
+if (is_post() && in_array($_POST['action'] ?? '', ['image_add', 'image_remove'], true)) {
+    verify_csrf();
+    $st = $pdo->prepare('SELECT 1 FROM band_member WHERE band_id = ? AND member_id = ?');
+    $st->execute([$bandId, (int)$user['member_id']]);
+    $canManage = $user['admin'] || (bool)$st->fetchColumn();
+    $newFiles = [];
+    $removed = [];
+    $pdo->beginTransaction();
+    try {
+        if ($_POST['action'] === 'image_remove') {
+            $rid = (int)($_POST['image_id'] ?? 0);
+            $st = $pdo->prepare('SELECT user_id FROM band_image WHERE image_id = ? AND band_id = ?');
+            $st->execute([$rid, $bandId]);
+            $row = $st->fetch();
+            if ($row && ($canManage || (int)$row['user_id'] === (int)$user['user_id'])) {
+                $removed = attach_remove($pdo, 'band', $bandId, [$rid]);
+            }
+        } else {
+            $uploads = live_image_uploads($_FILES['images'] ?? null);
+            $have = (int)$pdo->query('SELECT COUNT(*) FROM band_image WHERE band_id = ' . $bandId)->fetchColumn();
+            if ($have + count($uploads) > ATTACH_KINDS['band']['max']) {
+                throw new RuntimeException('画像は ' . ATTACH_KINDS['band']['max'] . ' 枚までです');
+            }
+            attach_add($pdo, 'band', $bandId, $uploads, (int)$user['user_id'], $newFiles);
+        }
+        $pdo->commit();
+        array_map('live_image_unlink', $removed);
+    } catch (RuntimeException $e) {
+        $pdo->rollBack();
+        array_map('live_image_unlink', $newFiles);
+        flash($e->getMessage(), 'error');
+    }
+    redirect('band?id=' . $bandId);
+}
 
 // 🚩「楽器の確認」の「確認した」ボタン（ログインしていれば誰でも外せる）
 if (is_post() && ($_POST['action'] ?? '') === 'checked') {
@@ -98,6 +136,7 @@ $rows = $st->fetchAll();
 $lineup = lineup_by_part($rows); // [並び順] = ['short' => 'Vo/Gt', 'title' => 'ギターボーカル', 'segments' => [Vo, Gt], 'members' => [...]]
 $memberIds = array_map('intval', array_column($rows, 'member_id'));
 $isMine = $user['member_id'] && in_array($user['member_id'], $memberIds, true);
+$bandImages = attach_images($pdo, 'band', [$bandId])[$bandId] ?? [];
 
 // ---- 3. 曲 ----
 // オムニバスのときだけ曲ごとのアーティストを出す。song.artist_id が NULL = バンドのアーティストと同じ
@@ -328,6 +367,27 @@ render_header($band['name'], 'lives');
         <p class="muted small">メンバー未登録</p>
     <?php endif; ?>
     <?php if ($band['note']): ?><p class="band-note"><?= icon('sticky_note_2') ?> <?= h($band['note']) ?></p><?php endif; ?>
+</section>
+
+<section class="card band-section no-print">
+    <h2 class="section-title section-title--card"><?= icon('photo_library') ?></h2>
+    <?php // 削除できるのは追加した本人・出演メンバー・管理者。サムネイルの右上の✕ ?>
+    <?= attach_thumbs_html('band', $bandImages, static function (array $im) use ($user, $isMine): string {
+        if (!($user['admin'] || $isMine || (int)$im['user_id'] === (int)$user['user_id'])) {
+            return '';
+        }
+        return '<form method="post" class="band-thumb-del" onsubmit="return confirm(\'削除しますか？\')">' . csrf_field()
+            . '<input type="hidden" name="action" value="image_remove"><input type="hidden" name="image_id" value="' . (int)$im['image_id'] . '">'
+            . '<button type="submit" aria-label="削除" title="削除">' . icon('close') . '</button></form>';
+    }) ?>
+    <?php if (count($bandImages) < ATTACH_KINDS['band']['max']): ?>
+        <form method="post" enctype="multipart/form-data" class="band-img-form"<?= unsaved_attr() ?>>
+            <?= csrf_field() ?>
+            <input type="hidden" name="action" value="image_add">
+            <?= attach_field_html('band', [], ATTACH_KINDS['band']['max'] - count($bandImages)) ?>
+            <button class="btn btn--sm" type="submit" aria-label="アップロード" title="アップロード"><?= icon('upload') ?></button>
+        </form>
+    <?php endif; ?>
 </section>
 
 <section class="card band-section">

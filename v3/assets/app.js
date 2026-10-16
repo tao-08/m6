@@ -5062,8 +5062,9 @@ function setupLiveImages() {
     document.querySelectorAll('[data-live-img]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const id = btn.dataset.liveImg;
-        img.src = `live_image?id=${id}`;
-        dl.href = `live_image?id=${id}&dl=1`;
+        const base = btn.dataset.liveSrc || 'live_image?id='; // 掲示板・お知らせ・バンドは attach_image?k=…&id=
+        img.src = `${base}${id}`;
+        dl.href = `${base}${id}&dl=1`;
         taken.textContent = btn.dataset.taken || '';
         modal.showModal();
       });
@@ -5073,8 +5074,10 @@ function setupLiveImages() {
     modal.addEventListener('close', () => { img.removeAttribute('src'); });
   }
 
-  const edit = document.querySelector('[data-live-img-edit]');
-  if (!edit) return;
+  document.querySelectorAll('[data-live-img-edit]').forEach(setupLiveImageEdit);
+}
+
+function setupLiveImageEdit(edit) {
   const max = Number(edit.dataset.max);
   const input = edit.querySelector('[data-live-img-input]');
   const note = edit.querySelector('[data-live-img-note]');

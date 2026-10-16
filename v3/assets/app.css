@@ -2242,3 +2242,11 @@ html:has(.board-posts) { scroll-behavior: smooth; }
 .live-img-edit__add { width: fit-content; cursor: pointer; }
 .live-img-edit__add.is-disabled { opacity: .4; pointer-events: none; }
 .live-img-edit__item--new { outline: 2px dashed var(--border); outline-offset: -2px; }
+/* バンドページの画像: 追加フォームは1行、削除はサムネイル付きの小さなボタン */
+.band-img-form { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.band-img-form .live-img-edit { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.live-thumbs li { position: relative; }
+.band-thumb-del { position: absolute; top: -6px; right: -6px; margin: 0; }
+.band-thumb-del button { display: grid; place-items: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 50%; background: rgb(0 0 0 / .65); color: #fff; cursor: pointer; }
+.band-thumb-del .icon { font-size: 14px; }
+.board-reply .form-actions { align-items: center; }

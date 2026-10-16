@@ -187,6 +187,30 @@ function h(mixed $value): string
     return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
 }
 
+// 本文用: エスケープ後に http(s):// のURLだけをリンク化して改行を <br> に（XSS対策のため必ず先に h() する）
+function linkify_body(mixed $text): string
+{
+    $html = h($text);
+    $html = preg_replace_callback(
+        '~https?://[^\s<>　]+~u',
+        static function (array $m): string {
+            $url = $m[0];
+            $tail = '';
+            // 末尾の句読点・閉じ括弧・エスケープ済み引用符はリンクに含めない
+            while (preg_match('~(?:&quot;|&#039;|&gt;|[.,;:!?)\]」』）、。])$~u', $url, $t)) {
+                $url = substr($url, 0, -strlen($t[0]));
+                $tail = $t[0] . $tail;
+            }
+            if (!preg_match('~^https?://[^/\s]+~', $url)) {
+                return $m[0];
+            }
+            return '<a href="' . $url . '" target="_blank" rel="noopener noreferrer nofollow">' . $url . '</a>' . $tail;
+        },
+        $html
+    );
+    return nl2br($html);
+}
+
 /**
  * お知らせの本文を HTML にする。1行目だけ [[リンク先|文字]] をリンクにできる（コメント通知用。lib/comments.php）。
  *   先に h() で全部エスケープしてから置き換える。リンク先はサイト内の「ページ名?id=数字#c数字」の形だけ（それ以外は文字のまま）。

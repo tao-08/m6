@@ -37,7 +37,7 @@ SET NAMES utf8mb4;
 -- まっさらな DB に流すと「Note: #1051 '〜' は不明な表です」が表の数だけ出るが、
 -- これは「消そうとした表が最初から無かった」というだけの“お知らせ”で、エラーではない。
 SET FOREIGN_KEY_CHECKS = 0;
-DROP TABLE IF EXISTS push_subscription, comment_like, comment_reply, comment, board_thread_mute, board_notify_category, board_notify, board_post_like, board_post_reply, board_read, board_post, board_thread, board_category, notice_read, notice, notice_category, change_unit, change_op, inquiry, band_like, app_setting, login_attempt, track_preview, track_link_cache, album_link_cache,
+DROP TABLE IF EXISTS band_image, notice_image, board_post_image, live_image, push_subscription, comment_like, comment_reply, comment, board_thread_mute, board_notify_category, board_notify, board_post_like, board_post_reply, board_read, board_post, board_thread, board_category, notice_read, notice, notice_category, change_unit, change_op, inquiry, band_like, app_setting, login_attempt, track_preview, track_link_cache, album_link_cache,
     check_dismiss, band_check_member, member_role, role, artist_alias, member_favorite_album, song_performer, song, track, band_member, live_break, band,
     artist, live_day, live, venue, instrument, user_account, member;
 SET FOREIGN_KEY_CHECKS = 1;
@@ -885,4 +885,41 @@ CREATE TABLE live_image (
     KEY idx_live_image_live (live_id, sort_order),
     CONSTRAINT fk_live_image_live FOREIGN KEY (live_id) REFERENCES live (live_id)
         ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- 掲示板・お知らせ・バンドの添付画像（migrations/059）。ファイル本体は storage/live_images/
+CREATE TABLE board_post_image (
+    image_id   INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    post_id    INT UNSIGNED NOT NULL,
+    file_name  VARCHAR(40)  NOT NULL,
+    sort_order SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+    PRIMARY KEY (image_id),
+    KEY idx_bpi_post (post_id, sort_order),
+    CONSTRAINT fk_bpi_post FOREIGN KEY (post_id) REFERENCES board_post (post_id)
+        ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE notice_image (
+    image_id   INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    notice_id  INT UNSIGNED NOT NULL,
+    file_name  VARCHAR(40)  NOT NULL,
+    sort_order SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+    PRIMARY KEY (image_id),
+    KEY idx_ni_notice (notice_id, sort_order),
+    CONSTRAINT fk_ni_notice FOREIGN KEY (notice_id) REFERENCES notice (notice_id)
+        ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE band_image (
+    image_id   INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    band_id    INT UNSIGNED NOT NULL,
+    user_id    INT UNSIGNED NULL,
+    file_name  VARCHAR(40)  NOT NULL,
+    sort_order SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+    PRIMARY KEY (image_id),
+    KEY idx_bi_band (band_id, sort_order),
+    CONSTRAINT fk_bi_band FOREIGN KEY (band_id) REFERENCES band (band_id)
+        ON UPDATE CASCADE ON DELETE CASCADE,
+    CONSTRAINT fk_bi_user FOREIGN KEY (user_id) REFERENCES user_account (user_id)
+        ON UPDATE CASCADE ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;

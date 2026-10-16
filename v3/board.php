@@ -13,6 +13,7 @@ declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 require __DIR__ . '/lib/board.php';
 require_once __DIR__ . '/lib/push.php'; // board_push_post()（アプリ通知）
+require_once __DIR__ . '/lib/attach_image.php'; // 最初の書き込みの添付画像（1枚）
 $user = require_login();
 $pdo = db();
 board_ensure_fixed();
@@ -54,7 +55,10 @@ if (is_post()) {
             $onlyActive = (int)($restrict && ($_POST['only_active'] ?? '') === '1');
             $cohortYear = $restrict && ($_POST['only_cohort'] ?? '') === '1' ? board_scope($user)['entry_year'] : null;
             $years = ($restrict && $cohortYear === null && $yFrom && $yTo) ? range($yFrom, $yTo) : [];
+            $uploads = array_slice(live_image_uploads($_FILES['images'] ?? null), 0, ATTACH_KINDS['board']['max']);
+            $newFiles = [];
             $pdo->beginTransaction();
+            try {
             $pdo->prepare("INSERT INTO board_thread (kind, category_id, only_active, cohort_year, user_id, title) VALUES ('free', ?, ?, ?, ?, ?)")
                 ->execute([$categoryId, $onlyActive, $cohortYear, $user['user_id'], $title]);
             $threadId = (int)$pdo->lastInsertId();
@@ -63,7 +67,14 @@ if (is_post()) {
                 $insYear->execute([$threadId, $yr]);
             }
             $postId = board_add_post($threadId, (int)$user['user_id'], $body);
+            attach_add($pdo, 'board', $postId, $uploads, (int)$user['user_id'], $newFiles);
             $pdo->commit();
+            } catch (RuntimeException $e) { // 画像のエラー（形式・大きさなど）。スレごと取り消す
+                $pdo->rollBack();
+                array_map('live_image_unlink', $newFiles);
+                flash($e->getMessage(), 'error');
+                redirect($back);
+            }
             board_push_post($threadId, $postId); // アプリ通知（lib/push.php）。応答を返し終わってから送る
             flash('作成しました');
             $back = 'board_thread?id=' . $threadId;
@@ -201,7 +212,7 @@ render_header('アビーボード', 'board');
 </section>
 
 <div class="card togglecard" id="create" data-board-panel hidden>
-<form method="post" class="togglecard__body"<?= unsaved_attr() ?>>
+<form method="post" enctype="multipart/form-data" class="togglecard__body"<?= unsaved_attr() ?>>
     <?= csrf_field() ?>
     <input type="hidden" name="action" value="create">
     <label class="field"><span>カテゴリ</span>
@@ -230,7 +241,7 @@ render_header('アビーボード', 'board');
     <label class="field"><span>本文</span>
         <textarea class="board-textarea" name="body" rows="4" maxlength="2000" required></textarea>
     </label>
-    <div class="form-actions"><button class="btn btn--primary btn--sm" type="submit"><?= icon('send') ?> 作成</button></div>
+    <div class="form-actions"><?= attach_field_html('board') ?><button class="btn btn--primary btn--sm" type="submit"><?= icon('send') ?> 作成</button></div>
 </form>
 </div>
 

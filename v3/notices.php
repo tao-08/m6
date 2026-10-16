@@ -18,6 +18,7 @@
  */
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
+require_once __DIR__ . '/lib/attach_image.php'; // お知らせの添付画像（最大5枚）
 $user = require_login();
 $pdo = db();
 
@@ -29,6 +30,33 @@ $categoryColors = array_column($categories, 'color', 'category_id');
 $systemIds = array_keys(array_intersect($categoryNames, NOTICE_SYSTEM_CATEGORIES));
 $manualCategories = array_values(array_filter($categories, static fn($c) => !in_array((int)$c['category_id'], $systemIds, true)));
 
+/** 画像の削除（予約の編集のとき）と追加。上限は NOTICE の ATTACH_KINDS。エラーは flash で知らせる（お知らせ本体は保存済み） */
+function notice_save_images(PDO $pdo, int $noticeId, bool $editing): void
+{
+    $newFiles = [];
+    $removed = [];
+    try {
+        $uploads = live_image_uploads($_FILES['images'] ?? null);
+        $pdo->beginTransaction();
+        if ($editing) {
+            $removed = attach_remove($pdo, 'notice', $noticeId, (array)($_POST['image_remove'] ?? []));
+        }
+        $have = (int)$pdo->query('SELECT COUNT(*) FROM notice_image WHERE notice_id = ' . $noticeId)->fetchColumn();
+        if ($have + count($uploads) > ATTACH_KINDS['notice']['max']) {
+            throw new RuntimeException('画像は ' . ATTACH_KINDS['notice']['max'] . ' 枚までです');
+        }
+        attach_add($pdo, 'notice', $noticeId, $uploads, null, $newFiles);
+        $pdo->commit();
+        array_map('live_image_unlink', $removed);
+    } catch (RuntimeException $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        array_map('live_image_unlink', $newFiles);
+        flash($e->getMessage(), 'error');
+    }
+}
+
 if (is_post()) {
     verify_csrf();
     if (!$user['admin']) {
@@ -38,7 +66,10 @@ if (is_post()) {
     $action = (string)($_POST['action'] ?? '');
     $back = 'notices';
     if ($action === 'delete') {
-        $pdo->prepare('DELETE FROM notice WHERE notice_id = ?')->execute([(int)($_POST['notice_id'] ?? 0)]);
+        $delId = (int)($_POST['notice_id'] ?? 0);
+        $delFiles = attach_files_of($pdo, 'notice', [$delId]); // 行は CASCADE で消えるので、先にファイル名を控える
+        $pdo->prepare('DELETE FROM notice WHERE notice_id = ?')->execute([$delId]);
+        array_map('live_image_unlink', $delFiles);
         flash('削除しました');
     } elseif ($action === 'category_add' || $action === 'category_rename') {
         $name = trim((string)($_POST['name'] ?? ''));
@@ -115,12 +146,14 @@ if (is_post()) {
                 $pdo->prepare('UPDATE notice SET category_id = ?, is_important = ?, title = ?, body = ?, publish_at = COALESCE(?, NOW())
                     WHERE notice_id = ? AND publish_at > NOW()')
                     ->execute([$categoryId, $important, $title, $body, $publishAt, $editId]);
+                notice_save_images($pdo, $editId, true);
                 flash($publishAt === null || $publishAt <= date('Y-m-d H:i:s') ? '公開しました' : '変更しました');
             }
         } else {
             // publish_at が NULL のときは DEFAULT（現在）にしたいので COALESCE を使う
             $pdo->prepare('INSERT INTO notice (user_id, category_id, is_important, title, body, publish_at) VALUES (?, ?, ?, ?, ?, COALESCE(?, NOW()))')
                 ->execute([$user['user_id'], $categoryId, $important, $title, $body, $publishAt]);
+            notice_save_images($pdo, (int)$pdo->lastInsertId(), false);
             flash($publishAt === null || $publishAt <= date('Y-m-d H:i:s') ? '投稿しました' : '予約しました');
         }
     }
@@ -144,6 +177,7 @@ $st = $pdo->prepare(
 );
 $st->execute([$user['user_id'], $user['admin'] ? 1 : 0, $user['user_id']]);
 $notices = $st->fetchAll();
+$noticeImages = attach_images($pdo, 'notice', array_map('intval', array_column($notices, 'notice_id')));
 
 // 表示した分だけ既読にする（101件目以降を勝手に既読にしない）。管理者にだけ見えている予約中のものは除く
 $mark = $pdo->prepare('INSERT IGNORE INTO notice_read (user_id, notice_id) VALUES (?, ?)');
@@ -161,7 +195,7 @@ render_header('お知らせ', 'notices');
 <?php if ($user['admin']): ?>
 <details class="card togglecard">
 <summary><?= icon('admin_panel_settings') ?> <span class="togglecard__title">新規投稿</span><?= icon('expand_more', 'togglecard__chevron') ?></summary>
-<form method="post" class="togglecard__body"<?= unsaved_attr() ?>>
+<form method="post" enctype="multipart/form-data" class="togglecard__body"<?= unsaved_attr() ?>>
     <?= csrf_field() ?>
     <label class="field"><span>カテゴリ</span>
         <select name="category_id" required>
@@ -181,7 +215,7 @@ render_header('お知らせ', 'notices');
         <label class="check"><input type="checkbox" name="schedule" value="1" data-notice-schedule> <?= icon('schedule') ?> 予約</label>
         <input type="datetime-local" name="publish_at" aria-label="予約日時" data-notice-schedule-at hidden disabled>
     </div>
-    <div class="form-actions"><button class="btn btn--primary btn--sm" type="submit"><?= icon('send') ?> 投稿</button></div>
+    <div class="form-actions"><?= attach_field_html('notice') ?><button class="btn btn--primary btn--sm" type="submit"><?= icon('send') ?> 投稿</button></div>
 </form>
 </details>
 <?php endif; ?>
@@ -209,11 +243,12 @@ render_header('お知らせ', 'notices');
         </summary>
         <div class="notice-body">
         <p><?= notice_body_html($n['body']) ?></p>
+        <?= attach_thumbs_html('notice', $noticeImages[(int)$n['notice_id']] ?? []) ?>
         <?php if ($n['link_url'] !== null): ?><p><a class="btn btn--sm" href="<?= h($n['link_url']) ?>" aria-label="開く" title="開く"><?= icon('open_in_new') ?></a></p><?php endif; ?>
         <?php if ($user['admin'] && $n['is_scheduled']): ?>
         <details class="togglecard togglecard--inline">
             <summary><?= icon('edit') ?> <span class="togglecard__title">予約を編集</span><?= icon('expand_more', 'togglecard__chevron') ?></summary>
-            <form method="post" class="togglecard__body"<?= unsaved_attr() ?>>
+            <form method="post" enctype="multipart/form-data" class="togglecard__body"<?= unsaved_attr() ?>>
                 <?= csrf_field() ?>
                 <input type="hidden" name="action" value="update">
                 <input type="hidden" name="notice_id" value="<?= (int)$n['notice_id'] ?>">
@@ -235,7 +270,7 @@ render_header('お知らせ', 'notices');
                     <label class="check"><input type="checkbox" name="schedule" value="1" data-notice-schedule checked> <?= icon('schedule') ?> 予約</label>
                     <input type="datetime-local" name="publish_at" aria-label="予約日時" data-notice-schedule-at value="<?= h(str_replace(' ', 'T', substr($n['publish_at'], 0, 16))) ?>">
                 </div>
-                <div class="form-actions"><button class="btn btn--primary btn--sm" type="submit"><?= icon('check') ?> 保存</button></div>
+                <div class="form-actions"><?= attach_field_html('notice', $noticeImages[(int)$n['notice_id']] ?? []) ?><button class="btn btn--primary btn--sm" type="submit"><?= icon('check') ?> 保存</button></div>
             </form>
         </details>
         <?php endif; ?>

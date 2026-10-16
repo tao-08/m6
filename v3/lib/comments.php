@@ -198,7 +198,7 @@ function comments_render(string $kind, int $targetId, array $user): void
                 </p>
             <?php endif; ?>
             <?php if (!$deleted): ?>
-                <p class="board-post__body"><?= nl2br(h($c['body'])) ?></p>
+                <p class="board-post__body"><?= linkify_body($c['body']) ?></p>
                 <div class="board-post__foot"><?= like_button($cid, $likes[$cid] ?? null, '', 'api_comment_like') ?></div>
             <?php elseif ($isAdmin): ?>
                 <p class="small board-post__deleted"><?= icon('admin_panel_settings') ?> <?= h(substr($c['deleted_at'], 0, 16)) ?> に <?= h($c['deleted_by_name'] ?? '不明') ?> が削除</p>

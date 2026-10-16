@@ -16,6 +16,7 @@ require __DIR__ . '/lib/bootstrap.php';
 require __DIR__ . '/lib/board.php';
 require_once __DIR__ . '/lib/push.php'; // board_push_post()（アプリ通知）
 require_once __DIR__ . '/lib/repository.php'; // like_button()
+require_once __DIR__ . '/lib/attach_image.php'; // 書き込みの添付画像（1枚）
 $user = require_login();
 $pdo = db();
 $uid = (int)$user['user_id'];
@@ -55,13 +56,23 @@ if (is_post()) {
                 $st->execute([$id, ...$to]);
                 $to = array_map('intval', $st->fetchAll(PDO::FETCH_COLUMN));
             }
+            $uploads = array_slice(live_image_uploads($_FILES['images'] ?? null), 0, ATTACH_KINDS['board']['max']);
+            $newFiles = [];
             $pdo->beginTransaction();
-            $postId = board_add_post($id, $uid, $body);
-            $ins = $pdo->prepare('INSERT INTO board_post_reply (post_id, reply_to_post_id) VALUES (?, ?)');
-            foreach ($to as $toId) {
-                $ins->execute([$postId, $toId]);
+            try {
+                $postId = board_add_post($id, $uid, $body);
+                $ins = $pdo->prepare('INSERT INTO board_post_reply (post_id, reply_to_post_id) VALUES (?, ?)');
+                foreach ($to as $toId) {
+                    $ins->execute([$postId, $toId]);
+                }
+                attach_add($pdo, 'board', $postId, $uploads, $uid, $newFiles);
+                $pdo->commit();
+            } catch (RuntimeException $e) { // 画像のエラー（形式・大きさなど）。書き込みごと取り消す
+                $pdo->rollBack();
+                array_map('live_image_unlink', $newFiles);
+                flash($e->getMessage(), 'error');
+                redirect($back);
             }
-            $pdo->commit();
             board_push_post($id, $postId); // アプリ通知（lib/push.php）。応答を返し終わってから送る
             $back .= '&page=' . board_post_page($id, $postId) . '#p' . $postId; // 書き込みは最後のページに入る
         }
@@ -107,6 +118,7 @@ $st = $pdo->prepare('SELECT p.post_id, p.user_id, p.body, p.created_at, p.delete
     WHERE p.thread_id = ? ORDER BY p.post_id LIMIT ' . BOARD_PER_PAGE . ' OFFSET ' . $offset);
 $st->execute([$id]);
 $posts = $st->fetchAll();
+$postImages = attach_images($pdo, 'board', array_map('intval', array_column($posts, 'post_id')));
 
 /** ページ送り（2ページ以上あるときだけ）。現在のページの前後2つと、最初・最後を出す */
 $pager = static function () use ($page, $pages, $pageUrl): string {
@@ -214,11 +226,13 @@ render_header($thread['title'], 'board');
             </p>
         <?php endif; ?>
         <?php if (!$deleted): ?>
-            <p class="board-post__body"><?= nl2br(h($p['body'])) ?></p>
+            <p class="board-post__body"><?= linkify_body($p['body']) ?></p>
+            <?= attach_thumbs_html('board', $postImages[(int)$p['post_id']] ?? []) ?>
             <div class="board-post__foot"><?= like_button((int)$p['post_id'], $likes[(int)$p['post_id']] ?? null, '', 'api_board_like') ?></div>
         <?php elseif ($user['admin']): ?>
             <p class="small board-post__deleted"><?= icon('admin_panel_settings') ?> <?= h(substr($p['deleted_at'], 0, 16)) ?> に <?= h($p['deleted_by_name'] ?? '不明') ?> が削除</p>
             <p class="board-post__body muted"><?= nl2br(h($p['body'])) ?></p>
+            <?= attach_thumbs_html('board', $postImages[(int)$p['post_id']] ?? []) ?>
         <?php else: ?>
             <p class="muted small">削除されました</p>
         <?php endif; ?>
@@ -228,14 +242,14 @@ render_header($thread['title'], 'board');
 <?= $pager() ?>
 
 <?php if ($thread['deleted_at'] === null): ?>
-<form method="post" class="card board-reply"<?= unsaved_attr() ?>>
+<form method="post" enctype="multipart/form-data" class="card board-reply"<?= unsaved_attr() ?>>
     <?= csrf_field() ?>
     <input type="hidden" name="thread_id" value="<?= $id ?>">
     <input type="hidden" name="action" value="reply">
     <!-- 返信先（各書き込みの返信ボタンで追加・解除。assets/app.js の setupBoardReply）。選んだ数だけ hidden の reply_to[] が入る -->
     <div class="board-reply__to" data-board-reply-to hidden></div>
     <textarea class="board-textarea" name="body" rows="3" maxlength="2000" required aria-label="返信"></textarea>
-    <div class="form-actions"><button class="btn btn--primary btn--sm" type="submit"><?= icon('send') ?> 送信</button></div>
+    <div class="form-actions"><?= attach_field_html('board') ?><button class="btn btn--primary btn--sm" type="submit"><?= icon('send') ?> 送信</button></div>
 </form>
 <?php endif; ?>
 
