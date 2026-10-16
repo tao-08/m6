@@ -18,7 +18,7 @@ if ($user) {
     // ベルのポップアップのタブ（key は api_notice_read.php の kind と同じ）
     $notifTabs = [
         'notif'  => ['label' => '通知', 'href' => 'notices', 'unread' => $unreadNotifs, 'items' => notice_recent((int)$user['user_id'], true)],
-        'notice' => ['label' => 'お知らせ', 'href' => 'notices', 'unread' => $unreadNotices, 'items' => notice_recent((int)$user['user_id'], false)],
+        'notice' => ['label' => 'サイトからのお知らせ', 'href' => 'notices', 'unread' => $unreadNotices, 'items' => notice_recent((int)$user['user_id'], false)],
     ];
     $notifTab = $unreadNotices > 0 ? 'notice' : 'notif';
     // 掲示板: 未読の書き込みがあるスレの数（見られるスレだけ。lib/board.php）
