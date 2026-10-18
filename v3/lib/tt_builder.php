@@ -1,0 +1,433 @@
+<?php
+/**
+ * =====================================================================
+ *  tt_builder.php — タイムテーブル作成ツールの部品（tt_builder.php / tt_builder_api.php から使う）
+ * =====================================================================
+ *  下書き（timetable_draft）の state は JSON 1個。形はこう:
+ *    {
+ *      "title": "9月ライブ", "dayCount": 2,
+ *      "bands":  {"b0": {"name", "members": [{"n": 表示名, "k": 照合用キー, "p": パート}], "songs", "cnt", "avail": [1,2], "pin": false, "ref": "ri:bi"}},
+ *      "grades": {"照合用キー": 3},            … 部員DBに無い人の学年（ツールで入力）
+ *      "days":   [{"call": "12:30", "rows": [{"id": "b0", "min": 20}, {"id": "x1a2", "t": "break"|"text", "x": "休憩", "min": 10}]} ×3]
+ *    }
+ *  days は常に3日分持つ（dayCount で見せる日数を決める）。バンドの行の id はバンドの id と同じ。
+ *
+ *  同時編集: 画面からは「操作」（tt_apply_op の $op）を送ってもらい、サーバーで state に当てる。
+ *  state をまるごと上書きしないので、2人が別々のバンドを動かしても両方残る。
+ *  同じ処理を assets/tt_builder.js の applyOp にも書いてある（直すときは両方直すこと）。
+ * =====================================================================
+ */
+declare(strict_types=1);
+
+require_once __DIR__ . '/import/planner.php';
+
+const TT_MAX_DAYS = 3;
+const TT_MAX_ROWS = 80;          // 1日の行数の上限
+const TT_MAX_STATE_BYTES = 1_000_000;
+const TT_ROW_ID = '/^[a-z][a-z0-9]{0,23}$/';
+const TT_PRESENCE_SEC = 15;      // この秒数以内に見に来た人を「開いている人」とする
+
+/** 名簿（build_import_plan の rosters）から最初の state を作る。名簿が複数ファイルなら 1ファイル目 = 1日目… と仮に置く */
+function tt_new_state(string $title, array $rosters): array
+{
+    $dayCount = max(1, min(TT_MAX_DAYS, count($rosters) >= 2 ? count($rosters) : 2));
+    $state = ['title' => $title, 'dayCount' => $dayCount, 'bands' => [], 'grades' => [],
+        'days' => array_fill(0, TT_MAX_DAYS, ['call' => '', 'rows' => []])];
+    $n = 0;
+    foreach ($rosters as $ri => $roster) {
+        foreach ($roster['bands'] as $bi => $b) {
+            $id = 'b' . $n++;
+            $members = [];
+            foreach ($b['members'] as $m) {
+                $k = member_key($m['name']);
+                if ($k !== '' && !isset($members[$k])) { // ギタボなど同じ人が2つの欄にいても1人
+                    $members[$k] = ['n' => member_display($m['name']), 'k' => $k, 'p' => $m['part']];
+                }
+            }
+            $state['bands'][$id] = ['name' => $b['band_name'], 'members' => array_values($members),
+                'songs' => $b['song_count'], 'cnt' => $b['member_count'], 'avail' => range(1, $dayCount),
+                'pin' => false, 'ref' => "$ri:$bi"];
+            $state['days'][min($ri, $dayCount - 1)]['rows'][] = ['id' => $id, 'min' => null];
+        }
+    }
+    return $state;
+}
+
+/** 下書きを読む。$lock = true なら行ロック（トランザクションの中で使う） */
+function tt_load(PDO $pdo, int $id, bool $lock = false): ?array
+{
+    $st = $pdo->prepare('SELECT * FROM timetable_draft WHERE draft_id = ?' . ($lock ? ' FOR UPDATE' : ''));
+    $st->execute([$id]);
+    $row = $st->fetch();
+    if (!$row) {
+        return null;
+    }
+    $row['state'] = json_decode($row['state'], true) ?: [];
+    return $row;
+}
+
+/**
+ * 名簿の人の 学年 と 後ろの出順の経験 を部員DBから調べる。
+ *   g … 学年（DBに居ない・入学年度が無ければ無し）
+ *   t … トリの回数 / b … 後ろ1/4（トリを除く）の回数 / n … 出演回数
+ * @param string[] $keys member_key の配列
+ * @return array<string,array> キー => ['g' =>, 't' =>, 'b' =>, 'n' =>]
+ */
+function tt_member_info(PDO $pdo, array $keys): array
+{
+    $want = array_flip($keys);
+    $idOf = [];
+    $info = [];
+    foreach ($pdo->query('SELECT member_id, name, entry_year FROM member') as $m) {
+        $k = member_key($m['name']);
+        if (isset($want[$k]) && !isset($idOf[$k])) {
+            $idOf[$k] = (int)$m['member_id'];
+            $g = grade_of($m['entry_year'] !== null ? (int)$m['entry_year'] : null);
+            $info[$k] = ['g' => $g, 't' => 0, 'b' => 0, 'n' => 0];
+        }
+    }
+    if (!$idOf) {
+        return $info;
+    }
+    $keyOf = array_flip($idOf);
+    $in = implode(',', array_fill(0, count($idOf), '?'));
+    // 日程ごとのバンド数で「後ろ1/4」を決める。トリは HEADLINER_SQL（総バンド数まで登録済みの日程だけ）
+    $st = $pdo->prepare('SELECT bm.member_id, b.play_order, cnt.n, (last.max_order IS NOT NULL) AS is_last
+        FROM (' . MEMBERSHIP_SQL . ') bm
+        JOIN band b ON b.band_id = bm.band_id
+        JOIN (SELECT live_day_id, COUNT(*) AS n FROM band GROUP BY live_day_id) cnt ON cnt.live_day_id = b.live_day_id
+        LEFT JOIN (' . HEADLINER_SQL . ') last ON last.live_day_id = b.live_day_id AND last.max_order = b.play_order
+        WHERE bm.member_id IN (' . $in . ')');
+    $st->execute(array_values($idOf));
+    foreach ($st as $r) {
+        $k = $keyOf[(int)$r['member_id']];
+        $info[$k]['n']++;
+        if ((int)$r['is_last']) {
+            $info[$k]['t']++;
+        } elseif ((int)$r['n'] >= 4 && (int)$r['play_order'] > (int)$r['n'] * 0.75) {
+            $info[$k]['b']++;
+        }
+    }
+    return $info;
+}
+
+/** state の中の全員の照合用キー */
+function tt_member_keys(array $state): array
+{
+    $keys = [];
+    foreach ($state['bands'] as $b) {
+        foreach ($b['members'] as $m) {
+            $keys[$m['k']] = true;
+        }
+    }
+    return array_keys($keys);
+}
+
+/** 行 id → [日(0始まり), 位置]。無ければ null */
+function tt_find_row(array $state, string $id): ?array
+{
+    foreach ($state['days'] as $d => $day) {
+        foreach ($day['rows'] as $i => $r) {
+            if ($r['id'] === $id) {
+                return [$d, $i];
+            }
+        }
+    }
+    return null;
+}
+
+/**
+ * 操作を1つ state に当てる。おかしな操作（他の人の変更で行が消えた・出演できない日へ動かした など）は false を返して何もしない。
+ * フォームの値と同じく書き換えられる可能性があるので、型と範囲を全部確かめる。
+ */
+function tt_apply_op(array &$state, mixed $op): bool
+{
+    if (!is_array($op) || !is_string($op['op'] ?? null)) {
+        return false;
+    }
+    $int = static fn($v, int $min, int $max) => is_int($v) && $v >= $min && $v <= $max;
+    $str = static fn($v, int $max) => is_string($v) && mb_strlen($v) <= $max;
+    $dc = $state['dayCount'];
+    switch ($op['op']) {
+        case 'title':
+            if (!$str($op['x'] ?? null, 100) || trim($op['x']) === '') {
+                return false;
+            }
+            $state['title'] = trim($op['x']);
+            return true;
+
+        case 'dayCount': // 減らしたら、消えた日の行は残った最後の日の後ろへ。日程希望も詰める
+            if (!$int($op['n'] ?? null, 1, TT_MAX_DAYS)) {
+                return false;
+            }
+            $n = $op['n'];
+            for ($d = $n; $d < TT_MAX_DAYS; $d++) {
+                array_push($state['days'][$n - 1]['rows'], ...$state['days'][$d]['rows']);
+                $state['days'][$d]['rows'] = [];
+            }
+            foreach ($state['bands'] as &$b) {
+                $b['avail'] = array_values(array_filter($b['avail'], static fn($x) => $x <= $n));
+                if (!$b['avail']) {
+                    $b['avail'] = range(1, $n);
+                }
+                if ($n > $dc && count($b['avail']) === $dc) {
+                    $b['avail'] = range(1, $n); // 全日OKだったバンドは、増えた日もOKにしておく
+                }
+            }
+            unset($b);
+            $state['dayCount'] = $n;
+            return true;
+
+        case 'avail': // 日程希望。今いる日がダメになったら、出られる最初の日の最後へ動かす
+            $b = $op['b'] ?? null;
+            $days = $op['days'] ?? null;
+            if (!is_string($b) || !isset($state['bands'][$b]) || !is_array($days) || !$days) {
+                return false;
+            }
+            $days = array_values(array_unique($days));
+            foreach ($days as $x) {
+                if (!$int($x, 1, $dc)) {
+                    return false;
+                }
+            }
+            sort($days);
+            $state['bands'][$b]['avail'] = $days;
+            $at = tt_find_row($state, $b);
+            if ($at !== null && !in_array($at[0] + 1, $days, true)) {
+                [$row] = array_splice($state['days'][$at[0]]['rows'], $at[1], 1);
+                $state['days'][$days[0] - 1]['rows'][] = $row;
+            }
+            return true;
+
+        case 'move': // 行を {day(1始まり), index} へ。バンドは出演できる日だけ
+            $id = $op['id'] ?? null;
+            $day = $op['day'] ?? null;
+            $index = $op['index'] ?? null;
+            if (!is_string($id) || !$int($day, 1, $dc) || !$int($index, 0, TT_MAX_ROWS)) {
+                return false;
+            }
+            $at = tt_find_row($state, $id);
+            if ($at === null || (isset($state['bands'][$id]) && !in_array($day, $state['bands'][$id]['avail'], true))) {
+                return false;
+            }
+            if ($at[0] !== $day - 1 && count($state['days'][$day - 1]['rows']) >= TT_MAX_ROWS) {
+                return false;
+            }
+            [$row] = array_splice($state['days'][$at[0]]['rows'], $at[1], 1);
+            $rows = &$state['days'][$day - 1]['rows'];
+            array_splice($rows, min($index, count($rows)), 0, [$row]);
+            return true;
+
+        case 'arrange': // 自動配置の結果。全部の行を、日ごとの id の並びで置きかえる（行の過不足・出演できない日があれば受け付けない）
+            $order = $op['days'] ?? null;
+            if (!is_array($order) || count($order) !== $dc) {
+                return false;
+            }
+            $byId = [];
+            foreach ($state['days'] as $day) {
+                foreach ($day['rows'] as $r) {
+                    $byId[$r['id']] = $r;
+                }
+            }
+            $new = array_fill(0, TT_MAX_DAYS, null);
+            $seen = [];
+            foreach (array_values($order) as $d => $ids) {
+                if (!is_array($ids) || count($ids) > TT_MAX_ROWS) {
+                    return false;
+                }
+                $new[$d] = [];
+                foreach ($ids as $id) {
+                    if (!is_string($id) || !isset($byId[$id]) || isset($seen[$id])
+                        || (isset($state['bands'][$id]) && !in_array($d + 1, $state['bands'][$id]['avail'], true))) {
+                        return false;
+                    }
+                    $seen[$id] = true;
+                    $new[$d][] = $byId[$id];
+                }
+            }
+            if (count($seen) !== count($byId)) {
+                return false;
+            }
+            foreach ($new as $d => $rows) {
+                $state['days'][$d]['rows'] = $rows ?? [];
+            }
+            return true;
+
+        case 'pin':
+            $b = $op['b'] ?? null;
+            if (!is_string($b) || !isset($state['bands'][$b]) || !is_bool($op['on'] ?? null)) {
+                return false;
+            }
+            $state['bands'][$b]['pin'] = $op['on'];
+            return true;
+
+        case 'grade': // 部員DBに無い人の学年。null で消す
+            $k = $op['k'] ?? null;
+            $g = $op['g'] ?? null;
+            if (!$str($k, 60) || $k === '' || !($g === null || $int($g, 1, 9))) {
+                return false;
+            }
+            if ($g === null) {
+                unset($state['grades'][$k]);
+            } else {
+                $state['grades'][$k] = $g;
+            }
+            return true;
+
+        case 'min': // 持ち時間（分）。null で空欄
+            $id = $op['id'] ?? null;
+            $m = $op['min'] ?? null;
+            if (!is_string($id) || !($m === null || $int($m, 0, 600)) || ($at = tt_find_row($state, $id)) === null) {
+                return false;
+            }
+            $state['days'][$at[0]]['rows'][$at[1]]['min'] = $m;
+            return true;
+
+        case 'call': // 集合時間
+            $day = $op['day'] ?? null;
+            $t = $op['t'] ?? null;
+            if (!$int($day, 1, TT_MAX_DAYS) || !is_string($t) || ($t !== '' && !preg_match('/^([01]\d|2[0-3]):[0-5]\d$/', $t))) {
+                return false;
+            }
+            $state['days'][$day - 1]['call'] = $t;
+            return true;
+
+        case 'add': // 休憩・テキストの行を足す
+            $id = $op['id'] ?? null;
+            $day = $op['day'] ?? null;
+            $t = $op['t'] ?? null;
+            if (!is_string($id) || !preg_match(TT_ROW_ID, $id) || $id[0] !== 'x' || tt_find_row($state, $id) !== null
+                || !$int($day, 1, $dc) || !$int($op['index'] ?? null, 0, TT_MAX_ROWS) || !in_array($t, ['break', 'text'], true)
+                || !$str($op['x'] ?? null, 50) || count($state['days'][$day - 1]['rows']) >= TT_MAX_ROWS
+                || !(($op['min'] ?? null) === null || $int($op['min'], 0, 600))) {
+                return false;
+            }
+            $rows = &$state['days'][$day - 1]['rows'];
+            array_splice($rows, min($op['index'], count($rows)), 0, [['id' => $id, 't' => $t, 'x' => trim($op['x']), 'min' => $op['min'] ?? null]]);
+            return true;
+
+        case 'text': // 休憩・テキストの行の文字
+            $id = $op['id'] ?? null;
+            if (!is_string($id) || !$str($op['x'] ?? null, 50) || ($at = tt_find_row($state, $id)) === null
+                || !isset($state['days'][$at[0]]['rows'][$at[1]]['t'])) {
+                return false;
+            }
+            $state['days'][$at[0]]['rows'][$at[1]]['x'] = trim($op['x']);
+            return true;
+
+        case 'del': // 休憩・テキストの行を消す（バンドの行は消せない）
+            $id = $op['id'] ?? null;
+            if (!is_string($id) || ($at = tt_find_row($state, $id)) === null || !isset($state['days'][$at[0]]['rows'][$at[1]]['t'])) {
+                return false;
+            }
+            array_splice($state['days'][$at[0]]['rows'], $at[1], 1);
+            return true;
+    }
+    return false;
+}
+
+/** "12:30" + 分 → "12:50"（24時を超えたら回す） */
+function tt_add_min(string $hm, int $min): string
+{
+    [$h, $m] = array_map('intval', explode(':', $hm));
+    $t = ($h * 60 + $m + $min) % 1440;
+    return sprintf('%02d:%02d', intdiv($t, 60), $t % 60);
+}
+
+/** 1日分の行に開始・終了時刻を付ける（集合時間から上から順に足していく。集合時間が無ければ時刻なし） */
+function tt_day_rows(array $state, int $d): array
+{
+    $day = $state['days'][$d];
+    $cur = $day['call'] !== '' ? $day['call'] : null;
+    $out = [];
+    foreach ($day['rows'] as $r) {
+        $band = isset($r['t']) ? null : ($state['bands'][$r['id']] ?? null);
+        $start = $cur;
+        $end = $cur !== null && $r['min'] !== null ? tt_add_min($cur, $r['min']) : null;
+        if ($end !== null) {
+            $cur = $end;
+        }
+        $out[] = ['row' => $r, 'band' => $band, 'start' => $start, 'end' => $r['min'] ? $end : null];
+    }
+    return $out;
+}
+
+/** 書き出し用の CSV（取り込みのタイムテーブルの形。.claude/skills/timetable-csv の書式）。1日分 */
+function tt_csv(array $state, int $d): string
+{
+    $label = DAY_LABELS[$d];
+    $lines = [[$state['title'] . $label, '', '', '', '', ''], ['時間', '', 'バンド名', '曲数', '人数', 'Key']];
+    foreach (tt_day_rows($state, $d) as $x) {
+        $b = $x['band'];
+        $lines[] = [$x['start'] ?? '', $x['end'] ?? '', $b['name'] ?? $x['row']['x'],
+            $b !== null ? (string)($b['songs'] ?? '') : '', $b !== null ? (string)$b['cnt'] : '', ''];
+    }
+    $fp = fopen('php://temp', 'r+');
+    fwrite($fp, "\xEF\xBB\xBF"); // Excel で文字化けしないよう BOM を付ける
+    foreach ($lines as $l) {
+        // 「=」などで始まるセルは Excel が数式として実行するので、先頭に ' を付けて文字にする（CSV インジェクション対策）
+        fputcsv($fp, array_map(static fn($v) => preg_match('/^[=+\-@\t\r]/', (string)$v) ? "'" . $v : (string)$v, $l), ',', '"', '');
+    }
+    rewind($fp);
+    return (string)stream_get_contents($fp);
+}
+
+/**
+ * 公開用: import.php の取り込みの計画（plan）を作る。build_manual_timetables と同じ形のタイムテーブル + 名簿。
+ * 名簿のバンドと枠の対応は、バンド名で探さず下書きの ref（'ri:bi'）をそのまま使う。
+ */
+function tt_import_plan(array $state, array $rosters): array
+{
+    $plan = ['timetables' => [], 'rosters' => $rosters, 'errors' => [], 'notes' => []];
+    $refs = [];
+    for ($d = 0; $d < $state['dayCount']; $d++) {
+        $slots = [];
+        foreach (tt_day_rows($state, $d) as $x) {
+            $b = $x['band'];
+            if ($b !== null) {
+                $refs[count($plan['timetables']) . ':' . count($slots)] = $b['ref'];
+            } elseif (in_array(trim((string)$x['row']['x']), ['', '集合'], true)) {
+                continue; // 名前の無い行・集合は登録しない（ファイルの取り込みでも集合は読み飛ばしている）
+            }
+            $slots[] = ['is_band' => $b !== null, 'band_name' => $b['name'] ?? $x['row']['x'],
+                'start_time' => $x['start'], 'end_time' => $x['end'],
+                'song_count' => $b['songs'] ?? null, 'member_count' => $b['cnt'] ?? null, 'key_note' => ''];
+        }
+        if (!array_filter($slots, static fn($s) => $s['is_band'])) {
+            continue;
+        }
+        $plan['timetables'][] = ['title' => $state['title'] . DAY_LABELS[$d], 'live_name' => $state['title'],
+            'label' => DAY_LABELS[$d], 'month' => null, 'day' => null, 'venue' => '', 'slots' => $slots,
+            'file' => 'タイムテーブル作成（' . DAY_LABELS[$d] . '）'];
+    }
+    $plan = finish_import_plan($plan);
+    foreach ($plan['rosters'] as $ri => $r) {
+        foreach (array_keys($r['bands']) as $bi) {
+            $plan['rosters'][$ri]['bands'][$bi]['slot'] = '';
+        }
+    }
+    foreach ($refs as $slotKey => $ref) {
+        [$ri, $bi] = array_map('intval', explode(':', $ref));
+        if (isset($plan['rosters'][$ri]['bands'][$bi])) {
+            $plan['rosters'][$ri]['bands'][$bi]['slot'] = $slotKey;
+        }
+    }
+    return $plan;
+}
+
+/** 今この下書きを開いている人（自分も含む）。focus = 操作中の行 */
+function tt_presence(PDO $pdo, int $draftId, int $me): array
+{
+    $st = $pdo->prepare('SELECT p.user_id, p.focus, u.name FROM timetable_draft_presence p
+        JOIN user_account u ON u.user_id = p.user_id
+        WHERE p.draft_id = ? AND p.last_seen >= NOW() - INTERVAL ' . TT_PRESENCE_SEC . ' SECOND ORDER BY p.user_id');
+    $st->execute([$draftId]);
+    return array_map(static fn($r) => ['id' => (int)$r['user_id'], 'name' => $r['name'], 'focus' => $r['focus'],
+        'me' => (int)$r['user_id'] === $me], $st->fetchAll());
+}
+
+/** <script type="application/json"> に埋める JSON（</script> などで閉じられないように） */
+function tt_json(mixed $v): string
+{
+    return json_encode($v, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
+}

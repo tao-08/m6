@@ -262,6 +262,11 @@ if (is_post()) {
     if ($action === 'commit' && isset($_SESSION['import_plan'])) {
         try {
             $liveIds = commit_import_plan($pdo, $_SESSION['import_plan'], $input);
+            // タイムテーブル作成ツール（tt_builder.php）から来たなら、下書きに「公開済み」の印を付ける
+            if (!empty($_SESSION['import_plan']['tt_draft']) && $liveIds) {
+                $pdo->prepare('UPDATE timetable_draft SET published_live_id = ? WHERE draft_id = ?')
+                    ->execute([$liveIds[0], (int)$_SESSION['import_plan']['tt_draft']]);
+            }
             unset($_SESSION['import_plan'], $_SESSION['import_form']);
 
             // 今回の取り込みで自分のアカウントがメンバーと紐付いたかもしれないので、セッションも更新

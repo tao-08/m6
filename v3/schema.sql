@@ -37,7 +37,7 @@ SET NAMES utf8mb4;
 -- まっさらな DB に流すと「Note: #1051 '〜' は不明な表です」が表の数だけ出るが、
 -- これは「消そうとした表が最初から無かった」というだけの“お知らせ”で、エラーではない。
 SET FOREIGN_KEY_CHECKS = 0;
-DROP TABLE IF EXISTS band_image, notice_image, board_post_image, live_image, push_subscription, comment_like, comment_reply, comment, board_thread_mute, board_notify_category, board_notify, board_post_like, board_post_reply, board_read, board_post, board_thread, board_category, notice_read, notice, notice_category, change_unit, change_op, inquiry, band_like, app_setting, login_attempt, track_preview, track_link_cache, album_link_cache,
+DROP TABLE IF EXISTS timetable_draft_presence, timetable_draft, band_image, notice_image, board_post_image, live_image, push_subscription, comment_like, comment_reply, comment, board_thread_mute, board_notify_category, board_notify, board_post_like, board_post_reply, board_read, board_post, board_thread, board_category, notice_read, notice, notice_category, change_unit, change_op, inquiry, band_like, app_setting, login_attempt, track_preview, track_link_cache, album_link_cache,
     check_dismiss, band_check_member, member_role, role, artist_alias, member_favorite_album, song_performer, song, track, band_member, live_break, band,
     artist, live_day, live, venue, instrument, user_account, member;
 SET FOREIGN_KEY_CHECKS = 1;
@@ -922,4 +922,35 @@ CREATE TABLE band_image (
         ON UPDATE CASCADE ON DELETE CASCADE,
     CONSTRAINT fk_bi_user FOREIGN KEY (user_id) REFERENCES user_account (user_id)
         ON UPDATE CASCADE ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE timetable_draft (
+    draft_id          INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    title             VARCHAR(100) NOT NULL,
+    state             MEDIUMTEXT   NOT NULL,           -- JSON（日数・バンド・日程希望・並び・持ち時間など。同時編集で書き換わる）
+    source            MEDIUMTEXT   NOT NULL,           -- JSON（読み取った名簿そのまま。公開時に取り込みへ渡す。編集しない）
+    version           INT UNSIGNED NOT NULL DEFAULT 0, -- 変更のたびに +1（同時編集の同期用）
+    created_by        INT UNSIGNED NULL,
+    updated_by        INT UNSIGNED NULL,
+    created_at        DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at        DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    published_live_id INT UNSIGNED NULL,
+    PRIMARY KEY (draft_id),
+    CONSTRAINT fk_ttd_created FOREIGN KEY (created_by) REFERENCES user_account (user_id)
+        ON UPDATE CASCADE ON DELETE SET NULL,
+    CONSTRAINT fk_ttd_updated FOREIGN KEY (updated_by) REFERENCES user_account (user_id)
+        ON UPDATE CASCADE ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- 誰が開いているか（下書き × ユーザーの多対多なので中間テーブル）
+CREATE TABLE timetable_draft_presence (
+    draft_id  INT UNSIGNED NOT NULL,
+    user_id   INT UNSIGNED NOT NULL,
+    focus     VARCHAR(30)  NULL,                       -- 操作中の行の id
+    last_seen DATETIME     NOT NULL,
+    PRIMARY KEY (draft_id, user_id),
+    CONSTRAINT fk_ttp_draft FOREIGN KEY (draft_id) REFERENCES timetable_draft (draft_id)
+        ON UPDATE CASCADE ON DELETE CASCADE,
+    CONSTRAINT fk_ttp_user FOREIGN KEY (user_id) REFERENCES user_account (user_id)
+        ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
