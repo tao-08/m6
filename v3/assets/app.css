@@ -207,7 +207,11 @@ h3 { font-size: 16px; }
 .btn--primary { background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 70%, var(--accent-2))); border-color: transparent; color: var(--on-accent); box-shadow: 0 6px 18px -8px var(--accent); }
 .btn--primary:hover { color: var(--on-accent); box-shadow: 0 10px 24px -8px var(--accent); }
 .btn--ghost { background: transparent; }
-.btn--danger { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, transparent); }
+/* 削除などの危険ボタン: 「枠と文字だけ赤」で統一。
+   background: transparent を入れて、btn--ghost を付け忘れても同じ見た目になるようにした
+   （付けないと .btn の背景 = var(--surface) が出て、背景色の上で白く浮いてしまう）。
+   押した（hover）ときだけ下の行で赤く塗りつぶす。 */
+.btn--danger { background: transparent; color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, transparent); }
 .btn--danger:hover { color: #fff; background: var(--danger); }
 .btn--sm { padding: 7px 12px; font-size: 13px; }
 

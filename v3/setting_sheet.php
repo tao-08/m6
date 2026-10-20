@@ -204,7 +204,7 @@ render_header('セッティングシート作成', $blank ? 'tools' : 'lives');
 <?php else: ?>
 <nav class="crumbs"><a href="./">ライブ</a><span>/</span><a href="<?= h($bandUrl) ?>"><?= h($band['name']) ?></a></nav>
 <?php endif; ?>
-<h1 class="display display--sm"><?= icon('description') ?> セッティングシート作成</h1>
+<h1 class="display display--sm">セッティングシート作成</h1>
 
 <!-- JS へ渡すデータ。type="application/json" はブラウザに「実行しないで」と伝える（ただのデータ置き場になる） -->
 <script type="application/json" id="sheet-data"><?= $json ?></script>
