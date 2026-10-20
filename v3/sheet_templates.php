@@ -326,7 +326,7 @@ $sampleLabels = array_map(fn($t) => $t['label'], all_sheet_templates());
 render_header('セッティングシート編集', 'tools');
 ?>
 <nav class="crumbs"><a href="tools">ツール</a></nav>
-<h1 class="display display--sm"><?= icon('description') ?> セッティングシート編集</h1>
+<h1 class="display display--sm">セッティングシート編集</h1>
 
 <div class="card table-card">
     <div class="table-scroll table-scroll--flush">

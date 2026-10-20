@@ -190,7 +190,7 @@ foreach ($notices as $n) {
 
 render_header('お知らせ', 'notices');
 ?>
-<h1 class="display display--sm"><?= icon('campaign') ?> お知らせ</h1>
+<h1 class="display display--sm">お知らせ</h1>
 
 <?php if ($user['admin']): ?>
 <details class="card togglecard">

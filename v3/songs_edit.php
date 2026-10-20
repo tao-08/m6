@@ -310,7 +310,7 @@ const ICON_UNLINK = 'link_off';
 render_header('セットリストを編集', 'lives');
 ?>
 <nav class="crumbs"><a href="<?= h($liveUrl) ?>"><?= h($band['live_name']) ?> <?= h($band['label']) ?></a><span>/</span><a href="<?= h($backUrl) ?>"><?= h($band['name']) ?></a></nav>
-<h1 class="display display--sm"><?= icon('queue_music') ?> <?= h($band['name']) ?> のセットリスト</h1>
+<h1 class="display display--sm"><?= h($band['name']) ?> のセットリスト</h1>
 <?php foreach ($errors as $e): ?><div class="flash flash--error"><?= h($e) ?></div><?php endforeach; ?>
 
 <?php if (!$members): ?>

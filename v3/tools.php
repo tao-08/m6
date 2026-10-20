@@ -30,7 +30,7 @@ if (is_admin()) {
 
 render_header('ツール', 'tools');
 ?>
-<h1 class="display display--sm"><?= icon('build') ?> ツール</h1>
+<h1 class="display display--sm">ツール</h1>
 <div class="tool-list">
     <?php foreach ($tools as [$href, $ic, $name, $desc]): ?>
         <a class="card tool-card" href="<?= h($href) ?>">
