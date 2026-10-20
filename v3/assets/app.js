@@ -963,6 +963,8 @@ function setupBackButton() {
   }
   // アカウント設定で非表示にしている人（partials/header.php の meta）。戻り先は上で覚えたので、出さずに終わる
   if (document.querySelector('meta[name="back-button"]')?.content === 'off') items = [];
+  // タイムテーブル作成の編集画面は、元に戻す / やり直すを左下に浮かせるので戻るボタンは出さない
+  if (document.querySelector('[data-tt-builder]')) items = [];
   save(SHOWN, items.map((t) => ({ url: t.url, title: t.title })));
   if (!items.length && !before.length) return;
   const same = (a, b) => keyOf(a.url) === keyOf(b.url) && a.title === b.title;
@@ -1322,6 +1324,10 @@ function setupSmallThings() {
   menus.forEach((m) => m.addEventListener('toggle', () => {
     if (m.open) menus.forEach((o) => { if (o !== m) o.open = false; });
   }));
+  // メニューの外をタッチ（クリック）したら閉じる
+  document.addEventListener('pointerdown', (e) => {
+    menus.forEach((m) => { if (m.open && !m.contains(e.target)) m.open = false; });
+  });
   const bell = document.querySelector('[data-notice-open]');
   const markRead = (tab) => {
     const count = tab.querySelector('[data-notif-count]');
@@ -2509,7 +2515,7 @@ function showHint(input) {
   if (document.querySelector('.suggest-pop')) return; // 入力候補（setupSuggest）が開いているあいだは重ねない
   let suggest = [];
   try { suggest = JSON.parse(input.dataset.suggest || '[]'); } catch { suggest = []; }
-  const canSuggest = input.classList.contains('is-similar') && suggest.length > 0;
+  const canSuggest = (input.classList.contains('is-similar') || input.classList.contains('is-new')) && suggest.length > 0;
   if (!canSuggest && !input.title) return;
 
   const pop = document.createElement('div');

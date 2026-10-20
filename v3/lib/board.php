@@ -212,7 +212,7 @@ function board_notice_add(array $thread, int $postId, int $authorId, ?int $autho
 
     $link = 'board_thread?id=' . $threadId . '&page=' . board_post_page($threadId, $postId) . '#p' . $postId;
     $who = $authorMemberId !== null ? '[[member?id=' . $authorMemberId . '|' . $authorName . ']]' : ($authorName !== '' ? $authorName : '退会ユーザー');
-    $excerpt = "\n\n" . mb_substr($body, 0, 200) . (mb_strlen($body) > 200 ? '…' : '');
+    $excerpt = $body === '' ? '' : "\n\n" . mb_substr($body, 0, 200) . (mb_strlen($body) > 200 ? '…' : '');
     $threadName = mb_substr((string)$thread['title'], 0, 70);
     $head = '[[board_thread?id=' . $threadId . '|' . $thread['title'] . ']] に' . $who;
     $ins = $pdo->prepare('INSERT INTO notice (user_id, target_user_id, category_id, is_important, title, body, link_url, pushed_at)

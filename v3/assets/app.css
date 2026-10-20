@@ -2269,6 +2269,20 @@ html:has(.board-posts) { scroll-behavior: smooth; }
 @keyframes ttb-spin { to { transform: rotate(360deg); } }
 .ttb-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 8px; }
 .ttb-bar .btn .icon { font-size: 18px; }
+/* 元に戻す / やり直す: 画面の下に浮かせる */
+/* セッティングシート編集の 1つ戻す・やり直す（.tpl-history）と同じ青系。スマホでは「← 前のページ」の上に積む */
+.ttb-float { position: fixed; z-index: 26; left: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); display: flex; gap: 6px; }
+.ttb-float .btn { background: color-mix(in srgb, rgb(59 130 246) 14%, var(--surface)); color: rgb(37 99 235); border-color: rgb(59 130 246 / .3); box-shadow: var(--shadow); }
+.ttb-float .btn .icon { font-size: 18px; }
+.ttb-float .btn:disabled { opacity: .4; }
+[data-theme="dark"] .ttb-float .btn { background: color-mix(in srgb, rgb(96 165 250) 16%, var(--surface)); color: rgb(147 197 253); border-color: rgb(96 165 250 / .3); }
+@media (max-width: 760px) {
+  .ttb-float { left: 12px; bottom: calc(76px + env(safe-area-inset-bottom)); }
+  body:has(.back-fabs:not(.back-fabs--ghost) .back-fab) .ttb-float { bottom: calc(128px + env(safe-area-inset-bottom)); }
+}
+.ttb-avail__title { margin: 0 0 8px; font-size: 16px; font-weight: 800; }
+.ttb-suggest { margin: 0 0 6px; }
+.ttb-suggest__pick { border: 0; background: none; padding: 0; font: inherit; font-weight: 700; color: var(--accent); text-decoration: underline; cursor: pointer; }
 .ttb-seg { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }
 .ttb-seg button { border: 0; background: transparent; color: var(--text); padding: 6px 14px; font: inherit; font-size: 13px; cursor: pointer; }
 .ttb-seg button.is-on { background: var(--accent); color: var(--on-accent); font-weight: 700; }

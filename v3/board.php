@@ -41,10 +41,11 @@ if (is_post()) {
         $restrict = ($_POST['restrict'] ?? '') === '1';
         $yFrom = (int)($_POST['year_from'] ?? 0);
         $yTo = (int)($_POST['year_to'] ?? 0);
+        $uploads = array_slice(live_image_uploads($_FILES['images'] ?? null), 0, ATTACH_KINDS['board']['max']);
         if (!isset($categoryNames[$categoryId])) {
             flash('カテゴリを選択してください', 'error');
-        } elseif ($title === '' || mb_strlen($title) > 100 || $body === '' || mb_strlen($body) > 2000) {
-            flash('タイトルは1〜100文字、本文は1〜2000文字で入力してください', 'error');
+        } elseif ($title === '' || mb_strlen($title) > 100 || ($body === '' && !$uploads) || mb_strlen($body) > 2000) {
+            flash('タイトルは1〜100文字、本文は2000文字以内で入力してください（画像のみも可）', 'error');
         } elseif ($restrict && ($_POST['only_cohort'] ?? '') === '1' && board_scope($user)['entry_year'] === null) {
             flash('入部年度が未設定のため、同期のみは選べません', 'error');
         } elseif ($restrict && ($_POST['only_cohort'] ?? '') !== '1' && ($yFrom || $yTo) && !($yFrom && $yTo && $yFrom <= $yTo && $yFrom >= $yearMin && $yTo <= $yearMax)) {
@@ -55,7 +56,6 @@ if (is_post()) {
             $onlyActive = (int)($restrict && ($_POST['only_active'] ?? '') === '1');
             $cohortYear = $restrict && ($_POST['only_cohort'] ?? '') === '1' ? board_scope($user)['entry_year'] : null;
             $years = ($restrict && $cohortYear === null && $yFrom && $yTo) ? range($yFrom, $yTo) : [];
-            $uploads = array_slice(live_image_uploads($_FILES['images'] ?? null), 0, ATTACH_KINDS['board']['max']);
             $newFiles = [];
             $pdo->beginTransaction();
             try {
@@ -239,7 +239,7 @@ render_header('アビーボード', 'board');
         <input type="text" name="title" maxlength="100" required>
     </label>
     <label class="field"><span>本文</span>
-        <textarea class="board-textarea" name="body" rows="4" maxlength="2000" required></textarea>
+        <textarea class="board-textarea" name="body" rows="4" maxlength="2000"></textarea>
     </label>
     <div class="form-actions"><?= attach_field_html('board') ?><button class="btn btn--primary btn--sm" type="submit"><?= icon('send') ?> 作成</button></div>
 </form>

@@ -24,6 +24,7 @@
   const CSRF = document.querySelector('meta[name="csrf-token"]')?.content || '';
   const LABELS = boot.labels;
   const INFO = Array.isArray(boot.info) ? {} : boot.info; // PHP の空配列は [] で来る
+  const SIMILAR = boot.similar || {}; // DBにいない人の「もしかして」候補 キー => [{n, k}]
   const MAX_ROWS = 80;
   const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -44,7 +45,9 @@
   let view = location.hash === '#days' ? 'days' : 'order';
   let curDay = 1;
   let timeMode = false;
-  let undoArrange = null;        // 自動配置の直前の並び（元に戻す用）
+  const HISTORY_OPS = ['move', 'arrange', 'add', 'del', 'text', 'min', 'call', 'restore'];
+  let undoStack = [];            // 元に戻す用: 操作の直前の「全日程の集合時間 + 行」
+  let redoStack = [];
   let lastSig = '';              // 最後に描いたときの state + 開いている人（変わっていなければ描き直さない）
 
   /* ===================== state の操作 ===================== */
@@ -132,6 +135,40 @@
         for (let d = 0; d < 3; d++) s.days[d].rows = next[d] || [];
         return true;
       }
+      case 'restore': { // 元に戻す / やり直す。lib/tt_builder.php の restore と同じ
+        if (!Array.isArray(op.days) || op.days.length !== 3) return false;
+        const seen = new Set();
+        const next = [];
+        for (let d = 0; d < 3; d++) {
+          const day = op.days[d];
+          if (!day || !Array.isArray(day.rows) || day.rows.length > MAX_ROWS || typeof day.call !== 'string' || (day.call !== '' && !TIME_RE.test(day.call))) return false;
+          if (d >= dc && day.rows.length) return false;
+          const rows = [];
+          for (const r of day.rows) {
+            if (!r || typeof r.id !== 'string' || seen.has(r.id) || !(r.min == null || isInt(r.min, 0, 600))) return false;
+            seen.add(r.id);
+            if (s.bands[r.id]) {
+              if (!s.bands[r.id].avail.includes(d + 1)) return false;
+              rows.push({ id: r.id, min: r.min ?? null });
+            } else {
+              if (!/^x[a-z0-9]{0,23}$/.test(r.id) || !['break', 'text'].includes(r.t) || !isStr(r.x, 50)) return false;
+              rows.push({ id: r.id, t: r.t, x: r.x.trim(), min: r.min ?? null });
+            }
+          }
+          next[d] = { call: day.call, rows };
+        }
+        if (!Object.keys(s.bands).every((id) => seen.has(id))) return false;
+        next.forEach((day, d) => { s.days[d].call = day.call; s.days[d].rows = day.rows; });
+        return true;
+      }
+      case 'member': { // 名簿の人を候補の人に置きかえる。lib/tt_builder.php の member と同じ（k は画面が持っている候補のキーを使う）
+        const b = s.bands[op.b];
+        const at = b ? b.members.findIndex((m) => m.k === op.k) : -1;
+        if (at < 0 || !isStr(op.n, 60) || op.n.trim() === '' || typeof op.nk !== 'string' || op.nk === ''
+          || (op.nk !== op.k && b.members.some((m) => m.k === op.nk))) return false;
+        b.members[at] = { n: op.n.trim(), k: op.nk, p: b.members[at].p ?? '' };
+        return true;
+      }
       case 'pin':
         if (!s.bands[op.b] || typeof op.on !== 'boolean') return false;
         s.bands[op.b].pin = op.on;
@@ -175,11 +212,25 @@
     return false;
   }
   const range = (n) => Array.from({ length: n }, (_, i) => i + 1);
+  const snapshot = () => clone(state.days.map((d) => ({ call: d.call, rows: d.rows })));
+  /** 元に戻す（from = undoStack）/ やり直す（from = redoStack） */
+  function stepHistory(from, to) {
+    const target = from.pop();
+    if (!target) return;
+    const now = snapshot();
+    if (commit({ op: 'restore', days: target }, { fromHistory: true })) to.push(now);
+    else { from.push(target); toast('他の人の編集と重なって戻せませんでした'); }
+  }
 
   /** 操作を自分の画面に当てて、送信待ちに積む */
-  function commit(op, { keepUndo = false } = {}) {
+  function commit(op, { fromHistory = false } = {}) {
+    const before = snapshot();
     if (!applyOp(state, op)) return false;
-    if (!keepUndo) undoArrange = null;
+    if (!fromHistory && HISTORY_OPS.includes(op.op)) { // 出順まわりの操作だけ、元に戻す / やり直すの対象にする
+      undoStack.push(before);
+      if (undoStack.length > 50) undoStack.shift();
+      redoStack = [];
+    }
     pending.push(op);
     status = 'saving';
     render();
@@ -253,18 +304,22 @@
   function scoreOf(b) {
     const ws = [];
     let bonus = 0;
+    let star = false; // 後ろの経験が少ない人がいる（学年に関係なく need で決める。3年だと bonus が小さく、学年ごとの係数では ★ が出なかった）
     b.members.forEach((m) => {
       const g = gradeOf(m.k);
       const w = weightOf(g);
       if (w != null) ws.push(w);
-      if (g != null && g >= 3) {
-        const h = INFO[m.k] || { t: 0, b: 0 };
-        const need = Math.max(0, 1 - (h.t * 2 + h.b) / 3);
+      // 10バンド以上出ている（いつものメンバーになりつつある）3・4年だけ。後ろの出順の経験が少ないほど加点
+      //   逆順 ÷ バンド数の平均 q: 0.5（真ん中）→ 0 / 0.8 以上 → 1（実データでは中央値が約 0.5、0.65 以上は上位 1 割）。トリ1回で半分・2回でなし
+      const h = INFO[m.k];
+      if (g != null && g >= 3 && h && h.n >= 10 && h.q != null) {
+        const need = Math.max(0, Math.min(1, (h.q - 0.5) / 0.3) - h.t * 0.5);
         bonus = Math.max(bonus, need * (g >= 4 ? 0.7 : 0.4));
+        if (need >= 0.35) star = true;
       }
     });
     const base = ws.length ? ws.reduce((a, c) => a + c, 0) / ws.length : 1;
-    return { base, bonus, total: base + bonus };
+    return { base, bonus, star, total: base + bonus };
   }
 
   const keysOf = (id) => new Set(state.bands[id].members.map((m) => m.k));
@@ -412,11 +467,7 @@
       }
       result.push(out);
     }
-    const prev = state.days.slice(0, dc).map((day) => day.rows.map((r) => r.id));
-    if (commit({ op: 'arrange', days: result })) {
-      undoArrange = prev;
-      render();
-    }
+    commit({ op: 'arrange', days: result });
   }
 
   /* ===================== 小さい部品 ===================== */
@@ -554,7 +605,8 @@
         }));
     });
     return el('div', { class: 'ttb-avail' },
-      el('div', { class: 'ttb-bar' }, seg),
+      el('h2', { class: 'ttb-avail__title', text: '出演可能日程を選択' }),
+      el('div', { class: 'ttb-bar' }, el('span', { class: 'small muted', text: 'ライブ開催日数' }), seg),
       el('div', { class: 'ttb-avail__table card', style: `--dc:${dc}` }, head, rows),
       el('button', { type: 'button', class: 'btn btn--primary btn--block', onclick: () => { view = 'order'; history.replaceState(null, '', location.pathname + location.search); render(); window.scrollTo(0, 0); } }, '出順へ', icon('arrow_forward')));
   }
@@ -573,16 +625,29 @@
       if (INFO[m.k]?.g != null) return el('span', { class: cls, title: m.p }, content);
       return el('button', {
         type: 'button', class: cls + ' is-unknown', title: '学年を入力', 'data-pop-anchor': true,
-        onclick: (e) => { e.stopPropagation(); openPop(e.currentTarget, gradePicker(m)); },
+        onclick: (e) => { e.stopPropagation(); openPop(e.currentTarget, gradePicker(m, id)); },
       }, content);
     });
   }
-  function gradePicker(m) {
+  function gradePicker(m, bandId) {
     const cur = state.grades[m.k] ?? null;
-    return el('div', { class: 'ttb-grades' },
+    const grades = el('div', { class: 'ttb-grades' },
       el('span', { class: 'small', text: m.n }),
       [1, 2, 3, 4, 5].map((g) => el('button', { type: 'button', class: 'btn btn--sm' + (cur === g ? ' btn--primary' : ''), text: gradeText(g), onclick: () => { closePop(); commit({ op: 'grade', k: m.k, g }); } })),
       el('button', { type: 'button', class: 'btn btn--ghost btn--sm', 'aria-label': '消去', onclick: () => { closePop(); commit({ op: 'grade', k: m.k, g: null }); } }, icon('close')));
+    // DBにいない人: 「もしかして ◯◯？」。押すとその人の名前に置きかえる（取り込み画面の名前欄と同じ）
+    const cands = (SIMILAR[m.k] || []).filter((c) => !state.bands[bandId].members.some((x) => x.k === c.k));
+    if (!cands.length) return grades;
+    const sug = el('p', { class: 'ttb-suggest small' }, 'もしかして ');
+    cands.forEach((c, i) => {
+      if (i > 0) sug.append(' / ');
+      sug.append(el('button', {
+        type: 'button', class: 'ttb-suggest__pick', text: c.n,
+        onclick: () => { closePop(); commit({ op: 'member', b: bandId, k: m.k, n: c.n, nk: c.k }); },
+      }));
+    });
+    sug.append('？');
+    return el('div', {}, sug, grades);
   }
 
   /* ---------- 出順 ---------- */
@@ -601,7 +666,8 @@
 
     const tools = el('div', { class: 'ttb-bar' },
       el('button', { type: 'button', class: 'btn btn--sm', onclick: () => autoArrange(), title: '日程希望・連続出演・学年から自動で並べる' }, icon('auto_fix_high'), '自動配置'),
-      undoArrange ? el('button', { type: 'button', class: 'btn btn--ghost btn--sm', onclick: () => { const u = undoArrange; undoArrange = null; commit({ op: 'arrange', days: u }); } }, icon('undo'), '元に戻す') : null,
+      el('button', { type: 'button', class: 'btn btn--ghost btn--sm', onclick: () => addRow('break') }, icon('add'), '休憩'),
+      el('button', { type: 'button', class: 'btn btn--ghost btn--sm', onclick: () => addRow('text') }, icon('add'), 'テキスト'),
       el('button', { type: 'button', class: 'btn btn--sm' + (timeMode ? ' btn--primary' : ''), 'aria-pressed': String(timeMode), onclick: () => { timeMode = !timeMode; render(); } }, icon('schedule'), '時刻'),
       el('button', { type: 'button', class: 'btn btn--ghost btn--sm ttb-iconbtn', 'aria-label': '凡例', 'data-pop-anchor': true, onclick: (e) => openPop(e.currentTarget, legend()) }, icon('help')));
 
@@ -610,8 +676,15 @@
       el('label', { class: 'ttb-call' }, '集合', el('input', {
         type: 'time', value: day.call, onchange: (e) => commit({ op: 'call', day: curDay, t: TIME_RE.test(e.target.value) ? e.target.value : '' }),
       })),
-      el('button', { type: 'button', class: 'btn btn--ghost btn--sm', onclick: () => addRow('break') }, icon('add'), '休憩'),
-      el('button', { type: 'button', class: 'btn btn--ghost btn--sm', onclick: () => addRow('text') }, icon('add'), 'テキスト')) : null;
+      // 全バンドの持ち時間をまとめて入れる（個別の値は上書きされる。あとから各行で調整できる）
+      el('label', { class: 'ttb-call' }, '全体', el('input', {
+        type: 'number', class: 'ttb-min', min: 0, max: 600, inputmode: 'numeric', value: commonMin() ?? '', placeholder: '分', 'aria-label': '全バンドの持ち時間（分）',
+        onchange: (e) => {
+          const val = e.target.value.trim();
+          if (val === '') return;
+          setAllMin(Math.max(0, Math.min(600, parseInt(val, 10) || 0)));
+        },
+      }))) : null;
 
     const ids = day.rows.map((r) => r.id);
     const c = conflicts(ids);
@@ -624,7 +697,11 @@
     }));
     const dangling = day.rows.length === 0 ? el('p', { class: 'muted small ttb-empty', text: 'バンドがありません' }) : null;
     const endTime = timeMode && cur && day.rows.length ? el('p', { class: 'muted small ttb-end', text: `終了 ${cur}` }) : null;
-    return el('div', { class: 'ttb-order' }, tabs, tools, timeBar, list, dangling, endTime);
+    // 画面の下に浮かせる 元に戻す / やり直す
+    const floating = el('div', { class: 'ttb-float' },
+      el('button', { type: 'button', class: 'btn btn--sm', 'aria-label': '元に戻す', title: '元に戻す', disabled: !undoStack.length, onclick: () => stepHistory(undoStack, redoStack) }, icon('undo')),
+      el('button', { type: 'button', class: 'btn btn--sm', 'aria-label': 'やり直す', title: 'やり直す', disabled: !redoStack.length, onclick: () => stepHistory(redoStack, undoStack) }, icon('redo')));
+    return el('div', { class: 'ttb-order' }, tabs, tools, timeBar, list, dangling, endTime, floating);
   }
 
   function legend() {
@@ -670,7 +747,7 @@
           el('span', { class: 'ttb-name', text: b.name }),
           b.pin ? icon('push_pin') : null,
           el('span', { class: 'ttb-score', title: '後ろ推し度', text: sc.total.toFixed(1) }),
-          sc.bonus >= 0.35 ? el('span', { class: 'ttb-star', title: 'トリ・後ろの経験が少ない3・4年がいる', text: '★' }) : null),
+          sc.star ? el('span', { class: 'ttb-star', title: 'トリ・後ろの経験が少ない3・4年がいる', text: '★' }) : null),
         timeMode ? timeCells(r, start) : days),
       el('div', { class: 'ttb-l2' }, memberSpans(id, c.member))));
   }
@@ -709,7 +786,7 @@
     const sc = scoreOf(b);
     const hist = b.members.filter((m) => (gradeOf(m.k) ?? 0) >= 3).map((m) => {
       const h = INFO[m.k];
-      return el('li', {}, `${gradeText(gradeOf(m.k))}${m.n}　`, h ? `トリ${h.t}・後ろ${h.b}／${h.n}回` : '履歴なし');
+      return el('li', {}, `${gradeText(gradeOf(m.k))}${m.n}　`, h ? `トリ${h.t}・平均逆順${h.r ?? '-'}／${h.n}回` : '履歴なし');
     });
     return el('div', { class: 'ttb-bandmenu' },
       el('p', { class: 'ttb-bandmenu__name' }, el('b', { text: b.name }), el('span', { class: 'muted small', text: ` ${b.songs ?? '?'}曲 · 推し度 ${sc.base.toFixed(1)}${sc.bonus ? ` +${sc.bonus.toFixed(1)}` : ''}` })),
@@ -726,10 +803,23 @@
       hist.length ? el('ul', { class: 'ttb-bandmenu__hist small muted' }, hist) : null);
   }
 
+  /** 全日程のバンドの持ち時間でいちばん多い値（全体の入力欄の初期値）。1つも入っていなければ null */
+  function commonMin() {
+    const count = new Map();
+    state.days.forEach((d) => d.rows.forEach((r) => { if (state.bands[r.id] && r.min != null) count.set(r.min, (count.get(r.min) || 0) + 1); }));
+    return [...count].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+  }
+  /** 全日程のバンドの持ち時間を同じ値にする（休憩・テキストはそのまま）。1操作なので「元に戻す」で戻る */
+  function setAllMin(n) {
+    const days = snapshot();
+    days.forEach((d) => d.rows.forEach((r) => { if (state.bands[r.id]) r.min = n; }));
+    commit({ op: 'restore', days });
+  }
+
   function addRow(t) {
-    const rows = state.days[curDay - 1].rows;
-    commit({ op: 'add', id: newId(), day: curDay, index: rows.length, t, x: t === 'break' ? '休憩' : '', min: t === 'break' ? 10 : null });
-    if (t === 'text') setTimeout(() => root.querySelector('.ttb-row--extra:last-child .ttb-extra-text')?.focus(), 0);
+    // 一番上に足す
+    commit({ op: 'add', id: newId(), day: curDay, index: 0, t, x: t === 'break' ? '休憩' : '', min: t === 'break' ? 10 : null });
+    if (t === 'text') setTimeout(() => root.querySelector('.ttb-list > .ttb-row--extra .ttb-extra-text')?.focus(), 0);
   }
 
   /* ---------- ≡ ドラッグで並べ替え（日程タブの上で離すとその日へ移動） ---------- */

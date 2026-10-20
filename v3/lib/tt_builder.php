@@ -69,7 +69,8 @@ function tt_load(PDO $pdo, int $id, bool $lock = false): ?array
 /**
  * 名簿の人の 学年 と 後ろの出順の経験 を部員DBから調べる。
  *   g … 学年（DBに居ない・入学年度が無ければ無し）
- *   t … トリの回数 / b … 後ろ1/4（トリを除く）の回数 / n … 出演回数
+ *   t … トリの回数 / n … 出演回数（バンド数）
+ *   r … 出演した日ごとの「いちばん遅かったバンドの逆順」の平均 / q … 逆順 ÷ その日のバンド数 の平均（履歴なしは null）
  * @param string[] $keys member_key の配列
  * @return array<string,array> キー => ['g' =>, 't' =>, 'b' =>, 'n' =>]
  */
@@ -83,7 +84,7 @@ function tt_member_info(PDO $pdo, array $keys): array
         if (isset($want[$k]) && !isset($idOf[$k])) {
             $idOf[$k] = (int)$m['member_id'];
             $g = grade_of($m['entry_year'] !== null ? (int)$m['entry_year'] : null);
-            $info[$k] = ['g' => $g, 't' => 0, 'b' => 0, 'n' => 0];
+            $info[$k] = ['g' => $g, 't' => 0, 'n' => 0, 'r' => null, 'q' => null];
         }
     }
     if (!$idOf) {
@@ -92,23 +93,77 @@ function tt_member_info(PDO $pdo, array $keys): array
     $keyOf = array_flip($idOf);
     $in = implode(',', array_fill(0, count($idOf), '?'));
     // 日程ごとのバンド数で「後ろ1/4」を決める。トリは HEADLINER_SQL（総バンド数まで登録済みの日程だけ）
-    $st = $pdo->prepare('SELECT bm.member_id, b.play_order, cnt.n, (last.max_order IS NOT NULL) AS is_last
+    $st = $pdo->prepare('SELECT bm.member_id, b.live_day_id, b.play_order, cnt.n, (last.max_order IS NOT NULL) AS is_last
         FROM (' . MEMBERSHIP_SQL . ') bm
         JOIN band b ON b.band_id = bm.band_id
         JOIN (SELECT live_day_id, COUNT(*) AS n FROM band GROUP BY live_day_id) cnt ON cnt.live_day_id = b.live_day_id
         LEFT JOIN (' . HEADLINER_SQL . ') last ON last.live_day_id = b.live_day_id AND last.max_order = b.play_order
         WHERE bm.member_id IN (' . $in . ')');
     $st->execute(array_values($idOf));
+    $latest = []; // キー => [live_day_id => その日いちばん遅かったバンドの [逆順, その日のバンド数]]
     foreach ($st as $r) {
         $k = $keyOf[(int)$r['member_id']];
         $info[$k]['n']++;
         if ((int)$r['is_last']) {
             $info[$k]['t']++;
-        } elseif ((int)$r['n'] >= 4 && (int)$r['play_order'] > (int)$r['n'] * 0.75) {
-            $info[$k]['b']++;
+        }
+        // 逆順 = バンド数 - 出順 + 1（トリ = 1、13バンドの日の最初 = 13）。同じ日に何バンドか出ていたら、いちばん遅い（逆順が小さい）方
+        $rev = (int)$r['n'] - (int)$r['play_order'] + 1;
+        $day = (int)$r['live_day_id'];
+        if (!isset($latest[$k][$day]) || $rev < $latest[$k][$day][0]) {
+            $latest[$k][$day] = [$rev, (int)$r['n']];
         }
     }
+    // 後ろの出順の経験の少なさ: 出演した日ごとの逆順の平均（r。大きいほど前の方ばかり）と、バンド数に対する割合の平均（q。0.5以上で前寄り）
+    foreach ($latest as $k => $days) {
+        $info[$k]['r'] = round(array_sum(array_column($days, 0)) / count($days), 1);
+        $info[$k]['q'] = round(array_sum(array_map(static fn($d) => $d[0] / max(1, $d[1]), $days)) / count($days), 3);
+    }
     return $info;
+}
+
+/**
+ * 部員DBにいない名簿の人ごとの「もしかして」の候補。取り込み画面の名前欄と同じ考え方
+ *   似た名前（書き間違い）の登録済みの人を優先し、いなければ先頭の1文字が同じ / 名前の一部が重なる人を似ている順に（最大3人）
+ * @param array $info tt_member_info の結果（ここに無いキー = DBにいない人）
+ * @return array<string,array> キー => [['n' => 表示名, 'k' => 照合用キー], ...]
+ */
+function tt_member_suggest(PDO $pdo, array $state, array $info): array
+{
+    $index = null;
+    $out = [];
+    foreach ($state['bands'] as $b) {
+        foreach ($b['members'] as $m) {
+            $key = $m['k'];
+            if (isset($info[$key]) || isset($out[$key]) || $key === '') {
+                continue;
+            }
+            $index ??= load_member_index($pdo);
+            $similar = [];
+            $near = [];
+            foreach ($index as $eKey => $e) {
+                if ($eKey === '') {
+                    continue;
+                }
+                if (names_look_similar($key, $eKey)) {
+                    $similar[$eKey] = $e['name'];
+                } elseif (mb_substr($key, 0, 1) === mb_substr($eKey, 0, 1) || mb_strpos($eKey, $key) !== false || mb_strpos($key, $eKey) !== false) {
+                    similar_text($key, $eKey, $pct);
+                    $near[$eKey] = $pct;
+                }
+            }
+            arsort($near);
+            $list = [];
+            foreach ([...array_keys($similar), ...array_keys($near)] as $eKey) {
+                $list[] = ['n' => $index[$eKey]['name'], 'k' => (string)$eKey];
+                if (count($list) >= 3) {
+                    break;
+                }
+            }
+            $out[$key] = $list;
+        }
+    }
+    return array_filter($out);
 }
 
 /** state の中の全員の照合用キー */
@@ -250,6 +305,69 @@ function tt_apply_op(array &$state, mixed $op): bool
             }
             foreach ($new as $d => $rows) {
                 $state['days'][$d]['rows'] = $rows ?? [];
+            }
+            return true;
+
+        case 'member': // 名簿の人を、「もしかして」で選んだ登録済みの人の名前に置きかえる（パートはそのまま）
+            $b = $op['b'] ?? null;
+            $k = $op['k'] ?? null;
+            $n = $op['n'] ?? null;
+            if (!is_string($b) || !isset($state['bands'][$b]) || !is_string($k) || !$str($n, 60) || trim($n) === '') {
+                return false;
+            }
+            $nk = member_key($n);
+            $keys = array_column($state['bands'][$b]['members'], 'k');
+            $at = array_search($k, $keys, true);
+            if ($nk === '' || $at === false || ($nk !== $k && in_array($nk, $keys, true))) {
+                return false;
+            }
+            $state['bands'][$b]['members'][$at] = ['n' => member_display($n), 'k' => $nk, 'p' => $state['bands'][$b]['members'][$at]['p'] ?? ''];
+            return true;
+
+        case 'restore': // 元に戻す / やり直す: 全日程の集合時間と行（バンド + 休憩・テキスト）をまるごと置きかえる。バンドの過不足・出演できない日は受け付けない
+            $days = $op['days'] ?? null;
+            if (!is_array($days) || count($days) !== TT_MAX_DAYS) {
+                return false;
+            }
+            $seen = [];
+            $next = [];
+            foreach (array_values($days) as $d => $day) {
+                $call = is_array($day) ? ($day['call'] ?? null) : null;
+                $rows = is_array($day) ? ($day['rows'] ?? null) : null;
+                if (!is_array($rows) || count($rows) > TT_MAX_ROWS || !is_string($call)
+                    || ($call !== '' && !preg_match('/^([01]\d|2[0-3]):[0-5]\d$/', $call))) {
+                    return false;
+                }
+                $out = [];
+                foreach ($rows as $r) {
+                    $id = is_array($r) ? ($r['id'] ?? null) : null;
+                    $min = is_array($r) ? ($r['min'] ?? null) : null;
+                    if (!is_string($id) || isset($seen[$id]) || !($min === null || $int($min, 0, 600))) {
+                        return false;
+                    }
+                    $seen[$id] = true;
+                    if (isset($state['bands'][$id])) {
+                        if (!in_array($d + 1, $state['bands'][$id]['avail'], true)) {
+                            return false;
+                        }
+                        $out[] = ['id' => $id, 'min' => $min];
+                    } else {
+                        if (!preg_match(TT_ROW_ID, $id) || $id[0] !== 'x' || !in_array($r['t'] ?? null, ['break', 'text'], true) || !$str($r['x'] ?? null, 50)) {
+                            return false;
+                        }
+                        $out[] = ['id' => $id, 't' => $r['t'], 'x' => trim($r['x']), 'min' => $min];
+                    }
+                }
+                $next[$d] = ['call' => $call, 'rows' => $out];
+            }
+            if (count(array_intersect_key($state['bands'], $seen)) !== count($state['bands'])) {
+                return false;
+            }
+            foreach ($next as $d => $day) {
+                if ($d >= $dc && $day['rows']) {
+                    return false;
+                }
+                $state['days'][$d] = array_merge($state['days'][$d], $day);
             }
             return true;
 

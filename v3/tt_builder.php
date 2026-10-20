@@ -175,11 +175,17 @@ if (isset($_GET['csv'])) {
 }
 
 /* ==================== 編集画面（中身は assets/tt_builder.js が作る） ==================== */
+$info = tt_member_info($pdo, tt_member_keys($state));
+$similar = tt_member_suggest($pdo, $state, $info); // DBにいない人の「もしかして」候補
+// 候補の人に置きかえたときの学年・出演履歴も画面で使えるように、候補の分も調べておく
+$candKeys = array_values(array_unique(array_column(array_merge(...array_values($similar) ?: [[]]), 'k')));
+$info += tt_member_info($pdo, $candKeys);
 $boot = [
     'id' => $id,
     'v' => (int)$draft['version'],
     'state' => $state,
-    'info' => tt_member_info($pdo, tt_member_keys($state)),
+    'info' => $info,
+    'similar' => (object)$similar,
     'labels' => array_slice(DAY_LABELS, 0, TT_MAX_DAYS),
     'published' => $draft['published_live_id'] !== null ? (int)$draft['published_live_id'] : null,
 ];
@@ -195,5 +201,5 @@ render_header($state['title'] . ' — タイムテーブル作成', 'tools');
     <?= csrf_field() ?><input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="<?= $id ?>">
 </form>
 <script type="application/json" id="ttb-data"><?= tt_json($boot) ?></script>
-<script src="assets/tt_builder.js?v=3" defer></script>
+<script src="assets/tt_builder.js?v=10" defer></script>
 <?php render_footer();

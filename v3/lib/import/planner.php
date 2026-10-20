@@ -675,6 +675,20 @@ function classify_cells(PDO $pdo, array $cells): array
             }
             $statuses[] = 'new';
             $hints[] = "「{$name}」は未登録 → 新しいメンバーとして登録されます";
+            // 似た人がいなくても、いちばん近い登録済みの人を候補に出す（先頭の1文字が同じ / 名前の一部が重なる人から、似ている順に3人）
+            $near = [];
+            foreach ($index as $eKey => $e) {
+                if ($key === '' || $eKey === '') {
+                    continue;
+                }
+                $share = mb_substr($key, 0, 1) === mb_substr($eKey, 0, 1) || mb_strpos($eKey, $key) !== false || mb_strpos($key, $eKey) !== false;
+                if ($share) {
+                    similar_text($key, $eKey, $pct);
+                    $near[$e['name']] = $pct;
+                }
+            }
+            arsort($near);
+            $suggest = [...$suggest, ...array_slice(array_keys($near), 0, 3)];
         }
         // 1つのセルに複数人いるときは、一番注意が必要な色にする
         $status = in_array('new', $statuses, true) ? 'new' : (in_array('similar', $statuses, true) ? 'similar' : 'ok');

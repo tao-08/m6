@@ -276,6 +276,18 @@ if (!isset($breaksByDay)) { // 初めて開いたとき（エラーで戻って�
 }
 $allNames = member_name_choices($pdo); // 名前の入力候補 [名前 => ふりがな]（lib/repository.php）
 
+// 出演者欄の色分け + 「もしかして」の候補を最初から出す（取り込み画面と同じ。入力後は JS の setupNameCheck が付け替える）
+require_once __DIR__ . '/lib/import/planner.php';
+$nameCells = [];
+foreach ($bandsByDay as $dayBands) {
+    foreach ($dayBands as $id => $b) {
+        foreach (array_values($b['members']) as $n => $m) {
+            $nameCells["$id-$n"] = (string)$m['name'];
+        }
+    }
+}
+$nameStatus = array_combine(array_keys($nameCells), classify_cells($pdo, array_values($nameCells)) ?: []) ?: [];
+
 /**
  * 休憩の1行（ページの表と、JS が複製する <template> の両方で使う）
  * @param bool $free true = 「＋ 休憩を追加」で足す行。時間を位置に固定せず、行と一緒に動かす
@@ -384,11 +396,13 @@ render_header('タイムテーブルを編集', 'lives'); ?>
                                 <?= check_picker($p, (int)$b['needs_check'], array_column(array_filter($members, static fn($m) => $m['id'] !== null), 'name', 'id'), $b['check_who'] ?? [], '',
                                     array_keys(array_filter($instsOf[$id] ?? [], static fn($insts) => in_array(instrument_id_by_short('Vo'), $insts, true)))) ?></div></td>
                             <?php for ($n = 0; $n < $cols; $n++):
-                                $m = $members[$n] ?? ['id' => null, 'name' => '', 'locked' => false]; ?>
+                                $m = $members[$n] ?? ['id' => null, 'name' => '', 'locked' => false];
+                                $stt = $nameStatus["$id-$n"] ?? ['status' => '', 'hint' => '', 'suggest' => []]; ?>
                                 <td>
                                     <!-- id: 元の人。名前を書き換えたら、その人の楽器を引き継ぐ。空 = 新しく足した人 -->
                                     <input type="hidden" name="<?= $p ?>[m][<?= $n ?>][id]" value="<?= $m['id'] === null ? '' : (int)$m['id'] ?>">
-                                    <input name="<?= $p ?>[m][<?= $n ?>][name]" value="<?= h($m['name']) ?>" data-suggest-list="member-names" autocomplete="off" class="name-input" data-name-cell aria-label="出演者"
+                                    <input name="<?= $p ?>[m][<?= $n ?>][name]" value="<?= h($m['name']) ?>" data-suggest-list="member-names" autocomplete="off" class="name-input<?= $stt['status'] ? ' is-' . h($stt['status']) : '' ?>" data-name-cell aria-label="出演者"
+                                        title="<?= h($stt['hint']) ?>"<?= !empty($stt['suggest']) ? ' data-suggest="' . h(json_encode($stt['suggest'], JSON_UNESCAPED_UNICODE)) . '"' : '' ?>
                                         <?= $m['locked'] ? ' readonly title="セットリストに出ているので、ここでは変えられません（セットリストの編集で直してください）"' : '' ?>>
                                 </td>
                             <?php endfor; ?>
@@ -404,7 +418,6 @@ render_header('タイムテーブルを編集', 'lives'); ?>
     <input type="hidden" value="<?= $breakNo ?>" data-next-break disabled>
 
     <div class="sticky-actions">
-        <a class="btn btn--ghost" href="live?id=<?= $liveId ?>">キャンセル</a>
         <button class="btn btn--primary" type="submit">保存する</button>
     </div>
 </form>

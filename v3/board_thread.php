@@ -44,8 +44,9 @@ if (is_post()) {
         flash('削除済みのスレッドです', 'error');
     } elseif ($action === 'reply') {
         $body = trim((string)($_POST['body'] ?? ''));
-        if ($body === '' || mb_strlen($body) > 2000) {
-            flash('1〜2000文字で入力してください', 'error');
+        $uploads = array_slice(live_image_uploads($_FILES['images'] ?? null), 0, ATTACH_KINDS['board']['max']);
+        if (($body === '' && !$uploads) || mb_strlen($body) > 2000) {
+            flash('2000文字以内で入力してください（画像のみも可）', 'error');
         } else {
             // 返信先: このスレの書き込みだけ（HTML を書き換えて他のスレの ID を送られても入れない）。最大 REPLY_MAX 件
             $to = array_values(array_unique(array_filter(array_map('intval', (array)($_POST['reply_to'] ?? [])), static fn($v) => $v > 0)));
@@ -56,7 +57,6 @@ if (is_post()) {
                 $st->execute([$id, ...$to]);
                 $to = array_map('intval', $st->fetchAll(PDO::FETCH_COLUMN));
             }
-            $uploads = array_slice(live_image_uploads($_FILES['images'] ?? null), 0, ATTACH_KINDS['board']['max']);
             $newFiles = [];
             $pdo->beginTransaction();
             try {
@@ -226,7 +226,7 @@ render_header($thread['title'], 'board');
             </p>
         <?php endif; ?>
         <?php if (!$deleted): ?>
-            <p class="board-post__body"><?= linkify_body($p['body']) ?></p>
+            <?php if ($p['body'] !== ''): ?><p class="board-post__body"><?= linkify_body($p['body']) ?></p><?php endif; ?>
             <?= attach_thumbs_html('board', $postImages[(int)$p['post_id']] ?? []) ?>
             <div class="board-post__foot"><?= like_button((int)$p['post_id'], $likes[(int)$p['post_id']] ?? null, '', 'api_board_like') ?></div>
         <?php elseif ($user['admin']): ?>
@@ -248,7 +248,7 @@ render_header($thread['title'], 'board');
     <input type="hidden" name="action" value="reply">
     <!-- 返信先（各書き込みの返信ボタンで追加・解除。assets/app.js の setupBoardReply）。選んだ数だけ hidden の reply_to[] が入る -->
     <div class="board-reply__to" data-board-reply-to hidden></div>
-    <textarea class="board-textarea" name="body" rows="3" maxlength="2000" required aria-label="返信"></textarea>
+    <textarea class="board-textarea" name="body" rows="3" maxlength="2000" aria-label="返信"></textarea>
     <div class="form-actions"><?= attach_field_html('board') ?><button class="btn btn--primary btn--sm" type="submit"><?= icon('send') ?> 送信</button></div>
 </form>
 <?php endif; ?>

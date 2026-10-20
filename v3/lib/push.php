@@ -314,7 +314,7 @@ function board_push_send(int $threadId, int $postId): void
     }
     push_send(push_subscriptions('push_board', $to), [
         'title' => (string)$thread['title'],
-        'body'  => ($name !== '' ? $name . ': ' : '') . push_excerpt((string)$post['body'], 100),
+        'body'  => ($name !== '' ? $name . ': ' : '') . ((string)$post['body'] === '' ? '画像' : push_excerpt((string)$post['body'], 100)),
         'url'   => 'board_thread?id=' . $threadId . '&page=' . board_post_page($threadId, $postId) . '#p' . $postId,
         'tag'   => 'board-' . $threadId, // 同じスレの通知は 1 つにまとまる
     ]);
