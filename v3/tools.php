@@ -23,20 +23,20 @@ $tools = [
         '新しい会場のセッティングシートの PDF を登録し要素を配置して、セッティングシート作成用のテンプレートを編集します。'],
 ];
 // 名簿から出順を決める（管理者だけ。公開するまでは部員に見せない）
-if (is_admin()) {
+if (is_executive()) {
     $tools[] = ['tt_builder', 'view_timeline', 'タイムテーブル作成',
-        '名簿から日程希望・連続出演・学年を見ながら出順を決め、ライブとして登録します。'];
+        '名簿から日程希望・連続出演・学年を見ながら出順を決め、ライブとして登録します。', true];
 }
 
 render_header('ツール', 'tools');
 ?>
 <h1 class="display display--sm">ツール</h1>
 <div class="tool-list">
-    <?php foreach ($tools as [$href, $ic, $name, $desc]): ?>
+    <?php foreach ($tools as $t): [$href, $ic, $name, $desc] = $t; $exec = $t[4] ?? false; ?>
         <a class="card tool-card" href="<?= h($href) ?>">
             <span class="tool-card__icon"><?= icon($ic) ?></span>
             <span class="tool-card__body">
-                <span class="tool-card__name"><?= h($name) ?></span>
+                <span class="tool-card__name"><?= h($name) ?><?= !empty($exec) ? ' <span class="tag">幹部</span>' : '' ?></span>
                 <span class="muted small"><?= h($desc) ?></span>
             </span>
         </a>

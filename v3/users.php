@@ -3,7 +3,7 @@
  * =====================================================================
  *  users.php — ユーザー管理（管理者のみ）
  * =====================================================================
- *  ・管理者権限の付け外し
+ *  ・権限（一般 / 幹部 / 管理者）の変更
  *  ・メンバーとの紐付け（どのアカウントがどのメンバーか。選び直し・解除もここ）
  *    紐付けると、アカウント名はメンバー名に自動でそろう（sync_account_names()）
  *  ・アカウント削除
@@ -41,13 +41,19 @@ if (is_post()) {
 
     if (!$target) {
         flash('ユーザーが見つかりません', 'error');
-    } elseif ($action === 'toggle_admin') {
-        if ($target['is_admin'] && $adminCount <= 1) {
+    } elseif ($action === 'set_role') {
+        // 権限は 一般 / 幹部 / 管理者 の3段階（管理者は幹部の権限もすべて持つので、管理者のときは is_executive を 0 にそろえる）
+        $role = (string)($_POST['role'] ?? '');
+        if (!in_array($role, ['member', 'executive', 'admin'], true)) {
+            flash('権限を選択してください', 'error');
+        } elseif ($role !== 'admin' && $target['is_admin'] && $adminCount <= 1) {
             flash('最後の管理者は外せません（先に別の人を管理者にしてください）', 'error');
         } else {
-            $pdo->prepare('UPDATE user_account SET is_admin = ? WHERE user_id = ?')->execute([$target['is_admin'] ? 0 : 1, $userId]);
+            $pdo->prepare('UPDATE user_account SET is_admin = ?, is_executive = ? WHERE user_id = ?')
+                ->execute([(int)($role === 'admin'), (int)($role === 'executive'), $userId]);
             if ($userId === $me['user_id']) {
-                $_SESSION['user']['admin'] = !$target['is_admin'];
+                $_SESSION['user']['admin'] = $role === 'admin';
+                $_SESSION['user']['executive'] = $role === 'executive';
             }
             flash("{$target['name']} さんの権限を変更しました");
         }
@@ -89,7 +95,7 @@ $dir = $sort === '' ? '' : (($_GET['dir'] ?? '') === 'desc' ? 'desc' : 'asc');
 
 // no_band: 紐付け先のメンバーが1バンドにも出ていない（紐付け間違いの疑い → ⚠ を出す）
 // 名前の順は DB の並び（ORDER BY u.name）をそのまま使う（_i）
-$users = $pdo->query('SELECT u.user_id, u.login_id, u.name, u.is_admin, u.member_id, m.name AS member_name, m.entry_year,
+$users = $pdo->query('SELECT u.user_id, u.login_id, u.name, u.is_admin, u.is_executive, u.member_id, m.name AS member_name, m.entry_year,
         (u.member_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM band_member bm WHERE bm.member_id = u.member_id)) AS no_band
     FROM user_account u LEFT JOIN member m ON m.member_id = u.member_id ORDER BY u.name, u.user_id')->fetchAll();
 foreach ($users as $i => &$u) {
@@ -174,8 +180,14 @@ render_header('ユーザー管理');
                     <?php endif; ?>
                 </td>
                 <td>
-                    <form method="post" class="inline-form"><?= csrf_field() ?><input type="hidden" name="user_id" value="<?= (int)$u['user_id'] ?>"><input type="hidden" name="action" value="toggle_admin">
-                        <button class="btn btn--sm<?= $u['is_admin'] ? ' btn--primary' : '' ?>" type="submit"><?= $u['is_admin'] ? '管理者' : '一般' ?></button>
+                    <!-- プルダウンを変えるとすぐ保存（data-autosubmit） -->
+                    <?php $role = $u['is_admin'] ? 'admin' : ($u['is_executive'] ? 'executive' : 'member'); ?>
+                    <form method="post" class="inline-form"><?= csrf_field() ?><input type="hidden" name="user_id" value="<?= (int)$u['user_id'] ?>"><input type="hidden" name="action" value="set_role">
+                        <select name="role" data-autosubmit aria-label="<?= h($u['name']) ?> さんの権限">
+                            <option value="member"<?= $role === 'member' ? ' selected' : '' ?>>一般</option>
+                            <option value="executive"<?= $role === 'executive' ? ' selected' : '' ?>>幹部</option>
+                            <option value="admin"<?= $role === 'admin' ? ' selected' : '' ?>>管理者</option>
+                        </select>
                     </form>
                 </td>
                 <td class="num">

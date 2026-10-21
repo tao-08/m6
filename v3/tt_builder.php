@@ -1,7 +1,7 @@
 <?php
 /**
  * =====================================================================
- *  tt_builder.php — タイムテーブル作成ツール（管理者だけ）
+ *  tt_builder.php — タイムテーブル作成ツール（幹部と管理者だけ）
  * =====================================================================
  *  画面
  *    tt_builder              … 下書きの一覧 + 名簿のアップロード
@@ -19,7 +19,7 @@
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/tt_builder.php';
-$user = require_admin();
+$user = require_executive();
 
 const TT_MAX_FILES = 5;
 const TT_MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
@@ -201,5 +201,5 @@ render_header($state['title'] . ' — タイムテーブル作成', 'tools');
     <?= csrf_field() ?><input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="<?= $id ?>">
 </form>
 <script type="application/json" id="ttb-data"><?= tt_json($boot) ?></script>
-<script src="assets/tt_builder.js?v=10" defer></script>
+<script src="assets/tt_builder.js?v=12" defer></script>
 <?php render_footer();

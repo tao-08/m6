@@ -29,8 +29,8 @@ $user = current_user();
 if ($user === null) {
     fail(401, 'ログインしてください');
 }
-if (!is_admin()) {
-    fail(403, '管理者のみ使えます');
+if (!is_executive()) {
+    fail(403, '幹部のみ使えます');
 }
 if (!is_post()) {
     fail(405, 'POST only');

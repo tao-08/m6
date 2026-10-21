@@ -99,6 +99,7 @@ CREATE TABLE user_account (
     name          VARCHAR(50)  NOT NULL,
     password_hash VARCHAR(255) NOT NULL,               -- password_hash() の結果だけ
     is_admin      BOOLEAN      NOT NULL DEFAULT FALSE, -- NULL を許さない（「NULL=管理者じゃない？」の曖昧さを消す）
+    is_executive  BOOLEAN      NOT NULL DEFAULT FALSE, -- 幹部（管理者の権限の一部が使える。migrations/063）
     email         VARCHAR(254) NULL,                    -- 問い合わせの通知先。管理者だけが登録できる（contact.php）
     member_id     INT UNSIGNED NULL,
     tutorial_seen_at DATETIME  NULL,                    -- チュートリアルを閉じた日時。NULL = まだ見ていない（partials/tutorial.php）

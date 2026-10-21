@@ -589,6 +589,12 @@ function is_admin(): bool
     return !empty($_SESSION['user']['admin']);
 }
 
+/** 幹部の権限があるか（幹部、または管理者。管理者は幹部の権限もすべて持つ） */
+function is_executive(): bool
+{
+    return is_admin() || !empty($_SESSION['user']['executive']);
+}
+
 /**
  * ログインしていなければ login.php へ飛ばす。
  * ログイン後に元のページへ戻れるよう、今の URL を覚えておく。
@@ -601,7 +607,7 @@ function require_login(): array
         redirect('login'); // ログイン画面なのは見ればわかるので「ログインしてください」のお知らせは出さない
     }
     // DB を作り直した・管理者に削除された等でアカウントが消えていたら、古いセッションを捨てる
-    $st = db()->prepare('SELECT name, is_admin, member_id, hide_retired_suggest, show_back_button, count_upcoming FROM user_account WHERE user_id = ?');
+    $st = db()->prepare('SELECT name, is_admin, is_executive, member_id, hide_retired_suggest, show_back_button, count_upcoming FROM user_account WHERE user_id = ?');
     $st->execute([$user['user_id']]);
     $row = $st->fetch();
     if (!$row) {
@@ -615,11 +621,23 @@ function require_login(): array
     // （古いままだと、紐付けを外された人が前のメンバーのプロフィールを編集できてしまう）
     $_SESSION['user']['name'] = $row['name'];
     $_SESSION['user']['admin'] = (bool)$row['is_admin'];
+    $_SESSION['user']['executive'] = (bool)$row['is_executive']; // 幹部のラベル用。権限の判定は is_executive()
     $_SESSION['user']['member_id'] = $row['member_id'] === null ? null : (int)$row['member_id'];
     $_SESSION['user']['hide_retired'] = (bool)$row['hide_retired_suggest']; // member_name_choices() が見る
     $_SESSION['user']['back_button'] = (bool)$row['show_back_button']; // partials/header.php が見る
     $_SESSION['user']['count_upcoming'] = (bool)$row['count_upcoming']; // member.php が見る
     return $_SESSION['user'];
+}
+
+/** 幹部（と管理者）専用ページで使う */
+function require_executive(): array
+{
+    $user = require_login();
+    if (!is_executive()) {
+        http_response_code(403);
+        exit('幹部のみ実行できます。');
+    }
+    return $user;
 }
 
 /** 管理者専用ページで使う */

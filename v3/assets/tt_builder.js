@@ -543,8 +543,7 @@
     const menuBtn = el('button', { type: 'button', class: 'btn btn--ghost btn--sm ttb-iconbtn', 'aria-label': 'メニュー', 'data-pop-anchor': true, onclick: (e) => openPop(e.currentTarget, mainMenu()) }, icon('more_vert'));
     return el('div', { class: 'ttb-head' },
       el('a', { href: 'tt_builder', class: 'ttb-iconbtn btn btn--ghost btn--sm', 'aria-label': '一覧' }, icon('arrow_back')),
-      el('h1', { class: 'ttb-title', text: state.title }),
-      boot.published ? el('a', { class: 'tag', href: `live?id=${boot.published}`, title: '公開済み' }, icon('task_alt')) : null,
+      el('h1', { class: 'ttb-title', text: state.title }),      boot.published ? el('a', { class: 'tag', href: `live?id=${boot.published}`, title: '公開済み' }, icon('task_alt')) : null,
       el('span', { class: 'ttb-people' }, others.map((p) => el('span', { class: 'ttb-person', title: `${p.name} が編集中`, style: `--h:${hueOf(p.id)}`, text: [...p.name][0] || '?' }))),
       statusIcon(),
       menuBtn);
