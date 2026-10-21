@@ -186,7 +186,7 @@ $bandUrl = 'band?id=' . $bandId;
 render_header('セッティングシート作成', $blank ? 'tools' : 'lives');
 ?>
 <!-- このページだけの CSS。<link> は <body> の中に書いてもよい（HTML の仕様で許されている） -->
-<link rel="stylesheet" href="assets/setting_sheet.css?v=30">
+<link rel="stylesheet" href="<?= asset_url('assets/setting_sheet.css') ?>">
 <?php if ($tplPreview): ?>
 <style>
     /* iframe の中: サイトの上のバー・入力欄を隠して、PDF のプレビューを枠いっぱいに出す */
@@ -355,5 +355,5 @@ render_header('セッティングシート作成', $blank ? 'tools' : 'lives');
 </form>
 <?php endif; ?>
 
-<script src="assets/setting_sheet.js?v=72" defer></script>
+<script src="<?= asset_url('assets/setting_sheet.js') ?>" defer></script>
 <?php render_footer();

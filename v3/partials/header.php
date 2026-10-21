@@ -110,9 +110,9 @@ $nav = [
     <!-- アイコン用フォント（Material Symbols Rounded）。lib/bootstrap.php の icon() で使う。
          display=block: 読み込み中にアイコン名の英単語（edit など）が一瞬見えるのを防ぐ -->
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400..600,0..1,0&display=block" rel="stylesheet">
-    <!-- ?v=2 はキャッシュ対策。CSS を変えたら数字を上げると、ブラウザが古い CSS を使い続けない -->
-    <link rel="stylesheet" href="assets/app.css?v=384">
-    <script src="assets/app.js?v=190" defer></script>
+    <!-- ?v= はキャッシュ対策。ファイルの更新時刻が入る（lib/bootstrap.php の asset_url）ので、CSS・JS を変えても数字を上げなくてよい -->
+    <link rel="stylesheet" href="<?= asset_url('assets/app.css') ?>">
+    <script src="<?= asset_url('assets/app.js') ?>" defer></script>
 </head>
 <body>
 <header class="topbar">

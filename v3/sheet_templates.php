@@ -545,5 +545,5 @@ $editorData = [
 ];
 ?>
 <script type="application/json" id="sheet-editor-data"><?= json_encode($editorData, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP) ?></script>
-<script src="assets/sheet_editor.js?v=38" defer></script>
+<script src="<?= asset_url('assets/sheet_editor.js') ?>" defer></script>
 <?php render_footer();

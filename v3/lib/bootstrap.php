@@ -238,6 +238,18 @@ function unsaved_attr(): string
 }
 
 /**
+ * assets/ の CSS・JS の URL（?v= にファイルの更新時刻を付ける）。
+ *   ブラウザやサーバーのキャッシュは URL ごとに持つので、ファイルを更新すると ?v= が変わり、必ず最新を取りに行く。
+ *   以前は ?v=384 のように手で数字を上げていたが、一度でも本番に出した数字を使い回すと、
+ *   サーバー側が古い内容を返し続けた（追随ボタンが効かなかった原因）。手で上げなくてよい
+ */
+function asset_url(string $path): string
+{
+    $mtime = @filemtime(__DIR__ . '/../' . $path);
+    return h($path . '?v=' . ($mtime !== false ? $mtime : 0));
+}
+
+/**
  * Google Fonts の Material Symbols のアイコンを出す。icon('edit') → ✎ の代わりの鉛筆。
  *   アイコン名の一覧: https://fonts.google.com/icons
  *   アイコン名を文字として書くと、フォントが絵に置き換えてくれる（リガチャ）。
