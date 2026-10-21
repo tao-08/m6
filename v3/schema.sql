@@ -748,6 +748,8 @@ CREATE TABLE board_post (
     thread_id  INT UNSIGNED NOT NULL,
     user_id    INT UNSIGNED NULL,
     body       TEXT         NOT NULL,
+    anonymous  TINYINT(1)   NOT NULL DEFAULT 0,          -- 1 = 匿名（migrations/061）
+    display_name VARCHAR(30) NULL,                       -- 送信元の名義（NULL = 本名。migrations/062）
     deleted_at DATETIME     NULL,
     deleted_by INT UNSIGNED NULL,
     created_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -837,6 +839,8 @@ CREATE TABLE comment (
     band_id    INT UNSIGNED NULL,
     user_id    INT UNSIGNED NULL,
     body       TEXT         NOT NULL,
+    anonymous  TINYINT(1)   NOT NULL DEFAULT 0,          -- 1 = 匿名（migrations/061）
+    display_name VARCHAR(30) NULL,                       -- 送信元の名義（NULL = 本名。migrations/062）
     deleted_at DATETIME     NULL,
     deleted_by INT UNSIGNED NULL,
     created_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,

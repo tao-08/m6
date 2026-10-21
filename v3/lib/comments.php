@@ -32,8 +32,12 @@ function comment_col(string $kind): string
  *   コメントした本人には出さない。お知らせは宛先つき（notice.target_user_id）なので、本人以外には見えない。
  *   バンド名・本文は通知のときの文字を保存する（あとでコメントを消しても通知は残る。表示側で h() する）
  */
-function comment_notify_band_members(int $bandId, int $commentId, int $authorId, ?int $authorMemberId, string $authorName, string $body, string $link): void
+function comment_notify_band_members(int $bandId, int $commentId, int $authorId, ?int $authorMemberId, string $authorName, string $body, string $link, ?string $alias = null): void
 {
+    if ($alias !== null) { // 匿名・名義あり: 本名もリンクも通知に残さない
+        $authorMemberId = null;
+        $authorName = $alias;
+    }
     $pdo = db();
     $st = $pdo->prepare('SELECT DISTINCT u.user_id FROM band_member bm
         JOIN user_account u ON u.member_id = bm.member_id
@@ -64,7 +68,7 @@ function comment_notify_band_members(int $bandId, int $commentId, int $authorId,
     $ins = $pdo->prepare('INSERT INTO notice (user_id, target_user_id, category_id, is_important, title, body, link_url)
         VALUES (?, ?, ?, 0, ?, ?, ?)');
     foreach ($targets as $uid) {
-        $ins->execute([$authorId, (int)$uid, $cat, $title, $text, $link]);
+        $ins->execute([$alias !== null ? null : $authorId, (int)$uid, $cat, $title, $text, $link]);
     }
 }
 
@@ -99,9 +103,11 @@ function comments_handle_post(string $kind, int $targetId, string $backUrl): voi
             $st->execute([$targetId, ...$to]);
             $to = array_map('intval', $st->fetchAll(PDO::FETCH_COLUMN));
         }
+        $anonymous = ($_POST['anonymous'] ?? '') === '1';
+        $displayName = posted_display_name($anonymous);
         $pdo->beginTransaction();
         try {
-            $pdo->prepare("INSERT INTO comment ($col, user_id, body) VALUES (?, ?, ?)")->execute([$targetId, $uid, $body]);
+            $pdo->prepare("INSERT INTO comment ($col, user_id, body, anonymous, display_name) VALUES (?, ?, ?, ?, ?)")->execute([$targetId, $uid, $body, (int)$anonymous, $displayName]);
             $commentId = (int)$pdo->lastInsertId();
             $ins = $pdo->prepare('INSERT INTO comment_reply (comment_id, reply_to_comment_id) VALUES (?, ?)');
             foreach ($to as $toId) {
@@ -113,7 +119,7 @@ function comments_handle_post(string $kind, int $targetId, string $backUrl): voi
             throw $e;
         }
         if ($kind === 'band') {
-            comment_notify_band_members($targetId, $commentId, $uid, $user['member_id'] !== null ? (int)$user['member_id'] : null, (string)$user['name'], $body, $backUrl . '#c' . $commentId);
+            comment_notify_band_members($targetId, $commentId, $uid, $user['member_id'] !== null ? (int)$user['member_id'] : null, (string)$user['name'], $body, $backUrl . '#c' . $commentId, $anonymous ? '匿名' : $displayName);
         }
         redirect($backUrl . '#c' . $commentId);
     }
@@ -134,7 +140,7 @@ function comments_render(string $kind, int $targetId, array $user): void
     $uid = (int)$user['user_id'];
     $isAdmin = !empty($user['admin']);
 
-    $st = $pdo->prepare("SELECT c.comment_id, c.user_id, c.body, c.created_at, c.deleted_at, u.name AS author, u.member_id AS author_member_id, d.name AS deleted_by_name
+    $st = $pdo->prepare("SELECT c.comment_id, c.user_id, c.body, c.anonymous, c.display_name, c.created_at, c.deleted_at, u.name AS author, u.member_id AS author_member_id, d.name AS deleted_by_name
         FROM comment c
         LEFT JOIN user_account u ON u.user_id = c.user_id
         LEFT JOIN user_account d ON d.user_id = c.deleted_by
@@ -178,7 +184,7 @@ function comments_render(string $kind, int $targetId, array $user): void
         <article class="card board-post<?= $deleted ? ' is-deleted' : '' ?><?= (int)$c['user_id'] === $uid ? ' is-mine' : '' ?>" id="c<?= $cid ?>">
             <div class="muted small board-post__meta">
                 <span class="board-post__no"><?= $i + 1 ?></span>
-                <strong><?= $c['author_member_id'] !== null ? '<a href="member?id=' . (int)$c['author_member_id'] . '">' . h($c['author']) . '</a>' : h($c['author'] ?? '退会ユーザー') ?></strong>
+                <strong><?= author_html((bool)$c['anonymous'], $c['display_name'], $c['author'], $c['author_member_id'] !== null ? (int)$c['author_member_id'] : null, $isAdmin) ?></strong>
                 <span><?= h(substr($c['created_at'], 0, 16)) ?></span>
                 <?php if (!$deleted): ?>
                 <button type="button" class="icon-btn icon-btn--sm board-post__reply" data-comment-reply="<?= $cid ?>" data-no="<?= $i + 1 ?>" aria-label="返信" title="返信" aria-pressed="false"><?= icon('reply') ?></button>
@@ -216,6 +222,7 @@ function comments_render(string $kind, int $targetId, array $user): void
         <input type="hidden" name="action" value="comment_add">
         <!-- 返信先（各コメントの返信ボタンで追加・解除。assets/app.js の setupComments）。選んだ数だけ hidden の reply_to[] が入る -->
         <div class="board-reply__to" data-comment-reply-to hidden></div>
+        <?= alias_field_html((string)$user['name']) ?>
         <textarea class="board-textarea" name="body" rows="3" maxlength="<?= COMMENT_MAX ?>" required aria-label="コメント"></textarea>
         <div class="form-actions"><button class="btn btn--primary btn--sm" type="submit"><?= icon('send') ?> 送信</button></div>
     </form>

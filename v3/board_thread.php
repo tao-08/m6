@@ -60,7 +60,7 @@ if (is_post()) {
             $newFiles = [];
             $pdo->beginTransaction();
             try {
-                $postId = board_add_post($id, $uid, $body);
+                $postId = board_add_post($id, $uid, $body, $anonymous = ($_POST['anonymous'] ?? '') === '1', posted_display_name($anonymous));
                 $ins = $pdo->prepare('INSERT INTO board_post_reply (post_id, reply_to_post_id) VALUES (?, ?)');
                 foreach ($to as $toId) {
                     $ins->execute([$postId, $toId]);
@@ -111,7 +111,7 @@ $page = isset($_GET['page']) ? min(max(1, (int)$_GET['page']), $pages) : $pages;
 $offset = ($page - 1) * BOARD_PER_PAGE;
 $pageUrl = static fn(int $n): string => 'board_thread?id=' . $id . '&page=' . $n;
 
-$st = $pdo->prepare('SELECT p.post_id, p.user_id, p.body, p.created_at, p.deleted_at, u.name AS author, u.member_id AS author_member_id, d.name AS deleted_by_name
+$st = $pdo->prepare('SELECT p.post_id, p.user_id, p.body, p.anonymous, p.display_name, p.created_at, p.deleted_at, u.name AS author, u.member_id AS author_member_id, d.name AS deleted_by_name
     FROM board_post p
     LEFT JOIN user_account u ON u.user_id = p.user_id
     LEFT JOIN user_account d ON d.user_id = p.deleted_by
@@ -201,7 +201,7 @@ render_header($thread['title'], 'board');
     <article class="card board-post<?= $deleted ? ' is-deleted' : '' ?><?= (int)$p['user_id'] === $uid ? ' is-mine' : '' ?>" id="p<?= (int)$p['post_id'] ?>">
         <div class="muted small board-post__meta">
             <span class="board-post__no"><?= $no ?></span>
-            <strong><?= $p['author_member_id'] !== null ? '<a href="member?id=' . (int)$p['author_member_id'] . '">' . h($p['author']) . '</a>' : h($p['author'] ?? '退会ユーザー') ?></strong>
+            <strong><?= author_html((bool)$p['anonymous'], $p['display_name'], $p['author'], $p['author_member_id'] !== null ? (int)$p['author_member_id'] : null, !empty($user['admin'])) ?></strong>
             <span><?= h(substr($p['created_at'], 0, 16)) ?></span>
             <?php if ($canPost && !$deleted): ?>
             <button type="button" class="icon-btn icon-btn--sm board-post__reply" data-board-reply="<?= (int)$p['post_id'] ?>" data-no="<?= $no ?>" aria-label="返信" title="返信" aria-pressed="false"><?= icon('reply') ?></button>
@@ -248,6 +248,7 @@ render_header($thread['title'], 'board');
     <input type="hidden" name="action" value="reply">
     <!-- 返信先（各書き込みの返信ボタンで追加・解除。assets/app.js の setupBoardReply）。選んだ数だけ hidden の reply_to[] が入る -->
     <div class="board-reply__to" data-board-reply-to hidden></div>
+    <?= alias_field_html((string)$user['name']) ?>
     <textarea class="board-textarea" name="body" rows="3" maxlength="2000" aria-label="返信"></textarea>
     <div class="form-actions"><?= attach_field_html('board') ?><button class="btn btn--primary btn--sm" type="submit"><?= icon('send') ?> 送信</button></div>
 </form>

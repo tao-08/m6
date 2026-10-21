@@ -93,6 +93,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupSmallThings();
   setupBoardReply();
   setupComments();
+  setupAliasField();
   setupBoardPanels();
   setupBoardMute();
   setupBoardTabs();
@@ -5323,4 +5324,28 @@ function setupLiveImageEdit(edit) {
   // 削除のチェックを外すと空きが減るので数え直す
   edit.querySelectorAll('[data-live-img-remove]').forEach((c) => c.addEventListener('change', update));
   update();
+}
+
+/* 名義の入力欄: 匿名にチェックが入っているあいだは入力できない。送信した名義は次回の初期値になる（このブラウザだけ） */
+function setupAliasField() {
+  const KEY = 'abbey.alias';
+  document.querySelectorAll('[data-alias-field]').forEach((box) => {
+    const name = box.querySelector('input[type="text"]');
+    const anon = box.querySelector('input[type="checkbox"]');
+    try { name.value = localStorage.getItem(KEY) ?? ''; } catch (e) { /* 保存が使えなくても入力はできる */ }
+    box.closest('form')?.addEventListener('submit', () => {
+      if (anon.checked) { return; } // 匿名のときは名義を送らないので、前回の名義を残す
+      try { localStorage.setItem(KEY, name.value.trim()); } catch (e) { /* 同上 */ }
+    });
+    const sync = () => { name.disabled = anon.checked; };
+    anon.addEventListener('change', sync);
+    sync();
+    // 説明: ⓘ を押すと開閉。外を押しても閉じる
+    const btn = box.querySelector('[data-alias-info]');
+    const pop = box.querySelector('.alias-field__pop');
+    const toggle = (open) => { pop.hidden = !open; btn.setAttribute('aria-expanded', String(open)); };
+    btn.addEventListener('click', (e) => { e.stopPropagation(); toggle(pop.hidden); });
+    btn.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(pop.hidden); } });
+    document.addEventListener('click', () => toggle(false));
+  });
 }

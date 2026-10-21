@@ -194,10 +194,15 @@ function board_post_page(int $threadId, int $postId): int
  *   ・アプリ通知は board_push_send() が別に送るので、ここでは pushed_at を入れて、お知らせ側の通知（push_dispatch_due）で二重に飛ばない
  *   ・スレ名・本文は通知のときの文字を保存する（あとで消しても残る。表示側で h() する）
  */
-function board_notice_add(array $thread, int $postId, int $authorId, ?int $authorMemberId, string $authorName, string $body, array $to, array $replied): void
+function board_notice_add(array $thread, int $postId, int $authorId, ?int $authorMemberId, string $authorName, string $body, array $to, array $replied, ?string $alias = null): void
 {
     if (!$to) {
         return;
+    }
+    if ($alias !== null) { // 匿名・名義あり: 本名もリンクも送り主も通知に残さない
+        $authorId = 0;
+        $authorMemberId = null;
+        $authorName = $alias;
     }
     $pdo = db();
     $threadId = (int)$thread['thread_id'];
@@ -248,10 +253,10 @@ function board_mark_read(int $userId, int $threadId, int $postId): void
 }
 
 /** 書き込む。スレの最終書き込みを更新し、自分の書き込みは既読にする。新しい post_id を返す */
-function board_add_post(int $threadId, int $userId, string $body): int
+function board_add_post(int $threadId, int $userId, string $body, bool $anonymous = false, ?string $displayName = null): int
 {
     $pdo = db();
-    $pdo->prepare('INSERT INTO board_post (thread_id, user_id, body) VALUES (?, ?, ?)')->execute([$threadId, $userId, $body]);
+    $pdo->prepare('INSERT INTO board_post (thread_id, user_id, body, anonymous, display_name) VALUES (?, ?, ?, ?, ?)')->execute([$threadId, $userId, $body, (int)$anonymous, $displayName]);
     $postId = (int)$pdo->lastInsertId();
     $pdo->prepare('UPDATE board_thread SET last_post_id = ?, last_posted_at = NOW() WHERE thread_id = ?')->execute([$postId, $threadId]);
     board_mark_read($userId, $threadId, $postId);

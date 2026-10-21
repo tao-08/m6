@@ -66,7 +66,7 @@ if (is_post()) {
             foreach ($years as $yr) {
                 $insYear->execute([$threadId, $yr]);
             }
-            $postId = board_add_post($threadId, (int)$user['user_id'], $body);
+            $postId = board_add_post($threadId, (int)$user['user_id'], $body, $anonymous = ($_POST['anonymous'] ?? '') === '1', posted_display_name($anonymous));
             attach_add($pdo, 'board', $postId, $uploads, (int)$user['user_id'], $newFiles);
             $pdo->commit();
             } catch (RuntimeException $e) { // 画像のエラー（形式・大きさなど）。スレごと取り消す
@@ -143,6 +143,8 @@ if (!isset($categoryNames[$cat])) {
 [$where, $params] = board_visible_sql($user);
 $st = $pdo->prepare("SELECT t.thread_id, t.kind, t.entry_year, t.category_id, t.title, t.last_post_id, t.last_posted_at, t.deleted_at,
         u.name AS author,
+        (SELECT p.anonymous FROM board_post p WHERE p.thread_id = t.thread_id ORDER BY p.post_id LIMIT 1) AS anonymous,
+        (SELECT p.display_name FROM board_post p WHERE p.thread_id = t.thread_id ORDER BY p.post_id LIMIT 1) AS display_name,
         (t.only_active = 1 OR t.cohort_year IS NOT NULL OR EXISTS (SELECT 1 FROM board_thread_year y WHERE y.thread_id = t.thread_id)) AS restricted,
         (SELECT COUNT(*) FROM board_post p WHERE p.thread_id = t.thread_id AND p.deleted_at IS NULL) AS posts,
         (t.last_post_id > COALESCE(r.last_post_id, 0)) AS is_new
@@ -176,7 +178,7 @@ if (!empty($user['admin'])) {
 }
 
 /** スレ一覧の1行 */
-$row = function (array $t) use ($categoryNames, $categoryColors, $myYear, $cat): string {
+$row = function (array $t) use ($categoryNames, $categoryColors, $myYear, $cat, $user): string {
     $icon = match ($t['kind']) { 'active' => 'groups', 'cohort' => 'school', default => 'forum' };
     $tag = '';
     // カテゴリで絞り込んでいる（$cat <> 0）ときは、どれも同じカテゴリなのでラベルは出さない
@@ -185,7 +187,7 @@ $row = function (array $t) use ($categoryNames, $categoryColors, $myYear, $cat):
     } elseif ($t['kind'] === 'cohort' && (int)$t['entry_year'] === $myYear) {
         $tag = '<span class="tag">同期</span>';
     }
-    $meta = ($t['last_post_id'] ? h(substr($t['last_posted_at'], 0, 16)) : '') . ($t['author'] !== null ? ' · ' . h($t['author']) : '');
+    $meta = ($t['last_post_id'] ? h(substr($t['last_posted_at'], 0, 16)) : '') . ($t['author'] !== null ? ' · ' . author_html((bool)$t['anonymous'], $t['display_name'], $t['author'], null, !empty($user['admin'])) : '');
     return '<a class="board-row' . ($t['deleted_at'] !== null ? ' is-deleted' : '') . '" href="board_thread?id=' . (int)$t['thread_id'] . '">'
         . icon($icon, 'board-row__icon')
         . '<span class="board-row__main"><span class="board-row__title"><span class="board-row__name">' . h($t['title']) . '</span>' . $tag
@@ -238,6 +240,7 @@ render_header('アビーボード', 'board');
     <label class="field"><span>タイトル</span>
         <input type="text" name="title" maxlength="100" required>
     </label>
+    <?= alias_field_html((string)$user['name']) ?>
     <label class="field"><span>本文</span>
         <textarea class="board-textarea" name="body" rows="4" maxlength="2000"></textarea>
     </label>

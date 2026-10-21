@@ -140,8 +140,9 @@ function push_dispatch_due(): void
     }
     $pdo = db();
     $rows = $pdo->query(
-        'SELECT notice_id, target_user_id, is_important, title, body, link_url FROM notice
-          WHERE pushed_at IS NULL AND publish_at <= NOW() ORDER BY notice_id LIMIT 20'
+        'SELECT n.notice_id, n.target_user_id, n.is_important, n.title, n.body, n.link_url, c.name AS category_name
+           FROM notice n LEFT JOIN notice_category c ON c.category_id = n.category_id
+          WHERE n.pushed_at IS NULL AND n.publish_at <= NOW() ORDER BY n.notice_id LIMIT 20'
     )->fetchAll();
     foreach ($rows as $n) {
         // 先に「処理済み」にした 1 リクエストだけが送る。0 行なら、ほかのリクエストが取った
@@ -155,8 +156,8 @@ function push_dispatch_due(): void
             $n['target_user_id'] !== null ? [(int)$n['target_user_id']] : null
         );
         push_send($subs, [
-            'title' => (string)$n['title'],
-            'body'  => push_excerpt((string)$n['body']),
+            'title' => (string)($n['category_name'] ?? 'お知らせ'), // タイトルはカテゴリ名。お知らせの題は本文の頭に出す
+            'body'  => push_excerpt((string)$n['title'] . ' ' . (string)$n['body']),
             'url'   => $n['link_url'] ?? 'notices',
             'tag'   => 'notice-' . (int)$n['notice_id'],
         ]);
@@ -259,7 +260,7 @@ function board_push_send(int $threadId, int $postId): void
     $st = $pdo->prepare('SELECT * FROM board_thread WHERE thread_id = ? AND deleted_at IS NULL');
     $st->execute([$threadId]);
     $thread = $st->fetch();
-    $st = $pdo->prepare('SELECT p.user_id, p.body, u.name, u.member_id FROM board_post p LEFT JOIN user_account u ON u.user_id = p.user_id
+    $st = $pdo->prepare('SELECT p.user_id, p.body, p.anonymous, p.display_name, u.name, u.member_id FROM board_post p LEFT JOIN user_account u ON u.user_id = p.user_id
         WHERE p.post_id = ? AND p.thread_id = ? AND p.deleted_at IS NULL');
     $st->execute([$postId, $threadId]);
     $post = $st->fetch();
@@ -307,14 +308,15 @@ function board_push_send(int $threadId, int $postId): void
             $to[] = $uid;
         }
     }
-    $name = (string)($post['name'] ?? '');
-    board_notice_add($thread, $postId, $authorId, $post['member_id'] === null ? null : (int)$post['member_id'], $name, (string)$post['body'], $to, array_keys($replied));
+    $alias = $post['anonymous'] ? '匿名' : ($post['display_name'] !== null && $post['display_name'] !== '' ? (string)$post['display_name'] : null);
+    $name = $alias ?? (string)($post['name'] ?? '');
+    board_notice_add($thread, $postId, $authorId, $post['member_id'] === null ? null : (int)$post['member_id'], $name, (string)$post['body'], $to, array_keys($replied), $alias);
     if (!push_enabled()) {
         return;
     }
     push_send(push_subscriptions('push_board', $to), [
-        'title' => (string)$thread['title'],
-        'body'  => ($name !== '' ? $name . ': ' : '') . ((string)$post['body'] === '' ? '画像' : push_excerpt((string)$post['body'], 100)),
+        'title' => '掲示板', // タイトルはカテゴリ名。スレ名は本文の頭に出す
+        'body'  => $thread['title'] . ' / ' . ($name !== '' ? $name . ': ' : '') . ((string)$post['body'] === '' ? '画像' : push_excerpt((string)$post['body'], 100)),
         'url'   => 'board_thread?id=' . $threadId . '&page=' . board_post_page($threadId, $postId) . '#p' . $postId,
         'tag'   => 'board-' . $threadId, // 同じスレの通知は 1 つにまとまる
     ]);

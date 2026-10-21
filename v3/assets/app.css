@@ -2387,3 +2387,19 @@ button.ttb-m { cursor: pointer; text-decoration: underline dotted; }
 .ttb-toast { position: fixed; left: 50%; bottom: 20px; z-index: 70; transform: translateX(-50%); display: flex; align-items: center; gap: 8px;
   max-width: calc(100vw - 32px); padding: 10px 14px; border-radius: var(--radius-sm); background: var(--text); color: var(--bg); font-size: 13px; box-shadow: var(--shadow); }
 .ttb-toast .btn { color: var(--bg); }
+
+/* 本文欄の上の名義入力 + 匿名チェック（alias_field_html） */
+.alias-field { display: flex; align-items: center; gap: 12px; }
+.alias-field .check { flex: none; }
+.alias-field input[type="text"] { flex: 0 1 240px; min-width: 0; padding: 10px 14px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: 15px; } /* 本文欄（.board-textarea）と同じ見た目 */
+.alias-field input[type="text"]:focus { border-color: var(--accent); }
+.alias-field input[type="text"]:disabled { background: var(--surface-2); color: var(--muted); cursor: not-allowed; } /* 匿名のあいだはグレーアウト */
+.alias-field__info { position: relative; flex: none; display: inline-flex; }
+.alias-field__pop { position: absolute; right: 0; bottom: calc(100% + 6px); width: max-content; max-width: min(260px, 80vw); padding: 8px 12px; border-radius: 6px;
+  font-size: 12px; font-weight: 600; line-height: 1.5; background: var(--text); color: var(--surface); box-shadow: var(--shadow); z-index: 10; }
+.alias-field__pop[hidden] { display: none; }
+.alias-field__pop:not([hidden]) { animation: alias-pop .15s ease-out; transform-origin: bottom right; }
+@keyframes alias-pop { from { opacity: 0; transform: translateY(4px) scale(.96); } }
+@media (prefers-reduced-motion: reduce) { .alias-field__pop:not([hidden]) { animation: none; } }
+.alias-field__icon { color: var(--muted); font-size: 20px; cursor: pointer; user-select: none; }
+.alias-field__icon:hover, .alias-field__icon:focus-visible { color: var(--text); }
