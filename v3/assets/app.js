@@ -19,6 +19,7 @@
  *    data-name-cell     … 名前の入力欄（DB にいるかで色が変わる）
  *    data-roster-input  … タイムテーブルの枠 → 名簿のバンド（検索欄）
  *    data-sortable      … タイムテーブルの行を ≡ のドラッグで並び替え（時間の列は動かない）
+ *    data-tt-follow     … タイムテーブル編集の「追随」トグル（ON の間は、時刻を変えると下の行の時刻も一緒にずれる）
  *    data-album-box     … マイアルバムの開け閉め（閉じているときは先頭5枚だけ）
  *    data-partner-box   … よく組むメンバーの開け閉め（閉じているときは上位5人だけ）
  *    .kings             … 楽器別出演数ランキングの上位5位をふわっと出す
@@ -82,6 +83,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupAlbumAdd();
   setupRosterColumns();
   setupTimetableColumns();
+  setupTimetableFollow();
   setupPicks();
   setupLiveImages();
   setupDragScroll();
@@ -3375,6 +3377,8 @@ function renumberSlots(tbody) {
  *   data-free-time の行（タイムテーブル編集の「＋ 休憩を追加」で足した行）は例外で、時間を行に付けたまま動かす。
  *     位置に固定する行だけで「n 番目の時間」を数える（足した休憩を差し込んでも、ほかの行の時間はずれない）
  *   行を足したり消したりしたら、tbody に slots:changed イベントを出してもらい、今の並びで覚え直す
+ *   行を動かし終わったら（ドラッグを離したとき / ↑↓キーで1行動かしたとき）、tbody に slots:moved を出す
+ *     detail: { row, fromIndex, toIndex }（tbody の何行目から何行目へ。位置が変わったときだけ。setupTimetableFollow が使う）
  *   pointer イベントなのでマウスでも指でも動く（≡ には CSS で touch-action: none）。
  *
  * アニメーション（時間のセルは動かさない。動くのは時間以外のセルだけ）
@@ -3437,7 +3441,13 @@ function setupSlotSort() {
     });
   };
 
-  let drag = null; // ドラッグ中だけ { row, tbody, pointerId, y, grab, off, timer }
+  let drag = null; // ドラッグ中だけ { row, tbody, from, pointerId, y, grab, off, timer }（from = つかんだときの行番号）
+
+  // 動かし終わったら「何行目から何行目へ動いたか」を知らせる（位置が変わっていなければ何も出さない）
+  const announceMove = (tbody, row, fromIndex) => {
+    const toIndex = [...tbody.rows].indexOf(row);
+    if (toIndex !== fromIndex) tbody.dispatchEvent(new CustomEvent('slots:moved', { bubbles: true, detail: { row, fromIndex, toIndex } }));
+  };
 
   // つかんだ行をポインタに付いてこさせる。off = 定位置からどれだけずらして見せているか
   const follow = () => {
@@ -3460,7 +3470,7 @@ function setupSlotSort() {
 
   const end = () => {
     if (!drag) return;
-    const { row, off, timer } = drag;
+    const { row, tbody, from, off, timer } = drag;
     clearInterval(timer);
     drag = null;
     document.body.classList.remove('is-row-dragging');
@@ -3470,6 +3480,7 @@ function setupSlotSort() {
       if (!reduceMotion && off) td.animate([{ transform: `translateY(${off}px)` }, { transform: 'none' }], { duration: 150, easing: 'ease-out' });
     });
     setTimeout(() => { if (drag?.row !== row) row.classList.remove('is-dragging'); }, reduceMotion ? 0 : 150);
+    announceMove(tbody, row, from);
   };
 
   document.addEventListener('pointerdown', (e) => {
@@ -3479,7 +3490,7 @@ function setupSlotSort() {
     const row = handle.closest('tr');
     cellsOf(row).forEach((td) => td.getAnimations().forEach((a) => a.cancel()));
     // grab = 行の上端から、つかんだ所までの高さ（これを保ったまま付いてこさせる）
-    drag = { row, tbody: row.parentElement, pointerId: e.pointerId, y: e.clientY, grab: e.clientY - row.getBoundingClientRect().top, off: 0 };
+    drag = { row, tbody: row.parentElement, from: [...row.parentElement.rows].indexOf(row), pointerId: e.pointerId, y: e.clientY, grab: e.clientY - row.getBoundingClientRect().top, off: 0 };
     handle.setPointerCapture(e.pointerId); // 指やマウスが ≡ の外に出ても追いかける
     row.classList.add('is-dragging');
     document.body.classList.add('is-row-dragging');
@@ -3512,12 +3523,14 @@ function setupSlotSort() {
     const prev = row.previousElementSibling;
     const next = row.nextElementSibling;
     if (e.key === 'ArrowUp' ? !prev : !next) return; // 端なのでもう動けない
+    const from = [...tbody.rows].indexOf(row);
     flip(tbody, () => {
       if (e.key === 'ArrowUp') tbody.insertBefore(row, prev);
       else tbody.insertBefore(next, row);
       settle(tbody);
     });
     handle.focus(); // insertBefore で動かすとフォーカスが外れるブラウザがあるので戻す
+    announceMove(tbody, row, from);
   });
 }
 
@@ -4091,6 +4104,7 @@ function setupRosterColumns() {
  *   「＋ 休憩を追加」→ <template id="tpl-tt-break"> の行を表の一番下に足す（≡ で好きな所へ動かす）
  *   「この行を消す」→ 休憩の行を消す
  *   行を足す・消すときは slots:changed を出して、setupSlotSort に時間の並びを覚え直してもらう
+ *   時刻の追随（ON の間、時刻を変えると下の行の時刻もずれる）は、次の setupTimetableFollow
  * ------------------------------------------------------------------- */
 function setupTimetableColumns() {
   if (!document.querySelector('[data-tt-table]')) return;
@@ -4135,6 +4149,12 @@ function setupTimetableColumns() {
       tr.querySelectorAll('[name]').forEach((el) => { el.name = el.name.replace('k[__N__]', `k[${n}]`); });
       tr.querySelector('[name$="[day]"]').value = add.dataset.day;
       tr.querySelector('[data-break-fill]').colSpan = Number(table.dataset.cols);
+      // 時刻の初期値: 開始 = 表の一番下の行の終了、終了 = 開始 + 10 分（一番下の終了が空なら空のまま）。一番下に足すだけなので追随はしない
+      const lastEnd = tbody.rows.length ? timeToMin(tbody.rows[tbody.rows.length - 1].querySelector('[data-time-field="end"]')?.value) : null;
+      if (lastEnd !== null && lastEnd + 10 <= 24 * 60 - 1) {
+        setTimeField(tr.querySelector('[data-time-field="start"]'), minToTime(lastEnd));
+        setTimeField(tr.querySelector('[data-time-field="end"]'), minToTime(lastEnd + 10));
+      }
       tbody.appendChild(tr);
       tbody.dispatchEvent(new Event('slots:changed', { bubbles: true }));
       renumberSlots(tbody);
@@ -4156,6 +4176,173 @@ function setupTimetableColumns() {
     if (!e.target.matches('[data-tt-table] [data-name-cell]')) return;
     e.target.parentElement.querySelector('.cell-instrument')?.classList.toggle('is-collapsed', e.target.value.trim() === '');
   });
+}
+
+/* ---------------------------------------------------------------------
+ * タイムテーブル編集（timetable_edit.php）: 時刻の「追随」
+ *   表の「開始」の見出しにある 🔗（[data-tt-follow]）が ON の間、時刻を変えると下の行の時刻も同じ分だけ一緒にずれる。
+ *   ページ内の全部の日程が同じ状態（既定は ON。保存はしない）。ずれた結果を入力欄に入れるだけで、保存は今までどおりフォームの送信。
+ *   「行」= tbody の上から順の tr（バンドの行も休憩の行も）。時刻の入力欄は行の [data-time-field="start" / "end"]。
+ *     開始を変えた … その行の終了と、下の全部の行の開始・終了を、変えた分（Δ）だけずらす（1行目の開始 = 集合時間のズレ）
+ *     終了を変えた … 下の全部の行の開始・終了を Δ だけずらす
+ *     足した休憩（tr[data-free-time]）を動かした … 抜けた分を詰めて、動かした先の直前の行の終了から始まるように入れ直す
+ *     足した休憩を消す … 消す前に、下の行をその休憩の長さの分だけ詰める
+ *   変更前の値は各入力欄の data-prev に覚えておく（ページを開いたとき・JS が書き換えるたび）。空の欄はずらさない・追随もしない。
+ *   0:00〜23:59 を出る行があるときは、何も変えずに元の値へ戻して、お知らせ（トースト）を出す。
+ *   ページを開いたときの値（defaultValue）と違う入力欄には is-changed を付けて色を変える（手で変えたときも JS が変えたときも）。
+ * ------------------------------------------------------------------- */
+
+/** 'HH:MM'（'HH:MM:SS' も可）を 0 時からの分にする。空・不正は null */
+function timeToMin(value) {
+  const m = /^(\d{1,2}):(\d{2})/.exec(value || '');
+  return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+}
+
+/** 0 時からの分を 'HH:MM' にする（time 入力欄の value の形） */
+function minToTime(min) {
+  return `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
+}
+
+/** 入力欄の is-changed を、ページを開いたときの値（defaultValue）と比べて付け外しする */
+function markTimeChanged(input) {
+  input.classList.toggle('is-changed', input.value !== input.defaultValue);
+}
+
+/** 時刻の入力欄に JS から値を入れる（変更前の値の記憶と、is-changed も合わせて更新する） */
+function setTimeField(input, value) {
+  input.value = value;
+  input.dataset.prev = value;
+  markTimeChanged(input);
+}
+
+function setupTimetableFollow() {
+  if (!document.querySelector('[data-tt-table]')) return;
+  let following = true; // 追随が ON か（全部の日程で共通。開き直すと ON）
+
+  const fieldOf = (tr, kind) => tr.querySelector(`[data-time-field="${kind}"]`);
+  const allFields = () => [...document.querySelectorAll('[data-tt-table] [data-time-field]')];
+
+  // ページを開いたときの値を覚え、色も付ける（ブラウザが戻る操作で入力を復元していることもあるので、そのときも合わせる）
+  allFields().forEach((input) => { input.dataset.prev = input.value; markTimeChanged(input); });
+
+  // 日付をまたぐときのお知らせ（既存のトースト。お知らせの入れ物が無ければ、入力欄の標準のメッセージで）
+  const warn = (input) => {
+    const text = '日付をまたぐため追随できません';
+    if (document.querySelector('[data-toasts]')) {
+      const el = document.createElement('div');
+      el.className = 'flash flash--error';
+      el.setAttribute('role', 'status');
+      el.textContent = text;
+      showToast(el);
+      return;
+    }
+    input.setCustomValidity(text);
+    input.reportValidity();
+    input.setCustomValidity('');
+  };
+
+  // 入力欄の値を delta 分ずらす。空の欄は飛ばす。1つでも 0:00〜23:59 を出るなら、何も変えずに false
+  const shiftFields = (inputs, delta) => {
+    const plan = [];
+    for (const input of inputs) {
+      const min = timeToMin(input.value);
+      if (min === null) continue;
+      if (min + delta < 0 || min + delta > 24 * 60 - 1) return false;
+      plan.push([input, min + delta]);
+    }
+    plan.forEach(([input, min]) => setTimeField(input, minToTime(min)));
+    return true;
+  };
+
+  // tbody の全部の時刻欄の値を覚える / 覚えた値へ戻す（途中で失敗したときに、何もなかったことにする）
+  const snapshot = (tbody) => [...tbody.querySelectorAll('[data-time-field]')].map((input) => [input, input.value]);
+  const restore = (snap) => snap.forEach(([input, value]) => setTimeField(input, value));
+
+  // 行の時刻欄（開始・終了）を、上の行から順に並べたもの
+  const fieldsIn = (rows) => rows.flatMap((tr) => [fieldOf(tr, 'start'), fieldOf(tr, 'end')]).filter(Boolean);
+
+  // ---- トグル: 押すと全部の日程が同じ状態になる ----
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-tt-follow]');
+    if (!btn) return;
+    following = !following;
+    document.querySelectorAll('[data-tt-follow]').forEach((b) => {
+      b.setAttribute('aria-pressed', String(following));
+      b.querySelector('.icon').textContent = following ? 'link' : 'link_off';
+    });
+  });
+
+  // ---- 時刻を変えた ----
+  document.addEventListener('change', (e) => {
+    const input = e.target;
+    if (!input.matches?.('[data-tt-table] [data-time-field]')) return;
+    const prev = input.dataset.prev ?? '';
+    markTimeChanged(input);
+    const before = timeToMin(prev);
+    const after = timeToMin(input.value);
+    // 次に変えたときの「変更前」。打っている途中で空になったとき（Backspace など）は前の値を残す
+    //   （空で上書きすると、続けて打った値との差が分からなくなり、追随が切れる）
+    if (after !== null || before === null) input.dataset.prev = input.value;
+    if (!following || before === null || after === null || before === after) return;
+
+    const delta = after - before;
+    const tr = input.closest('tr');
+    const rows = [...tr.parentElement.rows];
+    const below = rows.slice(rows.indexOf(tr) + 1);
+    // 開始を変えたら、その行の終了も。それより下の行は開始・終了とも
+    const targets = [...(input.dataset.timeField === 'start' ? [fieldOf(tr, 'end')] : []), ...fieldsIn(below)].filter(Boolean);
+    if (!shiftFields(targets, delta)) {
+      setTimeField(input, prev); // 日付をまたぐので、変えた欄も元の値に戻す
+      warn(input);
+    }
+  });
+
+  // ---- 足した休憩の行を動かした（setupSlotSort が slots:moved を出す） ----
+  document.addEventListener('slots:moved', (e) => {
+    const { row, fromIndex, toIndex } = e.detail;
+    const start = fieldOf(row, 'start');
+    const end = fieldOf(row, 'end');
+    // 位置に固定の行は、時刻がその位置に残るので何もしない。開始か終了が空なら長さが分からないので何もしない
+    if (!following || !row.hasAttribute('data-free-time') || !start || !end) return;
+    const length = timeToMin(end.value) - timeToMin(start.value);
+    if (!(length > 0)) return; // どちらかが空（NaN）か、長さが 0 以下
+    const tbody = row.parentElement;
+    const others = [...tbody.rows].filter((tr) => tr !== row); // 動かした行を除いた並び（上下どちらへ動かしても同じ数え方になる）
+    const snap = snapshot(tbody);
+
+    // ① 元の位置より下にあった行を、抜けた分だけ詰める
+    let ok = shiftFields(fieldsIn(others.slice(fromIndex)), -length);
+    // ② 動かした行の開始 = 新しい位置の直前の行の終了（先頭に動かしたときは、いま下にいる行の開始）。終了 = 開始 + 長さ
+    const ref = toIndex > 0 ? fieldOf(others[toIndex - 1], 'end') : others[toIndex] ? fieldOf(others[toIndex], 'start') : null;
+    const refMin = timeToMin(ref?.value);
+    if (ok && (refMin === null || refMin + length > 24 * 60 - 1)) {
+      restore(snap);
+      if (refMin !== null) warn(row); // 起点の時刻が空のときは黙って元のまま。足りなくて入らないときだけお知らせ
+      return;
+    }
+    if (ok) {
+      setTimeField(start, minToTime(refMin));
+      setTimeField(end, minToTime(refMin + length));
+      // ③ 新しい位置より下の行を、入れた分だけ繰り下げる
+      ok = shiftFields(fieldsIn(others.slice(toIndex)), length);
+    }
+    if (!ok) {
+      restore(snap);
+      warn(row);
+    }
+  });
+
+  // ---- 足した休憩の行を消す: 消す前に、下の行をその休憩の長さの分だけ詰める（capture 段階で待つので、行が消える前に動く） ----
+  document.addEventListener('click', (e) => {
+    const remove = e.target.closest('[data-remove-break]');
+    if (!remove || !following) return;
+    const tr = remove.closest('tr');
+    const start = timeToMin(fieldOf(tr, 'start')?.value);
+    const end = timeToMin(fieldOf(tr, 'end')?.value);
+    if (start === null || end === null) return;
+    const rows = [...tr.parentElement.rows];
+    if (!shiftFields(fieldsIn(rows.slice(rows.indexOf(tr) + 1)), -(end - start))) warn(remove); // 詰められないときは、そのまま消すだけ
+  }, true);
 }
 
 /* ---------------------------------------------------------------------

@@ -19,6 +19,9 @@
  *  ・休憩・転換など（live_break）も同じ表に1行で出し、並び替え・名前の変更・追加・削除ができる。
  *    まだ1つも登録されていない日程は、バンドの間の空き時間を「休憩」として出す（保存すると登録される）。
  *    「＋ 休憩を追加」で足した行だけは、時間を行に付けたまま動かす（位置に固定すると、差し込んだ所から下の時間が全部ずれるので）
+ *  ・「開始」の見出しの 🔗 が ON の間は「追随」: 時刻を変えると、それより下の行の時刻も同じ分だけ一緒にずれる
+ *    （1行目の開始 = 集合時間のズレ。休憩の行を動かす・消すときも詰める）。サーバーは何もしない。ずれた結果を入力欄に入れるだけで、保存は今までどおり
+ *    （assets/app.js の setupTimetableFollow。変わった欄は is-changed の色が付く）
  *  ・曲数・メモ・コピー元アーティストはここでは触らない（band_edit.php で直す）。
  *    ただしバンド名を変えたときは、コピー元アーティストも新しい名前から決め直す（オムニバスのバンドは無しのまま）
  * =====================================================================
@@ -368,7 +371,9 @@ render_header('タイムテーブルを編集', 'lives'); ?>
                 <!-- data-cols: 今ある出演者の列の数。「＋ 列を追加」が新しい列の番号に使う（assets/app.js の setupTimetableColumns） -->
                 <table class="table table--edit table--roster table--tt" data-tt-table data-cols="<?= $cols ?>">
                     <thead><tr>
-                        <th aria-label="並び替え"></th><th>順</th><th title="並び替えても時間はその位置に残る">開始</th><th title="並び替えても時間はその位置に残る">終了</th><th>バンド名</th>
+                        <th aria-label="並び替え"></th><th>順</th><th title="並び替えても時間はその位置に残る">開始
+                            <!-- 追随のトグル（ON: 時刻を変えると、それより下の時刻も一緒にずれる。assets/app.js の setupTimetableFollow。全日程で同じ状態） -->
+                            <button type="button" class="tt-follow" data-tt-follow aria-pressed="true" title="追随"><?= icon('link') ?></button></th><th title="並び替えても時間はその位置に残る">終了</th><th>バンド名</th>
                         <th colspan="<?= $cols ?>" data-tt-members-head>出演者</th>
                     </tr></thead>
                     <!-- data-sortable: 左端の ≡ をドラッグで行を並び替える（assets/app.js の setupSlotSort）。

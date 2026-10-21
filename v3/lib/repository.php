@@ -1576,6 +1576,108 @@ function merge_same_breaks(array $rows): array
     return $merged;
 }
 
+// =====================================================================
+//  時刻のずらし・休憩の位置の補正（band_edit.php でバンドを削除・追加したときの、後ろの追随）
+//    ・時刻は今までどおり「絶対時刻」で持ったまま、「ある位置から後ろ」をまとめてずらすだけ
+//    ・バンドを消す / 差し込むと出演順が 1,2,3… に振り直されるので、休憩の after_order も同じ分だけ直す
+//      （renumber_bands は休憩に触らない。live_edit.php などからも呼ばれるので、そちらの挙動は変えない）
+// =====================================================================
+
+/**
+ * 'HH:MM:SS' に $sec 秒を足す。
+ * @return string|false|null NULL/空は NULL のまま / 0:00〜23:59 を出る（日付をまたぐ）なら false
+ */
+function shift_time_by(?string $time, int $sec): string|false|null
+{
+    if ($time === null || $time === '') {
+        return null; // 時刻が未入力の枠は、ずらしても未入力のまま
+    }
+    [$h, $m, $s] = sscanf($time, '%d:%d:%d') + [0, 0, 0];
+    $total = $h * 3600 + $m * 60 + $s + $sec;
+    if ($total < 0 || $total >= 86400) {
+        return false;
+    }
+    return sprintf('%02d:%02d:%02d', intdiv($total, 3600), intdiv($total % 3600, 60), $total % 60);
+}
+
+/** 'HH:MM' / 'HH:MM:SS' を 0 時からの秒数にする。NULL・空は null */
+function time_to_sec(?string $time): ?int
+{
+    if ($time === null || $time === '') {
+        return null;
+    }
+    [$h, $m, $s] = sscanf($time, '%d:%d:%d') + [0, 0, 0];
+    return $h * 3600 + $m * 60 + $s;
+}
+
+/**
+ * 日程の「ある位置から後ろ」のバンドと休憩の時刻を $sec 秒ずらす（マイナスなら前へ）。トランザクションの中で呼ぶこと
+ *   $bandFrom: play_order >= これのバンドを動かす / $breakFrom: after_order >= これの休憩を動かす
+ *   ADDTIME(時刻, SEC_TO_TIME(秒)) の UPDATE をテーブルごとに1本。NULL の時刻は NULL のまま
+ * @return bool false = 動かすと 0:00〜23:59 を出る（日付をまたぐ）ので何もしなかった
+ */
+function shift_day_times(PDO $pdo, int $dayId, int $bandFrom, int $breakFrom, int $sec): bool
+{
+    if ($sec === 0) {
+        return true; // 動かさないなら何もしない
+    }
+    // [テーブル, 位置の列, この位置から後ろ]。テーブル名・列名は下の固定の値だけ（入力から来た文字は SQL に入らない）
+    $targets = [['band', 'play_order', $bandFrom], ['live_break', 'after_order', $breakFrom]];
+
+    // ① 動かす行の、いちばん早い時刻と遅い時刻（開始・終了の両方を見る）が、ずらしても 0〜86399 秒に収まるか
+    $min = null;
+    $max = null;
+    foreach ($targets as [$table, $col, $from]) {
+        $st = $pdo->prepare("SELECT MIN(LEAST(COALESCE(TIME_TO_SEC(start_time), 86400), COALESCE(TIME_TO_SEC(end_time), 86400))),
+                MAX(GREATEST(COALESCE(TIME_TO_SEC(start_time), -1), COALESCE(TIME_TO_SEC(end_time), -1)))
+            FROM $table WHERE live_day_id = ? AND $col >= ?");
+        $st->execute([$dayId, $from]);
+        [$lo, $hi] = $st->fetch(PDO::FETCH_NUM);
+        // 時刻が1つも無い行だけのとき、lo は 86400・hi は -1 になる（= 動かす時刻が無いので判定に入れない）
+        if ($lo !== null && (int)$lo < 86400) {
+            $min = $min === null ? (int)$lo : min($min, (int)$lo);
+        }
+        if ($hi !== null && (int)$hi >= 0) {
+            $max = $max === null ? (int)$hi : max($max, (int)$hi);
+        }
+    }
+    if (($min !== null && $min + $sec < 0) || ($max !== null && $max + $sec > 86399)) {
+        return false; // 日付をまたぐ
+    }
+
+    // ② ずらす（NULL の時刻は ADDTIME も NULL のまま）
+    $set = 'SET start_time = ADDTIME(start_time, SEC_TO_TIME(?)), end_time = ADDTIME(end_time, SEC_TO_TIME(?))';
+    foreach ($targets as [$table, $col, $from]) {
+        $pdo->prepare("UPDATE $table $set WHERE live_day_id = ? AND $col >= ?")->execute([$sec, $sec, $dayId, $from]);
+    }
+    return true;
+}
+
+/**
+ * 出演順 $order のバンドを消したあと、休憩の after_order を1つ前へ詰める（renumber_bands の前に呼ぶ）。
+ *   消したバンドの直後の休憩（after_order = $order）は、1つ前のバンドの後へ移る。それより後ろの休憩は、それぞれのバンドに付いていく。
+ *   移る休憩は、もともとそこにある休憩（after_order = $order - 1）の後ろに並ぶよう seq を足す
+ */
+function shift_breaks_for_delete(PDO $pdo, int $dayId, int $order): void
+{
+    $st = $pdo->prepare('SELECT COALESCE(MAX(seq) + 1, 0) FROM live_break WHERE live_day_id = ? AND after_order = ?');
+    $st->execute([$dayId, $order - 1]);
+    $pdo->prepare('UPDATE live_break SET seq = seq + ? WHERE live_day_id = ? AND after_order = ?')
+        ->execute([(int)$st->fetchColumn(), $dayId, $order]);
+    $pdo->prepare('UPDATE live_break SET after_order = after_order - 1 WHERE live_day_id = ? AND after_order >= ?')
+        ->execute([$dayId, $order]);
+}
+
+/**
+ * 位置 $position にバンドを差し込む前に、休憩の after_order を1つ後ろへ送る（renumber_bands の前に呼ぶ）。
+ *   $position - 1 番の後の休憩はそのまま（新しいバンドの前に出る）。$position 番以降の後ろにあった休憩は、それぞれのバンドに付いていく
+ */
+function shift_breaks_for_insert(PDO $pdo, int $dayId, int $position): void
+{
+    $pdo->prepare('UPDATE live_break SET after_order = after_order + 1 WHERE live_day_id = ? AND after_order >= ?')
+        ->execute([$dayId, $position]);
+}
+
 /**
  * バンド $fromId を、バンド $toId にまとめる（ライブの統合で「統合する」を選んだバンド。live_edit.php）。
  * 統合先を優先し、統合先が空のところだけ統合元の値で埋める。
@@ -1889,4 +1991,36 @@ function load_check_members(PDO $pdo, int $bandId): array
         WHERE c.band_id = ? ORDER BY m.name');
     $st->execute([$bandId]);
     return array_map('strval', $st->fetchAll(PDO::FETCH_KEY_PAIR));
+}
+
+/**
+ * 掲示板・コメントの投稿者名（HTML）。匿名なら「匿名」だけ。管理者にはそのあとに本名も出す
+ * @param int|null $memberId 投稿者のメンバーID（あれば本名からメンバーページへリンク）
+ */
+function author_html(bool $anonymous, ?string $displayName, ?string $name, ?int $memberId, bool $isAdmin): string
+{
+    $real = $memberId !== null ? '<a href="member?id=' . $memberId . '">' . h($name ?? '') . '</a>' : h($name ?? '退会ユーザー');
+    $shown = $anonymous ? '匿名' : $displayName; // 匿名が優先。名義が無ければ本名
+    if ($shown === null || $shown === '') {
+        return $real;
+    }
+    return h($shown) . ($isAdmin ? ' <span class="muted">（' . $real . '）</span>' : '');
+}
+
+/** 掲示板・コメントの送信元の名義（POST の display_name）。空なら null（本名）。匿名のときも null */
+function posted_display_name(bool $anonymous): ?string
+{
+    $n = mb_substr(trim((string)preg_replace('/\s+/u', ' ', (string)($_POST['display_name'] ?? ''))), 0, 30);
+    return $anonymous || $n === '' ? null : $n;
+}
+
+/** 本文欄の上に置く、送信元の名義の入力と匿名チェック（匿名のあいだは名義を使えない。assets/app.js の setupAliasField） */
+function alias_field_html(string $userName): string
+{
+    return '<div class="alias-field" data-alias-field>'
+        . '<input type="text" name="display_name" maxlength="30" autocomplete="off" placeholder="' . h($userName) . '" aria-label="名義" title="名義（空欄は ' . h($userName) . '）">'
+        . '<label class="check" title="匿名で投稿"><input type="checkbox" name="anonymous" value="1"> 匿名</label>'
+        . '<span class="alias-field__info"><span class="icon alias-field__icon" data-alias-info role="button" tabindex="0" aria-label="説明" aria-expanded="false">info</span>'
+        . '<span class="alias-field__pop" role="tooltip" hidden>送信者名を入力すると匿名状態になります<br>（管理者を除く）</span></span>'
+        . '</div>';
 }

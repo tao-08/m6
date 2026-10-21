@@ -444,6 +444,13 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .table--tt tr.tt-break td { background: var(--surface-2); border-top: 1px dashed var(--border); border-bottom: 1px dashed var(--border); }
 .table--tt tr.tt-break .icon { font-size: 18px; vertical-align: middle; }
 .tt-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+/* 追随のトグル（「開始」の見出しの中の小さいアイコンボタン）。ON は色付き、OFF（aria-pressed="false"）は薄く */
+.tt-follow { display: inline-flex; align-items: center; margin-left: 4px; padding: 2px; border: 0; border-radius: 6px; background: none; color: var(--accent); cursor: pointer; vertical-align: middle; }
+.tt-follow .icon { font-size: 16px; }
+.tt-follow[aria-pressed="false"] { color: var(--muted); opacity: .45; }
+.tt-follow:hover { background: var(--accent-soft); opacity: 1; }
+/* ページを開いたときから変わった時刻の入力欄（追随でずれた分も、手で変えた分も）。ライトとダークで同じ変数なので両方で見える */
+.table--tt input.is-changed { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--surface)); }
 
 .timeline { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
 .slot { display: grid; grid-template-columns: 60px 1fr; gap: 12px; }

@@ -10,6 +10,8 @@
  *  曲ごとに誰が演奏したかは songs_edit.php で編集する。
  *
  *  出演順を変えると、同じ日のほかのバンドも 1,2,3... と振り直される（renumber_bands）。
+ *  バンドを削除・追加すると、その後ろのバンドと休憩の時刻は持ち時間の分だけ自動で詰まる / 繰り下がる（shift_day_times）。
+ *  休憩の位置（after_order）も出演順に合わせて直す。追加で時刻を空欄にすると、直前の行の終了から隣のバンドと同じ持ち時間で入る。
  * =====================================================================
  */
 declare(strict_types=1);
@@ -95,8 +97,18 @@ if (is_post()) {
         }
         $pdo->beginTransaction();
         $op = change_begin($pdo, 'band_delete', '「' . $band['name'] . '」を削除', (int)$band['live_id']);
-        change_capture($pdo, $op, 'band', $bandId); // 消す前の状態（メンバー・セトリごと）を履歴に残す
+        // 消す前の状態（日程・休憩・全バンド。メンバー・セトリごと）を履歴に残す。後ろの時刻も動かすので、消すバンドだけでなく全部
+        change_capture_day($pdo, $op, $dayId);
+        $order = (int)$band['play_order'];
         delete_band($pdo, $bandId);   // band_member は ON DELETE CASCADE で一緒に消える
+        // 開始と終了の両方があるときだけ、後ろの時刻（と消したバンドの直後の休憩）をその持ち時間の分だけ前へ詰める
+        //   日付をまたぐ（false）ことは詰める方向では起きないはずだが、起きたらずらさずに続ける
+        $len = time_to_sec($band['end_time']) !== null && time_to_sec($band['start_time']) !== null
+            ? time_to_sec($band['end_time']) - time_to_sec($band['start_time']) : null; // 持ち時間（秒）
+        if ($len !== null) {
+            shift_day_times($pdo, $dayId, $order + 1, $order, -$len);
+        }
+        shift_breaks_for_delete($pdo, $dayId, $order); // 休憩の「どのバンドの後か」も1つ前へ
         renumber_bands($pdo, $dayId); // 抜けた番号を詰める
         $pdo->commit();
         flash('「' . $band['name'] . '」を削除しました');
@@ -176,6 +188,49 @@ if (is_post()) {
             // 変更履歴: 編集なら変更前の状態を残す。追加なら「作った」ことを残す（元に戻す = 消す）
             $op = change_begin($pdo, $isNew ? 'band_add' : 'band_edit', '「' . $name . '」を' . ($isNew ? '追加' : '更新'), (int)$band['live_id']);
             if ($isNew) {
+                // 差し込む位置 $position は 1〜(既存の数 + 1)（renumber_bands と同じ丸め）。数えるのは INSERT の前
+                $st = $pdo->prepare('SELECT COUNT(*) FROM band WHERE live_day_id = ?');
+                $st->execute([$dayId]);
+                $position = max(1, min($order, (int)$st->fetchColumn() + 1));
+                // ほかのバンドの時刻も動かすので、日程・休憩・全バンドの「変更前」を残す（この後の change_created はそのまま）
+                change_capture_day($pdo, $op, $dayId);
+
+                // 新しいバンドの時刻: 両方入力 → その値 / 両方空 → 直前の行の終了から、隣のバンドと同じ持ち時間で自動 / 片方だけ → そのまま（追随しない）
+                $newStart = $start !== '' ? $start : null;
+                $newEnd = $end !== '' ? $end : null;
+                if ($start === '' && $end === '') {
+                    $st = $pdo->prepare('SELECT COUNT(*) FROM band WHERE live_day_id = ? AND (start_time IS NOT NULL OR end_time IS NOT NULL)');
+                    $st->execute([$dayId]);
+                    if ((int)$st->fetchColumn() > 0) { // その日程に時刻の入ったバンドがあるときだけ
+                        // 隣のバンド: 1つ前（位置 1 のときは、今の1番）
+                        $st = $pdo->prepare('SELECT start_time, end_time FROM band WHERE live_day_id = ? AND play_order = ?');
+                        $st->execute([$dayId, max(1, $position - 1)]);
+                        $near = $st->fetch() ?: ['start_time' => null, 'end_time' => null];
+                        // 差し込む場所の直前に並ぶ休憩のうち、いちばん遅い終了
+                        $st = $pdo->prepare('SELECT MAX(end_time) FROM live_break WHERE live_day_id = ? AND after_order = ?');
+                        $st->execute([$dayId, $position - 1]);
+                        $breakEnd = $st->fetchColumn();
+                        // 開始 = 直前の行の終了（バンドの終了と休憩の終了の遅い方。位置 1 なら 今の1番の開始と、その前の休憩の終了の遅い方）
+                        //   'HH:MM:SS' の文字列は、そのまま max で時刻の早い遅いを比べられる
+                        $before = array_filter([$position > 1 ? $near['end_time'] : $near['start_time'], $breakEnd === false ? null : $breakEnd], static fn($t) => $t !== null);
+                        $nearLen = time_to_sec($near['end_time']) !== null && time_to_sec($near['start_time']) !== null
+                            ? time_to_sec($near['end_time']) - time_to_sec($near['start_time']) : null; // 隣の持ち時間（秒）
+                        if ($before && $nearLen !== null && $nearLen > 0) {
+                            $newStart = max($before);
+                            $newEnd = shift_time_by($newStart, $nearLen);
+                            if ($newEnd === false) {
+                                throw new RuntimeException('日付をまたぐので追加できません');
+                            }
+                        }
+                    }
+                }
+                // 開始と終了が決まったら、後ろのバンド・休憩をその持ち時間の分だけ繰り下げる（INSERT の前なので、新しいバンドは動かない）
+                if ($newStart !== null && $newEnd !== null && !shift_day_times($pdo, $dayId, $position, $position, time_to_sec($newEnd) - time_to_sec($newStart))) {
+                    throw new RuntimeException('日付をまたぐので追加できません'); // 下の catch で取り消して、フォームに戻す
+                }
+                shift_breaks_for_insert($pdo, $dayId, $position); // 休憩の「どのバンドの後か」も後ろへ送る（INSERT の前）
+                $values[3] = $newStart; // $values の並びは start_time, end_time が 4・5 番目
+                $values[4] = $newEnd;
                 // 出演順は UNIQUE なので、いったん最後尾に入れてから renumber_bands で正しい位置に動かす
                 $pdo->prepare('INSERT INTO band (artist_id, name, song_count, start_time, end_time, note, youtube_url, needs_check, live_day_id, play_order)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')->execute([...$values, $dayId, next_play_order($pdo, $dayId)]);
@@ -189,7 +244,7 @@ if (is_post()) {
             // 差分だけ更新（全部消すと曲ごとの演奏記録が CASCADE で消えるため。sync_band_members の説明参照）
             sync_band_members($pdo, $index, $bandId, $rows);
             save_check_members($pdo, $bandId, $flag, $checkWho); // メンバーを入れ替えた後に（外した人は入らない）
-            renumber_bands($pdo, $dayId, $bandId, $order);
+            renumber_bands($pdo, $dayId, $bandId, $isNew ? $position : $order);
             if ($isNew) {
                 sync_day_total_bands($pdo, $dayId); // バンドが増えて総バンド数を超えたら追いつかせる
             }
