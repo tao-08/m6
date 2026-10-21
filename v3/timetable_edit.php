@@ -21,7 +21,7 @@
  *    「＋ 休憩を追加」で足した行だけは、時間を行に付けたまま動かす（位置に固定すると、差し込んだ所から下の時間が全部ずれるので）
  *  ・「開始」の見出しの 🔗 が ON の間は「追随」: 時刻を変えると、それより下の行の時刻も同じ分だけ一緒にずれる
  *    （1行目の開始 = 集合時間のズレ。休憩の行を動かす・消すときも詰める）。サーバーは何もしない。ずれた結果を入力欄に入れるだけで、保存は今までどおり
- *    （assets/app.js の setupTimetableFollow。変わった欄は is-changed の色が付く）
+ *    （assets/app.js の setupTimetableFollow。重なり・終了が開始以前の欄だけ is-error の色が付く）
  *  ・曲数・メモ・コピー元アーティストはここでは触らない（band_edit.php で直す）。
  *    ただしバンド名を変えたときは、コピー元アーティストも新しい名前から決め直す（オムニバスのバンドは無しのまま）
  * =====================================================================
@@ -307,7 +307,7 @@ function render_break_row(string $n, string $dayId, array $k, int $cols, bool $f
         <td data-time><input type="time" step="300" name="<?= h($p) ?>[end]" value="<?= h(fmt_time($k['end_time'])) ?>" aria-label="終了" data-time-field="end"></td>
         <td><input name="<?= h($p) ?>[name]" value="<?= h($k['name']) ?>" maxlength="50" required aria-label="休憩の名前" placeholder="休憩 / 転換 など"></td>
         <td colspan="<?= $cols ?>" data-break-fill>
-            <button type="button" class="btn btn--ghost btn--sm" data-remove-break><?= icon('close') ?> この行を消す</button>
+            <button type="button" class="btn btn--ghost btn--sm" data-remove-break aria-label="この行を消す" title="この行を消す"><?= icon('close') ?> この行を消す</button>
         </td>
     </tr>
 <?php }

@@ -3489,6 +3489,9 @@ function setupSlotSort() {
     if (!handle || drag || (e.pointerType === 'mouse' && e.button !== 0)) return;
     e.preventDefault(); // 文字選択やスクロールを始めさせない
     const row = handle.closest('tr');
+    // スマホは出演者が右にスクロールして隠れているので、つかんだら左端へ戻す（ドラッグ中もバンド名が見えるように）
+    const scroller = row.closest('.table-scroll');
+    if (scroller && scroller.scrollLeft) scroller.scrollLeft = 0;
     cellsOf(row).forEach((td) => td.getAnimations().forEach((a) => a.cancel()));
     // grab = 行の上端から、つかんだ所までの高さ（これを保ったまま付いてこさせる）
     drag = { row, tbody: row.parentElement, from: [...row.parentElement.rows].indexOf(row), pointerId: e.pointerId, y: e.clientY, grab: e.clientY - row.getBoundingClientRect().top, off: 0 };
@@ -4190,7 +4193,8 @@ function setupTimetableColumns() {
  *     足した休憩を消す … 消す前に、下の行をその休憩の長さの分だけ詰める
  *   変更前の値は各入力欄の data-prev に覚えておく（ページを開いたとき・JS が書き換えるたび）。空の欄はずらさない・追随もしない。
  *   0:00〜23:59 を出る行があるときは、何も変えずに元の値へ戻して、お知らせ（トースト）を出す。
- *   ページを開いたときの値（defaultValue）と違う入力欄には is-changed を付けて色を変える（手で変えたときも JS が変えたときも）。
+ *   色が付くのはエラーのときだけ（is-error）: 開始が上の行の終了より早い（重なり）/ 終了が開始以前。
+ *     変えたこと自体には色を付けない（追随で下の全行が動くので、全部が塗られてエラーに見えてしまう）。
  * ------------------------------------------------------------------- */
 
 /** 'HH:MM'（'HH:MM:SS' も可）を 0 時からの分にする。空・不正は null */
@@ -4204,16 +4208,36 @@ function minToTime(min) {
   return `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
 }
 
-/** 入力欄の is-changed を、ページを開いたときの値（defaultValue）と比べて付け外しする */
-function markTimeChanged(input) {
-  input.classList.toggle('is-changed', input.value !== input.defaultValue);
+/**
+ * 時刻のエラーの欄に is-error を付け外しする（表ごとに、上の行から順に見る）
+ *   ・終了が開始以前 → その行の開始・終了
+ *   ・開始が、上の行の終了（いちばん遅いもの）より早い = 重なり → その行の開始
+ *   空の欄は見ない。保存はエラーでも止めない（色で気づかせるだけ）
+ */
+function checkTimes() {
+  document.querySelectorAll('[data-tt-table] tbody').forEach((tbody) => {
+    let prevEnd = null; // ここまでの行の終了の最大
+    [...tbody.rows].forEach((tr) => {
+      const startInput = tr.querySelector('[data-time-field="start"]');
+      const endInput = tr.querySelector('[data-time-field="end"]');
+      if (!startInput || !endInput) return;
+      const start = timeToMin(startInput.value);
+      const end = timeToMin(endInput.value);
+      const badRange = start !== null && end !== null && end <= start;
+      const overlap = start !== null && prevEnd !== null && start < prevEnd;
+      startInput.classList.toggle('is-error', badRange || overlap);
+      endInput.classList.toggle('is-error', badRange);
+      const last = end ?? start;
+      if (last !== null) prevEnd = prevEnd === null ? last : Math.max(prevEnd, last);
+    });
+  });
 }
 
-/** 時刻の入力欄に JS から値を入れる（変更前の値の記憶と、is-changed も合わせて更新する） */
+/** 時刻の入力欄に JS から値を入れる（変更前の値の記憶と、エラーの色も合わせて更新する） */
 function setTimeField(input, value) {
   input.value = value;
   input.dataset.prev = value;
-  markTimeChanged(input);
+  checkTimes();
 }
 
 function setupTimetableFollow() {
@@ -4223,8 +4247,11 @@ function setupTimetableFollow() {
   const fieldOf = (tr, kind) => tr.querySelector(`[data-time-field="${kind}"]`);
   const allFields = () => [...document.querySelectorAll('[data-tt-table] [data-time-field]')];
 
-  // ページを開いたときの値を覚え、色も付ける（ブラウザが戻る操作で入力を復元していることもあるので、そのときも合わせる）
-  allFields().forEach((input) => { input.dataset.prev = input.value; markTimeChanged(input); });
+  // ページを開いたときの値を覚え、エラーの色も付ける（ブラウザが戻る操作で入力を復元していることもあるので、そのときも合わせる）
+  allFields().forEach((input) => { input.dataset.prev = input.value; });
+  checkTimes();
+  // 行を足す・消す・動かしたときも見直す（追随が OFF のときは setTimeField を通らないので）
+  ['slots:changed', 'slots:moved'].forEach((type) => document.addEventListener(type, checkTimes));
 
   // 日付をまたぐときのお知らせ（既存のトースト。お知らせの入れ物が無ければ、入力欄の標準のメッセージで）
   const warn = (input) => {
@@ -4278,7 +4305,7 @@ function setupTimetableFollow() {
     const input = e.target;
     if (!input.matches?.('[data-tt-table] [data-time-field]')) return;
     const prev = input.dataset.prev ?? '';
-    markTimeChanged(input);
+    checkTimes();
     const before = timeToMin(prev);
     const after = timeToMin(input.value);
     // 次に変えたときの「変更前」。打っている途中で空になったとき（Backspace など）は前の値を残す

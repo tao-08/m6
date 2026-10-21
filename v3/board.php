@@ -12,6 +12,7 @@
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 require __DIR__ . '/lib/board.php';
+require_once __DIR__ . '/lib/repository.php'; // alias_field_html()・author_html()
 require_once __DIR__ . '/lib/push.php'; // board_push_post()（アプリ通知）
 require_once __DIR__ . '/lib/attach_image.php'; // 最初の書き込みの添付画像（1枚）
 $user = require_login();
