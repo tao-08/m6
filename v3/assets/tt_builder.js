@@ -173,6 +173,10 @@
         if (!s.bands[op.b] || typeof op.on !== 'boolean') return false;
         s.bands[op.b].pin = op.on;
         return true;
+      case 'key': // バンドの Key（機材メモ）。空文字で消す
+        if (!s.bands[op.b] || !isStr(op.x, 60)) return false;
+        s.bands[op.b].key = op.x.trim();
+        return true;
       case 'grade':
         if (!isStr(op.k, 60) || op.k === '' || !(op.g === null || isInt(op.g, 1, 9))) return false;
         if (op.g === null) delete s.grades[op.k]; else s.grades[op.k] = op.g;
@@ -491,6 +495,23 @@
     return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
   };
   const newId = () => 'x' + Math.random().toString(36).slice(2, 10);
+  /*
+   * Key（機材メモ）を、画像の key 列に出す短い表記にする（lib/tt_builder.php の tt_key_short と同じ動き。直すときは両方直すこと）
+   *   1つだけ … 名簿の書き方のまま（括弧は全角にそろえる）  「貸出(エレピ)」→「貸出（エレピ）」
+   *   2つ以上 … 「私/貸 + 楽器」にして「/」でつなぐ        「私物(シンセ), 貸出(エレピ)」→「私シンセ/貸エレピ」
+   *   「私物（楽器）」「貸出（楽器）」の形でないものは、そのまま残す（読み替えて意味を変えないため）
+   */
+  function keyShort(key) {
+    // split の正規表現: カンマ・読点・スラッシュ（前後の空白ごと）で区切る。filter(Boolean) で空の要素を捨てる
+    const items = String(key || '').trim().split(/\s*[,，、/／]\s*/).filter(Boolean);
+    // match の () で取り出した [1] = 私物/貸出などの頭、[2] = 括弧の中（楽器）。全角・半角どちらの括弧も受ける
+    const parsed = items.map((it) => {
+      const m = it.match(/^(私物|私|貸出し?|貸し?出し?|貸)\s*[（(]\s*(.+?)\s*[）)]$/);
+      return m ? { head: m[1], inst: m[2], raw: it } : { head: null, inst: null, raw: it };
+    });
+    if (parsed.length === 1) return parsed[0].head === null ? parsed[0].raw : `${parsed[0].head}（${parsed[0].inst}）`;
+    return parsed.map((p) => (p.head === null ? p.raw : [...p.head][0] + p.inst)).join('/');
+  }
 
   let toastEl = null;
   function toast(msg, action) {
@@ -576,7 +597,7 @@
    *   ・今画面に出ている state（保存前の最新の変更を含む）をそのまま使えるので、サーバーに送り直す必要がない
    * 見た目は、運営が使っているタイムテーブル（Excel）の画像そっくりにしてある:
    *   灰色の見出し行 / 「時間」は開始・終了を1つに結合した見出し / 太字のバンド名 / 右端に空欄の key 列
-   * 列: 時間（開始・終了）/ 持ち時間 / バンド名 / 曲数 / 人数 / key（key は記録していないので空欄。手書き用）
+   * 列: 時間（開始・終了）/ 持ち時間 / バンド名 / 曲数 / 人数 / key（名簿の Key 列。2つ以上は略称。keyShort を見る）
    * 日付・会場は下書きに無い（取り込みのプレビューで入れる）ので載せない。
    * 時刻の計算は renderOrder / tt_day_rows（PHP）と同じ: 集合時間から上の行の持ち時間を順に足す。
    */
@@ -616,6 +637,7 @@
         band: !!b, start: start || '', end: r.min ? end || '' : '',
         min: r.min != null ? String(r.min) : '', name: b ? b.name : r.x,
         songs: b && b.songs != null ? String(b.songs) : '', cnt: b ? String(b.cnt) : '',
+        key: b ? keyShort(b.key) : '',     // Key（機材メモ）は、2つ以上のとき略称にして狭い列に収める
       });
     });
     const title = state.dayCount > 1 ? `${state.title}${LABELS[d - 1]}` : state.title;
@@ -631,7 +653,7 @@
         const f = new FontFace('ttb-noto', 'url(assets/fonts/NotoSansJP-Regular.ttf)');
         document.fonts.add(await f.load());
       }
-      const used = [title, ...HEADS, ...rows.flatMap((r) => [r.name, r.start, r.end, r.min, r.songs, r.cnt])].join('');
+      const used = [title, ...HEADS, ...rows.flatMap((r) => [r.name, r.start, r.end, r.min, r.songs, r.cnt, r.key])].join('');
       await Promise.all(['400', '700'].map((w) => document.fonts.load(`${w} ${SIZE}px ${FONT}`, used)));
     } catch { /* 読み込めなくても端末のフォントで描ける */ }
 
@@ -686,6 +708,7 @@
       text(r.name, xs[3], xs[4], mid, { bold: true });
       text(r.songs, xs[4], xs[5], mid);
       text(r.cnt, xs[5], xs[6], mid);
+      text(r.key, xs[6], xs[7], mid, { bold: true });
     });
 
     // 罫線: 外枠 → 見出しと各行の下の横線 → 縦線（開始|終了 の線だけ、分けた行にだけ引く）
@@ -945,6 +968,13 @@
           },
         }), LABELS[d - 1]))) : null,
       el('label', { class: 'check' }, el('input', { type: 'checkbox', checked: b.pin, onchange: (e) => commit({ op: 'pin', b: id, on: e.target.checked }) }), icon('push_pin'), '自動配置で動かさない'),
+      // Key（機材メモ）の手直し。名簿から取り込んだ値が入っている。画像・CSV の key 列に出る（例: 私物(シンセ), 貸出(エレピ)）
+      el('label', { class: 'check', style: 'display:flex;gap:6px;align-items:center' }, icon('piano'),
+        el('input', {
+          type: 'text', value: b.key || '', maxlength: 60, placeholder: 'key（例: 貸出(シンセ)）', 'aria-label': 'Key',
+          style: 'flex:1;min-width:0',
+          onchange: (e) => commit({ op: 'key', b: id, x: e.target.value.slice(0, 60) }),
+        })),
       hist.length ? el('ul', { class: 'ttb-bandmenu__hist small muted' }, hist) : null);
   }
 
