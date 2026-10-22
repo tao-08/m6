@@ -2332,18 +2332,18 @@ html:has(.board-posts) { scroll-behavior: smooth; }
 .ttb-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 700; }
 .ttb-score { flex: none; padding: 0 5px; border-radius: 5px; background: var(--surface-2); color: var(--muted); font-size: 10px;
   font-weight: 700; font-variant-numeric: tabular-nums; }
-.ttb-star { color: var(--accent-2); font-size: 12px; }
 .ttb-l2 { display: flex; flex-wrap: wrap; gap: 0 5px; font-size: 11.5px; line-height: 1.5; color: var(--muted); }
 .ttb-m { display: inline-flex; flex-direction: column; align-items: center; padding: 0 2px; border-radius: 4px; border: 0; background: none; color: inherit; font: inherit; white-space: nowrap; }
 .ttb-dots { --dot: color-mix(in srgb, var(--text) 65%, var(--surface)); display: flex; gap: 2px; line-height: 0; padding: 1px 0 2px; }
 .ttb-dots i { width: 5px; height: 5px; box-sizing: border-box; border-radius: 50%; border: 1px solid var(--dot); }
 .ttb-dots i.is-on { background: var(--dot); }
-.ttb-dots.is-last { --dot: var(--accent); } /* その人の最後の出演 */
+.ttb-dots i.is-last { background: var(--accent); border-color: var(--accent); } /* その人の最後の出演（最後の丸だけ赤） */
 button.ttb-m { cursor: pointer; text-decoration: underline dotted; }
 .ttb-m.is-yellow { background: var(--warn-bg); color: var(--warn); font-weight: 700; }
 .ttb-m.is-red { background: var(--danger-bg); color: var(--danger); font-weight: 700; }
 .ttb-g { font-weight: 800; color: var(--text); margin-right: 1px; font-variant-numeric: tabular-nums; }
-.ttb-g.has-c { display: inline-block; min-width: 14px; padding: 0 3px; margin-right: 2px; border-radius: 4px; background: var(--gc); color: #fff; text-align: center; font-size: 10.5px; }
+/* 学年バッジ: 楽器ラベル（.part）と同じく、色の文字 + その色の薄い地 */
+.ttb-g.has-c { display: inline-block; min-width: 14px; padding: 0 3px; margin-right: 2px; border-radius: 4px; color: var(--gc); background: color-mix(in srgb, var(--gc) 13%, transparent); text-align: center; font-size: 10.5px; }
 .ttb-m.is-unknown .ttb-g:not(.has-c) { color: var(--danger); }
 .ttb-days { display: flex; gap: 3px; flex: none; }
 .ttb-day { width: 22px; height: 20px; padding: 0; border: 1px solid var(--border); border-radius: 6px; background: var(--surface);

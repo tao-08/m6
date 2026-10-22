@@ -177,6 +177,10 @@
         if (!isInt(op.v, 0, 100)) return false;
         s.mix = op.v;
         return true;
+      case 'gap':
+        if (typeof op.on !== 'boolean') return false;
+        s.gap = op.on;
+        return true;
       case 'grade':
         if (!isStr(op.k, 60) || op.k === '' || !(op.g === null || isInt(op.g, 1, 9))) return false;
         if (op.g === null) delete s.grades[op.k]; else s.grades[op.k] = op.g;
@@ -303,22 +307,21 @@
   }
   const gradeText = (g) => (g == null ? '?' : g <= 4 ? String(g) : `OB${g - 4}`);
 
-  // 学年の色（下 → 上）: 青緑 / 黄緑 / 黄土 / 朱。テーマで変えない（文字は常に白）
-  const GRADE_COLORS = [[22, 136, 150], [111, 154, 18], [178, 125, 0], [232, 92, 40]];
-  let gradeColor = {}; // 学年 => 'rgb(…)'。描画のたびに作り直す
-  /** このライブにいる学年を下から並べ、数に合わせて離れた色を選ぶ（2つなら両端…）。5つ以上は4色の間を補間 */
+  // 学年の色（下 → 上）: 楽器ラベルの色を借りる（青緑 / 黄緑 / 黄土 / 橙）。ライト・ダークの切り替えも楽器ラベルと同じ
+  const GRADE_COLORS = ['--prog', '--cho', '--gt', '--vn'];
+  let gradeColor = {}; // 学年 => CSS の色。描画のたびに作り直す
+  /** このライブにいる学年を下から並べ、数に合わせて離れた色を選ぶ（2つなら両端…）。5つ以上は4色の間を混ぜる */
   function gradeColorMap() {
     const gs = [...new Set(Object.values(state.bands).flatMap((b) => b.members.map((m) => gradeOf(m.k))))]
       .filter((g) => g != null).sort((a, c) => a - c);
     const n = gs.length;
     const pick = [[3], [0, 3], [0, 2, 3], [0, 1, 2, 3]][n - 1];
-    const rgb = (c) => `rgb(${c.join(' ')})`;
     const at = (t) => {
       const s = t * 3;
       const i = Math.min(2, Math.floor(s));
-      return rgb(GRADE_COLORS[i].map((v, j) => Math.round(v + (GRADE_COLORS[i + 1][j] - v) * (s - i))));
+      return `color-mix(in srgb, var(${GRADE_COLORS[i + 1]}) ${Math.round((s - i) * 100)}%, var(${GRADE_COLORS[i]}))`;
     };
-    return Object.fromEntries(gs.map((g, i) => [g, pick ? rgb(GRADE_COLORS[pick[i]]) : at(i / (n - 1))]));
+    return Object.fromEntries(gs.map((g, i) => [g, pick ? `var(${GRADE_COLORS[pick[i]]})` : at(i / (n - 1))]));
   }
   const gradeBadge = (g) => el('span', { class: 'ttb-g' + (gradeColor[g] ? ' has-c' : ''), style: gradeColor[g] ? `--gc:${gradeColor[g]}` : null, text: gradeText(g) });
   const weightOf = (g) => (g == null ? null : WEIGHT[g] ?? 4);
@@ -338,29 +341,31 @@
     return map;
   }
 
-  /** バンドの「おすすめ度」= 学年の重みの平均 + トリ支援（トリ・後ろの経験が少ない3・4年がいれば加点）。係数は mixOf */
+  /** バンドの「おすすめ度」= 学年の重みの平均 + トリ支援（トリ・後ろの経験が少ない人が多いほど加点）。係数は mixOf */
   function scoreOf(b) {
     const ws = [];
-    let bonus = 0;
-    let star = false; // 後ろの経験が少ない人がいる（学年に関係なく need で決める。3年だと bonus が小さく、学年ごとの係数では ★ が出なかった）
+    let miss = 1; // 全員の (1 - need) の積。該当する人が多いほど小さくなる
     b.members.forEach((m) => {
       const g = gradeOf(m.k);
       const w = weightOf(g);
       if (w != null) ws.push(w);
-      // 10バンド以上出ている（いつものメンバーになりつつある）3・4年だけ。後ろの出順の経験が少ないほど加点
-      //   逆順 ÷ バンド数の平均 q: 0.5（真ん中）→ 0 / 0.8 以上 → 1（実データでは中央値が約 0.5、0.65 以上は上位 1 割）。トリ1回で半分・2回でなし
+      // 5バンド以上出ている人は学年に関係なく、出演が多い割にトリ・後ろが少ないほど加点（上限 0.7。配分のスライダーで効き具合を変える）
+      //   経験 = 出演数 / 20（20回で上限）× トリ不足 = 1 / (1 + トリ回数) × 前寄り = 0.5 + 0.5 × 前寄りの度合い
+      //   前寄りの度合い: 逆順 ÷ バンド数の平均 q が 0.5（真ん中）→ 0 / 0.8 以上 → 1（実データでは中央値が約 0.5、0.65 以上は上位 1 割）
       const h = INFO[m.k];
-      if (g != null && g >= 3 && h && h.n >= 10 && h.q != null) {
-        const need = Math.max(0, Math.min(1, (h.q - 0.5) / 0.3) - h.t * 0.5);
-        bonus = Math.max(bonus, need * (g >= 4 ? 0.7 : 0.4));
-        if (need >= 0.35) star = true;
+      if (h && h.n >= 5 && h.q != null) {
+        const front = Math.max(0, Math.min(1, (h.q - 0.5) / 0.3));
+        const need = Math.min(1, h.n / 20) * (1 / (1 + h.t)) * (0.5 + 0.5 * front);
+        miss *= 1 - need;
       }
     });
+    // 該当する人が多いほど加点（1人なら need × 0.7。2人目以降は残りの幅を埋めていくので 0.7 は超えない）
+    const bonus = (1 - miss) * 0.7;
     const base = ws.length ? ws.reduce((a, c) => a + c, 0) / ws.length : 1;
     // 学年の最大 4・トリ支援の最大 0.7 を配分で混ぜ、いちばん高くなり得る値が 4 になるようにそろえる
     const k = mixOf();
     const total = ((base * k.grade + bonus * k.help) / (4 * k.grade + 0.7 * k.help)) * 4;
-    return { base, bonus, star, total };
+    return { base, bonus, total };
   }
 
   const keysOf = (id) => new Set(state.bands[id].members.map((m) => m.k));
@@ -390,14 +395,18 @@
   }
 
   /* ===================== 自動配置 ===================== */
+  /** 1バンド挟みの重み。設定「2バンド以上間隔を開けて自動配置」が外れていれば 0（隣だけ避け、あとはおすすめ度の順） */
+  const gapCost = () => (state.gap ?? true ? 10 : 0);
+
   function pairCost(seqSets) {
     let cost = 0;
+    const gap = gapCost();
     for (let i = 0; i < seqSets.length; i++) {
       for (const k of seqSets[i]) {
         if (seqSets[i + 1]?.has(k)) { cost += 100; break; }
       }
       for (const k of seqSets[i]) {
-        if (seqSets[i + 2]?.has(k)) { cost += 10; break; }
+        if (seqSets[i + 2]?.has(k)) { cost += gap; break; }
       }
     }
     return cost;
@@ -459,7 +468,7 @@
       const clash = (id, p) => {
         const ks = keysOf(id);
         let c = 0;
-        [[p - 1, 100], [p + 1, 100], [p - 2, 10], [p + 2, 10]].forEach(([q, w]) => {
+        [[p - 1, 100], [p + 1, 100], [p - 2, gapCost()], [p + 2, gapCost()]].forEach(([q, w]) => {
           const s = q >= 0 && q < M ? setAt(q) : null;
           if (s && [...ks].some((k) => s.has(k))) c += w;
         });
@@ -665,7 +674,7 @@
       // 名前の下に、その人の出演数ぶんの点（このバンドまでを塗る = 何個目か）。最後の出演なら赤（1バンドだけの人も赤い点1つ）
       const list = appear[m.k] || [];
       const at = list.indexOf(id);
-      const dots = list.length ? el('span', { class: 'ttb-dots' + (at === list.length - 1 ? ' is-last' : ''), 'aria-hidden': 'true' }, list.map((_, i) => el('i', { class: i <= at ? 'is-on' : '' }))) : null;
+      const dots = list.length ? el('span', { class: 'ttb-dots', 'aria-hidden': 'true' }, list.map((_, i) => el('i', { class: (i <= at ? 'is-on' : '') + (i === at && at === list.length - 1 ? ' is-last' : '') }))) : null;
       const content = [el('span', {}, gradeBadge(g), m.n), dots];
       if (INFO[m.k]?.g != null) return el('span', { class: cls, title: m.p }, content);
       return el('button', {
@@ -763,7 +772,10 @@
           onchange: (e) => commit({ op: 'mix', v: parseInt(e.target.value, 10) }),
         }),
         el('span', { class: 'small', text: 'トリ・後ろ未経験' })),
-      el('p', { class: 'small muted' }, val, '　50 = 標準'));
+      el('p', { class: 'small muted' }, val, '　50 = 標準'),
+      el('label', { class: 'check small' }, el('input', {
+        type: 'checkbox', checked: state.gap ?? true, onchange: (e) => commit({ op: 'gap', on: e.target.checked }),
+      }), '2バンド以上間隔を開けて自動配置'));
   }
 
   function legend() {
@@ -772,7 +784,6 @@
       el('p', {}, el('span', { class: 'ttb-m is-yellow', text: '名前' }), ' 1バンド挟んで出演'),
       el('p', {}, gradeBadge(Object.keys(gradeColor).map(Number).pop() ?? 4), '学年　', el('span', { class: 'ttb-g', text: '?' }), '不明（押して入力）'),
       el('p', {}, el('span', { class: 'ttb-score', text: '3.6' }), ' おすすめ度（後ろの出順に向くほど高い）'),
-      el('p', {}, el('span', { class: 'ttb-star', text: '★' }), ' トリ・後ろの出順の経験が少ない3・4年がいる'),
       el('p', {}, icon('push_pin'), ' 自動配置で動かさない'));
   }
 
@@ -808,8 +819,7 @@
         el('button', { type: 'button', class: 'ttb-l1', 'data-pop-anchor': true, onclick: (e) => { setFocus(id); openPop(e.currentTarget, bandMenu(id)); } },
           el('span', { class: 'ttb-name', text: b.name }),
           b.pin ? icon('push_pin') : null,
-          el('span', { class: 'ttb-score', title: 'おすすめ度', text: sc.total.toFixed(1) }),
-          sc.star ? el('span', { class: 'ttb-star', title: 'トリ・後ろの経験が少ない3・4年がいる', text: '★' }) : null),
+          el('span', { class: 'ttb-score', title: 'おすすめ度', text: sc.total.toFixed(1) })),
         timeMode ? timeCells(r, start) : days),
       el('div', { class: 'ttb-l2' }, memberSpans(id, c.member, c.appear))));
   }
@@ -846,13 +856,13 @@
     const b = state.bands[id];
     const dc = state.dayCount;
     const sc = scoreOf(b);
-    // メンバーごとに 今回何バンド目か（n/全数）。3・4年以上は後ろの出順の履歴も
+    // メンバーごとに 今回何バンド目か（n/全数）と、後ろの出順の履歴
     const appear = appearances();
     const hist = b.members.map((m) => {
       const list = appear[m.k] || [id];
       const g = gradeOf(m.k);
       const h = INFO[m.k];
-      const past = (g ?? 0) >= 3 ? (h ? `　トリ${h.t}・平均逆順${h.r ?? '-'}／${h.n}回` : '　履歴なし') : '';
+      const past = h ? `　トリ${h.t}・平均逆順${h.r ?? '-'}／${h.n}回` : '　履歴なし';
       return el('li', {}, `${gradeText(g)}${m.n}　`, el('b', { text: `${list.indexOf(id) + 1}/${list.length}` }), past);
     });
     return el('div', { class: 'ttb-bandmenu' },

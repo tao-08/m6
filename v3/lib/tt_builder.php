@@ -31,8 +31,12 @@ const TT_PRESENCE_SEC = 15;      // この秒数以内に見に来た人を「�
 function tt_new_state(string $title, array $rosters): array
 {
     $dayCount = max(1, min(TT_MAX_DAYS, count($rosters) >= 2 ? count($rosters) : 2));
-    $state = ['title' => $title, 'dayCount' => $dayCount, 'bands' => [], 'grades' => [], 'mix' => 50,
+    $state = ['title' => $title, 'dayCount' => $dayCount, 'bands' => [], 'grades' => [], 'mix' => 50, 'gap' => true,
         'days' => array_fill(0, TT_MAX_DAYS, ['call' => '', 'rows' => []])];
+    // 各日程の一番上に、持ち時間30分のテキスト行「集合」を入れておく（id は x で始まる決まり）
+    for ($d = 0; $d < $dayCount; $d++) {
+        $state['days'][$d]['rows'][] = ['id' => 'xc' . ($d + 1), 't' => 'text', 'x' => '集合', 'min' => 30];
+    }
     $n = 0;
     foreach ($rosters as $ri => $roster) {
         foreach ($roster['bands'] as $bi => $b) {
@@ -397,6 +401,13 @@ function tt_apply_op(array &$state, mixed $op): bool
                 return false;
             }
             $state['mix'] = $op['v'];
+            return true;
+
+        case 'gap': // 自動配置で 1バンド挟みも避ける（false なら隣だけ避ける）
+            if (!is_bool($op['on'] ?? null)) {
+                return false;
+            }
+            $state['gap'] = $op['on'];
             return true;
 
         case 'min': // 持ち時間（分）。null で空欄
