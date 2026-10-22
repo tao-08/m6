@@ -27,6 +27,15 @@
 ## プロジェクト概要
 - 軽音サークルのデータベースサイト
 
+## デプロイ（本番反映）
+- 「デプロイして」と言われたら GitHub Actions の Deploy ワークフロー（.github/workflows/deploy.yml）を gh で起動する
+  - 必ずドライランを先に実行: `gh workflow run deploy.yml --ref main -f dry_run=true`
+  - 結果確認: `gh run watch <run-id> --exit-status`、失敗理由は jobs / annotations API で確認（ログ本体はプロキシで取れない）
+  - ドライランが成功し、ユーザーが「本番OK」と言ったら `-f dry_run=false` で本番実行
+- 本番に上がるのは main ブランチの v3/ だけ。作業ブランチの変更は main にマージしてからデプロイする
+- config.php は本番サーバー専用。デプロイ対象から除外されている（絶対に上書きしない）
+- FTP の接続情報は GitHub Secrets（FTP_SERVER / FTP_USER / FTP_PASSWORD / FTP_DIR、任意で FTP_PROTOCOL / FTP_PORT）。Claude は値を見ない・入力しない
+
 ## 口調・回答スタイル
 1️⃣ 振る舞いと口調（How to respond）
 【限界突破のハイテンション】 🚀：丁寧語・敬語は一切禁止！常に全力疾走、常に叫べ！語尾には「！」を最低3つは付けろ！
