@@ -591,7 +591,7 @@
     const TITLE_H = 36;                    // 一番上のタイトル行（枠なし）の高さ
     const HEAD_H = 28;                     // 見出し行の高さ
     const ROW_H = 29;                      // 1行の高さ
-    const SIZE = 17;                       // 文字の大きさ
+    const SIZE = 19;                       // 文字の大きさ（見出し・本文共通。タイトルだけ下で +2）
     const HEAD_BG = '#808080';             // 見出し行の灰色
     const LINE = '#4d4d4d';                // 罫線の色
     // フォントの優先順: ① サイトが読み込んでいる Noto Sans JP（太字もある）→ ② assets/fonts の同じフォント（下で登録）→ ③ 端末のフォント
@@ -669,7 +669,7 @@
     // タイトル（枠なし）。元の画像と同じく「バンド名」の列の真ん中に置く
     const cx = (xs[3] + xs[4]) / 2;
     const half = Math.min(cx - PAD, PAD + TW - cx);
-    text(title, cx - half, cx + half, PAD + TITLE_H / 2, { bold: true, size: 18 });
+    text(title, cx - half, cx + half, PAD + TITLE_H / 2, { bold: true, size: SIZE + 2 });
 
     // 見出し行（灰色の背景 + 太字）。「時間」だけ開始・終了の2列を結合する。[見出し, 左の列番号, 右の列番号]
     g.fillStyle = HEAD_BG;
