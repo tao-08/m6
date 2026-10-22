@@ -2333,8 +2333,8 @@ html:has(.board-posts) { scroll-behavior: smooth; }
 .ttb-score { flex: none; padding: 0 5px; border-radius: 5px; background: var(--surface-2); color: var(--muted); font-size: 10px;
   font-weight: 700; font-variant-numeric: tabular-nums; }
 .ttb-l2 { display: flex; flex-wrap: wrap; gap: 0 5px; font-size: 11.5px; line-height: 1.5; color: var(--muted); }
-.ttb-m { display: inline-flex; flex-direction: column; align-items: center; padding: 0 2px; border-radius: 4px; border: 0; background: none; color: inherit; font: inherit; white-space: nowrap; }
-.ttb-dots { --dot: color-mix(in srgb, var(--text) 65%, var(--surface)); display: flex; gap: 2px; line-height: 0; padding: 1px 0 2px; }
+.ttb-m { display: inline-grid; grid-template-columns: auto auto; justify-items: center; align-items: baseline; padding: 0 2px; border-radius: 4px; border: 0; background: none; color: inherit; font: inherit; white-space: nowrap; }
+.ttb-dots { grid-column: 2; justify-self: center; --dot: color-mix(in srgb, var(--text) 65%, var(--surface)); display: flex; gap: 2px; line-height: 0; padding: 1px 0 2px; }
 .ttb-dots i { width: 5px; height: 5px; box-sizing: border-box; border-radius: 50%; border: 1px solid var(--dot); }
 .ttb-dots i.is-on { background: var(--dot); }
 .ttb-dots i.is-last { background: var(--accent); border-color: var(--accent); } /* その人の最後の出演（最後の丸だけ赤） */
@@ -2464,3 +2464,122 @@ button.ttb-m { cursor: pointer; text-decoration: underline dotted; }
   .table--tt [data-break-fill] .btn { font-size: 0; padding: 6px; gap: 0; }
   .table--tt [data-break-fill] .btn .icon { font-size: 20px; }
 }
+
+/* タイムテーブル作成: 登場・ポップアップ・操作のアニメーション */
+@keyframes ttb-in { from { opacity: 0; transform: translate(calc(var(--ttb-dir, 0) * 12px), 4px); } to { opacity: 1; transform: none; } }
+@keyframes ttb-pop-in { from { opacity: 0; transform: translateY(-2px) scale(.98); } to { opacity: 1; transform: none; } }
+.ttb.is-enter .ttb-list > .ttb-row, .ttb.is-enter .ttb-avail__title { animation: ttb-in .18s ease-out backwards; }
+.ttb-pop { position: absolute; z-index: 60; max-width: min(320px, calc(100vw - 16px)); padding: 10px; }
+.ttb-menu { display: grid; min-width: 200px; }
+.ttb-menu__item { display: flex; align-items: center; gap: 8px; padding: 9px 6px; border: 0; border-radius: 6px; background: none;
+  color: var(--text); font: inherit; font-size: 14px; text-align: left; text-decoration: none; cursor: pointer; }
+.ttb-menu__item:hover { background: var(--surface-2); }
+.ttb-menu__item[data-danger] { color: var(--danger); }
+.ttb-grades { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.ttb-grades .small { width: 100%; font-weight: 700; }
+.ttb-bandmenu { display: grid; gap: 8px; min-width: 220px; }
+.ttb-bandmenu p { margin: 0; }
+.ttb-settings { display: grid; gap: 6px; min-width: 260px; }
+.ttb-mix { display: flex; align-items: center; gap: 8px; }
+.ttb-mix input { flex: 1; min-width: 0; }
+.ttb-bandmenu__days { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; }
+.ttb-bandmenu__hist { margin: 0; padding-left: 16px; }
+.ttb-legend p { display: flex; align-items: center; gap: 4px; margin: 4px 0; }
+.ttb-toast { position: fixed; left: 50%; bottom: 20px; z-index: 70; transform: translateX(-50%); display: flex; align-items: center; gap: 8px;
+  max-width: calc(100vw - 32px); padding: 10px 14px; border-radius: var(--radius-sm); background: var(--text); color: var(--bg); font-size: 13px; box-shadow: var(--shadow); }
+.ttb-toast .btn { color: var(--bg); }
+
+/* 本文欄の上の名義入力 + 匿名チェック（alias_field_html） */
+.alias-field { display: flex; align-items: center; gap: 12px; }
+.alias-field .check { flex: none; }
+.alias-field input[type="text"] { flex: 0 1 240px; min-width: 0; padding: 10px 14px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: 15px; } /* 本文欄（.board-textarea）と同じ見た目 */
+.alias-field input[type="text"]:focus { border-color: var(--accent); }
+.alias-field input[type="text"]:disabled { background: var(--surface-2); color: var(--muted); cursor: not-allowed; } /* 匿名のあいだはグレーアウト */
+.alias-field__info { position: relative; flex: none; display: inline-flex; }
+.alias-field__pop { position: absolute; right: 0; bottom: calc(100% + 6px); width: max-content; max-width: min(260px, 80vw); padding: 8px 12px; border-radius: 6px;
+  font-size: 12px; font-weight: 600; line-height: 1.5; background: var(--text); color: var(--surface); box-shadow: var(--shadow); z-index: 10; }
+.alias-field__pop[hidden] { display: none; }
+.alias-field__pop:not([hidden]) { animation: alias-pop .15s ease-out; transform-origin: bottom right; }
+@keyframes alias-pop { from { opacity: 0; transform: translateY(4px) scale(.96); } }
+@media (prefers-reduced-motion: reduce) { .alias-field__pop:not([hidden]) { animation: none; } }
+.alias-field__icon { color: var(--muted); font-size: 20px; cursor: pointer; user-select: none; }
+.alias-field__icon:hover, .alias-field__icon:focus-visible { color: var(--text); }
+
+/* ---------------------------------------------------------------------
+ * タイムテーブル編集（timetable_edit.php）のスマホ表示
+ *   左の5列（≡ / 順 / 開始 / 終了 / バンド名）が横スクロールなしで画面に収まる幅にし、出演者は右へ寄せる
+ *   （出演者の列は表の右側。横にスクロールして編集する。送信は今までどおり）。
+ *   ドラッグ中にバンド名が見えなくなるのを防ぐため、並び替えを始めたら JS が表を左端へ戻す（setupSlotSort）。
+ *   幅は列ごとに固定して左の5列だけで画面を使い切る
+ * ------------------------------------------------------------------- */
+@media (max-width: 600px) {
+  .tt-form { margin-inline: -12px; gap: 10px; } /* ページの左右の余白 16px → 4px */
+  .tt-form .import-day { padding: 12px 0 0; gap: 10px; }
+  .tt-form .import-day__head { padding-inline: 12px; gap: 8px; }
+  .tt-form .import-day__title { font-size: 17px; }
+  .tt-form .legend { font-size: 11px; gap: 2px 10px; margin-top: 4px; }
+  .tt-form .legend span { gap: 4px; }
+  .tt-form .swatch { width: 11px; height: 11px; }
+  .tt-form .legend .icon { font-size: 14px; }
+  .tt-form .table-scroll { margin: 0; border-radius: 0 0 var(--radius) var(--radius); }
+
+  .table--tt {
+    --tt-w1: 28px; --tt-w2: 20px; --tt-wt: 62px; /* ≡ / 順 / 開始・終了 */
+    --tt-name: max(150px, calc(100vw - 8px - var(--tt-w1) - var(--tt-w2) - 2 * var(--tt-wt))); /* バンド名 = 残り全部（画面幅 - 表の外の余白 8px） */
+  }
+  .table--tt th, .table--tt td { padding: 6px 3px; box-sizing: border-box; }
+  .table--tt th { padding-block: 8px; white-space: nowrap; }
+  .table--tt th:nth-child(1), .table--tt td:nth-child(1) { width: var(--tt-w1); min-width: var(--tt-w1); max-width: var(--tt-w1); padding-inline: 0; text-align: center; }
+  .table--tt th:nth-child(2), .table--tt td:nth-child(2) { width: var(--tt-w2); min-width: var(--tt-w2); max-width: var(--tt-w2); padding-inline: 0; text-align: center; }
+  .table--tt th:nth-child(3), .table--tt th:nth-child(4), .table--tt td[data-time] { width: var(--tt-wt); min-width: var(--tt-wt); max-width: var(--tt-wt); }
+  .table--tt th:nth-child(5), .table--tt td:nth-child(5) { width: var(--tt-name); min-width: var(--tt-name); }
+  .table--tt td:nth-child(n+6) { min-width: 120px; } /* 出演者（右へスクロール） */
+  .table--tt .drag-handle { padding: 8px 2px; font-size: 20px; } /* 指で押しやすい高さ */
+  .table--tt .tt-follow { margin-left: 0; padding: 0; }
+  .table--tt .tt-follow .icon { font-size: 14px; }
+
+  /* 入力欄の文字と余白は他の編集の表（.table--edit input）と同じ。時刻だけは列が細いので左右の余白を詰める */
+  .table--tt td[data-time] { padding-inline: 2px; }
+  /* iOS の時刻欄は独自の最小幅と内側の余白を持っていて枠からはみ出すので、見た目を外して幅いっぱいに収める */
+  .table--tt td[data-time] input { -webkit-appearance: none; appearance: none; width: 100%; min-width: 0; padding-inline: 2px; text-align: center; font-variant-numeric: tabular-nums; }
+  .table--tt td[data-time] input::-webkit-date-and-time-value { text-align: center; margin: 0; }
+  .table--tt input[type="time"]::-webkit-calendar-picker-indicator { display: none; }
+
+  /* バンド名: 入力欄 + 旗。旗を立てて理由などが出たときは次の行へ */
+  .table--tt .tt-band-name { flex-wrap: wrap; gap: 2px; }
+  .table--tt .tt-band-name > input { flex: 1 1 6em; width: auto; }
+  .table--tt .tt-band-name > .check-picker { flex: 0 0 auto; gap: 2px 4px; }
+  .table--tt .tt-band-name > .check-picker:has(.flag-toggle input:checked) { flex-basis: 100%; }
+  .table--tt .check-picker__body { min-width: 0; }
+
+  /* 休憩の「この行を消す」: アイコンだけ */
+  .table--tt [data-break-fill] .btn { font-size: 0; padding: 6px; gap: 0; }
+  .table--tt [data-break-fill] .btn .icon { font-size: 20px; }
+}
+
+/* タイムテーブル作成: 登場・ポップアップ・操作のアニメーション */
+@keyframes ttb-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes ttb-pop-in { from { opacity: 0; transform: translateY(-4px) scale(.96); } to { opacity: 1; transform: none; } }
+.ttb.is-enter .ttb-head, .ttb.is-enter .ttb-bar, .ttb.is-enter .ttb-tabs, .ttb.is-enter .ttb-avail__title { animation: ttb-in .3s ease-out backwards; }
+.ttb.is-enter .ttb-list > .ttb-row { animation: ttb-in .32s ease-out backwards; }
+.ttb.is-enter .ttb-list > .ttb-row:nth-child(2) { animation-delay: .03s; }
+.ttb.is-enter .ttb-list > .ttb-row:nth-child(3) { animation-delay: .06s; }
+.ttb.is-enter .ttb-list > .ttb-row:nth-child(4) { animation-delay: .09s; }
+.ttb.is-enter .ttb-list > .ttb-row:nth-child(5) { animation-delay: .12s; }
+.ttb.is-enter .ttb-list > .ttb-row:nth-child(6) { animation-delay: .15s; }
+.ttb.is-enter .ttb-list > .ttb-row:nth-child(7) { animation-delay: .18s; }
+.ttb.is-enter .ttb-list > .ttb-row:nth-child(8) { animation-delay: .21s; }
+.ttb.is-enter .ttb-list > .ttb-row:nth-child(n+9) { animation-delay: .24s; }
+.ttb-pop { animation: ttb-pop-in .1s ease-out; transform-origin: top left; }
+.ttb-row, .ttb-tab, .ttb-day, .ttb-m, .ttb-score { transition: background-color .15s ease, border-color .15s ease, color .15s ease, opacity .15s ease; }
+.ttb-list > .ttb-row:not(.is-dragging) { transition: transform .15s ease, background-color .2s ease, border-color .2s ease, box-shadow .2s ease; }
+.ttb-tab:active, .ttb-day:active, .ttb-float .btn:active { transform: scale(.96); }
+.ttb-row.is-dragging { transform-origin: center; }
+.ttb-float .btn { transition: transform .12s ease, opacity .2s ease; }
+@media (prefers-reduced-motion: reduce) {
+  .ttb.is-enter .ttb-avail__title, .ttb.is-enter .ttb-list > .ttb-row, .ttb-pop { animation: none; }
+  .ttb-row, .ttb-tab, .ttb-day, .ttb-m, .ttb-score, .ttb-float .btn { transition: none; }
+}
+.ttb-row.is-dragging { transform-origin: center; transition: box-shadow .15s ease, opacity .15s ease; }
+.ttb.is-tswitch .ttb-time, .ttb.is-tswitch .ttb-days { animation: ttb-in .18s ease-out backwards; --ttb-dir: 0; }
+@media (prefers-reduced-motion: reduce) { .ttb.is-tswitch .ttb-time, .ttb.is-tswitch .ttb-days { animation: none; } }

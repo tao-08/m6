@@ -44,6 +44,7 @@
   let needRender = false;
   let view = location.hash === '#days' ? 'days' : 'order';
   let curDay = 1;
+  let enter = true; // 画面・日の切り替え直後だけ登場アニメーション（編集のたびの再描画では動かさない）
   let timeMode = false;
   const HISTORY_OPS = ['move', 'arrange', 'add', 'del', 'text', 'min', 'call', 'restore'];
   let undoStack = [];            // 元に戻す用: 操作の直前の「全日程の集合時間 + 行」
@@ -517,7 +518,22 @@
       }
       result.push(out);
     }
-    commit({ op: 'arrange', days: result });
+    animateRows(() => commit({ op: 'arrange', days: result }));
+  }
+
+  /** 再描画の前後で行の位置を比べ、動いた行は元の位置から滑らせ、新しく現れた行（別の日から来た）はふわっと出す */
+  function animateRows(change) {
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const before = new Map();
+    if (!reduce) root.querySelectorAll('.ttb-row').forEach((x) => before.set(x.dataset.id, x.getBoundingClientRect().top));
+    change();
+    if (reduce) return;
+    root.querySelectorAll('.ttb-row').forEach((x) => {
+      const old = before.get(x.dataset.id);
+      if (old == null) { x.animate([{ opacity: 0, transform: 'translateY(4px)' }, { opacity: 1, transform: 'none' }], { duration: 180, easing: 'ease-out' }); return; }
+      const dy = old - x.getBoundingClientRect().top;
+      if (Math.abs(dy) > 1) x.animate([{ transform: `translateY(${dy}px)` }, { transform: 'none' }], { duration: 220, easing: 'ease-out' });
+    });
   }
 
   /* ===================== 小さい部品 ===================== */
@@ -580,6 +596,8 @@
     if (curDay > state.dayCount) curDay = state.dayCount;
     gradeColor = gradeColorMap();
     document.title = `${state.title} — タイムテーブル作成`;
+    root.classList.toggle('is-enter', enter);
+    enter = false;
     root.replaceChildren(renderHead(), view === 'days' ? renderDays() : renderOrder());
   }
 
@@ -604,8 +622,8 @@
     const item = (ic, label, onclick, attrs = {}) => el('button', { type: 'button', class: 'ttb-menu__item', onclick: () => { closePop(); onclick(); }, ...attrs }, icon(ic), label);
     return el('div', { class: 'ttb-menu' },
       view === 'order'
-        ? item('event_available', '日程希望', () => { view = 'days'; history.replaceState(null, '', '#days'); render(); })
-        : item('format_list_numbered', '出順', () => { view = 'order'; history.replaceState(null, '', location.pathname + location.search); render(); }),
+        ? item('event_available', '出演日', () => { enter = true; root.style.setProperty('--ttb-dir', 0); view = 'days'; history.replaceState(null, '', '#days'); render(); })
+        : item('format_list_numbered', '出順', () => { enter = true; root.style.setProperty('--ttb-dir', 0); view = 'order'; history.replaceState(null, '', location.pathname + location.search); render(); }),
       item('edit', 'ライブ名を変更', () => {
         const x = prompt('ライブ名', state.title);
         if (x != null && x.trim() !== '') commit({ op: 'title', x: x.trim().slice(0, 100) });
@@ -655,10 +673,10 @@
         }));
     });
     return el('div', { class: 'ttb-avail' },
-      el('h2', { class: 'ttb-avail__title', text: '出演可能日程を選択' }),
+      el('h2', { class: 'ttb-avail__title', text: '出演日を選択' }),
       el('div', { class: 'ttb-bar' }, el('span', { class: 'small muted', text: 'ライブ開催日数' }), seg),
       el('div', { class: 'ttb-avail__table card', style: `--dc:${dc}` }, head, rows),
-      el('button', { type: 'button', class: 'btn btn--primary btn--block', onclick: () => { view = 'order'; history.replaceState(null, '', location.pathname + location.search); render(); window.scrollTo(0, 0); } }, '出順へ', icon('arrow_forward')));
+      el('button', { type: 'button', class: 'btn btn--primary btn--block', onclick: () => { enter = true; root.style.setProperty('--ttb-dir', 0); view = 'order'; history.replaceState(null, '', location.pathname + location.search); render(); window.scrollTo(0, 0); } }, '出順へ', icon('arrow_forward')));
   }
   function allBandIds() {
     // 出順の並び（1日目から）で
@@ -675,7 +693,7 @@
       const list = appear[m.k] || [];
       const at = list.indexOf(id);
       const dots = list.length ? el('span', { class: 'ttb-dots', 'aria-hidden': 'true' }, list.map((_, i) => el('i', { class: (i <= at ? 'is-on' : '') + (i === at && at === list.length - 1 ? ' is-last' : '') }))) : null;
-      const content = [el('span', {}, gradeBadge(g), m.n), dots];
+      const content = [gradeBadge(g), el('span', { text: m.n }), dots]; // 丸は名前の真下に中央揃え（学年バッジの分は含めない）
       if (INFO[m.k]?.g != null) return el('span', { class: cls, title: m.p }, content);
       return el('button', {
         type: 'button', class: cls + ' is-unknown', title: '学年を入力', 'data-pop-anchor': true,
@@ -712,7 +730,7 @@
       const n = state.days[d - 1].rows.filter((r) => state.bands[r.id]).length;
       return el('button', {
         type: 'button', role: 'tab', class: 'ttb-tab' + (d === curDay ? ' is-on' : ''), 'aria-selected': String(d === curDay), 'data-day-tab': d,
-        onclick: () => { curDay = d; render(); },
+        onclick: () => { if (d === curDay) return; root.style.setProperty('--ttb-dir', d > curDay ? 1 : -1); curDay = d; enter = true; render(); },
       }, LABELS[d - 1], el('span', { class: 'ttb-tab__n', text: n }),
       w.red ? el('span', { class: 'ttb-dot is-red', title: `隣で連続 ${w.red}` }) : null,
       !w.red && w.yellow ? el('span', { class: 'ttb-dot is-yellow', title: `1つ挟み ${w.yellow}` }) : null);
@@ -722,7 +740,7 @@
       el('button', { type: 'button', class: 'btn btn--sm', onclick: () => autoArrange(), title: '日程希望・連続出演・学年から自動で並べる' }, icon('auto_fix_high'), '自動配置'),
       el('button', { type: 'button', class: 'btn btn--ghost btn--sm', onclick: () => addRow('break') }, icon('add'), '休憩'),
       el('button', { type: 'button', class: 'btn btn--ghost btn--sm', onclick: () => addRow('text') }, icon('add'), 'テキスト'),
-      el('button', { type: 'button', class: 'btn btn--sm' + (timeMode ? ' btn--primary' : ''), 'aria-pressed': String(timeMode), onclick: () => { timeMode = !timeMode; render(); } }, icon('schedule'), '時刻'),
+      el('button', { type: 'button', class: 'btn btn--sm' + (timeMode ? ' btn--primary' : ''), 'aria-pressed': String(timeMode), onclick: () => { animateRows(() => { timeMode = !timeMode; render(); }); root.classList.add('is-tswitch'); setTimeout(() => root.classList.remove('is-tswitch'), 300); } }, icon('schedule'), '時刻'),
       el('button', { type: 'button', class: 'btn btn--ghost btn--sm ttb-iconbtn', 'aria-label': '設定', title: '設定', 'data-pop-anchor': true, onclick: (e) => openPop(e.currentTarget, settingsMenu()) }, icon('settings')),
       el('button', { type: 'button', class: 'btn btn--ghost btn--sm ttb-iconbtn', 'aria-label': '凡例', 'data-pop-anchor': true, onclick: (e) => openPop(e.currentTarget, legend()) }, icon('help')));
 
@@ -732,7 +750,7 @@
         type: 'time', value: day.call, onchange: (e) => commit({ op: 'call', day: curDay, t: TIME_RE.test(e.target.value) ? e.target.value : '' }),
       })),
       // 全バンドの持ち時間をまとめて入れる（個別の値は上書きされる。あとから各行で調整できる）
-      el('label', { class: 'ttb-call' }, '全体', el('input', {
+      el('label', { class: 'ttb-call' }, '持ち時間', el('input', {
         type: 'number', class: 'ttb-min', min: 0, max: 600, inputmode: 'numeric', value: commonMin() ?? '', placeholder: '分', 'aria-label': '全バンドの持ち時間（分）',
         onchange: (e) => {
           const val = e.target.value.trim();
@@ -771,7 +789,7 @@
           oninput: (e) => { val.textContent = e.target.value; },
           onchange: (e) => commit({ op: 'mix', v: parseInt(e.target.value, 10) }),
         }),
-        el('span', { class: 'small', text: 'トリ・後ろ未経験' })),
+        el('span', { class: 'small', text: 'トリ・後半未経験' })),
       el('p', { class: 'small muted' }, val, '　50 = 標準'),
       el('label', { class: 'check small' }, el('input', {
         type: 'checkbox', checked: state.gap ?? true, onchange: (e) => commit({ op: 'gap', on: e.target.checked }),
@@ -803,7 +821,9 @@
       return el('button', {
         type: 'button', class: 'ttb-day' + (d === curDay ? ' is-cur' : ''), disabled: !ok || d === curDay, text: d,
         title: ok ? `${LABELS[d - 1]}へ移動` : `${LABELS[d - 1]}は出演不可`,
-        onclick: () => {
+        onclick: (e) => {
+          const rowEl = e.currentTarget.closest('.ttb-row');
+          flyToTab(rowEl, d); // 再描画で行が消える前に複製を飛ばす
           if (commit({ op: 'move', id, day: d, index: state.days[d - 1].rows.length })) toast(`「${b.name}」を${LABELS[d - 1]}へ移動`);
         },
       });
@@ -816,7 +836,10 @@
     el('span', { class: 'ttb-no', text: no }),
     el('div', { class: 'ttb-main' },
       el('div', { class: 'ttb-l1row' },
-        el('button', { type: 'button', class: 'ttb-l1', 'data-pop-anchor': true, onclick: (e) => { setFocus(id); openPop(e.currentTarget, bandMenu(id)); } },
+        el('button', { type: 'button', class: 'ttb-l1', 'data-pop-anchor': true, onclick: (e) => {
+          if (popEl && popEl.dataset.band === id) { closePop(); return; }
+          setFocus(id); openPop(e.currentTarget, bandMenu(id)); popEl.dataset.band = id;
+        } },
           el('span', { class: 'ttb-name', text: b.name }),
           b.pin ? icon('push_pin') : null,
           el('span', { class: 'ttb-score', title: 'おすすめ度', text: sc.total.toFixed(1) })),
@@ -835,7 +858,7 @@
         onchange: (e) => commit({ op: 'text', id: r.id, x: e.target.value.slice(0, 50) }),
       }),
       timeMode ? timeCells(r, start) : (r.min != null ? el('span', { class: 'muted small', text: `${r.min}分` }) : null),
-      el('button', { type: 'button', class: 'btn btn--ghost btn--sm ttb-iconbtn', 'aria-label': '削除', onclick: () => commit({ op: 'del', id: r.id }) }, icon('close')));
+      el('button', { type: 'button', class: 'btn btn--ghost btn--sm ttb-iconbtn', 'aria-label': '削除', onclick: () => animateRows(() => commit({ op: 'del', id: r.id })) }, icon('close')));
   }
 
   function timeCells(r, start) {
@@ -856,18 +879,16 @@
     const b = state.bands[id];
     const dc = state.dayCount;
     const sc = scoreOf(b);
-    // メンバーごとに 今回何バンド目か（n/全数）と、後ろの出順の履歴
-    const appear = appearances();
+    // メンバーごとの学年と、後ろの出順の履歴
     const hist = b.members.map((m) => {
-      const list = appear[m.k] || [id];
       const g = gradeOf(m.k);
       const h = INFO[m.k];
       const past = h ? `　トリ${h.t}・平均逆順${h.r ?? '-'}／${h.n}回` : '　履歴なし';
-      return el('li', {}, `${gradeText(g)}${m.n}　`, el('b', { text: `${list.indexOf(id) + 1}/${list.length}` }), past);
+      return el('li', {}, `${gradeText(g)}${m.n}`, past);
     });
     return el('div', { class: 'ttb-bandmenu' },
-      el('p', { class: 'ttb-bandmenu__name' }, el('b', { text: b.name }), el('span', { class: 'muted small', text: ` ${b.songs ?? '?'}曲 · おすすめ度 ${sc.total.toFixed(1)}（学年 ${sc.base.toFixed(1)}${sc.bonus ? ` · 支援 +${sc.bonus.toFixed(1)}` : ''}）` })),
-      dc > 1 ? el('div', { class: 'ttb-bandmenu__days' }, el('span', { class: 'small muted', text: '出演可能' }), range(dc).map((d) => el('label', { class: 'check' },
+      el('p', { class: 'ttb-bandmenu__name' }, el('b', { text: b.name }), el('span', { class: 'muted small', text: ` ${b.songs ?? '?'}曲 · おすすめ度 ${sc.total.toFixed(1)}` })),
+      dc > 1 ? el('div', { class: 'ttb-bandmenu__days' }, el('span', { class: 'small muted', text: '出演日' }), range(dc).map((d) => el('label', { class: 'check' },
         el('input', {
           type: 'checkbox', checked: b.avail.includes(d),
           onchange: (e) => {
@@ -895,13 +916,30 @@
 
   function addRow(t) {
     // 一番上に足す
-    commit({ op: 'add', id: newId(), day: curDay, index: 0, t, x: t === 'break' ? '休憩' : '', min: t === 'break' ? 10 : null });
+    animateRows(() => commit({ op: 'add', id: newId(), day: curDay, index: 0, t, x: t === 'break' ? '休憩' : '', min: t === 'break' ? 10 : null }));
     if (t === 'text') setTimeout(() => root.querySelector('.ttb-list > .ttb-row--extra .ttb-extra-text')?.focus(), 0);
   }
 
   /* ---------- ≡ ドラッグで並べ替え（日程タブの上で離すとその日へ移動） ---------- */
   function handle() {
     return el('button', { type: 'button', class: 'ttb-handle', 'aria-label': 'ドラッグで並べ替え', onpointerdown: startDrag }, icon('drag_indicator'));
+  }
+  /** 別の日へ移すとき、行の複製が移動先の日タブの方向（左右）へスライドして消える */
+  function flyToTab(rowEl, day) {
+    const tab = root.querySelector(`[data-day-tab="${day}"]`);
+    const cur = root.querySelector('[data-day-tab].is-on');
+    if (!tab || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const a = rowEl.getBoundingClientRect();
+    const dir = cur && tab.getBoundingClientRect().left < cur.getBoundingClientRect().left ? -1 : 1;
+    const ghost = rowEl.cloneNode(true);
+    ghost.classList.remove('is-dragging');
+    Object.assign(ghost.style, { position: 'fixed', left: `${a.left}px`, top: `${a.top}px`, width: `${a.width}px`, margin: 0, zIndex: 40, pointerEvents: 'none', transform: '' });
+    document.body.append(ghost);
+    const anim = ghost.animate([{ transform: 'none', opacity: 1 }, { transform: `translateX(${dir * a.width * 0.4}px)`, opacity: 0 }], { duration: 180, easing: 'ease-in' });
+    anim.onfinish = () => {
+      ghost.remove();
+      root.querySelector(`[data-day-tab="${day}"]`)?.animate([{ transform: 'scale(1.1)' }, { transform: 'none' }], { duration: 150, easing: 'ease-out' });
+    };
   }
   function startDrag(e) {
     if (e.button !== 0) return;
@@ -956,8 +994,10 @@
       rowEl.removeEventListener('pointerup', up);
       rowEl.removeEventListener('pointercancel', up);
       dragging = false;
+      const dropTop = rowEl.getBoundingClientRect().top;
       setFocus(null);
       if (tabDay) {
+        flyToTab(rowEl, tabDay);
         commit({ op: 'move', id, day: tabDay, index: state.days[tabDay - 1].rows.length });
         toast(`${LABELS[tabDay - 1]}へ移動`);
       } else if (target !== from) {
@@ -966,6 +1006,12 @@
         render();
       }
       if (needRender) render();
+      // 離した位置から新しい位置へすっと収まる（他の行は動かしながら既に新しい位置にいる）
+      const landed = [...root.querySelectorAll('.ttb-row')].find((x) => x.dataset.id === id);
+      if (landed && !tabDay && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        const dy = dropTop - landed.getBoundingClientRect().top;
+        if (Math.abs(dy) > 1) landed.animate([{ transform: `translateY(${dy}px)`, boxShadow: 'var(--shadow)' }, { transform: 'none', boxShadow: '0 0 0 transparent' }], { duration: 150, easing: 'ease-out' });
+      }
     };
     rowEl.addEventListener('pointermove', move);
     rowEl.addEventListener('pointerup', up);
