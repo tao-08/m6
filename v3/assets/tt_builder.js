@@ -574,119 +574,133 @@
    * なぜ PHP（サーバー）ではなくブラウザで描くのか？
    *   ・サーバーで日本語を描くには「日本語フォント」が必要で、レンタルサーバーには入っていないことが多い
    *   ・今画面に出ている state（保存前の最新の変更を含む）をそのまま使えるので、サーバーに送り直す必要がない
-   * 描くのは1日分。列は 時間（開始・終了）/ 持ち時間 / バンド名 / 曲数 / 人数。
-   * キー（機材メモ）は記録していないので載せない。日付・会場は下書きに無い（取り込みのプレビューで入れる）ので載せない。
+   * 見た目は、運営が使っているタイムテーブル（Excel）の画像そっくりにしてある:
+   *   灰色の見出し行 / 「時間」は開始・終了を1つに結合した見出し / 太字のバンド名 / 右端に空欄の key 列
+   * 列: 時間（開始・終了）/ 持ち時間 / バンド名 / 曲数 / 人数 / key（key は記録していないので空欄。手書き用）
+   * 日付・会場は下書きに無い（取り込みのプレビューで入れる）ので載せない。
    * 時刻の計算は renderOrder / tt_day_rows（PHP）と同じ: 集合時間から上の行の持ち時間を順に足す。
    */
   async function exportImage(d) {
     const day = state.days[d - 1];
     if (!day) return;
 
-    // --- 1. 見た目の設定（数字を変えれば画像の雰囲気が変わる） ---
+    // --- 1. 見た目の設定（数字を変えれば画像の雰囲気が変わる。単位は論理ピクセル） ---
     const SCALE = 2;                       // 2倍の細かさで描く（スマホで拡大しても文字がぼやけない）
-    const W = 1000;                        // 画像の横幅（論理ピクセル。実際の画像は W × SCALE）
-    const ROW_H = 44;                      // 1行の高さ
-    const TITLE_H = 64;                    // 一番上のタイトル行の高さ
-    const HEAD_H = 40;                     // 見出し行の高さ
+    const W = 1024;                        // 画像の横幅（実際の画像は W × SCALE）
     const PAD = 20;                        // 画像のまわりの余白
-    const FONT = '"Noto Sans JP", "Hiragino Sans", "Yu Gothic", "Meiryo", sans-serif';
-    // 列の定義: [見出し, 幅の割合]。割合の合計が 1 になるようにして、表の幅 TW に振り分ける
-    const COLS = [['開始', 0.11], ['終了', 0.11], ['持ち時間', 0.11], ['バンド名', 0.43], ['曲数', 0.12], ['人数', 0.12]];
+    const TITLE_H = 36;                    // 一番上のタイトル行（枠なし）の高さ
+    const HEAD_H = 28;                     // 見出し行の高さ
+    const ROW_H = 29;                      // 1行の高さ
+    const SIZE = 17;                       // 文字の大きさ
+    const HEAD_BG = '#808080';             // 見出し行の灰色
+    const LINE = '#4d4d4d';                // 罫線の色
+    // フォントの優先順: ① サイトが読み込んでいる Noto Sans JP（太字もある）→ ② assets/fonts の同じフォント（下で登録）→ ③ 端末のフォント
+    // 先に書いたものが使われ、その中に無い文字だけ次のフォントで描かれる（CSS の font-family と同じ考え方）
+    const FONT = '"Noto Sans JP", "ttb-noto", "Hiragino Sans", "Yu Gothic", "Meiryo", sans-serif';
+    // 列の幅の比率: 開始 / 終了 / 持ち時間 / バンド名 / 曲数 / 人数 / key（合計 10）
+    const UNITS = [1, 1, 1, 3, 1, 1, 2];
     const TW = W - PAD * 2;                // 表の幅
-    const xs = [PAD];                      // 各列の左端の x 座標（最後は表の右端）
-    COLS.forEach(([, r]) => xs.push(xs[xs.length - 1] + TW * r));
+    const xs = [PAD];                      // 各列の左端の x 座標（最後は表の右端）。xs[i] が i 番目の列の左端
+    UNITS.forEach((u) => xs.push(xs[xs.length - 1] + (TW * u) / 10));
 
     // --- 2. 描く行を作る（時刻を足し込む） ---
     let cur = day.call || null;            // 今の時刻。集合時間が空なら null（時刻は空欄）
     const rows = [];
-    if (day.call) rows.push({ kind: 'call', start: day.call, name: '集合' });
+    if (day.call) rows.push({ band: false, start: day.call, end: '', min: '', name: '集合', songs: '', cnt: '' });
     day.rows.forEach((r) => {
       const start = cur;
       const end = cur && r.min != null ? addMin(cur, r.min) : null;
       if (end) cur = end;
       const b = state.bands[r.id];         // バンドなら中身がある。休憩・テキスト行は undefined
       rows.push({
-        kind: b ? 'band' : 'extra', start: start || '', end: r.min ? end || '' : '',
+        band: !!b, start: start || '', end: r.min ? end || '' : '',
         min: r.min != null ? String(r.min) : '', name: b ? b.name : r.x,
         songs: b && b.songs != null ? String(b.songs) : '', cnt: b ? String(b.cnt) : '',
       });
     });
+    const title = state.dayCount > 1 ? `${state.title}${LABELS[d - 1]}` : state.title;
+    const HEADS = ['時間', '持ち時間', 'バンド名', '曲数', '人数', 'key'];
 
-    // --- 3. 紙（canvas）を用意する ---
-    const H = PAD * 2 + TITLE_H + HEAD_H + ROW_H * rows.length;
+    // --- 3. フォントを読み込んでから描く（読み込み前に描くと、別のフォントで描かれてしまう） ---
+    // 1) assets/fonts のフォントを「ttb-noto」という名前で登録する（FontFace = JS からフォントを追加する部品）。1回だけ
+    // 2) document.fonts.load(フォント指定, 実際に描く文字): 「この文字を描くフォント」を確実に読み込ませる。
+    //    Google Fonts は文字の範囲ごとに分割して配るので、文字を渡さないと、まだ画面に出ていない文字の分が間に合わないことがある
+    try {
+      // ※ document.fonts.check は「その名前のフォントが無い」ときも true を返す仕様なので、登録済みかの判定には使えない
+      if (![...document.fonts].some((x) => x.family.replace(/"/g, '') === 'ttb-noto')) {
+        const f = new FontFace('ttb-noto', 'url(assets/fonts/NotoSansJP-Regular.ttf)');
+        document.fonts.add(await f.load());
+      }
+      const used = [title, ...HEADS, ...rows.flatMap((r) => [r.name, r.start, r.end, r.min, r.songs, r.cnt])].join('');
+      await Promise.all(['400', '700'].map((w) => document.fonts.load(`${w} ${SIZE}px ${FONT}`, used)));
+    } catch { /* 読み込めなくても端末のフォントで描ける */ }
+
+    // --- 4. 紙（canvas）を用意する ---
+    const top = PAD + TITLE_H;             // 見出し行の上端
+    const bottom = top + HEAD_H + ROW_H * rows.length; // 表の下端
+    const H = bottom + PAD;
     const canvas = document.createElement('canvas');
     canvas.width = W * SCALE;              // canvas.width は「本当のピクセル数」
     canvas.height = H * SCALE;
     const g = canvas.getContext('2d');     // g = 絵を描くための「ペン」（2D コンテキスト）
     g.scale(SCALE, SCALE);                 // 以降は論理ピクセル（W × H）のつもりで描ける
-    try { await document.fonts.ready; } catch { /* 古いブラウザは待たずに描く */ }
 
-    // 文字を描く部品。幅が列からはみ出すときは、フォントを小さくして収める（長いバンド名の対策）
-    const text = (s, x, y, maxW, { size = 18, bold = false, color = '#111', align = 'center' } = {}) => {
+    // 文字を描く部品。x1〜x2 の真ん中に描く。幅が足りないときはフォントを小さくして収める（長いバンド名の対策）
+    const text = (s, x1, x2, cy, { bold = false, size = SIZE } = {}) => {
+      if (!s) return;
+      const maxW = x2 - x1 - 10;
       let px = size;
       g.font = `${bold ? '700' : '400'} ${px}px ${FONT}`;
       while (px > 10 && g.measureText(s).width > maxW) {   // measureText = 描いたときの幅を測る
         px -= 1;
         g.font = `${bold ? '700' : '400'} ${px}px ${FONT}`;
       }
-      g.fillStyle = color;
-      g.textAlign = align;
+      g.fillStyle = '#000';
+      g.textAlign = 'center';
       g.textBaseline = 'middle';           // y 座標を文字の縦の真ん中に合わせる
-      g.fillText(s, x, y);
+      g.fillText(s, (x1 + x2) / 2, cy);
     };
     const line = (x1, y1, x2, y2) => { g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke(); };
 
-    // --- 4. 描く ---
+    // --- 5. 描く ---
     g.fillStyle = '#fff';                  // 背景を白で塗る（塗らないと PNG の背景が透明になり、黒く見える場合がある）
     g.fillRect(0, 0, W, H);
 
-    // タイトル行（ライブ名 + 〇日目）
-    const title = state.dayCount > 1 ? `${state.title} ${LABELS[d - 1]}` : state.title;
-    text(title, W / 2, PAD + TITLE_H / 2, TW, { size: 28, bold: true });
+    // タイトル（枠なし）。元の画像と同じく「バンド名」の列の真ん中に置く
+    const cx = (xs[3] + xs[4]) / 2;
+    const half = Math.min(cx - PAD, PAD + TW - cx);
+    text(title, cx - half, cx + half, PAD + TITLE_H / 2, { bold: true, size: 18 });
 
-    // 見出し行（灰色の背景 + 白い文字）
-    const top = PAD + TITLE_H;
-    g.fillStyle = '#7f7f7f';
+    // 見出し行（灰色の背景 + 太字）。「時間」だけ開始・終了の2列を結合する。[見出し, 左の列番号, 右の列番号]
+    g.fillStyle = HEAD_BG;
     g.fillRect(PAD, top, TW, HEAD_H);
-    COLS.forEach(([label], i) => text(label, (xs[i] + xs[i + 1]) / 2, top + HEAD_H / 2, xs[i + 1] - xs[i] - 8, { size: 17, bold: true, color: '#fff' }));
+    [[0, 0, 2], [1, 2, 3], [2, 3, 4], [3, 4, 5], [4, 5, 6], [5, 6, 7]].forEach(([i, a, b]) =>
+      text(HEADS[i], xs[a], xs[b], top + HEAD_H / 2, { bold: HEADS[i] !== 'key' }));
 
     // 本文の行
     rows.forEach((r, i) => {
-      const y = top + HEAD_H + ROW_H * i;
-      const mid = y + ROW_H / 2;
-      if (r.kind !== 'band') { g.fillStyle = '#f3f3f3'; g.fillRect(PAD, y, TW, ROW_H); } // 休憩・集合・テキストは薄い灰色
-      const cell = (i2, s, opt) => text(s, (xs[i2] + xs[i2 + 1]) / 2, mid, xs[i2 + 1] - xs[i2] - 12, opt);
-      cell(0, r.start, {});
-      cell(1, r.end || '', {});
-      cell(2, r.min || '', {});
-      if (r.kind === 'band') {
-        cell(3, r.name, { bold: true });
-        cell(4, r.songs, {});
-        cell(5, r.cnt, {});
-      } else {
-        // 休憩・集合などは「バンド名〜人数」の列をまとめて1つのセルとして真ん中に描く
-        text(r.name, (xs[3] + xs[6]) / 2, mid, xs[6] - xs[3] - 12, { bold: true });
-      }
+      const mid = top + HEAD_H + ROW_H * i + ROW_H / 2;
+      // バンドの行は 開始 | 終了 に分ける。休憩などは終了があるときだけ分け、無いとき（集合・撤収）は1つのセルに結合して真ん中に出す
+      if (r.band || r.end) { text(r.start, xs[0], xs[1], mid); text(r.end, xs[1], xs[2], mid); } else { text(r.start, xs[0], xs[2], mid); }
+      text(r.min, xs[2], xs[3], mid);
+      text(r.name, xs[3], xs[4], mid, { bold: true });
+      text(r.songs, xs[4], xs[5], mid);
+      text(r.cnt, xs[5], xs[6], mid);
     });
 
-    // 罫線（表の外枠 + 行の区切り + 列の区切り）。休憩などの行は「バンド名〜人数」の間の縦線を引かない
-    g.strokeStyle = '#444';
+    // 罫線: 外枠 → 見出しと各行の下の横線 → 縦線（開始|終了 の線だけ、分けた行にだけ引く）
+    g.strokeStyle = LINE;
     g.lineWidth = 1;
-    const bottom = top + HEAD_H + ROW_H * rows.length;
     g.strokeRect(PAD, top, TW, bottom - top);
-    line(PAD, top + HEAD_H, PAD + TW, top + HEAD_H);
-    rows.forEach((r, i) => { const y = top + HEAD_H + ROW_H * (i + 1); line(PAD, y, PAD + TW, y); });
-    xs.slice(1, -1).forEach((x, k) => {
-      // k は 0 始まりの列の境目（0 = 開始|終了, 1 = 終了|持ち時間, 2 = 持ち時間|バンド名, 3 = バンド名|曲数, 4 = 曲数|人数）
-      line(x, top, x, top + HEAD_H);       // 見出し行は全部の境目を引く
-      rows.forEach((r, i) => {
-        if (k >= 3 && r.kind !== 'band') return; // バンド名の右の境目は、バンドの行だけ
-        const y = top + HEAD_H + ROW_H * i;
-        line(x, y, x, y + ROW_H);
-      });
+    for (let y = top + HEAD_H, i = 0; i <= rows.length; i++, y += ROW_H) line(PAD, y, PAD + TW, y);
+    for (let b = 2; b <= 6; b++) line(xs[b], top, xs[b], bottom);       // 持ち時間 / バンド名 / 曲数 / 人数 / key の境目は全部の行を通す
+    rows.forEach((r, i) => {
+      if (!(r.band || r.end)) return;
+      const y = top + HEAD_H + ROW_H * i;
+      line(xs[1], y, xs[1], y + ROW_H);
     });
 
-    // --- 5. PNG にしてダウンロードさせる ---
+    // --- 6. PNG にしてダウンロードさせる ---
     // toBlob = canvas を画像ファイル（Blob = 中身がバイナリのデータのかたまり）に変換する
     canvas.toBlob((blob) => {
       if (!blob) { toast('画像を作れませんでした'); return; }

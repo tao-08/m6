@@ -201,5 +201,5 @@ render_header($state['title'] . ' — タイムテーブル作成', 'tools');
     <?= csrf_field() ?><input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="<?= $id ?>">
 </form>
 <script type="application/json" id="ttb-data"><?= tt_json($boot) ?></script>
-<script src="assets/tt_builder.js?v=13" defer></script>
+<script src="assets/tt_builder.js?v=14" defer></script>
 <?php render_footer();
