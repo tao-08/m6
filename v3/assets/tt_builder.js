@@ -640,6 +640,9 @@
         key: b ? keyShort(b.key) : '',     // Key（機材メモ）は、2つ以上のとき略称にして狭い列に収める
       });
     });
+    // 日付・会場: 公開済みの下書きだけ（取り込みのプレビューで登録した値。tt_builder.php が boot.meta に入れる）。無ければ空
+    const meta = (boot.meta || {})[d] || {};
+    const hasMeta = !!(meta.date || meta.venue);
     const title = state.dayCount > 1 ? `${state.title}${LABELS[d - 1]}` : state.title;
     const HEADS = ['時間', '持ち時間', 'バンド名', '曲数', '人数', 'key'];
 
@@ -653,7 +656,7 @@
         const f = new FontFace('ttb-noto', 'url(assets/fonts/NotoSansJP-Regular.ttf)');
         document.fonts.add(await f.load());
       }
-      const used = [title, ...HEADS, ...rows.flatMap((r) => [r.name, r.start, r.end, r.min, r.songs, r.cnt, r.key])].join('');
+      const used = [title, meta.date, meta.venue, '会場', ...HEADS, ...rows.flatMap((r) => [r.name, r.start, r.end, r.min, r.songs, r.cnt, r.key])].join('');
       await Promise.all(['400', '700'].map((w) => document.fonts.load(`${w} ${SIZE}px ${FONT}`, used)));
     } catch { /* 読み込めなくても端末のフォントで描ける */ }
 
@@ -689,9 +692,17 @@
     g.fillRect(0, 0, W, H);
 
     // タイトル（枠なし）。元の画像と同じく「バンド名」の列の真ん中に置く
+    // 日付・会場があるときは元の画像と同じ並び（左に日付 / 真ん中にタイトル / 右に「会場 〇〇」）。無いときはタイトルだけを広く使う
     const cx = (xs[3] + xs[4]) / 2;
-    const half = Math.min(cx - PAD, PAD + TW - cx);
+    const half = hasMeta ? (xs[4] - xs[2]) / 2 : Math.min(cx - PAD, PAD + TW - cx);
     text(title, cx - half, cx + half, PAD + TITLE_H / 2, { bold: true, size: SIZE + 2 });
+    if (hasMeta) {
+      text(meta.date, xs[0], xs[2], PAD + TITLE_H / 2);
+      if (meta.venue) {
+        text('会場', xs[4], xs[5], PAD + TITLE_H / 2, { bold: true });
+        text(meta.venue, xs[5], xs[7], PAD + TITLE_H / 2, { bold: true });
+      }
+    }
 
     // 見出し行（灰色の背景 + 太字）。「時間」だけ開始・終了の2列を結合する。[見出し, 左の列番号, 右の列番号]
     g.fillStyle = HEAD_BG;
