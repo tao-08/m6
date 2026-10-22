@@ -25,6 +25,7 @@ const TT_MAX_DAYS = 3;
 const TT_MAX_ROWS = 80;          // 1日の行数の上限
 const TT_MAX_STATE_BYTES = 1_000_000;
 const TT_ROW_ID = '/^[a-z][a-z0-9]{0,23}$/';
+const TT_KEY_MAX = 60;          // Key（機材メモ）の文字数の上限
 const TT_PRESENCE_SEC = 15;      // この秒数以内に見に来た人を「開いている人」とする
 
 /** 名簿（build_import_plan の rosters）から最初の state を作る。名簿が複数ファイルなら 1ファイル目 = 1日目… と仮に置く */
@@ -46,7 +47,9 @@ function tt_new_state(string $title, array $rosters): array
             }
             $state['bands'][$id] = ['name' => $b['band_name'], 'members' => array_values($members),
                 'songs' => $b['song_count'], 'cnt' => $b['member_count'], 'avail' => range(1, $dayCount),
-                'pin' => false, 'ref' => "$ri:$bi"];
+                'pin' => false, 'ref' => "$ri:$bi",
+                // 名簿の Key 列（機材メモ。例: 「私物(シンセ), 貸出(エレピ)」）。画像・CSV の key 列に出す。名簿に無ければ空
+                'key' => mb_substr(trim((string)($b['key_note'] ?? '')), 0, TT_KEY_MAX)];
             $state['days'][min($ri, $dayCount - 1)]['rows'][] = ['id' => $id, 'min' => null];
         }
     }
@@ -62,8 +65,27 @@ function tt_load(PDO $pdo, int $id, bool $lock = false): ?array
     if (!$row) {
         return null;
     }
-    $row['state'] = json_decode($row['state'], true) ?: [];
+    $row['state'] = tt_backfill_keys(json_decode($row['state'], true) ?: [], (string)$row['source']);
     return $row;
+}
+
+/**
+ * Key（機材メモ）を持たない古い下書きに、名簿（source = 読み取った名簿そのままの JSON）の Key 列を補う。
+ * バンドの ref（「名簿の番号:バンドの番号」）で名簿のバンドを探す。「key」が既にある（空文字も含む = 手直しで消した）バンドは触らない。
+ * 保存はしない（次に何か編集されたとき、state ごと保存されて残る）
+ */
+function tt_backfill_keys(array $state, string $source): array
+{
+    $missing = array_filter($state['bands'] ?? [], static fn($b) => is_array($b) && !array_key_exists('key', $b));
+    if (!$missing) {
+        return $state;
+    }
+    $rosters = json_decode($source, true) ?: [];
+    foreach (array_keys($missing) as $id) {
+        [$ri, $bi] = array_map('intval', explode(':', (string)($state['bands'][$id]['ref'] ?? '')));
+        $state['bands'][$id]['key'] = mb_substr(trim((string)($rosters[$ri]['bands'][$bi]['key_note'] ?? '')), 0, TT_KEY_MAX);
+    }
+    return $state;
 }
 
 /**
@@ -379,6 +401,14 @@ function tt_apply_op(array &$state, mixed $op): bool
             $state['bands'][$b]['pin'] = $op['on'];
             return true;
 
+        case 'key': // バンドの Key（機材メモ）。空文字で消す
+            $b = $op['b'] ?? null;
+            if (!is_string($b) || !isset($state['bands'][$b]) || !$str($op['x'] ?? null, TT_KEY_MAX)) {
+                return false;
+            }
+            $state['bands'][$b]['key'] = trim($op['x']);
+            return true;
+
         case 'grade': // 部員DBに無い人の学年。null で消す
             $k = $op['k'] ?? null;
             $g = $op['g'] ?? null;
@@ -470,6 +500,27 @@ function tt_day_rows(array $state, int $d): array
     return $out;
 }
 
+/**
+ * Key（機材メモ）を、書き出し用の短い表記にする。assets/tt_builder.js の keyShort と同じ動き（直すときは両方直すこと）
+ *   1つだけ … 名簿の書き方のまま（括弧は全角にそろえる）  「貸出(エレピ)」→「貸出（エレピ）」
+ *   2つ以上 … 「私/貸 + 楽器」にして「/」でつなぐ        「私物(シンセ), 貸出(エレピ)」→「私シンセ/貸エレピ」
+ *   「私物（楽器）」「貸出（楽器）」の形でないものは、そのまま残す（読み替えて意味を変えないため）
+ */
+function tt_key_short(string $key): string
+{
+    // カンマ・読点・スラッシュで分ける（preg_split の PREG_SPLIT_NO_EMPTY = 空の要素は捨てる）
+    $items = preg_split('/\s*[,，、\/／]\s*/u', trim($key), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+    $parsed = array_map(static function (string $it): array {
+        // [1] = 私物 / 貸出 などの頭、[2] = 括弧の中（楽器）。全角・半角どちらの括弧も受ける
+        return preg_match('/^(私物|私|貸出し?|貸し?出し?|貸)\s*[（(]\s*(.+?)\s*[）)]$/u', $it, $m) ? [$m[1], $m[2], $it] : [null, null, $it];
+    }, $items);
+    if (count($parsed) === 1) {
+        [$head, $inst, $raw] = $parsed[0];
+        return $head === null ? $raw : "{$head}（{$inst}）";
+    }
+    return implode('/', array_map(static fn($p) => $p[0] === null ? $p[2] : mb_substr($p[0], 0, 1) . $p[1], $parsed));
+}
+
 /** 書き出し用の CSV（取り込みのタイムテーブルの形。.claude/skills/timetable-csv の書式）。1日分 */
 function tt_csv(array $state, int $d): string
 {
@@ -478,7 +529,7 @@ function tt_csv(array $state, int $d): string
     foreach (tt_day_rows($state, $d) as $x) {
         $b = $x['band'];
         $lines[] = [$x['start'] ?? '', $x['end'] ?? '', $b['name'] ?? $x['row']['x'],
-            $b !== null ? (string)($b['songs'] ?? '') : '', $b !== null ? (string)$b['cnt'] : '', ''];
+            $b !== null ? (string)($b['songs'] ?? '') : '', $b !== null ? (string)$b['cnt'] : '', tt_key_short((string)($b['key'] ?? ''))];
     }
     $fp = fopen('php://temp', 'r+');
     fwrite($fp, "\xEF\xBB\xBF"); // Excel で文字化けしないよう BOM を付ける
