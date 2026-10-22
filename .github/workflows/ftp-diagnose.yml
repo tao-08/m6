@@ -69,6 +69,24 @@ jobs:
           except ftplib.all_errors as e:
               # エラー文に FTP_DIR が入ると伏せ字になるので種類だけ出す
               out.append('[FTP_DIR] 移動=失敗 (' + type(e).__name__ + ')')
+
+          # 3) ホーム直下の「フォルダ」だけを順に開いて、本番の目印があるか調べる
+          #    （cwd できるものがフォルダ。公開フォルダ候補 = config.php がある場所）
+          ftp.cwd(home_pwd)
+          dirs = []
+          for n in home:
+              if n in ('.', '..'):
+                  continue
+              try:
+                  ftp.cwd(home_pwd)
+                  ftp.cwd(n)
+              except ftplib.all_errors:
+                  continue  # ファイルなので飛ばす
+              inner = names()
+              hit = [m for m in ('config.php', 'index.php', 'deploy.json', '.ftp-deploy-sync-state.json') if m in inner]
+              dirs.append(f'  {n}/ 件数={len(inner)} 目印={",".join(hit) or "なし"}')
+          out.append('[ホーム直下のフォルダ一覧]')
+          out += dirs
           ftp.quit()
 
           # annotation は改行を %0A に変える必要がある
