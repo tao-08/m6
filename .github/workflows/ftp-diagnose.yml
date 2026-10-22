@@ -1,0 +1,78 @@
+name: FTP Diagnose
+
+# 読み取り専用の診断ワークフロー（アップロード・削除は一切しない）
+# 目的: deploy.json が公開フォルダに届かない原因を調べる
+#   「FTP ログイン直後の場所（ホーム）」と「FTP_DIR の場所」に何があるかを比べる
+# 結果は Actions の annotations（実行画面の黄色/青の通知）に出す。
+# ※ FTP_SERVER / FTP_USER / FTP_PASSWORD / FTP_DIR の値そのものは出力しない
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: FTP の中身を確認（読み取りのみ）
+        env:
+          # secrets は環境変数で渡す（コマンド行に直接書くとログに残りやすいため）
+          FTP_SERVER: ${{ secrets.FTP_SERVER }}
+          FTP_USER: ${{ secrets.FTP_USER }}
+          FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+          FTP_PROTOCOL: ${{ secrets.FTP_PROTOCOL || 'ftps' }}
+          FTP_PORT: ${{ secrets.FTP_PORT || 21 }}
+          FTP_DIR: ${{ secrets.FTP_DIR }}
+        run: |
+          python3 - <<'PY'
+          import os, ftplib
+
+          # 探したいファイル/フォルダ（本番の目印）
+          MARKS = ['deploy.json', '.ftp-deploy-sync-state.json', 'config.php', 'index.php', 'assets', 'lib']
+
+          proto = os.environ['FTP_PROTOCOL'].lower()
+          port = int(os.environ['FTP_PORT'])
+          # ftps = 明示的TLS（FTP-Deploy-Action の既定と同じ） / ftp = 暗号化なし
+          ftp = ftplib.FTP() if proto == 'ftp' else ftplib.FTP_TLS()
+          ftp.connect(os.environ['FTP_SERVER'], port, timeout=30)
+          ftp.login(os.environ['FTP_USER'], os.environ['FTP_PASSWORD'])
+          if proto != 'ftp':
+              ftp.prot_p()  # データ通信も暗号化
+
+          def names():
+              # フォルダ内の名前一覧（失敗したら空）
+              try:
+                  return sorted(ftp.nlst())
+              except ftplib.error_perm:
+                  return []
+
+          def report(label, items):
+              s = set(items)
+              lines = [f'[{label}] 件数={len(items)}']
+              lines += [f'  {m}: {"あり" if m in s else "なし"}' for m in MARKS]
+              lines.append('  一覧: ' + ', '.join(items[:60]))
+              return lines
+
+          out = []
+          # 1) ログイン直後の場所（ホーム）
+          home_pwd = ftp.pwd()
+          home = names()
+          out += report('ホーム直下', home)
+
+          # 2) FTP_DIR へ移動（デプロイアクションと同じ cwd）
+          try:
+              ftp.cwd(os.environ['FTP_DIR'])
+              moved = ftp.pwd()
+              out.append('[FTP_DIR] 移動=成功 / ホームと同じ場所=' + ('はい' if moved == home_pwd else 'いいえ'))
+              out += report('FTP_DIR', names())
+          except ftplib.all_errors as e:
+              # エラー文に FTP_DIR が入ると伏せ字になるので種類だけ出す
+              out.append('[FTP_DIR] 移動=失敗 (' + type(e).__name__ + ')')
+          ftp.quit()
+
+          # annotation は改行を %0A に変える必要がある
+          msg = '%0A'.join(out).replace('\r', '')
+          print(f'::notice title=FTP診断::{msg}')
+          print('\n'.join(out))
+          PY
