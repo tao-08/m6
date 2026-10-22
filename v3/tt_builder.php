@@ -180,6 +180,24 @@ $similar = tt_member_suggest($pdo, $state, $info); // DBにいない人の「も
 // 候補の人に置きかえたときの学年・出演履歴も画面で使えるように、候補の分も調べておく
 $candKeys = array_values(array_unique(array_column(array_merge(...array_values($similar) ?: [[]]), 'k')));
 $info += tt_member_info($pdo, $candKeys);
+// 公開済みなら、取り込みのプレビューで登録した「開催日・会場」を画像に出す。
+// 日程名（「1日目」など）が同じ live_day を探す。公開前・見つからない日は出さない（画像の日付・会場の欄は空になる）
+$meta = [];
+if ($draft['published_live_id'] !== null) {
+    $st = $pdo->prepare('SELECT d.label, d.held_on, v.name AS venue FROM live_day d
+        LEFT JOIN venue v ON v.venue_id = d.venue_id WHERE d.live_id = ?');
+    $st->execute([(int)$draft['published_live_id']]);
+    $byLabel = [];
+    foreach ($st->fetchAll() as $r) {
+        $byLabel[$r['label']] = $r;
+    }
+    foreach (array_slice(DAY_LABELS, 0, TT_MAX_DAYS) as $i => $label) {
+        if (isset($byLabel[$label])) {
+            $r = $byLabel[$label];
+            $meta[$i + 1] = ['date' => $r['held_on'] ? date('Y/n/j', strtotime((string)$r['held_on'])) : '', 'venue' => (string)($r['venue'] ?? '')];
+        }
+    }
+}
 $boot = [
     'id' => $id,
     'v' => (int)$draft['version'],
@@ -188,6 +206,7 @@ $boot = [
     'similar' => (object)$similar,
     'labels' => array_slice(DAY_LABELS, 0, TT_MAX_DAYS),
     'published' => $draft['published_live_id'] !== null ? (int)$draft['published_live_id'] : null,
+    'meta' => (object)$meta, // 日番号（1〜）=> ['date' => '2026/10/30', 'venue' => '新大久保CLUB Voice']。画像の1行目に出す
 ];
 render_header($state['title'] . ' — タイムテーブル作成', 'tools');
 ?>
@@ -201,5 +220,5 @@ render_header($state['title'] . ' — タイムテーブル作成', 'tools');
     <?= csrf_field() ?><input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="<?= $id ?>">
 </form>
 <script type="application/json" id="ttb-data"><?= tt_json($boot) ?></script>
-<script src="assets/tt_builder.js?v=17" defer></script>
+<script src="assets/tt_builder.js?v=18" defer></script>
 <?php render_footer();
