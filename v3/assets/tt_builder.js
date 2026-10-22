@@ -173,6 +173,10 @@
         if (!s.bands[op.b] || typeof op.on !== 'boolean') return false;
         s.bands[op.b].pin = op.on;
         return true;
+      case 'mix':
+        if (!isInt(op.v, 0, 100)) return false;
+        s.mix = op.v;
+        return true;
       case 'grade':
         if (!isStr(op.k, 60) || op.k === '' || !(op.g === null || isInt(op.g, 1, 9))) return false;
         if (op.g === null) delete s.grades[op.k]; else s.grades[op.k] = op.g;
@@ -292,15 +296,49 @@
     schedule(150);
   }
 
-  /* ===================== 学年・推し度・連続出演 ===================== */
+  /* ===================== 学年・おすすめ度・連続出演 ===================== */
   function gradeOf(k) {
     const g = INFO[k]?.g ?? state.grades[k] ?? null;
     return g;
   }
-  const gradeText = (g) => (g == null ? '?' : g <= 4 ? String(g) : 'OB');
+  const gradeText = (g) => (g == null ? '?' : g <= 4 ? String(g) : `OB${g - 4}`);
+
+  // 学年の色（下 → 上）: 青緑 / 黄緑 / 黄土 / 朱。テーマで変えない（文字は常に白）
+  const GRADE_COLORS = [[22, 136, 150], [111, 154, 18], [178, 125, 0], [232, 92, 40]];
+  let gradeColor = {}; // 学年 => 'rgb(…)'。描画のたびに作り直す
+  /** このライブにいる学年を下から並べ、数に合わせて離れた色を選ぶ（2つなら両端…）。5つ以上は4色の間を補間 */
+  function gradeColorMap() {
+    const gs = [...new Set(Object.values(state.bands).flatMap((b) => b.members.map((m) => gradeOf(m.k))))]
+      .filter((g) => g != null).sort((a, c) => a - c);
+    const n = gs.length;
+    const pick = [[3], [0, 3], [0, 2, 3], [0, 1, 2, 3]][n - 1];
+    const rgb = (c) => `rgb(${c.join(' ')})`;
+    const at = (t) => {
+      const s = t * 3;
+      const i = Math.min(2, Math.floor(s));
+      return rgb(GRADE_COLORS[i].map((v, j) => Math.round(v + (GRADE_COLORS[i + 1][j] - v) * (s - i))));
+    };
+    return Object.fromEntries(gs.map((g, i) => [g, pick ? rgb(GRADE_COLORS[pick[i]]) : at(i / (n - 1))]));
+  }
+  const gradeBadge = (g) => el('span', { class: 'ttb-g' + (gradeColor[g] ? ' has-c' : ''), style: gradeColor[g] ? `--gc:${gradeColor[g]}` : null, text: gradeText(g) });
   const weightOf = (g) => (g == null ? null : WEIGHT[g] ?? 4);
 
-  /** バンドの「後ろ推し度」= 学年の重みの平均 + トリ支援（トリ・後ろの経験が少ない3・4年がいれば加点） */
+  /** 配分（0〜100）から、学年とトリ支援それぞれの係数を出す。50 = 従来の比（1 : 1）。0 = 学年だけ / 100 = トリ支援だけ */
+  function mixOf() {
+    const m = (state.mix ?? 50) / 100;
+    return { grade: Math.min(1, 2 * (1 - m)), help: m <= 0.5 ? 2 * m : 1 + (m - 0.5) * 8 };
+  }
+
+  /** 全日程を出順に見て、メンバーごとに出るバンドの並び（キー => [バンドID…]） */
+  function appearances() {
+    const map = {};
+    state.days.slice(0, state.dayCount).forEach((day) => day.rows.forEach((r) => {
+      state.bands[r.id]?.members.forEach((m) => { (map[m.k] ||= []).push(r.id); });
+    }));
+    return map;
+  }
+
+  /** バンドの「おすすめ度」= 学年の重みの平均 + トリ支援（トリ・後ろの経験が少ない3・4年がいれば加点）。係数は mixOf */
   function scoreOf(b) {
     const ws = [];
     let bonus = 0;
@@ -319,7 +357,10 @@
       }
     });
     const base = ws.length ? ws.reduce((a, c) => a + c, 0) / ws.length : 1;
-    return { base, bonus, star, total: base + bonus };
+    // 学年の最大 4・トリ支援の最大 0.7 を配分で混ぜ、いちばん高くなり得る値が 4 になるようにそろえる
+    const k = mixOf();
+    const total = ((base * k.grade + bonus * k.help) / (4 * k.grade + 0.7 * k.help)) * 4;
+    return { base, bonus, star, total };
   }
 
   const keysOf = (id) => new Set(state.bands[id].members.map((m) => m.k));
@@ -413,7 +454,7 @@
         slots[p] = id;
       });
       const pool = bands.filter((id) => !state.bands[id].pin);
-      // 後ろから、推し度が高い順に。連続（隣=赤 / 1つ挟み=黄）にならない候補を優先
+      // 後ろから、おすすめ度が高い順に。連続（隣=赤 / 1つ挟み=黄）にならない候補を優先
       const setAt = (p) => (slots[p] ? keysOf(slots[p]) : null);
       const clash = (id, p) => {
         const ks = keysOf(id);
@@ -434,7 +475,7 @@
         });
         slots[p] = pool.splice(best, 1)[0];
       }
-      // 入れ替えで仕上げ（連続の数 + 推し度の順からのずれ を小さく）
+      // 入れ替えで仕上げ（連続の数 + おすすめ度の順からのずれ を小さく）
       const movable = slots.map((id, i) => (state.bands[id].pin ? -1 : i)).filter((i) => i >= 0);
       const ideal = [...slots].sort((a, c) => score[a] - score[c]);
       const cost = (seq) => pairCost(seq.map(keysOf)) + seq.reduce((sum, id, i) => sum + Math.abs(i - ideal.indexOf(id)) * 0.6, 0);
@@ -528,6 +569,7 @@
     needRender = false;
     lastSig = signature();
     if (curDay > state.dayCount) curDay = state.dayCount;
+    gradeColor = gradeColorMap();
     document.title = `${state.title} — タイムテーブル作成`;
     root.replaceChildren(renderHead(), view === 'days' ? renderDays() : renderOrder());
   }
@@ -615,12 +657,16 @@
   }
 
   /** メンバーの「4山田 3佐藤 ?鈴木」。学年不明は押すと学年を選べる */
-  function memberSpans(id, memberWarn) {
+  function memberSpans(id, memberWarn, appear = {}) {
     return state.bands[id].members.map((m) => {
       const g = gradeOf(m.k);
       const w = memberWarn[`${id}:${m.k}`];
       const cls = 'ttb-m' + (w === 2 ? ' is-red' : w === 1 ? ' is-yellow' : '');
-      const content = [el('span', { class: 'ttb-g', text: gradeText(g) }), m.n];
+      // 名前の下に、その人の出演数ぶんの点（このバンドまでを塗る = 何個目か）。最後の出演なら赤（1バンドだけの人も赤い点1つ）
+      const list = appear[m.k] || [];
+      const at = list.indexOf(id);
+      const dots = list.length ? el('span', { class: 'ttb-dots' + (at === list.length - 1 ? ' is-last' : ''), 'aria-hidden': 'true' }, list.map((_, i) => el('i', { class: i <= at ? 'is-on' : '' }))) : null;
+      const content = [el('span', {}, gradeBadge(g), m.n), dots];
       if (INFO[m.k]?.g != null) return el('span', { class: cls, title: m.p }, content);
       return el('button', {
         type: 'button', class: cls + ' is-unknown', title: '学年を入力', 'data-pop-anchor': true,
@@ -668,6 +714,7 @@
       el('button', { type: 'button', class: 'btn btn--ghost btn--sm', onclick: () => addRow('break') }, icon('add'), '休憩'),
       el('button', { type: 'button', class: 'btn btn--ghost btn--sm', onclick: () => addRow('text') }, icon('add'), 'テキスト'),
       el('button', { type: 'button', class: 'btn btn--sm' + (timeMode ? ' btn--primary' : ''), 'aria-pressed': String(timeMode), onclick: () => { timeMode = !timeMode; render(); } }, icon('schedule'), '時刻'),
+      el('button', { type: 'button', class: 'btn btn--ghost btn--sm ttb-iconbtn', 'aria-label': '設定', title: '設定', 'data-pop-anchor': true, onclick: (e) => openPop(e.currentTarget, settingsMenu()) }, icon('settings')),
       el('button', { type: 'button', class: 'btn btn--ghost btn--sm ttb-iconbtn', 'aria-label': '凡例', 'data-pop-anchor': true, onclick: (e) => openPop(e.currentTarget, legend()) }, icon('help')));
 
     const day = state.days[curDay - 1];
@@ -686,7 +733,7 @@
       }))) : null;
 
     const ids = day.rows.map((r) => r.id);
-    const c = conflicts(ids);
+    const c = { ...conflicts(ids), appear: appearances() };
     let no = 0;
     let cur = day.call || null;
     const list = el('div', { class: 'ttb-list' + (timeMode ? ' is-time' : ''), 'data-list': true }, day.rows.map((r) => {
@@ -703,12 +750,28 @@
     return el('div', { class: 'ttb-order' }, tabs, tools, timeBar, list, dangling, endTime, floating);
   }
 
+  /** 設定のポップアップ。離したときに保存（下書きに入るので全員・自動配置に同じ値が効く） */
+  function settingsMenu() {
+    const val = el('b', { class: 'mono', text: state.mix ?? 50 });
+    return el('div', { class: 'ttb-settings' },
+      el('p', { class: 'small' }, el('b', { text: 'おすすめ度の配分' })),
+      el('div', { class: 'ttb-mix' },
+        el('span', { class: 'small', text: '学年' }),
+        el('input', {
+          type: 'range', min: 0, max: 100, step: 5, value: state.mix ?? 50, 'aria-label': 'おすすめ度の配分',
+          oninput: (e) => { val.textContent = e.target.value; },
+          onchange: (e) => commit({ op: 'mix', v: parseInt(e.target.value, 10) }),
+        }),
+        el('span', { class: 'small', text: 'トリ・後ろ未経験' })),
+      el('p', { class: 'small muted' }, val, '　50 = 標準'));
+  }
+
   function legend() {
     return el('div', { class: 'ttb-legend small' },
       el('p', {}, el('span', { class: 'ttb-m is-red', text: '名前' }), ' 隣のバンドにも出演'),
       el('p', {}, el('span', { class: 'ttb-m is-yellow', text: '名前' }), ' 1バンド挟んで出演'),
-      el('p', {}, el('span', { class: 'ttb-g', text: '4' }), '学年　', el('span', { class: 'ttb-g', text: '?' }), '不明（押して入力）'),
-      el('p', {}, el('span', { class: 'ttb-score', text: '3.6' }), ' 後ろ推し度（学年が上の人が多いほど高い）'),
+      el('p', {}, gradeBadge(Object.keys(gradeColor).map(Number).pop() ?? 4), '学年　', el('span', { class: 'ttb-g', text: '?' }), '不明（押して入力）'),
+      el('p', {}, el('span', { class: 'ttb-score', text: '3.6' }), ' おすすめ度（後ろの出順に向くほど高い）'),
       el('p', {}, el('span', { class: 'ttb-star', text: '★' }), ' トリ・後ろの出順の経験が少ない3・4年がいる'),
       el('p', {}, icon('push_pin'), ' 自動配置で動かさない'));
   }
@@ -745,10 +808,10 @@
         el('button', { type: 'button', class: 'ttb-l1', 'data-pop-anchor': true, onclick: (e) => { setFocus(id); openPop(e.currentTarget, bandMenu(id)); } },
           el('span', { class: 'ttb-name', text: b.name }),
           b.pin ? icon('push_pin') : null,
-          el('span', { class: 'ttb-score', title: '後ろ推し度', text: sc.total.toFixed(1) }),
+          el('span', { class: 'ttb-score', title: 'おすすめ度', text: sc.total.toFixed(1) }),
           sc.star ? el('span', { class: 'ttb-star', title: 'トリ・後ろの経験が少ない3・4年がいる', text: '★' }) : null),
         timeMode ? timeCells(r, start) : days),
-      el('div', { class: 'ttb-l2' }, memberSpans(id, c.member))));
+      el('div', { class: 'ttb-l2' }, memberSpans(id, c.member, c.appear))));
   }
 
   function extraRow(r, start) {
@@ -783,12 +846,17 @@
     const b = state.bands[id];
     const dc = state.dayCount;
     const sc = scoreOf(b);
-    const hist = b.members.filter((m) => (gradeOf(m.k) ?? 0) >= 3).map((m) => {
+    // メンバーごとに 今回何バンド目か（n/全数）。3・4年以上は後ろの出順の履歴も
+    const appear = appearances();
+    const hist = b.members.map((m) => {
+      const list = appear[m.k] || [id];
+      const g = gradeOf(m.k);
       const h = INFO[m.k];
-      return el('li', {}, `${gradeText(gradeOf(m.k))}${m.n}　`, h ? `トリ${h.t}・平均逆順${h.r ?? '-'}／${h.n}回` : '履歴なし');
+      const past = (g ?? 0) >= 3 ? (h ? `　トリ${h.t}・平均逆順${h.r ?? '-'}／${h.n}回` : '　履歴なし') : '';
+      return el('li', {}, `${gradeText(g)}${m.n}　`, el('b', { text: `${list.indexOf(id) + 1}/${list.length}` }), past);
     });
     return el('div', { class: 'ttb-bandmenu' },
-      el('p', { class: 'ttb-bandmenu__name' }, el('b', { text: b.name }), el('span', { class: 'muted small', text: ` ${b.songs ?? '?'}曲 · 推し度 ${sc.base.toFixed(1)}${sc.bonus ? ` +${sc.bonus.toFixed(1)}` : ''}` })),
+      el('p', { class: 'ttb-bandmenu__name' }, el('b', { text: b.name }), el('span', { class: 'muted small', text: ` ${b.songs ?? '?'}曲 · おすすめ度 ${sc.total.toFixed(1)}（学年 ${sc.base.toFixed(1)}${sc.bonus ? ` · 支援 +${sc.bonus.toFixed(1)}` : ''}）` })),
       dc > 1 ? el('div', { class: 'ttb-bandmenu__days' }, el('span', { class: 'small muted', text: '出演可能' }), range(dc).map((d) => el('label', { class: 'check' },
         el('input', {
           type: 'checkbox', checked: b.avail.includes(d),

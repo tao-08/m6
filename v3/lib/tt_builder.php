@@ -31,7 +31,7 @@ const TT_PRESENCE_SEC = 15;      // この秒数以内に見に来た人を「�
 function tt_new_state(string $title, array $rosters): array
 {
     $dayCount = max(1, min(TT_MAX_DAYS, count($rosters) >= 2 ? count($rosters) : 2));
-    $state = ['title' => $title, 'dayCount' => $dayCount, 'bands' => [], 'grades' => [],
+    $state = ['title' => $title, 'dayCount' => $dayCount, 'bands' => [], 'grades' => [], 'mix' => 50,
         'days' => array_fill(0, TT_MAX_DAYS, ['call' => '', 'rows' => []])];
     $n = 0;
     foreach ($rosters as $ri => $roster) {
@@ -390,6 +390,13 @@ function tt_apply_op(array &$state, mixed $op): bool
             } else {
                 $state['grades'][$k] = $g;
             }
+            return true;
+
+        case 'mix': // おすすめ度の配分（0 = 学年重視 … 100 = トリ・後ろの経験が少ない人重視）
+            if (!$int($op['v'] ?? null, 0, 100)) {
+                return false;
+            }
+            $state['mix'] = $op['v'];
             return true;
 
         case 'min': // 持ち時間（分）。null で空欄
