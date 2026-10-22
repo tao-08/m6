@@ -560,11 +560,143 @@
         if (x != null && x.trim() !== '') commit({ op: 'title', x: x.trim().slice(0, 100) });
       }),
       range(state.dayCount).map((d) => el('a', { class: 'ttb-menu__item', href: `tt_builder?id=${boot.id}&csv=${d}` }, icon('download'), `CSV（${LABELS[d - 1]}）`)),
+      // 画像は <a> ではなくボタン: サーバーへ取りに行かず、ブラウザで描いて保存するため
+      range(state.dayCount).map((d) => item('image', `画像（${LABELS[d - 1]}）`, () => exportImage(d))),
       item('publish', '公開（ライブとして登録）', () => {
         if (pending.length || inflight) { toast('保存中です。少し待ってからもう一度'); return; }
         document.getElementById('ttb-publish').requestSubmit();
       }),
       item('delete', '削除', () => document.getElementById('ttb-delete').requestSubmit(), { 'data-danger': true }));
+  }
+
+  /* ---------- 画像（PNG）の書き出し ----------
+   * 仕組み: <canvas>（ブラウザの中の「お絵かき用の白い紙」）に、表を線と文字で描いて PNG にする。
+   * なぜ PHP（サーバー）ではなくブラウザで描くのか？
+   *   ・サーバーで日本語を描くには「日本語フォント」が必要で、レンタルサーバーには入っていないことが多い
+   *   ・今画面に出ている state（保存前の最新の変更を含む）をそのまま使えるので、サーバーに送り直す必要がない
+   * 描くのは1日分。列は 時間（開始・終了）/ 持ち時間 / バンド名 / 曲数 / 人数。
+   * キー（機材メモ）は記録していないので載せない。日付・会場は下書きに無い（取り込みのプレビューで入れる）ので載せない。
+   * 時刻の計算は renderOrder / tt_day_rows（PHP）と同じ: 集合時間から上の行の持ち時間を順に足す。
+   */
+  async function exportImage(d) {
+    const day = state.days[d - 1];
+    if (!day) return;
+
+    // --- 1. 見た目の設定（数字を変えれば画像の雰囲気が変わる） ---
+    const SCALE = 2;                       // 2倍の細かさで描く（スマホで拡大しても文字がぼやけない）
+    const W = 1000;                        // 画像の横幅（論理ピクセル。実際の画像は W × SCALE）
+    const ROW_H = 44;                      // 1行の高さ
+    const TITLE_H = 64;                    // 一番上のタイトル行の高さ
+    const HEAD_H = 40;                     // 見出し行の高さ
+    const PAD = 20;                        // 画像のまわりの余白
+    const FONT = '"Noto Sans JP", "Hiragino Sans", "Yu Gothic", "Meiryo", sans-serif';
+    // 列の定義: [見出し, 幅の割合]。割合の合計が 1 になるようにして、表の幅 TW に振り分ける
+    const COLS = [['開始', 0.11], ['終了', 0.11], ['持ち時間', 0.11], ['バンド名', 0.43], ['曲数', 0.12], ['人数', 0.12]];
+    const TW = W - PAD * 2;                // 表の幅
+    const xs = [PAD];                      // 各列の左端の x 座標（最後は表の右端）
+    COLS.forEach(([, r]) => xs.push(xs[xs.length - 1] + TW * r));
+
+    // --- 2. 描く行を作る（時刻を足し込む） ---
+    let cur = day.call || null;            // 今の時刻。集合時間が空なら null（時刻は空欄）
+    const rows = [];
+    if (day.call) rows.push({ kind: 'call', start: day.call, name: '集合' });
+    day.rows.forEach((r) => {
+      const start = cur;
+      const end = cur && r.min != null ? addMin(cur, r.min) : null;
+      if (end) cur = end;
+      const b = state.bands[r.id];         // バンドなら中身がある。休憩・テキスト行は undefined
+      rows.push({
+        kind: b ? 'band' : 'extra', start: start || '', end: r.min ? end || '' : '',
+        min: r.min != null ? String(r.min) : '', name: b ? b.name : r.x,
+        songs: b && b.songs != null ? String(b.songs) : '', cnt: b ? String(b.cnt) : '',
+      });
+    });
+
+    // --- 3. 紙（canvas）を用意する ---
+    const H = PAD * 2 + TITLE_H + HEAD_H + ROW_H * rows.length;
+    const canvas = document.createElement('canvas');
+    canvas.width = W * SCALE;              // canvas.width は「本当のピクセル数」
+    canvas.height = H * SCALE;
+    const g = canvas.getContext('2d');     // g = 絵を描くための「ペン」（2D コンテキスト）
+    g.scale(SCALE, SCALE);                 // 以降は論理ピクセル（W × H）のつもりで描ける
+    try { await document.fonts.ready; } catch { /* 古いブラウザは待たずに描く */ }
+
+    // 文字を描く部品。幅が列からはみ出すときは、フォントを小さくして収める（長いバンド名の対策）
+    const text = (s, x, y, maxW, { size = 18, bold = false, color = '#111', align = 'center' } = {}) => {
+      let px = size;
+      g.font = `${bold ? '700' : '400'} ${px}px ${FONT}`;
+      while (px > 10 && g.measureText(s).width > maxW) {   // measureText = 描いたときの幅を測る
+        px -= 1;
+        g.font = `${bold ? '700' : '400'} ${px}px ${FONT}`;
+      }
+      g.fillStyle = color;
+      g.textAlign = align;
+      g.textBaseline = 'middle';           // y 座標を文字の縦の真ん中に合わせる
+      g.fillText(s, x, y);
+    };
+    const line = (x1, y1, x2, y2) => { g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke(); };
+
+    // --- 4. 描く ---
+    g.fillStyle = '#fff';                  // 背景を白で塗る（塗らないと PNG の背景が透明になり、黒く見える場合がある）
+    g.fillRect(0, 0, W, H);
+
+    // タイトル行（ライブ名 + 〇日目）
+    const title = state.dayCount > 1 ? `${state.title} ${LABELS[d - 1]}` : state.title;
+    text(title, W / 2, PAD + TITLE_H / 2, TW, { size: 28, bold: true });
+
+    // 見出し行（灰色の背景 + 白い文字）
+    const top = PAD + TITLE_H;
+    g.fillStyle = '#7f7f7f';
+    g.fillRect(PAD, top, TW, HEAD_H);
+    COLS.forEach(([label], i) => text(label, (xs[i] + xs[i + 1]) / 2, top + HEAD_H / 2, xs[i + 1] - xs[i] - 8, { size: 17, bold: true, color: '#fff' }));
+
+    // 本文の行
+    rows.forEach((r, i) => {
+      const y = top + HEAD_H + ROW_H * i;
+      const mid = y + ROW_H / 2;
+      if (r.kind !== 'band') { g.fillStyle = '#f3f3f3'; g.fillRect(PAD, y, TW, ROW_H); } // 休憩・集合・テキストは薄い灰色
+      const cell = (i2, s, opt) => text(s, (xs[i2] + xs[i2 + 1]) / 2, mid, xs[i2 + 1] - xs[i2] - 12, opt);
+      cell(0, r.start, {});
+      cell(1, r.end || '', {});
+      cell(2, r.min || '', {});
+      if (r.kind === 'band') {
+        cell(3, r.name, { bold: true });
+        cell(4, r.songs, {});
+        cell(5, r.cnt, {});
+      } else {
+        // 休憩・集合などは「バンド名〜人数」の列をまとめて1つのセルとして真ん中に描く
+        text(r.name, (xs[3] + xs[6]) / 2, mid, xs[6] - xs[3] - 12, { bold: true });
+      }
+    });
+
+    // 罫線（表の外枠 + 行の区切り + 列の区切り）。休憩などの行は「バンド名〜人数」の間の縦線を引かない
+    g.strokeStyle = '#444';
+    g.lineWidth = 1;
+    const bottom = top + HEAD_H + ROW_H * rows.length;
+    g.strokeRect(PAD, top, TW, bottom - top);
+    line(PAD, top + HEAD_H, PAD + TW, top + HEAD_H);
+    rows.forEach((r, i) => { const y = top + HEAD_H + ROW_H * (i + 1); line(PAD, y, PAD + TW, y); });
+    xs.slice(1, -1).forEach((x, k) => {
+      // k は 0 始まりの列の境目（0 = 開始|終了, 1 = 終了|持ち時間, 2 = 持ち時間|バンド名, 3 = バンド名|曲数, 4 = 曲数|人数）
+      line(x, top, x, top + HEAD_H);       // 見出し行は全部の境目を引く
+      rows.forEach((r, i) => {
+        if (k >= 3 && r.kind !== 'band') return; // バンド名の右の境目は、バンドの行だけ
+        const y = top + HEAD_H + ROW_H * i;
+        line(x, y, x, y + ROW_H);
+      });
+    });
+
+    // --- 5. PNG にしてダウンロードさせる ---
+    // toBlob = canvas を画像ファイル（Blob = 中身がバイナリのデータのかたまり）に変換する
+    canvas.toBlob((blob) => {
+      if (!blob) { toast('画像を作れませんでした'); return; }
+      const url = URL.createObjectURL(blob);   // Blob を指す一時的な URL（このタブの中だけで使える）
+      const a = el('a', { href: url, download: `${state.title}${LABELS[d - 1]}.png` });
+      document.body.append(a);
+      a.click();                                // 見えないリンクをクリックしてダウンロードを始める（定番のやり方）
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000); // 一時 URL を片付ける（メモリの解放）
+    }, 'image/png');
   }
 
   /* ---------- 日程希望 ---------- */
