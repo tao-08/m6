@@ -2328,6 +2328,10 @@ html:has(.board-posts) { scroll-behavior: smooth; }
 .ttb-seg { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }
 .ttb-seg button { border: 0; background: transparent; color: var(--text); padding: 6px 14px; font: inherit; font-size: 13px; cursor: pointer; }
 .ttb-seg button.is-on { background: var(--accent); color: var(--on-accent); font-weight: 700; }
+.ttb-views { display: flex; width: 100%; margin-bottom: 8px; }
+.ttb-views button { flex: 1; display: flex; align-items: center; justify-content: center; gap: 4px; padding: 7px 4px; white-space: nowrap; }
+.ttb-views .icon { font-size: 18px; }
+.ttb.is-enter .ttb-views { animation: ttb-in .3s ease-out backwards; }
 
 /* 日程タブ */
 .ttb-tabs { position: sticky; top: 0; z-index: 5; display: flex; gap: 4px; padding: 4px 0; margin-bottom: 6px; background: var(--bg); }

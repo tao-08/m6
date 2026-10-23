@@ -672,7 +672,7 @@
     document.title = `${state.title} — タイムテーブル作成`;
     root.classList.toggle('is-enter', enter);
     enter = false;
-    root.replaceChildren(renderHead(), view === 'days' ? renderDays() : view === 'preview' ? renderPreview() : renderOrder());
+    root.replaceChildren(renderHead(), viewSwitch(), view === 'days' ? renderDays() : view === 'preview' ? renderPreview() : renderOrder());
   }
 
   function statusIcon() {
@@ -692,12 +692,18 @@
       menuBtn);
   }
 
+  // 画面の切り替え（出演日 / 出演順 / プレビュー）。メニューを開かずに行き来できるよう見出しの下に常に出す
+  function viewSwitch() {
+    const views = [['days', 'event_available', '出演日'], ['order', 'format_list_numbered', '出演順'], ['preview', 'table_view', 'プレビュー']];
+    return el('div', { class: 'ttb-seg ttb-views', role: 'group', 'aria-label': '画面' }, views.map(([v, ic, label]) => el('button', {
+      type: 'button', class: view === v ? 'is-on' : '', 'aria-pressed': String(view === v),
+      onclick: () => { if (view !== v) goView(v); },
+    }, icon(ic), label)));
+  }
+
   function mainMenu() {
     const item = (ic, label, onclick, attrs = {}) => el('button', { type: 'button', class: 'ttb-menu__item', onclick: () => { closePop(); onclick(); }, ...attrs }, icon(ic), label);
     return el('div', { class: 'ttb-menu' },
-      view !== 'order' ? item('format_list_numbered', '出演順', () => goView('order')) : null,
-      view !== 'days' ? item('event_available', '出演日', () => goView('days')) : null,
-      view !== 'preview' ? item('table_view', 'プレビュー', () => goView('preview')) : null,
       item('edit', 'ライブ名を変更', () => {
         const x = prompt('ライブ名', state.title);
         if (x != null && x.trim() !== '') commit({ op: 'title', x: x.trim().slice(0, 100) });
@@ -742,7 +748,7 @@
         type: 'number', class: 'ttb-min', min: 0, max: 600, inputmode: 'numeric', value: bulk, 'aria-label': 'バンドの持ち時間（分）',
         onchange: (e) => { const n = parseInt(e.target.value, 10); if (n >= 0 && n <= 600) commit({ op: 'dur', v: n }); else e.target.value = bulk; },
       }) : null,
-      el('a', { class: 'btn btn--ghost btn--sm', href: `tt_builder?id=${boot.id}&csv=${d}` }, icon('download'), 'CSV'));
+      el('button', { type: 'button', class: 'btn btn--ghost btn--sm', onclick: () => exportImage(d) }, icon('image'), '画像'));
 
     const td = (attrs, ...kids) => el('td', attrs, ...kids);
     // セルの入力欄。変更したら保存。保存できない値（空のバンド名など）は元に戻す
