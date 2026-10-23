@@ -23,6 +23,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # 本番に「どのコミットを・いつ」上げたかを残すバージョンファイルを作る
+      # → https://abbeyroad.online/deploy.json を開けば本番の中身がすぐわかる
+      # （業界では /version.json や /health などで「今動いている版」を公開するのが定番）
+      # ・GITHUB_SHA        : デプロイしたコミットのID（40文字）
+      # ・GITHUB_RUN_NUMBER : このワークフローが何回目の実行か
+      # ・date -u +%FT%TZ   : 現在時刻を世界標準時(UTC)の ISO 8601 形式で出力
+      # このファイルは Actions 上で毎回作るだけなので Git には入らない
+      - name: バージョンファイル作成
+        run: |
+          printf '{"commit":"%s","run":%s,"deployed_at":"%s"}\n' \
+            "$GITHUB_SHA" "$GITHUB_RUN_NUMBER" "$(date -u +%FT%TZ)" > v3/deploy.json
+          cat v3/deploy.json
+
       # 前回との差分のみアップロード（状態ファイルがサーバーに作られる）
       # config.php は本番専用なので除外
       - name: FTP デプロイ

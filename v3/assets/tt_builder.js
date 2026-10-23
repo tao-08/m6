@@ -201,6 +201,10 @@
         if (typeof op.on !== 'boolean') return false;
         s.gap = op.on;
         return true;
+      case 'key': // バンドの Key（機材メモ）。空文字で消す
+        if (!s.bands[op.b] || !isStr(op.x, 60)) return false;
+        s.bands[op.b].key = op.x.trim();
+        return true;
       case 'grade':
         if (!isStr(op.k, 60) || op.k === '' || !(op.g === null || isInt(op.g, 1, 9))) return false;
         if (op.g === null) delete s.grades[op.k]; else s.grades[op.k] = op.g;
@@ -214,12 +218,9 @@
         s.days[op.day - 1].venue = op.x.trim();
         return true;
       case 'name':
-      case 'key': {
-        const b = s.bands[op.b];
-        if (!b || !isStr(op.x, op.op === 'name' ? 100 : 50) || (op.op === 'name' && op.x.trim() === '')) return false;
-        b[op.op] = op.x.trim();
+        if (!s.bands[op.b] || !isStr(op.x, 100) || op.x.trim() === '') return false;
+        s.bands[op.b].name = op.x.trim();
         return true;
-      }
       case 'songs':
       case 'cnt':
         if (!s.bands[op.b] || !(op.v === null || isInt(op.v, 0, 99))) return false;
@@ -613,6 +614,23 @@
     return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
   };
   const newId = () => 'x' + Math.random().toString(36).slice(2, 10);
+  /*
+   * Key（機材メモ）を、画像の key 列に出す短い表記にする（lib/tt_builder.php の tt_key_short と同じ動き。直すときは両方直すこと）
+   *   1つだけ … 名簿の書き方のまま（括弧は全角にそろえる）  「貸出(エレピ)」→「貸出（エレピ）」
+   *   2つ以上 … 「私/貸 + 楽器」にして「/」でつなぐ        「私物(シンセ), 貸出(エレピ)」→「私シンセ/貸エレピ」
+   *   「私物（楽器）」「貸出（楽器）」の形でないものは、そのまま残す（読み替えて意味を変えないため）
+   */
+  function keyShort(key) {
+    // split の正規表現: カンマ・読点・スラッシュ（前後の空白ごと）で区切る。filter(Boolean) で空の要素を捨てる
+    const items = String(key || '').trim().split(/\s*[,，、/／]\s*/).filter(Boolean);
+    // match の () で取り出した [1] = 私物/貸出などの頭、[2] = 括弧の中（楽器）。全角・半角どちらの括弧も受ける
+    const parsed = items.map((it) => {
+      const m = it.match(/^(私物|私|貸出し?|貸し?出し?|貸)\s*[（(]\s*(.+?)\s*[）)]$/);
+      return m ? { head: m[1], inst: m[2], raw: it } : { head: null, inst: null, raw: it };
+    });
+    if (parsed.length === 1) return parsed[0].head === null ? parsed[0].raw : `${parsed[0].head}（${parsed[0].inst}）`;
+    return parsed.map((p) => (p.head === null ? p.raw : [...p.head][0] + p.inst)).join('/');
+  }
 
   let toastEl = null;
   function toast(msg, action) {
@@ -685,6 +703,8 @@
         if (x != null && x.trim() !== '') commit({ op: 'title', x: x.trim().slice(0, 100) });
       }),
       range(state.dayCount).map((d) => el('a', { class: 'ttb-menu__item', href: `tt_builder?id=${boot.id}&csv=${d}` }, icon('download'), `CSV（${LABELS[d - 1]}）`)),
+      // 画像は <a> ではなくボタン: サーバーへ取りに行かず、ブラウザで描いて保存するため
+      range(state.dayCount).map((d) => item('image', `画像（${LABELS[d - 1]}）`, () => exportImage(d))),
       item('publish', '公開（ライブとして登録）', () => {
         if (pending.length || inflight) { toast('保存中です。少し待ってからもう一度'); return; }
         document.getElementById('ttb-publish').requestSubmit();
@@ -795,10 +815,170 @@
         td({ class: 'ttb-pv__b' }, field(b.name, (x) => x !== '' && commit({ op: 'name', b: r.id, x: x.slice(0, 100) }), { maxlength: 100, 'aria-label': 'バンド名' })),
         td({}, countField(b.songs, (n) => commit({ op: 'songs', b: r.id, v: n }), '曲数')),
         td({}, countField(b.cnt, (n) => commit({ op: 'cnt', b: r.id, v: n }), '人数')),
-        td({}, field(b.key, (x) => commit({ op: 'key', b: r.id, x: x.slice(0, 50) }), { maxlength: 50, 'aria-label': 'key' })));
+        td({}, field(b.key, (x) => commit({ op: 'key', b: r.id, x: x.slice(0, 60) }), { maxlength: 60, 'aria-label': 'key' })));
     });
     return el('div', { class: 'ttb-pv' }, tabs, bar,
       el('div', { class: 'ttb-pv__scroll card' }, el('table', { class: 'ttb-pv__table' }, el('tbody', {}, top, head, rows))));
+  }
+
+  /* ---------- 画像（PNG）の書き出し ----------
+   * 仕組み: <canvas>（ブラウザの中の「お絵かき用の白い紙」）に、表を線と文字で描いて PNG にする。
+   * なぜ PHP（サーバー）ではなくブラウザで描くのか？
+   *   ・サーバーで日本語を描くには「日本語フォント」が必要で、レンタルサーバーには入っていないことが多い
+   *   ・今画面に出ている state（保存前の最新の変更を含む）をそのまま使えるので、サーバーに送り直す必要がない
+   * 見た目は、運営が使っているタイムテーブル（Excel）の画像そっくりにしてある:
+   *   灰色の見出し行 / 「時間」は開始・終了を1つに結合した見出し / 太字のバンド名 / 右端に空欄の key 列
+   * 列: 時間（開始・終了）/ 持ち時間 / バンド名 / 曲数 / 人数 / key（名簿の Key 列。2つ以上は略称。keyShort を見る）
+   * 日付・会場は下書きに無い（取り込みのプレビューで入れる）ので載せない。
+   * 時刻の計算は renderOrder / tt_day_rows（PHP）と同じ: 集合時間から上の行の持ち時間を順に足す。
+   */
+  async function exportImage(d) {
+    const day = state.days[d - 1];
+    if (!day) return;
+
+    // --- 1. 見た目の設定（数字を変えれば画像の雰囲気が変わる。単位は論理ピクセル） ---
+    const SCALE = 2;                       // 2倍の細かさで描く（スマホで拡大しても文字がぼやけない）
+    const W = 1024;                        // 画像の横幅（実際の画像は W × SCALE）
+    const PAD = 20;                        // 画像のまわりの余白
+    const TITLE_H = 36;                    // 一番上のタイトル行（枠なし）の高さ
+    const HEAD_H = 28;                     // 見出し行の高さ
+    const ROW_H = 29;                      // 1行の高さ
+    const SIZE = 21;                       // 文字の大きさ（見出し・本文共通。タイトルだけ下で +2）
+    const HEAD_BG = '#808080';             // 見出し行の灰色
+    const LINE = '#4d4d4d';                // 罫線の色
+    // フォントの優先順: ① サイトが読み込んでいる Noto Sans JP（太字もある）→ ② assets/fonts の同じフォント（下で登録）→ ③ 端末のフォント
+    // 先に書いたものが使われ、その中に無い文字だけ次のフォントで描かれる（CSS の font-family と同じ考え方）
+    const FONT = '"Noto Sans JP", "ttb-noto", "Hiragino Sans", "Yu Gothic", "Meiryo", sans-serif';
+    // 列の幅の比率: 開始 / 終了 / 持ち時間 / バンド名 / 曲数 / 人数 / key（合計 10）
+    const UNITS = [1, 1, 1, 3, 1, 1, 2];
+    const TW = W - PAD * 2;                // 表の幅
+    const xs = [PAD];                      // 各列の左端の x 座標（最後は表の右端）。xs[i] が i 番目の列の左端
+    UNITS.forEach((u) => xs.push(xs[xs.length - 1] + (TW * u) / 10));
+
+    // --- 2. 描く行を作る（時刻を足し込む） ---
+    let cur = day.call || null;            // 今の時刻。集合時間が空なら null（時刻は空欄）
+    const rows = [];
+    if (day.call) rows.push({ band: false, start: day.call, end: '', min: '', name: '集合', songs: '', cnt: '' });
+    day.rows.forEach((r) => {
+      const start = cur;
+      const end = cur && r.min != null ? addMin(cur, r.min) : null;
+      if (end) cur = end;
+      const b = state.bands[r.id];         // バンドなら中身がある。休憩・テキスト行は undefined
+      rows.push({
+        band: !!b, start: start || '', end: r.min ? end || '' : '',
+        min: r.min != null ? String(r.min) : '', name: b ? b.name : r.x,
+        songs: b && b.songs != null ? String(b.songs) : '', cnt: b ? String(b.cnt) : '',
+        key: b ? keyShort(b.key) : '',     // Key（機材メモ）は、2つ以上のとき略称にして狭い列に収める
+      });
+    });
+    // 日付・会場: 公開済みなら登録した値（tt_builder.php が boot.meta に入れる）。無ければ空
+    // 公開前は、プレビューで入れた開催日・会場（state.days）を使う
+    const pub = (boot.meta || {})[d];
+    const m = day.date && /^(\d{4})-(\d{2})-(\d{2})$/.test(day.date) ? day.date.split('-').map(Number) : null;
+    const meta = pub || { date: m ? `${m[0]}/${m[1]}/${m[2]}` : '', venue: day.venue || '' };
+    const hasMeta = !!(meta.date || meta.venue);
+    const title = state.dayCount > 1 ? `${state.title}${LABELS[d - 1]}` : state.title;
+    const HEADS = ['時間', '持ち時間', 'バンド名', '曲数', '人数', 'key'];
+
+    // --- 3. フォントを読み込んでから描く（読み込み前に描くと、別のフォントで描かれてしまう） ---
+    // 1) assets/fonts のフォントを「ttb-noto」という名前で登録する（FontFace = JS からフォントを追加する部品）。1回だけ
+    // 2) document.fonts.load(フォント指定, 実際に描く文字): 「この文字を描くフォント」を確実に読み込ませる。
+    //    Google Fonts は文字の範囲ごとに分割して配るので、文字を渡さないと、まだ画面に出ていない文字の分が間に合わないことがある
+    try {
+      // ※ document.fonts.check は「その名前のフォントが無い」ときも true を返す仕様なので、登録済みかの判定には使えない
+      if (![...document.fonts].some((x) => x.family.replace(/"/g, '') === 'ttb-noto')) {
+        const f = new FontFace('ttb-noto', 'url(assets/fonts/NotoSansJP-Regular.ttf)');
+        document.fonts.add(await f.load());
+      }
+      const used = [title, meta.date, meta.venue, '会場', ...HEADS, ...rows.flatMap((r) => [r.name, r.start, r.end, r.min, r.songs, r.cnt, r.key])].join('');
+      await Promise.all(['400', '700'].map((w) => document.fonts.load(`${w} ${SIZE}px ${FONT}`, used)));
+    } catch { /* 読み込めなくても端末のフォントで描ける */ }
+
+    // --- 4. 紙（canvas）を用意する ---
+    const top = PAD + TITLE_H;             // 見出し行の上端
+    const bottom = top + HEAD_H + ROW_H * rows.length; // 表の下端
+    const H = bottom + PAD;
+    const canvas = document.createElement('canvas');
+    canvas.width = W * SCALE;              // canvas.width は「本当のピクセル数」
+    canvas.height = H * SCALE;
+    const g = canvas.getContext('2d');     // g = 絵を描くための「ペン」（2D コンテキスト）
+    g.scale(SCALE, SCALE);                 // 以降は論理ピクセル（W × H）のつもりで描ける
+
+    // 文字を描く部品。x1〜x2 の真ん中に描く。幅が足りないときはフォントを小さくして収める（長いバンド名の対策）
+    const text = (s, x1, x2, cy, { bold = false, size = SIZE } = {}) => {
+      if (!s) return;
+      const maxW = x2 - x1 - 10;
+      let px = size;
+      g.font = `${bold ? '700' : '400'} ${px}px ${FONT}`;
+      while (px > 10 && g.measureText(s).width > maxW) {   // measureText = 描いたときの幅を測る
+        px -= 1;
+        g.font = `${bold ? '700' : '400'} ${px}px ${FONT}`;
+      }
+      g.fillStyle = '#000';
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';           // y 座標を文字の縦の真ん中に合わせる
+      g.fillText(s, (x1 + x2) / 2, cy);
+    };
+    const line = (x1, y1, x2, y2) => { g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke(); };
+
+    // --- 5. 描く ---
+    g.fillStyle = '#fff';                  // 背景を白で塗る（塗らないと PNG の背景が透明になり、黒く見える場合がある）
+    g.fillRect(0, 0, W, H);
+
+    // タイトル（枠なし）。元の画像と同じく「バンド名」の列の真ん中に置く
+    // 日付・会場があるときは元の画像と同じ並び（左に日付 / 真ん中にタイトル / 右に「会場 〇〇」）。無いときはタイトルだけを広く使う
+    const cx = (xs[3] + xs[4]) / 2;
+    const half = hasMeta ? (xs[4] - xs[2]) / 2 : Math.min(cx - PAD, PAD + TW - cx);
+    text(title, cx - half, cx + half, PAD + TITLE_H / 2, { bold: true, size: SIZE + 2 });
+    if (hasMeta) {
+      text(meta.date, xs[0], xs[2], PAD + TITLE_H / 2);
+      if (meta.venue) {
+        text('会場', xs[4], xs[5], PAD + TITLE_H / 2, { bold: true });
+        text(meta.venue, xs[5], xs[7], PAD + TITLE_H / 2, { bold: true });
+      }
+    }
+
+    // 見出し行（灰色の背景 + 太字）。「時間」だけ開始・終了の2列を結合する。[見出し, 左の列番号, 右の列番号]
+    g.fillStyle = HEAD_BG;
+    g.fillRect(PAD, top, TW, HEAD_H);
+    [[0, 0, 2], [1, 2, 3], [2, 3, 4], [3, 4, 5], [4, 5, 6], [5, 6, 7]].forEach(([i, a, b]) =>
+      text(HEADS[i], xs[a], xs[b], top + HEAD_H / 2, { bold: HEADS[i] !== 'key' }));
+
+    // 本文の行
+    rows.forEach((r, i) => {
+      const mid = top + HEAD_H + ROW_H * i + ROW_H / 2;
+      // バンドの行は 開始 | 終了 に分ける。休憩などは終了があるときだけ分け、無いとき（集合・撤収）は1つのセルに結合して真ん中に出す
+      if (r.band || r.end) { text(r.start, xs[0], xs[1], mid); text(r.end, xs[1], xs[2], mid); } else { text(r.start, xs[0], xs[2], mid); }
+      text(r.min, xs[2], xs[3], mid);
+      text(r.name, xs[3], xs[4], mid, { bold: true });
+      text(r.songs, xs[4], xs[5], mid);
+      text(r.cnt, xs[5], xs[6], mid);
+      text(r.key, xs[6], xs[7], mid, { bold: true });
+    });
+
+    // 罫線: 外枠 → 見出しと各行の下の横線 → 縦線（開始|終了 の線だけ、分けた行にだけ引く）
+    g.strokeStyle = LINE;
+    g.lineWidth = 1;
+    g.strokeRect(PAD, top, TW, bottom - top);
+    for (let y = top + HEAD_H, i = 0; i <= rows.length; i++, y += ROW_H) line(PAD, y, PAD + TW, y);
+    for (let b = 2; b <= 6; b++) line(xs[b], top, xs[b], bottom);       // 持ち時間 / バンド名 / 曲数 / 人数 / key の境目は全部の行を通す
+    rows.forEach((r, i) => {
+      if (!(r.band || r.end)) return;
+      const y = top + HEAD_H + ROW_H * i;
+      line(xs[1], y, xs[1], y + ROW_H);
+    });
+
+    // --- 6. PNG にしてダウンロードさせる ---
+    // toBlob = canvas を画像ファイル（Blob = 中身がバイナリのデータのかたまり）に変換する
+    canvas.toBlob((blob) => {
+      if (!blob) { toast('画像を作れませんでした'); return; }
+      const url = URL.createObjectURL(blob);   // Blob を指す一時的な URL（このタブの中だけで使える）
+      const a = el('a', { href: url, download: `${state.title}${LABELS[d - 1]}.png` });
+      document.body.append(a);
+      a.click();                                // 見えないリンクをクリックしてダウンロードを始める（定番のやり方）
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000); // 一時 URL を片付ける（メモリの解放）
+    }, 'image/png');
   }
 
   /* ---------- 日程希望 ---------- */
@@ -1073,6 +1253,13 @@
         }), LABELS[d - 1]))) : null,
       el('label', { class: 'check' }, el('input', { type: 'checkbox', checked: b.pin, onchange: (e) => commit({ op: 'pin', b: id, on: e.target.checked }) }), icon('push_pin'), '自動配置で動かさない'),
       el('button', { type: 'button', class: 'btn btn--ghost btn--sm', onclick: () => { closePop(); commit({ op: 'hide', b: id, on: true }); } }, icon('visibility_off'), '非表示'),
+      // Key（機材メモ）の手直し。名簿から取り込んだ値が入っている。画像・CSV の key 列に出る（例: 私物(シンセ), 貸出(エレピ)）
+      el('label', { class: 'check', style: 'display:flex;gap:6px;align-items:center' }, icon('piano'),
+        el('input', {
+          type: 'text', value: b.key || '', maxlength: 60, placeholder: 'key（例: 貸出(シンセ)）', 'aria-label': 'Key',
+          style: 'flex:1;min-width:0',
+          onchange: (e) => commit({ op: 'key', b: id, x: e.target.value.slice(0, 60) }),
+        })),
       hist.length ? el('ul', { class: 'ttb-bandmenu__hist small muted' }, hist) : null);
   }
 
