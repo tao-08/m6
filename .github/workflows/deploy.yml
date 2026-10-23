@@ -37,7 +37,7 @@ jobs:
           cat v3/deploy.json
 
       # 前回との差分のみアップロード（状態ファイルがサーバーに作られる）
-      # config.php は本番専用なので除外
+      # config.php は本番専用なので除外。migrations/ と schema.sql は DB に手で流すもので、公開サーバーに置かない
       - name: FTP デプロイ
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
@@ -56,3 +56,5 @@ jobs:
             **/*.md
             config.php
             **/config.php
+            migrations/**
+            schema.sql
