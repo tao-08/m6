@@ -748,6 +748,7 @@
         type: 'number', class: 'ttb-min', min: 0, max: 600, inputmode: 'numeric', value: bulk, 'aria-label': 'バンドの持ち時間（分）',
         onchange: (e) => { const n = parseInt(e.target.value, 10); if (n >= 0 && n <= 600) commit({ op: 'dur', v: n }); else e.target.value = bulk; },
       }) : null,
+      bulk !== null ? el('span', { class: 'small muted', text: '分' }) : null,
       el('button', { type: 'button', class: 'btn btn--ghost btn--sm', onclick: () => exportImage(d) }, icon('download'), '出力'));
 
     const td = (attrs, ...kids) => el('td', attrs, ...kids);
@@ -1117,7 +1118,7 @@
           if (val === '') return;
           setAllMin(Math.max(0, Math.min(600, parseInt(val, 10) || 0)));
         },
-      }))) : null;
+      }), '分')) : null;
 
     const ids = day.rows.map((r) => r.id);
     const c = { ...conflicts(ids), appear: appearances() };
