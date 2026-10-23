@@ -708,9 +708,9 @@
         const x = prompt('ライブ名', state.title);
         if (x != null && x.trim() !== '') commit({ op: 'title', x: x.trim().slice(0, 100) });
       }),
-      range(state.dayCount).map((d) => el('a', { class: 'ttb-menu__item', href: `tt_builder?id=${boot.id}&csv=${d}` }, icon('download'), `CSV（${LABELS[d - 1]}）`)),
+      range(state.dayCount).map((d) => el('a', { class: 'ttb-menu__item', href: `tt_builder?id=${boot.id}&csv=${d}` }, icon('download'), `CSV出力（${LABELS[d - 1]}）`)),
       // 画像は <a> ではなくボタン: サーバーへ取りに行かず、ブラウザで描いて保存するため
-      range(state.dayCount).map((d) => item('image', `画像（${LABELS[d - 1]}）`, () => exportImage(d))),
+      range(state.dayCount).map((d) => item('download', `PNG出力（${LABELS[d - 1]}）`, () => exportImage(d))),
       item('publish', '公開（ライブとして登録）', () => {
         if (pending.length || inflight) { toast('保存中です。少し待ってからもう一度'); return; }
         document.getElementById('ttb-publish').requestSubmit();
@@ -748,7 +748,7 @@
         type: 'number', class: 'ttb-min', min: 0, max: 600, inputmode: 'numeric', value: bulk, 'aria-label': 'バンドの持ち時間（分）',
         onchange: (e) => { const n = parseInt(e.target.value, 10); if (n >= 0 && n <= 600) commit({ op: 'dur', v: n }); else e.target.value = bulk; },
       }) : null,
-      el('button', { type: 'button', class: 'btn btn--ghost btn--sm', onclick: () => exportImage(d) }, icon('image'), '画像'));
+      el('button', { type: 'button', class: 'btn btn--ghost btn--sm', onclick: () => exportImage(d) }, icon('download'), '出力'));
 
     const td = (attrs, ...kids) => el('td', attrs, ...kids);
     // セルの入力欄。変更したら保存。保存できない値（空のバンド名など）は元に戻す
