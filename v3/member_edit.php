@@ -1,7 +1,7 @@
 <?php
 /**
  * =====================================================================
- *  member_edit.php — メンバーのプロフィール（名前・ふりがな・入部年度・学部・係・音楽アプリ・退会済み）を更新する
+ *  member_edit.php — メンバーのプロフィール（名前・ふりがな・メッセージ・入部年度・学部・係・音楽アプリ・退会済み）を更新する
  * =====================================================================
  *  送信元は2つ。画面は持たない（処理して戻るだけ）。
  *    ・account.php の「メンバープロフィール」（自分のプロフィール。return=account が付いてくる）
@@ -38,6 +38,8 @@ if (!is_admin() && $user['member_id'] !== $memberId) {
 
 $kana = trim((string)($_POST['name_kana'] ?? ''));
 $name = trim((string)($_POST['name'] ?? ''));
+// プロフィールメッセージ: 改行は許可。\r\n を \n に揃え、空行が続くときは1つにまとめる
+$bio = trim(preg_replace("/\n{3,}/", "\n\n", str_replace("\r\n", "\n", (string)($_POST['bio'] ?? ''))));
 // 入部年度は管理者だけが決められる。年度で入れる掲示板の同期スレが決まるので、
 //   本人が書き換えて別の年度のスレに入れないよう、管理者以外が送ってきても無視する（null = 変えない）
 $entry = is_admin() ? trim((string)($_POST['entry_year'] ?? '')) : null;
@@ -56,6 +58,9 @@ if ($name === '' || mb_strlen($name) > 50) {
 }
 if (mb_strlen($kana) > 50) {
     $errors[] = 'ふりがなは50文字以内にしてください';
+}
+if (mb_strlen($bio) > 100) {
+    $errors[] = 'メッセージは100文字以内にしてください';
 }
 if ($entry !== null && $entry !== '' && (!ctype_digit($entry) || (int)$entry < 1950 || (int)$entry > 2100)) {
     $errors[] = '入部年度は西暦4桁で入力してください';
@@ -89,8 +94,8 @@ if ($errors) {
 $pdo->beginTransaction();
 try {
     // 空欄は NULL（「分からない」）で保存する
-    $pdo->prepare('UPDATE member SET name = ?, name_kana = ?, faculty = ?, music_app = ? WHERE member_id = ?')
-        ->execute([$name, $kana !== '' ? $kana : null,
+    $pdo->prepare('UPDATE member SET name = ?, name_kana = ?, bio = ?, faculty = ?, music_app = ? WHERE member_id = ?')
+        ->execute([$name, $kana !== '' ? $kana : null, $bio !== '' ? $bio : null,
             $faculty !== '' ? $faculty : null, $musicApp !== '' ? $musicApp : null, $memberId]);
     if ($entry !== null) {
         $pdo->prepare('UPDATE member SET entry_year = ? WHERE member_id = ?')->execute([$entry === '' ? null : (int)$entry, $memberId]);

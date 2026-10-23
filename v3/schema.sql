@@ -49,6 +49,7 @@ CREATE TABLE member (
     member_id  INT UNSIGNED      NOT NULL AUTO_INCREMENT,
     name       VARCHAR(50)       NOT NULL,             -- 表示名（空白なしで統一して保存）
     name_kana  VARCHAR(50)       NULL,                 -- 不明なら NULL（'' で代用しない）
+    bio        VARCHAR(100)      NULL,                 -- プロフィールメッセージ（改行可）。書いていなければ NULL
     entry_year SMALLINT UNSIGNED NULL,                 -- 入部年度
     faculty    VARCHAR(20)       NULL,                 -- 学部（FACULTIES のどれか）。NULL = 選んでいない
     music_app  VARCHAR(20) CHARACTER SET ascii NULL,  -- 使っている音楽アプリ（マイアルバムのリンクをこれで開く）。NULL = 選んでいない

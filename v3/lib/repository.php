@@ -1798,7 +1798,7 @@ function merge_members(PDO $pdo, int $fromId, int $toId): void
 
     // COALESCE(a, b): a が NULL なら b を使う
     $pdo->prepare('UPDATE member t JOIN member f ON f.member_id = ?
-        SET t.name_kana = COALESCE(t.name_kana, f.name_kana), t.entry_year = COALESCE(t.entry_year, f.entry_year),
+        SET t.name_kana = COALESCE(t.name_kana, f.name_kana), t.bio = COALESCE(t.bio, f.bio), t.entry_year = COALESCE(t.entry_year, f.entry_year),
             t.music_app = COALESCE(t.music_app, f.music_app), t.faculty = COALESCE(t.faculty, f.faculty)
         WHERE t.member_id = ?')->execute([$fromId, $toId]);
     // 係も統合先へ（両方に同じ係があれば主キー重複を INSERT IGNORE で飛ばす。統合元の行は member 削除の CASCADE で消える）

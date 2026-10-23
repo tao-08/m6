@@ -175,6 +175,7 @@ h3 { font-size: 16px; }
 .muted { color: var(--muted); }
 .meta-link { color: inherit; text-decoration: underline dotted; text-underline-offset: 3px; }
 .meta-link:hover { color: var(--accent); text-decoration-style: solid; }
+.member-bio { margin: .5rem 0; white-space: pre-line; overflow-wrap: anywhere; }
 .small { font-size: 13px; }
 .strong { font-weight: 700; }
 .center { text-align: center; }
