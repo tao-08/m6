@@ -29,9 +29,10 @@
 
 ## デプロイ（本番反映）
 - 「デプロイして」と言われたら GitHub Actions の Deploy ワークフロー（.github/workflows/deploy.yml）を gh で起動する
-  - 必ずドライランを先に実行: `gh workflow run deploy.yml --ref main -f dry_run=true`
-  - 結果確認: `gh run watch <run-id> --exit-status`、失敗理由は jobs / annotations API で確認（ログ本体はプロキシで取れない）
-  - ドライランが成功し、ユーザーが「本番OK」と言ったら `-f dry_run=false` で本番実行
+  - 起動〜完了待ち〜結果表示まで1コマンド（約20秒）: `powershell -NoProfile -File scripts/deploy.ps1`
+  - 必ずドライラン（上のコマンド）を先に実行。失敗理由は jobs / annotations API で確認（ログ本体はプロキシで取れない）
+  - ドライランが成功し、ユーザーが「本番OK」と言ったら `-Prod` を付けて本番実行: `powershell -NoProfile -File scripts/deploy.ps1 -Prod`
+  - gh は winget で導入済み。PATH に無いときはスクリプトが自動で読み直す
 - 本番に上がるのは main ブランチの v3/ だけ。作業ブランチの変更は main にマージしてからデプロイする
 - config.php は本番サーバー専用。デプロイ対象から除外されている（絶対に上書きしない）
 - FTP の接続情報は GitHub Secrets（FTP_SERVER / FTP_USER / FTP_PASSWORD / FTP_DIR、任意で FTP_PROTOCOL / FTP_PORT）。Claude は値を見ない・入力しない
