@@ -29,9 +29,9 @@
 
 ## デプロイ（本番反映）
 - 「デプロイして」と言われたら GitHub Actions の Deploy ワークフロー（.github/workflows/deploy.yml）を gh で起動する
-  - 起動〜完了待ち〜結果表示まで1コマンド（約20秒）: `powershell -NoProfile -File scripts/deploy.ps1`
-  - 必ずドライラン（上のコマンド）を先に実行。失敗理由は jobs / annotations API で確認（ログ本体はプロキシで取れない）
-  - ドライランが成功し、ユーザーが「本番OK」と言ったら `-Prod` を付けて本番実行: `powershell -NoProfile -File scripts/deploy.ps1 -Prod`
+  - ドライランは省略する（ユーザー指示）。「デプロイして」で直接本番実行: `powershell -NoProfile -File scripts/deploy.ps1 -Prod`（起動〜完了待ち〜結果表示まで約20秒）
+  - ドライランが必要なときだけ `-Prod` なしで実行。失敗理由は jobs / annotations API で確認（ログ本体はプロキシで取れない）
+  - 未コミットの変更があれば、先にコミットして main に push してから実行する
   - gh は winget で導入済み。PATH に無いときはスクリプトが自動で読み直す
 - 本番に上がるのは main ブランチの v3/ だけ。作業ブランチの変更は main にマージしてからデプロイする
 - config.php は本番サーバー専用。デプロイ対象から除外されている（絶対に上書きしない）
