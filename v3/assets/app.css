@@ -518,6 +518,36 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .slot--mine .slot__time .slot__no { color: var(--accent); }
 .slot--headliner .slot__body { box-shadow: inset 4px 0 0 var(--headliner), var(--shadow); }
 
+/* 縮小（live.php の [data-timeline-compact]）: 左の順番・時刻はそのまま、カードの中はバンド名だけ
+   ボタンは画面の右下に浮かせる（左下は戻るボタン .back-fabs）。スマホは下のナビの上
+   開け閉めの高さのアニメーションは JS（setupTimelineCompact）。ここは「縮小したあとの形」だけ */
+.compact-fab { position: fixed; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); z-index: 26; display: grid; place-items: center; width: 44px; height: 44px; padding: 0;
+  border-radius: 50%; border: 1px solid var(--border); background: var(--surface); color: var(--text); box-shadow: var(--shadow); cursor: pointer;
+  transition: transform .12s ease, color .15s, border-color .15s; }
+.compact-fab, .compact-btn { width: 40px; height: 40px; }
+.compact-fab .icon, .compact-btn .icon { font-size: 26px; }
+.compact-fab:hover, .compact-btn:hover { color: var(--accent); border-color: var(--accent); }
+.compact-fab:active, .compact-btn:active { transform: scale(.92); }
+.compact-fab[aria-pressed="true"], .compact-btn[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
+/* PC: 日程タブの横に置くボタン（タブと一緒に上へ貼り付く）。スマホではこのボタンを隠して、右下に浮かせたほうを出す */
+.day-bar { position: sticky; top: 70px; z-index: 5; display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+.day-bar .tabs { position: static; margin: 0; }
+.compact-btn { display: grid; place-items: center; flex: none; padding: 0; border-radius: 50%; border: 1px solid var(--border); background: var(--surface); color: var(--text); box-shadow: var(--shadow); cursor: pointer;
+  transition: transform .12s ease, color .15s, border-color .15s; }
+.compact-fab { display: none; }
+@media (max-width: 760px) {
+  .compact-btn { display: none; }
+  .compact-fab { display: grid; right: 12px; bottom: calc(76px + env(safe-area-inset-bottom)); }
+  .day-bar:not(:has(.tabs)) { display: none; }
+}
+.timeline--compact .slot:not(.slot--break) .slot__body { display: flex; align-items: center; padding-block: 8px; }
+.timeline--compact .slot__head { flex: 1; min-width: 0; }
+.timeline--compact .slot__title > :not(.slot__name),
+.timeline--compact .slot__like,
+.timeline--compact .lineup,
+.timeline--compact .slot__meta,
+.timeline--compact .slot__body > p.muted { display: none; }
+
 .lineup { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px 16px; }
 .lineup li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 /* 楽器ラベル。--part-c に楽器の色を入れて、文字色と薄い背景色の両方に使う */
@@ -2363,7 +2393,7 @@ button.ttb-m { cursor: pointer; text-decoration: underline dotted; }
 
 /* 日程希望 */
 .ttb-avail__table { padding: 4px 8px; margin-bottom: 12px; }
-.ttb-avail__row { display: grid; grid-template-columns: 1fr repeat(var(--dc), 52px); align-items: center; gap: 4px; padding: 4px 0;
+.ttb-avail__row { display: grid; grid-template-columns: 1fr repeat(var(--dc), 52px) 32px; align-items: center; gap: 4px; padding: 4px 0;
   border-bottom: 1px solid var(--border); }
 .ttb-avail__row:last-child { border-bottom: 0; }
 .ttb-avail__headrow { position: sticky; top: 0; z-index: 2; background: var(--surface); }
@@ -2583,3 +2613,28 @@ button.ttb-m { cursor: pointer; text-decoration: underline dotted; }
 .ttb-row.is-dragging { transform-origin: center; transition: box-shadow .15s ease, opacity .15s ease; }
 .ttb.is-tswitch .ttb-time, .ttb.is-tswitch .ttb-days { animation: ttb-in .18s ease-out backwards; --ttb-dir: 0; }
 @media (prefers-reduced-motion: reduce) { .ttb.is-tswitch .ttb-time, .ttb.is-tswitch .ttb-days { animation: none; } }
+/* タイムテーブル作成: プレビュー（完成形の表と同じ形。セルがそのまま入力欄） */
+.ttb-pv__scroll { padding: 0; overflow-x: auto; }
+.ttb-pv__table { width: 100%; min-width: 620px; border-collapse: collapse; font-size: 13px; text-align: center; }
+.ttb-pv__table td, .ttb-pv__table th { padding: 0; border: 1px solid var(--border); height: 30px; white-space: nowrap; }
+.ttb-pv__table td.mono { padding: 0 6px; font-variant-numeric: tabular-nums; }
+.ttb-pv__top td { border: 0; font-weight: 800; }
+.ttb-pv__head th { background: color-mix(in srgb, var(--text) 22%, var(--surface)); color: var(--text); font-weight: 800; }
+.ttb-pv__b { font-weight: 700; }
+.ttb-pv__n { width: 52px; }
+.ttb-pv__title { white-space: nowrap; }
+.ttb-pv__title .ttb-pv__in { display: inline-block; vertical-align: middle; width: auto; field-sizing: content; min-width: 4em; text-align: right; }
+.ttb-pv__title span { vertical-align: middle; }
+.ttb-pv__table td { vertical-align: middle; }
+.ttb-pv__in { width: 100%; box-sizing: border-box; padding: 4px 6px; border: 1px solid transparent; border-radius: 4px;
+  background: transparent; color: var(--text); font: inherit; text-align: center; }
+.ttb-pv__in:hover { background: var(--surface-2); }
+.ttb-pv__in:focus { outline: none; border-color: var(--accent); background: var(--surface); }
+.ttb-pv__num { width: 56px; -moz-appearance: textfield; }
+.ttb-pv__num::-webkit-inner-spin-button, .ttb-pv__num::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.ttb-pv__table input[type=date] { min-width: 130px; }
+.ttb-hidden { padding: 8px; }
+.ttb-hidden p { margin: 0 0 4px; }
+.ttb-hidden__row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 2px 0; font-size: 14px; color: var(--muted); }
+.ttb-hidden__name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-decoration: line-through; }
+.ttb-pv__top select.ttb-pv__in { min-width: 12em; text-align-last: center; }

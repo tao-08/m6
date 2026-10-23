@@ -2,8 +2,9 @@
  * =====================================================================
  *  tt_builder.js — タイムテーブル作成ツール（tt_builder.php?id=…）の画面
  * =====================================================================
- *  画面は2つ（URL の #days で切り替え。見ている画面は人ごと）
- *    日程希望 … バンドごとに出られる日をまとめて選ぶ
+ *  画面は3つ（URL の #days / #preview で切り替え。見ている画面は人ごと）
+ *    出演日     … バンドごとに出られる日をまとめて選ぶ
+ *    プレビュー … 書き出す CSV と同じ表。日付・会場・ライブ名・持ち時間・バンド名・key を編集
  *    出順     … ≡ ドラッグで並べ替え・日程の移動・自動配置・持ち時間と時刻
  *
  *  保存の仕組み（保存ボタンは無い）
@@ -42,7 +43,7 @@
   let focus = null;              // 自分が操作中の行
   let dragging = false;
   let needRender = false;
-  let view = location.hash === '#days' ? 'days' : 'order';
+  let view = location.hash === '#days' ? 'days' : location.hash === '#preview' ? 'preview' : 'order';
   let curDay = 1;
   let enter = true; // 画面・日の切り替え直後だけ登場アニメーション（編集のたびの再描画では動かさない）
   let timeMode = false;
@@ -147,6 +148,7 @@
           const rows = [];
           for (const r of day.rows) {
             if (!r || typeof r.id !== 'string' || seen.has(r.id) || !(r.min == null || isInt(r.min, 0, 600))) return false;
+            if (s.bands[r.id]?.off) continue; // 非表示のバンドの行は無かったことにする
             seen.add(r.id);
             if (s.bands[r.id]) {
               if (!s.bands[r.id].avail.includes(d + 1)) return false;
@@ -158,7 +160,7 @@
           }
           next[d] = { call: day.call, rows };
         }
-        if (!Object.keys(s.bands).every((id) => seen.has(id))) return false;
+        if (!Object.keys(s.bands).every((id) => s.bands[id].off || seen.has(id))) return false;
         next.forEach((day, d) => { s.days[d].call = day.call; s.days[d].rows = day.rows; });
         return true;
       }
@@ -168,6 +170,23 @@
         if (at < 0 || !isStr(op.n, 60) || op.n.trim() === '' || typeof op.nk !== 'string' || op.nk === ''
           || (op.nk !== op.k && b.members.some((m) => m.k === op.nk))) return false;
         b.members[at] = { n: op.n.trim(), k: op.nk, p: b.members[at].p ?? '' };
+        return true;
+      }
+      case 'hide': {
+        const b = s.bands[op.b];
+        if (!b || typeof op.on !== 'boolean') return false;
+        const at = findRow(s, op.b);
+        if (op.on) {
+          if (at) s.days[at[0]].rows.splice(at[1], 1);
+          b.off = true;
+        } else {
+          const day = Math.min(...(b.avail.length ? b.avail : [1]));
+          if (!at) {
+            if (day > dc || s.days[day - 1].rows.length >= MAX_ROWS) return false;
+            s.days[day - 1].rows.push({ id: op.b, min: null });
+          }
+          delete b.off;
+        }
         return true;
       }
       case 'pin':
@@ -185,6 +204,34 @@
       case 'grade':
         if (!isStr(op.k, 60) || op.k === '' || !(op.g === null || isInt(op.g, 1, 9))) return false;
         if (op.g === null) delete s.grades[op.k]; else s.grades[op.k] = op.g;
+        return true;
+      case 'date':
+        if (!isInt(op.day, 1, 3) || typeof op.x !== 'string' || (op.x !== '' && !validDate(op.x))) return false;
+        s.days[op.day - 1].date = op.x;
+        return true;
+      case 'venue':
+        if (!isInt(op.day, 1, 3) || !isStr(op.x, 100)) return false;
+        s.days[op.day - 1].venue = op.x.trim();
+        return true;
+      case 'name':
+      case 'key': {
+        const b = s.bands[op.b];
+        if (!b || !isStr(op.x, op.op === 'name' ? 100 : 50) || (op.op === 'name' && op.x.trim() === '')) return false;
+        b[op.op] = op.x.trim();
+        return true;
+      }
+      case 'songs':
+      case 'cnt':
+        if (!s.bands[op.b] || !(op.v === null || isInt(op.v, 0, 99))) return false;
+        s.bands[op.b][op.op] = op.v;
+        return true;
+      case 'dur':
+        if (!(op.v === null || isInt(op.v, 0, 600))) return false;
+        s.dur = op.v;
+        return true;
+      case 'bdur':
+        if (!s.bands[op.b] || !(op.v === null || isInt(op.v, 0, 600))) return false;
+        s.bands[op.b].dur = op.v;
         return true;
       case 'min': {
         const r = rowOf(s, op.id);
@@ -220,6 +267,13 @@
     }
     return false;
   }
+  /** 'YYYY-MM-DD' の実在する日付か（lib/tt_builder.php の tt_valid_date と同じ） */
+  function validDate(x) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(x);
+    if (!m) return false;
+    const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+    return d.getUTCMonth() === +m[2] - 1 && d.getUTCDate() === +m[3];
+  }
   const range = (n) => Array.from({ length: n }, (_, i) => i + 1);
   const snapshot = () => clone(state.days.map((d) => ({ call: d.call, rows: d.rows })));
   /** 元に戻す（from = undoStack）/ やり直す（from = redoStack） */
@@ -240,6 +294,7 @@
       if (undoStack.length > 50) undoStack.shift();
       redoStack = [];
     }
+    if (op.op === 'hide') { undoStack = []; redoStack = []; } // 行の増減を伴うので、これより前の「元に戻す」は使えない
     pending.push(op);
     status = 'saving';
     render();
@@ -313,7 +368,7 @@
   let gradeColor = {}; // 学年 => CSS の色。描画のたびに作り直す
   /** このライブにいる学年を下から並べ、数に合わせて離れた色を選ぶ（2つなら両端…）。5つ以上は4色の間を混ぜる */
   function gradeColorMap() {
-    const gs = [...new Set(Object.values(state.bands).flatMap((b) => b.members.map((m) => gradeOf(m.k))))]
+    const gs = [...new Set(Object.values(state.bands).filter((b) => !b.off).flatMap((b) => b.members.map((m) => gradeOf(m.k))))]
       .filter((g) => g != null).sort((a, c) => a - c);
     const n = gs.length;
     const pick = [[3], [0, 3], [0, 2, 3], [0, 1, 2, 3]][n - 1];
@@ -431,6 +486,7 @@
     state.days.slice(0, dc).forEach((day, d) => day.rows.forEach((r) => { current[r.id] = d; }));
     const free = [];
     Object.entries(state.bands).forEach(([id, b]) => {
+      if (b.off) return;
       if (b.pin) addTo(id, current[id]);
       else if (b.avail.length === 1) addTo(id, b.avail[0] - 1);
       else free.push(id);
@@ -598,7 +654,7 @@
     document.title = `${state.title} — タイムテーブル作成`;
     root.classList.toggle('is-enter', enter);
     enter = false;
-    root.replaceChildren(renderHead(), view === 'days' ? renderDays() : renderOrder());
+    root.replaceChildren(renderHead(), view === 'days' ? renderDays() : view === 'preview' ? renderPreview() : renderOrder());
   }
 
   function statusIcon() {
@@ -621,9 +677,9 @@
   function mainMenu() {
     const item = (ic, label, onclick, attrs = {}) => el('button', { type: 'button', class: 'ttb-menu__item', onclick: () => { closePop(); onclick(); }, ...attrs }, icon(ic), label);
     return el('div', { class: 'ttb-menu' },
-      view === 'order'
-        ? item('event_available', '出演日', () => { enter = true; root.style.setProperty('--ttb-dir', 0); view = 'days'; history.replaceState(null, '', '#days'); render(); })
-        : item('format_list_numbered', '出順', () => { enter = true; root.style.setProperty('--ttb-dir', 0); view = 'order'; history.replaceState(null, '', location.pathname + location.search); render(); }),
+      view !== 'order' ? item('format_list_numbered', '出演順', () => goView('order')) : null,
+      view !== 'days' ? item('event_available', '出演日', () => goView('days')) : null,
+      view !== 'preview' ? item('table_view', 'プレビュー', () => goView('preview')) : null,
       item('edit', 'ライブ名を変更', () => {
         const x = prompt('ライブ名', state.title);
         if (x != null && x.trim() !== '') commit({ op: 'title', x: x.trim().slice(0, 100) });
@@ -634,6 +690,115 @@
         document.getElementById('ttb-publish').requestSubmit();
       }),
       item('delete', '削除', () => document.getElementById('ttb-delete').requestSubmit(), { 'data-danger': true }));
+  }
+
+  function goView(v) {
+    enter = true;
+    root.style.setProperty('--ttb-dir', 0);
+    view = v;
+    history.replaceState(null, '', v === 'order' ? location.pathname + location.search : `#${v}`);
+    render();
+    window.scrollTo(0, 0);
+  }
+
+  /* ---------- プレビュー（書き出す CSV・完成形の表と同じ形。日付・会場・ライブ名・持ち時間・バンド名・key をその場で編集） ---------- */
+  function renderPreview() {
+    const dc = state.dayCount;
+    const d = curDay;
+    const day = state.days[d - 1];
+    const tabs = dc > 1 ? el('div', { class: 'ttb-tabs', role: 'tablist' }, range(dc).map((x) => el('button', {
+      type: 'button', role: 'tab', class: 'ttb-tab' + (x === d ? ' is-on' : ''), 'aria-selected': String(x === d),
+      onclick: () => { if (x === d) return; root.style.setProperty('--ttb-dir', x > d ? 1 : -1); curDay = x; enter = true; render(); },
+    }, LABELS[x - 1]))) : null;
+
+    // 持ち時間の出し方: 1枠の時間そのまま / バンドだけ表記上の値を一括（休憩・テキストは1枠の時間のまま）
+    const bulk = state.dur ?? null;
+    const bar = el('div', { class: 'ttb-bar' },
+      el('span', { class: 'small muted', text: '持ち時間の編集' }),
+      el('div', { class: 'ttb-seg', role: 'group', 'aria-label': '持ち時間の編集' },
+        el('button', { type: 'button', class: bulk === null ? 'is-on' : '', 'aria-pressed': String(bulk === null), text: '1枠ずつ', onclick: () => { if (bulk !== null) commit({ op: 'dur', v: null }); } }),
+        el('button', { type: 'button', class: bulk !== null ? 'is-on' : '', 'aria-pressed': String(bulk !== null), text: '一括', onclick: () => { if (bulk === null) commit({ op: 'dur', v: commonMin() ?? 15 }); } })),
+      bulk !== null ? el('input', {
+        type: 'number', class: 'ttb-min', min: 0, max: 600, inputmode: 'numeric', value: bulk, 'aria-label': 'バンドの持ち時間（分）',
+        onchange: (e) => { const n = parseInt(e.target.value, 10); if (n >= 0 && n <= 600) commit({ op: 'dur', v: n }); else e.target.value = bulk; },
+      }) : null,
+      el('a', { class: 'btn btn--ghost btn--sm', href: `tt_builder?id=${boot.id}&csv=${d}` }, icon('download'), 'CSV'));
+
+    const td = (attrs, ...kids) => el('td', attrs, ...kids);
+    // セルの入力欄。変更したら保存。保存できない値（空のバンド名など）は元に戻す
+    const field = (value, save, attrs = {}) => el('input', {
+      class: 'ttb-pv__in', value: value ?? '', ...attrs,
+      onchange: (e) => { if (!save(e.target.value.trim())) e.target.value = value ?? ''; },
+    });
+    const minField = (value, save) => field(value, (x) => {
+      if (x === '') return save(null);
+      const n = parseInt(x, 10);
+      return n >= 0 && n <= 600 && save(n);
+    }, { type: 'number', min: 0, max: 600, inputmode: 'numeric', class: 'ttb-pv__in ttb-pv__num', 'aria-label': '持ち時間（分）' });
+
+    // 会場はプルダウン（登録済みの会場。下書きに別の名前が入っていればそれも選べるように足す）
+    const venueSelect = (cur, save) => {
+      const names = [...(boot.venues || [])];
+      if (cur && !names.includes(cur)) names.unshift(cur);
+      return el('select', {
+        class: 'ttb-pv__in', 'aria-label': '会場',
+        onchange: (e) => {
+          if (e.target.value !== '＋') { save(e.target.value); return; }
+          // 新しい会場: 名前を入れると下書きに入り、公開（取り込み）のとき会場として登録される
+          const x = prompt('新しい会場名', '');
+          if (x != null && x.trim() !== '') save(x.trim().slice(0, 50)); else e.target.value = cur;
+        },
+      },
+        el('option', { value: '', text: '' }),
+        names.map((n) => el('option', { value: n, text: n, selected: n === cur })),
+        el('option', { value: '＋', text: '＋ 新しい会場' }));
+    };
+    const countField = (value, save, label) => field(value, (x) => {
+      if (x === '') return save(null);
+      const n = parseInt(x, 10);
+      return n >= 0 && n <= 99 && save(n);
+    }, { type: 'number', min: 0, max: 99, inputmode: 'numeric', class: 'ttb-pv__in ttb-pv__num', 'aria-label': label });
+    const top = el('tr', { class: 'ttb-pv__top' },
+      td({ colspan: 2 }, field(day.date, (x) => commit({ op: 'date', day: d, x }), { type: 'date', 'aria-label': '開催日' })),
+      td({}),
+      td({ class: 'ttb-pv__title' }, field(state.title, (x) => x !== '' && commit({ op: 'title', x: x.slice(0, 100) }), { maxlength: 100, 'aria-label': 'ライブ名' }), el('span', { text: LABELS[d - 1] })),
+      td({ class: 'ttb-pv__b', text: '会場' }),
+      td({ colspan: 2 }, venueSelect(day.venue || '', (x) => commit({ op: 'venue', day: d, x }))));
+    const head = el('tr', { class: 'ttb-pv__head' }, ['時間', '持ち時間', 'バンド名', '曲数', '人数', 'key'].map((t, i) => el('th', { colspan: i === 0 ? 2 : null, text: t })));
+
+    let cur = day.call || null;
+    const rows = day.rows.map((r, i) => {
+      const b = state.bands[r.id];
+      const start = cur;
+      if (cur && r.min != null) cur = addMin(cur, r.min);
+      const edge = i === 0 || i === day.rows.length - 1;
+      if (!b && edge) {
+        // 先頭（集合など）と末尾（撤収など）の休憩・テキストは開始時刻だけ。途中のものはバンドと同じく終了時刻も出す
+        return el('tr', { class: 'ttb-pv__extra' },
+          td({ colspan: 2, class: 'mono', text: start || '' }),
+          td({}, minField(r.min, (n) => commit({ op: 'min', id: r.id, min: n }))),
+          td({ class: 'ttb-pv__b' }, field(r.x, (x) => commit({ op: 'text', id: r.id, x: x.slice(0, 50) }), { maxlength: 50, 'aria-label': '内容' })),
+          td({}), td({}), td({}));
+      }
+      if (!b) {
+        return el('tr', { class: 'ttb-pv__extra' },
+          td({ class: 'mono', text: start || '' }), td({ class: 'mono', text: start && r.min != null ? cur : '' }),
+          td({}, minField(r.min, (n) => commit({ op: 'min', id: r.id, min: n }))),
+          td({ class: 'ttb-pv__b' }, field(r.x, (x) => commit({ op: 'text', id: r.id, x: x.slice(0, 50) }), { maxlength: 50, 'aria-label': '内容' })),
+          td({}), td({}), td({}));
+      }
+      return el('tr', {},
+        td({ class: 'mono', text: start || '' }), td({ class: 'mono', text: start && r.min != null ? cur : '' }),
+        td({}, bulk === null
+          ? minField(r.min, (n) => commit({ op: 'min', id: r.id, min: n }))
+          : minField(b.dur ?? bulk, (n) => commit({ op: 'bdur', b: r.id, v: n === bulk ? null : n }))),
+        td({ class: 'ttb-pv__b' }, field(b.name, (x) => x !== '' && commit({ op: 'name', b: r.id, x: x.slice(0, 100) }), { maxlength: 100, 'aria-label': 'バンド名' })),
+        td({}, countField(b.songs, (n) => commit({ op: 'songs', b: r.id, v: n }), '曲数')),
+        td({}, countField(b.cnt, (n) => commit({ op: 'cnt', b: r.id, v: n }), '人数')),
+        td({}, field(b.key, (x) => commit({ op: 'key', b: r.id, x: x.slice(0, 50) }), { maxlength: 50, 'aria-label': 'key' })));
+    });
+    return el('div', { class: 'ttb-pv' }, tabs, bar,
+      el('div', { class: 'ttb-pv__scroll card' }, el('table', { class: 'ttb-pv__table' }, el('tbody', {}, top, head, rows))));
   }
 
   /* ---------- 日程希望 ---------- */
@@ -655,7 +820,8 @@
             if (!allOn && !a.includes(d)) commit({ op: 'avail', b: id, days: [...a, d] });
           });
         },
-      })));
+      })),
+      el('span'));
     const rows = ids.map((id) => {
       const b = state.bands[id];
       return el('div', { class: 'ttb-avail__row' + (b.avail.length < dc ? ' is-limited' : '') },
@@ -670,13 +836,21 @@
               commit({ op: 'avail', b: id, days });
             },
           }));
-        }));
+        }),
+        el('button', { type: 'button', class: 'btn btn--ghost btn--sm ttb-iconbtn', 'aria-label': '非表示', title: '非表示', onclick: () => commit({ op: 'hide', b: id, on: true }) }, icon('visibility_off')));
     });
+    const hidden = Object.entries(state.bands).filter(([, b]) => b.off);
+    const hiddenBox = hidden.length ? el('div', { class: 'ttb-avail__table card ttb-hidden' },
+      el('p', { class: 'small muted', text: `非表示 ${hidden.length}` }),
+      hidden.map(([id, b]) => el('div', { class: 'ttb-hidden__row' },
+        el('span', { class: 'ttb-hidden__name', text: b.name }),
+        el('button', { type: 'button', class: 'btn btn--ghost btn--sm ttb-iconbtn', 'aria-label': '表示に戻す', title: '表示に戻す', onclick: () => commit({ op: 'hide', b: id, on: false }) }, icon('visibility'))))) : null;
     return el('div', { class: 'ttb-avail' },
       el('h2', { class: 'ttb-avail__title', text: '出演日を選択' }),
       el('div', { class: 'ttb-bar' }, el('span', { class: 'small muted', text: 'ライブ開催日数' }), seg),
       el('div', { class: 'ttb-avail__table card', style: `--dc:${dc}` }, head, rows),
-      el('button', { type: 'button', class: 'btn btn--primary btn--block', onclick: () => { enter = true; root.style.setProperty('--ttb-dir', 0); view = 'order'; history.replaceState(null, '', location.pathname + location.search); render(); window.scrollTo(0, 0); } }, '出順へ', icon('arrow_forward')));
+      hiddenBox,
+      el('button', { type: 'button', class: 'btn btn--primary btn--block', onclick: () => goView('order') }, '出演順へ', icon('arrow_forward')));
   }
   function allBandIds() {
     // 出順の並び（1日目から）で
@@ -801,7 +975,7 @@
       el('p', {}, el('span', { class: 'ttb-m is-red', text: '名前' }), ' 隣のバンドにも出演'),
       el('p', {}, el('span', { class: 'ttb-m is-yellow', text: '名前' }), ' 1バンド挟んで出演'),
       el('p', {}, gradeBadge(Object.keys(gradeColor).map(Number).pop() ?? 4), '学年　', el('span', { class: 'ttb-g', text: '?' }), '不明（押して入力）'),
-      el('p', {}, el('span', { class: 'ttb-score', text: '3.6' }), ' おすすめ度（後ろの出順に向くほど高い）'),
+      el('p', {}, el('span', { class: 'ttb-score', text: '3.6' }), ' おすすめ度（後ろの出演順に向くほど高い）'),
       el('p', {}, icon('push_pin'), ' 自動配置で動かさない'));
   }
 
@@ -898,6 +1072,7 @@
           },
         }), LABELS[d - 1]))) : null,
       el('label', { class: 'check' }, el('input', { type: 'checkbox', checked: b.pin, onchange: (e) => commit({ op: 'pin', b: id, on: e.target.checked }) }), icon('push_pin'), '自動配置で動かさない'),
+      el('button', { type: 'button', class: 'btn btn--ghost btn--sm', onclick: () => { closePop(); commit({ op: 'hide', b: id, on: true }); } }, icon('visibility_off'), '非表示'),
       hist.length ? el('ul', { class: 'ttb-bandmenu__hist small muted' }, hist) : null);
   }
 

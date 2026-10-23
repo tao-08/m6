@@ -187,6 +187,7 @@ $boot = [
     'info' => $info,
     'similar' => (object)$similar,
     'labels' => array_slice(DAY_LABELS, 0, TT_MAX_DAYS),
+    'venues' => $pdo->query('SELECT name FROM venue ORDER BY sort_order, name')->fetchAll(PDO::FETCH_COLUMN), // プレビューの会場のプルダウン
     'published' => $draft['published_live_id'] !== null ? (int)$draft['published_live_id'] : null,
 ];
 render_header($state['title'] . ' — タイムテーブル作成', 'tools');

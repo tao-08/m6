@@ -142,14 +142,22 @@ render_header($live['name'], 'lives');
     </div>
 </section>
 
+<?php $hasBands = (bool)array_filter($bandsByDay); ?>
+<?php if (count($days) > 1 || $hasBands): // PC は日程タブの横に縮小ボタン（スマホは右下に浮かせるボタン。どちらも同じ [data-timeline-compact]） ?>
+<div class="day-bar no-print">
 <?php if (count($days) > 1): ?>
 <!-- 日程タブ。JS が動けばタブ切り替え、動かなければ全日程が縦に並ぶ -->
-<div class="tabs tabs--days no-print" role="tablist">
+<div class="tabs tabs--days" role="tablist">
     <?php foreach ($days as $i => $d): ?>
         <a href="#day-<?= (int)$d['live_day_id'] ?>" class="tab<?= $i === 0 ? ' is-active' : '' ?>" data-tab>
             <?= h($d['label']) ?><small><?= h(fmt_date($d['held_on'])) ?></small>
         </a>
     <?php endforeach; ?>
+</div>
+<?php endif; ?>
+<?php if ($hasBands): ?>
+    <button type="button" class="compact-btn" data-timeline-compact aria-pressed="false" aria-label="縮小" title="縮小"><?= icon('unfold_less') ?></button>
+<?php endif; ?>
 </div>
 <?php endif; ?>
 
@@ -247,6 +255,10 @@ render_header($live['name'], 'lives');
     <p class="no-print add-band"><a class="btn btn--ghost btn--sm" href="band_edit?day=<?= (int)$d['live_day_id'] ?>">＋ バンドを追加</a></p>
 </section>
 <?php endforeach; ?>
+
+<?php if ($hasBands): // 縮小 = 左の順番・時刻はそのまま、カードをバンド名だけにする（画面の右下に浮かせる。JS: setupTimelineCompact。全日程が連動） ?>
+    <button type="button" class="compact-fab no-print" data-timeline-compact aria-pressed="false" aria-label="縮小" title="縮小"><?= icon('unfold_less') ?></button>
+<?php endif; ?>
 
 <?php comments_render('live', $liveId, $user); ?>
 

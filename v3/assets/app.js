@@ -13,6 +13,7 @@
  *    data-slot-input    … 集計の学年スロット（回したら hidden に入れて送信）
  *    data-sort-toggle   … メンバーの出演履歴を新しい順 ⇔ 古い順に並び替える
  *    data-tab           … ライブ詳細の日程タブ
+ *    data-timeline-compact … ライブ詳細の縮小ボタン（カードをバンド名だけにする）
  *    data-confirm       … 送信前の確認ダイアログ（data-dirty-check で未保存の変更も警告）
  *    data-unsaved       … 未保存の変更があるままページを離れようとしたら、ブラウザの警告を出す
  *    data-dropzone      … ファイルのドラッグ&ドロップ
@@ -59,6 +60,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupSortToggle();
   setupInstFilter();
   setupTabs();
+  setupTimelineCompact();
   setupConfirm();
   setupLeaveCheck();
   setupUnsavedGuard();
@@ -2252,6 +2254,54 @@ function setupTabs() {
     showDay(t.getAttribute('href'));
   }));
   showDay(location.hash);
+}
+
+/* ---------------------------------------------------------------------
+ * ライブ詳細の縮小ボタン（[data-timeline-compact]）
+ *   押すと全日程のタイムテーブル（.timeline）がバンド名だけになる（左の順番・時刻はそのまま。CSS: .timeline--compact）
+ *   もう一度で元に戻る。選んだ状態は localStorage に覚える
+ *   アニメーション: 切り替えの前後で各行（.slot）の高さを測り、前の高さ → 後の高さへ滑らせる
+ *   （見えている日程の行だけ。動きを減らす設定の人には動かさない）
+ * ------------------------------------------------------------------- */
+function setupTimelineCompact() {
+  const buttons = document.querySelectorAll('[data-timeline-compact]');
+  if (!buttons.length) return;
+  const KEY = 'timelineCompact';
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const apply = (on, animate = false) => {
+    const slots = animate && !reduce.matches ? [...document.querySelectorAll('.timeline .slot')].filter((s) => s.offsetParent !== null) : [];
+    // 行の高さと、行の上端から見たバンド名の位置（名前は中央へ飛ばずに、元の位置からスライドさせる）
+    const measure = (s) => {
+      const r = s.getBoundingClientRect();
+      const n = s.querySelector('.slot__name');
+      return { h: r.height, nameY: n ? n.getBoundingClientRect().top - r.top : 0 };
+    };
+    const before = slots.map(measure);
+    document.querySelectorAll('.timeline').forEach((t) => t.classList.toggle('timeline--compact', on));
+    slots.forEach((s, i) => {
+      const after = measure(s);
+      if (Math.abs(after.h - before[i].h) < 1) return; // 休憩の行など、高さが変わらないものは動かさない
+      const opt = { duration: 280, easing: 'ease' };
+      s.animate([{ height: before[i].h + 'px', overflow: 'hidden' }, { height: after.h + 'px', overflow: 'hidden' }], opt);
+      const name = s.querySelector('.slot__name');
+      const dy = before[i].nameY - after.nameY;
+      if (name && Math.abs(dy) >= 1) name.animate([{ transform: `translateY(${dy}px)` }, { transform: 'none' }], opt);
+    });
+    buttons.forEach((b) => {
+      b.setAttribute('aria-pressed', String(on));
+      const label = on ? '展開' : '縮小';
+      b.setAttribute('aria-label', label);
+      b.title = label;
+      const icon = b.querySelector('.icon');
+      if (icon) icon.textContent = on ? 'unfold_more' : 'unfold_less';
+    });
+  };
+  buttons.forEach((b) => b.addEventListener('click', () => {
+    const on = b.getAttribute('aria-pressed') !== 'true';
+    apply(on, true);
+    try { localStorage.setItem(KEY, on ? '1' : '0'); } catch (e) { /* 覚えられなくても動く */ }
+  }));
+  try { apply(localStorage.getItem(KEY) === '1'); } catch (e) { /* 同上 */ }
 }
 
 /* ---------------------------------------------------------------------

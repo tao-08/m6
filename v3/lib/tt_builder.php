@@ -8,7 +8,8 @@
  *      "title": "9月ライブ", "dayCount": 2,
  *      "bands":  {"b0": {"name", "members": [{"n": 表示名, "k": 照合用キー, "p": パート}], "songs", "cnt", "avail": [1,2], "pin": false, "ref": "ri:bi"}},
  *      "grades": {"照合用キー": 3},            … 部員DBに無い人の学年（ツールで入力）
- *      "days":   [{"call": "12:30", "rows": [{"id": "b0", "min": 20}, {"id": "x1a2", "t": "break"|"text", "x": "休憩", "min": 10}]} ×3]
+ *      "dur": null|15,                          … プレビューの表記上の持ち時間（null = 1枠の時間）。bands の "dur" はバンドごとの上書き、"key" は鍵盤のメモ
+ *      "days":   [{"call": "12:30", "date": "2026-10-30", "venue": "会場", "rows": [{"id": "b0", "min": 20}, {"id": "x1a2", "t": "break"|"text", "x": "休憩", "min": 10}]} ×3]
  *    }
  *  days は常に3日分持つ（dayCount で見せる日数を決める）。バンドの行の id はバンドの id と同じ。
  *
@@ -349,6 +350,9 @@ function tt_apply_op(array &$state, mixed $op): bool
                     if (!is_string($id) || isset($seen[$id]) || !($min === null || $int($min, 0, 600))) {
                         return false;
                     }
+                    if (!empty($state['bands'][$id]['off'])) {
+                        continue; // 非表示のバンドの行は無かったことにする（元に戻す の古い記録に残っていることがある）
+                    }
                     $seen[$id] = true;
                     if (isset($state['bands'][$id])) {
                         if (!in_array($d + 1, $state['bands'][$id]['avail'], true)) {
@@ -364,7 +368,8 @@ function tt_apply_op(array &$state, mixed $op): bool
                 }
                 $next[$d] = ['call' => $call, 'rows' => $out];
             }
-            if (count(array_intersect_key($state['bands'], $seen)) !== count($state['bands'])) {
+            $shown = array_filter($state['bands'], static fn($b) => empty($b['off']));
+            if (count(array_intersect_key($shown, $seen)) !== count($shown)) {
                 return false;
             }
             foreach ($next as $d => $day) {
@@ -372,6 +377,29 @@ function tt_apply_op(array &$state, mixed $op): bool
                     return false;
                 }
                 $state['days'][$d] = array_merge($state['days'][$d], $day);
+            }
+            return true;
+
+        case 'hide': // 名簿のバンドを出演順・自動配置・CSV・公開から外す / 戻す（戻すときは出られる最初の日の最後へ）
+            $b = $op['b'] ?? null;
+            if (!is_string($b) || !isset($state['bands'][$b]) || !is_bool($op['on'] ?? null)) {
+                return false;
+            }
+            $at = tt_find_row($state, $b);
+            if ($op['on']) {
+                if ($at !== null) {
+                    array_splice($state['days'][$at[0]]['rows'], $at[1], 1);
+                }
+                $state['bands'][$b]['off'] = true;
+            } else {
+                $day = min($state['bands'][$b]['avail'] ?: [1]);
+                if ($at === null) {
+                    if ($day > $dc || count($state['days'][$day - 1]['rows']) >= TT_MAX_ROWS) {
+                        return false;
+                    }
+                    $state['days'][$day - 1]['rows'][] = ['id' => $b, 'min' => null];
+                }
+                unset($state['bands'][$b]['off']);
             }
             return true;
 
@@ -408,6 +436,60 @@ function tt_apply_op(array &$state, mixed $op): bool
                 return false;
             }
             $state['gap'] = $op['on'];
+            return true;
+
+        case 'date': // プレビュー: 日ごとの開催日（YYYY-MM-DD）。'' で空欄
+            $day = $op['day'] ?? null;
+            $x = $op['x'] ?? null;
+            if (!$int($day, 1, TT_MAX_DAYS) || !is_string($x) || ($x !== '' && !tt_valid_date($x))) {
+                return false;
+            }
+            $state['days'][$day - 1]['date'] = $x;
+            return true;
+
+        case 'venue': // プレビュー: 日ごとの会場
+            $day = $op['day'] ?? null;
+            if (!$int($day, 1, TT_MAX_DAYS) || !$str($op['x'] ?? null, 100)) {
+                return false;
+            }
+            $state['days'][$day - 1]['venue'] = trim($op['x']);
+            return true;
+
+        case 'name': // プレビュー: バンド名
+        case 'key':  // プレビュー: 鍵盤のメモ（Key 列）
+            $b = $op['b'] ?? null;
+            $max = $op['op'] === 'name' ? 100 : 50;
+            if (!is_string($b) || !isset($state['bands'][$b]) || !$str($op['x'] ?? null, $max) || ($op['op'] === 'name' && trim($op['x']) === '')) {
+                return false;
+            }
+            $state['bands'][$b][$op['op']] = trim($op['x']);
+            return true;
+
+        case 'songs': // プレビュー: 曲数・人数（null で空欄）
+        case 'cnt':
+            $b = $op['b'] ?? null;
+            $n = $op['v'] ?? null;
+            if (!is_string($b) || !isset($state['bands'][$b]) || !($n === null || $int($n, 0, 99))) {
+                return false;
+            }
+            $state['bands'][$b][$op['op']] = $n;
+            return true;
+
+        case 'dur': // プレビュー: 表記上の持ち時間をバンドに一括で（null = 1枠の時間をそのまま持ち時間にする）
+            $m = $op['v'] ?? null;
+            if (!($m === null || $int($m, 0, 600))) {
+                return false;
+            }
+            $state['dur'] = $m;
+            return true;
+
+        case 'bdur': // プレビュー: バンドごとの表記上の持ち時間（null = 一括の値）
+            $b = $op['b'] ?? null;
+            $m = $op['v'] ?? null;
+            if (!is_string($b) || !isset($state['bands'][$b]) || !($m === null || $int($m, 0, 600))) {
+                return false;
+            }
+            $state['bands'][$b]['dur'] = $m;
             return true;
 
         case 'min': // 持ち時間（分）。null で空欄
@@ -488,15 +570,40 @@ function tt_day_rows(array $state, int $d): array
     return $out;
 }
 
-/** 書き出し用の CSV（取り込みのタイムテーブルの形。.claude/skills/timetable-csv の書式）。1日分 */
+/** 'YYYY-MM-DD' の実在する日付か */
+function tt_valid_date(string $x): bool
+{
+    return (bool)preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $x, $m) && checkdate((int)$m[2], (int)$m[3], (int)$m[1]);
+}
+
+/** 行の持ち時間の表記。表記の一括（state.dur）があればバンドはその値（バンドごとの dur が優先）、それ以外は1枠の時間 */
+function tt_row_dur(array $state, array $x): ?int
+{
+    if ($x['band'] !== null && ($state['dur'] ?? null) !== null) {
+        return $x['band']['dur'] ?? $state['dur'];
+    }
+    return $x['row']['min'];
+}
+
+/**
+ * 書き出し用の CSV（取り込みのタイムテーブルの形。見出しは取り込みが読む「時間,,持ち時間,バンド名,曲数,人数,key」）。1日分
+ *   1行目: 日付（時間の上）・ライブ名+◯日目（バンド名の上）・会場（曲数の上）と会場名
+ *   休憩・テキストの行は、先頭と末尾だけ開始時刻のみ（完成形の表と同じ）。途中の休憩などは終了時刻も出す
+ */
 function tt_csv(array $state, int $d): string
 {
-    $label = DAY_LABELS[$d];
-    $lines = [[$state['title'] . $label, '', '', '', '', ''], ['時間', '', 'バンド名', '曲数', '人数', 'Key']];
-    foreach (tt_day_rows($state, $d) as $x) {
+    $day = $state['days'][$d];
+    $date = tt_valid_date((string)($day['date'] ?? '')) ? date('Y/n/d', strtotime($day['date'])) : '';
+    $venue = (string)($day['venue'] ?? '');
+    $lines = [[$date, '', '', $state['title'] . DAY_LABELS[$d], $venue !== '' ? '会場' : '', $venue, ''],
+        ['時間', '', '持ち時間', 'バンド名', '曲数', '人数', 'key']];
+    $all = tt_day_rows($state, $d);
+    foreach ($all as $i => $x) {
         $b = $x['band'];
-        $lines[] = [$x['start'] ?? '', $x['end'] ?? '', $b['name'] ?? $x['row']['x'],
-            $b !== null ? (string)($b['songs'] ?? '') : '', $b !== null ? (string)$b['cnt'] : '', ''];
+        $dur = tt_row_dur($state, $x);
+        $edge = $i === 0 || $i === count($all) - 1; // 先頭（集合など）と末尾（撤収など）の休憩・テキストは開始時刻だけ
+        $lines[] = [$x['start'] ?? '', $b !== null || !$edge ? ($x['end'] ?? '') : '', $dur !== null ? (string)$dur : '', $b['name'] ?? $x['row']['x'],
+            $b !== null ? (string)($b['songs'] ?? '') : '', $b !== null ? (string)$b['cnt'] : '', (string)($b['key'] ?? '')];
     }
     $fp = fopen('php://temp', 'r+');
     fwrite($fp, "\xEF\xBB\xBF"); // Excel で文字化けしないよう BOM を付ける
@@ -527,13 +634,16 @@ function tt_import_plan(array $state, array $rosters): array
             }
             $slots[] = ['is_band' => $b !== null, 'band_name' => $b['name'] ?? $x['row']['x'],
                 'start_time' => $x['start'], 'end_time' => $x['end'],
-                'song_count' => $b['songs'] ?? null, 'member_count' => $b['cnt'] ?? null, 'key_note' => ''];
+                'song_count' => $b['songs'] ?? null, 'member_count' => $b['cnt'] ?? null, 'key_note' => (string)($b['key'] ?? '')];
         }
         if (!array_filter($slots, static fn($s) => $s['is_band'])) {
             continue;
         }
+        $date = (string)($state['days'][$d]['date'] ?? '');
+        $ymd = tt_valid_date($date) ? array_map('intval', explode('-', $date)) : null; // プレビューで入れた開催日
         $plan['timetables'][] = ['title' => $state['title'] . DAY_LABELS[$d], 'live_name' => $state['title'],
-            'label' => DAY_LABELS[$d], 'month' => null, 'day' => null, 'venue' => '', 'slots' => $slots,
+            'label' => DAY_LABELS[$d], 'month' => $ymd[1] ?? null, 'day' => $ymd[2] ?? null, 'hint_year' => $ymd[0] ?? null, 'hint_fiscal' => false,
+            'venue' => (string)($state['days'][$d]['venue'] ?? ''), 'slots' => $slots,
             'file' => 'タイムテーブル作成（' . DAY_LABELS[$d] . '）'];
     }
     $plan = finish_import_plan($plan);
