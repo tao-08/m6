@@ -1,6 +1,6 @@
 /*
  * =====================================================================
- *  songs.js — 曲データベース（songs.php）の「サブスク連携」登録
+ *  songs.js — 楽曲データベース（songs.php）の「サブスク連携」登録
  * =====================================================================
  *  🔍で api_track_search（曲の編集画面と同じ API）を呼んで、出てきた曲を1つ選ぶ。
  *  フォームに入れるのは曲のキー（"spotify:xxxx"）だけ。曲名・アーティスト名・画像は
@@ -10,6 +10,22 @@
  */
 (() => {
   'use strict';
+  // 曲名を押すと、その行の <dialog> に演奏履歴・数字を出す。背景（dialog 自体）を押しても閉じる
+  document.querySelectorAll('[data-song-open]').forEach((btn) => {
+    const modal = btn.closest('li').querySelector('[data-song-modal]');
+    btn.addEventListener('click', () => modal.showModal());
+    // 閉じるときも動かす: is-closing を付けて、アニメーションが終わってから close()（Esc も同じ）
+    const closeModal = () => {
+      if (!modal.open || modal.classList.contains('is-closing')) return;
+      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { modal.close(); return; }
+      modal.classList.add('is-closing');
+      modal.addEventListener('animationend', () => { modal.classList.remove('is-closing'); modal.close(); }, { once: true });
+    };
+    modal.querySelector('[data-song-close]').addEventListener('click', closeModal);
+    modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+    modal.addEventListener('cancel', (e) => { e.preventDefault(); closeModal(); });
+  });
+
   const form = document.querySelector('[data-song-link]');
   if (!form) return;
   const q = form.querySelector('[data-song-q]');

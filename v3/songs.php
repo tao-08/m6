@@ -1,7 +1,7 @@
 <?php
 /**
  * =====================================================================
- *  songs.php — 曲データベース（管理人だけ。tools.php から入る）
+ *  songs.php — 楽曲データベース（管理人だけ。tools.php から入る）
  * =====================================================================
  *  セットリストに出てきた曲を「曲ごと」にまとめた一覧。曲ごとの TAB 譜（tab.php）への入口。
  *  一覧に載るのは次の3つを、曲キー（song_key。形は lib/tabs.php の tab_song_key）でまとめたもの:
@@ -26,6 +26,7 @@ if (!is_admin()) {
     error_page(403, '管理人のみ利用できます');
 }
 $user = current_user();
+$musicApp = member_music_app(db(), $user['member_id'] ?? null); // 見ている人の音楽アプリ（ジャケット・アルバム名のリンク先）
 $pdo = db();
 
 /** アーティスト名（またはその別名）から、マスタのアーティストを探す。無ければ null */
@@ -124,8 +125,8 @@ $groups = []; // song_key => 1曲ぶん
 
 // ---- 1. セットリストの曲。キーの計算は band.php / tab.php（?song=）と同じ（アーティストは曲の指定 → バンドの順）----
 $st = $pdo->query('SELECT s.song_id, s.title, s.band_id, s.track_source, s.track_id, COALESCE(s.artist_id, b.artist_id) AS artist_id,
-        a.name AS artist_name, t.title AS track_title, t.artist_name AS track_artist, t.artwork_url,
-        b.name AS band_name, l.name AS live_name, d.held_on
+        a.name AS artist_name, t.title AS track_title, t.artist_name AS track_artist, t.artwork_url, t.album_title, t.release_year,
+        b.name AS band_name, l.live_id, l.fiscal_year, l.name AS live_name, d.live_day_id, d.label AS day_label, d.held_on
     FROM song s
     JOIN band b ON b.band_id = s.band_id
     JOIN live_day d ON d.live_day_id = b.live_day_id
@@ -141,8 +142,9 @@ foreach ($st as $r) {
         $linked = $r['track_source'] !== null;
         $groups[$key] = [
             'key' => $key, 'title' => $linked ? $r['track_title'] : $r['title'], 'artist' => $linked ? $r['track_artist'] : $r['artist_name'],
-            'art' => $r['artwork_url'], 'plays' => 0, 'last' => null, 'bands' => [], 'song_id' => (int)$r['song_id'],
-            'catalog_id' => null, 'tabs' => 0,
+            'art' => $r['artwork_url'], 'album' => $r['album_title'], 'year' => $r['release_year'], 'src' => $r['track_source'], 'tid' => $r['track_id'],
+            'plays' => 0, 'last' => null, 'bands' => [], 'song_id' => (int)$r['song_id'],
+            'catalog_id' => null, 'tabs' => 0, 'artist_id' => $r['artist_id'] === null ? null : (int)$r['artist_id'],
         ];
     }
     $g = &$groups[$key];
@@ -151,33 +153,36 @@ foreach ($st as $r) {
         $g['last'] = $r['held_on'];
     }
     if (!isset($g['bands'][$r['band_id']])) {
-        $g['bands'][$r['band_id']] = ['id' => (int)$r['band_id'], 'name' => $r['band_name'], 'live' => $r['live_name'], 'date' => $r['held_on']];
+        $g['bands'][$r['band_id']] = ['id' => (int)$r['band_id'], 'name' => $r['band_name'], 'live' => $r['live_name'], 'live_id' => (int)$r['live_id'], 'day_id' => (int)$r['live_day_id'], 'day' => $r['day_label'], 'fy' => $r['fiscal_year'], 'date' => $r['held_on'], 'n' => 0];
     }
+    $g['bands'][$r['band_id']]['n']++; // 同じバンドが同じ曲を2回以上やったとき（セットリストに2回入っている）に「（×2）」を出す
     unset($g);
 }
 
 // ---- 2. 手動登録の曲 ----
-$st = $pdo->query('SELECT c.catalog_id, c.song_key, c.title, c.artist_name, t.title AS track_title, t.artist_name AS track_artist, t.artwork_url
+$st = $pdo->query('SELECT c.catalog_id, c.artist_id, c.song_key, c.title, c.artist_name, t.title AS track_title, t.artist_name AS track_artist, t.artwork_url, t.album_title, t.release_year, c.track_source, c.track_id
     FROM song_catalog c LEFT JOIN track t ON t.source = c.track_source AND t.track_id = c.track_id');
 foreach ($st as $r) {
     if (!isset($groups[$r['song_key']])) {
         $groups[$r['song_key']] = [
             'key' => $r['song_key'], 'title' => $r['track_title'] ?? $r['title'], 'artist' => $r['track_artist'] ?? $r['artist_name'],
-            'art' => $r['artwork_url'], 'plays' => 0, 'last' => null, 'bands' => [], 'song_id' => null, 'catalog_id' => null, 'tabs' => 0,
+            'art' => $r['artwork_url'], 'album' => $r['album_title'], 'year' => $r['release_year'], 'src' => $r['track_source'], 'tid' => $r['track_id'],
+            'plays' => 0, 'last' => null, 'bands' => [], 'song_id' => null, 'catalog_id' => null, 'tabs' => 0,
+            'artist_id' => $r['artist_id'] === null ? null : (int)$r['artist_id'],
         ];
     }
     $groups[$r['song_key']]['catalog_id'] = (int)$r['catalog_id']; // 手動登録の印（削除ボタン）
 }
 
 // ---- 3. TAB の数（曲ごと）。上の2つに無いキー（TAB だけある曲）も一覧に足す ----
-$st = $pdo->query('SELECT t.song_key, COUNT(*) AS n, MAX(t.title) AS title, MAX(t.artist_name) AS artist_name, MAX(k.artwork_url) AS art
+$st = $pdo->query('SELECT t.song_key, COUNT(*) AS n, MAX(t.title) AS title, MAX(t.artist_name) AS artist_name, MAX(k.artwork_url) AS art, MAX(k.album_title) AS album, MAX(k.release_year) AS year, MAX(t.track_source) AS src, MAX(t.track_id) AS tid
     FROM song_tab t LEFT JOIN track k ON k.source = t.track_source AND k.track_id = t.track_id
     GROUP BY t.song_key');
 foreach ($st as $r) {
     if (!isset($groups[$r['song_key']])) {
         $groups[$r['song_key']] = [
-            'key' => $r['song_key'], 'title' => $r['title'], 'artist' => $r['artist_name'], 'art' => $r['art'],
-            'plays' => 0, 'last' => null, 'bands' => [], 'song_id' => null, 'catalog_id' => null, 'tabs' => 0,
+            'key' => $r['song_key'], 'title' => $r['title'], 'artist' => $r['artist_name'], 'art' => $r['art'], 'album' => $r['album'], 'year' => $r['year'], 'src' => $r['src'], 'tid' => $r['tid'],
+            'plays' => 0, 'last' => null, 'bands' => [], 'song_id' => null, 'catalog_id' => null, 'tabs' => 0, 'artist_id' => null,
         ];
     }
     $groups[$r['song_key']]['tabs'] = (int)$r['n'];
@@ -237,12 +242,12 @@ function songs_url(array $over): string
 // 連携なし登録のアーティスト候補（datalist）
 $artistNames = $pdo->query('SELECT name FROM artist ORDER BY name_kana IS NULL, name_kana, name')->fetchAll(PDO::FETCH_COLUMN);
 
-render_header('曲データベース', 'tools');
+render_header('楽曲データベース', 'tools');
 ?>
 <link rel="stylesheet" href="<?= asset_url('assets/tab.css') ?>">
 <link rel="stylesheet" href="<?= asset_url('assets/songs.css') ?>">
 <nav class="crumbs"><a href="tools">ツール</a></nav>
-<h1 class="display display--sm">曲データベース</h1>
+<h1 class="display display--sm">楽曲データベース</h1>
 
 <!-- 手動登録: セットリストに無い曲にも TAB を付けられる -->
 <details class="card songs-add">
@@ -313,12 +318,9 @@ render_header('曲データベース', 'tools');
                     <span class="songs-row__art songs-row__art--none"><?= icon('music_note') ?></span>
                 <?php endif; ?>
                 <div class="songs-row__main">
-                    <span class="songs-row__title"><?= h($g['title']) ?><?php if ($g['catalog_id'] !== null): ?> <span class="tag">手動</span><?php endif; ?></span>
-                    <?php if ($g['artist']): ?><span class="songs-row__artist muted small"><?= h($g['artist']) ?></span><?php endif; ?>
-                </div>
-                <div class="songs-row__meta muted small">
-                    <span title="演奏回数"><?= icon('queue_music') ?> <?= (int)$g['plays'] ?></span>
-                    <span title="最終演奏日"><?= icon('event') ?> <?= $g['last'] !== null ? h(fmt_date($g['last'])) : '-' ?></span>
+                    <button type="button" class="songs-row__open" data-song-open aria-haspopup="dialog">
+                        <span class="songs-row__title"><?= h($g['title']) ?></span><?php if ($g['artist']): ?><span class="songs-row__artist muted small"><?= h($g['artist']) ?></span><?php endif; ?><?php if ($g['catalog_id'] !== null): ?><span class="tag">手動</span><?php endif; ?>
+                    </button>
                 </div>
                 <a class="btn btn--sm songs-row__tab<?= $g['tabs'] > 0 ? ' is-on' : '' ?>" href="<?= h($tabUrl) ?>" aria-label="TAB 譜" title="TAB 譜"><?= icon('library_music', $g['tabs'] > 0 ? 'icon--fill' : '') ?> <?= (int)$g['tabs'] ?></a>
                 <?php if ($g['catalog_id'] !== null): ?>
@@ -328,17 +330,45 @@ render_header('曲データベース', 'tools');
                     </form>
                 <?php endif; ?>
             </div>
-            <?php if ($g['bands']): ?>
-                <details class="songs-bands">
-                    <summary class="muted small"><?= icon('groups') ?> <?= count($g['bands']) ?></summary>
-                    <ul>
+            <dialog class="songs-modal" data-song-modal aria-label="<?= h($g['title']) ?>">
+                <div class="songs-modal__head">
+                    <button type="button" class="icon-btn icon-btn--sm songs-modal__close" data-song-close aria-label="閉じる" title="閉じる"><?= icon('close') ?></button>
+                    <?php // ジャケット → その曲（サブスク）。アルバム名 → アルバムの検索（曲にはアルバムの ID が無いので検索ページ）
+                    $trackUrl = $g['src'] !== null ? track_listen_url($musicApp, ['source' => $g['src'], 'track_id' => $g['tid'], 'title' => $g['title'], 'artist_name' => (string)$g['artist']]) : null;
+                    $albumUrl = $g['album'] ? album_search_url(listen_app($musicApp, (string)$g['src']), ['title' => $g['album'], 'artist_name' => (string)$g['artist']]) : null; ?>
+                    <div class="songs-modal__cover">
+                        <?php $art = $g['art']
+                            ? '<img class="songs-modal__art" src="' . h($g['art']) . '" alt="" width="200" height="200" loading="lazy">'
+                            : '<span class="songs-modal__art songs-row__art--none">' . icon('music_note') . '</span>'; ?>
+                        <?php if ($trackUrl !== null): ?><a href="<?= h($trackUrl) ?>" target="_blank" rel="noopener noreferrer" aria-label="サブスクで開く" title="サブスクで開く"><?= $art ?></a><?php else: ?><?= $art ?><?php endif; ?>
+                        <?php if ($g['album']): ?>
+                            <a class="songs-modal__album small" href="<?= h($albumUrl) ?>" target="_blank" rel="noopener noreferrer"><?= h($g['album']) ?><?= $g['year'] ? ' · ' . (int)$g['year'] : '' ?></a>
+                        <?php endif; ?>
+                    </div>
+                    <div class="songs-modal__names">
+                        <strong class="songs-row__title"><?= h($g['title']) ?></strong>
+                        <?php if ($g['artist']): ?>
+                            <?php if ($g['artist_id'] !== null): ?><a class="small" href="artist?id=<?= (int)$g['artist_id'] ?>"><?= h($g['artist']) ?></a>
+                            <?php else: ?><span class="muted small"><?= h($g['artist']) ?></span><?php endif; ?>
+                        <?php endif; ?>
+                    </div>
+                </div>
+                <div class="songs-row__meta muted small">
+                    <span>演奏回数 <?= (int)$g['plays'] ?></span>
+                    <span title="最終演奏日"><?= icon('event') ?> <?= $g['last'] !== null ? h(fmt_date($g['last'])) : '-' ?></span>
+                    <span title="TAB 譜"><?= icon('library_music') ?> <?= (int)$g['tabs'] ?></span>
+                </div>
+                <?php if ($g['bands']): ?>
+                    <ul class="songs-bands">
                         <?php foreach ($g['bands'] as $b): ?>
                             <li><a href="band?id=<?= (int)$b['id'] ?>"><?= h($b['name']) ?></a>
-                                <span class="muted small"><?= h($b['live']) ?><?= $b['date'] !== null ? ' · ' . h(fmt_date($b['date'])) : '' ?></span></li>
+                                <span class="muted small"><a href="live?id=<?= (int)$b['live_id'] ?>#day-<?= (int)$b['day_id'] ?>"><?= h(fmt_year($b['fy'])) ?> <?= h($b['live']) ?></a><?= $b['n'] >= 2 ? '（×' . (int)$b['n'] . '）' : '' ?><?= (string)$b['day'] !== '' ? ' · ' . h($b['day']) : '' ?></span></li>
                         <?php endforeach; ?>
                     </ul>
-                </details>
-            <?php endif; ?>
+                <?php else: ?>
+                    <p class="muted small">演奏履歴なし</p>
+                <?php endif; ?>
+            </dialog>
         </li>
     <?php endforeach; ?>
 </ul>
