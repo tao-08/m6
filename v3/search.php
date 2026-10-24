@@ -89,7 +89,7 @@ if ($faculty !== '' || $roleName !== null) {
     $daysByLive = []; // [live_id] = [['live_day_id', 'label', 'held_on', 'venue'], ...]
     if ($lives) {
         $ids = array_map('intval', array_column($lives, 'live_id'));
-        $st = $pdo->prepare('SELECT ld.live_id, ld.live_day_id, ld.label, ld.held_on, ld.note, v.name AS venue
+        $st = $pdo->prepare('SELECT ld.live_id, ld.live_day_id, ld.label, ld.held_on, ld.note, v.name AS venue, ld.venue_id
             FROM live_day ld
             LEFT JOIN venue v ON v.venue_id = ld.venue_id
             WHERE ld.live_id IN (' . implode(',', array_fill(0, count($ids), '?')) . ')
@@ -324,7 +324,7 @@ render_header($filterLabel ?? ($q !== '' ? "「{$q}」の検索結果" : '検索
                             <td class="nowrap"><a href="live?id=<?= $liveId ?>#day-<?= (int)$d['live_day_id'] ?>"><?= h($d['label']) ?></a>
                                 <?php if ($d['note']): ?><div class="muted small"><?= h($d['note']) ?></div><?php endif; ?></td>
                             <td class="muted nowrap"><?= $d['held_on'] !== null ? h(fmt_date($d['held_on'])) : '—' ?></td>
-                            <td><?= $d['venue'] !== null ? h($d['venue']) : '<span class="muted">—</span>' ?></td>
+                            <td><?= $d['venue'] !== null ? '<a href="venue?id=' . (int)$d['venue_id'] . '">' . h($d['venue']) . '</a>' : '<span class="muted">—</span>' ?></td>
                         </tr>
                     <?php endforeach; endforeach; ?>
                     </tbody>

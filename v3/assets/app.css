@@ -401,6 +401,8 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .live-card__yt { position: relative; z-index: 1; display: inline-flex; align-items: center; line-height: 0; margin-left: 6px; }
 .live-card__yt svg { width: 23px; height: 16px; }
 .live-card__yt:hover svg { opacity: .8; }
+.live-card__venue { position: relative; z-index: 1; color: inherit; }
+.live-card__venue:hover { color: var(--accent); }
 .live-card:hover { color: inherit; transform: translateY(-3px); border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); }
 .live-card__head { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; }
 .live-card__head h3 { font-size: 19px; font-weight: 800; }

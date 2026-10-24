@@ -174,8 +174,10 @@ render_header($live['name'], 'lives');
             <div><dt>会場</dt><dd>
                 <?php if ($d['venue_name'] && $d['website_url'] && preg_match('#^https?://#', $d['website_url'])): ?>
                     <!-- URL は https:// で始まるものだけリンクにする（javascript: などを埋め込まれないように） -->
-                    <a href="<?= h($d['website_url']) ?>" target="_blank" rel="noopener"><?= h($d['venue_name']) ?> <?= icon('open_in_new', 'icon--sm') ?></a>
-                <?php else: ?><?= h($d['venue_name'] ?? '—') ?><?php endif; ?>
+                    <a href="venue?id=<?= (int)$d['venue_id'] ?>"><?= h($d['venue_name']) ?></a>
+                    <a href="<?= h($d['website_url']) ?>" target="_blank" rel="noopener" aria-label="サイト"><?= icon('open_in_new', 'icon--sm') ?></a>
+                <?php elseif ($d['venue_name']): ?><a href="venue?id=<?= (int)$d['venue_id'] ?>"><?= h($d['venue_name']) ?></a>
+                <?php else: ?>—<?php endif; ?>
             </dd></div>
             <!-- 総バンド数より登録が少ない日程は「登録済み / 総バンド数」 -->
             <div><dt>バンド</dt><dd><?= count($bands) ?><?= $dayTotal($d) > count($bands) ? ' / ' . $dayTotal($d) : '' ?></dd></div>

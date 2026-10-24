@@ -32,7 +32,7 @@ if (!$member) {
 //   setlist_count: 登録済みの曲数（song_count と一致すれば「セットリスト登録済」）
 $st = $pdo->prepare('SELECT b.band_id, b.name AS band_name, b.play_order, b.song_count,
         (SELECT COUNT(*) FROM song s WHERE s.band_id = b.band_id AND s.is_se = 0) AS setlist_count,
-        ld.live_day_id, ld.label, ld.held_on AS date, lm.live_id, lm.fiscal_year AS year, lm.name AS live_name, v.name AS venue_name,
+        ld.live_day_id, ld.label, ld.held_on AS date, lm.live_id, lm.fiscal_year AS year, lm.name AS live_name, v.name AS venue_name, ld.venue_id,
         (last.max_order IS NOT NULL) AS is_last
     FROM (' . MEMBERSHIP_SQL . ') bm
     JOIN band b ON b.band_id = bm.band_id
@@ -526,7 +526,7 @@ render_header($member['name'], 'members');
                         <?= upcoming_tag($day['date']) ?>
                     </div>
                     <div class="history__what">
-                        <a href="live?id=<?= (int)$day['live_id'] ?>#day-<?= (int)$day['live_day_id'] ?>" class="muted small"><?= h($day['live_name']) ?> <?= h($day['label']) ?><?= $day['venue_name'] ? ' · ' . h($day['venue_name']) : '' ?></a>
+                        <a href="live?id=<?= (int)$day['live_id'] ?>#day-<?= (int)$day['live_day_id'] ?>" class="muted small"><?= h($day['live_name']) ?> <?= h($day['label']) ?></a><?= $day['venue_name'] ? ' <span class="muted small">· <a href="venue?id=' . (int)$day['venue_id'] . '">' . h($day['venue_name']) . '</a></span>' : '' ?>
                         <!-- その日に出たバンドを出演順に並べる。バンド名からバンド詳細へ -->
                         <ul class="history__bands">
                             <?php foreach ($day['bands'] as $b): ?>

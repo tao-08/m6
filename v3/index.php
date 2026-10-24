@@ -63,7 +63,7 @@ $importantNotices = $st->fetchAll();
 //   GROUP_CONCAT(b.note): その日のバンドのメモを1つの文字列にまとめる（絞り込み用。NULL は飛ばされる）
 //     ※ group_concat_max_len（初期値 1024 バイト）を超えた分は切れる。絞り込みに使うだけなので気にしない
 $rows = $pdo->query('SELECT l.live_id, l.fiscal_year AS year, l.name AS live_name, l.youtube_url,
-        d.live_day_id, d.label, d.held_on AS date, d.note, v.name AS venue_name, COUNT(b.band_id) AS band_count,
+        d.live_day_id, d.label, d.held_on AS date, d.note, v.name AS venue_name, d.venue_id, COUNT(b.band_id) AS band_count,
         GROUP_CONCAT(b.note SEPARATOR \' \') AS band_notes
     FROM live l
     JOIN live_day d ON d.live_id = l.live_id
@@ -252,7 +252,7 @@ render_header('ライブ一覧', 'lives');
                                 <li>
                                     <span class="day-no"><?= h($d['label'] ?: '—') ?></span>
                                     <span><?= h(fmt_date($d['date']) ?: '日付未設定') ?></span>
-                                    <span class="muted ellipsis"><?= h($d['venue_name'] ?? '') ?></span>
+                                    <span class="muted ellipsis"><?php if ($d['venue_id']): ?><a class="live-card__venue" href="venue?id=<?= (int)$d['venue_id'] ?>"><?= h($d['venue_name']) ?></a><?php endif; ?></span>
                                 </li>
                             <?php endforeach; ?>
                         </ul>

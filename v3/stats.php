@@ -281,7 +281,7 @@ $instrumentRows = rows($pdo, 'SELECT bm.band_id, bm.member_id, m.name, i.short_n
     ORDER BY i.sort_order', array_merge($yearParams, $memberParams));
 
 // ---- 会場 ----
-$venues = rows($pdo, 'SELECT v.name, COUNT(DISTINCT ld.live_day_id) AS days, COUNT(b.band_id) AS bands
+$venues = rows($pdo, 'SELECT v.venue_id, v.name, COUNT(DISTINCT ld.live_day_id) AS days, COUNT(b.band_id) AS bands
     FROM venue v
     JOIN live_day ld ON ld.venue_id = v.venue_id
     JOIN live lm ON lm.live_id = ld.live_id
@@ -678,7 +678,7 @@ $voHidden = static fn(string $view): string => ($view === 'sum') === $voSum ? ''
         <ol class="ranking">
             <?php $ranks = tie_ranks($venues, static fn($v) => [(int)$v['days'], (int)$v['bands']]); // 日数も組数も同じなら同じ順位
             foreach ($venues as $k => $v): ?>
-                <li data-rank="<?= $ranks[$k] ?>"><a href="search?q=<?= urlencode($v['name']) ?>"><?= h($v['name']) ?></a><span class="pill"><?= (int)$v['days'] ?>日 · <?= (int)$v['bands'] ?>組</span></li>
+                <li data-rank="<?= $ranks[$k] ?>"><a href="venue?id=<?= (int)$v['venue_id'] ?>"><?= h($v['name']) ?></a><span class="pill"><?= (int)$v['days'] ?>日 · <?= (int)$v['bands'] ?>組</span></li>
             <?php endforeach; ?>
         </ol>
     </section>

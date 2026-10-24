@@ -28,7 +28,7 @@ $pdo = db();
 
 // ---- 1. バンド本体 ----
 $st = $pdo->prepare('SELECT b.*, a.name AS artist_name, d.live_id, d.label, d.held_on, d.total_bands, l.name AS live_name, l.fiscal_year,
-        v.name AS venue_name
+        v.name AS venue_name, d.venue_id
     FROM band b
     JOIN live_day d ON d.live_day_id = b.live_day_id
     JOIN live l ON l.live_id = d.live_id
@@ -299,7 +299,7 @@ render_header($band['name'], 'lives');
             <a class="band-meta__live" href="<?= h($liveUrl) ?>"><?= h($band['live_name']) ?></a>
             <?php if ($band['label']): ?><span><?= h($band['label']) ?></span><?php endif; ?>
             <span class="band-meta__order" title="出演順"><?= (int)$band['play_order'] ?>/<?= (int)$bandCount ?></span>
-            <?php if ($band['venue_name']): ?><span><?= icon('location_on') ?> <?= h($band['venue_name']) ?></span><?php endif; ?>
+            <?php if ($band['venue_name']): ?><span><?= icon('location_on') ?> <a href="venue?id=<?= (int)$band['venue_id'] ?>"><?= h($band['venue_name']) ?></a></span><?php endif; ?>
         </p>
         <p class="band-tags">
             <?php if ($isLast): ?><span class="tag tag--tori" aria-label="トリ" title="トリ">🐔</span><?php endif; ?>
