@@ -438,8 +438,11 @@ function setupSongs() {
     if (!handle || drag || (e.pointerType === 'mouse' && e.button !== 0)) return;
     e.preventDefault(); // 文字の選択が始まらないように
     const card = handle.closest('[data-song-card]');
-    drag = { card, pointerId: e.pointerId, grab: e.clientY - card.getBoundingClientRect().top };
+    // 縮んだあとのカードより下をつかんでいても、カードが指から外れないよう ≡ の行の高さに収める
+    const headH = card.querySelector('.song-card__head').offsetHeight + 16;
+    drag = { card, pointerId: e.pointerId, grab: Math.min(e.clientY - card.getBoundingClientRect().top, headH) };
     drag.card.classList.add('is-dragging');
+    list.classList.add('is-sorting'); // ドラッグ中だけ、全カードのアーティスト欄から下を縮める
     handle.setPointerCapture(e.pointerId); // 指やマウスが ≡ の外に出ても追いかける
     drag.y = e.clientY;
     drag.raf = requestAnimationFrame(autoScroll);
@@ -486,6 +489,7 @@ function setupSongs() {
     const { card } = drag;
     cancelAnimationFrame(drag.raf); // 自動スクロールを止める
     drag = null;
+    list.classList.remove('is-sorting');
     // 離したら、指の位置から並びの位置へスッと戻す
     const dy = new DOMMatrixReadOnly(getComputedStyle(card).transform).m42;
     card.style.transform = '';
