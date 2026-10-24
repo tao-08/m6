@@ -63,7 +63,7 @@ render_header('パスワード再設定');
         <!-- 招待コードが空だと本人確認になる物が無い。管理者が users.php で招待コードを決めるまで使えない -->
         <div class="card auth__card">
             <h2>パスワード再設定</h2>
-            <div class="flash flash--error">現在は利用できません。管理者に連絡してください</div>
+            <div class="flash flash--error">現在は利用できません。<a href="contact_guest" class="text-link">こちら</a>から管理者に連絡してください</div>
             <p class="muted small center"><a href="login">ログイン</a></p>
         </div>
     <?php else: ?>
@@ -88,6 +88,7 @@ render_header('パスワード再設定');
                 <input type="password" name="confirm" autocomplete="new-password" minlength="8" required>
             </label>
             <button class="btn btn--primary btn--block" type="submit">再設定</button>
+            <p class="muted small center">ログインID・招待コードがわからない場合は<a href="contact_guest" class="text-link">こちら</a>から問い合わせてください</p>
             <p class="muted small center"><a href="login">ログイン</a></p>
         </form>
     <?php endif; ?>

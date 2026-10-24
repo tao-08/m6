@@ -14,6 +14,7 @@
  */
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
+require __DIR__ . '/lib/inquiry.php';
 $user = require_login();
 $pdo = db();
 
@@ -48,45 +49,13 @@ if (is_post()) {
         $recent[] = time();
         $_SESSION['contact_sent'] = array_values($recent);
 
-        if (send_inquiry_mail($pdo, $anonymous ? null : $user, $category, $body)) {
+        $sender = $anonymous ? '匿名' : "{$user['name']}（ログインID: {$user['login_id']}）";
+        if (send_inquiry_mail($pdo, $sender, $category, $body)) {
             $pdo->prepare('UPDATE inquiry SET mailed = 1 WHERE inquiry_id = ?')->execute([$inquiryId]);
         }
         flash('送信しました。お寄せいただきありがとうございます！');
         redirect('contact');
     }
-}
-
-/**
- * 通知先を登録している管理者全員にメールを送る。1人以上に送れたら true
- *   件名・差出人は固定の文字だけで作る（ユーザーの入力をヘッダーに入れると、改行を混ぜて
- *   宛先を勝手に足される「メールヘッダーインジェクション」ができてしまう）。入力は本文にだけ入れる
- *   $user が null なら匿名（名前を書かない）
- */
-function send_inquiry_mail(PDO $pdo, ?array $user, string $category, string $body): bool
-{
-    $from = (string)(config('mail_from') ?? '');
-    if ($from === '' || filter_var($from, FILTER_VALIDATE_EMAIL) === false) {
-        return false;
-    }
-    $to = $pdo->query('SELECT email FROM user_account WHERE is_admin = 1 AND email IS NOT NULL')->fetchAll(PDO::FETCH_COLUMN);
-    if (!$to) {
-        return false;
-    }
-
-    $subject = '【AbbeyRoad.online】問い合わせ・要望が届きました';
-    $text = "種類: {$category}\n"
-        . '送信元: ' . ($user ? "{$user['name']}（ログインID: {$user['login_id']}）" : '匿名') . "\n"
-        . '日時: ' . date('Y-m-d H:i') . "\n\n"
-        . $body . "\n";
-    mb_language('uni'); // UTF-8 で送る
-    $sent = false;
-    foreach ($to as $addr) {
-        // 1人ずつ送る（To に全員並べると、管理者同士のアドレスが見えてしまう）
-        // From の「Abbey Road」はメールソフトに出る送信者名。
-        // -f で封筒の差出人（Return-Path）も $from にする。付けないとサーバーの内部アドレスになり、SPF が合わずに捨てられやすい
-        $sent = @mb_send_mail($addr, $subject, $text, 'From: Abbey Road <' . $from . '>', '-f' . $from) || $sent;
-    }
-    return $sent;
 }
 
 // 管理者には、届いた問い合わせの一覧も出す（メールが届かなかったときの控え）
@@ -140,7 +109,7 @@ render_header('問い合わせ・要望');
         <?php endif; ?>
         <?php foreach ($inquiries as $q): ?>
             <div class="inquiry">
-                <p class="muted small"><?= h(substr($q['created_at'], 0, 16)) ?> · <?= $q['name'] === null ? '匿名' : h($q['name']) ?> · <span class="tag"><?= h($q['category']) ?></span><?= $q['mailed'] ? '' : ' · メール未送信' ?></p>
+                <p class="muted small"><?= h(substr($q['created_at'], 0, 16)) ?> · <?= $q['sender_name'] !== null ? h($q['sender_name']) . '（' . h($q['contact']) . '）' : ($q['name'] === null ? '匿名' : h($q['name'])) ?> · <span class="tag"><?= h($q['category']) ?></span><?= $q['mailed'] ? '' : ' · メール未送信' ?></p>
                 <p><?= nl2br(h($q['body'])) ?></p>
             </div>
         <?php endforeach; ?>

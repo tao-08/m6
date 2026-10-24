@@ -553,6 +553,8 @@ CREATE TABLE band_like (
 CREATE TABLE inquiry (
     inquiry_id INT UNSIGNED NOT NULL AUTO_INCREMENT,
     user_id    INT UNSIGNED NULL,          -- NULL = 匿名（誰が送ったかを残さない）
+    sender_name VARCHAR(50)  NULL,         -- ログインできない人が書いた氏名（contact_guest.php。migrations/067）
+    contact    VARCHAR(100) NULL,          -- その人への返信先（メールアドレスなど）
     category   VARCHAR(20)  NOT NULL,
     body       TEXT         NOT NULL,
     mailed     TINYINT(1)   NOT NULL DEFAULT 0,
