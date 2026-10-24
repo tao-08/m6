@@ -166,6 +166,30 @@
   const $$ = (sel, el = root) => [...el.querySelectorAll(sel)];
   const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
+  /* ---- 説明の表示（？ボタン）----
+   *   アイコンだけのボタンは、スマホだと初めての人には意味が分からない（title のポップアップはタップでは出ない）。
+   *   ？を押すと root に is-help が付き、tab.css が各ボタンの aria-label / title をボタンの下に文字で出す。
+   *   文字は CSS の attr() で出すので、あとから JS が作るボタン（グリッド・キーボード）にも自動で付く。
+   *   初めて開いたときは最初から ON。押した結果は端末に覚えておく */
+  (function setupHelp() {
+    const btn = $('[data-help-toggle]');
+    if (!btn) return;
+    let on = true;
+    try { on = localStorage.getItem('tabHelp') !== '0'; } catch (e) { /* 保存できなくても動く（毎回 ON） */ }
+    const apply = () => {
+      root.classList.toggle('is-help', on);
+      btn.setAttribute('aria-pressed', String(on));
+      btn.classList.toggle('is-active', on);
+    };
+    apply();
+    btn.addEventListener('click', () => {
+      on = !on;
+      apply();
+      try { localStorage.setItem('tabHelp', on ? '1' : '0'); } catch (e) { /* 無視 */ }
+      window.dispatchEvent(new Event('resize')); // ボタンの高さが変わるので canvas の大きさを測り直させる
+    });
+  })();
+
   const MAX_BARS = 400;
   const MAX_FRET = 24;
   const SECTION_MAX = 20;

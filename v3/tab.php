@@ -346,6 +346,8 @@ render_header($tab['title'] . ' ' . $tab['part'], 'lives');
             <!-- 参考リンク（JS が作る。リンクの追加・削除は編集画面） -->
             <p class="tab-links" data-links></p>
         </div>
+        <?php // ？ = 説明の表示。押すとアイコンだけのボタンの下に名前が出る（初めて開いたときは最初から出ている。assets/tab.js の setupHelp） ?>
+        <button type="button" class="icon-btn" data-help-toggle aria-pressed="false" aria-label="説明" title="説明"><?= icon('help') ?></button>
         <button type="button" class="icon-btn" data-history-open aria-label="履歴" title="履歴"><?= icon('history') ?></button>
         <button type="button" class="icon-btn" data-mode-toggle aria-pressed="false" aria-label="編集" title="編集"><?= icon('edit') ?></button>
     </header>
@@ -387,7 +389,8 @@ render_header($tab['title'] . ' ' . $tab['part'], 'lives');
                 <button type="button" class="tab-chip<?= $r === 1 ? ' is-active' : '' ?>" data-rate="<?= $r ?>">×<?= $r ?></button>
             <?php endforeach; ?>
             <button type="button" class="icon-btn icon-btn--sm" data-pbpm-step="-5" aria-label="BPM -5" title="BPM -5"><?= icon('remove') ?></button>
-            <input type="number" class="tab-pbpm" data-pbpm min="20" max="400" step="1" inputmode="decimal" aria-label="練習 BPM" title="練習 BPM">
+            <?php // 入力欄・セレクトは ::after が付かないので、説明の文字は外側の span（data-help）に出す（tab.css） ?>
+            <span class="tab-help-field" data-help="練習 BPM"><input type="number" class="tab-pbpm" data-pbpm min="20" max="400" step="1" inputmode="decimal" aria-label="練習 BPM" title="練習 BPM"></span>
             <button type="button" class="icon-btn icon-btn--sm" data-pbpm-step="5" aria-label="BPM +5" title="BPM +5"><?= icon('add') ?></button>
         </div>
         <div class="tab-bar__group" role="group" aria-label="リピート">
@@ -395,9 +398,9 @@ render_header($tab['title'] . ' ' . $tab['part'], 'lives');
             <button type="button" class="tab-chip" data-ab="b" title="B 地点">B</button>
             <button type="button" class="icon-btn icon-btn--sm" data-ab="clear" aria-label="リピート解除" title="リピート解除（\）"><?= icon('repeat_on') ?></button>
             <!-- ループごとに BPM を上げる（元の BPM まで） -->
-            <select class="tab-loop-step" data-loop-step aria-label="ループごとの BPM 増加" title="ループごとの BPM 増加">
+            <span class="tab-help-field" data-help="ループごとに BPM 増加"><select class="tab-loop-step" data-loop-step aria-label="ループごとの BPM 増加" title="ループごとの BPM 増加">
                 <?php foreach ([0, 2, 5, 10] as $n): ?><option value="<?= $n ?>"><?= $n === 0 ? '+0' : '+' . $n ?></option><?php endforeach; ?>
-            </select>
+            </select></span>
         </div>
         <div class="tab-bar__group">
             <button type="button" class="icon-btn" data-marker-add aria-label="マーカー追加" title="マーカー追加（M）"><?= icon('flag') ?></button>

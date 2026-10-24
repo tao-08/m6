@@ -229,3 +229,25 @@ a.tab-parts__item:hover { border-color: var(--accent); }
 .tab-import__actions { justify-content: flex-start; }
 .tab-import__status { margin: 6px 0 0; min-height: 1.2em; color: var(--muted); overflow-wrap: anywhere; }
 .modal.tab-import { width: min(520px, calc(100vw - 32px)); }
+
+/* ---- 説明の表示（ヘッダーの ？。assets/tab.js の setupHelp）----
+   アイコンだけのボタンの下に、aria-label（無ければ title）を小さい文字で出す。
+   グリッドのマス（.tg）は数が多く、文字を出すと譜面が読めなくなるので出さない */
+.tab.is-help :is(.icon-btn, .tab-chip, .tab-pad button, .btn)[aria-label]:not(.tg *)::after,
+.tab.is-help :is(.icon-btn, .tab-chip, .tab-pad button, .btn)[title]:not([aria-label]):not(.tg *)::after {
+  content: attr(aria-label);
+  display: block; margin-top: 2px;
+  font-size: 10px; font-weight: 600; line-height: 1.2; white-space: nowrap; color: var(--muted);
+}
+.tab.is-help :is(.icon-btn, .tab-chip, .tab-pad button, .btn)[title]:not([aria-label]):not(.tg *)::after { content: attr(title); }
+/* 丸いアイコンボタンは文字が入る分だけ縦に伸ばす（幅は文字に合わせる） */
+.tab.is-help .icon-btn[aria-label]:not(.tg *) {
+  width: auto; min-width: 36px; height: auto; min-height: 36px; padding: 4px 6px;
+  border-radius: 12px; display: inline-flex; flex-direction: column; align-items: center; justify-content: center;
+}
+/* 入力欄・セレクトの説明（::after が付かないので外側の span に出す） */
+.tab-help-field { display: inline-flex; flex-direction: column; align-items: center; }
+.tab.is-help .tab-help-field::after {
+  content: attr(data-help);
+  margin-top: 2px; font-size: 10px; font-weight: 600; line-height: 1.2; white-space: nowrap; color: var(--muted);
+}
