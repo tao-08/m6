@@ -10,3 +10,7 @@ assets/sheets/uploads/*
 
 # ライブの添付画像（本番のデータ）
 storage/live_images/
+
+# DB バックアップ（個人情報入り。GitHub Actions のアーティファクトを落としたものを、うっかり add しない）
+*.sql.gz
+*.sql.gz.gpg
