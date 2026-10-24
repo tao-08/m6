@@ -179,6 +179,7 @@ if (isset($_GET['song']) || isset($_GET['key'])) {
     ?>
 <link rel="stylesheet" href="<?= asset_url('assets/tab.css') ?>">
 <nav class="crumbs"><a href="./">ライブ</a></nav>
+<h1 class="display display--sm">TAB譜編集・練習</h1>
 <section class="card tab-song">
     <?php if ($song['art']): ?>
         <img class="tab-song__art" src="<?= h($song['art']) ?>" alt="" width="72" height="72">
@@ -186,7 +187,7 @@ if (isset($_GET['song']) || isset($_GET['key'])) {
         <span class="tab-song__art tab-song__art--none"><?= icon('music_note') ?></span>
     <?php endif; ?>
     <div class="tab-song__text">
-        <h1 class="tab-song__title"><?= h($song['title']) ?></h1>
+        <h2 class="tab-song__title"><?= h($song['title']) ?></h2> <?php // 見出し（h1）は上の「TAB譜編集・練習」。曲名はその下の見出し ?>
         <?php if ($song['artist']): ?><p class="muted"><?= h($song['artist']) ?></p><?php endif; ?>
     </div>
 </section>
