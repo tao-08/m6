@@ -399,6 +399,12 @@ render_header('セットリストを編集', 'lives');
     </div>
     <button type="button" class="btn btn--ghost btn--sm" data-add-song>＋ 曲を追加</button>
 
+    <!-- 保存前の操作を戻す / やり直す（assets/app.js の setupSongs）。見た目はタイムテーブル作成と同じ左下の浮きボタン -->
+    <div class="ttb-float">
+        <button type="button" class="btn btn--sm" data-song-undo aria-label="元に戻す" title="元に戻す" disabled><?= icon('undo') ?></button>
+        <button type="button" class="btn btn--sm" data-song-redo aria-label="やり直す" title="やり直す" disabled><?= icon('redo') ?></button>
+    </div>
+
     <div class="sticky-actions">
         <a class="btn btn--ghost" href="<?= h($backUrl) ?>">キャンセル</a>
         <button class="btn btn--primary" type="submit">保存する</button>

@@ -1358,9 +1358,14 @@ code { background: var(--surface-2); padding: 1px 6px; border-radius: 6px; font-
 /* 曲の編集の「曲を探す」: 曲を紐付けるときに必ず使うボタンなので、枠だけアクセント色（赤）にして少し目立たせる */
 .song-search-btn { border-color: var(--accent); }
 /* ドラッグ中（.song-list.is-sorting）: アーティスト欄・検索ボタンも横に縮めて消す（行の隙間ぶんは負の margin で詰める） */
-.song-card__artist, .song-search-btn { transition: flex-basis .2s ease, min-width .2s ease, padding .2s ease, margin .2s ease, opacity .15s ease, border-width .2s ease; }
-.song-list.is-sorting .song-card__artist, .song-list.is-sorting .song-search-btn { flex: 0 0 0; min-width: 0; width: 0; padding-inline: 0; border-width: 0; margin-left: -10px; opacity: 0; overflow: hidden; white-space: nowrap; pointer-events: none; }
-@media (prefers-reduced-motion: reduce) { .song-card__artist, .song-search-btn { transition: none; } }
+.song-card__artist, .song-search-btn, .song-card__delete { transition: flex-basis .2s ease, width .2s ease, min-width .2s ease, padding .2s ease, margin .2s ease, opacity .15s ease, border-width .2s ease; }
+.song-list.is-sorting .song-card__artist, .song-list.is-sorting .song-search-btn, .song-list.is-sorting .song-card__delete { flex: 0 0 0; min-width: 0; width: 0; padding-inline: 0; border-width: 0; margin-left: -10px; opacity: 0; overflow: hidden; white-space: nowrap; pointer-events: none; }
+/* スマホ: ドラッグ中は「1行目 ≡・番号・ジャケット / 2行目 曲名だけ」。縮んだ欄は行を作らないよう消す */
+@media (max-width: 600px) {
+  .song-list.is-sorting .song-card__title { flex: 1 0 100%; }
+  .song-list.is-sorting .song-card__artist, .song-list.is-sorting .song-search-btn, .song-list.is-sorting .song-card__delete { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { .song-card__artist, .song-search-btn, .song-card__delete { transition: none; } }
 /* 曲の編集: 紐付けた曲のジャケット（紐付けていなければ ♪） */
 .song-thumb { position: relative; width: 40px; height: 40px; flex: none; border-radius: 6px; overflow: hidden;
   background: var(--surface-2); color: var(--muted); font-size: 16px; }
@@ -1763,12 +1768,19 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
   .back-fab { max-width: 320px; padding: 11px 20px 11px 14px; gap: 6px; font-size: 15px; }
   .back-fab .icon { font-size: 22px; }
 }
+/* 曲の編集: 左の余白にボタンが入らない幅（1560px 未満）の PC は、スマホと同じく左下に積む
+   PC の保存ボタン（.sticky-actions）は右に寄った小さい枠で、左下は空いている → 左下の端に詰めて、下から 元に戻す / やり直す → 「← 前のページ」 */
+@media (min-width: 761px) and (max-width: 1559px) {
+  body:has(.songs-form) .songs-form .ttb-float.ttb-float { left: 20px; top: auto; bottom: calc(16px + env(safe-area-inset-bottom)); }
+  body:has(.songs-form) .back-fabs { top: auto; bottom: calc(64px + env(safe-area-inset-bottom)); }
+}
 /* 左の余白にボタンが入る幅では、余白の右端（本文のすぐ左）に寄せる
    本文は幅 1120px の中央寄せ（.container）で、中に 16px の余白がある → 本文の左端は 50% - 560px + 16px。
    right = 100% - (本文の左端 - 16px) = 50% + 560px。幅は余白から左右 16px ずつ引いたぶんまで */
 @media (min-width: 1560px) {
   .back-fabs { left: auto; right: calc(50% + 560px); top: calc(50% + 80px); align-items: flex-end; } /* 余白の中なので、まん中の少し下 */
   .back-fab { max-width: calc(50vw - 576px); }
+  body:has(.songs-form) .songs-form .ttb-float.ttb-float { left: auto; right: calc(50% + 560px); top: calc(50% + 80px + 54px); bottom: auto; }
 }
 @media (prefers-reduced-motion: reduce) {
   .back-fabs, .back-fab { transition: none; }
@@ -2332,6 +2344,9 @@ html:has(.board-posts) { scroll-behavior: smooth; }
 @media (max-width: 760px) {
   .ttb-float { left: 12px; bottom: calc(76px + env(safe-area-inset-bottom)); }
   body:has(.back-fabs:not(.back-fabs--ghost) .back-fab) .ttb-float { bottom: calc(128px + env(safe-area-inset-bottom)); }
+  /* 曲の編集（songs_edit）: 保存ボタン（.sticky-actions）のすぐ上に 元に戻す / やり直す、その上に「← 前のページ」 */
+  body:has(.songs-form) .songs-form .ttb-float.ttb-float { bottom: calc(150px + env(safe-area-inset-bottom)); }
+  body:has(.songs-form) .back-fabs { bottom: calc(200px + env(safe-area-inset-bottom)); }
 }
 .ttb-avail__title { margin: 0 0 8px; font-size: 16px; font-weight: 800; }
 .ttb-suggest { margin: 0 0 6px; }

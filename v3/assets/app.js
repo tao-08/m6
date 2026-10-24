@@ -521,7 +521,7 @@ function setupSongs() {
   // name="songs[3][title]" の 3 の部分。保存済みの曲（0, 1, 2...）より大きく、押すたびに 1 ずつ増やして被らないようにする
   //   （Date.now() をそのまま使うと、同じミリ秒に2回押したとき同じ番号になり、2曲が1曲に混ざる）
   let nextIndex = Date.now();
-  const addCard = (tpl) => {
+  const addCard = (tpl, atTop = false) => {
     const card = tpl.content.firstElementChild.cloneNode(true);
     const newIndex = nextIndex++;
     card.querySelectorAll('[name]').forEach((el) => {
@@ -536,12 +536,105 @@ function setupSongs() {
     // ふわっと出す（CSS の .song-card.is-entering）。終わったらクラスを外しておく
     card.classList.add('is-entering');
     card.addEventListener('animationend', () => card.classList.remove('is-entering'), { once: true });
-    list.appendChild(card);
+    list.insertBefore(card, atTop ? cards()[0] ?? null : null); // SE は一番上（オープニング SE）、曲は一番下
     renumber();
     card.querySelector('[name$="[title]"]').focus();
   };
   document.querySelector('[data-add-song]').addEventListener('click', () => addCard(template));
-  document.querySelector('[data-add-song-se]').addEventListener('click', () => addCard(templateSe));
+  document.querySelector('[data-add-song-se]').addEventListener('click', () => addCard(templateSe, true));
+
+  // ---- 元に戻す / やり直す（保存前の操作を1つずつ） ----
+  //   操作のたびに「全カードの並び・入力値・状態」を撮って（capture）積んでおき、戻すときはそれに合わせ直す（restore）。
+  //   消したカード（要素）も持っておくので、戻せば入力ごと復活する。入力欄は change（欄を離れたとき）で1操作になる
+  const undoBtn = document.querySelector('[data-song-undo]');
+  const redoBtn = document.querySelector('[data-song-redo]');
+  const cardIds = new WeakMap();
+  let cardSeq = 0;
+  const capture = () => {
+    const snap = { omni: omnibus.checked, cards: cards().map((card) => {
+      if (!cardIds.has(card)) cardIds.set(card, ++cardSeq);
+      return {
+        card,
+        fields: [...card.querySelectorAll('[name]')].map((el) => ({ el, value: el.value, checked: el.checked, disabled: el.disabled })),
+        deleted: card.classList.contains('is-deleted'),
+        inst: [...card.querySelectorAll('[data-inst2], [data-add-inst]')].map((el) => ({ el, hidden: el.hidden })),
+        thumb: card.querySelector('[data-track-thumb]').innerHTML,
+        thumbTitle: card.querySelector('.song-thumb').title,
+        clearHidden: card.querySelector('[data-track-clear]').hidden,
+      };
+    }) };
+    // 中身が同じ操作を積まないための印（欄の値・並び順・削除の印・紐付け）
+    snap.sig = JSON.stringify([snap.omni, snap.cards.map((s) => [cardIds.get(s.card), s.fields.map((f) => [f.value, f.checked]), s.deleted, s.inst.map((i) => i.hidden), s.clearHidden])]);
+    return snap;
+  };
+  let restoring = false;
+  const restore = (snap) => {
+    restoring = true;
+    const keep = new Set(snap.cards.map((s) => s.card));
+    cards().forEach((c) => { if (!keep.has(c)) c.remove(); });
+    omnibus.checked = snap.omni;
+    snap.cards.forEach((s) => {
+      const c = s.card;
+      c.getAnimations().forEach((a) => a.cancel());
+      c.classList.remove('is-leaving', 'is-entering', 'is-dragging');
+      c.style.cssText = '';
+      list.appendChild(c);
+      s.fields.forEach(({ el, value, checked, disabled }) => {
+        const changed = el.value !== value || el.checked !== checked;
+        el.value = value;
+        el.checked = checked;
+        el.disabled = disabled;
+        if (changed || el.matches('select')) el.dispatchEvent(new Event('change', { bubbles: true })); // 見た目（楽器のボタン・薄い表示）を合わせさせる
+      });
+      c.classList.toggle('is-deleted', s.deleted);
+      const del = c.querySelector('[data-song-delete-btn]');
+      del.setAttribute('aria-pressed', String(s.deleted));
+      del.setAttribute('aria-label', s.deleted ? '削除を取り消す' : 'この曲を削除');
+      s.inst.forEach(({ el, hidden }) => { el.hidden = hidden; });
+      c.querySelector('[data-track-thumb]').innerHTML = s.thumb;
+      c.querySelector('.song-thumb').title = s.thumbTitle;
+      c.querySelector('[data-track-clear]').hidden = s.clearHidden;
+      const artist = c.querySelector('[data-song-artist]');
+      if (artist) artist.readOnly = !snap.omni;
+    });
+    renumber();
+    restoring = false;
+  };
+  const history = [capture()];
+  let pos = 0;
+  const refreshHistoryBtns = () => {
+    undoBtn.disabled = pos <= 0;
+    redoBtn.disabled = pos >= history.length - 1;
+  };
+  const commit = () => {
+    if (restoring) return;
+    const snap = capture();
+    if (snap.sig === history[pos].sig) return;
+    history.length = pos + 1; // 戻したあとに新しい操作をしたら、やり直しは捨てる
+    history.push(snap);
+    if (history.length > 50) history.shift();
+    pos = history.length - 1;
+    refreshHistoryBtns();
+  };
+  const step = (d) => {
+    commit(); // 先に今の状態を積んでおく（積み残しがあれば、それも戻せるように）
+    const next = pos + d;
+    if (next < 0 || next >= history.length) return;
+    pos = next;
+    restore(history[pos]);
+    refreshHistoryBtns();
+  };
+  undoBtn.addEventListener('click', () => step(-1));
+  redoBtn.addEventListener('click', () => step(1));
+  refreshHistoryBtns();
+  // 操作のあとに積む（他の処理が終わってから撮るので setTimeout 0）
+  const later = () => setTimeout(commit, 0);
+  list.addEventListener('change', later);
+  list.addEventListener('click', later);
+  list.addEventListener('keyup', (e) => { if (e.key === 'ArrowUp' || e.key === 'ArrowDown') later(); });
+  list.addEventListener('pointerup', later);
+  omnibus.addEventListener('change', later);
+  document.querySelectorAll('[data-add-song], [data-add-song-se]').forEach((b) => b.addEventListener('click', later));
 
   // カードが後から増えるので、list でまとめてイベントを受ける（イベント委譲）
   list.addEventListener('click', (e) => {
