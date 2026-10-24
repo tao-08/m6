@@ -11,7 +11,9 @@
 (() => {
   'use strict';
   // 曲名を押すと、その行の <dialog> に演奏履歴・数字を出す。背景（dialog 自体）を押しても閉じる
-  document.querySelectorAll('[data-song-open]').forEach((btn) => {
+  // 検索で一覧を差し替えたあとにも呼ぶので、root の中だけを対象にする
+  function setupModals(root) {
+  root.querySelectorAll('[data-song-open]').forEach((btn) => {
     const modal = btn.closest('li').querySelector('[data-song-modal]');
     btn.addEventListener('click', () => modal.showModal());
     // 閉じるときも動かす: is-closing を付けて、アニメーションが終わってから close()（Esc も同じ）
@@ -32,16 +34,58 @@
       });
       modal.addEventListener('click', (e) => { if (!wrap.contains(e.target)) wrap.classList.remove('is-open'); });
     }
+    // 「メインにまとめる」: 押すと警告のモーダルを開く（キャンセルで閉じる）
+    modal.querySelectorAll('[data-merge-ask]').forEach((ask) => {
+      const box = ask.nextElementSibling;
+      ask.addEventListener('click', () => box.showModal());
+      box.querySelector('[data-merge-cancel]').addEventListener('click', () => box.close());
+      box.addEventListener('click', (e) => { if (e.target === box) box.close(); });
+    });
     modal.querySelector('[data-song-close]').addEventListener('click', closeModal);
     modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
     modal.addEventListener('cancel', (e) => { e.preventDefault(); closeModal(); });
   });
+  }
+  setupModals(document);
+
+  // 検索: ページ移動なしで、同じ URL を取り直して一覧だけ入れ替える（並べ替え・ページ送りのリンクは今までどおり）
+  const filter = document.querySelector('[data-songs-filter]');
+  const results = document.querySelector('[data-songs-results]');
+  if (filter && results) {
+    let timer = null;
+    let ctrl = null;
+    const refresh = async () => {
+      const params = new URLSearchParams(new FormData(filter));
+      for (const [k, v] of [...params]) if (v === '') params.delete(k);
+      const url = 'songs' + (params.toString() ? '?' + params : '');
+      ctrl?.abort();
+      ctrl = new AbortController();
+      try {
+        const res = await fetch(url, { credentials: 'same-origin', signal: ctrl.signal });
+        if (!res.ok) throw new Error();
+        const doc = new DOMParser().parseFromString(await res.text(), 'text/html');
+        const next = doc.querySelector('[data-songs-results]');
+        if (!next) throw new Error();
+        results.replaceChildren(...document.importNode(next, true).childNodes);
+        setupModals(results);
+        history.replaceState(null, '', url);
+      } catch (err) {
+        if (err.name !== 'AbortError') window.location.href = url; // 取り直せなければ通常の検索へ
+      }
+    };
+    filter.addEventListener('submit', (e) => { e.preventDefault(); clearTimeout(timer); refresh(); });
+    filter.querySelector('input[name="q"]').addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(refresh, 250); });
+  }
 
   // 高画質版の画像が読めなかったら、保存してある元の画像に戻す（error は伝わらないので capture で受ける）
   document.addEventListener('error', (e) => {
     const img = e.target;
     if (img instanceof HTMLImageElement && img.dataset.fallback && img.src !== img.dataset.fallback) img.src = img.dataset.fallback;
   }, true);
+
+  // セットリストの曲名から来たとき（?open=）は、その曲のモーダルを最初から開く
+  const auto = document.querySelector('[data-song-autoopen] [data-song-modal]');
+  if (auto) { auto.showModal(); auto.closest('li').scrollIntoView({ block: 'center' }); }
 
   const form = document.querySelector('[data-song-link]');
   if (!form) return;

@@ -36,6 +36,7 @@
 .songs-row__title { font-weight: 800; overflow-wrap: anywhere; }
 .songs-row__artist { overflow-wrap: anywhere; }
 .songs-row__meta { display: flex; gap: 12px; white-space: nowrap; }
+.songs-row__plays { display: inline-flex; align-items: center; gap: 2px; white-space: nowrap; min-width: 2.6em; justify-content: flex-end; } /* 回数の桁が違っても右端がそろうように */
 .songs-row__tab.is-on { color: var(--accent); border-color: var(--accent); }
 .songs-row__open { all: unset; cursor: pointer; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; max-width: 100%; }
 .songs-row__open:hover .songs-row__title { color: var(--accent); text-decoration: underline; }
@@ -86,3 +87,11 @@
 .songs-row__tab .tab-icon { font-size: 11px; }
 
 .songs-row__n { position: relative; top: 1px; } /* 数字の見た目の中心が枠の中心より上に出るので、1px 下げる */
+.songs-confirm { width: min(360px, calc(100vw - 32px)); }
+.songs-confirm form { display: grid; gap: 12px; justify-items: end; }
+.songs-confirm__warn { margin: 0; justify-self: stretch; overflow-wrap: anywhere; }
+.songs-confirm__warn .icon { font-size: 20px; vertical-align: middle; color: var(--accent); }
+.songs-confirm__change { display: flex; align-items: center; justify-content: center; gap: 10px; justify-self: stretch; }
+.songs-confirm__side { display: grid; justify-items: center; gap: 4px; min-width: 0; flex: 1; text-align: center; overflow-wrap: anywhere; }
+.songs-confirm__side img, .songs-confirm__none { width: 64px; height: 64px; border-radius: 8px; object-fit: cover; display: grid; place-items: center; background: var(--border); }
+.songs-confirm__change > .icon { flex: none; color: var(--accent); }
