@@ -26,7 +26,7 @@ $pdo = db();
 const VENUE_EQUIP_CATEGORIES = ['ギターアンプ', 'ベースアンプ', 'ドラム', 'キーボード', 'PA', 'その他'];
 
 $venueId = (int)($_GET['id'] ?? $_POST['venue_id'] ?? 0);
-$st = $pdo->prepare('SELECT venue_id, name, address, website_url FROM venue WHERE venue_id = ?');
+$st = $pdo->prepare('SELECT venue_id, name, address, website_url, note FROM venue WHERE venue_id = ?');
 $st->execute([$venueId]);
 $venue = $st->fetch();
 if (!$venue) {
@@ -44,14 +44,17 @@ if (is_post()) {
     if ($action === 'save_info') {
         $url = trim((string)($_POST['website_url'] ?? ''));
         $address = trim((string)($_POST['address'] ?? ''));
+        $note = trim(str_replace("\r\n", "\n", (string)($_POST['note'] ?? '')));
         // href に入れるので http(s) だけ許す（javascript: などで XSS させない）
         if ($url !== '' && (mb_strlen($url) > 255 || !preg_match('#^https?://[^\s<>"]+$#i', $url))) {
             flash('サイトの URL が正しくありません', 'error');
         } elseif (mb_strlen($address) > 255) {
             flash('住所が長すぎます', 'error');
+        } elseif (mb_strlen($note) > 1000) {
+            flash('メモが長すぎます', 'error');
         } else {
-            $pdo->prepare('UPDATE venue SET website_url = ?, address = ? WHERE venue_id = ?')
-                ->execute([$url === '' ? null : $url, $address === '' ? null : $address, $venueId]);
+            $pdo->prepare('UPDATE venue SET website_url = ?, address = ?, note = ? WHERE venue_id = ?')
+                ->execute([$url === '' ? null : $url, $address === '' ? null : $address, $note === '' ? null : $note, $venueId]);
             flash('保存しました');
         }
         redirect($self);
@@ -259,6 +262,7 @@ render_header($venue['name'], 'tools');
             <span><?= icon('train') ?> <?= h($s['station_name']) ?>駅 徒歩<?= (int)$s['walk_minutes'] ?>分</span>
         <?php endforeach; ?>
     </p>
+    <?php if ($venue['note']): ?><p class="venue-note"><?= nl2br(h($venue['note'])) ?></p><?php endif; ?>
     <details class="venue-edit">
         <summary><?= icon('edit') ?> 編集</summary>
         <form method="post" class="venue-edit__form">
@@ -270,6 +274,9 @@ render_header($venue['name'], 'tools');
             </div>
             <div class="venue-edit__row">
                 <input type="text" class="grow" name="address" maxlength="255" value="<?= h($venue['address']) ?>" placeholder="住所" aria-label="住所">
+            </div>
+            <div class="venue-edit__row">
+                <textarea class="grow" name="note" rows="3" maxlength="1000" placeholder="メモ" aria-label="メモ"><?= h($venue['note']) ?></textarea>
             </div>
             <div><button type="submit" class="btn btn--primary btn--sm"><?= icon('save') ?> 保存</button></div>
         </form>

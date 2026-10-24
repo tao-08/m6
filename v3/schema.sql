@@ -127,6 +127,7 @@ CREATE TABLE venue (
     name        VARCHAR(50)  NOT NULL,
     address     VARCHAR(255) NULL,
     website_url VARCHAR(255) NULL,
+    note        VARCHAR(1000) NULL,                    -- メモ（搬入口・注意事項など。migrations/074）
     sort_order  INT UNSIGNED NOT NULL DEFAULT 0,       -- 並び順（masters.php の ↑↓）
     PRIMARY KEY (venue_id),
     UNIQUE KEY uq_venue_name (name)                    -- 同じ会場が2つできない
