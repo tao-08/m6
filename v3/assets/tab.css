@@ -27,7 +27,15 @@ a.tab-parts__item:hover { border-color: var(--accent); }
 .tab { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; margin-top: 12px; } /* 列を中身の幅に広げない（canvas・操作バーでページが横にはみ出す） */
 .tab-head { display: flex; align-items: center; gap: 10px; }
 .tab-head__art { width: 44px; height: 44px; border-radius: 8px; object-fit: cover; flex: none; }
-.tab-head__text { flex: 1; min-width: 0; }
+/* 曲名・アーティスト・パートの文字ブロック（左の画像と右のボタンの間）。
+   flex: 1        … 余った横幅をすべてもらう
+   min-width: 0   … flex の子は「中身の幅」より縮まない初期値なので、0 にして縮めるようにする（これが無いと、はみ出したまま）
+   white-space: normal … 【スマホでボタンが文字に被る不具合の修正】
+     プレイヤーのルート <div class="tab"> に、app.css の汎用 .tab（ライブ詳細の日程タブ用。white-space: nowrap = 折り返し禁止）が
+     偶然当たっていて、white-space は子へ「継承」されるため、下の p（アーティスト · パート · カポ）が折り返せず、
+     右へはみ出して右端のボタン（？・履歴・編集）の下に潜り込んでいた。ここだけ通常の折り返しに戻す。
+     ※ 同じクラス名を別の用途で使い回すと起きる「CSS のクラス名衝突」。根本的には app.css 側のタブを .tabs > .tab に絞る方法もある */
+.tab-head__text { flex: 1; min-width: 0; white-space: normal; }
 .tab-head__title { margin: 0; font-size: 17px; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tab-head__text p { margin: 2px 0 0; overflow-wrap: anywhere; }
 
