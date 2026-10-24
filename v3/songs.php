@@ -499,8 +499,15 @@ $deleteForm = static fn(array $v, string $open = ''): string => '<form method="p
                         <?php $art = $rep['art']
                             ? '<img class="songs-modal__art" src="' . h(songs_large_art($rep['art'])) . '" data-fallback="' . h($rep['art']) . '" alt="" width="200" height="200" loading="lazy">'
                             : '<span class="songs-modal__art songs-row__art--none">' . icon('music_note') . '</span>'; ?>
-                        <?php if ($trackUrl !== null): $listenApp = listen_app($musicApp, (string)$rep['src']); // セットリストのジャケットと同じ: PC は乗せると暗くなってアプリのアイコン、スマホは押すとアイコンが出る ?>
-                            <span class="setlist__artwrap" data-song-listen><?= $art ?><a class="setlist__listen setlist__listen--<?= h($listenApp) ?>" href="<?= h($trackUrl) ?>" target="_blank" rel="noopener noreferrer" aria-label="<?= h(MUSIC_APPS[$listenApp]) ?> で聴く"><?= MUSIC_APP_ICONS[$listenApp] ?></a></span>
+                        <?php if ($rep['art']): // ジャケットを押すと拡大表示（閉じるボタン + 音楽アプリのアイコン） ?>
+                            <button type="button" class="songs-modal__zoom" data-song-zoom aria-label="拡大"><?= $art ?></button>
+                            <dialog class="songs-zoom" data-song-zoom-box aria-label="<?= h($g['title']) ?>">
+                                <button type="button" class="icon-btn songs-zoom__close" data-song-zoom-close aria-label="閉じる" title="閉じる"><?= icon('close') ?></button>
+                                <img class="songs-zoom__art" src="<?= h(songs_large_art($rep['art'])) ?>" data-fallback="<?= h($rep['art']) ?>" alt="">
+                                <?php if ($trackUrl !== null): $listenApp = listen_app($musicApp, (string)$rep['src']); ?>
+                                    <a class="songs-zoom__app setlist__listen--<?= h($listenApp) ?>" href="<?= h($trackUrl) ?>" target="_blank" rel="noopener noreferrer" aria-label="<?= h(MUSIC_APPS[$listenApp]) ?> で聴く" title="<?= h(MUSIC_APPS[$listenApp]) ?>"><?= MUSIC_APP_ICONS[$listenApp] ?></a>
+                                <?php endif; ?>
+                            </dialog>
                         <?php else: ?><?= $art ?><?php endif; ?>
                         <?php if ($rep['album']): ?>
                             <a class="songs-modal__album small" href="<?= h($albumUrl) ?>" target="_blank" rel="noopener noreferrer"><?= h($rep['album']) ?><?= $rep['year'] ? ' · ' . (int)$rep['year'] : '' ?></a>

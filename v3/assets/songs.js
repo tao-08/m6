@@ -23,16 +23,14 @@
       modal.classList.add('is-closing');
       modal.addEventListener('animationend', () => { modal.classList.remove('is-closing'); modal.close(); }, { once: true });
     };
-    // スマホ（hover が無い）: 1回目のタップ はアイコンを出すだけ。出たアイコンを押すと音楽アプリへ飛ぶ
-    const wrap = modal.querySelector('[data-song-listen]');
-    if (wrap) {
-      const link = wrap.querySelector('a');
-      link.addEventListener('click', (e) => {
-        if (!window.matchMedia('(hover: none)').matches || wrap.classList.contains('is-open')) return;
-        e.preventDefault();
-        wrap.classList.add('is-open');
-      });
-      modal.addEventListener('click', (e) => { if (!wrap.contains(e.target)) wrap.classList.remove('is-open'); });
+    // ジャケットを押すと拡大表示（閉じる・背景を押す・Esc で閉じる。Esc で親のモーダルまで閉じないよう止める）
+    const zoomBtn = modal.querySelector('[data-song-zoom]');
+    const zoom = modal.querySelector('[data-song-zoom-box]');
+    if (zoomBtn && zoom) {
+      zoomBtn.addEventListener('click', () => zoom.showModal());
+      zoom.querySelector('[data-song-zoom-close]').addEventListener('click', () => zoom.close());
+      zoom.addEventListener('click', (e) => { e.stopPropagation(); if (e.target === zoom) zoom.close(); });
+      zoom.addEventListener('cancel', (e) => e.stopPropagation());
     }
     // 「メインにまとめる」: 押すと警告のモーダルを開く（キャンセルで閉じる）
     modal.querySelectorAll('[data-merge-ask]').forEach((ask) => {
