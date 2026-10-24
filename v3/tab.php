@@ -351,8 +351,8 @@ render_header($tab['title'] . ' ' . $tab['part'], 'lives');
             <!-- 参考リンク（JS が作る。リンクの追加・削除は編集画面） -->
             <p class="tab-links" data-links></p>
         </div>
-        <?php // ？ = 説明の表示。押すとアイコンだけのボタンの下に名前が出る（初めて開いたときは最初から出ている。assets/tab.js の setupHelp） ?>
-        <button type="button" class="icon-btn" data-help-toggle aria-pressed="false" aria-label="説明" title="説明"><?= icon('help') ?></button>
+        <?php // ？ = 使い方のモーダル。中でボタン名の表示（アイコンの下に名前）を切り替える（assets/tab.js の setupHelp） ?>
+        <button type="button" class="icon-btn" data-help-open aria-label="使い方" title="使い方"><?= icon('help') ?></button>
         <button type="button" class="icon-btn" data-history-open aria-label="履歴" title="履歴"><?= icon('history') ?></button>
         <button type="button" class="icon-btn" data-mode-toggle aria-pressed="false" aria-label="編集" title="編集"><?= icon('edit') ?></button>
     </header>
@@ -541,6 +541,51 @@ render_header($tab['title'] . ' ' . $tab['part'], 'lives');
             <h3 id="tab-history-title" class="modal__title"><?= icon('history') ?> 履歴</h3>
             <ul class="tab-history" data-history-list></ul>
             <div class="form-actions"><button type="button" class="btn btn--ghost" data-history-close aria-label="閉じる" title="閉じる"><?= icon('close') ?></button></div>
+        </div>
+    </dialog>
+
+    <!-- 使い方: 全体の流れ（編集 → 練習）と、できることの一覧 -->
+    <dialog class="modal tab-guide" data-guide aria-labelledby="tab-guide-title">
+        <div class="modal__body">
+            <h3 id="tab-guide-title" class="modal__title"><?= icon('help') ?> 使い方</h3>
+
+            <h4 class="tab-guide__h">流れ</h4>
+            <ol class="tab-guide__steps">
+                <li><b><?= icon('edit') ?> 編集</b>で <b>YouTube</b> の URL・<b>BPM</b>・<b>拍子</b>・<b>分割</b>を設定</li>
+                <li><b><?= icon('my_location') ?> 開始</b>: 1小節目の頭で再生を止めて押す</li>
+                <li>マスを選んで<b>画面内キーボード</b>でフレットを入力（<?= icon('upload_file') ?> で文字・画像の TAB も取込）</li>
+                <li>ずれる曲は <b><?= icon('touch_app') ?> タップ</b>: 再生しながら小節の頭で T を押して補正</li>
+                <li><b><?= icon('save') ?> 保存</b> → 編集を閉じて練習</li>
+            </ol>
+
+            <h4 class="tab-guide__h">練習</h4>
+            <ul class="tab-guide__list">
+                <li><?= icon('smart_display') ?><?= icon('audio_file') ?><?= icon('timer') ?><span>音源: YouTube / 手元のファイル（送信なし）/ なし</span></li>
+                <li><?= icon('link') ?><span>同期解除: 音源を止めて好きな BPM で進む</span></li>
+                <li><?= icon('touch_app') ?><span>TAB をタップでその位置へ移動</span></li>
+                <li><span class="tab-guide__txt">×0.5</span><span>速度・練習 BPM</span></li>
+                <li><span class="tab-guide__txt">A B</span><span>A→B リピート（+2 などでループごとに BPM 増加）</span></li>
+                <li><?= icon('loop') ?><span>セクション横のアイコンでその部分だけ繰り返し</span></li>
+                <li><?= icon('flag') ?><span>練習用マーカー（自分だけに表示）</span></li>
+                <li><?= icon('music_note') ?><span>メトロノーム（▾ で細分・音量・カウント）</span></li>
+                <li><?= icon('zoom_in') ?><span>拡大・縮小</span></li>
+            </ul>
+
+            <h4 class="tab-guide__h">編集</h4>
+            <ul class="tab-guide__list">
+                <li><?= icon('label') ?><span>小節を選んでセクション名を付ける</span></li>
+                <li><?= icon('speed') ?><span>BPM 計測: 曲に合わせて4回以上タップ</span></li>
+                <li><?= icon('undo') ?><?= icon('redo') ?><span>元に戻す・やり直す</span></li>
+                <li><?= icon('history') ?><span>履歴から復元</span></li>
+                <li><?= icon('sticky_note_2') ?><span>メモ・画像・参考リンク</span></li>
+            </ul>
+
+            <p class="tab-guide__keys small muted">Space 再生 · ←→ 5秒 · M マーカー · \ リピート解除 · Ctrl+Z / Y</p>
+
+            <div class="form-actions">
+                <label class="check tab-guide__labels"><input type="checkbox" data-help-labels> ボタン名を表示</label>
+                <button type="button" class="btn btn--ghost" data-help-close aria-label="閉じる" title="閉じる"><?= icon('close') ?></button>
+            </div>
         </div>
     </dialog>
 

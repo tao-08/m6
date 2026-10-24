@@ -176,28 +176,32 @@
   const $$ = (sel, el = root) => [...el.querySelectorAll(sel)];
   const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
-  /* ---- 説明の表示（？ボタン）----
-   *   アイコンだけのボタンは、スマホだと初めての人には意味が分からない（title のポップアップはタップでは出ない）。
-   *   ？を押すと root に is-help が付き、tab.css が各ボタンの aria-label / title をボタンの下に文字で出す。
+  /* ---- 使い方（？ボタン）----
+   *   ？で使い方のモーダルを開く。中の「ボタン名を表示」で、root に is-help を付け外しする。
+   *   is-help のときは tab.css が各ボタンの aria-label / title をボタンの下に文字で出す
+   *   （スマホは title のポップアップがタップでは出ないので、初めての人向け）。
    *   文字は CSS の attr() で出すので、あとから JS が作るボタン（グリッド・キーボード）にも自動で付く。
-   *   初めて開いたときは最初から ON。押した結果は端末に覚えておく */
+   *   ボタン名は初めて開いたときは ON。切り替えた結果は端末に覚えておく */
   (function setupHelp() {
-    const btn = $('[data-help-toggle]');
-    if (!btn) return;
+    const dlg = $('[data-guide]'); // data-help は入力欄の説明の文字（.tab-help-field）で使っているので別の名前
+    const box = $('[data-help-labels]');
+    if (!dlg || !box) return;
     let on = true;
     try { on = localStorage.getItem('tabHelp') !== '0'; } catch (e) { /* 保存できなくても動く（毎回 ON） */ }
     const apply = () => {
       root.classList.toggle('is-help', on);
-      btn.setAttribute('aria-pressed', String(on));
-      btn.classList.toggle('is-active', on);
+      box.checked = on;
     };
     apply();
-    btn.addEventListener('click', () => {
-      on = !on;
+    box.addEventListener('change', () => {
+      on = box.checked;
       apply();
       try { localStorage.setItem('tabHelp', on ? '1' : '0'); } catch (e) { /* 無視 */ }
       window.dispatchEvent(new Event('resize')); // ボタンの高さが変わるので canvas の大きさを測り直させる
     });
+    $('[data-help-open]').addEventListener('click', () => dlg.showModal());
+    $('[data-help-close]').addEventListener('click', () => dlg.close());
+    dlg.addEventListener('click', (e) => { if (e.target === dlg) dlg.close(); }); // 外側（背景）を押しても閉じる
   })();
 
   const MAX_BARS = 400;

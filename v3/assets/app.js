@@ -2329,7 +2329,7 @@ function setupSortToggle() {
  *   URL の #day-12 を見て、その日程だけ表示する（リンクで直接その日を開ける）
  * ------------------------------------------------------------------- */
 function setupTabs() {
-  const tabs = document.querySelectorAll('[data-tab]');
+  const tabs = document.querySelectorAll('a[data-tab]'); // a に限る: tab.php の TAB 譜（div[data-tab]）の中のクリックまで止めてしまうので
   if (!tabs.length) return;
 
   const showDay = (hash) => {

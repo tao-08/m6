@@ -32,7 +32,7 @@ a.tab-parts__item:hover { border-color: var(--accent); }
 .tab-head__text p { margin: 2px 0 0; overflow-wrap: anywhere; }
 
 .tab-video { aspect-ratio: 16 / 9; width: min(100%, 420px); border-radius: var(--radius-sm); overflow: hidden; background: #000; }
-.tab-video iframe { width: 100%; height: 100%; border: 0; display: block; }
+.tab-video [data-video-mount], .tab-video iframe { width: 100%; height: 100%; border: 0; display: block; } /* iframe は mount の中に入るので、mount も枠いっぱいにする（高さが無いと上に小さく寄る） */
 
 /* 操作バー: アイコンのボタンを折り返しながら並べる */
 .tab-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 10px 12px; }
@@ -83,6 +83,7 @@ a.tab-parts__item:hover { border-color: var(--accent); }
 .tg-cell::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: var(--border); z-index: 0; } /* 弦の線 */
 .tg-cell.is-beat { border-left-color: var(--muted); }
 .tg-cell.has-note { background: var(--surface); z-index: 1; }
+.tg-cell.has-note::before, .tg-cell.has-rest::before { display: none; } /* 数字・休符のマスは弦の線を消す（線が文字の上に重なる） */
 .tg-cell:hover { background: var(--accent-soft); }
 .tg-cell.is-sel { outline: 2px solid var(--accent); outline-offset: -2px; background: var(--accent-soft); z-index: 2; }
 .tg-add { justify-self: start; }
@@ -230,7 +231,25 @@ a.tab-parts__item:hover { border-color: var(--accent); }
 .tab-import__status { margin: 6px 0 0; min-height: 1.2em; color: var(--muted); overflow-wrap: anywhere; }
 .modal.tab-import { width: min(520px, calc(100vw - 32px)); }
 
-/* ---- 説明の表示（ヘッダーの ？。assets/tab.js の setupHelp）----
+/* ===== 使い方のモーダル（ヘッダーの ？） ===== */
+.modal.tab-guide { width: min(520px, calc(100vw - 32px)); white-space: normal; font-weight: 400; } /* app.css の .tab（タブ切替のボタン）の nowrap・太字が親から継承されるので戻す */
+.tab-guide .modal__body { max-height: calc(100dvh - 48px); overflow-y: auto; }
+.tab-guide__h { margin: 14px 0 6px; font-size: 13px; font-weight: 800; color: var(--muted); }
+.tab-guide .icon { font-size: 18px; vertical-align: -.25em; }
+.tab-guide__steps { margin: 0; padding-left: 1.4em; display: grid; gap: 6px; font-size: 14px; }
+.tab-guide__steps b { white-space: nowrap; }
+.tab-guide__list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 14px; }
+.tab-guide__list li { display: flex; align-items: center; gap: 4px; }
+.tab-guide__list li > .icon, .tab-guide__txt { flex: none; color: var(--accent); }
+.tab-guide__list li > span:last-child { margin-left: 6px; min-width: 0; }
+.tab-guide__txt { font-weight: 800; font-size: 12px; min-width: 18px; }
+.tab-guide__keys { margin: 14px 0 0; }
+.tab-guide .form-actions { justify-content: space-between; align-items: center; }
+.tab-guide__labels { font-size: 13px; }
+/* モーダルの中では、ボタン名の文字（::after）を出さない */
+.tab.is-help .tab-guide .btn::after { content: none; }
+
+/* ---- 説明の表示（使い方のモーダルの「ボタン名を表示」。assets/tab.js の setupHelp）----
    アイコンだけのボタンの下に、aria-label（無ければ title）を小さい文字で出す。
    グリッドのマス（.tg）は数が多く、文字を出すと譜面が読めなくなるので出さない */
 .tab.is-help :is(.icon-btn, .tab-chip, .tab-pad button, .btn)[aria-label]:not(.tg *)::after,
