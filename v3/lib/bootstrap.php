@@ -508,6 +508,22 @@ function clear_failures(string $loginId): void
     db()->prepare('DELETE FROM login_attempt WHERE login_id = ?')->execute([$loginId]);
 }
 
+/** 再設定用 URL の有効期限（分）。users.php で発行 → password_reset.php で使う */
+const PASSWORD_RESET_MINUTES = 60;
+
+/**
+ * パスワードを変える（account.php の変更・password_reset.php の再設定で共通）。
+ * password_changed_at も新しくするので、ほかの端末は次のページ表示で require_login() にログアウトさせられる。
+ * 戻り値は新しい password_changed_at。変えた本人の端末を残すときは $_SESSION['user']['pw_at'] に入れる
+ */
+function set_password(int $userId, string $new): string
+{
+    $changedAt = date('Y-m-d H:i:s');
+    db()->prepare('UPDATE user_account SET password_hash = ?, password_changed_at = ? WHERE user_id = ?')
+        ->execute([password_hash($new, PASSWORD_DEFAULT), $changedAt, $userId]);
+    return $changedAt;
+}
+
 /* =====================================================================
  *  CSRF 対策
  * ---------------------------------------------------------------------
@@ -619,13 +635,21 @@ function require_login(): array
         redirect('login'); // ログイン画面なのは見ればわかるので「ログインしてください」のお知らせは出さない
     }
     // DB を作り直した・管理者に削除された等でアカウントが消えていたら、古いセッションを捨てる
-    $st = db()->prepare('SELECT name, is_admin, is_executive, member_id, hide_retired_suggest, show_back_button, count_upcoming FROM user_account WHERE user_id = ?');
+    $st = db()->prepare('SELECT name, is_admin, is_executive, member_id, hide_retired_suggest, show_back_button, count_upcoming, password_changed_at FROM user_account WHERE user_id = ?');
     $st->execute([$user['user_id']]);
     $row = $st->fetch();
     if (!$row) {
         $_SESSION = [];
         session_regenerate_id(true);
         flash('アカウントが見つかりません。もう一度ログインしてください', 'error');
+        redirect('login');
+    }
+    // ログインした後にパスワードが変わっていたら（別の端末で変更・管理者の URL で再設定）、この端末はログアウト。
+    // 乗っ取られて再設定したとき、犯人の端末のログイン（最大 SESSION_DAYS 日続く）も切れるように
+    if (($user['pw_at'] ?? null) !== $row['password_changed_at']) {
+        $_SESSION = [];
+        session_regenerate_id(true);
+        flash('パスワードが変更されました。もう一度ログインしてください', 'error');
         redirect('login');
     }
     // 名前・権限・メンバーの紐付けは、管理者が別の画面から変えることがある。

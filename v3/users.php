@@ -76,6 +76,19 @@ if (is_post()) {
                 flash("{$target['name']} さんを「{$memberName}」と紐付けました");
             }
         }
+    } elseif ($action === 'reset_url') {
+        // パスワード再設定用 URL を発行する。DB にはトークンの sha256 だけ入れ、生の URL はこの画面に1回だけ出す
+        // REPLACE: 1人1件（主キー user_id）なので、発行し直すと前の URL は使えなくなる
+        $token = bin2hex(random_bytes(32)); // 推測できない64文字
+        $pdo->exec('DELETE FROM password_reset WHERE expires_at < NOW()'); // 期限切れはためない
+        $pdo->prepare('REPLACE INTO password_reset (user_id, token_hash, expires_at, created_by)
+                VALUES (?, ?, NOW() + INTERVAL ' . PASSWORD_RESET_MINUTES . ' MINUTE, ?)')
+            ->execute([$userId, hash('sha256', $token), $me['user_id']]);
+        // 本番の URL は APP_URL で組む（Host ヘッダーは信用しない）。ローカルは今開いている場所
+        $base = app_env() === 'local'
+            ? 'http://' . ($_SERVER['HTTP_HOST'] ?? 'localhost') . rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\') . '/'
+            : APP_URL;
+        $_SESSION['reset_url'] = ['name' => $target['name'], 'url' => $base . 'password_reset?token=' . $token];
     } elseif ($action === 'delete') {
         if ($userId === $me['user_id']) {
             flash('自分自身は削除できません', 'error');
@@ -123,6 +136,10 @@ $freeMembers = $pdo->query('SELECT m.member_id, m.name FROM member m
 
 $invite = invite_code();
 
+// 発行したばかりの再設定 URL（表示は1回だけ。再読み込みすると消える）
+$resetUrl = $_SESSION['reset_url'] ?? null;
+unset($_SESSION['reset_url']);
+
 render_header('ユーザー管理');
 ?>
 <section class="hero">
@@ -135,6 +152,17 @@ render_header('ユーザー管理');
     </div>
     <dl class="stats"><div><dt>ユーザー</dt><dd><?= count($users) ?></dd></div></dl>
 </section>
+
+<?php if ($resetUrl): ?>
+<div class="card form-card" style="margin-bottom:18px">
+    <h2 class="section-title section-title--card"><?= h($resetUrl['name']) ?> さんの再設定URL</h2>
+    <p class="muted small"><?= PASSWORD_RESET_MINUTES ?>分間・1回限り有効。本人に個別に送信</p>
+    <div style="display:flex; gap:8px; align-items:center">
+        <input id="reset-url" value="<?= h($resetUrl['url']) ?>" readonly aria-label="再設定URL" style="flex:1; min-width:0">
+        <button class="btn btn--sm" type="button" data-copy="#reset-url" aria-label="コピー" title="コピー"><?= icon('content_copy') ?></button>
+    </div>
+</div>
+<?php endif; ?>
 
 <!-- 招待コード: 管理者はサークルの LINE などで共有するので、そのまま見えてよい（ログインのパスワードとは別物） -->
 <form method="post" class="card form-card" style="margin-bottom:18px">
@@ -191,6 +219,9 @@ render_header('ユーザー管理');
                     </form>
                 </td>
                 <td class="num">
+                    <form method="post" class="inline-form" data-confirm="<?= h($u['name']) ?> さんのパスワード再設定URLを発行します（前に発行したURLは無効）。よろしいですか？"><?= csrf_field() ?><input type="hidden" name="user_id" value="<?= (int)$u['user_id'] ?>"><input type="hidden" name="action" value="reset_url">
+                        <button class="btn btn--ghost btn--sm" type="submit" aria-label="<?= h($u['name']) ?> さんのパスワード再設定URLを発行" title="パスワード再設定URL"><?= icon('key') ?></button>
+                    </form>
                     <?php if ((int)$u['user_id'] !== $me['user_id']): ?>
                         <form method="post" class="inline-form" data-confirm="<?= h($u['name']) ?> さんのアカウントを削除します（出演記録は残ります）。よろしいですか？"><?= csrf_field() ?><input type="hidden" name="user_id" value="<?= (int)$u['user_id'] ?>"><input type="hidden" name="action" value="delete">
                             <button class="btn btn--ghost btn--danger btn--sm" type="submit">削除</button>

@@ -99,6 +99,7 @@ CREATE TABLE user_account (
     login_id      VARCHAR(25)  NOT NULL,
     name          VARCHAR(50)  NOT NULL,
     password_hash VARCHAR(255) NOT NULL,               -- password_hash() の結果だけ
+    password_changed_at DATETIME NULL,                 -- パスワードを変えた日時。セッションの写しと違う端末はログアウト（require_login。migrations/065）
     is_admin      BOOLEAN      NOT NULL DEFAULT FALSE, -- NULL を許さない（「NULL=管理者じゃない？」の曖昧さを消す）
     is_executive  BOOLEAN      NOT NULL DEFAULT FALSE, -- 幹部（管理者の権限の一部が使える。migrations/063）
     email         VARCHAR(254) NULL,                    -- 問い合わせの通知先。管理者だけが登録できる（contact.php）
@@ -513,6 +514,22 @@ CREATE TABLE login_attempt (
     PRIMARY KEY (attempt_id),
     KEY idx_attempt_ip (ip, attempted_at),
     KEY idx_attempt_login (login_id, attempted_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- ---------------------------------------------------------------------
+--  password_reset — パスワード再設定用 URL（管理者が users.php で発行 → password_reset.php。migrations/065）
+--    1人1件（主キー user_id）。発行し直すと上書きされ、古い URL は使えなくなる
+--    token_hash: URL のトークンの sha256。生のトークンは保存しない（DB が漏れても URL を作れない）
+-- ---------------------------------------------------------------------
+CREATE TABLE password_reset (
+    user_id    INT UNSIGNED NOT NULL,
+    token_hash CHAR(64)     NOT NULL,
+    expires_at DATETIME     NOT NULL,
+    created_by INT UNSIGNED NULL,                      -- 発行した管理者
+    PRIMARY KEY (user_id),
+    UNIQUE KEY uq_reset_token (token_hash),
+    CONSTRAINT fk_reset_user FOREIGN KEY (user_id) REFERENCES user_account (user_id) ON DELETE CASCADE,
+    CONSTRAINT fk_reset_creator FOREIGN KEY (created_by) REFERENCES user_account (user_id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- ---------------------------------------------------------------------

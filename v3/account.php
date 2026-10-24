@@ -55,8 +55,8 @@ if (is_post()) {
         } elseif ($new !== $confirm) {
             flash('確認用パスワードが一致しません', 'error');
         } else {
-            $pdo->prepare('UPDATE user_account SET password_hash = ? WHERE user_id = ?')
-                ->execute([password_hash($new, PASSWORD_DEFAULT), $user['user_id']]);
+            // ほかの端末はログアウトさせて、この端末だけ残す
+            $_SESSION['user']['pw_at'] = set_password($user['user_id'], $new);
             session_regenerate_id(true);
             flash('パスワードを変更しました');
         }

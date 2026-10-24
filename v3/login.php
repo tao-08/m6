@@ -58,6 +58,7 @@ if (is_post()) {
             'name'      => $row['name'],
             'admin'     => (bool)$row['is_admin'],
             'member_id' => $row['member_id'] === null ? null : (int)$row['member_id'],
+            'pw_at'     => $row['password_changed_at'], // これより後にパスワードが変わったらログアウト（require_login）
         ];
         $next = $_SESSION['after_login'] ?? './';
         unset($_SESSION['after_login']);
@@ -95,6 +96,7 @@ render_header('ログイン');
         </label>
         <button class="btn btn--primary btn--block" type="submit">ログイン</button>
         <p class="muted small center"><a href="register">新規登録</a></p>
+        <p class="muted small center">パスワードを忘れたら管理者へ</p>
     </form>
 </section>
 <?php render_footer();
