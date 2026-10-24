@@ -21,6 +21,7 @@ return [
         //   管理者が「ユーザー管理」（users.php）で変えたら、そっち（DB の app_setting）が優先される
         // サークルの LINE などで共有しておくと、外部の人がメンバーの実名を見られなくなる
         'invite_code' => '',
+        'backup_token' => '', // DB バックアップの合言葉（32文字以上の乱数。GitHub の Secrets「BACKUP_TOKEN」と同じ値。空ならバックアップは使えない）
         // true: 管理者が1人もいないとき、新規登録した人を管理者にする
         'first_user_is_admin' => true,
         // 好きなアルバムの検索に使う Spotify のキー（https://developer.spotify.com/dashboard でアプリを作ると出る）

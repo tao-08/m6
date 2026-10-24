@@ -1,0 +1,67 @@
+name: Backup
+
+# 3日おきに本番 DB のダンプを取り、暗号化して GitHub に30日間保存する。
+# 手動実行: Actionsタブ → Backup → Run workflow
+#
+# ⚠ このリポジトリは公開（PUBLIC）なので、アーティファクトは GitHub のアカウントがあれば誰でも落とせる。
+#   ダンプにはパスワードのハッシュ・メールアドレスが入るので、必ず暗号化してから保存する（平文のダンプは残さない）。
+#
+# 必要な Secrets（Settings → Secrets and variables → Actions）。値は Claude に見せない・入力させない
+#   BACKUP_TOKEN      … 本番の config.php の backup_token と同じ値（32文字以上の乱数）
+#   BACKUP_PASSPHRASE … 暗号化の合言葉（失くすと復元できないので、パスワード管理アプリなど GitHub の外にも控える）
+# 手順と復元のやり方は v3/README.md の「バックアップ」
+on:
+  schedule:
+    # cron は UTC。18:00 UTC = 日本時間 3:00。日付の */3 は 1・4・7…日（月が変わると1日に戻るので、月末は間隔が短くなる）
+    - cron: '0 18 */3 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      BACKUP_URL: https://abbeyroad.online/backup_dump
+    steps:
+      - name: ダンプ取得
+        env:
+          BACKUP_TOKEN: ${{ secrets.BACKUP_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$BACKUP_TOKEN" || { echo "::error::Secrets の BACKUP_TOKEN が未設定です"; exit 1; }
+          # --fail: 404 などのときは失敗にする（エラーページを保存してしまわないように）
+          curl --fail --silent --show-error --max-time 300 --retry 2 --retry-delay 10 \
+            -X POST -H "X-Backup-Token: ${BACKUP_TOKEN}" -o dump.sql.gz "$BACKUP_URL"
+          # 途中で切れていないか・中身が空でないかを確かめる（切れたダンプを「成功」として残さない）
+          gzip -t dump.sql.gz
+          test "$(zcat dump.sql.gz | tail -n 1)" = "-- backup complete" || { echo "::error::ダンプが最後まで書かれていません"; exit 1; }
+          zcat dump.sql.gz | grep -q '^CREATE TABLE `user_account`' || { echo "::error::ダンプに user_account がありません"; exit 1; }
+          echo "ダンプ: $(stat -c %s dump.sql.gz) バイト・$(zcat dump.sql.gz | grep -c '^CREATE TABLE') テーブル"
+
+      - name: 暗号化
+        env:
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          test -n "$BACKUP_PASSPHRASE" || { echo "::error::Secrets の BACKUP_PASSPHRASE が未設定です"; exit 1; }
+          name="abbey-$(date -u +%Y%m%d-%H%M)"
+          # 合言葉は標準入力で渡す（コマンドラインに出さない）。gpg の対称暗号は改ざんの検出もしてくれる
+          printf '%s' "$BACKUP_PASSPHRASE" | gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 \
+            --symmetric --cipher-algo AES256 -o "${name}.sql.gz.gpg" dump.sql.gz
+          rm -f dump.sql.gz # 平文は残さない
+          echo "BACKUP_NAME=${name}" >> "$GITHUB_ENV"
+
+      - name: 保存（30日）
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.BACKUP_NAME }}
+          path: ${{ env.BACKUP_NAME }}.sql.gz.gpg
+          retention-days: 30
+          if-no-files-found: error

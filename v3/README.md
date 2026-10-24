@@ -94,4 +94,35 @@ live ──< live_day ──< band >── band_member ──< member ── use
 - 判定に `Host` ヘッダー（`$_SERVER['HTTP_HOST']`）は使わない。外から書き換えられるので、本番が local 設定（debug ON）で動いてしまう
 - DB の中身はアップロードでは移らない。phpMyAdmin でローカルの `abbey_v3` をエクスポート → 本番でインポートする
 
+## バックアップ（DB・3日おき・30日分）
+
+GitHub Actions（`.github/workflows/backup.yml`）が3日おきに本番の `backup_dump.php` を呼び、DB 全体のダンプを**暗号化して**アーティファクトに30日間残す。
+このリポジトリは公開なので、アーティファクトは誰でも落とせる。ダンプにはパスワードのハッシュ・メールアドレスが入るため、暗号化は必須。
+DB の外にあるファイル（掲示板などの添付画像・型紙の PDF）はこのバックアップに入らない。
+
+### 初回の設定（1回だけ）
+
+合言葉を2つ作る（32文字以上の乱数。PowerShell）。
+
+```powershell
+$b = New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b); -join ($b | % { $_.ToString('x2') })
+```
+
+1. `BACKUP_TOKEN` … 本番の `config.php` の `'backup_token' => '…'` と、GitHub の Secrets に**同じ値**を入れる（`gh secret set BACKUP_TOKEN`）
+2. `BACKUP_PASSPHRASE` … 暗号化の合言葉。GitHub の Secrets（`gh secret set BACKUP_PASSPHRASE`）に入れ、**パスワード管理アプリなど GitHub の外にも必ず控える**（失くすと復元できない）
+3. Actions タブ → Backup → Run workflow で1回手動実行して、成功するのを確かめる
+
+`backup_token` が空・32文字未満のあいだは、`backup_dump.php` は何を送られても 404 を返す。
+
+### 復元
+
+アーティファクト（`abbey-日付.sql.gz.gpg`）を落として、復号 → 展開 → 流し込む。**流す先の DB のテーブルは DROP されて作り直される**ので、必ず先に中身を確認する。
+
+```bash
+gpg -d -o dump.sql.gz abbey-20261024-1800.sql.gz.gpg   # 合言葉を聞かれる
+gunzip -c dump.sql.gz | mysql -u ユーザー -p データベース名
+```
+
+phpMyAdmin から戻すときは、`gunzip` した `.sql` をインポートする。
+
 機能の一覧・PDF 対応・コードを読む順番は v2 の README と同じ。v3 だけの追加は `artist.php`（アーティスト別の歴代コピー一覧・表記ゆれの統合）。
