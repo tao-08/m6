@@ -48,9 +48,11 @@
 .songs-modal__close { position: absolute; top: 0; right: 0; }
 .songs-modal__art { width: min(200px, 60vw); aspect-ratio: 1; border-radius: 12px; object-fit: cover; box-shadow: 0 4px 16px rgba(0, 0, 0, .25); }
 .songs-modal__art.songs-row__art--none { height: auto; }
+.songs-modal__cover .setlist__listen { border-radius: 12px; } /* ジャケットの角丸に合わせる */
+.songs-modal__cover .setlist__artwrap.is-open .setlist__listen { opacity: 1; } /* スマホ: 1回押すとアイコンが出る（songs.js） */
 .songs-modal__album { color: var(--muted); overflow-wrap: anywhere; }
 .songs-modal__names { display: grid; gap: 2px; min-width: 0; }
-.songs-modal .songs-row__meta { flex-wrap: wrap; justify-content: center; margin-bottom: 10px; }
+.songs-modal .songs-row__meta { flex-wrap: wrap; justify-content: center; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
 .songs-bands { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .songs-bands li { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0 12px; overflow-wrap: anywhere; }
 .songs-bands li > span { margin-left: auto; text-align: right; }

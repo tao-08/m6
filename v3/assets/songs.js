@@ -21,10 +21,27 @@
       modal.classList.add('is-closing');
       modal.addEventListener('animationend', () => { modal.classList.remove('is-closing'); modal.close(); }, { once: true });
     };
+    // スマホ（hover が無い）: 1回目のタップ はアイコンを出すだけ。出たアイコンを押すと音楽アプリへ飛ぶ
+    const wrap = modal.querySelector('[data-song-listen]');
+    if (wrap) {
+      const link = wrap.querySelector('a');
+      link.addEventListener('click', (e) => {
+        if (!window.matchMedia('(hover: none)').matches || wrap.classList.contains('is-open')) return;
+        e.preventDefault();
+        wrap.classList.add('is-open');
+      });
+      modal.addEventListener('click', (e) => { if (!wrap.contains(e.target)) wrap.classList.remove('is-open'); });
+    }
     modal.querySelector('[data-song-close]').addEventListener('click', closeModal);
     modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
     modal.addEventListener('cancel', (e) => { e.preventDefault(); closeModal(); });
   });
+
+  // 高画質版の画像が読めなかったら、保存してある元の画像に戻す（error は伝わらないので capture で受ける）
+  document.addEventListener('error', (e) => {
+    const img = e.target;
+    if (img instanceof HTMLImageElement && img.dataset.fallback && img.src !== img.dataset.fallback) img.src = img.dataset.fallback;
+  }, true);
 
   const form = document.querySelector('[data-song-link]');
   if (!form) return;

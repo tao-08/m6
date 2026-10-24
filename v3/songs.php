@@ -47,6 +47,13 @@ function songs_find_artist(PDO $pdo, string $name): ?array
     return $row ?: null;
 }
 
+/** モーダルで大きく出すジャケットのURLを高画質版にする（保存済みは 200〜300px。iTunes は 600px、Spotify は 640px の同じ画像に書き換える） */
+function songs_large_art(string $url): string
+{
+    $url = preg_replace('/\d+x\d+bb/', '600x600bb', $url);
+    return str_replace('/ab67616d00001e02', '/ab67616d0000b273', $url);
+}
+
 /** song_catalog に1行入れる。同じ曲キーがすでにあれば false（UNIQUE 違反） */
 function songs_catalog_insert(PDO $pdo, string $key, string $title, ?string $artistName, ?int $artistId, ?string $source, ?string $trackId, int $userId): bool
 {
@@ -278,7 +285,9 @@ usort($rows, static function (array $a, array $b) use ($sort, $dir): int {
         if (($aa === '') !== ($ba === '')) {
             return $aa === '' ? 1 : -1;
         }
-        return ($sign * ($aa <=> $ba)) ?: $byTitle;
+        // 同じアーティストの中は、アルバムの発売年が古い順（年が分からない曲は最後）。年が同じなら曲名順
+        $byYear = ($a['rep']['year'] === null) <=> ($b['rep']['year'] === null) ?: (int)$a['rep']['year'] <=> (int)$b['rep']['year'];
+        return ($sign * ($aa <=> $ba)) ?: $byYear ?: $byTitle;
     }
     if ($sort === 'plays') {
         return ($sign * ($a['plays'] <=> $b['plays'])) ?: $byTitle;
@@ -425,9 +434,11 @@ $deleteForm = static fn(array $v): string => '<form method="post" class="inline-
                     $albumUrl = $rep['album'] ? album_search_url(listen_app($musicApp, (string)$rep['src']), ['title' => $rep['album'], 'artist_name' => (string)$rep['artist']]) : null; ?>
                     <div class="songs-modal__cover">
                         <?php $art = $rep['art']
-                            ? '<img class="songs-modal__art" src="' . h($rep['art']) . '" alt="" width="200" height="200" loading="lazy">'
+                            ? '<img class="songs-modal__art" src="' . h(songs_large_art($rep['art'])) . '" data-fallback="' . h($rep['art']) . '" alt="" width="200" height="200" loading="lazy">'
                             : '<span class="songs-modal__art songs-row__art--none">' . icon('music_note') . '</span>'; ?>
-                        <?php if ($trackUrl !== null): ?><a href="<?= h($trackUrl) ?>" target="_blank" rel="noopener noreferrer" aria-label="サブスクで開く" title="サブスクで開く"><?= $art ?></a><?php else: ?><?= $art ?><?php endif; ?>
+                        <?php if ($trackUrl !== null): $listenApp = listen_app($musicApp, (string)$rep['src']); // セトリのジャケットと同じ: PC は乗せると暗くなってアプリのアイコン、スマホは押すとアイコンが出る ?>
+                            <span class="setlist__artwrap" data-song-listen><?= $art ?><a class="setlist__listen setlist__listen--<?= h($listenApp) ?>" href="<?= h($trackUrl) ?>" target="_blank" rel="noopener noreferrer" aria-label="<?= h(MUSIC_APPS[$listenApp]) ?> で聴く"><?= MUSIC_APP_ICONS[$listenApp] ?></a></span>
+                        <?php else: ?><?= $art ?><?php endif; ?>
                         <?php if ($rep['album']): ?>
                             <a class="songs-modal__album small" href="<?= h($albumUrl) ?>" target="_blank" rel="noopener noreferrer"><?= $multi ? '<span class="tag tag--mine">メイン</span> ' : '' ?><?= h($rep['album']) ?><?= $rep['year'] ? ' · ' . (int)$rep['year'] : '' ?></a>
                         <?php endif; ?>
