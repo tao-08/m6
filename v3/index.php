@@ -86,6 +86,41 @@ foreach ($rows as $r) {
         $live['first_date'] = $r['date'];
     }
     unset($live); // 参照を切る（次のループで別の場所を指させるため）
+    // カウントダウン用: ライブごとに「開催日（当日を含む）以降で一番早い日程」を覚える。当日は is_upcoming が true
+    if ($r['date'] !== null) {
+        $dayDates[$r['live_id']][] = $r['date'];
+    }
+    if (is_upcoming($r['date']) && (!isset($upcoming[$r['live_id']]) || $r['date'] < $upcoming[$r['live_id']]['date'])) {
+        $upcoming[$r['live_id']] = ['name' => $r['live_name'], 'date' => $r['date'], 'label' => $r['label']];
+    }
+}
+// 近い順に並べて、残り日数を出す（日付どうしの差なので時刻のずれは出ない）
+$upcoming ??= [];
+uasort($upcoming, static fn($a, $b) => $a['date'] <=> $b['date']);
+$today = new DateTimeImmutable('today');
+foreach ($upcoming as $liveId => &$u) {
+    $target = new DateTimeImmutable($u['date']);
+    $u['days'] = $today->diff($target)->days;
+    // 直前の日程（終わった日程）が2日以上前なら離れているので「2日目まであと」のように日程名をつける。
+    // 連日（直前が前日）なら日程名は付けない。最初の日程（直前がない）にも付けない
+    $prev = array_filter($dayDates[$liveId] ?? [], static fn($d) => $d < $u['date']);
+    $u['show_label'] = $prev && $target->diff(new DateTimeImmutable(max($prev)))->days > 1;
+}
+unset($u);
+// 自分が出るバンド（予定のライブだけ）。member_id が NULL（メンバーと紐付いていない人）は「= NULL」で何も当たらない
+$myBands = [];
+if ($upcoming && $user['member_id'] !== null) {
+    $in = implode(',', array_fill(0, count($upcoming), '?'));
+    $st = $pdo->prepare("SELECT d.live_id, b.band_id, b.name, b.start_time, d.label, d.held_on
+        FROM band_member bm
+        JOIN band b ON b.band_id = bm.band_id
+        JOIN live_day d ON d.live_day_id = b.live_day_id
+        WHERE bm.member_id = ? AND d.live_id IN ($in) AND d.held_on >= CURDATE()
+        ORDER BY d.held_on, b.play_order");
+    $st->execute([$user['member_id'], ...array_keys($upcoming)]);
+    foreach ($st->fetchAll() as $b) {
+        $myBands[$b['live_id']][$b['band_id']] = $b;
+    }
 }
 // 表示は「新しい順」がデフォルト（並び替えボタンで古い順にできる）
 // 年度は新しい順。年度未設定（0）は一番後ろ（$b と $a を入れ替えると降順になる。0 を後ろにする部分だけは $a 側のまま）
@@ -118,6 +153,27 @@ render_header('ライブ一覧', 'lives');
         <div><dt>出演者</dt><dd><?= (int)$stats['members'] ?></dd></div>
     </dl>
 </section>
+
+<?php foreach ($upcoming as $liveId => $u): ?>
+    <div class="card countdown">
+        <a class="countdown__main" href="live?id=<?= (int)$liveId ?>">
+            <span class="countdown__name"><?= h($u['name']) ?><?= $u['show_label'] ? ' ' . h($u['label']) : '' ?></span>
+            <?php if ($u['days'] === 0): ?>
+                <strong class="countdown__days">当日</strong>
+            <?php else: ?>
+                <span class="countdown__days"><small>まであと</small><strong><?= (int)$u['days'] ?></strong><small>日</small></span>
+            <?php endif; ?>
+        </a>
+        <?php if (!empty($myBands[$liveId])): ?>
+            <div class="countdown__bands">
+                <?php foreach ($myBands[$liveId] as $b): ?>
+                    <?php // 出演時間が未入力なら日付を出す ?>
+                    <a class="countdown__band" href="band?id=<?= (int)$b['band_id'] ?>"><span class="countdown__when"><?= h($b['label']) ?> <?= $b['start_time'] !== null ? h(substr($b['start_time'], 0, 5)) : h(fmt_date($b['held_on'])) ?></span><strong><?= h($b['name']) ?></strong></a>
+                <?php endforeach; ?>
+            </div>
+        <?php endif; ?>
+    </div>
+<?php endforeach; ?>
 
 <?php if ($importantNotices): ?>
     <a class="card notice-banner" href="notices">
