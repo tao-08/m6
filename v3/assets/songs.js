@@ -79,12 +79,16 @@
         if (!next) throw new Error();
         results.replaceChildren(...document.importNode(next, true).childNodes);
         setupModals(results);
+        results.classList.remove('is-updated');
+        void results.offsetWidth; // アニメーションを毎回やり直す
+        results.classList.add('is-updated');
         history.replaceState(null, '', url);
       } catch (err) {
         if (err.name !== 'AbortError') window.location.href = url; // 取り直せなければ通常の検索へ
       }
     };
     filter.addEventListener('submit', (e) => { e.preventDefault(); clearTimeout(timer); refresh(); });
+    filter.querySelectorAll('select').forEach((s) => s.addEventListener('change', () => { clearTimeout(timer); refresh(); }));
     filter.querySelector('input[name="q"]').addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(refresh, 250); });
   }
 

@@ -283,19 +283,18 @@ unset($w);
 
 // ---- 絞り込み・並べ替え（GET の値は決まった値だけ通す）----
 $q = mb_substr(trim((string)($_GET['q'] ?? '')), 0, 100);
-$tabFilter = in_array($_GET['tab'] ?? '', ['has', 'none'], true) ? $_GET['tab'] : '';
-$linkFilter = ($_GET['link'] ?? '') === 'none' ? 'none' : '';
+$tabFilter = in_array($_GET['tab'] ?? '', ['has', 'none', 'unlinked'], true) ? $_GET['tab'] : '';
 $sort = in_array($_GET['sort'] ?? '', ['title', 'artist', 'plays', 'last'], true) ? $_GET['sort'] : 'artist';
 $dir = ($_GET['dir'] ?? '') === 'asc' ? 'asc' : (($_GET['dir'] ?? '') === 'desc' ? 'desc' : (in_array($sort, ['title', 'artist'], true) ? 'asc' : 'desc'));
 $page = max(1, (int)($_GET['p'] ?? 1));
 const SONGS_PER_PAGE = 100;
 
-$rows = array_values(array_filter($works, static function (array $g) use ($q, $tabFilter, $linkFilter): bool {
+$rows = array_values(array_filter($works, static function (array $g) use ($q, $tabFilter): bool {
     if ($q !== '' && mb_stripos($g['search'], $q) === false) { // どの版の曲名・アルバム名でも当たる
         return false;
     }
-    if ($linkFilter === 'none' && $g['linked']) {
-        return false;
+    if ($tabFilter === 'unlinked') {
+        return !$g['linked'];
     }
     return $tabFilter === '' || ($tabFilter === 'has') === ($g['tabs'] > 0);
 }));
@@ -345,13 +344,13 @@ $rows = array_slice($rows, ($page - 1) * SONGS_PER_PAGE, SONGS_PER_PAGE);
 /** 今の絞り込み・並びを保ったまま、一部だけ変えた一覧の URL（初期値は URL に出さない） */
 function songs_url(array $over): string
 {
-    global $q, $tabFilter, $linkFilter, $sort, $dir, $page;
-    $p = array_merge(['q' => $q, 'tab' => $tabFilter, 'link' => $linkFilter, 'sort' => $sort, 'dir' => $dir, 'p' => $page], $over);
+    global $q, $tabFilter, $sort, $dir, $page;
+    $p = array_merge(['q' => $q, 'tab' => $tabFilter, 'sort' => $sort, 'dir' => $dir, 'p' => $page], $over);
     if (($over['sort'] ?? null) !== null && !isset($over['p'])) {
         $p['p'] = 1; // 並びや絞り込みを変えたら1ページ目から
     }
     $query = array_filter([
-        'q' => $p['q'], 'tab' => $p['tab'], 'link' => $p['link'],
+        'q' => $p['q'], 'tab' => $p['tab'],
         'sort' => $p['sort'] !== 'artist' ? $p['sort'] : '',
         'dir' => in_array($p['sort'], ['title', 'artist'], true) ? ($p['dir'] === 'desc' ? 'desc' : '') : ($p['dir'] === 'asc' ? 'asc' : ''), // 並びごとの初期の向きと同じなら出さない
         'p' => $p['p'] > 1 ? (string)$p['p'] : '',
@@ -367,12 +366,12 @@ render_header('楽曲データベース', 'tools');
 <link rel="stylesheet" href="<?= asset_url('assets/tab.css') ?>">
 <link rel="stylesheet" href="<?= asset_url('assets/songs.css') ?>">
 <nav class="crumbs"><a href="tools">ツール</a></nav>
+<div class="songs-top"><?php /* スマホ: 見出しの右に新規登録 / PC: 検索バーの右に新規登録（配置は CSS の grid-template-areas） */ ?>
 <h1 class="display display--sm">楽曲データベース</h1>
-
 <!-- 手動登録: セットリストに無い曲にも TAB を付けられる -->
-<details class="card songs-add">
-    <summary><?= icon('add') ?> 登録</summary>
-    <div class="songs-add__forms">
+<details class="songs-add">
+    <summary class="btn btn--sm"><?= icon('add') ?> 新規登録</summary>
+    <div class="songs-add__forms card">
         <form method="post" class="songs-add__form" data-song-link>
             <?= csrf_field() ?>
             <input type="hidden" name="action" value="add_linked">
@@ -401,27 +400,23 @@ render_header('楽曲データベース', 'tools');
         </form>
     </div>
 </details>
-
 <!-- 検索・絞り込み・並べ替え -->
 <form method="get" class="songs-filter" data-songs-filter>
     <input type="hidden" name="sort" value="<?= h($sort) ?>">
     <input type="hidden" name="dir" value="<?= h($dir) ?>">
     <input type="search" class="search" name="q" value="<?= h($q) ?>" maxlength="100" placeholder="曲名・アーティスト" aria-label="曲名・アーティスト">
-    <select name="tab" aria-label="TAB" onchange="this.form.requestSubmit()">
-        <option value="">TAB すべて</option>
+    <select name="tab" aria-label="絞り込み">
+        <option value="">絞り込み</option>
         <option value="has"<?= $tabFilter === 'has' ? ' selected' : '' ?>>TAB あり</option>
         <option value="none"<?= $tabFilter === 'none' ? ' selected' : '' ?>>TAB なし</option>
+        <option value="unlinked"<?= $tabFilter === 'unlinked' ? ' selected' : '' ?>>未連携</option>
     </select>
-    <select name="link" aria-label="楽曲情報" onchange="this.form.requestSubmit()">
-        <option value="">楽曲情報 すべて</option>
-        <option value="none"<?= $linkFilter === 'none' ? ' selected' : '' ?>>未連携</option>
-    </select>
-    <button type="submit" class="icon-btn" aria-label="検索" title="検索"><?= icon('search') ?></button>
 </form>
+</div>
 <div data-songs-results><?php /* 検索で差し替える範囲（songs.js が同じ URL を取り直して中身だけ入れ替える） */ ?>
 <div class="songs-sort">
     <span class="muted small"><?= number_format($total) ?>曲</span>
-    <?php foreach (['title' => '曲名', 'artist' => 'アーティスト', 'plays' => '演奏回数', 'last' => '最終演奏日'] as $col => $label):
+    <?php foreach (['title' => '曲名', 'artist' => 'アーティスト', 'plays' => '演奏回数'] as $col => $label):
         $on = $sort === $col;
         $next = $on ? ($dir === 'asc' ? 'desc' : 'asc') : (in_array($col, ['title', 'artist'], true) ? 'asc' : 'desc'); ?>
         <a class="tab-chip<?= $on ? ' is-active' : '' ?>" href="<?= h(songs_url(['sort' => $col, 'dir' => $next])) ?>"<?= $on ? ' aria-sort="' . ($dir === 'asc' ? 'ascending' : 'descending') . '"' : '' ?>><?= h($label) ?><?= $on ? ($dir === 'asc' ? ' ▲' : ' ▼') : '' ?></a>
@@ -453,7 +448,7 @@ $bandsHtml = static function (array $v, ?array $main = null) use ($back): string
             . '<input type="hidden" name="from_track" value="' . h(album_key($v['src'], $v['tid'])) . '">'
             . '<input type="hidden" name="to_track" value="' . h(album_key($main['src'], $main['tid'])) . '">'
             . '<input type="hidden" name="back" value="' . h($back) . '"><input type="hidden" name="open" value="' . h($main['key']) . '">'
-            . '<p class="songs-confirm__warn">' . icon('warning') . ' このバンドのセットリストの曲情報が変わります</p>'
+            . '<p class="songs-confirm__warn">' . icon('warning') . ' このバンドのセットリストの曲情報を変更します</p>'
             . '<div class="songs-confirm__change">' . $artHtml($v) . icon('arrow_forward') . $artHtml($main) . '</div>'
             . '<button type="button" class="btn btn--sm" data-merge-cancel>キャンセル</button> '
             . '<button type="submit" class="btn btn--sm btn--primary">実行</button></form></dialog>';
