@@ -319,7 +319,7 @@ render_header($member['name'], 'members');
         <input type="hidden" name="member_id" value="<?= $memberId ?>">
         <label class="field field--wide"><span>名前</span><input name="name" value="<?= h($member['name']) ?>" maxlength="50" required></label>
         <label class="field"><span>ふりがな</span><input name="name_kana" value="<?= h($member['name_kana']) ?>" maxlength="50"></label>
-        <label class="field field--wide"><span>メッセージ</span><textarea name="bio" rows="3" maxlength="100"><?= h($member['bio']) ?></textarea></label>
+        <label class="field field--wide"><span>ひとこと</span><textarea name="bio" rows="3" maxlength="100"><?= h($member['bio']) ?></textarea></label>
         <label class="field"><span>入部年度</span><input type="number" name="entry_year" min="1950" max="2100" value="<?= (int)$member['entry_year'] ?: '' ?>"></label>
         <?= profile_faculty_role_fields($pdo, $member) ?>
         <!-- 退会済み（管理者だけ）。チェックを外すと何も送られないので、先に hidden の 0 を置いておく -->
