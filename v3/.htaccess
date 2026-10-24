@@ -1,6 +1,14 @@
 Options -MultiViews -Indexes
 DirectoryIndex index.php
 
+# エラーページ（error.php）。bootstrap も DB も読まないので、DB が落ちていても出る
+ErrorDocument 400 /error.php
+ErrorDocument 403 /error.php
+ErrorDocument 404 /error.php
+ErrorDocument 500 /error.php
+ErrorDocument 502 /error.php
+ErrorDocument 503 /error.php
+
 <FilesMatch "^(config(\.sample)?\.php|schema\.sql|README\.md)$">
     Require all denied
 </FilesMatch>
@@ -14,6 +22,10 @@ DirectoryIndex index.php
 #    3. .php なしで来たら、同じ名前の .php があれば中だけでそれを動かす（URL はそのまま）
 # ---------------------------------------------------------------------
 RewriteEngine On
+
+# エラーページ（error.php）は書き換えない。/config.php のように「元の URL が .php」のエラーのとき、
+# 下の「.php を消す」の 301 がエラーページ自身にも効いて、/error へ飛ばされて 404 になってしまうため
+RewriteRule ^error\.php$ - [L]
 
 # 外から見えてはいけないものは 404（「ある」ことも教えない）
 #   . で始まるファイル・フォルダ（.claude/ .git/ .gitignore など）、DB の変更履歴（migrations/）、テスト（tests/。名簿の見本が入っている）、

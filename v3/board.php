@@ -31,8 +31,7 @@ if (is_post()) {
     verify_csrf();
     $action = (string)($_POST['action'] ?? '');
     if (str_starts_with($action, 'category_') && !$user['admin']) {
-        http_response_code(403);
-        exit('管理者のみ実行できます。');
+        error_page(403, '管理者のみ実行できます');
     }
     $back = 'board';
     if ($action === 'create') {

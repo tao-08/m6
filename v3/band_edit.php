@@ -33,8 +33,7 @@ if ($isNew) {
     $st->execute([$dayId]);
     $band = $st->fetch();
     if (!$band) {
-        http_response_code(404);
-        exit('日程が見つかりません');
+        error_page(404, '日程が見つかりません');
     }
     $band += ['band_id' => 0, 'name' => '', 'artist_name' => '', 'song_count' => '', 'note' => '', 'youtube_url' => '', 'needs_check' => 0,
         'start_time' => null, 'end_time' => null, 'play_order' => next_play_order($pdo, $dayId)];
@@ -47,8 +46,7 @@ if ($isNew) {
     $st->execute([$bandId]);
     $band = $st->fetch();
     if (!$band) {
-        http_response_code(404);
-        exit('バンドが見つかりません');
+        error_page(404, 'バンドが見つかりません');
     }
 }
 $dayId = (int)$band['live_day_id'];
@@ -92,8 +90,7 @@ if (is_post()) {
     // ---------- 削除（管理者のみ） ----------
     if (($_POST['action'] ?? '') === 'delete' && !$isNew) {
         if (!is_admin()) {
-            http_response_code(403);
-            exit('削除は管理者のみできます');
+            error_page(403, '削除は管理者のみできます');
         }
         $pdo->beginTransaction();
         $op = change_begin($pdo, 'band_delete', '「' . $band['name'] . '」を削除', (int)$band['live_id']);

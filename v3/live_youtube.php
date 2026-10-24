@@ -26,8 +26,7 @@ $st = $pdo->prepare('SELECT * FROM live WHERE live_id = ?');
 $st->execute([$liveId]);
 $live = $st->fetch();
 if (!$live) {
-    http_response_code(404);
-    exit('ライブが見つかりません');
+    error_page(404, 'ライブが見つかりません');
 }
 
 // このライブのバンド（日程順 → 出演順）

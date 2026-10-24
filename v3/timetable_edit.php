@@ -38,8 +38,7 @@ $st = $pdo->prepare('SELECT * FROM live WHERE live_id = ?');
 $st->execute([$liveId]);
 $live = $st->fetch();
 if (!$live) {
-    http_response_code(404);
-    exit('ライブが見つかりません');
+    error_page(404, 'ライブが見つかりません');
 }
 
 // ---- 日程・バンド・メンバー（live.php と同じく SQL 3回でまとめて取る = N+1 にしない） ----

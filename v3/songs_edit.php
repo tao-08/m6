@@ -36,8 +36,7 @@ $st = $pdo->prepare('SELECT b.*, a.name AS artist_name, d.live_id, d.label, d.he
 $st->execute([$bandId]);
 $band = $st->fetch();
 if (!$band) {
-    http_response_code(404);
-    exit('バンドが見つかりません');
+    error_page(404, 'バンドが見つかりません');
 }
 // 出演まで非公開のセットリストは、メンバーと管理者以外には編集画面でも見せない（曲名が見えてしまうので）
 $setlistVis = band_setlist_visibility($pdo, $bandId);

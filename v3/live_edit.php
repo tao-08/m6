@@ -35,8 +35,7 @@ if ($isNew) {
     $st->execute([$liveId]);
     $live = $st->fetch();
     if (!$live) {
-        http_response_code(404);
-        exit('ライブが見つかりません');
+        error_page(404, 'ライブが見つかりません');
     }
     // band_count: その日程に登録済みのバンド数。総バンド数はこれより少なくできない
     $st = $pdo->prepare('SELECT d.*, v.name AS venue_name,
@@ -219,8 +218,7 @@ if (is_post()) {
     $merge = !$isNew && !empty($_POST['merge']);
     if ($merge && !is_admin()) {
         // ボタンは管理者にしか出さないが、リクエストを自作すれば送れてしまうのでサーバーでも止める
-        http_response_code(403);
-        exit('統合は管理者のみできます');
+        error_page(403, '統合は管理者のみできます');
     }
     if ($merge) {
         // フォームの値は書き換えられる可能性があるので、本当に存在するライブか DB で確認する

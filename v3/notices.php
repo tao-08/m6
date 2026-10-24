@@ -60,8 +60,7 @@ function notice_save_images(PDO $pdo, int $noticeId, bool $editing): void
 if (is_post()) {
     verify_csrf();
     if (!$user['admin']) {
-        http_response_code(403);
-        exit('管理者のみ実行できます。');
+        error_page(403, '管理者のみ実行できます');
     }
     $action = (string)($_POST['action'] ?? '');
     $back = 'notices';

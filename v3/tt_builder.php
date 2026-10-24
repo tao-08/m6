@@ -163,8 +163,7 @@ $state = $draft['state'];
 if (isset($_GET['csv'])) {
     $d = (int)$_GET['csv'] - 1;
     if ($d < 0 || $d >= $state['dayCount']) {
-        http_response_code(400);
-        exit('日程の指定がおかしいです');
+        error_page(400, '日程の指定がおかしいです');
     }
     $file = $state['title'] . DAY_LABELS[$d] . '.csv';
     header('Content-Type: text/csv; charset=utf-8');

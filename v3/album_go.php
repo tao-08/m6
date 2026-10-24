@@ -26,8 +26,7 @@ $user = require_login();
 
 $key = album_parse_key($_GET['album'] ?? null);
 if ($key === null) {
-    http_response_code(400);
-    exit('アルバムの指定がおかしいです');
+    error_page(400, 'アルバムの指定がおかしいです');
 }
 [$source, $albumId] = $key;
 
@@ -39,8 +38,7 @@ $st = $pdo->prepare('SELECT source, album_id, title, artist_name, release_year F
 $st->execute([$source, $albumId]);
 $album = $st->fetch();
 if (!$album) {
-    http_response_code(404);
-    exit('アルバムが見つかりません');
+    error_page(404, 'アルバムが見つかりません');
 }
 
 $app = member_music_app($pdo, $user['member_id']);

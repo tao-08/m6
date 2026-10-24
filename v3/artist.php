@@ -21,8 +21,7 @@ $st = $pdo->prepare('SELECT * FROM artist WHERE artist_id = ?');
 $st->execute([$artistId]);
 $artist = $st->fetch();
 if (!$artist) {
-    http_response_code(404);
-    exit('アーティストが見つかりません');
+    error_page(404, 'アーティストが見つかりません');
 }
 
 // このアーティストのバンド（数え方は lib/bootstrap.php の artist_plays_sql()。一覧・集計・検索と同じ）

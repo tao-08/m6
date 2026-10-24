@@ -63,15 +63,15 @@ function config(?string $key = null): mixed
     if ($config === null) {
         $path = __DIR__ . '/../config.php';
         if (!is_file($path)) {
-            http_response_code(500);
-            exit('config.php がありません。config.sample.php をコピーして作成してください。');
+            error_log('config.php がありません。config.sample.php をコピーして作成してください。');
+            error_page(500);
         }
         $raw = require $path; // config.php は return [...] しているので、その配列が入る
         if (isset($raw['local']) || isset($raw['production'])) {
             $env = app_env();
             if (!isset($raw[$env])) {
-                http_response_code(500);
-                exit("config.php に '{$env}' の設定がありません。");
+                error_log("config.php に '{$env}' の設定がありません。");
+                error_page(500);
             }
             // 'db' の中の 'pass' だけ上書き、のような入れ子の上書きもできるように _recursive を使う
             $config = array_replace_recursive($raw['common'] ?? [], $raw[$env]);
@@ -420,6 +420,16 @@ function sort_button_th(string $col, string $label, string $sort, string $dir, s
         . h($label) . '<span class="sortable__arrow">' . ($on ? ($dir === 'asc' ? '▲' : '▼') : '') . '</span></button></th>';
 }
 
+/**
+ * エラーページを出して終わる（lib/error_page.php）。$detail を渡すと見出しの文言になる（「アルバムが見つかりません」など）。
+ * http_response_code() + exit('文字') の代わりに使う
+ */
+function error_page(int $code, string $detail = ''): never
+{
+    require_once __DIR__ . '/error_page.php';
+    render_error_page($code, $detail);
+}
+
 function redirect(string $path): never
 {
     header('Location: ' . $path);
@@ -551,8 +561,7 @@ function verify_csrf(): void
     $sent = $_POST['csrf'] ?? ($_SERVER['HTTP_X_CSRF_TOKEN'] ?? '');
     // hash_equals は「比較にかかる時間」から合言葉を推測されないようにする比較関数
     if (!is_string($sent) || !hash_equals(csrf_token(), $sent)) {
-        http_response_code(400);
-        exit('不正なリクエストです（CSRFトークン不一致）。ページを再読み込みしてやり直してください。');
+        error_page(400, 'ページを再読み込みしてください'); // CSRF トークンの不一致（開きっぱなしでセッションが切れた等）
     }
 }
 
@@ -667,8 +676,7 @@ function require_executive(): array
 {
     $user = require_login();
     if (!is_executive()) {
-        http_response_code(403);
-        exit('幹部のみ実行できます。');
+        error_page(403, '幹部のみ実行できます');
     }
     return $user;
 }
@@ -678,8 +686,7 @@ function require_admin(): array
 {
     $user = require_login();
     if (!is_admin()) {
-        http_response_code(403);
-        exit('管理者のみ実行できます。');
+        error_page(403, '管理者のみ実行できます');
     }
     return $user;
 }

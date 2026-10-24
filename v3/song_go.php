@@ -24,8 +24,7 @@ $user = require_login();
 
 $key = album_parse_key($_GET['track'] ?? null);
 if ($key === null) {
-    http_response_code(400);
-    exit('曲の指定がおかしいです');
+    error_page(400, '曲の指定がおかしいです');
 }
 [$source, $trackId] = $key;
 
@@ -35,8 +34,7 @@ $st = $pdo->prepare('SELECT source, track_id, title, artist_name FROM track WHER
 $st->execute([$source, $trackId]);
 $track = $st->fetch();
 if (!$track) {
-    http_response_code(404);
-    exit('曲が見つかりません');
+    error_page(404, '曲が見つかりません');
 }
 
 $app = member_music_app($pdo, $user['member_id']);
