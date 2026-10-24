@@ -119,9 +119,11 @@ $b = New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Create
 アーティファクト（`abbey-日付.sql.gz.gpg`）を落として、復号 → 展開 → 流し込む。**流す先の DB のテーブルは DROP されて作り直される**ので、必ず先に中身を確認する。
 
 ```bash
-gpg -d -o dump.sql.gz abbey-20261024-1800.sql.gz.gpg   # 合言葉を聞かれる
+gpg --pinentry-mode loopback -d -o dump.sql.gz abbey-20261024-1800.sql.gz.gpg   # 合言葉を聞かれる
 gunzip -c dump.sql.gz | mysql -u ユーザー -p データベース名
 ```
+
+Windows の PowerShell には `gpg` が入っていない。Git for Windows に付いているので、Git Bash で実行するか、`& "<Gitのフォルダ>\usr\bin\gpg.exe" …` とフルパスで呼ぶ。
 
 phpMyAdmin から戻すときは、`gunzip` した `.sql` をインポートする。
 
