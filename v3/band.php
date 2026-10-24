@@ -20,6 +20,7 @@ require_once __DIR__ . '/lib/repository.php';
 require_once __DIR__ . '/lib/comments.php';
 require_once __DIR__ . '/lib/history.php'; // 「確認済み」を誰が押したかを変更履歴に残す
 require_once __DIR__ . '/lib/attach_image.php'; // バンドの添付画像（最大5枚）
+require_once __DIR__ . '/lib/tabs.php'; // 曲ごとの TAB 譜へのリンク（tab_song_key）
 $user = require_login();
 
 $bandId = (int)($_GET['id'] ?? 0);
@@ -103,7 +104,7 @@ $bandImages = attach_images($pdo, 'band', [$bandId])[$bandId] ?? [];
 
 // ---- 3. 曲 ----
 // オムニバスのときだけ曲ごとのアーティストを出す。song.artist_id が NULL = バンドのアーティストと同じ
-$st = $pdo->prepare('SELECT s.song_id, s.track_no, s.title, s.is_se, a.name AS artist_name,
+$st = $pdo->prepare('SELECT s.song_id, s.track_no, s.title, s.is_se, s.artist_id, a.name AS artist_name,
         t.source, t.track_id, t.title AS track_title, t.artist_name AS track_artist, t.artwork_url
     FROM song s
     LEFT JOIN artist a ON a.artist_id = s.artist_id
@@ -247,6 +248,24 @@ function song_notes(array $songs, array $lineup): array
 }
 $notes = song_notes($songs, $lineup);
 
+// ---- 曲ごとの TAB 譜（tab.php）。SE 以外の全曲にリンクを出す（Spotify / iTunes に紐付けていない曲も）----
+//   曲の「曲キー」は PHP で計算して、TAB がある曲だけ 1 回の SQL でまとめて調べる（アイコンを塗る）。
+//   アーティストは曲ごとの指定（オムニバス）→ なければバンドのアーティスト。tab.php?song= の計算と同じにすること
+$tabKeys = [];
+$tabAllowed = tab_allowed(); // 今は管理人だけ。メンバーに開くときは lib/tabs.php の tab_allowed() を変える
+foreach ($tabAllowed ? $songs : [] as $songId => $s) {
+    if (!$s['is_se']) {
+        $tabKeys[$songId] = tab_song_key($s['source'], $s['track_id'], $s['artist_id'] ?? $band['artist_id'], $bandId, $s['title'], $s['artist_name'] ?? $band['artist_name']);
+    }
+}
+$tabHave = [];
+if ($tabKeys) {
+    $uniq = array_values(array_unique($tabKeys));
+    $st = $pdo->prepare('SELECT song_key FROM song_tab WHERE song_key IN (' . implode(',', array_fill(0, count($uniq), '?')) . ') GROUP BY song_key');
+    $st->execute($uniq);
+    $tabHave = array_flip($st->fetchAll(PDO::FETCH_COLUMN));
+}
+
 // 紐付けた曲の「聴く」リンク。見ている人の音楽アプリに合わせる（member.php のアルバムと同じ考え方）
 $viewerApp = member_music_app($pdo, $user['member_id']);
 $trackKeys = [];
@@ -383,6 +402,9 @@ render_header($band['name'], 'lives');
                         <?php endif; ?>
                     <?php else: ?>
                         <span class="setlist__song"><span class="setlist__art setlist__art--none"><?= icon('music_note') ?></span><?= $songText ?></span>
+                    <?php endif; ?>
+                    <?php if (!$isSe && $tabAllowed): // TAB 譜へ。TAB がある曲は塗りつぶし ?>
+                        <a class="setlist__play no-print" href="tab?song=<?= (int)$songId ?>" aria-label="<?= h($song['title']) ?> の TAB 譜" title="TAB 譜"><?= icon('library_music', isset($tabHave[$tabKeys[$songId]]) ? 'icon--fill' : '') ?></a>
                     <?php endif; ?>
                     <?php if ($notes[$songId]): ?><span class="setlist__who"><?php foreach ($notes[$songId] as $note): ?><span class="setlist__note"><?= h($note) ?></span><?php endforeach; ?></span><?php endif; ?>
                 </li>

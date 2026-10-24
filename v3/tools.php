@@ -14,29 +14,36 @@ declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 require_login();
 
-// [行き先, アイコン, 名前, 説明]
+// [行き先, アイコン, 名前, 説明, タグ（権限のラベル。無ければ省略）]
 $tools = [
     ['setting_sheet', 'description', 'セッティングシート作成',
         'セットリストやセット図を記入し、提出用の PDF を作成します。 ライブデータが登録されていれば、ナビゲーションバーの ライブ→各バンドのページ から自動で作成できます。'],
     // 型紙（会場ごとの PDF と座標）の登録。誰でも作れる（編集・削除は作った人と管理者だけ）
     ['sheet_templates', 'edit_document', 'セッティングシート編集（PC推奨）',
         '新しい会場のセッティングシートの PDF を登録し要素を配置して、セッティングシート作成用のテンプレートを編集します。'],
+    // 会場の最寄り駅・機材・過去のライブ（誰でも見られて、誰でも編集できる）
+    ['venue_list', 'location_on', '会場リスト', '会場の最寄り駅・機材・過去のライブ'],
 ];
 // 名簿から出順を決める（管理者だけ。公開するまでは部員に見せない）
 if (is_executive()) {
     $tools[] = ['tt_builder', 'view_timeline', 'タイムテーブル作成',
-        '名簿から日程希望・連続出演・学年を見ながら出順を決め、ライブとして登録します。', true];
+        '名簿から日程希望・連続出演・学年を見ながら出順を決め、ライブとして登録します。', '幹部'];
+}
+// 曲データベース（セットリストの曲の一覧・TAB 譜）。今は管理人だけ
+if (is_admin()) {
+    $tools[] = ['songs', 'library_music', '曲データベース',
+        'セットリストの曲を曲ごとにまとめて一覧にします。TAB 譜の作成・曲の手動登録ができます。', '管理人'];
 }
 
 render_header('ツール', 'tools');
 ?>
 <h1 class="display display--sm">ツール</h1>
 <div class="tool-list">
-    <?php foreach ($tools as $t): [$href, $ic, $name, $desc] = $t; $exec = $t[4] ?? false; ?>
+    <?php foreach ($tools as $t): [$href, $ic, $name, $desc] = $t; $tag = $t[4] ?? null; ?>
         <a class="card tool-card" href="<?= h($href) ?>">
             <span class="tool-card__icon"><?= icon($ic) ?></span>
             <span class="tool-card__body">
-                <span class="tool-card__name"><?= h($name) ?><?= !empty($exec) ? ' <span class="tag">幹部</span>' : '' ?></span>
+                <span class="tool-card__name"><?= h($name) ?><?= $tag !== null ? ' <span class="tag">' . h($tag) . '</span>' : '' ?></span>
                 <span class="muted small"><?= h($desc) ?></span>
             </span>
         </a>

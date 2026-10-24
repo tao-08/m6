@@ -1,0 +1,231 @@
+/* =====================================================================
+ *  assets/tab.css — 流れる TAB 譜（tab.php）のページだけの見た目
+ *  色・角丸などは app.css の変数（--surface, --border, --accent …）を使う。
+ *  → ダークモードでも app.css 側の切り替えに自動で付いてくる
+ * ===================================================================== */
+
+/* ===== 曲の一覧（?song= / ?key=） ===== */
+.tab-song { display: flex; align-items: center; gap: 14px; margin-top: 12px; }
+.tab-song__art { width: 72px; height: 72px; border-radius: var(--radius-sm); object-fit: cover; flex: none; }
+.tab-song__art--none, .tab-head__art--none { display: inline-grid; place-items: center; background: var(--surface-2); color: var(--muted); }
+.tab-song__title { margin: 0; font-size: 20px; font-weight: 800; }
+.tab-song__text p { margin: 4px 0 0; }
+.tab-parts { margin-top: 12px; }
+.tab-parts__heading { margin: 0 0 8px; font-size: 14px; font-weight: 800; color: var(--muted); }
+.tab-parts__list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.tab-parts__item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: var(--radius-sm); border: 1px solid var(--border); color: inherit; }
+a.tab-parts__item:hover { border-color: var(--accent); }
+.tab-parts__inst { font-weight: 800; color: var(--gt); min-width: 2.2em; }
+.tab-parts__name { font-weight: 700; }
+.tab-parts__date { margin-left: auto; }
+.tab-parts__item > .icon:last-child { color: var(--muted); }
+.tab-parts--deleted .tab-parts__item .btn { flex: none; }
+.tab-new { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; margin-top: 0; }
+.tab-new .field { flex: 1 1 140px; }
+
+/* ===== プレイヤー ===== */
+.tab { display: grid; gap: 12px; margin-top: 12px; }
+.tab-head { display: flex; align-items: center; gap: 10px; }
+.tab-head__art { width: 44px; height: 44px; border-radius: 8px; object-fit: cover; flex: none; }
+.tab-head__text { flex: 1; min-width: 0; }
+.tab-head__title { margin: 0; font-size: 17px; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tab-head__text p { margin: 2px 0 0; }
+
+.tab-video { aspect-ratio: 16 / 9; width: min(100%, 420px); border-radius: var(--radius-sm); overflow: hidden; background: #000; }
+.tab-video iframe { width: 100%; height: 100%; border: 0; display: block; }
+
+/* 操作バー: アイコンのボタンを折り返しながら並べる */
+.tab-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 10px 12px; }
+.tab-bar__group { display: flex; align-items: center; gap: 4px; }
+.tab-bar__pos { margin: 0 0 0 auto; font-variant-numeric: tabular-nums; color: var(--muted); font-weight: 700; white-space: nowrap; }
+.icon-btn--sm { width: 30px; height: 30px; }
+.icon-btn--sm .icon { font-size: 18px; }
+.icon-btn--play { width: 44px; height: 44px; color: var(--on-accent); background: var(--accent); border-color: var(--accent); }
+.icon-btn--play:hover { color: var(--on-accent); }
+.icon-btn--play .icon { font-size: 26px; }
+.icon-btn:disabled { opacity: .35; cursor: default; }
+.tab-chip { min-width: 34px; padding: 6px 10px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface);
+  color: var(--muted); font: 700 12px/1 var(--font); cursor: pointer; }
+.tab-chip:hover { color: var(--text); }
+.tab-chip.is-active, .tab-chip[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+.tab-chip .icon { font-size: 16px; vertical-align: -.2em; }
+
+/* 流れる TAB（canvas は JS が描く） */
+.tab-stage { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; cursor: pointer; touch-action: manipulation; }
+.tab-stage canvas { display: block; }
+
+/* ===== 編集 ===== */
+.tab-edit { display: grid; gap: 12px; }
+.tab-settings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.tab-settings__wide { grid-column: 1 / -1; }
+.tab-settings__row { display: flex; gap: 6px; align-items: center; }
+.tab-settings__row input { flex: 1; }
+.tab-settings input[aria-invalid="true"] { border-color: var(--danger); }
+@media (min-width: 720px) { .tab-settings { grid-template-columns: repeat(4, minmax(0, 1fr)); } .tab-settings__wide { grid-column: span 2; } }
+.tab-tools { display: flex; align-items: center; gap: 8px; }
+.tab-tap-btn { min-width: 64px; }
+
+/* 小節のグリッド: 小節ごとのブロックが折り返して並ぶ。ブロックの中だけ横スクロール（ページ全体は横にはみ出さない） */
+.tg { display: flex; flex-wrap: wrap; gap: 10px; }
+.tg-bar { flex: 1 1 auto; max-width: 100%; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); padding: 6px; }
+.tg-bar.is-now { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.tg-bar.is-tap-next { border-style: dashed; border-color: var(--accent); }
+.tg-bar__head { display: flex; align-items: center; gap: 4px; margin-bottom: 4px; }
+.tg-bar__no { font-size: 12px; font-weight: 800; color: var(--muted); min-width: 1.6em; }
+.tg-bar__sec { flex: 1; min-width: 0; width: 7em; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); font-size: 12px; }
+.tg-bar__head .icon-btn { flex: none; }
+.tg-bar__head .icon-btn.is-active { width: auto; padding: 0 8px; border-radius: 15px; gap: 2px; display: inline-flex; align-items: center; }
+.tg-bar__ms { font-size: 11px; font-variant-numeric: tabular-nums; }
+.tg-bar__cells { display: grid; grid-template-columns: 1.4em repeat(var(--cols), 26px); overflow-x: auto; overscroll-behavior-x: contain; }
+.tg-name { display: grid; place-items: center; font-size: 10px; font-weight: 700; color: var(--muted); }
+.tg-cell { position: relative; height: 24px; padding: 0; border: 0; border-left: 1px solid transparent; background: none; color: var(--text);
+  font: 700 12px/1 ui-monospace, Menlo, Consolas, monospace; cursor: pointer; }
+.tg-cell::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: var(--border); z-index: 0; } /* 弦の線 */
+.tg-cell.is-beat { border-left-color: var(--muted); }
+.tg-cell.has-note { background: var(--surface); z-index: 1; }
+.tg-cell:hover { background: var(--accent-soft); }
+.tg-cell.is-sel { outline: 2px solid var(--accent); outline-offset: -2px; background: var(--accent-soft); z-index: 2; }
+.tg-add { justify-self: start; }
+
+/* 保存ボタン（app.css の .sticky-actions）。スマホのフレットパッドが出ている間は、その上に出す */
+.tab-actions { z-index: 12; }
+
+
+/* ===== 履歴 ===== */
+.tab-history { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 6px; max-height: 50vh; overflow: auto; }
+.tab-history__item { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.tab-history__who { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tab-history__label { font-size: 11px; font-weight: 800; padding: 2px 8px; border-radius: 6px; background: var(--surface-2); flex: none; }
+.tab-history__label--create, .tab-history__label--restore { color: var(--ok); background: var(--ok-bg); }
+.tab-history__label--delete { color: var(--danger); background: var(--danger-bg); }
+
+@media (max-width: 600px) {
+  .tab-bar { gap: 6px 10px; }
+  .tab-bar__pos { margin-left: 0; width: 100%; }
+}
+
+/* ===== 曲のマーカー（セクション）・練習用マーカー・練習 BPM・メトロノーム ===== */
+/* セクション一覧（canvas の上）: 色の付いたチップ。名前を押すとその位置へ、右のループのアイコンはそのセクションだけを繰り返す */
+.tab-sections { display: flex; flex-wrap: wrap; gap: 6px; }
+.tab-sec { display: inline-flex; align-items: stretch; border: 1px solid color-mix(in srgb, var(--sec) 55%, var(--border)); border-radius: 999px;
+  background: color-mix(in srgb, var(--sec) 16%, var(--surface)); overflow: hidden; }
+.tab-sec__go, .tab-sec__loop { border: 0; background: none; color: var(--text); font: 700 12px/1 var(--font); cursor: pointer; padding: 6px 10px; }
+.tab-sec__go:hover, .tab-sec__loop:hover { background: color-mix(in srgb, var(--sec) 28%, transparent); }
+.tab-sec__loop { width: auto; height: auto; border-radius: 0; padding: 0 8px; display: inline-grid; place-items: center; }
+.tab-sec__loop .icon { font-size: 16px; }
+/* 編集: セクション名を付ける候補（選んだ小節に付く） */
+.tab-secpick { display: flex; flex-wrap: wrap; gap: 6px; }
+.tab-secpick .tab-chip { border-color: color-mix(in srgb, var(--sec) 55%, var(--border)); }
+.tab-secpick .tab-chip.is-active { background: color-mix(in srgb, var(--sec) 30%, var(--surface)); color: var(--text); border-color: var(--sec); }
+/* 編集グリッドの小節見出しにセクションの色を薄く付ける */
+.tg-bar[style*="--sec"] .tg-bar__head { background: color-mix(in srgb, var(--sec) 20%, transparent); border-radius: 6px; padding: 2px; }
+.tg-bar[style*="--sec"] { border-color: color-mix(in srgb, var(--sec) 45%, var(--border)); }
+
+/* 練習 BPM */
+.tab-pbpm { width: 4.6em; padding: 5px 6px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); text-align: center;
+  font: 700 13px/1 var(--font); font-variant-numeric: tabular-nums; }
+.tab-loop-step { width: auto; padding: 4px 6px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); font-size: 12px; }
+
+/* 練習用マーカー（自分だけ。canvas では点線の旗） */
+.tab-markers { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.tab-markers__item { display: flex; align-items: center; gap: 6px; padding: 4px 8px; border: 1px dashed var(--accent-2); border-radius: var(--radius-sm); background: var(--surface); }
+.tab-markers__flag { color: var(--accent-2); font-size: 18px; flex: none; }
+.tab-markers__time { font-variant-numeric: tabular-nums; color: var(--muted); white-space: nowrap; }
+.tab-markers__label { flex: 1; min-width: 0; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); font-size: 13px; }
+.tab-markers__item .icon-btn { flex: none; }
+.tab-markers__item .icon-btn.is-active { color: var(--accent-2); border-color: var(--accent-2); }
+
+/* メトロノームの設定（ボタンの横の ▾ か長押しで開く） */
+.tab-metro { position: relative; display: inline-flex; align-items: center; gap: 0; }
+.tab-metro .icon-btn--sm { margin-left: -2px; }
+.tab-metro__menu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 30; display: grid; gap: 10px; width: 200px; padding: 12px; box-shadow: var(--shadow); }
+.tab-metro__menu select { width: 100%; }
+
+/* 拍の表示（位置の横の丸）。1拍目は accent。動きを減らす設定のときは、光らせずに色だけ変える */
+.tab-beat { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; vertical-align: -1px; background: var(--border); transition: background .08s ease, transform .08s ease; }
+.tab-beat.is-on { background: var(--muted); transform: scale(1.25); }
+.tab-beat.is-on.is-accent { background: var(--accent); }
+@media (prefers-reduced-motion: reduce) {
+  .tab-beat { transition: none; }
+  .tab-beat.is-on { transform: none; }
+}
+
+/* 参考リンク（プレイヤーの見出しの下）と、編集のリンク行 */
+.tab-links { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 0; }
+.tab-link { display: inline-flex; align-items: center; gap: 4px; text-decoration: none; color: var(--text); }
+.tab-link .youtube-icon { width: 20px; height: 14px; }
+.tab-link .icon { font-size: 16px; }
+.tab-links-edit { display: grid; gap: 6px; }
+.tab-links-edit__row { display: flex; gap: 6px; align-items: center; }
+.tab-links-edit__row input:first-child { flex: 2 1 0; min-width: 0; }
+.tab-links-edit__row input:nth-child(2) { flex: 1 1 0; min-width: 0; }
+.tab-links-edit__row .icon-btn { flex: none; }
+.tab-settings select { width: 100%; }
+
+/* ===== メモ・画像 ===== */
+.tab-notes { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px 12px; }
+.tab-notes > summary { cursor: pointer; color: var(--muted); display: flex; align-items: center; gap: 6px; list-style: none; }
+.tab-notes > summary::-webkit-details-marker { display: none; }
+.tab-notes[open] > summary { margin-bottom: 8px; }
+.tab-notes__song { color: var(--muted); margin-bottom: 6px; }
+.tab-memo { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; }
+.tab-memo a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+.tab-imgs { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 0; padding: 0; list-style: none; }
+.tab-imgs li { position: relative; }
+.tab-imgs__del { position: absolute; top: -6px; right: -6px; width: 20px; height: 20px; padding: 0; border-radius: 50%; border: 1px solid var(--border);
+  background: var(--surface); color: var(--danger); font: 700 14px/1 var(--font); cursor: pointer; }
+.tab-notes-edit { display: grid; gap: 8px; margin-top: 12px; }
+.tab-notes-edit textarea { width: 100%; padding: 8px 10px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--surface); font-size: 14px; resize: vertical; }
+.tab-notes-edit__actions { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.tab-settings textarea { width: 100%; padding: 8px 10px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--surface); font-size: 14px; resize: vertical; }
+
+/* ===== コード譜・音の長さ・休符・ドラム・部分 TAB ===== */
+.tg-chord { position: relative; height: 22px; padding: 0; border: 0; border-left: 1px solid transparent; background: none; color: var(--text); cursor: pointer;
+  font: 800 11px/1 var(--font); white-space: nowrap; overflow: visible; text-align: left; z-index: 1; }
+.tg-chord.is-beat { border-left-color: var(--border); }
+.tg-chord.has-chord { color: var(--accent); }
+.tg-chord:hover { background: var(--accent-soft); }
+.tg-name--chord { color: var(--accent); }
+.tg-cell.is-sus::after { content: ""; position: absolute; left: 0; right: 0; top: calc(50% - 1px); height: 3px; background: var(--muted); z-index: 0; } /* 前の音が続いている */
+.tg-cell.has-rest { color: var(--muted); font-weight: 600; background: var(--surface); z-index: 1; }
+.tab-chord-now { font: 900 22px/1 var(--font); color: var(--accent); margin-left: 8px; }
+.tab-new__partial { flex: 0 1 auto; align-content: end; }
+.tab-new__partial input[type="number"] { width: 5em; }
+.tab-new .check { display: inline-flex; align-items: center; gap: 4px; color: var(--text); font-weight: 600; }
+.tag[data-partial-label] { vertical-align: 1px; }
+
+/* ===== 画面内キーボード（.tab-pad）。スマホは画面の下、広い画面は右の横の固定パネル ===== */
+.tab-pad { display: none; }
+.tab-pad:not([hidden]) { display: grid; gap: 6px; position: fixed; z-index: 28; padding: 8px; background: color-mix(in srgb, var(--bg) 94%, transparent);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid var(--border); box-shadow: var(--shadow); }
+.tab-pad__row { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.tab-pad__panel { display: grid; gap: 6px; }
+.tab-pad__panel[hidden] { display: none; }
+.tab-pad button { min-width: 30px; height: 34px; padding: 0 6px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text);
+  font: 700 13px/1 var(--font); cursor: pointer; display: inline-grid; place-items: center; }
+.tab-pad button:active { background: var(--accent-soft); border-color: var(--accent); }
+.tab-pad button.is-active { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+.tab-pad button:disabled { opacity: .35; cursor: default; }
+.tab-pad__big { flex: 1 1 28px; font-size: 16px !important; height: 40px !important; }
+.tab-pad__sm { font-size: 12px !important; }
+.tab-pad__tab { flex: 1 1 60px; }
+.tab-pad__chord { flex: 1 1 80px; min-width: 0; height: 34px; padding: 0 8px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); font: 800 15px/1 var(--font); }
+@media (max-width: 899px) {
+  .tab-pad:not([hidden]) { left: 0; right: 0; bottom: calc(60px + env(safe-area-inset-bottom)); border-width: 1px 0 0; max-height: 46vh; overflow-y: auto; }
+  body.has-tab-pad .tab-actions { bottom: calc(60px + 230px + env(safe-area-inset-bottom)); }
+}
+@media (min-width: 900px) {
+  .tab-pad:not([hidden]) { right: 12px; top: 130px; width: 270px; border-radius: var(--radius); max-height: calc(100vh - 150px); overflow-y: auto; }
+}
+
+/* ===== AI・インポート ===== */
+.tab-import textarea { width: 100%; padding: 8px 10px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--surface);
+  font: 12px/1.35 ui-monospace, Menlo, Consolas, monospace; resize: vertical; margin-top: 8px; }
+.tab-import__images { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.tab-import__img { position: relative; cursor: pointer; }
+.tab-import__img input { position: absolute; top: 4px; left: 4px; z-index: 1; }
+.tab-import__img img { width: 64px; height: 64px; object-fit: cover; border-radius: 8px; border: 1px solid var(--border); display: block; }
+.tab-import__img input:checked + img { outline: 3px solid var(--accent); }
+.tab-import__actions { justify-content: flex-start; }
+.tab-import__status { margin: 6px 0 0; min-height: 1.2em; color: var(--muted); overflow-wrap: anywhere; }
+.modal.tab-import { width: min(520px, calc(100vw - 32px)); }

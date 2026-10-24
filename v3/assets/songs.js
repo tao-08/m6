@@ -1,0 +1,72 @@
+/*
+ * =====================================================================
+ *  songs.js — 曲データベース（songs.php）の「サブスク連携」登録
+ * =====================================================================
+ *  🔍で api_track_search（曲の編集画面と同じ API）を呼んで、出てきた曲を1つ選ぶ。
+ *  フォームに入れるのは曲のキー（"spotify:xxxx"）だけ。曲名・アーティスト名・画像は
+ *  サーバーが取り直して保存する（ブラウザから来た値は信用しない）。
+ *  XSS 対策: 検索結果の文字は textContent / src にだけ入れる（innerHTML は使わない）。
+ * =====================================================================
+ */
+(() => {
+  'use strict';
+  const form = document.querySelector('[data-song-link]');
+  if (!form) return;
+  const q = form.querySelector('[data-song-q]');
+  const list = form.querySelector('[data-song-results]');
+  const chosen = form.querySelector('[data-song-chosen]');
+  const hidden = form.querySelector('[data-song-track]');
+  const submit = form.querySelector('[data-song-submit]');
+
+  function el(tag, cls, text) {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text !== undefined) e.textContent = text;
+    return e;
+  }
+
+  function choose(t) {
+    hidden.value = t.key;
+    submit.disabled = false;
+    chosen.hidden = false;
+    chosen.textContent = `${t.title} / ${t.artist_name}`;
+    list.replaceChildren();
+  }
+
+  async function search() {
+    const term = q.value.trim();
+    if (term === '') return;
+    list.replaceChildren(el('li', 'muted small', '…'));
+    try {
+      const res = await fetch(`api_track_search?q=${encodeURIComponent(term)}`, { credentials: 'same-origin' });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || '検索できませんでした');
+      list.replaceChildren();
+      if (json.tracks.length === 0) list.appendChild(el('li', 'muted small', '見つかりません'));
+      json.tracks.forEach((t) => {
+        const li = el('li');
+        const b = el('button', 'songs-add__result');
+        b.type = 'button';
+        if (typeof t.artwork_url === 'string' && t.artwork_url.startsWith('https://')) {
+          const img = el('img');
+          img.src = t.artwork_url;
+          img.alt = '';
+          img.width = img.height = 40;
+          b.appendChild(img);
+        }
+        const text = el('span', 'songs-add__result-text');
+        text.append(el('span', 'songs-add__result-title', t.title), el('span', 'muted small', t.artist_name));
+        b.appendChild(text);
+        b.addEventListener('click', () => choose(t));
+        li.appendChild(b);
+        list.appendChild(li);
+      });
+    } catch (err) {
+      list.replaceChildren(el('li', 'small', err.message || '検索できませんでした'));
+    }
+  }
+
+  form.querySelector('[data-song-search]').addEventListener('click', search);
+  // Enter で検索（フォームの送信ではなく）
+  q.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); search(); } });
+})();

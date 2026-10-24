@@ -16,6 +16,9 @@ const ATTACH_KINDS = [
     'board'  => ['table' => 'board_post_image', 'owner' => 'post_id',   'max' => 1],
     'notice' => ['table' => 'notice_image',     'owner' => 'notice_id', 'max' => 5],
     'band'   => ['table' => 'band_image',       'owner' => 'band_id',   'max' => 5],
+    // TAB 譜（流れる TAB。tab.php）: パートごと / 曲ごと。TAB を削除しても画像は消さない（復元すると同じ tab_id で戻るため。外部キーなし）
+    'song_tab'  => ['table' => 'song_tab_image',  'owner' => 'tab_id',  'max' => 10],
+    'song_meta' => ['table' => 'song_meta_image', 'owner' => 'meta_id', 'max' => 10],
 ];
 
 /** @return array 持ち主ID => [画像の行, ...]（表示順） */

@@ -429,5 +429,128 @@ check('手入力: 区切りの日程名が # 始まり', $err([['divider' => '#1
 check('手入力: 新しい日程名の区切り', array_column($mt, 'label'), ['2日目', '野外ライブ', '4日目']);
 check('手入力: 休憩だけ', $err([['pick' => 'break:休憩']]), '名簿のバンドを1つ以上選んでください');
 
+echo "tab\n";
+// 流れる TAB 譜（lib/tabs.php）。チューニングの検証と、届いた JSON のお掃除
+require_once __DIR__ . '/../lib/tabs.php';
+check('チューニング: 6弦ギター', tab_tuning_valid('E A D G B E'), true);
+check('チューニング: シャープ・フラット', tab_tuning_valid('D# G# C# F# A# D#'), true);
+check('チューニング: 3本は少なすぎる', tab_tuning_valid('E A D'), false);
+check('チューニング: 8本は多すぎる', tab_tuning_valid('E A D G B E E E'), false);
+check('チューニング: 音名でない', tab_tuning_valid('E A D G B X'), false);
+check('チューニング: 小文字は不可', tab_tuning_valid('e a d g b e'), false);
+check('チューニング: 弦の数', tab_string_count('B E A D G'), 5);
+$trow = ['tab_id' => 3, 'song_key' => 't:b7|x', 'track_source' => null, 'track_id' => null, 'title' => 'Original', 'artist_name' => null,
+    'part' => 'Gt1', 'instrument_id' => 2, 'tuning' => 'E A D G B E', 'bpm' => '120.00', 'beats_per_bar' => 4, 'steps_per_beat' => 4,
+    'offset_ms' => 0, 'youtube_id' => null, 'created_by' => 1, 'data' => '{"bars":[{"n":[[0,1,3]]}]}'];
+$tclean = tab_snapshot_clean(tab_snapshot_json($trow));
+check('履歴: snapshot を通して戻せる', [$tclean['part'], $tclean['bpm'], $tclean['data']], ['Gt1', 120.0, ['bars' => [['n' => [[0, 1, 3]]]]]]);
+check('履歴: data が配列で入る', json_decode(tab_snapshot_json($trow), true)['data'], ['bars' => [['n' => [[0, 1, 3]]]]]);
+check('履歴: 範囲外の音符は復元しない', tab_snapshot_clean(tab_snapshot_json(['data' => '{"bars":[{"n":[[0,9,3]]}]}'] + $trow)), null);
+check('履歴: おかしな BPM は復元しない', tab_snapshot_clean(tab_snapshot_json(['bpm' => '999'] + $trow)), null);
+check('履歴: 壊れた JSON', tab_snapshot_clean('{'), null);
+check('履歴: カポ・リンクも通る', (static function () use ($trow) {
+    $c = tab_snapshot_clean(tab_snapshot_json(['capo' => 2, 'links' => '[{"u":"https://example.com/a","l":" 譜面 "}]'] + $trow));
+    return [$c['capo'], $c['links']];
+})(), [2, [['u' => 'https://example.com/a', 'l' => '譜面']]]);
+check('履歴: カポが範囲外', tab_snapshot_clean(tab_snapshot_json(['capo' => 13] + $trow)), null);
+check('履歴: リンクが http は復元しない', tab_snapshot_clean(tab_snapshot_json(['links' => '[{"u":"http://example.com"}]'] + $trow)), null);
+check('メモ: 改行をそろえ、制御文字を取る', tab_sanitize_memo("a\r\nb\x00\x07\tc\r\n\n"), "a\nb\tc");
+check('メモ: 空・null は空文字', [tab_sanitize_memo(null), tab_sanitize_memo('')], ['', '']);
+check('メモ: 文字列でないと不可', tab_sanitize_memo(['x']), false);
+check('メモ: 20000文字まで', [tab_sanitize_memo(str_repeat('あ', 20000)) !== false, tab_sanitize_memo(str_repeat('あ', 20001))], [true, false]);
+check('履歴: メモも通る', tab_snapshot_clean(tab_snapshot_json(['memo' => "強く\n弾く"] + $trow))['memo'], "強く\n弾く");
+check('リンク: https のみ・ラベル省略可', tab_sanitize_links([['u' => 'https://tabs.example.com/x?y=1']]), [['u' => 'https://tabs.example.com/x?y=1']]);
+check('リンク: javascript: は不可', tab_sanitize_links([['u' => 'javascript:alert(1)']]), null);
+check('リンク: 空白入りは不可', tab_sanitize_links([['u' => 'https://example.com/a b']]), null);
+check('リンク: ホストなしは不可', tab_sanitize_links([['u' => 'https://']]), null);
+check('リンク: 11個は不可', tab_sanitize_links(array_fill(0, 11, ['u' => 'https://example.com'])), null);
+check('リンク: ラベルは30文字まで', mb_strlen(tab_sanitize_links([['u' => 'https://example.com', 'l' => str_repeat('あ', 40)]])[0]['l']), 30);
+check('練習: 並べ替え・ラベル20文字', (static function () {
+    $p = tab_sanitize_practice(['m' => [['t' => 5000, 'e' => null, 'l' => 'b'], ['t' => 1000, 'e' => 2000, 'l' => str_repeat('い', 30)]], 'ab' => [1000, 2000], 'bpm' => 90]);
+    return [array_column($p['m'], 't'), mb_strlen($p['m'][0]['l']), $p['ab'], $p['bpm']];
+})(), [[1000, 5000], 20, [1000, 2000], 90.0]);
+check('練習: 空でも通る', tab_sanitize_practice([]), ['m' => [], 'ab' => null, 'bpm' => null, 'metro' => null]);
+check('練習: メトロノームの設定', tab_sanitize_practice(['metro' => ['on' => true, 'vol' => 0.456, 'sub' => 3, 'count' => 2]])['metro'], ['on' => true, 'vol' => 0.46, 'sub' => 3, 'count' => 2]);
+check('練習: メトロノームの細分が範囲外', tab_sanitize_practice(['metro' => ['sub' => 5]]), null);
+check('練習: メトロノームの音量が範囲外', tab_sanitize_practice(['metro' => ['vol' => 1.5]]), null);
+check('練習: メトロノームのカウントが範囲外', tab_sanitize_practice(['metro' => ['count' => 3]]), null);
+check('練習: メトロノームの on が真偽値でない', tab_sanitize_practice(['metro' => ['on' => 'yes']]), null);
+check('練習: 終点が開始より前', tab_sanitize_practice(['m' => [['t' => 5000, 'e' => 1000]]]), null);
+check('練習: A が B より後', tab_sanitize_practice(['ab' => [3000, 1000]]), null);
+check('練習: マーカー101個', tab_sanitize_practice(['m' => array_fill(0, 101, ['t' => 0])]), null);
+check('練習: BPM の範囲外', tab_sanitize_practice(['bpm' => 10]), null);
+check('チューニング名: 候補', [tab_tuning_name('D A D G B E'), tab_tuning_name('E A D G B F')], ['ドロップD', null]);
+check('チューニング候補はすべて正しい', (static function () {
+    foreach (TAB_TUNINGS as $n => $set) {
+        foreach ($set as $notes) {
+            if (!tab_tuning_valid($notes) || tab_string_count($notes) !== $n) {
+                return false;
+            }
+        }
+    }
+    return true;
+})(), true);
+check('曲キー: 紐付けた曲は album_key', tab_song_key('spotify', 'abc123', 5, 1, 'Lemon', 'x'), 'spotify:abc123');
+check('曲キー: 表記ゆれは同じ曲', tab_song_key(null, null, 5, 1, 'Lemon', '米津玄師'), tab_song_key(null, null, 5, 2, 'Lemon - Acoustic ver.', '米津玄師'));
+check('曲キー: アーティストが違えば別の曲', tab_song_key(null, null, 5, 1, 'Lemon', null) === tab_song_key(null, null, 6, 1, 'Lemon', null), false);
+$bk = tab_song_key(null, null, null, 7, 'Original Song', null);
+check('曲キー: アーティスト無しはバンドの曲', str_starts_with($bk, 't:b7|'), true);
+check('曲キー: 形の検査', [tab_key_valid($bk), tab_key_valid('spotify:4iV5W9uYEdYUVa79Axb7Rh'), tab_key_valid('t:x1|a'), tab_key_valid('foo')], [true, true, false, false]);
+$d = tab_sanitize_data(['bars' => [
+    ['s' => " Aメロ\n ", 't' => 1500, 'n' => [[4, 2, 5], [0, 5, 0], [4, 2, 7], [0, 1, -1]]],
+    ['s' => '', 't' => null, 'n' => []],
+    ['s' => str_repeat('あ', 30)],
+]], 6, 16);
+check('TAB: 音符は step→弦の順・同じ位置は後勝ち', $d['bars'][0]['n'], [[0, 1, -1], [0, 5, 0], [4, 2, 7]]);
+check('TAB: セクション名は制御文字を除く', $d['bars'][0]['s'], 'Aメロ');
+check('TAB: タップ時刻は残る', $d['bars'][0]['t'], 1500);
+check('TAB: 空のセクション名・null の時刻は項目ごと省く', $d['bars'][1], ['n' => []]);
+check('TAB: セクション名は20文字まで', mb_strlen($d['bars'][2]['s']), 20);
+$one = static fn(array $bar) => tab_sanitize_data(['bars' => [$bar]], 6, 16);
+check('TAB: 弦の範囲外', $one(['n' => [[0, 6, 1]]]), null);
+check('TAB: step の範囲外', $one(['n' => [[16, 0, 1]]]), null);
+check('TAB: フレットの範囲外', $one(['n' => [[0, 0, 25]]]), null);
+check('TAB: 文字列の数字は不可', $one(['n' => [[0, 0, '3']]]), null);
+check('TAB: 時刻が負', $one(['t' => -1, 'n' => []]), null);
+check('TAB v2: 音の長さ（省略 = 1）', $one(['n' => [[0, 1, 3, 4], [4, 2, 5], [8, 3, 0, 1]]])['bars'][0]['n'], [[0, 1, 3, 4], [4, 2, 5], [8, 3, 0]]);
+check('TAB v2: 長さは小節の終わりで切る', $one(['n' => [[14, 0, 3, 8]]])['bars'][0]['n'], [[14, 0, 3, 2]]);
+check('TAB v2: 長さが0以下は不可', $one(['n' => [[0, 0, 3, 0]]]), null);
+check('TAB v2: 要素が5個は不可', $one(['n' => [[0, 0, 3, 1, 1]]]), null);
+check('TAB v2: 休符（同じ位置は後勝ち・並べ替え・長さを切る）', $one(['r' => [[8, 4], [0, 2], [8, 99]]])['bars'][0]['r'], [[0, 2], [8, 8]]);
+check('TAB v2: 休符が無ければ項目ごと省く', array_key_exists('r', $one(['n' => []])['bars'][0]), false);
+check('TAB v2: 休符の位置が範囲外', $one(['r' => [[16, 1]]]), null);
+check('TAB v2: 休符の形がおかしい', $one(['r' => [[0]]]), null);
+$dr = static fn(array $bar) => tab_sanitize_data(['bars' => [$bar]], 8, 16, 'drum');
+check('ドラム: 奏法 1〜3 はどのレーンでも', $dr(['n' => [[0, 0, 1], [0, 3, 2], [4, 7, 3]]])['bars'][0]['n'], [[0, 0, 1], [0, 3, 2], [4, 7, 3]]);
+check('ドラム: オープン（4）は HH だけ', [$dr(['n' => [[0, 2, 4]]]) !== null, $dr(['n' => [[0, 3, 4]]])], [true, null]);
+check('ドラム: 0 やミュートは不可', [$dr(['n' => [[0, 0, 0]]]), $dr(['n' => [[0, 0, -1]]])], [null, null]);
+check('ドラム: レーンの範囲外', $dr(['n' => [[0, 8, 1]]]), null);
+require_once __DIR__ . '/../lib/tab_ai.php';
+$ai = tab_ai_clean_bars([
+    ['s' => 'サビ', 'n' => [[0, 0, 3], [4, 9, 1], [20, 0, 1], [2, 1, 30], [8, 2, 5, 4], [1, 1, null]], 'r' => [[12, 2], [99, 1]]],
+    'ゴミ',
+    ['s' => null, 'n' => []],
+], 6, 16);
+check('AI の返事: 範囲外の音符・休符だけ捨てる', [$ai['bars'][0]['n'], $ai['bars'][0]['r'], $ai['dropped']], [[[0, 0, 3], [8, 2, 5, 4]], [[12, 2]], 5]);
+check('AI の返事: 形のおかしい小節は空の小節になる', [count($ai['bars']), $ai['bars'][1], isset($ai['bars'][2]['s'])], [3, ['n' => []], false]);
+check('AI の返事: 整えたあと厳密な検査も通る', tab_sanitize_data(['bars' => $ai['bars']], 6, 16) !== null, true);
+check('AI の返事: 配列でなければ空', tab_ai_clean_bars('x', 6, 16), ['bars' => [], 'dropped' => 0]);
+check('コード名: 通る形', array_map('tab_chord_valid', ['C', 'Am', 'G7', 'Cmaj7', 'F#m7b5', 'Bb', 'D/F#', 'Asus4', 'A7sus4', 'Dadd9', 'C7(#9)', 'Gdim7', 'N.C.', 'Am7/G', 'EmM7', 'Bm7-5', 'E7b9']), array_fill(0, 17, true));
+check('コード名: 通らない形', array_map('tab_chord_valid', ['', 'H', 'c', 'Hello', 'C major', 'Am7 ', 'Dsus9', 'C/', 'あ', 'A7sus4sus4sus4x', str_repeat('C', 17), 'N.C', "C\n", 5, null]), array_fill(0, 15, false));
+check('TAB コード: 並べ替え・同じ位置は後勝ち', $one(['c' => [[8, 'G'], [0, 'Am'], [8, 'D/F#']]])['bars'][0]['c'], [[0, 'Am'], [8, 'D/F#']]);
+check('TAB コード: 歌詞のような文字は不可', $one(['c' => [[0, 'こんにちは']]]), null);
+check('TAB コード: 位置が範囲外', $one(['c' => [[16, 'C']]]), null);
+check('TAB コード: コードだけの小節（音符なし）', $one(['c' => [[0, 'C']]])['bars'][0], ['n' => [], 'c' => [[0, 'C']]]);
+check('TAB コード: ドラム譜では捨てる', array_key_exists('c', tab_sanitize_data(['bars' => [['c' => [[0, 'C']]]]], 8, 16, 'drum')['bars'][0]), false);
+check('ドラム: チューニング（レーン）の検査', [tab_tuning_valid_for('drum', 'CR RD HH SD T1 T2 FT BD'), tab_tuning_valid_for('drum', 'HH SD BD'), tab_tuning_valid_for('drum', 'HH HH SD'), tab_tuning_valid_for('drum', 'HH SD XX'), tab_tuning_valid_for('drum', 'HH SD'), tab_tuning_valid_for('string', 'E A D G B E')], [true, true, false, false, false, true]);
+check('履歴: 部分 TAB・ドラムの列も通る', (static function () use ($trow) {
+    $c = tab_snapshot_clean(tab_snapshot_json(['kind' => 'drum', 'tuning' => 'HH SD BD', 'first_bar' => 49, 'is_partial' => 1, 'data' => '{"bars":[{"n":[[0,1,2]]}]}'] + $trow));
+    return [$c['kind'], $c['first_bar'], $c['is_partial'], $c['data']['bars'][0]['n']];
+})(), ['drum', 49, 1, [[0, 1, 2]]]);
+check('履歴: 開始小節が範囲外', tab_snapshot_clean(tab_snapshot_json(['first_bar' => 1000] + $trow)), null);
+check('TAB: 小節が0個', tab_sanitize_data(['bars' => []], 6, 16), null);
+check('TAB: 形が違う', tab_sanitize_data('x', 6, 16), null);
+check('TAB: 小節が多すぎる', tab_sanitize_data(['bars' => array_fill(0, TAB_MAX_BARS + 1, ['n' => []])], 6, 16), null);
+
 echo $failed ?"\n{$failed} 件失敗\n" : "\nすべて成功\n";
 exit($failed ? 1 : 0);

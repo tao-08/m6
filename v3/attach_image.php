@@ -28,6 +28,16 @@ if (isset(ATTACH_KINDS[$kind])) {
             WHERE i.image_id = ? AND (n.publish_at <= NOW() OR ? = 1) AND (n.target_user_id IS NULL OR n.target_user_id = ?)');
         $st->execute([$id, $user['admin'] ? 1 : 0, $user['user_id']]);
         $img = $st->fetch() ?: null;
+    } elseif ($kind === 'song_tab' || $kind === 'song_meta') {
+        // TAB 譜の画像: TAB 譜を使ってよい人（今は管理人）だけ。lib/tabs.php の tab_allowed()
+        require_once __DIR__ . '/lib/tabs.php';
+        if (tab_allowed()) {
+            $st = $kind === 'song_tab'
+                ? $pdo->prepare('SELECT i.*, \'TAB\' AS title FROM song_tab_image i WHERE i.image_id = ?')
+                : $pdo->prepare('SELECT i.*, \'song\' AS title FROM song_meta_image i WHERE i.image_id = ?');
+            $st->execute([$id]);
+            $img = $st->fetch() ?: null;
+        }
     } else {
         $st = $pdo->prepare('SELECT i.*, b.name AS title FROM band_image i JOIN band b ON b.band_id = i.band_id WHERE i.image_id = ?');
         $st->execute([$id]);
