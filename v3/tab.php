@@ -172,8 +172,9 @@ if (isset($_GET['song']) || isset($_GET['key'])) {
     $st = $pdo->prepare('SELECT meta_id, memo FROM song_meta WHERE song_key = ?');
     $st->execute([$song['key']]);
     $meta = $st->fetch() ?: ['meta_id' => 0, 'memo' => null];
-    $songImageIds = array_map(static fn($im) => (int)$im['image_id'], attach_images($pdo, 'song_meta', [(int)$meta['meta_id']])[(int)$meta['meta_id']] ?? []);
-    $songData = json_encode(['key' => $song['key'], 'images' => $songImageIds], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR);
+    $songImageRows = attach_images($pdo, 'song_meta', [(int)$meta['meta_id']])[(int)$meta['meta_id']] ?? [];
+    $songImageIds = array_map(static fn($im) => (int)$im['image_id'], $songImageRows);
+    $songData = json_encode(['key' => $song['key'], 'images' => $songImageIds, 'pdfs' => tab_pdf_ids($songImageRows), 'files' => tab_file_ids($songImageRows)], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR);
 
     render_header($song['title'] . ' TAB', 'lives');
     ?>
@@ -201,8 +202,8 @@ if (isset($_GET['song']) || isset($_GET['key'])) {
     </label>
     <ul class="live-thumbs tab-imgs" data-song-images></ul>
     <div class="tab-notes-edit__actions">
-        <label class="btn btn--ghost btn--sm" data-img-add title="画像を追加" aria-label="画像を追加"><?= icon('add_photo_alternate') ?>
-            <input type="file" accept="image/*" multiple hidden data-img-input></label>
+        <label class="btn btn--ghost btn--sm" data-img-add title="ファイルを追加" aria-label="ファイルを追加"><?= icon('add_photo_alternate') ?>
+            <input type="file" multiple hidden data-img-input></label>
         <button type="button" class="btn btn--primary btn--sm" data-song-memo-save><?= icon('save') ?> 保存</button>
     </div>
 </section>
@@ -291,7 +292,8 @@ $st = $pdo->prepare('SELECT meta_id, memo FROM song_meta WHERE song_key = ?');
 $st->execute([$tab['song_key']]);
 $meta = $st->fetch() ?: ['meta_id' => 0, 'memo' => null];
 $songImages = attach_images($pdo, 'song_meta', [(int)$meta['meta_id']])[(int)$meta['meta_id']] ?? [];
-$tabImageIds = array_map(static fn($im) => (int)$im['image_id'], attach_images($pdo, 'song_tab', [(int)$tab['tab_id']])[(int)$tab['tab_id']] ?? []);
+$tabImageRows = attach_images($pdo, 'song_tab', [(int)$tab['tab_id']])[(int)$tab['tab_id']] ?? [];
+$tabImageIds = array_map(static fn($im) => (int)$im['image_id'], $tabImageRows);
 
 
 // JS に渡すデータ。setting_sheet.php と同じ <script type="application/json"> で渡す
@@ -311,6 +313,8 @@ $tabData = [
     'updated_at'     => $tab['updated_at'],
     'memo'           => $tab['memo'] ?? '',
     'images'         => $tabImageIds,
+    'pdfs'           => tab_pdf_ids($tabImageRows),
+    'files'          => tab_file_ids($tabImageRows),
     'ai'             => claude_enabled() && $tab['kind'] !== 'drum', // AI で TAB を読み取るボタンを出すか（lib/tab_ai.php）
     'chord_re'       => substr(TAB_CHORD_RE, 1, -2), // コード名の形（JS の new RegExp に渡す。PHP の検査と同じ式）
     'kind'           => $tab['kind'],            // string / drum
@@ -361,8 +365,8 @@ render_header($tab['title'] . ' ' . $tab['part'], 'lives');
         <?= attach_thumbs_html('song_meta', $songImages) ?>
         <div class="tab-memo" data-memo-view></div>
         <ul class="live-thumbs tab-imgs" data-tab-images></ul>
-        <label class="btn btn--ghost btn--sm" data-img-add title="画像を追加" aria-label="画像を追加" hidden><?= icon('add_photo_alternate') ?>
-            <input type="file" accept="image/*" multiple hidden data-img-input></label>
+        <label class="btn btn--ghost btn--sm" data-img-add title="ファイルを追加" aria-label="ファイルを追加" hidden><?= icon('add_photo_alternate') ?>
+            <input type="file" multiple hidden data-img-input></label>
     </details>
 
     <!-- 音源: YouTube の埋め込み / 手元のファイル / なし（アイコンで切り替え） -->

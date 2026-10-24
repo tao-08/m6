@@ -61,10 +61,15 @@
   }
 
   /** 画像の大きいほうを、ページにある共通のモーダル（lib/attach_image.php の attach_modal_html）で開く */
-  function openImage(attachKind, id) {
+  function openImage(attachKind, id, pdf) {
     const modal = document.querySelector('[data-live-modal]');
     if (!modal) return;
-    modal.querySelector('[data-live-modal-img]').src = `attach_image?k=${attachKind}&id=${id}`;
+    const img = modal.querySelector('[data-live-modal-img]');
+    const frame = modal.querySelector('[data-live-modal-pdf]');
+    img.hidden = !!pdf;
+    frame.hidden = !pdf;
+    if (pdf) img.removeAttribute('src'); else frame.removeAttribute('src');
+    (pdf ? frame : img).src = `attach_image?k=${attachKind}&id=${id}`;
     modal.querySelector('[data-live-modal-dl]').href = `attach_image?k=${attachKind}&id=${id}&dl=1`;
     modal.querySelector('[data-live-modal-taken]').textContent = '';
     modal.showModal();
@@ -74,11 +79,11 @@
    * 画像の並び（サムネイル + 追加ボタン + 削除）。kind = 'tab'（id = tab_id）/ 'song'（id = 曲キー）
    *   戻り値の setEditable(true) で追加・削除のボタンが出る。ids は今ある画像の ID
    */
-  function imageBox({ kind, id, ids, list, addLabel, max }) {
+  function imageBox({ kind, id, ids, pdfs, files, list, addLabel, max }) {
     const attachKind = kind === 'tab' ? 'song_tab' : 'song_meta';
     const input = addLabel.querySelector('[data-img-input]');
     let editable = false;
-    const box = { ids: ids.slice(), onChange: null };
+    const box = { ids: ids.slice(), pdfs: (pdfs || []).slice(), files: (files || []).slice(), onChange: null }; // pdfs = ids のうち PDF のもの
     const send = async (fd) => {
       fd.append('kind', kind);
       fd.append('id', String(id));
@@ -86,6 +91,8 @@
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json.error || '画像を保存できませんでした');
       box.ids = json.images;
+      box.pdfs = json.pdfs || [];
+      box.files = json.files || [];
       render();
       if (box.onChange) box.onChange();
     };
@@ -102,7 +109,10 @@
         img.alt = '';
         img.loading = 'lazy';
         open.appendChild(img);
-        open.addEventListener('click', () => openImage(attachKind, imgId));
+        open.addEventListener('click', () => {
+          if (box.files.includes(imgId)) location.href = `attach_image?k=${attachKind}&id=${imgId}&dl=1`; // プレビューできないファイルはダウンロード
+          else openImage(attachKind, imgId, box.pdfs.includes(imgId));
+        });
         li.appendChild(open);
         if (editable) {
           const del = document.createElement('button');
@@ -143,7 +153,7 @@
     const S = JSON.parse(songDataEl.textContent);
     const area = document.querySelector('[data-song-memo]');
     const text = area.querySelector('[data-song-memo-text]');
-    imageBox({ kind: 'song', id: S.key, ids: S.images, list: area.querySelector('[data-song-images]'), addLabel: area.querySelector('[data-img-add]'), max: 10 }).setEditable(true);
+    imageBox({ kind: 'song', id: S.key, ids: S.images, pdfs: S.pdfs, files: S.files, list: area.querySelector('[data-song-images]'), addLabel: area.querySelector('[data-img-add]'), max: 10 }).setEditable(true);
     area.querySelector('[data-song-memo-save]').addEventListener('click', async (e) => {
       const btn = e.currentTarget;
       btn.disabled = true;
@@ -2027,7 +2037,7 @@
   const notes = $('[data-notes]');
   const memoView = $('[data-memo-view]', notes);
   const memoInput = setEl('memo');
-  const tabImages = imageBox({ kind: 'tab', id: D.tab_id, ids: D.images || [], list: $('[data-tab-images]', notes), addLabel: $('[data-img-add]', notes), max: 10 });
+  const tabImages = imageBox({ kind: 'tab', id: D.tab_id, ids: D.images || [], pdfs: D.pdfs, files: D.files, list: $('[data-tab-images]', notes), addLabel: $('[data-img-add]', notes), max: 10 });
   const hasSongNotes = !!notes.querySelector('.tab-notes__song, [data-live-img]'); // 曲のメモ・画像（PHP が出したもの）
   function renderNotes() {
     linkifyInto(memoView, st.memo);
@@ -2279,7 +2289,7 @@
     // AI に読ませる画像は、この TAB に添付した画像から選ぶ（サーバーが自分でファイルを読む）
     importImages.replaceChildren();
     if (D.ai) {
-      tabImages.ids.forEach((id, k) => {
+      tabImages.ids.filter((id) => !tabImages.pdfs.includes(id) && !tabImages.files.includes(id)).forEach((id, k) => { // PDF は AI に読ませられない
         const label = document.createElement('label');
         label.className = 'tab-import__img';
         const radio = document.createElement('input');

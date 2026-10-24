@@ -5432,8 +5432,16 @@ function setupLiveImages() {
       btn.addEventListener('click', () => {
         const id = btn.dataset.liveImg;
         const base = btn.dataset.liveSrc || 'live_image?id='; // 掲示板・お知らせ・バンドは attach_image?k=…&id=
+        if (btn.dataset.liveFile) { location.href = `${base}${id}&dl=1`; return; } // TAB 譜の PDF 以外のファイル: ダウンロードだけ
         clearTimeout(clearTimer); // 閉じてすぐ開き直したとき、前の「外す」予約で画像が消えないように
-        img.src = `${base}${id}`;
+        const pdf = !!btn.dataset.livePdf; // TAB 譜に添付した PDF は iframe でプレビュー
+        const frame = modal.querySelector('[data-live-modal-pdf]');
+        img.hidden = pdf;
+        if (frame) {
+          frame.hidden = !pdf;
+          if (pdf) frame.src = `${base}${id}`; else frame.removeAttribute('src');
+        }
+        if (pdf) img.removeAttribute('src'); else img.src = `${base}${id}`;
         dl.href = `${base}${id}&dl=1`;
         taken.textContent = btn.dataset.taken || '';
         modal.showModal();
@@ -5442,7 +5450,9 @@ function setupLiveImages() {
     modal.querySelector('[data-live-modal-close]').addEventListener('click', () => modal.close());
     modal.addEventListener('click', (e) => { if (e.target === modal) modal.close(); });
     // 閉じるアニメーション（.modal の transition 0.2秒）が終わってから画像を外す。すぐ外すと、枠が縮む前に画像だけ消える
-    modal.addEventListener('close', () => { clearTimer = setTimeout(() => img.removeAttribute('src'), 250); });
+    modal.addEventListener('close', () => {
+      clearTimer = setTimeout(() => { img.removeAttribute('src'); modal.querySelector('[data-live-modal-pdf]')?.removeAttribute('src'); }, 250);
+    });
   }
 
   document.querySelectorAll('[data-live-img-edit]').forEach(setupLiveImageEdit);

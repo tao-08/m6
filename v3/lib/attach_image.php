@@ -39,13 +39,41 @@ function attach_images(PDO $pdo, string $kind, array $ownerIds): array
     return $by;
 }
 
+/** 画像の行のうち PDF の画像ID（TAB 譜の JS に渡す） */
+function tab_pdf_ids(array $images): array
+{
+    return array_values(array_map(static fn($r) => (int)$r['image_id'],
+        array_filter($images, static fn($r) => live_file_is_pdf((string)$r['file_name']))));
+}
+
+/** TAB 譜（song_tab / song_meta）は PDF・その他のファイルも受け付ける。画像として読めるものは画像、%PDF- は PDF、残りはそのまま保存 */
+function live_attach_store(string $kind, array $up): array
+{
+    if ($kind !== 'song_tab' && $kind !== 'song_meta') {
+        return live_image_store($up);
+    }
+    if (live_upload_is_pdf($up)) {
+        return live_pdf_store($up);
+    }
+    $isImage = ($up['error'] ?? 1) === UPLOAD_ERR_OK && is_uploaded_file($up['tmp_name']) && @getimagesize($up['tmp_name']) !== false;
+    return $isImage ? live_image_store($up) : live_other_store($up);
+}
+
+/** 画像の行のうち、その他のファイルの画像ID（プレビューは無くダウンロードだけ） */
+function tab_file_ids(array $images): array
+{
+    return array_values(array_map(static fn($r) => (int)$r['image_id'],
+        array_filter($images, static fn($r) => live_file_is_other((string)$r['file_name']))));
+}
+
 /** 画像を保存して DB に入れる。作ったファイル名を返す（呼ぶ側がエラー時に消せるように）。ダメなら RuntimeException */
 function attach_add(PDO $pdo, string $kind, int $ownerId, array $uploads, ?int $userId = null, array &$newFiles = []): void
 {
     $k = ATTACH_KINDS[$kind];
     $order = (int)$pdo->query("SELECT COALESCE(MAX(sort_order), 0) FROM {$k['table']} WHERE {$k['owner']} = " . $ownerId)->fetchColumn();
     foreach ($uploads as $up) {
-        $saved = live_image_store($up);
+        // PDF は TAB 譜（song_tab / song_meta）だけ
+        $saved = live_attach_store($kind, $up);
         $newFiles[] = $saved['file_name'];
         if ($kind === 'band') {
             $pdo->prepare('INSERT INTO band_image (band_id, user_id, file_name, sort_order) VALUES (?, ?, ?, ?)')
@@ -92,7 +120,8 @@ function attach_thumbs_html(string $kind, array $images, callable $extra = null)
     $html = '<ul class="live-thumbs no-print">';
     foreach ($images as $im) {
         $id = (int)$im['image_id'];
-        $html .= '<li><button type="button" class="live-thumbs__btn" data-live-img="' . $id . '" data-live-src="attach_image?k=' . h($kind) . '&amp;id=" aria-label="画像を表示">'
+        $html .= '<li><button type="button" class="live-thumbs__btn" data-live-img="' . $id . '"' . (live_file_is_pdf((string)$im['file_name']) ? ' data-live-pdf="1"' : (live_file_is_other((string)$im['file_name']) ? ' data-live-file="1"' : ''))
+            . ' data-live-src="attach_image?k=' . h($kind) . '&amp;id=" aria-label="画像を表示">'
             . '<img src="attach_image?k=' . h($kind) . '&amp;id=' . $id . '&amp;t=1" alt="" loading="lazy"></button>' . ($extra ? $extra($im) : '') . '</li>';
     }
     return $html . '</ul>' . attach_modal_html();
@@ -106,7 +135,7 @@ function attach_modal_html(): string
         return '';
     }
     $done = true;
-    return '<dialog class="modal live-modal" data-live-modal><img alt="" data-live-modal-img>'
+    return '<dialog class="modal live-modal" data-live-modal><img alt="" data-live-modal-img><iframe title="PDF" hidden data-live-modal-pdf></iframe>'
         . '<p class="live-modal__bar"><span class="muted small" data-live-modal-taken></span>'
         . '<a class="btn btn--sm" href="#" download data-live-modal-dl aria-label="ダウンロード" title="ダウンロード">' . icon('download') . '</a>'
         . '<button type="button" class="btn btn--ghost btn--sm" data-live-modal-close aria-label="閉じる" title="閉じる">' . icon('close') . '</button></p></dialog>';

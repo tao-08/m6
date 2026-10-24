@@ -17,6 +17,7 @@ declare(strict_types=1);
 
 const LIVE_IMAGE_MAX = 5;                       // 1ライブに付けられる枚数
 const LIVE_IMAGE_MAX_BYTES = 15 * 1024 * 1024;  // 1枚あたり（スマホの写真が入る大きさ）
+const LIVE_PDF_MAX_BYTES = 20 * 1024 * 1024;    // PDF（TAB 譜の添付だけ。attach_add の $allowPdf）
 const LIVE_IMAGE_DIR = __DIR__ . '/../storage/live_images';
 
 /** @return array live_id => [画像の行, ...]（表示順） */
@@ -49,7 +50,7 @@ function live_image_uploads(mixed $files): array
         if (($files['error'][$i] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
             continue;
         }
-        $out[] = ['error' => $files['error'][$i], 'tmp_name' => $files['tmp_name'][$i], 'size' => $files['size'][$i]];
+        $out[] = ['error' => $files['error'][$i], 'tmp_name' => $files['tmp_name'][$i], 'size' => $files['size'][$i], 'name' => (string)($files['name'][$i] ?? '')];
     }
     return $out;
 }
@@ -131,10 +132,87 @@ function live_image_store(array $file): array
     return ['file_name' => $name, 'taken_at' => $takenAt];
 }
 
+/** PDF か（file_name の拡張子。名前はこちらで決めたものだけが DB に入る） */
+function live_file_is_pdf(string $fileName): bool
+{
+    return str_ends_with($fileName, '.pdf');
+}
+
+/** アップロードされたファイルの中身が PDF か（拡張子ではなく先頭の %PDF- で見る） */
+function live_upload_is_pdf(array $file): bool
+{
+    if (($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK || !is_uploaded_file($file['tmp_name'])) {
+        return false;
+    }
+    $head = @file_get_contents($file['tmp_name'], false, null, 0, 5);
+    return $head === '%PDF-';
+}
+
+/** PDF を検査して保存する（画像と違い、縮小も作り直しもしない）。サムネイルは無い。ダメなら RuntimeException */
+function live_pdf_store(array $file): array
+{
+    if ($file['size'] > LIVE_PDF_MAX_BYTES) {
+        throw new RuntimeException('PDF が大きすぎます（20MB まで）');
+    }
+    if (!is_dir(LIVE_IMAGE_DIR) && !mkdir(LIVE_IMAGE_DIR, 0775, true)) {
+        throw new RuntimeException('保存先のフォルダを作れませんでした');
+    }
+    $name = bin2hex(random_bytes(8)) . '.pdf';
+    if (!move_uploaded_file($file['tmp_name'], LIVE_IMAGE_DIR . '/' . $name)) {
+        throw new RuntimeException('PDF を保存できませんでした');
+    }
+    return ['file_name' => $name, 'taken_at' => null];
+}
+
+/** 画像でも PDF でもない file_name（hex16.拡張子）か。ディスク上は ".dat" を付けた名前で置く（拡張子で実行・解釈されないように） */
+function live_file_is_other(string $fileName): bool
+{
+    return (bool)preg_match('/^[0-9a-f]{16}\.[a-z0-9]{1,8}$/', $fileName) && !str_ends_with($fileName, '.jpg') && !str_ends_with($fileName, '.pdf');
+}
+
+/** DB の file_name → ディスク上のファイル名 */
+function live_file_disk_name(string $fileName): string
+{
+    return live_file_is_other($fileName) ? $fileName . '.dat' : $fileName;
+}
+
+/** 拡張子（小文字）。file_name の末尾 */
+function live_file_ext(string $fileName): string
+{
+    return strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
+}
+
+/** 画像・PDF 以外のファイル（アプリの書き出しファイルなど）をそのまま保存する。中身は見ない。表示はせずダウンロードだけ。ダメなら RuntimeException */
+function live_other_store(array $file): array
+{
+    if ($file['error'] === UPLOAD_ERR_INI_SIZE || $file['error'] === UPLOAD_ERR_FORM_SIZE || $file['size'] > LIVE_PDF_MAX_BYTES) {
+        throw new RuntimeException('ファイルが大きすぎます（20MB まで）');
+    }
+    if ($file['error'] !== UPLOAD_ERR_OK || !is_uploaded_file($file['tmp_name'])) {
+        throw new RuntimeException('アップロードに失敗しました。もう一度選んでください');
+    }
+    $ext = strtolower(pathinfo((string)($file['name'] ?? ''), PATHINFO_EXTENSION));
+    if (!preg_match('/^[a-z0-9]{1,8}$/', $ext) || in_array($ext, ['jpg', 'pdf', 'dat'], true)) {
+        $ext = 'bin'; // 拡張子が無い・変な形なら bin
+    }
+    if (!is_dir(LIVE_IMAGE_DIR) && !mkdir(LIVE_IMAGE_DIR, 0775, true)) {
+        throw new RuntimeException('保存先のフォルダを作れませんでした');
+    }
+    $name = bin2hex(random_bytes(8)) . '.' . $ext;
+    if (!move_uploaded_file($file['tmp_name'], LIVE_IMAGE_DIR . '/' . live_file_disk_name($name))) {
+        throw new RuntimeException('ファイルを保存できませんでした');
+    }
+    return ['file_name' => $name, 'taken_at' => null];
+}
+
 /** 画像ファイル（本体とサムネイル）を消す。file_name は DB の値だが、念のため形も確かめる */
 function live_image_unlink(string $fileName): void
 {
-    if (preg_match('/^[0-9a-f]{16}\.jpg$/', $fileName)) {
+    if (preg_match('/^[0-9a-f]{16}\.pdf$/', $fileName)) {
+        @unlink(LIVE_IMAGE_DIR . '/' . $fileName);
+    } elseif (live_file_is_other($fileName)) {
+        @unlink(LIVE_IMAGE_DIR . '/' . live_file_disk_name($fileName));
+    } elseif (preg_match('/^[0-9a-f]{16}\.jpg$/', $fileName)) {
         @unlink(LIVE_IMAGE_DIR . '/' . $fileName);
         @unlink(LIVE_IMAGE_DIR . '/t_' . $fileName);
     }

@@ -2303,6 +2303,8 @@ html:has(.board-posts) { scroll-behavior: smooth; }
 .live-modal__bar { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin: 0; padding: 10px 14px; }
 .live-modal__bar .muted { margin-right: auto; }
 .live-img-edit__list { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0; }
+.live-modal iframe { display: block; width: 100%; height: 78vh; border: 0; background: #fff; }
+.live-modal iframe[hidden], .live-modal img[hidden] { display: none; }
 .live-img-edit__item { position: relative; width: 56px; height: 56px; padding: 0; background: none; border-radius: 10px; overflow: clip; cursor: pointer; border: 1px solid var(--border); }
 .live-img-edit__item img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .live-img-edit__item input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0; border: 0; opacity: 0; pointer-events: none; } /* .field の input の大きさ指定が当たって枠からはみ出すと、タッチでフォーカスしたとき枠の中が勝手にスクロールして画像がずれる */

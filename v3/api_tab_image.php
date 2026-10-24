@@ -109,4 +109,5 @@ try {
 array_map('live_image_unlink', $removeFiles); // コミットのあとにファイルを消す
 
 $images = attach_images($pdo, $attachKind, [$ownerId])[$ownerId] ?? [];
-echo json_encode(['ok' => true, 'images' => array_map(static fn($r) => (int)$r['image_id'], $images)], JSON_UNESCAPED_UNICODE);
+echo json_encode(['ok' => true, 'images' => array_map(static fn($r) => (int)$r['image_id'], $images),
+    'pdfs' => tab_pdf_ids($images), 'files' => tab_file_ids($images)], JSON_UNESCAPED_UNICODE);

@@ -48,18 +48,31 @@ if (isset(ATTACH_KINDS[$kind])) {
         $img = $st->fetch() ?: null;
     }
 }
-$name = $img ? (isset($_GET['t']) ? 't_' : '') . $img['file_name'] : '';
-$path = LIVE_IMAGE_DIR . '/' . $name;
-if (!$img || !preg_match('/^(t_)?[0-9a-f]{16}\.jpg$/', $name) || !is_file($path)) {
+$isPdf = $img && live_file_is_pdf((string)$img['file_name']);
+$isOther = $img && live_file_is_other((string)$img['file_name']);
+$name = $img ? (isset($_GET['t']) && !$isPdf && !$isOther ? 't_' : '') . $img['file_name'] : '';
+$path = LIVE_IMAGE_DIR . '/' . live_file_disk_name($name);
+if (!$img || !preg_match('/^(t_)?[0-9a-f]{16}\.(jpg|pdf|[a-z0-9]{1,8})$/', $name) || !is_file($path)) {
     http_response_code(404);
     exit;
 }
-header('Content-Type: image/jpeg');
-header('Content-Length: ' . filesize($path));
 header('X-Content-Type-Options: nosniff');
 header('Cache-Control: private, max-age=86400');
-if (isset($_GET['dl'])) {
-    $base = preg_replace('/[^\p{L}\p{N}_-]+/u', '_', (string)$img['title']) . '_' . (int)$img['image_id'] . '.jpg';
-    header("Content-Disposition: attachment; filename=\"image.jpg\"; filename*=UTF-8''" . rawurlencode($base));
+if (($isPdf || $isOther) && isset($_GET['t'])) {
+    // PDF・その他のファイルのサムネイルは固定のアイコン（SVG。文字は拡張子で [a-z0-9] だけ）
+    $label = strtoupper(live_file_ext((string)$img['file_name']));
+    $color = $isPdf ? 'c62828' : '546e7a';
+    header('Content-Type: image/svg+xml');
+    echo '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 80"><rect width="60" height="80" rx="6" fill="#fff" stroke="#' . $color . '" stroke-width="3"/>'
+        . '<text x="30" y="48" text-anchor="middle" font-family="sans-serif" font-weight="700" font-size="' . (strlen($label) > 4 ? 13 : 20) . '" fill="#' . $color . '">' . $label . '</text></svg>';
+    exit;
+}
+$ext = $isPdf ? 'pdf' : ($isOther ? live_file_ext((string)$img['file_name']) : 'jpg');
+// その他のファイルは中身を解釈させず、必ずダウンロードにする
+header('Content-Type: ' . ($isPdf ? 'application/pdf' : ($isOther ? 'application/octet-stream' : 'image/jpeg')));
+header('Content-Length: ' . filesize($path));
+if (isset($_GET['dl']) || $isOther) {
+    $base = preg_replace('/[^\p{L}\p{N}_-]+/u', '_', (string)$img['title']) . '_' . (int)$img['image_id'] . '.' . $ext;
+    header("Content-Disposition: attachment; filename=\"file.$ext\"; filename*=UTF-8''" . rawurlencode($base));
 }
 readfile($path);
