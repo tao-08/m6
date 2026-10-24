@@ -30,6 +30,7 @@ declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/tracks.php';
 require_once __DIR__ . '/lib/repository.php';
+require_once __DIR__ . '/lib/tabs.php'; // 曲名から楽曲データベースへ（tab_song_key）
 $user = require_login();
 
 $pdo = db();
@@ -356,9 +357,11 @@ $instrumentKings = ['combo' => $kingsOf(true), 'sum' => $kingsOf(false)];
 //   アーティストは、オムニバスの曲なら曲のアーティスト（付いていなければ無し）、それ以外はバンドのアーティスト
 $topTitles = [];
 foreach (rows($pdo, 'SELECT s.title, a.artist_id, a.name AS artist_name,
-        t.source, t.track_id, t.title AS track_title, t.artist_name AS track_artist, t.artwork_url
+        t.source, t.track_id, t.title AS track_title, t.artist_name AS track_artist, t.artwork_url,
+        s.track_source, s.band_id, COALESCE(s.artist_id, b.artist_id) AS key_artist_id, ka.name AS key_artist_name
     FROM song s
     JOIN band b ON b.band_id = s.band_id
+    LEFT JOIN artist ka ON ka.artist_id = COALESCE(s.artist_id, b.artist_id) -- 曲キーの計算用（band.php と同じ決め方）
     LEFT JOIN artist a ON a.artist_id = CASE WHEN b.is_omnibus = 1 THEN s.artist_id ELSE b.artist_id END
     LEFT JOIN track t ON t.source = s.track_source AND t.track_id = s.track_id
     JOIN live_day ld ON ld.live_day_id = b.live_day_id
@@ -370,6 +373,9 @@ foreach (rows($pdo, 'SELECT s.title, a.artist_id, a.name AS artist_name,
     $g['n'] = ($g['n'] ?? 0) + 1;
     $g['artist_id'] = $r['artist_id'];
     $g['artist_name'] = $r['artist_name'];
+    if (tab_allowed()) { // 楽曲データベースへのリンク用（版違いは songs.php がまとめて開く）
+        $g['song_key'] ??= tab_song_key($r['track_source'], $r['track_id'], $r['key_artist_id'] === null ? null : (int)$r['key_artist_id'], (int)$r['band_id'], $r['title'], $r['key_artist_name']);
+    }
     $g['titles'][$r['title']] = ($g['titles'][$r['title']] ?? 0) + 1; // 表記ごとの回数（一番多い表記を出すため）
     if ($r['track_id'] !== null) {
         $trackKey = album_key($r['source'], $r['track_id']);
@@ -401,12 +407,17 @@ $trackCache = track_link_cache_for($pdo, $viewerApp, array_map(
 $songLabel = static function (array $g) use ($viewerApp, $trackCache): string {
     $artist = $g['artist_name'] ? ' <a class="muted small" href="artist?id=' . (int)$g['artist_id'] . '">' . h($g['artist_name']) . '</a>' : '';
     $t = $g['track'];
+    $name = isset($g['song_key']) ? '<a href="songs?open=' . h(rawurlencode($g['song_key'])) . '">' . h($g['title']) . '</a>' : h($g['title']);
     if ($t === null) {
-        return '<span class="setlist__song"><span class="setlist__art setlist__art--none">' . icon('music_note') . '</span>' . h($g['title']) . '</span>' . $artist;
+        return '<span class="setlist__song"><span class="setlist__art setlist__art--none">' . icon('music_note') . '</span>' . $name . '</span>' . $artist;
     }
     $key = album_key($t['source'], $t['track_id']);
     $url = track_listen_url($viewerApp, ['source' => $t['source'], 'track_id' => $t['track_id'], 'title' => $t['track_title'], 'artist_name' => $t['track_artist']],
         array_key_exists($key, $trackCache) ? $trackCache[$key] : false);
+    if (isset($g['song_key'])) { // 管理人: ジャケット = 音楽アプリ、曲名 = 楽曲データベース
+        return '<span class="setlist__song"><a href="' . h($url) . '" target="_blank" rel="noopener" title="' . h($t['track_title'] . ' / ' . $t['track_artist']) . ' を聴く">'
+            . '<img class="setlist__art" src="' . h($t['artwork_url']) . '" alt="" loading="lazy" width="28" height="28"></a>' . $name . '</span>' . $artist;
+    }
     return '<a class="setlist__song" href="' . h($url) . '" target="_blank" rel="noopener" title="' . h($t['track_title'] . ' / ' . $t['track_artist']) . ' を聴く">'
         . '<img class="setlist__art" src="' . h($t['artwork_url']) . '" alt="" loading="lazy" width="28" height="28">' . h($g['title']) . '</a>' . $artist;
 };

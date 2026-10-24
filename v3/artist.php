@@ -13,6 +13,8 @@ require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/repository.php';
 require_once __DIR__ . '/lib/albums.php';
 require_once __DIR__ . '/lib/claude.php';
+require_once __DIR__ . '/lib/tracks.php'; // song_version_rank（メインの版の選び方）
+require_once __DIR__ . '/lib/tabs.php'; // 曲名から楽曲データベースへ（tab_song_key）
 $user = require_login();
 
 $pdo = db();
@@ -72,15 +74,18 @@ $topPlayers = $st->fetchAll();
 
 // セットリスト: バンドごとに曲順で全曲。オムニバスのバンドはこのアーティストの曲だけ少し強調する（mine）
 $setlists = []; // [band_id] = [['title' => 曲名, 'mine' => 強調するか], ...]
-$st = $pdo->prepare('SELECT s.band_id, s.title, s.is_se, (b.is_omnibus = 1 AND s.artist_id = ?) AS mine
+$st = $pdo->prepare('SELECT s.band_id, s.title, s.is_se, (b.is_omnibus = 1 AND s.artist_id = ?) AS mine,
+        s.track_source, s.track_id, COALESCE(s.artist_id, b.artist_id) AS key_artist_id, ka.name AS key_artist_name
     FROM band b
     JOIN song s ON s.band_id = b.band_id
+    LEFT JOIN artist ka ON ka.artist_id = COALESCE(s.artist_id, b.artist_id) -- 曲キーの計算用（band.php と同じ決め方）
     WHERE ' . $bandWhere . '
       AND NOT ' . setlist_hidden_sql('b') . ' -- 出演まで非公開のバンドの曲は出さない（lib/repository.php）
     ORDER BY s.track_no');
 $st->execute([$artistId, $artistId]);
 foreach ($st as $s) {
-    $setlists[(int)$s['band_id']][] = ['title' => $s['title'], 'mine' => (bool)$s['mine'], 'se' => (bool)$s['is_se']];
+    $setlists[(int)$s['band_id']][] = ['title' => $s['title'], 'mine' => (bool)$s['mine'], 'se' => (bool)$s['is_se'],
+        'key' => tab_allowed() && !$s['is_se'] ? tab_song_key($s['track_source'], $s['track_id'], $s['key_artist_id'] === null ? null : (int)$s['key_artist_id'], (int)$s['band_id'], $s['title'], $s['key_artist_name']) : null];
 }
 
 // よく演奏される曲（上位15位）: 曲名ごとに何バンドが演奏したか。オムニバスのバンドはこのアーティストの曲だけ数える
@@ -96,6 +101,39 @@ $st = $pdo->prepare('SELECT s.title, COUNT(DISTINCT b.band_id) AS n
     LIMIT 15');
 $st->execute([$artistId, $artistId]);
 $topSongs = $st->fetchAll();
+
+// ジャケット: 曲名ごとに、紐付いた版の中から楽曲データベースと同じ基準のメイン（song_version_rank → 発売年が古い）を選ぶ
+//   同じ行から楽曲データベースへのリンク用の曲キーも決める（セットリストの曲名リンクと同じ tab_song_key）
+$topArt = [];  // 曲名 => artwork_url
+$topKey = [];  // 曲名 => 曲キー（tab_allowed() でないときは空）
+if ($topSongs) {
+    $titles = array_column($topSongs, 'title');
+    $st = $pdo->prepare('SELECT s.title, s.band_id, s.track_source, s.track_id, COALESCE(s.artist_id, b.artist_id) AS key_artist_id, ka.name AS key_artist_name,
+            t.artwork_url, t.album_title, t.release_year
+        FROM band b
+        JOIN song s ON s.band_id = b.band_id
+        LEFT JOIN artist ka ON ka.artist_id = COALESCE(s.artist_id, b.artist_id)
+        LEFT JOIN track t ON t.source = s.track_source AND t.track_id = s.track_id
+        WHERE ' . $bandWhere . '
+          AND s.is_se = 0
+          AND (b.is_omnibus = 0 OR s.artist_id = ?)
+          AND NOT ' . setlist_hidden_sql('b') . '
+          AND s.title IN (' . implode(',', array_fill(0, count($titles), '?')) . ')');
+    $st->execute([$artistId, $artistId, ...$titles]);
+    $best = [];
+    foreach ($st as $r) {
+        $art = is_string($r['artwork_url']) && str_starts_with($r['artwork_url'], 'https://') ? $r['artwork_url'] : null;
+        $score = [$art === null, song_version_rank($r['album_title'], $r['title'], $artist['name']), $r['release_year'] === null, (int)$r['release_year']];
+        if (!isset($best[$r['title']]) || $score < $best[$r['title']]) {
+            $best[$r['title']] = $score;
+            $topArt[$r['title']] = $art;
+            if (tab_allowed()) {
+                $topKey[$r['title']] = tab_song_key($r['track_source'], $r['track_id'], $r['key_artist_id'] === null ? null : (int)$r['key_artist_id'],
+                    (int)$r['band_id'], $r['title'], $r['key_artist_name']);
+            }
+        }
+    }
+}
 
 // 管理者はアーティスト名を直せる（表記ゆれで2つできたときは名前をそろえれば…ではなく、下の統合を使う）
 $others = [];
@@ -197,7 +235,7 @@ render_header($artist['name'], 'artists');
         <?php // ふりがな（member.php と同じく名前のすぐ下）と、その右に別称（別称は管理者だけ）
         $kanaLine = array_filter([($artist['name_kana'] ?? '') !== '' ? h($artist['name_kana']) : '', $aliases && is_admin() ? '別称: ' . h(implode('、', $aliases)) : '']); ?>
         <?php if ($kanaLine): ?><p class="muted small"><?= implode('　', $kanaLine) ?></p><?php endif; ?>
-        <p class="muted">サークルで <?= count($bands) ?> 回演奏されました</p>
+        <p class="muted"><a class="meta-link"href="songs?q=<?= rawurlencode($artist['name']) ?>">サークルで <?= count($bands) ?> 回演奏されました<span aria-hidden="true"> ›</span></a></p>
     </div>
 </section>
 
@@ -238,7 +276,9 @@ render_header($artist['name'], 'artists');
     <?php $songRanks = tie_ranks($topSongs, static fn($s) => (int)$s['n']); ?>
     <ol class="ranking">
         <?php foreach ($topSongs as $k => $s): ?>
-            <li data-rank="<?= $songRanks[$k] ?>"><span><?= h($s['title']) ?></span> <span class="pill"><?= (int)$s['n'] ?>回</span></li>
+            <li data-rank="<?= $songRanks[$k] ?>"><?= isset($topArt[$s['title']])
+                ? '<img class="songs-row__art" src="' . h($topArt[$s['title']]) . '" alt="" width="44" height="44" loading="lazy">'
+                : '<span class="songs-row__art songs-row__art--none" aria-hidden="true">♪</span>' ?><span><?= isset($topKey[$s['title']]) ? '<a href="songs?open=' . h(rawurlencode($topKey[$s['title']])) . '">' . h($s['title']) . '</a>' : h($s['title']) ?></span> <span class="pill"><?= (int)$s['n'] ?>回</span></li>
         <?php endforeach; ?>
     </ol>
     <button type="button" class="btn btn--ghost btn--sm album-box__more" data-partner-more hidden>さらに表示</button>
@@ -275,7 +315,7 @@ render_header($artist['name'], 'artists');
                                 if (!$song['se']) {
                                     $songNo++;
                                 } ?>
-                                <li<?= $song['se'] ? ' class="is-se"' : ($song['mine'] ? ' class="is-mine"' : '') ?><?= $song['se'] ? '' : ' value="' . $songNo . '"' ?>><?= h($song['title']) ?></li>
+                                <li<?= $song['se'] ? ' class="is-se"' : ($song['mine'] ? ' class="is-mine"' : '') ?><?= $song['se'] ? '' : ' value="' . $songNo . '"' ?>><?= $song['key'] !== null ? '<a href="songs?open=' . h(rawurlencode($song['key'])) . '">' . h($song['title']) . '</a>' : h($song['title']) ?></li>
                             <?php endforeach; ?>
                         </ol>
                     <?php else: ?><span class="muted">—</span><?php endif; ?>

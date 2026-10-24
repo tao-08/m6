@@ -387,9 +387,13 @@ render_header($band['name'], 'lives');
                     }
                 }
                 // 曲名の下にアーティスト（縦に2段）。▶ はこの2段の右に来る
+                //   曲名は楽曲データベースへのリンク（TAB 譜と同じ条件 = $tabKeys がある曲だけ。SE は無し）
+                $nameHtml = isset($tabKeys[$songId])
+                    ? '<a class="setlist__name" href="songs?open=' . h(rawurlencode($tabKeys[$songId])) . '">' . h($song['title']) . '</a>'
+                    : '<span class="setlist__name">' . h($song['title']) . '</span>';
                 $songText = $songArtist
-                    ? '<span class="setlist__text"><span class="setlist__name">' . h($song['title']) . '</span><span class="setlist__artist">' . h($songArtist) . '</span></span>'
-                    : '<span class="setlist__name">' . h($song['title']) . '</span>'; // .setlist__name: 折り返したら少し小さくする（app.js の setupSetlistNames） ?>
+                    ? '<span class="setlist__text">' . $nameHtml . '<span class="setlist__artist">' . h($songArtist) . '</span></span>'
+                    : $nameHtml; // .setlist__name: 折り返したら少し小さくする（app.js の setupSetlistNames） ?>
                 <li<?= $isSe ? ' class="setlist__se"' : ' value="' . $songNo . '"' ?>>
                     <?php if ($song['source'] !== null):
                         // 紐付けた曲: 曲名はただの文字。ジャケットにマウスを乗せると音楽アプリのアイコンが重なって出て、押すと聴ける
