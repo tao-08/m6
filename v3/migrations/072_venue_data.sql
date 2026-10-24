@@ -42,8 +42,6 @@ JOIN (
     UNION ALL SELECT '江古田クラブドロシー', 'ギターアンプ', 'Marshall JCM900', 2
     UNION ALL SELECT '江古田クラブドロシー', 'ギターアンプ', 'Roland JC-120', 3
     UNION ALL SELECT '江古田クラブドロシー', 'ギターアンプ', 'Marshall 1960A', 4
-    UNION ALL SELECT '江古田クラブドロシー', 'ベースアンプ', 'ベースアンプ（機種不明）', 5
-    UNION ALL SELECT '江古田クラブドロシー', 'ドラム', 'ドラムセット（機種不明）', 6
     UNION ALL SELECT '四谷アウトブレイク', 'ギターアンプ', 'Marshall', 1
     UNION ALL SELECT '四谷アウトブレイク', 'ギターアンプ', 'Roland', 2
     UNION ALL SELECT '四谷アウトブレイク', 'ベースアンプ', 'Ampeg', 3
