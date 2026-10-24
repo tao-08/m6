@@ -10,7 +10,7 @@
  *    3. TAB だけある曲（song_tab）            … 上の2つのどちらにも無いキー（元の曲が消えたなど）
  *
  *  手動登録は2通り（どちらも POST・管理人だけ・CSRF 対策あり）:
- *    サブスク連携 … 🔍で Spotify / iTunes の曲を探して選ぶ。曲名・アーティスト名はブラウザから来た値を信用せず、
+ *    楽曲情報を検索 … 🔍で Spotify / iTunes の曲を探して選ぶ。曲名・アーティスト名はブラウザから来た値を信用せず、
  *                   曲のキーだけ受け取ってサーバーが取り直す（track_lookup）
  *    連携なし     … 曲名 + アーティストマスタ（artist）にいるアーティスト。
  *                   自由入力のアーティストを許すと、"t:a<artist_id>|…" とは別の形のキーが要り、
@@ -191,8 +191,8 @@ foreach ($st as $r) {
 // ---- 絞り込み・並べ替え（GET の値は決まった値だけ通す）----
 $q = mb_substr(trim((string)($_GET['q'] ?? '')), 0, 100);
 $tabFilter = in_array($_GET['tab'] ?? '', ['has', 'none'], true) ? $_GET['tab'] : '';
-$sort = in_array($_GET['sort'] ?? '', ['title', 'plays', 'last'], true) ? $_GET['sort'] : 'last';
-$dir = ($_GET['dir'] ?? '') === 'asc' ? 'asc' : (($_GET['dir'] ?? '') === 'desc' ? 'desc' : ($sort === 'title' ? 'asc' : 'desc'));
+$sort = in_array($_GET['sort'] ?? '', ['title', 'artist', 'plays', 'last'], true) ? $_GET['sort'] : 'artist';
+$dir = ($_GET['dir'] ?? '') === 'asc' ? 'asc' : (($_GET['dir'] ?? '') === 'desc' ? 'desc' : (in_array($sort, ['title', 'artist'], true) ? 'asc' : 'desc'));
 $page = max(1, (int)($_GET['p'] ?? 1));
 const SONGS_PER_PAGE = 100;
 
@@ -207,6 +207,15 @@ usort($rows, static function (array $a, array $b) use ($sort, $dir): int {
     $byTitle = mb_strtolower($a['title']) <=> mb_strtolower($b['title']);
     if ($sort === 'title') {
         return $sign * $byTitle;
+    }
+    if ($sort === 'artist') {
+        // アーティスト不明の曲は、昇順・降順どちらでも最後
+        $aa = mb_strtolower((string)($a['artist'] ?? ''));
+        $ba = mb_strtolower((string)($b['artist'] ?? ''));
+        if (($aa === '') !== ($ba === '')) {
+            return $aa === '' ? 1 : -1;
+        }
+        return ($sign * ($aa <=> $ba)) ?: $byTitle;
     }
     if ($sort === 'plays') {
         return ($sign * ($a['plays'] <=> $b['plays'])) ?: $byTitle;
@@ -232,8 +241,8 @@ function songs_url(array $over): string
     }
     $query = array_filter([
         'q' => $p['q'], 'tab' => $p['tab'],
-        'sort' => $p['sort'] !== 'last' ? $p['sort'] : '',
-        'dir' => $p['sort'] === 'title' ? ($p['dir'] === 'desc' ? 'desc' : '') : ($p['dir'] === 'asc' ? 'asc' : ''), // 並びごとの初期の向きと同じなら出さない
+        'sort' => $p['sort'] !== 'artist' ? $p['sort'] : '',
+        'dir' => in_array($p['sort'], ['title', 'artist'], true) ? ($p['dir'] === 'desc' ? 'desc' : '') : ($p['dir'] === 'asc' ? 'asc' : ''), // 並びごとの初期の向きと同じなら出さない
         'p' => $p['p'] > 1 ? (string)$p['p'] : '',
     ], static fn($v) => $v !== '' && $v !== null);
     return 'songs' . ($query ? '?' . http_build_query($query) : '');
@@ -257,7 +266,7 @@ render_header('楽曲データベース', 'tools');
             <?= csrf_field() ?>
             <input type="hidden" name="action" value="add_linked">
             <input type="hidden" name="track" value="" data-song-track>
-            <h2 class="songs-add__title"><?= icon('library_music') ?> サブスク連携</h2>
+            <h2 class="songs-add__title"><?= icon('library_music') ?> 楽曲情報を検索</h2>
             <div class="songs-add__search">
                 <input type="search" class="search" maxlength="100" placeholder="曲名 アーティスト名" data-song-q aria-label="曲を検索">
                 <button type="button" class="icon-btn" data-song-search aria-label="検索" title="検索"><?= icon('search') ?></button>
@@ -296,9 +305,9 @@ render_header('楽曲データベース', 'tools');
 </form>
 <div class="songs-sort">
     <span class="muted small"><?= number_format($total) ?>曲</span>
-    <?php foreach (['title' => '曲名', 'plays' => '演奏回数', 'last' => '最終演奏日'] as $col => $label):
+    <?php foreach (['title' => '曲名', 'artist' => 'アーティスト', 'plays' => '演奏回数', 'last' => '最終演奏日'] as $col => $label):
         $on = $sort === $col;
-        $next = $on ? ($dir === 'asc' ? 'desc' : 'asc') : ($col === 'title' ? 'asc' : 'desc'); ?>
+        $next = $on ? ($dir === 'asc' ? 'desc' : 'asc') : (in_array($col, ['title', 'artist'], true) ? 'asc' : 'desc'); ?>
         <a class="tab-chip<?= $on ? ' is-active' : '' ?>" href="<?= h(songs_url(['sort' => $col, 'dir' => $next])) ?>"<?= $on ? ' aria-sort="' . ($dir === 'asc' ? 'ascending' : 'descending') . '"' : '' ?>><?= h($label) ?><?= $on ? ($dir === 'asc' ? ' ▲' : ' ▼') : '' ?></a>
     <?php endforeach; ?>
 </div>
