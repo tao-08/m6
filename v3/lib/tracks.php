@@ -381,3 +381,37 @@ function save_track(PDO $pdo, array $t): void
                 album_title = VALUES(album_title), artwork_url = VALUES(artwork_url), release_year = VALUES(release_year)')
         ->execute([$t['source'], $t['track_id'], $t['title'], $t['artist_name'], $t['album_title'], $t['artwork_url'], $t['release_year']]);
 }
+
+/**
+ * 版違いの中から「メイン（オリジナル・アルバムの版）」を自動で選ぶための順位。小さいほどメインにふさわしい。
+ *   0 … オリジナル・アルバム
+ *   1 … シングル（アルバム名 = 曲名、または " - Single" / " - EP"）
+ *   2 … ベスト・ライブ・リマスター・デラックス盤など（アルバム名か曲名の注記で判断）
+ *   3 … アルバムが分からない（紐付けなし）
+ * 同じ順位どうしは、発売年が古い方 → 演奏回数が多い方（呼ぶ側で比べる）
+ */
+const SONG_REISSUE_WORDS = '/(?<![a-z])(?:best|greatest|hits|collection|complete|singles|anthology|essential|selection|live|remaster\w*|deluxe'
+    . '|edition|anniversary|expanded|tour|concert|unplugged|acoustic|remix(?:es)?|instrumental|karaoke|tribute|cover)(?![a-z])'
+    . '|ベスト|ライブ|ライヴ|リマスター|コレクション|記念|完全版|カバー|トリビュート|オルゴール|カラオケ/iu';
+
+function song_version_rank(?string $album, string $title, ?string $artist = null): int
+{
+    $album = trim((string)$album);
+    if ($album === '') {
+        return 3;
+    }
+    if (preg_match(SONG_REISSUE_WORDS, $album) || preg_match(SONG_REISSUE_WORDS, mb_substr($title, mb_strlen(song_title_core($title, $artist))))) {
+        return 2; // 曲名の注記（"Let It Be - Remastered 2009" の " - Remastered 2009"）も見る
+    }
+    if (preg_match('/\s-\s(?:single|ep)\z/iu', $album)) {
+        return 1;
+    }
+    // 両A面シングル "ファンファーレ / 春夏秋冬" も、どれかが曲名ならシングル
+    $titleKey = song_title_key($title, $artist);
+    foreach (preg_split('#\s*[/／]\s*#u', $album) as $part) {
+        if (song_title_key($part, $artist) === $titleKey) {
+            return 1;
+        }
+    }
+    return 0;
+}

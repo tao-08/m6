@@ -114,8 +114,23 @@ if (is_post()) {
         // 手動登録の削除。TAB は曲キーで結び付いているので消えない
         $pdo->prepare('DELETE FROM song_catalog WHERE catalog_id = ?')->execute([(int)($_POST['catalog_id'] ?? 0)]);
         flash('削除しました');
+    } elseif ($action === 'primary') {
+        // 版違いのメインを選ぶ（song_key が空なら自動に戻す）。work_key は画面が計算したものなので、形と長さだけ確かめる
+        $work = (string)($_POST['work_key'] ?? '');
+        $songKey = (string)($_POST['song_key'] ?? '');
+        if ($work === '' || mb_strlen($work) > 200 || preg_match('/[\x00-\x1F\x7F]/u', $work) || ($songKey !== '' && !tab_key_valid($songKey))) {
+            flash('選択できませんでした', 'error');
+        } elseif ($songKey === '') {
+            $pdo->prepare('DELETE FROM song_work_primary WHERE work_key = ?')->execute([$work]);
+        } else {
+            $pdo->prepare('INSERT INTO song_work_primary (work_key, song_key, updated_by) VALUES (?, ?, ?)
+                    ON DUPLICATE KEY UPDATE song_key = VALUES(song_key), updated_by = VALUES(updated_by)')
+                ->execute([$work, $songKey, $userId]);
+        }
     }
-    redirect($key !== null ? 'tab?key=' . rawurlencode($key) : 'songs');
+    // 一覧へ戻るときは、元の絞り込み・並び・ページのまま（songs?… の形だけ通す。外のサイトへ飛ばされないように）
+    $back = (string)($_POST['back'] ?? '');
+    redirect($key !== null ? 'tab?key=' . rawurlencode($key) : (preg_match('/\Asongs(?:\?[^\s\/\\\\]*)?\z/', $back) ? $back : 'songs'));
 }
 
 // =====================================================================
@@ -188,6 +203,54 @@ foreach ($st as $r) {
     $groups[$r['song_key']]['tabs'] = (int)$r['n'];
 }
 
+// ---- 4. 版違い（アルバム違いで曲キーが分かれたもの）を「同じ曲」にまとめる ----
+//   まとめるキー（work_key）= アーティスト + 曲名のキー（song_title_key。"Lemon - Acoustic ver." も "Lemon"）。
+//   アーティストは ID があれば ID、無ければ名前（別名も含めてマスタにいれば ID に直す）。どちらも無い曲はまとめない
+$artistIds = []; // album_match_key(名前) => artist_id
+foreach ($pdo->query('SELECT name, artist_id FROM artist UNION ALL SELECT name, artist_id FROM artist_alias') as $r) {
+    $artistIds[album_match_key($r['name'])] ??= (int)$r['artist_id'];
+}
+$primary = []; // work_key => 管理人が選んだメインの song_key
+try {
+    $primary = $pdo->query('SELECT work_key, song_key FROM song_work_primary')->fetchAll(PDO::FETCH_KEY_PAIR);
+} catch (PDOException $e) {
+    if ($e->getCode() !== '42S02') { // 42S02 = テーブルが無い（migrations/070 をまだ流していない）。それ以外は本当のエラー
+        throw $e;
+    }
+}
+$works = [];
+foreach ($groups as $g) {
+    $artist = (string)($g['artist'] ?? '');
+    $g['artist_id'] ??= $artistIds[album_match_key($artist)] ?? null;
+    $titleKey = song_title_key((string)$g['title'], $artist);
+    $wk = mb_substr($g['artist_id'] !== null ? 'a' . $g['artist_id'] . '|' . $titleKey
+        : ($artist !== '' ? 'n' . album_match_key($artist) . '|' . $titleKey : 'k' . $g['key']), 0, 200);
+    $g['rank'] = song_version_rank($g['album'], (string)$g['title'], $artist);
+    $g['tab_url'] = $g['song_id'] !== null ? 'tab?song=' . $g['song_id'] : 'tab?key=' . rawurlencode($g['key']); // セットリストの曲ならメインの曲ID
+    $works[$wk]['versions'][] = $g;
+}
+foreach ($works as $wk => &$w) {
+    // 並び: メインにふさわしい順（song_version_rank → 発売年が古い → 演奏回数が多い）。管理人が選んだ版があれば先頭へ
+    usort($w['versions'], static fn(array $a, array $b): int => [$a['rank'], $a['year'] === null, (int)$a['year'], -$a['plays']]
+        <=> [$b['rank'], $b['year'] === null, (int)$b['year'], -$b['plays']]);
+    $chosen = array_search($primary[$wk] ?? null, array_column($w['versions'], 'key'), true); // 選んだ版が無くなっていたら自動
+    if ($chosen !== false) {
+        array_unshift($w['versions'], ...array_splice($w['versions'], $chosen, 1));
+    }
+    $rep = $w['versions'][0];
+    $withTabs = array_values(array_filter($w['versions'], static fn($v) => $v['tabs'] > 0));
+    $w += [
+        'key' => $wk, 'manual' => $chosen !== false, 'rep' => $rep,
+        'title' => song_title_core((string)$rep['title'], $rep['artist']), 'artist' => $rep['artist'], 'artist_id' => $rep['artist_id'],
+        'plays' => array_sum(array_column($w['versions'], 'plays')),
+        'last' => max(array_map(static fn($v) => (string)$v['last'], $w['versions'])) ?: null,
+        'tabs' => array_sum(array_column($w['versions'], 'tabs')),
+        'tab_url' => $rep['tabs'] > 0 || !$withTabs ? $rep['tab_url'] : $withTabs[0]['tab_url'], // メインに TAB が無く、別の版にあればそちらへ
+        'search' => implode(' ', array_map(static fn($v) => $v['title'] . ' ' . $v['artist'] . ' ' . $v['album'], $w['versions'])),
+    ];
+}
+unset($w);
+
 // ---- 絞り込み・並べ替え（GET の値は決まった値だけ通す）----
 $q = mb_substr(trim((string)($_GET['q'] ?? '')), 0, 100);
 $tabFilter = in_array($_GET['tab'] ?? '', ['has', 'none'], true) ? $_GET['tab'] : '';
@@ -196,8 +259,8 @@ $dir = ($_GET['dir'] ?? '') === 'asc' ? 'asc' : (($_GET['dir'] ?? '') === 'desc'
 $page = max(1, (int)($_GET['p'] ?? 1));
 const SONGS_PER_PAGE = 100;
 
-$rows = array_values(array_filter($groups, static function (array $g) use ($q, $tabFilter): bool {
-    if ($q !== '' && mb_stripos($g['title'] . ' ' . ($g['artist'] ?? ''), $q) === false) {
+$rows = array_values(array_filter($works, static function (array $g) use ($q, $tabFilter): bool {
+    if ($q !== '' && mb_stripos($g['search'], $q) === false) { // どの版の曲名・アルバム名でも当たる
         return false;
     }
     return $tabFilter === '' || ($tabFilter === 'has') === ($g['tabs'] > 0);
@@ -315,43 +378,58 @@ render_header('楽曲データベース', 'tools');
 <?php if (!$rows): ?>
     <div class="empty card"><p class="empty__title">曲がありません</p></div>
 <?php else: ?>
+<?php
+$back = songs_url([]); // メインの変更・削除のあと、現在の絞り込みのまま戻る
+/** その版を演奏したバンド（セットリスト）の一覧 */
+$bandsHtml = static function (array $v): string {
+    if (!$v['bands']) {
+        return '<p class="muted small">演奏履歴なし</p>';
+    }
+    $out = '<ul class="songs-bands">';
+    foreach ($v['bands'] as $b) {
+        $out .= '<li><a href="band?id=' . (int)$b['id'] . '">' . h($b['name']) . '</a> <span class="muted small"><a href="live?id=' . (int)$b['live_id'] . '#day-' . (int)$b['day_id'] . '">'
+            . h(fmt_year($b['fy'])) . ' ' . h($b['live']) . '</a>' . ($b['n'] >= 2 ? '（×' . (int)$b['n'] . '）' : '') . ((string)$b['day'] !== '' ? ' · ' . h($b['day']) : '') . '</span></li>';
+    }
+    return $out . '</ul>';
+};
+/** 手動登録の削除ボタン */
+$deleteForm = static fn(array $v): string => '<form method="post" class="inline-form" data-confirm="手動登録を削除します（TAB 譜は残ります）。よろしいですか？">'
+    . csrf_field() . '<input type="hidden" name="action" value="delete"><input type="hidden" name="catalog_id" value="' . (int)$v['catalog_id'] . '">'
+    . '<input type="hidden" name="back" value="' . h($back) . '">'
+    . '<button type="submit" class="icon-btn icon-btn--sm" aria-label="削除" title="削除">' . icon('delete') . '</button></form>';
+?>
 <ul class="songs-list">
     <?php foreach ($rows as $g):
-        // セットリストの曲なら代表の曲ID（tab?song=）、それ以外は曲キー（tab?key=）で TAB の画面へ
-        $tabUrl = $g['song_id'] !== null ? 'tab?song=' . $g['song_id'] : 'tab?key=' . rawurlencode($g['key']); ?>
+        $rep = $g['rep'];
+        $multi = count($g['versions']) > 1; ?>
         <li class="songs-item">
             <div class="songs-row">
-                <?php if ($g['art']): ?>
-                    <img class="songs-row__art" src="<?= h($g['art']) ?>" alt="" width="44" height="44" loading="lazy">
+                <?php if ($rep['art']): ?>
+                    <img class="songs-row__art" src="<?= h($rep['art']) ?>" alt="" width="44" height="44" loading="lazy">
                 <?php else: ?>
                     <span class="songs-row__art songs-row__art--none"><?= icon('music_note') ?></span>
                 <?php endif; ?>
                 <div class="songs-row__main">
                     <button type="button" class="songs-row__open" data-song-open aria-haspopup="dialog">
-                        <span class="songs-row__title"><?= h($g['title']) ?></span><?php if ($g['artist']): ?><span class="songs-row__artist muted small"><?= h($g['artist']) ?></span><?php endif; ?><?php if ($g['catalog_id'] !== null): ?><span class="tag">手動</span><?php endif; ?>
+                        <span class="songs-row__title"><?= h($g['title']) ?></span><?php if ($g['artist']): ?><span class="songs-row__artist muted small"><?= h($g['artist']) ?></span><?php endif; ?><?php if ($multi): ?><span class="tag" title="バージョン"><?= icon('album') ?><span class="songs-row__n"><?= count($g['versions']) ?></span></span><?php elseif ($rep['catalog_id'] !== null): ?><span class="tag">手動</span><?php endif; ?>
                     </button>
                 </div>
-                <a class="btn btn--sm songs-row__tab<?= $g['tabs'] > 0 ? ' is-on' : '' ?>" href="<?= h($tabUrl) ?>" aria-label="TAB 譜" title="TAB 譜"><?= icon('library_music', $g['tabs'] > 0 ? 'icon--fill' : '') ?> <?= (int)$g['tabs'] ?></a>
-                <?php if ($g['catalog_id'] !== null): ?>
-                    <form method="post" class="inline-form" data-confirm="手動登録を削除します（TAB 譜は残ります）。よろしいですか？">
-                        <?= csrf_field() ?><input type="hidden" name="action" value="delete"><input type="hidden" name="catalog_id" value="<?= (int)$g['catalog_id'] ?>">
-                        <button type="submit" class="icon-btn icon-btn--sm" aria-label="削除" title="削除"><?= icon('delete') ?></button>
-                    </form>
-                <?php endif; ?>
+                <a class="btn btn--sm songs-row__tab<?= $g['tabs'] > 0 ? ' is-on' : '' ?>" href="<?= h($g['tab_url']) ?>" aria-label="TAB 譜" title="TAB 譜"><?= tab_icon($g['tabs'] > 0) ?> <?= (int)$g['tabs'] ?></a>
+                <?php if (!$multi && $rep['catalog_id'] !== null): ?><?= $deleteForm($rep) ?><?php endif; ?>
             </div>
             <dialog class="songs-modal" data-song-modal aria-label="<?= h($g['title']) ?>">
                 <div class="songs-modal__head">
                     <button type="button" class="icon-btn icon-btn--sm songs-modal__close" data-song-close aria-label="閉じる" title="閉じる"><?= icon('close') ?></button>
                     <?php // ジャケット → その曲（サブスク）。アルバム名 → アルバムの検索（曲にはアルバムの ID が無いので検索ページ）
-                    $trackUrl = $g['src'] !== null ? track_listen_url($musicApp, ['source' => $g['src'], 'track_id' => $g['tid'], 'title' => $g['title'], 'artist_name' => (string)$g['artist']]) : null;
-                    $albumUrl = $g['album'] ? album_search_url(listen_app($musicApp, (string)$g['src']), ['title' => $g['album'], 'artist_name' => (string)$g['artist']]) : null; ?>
+                    $trackUrl = $rep['src'] !== null ? track_listen_url($musicApp, ['source' => $rep['src'], 'track_id' => $rep['tid'], 'title' => $rep['title'], 'artist_name' => (string)$rep['artist']]) : null;
+                    $albumUrl = $rep['album'] ? album_search_url(listen_app($musicApp, (string)$rep['src']), ['title' => $rep['album'], 'artist_name' => (string)$rep['artist']]) : null; ?>
                     <div class="songs-modal__cover">
-                        <?php $art = $g['art']
-                            ? '<img class="songs-modal__art" src="' . h($g['art']) . '" alt="" width="200" height="200" loading="lazy">'
+                        <?php $art = $rep['art']
+                            ? '<img class="songs-modal__art" src="' . h($rep['art']) . '" alt="" width="200" height="200" loading="lazy">'
                             : '<span class="songs-modal__art songs-row__art--none">' . icon('music_note') . '</span>'; ?>
                         <?php if ($trackUrl !== null): ?><a href="<?= h($trackUrl) ?>" target="_blank" rel="noopener noreferrer" aria-label="サブスクで開く" title="サブスクで開く"><?= $art ?></a><?php else: ?><?= $art ?><?php endif; ?>
-                        <?php if ($g['album']): ?>
-                            <a class="songs-modal__album small" href="<?= h($albumUrl) ?>" target="_blank" rel="noopener noreferrer"><?= h($g['album']) ?><?= $g['year'] ? ' · ' . (int)$g['year'] : '' ?></a>
+                        <?php if ($rep['album']): ?>
+                            <a class="songs-modal__album small" href="<?= h($albumUrl) ?>" target="_blank" rel="noopener noreferrer"><?= $multi ? '<span class="tag tag--mine">メイン</span> ' : '' ?><?= h($rep['album']) ?><?= $rep['year'] ? ' · ' . (int)$rep['year'] : '' ?></a>
                         <?php endif; ?>
                     </div>
                     <div class="songs-modal__names">
@@ -364,18 +442,45 @@ render_header('楽曲データベース', 'tools');
                 </div>
                 <div class="songs-row__meta muted small">
                     <span>演奏回数 <?= (int)$g['plays'] ?></span>
-                    <span title="最終演奏日"><?= icon('event') ?> <?= $g['last'] !== null ? h(fmt_date($g['last'])) : '-' ?></span>
-                    <span title="TAB 譜"><?= icon('library_music') ?> <?= (int)$g['tabs'] ?></span>
+                    <span>最終演奏日 <?= $g['last'] !== null ? h(fmt_date($g['last'])) : '-' ?></span>
+                    <span>TAB 譜 <?= (int)$g['tabs'] ?></span>
+                    <?php if ($multi): ?><span>バージョン <?= count($g['versions']) ?></span><?php endif; ?>
                 </div>
-                <?php if ($g['bands']): ?>
-                    <ul class="songs-bands">
-                        <?php foreach ($g['bands'] as $b): ?>
-                            <li><a href="band?id=<?= (int)$b['id'] ?>"><?= h($b['name']) ?></a>
-                                <span class="muted small"><a href="live?id=<?= (int)$b['live_id'] ?>#day-<?= (int)$b['day_id'] ?>"><?= h(fmt_year($b['fy'])) ?> <?= h($b['live']) ?></a><?= $b['n'] >= 2 ? '（×' . (int)$b['n'] . '）' : '' ?><?= (string)$b['day'] !== '' ? ' · ' . h($b['day']) : '' ?></span></li>
-                        <?php endforeach; ?>
-                    </ul>
+                <?php if (!$multi): ?>
+                    <?= $bandsHtml($rep) ?>
                 <?php else: ?>
-                    <p class="muted small">演奏履歴なし</p>
+                    <!-- 版ごと（アルバムごと）の違いと、その版を選んだセットリスト。先頭がメイン -->
+                    <ol class="songs-versions">
+                        <?php foreach ($g['versions'] as $i => $v): ?>
+                            <li class="songs-version<?= $i === 0 ? ' is-rep' : '' ?>">
+                                <div class="songs-version__head">
+                                    <?php if ($v['art']): ?><img class="songs-version__art" src="<?= h($v['art']) ?>" alt="" width="36" height="36" loading="lazy">
+                                    <?php else: ?><span class="songs-version__art songs-row__art--none"><?= icon('music_note') ?></span><?php endif; ?>
+                                    <div class="songs-version__names">
+                                        <span class="songs-version__album"><?= $v['album'] ? h($v['album']) : '<span class="muted">アルバム不明</span>' ?><?= $v['year'] ? ' <span class="muted small">' . (int)$v['year'] . '</span>' : '' ?></span>
+                                        <?php if ($v['title'] !== $g['title']): ?><span class="muted small"><?= h($v['title']) ?></span><?php endif; ?>
+                                    </div>
+                                    <?php if ($i === 0): ?><span class="tag tag--mine songs-version__rep" title="<?= $g['manual'] ? '手動で選択' : '自動で選択' ?>"><?= icon($g['manual'] ? 'push_pin' : 'star', 'icon--fill') ?> メイン</span><?php endif; ?>
+                                </div>
+                                <div class="songs-version__actions muted small">
+                                    <span>演奏回数 <?= (int)$v['plays'] ?></span>
+                                    <a class="btn btn--sm songs-row__tab<?= $v['tabs'] > 0 ? ' is-on' : '' ?>" href="<?= h($v['tab_url']) ?>" aria-label="TAB 譜" title="TAB 譜"><?= tab_icon($v['tabs'] > 0) ?> <?= (int)$v['tabs'] ?></a>
+                                    <?php if ($i > 0 || $g['manual']): ?>
+                                        <form method="post" class="inline-form">
+                                            <?= csrf_field() ?><input type="hidden" name="action" value="primary">
+                                            <input type="hidden" name="work_key" value="<?= h($g['key']) ?>">
+                                            <input type="hidden" name="song_key" value="<?= $i > 0 ? h($v['key']) : '' ?>">
+                                            <input type="hidden" name="back" value="<?= h($back) ?>">
+                                            <?php if ($i > 0): ?><button type="submit" class="icon-btn icon-btn--sm" aria-label="メインに設定" title="メインに設定"><?= icon('push_pin') ?></button>
+                                            <?php else: ?><button type="submit" class="icon-btn icon-btn--sm" aria-label="自動選択に復元" title="自動選択に復元"><?= icon('restart_alt') ?></button><?php endif; ?>
+                                        </form>
+                                    <?php endif; ?>
+                                    <?php if ($v['catalog_id'] !== null): ?><?= $deleteForm($v) ?><?php endif; ?>
+                                </div>
+                                <?= $bandsHtml($v) ?>
+                            </li>
+                        <?php endforeach; ?>
+                    </ol>
                 <?php endif; ?>
             </dialog>
         </li>

@@ -404,7 +404,7 @@ render_header($band['name'], 'lives');
                         <span class="setlist__song"><span class="setlist__art setlist__art--none"><?= icon('music_note') ?></span><?= $songText ?></span>
                     <?php endif; ?>
                     <?php if (!$isSe && $tabAllowed): // TAB 譜へ。TAB がある曲は塗りつぶし ?>
-                        <a class="setlist__play no-print" href="tab?song=<?= (int)$songId ?>" aria-label="<?= h($song['title']) ?> の TAB 譜" title="TAB 譜"><?= icon('library_music', isset($tabHave[$tabKeys[$songId]]) ? 'icon--fill' : '') ?></a>
+                        <a class="setlist__play no-print" href="tab?song=<?= (int)$songId ?>" aria-label="<?= h($song['title']) ?> の TAB 譜" title="TAB 譜"><?= tab_icon(isset($tabHave[$tabKeys[$songId]])) ?></a>
                     <?php endif; ?>
                     <?php if ($notes[$songId]): ?><span class="setlist__who"><?php foreach ($notes[$songId] as $note): ?><span class="setlist__note"><?= h($note) ?></span><?php endforeach; ?></span><?php endif; ?>
                 </li>

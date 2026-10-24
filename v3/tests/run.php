@@ -552,5 +552,16 @@ check('TAB: 小節が0個', tab_sanitize_data(['bars' => []], 6, 16), null);
 check('TAB: 形が違う', tab_sanitize_data('x', 6, 16), null);
 check('TAB: 小節が多すぎる', tab_sanitize_data(['bars' => array_fill(0, TAB_MAX_BARS + 1, ['n' => []])], 6, 16), null);
 
+echo "song version rank\n";
+check('版: オリジナル・アルバム', song_version_rank('SOIL', 'Squall'), 0);
+check('版: シングル（アルバム名 = 曲名）', song_version_rank('Squall', 'Squall'), 1);
+check('版: シングル（- Single）', song_version_rank('daybreak - Single', 'daybreak'), 1);
+check('版: 両A面シングル', song_version_rank('ファンファーレ / 春夏秋冬', 'ファンファーレ'), 1);
+check('版: ベスト盤', song_version_rank('ELLEGARDEN BEST 1999-2008', '風の日'), 2);
+check('版: シングル集', song_version_rank('CYCLE HIT 1991-1997 Spitz Complete Single Collection', 'ロビンソン'), 2);
+check('版: 曲名の注記がライブ', song_version_rank('RUMBLE', 'CISCO - Live'), 2);
+check('版: 曲名に Live を含むだけならそのまま', song_version_rank('Definitely Maybe', 'Live Forever'), 0);
+check('版: アルバム不明', song_version_rank(null, 'Lemon'), 3);
+
 echo $failed ?"\n{$failed} 件失敗\n" : "\nすべて成功\n";
 exit($failed ? 1 : 0);

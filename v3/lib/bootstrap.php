@@ -345,6 +345,12 @@ function youtube_url_valid(string $url): bool
     return in_array($host, ['youtube.com', 'www.youtube.com', 'm.youtube.com', 'music.youtube.com', 'youtu.be'], true);
 }
 
+/** TAB 譜の印（横書きの「TAB」の文字）。Material Symbols に無く、SVG にすると小さくて読めないので文字で出す。$fill = true で濃く（TAB がある印） */
+function tab_icon(bool $fill = false): string
+{
+    return '<span class="tab-icon' . ($fill ? ' is-fill' : '') . '" aria-hidden="true">TAB</span>';
+}
+
 /** YouTube のロゴ（赤い再生ボタン）。Material Symbols にブランドのロゴは無いので SVG で持つ */
 function youtube_icon(): string
 {

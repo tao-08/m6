@@ -1187,7 +1187,7 @@ CREATE TABLE song_catalog (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- ---------------------------------------------------------------------
---  song_work_primary — 楽曲データベースの版違い（アルバム違い）のうち、管理人が選んだ代表（migrations/070）
+--  song_work_primary — 楽曲データベースの版違い（アルバム違い）のうち、管理人が選んだメイン（migrations/070）
 --    行が無い曲は自動（lib/tracks.php の song_version_rank）。song_key は song / song_catalog / song_tab のどれかの曲キー
 -- ---------------------------------------------------------------------
 CREATE TABLE song_work_primary (
