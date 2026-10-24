@@ -860,8 +860,6 @@ function setupTrackSearch() {
  *     iPhone の Safari は audio.volume を無視するので、本体の音量ボタンでしか変わらない
  * ------------------------------------------------------------------- */
 function setupPreview() {
-  const buttons = document.querySelectorAll('[data-preview]');
-  if (!buttons.length) return;
   // 0.01秒の無音（8kHz・8bit の WAV）。iPhone の Safari 用
   const SILENCE = 'data:audio/wav;base64,UklGRnQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YVAAAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgA==';
   const VOLUME = 0.4;
@@ -925,7 +923,10 @@ function setupPreview() {
     audio.play().catch(() => {}); // 鳴らなかったときは下の 'error' で扱う
   };
 
-  buttons.forEach((btn) => btn.addEventListener('click', () => {
+  // ボタンは後から差し替わる（楽曲データベースの一覧更新）ので、document で受ける
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-preview]');
+    if (!btn || btn.disabled) return;
     if (current === btn) { stop(); return; }
     stop();
     retried = false;
@@ -934,7 +935,11 @@ function setupPreview() {
       audio.play().catch(() => {});
     }
     start(btn);
-  }));
+  });
+  // モーダルを閉じたら止める（close は伝わらないのでキャプチャで受ける）
+  document.addEventListener('close', (e) => {
+    if (current && e.target.contains?.(current)) stop();
+  }, true);
 
   audio.addEventListener('playing', () => { if (current && !isSilence()) setState(current, 'play'); });
   audio.addEventListener('timeupdate', () => {

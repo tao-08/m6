@@ -90,6 +90,7 @@
 .songs-zoom__app.setlist__listen--youtube_music { color: #f00; }
 .songs-zoom__app.setlist__listen--line_music { color: #0ee071; }
 .songs-modal__album { color: var(--muted); overflow-wrap: anywhere; }
+.songs-modal__play { margin-left: 0; width: 40px; height: 40px; opacity: 1; }
 .songs-modal__names { display: grid; gap: 2px; min-width: 0; }
 .songs-modal .songs-row__meta { flex-wrap: wrap; justify-content: center; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
 .songs-bands { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }

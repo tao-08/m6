@@ -517,6 +517,9 @@ $deleteForm = static fn(array $v, string $open = ''): string => '<form method="p
                             <?php else: ?><span class="muted small"><?= h($g['artist']) ?></span><?php endif; ?>
                         <?php endif; ?>
                     </div>
+                    <?php if ($rep['src'] !== null): // 30秒試聴（app.js の setupPreview。押したときに音源を探す） ?>
+                        <button type="button" class="setlist__play songs-modal__play" data-preview="<?= h(album_key($rep['src'], $rep['tid'])) ?>" aria-label="30秒試聴" title="30秒試聴"><?= icon('play_arrow', 'icon--fill') ?></button>
+                    <?php endif; ?>
                 </div>
                 <div class="songs-row__meta muted small">
                     <span>演奏回数 <?= (int)$g['plays'] ?></span>
@@ -531,11 +534,18 @@ $deleteForm = static fn(array $v, string $open = ''): string => '<form method="p
                     <ol class="songs-versions">
                         <?php foreach ($g['versions'] as $i => $v): ?>
                             <li class="songs-version<?= $i === 0 ? ' is-rep' : '' ?>">
+                                <?php // ジャケット → その曲、アルバム名 → アルバムの検索（どちらも音楽アプリで開く）
+                                $vArtist = (string)($v['artist'] ?? $g['artist']);
+                                $vTrackUrl = $v['src'] !== null ? track_listen_url($musicApp, ['source' => $v['src'], 'track_id' => $v['tid'], 'title' => $v['title'], 'artist_name' => $vArtist]) : null;
+                                $vAlbumUrl = $v['album'] ? album_search_url(listen_app($musicApp, (string)$v['src']), ['title' => $v['album'], 'artist_name' => $vArtist]) : null;
+                                $vArt = $v['art']
+                                    ? '<img class="songs-version__art" src="' . h($v['art']) . '" alt="" width="36" height="36" loading="lazy">'
+                                    : '<span class="songs-version__art songs-row__art--none">' . icon('music_note') . '</span>'; ?>
                                 <div class="songs-version__head">
-                                    <?php if ($v['art']): ?><img class="songs-version__art" src="<?= h($v['art']) ?>" alt="" width="36" height="36" loading="lazy">
-                                    <?php else: ?><span class="songs-version__art songs-row__art--none"><?= icon('music_note') ?></span><?php endif; ?>
+                                    <?php if ($vTrackUrl !== null): ?><a href="<?= h($vTrackUrl) ?>" target="_blank" rel="noopener noreferrer" aria-label="曲を開く" title="曲を開く"><?= $vArt ?></a>
+                                    <?php else: ?><?= $vArt ?><?php endif; ?>
                                     <div class="songs-version__names">
-                                        <span class="songs-version__album"><?= $v['album'] ? h($v['album']) : '<span class="muted">アルバム不明</span>' ?><?= $v['year'] ? ' <span class="muted small">' . (int)$v['year'] . '</span>' : '' ?></span>
+                                        <span class="songs-version__album"><?php $vAlbumText = $v['album'] ? h($v['album']) : '<span class="muted">アルバム不明</span>'; ?><?php if ($vAlbumUrl !== null): ?><a href="<?= h($vAlbumUrl) ?>" target="_blank" rel="noopener noreferrer"><?= $vAlbumText ?></a><?php else: ?><?= $vAlbumText ?><?php endif; ?><?= $v['year'] ? ' <span class="muted small">' . (int)$v['year'] . '</span>' : '' ?></span>
                                         <?php if ($v['title'] !== $g['title']): ?><span class="muted small"><?= h($v['title']) ?></span><?php endif; ?>
                                     </div>
                                     <?php if ($i === 0): ?><span class="tag tag--mine songs-version__rep" title="<?= $g['manual'] ? '手動で選択' : '自動で選択' ?>"><?= icon($g['manual'] ? 'push_pin' : 'star', 'icon--fill') ?> メイン</span>
