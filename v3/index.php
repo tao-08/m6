@@ -15,9 +15,16 @@ $pdo = db();
 
 // 🚩 確認依頼のお知らせ。出すのは次のどちらか（✕ で消したもの = check_dismiss にあるものは出さない）
 //   ・自分が出たバンド（アカウントがメンバーと紐付いている人だけ）
-//   ・メンバーが1人も登録されていないバンド → 知らせる相手がいないので、全員に出す
+//   ・メンバーが1人も登録されていないバンド → 知らせる相手がいないので、そのライブの年度に在籍していたはずの人
+//     （入部年度がライブの年度の前後3年以内）に出す。ただしそのライブに OB（入部年度 <= ライブ年度-4）が出ているときは、
+//     出演者の入部年度と同じ人に出す。NULL の入部年度は OB 判定にも一致にも使われない
 //   about_me: 「誰について」に自分が選ばれているか / no_members: メンバーが1人もいないか
-//   member_id が NULL（紐付いていない人）でも、「= NULL」はどの行とも一致しないので、全員向けの分だけになる
+//   member_id が NULL（紐付いていない人）や入部年度が未登録の人は、「= NULL」「BETWEEN NULL」がどの行とも一致しないので、未登録バンドは出ない
+$st = $pdo->prepare('SELECT entry_year FROM member WHERE member_id = ?');
+$st->execute([$user['member_id']]);
+$entryYear = $st->fetchColumn();
+$entryYear = $entryYear === false || $entryYear === null ? null : (int)$entryYear;
+
 $st = $pdo->prepare('SELECT b.band_id, b.name, b.needs_check, l.fiscal_year, l.name AS live_name, d.label,
         EXISTS (SELECT 1 FROM band_check_member c WHERE c.band_id = b.band_id AND c.member_id = ?) AS about_me,
         NOT EXISTS (SELECT 1 FROM band_member bm WHERE bm.band_id = b.band_id) AS no_members
@@ -26,10 +33,21 @@ $st = $pdo->prepare('SELECT b.band_id, b.name, b.needs_check, l.fiscal_year, l.n
     JOIN live l ON l.live_id = d.live_id
     WHERE b.needs_check > 0
       AND (EXISTS (SELECT 1 FROM band_member bm WHERE bm.band_id = b.band_id AND bm.member_id = ?)
-           OR NOT EXISTS (SELECT 1 FROM band_member bm WHERE bm.band_id = b.band_id))
+           OR (NOT EXISTS (SELECT 1 FROM band_member bm WHERE bm.band_id = b.band_id)
+               AND CASE WHEN EXISTS (SELECT 1 FROM live_day d2
+                                         JOIN band b2 ON b2.live_day_id = d2.live_day_id
+                                         JOIN band_member bm2 ON bm2.band_id = b2.band_id
+                                         JOIN member m2 ON m2.member_id = bm2.member_id
+                                         WHERE d2.live_id = l.live_id AND m2.entry_year <= l.fiscal_year - 4)
+                        THEN EXISTS (SELECT 1 FROM live_day d3
+                                         JOIN band b3 ON b3.live_day_id = d3.live_day_id
+                                         JOIN band_member bm3 ON bm3.band_id = b3.band_id
+                                         JOIN member m3 ON m3.member_id = bm3.member_id
+                                         WHERE d3.live_id = l.live_id AND m3.entry_year = ?)
+                        ELSE ? BETWEEN l.fiscal_year - 3 AND l.fiscal_year + 3 END))
       AND NOT EXISTS (SELECT 1 FROM check_dismiss x WHERE x.band_id = b.band_id AND x.user_id = ?)
     ORDER BY about_me DESC, no_members, l.fiscal_year DESC, d.held_on DESC, b.play_order');
-$st->execute([$user['member_id'], $user['member_id'], $user['user_id']]);
+$st->execute([$user['member_id'], $user['member_id'], $entryYear, $entryYear, $user['user_id']]);
 $flagged = $st->fetchAll();
 
 // 重要なお知らせ（未読のものだけ。notices.php やベルで読むと、notice_read に行が入って出なくなる）
@@ -111,8 +129,8 @@ render_header('ライブ一覧', 'lives');
 
 <?php if ($flagged): ?>
     <section class="card check-list" data-check-list>
-        <h2 class="section-title section-title--card"><?= icon('flag', 'icon--fill flag-icon') ?> 確認依頼が届いています</h2>
-        <p class="muted small">登録内容の確認依頼が届いているバンドです。バンド詳細ページから確認をお願いします。<br>メンバーが未登録のバンドは全員に表示されています。 情報をお持ちの方は情報提供にご協力お願いします。</p>
+        <h2 class="section-title section-title--card section-title--tool"><?= icon('flag', 'icon--fill flag-icon') ?>確認依頼が届いています
+            <button type="button" class="info-tip" data-setlist-tip="メンバーが未登録のバンドは、そのライブに関係する学年（現役の学年の前後3年、OB出演時は出演者の学年）の方に表示されています。情報をお持ちの方は情報提供にご協力お願いします。" aria-label="補足を表示"><?= icon('info') ?></button></h2>
         <ul>
             <?php foreach ($flagged as $f): ?>
                 <li data-check-item><div class="check-list__text"><a href="band?id=<?= (int)$f['band_id'] ?>"><?= h($f['name']) ?></a>
