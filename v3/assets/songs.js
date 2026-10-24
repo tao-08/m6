@@ -27,10 +27,23 @@
     const zoomBtn = modal.querySelector('[data-song-zoom]');
     const zoom = modal.querySelector('[data-song-zoom-box]');
     if (zoomBtn && zoom) {
+      const closeZoom = () => {
+        if (!zoom.open || zoom.classList.contains('is-closing')) return;
+        if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { zoom.close(); return; }
+        zoom.classList.add('is-closing');
+        // ::backdrop や中身のアニメーションも zoom に届くので、閉じるアニメーション（songs-zoom-out）だけを待つ。1回だけ動かす（残すと次に開いた直後に閉じる）
+        const onEnd = (e) => {
+          if (e.target !== zoom || e.animationName !== 'songs-zoom-out') return;
+          zoom.removeEventListener('animationend', onEnd);
+          zoom.classList.remove('is-closing');
+          zoom.close();
+        };
+        zoom.addEventListener('animationend', onEnd);
+      };
       zoomBtn.addEventListener('click', () => zoom.showModal());
-      zoom.querySelector('[data-song-zoom-close]').addEventListener('click', () => zoom.close());
-      zoom.addEventListener('click', (e) => { e.stopPropagation(); if (e.target === zoom) zoom.close(); });
-      zoom.addEventListener('cancel', (e) => e.stopPropagation());
+      zoom.querySelector('[data-song-zoom-close]').addEventListener('click', closeZoom);
+      zoom.addEventListener('click', (e) => { e.stopPropagation(); if (e.target === zoom) closeZoom(); });
+      zoom.addEventListener('cancel', (e) => { e.preventDefault(); e.stopPropagation(); closeZoom(); });
     }
     // 「メインにまとめる」: 押すと警告のモーダルを開く（キャンセルで閉じる）
     modal.querySelectorAll('[data-merge-ask]').forEach((ask) => {

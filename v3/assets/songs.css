@@ -56,11 +56,22 @@
 .songs-zoom[open] { display: grid; justify-items: center; gap: 14px; }
 .songs-zoom::backdrop { background: rgba(0, 0, 0, .8); }
 .songs-zoom__art { width: min(520px, calc(100vw - 64px), calc(100vh - 160px)); aspect-ratio: 1; border-radius: 12px; object-fit: cover; box-shadow: 0 8px 32px rgba(0, 0, 0, .5); }
-.songs-zoom__close { justify-self: end; color: #fff; }
+.songs-zoom__bar { display: flex; align-items: center; justify-content: center; gap: 16px; }
+.songs-zoom__close { color: #fff; width: 48px; height: 48px; border-radius: 50%; background: rgba(255, 255, 255, .15); }
 .songs-zoom__app { display: block; width: 48px; height: 48px; }
 .songs-zoom__app svg { display: block; width: 100%; height: 100%; border-radius: 50%; background: #fff; }
 .songs-zoom__app.setlist__listen--spotify svg { background: radial-gradient(circle closest-side, #000 90%, transparent 91%); }
 .songs-zoom__app.setlist__listen--youtube_music svg { background: radial-gradient(circle closest-side, #fff 90%, transparent 91%); }
+/* 開く: ジャケットがふわっと拡大。閉じる: 縮みながら消える（songs.js が is-closing を付ける） */
+.songs-zoom[open] .songs-zoom__art { animation: songs-zoom-in .25s cubic-bezier(.2, .8, .2, 1); }
+.songs-zoom[open] .songs-zoom__bar { animation: songs-zoom-bar .25s .08s ease-out backwards; }
+.songs-zoom[open]::backdrop { animation: songs-modal-fade .2s ease-out; }
+.songs-zoom.is-closing { animation: songs-zoom-out .15s ease-in forwards; }
+.songs-zoom.is-closing::backdrop { animation: songs-modal-fade .15s ease-in reverse forwards; }
+@keyframes songs-zoom-in { from { opacity: 0; transform: scale(.6); } to { opacity: 1; transform: none; } }
+@keyframes songs-zoom-bar { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+@keyframes songs-zoom-out { to { opacity: 0; transform: scale(.9); } }
+@media (prefers-reduced-motion: reduce) { .songs-zoom[open] .songs-zoom__art, .songs-zoom[open] .songs-zoom__bar, .songs-zoom[open]::backdrop, .songs-zoom.is-closing { animation: none; } }
 .songs-zoom__app.setlist__listen--apple_music svg, .songs-zoom__app.setlist__listen--line_music svg { border-radius: 22%; background: none; }
 .songs-zoom__app.setlist__listen--spotify { color: #1db954; }
 .songs-zoom__app.setlist__listen--apple_music { color: #fa243c; }

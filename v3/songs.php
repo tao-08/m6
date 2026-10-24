@@ -502,11 +502,13 @@ $deleteForm = static fn(array $v, string $open = ''): string => '<form method="p
                         <?php if ($rep['art']): // ジャケットを押すと拡大表示（閉じるボタン + 音楽アプリのアイコン） ?>
                             <button type="button" class="songs-modal__zoom" data-song-zoom aria-label="拡大"><?= $art ?></button>
                             <dialog class="songs-zoom" data-song-zoom-box aria-label="<?= h($g['title']) ?>">
-                                <button type="button" class="icon-btn songs-zoom__close" data-song-zoom-close aria-label="閉じる" title="閉じる"><?= icon('close') ?></button>
                                 <img class="songs-zoom__art" src="<?= h(songs_large_art($rep['art'])) ?>" data-fallback="<?= h($rep['art']) ?>" alt="">
-                                <?php if ($trackUrl !== null): $listenApp = listen_app($musicApp, (string)$rep['src']); ?>
-                                    <a class="songs-zoom__app setlist__listen--<?= h($listenApp) ?>" href="<?= h($trackUrl) ?>" target="_blank" rel="noopener noreferrer" aria-label="<?= h(MUSIC_APPS[$listenApp]) ?> で聴く" title="<?= h(MUSIC_APPS[$listenApp]) ?>"><?= MUSIC_APP_ICONS[$listenApp] ?></a>
-                                <?php endif; ?>
+                                <div class="songs-zoom__bar">
+                                    <?php if ($trackUrl !== null): $listenApp = listen_app($musicApp, (string)$rep['src']); ?>
+                                        <a class="songs-zoom__app setlist__listen--<?= h($listenApp) ?>" href="<?= h($trackUrl) ?>" target="_blank" rel="noopener noreferrer" aria-label="<?= h(MUSIC_APPS[$listenApp]) ?> で聴く" title="<?= h(MUSIC_APPS[$listenApp]) ?>"><?= MUSIC_APP_ICONS[$listenApp] ?></a>
+                                    <?php endif; ?>
+                                    <button type="button" class="icon-btn songs-zoom__close" data-song-zoom-close aria-label="閉じる" title="閉じる"><?= icon('close') ?></button>
+                                </div>
                             </dialog>
                         <?php else: ?><?= $art ?><?php endif; ?>
                         <?php if ($rep['album']): ?>
