@@ -39,6 +39,7 @@
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/repository.php';
+require_once __DIR__ . '/lib/attach_image.php';
 require_admin();
 
 // アーティストタブの並べ替え: 列 => [比べる列, 最初に押したときの向き]
@@ -113,6 +114,7 @@ if (is_post()) {
             } else {
                 // 付け替えと削除は「両方成功」か「両方なし」にしたいのでトランザクションにする。
                 // 先に付け替える: 先に消すと ON DELETE SET NULL で日程の会場が空になってしまう
+                $files = attach_files_of($pdo, 'venue', [$id]); // 画像の行は CASCADE で消えるので、ファイル名を先に集める
                 $pdo->beginTransaction();
                 try {
                     $pdo->prepare('UPDATE live_day SET venue_id = ? WHERE venue_id = ?')->execute([$toId, $id]);
@@ -122,13 +124,16 @@ if (is_post()) {
                     $pdo->rollBack();
                     throw $e;
                 }
+                array_map('live_image_unlink', $files);
                 flash("「{$target['name']}」を「{$toName}」に統合しました（日程 {$target['used']} 件を付け替え）");
             }
         } elseif ($action === 'delete') {
             if ((int)$target['used'] > 0) {
                 flash("「{$target['name']}」は {$target['used']} 件の日程で使われているので消せません", 'error');
             } else {
+                $files = attach_files_of($pdo, 'venue', [$id]);
                 $pdo->prepare('DELETE FROM venue WHERE venue_id = ?')->execute([$id]);
+                array_map('live_image_unlink', $files);
                 flash("「{$target['name']}」を消しました");
             }
         }

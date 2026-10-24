@@ -37,7 +37,7 @@ SET NAMES utf8mb4;
 -- まっさらな DB に流すと「Note: #1051 '〜' は不明な表です」が表の数だけ出るが、
 -- これは「消そうとした表が最初から無かった」というだけの“お知らせ”で、エラーではない。
 SET FOREIGN_KEY_CHECKS = 0;
-DROP TABLE IF EXISTS song_catalog, song_tab_ai_usage, song_meta_image, song_tab_image, song_meta, song_tab_practice, song_tab_revision, song_tab, timetable_draft_presence, timetable_draft, band_image, notice_image, board_post_image, live_image, push_subscription, comment_like, comment_reply, comment, board_thread_mute, board_notify_category, board_notify, board_post_like, board_post_reply, board_read, board_post, board_thread, board_category, notice_read, notice, notice_category, change_unit, change_op, inquiry, band_like, app_setting, login_attempt, track_preview, track_link_cache, album_link_cache,
+DROP TABLE IF EXISTS song_work_primary, venue_image, song_catalog, song_tab_ai_usage, song_meta_image, song_tab_image, song_meta, song_tab_practice, song_tab_revision, song_tab, timetable_draft_presence, timetable_draft, band_image, notice_image, board_post_image, live_image, push_subscription, comment_like, comment_reply, comment, board_thread_mute, board_notify_category, board_notify, board_post_like, board_post_reply, board_read, board_post, board_thread, board_category, notice_read, notice, notice_category, change_unit, change_op, inquiry, band_like, app_setting, login_attempt, track_preview, track_link_cache, album_link_cache,
     check_dismiss, band_check_member, member_role, role, artist_alias, member_favorite_album, song_performer, song, track, band_member, live_break, band,
     artist, live_day, live, venue, instrument, user_account, member;
 SET FOREIGN_KEY_CHECKS = 1;
@@ -195,6 +195,20 @@ CREATE TABLE venue_equipment (
     PRIMARY KEY (venue_equipment_id),
     KEY idx_ve_venue (venue_id),
     CONSTRAINT fk_ve_venue FOREIGN KEY (venue_id) REFERENCES venue (venue_id)
+        ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- ---------------------------------------------------------------------
+--  venue_image — 会場の添付画像（7枚まで。venue.php。migrations/071）
+-- ---------------------------------------------------------------------
+CREATE TABLE venue_image (
+    image_id   INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    venue_id   INT UNSIGNED NOT NULL,
+    file_name  VARCHAR(40)  NOT NULL,
+    sort_order SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+    PRIMARY KEY (image_id),
+    KEY idx_vi_venue (venue_id, sort_order),
+    CONSTRAINT fk_vi_venue FOREIGN KEY (venue_id) REFERENCES venue (venue_id)
         ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
@@ -1169,5 +1183,19 @@ CREATE TABLE song_catalog (
     CONSTRAINT fk_catalog_track FOREIGN KEY (track_source, track_id) REFERENCES track (source, track_id)
         ON UPDATE CASCADE ON DELETE SET NULL,
     CONSTRAINT fk_catalog_created FOREIGN KEY (created_by) REFERENCES user_account (user_id)
+        ON UPDATE CASCADE ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- ---------------------------------------------------------------------
+--  song_work_primary — 楽曲データベースの版違い（アルバム違い）のうち、管理人が選んだ代表（migrations/070）
+--    行が無い曲は自動（lib/tracks.php の song_version_rank）。song_key は song / song_catalog / song_tab のどれかの曲キー
+-- ---------------------------------------------------------------------
+CREATE TABLE song_work_primary (
+    work_key   VARCHAR(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+    song_key   VARCHAR(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+    updated_by INT UNSIGNED NULL,
+    updated_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (work_key),
+    CONSTRAINT fk_swp_updated FOREIGN KEY (updated_by) REFERENCES user_account (user_id)
         ON UPDATE CASCADE ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;

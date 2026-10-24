@@ -6,8 +6,9 @@
  *  表示: サイト・住所・最寄り駅（全部）・機材（区分ごと）・アクセスマップ・ここで演奏したライブ
  *  編集: ログインしている部員なら誰でも（サイトの URL・住所・駅・機材）。会場名の変更は masters.php（管理者）
  *
- *  POST は3種類（action）。どれも CSRF 検証 → 入力検証 → プリペアドステートメント → リダイレクト（PRG）。
+ *  POST は4種類（action）。どれも CSRF 検証 → 入力検証 → プリペアドステートメント → リダイレクト（PRG）。
  *    save_info … website_url / address
+ *    save_images … 画像（7枚まで。削除にチェックした分を引いて、選んだ分を足す。lib/attach_image.php の kind = venue）
  *    save_stations / save_equipment … 行ごとの入力欄をまとめて保存。名前（機種名）を空にした行は削除、id=0 の行は追加
  *  行の id は必ず「この会場の行か」を確かめ、WHERE にも venue_id を入れる（他の会場の行を書き換えさせない）
  *
@@ -17,6 +18,7 @@
  */
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
+require_once __DIR__ . '/lib/attach_image.php';
 require_login();
 $pdo = db();
 
@@ -52,6 +54,40 @@ if (is_post()) {
                 ->execute([$url === '' ? null : $url, $address === '' ? null : $address, $venueId]);
             flash('保存しました');
         }
+        redirect($self);
+    }
+
+    if ($action === 'save_images') {
+        $images = attach_images($pdo, 'venue', [$venueId])[$venueId] ?? [];
+        // 削除にチェックされた画像は、この会場のものだけ有効
+        $removeIds = array_values(array_intersect(array_map('intval', array_column($images, 'image_id')), array_map('intval', (array)($_POST['image_remove'] ?? []))));
+        $uploads = live_image_uploads($_FILES['images'] ?? null);
+        $max = ATTACH_KINDS['venue']['max'];
+        if (count($images) - count($removeIds) + count($uploads) > $max) {
+            flash('画像は ' . $max . ' 枚までです', 'error');
+            redirect($self);
+        }
+        $newFiles = [];
+        $removeFiles = [];
+        try {
+            $pdo->beginTransaction();
+            $removeFiles = attach_remove($pdo, 'venue', $venueId, $removeIds);
+            attach_add($pdo, 'venue', $venueId, $uploads, null, $newFiles);
+            $pdo->commit();
+        } catch (RuntimeException $e) { // 画像のエラー（形式・大きさなど）。取り消して理由を出す
+            $pdo->rollBack();
+            array_map('live_image_unlink', $newFiles);
+            flash($e->getMessage(), 'error');
+            redirect($self);
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            array_map('live_image_unlink', $newFiles);
+            throw $e;
+        }
+        array_map('live_image_unlink', $removeFiles); // コミットのあとにファイルを消す
+        flash('保存しました');
         redirect($self);
     }
 
@@ -183,6 +219,8 @@ foreach ($equipment as $e) {
     $equipByCat[$e['category']][] = $e;
 }
 
+$images = attach_images($pdo, 'venue', [$venueId])[$venueId] ?? [];
+
 // ここで演奏したライブ（新しい順。開催日が NULL の日程は最後）
 $st = $pdo->prepare('SELECT d.live_day_id, d.label, d.held_on, l.live_id, l.fiscal_year, l.name AS live_name
     FROM live_day d JOIN live l ON l.live_id = d.live_id
@@ -247,6 +285,23 @@ render_header($venue['name'], 'tools');
                 </div>
             <?php endforeach; ?>
             <div><button type="submit" class="btn btn--primary btn--sm" title="駅名を空にした行は削除"><?= icon('save') ?> 駅を保存</button></div>
+        </form>
+    </details>
+</section>
+
+<!-- 画像（7枚まで） -->
+<section class="card venue-section">
+    <h2><?= icon('photo_library') ?> 画像 <span class="muted small"><?= count($images) ?>/<?= ATTACH_KINDS['venue']['max'] ?></span></h2>
+    <?php if (!$images): ?><p class="muted small">-</p><?php endif; ?>
+    <?= attach_thumbs_html('venue', $images) ?>
+    <details class="venue-edit">
+        <summary><?= icon('edit') ?> 編集</summary>
+        <form method="post" enctype="multipart/form-data" class="venue-edit__form">
+            <?= csrf_field() ?>
+            <input type="hidden" name="action" value="save_images">
+            <input type="hidden" name="venue_id" value="<?= $venueId ?>">
+            <?= attach_field_html('venue', $images) ?>
+            <div><button type="submit" class="btn btn--primary btn--sm"><?= icon('save') ?> 保存</button></div>
         </form>
     </details>
 </section>

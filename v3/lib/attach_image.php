@@ -5,7 +5,7 @@
  * =====================================================================
  *  保存・縮小・検査は lib/live_image.php と同じ（ファイルも storage/live_images/ に置く）。
  *  ここは「どのテーブルに入れるか・何枚までか」の違いだけを持つ。
- *    board  … 書き込み（board_post）に1枚 / notice … お知らせに5枚 / band … バンドに5枚
+ *    board  … 書き込み（board_post）に1枚 / notice … お知らせに5枚 / band … バンドに5枚 / venue … 会場に7枚
  *  見せるときは attach_image.php が、見てよい人かを確かめてから出す。
  * =====================================================================
  */
@@ -16,6 +16,7 @@ const ATTACH_KINDS = [
     'board'  => ['table' => 'board_post_image', 'owner' => 'post_id',   'max' => 1],
     'notice' => ['table' => 'notice_image',     'owner' => 'notice_id', 'max' => 5],
     'band'   => ['table' => 'band_image',       'owner' => 'band_id',   'max' => 5],
+    'venue'  => ['table' => 'venue_image',      'owner' => 'venue_id',  'max' => 7],
     // TAB 譜（流れる TAB。tab.php）: パートごと / 曲ごと。TAB を削除しても画像は消さない（復元すると同じ tab_id で戻るため。外部キーなし）
     'song_tab'  => ['table' => 'song_tab_image',  'owner' => 'tab_id',  'max' => 10],
     'song_meta' => ['table' => 'song_meta_image', 'owner' => 'meta_id', 'max' => 10],
