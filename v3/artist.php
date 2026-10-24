@@ -72,9 +72,9 @@ $st = $pdo->prepare('SELECT m.member_id, m.name, COUNT(DISTINCT b.band_id) AS n
 $st->execute([$artistId]);
 $topPlayers = $st->fetchAll();
 
-// セットリスト: バンドごとに曲順で全曲。オムニバスのバンドはこのアーティストの曲だけ少し強調する（mine）
-$setlists = []; // [band_id] = [['title' => 曲名, 'mine' => 強調するか], ...]
-$st = $pdo->prepare('SELECT s.band_id, s.title, s.is_se, (b.is_omnibus = 1 AND s.artist_id = ?) AS mine,
+// セットリスト: バンドごとに曲順で全曲。オムニバスのバンドでは、別のアーティストの曲をグレーで目立たなくする（other）
+$setlists = []; // [band_id] = [['title' => 曲名, 'other' => 別のアーティストの曲か], ...]
+$st = $pdo->prepare('SELECT s.band_id, s.title, s.is_se, (b.is_omnibus = 1 AND NOT COALESCE(s.artist_id = ?, 0)) AS other,
         s.track_source, s.track_id, COALESCE(s.artist_id, b.artist_id) AS key_artist_id, ka.name AS key_artist_name
     FROM band b
     JOIN song s ON s.band_id = b.band_id
@@ -84,7 +84,7 @@ $st = $pdo->prepare('SELECT s.band_id, s.title, s.is_se, (b.is_omnibus = 1 AND s
     ORDER BY s.track_no');
 $st->execute([$artistId, $artistId]);
 foreach ($st as $s) {
-    $setlists[(int)$s['band_id']][] = ['title' => $s['title'], 'mine' => (bool)$s['mine'], 'se' => (bool)$s['is_se'],
+    $setlists[(int)$s['band_id']][] = ['title' => $s['title'], 'other' => (bool)$s['other'], 'se' => (bool)$s['is_se'],
         'key' => tab_allowed() && !$s['is_se'] ? tab_song_key($s['track_source'], $s['track_id'], $s['key_artist_id'] === null ? null : (int)$s['key_artist_id'], (int)$s['band_id'], $s['title'], $s['key_artist_name']) : null];
 }
 
@@ -315,7 +315,7 @@ render_header($artist['name'], 'artists');
                                 if (!$song['se']) {
                                     $songNo++;
                                 } ?>
-                                <li<?= $song['se'] ? ' class="is-se"' : ($song['mine'] ? ' class="is-mine"' : '') ?><?= $song['se'] ? '' : ' value="' . $songNo . '"' ?>><?= $song['key'] !== null ? '<a href="songs?open=' . h(rawurlencode($song['key'])) . '">' . h($song['title']) . '</a>' : h($song['title']) ?></li>
+                                <li<?= $song['se'] ? ' class="is-se"' : ($song['other'] ? ' class="is-other"' : '') ?><?= $song['se'] ? '' : ' value="' . $songNo . '"' ?>><?= $song['key'] !== null ? '<a href="songs?open=' . h(rawurlencode($song['key'])) . '">' . h($song['title']) . '</a>' : h($song['title']) ?></li>
                             <?php endforeach; ?>
                         </ol>
                     <?php else: ?><span class="muted">—</span><?php endif; ?>

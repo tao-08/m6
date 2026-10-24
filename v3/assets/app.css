@@ -1964,11 +1964,10 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
 .artist-lineup .part { flex: none; width: 52px; min-width: 0; padding-left: 0; padding-right: 0; justify-content: center; }
 .artist-setlist { margin: 0; padding-left: 1.8em; display: grid; gap: 4px; font-size: 13px; }
 .artist-setlist li::marker { color: var(--muted); font-weight: 700; }
-/* オムニバスのバンドでは、このアーティストの曲だけ少し強調する */
+/* オムニバスのバンドでは、別のアーティストの曲をグレーで目立たなくする */
 .artist-setlist li.is-se { list-style: decimal; } /* SE は番号の位置に「SE」（band.php のセットリストと同じ） */
 .artist-setlist li.is-se::marker { content: "SE  "; color: var(--muted); }
-.artist-setlist li.is-mine { font-weight: 700; color: var(--accent); }
-.artist-setlist li.is-mine::marker { color: var(--accent); }
+.artist-setlist li.is-other, .artist-setlist li.is-other a { color: var(--muted); opacity: .7; }
 
 /* import.php のタイムテーブル手入力 */
 .manual-tt .table-scroll { margin-bottom: 12px; }

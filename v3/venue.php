@@ -166,7 +166,7 @@ if (is_post()) {
                 $rows[] = [$id, '', null, 0];
                 continue;
             }
-            if (!in_array($cat, VENUE_EQUIP_CATEGORIES, true) || mb_strlen($model) > 100 || !ctype_digit($q) || (int)$q < 1 || (int)$q > 99) {
+            if (!in_array($cat, VENUE_EQUIP_CATEGORIES, true) || mb_strlen($model) > 100 || !ctype_digit($q) || (int)$q > 99) {
                 $ok = false;
                 break;
             }
@@ -335,7 +335,7 @@ render_header($venue['name'], 'tools');
                         <?php endforeach; ?>
                     </select>
                     <input type="text" class="grow" name="model[]" maxlength="100" value="<?= h($e['model_name']) ?>" placeholder="機種名" aria-label="機種名">
-                    <input type="number" name="quantity[]" min="1" max="99" value="<?= (int)$e['quantity'] ?>" aria-label="台数">
+                    <input type="number" name="quantity[]" min="0" max="99" value="<?= (int)$e['quantity'] ?>" aria-label="台数">
                 </div>
             <?php endforeach; ?>
             <div><button type="submit" class="btn btn--primary btn--sm" title="機種名を空にした行は削除"><?= icon('save') ?> 保存</button></div>

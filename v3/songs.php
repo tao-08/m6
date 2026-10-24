@@ -311,9 +311,12 @@ usort($rows, static function (array $a, array $b) use ($sort, $dir): int {
         if (($aa === '') !== ($ba === '')) {
             return $aa === '' ? 1 : -1;
         }
-        // 同じアーティストの中は、アルバムの発売年が古い順（年が分からない曲は最後）。年が同じなら曲名順
+        // 同じアーティストの中は、アルバムの発売年が古い順（年が分からない曲は最後）。年が同じならアルバム名順（不明は最後）、それも同じなら曲名順
         $byYear = ($a['rep']['year'] === null) <=> ($b['rep']['year'] === null) ?: (int)$a['rep']['year'] <=> (int)$b['rep']['year'];
-        return ($sign * ($aa <=> $ba)) ?: $byYear ?: $byTitle;
+        $al = mb_strtolower((string)($a['rep']['album'] ?? ''));
+        $bl = mb_strtolower((string)($b['rep']['album'] ?? ''));
+        $byAlbum = (($al === '') <=> ($bl === '')) ?: $al <=> $bl;
+        return ($sign * ($aa <=> $ba)) ?: $byYear ?: $byAlbum ?: $byTitle;
     }
     if ($sort === 'plays') {
         return ($sign * ($a['plays'] <=> $b['plays'])) ?: $byTitle;
