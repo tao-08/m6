@@ -62,7 +62,6 @@ document.addEventListener('DOMContentLoaded', () => {
   setupTabs();
   setupTimelineCompact();
   setupConfirm();
-  setupCopy();
   setupLeaveCheck();
   setupUnsavedGuard();
   setupDropzone();
@@ -2337,28 +2336,6 @@ function setupConfirm() {
       message = '⚠ 保存していない変更があります。続けると変更は失われます。\n\n' + message;
     }
     if (!confirm(message)) e.preventDefault();
-  });
-}
-
-/* ---------------------------------------------------------------------
- * <button data-copy="#入力欄"> … 押すと入力欄の値をコピーし、アイコンを一瞬 ✓ にする（users.php の再設定URL）
- * ------------------------------------------------------------------- */
-function setupCopy() {
-  document.querySelectorAll('[data-copy]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const input = document.querySelector(btn.dataset.copy);
-      if (!input) return;
-      try {
-        await navigator.clipboard.writeText(input.value);
-      } catch {
-        input.select(); // http などでクリップボードが使えないときは選択だけして、手でコピーしてもらう
-        return;
-      }
-      const icon = btn.querySelector('.icon');
-      const before = icon.textContent;
-      icon.textContent = 'check';
-      setTimeout(() => { icon.textContent = before; }, 1500);
-    });
   });
 }
 

@@ -96,7 +96,7 @@ render_header('ログイン');
         </label>
         <button class="btn btn--primary btn--block" type="submit">ログイン</button>
         <p class="muted small center"><a href="register">新規登録</a></p>
-        <p class="muted small center">パスワードを忘れたら管理者へ</p>
+        <p class="muted small center"><a href="password_reset">パスワード再設定</a></p>
     </form>
 </section>
 <?php render_footer();

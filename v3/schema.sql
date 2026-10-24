@@ -517,22 +517,6 @@ CREATE TABLE login_attempt (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- ---------------------------------------------------------------------
---  password_reset — パスワード再設定用 URL（管理者が users.php で発行 → password_reset.php。migrations/065）
---    1人1件（主キー user_id）。発行し直すと上書きされ、古い URL は使えなくなる
---    token_hash: URL のトークンの sha256。生のトークンは保存しない（DB が漏れても URL を作れない）
--- ---------------------------------------------------------------------
-CREATE TABLE password_reset (
-    user_id    INT UNSIGNED NOT NULL,
-    token_hash CHAR(64)     NOT NULL,
-    expires_at DATETIME     NOT NULL,
-    created_by INT UNSIGNED NULL,                      -- 発行した管理者
-    PRIMARY KEY (user_id),
-    UNIQUE KEY uq_reset_token (token_hash),
-    CONSTRAINT fk_reset_user FOREIGN KEY (user_id) REFERENCES user_account (user_id) ON DELETE CASCADE,
-    CONSTRAINT fk_reset_creator FOREIGN KEY (created_by) REFERENCES user_account (user_id) ON DELETE SET NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
--- ---------------------------------------------------------------------
 --  app_setting — サイトの設定（いまは招待コードだけ。users.php で管理者が変える）
 --    行が無い設定は config.php の値を使う（lib/bootstrap.php の invite_code()）
 -- ---------------------------------------------------------------------

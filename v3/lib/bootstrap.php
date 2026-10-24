@@ -508,9 +508,6 @@ function clear_failures(string $loginId): void
     db()->prepare('DELETE FROM login_attempt WHERE login_id = ?')->execute([$loginId]);
 }
 
-/** 再設定用 URL の有効期限（分）。users.php で発行 → password_reset.php で使う */
-const PASSWORD_RESET_MINUTES = 60;
-
 /**
  * パスワードを変える（account.php の変更・password_reset.php の再設定で共通）。
  * password_changed_at も新しくするので、ほかの端末は次のページ表示で require_login() にログアウトさせられる。
@@ -644,7 +641,7 @@ function require_login(): array
         flash('アカウントが見つかりません。もう一度ログインしてください', 'error');
         redirect('login');
     }
-    // ログインした後にパスワードが変わっていたら（別の端末で変更・管理者の URL で再設定）、この端末はログアウト。
+    // ログインした後にパスワードが変わっていたら（別の端末で変更・パスワード再設定）、この端末はログアウト。
     // 乗っ取られて再設定したとき、犯人の端末のログイン（最大 SESSION_DAYS 日続く）も切れるように
     if (($user['pw_at'] ?? null) !== $row['password_changed_at']) {
         $_SESSION = [];
