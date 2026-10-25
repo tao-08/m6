@@ -348,12 +348,12 @@ $roles = $pdo->query('SELECT r.role_id, r.name, COUNT(mr.member_id) AS used
     GROUP BY r.role_id, r.name, r.sort_order
     ORDER BY r.sort_order, r.name')->fetchAll();
 // アーティストごとに「何組のバンドがコピーしたか」（オムニバスは曲ごとのアーティストで数える）
-//   setlist = そのうちセットリストを登録し終えたバンドの数（曲数がタイムテーブルの曲数と一致。setlist_badge と同じ基準）
+//   setlist = そのうちセットリストを登録し終えたバンドの数（曲数がタイムテーブルの曲数以上。setlist_badge と同じ基準）
 // 並べ替え（?sort=name|used|setlist&dir=asc|desc。覚えるのはファイルの最初）。
 //   SQL は名前の順で取って（_i）、ほかの並びは PHP で作る。見出しを押したら JS が再読み込みなしで並べ替える（sort_positions）
 [$sort, $dir] = $_SESSION['masters_artist_sort'] ?? ['name', ARTIST_SORTS['name'][1]];
 $artists = $pdo->query('SELECT a.artist_id, a.name, COUNT(p.band_id) AS used,
-        COUNT(CASE WHEN b.song_count > 0 AND b.song_count = (SELECT COUNT(*) FROM song s WHERE s.band_id = b.band_id AND s.is_se = 0) THEN 1 END) AS setlist
+        COUNT(CASE WHEN b.song_count > 0 AND b.song_count <= (SELECT COUNT(*) FROM song s WHERE s.band_id = b.band_id AND s.is_se = 0) THEN 1 END) AS setlist
     FROM artist a
     LEFT JOIN (' . artist_plays_sql() . ') p ON p.artist_id = a.artist_id
     LEFT JOIN band b ON b.band_id = p.band_id

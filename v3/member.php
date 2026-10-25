@@ -29,7 +29,7 @@ if (!$member) {
 
 // ---- 出演履歴（新しい順） ----
 //   is_last: その日の最大 play_order と同じなら 1（トリ）。総バンド数まで登録されていない日程は 0（HEADLINER_SQL）
-//   setlist_count: 登録済みの曲数（song_count と一致すれば「セットリスト登録済」）
+//   setlist_count: 登録済みの曲数（song_count 以上なら「セットリスト登録済」）
 $st = $pdo->prepare('SELECT b.band_id, b.name AS band_name, b.play_order, b.song_count,
         (SELECT COUNT(*) FROM song s WHERE s.band_id = b.band_id AND s.is_se = 0) AS setlist_count,
         (SELECT COUNT(*) FROM song s WHERE s.band_id = b.band_id AND s.is_se = 0 AND s.track_id IS NOT NULL) AS linked_count,

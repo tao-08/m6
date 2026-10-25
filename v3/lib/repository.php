@@ -953,12 +953,12 @@ function sort_tally_by_count(array $tally): array
 
 /**
  * 「セットリスト登録済」のバッジ（live.php のバンドカード / member.php の出演履歴）。
- *   登録した曲数（song の行数）がタイムテーブルの曲数（band.song_count）と一致したときだけ出す。
- *   途中まで（3/5）や多すぎ（6/5）は何も出さない。
+ *   登録した曲数（song の行数）がタイムテーブルの曲数（band.song_count）以上のときに出す（曲数が未入力のバンドは出さない）。
+ *   途中まで（3/5）は何も出さない。多め（6/5）は出す。
  */
 function setlist_badge(int $registered, int $planned, int $linked = 0): string
 {
-    if ($registered <= 0 || $registered !== $planned) {
+    if ($registered <= 0 || $planned <= 0 || $registered < $planned) { // 曲数が未入力（0）のバンドには出さない
         return '';
     }
     // ✓ が「登録済」の意味。押すと「セットリスト登録済（◯曲）」のポップアップが出る（app.js の setupSetlistTip）。
@@ -1462,7 +1462,7 @@ function save_songs(PDO $pdo, int $bandId, array $songs): void
                       WHERE sp.band_id = bm.band_id AND sp.member_id = bm.member_id
                         AND sp.instrument_id = bm.instrument_id)')->execute([$bandId]);
     // band.song_count（タイムテーブルの曲数）はここで上書きしない。
-    // 「登録した曲数 = タイムテーブルの曲数」でセトリが揃ったかを判定しているので（setlist_badge）
+    // 「登録した曲数 >= タイムテーブルの曲数」でセトリが揃ったかを判定しているので（setlist_badge）
 }
 
 /**
