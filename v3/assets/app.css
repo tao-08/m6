@@ -1524,6 +1524,9 @@ a.setlist__song:hover { color: var(--accent); text-decoration: underline; }
 /* Apple Music は公式アプリのアイコンに寄せて角丸の四角（色とグラデーションは svg の中で塗っている） */
 .setlist__listen--apple_music svg, .setlist__listen--line_music svg { border-radius: 22%; background: none; } /* LINE MUSIC も同じ */
 .setlist__artwrap:hover .setlist__listen, .setlist__listen:focus-visible { opacity: 1; }
+/* いまは「詳細」ボタン（<button>）。押すとアルバムのモーダル。アプリのアイコンはモーダルの中に出す */
+button.setlist__listen { padding: 0; border: 0; cursor: pointer; color: #fff; }
+.setlist__listen .icon { font-size: 26px; }
 /* アプリの色。:hover も並べるのは、全体の a:hover（赤くする）の方が強くて、乗せたときにロゴが赤く塗られてしまうため */
 .setlist__listen--spotify, .setlist__listen--spotify:hover { color: #1db954; }
 .setlist__listen--apple_music, .setlist__listen--apple_music:hover { color: #fa243c; }
@@ -1716,6 +1719,26 @@ a.album__title:hover { text-decoration: underline; }
 /* 他の人のページ: ジャケットもリンク。乗せたら少し浮かせて、押せることを見せる */
 .album__art-link { display: block; }
 .album__art-link:hover .album__art { transform: translateY(-2px); }
+[data-album-open] { cursor: pointer; }
+/* アルバムのモーダル（partials/album_modal.php）: 暗転した背景に アルバム名・発売年 → アプリ・検索・閉じる */
+.album-modal { position: fixed; inset: 0; margin: auto; width: min(420px, calc(100vw - 32px)); max-height: calc(100vh - 32px); padding: 16px;
+  overflow: visible; border: 0; background: transparent; color: #fff; text-align: center; }
+.album-modal[open] { display: grid; justify-items: center; gap: 6px; animation: album-modal-in .22s cubic-bezier(.2, .8, .2, 1); }
+.album-modal::backdrop { background: rgba(0, 0, 0, .8); }
+.album-modal__art { width: min(260px, 60vw); aspect-ratio: 1; border-radius: 12px; object-fit: cover; box-shadow: 0 8px 32px rgba(0, 0, 0, .5); margin-bottom: 10px; }
+.album-modal__name { font-size: 20px; line-height: 1.35; overflow-wrap: anywhere; }
+.album-modal__year { font-size: 14px; color: rgba(255, 255, 255, .7); }
+.album-modal__year:empty { display: none; }
+.album-modal__bar { display: flex; align-items: center; justify-content: center; gap: 16px; margin-top: 14px; }
+.album-modal__app { display: block; width: 48px; height: 48px; }
+.album-modal__app svg { display: block; width: 100%; height: 100%; border-radius: 50%; background: #fff; }
+.album-modal__app.setlist__listen--spotify svg { background: radial-gradient(circle closest-side, #000 90%, transparent 91%); }
+.album-modal__app.setlist__listen--youtube_music svg { background: radial-gradient(circle closest-side, #fff 90%, transparent 91%); }
+.album-modal__app.setlist__listen--apple_music svg, .album-modal__app.setlist__listen--line_music svg { border-radius: 22%; background: none; }
+.album-modal__btn { color: #fff; width: 48px; height: 48px; border-radius: 50%; background: rgba(255, 255, 255, .15); }
+.album-modal__btn:hover { color: #fff; background: rgba(255, 255, 255, .28); }
+@keyframes album-modal-in { from { opacity: 0; transform: scale(.92); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .album-modal[open] { animation: none; } }
 .album__art-link:hover + .album__meta .album__title { text-decoration: underline; }
 .albums[data-album-sort] .album:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: var(--radius-sm); }
 /* ドラッグ中は削除ボタンを隠す（誤って押さないように） */

@@ -105,7 +105,7 @@ $bandImages = attach_images($pdo, 'band', [$bandId])[$bandId] ?? [];
 // ---- 3. 曲 ----
 // オムニバスのときだけ曲ごとのアーティストを出す。song.artist_id が NULL = バンドのアーティストと同じ
 $st = $pdo->prepare('SELECT s.song_id, s.track_no, s.title, s.is_se, s.artist_id, a.name AS artist_name,
-        t.source, t.track_id, t.title AS track_title, t.artist_name AS track_artist, t.artwork_url
+        t.source, t.track_id, t.title AS track_title, t.artist_name AS track_artist, t.artwork_url, t.album_title, t.release_year
     FROM song s
     LEFT JOIN artist a ON a.artist_id = s.artist_id
     LEFT JOIN track t ON t.source = s.track_source AND t.track_id = s.track_id
@@ -367,7 +367,7 @@ render_header($band['name'], 'lives');
         <?php if ($setlistVis['open_at']): ?><p class="muted small"><?= h(fmt_datetime($setlistVis['open_at'])) ?> ごろ公開されます</p><?php endif; ?>
     <?php elseif ($songs): ?>
         <?php if ($trackKeys): // 紐付けた曲が1曲でもあるときだけ（ジャケットも ▶ も、紐付けた曲にしか出ないので） ?>
-            <p class="setlist-hint muted small no-print">ジャケットを押すと<?= h($viewerApp !== null ? MUSIC_APPS[$viewerApp] : '音楽アプリ') ?>で開き、 <?= icon('play_circle') ?> で試聴できます。</p>
+            <p class="setlist-hint muted small no-print">ジャケットを押すとアルバムの詳細が開き、 <?= icon('play_circle') ?> で試聴できます。</p>
         <?php endif; ?>
         <div class="setlist"><ol>
             <?php $songNo = 0; // SE は番号を振らない（曲だけ 1, 2, 3...）
@@ -400,7 +400,7 @@ render_header($band['name'], 'lives');
                         $k = album_key($song['source'], $song['track_id']);
                         $track = ['source' => $song['source'], 'track_id' => $song['track_id'], 'title' => $song['track_title'], 'artist_name' => $song['track_artist']];
                         $listenApp = listen_app($viewerApp, $song['source']); ?>
-                        <span class="setlist__song"><span class="setlist__artwrap"><img class="setlist__art" src="<?= h($song['artwork_url']) ?>" alt="" loading="lazy" width="56" height="56"><a class="setlist__listen setlist__listen--<?= h($listenApp) ?>" href="<?= h(track_listen_url($viewerApp, $track, array_key_exists($k, $linkCache) ? $linkCache[$k] : false)) ?>" target="_blank" rel="noopener" aria-label="<?= h(MUSIC_APPS[$listenApp]) ?> で聴く"><?= MUSIC_APP_ICONS[$listenApp] ?></a></span><?= $songText ?></span>
+                        <span class="setlist__song"><span class="setlist__artwrap"><img class="setlist__art" src="<?= h($song['artwork_url']) ?>" alt="" loading="lazy" width="56" height="56"><button type="button" class="setlist__listen" aria-haspopup="dialog" aria-label="<?= h($song['title']) ?> の詳細" title="詳細"<?= album_open_attrs((string)($song['album_title'] ?? $song['track_title']), $song['release_year'] ? (int)$song['release_year'] : null, $song['artwork_url'], $listenApp, track_listen_url($viewerApp, $track, array_key_exists($k, $linkCache) ? $linkCache[$k] : false)) ?>><?= icon('info') ?></button></span><?= $songText ?></span>
                         <?php if (!array_key_exists($k, $previewCache) || $previewCache[$k] !== null): // 「試聴が無かった」と覚えてある曲には出さない ?>
                             <button type="button" class="setlist__play no-print" data-preview="<?= h($k) ?>"<?php if (isset($previewCache[$k])): ?> data-preview-url="<?= h($previewCache[$k]) ?>"<?php endif; ?> aria-label="<?= h($song['title']) ?> を30秒試聴" title="30秒試聴"><?= icon('play_arrow', 'icon--fill') ?></button>
                         <?php endif; ?>

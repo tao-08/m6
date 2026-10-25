@@ -2,7 +2,8 @@
 <footer class="footer">
     <p>&copy; <?= date('Y') ?> <?= h(APP_NAME) ?> by tao__08</p>
 </footer>
-<?php
+<?php require __DIR__ . '/album_modal.php'; // アルバムのモーダル（マイアルバム・セットリストのジャケットを押すと開く）
+
 /*
  * チュートリアル。ログインしている人には毎回 <dialog> を置いておく（右上メニューの「チュートリアル」からいつでも開ける）。
  *   まだ見ていない人のときだけ data-tutorial-auto を付けて、開いた瞬間に自動で出す（開くのは assets/app.js の setupTutorial）。

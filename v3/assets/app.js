@@ -81,6 +81,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupPartnerBox();
   setupKings();
   setupAlbumSort();
+  setupAlbumModal();
   setupAlbumSearch();
   setupAlbumAdd();
   setupRosterColumns();
@@ -3878,6 +3879,9 @@ function setupAlbumSort() {
     li.style.transform = '';
     if (!reduceMotion && from) li.animate([{ transform: from }, { transform: 'none' }], { duration: 180, easing: 'ease-out' });
     setTimeout(() => { if (drag?.li !== li) li.classList.remove('is-dragging'); }, reduceMotion ? 0 : 180);
+    // ドラッグのあとに離したときの click で、アルバムのモーダルが開かないようにする（setupAlbumModal が見る）
+    list.dataset.justDragged = '1';
+    setTimeout(() => { delete list.dataset.justDragged; }, 300);
     save();
   };
 
@@ -3941,6 +3945,47 @@ function setupAlbumSort() {
   });
 
   prepare(); // 最初の準備（let で宣言した変数を使うので、全部の宣言が終わったこの位置で呼ぶ）
+}
+
+/* ---------------------------------------------------------------------
+ * アルバムのモーダル（マイアルバム・バンドページのセットリストのジャケット）
+ *   [data-album-open] を押すと、フッターの <dialog data-album-modal>（partials/album_modal.php）を暗転して開く。
+ *   中身は押された要素の data-album-* から入れる。文字は textContent、画像・リンクは属性で入れる（innerHTML は使わない = XSS 対策）。
+ *   アイコンは <template> に入れてあるものを写す。検索は全体の検索（search?q=アルバム名）へ。
+ * ------------------------------------------------------------------- */
+function setupAlbumModal() {
+  const dlg = document.querySelector('[data-album-modal]');
+  if (!dlg) return;
+  const icons = dlg.querySelector('[data-album-icons]').content;
+  const art = dlg.querySelector('[data-album-art]');
+  const listen = dlg.querySelector('[data-album-listen]');
+
+  document.addEventListener('click', (e) => {
+    const el = e.target.closest('[data-album-open]');
+    if (!el) return;
+    e.preventDefault(); // リンク（JS なしのときの行き先）の移動は止める
+    if (el.closest('[data-just-dragged]')) return; // 並び替えのドラッグを離したときの click
+    const { albumTitle: title, albumYear: year, albumArt: src, albumApp: app, albumUrl: url } = el.dataset;
+    dlg.querySelector('[data-album-name]').textContent = title;
+    dlg.querySelector('[data-album-year]').textContent = year || '';
+    art.hidden = !src;
+    if (src) art.src = src;
+    dlg.querySelector('[data-album-search]').href = `search?q=${encodeURIComponent(title)}`;
+    // 音楽アプリのアイコン（そのアプリの色クラス setlist__listen--xxx は app.css が持っている）
+    const icon = icons.querySelector(`[data-app="${CSS.escape(app || '')}"]`);
+    listen.hidden = !icon || !url;
+    listen.className = `album-modal__app setlist__listen--${icon ? app : ''}`;
+    listen.replaceChildren(...(icon ? [icon.firstElementChild.cloneNode(true)] : []));
+    if (icon) {
+      listen.href = url;
+      listen.setAttribute('aria-label', `${icon.dataset.label} で聴く`);
+      listen.title = icon.dataset.label;
+    }
+    dlg.showModal();
+  });
+
+  dlg.querySelector('[data-album-close]').addEventListener('click', () => dlg.close());
+  dlg.addEventListener('click', (e) => { if (e.target === dlg) dlg.close(); }); // 暗い背景を押しても閉じる
 }
 
 /* ---------------------------------------------------------------------

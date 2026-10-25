@@ -346,6 +346,17 @@ function album_listen_url(?string $app, array $album, string|false|null $cached 
 }
 
 /**
+ * 押すとアルバムのモーダル（partials/album_modal.php）が開く要素に付ける属性。assets/app.js の setupAlbumModal が読む。
+ *   $listenApp  アイコンを出すアプリ（MUSIC_APPS のキー）/ $listenUrl  そのアイコンの行き先
+ *   検索は全体の検索（search?q=）へ。アルバム名で探す
+ */
+function album_open_attrs(string $title, ?int $year, ?string $art, string $listenApp, string $listenUrl): string
+{
+    return ' data-album-open data-album-title="' . h($title) . '" data-album-year="' . ($year ? (int)$year : '')
+        . '" data-album-art="' . h((string)$art) . '" data-album-app="' . h($listenApp) . '" data-album-url="' . h($listenUrl) . '"';
+}
+
+/**
  * $app（spotify / apple_music）でアルバムを検索して、同じアルバムらしい一番上の結果の URL を返す。
  *   戻り値: URL / null（それらしいものが無かった）/ false（検索できなかった。通信エラーやキーが無い → 覚えておかない）
  *
@@ -663,7 +674,8 @@ function fan_albums_html(array $fans, string $title, ?string $viewerApp, bool $w
         // 見ている人の音楽アプリで開く（アプリをまたぐときは album_go が押されたときに探す）
         // アルバム名は聴くページへ、アーティスト名は検索へ（リンクの中にリンクは入れられないので、別々の <a> にする）
         $html .= '<li class="album">'
-            . '<img class="album__art" src="' . h($a['artwork_url']) . '" alt="' . h($a['title']) . ' のジャケット" loading="lazy" width="600" height="600">'
+            . '<img class="album__art" src="' . h($a['artwork_url']) . '" alt="' . h($a['title']) . ' のジャケット" loading="lazy" width="600" height="600"'
+            . album_open_attrs($a['title'], $a['release_year'] ? (int)$a['release_year'] : null, $a['artwork_url'], listen_app($viewerApp, $a['source']), album_listen_url($viewerApp, $a)) . '>'
             . '<div class="album__meta">'
             . '<a class="album__title" href="' . h(album_listen_url($viewerApp, $a)) . '" target="_blank" rel="noopener">' . h($a['title']) . '</a>'
             . ($withArtist
