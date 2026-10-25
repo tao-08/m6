@@ -156,8 +156,8 @@ function push_dispatch_due(): void
             $n['target_user_id'] !== null ? [(int)$n['target_user_id']] : null
         );
         push_send($subs, [
-            'title' => (string)($n['category_name'] ?? 'お知らせ'), // タイトルはカテゴリ名。お知らせの題は本文の頭に出す
-            'body'  => push_excerpt((string)$n['title'] . ' ' . (string)$n['body']),
+            'title' => (string)($n['category_name'] ?? 'お知らせ'), // タイトルはカテゴリ名
+            'body'  => push_excerpt((string)$n['title']), // 本文はお知らせの題だけ
             'url'   => $n['link_url'] ?? 'notices',
             'tag'   => 'notice-' . (int)$n['notice_id'],
         ]);
