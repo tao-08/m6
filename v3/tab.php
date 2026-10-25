@@ -186,10 +186,19 @@ $renderNewForm = static function () use ($existingParts): void {
 <?php // ---- リンク（U-FRET・楽器.me・Songsterr・YouTube など）。この画面の主役。自作の TAB（ベータ）もその並びの1つ ---- ?>
 <section class="card tab-links" data-links>
     <ul class="tab-links__list" data-link-list>
-        <?php foreach ($links as $l): $site = TAB_LINK_SITES[$l['site']] ?? TAB_LINK_SITES['other']; ?>
+        <?php // 譜のサイト（U-FRET・楽器.me・Songsterr）は、そのサイトに1件だけなら長いタイトルではなくサイト名のボタンにする（タイトルは長押し・ホバーで）。YouTube・その他、同じサイトが複数のときは区別できるようタイトルのまま
+        $siteCount = array_count_values(array_column($links, 'site'));
+        foreach ($links as $l):
+            $site = TAB_LINK_SITES[$l['site']] ?? TAB_LINK_SITES['other'];
+            $asButton = in_array($l['site'], ['ufret', 'gakki', 'songsterr'], true) && $siteCount[$l['site']] === 1; ?>
             <li class="tab-links__item" data-link-id="<?= (int)$l['link_id'] ?>">
                 <span class="tab-links__site tab-links__site--<?= h($l['site']) ?>" title="<?= h($site['label']) ?>"><?= icon($site['icon']) ?></span>
-                <a class="tab-links__name" href="<?= h($l['url']) ?>" target="_blank" rel="noopener noreferrer"><?= h($l['label'] ?: $site['label']) ?></a>
+                <?php if ($asButton): ?>
+                    <a class="btn btn--sm tab-links__btn" href="<?= h($l['url']) ?>" target="_blank" rel="noopener noreferrer" title="<?= h($l['label'] ?: $site['label']) ?>"><?= h($site['label']) ?> <?= icon('open_in_new') ?></a>
+                    <span class="tab-links__name tab-links__name--spacer"></span>
+                <?php else: ?>
+                    <a class="tab-links__name" href="<?= h($l['url']) ?>" target="_blank" rel="noopener noreferrer"><?= h($l['label'] ?: $site['label']) ?></a>
+                <?php endif; ?>
                 <?php if ($l['site'] === 'youtube'): ?>
                     <a class="icon-btn" href="tab?link=<?= (int)$l['link_id'] ?>" title="練習プレイヤー" aria-label="練習プレイヤー"><?= icon('play_circle') ?></a>
                 <?php endif; ?>
