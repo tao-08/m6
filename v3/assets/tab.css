@@ -83,6 +83,8 @@ details[open] > .tab-summary > .tab-summary__chev { transform: rotate(180deg); }
 .tab-video { aspect-ratio: 16 / 9; width: min(100%, 420px); border-radius: var(--radius-sm); overflow: hidden; background: #000;
   position: sticky; top: 70px; z-index: 6; } /* スクロールしてもヘッダーの下に残る（スマホは下の media で小さくする） */
 @media (max-width: 600px) { .tab-video { width: min(100%, 240px); } }
+.tab-bpm-steps { display: flex; gap: 6px; margin-top: 6px; }
+.tab-bpm-steps .tab-chip { touch-action: manipulation; user-select: none; -webkit-user-select: none; font-variant-numeric: tabular-nums; }
 .icon-btn .youtube-icon { width: 22px; height: auto; } /* 音源ボタンの YouTube ロゴ。ボタンの中身の幅（36 - 左右 padding 6）に収めないと右にずれる */
 /* 動画の移動・大きさ: ドラッグしたら fixed で好きな位置に浮かせる（位置・幅は JS が style に入れる）。iframe の上はクリックを奪われるので、操作はつまみ・角だけ */
 .tab-video.is-float { position: fixed; z-index: 30; box-shadow: var(--shadow); }

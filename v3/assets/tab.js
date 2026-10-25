@@ -2216,7 +2216,7 @@
   }
   $('[data-offset-now]').addEventListener('click', () => setOffset(clock.time() * 1000));
   /*
-   * 開始位置から確認: 1拍前から、メトロノームを付けて鳴らす。1小節目の頭のクリックと曲の頭が揃えば OK。
+   * 開始位置から確認: 開始位置ちょうどから、メトロノームを付けて鳴らす（1拍前の助走は無し。押したらすぐ1拍目が鳴る）。1小節目の頭のクリックと曲の頭が揃えば OK。
    *   以前の ±0.1秒（再生位置を動かすだけ）は、止まっていると音も表示も変わらず、効いていないように見えた。
    *   いまの ± は開始位置そのものを動かして、再生中ならすぐ鳴らし直す（ずれを耳で詰められる）
    */
@@ -2224,8 +2224,9 @@
     ensureAudio();
     if (!metro.on) { metro.on = true; metroChanged(); }
     if (counting) cancelCountIn();
-    seekTo(st.offsetMs / 1000 - 60 / st.bpm);
-    if (!clock.playing) clock.play();      // 曲の前の部分が鳴るので、カウントインは要らない
+    seekTo(st.offsetMs / 1000);
+    metroReset(st.offsetMs / 1000);        // 開始位置ちょうどの1拍目を飛ばさない（再生開始の数ミリ秒の遅れで schedPos が追い越されないように）
+    if (!clock.playing) clock.play();      // カウントインは要らない（すぐ1拍目が鳴る）
   }
   $('[data-offset-play]').addEventListener('click', playFromOffset);
   $$('[data-offset-nudge]').forEach((b) => b.addEventListener('click', () => {
@@ -2575,6 +2576,22 @@
     requestFrame();
     refreshDirty();
   }
+
+  /* ---- BPM 微調整（−1 / −0.1 / +0.1 / +1）: 押し続けると連続で変わる。1回ごとに 20〜400 に収め、小数2桁に丸める ---- */
+  $$('[data-bpm-step]').forEach((btn) => {
+    const step = Number(btn.dataset.bpmStep);
+    const nudge = () => setBpm(clamp(Math.round((st.bpm + step) * 100) / 100, 20, 400));
+    let delay = null, timer = null;
+    const stop = () => { clearTimeout(delay); clearInterval(timer); };
+    btn.addEventListener('pointerdown', (e) => {
+      if (e.button) return; // 右クリックなどは無視
+      nudge();
+      delay = setTimeout(() => { timer = setInterval(nudge, 90); }, 450); // 0.45 秒押し続けたら連続
+    });
+    ['pointerup', 'pointerleave', 'pointercancel'].forEach((ev) => btn.addEventListener(ev, stop));
+    btn.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); nudge(); } }); // キーボード操作
+    btn.addEventListener('contextmenu', (e) => e.preventDefault()); // スマホの長押しメニューを出さない
+  });
 
   /* ---- BPM 自動検知: 手元のファイルを端末の中で解析する（送信なし）---- */
   const detectBtn = $('[data-bpm-detect]');

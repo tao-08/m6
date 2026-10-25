@@ -471,6 +471,12 @@ render_header($tab['title'] . ' ' . $tab['part'], 'lives');
                                     <button type="button" class="icon-btn" data-search-open="bpm_search" aria-label="BPM検索" title="BPM検索"><?= icon('search') ?></button>
                                 <?php endif; ?>
                             </span>
+                            <?php // 微調整: 押すたびに加減。押し続けると連続で変わる（assets/tab.js の BPM 微調整） ?>
+                            <span class="tab-bpm-steps" role="group" aria-label="BPM調整">
+                                <?php foreach ([-1, -0.1, 0.1, 1] as $n): ?>
+                                    <button type="button" class="tab-chip" data-bpm-step="<?= $n ?>"><?= $n > 0 ? '+' : '−' ?><?= abs($n) ?></button>
+                                <?php endforeach; ?>
+                            </span>
                         </label>
                         <label class="field">拍子 <input type="number" data-set="beats" min="1" max="16" step="1" inputmode="numeric"></label>
                         <label class="field">分割
