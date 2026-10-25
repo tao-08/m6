@@ -2742,3 +2742,22 @@ button.ttb-m { cursor: pointer; text-decoration: underline dotted; }
     :is(.edit-box, .songs-add, .prac-new, .tab-new-wrap, .tab-new__more, .partner, .sheet-ed__json)[open]::details-content { block-size: auto; }
   }
 }
+
+/* ---- ちょっとリッチな動き（動きを減らす設定の人には出さない） ---- */
+@media (prefers-reduced-motion: no-preference) {
+  /* 1. 押した感触: 押している間だけ少し縮む */
+  .btn, button.chip, a.chip, .icon-btn { transition-property: color, border-color, background-color, box-shadow, transform; }
+  .btn:active, button.chip:active, a.chip:active, .icon-btn:active { transform: scale(.96); }
+  /* 3. ジャケット: ホバーで浮いて、影が濃くなる */
+  .album__art-link:hover .album__art, .albums[data-album-sort] .album__art:hover { box-shadow: 0 10px 22px -8px rgb(0 0 0 / .4); }
+  .setlist__art { transition: transform .2s var(--ease-out), box-shadow .2s ease; }
+  .setlist__artwrap:hover .setlist__art { transform: scale(1.05); box-shadow: 0 6px 14px -4px rgb(0 0 0 / .4); }
+}
+/* 2. 一覧のふわっと表示: 画面に入るとき、下から少し浮いて現れる（スクロール連動。対応ブラウザだけ）
+ *    fill を backwards にして、表示後は元の transform（ホバーなど）を邪魔しない。並び替えのカードは対象外 */
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .live-card, .songs-row { animation: reveal-up linear backwards; animation-timeline: view(); animation-range: entry 0% entry 40%; }
+    @keyframes reveal-up { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+  }
+}
