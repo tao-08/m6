@@ -176,7 +176,7 @@ if (isset($_GET['song']) || isset($_GET['key'])) {
     render_header($song['title'] . ' TAB', 'lives');
     ?>
 <link rel="stylesheet" href="<?= asset_url('assets/tab.css') ?>">
-<nav class="crumbs"><a href="songs">楽曲データベース</a></nav>
+<nav class="crumbs"><a href="songs?at=<?= rawurlencode((string)$song['key']) ?>">楽曲データベース</a></nav>
 <h1 class="display display--sm">TAB譜・コード</h1>
 <section class="card tab-song">
     <?php if ($song['art']): ?>
@@ -254,8 +254,8 @@ $renderCard = static function (string $part, ?array $info) use ($partKey, $links
             <?php endif; ?>
         </header>
     <?php endif; ?>
-    <?php if ($myLinks || $myTab): // リンクも TAB も無いカードは、空の一覧を出さない ?>
-    <ul class="tab-links__list" data-link-list>
+    <?php // 一覧は常に置く（リンク・TAB・メモ・画像のどれも無いカードでは隠す。メモ・画像の行は JS が足す） ?>
+    <ul class="tab-links__list" data-link-list<?= $myLinks || $myTab ? '' : ' hidden' ?>>
         <?php // 譜のサイト（U-FRET・楽器.me・Songsterr）は、そのカードにそのサイトが1件だけなら長いタイトルではなくサイト名のボタンにする（タイトルは長押し・ホバーで）。YouTube・その他、同じサイトが複数のときは区別できるようタイトルのまま
         $siteCount = array_count_values(array_column($myLinks, 'site'));
         foreach ($myLinks as $l):
@@ -269,6 +269,7 @@ $renderCard = static function (string $part, ?array $info) use ($partKey, $links
                 <?php else: ?>
                     <a class="tab-links__name" href="<?= h($l['url']) ?>" target="_blank" rel="noopener noreferrer"><?= h($l['label'] ?: $site['label']) ?></a>
                 <?php endif; ?>
+                <button type="button" class="icon-btn" data-link-move title="楽器を変更" aria-label="楽器を変更"><?= icon('swap_horiz') ?></button>
                 <button type="button" class="icon-btn" data-link-del title="削除" aria-label="削除"><?= icon('delete') ?></button>
                 <?php if ($l['site'] === 'youtube'): // 2段目: 練習プレイヤーと、その画面のホーム画面ショートカット（?a2hs=1 で開くと追加の案内が出る） ?>
                     <div class="tab-links__row2">
@@ -289,7 +290,6 @@ $renderCard = static function (string $part, ?array $info) use ($partKey, $links
             </li>
         <?php endif; ?>
     </ul>
-    <?php endif; ?>
     <div class="tab-links__actions">
         <?php // YouTube 専用の検索（埋め込みで試し見してから登録）。API キーが無ければ出さない ?>
         <?php if ($hasYoutubeKey): ?>
@@ -310,8 +310,8 @@ $renderCard = static function (string $part, ?array $info) use ($partKey, $links
             <?php $renderNewForm($presets, $part); ?>
         </details>
     <?php endif; ?>
-    <?php // メモと画像。折りたたみ（<details>）にして、もう入っているときだけ最初から開いておく。画像のモーダル（<dialog>）は、閉じた <details> の中に置かない（下で1回だけ出す） ?>
-    <details class="tab-notes-edit tab-card__memo" data-song-memo<?= $hasMemo ? ' open' : '' ?>>
+    <?php // メモと画像。折りたたみ（<details>）。入っているものは上のリンクの一覧に行（JS が作る）で出て、その行を押すとここが開く。画像のモーダル（<dialog>）は、閉じた <details> の中に置かない（下で1回だけ出す） ?>
+    <details class="tab-notes-edit tab-card__memo" data-song-memo>
         <summary class="tab-summary"><?= icon('sticky_note_2') ?> メモ・画像 <?= icon('expand_more', 'tab-summary__chev') ?></summary>
         <div class="tab-notes-edit__body">
             <label class="field">
@@ -337,7 +337,7 @@ foreach ($partCards as $pc) {
 <details class="card tab-addpart">
     <summary class="tab-new-wrap__summary"><?= icon('add') ?> 楽器</summary>
     <div class="tab-addpart__chips">
-        <?php foreach (['lead' => 'リードギター', 'backing' => 'バッキングギター', '3' => 'ベース', '4' => 'ドラム', 'live' => 'ライブ版', 'etc' => 'その他'] as $addKey => $addLabel): ?>
+        <?php foreach (['2' => 'ギター', '3' => 'ベース', '4' => 'ドラム', 'live' => 'ライブ版', 'etc' => 'その他'] as $addKey => $addLabel): ?>
             <button type="button" class="tab-chip" data-part-add="<?= h((string)$addKey) ?>"><?= h($addLabel) ?></button>
         <?php endforeach; ?>
     </div>
@@ -359,6 +359,25 @@ foreach ($partCards as $pc) {
         <ul class="yts__list" data-yts-list></ul>
     </dialog>
 </section>
+
+<?php // リンクの付け替え（楽器の変更）ダイアログ。ページに1つ。今あるカード + まだ無い楽器（押すとカードを作って移す） ?>
+<dialog class="yts lmove" data-lmove>
+    <ul class="lmove__list">
+        <li><button type="button" class="lmove__opt" data-lmove-part=""><?= icon('library_music') ?> 曲全体</button></li>
+        <?php foreach ($partCards as $pc): $isLive = mb_strtolower($pc['part']) === 'live'; ?>
+            <li><button type="button" class="lmove__opt" data-lmove-part="<?= h($pc['part']) ?>">
+                <?= part_badge(['segments' => [['short' => $isLive ? 'Live' : $pc['short_name'], 'class' => instrument_class($isLive ? '' : $pc['short_name'])]], 'title' => $pc['name']]) ?> <?= h($pc['part']) ?></button></li>
+        <?php endforeach; ?>
+        <?php $haveInst = array_unique(array_map(static fn($pc) => (int)$pc['instrument_id'], $partCards));
+        foreach (['Gt', 'Ba', 'Dr', 'Key', 'Vo', 'etc'] as $short):
+            $iid = instrument_id_by_short($short);
+            if ($iid === null || in_array($iid, $haveInst, true)) { continue; } ?>
+            <li><button type="button" class="lmove__opt lmove__opt--new" data-lmove-inst="<?= h($short) ?>">
+                <?= part_badge(['segments' => [['short' => $short, 'class' => instrument_class($short)]], 'title' => $short]) ?> <?= icon('add') ?></button></li>
+        <?php endforeach; ?>
+    </ul>
+    <button type="button" class="icon-btn lmove__close" data-lmove-close title="閉じる" aria-label="閉じる"><?= icon('close') ?></button>
+</dialog>
 
 <?php if ($deleted): ?>
 <section class="card tab-parts tab-parts--deleted">
@@ -411,7 +430,7 @@ if (isset($_GET['link'])) {
     render_header($link['title'] . ' 練習', 'lives');
     ?>
 <link rel="stylesheet" href="<?= asset_url('assets/tab.css') ?>">
-<nav class="crumbs"><a href="songs">楽曲データベース</a><span>/</span><a href="<?= h($listUrl) ?>"><?= h($link['title']) ?></a></nav>
+<nav class="crumbs"><a href="songs?at=<?= rawurlencode((string)$link['song_key']) ?>">楽曲データベース</a><span>/</span><a href="<?= h($listUrl) ?>"><?= h($link['title']) ?></a></nav>
 <h1 class="display display--sm"><?= h($link['label'] ?: $link['title']) ?></h1>
 <script type="application/json" id="yt-data"><?= $ytData ?></script>
 <section class="card ytp" data-ytp>
@@ -552,7 +571,7 @@ $json = json_encode($tabData, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_A
 render_header($tab['title'] . ' ' . $tab['part'], 'lives');
 ?>
 <link rel="stylesheet" href="<?= asset_url('assets/tab.css') ?>">
-<nav class="crumbs"><a href="songs">楽曲データベース</a><span>/</span><a href="<?= h($listUrl) ?>"><?= h($tab['title']) ?></a></nav>
+<nav class="crumbs"><a href="songs?at=<?= rawurlencode((string)$tab['song_key']) ?>">楽曲データベース</a><span>/</span><a href="<?= h($listUrl) ?>"><?= h($tab['title']) ?></a></nav>
 
 <!-- YouTube のリンクに付けるロゴ（JS が複製して使う） -->
 <template data-yt-icon><?= youtube_icon() ?></template>

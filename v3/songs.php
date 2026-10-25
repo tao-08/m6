@@ -353,6 +353,11 @@ $pages = max(1, (int)ceil($total / SONGS_PER_PAGE));
 // ?open=曲キー（セットリストの曲名から）… その曲がある版のまとまりを探し、そのページに移ってモーダルを開く
 $openWork = null;
 $openKey = (string)($_GET['open'] ?? '');
+$scrollOnly = false; // ?at=曲キー（TAB 画面のパンくずから）… 同じ探し方でその曲の位置までスクロールするだけ（モーダルは開かない）
+if ($openKey === '' && isset($_GET['at'])) {
+    $openKey = (string)$_GET['at'];
+    $scrollOnly = true;
+}
 if ($openKey !== '' && tab_key_valid($openKey)) {
     foreach ($rows as $i => $w) {
         if (in_array($openKey, array_column($w['versions'], 'key'), true)) {
@@ -547,7 +552,7 @@ $deleteForm = static fn(array $v, string $open = ''): string => '<form method="p
     <?php foreach ($rows as $g):
         $rep = $g['rep'];
         $multi = count($g['versions']) > 1; ?>
-        <li class="songs-item"<?= $openWork === $g['key'] ? ' data-song-autoopen id="song-open"' : '' ?>>
+        <li class="songs-item"<?= $openWork === $g['key'] ? ($scrollOnly ? ' data-song-scroll' : ' data-song-autoopen') . ' id="song-open"' : '' ?>>
             <div class="songs-row">
                 <?php if ($rep['art']): ?>
                     <img class="songs-row__art" src="<?= h($rep['art']) ?>" alt="" width="44" height="44" loading="lazy">

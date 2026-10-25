@@ -33,6 +33,8 @@ if (is_executive()) {
 if (is_admin()) {
     $tools[] = ['songs', 'library_music', '楽曲データベース',
         'セットリストの曲を曲ごとにまとめて一覧にします。TAB 譜の作成・曲の手動登録ができます。', '管理人'];
+    $tools[] = ['practice', 'slow_motion_video', '練習プレイヤー',
+        '曲を検索して YouTube の動画を AB リピート・速度変更で練習します。', '管理人'];
 }
 
 render_header('ツール', 'tools');

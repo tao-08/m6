@@ -322,6 +322,9 @@
   // セットリストの曲名から来たとき（?open=）は、その曲のモーダルを最初から開く
   const auto = document.querySelector('[data-song-autoopen] [data-song-modal]');
   if (auto) { auto.showModal(); auto.closest('li').scrollIntoView({ block: 'center' }); }
+  // パンくずから戻ったとき（?at=）は、その曲の位置までスクロールだけする
+  const at = document.querySelector('[data-song-scroll]');
+  if (at) at.scrollIntoView({ block: 'center' });
 
   const form = document.querySelector('[data-song-link]');
   if (!form) return;

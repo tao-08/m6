@@ -169,6 +169,15 @@
       input.value = '';
       try { await send(fd); } catch (err) { notify(err.message, 'error'); }
     });
+    // 画像を全部消す（メモの行の削除ボタン用。1枚ずつ remove を送る）
+    box.removeAll = async () => {
+      for (const imgId of box.ids.slice()) {
+        const fd = new FormData();
+        fd.append('action', 'remove');
+        fd.append('image_id', String(imgId));
+        await send(fd);
+      }
+    };
     box.setEditable = (on) => { editable = on; render(); };
     render();
     return box;
@@ -185,12 +194,78 @@
       const C = cardData.get(part) || { images: [], pdfs: [], files: [] };
       const area = card.querySelector('[data-song-memo]');
       const text = area.querySelector('[data-song-memo-text]');
-      imageBox({ kind: 'song', id: S.key, part, ids: C.images, pdfs: C.pdfs, files: C.files, list: area.querySelector('[data-song-images]'), addLabel: area.querySelector('[data-img-add]'), max: 10 }).setEditable(true);
+      const images = imageBox({ kind: 'song', id: S.key, part, ids: C.images, pdfs: C.pdfs, files: C.files, list: area.querySelector('[data-song-images]'), addLabel: area.querySelector('[data-img-add]'), max: 10 });
+      images.setEditable(true);
+
+      // 保存したメモ・画像は、リンクの一覧に行で出す（押すと下の編集欄が開く）。保存・画像の追加削除のたびに作り直す
+      const linkList = card.querySelector('[data-link-list]');
+      const mIcon = (name) => { const s = document.createElement('span'); s.className = 'icon'; s.setAttribute('aria-hidden', 'true'); s.textContent = name; return s; };
+      let savedMemo = text.value;
+      let memoRow = null;
+      const syncMemoRow = () => {
+        const first = savedMemo.split('\n').map((l) => l.trim()).find(Boolean) || '';
+        const n = images.ids.length;
+        if (!first && !n) {
+          memoRow?.remove();
+          memoRow = null;
+        } else {
+          if (!memoRow) {
+            memoRow = document.createElement('li');
+            memoRow.className = 'tab-links__item tab-links__item--memo';
+            const site = document.createElement('span');
+            site.className = 'tab-links__site tab-links__site--memo';
+            site.appendChild(mIcon('sticky_note_2'));
+            const name = document.createElement('button');
+            name.type = 'button';
+            name.className = 'tab-links__name tab-links__name--btn';
+            name.title = 'メモ・画像';
+            name.addEventListener('click', () => {
+              area.open = !area.open;
+              if (area.open) area.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+            });
+            const count = document.createElement('span');
+            count.className = 'muted tab-links__count';
+            const del = document.createElement('button');
+            del.type = 'button';
+            del.className = 'icon-btn';
+            del.title = '削除';
+            del.setAttribute('aria-label', '削除');
+            del.appendChild(mIcon('delete'));
+            del.addEventListener('click', async () => {
+              if (!window.confirm('メモと画像を削除しますか？')) return;
+              del.disabled = true;
+              try {
+                await images.removeAll();
+                await post({ action: 'song_memo', song_key: S.key, part, memo: '' });
+                text.value = '';
+                savedMemo = '';
+                syncMemoRow();
+              } catch (err) {
+                del.disabled = false;
+                notify(err.message || '削除できませんでした', 'error');
+                syncMemoRow(); // 途中まで消えていたら行も合わせる
+              }
+            });
+            memoRow.append(site, name, count, del);
+            linkList.appendChild(memoRow);
+          }
+          memoRow.querySelector('.tab-links__name').textContent = first || '画像';
+          const count = memoRow.querySelector('.tab-links__count');
+          count.replaceChildren();
+          if (n) count.append(mIcon('image'), String(n));
+        }
+        linkList.hidden = !linkList.children.length;
+      };
+      images.onChange = syncMemoRow;
+      syncMemoRow();
+
       area.querySelector('[data-song-memo-save]').addEventListener('click', async (e) => {
         const btn = e.currentTarget;
         btn.disabled = true;
         try {
           await post({ action: 'song_memo', song_key: S.key, part, memo: text.value });
+          savedMemo = text.value;
+          syncMemoRow();
           notify('保存しました');
         } catch (err) {
           notify(err.message || '保存できませんでした', 'error');
@@ -263,6 +338,34 @@
         notify(err.message || '削除できませんでした', 'error');
       }
     }));
+
+    // ---- リンクの付け替え（楽器の変更）: 共通のダイアログで移動先のカード（または楽器）を選ぶ。api_tab_save の link_move ----
+    const moveDlg = document.querySelector('[data-lmove]');
+    box.querySelectorAll('[data-link-move]').forEach((btn) => btn.addEventListener('click', () => {
+      if (!moveDlg) return;
+      const li = btn.closest('[data-link-id]');
+      moveDlg._linkId = Number(li.dataset.linkId);
+      moveDlg.querySelectorAll('[data-lmove-part]').forEach((o) => { // 今のカードは押せない
+        o.disabled = o.dataset.lmovePart.toLowerCase() === part.toLowerCase();
+      });
+      moveDlg.showModal();
+    }));
+    if (moveDlg && !moveDlg._ready) {
+      moveDlg._ready = true;
+      moveDlg.querySelector('[data-lmove-close]').addEventListener('click', () => moveDlg.close());
+      moveDlg.addEventListener('click', (e) => { if (e.target === moveDlg) moveDlg.close(); }); // 外側（背景）を押しても閉じる
+      moveDlg.querySelectorAll('[data-lmove-part], [data-lmove-inst]').forEach((o) => o.addEventListener('click', async () => {
+        moveDlg.querySelectorAll('button').forEach((b) => { b.disabled = true; });
+        try {
+          await post({ action: 'link_move', link_id: moveDlg._linkId,
+            ...(o.dataset.lmoveInst ? { instrument: o.dataset.lmoveInst } : { part: o.dataset.lmovePart }) });
+          window.location.reload();
+        } catch (err) {
+          moveDlg.querySelectorAll('button').forEach((b) => { b.disabled = false; });
+          notify(err.message || '変更できませんでした', 'error');
+        }
+      }));
+    }
 
     // ---- YouTube 専用の検索ダイアログ（api_tab_save の yt_link_search）----
     //   サムネイルを押すとその場で埋め込み再生（試し見）。＋で登録すると閉じて再読み込み

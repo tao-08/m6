@@ -15,8 +15,10 @@
  *      パート追加: {"action":"part_add", "song_key":"…", "instrument_id":2} … {"ok":true,"part":"Gt1"}　削除: {"action":"part_delete", "song_key":"…", "part":"Gt1"}（自作 TAB が無いパートだけ）
  *      YouTube 検索: {"action":"yt_link_search", "song_key":"…", "q":"検索語（任意）"} … {"ok":true,"q":"…","items":[{video_id,url,title,channel,added}]}
  *      AI 検索: {"action":"link_search", "song_key":"…", "song_id":3（任意）}            … {"ok":true,"items":[{site,url,title}]}（登録はしない）
- *      登録:    {"action":"link_add", "song_key":"…", "url":"https://…", "label":"…", "kind":"mv"（任意。YouTube の動画を MV として登録）} …{"ok":true,"link":{id,site,url,label}}
+ *      登録:    {"action":"link_add", "song_key":"…", "url":"https://…", "label":"…", "kind":"mv"（任意。YouTube の動画を MV として登録）,
+ *                "instrument":"Gt"（任意。Gt/Ba/Dr/Key/Vo。part が無いとき、その楽器のパートのカードへ。無ければ作る）} …{"ok":true,"link":{id,site,url,label,part}}
  *      削除:    {"action":"link_delete", "link_id":5}
+ *      付け替え: {"action":"link_move", "link_id":5, "part":"Gt1"（'' = 曲全体） または "instrument":"Ba"（その楽器のパートへ。無ければ作る）} … {"ok":true,"part":"Ba"}
  *      練習:    {"action":"link_practice", "link_id":5, "data":{m,ab,rate,back}}（自分だけ。YouTube のプレイヤー）
  *    履歴: {"action":"history", "tab_id":12}   … {"ok":true,"items":[{rev_id,action,label,at,user}]}（新しい順）
  *    復元: {"action":"restore", "rev_id":34}    … {"ok":true,"redirect":"tab?id=12"}（削除した TAB も同じ tab_id で戻せる）
@@ -67,7 +69,7 @@ if (!is_array($body)) {
 }
 $action = $body['action'] ?? '';
 $tabId = tab_int($body['tab_id'] ?? null) ?? 0;
-if ($tabId <= 0 && !in_array($action, ['restore', 'song_memo', 'link_search', 'yt_link_search', 'link_add', 'link_delete', 'link_practice', 'part_add', 'part_delete'], true)) { // 復元は rev_id、曲のメモ・リンクは song_key / link_id で指定する
+if ($tabId <= 0 && !in_array($action, ['restore', 'song_memo', 'link_search', 'yt_link_search', 'link_add', 'link_delete', 'link_move', 'link_practice', 'part_add', 'part_delete'], true)) { // 復元は rev_id、曲のメモ・リンクは song_key / link_id で指定する
     fail(400, 'TAB の指定がおかしいです');
 }
 $userId = (int)$user['user_id'];
@@ -317,6 +319,21 @@ if (in_array($action, ['link_search', 'link_add', 'yt_link_search', 'part_add', 
         fail(400, '表示名がおかしいです');
     }
     $label = trim(mb_substr(trim($label), 0, 100));
+    // "instrument":"Gt" など（練習プレイヤーの入口が動画タイトルから判別）: その楽器のパートのカードに入れる。カードが無ければ作る
+    $newPart = null; // 作るパート [パート名, 楽器ID]
+    $inst = $body['instrument'] ?? null;
+    if ($part === '' && $norm[0] === 'youtube' && is_string($inst) && in_array($inst, ['Gt', 'Ba', 'Dr', 'Key', 'Vo', 'etc'], true)) {
+        $instId = (int)(instrument_id_by_short($inst) ?? 0);
+        $parts = tab_song_parts($pdo, $key);
+        $same = array_values(array_filter($parts, static fn($p) => $p['instrument_id'] === $instId
+            && !($inst === 'etc' && mb_strtolower($p['part']) === 'live'))); // etc の Live（ライブ版）のカードには入れない
+        if ($same) {
+            $part = $same[0]['part']; // 同じ楽器のパートが複数あれば最初のもの（Gt1 と Gt2 など）
+        } elseif ($instId > 0 && count($parts) < TAB_MAX_PARTS) {
+            $part = tab_suggest_part($inst, false, array_column($parts, 'part'));
+            $newPart = [$part, $instId];
+        }
+    }
     $st = $pdo->prepare('SELECT COUNT(*) FROM song_link WHERE song_key = ? AND part = ?');
     $st->execute([$key, $part]);
     if ((int)$st->fetchColumn() >= TAB_SONG_LINK_MAX) {
@@ -324,11 +341,16 @@ if (in_array($action, ['link_search', 'link_add', 'yt_link_search', 'part_add', 
     }
     try {
         $pdo->beginTransaction();
+        if ($newPart !== null) {
+            $pdo->prepare('INSERT INTO song_part (song_key, part, instrument_id, created_by) VALUES (?, ?, ?, ?)')
+                ->execute([$key, $newPart[0], $newPart[1], $userId]);
+        }
         if ($norm[0] === 'mv') { // MV は1曲（カード）に1本: 設定し直すと前のものを置き換える
             $pdo->prepare('DELETE FROM song_link WHERE song_key = ? AND part = ? AND site = \'mv\'')->execute([$key, $part]);
         }
         $pdo->prepare('INSERT INTO song_link (song_key, part, site, url, label, title, artist_name, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
             ->execute([$key, $part, $norm[0], $norm[1], $label === '' ? null : $label, $song['title'], $song['artist'], $userId]);
+        $linkId = (int)$pdo->lastInsertId(); // commit のあとだと 0 になるので、ここで取る
         $pdo->commit();
     } catch (PDOException $e) {
         if ($pdo->inTransaction()) {
@@ -336,7 +358,7 @@ if (in_array($action, ['link_search', 'link_add', 'yt_link_search', 'part_add', 
         }
         fail(($e->errorInfo[1] ?? 0) === 1062 ? 409 : 500, ($e->errorInfo[1] ?? 0) === 1062 ? '登録済みです' : db_error($e, '登録できませんでした'));
     }
-    echo json_encode(['ok' => true, 'link' => ['id' => (int)$pdo->lastInsertId(), 'site' => $norm[0], 'url' => $norm[1], 'label' => $label]], JSON_UNESCAPED_UNICODE);
+    echo json_encode(['ok' => true, 'link' => ['id' => $linkId, 'site' => $norm[0], 'url' => $norm[1], 'label' => $label, 'part' => $part]], JSON_UNESCAPED_UNICODE);
     exit;
 }
 
@@ -348,6 +370,63 @@ if ($action === 'link_delete') {
         fail(404, 'リンクが見つかりません');
     }
     echo json_encode(['ok' => true], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+if ($action === 'link_move') {
+    // リンクを別のカード（楽器）へ移す。動画のタイトルからの楽器の判別が外れたときの直し用。誰でもできる（wiki 型）
+    $st = $pdo->prepare('SELECT song_key, part, site FROM song_link WHERE link_id = ?');
+    $st->execute([tab_int($body['link_id'] ?? null) ?? 0]);
+    $link = $st->fetch();
+    if (!$link || $link['site'] === 'mv') {
+        fail(404, 'リンクが見つかりません');
+    }
+    $key = (string)$link['song_key'];
+    $newPart = null; // 作るパート [パート名, 楽器ID]
+    if (isset($body['part'])) {
+        $part = $body['part'] === '' ? '' : resolve_part($pdo, $key, $body['part']);
+    } else {
+        $inst = $body['instrument'] ?? null;
+        if (!is_string($inst) || !in_array($inst, ['Gt', 'Ba', 'Dr', 'Key', 'Vo', 'etc'], true)) {
+            fail(400, '楽器の指定がおかしいです');
+        }
+        $instId = (int)(instrument_id_by_short($inst) ?? 0);
+        $parts = tab_song_parts($pdo, $key);
+        $same = array_values(array_filter($parts, static fn($p) => $p['instrument_id'] === $instId
+            && !($inst === 'etc' && mb_strtolower($p['part']) === 'live')));
+        if ($same) {
+            $part = $same[0]['part'];
+        } elseif ($instId > 0 && count($parts) < TAB_MAX_PARTS) {
+            $part = tab_suggest_part($inst, false, array_column($parts, 'part'));
+            $newPart = [$part, $instId];
+        } else {
+            fail(400, 'パートを追加できません');
+        }
+    }
+    if (mb_strtolower($part) === mb_strtolower((string)$link['part'])) {
+        echo json_encode(['ok' => true, 'part' => $link['part']], JSON_UNESCAPED_UNICODE); // 同じカードへ: 何もしない
+        exit;
+    }
+    $st = $pdo->prepare('SELECT COUNT(*) FROM song_link WHERE song_key = ? AND part = ?');
+    $st->execute([$key, $part]);
+    if ((int)$st->fetchColumn() >= TAB_SONG_LINK_MAX) {
+        fail(400, 'リンクは1カードに' . TAB_SONG_LINK_MAX . '件までです');
+    }
+    try {
+        $pdo->beginTransaction();
+        if ($newPart !== null) {
+            $pdo->prepare('INSERT INTO song_part (song_key, part, instrument_id, created_by) VALUES (?, ?, ?, ?)')
+                ->execute([$key, $newPart[0], $newPart[1], $userId]);
+        }
+        $pdo->prepare('UPDATE song_link SET part = ? WHERE link_id = ?')->execute([$part, (int)$body['link_id']]);
+        $pdo->commit();
+    } catch (PDOException $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        fail(500, db_error($e, '変更できませんでした'));
+    }
+    echo json_encode(['ok' => true, 'part' => $part], JSON_UNESCAPED_UNICODE);
     exit;
 }
 
