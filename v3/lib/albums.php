@@ -538,7 +538,65 @@ function album_artist_links(string $artistName): string
 }
 
 /**
- * マイアルバムのアーティスト名で探す（検索ページ）。返り値は fan_albums() と同じ形
+ * マイアルバムを「アルバム名の本体 + アーティスト名」で引けるようにした一覧（楽曲データベースのモーダルで、収録アルバムを入れている人を出す用）。
+ *   曲のアルバムにはマイアルバムの ID（source + album_id）が無いので、album_match_key で表記ゆれをそろえて名前で突き合わせる。
+ *   返り値: [['title' => アルバム名の本体のキー, 'artists' => [アーティスト名のキー => true], 'member_id' => int, 'name' => string], ...]
+ */
+function favorite_album_index(PDO $pdo): array
+{
+    $index = [];
+    $rows = $pdo->query('SELECT f.title, f.artist_name, m.member_id, m.name
+        FROM member_favorite_album f JOIN member m ON m.member_id = f.member_id
+        ORDER BY m.name')->fetchAll();
+    foreach ($rows as $r) {
+        $index[] = [
+            'title' => album_match_key(album_title_core($r['title'])),
+            'artists' => album_artist_keys($r['artist_name']),
+            'member_id' => (int)$r['member_id'], 'name' => $r['name'],
+        ];
+    }
+    return $index;
+}
+
+/** アーティスト名のキー（名前まるごと + 「, 」で分けた1人ずつ。fan_albums と同じ数え方）の集合 */
+function album_artist_keys(string $artistName): array
+{
+    $keys = [];
+    foreach (array_merge([$artistName], explode(', ', $artistName)) as $one) {
+        $k = album_match_key($one);
+        if ($k !== '') {
+            $keys[$k] = true;
+        }
+    }
+    return $keys;
+}
+
+/**
+ * favorite_album_index() の中から、このアルバム（名前 + アーティスト）をマイアルバムにしている人を返す。[['member_id', 'name'], ...]
+ *   アーティストは、どれか1人でも一致すれば同じとみなす（Spotify の「A, B」対策）。曲のアーティストが分からないときはアルバム名だけで比べる
+ * @param string[] $artistNames 曲のアーティスト名の候補（トラックのもの・セットリストのもの）
+ */
+function fans_of_album(array $index, string $albumTitle, array $artistNames): array
+{
+    $titleKey = album_match_key(album_title_core($albumTitle));
+    if ($titleKey === '') {
+        return [];
+    }
+    $want = [];
+    foreach ($artistNames as $n) {
+        $want += album_artist_keys((string)$n);
+    }
+    $fans = [];
+    foreach ($index as $f) {
+        if ($f['title'] === $titleKey && (!$want || array_intersect_key($want, $f['artists']))) {
+            $fans[$f['member_id']] = ['member_id' => $f['member_id'], 'name' => $f['name']];
+        }
+    }
+    return array_values($fans);
+}
+
+/**
+ * マイアルバムのアーティスト名・アルバム名で探す（検索ページ）。返り値は fan_albums() と同じ形
  *   ['albums' => [['album' => 行, 'members' => [[member_id, name], ...]], ...], 'people' => 入れている人数]
  * @param string $like LIKE の形（'%キーワード%'。% _ \ はエスケープ済み）
  */
@@ -547,9 +605,9 @@ function albums_by_artist_name(PDO $pdo, string $like): array
     $st = $pdo->prepare('SELECT f.source, f.album_id, f.title, f.artist_name, f.artwork_url, f.release_year, m.member_id, m.name
         FROM member_favorite_album f
         JOIN member m ON m.member_id = f.member_id
-        WHERE f.artist_name LIKE ?
+        WHERE f.artist_name LIKE ? OR f.title COLLATE utf8mb4_unicode_520_ci LIKE ?
         ORDER BY f.release_year, m.name');
-    $st->execute([$like]);
+    $st->execute([$like, $like]);
     $albums = [];
     $people = [];
     foreach ($st as $r) {

@@ -31,6 +31,14 @@
 
 .songs-filter { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
 .songs-filter .search { min-width: 0; flex: 1; }
+.songs-filter { position: relative; }
+.songs-fans { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px 4px; color: var(--muted); overflow-wrap: anywhere; }
+.songs-fans .icon { font-size: 14px; color: #e0556f; }
+.songs-history { position: absolute; left: 0; top: calc(100% + 4px); z-index: 15; width: min(420px, 100%); margin: 0; padding: 4px; list-style: none; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); box-shadow: 0 8px 24px rgba(0,0,0,.18); }
+.songs-history[hidden] { display: none; }
+.songs-history__item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 10px; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; border-radius: 6px; }
+.songs-history__item:hover { background: var(--bg, rgba(127,127,127,.12)); }
+.songs-history__item .icon { color: var(--muted); font-size: 18px; }
 @keyframes songs-results-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 [data-songs-results].is-updated .songs-list { animation: songs-results-in .25s ease-out; }
 @media (prefers-reduced-motion: reduce) { [data-songs-results].is-updated .songs-list { animation: none; } }

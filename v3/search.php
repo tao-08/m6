@@ -15,6 +15,7 @@ declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/repository.php';
 require_once __DIR__ . '/lib/albums.php';
+require_once __DIR__ . '/lib/tabs.php';
 $user = require_login();
 
 /** LIKE で特別な意味を持つ文字（\ % _）を、ただの文字として扱わせる */
@@ -31,6 +32,7 @@ $bandPage = min(50, max(1, (int)($_GET['bp'] ?? 1)));
 $lives = $bands = $members = $artists = $matchedFaculties = $matchedRoles = [];
 $albums = ['albums' => [], 'people' => 0]; // マイアルバム（アーティスト名で当たったもの）
 $bandTotal = 0;
+$songs = $songAlbums = []; // 曲名・アルバム（管理人のみ。楽曲データベースへのリンク）
 
 // 学部・係で絞る（完全一致）。学部は決まった一覧にあるものだけ、係は DB にある ID だけ受け付ける
 $faculty = (string)($_GET['faculty'] ?? '');
@@ -162,6 +164,35 @@ if ($faculty !== '' || $roleName !== null) {
     //   当たったアーティストの本名・別称の表記のアルバムも足す（「エルレ」で ELLEGARDEN のアルバムも。fan_albums）
     $albums = merge_fan_albums(albums_by_artist_name($pdo, $like), fan_albums($pdo, array_column($artists, 'artist_id')));
 
+    // ---- 曲名・アルバム（楽曲データベースは管理人だけなので、管理人にだけ出す） ----
+    //   曲名 → songs?open=曲キー（その曲のモーダルが開く）/ アルバム → songs?q=アルバム名（楽曲データベースの検索）
+    if (is_admin()) {
+        $st = $pdo->prepare('SELECT s.title, s.band_id, s.track_source, s.track_id, COALESCE(s.artist_id, b.artist_id) AS artist_id,
+                a.name AS artist_name, t.title AS track_title, t.artist_name AS track_artist
+            FROM song s
+            JOIN band b ON b.band_id = s.band_id
+            LEFT JOIN artist a ON a.artist_id = COALESCE(s.artist_id, b.artist_id)
+            LEFT JOIN track t ON t.source = s.track_source AND t.track_id = s.track_id
+            WHERE s.is_se = 0 AND NOT ' . setlist_hidden_sql('b') . '
+              AND (s.title COLLATE utf8mb4_unicode_520_ci LIKE ? OR t.title COLLATE utf8mb4_unicode_520_ci LIKE ?)
+            ORDER BY s.song_id DESC LIMIT 300');
+        $st->execute([$like, $like]);
+        foreach ($st as $r) {
+            $key = tab_song_key($r['track_source'], $r['track_id'], $r['artist_id'] === null ? null : (int)$r['artist_id'],
+                (int)$r['band_id'], $r['title'], $r['artist_name']);
+            $linked = $r['track_source'] !== null;
+            $songs[$key] ??= ['title' => $linked ? $r['track_title'] : $r['title'], 'artist' => $linked ? $r['track_artist'] : $r['artist_name']];
+            if (count($songs) >= 30) {
+                break;
+            }
+        }
+        $st = $pdo->prepare('SELECT album_title, artist_name, COUNT(*) AS n FROM track
+            WHERE album_title COLLATE utf8mb4_unicode_520_ci LIKE ?
+            GROUP BY album_title, artist_name ORDER BY n DESC LIMIT 30');
+        $st->execute([$like]);
+        $songAlbums = $st->fetchAll();
+    }
+
     // ---- 学部・係（名前で当たったら、その学部・係の一覧ページへのリンクを出す） ----
     $matchedFaculties = array_values(array_filter(FACULTIES, fn($f) => mb_strpos($f, mb_substr($q, 0, 50)) !== false));
     $st = $pdo->prepare('SELECT role_id, name FROM role WHERE name COLLATE utf8mb4_unicode_520_ci LIKE ? ORDER BY sort_order, name');
@@ -212,7 +243,7 @@ render_header($filterLabel ?? ($q !== '' ? "「{$q}」の検索結果" : '検索
     </section>
 <?php elseif ($q === ''): ?>
     <p class="muted">例: 「ヨルシカ」で過去にヨルシカをコピーしたバンドが全部出ます。</p>
-<?php elseif (!$lives && !$bands && !$members && !$artists && !$matchedFaculties && !$matchedRoles && !$albums['albums']): ?>
+<?php elseif (!$lives && !$bands && !$members && !$artists && !$matchedFaculties && !$matchedRoles && !$albums['albums'] && !$songs && !$songAlbums): ?>
     <div class="empty card"><p class="empty__title">見つかりませんでした</p><p class="muted">表記を変えて試してみてください（全角/半角、スペースの有無など）</p></div>
 <?php else: ?>
     <div class="search-results">
@@ -258,9 +289,33 @@ render_header($filterLabel ?? ($q !== '' ? "「{$q}」の検索結果" : '検索
 
         <?= fan_albums_html($albums, 'マイアルバム', member_music_app(db(), $user['member_id']), true) // アーティスト名で当たったアルバムと、入れている人 ?>
 
+        <?php if ($songs): ?>
+        <section>
+            <h2 class="section-title">曲名 <span class="muted"><?= count($songs) ?></span></h2>
+            <div class="chip-list">
+                <?php foreach ($songs as $key => $s): ?>
+                    <a class="chip chip--lg" href="songs?<?= h(http_build_query(['open' => $key])) ?>"><?= h((string)$s['title']) ?>
+                        <?php if ($s['artist']): ?><span class="muted small"><?= h((string)$s['artist']) ?></span><?php endif; ?></a>
+                <?php endforeach; ?>
+            </div>
+        </section>
+        <?php endif; ?>
+
+        <?php if ($songAlbums): ?>
+        <section>
+            <h2 class="section-title">アルバム <span class="muted"><?= count($songAlbums) ?></span></h2>
+            <div class="chip-list">
+                <?php foreach ($songAlbums as $al): ?>
+                    <a class="chip chip--lg" href="songs?<?= h(http_build_query(['q' => $al['album_title']])) ?>"><?= h($al['album_title']) ?>
+                        <?php if ($al['artist_name']): ?><span class="muted small"><?= h($al['artist_name']) ?></span><?php endif; ?></a>
+                <?php endforeach; ?>
+            </div>
+        </section>
+        <?php endif; ?>
+
         <?php if ($bands): ?>
         <section>
-            <h2 class="section-title">バンド <span class="muted"><?= $bandTotal ?></span></h2>
+            <h2 class="section-title">バンド<span class="muted"><?= $bandTotal ?></span></h2>
             <div class="card table-card">
                 <div class="table-scroll table-scroll--flush">
                 <table class="table">

@@ -265,7 +265,52 @@
     };
     filter.addEventListener('submit', (e) => { e.preventDefault(); clearTimeout(timer); refresh(); });
     filter.querySelectorAll('select').forEach((s) => s.addEventListener('change', () => { clearTimeout(timer); refresh(); }));
-    filter.querySelector('input[name="q"]').addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(refresh, 250); });
+    const qInput = filter.querySelector('input[name="q"]');
+    qInput.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(refresh, 250); });
+
+    // 検索履歴（直近5件。この端末のブラウザにだけ保存）。バーを押すと出て、選ぶとその語で検索する
+    const HISTORY_KEY = 'songs_search_history';
+    const readHistory = () => {
+      try {
+        const v = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
+        return Array.isArray(v) ? v.filter((s) => typeof s === 'string').slice(0, 5) : [];
+      } catch (err) { return []; }
+    };
+    const saveHistory = (word) => {
+      word = word.trim();
+      if (!word) return;
+      try { localStorage.setItem(HISTORY_KEY, JSON.stringify([word, ...readHistory().filter((s) => s !== word)].slice(0, 5))); } catch (err) { /* 保存できなくても検索は動く */ }
+    };
+    const box = document.createElement('ul');
+    box.className = 'songs-history';
+    box.hidden = true;
+    qInput.parentNode.insertBefore(box, qInput.nextSibling);
+    const showHistory = () => {
+      const items = readHistory();
+      box.replaceChildren(...items.map((word) => {
+        const li = document.createElement('li');
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'songs-history__item';
+        b.append(icon('history'), document.createTextNode(word)); // textContent 相当（innerHTML は使わない）
+        // mousedown で処理（click だと先にバーの blur で閉じてしまう）
+        b.addEventListener('mousedown', (e) => {
+          e.preventDefault();
+          qInput.value = word;
+          box.hidden = true;
+          saveHistory(word);
+          clearTimeout(timer);
+          refresh();
+        });
+        li.appendChild(b);
+        return li;
+      }));
+      box.hidden = items.length === 0;
+    };
+    qInput.addEventListener('focus', showHistory);
+    qInput.addEventListener('click', showHistory);
+    qInput.addEventListener('blur', () => { box.hidden = true; saveHistory(qInput.value); });
+    filter.addEventListener('submit', () => { box.hidden = true; saveHistory(qInput.value); });
   }
 
   // 高画質版の画像が読めなかったら、保存してある元の画像に戻す（error は伝わらないので capture で受ける）

@@ -160,6 +160,9 @@ if (is_post()) {
     if ($openKey !== '' && tab_key_valid($openKey)) {
         $back .= (str_contains($back, '?') ? '&' : '?') . 'open=' . rawurlencode($openKey);
     }
+    if (($_POST['to'] ?? '') === 'practice') { // 練習プレイヤーの入口（practice.php）から登録したときは、そこへ戻る
+        redirect($key !== null ? 'practice?key=' . rawurlencode($key) : 'practice');
+    }
     redirect($key !== null ? 'tab?key=' . rawurlencode($key) : $back);
 }
 
@@ -361,6 +364,25 @@ if ($openKey !== '' && tab_key_valid($openKey)) {
 }
 $page = min($page, $pages);
 $rows = array_slice($rows, ($page - 1) * SONGS_PER_PAGE, SONGS_PER_PAGE);
+
+// 収録アルバムをマイアルバムにしている人（版ごと。アルバム名とアーティスト名で突き合わせる）
+$favIndex = favorite_album_index($pdo);
+foreach ($rows as &$w) {
+    foreach ($w['versions'] as &$v) {
+        $v['fans'] = $v['album'] ? fans_of_album($favIndex, (string)$v['album'], [$v['artist'], $w['artist']]) : [];
+    }
+    unset($v);
+}
+unset($w);
+/** マイアルバムにしている人（アイコン + 名前のリンク。押すとその人のマイアルバムへ） */
+function songs_fans_html(array $fans): string
+{
+    if (!$fans) {
+        return '';
+    }
+    $links = array_map(static fn(array $f): string => '<a href="member?id=' . (int)$f['member_id'] . '#albums">' . h($f['name']) . '</a>', $fans);
+    return '<span class="songs-fans small">マイアルバム：' . implode('・', $links) . '</span>';
+}
 
 // MV（song_link の site = 'mv'）。版違いのどの曲キーに付いていてもその曲のまとまりに出す。テーブルがまだ無い（マイグレーション前）なら空
 $mvByWork = [];
@@ -584,6 +606,9 @@ $deleteForm = static fn(array $v, string $open = ''): string => '<form method="p
                     <span>TAB 譜 <?= (int)$g['tabs'] ?></span>
                     <?php if ($multi): ?><span>バージョン <?= count($g['versions']) ?></span><?php endif; ?>
                 </div>
+                <?php if (!$multi && $g['versions'][0]['fans']): // 1バージョンの曲は演奏回数の下の段に。複数バージョンは版ごとに出す ?>
+                    <div class="songs-row__meta"><?= songs_fans_html($g['versions'][0]['fans']) ?></div>
+                <?php endif; ?>
                 <?php // MV（YouTube）。サムネイルを押すとその場で再生、検索は YouTube 専用ダイアログ（tab.php と同じ API）。登録は代表の版の曲キーに付ける
                 $mvs = $mvByWork[$g['key']] ?? []; ?>
                 <?php if ($mvs || $ytEnabled): ?>
@@ -628,6 +653,7 @@ $deleteForm = static fn(array $v, string $open = ''): string => '<form method="p
                                     <div class="songs-version__names">
                                         <span class="songs-version__album"><?php $vAlbumText = $v['album'] ? h($v['album']) : '<span class="muted">アルバム不明</span>'; ?><?php if ($vAlbumUrl !== null): ?><a href="<?= h($vAlbumUrl) ?>" target="_blank" rel="noopener noreferrer"><?= $vAlbumText ?></a><?php else: ?><?= $vAlbumText ?><?php endif; ?><?= $v['year'] ? ' <span class="muted small">' . (int)$v['year'] . '</span>' : '' ?></span>
                                         <?php if ($v['title'] !== $g['title']): ?><span class="muted small"><?= h($v['title']) ?></span><?php endif; ?>
+                                        <?= songs_fans_html($v['fans']) ?>
                                     </div>
                                     <?php if ($i === 0): ?><span class="tag tag--mine songs-version__rep" title="<?= $g['manual'] ? '手動で選択' : '自動で選択' ?>"><?= icon($g['manual'] ? 'push_pin' : 'star', 'icon--fill') ?> メイン</span>
                                     <?php endif; ?>
