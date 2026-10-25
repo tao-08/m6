@@ -357,7 +357,7 @@ render_header($isNew ? 'バンドを追加' : 'バンドを編集', 'lives');
         <label class="field field--wide"><span>バンド名（タイムテーブルの表記）</span><input name="name" value="<?= h($band['name']) ?>" data-suggest-list="band-names" autocomplete="off" maxlength="100" required <?= $isNew ? 'autofocus' : '' ?>></label>
         <!-- オムニバスのバンド（曲の編集でチェック）はコピー元アーティストを持たないので、空欄で入力できなくする -->
         <?php if (!empty($band['is_omnibus'])): ?>
-            <label class="field field--wide"><span>コピー元アーティスト</span><input value="" placeholder="オムニバス" disabled title="曲の編集で「オムニバス」を外すと入力できます"></label>
+            <label class="field field--wide"><span>コピー元アーティスト</span><input autocomplete="off" value="" placeholder="オムニバス" disabled title="曲の編集で「オムニバス」を外すと入力できます"></label>
         <?php else: ?>
             <label class="field field--wide"><span>コピー元アーティスト</span><input name="artist" value="<?= h($band['artist_name']) ?>" data-suggest-list="artists" autocomplete="off" maxlength="100"></label>
         <?php endif; ?>
@@ -365,9 +365,9 @@ render_header($isNew ? 'バンドを追加' : 'バンドを編集', 'lives');
         <label class="field"><span>曲数</span><input type="number" min="0" max="255" name="song_count" value="<?= h((string)$band['song_count']) ?>"></label>
         <label class="field"><span>開始</span><input type="time" step="300" name="start_time" value="<?= h(fmt_time($band['start_time'])) ?>"></label>
         <label class="field"><span>終了</span><input type="time" step="300" name="end_time" value="<?= h(fmt_time($band['end_time'])) ?>"></label>
-        <label class="field field--wide"><span>メモ</span><input name="note" value="<?= h($band['note']) ?>" maxlength="255"></label>
+        <label class="field field--wide"><span>メモ</span><input autocomplete="off" name="note" value="<?= h($band['note']) ?>" maxlength="255"></label>
         <div class="field field--wide"><span>画像の追加・削除</span><?= attach_field_html('band', $images) ?></div>
-        <label class="field field--wide"><span>YouTube のリンク（任意）</span><span class="field__hint"><a href="live_edit?id=<?= (int)$band['live_id'] ?>">ライブを編集</a>からプレイリストを追加すると各バンドのリンクを一括で登録できます</span><input type="url" name="youtube_url" value="<?= h((string)$band['youtube_url']) ?>" maxlength="500" placeholder="https://www.youtube.com/watch?v=…" inputmode="url"></label>
+        <label class="field field--wide"><span>YouTube のリンク（任意）</span><span class="field__hint"><a href="live_edit?id=<?= (int)$band['live_id'] ?>">ライブを編集</a>からプレイリストを追加すると各バンドのリンクを一括で登録できます</span><input autocomplete="off" type="url" name="youtube_url" value="<?= h((string)$band['youtube_url']) ?>" maxlength="500" placeholder="https://www.youtube.com/watch?v=…" inputmode="url"></label>
         <?php if ($ytVideos): ?>
             <!-- name を付けない（送信しない）。選ぶと JS が上の URL 欄に入れる -->
             <label class="field field--wide"><span>ライブのプレイリストから選ぶ</span>
@@ -410,7 +410,7 @@ render_header($isNew ? 'バンドを追加' : 'バンドを編集', 'lives');
             <?php foreach ($lockedMembers as $m): ?>
                 <div class="member-row-edit member-row-edit--locked">
                     <!-- 上の段: 名前 / 印、下の段: 楽器 / Cho（下の編集できる行と同じ並び） -->
-                    <input value="<?= h($m['name']) ?>" disabled aria-label="名前" class="name-input">
+                    <input autocomplete="off" value="<?= h($m['name']) ?>" disabled aria-label="名前" class="name-input">
                     <!-- ⚠ マウスを乗せる・押すと、下の #lock-tip（リンク付き）をポップアップで出す（assets/app.js の setupSetlistTip） -->
                     <button type="button" class="lock-warn" data-setlist-tip data-tip-from="#lock-tip" aria-label="編集できない理由を見る"><?= icon('warning') ?></button>
                     <select disabled aria-label="楽器"><?= instrument_choice_options($m['choice']) ?></select>

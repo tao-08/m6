@@ -317,8 +317,8 @@ render_header($member['name'], 'members');
     <form method="post" action="member_edit" class="form-grid edit-box__form" data-unsaved>
         <?= csrf_field() ?>
         <input type="hidden" name="member_id" value="<?= $memberId ?>">
-        <label class="field field--wide"><span>名前</span><input name="name" value="<?= h($member['name']) ?>" maxlength="50" required></label>
-        <label class="field"><span>ふりがな</span><input name="name_kana" value="<?= h($member['name_kana']) ?>" maxlength="50"></label>
+        <label class="field field--wide"><span>名前</span><input autocomplete="off" name="name" value="<?= h($member['name']) ?>" maxlength="50" required></label>
+        <label class="field"><span>ふりがな</span><input autocomplete="off" name="name_kana" value="<?= h($member['name_kana']) ?>" maxlength="50"></label>
         <label class="field field--wide"><span>ひとこと</span><textarea name="bio" rows="3" maxlength="100"><?= h($member['bio']) ?></textarea></label>
         <label class="field"><span>入部年度</span><input type="number" name="entry_year" min="1950" max="2100" value="<?= (int)$member['entry_year'] ?: '' ?>"></label>
         <?= profile_faculty_role_fields($pdo, $member) ?>
@@ -435,7 +435,7 @@ render_header($member['name'], 'members');
             <!-- data-album-search: JS が動くときは移動せず、下の data-album-results の中身だけ差し替える（assets/app.js の setupAlbumSearch） -->
             <form method="get" action="member#albums" class="album-search__form" data-album-search>
                 <input type="hidden" name="id" value="<?= $memberId ?>">
-                <input class="search" type="search" name="album_q" value="<?= h($albumQuery) ?>" placeholder="アルバム名やアーティスト名で検索" maxlength="100" required>
+                <input class="search" type="search" autocomplete="off" name="album_q" value="<?= h($albumQuery) ?>" placeholder="アルバム名やアーティスト名で検索" maxlength="100" required>
                 <button class="btn btn--primary btn--sm" type="submit">検索</button>
             </form>
 
@@ -496,7 +496,7 @@ render_header($member['name'], 'members');
                 </div>
             </div>
             <!-- 検索: .history__item の data-text で絞る（年度スロットは section、検索は li を隠すので、ぶつからない） -->
-            <input type="search" class="search" placeholder="ライブ名・バンド名・会場" data-filter=".history__item" aria-label="出演履歴を絞り込み">
+            <input type="search" autocomplete="off" class="search" placeholder="ライブ名・バンド名・会場" data-filter=".history__item" aria-label="出演履歴を絞り込み">
         </div>
         <?php endif; ?>
         <!-- .sorted-list: 並び替えボタンを、一番上の年度の見出しの右に重ねて置く（CSS の position: absolute）。

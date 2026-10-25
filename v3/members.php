@@ -290,7 +290,7 @@ render_header('メンバー', 'members');
         </div>
     </div>
     <div class="toolbar">
-        <input type="search" class="search" placeholder="名前で検索" data-filter=".member-row" aria-label="名前で検索">
+        <input type="search" autocomplete="off" class="search" placeholder="名前で検索" data-filter=".member-row" aria-label="名前で検索">
         <a class="btn btn--primary" href="member_new">＋ 新規追加</a>
     </div>
     <div class="empty card" data-grade-empty hidden><p class="empty__title">この学年のメンバーはいません</p></div>

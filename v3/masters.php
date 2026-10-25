@@ -461,7 +461,7 @@ render_header($tabs[$tab][0] . 'の管理');
           data-confirm="チェックしたアーティストをコピー元にしているバンドを、すべてオムニバスにします。よろしいですか？"><?= csrf_field() ?>
         <input type="hidden" name="tab" value="artist">
         <input type="hidden" name="action" value="omnibus">
-        <input type="search" placeholder="アーティスト名で絞り込み" data-filter="[data-artist-row]" aria-label="アーティスト名で絞り込み">
+        <input type="search" autocomplete="off" placeholder="アーティスト名で絞り込み" data-filter="[data-artist-row]" aria-label="アーティスト名で絞り込み">
         <button class="btn btn--primary btn--sm" type="submit">チェックしたアーティストのバンドをオムニバスにする</button>
     </form>
 <?php endif; ?>
@@ -481,7 +481,7 @@ render_header($tabs[$tab][0] . 'の管理');
                         <input type="hidden" name="tab" value="venue">
                         <input type="hidden" name="action" value="rename">
                         <input type="hidden" name="venue_id" value="<?= (int)$v['venue_id'] ?>">
-                        <input name="name" value="<?= h($v['name']) ?>" maxlength="50" required aria-label="会場名">
+                        <input autocomplete="off" name="name" value="<?= h($v['name']) ?>" maxlength="50" required aria-label="会場名">
                         <button class="btn btn--ghost btn--sm" type="submit">名前を変更</button>
                     </form>
                 </td>
@@ -532,7 +532,7 @@ render_header($tabs[$tab][0] . 'の管理');
                         <input type="hidden" name="tab" value="role">
                         <input type="hidden" name="action" value="rename">
                         <input type="hidden" name="role_id" value="<?= (int)$r['role_id'] ?>">
-                        <input name="name" value="<?= h($r['name']) ?>" maxlength="30" required aria-label="係の名前">
+                        <input autocomplete="off" name="name" value="<?= h($r['name']) ?>" maxlength="30" required aria-label="係の名前">
                         <button class="btn btn--ghost btn--sm" type="submit">名前を変更</button>
                     </form>
                 </td>
@@ -586,7 +586,7 @@ render_header($tabs[$tab][0] . 'の管理');
                             <input type="hidden" name="tab" value="day">
                             <input type="hidden" name="action" value="rename">
                             <input type="hidden" name="label" value="<?= h($d['label']) ?>">
-                            <input name="name" value="<?= h($d['label']) ?>" maxlength="50" required aria-label="日程名" list="dl-day-labels">
+                            <input autocomplete="off" name="name" value="<?= h($d['label']) ?>" maxlength="50" required aria-label="日程名" list="dl-day-labels">
                             <button class="btn btn--ghost btn--sm" type="submit">名前を変更</button>
                         </form>
                     <?php endif; ?>
@@ -607,7 +607,7 @@ render_header($tabs[$tab][0] . 'の管理');
                         <input type="hidden" name="tab" value="artist">
                         <input type="hidden" name="action" value="rename">
                         <input type="hidden" name="artist_id" value="<?= (int)$a['artist_id'] ?>">
-                        <input name="name" value="<?= h($a['name']) ?>" maxlength="100" required aria-label="アーティスト名">
+                        <input autocomplete="off" name="name" value="<?= h($a['name']) ?>" maxlength="100" required aria-label="アーティスト名">
                         <button class="btn btn--ghost btn--sm" type="submit">名前を変更</button>
                     </form>
                 </td>
@@ -625,7 +625,7 @@ render_header($tabs[$tab][0] . 'の管理');
                         <input type="hidden" name="tab" value="artist">
                         <input type="hidden" name="action" value="merge">
                         <input type="hidden" name="artist_id" value="<?= (int)$a['artist_id'] ?>">
-                        <input name="to_name" list="dl-artists" required placeholder="統合先" aria-label="統合先のアーティスト">
+                        <input autocomplete="off" name="to_name" list="dl-artists" required placeholder="統合先" aria-label="統合先のアーティスト">
                         <button class="btn btn--ghost btn--sm" type="submit">統合</button>
                     </form>
                 </td>
@@ -658,8 +658,8 @@ render_header($tabs[$tab][0] . 'の管理');
                             <input type="hidden" name="tab" value="instrument">
                             <input type="hidden" name="action" value="rename">
                             <input type="hidden" name="instrument_id" value="<?= (int)$ins['instrument_id'] ?>">
-                            <input name="short_name" value="<?= h($ins['short_name']) ?>" maxlength="10" required aria-label="略称" class="input-short">
-                            <input name="name" value="<?= h($ins['name']) ?>" maxlength="30" required aria-label="楽器名">
+                            <input autocomplete="off" name="short_name" value="<?= h($ins['short_name']) ?>" maxlength="10" required aria-label="略称" class="input-short">
+                            <input autocomplete="off" name="name" value="<?= h($ins['name']) ?>" maxlength="30" required aria-label="楽器名">
                             <button class="btn btn--ghost btn--sm" type="submit">名前を変更</button>
                         </form>
                     <?php endif; ?>

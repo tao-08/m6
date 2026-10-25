@@ -375,7 +375,7 @@ render_header('セッティングシート編集', 'tools');
         </div>
         <!-- 会場を選ぶと、最初の会場の名前が自動で入る（登録済みの会場名なので表記揺れが無い）。書き換えたら、それからは自動で変えない -->
         <label class="field">表示用の会場名
-            <input name="label" value="<?= h($form['label']) ?>" maxlength="100" required placeholder="例: 下北沢 〇〇" data-template-label>
+            <input autocomplete="off" name="label" value="<?= h($form['label']) ?>" maxlength="100" required placeholder="例: 下北沢 〇〇" data-template-label>
         </label>
         <label class="field">セッティングシート PDF ファイル<?= $editing ? '（差し替える場合のみアップロード）' : '' ?>（5MB まで）
             <input type="file" name="pdf" accept="application/pdf,.pdf"<?= $editing ? '' : ' required' ?>>
@@ -395,7 +395,7 @@ render_header('セッティングシート編集', 'tools');
         <!-- 備え付けギターアンプ（型紙の gt_amps）。中身は sheet_editor.js の gtAmpsPanel() が作る -->
         <div class="field">
             <span>備え付けギターアンプ（自動配置は左から順）</span>
-            <input type="text" maxlength="20" placeholder="アンプ名を入力して Enter…" aria-label="備え付けギターアンプを追加" data-gt-amps-input>
+            <input autocomplete="off" type="text" maxlength="20" placeholder="アンプ名を入力して Enter…" aria-label="備え付けギターアンプを追加" data-gt-amps-input>
             <span class="chip-list" data-gt-amps></span>
         </div>
 

@@ -62,7 +62,7 @@ function day_label_control(string $prefix, string $sel, string $newName, array $
         $html .= '<option value="' . h($label) . '"' . ($sel === $label ? ' selected' : '') . '>' . h($label) . '</option>';
     }
     return $html . '<option value="__new__"' . ($sel === '__new__' ? ' selected' : '') . '>＋ 新しい日程名を作る</option></select>'
-        . '<input name="' . $prefix . '[label_new]" value="' . h($newName) . '" maxlength="50" placeholder="例: 野外ライブ"'
+        . '<input autocomplete="off" name="' . $prefix . '[label_new]" value="' . h($newName) . '" maxlength="50" placeholder="例: 野外ライブ"'
         . ' aria-label="新しい日程名" data-new-input data-label-new' . ($sel === '__new__' ? '' : ' hidden') . '>';
 }
 
@@ -142,7 +142,7 @@ function profile_faculty_role_fields(PDO $pdo, array $member): string
         $html .= '<label class="role-checks__item"><input type="checkbox" name="roles[]" value="' . (int)$id . '"'
             . (isset($mine[$id]) ? ' checked' : '') . '> ' . h($name) . '</label>';
     }
-    $html .= '<input name="new_role" maxlength="30" placeholder="新しい係を追加" aria-label="新しい係">';
+    $html .= '<input autocomplete="off" name="new_role" maxlength="30" placeholder="新しい係を追加" aria-label="新しい係">';
     return $html . '</fieldset>';
 }
 
@@ -1912,7 +1912,7 @@ function sync_account_names(PDO $pdo, ?int $memberId = null): void
 
 /* =====================================================================
  *  入力候補（assets/app.js の setupSuggest）用のデータ
- *    <input data-suggest-list="datalist の id"> が、同じ id の <datalist> の option を候補にする
+ *    <input autocomplete="off" data-suggest-list="datalist の id"> が、同じ id の <datalist> の option を候補にする
  * ===================================================================== */
 
 /**

@@ -109,7 +109,7 @@ function venue_field(string $prefix, string $sel, string $newName, array $venues
         $html .= '<option value="' . (int)$id . '"' . ($sel === (string)$id ? ' selected' : '') . '>' . h($name) . '</option>';
     }
     $html .= '<option value="new"' . ($sel === 'new' ? ' selected' : '') . '>＋ 新しい会場を作る</option></select>'
-        . '<input name="' . $prefix . '[venue_new]" value="' . h($newName) . '" maxlength="50" placeholder="新しい会場名"'
+        . '<input autocomplete="off" name="' . $prefix . '[venue_new]" value="' . h($newName) . '" maxlength="50" placeholder="新しい会場名"'
         . ' aria-label="新しい会場名" data-venue-new' . ($sel === 'new' ? '' : ' hidden') . '></div>';
     return $html;
 }
@@ -137,7 +137,7 @@ function extra_day_block(string $i, array $d, array $venues, array $labels): str
         . '<label class="field"><span>日付</span><input type="date" name="' . $p . '[held_on]" value="' . h($d['date']) . '" required></label>'
         . venue_field($p, $d['venue_sel'], $d['venue_new'], $venues)
         . total_bands_field($p, $d['total'], 0)
-        . '<label class="field field--wide"><span>メモ</span><input name="' . $p . '[note]" value="' . h($d['note']) . '"></label>'
+        . '<label class="field field--wide"><span>メモ</span><input autocomplete="off" name="' . $p . '[note]" value="' . h($d['note']) . '"></label>'
         . '</div><p class="day-actions"><button type="button" class="btn btn--ghost btn--danger btn--sm" data-extra-day-remove>この日程をやめる</button></p></div>';
 }
 
@@ -566,8 +566,8 @@ if ($isNew) {
     <input type="hidden" name="live_id" value="<?= $liveId ?>">
     <?php if (!$canMerge): ?>
         <div class="form-grid">
-            <label class="field field--wide"><span>ライブ名</span><input name="name" value="<?= h($live['name']) ?>" maxlength="50" placeholder="例: 9月ライブ" required></label>
-            <label class="field field--wide"><span>YouTubeプレイリストのリンク（任意）</span><input type="url" name="youtube_url" value="<?= h((string)$live['youtube_url']) ?>" maxlength="500" placeholder="https://www.youtube.com/playlist?list=…" inputmode="url"></label>
+            <label class="field field--wide"><span>ライブ名</span><input autocomplete="off" name="name" value="<?= h($live['name']) ?>" maxlength="50" placeholder="例: 9月ライブ" required></label>
+            <label class="field field--wide"><span>YouTubeプレイリストのリンク（任意）</span><input autocomplete="off" type="url" name="youtube_url" value="<?= h((string)$live['youtube_url']) ?>" maxlength="500" placeholder="https://www.youtube.com/playlist?list=…" inputmode="url"></label>
             <?php if ($savedPlaylist): ?><p class="field--wide yt-assign"><a class="btn btn--ghost btn--sm" href="live_youtube?id=<?= $liveId ?>"><?= youtube_icon() ?> プレイリストの動画をバンドに割り当てる</a></p><?php endif; ?>
             <?php if (!$isNew): ?><?= live_image_field($images) ?><?php endif; ?>
         </div>
@@ -580,7 +580,7 @@ if ($isNew) {
                 <span class="live-name-head">ライブ名
                     <button type="button" class="merge-toggle" aria-pressed="<?= $merging ? 'true' : 'false' ?>" data-merge-toggle><?= icon('merge') ?> 他のライブに統合</button>
                 </span>
-                <input name="name" value="<?= h($live['name']) ?>" maxlength="50" placeholder="例: 9月ライブ" required data-live-name<?= $merging ? ' hidden disabled' : '' ?>>
+                <input autocomplete="off" name="name" value="<?= h($live['name']) ?>" maxlength="50" placeholder="例: 9月ライブ" required data-live-name<?= $merging ? ' hidden disabled' : '' ?>>
                 <!-- disabled の欄は送信されない → OFF のときは merge / merge_live_id を送らない -->
                 <input type="hidden" name="merge" value="1" data-merge-flag<?= $merging ? '' : ' disabled' ?>>
                 <input type="hidden" name="merge_live_id" value="<?= $mergeLive ? (int)$mergeLive['live_id'] : '' ?>" data-live-id<?= $merging ? '' : ' disabled' ?>>
@@ -595,7 +595,7 @@ if ($isNew) {
                 <small class="merge-note" data-merge-note></small>
             </div>
             <!-- 統合するとこのライブは消えるので、統合 ON のときは隠す（data-merge-hide） -->
-            <label class="field field--wide" data-merge-hide<?= $merging ? ' hidden' : '' ?>><span>YouTubeプレイリストのリンク（任意）</span><input type="url" name="youtube_url" value="<?= h((string)$live['youtube_url']) ?>" maxlength="500" placeholder="https://www.youtube.com/watch?v=…" inputmode="url"<?= $merging ? ' disabled' : '' ?>></label>
+            <label class="field field--wide" data-merge-hide<?= $merging ? ' hidden' : '' ?>><span>YouTubeプレイリストのリンク（任意）</span><input autocomplete="off" type="url" name="youtube_url" value="<?= h((string)$live['youtube_url']) ?>" maxlength="500" placeholder="https://www.youtube.com/watch?v=…" inputmode="url"<?= $merging ? ' disabled' : '' ?>></label>
             <?php if ($savedPlaylist): ?><p class="field--wide yt-assign" data-merge-hide<?= $merging ? ' hidden' : '' ?>><a class="btn btn--ghost btn--sm" href="live_youtube?id=<?= $liveId ?>"><?= youtube_icon() ?> プレイリストの動画をバンドに割り当てる</a></p><?php endif; ?>
             <?= live_image_field($images, $merging) ?>
         </div>
@@ -645,7 +645,7 @@ if ($isNew) {
             <label class="field"><span>日付</span><input type="date" name="d[<?= $id ?>][held_on]" value="<?= h($d['held_on']) ?>" required></label>
             <?= venue_field("d[$id]", $d['venue_sel'] ?? (string)$d['venue_id'], $d['venue_new'] ?? '', $venues) ?>
             <?= total_bands_field("d[$id]", (string)$d['total_bands'], (int)$d['band_count']) ?>
-            <label class="field field--wide"><span>メモ</span><input name="d[<?= $id ?>][note]" value="<?= h($d['note']) ?>"></label>
+            <label class="field field--wide"><span>メモ</span><input autocomplete="off" name="d[<?= $id ?>][note]" value="<?= h($d['note']) ?>"></label>
         </div>
         <p class="day-actions">
             <a class="btn btn--ghost btn--sm" href="band_edit?day=<?= $id ?>">＋ この日程にバンドを追加</a>
@@ -669,7 +669,7 @@ if ($isNew) {
         <label class="field"><span>日付</span><input type="date" name="nd[held_on]" value="<?= h($newDay['date']) ?>"<?= $isNew || $newDay['add'] ? ' required' : '' ?>></label>
         <?= venue_field('nd', $newDay['venue_sel'], $newDay['venue_new'], $venues) ?>
         <?= total_bands_field('nd', $newDay['total'], 0) ?>
-        <label class="field field--wide"><span>メモ</span><input name="nd[note]" value="<?= h($newDay['note']) ?>"></label>
+        <label class="field field--wide"><span>メモ</span><input autocomplete="off" name="nd[note]" value="<?= h($newDay['note']) ?>"></label>
     </div>
     <?php if ($isNew): ?>
         <!-- 2つ目以降の日程。「＋ 日程を追加」で <template> を複製して増やす（assets/app.js の setupExtraDays） -->

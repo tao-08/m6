@@ -222,7 +222,7 @@ render_header('ライブ一覧', 'lives');
             </div>
         </div>
         <!-- data-filter: 入力すると .live-card の data-text で絞り込む（assets/app.js） -->
-        <input type="search" class="search" placeholder="ライブ名・会場・メモで絞り込み" data-filter=".live-card" aria-label="絞り込み">
+        <input type="search" autocomplete="off" class="search" placeholder="ライブ名・会場・メモで絞り込み" data-filter=".live-card" aria-label="絞り込み">
         <a class="btn btn--primary" href="import">＋ 新規追加</a>
     </div>
     <!-- .sorted-list: 並び替えボタンを、一番上の年度の見出しの右に重ねて置く（member.php の出演履歴と同じ） -->

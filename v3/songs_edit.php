@@ -358,7 +358,7 @@ render_header('セットリストを編集', 'lives');
                         <span class="song-thumb__art" data-track-thumb><?php if ($trackKey !== ''): ?><img src="<?= h($song['artwork_url']) ?>" alt="" loading="lazy"><?php else: ?><?= icon('music_note') ?><?php endif; ?></span>
                         <button type="button" class="song-thumb__clear" data-track-clear aria-label="紐付けを外す"<?= $trackKey === '' ? ' hidden' : '' ?>><?= icon(ICON_UNLINK) ?></button>
                     </span>
-                    <input name="<?= $base ?>[title]" value="<?= h($song['title']) ?>" maxlength="100" placeholder="<?= $isNew ? ($isSe ? 'SE名を入力して追加' : '曲名を入力して追加') : ($isSe ? 'SE名' : '曲名') ?>" class="song-card__title" aria-label="曲名" data-unsaved-key>
+                    <input autocomplete="off" name="<?= $base ?>[title]" value="<?= h($song['title']) ?>" maxlength="100" placeholder="<?= $isNew ? ($isSe ? 'SE名を入力して追加' : '曲名を入力して追加') : ($isSe ? 'SE名' : '曲名') ?>" class="song-card__title" aria-label="曲名" data-unsaved-key>
                     <?php if ($isSe): ?><input type="hidden" name="<?= $base ?>[artist]" value="">
                     <?php else: ?><input name="<?= $base ?>[artist]" value="<?= h($artist) ?>" maxlength="100" data-suggest-list="artists" autocomplete="off" placeholder="アーティスト" class="song-card__artist" aria-label="アーティスト" data-song-artist<?= $omnibus ? '' : ' readonly' ?>><?php endif; ?>
                     <input type="hidden" name="<?= $base ?>[track]" value="<?= h($trackKey) ?>" data-track-key>

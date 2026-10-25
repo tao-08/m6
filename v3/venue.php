@@ -270,10 +270,10 @@ render_header($venue['name'], 'tools');
             <input type="hidden" name="action" value="save_info">
             <input type="hidden" name="venue_id" value="<?= $venueId ?>">
             <div class="venue-edit__row">
-                <input type="url" class="grow" name="website_url" maxlength="255" value="<?= h($venue['website_url']) ?>" placeholder="https://" aria-label="サイト">
+                <input autocomplete="off" type="url" class="grow" name="website_url" maxlength="255" value="<?= h($venue['website_url']) ?>" placeholder="https://" aria-label="サイト">
             </div>
             <div class="venue-edit__row">
-                <input type="text" class="grow" name="address" maxlength="255" value="<?= h($venue['address']) ?>" placeholder="住所" aria-label="住所">
+                <input autocomplete="off" type="text" class="grow" name="address" maxlength="255" value="<?= h($venue['address']) ?>" placeholder="住所" aria-label="住所">
             </div>
             <div class="venue-edit__row">
                 <textarea class="grow" name="note" rows="3" maxlength="1000" placeholder="メモ" aria-label="メモ"><?= h($venue['note']) ?></textarea>
@@ -287,7 +287,7 @@ render_header($venue['name'], 'tools');
             <?php foreach (array_merge($stations, [['venue_station_id' => 0, 'station_name' => '', 'walk_minutes' => '']]) as $s): ?>
                 <div class="venue-edit__row">
                     <input type="hidden" name="id[]" value="<?= (int)$s['venue_station_id'] ?>">
-                    <input type="text" class="grow" name="name[]" maxlength="50" value="<?= h($s['station_name']) ?>" placeholder="駅名" aria-label="駅名">
+                    <input autocomplete="off" type="text" class="grow" name="name[]" maxlength="50" value="<?= h($s['station_name']) ?>" placeholder="駅名" aria-label="駅名">
                     <input type="number" name="minutes[]" min="0" max="999" value="<?= h($s['walk_minutes']) ?>" placeholder="徒歩(分)" aria-label="徒歩の分数">
                 </div>
             <?php endforeach; ?>
@@ -341,7 +341,7 @@ render_header($venue['name'], 'tools');
                             <option value="<?= h($cat) ?>"<?= $cat === $e['category'] ? ' selected' : '' ?>><?= h($cat) ?></option>
                         <?php endforeach; ?>
                     </select>
-                    <input type="text" class="grow" name="model[]" maxlength="100" value="<?= h($e['model_name']) ?>" placeholder="機種名" aria-label="機種名">
+                    <input autocomplete="off" type="text" class="grow" name="model[]" maxlength="100" value="<?= h($e['model_name']) ?>" placeholder="機種名" aria-label="機種名">
                     <input type="number" name="quantity[]" min="0" max="99" value="<?= (int)$e['quantity'] ?>" aria-label="台数">
                 </div>
             <?php endforeach; ?>

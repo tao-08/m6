@@ -178,7 +178,7 @@ render_header('アーティスト', 'artists');
 <?php else: ?>
     <div class="toolbar">
         <!-- 名前の絞り込みは members.php と同じ（app.js の data-filter が data-text を見て行を隠す） -->
-        <input type="search" class="search" placeholder="アーティスト名で検索" data-filter=".artist-row" aria-label="アーティスト名で検索">
+        <input type="search" autocomplete="off" class="search" placeholder="アーティスト名で検索" data-filter=".artist-row" aria-label="アーティスト名で検索">
     </div>
     <div class="card table-card">
         <table class="table table--list" data-client-sort data-sort-current="<?= h($sort) ?>" data-dir-current="<?= h($dir) ?>">

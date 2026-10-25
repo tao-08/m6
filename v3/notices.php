@@ -204,7 +204,7 @@ render_header('お知らせ', 'notices');
         </select>
     </label>
     <label class="field"><span>タイトル</span>
-        <input type="text" name="title" maxlength="100" required>
+        <input autocomplete="off" type="text" name="title" maxlength="100" required>
     </label>
     <label class="field"><span>本文</span>
         <textarea name="body" rows="5" maxlength="2000" required></textarea>
@@ -259,7 +259,7 @@ render_header('お知らせ', 'notices');
                     </select>
                 </label>
                 <label class="field"><span>タイトル</span>
-                    <input type="text" name="title" maxlength="100" required value="<?= h($n['title']) ?>">
+                    <input autocomplete="off" type="text" name="title" maxlength="100" required value="<?= h($n['title']) ?>">
                 </label>
                 <label class="field"><span>本文</span>
                     <textarea name="body" rows="5" maxlength="2000" required><?= h($n['body']) ?></textarea>
@@ -302,7 +302,7 @@ render_header('お知らせ', 'notices');
                 <?= csrf_field() ?>
                 <input type="hidden" name="action" value="category_rename">
                 <input type="hidden" name="category_id" value="<?= (int)$c['category_id'] ?>">
-                <input type="text" name="name" value="<?= h($c['name']) ?>" maxlength="20" required aria-label="カテゴリ名">
+                <input autocomplete="off" type="text" name="name" value="<?= h($c['name']) ?>" maxlength="20" required aria-label="カテゴリ名">
                 <select name="color" aria-label="色">
                     <?php foreach (NOTICE_COLORS as $k => $label): ?>
                         <option value="<?= h($k) ?>"<?= $c['color'] === $k ? ' selected' : '' ?>><?= h($label) ?></option>
@@ -322,7 +322,7 @@ render_header('お知らせ', 'notices');
     <form method="post" class="notice-cat__rename">
         <?= csrf_field() ?>
         <input type="hidden" name="action" value="category_add">
-        <input type="text" name="name" maxlength="20" required placeholder="新規カテゴリ" aria-label="新規カテゴリ">
+        <input autocomplete="off" type="text" name="name" maxlength="20" required placeholder="新規カテゴリ" aria-label="新規カテゴリ">
         <select name="color" aria-label="色">
                     <?php foreach (NOTICE_COLORS as $k => $label): ?>
                         <option value="<?= h($k) ?>"<?= 'gray' === $k ? ' selected' : '' ?>><?= h($label) ?></option>

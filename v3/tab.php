@@ -743,7 +743,7 @@ render_header($tab['title'] . ' ' . $tab['part'], 'lives');
                 <div class="tab-step__body" id="tab-step-src" hidden>
                     <label class="field">YouTube
                         <span class="tab-settings__row">
-                            <input type="url" data-set="youtube" maxlength="500" placeholder="https://youtu.be/…">
+                            <input autocomplete="off" type="url" data-set="youtube" maxlength="500" placeholder="https://youtu.be/…">
                             <?php if ((string)(config('youtube')['api_key'] ?? '') !== ''): ?>
                                 <button type="button" class="icon-btn" data-search-open="yt_search" aria-label="動画検索" title="動画検索"><?= icon('search') ?></button>
                             <?php endif; ?>
@@ -853,7 +853,7 @@ render_header($tab['title'] . ' ' . $tab['part'], 'lives');
     <details class="card tab-more" data-edit-only>
         <summary class="tab-summary"><?= icon('tune') ?> 詳細設定 <?= icon('expand_more', 'tab-summary__chev') ?></summary>
         <div class="tab-settings">
-            <label class="field tab-settings__wide">パート <input type="text" data-set="part" maxlength="20"></label>
+            <label class="field tab-settings__wide">パート <input autocomplete="off" type="text" data-set="part" maxlength="20"></label>
             <label class="field" data-partial-field>開始小節
                 <span class="tab-settings__row"><input type="number" data-set="first_bar" min="1" max="999" inputmode="numeric">
                     <label class="check" title="部分 TAB"><input type="checkbox" data-set="partial"> 部分</label></span>
@@ -866,7 +866,7 @@ render_header($tab['title'] . ' ' . $tab['part'], 'lives');
             <div class="field tab-settings__wide" data-string-only>チューニング
                 <span class="tab-settings__row">
                     <select data-set="tuning-preset" aria-label="チューニング"></select>
-                    <input type="text" data-set="tuning" maxlength="30" aria-label="チューニングの音名" hidden>
+                    <input autocomplete="off" type="text" data-set="tuning" maxlength="30" aria-label="チューニングの音名" hidden>
                 </span>
             </div>
             <label class="field tab-settings__wide">メモ

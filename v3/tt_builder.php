@@ -129,7 +129,7 @@ if ($id <= 0) {
         <?= csrf_field() ?>
         <input type="hidden" name="action" value="upload">
         <label class="field"><span>ライブ名</span>
-            <input name="title" maxlength="100" required placeholder="例: 9月ライブ"></label>
+            <input autocomplete="off" name="title" maxlength="100" required placeholder="例: 9月ライブ"></label>
         <label class="dropzone" data-dropzone>
             <input type="file" name="files[]" accept=".csv,.xlsx,.xlsm,.pdf,text/csv,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" multiple required data-file-input>
             <span class="dropzone__icon" aria-hidden="true"><?= icon('upload_file') ?></span>

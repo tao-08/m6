@@ -231,13 +231,13 @@ render_header('セッティングシート作成', $blank ? 'tools' : 'lives');
     <section class="card sheet-card">
         <h2 class="sheet-card__title">基本</h2>
         <div class="sheet-grid">
-            <label class="field sheet-grid__wide">バンド名 <input type="text" data-f="band" maxlength="100"></label>
+            <label class="field sheet-grid__wide">バンド名 <input autocomplete="off" type="text" data-f="band" maxlength="100"></label>
             <!-- data-field: シートにその欄が無い会場では JS が隠す（例: サークル共通シートには出演日が無い） -->
-            <label class="field sheet-grid__wide" data-field="kana"><span data-kana-label>フリガナ</span> <input type="text" data-f="kana" maxlength="100" placeholder="バンド名の読み（カタカナ）"></label>
+            <label class="field sheet-grid__wide" data-field="kana"><span data-kana-label>フリガナ</span> <input autocomplete="off" type="text" data-f="kana" maxlength="100" placeholder="バンド名の読み（カタカナ）"></label>
             <!-- 年・月・日が印刷済みのシートでも、入力は出演日の欄1つ（PDF に書くときに数字を取り出す） -->
-            <label class="field" data-field="date year month day">出演日 <input type="text" data-f="date" maxlength="20" placeholder="2026/10/12"></label>
-            <label class="field" data-field="order">出演順 <input type="text" data-f="order" maxlength="3" inputmode="numeric"></label>
-            <label class="field" data-field="rep">代表者氏名 <input type="text" data-f="rep" maxlength="50"></label>
+            <label class="field" data-field="date year month day">出演日 <input autocomplete="off" type="text" data-f="date" maxlength="20" placeholder="2026/10/12"></label>
+            <label class="field" data-field="order">出演順 <input autocomplete="off" type="text" data-f="order" maxlength="3" inputmode="numeric"></label>
+            <label class="field" data-field="rep">代表者氏名 <input autocomplete="off" type="text" data-f="rep" maxlength="50"></label>
         </div>
     </section>
 

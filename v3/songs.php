@@ -469,7 +469,7 @@ render_header('楽曲データベース', 'tools');
             <input type="hidden" name="track" value="" data-song-track>
             <h2 class="songs-add__title"><?= icon('library_music') ?> 楽曲情報を検索</h2>
             <div class="songs-add__search">
-                <input type="search" class="search" maxlength="100" placeholder="曲名 アーティスト名" data-song-q aria-label="曲を検索">
+                <input type="search" autocomplete="off" class="search" maxlength="100" placeholder="曲名 アーティスト名" data-song-q aria-label="曲を検索">
                 <button type="button" class="icon-btn" data-song-search aria-label="検索" title="検索"><?= icon('search') ?></button>
             </div>
             <ul class="songs-add__results" data-song-results></ul>
@@ -480,7 +480,7 @@ render_header('楽曲データベース', 'tools');
             <?= csrf_field() ?>
             <input type="hidden" name="action" value="add_free">
             <h2 class="songs-add__title"><?= icon('music_note') ?> 連携なし</h2>
-            <label class="field">曲名 <input type="text" name="title" maxlength="100" required></label>
+            <label class="field">曲名 <input autocomplete="off" type="text" name="title" maxlength="100" required></label>
             <label class="field">アーティスト
                 <input type="text" name="artist" list="songs-artists" maxlength="100" required autocomplete="off">
             </label>
@@ -495,7 +495,7 @@ render_header('楽曲データベース', 'tools');
 <form method="get" class="songs-filter" data-songs-filter>
     <input type="hidden" name="sort" value="<?= h($sort) ?>">
     <input type="hidden" name="dir" value="<?= h($dir) ?>">
-    <input type="search" class="search" name="q" value="<?= h($q) ?>" maxlength="100" placeholder="曲名・アーティスト" aria-label="曲名・アーティスト">
+    <input type="search" autocomplete="off" class="search" name="q" value="<?= h($q) ?>" maxlength="100" placeholder="曲名・アーティスト" aria-label="曲名・アーティスト">
     <select name="tab" aria-label="絞り込み">
         <option value="">絞り込み</option>
         <option value="has"<?= $tabFilter === 'has' ? ' selected' : '' ?>>TAB あり</option>

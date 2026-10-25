@@ -95,7 +95,7 @@ function manual_row_html(string $i, array $r, array $rosterChoices, array $dayLa
         // 決まった日程名（'__day__' は JS が置きかえるひな形）は文字だけ、新しい日程名は入力欄
         $field = $label === '__day__' || in_array($label, $dayLabels, true)
             ? '<input type="hidden" name="r[' . $i . '][divider]" value="' . h($label) . '"><span class="manual-divider__label">' . h($label) . '</span>'
-            : '<input class="manual-divider__input" name="r[' . $i . '][divider]" value="' . h($label) . '" maxlength="50" placeholder="新しい日程名（例: 野外ライブ）"'
+            : '<input autocomplete="off" class="manual-divider__input" name="r[' . $i . '][divider]" value="' . h($label) . '" maxlength="50" placeholder="新しい日程名（例: 野外ライブ）"'
                 . ' aria-label="新しい日程名" required data-manual-new-day>';
         return '<tr class="manual-divider" data-manual-divider>' . $handle
             . '<td colspan="3"><div class="manual-divider__inner">' . $field
@@ -690,7 +690,7 @@ if ($plan === null): // ==================== アップロード画面 ==========
                         <option value="new"<?= $venueSel === 'new' ? ' selected' : '' ?>>＋ 新しい会場を作る</option>
                     </select>
                     <!-- 「新しい会場を作る」を選んだときだけ表示（JS で切り替え） -->
-                    <input name="tt[<?= $ti ?>][venue_new]" value="<?= h($venueNew) ?>" maxlength="50" placeholder="新しい会場名" aria-label="新しい会場名" data-venue-new<?= $venueSel === 'new' ? '' : ' hidden' ?>>
+                    <input autocomplete="off" name="tt[<?= $ti ?>][venue_new]" value="<?= h($venueNew) ?>" maxlength="50" placeholder="新しい会場名" aria-label="新しい会場名" data-venue-new<?= $venueSel === 'new' ? '' : ' hidden' ?>>
                 </div>
             </div>
             <div class="checks">
@@ -744,7 +744,7 @@ if ($plan === null): // ==================== アップロード画面 ==========
                             <td><input name="tt[<?= $ti ?>][s][<?= $si ?>][roster]" value="<?= h($roster) ?>" data-suggest-list="dl-roster" data-suggest-seed="[data-band-name]" autocomplete="off"
 							class="name-input <?= $rosterClass ?>" title="<?= h($rosterHint) ?>" placeholder="名簿から検索" data-roster-input aria-label="名簿のバンド"></td>
                             <td><input type="number" class="input-num" name="tt[<?= $ti ?>][s][<?= $si ?>][songs]" value="<?= h($fs['songs'] ?? $s['song_count'] ?? '') ?>" min="0" aria-label="曲数"></td>
-                            <td><input name="tt[<?= $ti ?>][s][<?= $si ?>][note]" value="<?= h($fs['note'] ?? '') ?>" maxlength="255" aria-label="メモ"></td>
+                            <td><input autocomplete="off" name="tt[<?= $ti ?>][s][<?= $si ?>][note]" value="<?= h($fs['note'] ?? '') ?>" maxlength="255" aria-label="メモ"></td>
                         </tr>
                     <?php endforeach; ?>
                     </tbody>

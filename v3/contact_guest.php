@@ -71,11 +71,11 @@ render_header('問い合わせ');
         <?php if ($error): ?><div class="flash flash--error"><?= h($error) ?></div><?php endif; ?>
         <label class="field">
             <span>氏名</span>
-            <input type="text" name="name" value="<?= h($name) ?>" maxlength="50" required autofocus>
+            <input autocomplete="off" type="text" name="name" value="<?= h($name) ?>" maxlength="50" required autofocus>
         </label>
         <label class="field">
             <span>連絡先（メールアドレスなど）</span>
-            <input type="text" name="contact" value="<?= h($contact) ?>" maxlength="100" required>
+            <input autocomplete="off" type="text" name="contact" value="<?= h($contact) ?>" maxlength="100" required>
         </label>
         <label class="field">
             <span>内容（1000文字まで）</span>

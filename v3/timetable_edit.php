@@ -304,7 +304,7 @@ function render_break_row(string $n, string $dayId, array $k, int $cols, bool $f
         <td class="muted" title="休憩など（出演順には数えない）"><?= icon('coffee') ?></td>
         <td data-time><input type="time" step="300" name="<?= h($p) ?>[start]" value="<?= h(fmt_time($k['start_time'])) ?>" aria-label="開始" data-time-field="start"></td>
         <td data-time><input type="time" step="300" name="<?= h($p) ?>[end]" value="<?= h(fmt_time($k['end_time'])) ?>" aria-label="終了" data-time-field="end"></td>
-        <td><input name="<?= h($p) ?>[name]" value="<?= h($k['name']) ?>" maxlength="50" required aria-label="休憩の名前" placeholder="休憩 / 転換 など"></td>
+        <td><input autocomplete="off" name="<?= h($p) ?>[name]" value="<?= h($k['name']) ?>" maxlength="50" required aria-label="休憩の名前" placeholder="休憩 / 転換 など"></td>
         <td colspan="<?= $cols ?>" data-break-fill>
             <button type="button" class="btn btn--ghost btn--sm" data-remove-break aria-label="この行を消す" title="この行を消す"><?= icon('close') ?> この行を消す</button>
         </td>
@@ -396,7 +396,7 @@ render_header('タイムテーブルを編集', 'lives'); ?>
                             <td data-time><input type="time" step="300" name="<?= $p ?>[start]" value="<?= h(fmt_time($b['start_time'])) ?>" aria-label="開始" data-time-field="start"></td>
                             <td data-time><input type="time" step="300" name="<?= $p ?>[end]" value="<?= h(fmt_time($b['end_time'])) ?>" aria-label="終了" data-time-field="end"></td>
                             <!-- バンド名の横に 🚩（楽器の確認待ち。取り込み画面の名簿と同じ部品）。列を増やすと並び替え・列の追加の JS に響くので同じセルに置く -->
-                            <td><div class="tt-band-name"><input name="<?= $p ?>[name]" value="<?= h($b['name']) ?>" maxlength="100" required data-band-name aria-label="バンド名">
+                            <td><div class="tt-band-name"><input autocomplete="off" name="<?= $p ?>[name]" value="<?= h($b['name']) ?>" maxlength="100" required data-band-name aria-label="バンド名">
                                 <?= check_picker($p, (int)$b['needs_check'], array_column(array_filter($members, static fn($m) => $m['id'] !== null), 'name', 'id'), $b['check_who'] ?? [], '',
                                     array_keys(array_filter($instsOf[$id] ?? [], static fn($insts) => in_array(instrument_id_by_short('Vo'), $insts, true)))) ?></div></td>
                             <?php for ($n = 0; $n < $cols; $n++):

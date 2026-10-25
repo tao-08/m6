@@ -127,7 +127,7 @@ render_header('アカウント設定');
         <h2 class="section-title section-title--card">プロフィール</h2>
         <p class="muted small">まだメンバーと紐付いていません。管理者に依頼してください。（紐付くとマイページが使用できます）。</p>
         <?= csrf_field() ?><input type="hidden" name="action" value="profile">
-        <label class="field"><span>名前</span><input name="name" value="<?= h($account['name']) ?>" maxlength="50" required></label>
+        <label class="field"><span>名前</span><input autocomplete="name" name="name" value="<?= h($account['name']) ?>" maxlength="50" required></label>
         <div class="form-actions"><button class="btn btn--primary btn--sm" type="submit">保存</button></div>
     </form>
     <?php else: ?>
@@ -136,8 +136,8 @@ render_header('アカウント設定');
         <?= csrf_field() ?>
         <input type="hidden" name="member_id" value="<?= (int)$myMember['member_id'] ?>">
         <input type="hidden" name="return" value="account">
-        <label class="field"><span>名前</span><input name="name" value="<?= h($myMember['name']) ?>" maxlength="50" required></label>
-        <label class="field"><span>ふりがな</span><input name="name_kana" value="<?= h($myMember['name_kana']) ?>" maxlength="50"></label>
+        <label class="field"><span>名前</span><input autocomplete="name" name="name" value="<?= h($myMember['name']) ?>" maxlength="50" required></label>
+        <label class="field"><span>ふりがな</span><input autocomplete="off" name="name_kana" value="<?= h($myMember['name_kana']) ?>" maxlength="50"></label>
         <label class="field"><span>ひとこと</span><textarea name="bio" rows="3" maxlength="100"><?= h($myMember['bio']) ?></textarea></label>
         <label class="field"><span>入部年度</span><input type="number" name="entry_year" min="1950" max="2100" value="<?= (int)$myMember['entry_year'] ?: '' ?>"<?= $account['is_admin'] ? '' : ' disabled title="管理者のみ変更可"' ?>></label>
         <?= profile_faculty_role_fields($pdo, $myMember) ?>
