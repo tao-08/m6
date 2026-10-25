@@ -113,6 +113,39 @@ function youtube_playlist_items(string $playlistId): array
 }
 
 /**
+ * 動画を検索する（TAB の音源選び用。search.list は1回 100 ユニットと重いので、呼ぶ側でキャッシュする）
+ *   戻り値: [['video_id' => ..., 'title' => ..., 'channel' => ...], ...]（埋め込みできる動画だけ・関連度順）
+ * @throws RuntimeException キーが無い・通信できない
+ */
+function youtube_search(string $q, int $max = 8): array
+{
+    $key = (string)(config('youtube')['api_key'] ?? '');
+    if ($key === '') {
+        throw new RuntimeException('config.php に YouTube の API キー（youtube.api_key）が設定されていません');
+    }
+    $query = http_build_query(['part' => 'snippet', 'type' => 'video', 'videoEmbeddable' => 'true', 'maxResults' => $max, 'q' => $q]);
+    $res = album_http('https://www.googleapis.com/youtube/v3/search?' . $query, ['X-Goog-Api-Key: ' . $key]);
+    if ($res === null) {
+        throw new RuntimeException('YouTube に接続できませんでした。時間をおいてもう一度試してください');
+    }
+    if ($res['status'] !== 200 || !is_array($res['json'])) {
+        $reason = $res['json']['error']['message'] ?? ('HTTP ' . $res['status']);
+        throw new RuntimeException('YouTube を検索できませんでした（' . $reason . '）');
+    }
+    $videos = [];
+    foreach ($res['json']['items'] ?? [] as $item) {
+        $id = (string)($item['id']['videoId'] ?? '');
+        if (!youtube_video_id_valid($id)) {
+            continue;
+        }
+        // search.list のタイトルは &#39; などの HTML エンティティ入りで返ってくるので戻す（表示は JS が textContent で入れる）
+        $dec = static fn($s) => html_entity_decode((string)$s, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $videos[] = ['video_id' => $id, 'title' => $dec($item['snippet']['title'] ?? ''), 'channel' => $dec($item['snippet']['channelTitle'] ?? '')];
+    }
+    return $videos;
+}
+
+/**
  * 動画をバンドに割り当てる（DB も通信も使わない、純粋な計算だけ → tests/run.php でテストできる）
  *
  * @param array $videos [['video_id' => ..., 'title' => ...], ...]

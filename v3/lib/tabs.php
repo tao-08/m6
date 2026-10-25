@@ -598,3 +598,53 @@ function tab_sanitize_practice(mixed $data): ?array
     }
     return ['m' => $m, 'ab' => $ab, 'bpm' => $bpm, 'metro' => $metro];
 }
+
+/** BPM 検索（GetSongBPM）が使えるか。キーが無ければボタンを出さない */
+function tab_bpm_search_enabled(): bool
+{
+    return (string)(config('getsongbpm')['api_key'] ?? '') !== '';
+}
+
+/**
+ * 曲名・アーティスト名から BPM を検索する（GetSongBPM の search API）
+ *   戻り値: [['title' => ..., 'artist' => ..., 'bpm' => 120.0, 'time_sig' => '4/4'], ...]（BPM が分かるものだけ・最大8件）
+ * @throws RuntimeException キーが無い・通信できない
+ */
+function tab_bpm_search(string $title, ?string $artist): array
+{
+    $key = (string)(config('getsongbpm')['api_key'] ?? '');
+    if ($key === '') {
+        throw new RuntimeException('config.php に GetSongBPM の API キー（getsongbpm.api_key）が設定されていません');
+    }
+    // アーティストも分かれば type=both（曲名 + アーティスト）で絞る。キーはヘッダーで渡せない API なので URL に入れる
+    $both = $artist !== null && trim($artist) !== '';
+    $query = http_build_query([
+        'api_key' => $key,
+        'type'    => $both ? 'both' : 'song',
+        'lookup'  => $both ? 'song:' . $title . ' artist:' . $artist : $title,
+    ]);
+    $res = album_http('https://api.getsong.co/search/?' . $query);
+    if ($res === null) {
+        throw new RuntimeException('GetSongBPM に接続できませんでした。時間をおいてもう一度試してください');
+    }
+    if ($res['status'] !== 200 || !is_array($res['json'])) {
+        throw new RuntimeException('BPM を検索できませんでした（HTTP ' . $res['status'] . '）');
+    }
+    $items = $res['json']['search'] ?? [];
+    if (!is_array($items) || isset($items['error'])) { // 見つからないときは {"search":{"error":"no result"}}
+        return [];
+    }
+    $out = [];
+    foreach ($items as $it) {
+        $bpm = (float)($it['tempo'] ?? 0);
+        if (!is_array($it) || $bpm < 20 || $bpm > 400) {
+            continue;
+        }
+        $out[] = ['title' => (string)($it['title'] ?? ''), 'artist' => (string)($it['artist']['name'] ?? ''), 'bpm' => $bpm,
+            'time_sig' => (string)($it['time_sig'] ?? '')];
+        if (count($out) >= 8) {
+            break;
+        }
+    }
+    return $out;
+}

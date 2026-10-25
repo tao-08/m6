@@ -155,6 +155,29 @@ if ($action === 'practice') {
     exit;
 }
 
+if ($action === 'yt_search' || $action === 'bpm_search') {
+    // 音源の動画・BPM の候補を探す。検索語は DB の曲名・アーティスト名から作る（ブラウザから好きな語で API を叩かせない）
+    //   YouTube の検索は1回 100 ユニット（無料枠 1日 10,000）と重いので、同じ TAB の結果はセッションに覚えて使い回す
+    $st = $pdo->prepare('SELECT title, artist_name FROM song_tab WHERE tab_id = ?');
+    $st->execute([$tabId]);
+    $song = $st->fetch();
+    if (!$song) {
+        fail(404, 'TAB が見つかりません');
+    }
+    $cacheKey = $action . ':' . $tabId;
+    if (!isset($_SESSION['tab_search'][$cacheKey])) {
+        try {
+            $_SESSION['tab_search'][$cacheKey] = $action === 'yt_search'
+                ? youtube_search(trim($song['title'] . ' ' . ($song['artist_name'] ?? '')))
+                : tab_bpm_search($song['title'], $song['artist_name']);
+        } catch (RuntimeException $e) {
+            fail(502, $e->getMessage());
+        }
+    }
+    echo json_encode(['ok' => true, 'items' => $_SESSION['tab_search'][$cacheKey]], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
 if ($action === 'restore') {
     // 履歴の1行の時点に戻す。保存されていた JSON をそのまま信用せず、保存と同じ検査を通し直す
     $revId = tab_int($body['rev_id'] ?? null) ?? 0;

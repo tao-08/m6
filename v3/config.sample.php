@@ -38,6 +38,12 @@ return [
         'youtube' => [
             'api_key' => '',
         ],
+        // TAB の BPM を曲名から検索する（tab.php）のに使う GetSongBPM のキー（https://getsongbpm.com/api で無料登録）
+        //   無料の条件: サイトのどこかに getsongbpm.com へのリンクを載せること（TAB の検索結果に出している）
+        //   空なら BPM 検索のボタンだけ出ない
+        'getsongbpm' => [
+            'api_key' => '',
+        ],
         // タイムテーブル・名簿の「画像」を AI（Claude）で読み取る（import.php）のに使う Anthropic の API キー
         //   https://console.anthropic.com で作る。Console の「Limits」で月の利用上限を必ず設定しておく
         //   空なら画像の読み取りだけ使えない（CSV / Excel / PDF はそのまま使える）

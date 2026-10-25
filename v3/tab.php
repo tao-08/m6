@@ -437,7 +437,14 @@ render_header($tab['title'] . ' ' . $tab['part'], 'lives');
                     <?= icon('expand_more', 'tab-step__chev') ?>
                 </button>
                 <div class="tab-step__body" id="tab-step-src" hidden>
-                    <label class="field">YouTube <input type="url" data-set="youtube" maxlength="500" placeholder="https://youtu.be/…"></label>
+                    <label class="field">YouTube
+                        <span class="tab-settings__row">
+                            <input type="url" data-set="youtube" maxlength="500" placeholder="https://youtu.be/…">
+                            <?php if ((string)(config('youtube')['api_key'] ?? '') !== ''): ?>
+                                <button type="button" class="icon-btn" data-search-open="yt_search" aria-label="動画検索" title="動画検索"><?= icon('search') ?></button>
+                            <?php endif; ?>
+                        </span>
+                    </label>
                     <div class="tab-step__actions">
                         <button type="button" class="btn" data-setup-skip-src>音源なし</button>
                         <button type="button" class="btn btn--primary" data-setup-next disabled>次へ</button>
@@ -458,6 +465,11 @@ render_header($tab['title'] . ' ' . $tab['part'], 'lives');
                                 <input type="number" data-set="bpm" min="20" max="400" step="0.01" inputmode="decimal">
                                 <!-- BPM 計測: 曲に合わせて4回以上タップ（小節の頭を合わせる「タップ」とは別） -->
                                 <button type="button" class="icon-btn" data-bpm-tap aria-label="BPM計測" title="BPM計測（4回以上タップ）"><?= icon('speed') ?></button>
+                                <!-- 自動検知: 手元のファイルを開いているときだけ（YouTube の音はブラウザから読めない） -->
+                                <button type="button" class="icon-btn" data-bpm-detect aria-label="BPM自動検知" title="BPM自動検知（ファイル）" disabled><?= icon('graphic_eq') ?></button>
+                                <?php if (tab_bpm_search_enabled()): ?>
+                                    <button type="button" class="icon-btn" data-search-open="bpm_search" aria-label="BPM検索" title="BPM検索"><?= icon('search') ?></button>
+                                <?php endif; ?>
                             </span>
                         </label>
                         <label class="field">拍子 <input type="number" data-set="beats" min="1" max="16" step="1" inputmode="numeric"></label>
@@ -662,6 +674,18 @@ render_header($tab['title'] . ' ' . $tab['part'], 'lives');
         </div>
     </dialog>
 
+    <!-- 検索の候補（動画 / BPM）: 開くと JS が api_tab_save の yt_search / bpm_search で一覧を作る。押した候補を設定欄に入れる（保存はまだ） -->
+    <dialog class="modal" data-search aria-labelledby="tab-search-title">
+        <div class="modal__body">
+            <h3 id="tab-search-title" class="modal__title"><?= icon('search') ?> <span data-search-title></span></h3>
+            <p class="small muted" data-search-status role="status"></p>
+            <ul class="tab-search" data-search-list></ul>
+            <!-- GetSongBPM の無料キーの条件（getsongbpm.com へのリンクを載せる） -->
+            <p class="small muted" data-search-credit hidden>BPM: <a href="https://getsongbpm.com" target="_blank" rel="noopener">GetSongBPM</a></p>
+            <div class="form-actions"><button type="button" class="btn btn--ghost" data-search-close aria-label="閉じる" title="閉じる"><?= icon('close') ?></button></div>
+        </div>
+    </dialog>
+
     <!-- 履歴: 開くと JS が api_tab_save の history で一覧を作る（文字は textContent で入れる） -->
     <dialog class="modal" data-history aria-labelledby="tab-history-title">
         <div class="modal__body">
@@ -706,6 +730,7 @@ render_header($tab['title'] . ' ' . $tab['part'], 'lives');
                 <li><?= icon('upload_file') ?><span>インポート: 文字・画像の TAB を取込</span></li>
                 <li><?= icon('touch_app') ?><span>タップ: 再生しながら小節の頭で T を押して位置を補正</span></li>
                 <li><?= icon('speed') ?><span>BPM 計測: 曲に合わせて4回以上タップ</span></li>
+                <li><?= icon('search') ?><?= icon('graphic_eq') ?><span>動画・BPM の検索 / ファイルから BPM 自動検知</span></li>
                 <li><?= icon('undo') ?><?= icon('redo') ?><span>元に戻す・やり直す</span></li>
                 <li><?= icon('history') ?><span>履歴から復元</span></li>
                 <li><?= icon('sticky_note_2') ?><span>メモ・画像・参考リンク</span></li>

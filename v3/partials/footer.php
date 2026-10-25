@@ -1,6 +1,8 @@
 </main>
 <footer class="footer">
     <p>&copy; <?= date('Y') ?> <?= h(APP_NAME) ?> by tao__08</p>
+    <?php // GetSongBPM の無料 API キーの条件: ログインしなくても見えるページに getsongbpm.com へのリンクを載せる（TAB の BPM 検索） ?>
+    <p class="small">BPM data by <a href="https://getsongbpm.com" target="_blank" rel="noopener">GetSongBPM</a></p>
 </footer>
 <?php
 /*

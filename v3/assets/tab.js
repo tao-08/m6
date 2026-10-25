@@ -307,6 +307,73 @@
     return bpm >= 20 && bpm <= 400 ? Math.round(bpm * 100) / 100 : null;
   }
   /**
+   * BPM 自動検知: 音声（チャンネルごとの Float32Array の配列）から BPM を推定する。10秒未満・無音に近いときは null
+   *   モノラルに混ぜ、曲の中ほど（先頭 30秒 か 10% のどちらか短いほうから最大90秒）だけを使う
+   *   512サンプルごとのエネルギーの対数の増え方（半波整流）= 音の立ち上がりの強さ → 0.5秒の移動平均を引いて 0 未満は 0
+   *   その自己相関を取り、60〜200 BPM を 0.1 刻みで、拍の周期の 1〜4 倍のずれの相関を足して採点（1/k の重み）
+   *   倍・半分の取り違えを減らすため、120 BPM 付近を少しだけ優遇する（対数ガウス）
+   * @returns {number|null} 小数1桁に丸めた BPM
+   */
+  function detectBpm(channels, sampleRate) {
+    const HOP = 512;
+    const total = channels[0] ? channels[0].length : 0;
+    const start = Math.floor(Math.min(30 * sampleRate, total * 0.1));
+    const end = Math.min(total, start + 90 * sampleRate);
+    if ((end - start) < 10 * sampleRate) return null;
+    const nFrames = Math.floor((end - start) / HOP);
+    const fps = sampleRate / HOP;
+    const energy = new Float64Array(nFrames);
+    let peak = 0;
+    for (let f = 0; f < nFrames; f++) {
+      let s = 0;
+      const from = start + f * HOP;
+      for (let i = from; i < from + HOP; i++) {
+        let v = 0;
+        for (let c = 0; c < channels.length; c++) v += channels[c][i];
+        v /= channels.length;
+        s += v * v;
+      }
+      energy[f] = Math.sqrt(s / HOP);
+      if (energy[f] > peak) peak = energy[f];
+    }
+    if (peak < 1e-3) return null; // ほぼ無音
+    const onset = new Float64Array(nFrames);
+    for (let i = 1; i < nFrames; i++) onset[i] = Math.max(0, Math.log(energy[i] + 1e-9) - Math.log(energy[i - 1] + 1e-9));
+    // 0.5秒の移動平均を引く（累積和で計算）
+    const half = Math.max(1, Math.round(fps * 0.25));
+    const cum = new Float64Array(nFrames + 1);
+    for (let i = 0; i < nFrames; i++) cum[i + 1] = cum[i] + onset[i];
+    const env = new Float64Array(nFrames);
+    for (let i = 0; i < nFrames; i++) {
+      const a = Math.max(0, i - half), b = Math.min(nFrames, i + half + 1);
+      env[i] = Math.max(0, onset[i] - (cum[b] - cum[a]) / (b - a));
+    }
+    // 自己相関（ずれが大きいほど重なる長さが減るので、重なりの数で割る）
+    const maxLag = Math.min(Math.ceil(fps * 4) + 2, nFrames - 2);
+    const ac = new Float64Array(maxLag + 1);
+    for (let lag = 0; lag <= maxLag; lag++) {
+      let s = 0;
+      for (let i = lag; i < nFrames; i++) s += env[i] * env[i - lag];
+      ac[lag] = s / (nFrames - lag);
+    }
+    if (ac[0] <= 0) return null;
+    const at = (x) => { // 線形補間
+      const i = Math.floor(x);
+      return i + 1 > maxLag ? 0 : ac[i] + (ac[i + 1] - ac[i]) * (x - i);
+    };
+    let best = null, bestScore = 0;
+    for (let t = 600; t <= 2000; t++) {
+      const bpm = t / 10;
+      const p = 60 / bpm * fps;
+      let score = 0;
+      for (let k = 1; k <= 4; k++) score += at(k * p) / k;
+      const oct = Math.log2(bpm / 120) / 0.6;
+      score *= Math.exp(-0.5 * oct * oct);
+      if (score > bestScore) { bestScore = score; best = bpm; }
+    }
+    return best === null ? null : Math.round(best * 10) / 10;
+  }
+  /**
    * ASCII の TAB（`e|--3--5-|` の形）を、小節と音符にする。弦の数が合わない・TAB の行が無いときは error に理由。
    *   上の行 = 1弦（一番高い弦）。`|` で小節を区切る。2桁のフレット・x（ミュート）を読む。h p s b / \ ~ ^ などの奏法の記号は無視して数字だけ使う
    *   音符の位置は、小節の中の文字の位置を stepsPerBar マスに丸めて決める
@@ -594,6 +661,7 @@
 
   let clock = null;
   let srcKind = 'none';
+  let srcFile = null;
   let ytId = youtubeIdOf(st.youtubeUrl);
   /*
    * 練習 BPM（自分だけの設定。song_tab_practice に自動保存）
@@ -625,6 +693,9 @@
       clock = internalClock(onClockChange);
     }
     srcKind = kind;
+    srcFile = kind === 'file' ? file : null; // BPM 自動検知に使う手元のファイル
+    const detectBtn = $('[data-bpm-detect]');
+    if (detectBtn) detectBtn.disabled = !srcFile;
     videoBox.hidden = kind !== 'yt';
     clock.setRate(currentRate());
     if (prevTime > 0) clock.seek(prevTime);
@@ -2264,7 +2335,10 @@
     if (bpmTaps.length && now - bpmTaps[bpmTaps.length - 1] > 2000) bpmTaps = []; // 2秒あいたら最初から
     bpmTaps = [...bpmTaps, now].slice(-8);
     const bpm = tapTempoBpm(bpmTaps);
-    if (bpm === null) return;
+    if (bpm !== null) setBpm(bpm);
+  });
+  /** BPM を設定する（タップ計測・検索・自動検知で共通）。保存はしない */
+  function setBpm(bpm) {
     st.bpm = bpm;
     inputs.bpm.value = String(bpm);
     recompute();
@@ -2272,7 +2346,91 @@
     syncPbpmField();
     requestFrame();
     refreshDirty();
+  }
+
+  /* ---- BPM 自動検知: 手元のファイルを端末の中で解析する（送信なし）---- */
+  const detectBtn = $('[data-bpm-detect]');
+  detectBtn?.addEventListener('click', async () => {
+    const file = srcFile;
+    if (!file) return;
+    detectBtn.disabled = true;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    let ctx = null;
+    try {
+      ctx = new AC();
+      const buf = await ctx.decodeAudioData(await file.arrayBuffer());
+      const chans = [];
+      for (let c = 0; c < buf.numberOfChannels; c++) chans.push(buf.getChannelData(c));
+      const bpm = detectBpm(chans, buf.sampleRate);
+      if (bpm === null) throw new Error('BPM を検知できませんでした');
+      setBpm(bpm);
+      notify(`BPM ${bpm}`);
+    } catch (err) {
+      notify('BPM を検知できませんでした', 'error');
+    } finally {
+      if (ctx) ctx.close().catch(() => {});
+      detectBtn.disabled = !srcFile;
+    }
   });
+
+  /* ---- 検索（動画 / BPM）: 結果は textContent だけで組み立てる。選ぶと欄に入れるだけで、保存は別 ---- */
+  const searchDlg = $('[data-search]');
+  if (searchDlg) {
+    const searchTitle = $('[data-search-title]', searchDlg);
+    const searchStatus = $('[data-search-status]', searchDlg);
+    const searchList = $('[data-search-list]', searchDlg);
+    const searchCredit = $('[data-search-credit]', searchDlg);
+    let searchSeq = 0; // 古い応答が新しい検索の結果を上書きしないように
+    async function openSearch(action) {
+      const seq = ++searchSeq;
+      searchTitle.textContent = action === 'yt_search' ? '動画検索' : 'BPM検索';
+      searchCredit.hidden = action !== 'bpm_search'; // BPM のデータ提供元の表記（利用条件）
+      searchStatus.textContent = '検索中…';
+      searchList.replaceChildren();
+      if (!searchDlg.open) searchDlg.showModal();
+      try {
+        const json = await post({ action, tab_id: D.tab_id });
+        if (seq !== searchSeq) return;
+        const items = json.items || [];
+        searchStatus.textContent = items.length ? '' : '見つかりませんでした';
+        items.forEach((it) => {
+          const li = el('li');
+          const b = el('button', 'tab-search__btn');
+          b.type = 'button';
+          const text = el('span', 'tab-search__text');
+          if (action === 'yt_search') {
+            const img = el('img');
+            img.src = `https://i.ytimg.com/vi/${encodeURIComponent(it.video_id)}/mqdefault.jpg`;
+            img.alt = '';
+            img.loading = 'lazy';
+            text.append(el('span', '', it.title), el('span', 'muted small', it.channel));
+            b.append(img, text);
+            b.addEventListener('click', () => {
+              inputs.youtube.value = 'https://www.youtube.com/watch?v=' + encodeURIComponent(it.video_id);
+              inputs.youtube.dispatchEvent(new Event('input', { bubbles: true }));
+              inputs.youtube.dispatchEvent(new Event('change', { bubbles: true }));
+              searchDlg.close();
+              notify('反映しました（保存はまだです）');
+            });
+          } else {
+            text.append(el('span', 'tab-search__bpm', 'BPM ' + it.bpm), el('span', '', `${it.title} · ${it.artist}`), el('span', 'muted small', it.time_sig || ''));
+            b.append(text);
+            b.addEventListener('click', () => {
+              setBpm(Number(it.bpm));
+              searchDlg.close();
+              notify('反映しました（保存はまだです）');
+            });
+          }
+          li.appendChild(b);
+          searchList.appendChild(li);
+        });
+      } catch (err) {
+        if (seq === searchSeq) searchStatus.textContent = err.message || '検索できませんでした';
+      }
+    }
+    $$('[data-search-open]').forEach((b) => b.addEventListener('click', () => openSearch(b.dataset.searchOpen)));
+    $('[data-search-close]', searchDlg).addEventListener('click', () => searchDlg.close());
+  }
 
   /* ---- 練習 BPM の欄・ループごとの BPM 増加 ---- */
   pbpmEl.addEventListener('change', () => {
