@@ -550,11 +550,14 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 }
 .timeline--compact .slot:not(.slot--break) .slot__body { display: flex; align-items: center; padding-block: 8px; }
 .timeline--compact .slot__head { flex: 1; min-width: 0; }
-.timeline--compact .slot__title > :not(.slot__name),
+.timeline--compact .slot__title > :not(.slot__name):not(.slot__yt),
 .timeline--compact .slot__like,
 .timeline--compact .lineup,
-.timeline--compact .slot__meta,
 .timeline--compact .slot__body > p.muted { display: none; }
+/* 縮小中も SE と セットリスト登録済のラベルだけは残す（バンド名の右）。それ以外の曲数・名前などは隠す。
+   font-size: 0 は、タグに包まれていない文字（アーティスト名の区切りなど）を見えなくするため */
+.timeline--compact .slot__meta { margin: 0 0 0 8px; flex-wrap: nowrap; gap: 6px; font-size: 0; }
+.timeline--compact .slot__meta > :not(.se-mark):not(.setlist-badge) { display: none; }
 
 .lineup { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px 16px; }
 .lineup li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
