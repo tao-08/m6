@@ -1379,6 +1379,15 @@ function setupComments() {
  * ------------------------------------------------------------------- */
 function setupSmallThings() {
   document.querySelectorAll('[data-autosubmit]').forEach((sel) => sel.addEventListener('change', () => submitKeepScroll(sel.form)));
+  // 集計の「よく組む学年区分」: 絞り込みで読み直しても選んだ区分を保つ
+  document.querySelectorAll('input[name="grade-mix"]').forEach((r) => {
+    try {
+      if (r.value === sessionStorage.getItem('grade-mix')) r.checked = true;
+    } catch (e) { /* 保存できないときは既定のまま */ }
+    r.addEventListener('change', () => {
+      try { sessionStorage.setItem('grade-mix', r.value); } catch (e) { /* 同上 */ }
+    });
+  });
   // submitKeepScroll で送ったあとの読み直し: 送る前のスクロール位置に戻す（同じページのときだけ）
   try {
     const saved = JSON.parse(sessionStorage.getItem('keep-scroll') || 'null');
