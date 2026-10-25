@@ -3965,9 +3965,9 @@ function setupAlbumModal() {
     if (!el) return;
     e.preventDefault(); // リンク（JS なしのときの行き先）の移動は止める
     if (el.closest('[data-just-dragged]')) return; // 並び替えのドラッグを離したときの click
-    const { albumTitle: title, albumYear: year, albumArt: src, albumApp: app, albumUrl: url } = el.dataset;
+    const { albumTitle: title, albumYear: year, albumArtist: artist, albumArt: src, albumApp: app, albumUrl: url } = el.dataset;
     dlg.querySelector('[data-album-name]').textContent = title;
-    dlg.querySelector('[data-album-year]').textContent = year || '';
+    dlg.querySelector('[data-album-year]').textContent = [artist, year].filter(Boolean).join(' · ');
     art.hidden = !src;
     if (src) art.src = src;
     dlg.querySelector('[data-album-search]').href = `search?q=${encodeURIComponent(title)}`;

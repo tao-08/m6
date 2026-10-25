@@ -382,7 +382,7 @@ render_header($member['name'], 'members');
                     <?php $k = album_key($a['source'], $a['album_id']); ?>
                     <!-- array_key_exists: キーがあれば値が null でも true（isset は null だと false になるので、ここでは使えない） -->
                     <?php $listenUrl = album_listen_url($viewerApp, $a, array_key_exists($k, $linkCache) ? $linkCache[$k] : false); ?>
-                    <?php $openAttrs = album_open_attrs($a['title'], $a['release_year'] ? (int)$a['release_year'] : null, $a['artwork_url'], listen_app($viewerApp, $a['source']), $listenUrl); ?>
+                    <?php $openAttrs = album_open_attrs($a['title'], $a['release_year'] ? (int)$a['release_year'] : null, $a['artwork_url'], listen_app($viewerApp, $a['source']), $listenUrl, (string)$a['artist_name']); ?>
                     <?php if ($isMe): ?>
                         <!-- 本人のページ: ジャケットはドラッグで並び替えるためのつかむ場所。動かさずに押すと、アルバムのモーダルが開く（assets/app.js の setupAlbumModal） -->
                         <img class="album__art" src="<?= h($a['artwork_url']) ?>" alt="<?= h($a['title']) ?> のジャケット" loading="lazy" width="600" height="600"<?= $openAttrs ?>>
