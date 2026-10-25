@@ -202,12 +202,13 @@
       // パートのカードの削除（自作 TAB が無いパートだけ。リンク・メモ・画像ごと消える）
       card.querySelector('[data-part-del]')?.addEventListener('click', async (e) => {
         if (!window.confirm('削除しますか？')) return;
-        e.currentTarget.disabled = true;
+        const btn = e.currentTarget;
+        btn.disabled = true;
         try {
           await post({ action: 'part_delete', ...base, part });
           window.location.reload();
         } catch (err) {
-          e.currentTarget.disabled = false;
+          btn.disabled = false;
           notify(err.message || '削除できませんでした', 'error');
         }
       });
@@ -216,7 +217,7 @@
     document.querySelectorAll('[data-part-add]').forEach((btn) => btn.addEventListener('click', async () => {
       btn.disabled = true;
       try {
-        await post({ action: 'part_add', ...base, instrument_id: Number(btn.dataset.partAdd) });
+        await post({ action: 'part_add', ...base, instrument_id: /^\d+$/.test(btn.dataset.partAdd) ? Number(btn.dataset.partAdd) : btn.dataset.partAdd });
         window.location.reload();
       } catch (err) {
         btn.disabled = false;
@@ -227,7 +228,7 @@
 
   /* ---------------------------------------------------------------
    * 曲の一覧ページ: カードのリンク（U-FRET・楽器.me・Songsterr・YouTube）。カードごとに1回呼ぶ（part = パート名、'' = 曲全体）
-   *   ✨検索 … AI・Google が候補を探す（api_tab_save の link_search。曲全体のカードだけ）。候補の ＋ で登録
+   *   ✨検索 … AI・Tavily が候補を探す（api_tab_save の link_search。曲全体のカードだけ）。候補の ＋ で登録
    *   動画 … YouTube 専用の検索ダイアログ（ページに1つ。開いたカードのパートに登録する）
    *   URL 欄 … 自分で見つけたページを貼って登録
    *   登録・削除のあとは再読み込みして、PHP が出す一覧（サイト順）に揃える
@@ -264,7 +265,7 @@
     }));
 
     // ---- YouTube 専用の検索ダイアログ（api_tab_save の yt_link_search）----
-    //   サムネイルを押すとその場で埋め込み再生（試し見）。＋で登録（続けて何本でも登録できるよう、閉じたときに再読み込み）
+    //   サムネイルを押すとその場で埋め込み再生（試し見）。＋で登録すると閉じて再読み込み
     //   ダイアログはページに1つ。最初のカードの呼び出しで動きを付け、ほかのカードは ytsDlg._open() で開く（カードごとに登録先のパートと検索語が変わる）
     const ytsDlg = document.querySelector('[data-yts]');
     if (ytsDlg && !ytsDlg._ready) {
@@ -332,8 +333,7 @@
               try {
                 await post({ action: 'link_add', ...base(), url: v.url, label: v.title });
                 added = true;
-                btn.replaceChildren(icon('check'));
-                btn.title = '登録済み';
+                ytsDlg.close(); // 閉じたときに再読み込み（下の close イベント）
               } catch (err) {
                 btn.disabled = false;
                 notify(err.message || '登録できませんでした', 'error');
@@ -381,9 +381,9 @@
       try {
         const json = await post({ action: 'link_search', ...ids });
         // 実費（AI を呼んだときだけ。使い回しは 0円なので出さない）
-        if (json.usage || json.google) {
+        if (json.usage || json.searches) {
           const parts = [];
-          if (json.google) parts.push('Google ' + json.google + '回');
+          if (json.searches) parts.push('検索 ' + json.searches + '回');
           if (json.usage) parts.push('AI 約' + json.usage.yen + '円・検索' + json.usage.web_search_requests + '回');
           notify(parts.join(' / '));
         }
@@ -2893,12 +2893,10 @@
     const searchTitle = $('[data-search-title]', searchDlg);
     const searchStatus = $('[data-search-status]', searchDlg);
     const searchList = $('[data-search-list]', searchDlg);
-    const searchCredit = $('[data-search-credit]', searchDlg);
     let searchSeq = 0; // 古い応答が新しい検索の結果を上書きしないように
     async function openSearch(action) {
       const seq = ++searchSeq;
-      searchTitle.textContent = action === 'yt_search' ? '動画検索' : action === 'bpm_ai' ? 'BPM AI推定' : 'BPM検索';
-      searchCredit.hidden = action !== 'bpm_search'; // BPM のデータ提供元の表記（利用条件）
+      searchTitle.textContent = action === 'yt_search' ? '動画検索' : 'BPM AI推定';
       searchStatus.textContent = action === 'bpm_ai' ? '検索中…（十数秒かかります）' : '検索中…';
       searchList.replaceChildren();
       if (!searchDlg.open) searchDlg.showModal();
@@ -2928,15 +2926,11 @@
               notify('反映しました（保存はまだです）');
             });
           } else {
-            if (action === 'bpm_ai') {
-              // 主な値は信頼度、別案（倍・半分）はその旨を添える
-              const conf = { high: '高', medium: '中', low: '低' }[it.confidence] || '';
-              const basis = it.basis === 'web' ? 'ウェブ' : '記憶'; // 根拠: ウェブで見つけた値 / AI の記憶（こちらは外れやすい）
-              text.append(el('span', 'tab-search__bpm', 'BPM ' + it.bpm + (it.note ? `（${it.note}）` : '')),
-                el('span', 'muted small', [it.time_sig, basis, it.note ? '' : '信頼度 ' + conf].filter(Boolean).join(' · ')));
-            } else {
-              text.append(el('span', 'tab-search__bpm', 'BPM ' + it.bpm), el('span', '', `${it.title} · ${it.artist}`), el('span', 'muted small', it.time_sig || ''));
-            }
+            // 主な値は信頼度、別案（倍・半分）はその旨を添える
+            const conf = { high: '高', medium: '中', low: '低' }[it.confidence] || '';
+            const basis = it.basis === 'web' ? 'ウェブ' : '記憶'; // 根拠: ウェブで見つけた値 / AI の記憶（こちらは外れやすい）
+            text.append(el('span', 'tab-search__bpm', 'BPM ' + it.bpm + (it.note ? `（${it.note}）` : '')),
+              el('span', 'muted small', [it.time_sig, basis, it.note ? '' : '信頼度 ' + conf].filter(Boolean).join(' · ')));
             b.append(text);
             b.addEventListener('click', () => {
               setBpm(Number(it.bpm));

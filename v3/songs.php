@@ -232,6 +232,23 @@ foreach ($st as $r) {
     }
     $groups[$r['song_key']]['tabs'] = (int)$r['n'];
 }
+// 登録済みのリンク（U-FRET・楽器.me・YouTube など。MV は除く）も TAB の数に足す。テーブルがまだ無い（マイグレーション前）なら何もしない
+try {
+    $st = $pdo->query('SELECT song_key, COUNT(*) AS n, MAX(title) AS title, MAX(artist_name) AS artist_name FROM song_link WHERE site <> \'mv\' GROUP BY song_key');
+    foreach ($st as $r) {
+        if (!isset($groups[$r['song_key']])) {
+            $groups[$r['song_key']] = [
+                'key' => $r['song_key'], 'title' => (string)$r['title'], 'artist' => $r['artist_name'], 'art' => null, 'album' => null, 'year' => null, 'src' => null, 'tid' => null,
+                'plays' => 0, 'last' => null, 'bands' => [], 'song_id' => null, 'catalog_id' => null, 'tabs' => 0, 'artist_id' => null,
+            ];
+        }
+        $groups[$r['song_key']]['tabs'] += (int)$r['n'];
+    }
+} catch (PDOException $e) {
+    if ($e->getCode() !== '42S02') {
+        throw $e;
+    }
+}
 
 // ---- 4. 版違い（アルバム違いで曲キーが分かれたもの）を「同じ曲」にまとめる ----
 //   まとめるキー（work_key）= アーティスト + 曲名のキー（song_title_key。"Lemon - Acoustic ver." も "Lemon"）。
@@ -368,6 +385,18 @@ if ($workOfKey) {
     }
 }
 $ytEnabled = (string)(config('youtube')['api_key'] ?? '') !== '';
+
+/** MV の1件分（再生サムネイル + YouTube へのリンク + 削除）。JS が差し替えるときは <template> に同じものを入れる */
+function songs_mv_item(string $videoId, string $label, string $linkId): string
+{
+    $id = h($videoId);
+    return '<li class="songs-mv__item" data-link-id="' . h($linkId) . '">'
+        . '<button type="button" class="yts__thumb songs-mv__thumb" data-mv-play="' . $id . '" aria-label="再生" title="' . h($label !== '' ? $label : '再生') . '">'
+        . '<img src="https://i.ytimg.com/vi/' . $id . '/mqdefault.jpg" alt="" loading="lazy">' . icon('play_circle') . '</button>'
+        . '<button type="button" class="icon-btn icon-btn--sm songs-mv__edit" data-mv-open aria-label="動画を選択" title="動画を選択">' . icon('edit') . '</button>'
+        . '<button type="button" class="icon-btn icon-btn--sm" data-mv-del aria-label="削除" title="削除">' . icon('delete') . '</button>'
+        . '</li>';
+}
 
 /** 今の絞り込み・並びを保ったまま、一部だけ変えた一覧の URL（初期値は URL に出さない） */
 function songs_url(array $over): string
@@ -560,17 +589,13 @@ $deleteForm = static fn(array $v, string $open = ''): string => '<form method="p
                 <?php if ($mvs || $ytEnabled): ?>
                     <section class="songs-mv" data-mv data-mv-key="<?= h($rep['key']) ?>" data-mv-query="<?= h(mb_substr(trim($g['title'] . ' ' . (string)$g['artist'] . ' MV'), 0, 100)) ?>">
                         <ul class="songs-mv__list" data-mv-list>
-                            <?php foreach ($mvs as $mv): ?>
-                                <li class="songs-mv__item" data-link-id="<?= $mv['link_id'] ?>">
-                                    <button type="button" class="yts__thumb songs-mv__thumb" data-mv-play="<?= h($mv['video_id']) ?>" aria-label="再生" title="<?= h($mv['label'] ?: '再生') ?>">
-                                        <img src="https://i.ytimg.com/vi/<?= h($mv['video_id']) ?>/mqdefault.jpg" alt="" loading="lazy"><?= icon('play_circle') ?>
-                                    </button>
-                                    <button type="button" class="icon-btn icon-btn--sm" data-mv-del aria-label="削除" title="削除"><?= icon('delete') ?></button>
-                                </li>
+                            <?php foreach (array_slice($mvs, 0, 1) as $mv): // MV は1曲に1本 ?>
+                                <?= songs_mv_item($mv['video_id'], (string)$mv['label'], (string)$mv['link_id']) ?>
                             <?php endforeach; ?>
                         </ul>
                         <?php if ($ytEnabled): ?>
-                            <button type="button" class="btn btn--sm" data-mv-open title="MV を検索"><?= icon('movie') ?> <?= icon('search') ?></button>
+                            <button type="button" class="btn btn--sm" data-mv-auto <?= $mvs ? 'hidden' : '' ?> title="MV を検索して設定"><?= icon('add') ?>MV</button>
+                            <template data-mv-tpl><?= songs_mv_item('VIDEOID', '', '0') ?></template>
                             <dialog class="yts" data-mv-dlg>
                                 <form class="yts__bar" data-mv-form>
                                     <input type="search" name="q" maxlength="100" aria-label="検索語" autocomplete="off">

@@ -46,13 +46,16 @@
     return f;
   }
 
-  // 曲モーダルの MV: サムネイルを押すとその場で再生 / 🗑で削除 / 🎬🔍で YouTube を検索して＋で登録
+  // 曲モーダルの MV（1曲に1本）: 🎬🔍 で検索して一番上を自動で設定 / サムネイルでその場再生 / YouTube アイコンで YouTube へ / ✎ で検索リストから選び直し / 🗑で削除
   //   ユーザーや YouTube から来た文字（タイトル）は textContent にだけ入れる（innerHTML は使わない）
   function setupMv(modal) {
     const box = modal.querySelector('[data-mv]');
     if (!box) return;
     const list = box.querySelector('[data-mv-list]');
     const ids = { song_key: box.dataset.mvKey };
+    const autoBtn = box.querySelector('[data-mv-auto]');
+    const tpl = box.querySelector('[data-mv-tpl]');
+    const dlg = box.querySelector('[data-mv-dlg]');
 
     const bindPlay = (btn) => btn.addEventListener('click', () => {
       btn.replaceChildren(embed(btn.dataset.mvPlay, btn.title));
@@ -64,28 +67,54 @@
       try {
         await post({ action: 'link_delete', link_id: Number(btn.closest('[data-link-id]').dataset.linkId) });
         btn.closest('li').remove();
+        if (autoBtn) autoBtn.hidden = false;
       } catch (err) {
         btn.disabled = false;
         notify(err.message || '削除できませんでした', 'error');
       }
     });
-    list.querySelectorAll('[data-mv-play]').forEach(bindPlay);
-    list.querySelectorAll('[data-mv-del]').forEach(bindDel);
+    const bindItem = (li) => {
+      bindPlay(li.querySelector('[data-mv-play]'));
+      bindDel(li.querySelector('[data-mv-del]'));
+      const edit = li.querySelector('[data-mv-open]');
+      if (edit && dlg) edit.addEventListener('click', openDlg);
+    };
+    list.querySelectorAll('li').forEach(bindItem);
+    if (!dlg || !tpl) return;
 
-    const dlg = box.querySelector('[data-mv-dlg]');
-    if (!dlg) return;
     const form = dlg.querySelector('[data-mv-form]');
     const results = dlg.querySelector('[data-mv-results]');
     const setMsg = (text) => { results.replaceChildren(); const li = document.createElement('li'); li.className = 'muted small'; li.textContent = text; results.appendChild(li); };
     const closeDlg = () => dlg.close();
+    const query = () => form.elements.q.value.trim() || box.dataset.mvQuery || '';
+
+    // 動画を1本だけ設定する（サーバーが古い MV を置き換える）。一覧もその1件に差し替える
+    const setMv = async (v) => {
+      const res = await post({ action: 'link_add', ...ids, url: v.url, label: v.title, kind: 'mv' });
+      const li = tpl.content.firstElementChild.cloneNode(true);
+      li.dataset.linkId = String(res.link.id);
+      li.classList.add('is-new'); // 貼られたときの軽いアニメーション
+      const play = li.querySelector('[data-mv-play]');
+      play.dataset.mvPlay = v.video_id;
+      play.title = v.title;
+      play.querySelector('img').src = 'https://i.ytimg.com/vi/' + encodeURIComponent(v.video_id) + '/mqdefault.jpg';
+      list.replaceChildren(li);
+      bindItem(li);
+      if (autoBtn) autoBtn.hidden = true;
+    };
+    const find = async () => {
+      const json = await post({ action: 'yt_link_search', ...ids, q: query() });
+      if (!Array.isArray(json.items)) throw new Error('検索できませんでした'); // 200 でも JSON でない応答（PHP の警告など）は {} になる
+      return json.items;
+    };
 
     const search = async () => {
       setMsg('…');
       try {
-        const json = await post({ action: 'yt_link_search', ...ids, q: form.elements.q.value.trim() });
+        const items = await find();
         results.replaceChildren();
-        if (!json.items.length) { setMsg('見つかりませんでした'); return; }
-        json.items.forEach((v) => {
+        if (!items.length) { setMsg('見つかりませんでした'); return; }
+        items.forEach((v) => {
           const li = document.createElement('li');
           li.className = 'yts__item';
           const thumb = document.createElement('button');
@@ -108,60 +137,48 @@
           ch.className = 'yts__ch';
           ch.textContent = v.channel;
           text.appendChild(ch);
-          const add = document.createElement('button');
-          add.type = 'button';
-          add.className = 'icon-btn';
-          add.title = add.ariaLabel = v.added ? '登録済み' : '登録';
-          add.disabled = !!v.added;
-          add.appendChild(icon(v.added ? 'check' : 'add'));
-          add.addEventListener('click', async () => {
-            add.disabled = true;
+          const pick = document.createElement('button');
+          pick.type = 'button';
+          pick.className = 'icon-btn';
+          pick.title = pick.ariaLabel = v.added ? '設定中' : '設定';
+          pick.disabled = !!v.added;
+          pick.appendChild(icon(v.added ? 'check' : 'add'));
+          pick.addEventListener('click', async () => {
+            pick.disabled = true;
             try {
-              const res = await post({ action: 'link_add', ...ids, url: v.url, label: v.title, kind: 'mv' });
-              add.replaceChildren(icon('check'));
-              add.title = add.ariaLabel = '登録済み';
-              // モーダルの一覧にも足す（再読み込みせず、続けて何本でも登録できる）
-              const item = document.createElement('li');
-              item.className = 'songs-mv__item';
-              item.dataset.linkId = String(res.link.id);
-              const play = document.createElement('button');
-              play.type = 'button';
-              play.className = 'yts__thumb songs-mv__thumb';
-              play.dataset.mvPlay = v.video_id;
-              play.title = v.title;
-              play.setAttribute('aria-label', '再生');
-              const pimg = document.createElement('img');
-              pimg.src = img.src;
-              pimg.alt = '';
-              play.append(pimg, icon('play_circle'));
-              const del = document.createElement('button');
-              del.type = 'button';
-              del.className = 'icon-btn icon-btn--sm';
-              del.dataset.mvDel = '';
-              del.title = '削除';
-              del.setAttribute('aria-label', '削除');
-              del.appendChild(icon('delete'));
-              item.append(play, del);
-              list.appendChild(item);
-              bindPlay(play);
-              bindDel(del);
+              await setMv(v);
+              closeDlg();
             } catch (err) {
-              add.disabled = false;
-              notify(err.message || '登録できませんでした', 'error');
+              pick.disabled = false;
+              notify(err.message || '設定できませんでした', 'error');
             }
           });
-          li.append(thumb, text, add);
+          li.append(thumb, text, pick);
           results.appendChild(li);
         });
       } catch (err) {
         setMsg(err.message || '検索できませんでした');
       }
     };
-    box.querySelector('[data-mv-open]').addEventListener('click', () => {
+    function openDlg() {
       if (!form.elements.q.value) form.elements.q.value = box.dataset.mvQuery || '';
       dlg.showModal();
       if (!results.children.length) search();
-    });
+    }
+    if (autoBtn) {
+      autoBtn.addEventListener('click', async () => { // 検索して一番上をそのまま設定
+        autoBtn.disabled = true;
+        try {
+          const items = await find();
+          if (!items.length) { notify('見つかりませんでした', 'error'); return; }
+          await setMv(items[0]);
+        } catch (err) {
+          notify(err.message || '設定できませんでした', 'error');
+        } finally {
+          autoBtn.disabled = false;
+        }
+      });
+    }
     form.addEventListener('submit', (e) => { e.preventDefault(); search(); });
     dlg.querySelector('[data-mv-close]').addEventListener('click', closeDlg);
     dlg.addEventListener('click', (e) => { e.stopPropagation(); if (e.target === dlg) closeDlg(); });

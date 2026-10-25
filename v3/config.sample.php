@@ -38,21 +38,14 @@ return [
         'youtube' => [
             'api_key' => '',
         ],
-        // 曲ページの「検索」（tab.php）で U-FRET・楽器.me のページを Google で探すための Programmable Search Engine（JSON API）
-        //   1. https://programmablesearchengine.google.com/ で検索エンジンを作る（検索対象は ufret.jp と gakki.me、または「ウェブ全体」）→ 「検索エンジン ID」が cx
-        //   2. Google Cloud Console で「Custom Search API」を有効にして API キーを作る（キーの「APIの制限」は Custom Search API だけに）
-        //   無料枠は1日100回（検索1回 = 1サイト分。1曲で2回使う）。超えるとエラーになるだけで、料金は有効化しない限りかからない
-        //   空なら全部 AI（anthropic）で探す。※ キーはパスワードと同じ。人に見せない・git に入れない
-        'google_cse' => [
-            'api_key' => '',
-            'cx'      => '',
-        ],
-        // TAB の BPM を曲名から検索する（tab.php）のに使う GetSongBPM のキー（https://getsongbpm.com/api で無料登録）
-        //   無料の条件: サイトのどこかに getsongbpm.com へのリンクを載せること（TAB の検索結果に出している）
-        //   空なら BPM 検索のボタンだけ出ない
-        'getsongbpm' => [
+
+        // 曲ページの「検索」（tab.php）で U-FRET・楽器.me のページを探す Tavily のキー（https://tavily.com で無料登録。月1,000回まで無料）
+        //   空なら AI 検索だけになる
+        //   ※ パスワードと同じ。人に見せない・git に入れない
+        'tavily' => [
             'api_key' => '',
         ],
+
         // タイムテーブル・名簿の「画像」を AI（Claude）で読み取る（import.php）のに使う Anthropic の API キー
         //   https://console.anthropic.com で作る。Console の「Limits」で月の利用上限を必ず設定しておく
         //   空なら画像の読み取りだけ使えない（CSV / Excel / PDF はそのまま使える）

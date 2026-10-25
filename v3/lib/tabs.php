@@ -600,8 +600,7 @@ function tab_sanitize_practice(mixed $data): ?array
 }
 
 /**
- * 曲名・アーティスト名から、AI（Claude）に BPM を推定してもらう（GetSongBPM に載っていない日本の曲向け）
- *   AI の記憶による推定なので、確実な値ではない。呼ぶ側は「AI 推定」と分かるように出し、ユーザーが選んだときだけ反映すること。
+ * 曲名・アーティスト名から、AI（Claude）に BPM を推定してもらう *   AI の記憶による推定なので、確実な値ではない。呼ぶ側は「AI 推定」と分かるように出し、ユーザーが選んだときだけ反映すること。
  *   戻り値: [['title' => ..., 'artist' => ..., 'bpm' => 120.0, 'time_sig' => '4/4', 'confidence' => 'high|medium|low', 'note' => '']]
  *           主な値 + 倍・半分の別案（あれば）。知らない曲は空配列（数字を作らせない）
  * @throws RuntimeException AI が使えない・失敗した
@@ -845,55 +844,56 @@ function tab_rename_part(PDO $pdo, string $songKey, string $old, string $new): v
     }
 }
 
-/** Google の検索（Programmable Search Engine の JSON API）が使えるか。config.php の google_cse（api_key と cx）が両方あれば使える */
-function tab_google_enabled(): bool
+/** サイト内検索（Tavily）が使えるか。config.php の tavily.api_key があれば使える */
+function tab_search_enabled(): bool
 {
-    $c = config('google_cse') ?? [];
-    return (string)($c['api_key'] ?? '') !== '' && (string)($c['cx'] ?? '') !== '';
+    $c = config('tavily') ?? [];
+    return (string)($c['api_key'] ?? '') !== '';
 }
 
 /**
- * Google で、あるサイトの中だけを検索する（siteSearch で1サイトに絞る）。1回で無料枠（1日100回）の1回分を使う
- *   戻り値: [['url' => 'https://…', 'title' => '…'], ...]（Google の順位順）
- * @throws RuntimeException キーが無い・通信できない・上限に達した
+ * Tavily で、あるサイトの中だけを検索する（include_domains で1サイトに絞る）。1回で無料枠（月1,000回）の1回分を使う
+ * @throws RuntimeException 通信できない・キーが違う・上限に達した
  */
-function tab_google_search(string $query, string $site, int $num = 5): array
+function tab_site_search(string $query, string $site, int $num): array
 {
-    $c = config('google_cse') ?? [];
-    if (!tab_google_enabled()) {
-        throw new RuntimeException('config.php に Google 検索の設定（google_cse.api_key / cx）がありません');
-    }
-    $qs = http_build_query(['cx' => (string)$c['cx'], 'q' => $query, 'num' => $num, 'siteSearch' => $site, 'siteSearchFilter' => 'i', 'hl' => 'ja']);
-    $res = album_http('https://www.googleapis.com/customsearch/v1?' . $qs, ['X-Goog-Api-Key: ' . (string)$c['api_key']]); // キーは URL ではなくヘッダーで渡す（ログに残さない）
+    $c = config('tavily') ?? [];
+    $body = json_encode(['query' => $query, 'include_domains' => [$site], 'max_results' => max(1, min($num, 20)), 'search_depth' => 'basic'], JSON_UNESCAPED_UNICODE);
+    $res = album_http('https://api.tavily.com/search', ['Content-Type: application/json', 'Authorization: Bearer ' . (string)$c['api_key']], $body); // キーはヘッダーで渡す（ログに残さない）
     if ($res === null) {
-        throw new RuntimeException('Google に接続できませんでした。時間をおいてもう一度試してください');
+        throw new RuntimeException('Tavily に接続できませんでした。時間をおいてもう一度試してください');
     }
     if ($res['status'] !== 200 || !is_array($res['json'])) {
-        $reason = $res['json']['error']['message'] ?? ('HTTP ' . $res['status']);
-        throw new RuntimeException('Google を検索できませんでした（' . $reason . '）');
+        $d = $res['json']['detail'] ?? null;
+        $reason = is_array($d) ? (string)($d['error'] ?? 'HTTP ' . $res['status']) : (is_string($d) ? $d : 'HTTP ' . $res['status']);
+        throw new RuntimeException('Tavily を検索できませんでした（' . $reason . '）');
     }
     $out = [];
-    foreach ($res['json']['items'] ?? [] as $it) {
-        if (is_array($it) && is_string($it['link'] ?? null)) {
-            $out[] = ['url' => $it['link'], 'title' => (string)($it['title'] ?? '')];
+    foreach ($res['json']['results'] ?? [] as $r) {
+        $host = is_array($r) && is_string($r['url'] ?? null) ? (string)parse_url($r['url'], PHP_URL_HOST) : '';
+        if ($host !== '' && ($host === $site || str_ends_with($host, '.' . $site))) { // 念のためホストでも絞る
+            $out[] = ['url' => $r['url'], 'title' => (string)($r['title'] ?? '')];
         }
     }
     return $out;
 }
 
 /**
- * Google の検索で、U-FRET と楽器.me のページを探す（サイトごとに上位3件まで）
+ * Tavily の検索で、U-FRET と楽器.me のページを探す（サイトごとに上位3件まで）
  *   「初心者」「簡単」の版（簡単に弾けるようにアレンジしたもの）は、通常版より後ろに回す。返す前に tab_link_normalize() で URL の形を確かめる
  *   戻り値は tab_link_ai() と同じ形: [['site' => 'ufret', 'url' => …, 'title' => …], ...]
- * @throws RuntimeException Google が使えない・失敗した
+ * @throws RuntimeException Tavily が使えない・失敗した
  */
-function tab_link_google(string $title, ?string $artist): array
+function tab_link_site(string $title, ?string $artist): array
 {
+    // 題名に曲名が入っているものだけ残す（Tavily は意味で探すので、同じアーティストの別の曲が上に来ることがある）。比較は記号・空白・大文字小文字を無視
+    $squash = static fn(string $t): string => preg_replace('/[^\p{L}\p{N}]+/u', '', mb_strtolower($t));
+    $need = $squash($title);
     $query = trim($title . ' ' . ($artist ?? ''));
     $out = [];
     foreach (['ufret' => 'ufret.jp', 'gakki' => 'gakki.me'] as $site => $host) {
         $found = [];
-        foreach (tab_google_search($query, $host, 6) as $r) {
+        foreach (tab_site_search($query, $host, 6) as $r) {
             $norm = tab_link_normalize($r['url']);
             if ($norm === null || $norm[0] !== $site) {
                 continue;
@@ -901,10 +901,13 @@ function tab_link_google(string $title, ?string $artist): array
             if ($site === 'ufret' && !str_contains($norm[1], '/song.php')) {
                 continue; // アーティストの一覧ページなどは入れない（曲のページだけ）
             }
+            if ($need !== '' && !str_contains($squash($r['title']), $need)) {
+                continue;
+            }
             $t = preg_replace('/[\x00-\x1F\x7F]/u', '', $r['title']);
             $found[] = ['site' => $site, 'url' => $norm[1], 'title' => mb_substr(trim((string)$t), 0, 100)];
         }
-        // 簡単版は後ろへ（usort は PHP 8 で安定ソート = 同じ区分の中の Google の順位は変わらない）
+        // 簡単版は後ろへ（usort は PHP 8 で安定ソート = 同じ区分の中の Tavily の順位は変わらない）
         usort($found, static fn($a, $b) => (int)preg_match('/初心者|簡単/u', $a['title']) <=> (int)preg_match('/初心者|簡単/u', $b['title']));
         $out = array_merge($out, array_slice($found, 0, 3));
     }
@@ -912,25 +915,30 @@ function tab_link_google(string $title, ?string $artist): array
 }
 
 /**
- * U-FRET・楽器.me・Songsterr のページを探す（YouTube は専用の検索）。Google が使えれば U-FRET・楽器.me は Google、Songsterr は AI。
- *   Google が使えない・失敗したときは、3サイトとも AI に探させる。どちらも使えなければ例外
- *   戻り値: ['items' => [['site', 'url', 'title'], ...], 'usage' => AI の使用量と実費 or null, 'google' => Google の検索回数]
+ * U-FRET・楽器.me・Songsterr のページを探す（YouTube は専用の検索）。Tavily が使えれば U-FRET・楽器.me は Tavily、Songsterr は AI。
+ *   Tavily が使えない・失敗したときは、3サイトとも AI に探させる。どちらも使えなければ例外
+ *   戻り値: ['items' => [['site', 'url', 'title'], ...], 'usage' => AI の使用量と実費 or null, 'searches' => 検索の回数]
  * @throws RuntimeException 検索が設定されていない・両方失敗した
  */
 function tab_link_find(string $title, ?string $artist): array
 {
     $items = [];
     $aiSites = ['ufret', 'gakki', 'songsterr'];
-    $google = 0;
+    $searches = 0;
     $lastError = null;
-    if (tab_google_enabled()) {
+    if (tab_search_enabled()) {
         try {
-            $items = tab_link_google($title, $artist);
-            $google = 2;
-            $aiSites = ['songsterr']; // Google が探したサイトは AI に頼まない（検索の回数・お金を減らす）
+            $items = tab_link_site($title, $artist);
+            $searches = 2;
+            $aiSites = ['songsterr']; // Tavily が探したサイトは AI に頼まない（検索の回数・お金を減らす）
+            foreach (['ufret', 'gakki'] as $site) {
+                if (!in_array($site, array_column($items, 'site'), true)) {
+                    $aiSites[] = $site; // 曲名が合う結果が1件も無いサイトは、AI に探させる
+                }
+            }
         } catch (RuntimeException $e) {
-            $lastError = $e; // Google がだめでも AI で探す
-            error_log('[link_google] ' . $e->getMessage());
+            $lastError = $e; // Tavily がだめでも AI で探す
+            error_log('[link_site] ' . $e->getMessage());
         }
     }
     $usage = null;
@@ -948,7 +956,7 @@ function tab_link_find(string $title, ?string $artist): array
     }
     $rank = array_flip(['ufret', 'gakki', 'songsterr']);
     usort($items, static fn($a, $b) => $rank[$a['site']] <=> $rank[$b['site']]); // サイト順（同じサイトの中の順位は変えない）
-    return ['items' => $items, 'usage' => $usage, 'google' => $google];
+    return ['items' => $items, 'usage' => $usage, 'searches' => $searches];
 }
 
 /**
@@ -960,7 +968,7 @@ function tab_link_find(string $title, ?string $artist): array
 function tab_link_ai(string $title, ?string $artist, array $sites = ['ufret', 'gakki', 'songsterr']): array
 {
     $model = (string)(config('anthropic')['bpm_model'] ?? 'claude-sonnet-5-5'); // BPM の推定と同じモデル（軽い用途）
-    // サイトごとの探し方（検索はサイトごとに1回。Google の検索が使えるときは、呼ぶ側が U-FRET・楽器.me を外して Songsterr だけ頼む）
+    // サイトごとの探し方（検索はサイトごとに1回。Tavily の検索が使えるときは、呼ぶ側が U-FRET・楽器.me を外して Songsterr だけ頼む）
     $how = [
         'ufret'     => 'U-FRET（ufret.jp。コード譜）を「曲名 アーティスト U-FRET コード」で探す',
         'gakki'     => '楽器.me（gakki.me。コード譜）を「曲名 アーティスト 楽器.me コード」で探す',
@@ -1030,7 +1038,7 @@ function tab_link_ai(string $title, ?string $artist, array $sites = ['ufret', 'g
 
 /**
  * YouTube リンクの練習プレイヤーの設定（song_link_practice.data）を検証してきれいにする。おかしければ null
- *   {"m": マーカー, "ab": [A, B] or null, "rate": 再生速度 0.25〜2, "back": 戻す秒数 1〜60}
+ *   {"m": マーカー, "ab": [A, B] or null, "rate": 再生速度 0.25〜2, "back": 戻す秒数 1〜60, "pad": 区間リピートの前後の余白秒数 0〜10}
  *   マーカーと AB は TAB の練習用マーカーと同じ形なので、tab_sanitize_practice() に任せる
  */
 function tab_sanitize_link_practice(mixed $data): ?array
@@ -1044,58 +1052,9 @@ function tab_sanitize_link_practice(mixed $data): ?array
     }
     $rate = $data['rate'] ?? 1;
     $back = tab_int($data['back'] ?? 5);
-    if ((!is_int($rate) && !is_float($rate)) || $rate < 0.25 || $rate > 2 || $back === null || $back < 1 || $back > 60) {
+    $pad = tab_int($data['pad'] ?? 2);
+    if ((!is_int($rate) && !is_float($rate)) || $rate < 0.25 || $rate > 2 || $back === null || $back < 1 || $back > 60 || $pad === null || $pad < 0 || $pad > 10) {
         return null;
     }
-    return ['m' => $base['m'], 'ab' => $base['ab'], 'rate' => round((float)$rate, 2), 'back' => $back];
-}
-
-/** BPM 検索（GetSongBPM）が使えるか。キーが無ければボタンを出さない */
-function tab_bpm_search_enabled(): bool
-{
-    return (string)(config('getsongbpm')['api_key'] ?? '') !== '';
-}
-
-/**
- * 曲名・アーティスト名から BPM を検索する（GetSongBPM の search API）
- *   戻り値: [['title' => ..., 'artist' => ..., 'bpm' => 120.0, 'time_sig' => '4/4'], ...]（BPM が分かるものだけ・最大8件）
- * @throws RuntimeException キーが無い・通信できない
- */
-function tab_bpm_search(string $title, ?string $artist): array
-{
-    $key = (string)(config('getsongbpm')['api_key'] ?? '');
-    if ($key === '') {
-        throw new RuntimeException('config.php に GetSongBPM の API キー（getsongbpm.api_key）が設定されていません');
-    }
-    // アーティストも分かれば type=both（曲名 + アーティスト）で絞る。キーはヘッダーで渡せない API なので URL に入れる
-    $both = $artist !== null && trim($artist) !== '';
-    $query = http_build_query([
-        'api_key' => $key,
-        'type'    => $both ? 'both' : 'song',
-        'lookup'  => $both ? 'song:' . $title . ' artist:' . $artist : $title,
-    ]);
-    $res = album_http('https://api.getsong.co/search/?' . $query);
-    if ($res === null) {
-        throw new RuntimeException('GetSongBPM に接続できませんでした。時間をおいてもう一度試してください');
-    }
-    if ($res['status'] !== 200 || !is_array($res['json'])) {
-        throw new RuntimeException('BPM を検索できませんでした（HTTP ' . $res['status'] . '）');
-    }
-    $items = $res['json']['search'] ?? [];
-    if (!is_array($items) || isset($items['error'])) { // 見つからないときは {"search":{"error":"no result"}}
-        return [];
-    }
-    $out = [];
-    foreach ($items as $it) {
-        $bpm = (float)($it['tempo'] ?? 0);
-        if (!is_array($it) || $bpm < 20 || $bpm > 400) {
-            continue;
-        }
-        $out[] = ['title' => (string)($it['title'] ?? ''), 'artist' => (string)($it['artist']['name'] ?? ''), 'bpm' => $bpm,
-            'time_sig' => (string)($it['time_sig'] ?? '')];
-        if (count($out) >= 8) {
-            break;
-        }
-    }
-    return $out;
+    return ['m' => $base['m'], 'ab' => $base['ab'], 'rate' => round((float)$rate, 2), 'back' => $back, 'pad' => $pad];
 }

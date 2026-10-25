@@ -48,7 +48,7 @@
     keepalive: !!keepalive,
     credentials: 'same-origin',
     headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': token },
-    body: JSON.stringify({ action: 'link_practice', link_id: D.link_id, data: { m: P.m, ab: P.ab, rate: P.rate, back: P.back } }),
+    body: JSON.stringify({ action: 'link_practice', link_id: D.link_id, data: { m: P.m, ab: P.ab, rate: P.rate, back: P.back, pad: P.pad } }),
   }).then(async (res) => { if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || '保存できませんでした'); });
   function changed() {
     clearTimeout(saveTimer);
@@ -83,6 +83,15 @@
   backSec.addEventListener('change', () => {
     P.back = Math.min(60, Math.max(1, Math.floor(Number(backSec.value)) || 5));
     backSec.value = P.back;
+    changed();
+  });
+  P.pad ??= 2;
+  const padSec = $('[data-ytp-pad]');
+  padSec.value = P.pad;
+  padSec.addEventListener('change', () => {
+    const v = Math.floor(Number(padSec.value));
+    P.pad = Number.isFinite(v) ? Math.min(10, Math.max(0, v)) : 2;
+    padSec.value = P.pad;
     changed();
   });
   const back = () => seek(now() - P.back * 1000);
@@ -132,6 +141,18 @@
 
   // ---- マーク・曲構成 ----
   const marksEl = $('[data-ytp-marks]');
+  // 追加・削除は編集中だけ。マークが無い初期は最初から編集中
+  let editing = P.m.length === 0;
+  const editBtn = $('[data-ytp-edit]');
+  const secsEl = $('[data-ytp-secs]');
+  function applyEdit() {
+    secsEl.classList.toggle('is-closed', !editing);
+    secsEl.inert = !editing;
+    marksEl.classList.toggle('is-editing', editing);
+    editBtn.setAttribute('aria-pressed', String(editing));
+    editBtn.classList.toggle('is-active', editing);
+  }
+  editBtn.addEventListener('click', () => { editing = !editing; applyEdit(); });
   function addMark(label) {
     if (P.m.length >= 100) { notify('マークは100個までです', 'error'); return; }
     P.m.push({ t: now(), e: null, l: label || '' });
@@ -139,8 +160,13 @@
     changed();
     renderMarks();
   }
-  $('[data-ytp-mark]').addEventListener('click', () => addMark(''));
+  // 練習用マーカーは「マーカー1」「マーカー2」…と、空いている最小でなく最大+1の番号で付ける
+  const nextMarkerName = () => 'マーカー' + (Math.max(0, ...P.m.map((m) => Number(m.l.match(/^マーカー(\d+)$/)?.[1] || 0))) + 1);
+  $('[data-ytp-mark]').addEventListener('click', () => addMark(nextMarkerName()));
   root.querySelectorAll('[data-ytp-sec]').forEach((b) => b.addEventListener('click', () => addMark(b.dataset.ytpSec)));
+  // 曲構成の定型ラベル（イントロ・サビ…）以外は自分用のマークとして見た目を分ける
+  const presets = new Set([...root.querySelectorAll('[data-ytp-sec]')].map((b) => b.dataset.ytpSec));
+  const isOwn = (m) => !presets.has(m.l);
   function renderMarks() {
     marksEl.replaceChildren();
     P.m.forEach((m, i) => {
@@ -169,21 +195,43 @@
       ab.addEventListener('click', () => {
         const end = P.m[i + 1]?.t ?? dur();
         if (end <= m.t) return;
-        P.ab = [m.t, end];
+        // 前後に余白（P.pad 秒）を足す（入りと終わりを確認しやすいように）
+        const pad = P.pad * 1000;
+        const a = Math.max(0, m.t - pad), b = Math.min(dur() || end + pad, end + pad);
+        P.ab = [a, b];
         loop = true;
-        seek(m.t);
+        seek(a);
         if (ready && !playing) player.playVideo();
         changed();
         render();
       });
       const del = document.createElement('button');
       del.type = 'button';
-      del.className = 'icon-btn';
+      del.className = 'icon-btn ytp__del';
       del.title = '削除';
       del.setAttribute('aria-label', '削除');
       del.appendChild(icon('delete'));
-      del.addEventListener('click', () => { P.m.splice(i, 1); changed(); renderMarks(); });
-      li.append(go, name, ab, del);
+      // 削除は2回押し（1回目で赤くなり、3秒以内にもう一度押すと削除）
+      let armTimer = null;
+      del.addEventListener('click', () => {
+        if (armTimer === null) {
+          del.classList.add('is-armed');
+          del.title = del.ariaLabel = 'もう一度で削除';
+          armTimer = setTimeout(() => {
+            armTimer = null;
+            del.classList.remove('is-armed');
+            del.title = del.ariaLabel = '削除';
+          }, 3000);
+          return;
+        }
+        clearTimeout(armTimer);
+        P.m.splice(i, 1);
+        changed();
+        renderMarks();
+      });
+      li.classList.toggle('ytp__mark--own', isOwn(m));
+      li.append(go, name, ab);
+      li.appendChild(del); // 表示は .is-editing が切り替える（アニメーションのため常に置く）
       marksEl.appendChild(li);
     });
     renderLine();
@@ -193,22 +241,74 @@
   const line = $('[data-ytp-line]');
   const pos = $('[data-ytp-pos]');
   const band = $('[data-ytp-abband]');
-  line.addEventListener('click', (e) => {
+  const bubbles = $('[data-ytp-bubbles]');
+  const bubblesUp = $('[data-ytp-bubbles-up]');
+  // 押す・ドラッグで再生位置を変更
+  const seekAt = (e) => {
     const r = line.getBoundingClientRect();
-    seek(((e.clientX - r.left) / r.width) * dur());
-  });
+    seek(Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)) * dur());
+  };
+  let dragging = false;
+  line.addEventListener('pointerdown', (e) => { dragging = true; line.setPointerCapture(e.pointerId); seekAt(e); });
+  line.addEventListener('pointermove', (e) => { if (dragging) seekAt(e); });
+  const endDrag = () => { dragging = false; };
+  line.addEventListener('pointerup', endDrag);
+  line.addEventListener('pointercancel', endDrag);
+  // 吹き出しの短縮名: Aメロ→A、イントロ→In、アウトロ→Out、ほかは先頭3文字
+  const bubbleEls = new Map(); // マーク → 吹き出し要素
+  const SHORT ={ 'イントロ': 'In', 'アウトロ': 'Out', 'ソロ': 'Solo' };
+  const shortLabel = (l) => SHORT[l] || l.replace(/^マーカー(\d+)$/, 'M$1').match(/^M\d+$/)?.[0] || l.match(/^([A-Za-z])メロ$/)?.[1] || [...l].slice(0, 3).join('');
+  let lineSig = '';
   function renderLine() {
+    // マーク・長さ・幅が同じなら作り直さない（早送りなどの再生状態の更新で吹き出しが再アニメーションしないように）
+    const sig = [dur(), bubbles.clientWidth, ...P.m.map((m) => m.t + ':' + m.l)].join('|');
+    if (sig === lineSig) return;
+    lineSig = sig;
     line.querySelectorAll('.ytp__tick').forEach((t) => t.remove());
+    // 再配置は前の位置から滑らせる（FLIP）。前に無かった吹き出しだけ出現アニメーション
+    const prev = new Map(bubbleEls);
+    const prevRect = new Map([...prev].map(([m, el]) => [m, el.getBoundingClientRect()]));
+    bubbleEls.clear();
+    bubbles.replaceChildren();
+    bubblesUp.replaceChildren();
     const d = dur();
     if (!d) return;
-    P.m.forEach((m) => {
+    // 下段 → 上段の順に、被らない方へ配置（右端の位置を段ごとに記録）
+    const lanes = [{ el: bubbles, end: -Infinity }, { el: bubblesUp, end: -Infinity, up: true }];
+    const W = bubbles.clientWidth;
+    [...P.m].sort((a, b) => a.t - b.t).forEach((m) => {
+      if (m.l) {
+        const b = document.createElement('span');
+        b.className = 'ytp__bubble' + (isOwn(m) ? ' ytp__bubble--own' : '');
+        b.style.left = (m.t / d) * 100 + '%';
+        b.textContent = shortLabel(m.l);
+        bubbles.appendChild(b);
+        const x = (m.t / d) * W, w = b.offsetWidth, l = x - w / 2;
+        const lane = lanes.find((ln) => l >= ln.end + 2) || lanes[0];
+        if (lane.up) { b.classList.add('ytp__bubble--up'); bubblesUp.appendChild(b); }
+        lane.end = x + w / 2;
+        bubbleEls.set(m, b);
+        const o = prevRect.get(m);
+        if (o) {
+          b.style.animation = 'none';
+          const n = b.getBoundingClientRect();
+          const dx = o.left - n.left, dy = o.top - n.top;
+          if (dx || dy) b.animate([{ transform: `translate(${dx}px, ${dy}px) translateX(-50%)` }, { transform: 'translateX(-50%)' }], { duration: 200, easing: 'ease-out' });
+        }
+      }
       const t = document.createElement('div');
-      t.className = 'ytp__tick' + (m.l ? ' ytp__tick--sec' : '');
+      t.className = 'ytp__tick' + (isOwn(m) ? ' ytp__tick--own' : ' ytp__tick--sec');
       t.style.left = (m.t / d) * 100 + '%';
       t.title = (m.l ? m.l + ' ' : '') + fmt(m.t);
       line.appendChild(t);
     });
   }
+
+  // 幅が変わったら被り判定をやり直す（回転・リサイズ）
+  let lastW = bubbles.clientWidth;
+  new ResizeObserver(() => {
+    if (bubbles.clientWidth !== lastW) { lastW = bubbles.clientWidth; renderLine(); }
+  }).observe(bubbles);
 
   function render() {
     playBtn.replaceChildren(icon(playing ? 'pause' : 'play_arrow'));
@@ -239,15 +339,28 @@
     requestAnimationFrame(tick);
   })();
 
+  // ---- マーカージャンプ: 現在位置の前後で一番近いマーカーへ ----
+  // 前は「マーカーの直後」で押しても1つ前へ行けるよう、1秒の余裕を見る。前が無ければ先頭へ
+  function jumpMark(dir) {
+    const t = now();
+    const ts = P.m.map((m) => m.t).sort((a, b) => a - b);
+    const to = dir < 0 ? ts.filter((x) => x < t - 1000).pop() ?? 0 : ts.find((x) => x > t + 100);
+    if (to === undefined) return;
+    seek(to);
+  }
+  $('[data-ytp-prevmark]').addEventListener('click', () => jumpMark(-1));
+  $('[data-ytp-nextmark]').addEventListener('click', () => jumpMark(1));
+
   // ---- キーボード（入力欄に書いているときは効かない） ----
   document.addEventListener('keydown', (e) => {
     if (e.target.closest('input, textarea, select') || e.ctrlKey || e.metaKey || e.altKey) return;
     if (e.key === ' ') { e.preventDefault(); togglePlay(); }
-    else if (e.key === 'ArrowLeft') { e.preventDefault(); back(); }
-    else if (e.key === 'ArrowRight') { e.preventDefault(); fwd(); }
-    else if (e.key === 'm' || e.key === 'M') addMark('');
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); if (e.shiftKey) jumpMark(-1); else back(); }
+    else if (e.key === 'ArrowRight') { e.preventDefault(); if (e.shiftKey) jumpMark(1); else fwd(); }
+    else if ((e.key === 'm' || e.key === 'M') && editing) addMark(nextMarkerName());
   });
 
+  applyEdit();
   renderMarks();
   render();
 })();

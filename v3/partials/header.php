@@ -78,7 +78,8 @@ $nav = [
           apple-touch-icon … iPhone のホーム画面のアイコン。透明な所は iPhone が黒く塗るので、白い背景を付けた画像にしてある
           *-web-app-capable … ホーム画面から開いたとき、Safari のアドレスバーを出さない
     -->
-    <link rel="manifest" href="manifest.json">
+    <?php // 練習プレイヤーなど、ページごとに別のアプリとして追加したいページは $GLOBALS['page_manifest'] に manifest の URL を入れる（Cookie つきで読ませる） ?>
+    <link rel="manifest" href="<?= h($GLOBALS['page_manifest'] ?? 'manifest.json') ?>"<?= isset($GLOBALS['page_manifest']) ? ' crossorigin="use-credentials"' : '' ?>>
     <link rel="apple-touch-icon" href="assets/favicons/apple-touch-icon.png?v=2" sizes="180x180">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">

@@ -1717,6 +1717,15 @@ function setupAddToHome() {
   dialog.querySelector('[data-a2hs-close]').addEventListener('click', () => dialog.close());
   // 外側（背景）をクリックしても閉じる。<dialog> 自体がクリックされた = 中身の外側
   dialog.addEventListener('click', (e) => { if (e.target === dialog) dialog.close(); });
+
+  // ?a2hs=1 で開かれたとき（曲ページの練習のショートカットボタン）: そのページのホーム画面追加の案内をすぐ出す。
+  //   beforeinstallprompt が届く前に出すと「今すぐインストール」が間に合わないので、少しだけ待つ。パラメーターは消して、再読み込みで出直さない
+  const url = new URL(location.href);
+  if (url.searchParams.get('a2hs') === '1' && !navigator.standalone) {
+    url.searchParams.delete('a2hs');
+    history.replaceState(null, '', url);
+    setTimeout(() => { show(isSafari ? 'safari' : 'chrome'); dialog.showModal(); }, 600);
+  }
 }
 
 /* ---------------------------------------------------------------------

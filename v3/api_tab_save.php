@@ -175,7 +175,13 @@ if (in_array($action, ['link_search', 'link_add', 'yt_link_search', 'part_add', 
     }
     if ($action === 'part_add') {
         // 「楽器を追加」: 楽器を選ぶと、パート名（Gt1・Ba など）は空いている名前を自動で付ける（自作 TAB が無くてもカードを作れる）
-        $instId = tab_int($body['instrument_id'] ?? null) ?? 0;
+        // 'live' = ライブ版のカード（楽器マスタには足さず、その他（etc）の楽器で「Live」というパート名にする）
+        // 'lead' / 'backing' = リードギター・バッキングギター（楽器は Gt、パート名が Lead / Backing）
+        $kind = $body['instrument_id'] ?? null;
+        $isLive = $kind === 'live';
+        $partBase = $kind === 'lead' ? 'Lead' : ($kind === 'backing' ? 'Backing' : null);
+        $instId = ($isLive || $kind === 'etc') ? (int)(instrument_id_by_short('etc') ?? 0)
+            : ($partBase !== null ? (int)(instrument_id_by_short('Gt') ?? 0) : (tab_int($kind) ?? 0));
         $st = $pdo->prepare('SELECT short_name FROM instrument WHERE instrument_id = ?');
         $st->execute([$instId]);
         $short = $st->fetchColumn();
@@ -186,7 +192,8 @@ if (in_array($action, ['link_search', 'link_add', 'yt_link_search', 'part_add', 
         if (count($parts) >= TAB_MAX_PARTS) {
             fail(400, 'パートは1曲' . TAB_MAX_PARTS . '個までです');
         }
-        $name = tab_suggest_part((string)$short, $short === 'Gt', array_column($parts, 'part')); // ギターは Gt1 から、ほかは番号なしから
+        $existing = array_column($parts, 'part');
+        $name = $isLive ? 'Live' : tab_suggest_part($partBase ?? (string)$short, false, $existing); // 番号なしから（2本目から 2 を付ける）
         try {
             $pdo->prepare('INSERT INTO song_part (song_key, part, instrument_id, created_by) VALUES (?, ?, ?, ?)')
                 ->execute([$key, $name, $instId, $userId]);
@@ -231,21 +238,18 @@ if (in_array($action, ['link_search', 'link_add', 'yt_link_search', 'part_add', 
     }
     $part = resolve_part($pdo, $key, $body['part'] ?? ''); // リンクの検索・登録: '' = 曲全体のカード、それ以外 = そのパートのカード
     if ($action === 'link_search') {
-        if ($part !== '') {
-            fail(400, 'パートのカードでは動画の検索と URL の登録を使ってください');
-        }
-        if (!claude_enabled() && !tab_google_enabled()) {
+        if (!claude_enabled() && !tab_search_enabled()) {
             fail(503, '検索は設定されていません');
         }
-        // U-FRET・楽器.me は Google、Songsterr は AI（Google が無ければ全部 AI）。lib/tabs.php の tab_link_find()
-        $cacheKey = 'link_find:' . $key; // AI・Google は1回ごとにお金・無料枠を使うので、同じ曲の結果はセッションに覚えて使い回す（空の結果は覚えない）
+        // U-FRET・楽器.me は Tavily、Songsterr は AI（Tavily が無ければ全部 AI）。lib/tabs.php の tab_link_find()
+        $cacheKey = 'link_find:' . $key; // AI・Tavily は1回ごとにお金・無料枠を使うので、同じ曲の結果はセッションに覚えて使い回す（空の結果は覚えない）
         $usage = null; // 今回 AI を呼んだときの使用量と実費（覚えた結果を使い回したときは null = 0円）
-        $google = 0;   // 今回使った Google の検索回数
+        $searches = 0;   // 今回使った Tavily の検索回数
         if (!isset($_SESSION['tab_search'][$cacheKey])) {
             session_write_close(); // ウェブ検索で数十秒かかるので、その間セッションを手放す（BPM の AI 推定と同じ）
             try {
                 $r = tab_link_find($song['title'], $song['artist']);
-                [$items, $usage, $google] = [$r['items'], $r['usage'], $r['google']];
+                [$items, $usage, $searches] = [$r['items'], $r['usage'], $r['searches']];
             } catch (RuntimeException $e) {
                 fail(502, $e->getMessage());
             }
@@ -258,10 +262,10 @@ if (in_array($action, ['link_search', 'link_add', 'yt_link_search', 'part_add', 
         }
         // 登録済みのものには印を付ける（画面で「登録」ボタンを出さない）
         $st = $pdo->prepare('SELECT url FROM song_link WHERE song_key = ? AND part = ?');
-        $st->execute([$key, '']);
+        $st->execute([$key, $part]);
         $have = array_flip($st->fetchAll(PDO::FETCH_COLUMN));
         $items = array_map(static fn($it) => $it + ['added' => isset($have[$it['url']])], $items);
-        echo json_encode(['ok' => true, 'items' => $items, 'usage' => $usage, 'google' => $google], JSON_UNESCAPED_UNICODE);
+        echo json_encode(['ok' => true, 'items' => $items, 'usage' => $usage, 'searches' => $searches], JSON_UNESCAPED_UNICODE);
         exit;
     }
     if ($action === 'yt_link_search') {
@@ -319,9 +323,17 @@ if (in_array($action, ['link_search', 'link_add', 'yt_link_search', 'part_add', 
         fail(400, 'リンクは1カードに' . TAB_SONG_LINK_MAX . '件までです');
     }
     try {
+        $pdo->beginTransaction();
+        if ($norm[0] === 'mv') { // MV は1曲（カード）に1本: 設定し直すと前のものを置き換える
+            $pdo->prepare('DELETE FROM song_link WHERE song_key = ? AND part = ? AND site = \'mv\'')->execute([$key, $part]);
+        }
         $pdo->prepare('INSERT INTO song_link (song_key, part, site, url, label, title, artist_name, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
             ->execute([$key, $part, $norm[0], $norm[1], $label === '' ? null : $label, $song['title'], $song['artist'], $userId]);
+        $pdo->commit();
     } catch (PDOException $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
         fail(($e->errorInfo[1] ?? 0) === 1062 ? 409 : 500, ($e->errorInfo[1] ?? 0) === 1062 ? '登録済みです' : db_error($e, '登録できませんでした'));
     }
     echo json_encode(['ok' => true, 'link' => ['id' => (int)$pdo->lastInsertId(), 'site' => $norm[0], 'url' => $norm[1], 'label' => $label]], JSON_UNESCAPED_UNICODE);
@@ -385,7 +397,7 @@ if ($action === 'practice') {
     exit;
 }
 
-if (in_array($action, ['yt_search', 'bpm_search', 'bpm_ai'], true)) {
+if (in_array($action, ['yt_search', 'bpm_ai'], true)) {
     // 音源の動画・BPM の候補を探す。検索語は DB の曲名・アーティスト名から作る（ブラウザから好きな語で API を叩かせない）
     //   YouTube の検索は1回 100 ユニット（無料枠 1日 10,000）、AI は1回数円かかるので、同じ TAB の結果はセッションに覚えて使い回す
     $st = $pdo->prepare('SELECT title, artist_name FROM song_tab WHERE tab_id = ?');
@@ -402,8 +414,7 @@ if (in_array($action, ['yt_search', 'bpm_search', 'bpm_ai'], true)) {
         try {
             $items = match ($action) {
                 'yt_search' => youtube_search(trim($song['title'] . ' ' . ($song['artist_name'] ?? ''))),
-                'bpm_ai'    => tab_bpm_ai($song['title'], $song['artist_name']),
-                default     => tab_bpm_search($song['title'], $song['artist_name']),
+                default     => tab_bpm_ai($song['title'], $song['artist_name']),
             };
         } catch (RuntimeException $e) {
             fail(502, $e->getMessage());

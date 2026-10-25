@@ -121,6 +121,13 @@ if (isset($_GET['song']) || isset($_GET['key'])) {
         foreach ($all as $pc) {
             $partCards[$partKey($pc['part'])] = $pc;
         }
+        if (!$partCards) { // 初期表示: カードが1つも無い曲は、ギター（Gt1）とベース（Ba）のカードを作る
+            $pdo->prepare('INSERT IGNORE INTO song_part (song_key, part, instrument_id, created_by) VALUES (?, \'Gt1\', 2, ?), (?, \'Ba\', 3, ?)')
+                ->execute([$song['key'], $user['user_id'], $song['key'], $user['user_id']]);
+            foreach (tab_song_parts($pdo, $song['key']) as $pc) {
+                $partCards[$partKey($pc['part'])] = $pc;
+            }
+        }
     } catch (PDOException) {
         // song_part がまだ無い: 上の（自作 TAB だけの）一覧のまま
     }
@@ -158,19 +165,18 @@ if (isset($_GET['song']) || isset($_GET['key'])) {
     }
     // 画面の JS に渡す: カードごと（'' = 曲全体）の画像・PDF・ファイルの ID
     $cardData = [];
-    foreach (array_merge([''], array_keys($partCards)) as $k) {
+    foreach (array_keys($partCards) as $k) {
         $rows = $imagesByMeta[(int)($metaByPart[$k]['meta_id'] ?? 0)] ?? [];
-        $cardData[] = ['part' => $k === '' ? '' : $partCards[$k]['part'], 'images' => array_map(static fn($im) => (int)$im['image_id'], $rows),
+        $cardData[] = ['part' => $partCards[$k]['part'], 'images' => array_map(static fn($im) => (int)$im['image_id'], $rows),
             'pdfs' => tab_pdf_ids($rows), 'files' => tab_file_ids($rows)];
     }
     $songData = json_encode(['key' => $song['key'], 'song_id' => $songId, 'cards' => $cardData],
         JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR);
-    $instruments = $pdo->query('SELECT instrument_id, name FROM instrument ORDER BY sort_order')->fetchAll(); // 「楽器を追加」の選択肢
 
     render_header($song['title'] . ' TAB', 'lives');
     ?>
 <link rel="stylesheet" href="<?= asset_url('assets/tab.css') ?>">
-<nav class="crumbs"><a href="./">ライブ</a></nav>
+<nav class="crumbs"><a href="songs">楽曲データベース</a></nav>
 <h1 class="display display--sm">TAB譜・コード</h1>
 <section class="card tab-song">
     <?php if ($song['art']): ?>
@@ -233,20 +239,20 @@ $renderCard = static function (string $part, ?array $info) use ($partKey, $links
             $myTab = $p;
         }
     }
-    $ytQuery = trim($song['title'] . ' ' . ($song['artist'] ?? '') . ($info ? ' ' . $info['name'] : '')); // 動画検索の初期の検索語（パートのカードは楽器名も）
+    $isLive = $info && mb_strtolower($part) === 'live'; // ライブ版のカード（その他の楽器で「Live」というパート名）
+    $instName = $isLive ? 'ライブ版' : $info['name'];
+    $ytQuery = trim($song['title'] . ' ' . ($song['artist'] ?? '') . ' ' . ($isLive ? 'ライブ' : $info['name'])); // 動画検索の初期の検索語（楽器名も）
     $presets = $info ? array_filter(TAB_PRESETS, static fn($p) => $p['instrument'] === $info['instrument_id']) : [];
     ?>
 <section class="card tab-links tab-card" data-card data-part="<?= h($part) ?>">
     <?php if ($info): ?>
         <header class="tab-card__head">
-            <span class="tab-card__inst" title="<?= h($info['name']) ?>"><?= h($info['short_name']) ?></span>
+            <?= part_badge(['segments' => [['short' => $isLive ? 'Live' : $info['short_name'], 'class' => instrument_class($isLive ? '' : $info['short_name'])]], 'title' => $instName]) ?>
             <h3 class="tab-card__title"><?= h($part) ?></h3>
             <?php if (!$info['has_tab']): // 自作 TAB があるパートは、ここからは消せない（TAB の削除は TAB の画面から） ?>
                 <button type="button" class="icon-btn" data-part-del title="パートを削除" aria-label="パートを削除"><?= icon('delete') ?></button>
             <?php endif; ?>
         </header>
-    <?php else: ?>
-        <header class="tab-card__head"><?= icon('library_music', 'tab-card__all') ?><h3 class="tab-card__title">全体</h3></header>
     <?php endif; ?>
     <?php if ($myLinks || $myTab): // リンクも TAB も無いカードは、空の一覧を出さない ?>
     <ul class="tab-links__list" data-link-list>
@@ -263,10 +269,13 @@ $renderCard = static function (string $part, ?array $info) use ($partKey, $links
                 <?php else: ?>
                     <a class="tab-links__name" href="<?= h($l['url']) ?>" target="_blank" rel="noopener noreferrer"><?= h($l['label'] ?: $site['label']) ?></a>
                 <?php endif; ?>
-                <?php if ($l['site'] === 'youtube'): ?>
-                    <a class="icon-btn" href="tab?link=<?= (int)$l['link_id'] ?>" title="練習プレイヤー" aria-label="練習プレイヤー"><?= icon('play_circle') ?></a>
-                <?php endif; ?>
                 <button type="button" class="icon-btn" data-link-del title="削除" aria-label="削除"><?= icon('delete') ?></button>
+                <?php if ($l['site'] === 'youtube'): // 2段目: 練習プレイヤーと、その画面のホーム画面ショートカット（?a2hs=1 で開くと追加の案内が出る） ?>
+                    <div class="tab-links__row2">
+                        <a class="btn btn--sm tab-links__btn" href="tab?link=<?= (int)$l['link_id'] ?>" title="練習プレイヤー"><?= icon('slow_motion_video') ?> 練習</a>
+                        <a class="btn btn--sm tab-links__btn touch-only" href="tab?link=<?= (int)$l['link_id'] ?>&amp;a2hs=1" title="ホーム画面に追加" aria-label="ホーム画面に追加"><?= icon('add_to_home_screen') ?></a>
+                    </div>
+                <?php endif; ?>
             </li>
         <?php endforeach; ?>
         <?php if ($myTab): // 自作の TAB（ベータ） ?>
@@ -284,17 +293,17 @@ $renderCard = static function (string $part, ?array $info) use ($partKey, $links
     <div class="tab-links__actions">
         <?php // YouTube 専用の検索（埋め込みで試し見してから登録）。API キーが無ければ出さない ?>
         <?php if ($hasYoutubeKey): ?>
-            <button type="button" class="btn btn--sm" data-yts-open data-q="<?= h(mb_substr($ytQuery, 0, 100)) ?>" title="YouTube を検索"><?= icon('smart_display') ?> 動画</button>
+            <button type="button" class="btn btn--sm" data-yts-open data-q="<?= h(mb_substr($ytQuery, 0, 100)) ?>" title="YouTube を検索"><?= icon('smart_display') ?> 動画検索</button>
         <?php endif; ?>
-        <?php if (!$info && (claude_enabled() || tab_google_enabled())): // U-FRET・楽器.me・Songsterr の検索は曲全体のカードだけ ?>
-            <button type="button" class="btn btn--sm" data-link-ai title="U-FRET・楽器.me・Songsterr を検索"><?= icon('auto_awesome') ?> 検索</button>
+        <?php if (claude_enabled() || tab_search_enabled()): // U-FRET・楽器.me・Songsterr の検索（どのカードにも） ?>
+            <button type="button" class="btn btn--sm" data-link-ai title="U-FRET・楽器.me・Songsterr を検索"><?= icon('auto_awesome') ?> コード検索</button>
         <?php endif; ?>
         <form class="tab-links__add" data-link-add>
             <input type="url" name="url" required placeholder="https://" aria-label="URL" autocomplete="off">
             <button type="submit" class="btn btn--primary btn--sm" title="登録" aria-label="登録"><?= icon('add_link') ?></button>
         </form>
     </div>
-    <?php if (!$info): ?><ul class="tab-links__list tab-links__found" data-link-found hidden></ul><?php endif; ?>
+    <ul class="tab-links__list tab-links__found" data-link-found hidden></ul>
     <?php if ($info && !$myTab && $presets): // 自作の TAB（ベータ）の作成。TAB がまだ無い、ギター・ベース・ドラムのパートだけ。閉じた状態で置く ?>
         <details class="tab-new-wrap">
             <summary class="tab-new-wrap__summary"><?= icon('edit_note') ?> TAB 作成 <span class="tag tab-beta">ベータ</span></summary>
@@ -319,7 +328,6 @@ $renderCard = static function (string $part, ?array $info) use ($partKey, $links
 </section>
     <?php
 };
-$renderCard('', null); // 曲全体
 foreach ($partCards as $pc) {
     $renderCard($pc['part'], $pc);
 }
@@ -329,8 +337,8 @@ foreach ($partCards as $pc) {
 <details class="card tab-addpart">
     <summary class="tab-new-wrap__summary"><?= icon('add') ?> 楽器</summary>
     <div class="tab-addpart__chips">
-        <?php foreach ($instruments as $ins): ?>
-            <button type="button" class="tab-chip" data-part-add="<?= (int)$ins['instrument_id'] ?>"><?= h($ins['name']) ?></button>
+        <?php foreach (['lead' => 'リードギター', 'backing' => 'バッキングギター', '3' => 'ベース', '4' => 'ドラム', 'live' => 'ライブ版', 'etc' => 'その他'] as $addKey => $addLabel): ?>
+            <button type="button" class="tab-chip" data-part-add="<?= h((string)$addKey) ?>"><?= h($addLabel) ?></button>
         <?php endforeach; ?>
     </div>
 </details>
@@ -394,31 +402,36 @@ if (isset($_GET['link'])) {
     }
     $st = $pdo->prepare('SELECT data FROM song_link_practice WHERE link_id = ? AND user_id = ?');
     $st->execute([(int)$link['link_id'], (int)$user['user_id']]);
-    $practice = tab_sanitize_link_practice(json_decode((string)$st->fetchColumn(), true)) ?? ['m' => [], 'ab' => null, 'rate' => 1, 'back' => 5];
+    $practice = tab_sanitize_link_practice(json_decode((string)$st->fetchColumn(), true)) ?? ['m' => [], 'ab' => null, 'rate' => 1, 'back' => 5, 'pad' => 2];
     $ytData = json_encode(['link_id' => (int)$link['link_id'], 'video' => $videoId, 'practice' => $practice],
         JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR);
     $listUrl = 'tab?key=' . rawurlencode($link['song_key']);
 
+    $GLOBALS['page_manifest'] = 'manifest_link.php?id=' . (int)$link['link_id']; // ホーム画面に追加すると、この練習画面が直接開く
     render_header($link['title'] . ' 練習', 'lives');
     ?>
 <link rel="stylesheet" href="<?= asset_url('assets/tab.css') ?>">
-<nav class="crumbs"><a href="./">ライブ</a><span>/</span><a href="<?= h($listUrl) ?>"><?= h($link['title']) ?></a></nav>
+<nav class="crumbs"><a href="songs">楽曲データベース</a><span>/</span><a href="<?= h($listUrl) ?>"><?= h($link['title']) ?></a></nav>
 <h1 class="display display--sm"><?= h($link['label'] ?: $link['title']) ?></h1>
 <script type="application/json" id="yt-data"><?= $ytData ?></script>
 <section class="card ytp" data-ytp>
     <div class="ytp__video"><div data-ytp-mount></div></div>
     <?php // タイムライン: 再生位置・AB の範囲・マークを表示。押した位置へ移動 ?>
-    <div class="ytp__line" data-ytp-line title="押した位置へ移動">
+    <div class="ytp__bubbles ytp__bubbles--up" data-ytp-bubbles-up aria-hidden="true"></div>
+    <div class="ytp__line" data-ytp-line title="押す・ドラッグで移動">
         <div class="ytp__ab" data-ytp-abband hidden></div>
         <div class="ytp__pos" data-ytp-pos></div>
     </div>
+    <div class="ytp__bubbles" data-ytp-bubbles aria-hidden="true"></div>
     <div class="ytp__time"><span data-ytp-cur>0:00</span> / <span data-ytp-dur>0:00</span></div>
 
     <div class="ytp__row">
+        <button type="button" class="icon-btn" data-ytp-prevmark title="前のマーカー（Shift+←）" aria-label="前のマーカー"><?= icon('skip_previous') ?></button>
         <button type="button" class="icon-btn" data-ytp-back title="戻す（←）" aria-label="戻す"><?= icon('fast_rewind') ?></button>
         <label class="ytp__sec" title="戻す・進める秒数"><input type="number" min="1" max="60" inputmode="numeric" data-ytp-backsec aria-label="秒数">秒</label>
         <button type="button" class="btn btn--primary ytp__play" data-ytp-play title="再生・停止（Space）" aria-label="再生・停止"><?= icon('play_arrow') ?></button>
         <button type="button" class="icon-btn" data-ytp-fwd title="進める（→）" aria-label="進める"><?= icon('fast_forward') ?></button>
+        <button type="button" class="icon-btn" data-ytp-nextmark title="次のマーカー（Shift+→）" aria-label="次のマーカー"><?= icon('skip_next') ?></button>
     </div>
 
     <div class="ytp__row">
@@ -438,11 +451,19 @@ if (isset($_GET['link'])) {
     </div>
 
     <?php // 曲構成のラベル（押すと現在位置にそのラベルのマーク）と、ラベルなしのマーク ?>
-    <div class="ytp__row ytp__secs" data-ytp-secs>
-        <button type="button" class="tab-chip" data-ytp-mark title="現在位置にマーク（M）"><?= icon('bookmark_add') ?></button>
+    <div class="ytp__row">
+        <button type="button" class="tab-chip" data-ytp-edit aria-pressed="false" title="マーク編集" aria-label="マーク編集"><?= icon('edit') ?></button>
+    </div>
+    <div class="ytp__secs is-closed" data-ytp-secs inert>
+    <div class="ytp__row">
+        <button type="button" class="tab-chip" data-ytp-mark title="現在位置にマーク（M）"><?= icon('bookmark_add') ?>練習用マーカー</button>
+        <label class="ytp__sec" title="リピートの前後に足す秒数">リピート前後幅<input type="number" min="0" max="10" inputmode="numeric" data-ytp-pad aria-label="リピート前後幅">秒</label>
+    </div>
+    <div class="ytp__row">
         <?php foreach (['イントロ', 'Aメロ', 'Bメロ', 'サビ', '間奏', 'ソロ', 'Cメロ', 'アウトロ'] as $sec): ?>
             <button type="button" class="tab-chip" data-ytp-sec="<?= h($sec) ?>"><?= h($sec) ?></button>
         <?php endforeach; ?>
+    </div>
     </div>
     <ul class="ytp__marks" data-ytp-marks></ul>
     <a class="ytp__open muted small" href="<?= h($link['url']) ?>" target="_blank" rel="noopener noreferrer"><?= icon('open_in_new') ?> YouTube</a>
@@ -531,7 +552,7 @@ $json = json_encode($tabData, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_A
 render_header($tab['title'] . ' ' . $tab['part'], 'lives');
 ?>
 <link rel="stylesheet" href="<?= asset_url('assets/tab.css') ?>">
-<nav class="crumbs"><a href="./">ライブ</a><span>/</span><a href="<?= h($listUrl) ?>"><?= h($tab['title']) ?></a></nav>
+<nav class="crumbs"><a href="songs">楽曲データベース</a><span>/</span><a href="<?= h($listUrl) ?>"><?= h($tab['title']) ?></a></nav>
 
 <!-- YouTube のリンクに付けるロゴ（JS が複製して使う） -->
 <template data-yt-icon><?= youtube_icon() ?></template>
@@ -625,10 +646,7 @@ render_header($tab['title'] . ' ' . $tab['part'], 'lives');
                                 <button type="button" class="icon-btn" data-bpm-tap aria-label="BPM計測" title="BPM計測（4回以上タップ）"><?= icon('speed') ?></button>
                                 <!-- 自動検知: 手元のファイルを開いているときだけ（YouTube の音はブラウザから読めない） -->
                                 <button type="button" class="icon-btn" data-bpm-detect aria-label="BPM自動検知" title="BPM自動検知（ファイル）" disabled><?= icon('graphic_eq') ?></button>
-                                <?php if (tab_bpm_search_enabled()): ?>
-                                    <button type="button" class="icon-btn" data-search-open="bpm_search" aria-label="BPM検索" title="BPM検索"><?= icon('search') ?></button>
-                                <?php endif; ?>
-                                <?php // AI 推定: GetSongBPM に載っていない曲向け。記憶による推定なので、候補として出して、押したときだけ反映する ?>
+                                <?php // AI 推定: 記憶による推定なので、候補として出して、押したときだけ反映する ?>
                                 <?php if (claude_enabled()): ?>
                                     <button type="button" class="icon-btn" data-search-open="bpm_ai" aria-label="BPM AI推定" title="BPM AI推定"><?= icon('auto_awesome') ?></button>
                                 <?php endif; ?>
@@ -886,14 +904,12 @@ render_header($tab['title'] . ' ' . $tab['part'], 'lives');
         </div>
     </dialog>
 
-    <!-- 検索の候補（動画 / BPM）: 開くと JS が api_tab_save の yt_search / bpm_search で一覧を作る。押した候補を設定欄に入れる（保存はまだ） -->
+    <!-- 検索の候補（動画 / BPM）: 開くと JS が api_tab_save の yt_search / bpm_ai で一覧を作る。押した候補を設定欄に入れる（保存はまだ） -->
     <dialog class="modal" data-search aria-labelledby="tab-search-title">
         <div class="modal__body">
             <h3 id="tab-search-title" class="modal__title"><?= icon('search') ?> <span data-search-title></span></h3>
             <p class="small muted" data-search-status role="status"></p>
             <ul class="tab-search" data-search-list></ul>
-            <!-- GetSongBPM の無料キーの条件（getsongbpm.com へのリンクを載せる） -->
-            <p class="small muted" data-search-credit hidden>BPM: <a href="https://getsongbpm.com" target="_blank" rel="noopener">GetSongBPM</a></p>
             <div class="form-actions"><button type="button" class="btn btn--ghost" data-search-close aria-label="閉じる" title="閉じる"><?= icon('close') ?></button></div>
         </div>
     </dialog>
