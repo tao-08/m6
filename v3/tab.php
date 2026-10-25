@@ -502,6 +502,19 @@ if (isset($_GET['link']) || $freeVideo !== null) {
         $shared = $row === false ? null : (tab_sanitize_practice(['m' => json_decode((string)$row, true)])['m'] ?? []);
     } catch (PDOException) {
     }
+    // 戻す・進める秒数とリピート前後幅は人ごと（全動画で共通）。設定してあれば動画ごとの値より優先。列はマイグレーション 081
+    if ($user !== null) try {
+        $st = $pdo->prepare('SELECT practice_back, practice_pad FROM user_account WHERE user_id = ?');
+        $st->execute([(int)$user['user_id']]);
+        $pref = $st->fetch();
+        if ($pref && $pref['practice_back'] !== null) {
+            $practice['back'] = (int)$pref['practice_back'];
+        }
+        if ($pref && $pref['practice_pad'] !== null) {
+            $practice['pad'] = (int)$pref['practice_pad'];
+        }
+    } catch (PDOException) {
+    }
     $ytData = json_encode(['link_id' => (int)$link['link_id'], 'video' => $videoId, 'practice' => $practice, 'guest' => $user === null, 'shared' => $shared] + ($freeVideo !== null ? ['local' => true, 'link_id' => null] : []) + ($user === null && $chapters ? ['chapters' => $chapters] : []),
         JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR);
     $listUrl = 'tab?key=' . rawurlencode($link['song_key']);
@@ -538,6 +551,7 @@ if (isset($_GET['link']) || $freeVideo !== null) {
         <button type="button" class="btn btn--primary ytp__play" data-ytp-play title="再生・停止（Space）" aria-label="再生・停止"><?= icon('play_arrow') ?></button>
         <button type="button" class="icon-btn" data-ytp-fwd title="進める（→）" aria-label="進める"><?= icon('fast_forward') ?></button>
         <button type="button" class="icon-btn ytp__fsonly" data-ytp-zoom title="拡大（全体・上半分・下半分）" aria-label="拡大"><?= icon('fit_screen') ?></button>
+        <button type="button" class="icon-btn ytp__fsonly" data-ytp-dock title="操作部の位置（上・下）" aria-label="操作部の位置"><?= icon('vertical_align_top') ?></button>
         <button type="button" class="icon-btn" data-ytp-fs title="全画面" aria-label="全画面"><?= icon('fullscreen') ?></button>
     </div>
 
@@ -546,7 +560,6 @@ if (isset($_GET['link']) || $freeVideo !== null) {
         <button type="button" class="icon-btn" data-ytp-slower title="遅く" aria-label="遅く"><?= icon('remove') ?></button>
         <span class="ytp__rate" data-ytp-rate>100%</span>
         <button type="button" class="icon-btn" data-ytp-faster title="速く" aria-label="速く"><?= icon('add') ?></button>
-        <button type="button" class="tab-chip" data-ytp-rate1>100%</button>
     </div>
 
     <div class="ytp__row">

@@ -35,6 +35,13 @@
         if (num(s.rate) && s.rate >= 0.25 && s.rate <= 2) P.rate = s.rate;
         if (num(s.back) && s.back >= 1 && s.back <= 60) P.back = s.back;
         if (num(s.pad) && s.pad >= 0 && s.pad <= 10) P.pad = s.pad;
+        if (s.dock === 't') P.dock = 't';
+      }
+      // 戻す・進める秒数とリピート前後幅は端末ごと（動画をまたいで共通）
+      const g = JSON.parse(localStorage.getItem('yt_practice_prefs') || 'null');
+      if (g && typeof g === 'object') {
+        if (num(g.back) && g.back >= 1 && g.back <= 60) P.back = g.back;
+        if (num(g.pad) && g.pad >= 0 && g.pad <= 10) P.pad = g.pad;
       }
     } catch (err) { /* 読めなければ初期値 */ }
   }
@@ -59,7 +66,7 @@
   };
   const now = () => (ready ? Math.round((player.getCurrentTime() || 0) * 1000) : 0);
   const dur = () => (ready ? Math.round((player.getDuration() || 0) * 1000) : 0);
-  const seek = (ms) => { if (ready) player.seekTo(Math.max(0, ms) / 1000, true); };
+  const seek = (ms, ahead = true) => { if (ready) player.seekTo(Math.max(0, ms) / 1000, ahead); };
   const icon = (name) => { const s = document.createElement('span'); s.className = 'icon'; s.setAttribute('aria-hidden', 'true'); s.textContent = name; return s; };
   function notify(message, type) {
     const t = document.createElement('div');
@@ -73,7 +80,10 @@
   let saveTimer = null;
   // 未ログイン（D.guest）は端末に保存
   const saveLocal = () => {
-    try { localStorage.setItem(LS_KEY, JSON.stringify({ m: personal(), ab: P.ab, rate: P.rate, back: P.back, pad: P.pad, ch: P.ch })); } catch (err) { /* 保存できない端末では何もしない */ }
+    try {
+      localStorage.setItem(LS_KEY, JSON.stringify({ m: personal(), ab: P.ab, rate: P.rate, back: P.back, pad: P.pad, ch: P.ch, dock: P.dock }));
+      localStorage.setItem('yt_practice_prefs', JSON.stringify({ back: P.back, pad: P.pad }));
+    } catch (err) { /* 保存できない端末では何もしない */ }
     return Promise.resolve();
   };
   const personal = () => P.m.filter((m) => !SHARED.has(m.l));
@@ -92,9 +102,18 @@
     sentShared = sig;
     return post({ action: 'link_shared', link_id: D.link_id, m: list }, keepalive).catch((e) => { sentShared = prev; throw e; });
   };
+  // 戻す・進める秒数とリピート前後幅は人ごと（全動画共通）。変わったときだけ送る
+  let sentPrefs = P.back + ':' + P.pad;
+  const sendPrefs = (keepalive) => {
+    const sig = P.back + ':' + P.pad, prev = sentPrefs;
+    if (D.guest || sig === prev) return Promise.resolve();
+    sentPrefs = sig;
+    return post({ action: 'practice_prefs', back: P.back, pad: P.pad }, keepalive).catch((e) => { sentPrefs = prev; throw e; });
+  };
   const send = (keepalive) => Promise.all([
-    D.guest ? saveLocal() : post({ action: 'link_practice', link_id: D.link_id, data: { m: personal(), ab: P.ab, rate: P.rate, back: P.back, pad: P.pad, ch: P.ch } }, keepalive),
+    D.guest ? saveLocal() : post({ action: 'link_practice', link_id: D.link_id, data: { m: personal(), ab: P.ab, rate: P.rate, back: P.back, pad: P.pad, ch: P.ch, dock: P.dock } }, keepalive),
     sendShared(keepalive),
+    sendPrefs(keepalive),
   ]);
   function changed() {
     clearTimeout(saveTimer);
@@ -161,13 +180,15 @@
   // ---- 全画面（動画に操作を重ねる）と拡大（全体 → 上半分 → 下半分）。動画内の TAB 譜を大きく見る用 ----
   const ZOOMS = ['', 'top', 'bottom'];
   const ZOOM_ICON = { '': 'fit_screen', top: 'vertical_align_top', bottom: 'vertical_align_bottom' };
-  const fsBtn = $('[data-ytp-fs]'), zoomBtn = $('[data-ytp-zoom]');
+  const fsBtn = $('[data-ytp-fs]'), zoomBtn = $('[data-ytp-zoom]'), dockBtn = $('[data-ytp-dock]');
   let zoom = '';
   try { const z = localStorage.getItem('ytp_zoom'); if (ZOOMS.includes(z)) zoom = z; } catch (err) { /* 保存できない端末では全体 */ }
   const isFull = () => root.classList.contains('is-full');
   function renderFull() {
     root.classList.toggle('is-zoom-top', zoom === 'top');
     root.classList.toggle('is-zoom-bottom', zoom === 'bottom');
+    root.classList.toggle('is-dock-top', P.dock === 't'); // 操作部を上に出すか（動画ごとに保存）
+    dockBtn.querySelector('.icon').textContent = P.dock === 't' ? 'vertical_align_bottom' : 'vertical_align_top';
     zoomBtn.querySelector('.icon').textContent = ZOOM_ICON[zoom];
     fsBtn.querySelector('.icon').textContent = isFull() ? 'fullscreen_exit' : 'fullscreen';
     document.body.classList.toggle('ytp-lock', isFull());
@@ -188,6 +209,11 @@
     zoom = ZOOMS[(ZOOMS.indexOf(zoom) + 1) % ZOOMS.length];
     try { localStorage.setItem('ytp_zoom', zoom); } catch (err) { /* 保存できなければ次回は全体 */ }
     renderFull();
+  });
+  dockBtn.addEventListener('click', () => {
+    if (P.dock === 't') delete P.dock; else P.dock = 't';
+    renderFull();
+    changed();
   });
   document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement && isFull()) setFull(false); }); // 端末の戻る操作で抜けたとき
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && isFull() && !document.fullscreenElement) setFull(false); });
@@ -211,7 +237,6 @@
   };
   $('[data-ytp-slower]').addEventListener('click', () => stepRate(-1));
   $('[data-ytp-faster]').addEventListener('click', () => stepRate(1));
-  $('[data-ytp-rate1]').addEventListener('click', () => { setRate(1); changed(); });
   function renderRate() { $('[data-ytp-rate]').textContent = Math.round(P.rate * 100) + '%'; }
 
   // ---- AB リピート ----
@@ -426,10 +451,11 @@
   }
 
   // ---- 毎フレーム: 再生位置の表示と AB リピート ----
+  const LOOP_LEAD = 150; // B の少し手前で戻る（再生位置の取得は粗く、B を過ぎてから戻ると繋ぎ目が目立つため）。ミリ秒
   (function tick() {
     if (ready) {
       const t = now(), d = dur();
-      if (loop && P.ab && playing && t >= P.ab[1]) seek(P.ab[0]);
+      if (loop && P.ab && playing && t >= P.ab[1] - LOOP_LEAD) seek(P.ab[0], false); // false = バッファ内ならサーバーに取りに行かない（ループのカクつき対策）
       pos.style.left = d ? (t / d) * 100 + '%' : '0';
       $('[data-ytp-cur]').textContent = fmt(t);
     }

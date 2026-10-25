@@ -70,11 +70,11 @@ if ($user === null) { // 未ログインは動画の検索と登録だけ（1時
     if (!guest_take(['link_add' => '#g_link', 'link_shared' => '#g_shared'][$action] ?? '#g_yts', ['link_add' => 20, 'link_shared' => 120][$action] ?? 30)) {
         fail(429, '操作が多すぎます。しばらくたってからもう一度お試しください');
     }
-} elseif (!tab_allowed() && !in_array($action, ['yt_link_search', 'link_add', 'link_practice', 'link_practicing', 'link_shared'], true)) {
+} elseif (!tab_allowed() && !in_array($action, ['yt_link_search', 'link_add', 'link_practice', 'practice_prefs', 'link_practicing', 'link_shared'], true)) {
     fail(403, '管理人のみ利用できます'); // lib/tabs.php の tab_allowed
 }
 $tabId = tab_int($body['tab_id'] ?? null) ?? 0;
-if ($tabId <= 0 && !in_array($action, ['restore', 'song_memo', 'link_search', 'yt_link_search', 'yt_free_search', 'link_add', 'link_delete', 'link_move', 'link_practice', 'link_shared', 'part_add', 'part_delete'], true)) { // 復元は rev_id、曲のメモ・リンクは song_key / link_id で指定する
+if ($tabId <= 0 && !in_array($action, ['restore', 'song_memo', 'link_search', 'yt_link_search', 'yt_free_search', 'link_add', 'link_delete', 'link_move', 'link_practice', 'practice_prefs', 'link_shared', 'part_add', 'part_delete'], true)) { // 復元は rev_id、曲のメモ・リンクは song_key / link_id で指定する
     fail(400, 'TAB の指定がおかしいです');
 }
 $userId = $user === null ? null : (int)$user['user_id']; // 未ログインの登録は作成者なし（NULL）
@@ -479,6 +479,22 @@ if ($action === 'link_practice') {
         $pdo->prepare('INSERT INTO song_link_practice (link_id, user_id, data) VALUES (?, ?, ?)
                 ON DUPLICATE KEY UPDATE data = VALUES(data)')
             ->execute([$linkId, $userId, json_encode($clean, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)]);
+    } catch (PDOException $e) {
+        fail(500, db_error($e, '保存できませんでした'));
+    }
+    echo json_encode(['ok' => true], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+if ($action === 'practice_prefs') {
+    // 練習プレイヤーの人ごとの設定（全動画で共通）: 戻す・進める秒数 1〜60 とリピート前後幅 0〜10
+    $back = tab_int($body['back'] ?? null);
+    $pad = tab_int($body['pad'] ?? null);
+    if ($back === null || $back < 1 || $back > 60 || $pad === null || $pad < 0 || $pad > 10) {
+        fail(400, 'データがおかしいです');
+    }
+    try {
+        $pdo->prepare('UPDATE user_account SET practice_back = ?, practice_pad = ? WHERE user_id = ?')->execute([$back, $pad, $userId]);
     } catch (PDOException $e) {
         fail(500, db_error($e, '保存できませんでした'));
     }

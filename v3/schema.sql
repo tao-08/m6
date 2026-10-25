@@ -111,6 +111,8 @@ CREATE TABLE user_account (
     push_board     BOOLEAN NOT NULL DEFAULT FALSE,      -- 掲示板をアプリ通知にする（account.php・lib/push.php。migrations/054）
     push_important BOOLEAN NOT NULL DEFAULT FALSE,      -- 重要なお知らせをアプリ通知にする
     push_notice    BOOLEAN NOT NULL DEFAULT FALSE,      -- その他のお知らせをアプリ通知にする
+    practice_back  TINYINT UNSIGNED NULL,               -- 練習プレイヤーの戻す・進める秒数 1〜60（全動画共通。NULL = 動画ごとの値。migrations/081）
+    practice_pad   TINYINT UNSIGNED NULL,               -- 練習プレイヤーのリピート前後幅 0〜10 秒（同上）
     created_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (user_id),
     UNIQUE KEY uq_user_login (login_id),
