@@ -52,12 +52,6 @@ function fail(int $status, string $message): never
 
 // API なのでログイン画面へのリダイレクトではなく、エラーの JSON を返す
 $user = current_user();
-if ($user === null) {
-    fail(401, 'ログインしてください');
-}
-if (!tab_allowed()) {
-    fail(403, '管理人のみ利用できます'); // 今は管理人だけ（lib/tabs.php の tab_allowed）
-}
 if (!is_post()) {
     fail(405, 'POST only');
 }
@@ -68,11 +62,22 @@ if (!is_array($body)) {
     fail(400, '送られた内容がおかしいです');
 }
 $action = $body['action'] ?? '';
+// 練習プレイヤー（practice.php・tab?link=）に要る操作はログイン者なら誰でも。それ以外（TAB 譜の編集・リンクの削除や移動など）は管理人だけ
+if ($user === null) { // 未ログインは動画の検索と登録だけ（1時間あたりの回数制限つき。設定の保存は端末に持つ）
+    if (!in_array($action, ['yt_link_search', 'link_add'], true)) {
+        fail(401, 'ログインしてください');
+    }
+    if (!guest_take($action === 'link_add' ? '#g_link' : '#g_yts', $action === 'link_add' ? 20 : 30)) {
+        fail(429, '操作が多すぎます。しばらくたってからもう一度お試しください');
+    }
+} elseif (!tab_allowed() && !in_array($action, ['yt_link_search', 'link_add', 'link_practice', 'link_practicing'], true)) {
+    fail(403, '管理人のみ利用できます'); // lib/tabs.php の tab_allowed
+}
 $tabId = tab_int($body['tab_id'] ?? null) ?? 0;
 if ($tabId <= 0 && !in_array($action, ['restore', 'song_memo', 'link_search', 'yt_link_search', 'link_add', 'link_delete', 'link_move', 'link_practice', 'part_add', 'part_delete'], true)) { // 復元は rev_id、曲のメモ・リンクは song_key / link_id で指定する
     fail(400, 'TAB の指定がおかしいです');
 }
-$userId = (int)$user['user_id'];
+$userId = $user === null ? null : (int)$user['user_id']; // 未ログインの登録は作成者なし（NULL）
 $pdo = db();
 
 /** DB のエラーの文言。本番では中身（テーブル名など）を見せない */
@@ -308,6 +313,9 @@ if (in_array($action, ['link_search', 'link_add', 'yt_link_search', 'part_add', 
     if ($norm === null) {
         fail(400, 'URL がおかしいです（https のみ。YouTube は動画の URL）');
     }
+    if ($user === null && ($norm[0] !== 'youtube' || ($body['kind'] ?? '') === 'mv')) { // 未ログインが足せるのは YouTube の動画だけ（MV の置き換え・他サイトのリンクは不可）
+        fail(400, 'YouTube の動画の URL を貼り付けてください');
+    }
     if (($body['kind'] ?? '') === 'mv') { // ミュージックビデオとして登録（YouTube の動画だけ）
         if ($norm[0] !== 'youtube') {
             fail(400, 'MV は YouTube の動画の URL だけです');
@@ -446,6 +454,30 @@ if ($action === 'link_practice') {
         $pdo->prepare('INSERT INTO song_link_practice (link_id, user_id, data) VALUES (?, ?, ?)
                 ON DUPLICATE KEY UPDATE data = VALUES(data)')
             ->execute([$linkId, $userId, json_encode($clean, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)]);
+    } catch (PDOException $e) {
+        fail(500, db_error($e, '保存できませんでした'));
+    }
+    echo json_encode(['ok' => true], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+if ($action === 'link_practicing') {
+    // 練習中リスト（practice.php）に出す / 外す（自分だけ）。再生したら on、× で off。外しても練習の設定は残す
+    $linkId = tab_int($body['link_id'] ?? null) ?? 0;
+    $st = $pdo->prepare('SELECT 1 FROM song_link WHERE link_id = ? AND site = \'youtube\'');
+    $st->execute([$linkId]);
+    if (!$st->fetchColumn()) {
+        fail(404, 'リンクが見つかりません');
+    }
+    try {
+        if (($body['on'] ?? false) === true) {
+            $default = json_encode(tab_sanitize_link_practice(['m' => [], 'ab' => null]), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+            $pdo->prepare('INSERT INTO song_link_practice (link_id, user_id, data) VALUES (?, ?, ?)
+                    ON DUPLICATE KEY UPDATE practicing = 1')
+                ->execute([$linkId, $userId, $default]);
+        } else {
+            $pdo->prepare('UPDATE song_link_practice SET practicing = 0 WHERE link_id = ? AND user_id = ?')->execute([$linkId, $userId]);
+        }
     } catch (PDOException $e) {
         fail(500, db_error($e, '保存できませんでした'));
     }

@@ -103,6 +103,35 @@ function tab_allowed(): bool
     return is_admin();
 }
 
+/**
+ * 練習プレイヤー（practice.php・tab?link=・ピン留め）を使ってよい人か。ログインしていれば誰でも。
+ *   TAB 譜の作成・編集・AI・画像は引き続き tab_allowed()（管理人）だけ。
+ */
+function practice_allowed(): bool
+{
+    return current_user() !== null;
+}
+
+/**
+ * 未ログインの人の書き込み・外部 API（YouTube / Spotify）呼び出しの回数制限。同じ IP から 1時間に $perHour 回まで。
+ *   回数は login_attempt に記録して数える（contact_guest.php と同じ借り方）。ただし ip に 'g' を付けて、
+ *   ログイン失敗の IP 制限（too_many_failures）に数えられないようにする（部室の回線で使うとログインできなくなるため）
+ *   戻り値: 続けてよければ true（その場で1回分を記録する）
+ */
+function guest_take(string $bucket, int $perHour): bool
+{
+    $pdo = db();
+    $ip = 'g' . substr(client_ip(), 0, 44);
+    $st = $pdo->prepare('SELECT COUNT(*) FROM login_attempt WHERE login_id = ? AND ip = ? AND attempted_at > NOW() - INTERVAL 1 HOUR');
+    $st->execute([$bucket, $ip]);
+    if ((int)$st->fetchColumn() >= $perHour) {
+        return false;
+    }
+    $pdo->prepare('INSERT INTO login_attempt (ip, login_id, attempted_at) VALUES (?, ?, NOW())')->execute([$ip, $bucket]);
+    $pdo->exec('DELETE FROM login_attempt WHERE attempted_at < NOW() - INTERVAL 1 DAY');
+    return true;
+}
+
 /** チューニングの文字列が正しいか。空白区切りで 4〜7 本、各弦は音名（E, A, C#, Bb など） */
 function tab_tuning_valid(string $tuning): bool
 {
@@ -1056,5 +1085,7 @@ function tab_sanitize_link_practice(mixed $data): ?array
     if ((!is_int($rate) && !is_float($rate)) || $rate < 0.25 || $rate > 2 || $back === null || $back < 1 || $back > 60 || $pad === null || $pad < 0 || $pad > 10) {
         return null;
     }
-    return ['m' => $base['m'], 'ab' => $base['ab'], 'rate' => round((float)$rate, 2), 'back' => $back, 'pad' => $pad];
+    // ch: YouTube のチャプターを取り込み済み（1回だけ置き換えて、その後の編集は消さない）
+    return ['m' => $base['m'], 'ab' => $base['ab'], 'rate' => round((float)$rate, 2), 'back' => $back, 'pad' => $pad]
+        + (($data['ch'] ?? null) === 1 ? ['ch' => 1] : []);
 }

@@ -38,8 +38,24 @@
 .songs-row__tab .tab-icon { font-size: 11px; }
 .songs-row__tab.is-on { color: var(--accent); border-color: var(--accent); }
 
-/* ホーム画面追加ボタン: パソコンにも出す（追加済みのアプリ内だけ非表示） */
-@media (display-mode: standalone) { .prac-a2hs { display: none; } }
 
 /* 直近のライブのセットリスト（展開・収納） */
-.prac-live > summary { cursor: pointer; display: flex; align-items: center; gap: 6px; }
+.prac-live { padding: 0 12px; margin-bottom: 16px; }
+.prac-live[open] > summary { margin-bottom: 4px; }
+.prac-live > .prac-list { margin-bottom: 12px; }
+/* ピン留め */
+.prac-item__main { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; color: inherit; text-decoration: none; }
+.prac-item__main > .icon { color: var(--accent, currentColor); }
+.prac-pin.is-on { color: var(--accent); }
+
+/* 練習中の行: 右端に外す×（カードの上に重ねる） */
+.prac-row { position: relative; }
+.prac-row > .prac-item { padding-right: 52px; }
+.prac-row__x { position: absolute; top: 50%; right: 6px; transform: translateY(-50%); }
+
+/* 展開: 一覧が上からふわっと、曲が1件ずつ少しずらして出る（--i は practice.php が付ける順番） */
+.prac-live[open] > .prac-list { animation: prac-live-open .22s ease-out; transform-origin: top; }
+.prac-live[open] > .prac-list > li { animation: prac-live-item .26s ease-out both; animation-delay: calc(var(--i, 0) * 30ms); }
+@keyframes prac-live-open { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+@keyframes prac-live-item { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .prac-live[open] > .prac-list, .prac-live[open] > .prac-list > li { animation: none; } }

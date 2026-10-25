@@ -23,9 +23,10 @@ require_once __DIR__ . '/lib/tracks.php';
 header('Content-Type: application/json; charset=utf-8');
 
 // API なのでログイン画面へのリダイレクトではなく、エラーの JSON を返す
-if (current_user() === null) {
-    http_response_code(401);
-    echo json_encode(['error' => 'ログインしてください'], JSON_UNESCAPED_UNICODE);
+require_once __DIR__ . '/lib/tabs.php';
+if (current_user() === null && !guest_take('#g_track', 30)) { // 未ログインも使える（練習プレイヤーの曲登録）。外部 API を使うので1時間あたりの回数制限つき
+    http_response_code(429);
+    echo json_encode(['error' => '検索が多すぎます。しばらくたってからもう一度お試しください'], JSON_UNESCAPED_UNICODE);
     exit;
 }
 

@@ -1,7 +1,7 @@
 <?php
 /**
  * =====================================================================
- *  practice.php — 練習プレイヤーの入口（ツールから入る。管理人だけ = tab_allowed）
+ *  practice.php — 練習プレイヤーの入口（ツールから入る。ログインしていれば誰でも = practice_allowed）
  * =====================================================================
  *  曲名・アーティストで楽曲データベースの曲を探し、その曲の YouTube リンク（song_link）の練習プレイヤー（tab?link=）へ飛ぶ。
  *    ・リンクがある曲 … ▶ で直接プレイヤーへ
@@ -15,10 +15,8 @@
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/tabs.php';
-$user = require_login();
-if (!tab_allowed()) {
-    error_page(403, '管理人のみ利用できます');
-}
+$user = current_user(); // 未ログインでも検索と再生はできる。ピン留め・登録・動画検索・練習中・ライブはログイン者だけ
+// TAB 譜は管理人だけ（tab_allowed）
 $pdo = db();
 
 $q = mb_substr(trim((string)($_GET['q'] ?? '')), 0, 100);
@@ -106,17 +104,23 @@ if (isset($_GET['suggest'])) {
 
 // ---- 検索していないとき: 自分が練習したことのある動画（練習の設定 song_link_practice がある） ----
 $mine = [];
-if ($q === '' && $onlyKey === null) {
-    $st = $pdo->prepare('SELECT l.link_id, l.title, l.artist_name, l.label, l.part FROM song_link_practice p
-        JOIN song_link l ON l.link_id = p.link_id WHERE p.user_id = ? AND l.site = \'youtube\' ORDER BY l.link_id DESC LIMIT 20');
-    $st->execute([(int)$user['user_id']]);
+if ($user !== null && $q === '' && $onlyKey === null) {
+    try { // practicing 列はマイグレーション 078。まだなら全部を出す
+        $st = $pdo->prepare('SELECT l.link_id, l.title, l.artist_name, l.label, l.part FROM song_link_practice p
+            JOIN song_link l ON l.link_id = p.link_id WHERE p.user_id = ? AND p.practicing = 1 AND l.site = \'youtube\' ORDER BY l.link_id DESC LIMIT 20');
+        $st->execute([(int)$user['user_id']]);
+    } catch (PDOException) {
+        $st = $pdo->prepare('SELECT l.link_id, l.title, l.artist_name, l.label, l.part FROM song_link_practice p
+            JOIN song_link l ON l.link_id = p.link_id WHERE p.user_id = ? AND l.site = \'youtube\' ORDER BY l.link_id DESC LIMIT 20');
+        $st->execute([(int)$user['user_id']]);
+    }
     $mine = $st->fetchAll();
 }
 
 // ---- 検索していないとき: 自分が出演する直近のライブ（開催日が今日以降）のセットリスト。リンクがあれば先頭の動画へ ----
 $liveName = null;
 $liveSongs = [];
-if ($q === '' && $onlyKey === null) {
+if ($user !== null && $q === '' && $onlyKey === null) {
     $st = $pdo->prepare('SELECT d.live_id, l.name FROM live_day d JOIN live l ON l.live_id = d.live_id
         JOIN band b ON b.live_day_id = d.live_day_id JOIN band_member bm ON bm.band_id = b.band_id
         WHERE bm.member_id = ? AND d.held_on >= CURDATE() ORDER BY d.held_on LIMIT 1');
@@ -153,35 +157,90 @@ if ($q === '' && $onlyKey === null) {
     }
 }
 
-$hasYoutubeKey =(string)(config('youtube')['api_key'] ?? '') !== '';
+// ---- ピン留め（practice_pin。マイグレーション 077 がまだなら無いものとして扱う） ----
+$pins = [];
+if ($user !== null) {
+    try {
+        $st = $pdo->prepare('SELECT song_key, title, artist_name FROM practice_pin WHERE user_id = ? ORDER BY created_at DESC');
+        $st->execute([(int)$user['user_id']]);
+        foreach ($st as $r) {
+            $pins[$r['song_key']] = ['key' => $r['song_key'], 'title' => $r['title'], 'artist' => (string)$r['artist_name'], 'link_id' => null];
+        }
+    } catch (PDOException) {
+        $pins = [];
+    }
+}
+if ($pins && $q === '' && $onlyKey === null) {
+    $keys = array_keys($pins);
+    $st = $pdo->prepare('SELECT song_key, MIN(link_id) FROM song_link WHERE site = \'youtube\' AND song_key IN ('
+        . implode(',', array_fill(0, count($keys), '?')) . ') GROUP BY song_key');
+    $st->execute($keys);
+    foreach ($st->fetchAll(PDO::FETCH_NUM) as [$k, $id]) {
+        $pins[$k]['link_id'] = (int)$id;
+    }
+}
+/** ピン留めの切り替えボタン（assets/practice.js が api_practice_pin に送る） */
+$pinBtn = static fn(string $key, string $title, string $artist): string =>
+    '<button type="button" class="icon-btn prac-pin' . (isset($pins[$key]) ? ' is-on' : '') . '" data-pin data-key="' . h($key)
+    . '" data-title="' . h($title) . '" data-artist="' . h($artist) . '" aria-pressed="' . (isset($pins[$key]) ? 'true' : 'false')
+    . '" title="ピン留め" aria-label="ピン留め">' . icon('push_pin') . '</button>';
+
+$hasYoutubeKey = (string)(config('youtube')['api_key'] ?? '') !== ''; // キーが無いとき・API の枠を使い切ったときは、動画の URL を貼り付けて登録する
 
 render_header('練習プレイヤー', 'tools');
 ?>
 <link rel="stylesheet" href="<?= asset_url('assets/tab.css') ?>">
 <link rel="stylesheet" href="<?= asset_url('assets/practice.css') ?>">
-<nav class="crumbs"><a href="tools">ツール</a></nav>
+<?php if ($user !== null): ?><nav class="crumbs"><a href="tools">ツール</a></nav><?php endif; ?>
 <h1 class="display display--sm">練習プレイヤー</h1>
-<?php // 右上メニューと同じ説明モーダル（partials/add_to_home.php）を開く。スマホ・タブレットだけ、追加済みなら出ない ?>
-<p><button type="button" class="btn btn--sm prac-a2hs" data-a2hs-open title="ホーム画面に追加" aria-label="ホーム画面に追加"><?= icon('add_to_home_screen') ?> ホーム画面に追加</button></p>
 
+<?php if ($user === null): // 未ログインのピン留めは端末に保存（assets/practice.js） ?>
+    <script>window.PRAC_GUEST = true;</script>
+<?php endif; ?>
 <form method="get" class="prac-search" data-prac-suggest>
     <input type="search" class="search" name="q" value="<?= h($q) ?>" maxlength="100" placeholder="曲名 アーティスト名" aria-label="曲名 アーティスト名" autocomplete="off" autofocus>
     <ul class="prac-suggest" data-prac-suggest-list hidden></ul>
     <button type="submit" class="btn btn--primary" aria-label="検索" title="検索"><?= icon('search') ?></button>
 </form>
 
-<?php if ($liveSongs): // 展開・収納できる（details） ?>
-    <details class="prac-live" open>
-        <summary class="section-title"><?= icon('queue_music') ?> <?= h($liveName) ?></summary>
-        <ul class="prac-list">
-            <?php foreach ($liveSongs as $s): ?>
-                <li><a class="card prac-item prac-item--link" href="<?= $s['link_id'] ? 'tab?link=' . $s['link_id'] : 'practice?key=' . rawurlencode($s['key']) ?>">
+<?php if ($user === null && $q === '' && $onlyKey === null): ?>
+    <h2 class="section-title" data-guest-pins-head hidden><?= icon('push_pin') ?> ピン留め</h2>
+    <ul class="prac-list" data-guest-pins hidden></ul>
+<?php endif; ?>
+
+<?php if ($pins && $q === '' && $onlyKey === null): ?>
+    <h2 class="section-title"><?= icon('push_pin') ?> ピン留め</h2>
+    <ul class="prac-list">
+        <?php foreach ($pins as $s): ?>
+            <li class="card prac-item">
+                <a class="prac-item__main" href="<?= $s['link_id'] ? 'tab?link=' . $s['link_id'] : 'practice?key=' . rawurlencode($s['key']) ?>">
                     <?= icon($s['link_id'] ? 'slow_motion_video' : 'search') ?>
                     <span class="prac-item__body">
                         <span class="prac-item__title"><?= h($s['title']) ?></span>
                         <span class="muted small"><?= h($s['artist']) ?></span>
                     </span>
-                </a></li>
+                </a>
+                <?= $pinBtn($s['key'], $s['title'], $s['artist']) ?>
+            </li>
+        <?php endforeach; ?>
+    </ul>
+<?php endif; ?>
+
+<?php if ($liveSongs): // 展開・収納できる（details） ?>
+    <details class="card prac-live" open>
+        <summary class="tab-summary"><?= icon('queue_music') ?> <?= h($liveName) ?> <span class="muted small"><?= count($liveSongs) ?></span> <?= icon('expand_more', 'tab-summary__chev') ?></summary>
+        <ul class="prac-list">
+            <?php foreach (array_values($liveSongs) as $i => $s): ?>
+                <li class="card prac-item" style="--i: <?= min($i, 10) ?>">
+                    <a class="prac-item__main" href="<?= $s['link_id'] ? 'tab?link=' . $s['link_id'] : 'practice?key=' . rawurlencode($s['key']) ?>">
+                        <?= icon($s['link_id'] ? 'slow_motion_video' : 'search') ?>
+                        <span class="prac-item__body">
+                            <span class="prac-item__title"><?= h($s['title']) ?></span>
+                            <span class="muted small"><?= h($s['artist']) ?></span>
+                        </span>
+                    </a>
+                    <?= $pinBtn($s['key'], $s['title'], $s['artist']) ?>
+                </li>
             <?php endforeach; ?>
         </ul>
     </details>
@@ -191,13 +250,16 @@ render_header('練習プレイヤー', 'tools');
     <h2 class="section-title"><?= icon('history') ?> 練習中</h2>
     <ul class="prac-list">
         <?php foreach ($mine as $m): ?>
-            <li><a class="card prac-item prac-item--link" href="tab?link=<?= (int)$m['link_id'] ?>">
-                <?= icon('slow_motion_video') ?>
-                <span class="prac-item__body">
-                    <span class="prac-item__title"><?= h($m['title']) ?></span>
-                    <span class="muted small"><?= h((string)$m['artist_name']) ?><?= $m['label'] ? ' · ' . h($m['label']) : '' ?></span>
-                </span>
-            </a></li>
+            <li class="prac-row">
+                <a class="card prac-item prac-item--link" href="tab?link=<?= (int)$m['link_id'] ?>">
+                    <?= icon('slow_motion_video') ?>
+                    <span class="prac-item__body">
+                        <span class="prac-item__title"><?= h($m['title']) ?></span>
+                        <span class="muted small"><?= h((string)$m['artist_name']) ?><?= $m['label'] ? ' · ' . h($m['label']) : '' ?></span>
+                    </span>
+                </a>
+                <button type="button" class="icon-btn prac-row__x" data-unpractice="<?= (int)$m['link_id'] ?>" title="練習中から外す" aria-label="練習中から外す"><?= icon('close') ?></button>
+            </li>
         <?php endforeach; ?>
     </ul>
 <?php endif; ?>
@@ -212,16 +274,16 @@ render_header('練習プレイヤー', 'tools');
                         <span class="muted small"><?= h($s['artist']) ?></span>
                     </span>
                     <span class="prac-item__acts">
+                        <?= $pinBtn($s['key'], $s['title'], $s['artist']) ?>
                         <?php foreach ($s['links'] as $i => $l): // パートのリンクはパート名、曲全体のリンクが複数あれば番号 ?>
                             <a class="btn btn--sm btn--primary" href="tab?link=<?= (int)$l['link_id'] ?>" title="<?= h($l['label'] ?: $l['url']) ?>"><?= icon('play_arrow') ?><?= $l['part'] !== '' ? ' ' . h($l['part']) : (count($s['links']) > 1 ? ' ' . ($i + 1) : '') ?></a>
                         <?php endforeach; ?>
-                        <?php if ($hasYoutubeKey): ?>
+                        <?php // 動画検索ダイアログ（URL の貼り付けもここから） ?>
                             <button type="button" class="btn btn--sm" data-yts-open data-key="<?= h($s['key']) ?>"<?= $s['song_id'] !== null ? ' data-song-id="' . (int)$s['song_id'] . '"' : '' ?>
                                 data-q="<?= h(mb_substr(trim($s['title'] . ' ' . $s['artist']), 0, 100)) ?>"
                                 data-urls="<?= h(json_encode(array_column($s['links'], 'link_id', 'url'), JSON_UNESCAPED_SLASHES)) ?>"
-                                <?= $onlyKey !== null && !$s['links'] ? 'data-auto' : '' ?> title="動画検索"><?= icon('search') ?><?= $s['links'] ? '' : ' 動画検索' ?></button>
-                        <?php endif; ?>
-                        <a class="btn btn--sm songs-row__tab<?= $s['tabs'] > 0 ? ' is-on' : '' ?>" href="<?= h($s['song_id'] !== null ? 'tab?song=' . $s['song_id'] : 'tab?key=' . rawurlencode($s['key'])) ?>" aria-label="TAB 譜" title="TAB 譜"><?= tab_icon($s['tabs'] > 0) ?> <?= $s['tabs'] ?></a>
+                                <?= $hasYoutubeKey && $onlyKey !== null && !$s['links'] ? 'data-auto' : '' ?> title="動画検索"><?= icon('search') ?><?= $s['links'] ? '' : ' 動画検索' ?></button>
+                        <?php if (tab_allowed()): // TAB 譜は管理人だけ ?><a class="btn btn--sm songs-row__tab<?= $s['tabs'] > 0 ? ' is-on' : '' ?>" href="<?= h($s['song_id'] !== null ? 'tab?song=' . $s['song_id'] : 'tab?key=' . rawurlencode($s['key'])) ?>" aria-label="TAB 譜" title="TAB 譜"><?= tab_icon($s['tabs'] > 0) ?> <?= $s['tabs'] ?></a><?php endif; ?>
                     </span>
                 </li>
             <?php endforeach; ?>
@@ -230,7 +292,7 @@ render_header('練習プレイヤー', 'tools');
         <div class="empty card"><p class="empty__title">曲が見つかりません</p></div>
     <?php endif; ?>
 
-    <?php if ($onlyKey === null): // DB に無ければ、楽曲情報（Spotify / iTunes）から登録する ?>
+    <?php if ($onlyKey === null && $user !== null): // DB に無ければ、楽曲情報（Spotify / iTunes）から登録する ?>
         <details class="card prac-new"<?= $songs ? '' : ' open' ?> data-prac-new data-q="<?= h($q) ?>">
             <summary><?= icon('add') ?> 楽曲データベースに登録</summary>
             <ul class="prac-new__list" data-prac-new-list></ul>
@@ -244,12 +306,16 @@ render_header('練習プレイヤー', 'tools');
     <?php endif; ?>
 <?php endif; ?>
 
-<?php if ($hasYoutubeKey): // 動画検索ダイアログ（見た目は tab.css の .yts を使い回す） ?>
+<?php // 動画検索ダイアログ（見た目は tab.css の .yts を使い回す）。API が使えないときは URL を貼り付けて登録 ?>
 <dialog class="yts" data-yts>
     <form class="yts__bar" data-yts-form>
         <input type="search" name="q" maxlength="100" aria-label="検索語" autocomplete="off">
         <button type="submit" class="btn btn--primary btn--sm" title="検索" aria-label="検索"><?= icon('search') ?></button>
         <button type="button" class="icon-btn" data-yts-close title="閉じる" aria-label="閉じる"><?= icon('close') ?></button>
+    </form>
+    <form class="yts__bar" data-yts-paste>
+        <input type="url" name="url" maxlength="300" placeholder="https://www.youtube.com/watch?v=…" aria-label="動画の URL" autocomplete="off">
+        <button type="submit" class="btn btn--sm" title="URL から追加" aria-label="URL から追加"><?= icon('link') ?></button>
     </form>
     <div class="yts__chips">
         <?php foreach (['ギター', 'ベース', 'ドラム', '弾いてみた', 'TAB', 'ライブ'] as $w): ?>
@@ -258,6 +324,5 @@ render_header('練習プレイヤー', 'tools');
     </div>
     <ul class="yts__list" data-yts-list></ul>
 </dialog>
-<?php endif; ?>
 <script src="<?= asset_url('assets/practice.js') ?>" defer></script>
 <?php render_footer();

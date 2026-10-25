@@ -146,6 +146,49 @@ function youtube_search(string $q, int $max = 8): array
 }
 
 /**
+ * 概要欄の文字からチャプターを取り出す（通信なし → tests/run.php でテストできる）
+ *   YouTube の条件: 先頭が 0:00 で、3つ以上。満たさなければ空配列（チャプターとして扱われない動画）
+ *   戻り値: [['t' => ミリ秒, 'l' => 'イントロ'], ...]
+ */
+function youtube_parse_chapters(string $description): array
+{
+    $chapters = [];
+    foreach (preg_split('/\R/u', $description) ?: [] as $line) {
+        // 「0:00 イントロ」「1:02:03 - サビ」「▶ 2:10 Aメロ」。行頭の記号と、時刻のあとの区切りは捨てる
+        if (!preg_match('/^[\s\p{P}\p{S}]*(?:(\d{1,2}):)?(\d{1,2}):(\d{2})[\s\p{P}\p{S}]*(.+)$/u', $line, $m)) {
+            continue;
+        }
+        $label = trim($m[4]);
+        $sec = ((int)$m[1] * 60 + (int)$m[2]) * 60 + (int)$m[3];
+        if ($label === '' || (int)$m[3] > 59 || ($m[1] !== '' && (int)$m[2] > 59) || $sec * 1000 > 36000000) {
+            continue;
+        }
+        $chapters[] = ['t' => $sec * 1000, 'l' => $label];
+    }
+    if (count($chapters) < 3 || $chapters[0]['t'] !== 0) {
+        return [];
+    }
+    return array_slice($chapters, 0, 100);
+}
+
+/**
+ * 動画のチャプター（概要欄のタイムスタンプ）を取る。videos.list は 1 ユニット
+ *   戻り値: チャプターの配列（無ければ []）。キーが無い・通信できないときは null（「無かった」と区別する）
+ */
+function youtube_chapters(string $videoId): ?array
+{
+    $key = (string)(config('youtube')['api_key'] ?? '');
+    if ($key === '' || !youtube_video_id_valid($videoId)) {
+        return null;
+    }
+    $res = album_http('https://www.googleapis.com/youtube/v3/videos?' . http_build_query(['part' => 'snippet', 'id' => $videoId]), ['X-Goog-Api-Key: ' . $key]);
+    if ($res === null || $res['status'] !== 200 || !is_array($res['json'])) {
+        return null;
+    }
+    return youtube_parse_chapters((string)($res['json']['items'][0]['snippet']['description'] ?? ''));
+}
+
+/**
  * 動画をバンドに割り当てる（DB も通信も使わない、純粋な計算だけ → tests/run.php でテストできる）
  *
  * @param array $videos [['video_id' => ..., 'title' => ...], ...]

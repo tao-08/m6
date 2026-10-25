@@ -22,9 +22,9 @@ require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/tracks.php';
 require_once __DIR__ . '/lib/tabs.php';
 require_once __DIR__ . '/lib/youtube.php';
-require_login();
-if (!is_admin()) {
-    error_page(403, '管理人のみ利用できます');
+$guestAdd = is_post() && ($_POST['action'] ?? '') === 'add_linked'; // 練習プレイヤーからの曲の登録だけは未ログインでもできる（1時間あたりの回数制限つき）
+if (!$guestAdd) {
+    require_login(); // 閲覧はログイン者なら誰でも。手動登録の削除・版のまとめなどの書き込み、TAB 譜は管理人だけ（下の POST と tab_allowed）
 }
 $user = current_user();
 $musicApp = member_music_app(db(), $user['member_id'] ?? null); // 見ている人の音楽アプリ（ジャケット・アルバム名のリンク先）
@@ -56,7 +56,7 @@ function songs_large_art(string $url): string
 }
 
 /** song_catalog に1行入れる。同じ曲キーがすでにあれば false（UNIQUE 違反） */
-function songs_catalog_insert(PDO $pdo, string $key, string $title, ?string $artistName, ?int $artistId, ?string $source, ?string $trackId, int $userId): bool
+function songs_catalog_insert(PDO $pdo, string $key, string $title, ?string $artistName, ?int $artistId, ?string $source, ?string $trackId, ?int $userId): bool
 {
     // CHECK 制約は FK（SET NULL）の列に付けられないので、片方だけ入った行はここで弾く
     if (($source === null) !== ($trackId === null)) {
@@ -80,11 +80,18 @@ function songs_catalog_insert(PDO $pdo, string $key, string $title, ?string $art
 if (is_post()) {
     verify_csrf();
     $action = (string)($_POST['action'] ?? '');
-    $userId = (int)$user['user_id'];
+    $userId = $user === null ? null : (int)$user['user_id'];
     $key = null; // 登録できたら、その曲の TAB 一覧へ
+    if ($action !== 'add_linked' && !is_admin()) { // 曲の登録（練習プレイヤーから）以外は管理人だけ
+        error_page(403, '管理人のみ利用できます');
+    }
 
     if ($action === 'add_linked') {
         $parsed = album_parse_key($_POST['track'] ?? null); // ブラウザから来たキーは形を確かめる
+        if ($user === null && !guest_take('#g_song', 10)) { // 未ログインは外部の曲検索（Spotify / iTunes）を使うので回数を絞る
+            flash('操作が多すぎます。しばらくたってからもう一度お試しください', 'error');
+            redirect('practice');
+        }
         $info = $parsed === null ? null : track_lookup($parsed[0], $parsed[1]); // 曲名などはサーバーが取り直す
         if ($info === null) {
             flash('曲を取得できませんでした', 'error');
@@ -163,7 +170,7 @@ if (is_post()) {
     if (($_POST['to'] ?? '') === 'practice') { // 練習プレイヤーの入口（practice.php）から登録したときは、そこへ戻る
         redirect($key !== null ? 'practice?key=' . rawurlencode($key) : 'practice');
     }
-    redirect($key !== null ? 'tab?key=' . rawurlencode($key) : $back);
+    redirect($key !== null && tab_allowed() ? 'tab?key=' . rawurlencode($key) : $back);
 }
 
 // =====================================================================
@@ -565,7 +572,7 @@ $deleteForm = static fn(array $v, string $open = ''): string => '<form method="p
                     </button>
                 </div>
                 <span class="songs-row__plays muted small" title="演奏回数" aria-label="演奏回数 <?= (int)$g['plays'] ?>"><?= icon('queue_music') ?> <?= (int)$g['plays'] ?></span>
-                <a class="btn btn--sm songs-row__tab<?= $g['tabs'] > 0 ? ' is-on' : '' ?>" href="<?= h($g['tab_url']) ?>" aria-label="TAB 譜" title="TAB 譜"><?= tab_icon($g['tabs'] > 0) ?> <?= (int)$g['tabs'] ?></a>
+                <?php if (tab_allowed()): ?><a class="btn btn--sm songs-row__tab<?= $g['tabs'] > 0 ? ' is-on' : '' ?>" href="<?= h($g['tab_url']) ?>" aria-label="TAB 譜" title="TAB 譜"><?= tab_icon($g['tabs'] > 0) ?> <?= (int)$g['tabs'] ?></a><?php endif; ?>
                 <?php if (!$multi && $rep['catalog_id'] !== null): ?><?= $deleteForm($rep) ?><?php endif; ?>
             </div>
             <dialog class="songs-modal" data-song-modal aria-label="<?= h($g['title']) ?>">
@@ -665,7 +672,7 @@ $deleteForm = static fn(array $v, string $open = ''): string => '<form method="p
                                 </div>
                                 <div class="songs-version__actions muted small">
                                     <span>演奏回数 <?= (int)$v['plays'] ?></span>
-                                    <a class="btn btn--sm songs-row__tab<?= $v['tabs'] > 0 ? ' is-on' : '' ?>" href="<?= h($v['tab_url']) ?>" aria-label="TAB 譜" title="TAB 譜"><?= tab_icon($v['tabs'] > 0) ?> <?= (int)$v['tabs'] ?></a>
+                                    <?php if (tab_allowed()): ?><a class="btn btn--sm songs-row__tab<?= $v['tabs'] > 0 ? ' is-on' : '' ?>" href="<?= h($v['tab_url']) ?>" aria-label="TAB 譜" title="TAB 譜"><?= tab_icon($v['tabs'] > 0) ?> <?= (int)$v['tabs'] ?></a><?php endif; ?>
                                     <?php if ($i > 0 || $g['manual']): ?>
                                         <form method="post" class="inline-form">
                                             <?= csrf_field() ?><input type="hidden" name="action" value="primary">

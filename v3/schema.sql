@@ -1162,10 +1162,23 @@ CREATE TABLE song_link_practice (
     link_id INT UNSIGNED NOT NULL,
     user_id INT UNSIGNED NOT NULL,
     data    JSON         NOT NULL,
+    practicing TINYINT(1) NOT NULL DEFAULT 1,          -- 1 = 練習中リストに出す / 0 = リストから外した（設定は残す。migrations/078）
     PRIMARY KEY (link_id, user_id),
     CONSTRAINT fk_linkprac_link FOREIGN KEY (link_id) REFERENCES song_link (link_id)
         ON UPDATE CASCADE ON DELETE CASCADE,
     CONSTRAINT fk_linkprac_user FOREIGN KEY (user_id) REFERENCES user_account (user_id)
+        ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- 練習プレイヤーのピン留め（人ごと・曲ごと。説明は migrations/077_practice_pin.sql）
+CREATE TABLE practice_pin (
+    user_id     INT UNSIGNED NOT NULL,
+    song_key    VARCHAR(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+    title       VARCHAR(100) NOT NULL,
+    artist_name VARCHAR(255) NULL,
+    created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id, song_key),
+    CONSTRAINT fk_pracpin_user FOREIGN KEY (user_id) REFERENCES user_account (user_id)
         ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 

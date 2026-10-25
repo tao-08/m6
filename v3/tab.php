@@ -30,9 +30,10 @@ require_once __DIR__ . '/lib/tabs.php';
 require_once __DIR__ . '/lib/youtube.php';    // youtube_watch_url
 require_once __DIR__ . '/lib/attach_image.php'; // 画像の添付（kind = song_tab / song_meta）
 require_once __DIR__ . '/lib/claude.php';       // claude_enabled()（AI のボタンを出すか）
-$user = require_login();
-if (!tab_allowed()) {
-    error_page(403, '管理人のみ利用できます'); // 今は管理人だけ（lib/tabs.php の tab_allowed）
+$isPlayer = isset($_GET['link']) && !is_post();
+$user = $isPlayer ? current_user() : require_login(); // 練習プレイヤー（?link=）は未ログインでも見られる（設定の保存はログイン者だけ）
+if (!$isPlayer && !tab_allowed()) { // TAB 譜は管理人だけ
+    error_page(403, '管理人のみ利用できます'); // lib/tabs.php の tab_allowed
 }
 $pdo = db();
 
@@ -419,10 +420,35 @@ if (isset($_GET['link'])) {
     if (!$link || $videoId === null) {
         error_page(404, 'リンクが見つかりません');
     }
-    $st = $pdo->prepare('SELECT data FROM song_link_practice WHERE link_id = ? AND user_id = ?');
-    $st->execute([(int)$link['link_id'], (int)$user['user_id']]);
-    $practice = tab_sanitize_link_practice(json_decode((string)$st->fetchColumn(), true)) ?? ['m' => [], 'ab' => null, 'rate' => 1, 'back' => 5, 'pad' => 2];
-    $ytData = json_encode(['link_id' => (int)$link['link_id'], 'video' => $videoId, 'practice' => $practice],
+    $saved = false;
+    if ($user !== null) {
+        $st = $pdo->prepare('SELECT data FROM song_link_practice WHERE link_id = ? AND user_id = ?');
+        $st->execute([(int)$link['link_id'], (int)$user['user_id']]);
+        $saved = $st->fetchColumn();
+    }
+    $practice = tab_sanitize_link_practice(json_decode((string)$saved, true)) ?? ['m' => [], 'ab' => null, 'rate' => 1, 'back' => 5, 'pad' => 2];
+    // 動画にチャプターがあれば、最初に開いたときに1回だけマーカーを置き換える（取り込み済みの印 ch。以後の編集は消さない）
+    if ($user !== null && empty($practice['ch'])) {
+        $chapters = youtube_chapters($videoId);
+        if ($chapters !== null) { // null = 通信失敗など。次に開いたときにもう一度試す
+            $practice = ($chapters ? ['m' => $chapters, 'ab' => null] + $practice : $practice) + ['ch' => 1];
+            $clean = tab_sanitize_link_practice($practice);
+            if ($clean !== null) {
+                $practice = $clean;
+                $args = [(int)$link['link_id'], (int)$user['user_id'], json_encode($clean, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)];
+                try { // 開いただけでは練習中リストに載せない（practicing = 0。再生すると 1 になる）。列はマイグレーション 078
+                    $pdo->prepare('INSERT INTO song_link_practice (link_id, user_id, data, practicing) VALUES (?, ?, ?, 0)
+                            ON DUPLICATE KEY UPDATE data = VALUES(data)')->execute($args);
+                } catch (PDOException) {
+                    try {
+                        $pdo->prepare('INSERT INTO song_link_practice (link_id, user_id, data) VALUES (?, ?, ?)
+                                ON DUPLICATE KEY UPDATE data = VALUES(data)')->execute($args);
+                    } catch (PDOException) { /* 保存できなくても画面には出す。次に開いたときにもう一度 */ }
+                }
+            }
+        }
+    }
+    $ytData = json_encode(['link_id' => (int)$link['link_id'], 'video' => $videoId, 'practice' => $practice, 'guest' => $user === null],
         JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR);
     $listUrl = 'tab?key=' . rawurlencode($link['song_key']);
 

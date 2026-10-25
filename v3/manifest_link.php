@@ -14,7 +14,7 @@ require_once __DIR__ . '/lib/tabs.php';
 
 $base = json_decode((string)file_get_contents(__DIR__ . '/manifest.json'), true);
 $title = null;
-if (current_user() !== null && tab_allowed()) {
+if (practice_allowed()) {
     try {
         $st = db()->prepare('SELECT label, title FROM song_link WHERE link_id = ? AND site = \'youtube\'');
         $st->execute([(int)($_GET['id'] ?? 0)]);

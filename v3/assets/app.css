@@ -2690,6 +2690,7 @@ button.ttb-m { cursor: pointer; text-decoration: underline dotted; }
 .countdown__days strong { font-size: 28px; line-height: 1; }
 .countdown__days small { font-size: 13px; color: var(--muted); }
 .countdown__bands { display: grid; gap: 6px; padding-top: 10px; border-top: 1px solid var(--border); }
+.countdown__practice { justify-self: start; }
 .countdown__band { display: flex; align-items: baseline; gap: 12px; min-width: 0; color: inherit; text-decoration: none; }
 .countdown__band strong { font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .countdown__when { flex: none; min-width: 7.5em; font-size: 12px; font-weight: 700; color: color-mix(in srgb, var(--text) 65%, var(--surface)); } /* 黒より少し薄く */

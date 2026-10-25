@@ -30,6 +30,88 @@
   }
   const icon = (name) => { const s = el('span', 'icon', name); s.setAttribute('aria-hidden', 'true'); return s; };
 
+  // ---- 0. 未ログインのピン留め: 端末（localStorage）に持つ。ログインすると使われない ----
+  const GUEST = !!window.PRAC_GUEST;
+  const PIN_KEY = 'prac_pins';
+  const loadPins = () => {
+    try { const a = JSON.parse(localStorage.getItem(PIN_KEY) || '[]'); return Array.isArray(a) ? a.filter((p) => p && typeof p.key === 'string' && typeof p.title === 'string') : []; } catch (err) { return []; }
+  };
+  const savePins = (a) => { try { localStorage.setItem(PIN_KEY, JSON.stringify(a.slice(0, 50))); } catch (err) { /* 保存できない端末では何もしない */ } };
+  if (GUEST) {
+    const pins = loadPins();
+    document.querySelectorAll('[data-pin]').forEach((b) => {
+      const on = pins.some((p) => p.key === b.dataset.key);
+      b.classList.toggle('is-on', on);
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+    const ul = document.querySelector('[data-guest-pins]');
+    if (ul && pins.length) {
+      ul.replaceChildren(...pins.map((p) => {
+        const li = el('li', 'card prac-item');
+        const a = el('a', 'prac-item__main');
+        a.href = 'practice?key=' + encodeURIComponent(p.key);
+        const body = el('span', 'prac-item__body');
+        body.append(el('span', 'prac-item__title', p.title), el('span', 'muted small', p.artist || ''));
+        a.append(icon('search'), body);
+        const x = el('button', 'icon-btn prac-pin is-on');
+        x.type = 'button';
+        x.dataset.pin = '';
+        Object.assign(x.dataset, { key: p.key, title: p.title, artist: p.artist || '' });
+        x.setAttribute('aria-pressed', 'true');
+        x.title = x.ariaLabel = 'ピン留め';
+        x.appendChild(icon('push_pin'));
+        li.append(a, x);
+        return li;
+      }));
+      ul.hidden = false;
+      document.querySelector('[data-guest-pins-head]').hidden = false;
+    }
+  }
+
+  // ---- 0. ピン留め: api_practice_pin に送る。ピン留め欄の並びも変わるので、押したら再読み込み ----
+  document.addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-pin]');
+    if (!btn) return;
+    const on = btn.getAttribute('aria-pressed') !== 'true';
+    if (GUEST) {
+      const pins = loadPins().filter((p) => p.key !== btn.dataset.key);
+      if (on) pins.unshift({ key: btn.dataset.key, title: btn.dataset.title.slice(0, 100), artist: (btn.dataset.artist || '').slice(0, 255) });
+      savePins(pins);
+      location.reload();
+      return;
+    }
+    btn.disabled = true;
+    try {
+      const res = await fetch('api_practice_pin', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': token },
+        body: JSON.stringify({ key: btn.dataset.key, title: btn.dataset.title, artist: btn.dataset.artist, on }),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'ピン留めできませんでした');
+      location.reload();
+    } catch (err) {
+      btn.disabled = false;
+      window.alert(err.message);
+    }
+  });
+
+  // ---- 0. 練習中から外す（×）: 練習の設定は残して、リストからだけ消す。最後の1件なら見出しも消す ----
+  document.addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-unpractice]');
+    if (!btn) return;
+    btn.disabled = true;
+    try {
+      await post({ action: 'link_practicing', link_id: Number(btn.dataset.unpractice), on: false });
+      const ul = btn.closest('ul');
+      btn.closest('li').remove();
+      if (ul && !ul.children.length) { ul.previousElementSibling?.remove(); ul.remove(); }
+    } catch (err) {
+      btn.disabled = false;
+      window.alert(err.message);
+    }
+  });
+
   // ---- 1. 動画検索 ----
   const dlg = document.querySelector('[data-yts]');
   if (dlg) {
@@ -130,6 +212,23 @@
     };
     document.querySelectorAll('[data-yts-open]').forEach((b) => b.addEventListener('click', () => open(b)));
     form.addEventListener('submit', (e) => { e.preventDefault(); search(); });
+    // API が使えない（枠切れ・キー無し）ときのために、動画の URL を貼り付けて登録（link_add がサーバーで URL を確かめる）
+    const paste = dlg.querySelector('[data-yts-paste]');
+    paste.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const url = paste.elements.url.value.trim();
+      if (!url) return;
+      const btn = paste.querySelector('button');
+      btn.disabled = true;
+      try {
+        const json = await post({ action: 'link_add', song_key: ctx.key, part: '', url, label: '', ...(ctx.songId ? { song_id: ctx.songId } : {}) });
+        if (json.link.site !== 'youtube') throw new Error('YouTube の動画の URL を貼り付けてください');
+        location.href = 'tab?link=' + encodeURIComponent(json.link.id);
+      } catch (err) {
+        btn.disabled = false;
+        window.alert(err.message);
+      }
+    });
     dlg.querySelectorAll('[data-yts-word]').forEach((c) => c.addEventListener('click', () => {
       const w = c.dataset.ytsWord;
       if (!qInput.value.includes(w)) qInput.value = (qInput.value.trim() + ' ' + w).trim();

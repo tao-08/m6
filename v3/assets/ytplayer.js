@@ -22,6 +22,21 @@
   const token = document.querySelector('meta[name="csrf-token"]')?.content || '';
   const $ = (sel) => root.querySelector(sel);
 
+  // 未ログインの設定は端末（localStorage）に持つ。形は読むときに確かめる
+  const LS_KEY = 'yt_practice_' + D.link_id;
+  if (D.guest) {
+    try {
+      const s = JSON.parse(localStorage.getItem(LS_KEY) || 'null');
+      const num = (v) => typeof v === 'number' && Number.isFinite(v);
+      if (s && typeof s === 'object') {
+        if (Array.isArray(s.m)) P.m = s.m.filter((x) => x && num(x.t) && x.t >= 0).slice(0, 100).map((x) => ({ t: x.t, e: num(x.e) ? x.e : null, l: typeof x.l === 'string' ? x.l.slice(0, 30) : '' }));
+        if (Array.isArray(s.ab) && s.ab.length === 2 && s.ab.every(num)) P.ab = s.ab;
+        if (num(s.rate) && s.rate >= 0.25 && s.rate <= 2) P.rate = s.rate;
+        if (num(s.back) && s.back >= 1 && s.back <= 60) P.back = s.back;
+        if (num(s.pad) && s.pad >= 0 && s.pad <= 10) P.pad = s.pad;
+      }
+    } catch (err) { /* 読めなければ初期値 */ }
+  }
   let player = null, ready = false, playing = false, loop = !!P.ab;
   const RATES_DEFAULT = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
 
@@ -43,18 +58,36 @@
 
   // ---- 自動保存（変更から約1秒後。ページを閉じるときは keepalive で送る） ----
   let saveTimer = null;
-  const send = (keepalive) => fetch('api_tab_save', {
+  // 未ログイン（D.guest）は端末に保存
+  const saveLocal = () => {
+    try { localStorage.setItem(LS_KEY, JSON.stringify({ m: P.m, ab: P.ab, rate: P.rate, back: P.back, pad: P.pad })); } catch (err) { /* 保存できない端末では何もしない */ }
+    return Promise.resolve();
+  };
+  const send = (keepalive) => D.guest ? saveLocal() : fetch('api_tab_save', {
     method: 'POST',
     keepalive: !!keepalive,
     credentials: 'same-origin',
     headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': token },
-    body: JSON.stringify({ action: 'link_practice', link_id: D.link_id, data: { m: P.m, ab: P.ab, rate: P.rate, back: P.back, pad: P.pad } }),
+    body: JSON.stringify({ action: 'link_practice', link_id: D.link_id, data: { m: P.m, ab: P.ab, rate: P.rate, back: P.back, pad: P.pad, ch: P.ch } }),
   }).then(async (res) => { if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || '保存できませんでした'); });
   function changed() {
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => { saveTimer = null; send().catch((e) => notify(e.message, 'error')); }, 1000);
   }
   window.addEventListener('pagehide', () => { if (saveTimer) { clearTimeout(saveTimer); send(true).catch(() => {}); } });
+
+  // ---- 再生したら、練習プレイヤーの「練習中」リストに載せる（開くたびに最初の再生で1回だけ） ----
+  let marked = false;
+  function markPracticing() {
+    if (marked || D.guest) return;
+    marked = true;
+    fetch('api_tab_save', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': token },
+      body: JSON.stringify({ action: 'link_practicing', link_id: D.link_id, on: true }),
+    }).catch(() => { marked = false; });
+  }
 
   // ---- YouTube の IFrame API ----
   const s = document.createElement('script');
@@ -67,7 +100,7 @@
       playerVars: { playsinline: 1, rel: 0 },
       events: {
         onReady: () => { ready = true; setRate(P.rate); render(); },
-        onStateChange: (e) => { playing = e.data === 1 || e.data === 3; render(); },
+        onStateChange: (e) => { playing = e.data === 1 || e.data === 3; if (e.data === 1) markPracticing(); render(); },
         onPlaybackRateChange: () => { P.rate = player.getPlaybackRate() || 1; renderRate(); },
       },
     });

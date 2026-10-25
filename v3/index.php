@@ -170,6 +170,7 @@ render_header('ライブ一覧', 'lives');
                     <?php // 出演時間が未入力なら日付を出す ?>
                     <a class="countdown__band" href="band?id=<?= (int)$b['band_id'] ?>"><span class="countdown__when"><?= h($b['label']) ?> <?= $b['start_time'] !== null ? h(substr($b['start_time'], 0, 5)) : h(fmt_date($b['held_on'])) ?></span><strong><?= h($b['name']) ?></strong></a>
                 <?php endforeach; ?>
+                <a class="btn btn--sm countdown__practice" href="practice"><?= icon('slow_motion_video') ?> 練習プレイヤーへ</a>
             </div>
         <?php endif; ?>
     </div>
