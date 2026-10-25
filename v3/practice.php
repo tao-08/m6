@@ -34,8 +34,8 @@ if ($q !== '' || $onlyKey !== null) {
         JOIN band b ON b.band_id = s.band_id
         LEFT JOIN artist a ON a.artist_id = COALESCE(s.artist_id, b.artist_id)
         LEFT JOIN track t ON t.source = s.track_source AND t.track_id = s.track_id
-        WHERE s.is_se = 0
-        ORDER BY s.song_id DESC');
+        WHERE s.is_se = 0 AND NOT ' . setlist_hidden_sql('b') . '
+        ORDER BY s.song_id DESC'); // 非公開のセットリストの曲は出さない（api_tab_save の tab_resolve_song と同じ条件。出すと未ログインの動画検索が「曲が見つかりません」になる）
     foreach ($st as $r) {
         $key = tab_song_key($r['track_source'], $r['track_id'], $r['artist_id'] === null ? null : (int)$r['artist_id'],
             (int)$r['band_id'], $r['title'], $r['artist_name']);
