@@ -5619,3 +5619,38 @@ function setupAliasField() {
     document.addEventListener('click', () => toggle(false));
   });
 }
+
+/* 楽器ラベル（.part）の名前ポップアップ: PC はマウスオーバー、スマホはタップ。
+   title は標準の吹き出しが出てしまうので、初回に data-tip へ移す */
+{
+  const tip = document.createElement('div');
+  tip.className = 'part-tip';
+  tip.hidden = true;
+  document.body.appendChild(tip);
+  let timer = 0;
+  const hide = () => { tip.hidden = true; clearTimeout(timer); };
+  const show = (el) => {
+    if (el.title) { el.dataset.tip = el.title; el.removeAttribute('title'); }
+    if (!el.dataset.tip) return;
+    tip.textContent = el.dataset.tip;
+    tip.hidden = false;
+    const r = el.getBoundingClientRect();
+    const w = tip.offsetWidth;
+    tip.style.left = Math.max(4, Math.min(innerWidth - w - 4, r.left + r.width / 2 - w / 2)) + 'px';
+    tip.style.top = (r.top >= tip.offsetHeight + 8 ? r.top - tip.offsetHeight - 6 : r.bottom + 6) + 'px';
+  };
+  document.addEventListener('pointerover', (e) => {
+    const el = e.pointerType === 'mouse' && e.target.closest('.part');
+    if (el) show(el);
+  });
+  document.addEventListener('pointerout', (e) => { if (e.pointerType === 'mouse' && e.target.closest('.part')) hide(); });
+  document.addEventListener('click', (e) => {
+    const el = e.target.closest('.part');
+    hide();
+    if (el && e.pointerType !== 'mouse' && e.detail <= 1 && matchMedia('(hover: none)').matches) {
+      show(el);
+      timer = setTimeout(hide, 1800);
+    }
+  });
+  addEventListener('scroll', hide, { passive: true });
+}
