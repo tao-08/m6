@@ -116,8 +116,7 @@ a.tab-parts__item:hover { border-color: var(--accent); }
 .ytp.is-full .ytp__dock { position: absolute; left: 0; right: 0; bottom: 0; z-index: 2; display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 4px 10px;
     padding: 18px 12px 6px; color: #fff; background: linear-gradient(transparent, rgb(0 0 0 / .75)); }
 .ytp.is-full.is-zoom-bottom .ytp__dock { bottom: auto; top: 0; padding: 6px 12px 18px; background: linear-gradient(rgb(0 0 0 / .75), transparent); }
-.ytp.is-full .ytp__dock > .ytp__line, .ytp.is-full .ytp__dock > .ytp__bubbles--up { flex: 0 0 100%; }
-.ytp.is-full .ytp__dock > .ytp__bubbles:not(.ytp__bubbles--up) { display: none; }
+.ytp.is-full .ytp__dock > .ytp__line, .ytp.is-full .ytp__dock > .ytp__bubbles { flex: 0 0 100%; }
 .ytp.is-full .ytp__dock > .ytp__time { order: 1; color: #fff; }
 .ytp.is-full .ytp__dock .ytp__label, .ytp.is-full .ytp__dock .ytp__sec, .ytp.is-full .ytp__dock .icon-btn, .ytp.is-full .ytp__dock .tab-chip { color: #fff; }
 .ytp.is-full .ytp__dock .icon-btn, .ytp.is-full .ytp__dock .tab-chip { background: rgb(0 0 0 / .55); border-color: rgb(255 255 255 / .35); }

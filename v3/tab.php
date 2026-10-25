@@ -30,7 +30,7 @@ require_once __DIR__ . '/lib/tabs.php';
 require_once __DIR__ . '/lib/youtube.php';    // youtube_watch_url
 require_once __DIR__ . '/lib/attach_image.php'; // 画像の添付（kind = song_tab / song_meta）
 require_once __DIR__ . '/lib/claude.php';       // claude_enabled()（AI のボタンを出すか）
-$isPlayer = isset($_GET['link']) && !is_post();
+$isPlayer = (isset($_GET['link']) || isset($_GET['yt'])) && !is_post();
 $user = $isPlayer ? current_user() : require_login(); // 練習プレイヤー（?link=）は未ログインでも見られる（設定の保存はログイン者だけ）
 if (!$isPlayer && !tab_allowed()) { // TAB 譜は管理人だけ
     error_page(403, '管理人のみ利用できます'); // lib/tabs.php の tab_allowed
