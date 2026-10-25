@@ -104,6 +104,25 @@ a.tab-parts__item:hover { border-color: var(--accent); }
 .ytp__mark { display: flex; align-items: center; gap: 6px; }
 .ytp__mark input { flex: 1; min-width: 0; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font: inherit; }
 .ytp__mark .tab-chip { font-variant-numeric: tabular-nums; }
+/* 全画面（スマホは横向き）: 動画を画面いっぱいに出し、操作部を重ねる。--上/--下 は動画の上半分・下半分（TAB 譜）を幅いっぱいに拡大し、操作部は反対側へ */
+.ytp__dock { display: contents; }
+.ytp__fsonly { display: none; }
+.ytp.is-full { position: fixed; inset: 0; z-index: 1000; display: block; padding: 0; border: 0; border-radius: 0; background: #000; overflow: hidden; }
+.ytp.is-full .ytp__video { position: absolute; left: 50%; top: 50%; width: min(100vw, 100dvh * 16 / 9); height: auto; transform: translate(-50%, -50%); border-radius: 0; }
+.ytp.is-full.is-zoom-top .ytp__video { width: 100vw; top: 0; transform: translateX(-50%); }
+.ytp.is-full.is-zoom-bottom .ytp__video { width: 100vw; top: auto; bottom: 0; transform: translateX(-50%); }
+.ytp.is-full > :not(.ytp__video):not(.ytp__dock) { display: none; }
+.ytp.is-full .ytp__fsonly { display: inline-flex; }
+.ytp.is-full .ytp__dock { position: absolute; left: 0; right: 0; bottom: 0; z-index: 2; display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 4px 10px;
+    padding: 18px 12px 6px; color: #fff; background: linear-gradient(transparent, rgb(0 0 0 / .75)); }
+.ytp.is-full.is-zoom-bottom .ytp__dock { bottom: auto; top: 0; padding: 6px 12px 18px; background: linear-gradient(rgb(0 0 0 / .75), transparent); }
+.ytp.is-full .ytp__dock > .ytp__line, .ytp.is-full .ytp__dock > .ytp__bubbles--up { flex: 0 0 100%; }
+.ytp.is-full .ytp__dock > .ytp__bubbles:not(.ytp__bubbles--up) { display: none; }
+.ytp.is-full .ytp__dock > .ytp__time { order: 1; color: #fff; }
+.ytp.is-full .ytp__dock .ytp__label, .ytp.is-full .ytp__dock .ytp__sec, .ytp.is-full .ytp__dock .icon-btn, .ytp.is-full .ytp__dock .tab-chip { color: #fff; }
+.ytp.is-full .ytp__play { min-height: 40px; }
+@media (max-height: 480px) { .ytp.is-full .ytp__dock > .ytp__row { flex-wrap: nowrap; gap: 2px; } .ytp.is-full .ytp__dock .ytp__label { display: none; } }
+body.ytp-lock { overflow: hidden; }
 .ytp__open { justify-self: end; display: inline-flex; align-items: center; gap: 4px; }
 .is-loading .icon { animation: tab-spin 1s linear infinite; }
 @keyframes tab-spin { to { transform: rotate(360deg); } }

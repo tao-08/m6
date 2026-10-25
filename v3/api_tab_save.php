@@ -64,17 +64,17 @@ if (!is_array($body)) {
 $action = $body['action'] ?? '';
 // 練習プレイヤー（practice.php・tab?link=）に要る操作はログイン者なら誰でも。それ以外（TAB 譜の編集・リンクの削除や移動など）は管理人だけ
 if ($user === null) { // 未ログインは動画の検索と登録だけ（1時間あたりの回数制限つき。設定の保存は端末に持つ）
-    if (!in_array($action, ['yt_link_search', 'link_add'], true)) {
+    if (!in_array($action, ['yt_link_search', 'link_add', 'link_shared'], true)) {
         fail(401, 'ログインしてください');
     }
-    if (!guest_take($action === 'link_add' ? '#g_link' : '#g_yts', $action === 'link_add' ? 20 : 30)) {
+    if (!guest_take(['link_add' => '#g_link', 'link_shared' => '#g_shared'][$action] ?? '#g_yts', ['link_add' => 20, 'link_shared' => 120][$action] ?? 30)) {
         fail(429, '操作が多すぎます。しばらくたってからもう一度お試しください');
     }
-} elseif (!tab_allowed() && !in_array($action, ['yt_link_search', 'link_add', 'link_practice', 'link_practicing'], true)) {
+} elseif (!tab_allowed() && !in_array($action, ['yt_link_search', 'link_add', 'link_practice', 'link_practicing', 'link_shared'], true)) {
     fail(403, '管理人のみ利用できます'); // lib/tabs.php の tab_allowed
 }
 $tabId = tab_int($body['tab_id'] ?? null) ?? 0;
-if ($tabId <= 0 && !in_array($action, ['restore', 'song_memo', 'link_search', 'yt_link_search', 'link_add', 'link_delete', 'link_move', 'link_practice', 'part_add', 'part_delete'], true)) { // 復元は rev_id、曲のメモ・リンクは song_key / link_id で指定する
+if ($tabId <= 0 && !in_array($action, ['restore', 'song_memo', 'link_search', 'yt_link_search', 'link_add', 'link_delete', 'link_move', 'link_practice', 'link_shared', 'part_add', 'part_delete'], true)) { // 復元は rev_id、曲のメモ・リンクは song_key / link_id で指定する
     fail(400, 'TAB の指定がおかしいです');
 }
 $userId = $user === null ? null : (int)$user['user_id']; // 未ログインの登録は作成者なし（NULL）
@@ -456,6 +456,35 @@ if ($action === 'link_practice') {
             ->execute([$linkId, $userId, json_encode($clean, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)]);
     } catch (PDOException $e) {
         fail(500, db_error($e, '保存できませんでした'));
+    }
+    echo json_encode(['ok' => true], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+if ($action === 'link_shared') {
+    // 共通マーカー（曲構成のラベル付き。動画ごと・全員共通）。未ログインも保存できるので、ラベルは定型のものだけ・個数を絞る。全体を置き換える
+    $linkId = tab_int($body['link_id'] ?? null) ?? 0;
+    $clean = tab_sanitize_practice(['m' => $body['m'] ?? null]);
+    if ($clean === null || count($clean['m']) > 50) {
+        fail(400, 'データがおかしいです');
+    }
+    $m = [];
+    foreach ($clean['m'] as $mk) {
+        if (!in_array($mk['l'], TAB_SHARED_LABELS, true)) {
+            fail(400, 'ラベルがおかしいです');
+        }
+        $m[] = ['t' => $mk['t'], 'l' => $mk['l']];
+    }
+    $st = $pdo->prepare('SELECT 1 FROM song_link WHERE link_id = ? AND site = \'youtube\'');
+    $st->execute([$linkId]);
+    if (!$st->fetchColumn()) {
+        fail(404, 'リンクが見つかりません');
+    }
+    try {
+        $pdo->prepare('INSERT INTO song_link_shared_mark (link_id, data) VALUES (?, ?) ON DUPLICATE KEY UPDATE data = VALUES(data)')
+            ->execute([$linkId, json_encode($m, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)]);
+    } catch (PDOException $e) {
+        fail(500, db_error($e, '保存できませんでした（マイグレーション 080 が未実行）'));
     }
     echo json_encode(['ok' => true], JSON_UNESCAPED_UNICODE);
     exit;

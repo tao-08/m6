@@ -78,6 +78,8 @@ const TAB_MAX_LINKS = 10;            // 1つの TAB に付けられるリンク�
 const TAB_LINK_LABEL_MAX = 30;
 const TAB_MAX_MARKERS = 100;         // 練習用マーカーの数（1人・1つの TAB あたり）
 const TAB_MARKER_LABEL_MAX = 20;
+/** 練習プレイヤーの共通マーカー（動画ごと・全員共通）になる曲構成のラベル。これ以外のラベルのマーカーは人ごと */
+const TAB_SHARED_LABELS = ['イントロ', 'Aメロ', 'Bメロ', 'サビ', '間奏', 'ソロ', 'Cメロ', 'アウトロ'];
 const TAB_MEMO_MAX = 20000;          // メモの文字数（TAB のメモ・曲のメモ）
 
 /**

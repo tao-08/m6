@@ -1170,6 +1170,26 @@ CREATE TABLE song_link_practice (
         ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+-- YouTube 動画のチャプター（概要欄のタイムスタンプ）の控え。動画（リンク）ごとに1行・全員共通。説明は migrations/079_link_chapter.sql
+CREATE TABLE song_link_chapter (
+    link_id    INT UNSIGNED NOT NULL,
+    data       JSON         NOT NULL,                  -- [{"t": ミリ秒, "l": ラベル}]。チャプターが無い動画は []
+    fetched_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (link_id),
+    CONSTRAINT fk_linkchap_link FOREIGN KEY (link_id) REFERENCES song_link (link_id)
+        ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- YouTube 動画の共通マーカー（曲構成のラベル付き。動画ごとに1行・全員共通。説明は migrations/080_link_shared_mark.sql）
+CREATE TABLE song_link_shared_mark (
+    link_id    INT UNSIGNED NOT NULL,
+    data       JSON         NOT NULL,                  -- [{"t": ミリ秒, "l": ラベル}]
+    updated_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (link_id),
+    CONSTRAINT fk_linkshared_link FOREIGN KEY (link_id) REFERENCES song_link (link_id)
+        ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
 -- 練習プレイヤーのピン留め（人ごと・曲ごと。説明は migrations/077_practice_pin.sql）
 CREATE TABLE practice_pin (
     user_id     INT UNSIGNED NOT NULL,

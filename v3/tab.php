@@ -427,28 +427,55 @@ if (isset($_GET['link'])) {
         $saved = $st->fetchColumn();
     }
     $practice = tab_sanitize_link_practice(json_decode((string)$saved, true)) ?? ['m' => [], 'ab' => null, 'rate' => 1, 'back' => 5, 'pad' => 2];
-    // 動画にチャプターがあれば、最初に開いたときに1回だけマーカーを置き換える（取り込み済みの印 ch。以後の編集は消さない）
-    if ($user !== null && empty($practice['ch'])) {
+    // 動画のチャプター（概要欄）は動画ごとに DB（song_link_chapter）へ1回だけ控える。ゲストにも、ログイン中の人にも同じものを使う
+    //   cached = 控えがある / チャプターが無い動画も [] で控える（毎回 API を叩かない）。API が失敗したら控えず、次に開いたときにもう一度
+    $chapters = null;
+    $linkId = (int)$link['link_id'];
+    try { // テーブルはマイグレーション 079。まだなら毎回 API で取る
+        $st = $pdo->prepare('SELECT data FROM song_link_chapter WHERE link_id = ?');
+        $st->execute([$linkId]);
+        $cached = $st->fetchColumn();
+        $chapters = $cached !== false ? (tab_sanitize_practice(['m' => json_decode((string)$cached, true)])['m'] ?? []) : null;
+    } catch (PDOException) {
+    }
+    if ($chapters === null && ($user === null || empty($practice['ch']))) {
         $chapters = youtube_chapters($videoId);
-        if ($chapters !== null) { // null = 通信失敗など。次に開いたときにもう一度試す
-            $practice = ($chapters ? ['m' => $chapters, 'ab' => null] + $practice : $practice) + ['ch' => 1];
-            $clean = tab_sanitize_link_practice($practice);
-            if ($clean !== null) {
-                $practice = $clean;
-                $args = [(int)$link['link_id'], (int)$user['user_id'], json_encode($clean, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)];
-                try { // 開いただけでは練習中リストに載せない（practicing = 0。再生すると 1 になる）。列はマイグレーション 078
-                    $pdo->prepare('INSERT INTO song_link_practice (link_id, user_id, data, practicing) VALUES (?, ?, ?, 0)
-                            ON DUPLICATE KEY UPDATE data = VALUES(data)')->execute($args);
-                } catch (PDOException) {
-                    try {
-                        $pdo->prepare('INSERT INTO song_link_practice (link_id, user_id, data) VALUES (?, ?, ?)
-                                ON DUPLICATE KEY UPDATE data = VALUES(data)')->execute($args);
-                    } catch (PDOException) { /* 保存できなくても画面には出す。次に開いたときにもう一度 */ }
-                }
+        if ($chapters !== null) {
+            try {
+                $pdo->prepare('INSERT IGNORE INTO song_link_chapter (link_id, data) VALUES (?, ?)')
+                    ->execute([$linkId, json_encode($chapters, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)]);
+            } catch (PDOException) {
             }
         }
     }
-    $ytData = json_encode(['link_id' => (int)$link['link_id'], 'video' => $videoId, 'practice' => $practice, 'guest' => $user === null],
+    // ログイン中は、最初に開いたときに1回だけマーカーを置き換える（取り込み済みの印 ch。以後の編集は消さない）
+    if ($user !== null && empty($practice['ch']) && $chapters !== null) {
+        $practice = ($chapters ? ['m' => $chapters, 'ab' => null] + $practice : $practice) + ['ch' => 1];
+        $clean = tab_sanitize_link_practice($practice);
+        if ($clean !== null) {
+            $practice = $clean;
+            $args = [$linkId, (int)$user['user_id'], json_encode($clean, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)];
+            try { // 開いただけでは練習中リストに載せない（practicing = 0。再生すると 1 になる）。列はマイグレーション 078
+                $pdo->prepare('INSERT INTO song_link_practice (link_id, user_id, data, practicing) VALUES (?, ?, ?, 0)
+                        ON DUPLICATE KEY UPDATE data = VALUES(data)')->execute($args);
+            } catch (PDOException) {
+                try {
+                    $pdo->prepare('INSERT INTO song_link_practice (link_id, user_id, data) VALUES (?, ?, ?)
+                            ON DUPLICATE KEY UPDATE data = VALUES(data)')->execute($args);
+                } catch (PDOException) { /* 保存できなくても画面には出す。次に開いたときにもう一度 */ }
+            }
+        }
+    }
+    // 共通マーカー（曲構成のラベル付き）。行が無い（null）間は、人ごとのマーカーをそのまま使う。テーブルはマイグレーション 080
+    $shared = null;
+    try {
+        $st = $pdo->prepare('SELECT data FROM song_link_shared_mark WHERE link_id = ?');
+        $st->execute([$linkId]);
+        $row = $st->fetchColumn();
+        $shared = $row === false ? null : (tab_sanitize_practice(['m' => json_decode((string)$row, true)])['m'] ?? []);
+    } catch (PDOException) {
+    }
+    $ytData = json_encode(['link_id' => (int)$link['link_id'], 'video' => $videoId, 'practice' => $practice, 'guest' => $user === null, 'shared' => $shared] +($user === null && $chapters ? ['chapters' => $chapters] : []),
         JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR);
     $listUrl = 'tab?key=' . rawurlencode($link['song_key']);
 
@@ -461,7 +488,8 @@ if (isset($_GET['link'])) {
 <script type="application/json" id="yt-data"><?= $ytData ?></script>
 <section class="card ytp" data-ytp>
     <div class="ytp__video"><div data-ytp-mount></div></div>
-    <?php // タイムライン: 再生位置・AB の範囲・マークを表示。押した位置へ移動 ?>
+    <?php // 操作部（全画面のときは動画に重ねる）。タイムライン: 再生位置・AB の範囲・マークを表示。押した位置へ移動 ?>
+    <div class="ytp__dock">
     <div class="ytp__bubbles ytp__bubbles--up" data-ytp-bubbles-up aria-hidden="true"></div>
     <div class="ytp__line" data-ytp-line title="押す・ドラッグで移動">
         <div class="ytp__ab" data-ytp-abband hidden></div>
@@ -476,6 +504,8 @@ if (isset($_GET['link'])) {
         <label class="ytp__sec" title="戻す・進める秒数"><input type="number" min="1" max="60" inputmode="numeric" data-ytp-backsec aria-label="秒数">秒</label>
         <button type="button" class="btn btn--primary ytp__play" data-ytp-play title="再生・停止（Space）" aria-label="再生・停止"><?= icon('play_arrow') ?></button>
         <button type="button" class="icon-btn" data-ytp-fwd title="進める（→）" aria-label="進める"><?= icon('fast_forward') ?></button>
+        <button type="button" class="icon-btn ytp__fsonly" data-ytp-zoom title="拡大（全体・上半分・下半分）" aria-label="拡大"><?= icon('fit_screen') ?></button>
+        <button type="button" class="icon-btn" data-ytp-fs title="全画面" aria-label="全画面"><?= icon('fullscreen') ?></button>
     </div>
 
     <div class="ytp__row">
@@ -498,6 +528,7 @@ if (isset($_GET['link'])) {
         <button type="button" class="icon-btn" data-ytp-prevmark title="前のマーカー（Shift+←）" aria-label="前のマーカー"><?= icon('keyboard_double_arrow_left') ?></button>
         <button type="button" class="icon-btn" data-ytp-nextmark title="次のマーカー（Shift+→）" aria-label="次のマーカー"><?= icon('keyboard_double_arrow_right') ?></button>
     </div>
+    </div>
 
     <?php // 曲構成のラベル（押すと現在位置にそのラベルのマーク）と、ラベルなしのマーク ?>
     <div class="ytp__row">
@@ -509,7 +540,7 @@ if (isset($_GET['link'])) {
         <label class="ytp__sec" title="リピートの前後に足す秒数">リピート前後幅<input type="number" min="0" max="10" inputmode="numeric" data-ytp-pad aria-label="リピート前後幅">秒</label>
     </div>
     <div class="ytp__row">
-        <?php foreach (['イントロ', 'Aメロ', 'Bメロ', 'サビ', '間奏', 'ソロ', 'Cメロ', 'アウトロ'] as $sec): ?>
+        <?php foreach (TAB_SHARED_LABELS as $sec): ?>
             <button type="button" class="tab-chip" data-ytp-sec="<?= h($sec) ?>"><?= h($sec) ?></button>
         <?php endforeach; ?>
     </div>

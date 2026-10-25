@@ -29,6 +29,7 @@
       const s = JSON.parse(localStorage.getItem(LS_KEY) || 'null');
       const num = (v) => typeof v === 'number' && Number.isFinite(v);
       if (s && typeof s === 'object') {
+        if (s.ch === 1) P.ch = 1;
         if (Array.isArray(s.m)) P.m = s.m.filter((x) => x && num(x.t) && x.t >= 0).slice(0, 100).map((x) => ({ t: x.t, e: num(x.e) ? x.e : null, l: typeof x.l === 'string' ? x.l.slice(0, 30) : '' }));
         if (Array.isArray(s.ab) && s.ab.length === 2 && s.ab.every(num)) P.ab = s.ab;
         if (num(s.rate) && s.rate >= 0.25 && s.rate <= 2) P.rate = s.rate;
@@ -36,6 +37,18 @@
         if (num(s.pad) && s.pad >= 0 && s.pad <= 10) P.pad = s.pad;
       }
     } catch (err) { /* 読めなければ初期値 */ }
+  }
+  // ゲストは、動画にチャプターがあれば最初に開いたとき1回だけマーカーにする（以後の編集は端末に残す）
+  if (D.guest && !P.ch && Array.isArray(D.chapters)) {
+    P.m = D.chapters.slice(0, 100).map((x) => ({ t: x.t, l: String(x.l).slice(0, 30) }));
+    P.ch = 1;
+    try { localStorage.setItem(LS_KEY, JSON.stringify({ m: P.m, ab: P.ab, rate: P.rate, back: P.back, pad: P.pad, ch: 1 })); } catch (err) { /* 端末に保存できなければ次回また */ }
+  }
+  // 曲構成のラベル（イントロ・サビ…）のマーカーは動画ごとに全員共通（song_link_shared_mark）。それ以外は人ごと。
+  //   D.shared が null の間（まだ誰も共通に保存していない）は、人ごとのマーカーに入っているものをそのまま使う
+  const SHARED = new Set([...root.querySelectorAll('[data-ytp-sec]')].map((b) => b.dataset.ytpSec));
+  if (Array.isArray(D.shared)) {
+    P.m = [...P.m.filter((m) => !SHARED.has(m.l)), ...D.shared.filter((x) => SHARED.has(x.l)).map((x) => ({ t: x.t, e: null, l: x.l }))].sort((a, b) => a.t - b.t);
   }
   let player = null, ready = false, playing = false, loop = !!P.ab;
   const RATES_DEFAULT = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
@@ -60,16 +73,29 @@
   let saveTimer = null;
   // 未ログイン（D.guest）は端末に保存
   const saveLocal = () => {
-    try { localStorage.setItem(LS_KEY, JSON.stringify({ m: P.m, ab: P.ab, rate: P.rate, back: P.back, pad: P.pad })); } catch (err) { /* 保存できない端末では何もしない */ }
+    try { localStorage.setItem(LS_KEY, JSON.stringify({ m: personal(), ab: P.ab, rate: P.rate, back: P.back, pad: P.pad, ch: P.ch })); } catch (err) { /* 保存できない端末では何もしない */ }
     return Promise.resolve();
   };
-  const send = (keepalive) => D.guest ? saveLocal() : fetch('api_tab_save', {
+  const personal = () => P.m.filter((m) => !SHARED.has(m.l));
+  const sharedList = () => P.m.filter((m) => SHARED.has(m.l)).map((m) => ({ t: m.t, l: m.l }));
+  const post = (body, keepalive) => fetch('api_tab_save', {
     method: 'POST',
     keepalive: !!keepalive,
     credentials: 'same-origin',
     headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': token },
-    body: JSON.stringify({ action: 'link_practice', link_id: D.link_id, data: { m: P.m, ab: P.ab, rate: P.rate, back: P.back, pad: P.pad, ch: P.ch } }),
+    body: JSON.stringify(body),
   }).then(async (res) => { if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || '保存できませんでした'); });
+  let sentShared = JSON.stringify(sharedList()); // 変わったときだけ共通マーカーを送る
+  const sendShared = (keepalive) => {
+    const list = sharedList(), sig = JSON.stringify(list), prev = sentShared;
+    if (sig === prev) return Promise.resolve();
+    sentShared = sig;
+    return post({ action: 'link_shared', link_id: D.link_id, m: list }, keepalive).catch((e) => { sentShared = prev; throw e; });
+  };
+  const send = (keepalive) => Promise.all([
+    D.guest ? saveLocal() : post({ action: 'link_practice', link_id: D.link_id, data: { m: personal(), ab: P.ab, rate: P.rate, back: P.back, pad: P.pad, ch: P.ch } }, keepalive),
+    sendShared(keepalive),
+  ]);
   function changed() {
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => { saveTimer = null; send().catch((e) => notify(e.message, 'error')); }, 1000);
@@ -131,6 +157,41 @@
   const fwd = () => seek(now() + P.back * 1000);
   $('[data-ytp-back]').addEventListener('click', back);
   $('[data-ytp-fwd]').addEventListener('click', fwd);
+
+  // ---- 全画面（動画に操作を重ねる）と拡大（全体 → 上半分 → 下半分）。動画内の TAB 譜を大きく見る用 ----
+  const ZOOMS = ['', 'top', 'bottom'];
+  const ZOOM_ICON = { '': 'fit_screen', top: 'vertical_align_top', bottom: 'vertical_align_bottom' };
+  const fsBtn = $('[data-ytp-fs]'), zoomBtn = $('[data-ytp-zoom]');
+  let zoom = '';
+  try { const z = localStorage.getItem('ytp_zoom'); if (ZOOMS.includes(z)) zoom = z; } catch (err) { /* 保存できない端末では全体 */ }
+  const isFull = () => root.classList.contains('is-full');
+  function renderFull() {
+    root.classList.toggle('is-zoom-top', zoom === 'top');
+    root.classList.toggle('is-zoom-bottom', zoom === 'bottom');
+    zoomBtn.querySelector('.icon').textContent = ZOOM_ICON[zoom];
+    fsBtn.querySelector('.icon').textContent = isFull() ? 'fullscreen_exit' : 'fullscreen';
+    document.body.classList.toggle('ytp-lock', isFull());
+  }
+  function setFull(on) {
+    root.classList.toggle('is-full', on);
+    renderFull();
+    if (on) {
+      // 端末が対応していれば本物の全画面 + 横向き。だめでも画面いっぱいの重ね表示で動く
+      root.requestFullscreen?.()?.then(() => screen.orientation?.lock?.('landscape')?.catch(() => {})).catch(() => {});
+    } else {
+      if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+      try { screen.orientation?.unlock?.(); } catch (err) { /* 非対応 */ }
+    }
+  }
+  fsBtn.addEventListener('click', () => setFull(!isFull()));
+  zoomBtn.addEventListener('click', () => {
+    zoom = ZOOMS[(ZOOMS.indexOf(zoom) + 1) % ZOOMS.length];
+    try { localStorage.setItem('ytp_zoom', zoom); } catch (err) { /* 保存できなければ次回は全体 */ }
+    renderFull();
+  });
+  document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement && isFull()) setFull(false); }); // 端末の戻る操作で抜けたとき
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && isFull() && !document.fullscreenElement) setFull(false); });
+  renderFull();
 
   // ---- 速度（YouTube が使える速度に1段ずつ） ----
   const rates = () => (ready && player.getAvailablePlaybackRates ? player.getAvailablePlaybackRates() : RATES_DEFAULT);
@@ -198,8 +259,7 @@
   $('[data-ytp-mark]').addEventListener('click', () => addMark(nextMarkerName()));
   root.querySelectorAll('[data-ytp-sec]').forEach((b) => b.addEventListener('click', () => addMark(b.dataset.ytpSec)));
   // 曲構成の定型ラベル（イントロ・サビ…）以外は自分用のマークとして見た目を分ける
-  const presets = new Set([...root.querySelectorAll('[data-ytp-sec]')].map((b) => b.dataset.ytpSec));
-  const isOwn = (m) => !presets.has(m.l);
+  const isOwn = (m) => !SHARED.has(m.l);
   function renderMarks() {
     marksEl.replaceChildren();
     P.m.forEach((m, i) => {
