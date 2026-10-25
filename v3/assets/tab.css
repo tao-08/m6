@@ -109,6 +109,8 @@ a.tab-parts__item:hover { border-color: var(--accent); }
 .ytp__dock, .ytp__bubble { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 .ytp__dock input { -webkit-user-select: text; user-select: text; }
 .ytp__fsonly { display: none; }
+.ytp [data-ytp-fs] { background: var(--accent); color: #fff; border-radius: 50%; }
+.ytp [data-ytp-fs] .icon { color: #fff; }
 .ytp.is-full { position: fixed; inset: 0; z-index: 1000; display: block; padding: 0; border: 0; border-radius: 0; background: #000; overflow: hidden; }
 .ytp.is-full .ytp__video { position: absolute; left: 50%; top: 50%; width: min(100vw, 100dvh * 16 / 9); height: auto; transform: translate(-50%, -50%); border-radius: 0; }
 .ytp.is-full.is-zoom-top .ytp__video { width: 100vw; top: 0; transform: translateX(-50%); }
