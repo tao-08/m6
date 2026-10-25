@@ -1090,5 +1090,5 @@ function tab_sanitize_link_practice(mixed $data): ?array
     // ch: YouTube のチャプターを取り込み済み（1回だけ置き換えて、その後の編集は消さない）
     return ['m' => $base['m'], 'ab' => $base['ab'], 'rate' => round((float)$rate, 2), 'back' => $back, 'pad' => $pad]
         + (($data['ch'] ?? null) === 1 ? ['ch' => 1] : [])
-        + (($data['dock'] ?? null) === 't' ? ['dock' => 't'] : []); // dock: 全画面の操作部を上に出す（無ければ下）。動画ごと
+        + (in_array($data['zoom'] ?? null, ['top', 'bottom'], true) ? ['zoom' => $data['zoom']] : []); // zoom: 全画面で拡大する半分（無ければ全体）。動画ごと
 }

@@ -35,7 +35,7 @@
         if (num(s.rate) && s.rate >= 0.25 && s.rate <= 2) P.rate = s.rate;
         if (num(s.back) && s.back >= 1 && s.back <= 60) P.back = s.back;
         if (num(s.pad) && s.pad >= 0 && s.pad <= 10) P.pad = s.pad;
-        if (s.dock === 't') P.dock = 't';
+        if (s.zoom === 'top' || s.zoom === 'bottom') P.zoom = s.zoom;
       }
       // 戻す・進める秒数とリピート前後幅は端末ごと（動画をまたいで共通）
       const g = JSON.parse(localStorage.getItem('yt_practice_prefs') || 'null');
@@ -81,7 +81,7 @@
   // 未ログイン（D.guest）は端末に保存
   const saveLocal = () => {
     try {
-      localStorage.setItem(LS_KEY, JSON.stringify({ m: personal(), ab: P.ab, rate: P.rate, back: P.back, pad: P.pad, ch: P.ch, dock: P.dock }));
+      localStorage.setItem(LS_KEY, JSON.stringify({ m: personal(), ab: P.ab, rate: P.rate, back: P.back, pad: P.pad, ch: P.ch, zoom: P.zoom }));
       localStorage.setItem('yt_practice_prefs', JSON.stringify({ back: P.back, pad: P.pad }));
     } catch (err) { /* 保存できない端末では何もしない */ }
     return Promise.resolve();
@@ -111,7 +111,7 @@
     return post({ action: 'practice_prefs', back: P.back, pad: P.pad }, keepalive).catch((e) => { sentPrefs = prev; throw e; });
   };
   const send = (keepalive) => Promise.all([
-    D.guest ? saveLocal() : post({ action: 'link_practice', link_id: D.link_id, data: { m: personal(), ab: P.ab, rate: P.rate, back: P.back, pad: P.pad, ch: P.ch, dock: P.dock } }, keepalive),
+    D.guest ? saveLocal() : post({ action: 'link_practice', link_id: D.link_id, data: { m: personal(), ab: P.ab, rate: P.rate, back: P.back, pad: P.pad, ch: P.ch, zoom: P.zoom } }, keepalive),
     sendShared(keepalive),
     sendPrefs(keepalive),
   ]);
@@ -180,15 +180,12 @@
   // ---- 全画面（動画に操作を重ねる）と拡大（全体 → 上半分 → 下半分）。動画内の TAB 譜を大きく見る用 ----
   const ZOOMS = ['', 'top', 'bottom'];
   const ZOOM_ICON = { '': 'fit_screen', top: 'vertical_align_top', bottom: 'vertical_align_bottom' };
-  const fsBtn = $('[data-ytp-fs]'), zoomBtn = $('[data-ytp-zoom]'), dockBtn = $('[data-ytp-dock]');
-  let zoom = '';
-  try { const z = localStorage.getItem('ytp_zoom'); if (ZOOMS.includes(z)) zoom = z; } catch (err) { /* 保存できない端末では全体 */ }
+  const fsBtn = $('[data-ytp-fs]'), zoomBtn = $('[data-ytp-zoom]');
+  let zoom = ZOOMS.includes(P.zoom) ? P.zoom : ''; // 拡大は動画ごとに保存（操作部は拡大の反対側に出る）
   const isFull = () => root.classList.contains('is-full');
   function renderFull() {
     root.classList.toggle('is-zoom-top', zoom === 'top');
     root.classList.toggle('is-zoom-bottom', zoom === 'bottom');
-    root.classList.toggle('is-dock-top', P.dock === 't'); // 操作部を上に出すか（動画ごとに保存）
-    dockBtn.querySelector('.icon').textContent = P.dock === 't' ? 'vertical_align_bottom' : 'vertical_align_top';
     zoomBtn.querySelector('.icon').textContent = ZOOM_ICON[zoom];
     fsBtn.querySelector('.icon').textContent = isFull() ? 'fullscreen_exit' : 'fullscreen';
     document.body.classList.toggle('ytp-lock', isFull());
@@ -207,13 +204,9 @@
   fsBtn.addEventListener('click', () => setFull(!isFull()));
   zoomBtn.addEventListener('click', () => {
     zoom = ZOOMS[(ZOOMS.indexOf(zoom) + 1) % ZOOMS.length];
-    try { localStorage.setItem('ytp_zoom', zoom); } catch (err) { /* 保存できなければ次回は全体 */ }
-    renderFull();
-  });
-  dockBtn.addEventListener('click', () => {
-    if (P.dock === 't') delete P.dock; else P.dock = 't';
-    renderFull();
+    if (zoom) P.zoom = zoom; else delete P.zoom;
     changed();
+    renderFull();
   });
   document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement && isFull()) setFull(false); }); // 端末の戻る操作で抜けたとき
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && isFull() && !document.fullscreenElement) setFull(false); });
@@ -452,10 +445,14 @@
 
   // ---- 毎フレーム: 再生位置の表示と AB リピート ----
   const LOOP_LEAD = 150; // B の少し手前で戻る（再生位置の取得は粗く、B を過ぎてから戻ると繋ぎ目が目立つため）。ミリ秒
+  let loopAt = 0; // 最後にループで戻した時刻。戻した直後は再生位置がまだ古い（B 付近のまま）ので、続けて戻さない
   (function tick() {
     if (ready) {
       const t = now(), d = dur();
-      if (loop && P.ab && playing && t >= P.ab[1] - LOOP_LEAD) seek(P.ab[0], false); // false = バッファ内ならサーバーに取りに行かない（ループのカクつき対策）
+      if (loop && P.ab && playing && t >= P.ab[1] - LOOP_LEAD && performance.now() - loopAt > 600) {
+        loopAt = performance.now();
+        seek(P.ab[0]);
+      }
       pos.style.left = d ? (t / d) * 100 + '%' : '0';
       $('[data-ytp-cur]').textContent = fmt(t);
     }

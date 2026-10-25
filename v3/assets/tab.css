@@ -104,7 +104,7 @@ a.tab-parts__item:hover { border-color: var(--accent); }
 .ytp__mark { display: flex; align-items: center; gap: 6px; }
 .ytp__mark input { flex: 1; min-width: 0; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font: inherit; }
 .ytp__mark .tab-chip { font-variant-numeric: tabular-nums; }
-/* 全画面（スマホは横向き）: 動画を画面いっぱいに出し、操作部を重ねる。--上/--下 は動画の上半分・下半分（TAB 譜）を幅いっぱいに拡大し、操作部の上下は動画ごとに選ぶ（is-dock-top） */
+/* 全画面（スマホは横向き）: 動画を画面いっぱいに出し、操作部を重ねる。--上/--下 は動画の上半分・下半分（TAB 譜）を幅いっぱいに拡大し、操作部は反対側へ */
 .ytp__dock { display: contents; }
 .ytp__dock, .ytp__bubble { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 .ytp__dock input { -webkit-user-select: text; user-select: text; }
@@ -119,7 +119,7 @@ a.tab-parts__item:hover { border-color: var(--accent); }
 .ytp.is-full .ytp__fsonly { display: inline-flex; }
 .ytp.is-full .ytp__dock { position: absolute; left: 0; right: 0; bottom: 0; z-index: 2; display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 4px 10px;
     padding: 18px 12px 6px; color: #fff; background: linear-gradient(transparent, rgb(0 0 0 / .75)); }
-.ytp.is-full.is-dock-top .ytp__dock { bottom: auto; top: 0; padding: 6px 60px 18px 12px; background: linear-gradient(rgb(0 0 0 / .75), transparent); }
+.ytp.is-full.is-zoom-bottom .ytp__dock { bottom: auto; top: 0; padding: 6px 60px 18px 12px; background: linear-gradient(rgb(0 0 0 / .75), transparent); }
 .ytp.is-full .ytp__dock > .ytp__line, .ytp.is-full .ytp__dock > .ytp__bubbles { flex: 0 0 100%; }
 .ytp.is-full .ytp__dock > .ytp__time { order: 1; color: #fff; }
 .ytp.is-full .ytp__dock .ytp__label, .ytp.is-full .ytp__dock .ytp__sec, .ytp.is-full .ytp__dock .icon-btn, .ytp.is-full .ytp__dock .tab-chip { color: #fff; }
@@ -129,7 +129,8 @@ a.tab-parts__item:hover { border-color: var(--accent); }
 .ytp.is-full .ytp__dock .ytp__sec input { background: rgb(0 0 0 / .55); color: #fff; border-color: rgb(255 255 255 / .35); }
 .ytp.is-full .ytp__dock { padding-right: 60px; }
 .ytp.is-full .ytp__dock [data-ytp-fs] { position: absolute; right: 10px; bottom: 10px; width: 44px; height: 44px; border-radius: 50%; background: var(--danger, #d33); border-color: transparent; box-shadow: 0 2px 8px rgb(0 0 0 / .5); }
-.ytp.is-full.is-dock-top .ytp__dock [data-ytp-fs] { bottom: auto; top: 10px; }
+.ytp.is-full.is-zoom-bottom .ytp__dock [data-ytp-fs] { bottom: auto; top: 10px; }
+.ytp.is-full .ytp__sec--back { display: none; }
 .ytp.is-full .ytp__play { min-height: 40px; }
 @media (max-height: 480px) { .ytp.is-full .ytp__dock > .ytp__row { flex-wrap: nowrap; gap: 2px; } .ytp.is-full .ytp__dock .ytp__label { display: none; } }
 body.ytp-lock { overflow: hidden; }
