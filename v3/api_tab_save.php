@@ -65,7 +65,7 @@ if (!is_array($body)) {
 }
 $action = $body['action'] ?? '';
 $tabId = tab_int($body['tab_id'] ?? null) ?? 0;
-if ($tabId <= 0 && !in_array($action, ['restore', 'song_memo', 'link_search', 'link_add', 'link_delete', 'link_practice'], true)) { // 復元は rev_id、曲のメモ・リンクは song_key / link_id で指定する
+if ($tabId <= 0 && !in_array($action, ['restore', 'song_memo', 'link_search', 'yt_link_search', 'link_add', 'link_delete', 'link_practice'], true)) { // 復元は rev_id、曲のメモ・リンクは song_key / link_id で指定する
     fail(400, 'TAB の指定がおかしいです');
 }
 $userId = (int)$user['user_id'];
