@@ -235,6 +235,105 @@
       }
     }));
 
+    // ---- YouTube 専用の検索ダイアログ（api_tab_save の yt_link_search）----
+    //   サムネイルを押すとその場で埋め込み再生（試し見）。＋で登録（続けて何本でも登録できるよう、閉じたときに再読み込み）
+    const ytsDlg = box.querySelector('[data-yts]');
+    if (ytsDlg) {
+      const form = ytsDlg.querySelector('[data-yts-form]');
+      const qInput = form.elements.q;
+      const list = ytsDlg.querySelector('[data-yts-list]');
+      let added = false;
+      const setMsg = (text) => { list.replaceChildren(); const li = document.createElement('li'); li.className = 'muted small'; li.textContent = text; list.appendChild(li); };
+      const search = async () => {
+        setMsg('…');
+        try {
+          const json = await post({ action: 'yt_link_search', ...ids, q: qInput.value.trim() });
+          list.replaceChildren();
+          if (!json.items.length) { setMsg('見つかりませんでした'); return; }
+          json.items.forEach((v) => {
+            const li = document.createElement('li');
+            li.className = 'yts__item';
+            // サムネイル（video_id はサーバーが 11 文字の英数字だけに検証済み）。押したら埋め込みに差し替える
+            const thumb = document.createElement('button');
+            thumb.type = 'button';
+            thumb.className = 'yts__thumb';
+            thumb.title = '再生';
+            thumb.setAttribute('aria-label', '再生');
+            const img = document.createElement('img');
+            img.src = 'https://i.ytimg.com/vi/' + encodeURIComponent(v.video_id) + '/mqdefault.jpg';
+            img.alt = '';
+            img.loading = 'lazy';
+            thumb.append(img, icon('play_circle'));
+            thumb.addEventListener('click', () => {
+              list.querySelectorAll('iframe').forEach((f) => { // 再生は同時に1本だけ（ほかは元のサムネイルに戻す）
+                const old = f.closest('.yts__item');
+                old.classList.remove('yts__item--play');
+                f.replaceWith(old._thumbImg);
+                old.querySelector('.yts__thumb').appendChild(icon('play_circle'));
+              });
+              const frame = document.createElement('iframe');
+              frame.src = 'https://www.youtube.com/embed/' + encodeURIComponent(v.video_id) + '?autoplay=1&playsinline=1&rel=0';
+              frame.allow = 'autoplay; encrypted-media; picture-in-picture';
+              frame.allowFullscreen = true;
+              frame.title = v.title;
+              li._thumbImg = img;
+              li.classList.add('yts__item--play');
+              img.replaceWith(frame);
+              thumb.querySelector('.icon')?.remove();
+            });
+            const text = document.createElement('div');
+            text.className = 'yts__title';
+            text.textContent = v.title;
+            const ch = document.createElement('span');
+            ch.className = 'yts__ch';
+            ch.textContent = v.channel;
+            text.appendChild(ch);
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'icon-btn';
+            btn.title = v.added ? '登録済み' : '登録';
+            btn.setAttribute('aria-label', btn.title);
+            btn.disabled = !!v.added;
+            btn.appendChild(icon(v.added ? 'check' : 'add'));
+            btn.addEventListener('click', async () => {
+              btn.disabled = true;
+              try {
+                await post({ action: 'link_add', ...ids, url: v.url, label: v.title });
+                added = true;
+                btn.replaceChildren(icon('check'));
+                btn.title = '登録済み';
+              } catch (err) {
+                btn.disabled = false;
+                notify(err.message || '登録できませんでした', 'error');
+              }
+            });
+            li.append(thumb, text, btn);
+            list.appendChild(li);
+          });
+        } catch (err) {
+          setMsg(err.message || '検索できませんでした');
+        }
+      };
+      box.querySelector('[data-yts-open]').addEventListener('click', () => {
+        if (!qInput.value) qInput.value = S.query || '';
+        ytsDlg.showModal();
+        if (!list.children.length) search();
+      });
+      form.addEventListener('submit', (e) => { e.preventDefault(); search(); });
+      // 楽器などの語: 検索語の末尾に足す（もう入っていれば外す）→ すぐ検索
+      ytsDlg.querySelectorAll('[data-yts-word]').forEach((b) => b.addEventListener('click', () => {
+        const w = b.dataset.ytsWord;
+        const words = qInput.value.split(/\s+/).filter(Boolean);
+        const i = words.indexOf(w);
+        if (i >= 0) words.splice(i, 1); else words.push(w);
+        qInput.value = words.join(' ');
+        b.classList.toggle('is-active', i < 0);
+        search();
+      }));
+      ytsDlg.querySelector('[data-yts-close]').addEventListener('click', () => ytsDlg.close());
+      ytsDlg.addEventListener('close', () => { list.querySelectorAll('iframe').forEach((f) => f.remove()); if (added) window.location.reload(); });
+    }
+
     const aiBtn = box.querySelector('[data-link-ai]');
     const found = box.querySelector('[data-link-found]');
     aiBtn?.addEventListener('click', async () => {

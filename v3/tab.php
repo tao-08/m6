@@ -123,7 +123,7 @@ if (isset($_GET['song']) || isset($_GET['key'])) {
     $meta = $st->fetch() ?: ['meta_id' => 0, 'memo' => null];
     $songImageRows = attach_images($pdo, 'song_meta', [(int)$meta['meta_id']])[(int)$meta['meta_id']] ?? [];
     $songImageIds = array_map(static fn($im) => (int)$im['image_id'], $songImageRows);
-    $songData = json_encode(['key' => $song['key'], 'song_id' => $songId, 'images' => $songImageIds, 'pdfs' => tab_pdf_ids($songImageRows), 'files' => tab_file_ids($songImageRows)], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR);
+    $songData = json_encode(['key' => $song['key'], 'song_id' => $songId, 'query' => trim($song['title'] . ' ' . ($song['artist'] ?? '')), 'images' => $songImageIds, 'pdfs' => tab_pdf_ids($songImageRows), 'files' => tab_file_ids($songImageRows)], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR);
 
     render_header($song['title'] . ' TAB', 'lives');
     ?>
@@ -209,6 +209,10 @@ $renderNewForm = static function () use ($existingParts): void {
         <?php endforeach; ?>
     </ul>
     <div class="tab-links__actions">
+        <?php // YouTube 専用の検索（埋め込みで試し見してから登録）。API キーが無ければ出さない ?>
+        <?php if ((string)(config('youtube')['api_key'] ?? '') !== ''): ?>
+            <button type="button" class="btn btn--sm" data-yts-open title="YouTube を検索"><?= icon('smart_display') ?> 動画</button>
+        <?php endif; ?>
         <?php if (claude_enabled()): ?>
             <button type="button" class="btn btn--sm" data-link-ai title="U-FRET・楽器.me・Songsterr・YouTube を AI で検索"><?= icon('auto_awesome') ?> 検索</button>
         <?php endif; ?>
@@ -218,6 +222,20 @@ $renderNewForm = static function () use ($existingParts): void {
         </form>
     </div>
     <ul class="tab-links__list tab-links__found" data-link-found hidden></ul>
+    <?php // YouTube の検索ダイアログ。検索語は画面で直せる（楽器の語を足せる）。結果は押すとその場で埋め込み再生、＋で登録 ?>
+    <dialog class="yts" data-yts>
+        <form class="yts__bar" data-yts-form>
+            <input type="search" name="q" maxlength="100" aria-label="検索語" autocomplete="off">
+            <button type="submit" class="btn btn--primary btn--sm" title="検索" aria-label="検索"><?= icon('search') ?></button>
+            <button type="button" class="icon-btn" data-yts-close title="閉じる" aria-label="閉じる"><?= icon('close') ?></button>
+        </form>
+        <div class="yts__chips">
+            <?php foreach (['ギター', 'ベース', 'ドラム', '弾いてみた', 'TAB', 'コード', 'ライブ'] as $w): ?>
+                <button type="button" class="tab-chip" data-yts-word="<?= h($w) ?>"><?= h($w) ?></button>
+            <?php endforeach; ?>
+        </div>
+        <ul class="yts__list" data-yts-list></ul>
+    </dialog>
     <?php // 自作の TAB（ベータ）の作成。閉じた状態で置く ?>
     <details class="tab-new-wrap">
         <summary class="tab-new-wrap__summary"><?= icon('edit_note') ?> TAB 作成 <span class="tag tab-beta">ベータ</span></summary>

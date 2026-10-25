@@ -12,6 +12,7 @@
  *    削除: {"action":"delete", "tab_id":12}
  *    曲のメモ: {"action":"song_memo", "song_key":"…", "memo":"…"}（画像の追加・削除は api_tab_image.php）
  *    リンク（曲ごと。song_link）:
+ *      YouTube 検索: {"action":"yt_link_search", "song_key":"…", "q":"検索語（任意）"} … {"ok":true,"q":"…","items":[{video_id,url,title,channel,added}]}
  *      AI 検索: {"action":"link_search", "song_key":"…", "song_id":3（任意）}            … {"ok":true,"items":[{site,url,title}]}（登録はしない）
  *      登録:    {"action":"link_add", "song_key":"…", "url":"https://…", "label":"…"} … {"ok":true,"link":{id,site,url,label}}
  *      削除:    {"action":"link_delete", "link_id":5}
@@ -139,7 +140,7 @@ if ($action === 'song_memo') {
     exit;
 }
 
-if (in_array($action, ['link_search', 'link_add'], true)) {
+if (in_array($action, ['link_search', 'link_add', 'yt_link_search'], true)) {
     // 曲は song_key で指定。曲名・アーティストは DB から引く（AI の検索語・保存する曲をブラウザに決めさせない）
     $key = $body['song_key'] ?? null;
     if (!is_string($key) || !tab_key_valid($key)) {
@@ -178,6 +179,39 @@ if (in_array($action, ['link_search', 'link_add'], true)) {
         $have = array_flip($st->fetchAll(PDO::FETCH_COLUMN));
         $items = array_map(static fn($it) => $it + ['added' => isset($have[$it['url']])], $items);
         echo json_encode(['ok' => true, 'items' => $items, 'usage' => $usage], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    if ($action === 'yt_link_search') {
+        // YouTube 専用の検索（埋め込みできる動画だけ）。検索語は画面で直せる（ギター・ベースなどを足せるように）が、長さと文字は絞る。空なら曲名 + アーティスト
+        if (!is_string($body['q'] ?? '')) {
+            fail(400, '検索語がおかしいです');
+        }
+        $q = trim((string)($body['q'] ?? ''));
+        if ($q === '') {
+            $q = trim($song['title'] . ' ' . ($song['artist'] ?? ''));
+        }
+        if (mb_strlen($q) > 100 || preg_match('/[\x00-\x1F\x7F]/u', $q)) {
+            fail(400, '検索語は100文字までです');
+        }
+        $cacheKey = 'yt_link:' . $key . '|' . $q; // search.list は1回 100 ユニット（1日 10,000 まで無料）。同じ検索はセッションに覚えて使い回す
+        if (!isset($_SESSION['tab_search'][$cacheKey])) {
+            try {
+                $found = youtube_search($q, 10);
+            } catch (RuntimeException $e) {
+                fail(502, $e->getMessage());
+            }
+            if ($found) {
+                $_SESSION['tab_search'][$cacheKey] = $found;
+            }
+        } else {
+            $found = $_SESSION['tab_search'][$cacheKey];
+        }
+        $st = $pdo->prepare('SELECT url FROM song_link WHERE song_key = ?');
+        $st->execute([$key]);
+        $have = array_flip($st->fetchAll(PDO::FETCH_COLUMN));
+        $items = array_map(static fn($v) => ['video_id' => $v['video_id'], 'url' => youtube_watch_url($v['video_id']), 'title' => $v['title'],
+            'channel' => $v['channel'], 'added' => isset($have[youtube_watch_url($v['video_id'])])], $found);
+        echo json_encode(['ok' => true, 'q' => $q, 'items' => $items], JSON_UNESCAPED_UNICODE);
         exit;
     }
     // 登録
