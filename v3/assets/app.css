@@ -2802,8 +2802,12 @@ button.ttb-m { cursor: pointer; text-decoration: underline dotted; }
 @supports (animation-timeline: view()) {
   @media (prefers-reduced-motion: no-preference) {
     .live-card, .songs-row { animation: reveal-up linear backwards; animation-timeline: view(); animation-range: entry 0% entry 40%; }
-    /* メンバーページ: 絞り込み（浮く）の下に右の欄のカードが来るあたりで、じわじわ現れる。entry 全体を使って ゆっくり */
-    .split aside .partner-box { animation: reveal-up linear backwards; animation-timeline: view(); animation-range: entry 0% entry 100%; }
+    /* メンバーページの集計カード（.partner-box）は、スクロールで透明になる（じわじわ現れる）演出をやめた。
+       以前はここで「.split aside .partner-box { animation: reveal-up ...; animation-timeline: view(); }」を指定していた。
+         animation-timeline: view() … 要素が画面に入る・出る位置に合わせてアニメを進める CSS（スクロール連動アニメーション）
+         reveal-up                   … opacity: 0（透明）→ 1 と translateY(14px) → 0 の動きを定義した @keyframes（下）
+       → この指定を消せば、集計カードは最初から opacity: 1（不透明）のまま表示される。
+       絞り込みカード（.stats-filter）の薄くなる処理は app.js の checkFade が別でやっているので、ここでは触らない */
     @keyframes reveal-up { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
   }
 }
