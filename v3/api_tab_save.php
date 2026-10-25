@@ -74,7 +74,7 @@ if ($user === null) { // 未ログインは動画の検索と登録だけ（1時
     fail(403, '管理人のみ利用できます'); // lib/tabs.php の tab_allowed
 }
 $tabId = tab_int($body['tab_id'] ?? null) ?? 0;
-if ($tabId <= 0 && !in_array($action, ['restore', 'song_memo', 'link_search', 'yt_link_search', 'yt_free_search', 'link_add', 'link_delete', 'link_move', 'link_practice', 'practice_prefs', 'link_shared', 'part_add', 'part_delete'], true)) { // 復元は rev_id、曲のメモ・リンクは song_key / link_id で指定する
+if ($tabId <= 0 && !in_array($action, ['restore', 'song_memo', 'link_search', 'yt_link_search', 'yt_free_search', 'link_add', 'link_delete', 'link_move', 'link_practice', 'link_practicing', 'practice_prefs', 'link_shared', 'part_add', 'part_delete'], true)) { // 復元は rev_id、曲のメモ・リンクは song_key / link_id で指定する
     fail(400, 'TAB の指定がおかしいです');
 }
 $userId = $user === null ? null : (int)$user['user_id']; // 未ログインの登録は作成者なし（NULL）
