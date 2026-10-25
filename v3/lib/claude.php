@@ -18,6 +18,36 @@ const CLAUDE_ERR_REFUSAL = 1;
 /** 返事が max_tokens で途中で切れたときの例外コード */
 const CLAUDE_ERR_MAX_TOKENS = 2;
 
+/**
+ * 料金（ドル / 100万トークン。2026-10 時点の Anthropic の公式価格）。in = 入力、out = 出力、cache = キャッシュ読み込み
+ *   ウェブ検索は1回 $0.01（1,000回 $10）。円は CLAUDE_YEN_PER_USD で換算（ざっくりの目安）
+ */
+const CLAUDE_PRICES = [
+    'claude-opus-5-5'   => ['in' => 4.00, 'out' => 20.00, 'cache' => 0.20],
+    'claude-sonnet-5-5' => ['in' => 2.00, 'out' => 10.00, 'cache' => 0.20],
+    'claude-haiku-5-5'  => ['in' => 0.10, 'out' => 0.50,  'cache' => 0.01],
+];
+const CLAUDE_WEB_SEARCH_USD = 0.01;
+const CLAUDE_YEN_PER_USD = 150;
+
+/** 直前の claude_json() の使用量と実費（pause_turn で続けた分も合計）。まだ呼んでいなければ null */
+function claude_last_usage(): ?array
+{
+    return $GLOBALS['claude_last_usage'] ?? null;
+}
+
+/** API の usage（1回分）から実費（ドル）を出す。値段の分からないモデルは Opus の値段で多めに見積もる */
+function claude_usage_cost(string $model, array $u): float
+{
+    $p = CLAUDE_PRICES[$model] ?? CLAUDE_PRICES['claude-opus-5-5'];
+    $in = (int)($u['input_tokens'] ?? 0);
+    $write = (int)($u['cache_creation_input_tokens'] ?? 0); // キャッシュの書き込みは入力の 1.25 倍
+    $read = (int)($u['cache_read_input_tokens'] ?? 0);
+    $out = (int)($u['output_tokens'] ?? 0);
+    $search = (int)($u['server_tool_use']['web_search_requests'] ?? 0);
+    return ($in * $p['in'] + $write * $p['in'] * 1.25 + $read * $p['cache'] + $out * $p['out']) / 1e6 + $search * CLAUDE_WEB_SEARCH_USD;
+}
+
 function claude_enabled(): bool
 {
     return (string)(config('anthropic')['api_key'] ?? '') !== '';
@@ -60,6 +90,7 @@ function claude_json(string $system, array $content, array $schema, int $maxToke
     }
     // 返事を待つ間に PHP の実行時間の上限（レンタルサーバーだと 30 秒など）で止められないようにする
     @set_time_limit($timeoutSec + 30);
+    $total = ['model' => $body['model'], 'input_tokens' => 0, 'output_tokens' => 0, 'cache_read_input_tokens' => 0, 'web_search_requests' => 0, 'usd' => 0.0];
 
     // pause_turn（サーバーツールの処理が長引いて一旦止まった）のときは、そこまでの返事を assistant として足して続きを頼む（最大3回）
     for ($round = 0; ; $round++) {
@@ -94,6 +125,17 @@ function claude_json(string $system, array $content, array $schema, int $maxToke
             };
             throw new RuntimeException($msg);
         }
+        // 使用量を足していく。断られて別のモデルに回ったときは、実際に答えたモデル（$res['model']）の値段で数える
+        $u = is_array($res['usage'] ?? null) ? $res['usage'] : [];
+        $served = (string)($res['model'] ?? $body['model']);
+        $total['model'] = $served;
+        $total['input_tokens'] += (int)($u['input_tokens'] ?? 0) + (int)($u['cache_creation_input_tokens'] ?? 0);
+        $total['output_tokens'] += (int)($u['output_tokens'] ?? 0);
+        $total['cache_read_input_tokens'] += (int)($u['cache_read_input_tokens'] ?? 0);
+        $total['web_search_requests'] += (int)($u['server_tool_use']['web_search_requests'] ?? 0);
+        $total['usd'] += claude_usage_cost($served, $u);
+        $total['yen'] = round($total['usd'] * CLAUDE_YEN_PER_USD, 1);
+        $GLOBALS['claude_last_usage'] = $total;
         if (($res['stop_reason'] ?? '') !== 'pause_turn' || $round >= 3) {
             break;
         }

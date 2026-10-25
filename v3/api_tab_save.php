@@ -11,6 +11,11 @@
  *           "offset_ms":1500, "capo":0, "first_bar":1, "is_partial":false, "memo":"…", "links":[{"u":"https://…","l":"表示名"}], "youtube_url":"https://youtu.be/…"（空なら ""）, "data":{"bars":[…]}}
  *    削除: {"action":"delete", "tab_id":12}
  *    曲のメモ: {"action":"song_memo", "song_key":"…", "memo":"…"}（画像の追加・削除は api_tab_image.php）
+ *    リンク（曲ごと。song_link）:
+ *      AI 検索: {"action":"link_search", "song_key":"…", "song_id":3（任意）}            … {"ok":true,"items":[{site,url,title}]}（登録はしない）
+ *      登録:    {"action":"link_add", "song_key":"…", "url":"https://…", "label":"…"} … {"ok":true,"link":{id,site,url,label}}
+ *      削除:    {"action":"link_delete", "link_id":5}
+ *      練習:    {"action":"link_practice", "link_id":5, "data":{m,ab,rate,back}}（自分だけ。YouTube のプレイヤー）
  *    履歴: {"action":"history", "tab_id":12}   … {"ok":true,"items":[{rev_id,action,label,at,user}]}（新しい順）
  *    復元: {"action":"restore", "rev_id":34}    … {"ok":true,"redirect":"tab?id=12"}（削除した TAB も同じ tab_id で戻せる）
  *  レスポンス（JSON）:
@@ -26,6 +31,7 @@
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/tabs.php';
+require_once __DIR__ . '/lib/repository.php'; // band_setlist_visibility（tab_resolve_song）
 require_once __DIR__ . '/lib/youtube.php'; // youtube_video_id()
 require_once __DIR__ . '/lib/claude.php';  // claude_json()（BPM の AI 推定）
 
@@ -58,7 +64,7 @@ if (!is_array($body)) {
 }
 $action = $body['action'] ?? '';
 $tabId = tab_int($body['tab_id'] ?? null) ?? 0;
-if ($tabId <= 0 && !in_array($action, ['restore', 'song_memo'], true)) { // 復元だけは tab_id ではなく rev_id で指定する
+if ($tabId <= 0 && !in_array($action, ['restore', 'song_memo', 'link_search', 'link_add', 'link_delete', 'link_practice'], true)) { // 復元は rev_id、曲のメモ・リンクは song_key / link_id で指定する
     fail(400, 'TAB の指定がおかしいです');
 }
 $userId = (int)$user['user_id'];
@@ -126,6 +132,106 @@ if ($action === 'song_memo') {
         $pdo->prepare('INSERT INTO song_meta (song_key, memo, updated_by) VALUES (?, ?, ?)
                 ON DUPLICATE KEY UPDATE memo = VALUES(memo), updated_by = VALUES(updated_by)')
             ->execute([$key, $memo === '' ? null : $memo, $userId]);
+    } catch (PDOException $e) {
+        fail(500, db_error($e, '保存できませんでした'));
+    }
+    echo json_encode(['ok' => true], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+if (in_array($action, ['link_search', 'link_add'], true)) {
+    // 曲は song_key で指定。曲名・アーティストは DB から引く（AI の検索語・保存する曲をブラウザに決めさせない）
+    $key = $body['song_key'] ?? null;
+    if (!is_string($key) || !tab_key_valid($key)) {
+        fail(400, '曲の指定がおかしいです');
+    }
+    //   song_id（セットリストの曲から開いたとき）があればそこから曲キーを計算し直して、送られた song_key と一致するか確かめる
+    $songId = tab_int($body['song_id'] ?? null);
+    $song = tab_resolve_song($pdo, $songId, $songId === null ? $key : null);
+    if ($song === null || $song['key'] !== $key) {
+        fail(404, '曲が見つかりません');
+    }
+    if ($action === 'link_search') {
+        if (!claude_enabled()) {
+            fail(503, 'AI は設定されていません');
+        }
+        $cacheKey = 'link_ai:' . $key; // AI は1回数円かかるので、同じ曲の結果はセッションに覚えて使い回す（空の結果は覚えない）
+        $usage = null; // 今回 AI を呼んだときの使用量と実費（覚えた結果を使い回したときは null = 0円）
+        if (!isset($_SESSION['tab_search'][$cacheKey])) {
+            session_write_close(); // ウェブ検索で数十秒かかるので、その間セッションを手放す（BPM の AI 推定と同じ）
+            try {
+                $items = tab_link_ai($song['title'], $song['artist']);
+                $usage = claude_last_usage();
+            } catch (RuntimeException $e) {
+                fail(502, $e->getMessage());
+            }
+            session_start();
+            if ($items) {
+                $_SESSION['tab_search'][$cacheKey] = $items;
+            }
+        } else {
+            $items = $_SESSION['tab_search'][$cacheKey];
+        }
+        // 登録済みのものには印を付ける（画面で「登録」ボタンを出さない）
+        $st = $pdo->prepare('SELECT url FROM song_link WHERE song_key = ?');
+        $st->execute([$key]);
+        $have = array_flip($st->fetchAll(PDO::FETCH_COLUMN));
+        $items = array_map(static fn($it) => $it + ['added' => isset($have[$it['url']])], $items);
+        echo json_encode(['ok' => true, 'items' => $items, 'usage' => $usage], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    // 登録
+    $norm = tab_link_normalize($body['url'] ?? null);
+    if ($norm === null) {
+        fail(400, 'URL がおかしいです（https のみ。YouTube は動画の URL）');
+    }
+    $label = $body['label'] ?? '';
+    if (!is_string($label) || preg_match('/[\x00-\x1F\x7F]/u', $label)) {
+        fail(400, '表示名がおかしいです');
+    }
+    $label = trim(mb_substr(trim($label), 0, 100));
+    $st = $pdo->prepare('SELECT COUNT(*) FROM song_link WHERE song_key = ?');
+    $st->execute([$key]);
+    if ((int)$st->fetchColumn() >= TAB_SONG_LINK_MAX) {
+        fail(400, 'リンクは1曲' . TAB_SONG_LINK_MAX . '件までです');
+    }
+    try {
+        $pdo->prepare('INSERT INTO song_link (song_key, site, url, label, title, artist_name, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)')
+            ->execute([$key, $norm[0], $norm[1], $label === '' ? null : $label, $song['title'], $song['artist'], $userId]);
+    } catch (PDOException $e) {
+        fail(($e->errorInfo[1] ?? 0) === 1062 ? 409 : 500, ($e->errorInfo[1] ?? 0) === 1062 ? '登録済みです' : db_error($e, '登録できませんでした'));
+    }
+    echo json_encode(['ok' => true, 'link' => ['id' => (int)$pdo->lastInsertId(), 'site' => $norm[0], 'url' => $norm[1], 'label' => $label]], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+if ($action === 'link_delete') {
+    // 誰でも削除できる（wiki 型）。リンクは貼り直せば戻るので履歴は取らない
+    $st = $pdo->prepare('DELETE FROM song_link WHERE link_id = ?');
+    $st->execute([tab_int($body['link_id'] ?? null) ?? 0]);
+    if ($st->rowCount() === 0) {
+        fail(404, 'リンクが見つかりません');
+    }
+    echo json_encode(['ok' => true], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+if ($action === 'link_practice') {
+    // YouTube のプレイヤーの設定（自分だけ）。JS が止まってから約1秒で自動で送ってくる
+    $linkId = tab_int($body['link_id'] ?? null) ?? 0;
+    $clean = tab_sanitize_link_practice($body['data'] ?? null);
+    if ($clean === null) {
+        fail(400, 'データがおかしいです');
+    }
+    $st = $pdo->prepare('SELECT 1 FROM song_link WHERE link_id = ? AND site = \'youtube\'');
+    $st->execute([$linkId]);
+    if (!$st->fetchColumn()) {
+        fail(404, 'リンクが見つかりません');
+    }
+    try {
+        $pdo->prepare('INSERT INTO song_link_practice (link_id, user_id, data) VALUES (?, ?, ?)
+                ON DUPLICATE KEY UPDATE data = VALUES(data)')
+            ->execute([$linkId, $userId, json_encode($clean, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)]);
     } catch (PDOException $e) {
         fail(500, db_error($e, '保存できませんでした'));
     }

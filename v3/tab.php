@@ -42,72 +42,11 @@ $pdo = db();
 //  ?song= … セットリストの曲から来る入口。紐付けの有無に関係なく、曲から「曲キー」を決める
 //  ?key=  … 曲キーそのもの（プレイヤーからの戻り先）。曲キーの形は lib/tabs.php の tab_song_key()
 if (isset($_GET['song']) || isset($_GET['key'])) {
-    $song = null; // ['key', 'title', 'artist', 'source', 'track_id', 'art']
-    if (isset($_GET['song'])) {
-        $st = $pdo->prepare('SELECT s.title, s.is_se, s.band_id, s.track_source, s.track_id, COALESCE(s.artist_id, b.artist_id) AS artist_id,
-                a.name AS artist_name, t.title AS track_title, t.artist_name AS track_artist, t.artwork_url
-            FROM song s
-            JOIN band b ON b.band_id = s.band_id
-            LEFT JOIN artist a ON a.artist_id = COALESCE(s.artist_id, b.artist_id)
-            LEFT JOIN track t ON t.source = s.track_source AND t.track_id = s.track_id
-            WHERE s.song_id = ?');
-        $st->execute([(int)$_GET['song']]);
-        $r = $st->fetch();
-        // SE は TAB の対象外。出演まで非公開のセットリストは、曲名が分かってしまうので入れない
-        if ($r && !$r['is_se'] && !band_setlist_visibility($pdo, (int)$r['band_id'])['hidden']) {
-            $linked = $r['track_source'] !== null;
-            $title = $linked ? $r['track_title'] : $r['title'];
-            $artist = $linked ? $r['track_artist'] : $r['artist_name'];
-            $song = [
-                'key'      => tab_song_key($r['track_source'], $r['track_id'], $r['artist_id'] === null ? null : (int)$r['artist_id'],
-                    (int)$r['band_id'], $r['title'], $r['artist_name']),
-                'title'    => mb_substr((string)$title, 0, 100),
-                'artist'   => $artist,
-                'source'   => $r['track_source'],
-                'track_id' => $r['track_id'],
-                'art'      => $r['artwork_url'],
-            ];
-        }
-        $listUrl = 'tab?song=' . (int)$_GET['song'];
-    } else {
-        $key = is_string($_GET['key']) ? $_GET['key'] : '';
-        if (tab_key_valid($key)) {
-            $song = ['key' => $key, 'title' => null, 'artist' => null, 'source' => null, 'track_id' => null, 'art' => null];
-            // Spotify / iTunes の曲なら track テーブルから
-            if (($parsed = album_parse_key($key)) !== null) {
-                $st = $pdo->prepare('SELECT title, artist_name, artwork_url FROM track WHERE source = ? AND track_id = ?');
-                $st->execute($parsed);
-                if ($t = $st->fetch()) {
-                    [$song['source'], $song['track_id']] = $parsed;
-                    [$song['title'], $song['artist'], $song['art']] = [$t['title'], $t['artist_name'], $t['artwork_url']];
-                }
-            }
-            // 紐付けなし（または曲が消えた）: 今ある TAB か、削除された TAB の履歴に残っている曲名を使う
-            if ($song['title'] === null) {
-                $st = $pdo->prepare('SELECT title, artist_name FROM song_tab WHERE song_key = ? LIMIT 1');
-                $st->execute([$key]);
-                $t = $st->fetch();
-                if (!$t) {
-                    $st = $pdo->prepare('SELECT snapshot FROM song_tab_revision WHERE song_key = ? ORDER BY rev_id DESC LIMIT 1');
-                    $st->execute([$key]);
-                    $snap = json_decode((string)$st->fetchColumn(), true);
-                    $t = is_array($snap) && isset($snap['title']) ? ['title' => $snap['title'], 'artist_name' => $snap['artist_name'] ?? null] : null;
-                }
-                if (!$t) {
-                    // まだ TAB が無い手動登録の曲（曲データベース songs.php の song_catalog）
-                    $st = $pdo->prepare('SELECT title, artist_name FROM song_catalog WHERE song_key = ?');
-                    $st->execute([$key]);
-                    $t = $st->fetch() ?: null;
-                }
-                if ($t) {
-                    [$song['title'], $song['artist']] = [mb_substr((string)$t['title'], 0, 100), $t['artist_name']];
-                } else {
-                    $song = null;
-                }
-            }
-        }
-        $listUrl = 'tab?key=' . rawurlencode($key);
-    }
+    // 曲を決める（曲 ID → 曲キー、または曲キーそのもの）。中身は lib/tabs.php の tab_resolve_song()（API のリンク登録でも使う）
+    $songId = isset($_GET['song']) ? (int)$_GET['song'] : null;
+    $key = $songId === null && is_string($_GET['key']) ? $_GET['key'] : null;
+    $song = tab_resolve_song($pdo, $songId, $key);
+    $listUrl = $songId !== null ? 'tab?song=' . $songId : 'tab?key=' . rawurlencode((string)$key);
     if ($song === null) {
         error_page(404, '曲が見つかりません');
     }
@@ -168,19 +107,29 @@ if (isset($_GET['song']) || isset($_GET['key'])) {
     $st->execute([$song['key']]);
     $deleted = $st->fetchAll();
 
+    // ---- TAB 譜・コード譜のリンク（song_link。サイトの並び順 → 登録順）。テーブルがまだ無い（マイグレーション前）なら空 ----
+    try {
+        $st = $pdo->prepare('SELECT link_id, site, url, label FROM song_link WHERE song_key = ?
+            ORDER BY FIELD(site, ' . implode(', ', array_map(static fn($k) => $pdo->quote($k), array_keys(TAB_LINK_SITES))) . '), link_id');
+        $st->execute([$song['key']]);
+        $links = $st->fetchAll();
+    } catch (PDOException) {
+        $links = [];
+    }
+
     // 曲のメモと画像（song_meta。全パート共通。最初に保存したときに行ができる）
     $st = $pdo->prepare('SELECT meta_id, memo FROM song_meta WHERE song_key = ?');
     $st->execute([$song['key']]);
     $meta = $st->fetch() ?: ['meta_id' => 0, 'memo' => null];
     $songImageRows = attach_images($pdo, 'song_meta', [(int)$meta['meta_id']])[(int)$meta['meta_id']] ?? [];
     $songImageIds = array_map(static fn($im) => (int)$im['image_id'], $songImageRows);
-    $songData = json_encode(['key' => $song['key'], 'images' => $songImageIds, 'pdfs' => tab_pdf_ids($songImageRows), 'files' => tab_file_ids($songImageRows)], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR);
+    $songData = json_encode(['key' => $song['key'], 'song_id' => $songId, 'images' => $songImageIds, 'pdfs' => tab_pdf_ids($songImageRows), 'files' => tab_file_ids($songImageRows)], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR);
 
     render_header($song['title'] . ' TAB', 'lives');
     ?>
 <link rel="stylesheet" href="<?= asset_url('assets/tab.css') ?>">
 <nav class="crumbs"><a href="./">ライブ</a></nav>
-<h1 class="display display--sm">TAB譜編集・練習</h1>
+<h1 class="display display--sm">TAB譜・コード</h1>
 <section class="card tab-song">
     <?php if ($song['art']): ?>
         <img class="tab-song__art" src="<?= h($song['art']) ?>" alt="" width="72" height="72">
@@ -188,7 +137,7 @@ if (isset($_GET['song']) || isset($_GET['key'])) {
         <span class="tab-song__art tab-song__art--none"><?= icon('music_note') ?></span>
     <?php endif; ?>
     <div class="tab-song__text">
-        <h2 class="tab-song__title"><?= h($song['title']) ?></h2> <?php // 見出し（h1）は上の「TAB譜編集・練習」。曲名はその下の見出し ?>
+        <h2 class="tab-song__title"><?= h($song['title']) ?></h2> <?php // 見出し（h1）は上の「TAB譜・コード」。曲名はその下の見出し ?>
         <?php if ($song['artist']): ?><p class="muted"><?= h($song['artist']) ?></p><?php endif; ?>
     </div>
 </section>
@@ -234,33 +183,47 @@ $renderNewForm = static function () use ($existingParts): void {
     <?php
 };
 ?>
-<?php if ($parts): ?>
-<section class="card tab-parts">
-    <ul class="tab-parts__list">
+<?php // ---- リンク（U-FRET・楽器.me・Songsterr・YouTube など）。この画面の主役。自作の TAB（ベータ）もその並びの1つ ---- ?>
+<section class="card tab-links" data-links>
+    <ul class="tab-links__list" data-link-list>
+        <?php foreach ($links as $l): $site = TAB_LINK_SITES[$l['site']] ?? TAB_LINK_SITES['other']; ?>
+            <li class="tab-links__item" data-link-id="<?= (int)$l['link_id'] ?>">
+                <span class="tab-links__site tab-links__site--<?= h($l['site']) ?>" title="<?= h($site['label']) ?>"><?= icon($site['icon']) ?></span>
+                <a class="tab-links__name" href="<?= h($l['url']) ?>" target="_blank" rel="noopener noreferrer"><?= h($l['label'] ?: $site['label']) ?></a>
+                <?php if ($l['site'] === 'youtube'): ?>
+                    <a class="icon-btn" href="tab?link=<?= (int)$l['link_id'] ?>" title="練習プレイヤー" aria-label="練習プレイヤー"><?= icon('play_circle') ?></a>
+                <?php endif; ?>
+                <button type="button" class="icon-btn" data-link-del title="削除" aria-label="削除"><?= icon('delete') ?></button>
+            </li>
+        <?php endforeach; ?>
+        <?php // 自作の TAB（ベータ）。パートごとに1行 ?>
         <?php foreach ($parts as $p): ?>
-            <li><a class="tab-parts__item" href="tab?id=<?= (int)$p['tab_id'] ?>">
-                <span class="tab-parts__inst"><?= h($p['short_name']) ?></span>
-                <span class="tab-parts__name"><?= h($p['part']) ?></span>
-                <?php if ($p['is_partial']): ?><span class="tag" title="部分">部分 <?= (int)$p['first_bar'] ?>〜<?= (int)$p['first_bar'] + max(0, (int)$p['bar_count'] - 1) ?></span><?php endif; ?>
-                <?php if ($p['kind'] !== 'drum'): ?><span class="muted small"><?= (int)tab_string_count($p['tuning']) ?>弦</span><?php endif; ?>
+            <li class="tab-links__item">
+                <span class="tab-links__site tab-links__site--own" title="TAB（ベータ）"><?= icon('edit_note') ?></span>
+                <a class="tab-links__name" href="tab?id=<?= (int)$p['tab_id'] ?>"><?= h($p['short_name']) ?> <?= h($p['part']) ?>
+                    <?php if ($p['is_partial']): ?><span class="tag" title="部分">部分 <?= (int)$p['first_bar'] ?>〜<?= (int)$p['first_bar'] + max(0, (int)$p['bar_count'] - 1) ?></span><?php endif; ?>
+                    <?php if ($p['kind'] !== 'drum'): ?><span class="muted small"><?= (int)tab_string_count($p['tuning']) ?>弦</span><?php endif; ?></a>
+                <span class="tag tab-beta">β</span>
                 <span class="muted small tab-parts__date"><?= h(fmt_datetime($p['updated_at'])) ?></span>
-                <?= icon('chevron_right') ?>
-            </a></li>
+            </li>
         <?php endforeach; ?>
     </ul>
-    <?php // 1 件以上: 一覧の下に、閉じた状態の「パートを追加」。開くとフォーム ?>
+    <div class="tab-links__actions">
+        <?php if (claude_enabled()): ?>
+            <button type="button" class="btn btn--sm" data-link-ai title="U-FRET・楽器.me・Songsterr・YouTube を AI で検索"><?= icon('auto_awesome') ?> 検索</button>
+        <?php endif; ?>
+        <form class="tab-links__add" data-link-add>
+            <input type="url" name="url" required placeholder="https://" aria-label="URL" autocomplete="off">
+            <button type="submit" class="btn btn--primary btn--sm" title="登録" aria-label="登録"><?= icon('add_link') ?></button>
+        </form>
+    </div>
+    <ul class="tab-links__list tab-links__found" data-link-found hidden></ul>
+    <?php // 自作の TAB（ベータ）の作成。閉じた状態で置く ?>
     <details class="tab-new-wrap">
-        <summary class="tab-new-wrap__summary"><?= icon('add') ?> パートを追加</summary>
+        <summary class="tab-new-wrap__summary"><?= icon('edit_note') ?> TAB 作成 <span class="tag tab-beta">ベータ</span></summary>
         <?php $renderNewForm(); ?>
     </details>
 </section>
-<?php else: ?>
-<?php // 0 件: 「まだ TAB がありません」と書くだけにせず、作成フォームを最初から開いて出す（空の状態をそのまま次の行動のきっかけにする = Empty State の CTA） ?>
-<section class="card tab-parts tab-parts--empty">
-    <h2 class="tab-parts__heading tab-parts__heading--cta"><?= icon('add') ?> TAB を作成</h2>
-    <?php $renderNewForm(); ?>
-</section>
-<?php endif; ?>
 
 <?php if ($deleted): ?>
 <section class="card tab-parts tab-parts--deleted">
@@ -301,6 +264,84 @@ $hasSongMemo = (string)($meta['memo'] ?? '') !== '' || $songImageIds !== [];
     </div>
 </details>
 <script src="<?= asset_url('assets/tab.js') ?>" defer></script><!-- 曲のメモの保存・画像・削除した TAB の復元・新規作成フォームのパート名 -->
+<?php
+    render_footer();
+    exit;
+}
+
+// =====================================================================
+//  C. YouTube の練習プレイヤー（?link=リンクID）
+// =====================================================================
+//  曲に登録した YouTube のリンク（song_link）を、AB リピート・マーク・曲構成・◯秒戻し・速度変更つきで再生する。
+//  設定は人ごと（song_link_practice）。動きは assets/ytplayer.js、保存は api_tab_save.php の link_practice
+if (isset($_GET['link'])) {
+    try {
+        $st = $pdo->prepare('SELECT link_id, song_key, url, label, title, artist_name FROM song_link WHERE link_id = ? AND site = ?');
+        $st->execute([(int)$_GET['link'], 'youtube']);
+        $link = $st->fetch();
+    } catch (PDOException) {
+        $link = false;
+    }
+    $videoId = $link ? youtube_video_id($link['url']) : null;
+    if (!$link || $videoId === null) {
+        error_page(404, 'リンクが見つかりません');
+    }
+    $st = $pdo->prepare('SELECT data FROM song_link_practice WHERE link_id = ? AND user_id = ?');
+    $st->execute([(int)$link['link_id'], (int)$user['user_id']]);
+    $practice = tab_sanitize_link_practice(json_decode((string)$st->fetchColumn(), true)) ?? ['m' => [], 'ab' => null, 'rate' => 1, 'back' => 5];
+    $ytData = json_encode(['link_id' => (int)$link['link_id'], 'video' => $videoId, 'practice' => $practice],
+        JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR);
+    $listUrl = 'tab?key=' . rawurlencode($link['song_key']);
+
+    render_header($link['title'] . ' 練習', 'lives');
+    ?>
+<link rel="stylesheet" href="<?= asset_url('assets/tab.css') ?>">
+<nav class="crumbs"><a href="./">ライブ</a><span>/</span><a href="<?= h($listUrl) ?>"><?= h($link['title']) ?></a></nav>
+<h1 class="display display--sm"><?= h($link['label'] ?: $link['title']) ?></h1>
+<script type="application/json" id="yt-data"><?= $ytData ?></script>
+<section class="card ytp" data-ytp>
+    <div class="ytp__video"><div data-ytp-mount></div></div>
+    <?php // タイムライン: 再生位置・AB の範囲・マークを表示。押した位置へ移動 ?>
+    <div class="ytp__line" data-ytp-line title="押した位置へ移動">
+        <div class="ytp__ab" data-ytp-abband hidden></div>
+        <div class="ytp__pos" data-ytp-pos></div>
+    </div>
+    <div class="ytp__time"><span data-ytp-cur>0:00</span> / <span data-ytp-dur>0:00</span></div>
+
+    <div class="ytp__row">
+        <button type="button" class="icon-btn" data-ytp-back title="戻す（←）" aria-label="戻す"><?= icon('fast_rewind') ?></button>
+        <label class="ytp__sec" title="戻す・進める秒数"><input type="number" min="1" max="60" inputmode="numeric" data-ytp-backsec aria-label="秒数">秒</label>
+        <button type="button" class="btn btn--primary ytp__play" data-ytp-play title="再生・停止（Space）" aria-label="再生・停止"><?= icon('play_arrow') ?></button>
+        <button type="button" class="icon-btn" data-ytp-fwd title="進める（→）" aria-label="進める"><?= icon('fast_forward') ?></button>
+    </div>
+
+    <div class="ytp__row">
+        <?= icon('speed', 'ytp__label') ?>
+        <button type="button" class="icon-btn" data-ytp-slower title="遅く" aria-label="遅く"><?= icon('remove') ?></button>
+        <span class="ytp__rate" data-ytp-rate>100%</span>
+        <button type="button" class="icon-btn" data-ytp-faster title="速く" aria-label="速く"><?= icon('add') ?></button>
+        <button type="button" class="tab-chip" data-ytp-rate1>100%</button>
+    </div>
+
+    <div class="ytp__row">
+        <?= icon('repeat', 'ytp__label') ?>
+        <button type="button" class="tab-chip" data-ytp-a title="現在位置を A に">A <span data-ytp-at></span></button>
+        <button type="button" class="tab-chip" data-ytp-b title="現在位置を B に">B <span data-ytp-bt></span></button>
+        <button type="button" class="tab-chip" data-ytp-loop aria-pressed="false" title="AB リピート"><?= icon('repeat') ?></button>
+        <button type="button" class="icon-btn" data-ytp-abclear title="AB を解除" aria-label="AB を解除"><?= icon('close') ?></button>
+    </div>
+
+    <?php // 曲構成のラベル（押すと現在位置にそのラベルのマーク）と、ラベルなしのマーク ?>
+    <div class="ytp__row ytp__secs" data-ytp-secs>
+        <button type="button" class="tab-chip" data-ytp-mark title="現在位置にマーク（M）"><?= icon('bookmark_add') ?></button>
+        <?php foreach (['イントロ', 'Aメロ', 'Bメロ', 'サビ', '間奏', 'ソロ', 'Cメロ', 'アウトロ'] as $sec): ?>
+            <button type="button" class="tab-chip" data-ytp-sec="<?= h($sec) ?>"><?= h($sec) ?></button>
+        <?php endforeach; ?>
+    </div>
+    <ul class="ytp__marks" data-ytp-marks></ul>
+    <a class="ytp__open muted small" href="<?= h($link['url']) ?>" target="_blank" rel="noopener noreferrer"><?= icon('open_in_new') ?> YouTube</a>
+</section>
+<script src="<?= asset_url('assets/ytplayer.js') ?>" defer></script>
 <?php
     render_footer();
     exit;
@@ -663,7 +704,30 @@ render_header($tab['title'] . ' ' . $tab['part'], 'lives');
     <section class="tab-edit" data-edit hidden>
         <!-- 曲のマーカー: 選んだ小節（なければ再生中の小節）の頭から、次にマーカーが付く小節の手前までがそのセクション -->
         <?php // 先頭のラベルのアイコンで「小節にセクション名（イントロ・サビ…）を付けるチップ」だと分かるようにする。チップは JS がこのアイコンの後ろに足す ?>
-        <div class="tab-secpick" data-secpick role="group" aria-label="セクション" title="小節にセクション名を付ける"><?= icon('label', 'tab-secpick__icon') ?></div>
+        <div class="tab-secrow">
+            <div class="tab-secpick" data-secpick role="group" aria-label="セクション" title="小節にセクション名を付ける"><?= icon('label', 'tab-secpick__icon') ?></div>
+            <button type="button" class="icon-btn icon-btn--sm" popovertarget="tab-howto-sec" aria-label="セクションの使い方" title="使い方"><?= icon('help') ?></button>
+        </div>
+        <?php // 使い方のポップアップ（HTML の popover。外側を押すと閉じる） ?>
+        <div class="tab-howto" id="tab-howto-sec" popover>
+            <b><?= icon('label') ?> セクション</b>
+            <ol>
+                <li>小節を選択（未選択なら再生中の小節）</li>
+                <li>イントロ・サビなどを押すと、その小節からセクション開始。再度押すと解除</li>
+                <li>「+小節」に数を入れてから押すと、後ろにそのセクションの空き小節を挿入</li>
+            </ol>
+            <p>次のセクションの手前までが同じセクション。小節見出しの欄に直接入力も可</p>
+        </div>
+        <div class="tab-howto" id="tab-howto-tap" popover>
+            <b><?= icon('touch_app') ?> タップ</b>
+            <p>音源と小節の位置を合わせる機能</p>
+            <ol>
+                <li>合わせ始める小節を選択して「タップ」をON</li>
+                <li>音源を再生</li>
+                <li>小節の頭ごとに「T」を押す（光っている小節から順に記録）</li>
+            </ol>
+            <p>記録は小節見出しの <?= icon('touch_app') ?> で解除</p>
+        </div>
 
         <div class="tab-tools">
             <button type="button" class="icon-btn" data-undo aria-label="元に戻す" title="元に戻す（Ctrl+Z）" disabled><?= icon('undo') ?></button>
@@ -671,6 +735,7 @@ render_header($tab['title'] . ' ' . $tab['part'], 'lives');
             <button type="button" class="icon-btn" data-import-open aria-label="インポート" title="インポート（ASCII TAB・画像）"><?= icon('upload_file') ?></button>
             <button type="button" class="tab-chip tab-chip--tap" data-tap-mode aria-pressed="false" title="小節の頭をタップして位置を補正"><?= icon('touch_app') ?> タップ</button>
             <button type="button" class="btn btn--primary tab-tap-btn" data-tap hidden><?= icon('touch_app') ?> T</button>
+            <button type="button" class="icon-btn icon-btn--sm" popovertarget="tab-howto-tap" aria-label="タップの使い方" title="使い方"><?= icon('help') ?></button>
         </div>
 
         <!-- 小節のグリッド。JS が作る（1小節 = 弦の数 × マス） -->

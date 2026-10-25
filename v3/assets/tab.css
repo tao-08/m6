@@ -21,6 +21,51 @@ a.tab-parts__item:hover { border-color: var(--accent); }
 .tab-parts__item > .icon:last-child { color: var(--muted); }
 .tab-parts--deleted .tab-parts__item .btn { flex: none; }
 
+/* ---- 曲の TAB 譜・コードのリンク（U-FRET・楽器.me・Songsterr・YouTube・自作 TAB） ---- */
+.tab-links { margin-top: 12px; }
+.tab-links__list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.tab-links__item { display: flex; align-items: center; gap: 8px; min-height: 48px; padding: 6px 8px; border-radius: var(--radius-sm); border: 1px solid var(--border); }
+.tab-links__item:hover { border-color: var(--accent); }
+.tab-links__site { flex: none; display: inline-grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; background: var(--surface-2); color: var(--muted); }
+.tab-links__site--ufret { color: #e8622c; }
+.tab-links__site--gakki { color: #2b8be6; }
+.tab-links__site--songsterr { color: #2eb872; }
+.tab-links__site--youtube { color: #ff3b30; }
+.tab-links__site--own { color: var(--gt); }
+.tab-links__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; color: inherit; }
+.tab-links__sub { display: block; font-weight: 400; font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
+.tab-links__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
+.tab-links__add { flex: 1; min-width: 220px; display: flex; gap: 6px; }
+.tab-links__add input { flex: 1; min-width: 0; padding: 8px 10px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--surface); color: var(--text); font: inherit; }
+.tab-links__found { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border); }
+.tab-links__found .tab-links__item { border-style: dashed; }
+.tab-beta { flex: none; font-size: 11px; color: var(--muted); }
+
+/* ---- YouTube の練習プレイヤー（tab.php?link=。動きは assets/ytplayer.js） ---- */
+.ytp { display: grid; gap: 10px; }
+.ytp__video { position: relative; aspect-ratio: 16 / 9; background: #000; border-radius: var(--radius-sm); overflow: hidden; }
+.ytp__video iframe, .ytp__video > div { position: absolute; inset: 0; width: 100%; height: 100%; }
+.ytp__line { position: relative; height: 22px; border-radius: 6px; background: var(--surface-2); cursor: pointer; touch-action: manipulation; }
+.ytp__ab { position: absolute; top: 0; bottom: 0; background: var(--accent-soft); border-left: 2px solid var(--accent); border-right: 2px solid var(--accent); }
+.ytp__pos { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; background: var(--text); pointer-events: none; }
+.ytp__tick { position: absolute; top: 0; width: 2px; height: 50%; background: var(--muted); pointer-events: none; }
+.ytp__tick--sec { height: 100%; background: var(--gt); }
+.ytp__time { text-align: center; font-variant-numeric: tabular-nums; color: var(--muted); font-size: 13px; }
+.ytp__row { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px; }
+.ytp__label { color: var(--muted); }
+.ytp__play { min-width: 64px; min-height: 48px; border-radius: 999px; }
+.ytp__play .icon { font-size: 28px; }
+.ytp__sec { display: inline-flex; align-items: center; gap: 2px; font-size: 13px; color: var(--muted); }
+.ytp__sec input { width: 3.4em; padding: 5px 4px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); text-align: center; font: inherit; }
+.ytp__rate { min-width: 3.5em; text-align: center; font-weight: 800; font-variant-numeric: tabular-nums; }
+.ytp__marks { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.ytp__mark { display: flex; align-items: center; gap: 6px; }
+.ytp__mark input { flex: 1; min-width: 0; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font: inherit; }
+.ytp__mark .tab-chip { font-variant-numeric: tabular-nums; }
+.ytp__open { justify-self: end; display: inline-flex; align-items: center; gap: 4px; }
+.is-loading .icon { animation: tab-spin 1s linear infinite; }
+@keyframes tab-spin { to { transform: rotate(360deg); } }
+
 /* ---- 共通の小さな部品 ---- */
 /* 視覚的にだけ隠す（スクリーンリーダーには読まれる）。display: none にすると読み上げからも消えてしまうので、
    「1px に潰して画面の外へ」にする、が定番の書き方（アクセシビリティの分野で visually-hidden / sr-only と呼ばれる） */
@@ -268,6 +313,16 @@ details[open] > .tab-summary > .tab-summary__chev { transform: rotate(180deg); }
 .tab-secpick { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .tab-secpick__icon { color: var(--muted); } /* 先頭のラベルのアイコン: 「小節にセクション名を付ける」チップの並びだと分かるように */
 .tab-secpick .tab-chip { border-color: color-mix(in srgb, var(--sec) 55%, var(--border)); }
+.tab-secrow { display: flex; align-items: center; gap: 6px; }
+.tab-secrow .tab-secpick { flex: 1; min-width: 0; }
+/* 使い方のポップアップ（popover は画面中央に出る） */
+.tab-howto { max-width: min(360px, calc(100vw - 32px)); padding: 14px 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); color: var(--text); box-shadow: 0 8px 28px rgb(0 0 0 / .25); font-size: .9rem; line-height: 1.6; }
+.tab-howto::backdrop { background: rgb(0 0 0 / .25); }
+.tab-howto b { display: flex; align-items: center; gap: 6px; }
+.tab-howto ol { margin: 6px 0; padding-left: 1.3em; }
+.tab-howto p { margin: 4px 0; color: var(--muted); }
+.tab-howto .icon { font-size: 1.1em; vertical-align: -.15em; }
+.tab-secpick__n { width: 4.6em; padding: 5px 6px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); text-align: center; font: inherit; }
 .tab-secpick .tab-chip.is-active { background: color-mix(in srgb, var(--sec) 30%, var(--surface)); color: var(--text); border-color: var(--sec); }
 /* 編集グリッドの小節見出しにセクションの色を薄く付ける */
 .tg-bar[style*="--sec"] .tg-bar__head { background: color-mix(in srgb, var(--sec) 20%, transparent); border-radius: 6px; padding: 2px; }

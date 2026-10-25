@@ -37,7 +37,7 @@ SET NAMES utf8mb4;
 -- まっさらな DB に流すと「Note: #1051 '〜' は不明な表です」が表の数だけ出るが、
 -- これは「消そうとした表が最初から無かった」というだけの“お知らせ”で、エラーではない。
 SET FOREIGN_KEY_CHECKS = 0;
-DROP TABLE IF EXISTS song_work_primary, venue_image, song_catalog, song_tab_ai_usage, song_meta_image, song_tab_image, song_meta, song_tab_practice, song_tab_revision, song_tab, timetable_draft_presence, timetable_draft, band_image, notice_image, board_post_image, live_image, push_subscription, comment_like, comment_reply, comment, board_thread_mute, board_notify_category, board_notify, board_post_like, board_post_reply, board_read, board_post, board_thread, board_category, notice_read, notice, notice_category, change_unit, change_op, inquiry, band_like, app_setting, login_attempt, track_preview, track_link_cache, album_link_cache,
+DROP TABLE IF EXISTS song_link_practice, song_link, song_work_primary, venue_image, song_catalog, song_tab_ai_usage, song_meta_image, song_tab_image, song_meta, song_tab_practice, song_tab_revision, song_tab, timetable_draft_presence, timetable_draft, band_image, notice_image, board_post_image, live_image, push_subscription, comment_like, comment_reply, comment, board_thread_mute, board_notify_category, board_notify, board_post_like, board_post_reply, board_read, board_post, board_thread, board_category, notice_read, notice, notice_category, change_unit, change_op, inquiry, band_like, app_setting, login_attempt, track_preview, track_link_cache, album_link_cache,
     check_dismiss, band_check_member, member_role, role, artist_alias, member_favorite_album, song_performer, song, track, band_member, live_break, band,
     artist, live_day, live, venue, instrument, user_account, member;
 SET FOREIGN_KEY_CHECKS = 1;
@@ -1120,6 +1120,35 @@ CREATE TABLE song_meta (
     UNIQUE KEY uq_meta_key (song_key),
     CONSTRAINT fk_meta_updated FOREIGN KEY (updated_by) REFERENCES user_account (user_id)
         ON UPDATE CASCADE ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- 曲ごとの TAB 譜・コード譜のリンク（U-FRET・楽器.me・Songsterr・YouTube など。説明は migrations/075_song_link.sql）
+CREATE TABLE song_link (
+    link_id    INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    song_key   VARCHAR(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+    site       VARCHAR(20)  NOT NULL,
+    url        VARCHAR(500) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+    label      VARCHAR(100) NULL,
+    title      VARCHAR(100) NOT NULL,
+    artist_name VARCHAR(255) NULL,
+    created_by INT UNSIGNED NULL,
+    created_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (link_id),
+    UNIQUE KEY uq_link_url (song_key, url),
+    CONSTRAINT fk_link_created FOREIGN KEY (created_by) REFERENCES user_account (user_id)
+        ON UPDATE CASCADE ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- YouTube リンクの練習プレイヤーの設定（自分だけ。説明は migrations/075_song_link.sql）
+CREATE TABLE song_link_practice (
+    link_id INT UNSIGNED NOT NULL,
+    user_id INT UNSIGNED NOT NULL,
+    data    JSON         NOT NULL,
+    PRIMARY KEY (link_id, user_id),
+    CONSTRAINT fk_linkprac_link FOREIGN KEY (link_id) REFERENCES song_link (link_id)
+        ON UPDATE CASCADE ON DELETE CASCADE,
+    CONSTRAINT fk_linkprac_user FOREIGN KEY (user_id) REFERENCES user_account (user_id)
+        ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE song_tab_image (

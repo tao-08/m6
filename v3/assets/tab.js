@@ -193,6 +193,99 @@
         btn.disabled = false;
       }
     });
+    songLinks(S);
+  }
+
+  /* ---------------------------------------------------------------
+   * 曲の一覧ページ: TAB 譜・コードのリンク（U-FRET・楽器.me・Songsterr・YouTube）
+   *   ✨検索 … AI がウェブ検索で候補を探す（api_tab_save の link_search）。候補の ＋ で登録
+   *   URL 欄 … 自分で見つけたページを貼って登録
+   *   登録・削除のあとは再読み込みして、PHP が出す一覧（サイト順）に揃える
+   *   ユーザーや AI から来た文字（タイトル・URL）は textContent / href にだけ入れる（innerHTML には入れない）
+   * --------------------------------------------------------------- */
+  function songLinks(S) {
+    const box = document.querySelector('[data-links]');
+    if (!box) return;
+    const SITES = { ufret: ['U-FRET', 'queue_music'], gakki: ['楽器.me', 'piano'], songsterr: ['Songsterr', 'music_note'], youtube: ['YouTube', 'smart_display'] };
+    const icon = (name) => { const s = document.createElement('span'); s.className = 'icon'; s.setAttribute('aria-hidden', 'true'); s.textContent = name; return s; };
+    const ids = { song_key: S.key, ...(S.song_id ? { song_id: S.song_id } : {}) };
+    const add = async (url, label) => {
+      await post({ action: 'link_add', ...ids, url, label: label || '' });
+      window.location.reload();
+    };
+
+    box.querySelector('[data-link-add]').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const input = e.currentTarget.elements.url;
+      // 日本語入りの URL はパーセントエンコードした形にする（サーバーは ASCII の URL だけ受け付ける）。% が壊れていればそのまま送る
+      let url = input.value.trim();
+      try { url = encodeURI(decodeURI(url)); } catch { /* そのまま */ }
+      try { await add(url); } catch (err) { notify(err.message || '登録できませんでした', 'error'); }
+    });
+
+    box.querySelectorAll('[data-link-del]').forEach((btn) => btn.addEventListener('click', async () => {
+      if (!window.confirm('削除しますか？')) return;
+      btn.disabled = true;
+      try {
+        await post({ action: 'link_delete', link_id: Number(btn.closest('[data-link-id]').dataset.linkId) });
+        btn.closest('li').remove();
+      } catch (err) {
+        btn.disabled = false;
+        notify(err.message || '削除できませんでした', 'error');
+      }
+    }));
+
+    const aiBtn = box.querySelector('[data-link-ai]');
+    const found = box.querySelector('[data-link-found]');
+    aiBtn?.addEventListener('click', async () => {
+      aiBtn.disabled = true;
+      aiBtn.classList.add('is-loading');
+      try {
+        const json = await post({ action: 'link_search', ...ids });
+        // 実費（AI を呼んだときだけ。使い回しは 0円なので出さない）
+        if (json.usage) notify('約' + json.usage.yen + '円（' + json.usage.model.replace('claude-', '') + '・検索' + json.usage.web_search_requests + '回・入力' + json.usage.input_tokens + '/出力' + json.usage.output_tokens + '）');
+        found.replaceChildren();
+        if (!json.items.length) { notify('見つかりませんでした'); return; }
+        json.items.forEach((it) => {
+          const [siteLabel, siteIcon] = SITES[it.site] || ['', 'link'];
+          const li = document.createElement('li');
+          li.className = 'tab-links__item';
+          const mark = document.createElement('span');
+          mark.className = 'tab-links__site tab-links__site--' + it.site;
+          mark.title = siteLabel;
+          mark.appendChild(icon(siteIcon));
+          const a = document.createElement('a');
+          a.className = 'tab-links__name';
+          a.href = it.url; // サーバーが https・4サイトのホストだけに絞ってある
+          a.target = '_blank';
+          a.rel = 'noopener noreferrer';
+          a.textContent = it.title || siteLabel;
+          const sub = document.createElement('span');
+          sub.className = 'tab-links__sub';
+          sub.textContent = siteLabel;
+          a.appendChild(sub);
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'icon-btn';
+          btn.title = it.added ? '登録済み' : '登録';
+          btn.setAttribute('aria-label', btn.title);
+          btn.disabled = !!it.added;
+          btn.appendChild(icon(it.added ? 'check' : 'add'));
+          btn.addEventListener('click', async () => {
+            btn.disabled = true;
+            try { await add(it.url, it.title); } catch (err) { btn.disabled = false; notify(err.message || '登録できませんでした', 'error'); }
+          });
+          li.append(mark, a, btn);
+          found.appendChild(li);
+        });
+        found.hidden = false;
+      } catch (err) {
+        notify(err.message || '検索できませんでした', 'error');
+      } finally {
+        aiBtn.disabled = false;
+        aiBtn.classList.remove('is-loading');
+      }
+    });
   }
 
   const dataEl = document.getElementById('tab-data');
@@ -974,6 +1067,17 @@
     b.style.setProperty('--sec', secColor(name));
     secPick.appendChild(b);
   });
+  // 小節数を入れてからチップを押すと、選んだ小節の後ろにそのセクションの空き小節をまとめて挿入する
+  const secN = document.createElement('input');
+  secN.type = 'number';
+  secN.className = 'tab-secpick__n';
+  secN.min = '1';
+  secN.max = '64';
+  secN.inputMode = 'numeric';
+  secN.placeholder = '+小節';
+  secN.title = '小節数を入れてセクションを押すと、後ろに挿入';
+  secN.setAttribute('aria-label', '挿入する小節数');
+  secPick.appendChild(secN);
   const targetBar = () => (sel ? sel.b : Math.max(0, clock ? barAt(clock.time()) : 0));
   function updateSecPick() {
     const cur = st.bars[targetBar()]?.s.trim();
@@ -983,6 +1087,20 @@
     const b = e.target.closest('[data-sec]');
     if (!b) return;
     const i = targetBar();
+    const n = Math.min(64, Math.floor(Number(secN.value)) || 0);
+    if (n >= 1) {
+      if (st.bars.length + n > MAX_BARS) { notify('小節は最大' + MAX_BARS + 'です', 'error'); return; }
+      const at = i + 1;
+      const bars = Array.from({ length: n }, newBar);
+      bars[0].s = b.dataset.sec;
+      // 途中に挿入したとき、後ろの小節が新しいセクションに吸われないよう元のセクション名を付け直す
+      const after = st.bars[at];
+      if (after && !after.s.trim() && secOf[i] >= 0) after.s = sections[secOf[i]].name;
+      secN.value = '';
+      insertBar(at, ...bars);
+      updateSecPick();
+      return;
+    }
     st.bars[i].s = st.bars[i].s.trim() === b.dataset.sec ? '' : b.dataset.sec;
     const input = grid.children[i]?.querySelector('.tg-bar__sec');
     if (input) input.value = st.bars[i].s;
@@ -1962,9 +2080,9 @@
   // ボタンを押してもマスの選択（フォーカス）を外さない
   pad.addEventListener('mousedown', (e) => e.preventDefault());
 
-  function insertBar(at, bar) {
-    if (st.bars.length >= MAX_BARS) { notify('小節は最大' + MAX_BARS + 'です', 'error'); return; }
-    st.bars.splice(at, 0, bar);
+  function insertBar(at, ...bars) {
+    if (st.bars.length + bars.length > MAX_BARS) { notify('小節は最大' + MAX_BARS + 'です', 'error'); return; }
+    st.bars.splice(at, 0, ...bars);
     sel = null;
     recompute(); renderGrid(); commit();
     grid.children[at]?.scrollIntoView({ block: 'nearest' });
