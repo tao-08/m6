@@ -312,10 +312,10 @@ $renderCard = static function (string $part, ?array $info) use ($partKey, $links
     <?php endif; ?>
     <?php // メモと画像。折りたたみ（<details>）。入っているものは上のリンクの一覧に行（JS が作る）で出て、その行を押すとここが開く。画像のモーダル（<dialog>）は、閉じた <details> の中に置かない（下で1回だけ出す） ?>
     <details class="tab-notes-edit tab-card__memo" data-song-memo>
-        <summary class="tab-summary"><?= icon('sticky_note_2') ?> メモ・画像 <?= icon('expand_more', 'tab-summary__chev') ?></summary>
+        <summary class="tab-summary"><?= icon('sticky_note_2') ?> テキスト・画像 <?= icon('expand_more', 'tab-summary__chev') ?></summary>
         <div class="tab-notes-edit__body">
             <label class="field">
-                <textarea rows="3" maxlength="<?= TAB_MEMO_MAX ?>" data-song-memo-text aria-label="メモ"><?= h($meta['memo'] ?? '') ?></textarea>
+                <textarea rows="3" maxlength="<?= TAB_MEMO_MAX ?>" data-song-memo-text aria-label="テキスト"><?= h($meta['memo'] ?? '') ?></textarea>
             </label>
             <ul class="live-thumbs tab-imgs" data-song-images></ul>
             <div class="tab-notes-edit__actions">
@@ -445,12 +445,11 @@ if (isset($_GET['link'])) {
     <div class="ytp__time"><span data-ytp-cur>0:00</span> / <span data-ytp-dur>0:00</span></div>
 
     <div class="ytp__row">
-        <button type="button" class="icon-btn" data-ytp-prevmark title="前のマーカー（Shift+←）" aria-label="前のマーカー"><?= icon('skip_previous') ?></button>
+        <button type="button" class="icon-btn" data-ytp-start title="先頭（Home）" aria-label="先頭"><?= icon('skip_previous') ?></button>
         <button type="button" class="icon-btn" data-ytp-back title="戻す（←）" aria-label="戻す"><?= icon('fast_rewind') ?></button>
         <label class="ytp__sec" title="戻す・進める秒数"><input type="number" min="1" max="60" inputmode="numeric" data-ytp-backsec aria-label="秒数">秒</label>
         <button type="button" class="btn btn--primary ytp__play" data-ytp-play title="再生・停止（Space）" aria-label="再生・停止"><?= icon('play_arrow') ?></button>
         <button type="button" class="icon-btn" data-ytp-fwd title="進める（→）" aria-label="進める"><?= icon('fast_forward') ?></button>
-        <button type="button" class="icon-btn" data-ytp-nextmark title="次のマーカー（Shift+→）" aria-label="次のマーカー"><?= icon('skip_next') ?></button>
     </div>
 
     <div class="ytp__row">
@@ -467,6 +466,11 @@ if (isset($_GET['link'])) {
         <button type="button" class="tab-chip" data-ytp-b title="現在位置を B に">B <span data-ytp-bt></span></button>
         <button type="button" class="tab-chip" data-ytp-loop aria-pressed="false" title="AB リピート"><?= icon('repeat') ?></button>
         <button type="button" class="icon-btn" data-ytp-abclear title="AB を解除" aria-label="AB を解除"><?= icon('close') ?></button>
+    </div>
+    <div class="ytp__row">
+        <?= icon('bookmark', 'ytp__label') ?>
+        <button type="button" class="icon-btn" data-ytp-prevmark title="前のマーカー（Shift+←）" aria-label="前のマーカー"><?= icon('keyboard_double_arrow_left') ?></button>
+        <button type="button" class="icon-btn" data-ytp-nextmark title="次のマーカー（Shift+→）" aria-label="次のマーカー"><?= icon('keyboard_double_arrow_right') ?></button>
     </div>
 
     <?php // 曲構成のラベル（押すと現在位置にそのラベルのマーク）と、ラベルなしのマーク ?>

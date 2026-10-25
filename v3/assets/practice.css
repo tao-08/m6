@@ -37,3 +37,9 @@
 .songs-row__tab { display: inline-flex; align-items: baseline; gap: 4px; line-height: 1; }
 .songs-row__tab .tab-icon { font-size: 11px; }
 .songs-row__tab.is-on { color: var(--accent); border-color: var(--accent); }
+
+/* ホーム画面追加ボタン: パソコンにも出す（追加済みのアプリ内だけ非表示） */
+@media (display-mode: standalone) { .prac-a2hs { display: none; } }
+
+/* 直近のライブのセットリスト（展開・収納） */
+.prac-live > summary { cursor: pointer; display: flex; align-items: center; gap: 6px; }

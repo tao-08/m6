@@ -113,7 +113,47 @@ if ($q === '' && $onlyKey === null) {
     $mine = $st->fetchAll();
 }
 
-$hasYoutubeKey = (string)(config('youtube')['api_key'] ?? '') !== '';
+// ---- 検索していないとき: 自分が出演する直近のライブ（開催日が今日以降）のセットリスト。リンクがあれば先頭の動画へ ----
+$liveName = null;
+$liveSongs = [];
+if ($q === '' && $onlyKey === null) {
+    $st = $pdo->prepare('SELECT d.live_id, l.name FROM live_day d JOIN live l ON l.live_id = d.live_id
+        JOIN band b ON b.live_day_id = d.live_day_id JOIN band_member bm ON bm.band_id = b.band_id
+        WHERE bm.member_id = ? AND d.held_on >= CURDATE() ORDER BY d.held_on LIMIT 1');
+    $st->execute([(int)$user['member_id']]);
+    if ($live = $st->fetch()) {
+        $liveName = (string)$live['name'];
+        $st = $pdo->prepare('SELECT DISTINCT s.song_id, s.title, s.band_id, s.track_source, s.track_id, COALESCE(s.artist_id, b.artist_id) AS artist_id,
+                a.name AS artist_name, t.title AS track_title, t.artist_name AS track_artist
+            FROM song s
+            JOIN band b ON b.band_id = s.band_id
+            JOIN live_day d ON d.live_day_id = b.live_day_id
+            JOIN song_performer sp ON sp.song_id = s.song_id AND sp.member_id = ?
+            LEFT JOIN artist a ON a.artist_id = COALESCE(s.artist_id, b.artist_id)
+            LEFT JOIN track t ON t.source = s.track_source AND t.track_id = s.track_id
+            WHERE d.live_id = ? AND s.is_se = 0
+            ORDER BY d.held_on, b.play_order, s.track_no');
+        $st->execute([(int)$user['member_id'], (int)$live['live_id']]);
+        foreach ($st as $r) {
+            $linked = $r['track_source'] !== null;
+            $key = tab_song_key($r['track_source'], $r['track_id'], $r['artist_id'] === null ? null : (int)$r['artist_id'],
+                (int)$r['band_id'], $r['title'], $r['artist_name']);
+            $liveSongs[$key] ??= ['key' => $key, 'link_id' => null,
+                'title' => (string)($linked ? $r['track_title'] : $r['title']), 'artist' => (string)($linked ? $r['track_artist'] : $r['artist_name'])];
+        }
+        if ($liveSongs) {
+            $keys = array_keys($liveSongs);
+            $st = $pdo->prepare('SELECT song_key, MIN(link_id) FROM song_link WHERE site = \'youtube\' AND song_key IN ('
+                . implode(',', array_fill(0, count($keys), '?')) . ') GROUP BY song_key');
+            $st->execute($keys);
+            foreach ($st->fetchAll(PDO::FETCH_NUM) as [$k, $id]) {
+                $liveSongs[$k]['link_id'] = (int)$id;
+            }
+        }
+    }
+}
+
+$hasYoutubeKey =(string)(config('youtube')['api_key'] ?? '') !== '';
 
 render_header('練習プレイヤー', 'tools');
 ?>
@@ -122,13 +162,30 @@ render_header('練習プレイヤー', 'tools');
 <nav class="crumbs"><a href="tools">ツール</a></nav>
 <h1 class="display display--sm">練習プレイヤー</h1>
 <?php // 右上メニューと同じ説明モーダル（partials/add_to_home.php）を開く。スマホ・タブレットだけ、追加済みなら出ない ?>
-<p><button type="button" class="btn btn--sm touch-only" data-a2hs-open title="ホーム画面に追加" aria-label="ホーム画面に追加"><?= icon('add_to_home_screen') ?> ホーム画面に追加</button></p>
+<p><button type="button" class="btn btn--sm prac-a2hs" data-a2hs-open title="ホーム画面に追加" aria-label="ホーム画面に追加"><?= icon('add_to_home_screen') ?> ホーム画面に追加</button></p>
 
 <form method="get" class="prac-search" data-prac-suggest>
     <input type="search" class="search" name="q" value="<?= h($q) ?>" maxlength="100" placeholder="曲名 アーティスト名" aria-label="曲名 アーティスト名" autocomplete="off" autofocus>
     <ul class="prac-suggest" data-prac-suggest-list hidden></ul>
     <button type="submit" class="btn btn--primary" aria-label="検索" title="検索"><?= icon('search') ?></button>
 </form>
+
+<?php if ($liveSongs): // 展開・収納できる（details） ?>
+    <details class="prac-live" open>
+        <summary class="section-title"><?= icon('queue_music') ?> <?= h($liveName) ?></summary>
+        <ul class="prac-list">
+            <?php foreach ($liveSongs as $s): ?>
+                <li><a class="card prac-item prac-item--link" href="<?= $s['link_id'] ? 'tab?link=' . $s['link_id'] : 'practice?key=' . rawurlencode($s['key']) ?>">
+                    <?= icon($s['link_id'] ? 'slow_motion_video' : 'search') ?>
+                    <span class="prac-item__body">
+                        <span class="prac-item__title"><?= h($s['title']) ?></span>
+                        <span class="muted small"><?= h($s['artist']) ?></span>
+                    </span>
+                </a></li>
+            <?php endforeach; ?>
+        </ul>
+    </details>
+<?php endif; ?>
 
 <?php if ($mine): ?>
     <h2 class="section-title"><?= icon('history') ?> 練習中</h2>

@@ -38,7 +38,7 @@ a.tab-parts__item:hover { border-color: var(--accent); }
 .tab-links__name--btn { border: 0; background: none; padding: 0; font: inherit; font-weight: 700; text-align: left; cursor: pointer; }
 .tab-links__count { flex: none; display: inline-flex; align-items: center; gap: 2px; font-size: 12px; }
 .tab-links__count .icon { font-size: 16px; }
-.tab-links__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; color: inherit; }
+.tab-links__name { flex: 1; min-width: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow-wrap: anywhere; line-height: 1.4; font-weight: 700; color: inherit; } /* 長い名前は2行まで見せて、それ以上は … */
 .tab-links__btn { flex: none; display: inline-flex; align-items: center; gap: 4px; }
 @media not all and (hover: none) and (pointer: coarse) { .tab-links__btn.touch-only { display: none; } }
 @media (display-mode: standalone) { .tab-links__btn.touch-only { display: none; } }

@@ -348,6 +348,7 @@
     if (to === undefined) return;
     seek(to);
   }
+  $('[data-ytp-start]').addEventListener('click', () => seek(0));
   $('[data-ytp-prevmark]').addEventListener('click', () => jumpMark(-1));
   $('[data-ytp-nextmark]').addEventListener('click', () => jumpMark(1));
 
@@ -355,6 +356,7 @@
   document.addEventListener('keydown', (e) => {
     if (e.target.closest('input, textarea, select') || e.ctrlKey || e.metaKey || e.altKey) return;
     if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+    else if (e.key === 'Home') { e.preventDefault(); seek(0); }
     else if (e.key === 'ArrowLeft') { e.preventDefault(); if (e.shiftKey) jumpMark(-1); else back(); }
     else if (e.key === 'ArrowRight') { e.preventDefault(); if (e.shiftKey) jumpMark(1); else fwd(); }
     else if ((e.key === 'm' || e.key === 'M') && editing) addMark(nextMarkerName());

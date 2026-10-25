@@ -218,7 +218,7 @@
             const name = document.createElement('button');
             name.type = 'button';
             name.className = 'tab-links__name tab-links__name--btn';
-            name.title = 'メモ・画像';
+            name.title = 'テキスト・画像';
             name.addEventListener('click', () => {
               area.open = !area.open;
               if (area.open) area.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
@@ -232,7 +232,7 @@
             del.setAttribute('aria-label', '削除');
             del.appendChild(mIcon('delete'));
             del.addEventListener('click', async () => {
-              if (!window.confirm('メモと画像を削除しますか？')) return;
+              if (!window.confirm('テキストと画像を削除しますか？')) return;
               del.disabled = true;
               try {
                 await images.removeAll();
