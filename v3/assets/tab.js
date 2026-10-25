@@ -2638,7 +2638,7 @@
       const seq = ++searchSeq;
       searchTitle.textContent = action === 'yt_search' ? '動画検索' : action === 'bpm_ai' ? 'BPM AI推定' : 'BPM検索';
       searchCredit.hidden = action !== 'bpm_search'; // BPM のデータ提供元の表記（利用条件）
-      searchStatus.textContent = '検索中…';
+      searchStatus.textContent = action === 'bpm_ai' ? '検索中…（十数秒かかります）' : '検索中…';
       searchList.replaceChildren();
       if (!searchDlg.open) searchDlg.showModal();
       try {
@@ -2670,8 +2670,9 @@
             if (action === 'bpm_ai') {
               // 主な値は信頼度、別案（倍・半分）はその旨を添える
               const conf = { high: '高', medium: '中', low: '低' }[it.confidence] || '';
+              const basis = it.basis === 'web' ? 'ウェブ' : '記憶'; // 根拠: ウェブで見つけた値 / AI の記憶（こちらは外れやすい）
               text.append(el('span', 'tab-search__bpm', 'BPM ' + it.bpm + (it.note ? `（${it.note}）` : '')),
-                el('span', 'muted small', [it.time_sig, it.note ? '' : '信頼度 ' + conf].filter(Boolean).join(' · ')));
+                el('span', 'muted small', [it.time_sig, basis, it.note ? '' : '信頼度 ' + conf].filter(Boolean).join(' · ')));
             } else {
               text.append(el('span', 'tab-search__bpm', 'BPM ' + it.bpm), el('span', '', `${it.title} · ${it.artist}`), el('span', 'muted small', it.time_sig || ''));
             }

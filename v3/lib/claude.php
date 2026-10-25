@@ -29,7 +29,7 @@ function claude_enabled(): bool
  * @param array $schema   返事の形（JSON スキーマ）
  * @throws RuntimeException 失敗したとき（画面に出してよい日本語のメッセージ。code は CLAUDE_ERR_*）
  */
-function claude_json(string $system, array $content, array $schema, int $maxTokens = 16000, int $timeoutSec = 180, ?string $model = null): array
+function claude_json(string $system, array $content, array $schema, int $maxTokens = 16000, int $timeoutSec = 180, ?string $model = null, array $tools = []): array
 {
     if (!claude_enabled()) {
         throw new RuntimeException('AI は設定されていません（config.php の anthropic.api_key）');
@@ -48,6 +48,10 @@ function claude_json(string $system, array $content, array $schema, int $maxToke
             'format' => ['type' => 'json_schema', 'schema' => $schema],
         ],
     ];
+    // サーバー側のツール（ウェブ検索など）。検索は Anthropic のサーバーが実行して、結果を踏まえた返事が返ってくる
+    if ($tools) {
+        $body['tools'] = $tools;
+    }
     // AI が安全上の理由で断ったとき、自動で別のモデルに回してもらう
     // Haiku にはこの仕組みが無い（送るとエラーになる）ので、Haiku 以外のときだけ付ける
     $useFallback = !str_starts_with($body['model'], 'claude-haiku');
@@ -57,36 +61,43 @@ function claude_json(string $system, array $content, array $schema, int $maxToke
     // 返事を待つ間に PHP の実行時間の上限（レンタルサーバーだと 30 秒など）で止められないようにする
     @set_time_limit($timeoutSec + 30);
 
-    $ch = curl_init('https://api.anthropic.com/v1/messages');
-    curl_setopt_array($ch, [
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_POST           => true,
-        CURLOPT_POSTFIELDS     => json_encode($body, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR),
-        CURLOPT_TIMEOUT        => $timeoutSec,
-        CURLOPT_CONNECTTIMEOUT => 10,
-        CURLOPT_HTTPHEADER     => [
-            'content-type: application/json',
-            'x-api-key: ' . (string)$cfg['api_key'],
-            'anthropic-version: 2023-06-01',
-            ...($useFallback ? ['anthropic-beta: server-side-fallback-2026-07-01'] : []),
-        ],
-    ]);
-    $raw = curl_exec($ch);
-    $status = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
-    if ($raw === false) {
-        throw new RuntimeException('AI に接続できませんでした（' . curl_error($ch) . '）。時間をおいて試してください');
-    }
-    $res = json_decode((string)$raw, true);
-    if ($status !== 200 || !is_array($res)) {
-        // エラーの中身（API キーの間違いなど）は管理者にしか意味がないので、画面にはざっくり出してログに残す
-        error_log('Claude API error ' . $status . ': ' . substr((string)$raw, 0, 1000));
-        $msg = match (true) {
-            $status === 401 => 'AI の API キーが正しくありません（管理者に連絡してください）',
-            $status === 429 => 'AI が混み合っているか、利用上限に達しました。時間をおいて試してください',
-            $status >= 500  => 'AI 側で一時的なエラーが起きました。時間をおいて試してください',
-            default         => "AI の呼び出しに失敗しました（{$status}）",
-        };
-        throw new RuntimeException($msg);
+    // pause_turn（サーバーツールの処理が長引いて一旦止まった）のときは、そこまでの返事を assistant として足して続きを頼む（最大3回）
+    for ($round = 0; ; $round++) {
+        $ch = curl_init('https://api.anthropic.com/v1/messages');
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST           => true,
+            CURLOPT_POSTFIELDS     => json_encode($body, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR),
+            CURLOPT_TIMEOUT        => $timeoutSec,
+            CURLOPT_CONNECTTIMEOUT => 10,
+            CURLOPT_HTTPHEADER     => [
+                'content-type: application/json',
+                'x-api-key: ' . (string)$cfg['api_key'],
+                'anthropic-version: 2023-06-01',
+                ...($useFallback ? ['anthropic-beta: server-side-fallback-2026-07-01'] : []),
+            ],
+        ]);
+        $raw = curl_exec($ch);
+        $status = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+        if ($raw === false) {
+            throw new RuntimeException('AI に接続できませんでした（' . curl_error($ch) . '）。時間をおいて試してください');
+        }
+        $res = json_decode((string)$raw, true);
+        if ($status !== 200 || !is_array($res)) {
+            // エラーの中身（API キーの間違いなど）は管理者にしか意味がないので、画面にはざっくり出してログに残す
+            error_log('Claude API error ' . $status . ': ' . substr((string)$raw, 0, 1000));
+            $msg = match (true) {
+                $status === 401 => 'AI の API キーが正しくありません（管理者に連絡してください）',
+                $status === 429 => 'AI が混み合っているか、利用上限に達しました。時間をおいて試してください',
+                $status >= 500  => 'AI 側で一時的なエラーが起きました。時間をおいて試してください',
+                default         => "AI の呼び出しに失敗しました（{$status}）",
+            };
+            throw new RuntimeException($msg);
+        }
+        if (($res['stop_reason'] ?? '') !== 'pause_turn' || $round >= 3) {
+            break;
+        }
+        $body['messages'][] = ['role' => 'assistant', 'content' => $res['content'] ?? []];
     }
 
     $stop = $res['stop_reason'] ?? '';
