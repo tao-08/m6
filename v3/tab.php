@@ -570,7 +570,13 @@ render_header($tab['title'] . ' ' . $tab['part'], 'lives');
     </details>
 
     <!-- 音源: YouTube の埋め込み / 手元のファイル / なし（アイコンで切り替え） -->
-    <div class="tab-video" data-video hidden><div data-video-mount></div></div>
+    <?php // つまみ（ドラッグで移動）・右下の角（ドラッグで大きさ）・元の位置へ。動きは assets/tab.js の setupVideoBox ?>
+    <div class="tab-video" data-video hidden>
+        <div data-video-mount></div>
+        <button type="button" class="tab-video__btn tab-video__drag" data-video-drag aria-label="移動" title="移動"><?= icon('drag_indicator') ?></button>
+        <button type="button" class="tab-video__btn tab-video__reset" data-video-reset aria-label="位置を復元" title="位置を復元" hidden><?= icon('restore') ?></button>
+        <span class="tab-video__size" data-video-size aria-label="大きさ" title="大きさ"></span>
+    </div>
 
     <!-- 操作バー（アイコンのみ。意味は title / aria-label で伝える） -->
     <div class="tab-bar card">
@@ -584,6 +590,7 @@ render_header($tab['title'] . ' ' . $tab['part'], 'lives');
             <input type="file" accept="audio/*,video/*" data-file hidden>
         </div>
         <div class="tab-bar__group">
+            <button type="button" class="icon-btn" data-restart aria-label="最初から" title="最初から再生"><?= icon('skip_previous') ?></button>
             <button type="button" class="icon-btn" data-seek="-5" aria-label="5秒戻る" title="5秒戻る（←）"><?= icon('replay_5') ?></button>
             <button type="button" class="icon-btn icon-btn--play" data-play aria-label="再生" title="再生（Space）"><?= icon('play_arrow', 'icon--fill') ?></button>
             <button type="button" class="icon-btn" data-seek="5" aria-label="5秒進む" title="5秒進む（→）"><?= icon('forward_5') ?></button>

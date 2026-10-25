@@ -674,6 +674,69 @@
   const currentRate = () => (pbpm === null ? 1 : clamp(pbpm / st.bpm, 0.25, 2));
   const videoBox = $('[data-video]');
   const videoMount = $('[data-video-mount]');
+
+  /*
+   * 動画の位置・大きさ（この端末の localStorage に覚える）
+   *   つまみをドラッグ = 画面に浮かせて(fixed)好きな位置へ / 右下の角をドラッグ = 大きさ / 復元 = 元の（ヘッダー下に固定の）位置へ
+   *   iframe の上ではクリックを YouTube に奪われるので、操作は動画の上に重ねたつまみ・角だけで行う（pointer capture でドラッグ中も追従）
+   */
+  (function setupVideoBox() {
+    const KEY = 'tabVideoBox';
+    const MIN_W = 160;
+    const dragEl = $('[data-video-drag]', videoBox);
+    const sizeEl = $('[data-video-size]', videoBox);
+    const resetEl = $('[data-video-reset]', videoBox);
+    let box = null; // {x, y, w}（px）。null = 元の位置
+    try {
+      const v = JSON.parse(localStorage.getItem(KEY));
+      if (v && [v.x, v.y, v.w].every(Number.isFinite)) box = { x: v.x, y: v.y, w: v.w };
+    } catch (e) { /* 保存できなくても動く */ }
+
+    /** 画面の外に出ないように収める（高さは 16:9 なので幅から決まる） */
+    function fit(b) {
+      const w = clamp(b.w, MIN_W, window.innerWidth);
+      const h = w * 9 / 16;
+      return { w, x: clamp(b.x, 0, Math.max(0, window.innerWidth - w)), y: clamp(b.y, 0, Math.max(0, window.innerHeight - h)) };
+    }
+    function apply() {
+      if (box) box = fit(box);
+      videoBox.classList.toggle('is-float', !!box);
+      resetEl.hidden = !box;
+      videoBox.style.left = box ? box.x + 'px' : '';
+      videoBox.style.top = box ? box.y + 'px' : '';
+      videoBox.style.width = box ? box.w + 'px' : '';
+    }
+    function save() {
+      try { if (box) localStorage.setItem(KEY, JSON.stringify(box)); else localStorage.removeItem(KEY); } catch (e) { /* 無視 */ }
+    }
+    /** ドラッグの共通処理: 押した位置からの移動量を move に渡す */
+    function drag(handle, onStart, onMove) {
+      handle.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        handle.setPointerCapture(e.pointerId);
+        const r = videoBox.getBoundingClientRect();
+        const start = onStart(r);
+        const x0 = e.clientX, y0 = e.clientY;
+        const move = (ev) => { onMove(start, ev.clientX - x0, ev.clientY - y0); apply(); };
+        const end = () => {
+          handle.removeEventListener('pointermove', move);
+          handle.removeEventListener('pointerup', end);
+          handle.removeEventListener('pointercancel', end);
+          save();
+        };
+        handle.addEventListener('pointermove', move);
+        handle.addEventListener('pointerup', end);
+        handle.addEventListener('pointercancel', end);
+      });
+    }
+    drag(dragEl, (r) => { box = box || { x: r.left, y: r.top, w: r.width }; return { x: box.x, y: box.y }; },
+      (s, dx, dy) => { box = { ...box, x: s.x + dx, y: s.y + dy }; });
+    drag(sizeEl, (r) => { box = box || { x: r.left, y: r.top, w: r.width }; return { w: box.w }; },
+      (s, dx) => { box = { ...box, w: s.w + dx }; });
+    resetEl.addEventListener('click', () => { box = null; apply(); save(); });
+    window.addEventListener('resize', apply); // 画面の向きを変えたとき、はみ出さないように
+    apply();
+  })();
   const fileInput = $('[data-file]');
 
   /** 音源を切り替える。再生位置と速度は引き継ぐ */
@@ -1476,6 +1539,13 @@
     if (!btn || !root.contains(btn)) return;
     const d = btn.dataset;
     if (d.play !== undefined) togglePlay();
+    else if (d.restart !== undefined) { // 最初から: 止めて 0 秒に戻し、そのまま再生（カウントインがあれば鳴らしてから）
+      ensureAudio();
+      if (counting) cancelCountIn();
+      clock.pause();
+      seekTo(0);
+      if (metro.count > 0 && audioCtx) startCountIn(); else clock.play();
+    }
     else if (d.seek !== undefined) seekTo(clock.time() + Number(d.seek));
     else if (d.rate !== undefined) setPracticeBpm(Number(d.rate) === 1 ? null : Math.round(st.bpm * Number(d.rate) * 10) / 10);
     else if (d.pbpmStep !== undefined) setPracticeBpm((pbpm ?? st.bpm) + Number(d.pbpmStep));

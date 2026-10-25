@@ -83,7 +83,16 @@ details[open] > .tab-summary > .tab-summary__chev { transform: rotate(180deg); }
 .tab-video { aspect-ratio: 16 / 9; width: min(100%, 420px); border-radius: var(--radius-sm); overflow: hidden; background: #000;
   position: sticky; top: 70px; z-index: 6; } /* スクロールしてもヘッダーの下に残る（スマホは下の media で小さくする） */
 @media (max-width: 600px) { .tab-video { width: min(100%, 240px); } }
-.icon-btn .youtube-icon { width: 26px; height: auto; } /* 音源ボタンの YouTube ロゴ。ボタンの丸に収まる大きさにする */
+.icon-btn .youtube-icon { width: 22px; height: auto; } /* 音源ボタンの YouTube ロゴ。ボタンの中身の幅（36 - 左右 padding 6）に収めないと右にずれる */
+/* 動画の移動・大きさ: ドラッグしたら fixed で好きな位置に浮かせる（位置・幅は JS が style に入れる）。iframe の上はクリックを奪われるので、操作はつまみ・角だけ */
+.tab-video.is-float { position: fixed; z-index: 30; box-shadow: var(--shadow); }
+.tab-video__btn { position: absolute; top: 4px; width: 28px; height: 28px; display: grid; place-items: center; border: 0; border-radius: 50%;
+  background: rgba(0, 0, 0, .55); color: #fff; cursor: pointer; touch-action: none; }
+.tab-video__btn .icon { font-size: 18px; }
+.tab-video__drag { left: 4px; cursor: grab; }
+.tab-video__reset { right: 4px; }
+.tab-video__size { position: absolute; right: 0; bottom: 0; width: 28px; height: 28px; cursor: nwse-resize; touch-action: none;
+  background: linear-gradient(135deg, transparent 55%, rgba(255, 255, 255, .85) 55% 62%, transparent 62% 72%, rgba(255, 255, 255, .85) 72% 79%, transparent 79%); }
 .icon-btn:disabled .youtube-icon { filter: grayscale(1); opacity: .5; }
 .tab-video [data-video-mount], .tab-video iframe { width: 100%; height: 100%; border: 0; display: block; } /* iframe は mount の中に入るので、mount も枠いっぱいにする（高さが無いと上に小さく寄る） */
 
