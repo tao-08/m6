@@ -690,7 +690,7 @@ $yearSlot = static function (string $name, int $selected, array $list, string $l
                         <?= upcoming_tag($day['date']) ?>
                     </div>
                     <div class="history__what">
-                        <a href="live?id=<?= (int)$day['live_id'] ?>#day-<?= (int)$day['live_day_id'] ?>" class="muted small"><?= h($day['live_name']) ?> <?= h($day['label']) ?></a><?= $day['venue_name'] ? ' <span class="muted small">· <a href="venue?id=' . (int)$day['venue_id'] . '">' . h($day['venue_name']) . '</a></span>' : '' ?>
+                        <div class="history__place"><a href="live?id=<?= (int)$day['live_id'] ?>#day-<?= (int)$day['live_day_id'] ?>" class="muted small"><?= h($day['live_name']) ?> <?= h($day['label']) ?></a><?= $day['venue_name'] ? ' <span class="muted small">· <a href="venue?id=' . (int)$day['venue_id'] . '">' . h($day['venue_name']) . '</a></span>' : '' ?></div>
                         <!-- その日に出たバンドを出演順に並べる。バンド名からバンド詳細へ -->
                         <ul class="history__bands">
                             <?php foreach ($day['bands'] as $b): ?>

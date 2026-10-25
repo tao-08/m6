@@ -1419,20 +1419,33 @@ function setupSmallThings() {
     check();
   });
 
-  // メンバーページ: 出演履歴の先頭が近づくほど絞り込みカードが薄くなる（スクロール連動の opacity）
-  //   終点: PC は浮く位置まで / 1列は履歴がカードに被る（カードの下端）まで。そこから 200px 手前で薄くなり始める
+  // メンバーページ: 1列表示だけ、出演履歴の先頭が近づくほど絞り込みカードが薄くなる（スクロール連動の opacity）
+  //   終点: 履歴がカードに被る（カードの下端）まで。そこから 200px 手前で薄くなり始める。PC は何もしない
   const historyTop = document.querySelector('.split .history-toolbar, .split section > .section-title');
   const filterBox = document.querySelector('.split aside > .stats-filter');
   if (historyTop && filterBox) {
     const oneColumn = matchMedia('(max-width: 860px)');
     const checkFade = () => {
-      const end = parseFloat(getComputedStyle(filterBox).top) + (oneColumn.matches ? filterBox.offsetHeight : 0);
-      const v = Math.min(1, Math.max(0, (historyTop.getBoundingClientRect().top - end) / 200));
-      filterBox.style.opacity = v.toFixed(3);
+      let v = 1;
+      if (oneColumn.matches) {
+        const end = parseFloat(getComputedStyle(filterBox).top) + filterBox.offsetHeight;
+        v = Math.min(1, Math.max(0, (historyTop.getBoundingClientRect().top - end) / 200));
+      }
+      filterBox.style.opacity = v === 1 ? '' : v.toFixed(3);
       filterBox.classList.toggle('is-faded', v < 0.05);
     };
     window.addEventListener('scroll', checkFade, { passive: true });
+    window.addEventListener('resize', checkFade);
     checkFade();
+  }
+  // メンバーページ（PC）: 右の欄は、一番下（よく組む学年区分）が画面に見えるところで止まる（左の出演履歴が続いてもそこで貼り付く）。
+  //   sticky の top を「画面の高さ − 欄の高さ」（マイナス）にすると、欄の下端が画面の下端に着いたところで止まる。低いときはいつも通り 80px
+  const splitAside = document.querySelector('.split aside');
+  if (splitAside) {
+    const fitAsideTop = () => { splitAside.style.top = `${Math.min(80, innerHeight - splitAside.offsetHeight - 16)}px`; };
+    new ResizeObserver(fitAsideTop).observe(splitAside);
+    window.addEventListener('resize', fitAsideTop);
+    fitAsideTop();
   }
 
   // 会場・日程名のプルダウン（取り込み・ライブ編集）: 「＋ 新しい○○を作る」を選んだときだけ名前の入力欄を出す

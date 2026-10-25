@@ -411,7 +411,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .live-card__head h3 { font-size: 19px; font-weight: 800; }
 .live-card__title { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; } /* ライブ名と「予定」を上下中央でそろえる（長い名前ならタグは次の行へ） */
 .live-card__days { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 13px; }
-.live-card__days li { display: grid; grid-template-columns: 5.5em auto 1fr; gap: 10px; align-items: center; }
+.live-card__days li { display: grid; grid-template-columns: 5.5em auto minmax(0, 1fr); gap: 10px; align-items: center; white-space: nowrap; }
 .day-no { font-weight: 800; font-size: 12px; color: var(--accent); }
 .live-card__foot { margin: auto 0 0; padding-top: 12px; border-top: 1px solid var(--border); font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 4px; }
 .live-card__foot strong { color: var(--text); font-size: 16px; }
@@ -643,9 +643,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .partbar--cell { margin-top: 0; gap: 4px; flex-wrap: nowrap; } /* 表のセルの中（メンバー一覧の担当楽器）。折り返さずに横一列に並べる */
 .split { display: grid; grid-template-columns: minmax(0, 1fr) clamp(300px, 40%, 420px);
   /* 右の欄（よく組むメンバー）: 広い画面では名前・楽器・ライブ名が1行に入る 420px。狭い画面では出演履歴に幅を譲って 300px まで縮む */ gap: 28px; align-items: start; }
-.split aside { position: sticky; top: 80px; }
-/* よく組むメンバーを全員開くと画面より高くなり、貼り付いたままだと下の方が見えない → 開いているあいだは貼り付けない */
-.split aside:has(.partner-box.is-open) { position: static; }
+.split aside { position: sticky; top: 80px; } /* PC: 欄が画面より高いときは top を assets/app.js が「画面の高さ − 欄の高さ」（マイナス）にする → 下の学年区分が見えるところで止まる */
 .history { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
 /* 出演履歴の年度見出し（年度が変わるところだけ）と、上の検索・年度スロット・並び替えボタン */
 .history-year:not(.is-inst-hidden) ~ .history-year { margin-top: 22px; } /* 前に見えている年度があるときだけ（楽器フィルターで先頭の年度が隠れても余白が残らない） */
@@ -662,6 +660,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .history__when { display: grid; font-size: 12px; font-weight: 700; }
 .history__when .tag { justify-self: start; margin-top: 4px; } /* grid の中だと横いっぱいに伸びるので、中身の幅にする */
 .history__what { display: grid; min-width: 0; }
+.history__place { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } /* ライブ名 · 会場名は折り返さず1行（はみ出したら …） */
 .history__bands { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 6px; }
 .history__band { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .history__name { display: flex; align-items: center; gap: 6px; min-width: 0; }
@@ -1897,7 +1896,7 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
   .split { grid-template-columns: 1fr; }
   .split aside { display: contents; } /* 1列になったら、右の欄（絞り込み・よく組むメンバー）を出演履歴より上に出す。絞り込みが .split 全体で浮くように、aside の箱は消して中身を並べる */
   .split aside > * { order: -1; }
-  .split aside > .stats-filter { order: -2; margin: 18px 0 0; }
+  .split aside > .stats-filter { position: sticky; order: -2; margin: 18px 0 0; } /* 1列表示は浮かせる */
   .split aside > .stats-filter + .partner-box { margin-top: 4px; }
   .partner-box { margin-top: 0; }
   .partner-box + .partner-box { margin-top: 18px; } /* よく組むメンバーとよく演奏するアーティストが続くときは、マイアルバムのカードと同じだけ空ける */
@@ -2777,8 +2776,17 @@ button.ttb-m { cursor: pointer; text-decoration: underline dotted; }
   .setlist__art { transition: transform .2s var(--ease-out), box-shadow .2s ease; }
   .setlist__artwrap:hover .setlist__art { transform: scale(1.05); box-shadow: 0 6px 14px -4px rgb(0 0 0 / .4); }
 }
-.split aside > .stats-filter { margin: 32px 0 0; } /* マイアルバムからは離し（カードと同じ上32px）、下の集計カードに寄せる */
-.split aside > .stats-filter + .partner-box { margin-top: 4px; }
+/* PC: 右の欄の先頭の絞り込みカード。見出しを消して縦幅を詰め、スクロールで浮く（欄が画面より高く上へ送られているときも、浮く位置に残る）。
+   マイアルバムからは離し（カードと同じ上32px）、下の集計カードに寄せる */
+@media (min-width: 861px) {
+  .split aside > .stats-filter { position: sticky; top: 70px; z-index: 15; margin: 32px 0 0; gap: 6px; padding: 10px 8px; }
+  .split aside > .stats-filter .stats-filter__row { gap: 6px; padding-inline: 3px; }
+  .split aside > .stats-filter .stats-filter__row legend { display: none; }
+  .split aside > .stats-filter .tabs--filter { max-width: none; overflow: visible; padding: 2px; }
+  .split aside > .stats-filter .tab { padding: 5px 8px; font-size: 12px; }
+  .split aside > .stats-filter .stats-filter__extra select { padding: 4px 8px; font-size: 12px; }
+}
+@media (min-width: 861px) { .split aside > .stats-filter + .partner-box { margin-top: 12px; } }
 .split aside > .stats-filter.is-faded { pointer-events: none; } /* 出演履歴が近づくと絞り込みが薄くなって消える（opacity はスクロールに合わせて app.js が付ける） */
 :root.live-vt .hero { view-transition-name: member-hero; } /* liveFilter の間だけ（ページ移動の切り替えには影響させない） */
 /* 右の欄: 1列表示だと aside は箱を持たない（display: contents）ので、中のカードに1枚ずつ名前を付ける（1番目は絞り込みカード） */
