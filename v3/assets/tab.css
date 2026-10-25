@@ -80,7 +80,11 @@ details[open] > .tab-summary > .tab-summary__chev { transform: rotate(180deg); }
 .tab-head__title { margin: 0; font-size: 17px; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tab-head__text p { margin: 2px 0 0; overflow-wrap: anywhere; }
 
-.tab-video { aspect-ratio: 16 / 9; width: min(100%, 420px); border-radius: var(--radius-sm); overflow: hidden; background: #000; }
+.tab-video { aspect-ratio: 16 / 9; width: min(100%, 420px); border-radius: var(--radius-sm); overflow: hidden; background: #000;
+  position: sticky; top: 70px; z-index: 6; } /* スクロールしてもヘッダーの下に残る（スマホは下の media で小さくする） */
+@media (max-width: 600px) { .tab-video { width: min(100%, 240px); } }
+.icon-btn .youtube-icon { width: 26px; height: auto; } /* 音源ボタンの YouTube ロゴ。ボタンの丸に収まる大きさにする */
+.icon-btn:disabled .youtube-icon { filter: grayscale(1); opacity: .5; }
 .tab-video [data-video-mount], .tab-video iframe { width: 100%; height: 100%; border: 0; display: block; } /* iframe は mount の中に入るので、mount も枠いっぱいにする（高さが無いと上に小さく寄る） */
 
 /* 操作バー: アイコンのボタンを折り返しながら並べる */

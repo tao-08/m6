@@ -575,7 +575,7 @@ render_header($tab['title'] . ' ' . $tab['part'], 'lives');
     <!-- 操作バー（アイコンのみ。意味は title / aria-label で伝える） -->
     <div class="tab-bar card">
         <div class="tab-bar__group" role="group" aria-label="音源">
-            <button type="button" class="icon-btn" data-src="yt" aria-label="YouTube" title="YouTube"><?= icon('smart_display') ?></button>
+            <button type="button" class="icon-btn" data-src="yt" aria-label="YouTube" title="YouTube"><?= youtube_icon() ?></button>
             <button type="button" class="icon-btn" data-src="file" aria-label="ファイル" title="ファイル"><?= icon('audio_file') ?></button>
             <button type="button" class="icon-btn" data-src="none" aria-label="音源なし" title="音源なし"><?= icon('timer') ?></button>
             <!-- 同期解除: 音源は止めて、今の位置から内部時計で進む（好きな BPM で練習できる） -->
