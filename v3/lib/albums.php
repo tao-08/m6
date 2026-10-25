@@ -352,6 +352,9 @@ function album_listen_url(?string $app, array $album, string|false|null $cached 
  */
 function album_open_attrs(string $title, ?int $year, ?string $art, string $listenApp, string $listenUrl, string $artist = ''): string
 {
+    // モーダルは大きく出すので、保存済みの小さいジャケット（200〜300px）を高画質版にする。
+    // iTunes は 600px、Spotify は 640px の同じ画像に書き換える（songs.php の songs_large_art と同じ）
+    $art = $art === null ? null : str_replace('/ab67616d00001e02', '/ab67616d0000b273', preg_replace('/\d+x\d+bb/', '600x600bb', $art));
     return ' data-album-open data-album-title="' . h($title) . '" data-album-artist="' . h($artist) . '" data-album-year="' . ($year ? (int)$year : '')
         . '" data-album-art="' . h((string)$art) . '" data-album-app="' . h($listenApp) . '" data-album-url="' . h($listenUrl) . '"';
 }
@@ -676,7 +679,10 @@ function fan_albums_html(array $fans, string $title, ?string $viewerApp, bool $w
         // ジャケットもアルバム名も、押すとアルバムのモーダル（同じ属性）
         $openAttrs = album_open_attrs($a['title'], $a['release_year'] ? (int)$a['release_year'] : null, $a['artwork_url'], listen_app($viewerApp, $a['source']), album_listen_url($viewerApp, $a), (string)$a['artist_name']);
         $html .= '<li class="album">'
-            . '<img class="album__art" src="' . h($a['artwork_url']) . '" alt="' . h($a['title']) . ' のジャケット" loading="lazy" width="600" height="600"' . $openAttrs . '>'
+            // member.php（他の人のページ）と同じ: ジャケットもリンクにして、乗せたら浮く・下のタイトルに下線。
+            // 下のタイトルと行き先が同じなので、キーボード・読み上げでは1つ分にまとめる
+            . '<a class="album__art-link" href="' . h(album_listen_url($viewerApp, $a)) . '" target="_blank" rel="noopener" tabindex="-1" aria-hidden="true"' . $openAttrs . '>'
+            . '<img class="album__art" src="' . h($a['artwork_url']) . '" alt="" loading="lazy" width="600" height="600"></a>'
             . '<div class="album__meta">'
             . '<a class="album__title" href="' . h(album_listen_url($viewerApp, $a)) . '" target="_blank" rel="noopener"' . $openAttrs . '>' . h($a['title']) . '</a>'
             . ($withArtist
