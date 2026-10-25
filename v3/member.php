@@ -32,6 +32,7 @@ if (!$member) {
 //   setlist_count: 登録済みの曲数（song_count と一致すれば「セットリスト登録済」）
 $st = $pdo->prepare('SELECT b.band_id, b.name AS band_name, b.play_order, b.song_count,
         (SELECT COUNT(*) FROM song s WHERE s.band_id = b.band_id AND s.is_se = 0) AS setlist_count,
+        (SELECT COUNT(*) FROM song s WHERE s.band_id = b.band_id AND s.is_se = 0 AND s.track_id IS NOT NULL) AS linked_count,
         ld.live_day_id, ld.label, ld.held_on AS date, lm.live_id, lm.fiscal_year AS year, lm.name AS live_name, v.name AS venue_name, ld.venue_id,
         (last.max_order IS NOT NULL) AS is_last
     FROM (' . MEMBERSHIP_SQL . ') bm
@@ -398,7 +399,7 @@ render_header($member['name'], 'members');
                     <!-- 本人のページでドラッグで並び替えられるのはジャケットの部分だけ（リンクの上で押してもドラッグは始まらない。assets/app.js） -->
                     <!-- アルバム名は聴くページへ、アーティスト名は押すとその名前で検索（リンクの中にリンクは入れられないので別々の <a>） -->
                     <div class="album__meta">
-                        <a class="album__title" href="<?= h($listenUrl) ?>" target="_blank" rel="noopener" title="<?= h($listenLabel($a)) ?> で聴く"><?= h($a['title']) ?></a>
+                        <a class="album__title" href="<?= h($listenUrl) ?>" target="_blank" rel="noopener" title="<?= h($listenLabel($a)) ?> で聴く"<?= $openAttrs ?>><?= h($a['title']) ?></a>
                         <span class="muted small"><?= album_artist_links($a['artist_name']) ?><?php if ($a['release_year']): ?><span class="album__year"> · <?= (int)$a['release_year'] ?></span><?php endif; ?></span>
                     </div>
                     <?php if ($isMe || is_admin()): ?>
@@ -541,7 +542,7 @@ render_header($member['name'], 'members');
                                     </span>
                                     <span class="history__tags">
                                         <!-- セットリスト登録済なら楽器ラベルの左に ✓、その後にそのバンドでのパート（Vo と Gt なら「Vo/Gt」1つ） -->
-                                        <?= setlist_badge((int)$b['setlist_count'], (int)$b['song_count']) ?>
+                                        <?= setlist_badge((int)$b['setlist_count'], (int)$b['song_count'], (int)$b['linked_count']) ?>
                                         <?php foreach ($partsByBand[(int)$b['band_id']] ?? [] as $p): ?><?= part_badge($p) ?><?php endforeach; ?>
                                     </span>
                                 </li>

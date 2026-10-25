@@ -956,15 +956,17 @@ function sort_tally_by_count(array $tally): array
  *   登録した曲数（song の行数）がタイムテーブルの曲数（band.song_count）と一致したときだけ出す。
  *   途中まで（3/5）や多すぎ（6/5）は何も出さない。
  */
-function setlist_badge(int $registered, int $planned): string
+function setlist_badge(int $registered, int $planned, int $linked = 0): string
 {
     if ($registered <= 0 || $registered !== $planned) {
         return '';
     }
     // ✓ が「登録済」の意味。押すと「セットリスト登録済（◯曲）」のポップアップが出る（app.js の setupSetlistTip）。
     // スマホでは「セットリスト」の文字を隠して ✓ だけ。押せる部品なので <span> ではなく <button>
+    // サブスク連携（song.track_id）済みの曲が半分未満ならくすんだ色（is-dim）
     $label = 'セットリスト登録済（' . $registered . '曲）';
-    return '<button type="button" class="setlist-badge" data-setlist-tip="' . h($label) . '" aria-label="' . h($label) . '">'
+    $dim = $linked * 2 < $registered ? ' is-dim' : '';
+    return '<button type="button" class="setlist-badge' . $dim . '" data-setlist-tip="' . h($label) . '" aria-label="' . h($label) . '">'
         . icon('check') . '<span class="setlist-badge__text">セットリスト</span></button>';
 }
 

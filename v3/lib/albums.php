@@ -673,11 +673,12 @@ function fan_albums_html(array $fans, string $title, ?string $viewerApp, bool $w
         }
         // 見ている人の音楽アプリで開く（アプリをまたぐときは album_go が押されたときに探す）
         // アルバム名は聴くページへ、アーティスト名は検索へ（リンクの中にリンクは入れられないので、別々の <a> にする）
+        // ジャケットもアルバム名も、押すとアルバムのモーダル（同じ属性）
+        $openAttrs = album_open_attrs($a['title'], $a['release_year'] ? (int)$a['release_year'] : null, $a['artwork_url'], listen_app($viewerApp, $a['source']), album_listen_url($viewerApp, $a), (string)$a['artist_name']);
         $html .= '<li class="album">'
-            . '<img class="album__art" src="' . h($a['artwork_url']) . '" alt="' . h($a['title']) . ' のジャケット" loading="lazy" width="600" height="600"'
-            . album_open_attrs($a['title'], $a['release_year'] ? (int)$a['release_year'] : null, $a['artwork_url'], listen_app($viewerApp, $a['source']), album_listen_url($viewerApp, $a), (string)$a['artist_name']) . '>'
+            . '<img class="album__art" src="' . h($a['artwork_url']) . '" alt="' . h($a['title']) . ' のジャケット" loading="lazy" width="600" height="600"' . $openAttrs . '>'
             . '<div class="album__meta">'
-            . '<a class="album__title" href="' . h(album_listen_url($viewerApp, $a)) . '" target="_blank" rel="noopener">' . h($a['title']) . '</a>'
+            . '<a class="album__title" href="' . h(album_listen_url($viewerApp, $a)) . '" target="_blank" rel="noopener"' . $openAttrs . '>' . h($a['title']) . '</a>'
             . ($withArtist
                 // member.php のマイアルバムと同じ「アーティスト · 年」の1行
                 ? '<span class="muted small">' . album_artist_links($a['artist_name'])

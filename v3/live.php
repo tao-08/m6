@@ -50,6 +50,7 @@ $days = $st->fetchAll();
 //   setlist_count: 登録済みの曲数（セトリ登録済バッジ用）。相関サブクエリなので SQL の回数は増えない
 $st = $pdo->prepare('SELECT b.*, a.name AS artist_name,
         (SELECT COUNT(*) FROM song s WHERE s.band_id = b.band_id AND s.is_se = 0) AS setlist_count,
+        (SELECT COUNT(*) FROM song s WHERE s.band_id = b.band_id AND s.is_se = 0 AND s.track_id IS NOT NULL) AS linked_count,
         EXISTS (SELECT 1 FROM song se WHERE se.band_id = b.band_id AND se.is_se = 1 AND NOT ' . setlist_hidden_sql('b') . ') AS has_se
     FROM band b
     JOIN live_day d ON d.live_day_id = b.live_day_id
@@ -246,7 +247,7 @@ render_header($live['name'], 'lives');
                         <?php if ($memberIds): ?><span><?= count(array_unique($memberIds)) ?>名</span><?php endif; ?>
                         <?php if ($b['song_count'] !== null): // NULL = 曲数不明なら出さない ?><span><?= (int)$b['song_count'] ?>曲</span><?php endif; ?>
                         <?php if ($b['has_se']): ?><span class="se-mark" title="SE">SE</span><?php endif; ?>
-                        <?= setlist_badge((int)$b['setlist_count'], (int)$b['song_count']) ?>
+                        <?= setlist_badge((int)$b['setlist_count'], (int)$b['song_count'], (int)$b['linked_count']) ?>
                         <?php if ($b['note']): ?><span class="band-note"><?= icon('sticky_note_2') ?> <?= h($b['note']) ?></span><?php endif; ?>
                     </p>
                 </div>
