@@ -2131,13 +2131,13 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
 
 /* ベルのポップアップ（直近3件＋すべて見る） */
 .icon-btn--sm { width: 30px; height: 30px; padding: 0; } /* button の初期の左右余白(6px)で中身の入る幅が足りず、アイコンが右に寄っていた */
-.notifmenu__panel { width: 300px; max-width: calc(100vw - 24px); }
+.notifmenu__panel { width: 300px; max-width: calc(100vw - 24px); grid-template-columns: minmax(0, 1fr); } /* 列を幅いっぱいに（auto だとタブの max-content に縮んで、右の文字や区切り線が欠けた） */
 @media (max-width: 760px) { .notifmenu__panel { position: fixed; right: 12px; top: 56px; } } /* スマホ: ベルの真下だと左にはみ出すので、画面の右端に出す。PCはベルの真下 */
 .notifmenu__item { display: grid; gap: 2px; }
 .notifmenu__title { font-weight: 600; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow-wrap: anywhere; } /* 最大2段、超過は… */
 .notifmenu__empty { padding: 8px 10px; margin: 0; }
-.notifmenu__tabs { margin: 0 0 6px; padding: 3px; }
-.notifmenu__tabs .tab { flex: 1; justify-content: center; align-items: center; padding: 6px 10px; cursor: pointer; border: 0; font: inherit; font-weight: 800; font-size: 13px; }
+.notifmenu__tabs { margin: 0 0 6px; padding: 3px; width: 100%; box-sizing: border-box; overflow: hidden; } /* .tabs の width: max-content だと、パネルより狭く縮んで右の文字が欠ける */
+.notifmenu__tabs .tab { flex: 1; justify-content: center; align-items: center; min-width: 0; padding: 6px 6px; cursor: pointer; border: 0; font: inherit; font-weight: 800; font-size: 13px; }
 .notifmenu__tabs .tab:not(.is-active) { background: none; }
 .notifmenu__count { position: static; }
 .notifmenu__all { margin-top: 4px; border-top: 1px solid var(--border); border-radius: 0 !important; text-align: center !important; color: var(--accent); font-size: 13px; font-weight: 600; }
