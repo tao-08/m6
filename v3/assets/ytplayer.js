@@ -86,7 +86,7 @@
     } catch (err) { /* 保存できない端末では何もしない */ }
     return Promise.resolve();
   };
-  const personal = () => P.m.filter((m) => !SHARED.has(m.l));
+  const personal = () => P.m; // 共通の表（マイグレーション 080）が無い・保存できない場合に備え、ラベル付きも自分の分に残す（読み込み時は共通のほうが優先される）
   const sharedList = () => P.m.filter((m) => SHARED.has(m.l)).map((m) => ({ t: m.t, l: m.l }));
   const post = (body, keepalive) => fetch('api_tab_save', {
     method: 'POST',
@@ -142,7 +142,8 @@
       videoId: D.video,
       width: '100%',
       height: '100%',
-      playerVars: { playsinline: 1, rel: 0 },
+      // controls: 0 = YouTube 標準のシークバー・操作を出さない（マーカー移動のたびに出て画面が暗くなるため。操作は自前のもの）
+      playerVars: { playsinline: 1, rel: 0, controls: 0, disablekb: 1, fs: 0, iv_load_policy: 3, modestbranding: 1 },
       events: {
         onReady: () => { ready = true; setRate(P.rate); render(); },
         onStateChange: (e) => { playing = e.data === 1 || e.data === 3; if (e.data === 1) markPracticing(); render(); },

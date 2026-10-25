@@ -116,7 +116,7 @@ a.tab-parts__item:hover { border-color: var(--accent); }
 .ytp.is-full.is-zoom-top .ytp__video { width: 100vw; top: 0; transform: translateX(-50%); }
 .ytp.is-full.is-zoom-bottom .ytp__video { width: 100vw; top: auto; bottom: 0; transform: translateX(-50%); }
 .ytp.is-full > :not(.ytp__video):not(.ytp__dock) { display: none; }
-.ytp.is-full .ytp__fsonly { display: inline-flex; }
+.ytp.is-full .ytp__fsonly { display: grid; }
 .ytp.is-full .ytp__dock { position: absolute; left: 0; right: 0; bottom: 0; z-index: 2; display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 4px 10px;
     padding: 18px 12px 6px; color: #fff; background: linear-gradient(transparent, rgb(0 0 0 / .75)); }
 .ytp.is-full.is-zoom-bottom .ytp__dock { bottom: auto; top: 0; padding: 6px 60px 18px 12px; background: linear-gradient(rgb(0 0 0 / .75), transparent); }
