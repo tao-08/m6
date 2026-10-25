@@ -470,6 +470,10 @@ render_header($tab['title'] . ' ' . $tab['part'], 'lives');
                                 <?php if (tab_bpm_search_enabled()): ?>
                                     <button type="button" class="icon-btn" data-search-open="bpm_search" aria-label="BPM検索" title="BPM検索"><?= icon('search') ?></button>
                                 <?php endif; ?>
+                                <?php // AI 推定: GetSongBPM に載っていない曲向け。記憶による推定なので、候補として出して、押したときだけ反映する ?>
+                                <?php if (claude_enabled()): ?>
+                                    <button type="button" class="icon-btn" data-search-open="bpm_ai" aria-label="BPM AI推定" title="BPM AI推定"><?= icon('auto_awesome') ?></button>
+                                <?php endif; ?>
                             </span>
                             <?php // 微調整: 押すたびに加減。押し続けると連続で変わる（assets/tab.js の BPM 微調整） ?>
                             <span class="tab-bpm-steps" role="group" aria-label="BPM調整">

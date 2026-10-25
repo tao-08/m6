@@ -29,7 +29,7 @@ function claude_enabled(): bool
  * @param array $schema   返事の形（JSON スキーマ）
  * @throws RuntimeException 失敗したとき（画面に出してよい日本語のメッセージ。code は CLAUDE_ERR_*）
  */
-function claude_json(string $system, array $content, array $schema, int $maxTokens = 16000, int $timeoutSec = 180): array
+function claude_json(string $system, array $content, array $schema, int $maxTokens = 16000, int $timeoutSec = 180, ?string $model = null): array
 {
     if (!claude_enabled()) {
         throw new RuntimeException('AI は設定されていません（config.php の anthropic.api_key）');
@@ -39,7 +39,7 @@ function claude_json(string $system, array $content, array $schema, int $maxToke
     }
     $cfg = config('anthropic') ?? [];
     $body = [
-        'model'      => (string)($cfg['model'] ?? 'claude-opus-5-5'),
+        'model'      => $model ?? (string)($cfg['model'] ?? 'claude-opus-5-5'), // $model = 用途ごとに変えたいとき（BPM の推定は軽いモデルで足りる）
         'max_tokens' => $maxTokens,
         'system'     => $system,
         'messages'   => [['role' => 'user', 'content' => $content]],

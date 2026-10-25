@@ -599,6 +599,52 @@ function tab_sanitize_practice(mixed $data): ?array
     return ['m' => $m, 'ab' => $ab, 'bpm' => $bpm, 'metro' => $metro];
 }
 
+/**
+ * 曲名・アーティスト名から、AI（Claude）に BPM を推定してもらう（GetSongBPM に載っていない日本の曲向け）
+ *   AI の記憶による推定なので、確実な値ではない。呼ぶ側は「AI 推定」と分かるように出し、ユーザーが選んだときだけ反映すること。
+ *   戻り値: [['title' => ..., 'artist' => ..., 'bpm' => 120.0, 'time_sig' => '4/4', 'confidence' => 'high|medium|low', 'note' => '']]
+ *           主な値 + 倍・半分の別案（あれば）。知らない曲は空配列（数字を作らせない）
+ * @throws RuntimeException AI が使えない・失敗した
+ */
+function tab_bpm_ai(string $title, ?string $artist): array
+{
+    $model = (string)(config('anthropic')['bpm_model'] ?? 'claude-sonnet-5-5'); // 1回数円。精度を上げたいなら config で 'claude-opus-5-5'
+    $schema = [
+        'type' => 'object',
+        'properties' => [
+            'known'      => ['type' => 'boolean'],
+            'bpm'        => ['type' => 'number'],
+            'alt_bpm'    => ['type' => ['number', 'null']],
+            'time_sig'   => ['type' => 'string'],
+            'confidence' => ['type' => 'string', 'enum' => ['high', 'medium', 'low']],
+        ],
+        'required' => ['known', 'bpm', 'alt_bpm', 'time_sig', 'confidence'],
+        'additionalProperties' => false,
+    ];
+    $system = "あなたは楽曲のテンポ（BPM）に詳しい。曲名とアーティスト名から、その曲の原曲（スタジオ音源）のテンポを答える。\n"
+        . "- 正確に分からない曲は known=false にして bpm=0、alt_bpm=null、confidence=low にする。数字を作ってはいけない\n"
+        . "- 基準は、手拍子で数える自然なテンポ（ドラムのバックビートの拍）。倍・半分の取り違えに注意する\n"
+        . "- 倍または半分と数える人もいそうな曲は、もう一方を alt_bpm に入れる（無ければ null）\n"
+        . "- time_sig は '4/4' '3/4' '6/8' などの形。confidence は、自信が高ければ high、曖昧なら medium、推測に近ければ low\n"
+        . "- カバー・ライブ・アレンジ版ではなく、オリジナルのテンポを答える";
+    $label = '曲名: ' . $title . ($artist !== null && trim($artist) !== '' ? "\nアーティスト: " . $artist : '');
+    $res = claude_json($system, [['type' => 'text', 'text' => $label]], $schema, 600, 60, $model);
+
+    $bpm = (float)($res['bpm'] ?? 0);
+    if (empty($res['known']) || $bpm < 20 || $bpm > 400) {
+        return [];
+    }
+    $conf = in_array($res['confidence'] ?? '', ['high', 'medium', 'low'], true) ? $res['confidence'] : 'low';
+    $sig = preg_match('/^\d{1,2}\/\d{1,2}$/', (string)($res['time_sig'] ?? '')) ? (string)$res['time_sig'] : '';
+    $out = [['title' => $title, 'artist' => (string)$artist, 'bpm' => round($bpm, 1), 'time_sig' => $sig, 'confidence' => $conf, 'note' => '']];
+    $alt = $res['alt_bpm'] ?? null;
+    if (is_numeric($alt) && (float)$alt >= 20 && (float)$alt <= 400 && abs((float)$alt - $bpm) > 1) {
+        $out[] = ['title' => $title, 'artist' => (string)$artist, 'bpm' => round((float)$alt, 1), 'time_sig' => $sig, 'confidence' => $conf,
+            'note' => abs((float)$alt * 2 - $bpm) < 2 ? '半分' : (abs((float)$alt - $bpm * 2) < 2 ? '倍' : '別案')];
+    }
+    return $out;
+}
+
 /** BPM 検索（GetSongBPM）が使えるか。キーが無ければボタンを出さない */
 function tab_bpm_search_enabled(): bool
 {

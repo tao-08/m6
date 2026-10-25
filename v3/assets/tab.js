@@ -279,14 +279,21 @@
   function beatSchedule(tl, beats, sub, from, to) {
     const out = [];
     const n = tl.durs.length;
-    for (let i = Math.max(0, barIndexAt(tl.starts, n, from)); i < n && tl.starts[i] <= to; i++) {
-      const bd = tl.durs[i] / beats;
+    const addBar = (start, dur) => {
+      const bd = dur / beats;
       for (let b = 0; b < beats; b++) {
         for (let j = 0; j < sub; j++) {
-          const t = tl.starts[i] + b * bd + j * bd / sub;
+          const t = start + b * bd + j * bd / sub;
           if (t > from && t <= to) out.push({ t, kind: j > 0 ? 'sub' : b === 0 ? 'accent' : 'beat' });
         }
       }
+    };
+    for (let i = Math.max(0, barIndexAt(tl.starts, n, from)); i < n && tl.starts[i] <= to; i++) addBar(tl.starts[i], tl.durs[i]);
+    // 最後の小節のあとも、同じ長さの小節が続くものとして鳴らし続ける（小節が少ない・空の TAB で、開始位置を合わせているうちに止まらないように）
+    const end = tl.starts[n - 1] + tl.durs[n - 1];
+    const len = tl.durs[n - 1];
+    if (to > end) {
+      for (let k = Math.max(0, Math.floor((from - end) / len)); end + k * len <= to; k++) addBar(end + k * len, len);
     }
     return out;
   }
@@ -1914,7 +1921,8 @@
       kb.panel = 'chord';
       kb.chordBuf = chordCell.textContent;
       updateKeyboard();
-      $('[data-chord-input]', pad)?.focus();
+      // 入力欄へのフォーカスはパソコンだけ（スマホは OS のキーボードが出て、画面内キーボードを隠すため。欄を直接タップしたときは出る）
+      if (!window.matchMedia('(pointer: coarse)').matches) $('[data-chord-input]', pad)?.focus();
       keepVisible(chordCell);
       return;
     }
@@ -2628,7 +2636,7 @@
     let searchSeq = 0; // 古い応答が新しい検索の結果を上書きしないように
     async function openSearch(action) {
       const seq = ++searchSeq;
-      searchTitle.textContent = action === 'yt_search' ? '動画検索' : 'BPM検索';
+      searchTitle.textContent = action === 'yt_search' ? '動画検索' : action === 'bpm_ai' ? 'BPM AI推定' : 'BPM検索';
       searchCredit.hidden = action !== 'bpm_search'; // BPM のデータ提供元の表記（利用条件）
       searchStatus.textContent = '検索中…';
       searchList.replaceChildren();
@@ -2637,7 +2645,8 @@
         const json = await post({ action, tab_id: D.tab_id });
         if (seq !== searchSeq) return;
         const items = json.items || [];
-        searchStatus.textContent = items.length ? '' : '見つかりませんでした';
+        // AI は記憶による推定: 候補として出し、押したときだけ反映する。確認は「開始位置から確認」のメトロノームで
+        searchStatus.textContent = items.length ? (action === 'bpm_ai' ? '推定値です。メトロノームで確認してください' : '') : '見つかりませんでした';
         items.forEach((it) => {
           const li = el('li');
           const b = el('button', 'tab-search__btn');
@@ -2658,7 +2667,14 @@
               notify('反映しました（保存はまだです）');
             });
           } else {
-            text.append(el('span', 'tab-search__bpm', 'BPM ' + it.bpm), el('span', '', `${it.title} · ${it.artist}`), el('span', 'muted small', it.time_sig || ''));
+            if (action === 'bpm_ai') {
+              // 主な値は信頼度、別案（倍・半分）はその旨を添える
+              const conf = { high: '高', medium: '中', low: '低' }[it.confidence] || '';
+              text.append(el('span', 'tab-search__bpm', 'BPM ' + it.bpm + (it.note ? `（${it.note}）` : '')),
+                el('span', 'muted small', [it.time_sig, it.note ? '' : '信頼度 ' + conf].filter(Boolean).join(' · ')));
+            } else {
+              text.append(el('span', 'tab-search__bpm', 'BPM ' + it.bpm), el('span', '', `${it.title} · ${it.artist}`), el('span', 'muted small', it.time_sig || ''));
+            }
             b.append(text);
             b.addEventListener('click', () => {
               setBpm(Number(it.bpm));

@@ -27,6 +27,7 @@ declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/tabs.php';
 require_once __DIR__ . '/lib/youtube.php'; // youtube_video_id()
+require_once __DIR__ . '/lib/claude.php';  // claude_json()（BPM の AI 推定）
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -155,9 +156,9 @@ if ($action === 'practice') {
     exit;
 }
 
-if ($action === 'yt_search' || $action === 'bpm_search') {
+if (in_array($action, ['yt_search', 'bpm_search', 'bpm_ai'], true)) {
     // 音源の動画・BPM の候補を探す。検索語は DB の曲名・アーティスト名から作る（ブラウザから好きな語で API を叩かせない）
-    //   YouTube の検索は1回 100 ユニット（無料枠 1日 10,000）と重いので、同じ TAB の結果はセッションに覚えて使い回す
+    //   YouTube の検索は1回 100 ユニット（無料枠 1日 10,000）、AI は1回数円かかるので、同じ TAB の結果はセッションに覚えて使い回す
     $st = $pdo->prepare('SELECT title, artist_name FROM song_tab WHERE tab_id = ?');
     $st->execute([$tabId]);
     $song = $st->fetch();
@@ -167,9 +168,11 @@ if ($action === 'yt_search' || $action === 'bpm_search') {
     $cacheKey = $action . ':' . $tabId;
     if (!isset($_SESSION['tab_search'][$cacheKey])) {
         try {
-            $_SESSION['tab_search'][$cacheKey] = $action === 'yt_search'
-                ? youtube_search(trim($song['title'] . ' ' . ($song['artist_name'] ?? '')))
-                : tab_bpm_search($song['title'], $song['artist_name']);
+            $_SESSION['tab_search'][$cacheKey] = match ($action) {
+                'yt_search' => youtube_search(trim($song['title'] . ' ' . ($song['artist_name'] ?? ''))),
+                'bpm_ai'    => tab_bpm_ai($song['title'], $song['artist_name']),
+                default     => tab_bpm_search($song['title'], $song['artist_name']),
+            };
         } catch (RuntimeException $e) {
             fail(502, $e->getMessage());
         }

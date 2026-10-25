@@ -53,6 +53,8 @@ return [
             'api_key' => '',
             'model'   => 'claude-opus-5-5', // 1回 10円前後。安くしたいなら 'claude-sonnet-5-5'（約6円）/ 'claude-haiku-5-5'（1円未満）。精度は実物で比べて決める
         ],
+        // TAB の BPM を AI が推定する（tab.php の ✨ボタン）のモデル。省略すると 'claude-sonnet-5-5'。上の anthropic.api_key を共用する
+        //   anthropic に 'bpm_model' => 'claude-haiku-5-5'（安い・精度は劣る）/ 'claude-opus-5-5'（高い・マイナーな曲に強い）を足すと変えられる
         // 問い合わせ（contact.php）のメールの差出人。サイトと同じドメインのアドレスにする
         //   （違うドメインだと迷惑メール扱いされやすい）。空ならメールは送らず、サイトの中に残すだけ
         'mail_from' => '',
