@@ -494,10 +494,23 @@ render_header($tab['title'] . ' ' . $tab['part'], 'lives');
                 <div class="tab-step__body" id="tab-step-start" hidden>
                     <p class="tab-step__hint muted small">1小節目の頭で止めて <?= icon('my_location') ?></p>
                     <?php // ミニ操作: ボタンは下の操作バーと同じ data-seek / data-play なので、root のクリック処理（assets/tab.js）がそのまま動かす ?>
+                    <?php // 波形: 手元のファイルのときだけ（YouTube の音はブラウザから読めない）。縦線（開始位置）は固定で、波形を左右にドラッグして合わせる。タップした所を開始位置にする ?>
+                    <div class="tab-wave" data-wave hidden>
+                        <canvas class="tab-wave__canvas" data-wave-canvas aria-label="波形"></canvas>
+                        <span class="tab-wave__tools">
+                            <button type="button" class="icon-btn icon-btn--sm" data-wave-zoom="-1" aria-label="縮小" title="縮小"><?= icon('zoom_out') ?></button>
+                            <button type="button" class="icon-btn icon-btn--sm" data-wave-zoom="1" aria-label="拡大" title="拡大"><?= icon('zoom_in') ?></button>
+                            <button type="button" class="icon-btn icon-btn--sm" data-wave-detect aria-label="無音検知" title="無音検知（音の出始めを開始位置に）"><?= icon('graphic_eq') ?></button>
+                        </span>
+                    </div>
+                    <?php // 開始位置そのものを動かす（再生中なら、動かすたびに開始位置の少し前から鳴らし直す。メトロノームと聴き比べて合わせる） ?>
                     <div class="tab-step__mini">
-                        <button type="button" class="btn" data-seek="-0.1">-0.1秒</button>
+                        <button type="button" class="btn" data-offset-nudge="-0.1" aria-label="開始位置 -0.1秒">-0.1</button>
+                        <button type="button" class="btn" data-offset-nudge="-0.01" aria-label="開始位置 -0.01秒">-0.01</button>
+                        <button type="button" class="icon-btn icon-btn--play" data-offset-play aria-label="開始位置から確認" title="開始位置から確認（メトロノーム付き）"><?= icon('start') ?></button>
                         <button type="button" class="icon-btn icon-btn--play" data-play aria-label="再生" title="再生（Space）"><?= icon('play_arrow', 'icon--fill') ?></button>
-                        <button type="button" class="btn" data-seek="0.1">+0.1秒</button>
+                        <button type="button" class="btn" data-offset-nudge="0.01" aria-label="開始位置 +0.01秒">+0.01</button>
+                        <button type="button" class="btn" data-offset-nudge="0.1" aria-label="開始位置 +0.1秒">+0.1</button>
                     </div>
                     <label class="field">開始位置（秒）
                         <span class="tab-settings__row">

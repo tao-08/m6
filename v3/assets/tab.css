@@ -135,7 +135,13 @@ details[open] > .tab-summary > .tab-summary__chev { transform: rotate(180deg); }
 .tab-step__wide { grid-column: 1 / -1; }
 .tab-step__hint { display: flex; align-items: center; gap: 4px; margin: 0; }
 .tab-step__hint .icon { font-size: 18px; color: var(--accent); }
-.tab-step__mini { display: flex; align-items: center; justify-content: center; gap: 12px; } /* ③ の -0.1秒 / 再生 / +0.1秒 */
+.tab-step__mini { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; } /* ③ の開始位置の微調整 / 確認 / 再生 */
+.tab-step__mini .btn { min-width: 56px; padding-inline: 8px; font-variant-numeric: tabular-nums; }
+.tab-wave { position: relative; }
+.tab-wave__canvas { display: block; width: 100%; height: 72px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); touch-action: pan-y; cursor: grab; }
+.tab-wave__canvas.is-dragging { cursor: grabbing; }
+.tab-wave__tools { position: absolute; top: 4px; right: 4px; display: flex; gap: 2px; }
+.tab-wave__tools .icon-btn { background: var(--surface); opacity: .9; }
 .tab-step__actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 .tab-step__actions .btn, .tab-step__mini .btn { min-height: 44px; }
 .tab-step__actions .btn { flex: 1 1 120px; } /* スマホで押しやすいよう、ボタンは横に広げる */
@@ -222,6 +228,7 @@ details[open] > .tab-summary > .tab-summary__chev { transform: rotate(180deg); }
 .tab-search__btn img { width: 120px; height: 68px; object-fit: cover; border-radius: 6px; flex: none; background: var(--surface-2); }
 .tab-search__text { flex: 1; min-width: 0; display: grid; gap: 2px; }
 .tab-search__text > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tab-search__text > .tab-search__title { white-space: normal; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow-wrap: anywhere; } /* 動画タイトルは折り返して3行まで */
 .tab-search__bpm { font-weight: 800; font-variant-numeric: tabular-nums; }
 .tab-history__who { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tab-history__label { font-size: 11px; font-weight: 800; padding: 2px 8px; border-radius: 6px; background: var(--surface-2); flex: none; }

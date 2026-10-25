@@ -694,6 +694,7 @@
     }
     srcKind = kind;
     srcFile = kind === 'file' ? file : null; // BPM 自動検知に使う手元のファイル
+    loadWave(srcFile);                   // 開始位置の波形も同じファイルから
     const detectBtn = $('[data-bpm-detect]');
     if (detectBtn) detectBtn.disabled = !srcFile;
     videoBox.hidden = kind !== 'yt';
@@ -1276,6 +1277,7 @@
     raf = 0;
     tick();
     draw();
+    if (wave) drawWave();
     if (clock.playing) requestFrame();
   }
 
@@ -2133,14 +2135,170 @@
   inputs.bpm.addEventListener('change', () => { inputs.bpm.value = String(st.bpm); }); // 範囲外の入力は直前の値に戻す
   inputs.offset.addEventListener('input', () => {
     const v = parseFloat(inputs.offset.value);
-    if (v >= 0 && v <= 36000) { st.offsetMs = Math.round(v * 1000); recompute(); requestFrame(); refreshDirty(); }
+    if (v >= 0 && v <= 36000) { st.offsetMs = Math.round(v * 1000); recompute(); metroReset(); requestFrame(); refreshDirty(); drawWave(); }
   });
   inputs.offset.addEventListener('change', () => { inputs.offset.value = (st.offsetMs / 1000).toFixed(2); });
-  $('[data-offset-now]').addEventListener('click', () => {
-    st.offsetMs = Math.max(0, Math.round(clock.time() * 1000));
+  /** 開始位置（ミリ秒）を変える。保存はしない */
+  function setOffset(ms) {
+    st.offsetMs = clamp(Math.round(ms), 0, 36000000);
     inputs.offset.value = (st.offsetMs / 1000).toFixed(2);
-    recompute(); requestFrame(); refreshDirty();
+    recompute(); metroReset(); requestFrame(); refreshDirty(); drawWave();
+  }
+  $('[data-offset-now]').addEventListener('click', () => setOffset(clock.time() * 1000));
+  /*
+   * 開始位置から確認: 1拍前から、メトロノームを付けて鳴らす。1小節目の頭のクリックと曲の頭が揃えば OK。
+   *   以前の ±0.1秒（再生位置を動かすだけ）は、止まっていると音も表示も変わらず、効いていないように見えた。
+   *   いまの ± は開始位置そのものを動かして、再生中ならすぐ鳴らし直す（ずれを耳で詰められる）
+   */
+  function playFromOffset() {
+    ensureAudio();
+    if (!metro.on) { metro.on = true; metroChanged(); }
+    if (counting) cancelCountIn();
+    seekTo(st.offsetMs / 1000 - 60 / st.bpm);
+    if (!clock.playing) clock.play();      // 曲の前の部分が鳴るので、カウントインは要らない
+  }
+  $('[data-offset-play]').addEventListener('click', playFromOffset);
+  $$('[data-offset-nudge]').forEach((b) => b.addEventListener('click', () => {
+    setOffset(st.offsetMs + Number(b.dataset.offsetNudge) * 1000);
+    if (clock.playing) playFromOffset();
+  }));
+
+  /* ---- 波形（手元のファイルだけ）: 端末の中で読み込む（送信なし）。1ミリ秒ごとの最大振幅だけ持つ ---- */
+  const WAVE_RATE = 1000;
+  const WAVE_SPANS = [1, 2, 4, 8, 16, 32]; // 画面に出す秒数
+  const waveBox = $('[data-wave]');
+  const waveCanvas = $('[data-wave-canvas]');
+  let wave = null;                       // { peaks, max }
+  let waveSpan = 2;                      // WAVE_SPANS の番号
+  let waveSeq = 0;                       // 古いファイルの読み込みが、新しいファイルの波形を上書きしないように
+  async function loadWave(file) {
+    const seq = ++waveSeq;
+    wave = null;
+    waveBox.hidden = true;
+    if (!file) return;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    let ctx = null;
+    try {
+      ctx = new AC();
+      const buf = await ctx.decodeAudioData(await file.arrayBuffer());
+      if (seq !== waveSeq) return;
+      const peaks = new Float32Array(Math.ceil(buf.duration * WAVE_RATE) + 1);
+      const k = WAVE_RATE / buf.sampleRate;
+      for (let c = 0; c < buf.numberOfChannels; c++) {
+        const d = buf.getChannelData(c);
+        for (let i = 0; i < d.length; i++) {
+          const v = Math.abs(d[i]);
+          const j = (i * k) | 0;
+          if (v > peaks[j]) peaks[j] = v;
+        }
+      }
+      let max = 0;
+      for (let i = 0; i < peaks.length; i++) if (peaks[i] > max) max = peaks[i];
+      wave = { peaks, max: max || 1 };
+      waveBox.hidden = false;
+      drawWave();
+    } catch (err) {
+      /* 読めない形式: 波形は出さない（再生はできることがある） */
+    } finally {
+      if (ctx) ctx.close().catch(() => {});
+    }
+  }
+  /** 音の出始め（秒）。最大音量から -30dB を超えて、そのあと 30 ミリ秒のうち半分以上が鳴っている最初の位置。見つからなければ null */
+  function detectHead() {
+    const { peaks, max } = wave;
+    const th = Math.max(max * 0.0316, 0.003);
+    for (let i = 0; i < peaks.length; i++) {
+      if (peaks[i] < th) continue;
+      let n = 0;
+      for (let j = i; j < Math.min(peaks.length, i + 30); j++) if (peaks[j] >= th * 0.5) n++;
+      if (n >= 15) return i / WAVE_RATE;
+    }
+    return null;
+  }
+  /** 開始位置を左から 1/4 に固定して描く。拍の線は TAB の時間軸から（タップで補正した小節もそのまま） */
+  function drawWave() {
+    if (!wave || waveBox.hidden || !waveCanvas.clientWidth) return;
+    const dpr = window.devicePixelRatio || 1;
+    const w = waveCanvas.clientWidth, h = waveCanvas.clientHeight;
+    if (waveCanvas.width !== Math.round(w * dpr) || waveCanvas.height !== Math.round(h * dpr)) {
+      waveCanvas.width = Math.round(w * dpr);
+      waveCanvas.height = Math.round(h * dpr);
+    }
+    const g = waveCanvas.getContext('2d');
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.clearRect(0, 0, w, h);
+    const span = WAVE_SPANS[waveSpan];
+    const pxPerSec = w / span;
+    const t0 = st.offsetMs / 1000 - span / 4;
+    const xOf = (t) => (t - t0) * pxPerSec;
+    // 拍の線（小節の頭は濃く）
+    const t1 = t0 + span;
+    for (let i = 0; i < starts.length; i++) {
+      if (starts[i] > t1) break;
+      if (starts[i] + durs[i] < t0) continue;
+      for (let b = 0; b < st.beats; b++) {
+        const x = xOf(starts[i] + b * durs[i] / st.beats);
+        if (x < 0 || x > w) continue;
+        g.fillStyle = b === 0 ? colors.muted : colors.border;
+        g.fillRect(Math.round(x), 0, 1, h);
+      }
+    }
+    // 波形（1px ごとの最大振幅。小さい音も見えるよう平方根で持ち上げる）
+    g.fillStyle = colors.text;
+    const mid = h / 2;
+    for (let x = 0; x < w; x++) {
+      const a = Math.max(0, Math.floor((t0 + x / pxPerSec) * WAVE_RATE));
+      const b = Math.min(wave.peaks.length, Math.max(a + 1, Math.floor((t0 + (x + 1) / pxPerSec) * WAVE_RATE)));
+      let v = 0;
+      for (let j = a; j < b; j++) if (wave.peaks[j] > v) v = wave.peaks[j];
+      const y = Math.sqrt(v / wave.max) * (mid - 2);
+      if (y > 0.3) g.fillRect(x, mid - y, 1, y * 2);
+    }
+    // 開始位置
+    g.fillStyle = colors.accent;
+    g.fillRect(Math.round(xOf(st.offsetMs / 1000)) - 1, 0, 2, h);
+    // 再生位置
+    const now = clock ? clock.time() : 0;
+    if (now >= t0 && now <= t1) { g.fillStyle = colors.accent2; g.fillRect(Math.round(xOf(now)), 0, 1, h); }
+  }
+  // ドラッグ: 波形を左右に動かす（右へ動かす = 開始位置を前へ）。動かさずに離したら、その場所を開始位置にする
+  let waveDrag = null;
+  waveCanvas.addEventListener('pointerdown', (e) => {
+    if (!wave) return;
+    waveCanvas.setPointerCapture(e.pointerId);
+    waveDrag = { x: e.clientX, ms: st.offsetMs, moved: false };
   });
+  waveCanvas.addEventListener('pointermove', (e) => {
+    if (!waveDrag) return;
+    const dx = e.clientX - waveDrag.x;
+    if (!waveDrag.moved && Math.abs(dx) < 4) return;
+    waveDrag.moved = true;
+    waveCanvas.classList.add('is-dragging');
+    setOffset(waveDrag.ms - dx / waveCanvas.clientWidth * WAVE_SPANS[waveSpan] * 1000);
+  });
+  waveCanvas.addEventListener('pointerup', (e) => {
+    if (!waveDrag) return;
+    if (!waveDrag.moved) {
+      const rect = waveCanvas.getBoundingClientRect();
+      const span = WAVE_SPANS[waveSpan];
+      setOffset((st.offsetMs / 1000 - span / 4 + (e.clientX - rect.left) / rect.width * span) * 1000);
+    }
+    waveDrag = null;
+    waveCanvas.classList.remove('is-dragging');
+  });
+  waveCanvas.addEventListener('pointercancel', () => { waveDrag = null; waveCanvas.classList.remove('is-dragging'); });
+  $$('[data-wave-zoom]').forEach((b) => b.addEventListener('click', () => {
+    waveSpan = clamp(waveSpan - Number(b.dataset.waveZoom), 0, WAVE_SPANS.length - 1);
+    drawWave();
+  }));
+  $('[data-wave-detect]').addEventListener('click', () => {
+    if (!wave) return;
+    const t = detectHead();
+    if (t === null) { notify('音を検知できませんでした', 'error'); return; }
+    setOffset(t * 1000);
+  });
+  if (window.ResizeObserver) new ResizeObserver(() => drawWave()).observe(waveCanvas); // 畳んだステップを開いたとき・画面の幅が変わったとき
   inputs.beats.addEventListener('change', () => {
     const v = clamp(parseInt(inputs.beats.value, 10) || st.beats, 1, 16);
     inputs.beats.value = String(v);
@@ -2403,7 +2561,7 @@
             img.src = `https://i.ytimg.com/vi/${encodeURIComponent(it.video_id)}/mqdefault.jpg`;
             img.alt = '';
             img.loading = 'lazy';
-            text.append(el('span', '', it.title), el('span', 'muted small', it.channel));
+            text.append(el('span', 'tab-search__title', it.title), el('span', 'muted small', it.channel));
             b.append(img, text);
             b.addEventListener('click', () => {
               inputs.youtube.value = 'https://www.youtube.com/watch?v=' + encodeURIComponent(it.video_id);
