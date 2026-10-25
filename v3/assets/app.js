@@ -4011,8 +4011,23 @@ function setupAlbumModal() {
     dlg.showModal();
   });
 
-  dlg.querySelector('[data-album-close]').addEventListener('click', () => dlg.close());
-  dlg.addEventListener('click', (e) => { if (e.target === dlg) dlg.close(); }); // 暗い背景を押しても閉じる
+  // 閉じるときも動かす: is-closing を付けて、縮むアニメーション（album-modal-out）が終わってから close()（Esc も同じ）
+  const closeModal = () => {
+    if (!dlg.open || dlg.classList.contains('is-closing')) return;
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) { dlg.close(); return; }
+    dlg.classList.add('is-closing');
+    // ::backdrop や中身のアニメーションも dlg に届くので、閉じるアニメーションだけを待つ。1回だけ動かす
+    const onEnd = (e) => {
+      if (e.target !== dlg || e.animationName !== 'album-modal-out') return;
+      dlg.removeEventListener('animationend', onEnd);
+      dlg.classList.remove('is-closing');
+      dlg.close();
+    };
+    dlg.addEventListener('animationend', onEnd);
+  };
+  dlg.addEventListener('cancel', (e) => { e.preventDefault(); closeModal(); }); // Esc
+  dlg.querySelector('[data-album-close]').addEventListener('click', closeModal);
+  dlg.addEventListener('click', (e) => { if (e.target === dlg) closeModal(); }); // 暗い背景を押しても閉じる
 }
 
 /* ---------------------------------------------------------------------
