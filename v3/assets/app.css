@@ -671,6 +671,11 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 td .tag--plan { margin-top: 4px; } /* アーティストの演奏履歴: 日付の下に出す「予定」 */ /* 名前が長くても「出演」は縮めない。名前とのすき間は gap 6px + 6px = 12px */
 /* トリの印: バンド名の横に小さな灰色の四角 + 🐔 */
 .tori-badge { flex-shrink: 0; font-size: 12px; line-height: 1; padding: 2px 4px; border-radius: 4px; background: var(--surface-2); }
+/* ❤ はバンド名の左の固定幅の枠に入れる（なくても枠は残る）。形・色は ❤ ボタン（.like.is-liked）と同じ塗りつぶし */
+.history__fav { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 18px; width: 18px; color: var(--accent); }
+.history__fav .like__heart { font-size: 18px; font-variation-settings: "FILL" 1, "wght" 500, "GRAD" 0, "opsz" 24; }
+[data-inst="fav"] { color: var(--accent); } /* 絞り込みの ❤ */
+[data-inst="fav"] .icon { font-variation-settings: "FILL" 1, "wght" 500, "GRAD" 0, "opsz" 24; }
 .history__tags { display: flex; align-items: center; gap: 6px; flex-shrink: 0; } /* セットリストの ✓ と楽器ラベルの高さをそろえる */
 /* SE ありのマーク（live.php のバンドカード）。透け感のある青地（登録済バッジと同じ作り） */
 .se-mark { display: inline-flex; align-items: center; flex-shrink: 0; padding: 3px 7px; border-radius: 4px; font-size: 11px; font-weight: 800; line-height: 1; letter-spacing: .03em; color: var(--se); background: var(--se-bg); }
@@ -1890,7 +1895,10 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
 /* ===== 9. スマホ対応（画面幅で切り替え） ===== */
 @media (max-width: 860px) {
   .split { grid-template-columns: 1fr; }
-  .split aside { position: static; order: -1; } /* 1列になったら、右の欄（よく組むメンバー）を出演履歴より上に出す */
+  .split aside { display: contents; } /* 1列になったら、右の欄（絞り込み・よく組むメンバー）を出演履歴より上に出す。絞り込みが .split 全体で浮くように、aside の箱は消して中身を並べる */
+  .split aside > * { order: -1; }
+  .split aside > .stats-filter { order: -2; margin: 18px 0 0; }
+  .split aside > .stats-filter + .partner-box { margin-top: 4px; }
   .partner-box { margin-top: 0; }
   .partner-box + .partner-box { margin-top: 18px; } /* よく組むメンバーとよく演奏するアーティストが続くときは、マイアルバムのカードと同じだけ空ける */
   .auth { grid-template-columns: 1fr; gap: 24px; min-height: 0; }
@@ -2769,11 +2777,25 @@ button.ttb-m { cursor: pointer; text-decoration: underline dotted; }
   .setlist__art { transition: transform .2s var(--ease-out), box-shadow .2s ease; }
   .setlist__artwrap:hover .setlist__art { transform: scale(1.05); box-shadow: 0 6px 14px -4px rgb(0 0 0 / .4); }
 }
+.split aside > .stats-filter { margin: 32px 0 0; } /* マイアルバムからは離し（カードと同じ上32px）、下の集計カードに寄せる */
+.split aside > .stats-filter + .partner-box { margin-top: 4px; }
+.split aside > .stats-filter.is-faded { pointer-events: none; } /* 出演履歴が近づくと絞り込みが薄くなって消える（opacity はスクロールに合わせて app.js が付ける） */
+:root.live-vt .hero { view-transition-name: member-hero; } /* liveFilter の間だけ（ページ移動の切り替えには影響させない） */
+/* 右の欄: 1列表示だと aside は箱を持たない（display: contents）ので、中のカードに1枚ずつ名前を付ける（1番目は絞り込みカード） */
+:root.live-vt .split aside > :nth-child(2) { view-transition-name: member-aside-2; }
+:root.live-vt .split aside > :nth-child(3) { view-transition-name: member-aside-3; }
+:root.live-vt .split aside > :nth-child(4) { view-transition-name: member-aside-4; }
+:root.live-vt .split aside > :nth-child(5) { view-transition-name: member-aside-5; }
+:root.live-vt::view-transition-old(root), :root.live-vt::view-transition-new(root) { animation: none; } /* 絞り込みの切り替え（liveFilter）: ページ全体は動かさず、上の数字と右の欄だけクロスフェード */
+:root.live-vt::view-transition-group(member-hero), :root.live-vt::view-transition-group(member-aside-2), :root.live-vt::view-transition-group(member-aside-3), :root.live-vt::view-transition-group(member-aside-4), :root.live-vt::view-transition-group(member-aside-5) { animation-duration: .25s; }
+.is-updating { opacity: .45; transition: opacity .15s ease; } /* 絞り込みを変えて読み込み中（assets/app.js の liveFilter） */
 /* 2. 一覧のふわっと表示: 画面に入るとき、下から少し浮いて現れる（スクロール連動。対応ブラウザだけ）
  *    fill を backwards にして、表示後は元の transform（ホバーなど）を邪魔しない。並び替えのカードは対象外 */
 @supports (animation-timeline: view()) {
   @media (prefers-reduced-motion: no-preference) {
     .live-card, .songs-row { animation: reveal-up linear backwards; animation-timeline: view(); animation-range: entry 0% entry 40%; }
+    /* メンバーページ: 絞り込み（浮く）の下に右の欄のカードが来るあたりで、じわじわ現れる。entry 全体を使って ゆっくり */
+    .split aside .partner-box { animation: reveal-up linear backwards; animation-timeline: view(); animation-range: entry 0% entry 100%; }
     @keyframes reveal-up { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
   }
 }

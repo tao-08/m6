@@ -1419,6 +1419,22 @@ function setupSmallThings() {
     check();
   });
 
+  // メンバーページ: 出演履歴の先頭が近づくほど絞り込みカードが薄くなる（スクロール連動の opacity）
+  //   終点: PC は浮く位置まで / 1列は履歴がカードに被る（カードの下端）まで。そこから 200px 手前で薄くなり始める
+  const historyTop = document.querySelector('.split .history-toolbar, .split section > .section-title');
+  const filterBox = document.querySelector('.split aside > .stats-filter');
+  if (historyTop && filterBox) {
+    const oneColumn = matchMedia('(max-width: 860px)');
+    const checkFade = () => {
+      const end = parseFloat(getComputedStyle(filterBox).top) + (oneColumn.matches ? filterBox.offsetHeight : 0);
+      const v = Math.min(1, Math.max(0, (historyTop.getBoundingClientRect().top - end) / 200));
+      filterBox.style.opacity = v.toFixed(3);
+      filterBox.classList.toggle('is-faded', v < 0.05);
+    };
+    window.addEventListener('scroll', checkFade, { passive: true });
+    checkFade();
+  }
+
   // 会場・日程名のプルダウン（取り込み・ライブ編集）: 「＋ 新しい○○を作る」を選んだときだけ名前の入力欄を出す
   //   日程名は data-new-select="__new__"（「new」という日程名とぶつからないように）、会場は 'new'
   document.addEventListener('change', (e) => {
@@ -2086,6 +2102,7 @@ function setupYearSlot() {
 
 /* フォームを送る（ページを読み直す）けど、今のスクロール位置は保つ（集計の絞り込み）。戻すのは setupSmallThings */
 function submitKeepScroll(form) {
+  if (form.hasAttribute('data-live')) return liveFilter(form); // メンバーページ: ページ移動なし
   // 目印: 絞り込み（sticky）の下に見えている最初の見出し。その画面上の位置も覚える
   const under = form.getBoundingClientRect().bottom;
   const anchor = keepScrollAnchors().find((el) => el.getBoundingClientRect().bottom > under);
@@ -2093,6 +2110,47 @@ function submitKeepScroll(form) {
   if (anchor) Object.assign(data, { key: keepScrollKey(anchor), top: anchor.getBoundingClientRect().top });
   try { sessionStorage.setItem('keep-scroll', JSON.stringify(data)); } catch { /* 保てないだけ */ }
   form.submit();
+}
+/* メンバーページの絞り込み（data-live）: ページを移動せず、読み直した HTML から上の数字・楽器と右の集計カードだけ差し替える。
+ *   応答が速いとちらつくので、読み込み中に薄くするのは 150ms たっても返らないときだけ（.is-updating）。
+ *   差し替えは View Transitions で古い表示と新しい表示をクロスフェード（対応していない・動きを減らす設定のときは animateIn）。失敗したら今まで通り送信 */
+let liveFilterCtl = null;
+async function liveFilter(form) {
+  liveFilterCtl?.abort();
+  const ctl = liveFilterCtl = new AbortController();
+  const query = `?${new URLSearchParams(new FormData(form))}`;
+  const targets = () => document.querySelectorAll('.hero dl.stats, .hero .partbar, .split aside > :not(.stats-filter)');
+  const dimTimer = setTimeout(() => targets().forEach((el) => el.classList.add('is-updating')), 150);
+  try {
+    const res = await fetch(location.pathname + query, { signal: ctl.signal, credentials: 'same-origin' });
+    if (!res.ok) throw new Error(String(res.status));
+    const doc = new DOMParser().parseFromString(await res.text(), 'text/html');
+    const newHero = doc.querySelector('.hero');
+    const newAside = doc.querySelector('.split aside');
+    if (!document.querySelector('.hero') || !newHero || !document.querySelector('.split aside') || !newAside) throw new Error('no target');
+    const swap = () => {
+      const aside = document.querySelector('.split aside');
+      document.querySelector('.hero').replaceWith(document.importNode(newHero, true));
+      aside.querySelectorAll(':scope > :not(.stats-filter)').forEach((el) => el.remove());
+      newAside.querySelectorAll(':scope > :not(.stats-filter)').forEach((el) => aside.append(document.importNode(el, true)));
+      setupPartnerBox();
+      targets().forEach((el) => el.classList.remove('is-updating'));
+    };
+    history.replaceState(null, '', location.pathname + query);
+    if (document.startViewTransition && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      document.documentElement.classList.add('live-vt');
+      try { await document.startViewTransition(swap).finished; } finally { document.documentElement.classList.remove('live-vt'); }
+    } else {
+      swap();
+      animateIn(document.querySelectorAll('.hero dl.stats > div, .hero .partbar, .split aside > *'));
+    }
+  } catch (e) {
+    if (e.name === 'AbortError') return; // 続けて変えたので、新しい方に任せる
+    form.submit();
+  } finally {
+    clearTimeout(dimTimer);
+    if (liveFilterCtl === ctl) targets().forEach((el) => el.classList.remove('is-updating'));
+  }
 }
 const keepScrollAnchors = () => [...document.querySelectorAll('main .section-title, main .table-card')];
 const keepScrollKey = (el) => (el.matches('.table-card') ? 'table' : el.textContent.trim());

@@ -58,8 +58,100 @@ if (empty($user['count_upcoming'])) {
         }
     }
 }
+// 見ている人がお気に入り（❤）にしたバンド。出演履歴のバンド名の左に ❤ を出し、絞り込みにも使う
+$favBandIds = [];
+foreach (band_likes($pdo, array_map(static fn($h) => (int)$h['band_id'], $history), (int)$user['user_id']) as $bid => $lk) {
+    if ($lk['liked']) {
+        $favBandIds[$bid] = true;
+    }
+}
+
+// ---- 集計の絞り込み（集計ページ stats.php と同じ ?who= / ?period=） ----
+//   期間: その年度のバンドだけ数える。メンバー: 組んだ相手（自分以外）が「対象メンバー」に1人でもいるバンドだけ数える
+//   どちらも「数えないバンド」として $skipBandIds に足すだけ → 以降の集計（楽器・組むメンバー・アーティスト・学年区分・上の数字）が全部そろって絞られる。出演履歴の一覧は絞らない
+$thisYear = current_fiscal_year();
+$getInt = static function (string $key): ?int {
+    $v = filter_var($_GET[$key] ?? null, FILTER_VALIDATE_INT);
+    return is_int($v) ? $v : null;
+};
+$liveYears = array_map('intval', $pdo->query('SELECT DISTINCT fiscal_year FROM live ORDER BY fiscal_year DESC')->fetchAll(PDO::FETCH_COLUMN));
+$myGrade = grade_of(my_entry_year());
+$myEntry = $myGrade !== null ? $thisYear - $myGrade + 1 : null;
+$canNear = $myEntry !== null;
+$activeFrom = $thisYear - 3;
+$defaultWho = match (true) {
+    $myGrade === null => 'all',
+    $myGrade <= 4     => 'active',
+    default           => 'near',
+};
+$who = $_GET['who'] ?? $defaultWho;
+if (!in_array($who, ['all', 'active', 'grade', 'near', 'custom'], true) || ($who === 'near' && !$canNear)) {
+    $who = $defaultWho;
+}
+$slotEntries = array_map('intval', $pdo->query('SELECT DISTINCT entry_year FROM member
+    WHERE entry_year IS NOT NULL ORDER BY entry_year DESC')->fetchAll(PDO::FETCH_COLUMN));
+$fEntry = $getInt('entry');
+if (!in_array($fEntry, $slotEntries, true)) {
+    $fEntry = in_array($myEntry, $slotEntries, true) ? $myEntry : ($slotEntries[0] ?? $thisYear);
+}
+$efrom = $getInt('efrom') ?? $activeFrom;
+$eto   = $getInt('eto')   ?? $thisYear;
+if ($efrom > $eto) {
+    [$efrom, $eto] = [$eto, $efrom];
+}
+[$entryFrom, $entryTo] = match ($who) {
+    'active' => [$activeFrom, $thisYear],
+    'grade'  => [$fEntry, $fEntry],
+    'near'   => [$myEntry - 3, $myEntry + 3],
+    'custom' => [$efrom, $eto],
+    default  => [null, null],
+};
+$period = $_GET['period'] ?? 'all';
+if (!in_array($period, ['all', 'year', 'range'], true)) {
+    $period = 'all';
+}
+$fYear = $getInt('year');
+if ($fYear === null || !in_array($fYear, $liveYears, true)) {
+    $fYear = $liveYears[0] ?? $thisYear;
+}
+$pfrom = $getInt('pfrom') ?? ($liveYears ? min($liveYears) : $thisYear);
+$pto   = $getInt('pto')   ?? ($liveYears ? max($liveYears) : $thisYear);
+if ($pfrom > $pto) {
+    [$pfrom, $pto] = [$pto, $pfrom];
+}
+foreach ($history as $hi) {
+    $hy = (int)$hi['year'];
+    if (($period === 'year' && $hy !== $fYear) || ($period === 'range' && ($hy < $pfrom || $hy > $pto))) {
+        $skipBandIds[(int)$hi['band_id']] = true;
+    }
+}
+// バンドごとの「組んだ相手」と、対象メンバーか（入学年度が未登録の人はいつも対象。stats.php と同じ）
+$st = $pdo->prepare('SELECT mine.band_id, o.member_id, p.entry_year
+    FROM (' . MEMBERSHIP_SQL . ') mine
+    JOIN (' . MEMBERSHIP_SQL . ') o ON o.band_id = mine.band_id AND o.member_id <> mine.member_id
+    JOIN member p ON p.member_id = o.member_id
+    WHERE mine.member_id = ?');
+$st->execute([$memberId]);
+$othersByBand = []; // [band_id] = [[member_id, entry_year（未登録は null）, 対象か], ...]
+$targetMemberIds = []; // [member_id] = true
+foreach ($st->fetchAll() as $r) {
+    $ey = $r['entry_year'] !== null ? (int)$r['entry_year'] : null;
+    $ok = $entryFrom === null || $ey === null || ($ey >= $entryFrom && $ey <= $entryTo);
+    $othersByBand[(int)$r['band_id']][] = [(int)$r['member_id'], $ey, $ok];
+    if ($ok) {
+        $targetMemberIds[(int)$r['member_id']] = true;
+    }
+}
+if ($entryFrom !== null) {
+    foreach ($history as $hi) {
+        $bid = (int)$hi['band_id'];
+        if (!array_filter($othersByBand[$bid] ?? [], static fn($o) => $o[2])) {
+            $skipBandIds[$bid] = true;
+        }
+    }
+}
 $countedHistory = array_values(array_filter($history, static fn($h) => !isset($skipBandIds[(int)$h['band_id']])));
-$counted = static fn(array $rows): array => array_values(array_filter($rows, static fn($r) => !isset($skipBandIds[(int)$r['band_id']])));
+$counted =static fn(array $rows): array => array_values(array_filter($rows, static fn($r) => !isset($skipBandIds[(int)$r['band_id']])));
 // SQL 側で外すとき用（「AND mine.band_id NOT IN (?, ?)」。外すものが無ければ空文字）
 $skipSql = $skipBandIds ? ' AND mine.band_id NOT IN (' . implode(',', array_fill(0, count($skipBandIds), '?')) . ')' : '';
 $skipParams = array_keys($skipBandIds);
@@ -113,7 +205,7 @@ $st = $pdo->prepare('SELECT m.member_id, m.name, COUNT(DISTINCT other.band_id) A
     ORDER BY n DESC, m.name');
 // ↑ LIMIT は付けずに全員取る。最初は上位5人だけ見せて、残りは「すべて表示」で出す（JS: setupPartnerBox）
 $st->execute([$memberId, ...$skipParams]);
-$partners = $st->fetchAll();
+$partners = array_values(array_filter($st->fetchAll(), static fn($p) => isset($targetMemberIds[(int)$p['member_id']]))); // 絞り込みの対象メンバーだけ
 
 // ---- よく演奏するアーティスト（上位10位） ----
 //   数え方はアーティスト一覧と同じ（artist_plays_sql(): オムニバスは曲に付いたアーティストを1バンド1回）。
@@ -132,15 +224,19 @@ $topArtists = $st->fetchAll();
 // ---- よく組む学年区分 ----
 //   集計ページと同じ数え方: 組んだメンバーの延べ人数（自分以外・入学年度が分かる人だけ）のうち 後輩・同期・先輩 の割合
 $gradeMix = ['junior' => 0, 'same' => 0, 'senior' => 0];
-if ((int)$member['entry_year'] > 0) {
-    $st = $pdo->prepare('SELECT SUM(p.entry_year > ?) AS junior, SUM(p.entry_year = ?) AS same, SUM(p.entry_year < ?) AS senior
-        FROM (' . MEMBERSHIP_SQL . ') mine
-        JOIN (' . MEMBERSHIP_SQL . ') o ON o.band_id = mine.band_id AND o.member_id <> mine.member_id
-        JOIN member p ON p.member_id = o.member_id AND p.entry_year IS NOT NULL
-        WHERE mine.member_id = ?' . $skipSql);
-    $y = (int)$member['entry_year'];
-    $st->execute([$y, $y, $y, $memberId, ...$skipParams]);
-    $gradeMix = array_map('intval', $st->fetch() ?: []) + $gradeMix;
+//   絞り込みの対象メンバーだけを数えるので、SQL ではなく上で読んだ $othersByBand から PHP で数える
+$y = (int)$member['entry_year'];
+if ($y > 0) {
+    foreach ($othersByBand as $bid => $others) {
+        if (isset($skipBandIds[$bid])) {
+            continue;
+        }
+        foreach ($others as [, $ey, $ok]) {
+            if ($ok && $ey !== null) {
+                $gradeMix[$ey > $y ? 'junior' : ($ey === $y ? 'same' : 'senior')]++;
+            }
+        }
+    }
 }
 $gradeMixTotal = array_sum($gradeMix);
 
@@ -307,6 +403,72 @@ render_header($member['name'], 'members');
         <div><dt>トリ</dt><dd><?= $headliners ?></dd></div>
     </dl>
 </section>
+
+<?php
+// 集計の絞り込み（stats.php と同じ部品・同じ CSS。スクロールしても浮いて残る）。「メンバー」は組んだ相手の絞り込み
+$entryYears = range($thisYear, $thisYear - 15); // 新しい順
+$yearSlot = static function (string $name, int $selected, array $list, string $label, string $unit): string {
+    $html = '<div class="year-slot year-slot--grade year-slot--fy" data-slot-input tabindex="0" role="spinbutton" aria-label="' . h($label) . '"><div class="year-slot__reel">';
+    foreach ($list as $y) {
+        $y = (int)$y;
+        $html .= '<div class="year-slot__item' . ($y === $selected ? ' is-current' : '') . '" data-value="' . $y . '" data-label="' . $y . h($unit) . '">' . sprintf("'%02d", $y % 100) . '</div>';
+    }
+    return $html . '</div><input type="hidden" name="' . h($name) . '" value="' . $selected . '"></div>';
+};
+?>
+<?php ob_start(); // 右の欄（aside）の一番上に出すので、ここでは出さずに溜めておく ?>
+<form method="get" class="card stats-filter no-print" data-live>
+    <input type="hidden" name="id" value="<?= $memberId ?>">
+    <fieldset class="stats-filter__row">
+        <legend>メンバー</legend>
+        <div class="tabs tabs--filter" role="radiogroup" aria-label="メンバー">
+            <label class="tab"><input type="radio" name="who" value="all" data-autosubmit<?= $who === 'all' ? ' checked' : '' ?>>全メンバー</label>
+            <label class="tab"><input type="radio" name="who" value="active" data-autosubmit<?= $who === 'active' ? ' checked' : '' ?>>現役</label>
+            <label class="tab"><input type="radio" name="who" value="grade" data-autosubmit<?= $who === 'grade' ? ' checked' : '' ?>>学年別</label>
+            <label class="tab<?= $canNear ? '' : ' is-disabled' ?>"<?= $canNear ? '' : ' title="アカウントがメンバーに紐付いていないか、入学年度が未登録のため使えません"' ?>>
+                <input type="radio" name="who" value="near" data-autosubmit<?= $who === 'near' ? ' checked' : '' ?><?= $canNear ? '' : ' disabled' ?>>上下3学年
+            </label>
+            <label class="tab"><input type="radio" name="who" value="custom" data-autosubmit<?= $who === 'custom' ? ' checked' : '' ?>>範囲指定</label>
+        </div>
+        <div class="stats-filter__extra" data-show-when="who=grade">
+            <div class="year-slot year-slot--grade" data-slot-input tabindex="0" role="spinbutton" aria-label="学年" title="上下にドラッグで学年を切り替え">
+                <div class="year-slot__reel">
+                    <?php foreach (array_reverse($slotEntries) as $se): $sg = grade_of($se); ?>
+                        <?= grade_slot_item((string)$se, ($sg !== null ? h(grade_label($sg)) : '') . sprintf("<small>'%02d</small>", $se % 100), (string)$fEntry) ?>
+                    <?php endforeach; ?>
+                </div>
+                <input type="hidden" name="entry" value="<?= $fEntry ?>">
+            </div>
+        </div>
+        <div class="stats-filter__extra" data-show-when="who=custom">
+            <?= $yearSlot('efrom', $efrom, $entryYears, '入学年度（から）', '年入学') ?>
+            <span>〜</span>
+            <?= $yearSlot('eto', $eto, $entryYears, '入学年度（まで）', '年入学') ?>
+            <span class="muted small">年入学</span>
+        </div>
+    </fieldset>
+
+    <fieldset class="stats-filter__row">
+        <legend>集計期間</legend>
+        <div class="tabs tabs--filter" role="radiogroup" aria-label="期間">
+            <label class="tab"><input type="radio" name="period" value="all" data-autosubmit<?= $period === 'all' ? ' checked' : '' ?>>全期間</label>
+            <label class="tab"><input type="radio" name="period" value="year" data-autosubmit<?= $period === 'year' ? ' checked' : '' ?>>単年度</label>
+            <label class="tab"><input type="radio" name="period" value="range" data-autosubmit<?= $period === 'range' ? ' checked' : '' ?>>期間指定</label>
+        </div>
+        <div class="stats-filter__extra" data-show-when="period=year">
+            <?= $yearSlot('year', $fYear, $liveYears, '年度', '年度') ?>
+            <span class="muted small">年度</span>
+        </div>
+        <div class="stats-filter__extra" data-show-when="period=range">
+            <?= $yearSlot('pfrom', $pfrom, $liveYears, '期間（から）', '年度') ?>
+            <span>〜</span>
+            <?= $yearSlot('pto', $pto, $liveYears, '期間（まで）', '年度') ?>
+            <span class="muted small">年度</span>
+        </div>
+    </fieldset>
+    <noscript><button class="btn btn--sm" type="submit">適用</button></noscript>
+</form>
+<?php $filterHtml = ob_get_clean(); ?>
 
 <?php if ($isMe): ?>
 <!-- 自分のプロフィールはアカウント設定でまとめて編集する -->
@@ -507,7 +669,7 @@ render_header($member['name'], 'members');
             <!-- 並び替え: 押すたびに新しい順 ⇔ 古い順（JS で並びを逆にするだけ。assets/app.js の setupSortToggle） -->
             <?php // 楽器フィルター（トリのバンドがあれば🐔も）。lib/repository.php の inst_filter
             ?>
-            <?= inst_filter(array_merge(...array_values($partsByBand)), '#history-list', (bool)array_filter($history, static fn($h) => $h['is_last'])) ?>
+            <?= inst_filter(array_merge(...array_values($partsByBand)), '#history-list', (bool)array_filter($history, static fn($h) => $h['is_last']), '', (bool)$favBandIds) ?>
             <button type="button" class="btn btn--ghost btn--sm sorted-list__btn" data-sort-toggle="#history-list" aria-pressed="false">新しい順 ↓</button>
         <?php endif; ?>
         <div id="history-list">
@@ -532,9 +694,10 @@ render_header($member['name'], 'members');
                         <!-- その日に出たバンドを出演順に並べる。バンド名からバンド詳細へ -->
                         <ul class="history__bands">
                             <?php foreach ($day['bands'] as $b): ?>
-                                <li class="history__band" data-insts="<?= h(implode(' ', array_merge($b['is_last'] ? ['tori'] : [], inst_tokens($partsByBand[(int)$b['band_id']] ?? [])))) ?>">
+                                <li class="history__band" data-insts="<?= h(implode(' ', array_merge($b['is_last'] ? ['tori'] : [], isset($favBandIds[(int)$b['band_id']]) ? ['fav'] : [], inst_tokens($partsByBand[(int)$b['band_id']] ?? [])))) ?>">
                                     <!-- バンド名と、トリならその横に小さな🐔 -->
                                     <span class="history__name">
+                                        <?php if ($favBandIds): // ❤ を付けたバンドが1つでもあれば、全バンドに同じ幅の枠を取る（バンド名の位置が❤の有無でずれない） ?><span class="history__fav"<?= isset($favBandIds[(int)$b['band_id']]) ? ' aria-label="お気に入り" title="お気に入り"' : ' aria-hidden="true"' ?>><?php if (isset($favBandIds[(int)$b['band_id']])): ?><?= icon('favorite', 'like__heart') ?><?php endif; ?></span><?php endif; ?>
                                         <a href="band?id=<?= (int)$b['band_id'] ?>"><?= h($b['band_name']) ?></a>
                                         <?php if ($b['is_last']): ?><span class="tori-badge" aria-label="トリ" title="トリ">🐔</span><?php endif; ?>
                                         <?php // 見ている人も一緒に出たバンド（カードの赤枠の理由がどのバンドか分かるように）。live.php の「出演」と同じタグ ?>
@@ -559,6 +722,7 @@ render_header($member['name'], 'members');
         <?php if (!$history): ?><p class="muted">出演データがありません</p><?php endif; ?>
     </section>
     <aside>
+        <?= $filterHtml ?>
         <!-- よく組むメンバー: マイアルバムと同じく、最初は上位5人だけ。見出しか「すべて表示」で全員を出す（JS: setupPartnerBox） -->
         <section id="partners" class="card album-box partner-box" data-partner-box>
             <div class="album-head">
