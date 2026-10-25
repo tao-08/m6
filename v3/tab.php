@@ -89,7 +89,7 @@ if (isset($_GET['song']) || isset($_GET['key'])) {
     }
 
     // ---- 既存のパート（楽器の並び順 → パート名）----
-    $st = $pdo->prepare('SELECT t.tab_id, t.part, t.tuning, t.kind, t.first_bar, t.is_partial, JSON_LENGTH(t.data, "$.bars") AS bar_count, t.updated_at, i.short_name
+    $st = $pdo->prepare('SELECT t.tab_id, t.part, t.instrument_id, t.tuning, t.kind, t.first_bar, t.is_partial, JSON_LENGTH(t.data, "$.bars") AS bar_count, t.updated_at, i.short_name, i.name AS inst_name
         FROM song_tab t JOIN instrument i ON i.instrument_id = t.instrument_id
         WHERE t.song_key = ?
         ORDER BY i.sort_order, t.part');
@@ -107,23 +107,65 @@ if (isset($_GET['song']) || isset($_GET['key'])) {
     $st->execute([$song['key']]);
     $deleted = $st->fetchAll();
 
-    // ---- TAB 譜・コード譜のリンク（song_link。サイトの並び順 → 登録順）。テーブルがまだ無い（マイグレーション前）なら空 ----
+    // ---- カード: 曲全体（part = ''）と、パートごと（Gt1・Ba など。自作 TAB があるパート + 「楽器を追加」で作ったパート）----
+    //   リンク・メモ・画像は、どのカードのものかをパート名（song_link.part / song_meta.part）で決める。パート名の大文字小文字は区別しない（DB と同じ）
+    //   テーブル・列がまだ無い（マイグレーション 075 / 076 の前）ときは、その部分だけ空にして、画面は開けるようにする
+    $partKey = static fn(string $p): string => mb_strtolower($p);
+    $partCards = [];
+    foreach ($parts as $p) { // マイグレーション前でも、自作 TAB のあるパートはカードにできる
+        $partCards[$partKey($p['part'])] = ['part' => $p['part'], 'instrument_id' => (int)$p['instrument_id'], 'name' => $p['inst_name'], 'short_name' => $p['short_name'], 'has_tab' => true];
+    }
     try {
-        $st = $pdo->prepare('SELECT link_id, site, url, label FROM song_link WHERE song_key = ?
+        $all = tab_song_parts($pdo, $song['key']); // 先に読む（失敗したら、上の自作 TAB だけの一覧を残す）
+        $partCards = [];
+        foreach ($all as $pc) {
+            $partCards[$partKey($pc['part'])] = $pc;
+        }
+    } catch (PDOException) {
+        // song_part がまだ無い: 上の（自作 TAB だけの）一覧のまま
+    }
+    $linksByPart = []; // パート名（小文字）=> [リンクの行, ...]（サイトの並び順 → 登録順）。MV は楽曲データベースのモーダルに出すのでここには出さない
+    try {
+        $st = $pdo->prepare('SELECT link_id, part, site, url, label FROM song_link WHERE song_key = ? AND site <> \'mv\'
             ORDER BY FIELD(site, ' . implode(', ', array_map(static fn($k) => $pdo->quote($k), array_keys(TAB_LINK_SITES))) . '), link_id');
         $st->execute([$song['key']]);
-        $links = $st->fetchAll();
+        foreach ($st as $l) {
+            $linksByPart[$partKey((string)$l['part'])][] = $l;
+        }
     } catch (PDOException) {
-        $links = [];
+        // song_link がまだ無い
     }
 
-    // 曲のメモと画像（song_meta。全パート共通。最初に保存したときに行ができる）
-    $st = $pdo->prepare('SELECT meta_id, memo FROM song_meta WHERE song_key = ?');
-    $st->execute([$song['key']]);
-    $meta = $st->fetch() ?: ['meta_id' => 0, 'memo' => null];
-    $songImageRows = attach_images($pdo, 'song_meta', [(int)$meta['meta_id']])[(int)$meta['meta_id']] ?? [];
-    $songImageIds = array_map(static fn($im) => (int)$im['image_id'], $songImageRows);
-    $songData = json_encode(['key' => $song['key'], 'song_id' => $songId, 'query' => trim($song['title'] . ' ' . ($song['artist'] ?? '')), 'images' => $songImageIds, 'pdfs' => tab_pdf_ids($songImageRows), 'files' => tab_file_ids($songImageRows)], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR);
+    // メモと画像（song_meta。曲全体・パートごとに1行。最初に保存したときに行ができる）
+    $metaByPart = [];  // パート名（小文字）=> ['meta_id', 'memo']
+    $imagesByMeta = []; // meta_id => 画像の行
+    try {
+        $st = $pdo->prepare('SELECT meta_id, part, memo FROM song_meta WHERE song_key = ?');
+        $st->execute([$song['key']]);
+        foreach ($st as $m) {
+            $metaByPart[$partKey((string)$m['part'])] = $m;
+        }
+    } catch (PDOException) {
+        // part 列がまだ無い（マイグレーション 076 の前）: 曲全体のメモだけ読む
+        $st = $pdo->prepare('SELECT meta_id, memo FROM song_meta WHERE song_key = ?');
+        $st->execute([$song['key']]);
+        if ($m = $st->fetch()) {
+            $metaByPart[''] = $m;
+        }
+    }
+    if ($metaByPart) {
+        $imagesByMeta = attach_images($pdo, 'song_meta', array_map(static fn($m) => (int)$m['meta_id'], array_values($metaByPart)));
+    }
+    // 画面の JS に渡す: カードごと（'' = 曲全体）の画像・PDF・ファイルの ID
+    $cardData = [];
+    foreach (array_merge([''], array_keys($partCards)) as $k) {
+        $rows = $imagesByMeta[(int)($metaByPart[$k]['meta_id'] ?? 0)] ?? [];
+        $cardData[] = ['part' => $k === '' ? '' : $partCards[$k]['part'], 'images' => array_map(static fn($im) => (int)$im['image_id'], $rows),
+            'pdfs' => tab_pdf_ids($rows), 'files' => tab_file_ids($rows)];
+    }
+    $songData = json_encode(['key' => $song['key'], 'song_id' => $songId, 'cards' => $cardData],
+        JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR);
+    $instruments = $pdo->query('SELECT instrument_id, name FROM instrument ORDER BY sort_order')->fetchAll(); // 「楽器を追加」の選択肢
 
     render_header($song['title'] . ' TAB', 'lives');
     ?>
@@ -143,33 +185,26 @@ if (isset($_GET['song']) || isset($_GET['key'])) {
 </section>
 
 <?php
-// ---- 新規作成フォーム（楽器のタイル + パート名 + 詳細）----
-//   「パートが 0 件のとき」と「1 件以上のとき」で置き場所（空の状態のカード / 一覧の下の折りたたみ）が違うので、
-//   フォームの HTML は関数（クロージャ = 変数に入れた名前の無い関数）にして 1 か所にだけ書く。呼ぶのは、下の if のどちらか一方だけ。
-//   パート名の候補は、この曲にもう有る名前と重ならないものをプリセットごとに作って、ラジオの data-part に持たせる
-//   （楽器を選び替えたとき JS が、ユーザーがまだ手で書き換えていなければ、その候補を入力欄に入れる）
-$existingParts = array_column($parts, 'part');
-$renderNewForm = static function () use ($existingParts): void {
-    $suggest = [];
-    foreach (TAB_PRESETS as $k => $p) {
-        $suggest[$k] = tab_suggest_part($p['part_base'], $p['part_number'], $existingParts);
-    }
-    $firstKey = array_key_first(TAB_PRESETS); // 最初のプリセットを選んだ状態で出す（ラジオは何も選ばないと値が送られない）
+// ---- 新規作成フォーム（弦の数のタイル + 詳細）。パートのカードの中に置く ----
+//   カードのパート名（Gt1 など）は固定（hidden）で、楽器もカードの楽器だけ（ギターなら 6 弦 / 7 弦）。
+//   フォームの HTML は関数（クロージャ = 変数に入れた名前の無い関数）にして 1 か所にだけ書き、カードごとに呼ぶ。
+//   ラジオの data-part には、パート名（楽器を選び替えても同じ名前）を持たせる（JS が、手で書き換えていないときだけ入力欄に入れる仕組みをそのまま使う）
+$renderNewForm = static function (array $presets, string $part): void {
+    $firstKey = array_key_first($presets); // 最初のプリセットを選んだ状態で出す（ラジオは何も選ばないと値が送られない）
     ?>
     <form method="post" class="tab-new">
         <?= csrf_field() ?>
-        <?php // 楽器: select ではなく大きなタイルのラジオ（スマホの select は別画面のピッカーが開いて 2 タップ以上かかる。タイルなら 1 タップ） ?>
-        <fieldset class="tab-inst">
+        <?php // 弦の数: select ではなく大きなタイルのラジオ（スマホの select は別画面のピッカーが開いて 2 タップ以上かかる。タイルなら 1 タップ）。選べるのが1つだけなら出さない ?>
+        <fieldset class="tab-inst"<?= count($presets) < 2 ? ' hidden' : '' ?>>
             <legend class="tab-sr">楽器</legend>
-            <?php foreach (TAB_PRESETS as $k => $p): ?>
+            <?php foreach ($presets as $k => $p): ?>
                 <label class="tab-inst__opt">
-                    <input type="radio" name="preset" value="<?= h($k) ?>" data-part="<?= h($suggest[$k]) ?>"<?= $k === $firstKey ? ' checked' : '' ?>>
+                    <input type="radio" name="preset" value="<?= h($k) ?>" data-part="<?= h($part) ?>"<?= $k === $firstKey ? ' checked' : '' ?>>
                     <span><?= h($p['label']) ?></span>
                 </label>
             <?php endforeach; ?>
         </fieldset>
-        <?php // placeholder ではなく value に入れる（placeholder は薄い文字で、入力済みに見えて紛らわしい） ?>
-        <label class="field">パート <input type="text" name="part" maxlength="20" required value="<?= h($suggest[$firstKey]) ?>" autocomplete="off"></label>
+        <input type="hidden" name="part" value="<?= h($part) ?>">
         <details class="tab-new__more">
             <summary class="tab-summary"><?= icon('tune') ?> 詳細 <?= icon('expand_more', 'tab-summary__chev') ?></summary>
             <?php // 部分 TAB（ギターソロだけ等）。チェックを外している間は、開始小節は入力できない（JS が disabled にする） ?>
@@ -183,12 +218,41 @@ $renderNewForm = static function () use ($existingParts): void {
     <?php
 };
 ?>
-<?php // ---- リンク（U-FRET・楽器.me・Songsterr・YouTube など）。この画面の主役。自作の TAB（ベータ）もその並びの1つ ---- ?>
-<section class="card tab-links" data-links>
+<?php
+// ---- カード: 曲全体 + パートごと（Gt1・Ba など）。どのカードも、リンク（YouTube・U-FRET など）・メモ・画像を持つ ----
+//   自作の TAB（ベータ）はパートのカードの中の1行。TAB の作成フォームも、TAB がまだ無いギター・ベース・ドラムのカードに置く
+$hasYoutubeKey = (string)(config('youtube')['api_key'] ?? '') !== '';
+$renderCard = static function (string $part, ?array $info) use ($partKey, $linksByPart, $metaByPart, $imagesByMeta, $parts, $song, $hasYoutubeKey, $renderNewForm): void {
+    $k = $partKey($part);
+    $myLinks = $linksByPart[$k] ?? [];
+    $meta = $metaByPart[$k] ?? ['meta_id' => 0, 'memo' => null];
+    $hasMemo = (string)($meta['memo'] ?? '') !== '' || ($imagesByMeta[(int)$meta['meta_id']] ?? []) !== [];
+    $myTab = null; // このパートの自作 TAB（パートごとに1つまで）
+    foreach ($parts as $p) {
+        if ($partKey($p['part']) === $k && $part !== '') {
+            $myTab = $p;
+        }
+    }
+    $ytQuery = trim($song['title'] . ' ' . ($song['artist'] ?? '') . ($info ? ' ' . $info['name'] : '')); // 動画検索の初期の検索語（パートのカードは楽器名も）
+    $presets = $info ? array_filter(TAB_PRESETS, static fn($p) => $p['instrument'] === $info['instrument_id']) : [];
+    ?>
+<section class="card tab-links tab-card" data-card data-part="<?= h($part) ?>">
+    <?php if ($info): ?>
+        <header class="tab-card__head">
+            <span class="tab-card__inst" title="<?= h($info['name']) ?>"><?= h($info['short_name']) ?></span>
+            <h3 class="tab-card__title"><?= h($part) ?></h3>
+            <?php if (!$info['has_tab']): // 自作 TAB があるパートは、ここからは消せない（TAB の削除は TAB の画面から） ?>
+                <button type="button" class="icon-btn" data-part-del title="パートを削除" aria-label="パートを削除"><?= icon('delete') ?></button>
+            <?php endif; ?>
+        </header>
+    <?php else: ?>
+        <header class="tab-card__head"><?= icon('library_music', 'tab-card__all') ?><h3 class="tab-card__title">全体</h3></header>
+    <?php endif; ?>
+    <?php if ($myLinks || $myTab): // リンクも TAB も無いカードは、空の一覧を出さない ?>
     <ul class="tab-links__list" data-link-list>
-        <?php // 譜のサイト（U-FRET・楽器.me・Songsterr）は、そのサイトに1件だけなら長いタイトルではなくサイト名のボタンにする（タイトルは長押し・ホバーで）。YouTube・その他、同じサイトが複数のときは区別できるようタイトルのまま
-        $siteCount = array_count_values(array_column($links, 'site'));
-        foreach ($links as $l):
+        <?php // 譜のサイト（U-FRET・楽器.me・Songsterr）は、そのカードにそのサイトが1件だけなら長いタイトルではなくサイト名のボタンにする（タイトルは長押し・ホバーで）。YouTube・その他、同じサイトが複数のときは区別できるようタイトルのまま
+        $siteCount = array_count_values(array_column($myLinks, 'site'));
+        foreach ($myLinks as $l):
             $site = TAB_LINK_SITES[$l['site']] ?? TAB_LINK_SITES['other'];
             $asButton = in_array($l['site'], ['ufret', 'gakki', 'songsterr'], true) && $siteCount[$l['site']] === 1; ?>
             <li class="tab-links__item" data-link-id="<?= (int)$l['link_id'] ?>">
@@ -205,24 +269,24 @@ $renderNewForm = static function () use ($existingParts): void {
                 <button type="button" class="icon-btn" data-link-del title="削除" aria-label="削除"><?= icon('delete') ?></button>
             </li>
         <?php endforeach; ?>
-        <?php // 自作の TAB（ベータ）。パートごとに1行 ?>
-        <?php foreach ($parts as $p): ?>
+        <?php if ($myTab): // 自作の TAB（ベータ） ?>
             <li class="tab-links__item">
                 <span class="tab-links__site tab-links__site--own" title="TAB（ベータ）"><?= icon('edit_note') ?></span>
-                <a class="tab-links__name" href="tab?id=<?= (int)$p['tab_id'] ?>"><?= h($p['short_name']) ?> <?= h($p['part']) ?>
-                    <?php if ($p['is_partial']): ?><span class="tag" title="部分">部分 <?= (int)$p['first_bar'] ?>〜<?= (int)$p['first_bar'] + max(0, (int)$p['bar_count'] - 1) ?></span><?php endif; ?>
-                    <?php if ($p['kind'] !== 'drum'): ?><span class="muted small"><?= (int)tab_string_count($p['tuning']) ?>弦</span><?php endif; ?></a>
+                <a class="tab-links__name" href="tab?id=<?= (int)$myTab['tab_id'] ?>">TAB
+                    <?php if ($myTab['is_partial']): ?><span class="tag" title="部分">部分 <?= (int)$myTab['first_bar'] ?>〜<?= (int)$myTab['first_bar'] + max(0, (int)$myTab['bar_count'] - 1) ?></span><?php endif; ?>
+                    <?php if ($myTab['kind'] !== 'drum'): ?><span class="muted small"><?= (int)tab_string_count($myTab['tuning']) ?>弦</span><?php endif; ?></a>
                 <span class="tag tab-beta">β</span>
-                <span class="muted small tab-parts__date"><?= h(fmt_datetime($p['updated_at'])) ?></span>
+                <span class="muted small tab-parts__date"><?= h(fmt_datetime($myTab['updated_at'])) ?></span>
             </li>
-        <?php endforeach; ?>
+        <?php endif; ?>
     </ul>
+    <?php endif; ?>
     <div class="tab-links__actions">
         <?php // YouTube 専用の検索（埋め込みで試し見してから登録）。API キーが無ければ出さない ?>
-        <?php if ((string)(config('youtube')['api_key'] ?? '') !== ''): ?>
-            <button type="button" class="btn btn--sm" data-yts-open title="YouTube を検索"><?= icon('smart_display') ?> 動画</button>
+        <?php if ($hasYoutubeKey): ?>
+            <button type="button" class="btn btn--sm" data-yts-open data-q="<?= h(mb_substr($ytQuery, 0, 100)) ?>" title="YouTube を検索"><?= icon('smart_display') ?> 動画</button>
         <?php endif; ?>
-        <?php if (claude_enabled() || tab_google_enabled()): ?>
+        <?php if (!$info && (claude_enabled() || tab_google_enabled())): // U-FRET・楽器.me・Songsterr の検索は曲全体のカードだけ ?>
             <button type="button" class="btn btn--sm" data-link-ai title="U-FRET・楽器.me・Songsterr を検索"><?= icon('auto_awesome') ?> 検索</button>
         <?php endif; ?>
         <form class="tab-links__add" data-link-add>
@@ -230,8 +294,49 @@ $renderNewForm = static function () use ($existingParts): void {
             <button type="submit" class="btn btn--primary btn--sm" title="登録" aria-label="登録"><?= icon('add_link') ?></button>
         </form>
     </div>
-    <ul class="tab-links__list tab-links__found" data-link-found hidden></ul>
-    <?php // YouTube の検索ダイアログ。検索語は画面で直せる（楽器の語を足せる）。結果は押すとその場で埋め込み再生、＋で登録 ?>
+    <?php if (!$info): ?><ul class="tab-links__list tab-links__found" data-link-found hidden></ul><?php endif; ?>
+    <?php if ($info && !$myTab && $presets): // 自作の TAB（ベータ）の作成。TAB がまだ無い、ギター・ベース・ドラムのパートだけ。閉じた状態で置く ?>
+        <details class="tab-new-wrap">
+            <summary class="tab-new-wrap__summary"><?= icon('edit_note') ?> TAB 作成 <span class="tag tab-beta">ベータ</span></summary>
+            <?php $renderNewForm($presets, $part); ?>
+        </details>
+    <?php endif; ?>
+    <?php // メモと画像。折りたたみ（<details>）にして、もう入っているときだけ最初から開いておく。画像のモーダル（<dialog>）は、閉じた <details> の中に置かない（下で1回だけ出す） ?>
+    <details class="tab-notes-edit tab-card__memo" data-song-memo<?= $hasMemo ? ' open' : '' ?>>
+        <summary class="tab-summary"><?= icon('sticky_note_2') ?> メモ・画像 <?= icon('expand_more', 'tab-summary__chev') ?></summary>
+        <div class="tab-notes-edit__body">
+            <label class="field">
+                <textarea rows="3" maxlength="<?= TAB_MEMO_MAX ?>" data-song-memo-text aria-label="メモ"><?= h($meta['memo'] ?? '') ?></textarea>
+            </label>
+            <ul class="live-thumbs tab-imgs" data-song-images></ul>
+            <div class="tab-notes-edit__actions">
+                <label class="btn btn--ghost btn--sm" data-img-add title="ファイルを追加" aria-label="ファイルを追加"><?= icon('add_photo_alternate') ?>
+                    <input type="file" multiple hidden data-img-input></label>
+                <button type="button" class="btn btn--primary btn--sm" data-song-memo-save><?= icon('save') ?> 保存</button>
+            </div>
+        </div>
+    </details>
+</section>
+    <?php
+};
+$renderCard('', null); // 曲全体
+foreach ($partCards as $pc) {
+    $renderCard($pc['part'], $pc);
+}
+?>
+
+<?php // 楽器を追加: 選んだ楽器のパート名（Gt1・Ba など）は空いている名前を自動で付ける。TAB の作成は、追加したカードの中から ?>
+<details class="card tab-addpart">
+    <summary class="tab-new-wrap__summary"><?= icon('add') ?> 楽器</summary>
+    <div class="tab-addpart__chips">
+        <?php foreach ($instruments as $ins): ?>
+            <button type="button" class="tab-chip" data-part-add="<?= (int)$ins['instrument_id'] ?>"><?= h($ins['name']) ?></button>
+        <?php endforeach; ?>
+    </div>
+</details>
+
+<?php // YouTube の検索ダイアログ（ページに1つ。どのカードの「動画」からも開く）。検索語は画面で直せる（楽器の語を足せる）。結果は押すとその場で埋め込み再生、＋で登録 ?>
+<section class="tab-yts-wrap" data-yts-wrap>
     <dialog class="yts" data-yts>
         <form class="yts__bar" data-yts-form>
             <input type="search" name="q" maxlength="100" aria-label="検索語" autocomplete="off">
@@ -245,11 +350,6 @@ $renderNewForm = static function () use ($existingParts): void {
         </div>
         <ul class="yts__list" data-yts-list></ul>
     </dialog>
-    <?php // 自作の TAB（ベータ）の作成。閉じた状態で置く ?>
-    <details class="tab-new-wrap">
-        <summary class="tab-new-wrap__summary"><?= icon('edit_note') ?> TAB 作成 <span class="tag tab-beta">ベータ</span></summary>
-        <?php $renderNewForm(); ?>
-    </details>
 </section>
 
 <?php if ($deleted): ?>
@@ -267,31 +367,10 @@ $renderNewForm = static function () use ($existingParts): void {
 </section>
 <?php endif; ?>
 
-<?php
-// 曲のメモ（全パート共通）と画像。いちばん下に置く: 一覧から TAB を選ぶ・作る、が主な用事で、メモは「たまに見る」ものなので
-//   折りたたみ（<details>）にして、メモか画像がもう入っているときだけ最初から開いておく（無いのに開いていると、空の枠が場所を取る）
-$hasSongMemo = (string)($meta['memo'] ?? '') !== '' || $songImageIds !== [];
-?>
-<!-- 曲のメモ（全パート共通）と画像。編集はこの画面。各パートのプレイヤーでは読むだけ -->
-<?php // JSON と画像のモーダル（<dialog>）は、閉じた <details> の中に置かない（中身が描画されないので、モーダルが開けない恐れがある）→ <details> の外 ?>
+<?php // 各カードのメモ・画像の JSON と、画像のモーダル（<dialog>）。閉じた <details> の中には置かない（中身が描画されないので、モーダルが開けない恐れがある） ?>
 <script type="application/json" id="song-data"><?= $songData ?></script>
 <?= attach_modal_html() ?>
-<details class="card tab-notes-edit" data-song-memo<?= $hasSongMemo ? ' open' : '' ?>>
-    <summary class="tab-summary"><?= icon('sticky_note_2') ?> メモ・画像 <?= icon('expand_more', 'tab-summary__chev') ?></summary>
-    <div class="tab-notes-edit__body">
-        <label class="field">
-            <textarea rows="3" maxlength="<?= TAB_MEMO_MAX ?>" data-song-memo-text aria-label="曲のメモ"><?= h($meta['memo'] ?? '') ?></textarea>
-        </label>
-        <ul class="live-thumbs tab-imgs" data-song-images></ul>
-        <div class="tab-notes-edit__actions">
-            <label class="btn btn--ghost btn--sm" data-img-add title="ファイルを追加" aria-label="ファイルを追加"><?= icon('add_photo_alternate') ?>
-                <input type="file" multiple hidden data-img-input></label>
-            <button type="button" class="btn btn--primary btn--sm" data-song-memo-save><?= icon('save') ?> 保存</button>
-        </div>
-    </div>
-</details>
-<script src="<?= asset_url('assets/tab.js') ?>" defer></script><!-- 曲のメモの保存・画像・削除した TAB の復元・新規作成フォームのパート名 -->
-<?php
+<script src="<?= asset_url('assets/tab.js') ?>" defer></script><!-- カードごとのメモ・画像・リンク・動画検索、パートの追加・削除、削除した TAB の復元、新規作成フォーム --><?php
     render_footer();
     exit;
 }
@@ -399,11 +478,20 @@ $st = $pdo->prepare('SELECT data FROM song_tab_practice WHERE tab_id = ? AND use
 $st->execute([$tab['tab_id'], $user['user_id']]);
 $practice = tab_sanitize_practice(json_decode((string)$st->fetchColumn(), true)) ?? ['m' => [], 'ab' => null, 'bpm' => null, 'metro' => null];
 
-// 曲のメモ（読むだけ）と画像。TAB のメモ・画像は JS が扱う
-$st = $pdo->prepare('SELECT meta_id, memo FROM song_meta WHERE song_key = ?');
-$st->execute([$tab['song_key']]);
-$meta = $st->fetch() ?: ['meta_id' => 0, 'memo' => null];
+// 曲全体のメモ・画像と、このパートのカードのメモ・画像（読むだけ。編集は曲のページ）。TAB のメモ・画像は JS が扱う
+$st = $pdo->prepare('SELECT meta_id, part, memo FROM song_meta WHERE song_key = ? AND part IN (\'\', ?)');
+$st->execute([$tab['song_key'], $tab['part']]);
+$meta = ['meta_id' => 0, 'memo' => null];     // 曲全体
+$partMeta = ['meta_id' => 0, 'memo' => null]; // このパート
+foreach ($st as $m) {
+    if ((string)$m['part'] === '') {
+        $meta = $m;
+    } else {
+        $partMeta = $m;
+    }
+}
 $songImages = attach_images($pdo, 'song_meta', [(int)$meta['meta_id']])[(int)$meta['meta_id']] ?? [];
+$partImages = attach_images($pdo, 'song_meta', [(int)$partMeta['meta_id']])[(int)$partMeta['meta_id']] ?? [];
 $tabImageRows = attach_images($pdo, 'song_tab', [(int)$tab['tab_id']])[(int)$tab['tab_id']] ?? [];
 $tabImageIds = array_map(static fn($im) => (int)$im['image_id'], $tabImageRows);
 
@@ -475,6 +563,8 @@ render_header($tab['title'] . ' ' . $tab['part'], 'lives');
         <summary><?= icon('sticky_note_2') ?></summary>
         <?php if ((string)$meta['memo'] !== ''): ?><div class="tab-notes__song"><?= icon('library_music') ?> <span class="tab-memo"><?= linkify_body($meta['memo']) ?></span></div><?php endif; ?>
         <?= attach_thumbs_html('song_meta', $songImages) ?>
+        <?php if ((string)$partMeta['memo'] !== ''): // このパートのカードのメモ ?><div class="tab-notes__song"><?= icon('tune') ?> <span class="tab-memo"><?= linkify_body($partMeta['memo']) ?></span></div><?php endif; ?>
+        <?= attach_thumbs_html('song_meta', $partImages) ?>
         <div class="tab-memo" data-memo-view></div>
         <ul class="live-thumbs tab-imgs" data-tab-images></ul>
         <label class="btn btn--ghost btn--sm" data-img-add title="ファイルを追加" aria-label="ファイルを追加" hidden><?= icon('add_photo_alternate') ?>

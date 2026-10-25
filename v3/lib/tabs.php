@@ -747,6 +747,7 @@ const TAB_LINK_SITES = [
     'gakki'     => ['label' => '楽器.me',   'icon' => 'piano',        'hosts' => ['gakki.me', 'www.gakki.me']],
     'songsterr' => ['label' => 'Songsterr', 'icon' => 'music_note',   'hosts' => ['songsterr.com', 'www.songsterr.com']],
     'youtube'   => ['label' => 'YouTube',   'icon' => 'smart_display', 'hosts' => ['youtube.com', 'www.youtube.com', 'm.youtube.com', 'youtu.be']],
+    'mv'        => ['label' => 'MV',        'icon' => 'movie',        'hosts' => []], // ミュージックビデオ。URL は YouTube の動画（楽曲データベースのモーダルに出す。TAB 画面の一覧には出さない）
     'other'     => ['label' => 'その他',    'icon' => 'link',         'hosts' => []],
 ];
 const TAB_SONG_LINK_MAX = 30;        // 1曲に登録できるリンクの数
@@ -781,6 +782,67 @@ function tab_link_normalize(mixed $url): ?array
         }
     }
     return ['other', $url];
+}
+
+/* =====================================================================
+ *  パート（Gt1・Ba など）のカード（song_part。説明は migrations/076_song_part.sql）
+ *  パートは「パート名」で結び付ける（song_tab.part・song_link.part・song_meta.part。'' = 曲全体）
+ * ===================================================================== */
+
+const TAB_PART_MAX = 20;
+const TAB_MAX_PARTS = 20;              // 1曲のパート（カード）の数
+
+/** パート名の形（1〜20文字・制御文字なし）。曲全体を表す '' は含まない */
+function tab_part_valid(mixed $part): bool
+{
+    return is_string($part) && $part !== '' && mb_strlen($part) <= TAB_PART_MAX && !preg_match('/[\x00-\x1F\x7F]/u', $part);
+}
+
+/**
+ * 曲のパート一覧（自作 TAB があるパート + 「楽器を追加」で作ったパート）。楽器の並び順 → パート名
+ *   戻り値: [['part' => 'Gt1', 'instrument_id' => 2, 'name' => 'ギター', 'short_name' => 'Gt', 'has_tab' => true], ...]
+ *   同じパート名（大文字小文字は区別しない。DB の UNIQUE と同じ）が両方にあれば、TAB のほうを使う
+ */
+function tab_song_parts(PDO $pdo, string $songKey): array
+{
+    $st = $pdo->prepare('SELECT p.part, p.instrument_id, p.has_tab, i.name, i.short_name
+        FROM (SELECT part, instrument_id, 1 AS has_tab FROM song_tab WHERE song_key = ?
+              UNION ALL
+              SELECT part, instrument_id, 0 AS has_tab FROM song_part WHERE song_key = ?) p
+        JOIN instrument i ON i.instrument_id = p.instrument_id
+        ORDER BY i.sort_order, p.part, p.has_tab DESC');
+    $st->execute([$songKey, $songKey]);
+    $out = [];
+    foreach ($st as $r) {
+        $k = mb_strtolower((string)$r['part']);
+        if (!isset($out[$k])) {
+            $out[$k] = ['part' => (string)$r['part'], 'instrument_id' => (int)$r['instrument_id'], 'name' => $r['name'],
+                'short_name' => $r['short_name'], 'has_tab' => (bool)$r['has_tab']];
+        }
+    }
+    return array_values($out);
+}
+
+/** 曲にそのパート（TAB があるか、カードを作ってある）があれば、その行（tab_song_parts の1件）。無ければ null */
+function tab_find_part(PDO $pdo, string $songKey, string $part): ?array
+{
+    foreach (tab_song_parts($pdo, $songKey) as $p) {
+        if (mb_strtolower($p['part']) === mb_strtolower($part)) {
+            return $p;
+        }
+    }
+    return null;
+}
+
+/** TAB の編集画面でパート名を変えたとき、カード・リンク・メモも同じ名前にそろえる（TAB を更新するのと同じトランザクションの中で呼ぶ） */
+function tab_rename_part(PDO $pdo, string $songKey, string $old, string $new): void
+{
+    if ($old === $new) {
+        return;
+    }
+    foreach (['song_part', 'song_link', 'song_meta'] as $table) { // テーブル名は固定の3つだけ
+        $pdo->prepare("UPDATE {$table} SET part = ? WHERE song_key = ? AND part = ?")->execute([$new, $songKey, $old]);
+    }
 }
 
 /** Google の検索（Programmable Search Engine の JSON API）が使えるか。config.php の google_cse（api_key と cx）が両方あれば使える */

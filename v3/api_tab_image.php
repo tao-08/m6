@@ -7,7 +7,7 @@
  *  画像ファイルの保存・縮小・検査は lib/live_image.php、「何枚まで・どの表か」は lib/attach_image.php（kind = song_tab / song_meta）。
  *
  *  リクエスト（POST, multipart/form-data。CSRF は X-CSRF-Token ヘッダー）:
- *    action=add    kind=tab|song  id=（tab なら tab_id、song なら曲キー）  images[]=ファイル（複数可）
+ *    action=add    kind=tab|song  id=（tab なら tab_id、song なら曲キー）  [part=パート名（song のとき。無ければ曲全体）]  images[]=ファイル（複数可）
  *    action=remove kind=tab|song  id=（同上）  image_id=画像ID
  *  レスポンス（JSON）: {"ok":true, "images":[画像ID, ...]}   エラー: {"error":"..."}（400 / 401 / 403 / 404 / 405）
  *
@@ -61,10 +61,18 @@ if ($kind === 'tab') {
     if (!tab_key_valid($id)) {
         fail(400, '曲の指定がおかしいです');
     }
-    // 曲のメモの行（song_meta）が無ければ作る。画像は meta_id にぶら下がる
-    $pdo->prepare('INSERT IGNORE INTO song_meta (song_key, updated_by) VALUES (?, ?)')->execute([$id, $userId]);
-    $st = $pdo->prepare('SELECT meta_id FROM song_meta WHERE song_key = ?');
-    $st->execute([$id]);
+    // part = パートのカード（Gt1 など）。無ければ曲全体（''）。そのパートが曲にあるか確かめる（無いパートの行を作らせない）
+    $part = (string)($_POST['part'] ?? '');
+    if ($part !== '') {
+        if (!tab_part_valid($part) || ($found = tab_find_part($pdo, $id, $part)) === null) {
+            fail(404, 'パートが見つかりません');
+        }
+        $part = $found['part']; // DB の表記にそろえる
+    }
+    // 曲（またはパート）のメモの行（song_meta）が無ければ作る。画像は meta_id にぶら下がる
+    $pdo->prepare('INSERT IGNORE INTO song_meta (song_key, part, updated_by) VALUES (?, ?, ?)')->execute([$id, $part, $userId]);
+    $st = $pdo->prepare('SELECT meta_id FROM song_meta WHERE song_key = ? AND part = ?');
+    $st->execute([$id, $part]);
     $ownerId = (int)$st->fetchColumn();
 } else {
     fail(400, '指定がおかしいです');

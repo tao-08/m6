@@ -35,6 +35,14 @@ a.tab-parts__item:hover { border-color: var(--accent); }
 .tab-links__site--own { color: var(--gt); }
 .tab-links__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; color: inherit; }
 .tab-links__btn { flex: none; display: inline-flex; align-items: center; gap: 4px; }
+/* ---- カード（曲全体 + パートごと。tab.php の $renderCard） ---- */
+.tab-card__head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.tab-card__title { flex: 1; min-width: 0; margin: 0; font-size: 16px; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tab-card__inst { flex: none; min-width: 2.2em; font-weight: 800; color: var(--gt); }
+.tab-card__all { flex: none; color: var(--muted); }
+.tab-card__memo { margin-top: 10px; }
+.tab-addpart { margin-top: 12px; }
+.tab-addpart__chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 .tab-links__name--spacer { flex: 1; } /* サイト名のボタンの右に空きを作って、削除ボタンなどを右端に寄せる */
 .tab-links__sub { display: block; font-weight: 400; font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
 .tab-links__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }

@@ -21,6 +21,7 @@ declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/tracks.php';
 require_once __DIR__ . '/lib/tabs.php';
+require_once __DIR__ . '/lib/youtube.php';
 require_login();
 if (!is_admin()) {
     error_page(403, '管理人のみ利用できます');
@@ -344,6 +345,30 @@ if ($openKey !== '' && tab_key_valid($openKey)) {
 $page = min($page, $pages);
 $rows = array_slice($rows, ($page - 1) * SONGS_PER_PAGE, SONGS_PER_PAGE);
 
+// MV（song_link の site = 'mv'）。版違いのどの曲キーに付いていてもその曲のまとまりに出す。テーブルがまだ無い（マイグレーション前）なら空
+$mvByWork = [];
+$workOfKey = [];
+foreach ($rows as $w) {
+    foreach ($w['versions'] as $v) {
+        $workOfKey[(string)$v['key']] = $w['key'];
+    }
+}
+if ($workOfKey) {
+    try {
+        $st = $pdo->prepare('SELECT link_id, song_key, url, label FROM song_link WHERE site = \'mv\' AND song_key IN (' . implode(',', array_fill(0, count($workOfKey), '?')) . ') ORDER BY link_id');
+        $st->execute(array_map('strval', array_keys($workOfKey)));
+        foreach ($st as $r) {
+            $id = youtube_video_id($r['url']); // 表示の前にもう一度チェック（DB を直接いじられても変な ID を埋め込まない）
+            if ($id !== null && isset($workOfKey[$r['song_key']])) {
+                $mvByWork[$workOfKey[$r['song_key']]][] = ['link_id' => (int)$r['link_id'], 'video_id' => $id, 'label' => (string)$r['label']];
+            }
+        }
+    } catch (PDOException) {
+        $mvByWork = [];
+    }
+}
+$ytEnabled = (string)(config('youtube')['api_key'] ?? '') !== '';
+
 /** 今の絞り込み・並びを保ったまま、一部だけ変えた一覧の URL（初期値は URL に出さない） */
 function songs_url(array $over): string
 {
@@ -530,6 +555,34 @@ $deleteForm = static fn(array $v, string $open = ''): string => '<form method="p
                     <span>TAB 譜 <?= (int)$g['tabs'] ?></span>
                     <?php if ($multi): ?><span>バージョン <?= count($g['versions']) ?></span><?php endif; ?>
                 </div>
+                <?php // MV（YouTube）。サムネイルを押すとその場で再生、検索は YouTube 専用ダイアログ（tab.php と同じ API）。登録は代表の版の曲キーに付ける
+                $mvs = $mvByWork[$g['key']] ?? []; ?>
+                <?php if ($mvs || $ytEnabled): ?>
+                    <section class="songs-mv" data-mv data-mv-key="<?= h($rep['key']) ?>" data-mv-query="<?= h(mb_substr(trim($g['title'] . ' ' . (string)$g['artist'] . ' MV'), 0, 100)) ?>">
+                        <ul class="songs-mv__list" data-mv-list>
+                            <?php foreach ($mvs as $mv): ?>
+                                <li class="songs-mv__item" data-link-id="<?= $mv['link_id'] ?>">
+                                    <button type="button" class="yts__thumb songs-mv__thumb" data-mv-play="<?= h($mv['video_id']) ?>" aria-label="再生" title="<?= h($mv['label'] ?: '再生') ?>">
+                                        <img src="https://i.ytimg.com/vi/<?= h($mv['video_id']) ?>/mqdefault.jpg" alt="" loading="lazy"><?= icon('play_circle') ?>
+                                    </button>
+                                    <button type="button" class="icon-btn icon-btn--sm" data-mv-del aria-label="削除" title="削除"><?= icon('delete') ?></button>
+                                </li>
+                            <?php endforeach; ?>
+                        </ul>
+                        <?php if ($ytEnabled): ?>
+                            <button type="button" class="btn btn--sm" data-mv-open title="MV を検索"><?= icon('movie') ?> <?= icon('search') ?></button>
+                            <dialog class="yts" data-mv-dlg>
+                                <form class="yts__bar" data-mv-form>
+                                    <input type="search" name="q" maxlength="100" aria-label="検索語" autocomplete="off">
+                                    <button type="submit" class="btn btn--primary btn--sm" title="検索" aria-label="検索"><?= icon('search') ?></button>
+                                    <button type="button" class="icon-btn" data-mv-close title="閉じる" aria-label="閉じる"><?= icon('close') ?></button>
+                                </form>
+                                <div></div>
+                                <ul class="yts__list" data-mv-results></ul>
+                            </dialog>
+                        <?php endif; ?>
+                    </section>
+                <?php endif; ?>
                 <?php if (!$multi): ?>
                     <?= $bandsHtml($rep) ?>
                 <?php else: ?>

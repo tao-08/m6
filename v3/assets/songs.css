@@ -109,6 +109,13 @@
 .songs-row__open .tag { display: inline-flex; align-items: center; align-self: center; gap: 3px; line-height: 1; } /* 曲名・アーティストはベースライン、バッジだけ行の中央 */
 .songs-row__open .tag .icon { vertical-align: 0; }
 .songs-row__open .tag .icon { font-size: 14px; }
+/* MV（YouTube）。サムネイルは tab.css の .yts__thumb を流用 */
+.songs-mv { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-start; margin: 10px 0; }
+.songs-mv__list { list-style: none; margin: 0; padding: 0; display: contents; }
+.songs-mv__item { display: flex; align-items: flex-start; gap: 2px; }
+.songs-mv__thumb { width: 144px; flex: none; }
+.songs-mv__thumb.is-playing { width: min(100%, 360px); }
+.songs-mv__item:has(.is-playing) { flex-basis: 100%; }
 .songs-versions { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
 .songs-version { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px; display: grid; gap: 6px; }
 .songs-version.is-rep { border-color: var(--accent); }

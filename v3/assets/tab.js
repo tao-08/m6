@@ -41,8 +41,7 @@
    *   2. 「部分」のチェックが外れている間は、開始小節の欄を使えなくする（disabled にした入力欄はフォームで送られない）
    *   JS が動かなくても、フォームは PHP が出した初期値のまま送れる（プログレッシブ・エンハンスメント = JS は「あれば便利」の位置づけ）
    * --------------------------------------------------------------- */
-  const newForm = document.querySelector('form.tab-new');
-  if (newForm) {
+  document.querySelectorAll('form.tab-new').forEach((newForm) => { // パートのカードごとに1つ
     const nameInput = newForm.querySelector('input[name="part"]');
     const presetRadios = [...newForm.querySelectorAll('input[name="preset"]')];
     const partialCheck = newForm.querySelector('input[name="partial"]');
@@ -59,7 +58,7 @@
     const syncFirstBar = () => { firstBarInput.disabled = !partialCheck.checked; };
     partialCheck.addEventListener('change', syncFirstBar);
     syncFirstBar();
-  }
+  });
 
   /* ---------------------------------------------------------------
    * メモの表示・画像の添付（TAB のメモ / 曲のメモ）。曲の一覧ページとプレイヤーの両方で使う
@@ -103,10 +102,10 @@
   }
 
   /**
-   * 画像の並び（サムネイル + 追加ボタン + 削除）。kind = 'tab'（id = tab_id）/ 'song'（id = 曲キー）
+   * 画像の並び（サムネイル + 追加ボタン + 削除）。kind = 'tab'（id = tab_id）/ 'song'（id = 曲キー。part = パートのカードのパート名。無ければ曲全体）
    *   戻り値の setEditable(true) で追加・削除のボタンが出る。ids は今ある画像の ID
    */
-  function imageBox({ kind, id, ids, pdfs, files, list, addLabel, max }) {
+  function imageBox({ kind, id, part = '', ids, pdfs, files, list, addLabel, max }) {
     const attachKind = kind === 'tab' ? 'song_tab' : 'song_meta';
     const input = addLabel.querySelector('[data-img-input]');
     let editable = false;
@@ -114,6 +113,7 @@
     const send = async (fd) => {
       fd.append('kind', kind);
       fd.append('id', String(id));
+      if (part) fd.append('part', part);
       const res = await fetch('api_tab_image', { method: 'POST', credentials: 'same-origin', headers: { 'X-CSRF-Token': token }, body: fd });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json.error || '画像を保存できませんでした');
@@ -174,41 +174,69 @@
     return box;
   }
 
-  // 曲の一覧ページ: 曲のメモ（全パート共通）と画像。メモは「保存」で、画像は選んだらすぐ送る
+  // 曲の一覧ページ: カード（曲全体 + パートごと）。メモは「保存」で、画像は選んだらすぐ送る
   const songDataEl = document.getElementById('song-data');
   if (songDataEl) {
     const S = JSON.parse(songDataEl.textContent);
-    const area = document.querySelector('[data-song-memo]');
-    const text = area.querySelector('[data-song-memo-text]');
-    imageBox({ kind: 'song', id: S.key, ids: S.images, pdfs: S.pdfs, files: S.files, list: area.querySelector('[data-song-images]'), addLabel: area.querySelector('[data-img-add]'), max: 10 }).setEditable(true);
-    area.querySelector('[data-song-memo-save]').addEventListener('click', async (e) => {
-      const btn = e.currentTarget;
+    const base = { song_key: S.key, ...(S.song_id ? { song_id: S.song_id } : {}) };
+    const cardData = new Map(S.cards.map((c) => [c.part, c])); // '' = 曲全体
+    document.querySelectorAll('[data-card]').forEach((card) => {
+      const part = card.dataset.part || '';
+      const C = cardData.get(part) || { images: [], pdfs: [], files: [] };
+      const area = card.querySelector('[data-song-memo]');
+      const text = area.querySelector('[data-song-memo-text]');
+      imageBox({ kind: 'song', id: S.key, part, ids: C.images, pdfs: C.pdfs, files: C.files, list: area.querySelector('[data-song-images]'), addLabel: area.querySelector('[data-img-add]'), max: 10 }).setEditable(true);
+      area.querySelector('[data-song-memo-save]').addEventListener('click', async (e) => {
+        const btn = e.currentTarget;
+        btn.disabled = true;
+        try {
+          await post({ action: 'song_memo', song_key: S.key, part, memo: text.value });
+          notify('保存しました');
+        } catch (err) {
+          notify(err.message || '保存できませんでした', 'error');
+        } finally {
+          btn.disabled = false;
+        }
+      });
+      songLinks(S, card, part);
+      // パートのカードの削除（自作 TAB が無いパートだけ。リンク・メモ・画像ごと消える）
+      card.querySelector('[data-part-del]')?.addEventListener('click', async (e) => {
+        if (!window.confirm('削除しますか？')) return;
+        e.currentTarget.disabled = true;
+        try {
+          await post({ action: 'part_delete', ...base, part });
+          window.location.reload();
+        } catch (err) {
+          e.currentTarget.disabled = false;
+          notify(err.message || '削除できませんでした', 'error');
+        }
+      });
+    });
+    // 楽器を追加（パート名は空いている名前をサーバーが付ける）
+    document.querySelectorAll('[data-part-add]').forEach((btn) => btn.addEventListener('click', async () => {
       btn.disabled = true;
       try {
-        await post({ action: 'song_memo', song_key: S.key, memo: text.value });
-        notify('保存しました');
+        await post({ action: 'part_add', ...base, instrument_id: Number(btn.dataset.partAdd) });
+        window.location.reload();
       } catch (err) {
-        notify(err.message || '保存できませんでした', 'error');
-      } finally {
         btn.disabled = false;
+        notify(err.message || '追加できませんでした', 'error');
       }
-    });
-    songLinks(S);
+    }));
   }
 
   /* ---------------------------------------------------------------
-   * 曲の一覧ページ: TAB 譜・コードのリンク（U-FRET・楽器.me・Songsterr・YouTube）
-   *   ✨検索 … AI がウェブ検索で候補を探す（api_tab_save の link_search）。候補の ＋ で登録
+   * 曲の一覧ページ: カードのリンク（U-FRET・楽器.me・Songsterr・YouTube）。カードごとに1回呼ぶ（part = パート名、'' = 曲全体）
+   *   ✨検索 … AI・Google が候補を探す（api_tab_save の link_search。曲全体のカードだけ）。候補の ＋ で登録
+   *   動画 … YouTube 専用の検索ダイアログ（ページに1つ。開いたカードのパートに登録する）
    *   URL 欄 … 自分で見つけたページを貼って登録
    *   登録・削除のあとは再読み込みして、PHP が出す一覧（サイト順）に揃える
    *   ユーザーや AI から来た文字（タイトル・URL）は textContent / href にだけ入れる（innerHTML には入れない）
    * --------------------------------------------------------------- */
-  function songLinks(S) {
-    const box = document.querySelector('[data-links]');
-    if (!box) return;
+  function songLinks(S, box, part) {
     const SITES = { ufret: ['U-FRET', 'queue_music'], gakki: ['楽器.me', 'piano'], songsterr: ['Songsterr', 'music_note'], youtube: ['YouTube', 'smart_display'] };
     const icon = (name) => { const s = document.createElement('span'); s.className = 'icon'; s.setAttribute('aria-hidden', 'true'); s.textContent = name; return s; };
-    const ids = { song_key: S.key, ...(S.song_id ? { song_id: S.song_id } : {}) };
+    const ids = { song_key: S.key, part, ...(S.song_id ? { song_id: S.song_id } : {}) };
     const add = async (url, label) => {
       await post({ action: 'link_add', ...ids, url, label: label || '' });
       window.location.reload();
@@ -237,8 +265,12 @@
 
     // ---- YouTube 専用の検索ダイアログ（api_tab_save の yt_link_search）----
     //   サムネイルを押すとその場で埋め込み再生（試し見）。＋で登録（続けて何本でも登録できるよう、閉じたときに再読み込み）
-    const ytsDlg = box.querySelector('[data-yts]');
-    if (ytsDlg) {
+    //   ダイアログはページに1つ。最初のカードの呼び出しで動きを付け、ほかのカードは ytsDlg._open() で開く（カードごとに登録先のパートと検索語が変わる）
+    const ytsDlg = document.querySelector('[data-yts]');
+    if (ytsDlg && !ytsDlg._ready) {
+      ytsDlg._ready = true;
+      const ctx = { part: '' }; // 今開いているカードのパート
+      const base = () => ({ song_key: S.key, part: ctx.part, ...(S.song_id ? { song_id: S.song_id } : {}) });
       const form = ytsDlg.querySelector('[data-yts-form]');
       const qInput = form.elements.q;
       const list = ytsDlg.querySelector('[data-yts-list]');
@@ -247,7 +279,7 @@
       const search = async () => {
         setMsg('…');
         try {
-          const json = await post({ action: 'yt_link_search', ...ids, q: qInput.value.trim() });
+          const json = await post({ action: 'yt_link_search', ...base(), q: qInput.value.trim() });
           list.replaceChildren();
           if (!json.items.length) { setMsg('見つかりませんでした'); return; }
           json.items.forEach((v) => {
@@ -298,7 +330,7 @@
             btn.addEventListener('click', async () => {
               btn.disabled = true;
               try {
-                await post({ action: 'link_add', ...ids, url: v.url, label: v.title });
+                await post({ action: 'link_add', ...base(), url: v.url, label: v.title });
                 added = true;
                 btn.replaceChildren(icon('check'));
                 btn.title = '登録済み';
@@ -314,11 +346,17 @@
           setMsg(err.message || '検索できませんでした');
         }
       };
-      box.querySelector('[data-yts-open]').addEventListener('click', () => {
-        if (!qInput.value) qInput.value = S.query || '';
+      // 別のカードで開いたとき（または初めて）は、そのカードの検索語に直して検索し直す。同じカードなら前の結果をそのまま見せる
+      ytsDlg._open = (cardPart, q) => {
+        const fresh = ctx.part !== cardPart || !list.children.length;
+        ctx.part = cardPart;
+        if (fresh) {
+          qInput.value = q;
+          ytsDlg.querySelectorAll('[data-yts-word]').forEach((b) => b.classList.remove('is-active'));
+        }
         ytsDlg.showModal();
-        if (!list.children.length) search();
-      });
+        if (fresh) search();
+      };
       form.addEventListener('submit', (e) => { e.preventDefault(); search(); });
       // 楽器などの語: 検索語の末尾に足す（もう入っていれば外す）→ すぐ検索
       ytsDlg.querySelectorAll('[data-yts-word]').forEach((b) => b.addEventListener('click', () => {
@@ -333,6 +371,7 @@
       ytsDlg.querySelector('[data-yts-close]').addEventListener('click', () => ytsDlg.close());
       ytsDlg.addEventListener('close', () => { list.querySelectorAll('iframe').forEach((f) => f.remove()); if (added) window.location.reload(); });
     }
+    box.querySelector('[data-yts-open]')?.addEventListener('click', (e) => ytsDlg?._open(part, e.currentTarget.dataset.q || ''));
 
     const aiBtn = box.querySelector('[data-link-ai]');
     const found = box.querySelector('[data-link-found]');
