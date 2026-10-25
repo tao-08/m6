@@ -783,22 +783,138 @@ function tab_link_normalize(mixed $url): ?array
     return ['other', $url];
 }
 
+/** Google の検索（Programmable Search Engine の JSON API）が使えるか。config.php の google_cse（api_key と cx）が両方あれば使える */
+function tab_google_enabled(): bool
+{
+    $c = config('google_cse') ?? [];
+    return (string)($c['api_key'] ?? '') !== '' && (string)($c['cx'] ?? '') !== '';
+}
+
 /**
- * 曲名・アーティスト名から、U-FRET・楽器.me・Songsterr・YouTube のページを AI（Claude）のウェブ検索で探す
+ * Google で、あるサイトの中だけを検索する（siteSearch で1サイトに絞る）。1回で無料枠（1日100回）の1回分を使う
+ *   戻り値: [['url' => 'https://…', 'title' => '…'], ...]（Google の順位順）
+ * @throws RuntimeException キーが無い・通信できない・上限に達した
+ */
+function tab_google_search(string $query, string $site, int $num = 5): array
+{
+    $c = config('google_cse') ?? [];
+    if (!tab_google_enabled()) {
+        throw new RuntimeException('config.php に Google 検索の設定（google_cse.api_key / cx）がありません');
+    }
+    $qs = http_build_query(['cx' => (string)$c['cx'], 'q' => $query, 'num' => $num, 'siteSearch' => $site, 'siteSearchFilter' => 'i', 'hl' => 'ja']);
+    $res = album_http('https://www.googleapis.com/customsearch/v1?' . $qs, ['X-Goog-Api-Key: ' . (string)$c['api_key']]); // キーは URL ではなくヘッダーで渡す（ログに残さない）
+    if ($res === null) {
+        throw new RuntimeException('Google に接続できませんでした。時間をおいてもう一度試してください');
+    }
+    if ($res['status'] !== 200 || !is_array($res['json'])) {
+        $reason = $res['json']['error']['message'] ?? ('HTTP ' . $res['status']);
+        throw new RuntimeException('Google を検索できませんでした（' . $reason . '）');
+    }
+    $out = [];
+    foreach ($res['json']['items'] ?? [] as $it) {
+        if (is_array($it) && is_string($it['link'] ?? null)) {
+            $out[] = ['url' => $it['link'], 'title' => (string)($it['title'] ?? '')];
+        }
+    }
+    return $out;
+}
+
+/**
+ * Google の検索で、U-FRET と楽器.me のページを探す（サイトごとに上位3件まで）
+ *   「初心者」「簡単」の版（簡単に弾けるようにアレンジしたもの）は、通常版より後ろに回す。返す前に tab_link_normalize() で URL の形を確かめる
+ *   戻り値は tab_link_ai() と同じ形: [['site' => 'ufret', 'url' => …, 'title' => …], ...]
+ * @throws RuntimeException Google が使えない・失敗した
+ */
+function tab_link_google(string $title, ?string $artist): array
+{
+    $query = trim($title . ' ' . ($artist ?? ''));
+    $out = [];
+    foreach (['ufret' => 'ufret.jp', 'gakki' => 'gakki.me'] as $site => $host) {
+        $found = [];
+        foreach (tab_google_search($query, $host, 6) as $r) {
+            $norm = tab_link_normalize($r['url']);
+            if ($norm === null || $norm[0] !== $site) {
+                continue;
+            }
+            if ($site === 'ufret' && !str_contains($norm[1], '/song.php')) {
+                continue; // アーティストの一覧ページなどは入れない（曲のページだけ）
+            }
+            $t = preg_replace('/[\x00-\x1F\x7F]/u', '', $r['title']);
+            $found[] = ['site' => $site, 'url' => $norm[1], 'title' => mb_substr(trim((string)$t), 0, 100)];
+        }
+        // 簡単版は後ろへ（usort は PHP 8 で安定ソート = 同じ区分の中の Google の順位は変わらない）
+        usort($found, static fn($a, $b) => (int)preg_match('/初心者|簡単/u', $a['title']) <=> (int)preg_match('/初心者|簡単/u', $b['title']));
+        $out = array_merge($out, array_slice($found, 0, 3));
+    }
+    return $out;
+}
+
+/**
+ * U-FRET・楽器.me・Songsterr のページを探す（YouTube は専用の検索）。Google が使えれば U-FRET・楽器.me は Google、Songsterr は AI。
+ *   Google が使えない・失敗したときは、3サイトとも AI に探させる。どちらも使えなければ例外
+ *   戻り値: ['items' => [['site', 'url', 'title'], ...], 'usage' => AI の使用量と実費 or null, 'google' => Google の検索回数]
+ * @throws RuntimeException 検索が設定されていない・両方失敗した
+ */
+function tab_link_find(string $title, ?string $artist): array
+{
+    $items = [];
+    $aiSites = ['ufret', 'gakki', 'songsterr'];
+    $google = 0;
+    $lastError = null;
+    if (tab_google_enabled()) {
+        try {
+            $items = tab_link_google($title, $artist);
+            $google = 2;
+            $aiSites = ['songsterr']; // Google が探したサイトは AI に頼まない（検索の回数・お金を減らす）
+        } catch (RuntimeException $e) {
+            $lastError = $e; // Google がだめでも AI で探す
+            error_log('[link_google] ' . $e->getMessage());
+        }
+    }
+    $usage = null;
+    if (claude_enabled()) {
+        try {
+            $items = array_merge($items, tab_link_ai($title, $artist, $aiSites));
+            $usage = claude_last_usage();
+        } catch (RuntimeException $e) {
+            if (!$items) {
+                throw $e; // 何も見つからなかったときだけ、エラーとして出す
+            }
+        }
+    } elseif (!$items) {
+        throw $lastError ?? new RuntimeException('検索が設定されていません');
+    }
+    $rank = array_flip(['ufret', 'gakki', 'songsterr']);
+    usort($items, static fn($a, $b) => $rank[$a['site']] <=> $rank[$b['site']]); // サイト順（同じサイトの中の順位は変えない）
+    return ['items' => $items, 'usage' => $usage, 'google' => $google];
+}
+
+/**
+ * 曲名・アーティスト名から、U-FRET・楽器.me・Songsterr のページを AI（Claude）のウェブ検索で探す
  *   検索はこの4サイトだけに絞る（allowed_domains）。AI が作った URL を信用しないため、返す前に tab_link_normalize() で形を確かめる
  *   戻り値: [['site' => 'ufret', 'url' => 'https://…', 'title' => '…'], ...]（最大12件。見つからなければ空配列）
  * @throws RuntimeException AI が使えない・失敗した
  */
-function tab_link_ai(string $title, ?string $artist): array
+function tab_link_ai(string $title, ?string $artist, array $sites = ['ufret', 'gakki', 'songsterr']): array
 {
     $model = (string)(config('anthropic')['bpm_model'] ?? 'claude-sonnet-5-5'); // BPM の推定と同じモデル（軽い用途）
+    // サイトごとの探し方（検索はサイトごとに1回。Google の検索が使えるときは、呼ぶ側が U-FRET・楽器.me を外して Songsterr だけ頼む）
+    $how = [
+        'ufret'     => 'U-FRET（ufret.jp。コード譜）を「曲名 アーティスト U-FRET コード」で探す',
+        'gakki'     => '楽器.me（gakki.me。コード譜）を「曲名 アーティスト 楽器.me コード」で探す',
+        'songsterr' => 'Songsterr（songsterr.com。TAB 譜）を「アーティスト 曲名 tab songsterr」（英語表記があれば英語で）で探す',
+    ];
+    $sites = array_values(array_intersect(array_keys($how), $sites));
+    if (!$sites) {
+        return [];
+    }
     $schema = [
         'type' => 'object',
         'properties' => [
             'items' => ['type' => 'array', 'items' => [
                 'type' => 'object',
                 'properties' => [
-                    'site'  => ['type' => 'string', 'enum' => ['ufret', 'gakki', 'songsterr']],
+                    'site'  => ['type' => 'string', 'enum' => $sites],
                     'url'   => ['type' => 'string'],
                     'title' => ['type' => 'string'],
                 ],
@@ -810,12 +926,10 @@ function tab_link_ai(string $title, ?string $artist): array
         'additionalProperties' => false,
     ];
     $system = "あなたはバンド練習用に、曲のコード譜・TAB 譜のページを探す。\n"
-        . "- web_search で、次の3サイトからその曲のページを探す: U-FRET（ufret.jp。コード譜）, 楽器.me（gakki.me。コード譜）, Songsterr（songsterr.com。TAB 譜）。YouTube は別の機能で探すので入れない\n"
+        . "- web_search で、次のサイトからその曲のページを探す。YouTube は別の機能で探すので入れない\n"
         . "- url は検索結果に実際に出てきた、その曲の個別ページの URL だけを書く。URL を推測で作ってはいけない。検索結果ページ・アーティストの一覧ページは入れない\n"
-        . "- 検索はちょうど3回。サイトごとに1回ずつ、次の順で探す（サイト名を検索語に入れて狙い撃ちする）:\n"
-        . "  1回目「曲名 アーティスト U-FRET コード」… U-FRET\n"
-        . "  2回目「曲名 アーティスト 楽器.me コード」… 楽器.me\n"
-        . "  3回目「アーティスト 曲名 tab songsterr」（英語表記があれば英語で）… Songsterr の TAB 譜\n"
+        . '- 検索はちょうど' . count($sites) . "回。サイトごとに1回ずつ、次の順で探す:\n"
+        . implode('', array_map(static fn($i, $s) => '  ' . ($i + 1) . '回目 … ' . $how[$s] . "\n", array_keys($sites), $sites))
         . "- コード譜は通常版を選ぶ。「初心者向け」「簡単コード」「簡単弾き」などの版は、通常版が見つからないときだけ入れる\n"
         . "- 同じ曲名の別の曲（別のアーティスト）を入れない。カバーより原曲を優先する\n"
         . "- 各サイトのコード譜・TAB 譜は1〜2件まで\n"
@@ -824,10 +938,10 @@ function tab_link_ai(string $title, ?string $artist): array
         . "- 見つからなければ items は空の配列にする";
     $label = '曲名: ' . $title . ($artist !== null && trim($artist) !== '' ? "\nアーティスト: " . $artist : '');
     $domains = [];
-    foreach (['ufret', 'gakki', 'songsterr'] as $site) { // YouTube は専用の検索（yt_link_search）があるので AI では探さない
+    foreach ($sites as $site) { // YouTube は専用の検索（yt_link_search）があるので AI では探さない
         $domains = array_merge($domains, array_values(array_filter(TAB_LINK_SITES[$site]['hosts'], static fn($h) => !str_starts_with($h, 'www.') && !str_starts_with($h, 'm.'))));
     }
-    $tools = [['type' => 'web_search_20260209', 'name' => 'web_search', 'max_uses' => 3, 'allowed_domains' => $domains]];
+    $tools = [['type' => 'web_search_20260209', 'name' => 'web_search', 'max_uses' => count($sites), 'allowed_domains' => $domains]];
     $res = claude_json($system, [['type' => 'text', 'text' => $label]], $schema, 8000, 150, $model, $tools);
     // 実費を測る（1曲いくらかかるか）。PHP のエラーログに1行残す。画面にも返す（api_tab_save.php）
     $usage = claude_last_usage();
@@ -839,8 +953,8 @@ function tab_link_ai(string $title, ?string $artist): array
     $seen = [];
     foreach (is_array($res['items'] ?? null) ? $res['items'] : [] as $it) {
         $norm = is_array($it) ? tab_link_normalize($it['url'] ?? null) : null;
-        if ($norm === null || $norm[0] === 'other' || isset($seen[$norm[1]])) {
-            continue; // 4つのサイト以外・形のおかしい URL・重複は捨てる
+        if ($norm === null || !in_array($norm[0], $sites, true) || isset($seen[$norm[1]])) {
+            continue; // 頼んだサイト以外・形のおかしい URL・重複は捨てる
         }
         $seen[$norm[1]] = true;
         $t = is_string($it['title'] ?? null) ? preg_replace('/[\x00-\x1F\x7F]/u', '', $it['title']) : '';

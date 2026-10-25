@@ -342,7 +342,12 @@
       try {
         const json = await post({ action: 'link_search', ...ids });
         // 実費（AI を呼んだときだけ。使い回しは 0円なので出さない）
-        if (json.usage) notify('約' + json.usage.yen + '円（' + json.usage.model.replace('claude-', '') + '・検索' + json.usage.web_search_requests + '回・入力' + json.usage.input_tokens + '/出力' + json.usage.output_tokens + '）');
+        if (json.usage || json.google) {
+          const parts = [];
+          if (json.google) parts.push('Google ' + json.google + '回');
+          if (json.usage) parts.push('AI 約' + json.usage.yen + '円・検索' + json.usage.web_search_requests + '回');
+          notify(parts.join(' / '));
+        }
         found.replaceChildren();
         if (!json.items.length) { notify('見つかりませんでした'); return; }
         json.items.forEach((it) => {

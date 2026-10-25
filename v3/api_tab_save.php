@@ -153,16 +153,18 @@ if (in_array($action, ['link_search', 'link_add', 'yt_link_search'], true)) {
         fail(404, '曲が見つかりません');
     }
     if ($action === 'link_search') {
-        if (!claude_enabled()) {
-            fail(503, 'AI は設定されていません');
+        if (!claude_enabled() && !tab_google_enabled()) {
+            fail(503, '検索は設定されていません');
         }
-        $cacheKey = 'link_ai:' . $key; // AI は1回数円かかるので、同じ曲の結果はセッションに覚えて使い回す（空の結果は覚えない）
+        // U-FRET・楽器.me は Google、Songsterr は AI（Google が無ければ全部 AI）。lib/tabs.php の tab_link_find()
+        $cacheKey = 'link_find:' . $key; // AI・Google は1回ごとにお金・無料枠を使うので、同じ曲の結果はセッションに覚えて使い回す（空の結果は覚えない）
         $usage = null; // 今回 AI を呼んだときの使用量と実費（覚えた結果を使い回したときは null = 0円）
+        $google = 0;   // 今回使った Google の検索回数
         if (!isset($_SESSION['tab_search'][$cacheKey])) {
             session_write_close(); // ウェブ検索で数十秒かかるので、その間セッションを手放す（BPM の AI 推定と同じ）
             try {
-                $items = tab_link_ai($song['title'], $song['artist']);
-                $usage = claude_last_usage();
+                $r = tab_link_find($song['title'], $song['artist']);
+                [$items, $usage, $google] = [$r['items'], $r['usage'], $r['google']];
             } catch (RuntimeException $e) {
                 fail(502, $e->getMessage());
             }
@@ -178,7 +180,7 @@ if (in_array($action, ['link_search', 'link_add', 'yt_link_search'], true)) {
         $st->execute([$key]);
         $have = array_flip($st->fetchAll(PDO::FETCH_COLUMN));
         $items = array_map(static fn($it) => $it + ['added' => isset($have[$it['url']])], $items);
-        echo json_encode(['ok' => true, 'items' => $items, 'usage' => $usage], JSON_UNESCAPED_UNICODE);
+        echo json_encode(['ok' => true, 'items' => $items, 'usage' => $usage, 'google' => $google], JSON_UNESCAPED_UNICODE);
         exit;
     }
     if ($action === 'yt_link_search') {

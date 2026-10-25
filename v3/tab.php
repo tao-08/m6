@@ -213,8 +213,8 @@ $renderNewForm = static function () use ($existingParts): void {
         <?php if ((string)(config('youtube')['api_key'] ?? '') !== ''): ?>
             <button type="button" class="btn btn--sm" data-yts-open title="YouTube を検索"><?= icon('smart_display') ?> 動画</button>
         <?php endif; ?>
-        <?php if (claude_enabled()): ?>
-            <button type="button" class="btn btn--sm" data-link-ai title="U-FRET・楽器.me・Songsterr・YouTube を AI で検索"><?= icon('auto_awesome') ?> 検索</button>
+        <?php if (claude_enabled() || tab_google_enabled()): ?>
+            <button type="button" class="btn btn--sm" data-link-ai title="U-FRET・楽器.me・Songsterr を検索"><?= icon('auto_awesome') ?> 検索</button>
         <?php endif; ?>
         <form class="tab-links__add" data-link-add>
             <input type="url" name="url" required placeholder="https://" aria-label="URL" autocomplete="off">
