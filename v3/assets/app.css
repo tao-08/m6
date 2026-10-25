@@ -684,7 +684,7 @@ td .tag--plan { margin-top: 4px; } /* アーティストの演奏履歴: 日付�
 /* <button> になったので、ボタンの枠線・文字の大きさの初期値を消す */
 .setlist-badge { border: 0; font-family: inherit; cursor: pointer; }
 /* サブスク連携済みの曲が半分未満: くすんだ色（緑と補足の灰色の中間。ライト/ダーク両対応） */
-.setlist-badge.is-dim { color: color-mix(in srgb, var(--ok) 45%, var(--muted)); background: color-mix(in srgb, var(--ok-bg) 40%, var(--surface-2)); }
+.setlist-badge.is-dim { color: color-mix(in srgb, var(--ok) 20%, var(--muted)); background: color-mix(in srgb, var(--ok-bg) 15%, var(--surface-2)); }
 .setlist-badge:focus-visible { outline: 2px solid var(--ok); outline-offset: 2px; }
 /* スマホでは「セットリスト」の文字を隠して緑の丸に ✓ だけ（バンド名の幅を取らないように）。
  *  文字は display: none ではなく画面の外に逃がして、読み上げでは「セットリスト」と読まれるようにする */

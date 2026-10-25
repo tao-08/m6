@@ -966,6 +966,9 @@ function setlist_badge(int $registered, int $planned, int $linked = 0): string
     // サブスク連携（song.track_id）済みの曲が半分未満ならくすんだ色（is-dim）
     $label = 'セットリスト登録済（' . $registered . '曲）';
     $dim = $linked * 2 < $registered ? ' is-dim' : '';
+    if ($dim !== '') {
+        $label .= '・楽曲情報未登録あり';
+    }
     return '<button type="button" class="setlist-badge' . $dim . '" data-setlist-tip="' . h($label) . '" aria-label="' . h($label) . '">'
         . icon('check') . '<span class="setlist-badge__text">セットリスト</span></button>';
 }
