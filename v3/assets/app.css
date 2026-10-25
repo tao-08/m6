@@ -2781,3 +2781,5 @@ button.ttb-m { cursor: pointer; text-decoration: underline dotted; }
 /* 楽器ラベルの名前ポップアップ（app.js） */
 .part-tip { position: fixed; z-index: 100; padding: 3px 8px; border-radius: 6px; background: var(--text); color: var(--surface); font: 600 12px/1.5 var(--font); pointer-events: none; white-space: nowrap; }
 .part-tip[hidden] { display: none; }
+
+/* deploy cache bust */
