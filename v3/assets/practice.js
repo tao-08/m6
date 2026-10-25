@@ -135,7 +135,12 @@
       return hit.length === 1 ? hit[0] : 'etc'; // 判別できなければ「その他」
     };
 
+    // DB に無い曲（未ログイン）は登録せず、動画IDのまま再生画面へ（設定は端末に保存。DB に同じ動画があれば tab.php が ?link= へ移す）
+    const VIDEO_ID = /(?:[?&]v=|youtu\.be\/|shorts\/|embed\/|live\/)([\w-]{11})(?![\w-])/;
+    const goFree = (id, title) => { location.href = 'tab?yt=' + encodeURIComponent(id) + (title ? '&t=' + encodeURIComponent(title.slice(0, 100)) : ''); };
+
     const go = async (v, btn) => {
+      if (ctx.free) { goFree(v.video_id, v.title); return; }
       const known = ctx.urls[v.url];
       if (known) { location.href = 'tab?link=' + encodeURIComponent(known); return; }
       btn.disabled = true;
@@ -154,8 +159,9 @@
       // 検索中は前の結果を薄くして残す（結果が来たら1件ずつずらして出す。CSS の .is-loading と --i）
       if (list.querySelector('.yts__item')) list.classList.add('is-loading'); else setMsg('…');
       try {
-        const json = await post({ action: 'yt_link_search', song_key: ctx.key, part: '', q: qInput.value.trim(),
-          ...(ctx.songId ? { song_id: ctx.songId } : {}) });
+        if (ctx.free && !qInput.value.trim()) { list.classList.remove('is-loading'); setMsg('…'); return; }
+        const json = await post(ctx.free ? { action: 'yt_free_search', q: qInput.value.trim() }
+          : { action: 'yt_link_search', song_key: ctx.key, part: '', q: qInput.value.trim(), ...(ctx.songId ? { song_id: ctx.songId } : {}) });
         if (!qInput.value.trim()) qInput.value = json.q;
         list.classList.remove('is-loading');
         list.replaceChildren();
@@ -191,7 +197,7 @@
           btn.setAttribute('aria-label', '練習プレイヤー');
           btn.appendChild(icon('slow_motion_video'));
           const inst = detectInst(v.title); // 判別できた楽器を見せる（登録済みでも。etc は出さない）
-          if (inst && inst !== 'etc') { btn.append(' ' + inst); btn.title = ctx.urls[v.url] ? inst : inst + ' に追加して練習プレイヤー'; }
+          if (inst && inst !== 'etc') { btn.append(' ' + inst); btn.title = ctx.free || ctx.urls[v.url] ? inst : inst + ' に追加して練習プレイヤー'; }
           btn.addEventListener('click', () => go(v, btn));
           li.append(thumb, text, btn);
           list.appendChild(li);
@@ -205,7 +211,7 @@
     const open = (b) => {
       let urls = {};
       try { urls = JSON.parse(b.dataset.urls || '{}') || {}; } catch (err) { /* 空のまま */ }
-      ctx = { key: b.dataset.key, songId: b.dataset.songId ? Number(b.dataset.songId) : null, urls };
+      ctx = { free: 'free' in b.dataset, key: b.dataset.key, songId: b.dataset.songId ? Number(b.dataset.songId) : null, urls };
       qInput.value = b.dataset.q || '';
       dlg.showModal();
       search();
@@ -221,6 +227,12 @@
       const btn = paste.querySelector('button');
       btn.disabled = true;
       try {
+        if (ctx.free) {
+          const m = VIDEO_ID.exec(url);
+          if (!m) throw new Error('YouTube の動画の URL を貼り付けてください');
+          goFree(m[1], '');
+          return;
+        }
         const json = await post({ action: 'link_add', song_key: ctx.key, part: '', url, label: '', ...(ctx.songId ? { song_id: ctx.songId } : {}) });
         if (json.link.site !== 'youtube') throw new Error('YouTube の動画の URL を貼り付けてください');
         location.href = 'tab?link=' + encodeURIComponent(json.link.id);

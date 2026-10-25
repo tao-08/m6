@@ -120,6 +120,10 @@ a.tab-parts__item:hover { border-color: var(--accent); }
 .ytp.is-full .ytp__dock > .ytp__bubbles:not(.ytp__bubbles--up) { display: none; }
 .ytp.is-full .ytp__dock > .ytp__time { order: 1; color: #fff; }
 .ytp.is-full .ytp__dock .ytp__label, .ytp.is-full .ytp__dock .ytp__sec, .ytp.is-full .ytp__dock .icon-btn, .ytp.is-full .ytp__dock .tab-chip { color: #fff; }
+.ytp.is-full .ytp__dock .icon-btn, .ytp.is-full .ytp__dock .tab-chip { background: rgb(0 0 0 / .55); border-color: rgb(255 255 255 / .35); }
+.ytp.is-full .ytp__dock .icon-btn .icon, .ytp.is-full .ytp__dock .tab-chip .icon { color: #fff; }
+.ytp.is-full .ytp__dock .tab-chip.is-active, .ytp.is-full .ytp__dock .tab-chip[aria-pressed="true"] { background: var(--accent); }
+.ytp.is-full .ytp__dock .ytp__sec input { background: rgb(0 0 0 / .55); color: #fff; border-color: rgb(255 255 255 / .35); }
 .ytp.is-full .ytp__play { min-height: 40px; }
 @media (max-height: 480px) { .ytp.is-full .ytp__dock > .ytp__row { flex-wrap: nowrap; gap: 2px; } .ytp.is-full .ytp__dock .ytp__label { display: none; } }
 body.ytp-lock { overflow: hidden; }

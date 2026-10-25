@@ -408,17 +408,39 @@ foreach ($partCards as $pc) {
 // =====================================================================
 //  曲に登録した YouTube のリンク（song_link）を、AB リピート・マーク・曲構成・◯秒戻し・速度変更つきで再生する。
 //  設定は人ごと（song_link_practice）。動きは assets/ytplayer.js、保存は api_tab_save.php の link_practice
-if (isset($_GET['link'])) {
-    try {
-        $st = $pdo->prepare('SELECT link_id, song_key, url, label, title, artist_name FROM song_link WHERE link_id = ? AND site = ?');
-        $st->execute([(int)$_GET['link'], 'youtube']);
-        $link = $st->fetch();
-    } catch (PDOException) {
-        $link = false;
+//  ?yt=動画ID … DB に無い曲の動画（未ログイン専用。DB には何も書かず、設定は全部端末に持つ）。DB に同じ動画があれば ?link= へ移す（共通マーカーを DB で共有するため）
+$freeVideo = isset($_GET['yt']) && is_string($_GET['yt']) && youtube_video_id_valid($_GET['yt']) ? $_GET['yt'] : null;
+if ($freeVideo !== null) {
+    if ($user !== null) { // ログイン中は DB に登録して使う
+        header('Location: practice');
+        exit;
     }
-    $videoId = $link ? youtube_video_id($link['url']) : null;
-    if (!$link || $videoId === null) {
-        error_page(404, 'リンクが見つかりません');
+    try {
+        $st = $pdo->prepare('SELECT MIN(link_id) FROM song_link WHERE site = ? AND url = ?');
+        $st->execute(['youtube', youtube_watch_url($freeVideo)]);
+        if (($known = (int)$st->fetchColumn()) > 0) {
+            header('Location: tab?link=' . $known);
+            exit;
+        }
+    } catch (PDOException) { /* 調べられなければ DB に無いものとして続ける */ }
+}
+if (isset($_GET['link']) || $freeVideo !== null) {
+    if ($freeVideo !== null) {
+        $title = is_string($_GET['t'] ?? null) ? mb_substr(trim($_GET['t']), 0, 100) : '';
+        $link = ['link_id' => 0, 'song_key' => '', 'url' => youtube_watch_url($freeVideo), 'label' => '', 'title' => $title !== '' ? $title : 'YouTube', 'artist_name' => null];
+        $videoId = $freeVideo;
+    } else {
+        try {
+            $st = $pdo->prepare('SELECT link_id, song_key, url, label, title, artist_name FROM song_link WHERE link_id = ? AND site = ?');
+            $st->execute([(int)$_GET['link'], 'youtube']);
+            $link = $st->fetch();
+        } catch (PDOException) {
+            $link = false;
+        }
+        $videoId = $link ? youtube_video_id($link['url']) : null;
+        if (!$link || $videoId === null) {
+            error_page(404, 'リンクが見つかりません');
+        }
     }
     $saved = false;
     if ($user !== null) {
@@ -431,14 +453,19 @@ if (isset($_GET['link'])) {
     //   cached = 控えがある / チャプターが無い動画も [] で控える（毎回 API を叩かない）。API が失敗したら控えず、次に開いたときにもう一度
     $chapters = null;
     $linkId = (int)$link['link_id'];
-    try { // テーブルはマイグレーション 079。まだなら毎回 API で取る
+    if ($freeVideo !== null) { // DB に控えない代わりに、セッションに覚えて API を節約する
+        $chapters = $_SESSION['yt_chapters'][$freeVideo] ?? null;
+        if ($chapters === null && ($chapters = youtube_chapters($freeVideo)) !== null) {
+            $_SESSION['yt_chapters'][$freeVideo] = $chapters;
+        }
+    } else try { // テーブルはマイグレーション 079。まだなら毎回 API で取る
         $st = $pdo->prepare('SELECT data FROM song_link_chapter WHERE link_id = ?');
         $st->execute([$linkId]);
         $cached = $st->fetchColumn();
         $chapters = $cached !== false ? (tab_sanitize_practice(['m' => json_decode((string)$cached, true)])['m'] ?? []) : null;
     } catch (PDOException) {
     }
-    if ($chapters === null && ($user === null || empty($practice['ch']))) {
+    if ($freeVideo === null && $chapters === null && ($user === null || empty($practice['ch']))) {
         $chapters = youtube_chapters($videoId);
         if ($chapters !== null) {
             try {
@@ -468,22 +495,28 @@ if (isset($_GET['link'])) {
     }
     // 共通マーカー（曲構成のラベル付き）。行が無い（null）間は、人ごとのマーカーをそのまま使う。テーブルはマイグレーション 080
     $shared = null;
-    try {
+    if ($freeVideo === null) try {
         $st = $pdo->prepare('SELECT data FROM song_link_shared_mark WHERE link_id = ?');
         $st->execute([$linkId]);
         $row = $st->fetchColumn();
         $shared = $row === false ? null : (tab_sanitize_practice(['m' => json_decode((string)$row, true)])['m'] ?? []);
     } catch (PDOException) {
     }
-    $ytData = json_encode(['link_id' => (int)$link['link_id'], 'video' => $videoId, 'practice' => $practice, 'guest' => $user === null, 'shared' => $shared] +($user === null && $chapters ? ['chapters' => $chapters] : []),
+    $ytData = json_encode(['link_id' => (int)$link['link_id'], 'video' => $videoId, 'practice' => $practice, 'guest' => $user === null, 'shared' => $shared] + ($freeVideo !== null ? ['local' => true, 'link_id' => null] : []) + ($user === null && $chapters ? ['chapters' => $chapters] : []),
         JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR);
     $listUrl = 'tab?key=' . rawurlencode($link['song_key']);
 
-    $GLOBALS['page_manifest'] = 'manifest_link.php?id=' . (int)$link['link_id']; // ホーム画面に追加すると、この練習画面が直接開く
+    if ($freeVideo === null) {
+        $GLOBALS['page_manifest'] = 'manifest_link.php?id=' . (int)$link['link_id']; // ホーム画面に追加すると、この練習画面が直接開く
+    }
     render_header($link['title'] . ' 練習', 'lives');
     ?>
 <link rel="stylesheet" href="<?= asset_url('assets/tab.css') ?>">
+<?php if ($freeVideo !== null): ?>
+<nav class="crumbs"><a href="practice">練習プレイヤー</a></nav>
+<?php else: ?>
 <nav class="crumbs"><a href="songs?at=<?= rawurlencode((string)$link['song_key']) ?>">楽曲データベース</a><span>/</span><a href="<?= h($listUrl) ?>"><?= h($link['title']) ?></a></nav>
+<?php endif; ?>
 <h1 class="display display--sm"><?= h($link['label'] ?: $link['title']) ?></h1>
 <script type="application/json" id="yt-data"><?= $ytData ?></script>
 <section class="card ytp" data-ytp>

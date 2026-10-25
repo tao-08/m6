@@ -14,6 +14,7 @@
  */
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
+require_once __DIR__ . '/lib/repository.php'; // setlist_hidden_sql
 require_once __DIR__ . '/lib/tabs.php';
 $user = current_user(); // 未ログインでも検索と再生はできる。ピン留め・登録・動画検索・練習中・ライブはログイン者だけ
 // TAB 譜は管理人だけ（tab_allowed）
@@ -127,7 +128,7 @@ if ($user !== null && $q === '' && $onlyKey === null) {
     $st->execute([(int)$user['member_id']]);
     if ($live = $st->fetch()) {
         $liveName = (string)$live['name'];
-        $st = $pdo->prepare('SELECT DISTINCT s.song_id, s.title, s.band_id, s.track_source, s.track_id, COALESCE(s.artist_id, b.artist_id) AS artist_id,
+        $st = $pdo->prepare('SELECT DISTINCT s.song_id, sp.instrument_id, s.title, s.band_id, s.track_source, s.track_id, COALESCE(s.artist_id, b.artist_id) AS artist_id,
                 a.name AS artist_name, t.title AS track_title, t.artist_name AS track_artist
             FROM song s
             JOIN band b ON b.band_id = s.band_id
@@ -142,16 +143,25 @@ if ($user !== null && $q === '' && $onlyKey === null) {
             $linked = $r['track_source'] !== null;
             $key = tab_song_key($r['track_source'], $r['track_id'], $r['artist_id'] === null ? null : (int)$r['artist_id'],
                 (int)$r['band_id'], $r['title'], $r['artist_name']);
-            $liveSongs[$key] ??= ['key' => $key, 'link_id' => null,
+            $liveSongs[$key] ??= ['key' => $key, 'link_id' => null, 'inst' => [],
                 'title' => (string)($linked ? $r['track_title'] : $r['title']), 'artist' => (string)($linked ? $r['track_artist'] : $r['artist_name'])];
+            $liveSongs[$key]['inst'][(int)$r['instrument_id']] = true; // 自分がその曲で担当する楽器
         }
         if ($liveSongs) {
+            // 動画は、自分の担当楽器のパート（song_part.instrument_id）のものを先に。無ければ最初に登録された動画
             $keys = array_keys($liveSongs);
-            $st = $pdo->prepare('SELECT song_key, MIN(link_id) FROM song_link WHERE site = \'youtube\' AND song_key IN ('
-                . implode(',', array_fill(0, count($keys), '?')) . ') GROUP BY song_key');
+            $st = $pdo->prepare('SELECT l.song_key, l.link_id, p.instrument_id FROM song_link l
+                LEFT JOIN song_part p ON p.song_key = l.song_key AND p.part = l.part
+                WHERE l.site = \'youtube\' AND l.song_key IN (' . implode(',', array_fill(0, count($keys), '?')) . ') ORDER BY l.link_id');
             $st->execute($keys);
-            foreach ($st->fetchAll(PDO::FETCH_NUM) as [$k, $id]) {
-                $liveSongs[$k]['link_id'] = (int)$id;
+            foreach ($st as $r) {
+                $s = &$liveSongs[$r['song_key']];
+                $own = $r['instrument_id'] !== null && isset($s['inst'][(int)$r['instrument_id']]);
+                if ($s['link_id'] === null || ($own && empty($s['own']))) {
+                    $s['link_id'] = (int)$r['link_id'];
+                    $s['own'] = $own;
+                }
+                unset($s);
             }
         }
     }
@@ -290,6 +300,10 @@ render_header('練習プレイヤー', 'tools');
         </ul>
     <?php elseif ($onlyKey !== null): ?>
         <div class="empty card"><p class="empty__title">曲が見つかりません</p></div>
+    <?php endif; ?>
+
+    <?php if ($onlyKey === null && $user === null && $q !== ''): // 未ログインは DB に登録せず、検索語のまま動画を探して練習する（設定は端末に保存） ?>
+        <button type="button" class="btn" data-yts-open data-free data-q="<?= h($q) ?>" title="YouTube で探す"><?= icon('smart_display') ?> YouTube で探す</button>
     <?php endif; ?>
 
     <?php if ($onlyKey === null && $user !== null): // DB に無ければ、楽曲情報（Spotify / iTunes）から登録する ?>

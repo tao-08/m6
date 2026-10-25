@@ -23,7 +23,7 @@
   const $ = (sel) => root.querySelector(sel);
 
   // 未ログインの設定は端末（localStorage）に持つ。形は読むときに確かめる
-  const LS_KEY = 'yt_practice_' + D.link_id;
+  const LS_KEY = D.local ? 'yt_practice_v_' + D.video : 'yt_practice_' + D.link_id; // D.local = DB に無い動画（動画ID で持つ）
   if (D.guest) {
     try {
       const s = JSON.parse(localStorage.getItem(LS_KEY) || 'null');
@@ -46,7 +46,7 @@
   }
   // 曲構成のラベル（イントロ・サビ…）のマーカーは動画ごとに全員共通（song_link_shared_mark）。それ以外は人ごと。
   //   D.shared が null の間（まだ誰も共通に保存していない）は、人ごとのマーカーに入っているものをそのまま使う
-  const SHARED = new Set([...root.querySelectorAll('[data-ytp-sec]')].map((b) => b.dataset.ytpSec));
+  const SHARED = D.local ? new Set() : new Set([...root.querySelectorAll('[data-ytp-sec]')].map((b) => b.dataset.ytpSec)); // DB に無い動画は共通マーカーも端末に持つ（SHARED を空にして全部人ごと扱い）
   if (Array.isArray(D.shared)) {
     P.m = [...P.m.filter((m) => !SHARED.has(m.l)), ...D.shared.filter((x) => SHARED.has(x.l)).map((x) => ({ t: x.t, e: null, l: x.l }))].sort((a, b) => a.t - b.t);
   }

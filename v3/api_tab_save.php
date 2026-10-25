@@ -64,7 +64,7 @@ if (!is_array($body)) {
 $action = $body['action'] ?? '';
 // 練習プレイヤー（practice.php・tab?link=）に要る操作はログイン者なら誰でも。それ以外（TAB 譜の編集・リンクの削除や移動など）は管理人だけ
 if ($user === null) { // 未ログインは動画の検索と登録だけ（1時間あたりの回数制限つき。設定の保存は端末に持つ）
-    if (!in_array($action, ['yt_link_search', 'link_add', 'link_shared'], true)) {
+    if (!in_array($action, ['yt_link_search', 'yt_free_search', 'link_add', 'link_shared'], true)) {
         fail(401, 'ログインしてください');
     }
     if (!guest_take(['link_add' => '#g_link', 'link_shared' => '#g_shared'][$action] ?? '#g_yts', ['link_add' => 20, 'link_shared' => 120][$action] ?? 30)) {
@@ -74,7 +74,7 @@ if ($user === null) { // 未ログインは動画の検索と登録だけ（1時
     fail(403, '管理人のみ利用できます'); // lib/tabs.php の tab_allowed
 }
 $tabId = tab_int($body['tab_id'] ?? null) ?? 0;
-if ($tabId <= 0 && !in_array($action, ['restore', 'song_memo', 'link_search', 'yt_link_search', 'link_add', 'link_delete', 'link_move', 'link_practice', 'link_shared', 'part_add', 'part_delete'], true)) { // 復元は rev_id、曲のメモ・リンクは song_key / link_id で指定する
+if ($tabId <= 0 && !in_array($action, ['restore', 'song_memo', 'link_search', 'yt_link_search', 'yt_free_search', 'link_add', 'link_delete', 'link_move', 'link_practice', 'link_shared', 'part_add', 'part_delete'], true)) { // 復元は rev_id、曲のメモ・リンクは song_key / link_id で指定する
     fail(400, 'TAB の指定がおかしいです');
 }
 $userId = $user === null ? null : (int)$user['user_id']; // 未ログインの登録は作成者なし（NULL）
@@ -102,6 +102,31 @@ function resolve_part(PDO $pdo, string $songKey, mixed $raw): string
         fail(404, 'パートが見つかりません');
     }
     return $found['part'];
+}
+
+if ($action === 'yt_free_search') {
+    // DB に無い曲の動画検索（未ログイン用。曲に紐付けない = DB に何も書かない）。検索語は必須
+    $q = is_string($body['q'] ?? null) ? trim($body['q']) : '';
+    if ($q === '' || mb_strlen($q) > 100 || preg_match('/[\x00-\x1F\x7F]/u', $q)) {
+        fail(400, '検索語は1〜100文字です');
+    }
+    $cacheKey = 'yt_free:' . $q; // yt_link_search と同じ理由で、同じ検索はセッションに覚える
+    if (!isset($_SESSION['tab_search'][$cacheKey])) {
+        try {
+            $found = youtube_search($q, 10);
+        } catch (RuntimeException $e) {
+            fail(502, $e->getMessage());
+        }
+        if ($found) {
+            $_SESSION['tab_search'][$cacheKey] = $found;
+        }
+    } else {
+        $found = $_SESSION['tab_search'][$cacheKey];
+    }
+    $items = array_map(static fn($v) => ['video_id' => $v['video_id'], 'url' => youtube_watch_url($v['video_id']), 'title' => $v['title'],
+        'channel' => $v['channel'], 'added' => false], $found);
+    echo json_encode(['ok' => true, 'q' => $q, 'items' => $items], JSON_UNESCAPED_UNICODE);
+    exit;
 }
 
 if ($action === 'delete') {
