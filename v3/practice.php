@@ -58,11 +58,13 @@ if ($q !== '' || $onlyKey !== null) {
         $songs = isset($songs[$onlyKey]) ? [$onlyKey => $songs[$onlyKey]] : [];
     } else {
         // 空白で区切った語が全部、曲名かアーティスト名のどこかに入っている曲
-        $words = preg_split('/\s+/u', $q, -1, PREG_SPLIT_NO_EMPTY);
-        $songs = array_filter($songs, static function (array $s) use ($words): bool {
-            $hay = $s['title'] . ' ' . $s['artist'];
+        //   ひらがな・カタカナ・半角カナ・全角英数・大文字小文字は区別しない（mb_convert_kana: K 半角カナ→全角 / V 濁点を結合 / a 全角英数→半角 / c カタカナ→ひらがな）
+        $fold = static fn(string $t): string => mb_strtolower(mb_convert_kana(mb_convert_kana($t, 'KVa'), 'c'));
+        $words = array_map($fold, preg_split('/\s+/u', $q, -1, PREG_SPLIT_NO_EMPTY));
+        $songs = array_filter($songs, static function (array $s) use ($words, $fold): bool {
+            $hay = $fold($s['title'] . ' ' . $s['artist']);
             foreach ($words as $w) {
-                if (mb_stripos($hay, $w) === false) {
+                if (mb_strpos($hay, $w) === false) {
                     return false;
                 }
             }
