@@ -165,7 +165,8 @@ if (in_array($action, ['yt_search', 'bpm_search', 'bpm_ai'], true)) {
     if (!$song) {
         fail(404, 'TAB が見つかりません');
     }
-    $cacheKey = $action . ':' . $tabId;
+    // 'bpm_ai' の「見つかりませんでした」が古い版（ウェブ検索なし）のまま覚えられていたので、キーを変えて捨てる。以後は空の結果を覚えない（下）
+    $cacheKey = ($action === 'bpm_ai' ? 'bpm_ai2' : $action) . ':' . $tabId;
     if (!isset($_SESSION['tab_search'][$cacheKey])) {
         // AI の推定は十数秒かかる（ウェブ検索）。そのあいだセッションを掴んだままだと、同じ人の他のリクエスト（練習マーカーの自動保存など）が待たされるので、先に手放す
         session_write_close();
@@ -179,9 +180,13 @@ if (in_array($action, ['yt_search', 'bpm_search', 'bpm_ai'], true)) {
             fail(502, $e->getMessage());
         }
         session_start(); // 結果を覚えるために開き直す（$_SESSION は読み直される）
-        $_SESSION['tab_search'][$cacheKey] = $items;
+        if ($items) { // 空（見つからなかった）は覚えない: 覚えると、あとで設定や検索が良くなっても、ずっと「見つかりません」になる
+            $_SESSION['tab_search'][$cacheKey] = $items;
+        }
+    } else {
+        $items = $_SESSION['tab_search'][$cacheKey];
     }
-    echo json_encode(['ok' => true, 'items' => $_SESSION['tab_search'][$cacheKey]], JSON_UNESCAPED_UNICODE);
+    echo json_encode(['ok' => true, 'items' => $items], JSON_UNESCAPED_UNICODE);
     exit;
 }
 
