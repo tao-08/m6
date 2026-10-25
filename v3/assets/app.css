@@ -1735,8 +1735,9 @@ a.album__title:hover { text-decoration: underline; }
 [data-album-open] { cursor: pointer; }
 /* アルバムのモーダル（partials/album_modal.php）: 暗転した背景に アルバム名・発売年 → アプリ・検索・閉じる */
 .album-modal { position: fixed; inset: 0; margin: auto; width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 32px); padding: 16px;
-  overflow: visible; border: 0; background: transparent; color: #fff; text-align: center; }
-.album-modal[open] { display: grid; justify-items: center; gap: 6px; }
+  overflow: visible; border: 0; background: transparent; color: #fff; text-align: center;
+  justify-items: center; gap: 6px; } /* 閉じる動きの間は [open] が外れているので、中央揃えは [open] でなく常時の指定に（でないとジャケットが左に寄る） */
+.album-modal[open] { display: grid; }
 .album-modal::backdrop { background: rgba(0, 0, 0, .8); }
 .album-modal__art { width: min(520px, calc(100vw - 64px), calc(100vh - 220px)); aspect-ratio: 1; border-radius: 12px; object-fit: cover; box-shadow: 0 8px 32px rgba(0, 0, 0, .5); margin-bottom: 10px; }
 .album-modal__name { font-size: 20px; line-height: 1.35; overflow-wrap: anywhere; }

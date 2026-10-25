@@ -97,6 +97,7 @@
       const play = li.querySelector('[data-mv-play]');
       play.dataset.mvPlay = v.video_id;
       play.title = v.title;
+      li.querySelector('.songs-mv__title').textContent = v.title;
       play.querySelector('img').src = 'https://i.ytimg.com/vi/' + encodeURIComponent(v.video_id) + '/mqdefault.jpg';
       list.replaceChildren(li);
       bindItem(li);

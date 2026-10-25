@@ -427,6 +427,7 @@ function songs_mv_item(string $videoId, string $label, string $linkId): string
     return '<li class="songs-mv__item" data-link-id="' . h($linkId) . '">'
         . '<button type="button" class="yts__thumb songs-mv__thumb" data-mv-play="' . $id . '" aria-label="再生" title="' . h($label !== '' ? $label : '再生') . '">'
         . '<img src="https://i.ytimg.com/vi/' . $id . '/mqdefault.jpg" alt="" loading="lazy">' . icon('play_circle') . '</button>'
+        . '<span class="songs-mv__title muted small">' . h($label) . '</span>'
         . '<button type="button" class="icon-btn icon-btn--sm songs-mv__edit" data-mv-open aria-label="動画を選択" title="動画を選択">' . icon('edit') . '</button>'
         . '<button type="button" class="icon-btn icon-btn--sm" data-mv-del aria-label="削除" title="削除">' . icon('delete') . '</button>'
         . '</li>';
