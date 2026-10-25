@@ -271,7 +271,7 @@ html.is-typing .sheet-preview { top: 8px; bottom: calc(var(--kb, 0px) + 64px); }
   /* 部品を選んだときの設定パネル（曲の要望欄は、開いたときだけ JS が is-entering を付ける） */
   .stage-panel:not([hidden]) { animation: soft-in .2s ease-out; }
   /* プレビュー: 下のボタンの方から広がって出る */
-  .sheet-preview:not([hidden]) { animation: preview-in .22s cubic-bezier(.2, .8, .2, 1); transform-origin: right bottom; }
+  .sheet-preview:not([hidden]) { animation: preview-in .2s var(--ease-out); transform-origin: right bottom; }
   @keyframes preview-in { from { opacity: 0; transform: scale(.96) translateY(8px); } }
   /* 描画モードの枠は、ふわっと色が付く */
   .stage { transition: outline-color .2s ease; }

@@ -9,14 +9,14 @@
 .prac-suggest__item > .icon { color: var(--muted); font-size: 20px; }
 .prac-suggest__item--link > .icon { color: var(--accent, currentColor); }
 /* 開くとき: 箱が上からふわっと / 候補が入れ替わるとき: 1件ずつ少しずらして出る（--i は JS が付ける順番） */
-.prac-suggest:not([hidden]) { animation: prac-suggest-open .18s ease-out; transform-origin: top; }
-.prac-suggest__item { animation: prac-suggest-item .22s ease-out both; animation-delay: calc(var(--i, 0) * 25ms); transition: background .12s; }
+.prac-suggest:not([hidden]) { animation: prac-suggest-open .2s ease-out; transform-origin: top; }
+.prac-suggest__item { animation: prac-suggest-item .2s ease-out both; animation-delay: calc(var(--i, 0) * 25ms); transition: background .12s; }
 @keyframes prac-suggest-open { from { opacity: 0; transform: translateY(-6px) scaleY(.96); } to { opacity: 1; transform: none; } }
 @keyframes prac-suggest-item { from { opacity: 0; transform: translateX(-6px); } to { opacity: 1; transform: none; } }
 /* 動画検索の結果: 検索中は前の結果を薄く、結果が来たら1件ずつ下からずらして出す */
 .yts__list { transition: opacity .2s; }
 .yts__list.is-loading { opacity: .35; pointer-events: none; }
-.yts__item { animation: prac-yts-item .28s ease-out both; animation-delay: calc(var(--i, 0) * 40ms); }
+.yts__item { animation: prac-yts-item .3s ease-out both; animation-delay: calc(var(--i, 0) * 40ms); }
 @keyframes prac-yts-item { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .prac-suggest:not([hidden]), .prac-suggest__item, .yts__item { animation: none; } .yts__list { transition: none; } }
 .prac-list { list-style: none; margin: 0 0 16px; padding: 0; display: grid; gap: 8px; }
@@ -54,8 +54,8 @@
 .prac-row__x { position: absolute; top: 50%; right: 6px; transform: translateY(-50%); }
 
 /* 展開: 一覧が上からふわっと、曲が1件ずつ少しずらして出る（--i は practice.php が付ける順番） */
-.prac-live[open] > .prac-list { animation: prac-live-open .22s ease-out; transform-origin: top; }
-.prac-live[open] > .prac-list > li { animation: prac-live-item .26s ease-out both; animation-delay: calc(var(--i, 0) * 30ms); }
+.prac-live[open] > .prac-list { animation: prac-live-open .2s ease-out; transform-origin: top; }
+.prac-live[open] > .prac-list > li { animation: prac-live-item .25s ease-out both; animation-delay: calc(var(--i, 0) * 30ms); }
 @keyframes prac-live-open { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
 @keyframes prac-live-item { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .prac-live[open] > .prac-list, .prac-live[open] > .prac-list > li { animation: none; } }

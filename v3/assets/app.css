@@ -22,6 +22,7 @@
 
 /* ===== 1. 色・フォントの変数 ===== */
 :root {
+  --ease-out: cubic-bezier(.2, .8, .2, 1);  /* 動きの共通イージング（出る・動くときはこれ）。時間は .15s（小）/ .2s（標準）/ .3s（大） */
   --bg: #f6f5f1;            /* ページの背景（真っ白より少し温かい白） */
   --surface: #ffffff;       /* カードの背景 */
   --surface-2: #f1efea;     /* 少し沈んだ面（表の見出し、チップなど） */
@@ -312,7 +313,7 @@ body:has([data-tutorial-auto]) .toasts { display: none; }
 .th-inst .inst-filter__btn { padding: 0 4px; min-height: 0; height: 24px; }
 .inst-filter__menu { position: fixed; z-index: 50; display: grid; grid-template-columns: repeat(var(--cols, 4), auto); justify-items: center; align-items: center; gap: 4px;
   padding: 6px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 4px 12px rgb(0 0 0 / .15);
-  transform-origin: top left; animation: inst-menu-in .16s ease-out; }
+  transform-origin: top left; animation: inst-menu-in .15s ease-out; }
 .inst-filter__menu[hidden] { display: none; }
 .inst-filter__group { display: contents; } /* 楽器ごとに1行（単体・兼任・All）。中のボタンは .inst-filter__menu の列に並ぶ */
 .inst-filter__group > * { grid-row: var(--row); } /* 楽器ごとに決まった行に置く */
@@ -362,7 +363,7 @@ body:has([data-tutorial-auto]) .toasts { display: none; }
 .slot-menu { position: fixed; z-index: 1000; overflow-y: auto; overscroll-behavior: contain; padding: 6px;
   display: flex; flex-direction: column; gap: 2px; max-height: min(60vh, 340px);
   background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, .18); animation: slot-menu-in .14s ease-out; }
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .18); animation: slot-menu-in .15s ease-out; }
 @keyframes slot-menu-in { from { opacity: 0; transform: translateY(-4px); } }
 /* 1行ずつ大きめ・中央揃え。選択中はアクセント色の淡い背景＋太字、指を乗せた行は薄いグレー */
 .slot-menu__item { all: unset; box-sizing: border-box; min-height: 40px; padding: 0 20px; border-radius: 8px; cursor: pointer;
@@ -391,7 +392,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .year { margin-bottom: 36px; }
 .year__title { font-size: 28px; font-weight: 900; letter-spacing: -.03em; margin-bottom: 14px; display: flex; align-items: baseline; gap: 4px; }
 .year__title small { font-size: 14px; color: var(--muted); font-weight: 700; }
-.live-card { position: relative; display: flex; flex-direction: column; gap: 14px; transition: transform .18s ease, border-color .18s ease; }
+.live-card { position: relative; display: flex; flex-direction: column; gap: 14px; transition: transform .2s ease, border-color .2s ease; }
 /* ライブ名のリンクをカード全体に広げる（カードのどこを押してもライブページへ） */
 .live-card__link { color: inherit; }
 .live-card__link::after { content: ""; position: absolute; inset: 0; border-radius: inherit; }
@@ -412,7 +413,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .day-no { font-weight: 800; font-size: 12px; color: var(--accent); }
 .live-card__foot { margin: auto 0 0; padding-top: 12px; border-top: 1px solid var(--border); font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 4px; }
 .live-card__foot strong { color: var(--text); font-size: 16px; }
-.arrow { margin-left: auto; transition: transform .18s ease; }
+.arrow { margin-left: auto; transition: transform .2s ease; }
 .live-card:hover .arrow { transform: translateX(4px); color: var(--accent); }
 
 /* ===== 6-2. ライブ詳細 ===== */
@@ -816,14 +817,14 @@ input[type="checkbox"], .field input[type="radio"] { accent-color: var(--accent)
 .live-pick__btn .icon { transition: transform .2s ease; }
 .live-pick__btn[aria-expanded="true"] .icon { transform: rotate(180deg); }
 .live-pick__btn [data-live-pick-text], .live-pick__btn > span:first-child { transition: color .2s ease; }
-.live-pop { animation: live-pop-in .16s ease-out; transform-origin: top; }
+.live-pop { animation: live-pop-in .15s ease-out; transform-origin: top; }
 @keyframes live-pop-in { from { opacity: 0; transform: translateY(-4px) scaleY(.97); } to { opacity: 1; transform: none; } }
 .live-pop__item { transition: background-color .12s ease; }
 [data-merge] > .live-pick:not([hidden]), [data-live-name]:not([hidden]) { animation: soft-in .2s ease-out; }
 .merge-note:not(:empty), [data-exists-flash]:not([hidden]) { animation: soft-in .25s ease-out; }
 @keyframes soft-in { from { opacity: 0; transform: translateY(-2px); } to { opacity: 1; transform: none; } }
 /* 右下の「やり直す / 登録する」のバー */
-.sticky-actions { animation: bar-in .35s cubic-bezier(.2, .8, .2, 1); }
+.sticky-actions { animation: bar-in .35s var(--ease-out); }
 @keyframes bar-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 .sticky-actions .btn { transition: transform .12s ease, box-shadow .2s ease, opacity .2s ease, background-color .2s ease, color .2s ease; }
 .sticky-actions .btn:active { transform: scale(.97); }
@@ -1058,7 +1059,7 @@ body.is-row-dragging, body.is-row-dragging * { cursor: grabbing !important; user
 .pick__menu { display: none; position: absolute; z-index: 5; left: calc(100% + 6px); top: -3px; height: 26px; gap: 1px; padding: 2px;
   border-radius: 8px; background: var(--surface-2); border: 1px solid var(--border); box-shadow: 0 6px 18px rgb(0 0 0 / .18);
   opacity: 0; transform: translateX(-8px) scale(.94); transform-origin: left center;
-  transition: opacity .16s ease, transform .2s cubic-bezier(.2, .9, .3, 1.2), display .2s allow-discrete; }
+  transition: opacity .15s ease, transform .2s cubic-bezier(.2, .9, .3, 1.2), display .2s allow-discrete; }
 .pick__menu::before { content: ""; position: absolute; right: 100%; top: 0; bottom: 0; width: 8px; } /* 「⋯」から右へマウスを動かす途中で閉じないための透明な橋 */
 .pick__menu { scroll-margin: 8px 16px; } /* JS で見える所へスクロールしたとき、画面の端にぴったり付かないように */
 .pick__menu span { padding: 0 8px; }
@@ -1076,9 +1077,18 @@ body.is-row-dragging, body.is-row-dragging * { cursor: grabbing !important; user
 .modal { width: min(440px, calc(100vw - 32px)); padding: 0; border: 1px solid var(--border); border-radius: var(--radius);
   background: var(--surface); color: var(--text); box-shadow: 0 24px 60px rgb(0 0 0 / .3);
   opacity: 0; transform: translateY(8px) scale(.97);
-  transition: opacity .18s ease, transform .2s ease, overlay .2s allow-discrete, display .2s allow-discrete; }
+  transition: opacity .2s ease, transform .2s ease, overlay .2s allow-discrete, display .2s allow-discrete; }
 .modal[open] { opacity: 1; transform: none; }
 @starting-style { .modal[open] { opacity: 0; transform: translateY(8px) scale(.97); } }
+.album-modal, .yts { opacity: 0; transform: translateY(8px) scale(.97);
+  transition: opacity .2s ease, transform .2s var(--ease-out), overlay .2s allow-discrete, display .2s allow-discrete; }
+.album-modal[open], .yts[open] { opacity: 1; transform: none; }
+@starting-style { .album-modal[open], .yts[open] { opacity: 0; transform: translateY(8px) scale(.97); } }
+.album-modal::backdrop, .yts::backdrop { background: rgb(0 0 0 / 0); transition: background .2s ease, overlay .2s allow-discrete, display .2s allow-discrete; }
+.album-modal[open]::backdrop { background: rgb(0 0 0 / .8); }
+.yts[open]::backdrop { background: rgb(0 0 0 / .45); }
+@starting-style { .album-modal[open]::backdrop, .yts[open]::backdrop { background: rgb(0 0 0 / 0); } }
+@media (prefers-reduced-motion: reduce) { .album-modal, .yts, .album-modal::backdrop, .yts::backdrop { transition: none; } }
 .modal::backdrop { background: rgb(0 0 0 / 0); transition: background .2s ease, overlay .2s allow-discrete, display .2s allow-discrete; }
 .modal[open]::backdrop { background: rgb(0 0 0 / .45); }
 @starting-style { .modal[open]::backdrop { background: rgb(0 0 0 / 0); } }
@@ -1308,7 +1318,7 @@ body.is-row-dragging, body.is-row-dragging * { cursor: grabbing !important; user
 /* 切り替えたとき: 表をふわっと出し、棒グラフは左から伸ばす（JS の setupVoSum が is-switched を付け直す） */
 .vo-sum-toggle { transition: color .2s ease, border-color .2s ease, opacity .2s ease; }
 [data-vo-view].is-switched { animation: day-fade .25s ease; }
-[data-vo-view].is-switched .bar { transform-origin: left; animation: bar-grow .45s cubic-bezier(.2, .8, .2, 1); }
+[data-vo-view].is-switched .bar { transform-origin: left; animation: bar-grow .45s var(--ease-out); }
 @keyframes bar-grow { from { transform: scaleX(0); } }
 @media (prefers-reduced-motion: reduce) {
   .vo-sum-toggle { transition: none; }
@@ -1339,7 +1349,7 @@ code { background: var(--surface-2); padding: 1px 6px; border-radius: 6px; font-
 .song-card--new { border-style: dashed; }
 /* 「＋ 曲を追加」で出てきたカード: 上からふわっと出す（JS の setupSongs が is-entering を付け、終わったら外す）。
    追加したばかりのカードを🗑で消すときの「縮んで消える」動きは、高さがカードごとに違うので JS（animate）でやっている */
-.song-card.is-entering { animation: song-card-in .22s ease-out; }
+.song-card.is-entering { animation: song-card-in .2s ease-out; }
 .song-card.is-dragging { position: relative; z-index: 2; box-shadow: 0 10px 28px rgba(0, 0, 0, .18); } /* ≡ でつかんでいる曲を少し浮かせる */
 /* ドラッグ中（JS が .song-list に is-sorting を付ける）: 担当・検索結果を縮めて、曲の並びを見渡しやすくする */
 .song-card, .performers, .track-results { transition: gap .2s ease, max-height .2s ease, opacity .15s ease, padding .2s ease; }
@@ -1400,7 +1410,7 @@ code { background: var(--surface-2); padding: 1px 6px; border-radius: 6px; font-
 .song-card.is-deleted { border-color: var(--danger); }
 .song-card.is-deleted > :not(.song-card__head), .song-card.is-deleted .song-card__head > :not(.song-card__delete) { opacity: .35; }
 /* 削除の印を付けた・外したときに、薄くなるのをパッと切り替えずに少しだけなめらかに */
-.song-card > :not(.song-card__head), .song-card__head > * { transition: opacity .18s ease; }
+.song-card > :not(.song-card__head), .song-card__head > * { transition: opacity .2s ease; }
 @media (prefers-reduced-motion: reduce) { .song-card > :not(.song-card__head), .song-card__head > * { transition: none; } }
 /* 🔍 の検索結果。押すとその曲を紐付ける */
 .track-results { display: grid; gap: 4px; max-height: 360px; overflow-y: auto; padding: 6px; border-radius: var(--radius-sm);
@@ -1417,7 +1427,7 @@ code { background: var(--surface-2); padding: 1px 6px; border-radius: 6px; font-
 .track-option__preview { display: inline-flex; align-items: center; gap: 2px; font-size: 11px; font-weight: 700; color: var(--accent); white-space: nowrap; }
 .track-option__preview .icon { font-size: 16px; }
 /* 検索結果の窓: 開くときに上からふわっと出す。候補は1件ずつ少しずらして出す（最初の8件まで。それ以降はまとめて） */
-.track-results:not([hidden]) { animation: track-results-in .22s ease-out; transform-origin: top; }
+.track-results:not([hidden]) { animation: track-results-in .2s ease-out; transform-origin: top; }
 .track-option { animation: track-option-in .25s ease-out both; }
 .track-option:nth-child(2) { animation-delay: 30ms; } .track-option:nth-child(3) { animation-delay: 60ms; }
 .track-option:nth-child(4) { animation-delay: 90ms; } .track-option:nth-child(5) { animation-delay: 120ms; }
@@ -1425,7 +1435,7 @@ code { background: var(--surface-2); padding: 1px 6px; border-radius: 6px; font-
 .track-option:nth-child(n+8) { animation-delay: 210ms; }
 .track-results__msg { animation: track-option-in .2s ease-out both; }
 /* 閉じるとき（JS の closeResults が is-closing を付け、終わったら hidden にする） */
-.track-results.is-closing { animation: track-results-out .18s ease-in forwards; pointer-events: none; }
+.track-results.is-closing { animation: track-results-out .2s ease-in forwards; pointer-events: none; }
 @keyframes track-results-in { from { opacity: 0; transform: translateY(-6px) scaleY(.96); } }
 @keyframes track-results-out { to { opacity: 0; transform: translateY(-6px) scaleY(.96); } }
 @keyframes track-option-in { from { opacity: 0; transform: translateY(4px); } }
@@ -1723,7 +1733,7 @@ a.album__title:hover { text-decoration: underline; }
 /* アルバムのモーダル（partials/album_modal.php）: 暗転した背景に アルバム名・発売年 → アプリ・検索・閉じる */
 .album-modal { position: fixed; inset: 0; margin: auto; width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 32px); padding: 16px;
   overflow: visible; border: 0; background: transparent; color: #fff; text-align: center; }
-.album-modal[open] { display: grid; justify-items: center; gap: 6px; animation: album-modal-in .22s cubic-bezier(.2, .8, .2, 1); }
+.album-modal[open] { display: grid; justify-items: center; gap: 6px; }
 .album-modal::backdrop { background: rgba(0, 0, 0, .8); }
 .album-modal__art { width: min(520px, calc(100vw - 64px), calc(100vh - 220px)); aspect-ratio: 1; border-radius: 12px; object-fit: cover; box-shadow: 0 8px 32px rgba(0, 0, 0, .5); margin-bottom: 10px; }
 .album-modal__name { font-size: 20px; line-height: 1.35; overflow-wrap: anywhere; }
@@ -1737,8 +1747,7 @@ a.album__title:hover { text-decoration: underline; }
 .album-modal__app.setlist__listen--apple_music svg, .album-modal__app.setlist__listen--line_music svg { border-radius: 22%; background: none; }
 .album-modal__btn { color: #fff; width: 48px; height: 48px; border-radius: 50%; background: rgba(255, 255, 255, .15); }
 .album-modal__btn:hover { color: #fff; background: rgba(255, 255, 255, .28); }
-@keyframes album-modal-in { from { opacity: 0; transform: scale(.92); } to { opacity: 1; transform: none; } }
-@media (prefers-reduced-motion: reduce) { .album-modal[open] { animation: none; } }
+
 .album__art-link:hover + .album__meta .album__title { text-decoration: underline; }
 .albums[data-album-sort] .album:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: var(--radius-sm); }
 /* ドラッグ中は削除ボタンを隠す（誤って押さないように） */
@@ -2123,7 +2132,7 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
   body:has(.back-fabs:not(.back-fabs--ghost) .back-fab) .tpl-history { bottom: calc(128px + env(safe-area-inset-bottom)); }
 }
 @media (prefers-reduced-motion: no-preference) {
-  .tpl-preview:not([hidden]) { animation: tpl-preview-in .22s cubic-bezier(.2, .8, .2, 1); transform-origin: right bottom; }
+  .tpl-preview:not([hidden]) { animation: tpl-preview-in .2s var(--ease-out); transform-origin: right bottom; }
   @keyframes tpl-preview-in { from { opacity: 0; transform: scale(.96) translateY(8px); } }
 }
 .ed-body { fill: var(--c); fill-opacity: .1; stroke: var(--c); stroke-width: 1; vector-effect: non-scaling-stroke; cursor: move; }
@@ -2287,7 +2296,7 @@ textarea.board-textarea:focus { border-color: var(--accent); } /* 上の border 
 .board-mute { margin-left: 10px; }
 .board-mute.is-active { background: var(--accent-soft); color: var(--accent); }
 .board-mute.is-pop .icon { animation: like-pop .3s ease; } /* ❤ と同じ、ぽんと弾む動き */
-.board-reply__to:not([hidden]) { animation: board-slide .22s ease-out; } /* 返信先の行が最初に出るとき */
+.board-reply__to:not([hidden]) { animation: board-slide .2s ease-out; } /* 返信先の行が最初に出るとき */
 .board-reply__chip.is-entering { animation: board-chip .25s ease-out; }
 @keyframes board-slide { from { opacity: 0; transform: translateY(-6px); } }
 @keyframes board-chip { from { opacity: 0; transform: scale(.6); } 60% { transform: scale(1.08); } }
@@ -2350,7 +2359,7 @@ html:has(.board-posts) { scroll-behavior: smooth; }
 .form-actions:has(.live-img-edit) > .btn { align-self: center; height: auto; }
 /* 画像を足したときの、ふわっと出るアニメーション */
 @keyframes live-img-pop { from { opacity: 0; transform: scale(.6); } to { opacity: 1; transform: none; } }
-.live-img-edit__item.is-pop { animation: live-img-pop .22s cubic-bezier(.2, .9, .3, 1.3); }
+.live-img-edit__item.is-pop { animation: live-img-pop .2s cubic-bezier(.2, .9, .3, 1.3); }
 @media (prefers-reduced-motion: reduce) { .live-img-edit__item.is-pop { animation: none; } }
 .hero__thumbs { flex: 0 0 100%; } /* ボタンの行の上に1行ぶん */
 .hero__thumbs .live-thumbs { margin: 0 0 12px; justify-content: flex-start; } /* 上は少し、下は編集ボタンとのすき間 */
@@ -2564,7 +2573,7 @@ button.ttb-m { cursor: pointer; text-decoration: underline dotted; }
 /* タイムテーブル作成: 登場・ポップアップ・操作のアニメーション */
 @keyframes ttb-in { from { opacity: 0; transform: translate(calc(var(--ttb-dir, 0) * 12px), 4px); } to { opacity: 1; transform: none; } }
 @keyframes ttb-pop-in { from { opacity: 0; transform: translateY(-2px) scale(.98); } to { opacity: 1; transform: none; } }
-.ttb.is-enter .ttb-list > .ttb-row, .ttb.is-enter .ttb-avail__title { animation: ttb-in .18s ease-out backwards; }
+.ttb.is-enter .ttb-list > .ttb-row, .ttb.is-enter .ttb-avail__title { animation: ttb-in .2s ease-out backwards; }
 .ttb-pop { position: absolute; z-index: 60; max-width: min(320px, calc(100vw - 16px)); padding: 10px; }
 .ttb-menu { display: grid; min-width: 200px; }
 .ttb-menu__item { display: flex; align-items: center; gap: 8px; padding: 9px 6px; border: 0; border-radius: 6px; background: none;
@@ -2677,7 +2686,7 @@ button.ttb-m { cursor: pointer; text-decoration: underline dotted; }
   .ttb-row, .ttb-tab, .ttb-day, .ttb-m, .ttb-score, .ttb-float .btn { transition: none; }
 }
 .ttb-row.is-dragging { transform-origin: center; transition: box-shadow .15s ease, opacity .15s ease; }
-.ttb.is-tswitch .ttb-time, .ttb.is-tswitch .ttb-days { animation: ttb-in .18s ease-out backwards; --ttb-dir: 0; }
+.ttb.is-tswitch .ttb-time, .ttb.is-tswitch .ttb-days { animation: ttb-in .2s ease-out backwards; --ttb-dir: 0; }
 @media (prefers-reduced-motion: reduce) { .ttb.is-tswitch .ttb-time, .ttb.is-tswitch .ttb-days { animation: none; } }
 /* タイムテーブル作成: プレビュー（完成形の表と同じ形。セルがそのまま入力欄） */
 .ttb-pv__scroll { padding: 0; overflow-x: auto; }
