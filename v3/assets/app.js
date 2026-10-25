@@ -1392,7 +1392,18 @@ function setupSmallThings() {
   try {
     const saved = JSON.parse(sessionStorage.getItem('keep-scroll') || 'null');
     sessionStorage.removeItem('keep-scroll');
-    if (saved && saved.path === location.pathname) window.scrollTo(0, saved.y);
+    if (saved && saved.path === location.pathname) {
+      // 条件で上の表の行数が変わるので、y そのままではなく「見ていた見出し」が同じ位置に来るように戻す。
+      // ほかの setup がレイアウトを変え終わってから（次のフレームで）合わせる
+      const restore = () => {
+        const anchor = saved.key && keepScrollAnchors().find((el) => keepScrollKey(el) === saved.key);
+        if (anchor) window.scrollBy(0, anchor.getBoundingClientRect().top - saved.top);
+        else window.scrollTo(0, saved.y);
+      };
+      window.scrollTo(0, saved.y);
+      requestAnimationFrame(restore);
+      addEventListener('load', restore, { once: true }); // フォント・画像で高さがずれた分をもう一度合わせる
+    }
   } catch { /* sessionStorage が使えないときは戻さないだけ */ }
   // 集計の絞り込み（スマホは段ごと横スクロール）: 年度・学年のセレクトやスロットが出ている段は、右端まで送って見えるようにする
   document.querySelectorAll('.stats-filter__row').forEach((row) => {
@@ -2075,9 +2086,16 @@ function setupYearSlot() {
 
 /* フォームを送る（ページを読み直す）けど、今のスクロール位置は保つ（集計の絞り込み）。戻すのは setupSmallThings */
 function submitKeepScroll(form) {
-  try { sessionStorage.setItem('keep-scroll', JSON.stringify({ path: location.pathname, y: scrollY })); } catch { /* 保てないだけ */ }
+  // 目印: 絞り込み（sticky）の下に見えている最初の見出し。その画面上の位置も覚える
+  const under = form.getBoundingClientRect().bottom;
+  const anchor = keepScrollAnchors().find((el) => el.getBoundingClientRect().bottom > under);
+  const data = { path: location.pathname, y: scrollY };
+  if (anchor) Object.assign(data, { key: keepScrollKey(anchor), top: anchor.getBoundingClientRect().top });
+  try { sessionStorage.setItem('keep-scroll', JSON.stringify(data)); } catch { /* 保てないだけ */ }
   form.submit();
 }
+const keepScrollAnchors = () => [...document.querySelectorAll('main .section-title, main .table-card')];
+const keepScrollKey = (el) => (el.matches('.table-card') ? 'table' : el.textContent.trim());
 
 /* ---------------------------------------------------------------------
  * フォームの中のスロット（集計の学年別）: data-slot-input
