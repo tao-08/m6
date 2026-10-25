@@ -218,7 +218,7 @@
   const loopBtn = $('[data-ytp-loop]');
   function setAB(which) {
     const t = now();
-    const [a, b] = P.ab || [null, null];
+    const [a, b] = P.ab || [pendingAB?.a ?? null, pendingAB?.b ?? null]; // 片方だけ決めた状態からも続ける
     let na = which === 'a' ? t : a, nb = which === 'b' ? t : b;
     if (na !== null && nb !== null && na >= nb) { if (which === 'a') nb = null; else na = null; } // 逆転したら反対側を外す
     P.ab = na !== null && nb !== null ? [na, nb] : null;
@@ -254,6 +254,21 @@
     changed();
     renderMarks();
   }
+  // マークから次のマークまで（最後のマークは動画の終わりまで）を AB にして繰り返す。前後に余白（P.pad 秒）を足す
+  function repeatMark(m) {
+    const i = P.m.indexOf(m);
+    const end = P.m[i + 1]?.t ?? dur();
+    if (i < 0 || end <= m.t) return;
+    const pad = P.pad * 1000;
+    const a = Math.max(0, m.t - pad), b = Math.min(dur() || end + pad, end + pad);
+    P.ab = [a, b];
+    pendingAB = null;
+    loop = true;
+    seek(a);
+    if (ready && !playing) player.playVideo();
+    changed();
+    render();
+  }
   // 練習用マーカーは「マーカー1」「マーカー2」…と、空いている最小でなく最大+1の番号で付ける
   const nextMarkerName = () => 'マーカー' + (Math.max(0, ...P.m.map((m) => Number(m.l.match(/^マーカー(\d+)$/)?.[1] || 0))) + 1);
   $('[data-ytp-mark]').addEventListener('click', () => addMark(nextMarkerName()));
@@ -285,19 +300,7 @@
       ab.title = '次のマークまでを AB リピート';
       ab.setAttribute('aria-label', ab.title);
       ab.appendChild(icon('repeat_one'));
-      ab.addEventListener('click', () => {
-        const end = P.m[i + 1]?.t ?? dur();
-        if (end <= m.t) return;
-        // 前後に余白（P.pad 秒）を足す（入りと終わりを確認しやすいように）
-        const pad = P.pad * 1000;
-        const a = Math.max(0, m.t - pad), b = Math.min(dur() || end + pad, end + pad);
-        P.ab = [a, b];
-        loop = true;
-        seek(a);
-        if (ready && !playing) player.playVideo();
-        changed();
-        render();
-      });
+      ab.addEventListener('click', () => repeatMark(m));
       const del = document.createElement('button');
       del.type = 'button';
       del.className = 'icon-btn ytp__del';
@@ -375,6 +378,7 @@
         b.className = 'ytp__bubble' + (isOwn(m) ? ' ytp__bubble--own' : '');
         b.style.left = (m.t / d) * 100 + '%';
         b.textContent = shortLabel(m.l);
+        b.addEventListener('click', () => repeatMark(m)); // 吹き出しを押してもそのマークをリピート
         bubbles.appendChild(b);
         const x = (m.t / d) * W, w = b.offsetWidth, l = x - w / 2;
         const lane = lanes.find((ln) => l >= ln.end + 2) || lanes[0];

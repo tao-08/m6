@@ -106,6 +106,8 @@ a.tab-parts__item:hover { border-color: var(--accent); }
 .ytp__mark .tab-chip { font-variant-numeric: tabular-nums; }
 /* 全画面（スマホは横向き）: 動画を画面いっぱいに出し、操作部を重ねる。--上/--下 は動画の上半分・下半分（TAB 譜）を幅いっぱいに拡大し、操作部は反対側へ */
 .ytp__dock { display: contents; }
+.ytp__dock, .ytp__bubble { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.ytp__dock input { -webkit-user-select: text; user-select: text; }
 .ytp__fsonly { display: none; }
 .ytp.is-full { position: fixed; inset: 0; z-index: 1000; display: block; padding: 0; border: 0; border-radius: 0; background: #000; overflow: hidden; }
 .ytp.is-full .ytp__video { position: absolute; left: 50%; top: 50%; width: min(100vw, 100dvh * 16 / 9); height: auto; transform: translate(-50%, -50%); border-radius: 0; }
@@ -123,6 +125,9 @@ a.tab-parts__item:hover { border-color: var(--accent); }
 .ytp.is-full .ytp__dock .icon-btn .icon, .ytp.is-full .ytp__dock .tab-chip .icon { color: #fff; }
 .ytp.is-full .ytp__dock .tab-chip.is-active, .ytp.is-full .ytp__dock .tab-chip[aria-pressed="true"] { background: var(--accent); }
 .ytp.is-full .ytp__dock .ytp__sec input { background: rgb(0 0 0 / .55); color: #fff; border-color: rgb(255 255 255 / .35); }
+.ytp.is-full .ytp__dock { padding-right: 60px; }
+.ytp.is-full .ytp__dock [data-ytp-fs] { position: absolute; right: 10px; bottom: 10px; width: 44px; height: 44px; border-radius: 50%; background: var(--danger, #d33); border-color: transparent; box-shadow: 0 2px 8px rgb(0 0 0 / .5); }
+.ytp.is-full.is-zoom-bottom .ytp__dock [data-ytp-fs] { bottom: auto; top: 10px; }
 .ytp.is-full .ytp__play { min-height: 40px; }
 @media (max-height: 480px) { .ytp.is-full .ytp__dock > .ytp__row { flex-wrap: nowrap; gap: 2px; } .ytp.is-full .ytp__dock .ytp__label { display: none; } }
 body.ytp-lock { overflow: hidden; }
