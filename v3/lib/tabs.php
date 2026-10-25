@@ -23,18 +23,45 @@ declare(strict_types=1);
 require_once __DIR__ . '/tracks.php'; // song_title_key（albums.php の album_key / album_parse_key も読み込まれる）
 
 /**
- * 新規作成で選べる楽器と弦の数。キーは画面の select の value。
- *   instrument … instrument テーブルの instrument_id（2 = Gt、3 = Ba）
- *   tuning     … 低い弦 → 高い弦の順（6弦ギターなら "E A D G B E"）
+ * 新規作成で選べる楽器と弦の数。キーは画面のラジオ（楽器のタイル）の value。
+ *   instrument  … instrument テーブルの instrument_id（2 = Gt、3 = Ba）
+ *   tuning      … 低い弦 → 高い弦の順（6弦ギターなら "E A D G B E"）
+ *   part_base   … パート名の候補の元（Gt → Gt1, Gt2…）。tab_suggest_part() に渡す
+ *   part_number … true = 最初から番号を付ける（Gt1）/ false = 最初は番号なし（Ba → 2本目から Ba2）
  */
 const TAB_PRESETS = [
-    'gt6' => ['label' => 'ギター6弦', 'instrument' => 2, 'tuning' => 'E A D G B E'],
-    'gt7' => ['label' => 'ギター7弦', 'instrument' => 2, 'tuning' => 'B E A D G B E'],
-    'ba4' => ['label' => 'ベース4弦', 'instrument' => 3, 'tuning' => 'E A D G'],
-    'ba5' => ['label' => 'ベース5弦', 'instrument' => 3, 'tuning' => 'B E A D G'],
+    'gt6' => ['label' => 'ギター6弦', 'instrument' => 2, 'tuning' => 'E A D G B E', 'part_base' => 'Gt', 'part_number' => true],
+    'gt7' => ['label' => 'ギター7弦', 'instrument' => 2, 'tuning' => 'B E A D G B E', 'part_base' => 'Gt', 'part_number' => true],
+    'ba4' => ['label' => 'ベース4弦', 'instrument' => 3, 'tuning' => 'E A D G', 'part_base' => 'Ba', 'part_number' => false],
+    'ba5' => ['label' => 'ベース5弦', 'instrument' => 3, 'tuning' => 'B E A D G', 'part_base' => 'Ba', 'part_number' => false],
     // ドラム譜: tuning はレーンの略号（上から下）。fret は奏法（1 通常 / 2 アクセント / 3 ゴースト / 4 オープン = HH のみ）
-    'dr'  => ['label' => 'ドラム', 'instrument' => 4, 'tuning' => 'CR RD HH SD T1 T2 FT BD', 'kind' => 'drum'],
+    'dr'  => ['label' => 'ドラム', 'instrument' => 4, 'tuning' => 'CR RD HH SD T1 T2 FT BD', 'kind' => 'drum', 'part_base' => 'Dr', 'part_number' => false],
 ];
+
+/**
+ * 新規作成フォームの「パート名」の候補。同じ曲にもう付いている名前（$existing）と重ならないものを返す。
+ *   $base        … 名前の元（'Gt' / 'Ba' / 'Dr'）
+ *   $numberFirst … true なら Gt1, Gt2, Gt3…（番号から始める）/ false なら Ba, Ba2, Ba3…（最初は番号なし）
+ *   なぜ分けるのか: ギターは「リードとリズムの2本」が当たり前なので、最初から Gt1 と書いておくと2本目の Gt2 が自然に続く。
+ *                  ベース・ドラムは1本だけの曲がほとんどなので、素の Ba / Dr で十分（2本目から Ba2）。
+ *   比較は大文字小文字を区別しない: DB の UNIQUE (song_key, part) の照合順序（_ci = case insensitive）が区別しないので、
+ *   'gt1' が有るのに 'Gt1' を候補にすると、作成時に UNIQUE 違反（エラー 1062）になってしまうため。
+ *   mb_strtolower = 日本語などの多バイト文字にも使える strtolower（PHP の標準の strtolower は ASCII 専用）
+ */
+function tab_suggest_part(string $base, bool $numberFirst, array $existing): string
+{
+    $taken = [];
+    foreach ($existing as $name) {
+        $taken[mb_strtolower((string)$name)] = true; // 連想配列のキーにして、isset() で一瞬で「有るか」を調べる
+    }
+    for ($n = 1; $n <= 99; $n++) {
+        $name = ($n === 1 && !$numberFirst) ? $base : $base . $n; // 番号なしで始めるときだけ、1 本目は番号を付けない
+        if (!isset($taken[mb_strtolower($name)])) {
+            return $name;
+        }
+    }
+    return $base; // 99 個も埋まっていることはまず無い。万一でも、重複は作成時に DB が断ってエラー表示になる
+}
 
 /** 1拍をいくつに分けるか（1 = 4分 / 2 = 8分 / 3 = 3連 / 4 = 16分 / 6 = 6連 / 8 = 32分） */
 const TAB_STEPS = [1, 2, 3, 4, 6, 8];

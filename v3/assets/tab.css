@@ -13,18 +13,59 @@
 .tab-parts { margin-top: 12px; }
 .tab-parts__heading { margin: 0 0 8px; font-size: 14px; font-weight: 800; color: var(--muted); }
 .tab-parts__list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
-.tab-parts__item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: var(--radius-sm); border: 1px solid var(--border); color: inherit; }
+.tab-parts__item { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 8px 10px; border-radius: var(--radius-sm); border: 1px solid var(--border); color: inherit; } /* 48px = 指で押しやすい高さ（タッチの最小サイズの目安は 44〜48px） */
 a.tab-parts__item:hover { border-color: var(--accent); }
 .tab-parts__inst { font-weight: 800; color: var(--gt); min-width: 2.2em; }
 .tab-parts__name { font-weight: 700; }
 .tab-parts__date { margin-left: auto; }
 .tab-parts__item > .icon:last-child { color: var(--muted); }
 .tab-parts--deleted .tab-parts__item .btn { flex: none; }
-.tab-new { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; margin-top: 0; }
-.tab-new .field { flex: 1 1 140px; }
+
+/* ---- 共通の小さな部品 ---- */
+/* 視覚的にだけ隠す（スクリーンリーダーには読まれる）。display: none にすると読み上げからも消えてしまうので、
+   「1px に潰して画面の外へ」にする、が定番の書き方（アクセシビリティの分野で visually-hidden / sr-only と呼ばれる） */
+.tab-sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+/* 折りたたみ（<details>）の見出し行。min-height 48px = 指で押しやすい高さ。標準の三角（マーカー）は消して、右端の expand_more アイコンを開閉で回す */
+.tab-summary { display: flex; align-items: center; gap: 8px; min-height: 48px; cursor: pointer; list-style: none; font-size: 14px; font-weight: 700; color: var(--text); white-space: normal; }
+.tab-summary::-webkit-details-marker { display: none; } /* Safari の三角 */
+.tab-summary__chev { margin-left: auto; color: var(--muted); transition: transform .2s ease; }
+details[open] > .tab-summary > .tab-summary__chev { transform: rotate(180deg); }
+@media (prefers-reduced-motion: reduce) { .tab-summary__chev, .tab-step__chev { transition: none; } } /* 動きを減らす設定の人には、回さずに切り替える */
+
+/* ---- 新規作成フォーム（曲の一覧ページ）---- */
+.tab-parts--empty .tab-parts__heading { margin-bottom: 12px; }
+.tab-parts__heading--cta { display: flex; align-items: center; gap: 6px; font-size: 16px; color: var(--text); }
+/* パートが 1 件以上: 一覧の下の「パートを追加」（閉じた <details>）。点線の枠でボタンだと分かるように */
+.tab-new-wrap { margin-top: 10px; }
+.tab-new-wrap__summary { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 48px; border: 1px dashed var(--border); border-radius: var(--radius-sm);
+  color: var(--accent); font-size: 14px; font-weight: 700; cursor: pointer; list-style: none; }
+.tab-new-wrap__summary::-webkit-details-marker { display: none; }
+.tab-new-wrap__summary:hover { border-color: var(--accent); background: var(--accent-soft); }
+.tab-new-wrap[open] > .tab-new-wrap__summary { margin-bottom: 12px; }
+.tab-new { display: grid; gap: 12px; }
+/* 楽器のタイル（ラジオ）: スマホ 2 列・広い画面 5 列。ラジオ本体は「見えなくするだけ」で、display: none にはしない
+   （display: none だとキーボード（矢印キー・Tab）でも、スクリーンリーダーでも操作できなくなる）。label 全体がタイルの見た目 */
+.tab-inst { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 0; padding: 0; border: 0; min-width: 0; } /* fieldset の標準の枠・余白・最小幅を消す */
+.tab-inst__opt { position: relative; display: grid; place-items: center; min-height: 48px; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--surface); color: var(--text); font-size: 14px; font-weight: 700; text-align: center; cursor: pointer; }
+.tab-inst__opt input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; pointer-events: none; } /* 見えない・クリックを受けないが、フォーカスは受けられる */
+.tab-inst__opt:hover { border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); }
+.tab-inst__opt:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); } /* :has() = 「中に〇〇がある要素」。選択中のラジオを持つタイルだけ装飾する */
+.tab-inst__opt:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; } /* キーボードで選んでいるときだけ出る枠 */
+@media (min-width: 720px) { .tab-inst { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
+@media (max-width: 719px) { .tab-inst__opt:last-of-type:nth-of-type(odd) { grid-column: 1 / -1; } } /* 2 列で最後の 1 つが余るとき（ドラム）は横いっぱい。-of-type = 同じ種類（label）だけを数える（先頭に legend があるので、-child だと数がずれる） */
+/* 詳細（部分 TAB）: 普段は使わないので折りたたむ */
+.tab-new__more > .tab-summary { min-height: 44px; font-size: 13px; color: var(--muted); }
+.tab-new__partial { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; padding-bottom: 8px; }
+.tab-new__partial .field { flex: 0 1 9em; }
+.tab-new__partial input[type="number"] { width: 100%; }
+.tab-new__partial input:disabled { opacity: .5; cursor: not-allowed; } /* 「部分」のチェックが外れている間は使えない */
+.tab-new__submit { min-height: 48px; justify-self: start; min-width: 160px; }
+@media (max-width: 719px) { .tab-new__submit { justify-self: stretch; } } /* スマホは横いっぱい（親指で押しやすい） */
 
 /* ===== プレイヤー ===== */
-.tab { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; margin-top: 12px; } /* 列を中身の幅に広げない（canvas・操作バーでページが横にはみ出す） */
+.tab { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; margin-top: 12px; padding: 0; } /* 列を中身の幅に広げない（canvas・操作バーでページが横にはみ出す）
+   padding: 0 … app.css の汎用 .tab（日程タブ）の padding: 8px 16px も当たっていて、パンくずより左右 16px ずつ内側に寄っていた。スマホの 16px は、グリッド（マス）の幅に響くので消す */
 .tab-head { display: flex; align-items: center; gap: 10px; }
 .tab-head__art { width: 44px; height: 44px; border-radius: 8px; object-fit: cover; flex: none; }
 /* 曲名・アーティスト・パートの文字ブロック（左の画像と右のボタンの間）。
@@ -62,6 +103,54 @@ a.tab-parts__item:hover { border-color: var(--accent); }
 .tab-stage { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; cursor: pointer; touch-action: manipulation; }
 .tab-stage canvas { display: block; }
 
+/* ===== 編集中 / 練習中の出し分け =====
+   .is-editing は JS（setMode）が編集モードのあいだ <div class="tab"> に付ける。
+   ・data-practice-only … 練習用の操作（速度・練習 BPM・A/B・ループごとの BPM 増加・マーカー・同期解除・練習用マーカー一覧）。編集中は隠して、画面を片付ける
+   ・data-edit-only     … 編集用（準備ステップ・詳細設定）。練習中は隠す
+   !important を付けるのは、.tab-bar__group { display: flex } のような、ほかの指定（同じ強さで後ろにあるもの）に負けないため */
+.tab.is-editing [data-practice-only] { display: none !important; }
+.tab:not(.is-editing) [data-edit-only] { display: none !important; }
+
+/* ===== 準備ステップ（編集モードの上。① 音源 → ② テンポ → ③ 開始位置 → ④ 入力）===== */
+/* app.css の汎用 .tab（日程タブ）の「太字・薄い色・折り返し禁止」が子へ継承されるので（このファイルの .tab-head__text のコメント参照）、この枠の中では普通に戻す */
+.tab-setup, .tab-more { padding: 0 16px; white-space: normal; font-weight: 400; font-size: 14px; color: var(--text); }
+.tab-setup__dots { display: inline-flex; gap: 5px; margin-left: 4px; }
+.tab-setup__dot { width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid var(--border); } /* 未完了は輪だけ、完了は accent で塗る */
+.tab-setup__dot.is-done { background: var(--accent); border-color: var(--accent); }
+.tab-steps { list-style: none; margin: 0; padding: 0 0 6px; }
+.tab-step { border-top: 1px solid var(--border); scroll-margin-top: 72px; } /* scrollIntoView で上端に寄せるとき、上に固定のヘッダーに隠れない */
+.tab-step__head { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 48px; padding: 4px 0; border: 0; background: none; color: inherit; text-align: left; cursor: pointer;
+  font: 700 14px/1.2 var(--font); }
+/* 丸い印: 完了 = accent 塗り + ✓ / 次にやるステップ = accent の枠線で番号 / それ以外 = muted の番号 */
+.tab-step__mark { width: 28px; height: 28px; border-radius: 50%; flex: none; display: grid; place-items: center; border: 1.5px solid var(--border); color: var(--muted); font: 800 13px/1 var(--font); }
+.tab-step__mark .icon { font-size: 18px; }
+.tab-step.is-next .tab-step__mark { border-color: var(--accent); color: var(--accent); }
+.tab-step.is-done .tab-step__mark { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
+.tab-step__title { flex: none; }
+.tab-step__sum { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; font-weight: 600; } /* 現在の値の要約（長ければ … で省略） */
+.tab-step__chev { flex: none; color: var(--muted); transition: transform .2s ease; }
+.tab-step.is-open .tab-step__chev { transform: rotate(180deg); }
+.tab-step__body { display: grid; gap: 12px; max-width: 520px; padding: 4px 0 16px; } /* max-width: 広い画面で、入力欄やボタンが横に伸びすぎないように */
+.tab-step__fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.tab-step__wide { grid-column: 1 / -1; }
+.tab-step__hint { display: flex; align-items: center; gap: 4px; margin: 0; }
+.tab-step__hint .icon { font-size: 18px; color: var(--accent); }
+.tab-step__mini { display: flex; align-items: center; justify-content: center; gap: 12px; } /* ③ の -0.1秒 / 再生 / +0.1秒 */
+.tab-step__actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.tab-step__actions .btn, .tab-step__mini .btn { min-height: 44px; }
+.tab-step__actions .btn { flex: 1 1 120px; } /* スマホで押しやすいよう、ボタンは横に広げる */
+.tab-step input[aria-invalid="true"] { border-color: var(--danger); } /* YouTube の URL が正しくない */
+/* iOS の Safari は、文字が 16px 未満の入力欄にフォーカスすると画面を勝手に拡大してしまう（拡大したまま戻らず、操作しづらい）。
+   指で操作する端末（pointer: coarse）の入力欄だけ 16px にして、これを防ぐ。マウスの PC は今までの大きさのまま */
+@media (pointer: coarse) {
+  .tab-step input, .tab-step select, .tab-more input, .tab-more select, .tab-more textarea { font-size: 16px; }
+  .tab-step input, .tab-step select, .tab-more input[type="text"], .tab-more input[type="number"], .tab-more select { min-height: 44px; }
+  .tab-step .icon-btn { width: 44px; height: 44px; } /* BPM 計測・現在位置のボタン: タッチの最小サイズ 44px */
+}
+
+/* 詳細設定（パート名・開始小節と部分・カポ・チューニング・メモ・リンク。普段は閉じておく）。中身は下の .tab-settings のグリッド */
+.tab-more .tab-settings { padding-bottom: 16px; }
+
 /* ===== 編集 ===== */
 .tab-edit { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
 .tab-settings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
@@ -69,6 +158,7 @@ a.tab-parts__item:hover { border-color: var(--accent); }
 .tab-settings__row { display: flex; gap: 6px; align-items: center; }
 .tab-settings__row input { flex: 1; }
 .tab-settings input[aria-invalid="true"] { border-color: var(--danger); }
+.tab-settings .tab-settings__row { min-width: 0; }
 @media (min-width: 720px) { .tab-settings { grid-template-columns: repeat(4, minmax(0, 1fr)); } .tab-settings__wide { grid-column: span 2; } }
 .tab-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .tab-tap-btn { min-width: 64px; }
@@ -95,8 +185,29 @@ a.tab-parts__item:hover { border-color: var(--accent); }
 .tg-cell:hover { background: var(--accent-soft); }
 .tg-cell.is-sel { outline: 2px solid var(--accent); outline-offset: -2px; background: var(--accent-soft); z-index: 2; }
 .tg-add { justify-self: start; }
+/* 選んだマスをスクロールで見せるときの余白（scrollIntoView が守る）。
+   下: キーボード（.tab-pad）の高さ --tab-pad-h（JS が測って入れる。出ていなければ 0）+ 16px。上: ページ上端に固定のヘッダーに隠れない分 */
+.tg-cell, .tg-chord { scroll-margin-bottom: calc(var(--tab-pad-h, 0px) + 16px); scroll-margin-top: 80px; }
+.tg-bar { scroll-margin-top: 80px; } /* 「入力へ」で 1 小節目の頭までスクロールするとき、ヘッダーの下に出る */
+/* スマホ: キーボードの上に、保存のバー（.tab-actions）も出る。その分（約 68px）も避ける */
+@media (max-width: 899px) {
+  body.has-tab-pad .tg-cell, body.has-tab-pad .tg-chord { scroll-margin-bottom: calc(var(--tab-pad-h, 0px) + 84px); }
+}
+/* 指で操作する端末（pointer: coarse）だけ、マスなどを大きくする。
+   @media (pointer: coarse) = 「メインの入力装置が指（精度が粗い）」。画面の幅ではなく入力装置で分けるので、タブレットも指なら大きくなる。
+   マウスの PC は今のまま（1 画面にたくさん並べる密度を保つ）。タッチ操作の最小サイズの目安は 44px だが、
+   マスは横にも 16 個並べるので、縦 34px・横 32px 以上を確保して、小節は 1 行 1 小節（横いっぱい）にする */
+@media (pointer: coarse) {
+  .tg-bar { flex: 1 1 100%; }                                   /* 1 小節 = 1 行（横いっぱい） */
+  /* 列は minmax(32px, 1fr): 小節が画面に収まるときは横いっぱいに広がり、収まらないときは 32px のまま、小節の中だけ横スクロール */
+  .tg-bar__cells { grid-template-columns: 1.4em repeat(var(--cols), minmax(32px, 1fr)); }
+  .tg-cell { height: 34px; font-size: 14px; }
+  .tg-chord { height: 28px; font-size: 12px; }
+  .tg-bar__head .icon-btn { width: 36px; height: 36px; }        /* 小節の ＋ ・複製・削除 */
+  .tg-bar__sec { min-height: 36px; font-size: 16px; }           /* 16px: iOS が入力欄を勝手に拡大しない大きさ */
+}
 
-/* 保存ボタン（app.css の .sticky-actions）。スマホのフレットパッドが出ている間は、その上に出す */
+/* 保存ボタン（app.css の .sticky-actions）。スマホの画面内キーボードが出ている間は、その真上に出す（下の「画面内キーボード」の media を参照） */
 .tab-actions { z-index: 12; }
 
 
@@ -123,7 +234,8 @@ a.tab-parts__item:hover { border-color: var(--accent); }
 .tab-sec__loop { width: auto; height: auto; border-radius: 0; padding: 0 8px; display: inline-grid; place-items: center; }
 .tab-sec__loop .icon { font-size: 16px; }
 /* 編集: セクション名を付ける候補（選んだ小節に付く） */
-.tab-secpick { display: flex; flex-wrap: wrap; gap: 6px; }
+.tab-secpick { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.tab-secpick__icon { color: var(--muted); } /* 先頭のラベルのアイコン: 「小節にセクション名を付ける」チップの並びだと分かるように */
 .tab-secpick .tab-chip { border-color: color-mix(in srgb, var(--sec) 55%, var(--border)); }
 .tab-secpick .tab-chip.is-active { background: color-mix(in srgb, var(--sec) 30%, var(--surface)); color: var(--text); border-color: var(--sec); }
 /* 編集グリッドの小節見出しにセクションの色を薄く付ける */
@@ -183,7 +295,9 @@ a.tab-parts__item:hover { border-color: var(--accent); }
 .tab-imgs li { position: relative; }
 .tab-imgs__del { position: absolute; top: -6px; right: -6px; width: 20px; height: 20px; padding: 0; border-radius: 50%; border: 1px solid var(--border);
   background: var(--surface); color: var(--danger); font: 700 14px/1 var(--font); cursor: pointer; }
-.tab-notes-edit { display: grid; gap: 8px; margin-top: 12px; }
+/* 曲のメモ（曲の一覧ページの下。<details> の折りたたみ）。<details> 自体は display: grid にせず（ブラウザによって開閉の動きが崩れる）、中身を包む div を grid にする */
+.tab-notes-edit { margin-top: 12px; padding: 0 16px; }
+.tab-notes-edit__body { display: grid; gap: 8px; padding-bottom: 16px; }
 .tab-notes-edit textarea { width: 100%; padding: 8px 10px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--surface); font-size: 14px; resize: vertical; }
 .tab-notes-edit__actions { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .tab-settings textarea { width: 100%; padding: 8px 10px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--surface); font-size: 14px; resize: vertical; }
@@ -198,20 +312,24 @@ a.tab-parts__item:hover { border-color: var(--accent); }
 .tg-cell.is-sus::after { content: ""; position: absolute; left: 0; right: 0; top: calc(50% - 1px); height: 3px; background: var(--muted); z-index: 0; } /* 前の音が続いている */
 .tg-cell.has-rest { color: var(--muted); font-weight: 600; background: var(--surface); z-index: 1; }
 .tab-chord-now { font: 900 22px/1 var(--font); color: var(--accent); margin-left: 8px; }
-.tab-new__partial { flex: 0 1 auto; align-content: end; }
-.tab-new__partial input[type="number"] { width: 5em; }
-.tab-new .check { display: inline-flex; align-items: center; gap: 4px; color: var(--text); font-weight: 600; }
+.tab-new .check { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; color: var(--text); font-weight: 600; }
 .tag[data-partial-label] { vertical-align: 1px; }
 
-/* ===== 画面内キーボード（.tab-pad）。スマホは画面の下、広い画面は右の横の固定パネル ===== */
+/* ===== 画面内キーボード（.tab-pad）。スマホは画面の一番下（ボトムシート）、広い画面は右の横の固定パネル ===== */
 .tab-pad { display: none; }
 .tab-pad:not([hidden]) { display: grid; gap: 6px; position: fixed; z-index: 28; padding: 8px; background: color-mix(in srgb, var(--bg) 94%, transparent);
   backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid var(--border); box-shadow: var(--shadow); }
 .tab-pad__row { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+/* ボタンが多い行（フレット 10〜24・音価）は折り返さず、1 行のまま横スクロール: 折り返すとキーボードが高くなり、譜面を隠してしまう */
+.tab-pad__row--scroll { flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
+.tab-pad__row--scroll::-webkit-scrollbar { display: none; }
+.tab-pad__row--scroll > button { flex: none; }
+.tab-pad__close { margin-left: auto; }
 .tab-pad__panel { display: grid; gap: 6px; }
 .tab-pad__panel[hidden] { display: none; }
 .tab-pad button { min-width: 30px; height: 34px; padding: 0 6px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text);
   font: 700 13px/1 var(--font); cursor: pointer; display: inline-grid; place-items: center; }
+.tab-pad button .icon { font-size: 20px; } /* ↶ ↷ ◀ ▶ ▲ ▼ ✕ は Material のアイコン（文字の記号は端末のフォントで形がバラバラになる） */
 .tab-pad button:active { background: var(--accent-soft); border-color: var(--accent); }
 .tab-pad button.is-active { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
 .tab-pad button:disabled { opacity: .35; cursor: default; }
@@ -219,9 +337,26 @@ a.tab-parts__item:hover { border-color: var(--accent); }
 .tab-pad__sm { font-size: 12px !important; }
 .tab-pad__tab { flex: 1 1 60px; }
 .tab-pad__chord { flex: 1 1 80px; min-width: 0; height: 34px; padding: 0 8px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); font: 800 15px/1 var(--font); }
+@media (pointer: coarse) {
+  .tab-pad button { height: 38px; } /* 指で押す端末は、ボタンを少し大きく（マウスの PC は今のまま） */
+  .tab-pad button:not(.tab-pad__big) { min-width: 36px; } /* 数字 0〜9（big）は 10 個が 1 行に収まる幅のまま */
+}
+/* スマホ幅（〜899px）: 画面の一番下にぴったり付ける。下の余白 = iPhone のホームバーの高さ（env(safe-area-inset-bottom)。viewport-fit=cover のときだけ値が入る）
+   max-height 45vh: 画面の半分近くまでで止めて、中は縦スクロール。dvh = アドレスバーの出入りを考えた「いまの画面の高さ」（古いブラウザは上の vh のまま） */
 @media (max-width: 899px) {
-  .tab-pad:not([hidden]) { left: 0; right: 0; bottom: calc(60px + env(safe-area-inset-bottom)); border-width: 1px 0 0; max-height: 46vh; overflow-y: auto; }
-  body.has-tab-pad .tab-actions { bottom: calc(60px + 230px + env(safe-area-inset-bottom)); }
+  .tab-pad:not([hidden]) { left: 0; right: 0; bottom: 0; padding-bottom: calc(8px + env(safe-area-inset-bottom)); border-width: 1px 0 0;
+    max-height: 45vh; max-height: 45dvh; overflow-y: auto; overscroll-behavior: contain; }
+  /* キーボードの真上に保存のバー。--tab-pad-h = キーボードの高さ（JS の syncPadHeight が測って入れる）。
+     以前は 290px 固定で、キーボードが高い（パネルが多い・文字が大きい）と、保存ボタンがキーボードの後ろに隠れていた */
+  body.has-tab-pad .tab-actions { bottom: calc(var(--tab-pad-h, 0px) + 8px); }
+  /* 入力に集中できるよう・押し間違えないよう、左下の「戻る」ボタンを隠す */
+  body.has-tab-pad .back-fabs { display: none; }
+  /* ページの一番下までスクロールしたとき、最後の小節がキーボードと保存のバーの後ろに隠れないよう、下に余白を足す */
+  body.has-tab-pad { padding-bottom: calc(var(--tab-pad-h, 0px) + 76px); }
+}
+/* 下のナビ（.nav）は app.css が 760px 以下で画面の下に固定している。キーボードと重なるので隠す（761px 以上のナビは上のヘッダーの中なので隠さない） */
+@media (max-width: 760px) {
+  body.has-tab-pad .nav { display: none; }
 }
 @media (min-width: 900px) {
   .tab-pad:not([hidden]) { right: 12px; top: 130px; width: 270px; border-radius: var(--radius); max-height: calc(100vh - 150px); overflow-y: auto; }
@@ -244,7 +379,7 @@ a.tab-parts__item:hover { border-color: var(--accent); }
 .tab-guide .modal__body { max-height: calc(100dvh - 48px); overflow-y: auto; }
 .tab-guide__h { margin: 14px 0 6px; font-size: 13px; font-weight: 800; color: var(--muted); }
 .tab-guide .icon { font-size: 18px; vertical-align: -.25em; }
-.tab-guide__steps { margin: 0; padding-left: 1.4em; display: grid; gap: 6px; font-size: 14px; }
+.tab-guide__steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 14px; } /* 番号は ①〜④ を文字で書いてあるので、<ol> の自動の番号は出さない */
 .tab-guide__steps b { white-space: nowrap; }
 .tab-guide__list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 14px; }
 .tab-guide__list li { display: flex; align-items: center; gap: 4px; }
@@ -259,14 +394,15 @@ a.tab-parts__item:hover { border-color: var(--accent); }
 
 /* ---- 説明の表示（使い方のモーダルの「ボタン名を表示」。assets/tab.js の setupHelp）----
    アイコンだけのボタンの下に、aria-label（無ければ title）を小さい文字で出す。
-   グリッドのマス（.tg）は数が多く、文字を出すと譜面が読めなくなるので出さない */
-.tab.is-help :is(.icon-btn, .tab-chip, .tab-pad button, .btn)[aria-label]:not(.tg *)::after,
-.tab.is-help :is(.icon-btn, .tab-chip, .tab-pad button, .btn)[title]:not([aria-label]):not(.tg *)::after {
+   グリッドのマス（.tg）は数が多く、文字を出すと譜面が読めなくなるので出さない。
+   画面内キーボード（.tab-pad）も出さない: すでに文字のボタンが多く、出すと高さが倍になって譜面を隠してしまう（そのぶん ↶ ↷ ◀ ▶ などはアイコンで分かるようにしてある） */
+.tab.is-help :is(.icon-btn, .tab-chip, .btn)[aria-label]:not(.tg *)::after,
+.tab.is-help :is(.icon-btn, .tab-chip, .btn)[title]:not([aria-label]):not(.tg *)::after {
   content: attr(aria-label);
   display: block; margin-top: 2px;
   font-size: 10px; font-weight: 600; line-height: 1.2; white-space: nowrap; color: var(--muted);
 }
-.tab.is-help :is(.icon-btn, .tab-chip, .tab-pad button, .btn)[title]:not([aria-label]):not(.tg *)::after { content: attr(title); }
+.tab.is-help :is(.icon-btn, .tab-chip, .btn)[title]:not([aria-label]):not(.tg *)::after { content: attr(title); }
 /* 丸いアイコンボタンは文字が入る分だけ縦に伸ばす（幅は文字に合わせる） */
 .tab.is-help .icon-btn[aria-label]:not(.tg *) {
   width: auto; min-width: 36px; height: auto; min-height: 36px; padding: 4px 6px;

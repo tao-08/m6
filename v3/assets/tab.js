@@ -35,6 +35,33 @@
   });
 
   /* ---------------------------------------------------------------
+   * 曲の一覧ページ: 新規作成フォーム（form.tab-new）
+   *   1. 楽器のタイル（ラジオ）を選び替えたら、パート名の欄に「その楽器の候補」（Gt1 / Ba / Dr …。PHP が data-part に入れてある）を入れる
+   *      ただし、ユーザーが自分でパート名を書き換えたあとは上書きしない（せっかく書いた名前が消えるとイライラするので）
+   *   2. 「部分」のチェックが外れている間は、開始小節の欄を使えなくする（disabled にした入力欄はフォームで送られない）
+   *   JS が動かなくても、フォームは PHP が出した初期値のまま送れる（プログレッシブ・エンハンスメント = JS は「あれば便利」の位置づけ）
+   * --------------------------------------------------------------- */
+  const newForm = document.querySelector('form.tab-new');
+  if (newForm) {
+    const nameInput = newForm.querySelector('input[name="part"]');
+    const presetRadios = [...newForm.querySelectorAll('input[name="preset"]')];
+    const partialCheck = newForm.querySelector('input[name="partial"]');
+    const firstBarInput = newForm.querySelector('input[name="first_bar"]');
+    // 手で書き換えたか。最初は「いま入っている名前が、選択中の楽器の候補と違う」かどうかで決める
+    //   （ブラウザが再読み込みのときに前回の入力を復元することがあるため。復元された名前は、ユーザーが書いたものとして守る）
+    const checkedRadio = presetRadios.find((r) => r.checked);
+    let typed = !!checkedRadio && nameInput.value !== checkedRadio.dataset.part;
+    // input イベント = ユーザーが入力したとき（プログラムが value を入れたときは起きない）。空に戻したら、また候補を入れてよい状態に戻す
+    nameInput.addEventListener('input', () => { typed = nameInput.value.trim() !== ''; });
+    presetRadios.forEach((radio) => radio.addEventListener('change', () => {
+      if (radio.checked && !typed) nameInput.value = radio.dataset.part || '';
+    }));
+    const syncFirstBar = () => { firstBarInput.disabled = !partialCheck.checked; };
+    partialCheck.addEventListener('change', syncFirstBar);
+    syncFirstBar();
+  }
+
+  /* ---------------------------------------------------------------
    * メモの表示・画像の添付（TAB のメモ / 曲のメモ）。曲の一覧ページとプレイヤーの両方で使う
    *   画像は api_tab_image.php に fetch() で送る（保存・縮小・検査はサーバー）。見るときは attach_image?k=song_tab|song_meta&id=
    *   XSS 対策: メモの文字は textContent で入れ、URL の部分だけ <a> にする（innerHTML は使わない）
@@ -580,7 +607,6 @@
   const videoBox = $('[data-video]');
   const videoMount = $('[data-video-mount]');
   const fileInput = $('[data-file]');
-  const playBtn = $('[data-play]');
 
   /** 音源を切り替える。再生位置と速度は引き継ぐ */
   function setSource(kind, file) {
@@ -607,6 +633,7 @@
     metroReset();
     updateUnsyncBtn();
     onClockChange();
+    updateSetup(); // 音源が変わると、準備ステップの ①（音源）③（開始位置が要るか）の判定が変わる
   }
 
   /*
@@ -658,10 +685,14 @@
 
   function onClockChange() {
     const on = clock.playing || counting;
-    const icon = $('.icon', playBtn);
-    icon.textContent = on ? 'pause' : 'play_arrow';
-    playBtn.setAttribute('aria-label', on ? '一時停止' : '再生');
-    playBtn.title = (on ? '一時停止' : '再生') + '（Space）';
+    // 再生ボタンは2つある（操作バーと、準備ステップ ③ のミニ操作）。$('[data-play]') は DOM で先に出てくる1つ目しか返さないので、
+    // $$（= querySelectorAll）で全部に反映する。片方だけ「再生」のまま、のような食い違いを防ぐ
+    const label = on ? '一時停止' : '再生';
+    $$('[data-play]').forEach((btn) => {
+      $('.icon', btn).textContent = on ? 'pause' : 'play_arrow';
+      btn.setAttribute('aria-label', label);
+      btn.title = label + '（Space）';
+    });
     $$('[data-rate]').forEach((b) => b.classList.toggle('is-active', Math.abs(Number(b.dataset.rate) - clock.rate) < 0.01));
     syncPbpmField();
     requestFrame();
@@ -1519,9 +1550,24 @@
     $$('.tg-cell.is-sel', grid).forEach((c) => c.classList.remove('is-sel'));
     if (sel && cellEl(sel.b, sel.s, sel.r)) cellEl(sel.b, sel.s, sel.r).classList.add('is-sel');
     pad.hidden = !(editMode && sel);
-    document.body.classList.toggle('has-tab-pad', !pad.hidden); // 画面の下・横にキーボードが出ている間、保存ボタンなどを避ける
+    document.body.classList.toggle('has-tab-pad', !pad.hidden); // 画面の下・横にキーボードが出ている間、保存ボタンなどを避ける（tab.css）
+    syncPadHeight(); // 出した・隠した直後の高さを、すぐ CSS 変数に反映する
     updateSecPick();
   }
+
+  /* ---- キーボード（.tab-pad）の高さを CSS 変数 --tab-pad-h に入れる ----
+   *   スマホではキーボードが画面の一番下に出て、後ろのマスや保存ボタンを隠してしまう。
+   *   CSS（tab.css）が --tab-pad-h を使って「保存ボタンをキーボードの真上に出す」「選んだマスがキーボードに隠れないようにスクロールする」を計算する。
+   *   ResizeObserver = 「要素の大きさが変わったら教えてくれる」ブラウザの標準の仕組み。
+   *     パネルの切り替え（音 ↔ コード）・画面の回転・文字サイズの変更で、キーボードの高さは変わる。そのたびに測り直す
+   *   隠れているとき（display: none）の高さは 0。広い画面（900px 以上）は右の横に出る（下を隠さない）ので 0 のまま */
+  const padNarrow = window.matchMedia('(max-width: 899px)');
+  function syncPadHeight() {
+    const h = !pad.hidden && padNarrow.matches ? Math.ceil(pad.getBoundingClientRect().height) : 0;
+    document.documentElement.style.setProperty('--tab-pad-h', h + 'px');
+  }
+  if (typeof ResizeObserver === 'function') new ResizeObserver(syncPadHeight).observe(pad);
+  padNarrow.addEventListener('change', syncPadHeight); // 画面幅が 900px をまたいだ（スマホ ↔ PC の幅）とき
   function select(b, s, r, scroll) {
     sel = { b, s, r };
     markSel();
@@ -1705,6 +1751,18 @@
     redoBtn.disabled = hi >= hist.length - 1;
   }
 
+  /**
+   * タップしたマスを、画面内キーボード・保存ボタンに隠れない位置までスクロールする。
+   *   キーボードが出たあと（次の描画フレーム = requestAnimationFrame）に実行する: 出る前の画面の大きさで計算すると、出たあとに隠れてしまうため。
+   *   block / inline: 'nearest' = すでに見えていれば動かさない。見えていないときだけ、いちばん近い位置まで最小限スクロールする
+   *   隠れる分の余白は CSS の scroll-margin-bottom（tab.css。--tab-pad-h = キーボードの高さ）が確保している */
+  function keepVisible(elem) {
+    requestAnimationFrame(() => {
+      syncPadHeight(); // パネルを切り替えた（音 ↔ コード）直後は、ResizeObserver がまだ高さを測り直していないことがあるので、ここでも測る
+      elem.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    });
+  }
+
   /* ---- 小節の追加・複製・削除、見出しの入力 ---- */
   grid.addEventListener('click', (e) => {
     const chordCell = e.target.closest('.tg-chord');
@@ -1714,11 +1772,13 @@
       kb.chordBuf = chordCell.textContent;
       updateKeyboard();
       $('[data-chord-input]', pad)?.focus();
+      keepVisible(chordCell);
       return;
     }
     const cell = e.target.closest('.tg-cell');
     if (cell) {
       select(Number(cell.closest('.tg-bar').dataset.bar), Number(cell.dataset.s), Number(cell.dataset.r), false);
+      keepVisible(cell);
       return;
     }
     const act = e.target.closest('[data-act]');
@@ -1768,7 +1828,20 @@
     const b = el('button', cls || '', label);
     b.type = 'button';
     b.dataset.kb = kbData;
-    if (title) { b.title = title; b.setAttribute('aria-label', title); }
+    if (title) {
+      b.title = title; // title = パソコンでマウスを乗せたときのポップアップ。ショートカット（Ctrl+Z など）も書いておく
+      // aria-label = スクリーンリーダー（読み上げ）用の名前。末尾の「（Ctrl+Z）」はスマホには関係なく、読み上げが長くなるだけなので外す
+      //   正規表現 /（[^）]*）$/ = 「末尾の全角かっこ1組（かっこの中は「）」以外の文字）」
+      b.setAttribute('aria-label', title.replace(/（[^）]*）$/, ''));
+    }
+    return b;
+  }
+  /** アイコン（Material Symbols）のボタン。↶ ↷ ◀ ▶ ▲ ▼ のような「文字の記号」は、端末（フォント）によって形がバラバラなので、アイコンにそろえる */
+  function kbIcon(iconName, kbData, cls, title) {
+    const b = kbBtn('', kbData, cls, title);
+    const i = el('span', 'icon', iconName);
+    i.setAttribute('aria-hidden', 'true');
+    b.appendChild(i);
     return b;
   }
   function kbRow(...children) {
@@ -1776,11 +1849,19 @@
     children.flat().forEach((c) => r.appendChild(c));
     return r;
   }
+  /** 折り返さず横スクロールする行（ボタンの数が多い行用） */
+  function kbScrollRow(...children) {
+    const r = kbRow(...children);
+    r.classList.add('tab-pad__row--scroll');
+    return r;
+  }
   function renderKeyboard() {
     pad.replaceChildren();
-    // 上のタブ: 音 / コード（ドラム譜はコードなし）
+    // 上のタブ: 音 / コード（ドラム譜はコードなし）+ 元に戻す・やり直す + 閉じる（×）
+    //   閉じる: スマホには Esc キーが無く、キーボードを閉じる方法が無かったので足した（マスの選択を外すと、キーボードも消える）
     const tabs = kbRow(kbBtn('音', 'panel:note', 'tab-pad__tab', '音を入力'), ...(isDrum ? [] : [kbBtn('コード', 'panel:chord', 'tab-pad__tab', 'コードを入力')]),
-      kbBtn('↶', 'undo', 'tab-pad__sm', '元に戻す（Ctrl+Z）'), kbBtn('↷', 'redo', 'tab-pad__sm', 'やり直す（Ctrl+Y）'));
+      kbIcon('undo', 'undo', 'tab-pad__sm', '元に戻す（Ctrl+Z）'), kbIcon('redo', 'redo', 'tab-pad__sm', 'やり直す（Ctrl+Y）'),
+      kbIcon('close', 'close', 'tab-pad__sm tab-pad__close', '閉じる（Esc）'));
     pad.appendChild(tabs);
 
     // ---- 音のパネル ----
@@ -1792,15 +1873,20 @@
       note.appendChild(kbRow(...st.tuning.map((lane, r) => kbBtn(lane, `lane:${r}`, 'tab-pad__sm', 'レーン ' + lane))));
     } else {
       note.appendChild(kbRow(...Array.from({ length: 10 }, (_, f) => kbBtn(String(f), `fret:${f}`, 'tab-pad__big'))));
-      note.appendChild(kbRow(...Array.from({ length: 15 }, (_, i) => kbBtn(String(i + 10), `fret:${i + 10}`, 'tab-pad__sm'))));
-      note.appendChild(kbRow(...BASES.map(([label, base]) => kbBtn(label, `base:${base}`, 'tab-pad__sm', `音価 ${label}`)),
+      // 数が多い行（フレット 10〜24・音価）は、折り返さず 1 行のまま横スクロール（tab-pad__row--scroll）: 折り返すとキーボードが高くなって、譜面を隠してしまう
+      note.appendChild(kbScrollRow(...Array.from({ length: 15 }, (_, i) => kbBtn(String(i + 10), `fret:${i + 10}`, 'tab-pad__sm'))));
+      note.appendChild(kbScrollRow(...BASES.map(([label, base]) => kbBtn(label, `base:${base}`, 'tab-pad__sm', `音価 ${label}`)),
         kbBtn('付点', 'dot', 'tab-pad__sm', '付点（.）'), kbBtn('3連', 'trip', 'tab-pad__sm', '3連（,）')));
-      note.appendChild(kbRow(kbBtn('x', 'fret:-1', 'tab-pad__sm', 'ミュート（x）'), kbBtn('休符', 'rest', 'tab-pad__sm', '休符（r）'),
-        kbBtn('和音', 'chordmode', 'tab-pad__sm', '和音: 同じ位置に重ねる（c）')));
     }
-    note.appendChild(kbRow(kbBtn('◀', 'move:-1:0', 'tab-pad__sm', '左（←）'), kbBtn('▶', 'move:1:0', 'tab-pad__sm', '右（→）'),
-      kbBtn('▲', 'move:0:-1', 'tab-pad__sm', '上の弦（↑）'), kbBtn('▼', 'move:0:1', 'tab-pad__sm', '下の弦（↓）'),
-      kbBtn('削除', 'del', 'tab-pad__sm', '削除（Backspace）')));
+    // 移動（◀ ▶ ▲ ▼）と削除。弦の譜面は「x・休符・和音」と同じ行にまとめる（スマホの幅で 1 行に収まる。行が減るぶん、キーボードが低くなって譜面が隠れにくい）
+    const moveBtns = [kbIcon('chevron_left', 'move:-1:0', 'tab-pad__sm', '左（←）'), kbIcon('chevron_right', 'move:1:0', 'tab-pad__sm', '右（→）'),
+      kbIcon('keyboard_arrow_up', 'move:0:-1', 'tab-pad__sm', '上の弦（↑）'), kbIcon('keyboard_arrow_down', 'move:0:1', 'tab-pad__sm', '下の弦（↓）'),
+      kbBtn('削除', 'del', 'tab-pad__sm', '削除（Backspace）')];
+    if (isDrum) note.appendChild(kbRow(...moveBtns));
+    else {
+      note.appendChild(kbRow(kbBtn('x', 'fret:-1', 'tab-pad__sm', 'ミュート（x）'), kbBtn('休符', 'rest', 'tab-pad__sm', '休符（r）'),
+        kbBtn('和音', 'chordmode', 'tab-pad__sm', '和音: 同じ位置に重ねる（c）'), ...moveBtns));
+    }
     pad.appendChild(note);
 
     // ---- コードのパネル ----
@@ -1873,6 +1959,7 @@
     else if (kind === 'dot') { kb.dot = !kb.dot; if (kb.dot) kb.trip = false; }
     else if (kind === 'trip') { kb.trip = !kb.trip; if (kb.trip) kb.dot = false; }
     else if (kind === 'chordmode') kb.chord = !kb.chord;
+    else if (kind === 'close') { sel = null; markSel(); } // 閉じる（×）: マスの選択を外す = キーボードが消える（PC の Esc と同じ）
     else if (sel) {
       lastDigit = null;
       if (kind === 'fret') placeNote(Number(val));
@@ -2196,6 +2283,189 @@
   pbpmEl.addEventListener('blur', syncPbpmField); // 入力が終わったら、実際に効いた BPM（YouTube で丸められたとき）に直す
 
   /* ---------------------------------------------------------------
+   * 準備ステップ（編集モードの上に出る ① 音源 → ② テンポ → ③ 開始位置 → ④ 入力）
+   *   初めての人が「何から手を付けるか」で迷わないための手順。HTML は tab.php の <details data-setup>。
+   *   ・完了の判定は updateSetup() がまとめて行う。「いまの設定の値」から決めるので、設定を変えれば自動で ✓ が付く
+   *     （値から決められないもの = 「次へ」「音源なし」を押した、は「フラグ」として、この端末の localStorage に覚えておく。
+   *       その人の準備の進み具合なので、DB には入れない = 他の端末・他の人には共有しない）
+   *   ・開くかどうかは、編集に入った最初の 1 回だけ決める（initSetupView）。入力中に全部終わっても自動では閉じない:
+   *     上の要素が縮むと、いま入力しているグリッドの位置がずれてしまうため（Safari は、そのずれを直す機能 = スクロールアンカリングに非対応）
+   *   ・見出しのボタンを押すとステップが開く。1つ開くと他は閉じる（アコーディオン）
+   * --------------------------------------------------------------- */
+  const setupEl = $('[data-setup]');
+  const SETUP_ORDER = ['src', 'tempo', 'start', 'input'];
+  const stepEls = {};
+  SETUP_ORDER.forEach((n) => { stepEls[n] = setupEl ? $(`[data-step="${n}"]`, setupEl) : null; });
+  const dotsEl = setupEl ? $('[data-setup-dots]', setupEl) : null;
+
+  // フラグ（「次へ」「音源なし」を押したか）。localStorage は使えない環境（プライベートモード等）もあるので、必ず try/catch で包む
+  const setupKey = `tabSetup:${D.tab_id}`;
+  const setupFlags = { src: false, tempo: false, start: false };
+  try {
+    const saved = JSON.parse(localStorage.getItem(setupKey) || '{}');
+    Object.keys(setupFlags).forEach((k) => { setupFlags[k] = !!(saved && saved[k]); }); // 知っている名前だけ取り出す（壊れた値は無視）
+  } catch (e) { /* 読めなくても、フラグ無しで始めるだけ */ }
+  function setSetupFlag(name) {
+    setupFlags[name] = true;
+    try { localStorage.setItem(setupKey, JSON.stringify(setupFlags)); } catch (e) { /* 保存できなくても、このページを開いている間は有効 */ }
+  }
+
+  const barHasContent = (b) => Object.keys(b.n).length > 0 || b.r.length > 0 || Object.keys(b.c).length > 0; // 音符・休符・コードのどれかがある小節
+  // 読み込んだ時点で音符などがある = 作り終わった（または作りかけの）TAB。①〜③ も完了扱いにして、開くたびに準備を出さない
+  const loadedFilled = st.bars.some(barHasContent);
+
+  /** 4 つのステップの「完了か」と「要約の文字」を、いまの設定から作る（画面は触らない） */
+  function setupState() {
+    const hasYt = youtubeIdOf(st.youtubeUrl) !== null;
+    // 開始位置が要るのは、音源がある（YouTube / 手元のファイル）とき。音源なしは BPM だけで流れるので、開始位置を合わせる必要が無い
+    const needStart = hasYt || srcKind === 'file';
+    const noteTotal = st.bars.reduce((n, b) => n + Object.keys(b.n).length, 0);
+    const chordTotal = st.bars.reduce((n, b) => n + Object.keys(b.c).length, 0);
+    const tapped = st.bars.some((b) => b.t !== null);        // タップで位置を合わせた小節がある
+    const stepName = inputs.steps.selectedOptions[0]?.textContent ?? ''; // 「16分」など（select の表示の文字をそのまま使う）
+    return {
+      hasYt,
+      needStart,
+      src: {
+        done: setupFlags.src || hasYt || srcKind === 'file' || loadedFilled,
+        sum: hasYt ? 'YouTube' : srcKind === 'file' ? 'ファイル' : setupFlags.src ? 'なし' : '',
+      },
+      tempo: {
+        // 120 / 4 / 4 は新規作成時の初期値。どれかが変わっていれば、触った = 完了
+        done: setupFlags.tempo || st.bpm !== 120 || st.beats !== 4 || st.steps !== 4 || loadedFilled,
+        sum: `${Math.round(st.bpm * 100) / 100} · ${st.beats}拍 · ${stepName}`,
+      },
+      start: {
+        done: setupFlags.start || st.offsetMs > 0 || tapped || !needStart || loadedFilled,
+        sum: st.offsetMs > 0 ? `${Number((st.offsetMs / 1000).toFixed(2))}秒` : !needStart ? '—' : tapped ? 'タップ' : '',
+      },
+      input: {
+        done: st.bars.some(barHasContent),
+        sum: noteTotal > 0 ? `${noteTotal}音` : chordTotal > 0 ? `${chordTotal}コード` : '',
+      },
+    };
+  }
+
+  let lastSetup = null; // 直近の判定結果（initSetupView が「全部完了か」を見るのに使う）
+  /** 準備ステップの表示を、いまの設定に合わせる。refreshDirty() の最後と、音源を切り替えたとき（setSource）から呼ばれる */
+  function updateSetup() {
+    if (!setupEl || !dotsEl) return; // 準備ステップの HTML が無い、または DOM の準備前: 何もしない（落ちないためのガード）
+    const state = setupState();
+    lastSetup = state;
+    const next = SETUP_ORDER.find((n) => !state[n].done) ?? null; // 「次にやるステップ」= 最初の未完了
+    let doneCount = 0;
+    SETUP_ORDER.forEach((n, i) => {
+      const li = stepEls[n];
+      if (!li) return;
+      const status = state[n].done ? 'done' : n === next ? 'next' : 'todo';
+      if (state[n].done) doneCount++;
+      if (li.dataset.state !== status) { // 状態が変わったときだけ DOM を触る（updateSetup は 1 文字入力するたびに呼ばれるので、無駄な書き換えを避ける）
+        li.dataset.state = status;
+        li.classList.toggle('is-done', status === 'done');
+        li.classList.toggle('is-next', status === 'next');
+        const mark = $('[data-step-mark]', li);
+        if (status === 'done') { // 完了 = ✓ のアイコン（読み上げ用に「完了」の文字も隠して入れる）
+          const ic = el('span', 'icon', 'check');
+          ic.setAttribute('aria-hidden', 'true');
+          mark.replaceChildren(ic, el('span', 'tab-sr', '完了'));
+        } else {
+          mark.textContent = String(i + 1);
+        }
+      }
+      const sum = $('[data-step-sum]', li);
+      if (sum.textContent !== state[n].sum) sum.textContent = state[n].sum; // 要約は textContent で入れる（ユーザーの文字を HTML として解釈させない）
+    });
+    // 「準備」の見出しの右の 4 つの丸（畳んだ 1 行でも、進み具合が分かる）。丸は最初の 1 回だけ作る
+    if (!dotsEl.childElementCount) SETUP_ORDER.forEach(() => dotsEl.appendChild(el('span', 'tab-setup__dot')));
+    [...dotsEl.children].forEach((d, i) => d.classList.toggle('is-done', state[SETUP_ORDER[i]].done));
+    dotsEl.setAttribute('aria-label', `${doneCount}/${SETUP_ORDER.length}`);
+    // ① の「次へ」は、YouTube の URL が正しいときだけ押せる（音源を使わないなら、隣の「音源なし」）
+    const srcNext = $('[data-setup-next]', stepEls.src);
+    if (srcNext) srcNext.disabled = !state.hasYt;
+  }
+
+  /**
+   * name のステップだけ開く（null なら全部閉じる）。aria-expanded は、スクリーンリーダーに「いま開いている」と伝える属性
+   * scroll = true（ボタンを押して開いたとき）: 開いたステップが画面に見える位置までスクロールする。
+   *   ③ 開始位置だけは、ステップを画面の上端に寄せる（block: 'start'）: すぐ下にある動画も一緒に見えて、動画を見ながら位置を合わせられるため。
+   *   ほかは 'nearest'（すでに見えていれば動かさない） */
+  function openStep(name, scroll) {
+    SETUP_ORDER.forEach((n) => {
+      const li = stepEls[n];
+      if (!li) return;
+      const open = n === name;
+      li.classList.toggle('is-open', open);
+      $('.tab-step__head', li).setAttribute('aria-expanded', String(open));
+      $('.tab-step__body', li).hidden = !open;
+    });
+    if (scroll && name && stepEls[name]) {
+      const calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches; // 動きを減らす設定の人には、滑らかなスクロールにしない
+      // 他のステップが閉じて高さが変わったあとの位置で動かすため、次のフレームに回す
+      requestAnimationFrame(() => stepEls[name].scrollIntoView({ block: name === 'start' ? 'start' : 'nearest', behavior: calm ? 'auto' : 'smooth' }));
+    }
+  }
+  /** 「次へ」で次に開くステップ。③ 開始位置は、音源が無いと要らない（自動で完了）ので飛ばす。最後まで来たら null（全部閉じる） */
+  function nextAfter(name) {
+    const state = setupState();
+    for (let i = SETUP_ORDER.indexOf(name) + 1; i < SETUP_ORDER.length; i++) {
+      if (SETUP_ORDER[i] === 'start' && !state.needStart) continue;
+      return SETUP_ORDER[i];
+    }
+    return null;
+  }
+
+  /** 編集に入った最初の 1 回だけ: 全部完了なら 1 行に畳む / 未完了なら開いて、最初の未完了ステップを開く */
+  let setupViewInit = false;
+  function initSetupView() {
+    if (setupViewInit || !setupEl) return;
+    setupViewInit = true;
+    updateSetup();
+    const first = SETUP_ORDER.find((n) => !lastSetup[n].done) ?? null;
+    setupEl.open = first !== null; // <details> の open 属性（true = 開く）
+    openStep(first);
+  }
+
+  /** ④「入力へ」: 1 小節目の最初のマス（b=0, s=0, r=0）を選ぶ → 画面内キーボードが開く。1 小節目が見える位置までスクロールもする */
+  function goInput() {
+    if (!gridBuilt) renderGrid();
+    kb.panel = 'note';
+    select(0, 0, 0, false);
+    updateKeyboard();
+    const firstBar = grid.children[0];
+    if (firstBar) {
+      // キーボードが出たあと（次のフレーム）に動かす。動きを減らす設定（prefers-reduced-motion）の人には、滑らかなスクロールにしない
+      const calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      requestAnimationFrame(() => firstBar.scrollIntoView({ block: 'start', behavior: calm ? 'auto' : 'smooth' }));
+    }
+  }
+
+  if (setupEl) {
+    // クリックは setupEl 1 か所で受ける（イベント委譲 = 子のボタンのクリックは親まで泡のように上がってくる）
+    setupEl.addEventListener('click', (e) => {
+      const btn = e.target.closest('button');
+      if (!btn || btn.disabled) return;
+      const li = btn.closest('.tab-step');
+      const name = li ? li.dataset.step : '';
+      if (btn.classList.contains('tab-step__head')) { // 見出し: 開いていれば閉じる / 閉じていれば開く（ほかは閉じる）
+        openStep(li.classList.contains('is-open') ? null : name, true);
+        return;
+      }
+      const d = btn.dataset;
+      if (d.setupSkipSrc !== undefined) { // ① 音源なし: ① を完了にして ② へ
+        setSetupFlag('src');
+        updateSetup();
+        openStep(nextAfter('src'), true);
+      } else if (d.setupNext !== undefined) { // 次へ: いまのステップを完了にして、次のステップを開く
+        setSetupFlag(name);
+        updateSetup();
+        openStep(nextAfter(name), true);
+      } else if (d.setupGoInput !== undefined) {
+        goInput();
+      }
+    });
+  }
+
+  /* ---------------------------------------------------------------
    * 保存・削除・未保存の警告
    * --------------------------------------------------------------- */
   const saveBtn = $('[data-save]');
@@ -2206,9 +2476,12 @@
   function isDirty() { return JSON.stringify(payload()) !== savedStr; }
   function refreshDirty() {
     dirty = isDirty();
-    if (noteEl.dataset.error) return;    // エラー表示中はそのまま
-    noteEl.hidden = !dirty;
-    noteEl.textContent = dirty ? '未保存' : '';
+    if (!noteEl.dataset.error) {         // エラー表示中はそのまま
+      noteEl.hidden = !dirty;
+      noteEl.textContent = dirty ? '未保存' : '';
+    }
+    // 設定の変更・音符の入力・元に戻す / やり直す・インポートは、どれもここを通る。だから準備ステップの更新は、ここ 1 か所から呼べばよい
+    updateSetup();
   }
   /** 画面上部のお知らせ（app.js の showToast）で知らせる */
   function notify(message, type) {
@@ -2311,7 +2584,7 @@
     $('[data-import-ai]', importDlg).hidden = !D.ai;
     importDlg.showModal();
   }
-  $('[data-import-open]').addEventListener('click', importOpen);
+  $$('[data-import-open]').forEach((b) => b.addEventListener('click', importOpen)); // ボタンは2つ（準備ステップ ④ と、編集の道具の行）。$ は先頭の1つしか返さないので $$ で全部に付ける
   $('[data-import-close]', importDlg).addEventListener('click', () => importDlg.close());
   $('[data-import-parse]', importDlg).addEventListener('click', () => {
     const r = parseAsciiTab(importText.value, strings, stepsPerBar());
@@ -2414,6 +2687,8 @@
   const modeBtn = $('[data-mode-toggle]');
   function setMode(on) {
     editMode = on;
+    // is-editing = 編集中の印。tab.css が data-practice-only（速度・A/B・マーカー…）を隠し、data-edit-only（準備・詳細設定）を出す
+    root.classList.toggle('is-editing', on);
     editBox.hidden = !on;
     tabImages.setEditable(on);
     renderNotes();
@@ -2422,6 +2697,7 @@
     modeBtn.setAttribute('aria-label', modeBtn.title);
     $('.icon', modeBtn).textContent = on ? 'school' : 'edit';
     if (on && !gridBuilt) renderGrid();
+    if (on) initSetupView(); // 準備ステップを開くか閉じるかは、編集に入った最初の 1 回だけ決める
     if (!on) setTapMode(false);
     markSel();
     requestFrame();

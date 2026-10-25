@@ -193,39 +193,74 @@ if (isset($_GET['song']) || isset($_GET['key'])) {
     </div>
 </section>
 
-<!-- 曲のメモ（全パート共通）と画像。編集はこの画面。各パートのプレイヤーでは読むだけ -->
-<section class="card tab-notes-edit" data-song-memo>
-    <script type="application/json" id="song-data"><?= $songData ?></script>
-    <?= attach_modal_html() ?>
-    <label class="field"><?= icon('sticky_note_2') ?>
-        <textarea rows="3" maxlength="<?= TAB_MEMO_MAX ?>" data-song-memo-text aria-label="曲のメモ"><?= h($meta['memo'] ?? '') ?></textarea>
-    </label>
-    <ul class="live-thumbs tab-imgs" data-song-images></ul>
-    <div class="tab-notes-edit__actions">
-        <label class="btn btn--ghost btn--sm" data-img-add title="ファイルを追加" aria-label="ファイルを追加"><?= icon('add_photo_alternate') ?>
-            <input type="file" multiple hidden data-img-input></label>
-        <button type="button" class="btn btn--primary btn--sm" data-song-memo-save><?= icon('save') ?> 保存</button>
-    </div>
-</section>
-
-<section class="card tab-parts">
-    <?php if ($parts): ?>
-        <ul class="tab-parts__list">
-            <?php foreach ($parts as $p): ?>
-                <li><a class="tab-parts__item" href="tab?id=<?= (int)$p['tab_id'] ?>">
-                    <span class="tab-parts__inst"><?= h($p['short_name']) ?></span>
-                    <span class="tab-parts__name"><?= h($p['part']) ?></span>
-                    <?php if ($p['is_partial']): ?><span class="tag" title="部分">部分 <?= (int)$p['first_bar'] ?>〜<?= (int)$p['first_bar'] + max(0, (int)$p['bar_count'] - 1) ?></span><?php endif; ?>
-                    <?php if ($p['kind'] !== 'drum'): ?><span class="muted small"><?= (int)tab_string_count($p['tuning']) ?>弦</span><?php endif; ?>
-                    <span class="muted small tab-parts__date"><?= h(fmt_datetime($p['updated_at'])) ?></span>
-                    <?= icon('chevron_right') ?>
-                </a></li>
+<?php
+// ---- 新規作成フォーム（楽器のタイル + パート名 + 詳細）----
+//   「パートが 0 件のとき」と「1 件以上のとき」で置き場所（空の状態のカード / 一覧の下の折りたたみ）が違うので、
+//   フォームの HTML は関数（クロージャ = 変数に入れた名前の無い関数）にして 1 か所にだけ書く。呼ぶのは、下の if のどちらか一方だけ。
+//   パート名の候補は、この曲にもう有る名前と重ならないものをプリセットごとに作って、ラジオの data-part に持たせる
+//   （楽器を選び替えたとき JS が、ユーザーがまだ手で書き換えていなければ、その候補を入力欄に入れる）
+$existingParts = array_column($parts, 'part');
+$renderNewForm = static function () use ($existingParts): void {
+    $suggest = [];
+    foreach (TAB_PRESETS as $k => $p) {
+        $suggest[$k] = tab_suggest_part($p['part_base'], $p['part_number'], $existingParts);
+    }
+    $firstKey = array_key_first(TAB_PRESETS); // 最初のプリセットを選んだ状態で出す（ラジオは何も選ばないと値が送られない）
+    ?>
+    <form method="post" class="tab-new">
+        <?= csrf_field() ?>
+        <?php // 楽器: select ではなく大きなタイルのラジオ（スマホの select は別画面のピッカーが開いて 2 タップ以上かかる。タイルなら 1 タップ） ?>
+        <fieldset class="tab-inst">
+            <legend class="tab-sr">楽器</legend>
+            <?php foreach (TAB_PRESETS as $k => $p): ?>
+                <label class="tab-inst__opt">
+                    <input type="radio" name="preset" value="<?= h($k) ?>" data-part="<?= h($suggest[$k]) ?>"<?= $k === $firstKey ? ' checked' : '' ?>>
+                    <span><?= h($p['label']) ?></span>
+                </label>
             <?php endforeach; ?>
-        </ul>
-    <?php else: ?>
-        <p class="muted">まだ TAB がありません</p>
-    <?php endif; ?>
+        </fieldset>
+        <?php // placeholder ではなく value に入れる（placeholder は薄い文字で、入力済みに見えて紛らわしい） ?>
+        <label class="field">パート <input type="text" name="part" maxlength="20" required value="<?= h($suggest[$firstKey]) ?>" autocomplete="off"></label>
+        <details class="tab-new__more">
+            <summary class="tab-summary"><?= icon('tune') ?> 詳細 <?= icon('expand_more', 'tab-summary__chev') ?></summary>
+            <?php // 部分 TAB（ギターソロだけ等）。チェックを外している間は、開始小節は入力できない（JS が disabled にする） ?>
+            <div class="tab-new__partial">
+                <label class="check" title="部分 TAB（ギターソロだけ等）"><input type="checkbox" name="partial" value="1"> 部分</label>
+                <label class="field">開始小節 <input type="number" name="first_bar" min="1" max="999" value="1" inputmode="numeric"></label>
+            </div>
+        </details>
+        <button type="submit" class="btn btn--primary tab-new__submit"><?= icon('add') ?> 作成</button>
+    </form>
+    <?php
+};
+?>
+<?php if ($parts): ?>
+<section class="card tab-parts">
+    <ul class="tab-parts__list">
+        <?php foreach ($parts as $p): ?>
+            <li><a class="tab-parts__item" href="tab?id=<?= (int)$p['tab_id'] ?>">
+                <span class="tab-parts__inst"><?= h($p['short_name']) ?></span>
+                <span class="tab-parts__name"><?= h($p['part']) ?></span>
+                <?php if ($p['is_partial']): ?><span class="tag" title="部分">部分 <?= (int)$p['first_bar'] ?>〜<?= (int)$p['first_bar'] + max(0, (int)$p['bar_count'] - 1) ?></span><?php endif; ?>
+                <?php if ($p['kind'] !== 'drum'): ?><span class="muted small"><?= (int)tab_string_count($p['tuning']) ?>弦</span><?php endif; ?>
+                <span class="muted small tab-parts__date"><?= h(fmt_datetime($p['updated_at'])) ?></span>
+                <?= icon('chevron_right') ?>
+            </a></li>
+        <?php endforeach; ?>
+    </ul>
+    <?php // 1 件以上: 一覧の下に、閉じた状態の「パートを追加」。開くとフォーム ?>
+    <details class="tab-new-wrap">
+        <summary class="tab-new-wrap__summary"><?= icon('add') ?> パートを追加</summary>
+        <?php $renderNewForm(); ?>
+    </details>
 </section>
+<?php else: ?>
+<?php // 0 件: 「まだ TAB がありません」と書くだけにせず、作成フォームを最初から開いて出す（空の状態をそのまま次の行動のきっかけにする = Empty State の CTA） ?>
+<section class="card tab-parts tab-parts--empty">
+    <h2 class="tab-parts__heading tab-parts__heading--cta"><?= icon('add') ?> TAB を作成</h2>
+    <?php $renderNewForm(); ?>
+</section>
+<?php endif; ?>
 
 <?php if ($deleted): ?>
 <section class="card tab-parts tab-parts--deleted">
@@ -242,21 +277,30 @@ if (isset($_GET['song']) || isset($_GET['key'])) {
 </section>
 <?php endif; ?>
 
-<section class="card">
-    <form method="post" class="tab-new">
-        <?= csrf_field() ?>
-        <label class="field">パート <input type="text" name="part" maxlength="20" required placeholder="Gt1"></label>
-        <label class="field">楽器
-            <select name="preset">
-                <?php foreach (TAB_PRESETS as $k => $p): ?><option value="<?= h($k) ?>"><?= h($p['label']) ?></option><?php endforeach; ?>
-            </select>
+<?php
+// 曲のメモ（全パート共通）と画像。いちばん下に置く: 一覧から TAB を選ぶ・作る、が主な用事で、メモは「たまに見る」ものなので
+//   折りたたみ（<details>）にして、メモか画像がもう入っているときだけ最初から開いておく（無いのに開いていると、空の枠が場所を取る）
+$hasSongMemo = (string)($meta['memo'] ?? '') !== '' || $songImageIds !== [];
+?>
+<!-- 曲のメモ（全パート共通）と画像。編集はこの画面。各パートのプレイヤーでは読むだけ -->
+<?php // JSON と画像のモーダル（<dialog>）は、閉じた <details> の中に置かない（中身が描画されないので、モーダルが開けない恐れがある）→ <details> の外 ?>
+<script type="application/json" id="song-data"><?= $songData ?></script>
+<?= attach_modal_html() ?>
+<details class="card tab-notes-edit" data-song-memo<?= $hasSongMemo ? ' open' : '' ?>>
+    <summary class="tab-summary"><?= icon('sticky_note_2') ?> メモ・画像 <?= icon('expand_more', 'tab-summary__chev') ?></summary>
+    <div class="tab-notes-edit__body">
+        <label class="field">
+            <textarea rows="3" maxlength="<?= TAB_MEMO_MAX ?>" data-song-memo-text aria-label="曲のメモ"><?= h($meta['memo'] ?? '') ?></textarea>
         </label>
-        <label class="field tab-new__partial"><span class="check"><input type="checkbox" name="partial" value="1"> 部分</span>
-            <input type="number" name="first_bar" min="1" max="999" value="1" aria-label="開始小節" title="開始小節"></label>
-        <button type="submit" class="btn btn--primary"><?= icon('add') ?> 作成</button>
-    </form>
-</section>
-<script src="<?= asset_url('assets/tab.js') ?>" defer></script><!-- 曲のメモの保存・画像・削除した TAB の復元 -->
+        <ul class="live-thumbs tab-imgs" data-song-images></ul>
+        <div class="tab-notes-edit__actions">
+            <label class="btn btn--ghost btn--sm" data-img-add title="ファイルを追加" aria-label="ファイルを追加"><?= icon('add_photo_alternate') ?>
+                <input type="file" multiple hidden data-img-input></label>
+            <button type="button" class="btn btn--primary btn--sm" data-song-memo-save><?= icon('save') ?> 保存</button>
+        </div>
+    </div>
+</details>
+<script src="<?= asset_url('assets/tab.js') ?>" defer></script><!-- 曲のメモの保存・画像・削除した TAB の復元・新規作成フォームのパート名 -->
 <?php
     render_footer();
     exit;
@@ -369,6 +413,137 @@ render_header($tab['title'] . ' ' . $tab['part'], 'lives');
             <input type="file" multiple hidden data-img-input></label>
     </details>
 
+    <?php /* ===== 準備ステップ（編集モードのときだけ）: ① 音源 → ② テンポ → ③ 開始位置 → ④ 入力 =====
+       初めての人が「何から手を付けるか」で迷わないよう、編集画面の上に手順を出す（プログレッシブ・ディスクロージャー =
+       最初から全部の設定を見せず、いま必要なものだけを順に出す、という UI の定番の考え方）。
+       ・各ステップは見出しのボタンを押すと開く（アコーディオン = 1つ開くと他は閉じる）。完了したステップは ✓
+       ・全部終わっている TAB は、1 行（準備 ●●●●）に畳んで出す
+       ・位置は、ヘッダー・メモのすぐ下 = 動画（下の [data-video]）の上。③ の開始位置合わせは、すぐ下の動画を見ながらできる
+       ・data-edit-only … 編集モードのときだけ見せる印（tab.css）。練習モードでは消える
+       ・入力欄（data-set="…"）は、以前は下の「設定」カードにあったものを移しただけ。JS は root の中から探すので、場所が変わっても動く
+       ・ステップの完了の判定・要約の文字・開閉は assets/tab.js の updateSetup() / openStep() */ ?>
+    <details class="card tab-setup" data-setup data-edit-only>
+        <summary class="tab-summary tab-setup__summary">
+            <?= icon('checklist') ?> <b>準備</b>
+            <span class="tab-setup__dots" data-setup-dots role="img" aria-label=""></span><?php // 4つの丸（JS が作る。完了したぶん塗る） ?>
+            <?= icon('expand_more', 'tab-summary__chev') ?>
+        </summary>
+        <ol class="tab-steps">
+            <li class="tab-step" data-step="src">
+                <button type="button" class="tab-step__head" aria-expanded="false" aria-controls="tab-step-src">
+                    <span class="tab-step__mark" data-step-mark>1</span>
+                    <span class="tab-step__title">音源</span>
+                    <span class="tab-step__sum muted small" data-step-sum></span>
+                    <?= icon('expand_more', 'tab-step__chev') ?>
+                </button>
+                <div class="tab-step__body" id="tab-step-src" hidden>
+                    <label class="field">YouTube <input type="url" data-set="youtube" maxlength="500" placeholder="https://youtu.be/…"></label>
+                    <div class="tab-step__actions">
+                        <button type="button" class="btn" data-setup-skip-src>音源なし</button>
+                        <button type="button" class="btn btn--primary" data-setup-next disabled>次へ</button>
+                    </div>
+                </div>
+            </li>
+            <li class="tab-step" data-step="tempo">
+                <button type="button" class="tab-step__head" aria-expanded="false" aria-controls="tab-step-tempo">
+                    <span class="tab-step__mark" data-step-mark>2</span>
+                    <span class="tab-step__title">テンポ</span>
+                    <span class="tab-step__sum muted small" data-step-sum></span>
+                    <?= icon('expand_more', 'tab-step__chev') ?>
+                </button>
+                <div class="tab-step__body" id="tab-step-tempo" hidden>
+                    <div class="tab-step__fields">
+                        <label class="field tab-step__wide">BPM
+                            <span class="tab-settings__row">
+                                <input type="number" data-set="bpm" min="20" max="400" step="0.01" inputmode="decimal">
+                                <!-- BPM 計測: 曲に合わせて4回以上タップ（小節の頭を合わせる「タップ」とは別） -->
+                                <button type="button" class="icon-btn" data-bpm-tap aria-label="BPM計測" title="BPM計測（4回以上タップ）"><?= icon('speed') ?></button>
+                            </span>
+                        </label>
+                        <label class="field">拍子 <input type="number" data-set="beats" min="1" max="16" step="1" inputmode="numeric"></label>
+                        <label class="field">分割
+                            <select data-set="steps">
+                                <?php foreach ([1 => '4分', 2 => '8分', 3 => '3連', 4 => '16分', 6 => '6連', 8 => '32分'] as $v => $label): ?>
+                                    <option value="<?= $v ?>"><?= $label ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </label>
+                    </div>
+                    <div class="tab-step__actions"><button type="button" class="btn btn--primary" data-setup-next>次へ</button></div>
+                </div>
+            </li>
+            <li class="tab-step" data-step="start">
+                <button type="button" class="tab-step__head" aria-expanded="false" aria-controls="tab-step-start">
+                    <span class="tab-step__mark" data-step-mark>3</span>
+                    <span class="tab-step__title">開始位置</span>
+                    <span class="tab-step__sum muted small" data-step-sum></span>
+                    <?= icon('expand_more', 'tab-step__chev') ?>
+                </button>
+                <div class="tab-step__body" id="tab-step-start" hidden>
+                    <p class="tab-step__hint muted small">1小節目の頭で止めて <?= icon('my_location') ?></p>
+                    <?php // ミニ操作: ボタンは下の操作バーと同じ data-seek / data-play なので、root のクリック処理（assets/tab.js）がそのまま動かす ?>
+                    <div class="tab-step__mini">
+                        <button type="button" class="btn" data-seek="-0.1">-0.1秒</button>
+                        <button type="button" class="icon-btn icon-btn--play" data-play aria-label="再生" title="再生（Space）"><?= icon('play_arrow', 'icon--fill') ?></button>
+                        <button type="button" class="btn" data-seek="0.1">+0.1秒</button>
+                    </div>
+                    <label class="field">開始位置（秒）
+                        <span class="tab-settings__row">
+                            <input type="number" data-set="offset" min="0" step="0.01" inputmode="decimal">
+                            <button type="button" class="icon-btn" data-offset-now aria-label="現在位置" title="現在位置"><?= icon('my_location') ?></button>
+                        </span>
+                    </label>
+                    <div class="tab-step__actions"><button type="button" class="btn btn--primary" data-setup-next>次へ</button></div>
+                </div>
+            </li>
+            <li class="tab-step" data-step="input">
+                <button type="button" class="tab-step__head" aria-expanded="false" aria-controls="tab-step-input">
+                    <span class="tab-step__mark" data-step-mark>4</span>
+                    <span class="tab-step__title">入力</span>
+                    <span class="tab-step__sum muted small" data-step-sum></span>
+                    <?= icon('expand_more', 'tab-step__chev') ?>
+                </button>
+                <div class="tab-step__body" id="tab-step-input" hidden>
+                    <div class="tab-step__actions">
+                        <button type="button" class="btn" data-import-open><?= icon('upload_file') ?> インポート</button>
+                        <button type="button" class="btn btn--primary" data-setup-go-input><?= icon('keyboard') ?> 入力へ</button>
+                    </div>
+                </div>
+            </li>
+        </ol>
+    </details>
+
+    <?php // 詳細設定: 準備ステップに入らない項目（パート名・メモ・開始小節と部分・カポ・チューニング・リンク）。普段は触らないので閉じておく ?>
+    <details class="card tab-more" data-edit-only>
+        <summary class="tab-summary"><?= icon('tune') ?> 詳細設定 <?= icon('expand_more', 'tab-summary__chev') ?></summary>
+        <div class="tab-settings">
+            <label class="field tab-settings__wide">パート <input type="text" data-set="part" maxlength="20"></label>
+            <label class="field" data-partial-field>開始小節
+                <span class="tab-settings__row"><input type="number" data-set="first_bar" min="1" max="999" inputmode="numeric">
+                    <label class="check" title="部分 TAB"><input type="checkbox" data-set="partial"> 部分</label></span>
+            </label>
+            <label class="field" data-string-only>カポ
+                <select data-set="capo">
+                    <?php for ($i = 0; $i <= TAB_MAX_CAPO; $i++): ?><option value="<?= $i ?>"><?= $i ?></option><?php endfor; ?>
+                </select>
+            </label>
+            <div class="field tab-settings__wide" data-string-only>チューニング
+                <span class="tab-settings__row">
+                    <select data-set="tuning-preset" aria-label="チューニング"></select>
+                    <input type="text" data-set="tuning" maxlength="30" aria-label="チューニングの音名" hidden>
+                </span>
+            </div>
+            <label class="field tab-settings__wide">メモ
+                <textarea data-set="memo" rows="3" maxlength="<?= TAB_MEMO_MAX ?>"></textarea>
+            </label>
+            <!-- 参考にする TAB サイトなどのリンク（最大10個。行は JS が作る） -->
+            <div class="field tab-settings__wide">リンク
+                <div class="tab-links-edit" data-links-edit></div>
+                <button type="button" class="icon-btn icon-btn--sm" data-link-add aria-label="リンク追加" title="リンク追加"><?= icon('add_link') ?></button>
+            </div>
+        </div>
+    </details>
+
     <!-- 音源: YouTube の埋め込み / 手元のファイル / なし（アイコンで切り替え） -->
     <div class="tab-video" data-video hidden><div data-video-mount></div></div>
 
@@ -379,7 +554,7 @@ render_header($tab['title'] . ' ' . $tab['part'], 'lives');
             <button type="button" class="icon-btn" data-src="file" aria-label="ファイル" title="ファイル"><?= icon('audio_file') ?></button>
             <button type="button" class="icon-btn" data-src="none" aria-label="音源なし" title="音源なし"><?= icon('timer') ?></button>
             <!-- 同期解除: 音源は止めて、今の位置から内部時計で進む（好きな BPM で練習できる） -->
-            <button type="button" class="icon-btn" data-unsync aria-pressed="false" aria-label="同期解除" title="同期解除"><?= icon('link') ?></button>
+            <button type="button" class="icon-btn" data-unsync data-practice-only aria-pressed="false" aria-label="同期解除" title="同期解除"><?= icon('link') ?></button>
             <!-- ファイルはサーバーに送らない。ブラウザの中で再生するだけ -->
             <input type="file" accept="audio/*,video/*" data-file hidden>
         </div>
@@ -389,7 +564,7 @@ render_header($tab['title'] . ' ' . $tab['part'], 'lives');
             <button type="button" class="icon-btn" data-seek="5" aria-label="5秒進む" title="5秒進む（→）"><?= icon('forward_5') ?></button>
         </div>
         <!-- 練習BPM: 元の BPM との比が再生速度になる。×0.5… は BPM を入れるショートカット -->
-        <div class="tab-bar__group" role="group" aria-label="速度">
+        <div class="tab-bar__group" role="group" aria-label="速度" data-practice-only>
             <?php foreach ([0.5, 0.75, 0.9, 1] as $r): ?>
                 <button type="button" class="tab-chip<?= $r === 1 ? ' is-active' : '' ?>" data-rate="<?= $r ?>">×<?= $r ?></button>
             <?php endforeach; ?>
@@ -398,7 +573,7 @@ render_header($tab['title'] . ' ' . $tab['part'], 'lives');
             <span class="tab-help-field" data-help="練習 BPM"><input type="number" class="tab-pbpm" data-pbpm min="20" max="400" step="1" inputmode="decimal" aria-label="練習 BPM" title="練習 BPM"></span>
             <button type="button" class="icon-btn icon-btn--sm" data-pbpm-step="5" aria-label="BPM +5" title="BPM +5"><?= icon('add') ?></button>
         </div>
-        <div class="tab-bar__group" role="group" aria-label="リピート">
+        <div class="tab-bar__group" role="group" aria-label="リピート" data-practice-only>
             <button type="button" class="tab-chip" data-ab="a" title="A 地点">A</button>
             <button type="button" class="tab-chip" data-ab="b" title="B 地点">B</button>
             <button type="button" class="icon-btn icon-btn--sm" data-ab="clear" aria-label="リピート解除" title="リピート解除（\）"><?= icon('repeat_on') ?></button>
@@ -407,7 +582,7 @@ render_header($tab['title'] . ' ' . $tab['part'], 'lives');
                 <?php foreach ([0, 2, 5, 10] as $n): ?><option value="<?= $n ?>"><?= $n === 0 ? '+0' : '+' . $n ?></option><?php endforeach; ?>
             </select></span>
         </div>
-        <div class="tab-bar__group">
+        <div class="tab-bar__group" data-practice-only>
             <button type="button" class="icon-btn" data-marker-add aria-label="マーカー追加" title="マーカー追加（M）"><?= icon('flag') ?></button>
         </div>
         <div class="tab-bar__group">
@@ -440,61 +615,13 @@ render_header($tab['title'] . ' ' . $tab['part'], 'lives');
     <div class="tab-stage" data-stage><canvas data-canvas aria-label="TAB 譜"></canvas></div>
 
     <!-- 練習用マーカー（自分だけに見える。JS が作る） -->
-    <ul class="tab-markers" data-markers></ul>
+    <ul class="tab-markers" data-markers data-practice-only></ul>
 
     <!-- ===== 編集（編集モードのときだけ） ===== -->
     <section class="tab-edit" data-edit hidden>
-        <div class="card tab-settings">
-            <label class="field">パート <input type="text" data-set="part" maxlength="20"></label>
-            <label class="field">BPM
-                <span class="tab-settings__row">
-                    <input type="number" data-set="bpm" min="20" max="400" step="0.01" inputmode="decimal">
-                    <!-- BPM 計測: 曲に合わせて4回以上タップ（小節の頭を合わせる「タップ」とは別） -->
-                    <button type="button" class="icon-btn" data-bpm-tap aria-label="BPM計測" title="BPM計測（4回以上タップ）"><?= icon('speed') ?></button>
-                </span>
-            </label>
-            <label class="field">拍子 <input type="number" data-set="beats" min="1" max="16" step="1" inputmode="numeric"></label>
-            <label class="field">分割
-                <select data-set="steps">
-                    <?php foreach ([1 => '4分', 2 => '8分', 3 => '3連', 4 => '16分', 6 => '6連', 8 => '32分'] as $v => $label): ?>
-                        <option value="<?= $v ?>"><?= $label ?></option>
-                    <?php endforeach; ?>
-                </select>
-            </label>
-            <label class="field">開始（秒）
-                <span class="tab-settings__row">
-                    <input type="number" data-set="offset" min="0" step="0.01" inputmode="decimal">
-                    <button type="button" class="icon-btn" data-offset-now aria-label="現在位置" title="現在位置"><?= icon('my_location') ?></button>
-                </span>
-            </label>
-            <label class="field tab-settings__wide">YouTube <input type="url" data-set="youtube" maxlength="500" placeholder="https://youtu.be/…"></label>
-            <label class="field tab-settings__wide">メモ
-                <textarea data-set="memo" rows="3" maxlength="<?= TAB_MEMO_MAX ?>"></textarea>
-            </label>
-            <label class="field" data-partial-field>開始小節
-                <span class="tab-settings__row"><input type="number" data-set="first_bar" min="1" max="999" inputmode="numeric">
-                    <label class="check" title="部分 TAB"><input type="checkbox" data-set="partial"> 部分</label></span>
-            </label>
-            <label class="field" data-string-only>カポ
-                <select data-set="capo">
-                    <?php for ($i = 0; $i <= TAB_MAX_CAPO; $i++): ?><option value="<?= $i ?>"><?= $i ?></option><?php endfor; ?>
-                </select>
-            </label>
-            <div class="field tab-settings__wide" data-string-only>チューニング
-                <span class="tab-settings__row">
-                    <select data-set="tuning-preset" aria-label="チューニング"></select>
-                    <input type="text" data-set="tuning" maxlength="30" aria-label="チューニングの音名" hidden>
-                </span>
-            </div>
-            <!-- 参考にする TAB サイトなどのリンク（最大10個。行は JS が作る） -->
-            <div class="field tab-settings__wide">リンク
-                <div class="tab-links-edit" data-links-edit></div>
-                <button type="button" class="icon-btn icon-btn--sm" data-link-add aria-label="リンク追加" title="リンク追加"><?= icon('add_link') ?></button>
-            </div>
-        </div>
-
         <!-- 曲のマーカー: 選んだ小節（なければ再生中の小節）の頭から、次にマーカーが付く小節の手前までがそのセクション -->
-        <div class="tab-secpick" data-secpick role="group" aria-label="セクション"></div>
+        <?php // 先頭のラベルのアイコンで「小節にセクション名（イントロ・サビ…）を付けるチップ」だと分かるようにする。チップは JS がこのアイコンの後ろに足す ?>
+        <div class="tab-secpick" data-secpick role="group" aria-label="セクション" title="小節にセクション名を付ける"><?= icon('label', 'tab-secpick__icon') ?></div>
 
         <div class="tab-tools">
             <button type="button" class="icon-btn" data-undo aria-label="元に戻す" title="元に戻す（Ctrl+Z）" disabled><?= icon('undo') ?></button>
@@ -550,12 +677,14 @@ render_header($tab['title'] . ' ' . $tab['part'], 'lives');
             <h3 id="tab-guide-title" class="modal__title"><?= icon('help') ?> 使い方</h3>
 
             <h4 class="tab-guide__h">流れ</h4>
+            <?php // 編集を開くと、画面の上に「準備」のステップが出る（上の <details data-setup>）。流れもその順番に合わせる。番号は ①〜④ を文字で書くので、<ol> の自動の番号は消す（tab.css） ?>
             <ol class="tab-guide__steps">
-                <li><b><?= icon('edit') ?> 編集</b>で <b>YouTube</b> の URL・<b>BPM</b>・<b>拍子</b>・<b>分割</b>を設定</li>
-                <li><b><?= icon('my_location') ?> 開始</b>: 1小節目の頭で再生を止めて押す</li>
-                <li>マスを選んで<b>画面内キーボード</b>でフレットを入力（<?= icon('upload_file') ?> で文字・画像の TAB も取込）</li>
-                <li>ずれる曲は <b><?= icon('touch_app') ?> タップ</b>: 再生しながら小節の頭で T を押して補正</li>
-                <li><b><?= icon('save') ?> 保存</b> → 編集を閉じて練習</li>
+                <li><b><?= icon('edit') ?> 編集</b>を開くと、上に<b>準備</b>が出る</li>
+                <li><b>① 音源</b>: YouTube の URL（無ければ「音源なし」）</li>
+                <li><b>② テンポ</b>: BPM・拍子・分割</li>
+                <li><b>③ 開始位置</b>: 1小節目の頭で止めて <?= icon('my_location') ?></li>
+                <li><b>④ 入力</b>: マスを選んで<b>画面内キーボード</b>で入力</li>
+                <li><b><?= icon('save') ?> 保存</b> → <b><?= icon('school') ?> 練習</b></li>
             </ol>
 
             <h4 class="tab-guide__h">練習</h4>
@@ -574,6 +703,8 @@ render_header($tab['title'] . ' ' . $tab['part'], 'lives');
             <h4 class="tab-guide__h">編集</h4>
             <ul class="tab-guide__list">
                 <li><?= icon('label') ?><span>小節を選んでセクション名を付ける</span></li>
+                <li><?= icon('upload_file') ?><span>インポート: 文字・画像の TAB を取込</span></li>
+                <li><?= icon('touch_app') ?><span>タップ: 再生しながら小節の頭で T を押して位置を補正</span></li>
                 <li><?= icon('speed') ?><span>BPM 計測: 曲に合わせて4回以上タップ</span></li>
                 <li><?= icon('undo') ?><?= icon('redo') ?><span>元に戻す・やり直す</span></li>
                 <li><?= icon('history') ?><span>履歴から復元</span></li>
