@@ -232,9 +232,15 @@ function setupSetlistTip() {
   document.body.appendChild(tip);
   let current = null; // いま出しているバッジ
   let hideTimer = 0;
+  let autoTimer = 0;  // スマホ用: 一定時間たったら自動で消すタイマー
 
-  const hide = () => { tip.classList.remove('is-visible'); current = null; };
+  const hide = () => {
+    clearTimeout(autoTimer); // 手動で消したら、残っているタイマーも止める（古いタイマーが次のポップアップを消すのを防ぐ）
+    tip.classList.remove('is-visible'); // フェードは CSS（.album-tip の transition）がやる。JS は is-visible を外すだけ
+    current = null;
+  };
   const show = (badge) => {
+    clearTimeout(autoTimer); // 別のバッジを続けて押したとき、前のタイマーを引き継がない
     // 中に [data-tip-body]（メンバー一覧の担当楽器「ほか」）があれば、そのバッジを写して出す。
     // サーバーが h() 済みで出した要素を複製するだけなので安全。無ければ文字だけ（textContent なので HTML として解釈されない）
     // data-tip-from="#id" なら、ページ内の別の要素（バンド編集の ⚠ のリンク付きの文）を写す（<button> の中に <a> は置けないため）
@@ -258,6 +264,14 @@ function setupSetlistTip() {
     const left = Math.min(Math.max(8, r.left + r.width / 2 - t.width / 2), window.innerWidth - t.width - 8);
     tip.style.top = `${top}px`;
     tip.style.left = `${left}px`;
+
+    // スマホ（マウスが無い端末）だけ、時間がたつと自動で消す。
+    //   ・中にリンクがあるポップアップは対象外（押す前に消えると困る）
+    //   ・長い文章は読み終わる前に消えないよう、文字数に比例して長くする（1500ms + 1文字100ms、最短2.5秒・最長10秒）
+    if (!canHover.matches && !tip.querySelector('a')) {
+      const ms = Math.min(10000, Math.max(2500, 1500 + tip.textContent.length * 100));
+      autoTimer = setTimeout(hide, ms);
+    }
   };
 
   // PC（マウスがある端末）はマウスを乗せたら出して、外したら消す

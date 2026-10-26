@@ -621,8 +621,13 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .thumbs__img:hover, .thumbs__img:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .album-tip { position: fixed; z-index: 100; display: grid; gap: 2px; max-width: 260px; padding: 8px 10px; border-radius: var(--radius-sm);
   background: var(--text); color: var(--bg); font-size: 12px; line-height: 1.4; pointer-events: none;
-  opacity: 0; visibility: hidden; transition: opacity .12s; box-shadow: 0 8px 20px -6px rgb(0 0 0 / .35); }
-.album-tip.is-visible { opacity: 1; visibility: visible; }
+  opacity: 0; visibility: hidden; box-shadow: 0 8px 20px -6px rgb(0 0 0 / .35);
+  /* 消えるとき: 透明になる間（.2s）は visibility を hidden にしない。
+     visibility は「だんだん」変えられないので、transition の遅延（第3引数 .2s）で切り替えを後ろにずらす。
+     これを入れないと opacity が下がり始める前に hidden になり、フェードが見えない */
+  transition: opacity .2s ease, visibility 0s linear .2s; }
+/* 出るとき: visibility はすぐ visible（遅延 0）。opacity だけフェードで出す */
+.album-tip.is-visible { opacity: 1; visibility: visible; transition: opacity .2s ease, visibility 0s linear 0s; }
 /* メンバー一覧の右端の名前列。PC は表が画面に収まるので出さない（スマホは下の @media で出す） */
 .table--members .name-end, .table--members .rank-end { display: none; }
 /* メンバー一覧の担当楽器「ほか」: 楽器のバッジは色が薄いので、黒い背景ではなくカードと同じ白い背景に出す */
