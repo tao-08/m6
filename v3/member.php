@@ -194,7 +194,9 @@ unset($bandParts);
 $parts = sort_tally_by_count(tally_parts(lineup_parts_by_band($counted($myRows), true, 'split')));
 
 // ---- よく組むメンバー（自己結合） ----
-$st = $pdo->prepare('SELECT m.member_id, m.name, COUNT(DISTINCT other.band_id) AS n
+// m.retired（1 = 退会済み）も一緒に読む。画面の「退会者を非表示」チェックで隠すかどうかに使う
+//   （GROUP BY m.member_id は主キーなので、retired のような同じ行の列は集約せずにそのまま選べる）
+$st = $pdo->prepare('SELECT m.member_id, m.name, m.retired, COUNT(DISTINCT other.band_id) AS n
     FROM (' . MEMBERSHIP_SQL . ') mine
     JOIN (' . MEMBERSHIP_SQL . ') other ON other.band_id = mine.band_id AND other.member_id <> mine.member_id
     JOIN member m ON m.member_id = other.member_id
@@ -204,6 +206,11 @@ $st = $pdo->prepare('SELECT m.member_id, m.name, COUNT(DISTINCT other.band_id) A
 // ↑ LIMIT は付けずに全員取る。最初は上位5人だけ見せて、残りは「すべて表示」で出す（JS: setupPartnerBox）
 $st->execute([$memberId, ...$skipParams]);
 $partners = array_values(array_filter($st->fetchAll(), static fn($p) => isset($targetMemberIds[(int)$p['member_id']]))); // 絞り込みの対象メンバーだけ
+// 退会者（member.retired = 1）がいるか → いるときだけ「退会者を非表示」のチェックを出す
+$hasRetiredPartner = (bool)array_filter($partners, static fn($p) => (int)$p['retired'] === 1);
+// 初期状態（チェックオン = 退会者を隠す）で見える人。人数の表示と順位の計算に使う
+//   array_values で添字を 0,1,2… に振り直す（tie_ranks が「何番目か」を数えるのは並び順なので、添字が飛んでいても動くが、揃えておく）
+$partnersShown = array_values(array_filter($partners, static fn($p) => (int)$p['retired'] !== 1));
 
 // ---- よく演奏するアーティスト（上位10位） ----
 //   数え方はアーティスト一覧と同じ（artist_plays_sql(): オムニバスは曲に付いたアーティストを1バンド1回）。
@@ -727,16 +734,37 @@ $yearSlot = static function (string $name, int $selected, array $list, string $l
                 <button type="button" class="album-box__toggle" data-partner-toggle aria-expanded="false" aria-controls="partners">
                     <span class="album-box__chevron" aria-hidden="true">▸</span>
                     よく組むメンバー
-                    <span class="muted small"><?= count($partners) ?>人</span>
+                    <!-- 人数: 初期状態（退会者を隠す）の人数。チェックを切り替えると JS（data-partner-count）が書き換える -->
+                    <span class="muted small"><span data-partner-count><?= count($partnersShown) ?></span>人</span>
                 </button>
             </div>
+            <?php if ($hasRetiredPartner): ?>
+                <!-- 退会者を非表示（初期値はオン）。見出しの下、開いたときだけ出る（CSS: .partner-filter / JS: setupOnePartnerBox）。
+                     JS が動かないときは CSS が出さず、全員がそのまま見える -->
+                <label class="check partner-filter" data-retired-filter>
+                    <input type="checkbox" checked> 退会者を非表示
+                </label>
+            <?php endif; ?>
             <?php if (!$partners): ?><p class="muted">まだいません</p><?php endif; ?>
+            <!-- 退会者を隠した結果 0 人になったとき用（JS が hidden を切り替える） -->
+            <p class="muted" data-partner-empty<?= (!$partners || $partnersShown) ? ' hidden' : '' ?>>現役のメンバーはいません</p>
             <!-- 「1 [▸ 3回] 名前 … Dr × 3」（順位の数字は CSS）: ▸ と回数を押すと一緒に出たバンドを開け閉め、名前は今まで通り個人ページへのリンク
                  （<summary> の中のリンクを押したときは、開け閉めせずにリンク先へ飛ぶ） -->
-            <?php $partnerRanks = tie_ranks($partners, static fn($p) => (int)$p['n']); // 同じ回数は同じ順位 ?>
+            <?php
+            // 順位は「今見えている人」の中で振る（退会者を隠したときに 1,2,4… と飛ばないように）。
+            //   $partnersShown = 初期状態（退会者を隠す）で見える人。退会者の順位は全員での順位（チェックを外すと JS が振り直す）
+            $partnerRanksAll = tie_ranks($partners, static fn($p) => (int)$p['n']);           // 全員での順位（同じ回数は同じ順位）
+            $partnerRanksShown = tie_ranks($partnersShown, static fn($p) => (int)$p['n']);    // 退会者を除いた順位（キーは $partnersShown の添字）
+            $shownKeyById = array_flip(array_map(static fn($p) => (int)$p['member_id'], $partnersShown)); // member_id → $partnersShown の添字
+            ?>
             <ol class="ranking">
                 <?php foreach ($partners as $k => $p): ?>
-                    <li data-rank="<?= $partnerRanks[$k] ?>">
+                    <?php
+                    $isRetired = (int)$p['retired'] === 1;
+                    // 退会者は hidden を付けて出す（初期値は非表示）。それ以外は退会者を除いた順位
+                    $rank = $isRetired ? $partnerRanksAll[$k] : $partnerRanksShown[$shownKeyById[(int)$p['member_id']]];
+                    ?>
+                    <li data-rank="<?= $rank ?>" data-n="<?= (int)$p['n'] ?>"<?= $isRetired ? ' data-retired="1" hidden' : '' ?>>
                         <details class="partner">
                             <summary>
                                 <span class="pill"><span class="partner__chevron" aria-hidden="true">▸</span><?= (int)$p['n'] ?>回</span>

@@ -4225,10 +4225,65 @@ function setupPartnerBox() {
 function setupOnePartnerBox(box) {
   const toggle = box.querySelector('[data-partner-toggle]');
   const more = box.querySelector('[data-partner-more]');
-  const count = box.querySelectorAll('.ranking > li').length;
+  const items = [...box.querySelectorAll('.ranking > li')]; // 全員の <li>（退会者の <li> も含む）
   const SHOWN = Number(box.dataset.shown) || 5;
   const moreLabel = box.dataset.moreLabel || 'すべて表示';
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // 「退会者を非表示」チェック（よく組むメンバーだけ。member.php が退会者のいるときだけ出す）
+  const filterRow = box.querySelector('[data-retired-filter]');
+  const retiredCheck = filterRow?.querySelector('input');
+  const countEl = box.querySelector('[data-partner-count]'); // 見出しの「◯人」の数字
+  const emptyEl = box.querySelector('[data-partner-empty]'); // 全員退会者だったときの一言
+
+  // 今の状態（チェックの有無・開閉）から、各行の「隠す / 順位 / 閉じているとき隠す（is-extra）」を決め直す。
+  //   ・チェックオン → 退会者（data-retired="1"）の行は hidden（CSS の display: none）にする
+  //   ・順位は「見えている人」の中で振り直す。同じ回数（data-n）は同じ順位で、次は「何番目か」に進める（PHP の tie_ranks と同じ）
+  //   ・閉じているときに隠す 6 人目以降は、CSS の nth-child ではなく is-extra クラスで決める
+  //     （hidden の行も nth-child に数えられてしまい、退会者がいると上位 5 人がずれるため）
+  //   animate が true のときは、出る行はふわっと出し、消える行はふわっと消してから隠す
+  const refresh = (animate) => {
+    const hideRetired = !!retiredCheck?.checked;
+    let shown = 0, rank = 0, prevN = null;
+    items.forEach((li) => {
+      const gone = hideRetired && li.dataset.retired === '1';
+      const wasHidden = li.hidden;
+      if (gone) {
+        // 消える行: アニメ中は見せたまま、終わってから hidden にする
+        if (!wasHidden) {
+          if (animate && !reduceMotion) {
+            li.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(-6px)' }],
+              { duration: 160, easing: 'ease-in' }).finished.then(() => { li.hidden = true; }, () => { li.hidden = true; });
+          } else {
+            li.hidden = true;
+          }
+        }
+        return; // 隠す行には順位を振らない
+      }
+      li.hidden = false;
+      shown++;
+      // 順位: 回数（data-n）が前の行と違うときだけ「何番目か」に進める。data-n が無い箱（よく演奏するアーティスト）は PHP の順位のまま
+      if (li.dataset.n !== undefined) {
+        if (shown === 1 || li.dataset.n !== prevN) rank = shown;
+        prevN = li.dataset.n;
+        li.dataset.rank = String(rank);
+      }
+      // 閉じているときに隠す行 / 最後に見せる行（下の線を消す行）
+      li.classList.toggle('is-extra', shown > SHOWN);
+      li.classList.toggle('is-edge', shown === SHOWN);
+      // 退会者が出てきた行: ふわっと出す
+      if (wasHidden && animate && !reduceMotion) {
+        li.animate([{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }],
+          { duration: 220, easing: 'ease-out' });
+      }
+    });
+    if (countEl) countEl.textContent = String(shown);
+    if (emptyEl) emptyEl.hidden = shown > 0 || items.length === 0;
+    // 「すべて表示」は、隠れる行があるときだけ
+    if (more) more.hidden = shown <= SHOWN;
+    return shown;
+  };
+  const count = refresh(false); // 最初の状態（チェックオン = 退会者は隠れている）にそろえる
 
   // 名前の ▸ を開くたびに、一緒に出たバンドの一覧をふわっと出す。
   //   toggle イベントは開いて画面に描いた「あと」に届くので、そこで動かすと完成した表示が一瞬見えてしまう。
@@ -4242,8 +4297,9 @@ function setupOnePartnerBox(box) {
       { duration: 220, easing: 'ease-out' });
   });
 
-  // 5人以下なら隠すものが無いので、▸ もボタンも出さずに全員見せる
-  if (count <= SHOWN) {
+  // 5人以下で、開いて出すもの（退会者のチェック）も無いなら、▸ もボタンも出さずに全員見せる。
+  //   退会者のチェックがあるときは、見えている人が5人以下でも「開く」とチェックが出るので、開閉は残す
+  if (count <= SHOWN && !retiredCheck) {
     toggle.querySelector('.album-box__chevron')?.remove();
     toggle.disabled = true;
     return;
@@ -4253,9 +4309,12 @@ function setupOnePartnerBox(box) {
     box.classList.toggle('is-open', open);
     toggle.setAttribute('aria-expanded', String(open));
     more.textContent = open ? '閉じる' : moreLabel;
-    // 開いたとき、隠れていた6人目以降を上から順にふわっと出す（マイアルバムと同じ動き）
     if (open && !reduceMotion) {
-      [...box.querySelectorAll('.ranking > li')].slice(SHOWN).forEach((li, i) => {
+      // 開いたとき、見出しの下に「退会者を非表示」をふわっと出す（display: none → 表示になった直後に動かす）
+      filterRow?.animate([{ opacity: 0, transform: 'translateY(-6px)' }, { opacity: 1, transform: 'none' }],
+        { duration: 220, easing: 'ease-out' });
+      // 隠れていた6人目以降を上から順にふわっと出す（マイアルバムと同じ動き）。見えている行（hidden でない行）だけ数える
+      items.filter((li) => !li.hidden).slice(SHOWN).forEach((li, i) => {
         li.animate([{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }],
           { duration: 220, delay: Math.min(i, 10) * 20, easing: 'ease-out', fill: 'backwards' });
       });
@@ -4263,7 +4322,8 @@ function setupOnePartnerBox(box) {
   };
 
   box.classList.add('js-collapsible');
-  more.hidden = false;
+  // チェックを切り替えたら、行の出し入れ・順位・人数を作り直す（animate = true でふわっと）
+  retiredCheck?.addEventListener('change', () => refresh(true));
   toggle.addEventListener('click', () => setOpen(!box.classList.contains('is-open')));
   more.addEventListener('click', () => {
     const closing = box.classList.contains('is-open');
