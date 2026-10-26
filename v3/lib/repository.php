@@ -1359,14 +1359,18 @@ function part_marks(array $tally, bool $withCount = false, string $class = '', i
  */
 function partner_medal(int $rank, string $name): string
 {
-    $label = $name . 'のよく組むメンバー' . $rank . '位'; // 長押し・読み上げで出す説明（画面には書かない）
-    return '<svg class="medal medal--' . $rank . '" viewBox="0 0 16 20" role="img" aria-label="' . h($label) . '">'
-        . '<title>' . h($label) . '</title>'
+    // 押すと（PC はマウスを乗せると）出すポップアップの文。画面には書かず、ポップアップと読み上げだけで伝える
+    $label = $name . 'のよく組むメンバー上位3位';
+    // <button> で包む: 指で押せる「部品」にするため（<svg> だけだとキーボードで選べない）。
+    //   data-setlist-tip を付けると、セトリの ✓ と同じポップアップ（app.js の setupSetlistTip）がこの文を出す
+    //   h() で " や < を無害な文字に置き換えてから属性に入れる（XSS 対策）
+    return '<button type="button" class="medal-btn" data-setlist-tip="' . h($label) . '" aria-label="' . h($label) . '">'
+        . '<svg class="medal medal--' . $rank . '" viewBox="0 0 16 20" aria-hidden="true">'
         // リボン（左右2本の帯。左は明るい色、右は暗い色）
         . '<path d="M3 0h4l2 7H5z" fill="var(--m-light)"/><path d="M9 0h4l-2 7H7z" fill="var(--m-dark)"/>'
         // メダル本体（外側の暗い縁 + 内側の明るい面）。順位は色（金・銀・銅）で表すので数字は書かない
         . '<circle cx="8" cy="13" r="6" fill="var(--m-dark)"/><circle cx="8" cy="13" r="4.4" fill="var(--m-light)"/>'
-        . '</svg>';
+        . '</svg></button>';
 }
 
 function detach_members(PDO $pdo, int $bandId): void

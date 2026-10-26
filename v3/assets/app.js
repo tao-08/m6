@@ -41,7 +41,7 @@
  *    data-preview       … バンドページのセットリストの ▶（30秒試聴）
  *    data-toasts        … お知らせのポップアップ（4秒で消える）
  *    data-album-tip     … メンバー一覧のジャケットに乗せるとアルバム名・アーティスト名を出す
- *    data-setlist-tip   … セットリストの ✓ を押すと「セットリスト登録済（◯曲）」を出す
+ *    data-setlist-tip   … セットリストの ✓ を押すと「セットリスト登録済（◯曲）」を出す（よく組むメンバーのメダルも同じ仕組み）
  *    open.spotify.com のリンク … Spotify のアプリで開く（PC はデスクトップアプリ）
  *    data-vo-sum-toggle … 統計の「Voを合算する」をページ移動なしで切り替える
  * =====================================================================
@@ -275,6 +275,9 @@ function setupSetlistTip() {
   document.addEventListener('click', (e) => {
     const badge = e.target.closest('[data-setlist-tip]');
     if (!badge) { if (!tip.contains(e.target)) hide(); return; } // ポップアップの中（リンク）を押したときは消さない
+    // <summary> の中のバッジ（よく組むメンバーのメダル）: 押しても一緒に出たバンドを開け閉めしない。
+    //   preventDefault() =「ブラウザが本来やる動き（ここでは <details> の開け閉め）を止める」
+    if (badge.closest('summary')) e.preventDefault();
     if (canHover.matches) { show(badge); return; } // PC で押しても消さない（乗せたまま押すと消えてしまうので）
     if (badge === current) hide(); else show(badge);
   });
