@@ -590,10 +590,16 @@ $deleteForm = static fn(array $v, string $open = ''): string => '<form method="p
                             <button type="button" class="songs-modal__zoom" data-song-zoom aria-label="拡大"><?= $art ?></button>
                             <dialog class="songs-zoom" data-song-zoom-box aria-label="<?= h($g['title']) ?>">
                                 <img class="songs-zoom__art" src="<?= h(songs_large_art($rep['art'])) ?>" data-fallback="<?= h($rep['art']) ?>" alt="">
+                                <?php // アルバムのモーダル（partials/album_modal.php）と同じ並び: アルバム名 → アーティスト · 発売年 → アプリ・検索・閉じる
+                                $zoomName = $rep['album'] ?: $g['title']; // アルバムが分からない曲は曲名を出す ?>
+                                <strong class="songs-zoom__name"><?= h($zoomName) ?></strong>
+                                <?php $zoomSub = implode(' · ', array_filter([(string)$rep['artist'], $rep['year'] ? (string)(int)$rep['year'] : ''])); // 空の項目は除く ?>
+                                <?php if ($zoomSub !== ''): ?><span class="songs-zoom__year"><?= h($zoomSub) ?></span><?php endif; ?>
                                 <div class="songs-zoom__bar">
                                     <?php if ($trackUrl !== null): $listenApp = listen_app($musicApp, (string)$rep['src']); ?>
                                         <a class="songs-zoom__app setlist__listen--<?= h($listenApp) ?>" href="<?= h($trackUrl) ?>" target="_blank" rel="noopener noreferrer" aria-label="<?= h(MUSIC_APPS[$listenApp]) ?> で聴く" title="<?= h(MUSIC_APPS[$listenApp]) ?>"><?= MUSIC_APP_ICONS[$listenApp] ?></a>
                                     <?php endif; ?>
+                                    <a class="icon-btn songs-zoom__close" href="search?q=<?= h(rawurlencode($zoomName)) ?>" aria-label="検索" title="検索"><?= icon('search') ?></a>
                                     <button type="button" class="icon-btn songs-zoom__close" data-song-zoom-close aria-label="閉じる" title="閉じる"><?= icon('close') ?></button>
                                 </div>
                             </dialog>
