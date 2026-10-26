@@ -1360,7 +1360,7 @@ function part_marks(array $tally, bool $withCount = false, string $class = '', i
 function partner_medal(int $rank, string $name, string $what = 'よく組むメンバー'): string
 {
     // 押すと（PC はマウスを乗せると）出すポップアップの文。画面には書かず、ポップアップと読み上げだけで伝える
-    $label = $name . 'の' . $what . '上位3位'; // $what = どのランキングか（よく組むメンバー / よく演奏するメンバー）
+    $label = $name . 'の' . $what . '第' . $rank . '位'; // $what = どのランキングか（よく組むメンバー / よく演奏するメンバー）
     // <button> で包む: 指で押せる「部品」にするため（<svg> だけだとキーボードで選べない）。
     //   data-setlist-tip を付けると、セトリの ✓ と同じポップアップ（app.js の setupSetlistTip）がこの文を出す
     //   h() で " や < を無害な文字に置き換えてから属性に入れる（XSS 対策）
