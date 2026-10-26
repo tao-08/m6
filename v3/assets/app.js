@@ -4310,9 +4310,19 @@ function setupOnePartnerBox(box) {
     toggle.setAttribute('aria-expanded', String(open));
     more.textContent = open ? '閉じる' : moreLabel;
     if (open && !reduceMotion) {
-      // 開いたとき、見出しの下に「退会者を非表示」をふわっと出す（display: none → 表示になった直後に動かす）
-      filterRow?.animate([{ opacity: 0, transform: 'translateY(-6px)' }, { opacity: 1, transform: 'none' }],
-        { duration: 220, easing: 'ease-out' });
+      // 開いたとき、見出しの下に「退会者を非表示」が上から伸びて出て、下のリストをスッと押し下げる。
+      //   transform（見た目だけ動かす）ではなく height を 0 → 本来の高さに変えるので、下の要素も一緒に動く。
+      //   本来の高さと上下の余白は、display: flex になった直後に getComputedStyle で測る。
+      //   はみ出す文字が見えないよう、動いている間だけ overflow: hidden にして、終わったら外す
+      if (filterRow) {
+        const cs = getComputedStyle(filterRow);
+        const full = { height: filterRow.offsetHeight + 'px', marginTop: cs.marginTop, marginBottom: cs.marginBottom, opacity: 1 };
+        const zero = { height: '0px', marginTop: '0px', marginBottom: '0px', opacity: 0 };
+        filterRow.style.overflow = 'hidden';
+        const slide = filterRow.animate([zero, full], { duration: 260, easing: 'ease-out' });
+        const done = () => { filterRow.style.overflow = ''; };
+        slide.finished.then(done, done);
+      }
       // 隠れていた6人目以降を上から順にふわっと出す（マイアルバムと同じ動き）。見えている行（hidden でない行）だけ数える
       items.filter((li) => !li.hidden).slice(SHOWN).forEach((li, i) => {
         li.animate([{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }],
