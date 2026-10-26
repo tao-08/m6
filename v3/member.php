@@ -79,11 +79,9 @@ $myGrade = grade_of(my_entry_year());
 $myEntry = $myGrade !== null ? $thisYear - $myGrade + 1 : null;
 $canNear = $myEntry !== null;
 $activeFrom = $thisYear - 3;
-$defaultWho = match (true) {
-    $myGrade === null => 'all',
-    $myGrade <= 4     => 'active',
-    default           => 'near',
-};
+// メンバーページの集計は、開いたときは全学年・全期間から始める（学年や期間はユーザーが絞り込む）。
+//   集計ページ（stats.php）の初期値（現役 / 上下3学年）とは別。ここだけ 'all' に固定している
+$defaultWho = 'all';
 $who = $_GET['who'] ?? $defaultWho;
 if (!in_array($who, ['all', 'active', 'grade', 'near', 'custom'], true) || ($who === 'near' && !$canNear)) {
     $who = $defaultWho;
