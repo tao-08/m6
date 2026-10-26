@@ -1351,6 +1351,24 @@ function part_marks(array $tally, bool $withCount = false, string $class = '', i
     return $html . '</div>';
 }
 
+/**
+ * リボン付きメダル（よく組むメンバーの「相手から見て上位3位」の印）。member.php で使う
+ *   $rank: 1 = 金 / 2 = 銀 / 3 = 銅。色は CSS の .medal--1〜3 が --m-light / --m-dark を決め、SVG はそれで塗る
+ *   （SVG の fill に var() を書くと CSS 変数が使える → ダークモードでも CSS 側だけで色を変えられる）
+ *   リボンもメダルと同じ色（明るい色と暗い色の2本）にする
+ */
+function partner_medal(int $rank, string $name): string
+{
+    $label = $name . 'のよく組むメンバー' . $rank . '位'; // 長押し・読み上げで出す説明（画面には書かない）
+    return '<svg class="medal medal--' . $rank . '" viewBox="0 0 16 20" role="img" aria-label="' . h($label) . '">'
+        . '<title>' . h($label) . '</title>'
+        // リボン（左右2本の帯。左は明るい色、右は暗い色）
+        . '<path d="M3 0h4l2 7H5z" fill="var(--m-light)"/><path d="M9 0h4l-2 7H7z" fill="var(--m-dark)"/>'
+        // メダル本体（外側の暗い縁 + 内側の明るい面）。順位は色（金・銀・銅）で表すので数字は書かない
+        . '<circle cx="8" cy="13" r="6" fill="var(--m-dark)"/><circle cx="8" cy="13" r="4.4" fill="var(--m-light)"/>'
+        . '</svg>';
+}
+
 function detach_members(PDO $pdo, int $bandId): void
 {
     $pdo->prepare('DELETE FROM band_member WHERE band_id = ?')->execute([$bandId]);
