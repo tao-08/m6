@@ -605,9 +605,8 @@ function ranking_card(string $icon, string $title, array $rows, callable $label,
         </ol>
     </section>
 <?php }
-// メンバー名のリンク。自分なら me-name を付けて名前を赤の太字にする（app.css）
-//   use ($myId) = 関数の外の変数 $myId を、この無名関数の中でも使えるように取り込む
-$memberLink = static fn($r) => '<a href="member?id=' . (int)$r['member_id'] . '"' . ((int)$r['member_id'] === $myId ? ' class="me-name"' : '') . '>' . h($r['name']) . '</a>';
+// メンバー名のリンク（自分の強調は行の背景だけ。名前の色は変えない）
+$memberLink = static fn($r) => '<a href="member?id=' . (int)$r['member_id'] . '">' . h($r['name']) . '</a>';
 // 行に自分が入っていれば ' class="is-me"' を返す（ペア・トリオのように何人も並ぶ行は、ID を全部渡す）
 //   ...$ids = 「引数をいくつでも受け取って配列にする」書き方（可変長引数）
 $meRow = static fn(int ...$ids): string => $myId > 0 && in_array($myId, $ids, true) ? ' class="is-me"' : '';
