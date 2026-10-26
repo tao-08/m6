@@ -2816,6 +2816,15 @@ button.ttb-m { cursor: pointer; text-decoration: underline dotted; }
 :root.live-vt .split aside > :nth-child(3) { view-transition-name: member-aside-3; }
 :root.live-vt .split aside > :nth-child(4) { view-transition-name: member-aside-4; }
 :root.live-vt .split aside > :nth-child(5) { view-transition-name: member-aside-5; }
+/* 絞り込みカード（浮いているカード）にも名前を付ける。
+ *   理由: 名前が付いた要素は「ページ本体（root）の絵」から切り離されて、ページより手前の専用レイヤーに描かれる。
+ *   → 下のカード（2〜5番目）だけ名前付きで、浮いているカードが名前なしだと、切り替え中に下のカードが浮いているカードの上に出てしまう。
+ *   → 浮いているカードも名前付きにすると、重なり順（z-index: 15）がそのまま守られる */
+:root.live-vt .split aside > .stats-filter { view-transition-name: member-filter; }
+/* 絞り込みカードは差し替えない（同じ要素のまま）ので、クロスフェードはせず、今の見た目をそのまま出し続ける */
+:root.live-vt::view-transition-group(member-filter) { animation: none; }
+:root.live-vt::view-transition-old(member-filter) { display: none; }
+:root.live-vt::view-transition-new(member-filter) { animation: none; }
 :root.live-vt::view-transition-old(root), :root.live-vt::view-transition-new(root) { animation: none; } /* 絞り込みの切り替え（liveFilter）: ページ全体は動かさず、上の数字と右の欄だけクロスフェード */
 :root.live-vt::view-transition-group(member-hero), :root.live-vt::view-transition-group(member-aside-2), :root.live-vt::view-transition-group(member-aside-3), :root.live-vt::view-transition-group(member-aside-4), :root.live-vt::view-transition-group(member-aside-5) { animation-duration: .25s; }
 .is-updating { opacity: .45; transition: opacity .15s ease; } /* 絞り込みを変えて読み込み中（assets/app.js の liveFilter） */

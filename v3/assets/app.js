@@ -2140,7 +2140,25 @@ function makeSlot(slot, onSelect) {
   });
 
   select(index, true);
-  // 隠れていた（高さ 0 の）スロットを出したときに、位置を測り直すための関数を返す
+
+  // ---- 非表示（display: none）だったスロットが表示されたとき、位置を測り直す ----
+  //   集計の絞り込みは、タブを切り替えるまで スロットが display: none（CSS の [data-show-when]）。
+  //   非表示のあいだは高さが 0 なので、上の select(index, true) は「高さ 0」で位置を計算してしまい、
+  //   表示された瞬間に今の年度が真ん中からズレる。
+  //   → ResizeObserver（要素の大きさの変化を教えてくれるブラウザ標準の API）で、
+  //     高さが 0 → 表示サイズに変わったら、もう一度 select(index, true) で置き直す。
+  //   ResizeObserver はレイアウト計算のあと・画面に描く前に呼ばれるので、ズレた状態は一瞬も見えない
+  if (typeof ResizeObserver !== 'undefined') {
+    let lastH = slot.clientHeight;
+    new ResizeObserver(() => {
+      const h = slot.clientHeight;
+      const shown = lastH === 0 && h > 0; // 非表示 → 表示 になった瞬間だけ
+      lastH = h;
+      if (shown) select(index, true);
+    }).observe(slot);
+  }
+
+  // 隠れていた（高さ 0 の）スロットを出したときに、位置を測り直すための関数を返す（学年絞り込み用。上の ResizeObserver とは別に残す）
   return () => select(index, true);
 }
 
