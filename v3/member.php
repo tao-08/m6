@@ -212,6 +212,64 @@ $hasRetiredPartner = (bool)array_filter($partners, static fn($p) => (int)$p['ret
 //   array_values で添字を 0,1,2… に振り直す（tie_ranks が「何番目か」を数えるのは並び順なので、添字が飛んでいても動くが、揃えておく）
 $partnersShown = array_values(array_filter($partners, static fn($p) => (int)$p['retired'] !== 1));
 
+// ---- 相手から見た順位（メダル）: 「相手のよく組むメンバー」で、この人が上位3位に入っているか ----
+//   相手のページを「今と同じ絞り込み（期間・メンバー・予定を含むか）」で開いたときの順位を出す。
+//   相手ごとに SQL を投げると N+1（相手20人で20回）になるので、全員分を1本の SQL で GROUP BY して数える。
+//   SQL の結果: [相手 pid, その相手と組んだ人 qid, 一緒に出たバンド数 n] の一覧
+$partnerMedals = []; // [相手の member_id] = 1〜3（この人が相手の何位か。4位以下・対象外はキー無し）
+if ($partners) {
+    $pids = array_map(static fn($p) => (int)$p['member_id'], $partners);
+    // IN (?, ?, …) の「?」を相手の人数ぶん作る（プリペアドステートメントで値を安全に渡すため）
+    $where = ' WHERE a.member_id IN (' . implode(',', array_fill(0, count($pids), '?')) . ')';
+    $params = $pids;
+    // 相手のページの初期状態（退会者を非表示）と同じく、退会者は数えない。ただしこの人自身は退会していても数える
+    $where .= ' AND (q.retired = 0 OR q.member_id = ?)';
+    $params[] = $memberId;
+    // 期間の絞り込み（上の $period と同じ条件）
+    if ($period === 'year') {
+        $where .= ' AND lm.fiscal_year = ?';
+        $params[] = $fYear;
+    } elseif ($period === 'range') {
+        $where .= ' AND lm.fiscal_year BETWEEN ? AND ?';
+        array_push($params, $pfrom, $pto);
+    }
+    // 予定されているライブを数えない設定なら、今日以降の日程を外す（is_upcoming() と同じ「日付 >= 今日 が予定」）
+    if (empty($user['count_upcoming'])) {
+        $where .= ' AND (ld.held_on IS NULL OR ld.held_on < ?)';
+        $params[] = date('Y-m-d');
+    }
+    // メンバーの絞り込み: 組んだ人（q）が対象の学年か。入学年度が未登録の人はいつも対象（上の $ok と同じ）
+    if ($entryFrom !== null) {
+        $where .= ' AND (q.entry_year IS NULL OR q.entry_year BETWEEN ? AND ?)';
+        array_push($params, $entryFrom, $entryTo);
+    }
+    // a = 相手の所属、o = 同じバンドにいたほかの人。COUNT(DISTINCT) で「一緒に出たバンド数」を数える
+    $st = $pdo->prepare('SELECT a.member_id AS pid, o.member_id AS qid, COUNT(DISTINCT a.band_id) AS n
+        FROM (' . MEMBERSHIP_SQL . ') a
+        JOIN (' . MEMBERSHIP_SQL . ') o ON o.band_id = a.band_id AND o.member_id <> a.member_id
+        JOIN member q ON q.member_id = o.member_id
+        JOIN band b ON b.band_id = a.band_id
+        JOIN live_day ld ON ld.live_day_id = b.live_day_id
+        JOIN live lm ON lm.live_id = ld.live_id' . $where . '
+        GROUP BY a.member_id, o.member_id');
+    $st->execute($params);
+    $countsByPartner = []; // [相手 pid][組んだ人 qid] = バンド数
+    foreach ($st->fetchAll() as $r) {
+        $countsByPartner[(int)$r['pid']][(int)$r['qid']] = (int)$r['n'];
+    }
+    foreach ($countsByPartner as $pid => $counts) {
+        $mine = $counts[$memberId] ?? null;
+        if ($mine === null) {
+            continue; // 絞り込みの結果、相手の一覧にこの人が出ない
+        }
+        // 順位 = 1 + 「この人より回数が多い人」の数（同じ回数は同じ順位。tie_ranks() と同じ数え方）
+        $rank = 1 + count(array_filter($counts, static fn($n) => $n > $mine));
+        if ($rank <= 3) {
+            $partnerMedals[$pid] = $rank;
+        }
+    }
+}
+
 // ---- よく演奏するアーティスト（上位10位） ----
 //   数え方はアーティスト一覧と同じ（artist_plays_sql(): オムニバスは曲に付いたアーティストを1バンド1回）。
 //   そのアーティストを演奏したバンドのうち、この人が入っていたバンドの数。最初は上位3位だけ見せて、残りは「さらに表示」（JS: setupPartnerBox）
@@ -769,6 +827,8 @@ $yearSlot = static function (string $name, int $selected, array $list, string $l
                             <summary>
                                 <span class="pill"><span class="partner__chevron" aria-hidden="true">▸</span><?= (int)$p['n'] ?>回</span>
                                 <a href="member?id=<?= (int)$p['member_id'] ?>"><?= h($p['name']) ?></a>
+                                <!-- 相手のよく組むメンバーで、この人が上位3位ならメダル（金・銀・銅） -->
+                                <?php if (isset($partnerMedals[(int)$p['member_id']])): ?><?= partner_medal($partnerMedals[(int)$p['member_id']], $p['name']) ?><?php endif; ?>
                                 <!-- 一緒に組んだバンドで、その人が何を何回やったか -->
                                 <?= part_marks($partnerTally[(int)$p['member_id']] ?? [], true, 'partbar--partner') ?>
                             </summary>
