@@ -361,7 +361,8 @@ render_header('セットリストを編集', 'lives');
                     <input autocomplete="off" name="<?= $base ?>[title]" value="<?= h($song['title']) ?>" maxlength="100" placeholder="<?= $isNew ? ($isSe ? 'SE名を入力して追加' : '曲名を入力して追加') : ($isSe ? 'SE名' : '曲名') ?>" class="song-card__title" aria-label="曲名" data-unsaved-key>
                     <?php if ($isSe): ?><input type="hidden" name="<?= $base ?>[artist]" value="">
                     <?php else: ?><input name="<?= $base ?>[artist]" value="<?= h($artist) ?>" maxlength="100" data-suggest-list="artists" autocomplete="off" placeholder="アーティスト" class="song-card__artist" aria-label="アーティスト" data-song-artist<?= $omnibus ? '' : ' readonly' ?>><?php endif; ?>
-                    <input type="hidden" name="<?= $base ?>[track]" value="<?= h($trackKey) ?>" data-track-key>
+                    <!-- data-artist: 紐付けた曲のアーティスト（先頭の1人）。「オムニバス」にチェックを付けたとき、連携済みの曲はこの名前をアーティスト欄に残す（assets/app.js の setupSongs） -->
+                    <input type="hidden" name="<?= $base ?>[track]" value="<?= h($trackKey) ?>" data-track-key data-artist="<?= h($trackKey === '' ? '' : explode(', ', (string)$song['track_artist'])[0]) ?>">
                     <button type="button" class="btn btn--ghost btn--sm song-search-btn" data-track-search><?= icon('search') ?> 曲を探す</button>
                     <input type="hidden" name="<?= $base ?>[id]" value="<?= $isNew ? '' : (int)$song['song_id'] ?>">
                     <!-- 🗑 保存済みの曲: 押すと「削除する」印（隠し項目を 1）が付いてカードが薄くなる。もう一度押すと取り消し。消えるのは保存したとき

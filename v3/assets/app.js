@@ -353,7 +353,7 @@ function setupToasts() {
  *   data-add-song       … <template data-song-template> をコピーして空の曲カードを足す（data-add-song-se は SE 用）
  *   data-performer-on   … チェックを外した人を薄く表示
  *   data-omnibus        … オムニバスのチェック。外すとアーティスト欄をバンドのアーティストに戻して編集不可にする。
- *                         付けると空欄（前に書いていた名前があれば戻す）にして編集できるようにする
+ *                         付けると編集できるようにして、前に書いていた名前 → 連携済みの曲のアーティスト → 空欄 の順で入れる
  * ------------------------------------------------------------------- */
 function setupSongs() {
   // バンド編集の2つ目の楽器の「＋」: 1つ目の楽器の下に開閉。閉じたら値を空（なし）に戻す
@@ -389,8 +389,11 @@ function setupSongs() {
     list.querySelectorAll('[data-song-artist]').forEach((input) => {
       if (omnibus.checked) {
         input.readOnly = false;
-        // 前に書いていた名前を戻す。無ければ空欄（オムニバスはバンドのアーティストを持たないので、バンドの名前は入れない）
-        input.value = input.dataset.typed ?? '';
+        // 前に書いていた名前を戻す。無ければ、連携済み（紐付け済み）の曲は紐付けた曲のアーティストを残す。
+        //   それも無ければ空欄（オムニバスはバンドのアーティストを持たないので、バンドの名前は入れない）
+        //   ||（OR）: 左が空文字のときも右を使う（?? だと空文字 '' は「ある」扱いで右に進まない）
+        const linked = input.closest('[data-song-card]')?.querySelector('[data-track-key]')?.dataset.artist;
+        input.value = input.dataset.typed || linked || '';
       } else {
         input.dataset.typed = input.value; // チェックを付け直したときのために覚えておく
         input.value = defaultArtist;
@@ -697,7 +700,9 @@ function iconEl(name) {
 
 /** カードの紐付けを変える。track = 候補1件（{key, title, artist_name, artwork_url}）/ null = 外す */
 function setTrack(card, track) {
-  card.querySelector('[data-track-key]').value = track ? track.key : '';
+  const keyInput = card.querySelector('[data-track-key]');
+  keyInput.value = track ? track.key : '';
+  keyInput.dataset.artist = track ? track.artist_name.split(', ')[0] : ''; // オムニバスに切り替えたとき残すアーティスト（songs_edit.php の data-artist と同じ）
   const thumb = card.querySelector('[data-track-thumb]'); // ジャケットの中身（画像か ♪）
   thumb.replaceChildren();
   if (track) {
