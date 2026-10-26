@@ -71,11 +71,11 @@
 .songs-modal__art.songs-row__art--none { height: auto; }
 .songs-modal__zoom { all: unset; cursor: zoom-in; display: block; border-radius: 12px; }
 .songs-modal__zoom:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.songs-zoom { position: fixed; inset: 0; margin: auto; width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 32px); padding: 16px; overflow: visible;
+.songs-zoom { position: fixed; inset: 0; margin: auto; width: min(700px, calc(100vw - 16px)); max-height: calc(100vh - 16px); padding: 8px; overflow: visible;
   border: 0; background: transparent; color: #fff; }
 .songs-zoom[open] { display: grid; justify-items: center; gap: 14px; }
 .songs-zoom::backdrop { background: rgba(0, 0, 0, .8); }
-.songs-zoom__art { width: min(520px, calc(100vw - 64px), calc(100vh - 160px)); aspect-ratio: 1; border-radius: 12px; object-fit: cover; box-shadow: 0 8px 32px rgba(0, 0, 0, .5); }
+.songs-zoom__art { width: min(600px, calc(100vw - 32px), calc(100vh - 160px)); /* 600px = アルバムのモーダル（app.css の album-modal__art）と同じ */ aspect-ratio: 1; border-radius: 12px; object-fit: cover; box-shadow: 0 8px 32px rgba(0, 0, 0, .5); }
 .songs-zoom__bar { display: flex; align-items: center; justify-content: center; gap: 16px; }
 .songs-zoom__close { color: #fff; width: 48px; height: 48px; border-radius: 50%; background: rgba(255, 255, 255, .15); }
 .songs-zoom__app { display: block; width: 48px; height: 48px; }
