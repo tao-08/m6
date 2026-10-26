@@ -4305,10 +4305,47 @@ function setupOnePartnerBox(box) {
     return;
   }
 
+  // 閉じるときのアニメーション（高さを 0 まで縮めて、下の要素を上へ滑らせる）の管理用
+  let closeAnims = [];
   const setOpen = (open) => {
+    const wasOpen = box.classList.contains('is-open');
+    // 閉じるアニメーションの途中でもう一度押されたら、動きを止めて元の状態から始める
+    closeAnims.forEach((a) => a.cancel());
+    closeAnims = [];
+    box.classList.remove('is-closing');
     box.classList.toggle('is-open', open);
     toggle.setAttribute('aria-expanded', String(open));
     more.textContent = open ? '閉じる' : moreLabel;
+
+    // 閉じるとき: 「退会者を非表示」と 6 人目以降の行を、高さ 0 まで縮めてから隠す。
+    //   is-open を外すと CSS が即 display: none にしてしまうので、is-closing を付けて縮め終わるまで見せておく。
+    //   高さ・上下の余白・下線をそろって 0 にするので、下の要素が一緒にスーッと上がる。
+    //   fill: 'forwards' で縮んだ状態を保ち、終わってから is-closing を外す（外した瞬間に元の高さへ戻って一瞬ちらつくのを防ぐ）。
+    //   border-box 指定（全体の CSS）なので、height は offsetHeight をそのまま使える
+    if (!open && wasOpen && !reduceMotion) {
+      const targets = [filterRow, ...items.filter((li) => !li.hidden && li.classList.contains('is-extra'))].filter(Boolean);
+      if (targets.length) {
+        box.classList.add('is-closing');
+        closeAnims = targets.map((el) => {
+          const cs = getComputedStyle(el);
+          const from = { height: el.offsetHeight + 'px', paddingTop: cs.paddingTop, paddingBottom: cs.paddingBottom,
+            marginTop: cs.marginTop, marginBottom: cs.marginBottom, borderBottomWidth: cs.borderBottomWidth, opacity: 1 };
+          const to = { height: '0px', paddingTop: '0px', paddingBottom: '0px',
+            marginTop: '0px', marginBottom: '0px', borderBottomWidth: '0px', opacity: 0 };
+          el.style.overflow = 'hidden'; // 縮む間、はみ出す中身を見せない
+          return el.animate([from, to], { duration: 260, easing: 'ease-in-out', fill: 'forwards' });
+        });
+        const anims = closeAnims;
+        // 全部縮み終わったら後片付け（途中で cancel されたときは何もしない = 開き直した側が状態を持っている）
+        Promise.all(anims.map((a) => a.finished)).then(() => {
+          if (closeAnims !== anims) return;
+          box.classList.remove('is-closing');
+          anims.forEach((a) => a.cancel());
+          targets.forEach((el) => { el.style.overflow = ''; });
+          closeAnims = [];
+        }, () => { targets.forEach((el) => { el.style.overflow = ''; }); });
+      }
+    }
     if (open && !reduceMotion) {
       // 開いたとき、見出しの下に「退会者を非表示」が上から伸びて出て、下のリストをスッと押し下げる。
       //   transform（見た目だけ動かす）ではなく height を 0 → 本来の高さに変えるので、下の要素も一緒に動く。

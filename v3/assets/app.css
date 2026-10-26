@@ -1683,13 +1683,13 @@ button.setlist__listen { padding: 0; border: 0; cursor: pointer; color: #fff; }
 .partner-box { margin: 32px 0 0; }
 /* 閉じているときの 6 人目以降は、JS（setupOnePartnerBox）が付ける is-extra で隠す。
    nth-child だと、退会者の行（hidden）も数えてしまって上位 5 人がずれるため */
-.partner-box.js-collapsible:not(.is-open) .ranking > li.is-extra { display: none; }
+.partner-box.js-collapsible:not(.is-open):not(.is-closing) .ranking > li.is-extra { display: none; } /* is-closing: 閉じる動きの間だけ見せておく（JS: setOpen） */
 .partner-box .ranking > li[hidden] { display: none; } /* .ranking li の display: flex が hidden 属性に勝ってしまうので、明示的に隠す */
 .partner-box .ranking { margin-bottom: 10px; }
 /* 「退会者を非表示」: 見出しの下。開いたときだけ出す（JS が動かないときは出さない = 全員そのまま見える）。
    出る動きは JS（setOpen の animate） */
 .partner-filter { display: none; margin: -4px 0 12px; font-size: 13px; color: var(--muted); }
-.partner-box.js-collapsible.is-open .partner-filter { display: flex; }
+.partner-box.js-collapsible:is(.is-open, .is-closing) .partner-filter { display: flex; } /* 閉じる動きの間（is-closing）も見せておく */
 /* よく組むメンバーの1行:「1 ▸ 3回 名前」。順位の数字は .ranking li::before のまま、右に <details> を置く。
    数字と summary を同じ高さ（28px）の行にして上でそろえる → 開いても数字は1行目の横に残る。開いた中身は数字の列の右に入る */
 .partner-box .ranking li { align-items: flex-start; gap: 0; }
@@ -1718,7 +1718,7 @@ button.setlist__listen { padding: 0; border: 0; cursor: pointer; color: #fff; }
 .partner__live .part { font-size: 10px; min-width: 0; padding: 0 6px; }
 .partner-box.js-collapsible:not(.is-open) .ranking > li.is-edge:not(.is-extra) { border-bottom: 0; } /* 5人目（最後に見せる行）の下の線は「すべて表示」との間で要らない */
 /* よく演奏するアーティスト（member.php）: よく組むメンバーのカードを使い回し、閉じているときは上位3位だけ（app.js の data-shown="3" と合わせる） */
-.top-artists.js-collapsible:not(.is-open) .ranking > li.is-extra { display: none; }
+.top-artists.js-collapsible:not(.is-open):not(.is-closing) .ranking > li.is-extra { display: none; }
 .top-artists.js-collapsible:not(.is-open) .ranking > li.is-edge { border-bottom: 0; }
 /* よく演奏するアーティスト・よく演奏するメンバー（artist.php。閉じているときは上位5人 = .partner-box のまま）: 1行だけなので、よく組むメンバーの「上でそろえる」はやめて真ん中に */
 :is(.top-artists, .top-players) .ranking li { align-items: center; gap: 0 10px; }
