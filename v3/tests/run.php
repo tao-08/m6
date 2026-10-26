@@ -578,8 +578,8 @@ check('検索順: 別のアーティストのカバーは本家を追い越さ�
     $tr('Lemon', '米津玄師', 'STRAY SHEEP', 2020, 'album'),
 ]), ['STRAY SHEEP', 'Lemon', 'カバーアルバム']);
 check('検索順: 版の注記違いも同じ曲（リマスターは下、古い盤が上）', $order([
-    $tr('Let It Be - Remastered 2009', 'The Beatles', 'Let It Be (Remastered)', 2009),
-    $tr('Let It Be', 'The Beatles', 'Let It Be', 1970),
+    $tr('Let It Be - Remastered 2009', 'The Beatles', 'Let It Be (Remastered)', 2009, 'album'),
+    $tr('Let It Be', 'The Beatles', 'Let It Be', 1970, 'album'),
 ]), ['Let It Be', 'Let It Be (Remastered)']);
 check('検索順: Spotify の compilation は名前に BEST が無くても下げる', $order([
     $tr('ロビンソン', 'スピッツ', 'ある編集盤', 1999, 'compilation'),
@@ -589,6 +589,22 @@ check('検索順: 違う曲どうしは検索の順のまま', $order([
     $tr('Squall', 'ELLEGARDEN', 'Squall', 2003, 'single'),
     $tr('風の日', 'ELLEGARDEN', 'ELLEGARDEN BEST 1999-2008', 2008, 'compilation'),
 ]), ['Squall', 'ELLEGARDEN BEST 1999-2008']);
+check('検索順: リマスター盤のアルバムはシングルより上', $order([
+    $tr('Let It Be', 'The Beatles', 'Let It Be', 1970, 'single'),
+    $tr('Let It Be - Remastered 2009', 'The Beatles', 'Let It Be (Remastered)', 2009, 'album'),
+]), ['Let It Be (Remastered)', 'Let It Be']);
+check('検索順: リマスター盤でもベスト盤（compilation）はシングルより下', $order([
+    $tr('Let It Be', 'The Beatles', 'Let It Be', 1970, 'single'),
+    $tr('Let It Be', 'The Beatles', '1 (Remastered)', 2000, 'compilation'),
+]), ['Let It Be', '1 (Remastered)']);
+check('検索順: リマスターのライブ盤はシングルより下', $order([
+    $tr('Yesterday', 'The Beatles', 'Yesterday', 1965, 'single'),
+    $tr('Yesterday', 'The Beatles', 'Live (Remastered)', 2010, 'album'),
+]), ['Yesterday', 'Live (Remastered)']);
+check('検索順: オリジナルとリマスターが両方あればオリジナルが上', $order([
+    $tr('Let It Be', 'The Beatles', 'Let It Be (Remastered)', 2009, 'album'),
+    $tr('Let It Be', 'The Beatles', 'Let It Be', 1970, 'album'),
+]), ['Let It Be', 'Let It Be (Remastered)']);
 check('検索順: 複数アーティスト（feat.）は先頭の人で同じ曲とみなす', $order([
     $tr('曲X', 'A, B', '曲X', 2019, 'single'),
     $tr('曲X', 'A', 'アルバムY', 2020, 'album'),

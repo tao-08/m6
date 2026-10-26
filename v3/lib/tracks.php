@@ -34,6 +34,12 @@ function track_search(string $term, int $limit = 10): array
     return ['tracks' => itunes_search_tracks($term, $limit), 'source' => 'itunes'];
 }
 
+/** リマスター系の言葉（track_sort_by_version で、オリジナルの再発盤とみなす目印） */
+const TRACK_REMASTER_WORDS = '/(?<![a-z])(?:remaster\w*|deluxe|expanded|anniversary|edition)(?![a-z])|リマスター|記念|完全版/iu';
+/** これがあれば再発盤ではなく別物（ベスト・ライブ・カバー等）。SONG_REISSUE_WORDS からリマスター系を除いたもの */
+const TRACK_NOT_ORIGINAL_WORDS = '/(?<![a-z])(?:best|greatest|hits|collection|complete|singles|anthology|essential|selection|live|tour|concert'
+    . '|unplugged|acoustic|remix(?:es)?|instrumental|karaoke|tribute|cover)(?![a-z])|ベスト|ライブ|ライヴ|コレクション|カバー|トリビュート|オルゴール|カラオケ/iu';
+
 /**
  * 検索結果を「同じ曲の中では、オリジナル・アルバムの版が上」になるように並べ替える（api_track_search.php から呼ぶ）。
  *
@@ -48,7 +54,7 @@ function track_search(string $term, int $limit = 10): array
  *    例: [Lemon(シングル), カバーA, Lemon(STRAY SHEEP)] → [Lemon(STRAY SHEEP), Lemon(シングル), カバーA]
  *
  *  グループの中の並び（楽曲データベース songs.php のメインの選び方と同じ基準）:
- *    1. 版の順位（song_version_rank）が小さい方。0 オリジナル・アルバム → 1 シングル → 2 ベスト・ライブ等 → 3 アルバム不明
+ *    1. 版の順位（song_version_rank）が小さい方。0 オリジナル・アルバム → 0.5 リマスター／デラックス盤のアルバム → 1 シングル → 2 ベスト・ライブ等 → 3 アルバム不明
  *       Spotify の結果は、Spotify 公式の分類（album_type）も使って順位を補う:
  *         'compilation'（コンピ・ベスト盤）なら最低でも 2、'single'（シングル・EP）なら最低でも 1
  *         → アルバム名に "BEST" などの言葉が無いベスト盤も、Spotify が compilation に分類していれば下げられる
@@ -74,8 +80,19 @@ function track_sort_by_version(array $tracks): array
         $rank = match ($t['album_type'] ?? null) {
             'compilation' => max($rank, 2),
             'single'      => max($rank, 1),
+            // Spotify が 'album' と分類しているなら、曲名と同じ名前でもシングルではない（"Let It Be" 収録の "Let It Be" など、表題曲のアルバム）
+            'album'       => $rank === 1 ? 0 : $rank,
             default       => $rank, // 'album' や iTunes の結果（album_type が無い）はそのまま
         };
+        // リマスター／デラックス盤の「アルバム」は、シングル（1）より上の 0.5 にする。
+        //   配信ではオリジナル・アルバムがリマスター盤しか無いことが多い（ビートルズなど）。そのままだと順位2でシングルに負けてしまう。
+        //   条件: 順位2のまま ＋ リマスター系の言葉がある ＋ ベスト・ライブ等の言葉が無い ＋ Spotify が compilation / single と分類していない
+        //   （アルバム名だけでなく、曲名の後ろの注記 "Let It Be - Remastered 2009" も見る）
+        $note = $t['album_title'] . ' ' . mb_substr($t['title'], mb_strlen(song_title_core($t['title'], $artist)));
+        if ($rank === 2 && !in_array($t['album_type'] ?? null, ['compilation', 'single'], true)
+            && preg_match(TRACK_REMASTER_WORDS, $note) && !preg_match(TRACK_NOT_ORIGINAL_WORDS, $note)) {
+            $rank = 0.5;
+        }
 
         // 並べ替えに使う値を「配列」にまとめておく（ソートキー）。前の要素から順に比べられる:
         //   [順位, 発売年が無いか(true が後ろ), 発売年, 元の順番]
