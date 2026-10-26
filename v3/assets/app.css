@@ -1758,7 +1758,7 @@ a.album__title:hover { text-decoration: underline; }
   justify-items: center; gap: 6px; } /* 閉じる動きの間は [open] が外れているので、中央揃えは [open] でなく常時の指定に（でないとジャケットが左に寄る） */
 .album-modal[open] { display: grid; }
 .album-modal::backdrop { background: rgba(0, 0, 0, .8); }
-.album-modal__art { width: min(600px, calc(100vw - 32px), calc(100vh - 190px)); /* 600px = iTunes の画像の元の大きさ（Spotify は640）。これ以上は引き伸ばしでぼやける */ aspect-ratio: 1; border-radius: 12px; object-fit: cover; box-shadow: 0 8px 32px rgba(0, 0, 0, .5); margin-bottom: 10px; }
+.album-modal__art { width: min(600px, 100%, calc(100vh - 190px)); /* 600px = iTunes の画像の元の大きさ（Spotify は640）。これ以上は引き伸ばしでぼやける */ aspect-ratio: 1; border-radius: 12px; object-fit: cover; box-shadow: 0 8px 32px rgba(0, 0, 0, .5); margin-bottom: 10px; }
 .album-modal__name { font-size: 20px; line-height: 1.35; overflow-wrap: anywhere; }
 .album-modal__year { font-size: 14px; color: rgba(255, 255, 255, .7); }
 .album-modal__year:empty { display: none; }

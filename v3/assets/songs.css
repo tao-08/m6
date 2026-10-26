@@ -75,7 +75,7 @@
   border: 0; background: transparent; color: #fff; }
 .songs-zoom[open] { display: grid; justify-items: center; gap: 6px; }
 .songs-zoom::backdrop { background: rgba(0, 0, 0, .8); }
-.songs-zoom__art { width: min(600px, calc(100vw - 32px), calc(100vh - 160px)); /* 600px = アルバムのモーダル（app.css の album-modal__art）と同じ */ aspect-ratio: 1; border-radius: 12px; object-fit: cover; box-shadow: 0 8px 32px rgba(0, 0, 0, .5); }
+.songs-zoom__art { width: min(600px, 100%, calc(100vh - 160px)); /* 600px = アルバムのモーダル（app.css の album-modal__art）と同じ */ aspect-ratio: 1; border-radius: 12px; object-fit: cover; box-shadow: 0 8px 32px rgba(0, 0, 0, .5); }
 .songs-zoom__name { font-size: 20px; line-height: 1.35; text-align: center; overflow-wrap: anywhere; } /* album-modal__name と同じ */
 .songs-zoom__year { font-size: 14px; color: rgba(255, 255, 255, .7); text-align: center; }
 .songs-zoom__bar { display: flex; align-items: center; justify-content: center; gap: 16px; margin-top: 8px; }
