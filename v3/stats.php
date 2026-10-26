@@ -48,6 +48,9 @@ function get_int(string $key): ?int
 
 // ログイン中ユーザーの入学年度と学年（入学年度が不明なら両方 null）
 $myGrade = grade_of(my_entry_year());
+// ログイン中ユーザーの member_id（ランキングで自分の行を強調するのに使う）。
+//   アカウントがメンバーに紐付いていなければ 0 にする。member_id は 1 から始まるので、0 はどの行とも一致しない
+$myId = (int)($user['member_id'] ?? 0);
 $myEntry = $myGrade !== null ? $thisYear - $myGrade + 1 : null; // 学年から逆算（DB を2回引かない）
 
 // =====================================================================
@@ -162,6 +165,26 @@ function rows(PDO $pdo, string $sql, array $params): array
     return $st->fetchAll();
 }
 
+/**
+ * ランキングの行（多い順に並んだ全員分）を「上位 $limit 人」と「圏外の自分」に分ける。
+ *   戻り値: [上位の行, 圏外の自分の行（順位 rank 付き）か null]
+ *   自分が上位にいる・ランキングに出てこない（0回など）・アカウントが未紐付け → 自分の行は null
+ *   順位は tie_ranks（同じ数は同じ順位）で全員分を数えてから切るので、圏外でも正しい順位になる
+ */
+function split_top(array $rows, int $limit, int $meId): array
+{
+    $ranks = tie_ranks($rows, static fn($r) => (int)$r['n']);
+    $me = null;
+    foreach ($rows as $k => $r) {
+        // $k >= $limit … 並び順で $limit 番目より後ろ = 表示される上位に入っていない
+        if ($meId > 0 && $k >= $limit && (int)$r['member_id'] === $meId) {
+            $me = $r + ['rank' => $ranks[$k]]; // + で配列をくっつける（rank の項目を足す）
+            break;
+        }
+    }
+    return [array_slice($rows, 0, $limit), $me];
+}
+
 // ---- 年度ごとの概要 ----
 //   メンバーで絞っているときは「対象メンバーがいるバンド」と、そのバンドが出たライブ・日程だけ数える。出演者も対象メンバーだけ。
 //   ? の順番: SELECT の中の出演者サブクエリ（$memberSql）→ WHERE（$yearSql → $bandSql）
@@ -226,7 +249,8 @@ $headliners = rows($pdo, 'SELECT m.member_id, m.name, COUNT(DISTINCT b.band_id) 
     JOIN live_day ld ON ld.live_day_id = b.live_day_id
     JOIN live lm ON lm.live_id = ld.live_id
     WHERE 1 = 1' . $yearSql . $memberSql . '
-    GROUP BY m.member_id ORDER BY n DESC, m.name LIMIT 10', array_merge($yearParams, $memberParams));
+    GROUP BY m.member_id ORDER BY n DESC, m.name', array_merge($yearParams, $memberParams)); // 圏外の自分の順位を出すため LIMIT なしで全員分
+[$headliners, $meHeadliner] = split_top($headliners, 10, $myId);
 
 // ---- よく組む学年区分 ----
 //   10バンド以上組んだ人について、組んだメンバーの延べ人数（自分は除く）のうち 後輩・同期・先輩 の割合。
@@ -251,7 +275,9 @@ $gradeMix = [];
 foreach (['junior' => '後輩', 'same' => '同期', 'senior' => '先輩'] as $view => $label) {
     $list = array_map(static fn($r) => $r + ['ratio' => $r[$view] / $r['total'], 'n' => (int)round($r[$view] / $r['total'] * 100)], $gradeMixRows);
     usort($list, static fn($a, $b) => [$b['ratio'], $a['name']] <=> [$a['ratio'], $b['name']]);
-    $gradeMix[$view] = ['label' => $label, 'rows' => array_slice($list, 0, 10)];
+    // 上位10人＋圏外の自分（split_top は n で順位を付けるので、表示する整数の % と同じ基準になる）
+    [$top, $me] = split_top($list, 10, $myId);
+    $gradeMix[$view] = ['label' => $label, 'rows' => $top, 'me' => $me];
 }
 
 // ---- よくコピーされるアーティスト ----
@@ -301,7 +327,8 @@ $topBands = rows($pdo, 'SELECT m.member_id, m.name, COUNT(DISTINCT bm.band_id) A
     JOIN live_day ld ON ld.live_day_id = b.live_day_id
     JOIN live lm ON lm.live_id = ld.live_id
     WHERE 1 = 1' . $yearSql . $memberSql . '
-    GROUP BY m.member_id ORDER BY n DESC, m.name LIMIT 10', array_merge($yearParams, $memberParams));
+    GROUP BY m.member_id ORDER BY n DESC, m.name', array_merge($yearParams, $memberParams)); // LIMIT なし（トリ回数と同じ理由）
+[$topBands, $meBands] = split_top($topBands, 10, $myId);
 
 // ---- 最多演奏曲数 ----
 //   曲が登録されているバンド → その人が演奏した曲の数（song_performer）
@@ -318,7 +345,8 @@ $topSongs = rows($pdo, 'SELECT m.member_id, m.name,
     LEFT JOIN (SELECT band_id, member_id, COUNT(DISTINCT song_id) AS n FROM song_performer GROUP BY band_id, member_id) mine
         ON mine.band_id = bm.band_id AND mine.member_id = bm.member_id
     WHERE 1 = 1' . $yearSql . $memberSql . '
-    GROUP BY m.member_id ORDER BY n DESC, m.name LIMIT 10', array_merge($yearParams, $memberParams));
+    GROUP BY m.member_id ORDER BY n DESC, m.name', array_merge($yearParams, $memberParams)); // LIMIT なし（トリ回数と同じ理由）
+[$topSongs, $meSongs] = split_top($topSongs, 10, $myId);
 
 // ---- 楽器別出演数ランキング ----
 //   パート（Vo/Gt は Vo/Gt として。「Voを合算する」なら Vo と Gt の両方）× 人 で数えて、パートごとに上位5位まで残す
@@ -327,7 +355,7 @@ $topSongs = rows($pdo, 'SELECT m.member_id, m.name,
 //   「Voを合算する」はページ移動なしで切り替えられるように、両方の数え方を作っておく（表示しない方は hidden）
 $kingRows = $instrumentRows;
 $names = array_column($kingRows, 'name', 'member_id'); // member_id => 名前
-$kingsOf = static function (bool $mergeVocal) use ($kingRows, $names): array {
+$kingsOf = static function (bool $mergeVocal) use ($kingRows, $names, $myId): array {
     $kings = [];
     // Gt/Cho（弾きながらコーラス）は、どちらの数え方でも Gt と Cho に1回ずつ数える（'split'）
     foreach (tally_parts(lineup_parts_by_band($kingRows, $mergeVocal, 'split')) as $t) {
@@ -338,14 +366,17 @@ $kingsOf = static function (bool $mergeVocal) use ($kingRows, $names): array {
         usort($people, static fn($a, $b) => [$b['n'], $a['name']] <=> [$a['n'], $b['name']]);
         $ranks = tie_ranks($people, static fn($p) => $p['n']);
         $top = [];
+        $me = null; // このパートで6位以下の自分（上位5位にいる・このパートをやっていない → null）
         foreach ($people as $k => $p) {
-            if ($ranks[$k] > 5) {
-                break; // 並びが回数順なので、6位が出たらそこから先は全部6位以下
+            if ($ranks[$k] <= 5) {
+                $top[] = $p + ['rank' => $ranks[$k]];
+            } elseif ($myId > 0 && (int)$p['member_id'] === $myId) {
+                $me = $p + ['rank' => $ranks[$k]];
+                break; // 自分が見つかればそれ以上見なくていい
             }
-            $top[] = $p + ['rank' => $ranks[$k]];
         }
-        // 人（1位の member_id, name, n）+ パート（title, segments）+ 上位5位（top）
-        $kings[] = $top[0] + $t + ['top' => $top];
+        // 人（1位の member_id, name, n）+ パート（title, segments）+ 上位5位（top）+ 圏外の自分（me）
+        $kings[] = $top[0] + $t + ['top' => $top, 'me' => $me];
     }
     return $kings;
 };
@@ -555,35 +586,45 @@ $yearSlot = static function (string $name, int $selected, array $list, string $l
 
 <?php
 /** ランキング1枚分のカードを出す小さな関数（同じ HTML を何回も書かないため） */
-function ranking_card(string $icon, string $title, array $rows, callable $label, string $unit, string $empty = 'データがありません'): void
+function ranking_card(string $icon, string $title, array $rows, callable $label, string $unit, string $empty = 'データがありません', int $meId = 0, ?array $me = null): void
 {
+    // $me … 圏外の自分の行（split_top の2つ目）。あれば一覧の最後に1行足す
+    // $meId … 自分の member_id。行の member_id と同じなら、その <li> に is-me を付けて背景を塗る（app.css）
+    //   曲のランキングのように member_id が無い行は ?? 0 で 0 になり、一致しない（$meId > 0 のときだけ比べる）
     $ranks = tie_ranks($rows, static fn($r) => (int)$r['n']); // 同じ数は同じ順位 ?>
     <section class="card">
         <h2 class="section-title section-title--card"><?= icon($icon) ?> <?= h($title) ?></h2>
         <?php if (!$rows): ?><p class="muted small"><?= h($empty) ?></p><?php endif; ?>
         <ol class="ranking">
             <?php foreach ($rows as $k => $r): ?>
-                <li data-rank="<?= $ranks[$k] ?>"><span><?= $label($r) /* $label は HTML を返す。中で必ず h() すること */ ?></span><span class="pill"><?= (int)$r['n'] ?><?= h($unit) ?></span></li>
+                <li data-rank="<?= $ranks[$k] ?>"<?= $meId > 0 && (int)($r['member_id'] ?? 0) === $meId ? ' class="is-me"' : '' ?>><span><?= $label($r) /* $label は HTML を返す。中で必ず h() すること */ ?></span><span class="pill"><?= (int)$r['n'] ?><?= h($unit) ?></span></li>
             <?php endforeach; ?>
+            <?php if ($me): // 圏外の自分（順位は split_top が全員分から数えたもの） ?>
+                <li data-rank="<?= (int)$me['rank'] ?>" class="is-me is-outside"><span><?= $label($me) ?></span><span class="pill"><?= (int)$me['n'] ?><?= h($unit) ?></span></li>
+            <?php endif; ?>
         </ol>
     </section>
 <?php }
+// メンバー名のリンク（自分の強調は行の背景だけ。名前の色は変えない）
 $memberLink = static fn($r) => '<a href="member?id=' . (int)$r['member_id'] . '">' . h($r['name']) . '</a>';
+// 行に自分が入っていれば ' class="is-me"' を返す（ペア・トリオのように何人も並ぶ行は、ID を全部渡す）
+//   ...$ids = 「引数をいくつでも受け取って配列にする」書き方（可変長引数）
+$meRow = static fn(int ...$ids): string => $myId > 0 && in_array($myId, $ids, true) ? ' class="is-me"' : '';
 // 2通りの表のうち、今見せない方に付ける hidden（data-vo-view で JS が付け替える）
 $voHidden = static fn(string $view): string => ($view === 'sum') === $voSum ? '' : ' hidden';
 ?>
 
 <h2 class="section-title"><?= icon('person') ?> 個人ランキング</h2>
 <div class="stats-grid">
-    <?php ranking_card('mic', '最多出演（バンド数）', $topBands, $memberLink, '組'); ?>
-    <?php ranking_card('music_note', '最多演奏曲数', $topSongs, $memberLink, '曲'); ?>
+    <?php ranking_card('mic', '最多出演（バンド数）', $topBands, $memberLink, '組', meId: $myId, me: $meBands); ?>
+    <?php ranking_card('music_note', '最多演奏曲数', $topSongs, $memberLink, '曲', meId: $myId, me: $meSongs); ?>
     <section class="card">
         <h2 class="section-title section-title--card section-title--tool" id="kings"><?= icon('military_tech') ?> 楽器別出演数ランキング<?= $voToggle('kings') ?></h2>
         <!-- 「[Dr] [▸ 12組] 1位の名前」: ▸ と回数を押すと、そのパートの上位5位（同率含む）を開け閉め（よく組むメンバーと同じ作り） -->
         <?php foreach ($instrumentKings as $view => $kings): ?>
             <ul class="ranking ranking--plain kings" data-vo-view="<?= $view ?>"<?= $voHidden($view) ?>>
                 <?php foreach ($kings as $k): ?>
-                    <li>
+                    <li<?= $meRow(...array_map(static fn($p) => (int)$p['member_id'], array_filter($k['top'], static fn($p) => $p['rank'] === 1))) /* 1位（同率含む）に自分がいれば強調 */ ?>>
                         <details class="partner">
                             <summary>
                                 <?= part_badge($k) ?>
@@ -592,8 +633,11 @@ $voHidden = static fn(string $view): string => ($view === 'sum') === $voSum ? ''
                             </summary>
                             <ol class="ranking kings__top">
                                 <?php foreach ($k['top'] as $p): ?>
-                                    <li data-rank="<?= (int)$p['rank'] ?>"><span><?= $memberLink($p) ?></span><span class="pill"><?= (int)$p['n'] ?>組</span></li>
+                                    <li data-rank="<?= (int)$p['rank'] ?>"<?= $meRow((int)$p['member_id']) ?>><span><?= $memberLink($p) ?></span><span class="pill"><?= (int)$p['n'] ?>組</span></li>
                                 <?php endforeach; ?>
+                                <?php if ($k['me']): ?>
+                                    <li data-rank="<?= (int)$k['me']['rank'] ?>" class="is-me is-outside"><span><?= $memberLink($k['me']) ?></span><span class="pill"><?= (int)$k['me']['n'] ?>組</span></li>
+                                <?php endif; ?>
                             </ol>
                         </details>
                     </li>
@@ -611,7 +655,7 @@ $voHidden = static fn(string $view): string => ($view === 'sum') === $voSum ? ''
         <ol class="ranking">
             <?php $ranks = tie_ranks($pairs, static fn($p) => (int)$p['n']);
             foreach ($pairs as $k => $p): ?>
-                <li data-rank="<?= $ranks[$k] ?>"><span><a href="member?id=<?= (int)$p['a_id'] ?>"><?= h($p['a_name']) ?></a> × <a href="member?id=<?= (int)$p['b_id'] ?>"><?= h($p['b_name']) ?></a></span><span class="pill"><?= (int)$p['n'] ?>回</span></li>
+                <li data-rank="<?= $ranks[$k] ?>"<?= $meRow((int)$p['a_id'], (int)$p['b_id']) ?>><span><?= $memberLink(['member_id' => $p['a_id'], 'name' => $p['a_name']]) ?> × <?= $memberLink(['member_id' => $p['b_id'], 'name' => $p['b_name']]) ?></span><span class="pill"><?= (int)$p['n'] ?>回</span></li>
             <?php endforeach; ?>
         </ol>
     </section>
@@ -622,7 +666,7 @@ $voHidden = static fn(string $view): string => ($view === 'sum') === $voSum ? ''
         <ol class="ranking">
             <?php $ranks = tie_ranks($trios, static fn($t) => (int)$t['n']);
             foreach ($trios as $k => $t): ?>
-                <li data-rank="<?= $ranks[$k] ?>"><span><a href="member?id=<?= (int)$t['a_id'] ?>"><?= h($t['a_name']) ?></a> × <a href="member?id=<?= (int)$t['b_id'] ?>"><?= h($t['b_name']) ?></a> × <a href="member?id=<?= (int)$t['c_id'] ?>"><?= h($t['c_name']) ?></a></span><span class="pill"><?= (int)$t['n'] ?>回</span></li>
+                <li data-rank="<?= $ranks[$k] ?>"<?= $meRow((int)$t['a_id'], (int)$t['b_id'], (int)$t['c_id']) ?>><span><?= $memberLink(['member_id' => $t['a_id'], 'name' => $t['a_name']]) ?> × <?= $memberLink(['member_id' => $t['b_id'], 'name' => $t['b_name']]) ?> × <?= $memberLink(['member_id' => $t['c_id'], 'name' => $t['c_name']]) ?></span><span class="pill"><?= (int)$t['n'] ?>回</span></li>
             <?php endforeach; ?>
         </ol>
     </section>
@@ -633,8 +677,11 @@ $voHidden = static fn(string $view): string => ($view === 'sum') === $voSum ? ''
         <ol class="ranking">
             <?php $ranks = tie_ranks($headliners, static fn($hd) => (int)$hd['n']);
             foreach ($headliners as $k => $hd): ?>
-                <li data-rank="<?= $ranks[$k] ?>"><a href="member?id=<?= (int)$hd['member_id'] ?>"><?= h($hd['name']) ?></a><span class="pill"><?= (int)$hd['n'] ?>回</span></li>
+                <li data-rank="<?= $ranks[$k] ?>"<?= $meRow((int)$hd['member_id']) ?>><?= $memberLink($hd) ?><span class="pill"><?= (int)$hd['n'] ?>回</span></li>
             <?php endforeach; ?>
+            <?php if ($meHeadliner): ?>
+                <li data-rank="<?= (int)$meHeadliner['rank'] ?>" class="is-me is-outside"><?= $memberLink($meHeadliner) ?><span class="pill"><?= (int)$meHeadliner['n'] ?>回</span></li>
+            <?php endif; ?>
         </ol>
     </section>
 
@@ -651,8 +698,11 @@ $voHidden = static fn(string $view): string => ($view === 'sum') === $voSum ? ''
             <ol class="ranking" data-grade-view="<?= $view ?>">
                 <?php $ranks = tie_ranks($g['rows'], static fn($r) => $r['n']);
                 foreach ($g['rows'] as $k => $r): ?>
-                    <li data-rank="<?= $ranks[$k] ?>"><a href="member?id=<?= (int)$r['member_id'] ?>"><?= h($r['name']) ?></a><span class="pill"><?= (int)$r['n'] ?>%</span><span class="grade-mix__count"><?= (int)$r[$view] ?>/<?= (int)$r['total'] ?>回</span></li>
+                    <li data-rank="<?= $ranks[$k] ?>"<?= $meRow((int)$r['member_id']) ?>><?= $memberLink($r) ?><span class="pill"><?= (int)$r['n'] ?>%</span><span class="grade-mix__count"><?= (int)$r[$view] ?>/<?= (int)$r['total'] ?>回</span></li>
                 <?php endforeach; ?>
+                <?php if ($me = $g['me']): ?>
+                    <li data-rank="<?= (int)$me['rank'] ?>" class="is-me is-outside"><?= $memberLink($me) ?><span class="pill"><?= (int)$me['n'] ?>%</span><span class="grade-mix__count"><?= (int)$me[$view] ?>/<?= (int)$me['total'] ?>回</span></li>
+                <?php endif; ?>
             </ol>
         <?php endforeach; ?>
     </section>
