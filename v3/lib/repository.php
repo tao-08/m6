@@ -1364,9 +1364,8 @@ function partner_medal(int $rank, string $name): string
         . '<title>' . h($label) . '</title>'
         // リボン（左右2本の帯。左は明るい色、右は暗い色）
         . '<path d="M3 0h4l2 7H5z" fill="var(--m-light)"/><path d="M9 0h4l-2 7H7z" fill="var(--m-dark)"/>'
-        // メダル本体（外側の暗い縁 + 内側の明るい面）と順位の数字
+        // メダル本体（外側の暗い縁 + 内側の明るい面）。順位は色（金・銀・銅）で表すので数字は書かない
         . '<circle cx="8" cy="13" r="6" fill="var(--m-dark)"/><circle cx="8" cy="13" r="4.4" fill="var(--m-light)"/>'
-        . '<text x="8" y="15.4" text-anchor="middle" font-size="6.5" font-weight="900" fill="var(--m-dark)">' . $rank . '</text>'
         . '</svg>';
 }
 

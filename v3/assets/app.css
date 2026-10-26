@@ -1705,7 +1705,7 @@ button.setlist__listen { padding: 0; border: 0; cursor: pointer; color: #fff; }
 .partbar--partner .part { font-size: 10px; min-width: 0; padding: 1px 6px; }
 .partner summary a { min-width: 0; overflow-wrap: anywhere; }
 /* よく組むメンバーのメダル（相手から見て上位3位）: 名前のすぐ右。色は金・銀・銅を --m-light（明るい）/ --m-dark（暗い）で渡す（lib/repository.php の partner_medal） */
-.medal { width: 16px; height: 20px; flex: none; margin-left: -4px; font-family: var(--font); } /* 名前との間（gap 10px）を少し詰める */
+.medal { width: 12px; height: 15px; flex: none; margin-left: -5px; } /* 名前より控えめな大きさ（viewBox 16×20 を縮小）。名前との間（gap 10px）を少し詰める */
 .medal--1 { --m-light: #f7d774; --m-dark: #c2920a; }
 .medal--2 { --m-light: #e3e7ec; --m-dark: #8d97a2; }
 .medal--3 { --m-light: #eeb07e; --m-dark: #a8622c; }
