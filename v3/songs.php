@@ -562,15 +562,24 @@ $deleteForm = static fn(array $v, string $open = ''): string => '<form method="p
         $multi = count($g['versions']) > 1; ?>
         <li class="songs-item"<?= $openWork === $g['key'] ? ($scrollOnly ? ' data-song-scroll' : ' data-song-autoopen') . ' id="song-open"' : '' ?>>
             <div class="songs-row">
+                <!-- ジャケットを押すと、曲名を押したときと同じモーダルが開く（data-song-opener。assets/songs.js の setupModals）。
+                     マウスを乗せると曲名も強調される（assets/songs.css の :has）。ボタンの中身は画像なので、読み上げ用に aria-label で曲名を渡す -->
+                <button type="button" class="songs-row__artbtn" data-song-opener aria-haspopup="dialog" aria-label="<?= h($g['title']) ?>">
                 <?php if ($rep['art']): ?>
                     <img class="songs-row__art" src="<?= h($rep['art']) ?>" alt="" width="44" height="44" loading="lazy">
                 <?php else: ?>
                     <span class="songs-row__art songs-row__art--none"><?= icon('music_note') ?></span>
                 <?php endif; ?>
+                </button>
                 <div class="songs-row__main">
                     <button type="button" class="songs-row__open" data-song-open aria-haspopup="dialog">
-                        <span class="songs-row__title"><?= h($g['title']) ?></span><?php if ($g['artist']): ?><span class="songs-row__artist muted small"><?= h($g['artist']) ?></span><?php endif; ?><?php if ($multi): ?><span class="tag" title="バージョン"><?= icon('album') ?><span class="songs-row__n"><?= count($g['versions']) ?></span></span><?php elseif ($rep['catalog_id'] !== null): ?><span class="tag">手動</span><?php endif; ?>
+                        <span class="songs-row__title"><?= h($g['title']) ?></span><?php if ($multi): ?><span class="tag" title="バージョン"><?= icon('album') ?><span class="songs-row__n"><?= count($g['versions']) ?></span></span><?php elseif ($rep['catalog_id'] !== null): ?><span class="tag">手動</span><?php endif; ?>
                     </button>
+                    <?php // アーティスト名: ID があればアーティストのページへのリンク。<button> の中に <a> は置けない（HTML の決まり）ので、ボタンの外に出している
+                    if ($g['artist']): ?>
+                        <?php if ($g['artist_id'] !== null): ?><a class="songs-row__artist muted small" href="artist?id=<?= (int)$g['artist_id'] ?>"><?= h($g['artist']) ?></a>
+                        <?php else: ?><span class="songs-row__artist muted small"><?= h($g['artist']) ?></span><?php endif; ?>
+                    <?php endif; ?>
                 </div>
                 <span class="songs-row__plays muted small" title="演奏回数" aria-label="演奏回数 <?= (int)$g['plays'] ?>"><?= icon('queue_music') ?> <?= (int)$g['plays'] ?></span>
                 <?php if (tab_allowed()): ?><a class="btn btn--sm songs-row__tab<?= $g['tabs'] > 0 ? ' is-on' : '' ?>" href="<?= h($g['tab_url']) ?>" aria-label="TAB 譜" title="TAB 譜"><?= tab_icon($g['tabs'] > 0) ?> <?= (int)$g['tabs'] ?></a><?php endif; ?>

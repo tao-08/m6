@@ -192,6 +192,8 @@
   root.querySelectorAll('[data-song-open]').forEach((btn) => {
     const modal = btn.closest('li').querySelector('[data-song-modal]');
     btn.addEventListener('click', () => modal.showModal());
+    // 行のジャケットも曲名と同じモーダルを開く（songs.php の data-song-opener）
+    btn.closest('li').querySelectorAll('[data-song-opener]').forEach((o) => o.addEventListener('click', () => modal.showModal()));
     // 閉じるときも動かす: is-closing を付けて、アニメーションが終わってから close()（Esc も同じ）
     const closeModal = () => {
       if (!modal.open || modal.classList.contains('is-closing')) return;
