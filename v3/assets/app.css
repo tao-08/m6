@@ -713,6 +713,9 @@ td .tag--plan { margin-top: 4px; } /* アーティストの演奏履歴: 日付�
 /* 集計ページ: ログイン中の人が入っている行（stats.php が is-me を付ける）。
    メンバー一覧の自分の行（.table tr.is-me）と同じ「背景だけ」にそろえる */
 .ranking li.is-me { background: var(--accent-soft); }
+/* 楽器別ランキング: 開いている間は外側の行の背景を消す（中の上位5位にも自分の行があり、そちらが光るので二重に塗らない）。
+   :has(…) = 「中に〇〇を持っている要素」を選ぶ。ここでは「開いた details を持つ li」 */
+.kings > li.is-me:has(> details[open]) { background: none; }
 .ranking li.is-outside { margin-top: 6px; } /* 圏外の自分（上位の下に1行だけ足す）。少し離して別枠だとわかるように */
 
 /* ===== 7. フォーム・ログイン ===== */
