@@ -284,6 +284,60 @@ $st = $pdo->prepare('SELECT a.artist_id, a.name, COUNT(DISTINCT p.band_id) AS n
 $st->execute([$memberId, ...$skipParams]);
 $topArtists = $st->fetchAll();
 
+// ---- 各アーティストで、この人が「そのアーティストを演奏した全員」の上位3位に入っているか（メダル） ----
+//   絞り込みはメンバー・期間・予定とも今と同じ。競う相手（全メンバー）にもメンバーの絞り込み（入学年度）を効かせる。
+//   アーティストごとに SQL を投げると N+1 になるので、上位10アーティスト分を1本の SQL にまとめる。
+//   数え方はアーティストページの「よく演奏するメンバー」と同じ（そのアーティストのバンドに何回入ったか。同じバンドで2パートでも1回）
+$artistMedals = []; // [artist_id] = 1〜3（4位以下はキー無し）
+if ($topArtists) {
+    $aids = array_map(static fn($a) => (int)$a['artist_id'], $topArtists);
+    // IN (?, ?, …) の「?」をアーティストの数だけ作る（値はプリペアドステートメントで渡す = SQL インジェクション対策）
+    $where = ' WHERE p.artist_id IN (' . implode(',', array_fill(0, count($aids), '?')) . ')';
+    $params = $aids;
+    if ($period === 'year') {
+        $where .= ' AND lm.fiscal_year = ?';
+        $params[] = $fYear;
+    } elseif ($period === 'range') {
+        $where .= ' AND lm.fiscal_year BETWEEN ? AND ?';
+        array_push($params, $pfrom, $pto);
+    }
+    // 予定されているライブを数えない設定なら、今日以降の日程を外す（is_upcoming() と同じ）
+    if (empty($user['count_upcoming'])) {
+        $where .= ' AND (ld.held_on IS NULL OR ld.held_on < ?)';
+        $params[] = date('Y-m-d');
+    }
+    // メンバーの絞り込み: 入学年度が範囲内の人だけ競う（未登録の人はいつも対象。上の $ok と同じ）
+    if ($entryFrom !== null) {
+        $where .= ' AND (q.entry_year IS NULL OR q.entry_year BETWEEN ? AND ?)';
+        array_push($params, $entryFrom, $entryTo);
+    }
+    // 人 × アーティストごとの出演バンド数
+    $st = $pdo->prepare('SELECT p.artist_id, bm.member_id, COUNT(DISTINCT p.band_id) AS n
+        FROM (' . artist_plays_sql() . ') p
+        JOIN band_member bm ON bm.band_id = p.band_id
+        JOIN member q ON q.member_id = bm.member_id
+        JOIN band b ON b.band_id = p.band_id
+        JOIN live_day ld ON ld.live_day_id = b.live_day_id
+        JOIN live lm ON lm.live_id = ld.live_id' . $where . '
+        GROUP BY p.artist_id, bm.member_id');
+    $st->execute($params);
+    $playCounts = []; // [artist_id][member_id] = バンド数
+    foreach ($st->fetchAll() as $r) {
+        $playCounts[(int)$r['artist_id']][(int)$r['member_id']] = (int)$r['n'];
+    }
+    foreach ($playCounts as $aid => $counts) {
+        $mine = $counts[$memberId] ?? null;
+        if ($mine === null) {
+            continue; // 絞り込みでこの人が競う相手に入らない
+        }
+        // 順位 = 1 +「この人より回数が多い人」の数（同じ回数は同じ順位。tie_ranks() と同じ）
+        $rank = 1 + count(array_filter($counts, static fn($n) => $n > $mine));
+        if ($rank <= 3) {
+            $artistMedals[$aid] = $rank;
+        }
+    }
+}
+
 // ---- よく組む学年区分 ----
 //   集計ページと同じ数え方: 組んだメンバーの延べ人数（自分以外・入学年度が分かる人だけ）のうち 後輩・同期・先輩 の割合
 $gradeMix = ['junior' => 0, 'same' => 0, 'senior' => 0];
@@ -868,6 +922,8 @@ $yearSlot = static function (string $name, int $selected, array $list, string $l
                 <?php foreach ($topArtists as $k => $a): ?>
                     <li data-rank="<?= $artistRanks[$k] ?>">
                         <a href="artist?id=<?= (int)$a['artist_id'] ?>"><?= h($a['name']) ?></a>
+                        <!-- そのアーティストの「よく演奏するメンバー」で、この人が上位3位ならメダル -->
+                        <?php if (isset($artistMedals[(int)$a['artist_id']])): ?><?= partner_medal($artistMedals[(int)$a['artist_id']], $a['name'], 'よく演奏するメンバー') ?><?php endif; ?>
                         <span class="pill"><?= (int)$a['n'] ?>回</span>
                     </li>
                 <?php endforeach; ?>

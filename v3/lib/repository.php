@@ -1357,10 +1357,10 @@ function part_marks(array $tally, bool $withCount = false, string $class = '', i
  *   （SVG の fill に var() を書くと CSS 変数が使える → ダークモードでも CSS 側だけで色を変えられる）
  *   リボンもメダルと同じ色（明るい色と暗い色の2本）にする
  */
-function partner_medal(int $rank, string $name): string
+function partner_medal(int $rank, string $name, string $what = 'よく組むメンバー'): string
 {
     // 押すと（PC はマウスを乗せると）出すポップアップの文。画面には書かず、ポップアップと読み上げだけで伝える
-    $label = $name . 'のよく組むメンバー上位3位';
+    $label = $name . 'の' . $what . '上位3位'; // $what = どのランキングか（よく組むメンバー / よく演奏するメンバー）
     // <button> で包む: 指で押せる「部品」にするため（<svg> だけだとキーボードで選べない）。
     //   data-setlist-tip を付けると、セトリの ✓ と同じポップアップ（app.js の setupSetlistTip）がこの文を出す
     //   h() で " や < を無害な文字に置き換えてから属性に入れる（XSS 対策）
