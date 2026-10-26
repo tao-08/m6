@@ -710,6 +710,11 @@ td .tag--plan { margin-top: 4px; } /* アーティストの演奏履歴: 日付�
 .ranking li::before { content: counter(r); width: 22px; font: 800 12px var(--font); color: var(--muted); } /* 1,2,3…を CSS で自動で振る */
 .ranking li .pill { margin-left: auto; }
 .ranking li[data-rank]::before { content: attr(data-rank); } /* PHP が同率を同じ順位にした数字（tie_ranks）を出す */
+/* 集計ページ: ログイン中の人が入っている行（stats.php が is-me / me-name を付ける）。
+   色は「出演」タグ（.tag--mine）や表の .is-me と同じアクセントの赤にそろえる */
+.ranking li.is-me { background: var(--accent-soft); border-radius: 8px; }
+.ranking .me-name { color: var(--accent); font-weight: 800; }
+.ranking li.is-outside { margin-top: 6px; } /* 圏外の自分（上位の下に1行だけ足す）。少し離して別枠だとわかるように */
 
 /* ===== 7. フォーム・ログイン ===== */
 .auth { display: grid; grid-template-columns: 1.1fr 1fr; gap: 40px; align-items: center; min-height: calc(100vh - 220px); }
