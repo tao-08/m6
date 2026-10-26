@@ -269,18 +269,46 @@ function spotify_normalize_track(array $t): ?array
         'release_year' => ($year >= 1900 && $year <= 2100) ? $year : null,
         // 曲の長さ（ミリ秒）。セッティングシートの「分数」に使う（DB には保存しない）
         'duration_ms'  => is_int($t['duration_ms'] ?? null) && $t['duration_ms'] > 0 ? $t['duration_ms'] : null,
+        // アルバムの種類。Spotify が付けている公式の分類で、次の3つのどれか（DB には保存しない）:
+        //   'album' … アルバム / 'single' … シングル・EP / 'compilation' … コンピ・ベスト盤
+        //   検索結果を「オリジナル・アルバムが上」に並べ替えるときの手がかり（lib/tracks.php の track_sort_by_version）
+        //   in_array(値, 候補, true): 候補のどれかと「型まで同じ」なら true。想定外の値は null にして使わない
+        'album_type'   => in_array($album['album_type'] ?? null, ['album', 'single', 'compilation'], true) ? $album['album_type'] : null,
     ];
 }
 
-/** 曲を検索する。正常なら曲の配列（0件なら []）、失敗なら null */
+/**
+ * 曲を検索する。正常なら曲の配列（0件なら []）、失敗なら null
+ *
+ * ★ Spotify は 2026年2月から、検索1回で取れるのが最大10件になった（それまでは50件）。
+ *   10件より多く欲しいときは「offset（何件目から）」をずらしながら、10件ずつ何回かに分けて取る。
+ *   こういう「少しずつ分けて取る」方式をページング（ページネーション）と呼ぶ。大量のデータを返す API では定番の作り。
+ *   例: $limit = 20 → 1回目 offset=0（1〜10件目）、2回目 offset=10（11〜20件目）
+ */
 function spotify_search_tracks(string $term, int $limit = 10): ?array
 {
-    $json = spotify_request('search', ['q' => $term, 'type' => 'track', 'market' => SPOTIFY_MARKET, 'limit' => $limit]);
-    $items = $json['tracks']['items'] ?? null;
-    if (!is_array($items)) {
-        return null;
+    $tracks = [];
+    for ($offset = 0; $offset < $limit; $offset += 10) {
+        $json = spotify_request('search', [
+            'q'      => $term,
+            'type'   => 'track',
+            'market' => SPOTIFY_MARKET,
+            'limit'  => min(10, $limit - $offset), // min: 小さい方。最後の回は残りの件数だけ頼む（limit=15 なら 10件 → 5件）
+            'offset' => $offset,
+        ]);
+        $items = $json['tracks']['items'] ?? null;
+        if (!is_array($items)) {
+            // 1回目で失敗 → 検索できなかった（null）。2回目以降で失敗 → それまでに取れた分だけ返す（候補が少し減るだけ）
+            return $offset === 0 ? null : array_values(array_filter($tracks));
+        }
+        foreach ($items as $t) {
+            $tracks[] = is_array($t) ? spotify_normalize_track($t) : null;
+        }
+        if (count($items) < 10 || empty($json['tracks']['next'])) {
+            break; // もう次が無い（ヒットが少ない検索語）→ 無駄な通信をしない
+        }
     }
-    $tracks = array_map(static fn($t) => is_array($t) ? spotify_normalize_track($t) : null, $items);
+    // array_filter で null（使えない結果）を捨て、array_values で番号を 0,1,2... に振り直す
     return array_values(array_filter($tracks));
 }
 

@@ -563,5 +563,36 @@ check('版: 曲名の注記がライブ', song_version_rank('RUMBLE', 'CISCO - L
 check('版: 曲名に Live を含むだけならそのまま', song_version_rank('Definitely Maybe', 'Live Forever'), 0);
 check('版: アルバム不明', song_version_rank(null, 'Lemon'), 3);
 
+echo "track search order\n";
+// テスト用の曲を短く作る関数（必要な項目だけ）。$type は Spotify の album_type（iTunes の結果なら null）
+$tr = fn(string $title, string $artist, string $album, ?int $year, ?string $type = null) =>
+    ['title' => $title, 'artist_name' => $artist, 'album_title' => $album, 'release_year' => $year, 'album_type' => $type];
+$order = fn(array $tracks) => array_map(static fn($t) => $t['album_title'], track_sort_by_version($tracks));
+check('検索順: 同じ曲の中でオリジナル・アルバムが上', $order([
+    $tr('Lemon', '米津玄師', 'Lemon', 2018, 'single'),
+    $tr('Lemon', '米津玄師', 'STRAY SHEEP', 2020, 'album'),
+]), ['STRAY SHEEP', 'Lemon']);
+check('検索順: 別のアーティストのカバーは本家を追い越さない', $order([
+    $tr('Lemon', '米津玄師', 'Lemon', 2018, 'single'),
+    $tr('Lemon', 'カバーする人', 'カバーアルバム', 2021, 'album'),
+    $tr('Lemon', '米津玄師', 'STRAY SHEEP', 2020, 'album'),
+]), ['STRAY SHEEP', 'Lemon', 'カバーアルバム']);
+check('検索順: 版の注記違いも同じ曲（リマスターは下、古い盤が上）', $order([
+    $tr('Let It Be - Remastered 2009', 'The Beatles', 'Let It Be (Remastered)', 2009),
+    $tr('Let It Be', 'The Beatles', 'Let It Be', 1970),
+]), ['Let It Be', 'Let It Be (Remastered)']);
+check('検索順: Spotify の compilation は名前に BEST が無くても下げる', $order([
+    $tr('ロビンソン', 'スピッツ', 'ある編集盤', 1999, 'compilation'),
+    $tr('ロビンソン', 'スピッツ', 'ハチミツ', 1995, 'album'),
+]), ['ハチミツ', 'ある編集盤']);
+check('検索順: 違う曲どうしは検索の順のまま', $order([
+    $tr('Squall', 'ELLEGARDEN', 'Squall', 2003, 'single'),
+    $tr('風の日', 'ELLEGARDEN', 'ELLEGARDEN BEST 1999-2008', 2008, 'compilation'),
+]), ['Squall', 'ELLEGARDEN BEST 1999-2008']);
+check('検索順: 複数アーティスト（feat.）は先頭の人で同じ曲とみなす', $order([
+    $tr('曲X', 'A, B', '曲X', 2019, 'single'),
+    $tr('曲X', 'A', 'アルバムY', 2020, 'album'),
+]), ['アルバムY', '曲X']);
+
 echo $failed ?"\n{$failed} 件失敗\n" : "\nすべて成功\n";
 exit($failed ? 1 : 0);

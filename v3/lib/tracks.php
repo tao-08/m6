@@ -21,16 +21,78 @@ require_once __DIR__ . '/albums.php';
 /**
  * 曲を検索する。戻り値は album_search と同じ形:
  *   ['tracks' => 曲の配列（全部失敗したら null）, 'source' => 実際に使ったサービス]
+ *   $limit 何件まで取るか。並べ替え（track_sort_by_version）の前に多めに取りたいときは大きくする
  */
-function track_search(string $term): array
+function track_search(string $term, int $limit = 10): array
 {
     if (spotify_enabled()) {
-        $tracks = spotify_search_tracks($term);
+        $tracks = spotify_search_tracks($term, $limit);
         if ($tracks !== null) {
             return ['tracks' => $tracks, 'source' => 'spotify'];
         }
     }
-    return ['tracks' => itunes_search_tracks($term), 'source' => 'itunes'];
+    return ['tracks' => itunes_search_tracks($term, $limit), 'source' => 'itunes'];
+}
+
+/**
+ * 検索結果を「同じ曲の中では、オリジナル・アルバムの版が上」になるように並べ替える（api_track_search.php から呼ぶ）。
+ *
+ *  ★ なぜ「全体をアルバム順に並べ替える」のではなく「同じ曲の中だけ」並べ替えるのか
+ *    Spotify / iTunes の検索結果は「検索語に合っている順（関連度順）」に並んでいる。
+ *    全体を版の順位だけで並べ替えると、「Lemon 米津玄師」で探したのに、
+ *    別のアーティストのカバー（そのアーティストのオリジナル・アルバム収録 = 順位0）が、本家のシングル（順位1）より上に来てしまう。
+ *    そこで、検索サイトでよく使う「グループ化してから並べ替える」方式にする:
+ *      ① 同じ曲（アーティスト + 曲名の本体）ごとにグループに分ける
+ *      ② グループの並びは、検索結果で最初に出てきた順のまま（= 関連度を壊さない）
+ *      ③ グループの中だけ「メインにふさわしい順」に並べる
+ *    例: [Lemon(シングル), カバーA, Lemon(STRAY SHEEP)] → [Lemon(STRAY SHEEP), Lemon(シングル), カバーA]
+ *
+ *  グループの中の並び（楽曲データベース songs.php のメインの選び方と同じ基準）:
+ *    1. 版の順位（song_version_rank）が小さい方。0 オリジナル・アルバム → 1 シングル → 2 ベスト・ライブ等 → 3 アルバム不明
+ *       Spotify の結果は、Spotify 公式の分類（album_type）も使って順位を補う:
+ *         'compilation'（コンピ・ベスト盤）なら最低でも 2、'single'（シングル・EP）なら最低でも 1
+ *         → アルバム名に "BEST" などの言葉が無いベスト盤も、Spotify が compilation に分類していれば下げられる
+ *    2. 発売年が古い方（リマスター盤・再発盤より、最初に出た盤を上に）。発売年が分からないものは後ろ
+ *    3. それでも同じなら、もともとの検索結果の順（関連度が高い方）
+ *
+ *  $tracks lib/tracks.php の先頭の説明の形の曲の配列（Spotify なら 'album_type' も入っている）
+ *  戻り値: 同じ曲たちを並べ替えた配列（件数は変わらない）
+ */
+function track_sort_by_version(array $tracks): array
+{
+    $groups = []; // グループのキー => そのグループに入る曲の配列。PHP の配列は「入れた順」を覚えているので、② が自然に守られる
+    foreach ($tracks as $i => $t) {
+        // Spotify は「A, B」のように複数アーティストをつないでいるので、最初の1人（メインのアーティスト）で比べる
+        //   explode(区切り, 文字列): 区切りで分けて配列にする。[0] で先頭だけ使う
+        $artist = explode(', ', $t['artist_name'])[0];
+        // 同じ曲のキー: アーティスト名 + 曲名の本体（"Lemon - Acoustic ver." も "Lemon"）。どちらも比べやすい形（album_match_key）にそろえる
+        //   "\0"（何も無い文字）でつなぐのは、「アーティスト名の最後」と「曲名の最初」がくっついて別の組み合わせと同じキーになるのを防ぐため
+        $key = album_match_key($artist) . "\0" . song_title_key($t['title'], $artist);
+
+        $rank = song_version_rank($t['album_title'], $t['title'], $artist);
+        // Spotify の公式の分類で補う。max(a, b): 大きい方 → 「その順位より上には行かせない」
+        $rank = match ($t['album_type'] ?? null) {
+            'compilation' => max($rank, 2),
+            'single'      => max($rank, 1),
+            default       => $rank, // 'album' や iTunes の結果（album_type が無い）はそのまま
+        };
+
+        // 並べ替えに使う値を「配列」にまとめておく（ソートキー）。前の要素から順に比べられる:
+        //   [順位, 発売年が無いか(true が後ろ), 発売年, 元の順番]
+        //   PHP の <=>（宇宙船演算子）は配列どうしを比べると、先頭の要素から順に比べてくれる（songs.php と同じ書き方）
+        $year = $t['release_year'] ?? null;
+        $groups[$key][] = ['sort' => [$rank, $year === null, (int)$year, $i], 'track' => $t];
+    }
+
+    $sorted = [];
+    foreach ($groups as $versions) {
+        // usort(配列, 比べ方): 「比べ方」の関数で並べ替える。関数は a が前なら負、後ろなら正、同じなら 0 を返す（<=> がそれを返す）
+        usort($versions, static fn(array $a, array $b): int => $a['sort'] <=> $b['sort']);
+        // array_column(配列, 'track'): 各要素の 'track' だけを取り出した配列にする
+        // ...（スプレッド構文）: 配列を展開して、1件ずつ $sorted の後ろに足す
+        array_push($sorted, ...array_column($versions, 'track'));
+    }
+    return $sorted;
 }
 
 /** source と track_id から1曲を取り直す（保存するとき用）。見つからない・通信失敗なら null */
