@@ -647,7 +647,7 @@ function require_login(): array
         redirect('login'); // ログイン画面なのは見ればわかるので「ログインしてください」のお知らせは出さない
     }
     // DB を作り直した・管理者に削除された等でアカウントが消えていたら、古いセッションを捨てる
-    $st = db()->prepare('SELECT name, is_admin, is_executive, member_id, hide_retired_suggest, show_back_button, count_upcoming, password_changed_at FROM user_account WHERE user_id = ?');
+    $st = db()->prepare('SELECT name, is_admin, is_executive, member_id, hide_retired_suggest, show_back_button, count_upcoming, see_anonymous, password_changed_at FROM user_account WHERE user_id = ?');
     $st->execute([$user['user_id']]);
     $row = $st->fetch();
     if (!$row) {
@@ -674,7 +674,18 @@ function require_login(): array
     $_SESSION['user']['hide_retired'] = (bool)$row['hide_retired_suggest']; // member_name_choices() が見る
     $_SESSION['user']['back_button'] = (bool)$row['show_back_button']; // partials/header.php が見る
     $_SESSION['user']['count_upcoming'] = (bool)$row['count_upcoming']; // member.php が見る
+    $_SESSION['user']['see_anonymous'] = (bool)$row['see_anonymous']; // sees_real_names() が見る（管理者のみ意味あり）
     return $_SESSION['user'];
+}
+
+/**
+ * 匿名・名義の投稿に、本名も併記して見るか（author_html() の第5引数に渡す）。
+ * 管理者で、かつアカウント設定の「匿名の本名を表示」がオンの人だけ true。
+ * 画面表示だけの話で、削除などの管理者権限（is_admin）は変わらない
+ */
+function sees_real_names(array $user): bool
+{
+    return !empty($user['admin']) && ($user['see_anonymous'] ?? true);
 }
 
 /** 幹部（と管理者）専用ページで使う */

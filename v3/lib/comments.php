@@ -139,6 +139,7 @@ function comments_render(string $kind, int $targetId, array $user): void
     $pdo = db();
     $uid = (int)$user['user_id'];
     $isAdmin = !empty($user['admin']);
+    $seeReal = sees_real_names($user); // 匿名・名義の本名を併記するか（管理者の設定。削除権限の $isAdmin とは別）
 
     $st = $pdo->prepare("SELECT c.comment_id, c.user_id, c.body, c.anonymous, c.display_name, c.created_at, c.deleted_at, u.name AS author, u.member_id AS author_member_id, d.name AS deleted_by_name
         FROM comment c
@@ -184,7 +185,7 @@ function comments_render(string $kind, int $targetId, array $user): void
         <article class="card board-post<?= $deleted ? ' is-deleted' : '' ?><?= (int)$c['user_id'] === $uid ? ' is-mine' : '' ?>" id="c<?= $cid ?>">
             <div class="muted small board-post__meta">
                 <span class="board-post__no"><?= $i + 1 ?></span>
-                <strong><?= author_html((bool)$c['anonymous'], $c['display_name'], $c['author'], $c['author_member_id'] !== null ? (int)$c['author_member_id'] : null, $isAdmin) ?></strong>
+                <strong><?= author_html((bool)$c['anonymous'], $c['display_name'], $c['author'], $c['author_member_id'] !== null ? (int)$c['author_member_id'] : null, $seeReal) ?></strong>
                 <span><?= h(substr($c['created_at'], 0, 16)) ?></span>
                 <?php if (!$deleted): ?>
                 <button type="button" class="icon-btn icon-btn--sm board-post__reply" data-comment-reply="<?= $cid ?>" data-no="<?= $i + 1 ?>" aria-label="返信" title="返信" aria-pressed="false"><?= icon('reply') ?></button>

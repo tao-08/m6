@@ -201,7 +201,7 @@ render_header($thread['title'], 'board');
     <article class="card board-post<?= $deleted ? ' is-deleted' : '' ?><?= (int)$p['user_id'] === $uid ? ' is-mine' : '' ?>" id="p<?= (int)$p['post_id'] ?>">
         <div class="muted small board-post__meta">
             <span class="board-post__no"><?= $no ?></span>
-            <strong><?= author_html((bool)$p['anonymous'], $p['display_name'], $p['author'], $p['author_member_id'] !== null ? (int)$p['author_member_id'] : null, !empty($user['admin'])) ?></strong>
+            <strong><?= author_html((bool)$p['anonymous'], $p['display_name'], $p['author'], $p['author_member_id'] !== null ? (int)$p['author_member_id'] : null, sees_real_names($user)) ?></strong>
             <span><?= h(substr($p['created_at'], 0, 16)) ?></span>
             <?php if ($canPost && !$deleted): ?>
             <button type="button" class="icon-btn icon-btn--sm board-post__reply" data-board-reply="<?= (int)$p['post_id'] ?>" data-no="<?= $no ?>" aria-label="返信" title="返信" aria-pressed="false"><?= icon('reply') ?></button>

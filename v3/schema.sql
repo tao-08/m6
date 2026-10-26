@@ -113,6 +113,7 @@ CREATE TABLE user_account (
     push_notice    BOOLEAN NOT NULL DEFAULT FALSE,      -- その他のお知らせをアプリ通知にする
     practice_back  TINYINT UNSIGNED NULL,               -- 練習プレイヤーの戻す・進める秒数 1〜60（全動画共通。NULL = 動画ごとの値。migrations/081）
     practice_pad   TINYINT UNSIGNED NULL,               -- 練習プレイヤーのリピート前後幅 0〜10 秒（同上）
+    see_anonymous BOOLEAN NOT NULL DEFAULT TRUE,        -- 管理者だけ: 匿名・名義の投稿に本名も併記して見る。0 = 一般と同じ表示（account.php・author_html()。migrations/082）
     created_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (user_id),
     UNIQUE KEY uq_user_login (login_id),

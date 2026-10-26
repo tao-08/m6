@@ -7,6 +7,7 @@
  *    action=profile  … 名前（メンバーと紐付いていない人だけ）
  *    action=password … パスワード変更（今のパスワードの確認つき）
  *    action=email    … 問い合わせの通知先メールアドレス（管理者だけ。contact.php）
+ *    action=admin_prefs … 匿名・名義の投稿に本名も併記して見るか（管理者だけ。lib/bootstrap.php の sees_real_names()）
  *    action=suggest  … 退会した人をメンバー名の候補（サジェスト）に出さないか（member_name_choices()）
  *    action=back_button … 左下の戻るボタンを出すか（assets/app.js の setupBackButton）
  *    action=push_prefs  … アプリ通知（プッシュ）で受け取る種類: 掲示板 / 重要なお知らせ / その他のお知らせ（lib/push.php）
@@ -72,6 +73,14 @@ if (is_post()) {
                 ->execute([$email === '' ? null : $email, $user['user_id']]);
             flash($email === '' ? '通知先のメールアドレスを消しました' : '通知先のメールアドレスを保存しました');
         }
+    }
+
+    // 匿名・名義の投稿の本名を見るか（管理者だけ。HTML を書き換えて送られても管理者以外は弾く）
+    // 画面表示だけの設定。DB の user_id は変わらない（sees_real_names() が見る）
+    if ($action === 'admin_prefs' && $account['is_admin']) {
+        $pdo->prepare('UPDATE user_account SET see_anonymous = ? WHERE user_id = ?')
+            ->execute([(int)(($_POST['see_anonymous'] ?? '') === '1'), $user['user_id']]);
+        flash('設定を保存しました');
     }
 
     // チェックを外すと何も送られないので、フォームに hidden の 0 を先に置いている（チェックすると 1 で上書き）
@@ -167,6 +176,13 @@ render_header('アカウント設定');
         <p class="muted small">「問い合わせ・要望」から送られた内容が、このアドレスにメールで届きます。空にすると届かなくなります（サイトの中には残ります）。</p>
         <?= csrf_field() ?><input type="hidden" name="action" value="email">
         <label class="field"><span>メールアドレス</span><input type="email" name="email" value="<?= h($account['email'] ?? '') ?>" maxlength="254" autocomplete="email"></label>
+        <div class="form-actions"><button class="btn btn--primary btn--sm" type="submit">保存</button></div>
+    </form>
+    <form method="post" class="card form-card" data-unsaved>
+        <h2 class="section-title section-title--card">匿名の表示 <span class="tag">管理者</span></h2>
+        <?= csrf_field() ?><input type="hidden" name="action" value="admin_prefs">
+        <label class="check"><input type="hidden" name="see_anonymous" value="0"><input type="checkbox" name="see_anonymous" value="1"<?= $account['see_anonymous'] ? ' checked' : '' ?>> 匿名・名義の本名を表示する</label>
+        <p class="muted small">オフにすると、掲示板とコメントの匿名・名義の投稿が一般ユーザーと同じ表示になります（この画面だけの設定。削除などの権限は変わりません）。</p>
         <div class="form-actions"><button class="btn btn--primary btn--sm" type="submit">保存</button></div>
     </form>
     <?php endif; ?>

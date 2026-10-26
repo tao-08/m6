@@ -2022,17 +2022,18 @@ function load_check_members(PDO $pdo, int $bandId): array
 }
 
 /**
- * 掲示板・コメントの投稿者名（HTML）。匿名なら「匿名」だけ。管理者にはそのあとに本名も出す
+ * 掲示板・コメントの投稿者名（HTML）。匿名なら「匿名」だけ。$seeReal が true の管理者にはそのあとに本名も出す
  * @param int|null $memberId 投稿者のメンバーID（あれば本名からメンバーページへリンク）
+ * @param bool $seeReal 本名を併記するか。sees_real_names($user) の結果を渡す（管理者のアカウント設定。migrations/082）
  */
-function author_html(bool $anonymous, ?string $displayName, ?string $name, ?int $memberId, bool $isAdmin): string
+function author_html(bool $anonymous, ?string $displayName, ?string $name, ?int $memberId, bool $seeReal): string
 {
     $real = $memberId !== null ? '<a href="member?id=' . $memberId . '">' . h($name ?? '') . '</a>' : h($name ?? '退会ユーザー');
     $shown = $anonymous ? '匿名' : $displayName; // 匿名が優先。名義が無ければ本名
     if ($shown === null || $shown === '') {
         return $real;
     }
-    return h($shown) . ($isAdmin ? ' <span class="muted">（' . $real . '）</span>' : '');
+    return h($shown) . ($seeReal ? ' <span class="muted">（' . $real . '）</span>' : '');
 }
 
 /** 掲示板・コメントの送信元の名義（POST の display_name）。空なら null（本名）。匿名のときも null */

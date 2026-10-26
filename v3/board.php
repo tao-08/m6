@@ -187,7 +187,7 @@ $row = function (array $t) use ($categoryNames, $categoryColors, $myYear, $cat, 
     } elseif ($t['kind'] === 'cohort' && (int)$t['entry_year'] === $myYear) {
         $tag = '<span class="tag">同期</span>';
     }
-    $meta = ($t['last_post_id'] ? h(substr($t['last_posted_at'], 0, 16)) : '') . ($t['author'] !== null ? ' · ' . author_html((bool)$t['anonymous'], $t['display_name'], $t['author'], null, !empty($user['admin'])) : '');
+    $meta = ($t['last_post_id'] ? h(substr($t['last_posted_at'], 0, 16)) : '') . ($t['author'] !== null ? ' · ' . author_html((bool)$t['anonymous'], $t['display_name'], $t['author'], null, sees_real_names($user)) : '');
     return '<a class="board-row' . ($t['deleted_at'] !== null ? ' is-deleted' : '') . '" href="board_thread?id=' . (int)$t['thread_id'] . '">'
         . icon($icon, 'board-row__icon')
         . '<span class="board-row__main"><span class="board-row__title"><span class="board-row__name">' . h($t['title']) . '</span>' . $tag
