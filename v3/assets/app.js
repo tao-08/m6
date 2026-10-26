@@ -134,7 +134,13 @@ function setupAlbumTip() {
   tip.innerHTML = '<strong class="album-tip__title"></strong><span class="album-tip__artist"></span>';
   document.body.appendChild(tip);
 
+  const canHover = window.matchMedia('(hover: hover)'); // マウスがある端末か（スマホは false）
+  let current = null; // いま出しているジャケット
+  let autoTimer = 0;  // スマホ用: 一定時間たったら自動で消すタイマー
+
   const show = (img) => {
+    clearTimeout(autoTimer); // 別のジャケットを続けて押したとき、前のタイマーを引き継がない
+    current = img;
     tip.querySelector('.album-tip__title').textContent = img.dataset.tipTitle;
     tip.querySelector('.album-tip__artist').textContent = img.dataset.tipArtist;
     tip.classList.add('is-visible');
@@ -146,17 +152,38 @@ function setupAlbumTip() {
     const left = Math.min(Math.max(8, r.left + r.width / 2 - t.width / 2), window.innerWidth - t.width - 8);
     tip.style.top = `${top}px`;
     tip.style.left = `${left}px`;
+    // スマホだけ、時間がたつと自動で消す（文字数に比例。最短2.5秒・最長10秒。setupSetlistTip と同じ式）
+    if (!canHover.matches) {
+      const ms = Math.min(10000, Math.max(2500, 1500 + tip.textContent.length * 100));
+      autoTimer = setTimeout(hide, ms);
+    }
   };
-  const hide = () => tip.classList.remove('is-visible');
+  const hide = () => {
+    clearTimeout(autoTimer); // 手動で消したら、残っているタイマーも止める
+    tip.classList.remove('is-visible'); // フェードは CSS（.album-tip の transition）がやる
+    current = null;
+  };
 
-  // mouseover / focusin は子要素から親へ伝わる（バブリング）ので、document に1個付けるだけで全部のジャケットに効く
+  // mouseover / focusin は子要素から親へ伝わる（バブリング）ので、document に1個付けるだけで全部のジャケットに効く。
+  // スマホはタップすると mouseover / focusin も自動で起きる（互換のための動き）。
+  // それを拾うと、直後の click（下）が「同じジャケットをもう一度押した」と判定されて、出した瞬間に消えてしまう。
+  // → マウスがある端末だけで拾う。スマホは click だけで扱う
   document.addEventListener('mouseover', (e) => {
+    if (!canHover.matches) return;
     const img = e.target.closest('[data-album-tip] [data-tip-title]');
     if (img) show(img); else hide();
   });
   document.addEventListener('focusin', (e) => {
+    if (!canHover.matches) return;
     const img = e.target.closest('[data-album-tip] [data-tip-title]');
     if (img) show(img); else hide();
+  });
+  // スマホは押したら出す。同じジャケットをもう一度押すか、他の所を押すと消える
+  document.addEventListener('click', (e) => {
+    if (canHover.matches) return; // PC は上の mouseover で足りる
+    const img = e.target.closest('[data-album-tip] [data-tip-title]');
+    if (!img) { hide(); return; }
+    if (img === current) hide(); else show(img);
   });
   // fixed なのでスクロールするとずれる → 隠す。capture: true で、ページだけでなく表の横スクロールでも隠す
   document.addEventListener('scroll', hide, { passive: true, capture: true });
@@ -296,6 +323,19 @@ function setupSetlistTip() {
     if (badge === current) hide(); else show(badge);
   });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hide(); });
+
+  // キーボード操作（Tab でバッジに移動）でも出す。マウスがある端末だけ。
+  //   :focus-visible = キーボードで移ったときだけ true（マウスで押したときは false）。
+  //   スマホは押すとフォーカスも動くので、拾うと click（上）の「もう一度押した」判定とぶつかって、出した瞬間に消える
+  document.addEventListener('focusin', (e) => {
+    if (!canHover.matches || !e.target.matches(':focus-visible')) return;
+    const badge = e.target.closest('[data-setlist-tip]');
+    if (badge) show(badge);
+  });
+  document.addEventListener('focusout', (e) => {
+    if (canHover.matches && e.target.closest('[data-setlist-tip]') === current) hide();
+  });
+
   // fixed なのでスクロールするとずれる → 隠す。capture: true で、ページだけでなく表の横スクロールでも隠す
   document.addEventListener('scroll', hide, { passive: true, capture: true });
 }

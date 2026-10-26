@@ -388,10 +388,12 @@ if ($tab === 'artist') {
 
 $counts = ['venue' => count($venues), 'day' => count($days), 'instrument' => count($instruments), 'role' => count($roles), 'artist' => count($artists)];
 
-/** 消せないときのグレーアウトしたゴミ箱（disabled のボタンはマウスの反応が鈍いので、外側の span でツールチップを出す） */
+/** 消せないときのグレーアウトしたゴミ箱（disabled のボタンはマウスの反応が鈍いので、外側の span でポップアップを出す）
+ *  ポップアップは app.js の setupSetlistTip（data-setlist-tip）が出す。PC は乗せる、スマホは押すと出て、自動で消える。
+ *  文字は h()（htmlspecialchars）を通して属性に入れ、JS 側は textContent で入れる（XSS 対策の二重がけ） */
 function trash_disabled(string $why): string
 {
-    return '<span class="tooltip" data-tooltip="' . h($why) . '" tabindex="0">'
+    return '<span class="tooltip" data-setlist-tip="' . h($why) . '" tabindex="0">'
         . '<button class="btn-trash" type="button" disabled aria-label="削除（' . h($why) . '）">' . icon('delete') . '</button></span>';
 }
 
