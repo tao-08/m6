@@ -58,17 +58,21 @@ $liveId = (int)($_GET['live'] ?? 0);
 /* ==================== 一覧 ==================== */
 if ($liveId <= 0) {
     // 予定のライブ（最終日が今日以降）と、スタジオ割を作ってあるライブ
-    //   MAX(p.…) … GROUP BY した行の列は「集計関数で1つにまとめる」のが SQL の決まり（ONLY_FULL_GROUP_BY モードで怒られないように）
-    $st = $pdo->prepare('SELECT l.live_id, l.name, MIN(d.held_on) AS first_day, MAX(d.held_on) AS last_day,
+    //   SQL は「ライブごとの最初・最後の開催日 + スタジオ割の有無」を集めるだけにする（GROUP BY + 集計関数のみ）。
+    //   絞り込み（今日以降か）と並べ替えは PHP でやる。
+    //   なぜ？ → HAVING の OR や、別名を使った ORDER BY は、MySQL の設定（sql_mode）やバージョンで通らないことがある。
+    //            SQL を単純にして、環境差で落ちない形にするのは実務でもよく使う安全策
+    $st = $pdo->query('SELECT l.live_id, l.name, MIN(d.held_on) AS first_day, MAX(d.held_on) AS last_day,
             MAX(p.studio_plan_id) AS plan_id, MAX(p.updated_at) AS updated_at
         FROM live l
         JOIN live_day d ON d.live_id = l.live_id
         LEFT JOIN studio_plan p ON p.live_id = l.live_id
-        GROUP BY l.live_id, l.name
-        HAVING MAX(d.held_on) >= ? OR MAX(p.studio_plan_id) IS NOT NULL
-        ORDER BY first_day IS NULL, first_day');
-    $st->execute([date('Y-m-d')]);
-    $lives = $st->fetchAll();
+        GROUP BY l.live_id, l.name');
+    $today = date('Y-m-d');
+    // array_filter … 条件に合う行だけ残す。最終日が今日以降（日付 'YYYY-MM-DD' は文字列のまま比べて大小が合う）か、スタジオ割がある
+    $lives = array_filter($st->fetchAll(), static fn($l) => $l['plan_id'] !== null || ($l['last_day'] !== null && $l['last_day'] >= $today));
+    // 開催日の早い順（日付が未定の行は後ろ）
+    usort($lives, static fn($a, $b) => [$a['first_day'] === null, (string)$a['first_day']] <=> [$b['first_day'] === null, (string)$b['first_day']]);
     render_header('スタジオ割', 'tools');
     ?>
     <link rel="stylesheet" href="<?= asset_url('assets/studio.css') ?>">
