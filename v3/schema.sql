@@ -1283,3 +1283,41 @@ CREATE TABLE song_work_primary (
     CONSTRAINT fk_swp_updated FOREIGN KEY (updated_by) REFERENCES user_account (user_id)
         ON UPDATE CASCADE ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- ---------------------------------------------------------------------
+--  studio_plan / studio_need — スタジオ割（studio.php）と練習の要否の回答（migrations/083 に説明）
+-- ---------------------------------------------------------------------
+CREATE TABLE studio_plan (
+    studio_plan_id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    live_id        INT UNSIGNED NOT NULL,
+    state          MEDIUMTEXT   NOT NULL,
+    version        INT UNSIGNED NOT NULL DEFAULT 0,
+    share_token    CHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+    answer_open    TINYINT(1)   NOT NULL DEFAULT 1,
+    created_by     INT UNSIGNED NULL,
+    updated_by     INT UNSIGNED NULL,
+    created_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (studio_plan_id),
+    UNIQUE KEY uq_studio_live (live_id),         -- 1つのライブにスタジオ割は1枚
+    UNIQUE KEY uq_studio_token (share_token),    -- 合言葉から1枚を探すので一意 + インデックス
+    CONSTRAINT fk_studio_live FOREIGN KEY (live_id) REFERENCES live (live_id)
+        ON UPDATE CASCADE ON DELETE CASCADE,
+    CONSTRAINT fk_studio_created FOREIGN KEY (created_by) REFERENCES user_account (user_id)
+        ON UPDATE CASCADE ON DELETE SET NULL,
+    CONSTRAINT fk_studio_updated FOREIGN KEY (updated_by) REFERENCES user_account (user_id)
+        ON UPDATE CASCADE ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE studio_need (
+    band_id     INT UNSIGNED NOT NULL,
+    need        TINYINT(1)   NOT NULL,             -- 1 = 必要 / 0 = 不要（未回答は「行が無い」で表す）
+    answered_by INT UNSIGNED NULL,
+    via_link    TINYINT(1)   NOT NULL DEFAULT 0,
+    answered_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (band_id),
+    CONSTRAINT fk_sneed_band FOREIGN KEY (band_id) REFERENCES band (band_id)
+        ON UPDATE CASCADE ON DELETE CASCADE,
+    CONSTRAINT fk_sneed_user FOREIGN KEY (answered_by) REFERENCES user_account (user_id)
+        ON UPDATE CASCADE ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;

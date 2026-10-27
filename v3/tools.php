@@ -7,7 +7,8 @@
  *    ・セッティングシート（白紙から）… setting_sheet.php を band なしで開く
  *  道具が増えたら、下の $tools に1行足すだけでカードが増える。
  *
- *  ここは表示するだけ（POST を受けない・DB も読まない）ので CSRF 対策は不要。
+ *  ここは表示するだけ（POST を受けない）ので CSRF 対策は不要。
+ *  DB を読むのは「回答受付中のスタジオ割に、自分のバンドがあるか」だけ（あればカードを出す）。
  * =====================================================================
  */
 declare(strict_types=1);
@@ -33,6 +34,23 @@ $tools = [
 if (is_executive()) {
     $tools[] = ['tt_builder', 'view_timeline', 'タイムテーブル作成',
         '名簿から日程希望・連続出演・学年を見ながら出順を決め、ライブとして登録します。', '幹部'];
+    // ライブ前のスタジオ練習の部屋割り（studio.php）
+    $tools[] = ['studio', 'meeting_room', 'スタジオ割',
+        '練習の要否を集め、メンバーが重ならないように練習の順番と部屋を決めて画像にします。', '幹部'];
+}
+// 回答受付中のスタジオ割に自分が出るバンドがあれば、回答ページのカードを先頭に出す
+//   user_account → member → band_member → band → live_day → studio_plan と JOIN でたどる（DISTINCT でライブごとに1行）
+$st = db()->prepare('SELECT DISTINCT l.live_id, l.name FROM user_account u
+    JOIN band_member bm ON bm.member_id = u.member_id
+    JOIN band b ON b.band_id = bm.band_id
+    JOIN live_day d ON d.live_day_id = b.live_day_id
+    JOIN live l ON l.live_id = d.live_id
+    JOIN studio_plan p ON p.live_id = l.live_id AND p.answer_open = 1
+    WHERE u.user_id = ? AND d.held_on >= ?');
+$st->execute([(int)current_user()['user_id'], date('Y-m-d')]);
+foreach (array_reverse($st->fetchAll()) as $r) {
+    // array_unshift = 配列の先頭に足す（逆順にしてから先頭に足すと、元の順で並ぶ）
+    array_unshift($tools, ['studio_answer?live=' . (int)$r['live_id'], 'meeting_room', $r['name'] . ' スタジオ練習', '練習の要否を回答してください。', '回答受付中']);
 }
 
 render_header('ツール', 'tools');
