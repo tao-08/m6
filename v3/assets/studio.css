@@ -124,10 +124,14 @@ form.tool-card .tool-card__body { flex: 1; }
 .std-row__grip { display: inline-flex; align-self: center; color: var(--muted); cursor: grab; touch-action: none; padding: 6px 2px; }
 .std-dragging, .std-dragging * { cursor: grabbing !important; -webkit-user-select: none; user-select: none; }
 .is-drag-src { opacity: .4; }
-/* 指に付いてくる札。pointer-events: none = 札が下の要素へのマウス判定を邪魔しない */
-.std-ghost { position: fixed; left: 0; top: 0; z-index: 1000; pointer-events: none; max-width: 60vw; padding: 6px 10px; overflow: hidden;
-  border-radius: 8px; background: var(--accent); color: #fff; font-size: 13px; font-weight: 700; white-space: nowrap; text-overflow: ellipsis;
-  box-shadow: 0 4px 14px rgb(0 0 0 / .25); }
+/* 掴んだ枠の分身（JS が元の枠を複製して、元の枠と同じクラスを付ける）。浮いて見えるよう影と枠線を足す。
+   pointer-events: none = 分身が下の要素へのマウス判定を邪魔しない。
+   position は元のクラス（.std-cell の relative など）に負けないよう !important で固定 */
+.std-ghost { position: fixed !important; left: 0; top: 0; z-index: 1000; pointer-events: none; box-sizing: border-box; margin: 0;
+  background: var(--surface); border: 2px solid var(--accent); border-radius: 8px; opacity: .96;
+  box-shadow: 0 10px 24px rgb(0 0 0 / .3); will-change: transform; }
+/* セルの分身は <td> ではなく <div>。表の中でだけ効く中央寄せが外れるので、ここで明示する */
+.std-ghost.std-cell { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
 .std-cell.is-drop { box-shadow: inset 0 0 0 2px var(--accent); background: var(--accent-soft); }
 .std-pool.is-drop { outline: 2px dashed var(--accent); outline-offset: 4px; border-radius: 8px; }
 .std-dragging .std-pool { min-height: 44px; } /* 未配置が0人でも、ドラッグ中は落とす場所を出す */

@@ -699,15 +699,19 @@ if (typeof module !== 'undefined' && module.exports) module.exports = StudioCore
     // data 属性の文字列から、実際のバンドの id（数値かもしれない）を引き当てる
     const bandKey = (str) => [...BANDS.keys()].find((k) => String(k) === str);
 
-    // ドラッグ中に指に付いてくる小さな札の文字
-    function labelOf() {
-      if (d.kind === 'row') {
-        const r = state.rows.find((x) => x.id === d.id);
-        const type = d.src.closest('.std-row')?.querySelector('.std-row__type')?.title || '';
-        return [type, r?.x].filter(Boolean).join(' ') || '行';
-      }
-      const bid = d.kind === 'cell' ? state.cells[d.id] : bandKey(d.id);
-      return BANDS.get(bid)?.name || '';
+    // ドラッグ中に付いてくる「分身」を作る。掴んだ枠（セル・チップ・行）をまるごと複製するので、
+    // 見た目も大きさも元の枠のまま動いて見える。
+    //   cloneNode(true) = 子要素ごとコピーする DOM の標準メソッド（false だと外側だけ）
+    //   元の枠は薄く残す（is-drag-src）ので「どこから動かしたか」もわかる
+    function makeGhost() {
+      const g = document.createElement('div');
+      g.className = `${d.box.className} std-ghost`; // 元の枠のクラスを引き継ぐ → 同じ見た目になる（<td> は <div> に変わるが class で見た目を合わせる）
+      g.classList.remove('is-sel', 'is-drag-src', 'is-drop', 'is-drop-before', 'is-drop-after');
+      d.box.childNodes.forEach((n) => g.append(n.cloneNode(true)));
+      g.querySelectorAll('[data-drag], [data-drop]').forEach((n) => { n.removeAttribute('data-drag'); n.removeAttribute('data-drop'); }); // 分身が「掴める・落とせる」と判定されないように
+      g.style.width = `${d.w}px`;
+      g.style.height = `${d.h}px`;
+      return g;
     }
 
     function start() {
@@ -715,15 +719,25 @@ if (typeof module !== 'undefined' && module.exports) module.exports = StudioCore
       d.active = true;
       clearTimeout(d.timer);
       selected = null;
-      d.src.classList.add('is-drag-src');
-      d.ghost = el('div', { class: 'std-ghost', text: labelOf() });
+      // 掴んだ位置（枠の左上からのずれ）と枠の大きさを覚える。ずれを保つと「掴んだ場所のまま」動いて見える
+      const r = d.box.getBoundingClientRect();
+      d.gx = d.x0 - r.left; d.gy = d.y0 - r.top; d.w = r.width; d.h = r.height;
+      d.box.classList.add('is-drag-src');
+      d.ghost = makeGhost();
       document.body.append(d.ghost);
       document.body.classList.add('std-dragging');
       if (navigator.vibrate) navigator.vibrate(15); // 掴んだことを振動で知らせる（対応端末のみ）
       moveGhost();
       tick();
     }
-    function moveGhost() { d.ghost.style.transform = `translate(${d.x + 12}px, ${d.y + 12}px)`; }
+    // 分身の位置。transform は再レイアウトが起きず滑らかに動かせる（位置の移動はこれを使うのが定番）
+    function moveGhost() {
+      // タッチ: 指が分身を隠してしまうので、分身を指の少し上に浮かせる（落とす場所の判定は指の真下のまま）
+      const lift = d.touch ? d.h + 24 : 0;
+      const tx = d.x - d.gx;
+      const ty = Math.max(4, d.y - d.gy - lift); // 画面の上端からはみ出さない
+      d.ghost.style.transform = `translate(${tx}px, ${ty}px) scale(1.04)`;
+    }
 
     // 指の下にある「落とせる場所」を調べて、枠で強調する
     function highlight() {
@@ -775,7 +789,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = StudioCore
       cancelAnimationFrame(d.raf);
       d.ghost?.remove();
       d.over?.classList.remove('is-drop', 'is-drop-before', 'is-drop-after');
-      d.src.classList.remove('is-drag-src');
+      d.box.classList.remove('is-drag-src');
       document.body.classList.remove('std-dragging');
       d = null;
     }
@@ -785,7 +799,8 @@ if (typeof module !== 'undefined' && module.exports) module.exports = StudioCore
       const src = e.target.closest('[data-drag]');
       if (!src || !root.contains(src)) return;
       const [kind, id] = cut(src.dataset.drag);
-      d = { kind, id, src, pid: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY,
+      // box = 実際に動かして見せる枠。行は取っ手（src）ではなく行全体
+      d = { kind, id, src, box: kind === 'row' ? src.closest('.std-row') : src, pid: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY,
         active: false, touch: e.pointerType !== 'mouse', now: src.hasAttribute('data-drag-now'), timer: 0, raf: 0, ghost: null, over: null, drop: null };
       if (d.touch && !d.now) d.timer = setTimeout(start, HOLD_MS); // タッチは長押しで開始
     });
