@@ -62,8 +62,18 @@ $importantNotices = $st->fetchAll();
 //   GROUP BY d.live_day_id: 日程ごとに1行にまとめて COUNT(b.band_id) でバンド数を数える
 //   GROUP_CONCAT(b.note): その日のバンドのメモを1つの文字列にまとめる（絞り込み用。NULL は飛ばされる）
 //     ※ group_concat_max_len（初期値 1024 バイト）を超えた分は切れる。絞り込みに使うだけなので気にしない
+//   no_roster_bands: メンバーが0人のバンドの数（1つでもあれば「名簿未登録」）
+//     SUM(条件) … MySQL では条件式が 1(真) / 0(偽) になるので、足すと「条件に合う行の数」になる
+//     b.band_id IS NOT NULL … LEFT JOIN でバンドが0組の日程は b の列が全部 NULL の1行になるので、それを数えない
+//   setlist_done_bands: セットリストが全曲入っているバンドの数。基準はライブ詳細の「登録済 ✓」バッジ（setlist_badge）と同じ
+//     = 登録した曲数（SE を除く）が band.song_count 以上。曲数が未入力（NULL / 0）のバンドは数えない
+//   timed_bands: 開始時刻があるバンドの数（0 なら「タイムテーブル未登録」）。COUNT(列) は NULL を数えない
 $rows = $pdo->query('SELECT l.live_id, l.fiscal_year AS year, l.name AS live_name, l.youtube_url,
         d.live_day_id, d.label, d.held_on AS date, d.note, v.name AS venue_name, d.venue_id, COUNT(b.band_id) AS band_count,
+        SUM(b.band_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM band_member bm WHERE bm.band_id = b.band_id)) AS no_roster_bands,
+        COUNT(b.start_time) AS timed_bands,
+        SUM(b.band_id IS NOT NULL AND b.song_count > 0
+            AND (SELECT COUNT(*) FROM song s WHERE s.band_id = b.band_id AND s.is_se = 0) >= b.song_count) AS setlist_done_bands,
         GROUP_CONCAT(b.note SEPARATOR \' \') AS band_notes
     FROM live l
     JOIN live_day d ON d.live_id = l.live_id
@@ -254,6 +264,13 @@ render_header('ライブ一覧', 'lives');
                                     <span class="day-no"><?= h($d['label'] ?: '—') ?></span>
                                     <span><?= h(fmt_date($d['date']) ?: '日付未設定') ?></span>
                                     <span class="muted ellipsis"><?php if ($d['venue_id']): ?><a class="live-card__venue" href="venue?id=<?= (int)$d['venue_id'] ?>"><?= h($d['venue_name']) ?></a><?php endif; ?></span>
+                                    <?php // 足りないものをアイコンで（文字は title のポップアップだけ）。追加はライブページの日程から ?>
+                                    <span class="day-missing">
+                                        <?php if ((int)$d['no_roster_bands'] > 0): ?><span title="名簿未登録（<?= (int)$d['no_roster_bands'] ?>バンド）" aria-label="名簿未登録"><?= icon('group_off') ?></span><?php endif; ?>
+                                        <?php // 全バンドのセトリが入っている日程は、ライブ詳細の「登録済 ✓」と同じ緑の ✓（アイコンだけ。バンドが0組の日程は出さない）
+                                        if ((int)$d['band_count'] > 0 && (int)$d['setlist_done_bands'] === (int)$d['band_count']): ?><span class="setlist-badge setlist-badge--icon" title="セットリスト登録済" aria-label="セットリスト登録済"><?= icon('check') ?></span><?php endif; ?>
+                                        <?php if ((int)$d['timed_bands'] === 0): ?><span title="タイムテーブル未登録" aria-label="タイムテーブル未登録"><?= icon('timer_off') ?></span><?php endif; ?>
+                                    </span>
                                 </li>
                             <?php endforeach; ?>
                         </ul>

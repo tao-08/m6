@@ -255,7 +255,29 @@ render_header($live['name'], 'lives');
         <?php endforeach; ?>
     </ol>
     <?php if (!$bands): ?><p class="muted">バンドが登録されていません</p><?php endif; ?>
-    <p class="no-print add-band"><a class="btn btn--ghost btn--sm" href="band_edit?day=<?= (int)$d['live_day_id'] ?>">＋ バンドを追加</a></p>
+    <?php
+    // 名簿・タイムテーブルが足りない日程だけ、ファイルから追加するボタンを出す（import.php?day=◯ → lib/import/attach.php）
+    //   名簿を追加 = メンバーが2人以下のバンドがある（名簿で入れ直せる。overwrite_hint と同じ基準）
+    //   タイムテーブル未登録 = 開始時刻が入ったバンドが1つも無い（バンドが0組の日程も含む）
+    $noRoster = array_filter($bands, static function ($b) use ($lineups) {
+        $ids = [];
+        foreach ($lineups[$b['band_id']] ?? [] as $part) {
+            foreach ($part['members'] as $m) {
+                $ids[(int)$m['member_id']] = true;
+            }
+        }
+        return count($ids) <= 2;
+    });
+    $noTimetable = !array_filter($bands, static fn($b) => $b['start_time'] !== null); ?>
+    <p class="no-print add-band">
+        <a class="btn btn--ghost btn--sm" href="band_edit?day=<?= (int)$d['live_day_id'] ?>">＋ バンドを追加</a>
+        <?php if ($noRoster): ?>
+            <a class="btn btn--ghost btn--sm" href="import?day=<?= (int)$d['live_day_id'] ?>" title="メンバーが2人以下のバンド: <?= count($noRoster) ?>"><?= icon('group_add') ?> 名簿を追加</a>
+        <?php endif; ?>
+        <?php if ($noTimetable): ?>
+            <a class="btn btn--ghost btn--sm" href="import?day=<?= (int)$d['live_day_id'] ?>"><?= icon('more_time') ?> タイムテーブルを追加</a>
+        <?php endif; ?>
+    </p>
 </section>
 <?php endforeach; ?>
 

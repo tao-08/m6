@@ -12,6 +12,11 @@
  *    名簿だけでタイムテーブルのファイルが無いとき:
  *    [アップロード画面] --(upload)--> [タイムテーブル手入力画面] --(POST action=manual_tt)--> [プレビュー画面]
  *    [プレビュー画面]   --(POST action=edit_tt)--> [タイムテーブル手入力画面]（手入力したときだけ）
+ *    [タイムテーブル手入力画面] --(POST action=skip_tt)--> 名簿の順のまま [プレビュー画面]（時間は後でライブ詳細から追加）
+ *
+ *  登録済みの日程にあとから追加するとき（ライブ詳細の「名簿を追加」「タイムテーブルを追加」→ import?day=日程ID）:
+ *    アップロードの hidden に day を入れ、計画に 'attach' を付ける（lib/import/attach.php）。
+ *    プレビューはライブ名・開催日・会場を出さず、登録は commit_attach_plan()（既存の日程を書き換える）。
  *
  *  POST の後は必ず redirect() している（PRG パターン: Post → Redirect → Get）。
  *  → 登録後にブラウザの「再読み込み」を押しても、二重登録されない。
@@ -20,6 +25,7 @@
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/import/planner.php';
+require_once __DIR__ . '/lib/import/attach.php'; // 登録済みの日程への追加
 require_login();
 
 const MAX_FILES = 10;
@@ -119,6 +125,26 @@ function manual_row_html(string $i, array $r, array $rosterChoices, array $dayLa
         . '</tr>';
 }
 
+/**
+ * 名簿だけのときの、タイムテーブル手入力画面の最初の行（名簿のバンドを名簿の順に1行ずつ）。
+ * 「スキップ」を押したときも、この並びのままプレビューへ進む。
+ *   名簿が複数ファイルなら「1ファイル目 = 1日目、2ファイル目 = 2日目…」と仮に区切っておく（画面で動かせる）
+ *   1日目の区切りは表の見出しに固定で出すので、行としては作らない
+ */
+function default_manual_rows(array $plan): array
+{
+    $rows = [];
+    foreach ($plan['rosters'] as $ri => $r) {
+        if ($ri > 0 && $ri < 3) {
+            $rows[] = ['divider' => DAY_LABELS[$ri]];
+        }
+        foreach ($r['bands'] as $bi => $b) {
+            $rows[] = ['pick' => "$ri:$bi", 'songs' => (string)($b['song_count'] ?? '')]; // 曲数は名簿の値
+        }
+    }
+    return $rows;
+}
+
 /** 楽器の切り替えボタン用の選択肢。$list は instruments() か extra_instruments()。「etc」は選ぶと楽器追加のモーダルが開く */
 function instrument_pick_options(array $list): array
 {
@@ -131,6 +157,15 @@ function instrument_pick_options(array $list): array
     return $options;
 }
 
+/** 今回の取り込みで自分のアカウントがメンバーと紐付いたかもしれないので、セッションの member_id も読み直す */
+function refresh_session_member(PDO $pdo): void
+{
+    $st = $pdo->prepare('SELECT member_id FROM user_account WHERE user_id = ?');
+    $st->execute([$_SESSION['user']['user_id']]);
+    $mid = $st->fetchColumn();
+    $_SESSION['user']['member_id'] = $mid ? (int)$mid : null;
+}
+
 /* =====================================================================
  *  POST の処理
  * ===================================================================== */
@@ -141,17 +176,25 @@ if (is_post()) {
 
     // ---------- ファイルを受け取ってプレビューへ ----------
     if ($action === 'upload') {
+        // 登録済みの日程への追加なら、その日程（hidden の day）。書き換えられる可能性があるので DB で確かめる
+        $dayIn = (string)($input['day'] ?? '');
+        $target = ctype_digit($dayIn) ? attach_target($pdo, (int)$dayIn) : null;
+        if ($dayIn !== '' && $target === null) {
+            flash('追加先の日程が見つかりません', 'error');
+            redirect('./');
+        }
+        $back = $target ? 'import?day=' . (int)$target['live_day_id'] : 'import'; // エラーで戻る先（追加先を覚えたまま）
         $files = [];
         $up = $_FILES['files'] ?? null;
         // <input type="file" name="files[]" multiple> だと $_FILES['files']['name'][0], [1]... の形で届く
         $count = is_array($up['name'] ?? null) ? count($up['name']) : 0;
         if ($count === 0 || ($count === 1 && $up['error'][0] === UPLOAD_ERR_NO_FILE)) {
             flash('ファイルを選んでください', 'error');
-            redirect('import');
+            redirect($back);
         }
         if ($count > MAX_FILES) {
             flash('一度にアップロードできるのは ' . MAX_FILES . ' ファイルまでです', 'error');
-            redirect('import');
+            redirect($back);
         }
         for ($i = 0; $i < $count; $i++) {
             $name = basename((string)$up['name'][$i]); // basename でパス部分（../ など）を除く
@@ -181,20 +224,13 @@ if (is_post()) {
         }
         if ($files) {
             $plan = build_import_plan($files);
-            if (!$plan['timetables'] && $plan['rosters']) {
-                // 名簿だけ → タイムテーブルを手入力する画面へ（名簿のバンドを1行ずつ並べた状態から始める）
+            if ($target !== null) {
+                // 登録済みの日程への追加: 名簿だけなら既存のメンバー未登録バンドに、タイムテーブルなら既存バンドに対応付ける
+                $plan = build_attach_plan($pdo, $plan, $target);
+            } elseif (!$plan['timetables'] && $plan['rosters']) {
+                // 名簿だけ → タイムテーブルを手入力する画面へ（名簿のバンドを1行ずつ並べた状態から始める。「スキップ」もできる）
                 $plan['needs_timetable'] = true;
-                $plan['manual_rows'] = [];
-                foreach ($plan['rosters'] as $ri => $r) {
-                    // 名簿が複数ファイルなら「1ファイル目 = 1日目、2ファイル目 = 2日目…」と仮に区切っておく（画面で動かせる）
-                    // 1日目の区切りは表の見出しに固定で出すので、行としては作らない
-                    if ($ri > 0 && $ri < 3) {
-                        $plan['manual_rows'][] = ['divider' => DAY_LABELS[$ri]];
-                    }
-                    foreach ($r['bands'] as $bi => $b) {
-                        $plan['manual_rows'][] = ['pick' => "$ri:$bi", 'songs' => (string)($b['song_count'] ?? '')]; // 曲数は名簿の値
-                    }
-                }
+                $plan['manual_rows'] = default_manual_rows($plan);
             } elseif (!$plan['timetables']) {
                 $plan['errors'][] = 'タイムテーブルが1つも含まれていません。タイムテーブル（時間・バンド名の表）も一緒にアップロードしてください。';
             }
@@ -202,7 +238,16 @@ if (is_post()) {
             $_SESSION['import_plan'] = $plan;
             unset($_SESSION['import_form']);
         }
-        redirect('import');
+        // 計画ができた（エラーも計画に入れてある）ならプレビュー（の GET）へ。全部のファイルが読めなかったらアップロード画面へ戻る
+        redirect($files ? 'import' : $back);
+    }
+
+    // ---------- タイムテーブルの手入力をスキップ → 名簿の順のままプレビューへ ----------
+    // 時間はあとでライブ詳細の「タイムテーブルを追加」で入れられる（入れるまで一覧に「タイムテーブル未登録」と出る）
+    // 中身は「最初の並びのまま手入力を送った」のと同じなので、入力を差し替えて下の manual_tt にそのまま流す
+    if ($action === 'skip_tt' && isset($_SESSION['import_plan']['manual_rows'])) {
+        $input['r'] = default_manual_rows($_SESSION['import_plan']);
+        $action = 'manual_tt';
     }
 
     // ---------- タイムテーブルの手入力 → プレビューへ ----------
@@ -261,6 +306,15 @@ if (is_post()) {
     // ---------- 登録 ----------
     if ($action === 'commit' && isset($_SESSION['import_plan'])) {
         try {
+            // 登録済みの日程への追加は別の登録処理（既存のバンドを書き換える。lib/import/attach.php）
+            if (!empty($_SESSION['import_plan']['attach'])) {
+                $attach = $_SESSION['import_plan']['attach'];
+                $liveId = commit_attach_plan($pdo, $_SESSION['import_plan'], $input);
+                unset($_SESSION['import_plan'], $_SESSION['import_form']);
+                refresh_session_member($pdo);
+                flash($attach['mode'] === 'timetable' ? 'タイムテーブルを追加しました！' : '名簿を追加しました！');
+                redirect('live?id=' . $liveId . '#day-' . (int)$attach['live_day_id']); // #day-◯ で、その日程のタブを開く
+            }
             $liveIds = commit_import_plan($pdo, $_SESSION['import_plan'], $input);
             // タイムテーブル作成ツール（tt_builder.php）から来たなら、下書きに「公開済み」の印を付ける
             if (!empty($_SESSION['import_plan']['tt_draft']) && $liveIds) {
@@ -269,11 +323,7 @@ if (is_post()) {
             }
             unset($_SESSION['import_plan'], $_SESSION['import_form']);
 
-            // 今回の取り込みで自分のアカウントがメンバーと紐付いたかもしれないので、セッションも更新
-            $st = $pdo->prepare('SELECT member_id FROM user_account WHERE user_id = ?');
-            $st->execute([$_SESSION['user']['user_id']]);
-            $mid = $st->fetchColumn();
-            $_SESSION['user']['member_id'] = $mid ? (int)$mid : null;
+            refresh_session_member($pdo);
 
             if (!$liveIds) {
                 flash('取り込む日程がありませんでした（すべて「取り込まない」）', 'info');
@@ -301,17 +351,47 @@ if (is_post()) {
 $plan = $_SESSION['import_plan'] ?? null;
 $form = $_SESSION['import_form'] ?? []; // 登録失敗で戻ってきたときの入力内容
 
-render_header($plan === null ? '新規追加' : '取り込み', 'import');
+// import?day=◯ … ライブ詳細の「名簿を追加」「タイムテーブルを追加」から来た（登録済みの日程への追加）
+//   別の日程・新規追加の計画が残っていたら捨てて、まっさらなアップロード画面から始める
+$attachDay = ctype_digit((string)($_GET['day'] ?? '')) ? (int)$_GET['day'] : null;
+if ($attachDay !== null && (int)($plan['attach']['live_day_id'] ?? 0) !== $attachDay) {
+    unset($_SESSION['import_plan'], $_SESSION['import_form']);
+    [$plan, $form] = [null, []];
+}
+$attachTarget = null;
+if ($attachDay !== null && $plan === null) {
+    $attachTarget = attach_target($pdo, $attachDay);
+    if ($attachTarget === null) {
+        flash('追加先の日程が見つかりません', 'error');
+        redirect('./');
+    }
+}
+$attach = $plan['attach'] ?? null; // プレビュー中の追加先（新規追加なら null）
+
+render_header($plan === null ? ($attachTarget ? '名簿・タイムテーブルを追加' : '新規追加') : '取り込み', 'import');
 
 if ($plan === null): // ==================== アップロード画面 ====================
-    $addTab = 'file';
-    require __DIR__ . '/partials/add_tabs.php';
+    if ($attachTarget):
+        // ここで選んだファイルの中身（名簿だけ / タイムテーブルあり）で、プレビューの形が決まる（lib/import/attach.php） ?>
+<nav class="crumbs"><a href="live?id=<?= (int)$attachTarget['live_id'] ?>"><?= h($attachTarget['fiscal_year'] . '年度 ' . $attachTarget['live_name']) ?></a><span>/</span><?= h($attachTarget['label']) ?></nav>
+<section class="hero">
+    <div>
+        <p class="eyebrow">Add · Roster / Timetable</p>
+        <h1 class="display display--sm">名簿・タイムテーブルを追加</h1>
+        <p class="muted"><?= h(attach_title($attachTarget)) ?></p>
+    </div>
+</section>
+<?php else:
+        $addTab = 'file';
+        require __DIR__ . '/partials/add_tabs.php';
+    endif;
 ?>
 
 <!-- enctype="multipart/form-data" が無いとファイルが送られない -->
 <form method="post" enctype="multipart/form-data" class="card upload" data-loading data-unsaved>
     <?= csrf_field() ?>
     <input type="hidden" name="action" value="upload">
+    <?php if ($attachTarget): ?><input type="hidden" name="day" value="<?= (int)$attachTarget['live_day_id'] ?>"><?php endif; ?>
     <label class="dropzone" data-dropzone>
         <input type="file" name="files[]" accept=".csv,.xlsx,.xlsm,.pdf,text/csv,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet<?= ai_reader_enabled() ? ',image/jpeg,image/png,image/webp,image/gif' : '' ?>" multiple required data-file-input>
         <span class="dropzone__icon" aria-hidden="true"><?= icon('upload_file') ?></span>
@@ -328,6 +408,18 @@ if ($plan === null): // ==================== アップロード画面 ==========
     <button class="btn btn--primary btn--block" type="submit">読み込んでプレビュー</button>
 </form>
 
+<?php if ($attachTarget): // 追加のときは何が起きるかだけ短く ?>
+<section class="guide">
+    <div class="card">
+        <h3><?= icon('groups') ?> 名簿だけ</h3>
+        <p class="muted small">名簿のメンバーをバンドに紐付けます。メンバー未登録のバンドはそのまま入れ、登録があるバンドは見比べて入れ直すか選べます。</p>
+    </div>
+    <div class="card">
+        <h3><?= icon('schedule') ?> タイムテーブル</h3>
+        <p class="muted small">既存のバンドとバンド名で照合し、出演順・時間・休憩を反映します。タイムテーブルに無いバンドは削除せず最後に回します。名簿も一緒に選べます。</p>
+    </div>
+</section>
+<?php else: ?>
 <section class="guide">
     <div class="card">
         <h3><span class="step">1</span>タイムテーブル</h3>
@@ -335,13 +427,14 @@ if ($plan === null): // ==================== アップロード画面 ==========
     </div>
     <div class="card">
         <h3><span class="step">2</span>名簿</h3>
-        <p class="muted small">タイムテーブルのバンドと演奏者を紐づけます。タイムテーブルのファイルが無ければ、名簿だけ選ぶと次の画面でタイムテーブルを手入力できます。</p>
+        <p class="muted small">タイムテーブルのバンドと演奏者を紐づけます。名簿だけ選ぶと、次の画面で出演順を手入力するかスキップできます。</p>
     </div>
     <div class="card">
         <h3><span class="step">3</span>アップロード</h3>
-        <p class="muted small">正しい形式の名簿とタイムテーブルのファイルをセットで選択してください。複数ライブ分まとめてアップロードできます。</p>
+        <p class="muted small">正しい形式の名簿とタイムテーブルのファイルをセットで選択してください。複数ライブ分まとめてアップロードできます。どちらか片方しか無くても、もう片方はあとでライブページから追加できます。</p>
     </div>
 </section>
+<?php endif; ?>
 
 <?php elseif (!empty($plan['needs_timetable'])): // ==================== タイムテーブル手入力画面 ====================
     $rosterChoices = roster_choices($plan); // 'ラベル' => 'ri:bi'。同じ名前のバンドは「（Vo ◯◯）」付きで区別されている
@@ -409,10 +502,14 @@ if ($plan === null): // ==================== アップロード画面 ==========
     </div>
     <div class="sticky-actions">
         <button class="btn btn--ghost" type="submit" form="reset-form">やり直す</button>
+        <!-- スキップ: 並べ替えずに名簿の順のままプレビューへ。時間・出演順はあとでライブページの「タイムテーブルを追加」で入れる
+             form="skip-form" で、このボタンだけ下の別フォームを送る（上の手入力の表は送らない） -->
+        <button class="btn btn--ghost" type="submit" form="skip-form" title="名簿の順のまま登録し、タイムテーブルはあとでライブページから追加">スキップ</button>
         <button class="btn btn--primary" type="submit">プレビューへ</button>
     </div>
 </form>
 <form method="post" id="reset-form"><?= csrf_field() ?><input type="hidden" name="action" value="reset"></form>
+<form method="post" id="skip-form"><?= csrf_field() ?><input type="hidden" name="action" value="skip_tt"></form>
 <script>
 // タイムテーブル手入力の表（この画面でしか使わないのでここに書く）
 //   ・「＋ 行を追加」「＋ 2日目」などで行を足す（下に足すので、≡ で好きな位置へ動かす）
@@ -545,7 +642,7 @@ if ($plan === null): // ==================== アップロード画面 ==========
     // ファイルの「12月6日」から年を推測して入れた開催日（年はファイルに無いので、間違っていることがある）
     // 最初にプレビューを開いたときだけ「年を確認してください」のポップアップで知らせる
     $guessedDates = [];
-    if (!$form) {
+    if (!$form && !$attach) { // 登録済みの日程への追加では開催日を使わない
         foreach ($plan['timetables'] as $tt) {
             if ($tt['date'] !== '' && empty($tt['year_known'])) { // 年がタイトルかファイル名にあったものは聞かない
                 $ts = strtotime($tt['date']);
@@ -627,9 +724,11 @@ if ($plan === null): // ==================== アップロード画面 ==========
         $merge = !empty($f['merge']);
         $mergeLive = $livesById[(int)($f['live_id'] ?? 0)] ?? null;
 
-        // 同じ日程がもう DB にあるか（あれば上書きの注意を出す）
+        // 同じ日程がもう DB にあるか（あれば上書きの注意を出す）。登録済みの日程への追加なら関係ないので見ない
         $exists = false;
-        if ($merge) {
+        if ($attach) {
+            // 何もしない
+        } elseif ($merge) {
             if ($mergeLive !== null) {
                 $exists = in_array($label, explode('・', (string)$mergeLive['labels']), true);
             }
@@ -652,6 +751,12 @@ if ($plan === null): // ==================== アップロード画面 ==========
                 </div>
             </header>
 
+            <?php if ($attach): // 登録済みの日程への追加: ライブ名・日程・開催日・会場は決まっているので、入力欄の代わりに追加先だけ出す ?>
+            <p class="attach-target"><?= icon('subdirectory_arrow_right') ?> <strong><?= h(attach_title($attach)) ?></strong>
+                <span class="muted small"><?= $attach['mode'] === 'timetable' ? '出演順・時間・休憩を反映' : '名簿を紐付け（登録済みのバンドは見比べて選ぶ）' ?></span></p>
+            <!-- 下の JS（setupImportPreview）が「取り込まない」のチェックボックスを前提にしているので、見えない形で置いておく -->
+            <input type="checkbox" hidden data-skip aria-hidden="true" tabindex="-1">
+            <?php else: ?>
             <!-- 常に置いておき、ライブ名・日程・開催日・統合の切り替えに合わせて JS が出し入れする（setupMergeToggle） -->
             <div class="flash flash--warn" data-exists-flash<?= $exists ? '' : ' hidden' ?>>この日程は登録済みです。「上書き」にチェックすると、今のデータを消して置き換えます。</div>
 
@@ -701,16 +806,26 @@ if ($plan === null): // ==================== アップロード画面 ==========
                 <?php endif; ?>
                 <label class="check"><input type="checkbox" name="tt[<?= $ti ?>][skip]" value="1"<?= !empty($f['skip']) ? ' checked' : '' ?> data-skip> この日程は取り込まない</label>
             </div>
+            <?php endif; ?>
 
+            <?php
+            // 名簿だけの追加: 並びは DB のまま（並び替え・バンド名・曲数・メモは触らせない）。名簿の対応付けだけ選ぶ
+            $rosterOnly = ($attach['mode'] ?? '') === 'roster';
+            // タイムテーブルの追加: 各枠が「どの既存バンドか」を選ぶ列を足す
+            $attachBands = ($attach['mode'] ?? '') === 'timetable' ? attach_day_bands($pdo, (int)$attach['live_day_id']) : [];
+            // 「登録済み」と「名簿」を見比べる材料（下の JS が使う）
+            $compare = $attach ? attach_compare_data($pdo, $plan, (int)$attach['live_day_id']) : null; ?>
             <div class="table-scroll">
                 <table class="table table--edit">
                     <thead><tr>
                         <th aria-label="並び替え"></th>
                         <th title="チェックした行だけ登録">取込</th><th>順</th><th title="並び替えても時間は動かない">時間</th><th>登録バンド名</th>
-                        <th title="名簿ファイルのバンド名で検索して選ぶ">名簿ファイル内バンド名</th><th>曲数</th><th title="バンド全体の補足事項">メモ</th>
+                        <?php if ($attach && !$rosterOnly): ?><th title="登録済みのバンドと照合。「新規」は新しいバンドとして追加">既存バンド</th><?php endif; ?>
+                        <th title="名簿ファイルのバンド名で検索して選ぶ<?= $attach && !$rosterOnly ? '（メンバー登録済みのバンドには反映しない）' : '' ?>">名簿ファイル内バンド名</th>
+                        <?php if (!$rosterOnly): ?><th>曲数</th><th title="バンド全体の補足事項">メモ</th><?php endif; ?>
                     </tr></thead>
                     <!-- data-sortable: 左端の ≡ をドラッグで行を並び替える（assets/app.js の setupSlotSort）。時間の列は動かない -->
-                    <tbody data-sortable>
+                    <tbody<?= $rosterOnly ? '' : ' data-sortable' ?>>
                     <?php
                     // 時間は「表の何行目か」に固定。並び替えると、行（バンド）はその位置の枠の時間を使う
                     //   at = その行が使う時間の枠の番号（JS が並び替えのたびに書き換える）
@@ -733,18 +848,35 @@ if ($plan === null): // ==================== アップロード画面 ==========
                         $rosterClass = !isset($rosterChoices[$roster]) ? ($include ? 'is-new' : '')
                             : ($include && count($users) > 1 ? 'is-similar' : 'is-ok');
                         $rosterHint = $rosterClass === 'is-similar' ? '同じ名簿を ' . count($users) . ' つの枠で選んでいます: ' . implode(' / ', $users) : ''; ?>
-                        <tr class="<?= $include ? '' : 'is-excluded' ?>" data-slot="<?= h($key) ?>">
-                            <td><button type="button" class="drag-handle" data-drag-handle aria-label="ドラッグで並び替え（↑↓キーでも動く）" title="ドラッグで並び替え"><?= icon('drag_indicator') ?></button>
+                        <tr class="<?= $include ? '' : 'is-excluded' ?>" data-slot="<?= h($key) ?>"<?= $rosterOnly ? ' data-band-id="' . (int)($s['band_id'] ?? 0) . '"' : '' ?>>
+                            <td><?php if (!$rosterOnly): ?><button type="button" class="drag-handle" data-drag-handle aria-label="ドラッグで並び替え（↑↓キーでも動く）" title="ドラッグで並び替え"><?= icon('drag_indicator') ?></button><?php endif; ?>
                                 <input type="hidden" name="tt[<?= $ti ?>][s][<?= $si ?>][at]" value="<?= (int)$timeSi ?>" data-at></td>
                             <td><input type="checkbox" name="tt[<?= $ti ?>][s][<?= $si ?>][include]" value="1"<?= $include ? ' checked' : '' ?> data-include aria-label="取り込む"></td>
                             <td class="mono nowrap"><span data-order-text><?= $orderNo ?></span>
                                 <input type="hidden" name="tt[<?= $ti ?>][s][<?= $si ?>][order]" value="<?= $orderNo ?>" data-order></td>
                             <td class="mono nowrap muted" data-time><?= h($ts['start_time']) ?><?= $ts['end_time'] ? '–' . h($ts['end_time']) : '' ?></td>
+                            <?php if ($rosterOnly): // DB のバンド名のまま。readonly = 見えるし送られるが、書き換えられない ?>
+                            <td><input name="tt[<?= $ti ?>][s][<?= $si ?>][name]" value="<?= h($s['band_name']) ?>" readonly data-band-name aria-label="バンド名">
+                                <?= attach_compare_html("tt[$ti][s][$si][overwrite]", !empty($fs['overwrite'])) ?></td>
+                            <?php else: ?>
                             <td><input name="tt[<?= $ti ?>][s][<?= $si ?>][name]" value="<?= h($fs['name'] ?? $s['band_name']) ?>" maxlength="100" data-suggest-list="band-names" autocomplete="off" data-band-name aria-label="バンド名"></td>
+                            <?php endif; ?>
+                            <?php if ($attachBands):
+                                // 既存バンドの選択。初期値は自動の対応付け（build_attach_plan）か、失敗して戻ってきたときの入力
+                                $bandSel = (string)($fs['band_id'] ?? $s['band_id'] ?? ''); ?>
+                            <td><select name="tt[<?= $ti ?>][s][<?= $si ?>][band_id]" aria-label="既存バンド" class="slot-select<?= $bandSel === '' && $s['is_band'] ? ' is-new' : '' ?>" data-attach-band>
+                                <option value="">＋ 新規</option>
+                                <?php foreach ($attachBands as $ab): ?>
+                                    <option value="<?= (int)$ab['band_id'] ?>"<?= $bandSel === (string)$ab['band_id'] ? ' selected' : '' ?>><?= sprintf('%02d', (int)$ab['play_order']) ?> <?= h($ab['name']) ?></option>
+                                <?php endforeach; ?>
+                            </select><?= attach_compare_html("tt[$ti][s][$si][overwrite]", !empty($fs['overwrite'])) ?></td>
+                            <?php endif; ?>
                             <td><input name="tt[<?= $ti ?>][s][<?= $si ?>][roster]" value="<?= h($roster) ?>" data-suggest-list="dl-roster" data-suggest-seed="[data-band-name]" autocomplete="off"
 							class="name-input <?= $rosterClass ?>" title="<?= h($rosterHint) ?>" placeholder="名簿から検索" data-roster-input aria-label="名簿のバンド"></td>
+                            <?php if (!$rosterOnly): ?>
                             <td><input type="number" class="input-num" name="tt[<?= $ti ?>][s][<?= $si ?>][songs]" value="<?= h($fs['songs'] ?? $s['song_count'] ?? '') ?>" min="0" aria-label="曲数"></td>
                             <td><input autocomplete="off" name="tt[<?= $ti ?>][s][<?= $si ?>][note]" value="<?= h($fs['note'] ?? '') ?>" maxlength="255" aria-label="メモ"></td>
+                            <?php endif; ?>
                         </tr>
                     <?php endforeach; ?>
                     </tbody>
@@ -859,9 +991,64 @@ if ($plan === null): // ==================== アップロード画面 ==========
         <?php endif; ?>
         <!-- 名簿の重複があるあいだは JS が「登録する」を押せなくして、この文を出す -->
         <span class="sticky-actions__note" data-submit-block hidden><?= icon('warning') ?> <span data-submit-block-text>名簿の重複を直すと登録できます</span></span>
-        <button class="btn btn--primary" type="submit"<?= $plan['timetables'] ? '' : ' disabled' ?> data-submit>登録する</button>
+        <?php // 登録できるものが無いとき（タイムテーブルが無い / 名簿の追加先のバンドが無い）は押せなくする
+        $canSubmit = $plan['timetables'] && (!$attach || $plan['timetables'][0]['slots']); ?>
+        <button class="btn btn--primary" type="submit"<?= $canSubmit ? '' : ' disabled' ?> data-submit>登録する</button>
     </div>
 </form>
+<?php if ($attach): ?>
+<script type="application/json" id="compare-data"><?= json_encode($compare, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP) ?></script>
+<script>
+// 登録済みのメンバーがいるバンドに名簿を選んだら、「登録済み」と「名簿」を並べて、入れ直すかを選べるようにする
+//   ・登録済みが0人 … 何も出さない（そのまま入れる） / 1人以上 … チェックと見比べ（details）を出す。初期値は OFF
+//   ・名簿に無い人・登録に無い人は色を付ける（名前は空白と異体字をそろえて比べる。完全ではない）
+//   ・おすすめの目印（2人以下 / 名簿のほうが多い）は、lib/import/attach.php の overwrite_hint と同じ基準
+(() => {
+    const data = JSON.parse(document.getElementById('compare-data').textContent);
+    const rosterKeys = {}; // 検索欄の文字 → 'ri:bi'
+    document.querySelectorAll('#dl-roster option').forEach((o) => { rosterKeys[o.value] = o.dataset.key; });
+    const norm = (n) => n.replace(/\s+/g, '').replace(/[髙]/g, '高').replace(/[﨑]/g, '崎');
+    const fill = (ul, rows, other) => {
+        ul.replaceChildren(...rows.map(([name, part]) => {
+            const li = document.createElement('li'); // textContent で入れる = HTML として解釈されない（XSS 対策）
+            li.textContent = part ? `${name}（${part}）` : name;
+            if (!other.has(norm(name))) li.className = 'is-diff';
+            return li;
+        }));
+    };
+    const update = (tr) => {
+        const box = tr.querySelector('[data-member-compare]');
+        if (!box) return;
+        const sel = tr.querySelector('[data-attach-band]');
+        const bandId = sel ? sel.value : tr.dataset.bandId;
+        const old = data.registered[bandId] || [];
+        const key = rosterKeys[tr.querySelector('[data-roster-input]').value.trim()];
+        const now = key ? data.roster[key] || [] : [];
+        const show = old.length > 0 && key !== undefined;
+        box.hidden = !show;
+        if (!show) return;
+        const oldNames = new Set(old.map(([n]) => norm(n)));
+        const nowNames = new Set(now.map(([n]) => norm(n)));
+        fill(box.querySelector('[data-compare-old]'), old, nowNames);
+        fill(box.querySelector('[data-compare-new]'), now, oldNames);
+        box.querySelector('[data-compare-count]').textContent = `${oldNames.size}人 → ${nowNames.size}人`;
+        box.querySelector('[data-compare-hint]').textContent = oldNames.size <= 2 ? '登録が2人以下' : (nowNames.size > oldNames.size ? '名簿のほうが多い' : '');
+    };
+    const all = () => document.querySelectorAll('tr[data-slot]').forEach(update);
+    document.addEventListener('change', (e) => { if (e.target.matches('[data-roster-input], [data-attach-band]')) update(e.target.closest('tr')); });
+    document.addEventListener('input', (e) => { if (e.target.matches('[data-roster-input]')) update(e.target.closest('tr')); });
+    all();
+})();
+</script>
+<?php endif; ?>
+<?php if ($attach && $attach['mode'] === 'timetable'): ?>
+<script>
+// 既存バンドの選択が「＋ 新規」のときだけ赤くする（新しいバンドとして追加される目印。名簿の欄の赤と同じ意味）
+document.addEventListener('change', (e) => {
+    if (e.target.matches('[data-attach-band]')) e.target.classList.toggle('is-new', e.target.value === '');
+});
+</script>
+<?php endif; ?>
 <!-- 「やり直す」は別のフォーム。form="reset-form" 属性でボタンだけ上のフォームの中に置いている -->
 <form method="post" id="reset-form"><?= csrf_field() ?><input type="hidden" name="action" value="reset"></form>
 <form method="post" id="edit-tt-form"><?= csrf_field() ?><input type="hidden" name="action" value="edit_tt"></form>
