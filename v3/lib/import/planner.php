@@ -791,6 +791,8 @@ function collect_slot_rows(array $tt, array $form, array $rosterChoices, string 
             'start' => $start,
             'end' => ($start && $end && $end > $start) ? $end : null,
             'band_id' => ctype_digit($bandId) ? (int)$bandId : ($slot['band_id'] ?? null),
+            // 登録済みのメンバーがいるバンドを名簿で入れ直すか（プレビューのチェック。登録済みの日程への追加だけで使う）
+            'overwrite' => !empty($s['overwrite']),
         ];
     }
     // 出演順 → 同じ番号なら元の並び順、で並べる。<=> は「宇宙船演算子」（大小比較で -1/0/1 を返す）

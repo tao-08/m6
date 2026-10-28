@@ -10,9 +10,9 @@
  *  ■ 名簿だけ追加（タイムテーブルのファイルが無い）
  *    DB にあるバンドを、タイムテーブルの枠の代わりに並べる（＝疑似タイムテーブル）。
  *    → 新規追加と同じしくみ（finish_import_plan）で、名簿のバンドとバンド名で自動の対応付けができる。
- *    メンバーの入れ方は should_overwrite_members() のルール（名簿だけ・タイムテーブル同時の両方で同じ）:
- *      未登録 / 登録が2人以下 / 名簿のほうが人数が多い → 今のメンバーを消して名簿で入れ直す（上書き）
- *      それ以外（3人以上で、名簿が同じ人数以下） → 触らない
+ *    メンバーの入れ方（名簿だけ・タイムテーブル同時の両方で同じ）:
+ *      メンバー0人のバンド      … 名簿のメンバーを入れる（初期値でON）
+ *      すでに登録があるバンド    … プレビューで「登録済み」と「名簿」を見比べて、入れ直す（上書き）かを選ぶ（初期値はOFF）
  *
  *  ■ タイムテーブルを追加（名簿は一緒にあっても無くてもいい）
  *    タイムテーブルの各枠を、DB の既存バンドとバンド名で対応付ける（プレビューで直せる）。
@@ -40,15 +40,19 @@ function attach_target(PDO $pdo, int $dayId): ?array
 }
 
 /**
- * 名簿でメンバーを入れ直す（上書きする）か。名簿だけの追加・タイムテーブルと同時の追加で同じルール。
- *   登録が2人以下 … 名簿の人数に関係なく入れ直す（未登録の0人も含む）
- *   名簿のほうが多い … 人数が増えるので入れ直す
- * 上書きは「今の band_member を全部消してから名簿で入れる」ので、手で直した担当楽器も名簿の内容になる。
+ * 名簿での入れ直しを「おすすめ」する基準。プレビューの目印に出すだけで、実際に入れ直すかは利用者がチェックで決める。
+ *   登録が2人以下 … 足りない可能性が高い / 名簿のほうが多い … 人数が増える
+ * 入れ直し = 今の band_member を全部消してから名簿で入れる。手で直した担当楽器も名簿の内容になる。
  * 変更履歴に残るので、管理者は元に戻せる。
+ *
+ * @return string おすすめの理由（空文字 = おすすめしない）
  */
-function should_overwrite_members(int $registered, int $roster): bool
+function overwrite_hint(int $registered, int $roster): string
 {
-    return $registered <= 2 || $roster > $registered;
+    if ($registered <= 2) {
+        return '登録が2人以下';
+    }
+    return $roster > $registered ? '名簿のほうが多い' : '';
 }
 
 /**
@@ -188,7 +192,7 @@ function commit_attach_plan(PDO $pdo, array $plan, array $input): int
         $op = change_begin($pdo, 'import', $isTimetable ? 'タイムテーブルを追加' : '名簿を追加', $liveId);
         change_capture_day($pdo, $op, $dayId); // 変更前の日程（休憩・全バンド・メンバー）を履歴に残す
         $bandRosters = [];
-        $overwriteIds = []; // 名簿で入れ直すバンド（should_overwrite_members）
+        $overwriteIds = []; // 名簿で入れ直すバンド（プレビューでチェックされた、登録済みのバンド）
 
         if ($isTimetable) {
             // ---- 1. 出演順を振り直す ----
@@ -213,7 +217,7 @@ function commit_attach_plan(PDO $pdo, array $plan, array $input): int
                     change_created($pdo, $op, 'band', $bandId); // 元に戻すと、追加したバンドを消す
                 }
                 if ($r['roster'] !== null) {
-                    $bandRosters[] = [$bandId, $r['roster']];
+                    $bandRosters[] = [$bandId, $r['roster'], $r['overwrite']];
                 }
             }
             // タイムテーブルに無かった既存バンドは消さずに最後へ（元の順番のまま）
@@ -231,21 +235,22 @@ function commit_attach_plan(PDO $pdo, array $plan, array $input): int
             // ---- 名簿だけ: 対応付けたバンドにメンバーを入れる（順番・時間は触らない） ----
             foreach ($rows as $r) {
                 if ($r['band_id'] !== null && $r['roster'] !== null) {
-                    $bandRosters[] = [$r['band_id'], $r['roster']];
+                    $bandRosters[] = [$r['band_id'], $r['roster'], $r['overwrite']];
                 }
             }
         }
 
-        // 名簿を入れるバンドごとに、上書きするか決める。触らないバンドは名簿の対象から外す
-        // （外さないと、🚩の確認依頼だけ付いてメンバーは変わらない、という中途半端な状態になる）
+        // 名簿を入れるバンドごとに、入れるか決める
+        //   0人のバンド … そのまま入れる / 登録のあるバンド … プレビューで「入れ直す」にチェックしたものだけ（今のメンバーを消して入れ直す）
+        //   触らないバンドは名簿の対象から外す（外さないと、🚩の確認依頼だけ付いてメンバーは変わらない、という中途半端な状態になる）
         $apply = [];
-        foreach ($bandRosters as [$bandId, $ref]) {
+        foreach ($bandRosters as [$bandId, $ref, $wantOverwrite]) {
             $registered = (int)($existing[$bandId]['member_count'] ?? 0); // 今回新しく作ったバンドは 0 人
-            if (should_overwrite_members($registered, roster_member_count($plan, $input, $ref))) {
+            if ($registered === 0) {
                 $apply[] = [$bandId, $ref];
-                if ($registered > 0) {
-                    $overwriteIds[] = $bandId;
-                }
+            } elseif ($wantOverwrite) {
+                $apply[] = [$bandId, $ref];
+                $overwriteIds[] = $bandId;
             }
         }
         register_roster_members($pdo, $plan, $input, $apply, $overwriteIds);
@@ -260,23 +265,45 @@ function commit_attach_plan(PDO $pdo, array $plan, array $input): int
 }
 
 /**
- * プレビューの「登録済み N人」「→ 上書き」の目印（HTML）。
- *   $registered … 登録済みの人数（null = 新しいバンドなど。目印なし）
- *   $rosterRef  … 選んだ名簿のバンド 'ri:bi'（null = 名簿なし）
- * 名簿の人数はファイルから読んだ値（表で名前を書き換えると、登録時の判定とずれることがある。登録時は書き換え後で数え直す）。
+ * プレビューで「登録済み」と「名簿」を見比べるための材料（JSON で画面に渡して、JS が表示する）。
+ *   registered … [band_id => [['名前', '楽器の略称'], ...]]（日程の全バンド分）
+ *   roster     … ['ri:bi' => [['名前', 'パート'], ...]]（名簿の全バンド分）
+ * 名前の表記ゆれ（髙/高・空白）は画面側で見比べるときにそろえる。
  */
-function attach_member_badge(?int $registered, ?string $rosterRef, array $plan): string
+function attach_compare_data(PDO $pdo, array $plan, int $dayId): array
 {
-    if ($registered === null || $registered === 0) {
-        return '';
+    $st = $pdo->prepare('SELECT bm.band_id, m.name, i.short_name
+        FROM band_member bm
+        JOIN band b ON b.band_id = bm.band_id
+        JOIN member m ON m.member_id = bm.member_id
+        JOIN instrument i ON i.instrument_id = bm.instrument_id
+        WHERE b.live_day_id = ? ORDER BY i.sort_order, m.name');
+    $st->execute([$dayId]);
+    $registered = [];
+    foreach ($st as $r) {
+        $registered[(int)$r['band_id']][] = [$r['name'], $r['short_name']];
     }
-    $html = '<span class="pill" title="登録済みのメンバー">' . $registered . '人</span>';
-    if ($rosterRef !== null) {
-        [$ri, $bi] = array_map('intval', explode(':', $rosterRef));
-        $n = (int)($plan['rosters'][$ri]['bands'][$bi]['member_count'] ?? 0);
-        $html .= should_overwrite_members($registered, $n)
-            ? ' <span class="pill pill--warn" title="登録済みの' . $registered . '人を消して、名簿の' . $n . '人で入れ直します">上書き</span>'
-            : ' <span class="pill" title="登録済みが3人以上で、名簿の人数が同じかそれ以下なので変更しません">変更なし</span>';
+    $roster = [];
+    foreach ($plan['rosters'] as $ri => $r) {
+        foreach ($r['bands'] as $bi => $b) {
+            $roster["$ri:$bi"] = array_map(static fn($m) => [$m['name'], $m['part'] ?? ''], $b['members'] ?? []);
+        }
     }
-    return $html;
+    return ['registered' => $registered, 'roster' => $roster];
+}
+
+/**
+ * プレビューの1行に置く「登録済みと名簿の見比べ」の入れ物（HTML）。最初は隠れていて、JS（import.php の下の script）が
+ * 「登録済みのメンバーがいるバンドに名簿を選んだとき」だけ出す。チェックが入っている = 今のメンバーを消して名簿で入れ直す。
+ *   $name    … チェックボックスの name（tt[0][s][3][overwrite]）
+ *   $checked … 登録失敗で戻ってきたときの前回の選択
+ */
+function attach_compare_html(string $name, bool $checked): string
+{
+    return '<div class="member-compare" data-member-compare hidden>'
+        . '<label class="check"><input type="checkbox" name="' . h($name) . '" value="1"' . ($checked ? ' checked' : '') . '> 名簿で入れ直す</label> '
+        . '<span class="pill" data-compare-count></span> <span class="pill pill--warn" data-compare-hint></span>'
+        . '<details><summary class="muted small">登録済みと名簿を比べる</summary>'
+        . '<div class="compare-grid"><div><b>登録済み</b><ul data-compare-old></ul></div><div><b>名簿</b><ul data-compare-new></ul></div></div>'
+        . '</details></div>';
 }

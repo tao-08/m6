@@ -412,7 +412,7 @@ if ($plan === null): // ==================== アップロード画面 ==========
 <section class="guide">
     <div class="card">
         <h3><?= icon('groups') ?> 名簿だけ</h3>
-        <p class="muted small">名簿のメンバーをバンドに紐付けます。登録が2人以下のバンドと、名簿のほうが人数が多いバンドは入れ直し（上書き）、それ以外は変更しません。</p>
+        <p class="muted small">名簿のメンバーをバンドに紐付けます。メンバー未登録のバンドはそのまま入れ、登録があるバンドは見比べて入れ直すか選べます。</p>
     </div>
     <div class="card">
         <h3><?= icon('schedule') ?> タイムテーブル</h3>
@@ -753,7 +753,7 @@ if ($plan === null): // ==================== アップロード画面 ==========
 
             <?php if ($attach): // 登録済みの日程への追加: ライブ名・日程・開催日・会場は決まっているので、入力欄の代わりに追加先だけ出す ?>
             <p class="attach-target"><?= icon('subdirectory_arrow_right') ?> <strong><?= h(attach_title($attach)) ?></strong>
-                <span class="muted small"><?= $attach['mode'] === 'timetable' ? '出演順・時間・休憩を反映' : '名簿を紐付け（2人以下・人数が増えるバンドは上書き）' ?></span></p>
+                <span class="muted small"><?= $attach['mode'] === 'timetable' ? '出演順・時間・休憩を反映' : '名簿を紐付け（登録済みのバンドは見比べて選ぶ）' ?></span></p>
             <!-- 下の JS（setupImportPreview）が「取り込まない」のチェックボックスを前提にしているので、見えない形で置いておく -->
             <input type="checkbox" hidden data-skip aria-hidden="true" tabindex="-1">
             <?php else: ?>
@@ -813,8 +813,8 @@ if ($plan === null): // ==================== アップロード画面 ==========
             $rosterOnly = ($attach['mode'] ?? '') === 'roster';
             // タイムテーブルの追加: 各枠が「どの既存バンドか」を選ぶ列を足す
             $attachBands = ($attach['mode'] ?? '') === 'timetable' ? attach_day_bands($pdo, (int)$attach['live_day_id']) : [];
-            // バンドごとの登録済みの人数（上書きの目印に使う）
-            $attachMembers = $attach ? array_column(attach_day_bands($pdo, (int)$attach['live_day_id']), 'member_count', 'band_id') : []; ?>
+            // 「登録済み」と「名簿」を見比べる材料（下の JS が使う）
+            $compare = $attach ? attach_compare_data($pdo, $plan, (int)$attach['live_day_id']) : null; ?>
             <div class="table-scroll">
                 <table class="table table--edit">
                     <thead><tr>
@@ -848,7 +848,7 @@ if ($plan === null): // ==================== アップロード画面 ==========
                         $rosterClass = !isset($rosterChoices[$roster]) ? ($include ? 'is-new' : '')
                             : ($include && count($users) > 1 ? 'is-similar' : 'is-ok');
                         $rosterHint = $rosterClass === 'is-similar' ? '同じ名簿を ' . count($users) . ' つの枠で選んでいます: ' . implode(' / ', $users) : ''; ?>
-                        <tr class="<?= $include ? '' : 'is-excluded' ?>" data-slot="<?= h($key) ?>">
+                        <tr class="<?= $include ? '' : 'is-excluded' ?>" data-slot="<?= h($key) ?>"<?= $rosterOnly ? ' data-band-id="' . (int)($s['band_id'] ?? 0) . '"' : '' ?>>
                             <td><?php if (!$rosterOnly): ?><button type="button" class="drag-handle" data-drag-handle aria-label="ドラッグで並び替え（↑↓キーでも動く）" title="ドラッグで並び替え"><?= icon('drag_indicator') ?></button><?php endif; ?>
                                 <input type="hidden" name="tt[<?= $ti ?>][s][<?= $si ?>][at]" value="<?= (int)$timeSi ?>" data-at></td>
                             <td><input type="checkbox" name="tt[<?= $ti ?>][s][<?= $si ?>][include]" value="1"<?= $include ? ' checked' : '' ?> data-include aria-label="取り込む"></td>
@@ -857,20 +857,19 @@ if ($plan === null): // ==================== アップロード画面 ==========
                             <td class="mono nowrap muted" data-time><?= h($ts['start_time']) ?><?= $ts['end_time'] ? '–' . h($ts['end_time']) : '' ?></td>
                             <?php if ($rosterOnly): // DB のバンド名のまま。readonly = 見えるし送られるが、書き換えられない ?>
                             <td><input name="tt[<?= $ti ?>][s][<?= $si ?>][name]" value="<?= h($s['band_name']) ?>" readonly data-band-name aria-label="バンド名">
-                                <?= attach_member_badge($attachMembers[(int)($s['band_id'] ?? 0)] ?? null, $rosterChoices[$roster] ?? null, $plan) ?></td>
+                                <?= attach_compare_html("tt[$ti][s][$si][overwrite]", !empty($fs['overwrite'])) ?></td>
                             <?php else: ?>
                             <td><input name="tt[<?= $ti ?>][s][<?= $si ?>][name]" value="<?= h($fs['name'] ?? $s['band_name']) ?>" maxlength="100" data-suggest-list="band-names" autocomplete="off" data-band-name aria-label="バンド名"></td>
                             <?php endif; ?>
                             <?php if ($attachBands):
                                 // 既存バンドの選択。初期値は自動の対応付け（build_attach_plan）か、失敗して戻ってきたときの入力
-                                $bandSel = (string)($fs['band_id'] ?? $s['band_id'] ?? '');
-                                $memberBadge = attach_member_badge($attachMembers[(int)$bandSel] ?? null, $rosterChoices[$roster] ?? null, $plan); ?>
+                                $bandSel = (string)($fs['band_id'] ?? $s['band_id'] ?? ''); ?>
                             <td><select name="tt[<?= $ti ?>][s][<?= $si ?>][band_id]" aria-label="既存バンド" class="slot-select<?= $bandSel === '' && $s['is_band'] ? ' is-new' : '' ?>" data-attach-band>
                                 <option value="">＋ 新規</option>
                                 <?php foreach ($attachBands as $ab): ?>
                                     <option value="<?= (int)$ab['band_id'] ?>"<?= $bandSel === (string)$ab['band_id'] ? ' selected' : '' ?>><?= sprintf('%02d', (int)$ab['play_order']) ?> <?= h($ab['name']) ?></option>
                                 <?php endforeach; ?>
-                            </select><?= $memberBadge ?></td>
+                            </select><?= attach_compare_html("tt[$ti][s][$si][overwrite]", !empty($fs['overwrite'])) ?></td>
                             <?php endif; ?>
                             <td><input name="tt[<?= $ti ?>][s][<?= $si ?>][roster]" value="<?= h($roster) ?>" data-suggest-list="dl-roster" data-suggest-seed="[data-band-name]" autocomplete="off"
 							class="name-input <?= $rosterClass ?>" title="<?= h($rosterHint) ?>" placeholder="名簿から検索" data-roster-input aria-label="名簿のバンド"></td>
@@ -997,6 +996,51 @@ if ($plan === null): // ==================== アップロード画面 ==========
         <button class="btn btn--primary" type="submit"<?= $canSubmit ? '' : ' disabled' ?> data-submit>登録する</button>
     </div>
 </form>
+<?php if ($attach): ?>
+<script type="application/json" id="compare-data"><?= json_encode($compare, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP) ?></script>
+<script>
+// 登録済みのメンバーがいるバンドに名簿を選んだら、「登録済み」と「名簿」を並べて、入れ直すかを選べるようにする
+//   ・登録済みが0人 … 何も出さない（そのまま入れる） / 1人以上 … チェックと見比べ（details）を出す。初期値は OFF
+//   ・名簿に無い人・登録に無い人は色を付ける（名前は空白と異体字をそろえて比べる。完全ではない）
+//   ・おすすめの目印（2人以下 / 名簿のほうが多い）は、lib/import/attach.php の overwrite_hint と同じ基準
+(() => {
+    const data = JSON.parse(document.getElementById('compare-data').textContent);
+    const rosterKeys = {}; // 検索欄の文字 → 'ri:bi'
+    document.querySelectorAll('#dl-roster option').forEach((o) => { rosterKeys[o.value] = o.dataset.key; });
+    const norm = (n) => n.replace(/\s+/g, '').replace(/[髙]/g, '高').replace(/[﨑]/g, '崎');
+    const fill = (ul, rows, other) => {
+        ul.replaceChildren(...rows.map(([name, part]) => {
+            const li = document.createElement('li'); // textContent で入れる = HTML として解釈されない（XSS 対策）
+            li.textContent = part ? `${name}（${part}）` : name;
+            if (!other.has(norm(name))) li.className = 'is-diff';
+            return li;
+        }));
+    };
+    const update = (tr) => {
+        const box = tr.querySelector('[data-member-compare]');
+        if (!box) return;
+        const sel = tr.querySelector('[data-attach-band]');
+        const bandId = sel ? sel.value : tr.dataset.bandId;
+        const old = data.registered[bandId] || [];
+        const key = rosterKeys[tr.querySelector('[data-roster-input]').value.trim()];
+        const now = key ? data.roster[key] || [] : [];
+        const show = old.length > 0 && key !== undefined;
+        box.hidden = !show;
+        if (!show) return;
+        const oldNames = new Set(old.map(([n]) => norm(n)));
+        const nowNames = new Set(now.map(([n]) => norm(n)));
+        fill(box.querySelector('[data-compare-old]'), old, nowNames);
+        fill(box.querySelector('[data-compare-new]'), now, oldNames);
+        box.querySelector('[data-compare-count]').textContent = `${oldNames.size}人 → ${nowNames.size}人`;
+        box.querySelector('[data-compare-hint]').textContent = oldNames.size <= 2 ? '登録が2人以下' : (nowNames.size > oldNames.size ? '名簿のほうが多い' : '');
+    };
+    const all = () => document.querySelectorAll('tr[data-slot]').forEach(update);
+    document.addEventListener('change', (e) => { if (e.target.matches('[data-roster-input], [data-attach-band]')) update(e.target.closest('tr')); });
+    document.addEventListener('input', (e) => { if (e.target.matches('[data-roster-input]')) update(e.target.closest('tr')); });
+    all();
+})();
+</script>
+<?php endif; ?>
 <?php if ($attach && $attach['mode'] === 'timetable'): ?>
 <script>
 // 既存バンドの選択が「＋ 新規」のときだけ赤くする（新しいバンドとして追加される目印。名簿の欄の赤と同じ意味）

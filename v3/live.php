@@ -257,7 +257,7 @@ render_header($live['name'], 'lives');
     <?php if (!$bands): ?><p class="muted">バンドが登録されていません</p><?php endif; ?>
     <?php
     // 名簿・タイムテーブルが足りない日程だけ、ファイルから追加するボタンを出す（import.php?day=◯ → lib/import/attach.php）
-    //   名簿を追加 = メンバーが2人以下のバンドがある（名簿で入れ直せる。should_overwrite_members と同じ基準）
+    //   名簿を追加 = メンバーが2人以下のバンドがある（名簿で入れ直せる。overwrite_hint と同じ基準）
     //   タイムテーブル未登録 = 開始時刻が入ったバンドが1つも無い（バンドが0組の日程も含む）
     $noRoster = array_filter($bands, static function ($b) use ($lineups) {
         $ids = [];
