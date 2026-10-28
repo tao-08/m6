@@ -406,7 +406,10 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .live-card__head h3 { font-size: 19px; font-weight: 800; }
 .live-card__title { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; } /* ライブ名と「予定」を上下中央でそろえる（長い名前ならタグは次の行へ） */
 .live-card__days { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 13px; }
-.live-card__days li { display: grid; grid-template-columns: 5.5em auto minmax(0, 1fr); gap: 10px; align-items: center; white-space: nowrap; }
+.live-card__days li { display: grid; grid-template-columns: 5.5em auto minmax(0, 1fr) auto; gap: 10px; align-items: center; white-space: nowrap; }
+/* 名簿・タイムテーブル未登録のアイコン（index.php）。カード全体のリンク（::after）より上に出して、title のポップアップを出せるようにする */
+.day-missing { position: relative; z-index: 1; display: inline-flex; gap: 2px; color: var(--warn); line-height: 0; }
+.day-missing .icon { font-size: 16px; }
 .day-no { font-weight: 800; font-size: 12px; color: var(--accent); }
 .live-card__foot { margin: auto 0 0; padding-top: 12px; border-top: 1px solid var(--border); font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 4px; }
 .live-card__foot strong { color: var(--text); font-size: 16px; }
@@ -1235,7 +1238,7 @@ body.is-row-dragging, body.is-row-dragging * { cursor: grabbing !important; user
 /* ===== 8.5 追加ページ（検索・集計・設定・管理） ===== */
 .hero__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .hero__actions .btn.is-active { color: var(--accent); border-color: var(--accent); } /* アビーボード: 開いているパネルのボタン */
-.add-band { margin: 14px 0 0 72px; }
+.add-band { margin: 14px 0 0 72px; display: flex; flex-wrap: wrap; gap: 8px; }
 .danger-zone { margin-top: 16px; display: flex; justify-content: flex-end; }
 .chip-list { display: flex; flex-wrap: wrap; gap: 8px; }
 .chip--lg { padding: 6px 14px; font-size: 14px; background: var(--surface); }
@@ -2848,3 +2851,7 @@ button.ttb-m { cursor: pointer; text-decoration: underline dotted; }
 .part-tip[hidden] { display: none; }
 
 /* deploy cache bust */
+
+/* 登録済みの日程への追加（import.php?day=◯）のプレビューで、ライブ名などの入力欄の代わりに出す追加先 */
+.attach-target { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 0 0 12px; }
+.attach-target .icon { color: var(--accent); }

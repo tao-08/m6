@@ -699,6 +699,186 @@ function classify_cells(PDO $pdo, array $cells): array
 }
 
 /**
+ * 名簿の1バンドを2つ以上の枠で選んでいたら止める（同じバンドが2回出ることは無いので、入力ミス）。
+ * 画面では JS が「登録する」を押せなくしているが、JS が動かない・書き換えられたときのためにサーバーでも止める。
+ * 新規登録（commit_import_plan）と、登録済みの日程への追加（commit_attach_plan）の両方で使う。
+ *
+ * @throws RuntimeException 重複があるとき（メッセージはそのまま画面に出す）
+ */
+function assert_roster_unique(array $plan, array $input): void
+{
+    $rosterChoices = roster_choices($plan); // 「名簿」検索欄の文字 → 'ri:bi'
+    $rosterUsers = [];                      // 'ri:bi' => [その名簿を選んだ枠のバンド名...]
+    foreach ($plan['timetables'] as $ti => $tt) {
+        if (!empty($input['tt'][$ti]['skip'])) {
+            continue;
+        }
+        foreach (array_keys($tt['slots']) as $si) {
+            $s = $input['tt'][$ti]['s'][$si] ?? [];
+            $ref = $rosterChoices[trim((string)($s['roster'] ?? ''))] ?? null;
+            if (!empty($s['include']) && $ref !== null) {
+                $rosterUsers[$ref][] = trim((string)($s['name'] ?? $tt['slots'][$si]['band_name']));
+            }
+        }
+    }
+    foreach ($rosterUsers as $names) {
+        if (count($names) > 1) {
+            throw new RuntimeException('名簿の同じバンドを ' . count($names) . ' つの枠で選んでいます（' . implode(' / ', $names) . '）。1つの枠だけにしてください');
+        }
+    }
+}
+
+/**
+ * プレビューの1日程分の入力（$form = $input['tt'][$ti]）から、登録するバンドの行と休憩の行を取り出す。
+ *   「取り込む」にチェックがある枠 → バンドの行（出演順に並べ替え済み）
+ *   チェックが無く、ファイルで「休憩」などバンドではない枠 → 休憩の行
+ * 新規登録・登録済みの日程への追加の両方で使う（同じ処理を2か所に書かない = DRY: Don't Repeat Yourself）。
+ *
+ * @return array [$rows, $breakRows]
+ *   $rows      … ['si', 'pos', 'roster' => 'ri:bi'|null, 'order', 'name', 'songs', 'note', 'start', 'end', 'band_id' => 既存バンド|null]
+ *   $breakRows … ['pos', 'name', 'start', 'end']
+ * @throws RuntimeException 入力ミス（バンド名が空・曲数が変 など）
+ */
+function collect_slot_rows(array $tt, array $form, array $rosterChoices, string $where): array
+{
+    $rows = [];
+    $breakRows = [];
+    // 枠が表の上から何行目にあるか（at = その位置の時間の枠の番号 = 位置）。休憩を「どのバンドの後か」に直すのに使う
+    $posOf = static function (array $s, $si) use ($tt): int {
+        $at = (string)($s['at'] ?? '');
+        return ctype_digit($at) && isset($tt['slots'][(int)$at]) ? (int)$at : (int)$si;
+    };
+    foreach ($tt['slots'] as $si => $slot) {
+        $s = $form['s'][$si] ?? [];
+        if (empty($s['include'])) {
+            $name = mb_substr(trim((string)($s['name'] ?? $slot['band_name'])), 0, 50);
+            if (!$slot['is_band'] && $name !== '') {
+                $timeSlot = $tt['slots'][$posOf($s, $si)];
+                $start = $timeSlot['start_time'];
+                $end = $timeSlot['end_time'];
+                $breakRows[] = ['pos' => $posOf($s, $si), 'name' => $name, 'start' => $start,
+                    'end' => ($start && $end && $end > $start) ? $end : null];
+            }
+            continue;
+        }
+        // 名前の欄が無い（名簿の追加では名前を書き換えさせない）ときはファイル・DB の名前のまま
+        $name = trim((string)($s['name'] ?? $slot['band_name']));
+        $songs = (string)($s['songs'] ?? '');
+        if ($name === '' || mb_strlen($name) > 100) {
+            throw new RuntimeException("{$where} バンド名は1〜100文字で入力してください");
+        }
+        if ($songs !== '' && (!ctype_digit($songs) || (int)$songs > 255)) {
+            throw new RuntimeException("{$where}「{$name}」の曲数は0〜255の数字で入力してください");
+        }
+        // 時間は表の位置に固定（並び替えたら、その位置の枠の時間を使う）。at = どの枠の時間か
+        // フォームの値は書き換えられる可能性があるので、本当にある枠の番号だけ受け付ける
+        $at = (string)($s['at'] ?? '');
+        $timeSlot = ctype_digit($at) && isset($tt['slots'][(int)$at]) ? $tt['slots'][(int)$at] : $slot;
+        $start = $timeSlot['start_time'];
+        $end = $timeSlot['end_time'];
+        // 既存バンドとの対応（登録済みの日程への追加だけ）。'' = 新しいバンドとして追加。チェックは呼んだ側で DB と照らす
+        $bandId = (string)($s['band_id'] ?? '');
+        $rows[] = [
+            'si' => $si,
+            'pos' => $posOf($s, $si),
+            // この枠のメンバーをどの名簿のバンドから取るか（検索欄の文字 → 'ri:bi'。一致しなければ名簿なし）
+            'roster' => $rosterChoices[trim((string)($s['roster'] ?? ''))] ?? null,
+            'order' => (int)($s['order'] ?? 999),
+            'name' => $name,
+            'songs' => $songs !== '' ? (int)$songs : null, // 空欄は NULL（不明）。0 にしない（migrations/014）
+            'note' => mb_substr(trim((string)($s['note'] ?? '')), 0, 255),
+            // 終了が開始より前（日付またぎ・書き間違い）は CHECK 制約に引っかかるので終了を捨てる
+            'start' => $start,
+            'end' => ($start && $end && $end > $start) ? $end : null,
+            'band_id' => ctype_digit($bandId) ? (int)$bandId : ($slot['band_id'] ?? null),
+        ];
+    }
+    // 出演順 → 同じ番号なら元の並び順、で並べる。<=> は「宇宙船演算子」（大小比較で -1/0/1 を返す）
+    usort($rows, static fn($a, $b) => [$a['order'], $a['si']] <=> [$b['order'], $b['si']]);
+    return [$rows, $breakRows];
+}
+
+/**
+ * 休憩（live_break）を登録する。「何番目のバンドの後か」は、休憩より上にあるバンドの数で決める
+ * （出演順は呼んだ側で 1, 2, 3… と振るので、数と一致する）。
+ */
+function insert_breaks(PDO $pdo, int $dayId, array $rows, array $breakRows): void
+{
+    $bandPos = array_map(static fn($r) => $r['pos'], $rows);
+    usort($breakRows, static fn($a, $b) => $a['pos'] <=> $b['pos']);
+    $insBreak = $pdo->prepare('INSERT INTO live_break (live_day_id, after_order, seq, name, start_time, end_time) VALUES (?, ?, ?, ?, ?, ?)');
+    $seqAt = []; // after_order => 次の seq（同じバンドの後に休憩が2つ以上あるときの並び順）
+    foreach ($breakRows as $k) {
+        $after = count(array_filter($bandPos, static fn($pos) => $pos < $k['pos']));
+        $seqAt[$after] ??= 0;
+        $insBreak->execute([$dayId, $after, $seqAt[$after]++, $k['name'], $k['start'], $k['end']]);
+    }
+}
+
+/**
+ * 名簿 → メンバー登録（band_member）。$bandRosters = [[band_id, 'ri:bi'], ...]
+ * プレビューの「② 名簿」の表で直した内容（$input['rb']）を使う。
+ * 新規登録・登録済みの日程への追加の両方で使う。
+ */
+function register_roster_members(PDO $pdo, array $plan, array $input, array $bandRosters): void
+{
+    $memberIndex = load_member_index($pdo);
+    $validInstruments = array_map('intval', array_column(instruments(), 'instrument_id'));
+    $flagBand = $pdo->prepare('UPDATE band SET needs_check = ? WHERE band_id = ?');
+    foreach ($bandRosters as [$bandId, $rosterRef]) {
+        [$ri, $bi] = array_map('intval', explode(':', $rosterRef));
+        $roster = $plan['rosters'][$ri];
+        $rb = $input['rb'][$ri][$bi] ?? [];
+        $checkBits = check_bits($rb['flag'] ?? null, $rb['reason'] ?? []);
+        if ($checkBits) {
+            $flagBand->execute([$checkBits, $bandId]); // 🚩: バンドのメンバーに「ここを確認して」と知らせる（理由はビットで複数）
+        }
+        // 楽器の決め方（優先順）: ① 名前の後ろの (Sax) → ② セルのプルダウン → ③ 列のパートの楽器
+        // フォームの値は書き換えられる可能性があるので、instrument テーブルにある ID だけ受け付ける
+        $pick = static fn($id, ?int $default) => in_array((int)$id, $validInstruments, true) ? (int)$id : $default;
+        $assignments = [];
+        $add = static function (string $cell, ?int $instrument) use (&$assignments): void {
+            // 1セルに「、」で2人書かれていても、1人ずつ登録する
+            foreach (split_member_names($cell) as $name) {
+                [$name, $named] = parse_name_instrument($name);
+                $assignments[] = [$name, $named ?? $instrument];
+            }
+        };
+        // 名簿の元の列（Vo. Gt. Ba. Dr. は楽器固定、Key./Other はセルごとに選ぶ）
+        foreach ($roster['columns'] as $col => $c) {
+            $instrument = $c['instrument_id'] ?? default_instrument_id($c['part']);
+            if (is_free_part($c['part'])) {
+                $instrument = $pick($rb['ci'][$col] ?? 0, $instrument);
+            }
+            $cell = (string)($rb['c'][$col] ?? '');
+            if ($c['part'] === 'Vo') {
+                // Vo. 欄: ボーカルは必ず登録し、ギター/ベースボーカルならその楽器の行も足す
+                $also = VOCAL_ROLES[vocal_role($rb['vr'][$col] ?? null)]['also'];
+                foreach (split_member_names($cell) as $name) {
+                    [$name, $named] = parse_name_instrument($name);
+                    $assignments[] = [$name, $instrument];
+                    if ($also !== null) {
+                        $assignments[] = [$name, default_instrument_id($also)];
+                    }
+                    if ($named !== null) { // 「山田(Key)」なら Vo + Key（同じ行が2回になっても INSERT IGNORE で1行）
+                        $assignments[] = [$name, $named];
+                    }
+                }
+                continue;
+            }
+            $add($cell, $instrument);
+        }
+        // 右端の追加列（2人目以降・自分で足した列）。楽器は全部の楽器から選べる
+        foreach ((array)($rb['x'] ?? []) as $x) {
+            if (is_array($x)) {
+                $add((string)($x['name'] ?? ''), $pick($x['inst'] ?? 0, default_instrument_id('Key'))); // 変な値ならキーボード
+            }
+        }
+        attach_members($pdo, $memberIndex, $bandId, $assignments);
+    }
+}
+
+/**
  * ② プレビューで確定した内容を DB に書き込む。
  *
  * 全体を1つのトランザクションにしている。
@@ -711,32 +891,11 @@ function classify_cells(PDO $pdo, array $cells): array
  */
 function commit_import_plan(PDO $pdo, array $plan, array $input): array
 {
-    $memberIndex = load_member_index($pdo);
-    $validInstruments = array_map('intval', array_column(instruments(), 'instrument_id'));
     $rosterChoices = roster_choices($plan); // 「名簿」検索欄の文字 → 'ri:bi'
     $bandRosters = [];                      // [登録した band_id, 'ri:bi'] のリスト
     $liveIds = [];
 
-    // 名簿の1バンドを2つ以上の枠で選んでいたら登録しない（同じバンドが2回出ることは無いので、入力ミス）
-    // 画面では JS が「登録する」を押せなくしているが、JS が動かない・書き換えられたときのためにここでも止める
-    $rosterUsers = []; // 'ri:bi' => [その名簿を選んだ枠のバンド名...]
-    foreach ($plan['timetables'] as $ti => $tt) {
-        if (!empty($input['tt'][$ti]['skip'])) {
-            continue;
-        }
-        foreach (array_keys($tt['slots']) as $si) {
-            $s = $input['tt'][$ti]['s'][$si] ?? [];
-            $ref = $rosterChoices[trim((string)($s['roster'] ?? ''))] ?? null;
-            if (!empty($s['include']) && $ref !== null) {
-                $rosterUsers[$ref][] = trim((string)($s['name'] ?? ''));
-            }
-        }
-    }
-    foreach ($rosterUsers as $names) {
-        if (count($names) > 1) {
-            throw new RuntimeException('名簿の同じバンドを ' . count($names) . ' つの枠で選んでいます（' . implode(' / ', $names) . '）。1つの枠だけにしてください');
-        }
-    }
+    assert_roster_unique($plan, $input);
 
     $pdo->beginTransaction();
     try {
@@ -841,70 +1000,9 @@ function commit_import_plan(PDO $pdo, array $plan, array $input): array
             change_created($pdo, $op, 'day', $dayId); // 元に戻すと、この日程（と中のバンド）を消す
             $imported[] = "{$liveYear}年度 {$liveName} {$label}" . ($existing !== false ? '（上書き）' : '');
 
-            // ---- band ----
-            // 「取り込む」にチェックがある枠だけ集めて、入力された出演順で並べ替える
-            // チェックが無く、ファイルで「休憩」などバンドではない枠だった所は、休憩（live_break）として残す
-            $rows = [];
-            $breakRows = [];
-            // 枠が表の上から何行目にあるか（at = その位置の時間の枠の番号 = 位置）。休憩を「どのバンドの後か」に直すのに使う
-            $posOf = static function (array $s, $si) use ($tt): int {
-                $at = (string)($s['at'] ?? '');
-                return ctype_digit($at) && isset($tt['slots'][(int)$at]) ? (int)$at : (int)$si;
-            };
-            foreach ($tt['slots'] as $si => $slot) {
-                $s = $form['s'][$si] ?? [];
-                if (empty($s['include'])) {
-                    $name = mb_substr(trim((string)($s['name'] ?? $slot['band_name'])), 0, 50);
-                    if (!$slot['is_band'] && $name !== '') {
-                        $timeSlot = $tt['slots'][$posOf($s, $si)];
-                        $start = $timeSlot['start_time'];
-                        $end = $timeSlot['end_time'];
-                        $breakRows[] = ['pos' => $posOf($s, $si), 'name' => $name, 'start' => $start,
-                            'end' => ($start && $end && $end > $start) ? $end : null];
-                    }
-                    continue;
-                }
-                $name = trim((string)($s['name'] ?? ''));
-                $songs = (string)($s['songs'] ?? '');
-                if ($name === '' || mb_strlen($name) > 100) {
-                    throw new RuntimeException("{$where} バンド名は1〜100文字で入力してください");
-                }
-                if ($songs !== '' && (!ctype_digit($songs) || (int)$songs > 255)) {
-                    throw new RuntimeException("{$where}「{$name}」の曲数は0〜255の数字で入力してください");
-                }
-                // 時間は表の位置に固定（並び替えたら、その位置の枠の時間を使う）。at = どの枠の時間か
-                // フォームの値は書き換えられる可能性があるので、本当にある枠の番号だけ受け付ける
-                $at = (string)($s['at'] ?? '');
-                $timeSlot = ctype_digit($at) && isset($tt['slots'][(int)$at]) ? $tt['slots'][(int)$at] : $slot;
-                $start = $timeSlot['start_time'];
-                $end = $timeSlot['end_time'];
-                $rows[] = [
-                    'si' => $si,
-                    'pos' => $posOf($s, $si),
-                    // この枠のメンバーをどの名簿のバンドから取るか（検索欄の文字 → 'ri:bi'。一致しなければ名簿なし）
-                    'roster' => $rosterChoices[trim((string)($s['roster'] ?? ''))] ?? null,
-                    'order' => (int)($s['order'] ?? 999),
-                    'name' => $name,
-                    'songs' => $songs !== '' ? (int)$songs : null, // 空欄は NULL（不明）。0 にしない（migrations/014）
-                    'note' => mb_substr(trim((string)($s['note'] ?? '')), 0, 255),
-                    // 終了が開始より前（日付またぎ・書き間違い）は CHECK 制約に引っかかるので終了を捨てる
-                    'start' => $start,
-                    'end' => ($start && $end && $end > $start) ? $end : null,
-                ];
-            }
-            // 出演順 → 同じ番号なら元の並び順、で並べる。<=> は「宇宙船演算子」（大小比較で -1/0/1 を返す）
-            usort($rows, static fn($a, $b) => [$a['order'], $a['si']] <=> [$b['order'], $b['si']]);
-
-            // 休憩: 自分より上にあるバンドの数 = 「何番目のバンドの後か」（出演順は下で 1, 2, 3… と振るので数と一致する）
-            $bandPos = array_map(static fn($r) => $r['pos'], $rows);
-            usort($breakRows, static fn($a, $b) => $a['pos'] <=> $b['pos']);
-            $insBreak = $pdo->prepare('INSERT INTO live_break (live_day_id, after_order, seq, name, start_time, end_time) VALUES (?, ?, ?, ?, ?, ?)');
-            $seqAt = []; // after_order => 次の seq
-            foreach ($breakRows as $k) {
-                $after = count(array_filter($bandPos, static fn($pos) => $pos < $k['pos']));
-                $seqAt[$after] ??= 0;
-                $insBreak->execute([$dayId, $after, $seqAt[$after]++, $k['name'], $k['start'], $k['end']]);
-            }
+            // ---- band / live_break ----
+            [$rows, $breakRows] = collect_slot_rows($tt, $form, $rosterChoices, $where);
+            insert_breaks($pdo, $dayId, $rows, $breakRows);
 
             $insBand = $pdo->prepare('INSERT INTO band (live_day_id, artist_id, name, play_order, start_time, end_time, song_count, note)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
@@ -921,59 +1019,8 @@ function commit_import_plan(PDO $pdo, array $plan, array $input): array
 
         // ================= 2. 名簿 → メンバー =================
         // タイムテーブルの「名簿」欄で選んだ名簿のバンドから、メンバーを登録する。
-        // 名簿の1バンドを選べるのは1枠だけ（上の重複チェックで止めている）
-        $flagBand = $pdo->prepare('UPDATE band SET needs_check = ? WHERE band_id = ?');
-        foreach ($bandRosters as [$bandId, $rosterRef]) {
-            [$ri, $bi] = array_map('intval', explode(':', $rosterRef));
-            $roster = $plan['rosters'][$ri];
-            $rb = $input['rb'][$ri][$bi] ?? [];
-            $checkBits = check_bits($rb['flag'] ?? null, $rb['reason'] ?? []);
-            if ($checkBits) {
-                $flagBand->execute([$checkBits, $bandId]); // 🚩: バンドのメンバーに「ここを確認して」と知らせる（理由はビットで複数）
-            }
-            // 楽器の決め方（優先順）: ① 名前の後ろの (Sax) → ② セルのプルダウン → ③ 列のパートの楽器
-            // フォームの値は書き換えられる可能性があるので、instrument テーブルにある ID だけ受け付ける
-            $pick = static fn($id, ?int $default) => in_array((int)$id, $validInstruments, true) ? (int)$id : $default;
-            $assignments = [];
-            $add = static function (string $cell, ?int $instrument) use (&$assignments): void {
-                // 1セルに「、」で2人書かれていても、1人ずつ登録する
-                foreach (split_member_names($cell) as $name) {
-                    [$name, $named] = parse_name_instrument($name);
-                    $assignments[] = [$name, $named ?? $instrument];
-                }
-            };
-            // 名簿の元の列（Vo. Gt. Ba. Dr. は楽器固定、Key./Other はセルごとに選ぶ）
-            foreach ($roster['columns'] as $col => $c) {
-                $instrument = $c['instrument_id'] ?? default_instrument_id($c['part']);
-                if (is_free_part($c['part'])) {
-                    $instrument = $pick($rb['ci'][$col] ?? 0, $instrument);
-                }
-                $cell = (string)($rb['c'][$col] ?? '');
-                if ($c['part'] === 'Vo') {
-                    // Vo. 欄: ボーカルは必ず登録し、ギター/ベースボーカルならその楽器の行も足す
-                    $also = VOCAL_ROLES[vocal_role($rb['vr'][$col] ?? null)]['also'];
-                    foreach (split_member_names($cell) as $name) {
-                        [$name, $named] = parse_name_instrument($name);
-                        $assignments[] = [$name, $instrument];
-                        if ($also !== null) {
-                            $assignments[] = [$name, default_instrument_id($also)];
-                        }
-                        if ($named !== null) { // 「山田(Key)」なら Vo + Key（同じ行が2回になっても INSERT IGNORE で1行）
-                            $assignments[] = [$name, $named];
-                        }
-                    }
-                    continue;
-                }
-                $add($cell, $instrument);
-            }
-            // 右端の追加列（2人目以降・自分で足した列）。楽器は全部の楽器から選べる
-            foreach ((array)($rb['x'] ?? []) as $x) {
-                if (is_array($x)) {
-                    $add((string)($x['name'] ?? ''), $pick($x['inst'] ?? 0, default_instrument_id('Key'))); // 変な値ならキーボード
-                }
-            }
-            attach_members($pdo, $memberIndex, $bandId, $assignments);
-        }
+        // 名簿の1バンドを選べるのは1枠だけ（上の assert_roster_unique で止めている）
+        register_roster_members($pdo, $plan, $input, $bandRosters);
 
         // ================= 3. アカウントとメンバーの自動紐付け =================
         // 先にアカウントだけ作っていた人を、今回できたメンバーと名前で紐付ける
