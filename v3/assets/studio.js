@@ -459,8 +459,9 @@ if (typeof module !== 'undefined' && module.exports) module.exports = StudioCore
       el('h1', { class: 'display display--sm std-head__title', text: boot.liveName }),
       statusEl,
       btn('', 'delete', () => document.getElementById('std-delete').requestSubmit(), 'icon-btn', { title: '削除', 'aria-label': '削除' }));
+    // タブの並び順: 要否 → 時間（真ん中）→ 割当
     const tabs = el('div', { class: 'ttb-seg ttb-views', role: 'tablist' },
-      [['need', 'fact_check', '要否'], ['grid', 'grid_view', '割当'], ['rows', 'schedule', '時間']].map(([k, ic, label]) =>
+      [['need', 'fact_check', '要否'], ['rows', 'schedule', '時間'], ['grid', 'grid_view', '割当']].map(([k, ic, label]) =>
         el('button', { type: 'button', role: 'tab', class: view === k ? 'is-on' : '', 'aria-selected': String(view === k),
           onclick: () => { view = k; selected = null; history.replaceState(null, '', `#${k}`); render(); } }, icon(ic), el('span', { text: label }))));
     const body = view === 'need' ? renderNeed() : view === 'rows' ? renderRows() : renderGrid();
@@ -579,10 +580,10 @@ if (typeof module !== 'undefined' && module.exports) module.exports = StudioCore
       return el('button', {
         type: 'button', class: `std-band${on ? ' is-sel' : ''}${needOf(id) === null ? ' is-unknown' : ''}`,
         title: b.members.map((m) => m.name).join('・'),
-        onclick: () => onBand(id),
+        onclick: () => onBand(id), 'data-drag': `band|${id}`,
       }, el('span', { text: b.name }), MULTI ? el('span', { class: 'std-band__day', text: dayLabel(b.day) }) : null);
     };
-    const pool = el('div', { class: 'std-pool' },
+    const pool = el('div', { class: 'std-pool', 'data-drop': 'pool|' }, // 表のバンドをここへ落とすと未配置に戻る
       unNeeded.length ? el('div', { class: 'std-pool__list' }, unNeeded.map(chip)) : null,
       unplaced.length > unNeeded.length ? el('details', { class: 'std-pool__more' },
         el('summary', { class: 'muted small', text: `不要 ${unplaced.length - unNeeded.length}` }),
@@ -616,7 +617,9 @@ if (typeof module !== 'undefined' && module.exports) module.exports = StudioCore
     if (w?.late) tips.push('出演日のライブより後');
     if (w?.move.length) tips.push(`移動: ${[...new Set(w.move)].join('・')}`);
     if (w?.early) tips.push('前日のライブより前');
-    return el('td', { class: cls.join(' '), title: tips.join('\n') || (b ? b.members.map((m) => m.name).join('・') : null), onclick: () => onCell(key) },
+    // data-drop = ここに落とせる / data-drag = これを掴める（バンドがいるセルだけ）。詳しくは「ドラッグ移動」の節
+    return el('td', { class: cls.join(' '), title: tips.join('\n') || (b ? b.members.map((m) => m.name).join('・') : null), onclick: () => onCell(key),
+      'data-drop': `cell|${key}`, 'data-drag': b ? `cell|${key}` : null },
       b ? el('span', { class: 'std-cell__name', text: b.name }) : el('span', { class: 'std-cell__empty', 'aria-hidden': 'true', text: '+' }),
       b && MULTI ? el('span', { class: `std-cell__day${w?.early ? ' is-early' : ''}`, text: dayLabel(b.day) }) : null);
   }
@@ -627,12 +630,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = StudioCore
     if (selected?.cell) {
       const from = selected.cell;
       selected = null;
-      change((s) => {
-        const a = s.cells[from], b = s.cells[key];
-        delete s.cells[from]; delete s.cells[key];
-        if (a != null) s.cells[key] = a;
-        if (b != null) s.cells[from] = b; // 行き先にバンドがいたら入れ替え
-      });
+      moveCell(from, key);
       return;
     }
     if (selected?.band != null) {
@@ -646,6 +644,187 @@ if (typeof module !== 'undefined' && module.exports) module.exports = StudioCore
   function onBand(id) {
     selected = selected?.band === id ? null : { band: id };
     render();
+  }
+
+  /* ---------- ドラッグ移動 ----------
+   * 動かせるもの:
+   *   割当の表のバンド（セル） → 別のセルへ（バンドがいれば入れ替え） / 未配置の置き場へ（外す）
+   *   未配置のバンド（チップ） → セルへ
+   *   時間タブの行（左端の取っ手） → 好きな位置へ
+   *
+   * 仕組み: Pointer Events（マウス・タッチ・ペンを1つにまとめた入力イベント。今の業界標準）を使う。
+   *   - HTML5 の draggable / dragstart はスマホのタッチでほぼ動かないので使わない
+   *   - 描き直し（render）のたびに要素が作り直されるので、要素ごとではなく root に1回だけ
+   *     イベントを付ける（イベント委譲）。クリックされた要素から closest() で「ドラッグできる親」を探す
+   *   - 要素には data 属性で目印を付ける:
+   *       data-drag="種類|id" … これを掴める   data-drop="種類|id" … ここに落とせる
+   *   - 開始の条件（クリックやスクロールと区別するため）:
+   *       マウス … 6px 動かしたら開始 / タッチ … 0.35 秒の長押しで開始（それまでは普通にスクロール）
+   *       行の取っ手（data-drag-now）… タッチでも少し動かしたらすぐ開始（取っ手は touch-action: none でスクロールしない）
+   */
+
+  // セル同士の移動・入れ替え（タップ操作の onCell とドラッグで共通）
+  function moveCell(from, to) {
+    if (from === to) return;
+    change((s) => {
+      const a = s.cells[from], b = s.cells[to];
+      delete s.cells[from]; delete s.cells[to];
+      if (a != null) s.cells[to] = a;
+      if (b != null) s.cells[from] = b; // 行き先にバンドがいたら入れ替え
+    });
+  }
+  // 行の並べ替え: fromId の行を、toId の行の前（after=false）か後ろ（after=true）へ。
+  // 配置（state.cells）は「行のid」で持っているので、行を動かしても配置はそのまま付いてくる
+  function moveRowTo(fromId, toId, after) {
+    if (fromId === toId) return;
+    change((s) => {
+      const i = s.rows.findIndex((r) => r.id === fromId);
+      if (i < 0) return;
+      const [row] = s.rows.splice(i, 1);                  // いったん取り出す
+      let j = s.rows.findIndex((r) => r.id === toId);     // 取り出した「後」の配列で行き先を探す（番号がずれるため）
+      if (j < 0) j = s.rows.length;
+      s.rows.splice(after ? j + 1 : j, 0, row);           // splice(位置, 0, 要素) = その位置に挿入
+    });
+  }
+
+  function initDrag() {
+    const HOLD_MS = 350;   // タッチ: 長押しの時間
+    const MOVE_PX = 6;     // マウス・取っ手: 動いたらドラッグとみなす距離
+    const EDGE = 70;       // 画面の端からこの距離に入ると自動スクロール
+    let d = null;          // ドラッグ中の情報（無いときは null）
+    let suppressClick = false; // ドラッグ直後に出る「クリック」を捨てるための旗
+
+    // 「種類|id」を2つに分ける（id の中にも : があるので、最初の | だけで切る）
+    const cut = (s) => { const i = s.indexOf('|'); return [s.slice(0, i), s.slice(i + 1)]; };
+    // data 属性の文字列から、実際のバンドの id（数値かもしれない）を引き当てる
+    const bandKey = (str) => [...BANDS.keys()].find((k) => String(k) === str);
+
+    // ドラッグ中に指に付いてくる小さな札の文字
+    function labelOf() {
+      if (d.kind === 'row') {
+        const r = state.rows.find((x) => x.id === d.id);
+        const type = d.src.closest('.std-row')?.querySelector('.std-row__type')?.title || '';
+        return [type, r?.x].filter(Boolean).join(' ') || '行';
+      }
+      const bid = d.kind === 'cell' ? state.cells[d.id] : bandKey(d.id);
+      return BANDS.get(bid)?.name || '';
+    }
+
+    function start() {
+      if (!d || d.active) return;
+      d.active = true;
+      clearTimeout(d.timer);
+      selected = null;
+      d.src.classList.add('is-drag-src');
+      d.ghost = el('div', { class: 'std-ghost', text: labelOf() });
+      document.body.append(d.ghost);
+      document.body.classList.add('std-dragging');
+      if (navigator.vibrate) navigator.vibrate(15); // 掴んだことを振動で知らせる（対応端末のみ）
+      moveGhost();
+      tick();
+    }
+    function moveGhost() { d.ghost.style.transform = `translate(${d.x + 12}px, ${d.y + 12}px)`; }
+
+    // 指の下にある「落とせる場所」を調べて、枠で強調する
+    function highlight() {
+      const t = document.elementFromPoint(d.x, d.y)?.closest('[data-drop]') ?? null; // ghost は pointer-events: none なので邪魔しない
+      let drop = null;
+      if (t) {
+        const [tk, tid] = cut(t.dataset.drop);
+        const ok = ((d.kind === 'cell' || d.kind === 'band') && tk === 'cell')
+          || (d.kind === 'cell' && tk === 'pool')   // 表のバンドを未配置へ戻す
+          || (d.kind === 'row' && tk === 'row');
+        if (ok) {
+          drop = { el: t, kind: tk, id: tid };
+          if (tk === 'row') { const r = t.getBoundingClientRect(); drop.after = d.y > r.top + r.height / 2; } // 行の上半分なら前、下半分なら後ろ
+        }
+      }
+      if (d.over && d.over !== drop?.el) d.over.classList.remove('is-drop', 'is-drop-before', 'is-drop-after');
+      if (drop) {
+        drop.el.classList.toggle('is-drop', drop.kind !== 'row');
+        drop.el.classList.toggle('is-drop-before', drop.kind === 'row' && !drop.after);
+        drop.el.classList.toggle('is-drop-after', drop.kind === 'row' && drop.after);
+      }
+      d.over = drop?.el ?? null;
+      d.drop = drop;
+    }
+
+    // 画面の端に寄せている間、ページ（縦）と表（横）を自動でスクロールする。
+    // requestAnimationFrame = 次の画面更新の直前に呼ばれる仕組み（滑らかな動きの定番）
+    function tick() {
+      if (!d?.active) return;
+      const step = 14;
+      if (d.y < EDGE) window.scrollBy(0, -step);
+      else if (d.y > window.innerHeight - EDGE) window.scrollBy(0, step);
+      const sc = d.kind === 'row' ? null : root.querySelector('.std-grid__scroll');
+      if (sc) {
+        const r = sc.getBoundingClientRect();
+        if (d.y >= r.top && d.y <= r.bottom) {
+          if (d.x < r.left + EDGE) sc.scrollLeft -= step;
+          else if (d.x > r.right - EDGE) sc.scrollLeft += step;
+        }
+      }
+      highlight(); // スクロールで指の下の要素が変わるので毎回調べ直す
+      d.raf = requestAnimationFrame(tick);
+    }
+
+    // 後始末（札・強調・旗を全部元に戻す）
+    function cleanup() {
+      if (!d) return;
+      clearTimeout(d.timer);
+      cancelAnimationFrame(d.raf);
+      d.ghost?.remove();
+      d.over?.classList.remove('is-drop', 'is-drop-before', 'is-drop-after');
+      d.src.classList.remove('is-drag-src');
+      document.body.classList.remove('std-dragging');
+      d = null;
+    }
+
+    root.addEventListener('pointerdown', (e) => {
+      if (d || e.button > 0) return; // すでにドラッグ中 / 右・中ボタンは無視（タッチと左クリックは button が 0）
+      const src = e.target.closest('[data-drag]');
+      if (!src || !root.contains(src)) return;
+      const [kind, id] = cut(src.dataset.drag);
+      d = { kind, id, src, pid: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY,
+        active: false, touch: e.pointerType !== 'mouse', now: src.hasAttribute('data-drag-now'), timer: 0, raf: 0, ghost: null, over: null, drop: null };
+      if (d.touch && !d.now) d.timer = setTimeout(start, HOLD_MS); // タッチは長押しで開始
+    });
+
+    // pointermove / up は指やマウスが要素の外に出ても受け取りたいので window に付ける
+    window.addEventListener('pointermove', (e) => {
+      if (!d || e.pointerId !== d.pid) return;
+      d.x = e.clientX; d.y = e.clientY;
+      if (!d.active) {
+        const dist = Math.hypot(d.x - d.x0, d.y - d.y0);
+        if (d.touch && !d.now) { if (dist > 10) cleanup(); return; } // 長押しの前に動いた = ただのスクロール
+        if (dist < MOVE_PX) return;
+        start();
+      }
+      moveGhost();
+      highlight();
+    });
+    window.addEventListener('pointerup', (e) => {
+      if (!d || e.pointerId !== d.pid) return;
+      const was = d.active, drop = d.drop, { kind, id } = d;
+      cleanup();
+      if (!was) return;                       // 動かさずに離した = ふつうのタップ。何もしない（click が処理する）
+      suppressClick = true;                   // ドラッグの直後に出る click を捨てる
+      setTimeout(() => { suppressClick = false; }, 0);
+      if (!drop) return;                      // 落とせない場所で離した = 取り消し
+      if (kind === 'row') { moveRowTo(id, drop.id, drop.after); return; }
+      if (drop.kind === 'pool') { selected = null; change((s) => { delete s.cells[id]; }); return; }
+      if (kind === 'cell') { selected = null; moveCell(id, drop.id); return; }
+      const bid = bandKey(id);                // kind === 'band'（未配置のチップ）: 行き先にいたバンドは未配置に戻る
+      if (bid !== undefined) { selected = null; change((s) => { s.cells[drop.id] = bid; }); }
+    });
+    window.addEventListener('pointercancel', (e) => { if (d && e.pointerId === d.pid) cleanup(); });
+
+    // ① ドラッグ直後の click を止める（止めないと、離した場所のセルが「選択」されてしまう）。capture = 子より先に受け取る
+    root.addEventListener('click', (e) => { if (suppressClick) { e.stopPropagation(); e.preventDefault(); } }, true);
+    // ② ドラッグ中はタッチでページが動かないようにする。passive: false にしないと preventDefault できない
+    root.addEventListener('touchmove', (e) => { if (d?.active) e.preventDefault(); }, { passive: false });
+    // ③ 長押しで出る「コピー・共有」のメニューを、掴める要素の上では出さない
+    root.addEventListener('contextmenu', (e) => { if (e.target.closest('[data-drag]')) e.preventDefault(); });
   }
 
   function runAuto(keep) {
@@ -684,6 +863,9 @@ if (typeof module !== 'undefined' && module.exports) module.exports = StudioCore
     // ---- 部屋・枠の分数・見出し ----
     const R = state.rooms.length;
     const settings = el('div', { class: 'card std-set' },
+      // 全消去: 設定カードの右上。枠だけ赤（btn--danger）。行が無いときは押せない（disabled）
+      btn('', 'delete_sweep', clearRows, 'btn btn--sm btn--danger std-set__clear',
+        { title: '全消去', 'aria-label': '全消去', disabled: !state.rows.length }),
       el('label', { class: 'field' }, el('span', { text: '部屋' }),
         el('select', { class: 'std-in', onchange: (e) => setRooms(Number(e.target.value)) },
           range(10).map((i) => el('option', { value: i + 1, selected: i + 1 === R, text: `${i + 1}部屋` })))),
@@ -716,7 +898,9 @@ if (typeof module !== 'undefined' && module.exports) module.exports = StudioCore
           fields.push(el('label', { class: 'std-row__unit' }, num(r.min, (n) => setRow(r.id, { min: n }), 0, 1440, { 'aria-label': '分数' }), '分'));
         }
       }
-      list.append(el('div', { class: `std-row is-${r.t}` },
+      list.append(el('div', { class: `std-row is-${r.t}`, 'data-drop': `row|${r.id}` },
+        // 左端の取っ手: ここを掴んで上下にドラッグすると行を並べ替えられる（data-drag-now = タッチでも長押し不要）
+        el('span', { class: 'std-row__grip', 'data-drag': `row|${r.id}`, 'data-drag-now': true, title: '移動', 'aria-label': '移動' }, icon('drag_indicator')),
         el('span', { class: 'std-row__type', title: TYPES[r.t][1] }, icon(TYPES[r.t][0])),
         el('div', { class: 'std-row__fields' }, fields,
           r.t !== 'day' && t.start != null ? el('span', { class: 'muted small std-row__range', text: `${fmt(t.start)}〜${t.end !== t.start ? fmt(t.end) : ''}` }) : null),
@@ -755,6 +939,15 @@ if (typeof module !== 'undefined' && module.exports) module.exports = StudioCore
       Object.keys(s.cells).forEach((k) => { if (k.split(':')[0] === id) delete s.cells[k]; });
     });
     if (n) toast(`${n}バンドを未配置に変更`, { label: '元に戻す', run: undo });
+  }
+  // 全行を削除（部屋数・部屋名・1枠の分数・見出しは残す）。
+  // 行が消えると、その行に置いていたバンドの配置（state.cells）も意味を失うので、セルも空にする。
+  // change() が変更前の state を undoStack に積むので、トーストの「元に戻す」で全部復元できる。
+  function clearRows() {
+    if (!state.rows.length) return;
+    const n = Object.keys(state.cells).length; // 配置済みバンド数（トーストの表示用）
+    change((s) => { s.rows = []; s.cells = {}; });
+    toast(n ? `全行を削除・${n}バンドを未配置に変更` : '全行を削除', { label: '元に戻す', run: undo });
   }
   function setBlockN(id, n) {
     const lost = countIn(id, n);
@@ -911,5 +1104,6 @@ if (typeof module !== 'undefined' && module.exports) module.exports = StudioCore
     }, 'image/png');
   }
 
+  initDrag(); // ドラッグのイベントは root に1回だけ付ける（render のたびに付け直さない）
   render();
 })();

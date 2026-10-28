@@ -96,6 +96,8 @@ form.tool-card .tool-card__body { flex: 1; }
 /* ---- 時間 ---- */
 .std-set { display: grid; grid-template-columns: auto auto minmax(0, 1fr); gap: 10px; align-items: end; padding: 12px; margin-bottom: 10px; }
 .std-set__rooms { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; }
+/* 全消去ボタン: グリッドの1行目を丸ごと使い、右端に寄せる（入力欄と重ならない） */
+.std-set__clear { grid-column: 1 / -1; justify-self: end; display: inline-flex; align-items: center; }
 .std-in { min-width: 0; padding: 7px 9px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); font: inherit; font-size: 14px; }
 .std-in[type="number"] { width: 72px; }
 .std-in--time { width: 70px; font-variant-numeric: tabular-nums; }
@@ -114,6 +116,24 @@ form.tool-card .tool-card__body { flex: 1; }
 .std-row__ops { display: flex; gap: 2px; }
 .std-row__ops .icon-btn { width: 32px; height: 32px; }
 .std-row__ops .icon-btn:disabled { opacity: .3; }
+/* ---------- ドラッグ移動（studio.js の「ドラッグ移動」の節と対） ---------- */
+/* 掴める要素: 文字選択と、タッチ長押しのメニューを出さない（出ると長押しドラッグが途中で切れる） */
+.std-cell[data-drag], .std-band, .std-row__grip { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.std-cell[data-drag] { cursor: grab; }
+/* 取っ手は touch-action: none = この上ではタッチでスクロールしない（すぐドラッグできる） */
+.std-row__grip { display: inline-flex; align-self: center; color: var(--muted); cursor: grab; touch-action: none; padding: 6px 2px; }
+.std-dragging, .std-dragging * { cursor: grabbing !important; -webkit-user-select: none; user-select: none; }
+.is-drag-src { opacity: .4; }
+/* 指に付いてくる札。pointer-events: none = 札が下の要素へのマウス判定を邪魔しない */
+.std-ghost { position: fixed; left: 0; top: 0; z-index: 1000; pointer-events: none; max-width: 60vw; padding: 6px 10px; overflow: hidden;
+  border-radius: 8px; background: var(--accent); color: #fff; font-size: 13px; font-weight: 700; white-space: nowrap; text-overflow: ellipsis;
+  box-shadow: 0 4px 14px rgb(0 0 0 / .25); }
+.std-cell.is-drop { box-shadow: inset 0 0 0 2px var(--accent); background: var(--accent-soft); }
+.std-pool.is-drop { outline: 2px dashed var(--accent); outline-offset: 4px; border-radius: 8px; }
+.std-dragging .std-pool { min-height: 44px; } /* 未配置が0人でも、ドラッグ中は落とす場所を出す */
+.std-row.is-drop-before { box-shadow: 0 -3px 0 var(--accent); }
+.std-row.is-drop-after { box-shadow: 0 3px 0 var(--accent); }
+
 .std-add { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 40px; }
 .std-add .btn { display: inline-flex; align-items: center; gap: 4px; }
 
