@@ -816,65 +816,87 @@ function insert_breaks(PDO $pdo, int $dayId, array $rows, array $breakRows): voi
 }
 
 /**
- * 名簿 → メンバー登録（band_member）。$bandRosters = [[band_id, 'ri:bi'], ...]
+ * 名簿の1バンドから「誰がどの楽器か」の一覧を作る: [[名前, instrument_id|null], ...]
  * プレビューの「② 名簿」の表で直した内容（$input['rb']）を使う。
- * 新規登録・登録済みの日程への追加の両方で使う。
+ * 登録（register_roster_members）と、人数の比較（roster_member_count。登録済みのバンドを上書きするか決める）の両方で使う。
  */
-function register_roster_members(PDO $pdo, array $plan, array $input, array $bandRosters): void
+function roster_assignments(array $plan, array $input, string $rosterRef): array
+{
+    $validInstruments = array_map('intval', array_column(instruments(), 'instrument_id'));
+    [$ri, $bi] = array_map('intval', explode(':', $rosterRef));
+    $roster = $plan['rosters'][$ri];
+    $rb = $input['rb'][$ri][$bi] ?? [];
+    // 楽器の決め方（優先順）: ① 名前の後ろの (Sax) → ② セルのプルダウン → ③ 列のパートの楽器
+    // フォームの値は書き換えられる可能性があるので、instrument テーブルにある ID だけ受け付ける
+    $pick = static fn($id, ?int $default) => in_array((int)$id, $validInstruments, true) ? (int)$id : $default;
+    $assignments = [];
+    $add = static function (string $cell, ?int $instrument) use (&$assignments): void {
+        // 1セルに「、」で2人書かれていても、1人ずつ登録する
+        foreach (split_member_names($cell) as $name) {
+            [$name, $named] = parse_name_instrument($name);
+            $assignments[] = [$name, $named ?? $instrument];
+        }
+    };
+    // 名簿の元の列（Vo. Gt. Ba. Dr. は楽器固定、Key./Other はセルごとに選ぶ）
+    foreach ($roster['columns'] as $col => $c) {
+        $instrument = $c['instrument_id'] ?? default_instrument_id($c['part']);
+        if (is_free_part($c['part'])) {
+            $instrument = $pick($rb['ci'][$col] ?? 0, $instrument);
+        }
+        $cell = (string)($rb['c'][$col] ?? '');
+        if ($c['part'] === 'Vo') {
+            // Vo. 欄: ボーカルは必ず登録し、ギター/ベースボーカルならその楽器の行も足す
+            $also = VOCAL_ROLES[vocal_role($rb['vr'][$col] ?? null)]['also'];
+            foreach (split_member_names($cell) as $name) {
+                [$name, $named] = parse_name_instrument($name);
+                $assignments[] = [$name, $instrument];
+                if ($also !== null) {
+                    $assignments[] = [$name, default_instrument_id($also)];
+                }
+                if ($named !== null) { // 「山田(Key)」なら Vo + Key（同じ行が2回になっても INSERT IGNORE で1行）
+                    $assignments[] = [$name, $named];
+                }
+            }
+            continue;
+        }
+        $add($cell, $instrument);
+    }
+    // 右端の追加列（2人目以降・自分で足した列）。楽器は全部の楽器から選べる
+    foreach ((array)($rb['x'] ?? []) as $x) {
+        if (is_array($x)) {
+            $add((string)($x['name'] ?? ''), $pick($x['inst'] ?? 0, default_instrument_id('Key'))); // 変な値ならキーボード
+        }
+    }
+    return $assignments;
+}
+
+/** 名簿の1バンドの人数（同じ人が Vo と Gt の2行になっても1人。表記ゆれは member_key でそろえる） */
+function roster_member_count(array $plan, array $input, string $rosterRef): int
+{
+    return count(array_unique(array_map(static fn($a) => member_key($a[0]), roster_assignments($plan, $input, $rosterRef))));
+}
+
+/**
+ * 名簿 → メンバー登録（band_member）。$bandRosters = [[band_id, 'ri:bi'], ...]
+ * 新規登録・登録済みの日程への追加の両方で使う。
+ *   $overwriteIds … ここに入っている band_id は、今のメンバーを全部消してから名簿で入れ直す（attach.php の上書き）
+ */
+function register_roster_members(PDO $pdo, array $plan, array $input, array $bandRosters, array $overwriteIds = []): void
 {
     $memberIndex = load_member_index($pdo);
-    $validInstruments = array_map('intval', array_column(instruments(), 'instrument_id'));
     $flagBand = $pdo->prepare('UPDATE band SET needs_check = ? WHERE band_id = ?');
+    $clear = $pdo->prepare('DELETE FROM band_member WHERE band_id = ?');
     foreach ($bandRosters as [$bandId, $rosterRef]) {
         [$ri, $bi] = array_map('intval', explode(':', $rosterRef));
-        $roster = $plan['rosters'][$ri];
         $rb = $input['rb'][$ri][$bi] ?? [];
         $checkBits = check_bits($rb['flag'] ?? null, $rb['reason'] ?? []);
         if ($checkBits) {
             $flagBand->execute([$checkBits, $bandId]); // 🚩: バンドのメンバーに「ここを確認して」と知らせる（理由はビットで複数）
         }
-        // 楽器の決め方（優先順）: ① 名前の後ろの (Sax) → ② セルのプルダウン → ③ 列のパートの楽器
-        // フォームの値は書き換えられる可能性があるので、instrument テーブルにある ID だけ受け付ける
-        $pick = static fn($id, ?int $default) => in_array((int)$id, $validInstruments, true) ? (int)$id : $default;
-        $assignments = [];
-        $add = static function (string $cell, ?int $instrument) use (&$assignments): void {
-            // 1セルに「、」で2人書かれていても、1人ずつ登録する
-            foreach (split_member_names($cell) as $name) {
-                [$name, $named] = parse_name_instrument($name);
-                $assignments[] = [$name, $named ?? $instrument];
-            }
-        };
-        // 名簿の元の列（Vo. Gt. Ba. Dr. は楽器固定、Key./Other はセルごとに選ぶ）
-        foreach ($roster['columns'] as $col => $c) {
-            $instrument = $c['instrument_id'] ?? default_instrument_id($c['part']);
-            if (is_free_part($c['part'])) {
-                $instrument = $pick($rb['ci'][$col] ?? 0, $instrument);
-            }
-            $cell = (string)($rb['c'][$col] ?? '');
-            if ($c['part'] === 'Vo') {
-                // Vo. 欄: ボーカルは必ず登録し、ギター/ベースボーカルならその楽器の行も足す
-                $also = VOCAL_ROLES[vocal_role($rb['vr'][$col] ?? null)]['also'];
-                foreach (split_member_names($cell) as $name) {
-                    [$name, $named] = parse_name_instrument($name);
-                    $assignments[] = [$name, $instrument];
-                    if ($also !== null) {
-                        $assignments[] = [$name, default_instrument_id($also)];
-                    }
-                    if ($named !== null) { // 「山田(Key)」なら Vo + Key（同じ行が2回になっても INSERT IGNORE で1行）
-                        $assignments[] = [$name, $named];
-                    }
-                }
-                continue;
-            }
-            $add($cell, $instrument);
+        if (in_array($bandId, $overwriteIds, true)) {
+            $clear->execute([$bandId]);
         }
-        // 右端の追加列（2人目以降・自分で足した列）。楽器は全部の楽器から選べる
-        foreach ((array)($rb['x'] ?? []) as $x) {
-            if (is_array($x)) {
-                $add((string)($x['name'] ?? ''), $pick($x['inst'] ?? 0, default_instrument_id('Key'))); // 変な値ならキーボード
-            }
-        }
-        attach_members($pdo, $memberIndex, $bandId, $assignments);
+        attach_members($pdo, $memberIndex, $bandId, roster_assignments($plan, $input, $rosterRef));
     }
 }
 

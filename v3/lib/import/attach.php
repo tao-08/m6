@@ -8,9 +8,11 @@
  *  セッションの計画（$plan）に 'attach' があるときだけ、ここの関数で動きを変える。
  *
  *  ■ 名簿だけ追加（タイムテーブルのファイルが無い）
- *    DB にある「メンバーが0人のバンド」を、タイムテーブルの枠の代わりに並べる（＝疑似タイムテーブル）。
+ *    DB にあるバンドを、タイムテーブルの枠の代わりに並べる（＝疑似タイムテーブル）。
  *    → 新規追加と同じしくみ（finish_import_plan）で、名簿のバンドとバンド名で自動の対応付けができる。
- *    メンバー登録済みのバンドには触らない（上書き事故を防ぐ）。
+ *    メンバーの入れ方は should_overwrite_members() のルール（名簿だけ・タイムテーブル同時の両方で同じ）:
+ *      未登録 / 登録が2人以下 / 名簿のほうが人数が多い → 今のメンバーを消して名簿で入れ直す（上書き）
+ *      それ以外（3人以上で、名簿が同じ人数以下） → 触らない
  *
  *  ■ タイムテーブルを追加（名簿は一緒にあっても無くてもいい）
  *    タイムテーブルの各枠を、DB の既存バンドとバンド名で対応付ける（プレビューで直せる）。
@@ -38,13 +40,25 @@ function attach_target(PDO $pdo, int $dayId): ?array
 }
 
 /**
- * 日程の既存バンドを出演順で取る。has_members = メンバーが1人以上登録されているか（1 / 0）。
- *   EXISTS (サブクエリ) … 条件に合う行が1つでもあれば 1。COUNT(*) より速い（1行見つかった時点で止まる）
+ * 名簿でメンバーを入れ直す（上書きする）か。名簿だけの追加・タイムテーブルと同時の追加で同じルール。
+ *   登録が2人以下 … 名簿の人数に関係なく入れ直す（未登録の0人も含む）
+ *   名簿のほうが多い … 人数が増えるので入れ直す
+ * 上書きは「今の band_member を全部消してから名簿で入れる」ので、手で直した担当楽器も名簿の内容になる。
+ * 変更履歴に残るので、管理者は元に戻せる。
+ */
+function should_overwrite_members(int $registered, int $roster): bool
+{
+    return $registered <= 2 || $roster > $registered;
+}
+
+/**
+ * 日程の既存バンドを出演順で取る。member_count = 登録済みのメンバー数（同じ人が2つの楽器でも1人）。
+ *   COUNT(DISTINCT 列) … 重複を除いて数える。band_member は (band, member, 楽器) が主キーなので DISTINCT が要る
  */
 function attach_day_bands(PDO $pdo, int $dayId): array
 {
     $st = $pdo->prepare('SELECT b.band_id, b.name, b.play_order, b.start_time, b.end_time, b.song_count,
-            EXISTS (SELECT 1 FROM band_member bm WHERE bm.band_id = b.band_id) AS has_members
+            (SELECT COUNT(DISTINCT bm.member_id) FROM band_member bm WHERE bm.band_id = b.band_id) AS member_count
         FROM band b WHERE b.live_day_id = ? ORDER BY b.play_order');
     $st->execute([$dayId]);
     return $st->fetchAll();
@@ -68,16 +82,14 @@ function build_attach_plan(PDO $pdo, array $plan, array $target): array
     $bands = attach_day_bands($pdo, (int)$target['live_day_id']);
 
     if ($plan['attach']['mode'] === 'roster') {
-        // ---------- 名簿だけ: メンバー未登録のバンドを「タイムテーブルの枠」として並べる ----------
+        // ---------- 名簿だけ: 日程のバンドを「タイムテーブルの枠」として並べる ----------
         if (!$plan['rosters']) {
             $plan['errors'][] = '名簿かタイムテーブルのファイルを選んでください。';
             return $plan;
         }
         $slots = [];
         foreach ($bands as $b) {
-            if ($b['has_members']) {
-                continue; // 登録済みのバンドは対象外（名簿で上書きしない）
-            }
+            // メンバー登録済みのバンドも並べる（2人以下・名簿のほうが多いときは上書きするため。決めるのは登録時）
             $slots[] = [
                 'is_band'      => true,
                 'band_name'    => $b['name'],
@@ -91,7 +103,7 @@ function build_attach_plan(PDO $pdo, array $plan, array $target): array
             ];
         }
         if (!$slots) {
-            $plan['errors'][] = 'この日程には、メンバー未登録のバンドがありません。';
+            $plan['errors'][] = 'この日程にはバンドがありません。';
         }
         $plan['timetables'] = [[
             'title' => '', 'live_name' => '', 'label' => $target['label'], 'month' => null, 'day' => null,
@@ -176,6 +188,7 @@ function commit_attach_plan(PDO $pdo, array $plan, array $input): int
         $op = change_begin($pdo, 'import', $isTimetable ? 'タイムテーブルを追加' : '名簿を追加', $liveId);
         change_capture_day($pdo, $op, $dayId); // 変更前の日程（休憩・全バンド・メンバー）を履歴に残す
         $bandRosters = [];
+        $overwriteIds = []; // 名簿で入れ直すバンド（should_overwrite_members）
 
         if ($isTimetable) {
             // ---- 1. 出演順を振り直す ----
@@ -193,16 +206,13 @@ function commit_attach_plan(PDO $pdo, array $plan, array $input): int
                     // COALESCE(?, song_count): 曲数が空欄なら今の値を残す（NULL で消さない）
                     $update->execute([$order, $r['start'], $r['end'], $r['songs'], $r['band_id']]);
                     $bandId = $r['band_id'];
-                    $hasMembers = (bool)$existing[$bandId]['has_members'];
                 } else {
                     $insert->execute([$dayId, find_or_create_artist($pdo, $r['name']), $r['name'], $order,
                         $r['start'], $r['end'], $r['songs'], $r['note'] !== '' ? $r['note'] : null]);
                     $bandId = (int)$pdo->lastInsertId();
                     change_created($pdo, $op, 'band', $bandId); // 元に戻すと、追加したバンドを消す
-                    $hasMembers = false;
                 }
-                // 名簿はメンバー未登録のバンドにだけ入れる
-                if ($r['roster'] !== null && !$hasMembers) {
+                if ($r['roster'] !== null) {
                     $bandRosters[] = [$bandId, $r['roster']];
                 }
             }
@@ -220,13 +230,25 @@ function commit_attach_plan(PDO $pdo, array $plan, array $input): int
         } else {
             // ---- 名簿だけ: 対応付けたバンドにメンバーを入れる（順番・時間は触らない） ----
             foreach ($rows as $r) {
-                if ($r['band_id'] !== null && $r['roster'] !== null && !$existing[$r['band_id']]['has_members']) {
+                if ($r['band_id'] !== null && $r['roster'] !== null) {
                     $bandRosters[] = [$r['band_id'], $r['roster']];
                 }
             }
         }
 
-        register_roster_members($pdo, $plan, $input, $bandRosters);
+        // 名簿を入れるバンドごとに、上書きするか決める。触らないバンドは名簿の対象から外す
+        // （外さないと、🚩の確認依頼だけ付いてメンバーは変わらない、という中途半端な状態になる）
+        $apply = [];
+        foreach ($bandRosters as [$bandId, $ref]) {
+            $registered = (int)($existing[$bandId]['member_count'] ?? 0); // 今回新しく作ったバンドは 0 人
+            if (should_overwrite_members($registered, roster_member_count($plan, $input, $ref))) {
+                $apply[] = [$bandId, $ref];
+                if ($registered > 0) {
+                    $overwriteIds[] = $bandId;
+                }
+            }
+        }
+        register_roster_members($pdo, $plan, $input, $apply, $overwriteIds);
         link_users_to_members($pdo);
         change_set_summary($pdo, $op, attach_title($attach) . ($isTimetable ? ' にタイムテーブルを追加' : ' に名簿を追加'), $liveId);
         $pdo->commit();
@@ -235,4 +257,26 @@ function commit_attach_plan(PDO $pdo, array $plan, array $input): int
         throw $e;
     }
     return $liveId;
+}
+
+/**
+ * プレビューの「登録済み N人」「→ 上書き」の目印（HTML）。
+ *   $registered … 登録済みの人数（null = 新しいバンドなど。目印なし）
+ *   $rosterRef  … 選んだ名簿のバンド 'ri:bi'（null = 名簿なし）
+ * 名簿の人数はファイルから読んだ値（表で名前を書き換えると、登録時の判定とずれることがある。登録時は書き換え後で数え直す）。
+ */
+function attach_member_badge(?int $registered, ?string $rosterRef, array $plan): string
+{
+    if ($registered === null || $registered === 0) {
+        return '';
+    }
+    $html = '<span class="pill" title="登録済みのメンバー">' . $registered . '人</span>';
+    if ($rosterRef !== null) {
+        [$ri, $bi] = array_map('intval', explode(':', $rosterRef));
+        $n = (int)($plan['rosters'][$ri]['bands'][$bi]['member_count'] ?? 0);
+        $html .= should_overwrite_members($registered, $n)
+            ? ' <span class="pill pill--warn" title="登録済みの' . $registered . '人を消して、名簿の' . $n . '人で入れ直します">上書き</span>'
+            : ' <span class="pill" title="登録済みが3人以上で、名簿の人数が同じかそれ以下なので変更しません">変更なし</span>';
+    }
+    return $html;
 }

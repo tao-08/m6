@@ -412,7 +412,7 @@ if ($plan === null): // ==================== アップロード画面 ==========
 <section class="guide">
     <div class="card">
         <h3><?= icon('groups') ?> 名簿だけ</h3>
-        <p class="muted small">メンバー未登録のバンドに、名簿のメンバーを紐付けます。登録済みのバンドは変更しません。</p>
+        <p class="muted small">名簿のメンバーをバンドに紐付けます。登録が2人以下のバンドと、名簿のほうが人数が多いバンドは入れ直し（上書き）、それ以外は変更しません。</p>
     </div>
     <div class="card">
         <h3><?= icon('schedule') ?> タイムテーブル</h3>
@@ -753,7 +753,7 @@ if ($plan === null): // ==================== アップロード画面 ==========
 
             <?php if ($attach): // 登録済みの日程への追加: ライブ名・日程・開催日・会場は決まっているので、入力欄の代わりに追加先だけ出す ?>
             <p class="attach-target"><?= icon('subdirectory_arrow_right') ?> <strong><?= h(attach_title($attach)) ?></strong>
-                <span class="muted small"><?= $attach['mode'] === 'timetable' ? '出演順・時間・休憩を反映' : 'メンバー未登録のバンドに名簿を紐付け' ?></span></p>
+                <span class="muted small"><?= $attach['mode'] === 'timetable' ? '出演順・時間・休憩を反映' : '名簿を紐付け（2人以下・人数が増えるバンドは上書き）' ?></span></p>
             <!-- 下の JS（setupImportPreview）が「取り込まない」のチェックボックスを前提にしているので、見えない形で置いておく -->
             <input type="checkbox" hidden data-skip aria-hidden="true" tabindex="-1">
             <?php else: ?>
@@ -812,7 +812,9 @@ if ($plan === null): // ==================== アップロード画面 ==========
             // 名簿だけの追加: 並びは DB のまま（並び替え・バンド名・曲数・メモは触らせない）。名簿の対応付けだけ選ぶ
             $rosterOnly = ($attach['mode'] ?? '') === 'roster';
             // タイムテーブルの追加: 各枠が「どの既存バンドか」を選ぶ列を足す
-            $attachBands = ($attach['mode'] ?? '') === 'timetable' ? attach_day_bands($pdo, (int)$attach['live_day_id']) : []; ?>
+            $attachBands = ($attach['mode'] ?? '') === 'timetable' ? attach_day_bands($pdo, (int)$attach['live_day_id']) : [];
+            // バンドごとの登録済みの人数（上書きの目印に使う）
+            $attachMembers = $attach ? array_column(attach_day_bands($pdo, (int)$attach['live_day_id']), 'member_count', 'band_id') : []; ?>
             <div class="table-scroll">
                 <table class="table table--edit">
                     <thead><tr>
@@ -854,19 +856,21 @@ if ($plan === null): // ==================== アップロード画面 ==========
                                 <input type="hidden" name="tt[<?= $ti ?>][s][<?= $si ?>][order]" value="<?= $orderNo ?>" data-order></td>
                             <td class="mono nowrap muted" data-time><?= h($ts['start_time']) ?><?= $ts['end_time'] ? '–' . h($ts['end_time']) : '' ?></td>
                             <?php if ($rosterOnly): // DB のバンド名のまま。readonly = 見えるし送られるが、書き換えられない ?>
-                            <td><input name="tt[<?= $ti ?>][s][<?= $si ?>][name]" value="<?= h($s['band_name']) ?>" readonly data-band-name aria-label="バンド名"></td>
+                            <td><input name="tt[<?= $ti ?>][s][<?= $si ?>][name]" value="<?= h($s['band_name']) ?>" readonly data-band-name aria-label="バンド名">
+                                <?= attach_member_badge($attachMembers[(int)($s['band_id'] ?? 0)] ?? null, $rosterChoices[$roster] ?? null, $plan) ?></td>
                             <?php else: ?>
                             <td><input name="tt[<?= $ti ?>][s][<?= $si ?>][name]" value="<?= h($fs['name'] ?? $s['band_name']) ?>" maxlength="100" data-suggest-list="band-names" autocomplete="off" data-band-name aria-label="バンド名"></td>
                             <?php endif; ?>
                             <?php if ($attachBands):
                                 // 既存バンドの選択。初期値は自動の対応付け（build_attach_plan）か、失敗して戻ってきたときの入力
-                                $bandSel = (string)($fs['band_id'] ?? $s['band_id'] ?? ''); ?>
+                                $bandSel = (string)($fs['band_id'] ?? $s['band_id'] ?? '');
+                                $memberBadge = attach_member_badge($attachMembers[(int)$bandSel] ?? null, $rosterChoices[$roster] ?? null, $plan); ?>
                             <td><select name="tt[<?= $ti ?>][s][<?= $si ?>][band_id]" aria-label="既存バンド" class="slot-select<?= $bandSel === '' && $s['is_band'] ? ' is-new' : '' ?>" data-attach-band>
                                 <option value="">＋ 新規</option>
                                 <?php foreach ($attachBands as $ab): ?>
                                     <option value="<?= (int)$ab['band_id'] ?>"<?= $bandSel === (string)$ab['band_id'] ? ' selected' : '' ?>><?= sprintf('%02d', (int)$ab['play_order']) ?> <?= h($ab['name']) ?></option>
                                 <?php endforeach; ?>
-                            </select></td>
+                            </select><?= $memberBadge ?></td>
                             <?php endif; ?>
                             <td><input name="tt[<?= $ti ?>][s][<?= $si ?>][roster]" value="<?= h($roster) ?>" data-suggest-list="dl-roster" data-suggest-seed="[data-band-name]" autocomplete="off"
 							class="name-input <?= $rosterClass ?>" title="<?= h($rosterHint) ?>" placeholder="名簿から検索" data-roster-input aria-label="名簿のバンド"></td>
