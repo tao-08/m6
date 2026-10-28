@@ -101,6 +101,14 @@
 .songs-zoom__app.setlist__listen--line_music { color: #0ee071; }
 .songs-modal__album { color: var(--muted); overflow-wrap: anywhere; }
 .songs-modal__play { margin-left: 0; width: 40px; height: 40px; opacity: 1; }
+/* ボタン列: 音楽アプリ・試聴・TAB を横に並べて中央揃え（.songs-modal__head は縦に積む grid なので、1つの段にまとめる） */
+.songs-modal__actions { display: flex; align-items: center; justify-content: center; gap: 12px; }
+.songs-modal__app { display: block; width: 40px; height: 40px; } /* 試聴の丸（40px）と同じ大きさ */
+/* アプリごとの見た目は拡大モーダルのアイコン（.songs-zoom__app）と同じ。色は app.css の setlist__listen--xxx が付ける */
+.songs-modal__app svg { display: block; width: 100%; height: 100%; border-radius: 50%; background: #fff; }
+.songs-modal__app.setlist__listen--spotify svg { background: radial-gradient(circle closest-side, #000 90%, transparent 91%); }
+.songs-modal__app.setlist__listen--youtube_music svg { background: radial-gradient(circle closest-side, #fff 90%, transparent 91%); }
+.songs-modal__app.setlist__listen--apple_music svg, .songs-modal__app.setlist__listen--line_music svg { border-radius: 22%; background: none; }
 .songs-modal__names { display: grid; gap: 2px; min-width: 0; }
 .songs-modal .songs-row__meta { flex-wrap: wrap; justify-content: center; }
 .songs-modal .songs-fans { justify-content: center; } /* 折り返した2段目以降も中央揃え */

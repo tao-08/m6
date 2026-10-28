@@ -596,8 +596,10 @@ $deleteForm = static fn(array $v, string $open = ''): string => '<form method="p
                                 <?php $zoomSub = implode(' · ', array_filter([(string)$rep['artist'], $rep['year'] ? (string)(int)$rep['year'] : ''])); // 空の項目は除く ?>
                                 <?php if ($zoomSub !== ''): ?><span class="songs-zoom__year"><?= h($zoomSub) ?></span><?php endif; ?>
                                 <div class="songs-zoom__bar">
-                                    <?php if ($trackUrl !== null): $listenApp = listen_app($musicApp, (string)$rep['src']); ?>
-                                        <a class="songs-zoom__app setlist__listen--<?= h($listenApp) ?>" href="<?= h($trackUrl) ?>" target="_blank" rel="noopener noreferrer" aria-label="<?= h(MUSIC_APPS[$listenApp]) ?> で聴く" title="<?= h(MUSIC_APPS[$listenApp]) ?>"><?= MUSIC_APP_ICONS[$listenApp] ?></a>
+                                    <?php // 拡大モーダルのアプリのアイコンは「アルバム」のリンク（$albumUrl）。アルバムが分からない曲は、名前に曲名を出しているので曲のリンク（$trackUrl）にする
+                                    $zoomUrl = $albumUrl ?? $trackUrl; ?>
+                                    <?php if ($zoomUrl !== null): $listenApp = listen_app($musicApp, (string)$rep['src']); ?>
+                                        <a class="songs-zoom__app setlist__listen--<?= h($listenApp) ?>" href="<?= h($zoomUrl) ?>" target="_blank" rel="noopener noreferrer" aria-label="<?= h(MUSIC_APPS[$listenApp]) ?> で聴く" title="<?= h(MUSIC_APPS[$listenApp]) ?>"><?= MUSIC_APP_ICONS[$listenApp] ?></a>
                                     <?php endif; ?>
                                     <a class="icon-btn songs-zoom__close" href="search?q=<?= h(rawurlencode($zoomName)) ?>" aria-label="検索" title="検索"><?= icon('search') ?></a>
                                     <button type="button" class="icon-btn songs-zoom__close" data-song-zoom-close aria-label="閉じる" title="閉じる"><?= icon('close') ?></button>
@@ -615,8 +617,19 @@ $deleteForm = static fn(array $v, string $open = ''): string => '<form method="p
                             <?php else: ?><span class="muted small"><?= h($g['artist']) ?></span><?php endif; ?>
                         <?php endif; ?>
                     </div>
-                    <?php if ($rep['src'] !== null): // 30秒試聴（app.js の setupPreview。押したときに音源を探す） ?>
-                        <button type="button" class="setlist__play songs-modal__play" data-preview="<?= h(album_key($rep['src'], $rep['tid'])) ?>" aria-label="30秒試聴" title="30秒試聴"><?= icon('play_arrow', 'icon--fill') ?></button>
+                    <?php // ボタンの横並び: [音楽アプリ（この曲）] [30秒試聴] [TAB 譜]。どれも無い曲は段ごと出さない
+                    $hasTab = tab_allowed(); // TAB 譜は今は管理人だけ（セットリストのページと同じ条件）
+                    if ($rep['src'] !== null || $hasTab): ?>
+                        <div class="songs-modal__actions">
+                            <?php if ($rep['src'] !== null): $actApp = listen_app($musicApp, (string)$rep['src']); // 試聴の左: 表示している曲のリンク（$trackUrl）のアプリアイコン ?>
+                                <a class="songs-modal__app setlist__listen--<?= h($actApp) ?>" href="<?= h($trackUrl) ?>" target="_blank" rel="noopener noreferrer" aria-label="<?= h(MUSIC_APPS[$actApp]) ?> で聴く" title="<?= h(MUSIC_APPS[$actApp]) ?>"><?= MUSIC_APP_ICONS[$actApp] ?></a>
+                                <?php // 30秒試聴（app.js の setupPreview。押したときに音源を探す） ?>
+                                <button type="button" class="setlist__play songs-modal__play" data-preview="<?= h(album_key($rep['src'], $rep['tid'])) ?>" aria-label="30秒試聴" title="30秒試聴"><?= icon('play_arrow', 'icon--fill') ?></button>
+                            <?php endif; ?>
+                            <?php if ($hasTab): // 試聴の右: セットリストのページ（band.php）と同じ TAB ボタン。TAB がある曲は塗りつぶし ?>
+                                <a class="setlist__play songs-modal__play" href="<?= h($g['tab_url']) ?>" aria-label="TAB 譜" title="TAB 譜"><?= tab_icon($g['tabs'] > 0) ?></a>
+                            <?php endif; ?>
+                        </div>
                     <?php endif; ?>
                 </div>
                 <div class="songs-row__meta muted small">
