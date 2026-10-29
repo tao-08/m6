@@ -123,20 +123,18 @@ form.tool-card .tool-card__body { flex: 1; }
 /* 取っ手は touch-action: none = この上ではタッチでスクロールしない（すぐドラッグできる） */
 .std-row__grip { display: inline-flex; align-self: center; color: var(--muted); cursor: grab; touch-action: none; padding: 6px 2px; }
 .std-dragging, .std-dragging * { cursor: grabbing !important; -webkit-user-select: none; user-select: none; }
-.is-drag-src { opacity: .4; }
-/* 掴んだ枠の分身（JS が元の枠を複製して、元の枠と同じクラスを付ける）。浮いて見えるよう影と枠線を足す。
-   pointer-events: none = 分身が下の要素へのマウス判定を邪魔しない。
-   position は元のクラス（.std-cell の relative など）に負けないよう !important で固定 */
-.std-ghost { position: fixed !important; left: 0; top: 0; z-index: 1000; pointer-events: none; box-sizing: border-box; margin: 0;
-  background: var(--surface); border: 2px solid var(--accent); border-radius: 8px; opacity: .96;
-  box-shadow: 0 10px 24px rgb(0 0 0 / .3); will-change: transform; }
-/* セルの分身は <td> ではなく <div>。表の中でだけ効く中央寄せが外れるので、ここで明示する */
-.std-ghost.std-cell { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+/* 掴んでいる本物の要素（JS が translate で指に付いてこさせる）。
+   z-index は position が static だと効かないので relative を付ける。
+   pointer-events: none = 掴んでいる要素が指の下の判定を邪魔しない */
+.std-cell.is-dragging, .std-band.is-dragging, .std-row.is-dragging, .is-settling { position: relative; z-index: 20; }
+.is-dragging { pointer-events: none; will-change: transform; transition: none !important; box-shadow: 0 8px 22px rgb(0 0 0 / .3); }
+.std-cell.is-dragging { background: var(--surface); box-shadow: 0 8px 22px rgb(0 0 0 / .3), inset 0 0 0 2px var(--accent); }
+.std-band.is-dragging { background: var(--surface); border-color: var(--accent); }
+/* 入れ替えで滑る相手のセル（transform を transition で滑らせる） */
+.std-cell { will-change: auto; }
 .std-cell.is-drop { box-shadow: inset 0 0 0 2px var(--accent); background: var(--accent-soft); }
 .std-pool.is-drop { outline: 2px dashed var(--accent); outline-offset: 4px; border-radius: 8px; }
 .std-dragging .std-pool { min-height: 44px; } /* 未配置が0人でも、ドラッグ中は落とす場所を出す */
-.std-row.is-drop-before { box-shadow: 0 -3px 0 var(--accent); }
-.std-row.is-drop-after { box-shadow: 0 3px 0 var(--accent); }
 
 .std-add { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 40px; }
 .std-add .btn { display: inline-flex; align-items: center; gap: 4px; }

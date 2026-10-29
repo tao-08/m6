@@ -306,6 +306,8 @@ if (typeof module !== 'undefined' && module.exports) module.exports = StudioCore
   let view = ['#need', '#grid', '#rows'].includes(location.hash) ? location.hash.slice(1)
     : (Object.keys(state.cells).length ? 'grid' : 'need');
   let selected = null;           // 選択中: {cell: キー} か {band: id}
+  let dragLock = false;          // ドラッグ中は render() で画面を作り直さない（掴んでいる要素が消えるため）
+  let renderPending = false;     // ドラッグ中に描き直しが要求された。離したあとにまとめて1回やる
   let dirty = false;             // まだ保存していない変更がある
   let saving = false;
   let status = 'saved';          // saved | saving | error
@@ -453,6 +455,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = StudioCore
   }
 
   function render() {
+    if (dragLock) { renderPending = true; return; }
     const scrollX = root.querySelector('.std-grid__scroll')?.scrollLeft || 0; // 表の横スクロール位置を描き直しても保つ
     statusEl = el('span', { class: 'std-status', role: 'status' });
     const head = el('div', { class: 'std-head' },
@@ -648,19 +651,24 @@ if (typeof module !== 'undefined' && module.exports) module.exports = StudioCore
 
   /* ---------- ドラッグ移動 ----------
    * 動かせるもの:
-   *   割当の表のバンド（セル） → 別のセルへ（バンドがいれば入れ替え） / 未配置の置き場へ（外す）
+   *   割当の表のバンド（セル） → 別のセルへ。通った先のバンドはその場で元の位置へ滑って入れ替わる / 未配置の置き場へ（外す）
    *   未配置のバンド（チップ） → セルへ
-   *   時間タブの行（左端の取っ手） → 好きな位置へ
+   *   時間タブの行（左端の取っ手） → 好きな位置へ。通った行が道を空けるように滑る
    *
-   * 仕組み: Pointer Events（マウス・タッチ・ペンを1つにまとめた入力イベント。今の業界標準）を使う。
-   *   - HTML5 の draggable / dragstart はスマホのタッチでほぼ動かないので使わない
-   *   - 描き直し（render）のたびに要素が作り直されるので、要素ごとではなく root に1回だけ
-   *     イベントを付ける（イベント委譲）。クリックされた要素から closest() で「ドラッグできる親」を探す
-   *   - 要素には data 属性で目印を付ける:
-   *       data-drag="種類|id" … これを掴める   data-drop="種類|id" … ここに落とせる
-   *   - 開始の条件（クリックやスクロールと区別するため）:
-   *       マウス … 6px 動かしたら開始 / タッチ … 0.35 秒の長押しで開始（それまでは普通にスクロール）
-   *       行の取っ手（data-drag-now）… タッチでも少し動かしたらすぐ開始（取っ手は touch-action: none でスクロールしない）
+   * 動きの作り方は、アルバムの並び替え（app.js）と同じ考え方:
+   *   ① 掴んだ「本物の要素」に transform（translate）を付けて指に付いてこさせる（複製の分身は作らない）
+   *   ② 相手の要素は「本来の位置」で当たり判定する
+   *      見た目の位置（滑っている途中）で判定すると、滑って避けた相手が指の下から消えて、
+   *      戻る → また避ける…と行ったり来たりしてブルブル震える
+   *   ③ 離したときに、離した場所から着地点へスッと滑らせる
+   *   ④ 状態（state）の変更は「離したとき」に1回だけ。ドラッグ中は見た目（transform / DOM の並び）だけ動かす
+   *      → ドラッグ中に render() で画面を作り直すと掴んだ要素が消えるので dragLock で止める
+   *
+   * 仕組み: Pointer Events（マウス・タッチ・ペンを1つにまとめた入力イベント）。
+   *   HTML5 の draggable はスマホのタッチでほぼ動かないので使わない。
+   *   描き直し（render）のたびに要素が作り直されるので、root に1回だけイベントを付ける（イベント委譲）。
+   *   data-drag="種類|id" … 掴める要素   data-drag-now … 取っ手（タッチでも長押し不要）
+   *   開始の条件: マウスは 6px 動かしたら / タッチは 0.35 秒の長押し（それまでは普通にスクロール）
    */
 
   // セル同士の移動・入れ替え（タップ操作の onCell とドラッグで共通）
@@ -673,17 +681,13 @@ if (typeof module !== 'undefined' && module.exports) module.exports = StudioCore
       if (b != null) s.cells[from] = b; // 行き先にバンドがいたら入れ替え
     });
   }
-  // 行の並べ替え: fromId の行を、toId の行の前（after=false）か後ろ（after=true）へ。
+  // 行の並び順を、行の id の配列（画面の上から順）に合わせる。
   // 配置（state.cells）は「行のid」で持っているので、行を動かしても配置はそのまま付いてくる
-  function moveRowTo(fromId, toId, after) {
-    if (fromId === toId) return;
+  function applyRowOrder(ids) {
     change((s) => {
-      const i = s.rows.findIndex((r) => r.id === fromId);
-      if (i < 0) return;
-      const [row] = s.rows.splice(i, 1);                  // いったん取り出す
-      let j = s.rows.findIndex((r) => r.id === toId);     // 取り出した「後」の配列で行き先を探す（番号がずれるため）
-      if (j < 0) j = s.rows.length;
-      s.rows.splice(after ? j + 1 : j, 0, row);           // splice(位置, 0, 要素) = その位置に挿入
+      const by = new Map(s.rows.map((r) => [r.id, r]));
+      const next = ids.map((id) => by.get(id)).filter(Boolean);
+      if (next.length === s.rows.length) s.rows = next; // 数が合わないとき（他の人の変更が混ざった等）は何もしない
     });
   }
 
@@ -691,6 +695,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = StudioCore
     const HOLD_MS = 350;   // タッチ: 長押しの時間
     const MOVE_PX = 6;     // マウス・取っ手: 動いたらドラッグとみなす距離
     const EDGE = 70;       // 画面の端からこの距離に入ると自動スクロール
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches; // 「動きを減らす」設定の人にはアニメーションを出さない
     let d = null;          // ドラッグ中の情報（無いときは null）
     let suppressClick = false; // ドラッグ直後に出る「クリック」を捨てるための旗
 
@@ -699,19 +704,82 @@ if (typeof module !== 'undefined' && module.exports) module.exports = StudioCore
     // data 属性の文字列から、実際のバンドの id（数値かもしれない）を引き当てる
     const bandKey = (str) => [...BANDS.keys()].find((k) => String(k) === str);
 
-    // ドラッグ中に付いてくる「分身」を作る。掴んだ枠（セル・チップ・行）をまるごと複製するので、
-    // 見た目も大きさも元の枠のまま動いて見える。
-    //   cloneNode(true) = 子要素ごとコピーする DOM の標準メソッド（false だと外側だけ）
-    //   元の枠は薄く残す（is-drag-src）ので「どこから動かしたか」もわかる
-    function makeGhost() {
-      const g = document.createElement('div');
-      g.className = `${d.box.className} std-ghost`; // 元の枠のクラスを引き継ぐ → 同じ見た目になる（<td> は <div> に変わるが class で見た目を合わせる）
-      g.classList.remove('is-sel', 'is-drag-src', 'is-drop', 'is-drop-before', 'is-drop-after');
-      d.box.childNodes.forEach((n) => g.append(n.cloneNode(true)));
-      g.querySelectorAll('[data-drag], [data-drop]').forEach((n) => { n.removeAttribute('data-drag'); n.removeAttribute('data-drop'); }); // 分身が「掴める・落とせる」と判定されないように
-      g.style.width = `${d.w}px`;
-      g.style.height = `${d.h}px`;
-      return g;
+    // いま付いている translate の量。getComputedStyle の transform は 'none' か matrix(...) の文字列で、
+    // DOMMatrixReadOnly に渡すと m41 = 横、m42 = 縦のずれが取れる（'none' は「ずれ 0」として読まれる）
+    const shift = (el) => { const m = new DOMMatrixReadOnly(getComputedStyle(el).transform); return [m.m41, m.m42]; };
+    // 「本来の位置」= 今の見た目の位置から translate のずれを引いたもの（②の当たり判定とずれの計算に使う）
+    const home = (el) => {
+      const r = el.getBoundingClientRect();
+      const [x, y] = shift(el);
+      return { left: r.left - x, top: r.top - y, width: r.width, height: r.height };
+    };
+    const inside = (r, x, y) => x >= r.left && x < r.left + r.width && y >= r.top && y < r.top + r.height;
+
+    // 掴んだ要素を指に付いてこさせる。「指の位置 − 掴んだ点 − 本来の位置」だけ translate でずらす
+    function follow() {
+      const h = home(d.box);
+      const dx = d.kind === 'row' ? 0 : d.x - d.gx - h.left; // 行は縦にだけ動く
+      const dy = d.y - d.gy - h.top;
+      d.box.style.transform = `translate(${dx}px, ${dy}px)`;
+    }
+
+    // セル・チップ: 指の下の「落とせる場所」を探して印を付ける
+    function aim() {
+      let drop = null;
+      const sc = root.querySelector('.std-grid__scroll');
+      if (sc && inside(sc.getBoundingClientRect(), d.x, d.y)) {
+        // 表の中: 本来の位置で判定する（掴んでいるセル自身は除く）
+        const t = [...sc.querySelectorAll('td[data-drop]')].find((td) => td !== d.box && inside(home(td), d.x, d.y));
+        if (t) drop = { el: t, kind: 'cell', id: cut(t.dataset.drop)[1] };
+      }
+      const pool = root.querySelector('.std-pool');
+      if (!drop && d.kind === 'cell' && pool && inside(pool.getBoundingClientRect(), d.x, d.y)) drop = { el: pool, kind: 'pool', id: '' };
+
+      if (d.mark !== (drop?.el ?? null)) {
+        if (d.mark) { d.mark.classList.remove('is-drop'); d.mark.style.transform = ''; } // 前の相手は元の位置へ滑って戻る
+        d.mark = drop?.el ?? null;
+        if (drop) {
+          if (d.kind === 'cell' && drop.kind === 'cell') {
+            // 相手のバンドを、掴んでいるセルの元の位置へ滑らせる（これが「その場で入れ替わる」見た目）
+            const from = home(d.box), to = home(drop.el);
+            drop.el.style.transition = reduce ? 'none' : 'transform .16s ease-out';
+            drop.el.style.transform = `translate(${from.left - to.left}px, ${from.top - to.top}px)`;
+            d.touched.add(drop.el);
+          } else {
+            drop.el.classList.add('is-drop'); // チップをセルへ / セルを未配置へ: 落とし先を枠で強調
+          }
+        }
+      }
+      d.drop = drop;
+    }
+
+    // 行: 指が上下の行の真ん中を越えたら、DOM の並びを入れ替える（state はまだ触らない）。
+    // 入れ替えのアニメーションは FLIP: 動かす前の位置を測る → DOM を入れ替える → 前の位置から今の位置へ滑らせる
+    function reorder() {
+      const list = d.box.parentElement;
+      const all = () => [...list.querySelectorAll(':scope > .std-row')];
+      const rows = all();
+      const i = rows.indexOf(d.box);
+      const mid = (el) => home(el).top + el.offsetHeight / 2;
+      let change = null;
+      if (rows[i - 1] && d.y < mid(rows[i - 1])) change = () => list.insertBefore(d.box, rows[i - 1]);
+      else if (rows[i + 1] && d.y > mid(rows[i + 1])) change = () => list.insertBefore(d.box, rows[i + 1].nextElementSibling);
+      if (!change) return;
+      const before = new Map(rows.map((el) => [el, el.getBoundingClientRect().top]));
+      change();
+      if (reduce) return;
+      all().forEach((el) => {
+        if (el === d.box) return; // 掴んでいる行は指に付いているので滑らせない
+        el.getAnimations().forEach((a) => a.cancel()); // 滑っている途中なら止めてから測る
+        const dy = before.get(el) - el.getBoundingClientRect().top;
+        if (Math.abs(dy) < 1) return;
+        el.animate([{ transform: `translateY(${dy}px)` }, { transform: 'none' }], { duration: 200, easing: 'ease-out' });
+      });
+    }
+
+    function step() {
+      if (d.kind === 'row') reorder(); else aim();
+      follow(); // 入れ替えで本来の位置が変わるので、最後にずらす量を計算し直す
     }
 
     function start() {
@@ -719,79 +787,60 @@ if (typeof module !== 'undefined' && module.exports) module.exports = StudioCore
       d.active = true;
       clearTimeout(d.timer);
       selected = null;
-      // 掴んだ位置（枠の左上からのずれ）と枠の大きさを覚える。ずれを保つと「掴んだ場所のまま」動いて見える
+      dragLock = true;
+      d.box.getAnimations().forEach((a) => a.cancel());
       const r = d.box.getBoundingClientRect();
-      d.gx = d.x0 - r.left; d.gy = d.y0 - r.top; d.w = r.width; d.h = r.height;
-      d.box.classList.add('is-drag-src');
-      d.ghost = makeGhost();
-      document.body.append(d.ghost);
+      d.gx = d.x0 - r.left; d.gy = d.y0 - r.top; // 掴んだ点（要素の左上からのずれ）。これを保ったまま付いてこさせる
+      d.box.classList.add('is-dragging');
       document.body.classList.add('std-dragging');
-      if (navigator.vibrate) navigator.vibrate(15); // 掴んだことを振動で知らせる（対応端末のみ）
-      moveGhost();
+      navigator.vibrate?.(15); // 掴んだことを振動で知らせる（対応端末のみ）
+      step();
       tick();
-    }
-    // 分身の位置。transform は再レイアウトが起きず滑らかに動かせる（位置の移動はこれを使うのが定番）
-    function moveGhost() {
-      // タッチ: 指が分身を隠してしまうので、分身を指の少し上に浮かせる（落とす場所の判定は指の真下のまま）
-      const lift = d.touch ? d.h + 24 : 0;
-      const tx = d.x - d.gx;
-      const ty = Math.max(4, d.y - d.gy - lift); // 画面の上端からはみ出さない
-      d.ghost.style.transform = `translate(${tx}px, ${ty}px) scale(1.04)`;
-    }
-
-    // 指の下にある「落とせる場所」を調べて、枠で強調する
-    function highlight() {
-      const t = document.elementFromPoint(d.x, d.y)?.closest('[data-drop]') ?? null; // ghost は pointer-events: none なので邪魔しない
-      let drop = null;
-      if (t) {
-        const [tk, tid] = cut(t.dataset.drop);
-        const ok = ((d.kind === 'cell' || d.kind === 'band') && tk === 'cell')
-          || (d.kind === 'cell' && tk === 'pool')   // 表のバンドを未配置へ戻す
-          || (d.kind === 'row' && tk === 'row');
-        if (ok) {
-          drop = { el: t, kind: tk, id: tid };
-          if (tk === 'row') { const r = t.getBoundingClientRect(); drop.after = d.y > r.top + r.height / 2; } // 行の上半分なら前、下半分なら後ろ
-        }
-      }
-      if (d.over && d.over !== drop?.el) d.over.classList.remove('is-drop', 'is-drop-before', 'is-drop-after');
-      if (drop) {
-        drop.el.classList.toggle('is-drop', drop.kind !== 'row');
-        drop.el.classList.toggle('is-drop-before', drop.kind === 'row' && !drop.after);
-        drop.el.classList.toggle('is-drop-after', drop.kind === 'row' && drop.after);
-      }
-      d.over = drop?.el ?? null;
-      d.drop = drop;
     }
 
     // 画面の端に寄せている間、ページ（縦）と表（横）を自動でスクロールする。
     // requestAnimationFrame = 次の画面更新の直前に呼ばれる仕組み（滑らかな動きの定番）
     function tick() {
       if (!d?.active) return;
-      const step = 14;
-      if (d.y < EDGE) window.scrollBy(0, -step);
-      else if (d.y > window.innerHeight - EDGE) window.scrollBy(0, step);
+      const speed = 14;
+      if (d.y < EDGE) window.scrollBy(0, -speed);
+      else if (d.y > window.innerHeight - EDGE) window.scrollBy(0, speed);
       const sc = d.kind === 'row' ? null : root.querySelector('.std-grid__scroll');
       if (sc) {
         const r = sc.getBoundingClientRect();
         if (d.y >= r.top && d.y <= r.bottom) {
-          if (d.x < r.left + EDGE) sc.scrollLeft -= step;
-          else if (d.x > r.right - EDGE) sc.scrollLeft += step;
+          if (d.x < r.left + EDGE) sc.scrollLeft -= speed;
+          else if (d.x > r.right - EDGE) sc.scrollLeft += speed;
         }
       }
-      highlight(); // スクロールで指の下の要素が変わるので毎回調べ直す
+      step(); // スクロールで指の下の要素が変わるので毎回やり直す
       d.raf = requestAnimationFrame(tick);
     }
 
-    // 後始末（札・強調・旗を全部元に戻す）
+    // 後始末（transform・強調・旗を全部元に戻す）
     function cleanup() {
       if (!d) return;
       clearTimeout(d.timer);
       cancelAnimationFrame(d.raf);
-      d.ghost?.remove();
-      d.over?.classList.remove('is-drop', 'is-drop-before', 'is-drop-after');
-      d.box.classList.remove('is-drag-src');
+      d.mark?.classList.remove('is-drop');
+      d.touched.forEach((el) => { el.style.transform = ''; setTimeout(() => { el.style.transition = ''; }, 250); }); // 避けていた相手は滑って戻る
+      d.box.style.transform = '';
+      d.box.classList.remove('is-dragging');
       document.body.classList.remove('std-dragging');
       d = null;
+      dragLock = false;
+    }
+
+    // 着地: 離した場所（from = 離した瞬間の見た目の矩形）から、本来の場所へ滑らせる
+    function settle(sel, from) {
+      const el = root.querySelector(sel);
+      if (!el || !from || reduce) return;
+      const r = el.getBoundingClientRect();
+      const dx = from.left - r.left, dy = from.top - r.top;
+      if (Math.abs(dx) + Math.abs(dy) < 1) return;
+      el.classList.add('is-settling'); // 滑っている間だけ、ほかの要素より手前に出す
+      el.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }], { duration: 160, easing: 'ease-out' })
+        .onfinish = () => el.classList.remove('is-settling');
     }
 
     root.addEventListener('pointerdown', (e) => {
@@ -799,9 +848,8 @@ if (typeof module !== 'undefined' && module.exports) module.exports = StudioCore
       const src = e.target.closest('[data-drag]');
       if (!src || !root.contains(src)) return;
       const [kind, id] = cut(src.dataset.drag);
-      // box = 実際に動かして見せる枠。行は取っ手（src）ではなく行全体
       d = { kind, id, src, box: kind === 'row' ? src.closest('.std-row') : src, pid: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY,
-        active: false, touch: e.pointerType !== 'mouse', now: src.hasAttribute('data-drag-now'), timer: 0, raf: 0, ghost: null, over: null, drop: null };
+        active: false, touch: e.pointerType !== 'mouse', now: src.hasAttribute('data-drag-now'), timer: 0, raf: 0, mark: null, drop: null, touched: new Set() };
       if (d.touch && !d.now) d.timer = setTimeout(start, HOLD_MS); // タッチは長押しで開始
     });
 
@@ -814,25 +862,42 @@ if (typeof module !== 'undefined' && module.exports) module.exports = StudioCore
         if (d.touch && !d.now) { if (dist > 10) cleanup(); return; } // 長押しの前に動いた = ただのスクロール
         if (dist < MOVE_PX) return;
         start();
+        return;
       }
-      moveGhost();
-      highlight();
+      step();
     });
     window.addEventListener('pointerup', (e) => {
       if (!d || e.pointerId !== d.pid) return;
-      const was = d.active, drop = d.drop, { kind, id } = d;
+      const was = d.active, { kind, id, box } = d, drop = d.drop;
+      const from = was ? box.getBoundingClientRect() : null; // 離した瞬間の見た目の位置（着地アニメーションの出発点）
+      // 行は DOM の並びがそのまま新しい並び順。cleanup の前に読む
+      const order = was && kind === 'row' ? [...box.parentElement.querySelectorAll(':scope > .std-row')].map((r) => r.dataset.rowId) : null;
+      const back = was ? `[data-drag="${box.dataset.drag ?? ''}"]` : ''; // 落とせない場所で離したときに戻る先
       cleanup();
       if (!was) return;                       // 動かさずに離した = ふつうのタップ。何もしない（click が処理する）
       suppressClick = true;                   // ドラッグの直後に出る click を捨てる
       setTimeout(() => { suppressClick = false; }, 0);
-      if (!drop) return;                      // 落とせない場所で離した = 取り消し
-      if (kind === 'row') { moveRowTo(id, drop.id, drop.after); return; }
-      if (drop.kind === 'pool') { selected = null; change((s) => { delete s.cells[id]; }); return; }
-      if (kind === 'cell') { selected = null; moveCell(id, drop.id); return; }
-      const bid = bandKey(id);                // kind === 'band'（未配置のチップ）: 行き先にいたバンドは未配置に戻る
-      if (bid !== undefined) { selected = null; change((s) => { s.cells[drop.id] = bid; }); }
+
+      let landing = back;                     // 着地する要素（落とせない場所で離したら元の場所へ戻る）
+      if (kind === 'row') {
+        applyRowOrder(order);
+        landing = `.std-row[data-row-id="${id}"]`;
+      } else if (drop?.kind === 'pool') {
+        change((s) => { delete s.cells[id]; });
+        landing = null;
+      } else if (drop?.kind === 'cell') {
+        if (kind === 'cell') { moveCell(id, drop.id); landing = `td[data-drop="cell|${drop.id}"]`; }
+        else { const bid = bandKey(id); if (bid !== undefined) change((s) => { s.cells[drop.id] = bid; }); landing = null; } // チップ: 行き先にいたバンドは未配置に戻る
+      }
+      if (renderPending) { renderPending = false; render(); } // ドラッグ中に止めておいた描き直し（他の人の変更の受け取り等）
+      if (landing) settle(landing, from);
     });
-    window.addEventListener('pointercancel', (e) => { if (d && e.pointerId === d.pid) cleanup(); });
+    window.addEventListener('pointercancel', (e) => {
+      if (!d || e.pointerId !== d.pid) return;
+      const was = d.active;
+      cleanup();
+      if (was) render(); // 行の DOM の並びを入れ替えていたら、state の並びに描き直して戻す
+    });
 
     // ① ドラッグ直後の click を止める（止めないと、離した場所のセルが「選択」されてしまう）。capture = 子より先に受け取る
     root.addEventListener('click', (e) => { if (suppressClick) { e.stopPropagation(); e.preventDefault(); } }, true);
@@ -913,7 +978,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = StudioCore
           fields.push(el('label', { class: 'std-row__unit' }, num(r.min, (n) => setRow(r.id, { min: n }), 0, 1440, { 'aria-label': '分数' }), '分'));
         }
       }
-      list.append(el('div', { class: `std-row is-${r.t}`, 'data-drop': `row|${r.id}` },
+      list.append(el('div', { class: `std-row is-${r.t}`, 'data-row-id': r.id },
         // 左端の取っ手: ここを掴んで上下にドラッグすると行を並べ替えられる（data-drag-now = タッチでも長押し不要）
         el('span', { class: 'std-row__grip', 'data-drag': `row|${r.id}`, 'data-drag-now': true, title: '移動', 'aria-label': '移動' }, icon('drag_indicator')),
         el('span', { class: 'std-row__type', title: TYPES[r.t][1] }, icon(TYPES[r.t][0])),
