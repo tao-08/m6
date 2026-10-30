@@ -2381,6 +2381,30 @@ html:has(.board-posts) { scroll-behavior: smooth; }
 .comments .board-post { box-shadow: none; background: var(--bg, var(--surface)); }
 .comments__body { padding-top: 12px; }
 
+/* ---- スマホ幅でコメントが枠の右にはみ出す問題の修正（2026-10-30）----
+   原因① grid の「列」は、何も指定しないと中身の最小幅（min-content）より狭くならない（grid blowout という有名な落とし穴）。
+         コメントのカードや入力欄が広いと、列ごと広がって外側の枠（.comments）を突き破る。
+         → 列を minmax(0, 1fr) にする。「最小 0 まで縮んでよい・余りは全部使う」という意味で、業界標準の対処法。
+   対象は togglecard の中身・コメント一覧・入力欄の3つ（それぞれが別の grid なので、全部に必要） */
+.comments__body, .comments .board-posts, .comments .board-reply { grid-template-columns: minmax(0, 1fr); }
+.comments .board-post__meta strong { min-width: 0; overflow-wrap: anywhere; } /* 長い名義は枠の幅で折り返す（flex の子はこれが無いと縮まない） */
+.comments .board-post__date { white-space: nowrap; } /* 日付を「2026-10-29 / 21:15」のように途中で折り返さない */
+
+/* 原因② 名前・日付・返信・削除を1行（flex）に詰めていて、狭いと全部が窮屈になる。
+   スマホ（600px 以下）だけ、grid で 2 行にする:
+     1行目: 番号 ／ 名前（長ければ折り返す） ／ 返信ボタン ／ 削除ボタン
+     2行目: （番号の下は空き） ／ 日付
+   「auto minmax(0,1fr) auto auto」= 番号・ボタンは中身の幅、名前の列が余りを全部使う */
+@media (max-width: 600px) {
+  .comments .board-post__meta { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: start; column-gap: 8px; row-gap: 0; }
+  .comments .board-post__meta .board-post__no { padding-top: 2px; }
+  .comments .board-post__meta strong { grid-column: 2; grid-row: 1; padding-top: 2px; }
+  .comments .board-post__meta .board-post__date { grid-column: 2; grid-row: 2; }
+  /* 返信・削除は 1 行目の右上に固定（PC 用の左マージンは打ち消す）。コメントが削除済みでボタンが無くても列は崩れない */
+  .comments .board-post__meta .board-post__reply { grid-column: 3; grid-row: 1; margin-left: 0; }
+  .comments .board-post__meta .board-post__del { grid-column: 4; grid-row: 1; margin-left: 0; }
+}
+
 /* 通知一覧（notifications.php）: カード全体がリンク */
 .notif-item { display: grid; gap: 2px; color: inherit; text-decoration: none; }
 .notif-item:hover { border-color: var(--accent); }

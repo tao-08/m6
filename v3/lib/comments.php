@@ -186,7 +186,7 @@ function comments_render(string $kind, int $targetId, array $user): void
             <div class="muted small board-post__meta">
                 <span class="board-post__no"><?= $i + 1 ?></span>
                 <strong><?= author_html((bool)$c['anonymous'], $c['display_name'], $c['author'], $c['author_member_id'] !== null ? (int)$c['author_member_id'] : null, $seeReal) ?></strong>
-                <span><?= h(substr($c['created_at'], 0, 16)) ?></span>
+                <span class="board-post__date"><?= h(substr($c['created_at'], 0, 16)) ?></span><?php /* スマホで名前の下の段に置くため、CSS から指定できるよう class を付ける */ ?>
                 <?php if (!$deleted): ?>
                 <button type="button" class="icon-btn icon-btn--sm board-post__reply" data-comment-reply="<?= $cid ?>" data-no="<?= $i + 1 ?>" aria-label="返信" title="返信" aria-pressed="false"><?= icon('reply') ?></button>
                 <?php endif; ?>
