@@ -2803,7 +2803,7 @@ function setupNameCheck() {
   let timer = null;
   let requestNo = 0; // 古い通信の結果が後から届いて上書きしないように番号を振る
 
-  const check = async () => {
+  const check = async (show = true) => { // show=false: 吹き出しは出さず、エラー状態だけ付ける
     const inputs = cells();
     const myNo = ++requestNo;
     try {
@@ -5883,6 +5883,39 @@ function setupAliasField() {
     const sync = () => { name.disabled = anon.checked; };
     anon.addEventListener('change', sync);
     sync();
+
+    // なりすまし防止: 他の部員の名前を名義にしていたら、送信前に止める（api_alias_check.php）
+    //   setCustomValidity(文字) … 入力欄を「エラー状態」にする、ブラウザ標準の仕組み（Constraint Validation API）。
+    //     エラー中はフォームを送信できず、送信ボタンを押すとその文字が吹き出しで出る。'' で解除。
+    //     ※ disabled（匿名チェック中）の欄はチェック対象外になるので、匿名なら送信できる
+    //   デバウンス … 1文字打つごとに通信すると重いので、打ち終わって 300ms 待ってから1回だけ聞く
+    //   本当の守りはサーバー側（posted_alias_error）。ここは本文を書き直しにならないための案内
+    const token = document.querySelector('meta[name="csrf-token"]')?.content || '';
+    let timer = 0;
+    let seq = 0; // 古い応答が後から届いて上書きしないように、何回目の問い合わせかを数える
+    const check = async () => {
+      const value = name.value.trim();
+      const my = ++seq;
+      if (value === '') { name.setCustomValidity(''); return; }
+      try {
+        const res = await fetch('api_alias_check', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': token },
+          body: JSON.stringify({ name: value }),
+        });
+        const data = await res.json();
+        if (my !== seq || !res.ok) return; // 新しい入力がある / 通信エラー → 何もしない（サーバーが最後に守る）
+        name.setCustomValidity(data.error || '');
+        if (data.error && show) name.reportValidity(); // その場で吹き出しを出す
+      } catch (e) { /* 通信できなくても入力・送信はできる */ }
+    };
+    name.addEventListener('input', () => {
+      name.setCustomValidity(''); // 打ち直したら一旦エラーを外す（チェックし直す）
+      clearTimeout(timer);
+      timer = setTimeout(check, 300);
+    });
+    if (name.value.trim() !== '') check(false); // 前回の名義（localStorage）が入っている場合も確かめる
+
     // 説明: ⓘ を押すと開閉。外を押しても閉じる
     const btn = box.querySelector('[data-alias-info]');
     const pop = box.querySelector('.alias-field__pop');

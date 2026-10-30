@@ -2036,11 +2036,119 @@ function author_html(bool $anonymous, ?string $displayName, ?string $name, ?int 
     return h($shown) . ($seeReal ? ' <span class="muted">（' . $real . '）</span>' : '');
 }
 
-/** 掲示板・コメントの送信元の名義（POST の display_name）。空なら null（本名）。匿名のときも null */
-function posted_display_name(bool $anonymous): ?string
+/**
+ * 掲示板・コメントの送信元の名義（POST の display_name）。空なら null（本名）。匿名のときも null。
+ *   自分の本名（ふりがな含む）をそのまま名義に書いたときも null にする
+ *   → 「名義」バッジ付きの偽物っぽい表示ではなく、リンク付きの本名として出す
+ * @param array|null $user ログイン中のユーザー（current_user()）。渡すと「自分の名前なら本名扱い」を判定する
+ */
+function posted_display_name(bool $anonymous, ?array $user = null): ?string
 {
     $n = mb_substr(trim((string)preg_replace('/\s+/u', ' ', (string)($_POST['display_name'] ?? ''))), 0, 30);
-    return $anonymous || $n === '' ? null : $n;
+    if ($anonymous || $n === '') {
+        return null;
+    }
+    // 自分の名前と同じ（表記ゆれ込み）なら、名義ではなく本名として扱う
+    if ($user !== null && in_array(alias_key($n), alias_own_keys($user), true)) {
+        return null;
+    }
+    return $n;
+}
+
+/* =====================================================================
+ *  なりすまし防止（名義に他の部員のフルネームを使わせない）
+ * =====================================================================
+ *  【なぜ必要？】
+ *    名義（display_name）は自由入力なので、そのままだと「山田太郎」と書けば
+ *    山田さん本人の書き込みに見えてしまう（＝なりすまし）。
+ *  【ルール】他の人のフルネーム（本名 or ふりがな）と「一致」したらダメ。
+ *    「山田」「太郎」だけ、「山田太郎です」のように一部だけなら OK（あだ名・ネタ名義を残すため）
+ *
+ *  【業界標準の考え方】
+ *    ・チェックは必ずサーバー側（PHP）でやる。JS のチェックは「親切な案内」でしかなく、
+ *      開発者ツールで簡単に外せる。本当の守りはサーバー、JS は使いやすさ担当（多層防御）
+ *    ・比べる前に「正規化（normalize）」する。全角/半角・空白・カタカナ/ひらがな・
+ *      見えない文字（ゼロ幅スペース等）の違いで、すり抜けられないようにするため
+ *      例: 「山田 太郎」「山田　太郎」「山田\u200B太郎」「ﾔﾏﾀﾞﾀﾛｳ」→ 全部同じ人として比べる
+ * ===================================================================== */
+
+/**
+ * 名前を比べるための形（比較用キー）にそろえる。保存はせず、比べるときだけ使う
+ *   member_key()（lib/import/text.php）… 全角/半角・空白・康熙部首・よくある異体字（﨑→崎 など）をそろえる
+ *   \p{Cf}  … ゼロ幅スペースなど「見えない文字」。間に挟んで別の名前に見せかける手口を防ぐ
+ *   \p{P}\p{S} … 記号（・ / ★ など）。「山田・太郎」「山田★太郎」もすり抜けられないように消す
+ *   mb_convert_kana 'c' … カタカナ → ひらがな（「ヤマダタロウ」と「やまだたろう」を同じにする）
+ */
+function alias_key(string $name): string
+{
+    $k = member_key($name);
+    $k = preg_replace('/[\p{Cf}\p{P}\p{S}\s]+/u', '', $k) ?? '';
+    return mb_strtolower(mb_convert_kana($k, 'c', 'UTF-8'), 'UTF-8');
+}
+
+/** 自分の名前の比較用キー（本名・ふりがな・アカウント名）。自分の名前は名義に使ってよい */
+function alias_own_keys(array $user): array
+{
+    $keys = [alias_key((string)($user['name'] ?? ''))];
+    if (!empty($user['member_id'])) {
+        // プリペアドステートメント（? に値を後から入れる）なので SQL インジェクションの心配なし
+        $st = db()->prepare('SELECT name, name_kana FROM member WHERE member_id = ?');
+        $st->execute([(int)$user['member_id']]);
+        if ($m = $st->fetch()) {
+            $keys[] = alias_key((string)$m['name']);
+            $keys[] = alias_key((string)($m['name_kana'] ?? ''));
+        }
+    }
+    return array_values(array_filter($keys, static fn($k) => $k !== '')); // 空のキーは捨てる
+}
+
+/**
+ * 全員の名前の比較用キーの一覧（メンバーの本名・ふりがな ＋ アカウント名）。[キー => true]
+ *   static … 1回のリクエストの中では DB を1回しか読まない（同じ関数を何度呼んでも速い）
+ *   キーを配列の「添字」にしておくと、isset($keys[$k]) で一瞬で「あるか」を調べられる（in_array より速い）
+ */
+function alias_all_name_keys(): array
+{
+    static $cache = null;
+    if ($cache === null) {
+        $cache = [];
+        $rows = db()->query('SELECT name, name_kana FROM member
+            UNION ALL SELECT name, NULL FROM user_account')->fetchAll(PDO::FETCH_NUM);
+        foreach ($rows as [$name, $kana]) { // [$a, $b] = 配列を2つの変数に分けて受け取る（分割代入）
+            foreach ([$name, $kana] as $n) {
+                $k = alias_key((string)($n ?? ''));
+                if ($k !== '') {
+                    $cache[$k] = true;
+                }
+            }
+        }
+    }
+    return $cache;
+}
+
+/**
+ * 名義が「なりすまし」に当たるか調べる。問題なければ null、ダメならエラーメッセージ
+ *   他の人のフルネーム（本名・ふりがな・アカウント名）と一致したらダメ。自分の名前は OK
+ */
+function alias_impersonation_error(string $alias, array $user): ?string
+{
+    $k = alias_key($alias);
+    if ($k === '' || in_array($k, alias_own_keys($user), true)) {
+        return null; // 空欄 or 自分の名前 → 本名で投稿するだけなので OK
+    }
+    if (isset(alias_all_name_keys()[$k])) {
+        return '「' . $alias . '」は他の部員の名前のため、名義に使用できません';
+    }
+    return null;
+}
+
+/** POST の名義をチェックする（匿名のときは名義を使わないので常に OK）。投稿処理の elseif の並びで使う */
+function posted_alias_error(array $user): ?string
+{
+    if (($_POST['anonymous'] ?? '') === '1') {
+        return null;
+    }
+    return alias_impersonation_error((string)($_POST['display_name'] ?? ''), $user);
 }
 
 /** 本文欄の上に置く、送信元の名義の入力と匿名チェック（匿名のあいだは名義を使えない。assets/app.js の setupAliasField） */

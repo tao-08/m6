@@ -103,8 +103,13 @@ function comments_handle_post(string $kind, int $targetId, string $backUrl): voi
             $st->execute([$targetId, ...$to]);
             $to = array_map('intval', $st->fetchAll(PDO::FETCH_COLUMN));
         }
+        // なりすまし防止: 他の部員の名前を名義にしていたら、保存せずに戻す（lib/repository.php）
+        if (($aliasError = posted_alias_error($user)) !== null) {
+            flash($aliasError, 'error');
+            redirect($backUrl . '#comments');
+        }
         $anonymous = ($_POST['anonymous'] ?? '') === '1';
-        $displayName = posted_display_name($anonymous);
+        $displayName = posted_display_name($anonymous, $user); // 自分の名前を書いたときは本名扱い（null）
         $pdo->beginTransaction();
         try {
             $pdo->prepare("INSERT INTO comment ($col, user_id, body, anonymous, display_name) VALUES (?, ?, ?, ?, ?)")->execute([$targetId, $uid, $body, (int)$anonymous, $displayName]);

@@ -47,6 +47,8 @@ if (is_post()) {
         $uploads = array_slice(live_image_uploads($_FILES['images'] ?? null), 0, ATTACH_KINDS['board']['max']);
         if (($body === '' && !$uploads) || mb_strlen($body) > 2000) {
             flash('2000文字以内で入力してください（画像のみも可）', 'error');
+        } elseif (($aliasError = posted_alias_error($user)) !== null) { // なりすまし防止（他の部員の名前の名義は不可。lib/repository.php）
+            flash($aliasError, 'error');
         } else {
             // 返信先: このスレの書き込みだけ（HTML を書き換えて他のスレの ID を送られても入れない）。最大 REPLY_MAX 件
             $to = array_values(array_unique(array_filter(array_map('intval', (array)($_POST['reply_to'] ?? [])), static fn($v) => $v > 0)));
@@ -60,7 +62,7 @@ if (is_post()) {
             $newFiles = [];
             $pdo->beginTransaction();
             try {
-                $postId = board_add_post($id, $uid, $body, $anonymous = ($_POST['anonymous'] ?? '') === '1', posted_display_name($anonymous));
+                $postId = board_add_post($id, $uid, $body, $anonymous = ($_POST['anonymous'] ?? '') === '1', posted_display_name($anonymous, $user));
                 $ins = $pdo->prepare('INSERT INTO board_post_reply (post_id, reply_to_post_id) VALUES (?, ?)');
                 foreach ($to as $toId) {
                     $ins->execute([$postId, $toId]);

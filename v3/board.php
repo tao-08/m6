@@ -50,6 +50,8 @@ if (is_post()) {
             flash('入部年度が未設定のため、同期のみは選べません', 'error');
         } elseif ($restrict && ($_POST['only_cohort'] ?? '') !== '1' && ($yFrom || $yTo) && !($yFrom && $yTo && $yFrom <= $yTo && $yFrom >= $yearMin && $yTo <= $yearMax)) {
             flash('学年の範囲が正しくありません', 'error');
+        } elseif (($aliasError = posted_alias_error($user)) !== null) { // なりすまし防止（他の部員の名前の名義は不可。lib/repository.php）
+            flash($aliasError, 'error');
         } else {
             // 制限（「参加できる学年を絞る」ON のときだけ）: 現役のみ / 同期のみ（立てた人の入部年度）/ 入部年度の範囲。
             // 同期のみのときは範囲を無視。範囲は入部年度で保存する（進級しても同じ人たちのまま）
@@ -66,7 +68,7 @@ if (is_post()) {
             foreach ($years as $yr) {
                 $insYear->execute([$threadId, $yr]);
             }
-            $postId = board_add_post($threadId, (int)$user['user_id'], $body, $anonymous = ($_POST['anonymous'] ?? '') === '1', posted_display_name($anonymous));
+            $postId = board_add_post($threadId, (int)$user['user_id'], $body, $anonymous = ($_POST['anonymous'] ?? '') === '1', posted_display_name($anonymous, $user));
             attach_add($pdo, 'board', $postId, $uploads, (int)$user['user_id'], $newFiles);
             $pdo->commit();
             } catch (RuntimeException $e) { // 画像のエラー（形式・大きさなど）。スレごと取り消す
