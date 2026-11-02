@@ -105,6 +105,41 @@ $nav = [
             document.querySelector('meta[name="theme-color"]').content = theme === 'dark' ? '#0d0d11' : '#f6f5f1';
         })();
     </script>
+    <!--
+        豪華な演出（assets/fx.css / assets/fx.js）のスイッチ。CSS が読み込まれる「前」に <html> にクラスを付ける。
+          FX_MODE … 'full'（全部盛り）/ 'lite'（軽量: 背景のゆらぎ・傾き・ぼかしを止める）/ 'off'（演出なし = 元の見た目）
+                    ★ 全員まとめて元に戻したいときは、ここを 'off' にして main へ反映（デプロイ）するだけ。
+          個人の設定 … ブラウザのコンソールで localStorage.setItem('fx', 'off' か 'lite')。消すと元に戻る。
+                    （FX_MODE より重くはできない。FX_MODE が 'off' なら個人設定で 'full' にしても付かない）
+          自動で下げる場合 … 「視差効果を減らす」設定の端末は 'off'、通信節約モード・メモリ少なめの端末は 'lite'
+          fx-noreveal … 位置の計算が大事な編集画面（セッティングシート・TAB譜・練習・スタジオ割・新規追加）では、
+                        スクロールで出てくる演出だけ使わない
+          fx-boot … 読み込み中のちらつき防止の仮の非表示。fx.js が外す。動かなくても 2.5 秒で必ず外れる
+    -->
+    <script>
+        (function () {
+            var FX_MODE = 'full';
+            var level = { off: 0, lite: 1, full: 2 };
+            var mode = FX_MODE;
+            try {
+                var mine = localStorage.getItem('fx');
+                if (level[mine] !== undefined && level[mine] < level[mode]) mode = mine;
+            } catch (e) {}
+            var c = navigator.connection;
+            if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) mode = 'off';
+            else if (mode === 'full' && ((c && c.saveData) || (navigator.deviceMemory && navigator.deviceMemory <= 2))) mode = 'lite';
+            if (mode === 'off') return;
+            var html = document.documentElement;
+            html.classList.add('fx');
+            if (mode === 'lite') html.classList.add('fx-lite');
+            if (/\/(setting_sheet|tab|practice|studio|import)(\.php)?\/?$/.test(location.pathname)) {
+                html.classList.add('fx-noreveal');
+            } else {
+                html.classList.add('fx-boot');
+                setTimeout(function () { html.classList.remove('fx-boot'); }, 2500);
+            }
+        })();
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+JP:wght@400;500;700;900&display=swap" rel="stylesheet">
@@ -113,12 +148,15 @@ $nav = [
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400..600,0..1,0&display=block" rel="stylesheet">
     <!-- ?v= はキャッシュ対策。ファイルの更新時刻が入る（lib/bootstrap.php の asset_url）ので、CSS・JS を変えても数字を上げなくてよい -->
     <link rel="stylesheet" href="<?= asset_url('assets/app.css') ?>">
+    <!-- 豪華な演出。app.css の「後」に読む（同じ強さの規則は後に書いたほうが勝つため）。全部 html.fx 始まりなので、fx クラスが無ければ効かない -->
+    <link rel="stylesheet" href="<?= asset_url('assets/fx.css') ?>">
     <?php if (($instCss = instrument_color_css()) !== ''): ?>
     <!-- 楽器の色（楽器の管理 instruments.php で変更した色）。中身は lib/bootstrap.php の instrument_color_css()。
          色は '#rrggbb' の形だけを通しているので、そのまま書き出して安全 -->
     <style><?= $instCss ?></style>
     <?php endif; ?>
     <script src="<?= asset_url('assets/app.js') ?>" defer></script>
+    <script src="<?= asset_url('assets/fx.js') ?>" defer></script><!-- 演出。app.js の「後」に動かす（defer は書いた順に動く） -->
 </head>
 <body>
 <header class="topbar">

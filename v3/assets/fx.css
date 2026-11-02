@@ -1,0 +1,204 @@
+/**
+ * =====================================================================
+ *  fx.css — サイト全体の「豪華な演出」専用 CSS（app.css は触らず、上に重ねる）
+ * =====================================================================
+ *  ■ 設計のルール（後から見返す人へ）
+ *    1. ここにある規則は、ぜんぶ `html.fx` で始める。
+ *       <html> に fx クラスが付いていないとき（= 演出 OFF のとき）は、1行も効かない。
+ *       → 元の見た目に戻したいときは「fx クラスを付けない」だけでよい（partials/header.php の FX_MODE）。
+ *    2. `html.fx-lite` は軽量モード。重い演出（背景のゆらぎ・傾き・ぼかし・無限ループ）を止める。
+ *    3. アニメーションの fill-mode は「backwards」だけ使う（forwards / both は使わない）。
+ *       理由: 終わった後に transform が残ると、中の position: fixed の基準がずれて表示が壊れるため
+ *            （app.css の page-in のコメントと同じ注意）。
+ *    4. 動かすのは transform と opacity だけ（GPU が担当する。width / top などは動かさない）。
+ *    5. 印刷（@media print）では演出を全部止める（隠れた要素が印刷から消えないように）。
+ *
+ *  ■ 一緒に動くファイル
+ *    assets/fx.js … 「スクロールで順番に出す」「数字のカウントアップ」「紙吹雪」など、CSS だけでは足りない部分
+ *    partials/header.php … fx クラスのスイッチ、この CSS と fx.js の読み込み
+ *
+ *  ■ 戻し方（3段階）
+ *    A. 全員まとめて止める … header.php の FX_MODE を 'off' にして main へ反映
+ *    B. 自分だけ止める    … ブラウザのコンソールで localStorage.setItem('fx','off')（'lite' で軽量）
+ *    C. 完全に元へ         … git revert、またはタグ pre-fancy-motion へ戻す
+ * =====================================================================
+ */
+
+/* ===== 0. 共通の部品（イージングと色） =====
+   spring … 少し行き過ぎてから戻る「バネ」の動き（cubic-bezier の 2つ目の数字が 1 を超えると行き過ぎる） */
+html.fx {
+  --fx-spring: cubic-bezier(.34, 1.56, .64, 1);      /* しっかりバネ: 出現・ホバー */
+  --fx-spring-soft: cubic-bezier(.22, 1.2, .36, 1);  /* やさしいバネ: バーが伸びる動き */
+  --fx-out: cubic-bezier(.2, .8, .2, 1);             /* app.css の --ease-out と同じ */
+  --fx-glow: color-mix(in srgb, var(--accent) 38%, transparent); /* 光（影）の色 */
+}
+
+/* ===== 1. 背景のゆらぎ（アンビエント） =====
+   画面の奥に、赤とオレンジの光がゆっくり漂う。body::before を使う（app.css では未使用）。
+   z-index: -1 で本文の後ろに回し、pointer-events: none でクリックを邪魔しない。
+   inset: -20% で画面より大きく作り、動いても端が見えないようにする */
+html.fx:not(.fx-lite) body::before {
+  content: "";
+  position: fixed; inset: -20%; z-index: -1; pointer-events: none;
+  background:
+    radial-gradient(38% 34% at 18% 22%, color-mix(in srgb, var(--accent) 13%, transparent), transparent 70%),
+    radial-gradient(34% 30% at 82% 30%, color-mix(in srgb, var(--accent-2) 12%, transparent), transparent 70%),
+    radial-gradient(40% 36% at 55% 85%, color-mix(in srgb, var(--headliner) 8%, transparent), transparent 70%);
+  animation: fx-drift 26s ease-in-out infinite alternate;
+}
+@keyframes fx-drift {
+  from { transform: translate3d(-3%, -2%, 0) scale(1); }
+  to   { transform: translate3d(3%, 3%, 0) scale(1.08); }
+}
+
+/* ===== 2. ページ上部の「スクロール量バー」（JS が transform: scaleX を更新） =====
+   ヘッダー(z-index: 20)より手前に、細い線を重ねる */
+html.fx .fx-progress {
+  position: fixed; top: 0; left: 0; right: 0; height: 3px; z-index: 21; pointer-events: none;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  box-shadow: 0 0 10px var(--fx-glow);
+  transform: scaleX(0); transform-origin: 0 50%;
+}
+
+/* ヘッダーはスクロールすると影が出て、浮いて見える（JS が fx-stuck を付け外し） */
+html.fx .topbar { transition: box-shadow .3s ease, background-color .3s ease; }
+html.fx .topbar.fx-stuck { box-shadow: 0 10px 30px -14px rgba(20, 18, 30, .28); }
+
+/* ===== 3. スクロールで「順番にせり上がる」出現 =====
+   流れ: [fx-boot] 読み込み中は隠す → JS が fx-wait を付けて隠し直す → 画面に入ったら fx-in を付ける
+   fx-boot … 読み込んだ瞬間に一瞬見えてから消える「ちらつき」を防ぐための仮の非表示。
+             JS が動いたら外す。JS が動かなかったときも header.php のタイマー（2.5秒）で必ず外れる */
+html.fx-boot .container > :not(.stats-filter, .toasts, .grid, .stats-grid, dialog, [hidden], .sticky-actions, .day-bar),
+html.fx-boot .container > :is(.grid, .stats-grid) > * { opacity: 0; }
+
+html.fx .fx-wait { opacity: 0; }
+html.fx .fx-in {
+  animation: fx-rise .7s var(--fx-spring) backwards;
+  animation-delay: calc(var(--fx-i, 0) * 60ms); /* --fx-i … JS が兄弟の順番（0,1,2…）を入れる = 少しずつ遅れて出る */
+}
+@keyframes fx-rise {
+  from { opacity: 0; transform: translateY(28px) scale(.95); }
+}
+
+/* ===== 4. ページを移るときの切り替え（app.css の View Transitions を上書き） =====
+   古いページは上へすっと消え、新しいページはバネでせり上がる */
+html.fx::view-transition-old(root) { animation: fx-page-out .16s ease both; }
+html.fx::view-transition-new(root) { animation: fx-page-in .5s var(--fx-spring) both; }
+@keyframes fx-page-out { to { opacity: 0; transform: translateY(-8px) scale(.995); } }
+@keyframes fx-page-in { from { opacity: 0; transform: translateY(18px) scale(.99); } }
+
+/* ===== 5. 見出し（.display）の光の走り（JS が最初の1個に fx-shine を付け、終わったら外す） =====
+   文字色を「グラデーションで切り抜いた背景」にして、赤く光る帯を左から右へ流す */
+html.fx .display.fx-shine {
+  background: linear-gradient(100deg, var(--text) 38%, var(--accent) 46%, var(--accent-2) 52%, var(--text) 62%) 100% 0 / 300% 100% no-repeat;
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; color: transparent;
+  animation: fx-shine 1.5s .25s var(--fx-out) forwards; /* ここは終わったら JS が fx-shine ごと外すので forwards でも安全 */
+}
+@keyframes fx-shine { to { background-position: 0 0; } }
+
+/* ===== 6. ボタン =====
+   ホバーでバネのように浮き、押すとへこむ。主ボタン（.btn--primary）は光の帯が走る。
+   クリックの瞬間には、輪っか（fx-ping）が広がる（JS が付け外し） */
+html.fx .btn { transition: transform .28s var(--fx-spring), box-shadow .25s ease, background-color .2s ease, border-color .2s ease, color .2s ease; }
+html.fx .btn:hover { transform: translateY(-2px) scale(1.04); }
+html.fx .btn:active { transform: scale(.94); transition-duration: .08s; }
+
+/* 主ボタンの背景は「光の帯（1枚目）」＋「いつもの赤グラデ（2枚目）」の2枚重ね。
+   光の帯は普段は右の外（160%）に隠れていて、ホバーすると左の外（-60%）まで走り抜ける */
+html.fx .btn--primary {
+  background-image:
+    linear-gradient(105deg, transparent 38%, rgba(255, 255, 255, .55) 50%, transparent 62%),
+    linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 70%, var(--accent-2)));
+  background-size: 260% 100%, 100% 100%;
+  background-position: 160% 0, 0 0;
+  background-repeat: no-repeat;
+}
+html.fx .btn--primary:hover { animation: fx-btn-shine .85s ease; }
+@keyframes fx-btn-shine { to { background-position: -60% 0, 0 0; } }
+
+/* クリックの輪っか: box-shadow を 0 → 16px に広げながら透明にする（overflow を触らないので、ほかの見た目を壊さない） */
+html.fx .fx-ping { animation: fx-ping .6s ease-out; }
+@keyframes fx-ping {
+  from { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 50%, transparent); }
+  to   { box-shadow: 0 0 0 16px transparent; }
+}
+
+/* ナビ（ヘッダーのメニュー）: ホバーで少し浮く。いまのページは赤い光を帯びる */
+html.fx .nav__link { transition: color .15s ease, background-color .15s ease, box-shadow .25s ease, transform .28s var(--fx-spring); }
+html.fx .nav__link:hover { transform: translateY(-2px); }
+html.fx .nav__link.is-active { box-shadow: inset 0 0 0 1px var(--border), 0 6px 16px -8px var(--fx-glow); }
+
+/* ロゴ: ホバーで弾む */
+html.fx .brand__logo { transition: transform .35s var(--fx-spring); }
+html.fx .brand:hover .brand__logo { transform: translateY(-2px) rotate(-2deg) scale(1.06); }
+
+/* 入力欄: フォーカスすると赤い光のリングがふわっと広がる */
+html.fx input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"]),
+html.fx select, html.fx textarea { transition: box-shadow .3s var(--fx-out), border-color .2s ease; }
+html.fx input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"]):focus-visible,
+html.fx select:focus-visible, html.fx textarea:focus-visible { box-shadow: 0 0 0 5px var(--accent-soft); }
+
+/* ===== 7. カード（マウスのある環境だけ） =====
+   ライブのカード: ホバーでバネのように浮き上がり、マウスの位置に合わせて少し傾く（3D）。
+   --tx / --ty は JS がマウス位置から計算して入れる。--mx / --my は光の中心 */
+@media (hover: hover) and (pointer: fine) {
+  html.fx:not(.fx-lite) .live-card {
+    transition: transform .4s var(--fx-spring), border-color .2s ease, box-shadow .35s ease;
+  }
+  html.fx:not(.fx-lite) .live-card:hover {
+    transform: perspective(900px) translateY(-6px) rotateX(var(--tx, 0deg)) rotateY(var(--ty, 0deg));
+    box-shadow: 0 22px 44px -18px var(--fx-glow), var(--shadow);
+  }
+  /* マウスを追いかける光（スポットライト）。background-image だけを足す（色は app.css のまま） */
+  html.fx:not(.fx-lite) .live-card:hover,
+  html.fx:not(.fx-lite) .container > .grid > .card:hover {
+    background-image: radial-gradient(420px circle at var(--mx, 50%) var(--my, 50%), color-mix(in srgb, var(--accent) 9%, transparent), transparent 62%);
+  }
+}
+
+/* ===== 8. ランキング・メダル・バー ===== */
+/* 1〜3位の数字は金・銀・銅。PHP が同率を同じ順位にした data-rank があればそれ、無ければ並び順で判定。
+   順位の数字を出さない一覧（.ranking--plain）は対象外 */
+html.fx .ranking:not(.ranking--plain) li[data-rank="1"]::before, html.fx .ranking:not(.ranking--plain) li:not([data-rank]):nth-child(1)::before { color: #c2920a; font-size: 15px; text-shadow: 0 0 12px rgba(247, 215, 116, .8); }
+html.fx .ranking:not(.ranking--plain) li[data-rank="2"]::before, html.fx .ranking:not(.ranking--plain) li:not([data-rank]):nth-child(2)::before { color: #8d97a2; font-size: 14px; }
+html.fx .ranking:not(.ranking--plain) li[data-rank="3"]::before, html.fx .ranking:not(.ranking--plain) li:not([data-rank]):nth-child(3)::before { color: #a8622c; font-size: 14px; }
+
+/* 棒グラフ(.bar)は、画面に入ったら左から伸びる（JS が fx-bar-wait を付けて、外すと transition で伸びる） */
+html.fx .bar { transform-origin: 0 50%; transition: transform 1s var(--fx-spring-soft); }
+html.fx .bar.fx-bar-wait { transform: scaleX(0); }
+
+/* メダル: 上の一点からゆらゆら揺れる。金は光る。押すとくるっと回る */
+html.fx:not(.fx-lite) .medal { transform-origin: 50% 0; animation: fx-medal-swing 3.6s ease-in-out infinite; }
+html.fx .medal--1 { filter: drop-shadow(0 0 3px rgba(247, 215, 116, .9)); }
+html.fx .medal-btn:active .medal { animation: fx-medal-spin .7s var(--fx-spring); }
+@keyframes fx-medal-swing { 0%, 100% { transform: rotate(-9deg); } 50% { transform: rotate(9deg); } }
+@keyframes fx-medal-spin { from { transform: rotate(0) scale(1); } 50% { transform: rotate(180deg) scale(1.5); } to { transform: rotate(360deg) scale(1); } }
+
+/* いいね(♥): 押した瞬間に大きく弾む（app.css の like-pop を、より大きいバネに上書き） */
+html.fx .like.is-pop .like__heart { animation: fx-heart-pop .5s var(--fx-spring); }
+@keyframes fx-heart-pop { 0% { transform: scale(1); } 40% { transform: scale(1.7) rotate(-10deg); } 100% { transform: scale(1); } }
+
+/* ===== 9. お知らせ（トースト）・モーダル ===== */
+html.fx .toast { animation: fx-toast-in .6s var(--fx-spring); }
+@keyframes fx-toast-in { from { opacity: 0; transform: translateY(-28px) scale(.88); } }
+
+/* ダイアログの後ろをすりガラス風にぼかす（既存のモーダルの動きは触らない） */
+html.fx:not(.fx-lite) dialog::backdrop { backdrop-filter: blur(6px) saturate(120%); -webkit-backdrop-filter: blur(6px) saturate(120%); }
+
+/* ===== 10. 紙吹雪（fx.js が <i class="fx-confetti"> を作って、Web Animations API で動かす） ===== */
+.fx-confetti { position: fixed; z-index: 9999; pointer-events: none; border-radius: 2px; }
+
+/* ===== 11. 動きを減らす設定の人 / 印刷 =====
+   通常は header.php のスイッチで fx クラス自体が付かない。念のための二重の保険 */
+@media (prefers-reduced-motion: reduce) {
+  html.fx body::before, html.fx .medal { animation: none; }
+  html.fx .fx-wait { opacity: 1; }
+  html.fx .fx-in { animation: none; }
+}
+@media print {
+  html.fx body::before, html.fx .fx-progress, .fx-confetti { display: none !important; }
+  html.fx .fx-wait, html.fx-boot .container > *, html.fx-boot .container > * > * { opacity: 1 !important; }
+  html.fx .fx-in, html.fx .display.fx-shine { animation: none !important; }
+  html.fx .bar.fx-bar-wait { transform: none !important; }
+}
