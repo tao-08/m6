@@ -1,0 +1,85 @@
+/* =====================================================================
+ *  assets/studio_info.css — スタジオ情報（studio_list.php / studio_info.php）だけの見た目
+ *  色・角丸は app.css の変数（--accent など）を使う → ダークモードでも自動で色が変わる
+ *  クラス名は sinfo-（studio info）で始める。スタジオ割（studio.css の studio-）とぶつけないため
+ *  命名は BEM（Block__Element--Modifier）: sinfo-list__item = 「一覧」の中の「1件」
+ * ===================================================================== */
+
+/* ---- 一覧 ---- */
+.sinfo-list { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 10px; }
+.sinfo-list__item { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 16px; color: inherit; }
+.sinfo-list__name { font-weight: 800; display: inline-flex; align-items: center; gap: 8px; }
+.sinfo-list__meta { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+.sinfo-list__meta .icon, .sinfo-info .icon { font-size: 16px; vertical-align: -3px; }
+
+/* ---- カード（セクション） ---- */
+.sinfo-section { margin-top: 14px; display: grid; gap: 10px; }
+.sinfo-section > h2 { margin: 0; font-size: 15px; font-weight: 800; display: flex; align-items: center; gap: 6px; }
+.sinfo-sub { margin: 4px 0 6px; font-size: 13px; font-weight: 800; color: var(--muted); }
+.sinfo-links { display: flex; flex-wrap: wrap; gap: 8px; }
+.sinfo-info { margin: 0; display: grid; gap: 6px; overflow-wrap: anywhere; }
+.sinfo-note { margin: 0; overflow-wrap: anywhere; }
+.sinfo-plain { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.sinfo-price-list li { display: flex; justify-content: space-between; gap: 12px; }
+.sinfo-equip { display: grid; grid-template-columns: 7.5em 1fr; gap: 4px 10px; margin-bottom: 6px; }
+.sinfo-equip__cat { font-size: 13px; font-weight: 800; color: var(--muted); }
+
+/* ---- 地図 ---- */
+.sinfo-mapcard { padding: 0; overflow: hidden; }  /* 地図をカードの角まで広げる（角丸ははみ出しを隠して保つ） */
+.sinfo-map { width: 100%; border-radius: var(--radius-sm); z-index: 0; } /* z-index: 0 → Leaflet の部品がヘッダーの上に出ないように */
+.sinfo-map--list { height: min(52vh, 420px); border-radius: 0; }
+.sinfo-map--one { height: 240px; }
+/* ピン: 赤い涙形（四角を45度回して角を1つだけ尖らせる） */
+.sinfo-pin span { display: block; width: 26px; height: 26px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg);
+  background: var(--accent); border: 3px solid #fff; box-shadow: 0 2px 6px rgba(0, 0, 0, .35); }
+.sinfo-pop a { font-weight: 800; }
+/* ダークモード: 地図の絵だけ色を反転して暗くする（ピンやポップアップは反転しない） */
+[data-theme="dark"] .sinfo-map .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(.85) contrast(.9); }
+[data-theme="dark"] .leaflet-popup-content-wrapper, [data-theme="dark"] .leaflet-popup-tip { background: var(--surface); color: var(--text); }
+[data-theme="dark"] .leaflet-container .leaflet-control-attribution { background: rgba(22, 22, 28, .8); color: var(--muted); }
+
+/* ---- 料金表 ---- */
+.sinfo-table-wrap { overflow-x: auto; } /* スマホで表が横にはみ出すときは表だけスクロール */
+.sinfo-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.sinfo-table th, .sinfo-table td { padding: 6px 8px; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; }
+.sinfo-table th { font-size: 12px; color: var(--muted); font-weight: 800; }
+.sinfo-table .num { text-align: right; font-variant-numeric: tabular-nums; } /* tabular-nums = 数字の幅をそろえて桁を縦に並べる */
+.sinfo-student { color: var(--headliner); font-weight: 800; }
+
+/* ---- 料金シミュレーション ---- */
+.sinfo-sim { display: grid; gap: 12px; }
+.sinfo-sim__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; } /* 画面幅に合わせて列の数が自動で変わる */
+.sinfo-field { display: grid; gap: 4px; font-size: 13px; }
+.sinfo-field > span:first-child { color: var(--muted); font-weight: 800; font-size: 12px; }
+.sinfo-sim select, .sinfo-sim input[type=date], .sinfo-sim input[type=number],
+.sinfo-edit input[type=text], .sinfo-edit input[type=url], .sinfo-edit input[type=tel], .sinfo-edit input[type=number], .sinfo-edit select, .sinfo-edit textarea {
+  min-width: 0; width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); font: inherit; }
+.sinfo-seg { display: flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.sinfo-seg label { flex: 1; text-align: center; padding: 8px 4px; cursor: pointer; font-size: 13px; }
+.sinfo-seg input { position: absolute; opacity: 0; pointer-events: none; } /* 丸ボタン自体は隠し、ラベル全体を押せるボタンにする */
+.sinfo-seg label:has(input:checked) { background: var(--accent); color: var(--on-accent); font-weight: 800; }
+.sinfo-check { display: inline-flex; align-items: center; gap: 6px; font-weight: 800; }
+.sinfo-sim__rentals { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 6px 14px; }
+.sinfo-rental { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.sinfo-rental input { width: 70px !important; }
+.sinfo-sim__result { border-top: 1px solid var(--border); padding-top: 12px; display: grid; gap: 8px; }
+.sinfo-sim__total { display: flex; flex-wrap: wrap; gap: 8px 28px; }
+.sinfo-sim__total > div { display: grid; }
+.sinfo-sim__yen { font-size: 28px; font-weight: 900; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.sinfo-sim__total > div:first-child .sinfo-sim__yen { color: var(--accent); }
+.sinfo-sim__lines { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; font-size: 13px; }
+.sinfo-sim__lines li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 12px; }
+.sinfo-sim__save { margin: 0; color: var(--headliner); font-weight: 800; font-size: 13px; }
+.sinfo-sim__warn { margin: 0; color: var(--warn); background: var(--warn-bg); border-radius: 8px; padding: 6px 10px; font-size: 13px; }
+
+/* ---- 編集フォーム（venue.css と同じ作り） ---- */
+.sinfo-edit > summary { cursor: pointer; display: inline-flex; align-items: center; gap: 4px; color: var(--muted); font-size: 13px; list-style: none; }
+.sinfo-edit > summary::-webkit-details-marker { display: none; }
+.sinfo-edit[open] > summary { color: var(--accent); }
+.sinfo-edit__form { display: grid; gap: 8px; padding-top: 10px; }
+.sinfo-edit__row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.sinfo-edit .sinfo-edit__row > * { width: auto; }
+.sinfo-edit__row .grow { flex: 1 1 140px; }
+.sinfo-edit__row input[type=number] { width: 90px; }
+.sinfo-edit__rate { padding-bottom: 8px; border-bottom: 1px dashed var(--border); }
+.sinfo-delete { margin-top: 20px; display: flex; justify-content: flex-end; }
