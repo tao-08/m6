@@ -10,8 +10,9 @@
  *    シミュレーションは「パックの自動適用（安ければ）」と「+1時間延長したらいくら増えるか」も出す
  *  編集（幹部と管理者だけ）: 各カードの「編集」を開くとフォームが出る
  *
- *  POST は7種類（action）。どれも 権限確認 → CSRF 検証 → 入力検証 → プリペアドステートメント → リダイレクト。
- *    save_info / save_rooms / save_rates / save_packs / save_rentals / save_equipment / delete_studio
+ *  ✨AIで入力（幹部と管理者）: api_studio_ai.php が調べた提案をプレビューし、選んだ項目を apply_ai で反映（lib/studio_ai.php）
+ *  POST は8種類（action）。どれも 権限確認 → CSRF 検証 → 入力検証 → プリペアドステートメント → リダイレクト。
+ *    save_info / save_rooms / save_rates / save_packs / save_rentals / save_equipment / apply_ai / delete_studio
  *    ・料金表とパックには「対象」がある: バンド（people = NULL）か、個人練習 n人（people = n）
  *    ・行の一覧（部屋・料金・レンタル・機材）は venue.php と同じ「行ごとの入力欄をまとめて保存」方式:
  *        id=0 の行 → 追加 / 主な欄を空にした行 → 削除 / それ以外 → 更新
@@ -26,6 +27,7 @@
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/studio_info.php';
+require_once __DIR__ . '/lib/studio_ai.php';
 $user = require_login();
 $pdo = db();
 $canEdit = is_executive();
@@ -287,6 +289,23 @@ if (is_post()) {
         redirect($self . '#equipment');
     }
 
+    // ---- AI の提案を反映（提案は api_studio_ai.php がセッションに置いたもの。画面から来るのは「どの項目を使うか」だけ）----
+    if ($action === 'apply_ai') {
+        $prop = $_SESSION['studio_ai'][$studioId] ?? null;
+        // array_intersect = 2つの配列の両方にある値だけ残す → 決められた項目名以外は捨てる
+        $sections = array_values(array_intersect(array_keys(STUDIO_AI_SECTIONS), (array)($_POST['sections'] ?? [])));
+        if (!is_array($prop)) {
+            flash('AI の結果が見つかりません。もう一度「AIで入力」してください', 'error');
+        } elseif (!$sections) {
+            flash('反映する項目を選んでください', 'error');
+        } else {
+            studio_ai_apply($pdo, $studioId, $prop, $sections, $uid);
+            unset($_SESSION['studio_ai'][$studioId]); // 使い終わった提案は捨てる（二重に反映しないように）
+            flash('反映しました');
+        }
+        redirect($self);
+    }
+
     // ---- スタジオの削除（部屋・料金・レンタル・機材は外部キーの CASCADE で一緒に消える）----
     if ($action === 'delete_studio') {
         $pdo->prepare('DELETE FROM studio WHERE studio_id = ?')->execute([$studioId]);
@@ -396,6 +415,24 @@ render_header($studio['name'], 'tools');
 <link rel="stylesheet" href="<?= asset_url('assets/studio_info.css') ?>">
 <nav class="crumbs"><a href="tools">ツール</a> / <a href="studio_list">スタジオ情報</a></nav>
 <h1 class="display display--sm"><?= h($studio['name']) ?></h1>
+
+<?php if ($canEdit && claude_enabled()): ?>
+<!-- ===== ✨AIで入力（幹部と管理者。結果のプレビューは JS が #studio-ai-result に作る） ===== -->
+<section class="card sinfo-section sinfo-ai" id="studio-ai" data-studio-id="<?= $studioId ?>" data-csrf="<?= h(csrf_token()) ?>">
+    <div class="sinfo-ai__head">
+        <button type="button" class="btn btn--sm" data-ai-run><?= icon('auto_awesome') ?> AIで入力</button>
+        <span class="muted small" data-ai-status></span>
+    </div>
+    <form method="post" class="sinfo-ai__result" id="studio-ai-result" hidden
+        data-confirm="選んだ項目を AI の結果で置き換えます（料金・パック・レンタル・機材は今の行が削除されます）。よろしいですか？">
+        <?= csrf_field() ?>
+        <input type="hidden" name="action" value="apply_ai">
+        <input type="hidden" name="studio_id" value="<?= $studioId ?>">
+        <div data-ai-body></div>
+        <div><button type="submit" class="btn btn--primary btn--sm"><?= icon('download_done') ?> 選んだ項目を反映</button></div>
+    </form>
+</section>
+<?php endif; ?>
 
 <!-- ===== 基本情報 ===== -->
 <section class="card sinfo-section">

@@ -100,3 +100,11 @@
 .sinfo-sim__ext { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; padding: 8px 12px; border-radius: 8px;
   background: var(--accent-soft); font-size: 14px; }
 .sinfo-sim__ext strong { font-size: 18px; font-variant-numeric: tabular-nums; }
+
+/* ---- ✨AIで入力 ---- */
+.sinfo-ai__head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.sinfo-ai__result { display: grid; gap: 10px; }
+.sinfo-ai__sec { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
+.sinfo-ai__sec > summary { cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.sinfo-ai__lines { padding-top: 8px; font-size: 13px; overflow-wrap: anywhere; }
+.sinfo-ai__src a { margin-right: 6px; }

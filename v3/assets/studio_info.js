@@ -4,6 +4,7 @@
  *  1. 地図（#studio-map）… Leaflet で OpenStreetMap を出し、#studio-pins の JSON からピンを立てる
  *  2. 座標の取得（[data-geo-lookup]）… 住所 → 緯度・経度（国土地理院の住所検索 API）
  *  3. 料金シミュレーション（#studio-sim）… 入力が変わるたびに合計・1人あたり・内訳・パック・+1時間延長を計算して表示
+ *  4. ✨AIで入力（#studio-ai）… AI の提案をプレビューして、反映する項目を選ぶ
  *
  *  ■ IIFE（即時実行関数）とは
  *    (() => { ... })() の形。関数を作ってすぐ実行する。中で作った変数が外（ほかの JS）とぶつからない。
@@ -353,8 +354,110 @@
     render(); // 最初に1回表示
   };
 
+  // ===================================================================
+  //  4. ✨AIで入力（幹部と管理者）
+  //     api_studio_ai.php に頼む → 提案をプレビュー → 項目ごとにチェックして「反映」（studio_info.php の apply_ai）
+  //     提案の中身はサーバーのセッションにあるので、ここから送るのは「どの項目を使うか」のチェックだけ
+  // ===================================================================
+  const setupAi = () => {
+    const box = document.getElementById('studio-ai');
+    if (!box) return;
+    const btn = box.querySelector('[data-ai-run]');
+    const status = box.querySelector('[data-ai-status]');
+    const form = document.getElementById('studio-ai-result');
+    const body = form.querySelector('[data-ai-body]');
+
+    const DAYS = ['全日', '平日', '土日祝'];
+    const SECTIONS = { info: '基本情報', rooms: '部屋', rates: '料金', packs: 'パック', rentals: 'レンタル', equipment: '機材' };
+    const INFO = { reserve_url: '予約ページ', website_url: 'サイト', address: '住所', access: '最寄り駅', phone: '電話', student_note: '学割の条件', note: 'メモ' };
+    const target = (p) => (p == null ? 'バンド' : '個人' + p + '人');
+    const where = (r) => [target(r.people), r.room || '全部屋', DAYS[r.day_type]].join('・');
+    const price = (r) => yen(r.price) + (r.student_price != null ? '（学割 ' + yen(r.student_price) + '）' : '');
+
+    /** 項目ごとに、プレビューの1行の文字を作る関数 */
+    const LINES = {
+      info: (p) => Object.keys(INFO).filter((k) => p.info[k]).map((k) => INFO[k] + ': ' + p.info[k]),
+      rooms: (p) => p.rooms.map((r) => r.name + (r.size_note ? '（' + r.size_note + '）' : '')),
+      rates: (p) => p.rates.map((r) => where(r) + ' ' + hm(r.start_min) + '〜' + hm(r.end_min) + ' ' + price(r) + '/h'),
+      packs: (p) => p.packs.map((r) => r.name + ': ' + where(r) + ' ' + hm(r.start_min) + '〜' + hm(r.end_min)
+        + (r.minutes ? ' のうち ' + hm(r.minutes) : '') + ' ' + price(r)),
+      rentals: (p) => p.rentals.map((r) => r.name + ' ' + yen(r.price) + (r.per_hour ? '/h' : '/回')),
+      equipment: (p) => p.equipment.map((r) => (r.room ? r.room + ' ' : '') + r.category + ': ' + r.model_name + (r.quantity !== 1 ? ' × ' + r.quantity : '')),
+    };
+
+    const show = (p, yenUsed) => {
+      body.replaceChildren();
+      if (!p.found) {
+        body.append(el('p', 'sinfo-sim__warn', '情報が見つかりませんでした。サイトの URL を入れてから試すと見つかりやすくなります'));
+      }
+      let any = false;
+      Object.keys(SECTIONS).forEach((key) => {
+        const lines = LINES[key](p);
+        if (!lines.length) return; // 提案が無い項目は出さない（反映もできない）
+        any = true;
+        // <details> で畳む。見出しのチェックボックスが「この項目を反映するか」
+        const d = el('details', 'sinfo-ai__sec');
+        const sum = el('summary');
+        const label = el('label', 'sinfo-check');
+        const cb = el('input');
+        cb.type = 'checkbox';
+        cb.name = 'sections[]';
+        cb.value = key;
+        cb.checked = true;
+        label.append(cb, document.createTextNode(' ' + SECTIONS[key]));
+        sum.append(label, el('span', 'muted small', lines.length + '件'));
+        const ul = el('ul', 'sinfo-plain sinfo-ai__lines');
+        lines.forEach((t) => ul.append(el('li', '', t)));
+        d.append(sum, ul);
+        body.append(d);
+      });
+      if (p.caution) body.append(el('p', 'sinfo-sim__warn', p.caution));
+      if (p.sources.length) {
+        const src = el('div', 'sinfo-ai__src muted small');
+        src.append(el('span', '', '出典: '));
+        p.sources.forEach((u) => {
+          const a = el('a', '', new URL(u).hostname); // 長い URL はドメインだけ見せる
+          a.href = u; // サーバーで http(s) だけに絞ってある
+          a.target = '_blank';
+          a.rel = 'noopener noreferrer';
+          src.append(a, document.createTextNode(' '));
+        });
+        body.append(src);
+      }
+      form.querySelector('[type=submit]').hidden = !any;
+      form.hidden = false;
+      status.textContent = yenUsed != null ? '約' + yenUsed + '円' : '';
+    };
+
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      form.hidden = true;
+      // 待ち時間（数十秒〜1分）を秒で見せる。setInterval = 決まった間隔でくり返し実行
+      const t0 = Date.now();
+      const tick = () => { status.textContent = '調べています… ' + Math.round((Date.now() - t0) / 1000) + '秒'; };
+      tick();
+      const timer = setInterval(tick, 1000);
+      try {
+        const res = await fetch('api_studio_ai', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': box.dataset.csrf },
+          body: JSON.stringify({ studio_id: Number(box.dataset.studioId) }),
+        });
+        const data = await res.json().catch(() => ({ error: 'サーバーの返事を読めませんでした' }));
+        if (!res.ok || !data.ok) throw new Error(data.error || 'HTTP ' + res.status);
+        show(data.proposal, data.yen);
+      } catch (e) {
+        status.textContent = e.message;
+      } finally {
+        clearInterval(timer);
+        btn.disabled = false;
+      }
+    });
+  };
+
   // DOMContentLoaded を待たなくても、このファイルはページの最後で読むので要素はもう全部ある
   setupMap();
   setupGeo();
   setupSim();
+  setupAi();
 })();
