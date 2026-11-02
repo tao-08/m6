@@ -497,7 +497,12 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
    0.5px ほど上下がずれて見える（「桁が少ないほど上に寄る」）。行の高さを 9px に固定し top も整数にすれば、どの桁数も同じ基準で並ぶ */
 .cmt-badge { position: relative; display: inline-flex; align-items: center; justify-content: center; flex: none; line-height: 1;
   color: var(--muted); text-decoration: none; transition: transform .12s ease, color .15s; } /* 灰色（補足の文字と同じ --muted）。目立たせすぎない */
-.cmt-badge .icon { font-size: 24px; }
+/* 吹き出しの枠を細くする。アイコンフォントの線の太さは font-variation-settings で変えられる（可変フォント）。
+     wght（線の太さ）: 共通の .icon は 500。ここだけ 400 に。
+     opsz（光学サイズ）: 大きいサイズ用の設計ほど線が細い。24px で表示しても 48 を指定すると約35%細くなる（実測: 2.4px → 1.5px）。
+   注意: 本番は Google Fonts を wght 400〜600 / opsz 20〜48 / GRAD 0 の範囲でしか読み込んでいない（partials/header.php）。
+   この範囲の外（wght 300 以下など）は指定しても効かず 400 にそろえられる。これ以上細くしたいなら header.php の読み込み範囲を広げる必要がある */
+.cmt-badge .icon { font-size: 24px; font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 48; }
 .cmt-badge__n { position: absolute; top: 6px; left: 50%; transform: translateX(-50%); /* 横だけ半分ずらす。縦は整数 px で固定 */
   font-size: 9px; font-weight: 800; line-height: 9px; letter-spacing: -.02em; font-variant-numeric: tabular-nums; } /* tabular-nums: 数字の幅をそろえてガタつかせない */
 .cmt-badge--long .cmt-badge__n { font-size: 7.5px; letter-spacing: -.06em; } /* 「99+」: 3文字は枠に収まるよう小さく（line-height は 9px のままなので縦の基準は同じ） */
