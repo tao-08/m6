@@ -175,7 +175,7 @@ function comments_render(string $kind, int $targetId, array $user): void
     }
     ?>
 <details class="card togglecard comments no-print" id="comments" data-comments>
-<summary><?= icon('chat_bubble') ?> <span class="togglecard__title">コメント（<?= $alive ?>）</span><?= icon('expand_more', 'togglecard__chevron') ?></summary>
+<summary><?= comment_bubble_svg() // 一覧のコメントアイコンと同じ自前 SVG（lib/repository.php） ?> <span class="togglecard__title">コメント（<?= $alive ?>）</span><?= icon('expand_more', 'togglecard__chevron') ?></summary>
 <div class="togglecard__body comments__body">
     <?php if ($comments): ?>
     <div class="board-posts comments__list">
