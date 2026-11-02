@@ -105,3 +105,42 @@ function studio_yen(int $yen): string
 {
     return '¥' . number_format($yen);
 }
+
+/**
+ * 広さ（帖）の「数字だけ」。22.0 → "22" / 12.5 → "12.5" / null・0以下 → ""（広さ不明）。入力欄の初期値にも使う
+ *   DB の DECIMAL は PHP では文字列 "22.0" で返ってくるので、float にしてから整える。
+ *   rtrim($s, '0') → '.' の順で、小数の末尾の 0 と余った小数点だけを落とす（"22.0" → "22." → "22"）
+ */
+function studio_jo_num(string|float|int|null $jo): string
+{
+    if ($jo === null || (float)$jo <= 0) {
+        return '';
+    }
+    return rtrim(rtrim(number_format((float)$jo, 1, '.', ''), '0'), '.');
+}
+
+/** 広さ（帖）の表示。22.0 → "22帖"。広さ不明は "" */
+function studio_fmt_jo(string|float|int|null $jo): string
+{
+    $n = studio_jo_num($jo);
+    return $n === '' ? '' : $n . '帖';
+}
+
+/**
+ * フォームの「広さ（帖）」を検証して DB に入れる値にする
+ *   戻り値: null = 空欄（広さ不明）/ float = 0.5〜999.9 を 0.1 刻みに丸めた値 / false = 不正
+ *   mb_convert_kana($s, 'n') = 全角の数字（１２）を半角（12）にする。スマホの日本語入力で全角になりやすいので
+ *   is_numeric = 数字として読めるか（"12abc" や "1e3" のような変な形も、範囲チェックで弾く）
+ */
+function studio_parse_jo(string $raw): float|null|false
+{
+    $raw = trim(mb_convert_kana($raw, 'n'));
+    if ($raw === '') {
+        return null;
+    }
+    if (!preg_match('/^\d{1,3}(\.\d)?$/', $raw)) {
+        return false; // 整数3桁まで・小数は1桁まで（DECIMAL(5,1) に収まる形だけ）
+    }
+    $v = (float)$raw;
+    return $v >= 0.5 ? $v : false;
+}

@@ -41,6 +41,7 @@ function studio_ai_schema(): array
     $str = ['type' => 'string'];
     $strN = ['type' => ['string', 'null']];
     $intN = ['type' => ['integer', 'null']];
+    $numN = ['type' => ['number', 'null']];
     // 料金表とパックで共通の欄
     $slot = [
         'target' => ['type' => 'integer'],                 // 0 = バンド / n = 個人n人
@@ -58,7 +59,7 @@ function studio_ai_schema(): array
             'website_url' => $strN, 'reserve_url' => $strN, 'address' => $strN, 'access' => $strN,
             'phone' => $strN, 'student_note' => $strN, 'note' => $strN,
         ]),
-        'rooms' => ['type' => 'array', 'items' => $obj(['name' => $str, 'size_note' => $strN])],
+        'rooms' => ['type' => 'array', 'items' => $obj(['name' => $str, 'area_jo' => $numN, 'size_note' => $strN])],
         'rates' => ['type' => 'array', 'items' => $obj($slot)],
         'packs' => ['type' => 'array', 'items' => $obj(['name' => $str] + $slot + ['minutes' => $intN])],
         'rentals' => ['type' => 'array', 'items' => $obj(['name' => $str, 'price' => ['type' => 'integer'], 'per_hour' => ['type' => 'boolean']])],
@@ -99,7 +100,8 @@ function studio_ai_system_prompt(): string
         . "- info.reserve_url は予約ページの URL（無ければ null）。URL は https:// から始まる完全な形\n"
         . "- rentals: マイク・シールド・機材のレンタル。per_hour は「1時間あたり」の料金なら true、「1回あたり」なら false\n"
         . "- equipment: 部屋の常設機材。category は決められた区分から選ぶ。room は部屋名（全部屋共通なら null）\n"
-        . "- rooms.size_note は広さや定員（例: 20畳 / 8人）\n"
+        . "- rooms.area_jo は部屋の広さを「帖」の数値だけで（例: 12 / 9.5）。畳表記もそのまま帖の数値にする。㎡表記しか無いときは 1帖 = 1.62㎡ で換算して小数1桁まで。広さが書かれていなければ null\n"
+        . "- rooms.size_note は広さ以外の備考（定員・階数・設備など。例: 最大8人 / 2階）。広さの数字や「帖」「畳」は書かない。無ければ null\n"
         . "- sources: 参考にしたページの URL（最大5件）。caution: 確かめてほしい点（古い情報かもしれない等）を短く。無ければ null";
 }
 
@@ -154,7 +156,10 @@ function studio_ai_normalize(array $ai): array
     foreach ((array)($ai['rooms'] ?? []) as $r) {
         $name = studio_ai_str($r['name'] ?? null, 50);
         if ($name !== null) {
-            $rooms[$name] = ['name' => $name, 'size_note' => studio_ai_str($r['size_note'] ?? null, 50)]; // 名前をキーにして重複を消す
+            // area_jo: 0.5〜999.9 の数値だけ受け取り、小数1桁に丸める（DECIMAL(5,1) に入る形）。それ以外は null = 広さ不明
+            $jo = $r['area_jo'] ?? null;
+            $jo = (is_int($jo) || is_float($jo)) && $jo >= 0.5 && $jo <= 999.9 ? round((float)$jo, 1) : null;
+            $rooms[$name] = ['name' => $name, 'area_jo' => $jo, 'size_note' => studio_ai_str($r['size_note'] ?? null, 50)]; // 名前をキーにして重複を消す
         }
     }
 
@@ -322,13 +327,14 @@ function studio_ai_apply(PDO $pdo, int $studioId, array $prop, array $sections, 
 
         if (in_array('rooms', $sections, true)) {
             foreach ($prop['rooms'] as $r) {
-                if (isset($roomIds[$r['name']])) {
-                    if ($r['size_note'] !== null) {
-                        $pdo->prepare('UPDATE studio_room SET size_note = ? WHERE studio_room_id = ?')->execute([$r['size_note'], $roomIds[$r['name']]]);
+                // 既にある部屋: AI が値を返した項目だけ上書き（null で今の入力を消さない）。新しい部屋: そのまま入れる
+                $id = isset($roomIds[$r['name']])
+                    ? $roomIds[$r['name']]
+                    : studio_ai_room_id($pdo, $studioId, $r['name'], $roomIds);
+                foreach (['area_jo', 'size_note'] as $col) { // 列名は固定の2つだけ（利用者の入力は列名に入らない）
+                    if ($r[$col] !== null) {
+                        $pdo->prepare("UPDATE studio_room SET $col = ? WHERE studio_room_id = ?")->execute([$r[$col], $id]);
                     }
-                } else {
-                    $id = studio_ai_room_id($pdo, $studioId, $r['name'], $roomIds);
-                    $pdo->prepare('UPDATE studio_room SET size_note = ? WHERE studio_room_id = ?')->execute([$r['size_note'], $id]);
                 }
             }
         }

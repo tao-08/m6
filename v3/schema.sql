@@ -1357,7 +1357,8 @@ CREATE TABLE studio_room (
     studio_room_id INT UNSIGNED NOT NULL AUTO_INCREMENT,
     studio_id      INT UNSIGNED NOT NULL,
     name           VARCHAR(50)  NOT NULL,          -- 部屋名（例: Aスタ）
-    size_note      VARCHAR(50)  NULL,              -- 広さ・定員（例: 20畳 / 8人）
+    area_jo        DECIMAL(5,1) UNSIGNED NULL,     -- 広さ（帖。畳も同じ扱い）。検索・絞り込み用の数値（migrations/087）
+    size_note      VARCHAR(50)  NULL,              -- 備考（例: 最大8人 / 2階）。広さの数字はここに書かない
     sort_order     INT UNSIGNED NOT NULL DEFAULT 0,
     PRIMARY KEY (studio_room_id),
     KEY idx_sroom_studio (studio_id),

@@ -106,10 +106,20 @@
   touch-action: manipulation; /* 連打してもダブルタップ拡大にならない */ -webkit-tap-highlight-color: transparent; }
 .sinfo-step__btn:active { background: var(--accent-soft); color: var(--accent); }
 .sinfo-step__btn .icon { font-size: 22px; }
-/* 詳細度を上げて、.sinfo-sim input[type=number] の枠線・幅を上書き */
-.sinfo-sim .sinfo-step input[type=number] { flex: 1; min-width: 0; width: auto; border: 0; border-radius: 0; text-align: center; font-weight: 800; font-size: 16px;
+/* 詳細度を上げて、.sinfo-sim input[type=number] の枠線・幅を上書き（シミュレーション以外＝一覧の絞り込みでも使う） */
+.sinfo-step input[type=number],
+.sinfo-sim .sinfo-step input[type=number] { flex: 1; min-width: 0; width: auto; padding: 8px 4px; background: transparent; color: var(--text); font-family: inherit; border: 0; border-radius: 0; text-align: center; font-weight: 800; font-size: 16px;
   -moz-appearance: textfield; appearance: textfield; } /* ブラウザ標準の小さい▲▼は消す（＋／－があるので） */
 .sinfo-step input::-webkit-outer-spin-button, .sinfo-step input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+/* ---- 一覧の広さ絞り込み（アイコン － 数字 ＋ 帖以上 ）---- */
+.sinfo-filter { margin-top: 14px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
+.sinfo-filter .sinfo-step { width: 150px; }
+.sinfo-filter__label .icon { font-size: 22px; color: var(--muted); vertical-align: middle; }
+
+/* ---- 部屋の編集: 広さ（帖）の短い入力欄 ---- */
+.sinfo-edit__jo { display: inline-flex; align-items: center; gap: 4px; }
+.sinfo-edit .sinfo-edit__jo input[type=text] { width: 64px; text-align: right; }
 
 /* ---- +1時間延長 ---- */
 .sinfo-sim__ext { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; padding: 8px 12px; border-radius: 8px;

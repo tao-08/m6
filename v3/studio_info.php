@@ -162,15 +162,20 @@ if (is_post()) {
         foreach ((array)($_POST['id'] ?? []) as $i => $rawId) {
             $name = trim((string)($_POST['name'][$i] ?? ''));
             $size = trim((string)($_POST['size_note'][$i] ?? ''));
+            $jo = studio_parse_jo((string)($_POST['area_jo'][$i] ?? '')); // 広さ（帖）: null = 空欄 / false = 不正
             if ($name === '') {
                 $rows[] = [(int)$rawId, null]; // 部屋名が空 = 削除（その部屋だけの料金・機材も CASCADE で消える）
                 continue;
             }
             if (mb_strlen($name) > 50 || mb_strlen($size) > 50) {
-                flash('部屋名・広さは50文字以内で入力してください', 'error');
+                flash('部屋名・備考は50文字以内で入力してください', 'error');
                 redirect($self);
             }
-            $rows[] = [(int)$rawId, ['name' => $name, 'size_note' => $size === '' ? null : $size]];
+            if ($jo === false) {
+                flash('広さは 0.5〜999.9 の数字（帖）で入力してください', 'error');
+                redirect($self);
+            }
+            $rows[] = [(int)$rawId, ['name' => $name, 'area_jo' => $jo, 'size_note' => $size === '' ? null : $size]];
         }
         studio_save_rows($pdo, 'studio_room', 'studio_room_id', $studioId, $rows);
         flash('保存しました');
@@ -319,7 +324,7 @@ if (is_post()) {
 // =====================================================================
 //  表示用のデータ
 // =====================================================================
-$st = $pdo->prepare('SELECT studio_room_id, name, size_note FROM studio_room WHERE studio_id = ? ORDER BY sort_order, studio_room_id');
+$st = $pdo->prepare('SELECT studio_room_id, name, area_jo, size_note FROM studio_room WHERE studio_id = ? ORDER BY sort_order, studio_room_id');
 $st->execute([$studioId]);
 $rooms = $st->fetchAll();
 $roomName = array_column($rooms, 'name', 'studio_room_id'); // [部屋id => 部屋名]（array_column の第3引数 = キーにする列）
@@ -567,8 +572,11 @@ render_header($studio['name'], 'tools');
     <h2><?= icon('meeting_room') ?> 部屋・料金 <span class="muted small">1時間あたり</span></h2>
     <?php if (!$rates && !$rooms): ?><p class="muted small">-</p><?php endif; ?>
     <?php
-    // 部屋 id => 広さ・定員（空なら ''）。見出しに添える
-    $roomSize = array_column($rooms, 'size_note', 'studio_room_id');
+    // 部屋 id => 見出しに添える文字（広さ「12帖」＋備考「最大8人」）。どちらも無ければ ''
+    $roomSize = [];
+    foreach ($rooms as $r) {
+        $roomSize[(int)$r['studio_room_id']] = trim(studio_fmt_jo($r['area_jo']) . ($r['size_note'] ? ' ' . $r['size_note'] : ''));
+    }
     foreach ([0 => '全部屋'] + $roomName as $rid => $rname):
         // 「全部屋」は料金があるときだけ。実在の部屋は、料金が未登録でも広さを見せたいので必ず出す
         if ($rid === 0 && empty($ratesByRoom[0])) continue;
@@ -640,11 +648,13 @@ render_header($studio['name'], 'tools');
             <?= csrf_field() ?>
             <input type="hidden" name="action" value="save_rooms">
             <input type="hidden" name="studio_id" value="<?= $studioId ?>">
-            <?php foreach (array_merge($rooms, [['studio_room_id' => 0, 'name' => '', 'size_note' => '']]) as $r): ?>
+            <!-- 広さは数値（帖）の欄に分けた。検索で「12帖以上」と比べられるように、単位は帖に統一（畳も同じ数字でOK）。備考は定員・階数など -->
+            <?php foreach (array_merge($rooms, [['studio_room_id' => 0, 'name' => '', 'area_jo' => null, 'size_note' => '']]) as $r): ?>
                 <div class="sinfo-edit__row">
                     <input type="hidden" name="id[]" value="<?= (int)$r['studio_room_id'] ?>">
                     <input autocomplete="off" type="text" class="grow" name="name[]" maxlength="50" value="<?= h($r['name']) ?>" placeholder="部屋名" aria-label="部屋名">
-                    <input autocomplete="off" type="text" class="grow" name="size_note[]" maxlength="50" value="<?= h($r['size_note']) ?>" placeholder="広さ・定員" aria-label="広さ・定員">
+                    <label class="sinfo-edit__jo"><input type="text" name="area_jo[]" inputmode="decimal" maxlength="5" value="<?= h(studio_jo_num($r['area_jo'])) ?>" placeholder="広さ" aria-label="広さ（帖）"><span class="muted small">帖</span></label>
+                    <input autocomplete="off" type="text" class="grow" name="size_note[]" maxlength="50" value="<?= h($r['size_note']) ?>" placeholder="備考（定員・階数）" aria-label="備考">
                 </div>
             <?php endforeach; ?>
             <div><button type="submit" class="btn btn--primary btn--sm" title="部屋名を空にした行は削除"><?= icon('save') ?> 保存</button></div>

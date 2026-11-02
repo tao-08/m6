@@ -51,10 +51,12 @@ if (is_post()) {
 // =====================================================================
 // MIN() = 最小値。相関サブクエリでスタジオごとに「バンドのいちばん安い1時間の料金」「学割の行があるか」をまとめて取る
 // EXISTS (SELECT 1 …) = 1行でもあれば 1。個人練習の料金・パックがあるかのタグに使う（件数は要らないので COUNT より速い）
+//   max_area = そのスタジオでいちばん広い部屋の帖数（広さの絞り込み用。部屋の広さが未入力なら NULL）
 //   （スタジオの数だけ SQL を投げる「N+1 問題」を避けるため、1回の SQL で済ませる）
 $studios = $pdo->query('SELECT s.studio_id, s.name, s.access, s.lat, s.lng, s.reserve_url,
         (SELECT MIN(r.price) FROM studio_rate r WHERE r.studio_id = s.studio_id AND r.people IS NULL) AS min_price,
         (SELECT MIN(r.student_price) FROM studio_rate r WHERE r.studio_id = s.studio_id) AS min_student,
+        (SELECT MAX(m.area_jo) FROM studio_room m WHERE m.studio_id = s.studio_id) AS max_area,
         EXISTS (SELECT 1 FROM studio_rate r WHERE r.studio_id = s.studio_id AND r.people IS NOT NULL) AS has_solo,
         EXISTS (SELECT 1 FROM studio_pack p WHERE p.studio_id = s.studio_id) AS has_pack
     FROM studio s ORDER BY s.sort_order, s.studio_id')->fetchAll();
@@ -73,6 +75,9 @@ foreach ($studios as $s) {
     }
 }
 
+// 絞り込み欄は、広さが入っているスタジオが1つでもあるときだけ出す（全部不明なら絞り込む意味がない）
+$hasArea = array_filter(array_column($studios, 'max_area'), fn($v) => $v !== null) !== [];
+
 render_header('スタジオ情報', 'tools');
 ?>
 <link rel="stylesheet" href="<?= asset_url('assets/vendor/leaflet/leaflet.css') ?>">
@@ -88,13 +93,28 @@ render_header('スタジオ情報', 'tools');
     <script type="application/json" id="studio-pins"><?= json_encode($pins, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?></script>
 <?php endif; ?>
 
+<?php if ($hasArea): ?>
+    <!-- 広さの絞り込み: 「N帖以上の部屋があるスタジオ」だけ残す（JS: setupFilter）。0 = 絞り込みなし。＋／－は共通の setupStepper -->
+    <div class="card sinfo-filter" id="studio-filter">
+        <span class="sinfo-filter__label" title="広さ"><?= icon('square_foot') ?></span>
+        <div class="sinfo-step">
+            <button type="button" class="sinfo-step__btn" data-step="-1" aria-label="減らす"><?= icon('remove') ?></button>
+            <input type="number" min="0" max="100" value="0" inputmode="numeric" aria-label="広さ（帖）の下限">
+            <button type="button" class="sinfo-step__btn" data-step="1" aria-label="増やす"><?= icon('add') ?></button>
+        </div>
+        <span class="muted">帖以上</span>
+        <span class="muted small" data-filter-count></span>
+    </div>
+<?php endif; ?>
+
 <?php if (!$studios): ?>
     <div class="empty card"><p class="empty__title">スタジオがありません</p></div>
 <?php else: ?>
+<p class="muted small" data-filter-empty hidden><?= icon('search_off') ?> 該当なし</p>
 <ul class="sinfo-list">
     <?php foreach ($studios as $s): ?>
         <li>
-            <a class="card sinfo-list__item" href="studio_info?id=<?= (int)$s['studio_id'] ?>" data-studio-id="<?= (int)$s['studio_id'] ?>">
+            <a class="card sinfo-list__item" href="studio_info?id=<?= (int)$s['studio_id'] ?>" data-studio-id="<?= (int)$s['studio_id'] ?>" data-max-area="<?= h($s['max_area'] === null ? '' : studio_jo_num($s['max_area'])) ?>">
                 <span class="sinfo-list__name">
                     <?= h($s['name']) ?>
                     <?php if ($s['min_student'] !== null): ?><span class="tag tag--plan">学割</span><?php endif; ?>
@@ -103,6 +123,7 @@ render_header('スタジオ情報', 'tools');
                 </span>
                 <span class="muted small sinfo-list__meta">
                     <?php if ($s['access']): ?><span><?= icon('train') ?> <?= h($s['access']) ?></span><?php endif; ?>
+                    <?php if ($s['max_area'] !== null): ?><span title="いちばん広い部屋"><?= icon('square_foot') ?> <?= h(studio_fmt_jo($s['max_area'])) ?></span><?php endif; ?>
                     <?php if ($s['min_price'] !== null): ?><span title="1時間の最安料金"><?= icon('payments') ?> <?= h(studio_yen((int)$s['min_price'])) ?>〜/h</span><?php endif; ?>
                     <?php if ($s['lat'] === null): ?><span title="地図に未登録"><?= icon('location_off') ?></span><?php endif; ?>
                 </span>

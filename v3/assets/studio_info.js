@@ -5,6 +5,8 @@
  *  2. 座標の取得（[data-geo-lookup]）… 住所 → 緯度・経度（国土地理院の住所検索 API）
  *  3. 料金シミュレーション（#studio-sim）… 入力が変わるたびに合計・1人あたり・内訳・パック・+1時間延長を計算して表示
  *  4. ✨AIで入力（#studio-ai）… AI の提案をプレビューして、反映する項目を選ぶ
+ *  5. ＋／－ボタン（[data-step]）… 数字入力をタッチで増減（シミュレーションの人数・一覧の広さ）
+ *  6. 広さの絞り込み（#studio-filter）… 一覧のカードと地図のピンを「N帖以上の部屋がある店」だけにする
  *
  *  ■ IIFE（即時実行関数）とは
  *    (() => { ... })() の形。関数を作ってすぐ実行する。中で作った変数が外（ほかの JS）とぶつからない。
@@ -48,7 +50,7 @@
     const box = document.getElementById('studio-map');
     const pins = readJson('studio-pins');
     // window.L = Leaflet 本体。読み込みに失敗していたら何もしない（ページの他の部分は動くように）
-    if (!box || !pins || !pins.length || !window.L) return;
+    if (!box || !pins || !pins.length || !window.L) return null;
     const L = window.L;
 
     // scrollWheelZoom: false → ページをスクロールしているだけで地図が拡大縮小してしまうのを防ぐ
@@ -91,6 +93,83 @@
       if (i < 0) return;
       card.addEventListener('mouseenter', () => markers[i].openPopup());
     });
+
+    // 絞り込み（setupFilter）から呼ばれる: visibleIds（Set）に入っているスタジオのピンだけを地図に残す
+    //   removeLayer / addTo = 地図からピンを外す / 戻す。残ったピンが全部入るように表示範囲も取り直す
+    const setVisible = (visibleIds) => {
+      const shown = [];
+      markers.forEach((m, i) => {
+        if (visibleIds.has(String(pins[i].id))) {
+          if (!map.hasLayer(m)) m.addTo(map);
+          shown.push(m);
+        } else if (map.hasLayer(m)) {
+          map.removeLayer(m);
+        }
+      });
+      if (shown.length > 1) map.fitBounds(L.featureGroup(shown).getBounds(), { padding: [30, 30], maxZoom: 16 });
+      else if (shown.length === 1) map.setView(shown[0].getLatLng(), 16);
+    };
+    return { setVisible };
+  };
+
+  // ===================================================================
+  //  5. ＋／－ボタン（data-step="-1" / "1"）: 同じ枠の中の number 入力を増減する
+  //     イベント委譲 = ボタン1つずつではなく document 全体で click を受け、押された所が [data-step] かを調べる方式
+  //     （ボタンが増えても、別のページに置いても書き足し不要。業界でよく使う書き方）
+  // ===================================================================
+  const setupStepper = () => {
+    document.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-step]');
+      if (!btn) return;
+      const input = btn.parentElement.querySelector('input[type=number]');
+      if (!input) return;
+      const min = Number(input.min) || 0;
+      const max = Number(input.max) || Infinity;
+      // 空欄や不正な値は min 扱い → 範囲 [min, max] に収める（Math.min/max で挟む = clamp）
+      const next = Math.min(max, Math.max(min, (Number(input.value) || min) + Number(btn.dataset.step)));
+      if (String(next) === input.value) return; // 上限・下限で変わらないなら再計算しない
+      input.value = String(next);
+      input.dispatchEvent(new Event('input', { bubbles: true })); // 手入力と同じ経路で再計算・再絞り込みさせる
+    });
+  };
+
+  // ===================================================================
+  //  6. 広さの絞り込み（スタジオ一覧）
+  //     各カードの data-max-area（そのスタジオでいちばん広い部屋の帖数。不明は空）が、入力した帖数以上のものだけ残す
+  //     0 = 絞り込みなし。広さが不明のスタジオは、絞り込み中は出さない（条件を満たすか分からないため）
+  //     入力値は URL（?min=12）にも入れる → 絞り込んだ状態のまま URL を共有できる
+  // ===================================================================
+  const setupFilter = (mapApi) => {
+    const box = document.getElementById('studio-filter');
+    if (!box) return;
+    const input = box.querySelector('input[type=number]');
+    const count = box.querySelector('[data-filter-count]');
+    const empty = document.querySelector('[data-filter-empty]');
+    const cards = [...document.querySelectorAll('.sinfo-list [data-studio-id]')]; // [...NodeList] = 配列に変換
+
+    const apply = () => {
+      const min = Math.max(0, Number(input.value) || 0);
+      const visible = new Set();
+      cards.forEach((card) => {
+        const max = card.dataset.maxArea === '' ? null : Number(card.dataset.maxArea);
+        const ok = min <= 0 || (max !== null && max >= min);
+        card.closest('li').hidden = !ok; // hidden 属性 = 表示から外す（HTML 標準）
+        if (ok) visible.add(card.dataset.studioId);
+      });
+      count.textContent = min > 0 ? visible.size + ' / ' + cards.length : '';
+      if (empty) empty.hidden = visible.size > 0;
+      if (mapApi) mapApi.setVisible(visible);
+      // history.replaceState = ページを移動せず URL だけ書き換える（戻るボタンの履歴は増やさない）
+      const url = new URL(location.href);
+      if (min > 0) url.searchParams.set('min', String(min));
+      else url.searchParams.delete('min');
+      history.replaceState(null, '', url);
+    };
+
+    input.addEventListener('input', apply);
+    const first = Number(new URL(location.href).searchParams.get('min'));
+    if (first > 0) input.value = String(Math.min(Number(input.max) || 100, first));
+    apply();
   };
 
   // ===================================================================
@@ -347,22 +426,6 @@
       people.value = remembered[lastMode];
     });
 
-    // ＋／－ボタン（data-step="-1" / "1"）: 同じ枠の中の number 入力を増減する
-    //   イベント委譲 = ボタン1つずつではなく form 全体で click を受け、押された所が [data-step] かを調べる方式
-    //   （ボタンが増えても書き足し不要。業界でよく使う書き方）
-    form.addEventListener('click', (e) => {
-      const btn = e.target.closest('[data-step]');
-      if (!btn) return;
-      const input = btn.parentElement.querySelector('input[type=number]');
-      const min = Number(input.min) || 0;
-      const max = Number(input.max) || Infinity;
-      // 空欄や不正な値は min 扱い → 範囲 [min, max] に収める（Math.min/max で挟む = clamp）
-      const next = Math.min(max, Math.max(min, (Number(input.value) || min) + Number(btn.dataset.step)));
-      if (String(next) === input.value) return; // 上限・下限で変わらないなら再計算しない
-      input.value = String(next);
-      input.dispatchEvent(new Event('input', { bubbles: true })); // 手入力と同じ経路で再計算させる
-    });
-
     // input イベント = 値が変わるたび（数字を打つたび）に発生。change より反応が早い
     form.addEventListener('input', render);
     form.addEventListener('change', render);
@@ -393,7 +456,7 @@
     /** 項目ごとに、プレビューの1行の文字を作る関数 */
     const LINES = {
       info: (p) => Object.keys(INFO).filter((k) => p.info[k]).map((k) => INFO[k] + ': ' + p.info[k]),
-      rooms: (p) => p.rooms.map((r) => r.name + (r.size_note ? '（' + r.size_note + '）' : '')),
+      rooms: (p) => p.rooms.map((r) => r.name + ' ' + [r.area_jo != null ? r.area_jo + '帖' : '', r.size_note || ''].filter(Boolean).join('・')),
       rates: (p) => p.rates.map((r) => where(r) + ' ' + hm(r.start_min) + '〜' + hm(r.end_min) + ' ' + price(r) + '/h'),
       packs: (p) => p.packs.map((r) => r.name + ': ' + where(r) + ' ' + hm(r.start_min) + '〜' + hm(r.end_min)
         + (r.minutes ? ' のうち ' + hm(r.minutes) : '') + ' ' + price(r)),
@@ -472,8 +535,10 @@
   };
 
   // DOMContentLoaded を待たなくても、このファイルはページの最後で読むので要素はもう全部ある
-  setupMap();
+  const mapApi = setupMap();
   setupGeo();
+  setupStepper();
+  setupFilter(mapApi);
   setupSim();
   setupAi();
 })();
