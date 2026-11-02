@@ -66,6 +66,9 @@ foreach (band_likes($pdo, array_map(static fn($h) => (int)$h['band_id'], $histor
     }
 }
 
+// 出演履歴のバンドごとのコメント数。履歴の行にコメントアイコンを出すため（全バンド分を1回の SQL で取る）
+$commentCounts = band_comment_counts($pdo, array_map(static fn($h) => (int)$h['band_id'], $history));
+
 // ---- 集計の絞り込み（集計ページ stats.php と同じ ?who= / ?period=） ----
 //   期間: その年度のバンドだけ数える。メンバー: 組んだ相手（自分以外）が「対象メンバー」に1人でもいるバンドだけ数える
 //   どちらも「数えないバンド」として $skipBandIds に足すだけ → 以降の集計（楽器・組むメンバー・アーティスト・学年区分・上の数字）が全部そろって絞られる。出演履歴の一覧は絞らない
@@ -817,6 +820,8 @@ $yearSlot = static function (string $name, int $selected, array $list, string $l
                                         <?php if ($favBandIds): // ❤ を付けたバンドが1つでもあれば、全バンドに同じ幅の枠を取る（バンド名の位置が❤の有無でずれない） ?><span class="history__fav"<?= isset($favBandIds[(int)$b['band_id']]) ? ' aria-label="お気に入り" title="お気に入り"' : ' aria-hidden="true"' ?>><?php if (isset($favBandIds[(int)$b['band_id']])): ?><?= icon('favorite', 'like__heart') ?><?php endif; ?></span><?php endif; ?>
                                         <a href="band?id=<?= (int)$b['band_id'] ?>"><?= h($b['band_name']) ?></a>
                                         <?php if ($b['is_last']): ?><span class="tori-badge" aria-label="トリ" title="トリ">🐔</span><?php endif; ?>
+                                        <?php // コメントが付いているバンドだけ、吹き出しの中に件数（live.php の一覧と同じ部品） ?>
+                                        <?= comment_badge((int)$b['band_id'], $commentCounts[(int)$b['band_id']] ?? 0) ?>
                                         <?php // 見ている人も一緒に出たバンド（カードの赤枠の理由がどのバンドか分かるように）。live.php の「出演」と同じタグ ?>
                                         <?php if (isset($viewerBandIds[(int)$b['band_id']])): ?><span class="tag tag--mine history__mine">出演</span><?php endif; ?>
                                     </span>

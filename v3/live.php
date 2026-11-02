@@ -70,6 +70,8 @@ foreach ($st as $b) { // PDOStatement はそのまま foreach で1行ずつ回�
 $omnibusArtists = omnibus_artists_by_band($pdo, $omnibusIds);
 // お気に入り（❤）の数と自分が付けたか。全バンド分を1回の SQL で取る
 $likes = band_likes($pdo, $allBandIds, (int)$user['user_id']);
+// コメントの数（バンドごと）。一覧の行にコメントアイコンを出すため。これも全バンド分を1回の SQL で取る（行ごとに SQL を投げない）
+$commentCounts = band_comment_counts($pdo, $allBandIds);
 // 休憩・転換など（timetable_edit.php で登録したもの / 取り込みで「バンドではない枠」だったもの）
 $breaksByDay = load_breaks_by_day($pdo, $liveId);
 
@@ -234,6 +236,8 @@ render_header($live['name'], 'lives');
                         <?php if ($b['youtube_url'] !== null && youtube_url_valid($b['youtube_url'])): ?>
                             <a class="slot__yt no-print" href="<?= h($b['youtube_url']) ?>" target="_blank" rel="noopener noreferrer" aria-label="「<?= h($b['name']) ?>」を YouTube で見る" title="YouTube で見る"><?= youtube_icon() ?></a>
                         <?php endif; ?>
+                        <?php // コメントが付いているバンドだけ、吹き出しの中に件数。0 件なら comment_badge() が空文字を返すので何も出ない ?>
+                        <?= comment_badge((int)$b['band_id'], $commentCounts[(int)$b['band_id']] ?? 0, 'no-print') ?>
                         </div>
                         <?= like_button((int)$b['band_id'], $likes[(int)$b['band_id']] ?? null, 'slot__like no-print') // 行の右端（CSS の margin-left: auto） ?>
                     </div>

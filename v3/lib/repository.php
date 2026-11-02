@@ -1145,6 +1145,59 @@ function like_button(int $bandId, ?array $like, string $class = '', string $api 
 }
 
 /**
+ * バンドごとのコメント数（削除されたコメントは数えない）。一覧にコメントアイコンを出すために使う。
+ *   数え方は lib/comments.php の見出し「コメント（N）」と同じ（deleted_at IS NULL だけ）。
+ *   コメントが 0 件のバンドは結果に入らない（呼び出し側は ?? 0 で受ける）。
+ *   N+1 問題の対策: バンドごとに SQL を投げず、全バンド分を IN (...) と GROUP BY で 1 回にまとめる
+ *   （band_likes() と同じ考え方。業界でも「一覧画面でループの中から SQL を呼ばない」は基本ルール）。
+ *   comment テーブルがまだ無い DB（migrations/051 を流していない）では空の配列を返す（ページは止めない）。
+ * @param int[] $bandIds
+ * @return array<int, int> band_id => コメント数
+ */
+function band_comment_counts(PDO $pdo, array $bandIds): array
+{
+    if (!$bandIds) {
+        return []; // IN () は SQL の文法エラーになるので、空なら先に返す
+    }
+    // IN (?, ?, ?) の ? をバンドの数だけ作る。値は execute() に渡す（プリペアドステートメント = SQL インジェクション対策）
+    $marks = implode(',', array_fill(0, count($bandIds), '?'));
+    try {
+        $st = $pdo->prepare("SELECT band_id, COUNT(*) AS cnt FROM comment
+            WHERE band_id IN ($marks) AND deleted_at IS NULL GROUP BY band_id");
+        $st->execute(array_map('intval', array_values($bandIds)));
+    } catch (PDOException $e) {
+        if ($e->getCode() === '42S02') { // 42S02 = テーブルが存在しない
+            return [];
+        }
+        throw $e;
+    }
+    $counts = [];
+    foreach ($st as $r) {
+        $counts[(int)$r['band_id']] = (int)$r['cnt'];
+    }
+    return $counts;
+}
+
+/**
+ * コメントアイコン（吹き出しの中に件数）。0 件なら何も出さない（= コメントが無いバンドは今までどおりの見た目）。
+ *   押すとバンド詳細のコメント欄へ。#comments は assets/app.js が見て、閉じているコメント欄を自動で開く。
+ *   形は Material Symbols の chat_bubble（コメント欄の見出しと同じアイコン）。数字は CSS で吹き出しの真ん中に重ねる。
+ *   100 件以上は「99+」（幅が広がって行が崩れないように）。
+ */
+function comment_badge(int $bandId, int $count, string $class = ''): string
+{
+    if ($count <= 0) {
+        return '';
+    }
+    $label = $count > 99 ? '99+' : (string)$count;
+    return '<a class="cmt-badge' . ($class !== '' ? ' ' . h($class) : '') . '" href="band?id=' . $bandId . '#comments"'
+        . ' aria-label="コメント（' . $count . '）" title="コメント（' . $count . '）">'
+        . icon('chat_bubble')
+        . '<span class="cmt-badge__n">' . h($label) . '</span>'
+        . '</a>';
+}
+
+/**
  * オムニバスのバンド（band.is_omnibus = 1）の、セットリストの曲に紐付いたアーティスト。
  *   曲にアーティストが付いていない（song.artist_id が NULL）曲は数えない。
  *   並びは初めて出てくる曲順（1曲目のアーティストが先頭）。同じアーティストは1回だけ（GROUP BY）。

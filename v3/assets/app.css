@@ -488,6 +488,18 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .slot__yt { display: inline-flex; align-items: center; line-height: 0; margin-left: 8px; }
 .slot__yt svg { width: 23px; height: 16px; }
 .slot__yt:hover svg { opacity: .8; }
+/* コメントアイコン: 吹き出し（Material Symbols の chat_bubble）の真ん中に件数を重ねる。
+   コメントが付いたバンドだけ出る（lib/repository.php の comment_badge）。ライブ詳細の行とメンバーページの出演履歴で共通。
+   重ねかた: 親を position: relative にして、数字は position: absolute で中央へ（アイコンと数字を同じ箱に入れて座標を共有する）。
+   吹き出しのしっぽ（左下）の分だけ、数字は少し上（top: 45%）に置くと真ん中に見える */
+.cmt-badge { position: relative; display: inline-flex; align-items: center; justify-content: center; flex: none; line-height: 1;
+  color: var(--accent); text-decoration: none; transition: transform .12s ease; }
+.cmt-badge .icon { font-size: 24px; }
+.cmt-badge__n { position: absolute; top: 45%; left: 50%; transform: translate(-50%, -50%);
+  font-size: 10px; font-weight: 800; line-height: 1; letter-spacing: -.02em; font-variant-numeric: tabular-nums; } /* tabular-nums: 数字の幅をそろえてガタつかせない */
+.cmt-badge:hover { transform: scale(1.1); }
+.cmt-badge:active { transform: scale(.94); }
+.history__name .cmt-badge .icon { font-size: 22px; } /* メンバーページの履歴は文字が小さめなので少しだけ小さく */
 /* お気に入り（❤）: 吹き出し（数）＞ハート。タイムテーブルでは行の右端、バンドページではバンド名の右（lib/repository.php の like_button）
    押すとハートと吹き出しが赤くなる（.is-liked）。誰が押したかは出さない */
 .like { display: inline-flex; align-items: center; gap: 8px; padding: 2px; border: 0; background: none; color: var(--muted); cursor: pointer; font: inherit; line-height: 1; }
