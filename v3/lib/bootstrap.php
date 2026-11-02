@@ -858,23 +858,80 @@ function fmt_time(?string $time): string
 }
 
 /**
- * 楽器 → 色分け用の CSS クラス名（short_name で判定）。
+ * 変更・削除できない楽器の略称（楽器の管理ページ instruments.php で鍵マークになる）。
+ *   プログラムが略称で直接探している楽器（'Vo' で instrument_id_by_short() するなど）なので、
+ *   略称を変えたり消したりすると、取り込み・TAB 譜・兼任の表示が壊れる。
+ *   色も assets/app.css に固定で書いてある（--vo / --gt …）。
+ */
+const LOCKED_INSTRUMENTS = ['Vo', 'Gt', 'Ba', 'Dr', 'Key', 'Cho', 'etc'];
+
+/** その略称が「変更・削除できない楽器」か（大文字小文字は区別しない） */
+function instrument_locked(string $short): bool
+{
+    // array_map('strtolower', …) = 配列の全部の要素を小文字にする
+    return in_array(strtolower($short), array_map('strtolower', LOCKED_INSTRUMENTS), true);
+}
+
+/**
+ * 楽器 → 色分け用の CSS クラス名（.part--◯◯ の ◯◯ 部分）。
+ *   変更できない楽器 … 決まった名前（vo / gt / ba / dr / key / cho）。色は app.css に書いてある
+ *   それ以外の楽器   … 'i' + instrument_id（例: i12）。色は DB の instrument.color で、
+ *                      ページの <head> に instrument_color_css() が書き出す <style> で付く
+ *   見つからない楽器・etc・空文字（ライブ全体の TAB など）… 'other'（グレー）
+ * ※ 略称ではなく ID でクラスを作るので、略称を変えても色はその楽器に付いたまま
  */
 function instrument_class(?string $short): string
 {
-    return match (strtolower((string)$short)) {
-        'vo' => 'vo',
-        'cho' => 'cho',
-        'gt' => 'gt',
-        'ba' => 'ba',
-        'dr', 'perc' => 'dr',
-        'key' => 'key',
-        'vn' => 'vn',
-        'sax' => 'sax',
-        'prog' => 'prog',
-        'harm' => 'harm',
-        default => 'other',
-    };
+    $lower = strtolower((string)$short);
+    if (in_array($lower, ['vo', 'gt', 'ba', 'dr', 'key', 'cho'], true)) {
+        return $lower;
+    }
+    foreach (instruments() as $ins) {
+        if ($lower !== 'etc' && strtolower($ins['short_name']) === $lower) {
+            return 'i' . (int)$ins['instrument_id'];
+        }
+    }
+    return 'other';
+}
+
+/** '#rrggbb' の形か（色の入力チェック。<style> に直接書くので、この形以外は絶対に通さない） */
+function is_hex_color(?string $color): bool
+{
+    // preg_match = 正規表現に合うか（合えば 1）。^ と $ で「全体が」この形のときだけにする
+    return is_string($color) && preg_match('/^#[0-9a-fA-F]{6}$/', $color) === 1;
+}
+
+/**
+ * DB に色がある楽器の CSS（partials/header.php が <head> に <style> で書き出す）。
+ *   ・ライトモード … 登録した色そのもの
+ *   ・ダークモード … 暗い背景でも読めるように、明るさ（OKLCH の L）を 0.78 以上に引き上げる
+ *     「oklch(from 色 l c h)」は相対色構文（元の色から明るさ・鮮やかさ・色相を取り出して作り直す）。
+ *     対応していない古いブラウザでは @supports で外れて、登録した色のまま表示される
+ *   色が NULL の楽器は何も書かない（.part の既定 = var(--other) のグレーになる）
+ */
+function instrument_color_css(): string
+{
+    $light = $dark = $parts = '';
+    try {
+        $list = instruments();
+    } catch (Throwable) {
+        return ''; // DB に繋がらないページ（エラー画面など）でも、ヘッダーは出せるように
+    }
+    foreach ($list as $ins) {
+        $cls = instrument_class($ins['short_name']);
+        // is_hex_color で形を確かめた色だけを書く（CSS の中に変な文字が入らないように。XSS 対策）
+        if (!str_starts_with($cls, 'i') || !is_hex_color($ins['color'] ?? null)) {
+            continue;
+        }
+        $c = strtolower($ins['color']);
+        $light .= "--{$cls}:{$c};";
+        $dark .= "--{$cls}:oklch(from {$c} max(l, .78) c h);";
+        $parts .= ".part--{$cls}{--part-c:var(--{$cls})}";
+    }
+    if ($parts === '') {
+        return '';
+    }
+    return ":root{{$light}}{$parts}@supports (color: oklch(from red l c h)){[data-theme=\"dark\"]{{$dark}}}";
 }
 
 /**
@@ -884,7 +941,7 @@ function instrument_class(?string $short): string
 function instruments(): array
 {
     static $list = null;
-    $list ??= db()->query('SELECT instrument_id, name, short_name, sort_order FROM instrument ORDER BY sort_order')->fetchAll();
+    $list ??= db()->query('SELECT instrument_id, name, short_name, color, sort_order FROM instrument ORDER BY sort_order')->fetchAll();
     return $list;
 }
 

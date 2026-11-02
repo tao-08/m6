@@ -1,9 +1,9 @@
 <?php
 /**
  * =====================================================================
- *  masters.php — 会場・日程名・楽器・係・アーティストの管理（管理者のみ）
+ *  masters.php — 会場・日程名・係・アーティストの管理（管理者のみ）
  * =====================================================================
- *  「選択肢として使い回す名前」をまとめて直す画面。上のタブで切り替える（?tab=venue / day / instrument / role / artist）。
+ *  「選択肢として使い回す名前」をまとめて直す画面。上のタブで切り替える（?tab=venue / day / role / artist）。
  *
  *  会場（venue テーブル）
  *    名前の変更 … venue.name は UNIQUE なので、他の会場と同じ名前にはできない（→ 統合を使う）
@@ -17,10 +17,7 @@
  *    いつもの日程名（DAY_LABELS）… 取り込みが日程を見分けるのに使っているので変えられない
  *    削除       … 日程名は「使われている日程」があるから一覧に出ている。使われなくなれば一覧から自然に消える
  *
- *  楽器（instrument テーブル）
- *    名前の変更 … 名簿の取り込みで「etc」から追加された楽器だけ。略称は UNIQUE
- *    削除       … 最初から入っている楽器（BUILTIN_INSTRUMENTS。プログラムが略称で探している）と、
- *                  出演記録で使われている楽器（band_member の外部キーが ON DELETE RESTRICT）は消せない
+ *  楽器は instruments.php（楽器の管理）に分けた（色・略称・正式名称の変更、統合して削除）。
  *
  *  係（role テーブル。プロフィールの「新しい係」で増える）
  *    会場と同じく 名前の変更・統合・削除。統合は member_role を統合先に付け替えてから消す。
@@ -33,7 +30,7 @@
  *                  「ボカロバンド」のような、アーティストではない名前で登録されたバンドを片付けるため
  *    削除       … どのバンド・曲にも使われていないアーティストだけ
  *
- *  以前の venues.php / instruments.php は、このページのタブへ移動するだけのファイルとして残している。
+ *  以前の venues.php は、このページのタブへ移動するだけのファイルとして残している。
  * =====================================================================
  */
 declare(strict_types=1);
@@ -59,11 +56,13 @@ $pdo = db();
 $tabs = [
     'venue'      => ['会場', '会場の名前の変更・統合・削除ができます。表記ゆれで2つに分かれた会場は「統合」でまとめてください（日程は統合先に付け替わります）。日程で使われている会場は削除できません。'],
     'day'        => ['日程名', '新しく作られた日程名の変更ができます。もうある日程名に変えると、その日程名にまとまります（表記ゆれの統合）。「1日目」などのいつもの日程名は変えられません。'],
-    'instrument' => ['楽器', '名簿の取り込みで「etc」から追加された楽器の名前の変更・削除ができます。最初から入っている楽器と、出演記録で使われている楽器は消せません。'],
     'artist'     => ['アーティスト', 'コピー元アーティストの名前の変更・統合・削除ができます。表記ゆれで2つに分かれたアーティストは「統合」でまとめてください（バンドと曲は統合先に付け替わり、消える側の名前は別称として残ります）。チェックしたアーティストのバンドは、まとめてオムニバスにできます。'],
     'role'       => ['係', 'プロフィールで作られた係の名前の変更・統合・削除ができます。表記ゆれで2つに分かれた係は「統合」でまとめてください（付いている人は統合先に移ります）。誰かに付いている係は削除できません。'],
 ];
 $tab = (string)($_GET['tab'] ?? $_POST['tab'] ?? 'venue');
+if ($tab === 'instrument') {
+    redirect('instruments'); // 楽器は別ページに分けた（古いリンク・ブックマーク用）
+}
 if (!isset($tabs[$tab])) {
     $tab = 'venue';
 }
@@ -288,39 +287,6 @@ if (is_post()) {
                 flash("「{$target['name']}」を消しました");
             }
         }
-    } else {
-        // ================= 楽器 =================
-        $id = (int)($_POST['instrument_id'] ?? 0);
-        $st = $pdo->prepare('SELECT i.short_name, i.name, (SELECT COUNT(*) FROM band_member bm WHERE bm.instrument_id = i.instrument_id) AS used
-            FROM instrument i WHERE i.instrument_id = ?');
-        $st->execute([$id]);
-        $target = $st->fetch();
-
-        if (!$target) {
-            flash('楽器が見つかりません', 'error');
-        } elseif (in_array($target['short_name'], BUILTIN_INSTRUMENTS, true)) {
-            flash('最初から入っている楽器は変更・削除できません', 'error');
-        } elseif ($action === 'rename') {
-            $short = trim((string)($_POST['short_name'] ?? ''));
-            $name = trim((string)($_POST['name'] ?? ''));
-            $dup = $pdo->prepare('SELECT 1 FROM instrument WHERE short_name = ? AND instrument_id <> ?');
-            $dup->execute([$short, $id]);
-            if ($short === '' || mb_strlen($short) > 10 || $name === '' || mb_strlen($name) > 30) {
-                flash('略称は1〜10文字、楽器名は1〜30文字で入力してください', 'error');
-            } elseif ($dup->fetchColumn()) {
-                flash("略称「{$short}」の楽器はすでにあります", 'error');
-            } elseif ($short !== $target['short_name'] || $name !== $target['name']) {
-                $pdo->prepare('UPDATE instrument SET short_name = ?, name = ? WHERE instrument_id = ?')->execute([$short, $name, $id]);
-                flash("「{$target['name']}（{$target['short_name']}）」を「{$name}（{$short}）」に変更しました");
-            }
-        } elseif ($action === 'delete') {
-            if ((int)$target['used'] > 0) {
-                flash("「{$target['name']}」は {$target['used']} 件の出演記録で使われているので消せません", 'error');
-            } else {
-                $pdo->prepare('DELETE FROM instrument WHERE instrument_id = ?')->execute([$id]);
-                flash("「{$target['name']}（{$target['short_name']}）」を消しました");
-            }
-        }
     }
     redirect('masters?tab=' . $tab);
 }
@@ -337,11 +303,6 @@ $days = [];
 foreach (day_labels($pdo) as $label) {
     $days[] = ['label' => $label, 'used' => (int)($dayCounts[$label] ?? 0), 'builtin' => in_array($label, DAY_LABELS, true)];
 }
-// 楽器ごとに「何件の出演記録で使われているか」
-$instruments = $pdo->query('SELECT i.instrument_id, i.short_name, i.name, COUNT(bm.band_id) AS used
-    FROM instrument i LEFT JOIN band_member bm ON bm.instrument_id = i.instrument_id
-    GROUP BY i.instrument_id, i.short_name, i.name, i.sort_order
-    ORDER BY i.sort_order, i.instrument_id')->fetchAll();
 // 係ごとに「何人に付いているか」
 $roles = $pdo->query('SELECT r.role_id, r.name, COUNT(mr.member_id) AS used
     FROM role r LEFT JOIN member_role mr ON mr.role_id = r.role_id
@@ -386,7 +347,7 @@ if ($tab === 'artist') {
     }
 }
 
-$counts = ['venue' => count($venues), 'day' => count($days), 'instrument' => count($instruments), 'role' => count($roles), 'artist' => count($artists)];
+$counts = ['venue' => count($venues), 'day' => count($days), 'role' => count($roles), 'artist' => count($artists)];
 
 /** 消せないときのグレーアウトしたゴミ箱（disabled のボタンはマウスの反応が鈍いので、外側の span でポップアップを出す）
  *  ポップアップは app.js の setupSetlistTip（data-setlist-tip）が出す。PC は乗せる、スマホは押すと出て、自動で消える。
@@ -416,7 +377,7 @@ render_header($tabs[$tab][0] . 'の管理');
 <section class="hero">
     <div>
         <p class="eyebrow">Admin</p>
-        <h1 class="display">会場・日程名・楽器・係・アーティストの管理</h1>
+        <h1 class="display">会場・日程名・係・アーティストの管理</h1>
         <p class="muted"><?= h($tabs[$tab][1]) ?></p>
     </div>
     <dl class="stats"><div><dt><?= h($tabs[$tab][0]) ?></dt><dd><?= $counts[$tab] ?></dd></div></dl>
@@ -640,44 +601,6 @@ render_header($tabs[$tab][0] . 'の管理');
                             <input type="hidden" name="action" value="delete">
                             <input type="hidden" name="artist_id" value="<?= (int)$a['artist_id'] ?>">
                             <button class="btn-trash" type="submit" aria-label="「<?= h($a['name']) ?>」を削除" title="削除"><?= icon('delete') ?></button>
-                        </form>
-                    <?php endif; ?>
-                </td>
-            </tr>
-        <?php endforeach; ?>
-        </tbody>
-    <?php else: ?>
-        <thead><tr><th>略称・楽器名</th><th class="num">使われている数</th><th></th></tr></thead>
-        <tbody>
-        <?php foreach ($instruments as $ins):
-            $builtin = in_array($ins['short_name'], BUILTIN_INSTRUMENTS, true); ?>
-            <tr>
-                <td>
-                    <?php if ($builtin): ?>
-                        <span class="strong"><?= h($ins['short_name']) ?></span> <?= h($ins['name']) ?> <span class="muted small">最初からある楽器</span>
-                    <?php else: ?>
-                        <form method="post" class="row-form"><?= csrf_field() ?>
-                            <input type="hidden" name="tab" value="instrument">
-                            <input type="hidden" name="action" value="rename">
-                            <input type="hidden" name="instrument_id" value="<?= (int)$ins['instrument_id'] ?>">
-                            <input autocomplete="off" name="short_name" value="<?= h($ins['short_name']) ?>" maxlength="10" required aria-label="略称" class="input-short">
-                            <input autocomplete="off" name="name" value="<?= h($ins['name']) ?>" maxlength="30" required aria-label="楽器名">
-                            <button class="btn btn--ghost btn--sm" type="submit">名前を変更</button>
-                        </form>
-                    <?php endif; ?>
-                </td>
-                <td class="num"><?= (int)$ins['used'] ?></td>
-                <td class="num">
-                    <?php if ($builtin): ?>
-                        <?= trash_disabled('最初からある楽器は削除できません') ?>
-                    <?php elseif ((int)$ins['used'] > 0): ?>
-                        <?= trash_disabled('使用されているため削除できません') ?>
-                    <?php else: ?>
-                        <form method="post" class="inline-form" data-confirm="「<?= h($ins['name']) ?>（<?= h($ins['short_name']) ?>）」を消します。よろしいですか？"><?= csrf_field() ?>
-                            <input type="hidden" name="tab" value="instrument">
-                            <input type="hidden" name="action" value="delete">
-                            <input type="hidden" name="instrument_id" value="<?= (int)$ins['instrument_id'] ?>">
-                            <button class="btn-trash" type="submit" aria-label="「<?= h($ins['name']) ?>」を削除" title="削除"><?= icon('delete') ?></button>
                         </form>
                     <?php endif; ?>
                 </td>

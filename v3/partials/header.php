@@ -113,6 +113,11 @@ $nav = [
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400..600,0..1,0&display=block" rel="stylesheet">
     <!-- ?v= はキャッシュ対策。ファイルの更新時刻が入る（lib/bootstrap.php の asset_url）ので、CSS・JS を変えても数字を上げなくてよい -->
     <link rel="stylesheet" href="<?= asset_url('assets/app.css') ?>">
+    <?php if (($instCss = instrument_color_css()) !== ''): ?>
+    <!-- 楽器の色（楽器の管理 instruments.php で変更した色）。中身は lib/bootstrap.php の instrument_color_css()。
+         色は '#rrggbb' の形だけを通しているので、そのまま書き出して安全 -->
+    <style><?= $instCss ?></style>
+    <?php endif; ?>
     <script src="<?= asset_url('assets/app.js') ?>" defer></script>
 </head>
 <body>
@@ -210,7 +215,8 @@ $nav = [
                         <a href="history">変更履歴</a>
                         <a href="members_merge">メンバーの統合</a>
                         <a href="members_entry">メンバープロフィールの一括編集</a>
-                        <a href="masters">会場・日程名・楽器・係・アーティストの管理</a>
+                        <a href="masters">会場・日程名・係・アーティストの管理</a>
+                        <a href="instruments">楽器の管理</a>
                     </div>
                 <?php endif; ?>
             </div>

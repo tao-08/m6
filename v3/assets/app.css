@@ -2902,3 +2902,8 @@ button.ttb-m { cursor: pointer; text-decoration: underline dotted; }
 .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 6px; }
 .compare-grid ul { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 2px; }
 .compare-grid li.is-diff { color: var(--warn); background: var(--warn-bg); border-radius: 4px; padding: 0 4px; }
+
+/* ===== 楽器の管理（instruments.php） ===== */
+.inst-admin .inst-admin__color { width: 40px; min-width: 40px; height: 32px; padding: 2px; cursor: pointer; } /* カラーピッカーは正方形に近く */
+.inst-admin .inst-admin__short { width: 6em; min-width: 0; }
+.inst-admin__merge select { min-width: 7em; }

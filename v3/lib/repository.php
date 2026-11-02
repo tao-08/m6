@@ -298,11 +298,39 @@ function attach_members(PDO $pdo, array &$index, int $bandId, array $assignments
 const OTHER_INSTRUMENT_ID = 10;
 
 /**
- * 最初から入っている楽器（schema.sql の INSERT）の略称。
- * プログラムが略称で探している楽器（Vo / Gt / Key / etc など）もあるので、楽器の管理画面でも消せないようにする。
- * 消せるのは、名簿の取り込みで「etc」から追加された楽器だけ。
+ * 楽器 $fromId を $toId に統合して、$fromId を消す（instruments.php の「統合して削除」）。
+ *   instrument_id を持っているテーブル:
+ *     band_member    … 主キーが (band_id, member_id, instrument_id)。
+ *                      同じ人が統合先の楽器ですでに登録されていると、UPDATE で付け替えると主キーがぶつかる。
+ *                      → INSERT IGNORE（ぶつかる行は飛ばす）で統合先の行を作ってから、元の行を消す
+ *     song_performer … 曲ごとの演奏者。band_member の (band_id, member_id, instrument_id) に外部キー（ON DELETE CASCADE）。
+ *                      元の band_member を消すと一緒に消えるので、先に統合先の楽器で作り直しておく
+ *     song_tab / song_part … 主キーに楽器が入っていないので、そのまま UPDATE で付け替える
+ *   途中で失敗したら全部取り消す（トランザクション）。
  */
-const BUILTIN_INSTRUMENTS = ['Vo', 'Gt', 'Ba', 'Dr', 'Key', 'Cho', 'Perc', 'Vn', 'Sax', 'Prog', 'Harm', 'etc'];
+function merge_instrument(PDO $pdo, int $fromId, int $toId): void
+{
+    $pdo->beginTransaction();
+    try {
+        // 1) 出演記録: 統合先の楽器の行を作る（もうあれば IGNORE で飛ばす）
+        $pdo->prepare('INSERT IGNORE INTO band_member (band_id, member_id, instrument_id)
+            SELECT band_id, member_id, ? FROM band_member WHERE instrument_id = ?')->execute([$toId, $fromId]);
+        // 2) 曲ごとの演奏者: 同じく統合先の楽器で作り直す（1 で作った band_member の行を外部キーで参照する）
+        $pdo->prepare('INSERT IGNORE INTO song_performer (song_id, band_id, member_id, instrument_id)
+            SELECT song_id, band_id, member_id, ? FROM song_performer WHERE instrument_id = ?')->execute([$toId, $fromId]);
+        // 3) 元の楽器の出演記録を消す（song_performer の元の行は CASCADE で一緒に消える）
+        $pdo->prepare('DELETE FROM band_member WHERE instrument_id = ?')->execute([$fromId]);
+        // 4) TAB 譜・パートのカードは付け替えるだけ
+        $pdo->prepare('UPDATE song_tab SET instrument_id = ? WHERE instrument_id = ?')->execute([$toId, $fromId]);
+        $pdo->prepare('UPDATE song_part SET instrument_id = ? WHERE instrument_id = ?')->execute([$toId, $fromId]);
+        // 5) 楽器を消す
+        $pdo->prepare('DELETE FROM instrument WHERE instrument_id = ?')->execute([$fromId]);
+        $pdo->commit();
+    } catch (Throwable $e) {
+        $pdo->rollBack(); // 全部なかったことにする
+        throw $e;
+    }
+}
 
 /**
  * 楽器を追加する（名簿の取り込みで「etc」を選んだときのモーダルから）。

@@ -302,6 +302,7 @@ CREATE TABLE instrument (
     instrument_id TINYINT UNSIGNED NOT NULL AUTO_INCREMENT,
     name          VARCHAR(30)      NOT NULL,           -- ボーカル
     short_name    VARCHAR(10)      NOT NULL,           -- Vo
+    color         CHAR(7)          NULL,               -- '#rrggbb'（ライトモードの色。NULL = グレー。Vo など変更できない楽器は app.css の色を使う。084_instrument_color.sql）
     sort_order    TINYINT UNSIGNED NOT NULL,
     PRIMARY KEY (instrument_id),
     UNIQUE KEY uq_instrument_short (short_name)
@@ -320,6 +321,11 @@ INSERT INTO instrument (instrument_id, name, short_name, sort_order) VALUES
 (11, '同期音源',      'Prog', 10),
 (12, 'ハーモニカ',    'Harm', 11),
 (10, 'その他',        'etc',  99);
+UPDATE instrument SET color = '#d90f0f' WHERE short_name = 'Perc';
+UPDATE instrument SET color = '#e8590c' WHERE short_name = 'Vn';
+UPDATE instrument SET color = '#9c7a2e' WHERE short_name = 'Sax';
+UPDATE instrument SET color = '#1d6f96' WHERE short_name = 'Prog';
+UPDATE instrument SET color = '#4a6b85' WHERE short_name = 'Harm';
 
 -- ---------------------------------------------------------------------
 --  band_member — 誰がどのバンドで何を担当したか（中間テーブル）
