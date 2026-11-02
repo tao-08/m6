@@ -578,6 +578,8 @@ if (isset($_GET['link']) || $freeVideo !== null) {
     <?php // 曲構成のラベル（押すと現在位置にそのラベルのマーク）と、ラベルなしのマーク ?>
     <div class="ytp__row">
         <button type="button" class="tab-chip" data-ytp-edit aria-pressed="false" title="マーク編集" aria-label="マーク編集"><?= icon('edit') ?></button>
+        <?php // ？ = 使い方のモーダル（下の <dialog data-ytp-guide>）。開閉は assets/ytplayer.js の「使い方」 ?>
+        <button type="button" class="icon-btn" data-ytp-help title="使い方" aria-label="使い方"><?= icon('help') ?></button>
     </div>
     <div class="ytp__secs is-closed" data-ytp-secs inert>
     <div class="ytp__row">
@@ -593,6 +595,46 @@ if (isset($_GET['link']) || $freeVideo !== null) {
     <ul class="ytp__marks" data-ytp-marks></ul>
     <a class="ytp__open muted small" href="<?= h($link['url']) ?>" target="_blank" rel="noopener noreferrer"><?= icon('open_in_new') ?> YouTube</a>
 </section>
+<?php
+// 使い方のモーダル（<dialog>）。見た目は TAB 画面の「使い方」（tab.css の .tab-guide）を使い回す
+//   <dialog> … ブラウザ標準のモーダル。showModal() で開くと背景が暗くなり、Esc で閉じる（自前で作るより確実）
+//   中身は固定の文字だけ（ユーザーの入力を出さない）なので XSS の心配はない
+?>
+<dialog class="modal tab-guide" data-ytp-guide aria-labelledby="ytp-guide-title">
+    <div class="modal__body">
+        <h3 id="ytp-guide-title" class="modal__title"><?= icon('help') ?> 使い方</h3>
+
+        <h4 class="tab-guide__h">再生</h4>
+        <ul class="tab-guide__list">
+            <li><?= icon('skip_previous') ?><span>先頭</span></li>
+            <li><?= icon('fast_rewind') ?><?= icon('fast_forward') ?><span>指定の秒数だけ移動（秒数は横の欄で変更）</span></li>
+            <li><?= icon('speed') ?><span>速度 − / ＋（0.25〜2倍）</span></li>
+            <li><?= icon('fullscreen') ?><?= icon('fit_screen') ?><span>全画面 / 全画面中の拡大（全体・上半分・下半分）</span></li>
+        </ul>
+
+        <h4 class="tab-guide__h">AB リピート</h4>
+        <ul class="tab-guide__list">
+            <li><span class="tab-guide__txt">A B</span><span>始まりで A、終わりで B を押すとリピート開始</span></li>
+            <li><?= icon('repeat') ?><?= icon('close') ?><span>オン・オフ / 解除</span></li>
+        </ul>
+
+        <h4 class="tab-guide__h">マーカー</h4>
+        <ul class="tab-guide__list">
+            <li><?= icon('edit') ?><span>マーク編集: 押すと追加・削除ができる</span></li>
+            <li><?= icon('bookmark_add') ?><span>練習用マーカー（自分だけに表示）</span></li>
+            <li><span class="tab-guide__txt">サビ</span><span>曲構成のラベル（部員全員で共通）</span></li>
+            <li><?= icon('repeat_one') ?><span>次のマーカーまでをリピート（前後幅は「リピート前後幅」）</span></li>
+            <li><?= icon('keyboard_double_arrow_left') ?><?= icon('keyboard_double_arrow_right') ?><span>前・次のマーカーへ</span></li>
+            <li><?= icon('delete') ?><span>2回押しで削除</span></li>
+        </ul>
+
+        <p class="tab-guide__keys small muted">設定は自動保存 · Space 再生 · ←→ 移動 · Shift+←→ マーカー · M マーカー追加 · Home 先頭</p>
+
+        <div class="form-actions">
+            <button type="button" class="btn btn--ghost" data-ytp-guide-close aria-label="閉じる" title="閉じる"><?= icon('close') ?></button>
+        </div>
+    </div>
+</dialog>
 <script src="<?= asset_url('assets/ytplayer.js') ?>" defer></script>
 <?php
     render_footer();
