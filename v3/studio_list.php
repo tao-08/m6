@@ -49,13 +49,16 @@ if (is_post()) {
 // =====================================================================
 //  表示用のデータ
 // =====================================================================
-// MIN() = 最小値。相関サブクエリでスタジオごとに「バンドのいちばん安い1時間の料金」「学割の行があるか」をまとめて取る
+// MIN() = 最小値。相関サブクエリでスタジオごとに「バンドのいちばん安い1時間の料金」「割引区分の名前」をまとめて取る
+// GROUP_CONCAT = 複数行の値を1つの文字列につなげる（区切りはタブ。区分名にタブは入らないので、あとで explode で分けられる）
+//   \'\t\' = PHP の '…' の中に SQL の文字列 '\t'（タブ）を書くため、' の前に \ を付けている
 // EXISTS (SELECT 1 …) = 1行でもあれば 1。個人練習の料金・パックがあるかのタグに使う（件数は要らないので COUNT より速い）
 //   max_area = そのスタジオでいちばん広い部屋の帖数（広さの絞り込み用。部屋の広さが未入力なら NULL）
 //   （スタジオの数だけ SQL を投げる「N+1 問題」を避けるため、1回の SQL で済ませる）
 $studios = $pdo->query('SELECT s.studio_id, s.name, s.access, s.lat, s.lng, s.reserve_url,
         (SELECT MIN(r.price) FROM studio_rate r WHERE r.studio_id = s.studio_id AND r.people IS NULL) AS min_price,
-        (SELECT MIN(r.student_price) FROM studio_rate r WHERE r.studio_id = s.studio_id) AS min_student,
+        (SELECT GROUP_CONCAT(d.name ORDER BY d.sort_order, d.studio_discount_id SEPARATOR \'\t\') FROM studio_discount d
+            WHERE d.studio_id = s.studio_id) AS disc_names,
         (SELECT MAX(m.area_jo) FROM studio_room m WHERE m.studio_id = s.studio_id) AS max_area,
         EXISTS (SELECT 1 FROM studio_rate r WHERE r.studio_id = s.studio_id AND r.people IS NOT NULL) AS has_solo,
         EXISTS (SELECT 1 FROM studio_pack p WHERE p.studio_id = s.studio_id) AS has_pack
@@ -122,9 +125,10 @@ render_header('スタジオ情報', 'tools');
                 <!-- 1段め: スタジオ名だけ。タグ（学割・個人・パック）は2段めの先頭へ -->
                 <span class="sinfo-list__name"><?= h($s['name']) ?></span>
                 <span class="muted small sinfo-list__meta">
-                    <?php if ($s['min_student'] !== null || $s['has_solo'] || $s['has_pack']): ?>
+                    <?php $discTags = $s['disc_names'] === null ? [] : explode("\t", $s['disc_names']); // 割引区分の名前（学割・U20 …） ?>
+                    <?php if ($discTags || $s['has_solo'] || $s['has_pack']): ?>
                         <span class="sinfo-list__tags">
-                            <?php if ($s['min_student'] !== null): ?><span class="tag tag--plan">学割</span><?php endif; ?>
+                            <?php foreach ($discTags as $t): ?><span class="tag tag--plan"><?= h($t) ?></span><?php endforeach; ?>
                             <?php if ($s['has_solo']): ?><span class="tag">個人</span><?php endif; ?>
                             <?php if ($s['has_pack']): ?><span class="tag">パック</span><?php endif; ?>
                         </span>

@@ -1343,7 +1343,7 @@ CREATE TABLE studio (
     phone        VARCHAR(30)   NULL,
     lat          DECIMAL(9,6)  NULL,
     lng          DECIMAL(9,6)  NULL,
-    student_note VARCHAR(500)  NULL,             -- 学割の条件（例: 学生証の提示が必要・平日のみ）
+    student_note VARCHAR(500)  NULL,             -- 割引の条件（例: 学生証の提示が必要）
     note         VARCHAR(1000) NULL,
     sort_order   INT UNSIGNED  NOT NULL DEFAULT 0,
     updated_by   INT UNSIGNED  NULL,
@@ -1374,7 +1374,6 @@ CREATE TABLE studio_rate (
     start_min      SMALLINT UNSIGNED NOT NULL,
     end_min        SMALLINT UNSIGNED NOT NULL,
     price          INT UNSIGNED      NOT NULL,
-    student_price  INT UNSIGNED      NULL,
     sort_order     INT UNSIGNED      NOT NULL DEFAULT 0,
     PRIMARY KEY (studio_rate_id),
     KEY idx_srate_studio (studio_id),
@@ -1392,7 +1391,6 @@ CREATE TABLE studio_pack (
     end_min        SMALLINT UNSIGNED NOT NULL,
     minutes        SMALLINT UNSIGNED NULL,          -- NULL = 時間帯まるごと
     price          INT UNSIGNED      NOT NULL,      -- パック1回の料金
-    student_price  INT UNSIGNED      NULL,
     sort_order     INT UNSIGNED      NOT NULL DEFAULT 0,
     PRIMARY KEY (studio_pack_id),
     KEY idx_spack_studio (studio_id),
@@ -1457,5 +1455,43 @@ CREATE TABLE studio_equipment_room (
     CONSTRAINT fk_ser_equipment FOREIGN KEY (studio_equipment_id) REFERENCES studio_equipment (studio_equipment_id)
         ON UPDATE CASCADE ON DELETE CASCADE,
     CONSTRAINT fk_ser_room FOREIGN KEY (studio_room_id) REFERENCES studio_room (studio_room_id)
+        ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- 割引区分（学割・U20 …）と、区分ごとの料金（中間テーブル）。migrations/089
+--   料金の行は「1行 = 1部屋 か 全部屋共通」（studio_rate_room は 0〜1行）。パック・機材は複数の部屋に共通にできる
+CREATE TABLE studio_discount (
+    studio_discount_id INT UNSIGNED     NOT NULL AUTO_INCREMENT,
+    studio_id          INT UNSIGNED     NOT NULL,
+    name               VARCHAR(30)      NOT NULL,          -- 例: 学割 / U20
+    day_type           TINYINT UNSIGNED NOT NULL DEFAULT 0, -- 使える曜日 0 = 全日 / 1 = 平日のみ / 2 = 土日祝のみ
+    sort_order         INT UNSIGNED     NOT NULL DEFAULT 0,
+    PRIMARY KEY (studio_discount_id),
+    KEY idx_sdisc_studio (studio_id),
+    CONSTRAINT fk_sdisc_studio FOREIGN KEY (studio_id) REFERENCES studio (studio_id)
+        ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE studio_rate_discount (
+    studio_rate_id     INT UNSIGNED NOT NULL,
+    studio_discount_id INT UNSIGNED NOT NULL,
+    price              INT UNSIGNED NOT NULL,              -- その区分の1時間の料金
+    PRIMARY KEY (studio_rate_id, studio_discount_id),
+    KEY idx_srd_discount (studio_discount_id),
+    CONSTRAINT fk_srd_rate FOREIGN KEY (studio_rate_id) REFERENCES studio_rate (studio_rate_id)
+        ON UPDATE CASCADE ON DELETE CASCADE,
+    CONSTRAINT fk_srd_discount FOREIGN KEY (studio_discount_id) REFERENCES studio_discount (studio_discount_id)
+        ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE studio_pack_discount (
+    studio_pack_id     INT UNSIGNED NOT NULL,
+    studio_discount_id INT UNSIGNED NOT NULL,
+    price              INT UNSIGNED NOT NULL,              -- その区分のパック1回の料金
+    PRIMARY KEY (studio_pack_id, studio_discount_id),
+    KEY idx_spd_discount (studio_discount_id),
+    CONSTRAINT fk_spd_pack FOREIGN KEY (studio_pack_id) REFERENCES studio_pack (studio_pack_id)
+        ON UPDATE CASCADE ON DELETE CASCADE,
+    CONSTRAINT fk_spd_discount FOREIGN KEY (studio_discount_id) REFERENCES studio_discount (studio_discount_id)
         ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;

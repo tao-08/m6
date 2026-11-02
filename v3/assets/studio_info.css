@@ -158,3 +158,34 @@
 .sinfo-ai__sec > summary { cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .sinfo-ai__lines { padding-top: 8px; font-size: 13px; overflow-wrap: anywhere; }
 .sinfo-ai__src a { margin-right: 6px; }
+
+/* ---- シミュレーションの割引区分（なし / 学割 / U20 …）。区分が多いときは折り返す ---- */
+.sinfo-seg--disc { flex-wrap: wrap; }
+.sinfo-seg--disc label { flex: 1 0 auto; }
+
+/* ---- 料金の編集: 部屋ごとのブロック → 対象・曜日の見出し → 行 ---- */
+.sinfo-rate-edit { gap: 12px; }
+/* fieldset = 入力欄のまとまり（HTML 標準）。legend がそのまとまりの名前（部屋名）になる */
+.sinfo-rate-room { margin: 0; padding: 8px 10px 10px; border: 1px solid var(--border); border-radius: 10px; display: grid; gap: 10px; min-width: 0; }
+.sinfo-rate-room > legend { padding: 0 6px; font-weight: 800; font-size: 14px; display: inline-flex; align-items: center; gap: 4px; }
+.sinfo-rate-group { display: grid; gap: 4px; }
+.sinfo-rate-group + .sinfo-rate-group { padding-top: 8px; border-top: 1px dashed var(--border); }
+.sinfo-rate-group__head { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.sinfo-rate-group__add { margin-left: auto; padding: 2px 8px; }
+/* 列がはみ出す（割引区分が多い・スマホ）ときは、行のまとまりだけ横スクロール */
+.sinfo-rate-wrap { overflow-x: auto; display: grid; gap: 4px; }
+/* 1行 = CSS グリッド。列: 開始 | 終了 | 料金 | 割引区分 × n。--cols（列の数）はフォームの style で渡す
+   repeat(n, X) = X を n 回くり返す。見出しの行も同じグリッドなので、列名と入力欄が縦にそろう */
+.sinfo-rate-row { display: grid; grid-template-columns: repeat(var(--cols, 3), minmax(62px, 1fr)); gap: 6px; align-items: center; min-width: min-content; }
+.sinfo-rate-row--head { font-weight: 800; font-size: 11px; }
+.sinfo-edit .sinfo-rate-row select, .sinfo-edit .sinfo-rate-row input[type=number] { width: 100%; min-width: 0; padding: 8px 6px; }
+/* 新しい見出しを作る行: 先頭に「対象・曜日」の選択を1行まるごと使って出す（grid-column: 1 / -1 = 最初の列から最後の列まで） */
+.sinfo-rate-row__pick { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; color: var(--muted); }
+.sinfo-rate-group--new { padding-top: 8px; border-top: 1px dashed var(--border); }
+.sinfo-rate-edit input[type=number] { width: 100%; min-width: 0; }
+/* app.js が select を独自の選択 UI（.live-pick）に変えるので、それもマスの幅に収める */
+.sinfo-rate-row .live-pick--inline { display: block; min-width: 0; }
+.sinfo-rate-row .live-pick--inline .live-pick__btn { width: 100%; min-width: 0; }
+/* グリッドの子は初期値 min-width: auto（= 中身の幅より縮まない）なので、横に長い料金の行に押されてカードごとはみ出す。
+   min-width: 0 で「縮んでいい」と伝え、はみ出す分は .sinfo-rate-wrap の横スクロールに任せる（CSS グリッドの定番の落とし穴） */
+.sinfo-section > *, .sinfo-rate-edit, .sinfo-rate-group { min-width: 0; } /* カードの中身すべて（料金表も。割引区分の列が増えると表が広くなる） */

@@ -110,6 +110,32 @@ const STUDIO_ROOM_LINKS = [
     'studio_equipment' => ['studio_equipment_room', 'studio_equipment_id'],
 ];
 
+/**
+ * 料金・パック ←→ 割引区分 の中間テーブル（migrations/089）。中間テーブルの price = その区分の料金
+ *   [親テーブル => [中間テーブル, 親の主キー列]]。SQL に入れるのは、この固定の文字だけ
+ */
+const STUDIO_DISCOUNT_LINKS = [
+    'studio_rate' => ['studio_rate_discount', 'studio_rate_id'],
+    'studio_pack' => ['studio_pack_discount', 'studio_pack_id'],
+];
+
+/** 割引区分の数の上限（画面の列が増えすぎないように） */
+const STUDIO_DISCOUNT_MAX = 5;
+
+/** 割引区分の「使える曜日」の表示（0 = 全日 → 空文字。何も書かない = いつでも使える） */
+function studio_discount_day_label(int $day): string
+{
+    return $day === 0 ? '' : (STUDIO_DAY_TYPES[$day] ?? '') . 'のみ';
+}
+
+/** このスタジオの割引区分（並び順どおり）。[['studio_discount_id' => 1, 'name' => '学割', 'day_type' => 0], …] */
+function studio_discounts(PDO $pdo, int $studioId): array
+{
+    $st = $pdo->prepare('SELECT studio_discount_id, name, day_type FROM studio_discount WHERE studio_id = ? ORDER BY sort_order, studio_discount_id');
+    $st->execute([$studioId]);
+    return array_map(fn($d) => ['studio_discount_id' => (int)$d['studio_discount_id'], 'name' => $d['name'], 'day_type' => (int)$d['day_type']], $st->fetchAll());
+}
+
 /** 円の表示（1234 → "¥1,234"）。number_format = 3桁ごとにカンマ */
 function studio_yen(int $yen): string
 {
