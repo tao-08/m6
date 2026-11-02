@@ -351,6 +351,15 @@
       const r = calc(v, v.student, v.dur);
       const perPerson = (yenValue) => Math.ceil(yenValue / v.people); // 割り勘は1円単位で切り上げ（足りなくならないように）
 
+      // ---- レンタル欄の見出しバッジ（閉じていても「いくつ選んでいるか」がわかるように）----
+      //   r.rentals = 数が1以上のレンタルだけの配列なので、その長さ = 選んでいる種類の数
+      //   hidden 属性 = 画面から隠す HTML 標準の属性（0 件のときはバッジごと隠す）
+      const badge = form.querySelector('[data-rental-count]');
+      if (badge) {
+        badge.textContent = r.rentals.length;
+        badge.hidden = r.rentals.length === 0;
+      }
+
       out.replaceChildren(); // 中身を全部消してから作り直す
 
       // ---- 合計と1人あたり ----

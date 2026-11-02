@@ -626,14 +626,25 @@ render_header($studio['name'], 'tools');
             <label class="sinfo-check"><input type="checkbox" name="student" checked> 学割</label>
         <?php endif; ?>
         <?php if ($rentals): ?>
-            <div class="sinfo-sim__rentals">
-                <?php foreach ($rentals as $r): ?>
-                    <label class="sinfo-rental">
-                        <span><?= h($r['name']) ?> <span class="muted small"><?= h(studio_yen((int)$r['price'])) ?><?= $r['per_hour'] ? '/h' : '' ?></span></span>
-                        <input type="number" name="rental_<?= (int)$r['studio_rental_id'] ?>" min="0" max="20" value="0" inputmode="numeric" aria-label="<?= h($r['name']) ?>の数">
-                    </label>
-                <?php endforeach; ?>
-            </div>
+            <!-- レンタル欄: <details> / <summary> = ブラウザ標準の「開け閉めできる箱」（HTMLだけで動く・JS不要）。
+                 ・初期状態は閉じている（open 属性を付けると最初から開く）
+                 ・閉じていても中の入力欄はフォームに残るので、数を入れたぶんは合計に入ったまま
+                   → 閉じても選んだ数がわかるよう、見出しに選択中の件数バッジ（data-rental-count）を出す。数は JS（render）が更新する -->
+            <details class="sinfo-rentbox">
+                <summary class="sinfo-rentbox__head">
+                    <?= icon('mic') ?> レンタル
+                    <span class="sinfo-rentbox__count" data-rental-count hidden>0</span>
+                    <?= icon('expand_more', 'sinfo-rentbox__chev') ?>
+                </summary>
+                <div class="sinfo-sim__rentals">
+                    <?php foreach ($rentals as $r): ?>
+                        <label class="sinfo-rental">
+                            <span><?= h($r['name']) ?> <span class="muted small"><?= h(studio_yen((int)$r['price'])) ?><?= $r['per_hour'] ? '/h' : '' ?></span></span>
+                            <input type="number" name="rental_<?= (int)$r['studio_rental_id'] ?>" min="0" max="20" value="0" inputmode="numeric" aria-label="<?= h($r['name']) ?>の数">
+                        </label>
+                    <?php endforeach; ?>
+                </div>
+            </details>
         <?php endif; ?>
         <!-- 結果（JS が書き込む）。aria-live = 中身が変わったら読み上げソフトが読む -->
         <div class="sinfo-sim__result" id="studio-sim-result" aria-live="polite"></div>
