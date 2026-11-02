@@ -118,7 +118,7 @@ $nav = [
     -->
     <script>
         (function () {
-            var FX_MODE = 'full';
+            var FX_MODE = 'off'; // 2026-11-03 いったん演出を止めて元の見た目に戻した（再開するときは 'full' か 'lite'。作業ブランチ claude/fancy-motion は 'full'）
             var level = { off: 0, lite: 1, full: 2 };
             var mode = FX_MODE;
             try {
