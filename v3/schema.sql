@@ -320,6 +320,7 @@ INSERT INTO instrument (instrument_id, name, short_name, sort_order) VALUES
 (9, 'サックス',       'Sax',  9),
 (11, '同期音源',      'Prog', 10),
 (12, 'ハーモニカ',    'Harm', 11),
+(13, 'アコーディオン', 'Acc',  12),
 (10, 'その他',        'etc',  99);
 UPDATE instrument SET color = '#d90f0f' WHERE short_name = 'Perc';
 UPDATE instrument SET color = '#e8590c' WHERE short_name = 'Vn';
