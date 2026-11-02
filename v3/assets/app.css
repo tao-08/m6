@@ -428,9 +428,29 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .tabs--days { gap: 6px; padding: 6px; }
 .tabs--days .tab { padding: 12px 24px; font-size: 16px; }
 .tabs--days .tab small { font-size: 13px; }
-/* 日程を切り替えたとき、表示された日程をふわっと出す（hidden が外れて表示されるたびにアニメーションが最初から動く） */
-.day:not([hidden]) { animation: day-fade .25s ease; }
-@keyframes day-fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+/* 日程タブの「選んでいる赤い丸」。タブごとに背景を塗り替えるのではなく、丸を1個だけ置いて、選んだタブの位置へ横にすべらせる。
+     丸の位置と大きさは JS（setupTabs の movePill）が transform / width / height に入れる。
+     .tabs は position: sticky（= 子の position: absolute の基準になる）で、横スクロールしても丸はタブと一緒に動く。
+     丸が動く準備ができたとき（JS が .has-pill を付ける）だけ、タブ自身の赤い背景を消す → JS が動かなければ今まで通りタブの背景が赤くなる */
+.tabs__pill { position: absolute; top: 0; left: 0; z-index: 0; pointer-events: none; border-radius: 999px; background: var(--accent);
+  transition: transform .4s cubic-bezier(.34, 1.3, .64, 1), width .4s cubic-bezier(.34, 1.3, .64, 1), height .4s ease; } /* 1.3 = 少し行き過ぎてから戻るバネ */
+/* 丸の基準を .tabs 自身にする。ライブ詳細では .day-bar .tabs が position: static（下の 6-3）なので、そのままだと基準が外側の .day-bar になり、
+     タブが横にスクロールしたとき（スマホで4日程以上）、丸だけスクロールに付いてこない。relative は見た目も並びも変えない。
+     .day-bar .tabs（0,2,0）に勝てるよう、クラスを足して強くしてある */
+.day-bar .tabs--days.has-pill { position: relative; }
+.tabs--days.has-pill .tab { position: relative; z-index: 1; transition: color .25s ease; } /* 文字は丸の手前に出す。色は丸が着くころに切り替わる */
+.tabs--days.has-pill .tab.is-active, .tabs--days.has-pill .tab.is-active:hover { background: transparent; }
+@media (prefers-reduced-motion: reduce) { .tabs__pill, .tabs--days.has-pill .tab { transition: none; } }
+/* 日程を切り替えたとき、表示された日程を横からすべり込ませる（hidden が外れて表示されるたびにアニメーションが最初から動く）。
+     --day-dx（横のずれ）と --day-dy（縦のずれ）は JS が入れる: 後ろのタブへ移るなら +48px（右から）、前なら -48px（左から）。
+     入れていない（最初に開いたとき）は今まで通り、下から6px ふわっと出る。
+     fill-mode に forwards を付けない: 終わった後に transform が残ると、中の position: fixed の基準がずれるため */
+.day:not([hidden]) { animation: day-slide .35s var(--ease-out); }
+@keyframes day-slide { from { opacity: 0; transform: translate(var(--day-dx, 0px), var(--day-dy, 6px)); } to { opacity: 1; transform: none; } }
+@keyframes day-fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } } /* 他のパネル（ホーム画面に追加の説明など）が使う */
+/* すべり込む間だけ、横にはみ出た分を切る（スマホで一瞬、画面が横にスクロールできてしまうのを防ぐ）。
+     clip は hidden と違ってスクロール領域を作らないので、中の position: sticky（日程タブ・絞り込み）はそのまま効く */
+.container.is-day-sliding { overflow-x: clip; }
 @media (prefers-reduced-motion: reduce) { .day:not([hidden]) { animation: none; } }
 
 .day__info { display: flex; flex-wrap: wrap; gap: 16px 32px; align-items: center; margin-bottom: 18px; }

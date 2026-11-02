@@ -2530,16 +2530,79 @@ function setupSortToggle() {
 /* ---------------------------------------------------------------------
  * ライブ詳細の日程タブ
  *   URL の #day-12 を見て、その日程だけ表示する（リンクで直接その日を開ける）
+ *   タブを押して切り替えたとき:
+ *     ・日程の中身は、タブの並びの「後ろ」へ移るなら右から、「前」へ移るなら左から、横にすべり込む
+ *       （向きは --day-dx に入れる。動きそのものは CSS の @keyframes day-slide）
+ *     ・選んでいる赤い丸は、タブからタブへ横にすべる（CSS の .tabs__pill。位置は movePill が決める）
+ *   最初に開いたとき（URL の # で2日目を開く場合も）は、すべらせずに今まで通り表示する
  * ------------------------------------------------------------------- */
 function setupTabs() {
   const tabs = document.querySelectorAll('a[data-tab]'); // a に限る: tab.php の TAB 譜（div[data-tab]）の中のクリックまで止めてしまうので
   if (!tabs.length) return;
+  const tabList = [...tabs]; // NodeList は indexOf が使えないので、配列にする（並びの順番を調べるため）
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)');
 
-  const showDay = (hash) => {
+  /* ---- 赤い丸 ----
+   * <span class="tabs__pill"> を .tabs の先頭に1個足し、選んでいるタブの位置・大きさに合わせる。
+   * offsetLeft / offsetTop は「基準になる親（.tabs。position: sticky なので基準になる）の左上から見た位置」。
+   * 丸も同じ親の中の absolute（left: 0; top: 0）なので、その数字をそのまま translate に使える */
+  const bar = tabList[0].parentElement;
+  const pill = document.createElement('span');
+  pill.className = 'tabs__pill';
+  pill.setAttribute('aria-hidden', 'true'); // 飾りなので、スクリーンリーダーには読ませない
+  // 末尾に足す（先頭にしない）: app.css に .tab:nth-child(3) / (4)（3日以上・4日以上のスマホ表示）があり、
+  //   先頭に足すとタブの順番が1つずれて、2日が「3日以上」の表示になってしまうため。
+  //   丸は position: absolute なので横並びの計算には入らない。手前・奥の重なりは z-index（CSS）で決めるので、DOM の順番は関係ない
+  bar.append(pill);
+  bar.classList.add('has-pill'); // これが付くと、CSS がタブ自身の赤い背景を消す
+  const movePill = (instant = false) => {
+    const active = tabList.find((t) => t.classList.contains('is-active'));
+    if (!active) return;
+    if (instant) pill.style.transition = 'none'; // 最初の配置・画面の大きさが変わったときは、すべらせずに一瞬で置く
+    pill.style.width = `${active.offsetWidth}px`;
+    pill.style.height = `${active.offsetHeight}px`;
+    pill.style.transform = `translate(${active.offsetLeft}px, ${active.offsetTop}px)`;
+    if (instant) {
+      void pill.offsetWidth; // 一度描き直させて「すべらせない配置」を確定させてから、transition を元に戻す
+      pill.style.transition = '';
+    }
+  };
+  // タブの大きさが変わったら（文字フォントの読み込み完了・画面の回転・幅の変更）、丸を置き直す。observe した直後に1回呼ばれるので、最初の配置もこれ
+  if ('ResizeObserver' in window) {
+    const ro = new ResizeObserver(() => movePill(true));
+    ro.observe(bar);
+    tabList.forEach((t) => ro.observe(t));
+  }
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => movePill(true));
+
+  /** animate: true のとき（タブを押したとき）だけ、横にすべらせる */
+  const showDay = (hash, animate = false) => {
     const target = hash && document.querySelector(hash);
     if (!target || !target.classList.contains('day')) return;
+
+    // 今のタブと移動先のタブの「並びの順番」で、すべる向きを決める（hidden を変える前に調べる）
+    const from = tabList.findIndex((t) => t.classList.contains('is-active'));
+    const to = tabList.findIndex((t) => t.getAttribute('href') === '#' + target.id);
+    if (animate && !reduce.matches && target.hidden && from !== -1 && to !== -1 && from !== to) {
+      const main = target.closest('.container');
+      target.style.setProperty('--day-dx', `${(to > from ? 1 : -1) * 48}px`); // 後ろへ → 右から（+）/ 前へ → 左から（-）
+      target.style.setProperty('--day-dy', '0px'); // 縦には動かさない（今までの「下から6px」をやめる）
+      if (main) main.classList.add('is-day-sliding');
+      const done = () => {
+        target.style.removeProperty('--day-dx');
+        target.style.removeProperty('--day-dy');
+        if (main) main.classList.remove('is-day-sliding');
+        target.removeEventListener('animationend', onEnd);
+      };
+      // animationend は中の要素のアニメ終了でも届くので、target 自身のときだけ片付ける
+      const onEnd = (e) => { if (e.target === target) done(); };
+      target.addEventListener('animationend', onEnd);
+      setTimeout(done, 700); // animationend が来なかったとき（タブをすぐ連打したなど）の保険
+    }
+
     document.querySelectorAll('.day').forEach((d) => { d.hidden = d !== target; });
     tabs.forEach((t) => t.classList.toggle('is-active', t.getAttribute('href') === '#' + target.id));
+    movePill(); // 赤い丸を、選んだタブへすべらせる
     // スマホで日程が4つ以上あるとタブのバーは横にスクロールする → 選んだタブがバーの外にあれば見える所まで動かす
     //   scrollIntoView だとページごと縦に動くことがあるので、バーの scrollLeft だけを変える
     const active = [...tabs].find((t) => t.classList.contains('is-active'));
@@ -2556,9 +2619,10 @@ function setupTabs() {
   tabs.forEach((t) => t.addEventListener('click', (e) => {
     e.preventDefault(); // 本来の「#へジャンプ」を止める
     history.replaceState(null, '', t.getAttribute('href'));
-    showDay(t.getAttribute('href'));
+    showDay(t.getAttribute('href'), true); // true = タブを押したので、横にすべらせる
   }));
-  showDay(location.hash);
+  showDay(location.hash); // 最初に開いたときは、すべらせない
+  movePill(true); // 丸も最初は、すべらせずに今のタブへ一瞬で置く（左上から飛んでくるのを防ぐ）
 }
 
 /* ---------------------------------------------------------------------
