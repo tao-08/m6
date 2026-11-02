@@ -135,9 +135,32 @@
   }
 
   // ---- YouTube の IFrame API ----
-  const s = document.createElement('script');
-  s.src = 'https://www.youtube.com/iframe_api';
-  window.onYouTubeIframeAPIReady = () => {
+  // ときどき YouTube の読み込みに失敗して、灰色の😵（読み込めなかった枠）になる。
+  // 「一定時間内に onReady（準備完了）が来ない」か「onError（再生エラー）」なら、プレイヤーを1回だけ作り直す。
+  //   ・作り直しは1回だけ（何度も繰り返すと、本当に再生できない動画で無限ループになるため）
+  //   ・onError の 100 / 101 / 150 は「動画が削除・非公開・埋め込み禁止」= 何度やってもダメなので作り直さない
+  const READY_TIMEOUT = 10000; // 準備完了を待つ時間（ミリ秒）。遅い回線でも普通は数秒で来る
+  let retried = false, readyTimer = null;
+  const vbox = root.querySelector('.ytp__video'); // 動画の枠。作り直すときはこの中身を入れ替える
+
+  function retry() {
+    clearTimeout(readyTimer);
+    if (retried || ready) return; // もう1回やった / すでに動いている → 何もしない
+    retried = true;
+    // player.destroy() は YouTube が作った <iframe> を消す。失敗した状態だと例外が出ることもあるので try で包む
+    try { player?.destroy(); } catch (e) { /* 壊れたプレイヤーは捨てるだけ */ }
+    player = null;
+    // YouTube.Player は「渡した要素」を <iframe> に置き換えるので、新しい空の <div> を作り直して渡す
+    const mount = document.createElement('div');
+    mount.setAttribute('data-ytp-mount', '');
+    vbox.replaceChildren(mount);
+    // そもそも iframe_api（YouTube の JS）自体が読めていなければ、読み込みからやり直す
+    if (window.YT && window.YT.Player) createPlayer(); else loadApi();
+  }
+
+  function createPlayer() {
+    clearTimeout(readyTimer);
+    readyTimer = setTimeout(retry, READY_TIMEOUT); // 時間内に準備完了しなければ作り直す
     player = new window.YT.Player($('[data-ytp-mount]'), {
       videoId: D.video,
       width: '100%',
@@ -145,13 +168,26 @@
       // controls: 0 = YouTube 標準のシークバー・操作を出さない（マーカー移動のたびに出て画面が暗くなるため。操作は自前のもの）
       playerVars: { playsinline: 1, rel: 0, controls: 0, disablekb: 1, fs: 0, iv_load_policy: 3, modestbranding: 1 },
       events: {
-        onReady: () => { ready = true; setRate(P.rate); render(); },
+        onReady: () => { clearTimeout(readyTimer); ready = true; setRate(P.rate); render(); },
+        // e.data = エラーの種類。2: 動画IDがおかしい / 5: HTML5 プレイヤーのエラー / 100・101・150: 削除・非公開・埋め込み禁止
+        onError: (e) => { if (![100, 101, 150].includes(e.data)) { ready = false; retry(); } },
         onStateChange: (e) => { playing = e.data === 1 || e.data === 3; if (e.data === 1) markPracticing(); render(); },
         onPlaybackRateChange: () => { P.rate = player.getPlaybackRate() || 1; renderRate(); },
       },
     });
-  };
-  document.head.appendChild(s);
+  }
+
+  // iframe_api を読み込む。読み終わると YouTube が window.onYouTubeIframeAPIReady を呼ぶ
+  function loadApi() {
+    window.onYouTubeIframeAPIReady = createPlayer;
+    const s = document.createElement('script');
+    s.src = 'https://www.youtube.com/iframe_api';
+    document.head.appendChild(s);
+    // JS 自体が読めなかった（onYouTubeIframeAPIReady が来ない）場合も、時間切れで作り直しへ
+    clearTimeout(readyTimer);
+    readyTimer = setTimeout(retry, READY_TIMEOUT);
+  }
+  loadApi();
 
   // ---- 再生・戻す・進める ----
   const playBtn = $('[data-ytp-play]');
