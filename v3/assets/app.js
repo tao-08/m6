@@ -1387,19 +1387,26 @@ function setupBoardReply() {
  *   返信先の選び方は setupBoardReply と同じ（[data-comment-reply] で追加・解除、チップと hidden の reply_to[]）。
  *   #c12 のようなリンク（投稿後・>>N）で来たら、閉じているトグルカードを開いてから飛ぶ
  * ------------------------------------------------------------------- */
+/**
+ * <details> を「高さのアニメ無し」で開ける（#c12 や #categories のリンクで来て、JS が自動で開くとき用）。
+ *   開く高さのアニメ（app.css の ::details-content）が動いている途中は、まだ高さが伸びきっていない。
+ *   その間にスクロールする（ブラウザの #リンクへの移動も含む）と、飛び先の位置がズレたり、動かなかったりする。
+ *   → 目印の class（.is-instant）を付けてアニメを止めてから開く。
+ *   toggle イベント =「open が変わったあと（非同期）」に起きる。そこで目印を外して、次の手動の開け閉めからはアニメを戻す
+ */
+function openWithoutAnimation(details) {
+  if (!(details instanceof HTMLDetailsElement) || details.open) return;
+  details.classList.add('is-instant');
+  details.addEventListener('toggle', () => details.classList.remove('is-instant'), { once: true });
+  details.open = true;
+}
+
 function setupComments() {
   const root = document.querySelector('[data-comments]');
   if (!root) return;
   const openFor = () => {
     if (!/^#(c\d+|comments)$/.test(location.hash)) return;
-    if (!root.open) {
-      // 開く高さのアニメ（app.css の .comments::details-content）を止めてから開く。
-      //   アニメ中に scrollIntoView すると、まだ高さが伸びきっていないので飛び先がズレる。
-      //   toggle イベント =「open が変わったあと（非同期）」に飛ぶ。そこで目印を外して、次の手動の開け閉めからはアニメを戻す
-      root.classList.add('is-instant');
-      root.addEventListener('toggle', () => root.classList.remove('is-instant'), { once: true });
-      root.open = true;
-    }
+    openWithoutAnimation(root);
     document.querySelector(location.hash)?.scrollIntoView({ block: 'start' });
   };
   openFor();
@@ -1641,7 +1648,7 @@ function setupSmallThings() {
   // 管理者用のトグルカード（<details class="togglecard">）: 開くたびに中身をふわっと出す（動きを減らす設定の人には動かさない）。
   //   #categories で来たとき（カテゴリを操作した直後）は最初から開いておく
   document.querySelectorAll('.togglecard').forEach((card) => {
-    if (card.id && location.hash === '#' + card.id) card.open = true;
+    if (card.id && location.hash === '#' + card.id) openWithoutAnimation(card); // 高さのアニメ無しで開く（飛び先がズレないように）
     card.querySelector('summary')?.addEventListener('click', () => {
       if (card.open || matchMedia('(prefers-reduced-motion: reduce)').matches) return; // card.open = これから閉じる
       card.querySelector('.togglecard__body, .notice-body')?.animate(

@@ -2807,18 +2807,27 @@ button.ttb-m { cursor: pointer; text-decoration: underline dotted; }
 .countdown__when { flex: none; min-width: 7.5em; font-size: 12px; font-weight: 700; color: color-mix(in srgb, var(--text) 65%, var(--surface)); } /* 黒より少し薄く */
 
 /* <details> の開け閉めをなめらかに（高さを 0 ⇔ auto へ。::details-content 対応のブラウザだけ。非対応は今までどおり即時）
- *   お知らせ・掲示板の togglecard、練習の一覧、右上のメニューは別の動きがあるので対象外
- *   .comments（ライブ・バンドのコメント）は対象。開くときの中身のふわっと（app.js の .togglecard）と一緒に動く（閉じるときはこの高さだけ） */
+ *   右上のメニュー（usermenu・notifmenu）は別の動きがあるので対象外
+ *   .togglecard（お知らせ・掲示板・コメント・会場の編集など）は対象。開くときの中身のふわっと（app.js の .togglecard）と一緒に動く（閉じるときはこの高さだけ）
+ *   ※ <div class="togglecard" data-board-panel> は <details> ではないので、::details-content は効かない（対象外のまま） */
 @supports selector(::details-content) {
   @media (prefers-reduced-motion: no-preference) {
     :root { interpolate-size: allow-keywords; }
-    :is(.edit-box, .songs-add, .prac-new, .tab-new-wrap, .tab-new__more, .partner, .sheet-ed__json, .comments)::details-content {
-      block-size: 0; overflow: clip; transition: block-size .25s var(--ease-out), content-visibility .25s allow-discrete; }
-    :is(.edit-box, .songs-add, .prac-new, .tab-new-wrap, .tab-new__more, .partner, .sheet-ed__json, .comments)[open]::details-content { block-size: auto; }
-    /* #c12 のリンクで来て自動で開くときだけ動きを止める（app.js の setupComments が .is-instant を付ける）。
-       高さが 0 から伸びている途中でスクロールすると、飛び先の位置がズレるため。
-       詳細度（優先度）は .comments.is-instant::details-content が上の指定より高いので、transition: none が勝つ */
-    .comments.is-instant::details-content { transition: none; }
+    /* overflow（はみ出しの扱い）は「動いている間だけ clip」にする:
+         clip のままだと、開いたあともカードの外へ出る物（コメント欄のⓘの説明ポップ・入力欄のフォーカスの枠）が切れてしまう。
+         ・閉じる側（下の指定）: overflow を 0s で即 clip に（縮み始めから切る）
+         ・開く側（[open] の指定）: overflow を .25s 遅らせて visible に（伸び終わってから戻す）
+         allow-discrete = 「途中の値が無いプロパティ（clip / visible）も transition の対象にする」指定 */
+    :is(.edit-box, .songs-add, .prac-new, .tab-new-wrap, .tab-new__more, .partner, .sheet-ed__json, .togglecard, .venue-edit)::details-content {
+      block-size: 0; overflow: clip;
+      transition: block-size .25s var(--ease-out), content-visibility .25s allow-discrete, overflow 0s allow-discrete; }
+    :is(.edit-box, .songs-add, .prac-new, .tab-new-wrap, .tab-new__more, .partner, .sheet-ed__json, .togglecard, .venue-edit)[open]::details-content {
+      block-size: auto; overflow: visible;
+      transition: block-size .25s var(--ease-out), content-visibility .25s allow-discrete, overflow 0s .25s allow-discrete; }
+    /* #c12 や #categories のリンクで来て、JS が自動で開くときだけ動きを止める（app.js の openWithoutAnimation が .is-instant を付ける）。
+       高さが 0 から伸びている途中でスクロールすると、飛び先の位置がズレる（コメントへ飛べなくなる）ため。
+       上の [open] の指定は詳細度（優先度）が高いので、こちらも [open] 付きで書いて transition: none を勝たせる */
+    details.is-instant::details-content, details.is-instant[open]::details-content { transition: none; }
   }
 }
 
