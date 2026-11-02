@@ -347,6 +347,22 @@
       people.value = remembered[lastMode];
     });
 
+    // ＋／－ボタン（data-step="-1" / "1"）: 同じ枠の中の number 入力を増減する
+    //   イベント委譲 = ボタン1つずつではなく form 全体で click を受け、押された所が [data-step] かを調べる方式
+    //   （ボタンが増えても書き足し不要。業界でよく使う書き方）
+    form.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-step]');
+      if (!btn) return;
+      const input = btn.parentElement.querySelector('input[type=number]');
+      const min = Number(input.min) || 0;
+      const max = Number(input.max) || Infinity;
+      // 空欄や不正な値は min 扱い → 範囲 [min, max] に収める（Math.min/max で挟む = clamp）
+      const next = Math.min(max, Math.max(min, (Number(input.value) || min) + Number(btn.dataset.step)));
+      if (String(next) === input.value) return; // 上限・下限で変わらないなら再計算しない
+      input.value = String(next);
+      input.dispatchEvent(new Event('input', { bubbles: true })); // 手入力と同じ経路で再計算させる
+    });
+
     // input イベント = 値が変わるたび（数字を打つたび）に発生。change より反応が早い
     form.addEventListener('input', render);
     form.addEventListener('change', render);

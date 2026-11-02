@@ -174,7 +174,7 @@ if (is_post()) {
         }
         studio_save_rows($pdo, 'studio_room', 'studio_room_id', $studioId, $rows);
         flash('保存しました');
-        redirect($self . '#rooms');
+        redirect($self . '#rates'); // 部屋と料金は同じカード（#rates）
     }
 
     // ---- 料金表・パック（入力欄の形がほぼ同じなので、1つの処理で両方受ける）-----------------
@@ -532,7 +532,14 @@ render_header($studio['name'], 'tools');
                         <option value="<?= $m ?>"<?= $m === 120 ? ' selected' : '' ?>><?= h(studio_fmt_min($m)) ?></option>
                     <?php endfor; ?>
                 </select></label>
-            <label class="sinfo-field"><span>人数</span><input type="number" name="people" min="1" max="30" value="5" inputmode="numeric"></label>
+            <!-- 人数: ＋／－ボタンでタッチ操作できるステッパー（数字を直接打つのもOK）。
+                 label ではなく div で囲む理由: button も label の「操作対象」になれるので、label 内に入れるとタップが誤作動するため -->
+            <div class="sinfo-field"><span>人数</span>
+                <div class="sinfo-step">
+                    <button type="button" class="sinfo-step__btn" data-step="-1" aria-label="減らす"><?= icon('remove') ?></button>
+                    <input type="number" name="people" min="1" max="30" value="5" inputmode="numeric" aria-label="人数">
+                    <button type="button" class="sinfo-step__btn" data-step="1" aria-label="増やす"><?= icon('add') ?></button>
+                </div></div>
         </div>
         <?php if ($hasStudent): ?>
             <label class="sinfo-check"><input type="checkbox" name="student" checked> 学割</label>
@@ -554,13 +561,23 @@ render_header($studio['name'], 'tools');
 </section>
 <?php endif; ?>
 
-<!-- ===== 部屋と料金表 ===== -->
+<!-- ===== 部屋と料金表（部屋の広さと料金を1枚のカードにまとめた）=====
+     部屋ごとのブロック = 見出し（部屋名＋広さ）→ その部屋の料金表。「全部屋」共通の料金は先頭に出す -->
 <section class="card sinfo-section" id="rates">
-    <h2><?= icon('payments') ?> 料金 <span class="muted small">1時間あたり</span></h2>
-    <?php if (!$rates): ?><p class="muted small">-</p><?php endif; ?>
-    <?php foreach ([0 => '全部屋'] + $roomName as $rid => $rname): if (empty($ratesByRoom[$rid])) continue; ?>
+    <h2><?= icon('meeting_room') ?> 部屋・料金 <span class="muted small">1時間あたり</span></h2>
+    <?php if (!$rates && !$rooms): ?><p class="muted small">-</p><?php endif; ?>
+    <?php
+    // 部屋 id => 広さ・定員（空なら ''）。見出しに添える
+    $roomSize = array_column($rooms, 'size_note', 'studio_room_id');
+    foreach ([0 => '全部屋'] + $roomName as $rid => $rname):
+        // 「全部屋」は料金があるときだけ。実在の部屋は、料金が未登録でも広さを見せたいので必ず出す
+        if ($rid === 0 && empty($ratesByRoom[0])) continue;
+    ?>
         <div>
-            <?php if ($rooms): ?><h3 class="sinfo-sub"><?= h($rname) ?></h3><?php endif; ?>
+            <?php if ($rooms): ?>
+                <h3 class="sinfo-sub"><?= h($rname) ?><?php if (!empty($roomSize[$rid])): ?> <span class="muted small"><?= h($roomSize[$rid]) ?></span><?php endif; ?></h3>
+            <?php endif; ?>
+            <?php if (!empty($ratesByRoom[$rid])): ?>
             <div class="sinfo-table-wrap">
             <table class="sinfo-table">
                 <thead><tr><?php if ($hasSolo): ?><th>対象</th><?php endif; ?><th>曜日</th><th>時間</th><th class="num">料金</th><?php if ($hasStudent): ?><th class="num">学割</th><?php endif; ?></tr></thead>
@@ -579,6 +596,7 @@ render_header($studio['name'], 'tools');
                 </tbody>
             </table>
             </div>
+            <?php endif; ?>
         </div>
     <?php endforeach; ?>
     <?php if ($studio['student_note']): ?>
@@ -613,6 +631,23 @@ render_header($studio['name'], 'tools');
                 </div>
             <?php endforeach; ?>
             <div><button type="submit" class="btn btn--primary btn--sm" title="料金を空にした行は削除"><?= icon('save') ?> 保存</button></div>
+        </form>
+    </details>
+    <!-- 部屋（名前・広さ）の編集。同じカードの中に置く。部屋を削除するとその部屋の料金・パック・機材も消える（FK の CASCADE）ので確認ダイアログ付き -->
+    <details class="sinfo-edit">
+        <summary><?= icon('edit') ?> 部屋を編集</summary>
+        <form method="post" class="sinfo-edit__form" data-confirm="部屋名を空にした部屋は、その部屋の料金・パック・機材も削除されます。保存しますか？">
+            <?= csrf_field() ?>
+            <input type="hidden" name="action" value="save_rooms">
+            <input type="hidden" name="studio_id" value="<?= $studioId ?>">
+            <?php foreach (array_merge($rooms, [['studio_room_id' => 0, 'name' => '', 'size_note' => '']]) as $r): ?>
+                <div class="sinfo-edit__row">
+                    <input type="hidden" name="id[]" value="<?= (int)$r['studio_room_id'] ?>">
+                    <input autocomplete="off" type="text" class="grow" name="name[]" maxlength="50" value="<?= h($r['name']) ?>" placeholder="部屋名" aria-label="部屋名">
+                    <input autocomplete="off" type="text" class="grow" name="size_note[]" maxlength="50" value="<?= h($r['size_note']) ?>" placeholder="広さ・定員" aria-label="広さ・定員">
+                </div>
+            <?php endforeach; ?>
+            <div><button type="submit" class="btn btn--primary btn--sm" title="部屋名を空にした行は削除"><?= icon('save') ?> 保存</button></div>
         </form>
     </details>
     <?php endif; ?>
@@ -681,38 +716,6 @@ render_header($studio['name'], 'tools');
                 </div>
             <?php endforeach; ?>
             <div><button type="submit" class="btn btn--primary btn--sm" title="料金を空にした行は削除"><?= icon('save') ?> 保存</button></div>
-        </form>
-    </details>
-    <?php endif; ?>
-</section>
-<?php endif; ?>
-
-<!-- ===== 部屋 ===== -->
-<?php if ($rooms || $canEdit): ?>
-<section class="card sinfo-section" id="rooms">
-    <h2><?= icon('meeting_room') ?> 部屋 <span class="muted small"><?= count($rooms) ?></span></h2>
-    <?php if (!$rooms): ?><p class="muted small">-</p><?php else: ?>
-        <ul class="sinfo-plain">
-            <?php foreach ($rooms as $r): ?>
-                <li><?= h($r['name']) ?><?php if ($r['size_note']): ?> <span class="muted small"><?= h($r['size_note']) ?></span><?php endif; ?></li>
-            <?php endforeach; ?>
-        </ul>
-    <?php endif; ?>
-    <?php if ($canEdit): ?>
-    <details class="sinfo-edit">
-        <summary><?= icon('edit') ?> 編集</summary>
-        <form method="post" class="sinfo-edit__form" data-confirm="部屋名を空にした部屋は、その部屋の料金・パック・機材も削除されます。保存しますか？">
-            <?= csrf_field() ?>
-            <input type="hidden" name="action" value="save_rooms">
-            <input type="hidden" name="studio_id" value="<?= $studioId ?>">
-            <?php foreach (array_merge($rooms, [['studio_room_id' => 0, 'name' => '', 'size_note' => '']]) as $r): ?>
-                <div class="sinfo-edit__row">
-                    <input type="hidden" name="id[]" value="<?= (int)$r['studio_room_id'] ?>">
-                    <input autocomplete="off" type="text" class="grow" name="name[]" maxlength="50" value="<?= h($r['name']) ?>" placeholder="部屋名" aria-label="部屋名">
-                    <input autocomplete="off" type="text" class="grow" name="size_note[]" maxlength="50" value="<?= h($r['size_note']) ?>" placeholder="広さ・定員" aria-label="広さ・定員">
-                </div>
-            <?php endforeach; ?>
-            <div><button type="submit" class="btn btn--primary btn--sm" title="部屋名を空にした行は削除"><?= icon('save') ?> 保存</button></div>
         </form>
     </details>
     <?php endif; ?>
