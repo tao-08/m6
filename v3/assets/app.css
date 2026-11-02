@@ -492,13 +492,15 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
    コメントが付いたバンドだけ出る（lib/repository.php の comment_badge）。ライブ詳細の行とメンバーページの出演履歴で共通。
    重ねかた: 親を position: relative にして、数字は position: absolute で中央へ（アイコンと数字を同じ箱に入れて座標を共有する）。
    吹き出しのしっぽ（下）の分だけ、数字は少し上に置くと「本体の真ん中」に見える。
-   top: 42% / font-size: 9px は、ピクセル計測（40% / 10px）のあと「少し小さく、少し下へ」の指示で微調整した値 */
+   位置は「％ ＋ translateY(-50%)」ではなく整数 px の固定位置にしている。
+   理由: 桁数で文字の大きさ（9px / 7.5px）が変わると、％と半分ずらしの計算が小数になり、端末の丸め方で桁ごとに
+   0.5px ほど上下がずれて見える（「桁が少ないほど上に寄る」）。行の高さを 9px に固定し top も整数にすれば、どの桁数も同じ基準で並ぶ */
 .cmt-badge { position: relative; display: inline-flex; align-items: center; justify-content: center; flex: none; line-height: 1;
   color: var(--muted); text-decoration: none; transition: transform .12s ease, color .15s; } /* 灰色（補足の文字と同じ --muted）。目立たせすぎない */
 .cmt-badge .icon { font-size: 24px; }
-.cmt-badge__n { position: absolute; top: 42%; left: 50%; transform: translate(-50%, -50%);
-  font-size: 9px; font-weight: 800; line-height: 1; letter-spacing: -.02em; font-variant-numeric: tabular-nums; } /* tabular-nums: 数字の幅をそろえてガタつかせない */
-.cmt-badge--long .cmt-badge__n { font-size: 7.5px; letter-spacing: -.06em; } /* 「99+」: 3文字は枠に収まるよう小さく */
+.cmt-badge__n { position: absolute; top: 6px; left: 50%; transform: translateX(-50%); /* 横だけ半分ずらす。縦は整数 px で固定 */
+  font-size: 9px; font-weight: 800; line-height: 9px; letter-spacing: -.02em; font-variant-numeric: tabular-nums; } /* tabular-nums: 数字の幅をそろえてガタつかせない */
+.cmt-badge--long .cmt-badge__n { font-size: 7.5px; letter-spacing: -.06em; } /* 「99+」: 3文字は枠に収まるよう小さく（line-height は 9px のままなので縦の基準は同じ） */
 .cmt-badge:hover { transform: scale(1.1); color: var(--accent); } /* 触れたときだけアクセントの赤 */
 .cmt-badge:active { transform: scale(.94); }
 /* ライブ詳細の行: ❤（.slot__like）のすぐ左に置く。auto の余白で右端へ寄せ、❤ との間は 8px。
@@ -507,6 +509,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .slot__head > .cmt-badge + .slot__like { margin-left: 0; }
 .timeline--compact .slot__head > .cmt-badge { display: none; } /* 縮小表示ではバンド名だけ残す */
 .history__name .cmt-badge .icon { font-size: 22px; } /* メンバーページの履歴は文字が小さめなので少しだけ小さく */
+.history__name .cmt-badge__n { top: 5px; }            /* アイコンが 24→22px に縮む分、数字の位置も 1px 上げる */
 /* お気に入り（❤）: 吹き出し（数）＞ハート。タイムテーブルでは行の右端、バンドページではバンド名の右（lib/repository.php の like_button）
    押すとハートと吹き出しが赤くなる（.is-liked）。誰が押したかは出さない */
 .like { display: inline-flex; align-items: center; gap: 8px; padding: 2px; border: 0; background: none; color: var(--muted); cursor: pointer; font: inherit; line-height: 1; }
