@@ -1178,10 +1178,39 @@ function band_comment_counts(PDO $pdo, array $bandIds): array
     return $counts;
 }
 
+/** コメントの吹き出し（自前 SVG）の角の半径。viewBox 24×24 の中の値。大きいほど丸い（本体の高さの半分 = 7.25 を超えない範囲） */
+const COMMENT_BUBBLE_RADIUS = 2;
+
+/**
+ * コメントの吹き出しアイコン（自前の SVG）。コメントの一覧アイコンと、コメント欄の見出しで共通に使う。
+ *   なぜフォントのアイコン（Material Symbols の chat_bubble）をやめたか:
+ *     - あのフォントの吹き出しは角の半径が固定で、丸くできない
+ *     - 線の太さも、本番の Google Fonts の読み込み範囲（wght 400〜）より細くできない
+ *     SVG なら角の半径も線の太さも自由に決められる
+ *   描きかた: 本体は角丸の四角（線の中心線 2.75〜21.25 × 2.75〜17.25。線幅 1.5 なので外縁は 2〜22 × 2〜18）。
+ *     左下に、左の辺をそのまま下へ伸ばした「しっぽ」（先端 2.75, 21.25）。path の命令は
+ *     M=移動 / V=縦線 / H=横線 / A=円弧（半径 rx ry, 回転, large-arc, sweep, 終点）/ Z=閉じる。
+ *   stroke="currentColor": 線の色は親の color を使う（灰色・ダークモードも CSS の color に自動で追従する）。
+ *   大きさは CSS（.cmt-ico）で決める。aria-hidden: 意味は呼び出し側の aria-label / 見出しの文字で伝える。
+ */
+function comment_bubble_svg(): string
+{
+    $r = COMMENT_BUBBLE_RADIUS;
+    // 本体の線の中心線の四隅（左 x0 / 上 y0 / 右 x1 / 下 y1）
+    [$x0, $y0, $x1, $y1] = [2.75, 2.75, 21.25, 17.25];
+    $d = sprintf(
+        'M%1$s 21.25V%2$s A%5$s %5$s 0 0 1 %3$s %4$s H%6$s A%5$s %5$s 0 0 1 %7$s %2$s V%8$s A%5$s %5$s 0 0 1 %6$s %9$s H7.5Z',
+        $x0, $y0 + $r, $x0 + $r, $y0, $r, $x1 - $r, $x1, $y1 - $r, $y1
+    );
+    // 上の sprintf は「%1$s」のように番号で引数を指す書き方（同じ値を何度も使うときに、引数を並べ直さずに済む）。
+    // 命令の並び: 左下の先端 → 上へ → 左上の角 → 右へ → 右上の角 → 下へ → 右下の角 → 左へ → しっぽの付け根 → 閉じる
+    return '<svg class="cmt-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="' . $d . '"/></svg>';
+}
+
 /**
  * コメントアイコン（吹き出しの中に件数）。0 件なら何も出さない（= コメントが無いバンドは今までどおりの見た目）。
  *   押すとバンド詳細のコメント欄へ。#comments は assets/app.js が見て、閉じているコメント欄を自動で開く。
- *   形は Material Symbols の chat_bubble（コメント欄の見出しと同じアイコン）。数字は CSS で吹き出しの真ん中に重ねる。
+ *   形は comment_bubble_svg()（コメント欄の見出しと同じ）。数字は CSS で吹き出しの真ん中に重ねる。
  *   100 件以上は「99+」（幅が広がって行が崩れないように）。
  */
 function comment_badge(int $bandId, int $count, string $class = ''): string
@@ -1194,7 +1223,7 @@ function comment_badge(int $bandId, int $count, string $class = ''): string
     $long = mb_strlen($label) >= 3 ? ' cmt-badge--long' : '';
     return '<a class="cmt-badge' . $long . ($class !== '' ? ' ' . h($class) : '') . '" href="band?id=' . $bandId . '#comments"'
         . ' aria-label="コメント（' . $count . '）" title="コメント（' . $count . '）">'
-        . icon('chat_bubble')
+        . comment_bubble_svg()
         . '<span class="cmt-badge__n">' . h($label) . '</span>'
         . '</a>';
 }
