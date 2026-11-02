@@ -63,6 +63,17 @@
 .sinfo-seg input { position: absolute; opacity: 0; pointer-events: none; } /* 丸ボタン自体は隠し、ラベル全体を押せるボタンにする */
 .sinfo-seg label:has(input:checked) { background: var(--accent); color: var(--on-accent); font-weight: 800; }
 .sinfo-check { display: inline-flex; align-items: center; gap: 6px; font-weight: 800; }
+/* レンタル欄の開閉（<details>）。見出しを押すと開け閉めできる */
+.sinfo-rentbox { border: 1px solid var(--border); border-radius: 8px; padding: 0 10px; }
+.sinfo-rentbox__head { display: flex; align-items: center; gap: 6px; padding: 8px 0; cursor: pointer; font-weight: 800; font-size: 13px; list-style: none; } /* list-style: none = 標準の ▸ を消す */
+.sinfo-rentbox__head::-webkit-details-marker { display: none; } /* Safari 用に標準の三角を消す */
+.sinfo-rentbox[open] > .sinfo-rentbox__head { color: var(--accent); }
+.sinfo-rentbox__count { min-width: 18px; padding: 0 6px; border-radius: 999px; background: var(--accent); color: var(--on-accent); font-size: 12px; text-align: center; line-height: 18px; }
+.sinfo-rentbox__count[hidden] { display: none; } /* display を指定すると hidden 属性が負けるので、明示的に隠す */
+.sinfo-rentbox__chev { margin-left: auto; color: var(--muted); transition: transform .2s ease; }
+.sinfo-rentbox[open] > .sinfo-rentbox__head > .sinfo-rentbox__chev { transform: rotate(180deg); } /* 開いたら ▾ を上向きに回す */
+.sinfo-rentbox > .sinfo-sim__rentals { padding-bottom: 10px; }
+@media (prefers-reduced-motion: reduce) { .sinfo-rentbox__chev { transition: none; } } /* 動きを減らす設定の人には回さず切り替える */
 .sinfo-sim__rentals { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 6px 14px; }
 .sinfo-rental { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .sinfo-rental input { width: 70px !important; }
