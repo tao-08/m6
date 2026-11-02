@@ -114,7 +114,11 @@ render_header('スタジオ情報', 'tools');
 <ul class="sinfo-list">
     <?php foreach ($studios as $s): ?>
         <li>
-            <a class="card sinfo-list__item" href="studio_info?id=<?= (int)$s['studio_id'] ?>" data-studio-id="<?= (int)$s['studio_id'] ?>" data-max-area="<?= h($s['max_area'] === null ? '' : studio_jo_num($s['max_area'])) ?>">
+            <!-- カード = div。<a> の中に <a>（予約ボタン）を入れるのは HTML のルール違反（リンクの入れ子は禁止）なので、
+                 「詳細へのリンク（本体）」と「予約ボタン」を、div の中に横並びの兄弟として置く。
+                 data-studio-id / data-max-area は JS（絞り込み・地図のピン連動）が読むので、外側の div に付けたまま -->
+            <div class="card sinfo-list__item" data-studio-id="<?= (int)$s['studio_id'] ?>" data-max-area="<?= h($s['max_area'] === null ? '' : studio_jo_num($s['max_area'])) ?>">
+            <a class="sinfo-list__link" href="studio_info?id=<?= (int)$s['studio_id'] ?>">
                 <span class="sinfo-list__name">
                     <?= h($s['name']) ?>
                     <?php if ($s['min_student'] !== null): ?><span class="tag tag--plan">学割</span><?php endif; ?>
@@ -128,6 +132,12 @@ render_header('スタジオ情報', 'tools');
                     <?php if ($s['lat'] === null): ?><span title="地図に未登録"><?= icon('location_off') ?></span><?php endif; ?>
                 </span>
             </a>
+            <?php if ($s['reserve_url']): ?>
+                <!-- 予約ページへ（別タブ）。URL は保存時に http(s):// だけ許可している（studio_url_ok）ので javascript: などは入らない。
+                     表示時にも h() で XSS 対策。noopener noreferrer = 開いた先のページから、こちらのページを操作・追跡させない -->
+                <a class="btn btn--primary btn--sm sinfo-list__reserve" href="<?= h($s['reserve_url']) ?>" target="_blank" rel="noopener noreferrer"><?= icon('event_available') ?> 予約</a>
+            <?php endif; ?>
+            </div>
         </li>
     <?php endforeach; ?>
 </ul>
