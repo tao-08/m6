@@ -7,6 +7,7 @@
  *  4. ✨AIで入力（#studio-ai）… AI の提案をプレビューして、反映する項目を選ぶ
  *  5. ＋／－ボタン（[data-step]）… 数字入力をタッチで増減（シミュレーションの人数・一覧の広さ）
  *  6. 広さの絞り込み（#studio-filter）… 一覧のカードと地図のピンを「N帖以上の部屋がある店」だけにする
+ *  7. 部屋のチェック欄（.sinfo-chips）… 「全部屋」と個別の部屋を同時に選ばせない
  *
  *  ■ IIFE（即時実行関数）とは
  *    (() => { ... })() の形。関数を作ってすぐ実行する。中で作った変数が外（ほかの JS）とぶつからない。
@@ -234,17 +235,17 @@
     const covers = (r, t) => SHIFTS.some((d) => r.s <= t + d && t + d < r.e);
 
     /** 対象（ppl: 0 = バンド / n = 個人n人）・部屋・曜日が合う行だけにする（料金表・パック共通） */
-    const matches = (r, v) => r.ppl === v.ppl && (r.room === v.room || r.room === 0) && (r.day === v.day || r.day === 0);
+    const matches = (r, v) => r.ppl === v.ppl && (r.rooms.length === 0 || r.rooms.includes(v.room)) && (r.day === v.day || r.day === 0);
 
     /**
      * 時刻 t に使う料金の行を1つ選ぶ。優先順位:
-     *   ① その部屋だけの料金 ＞ 全部屋共通（room = 0）
+     *   ① 部屋を指定した料金（rooms に選んだ部屋が入っている）＞ 全部屋共通（rooms が空）
      *   ② 曜日の指定あり（平日 / 土日祝）＞ 全日（day = 0）
      *   sort で「点数が高い順」に並べて先頭を取る
      */
     const findRate = (v, t) => {
       const hits = data.rates.filter((r) => matches(r, v) && covers(r, t));
-      const score = (r) => (r.room !== 0 ? 2 : 0) + (r.day !== 0 ? 1 : 0);
+      const score = (r) => (r.rooms.length ? 2 : 0) + (r.day !== 0 ? 1 : 0);
       hits.sort((a, b) => score(b) - score(a));
       return hits[0] || null;
     };
@@ -450,7 +451,7 @@
     const SECTIONS = { info: '基本情報', rooms: '部屋', rates: '料金', packs: 'パック', rentals: 'レンタル', equipment: '機材' };
     const INFO = { reserve_url: '予約ページ', website_url: 'サイト', address: '住所', access: '最寄り駅', phone: '電話', student_note: '学割の条件', note: 'メモ' };
     const target = (p) => (p == null ? 'バンド' : '個人' + p + '人');
-    const where = (r) => [target(r.people), r.room || '全部屋', DAYS[r.day_type]].join('・');
+    const where = (r) => [target(r.people), r.rooms.length ? r.rooms.join('・') : '全部屋', DAYS[r.day_type]].join('・');
     const price = (r) => yen(r.price) + (r.student_price != null ? '（学割 ' + yen(r.student_price) + '）' : '');
 
     /** 項目ごとに、プレビューの1行の文字を作る関数 */
@@ -461,7 +462,7 @@
       packs: (p) => p.packs.map((r) => r.name + ': ' + where(r) + ' ' + hm(r.start_min) + '〜' + hm(r.end_min)
         + (r.minutes ? ' のうち ' + hm(r.minutes) : '') + ' ' + price(r)),
       rentals: (p) => p.rentals.map((r) => r.name + ' ' + yen(r.price) + (r.per_hour ? '/h' : '/回')),
-      equipment: (p) => p.equipment.map((r) => (r.room ? r.room + ' ' : '') + r.category + ': ' + r.model_name + (r.quantity !== 1 ? ' × ' + r.quantity : '')),
+      equipment: (p) => p.equipment.map((r) => (r.rooms.length ? r.rooms.join('・') + ' ' : '') + r.category + ': ' + r.model_name + (r.quantity !== 1 ? ' × ' + r.quantity : '')),
     };
 
     const show = (p, yenUsed) => {
@@ -534,10 +535,28 @@
     });
   };
 
+  // ===================================================================
+  //  7. 料金・パック・機材の編集: 部屋のチェック欄
+  //     「全部屋」にチェック → 個別の部屋は外す / 個別の部屋にチェック → 「全部屋」は外す
+  //     何も選ばないまま保存しても「全部屋」として扱われる（サーバー側 studio_post_rooms）
+  // ===================================================================
+  const setupRoomChips = () => {
+    document.addEventListener('change', (e) => {
+      const box = e.target;
+      const group = box.closest?.('.sinfo-chips');
+      if (!group || box.type !== 'checkbox' || !box.checked) return; // チェックを外したときは何もしない
+      group.querySelectorAll('input[type=checkbox]').forEach((c) => {
+        // 今チェックした「全部屋」以外を外す / 今チェックした個別の部屋なら「全部屋」だけ外す
+        if (c !== box && (box.hasAttribute('data-room-all') || c.hasAttribute('data-room-all'))) c.checked = false;
+      });
+    });
+  };
+
   // DOMContentLoaded を待たなくても、このファイルはページの最後で読むので要素はもう全部ある
   const mapApi = setupMap();
   setupGeo();
   setupStepper();
+  setupRoomChips();
   setupFilter(mapApi);
   setupSim();
   setupAi();

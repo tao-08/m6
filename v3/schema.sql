@@ -1369,7 +1369,6 @@ CREATE TABLE studio_room (
 CREATE TABLE studio_rate (
     studio_rate_id INT UNSIGNED      NOT NULL AUTO_INCREMENT,
     studio_id      INT UNSIGNED      NOT NULL,
-    studio_room_id INT UNSIGNED      NULL,          -- NULL = 全部屋共通
     people         TINYINT UNSIGNED  NULL,          -- NULL = バンド / n = 個人練習 n人
     day_type       TINYINT UNSIGNED  NOT NULL DEFAULT 0,
     start_min      SMALLINT UNSIGNED NOT NULL,
@@ -1380,16 +1379,12 @@ CREATE TABLE studio_rate (
     PRIMARY KEY (studio_rate_id),
     KEY idx_srate_studio (studio_id),
     CONSTRAINT fk_srate_studio FOREIGN KEY (studio_id) REFERENCES studio (studio_id)
-        ON UPDATE CASCADE ON DELETE CASCADE,
-    -- 部屋を消したら、その部屋だけの料金も消す
-    CONSTRAINT fk_srate_room FOREIGN KEY (studio_room_id) REFERENCES studio_room (studio_room_id)
         ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE studio_pack (
     studio_pack_id INT UNSIGNED      NOT NULL AUTO_INCREMENT,
     studio_id      INT UNSIGNED      NOT NULL,
-    studio_room_id INT UNSIGNED      NULL,          -- NULL = 全部屋共通
     people         TINYINT UNSIGNED  NULL,          -- NULL = バンド / n = 個人練習 n人
     name           VARCHAR(50)       NOT NULL,      -- 例: 深夜パック
     day_type       TINYINT UNSIGNED  NOT NULL DEFAULT 0,
@@ -1402,8 +1397,6 @@ CREATE TABLE studio_pack (
     PRIMARY KEY (studio_pack_id),
     KEY idx_spack_studio (studio_id),
     CONSTRAINT fk_spack_studio FOREIGN KEY (studio_id) REFERENCES studio (studio_id)
-        ON UPDATE CASCADE ON DELETE CASCADE,
-    CONSTRAINT fk_spack_room FOREIGN KEY (studio_room_id) REFERENCES studio_room (studio_room_id)
         ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
@@ -1423,7 +1416,6 @@ CREATE TABLE studio_rental (
 CREATE TABLE studio_equipment (
     studio_equipment_id INT UNSIGNED      NOT NULL AUTO_INCREMENT,
     studio_id           INT UNSIGNED      NOT NULL,
-    studio_room_id      INT UNSIGNED      NULL,     -- NULL = 全部屋共通
     category            VARCHAR(20)       NOT NULL, -- 区分（studio_info.php の STUDIO_EQUIP_CATEGORIES）
     model_name          VARCHAR(100)      NOT NULL,
     quantity            SMALLINT UNSIGNED NOT NULL DEFAULT 1,
@@ -1431,7 +1423,39 @@ CREATE TABLE studio_equipment (
     PRIMARY KEY (studio_equipment_id),
     KEY idx_sequip_studio (studio_id),
     CONSTRAINT fk_sequip_studio FOREIGN KEY (studio_id) REFERENCES studio (studio_id)
+        ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- 料金・パック・機材 ←→ 部屋（多対多の中間テーブル。行が1つも無い = 全部屋共通。migrations/088）
+CREATE TABLE studio_rate_room (
+    studio_rate_id INT UNSIGNED NOT NULL,
+    studio_room_id INT UNSIGNED NOT NULL,
+    PRIMARY KEY (studio_rate_id, studio_room_id),
+    KEY idx_srr_room (studio_room_id),
+    CONSTRAINT fk_srr_rate FOREIGN KEY (studio_rate_id) REFERENCES studio_rate (studio_rate_id)
         ON UPDATE CASCADE ON DELETE CASCADE,
-    CONSTRAINT fk_sequip_room FOREIGN KEY (studio_room_id) REFERENCES studio_room (studio_room_id)
+    CONSTRAINT fk_srr_room FOREIGN KEY (studio_room_id) REFERENCES studio_room (studio_room_id)
+        ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE studio_pack_room (
+    studio_pack_id INT UNSIGNED NOT NULL,
+    studio_room_id INT UNSIGNED NOT NULL,
+    PRIMARY KEY (studio_pack_id, studio_room_id),
+    KEY idx_spr_room (studio_room_id),
+    CONSTRAINT fk_spr_pack FOREIGN KEY (studio_pack_id) REFERENCES studio_pack (studio_pack_id)
+        ON UPDATE CASCADE ON DELETE CASCADE,
+    CONSTRAINT fk_spr_room FOREIGN KEY (studio_room_id) REFERENCES studio_room (studio_room_id)
+        ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE studio_equipment_room (
+    studio_equipment_id INT UNSIGNED NOT NULL,
+    studio_room_id      INT UNSIGNED NOT NULL,
+    PRIMARY KEY (studio_equipment_id, studio_room_id),
+    KEY idx_ser_room (studio_room_id),
+    CONSTRAINT fk_ser_equipment FOREIGN KEY (studio_equipment_id) REFERENCES studio_equipment (studio_equipment_id)
+        ON UPDATE CASCADE ON DELETE CASCADE,
+    CONSTRAINT fk_ser_room FOREIGN KEY (studio_room_id) REFERENCES studio_room (studio_room_id)
         ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;

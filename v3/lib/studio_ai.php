@@ -45,7 +45,7 @@ function studio_ai_schema(): array
     // 料金表とパックで共通の欄
     $slot = [
         'target' => ['type' => 'integer'],                 // 0 = バンド / n = 個人n人
-        'room'   => $strN,                                 // 部屋名。全部屋共通なら null
+        'rooms'  => ['type' => 'array', 'items' => $str],  // 適用される部屋名（複数可）。全部屋共通なら空の配列
         'day'    => ['type' => 'integer', 'enum' => [0, 1, 2]],
         'start'  => $str,                                  // "HH:MM"（24時超えは "26:00" のように）
         'end'    => $str,
@@ -64,7 +64,7 @@ function studio_ai_schema(): array
         'packs' => ['type' => 'array', 'items' => $obj(['name' => $str] + $slot + ['minutes' => $intN])],
         'rentals' => ['type' => 'array', 'items' => $obj(['name' => $str, 'price' => ['type' => 'integer'], 'per_hour' => ['type' => 'boolean']])],
         'equipment' => ['type' => 'array', 'items' => $obj([
-            'room' => $strN,
+            'rooms' => ['type' => 'array', 'items' => $str],
             'category' => ['type' => 'string', 'enum' => STUDIO_EQUIP_CATEGORIES],
             'model' => $str,
             'quantity' => ['type' => 'integer'],
@@ -87,7 +87,7 @@ function studio_ai_system_prompt(): string
         . "# 料金表（rates）\n"
         . "- 1行 = 「対象・部屋・曜日・時間帯」ごとの『1時間の料金』\n"
         . "- target: バンド練習（部屋貸し）は 0。個人練習は人数（1人なら 1、2人なら 2）。個人練習の price は「その人数での1時間の合計」\n"
-        . "- room: 部屋ごとに料金が違えば部屋名（rooms の name と同じ表記）。全部屋同じなら null\n"
+        . "- rooms: その料金が使える部屋名の配列（rooms の name と同じ表記）。同じ料金の部屋は1つの行にまとめて複数の部屋名を入れる。全部屋同じなら空の配列 []\n"
         . "- day: 0 = 全日 / 1 = 平日 / 2 = 土日祝\n"
         . "- start / end: \"HH:MM\"。30分単位。日付をまたぐ時間帯は 24時を超えて書く（22:00〜翌5:00 → start \"22:00\" end \"29:00\"）。上限は \"30:00\"\n"
         . "- student_price: 学割の1時間の料金。その時間帯に学割が無ければ null。学割が「◯%引き」「1時間◯円引き」なら計算して入れる\n"
@@ -99,7 +99,7 @@ function studio_ai_system_prompt(): string
         . "- info.student_note は学割の条件（学生証の提示・対象の曜日など）。info.access は最寄り駅と徒歩分数（例: 立川駅 北口 徒歩5分）\n"
         . "- info.reserve_url は予約ページの URL（無ければ null）。URL は https:// から始まる完全な形\n"
         . "- rentals: マイク・シールド・機材のレンタル。per_hour は「1時間あたり」の料金なら true、「1回あたり」なら false\n"
-        . "- equipment: 部屋の常設機材。category は決められた区分から選ぶ。room は部屋名（全部屋共通なら null）\n"
+        . "- equipment: 部屋の常設機材。category は決められた区分から選ぶ。rooms は設置されている部屋名の配列（複数可。全部屋共通なら空の配列 []）\n"
         . "- rooms.area_jo は部屋の広さを「帖」の数値だけで（例: 12 / 9.5）。畳表記もそのまま帖の数値にする。㎡表記しか無いときは 1帖 = 1.62㎡ で換算して小数1桁まで。広さが書かれていなければ null\n"
         . "- rooms.size_note は広さ以外の備考（定員・階数・設備など。例: 最大8人 / 2階）。広さの数字や「帖」「畳」は書かない。無ければ null\n"
         . "- sources: 参考にしたページの URL（最大5件）。caution: 確かめてほしい点（古い情報かもしれない等）を短く。無ければ null";
@@ -125,6 +125,22 @@ function studio_ai_str(mixed $v, int $max): ?string
     return $v === '' ? null : mb_substr($v, 0, $max);
 }
 
+/** 部屋名の配列を整える（文字列だけ・50文字まで・重複なし・20件まで）。空配列 = 全部屋共通 */
+function studio_ai_rooms(mixed $v): array
+{
+    if (!is_array($v)) {
+        return [];
+    }
+    $names = [];
+    foreach ($v as $n) {
+        $n = studio_ai_str($n, 50);
+        if ($n !== null) {
+            $names[$n] = true; // 名前をキーにして重複を消す
+        }
+    }
+    return array_slice(array_keys($names), 0, 20);
+}
+
 /** 0〜999999 の整数なら int、それ以外は null */
 function studio_ai_yen(mixed $v): ?int
 {
@@ -133,7 +149,7 @@ function studio_ai_yen(mixed $v): ?int
 
 /**
  * AI の返事を「DB にそのまま入れられる形」に直す。おかしい行は黙って捨てる。
- *   どの行も DB の列名に合わせた連想配列にする（room だけは部屋名のまま。反映するときに id に変える）
+ *   どの行も DB の列名に合わせた連想配列にする（rooms だけは部屋名の配列のまま。反映するときに id に変える）
  */
 function studio_ai_normalize(array $ai): array
 {
@@ -175,7 +191,7 @@ function studio_ai_normalize(array $ai): array
             return null;
         }
         return [
-            'room' => studio_ai_str($r['room'] ?? null, 50),
+            'rooms' => studio_ai_rooms($r['rooms'] ?? null),
             'people' => $target === 0 ? null : $target,
             'day_type' => (int)$day,
             'start_min' => $s,
@@ -216,7 +232,7 @@ function studio_ai_normalize(array $ai): array
         $q = $e['quantity'] ?? 1;
         if ($model !== null && in_array($cat, STUDIO_EQUIP_CATEGORIES, true)) {
             $equipment[] = [
-                'room' => studio_ai_str($e['room'] ?? null, 50),
+                'rooms' => studio_ai_rooms($e['rooms'] ?? null),
                 'category' => $cat,
                 'model_name' => $model,
                 'quantity' => is_int($q) && $q >= 0 && $q <= 99 ? $q : 1,
@@ -351,19 +367,23 @@ function studio_ai_apply(PDO $pdo, int $studioId, array $prop, array $sections, 
                 continue;
             }
             $pdo->prepare("DELETE FROM $table WHERE studio_id = ?")->execute([$studioId]);
-            $hasRoom = $key !== 'rentals'; // レンタルだけ部屋の列が無い
-            $allCols = array_merge(['studio_id'], $hasRoom ? ['studio_room_id'] : [], $cols, ['sort_order']);
+            $link = STUDIO_ROOM_LINKS[$table] ?? null; // レンタルだけ部屋との紐づけが無い
+            $allCols = array_merge(['studio_id'], $cols, ['sort_order']);
             $ins = $pdo->prepare("INSERT INTO $table (" . implode(', ', $allCols) . ') VALUES (' . implode(', ', array_fill(0, count($allCols), '?')) . ')');
             foreach ($prop[$key] as $i => $row) {
                 $vals = [$studioId];
-                if ($hasRoom) {
-                    $vals[] = studio_ai_room_id($pdo, $studioId, $row['room'], $roomIds);
-                }
                 foreach ($cols as $c) {
                     $vals[] = $row[$c];
                 }
                 $vals[] = $i + 1;
                 $ins->execute($vals);
+                if ($link !== null) {
+                    $parentId = (int)$pdo->lastInsertId();
+                    foreach ($row['rooms'] as $roomName) { // 知らない部屋名なら部屋を作る（行を失わないため）
+                        $pdo->prepare("INSERT INTO {$link[0]} ({$link[1]}, studio_room_id) VALUES (?, ?)")
+                            ->execute([$parentId, studio_ai_room_id($pdo, $studioId, $roomName, $roomIds)]);
+                    }
+                }
             }
         }
 

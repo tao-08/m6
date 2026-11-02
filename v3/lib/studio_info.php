@@ -100,6 +100,16 @@ function studio_parse_coords(string $raw): array|false
     return [$lat, $lng];
 }
 
+/**
+ * 料金・パック・機材 ←→ 部屋 の中間テーブル（migrations/088）。テーブル名・列名は固定の定数だけを SQL に入れる（利用者の入力は入れない）
+ *   [親テーブル => [中間テーブル, 親の主キー列]]
+ */
+const STUDIO_ROOM_LINKS = [
+    'studio_rate'      => ['studio_rate_room', 'studio_rate_id'],
+    'studio_pack'      => ['studio_pack_room', 'studio_pack_id'],
+    'studio_equipment' => ['studio_equipment_room', 'studio_equipment_id'],
+];
+
 /** 円の表示（1234 → "¥1,234"）。number_format = 3桁ごとにカンマ */
 function studio_yen(int $yen): string
 {

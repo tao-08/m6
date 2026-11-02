@@ -117,6 +117,14 @@
 .sinfo-filter .sinfo-step { width: 150px; }
 .sinfo-filter__label .icon { font-size: 22px; color: var(--muted); vertical-align: middle; }
 
+/* ---- 料金・パック・機材の編集: 部屋のチェック欄（押しやすい丸いチップ。チェックで赤く塗る）---- */
+.sinfo-chips { flex: 1 1 100%; display: flex; flex-wrap: wrap; gap: 6px; }
+.sinfo-chip { display: inline-flex; align-items: center; min-height: 36px; padding: 0 12px; border: 1px solid var(--border); border-radius: 999px;
+  background: var(--surface); font-size: 13px; cursor: pointer; touch-action: manipulation; }
+.sinfo-chip input { position: absolute; opacity: 0; pointer-events: none; } /* チェック欄自体は隠し、チップ全体を押せるボタンにする（.sinfo-seg と同じ作り） */
+.sinfo-chip:has(input:checked) { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 800; }
+.sinfo-chip:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; } /* キーボード操作の目印 */
+
 /* ---- 部屋の編集: 広さ（帖）の短い入力欄 ---- */
 .sinfo-edit__jo { display: inline-flex; align-items: center; gap: 4px; }
 .sinfo-edit .sinfo-edit__jo input[type=text] { width: 64px; text-align: right; }

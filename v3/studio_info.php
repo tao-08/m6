@@ -42,6 +42,55 @@ if (!$studio) {
 $self = 'studio_info?id=' . $studioId;
 
 /**
+ * フォームのチェック欄 rooms[行番号][] を、部屋 id の配列にする
+ *   [] = 全部屋共通（「全部屋」にチェック / 何も選んでいない）
+ *   false = このスタジオの部屋ではない id が混ざっている（不正な送信）
+ *   行番号 $i は、id[] などの並行する配列と同じ位置（チェックを外した欄は送られてこないので、名前に位置を入れてある）
+ */
+function studio_post_rooms(int $i, array $ownRoomIds): array|false
+{
+    $picked = array_map('intval', (array)(((array)($_POST['rooms'] ?? []))[$i] ?? []));
+    if (in_array(0, $picked, true)) {
+        return []; // 「全部屋」にチェックが入っていたら、部屋の指定は無し
+    }
+    $picked = array_values(array_unique($picked));
+    return array_diff($picked, $ownRoomIds) === [] ? $picked : false; // array_diff = 自分のスタジオの部屋に無い id があるか
+}
+
+/** 親の行（料金など）に 'room_ids'（部屋 id の配列。空 = 全部屋共通）を足して返す。SQL は1回（N+1 を避ける） */
+function studio_attach_rooms(PDO $pdo, string $table, int $studioId, array $rows, array $roomOrder): array
+{
+    [$link, $pk] = STUDIO_ROOM_LINKS[$table];
+    $st = $pdo->prepare("SELECT l.$pk, l.studio_room_id FROM $link l JOIN $table t ON t.$pk = l.$pk WHERE t.studio_id = ?");
+    $st->execute([$studioId]);
+    $map = [];
+    foreach ($st->fetchAll(PDO::FETCH_NUM) as [$parent, $room]) {
+        $map[(int)$parent][] = (int)$room;
+    }
+    foreach ($rows as &$r) { // & = 参照。ループの中で $r を書き換えると、元の配列の行が変わる
+        // 部屋の並び順（画面で上に出る順）にそろえる。array_intersect は $roomOrder の順を保つ
+        $r['room_ids'] = array_values(array_intersect($roomOrder, $map[(int)$r[$pk]] ?? []));
+    }
+    unset($r); // 参照は使い終わったら必ず解除する（残すと次のループで事故る PHP の定番の落とし穴）
+    return $rows;
+}
+
+/**
+ * 部屋を削除するとき、「その部屋だけ」に紐づく料金・パック・機材を先に削除する
+ *   中間テーブルの行は CASCADE で消えるが、そのままだと部屋ゼロ = 「全部屋共通」に化けてしまうため
+ *   NOT EXISTS (… 別の部屋 …) = 他の部屋にも紐づいているものは残す（共通の料金は残る）
+ */
+function studio_delete_room_only_rows(PDO $pdo, int $studioId, int $roomId): void
+{
+    foreach (STUDIO_ROOM_LINKS as $table => [$link, $pk]) {
+        $pdo->prepare("DELETE FROM $table WHERE studio_id = ?
+                AND $pk IN (SELECT $pk FROM $link WHERE studio_room_id = ?)
+                AND NOT EXISTS (SELECT 1 FROM $link o WHERE o.$pk = $table.$pk AND o.studio_room_id <> ?)")
+            ->execute([$studioId, $roomId, $roomId]);
+    }
+}
+
+/**
  * このスタジオの部屋の id 一覧（入力された部屋 id が「このスタジオの部屋か」を確かめるのに使う）
  *   PDO::FETCH_COLUMN = 1列目だけを配列で取る → [3, 5, 8]
  *   array_map('intval', …) = 全部を整数にする（DB からは文字列で返ることがあるため。in_array の厳密比較用）
@@ -74,12 +123,17 @@ function studio_save_rows(PDO $pdo, string $table, string $pk, int $studioId, ar
     $pdo->beginTransaction();
     try {
         $order = 0;
-        foreach ($rows as [$id, $data]) {
+        foreach ($rows as $row) {
+            [$id, $data] = $row;
+            $links = $row[2] ?? null; // 3つ目 = 部屋 id の配列（料金・パック・機材だけ。空 = 全部屋共通）
             if ($id !== 0 && !in_array($id, $own, true)) {
                 continue; // 他のスタジオの行は触らない
             }
             if ($data === null) {
                 if ($id !== 0) {
+                    if ($table === 'studio_room') {
+                        studio_delete_room_only_rows($pdo, $studioId, $id); // その部屋だけの料金などは先に消す
+                    }
                     $pdo->prepare("DELETE FROM $table WHERE $pk = ? AND studio_id = ?")->execute([$id, $studioId]);
                 }
                 continue;
@@ -97,6 +151,15 @@ function studio_save_rows(PDO $pdo, string $table, string $pk, int $studioId, ar
                 $marks = implode(', ', array_fill(0, count($cols), '?')); // "?, ?, ?"
                 $pdo->prepare("INSERT INTO $table (" . implode(', ', $cols) . ") VALUES ($marks)")
                     ->execute(array_values($data));
+                $id = (int)$pdo->lastInsertId(); // 新しい行の番号（中間テーブルに入れるのに使う）
+            }
+            // 部屋との紐づけを「全部消して入れ直す」（件数が少ないので、差分を取るより単純で間違いにくい）
+            if ($links !== null && isset(STUDIO_ROOM_LINKS[$table])) {
+                [$link, $linkPk] = STUDIO_ROOM_LINKS[$table];
+                $pdo->prepare("DELETE FROM $link WHERE $linkPk = ?")->execute([$id]);
+                foreach ($links as $roomId) {
+                    $pdo->prepare("INSERT INTO $link ($linkPk, studio_room_id) VALUES (?, ?)")->execute([$id, (int)$roomId]);
+                }
             }
         }
         $pdo->prepare('UPDATE studio SET updated_by = ? WHERE studio_id = ?')->execute([(int)current_user()['user_id'], $studioId]);
@@ -196,19 +259,18 @@ if (is_post()) {
                 $rows[] = [(int)$rawId, null]; // 料金が空 = 削除
                 continue;
             }
-            $room = (int)($_POST['room'][$i] ?? 0);       // 0 = 全部屋共通
+            $rowRooms = studio_post_rooms($i, $roomIds);  // [] = 全部屋共通 / false = 不正
             $people = (int)($_POST['people'][$i] ?? 0);   // 0 = バンド
             $day = (int)($_POST['day'][$i] ?? 0);
             $start = (string)($_POST['start'][$i] ?? '');
             $end = (string)($_POST['end'][$i] ?? '');
             $student = trim((string)($_POST['student_price'][$i] ?? ''));
-            $ok = ($room === 0 || in_array($room, $roomIds, true))
+            $ok = $rowRooms !== false
                 && $people >= 0 && $people <= STUDIO_SOLO_MAX
                 && array_key_exists($day, STUDIO_DAY_TYPES)
                 && studio_uint($start, STUDIO_MAX_MIN) && studio_uint($end, STUDIO_MAX_MIN) && (int)$start < (int)$end
                 && studio_uint($price, 999999) && ($student === '' || studio_uint($student, 999999));
             $data = [
-                'studio_room_id' => $room === 0 ? null : $room,
                 'people' => $people === 0 ? null : $people, // NULL = バンド
                 'day_type' => $day,
                 'start_min' => (int)$start,
@@ -228,7 +290,7 @@ if (is_post()) {
                 flash($isPack ? 'パックの入力が正しくありません（名前・時間帯・使える時間を確認）' : '料金表の入力が正しくありません（終了は開始より後に）', 'error');
                 redirect($self . $anchor);
             }
-            $rows[] = [(int)$rawId, $data];
+            $rows[] = [(int)$rawId, $data, $rowRooms];
         }
         if ($isPack) {
             studio_save_rows($pdo, 'studio_pack', 'studio_pack_id', $studioId, $rows);
@@ -274,20 +336,19 @@ if (is_post()) {
                 $rows[] = [(int)$rawId, null];
                 continue;
             }
-            $room = (int)($_POST['room'][$i] ?? 0);
+            $rowRooms = studio_post_rooms($i, $roomIds);
             $cat = (string)($_POST['category'][$i] ?? '');
             $q = trim((string)($_POST['quantity'][$i] ?? ''));
-            if (!($room === 0 || in_array($room, $roomIds, true)) || !in_array($cat, STUDIO_EQUIP_CATEGORIES, true)
+            if ($rowRooms === false || !in_array($cat, STUDIO_EQUIP_CATEGORIES, true)
                 || mb_strlen($model) > 100 || !studio_uint($q, 99)) {
                 flash('区分・機種名・台数が正しくありません', 'error');
                 redirect($self . '#equipment');
             }
             $rows[] = [(int)$rawId, [
-                'studio_room_id' => $room === 0 ? null : $room,
                 'category' => $cat,
                 'model_name' => $model,
                 'quantity' => (int)$q,
-            ]];
+            ], $rowRooms];
         }
         studio_save_rows($pdo, 'studio_equipment', 'studio_equipment_id', $studioId, $rows);
         flash('保存しました');
@@ -331,35 +392,40 @@ $roomName = array_column($rooms, 'name', 'studio_room_id'); // [部屋id => 部�
 
 // 料金表: 表示は「バンド → 個人1人 → 個人2人 …」の順にしたいので、people の NULL を先頭に並べる
 //   ORDER BY people IS NULL DESC = 「NULL か？」が真（1）の行を先に。そのあと人数の小さい順
-$st = $pdo->prepare('SELECT studio_rate_id, studio_room_id, people, day_type, start_min, end_min, price, student_price
+$st = $pdo->prepare('SELECT studio_rate_id, people, day_type, start_min, end_min, price, student_price
     FROM studio_rate WHERE studio_id = ? ORDER BY people IS NULL DESC, people, sort_order, studio_rate_id');
 $st->execute([$studioId]);
-$rates = $st->fetchAll();
+$rates = studio_attach_rooms($pdo, 'studio_rate', $studioId, $st->fetchAll(), array_keys($roomName));
 
-$st = $pdo->prepare('SELECT studio_pack_id, studio_room_id, people, name, day_type, start_min, end_min, minutes, price, student_price
+$st = $pdo->prepare('SELECT studio_pack_id, people, name, day_type, start_min, end_min, minutes, price, student_price
     FROM studio_pack WHERE studio_id = ? ORDER BY sort_order, studio_pack_id');
 $st->execute([$studioId]);
-$packs = $st->fetchAll();
+$packs = studio_attach_rooms($pdo, 'studio_pack', $studioId, $st->fetchAll(), array_keys($roomName));
 
 $st = $pdo->prepare('SELECT studio_rental_id, name, price, per_hour FROM studio_rental WHERE studio_id = ? ORDER BY sort_order, studio_rental_id');
 $st->execute([$studioId]);
 $rentals = $st->fetchAll();
 
-$st = $pdo->prepare('SELECT studio_equipment_id, studio_room_id, category, model_name, quantity
+$st = $pdo->prepare('SELECT studio_equipment_id, category, model_name, quantity
     FROM studio_equipment WHERE studio_id = ? ORDER BY sort_order, studio_equipment_id');
 $st->execute([$studioId]);
-$equipment = $st->fetchAll();
+$equipment = studio_attach_rooms($pdo, 'studio_equipment', $studioId, $st->fetchAll(), array_keys($roomName));
 
 // 機材を「部屋（0 = 共通）→ 区分」の2段に分ける。??= は「まだ無ければ入れる」
 $equipByRoom = [];
 foreach ($equipment as $e) {
-    $equipByRoom[(int)($e['studio_room_id'] ?? 0)][$e['category']][] = $e;
+    // 複数の部屋に共通なら、その部屋それぞれの下に出す（room_ids が空 = 0 = 全部屋共通）
+    foreach ($e['room_ids'] ?: [0] as $rid) {
+        $equipByRoom[$rid][$e['category']][] = $e;
+    }
 }
 
 // 料金表を部屋ごとに分ける（0 = 全部屋共通）
 $ratesByRoom = [];
 foreach ($rates as $r) {
-    $ratesByRoom[(int)($r['studio_room_id'] ?? 0)][] = $r;
+    foreach ($r['room_ids'] ?: [0] as $rid) { // 複数の部屋に共通なら、その部屋それぞれの下に出す
+        $ratesByRoom[$rid][] = $r;
+    }
 }
 // 学割の列・チェックを出すか（料金表かパックのどこかに学割の料金があれば）
 $hasStudent = array_filter(array_merge(array_column($rates, 'student_price'), array_column($packs, 'student_price')), fn($v) => $v !== null) !== [];
@@ -374,7 +440,7 @@ $packLen = fn(array $p) => studio_fmt_min((int)($p['minutes'] ?? ((int)$p['end_m
 $simData = [
     'rooms' => array_map(fn($r) => ['id' => (int)$r['studio_room_id'], 'name' => $r['name']], $rooms),
     'rates' => array_map(fn($r) => [
-        'room' => $r['studio_room_id'] === null ? 0 : (int)$r['studio_room_id'],
+        'rooms' => $r['room_ids'], // 空 = 全部屋共通
         'ppl' => $r['people'] === null ? 0 : (int)$r['people'], // 0 = バンド
         'day' => (int)$r['day_type'],
         's' => (int)$r['start_min'],
@@ -384,7 +450,7 @@ $simData = [
     ], $rates),
     'packs' => array_map(fn($r) => [
         'name' => $r['name'],
-        'room' => $r['studio_room_id'] === null ? 0 : (int)$r['studio_room_id'],
+        'rooms' => $r['room_ids'],
         'ppl' => $r['people'] === null ? 0 : (int)$r['people'],
         'day' => (int)$r['day_type'],
         's' => (int)$r['start_min'],
@@ -404,14 +470,24 @@ $gmapQuery = $hasPin ? $studio['lat'] . ',' . $studio['lng'] : (string)($studio[
 $gmapUrl = 'https://www.google.com/maps/search/?api=1&query=' . rawurlencode($gmapQuery);
 $coordsValue = $hasPin ? rtrim(rtrim((string)$studio['lat'], '0'), '.') . ', ' . rtrim(rtrim((string)$studio['lng'], '0'), '.') : '';
 
-/** 部屋の <select> の選択肢（0 = 全部屋共通） */
-$roomOptions = function (?int $selected) use ($rooms): string {
-    $html = '<option value="0">全部屋</option>';
+/**
+ * 部屋のチェック欄（行ごと）。「全部屋」と各部屋のチェックボックス。チェックなし・「全部屋」= 全部屋共通
+ *   name="rooms[行番号][]"（チェックを外した欄は送られてこないので、行番号を名前に入れて、どの行の選択か分かるようにする）
+ *   「全部屋」と個別の部屋は同時に選べない（JS の setupRoomChips が切り替える。JS が無くてもサーバー側で「全部屋」を優先）
+ */
+$roomChips = function (int $i, array $selected) use ($rooms): string {
+    if (!$rooms) {
+        return ''; // 部屋が未登録なら選ぶものが無い
+    }
+    $all = $selected === [];
+    $html = '<span class="sinfo-chips" role="group" aria-label="部屋">'
+        . '<label class="sinfo-chip"><input type="checkbox" name="rooms[' . $i . '][]" value="0" data-room-all' . ($all ? ' checked' : '') . '> 全部屋</label>';
     foreach ($rooms as $r) {
         $id = (int)$r['studio_room_id'];
-        $html .= '<option value="' . $id . '"' . ($id === $selected ? ' selected' : '') . '>' . h($r['name']) . '</option>';
+        $html .= '<label class="sinfo-chip"><input type="checkbox" name="rooms[' . $i . '][]" value="' . $id . '"'
+            . (in_array($id, $selected, true) ? ' checked' : '') . '> ' . h($r['name']) . '</label>';
     }
-    return $html;
+    return $html . '</span>';
 };
 
 render_header($studio['name'], 'tools');
@@ -619,13 +695,11 @@ render_header($studio['name'], 'tools');
             <input type="hidden" name="action" value="save_rates">
             <input type="hidden" name="studio_id" value="<?= $studioId ?>">
             <!-- 末尾に空の行を2つ足す（id=0 = 新規）。料金を空にした行は削除。個人練習の料金は「その人数での1時間の合計」 -->
-            <?php foreach (array_merge($rates, array_fill(0, 2, ['studio_rate_id' => 0, 'studio_room_id' => null, 'people' => null, 'day_type' => 0, 'start_min' => 600, 'end_min' => 1380, 'price' => '', 'student_price' => null])) as $r): ?>
+            <?php foreach (array_merge($rates, array_fill(0, 2, ['studio_rate_id' => 0, 'room_ids' => [], 'people' => null, 'day_type' => 0, 'start_min' => 600, 'end_min' => 1380, 'price' => '', 'student_price' => null])) as $i => $r): ?>
                 <div class="sinfo-edit__row sinfo-edit__rate">
                     <input type="hidden" name="id[]" value="<?= (int)$r['studio_rate_id'] ?>">
                     <select name="people[]" aria-label="対象"><?= studio_target_options($r['people'] === null ? null : (int)$r['people']) ?></select>
-                    <?php if ($rooms): ?>
-                        <select name="room[]" aria-label="部屋"><?= $roomOptions($r['studio_room_id'] === null ? 0 : (int)$r['studio_room_id']) ?></select>
-                    <?php else: ?><input type="hidden" name="room[]" value="0"><?php endif; ?>
+                    <?= $roomChips($i, $r['room_ids']) ?>
                     <select name="day[]" aria-label="曜日">
                         <?php foreach (STUDIO_DAY_TYPES as $k => $label): ?>
                             <option value="<?= $k ?>"<?= $k === (int)$r['day_type'] ? ' selected' : '' ?>><?= h($label) ?></option>
@@ -674,7 +748,7 @@ render_header($studio['name'], 'tools');
                     <div class="sinfo-packs__head">
                         <strong><?= h($p['name']) ?></strong>
                         <?php if ($hasSolo): ?><span class="tag"><?= h(studio_target_label($p['people'] === null ? null : (int)$p['people'])) ?></span><?php endif; ?>
-                        <?php if ($p['studio_room_id'] !== null && isset($roomName[(int)$p['studio_room_id']])): ?><span class="tag"><?= h($roomName[(int)$p['studio_room_id']]) ?></span><?php endif; ?>
+                        <?php foreach ($p['room_ids'] as $rid): ?><span class="tag"><?= h($roomName[$rid] ?? '') ?></span><?php endforeach; ?>
                     </div>
                     <div class="sinfo-packs__body">
                         <span class="muted small">
@@ -699,14 +773,12 @@ render_header($studio['name'], 'tools');
             <input type="hidden" name="action" value="save_packs">
             <input type="hidden" name="studio_id" value="<?= $studioId ?>">
             <!-- 使える時間を「時間帯まるごと」にするときは、時間の欄を空にする。料金を空にした行は削除 -->
-            <?php foreach (array_merge($packs, [['studio_pack_id' => 0, 'studio_room_id' => null, 'people' => null, 'name' => '', 'day_type' => 0, 'start_min' => 1440, 'end_min' => 1800, 'minutes' => null, 'price' => '', 'student_price' => null]]) as $p): ?>
+            <?php foreach (array_merge($packs, [['studio_pack_id' => 0, 'room_ids' => [], 'people' => null, 'name' => '', 'day_type' => 0, 'start_min' => 1440, 'end_min' => 1800, 'minutes' => null, 'price' => '', 'student_price' => null]]) as $i => $p): ?>
                 <div class="sinfo-edit__row sinfo-edit__rate">
                     <input type="hidden" name="id[]" value="<?= (int)$p['studio_pack_id'] ?>">
                     <input autocomplete="off" type="text" class="grow" name="name[]" maxlength="50" value="<?= h($p['name']) ?>" placeholder="名前（例: 深夜パック）" aria-label="パック名">
                     <select name="people[]" aria-label="対象"><?= studio_target_options($p['people'] === null ? null : (int)$p['people']) ?></select>
-                    <?php if ($rooms): ?>
-                        <select name="room[]" aria-label="部屋"><?= $roomOptions($p['studio_room_id'] === null ? 0 : (int)$p['studio_room_id']) ?></select>
-                    <?php else: ?><input type="hidden" name="room[]" value="0"><?php endif; ?>
+                    <?= $roomChips($i, $p['room_ids']) ?>
                     <select name="day[]" aria-label="曜日">
                         <?php foreach (STUDIO_DAY_TYPES as $k => $label): ?>
                             <option value="<?= $k ?>"<?= $k === (int)$p['day_type'] ? ' selected' : '' ?>><?= h($label) ?></option>
@@ -793,12 +865,10 @@ render_header($studio['name'], 'tools');
             <?= csrf_field() ?>
             <input type="hidden" name="action" value="save_equipment">
             <input type="hidden" name="studio_id" value="<?= $studioId ?>">
-            <?php foreach (array_merge($equipment, array_fill(0, 2, ['studio_equipment_id' => 0, 'studio_room_id' => null, 'category' => '', 'model_name' => '', 'quantity' => 1])) as $e): ?>
+            <?php foreach (array_merge($equipment, array_fill(0, 2, ['studio_equipment_id' => 0, 'room_ids' => [], 'category' => '', 'model_name' => '', 'quantity' => 1])) as $i => $e): ?>
                 <div class="sinfo-edit__row">
                     <input type="hidden" name="id[]" value="<?= (int)$e['studio_equipment_id'] ?>">
-                    <?php if ($rooms): ?>
-                        <select name="room[]" aria-label="部屋"><?= $roomOptions($e['studio_room_id'] === null ? 0 : (int)$e['studio_room_id']) ?></select>
-                    <?php else: ?><input type="hidden" name="room[]" value="0"><?php endif; ?>
+                    <?= $roomChips($i, $e['room_ids']) ?>
                     <select name="category[]" aria-label="区分">
                         <?php foreach (STUDIO_EQUIP_CATEGORIES as $cat): ?>
                             <option value="<?= h($cat) ?>"<?= $cat === $e['category'] ? ' selected' : '' ?>><?= h($cat) ?></option>
