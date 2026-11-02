@@ -83,3 +83,20 @@
 .sinfo-edit__row input[type=number] { width: 90px; }
 .sinfo-edit__rate { padding-bottom: 8px; border-bottom: 1px dashed var(--border); }
 .sinfo-delete { margin-top: 20px; display: flex; justify-content: flex-end; }
+
+/* ---- バンド / 個人練習の切り替え（シミュレーションの一番上。少し大きめのボタン） ---- */
+.sinfo-seg--mode label { padding: 10px 4px; font-size: 14px; display: inline-flex; align-items: center; justify-content: center; gap: 4px; }
+
+/* ---- パック ---- */
+.sinfo-packs { gap: 10px; }
+.sinfo-packs li { display: grid; gap: 2px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+.sinfo-packs li:last-child { border-bottom: 0; padding-bottom: 0; }
+.sinfo-packs__head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.sinfo-packs__body { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 12px; font-variant-numeric: tabular-nums; }
+.sinfo-packs__body .sinfo-student { margin-left: 8px; }
+.sinfo-sim__pack span:first-child { font-weight: 800; color: var(--headliner); }
+
+/* ---- +1時間延長 ---- */
+.sinfo-sim__ext { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; padding: 8px 12px; border-radius: 8px;
+  background: var(--accent-soft); font-size: 14px; }
+.sinfo-sim__ext strong { font-size: 18px; font-variant-numeric: tabular-nums; }

@@ -1330,7 +1330,7 @@ CREATE TABLE studio_need (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- ---------------------------------------------------------------------
---  studio / studio_room / studio_rate / studio_rental / studio_equipment
+--  studio / studio_room / studio_rate / studio_pack / studio_rental / studio_equipment
 --    — スタジオ情報（studio_list.php / studio_info.php。migrations/086 に説明）
 -- ---------------------------------------------------------------------
 CREATE TABLE studio (
@@ -1369,6 +1369,7 @@ CREATE TABLE studio_rate (
     studio_rate_id INT UNSIGNED      NOT NULL AUTO_INCREMENT,
     studio_id      INT UNSIGNED      NOT NULL,
     studio_room_id INT UNSIGNED      NULL,          -- NULL = 全部屋共通
+    people         TINYINT UNSIGNED  NULL,          -- NULL = バンド / n = 個人練習 n人
     day_type       TINYINT UNSIGNED  NOT NULL DEFAULT 0,
     start_min      SMALLINT UNSIGNED NOT NULL,
     end_min        SMALLINT UNSIGNED NOT NULL,
@@ -1381,6 +1382,27 @@ CREATE TABLE studio_rate (
         ON UPDATE CASCADE ON DELETE CASCADE,
     -- 部屋を消したら、その部屋だけの料金も消す
     CONSTRAINT fk_srate_room FOREIGN KEY (studio_room_id) REFERENCES studio_room (studio_room_id)
+        ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE studio_pack (
+    studio_pack_id INT UNSIGNED      NOT NULL AUTO_INCREMENT,
+    studio_id      INT UNSIGNED      NOT NULL,
+    studio_room_id INT UNSIGNED      NULL,          -- NULL = 全部屋共通
+    people         TINYINT UNSIGNED  NULL,          -- NULL = バンド / n = 個人練習 n人
+    name           VARCHAR(50)       NOT NULL,      -- 例: 深夜パック
+    day_type       TINYINT UNSIGNED  NOT NULL DEFAULT 0,
+    start_min      SMALLINT UNSIGNED NOT NULL,
+    end_min        SMALLINT UNSIGNED NOT NULL,
+    minutes        SMALLINT UNSIGNED NULL,          -- NULL = 時間帯まるごと
+    price          INT UNSIGNED      NOT NULL,      -- パック1回の料金
+    student_price  INT UNSIGNED      NULL,
+    sort_order     INT UNSIGNED      NOT NULL DEFAULT 0,
+    PRIMARY KEY (studio_pack_id),
+    KEY idx_spack_studio (studio_id),
+    CONSTRAINT fk_spack_studio FOREIGN KEY (studio_id) REFERENCES studio (studio_id)
+        ON UPDATE CASCADE ON DELETE CASCADE,
+    CONSTRAINT fk_spack_room FOREIGN KEY (studio_room_id) REFERENCES studio_room (studio_room_id)
         ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 

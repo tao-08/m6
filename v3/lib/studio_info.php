@@ -20,6 +20,28 @@ const STUDIO_DAY_TYPES = [0 => '全日', 1 => '平日', 2 => '土日祝'];
 /** 機材の区分（この順に表示。会場の機材 venue.php と同じ並びにそろえる） */
 const STUDIO_EQUIP_CATEGORIES = ['ギターアンプ', 'ベースアンプ', 'ドラム', 'キーボード', 'PA', 'その他'];
 
+/** 個人練習の人数の上限（料金表・パックの「対象」の選択肢を 個人1人〜個人6人 にする） */
+const STUDIO_SOLO_MAX = 6;
+
+/**
+ * 料金表・パックの「対象」の表示名。people = NULL → バンド / n → 個人n人
+ *   ?int = int か null（nullable 型）
+ */
+function studio_target_label(?int $people): string
+{
+    return $people === null ? 'バンド' : '個人' . $people . '人';
+}
+
+/** 「対象」の <select> の選択肢（0 = バンド、1〜STUDIO_SOLO_MAX = 個人n人） */
+function studio_target_options(?int $people): string
+{
+    $html = '';
+    for ($n = 0; $n <= STUDIO_SOLO_MAX; $n++) {
+        $html .= '<option value="' . $n . '"' . ($n === (int)$people ? ' selected' : '') . '>' . h(studio_target_label($n === 0 ? null : $n)) . '</option>';
+    }
+    return $html;
+}
+
 /** 料金表の時刻の上限（30:00 = 翌朝6時。深夜パックを1行で書けるように 24時を超えて持つ） */
 const STUDIO_MAX_MIN = 30 * 60;
 

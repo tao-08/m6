@@ -4,7 +4,7 @@
  *  studio_list.php — スタジオ情報の一覧＋スタジオマップ（tools.php から入る）
  * =====================================================================
  *  表示: 全スタジオのピンを1枚の地図（Leaflet + OpenStreetMap）に出し、その下にカードの一覧
- *        カードには 最寄り駅・いちばん安い1時間の料金・学割の有無 を出す
+ *        カードには 最寄り駅・バンドのいちばん安い1時間の料金・学割／個人練習／パックの有無 を出す
  *  追加: 幹部と管理者だけ（名前だけ入れて作り、詳しい情報は studio_info.php で編集）
  *
  *  ■ Leaflet（リーフレット）とは
@@ -49,11 +49,14 @@ if (is_post()) {
 // =====================================================================
 //  表示用のデータ
 // =====================================================================
-// MIN() = 最小値。相関サブクエリでスタジオごとに「いちばん安い1時間の料金」「学割の行があるか」をまとめて取る
+// MIN() = 最小値。相関サブクエリでスタジオごとに「バンドのいちばん安い1時間の料金」「学割の行があるか」をまとめて取る
+// EXISTS (SELECT 1 …) = 1行でもあれば 1。個人練習の料金・パックがあるかのタグに使う（件数は要らないので COUNT より速い）
 //   （スタジオの数だけ SQL を投げる「N+1 問題」を避けるため、1回の SQL で済ませる）
 $studios = $pdo->query('SELECT s.studio_id, s.name, s.access, s.lat, s.lng, s.reserve_url,
-        (SELECT MIN(r.price) FROM studio_rate r WHERE r.studio_id = s.studio_id) AS min_price,
-        (SELECT MIN(r.student_price) FROM studio_rate r WHERE r.studio_id = s.studio_id) AS min_student
+        (SELECT MIN(r.price) FROM studio_rate r WHERE r.studio_id = s.studio_id AND r.people IS NULL) AS min_price,
+        (SELECT MIN(r.student_price) FROM studio_rate r WHERE r.studio_id = s.studio_id) AS min_student,
+        EXISTS (SELECT 1 FROM studio_rate r WHERE r.studio_id = s.studio_id AND r.people IS NOT NULL) AS has_solo,
+        EXISTS (SELECT 1 FROM studio_pack p WHERE p.studio_id = s.studio_id) AS has_pack
     FROM studio s ORDER BY s.sort_order, s.studio_id')->fetchAll();
 
 // 地図に渡すのは座標が入っているスタジオだけ
@@ -95,6 +98,8 @@ render_header('スタジオ情報', 'tools');
                 <span class="sinfo-list__name">
                     <?= h($s['name']) ?>
                     <?php if ($s['min_student'] !== null): ?><span class="tag tag--plan">学割</span><?php endif; ?>
+                    <?php if ($s['has_solo']): ?><span class="tag">個人</span><?php endif; ?>
+                    <?php if ($s['has_pack']): ?><span class="tag">パック</span><?php endif; ?>
                 </span>
                 <span class="muted small sinfo-list__meta">
                     <?php if ($s['access']): ?><span><?= icon('train') ?> <?= h($s['access']) ?></span><?php endif; ?>

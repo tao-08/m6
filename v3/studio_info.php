@@ -6,11 +6,13 @@
  *  表示（ログインしていれば誰でも）:
  *    基本情報（サイト・予約ページ・住所・最寄り駅・電話）・地図
  *    料金シミュレーション（JS: assets/studio_info.js。部屋・日にち・時間・人数・学割・レンタルから合計と1人あたりを出す）
- *    部屋と料金表（学割の料金・条件も）・レンタル・機材
+ *    部屋と料金表（バンド・個人練習。学割の料金・条件も）・パック・レンタル・機材
+ *    シミュレーションは「パックの自動適用（安ければ）」と「+1時間延長したらいくら増えるか」も出す
  *  編集（幹部と管理者だけ）: 各カードの「編集」を開くとフォームが出る
  *
  *  POST は7種類（action）。どれも 権限確認 → CSRF 検証 → 入力検証 → プリペアドステートメント → リダイレクト。
- *    save_info / save_rooms / save_rates / save_rentals / save_equipment / delete_studio
+ *    save_info / save_rooms / save_rates / save_packs / save_rentals / save_equipment / delete_studio
+ *    ・料金表とパックには「対象」がある: バンド（people = NULL）か、個人練習 n人（people = n）
  *    ・行の一覧（部屋・料金・レンタル・機材）は venue.php と同じ「行ごとの入力欄をまとめて保存」方式:
  *        id=0 の行 → 追加 / 主な欄を空にした行 → 削除 / それ以外 → 更新
  *    ・行の id は必ず「このスタジオの行か」を確かめ、WHERE にも studio_id を入れる（他のスタジオの行を書き換えさせない）
@@ -173,8 +175,12 @@ if (is_post()) {
         redirect($self . '#rooms');
     }
 
-    // ---- 料金表 ---------------------------------------------------------
-    if ($action === 'save_rates') {
+    // ---- 料金表・パック（入力欄の形がほぼ同じなので、1つの処理で両方受ける）-----------------
+    //   共通: 対象（バンド / 個人n人）・部屋・曜日・時間帯・料金・学割
+    //   パックだけ: 名前・使える時間（minutes。空 = 時間帯まるごと）
+    if ($action === 'save_rates' || $action === 'save_packs') {
+        $isPack = $action === 'save_packs';
+        $anchor = $isPack ? '#packs' : '#rates';
         $roomIds = studio_room_ids($pdo, $studioId);
         $rows = [];
         foreach ((array)($_POST['id'] ?? []) as $i => $rawId) {
@@ -184,30 +190,46 @@ if (is_post()) {
                 continue;
             }
             $room = (int)($_POST['room'][$i] ?? 0);       // 0 = 全部屋共通
+            $people = (int)($_POST['people'][$i] ?? 0);   // 0 = バンド
             $day = (int)($_POST['day'][$i] ?? 0);
             $start = (string)($_POST['start'][$i] ?? '');
             $end = (string)($_POST['end'][$i] ?? '');
             $student = trim((string)($_POST['student_price'][$i] ?? ''));
             $ok = ($room === 0 || in_array($room, $roomIds, true))
+                && $people >= 0 && $people <= STUDIO_SOLO_MAX
                 && array_key_exists($day, STUDIO_DAY_TYPES)
                 && studio_uint($start, STUDIO_MAX_MIN) && studio_uint($end, STUDIO_MAX_MIN) && (int)$start < (int)$end
                 && studio_uint($price, 999999) && ($student === '' || studio_uint($student, 999999));
-            if (!$ok) {
-                flash('料金表の入力が正しくありません（終了は開始より後に）', 'error');
-                redirect($self . '#rates');
-            }
-            $rows[] = [(int)$rawId, [
+            $data = [
                 'studio_room_id' => $room === 0 ? null : $room,
+                'people' => $people === 0 ? null : $people, // NULL = バンド
                 'day_type' => $day,
                 'start_min' => (int)$start,
                 'end_min' => (int)$end,
                 'price' => (int)$price,
                 'student_price' => $student === '' ? null : (int)$student,
-            ]];
+            ];
+            if ($isPack) {
+                $name = trim((string)($_POST['name'][$i] ?? ''));
+                $minutes = trim((string)($_POST['minutes'][$i] ?? ''));
+                // 使える時間は 30分きざみで、時間帯の長さ以内（時間帯より長いパックはありえない）
+                $ok = $ok && $name !== '' && mb_strlen($name) <= 50
+                    && ($minutes === '' || (studio_uint($minutes, STUDIO_MAX_MIN) && (int)$minutes > 0 && (int)$minutes <= (int)$end - (int)$start));
+                $data = ['name' => $name] + $data + ['minutes' => $minutes === '' ? null : (int)$minutes];
+            }
+            if (!$ok) {
+                flash($isPack ? 'パックの入力が正しくありません（名前・時間帯・使える時間を確認）' : '料金表の入力が正しくありません（終了は開始より後に）', 'error');
+                redirect($self . $anchor);
+            }
+            $rows[] = [(int)$rawId, $data];
         }
-        studio_save_rows($pdo, 'studio_rate', 'studio_rate_id', $studioId, $rows);
+        if ($isPack) {
+            studio_save_rows($pdo, 'studio_pack', 'studio_pack_id', $studioId, $rows);
+        } else {
+            studio_save_rows($pdo, 'studio_rate', 'studio_rate_id', $studioId, $rows);
+        }
         flash('保存しました');
-        redirect($self . '#rates');
+        redirect($self . $anchor);
     }
 
     // ---- レンタル -------------------------------------------------------
@@ -283,10 +305,17 @@ $st->execute([$studioId]);
 $rooms = $st->fetchAll();
 $roomName = array_column($rooms, 'name', 'studio_room_id'); // [部屋id => 部屋名]（array_column の第3引数 = キーにする列）
 
-$st = $pdo->prepare('SELECT studio_rate_id, studio_room_id, day_type, start_min, end_min, price, student_price
-    FROM studio_rate WHERE studio_id = ? ORDER BY sort_order, studio_rate_id');
+// 料金表: 表示は「バンド → 個人1人 → 個人2人 …」の順にしたいので、people の NULL を先頭に並べる
+//   ORDER BY people IS NULL DESC = 「NULL か？」が真（1）の行を先に。そのあと人数の小さい順
+$st = $pdo->prepare('SELECT studio_rate_id, studio_room_id, people, day_type, start_min, end_min, price, student_price
+    FROM studio_rate WHERE studio_id = ? ORDER BY people IS NULL DESC, people, sort_order, studio_rate_id');
 $st->execute([$studioId]);
 $rates = $st->fetchAll();
+
+$st = $pdo->prepare('SELECT studio_pack_id, studio_room_id, people, name, day_type, start_min, end_min, minutes, price, student_price
+    FROM studio_pack WHERE studio_id = ? ORDER BY sort_order, studio_pack_id');
+$st->execute([$studioId]);
+$packs = $st->fetchAll();
 
 $st = $pdo->prepare('SELECT studio_rental_id, name, price, per_hour FROM studio_rental WHERE studio_id = ? ORDER BY sort_order, studio_rental_id');
 $st->execute([$studioId]);
@@ -308,19 +337,38 @@ $ratesByRoom = [];
 foreach ($rates as $r) {
     $ratesByRoom[(int)($r['studio_room_id'] ?? 0)][] = $r;
 }
-$hasStudent = array_filter(array_column($rates, 'student_price'), fn($v) => $v !== null) !== [];
+// 学割の列・チェックを出すか（料金表かパックのどこかに学割の料金があれば）
+$hasStudent = array_filter(array_merge(array_column($rates, 'student_price'), array_column($packs, 'student_price')), fn($v) => $v !== null) !== [];
+// 個人練習の料金があるか（あれば料金表に「対象」の列と、シミュレーションに「バンド / 個人」の切り替えを出す）
+$hasSolo = array_filter(array_merge(array_column($rates, 'people'), array_column($packs, 'people')), fn($v) => $v !== null) !== [];
+$hasBand = in_array(null, array_column($rates, 'people'), true) || in_array(null, array_column($packs, 'people'), true);
+
+/** パックの「使える時間」の表示（NULL = 時間帯まるごと → 時間帯の長さを出す） */
+$packLen = fn(array $p) => studio_fmt_min((int)($p['minutes'] ?? ((int)$p['end_min'] - (int)$p['start_min'])));
 
 // 料金シミュレーション用のデータ（JS へ渡す）。キーは短く、値は数値にしておく
 $simData = [
     'rooms' => array_map(fn($r) => ['id' => (int)$r['studio_room_id'], 'name' => $r['name']], $rooms),
     'rates' => array_map(fn($r) => [
         'room' => $r['studio_room_id'] === null ? 0 : (int)$r['studio_room_id'],
+        'ppl' => $r['people'] === null ? 0 : (int)$r['people'], // 0 = バンド
         'day' => (int)$r['day_type'],
         's' => (int)$r['start_min'],
         'e' => (int)$r['end_min'],
         'p' => (int)$r['price'],
         'sp' => $r['student_price'] === null ? null : (int)$r['student_price'],
     ], $rates),
+    'packs' => array_map(fn($r) => [
+        'name' => $r['name'],
+        'room' => $r['studio_room_id'] === null ? 0 : (int)$r['studio_room_id'],
+        'ppl' => $r['people'] === null ? 0 : (int)$r['people'],
+        'day' => (int)$r['day_type'],
+        's' => (int)$r['start_min'],
+        'e' => (int)$r['end_min'],
+        'min' => $r['minutes'] === null ? null : (int)$r['minutes'],
+        'p' => (int)$r['price'],
+        'sp' => $r['student_price'] === null ? null : (int)$r['student_price'],
+    ], $packs),
     'rentals' => array_map(fn($r) => [
         'id' => (int)$r['studio_rental_id'], 'name' => $r['name'], 'p' => (int)$r['price'], 'hour' => (bool)$r['per_hour'],
     ], $rentals),
@@ -413,10 +461,20 @@ render_header($studio['name'], 'tools');
 </section>
 
 <!-- ===== 料金シミュレーション（料金表が1行でもあれば出す。中身は JS が作る） ===== -->
-<?php if ($rates): ?>
+<?php if ($rates || $packs): ?>
 <section class="card sinfo-section" id="sim">
     <h2><?= icon('calculate') ?> 料金シミュレーション</h2>
     <form class="sinfo-sim" id="studio-sim" onsubmit="return false">
+        <?php if ($hasSolo && $hasBand): ?>
+            <!-- バンド / 個人練習の切り替え（両方の料金があるときだけ出す） -->
+            <div class="sinfo-seg sinfo-seg--mode" role="radiogroup" aria-label="対象">
+                <label><input type="radio" name="mode" value="band" checked> <?= icon('groups') ?> バンド</label>
+                <label><input type="radio" name="mode" value="solo"> <?= icon('person') ?> 個人練習</label>
+            </div>
+        <?php else: ?>
+            <!-- 片方しか無いときは選ばせず、hidden で固定 -->
+            <input type="hidden" name="mode" value="<?= $hasBand ? 'band' : 'solo' ?>">
+        <?php endif; ?>
         <div class="sinfo-sim__grid">
             <?php if ($rooms): ?>
             <label class="sinfo-field"><span>部屋</span>
@@ -468,10 +526,11 @@ render_header($studio['name'], 'tools');
             <?php if ($rooms): ?><h3 class="sinfo-sub"><?= h($rname) ?></h3><?php endif; ?>
             <div class="sinfo-table-wrap">
             <table class="sinfo-table">
-                <thead><tr><th>曜日</th><th>時間</th><th class="num">料金</th><?php if ($hasStudent): ?><th class="num">学割</th><?php endif; ?></tr></thead>
+                <thead><tr><?php if ($hasSolo): ?><th>対象</th><?php endif; ?><th>曜日</th><th>時間</th><th class="num">料金</th><?php if ($hasStudent): ?><th class="num">学割</th><?php endif; ?></tr></thead>
                 <tbody>
                 <?php foreach ($ratesByRoom[$rid] as $r): ?>
                     <tr>
+                        <?php if ($hasSolo): ?><td><?= h(studio_target_label($r['people'] === null ? null : (int)$r['people'])) ?></td><?php endif; ?>
                         <td><?= h(STUDIO_DAY_TYPES[(int)$r['day_type']] ?? '') ?></td>
                         <td><?= h(studio_fmt_min((int)$r['start_min'])) ?>〜<?= h(studio_fmt_min((int)$r['end_min'])) ?></td>
                         <td class="num"><?= h(studio_yen((int)$r['price'])) ?></td>
@@ -496,10 +555,11 @@ render_header($studio['name'], 'tools');
             <?= csrf_field() ?>
             <input type="hidden" name="action" value="save_rates">
             <input type="hidden" name="studio_id" value="<?= $studioId ?>">
-            <!-- 末尾に空の行を2つ足す（id=0 = 新規）。料金を空にした行は削除 -->
-            <?php foreach (array_merge($rates, array_fill(0, 2, ['studio_rate_id' => 0, 'studio_room_id' => null, 'day_type' => 0, 'start_min' => 600, 'end_min' => 1380, 'price' => '', 'student_price' => null])) as $r): ?>
+            <!-- 末尾に空の行を2つ足す（id=0 = 新規）。料金を空にした行は削除。個人練習の料金は「その人数での1時間の合計」 -->
+            <?php foreach (array_merge($rates, array_fill(0, 2, ['studio_rate_id' => 0, 'studio_room_id' => null, 'people' => null, 'day_type' => 0, 'start_min' => 600, 'end_min' => 1380, 'price' => '', 'student_price' => null])) as $r): ?>
                 <div class="sinfo-edit__row sinfo-edit__rate">
                     <input type="hidden" name="id[]" value="<?= (int)$r['studio_rate_id'] ?>">
+                    <select name="people[]" aria-label="対象"><?= studio_target_options($r['people'] === null ? null : (int)$r['people']) ?></select>
                     <?php if ($rooms): ?>
                         <select name="room[]" aria-label="部屋"><?= $roomOptions($r['studio_room_id'] === null ? 0 : (int)$r['studio_room_id']) ?></select>
                     <?php else: ?><input type="hidden" name="room[]" value="0"><?php endif; ?>
@@ -521,6 +581,75 @@ render_header($studio['name'], 'tools');
     <?php endif; ?>
 </section>
 
+<!-- ===== パック（時間帯の中の決まった時間を一律料金）===== -->
+<?php if ($packs || $canEdit): ?>
+<section class="card sinfo-section" id="packs">
+    <h2><?= icon('inventory_2') ?> パック</h2>
+    <?php if (!$packs): ?><p class="muted small">-</p><?php else: ?>
+        <ul class="sinfo-plain sinfo-packs">
+            <?php foreach ($packs as $p): ?>
+                <li>
+                    <div class="sinfo-packs__head">
+                        <strong><?= h($p['name']) ?></strong>
+                        <?php if ($hasSolo): ?><span class="tag"><?= h(studio_target_label($p['people'] === null ? null : (int)$p['people'])) ?></span><?php endif; ?>
+                        <?php if ($p['studio_room_id'] !== null && isset($roomName[(int)$p['studio_room_id']])): ?><span class="tag"><?= h($roomName[(int)$p['studio_room_id']]) ?></span><?php endif; ?>
+                    </div>
+                    <div class="sinfo-packs__body">
+                        <span class="muted small">
+                            <?= h(STUDIO_DAY_TYPES[(int)$p['day_type']] ?? '') ?>
+                            <?= h(studio_fmt_min((int)$p['start_min'])) ?>〜<?= h(studio_fmt_min((int)$p['end_min'])) ?>
+                            <?php if ($p['minutes'] !== null): ?>のうち <?= h($packLen($p)) ?><?php endif; ?>
+                        </span>
+                        <span>
+                            <?= h(studio_yen((int)$p['price'])) ?>
+                            <?php if ($p['student_price'] !== null): ?><span class="sinfo-student">学割 <?= h(studio_yen((int)$p['student_price'])) ?></span><?php endif; ?>
+                        </span>
+                    </div>
+                </li>
+            <?php endforeach; ?>
+        </ul>
+    <?php endif; ?>
+    <?php if ($canEdit): ?>
+    <details class="sinfo-edit">
+        <summary><?= icon('edit') ?> 編集</summary>
+        <form method="post" class="sinfo-edit__form">
+            <?= csrf_field() ?>
+            <input type="hidden" name="action" value="save_packs">
+            <input type="hidden" name="studio_id" value="<?= $studioId ?>">
+            <!-- 使える時間を「時間帯まるごと」にするときは、時間の欄を空にする。料金を空にした行は削除 -->
+            <?php foreach (array_merge($packs, [['studio_pack_id' => 0, 'studio_room_id' => null, 'people' => null, 'name' => '', 'day_type' => 0, 'start_min' => 1440, 'end_min' => 1800, 'minutes' => null, 'price' => '', 'student_price' => null]]) as $p): ?>
+                <div class="sinfo-edit__row sinfo-edit__rate">
+                    <input type="hidden" name="id[]" value="<?= (int)$p['studio_pack_id'] ?>">
+                    <input autocomplete="off" type="text" class="grow" name="name[]" maxlength="50" value="<?= h($p['name']) ?>" placeholder="名前（例: 深夜パック）" aria-label="パック名">
+                    <select name="people[]" aria-label="対象"><?= studio_target_options($p['people'] === null ? null : (int)$p['people']) ?></select>
+                    <?php if ($rooms): ?>
+                        <select name="room[]" aria-label="部屋"><?= $roomOptions($p['studio_room_id'] === null ? 0 : (int)$p['studio_room_id']) ?></select>
+                    <?php else: ?><input type="hidden" name="room[]" value="0"><?php endif; ?>
+                    <select name="day[]" aria-label="曜日">
+                        <?php foreach (STUDIO_DAY_TYPES as $k => $label): ?>
+                            <option value="<?= $k ?>"<?= $k === (int)$p['day_type'] ? ' selected' : '' ?>><?= h($label) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                    <select name="start[]" aria-label="時間帯の開始"><?= studio_time_options((int)$p['start_min']) ?></select>
+                    <span class="muted">〜</span>
+                    <select name="end[]" aria-label="時間帯の終了"><?= studio_time_options((int)$p['end_min']) ?></select>
+                    <select name="minutes[]" aria-label="使える時間">
+                        <option value="">時間帯まるごと</option>
+                        <?php for ($m = 60; $m <= 720; $m += 30): ?>
+                            <option value="<?= $m ?>"<?= $p['minutes'] !== null && (int)$p['minutes'] === $m ? ' selected' : '' ?>><?= h(studio_fmt_min($m)) ?></option>
+                        <?php endfor; ?>
+                    </select>
+                    <input type="number" name="price[]" min="0" max="999999" value="<?= h($p['price']) ?>" placeholder="料金" aria-label="パックの料金" inputmode="numeric">
+                    <input type="number" name="student_price[]" min="0" max="999999" value="<?= h($p['student_price']) ?>" placeholder="学割" aria-label="学割のパックの料金" inputmode="numeric">
+                </div>
+            <?php endforeach; ?>
+            <div><button type="submit" class="btn btn--primary btn--sm" title="料金を空にした行は削除"><?= icon('save') ?> 保存</button></div>
+        </form>
+    </details>
+    <?php endif; ?>
+</section>
+<?php endif; ?>
+
 <!-- ===== 部屋 ===== -->
 <?php if ($rooms || $canEdit): ?>
 <section class="card sinfo-section" id="rooms">
@@ -535,7 +664,7 @@ render_header($studio['name'], 'tools');
     <?php if ($canEdit): ?>
     <details class="sinfo-edit">
         <summary><?= icon('edit') ?> 編集</summary>
-        <form method="post" class="sinfo-edit__form" data-confirm="部屋名を空にした部屋は、その部屋の料金・機材も削除されます。保存しますか？">
+        <form method="post" class="sinfo-edit__form" data-confirm="部屋名を空にした部屋は、その部屋の料金・パック・機材も削除されます。保存しますか？">
             <?= csrf_field() ?>
             <input type="hidden" name="action" value="save_rooms">
             <input type="hidden" name="studio_id" value="<?= $studioId ?>">
@@ -636,7 +765,7 @@ render_header($studio['name'], 'tools');
 </section>
 
 <?php if ($canEdit): ?>
-    <form method="post" class="sinfo-delete" data-confirm="「<?= h($studio['name']) ?>」を削除します（料金・レンタル・機材も削除）。元に戻せません。よろしいですか？">
+    <form method="post" class="sinfo-delete" data-confirm="「<?= h($studio['name']) ?>」を削除します（料金・パック・レンタル・機材も削除）。元に戻せません。よろしいですか？">
         <?= csrf_field() ?>
         <input type="hidden" name="action" value="delete_studio">
         <input type="hidden" name="studio_id" value="<?= $studioId ?>">

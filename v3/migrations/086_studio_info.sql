@@ -10,7 +10,8 @@
 --  テーブルの関係（1対多 が4本。どれも studio を消すと一緒に消える = ON DELETE CASCADE）
 --
 --     studio ─┬─< studio_room        部屋（Aスタ / Bスタ …）
---             ├─< studio_rate        料金表（部屋 × 曜日区分 × 時間帯 → 1時間の単価）
+--             ├─< studio_rate        料金表（対象 × 部屋 × 曜日区分 × 時間帯 → 1時間の料金）
+--             ├─< studio_pack        パック（時間帯の中で決まった時間を一律料金。深夜パック・3時間パックなど）
 --             ├─< studio_rental      レンタル（マイク・シールド …）
 --             └─< studio_equipment   機材（アンプ・ドラム …）
 --
@@ -24,8 +25,17 @@
 --    day_type       … 0 = 全日 / 1 = 平日 / 2 = 土日祝
 --    start_min / end_min … 0時からの分。深夜は 24時を超えて書ける（22:00〜29:00 = 1320〜1740）
 --                         日付をまたぐ料金を1行で書けるようにするため、TIME 型ではなく分（整数）で持つ
---    price          … 1時間・1部屋の料金（円）
+--    people         … 対象。NULL = バンド練習 / 1, 2, 3 … = 個人練習の人数
+--                     個人練習は「1人 ¥550、2人 ¥1,000」のように人数で比例しない店があるので、人数ごとに1行で持つ
+--    price          … 1時間の料金（円）。バンドは1部屋の料金、個人は「その人数での合計」
 --    student_price  … 学割の1時間の料金（円）。NULL = その時間帯は学割なし
+--
+--  studio_pack の読み方
+--    start_min / end_min … パックが使える時間帯（料金表と同じく 0時からの分。24時超えも可）
+--    minutes        … 使える時間（分）。NULL = 時間帯まるごと（例: 深夜パック 24:00〜30:00）
+--                     例: 昼パック 10:00〜18:00 のうち 3時間 → start 600 / end 1080 / minutes 180
+--    price / student_price … パック1回の料金。people / studio_room_id / day_type は料金表と同じ意味
+--    シミュレーションでは、予約が時間帯に収まり時間が minutes 以内のパックのうち、通常料金より安いものを自動で使う
 --
 --  lat / lng … 地図のピンの位置（緯度・経度）。DECIMAL(9,6) = 小数6桁 ≒ 10cm 単位まで持てる
 --    FLOAT にしないのは、FLOAT は 2進数の近似で「35.681236」が「35.68123626…」にずれるため
@@ -68,6 +78,7 @@ CREATE TABLE studio_rate (
     studio_rate_id INT UNSIGNED      NOT NULL AUTO_INCREMENT,
     studio_id      INT UNSIGNED      NOT NULL,
     studio_room_id INT UNSIGNED      NULL,          -- NULL = 全部屋共通
+    people         TINYINT UNSIGNED  NULL,          -- NULL = バンド / n = 個人練習 n人
     day_type       TINYINT UNSIGNED  NOT NULL DEFAULT 0,
     start_min      SMALLINT UNSIGNED NOT NULL,
     end_min        SMALLINT UNSIGNED NOT NULL,
@@ -80,6 +91,27 @@ CREATE TABLE studio_rate (
         ON UPDATE CASCADE ON DELETE CASCADE,
     -- 部屋を消したら、その部屋だけの料金も消す
     CONSTRAINT fk_srate_room FOREIGN KEY (studio_room_id) REFERENCES studio_room (studio_room_id)
+        ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE studio_pack (
+    studio_pack_id INT UNSIGNED      NOT NULL AUTO_INCREMENT,
+    studio_id      INT UNSIGNED      NOT NULL,
+    studio_room_id INT UNSIGNED      NULL,          -- NULL = 全部屋共通
+    people         TINYINT UNSIGNED  NULL,          -- NULL = バンド / n = 個人練習 n人
+    name           VARCHAR(50)       NOT NULL,      -- 例: 深夜パック
+    day_type       TINYINT UNSIGNED  NOT NULL DEFAULT 0,
+    start_min      SMALLINT UNSIGNED NOT NULL,
+    end_min        SMALLINT UNSIGNED NOT NULL,
+    minutes        SMALLINT UNSIGNED NULL,          -- NULL = 時間帯まるごと
+    price          INT UNSIGNED      NOT NULL,      -- パック1回の料金
+    student_price  INT UNSIGNED      NULL,
+    sort_order     INT UNSIGNED      NOT NULL DEFAULT 0,
+    PRIMARY KEY (studio_pack_id),
+    KEY idx_spack_studio (studio_id),
+    CONSTRAINT fk_spack_studio FOREIGN KEY (studio_id) REFERENCES studio (studio_id)
+        ON UPDATE CASCADE ON DELETE CASCADE,
+    CONSTRAINT fk_spack_room FOREIGN KEY (studio_room_id) REFERENCES studio_room (studio_room_id)
         ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
