@@ -473,9 +473,21 @@
   $('[data-ytp-prevmark]').addEventListener('click', () => jumpMark(-1));
   $('[data-ytp-nextmark]').addEventListener('click', () => jumpMark(1));
 
+  // ---- 使い方（？ボタン → <dialog data-ytp-guide>） ----
+  //   ダイアログは root（<section data-ytp>）の外に置いてあるので、$ ではなく document から探す
+  //   showModal() … <dialog> をモーダルとして開く（背景を暗くし、後ろを操作できなくする。Esc で閉じるのはブラウザが自動でやる）
+  const guide = document.querySelector('[data-ytp-guide]');
+  if (guide) {
+    $('[data-ytp-help]').addEventListener('click', () => guide.showModal());
+    guide.querySelector('[data-ytp-guide-close]').addEventListener('click', () => guide.close());
+    // 外側（暗い背景）を押しても閉じる。背景を押したときは e.target が <dialog> 自身になる
+    guide.addEventListener('click', (e) => { if (e.target === guide) guide.close(); });
+  }
+
   // ---- キーボード（入力欄に書いているときは効かない） ----
   document.addEventListener('keydown', (e) => {
     if (e.target.closest('input, textarea, select') || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (guide?.open) return; // 使い方を開いている間は、Space などで後ろの動画を動かさない（?. … guide が無ければ undefined になり、エラーにしない書き方）
     if (e.key === ' ') { e.preventDefault(); togglePlay(); }
     else if (e.key === 'Home') { e.preventDefault(); seek(0); }
     else if (e.key === 'ArrowLeft') { e.preventDefault(); if (e.shiftKey) jumpMark(-1); else back(); }
