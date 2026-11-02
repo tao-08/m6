@@ -236,9 +236,10 @@ render_header($live['name'], 'lives');
                         <?php if ($b['youtube_url'] !== null && youtube_url_valid($b['youtube_url'])): ?>
                             <a class="slot__yt no-print" href="<?= h($b['youtube_url']) ?>" target="_blank" rel="noopener noreferrer" aria-label="「<?= h($b['name']) ?>」を YouTube で見る" title="YouTube で見る"><?= youtube_icon() ?></a>
                         <?php endif; ?>
-                        <?php // コメントが付いているバンドだけ、吹き出しの中に件数。0 件なら comment_badge() が空文字を返すので何も出ない ?>
-                        <?= comment_badge((int)$b['band_id'], $commentCounts[(int)$b['band_id']] ?? 0, 'no-print') ?>
                         </div>
+                        <?php // コメントが付いているバンドだけ、❤ のすぐ左に吹き出し（中に件数）。0 件なら comment_badge() が空文字を返すので何も出ない。
+                        //   位置は CSS の .slot__head > .cmt-badge（右端へ寄せる）。.slot__title の外に置くのは、名前が長くて折り返しても ❤ の横に固定するため ?>
+                        <?= comment_badge((int)$b['band_id'], $commentCounts[(int)$b['band_id']] ?? 0, 'no-print') ?>
                         <?= like_button((int)$b['band_id'], $likes[(int)$b['band_id']] ?? null, 'slot__like no-print') // 行の右端（CSS の margin-left: auto） ?>
                     </div>
                     <?php if ($lineup): ?>
