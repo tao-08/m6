@@ -2906,4 +2906,7 @@ button.ttb-m { cursor: pointer; text-decoration: underline dotted; }
 /* ===== 楽器の管理（instruments.php） ===== */
 .inst-admin .inst-admin__color { width: 40px; min-width: 40px; height: 32px; padding: 2px; cursor: pointer; } /* カラーピッカーは正方形に近く */
 .inst-admin .inst-admin__short { width: 6em; min-width: 0; }
+.inst-admin__colorbox { display: inline-flex; align-items: center; gap: 6px; } /* ピッカーと色コードの欄を横に並べる */
+.inst-admin .inst-admin__hex { width: 6.5em; min-width: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; } /* 色コードは等幅（0 と o が見分けやすい） */
+.inst-admin .inst-admin__hex.is-invalid { border-color: var(--danger); } /* 色コードの形が違うあいだは赤い枠 */
 .inst-admin__merge select { min-width: 7em; }

@@ -145,8 +145,13 @@ render_header('楽器の管理');
                         <input type="hidden" name="action" value="save">
                         <input type="hidden" name="instrument_id" value="<?= $iid ?>">
                     </form>
-                    <!-- type="color" = ブラウザのカラーピッカー。値は必ず '#rrggbb'（小文字）で送られる -->
-                    <input type="color" name="color" value="<?= h($color) ?>" form="<?= $form ?>" aria-label="「<?= h($ins['name']) ?>」の色" class="inst-admin__color">
+                    <!-- type="color" = ブラウザのカラーピッカー。値は必ず '#rrggbb'（小文字）で送られる。
+                         スマホのピッカーは色コードを打てないことがあるので、隣に色コードの入力欄を置く（name が無いので送信はされない。
+                         打った色は assets/app.js の setupInstrumentHex がピッカーに写す＝送られるのはピッカーの値だけ。形の確認はサーバー側の is_hex_color のまま） -->
+                    <span class="inst-admin__colorbox">
+                        <input type="color" name="color" value="<?= h($color) ?>" form="<?= $form ?>" aria-label="「<?= h($ins['name']) ?>」の色" class="inst-admin__color" data-inst-color>
+                        <input type="text" value="<?= h($color) ?>" maxlength="7" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="「<?= h($ins['name']) ?>」の色コード" class="inst-admin__hex" data-inst-hex>
+                    </span>
                 </td>
                 <td><input autocomplete="off" name="short_name" value="<?= h($ins['short_name']) ?>" maxlength="10" required form="<?= $form ?>" aria-label="略称" class="inst-admin__short"></td>
                 <td><input autocomplete="off" name="name" value="<?= h($ins['name']) ?>" maxlength="30" required form="<?= $form ?>" aria-label="正式名称"></td>

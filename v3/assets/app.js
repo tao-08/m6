@@ -97,6 +97,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupBoardReply();
   setupComments();
   setupAliasField();
+  setupInstrumentHex();
   setupBoardPanels();
   setupBoardMute();
   setupBoardTabs();
@@ -5881,6 +5882,40 @@ function setupLiveImageEdit(edit) {
   // 削除のチェックを外すと空きが減るので数え直す
   edit.querySelectorAll('[data-live-img-remove]').forEach((c) => c.addEventListener('change', update));
   update();
+}
+
+/* ---------------------------------------------------------------------
+ * 楽器の管理（instruments.php）: 色コードの入力欄
+ *   カラーピッカー（<input type="color">）と、色コード（#0f9ba0）を打つ欄を、お互いに写し合う。
+ *   送られる（name がある）のはピッカーだけ。ここは「打った色をピッカーに入れる」役目
+ *   形が正しいか（#rrggbb か）はサーバー側の is_hex_color() が必ず確かめるので、ここは入力の助けだけ
+ * ------------------------------------------------------------------- */
+function setupInstrumentHex() {
+  // 6 桁の 16 進数（先頭の # は付けても付けなくてもよい。大文字でもよい）
+  const HEX = /^#?([0-9a-f]{6})$/i;
+  document.querySelectorAll('[data-inst-hex]').forEach((text) => {
+    const picker = text.closest('.inst-admin__colorbox')?.querySelector('[data-inst-color]');
+    if (!picker) return;
+
+    // 打つたびに: 正しい形ならピッカーに写す（# が無くても、大文字でも、'#' 付きの小文字にそろえる）。違う形なら赤い枠にする
+    text.addEventListener('input', () => {
+      const m = HEX.exec(text.value.trim());
+      text.classList.toggle('is-invalid', !m && text.value.trim() !== '');
+      if (m) picker.value = '#' + m[1].toLowerCase();
+    });
+
+    // 欄から出たとき: 形が違ったままなら、今のピッカーの色に戻す（変な値のまま保存してしまわないように）。正しければ整える
+    text.addEventListener('blur', () => {
+      text.value = picker.value;
+      text.classList.remove('is-invalid');
+    });
+
+    // ピッカーで選んだとき: 色コードの欄にも写す
+    picker.addEventListener('input', () => {
+      text.value = picker.value;
+      text.classList.remove('is-invalid');
+    });
+  });
 }
 
 /* 名義の入力欄: 匿名にチェックが入っているあいだは入力できない。送信した名義は次回の初期値になる（このブラウザだけ） */
