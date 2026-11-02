@@ -2807,13 +2807,18 @@ button.ttb-m { cursor: pointer; text-decoration: underline dotted; }
 .countdown__when { flex: none; min-width: 7.5em; font-size: 12px; font-weight: 700; color: color-mix(in srgb, var(--text) 65%, var(--surface)); } /* 黒より少し薄く */
 
 /* <details> の開け閉めをなめらかに（高さを 0 ⇔ auto へ。::details-content 対応のブラウザだけ。非対応は今までどおり即時）
- *   お知らせ・掲示板の togglecard、練習の一覧、右上のメニューは別の動きがあるので対象外 */
+ *   お知らせ・掲示板の togglecard、練習の一覧、右上のメニューは別の動きがあるので対象外
+ *   .comments（ライブ・バンドのコメント）は対象。開くときの中身のふわっと（app.js の .togglecard）と一緒に動く（閉じるときはこの高さだけ） */
 @supports selector(::details-content) {
   @media (prefers-reduced-motion: no-preference) {
     :root { interpolate-size: allow-keywords; }
-    :is(.edit-box, .songs-add, .prac-new, .tab-new-wrap, .tab-new__more, .partner, .sheet-ed__json)::details-content {
+    :is(.edit-box, .songs-add, .prac-new, .tab-new-wrap, .tab-new__more, .partner, .sheet-ed__json, .comments)::details-content {
       block-size: 0; overflow: clip; transition: block-size .25s var(--ease-out), content-visibility .25s allow-discrete; }
-    :is(.edit-box, .songs-add, .prac-new, .tab-new-wrap, .tab-new__more, .partner, .sheet-ed__json)[open]::details-content { block-size: auto; }
+    :is(.edit-box, .songs-add, .prac-new, .tab-new-wrap, .tab-new__more, .partner, .sheet-ed__json, .comments)[open]::details-content { block-size: auto; }
+    /* #c12 のリンクで来て自動で開くときだけ動きを止める（app.js の setupComments が .is-instant を付ける）。
+       高さが 0 から伸びている途中でスクロールすると、飛び先の位置がズレるため。
+       詳細度（優先度）は .comments.is-instant::details-content が上の指定より高いので、transition: none が勝つ */
+    .comments.is-instant::details-content { transition: none; }
   }
 }
 

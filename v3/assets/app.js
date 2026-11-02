@@ -1392,7 +1392,14 @@ function setupComments() {
   if (!root) return;
   const openFor = () => {
     if (!/^#(c\d+|comments)$/.test(location.hash)) return;
-    root.open = true;
+    if (!root.open) {
+      // 開く高さのアニメ（app.css の .comments::details-content）を止めてから開く。
+      //   アニメ中に scrollIntoView すると、まだ高さが伸びきっていないので飛び先がズレる。
+      //   toggle イベント =「open が変わったあと（非同期）」に飛ぶ。そこで目印を外して、次の手動の開け閉めからはアニメを戻す
+      root.classList.add('is-instant');
+      root.addEventListener('toggle', () => root.classList.remove('is-instant'), { once: true });
+      root.open = true;
+    }
     document.querySelector(location.hash)?.scrollIntoView({ block: 'start' });
   };
   openFor();
