@@ -1190,7 +1190,9 @@ function comment_badge(int $bandId, int $count, string $class = ''): string
         return '';
     }
     $label = $count > 99 ? '99+' : (string)$count;
-    return '<a class="cmt-badge' . ($class !== '' ? ' ' . h($class) : '') . '" href="band?id=' . $bandId . '#comments"'
+    // 「99+」のように3文字になるときだけ --long を付ける（CSS で数字を小さくして、吹き出しの枠に収める）
+    $long = mb_strlen($label) >= 3 ? ' cmt-badge--long' : '';
+    return '<a class="cmt-badge' . $long . ($class !== '' ? ' ' . h($class) : '') . '" href="band?id=' . $bandId . '#comments"'
         . ' aria-label="コメント（' . $count . '）" title="コメント（' . $count . '）">'
         . icon('chat_bubble')
         . '<span class="cmt-badge__n">' . h($label) . '</span>'
