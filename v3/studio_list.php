@@ -119,13 +119,16 @@ render_header('スタジオ情報', 'tools');
                  data-studio-id / data-max-area は JS（絞り込み・地図のピン連動）が読むので、外側の div に付けたまま -->
             <div class="card sinfo-list__item" data-studio-id="<?= (int)$s['studio_id'] ?>" data-max-area="<?= h($s['max_area'] === null ? '' : studio_jo_num($s['max_area'])) ?>">
             <a class="sinfo-list__link" href="studio_info?id=<?= (int)$s['studio_id'] ?>">
-                <span class="sinfo-list__name">
-                    <?= h($s['name']) ?>
-                    <?php if ($s['min_student'] !== null): ?><span class="tag tag--plan">学割</span><?php endif; ?>
-                    <?php if ($s['has_solo']): ?><span class="tag">個人</span><?php endif; ?>
-                    <?php if ($s['has_pack']): ?><span class="tag">パック</span><?php endif; ?>
-                </span>
+                <!-- 1段め: スタジオ名だけ。タグ（学割・個人・パック）は2段めの先頭へ -->
+                <span class="sinfo-list__name"><?= h($s['name']) ?></span>
                 <span class="muted small sinfo-list__meta">
+                    <?php if ($s['min_student'] !== null || $s['has_solo'] || $s['has_pack']): ?>
+                        <span class="sinfo-list__tags">
+                            <?php if ($s['min_student'] !== null): ?><span class="tag tag--plan">学割</span><?php endif; ?>
+                            <?php if ($s['has_solo']): ?><span class="tag">個人</span><?php endif; ?>
+                            <?php if ($s['has_pack']): ?><span class="tag">パック</span><?php endif; ?>
+                        </span>
+                    <?php endif; ?>
                     <?php if ($s['access']): ?><span><?= icon('train') ?> <?= h($s['access']) ?></span><?php endif; ?>
                     <?php if ($s['max_area'] !== null): ?><span title="いちばん広い部屋"><?= icon('square_foot') ?> <?= h(studio_fmt_jo($s['max_area'])) ?></span><?php endif; ?>
                     <?php if ($s['min_price'] !== null): ?><span title="1時間の最安料金"><?= icon('payments') ?> <?= h(studio_yen((int)$s['min_price'])) ?>〜/h</span><?php endif; ?>
