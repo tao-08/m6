@@ -7,7 +7,11 @@
 
 /* ---- 一覧 ---- */
 .sinfo-list { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 10px; }
-.sinfo-list__item { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 16px; color: inherit; }
+/* カード = 「本体リンク」＋「予約ボタン」の横並び。ボタンが無いスタジオは本体リンクが全幅を使う */
+.sinfo-list__item { display: flex; align-items: center; gap: 10px; color: inherit; }
+/* 本体リンク（元の .sinfo-list__item の並べ方をそのまま引き継ぐ）。flex: 1 = 余った幅を使う。min-width: 0 = 中身が長くてもはみ出さず折り返す */
+.sinfo-list__link { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 16px; color: inherit; text-decoration: none; }
+.sinfo-list__reserve { flex: none; } /* ボタンは縮めない */
 .sinfo-list__name { font-weight: 800; display: inline-flex; align-items: center; gap: 8px; }
 .sinfo-list__meta { display: flex; flex-wrap: wrap; gap: 4px 14px; }
 .sinfo-list__meta .icon, .sinfo-info .icon { font-size: 16px; vertical-align: -3px; }
