@@ -350,11 +350,16 @@ render_header($venue['name'], 'tools');
     </details>
 </section>
 
-<!-- アクセスマップ（API キー不要の埋め込み。CSP に frame-src / default-src は無いので追加設定は不要） -->
+<!-- アクセスマップ（API キー不要の埋め込み。CSP に frame-src / default-src は無いので追加設定は不要）
+     ・ドメインは www.google.com/maps を使う（maps.google.com は www.google.com へ転送されるので、1回分のムダな転送を省く）
+     ・referrerpolicy は付けない → サイト共通の strict-origin-when-cross-origin が効き、Google には「ドメインだけ」渡る。
+       no-referrer（何も渡さない）にすると、Google 側が「どこに埋め込まれたか分からない埋め込み」を拒否して
+       灰色の😵画面になることがある
+     ・hl=ja で地図の文字を日本語に、z=16 で駅周辺がわかるくらいの拡大率にする -->
 <section class="card venue-section">
     <h2><?= icon('map') ?> アクセス</h2>
-    <iframe class="venue-map" loading="lazy" referrerpolicy="no-referrer" title="アクセスマップ"
-        src="https://maps.google.com/maps?q=<?= h(rawurlencode($mapQuery)) ?>&amp;output=embed"></iframe>
+    <iframe class="venue-map" loading="lazy" title="アクセスマップ"
+        src="https://www.google.com/maps?q=<?= h(rawurlencode($mapQuery)) ?>&amp;hl=ja&amp;z=16&amp;output=embed"></iframe>
 </section>
 
 <!-- 演奏したライブ -->
