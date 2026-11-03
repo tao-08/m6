@@ -132,6 +132,12 @@
 .sinfo-room { position: relative; padding-left: 1em; white-space: nowrap; }
 .sinfo-room::before { content: "・"; position: absolute; left: 0; width: 1em; text-align: center; }
 
+/* ---- 料金表の部屋ごとのブロック（見出し＋表）の間の余白 ----
+   「いま見えているブロック」のあとに続く「いま見えているブロック」にだけ、上の余白を足す
+   ~ = 後ろにいる兄弟（すぐ隣でなくてよい）。:not([hidden]) で、隠れているブロックを数えない
+   → 人数チップで先頭のブロックが隠れても、最初に見えるブロックに余計な余白が付かない */
+.sinfo-rategroup:not([hidden]) ~ .sinfo-rategroup:not([hidden]) { margin-top: 18px; }
+
 /* ---- 個人練習の人数チップ（1人・2人 …）。表の上に、小さめのボタンを並べる ----
    max-width = 人数が少ないときに横いっぱいに広がらないように / margin-bottom = 下の部屋の見出しとの間 */
 .sinfo-ppl { max-width: 260px; margin-bottom: 10px; }

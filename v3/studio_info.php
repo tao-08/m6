@@ -1081,7 +1081,7 @@ render_header($studio['name'], 'tools');
         // data-ppl-has = この部屋の料金がある人数（例: "1 2"）。選んだ人数の料金が無い部屋は見出しごと隠す
         $pplHas = $soloPanel ? implode(' ', array_keys($byPpl)) : '';
     ?>
-        <div<?= $soloPanel ? ' data-ppl-has="' . $pplHas . '"' . (isset($byPpl[$pplSel]) ? '' : ' hidden') : '' ?>>
+        <div class="sinfo-rategroup"<?= $soloPanel ? ' data-ppl-has="' . $pplHas . '"' . (isset($byPpl[$pplSel]) ? '' : ' hidden') : '' ?>>
             <?php if ($rooms): ?>
                 <h3 class="sinfo-sub">
                     <?php if (!$g['rooms']): ?>全部屋<?php else: ?>
