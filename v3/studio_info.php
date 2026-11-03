@@ -452,11 +452,12 @@ if (is_post()) {
                 $rows[] = [(int)$rawId, null]; // 料金が空 = 削除
                 continue;
             }
-            $rowRooms = studio_post_rooms($i, $roomIds); // [] = 全部屋共通 / false = 不正
-            $people = (int)($_POST['people'][$i] ?? 0);   // 0 = バンド
-            $day = (int)($_POST['day'][$i] ?? 0);
-            $start = (string)($_POST['start'][$i] ?? '');
-            $end = (string)($_POST['end'][$i] ?? '');
+            $b = (int)($_POST['blk'][$i] ?? 0); // この行が属するブロックの番号（対象・部屋・曜日・時間帯はブロックごと）
+            $rowRooms = studio_post_rooms($b, $roomIds); // [] = 全部屋共通 / false = 不正
+            $people = (int)($_POST['bpeople'][$b] ?? 0);   // 0 = バンド
+            $day = (int)($_POST['bday'][$b] ?? 0);
+            $start = (string)($_POST['bstart'][$b] ?? '');
+            $end = (string)($_POST['bend'][$b] ?? '');
             $disc = studio_post_discounts($i, $discounts); // [区分id => 料金] / false = 不正
             $ok = $rowRooms !== false && $disc !== false
                 && $people >= 0 && $people <= STUDIO_SOLO_MAX
@@ -472,6 +473,9 @@ if (is_post()) {
             ];
             $name = trim((string)($_POST['name'][$i] ?? ''));
             $minutes = trim((string)($_POST['minutes'][$i] ?? ''));
+            if ($name === '' && studio_uint($minutes, STUDIO_MAX_MIN) && (int)$minutes > 0) {
+                $name = studio_fmt_min((int)$minutes) . 'パック'; // 名前が空で使える時間があれば「3時間パック」のように自動で付ける
+            }
             // 使える時間は 30分きざみで、時間帯の長さ以内（時間帯より長いパックはありえない）
             $ok = $ok && $name !== '' && mb_strlen($name) <= 50
                 && ($minutes === '' || (studio_uint($minutes, STUDIO_MAX_MIN) && (int)$minutes > 0 && (int)$minutes <= $span[1] - $span[0]));
@@ -1270,23 +1274,21 @@ render_header($studio['name'], 'tools');
 //   （編集できる人はフォームがこのセクション内にあるので、隠さない）
 $packTargetOf = fn(array $p): string => $p['people'] === null ? 'band' : 'solo';
 $packHas = array_values(array_unique(array_map($packTargetOf, $packs)));
+// 「時間だけ違うパック」（3時間・4時間…）を1つのブロックにまとめる。
+//   まとめる条件 = 対象（人数）・部屋・曜日・開始〜終了 がすべて同じ。違うのは「使える時間」と料金だけ。
+//   $packGroups[キー] = 先頭のパック情報 + 'items'（そのブロックのパック一覧）。キー順 = 最初に出てきた順（並び順を崩さない）
+$packGroups = [];
+foreach ($packs as $p) {
+    $rids = $p['room_ids'];
+    sort($rids); // 部屋の並びが違うだけで別ブロックにならないよう、並べ替えてからキーにする
+    $key = implode('|', [(int)($p['people'] ?? 0), implode(',', $rids), (int)$p['day_type'], (int)$p['start_min'], (int)$p['end_min']]);
+    $packGroups[$key] ??= ['head' => $p, 'items' => []]; // ??= = まだ無いときだけ代入
+    $packGroups[$key]['items'][] = $p;
+}
 ?>
 <section class="card sinfo-section" id="packs"<?= $hasTabs && !$canEdit ? ' data-tab-has="' . h(implode(' ', $packHas)) . '"' : '' ?>>
     <h2><?= icon('inventory_2') ?> パック</h2>
     <?php if (!$packs): ?><p class="muted small">-</p><?php else: ?>
-        <?php
-        // 「時間だけ違うパック」（3時間・4時間…）を1つのブロックにまとめる。
-        //   まとめる条件 = 対象（人数）・部屋・曜日・開始〜終了 がすべて同じ。違うのは「使える時間」と料金だけ。
-        //   $packGroups[キー] = 先頭のパック情報 + 'items'（そのブロックのパック一覧）。キー順 = 最初に出てきた順（並び順を崩さない）
-        $packGroups = [];
-        foreach ($packs as $p) {
-            $rids = $p['room_ids'];
-            sort($rids); // 部屋の並びが違うだけで別ブロックにならないよう、並べ替えてからキーにする
-            $key = implode('|', [(int)($p['people'] ?? 0), implode(',', $rids), (int)$p['day_type'], (int)$p['start_min'], (int)$p['end_min']]);
-            $packGroups[$key] ??= ['head' => $p, 'items' => []]; // ??= = まだ無いときだけ代入
-            $packGroups[$key]['items'][] = $p;
-        }
-        ?>
         <ul class="sinfo-plain sinfo-packs">
             <?php foreach ($packGroups as $g): $p = $g['head']; ?>
                 <li<?= $hasTabs ? ' data-tab-panel="' . $packTargetOf($p) . '"' . ($packTargetOf($p) === 'solo' ? ' hidden' : '') : '' ?>>
@@ -1299,9 +1301,9 @@ $packHas = array_values(array_unique(array_map($packTargetOf, $packs)));
                         </span>
                     </div>
                     <!-- チップ = 1パック。ラベルは「使える時間」（未設定なら名前）。名前は title（ホバー）で見える -->
-                    <div class="sinfo-chips">
+                    <div class="sinfo-pchips">
                         <?php foreach ($g['items'] as $it): ?>
-                            <span class="sinfo-chip" title="<?= h($it['name']) ?>">
+                            <span class="sinfo-pchip" title="<?= h($it['name']) ?>">
                                 <b><?= h($it['minutes'] !== null ? $packLen($it) : $it['name']) ?></b>
                                 <span><?= h(studio_yen((int)$it['price'])) ?></span>
                                 <?php foreach ($it['disc'] as $did => $dp): ?><em title="<?= h($discName[$did] ?? '') ?>"><?= h(studio_yen($dp)) ?></em><?php endforeach; ?>
@@ -1319,30 +1321,43 @@ $packHas = array_values(array_unique(array_map($packTargetOf, $packs)));
             <?= csrf_field() ?>
             <input type="hidden" name="action" value="save_packs">
             <input type="hidden" name="studio_id" value="<?= $studioId ?>">
-            <!-- 使える時間を「時間帯まるごと」にするときは、時間の欄を空にする。料金を空にした行は削除 -->
-            <?php foreach (array_merge($packs, [['studio_pack_id' => 0, 'room_ids' => [], 'people' => null, 'name' => '', 'day_type' => 0, 'start_min' => 1440, 'end_min' => 1800, 'minutes' => null, 'price' => '', 'disc' => []]]) as $i => $p): ?>
-                <div class="sinfo-edit__row sinfo-edit__rate">
-                    <input type="hidden" name="id[]" value="<?= (int)$p['studio_pack_id'] ?>">
-                    <input autocomplete="off" type="text" class="grow" name="name[]" maxlength="50" value="<?= h($p['name']) ?>" placeholder="名前（例: 深夜パック）" aria-label="パック名">
-                    <select name="people[]" aria-label="対象"><?= studio_target_options($p['people'] === null ? null : (int)$p['people']) ?></select>
-                    <?= $roomChips($i, $p['room_ids']) ?>
-                    <select name="day[]" aria-label="曜日">
-                        <?php foreach (STUDIO_DAY_TYPES as $k => $label): ?>
-                            <option value="<?= $k ?>"<?= $k === (int)$p['day_type'] ? ' selected' : '' ?>><?= h($label) ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                    <select name="start[]" aria-label="時間帯の開始"><?= studio_time_options((int)$p['start_min']) ?></select>
-                    <span class="muted">〜</span>
-                    <select name="end[]" aria-label="時間帯の終了"><?= studio_time_options((int)$p['end_min']) ?></select>
-                    <select name="minutes[]" aria-label="使える時間">
-                        <option value="">時間帯まるごと</option>
-                        <?php for ($m = 60; $m <= 720; $m += 30): ?>
-                            <option value="<?= $m ?>"<?= $p['minutes'] !== null && (int)$p['minutes'] === $m ? ' selected' : '' ?>><?= h(studio_fmt_min($m)) ?></option>
-                        <?php endfor; ?>
-                    </select>
-                    <input type="number" name="price[]" min="0" max="999999" value="<?= h($p['price']) ?>" placeholder="料金" aria-label="パックの料金" inputmode="numeric">
-                    <?= $discInputs($p['disc'], 'パックの料金') ?>
-                    <?= studio_row_del((int)$p['studio_pack_id']) ?>
+            <!-- 時間帯ブロック単位で編集: 上段 = 対象・部屋・曜日・時間帯（ブロックで1回だけ）、下段 = 使える時間ごとの行（名前・使える時間・料金・割引）。
+                 送信は「行の配列」(id[] name[] minutes[] price[] disc[区分][]) ＋ 各行がどのブロックか (blk[])。ブロックの値は bpeople[b] bday[b] bstart[b] bend[b] rooms[b][] -->
+            <?php
+            $blankBlock = ['head' => ['room_ids' => [], 'people' => null, 'day_type' => 0, 'start_min' => 1440, 'end_min' => 1800], 'items' => []];
+            $blankItem = ['studio_pack_id' => 0, 'name' => '', 'minutes' => null, 'price' => '', 'disc' => []];
+            $editBlocks = array_merge(array_values($packGroups), [$blankBlock]); // 末尾 = 新しいブロック用の空欄
+            ?>
+            <?php foreach ($editBlocks as $b => $g): $p = $g['head']; ?>
+                <div class="sinfo-edit__block">
+                    <div class="sinfo-edit__row">
+                        <select name="bpeople[<?= $b ?>]" aria-label="対象"><?= studio_target_options($p['people'] === null ? null : (int)$p['people']) ?></select>
+                        <?= $roomChips($b, $p['room_ids']) ?>
+                        <select name="bday[<?= $b ?>]" aria-label="曜日">
+                            <?php foreach (STUDIO_DAY_TYPES as $k => $label): ?>
+                                <option value="<?= $k ?>"<?= $k === (int)$p['day_type'] ? ' selected' : '' ?>><?= h($label) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                        <select name="bstart[<?= $b ?>]" aria-label="時間帯の開始"><?= studio_time_options((int)$p['start_min']) ?></select>
+                        <span class="muted">〜</span>
+                        <select name="bend[<?= $b ?>]" aria-label="時間帯の終了"><?= studio_time_options((int)$p['end_min']) ?></select>
+                    </div>
+                    <?php foreach (array_merge($g['items'], array_fill(0, $g['items'] ? 2 : 3, $blankItem)) as $p): // 既存の行 + 空の行（追加用） ?>
+                        <div class="sinfo-edit__row sinfo-edit__item">
+                            <input type="hidden" name="id[]" value="<?= (int)$p['studio_pack_id'] ?>">
+                            <input type="hidden" name="blk[]" value="<?= $b ?>">
+                            <input autocomplete="off" type="text" class="grow" name="name[]" maxlength="50" value="<?= h($p['name']) ?>" placeholder="名前" title="空なら使える時間から自動で付く（例: 3:00パック）" aria-label="パック名">
+                            <select name="minutes[]" aria-label="使える時間">
+                                <option value="">時間帯まるごと</option>
+                                <?php for ($m = 60; $m <= 720; $m += 30): ?>
+                                    <option value="<?= $m ?>"<?= $p['minutes'] !== null && (int)$p['minutes'] === $m ? ' selected' : '' ?>><?= h(studio_fmt_min($m)) ?></option>
+                                <?php endfor; ?>
+                            </select>
+                            <input type="number" name="price[]" min="0" max="999999" value="<?= h($p['price']) ?>" placeholder="料金" aria-label="パックの料金" inputmode="numeric">
+                            <?= $discInputs($p['disc'], 'パックの料金') ?>
+                            <?= studio_row_del((int)$p['studio_pack_id']) ?>
+                        </div>
+                    <?php endforeach; ?>
                 </div>
             <?php endforeach; ?>
             <div><button type="submit" class="btn btn--primary btn--sm" title="料金を空にした行は削除"><?= icon('save') ?> 保存</button></div>
