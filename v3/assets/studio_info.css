@@ -119,6 +119,19 @@
 /* hidden 属性は display 指定を持つ要素（flex など）だと負けることがあるので、念のため !important で必ず隠す */
 [data-tab-panel][hidden], [data-tab-has][hidden], [data-ppl][hidden], [data-ppl-has][hidden] { display: none !important; }
 
+/* ---- 料金表の見出し「Aスタ 12帖・Bスタ 8帖」: 折り返すときは部屋の頭で改行し、行頭の「・」は消す（CSS だけ）----
+   しくみ（「行頭だけ消えるくぎり文字」の定番の作り）:
+   ・.sinfo-room = 部屋1つ分。flex の子にして、1つ1つを塊のまま折り返す（nowrap = 塊の途中では割らない）
+   ・各 .sinfo-room の左に 1em の余白（padding-left）を持たせ、そこに「・」を絶対配置で描く
+   ・外側 .sinfo-rooms は overflow: hidden、内側 .sinfo-rooms__in は左に -1em ずらす
+     → 行の先頭に来た部屋は、余白ごと外側の左へはみ出して切られるので「・」が見えない（いちばん最初の部屋も同じ）
+     → 行の途中の部屋は、前の部屋のすぐ右に余白が来るので「・」が見える
+   ・column-gap: 0 / row-gap = 折り返した行どうしの間 */
+.sinfo-rooms { display: block; overflow: hidden; }
+.sinfo-rooms__in { display: flex; flex-wrap: wrap; margin-left: -1em; row-gap: 2px; }
+.sinfo-room { position: relative; padding-left: 1em; white-space: nowrap; }
+.sinfo-room::before { content: "・"; position: absolute; left: 0; width: 1em; text-align: center; }
+
 /* ---- 個人練習の人数チップ（1人・2人 …）。表の上に、小さめのボタンを並べる ----
    max-width = 人数が少ないときに横いっぱいに広がらないように / margin-bottom = 下の部屋の見出しとの間 */
 .sinfo-ppl { max-width: 260px; margin-bottom: 10px; }

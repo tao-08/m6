@@ -1084,8 +1084,13 @@ render_header($studio['name'], 'tools');
         <div<?= $soloPanel ? ' data-ppl-has="' . $pplHas . '"' . (isset($byPpl[$pplSel]) ? '' : ' hidden') : '' ?>>
             <?php if ($rooms): ?>
                 <h3 class="sinfo-sub">
-                    <?php if (!$g['rooms']): ?>全部屋<?php endif; ?>
-                    <?php foreach ($g['rooms'] as $k => $rid): ?><?= $k > 0 ? '・' : '' ?><?= h($roomName[$rid]) ?><?php if (!empty($roomSize[$rid])): ?> <span class="muted small"><?= h($roomSize[$rid]) ?></span><?php endif; ?><?php endforeach; ?>
+                    <?php if (!$g['rooms']): ?>全部屋<?php else: ?>
+                        <!-- 部屋が複数のとき、「・」でつなぐ。画面が狭くて折り返すときは、部屋の頭で改行し、行頭の「・」は出さない（CSS だけ。.sinfo-rooms の説明を参照）。
+                             部屋の1つ1つ（名前＋広さ）が .sinfo-room。途中で改行されない（nowrap）ので、「Bスタ 8帖」が2行に割れない -->
+                        <span class="sinfo-rooms"><span class="sinfo-rooms__in">
+                            <?php foreach ($g['rooms'] as $rid): ?><span class="sinfo-room"><?= h($roomName[$rid]) ?><?php if (!empty($roomSize[$rid])): ?> <span class="muted small"><?= h($roomSize[$rid]) ?></span><?php endif; ?></span><?php endforeach; ?>
+                        </span></span>
+                    <?php endif; ?>
                 </h3>
             <?php endif; ?>
             <?php if (!empty($g['rows'])): ?>
