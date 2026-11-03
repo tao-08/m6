@@ -652,6 +652,16 @@ $hasStudent = $usedDisc !== []; // 割引があるスタジオか（区分の条
 // 個人練習の料金があるか（あれば料金表に「対象」の列と、シミュレーションに「バンド / 個人」の切り替えを出す）
 $hasSolo = array_filter(array_merge(array_column($rates, 'people'), array_column($packs, 'people')), fn($v) => $v !== null) !== [];
 $hasBand = in_array(null, array_column($rates, 'people'), true) || in_array(null, array_column($packs, 'people'), true);
+// バンドと個人練習の「両方」の料金があるときだけ、タブで分ける（片方だけなら分ける必要が無いのでタブは出さない）
+//   タブは 料金シミュレーション・料金表・パック をまとめて切り替える（JS: setupTargetTabs）
+//   料金表・パックの各要素に data-tab-panel="band|solo" を付け、選ばれていない方を hidden で隠す
+$hasTabs = $hasSolo && $hasBand;
+// その対象（'band' / 'solo'）の料金表の行だけに絞る。people が NULL = バンド、数字 = 個人n人
+//   fn($r) => … = アロー関数（短い無名関数）。array_filter は true を返した要素だけ残す / array_values は添字を 0 から振り直す
+$rowsOfTarget = fn(array $rows, string $target): array => array_values(array_filter(
+    $rows,
+    fn($r) => ($r['people'] === null) === ($target === 'band')
+));
 
 /** パックの「使える時間」の表示（NULL = 時間帯まるごと → 時間帯の長さを出す） */
 $packLen = fn(array $p) => studio_fmt_min((int)($p['minutes'] ?? ((int)$p['end_min'] - (int)$p['start_min'])));
@@ -913,21 +923,24 @@ render_header($studio['name'], 'tools');
     <?php endif; ?>
 </section>
 
+<!-- ===== バンド練習 / 個人練習のタブ（両方の料金があるときだけ出す）=====
+     ・ここで選んだ対象に、下の 料金シミュレーション・部屋・料金・パック がまとめて切り替わる（JS: setupTargetTabs）
+     ・ラジオボタン（input type="radio"）をボタン風に見せている（.sinfo-seg と同じ作り）。名前は tab_target
+       ※ シミュレーションの <form> の外に置く（form.elements に混ざらないように）。選ばれた値は form 内の hidden（name="mode"）へ JS が写す -->
+<?php if ($hasTabs): ?>
+<div class="sinfo-seg sinfo-seg--mode sinfo-tabs" id="studio-target-tabs" role="radiogroup" aria-label="対象">
+    <label><input type="radio" name="tab_target" value="band" checked> <?= icon('groups') ?> バンド練習</label>
+    <label><input type="radio" name="tab_target" value="solo"> <?= icon('person') ?> 個人練習</label>
+</div>
+<?php endif; ?>
+
 <!-- ===== 料金シミュレーション（料金表が1行でもあれば出す。中身は JS が作る） ===== -->
 <?php if ($rates || $packs): ?>
 <section class="card sinfo-section" id="sim">
     <h2><?= icon('calculate') ?> 料金シミュレーション</h2>
     <form class="sinfo-sim" id="studio-sim" onsubmit="return false">
-        <?php if ($hasSolo && $hasBand): ?>
-            <!-- バンド / 個人練習の切り替え（両方の料金があるときだけ出す） -->
-            <div class="sinfo-seg sinfo-seg--mode" role="radiogroup" aria-label="対象">
-                <label><input type="radio" name="mode" value="band" checked> <?= icon('groups') ?> バンド練習</label>
-                <label><input type="radio" name="mode" value="solo"> <?= icon('person') ?> 個人練習</label>
-            </div>
-        <?php else: ?>
-            <!-- 片方しか無いときは選ばせず、hidden で固定 -->
-            <input type="hidden" name="mode" value="<?= $hasBand ? 'band' : 'solo' ?>">
-        <?php endif; ?>
+        <!-- 対象（band / solo）は hidden で持つ。タブがあるときは JS が書き換え、片方しか無いときはこの値のまま -->
+        <input type="hidden" name="mode" value="<?= $hasBand ? 'band' : 'solo' ?>">
         <div class="sinfo-sim__grid">
             <?php if ($rooms): ?>
             <label class="sinfo-field"><span>部屋</span>
@@ -1005,8 +1018,27 @@ render_header($studio['name'], 'tools');
     <?php
     // 部屋の組み合わせごとに1つの表（共通の料金は「A・B」の見出しの下に1回だけ出す。全部屋共通は先頭）
     //   料金が未登録の部屋も、広さを見せたいので見出しだけ出す（rows が空のグループ）
-    foreach ($rateGroups as $g):
+    // タブがあるときは「バンド」「個人練習」の2つのパネルに分けて出す（どちらも同じ作りで、行だけ対象で絞る）
+    //   タブが無いときは $panel = null のパネル1つだけ（これまでと同じ表示）
+    //   $panelGroups = そのパネルに出すグループ。料金が無い「見出しだけ」のグループ（広さを見せるため）はバンドのパネルにだけ出す
+    //   $showTarget = 「対象」列を出すか。バンドのパネルは全部バンドなので不要 / 個人のパネルは「個人n人」を区別するために出す
+    $panels = $hasTabs ? ['band', 'solo'] : [null];
+    foreach ($panels as $panel):
+        $panelGroups = [];
+        foreach ($rateGroups as $g) {
+            if ($panel === null) {
+                $panelGroups[] = $g;
+                continue;
+            }
+            $rowsT = $rowsOfTarget($g['rows'], $panel);
+            if ($rowsT || (!$g['rows'] && $panel === 'band')) {
+                $panelGroups[] = ['rooms' => $g['rooms'], 'rows' => $rowsT];
+            }
+        }
+        $showTarget = $hasSolo && $panel !== 'band';
     ?>
+    <div<?= $panel !== null ? ' data-tab-panel="' . $panel . '"' . ($panel === 'solo' ? ' hidden' : '') : '' ?>>
+    <?php foreach ($panelGroups as $g): ?>
         <div>
             <?php if ($rooms): ?>
                 <h3 class="sinfo-sub">
@@ -1019,11 +1051,11 @@ render_header($studio['name'], 'tools');
             <table class="sinfo-table">
                 <!-- 割引区分ごとに1列（学割・U20 …）。料金が1つも無い区分の列は出さない -->
                 <!-- 同じ料金（対象・通常・割引すべて同じ）の行は1行にまとめ、時間帯の欄に「曜日 開始〜終了」を縦に並べる（studio_merge_same_price） -->
-                <thead><tr><?php if ($hasSolo): ?><th>対象</th><?php endif; ?><th>時間帯</th><th class="num">料金</th><?php foreach ($rateDisc as $d): ?><th class="num"><?= h($d['name']) ?></th><?php endforeach; ?></tr></thead>
+                <thead><tr><?php if ($showTarget): ?><th>対象</th><?php endif; ?><th>時間帯</th><th class="num">料金</th><?php foreach ($rateDisc as $d): ?><th class="num"><?= h($d['name']) ?></th><?php endforeach; ?></tr></thead>
                 <tbody>
                 <?php foreach (studio_merge_same_price($g['rows']) as $m): $r = $m['row']; ?>
                     <tr>
-                        <?php if ($hasSolo): ?><td><?= h(studio_target_label($r['people'] === null ? null : (int)$r['people'])) ?></td><?php endif; ?>
+                        <?php if ($showTarget): ?><td><?= h(studio_target_label($r['people'] === null ? null : (int)$r['people'])) ?></td><?php endif; ?>
                         <td>
                             <?php foreach ($m['slots'] as $s): ?>
                                 <span class="sinfo-slot"><span class="sinfo-slot__day"><?= h(STUDIO_DAY_TYPES[(int)$s['day_type']] ?? '') ?></span><?= h(studio_fmt_min((int)$s['start_min'])) ?>〜<?= h(studio_fmt_min((int)$s['end_min'])) ?></span>
@@ -1040,7 +1072,9 @@ render_header($studio['name'], 'tools');
             </div>
             <?php endif; ?>
         </div>
-    <?php endforeach; ?>
+    <?php endforeach; /* グループ */ ?>
+    </div>
+    <?php endforeach; /* パネル（バンド / 個人） */ ?>
     <?php if ($hasStudent || $studio['student_note']): ?>
         <!-- 割引の条件: 区分ごとのタグ（使える曜日つき）＋ 共通の条件（学生証の提示など） -->
         <p class="sinfo-note">
@@ -1165,15 +1199,22 @@ render_header($studio['name'], 'tools');
 
 <!-- ===== パック（時間帯の中の決まった時間を一律料金）===== -->
 <?php if ($packs || $canEdit): ?>
-<section class="card sinfo-section" id="packs">
+<?php
+// タブがあるとき、パックの <li> に data-tab-panel（band / solo）を付けて JS が出し分ける
+//   編集できない人は、選んだタブにパックが1つも無ければ、セクションごと隠す（見出しだけ残らないように）。data-tab-has = パックがある対象の一覧
+//   （編集できる人はフォームがこのセクション内にあるので、隠さない）
+$packTargetOf = fn(array $p): string => $p['people'] === null ? 'band' : 'solo';
+$packHas = array_values(array_unique(array_map($packTargetOf, $packs)));
+?>
+<section class="card sinfo-section" id="packs"<?= $hasTabs && !$canEdit ? ' data-tab-has="' . h(implode(' ', $packHas)) . '"' : '' ?>>
     <h2><?= icon('inventory_2') ?> パック</h2>
     <?php if (!$packs): ?><p class="muted small">-</p><?php else: ?>
         <ul class="sinfo-plain sinfo-packs">
             <?php foreach ($packs as $p): ?>
-                <li>
+                <li<?= $hasTabs ? ' data-tab-panel="' . $packTargetOf($p) . '"' . ($packTargetOf($p) === 'solo' ? ' hidden' : '') : '' ?>>
                     <div class="sinfo-packs__head">
                         <strong><?= h($p['name']) ?></strong>
-                        <?php if ($hasSolo): ?><span class="tag"><?= h(studio_target_label($p['people'] === null ? null : (int)$p['people'])) ?></span><?php endif; ?>
+                        <?php if ($hasSolo && $packTargetOf($p) === 'solo'): ?><span class="tag"><?= h(studio_target_label((int)$p['people'])) ?></span><?php endif; ?>
                         <?php foreach ($p['room_ids'] as $rid): ?><span class="tag"><?= h($roomName[$rid] ?? '') ?></span><?php endforeach; ?>
                     </div>
                     <div class="sinfo-packs__body">
