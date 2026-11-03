@@ -9,6 +9,7 @@
  *  6. 広さの絞り込み（#studio-filter）… 一覧のカードと地図のピンを「N帖以上の部屋がある店」だけにする
  *  7. 部屋のチェック欄（.sinfo-chips）… 「全部屋」と個別の部屋を同時に選ばせない
  *  8. 料金の編集（[data-rate-add]）… 見出し（対象・曜日）の＋で空の行を足す
+ *  9. 行の削除（[data-row-del]）… 行の主な欄を空にして隠す（保存で削除される）
  *
  *  ■ IIFE（即時実行関数）とは
  *    (() => { ... })() の形。関数を作ってすぐ実行する。中で作った変数が外（ほかの JS）とぶつからない。
@@ -708,12 +709,34 @@
     });
   };
 
+  // ---- 9. 行の削除 ----
+  //   サーバーは「主な欄が空の行 = 削除」なので、その欄を空にして行を隠すだけ（保存するまで DB は変わらない）
+  //   フォームの action ごとに「主な欄」の名前が違う
+  const DEL_FIELD = {
+    save_rates: 'price[]', save_packs: 'price[]', save_rentals: 'name[]',
+    save_equipment: 'model[]', save_rooms: 'name[]', save_discounts: 'name[]',
+  };
+  const setupRowDelete = () => {
+    document.addEventListener('click', (ev) => {
+      const btn = ev.target.closest('[data-row-del]');
+      if (!btn) return;
+      const form = btn.closest('form');
+      const row = btn.closest('.sinfo-rate-row, .sinfo-edit__row');
+      const field = form && row && DEL_FIELD[form.elements.action?.value];
+      const input = field && row.querySelector(`[name="${field}"]`);
+      if (!input) return;
+      input.value = '';
+      row.hidden = true;
+    });
+  };
+
   // DOMContentLoaded を待たなくても、このファイルはページの最後で読むので要素はもう全部ある
   const mapApi = setupMap();
   setupGeo();
   setupStepper();
   setupRoomChips();
   setupRateEdit();
+  setupRowDelete();
   setupFilter(mapApi);
   setupSim();
   setupAi();

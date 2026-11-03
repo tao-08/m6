@@ -239,3 +239,14 @@
 
 /* ---- 新しい行の「追加の時間帯」（曜日・開始・終了を横に並べる。グリッドの1行を丸ごと使う）---- */
 .sinfo-rate-row__extra { grid-column: 1 / -1; display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 6px; }
+
+/* ---- 行の削除ボタン（編集フォーム。押すと行を隠して保存で削除）---- */
+.sinfo-row-del { width: 32px; height: 32px; color: var(--muted); }
+.sinfo-row-del:hover { color: var(--danger, var(--accent)); }
+.sinfo-row-del .icon { font-size: 18px; }
+.sinfo-rate-row__top { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; }
+.sinfo-rate-row__top .sinfo-chips { flex: 1 1 auto; }
+.sinfo-rate-row[hidden], .sinfo-edit__row[hidden] { display: none; } /* display を指定した要素でも hidden を効かせる */
+
+/* ---- 基本情報: 住所・最寄り駅の下に区切り線（どちらも無いときは出さない）---- */
+.sinfo-info:has(span) { padding-bottom: 10px; border-bottom: 1px solid var(--border); }

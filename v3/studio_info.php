@@ -227,6 +227,16 @@ function studio_save_rows(PDO $pdo, string $table, string $pk, int $studioId, ar
     }
 }
 
+/**
+ * 行の削除ボタン（既存の行だけ。id=0 の新しい行には出さない）
+ *   押すと assets/studio_info.js の setupRowDelete が、その行の主な欄（料金・名前・機種名）を空にして行を隠す
+ *   → 「保存」で、主な欄が空の行として削除される（サーバー側は今までの「空にしたら削除」のまま）
+ */
+function studio_row_del(int $id): string
+{
+    return $id === 0 ? '' : '<button type="button" class="icon-btn sinfo-row-del" data-row-del title="削除" aria-label="削除">' . icon('delete') . '</button>';
+}
+
 /** 0 以上の整数の文字列か（料金・台数の入力チェック用）。ctype_digit = 全部が 0〜9 の文字か */
 function studio_uint(string $s, int $max): bool
 {
@@ -701,7 +711,7 @@ $rateRow = function (array $r, string $key, bool $fixed) use ($discInputs, $room
             . '<select name="day[]" aria-label="曜日">' . $days . '</select></span>';
     }
     return $html
-        . $roomChips($key, $r['room_ids'] ?? []) // 部屋のチェック欄（部屋が未登録なら空文字）
+        . '<div class="sinfo-rate-row__top">' . $roomChips($key, $r['room_ids'] ?? []) . studio_row_del((int)$r['studio_rate_id']) . '</div>' // 部屋のチェック欄（部屋が未登録なら空）＋削除
         // 時刻は data-native = 独自の選択 UI に変えず、ブラウザ標準のプルダウン（スマホではドラム式）にする。
         //   選択肢が 61 個（30分きざみ）と多く、細いマスでも文字が切れないため
         . '<select name="start[]" aria-label="開始" data-native>' . studio_time_options((int)$r['start_min']) . '</select>'
@@ -1029,6 +1039,7 @@ render_header($studio['name'], 'tools');
                             <option value="<?= $k ?>"<?= $k === (int)$d['day_type'] ? ' selected' : '' ?>><?= h($k === 0 ? $label : $label . 'のみ') ?></option>
                         <?php endforeach; ?>
                     </select>
+                    <?= studio_row_del((int)$d['studio_discount_id']) ?>
                 </div>
             <?php endforeach; ?>
             <div><button type="submit" class="btn btn--primary btn--sm" title="区分名を空にした行は削除"><?= icon('save') ?> 保存</button></div>
@@ -1048,6 +1059,7 @@ render_header($studio['name'], 'tools');
                     <input autocomplete="off" type="text" class="grow" name="name[]" maxlength="50" value="<?= h($r['name']) ?>" placeholder="部屋名" aria-label="部屋名">
                     <label class="sinfo-edit__jo"><input type="text" name="area_jo[]" inputmode="decimal" maxlength="5" value="<?= h(studio_jo_num($r['area_jo'])) ?>" placeholder="広さ" aria-label="広さ（帖）"><span class="muted small">帖</span></label>
                     <input autocomplete="off" type="text" class="grow" name="size_note[]" maxlength="50" value="<?= h($r['size_note']) ?>" placeholder="備考（定員・階数）" aria-label="備考">
+                    <?= studio_row_del((int)$r['studio_room_id']) ?>
                 </div>
             <?php endforeach; ?>
             <div><button type="submit" class="btn btn--primary btn--sm" title="部屋名を空にした行は削除"><?= icon('save') ?> 保存</button></div>
@@ -1114,6 +1126,7 @@ render_header($studio['name'], 'tools');
                     </select>
                     <input type="number" name="price[]" min="0" max="999999" value="<?= h($p['price']) ?>" placeholder="料金" aria-label="パックの料金" inputmode="numeric">
                     <?= $discInputs($p['disc'], 'パックの料金') ?>
+                    <?= studio_row_del((int)$p['studio_pack_id']) ?>
                 </div>
             <?php endforeach; ?>
             <div><button type="submit" class="btn btn--primary btn--sm" title="料金を空にした行は削除"><?= icon('save') ?> 保存</button></div>
@@ -1150,6 +1163,7 @@ render_header($studio['name'], 'tools');
                         <option value="0"<?= (int)$r['per_hour'] === 0 ? ' selected' : '' ?>>/回</option>
                         <option value="1"<?= (int)$r['per_hour'] === 1 ? ' selected' : '' ?>>/h</option>
                     </select>
+                    <?= studio_row_del((int)$r['studio_rental_id']) ?>
                 </div>
             <?php endforeach; ?>
             <div><button type="submit" class="btn btn--primary btn--sm" title="名前を空にした行は削除"><?= icon('save') ?> 保存</button></div>
@@ -1195,6 +1209,7 @@ render_header($studio['name'], 'tools');
                     </select>
                     <input autocomplete="off" type="text" class="grow" name="model[]" maxlength="100" value="<?= h($e['model_name']) ?>" placeholder="機種名" aria-label="機種名">
                     <input type="number" name="quantity[]" min="0" max="99" value="<?= (int)$e['quantity'] ?>" aria-label="台数" inputmode="numeric">
+                    <?= studio_row_del((int)$e['studio_equipment_id']) ?>
                 </div>
             <?php endforeach; ?>
             <div><button type="submit" class="btn btn--primary btn--sm" title="機種名を空にした行は削除"><?= icon('save') ?> 保存</button></div>
