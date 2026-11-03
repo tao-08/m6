@@ -236,3 +236,6 @@
 .sinfo-table td.num:not(.sinfo-student) { font-size: 15px; }
 .sinfo-table tbody tr:last-child td { border-bottom: 0; }
 .sinfo-slot + .sinfo-slot { margin-top: 2px; }
+
+/* ---- 新しい行の「追加の時間帯」（曜日・開始・終了を横に並べる。グリッドの1行を丸ごと使う）---- */
+.sinfo-rate-row__extra { grid-column: 1 / -1; display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 6px; }

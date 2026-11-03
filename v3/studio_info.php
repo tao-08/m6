@@ -361,7 +361,7 @@ if (is_post()) {
             $disc = studio_post_discounts($i, $discounts); // [区分id => 料金] / false = 不正
             $ok = $rowRooms !== false && $disc !== false
                 && $people >= 0 && $people <= STUDIO_SOLO_MAX
-                && (array_key_exists($day, STUDIO_DAY_TYPES) || ($day === STUDIO_DAY_BOTH && (int)$rawId === 0)) // 「平日・土日祝」は新しい行だけ
+                && array_key_exists($day, STUDIO_DAY_TYPES)
                 && studio_uint($start, STUDIO_MAX_MIN) && studio_uint($end, STUDIO_MAX_MIN) && (int)$start < (int)$end
                 && studio_uint($price, 999999);
             $data = [
@@ -383,8 +383,24 @@ if (is_post()) {
                 flash($isPack ? 'パックの入力が正しくありません（名前・時間帯・使える時間を確認）' : '料金表の入力が正しくありません（終了は開始より後に）', 'error');
                 redirect($self . $anchor);
             }
-            foreach ($day === STUDIO_DAY_BOTH ? [1, 2] : [$day] as $d) { // 「平日・土日祝」は同じ内容の2行に展開
-                $rows[] = [(int)$rawId, ['day_type' => $d] + $data, $rowRooms, $disc];
+            $rows[] = [(int)$rawId, $data, $rowRooms, $disc];
+            // 新しい行だけ「追加の時間帯」（曜日 + 開始〜終了）を足せる。同じ対象・部屋・料金の行を時間帯ごとに作る
+            //   例: 平日 18〜23時 + 土日祝 終日 を同じ料金で1回の入力にする。x[行のキー][n][day|start|end]
+            if (!$isPack && (int)$rawId === 0 && $rowRooms !== false) {
+                foreach ((array)($_POST['x'][$key] ?? []) as $x) {
+                    $xd = (string)($x['day'] ?? '');
+                    if ($xd === '') {
+                        continue; // 未入力の欄
+                    }
+                    $xs = (string)($x['start'] ?? '');
+                    $xe = (string)($x['end'] ?? '');
+                    if (!ctype_digit($xd) || !array_key_exists((int)$xd, STUDIO_DAY_TYPES)
+                        || !studio_uint($xs, STUDIO_MAX_MIN) || !studio_uint($xe, STUDIO_MAX_MIN) || (int)$xs >= (int)$xe) {
+                        flash('追加の時間帯が正しくありません（終了は開始より後に）', 'error');
+                        redirect($self . $anchor);
+                    }
+                    $rows[] = [0, ['day_type' => (int)$xd, 'start_min' => (int)$xs, 'end_min' => (int)$xe] + $data, $rowRooms, $disc];
+                }
             }
         }
         if ($isPack) {
@@ -639,6 +655,26 @@ $discInputs = function (array $disc, string $unit) use ($discounts): string {
 };
 
 /**
+ * 追加の時間帯の入力欄（新しい行だけ。2つ）。曜日が空の欄は無視する
+ *   同じ料金で「平日 18〜23時」と「土日祝 終日」を1回で入れるためのもの（保存は save_rates の x[キー][n]）
+ */
+$extraSlots = function (string $key): string {
+    $days = '<option value="">＋ 時間帯</option>';
+    foreach (STUDIO_DAY_TYPES as $k => $label) {
+        $days .= '<option value="' . $k . '">' . h($label) . '</option>';
+    }
+    $html = '';
+    foreach ([0, 1] as $n) {
+        $html .= '<span class="sinfo-rate-row__extra">'
+            . '<select name="x[' . h($key) . '][' . $n . '][day]" aria-label="追加の時間帯の曜日">' . $days . '</select>'
+            . '<select name="x[' . h($key) . '][' . $n . '][start]" aria-label="追加の開始" data-native>' . studio_time_options(600) . '</select>'
+            . '<select name="x[' . h($key) . '][' . $n . '][end]" aria-label="追加の終了" data-native>' . studio_time_options(1380) . '</select>'
+            . '</span>';
+    }
+    return $html;
+};
+
+/**
  * 料金表の編集の1行（HTML）
  *   $fixed = true  … 見出しの下の行。対象・曜日は見出しで決まるので hidden
  *   $fixed = false … 新しい見出しを作る行。対象・曜日を選ぶ
@@ -647,7 +683,7 @@ $discInputs = function (array $disc, string $unit) use ($discounts): string {
  *          「＋」で行を途中に足しても位置がずれないよう、位置（行番号）ではなくキーで結ぶ。
  *          既存の行は 'e' + 料金の id / 新しい行は 'n' + 連番 / <template> の中は '__K__'（JS が複製のときに本物のキーに置き換える）
  */
-$rateRow = function (array $r, string $key, bool $fixed) use ($discInputs, $roomChips): string {
+$rateRow = function (array $r, string $key, bool $fixed) use ($discInputs, $roomChips, $extraSlots): string {
     $people = $r['people'] === null ? 0 : (int)$r['people'];
     $html = '<div class="sinfo-rate-row' . ($fixed ? '' : ' sinfo-rate-row--new') . '">'
         . '<input type="hidden" name="id[]" value="' . (int)$r['studio_rate_id'] . '">'
@@ -660,7 +696,6 @@ $rateRow = function (array $r, string $key, bool $fixed) use ($discInputs, $room
         foreach (STUDIO_DAY_TYPES as $k => $label) {
             $days .= '<option value="' . $k . '"' . ($k === (int)$r['day_type'] ? ' selected' : '') . '>' . h($label) . '</option>';
         }
-        $days .= '<option value="' . STUDIO_DAY_BOTH . '">平日・土日祝</option>'; // 同じ料金なら1行で入力（保存時に2行へ展開）
         // 新しい見出しの行だけ、先頭に「対象・曜日」の選択を出す（グリッドの1行を丸ごと使う）
         $html .= '<span class="sinfo-rate-row__pick">' . icon('add') . '<select name="people[]" aria-label="対象">' . studio_target_options($people ?: null) . '</select>'
             . '<select name="day[]" aria-label="曜日">' . $days . '</select></span>';
@@ -673,6 +708,7 @@ $rateRow = function (array $r, string $key, bool $fixed) use ($discInputs, $room
         . '<select name="end[]" aria-label="終了" data-native>' . studio_time_options((int)$r['end_min']) . '</select>'
         . '<input type="number" name="price[]" min="0" max="999999" value="' . h($r['price']) . '" placeholder="料金" aria-label="1時間の料金" inputmode="numeric">'
         . $discInputs($r['disc'], '1時間の料金')
+        . ($fixed ? '' : $extraSlots($key)) // 新しい行だけ: 同じ料金の追加の時間帯
         . '</div>';
 };
 
@@ -1066,7 +1102,6 @@ render_header($studio['name'], 'tools');
                         <?php foreach (STUDIO_DAY_TYPES as $k => $label): ?>
                             <option value="<?= $k ?>"<?= $k === (int)$p['day_type'] ? ' selected' : '' ?>><?= h($label) ?></option>
                         <?php endforeach; ?>
-                        <?php if ((int)$p['studio_pack_id'] === 0): ?><option value="<?= STUDIO_DAY_BOTH ?>">平日・土日祝</option><?php endif; ?>
                     </select>
                     <select name="start[]" aria-label="時間帯の開始"><?= studio_time_options((int)$p['start_min']) ?></select>
                     <span class="muted">〜</span>
