@@ -110,6 +110,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupSetlistTip();
   setupSetlistNames();
   setupSpotifyAppLinks();
+  setupExternalLinksInBrowser(); // 必ず setupSpotifyAppLinks の「後」に呼ぶ（Spotify が先に処理したリンクは defaultPrevented で見分けて飛ばす）
   setupVoSum();
   setupYoutubeLeftover();
   setupBackButton();
@@ -188,6 +189,42 @@ function setupAlbumTip() {
   });
   // fixed なのでスクロールするとずれる → 隠す。capture: true で、ページだけでなく表の横スクロールでも隠す
   document.addEventListener('scroll', hide, { passive: true, capture: true });
+}
+
+/* ---------------------------------------------------------------------
+ * 外部サイトのリンクを押したら、端末の標準ブラウザで開く（Android のホーム画面アプリ = PWA 用）
+ *   ホーム画面に追加したアプリでは、target="_blank" の外部リンクが「アプリ内ブラウザ（Chrome Custom Tab）」で開く。
+ *   HTML だけでは「標準ブラウザで開く」を指定できないので、Android 専用の intent:// 形式の URL に置き換えて開く。
+ *   intent:// とは: Android に「この URL をこの種類のアプリで開いて」と頼む特殊な URL（Chrome は対応している）。
+ *   形: intent://ホスト/パス?クエリ#Intent;scheme=https;action=android.intent.action.VIEW;S.browser_fallback_url=元のURL;end
+ *     - scheme: 元の http / https。package は指定しないので、端末の標準ブラウザが開く
+ *     - S.browser_fallback_url: 開けなかったときに、代わりにこの URL へ移動する保険（元のURLをエンコードして入れる）
+ *   ※ intent:// の「#」以降は intent の設定に使うため、元の URL の #ハッシュ は落ちる
+ *   対象は「Android ＋ ホーム画面アプリとして起動中」だけ。PC・iPhone・普通のブラウザは今までどおり target="_blank" に任せる。
+ * ------------------------------------------------------------------- */
+function setupExternalLinksInBrowser() {
+  const isAndroid = /Android/i.test(navigator.userAgent);
+  // display-mode: standalone = ホーム画面に追加したアプリとして開いている状態（manifest.json の "display": "standalone"）
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
+  if (!isAndroid || !isStandalone) return;
+
+  document.addEventListener('click', (e) => {
+    // Spotify 側がすでに処理した / Ctrl+クリックなどのブラウザ任せの操作は触らない
+    if (e.defaultPrevented || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    const a = e.target.closest('a[href]');
+    if (!a || a.hasAttribute('download')) return; // ダウンロードのリンクは対象外
+    let u;
+    try { u = new URL(a.href, window.location.href); } catch { return; } // URL として読めないものは無視
+    // http / https 以外（mailto: tel: など）と、このサイト自身のリンクは対象外
+    if ((u.protocol !== 'https:' && u.protocol !== 'http:') || u.origin === window.location.origin) return;
+
+    e.preventDefault(); // アプリ内ブラウザで開く標準の動きを止める
+    const scheme = u.protocol.slice(0, -1); // 'https:' → 'https'
+    window.location.href =
+      `intent://${u.host}${u.pathname}${u.search}` +
+      `#Intent;scheme=${scheme};action=android.intent.action.VIEW;` +
+      `S.browser_fallback_url=${encodeURIComponent(u.href)};end`;
+  });
 }
 
 /* ---------------------------------------------------------------------
