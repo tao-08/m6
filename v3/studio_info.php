@@ -88,14 +88,16 @@ function studio_attach_rooms(PDO $pdo, string $table, int $studioId, array $rows
 function studio_attach_discounts(PDO $pdo, string $table, int $studioId, array $rows): array
 {
     [$link, $pk] = STUDIO_DISCOUNT_LINKS[$table];
-    $st = $pdo->prepare("SELECT l.$pk, l.studio_discount_id, l.price FROM $link l JOIN $table t ON t.$pk = l.$pk WHERE t.studio_id = ?");
+    $st = $pdo->prepare("SELECT l.$pk, l.studio_discount_id, l.price, l.kind FROM $link l JOIN $table t ON t.$pk = l.$pk WHERE t.studio_id = ?");
     $st->execute([$studioId]);
     $map = [];
-    foreach ($st->fetchAll(PDO::FETCH_NUM) as [$parent, $disc, $price]) {
-        $map[(int)$parent][(int)$disc] = (int)$price;
+    foreach ($st->fetchAll(PDO::FETCH_NUM) as [$parent, $disc, $price, $kind]) {
+        $map[(int)$parent][(int)$disc] = [(int)$kind, (int)$price];
     }
     foreach ($rows as &$r) {
-        $r['disc'] = $map[(int)$r[$pk]] ?? [];
+        // disc_raw = 入力した値そのまま [区分id => [種類, 値]]（編集画面用）/ disc = 割引後の料金 [区分id => 料金]（表示・シミュレーション用）
+        $r['disc_raw'] = $map[(int)$r[$pk]] ?? [];
+        $r['disc'] = array_map(fn($d) => studio_disc_apply((int)$r['price'], $d[0], $d[1]), $r['disc_raw']);
     }
     unset($r);
     return $rows;
@@ -214,8 +216,9 @@ function studio_save_rows(PDO $pdo, string $table, string $pk, int $studioId, ar
             if ($discs !== null && isset(STUDIO_DISCOUNT_LINKS[$table])) {
                 [$link, $linkPk] = STUDIO_DISCOUNT_LINKS[$table];
                 $pdo->prepare("DELETE FROM $link WHERE $linkPk = ?")->execute([$id]);
-                foreach ($discs as $discId => $discPrice) {
-                    $pdo->prepare("INSERT INTO $link ($linkPk, studio_discount_id, price) VALUES (?, ?, ?)")->execute([$id, (int)$discId, (int)$discPrice]);
+                foreach ($discs as $discId => $disc) {
+                    [$kind, $value] = is_array($disc) ? $disc : [0, $disc]; // 値だけ（パック・AI）= 金額指定 / [種類, 値]（料金表）
+                    $pdo->prepare("INSERT INTO $link ($linkPk, studio_discount_id, price, kind) VALUES (?, ?, ?, ?)")->execute([$id, (int)$discId, (int)$value, (int)$kind]);
                 }
             }
         }
@@ -340,13 +343,105 @@ if (is_post()) {
         redirect($self . '#rates');
     }
 
-    // ---- 料金表・パック（入力欄の形がほぼ同じなので、1つの処理で両方受ける）-----------------
-    //   共通: 対象（バンド / 個人n人）・曜日・時間帯・料金・割引区分ごとの料金
-    //   部屋: どちらも複数の部屋に共通にできる（空 = 全部屋共通）。パックは rooms[行番号][] / 料金表は rooms[行のキー][]（行のキーは key[]）
-    //   パックだけ: 名前・使える時間（minutes。空 = 時間帯まるごと）
-    if ($action === 'save_rates' || $action === 'save_packs') {
-        $isPack = $action === 'save_packs';
-        $anchor = $isPack ? '#packs' : '#rates';
+    // ---- 料金表 ---------------------------------------------------------
+    //   入力は「時間帯（slot[キー]）× 部屋」。時間帯ごとに 対象・曜日・開始・終了、その下に部屋ごとの 料金・割引区分ごとの割引
+    //     slot[キー][people|day|start|end]
+    //     slot[キー][room][部屋id][id|price]    … 部屋id 0 = 部屋が未登録のスタジオの「全部屋」。料金が空 = その部屋の行は無し（既存なら削除）
+    //     slot[キー][room][部屋id][dk|dv][区分id] … 割引の種類（0 金額指定 / 1 円引き / 2 %引き）と値
+    //   DB の行は「1行 = 1つの時間帯 × 1つの部屋」。新しい時間帯だけ x[キー][n][day|start|end] で同じ料金の時間帯を足せる
+    if ($action === 'save_rates') {
+        $anchor = '#rates';
+        $roomIds = studio_room_ids($pdo, $studioId);
+        $discounts = studio_discounts($pdo, $studioId);
+        $fail = function (string $msg) use ($self, $anchor): never {
+            flash($msg, 'error');
+            redirect($self . $anchor);
+        };
+        $rows = [];
+        foreach ((array)($_POST['slot'] ?? []) as $key => $s) {
+            $key = (string)$key;
+            if (!is_array($s) || preg_match('/^\w{1,20}$/', $key) !== 1) {
+                continue; // 形の違う値（改ざん）は無視
+            }
+            $people = (int)($s['people'] ?? 0);   // 0 = バンド練習
+            $day = (int)($s['day'] ?? 0);
+            $start = (string)($s['start'] ?? '');
+            $end = (string)($s['end'] ?? '');
+            $timeOk = $people >= 0 && $people <= STUDIO_SOLO_MAX && array_key_exists($day, STUDIO_DAY_TYPES)
+                && studio_uint($start, STUDIO_MAX_MIN) && studio_uint($end, STUDIO_MAX_MIN) && (int)$start < (int)$end;
+            $slotRows = []; // この時間帯の、料金が入った部屋の行
+            $hasExisting = false;
+            foreach ((array)($s['room'] ?? []) as $rid => $line) {
+                $rid = (string)$rid;
+                if (!is_array($line) || !ctype_digit($rid)) {
+                    continue;
+                }
+                $rid = (int)$rid;
+                $id = (int)($line['id'] ?? 0);
+                $price = trim((string)($line['price'] ?? ''));
+                if ($price === '') {
+                    if ($id !== 0) {
+                        $rows[] = [$id, null]; // 料金が空 = 削除
+                    }
+                    continue;
+                }
+                // 部屋は「このスタジオの部屋」だけ（0 は部屋が未登録のときだけ）。送られてきた id は信用しない
+                if (!$timeOk || !studio_uint($price, 999999) || !($rid === 0 ? !$roomIds : in_array($rid, $roomIds, true))) {
+                    $fail('料金表の入力が正しくありません（終了は開始より後に）');
+                }
+                $disc = [];
+                foreach ($discounts as $d) {
+                    $did = $d['studio_discount_id'];
+                    $v = trim((string)($line['dv'][$did] ?? ''));
+                    if ($v === '') {
+                        continue; // 空欄 = その区分の割引は無い
+                    }
+                    $kind = (string)($line['dk'][$did] ?? '0');
+                    if (!ctype_digit($kind) || !isset(STUDIO_DISC_KINDS[(int)$kind]) || !studio_uint($v, (int)$kind === 2 ? 100 : 999999)) {
+                        $fail('割引の入力が正しくありません（％引きは100まで）');
+                    }
+                    $disc[$did] = [(int)$kind, (int)$v];
+                }
+                $hasExisting = $hasExisting || $id !== 0;
+                $slotRows[] = [$id, [
+                    'people' => $people === 0 ? null : $people, // NULL = バンド練習
+                    'day_type' => $day, 'start_min' => (int)$start, 'end_min' => (int)$end, 'price' => (int)$price,
+                ], $rid === 0 ? [] : [$rid], $disc];
+            }
+            foreach ($slotRows as $row) {
+                $rows[] = $row;
+            }
+            // 新しい時間帯だけ「追加の時間帯」（曜日 + 開始〜終了）を足せる。同じ料金・割引を時間帯ごとに作る
+            //   例: 平日 18〜23時 + 土日祝 終日 を同じ料金で1回の入力にする
+            if ($slotRows && !$hasExisting) {
+                foreach ((array)($_POST['x'][$key] ?? []) as $x) {
+                    if (!is_array($x) || (string)($x['day'] ?? '') === '') {
+                        continue; // 未入力の欄
+                    }
+                    $xd = (string)$x['day'];
+                    $xs = (string)($x['start'] ?? '');
+                    $xe = (string)($x['end'] ?? '');
+                    if (!ctype_digit($xd) || !array_key_exists((int)$xd, STUDIO_DAY_TYPES)
+                        || !studio_uint($xs, STUDIO_MAX_MIN) || !studio_uint($xe, STUDIO_MAX_MIN) || (int)$xs >= (int)$xe) {
+                        $fail('追加の時間帯が正しくありません（終了は開始より後に）');
+                    }
+                    foreach ($slotRows as [, $data, $rowRooms, $disc]) {
+                        $rows[] = [0, ['day_type' => (int)$xd, 'start_min' => (int)$xs, 'end_min' => (int)$xe] + $data, $rowRooms, $disc];
+                    }
+                }
+            }
+        }
+        studio_save_rows($pdo, 'studio_rate', 'studio_rate_id', $studioId, $rows);
+        flash('保存しました');
+        redirect($self . $anchor);
+    }
+
+    // ---- パック ---------------------------------------------------------
+    //   対象（バンド練習 / 個人n人）・曜日・時間帯・料金・割引区分ごとの料金
+    //   部屋: 複数の部屋に共通にできる（空 = 全部屋共通）。rooms[行番号][]
+    //   名前・使える時間（minutes。空 = 時間帯まるごと）
+    if ($action === 'save_packs') {
+        $anchor = '#packs';
         $roomIds = studio_room_ids($pdo, $studioId);
         $discounts = studio_discounts($pdo, $studioId);
         $rows = [];
@@ -356,14 +451,7 @@ if (is_post()) {
                 $rows[] = [(int)$rawId, null]; // 料金が空 = 削除
                 continue;
             }
-            if ($isPack) {
-                $rowRooms = studio_post_rooms($i, $roomIds); // [] = 全部屋共通 / false = 不正
-            } else {
-                // 料金表は行の途中に「＋」で行を足せるので、位置ではなく行ごとのキー（hidden の key[]）で部屋のチェックと結ぶ
-                //   キーは英数字と _ だけ許す（rooms[...] の配列のキーとして使うだけだが、変な文字は最初に弾く）
-                $key = (string)($_POST['key'][$i] ?? '');
-                $rowRooms = preg_match('/^\w{1,20}$/', $key) === 1 ? studio_post_rooms($key, $roomIds) : false;
-            }
+            $rowRooms = studio_post_rooms($i, $roomIds); // [] = 全部屋共通 / false = 不正
             $people = (int)($_POST['people'][$i] ?? 0);   // 0 = バンド
             $day = (int)($_POST['day'][$i] ?? 0);
             $start = (string)($_POST['start'][$i] ?? '');
@@ -381,46 +469,19 @@ if (is_post()) {
                 'end_min' => (int)$end,
                 'price' => (int)$price,
             ];
-            if ($isPack) {
-                $name = trim((string)($_POST['name'][$i] ?? ''));
-                $minutes = trim((string)($_POST['minutes'][$i] ?? ''));
-                // 使える時間は 30分きざみで、時間帯の長さ以内（時間帯より長いパックはありえない）
-                $ok = $ok && $name !== '' && mb_strlen($name) <= 50
-                    && ($minutes === '' || (studio_uint($minutes, STUDIO_MAX_MIN) && (int)$minutes > 0 && (int)$minutes <= (int)$end - (int)$start));
-                $data = ['name' => $name] + $data + ['minutes' => $minutes === '' ? null : (int)$minutes];
-            }
+            $name = trim((string)($_POST['name'][$i] ?? ''));
+            $minutes = trim((string)($_POST['minutes'][$i] ?? ''));
+            // 使える時間は 30分きざみで、時間帯の長さ以内（時間帯より長いパックはありえない）
+            $ok = $ok && $name !== '' && mb_strlen($name) <= 50
+                && ($minutes === '' || (studio_uint($minutes, STUDIO_MAX_MIN) && (int)$minutes > 0 && (int)$minutes <= (int)$end - (int)$start));
+            $data = ['name' => $name] + $data + ['minutes' => $minutes === '' ? null : (int)$minutes];
             if (!$ok) {
-                flash($isPack ? 'パックの入力が正しくありません（名前・時間帯・使える時間を確認）' : '料金表の入力が正しくありません（終了は開始より後に）', 'error');
+                flash('パックの入力が正しくありません（名前・時間帯・使える時間を確認）', 'error');
                 redirect($self . $anchor);
             }
             $rows[] = [(int)$rawId, $data, $rowRooms, $disc];
-            // 新しい行だけ「追加の時間帯」（曜日 + 開始〜終了）を足せる。同じ対象・部屋・料金の行を時間帯ごとに作る
-            //   例: 平日 18〜23時 + 土日祝 終日 を同じ料金で1回の入力にする。x[行のキー][n][day|start|end]
-            if (!$isPack && (int)$rawId === 0 && $rowRooms !== false) {
-                foreach ((array)($_POST['x'][$key] ?? []) as $x) {
-                    if (!is_array($x)) {
-                        continue; // 形の違う値（改ざん）は無視
-                    }
-                    $xd = (string)($x['day'] ?? '');
-                    if ($xd === '') {
-                        continue; // 未入力の欄
-                    }
-                    $xs = (string)($x['start'] ?? '');
-                    $xe = (string)($x['end'] ?? '');
-                    if (!ctype_digit($xd) || !array_key_exists((int)$xd, STUDIO_DAY_TYPES)
-                        || !studio_uint($xs, STUDIO_MAX_MIN) || !studio_uint($xe, STUDIO_MAX_MIN) || (int)$xs >= (int)$xe) {
-                        flash('追加の時間帯が正しくありません（終了は開始より後に）', 'error');
-                        redirect($self . $anchor);
-                    }
-                    $rows[] = [0, ['day_type' => (int)$xd, 'start_min' => (int)$xs, 'end_min' => (int)$xe] + $data, $rowRooms, $disc];
-                }
-            }
         }
-        if ($isPack) {
-            studio_save_rows($pdo, 'studio_pack', 'studio_pack_id', $studioId, $rows);
-        } else {
-            studio_save_rows($pdo, 'studio_rate', 'studio_rate_id', $studioId, $rows);
-        }
+        studio_save_rows($pdo, 'studio_pack', 'studio_pack_id', $studioId, $rows);
         flash('保存しました');
         redirect($self . $anchor);
     }
@@ -686,43 +747,62 @@ $slotLine = function (array $names, int $day, int $start, int $end, bool $remova
 };
 
 /**
- * 料金表の編集の1行（HTML）
- *   $fixed = true  … 見出しの下の行。対象・曜日は見出しで決まるので hidden
- *   $fixed = false … 新しい見出しを作る行。対象・曜日を選ぶ
- *   部屋は行ごとのチェック欄（$roomChips）で選ぶ。複数の部屋に共通の料金は1行で作れる（チェックなし・「全部屋」= 全部屋共通）
- *   $key = この行の固有キー（hidden の key[]）。チェック欄の名前 rooms[キー][] と結ぶ目印
- *          「＋」で行を途中に足しても位置がずれないよう、位置（行番号）ではなくキーで結ぶ。
- *          既存の行は 'e' + 料金の id / 新しい行は 'n' + 連番 / <template> の中は '__K__'（JS が複製のときに本物のキーに置き換える）
+ * 料金表の編集の1つの「時間帯」（HTML）。時間帯の下に、部屋ごとの 料金・割引区分ごとの割引 が並ぶ
+ *   $slot = ['people', 'day_type', 'start_min', 'end_min', 'lines' => [部屋id => ['id' => 料金の行 id, 'price' => 料金, 'disc_raw' => [区分id => [種類, 値]]]]]
+ *   $fixed = true  … 見出し（対象・曜日）の下の時間帯。対象・曜日は見出しで決まるので hidden
+ *   $fixed = false … 新しい見出しを作る時間帯。対象・曜日を選ぶ。「＋ 時間帯」で同じ料金の時間帯を足せる
+ *   $key = この時間帯の固有キー。name="slot[キー][…]"。「＋」で途中に足しても位置がずれないよう、位置ではなくキーで結ぶ
+ *          既存 = 'e' + 先頭の料金の id / 新しい見出し = 'n1' / <template> の中 = '__K__'（JS が複製のときに本物のキーに置き換える）
+ *   部屋の行は $roomLines（[[部屋id, 名前], …]。部屋が未登録なら「全部屋」の1行 = 部屋id 0）
+ *   割引は区分ごとに「種類（金額 / 円引 / ％引）＋ 値」。値が空 = その区分の割引は無い
  */
-$rateRow = function (array $r, string $key, bool $fixed) use ($discInputs, $roomChips, $slotLine): string {
-    $people = $r['people'] === null ? 0 : (int)$r['people'];
-    $html = '<div class="sinfo-rate-row' . ($fixed ? '' : ' sinfo-rate-row--new') . '" data-key="' . h($key) . '">'
-        . '<input type="hidden" name="id[]" value="' . (int)$r['studio_rate_id'] . '">'
-        . '<input type="hidden" name="key[]" value="' . h($key) . '">';
-    if ($fixed) {
-        $html .= '<input type="hidden" name="people[]" value="' . $people . '">'
-            . '<input type="hidden" name="day[]" value="' . (int)$r['day_type'] . '">';
-    } else {
-        // 新しい見出しの行だけ、先頭に「対象」の選択を出す（グリッドの1行を丸ごと使う）
-        $html .= '<span class="sinfo-rate-row__pick">' . icon('add') . '<select name="people[]" aria-label="対象">' . studio_target_options($people ?: null) . '</select></span>';
+$rateRow = function (array $slot, string $key, bool $fixed, array $roomLines) use ($discounts, $slotLine): string {
+    $people = $slot['people'] === null ? 0 : (int)$slot['people'];
+    $n = 'slot[' . h($key) . ']';
+    $html = '<div class="sinfo-slot-edit' . ($fixed ? '' : ' sinfo-slot-edit--new') . '" data-key="' . h($key) . '">';
+    $existing = false;
+    foreach ($slot['lines'] as $l) {
+        $existing = $existing || (int)$l['id'] !== 0;
     }
-    $html .= '<div class="sinfo-rate-row__top">' . $roomChips($key, $r['room_ids'] ?? []) . studio_row_del((int)$r['studio_rate_id']) . '</div>'; // 部屋のチェック欄（部屋が未登録なら空）＋削除
     if ($fixed) {
-        // 時刻は data-native = 独自の選択 UI に変えず、ブラウザ標準のプルダウン（スマホではドラム式）にする。
-        //   選択肢が 61 個（30分きざみ）と多く、細いマスでも文字が切れないため
-        $html .= '<select name="start[]" aria-label="開始" data-native>' . studio_time_options((int)$r['start_min']) . '</select>'
-            . '<select name="end[]" aria-label="終了" data-native>' . studio_time_options((int)$r['end_min']) . '</select>';
+        $html .= '<input type="hidden" name="' . $n . '[people]" value="' . $people . '">'
+            . '<input type="hidden" name="' . $n . '[day]" value="' . (int)$slot['day_type'] . '">'
+            // 時刻は data-native = 独自の選択 UI に変えず、ブラウザ標準のプルダウン（スマホではドラム式）にする。
+            //   選択肢が 61 個（30分きざみ）と多く、細いマスでも文字が切れないため
+            . '<div class="sinfo-slot-edit__time">'
+            . '<select name="' . $n . '[start]" aria-label="開始" data-native>' . studio_time_options((int)$slot['start_min']) . '</select>'
+            . '<span class="muted">〜</span>'
+            . '<select name="' . $n . '[end]" aria-label="終了" data-native>' . studio_time_options((int)$slot['end_min']) . '</select>'
+            . ($existing ? '<button type="button" class="icon-btn sinfo-row-del" data-row-del title="削除" aria-label="削除">' . icon('delete') . '</button>' : '')
+            . '</div>';
     } else {
-        // 新しい見出しの行: 曜日・開始・終了を1か所にまとめる。「＋ 時間帯」で同じ料金の時間帯を足せる（JS: setupRateEdit）
-        $html .= '<div class="sinfo-rate-row__slots" data-slots>'
-            . $slotLine(['day[]', 'start[]', 'end[]'], (int)$r['day_type'], (int)$r['start_min'], (int)$r['end_min'], false)
-            . '<button type="button" class="btn btn--sm sinfo-rate-row__slot-add" data-slot-add>' . icon('add') . ' 時間帯</button>'
+        // 新しい見出しの時間帯だけ、先頭に「対象」の選択を出す。曜日・開始・終了は1か所にまとめる
+        $html .= '<span class="sinfo-slot-edit__pick">' . icon('add') . '<select name="' . $n . '[people]" aria-label="対象">' . studio_target_options($people ?: null) . '</select></span>'
+            . '<div class="sinfo-slot-edit__slots" data-slots>'
+            . $slotLine([$n . '[day]', $n . '[start]', $n . '[end]'], (int)$slot['day_type'], (int)$slot['start_min'], (int)$slot['end_min'], false)
+            . '<button type="button" class="btn btn--sm sinfo-slot-edit__slot-add" data-slot-add>' . icon('add') . ' 時間帯</button>'
             . '</div>';
     }
-    return $html
-        . '<input type="number" name="price[]" min="0" max="999999" value="' . h($r['price']) . '" placeholder="料金" aria-label="1時間の料金" inputmode="numeric">'
-        . $discInputs($r['disc'], '1時間の料金')
-        . '</div>';
+    foreach ($roomLines as [$rid, $rname]) {
+        $line = $slot['lines'][$rid] ?? ['id' => 0, 'price' => '', 'disc_raw' => []];
+        $ln = $n . '[room][' . (int)$rid . ']';
+        $html .= '<div class="sinfo-rate-room">'
+            . '<input type="hidden" name="' . $ln . '[id]" value="' . (int)$line['id'] . '">'
+            . '<span class="sinfo-rate-room__name">' . h($rname) . '</span>'
+            . '<input type="number" name="' . $ln . '[price]" min="0" max="999999" value="' . h($line['price']) . '" placeholder="1時間" aria-label="' . h($rname) . 'の1時間の料金" inputmode="numeric" data-price>';
+        foreach ($discounts as $d) {
+            $did = $d['studio_discount_id'];
+            [$kind, $value] = $line['disc_raw'][$did] ?? [0, ''];
+            $kinds = '';
+            foreach (STUDIO_DISC_KINDS as $k => $label) {
+                $kinds .= '<option value="' . $k . '"' . ($k === (int)$kind ? ' selected' : '') . '>' . h($label) . '</option>';
+            }
+            $html .= '<span class="sinfo-disc-cell"><span class="sinfo-disc-cell__name muted small">' . h($d['name']) . '</span><select name="' . $ln . '[dk][' . $did . ']" aria-label="' . h($d['name']) . 'の種類" data-native>' . $kinds . '</select>'
+                . '<input type="number" name="' . $ln . '[dv][' . $did . ']" min="0" max="999999" value="' . h($value) . '" placeholder="' . h($d['name']) . '" aria-label="' . h($d['name'] . '（' . $rname . '）') . '" inputmode="numeric"></span>';
+        }
+        $html .= '</div>';
+    }
+    return $html . '</div>';
 };
 
 render_header($studio['name'], 'tools');
@@ -976,57 +1056,64 @@ render_header($studio['name'], 'tools');
         <summary><?= icon('edit') ?> 料金を編集</summary>
         <?php
         /*
-         * 編集画面は「対象・曜日の見出し（バンド・平日 など）→ 行」
-         *   行の対象・曜日は見出しで決まるので hidden で送る。行の中で入れるのは 部屋・時間帯・料金・割引区分ごとの料金
-         *   部屋は行ごとのチップ（全部屋 / A / B …）。複数選ぶと、その部屋たちに共通の料金を1行で作れる
-         *   見出しの「＋」で同じ見出しに空の行を足す（<template> を複製。JS: setupRateEdit。直前の行の部屋の選択も引き継ぐ）
-         *   一番下の行（対象・曜日を選べる行）で、新しい見出しを作れる
-         *   列の並びは CSS グリッド（--cols = 開始・終了・料金 + 割引区分の数）。見出し行も同じグリッドなので、列名と入力欄の位置がそろう
-         *   行のキー（$rateRow の説明）: 既存 = 'e' + id / 新しい見出しの行 = 'n1' / ＋の雛形 = '__K__'
+         * 編集画面は「対象・曜日の見出し（バンド練習・平日 など）→ 時間帯 → 部屋ごとの料金」
+         *   時間帯の対象・曜日は見出しで決まるので hidden で送る。時間帯の中で入れるのは 開始・終了 と、部屋ごとの 1時間の料金・割引区分ごとの割引
+         *   見出しの「＋」で同じ見出しに空の時間帯を足す（<template> を複製。JS: setupRateEdit）
+         *   一番下の時間帯（対象・曜日を選べる）で、新しい見出しを作れる。「＋ 見出し」で何個でも足せる
+         *   時間帯のキー（$rateRow の説明）: 既存 = 'e' + 先頭の料金の id / 新しい見出し = 'n1' / ＋の雛形 = '__K__'
+         *   DB の行は「1行 = 1つの時間帯 × 1つの部屋」。開始・終了が同じ行を1つの時間帯にまとめて表示する
+         *   （複数の部屋にまたがる行・全部屋共通の行は、各部屋の欄に同じ料金を出す。保存すると部屋ごとの行になる）
          */
-        $nCols = 3 + count($discounts); // 開始・終了・料金 ＋ 割引区分の数
-        // 料金を「対象|曜日」ごとにまとめる。キーの順 = 取得時の並び（対象 → 曜日 → 開始時刻）
-        $groups = [];
+        $roomLines = $rooms ? array_map(fn($r) => [(int)$r['studio_room_id'], $r['name']], $rooms) : [[0, '全部屋']];
+        // 料金を「時間帯（対象・曜日・開始・終了）」にまとめ、さらに「対象|曜日」ごとにまとめる（並び = 取得時の並び: 対象 → 曜日 → 開始時刻）
+        $slots = [];
         foreach ($rates as $r) {
-            $groups[($r['people'] ?? 0) . '|' . (int)$r['day_type']][] = $r;
+            $sk = ($r['people'] ?? 0) . '|' . (int)$r['day_type'] . '|' . (int)$r['start_min'] . '|' . (int)$r['end_min'];
+            $slots[$sk] ??= ['people' => $r['people'], 'day_type' => (int)$r['day_type'], 'start_min' => (int)$r['start_min'], 'end_min' => (int)$r['end_min'], 'lines' => [], 'key' => 'e' . (int)$r['studio_rate_id']];
+            // 部屋が決まっていない行（全部屋共通）は、すべての部屋の欄に出す。行の id は最初の欄だけに持たせる（保存で行が増えないように）
+            $idUsed = false;
+            foreach ($r['room_ids'] ?: array_column($roomLines, 0) as $rid) {
+                if (isset($slots[$sk]['lines'][$rid]) || !in_array($rid, array_column($roomLines, 0), true)) {
+                    continue;
+                }
+                $slots[$sk]['lines'][$rid] = ['id' => $idUsed ? 0 : (int)$r['studio_rate_id'], 'price' => $r['price'], 'disc_raw' => $r['disc_raw']];
+                $idUsed = true;
+            }
         }
+        $groups = [];
+        foreach ($slots as $s) {
+            $groups[($s['people'] ?? 0) . '|' . $s['day_type']][] = $s;
+        }
+        $newBlank = ['people' => null, 'day_type' => 0, 'start_min' => 600, 'end_min' => 1380, 'lines' => []];
         ?>
-        <form method="post" class="sinfo-edit__form sinfo-rate-edit" style="--cols: <?= $nCols ?>">
+        <form method="post" class="sinfo-edit__form sinfo-rate-edit">
             <?= csrf_field() ?>
             <input type="hidden" name="action" value="save_rates">
             <input type="hidden" name="studio_id" value="<?= $studioId ?>">
-                    <?php foreach ($groups as $key => $list):
-                        [$people, $day] = array_map('intval', explode('|', $key));
-                        $last = end($list); // end = 配列の最後の要素（＋で足す行の開始時刻を、最後の行の終了時刻にする）
-                        $blank = ['studio_rate_id' => 0, 'people' => $people ?: null, 'day_type' => $day,
-                            'start_min' => (int)$last['end_min'], 'end_min' => min(STUDIO_MAX_MIN, (int)$last['end_min'] + 360), 'price' => '', 'disc' => []];
+                    <?php foreach ($groups as $gk => $list):
+                        [$people, $day] = array_map('intval', explode('|', $gk));
+                        $last = end($list); // end = 配列の最後の要素（＋で足す時間帯の開始時刻を、最後の時間帯の終了時刻にする）
+                        $blank = ['people' => $people ?: null, 'day_type' => $day, 'start_min' => (int)$last['end_min'],
+                            'end_min' => min(STUDIO_MAX_MIN, (int)$last['end_min'] + 360), 'lines' => []];
                     ?>
                         <div class="sinfo-rate-group" data-rate-group>
                             <div class="sinfo-rate-group__head">
                                 <strong><?= h(studio_target_label($people ?: null)) ?></strong>
                                 <span class="tag"><?= h(STUDIO_DAY_TYPES[$day] ?? '') ?></span>
-                                <button type="button" class="btn btn--sm sinfo-rate-group__add" data-rate-add title="行を追加" aria-label="行を追加"><?= icon('add') ?></button>
+                                <button type="button" class="btn btn--sm sinfo-rate-group__add" data-rate-add title="時間帯を追加" aria-label="時間帯を追加"><?= icon('add') ?></button>
                             </div>
-                            <div class="sinfo-rate-wrap">
-                                <div class="sinfo-rate-row sinfo-rate-row--head muted small" aria-hidden="true">
-                                    <span>開始</span><span>終了</span><span>料金</span><?php foreach ($discounts as $d): ?><span><?= h($d['name']) ?></span><?php endforeach; ?>
-                                </div>
-                                <?php foreach ($list as $r): ?><?= $rateRow($r, 'e' . (int)$r['studio_rate_id'], true) ?><?php endforeach; ?>
-                                <!-- ＋ で複製する空の行（<template> の中身は画面に出ず、送信もされない）。キー '__K__' は複製のときに JS が本物に置き換える -->
-                                <template data-rate-tpl><?= $rateRow($blank, '__K__', true) ?></template>
-                            </div>
+                            <?php foreach ($list as $s): ?><?= $rateRow($s, $s['key'], true, $roomLines) ?><?php endforeach; ?>
+                            <!-- ＋ で複製する空の時間帯（<template> の中身は画面に出ず、送信もされない）。キー '__K__' は複製のときに JS が本物に置き換える -->
+                            <template data-rate-tpl><?= $rateRow($blank, '__K__', true, $roomLines) ?></template>
                         </div>
                     <?php endforeach; ?>
-                    <?php $newBlank = ['studio_rate_id' => 0, 'people' => null, 'day_type' => 0, 'start_min' => 600, 'end_min' => 1380, 'price' => '', 'disc' => [], 'room_ids' => []]; ?>
-                    <!-- 新しい見出し（対象・曜日）を作る行。料金を入れて保存すると、その見出しの下に並ぶ。「＋ 見出し」で何個でも足せる -->
+                    <!-- 新しい見出し（対象・曜日）を作る時間帯。料金を入れて保存すると、その見出しの下に並ぶ。「＋ 見出し」で何個でも足せる -->
                     <div class="sinfo-rate-group sinfo-rate-group--new">
-                        <div class="sinfo-rate-wrap">
-                            <?= $rateRow($newBlank, 'n1', false) ?>
-                        </div>
+                        <?= $rateRow($newBlank, 'n1', false, $roomLines) ?>
                     </div>
                     <button type="button" class="btn btn--sm sinfo-rate-new-add" data-rate-new-add><?= icon('add') ?> 見出し</button>
-                    <!-- 雛形（JS が複製）: 新しい見出しの行 / 追加の時間帯の1行。'__K__' = 行のキー、'__N__' = 時間帯の番号 -->
-                    <template data-rate-new-tpl><div class="sinfo-rate-group sinfo-rate-group--new"><div class="sinfo-rate-wrap"><?= $rateRow($newBlank, '__K__', false) ?></div></div></template>
+                    <!-- 雛形（JS が複製）: 新しい見出し / 追加の時間帯の1行。'__K__' = 時間帯のキー、'__N__' = 追加の時間帯の番号 -->
+                    <template data-rate-new-tpl><div class="sinfo-rate-group sinfo-rate-group--new"><?= $rateRow($newBlank, '__K__', false, $roomLines) ?></div></template>
                     <template data-slot-tpl><?= $slotLine(['x[__K__][__N__][day]', 'x[__K__][__N__][start]', 'x[__K__][__N__][end]'], 0, 600, 1380, true) ?></template>
             <div><button type="submit" class="btn btn--primary btn--sm" title="料金を空にした行は削除"><?= icon('save') ?> 保存</button></div>
         </form>

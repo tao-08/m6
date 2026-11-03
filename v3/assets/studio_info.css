@@ -241,8 +241,6 @@
 /* 新しい見出しの行: 曜日・開始・終了を1か所に縦に並べる（＋ 時間帯 で行を足す。4列目は × の場所） */
 .sinfo-rate-row__slots { grid-column: 1 / -1; display: grid; gap: 6px; }
 .sinfo-rate-row__slot { display: grid; grid-template-columns: 1.4fr 1fr 1fr 32px; gap: 6px; align-items: center; }
-.sinfo-rate-row__slot-add { justify-self: start; padding: 2px 10px; }
-.sinfo-rate-new-add { justify-self: start; }
 
 /* ---- 行の削除ボタン（編集フォーム。押すと行を隠して保存で削除）---- */
 .sinfo-row-del { width: 32px; height: 32px; color: var(--muted); }
@@ -250,7 +248,24 @@
 .sinfo-row-del .icon { font-size: 18px; }
 .sinfo-rate-row__top { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; }
 .sinfo-rate-row__top .sinfo-chips { flex: 1 1 auto; }
-.sinfo-rate-row[hidden], .sinfo-edit__row[hidden] { display: none; } /* display を指定した要素でも hidden を効かせる */
+.sinfo-rate-row[hidden], .sinfo-edit__row[hidden], .sinfo-slot-edit[hidden] { display: none; } /* display を指定した要素でも hidden を効かせる */
+
+/* ---- 料金の編集: 時間帯（.sinfo-slot-edit）の下に、部屋ごとの料金（.sinfo-rate-room）---- */
+.sinfo-slot-edit { display: grid; gap: 6px; }
+.sinfo-slot-edit + .sinfo-slot-edit, .sinfo-slot-edit + template + .sinfo-slot-edit { padding-top: 8px; border-top: 1px dashed var(--border); }
+.sinfo-slot-edit__time { display: flex; align-items: center; gap: 6px; }
+.sinfo-slot-edit__time select { flex: 1 1 0; min-width: 0; }
+.sinfo-slot-edit__time .sinfo-row-del { margin-left: auto; flex: none; }
+.sinfo-slot-edit__pick { display: flex; align-items: center; gap: 6px; color: var(--muted); }
+.sinfo-slot-edit__slots { display: grid; gap: 6px; }
+.sinfo-slot-edit__slot-add { justify-self: start; padding: 2px 10px; }
+.sinfo-slot-edit select, .sinfo-slot-edit input[type=number] { width: 100%; min-width: 0; padding: 8px 6px; }
+/* 部屋の行: 部屋名と1時間の料金を1行に。割引区分は次の行に、区分ごとに「種類 + 値」で並べる */
+.sinfo-rate-room { display: grid; grid-template-columns: 4.5em minmax(0, 1fr); gap: 6px; align-items: center; }
+.sinfo-rate-room__name { font-weight: 800; font-size: 13px; overflow-wrap: anywhere; }
+.sinfo-disc-cell { grid-column: 1 / -1; display: grid; grid-template-columns: 4.5em 5em minmax(0, 1fr); gap: 6px; align-items: center; }
+.sinfo-disc-cell__name { text-align: right; overflow-wrap: anywhere; }
+.sinfo-rate-new-add { justify-self: start; }
 
 /* ---- 基本情報: 住所・最寄り駅の下に区切り線（どちらも無いときは出さない）---- */
 .sinfo-info:has(span) { padding-bottom: 10px; border-bottom: 1px solid var(--border); }

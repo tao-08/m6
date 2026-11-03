@@ -688,34 +688,27 @@
       const tpl = group.querySelector('template[data-rate-tpl]');
       const row = tpl.content.firstElementChild.cloneNode(true);
       const key = 'j' + (++rateRowSeq);
-      // name 属性の '__K__'（rooms[__K__][]）を本物のキーに。key[] の hidden の値も同じキーにする
-      row.querySelectorAll('[name]').forEach((el) => { el.name = el.name.replace('__K__', key); });
-      row.querySelector('input[name="key[]"]').value = key;
-      const rows = group.querySelectorAll('.sinfo-rate-row:not(.sinfo-rate-row--head)');
+      // name 属性の '__K__'（slot[__K__][…]）を本物のキーに
+      row.querySelectorAll('[name]').forEach((el) => { el.name = el.name.replaceAll('__K__', key); });
+      row.dataset.key = key;
+      const rows = group.querySelectorAll('.sinfo-slot-edit:not([hidden])');
       const prev = rows[rows.length - 1];
       if (prev) {
-        const end = Number(prev.querySelector('select[name="end[]"]').value);
-        const start = row.querySelector('select[name="start[]"]');
-        const endSel = row.querySelector('select[name="end[]"]');
-        start.value = String(end);
-        endSel.value = String(Math.min(30 * 60, end + 6 * 60)); // 6時間後（上限 30:00）
-        // 部屋のチェックを直前の行からコピー（チップの並びは「全部屋・A・B…」でどの行も同じなので、順番で対応させる）
-        const prevChips = prev.querySelectorAll('.sinfo-chips input[type=checkbox]');
-        const newChips = row.querySelectorAll('.sinfo-chips input[type=checkbox]');
-        prevChips.forEach((c, n) => { if (newChips[n]) newChips[n].checked = c.checked; });
+        // 直前の時間帯の「終了」から始める（続きの時間帯をすぐ入れられるように）
+        const end = Number(prev.querySelector('select[name$="[end]"]').value);
+        row.querySelector('select[name$="[start]"]').value = String(end);
+        row.querySelector('select[name$="[end]"]').value = String(Math.min(30 * 60, end + 6 * 60)); // 6時間後（上限 30:00）
       }
       tpl.before(row);
-      row.querySelector('input[name="price[]"]').focus();
+      row.querySelector('input[data-price]')?.focus();
     });
 
-    // 雛形の '__K__'（と '__N__'）を本物に置き換える。name と data-key と key[] の値
+    // 雛形の '__K__'（と '__N__'）を本物に置き換える。name と data-key
     const fill = (root, key, n) => {
-      root.querySelectorAll('[name]').forEach((el) => {
-        el.name = el.name.replaceAll('__K__', key).replaceAll('__N__', String(n));
+      [root, ...root.querySelectorAll('[name]')].forEach((el) => {
+        if (el.name) el.name = el.name.replaceAll('__K__', key).replaceAll('__N__', String(n));
       });
-      root.querySelectorAll('[data-key]').forEach((el) => { el.dataset.key = key; });
-      const k = root.querySelector('input[name="key[]"]');
-      if (k) k.value = key;
+      [root, ...root.querySelectorAll('[data-key]')].forEach((el) => { if (el.dataset.key) el.dataset.key = key; });
     };
 
     let slotSeq = 0; // 追加の時間帯の番号（x[キー][番号][...]。ページ内で重複しなければ何でもいい）
@@ -727,7 +720,7 @@
         const group = tpl.content.firstElementChild.cloneNode(true);
         fill(group, 'j' + (++rateRowSeq), 0);
         newBtn.before(group);
-        group.querySelector('select[name="people[]"]').focus();
+        group.querySelector('select[name$="[people]"]').focus();
         return;
       }
       // 「＋ 時間帯」: 同じ料金で、曜日・開始・終了の行を足す
@@ -748,21 +741,21 @@
 
   // ---- 9. 行の削除 ----
   //   サーバーは「主な欄が空の行 = 削除」なので、その欄を空にして行を隠すだけ（保存するまで DB は変わらない）
-  //   フォームの action ごとに「主な欄」の名前が違う
+  //   フォームの action ごとに「主な欄」の名前が違う。料金表は1つの時間帯に部屋の数だけ料金欄があるので、全部空にする
   const DEL_FIELD = {
-    save_rates: 'price[]', save_packs: 'price[]', save_rentals: 'name[]',
-    save_equipment: 'model[]', save_rooms: 'name[]', save_discounts: 'name[]',
+    save_rates: 'input[data-price]', save_packs: 'input[name="price[]"]', save_rentals: 'input[name="name[]"]',
+    save_equipment: 'input[name="model[]"]', save_rooms: 'input[name="name[]"]', save_discounts: 'input[name="name[]"]',
   };
   const setupRowDelete = () => {
     document.addEventListener('click', (ev) => {
       const btn = ev.target.closest('[data-row-del]');
       if (!btn) return;
       const form = btn.closest('form');
-      const row = btn.closest('.sinfo-rate-row, .sinfo-edit__row');
-      const field = form && row && DEL_FIELD[form.elements.action?.value];
-      const input = field && row.querySelector(`[name="${field}"]`);
-      if (!input) return;
-      input.value = '';
+      const row = btn.closest('.sinfo-slot-edit, .sinfo-rate-row, .sinfo-edit__row');
+      const sel = form && row && DEL_FIELD[form.elements.action?.value];
+      const inputs = sel ? row.querySelectorAll(sel) : [];
+      if (!inputs.length) return;
+      inputs.forEach((input) => { input.value = ''; });
       row.hidden = true;
     });
   };

@@ -119,6 +119,22 @@ const STUDIO_DISCOUNT_LINKS = [
     'studio_pack' => ['studio_pack_discount', 'studio_pack_id'],
 ];
 
+/** 割引の種類（migrations/090 の kind）。画面の選択肢の表示名 */
+const STUDIO_DISC_KINDS = [0 => '金額', 1 => '円引', 2 => '％引'];
+
+/**
+ * 割引を適用した料金。$kind 0 = 金額指定（$value がそのまま料金）/ 1 = ◯円引き / 2 = ◯%引き（%引きの端数は円未満を四捨五入）
+ *   引きすぎてマイナスにならないよう 0 で止める
+ */
+function studio_disc_apply(int $base, int $kind, int $value): int
+{
+    return match ($kind) {
+        1 => max(0, $base - $value),
+        2 => max(0, (int)round($base * (100 - min(100, $value)) / 100)),
+        default => $value,
+    };
+}
+
 /** 割引区分の数の上限（画面の列が増えすぎないように） */
 const STUDIO_DISCOUNT_MAX = 5;
 

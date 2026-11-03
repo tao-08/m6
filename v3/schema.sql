@@ -1475,7 +1475,8 @@ CREATE TABLE studio_discount (
 CREATE TABLE studio_rate_discount (
     studio_rate_id     INT UNSIGNED NOT NULL,
     studio_discount_id INT UNSIGNED NOT NULL,
-    price              INT UNSIGNED NOT NULL,              -- その区分の1時間の料金
+    price              INT UNSIGNED NOT NULL,              -- kind に応じて: 金額 / 引く円 / 引く%
+    kind               TINYINT UNSIGNED NOT NULL DEFAULT 0, -- 0 = 金額指定 / 1 = ◯円引き / 2 = ◯%引き（migrations/090）
     PRIMARY KEY (studio_rate_id, studio_discount_id),
     KEY idx_srd_discount (studio_discount_id),
     CONSTRAINT fk_srd_rate FOREIGN KEY (studio_rate_id) REFERENCES studio_rate (studio_rate_id)
@@ -1487,7 +1488,8 @@ CREATE TABLE studio_rate_discount (
 CREATE TABLE studio_pack_discount (
     studio_pack_id     INT UNSIGNED NOT NULL,
     studio_discount_id INT UNSIGNED NOT NULL,
-    price              INT UNSIGNED NOT NULL,              -- その区分のパック1回の料金
+    price              INT UNSIGNED NOT NULL,              -- kind に応じて: 金額 / 引く円 / 引く%
+    kind               TINYINT UNSIGNED NOT NULL DEFAULT 0, -- 0 = 金額指定 / 1 = ◯円引き / 2 = ◯%引き（migrations/090）
     PRIMARY KEY (studio_pack_id, studio_discount_id),
     KEY idx_spd_discount (studio_discount_id),
     CONSTRAINT fk_spd_pack FOREIGN KEY (studio_pack_id) REFERENCES studio_pack (studio_pack_id)
