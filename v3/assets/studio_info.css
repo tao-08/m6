@@ -108,8 +108,11 @@
 /* ---- バンド / 個人練習の切り替え（シミュレーションの一番上。少し大きめのボタン） ---- */
 .sinfo-seg--mode label { padding: 10px 4px; font-size: 14px; display: inline-flex; align-items: center; justify-content: center; gap: 4px; }
 
-/* ---- 一覧カードの「MAX」バッジ（最大の部屋の広さの前。.tag より少し小さく、文字の高さをそろえる）---- */
-.sinfo-max { font-size: 10px; padding: 1px 5px; vertical-align: 1px; }
+/* ---- 一覧カードの広さ（「MAX」＋帖数）。枠なしの小さな薄い文字でコンパクトに ----
+   .sinfo-area = inline-flex にして、MAX と帖数を横並び・上下中央（align-items: center）にそろえる。gap = 2つの間の余白
+   .sinfo-max の line-height: 1 = 行の高さを文字の高さぴったりにして、上下に余白が偏らないようにする */
+.sinfo-area { display: inline-flex; align-items: center; gap: 3px; }
+.sinfo-max { font-size: 9px; font-weight: 800; letter-spacing: .06em; line-height: 1; color: var(--muted); }
 
 /* ---- バンド練習 / 個人練習のタブ（料金シミュレーション・料金表・パックをまとめて切り替える）---- */
 .sinfo-tabs { margin-bottom: 12px; }
