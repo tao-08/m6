@@ -45,11 +45,16 @@ function studio_target_options(?int $people): string
     return $html;
 }
 
-/** 料金表の時刻の上限（30:00 = 翌朝6時。深夜パックを1行で書けるように 24時を超えて持つ） */
-const STUDIO_MAX_MIN = 30 * 60;
+/**
+ * DB に入れてよい時刻（0時からの分）の上限 = 48:00。画面には出さない「内部の持ち方」の話
+ *   日をまたぐ時間帯は「終了 = 翌日の時刻 + 24時間」で持つ（例: 23:00〜10:00 → 開始 1380 / 終了 2040）。
+ *   画面の入力・表示は 0:00〜23:30 の「時計の時刻」だけ（24時以降の表記はしない）。変換は studio_span() と studio_fmt_clock()
+ *   古いデータの「25:00」「29:00」のような値も、そのまま読める（表示は 1:00・5:00 になる）
+ */
+const STUDIO_MAX_MIN = 48 * 60;
 
 /**
- * 0時からの分 → "HH:MM"（24時を超えてもそのまま 25:00 のように出す）
+ * 0時からの分 → "H:MM"。「長さ」の表示用（2時間30分 → "2:30"）。時刻には studio_fmt_clock を使う
  *   intdiv() = 割り算の商（小数を切り捨てた整数）、% = 余り
  *   sprintf('%02d') = 2桁に満たなければ 0 で埋める（5 → "05"）
  */
@@ -59,16 +64,54 @@ function studio_fmt_min(int $min): string
 }
 
 /**
- * 時刻の <select> の選択肢（30分きざみ、0:00〜30:00）を HTML で返す
- *   $selected と同じ値の option に selected を付ける
+ * 0時からの分 → 時計の時刻 "H:MM"（24時間で一周。25:00 → "1:00" / 24:00 → "0:00"）
+ *   料金表・パックの時間帯の表示に使う。% 1440 = 1日（24時間 = 1440分）で割った余り
+ */
+function studio_fmt_clock(int $min): string
+{
+    return studio_fmt_min($min % 1440);
+}
+
+/**
+ * 時刻の <select> の選択肢（30分きざみ、0:00〜23:30）を HTML で返す
+ *   $selected と同じ時刻の option に selected を付ける。25:00 のような古い値は 1:00 に直して選ぶ（% 1440）
  */
 function studio_time_options(?int $selected): string
 {
+    $sel = $selected === null ? null : $selected % 1440;
     $html = '';
-    for ($m = 0; $m <= STUDIO_MAX_MIN; $m += 30) {
-        $html .= '<option value="' . $m . '"' . ($m === $selected ? ' selected' : '') . '>' . studio_fmt_min($m) . '</option>';
+    for ($m = 0; $m < 1440; $m += 30) {
+        $html .= '<option value="' . $m . '"' . ($m === $sel ? ' selected' : '') . '>' . studio_fmt_min($m) . '</option>';
     }
     return $html;
+}
+
+/**
+ * 時間帯の入力（開始・終了）を、DB に入れる分（0時からの分）に直す。使えない入力は null
+ *   入力は 0:00〜23:30 の時計の時刻（<select> の値の文字列）
+ *   ・開始 < 終了 → そのまま（例: 18:00〜23:00）。古い画面から 25:00 のような値が来ても、そのまま通す
+ *   ・終了 ≦ 開始 → 終了は翌日。24時間（1440分）足す（例: 23:00〜10:00 → 1380〜2040 / 18:00〜0:00 → 1080〜1440）
+ *   ・0:00〜0:00 は「終日」（0〜1440）。0:00 以外で 開始 = 終了 は、24時間ぴったりの時間帯になってしまうので不正
+ *   ctype_digit = 数字だけの文字列か（"-5" や "1e3" や空文字は false）
+ *   戻り値: [開始, 終了] / null
+ */
+function studio_span(string $start, string $end): ?array
+{
+    if (!ctype_digit($start) || !ctype_digit($end) || (int)$start > STUDIO_MAX_MIN || (int)$end > STUDIO_MAX_MIN) {
+        return null;
+    }
+    $s = (int)$start;
+    $e = (int)$end;
+    if ($s % 30 !== 0 || $e % 30 !== 0) {
+        return null; // 30分きざみ
+    }
+    if ($s < $e) {
+        return [$s, $e];
+    }
+    if ($s === 0 && $e === 0) {
+        return [0, 1440]; // 終日
+    }
+    return ($s === $e || $s >= 1440) ? null : [$s, $e + 1440];
 }
 
 /**
