@@ -457,6 +457,28 @@
       render();
     });
 
+    // 部屋ごとの設定（30分スタート可 hs / 30分単位で利用可 hu）に合わせて、「開始」「時間」の選択肢を絞る
+    //   最初に全部の選択肢を覚えておき（allOpts）、部屋が変わるたびに「毎時ちょうど（60の倍数）だけ」などに作り直す
+    //   作り直したあと、元の値が無くなっていたら 1つ前の「ちょうどの値」（切り捨て）に寄せる。change を出すのは、独自プルダウンの表示文字を更新させるため
+    const startSel = form.elements.start;
+    const durSel = form.elements.dur;
+    const allOpts = new Map([startSel, durSel].map((sel) => [sel, [...sel.options].map((o) => [o.value, o.textContent])]));
+    const applyRoomRule = () => {
+      const room = data.rooms.find((r) => r.id === Number(form.elements.room?.value || 0));
+      const hs = room ? room.hs : 1; // 部屋の無いスタジオ = 制限なし
+      const hu = room ? room.hu : 1;
+      [[startSel, hs], [durSel, hu]].forEach(([sel, half]) => {
+        const keep = Number(sel.value);
+        const opts = allOpts.get(sel).filter(([v]) => half || Number(v) % 60 === 0);
+        sel.replaceChildren(...opts.map(([v, txt]) => new Option(txt, v)));
+        const val = half ? keep : keep - (keep % 60); // 30分が使えないときは、毎時ちょうどに切り捨て
+        sel.value = String(val);
+        if (sel.value === '') sel.selectedIndex = 0; // 時間が最小（1:00）を割る場合など
+        sel.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+    };
+    form.elements.room?.addEventListener('change', applyRoomRule);
+
     // バンド ⇔ 個人を切り替えたら人数をそれっぽい値に（バンド 5人 / 個人 1人）。手で変えた人数は覚えておいて戻す
     const people = form.elements.people;
     const remembered = { band: people.value, solo: '1' };
@@ -472,6 +494,7 @@
     form.addEventListener('input', render);
     form.addEventListener('change', render);
     if (form.elements.mode.value === 'solo') people.value = '1'; // 個人練習の料金しか無いスタジオ
+    applyRoomRule(); // 最初の部屋の設定で選択肢を絞る（change → render も走る）
     render(); // 最初に1回表示
   };
 

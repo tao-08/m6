@@ -1359,6 +1359,8 @@ CREATE TABLE studio_room (
     name           VARCHAR(50)  NOT NULL,          -- 部屋名（例: Aスタ）
     area_jo        DECIMAL(5,1) UNSIGNED NULL,     -- 広さ（帖。畳も同じ扱い）。検索・絞り込み用の数値（migrations/087）
     size_note      VARCHAR(50)  NULL,              -- 備考（例: 最大8人 / 2階）。広さの数字はここに書かない
+    half_start     TINYINT(1) UNSIGNED NOT NULL DEFAULT 1, -- 1=30分スタート可 / 0=毎時ちょうどだけ（migrations/091）
+    half_unit      TINYINT(1) UNSIGNED NOT NULL DEFAULT 1, -- 1=30分単位で利用可 / 0=1時間単位（migrations/091）
     sort_order     INT UNSIGNED NOT NULL DEFAULT 0,
     PRIMARY KEY (studio_room_id),
     KEY idx_sroom_studio (studio_id),
