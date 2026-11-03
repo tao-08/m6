@@ -29,7 +29,7 @@ const STUDIO_SOLO_MAX = 6;
  */
 function studio_target_label(?int $people): string
 {
-    return $people === null ? 'バンド' : '個人' . $people . '人';
+    return $people === null ? 'バンド練習' :'個人' . $people . '人';
 }
 
 /** 「対象」の <select> の選択肢（0 = バンド、1〜STUDIO_SOLO_MAX = 個人n人） */

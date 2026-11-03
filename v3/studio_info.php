@@ -841,7 +841,7 @@ render_header($studio['name'], 'tools');
         <?php if ($hasSolo && $hasBand): ?>
             <!-- バンド / 個人練習の切り替え（両方の料金があるときだけ出す） -->
             <div class="sinfo-seg sinfo-seg--mode" role="radiogroup" aria-label="対象">
-                <label><input type="radio" name="mode" value="band" checked> <?= icon('groups') ?> バンド</label>
+                <label><input type="radio" name="mode" value="band" checked> <?= icon('groups') ?> バンド練習</label>
                 <label><input type="radio" name="mode" value="solo"> <?= icon('person') ?> 個人練習</label>
             </div>
         <?php else: ?>

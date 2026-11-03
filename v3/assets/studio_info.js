@@ -478,7 +478,7 @@
     const SECTIONS = { info: '基本情報', rooms: '部屋', discounts: '割引区分', rates: '料金', packs: 'パック', rentals: 'レンタル', equipment: '機材' };
     const INFO = { reserve_url: '予約ページ', website_url: 'サイト', address: '住所', access: '最寄り駅', phone: '電話', student_note: '割引の条件', note: 'メモ' };
     const DAY_ONLY = ['全日', '平日のみ', '土日祝のみ'];
-    const target = (p) => (p == null ? 'バンド' : '個人' + p + '人');
+    const target = (p) => (p == null ? 'バンド練習' :'個人' + p + '人');
     const where = (r) => [target(r.people), r.rooms.length ? r.rooms.join('・') : '全部屋', DAYS[r.day_type]].join('・');
     // 割引区分ごとの料金 r.discounts = {区分名: 料金} → 「（学割 ¥1,650・U20 ¥1,100）」
     const price = (r) => {
