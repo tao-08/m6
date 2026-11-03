@@ -1080,11 +1080,14 @@ render_header($studio['name'], 'tools');
         ksort($byPpl);
         // data-ppl-has = この部屋の料金がある人数（例: "1 2"）。選んだ人数の料金が無い部屋は見出しごと隠す
         $pplHas = $soloPanel ? implode(' ', array_keys($byPpl)) : '';
+        // 全部屋が1つのグループにまとまったときは、部屋名を並べず「全部屋」と出す（部屋が2つ以上あるときだけ。1部屋だけのスタジオは部屋名と広さを残す）
+        //   array_diff(A, B) = A にあって B に無いもの。部屋 id の全部（$roomName のキー）から、このグループの部屋を引いて、何も残らなければ全部入っている
+        $allRooms = count($roomName) >= 2 && $g['rooms'] && !array_diff(array_keys($roomName), $g['rooms']);
     ?>
         <div<?= $soloPanel ? ' data-ppl-has="' . $pplHas . '"' . (isset($byPpl[$pplSel]) ? '' : ' hidden') : '' ?>>
             <?php if ($rooms): ?>
                 <h3 class="sinfo-sub">
-                    <?php if (!$g['rooms']): ?>全部屋<?php else: ?>
+                    <?php if (!$g['rooms'] || $allRooms): ?>全部屋<?php else: ?>
                         <!-- 部屋が複数のとき、「・」でつなぐ。画面が狭くて折り返すときは、部屋の頭で改行し、行頭の「・」は出さない（CSS だけ。.sinfo-rooms の説明を参照）。
                              部屋の1つ1つ（名前＋広さ）が .sinfo-room。途中で改行されない（nowrap）ので、「Bスタ 8帖」が2行に割れない -->
                         <span class="sinfo-rooms"><span class="sinfo-rooms__in">
