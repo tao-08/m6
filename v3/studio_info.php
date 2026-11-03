@@ -1042,6 +1042,8 @@ render_header($studio['name'], 'tools');
                 $panelGroups[] = ['rooms' => $g['rooms'], 'rows' => $rowsT];
             }
         }
+        // 料金が同じ部屋は1つの見出しにまとめる（パネルごとにやる。バンドの料金は同じでも個人の料金は違う、ということがあるため）
+        $panelGroups = studio_merge_same_rate_groups($panelGroups);
         // 個人練習の料金だけを出すパネルか（タブの「個人」側 / タブが無く個人の料金しか無いスタジオ）
         //   → 「対象」列の代わりに、上の人数チップ（1人・2人 …）で表を切り替える（JS: setupSoloPeople）
         $soloPanel = $panel === 'solo' || ($panel === null && $hasSolo && !$hasBand);

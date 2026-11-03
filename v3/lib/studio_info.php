@@ -173,6 +173,43 @@ function studio_merge_same_price(array $rows): array
     return array_values($out); // キー（目印）はもう要らないので、0, 1, 2 … の配列に戻す
 }
 
+/**
+ * 料金が全部同じ部屋のグループを1つにまとめる（料金表の見出しが「Aスタ・Bスタ」になる）
+ *   $groups = ['rooms' => [部屋id…], 'rows' => [料金の行…]] の配列（rooms が空 = 全部屋共通）
+ *   保存すると料金は「1行 = 1つの時間帯 × 1つの部屋」になるので、同じ料金でも部屋ごとに別グループになる。それを表示のときに合体させる
+ *   ・比べるのは 人数・曜日・開始・終了・料金・割引の料金。部屋や行の id は比べない（id は違って当然なので）
+ *   ・全部屋共通（rooms が空）のグループと、料金が1つも無い「見出しだけ」のグループ（rows が空）は、そのまま残す
+ *   ・並びは最初に出てきた順（呼び出し側で部屋の画面順にそろえてある）。合体したグループの位置は、いちばん先頭の部屋のところ
+ */
+function studio_merge_same_rate_groups(array $groups): array
+{
+    $out = [];
+    $pos = []; // 「料金の目印 => $out の何番目か」
+    foreach ($groups as $g) {
+        if (!$g['rooms'] || !$g['rows']) {
+            $out[] = $g;
+            continue;
+        }
+        // 目印 = 行ごとの文字列を並べ替えてつなげたもの（行の並びが違っても同じ料金なら同じ目印になるように sort する）
+        $keys = [];
+        foreach ($g['rows'] as $r) {
+            $disc = $r['disc'];
+            ksort($disc); // 割引区分の順番が違っても同じと見なす
+            $keys[] = ($r['people'] ?? 0) . '|' . (int)$r['day_type'] . '|' . (int)$r['start_min'] . '|' . (int)$r['end_min'] . '|' . (int)$r['price'] . '|' . json_encode($disc);
+        }
+        sort($keys);
+        $sig = implode(';', $keys);
+        if (isset($pos[$sig])) {
+            // 同じ料金のグループがもうある → 部屋だけ足す（料金の行は同じなので、先に入れた方のまま）
+            $out[$pos[$sig]]['rooms'] = array_values(array_unique(array_merge($out[$pos[$sig]]['rooms'], $g['rooms'])));
+        } else {
+            $pos[$sig] = count($out);
+            $out[] = $g;
+        }
+    }
+    return $out;
+}
+
 /** 円の表示（1234 → "¥1,234"）。number_format = 3桁ごとにカンマ */
 function studio_yen(int $yen): string
 {
