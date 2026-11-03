@@ -170,6 +170,11 @@
 .sinfo-seg--disc { flex-wrap: wrap; }
 .sinfo-seg--disc label { flex: 1 0 auto; }
 
+/* ---- 料金表の時間帯（同じ料金をまとめた行は、時間帯を縦に並べる）---- */
+.sinfo-slot { display: block; white-space: nowrap; } /* 1つの時間帯 = 1行。途中で折り返さない */
+/* 曜日は幅をそろえて、時刻の位置を縦にそろえる（em = 文字の大きさが基準の単位。「土日祝」の3文字＋余白） */
+.sinfo-slot__day { display: inline-block; min-width: 3.5em; color: var(--muted); font-size: 12px; }
+
 /* ---- 料金の編集: 対象・曜日の見出し → 行（行ごとに部屋のチップ）---- */
 .sinfo-rate-edit { gap: 12px; }
 /* 見出し（対象・曜日）ごとに枠で囲む */

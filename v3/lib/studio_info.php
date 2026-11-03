@@ -136,6 +136,27 @@ function studio_discounts(PDO $pdo, int $studioId): array
     return array_map(fn($d) => ['studio_discount_id' => (int)$d['studio_discount_id'], 'name' => $d['name'], 'day_type' => (int)$d['day_type']], $st->fetchAll());
 }
 
+/**
+ * 料金表の表示用: 「対象」と「料金（通常＋割引区分ごとの料金すべて）」が同じ行を1行にまとめる
+ *   例: 平日 18:00〜23:00 ¥3,000 と 土日祝 10:00〜23:00 ¥3,000 → 1行（時間帯が2つ）
+ *   戻り値: [['row' => 代表の行（料金の表示に使う）, 'slots' => [まとめた行, …]], …]
+ *           並びは「最初に出てきた位置」のまま（元の並び = 対象 → 曜日 → 開始時刻）
+ *   ※ 表示だけの処理。DB の行は別々のまま（編集・シミュレーションには影響しない）
+ */
+function studio_merge_same_price(array $rows): array
+{
+    $out = [];
+    foreach ($rows as $r) {
+        $disc = $r['disc'];
+        ksort($disc); // 区分の順番が違っても同じ料金と見なすため、区分 id 順にそろえる（ksort = キーで並べ替え）
+        // 比べるための「目印」の文字列。json_encode で配列も1つの文字列にできる
+        $key = ($r['people'] ?? 0) . '|' . (int)$r['price'] . '|' . json_encode($disc);
+        $out[$key]['row'] ??= $r; // ??= = まだ無いときだけ入れる（最初の行を代表にする）
+        $out[$key]['slots'][] = $r;
+    }
+    return array_values($out); // キー（目印）はもう要らないので、0, 1, 2 … の配列に戻す
+}
+
 /** 円の表示（1234 → "¥1,234"）。number_format = 3桁ごとにカンマ */
 function studio_yen(int $yen): string
 {

@@ -874,13 +874,17 @@ render_header($studio['name'], 'tools');
             <div class="sinfo-table-wrap">
             <table class="sinfo-table">
                 <!-- 割引区分ごとに1列（学割・U20 …）。料金が1つも無い区分の列は出さない -->
-                <thead><tr><?php if ($hasSolo): ?><th>対象</th><?php endif; ?><th>曜日</th><th>時間</th><th class="num">料金</th><?php foreach ($rateDisc as $d): ?><th class="num"><?= h($d['name']) ?></th><?php endforeach; ?></tr></thead>
+                <!-- 同じ料金（対象・通常・割引すべて同じ）の行は1行にまとめ、時間帯の欄に「曜日 開始〜終了」を縦に並べる（studio_merge_same_price） -->
+                <thead><tr><?php if ($hasSolo): ?><th>対象</th><?php endif; ?><th>時間帯</th><th class="num">料金</th><?php foreach ($rateDisc as $d): ?><th class="num"><?= h($d['name']) ?></th><?php endforeach; ?></tr></thead>
                 <tbody>
-                <?php foreach ($g['rows'] as $r): ?>
+                <?php foreach (studio_merge_same_price($g['rows']) as $m): $r = $m['row']; ?>
                     <tr>
                         <?php if ($hasSolo): ?><td><?= h(studio_target_label($r['people'] === null ? null : (int)$r['people'])) ?></td><?php endif; ?>
-                        <td><?= h(STUDIO_DAY_TYPES[(int)$r['day_type']] ?? '') ?></td>
-                        <td><?= h(studio_fmt_min((int)$r['start_min'])) ?>〜<?= h(studio_fmt_min((int)$r['end_min'])) ?></td>
+                        <td>
+                            <?php foreach ($m['slots'] as $s): ?>
+                                <span class="sinfo-slot"><span class="sinfo-slot__day"><?= h(STUDIO_DAY_TYPES[(int)$s['day_type']] ?? '') ?></span><?= h(studio_fmt_min((int)$s['start_min'])) ?>〜<?= h(studio_fmt_min((int)$s['end_min'])) ?></span>
+                            <?php endforeach; ?>
+                        </td>
                         <td class="num"><?= h(studio_yen((int)$r['price'])) ?></td>
                         <?php foreach ($rateDisc as $d): $dp = $r['disc'][$d['studio_discount_id']] ?? null; ?>
                             <td class="num sinfo-student"><?= $dp === null ? '<span class="muted">-</span>' : h(studio_yen($dp)) ?></td>
