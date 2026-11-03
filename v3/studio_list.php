@@ -135,8 +135,9 @@ render_header('スタジオ情報', 'tools');
                         </span>
                     <?php endif; ?>
                     <?php if ($s['access']): ?><span><?= icon('train') ?> <?= h($s['access']) ?></span><?php endif; ?>
-                    <!-- 広さ: アイコンの代わりに小さな「MAX」バッジ（= いちばん広い部屋の帖数だとひと目でわかる）。CSS: .sinfo-max -->
-                    <?php if ($s['max_area'] !== null): ?><span title="いちばん広い部屋"><span class="tag sinfo-max">MAX</span> <?= h(studio_fmt_jo($s['max_area'])) ?></span><?php endif; ?>
+                    <!-- 広さ: 枠なしの小さな薄い「MAX」＋帖数（= いちばん広い部屋だとひと目でわかる）。
+                         .sinfo-area が inline-flex（中身を横並びにして align-items:center で上下中央にそろえる）。CSS: .sinfo-area / .sinfo-max -->
+                    <?php if ($s['max_area'] !== null): ?><span class="sinfo-area" title="いちばん広い部屋"><span class="sinfo-max">MAX</span><?= h(studio_fmt_jo($s['max_area'])) ?></span><?php endif; ?>
                     <?php if ($s['min_price'] !== null): ?><span title="バンド練習の1時間の最安料金"><?= icon('payments') ?> <?= h(studio_yen((int)$s['min_price'])) ?>〜/h</span><?php endif; ?>
                     <!-- 個人練習（1人利用）の最安。バンドの最安の隣に、人のアイコンで並べる。個人1人の料金が無ければ出さない（min_solo_price が NULL） -->
                     <?php if ($s['min_solo_price'] !== null): ?><span title="個人練習（1人）の1時間の最安料金"><?= icon('person') ?> <?= h(studio_yen((int)$s['min_solo_price'])) ?>〜/h</span><?php endif; ?>
