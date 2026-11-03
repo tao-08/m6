@@ -272,7 +272,7 @@
 /* ---- 新しい行の「追加の時間帯」（曜日・開始・終了を横に並べる。グリッドの1行を丸ごと使う）---- */
 /* 新しい見出しの行: 曜日・開始・終了を1か所に縦に並べる（＋ 時間帯 で行を足す。4列目は × の場所） */
 .sinfo-rate-row__slots { grid-column: 1 / -1; display: grid; gap: 6px; }
-.sinfo-rate-row__slot { display: grid; grid-template-columns: 1.4fr 1fr 1fr 32px; gap: 6px; align-items: center; }
+.sinfo-rate-row__slot { display: grid; grid-template-columns: 1.2fr 2.8fr 32px; gap: 6px; align-items: center; }
 
 /* ---- 行の削除ボタン（編集フォーム。押すと行を隠して保存で削除）---- */
 .sinfo-row-del { width: 32px; height: 32px; color: var(--muted); }
@@ -305,3 +305,8 @@
 /* ---- パック編集: 時間帯ブロック ---- */
 .sinfo-edit__block { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--border); border-radius: 10px; }
 .sinfo-edit__item { padding-left: 10px; border-left: 3px solid var(--border); }
+
+/* ---- 時間帯の入力: 時 〜 時 + 「:30」チェック（studio_time_pair） ---- */
+.sinfo-tp { display: flex; align-items: center; gap: 6px; flex: 1 1 auto; min-width: 0; }
+.sinfo-tp select { flex: 1 1 0; min-width: 0; }
+.sinfo-tp__half { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; font-size: 13px; }

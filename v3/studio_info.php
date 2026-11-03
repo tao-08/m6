@@ -240,6 +240,40 @@ function studio_row_del(int $id): string
     return $id === 0 ? '' : '<button type="button" class="icon-btn sinfo-row-del" data-row-del title="削除" aria-label="削除">' . icon('delete') . '</button>';
 }
 
+/**
+ * 時間帯の「開始〜終了」入力（時のプルダウン2つ + 「:30」チェック1つ）
+ *   ・送信される値は今までと同じ（開始・終了の「0時からの分」の hidden 入力 2 つ）。時のプルダウンとチェックは JS（setupTimePair）が hidden に反映する
+ *     → サーバー側（studio_span）は変えなくてよい
+ *   ・チェック = 開始・終了ともに 30 分ずらす（9時〜18時 + :30 = 9:30〜18:30）
+ *   ・開始と終了で「分」が違う時間帯（9:30〜18:00 など）は、チェック1つでは表せない。保存済みのデータを壊さないよう、従来の 30 分きざみのプルダウンのまま出す
+ *   $names = [開始の name, 終了の name]
+ */
+function studio_time_pair(array $names, int $start, int $end): string
+{
+    $s = $start % 1440; // 25:00 のような古い値は時計の時刻に直す（studio_time_options と同じ）
+    $e = $end % 1440;
+    if ($s % 60 !== $e % 60) {
+        return '<select name="' . h($names[0]) . '" aria-label="開始" data-native>' . studio_time_options($start) . '</select>'
+            . '<span class="muted">〜</span>'
+            . '<select name="' . h($names[1]) . '" aria-label="終了" data-native>' . studio_time_options($end) . '</select>';
+    }
+    $hours = function (int $sel): string {
+        $o = '';
+        for ($hh = 0; $hh < 24; $hh++) {
+            $o .= '<option value="' . $hh . '"' . ($hh === $sel ? ' selected' : '') . '>' . $hh . '時</option>';
+        }
+        return $o;
+    };
+    return '<span class="sinfo-tp" data-tp>'
+        . '<input type="hidden" name="' . h($names[0]) . '" value="' . $s . '" data-tp-s>'
+        . '<input type="hidden" name="' . h($names[1]) . '" value="' . $e . '" data-tp-e>'
+        . '<select aria-label="開始" data-native data-tp-hs>' . $hours(intdiv($s, 60)) . '</select>'
+        . '<span class="muted">〜</span>'
+        . '<select aria-label="終了" data-native data-tp-he>' . $hours(intdiv($e, 60)) . '</select>'
+        . '<label class="sinfo-tp__half" title="30分始まり"><input type="checkbox" data-tp-half' . ($s % 60 === 30 ? ' checked' : '') . '>:30</label>'
+        . '</span>';
+}
+
 /** 0 以上の整数の文字列か（料金・台数の入力チェック用）。ctype_digit = 全部が 0〜9 の文字か */
 function studio_uint(string $s, int $max): bool
 {
@@ -762,8 +796,7 @@ $slotLine = function (array $names, int $day, int $start, int $end, bool $remova
     }
     return '<span class="sinfo-rate-row__slot">'
         . '<select name="' . h($names[0]) . '" aria-label="曜日">' . $days . '</select>'
-        . '<select name="' . h($names[1]) . '" aria-label="開始" data-native>' . studio_time_options($start) . '</select>'
-        . '<select name="' . h($names[2]) . '" aria-label="終了" data-native>' . studio_time_options($end) . '</select>'
+        . studio_time_pair([$names[1], $names[2]], $start, $end)
         . ($removable ? '<button type="button" class="icon-btn sinfo-row-del" data-slot-del title="削除" aria-label="削除">' . icon('close') . '</button>' : '<span></span>')
         . '</span>';
 };
@@ -792,9 +825,7 @@ $rateRow = function (array $slot, string $key, bool $fixed, array $roomLines) us
             // 時刻は data-native = 独自の選択 UI に変えず、ブラウザ標準のプルダウン（スマホではドラム式）にする。
             //   選択肢が 61 個（30分きざみ）と多く、細いマスでも文字が切れないため
             . '<div class="sinfo-slot-edit__time">'
-            . '<select name="' . $n . '[start]" aria-label="開始" data-native>' . studio_time_options((int)$slot['start_min']) . '</select>'
-            . '<span class="muted">〜</span>'
-            . '<select name="' . $n . '[end]" aria-label="終了" data-native>' . studio_time_options((int)$slot['end_min']) . '</select>'
+            . studio_time_pair([$n . '[start]', $n . '[end]'], (int)$slot['start_min'], (int)$slot['end_min'])
             . ($existing ? '<button type="button" class="icon-btn sinfo-row-del" data-row-del title="削除" aria-label="削除">' . icon('delete') . '</button>' : '')
             . '</div>';
     } else {
@@ -1338,9 +1369,7 @@ foreach ($packs as $p) {
                                 <option value="<?= $k ?>"<?= $k === (int)$p['day_type'] ? ' selected' : '' ?>><?= h($label) ?></option>
                             <?php endforeach; ?>
                         </select>
-                        <select name="bstart[<?= $b ?>]" aria-label="時間帯の開始"><?= studio_time_options((int)$p['start_min']) ?></select>
-                        <span class="muted">〜</span>
-                        <select name="bend[<?= $b ?>]" aria-label="時間帯の終了"><?= studio_time_options((int)$p['end_min']) ?></select>
+                        <?= studio_time_pair(['bstart[' . $b . ']', 'bend[' . $b . ']'], (int)$p['start_min'], (int)$p['end_min']) ?>
                     </div>
                     <?php foreach (array_merge($g['items'], array_fill(0, $g['items'] ? 2 : 3, $blankItem)) as $p): // 既存の行 + 空の行（追加用） ?>
                         <div class="sinfo-edit__row sinfo-edit__item">
