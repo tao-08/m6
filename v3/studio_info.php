@@ -367,8 +367,9 @@ if (is_post()) {
             $day = (int)($s['day'] ?? 0);
             $start = (string)($s['start'] ?? '');
             $end = (string)($s['end'] ?? '');
-            $timeOk = $people >= 0 && $people <= STUDIO_SOLO_MAX && array_key_exists($day, STUDIO_DAY_TYPES)
-                && studio_uint($start, STUDIO_MAX_MIN) && studio_uint($end, STUDIO_MAX_MIN) && (int)$start < (int)$end;
+            // 開始・終了は 0:00〜23:30 の時計の時刻。終了 ≦ 開始 なら翌日の終了（23:00〜10:00 など）。変換は studio_span（不正なら null）
+            $span = studio_span($start, $end);
+            $timeOk = $people >= 0 && $people <= STUDIO_SOLO_MAX && array_key_exists($day, STUDIO_DAY_TYPES) && $span !== null;
             $slotRows = []; // この時間帯の、料金が入った部屋の行
             $hasExisting = false;
             foreach ((array)($s['room'] ?? []) as $rid => $line) {
@@ -387,7 +388,7 @@ if (is_post()) {
                 }
                 // 部屋は「このスタジオの部屋」だけ（0 は部屋が未登録のときだけ）。送られてきた id は信用しない
                 if (!$timeOk || !studio_uint($price, 999999) || !($rid === 0 ? !$roomIds : in_array($rid, $roomIds, true))) {
-                    $fail('料金表の入力が正しくありません（終了は開始より後に）');
+                    $fail('料金表の入力が正しくありません（時間帯を確認）');
                 }
                 $disc = [];
                 foreach ($discounts as $d) {
@@ -405,7 +406,7 @@ if (is_post()) {
                 $hasExisting = $hasExisting || $id !== 0;
                 $slotRows[] = [$id, [
                     'people' => $people === 0 ? null : $people, // NULL = バンド練習
-                    'day_type' => $day, 'start_min' => (int)$start, 'end_min' => (int)$end, 'price' => (int)$price,
+                    'day_type' => $day, 'start_min' => $span[0], 'end_min' => $span[1], 'price' => (int)$price,
                 ], $rid === 0 ? [] : [$rid], $disc];
             }
             foreach ($slotRows as $row) {
@@ -421,12 +422,12 @@ if (is_post()) {
                     $xd = (string)$x['day'];
                     $xs = (string)($x['start'] ?? '');
                     $xe = (string)($x['end'] ?? '');
-                    if (!ctype_digit($xd) || !array_key_exists((int)$xd, STUDIO_DAY_TYPES)
-                        || !studio_uint($xs, STUDIO_MAX_MIN) || !studio_uint($xe, STUDIO_MAX_MIN) || (int)$xs >= (int)$xe) {
-                        $fail('追加の時間帯が正しくありません（終了は開始より後に）');
+                    $xspan = studio_span($xs, $xe); // 日またぎ（終了 ≦ 開始）は翌日の終了にする。不正なら null
+                    if (!ctype_digit($xd) || !array_key_exists((int)$xd, STUDIO_DAY_TYPES) || $xspan === null) {
+                        $fail('追加の時間帯が正しくありません（時間帯を確認）');
                     }
                     foreach ($slotRows as [, $data, $rowRooms, $disc]) {
-                        $rows[] = [0, ['day_type' => (int)$xd, 'start_min' => (int)$xs, 'end_min' => (int)$xe] + $data, $rowRooms, $disc];
+                        $rows[] = [0, ['day_type' => (int)$xd, 'start_min' => $xspan[0], 'end_min' => $xspan[1]] + $data, $rowRooms, $disc];
                     }
                 }
             }
@@ -460,20 +461,20 @@ if (is_post()) {
             $ok = $rowRooms !== false && $disc !== false
                 && $people >= 0 && $people <= STUDIO_SOLO_MAX
                 && array_key_exists($day, STUDIO_DAY_TYPES)
-                && studio_uint($start, STUDIO_MAX_MIN) && studio_uint($end, STUDIO_MAX_MIN) && (int)$start < (int)$end
+                && ($span = studio_span($start, $end)) !== null // 日またぎ（終了 ≦ 開始）は翌日の終了にする
                 && studio_uint($price, 999999);
             $data = [
                 'people' => $people === 0 ? null : $people, // NULL = バンド
                 'day_type' => $day,
-                'start_min' => (int)$start,
-                'end_min' => (int)$end,
+                'start_min' => $span[0] ?? 0, // 不正（$ok が false）のときは使わずに下で止まるので、0 は仮の値
+                'end_min' => $span[1] ?? 0,
                 'price' => (int)$price,
             ];
             $name = trim((string)($_POST['name'][$i] ?? ''));
             $minutes = trim((string)($_POST['minutes'][$i] ?? ''));
             // 使える時間は 30分きざみで、時間帯の長さ以内（時間帯より長いパックはありえない）
             $ok = $ok && $name !== '' && mb_strlen($name) <= 50
-                && ($minutes === '' || (studio_uint($minutes, STUDIO_MAX_MIN) && (int)$minutes > 0 && (int)$minutes <= (int)$end - (int)$start));
+                && ($minutes === '' || (studio_uint($minutes, STUDIO_MAX_MIN) && (int)$minutes > 0 && (int)$minutes <= $span[1] - $span[0]));
             $data = ['name' => $name] + $data + ['minutes' => $minutes === '' ? null : (int)$minutes];
             if (!$ok) {
                 flash('パックの入力が正しくありません（名前・時間帯・使える時間を確認）', 'error');
@@ -1121,7 +1122,7 @@ render_header($studio['name'], 'tools');
                     <tr>
                         <td>
                             <?php foreach ($m['slots'] as $s): ?>
-                                <span class="sinfo-slot"><span class="sinfo-slot__day"><?= h(STUDIO_DAY_TYPES[(int)$s['day_type']] ?? '') ?></span><?= h(studio_fmt_min((int)$s['start_min'])) ?>〜<?= h(studio_fmt_min((int)$s['end_min'])) ?></span>
+                                <span class="sinfo-slot"><span class="sinfo-slot__day"><?= h(STUDIO_DAY_TYPES[(int)$s['day_type']] ?? '') ?></span><?= h(studio_fmt_clock((int)$s['start_min'])) ?>〜<?= h(studio_fmt_clock((int)$s['end_min'])) ?></span>
                             <?php endforeach; ?>
                         </td>
                         <td class="num"><?= h(studio_yen((int)$r['price'])) ?></td>
@@ -1284,7 +1285,7 @@ $packHas = array_values(array_unique(array_map($packTargetOf, $packs)));
                     <div class="sinfo-packs__body">
                         <span class="muted small">
                             <?= h(STUDIO_DAY_TYPES[(int)$p['day_type']] ?? '') ?>
-                            <?= h(studio_fmt_min((int)$p['start_min'])) ?>〜<?= h(studio_fmt_min((int)$p['end_min'])) ?>
+                            <?= h(studio_fmt_clock((int)$p['start_min'])) ?>〜<?= h(studio_fmt_clock((int)$p['end_min'])) ?>
                             <?php if ($p['minutes'] !== null): ?>のうち <?= h($packLen($p)) ?><?php endif; ?>
                         </span>
                         <span>

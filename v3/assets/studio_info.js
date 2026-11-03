@@ -43,8 +43,10 @@
   /** 1234.5 → "¥1,235"。toLocaleString = 3桁ごとにカンマを付ける */
   const yen = (n) => '¥' + Math.round(n).toLocaleString('ja-JP');
 
-  /** 0時からの分 → "H:MM"（24時を超えてもそのまま 25:00 のように出す。PHP の studio_fmt_min と同じ） */
-  const hm = (min) => Math.floor(min / 60) + ':' + String(min % 60).padStart(2, '0');
+  /** 0時からの分 → "H:MM"。長さの表示用（PHP の studio_fmt_min と同じ）。時刻には下の clock を使う */
+  const hm = (min) => Math.floor(min / 60) + ':' + String(min % 60).padStart(2, '0'); // 長さ（2時間30分 → 2:30）
+  // 時計の時刻（24時間で一周。25:00 → 1:00 / 24:00 → 0:00）。% 1440 = 1日（1440分）で割った余り
+  const clock = (min) => hm(min % 1440);
 
   // ===================================================================
   //  1. 地図
@@ -226,12 +228,12 @@
     if (!form || !data || !out) return;
 
     const DAY = 24 * 60;
-    // 料金表・パックは 22:00〜29:00 のように 24時を超えて書けるので、予約の時刻を 0 / -24h / +24h ずらして比べる
+    // 日をまたぐ時間帯は DB に「終了 = 翌日の時刻 + 24時間」で入っている（23:00〜10:00 → 1380〜2040。古いデータには 22:00〜29:00 のような値もある）ので、予約の時刻を 0 / -24h / +24h ずらして比べる
     const SHIFTS = [0, -DAY, DAY];
 
     /**
      * 料金表の行 r が、時刻 t（0時からの分）を含むか
-     *   例) 予約 1:00（t=60）  と 料金 24:00〜30:00 → t+24h = 1500 が範囲内 → 一致
+     *   例) 予約 1:00（t=60）  と 料金 23:00〜10:00（1380〜2040） → t+24h = 1500 が範囲内 → 一致
      *   例) 予約 23:00〜翌2:00 の 0:30 部分（t=1470）と 料金 0:00〜6:00 → t-24h = 30 が範囲内 → 一致
      */
     const covers = (r, t) => SHIFTS.some((d) => r.s <= t + d && t + d < r.e);
@@ -401,7 +403,7 @@
       } else {
         r.normal.segs.forEach((s) => {
           const hours = (s.to - s.from) / 60;
-          ul.append(line(hm(s.from) + '〜' + hm(s.to) + (s.disc ? ' ' + d.name : ''), yen(s.perHour) + '/h × ' + hours + 'h = ' + yen(s.perHour * hours)));
+          ul.append(line(clock(s.from) + '〜' + clock(s.to) + (s.disc ? ' ' + d.name : ''), yen(s.perHour) + '/h × ' + hours + 'h = ' + yen(s.perHour * hours)));
         });
       }
       r.rentals.forEach((x) => ul.append(line(x.name + ' × ' + x.qty, yen(x.cost))));
@@ -503,8 +505,8 @@
       info: (p) => Object.keys(INFO).filter((k) => p.info[k]).map((k) => INFO[k] + ': ' + p.info[k]),
       discounts: (p) => p.discounts.map((d) => d.name + ': ' + DAY_ONLY[d.day_type]),
       rooms: (p) => p.rooms.map((r) => r.name + ' ' + [r.area_jo != null ? r.area_jo + '帖' : '', r.size_note || ''].filter(Boolean).join('・')),
-      rates: (p) => p.rates.map((r) => where(r) + ' ' + hm(r.start_min) + '〜' + hm(r.end_min) + ' ' + price(r) + '/h'),
-      packs: (p) => p.packs.map((r) => r.name + ': ' + where(r) + ' ' + hm(r.start_min) + '〜' + hm(r.end_min)
+      rates: (p) => p.rates.map((r) => where(r) + ' ' + clock(r.start_min) + '〜' + clock(r.end_min) + ' ' + price(r) + '/h'),
+      packs: (p) => p.packs.map((r) => r.name + ': ' + where(r) + ' ' + clock(r.start_min) + '〜' + clock(r.end_min)
         + (r.minutes ? ' のうち ' + hm(r.minutes) : '') + ' ' + price(r)),
       rentals: (p) => p.rentals.map((r) => r.name + ' ' + yen(r.price) + (r.per_hour ? '/h' : '/回')),
       equipment: (p) => p.equipment.map((r) => (r.rooms.length ? r.rooms.join('・') + ' ' : '') + r.category + ': ' + r.model_name + (r.quantity !== 1 ? ' × ' + r.quantity : '')),
@@ -709,7 +711,7 @@
         // 直前の時間帯の「終了」から始める（続きの時間帯をすぐ入れられるように）
         const end = Number(prev.querySelector('select[name$="[end]"]').value);
         row.querySelector('select[name$="[start]"]').value = String(end);
-        row.querySelector('select[name$="[end]"]').value = String(Math.min(30 * 60, end + 6 * 60)); // 6時間後（上限 30:00）
+        row.querySelector('select[name$="[end]"]').value = String((end + 6 * 60) % (24 * 60)); // 6時間後（選択肢は 0:00〜23:30 だけなので、24時間で一周させる。例: 20:00 → 2:00）
       }
       tpl.before(row);
       row.querySelector('input[data-price]')?.focus();

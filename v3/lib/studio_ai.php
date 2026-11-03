@@ -54,7 +54,7 @@ function studio_ai_schema(): array
         'target' => ['type' => 'integer'],                 // 0 = バンド / n = 個人n人
         'rooms'  => ['type' => 'array', 'items' => $str],  // 適用される部屋名（複数可）。全部屋共通なら空の配列
         'day'    => ['type' => 'integer', 'enum' => [0, 1, 2, 3, 4]],
-        'start'  => $str,                                  // "HH:MM"（24時超えは "26:00" のように）
+        'start'  => $str,                                  // "HH:MM"（0:00〜23:30 の時計の時刻。日またぎは end を start より前の時刻にする）
         'end'    => $str,
         'price'  => ['type' => 'integer'],
         'discounts' => ['type' => 'array', 'items' => null], // 割引区分ごとの料金 [{name, price}]（下で $obj を作ってから入れる）
@@ -124,7 +124,7 @@ function studio_ai_system_prompt(bool $images = false): string
         . "- target: バンド練習（部屋貸し）は 0。個人練習は人数（1人なら 1、2人なら 2）。個人練習の price は「その人数での1時間の合計」\n"
         . "- rooms: その料金が使える部屋名の配列（rooms の name と同じ表記）。同じ料金の部屋は1つの行にまとめて複数の部屋名を入れる。全部屋同じなら空の配列 []\n"
         . "- day: 0 = 全日 / 1 = 平日 / 2 = 土日祝 / 3 = 土曜のみ / 4 = 日曜・祝日のみ。土曜と日曜・祝日で料金が違うときだけ 3 と 4 に分け、同じなら 2 にまとめる\n"
-        . "- start / end: \"HH:MM\"。30分単位。日付をまたぐ時間帯は 24時を超えて書く（22:00〜翌5:00 → start \"22:00\" end \"29:00\"）。上限は \"30:00\"\n"
+        . "- start / end: \"HH:MM\"。30分単位。時刻は 0:00〜23:30 の時計の時刻で書き、24時以降の表記（25:00 など）は使わない。日付をまたぐ時間帯は end を start より前の時刻にする（22:00〜翌5:00 → start \"22:00\" end \"05:00\"。真夜中までなら end \"00:00\"）\n"
         . "- discounts: 割引区分ごとの1時間の料金の配列 [{name, price}]。name は discounts（割引区分）の name と同じ表記。その時間帯に使えない区分は入れない（無ければ空の配列）。「◯%引き」「1時間◯円引き」なら計算して入れる\n"
         . "- 30分単位の料金しか載っていなければ 2倍して1時間にする\n"
         . "# パック（packs）\n"
@@ -144,7 +144,7 @@ function studio_ai_system_prompt(bool $images = false): string
         . "- sources: 参考にしたページの URL（最大5件）。caution: 確かめてほしい点（古い情報かもしれない等）を短く。無ければ空文字";
 }
 
-/** "HH:MM" → 0時からの分（30分きざみ・0〜30:00 以外は null） */
+/** "HH:MM" → 0時からの分（30分きざみ・0〜48:00 以外は null。日またぎの変換は studio_span） */
 function studio_ai_min(mixed $hm): ?int
 {
     if (!is_string($hm) || !preg_match('/^(\d{1,2}):(\d{2})$/', trim($hm), $m)) {
@@ -253,10 +253,13 @@ function studio_ai_normalize(array $ai): array
         $s = studio_ai_min($r['start'] ?? null);
         $e = studio_ai_min($r['end'] ?? null);
         $price = studio_ai_yen($r['price'] ?? null);
+        // 日またぎ（終了 ≦ 開始。22:00〜05:00 など）は、終了に24時間を足す。0:00〜0:00 は終日。AI が古い書き方（22:00〜29:00）で返しても、そのまま読める
+        $span = ($s === null || $e === null) ? null : studio_span((string)$s, (string)$e);
         if (!is_int($target) || $target < 0 || $target > STUDIO_SOLO_MAX || !isset(STUDIO_DAY_TYPES[$day])
-            || $s === null || $e === null || $s >= $e || $price === null) {
+            || $span === null || $price === null) {
             return null;
         }
+        [$s, $e] = $span;
         return [
             'rooms' => studio_ai_rooms($r['rooms'] ?? null),
             'people' => $target === 0 ? null : $target,
