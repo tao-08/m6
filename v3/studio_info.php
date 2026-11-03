@@ -653,7 +653,7 @@ $hasStudent = $usedDisc !== []; // 割引があるスタジオか（区分の条
 $hasSolo = array_filter(array_merge(array_column($rates, 'people'), array_column($packs, 'people')), fn($v) => $v !== null) !== [];
 $hasBand = in_array(null, array_column($rates, 'people'), true) || in_array(null, array_column($packs, 'people'), true);
 // バンドと個人練習の「両方」の料金があるときだけ、タブで分ける（片方だけなら分ける必要が無いのでタブは出さない）
-//   タブは 料金シミュレーション・料金表・パック をまとめて切り替える（JS: setupTargetTabs）
+//   タブは 料金表・パック をまとめて切り替える（JS: setupTargetTabs）。料金シミュレーションには専用の切り替えがあり、タブとは連動しない
 //   料金表・パックの各要素に data-tab-panel="band|solo" を付け、選ばれていない方を hidden で隠す
 $hasTabs = $hasSolo && $hasBand;
 // その対象（'band' / 'solo'）の料金表の行だけに絞る。people が NULL = バンド、数字 = 個人n人
@@ -923,24 +923,22 @@ render_header($studio['name'], 'tools');
     <?php endif; ?>
 </section>
 
-<!-- ===== バンド練習 / 個人練習のタブ（両方の料金があるときだけ出す）=====
-     ・ここで選んだ対象に、下の 料金シミュレーション・部屋・料金・パック がまとめて切り替わる（JS: setupTargetTabs）
-     ・ラジオボタン（input type="radio"）をボタン風に見せている（.sinfo-seg と同じ作り）。名前は tab_target
-       ※ シミュレーションの <form> の外に置く（form.elements に混ざらないように）。選ばれた値は form 内の hidden（name="mode"）へ JS が写す -->
-<?php if ($hasTabs): ?>
-<div class="sinfo-seg sinfo-seg--mode sinfo-tabs" id="studio-target-tabs" role="radiogroup" aria-label="対象">
-    <label><input type="radio" name="tab_target" value="band" checked> <?= icon('groups') ?> バンド練習</label>
-    <label><input type="radio" name="tab_target" value="solo"> <?= icon('person') ?> 個人練習</label>
-</div>
-<?php endif; ?>
-
 <!-- ===== 料金シミュレーション（料金表が1行でもあれば出す。中身は JS が作る） ===== -->
 <?php if ($rates || $packs): ?>
 <section class="card sinfo-section" id="sim">
     <h2><?= icon('calculate') ?> 料金シミュレーション</h2>
     <form class="sinfo-sim" id="studio-sim" onsubmit="return false">
-        <!-- 対象（band / solo）は hidden で持つ。タブがあるときは JS が書き換え、片方しか無いときはこの値のまま -->
-        <input type="hidden" name="mode" value="<?= $hasBand ? 'band' : 'solo' ?>">
+        <?php if ($hasTabs): ?>
+            <!-- シミュレーション専用の バンド / 個人練習 の切り替え（両方の料金があるときだけ出す）。
+                 下の料金表・パックのタブ（#studio-target-tabs）とは連動しない。それぞれ別に選べる -->
+            <div class="sinfo-seg sinfo-seg--mode" role="radiogroup" aria-label="対象">
+                <label><input type="radio" name="mode" value="band" checked> <?= icon('groups') ?> バンド練習</label>
+                <label><input type="radio" name="mode" value="solo"> <?= icon('person') ?> 個人練習</label>
+            </div>
+        <?php else: ?>
+            <!-- 片方しか無いときは選ばせず、hidden で固定 -->
+            <input type="hidden" name="mode" value="<?= $hasBand ? 'band' : 'solo' ?>">
+        <?php endif; ?>
         <div class="sinfo-sim__grid">
             <?php if ($rooms): ?>
             <label class="sinfo-field"><span>部屋</span>
@@ -1008,6 +1006,16 @@ render_header($studio['name'], 'tools');
     </form>
     <script type="application/json" id="studio-sim-data"><?= json_encode($simData, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?></script>
 </section>
+<?php endif; ?>
+
+<!-- ===== バンド練習 / 個人練習のタブ（両方の料金があるときだけ出す）=====
+     ・ここで選んだ対象に、下の 部屋・料金（料金表）と パック だけが切り替わる（JS: setupTargetTabs）。料金シミュレーションは連動しない
+     ・ラジオボタン（input type="radio"）をボタン風に見せている（.sinfo-seg と同じ作り）。名前は tab_target -->
+<?php if ($hasTabs): ?>
+<div class="sinfo-seg sinfo-seg--mode sinfo-tabs" id="studio-target-tabs" role="radiogroup" aria-label="対象">
+    <label><input type="radio" name="tab_target" value="band" checked> <?= icon('groups') ?> バンド練習</label>
+    <label><input type="radio" name="tab_target" value="solo"> <?= icon('person') ?> 個人練習</label>
+</div>
 <?php endif; ?>
 
 <!-- ===== 部屋と料金表（部屋の広さと料金を1枚のカードにまとめた）=====

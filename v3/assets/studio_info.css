@@ -115,7 +115,7 @@
 .sinfo-max { font-size: 9px; font-weight: 800; letter-spacing: .06em; line-height: 1; color: var(--muted); }
 
 /* ---- バンド練習 / 個人練習のタブ（料金シミュレーション・料金表・パックをまとめて切り替える）---- */
-.sinfo-tabs { margin-bottom: 12px; }
+.sinfo-tabs { margin: 14px 0 0; } /* 上の余白だけ。カード（.sinfo-section）は margin-top: 14px で間隔を取る作りなので、同じ14pxにそろえる（下は次のカードの margin-top が効く） */
 /* hidden 属性は display 指定を持つ要素（flex など）だと負けることがあるので、念のため !important で必ず隠す */
 [data-tab-panel][hidden], [data-tab-has][hidden] { display: none !important; }
 

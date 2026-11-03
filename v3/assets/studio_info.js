@@ -761,17 +761,16 @@
   };
 
   // ===================================================================
-  //  バンド練習 / 個人練習のタブ
+  //  バンド練習 / 個人練習のタブ（料金表とパック専用）
   //     ・PHP が作った #studio-target-tabs（ラジオボタン）が切り替わったら、
   //       data-tab-panel="band|solo" を持つ要素（料金表・パックの行）のうち、選ばれていない方を hidden で隠す
   //     ・data-tab-has="band solo" を持つセクション（編集できない人のパック欄）は、選んだ対象が含まれないとき隠す
-  //     ・シミュレーションの hidden（name="mode"）にも値を写し、change イベントを飛ばして再計算させる（setupSim が聞いている）
+  //     ・料金シミュレーションには連動しない（シミュレーションは専用の切り替え name="mode" を持つ。setupSim が担当）
   //     ・両方の料金があるスタジオだけ #studio-target-tabs が出るので、無ければ何もしない
   // ===================================================================
   const setupTargetTabs = () => {
     const tabs = document.getElementById('studio-target-tabs');
     if (!tabs) return;
-    const mode = document.querySelector('#studio-sim input[name="mode"]');
 
     const apply = (target) => {
       // dataset.tabPanel = HTML の data-tab-panel 属性（data- のあとのハイフン区切りは、JS ではキャメルケースになる）
@@ -781,11 +780,6 @@
       document.querySelectorAll('[data-tab-has]').forEach((s) => {
         s.hidden = !s.dataset.tabHas.split(' ').includes(target);
       });
-      if (mode && mode.value !== target) {
-        mode.value = target;
-        // bubbles: true = 親（form）にもイベントを伝える。setupSim は form で change を聞いているので、これで再計算される
-        mode.dispatchEvent(new Event('change', { bubbles: true }));
-      }
     };
 
     tabs.addEventListener('change', (e) => {
@@ -803,7 +797,7 @@
   setupRateEdit();
   setupRowDelete();
   setupFilter(mapApi);
-  setupTargetTabs(); // setupSim より先（ブラウザが復元した選択を hidden の mode に反映してから、シミュレーションを初期化する）
+  setupTargetTabs();
   setupSim();
   setupAi();
 })();
