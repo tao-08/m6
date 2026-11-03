@@ -310,3 +310,6 @@
 .sinfo-tp { display: flex; align-items: center; gap: 6px; flex: 1 1 auto; min-width: 0; }
 .sinfo-tp select { flex: 1 1 0; min-width: 0; }
 .sinfo-tp__half { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; font-size: 13px; }
+
+/* 部屋の編集: 30分スタート・30分単位のチェック */
+.sinfo-edit__half { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; font-size: 13px; }

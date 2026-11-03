@@ -342,7 +342,13 @@ if (is_post()) {
                 flash('広さは 0.5〜999.9 の数字（帖）で入力してください', 'error');
                 redirect($self);
             }
-            $rows[] = [(int)$rawId, ['name' => $name, 'area_jo' => $jo, 'size_note' => $size === '' ? null : $size]];
+            // チェックボックスは外れていると何も送られない。name を half_start[行番号] にして、「その番号が送られてきたか」で ON/OFF を決める
+            //   （行番号 $i は id[] の位置と同じ。isset = 送られてきた = チェックが入っている）
+            $rows[] = [(int)$rawId, [
+                'name' => $name, 'area_jo' => $jo, 'size_note' => $size === '' ? null : $size,
+                'half_start' => isset($_POST['half_start'][$i]) ? 1 : 0,
+                'half_unit' => isset($_POST['half_unit'][$i]) ? 1 : 0,
+            ]];
         }
         studio_save_rows($pdo, 'studio_room', 'studio_room_id', $studioId, $rows);
         flash('保存しました');
@@ -609,7 +615,7 @@ if (is_post()) {
 // =====================================================================
 //  表示用のデータ
 // =====================================================================
-$st = $pdo->prepare('SELECT studio_room_id, name, area_jo, size_note FROM studio_room WHERE studio_id = ? ORDER BY sort_order, studio_room_id');
+$st = $pdo->prepare('SELECT studio_room_id, name, area_jo, size_note, half_start, half_unit FROM studio_room WHERE studio_id = ? ORDER BY sort_order, studio_room_id');
 $st->execute([$studioId]);
 $rooms = $st->fetchAll();
 $roomName = array_column($rooms, 'name', 'studio_room_id'); // [部屋id => 部屋名]（array_column の第3引数 = キーにする列）
@@ -618,6 +624,13 @@ $roomName = array_column($rooms, 'name', 'studio_room_id'); // [部屋id => 部�
 $roomSize = [];
 foreach ($rooms as $r) {
     $roomSize[(int)$r['studio_room_id']] = trim(studio_fmt_jo($r['area_jo']) . ($r['size_note'] ? ' ' . $r['size_note'] : ''));
+}
+
+// 部屋 id => 外している設定の説明（「毎時開始」「1時間単位」）。30分スタート・30分単位が両方 ON（既定）の部屋は何も出さない（ほとんどの部屋で同じ表示になるので）
+$roomRule = [];
+foreach ($rooms as $r) {
+    $rule = array_filter([(int)$r['half_start'] ? '' : '毎時開始', (int)$r['half_unit'] ? '' : '1時間単位']);
+    $roomRule[(int)$r['studio_room_id']] = implode(' ', $rule);
 }
 
 // 料金表: 表示は「バンド → 個人1人 → 個人2人 …」の順にしたいので、people の NULL を先頭に並べる
@@ -717,7 +730,8 @@ $packLen = fn(array $p) => studio_fmt_min((int)($p['minutes'] ?? ((int)$p['end_m
 //        （PHP の空配列は json_encode で [] になる。JS では r.dp[3] がどちらでも undefined なので動くが、形をそろえておく）
 $simData = [
     'discounts' => array_map(fn($d) => ['id' => $d['studio_discount_id'], 'name' => $d['name'], 'day' => $d['day_type']], $usedDisc),
-    'rooms' => array_map(fn($r) => ['id' => (int)$r['studio_room_id'], 'name' => $r['name']], $rooms),
+    // hs = 30分スタート可 / hu = 30分単位で利用可（JS が開始・時間の選択肢を絞る）
+    'rooms' => array_map(fn($r) => ['id' => (int)$r['studio_room_id'], 'name' => $r['name'], 'hs' => (int)$r['half_start'], 'hu' => (int)$r['half_unit']], $rooms),
     'rates' => array_map(fn($r) => [
         'rooms' => $r['room_ids'], // 空 = 全部屋共通
         'ppl' => $r['people'] === null ? 0 : (int)$r['people'], // 0 = バンド
@@ -1140,7 +1154,7 @@ render_header($studio['name'], 'tools');
                         <!-- 部屋が複数のとき、「・」でつなぐ。画面が狭くて折り返すときは、部屋の頭で改行し、行頭の「・」は出さない（CSS だけ。.sinfo-rooms の説明を参照）。
                              部屋の1つ1つ（名前＋広さ）が .sinfo-room。途中で改行されない（nowrap）ので、「Bスタ 8帖」が2行に割れない -->
                         <span class="sinfo-rooms"><span class="sinfo-rooms__in">
-                            <?php foreach ($g['rooms'] as $rid): ?><span class="sinfo-room"><?= h($roomName[$rid]) ?><?php if (!empty($roomSize[$rid])): ?> <span class="muted small"><?= h($roomSize[$rid]) ?></span><?php endif; ?></span><?php endforeach; ?>
+                            <?php foreach ($g['rooms'] as $rid): ?><span class="sinfo-room"><?= h($roomName[$rid]) ?><?php if (!empty($roomSize[$rid])): ?> <span class="muted small"><?= h($roomSize[$rid]) ?></span><?php endif; ?><?php if (!empty($roomRule[$rid])): ?> <span class="muted small"><?= h($roomRule[$rid]) ?></span><?php endif; ?></span><?php endforeach; ?>
                         </span></span>
                     <?php endif; ?>
                 </h3>
@@ -1282,12 +1296,15 @@ render_header($studio['name'], 'tools');
             <input type="hidden" name="action" value="save_rooms">
             <input type="hidden" name="studio_id" value="<?= $studioId ?>">
             <!-- 広さは数値（帖）の欄に分けた。検索で「12帖以上」と比べられるように、単位は帖に統一（畳も同じ数字でOK）。備考は定員・階数など -->
-            <?php foreach (array_merge($rooms, [['studio_room_id' => 0, 'name' => '', 'area_jo' => null, 'size_note' => '']]) as $r): ?>
+            <?php foreach (array_merge($rooms, [['studio_room_id' => 0, 'name' => '', 'area_jo' => null, 'size_note' => '', 'half_start' => 1, 'half_unit' => 1]]) as $ri => $r): ?>
                 <div class="sinfo-edit__row">
                     <input type="hidden" name="id[]" value="<?= (int)$r['studio_room_id'] ?>">
                     <input autocomplete="off" type="text" class="grow" name="name[]" maxlength="50" value="<?= h($r['name']) ?>" placeholder="部屋名" aria-label="部屋名">
                     <label class="sinfo-edit__jo"><input type="text" name="area_jo[]" inputmode="decimal" maxlength="5" value="<?= h(studio_jo_num($r['area_jo'])) ?>" placeholder="広さ" aria-label="広さ（帖）"><span class="muted small">帖</span></label>
                     <input autocomplete="off" type="text" class="grow" name="size_note[]" maxlength="50" value="<?= h($r['size_note']) ?>" placeholder="備考（定員・階数）" aria-label="備考">
+                    <!-- 30分スタート可 / 30分単位で利用可（料金シミュレーションの選択肢になる）。名前の [番号] = この行の位置 -->
+                    <label class="sinfo-edit__half" title="30分スタート可"><input type="checkbox" name="half_start[<?= $ri ?>]" value="1"<?= (int)$r['half_start'] ? ' checked' : '' ?>>開始:30</label>
+                    <label class="sinfo-edit__half" title="30分単位で利用可"><input type="checkbox" name="half_unit[<?= $ri ?>]" value="1"<?= (int)$r['half_unit'] ? ' checked' : '' ?>>30分単位</label>
                     <?= studio_row_del((int)$r['studio_room_id']) ?>
                 </div>
             <?php endforeach; ?>
