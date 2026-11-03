@@ -53,7 +53,7 @@ function studio_ai_schema(): array
     $slot = [
         'target' => ['type' => 'integer'],                 // 0 = バンド / n = 個人n人
         'rooms'  => ['type' => 'array', 'items' => $str],  // 適用される部屋名（複数可）。全部屋共通なら空の配列
-        'day'    => ['type' => 'integer', 'enum' => [0, 1, 2]],
+        'day'    => ['type' => 'integer', 'enum' => [0, 1, 2, 3, 4]],
         'start'  => $str,                                  // "HH:MM"（24時超えは "26:00" のように）
         'end'    => $str,
         'price'  => ['type' => 'integer'],
@@ -69,7 +69,7 @@ function studio_ai_schema(): array
         ]),
         'rooms' => ['type' => 'array', 'items' => $obj(['name' => $str, 'area_jo' => $numN, 'size_note' => $strN])],
         // 割引区分（学割・U20 …）と使える曜日（0 = 全日 / 1 = 平日のみ / 2 = 土日祝のみ）
-        'discounts' => ['type' => 'array', 'items' => $obj(['name' => $str, 'day' => ['type' => 'integer', 'enum' => [0, 1, 2]]])],
+        'discounts' => ['type' => 'array', 'items' => $obj(['name' => $str, 'day' => ['type' => 'integer', 'enum' => [0, 1, 2, 3, 4]]])],
         'rates' => ['type' => 'array', 'items' => $obj($slot)],
         'packs' => ['type' => 'array', 'items' => $obj(['name' => $str] + $slot + ['minutes' => $intN])],
         'rentals' => ['type' => 'array', 'items' => $obj(['name' => $str, 'price' => ['type' => 'integer'], 'per_hour' => ['type' => 'boolean']])],
@@ -123,7 +123,7 @@ function studio_ai_system_prompt(bool $images = false): string
         . "- 1行 = 「対象・部屋・曜日・時間帯」ごとの『1時間の料金』\n"
         . "- target: バンド練習（部屋貸し）は 0。個人練習は人数（1人なら 1、2人なら 2）。個人練習の price は「その人数での1時間の合計」\n"
         . "- rooms: その料金が使える部屋名の配列（rooms の name と同じ表記）。同じ料金の部屋は1つの行にまとめて複数の部屋名を入れる。全部屋同じなら空の配列 []\n"
-        . "- day: 0 = 全日 / 1 = 平日 / 2 = 土日祝\n"
+        . "- day: 0 = 全日 / 1 = 平日 / 2 = 土日祝 / 3 = 土曜のみ / 4 = 日曜・祝日のみ。土曜と日曜・祝日で料金が違うときだけ 3 と 4 に分け、同じなら 2 にまとめる\n"
         . "- start / end: \"HH:MM\"。30分単位。日付をまたぐ時間帯は 24時を超えて書く（22:00〜翌5:00 → start \"22:00\" end \"29:00\"）。上限は \"30:00\"\n"
         . "- discounts: 割引区分ごとの1時間の料金の配列 [{name, price}]。name は discounts（割引区分）の name と同じ表記。その時間帯に使えない区分は入れない（無ければ空の配列）。「◯%引き」「1時間◯円引き」なら計算して入れる\n"
         . "- 30分単位の料金しか載っていなければ 2倍して1時間にする\n"
@@ -132,7 +132,7 @@ function studio_ai_system_prompt(bool $images = false): string
         . "- start / end は使える時間帯、minutes は使える時間（分）。時間帯まるごとなら 0。price はパック1回の料金\n"
         . "# 割引区分（discounts）\n"
         . "- 学割・U20・高校生割など、料金が変わる割引の種類ごとに1つ。name は短く（例: 学割 / U20）\n"
-        . "- day: その割引が使える曜日。0 = 全日 / 1 = 平日のみ / 2 = 土日祝のみ\n"
+        . "- day: その割引が使える曜日。0 = 全日 / 1 = 平日のみ / 2 = 土日祝のみ / 3 = 土曜のみ / 4 = 日曜・祝日のみ\n"
         . "- パック（packs）の discounts も同じ形（パック1回の割引料金）\n"
         . "# その他\n"
         . "- info.student_note は割引の条件（学生証・年齢確認書類の提示など）。info.access は最寄り駅と徒歩分数（例: 立川駅 北口 徒歩5分）\n"

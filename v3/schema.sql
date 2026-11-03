@@ -1370,7 +1370,7 @@ CREATE TABLE studio_rate (
     studio_rate_id INT UNSIGNED      NOT NULL AUTO_INCREMENT,
     studio_id      INT UNSIGNED      NOT NULL,
     people         TINYINT UNSIGNED  NULL,          -- NULL = バンド / n = 個人練習 n人
-    day_type       TINYINT UNSIGNED  NOT NULL DEFAULT 0,
+    day_type       TINYINT UNSIGNED  NOT NULL DEFAULT 0, -- 0 = 全日 / 1 = 平日 / 2 = 土日祝 / 3 = 土 / 4 = 日祝
     start_min      SMALLINT UNSIGNED NOT NULL,
     end_min        SMALLINT UNSIGNED NOT NULL,
     price          INT UNSIGNED      NOT NULL,
@@ -1386,7 +1386,7 @@ CREATE TABLE studio_pack (
     studio_id      INT UNSIGNED      NOT NULL,
     people         TINYINT UNSIGNED  NULL,          -- NULL = バンド / n = 個人練習 n人
     name           VARCHAR(50)       NOT NULL,      -- 例: 深夜パック
-    day_type       TINYINT UNSIGNED  NOT NULL DEFAULT 0,
+    day_type       TINYINT UNSIGNED  NOT NULL DEFAULT 0, -- 0 = 全日 / 1 = 平日 / 2 = 土日祝 / 3 = 土 / 4 = 日祝
     start_min      SMALLINT UNSIGNED NOT NULL,
     end_min        SMALLINT UNSIGNED NOT NULL,
     minutes        SMALLINT UNSIGNED NULL,          -- NULL = 時間帯まるごと
@@ -1464,7 +1464,7 @@ CREATE TABLE studio_discount (
     studio_discount_id INT UNSIGNED     NOT NULL AUTO_INCREMENT,
     studio_id          INT UNSIGNED     NOT NULL,
     name               VARCHAR(30)      NOT NULL,          -- 例: 学割 / U20
-    day_type           TINYINT UNSIGNED NOT NULL DEFAULT 0, -- 使える曜日 0 = 全日 / 1 = 平日のみ / 2 = 土日祝のみ
+    day_type           TINYINT UNSIGNED NOT NULL DEFAULT 0, -- 使える曜日 0 = 全日 / 1 = 平日のみ / 2 = 土日祝のみ / 3 = 土のみ / 4 = 日祝のみ
     sort_order         INT UNSIGNED     NOT NULL DEFAULT 0,
     PRIMARY KEY (studio_discount_id),
     KEY idx_sdisc_studio (studio_id),

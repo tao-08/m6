@@ -656,6 +656,13 @@ $hasBand = in_array(null, array_column($rates, 'people'), true) || in_array(null
 //   タブは 料金表・パック をまとめて切り替える（JS: setupTargetTabs）。料金シミュレーションには専用の切り替えがあり、タブとは連動しない
 //   料金表・パックの各要素に data-tab-panel="band|solo" を付け、選ばれていない方を hidden で隠す
 $hasTabs = $hasSolo && $hasBand;
+// 土曜と日祝で料金（パック・割引の使える曜日も）が分かれているか → 分かれていれば、シミュレーションの曜日ボタンを「平日 / 土 / 日祝」の3択にする
+//   day_type: 3 = 土 / 4 = 日祝（lib/studio_info.php の STUDIO_DAY_TYPES）。分かれていなければ今まで通り「平日 / 土日祝」の2択
+//   array_column(配列, 'キー') = 配列の各要素から、そのキーの値だけを集める
+$splitWeekend = array_filter(
+    array_merge(array_column($rates, 'day_type'), array_column($packs, 'day_type'), array_column($usedDisc, 'day_type')),
+    fn($d) => in_array((int)$d, [3, 4], true)
+) !== [];
 // その対象（'band' / 'solo'）の料金表の行だけに絞る。people が NULL = バンド、数字 = 個人n人
 //   fn($r) => … = アロー関数（短い無名関数）。array_filter は true を返した要素だけ残す / array_values は添字を 0 から振り直す
 $rowsOfTarget = fn(array $rows, string $target): array => array_values(array_filter(
@@ -951,7 +958,13 @@ render_header($studio['name'], 'tools');
             <div class="sinfo-field"><span>曜日</span>
                 <div class="sinfo-seg" role="radiogroup">
                     <label><input type="radio" name="day" value="1" checked> 平日</label>
-                    <label><input type="radio" name="day" value="2"> 土日祝</label>
+                    <?php if ($splitWeekend): ?>
+                        <!-- 土と日祝で料金が違うスタジオ。日付を選ぶと 土 → 土 / 日 → 日祝 に自動で切り替わる（祝日は判定しないので、祝日は手で「日祝」を選ぶ） -->
+                        <label><input type="radio" name="day" value="3"> 土</label>
+                        <label><input type="radio" name="day" value="4"> 日祝</label>
+                    <?php else: ?>
+                        <label><input type="radio" name="day" value="2"> 土日祝</label>
+                    <?php endif; ?>
                 </div></div>
             <label class="sinfo-field"><span>開始</span><select name="start"><?= studio_time_options(18 * 60) ?></select></label>
             <label class="sinfo-field"><span>時間</span>
