@@ -789,6 +789,26 @@
     apply(tabs.querySelector('input[name="tab_target"]:checked').value);
   };
 
+  // ===================================================================
+  //  個人練習の料金表: 人数チップ（1人・2人 …）で表を切り替える
+  //     ・PHP が人数ごとに <tbody data-ppl="n"> を作っている。選んだ人数以外の tbody を hidden で隠す
+  //     ・data-ppl-has="1 2" を持つ部屋のブロックは、選んだ人数の料金が無ければ見出しごと隠す
+  //     ・チップ（name="solo_ppl"）が無いページでは、change が来ないので何もしない
+  // ===================================================================
+  const setupSoloPeople = () => {
+    // document 全体で change を聞く（イベントの委任）。チップがどこにあっても1か所で受けられる
+    document.addEventListener('change', (e) => {
+      if (e.target.name !== 'solo_ppl') return;
+      const n = e.target.value;
+      document.querySelectorAll('[data-ppl]').forEach((t) => {
+        t.hidden = t.dataset.ppl !== n;
+      });
+      document.querySelectorAll('[data-ppl-has]').forEach((g) => {
+        g.hidden = !g.dataset.pplHas.split(' ').includes(n);
+      });
+    });
+  };
+
   // DOMContentLoaded を待たなくても、このファイルはページの最後で読むので要素はもう全部ある
   const mapApi = setupMap();
   setupGeo();
@@ -798,6 +818,7 @@
   setupRowDelete();
   setupFilter(mapApi);
   setupTargetTabs();
+  setupSoloPeople();
   setupSim();
   setupAi();
 })();

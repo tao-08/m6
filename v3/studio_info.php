@@ -1029,7 +1029,6 @@ render_header($studio['name'], 'tools');
     // タブがあるときは「バンド」「個人練習」の2つのパネルに分けて出す（どちらも同じ作りで、行だけ対象で絞る）
     //   タブが無いときは $panel = null のパネル1つだけ（これまでと同じ表示）
     //   $panelGroups = そのパネルに出すグループ。料金が無い「見出しだけ」のグループ（広さを見せるため）はバンドのパネルにだけ出す
-    //   $showTarget = 「対象」列を出すか。バンドのパネルは全部バンドなので不要 / 個人のパネルは「個人n人」を区別するために出す
     $panels = $hasTabs ? ['band', 'solo'] : [null];
     foreach ($panels as $panel):
         $panelGroups = [];
@@ -1043,11 +1042,44 @@ render_header($studio['name'], 'tools');
                 $panelGroups[] = ['rooms' => $g['rooms'], 'rows' => $rowsT];
             }
         }
-        $showTarget = $hasSolo && $panel !== 'band';
+        // 個人練習の料金だけを出すパネルか（タブの「個人」側 / タブが無く個人の料金しか無いスタジオ）
+        //   → 「対象」列の代わりに、上の人数チップ（1人・2人 …）で表を切り替える（JS: setupSoloPeople）
+        $soloPanel = $panel === 'solo' || ($panel === null && $hasSolo && !$hasBand);
+        // このパネルにある人数の一覧（小さい順）。最初は いちばん少ない人数 を選んでおく
+        $pplList = [];
+        if ($soloPanel) {
+            foreach ($panelGroups as $g) {
+                foreach ($g['rows'] as $r) {
+                    $pplList[(int)$r['people']] = true; // キーに入れると重複が自然に消える
+                }
+            }
+            ksort($pplList); // ksort = キー（人数）の小さい順に並べ替え
+            $pplList = array_keys($pplList);
+        }
+        $pplSel = $pplList[0] ?? 0;
     ?>
     <div<?= $panel !== null ? ' data-tab-panel="' . $panel . '"' . ($panel === 'solo' ? ' hidden' : '') : '' ?>>
-    <?php foreach ($panelGroups as $g): ?>
-        <div>
+    <?php if ($pplList): ?>
+        <!-- 人数チップ（ラジオボタンをボタン風に。.sinfo-seg と同じ作り）。選んだ人数の料金だけを表に出す -->
+        <div class="sinfo-seg sinfo-ppl" role="radiogroup" aria-label="人数">
+            <?php foreach ($pplList as $n): ?>
+                <label><input type="radio" name="solo_ppl" value="<?= $n ?>"<?= $n === $pplSel ? ' checked' : '' ?>> <?= $n ?>人</label>
+            <?php endforeach; ?>
+        </div>
+    <?php endif; ?>
+    <?php foreach ($panelGroups as $g):
+        // 表の行を人数ごとに分ける（個人のパネルだけ。バンドは 0 の1組だけ）
+        //   人数ごとに別の <tbody> にする理由: 行を1つずつ隠すと、しま模様（tbody tr:nth-child(even)）の順番がずれる。
+        //   tbody ごとに切り替えれば、nth-child は tbody の中で数え直されるので、しま模様が崩れない
+        $byPpl = [];
+        foreach ($g['rows'] as $r) {
+            $byPpl[$soloPanel ? (int)$r['people'] : 0][] = $r;
+        }
+        ksort($byPpl);
+        // data-ppl-has = この部屋の料金がある人数（例: "1 2"）。選んだ人数の料金が無い部屋は見出しごと隠す
+        $pplHas = $soloPanel ? implode(' ', array_keys($byPpl)) : '';
+    ?>
+        <div<?= $soloPanel ? ' data-ppl-has="' . $pplHas . '"' . (isset($byPpl[$pplSel]) ? '' : ' hidden') : '' ?>>
             <?php if ($rooms): ?>
                 <h3 class="sinfo-sub">
                     <?php if (!$g['rooms']): ?>全部屋<?php endif; ?>
@@ -1059,11 +1091,11 @@ render_header($studio['name'], 'tools');
             <table class="sinfo-table">
                 <!-- 割引区分ごとに1列（学割・U20 …）。料金が1つも無い区分の列は出さない -->
                 <!-- 同じ料金（対象・通常・割引すべて同じ）の行は1行にまとめ、時間帯の欄に「曜日 開始〜終了」を縦に並べる（studio_merge_same_price） -->
-                <thead><tr><?php if ($showTarget): ?><th>対象</th><?php endif; ?><th>時間帯</th><th class="num">料金</th><?php foreach ($rateDisc as $d): ?><th class="num"><?= h($d['name']) ?></th><?php endforeach; ?></tr></thead>
-                <tbody>
-                <?php foreach (studio_merge_same_price($g['rows']) as $m): $r = $m['row']; ?>
+                <thead><tr><th>時間帯</th><th class="num">料金</th><?php foreach ($rateDisc as $d): ?><th class="num"><?= h($d['name']) ?></th><?php endforeach; ?></tr></thead>
+                <?php foreach ($byPpl as $n => $pplRows): ?>
+                <tbody<?= $soloPanel ? ' data-ppl="' . $n . '"' . ($n === $pplSel ? '' : ' hidden') : '' ?>>
+                <?php foreach (studio_merge_same_price($pplRows) as $m): $r = $m['row']; ?>
                     <tr>
-                        <?php if ($showTarget): ?><td><?= h(studio_target_label($r['people'] === null ? null : (int)$r['people'])) ?></td><?php endif; ?>
                         <td>
                             <?php foreach ($m['slots'] as $s): ?>
                                 <span class="sinfo-slot"><span class="sinfo-slot__day"><?= h(STUDIO_DAY_TYPES[(int)$s['day_type']] ?? '') ?></span><?= h(studio_fmt_min((int)$s['start_min'])) ?>〜<?= h(studio_fmt_min((int)$s['end_min'])) ?></span>
@@ -1074,8 +1106,9 @@ render_header($studio['name'], 'tools');
                             <td class="num sinfo-student"><?= $dp === null ? '<span class="muted">-</span>' : h(studio_yen($dp)) ?></td>
                         <?php endforeach; ?>
                     </tr>
-                <?php endforeach; ?>
+                <?php endforeach; /* 行 */ ?>
                 </tbody>
+                <?php endforeach; /* 人数ごとの tbody */ ?>
             </table>
             </div>
             <?php endif; ?>
