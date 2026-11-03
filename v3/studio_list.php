@@ -4,7 +4,7 @@
  *  studio_list.php — スタジオ情報の一覧＋スタジオマップ（tools.php から入る）
  * =====================================================================
  *  表示: 全スタジオのピンを1枚の地図（Leaflet + OpenStreetMap）に出し、その下にカードの一覧
- *        カードには 最寄り駅・バンドのいちばん安い1時間の料金・学割／個人練習／パックの有無 を出す
+ *        カードには 最寄り駅・最大の部屋の広さ（MAXバッジ）・バンドと個人（1人）のいちばん安い1時間の料金・学割／個人練習／パックの有無 を出す
  *  追加: 幹部と管理者だけ（名前だけ入れて作り、詳しい情報は studio_info.php で編集）
  *
  *  ■ Leaflet（リーフレット）とは
@@ -57,6 +57,7 @@ if (is_post()) {
 //   （スタジオの数だけ SQL を投げる「N+1 問題」を避けるため、1回の SQL で済ませる）
 $studios = $pdo->query('SELECT s.studio_id, s.name, s.access, s.lat, s.lng, s.reserve_url,
         (SELECT MIN(r.price) FROM studio_rate r WHERE r.studio_id = s.studio_id AND r.people IS NULL) AS min_price,
+        (SELECT MIN(r.price) FROM studio_rate r WHERE r.studio_id = s.studio_id AND r.people = 1) AS min_solo_price,
         (SELECT GROUP_CONCAT(d.name ORDER BY d.sort_order, d.studio_discount_id SEPARATOR \'\t\') FROM studio_discount d
             WHERE d.studio_id = s.studio_id) AS disc_names,
         (SELECT MAX(m.area_jo) FROM studio_room m WHERE m.studio_id = s.studio_id) AS max_area,
@@ -134,8 +135,11 @@ render_header('スタジオ情報', 'tools');
                         </span>
                     <?php endif; ?>
                     <?php if ($s['access']): ?><span><?= icon('train') ?> <?= h($s['access']) ?></span><?php endif; ?>
-                    <?php if ($s['max_area'] !== null): ?><span title="いちばん広い部屋"><?= icon('square_foot') ?> <?= h(studio_fmt_jo($s['max_area'])) ?></span><?php endif; ?>
-                    <?php if ($s['min_price'] !== null): ?><span title="1時間の最安料金"><?= icon('payments') ?> <?= h(studio_yen((int)$s['min_price'])) ?>〜/h</span><?php endif; ?>
+                    <!-- 広さ: アイコンの代わりに小さな「MAX」バッジ（= いちばん広い部屋の帖数だとひと目でわかる）。CSS: .sinfo-max -->
+                    <?php if ($s['max_area'] !== null): ?><span title="いちばん広い部屋"><span class="tag sinfo-max">MAX</span> <?= h(studio_fmt_jo($s['max_area'])) ?></span><?php endif; ?>
+                    <?php if ($s['min_price'] !== null): ?><span title="バンド練習の1時間の最安料金"><?= icon('payments') ?> <?= h(studio_yen((int)$s['min_price'])) ?>〜/h</span><?php endif; ?>
+                    <!-- 個人練習（1人利用）の最安。バンドの最安の隣に、人のアイコンで並べる。個人1人の料金が無ければ出さない（min_solo_price が NULL） -->
+                    <?php if ($s['min_solo_price'] !== null): ?><span title="個人練習（1人）の1時間の最安料金"><?= icon('person') ?> <?= h(studio_yen((int)$s['min_solo_price'])) ?>〜/h</span><?php endif; ?>
                     <?php if ($s['lat'] === null): ?><span title="地図に未登録"><?= icon('location_off') ?></span><?php endif; ?>
                 </span>
             </a>
