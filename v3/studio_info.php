@@ -790,8 +790,8 @@ render_header($studio['name'], 'tools');
             <?php if ($rooms): ?>
             <label class="sinfo-field"><span>部屋</span>
                 <select name="room">
-                    <!-- 部屋名のあとに広さ・備考（例: Aスタ 12帖）。無ければ部屋名だけ -->
-                    <?php foreach ($rooms as $r): $sz = $roomSize[(int)$r['studio_room_id']]; ?><option value="<?= (int)$r['studio_room_id'] ?>"><?= h($r['name'] . ($sz !== '' ? ' ' . $sz : '')) ?></option><?php endforeach; ?>
+                    <!-- 部屋名のあとに広さだけ（例: Aスタ 12帖）。備考（定員など）は出さない。広さが無ければ部屋名だけ -->
+                    <?php foreach ($rooms as $r): $sz = studio_fmt_jo($r['area_jo']); ?><option value="<?= (int)$r['studio_room_id'] ?>"><?= h($r['name'] . ($sz !== '' ? ' ' . $sz : '')) ?></option><?php endforeach; ?>
                 </select></label>
             <?php endif; ?>
             <label class="sinfo-field"><span>日付</span><input type="date" name="date"></label>
