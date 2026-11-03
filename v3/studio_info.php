@@ -1274,24 +1274,39 @@ $packHas = array_values(array_unique(array_map($packTargetOf, $packs)));
 <section class="card sinfo-section" id="packs"<?= $hasTabs && !$canEdit ? ' data-tab-has="' . h(implode(' ', $packHas)) . '"' : '' ?>>
     <h2><?= icon('inventory_2') ?> パック</h2>
     <?php if (!$packs): ?><p class="muted small">-</p><?php else: ?>
+        <?php
+        // 「時間だけ違うパック」（3時間・4時間…）を1つのブロックにまとめる。
+        //   まとめる条件 = 対象（人数）・部屋・曜日・開始〜終了 がすべて同じ。違うのは「使える時間」と料金だけ。
+        //   $packGroups[キー] = 先頭のパック情報 + 'items'（そのブロックのパック一覧）。キー順 = 最初に出てきた順（並び順を崩さない）
+        $packGroups = [];
+        foreach ($packs as $p) {
+            $rids = $p['room_ids'];
+            sort($rids); // 部屋の並びが違うだけで別ブロックにならないよう、並べ替えてからキーにする
+            $key = implode('|', [(int)($p['people'] ?? 0), implode(',', $rids), (int)$p['day_type'], (int)$p['start_min'], (int)$p['end_min']]);
+            $packGroups[$key] ??= ['head' => $p, 'items' => []]; // ??= = まだ無いときだけ代入
+            $packGroups[$key]['items'][] = $p;
+        }
+        ?>
         <ul class="sinfo-plain sinfo-packs">
-            <?php foreach ($packs as $p): ?>
+            <?php foreach ($packGroups as $g): $p = $g['head']; ?>
                 <li<?= $hasTabs ? ' data-tab-panel="' . $packTargetOf($p) . '"' . ($packTargetOf($p) === 'solo' ? ' hidden' : '') : '' ?>>
                     <div class="sinfo-packs__head">
-                        <strong><?= h($p['name']) ?></strong>
                         <?php if ($hasSolo && $packTargetOf($p) === 'solo'): ?><span class="tag"><?= h(studio_target_label((int)$p['people'])) ?></span><?php endif; ?>
                         <?php foreach ($p['room_ids'] as $rid): ?><span class="tag"><?= h($roomName[$rid] ?? '') ?></span><?php endforeach; ?>
-                    </div>
-                    <div class="sinfo-packs__body">
                         <span class="muted small">
                             <?= h(STUDIO_DAY_TYPES[(int)$p['day_type']] ?? '') ?>
                             <?= h(studio_fmt_clock((int)$p['start_min'])) ?>〜<?= h(studio_fmt_clock((int)$p['end_min'])) ?>
-                            <?php if ($p['minutes'] !== null): ?>のうち <?= h($packLen($p)) ?><?php endif; ?>
                         </span>
-                        <span>
-                            <?= h(studio_yen((int)$p['price'])) ?>
-                            <?php foreach ($p['disc'] as $did => $dp): ?><span class="sinfo-student"><?= h($discName[$did] ?? '') ?> <?= h(studio_yen($dp)) ?></span><?php endforeach; ?>
-                        </span>
+                    </div>
+                    <!-- チップ = 1パック。ラベルは「使える時間」（未設定なら名前）。名前は title（ホバー）で見える -->
+                    <div class="sinfo-chips">
+                        <?php foreach ($g['items'] as $it): ?>
+                            <span class="sinfo-chip" title="<?= h($it['name']) ?>">
+                                <b><?= h($it['minutes'] !== null ? $packLen($it) : $it['name']) ?></b>
+                                <span><?= h(studio_yen((int)$it['price'])) ?></span>
+                                <?php foreach ($it['disc'] as $did => $dp): ?><em title="<?= h($discName[$did] ?? '') ?>"><?= h(studio_yen($dp)) ?></em><?php endforeach; ?>
+                            </span>
+                        <?php endforeach; ?>
                     </div>
                 </li>
             <?php endforeach; ?>
