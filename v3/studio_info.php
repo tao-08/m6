@@ -361,7 +361,7 @@ if (is_post()) {
             $disc = studio_post_discounts($i, $discounts); // [区分id => 料金] / false = 不正
             $ok = $rowRooms !== false && $disc !== false
                 && $people >= 0 && $people <= STUDIO_SOLO_MAX
-                && array_key_exists($day, STUDIO_DAY_TYPES)
+                && (array_key_exists($day, STUDIO_DAY_TYPES) || ($day === STUDIO_DAY_BOTH && (int)$rawId === 0)) // 「平日・土日祝」は新しい行だけ
                 && studio_uint($start, STUDIO_MAX_MIN) && studio_uint($end, STUDIO_MAX_MIN) && (int)$start < (int)$end
                 && studio_uint($price, 999999);
             $data = [
@@ -383,7 +383,9 @@ if (is_post()) {
                 flash($isPack ? 'パックの入力が正しくありません（名前・時間帯・使える時間を確認）' : '料金表の入力が正しくありません（終了は開始より後に）', 'error');
                 redirect($self . $anchor);
             }
-            $rows[] = [(int)$rawId, $data, $rowRooms, $disc];
+            foreach ($day === STUDIO_DAY_BOTH ? [1, 2] : [$day] as $d) { // 「平日・土日祝」は同じ内容の2行に展開
+                $rows[] = [(int)$rawId, ['day_type' => $d] + $data, $rowRooms, $disc];
+            }
         }
         if ($isPack) {
             studio_save_rows($pdo, 'studio_pack', 'studio_pack_id', $studioId, $rows);
@@ -658,6 +660,7 @@ $rateRow = function (array $r, string $key, bool $fixed) use ($discInputs, $room
         foreach (STUDIO_DAY_TYPES as $k => $label) {
             $days .= '<option value="' . $k . '"' . ($k === (int)$r['day_type'] ? ' selected' : '') . '>' . h($label) . '</option>';
         }
+        $days .= '<option value="' . STUDIO_DAY_BOTH . '">平日・土日祝</option>'; // 同じ料金なら1行で入力（保存時に2行へ展開）
         // 新しい見出しの行だけ、先頭に「対象・曜日」の選択を出す（グリッドの1行を丸ごと使う）
         $html .= '<span class="sinfo-rate-row__pick">' . icon('add') . '<select name="people[]" aria-label="対象">' . studio_target_options($people ?: null) . '</select>'
             . '<select name="day[]" aria-label="曜日">' . $days . '</select></span>';
@@ -1063,6 +1066,7 @@ render_header($studio['name'], 'tools');
                         <?php foreach (STUDIO_DAY_TYPES as $k => $label): ?>
                             <option value="<?= $k ?>"<?= $k === (int)$p['day_type'] ? ' selected' : '' ?>><?= h($label) ?></option>
                         <?php endforeach; ?>
+                        <?php if ((int)$p['studio_pack_id'] === 0): ?><option value="<?= STUDIO_DAY_BOTH ?>">平日・土日祝</option><?php endif; ?>
                     </select>
                     <select name="start[]" aria-label="時間帯の開始"><?= studio_time_options((int)$p['start_min']) ?></select>
                     <span class="muted">〜</span>

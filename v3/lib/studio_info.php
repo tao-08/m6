@@ -17,6 +17,9 @@ declare(strict_types=1);
  */
 const STUDIO_DAY_TYPES = [0 => '全日', 1 => '平日', 2 => '土日祝'];
 
+/** 入力フォームだけの曜日「平日・土日祝」。新しい行の保存時に 平日 + 土日祝 の2行に展開する（DB には保存しない） */
+const STUDIO_DAY_BOTH = 3;
+
 /** 機材の区分（この順に表示。会場の機材 venue.php と同じ並びにそろえる） */
 const STUDIO_EQUIP_CATEGORIES = ['ギターアンプ', 'ベースアンプ', 'ドラム', 'キーボード', 'PA', 'その他'];
 
