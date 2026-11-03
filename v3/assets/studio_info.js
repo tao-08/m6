@@ -541,19 +541,103 @@
       status.textContent = yenUsed != null ? '約' + yenUsed + '円' : '';
     };
 
+    // ---- 画像（選ぶ・貼り付け）----
+    //   images = 送る画像（File の配列）。サムネイル（×で外せる）を thumbs に出す
+    const maxImages = Number(box.dataset.maxImages) || 5;
+    const picker = box.querySelector('[data-ai-files]');
+    const thumbs = box.querySelector('[data-ai-thumbs]');
+    const images = [];
+
+    const renderThumbs = () => {
+      thumbs.replaceChildren();
+      images.forEach((it, i) => {
+        const wrap = el('span', 'sinfo-ai__thumb');
+        const img = el('img');
+        img.src = it.url; // URL.createObjectURL で作った、この端末の中だけで使える一時 URL
+        img.alt = '画像' + (i + 1);
+        const x = el('button', 'sinfo-ai__thumb-x', '×');
+        x.type = 'button';
+        x.setAttribute('aria-label', '画像を外す');
+        x.addEventListener('click', () => {
+          URL.revokeObjectURL(it.url); // 一時 URL は使い終わったら解放する（メモリを残さない）
+          images.splice(images.indexOf(it), 1);
+          renderThumbs();
+        });
+        wrap.append(img, x);
+        thumbs.append(wrap);
+      });
+      thumbs.hidden = images.length === 0;
+    };
+
+    /**
+     * 長辺 1568px・JPEG に縮小する（サーバーの縮小と同じ大きさ）。スマホの写真は数 MB あり、そのまま送ると
+     * サーバーのアップロード上限（php.ini）を超えやすいので、送る前に小さくする。
+     * createImageBitmap で読めない形式（ブラウザが未対応）は、そのまま送ってサーバーに任せる
+     */
+    const shrink = async (file) => {
+      try {
+        const bmp = await createImageBitmap(file);
+        const scale = Math.min(1, 1568 / Math.max(bmp.width, bmp.height));
+        const c = document.createElement('canvas');
+        c.width = Math.max(1, Math.round(bmp.width * scale));
+        c.height = Math.max(1, Math.round(bmp.height * scale));
+        const ctx = c.getContext('2d');
+        ctx.fillStyle = '#fff'; // 透明な PNG は白背景に（JPEG は透明にできない）
+        ctx.fillRect(0, 0, c.width, c.height);
+        ctx.drawImage(bmp, 0, 0, c.width, c.height);
+        const blob = await new Promise((resolve) => c.toBlob(resolve, 'image/jpeg', 0.85));
+        return blob ? new File([blob], file.name.replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg' }) : file;
+      } catch (e) {
+        return file;
+      }
+    };
+
+    const addImages = async (files) => {
+      const list = [...files].filter((f) => f.type.startsWith('image/'));
+      for (const f of list) {
+        if (images.length >= maxImages) {
+          status.textContent = '画像は' + maxImages + '枚までです';
+          break;
+        }
+        const small = await shrink(f);
+        images.push({ file: small, url: URL.createObjectURL(small) });
+      }
+      renderThumbs();
+    };
+
+    box.querySelector('[data-ai-pick]').addEventListener('click', () => picker.click());
+    picker.addEventListener('change', async () => {
+      await addImages(picker.files);
+      picker.value = ''; // 同じ画像をもう一度選んでも change が起きるように空に戻す
+    });
+    // 貼り付け（Ctrl+V / スクリーンショット）。入力欄への文字の貼り付けは邪魔しない（画像があるときだけ受け取る）
+    document.addEventListener('paste', (e) => {
+      const files = [...(e.clipboardData?.files || [])].filter((f) => f.type.startsWith('image/'));
+      if (!files.length) return;
+      e.preventDefault();
+      addImages(files);
+    });
+
     btn.addEventListener('click', async () => {
       btn.disabled = true;
       form.hidden = true;
       // 待ち時間（数十秒〜1分）を秒で見せる。setInterval = 決まった間隔でくり返し実行
       const t0 = Date.now();
-      const tick = () => { status.textContent = '調べています… ' + Math.round((Date.now() - t0) / 1000) + '秒'; };
+      const verb = images.length ? '読んでいます' : '調べています'; // 画像があれば画像だけを読む（検索しない）
+      const tick = () => { status.textContent = verb + '… ' + Math.round((Date.now() - t0) / 1000) + '秒'; };
       tick();
       const timer = setInterval(tick, 1000);
       try {
+        // FormData = フォームと同じ形式（multipart）で送る。画像ファイルを送れる。
+        // Content-Type は自分で書かない（ブラウザが境界の文字列つきで自動で付ける。手書きすると壊れる）
+        const fd = new FormData();
+        fd.append('studio_id', box.dataset.studioId);
+        fd.append('model', box.querySelector('[data-ai-model]').value);
+        images.forEach((it) => fd.append('images[]', it.file, it.file.name));
         const res = await fetch('api_studio_ai', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': box.dataset.csrf },
-          body: JSON.stringify({ studio_id: Number(box.dataset.studioId) }),
+          headers: { 'X-CSRF-Token': box.dataset.csrf },
+          body: fd,
         });
         const data = await res.json().catch(() => ({ error: 'サーバーの返事を読めませんでした' }));
         if (!res.ok || !data.ok) throw new Error(data.error || 'HTTP ' + res.status);

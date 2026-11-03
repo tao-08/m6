@@ -649,11 +649,21 @@ render_header($studio['name'], 'tools');
 
 <?php if ($canEdit && claude_enabled()): ?>
 <!-- ===== ✨AIで入力（幹部と管理者。結果のプレビューは JS が #studio-ai-result に作る） ===== -->
-<section class="card sinfo-section sinfo-ai" id="studio-ai" data-studio-id="<?= $studioId ?>" data-csrf="<?= h(csrf_token()) ?>">
+<section class="card sinfo-section sinfo-ai" id="studio-ai" data-studio-id="<?= $studioId ?>" data-csrf="<?= h(csrf_token()) ?>" data-max-images="<?= AI_MAX_IMAGES ?>">
     <div class="sinfo-ai__head">
         <button type="button" class="btn btn--sm" data-ai-run><?= icon('auto_awesome') ?> AIで入力</button>
+        <!-- モデル（Opus = 高精度・高め / Sonnet = 標準 / Haiku = 安い）。初期は config.php の設定値。このボックスは編集できる人（幹部・管理者）にしか出ない -->
+        <select data-ai-model aria-label="モデル" title="モデル">
+            <?php foreach (studio_ai_models() as $mid => $mname): ?>
+                <option value="<?= h($mid) ?>"<?= $mid === studio_ai_default_model() ? ' selected' : '' ?>><?= h($mname) ?></option>
+            <?php endforeach; ?>
+        </select>
+        <!-- 画像（料金表のスクリーンショット・パンフレットの写真など）。選ぶ・貼り付け（Ctrl+V）で最大 <?= AI_MAX_IMAGES ?> 枚。付けると画像だけを読む（ウェブ検索なし） -->
+        <button type="button" class="btn btn--sm" data-ai-pick title="画像を追加（貼り付けもOK）"><?= icon('add_photo_alternate') ?></button>
+        <input type="file" accept="image/*" multiple hidden data-ai-files>
         <span class="muted small" data-ai-status></span>
     </div>
+    <div class="sinfo-ai__thumbs" data-ai-thumbs hidden></div>
     <form method="post" class="sinfo-ai__result" id="studio-ai-result" hidden
         data-confirm="選んだ項目を AI の結果で置き換えます（料金・パック・レンタル・機材は今の行が削除されます）。よろしいですか？">
         <?= csrf_field() ?>
