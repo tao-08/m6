@@ -482,6 +482,12 @@ $st = $pdo->prepare('SELECT studio_room_id, name, area_jo, size_note FROM studio
 $st->execute([$studioId]);
 $rooms = $st->fetchAll();
 $roomName = array_column($rooms, 'name', 'studio_room_id'); // [部屋id => 部屋名]（array_column の第3引数 = キーにする列）
+// 部屋 id => 見出し・プルダウンに添える文字（広さ「12帖」＋備考「最大8人」）。どちらも無ければ ''
+//   料金シミュレーションの部屋プルダウンと、部屋・料金カードの見出しの両方で使うので、表示用データのここで作る
+$roomSize = [];
+foreach ($rooms as $r) {
+    $roomSize[(int)$r['studio_room_id']] = trim(studio_fmt_jo($r['area_jo']) . ($r['size_note'] ? ' ' . $r['size_note'] : ''));
+}
 
 // 料金表: 表示は「バンド → 個人1人 → 個人2人 …」の順にしたいので、people の NULL を先頭に並べる
 //   ORDER BY people IS NULL DESC = 「NULL か？」が真（1）の行を先に。そのあと人数の小さい順
@@ -784,7 +790,8 @@ render_header($studio['name'], 'tools');
             <?php if ($rooms): ?>
             <label class="sinfo-field"><span>部屋</span>
                 <select name="room">
-                    <?php foreach ($rooms as $r): ?><option value="<?= (int)$r['studio_room_id'] ?>"><?= h($r['name']) ?></option><?php endforeach; ?>
+                    <!-- 部屋名のあとに広さ・備考（例: Aスタ 12帖）。無ければ部屋名だけ -->
+                    <?php foreach ($rooms as $r): $sz = $roomSize[(int)$r['studio_room_id']]; ?><option value="<?= (int)$r['studio_room_id'] ?>"><?= h($r['name'] . ($sz !== '' ? ' ' . $sz : '')) ?></option><?php endforeach; ?>
                 </select></label>
             <?php endif; ?>
             <label class="sinfo-field"><span>日付</span><input type="date" name="date"></label>
@@ -854,11 +861,6 @@ render_header($studio['name'], 'tools');
     <h2><?= icon('meeting_room') ?> 部屋・料金 <span class="muted small">1時間あたり</span></h2>
     <?php if (!$rates && !$rooms): ?><p class="muted small">-</p><?php endif; ?>
     <?php
-    // 部屋 id => 見出しに添える文字（広さ「12帖」＋備考「最大8人」）。どちらも無ければ ''
-    $roomSize = [];
-    foreach ($rooms as $r) {
-        $roomSize[(int)$r['studio_room_id']] = trim(studio_fmt_jo($r['area_jo']) . ($r['size_note'] ? ' ' . $r['size_note'] : ''));
-    }
     // 部屋の組み合わせごとに1つの表（共通の料金は「A・B」の見出しの下に1回だけ出す。全部屋共通は先頭）
     //   料金が未登録の部屋も、広さを見せたいので見出しだけ出す（rows が空のグループ）
     foreach ($rateGroups as $g):
