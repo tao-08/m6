@@ -670,11 +670,15 @@
 
   // ===================================================================
   //  8. 料金の編集: 見出し（対象・曜日）の「＋」で、同じ見出しに空の行を足す
-  //     <template data-rate-tpl> の中身（hidden の部屋・対象・曜日入り）を複製して、template の直前に入れる
+  //     <template data-rate-tpl> の中身（hidden の対象・曜日入り）を複製して、template の直前に入れる
   //     ・template.content = 画面に出ていない HTML の部品。cloneNode(true) = 中身ごと丸ごと複製
   //     ・入れた行の <select> は app.js の MutationObserver が見つけて、独自の選択 UI に変えてくれる
   //     ・足した行は、時間を「直前の行の終了」から始める（よくある「続きの時間帯」をすぐ入れられるように）
+  //     ・部屋のチェックも直前の行と同じにする（同じ部屋たちの続きの時間帯を入れることが多いので）
+  //     ・行のキー: 雛形の中の '__K__' を、ページ内で重複しない 'j1', 'j2' … に置き換える。
+  //       サーバーは key[] と rooms[キー][] で「どの行のチェックか」を結ぶ（位置で結ぶと、途中に行を足したときにずれるため）
   // ===================================================================
+  let rateRowSeq = 0; // 足した行の連番（ページを開いてから足した数。PHP 側の 'e'+id / 'n1' と被らないよう 'j' で始める）
   const setupRateEdit = () => {
     document.addEventListener('click', (e) => {
       const btn = e.target.closest('[data-rate-add]');
@@ -682,6 +686,10 @@
       const group = btn.closest('[data-rate-group]');
       const tpl = group.querySelector('template[data-rate-tpl]');
       const row = tpl.content.firstElementChild.cloneNode(true);
+      const key = 'j' + (++rateRowSeq);
+      // name 属性の '__K__'（rooms[__K__][]）を本物のキーに。key[] の hidden の値も同じキーにする
+      row.querySelectorAll('[name]').forEach((el) => { el.name = el.name.replace('__K__', key); });
+      row.querySelector('input[name="key[]"]').value = key;
       const rows = group.querySelectorAll('.sinfo-rate-row:not(.sinfo-rate-row--head)');
       const prev = rows[rows.length - 1];
       if (prev) {
@@ -690,6 +698,10 @@
         const endSel = row.querySelector('select[name="end[]"]');
         start.value = String(end);
         endSel.value = String(Math.min(30 * 60, end + 6 * 60)); // 6時間後（上限 30:00）
+        // 部屋のチェックを直前の行からコピー（チップの並びは「全部屋・A・B…」でどの行も同じなので、順番で対応させる）
+        const prevChips = prev.querySelectorAll('.sinfo-chips input[type=checkbox]');
+        const newChips = row.querySelectorAll('.sinfo-chips input[type=checkbox]');
+        prevChips.forEach((c, n) => { if (newChips[n]) newChips[n].checked = c.checked; });
       }
       tpl.before(row);
       row.querySelector('input[name="price[]"]').focus();

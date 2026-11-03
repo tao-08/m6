@@ -15,7 +15,8 @@
  *    save_info / save_rooms / save_discounts / save_rates / save_packs / save_rentals / save_equipment / apply_ai / delete_studio
  *    ・料金表とパックには「対象」がある: バンド（people = NULL）か、個人練習 n人（people = n）
  *    ・割引（学割・U20 …）は区分ごと（studio_discount）。区分は「使える曜日」を持ち、料金は区分ごとに中間テーブルへ（migrations/089）
- *    ・料金の編集は「部屋ごとのブロック → 対象・曜日の見出し → 行」に分けて表示する（1行 = 1部屋 か 全部屋共通）
+ *    ・料金の編集は「対象・曜日の見出し → 行」に分けて表示する。行ごとに部屋のチェック欄があり、複数の部屋に共通の料金を1行で作れる
+ *      （チェックなし・「全部屋」= 全部屋共通。パック・機材と同じ形）
  *    ・行の一覧（部屋・料金・レンタル・機材）は venue.php と同じ「行ごとの入力欄をまとめて保存」方式:
  *        id=0 の行 → 追加 / 主な欄を空にした行 → 削除 / それ以外 → 更新
  *    ・行の id は必ず「このスタジオの行か」を確かめ、WHERE にも studio_id を入れる（他のスタジオの行を書き換えさせない）
@@ -47,9 +48,12 @@ $self = 'studio_info?id=' . $studioId;
  * フォームのチェック欄 rooms[行番号][] を、部屋 id の配列にする
  *   [] = 全部屋共通（「全部屋」にチェック / 何も選んでいない）
  *   false = このスタジオの部屋ではない id が混ざっている（不正な送信）
- *   行番号 $i は、id[] などの並行する配列と同じ位置（チェックを外した欄は送られてこないので、名前に位置を入れてある）
+ *   $i は「どの行のチェックか」を表す目印（チェックを外した欄は送られてこないので、名前に目印を入れてある）
+ *     ・パック・機材 … id[] などの並行する配列と同じ位置（int）
+ *     ・料金表 … 行ごとの固有キー（string。「＋」で行を途中に足しても位置がずれないよう、位置ではなくキーで行を結ぶ）
+ *   int|string = 整数か文字列のどちらでもよい（ユニオン型。PHP 8 の機能）。配列のキーとしては "3" も 3 も同じ扱いになる
  */
-function studio_post_rooms(int $i, array $ownRoomIds): array|false
+function studio_post_rooms(int|string $i, array $ownRoomIds): array|false
 {
     $picked = array_map('intval', (array)(((array)($_POST['rooms'] ?? []))[$i] ?? []));
     if (in_array(0, $picked, true)) {
@@ -328,7 +332,7 @@ if (is_post()) {
 
     // ---- 料金表・パック（入力欄の形がほぼ同じなので、1つの処理で両方受ける）-----------------
     //   共通: 対象（バンド / 個人n人）・曜日・時間帯・料金・割引区分ごとの料金
-    //   部屋: 料金表は room[]（1行 = 1部屋。0 = 全部屋共通）/ パックは rooms[行番号][]（複数の部屋に共通にできる）
+    //   部屋: どちらも複数の部屋に共通にできる（空 = 全部屋共通）。パックは rooms[行番号][] / 料金表は rooms[行のキー][]（行のキーは key[]）
     //   パックだけ: 名前・使える時間（minutes。空 = 時間帯まるごと）
     if ($action === 'save_rates' || $action === 'save_packs') {
         $isPack = $action === 'save_packs';
@@ -345,9 +349,10 @@ if (is_post()) {
             if ($isPack) {
                 $rowRooms = studio_post_rooms($i, $roomIds); // [] = 全部屋共通 / false = 不正
             } else {
-                // 料金表は部屋ごとのブロックで入力するので、行ごとに部屋は1つ（hidden の room[]）
-                $room = (int)($_POST['room'][$i] ?? 0);
-                $rowRooms = $room === 0 ? [] : (in_array($room, $roomIds, true) ? [$room] : false);
+                // 料金表は行の途中に「＋」で行を足せるので、位置ではなく行ごとのキー（hidden の key[]）で部屋のチェックと結ぶ
+                //   キーは英数字と _ だけ許す（rooms[...] の配列のキーとして使うだけだが、変な文字は最初に弾く）
+                $key = (string)($_POST['key'][$i] ?? '');
+                $rowRooms = preg_match('/^\w{1,20}$/', $key) === 1 ? studio_post_rooms($key, $roomIds) : false;
             }
             $people = (int)($_POST['people'][$i] ?? 0);   // 0 = バンド
             $day = (int)($_POST['day'][$i] ?? 0);
@@ -515,13 +520,30 @@ foreach ($equipment as $e) {
     }
 }
 
-// 料金表を部屋ごとに分ける（0 = 全部屋共通）
-$ratesByRoom = [];
+// 料金表を「どの部屋に共通か（部屋の組み合わせ）」でまとめる。1つの料金は必ず1つのグループにだけ入る（部屋ごとに重複して出さない）
+//   キー = 部屋 id をカンマでつないだ文字（例: A と B に共通 → '3,5' / 全部屋共通 → '0'）
+//   'rooms' = その組み合わせの部屋 id の配列（空 = 全部屋共通）/ 'rows' = その料金の行
+$rateGroups = [];
 foreach ($rates as $r) {
-    foreach ($r['room_ids'] ?: [0] as $rid) { // 複数の部屋に共通なら、その部屋それぞれの下に出す
-        $ratesByRoom[$rid][] = $r;
+    $key = $r['room_ids'] ? implode(',', $r['room_ids']) : '0';
+    $rateGroups[$key]['rooms'] = $r['room_ids'];
+    $rateGroups[$key]['rows'][] = $r;
+}
+// 自分専用の料金が無い部屋も、広さを見せたいので「見出しだけのグループ」を足す
+//   $covered = どれかのグループに入っている部屋 id（array_merge([], ...配列の配列) = 全部をつなげて1つの配列にする）
+$covered = array_merge([], ...array_column($rateGroups, 'rooms'));
+foreach (array_keys($roomName) as $rid) {
+    if (!in_array($rid, $covered, true)) {
+        $rateGroups[(string)$rid] = ['rooms' => [$rid], 'rows' => []];
     }
 }
+// 並び順: 全部屋共通を先頭 → あとは「いちばん上に出る部屋」の順（$roomName は画面の並び順）→ 同じなら部屋の数が少ない方が先
+//   uasort = キーを保ったまま、比べる関数で並べ替える / <=> = 小さければ -1・同じなら 0・大きければ 1 を返す（宇宙船演算子）
+//   a ?: b = a が 0（同じ）のときだけ b で比べる
+$roomPos = array_flip(array_keys($roomName)); // [部屋id => 何番目か]
+uasort($rateGroups, fn($a, $b) =>
+    ($a['rooms'] ? $roomPos[$a['rooms'][0]] : -1) <=> ($b['rooms'] ? $roomPos[$b['rooms'][0]] : -1)
+    ?: count($a['rooms']) <=> count($b['rooms']));
 // 料金が1つでも入っている割引区分の id（料金表の列・シミュレーションの選択肢に出すのはこれだけ）
 //   array_keys(…'disc') = 各行の「料金がある区分の id」。array_merge(...) で全部の行をまとめる（... = 配列を引数に展開）
 $rateDiscIds = array_unique(array_merge([], ...array_map(fn($r) => array_keys($r['disc']), $rates)));
@@ -575,19 +597,20 @@ $coordsValue = $hasPin ? rtrim(rtrim((string)$studio['lat'], '0'), '.') . ', ' .
 
 /**
  * 部屋のチェック欄（行ごと）。「全部屋」と各部屋のチェックボックス。チェックなし・「全部屋」= 全部屋共通
- *   name="rooms[行番号][]"（チェックを外した欄は送られてこないので、行番号を名前に入れて、どの行の選択か分かるようにする）
+ *   name="rooms[目印][]"（チェックを外した欄は送られてこないので、目印を名前に入れて、どの行の選択か分かるようにする）
+ *     目印 = パック・機材は行番号 / 料金表は行ごとの固有キー（studio_post_rooms の説明を参照）
  *   「全部屋」と個別の部屋は同時に選べない（JS の setupRoomChips が切り替える。JS が無くてもサーバー側で「全部屋」を優先）
  */
-$roomChips = function (int $i, array $selected) use ($rooms): string {
+$roomChips = function (int|string $i, array $selected) use ($rooms): string {
     if (!$rooms) {
         return ''; // 部屋が未登録なら選ぶものが無い
     }
     $all = $selected === [];
     $html = '<span class="sinfo-chips" role="group" aria-label="部屋">'
-        . '<label class="sinfo-chip"><input type="checkbox" name="rooms[' . $i . '][]" value="0" data-room-all' . ($all ? ' checked' : '') . '> 全部屋</label>';
+        . '<label class="sinfo-chip"><input type="checkbox" name="rooms[' . h((string)$i) . '][]" value="0" data-room-all' . ($all ? ' checked' : '') . '> 全部屋</label>';
     foreach ($rooms as $r) {
         $id = (int)$r['studio_room_id'];
-        $html .= '<label class="sinfo-chip"><input type="checkbox" name="rooms[' . $i . '][]" value="' . $id . '"'
+        $html .= '<label class="sinfo-chip"><input type="checkbox" name="rooms[' . h((string)$i) . '][]" value="' . $id . '"'
             . (in_array($id, $selected, true) ? ' checked' : '') . '> ' . h($r['name']) . '</label>';
     }
     return $html . '</span>';
@@ -611,13 +634,16 @@ $discInputs = function (array $disc, string $unit) use ($discounts): string {
  * 料金表の編集の1行（HTML）
  *   $fixed = true  … 見出しの下の行。対象・曜日は見出しで決まるので hidden
  *   $fixed = false … 新しい見出しを作る行。対象・曜日を選ぶ
- *   部屋（room[]）はブロックで決まるので、どちらも hidden（0 = 全部屋共通）
+ *   部屋は行ごとのチェック欄（$roomChips）で選ぶ。複数の部屋に共通の料金は1行で作れる（チェックなし・「全部屋」= 全部屋共通）
+ *   $key = この行の固有キー（hidden の key[]）。チェック欄の名前 rooms[キー][] と結ぶ目印
+ *          「＋」で行を途中に足しても位置がずれないよう、位置（行番号）ではなくキーで結ぶ。
+ *          既存の行は 'e' + 料金の id / 新しい行は 'n' + 連番 / <template> の中は '__K__'（JS が複製のときに本物のキーに置き換える）
  */
-$rateRow = function (array $r, int $roomId, bool $fixed) use ($discInputs): string {
+$rateRow = function (array $r, string $key, bool $fixed) use ($discInputs, $roomChips): string {
     $people = $r['people'] === null ? 0 : (int)$r['people'];
     $html = '<div class="sinfo-rate-row' . ($fixed ? '' : ' sinfo-rate-row--new') . '">'
         . '<input type="hidden" name="id[]" value="' . (int)$r['studio_rate_id'] . '">'
-        . '<input type="hidden" name="room[]" value="' . $roomId . '">';
+        . '<input type="hidden" name="key[]" value="' . h($key) . '">';
     if ($fixed) {
         $html .= '<input type="hidden" name="people[]" value="' . $people . '">'
             . '<input type="hidden" name="day[]" value="' . (int)$r['day_type'] . '">';
@@ -631,6 +657,7 @@ $rateRow = function (array $r, int $roomId, bool $fixed) use ($discInputs): stri
             . '<select name="day[]" aria-label="曜日">' . $days . '</select></span>';
     }
     return $html
+        . $roomChips($key, $r['room_ids'] ?? []) // 部屋のチェック欄（部屋が未登録なら空文字）
         // 時刻は data-native = 独自の選択 UI に変えず、ブラウザ標準のプルダウン（スマホではドラム式）にする。
         //   選択肢が 61 個（30分きざみ）と多く、細いマスでも文字が切れないため
         . '<select name="start[]" aria-label="開始" data-native>' . studio_time_options((int)$r['start_min']) . '</select>'
@@ -832,21 +859,24 @@ render_header($studio['name'], 'tools');
     foreach ($rooms as $r) {
         $roomSize[(int)$r['studio_room_id']] = trim(studio_fmt_jo($r['area_jo']) . ($r['size_note'] ? ' ' . $r['size_note'] : ''));
     }
-    foreach ([0 => '全部屋'] + $roomName as $rid => $rname):
-        // 「全部屋」は料金があるときだけ。実在の部屋は、料金が未登録でも広さを見せたいので必ず出す
-        if ($rid === 0 && empty($ratesByRoom[0])) continue;
+    // 部屋の組み合わせごとに1つの表（共通の料金は「A・B」の見出しの下に1回だけ出す。全部屋共通は先頭）
+    //   料金が未登録の部屋も、広さを見せたいので見出しだけ出す（rows が空のグループ）
+    foreach ($rateGroups as $g):
     ?>
         <div>
             <?php if ($rooms): ?>
-                <h3 class="sinfo-sub"><?= h($rname) ?><?php if (!empty($roomSize[$rid])): ?> <span class="muted small"><?= h($roomSize[$rid]) ?></span><?php endif; ?></h3>
+                <h3 class="sinfo-sub">
+                    <?php if (!$g['rooms']): ?>全部屋<?php endif; ?>
+                    <?php foreach ($g['rooms'] as $k => $rid): ?><?= $k > 0 ? '・' : '' ?><?= h($roomName[$rid]) ?><?php if (!empty($roomSize[$rid])): ?> <span class="muted small"><?= h($roomSize[$rid]) ?></span><?php endif; ?><?php endforeach; ?>
+                </h3>
             <?php endif; ?>
-            <?php if (!empty($ratesByRoom[$rid])): ?>
+            <?php if (!empty($g['rows'])): ?>
             <div class="sinfo-table-wrap">
             <table class="sinfo-table">
                 <!-- 割引区分ごとに1列（学割・U20 …）。料金が1つも無い区分の列は出さない -->
                 <thead><tr><?php if ($hasSolo): ?><th>対象</th><?php endif; ?><th>曜日</th><th>時間</th><th class="num">料金</th><?php foreach ($rateDisc as $d): ?><th class="num"><?= h($d['name']) ?></th><?php endforeach; ?></tr></thead>
                 <tbody>
-                <?php foreach ($ratesByRoom[$rid] as $r): ?>
+                <?php foreach ($g['rows'] as $r): ?>
                     <tr>
                         <?php if ($hasSolo): ?><td><?= h(studio_target_label($r['people'] === null ? null : (int)$r['people'])) ?></td><?php endif; ?>
                         <td><?= h(STUDIO_DAY_TYPES[(int)$r['day_type']] ?? '') ?></td>
@@ -878,28 +908,25 @@ render_header($studio['name'], 'tools');
         <summary><?= icon('edit') ?> 料金を編集</summary>
         <?php
         /*
-         * 編集画面は「部屋ごとのブロック（全部屋共通 → 各部屋）→ 対象・曜日の見出し（バンド・平日 など）→ 行」
-         *   行の部屋・対象・曜日は見出しで決まるので hidden で送る。行の中で入れるのは 時間帯・料金・割引区分ごとの料金 だけ
-         *   見出しの「＋」で同じ見出しに空の行を足す（<template> を複製。JS: setupRateEdit）
-         *   ブロックの最後の行（対象・曜日を選べる行）で、新しい見出しを作れる
+         * 編集画面は「対象・曜日の見出し（バンド・平日 など）→ 行」
+         *   行の対象・曜日は見出しで決まるので hidden で送る。行の中で入れるのは 部屋・時間帯・料金・割引区分ごとの料金
+         *   部屋は行ごとのチップ（全部屋 / A / B …）。複数選ぶと、その部屋たちに共通の料金を1行で作れる
+         *   見出しの「＋」で同じ見出しに空の行を足す（<template> を複製。JS: setupRateEdit。直前の行の部屋の選択も引き継ぐ）
+         *   一番下の行（対象・曜日を選べる行）で、新しい見出しを作れる
          *   列の並びは CSS グリッド（--cols = 開始・終了・料金 + 割引区分の数）。見出し行も同じグリッドなので、列名と入力欄の位置がそろう
+         *   行のキー（$rateRow の説明）: 既存 = 'e' + id / 新しい見出しの行 = 'n1' / ＋の雛形 = '__K__'
          */
-        $rateBlocks = $rooms ? [0 => '全部屋'] + $roomName : [0 => ''];
         $nCols = 3 + count($discounts); // 開始・終了・料金 ＋ 割引区分の数
+        // 料金を「対象|曜日」ごとにまとめる。キーの順 = 取得時の並び（対象 → 曜日 → 開始時刻）
+        $groups = [];
+        foreach ($rates as $r) {
+            $groups[($r['people'] ?? 0) . '|' . (int)$r['day_type']][] = $r;
+        }
         ?>
         <form method="post" class="sinfo-edit__form sinfo-rate-edit" style="--cols: <?= $nCols ?>">
             <?= csrf_field() ?>
             <input type="hidden" name="action" value="save_rates">
             <input type="hidden" name="studio_id" value="<?= $studioId ?>">
-            <?php foreach ($rateBlocks as $rid => $rname):
-                // このブロックの行を「対象|曜日」ごとにまとめる。キーの順 = 取得時の並び（対象 → 曜日 → 開始時刻）
-                $groups = [];
-                foreach ($ratesByRoom[$rid] ?? [] as $r) {
-                    $groups[($r['people'] ?? 0) . '|' . (int)$r['day_type']][] = $r;
-                }
-            ?>
-                <fieldset class="sinfo-rate-room">
-                    <?php if ($rname !== ''): ?><legend><?= $rid === 0 ? icon('select_all') . ' ' : '' ?><?= h($rname) ?></legend><?php endif; ?>
                     <?php foreach ($groups as $key => $list):
                         [$people, $day] = array_map('intval', explode('|', $key));
                         $last = end($list); // end = 配列の最後の要素（＋で足す行の開始時刻を、最後の行の終了時刻にする）
@@ -916,20 +943,18 @@ render_header($studio['name'], 'tools');
                                 <div class="sinfo-rate-row sinfo-rate-row--head muted small" aria-hidden="true">
                                     <span>開始</span><span>終了</span><span>料金</span><?php foreach ($discounts as $d): ?><span><?= h($d['name']) ?></span><?php endforeach; ?>
                                 </div>
-                                <?php foreach ($list as $r): ?><?= $rateRow($r, $rid, true) ?><?php endforeach; ?>
-                                <!-- ＋ で複製する空の行（<template> の中身は画面に出ず、送信もされない） -->
-                                <template data-rate-tpl><?= $rateRow($blank, $rid, true) ?></template>
+                                <?php foreach ($list as $r): ?><?= $rateRow($r, 'e' . (int)$r['studio_rate_id'], true) ?><?php endforeach; ?>
+                                <!-- ＋ で複製する空の行（<template> の中身は画面に出ず、送信もされない）。キー '__K__' は複製のときに JS が本物に置き換える -->
+                                <template data-rate-tpl><?= $rateRow($blank, '__K__', true) ?></template>
                             </div>
                         </div>
                     <?php endforeach; ?>
                     <!-- 新しい見出し（対象・曜日）を作る行。料金を入れて保存すると、その見出しの下に並ぶ -->
                     <div class="sinfo-rate-group sinfo-rate-group--new">
                         <div class="sinfo-rate-wrap">
-                            <?= $rateRow(['studio_rate_id' => 0, 'people' => null, 'day_type' => 0, 'start_min' => 600, 'end_min' => 1380, 'price' => '', 'disc' => []], $rid, false) ?>
+                            <?= $rateRow(['studio_rate_id' => 0, 'people' => null, 'day_type' => 0, 'start_min' => 600, 'end_min' => 1380, 'price' => '', 'disc' => [], 'room_ids' => []], 'n1', false) ?>
                         </div>
                     </div>
-                </fieldset>
-            <?php endforeach; ?>
             <div><button type="submit" class="btn btn--primary btn--sm" title="料金を空にした行は削除"><?= icon('save') ?> 保存</button></div>
         </form>
     </details>

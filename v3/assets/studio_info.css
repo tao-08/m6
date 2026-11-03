@@ -170,13 +170,10 @@
 .sinfo-seg--disc { flex-wrap: wrap; }
 .sinfo-seg--disc label { flex: 1 0 auto; }
 
-/* ---- 料金の編集: 部屋ごとのブロック → 対象・曜日の見出し → 行 ---- */
+/* ---- 料金の編集: 対象・曜日の見出し → 行（行ごとに部屋のチップ）---- */
 .sinfo-rate-edit { gap: 12px; }
-/* fieldset = 入力欄のまとまり（HTML 標準）。legend がそのまとまりの名前（部屋名）になる */
-.sinfo-rate-room { margin: 0; padding: 8px 10px 10px; border: 1px solid var(--border); border-radius: 10px; display: grid; gap: 10px; min-width: 0; }
-.sinfo-rate-room > legend { padding: 0 6px; font-weight: 800; font-size: 14px; display: inline-flex; align-items: center; gap: 4px; }
-.sinfo-rate-group { display: grid; gap: 4px; }
-.sinfo-rate-group + .sinfo-rate-group { padding-top: 8px; border-top: 1px dashed var(--border); }
+/* 見出し（対象・曜日）ごとに枠で囲む */
+.sinfo-rate-group { display: grid; gap: 4px; padding: 8px 10px 10px; border: 1px solid var(--border); border-radius: 10px; }
 .sinfo-rate-group__head { display: flex; align-items: center; gap: 6px; font-size: 13px; }
 .sinfo-rate-group__add { margin-left: auto; padding: 2px 8px; }
 /* 列がはみ出す（割引区分が多い・スマホ）ときは、行のまとまりだけ横スクロール */
@@ -188,7 +185,9 @@
 .sinfo-edit .sinfo-rate-row select, .sinfo-edit .sinfo-rate-row input[type=number] { width: 100%; min-width: 0; padding: 8px 6px; }
 /* 新しい見出しを作る行: 先頭に「対象・曜日」の選択を1行まるごと使って出す（grid-column: 1 / -1 = 最初の列から最後の列まで） */
 .sinfo-rate-row__pick { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; color: var(--muted); }
-.sinfo-rate-group--new { padding-top: 8px; border-top: 1px dashed var(--border); }
+/* 行ごとの部屋チップ: グリッドの1行を丸ごと使う（grid-column: 1 / -1）。見出し行の次からは、行の間に点線を入れて区切る */
+.sinfo-rate-row .sinfo-chips { grid-column: 1 / -1; }
+.sinfo-rate-row:not(.sinfo-rate-row--head) + .sinfo-rate-row { padding-top: 6px; border-top: 1px dashed var(--border); }
 .sinfo-rate-edit input[type=number] { width: 100%; min-width: 0; }
 /* app.js が select を独自の選択 UI（.live-pick）に変えるので、それもマスの幅に収める */
 .sinfo-rate-row .live-pick--inline { display: block; min-width: 0; }
