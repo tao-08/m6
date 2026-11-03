@@ -236,18 +236,26 @@
      */
     const covers = (r, t) => SHIFTS.some((d) => r.s <= t + d && t + d < r.e);
 
+    /**
+     * 曜日が合うか。rowDay = 料金・パック・割引の曜日、v = 選んだ曜日
+     *   曜日の番号: 0 = 全日 / 1 = 平日 / 2 = 土日祝 / 3 = 土 / 4 = 日祝
+     *   ・全日（0）は いつでも合う / 同じ番号なら合う
+     *   ・「土日祝」（2）は、土（3）を選んでも日祝（4）を選んでも合う（土日で同じ料金のスタジオ用の行）
+     */
+    const dayOk = (rowDay, v) => rowDay === 0 || rowDay === v || (rowDay === 2 && (v === 3 || v === 4));
+
     /** 対象（ppl: 0 = バンド / n = 個人n人）・部屋・曜日が合う行だけにする（料金表・パック共通） */
-    const matches = (r, v) => r.ppl === v.ppl && (r.rooms.length === 0 || r.rooms.includes(v.room)) && (r.day === v.day || r.day === 0);
+    const matches = (r, v) => r.ppl === v.ppl && (r.rooms.length === 0 || r.rooms.includes(v.room)) && dayOk(r.day, v.day);
 
     /**
      * 時刻 t に使う料金の行を1つ選ぶ。優先順位:
      *   ① 部屋を指定した料金（rooms に選んだ部屋が入っている）＞ 全部屋共通（rooms が空）
-     *   ② 曜日の指定あり（平日 / 土日祝）＞ 全日（day = 0）
-     *   sort で「点数が高い順」に並べて先頭を取る
+     *   ② 選んだ曜日にぴったりの行（土 / 日祝 / 平日）＞ 「土日祝」の行（土も日祝も含む）＞ 全日（day = 0）
+     *   部屋の指定（4点）のほうが曜日（最大2点）より強い。sort で「点数が高い順」に並べて先頭を取る
      */
     const findRate = (v, t) => {
       const hits = data.rates.filter((r) => matches(r, v) && covers(r, t));
-      const score = (r) => (r.rooms.length ? 2 : 0) + (r.day !== 0 ? 1 : 0);
+      const score = (r) => (r.rooms.length ? 4 : 0) + (r.day === 0 ? 0 : r.day === v.day ? 2 : 1);
       hits.sort((a, b) => score(b) - score(a));
       return hits[0] || null;
     };
@@ -258,9 +266,9 @@
      */
     const priceOf = (r, disc) => (disc && r.dp[disc] != null ? r.dp[disc] : r.p);
 
-    /** 区分 id → 区分 {id, name, day}（無ければ null）。day = 使える曜日 0 全日 / 1 平日のみ / 2 土日祝のみ */
+    /** 区分 id → 区分 {id, name, day}（無ければ null）。day = 使える曜日 0 全日 / 1 平日のみ / 2 土日祝のみ / 3 土のみ / 4 日祝のみ */
     const discOf = (id) => data.discounts.find((d) => d.id === id) || null;
-    const DAY_ONLY = ['', '平日のみ', '土日祝のみ'];
+    const DAY_ONLY = ['', '平日のみ', '土日祝のみ', '土のみ', '日祝のみ'];
 
     /** 入力の値を読む（FormData = フォームの入力をまとめて取れるブラウザ標準の仕組み） */
     const read = () => {
@@ -358,10 +366,10 @@
 
     const render = () => {
       const v = read();
-      // ---- 割引の判定: 選んだ区分が、選んだ曜日（平日 / 土日祝）で使えるか ----
-      //   区分の day が 0（全日）か、曜日と同じなら使える。使えなければ割引なし（0）で計算し、下に理由を出す
+      // ---- 割引の判定: 選んだ区分が、選んだ曜日（平日 / 土 / 日祝 / 土日祝）で使えるか ----
+      //   区分の day が 0（全日）か、曜日が合えば使える（dayOk。「土日祝」の区分は土でも日祝でも使える）。使えなければ割引なし（0）で計算し、下に理由を出す
       const d = discOf(v.disc);
-      const discOk = !!d && (d.day === 0 || d.day === v.day);
+      const discOk = !!d && dayOk(d.day, v.day);
       const disc = discOk ? v.disc : 0;
       const r = calc(v, disc, v.dur);
       const perPerson = (yenValue) => Math.ceil(yenValue / v.people); // 割り勘は1円単位で切り上げ（足りなくならないように）
@@ -434,12 +442,16 @@
       }
     };
 
-    // 日付を選んだら曜日（平日 / 土日祝）を自動で切り替える。祝日は判定しないので、手で「土日祝」を選ぶ
+    // 日付を選んだら曜日を自動で切り替える。祝日は判定しないので、祝日は手で「土日祝」「日祝」を選ぶ
+    //   土曜 → 土(3) があれば 土、無ければ 土日祝(2) / 日曜 → 日祝(4) があれば 日祝、無ければ 土日祝(2) / 平日 → 平日(1)
+    //   （土日で料金が分かれているスタジオだけ、ボタンに 3・4 がある。find = 最初に見つかったボタンの番号を使う）
     const date = form.elements.date;
     date.addEventListener('change', () => {
       if (!date.value) return;
       const wd = new Date(date.value + 'T00:00:00').getDay(); // 0 = 日曜 … 6 = 土曜
-      form.querySelector('input[name="day"][value="' + (wd === 0 || wd === 6 ? 2 : 1) + '"]').checked = true;
+      const want = wd === 6 ? [3, 2] : wd === 0 ? [4, 2] : [1];
+      const val = want.find((x) => form.querySelector('input[name="day"][value="' + x + '"]'));
+      form.querySelector('input[name="day"][value="' + val + '"]').checked = true;
       render();
     });
 
@@ -474,10 +486,10 @@
     const form = document.getElementById('studio-ai-result');
     const body = form.querySelector('[data-ai-body]');
 
-    const DAYS = ['全日', '平日', '土日祝'];
+    const DAYS = ['全日', '平日', '土日祝', '土', '日祝'];
     const SECTIONS = { info: '基本情報', rooms: '部屋', discounts: '割引区分', rates: '料金', packs: 'パック', rentals: 'レンタル', equipment: '機材' };
     const INFO = { reserve_url: '予約ページ', website_url: 'サイト', address: '住所', access: '最寄り駅', phone: '電話', student_note: '割引の条件', note: 'メモ' };
-    const DAY_ONLY = ['全日', '平日のみ', '土日祝のみ'];
+    const DAY_ONLY = ['全日', '平日のみ', '土日祝のみ', '土のみ', '日祝のみ'];
     const target = (p) => (p == null ? 'バンド練習' :'個人' + p + '人');
     const where = (r) => [target(r.people), r.rooms.length ? r.rooms.join('・') : '全部屋', DAYS[r.day_type]].join('・');
     // 割引区分ごとの料金 r.discounts = {区分名: 料金} → 「（学割 ¥1,650・U20 ¥1,100）」
