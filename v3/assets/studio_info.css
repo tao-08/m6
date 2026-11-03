@@ -200,3 +200,39 @@
 /* グリッドの子は初期値 min-width: auto（= 中身の幅より縮まない）なので、横に長い料金の行に押されてカードごとはみ出す。
    min-width: 0 で「縮んでいい」と伝え、はみ出す分は .sinfo-rate-wrap の横スクロールに任せる（CSS グリッドの定番の落とし穴） */
 .sinfo-section > *, .sinfo-rate-edit, .sinfo-rate-group { min-width: 0; } /* カードの中身すべて（料金表も。割引区分の列が増えると表が広くなる） */
+
+/* ---- ページ内ジャンプ（試算・料金・パック … へ飛ぶ。上に貼り付く横並びのチップ。幅が足りなければ横スクロール）---- */
+.sinfo-jump { position: sticky; top: 70px; z-index: 5; display: flex; gap: 6px; margin: 10px -16px 0; padding: 6px 16px; overflow-x: auto; scrollbar-width: none;
+  background: var(--bg); }
+.sinfo-jump::-webkit-scrollbar { display: none; }
+.sinfo-jump a { flex: none; display: inline-flex; align-items: center; gap: 4px; min-height: 34px; padding: 0 12px; border: 1px solid var(--border); border-radius: 999px;
+  background: var(--surface); color: var(--text); font-size: 13px; text-decoration: none; }
+.sinfo-jump a:hover { color: var(--accent); border-color: var(--accent); }
+.sinfo-jump .icon { font-size: 18px; }
+.sinfo-section { scroll-margin-top: 120px; } /* 貼り付くジャンプバーに見出しが隠れない */
+
+/* ---- 基本情報: PC は左に文字・右に地図 ---- */
+.sinfo-basic { display: grid; gap: 10px; }
+.sinfo-basic__text { display: grid; gap: 8px; align-content: start; min-width: 0; }
+@media (min-width: 761px) {
+  .sinfo-basic--map { grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 16px; }
+  .sinfo-basic--map .sinfo-map--one { height: 220px; }
+}
+
+/* ---- 予約ボタン: 右下に浮かせる（スマホは下のナビの上。他の .compact-fab と同じ置き方）---- */
+.sinfo-reserve-fab { position: fixed; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); z-index: 26; display: inline-flex; align-items: center; gap: 6px;
+  min-height: 48px; padding: 0 20px 0 16px; border-radius: 999px; background: var(--accent); color: var(--on-accent); font-weight: 800; text-decoration: none;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .3); transition: transform .12s ease; }
+.sinfo-reserve-fab:hover { color: var(--on-accent); text-decoration: none; filter: brightness(1.08); }
+.sinfo-reserve-fab:active { transform: scale(.95); }
+.sinfo-reserve-fab .icon { font-size: 22px; }
+@media (max-width: 760px) { .sinfo-reserve-fab { right: 12px; bottom: calc(76px + env(safe-area-inset-bottom)); } }
+
+/* ---- 料金表: 部屋の見出しに帯・行をしま模様に・料金を大きく ---- */
+.sinfo-sub { padding-left: 8px; border-left: 3px solid var(--accent); color: var(--text); font-size: 14px; }
+.sinfo-table tbody tr:nth-child(even) { background: var(--accent-soft); }
+.sinfo-table td:nth-child(n+2) { vertical-align: top; }
+.sinfo-table td.num { font-weight: 800; }
+.sinfo-table td.num:not(.sinfo-student) { font-size: 15px; }
+.sinfo-table tbody tr:last-child td { border-bottom: 0; }
+.sinfo-slot + .sinfo-slot { margin-top: 2px; }

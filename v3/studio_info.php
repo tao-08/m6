@@ -680,6 +680,15 @@ render_header($studio['name'], 'tools');
 <nav class="crumbs"><a href="tools">ツール</a> / <a href="studio_list">スタジオ情報</a></nav>
 <h1 class="display display--sm"><?= h($studio['name']) ?></h1>
 
+<!-- ページ内ジャンプ（縦に長いので、各カードへ一発で飛べる。画面上部に貼り付く） -->
+<nav class="sinfo-jump" aria-label="ページ内移動">
+    <?php if ($rates || $packs): ?><a href="#sim"><?= icon('calculate') ?> 試算</a><?php endif; ?>
+    <a href="#rates"><?= icon('meeting_room') ?> 料金</a>
+    <?php if ($packs || $canEdit): ?><a href="#packs"><?= icon('inventory_2') ?> パック</a><?php endif; ?>
+    <a href="#rentals"><?= icon('mic') ?> レンタル</a>
+    <a href="#equipment"><?= icon('speaker') ?> 機材</a>
+</nav>
+
 <?php if ($canEdit && claude_enabled()): ?>
 <!-- ===== ✨AIで入力（幹部と管理者。結果のプレビューは JS が #studio-ai-result に作る） ===== -->
 <section class="card sinfo-section sinfo-ai" id="studio-ai" data-studio-id="<?= $studioId ?>" data-csrf="<?= h(csrf_token()) ?>" data-max-images="<?= AI_MAX_IMAGES ?>">
@@ -711,9 +720,6 @@ render_header($studio['name'], 'tools');
 <!-- ===== 基本情報 ===== -->
 <section class="card sinfo-section">
     <div class="sinfo-links">
-        <?php if ($studio['reserve_url']): ?>
-            <a class="btn btn--primary btn--sm" href="<?= h($studio['reserve_url']) ?>" target="_blank" rel="noopener noreferrer"><?= icon('event_available') ?> 予約</a>
-        <?php endif; ?>
         <?php if ($studio['website_url']): ?>
             <a class="btn btn--sm" href="<?= h($studio['website_url']) ?>" target="_blank" rel="noopener noreferrer"><?= icon('language') ?> サイト</a>
         <?php endif; ?>
@@ -722,19 +728,23 @@ render_header($studio['name'], 'tools');
             <a class="btn btn--sm" href="tel:<?= h(preg_replace('/[^0-9+]/', '', $studio['phone'])) ?>"><?= icon('call') ?> <?= h($studio['phone']) ?></a>
         <?php endif; ?>
     </div>
-    <p class="sinfo-info">
-        <?php if ($studio['address']): ?><span><?= icon('location_on') ?> <?= h($studio['address']) ?></span><?php endif; ?>
-        <?php if ($studio['access']): ?><span><?= icon('train') ?> <?= h($studio['access']) ?></span><?php endif; ?>
-    </p>
-    <?php if ($studio['note']): ?><p class="sinfo-note"><?= nl2br(h($studio['note'])) ?></p><?php endif; ?>
-
-    <?php if ($hasPin): ?>
-        <div class="sinfo-map sinfo-map--one" id="studio-map" role="region" aria-label="地図"></div>
-        <script type="application/json" id="studio-pins"><?= json_encode([[
-            'id' => $studioId, 'name' => $studio['name'], 'lat' => (float)$studio['lat'], 'lng' => (float)$studio['lng'], 'sub' => $studio['access'] ?? '',
-        ]], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?></script>
-    <?php endif; ?>
-    <a class="small" href="<?= h($gmapUrl) ?>" target="_blank" rel="noopener noreferrer"><?= icon('directions') ?> Googleマップで開く</a>
+    <!-- PC は左に文字情報・右に地図の2列、スマホは縦に積む -->
+    <div class="sinfo-basic<?= $hasPin ? ' sinfo-basic--map' : '' ?>">
+        <div class="sinfo-basic__text">
+            <p class="sinfo-info">
+                <?php if ($studio['address']): ?><span><?= icon('location_on') ?> <?= h($studio['address']) ?></span><?php endif; ?>
+                <?php if ($studio['access']): ?><span><?= icon('train') ?> <?= h($studio['access']) ?></span><?php endif; ?>
+            </p>
+            <?php if ($studio['note']): ?><p class="sinfo-note"><?= nl2br(h($studio['note'])) ?></p><?php endif; ?>
+            <a class="small" href="<?= h($gmapUrl) ?>" target="_blank" rel="noopener noreferrer"><?= icon('directions') ?> Googleマップで開く</a>
+        </div>
+        <?php if ($hasPin): ?>
+            <div class="sinfo-map sinfo-map--one" id="studio-map" role="region" aria-label="地図"></div>
+            <script type="application/json" id="studio-pins"><?= json_encode([[
+                'id' => $studioId, 'name' => $studio['name'], 'lat' => (float)$studio['lat'], 'lng' => (float)$studio['lng'], 'sub' => $studio['access'] ?? '',
+            ]], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?></script>
+        <?php endif; ?>
+    </div>
 
     <?php if ($canEdit): ?>
     <details class="sinfo-edit">
@@ -1161,6 +1171,10 @@ render_header($studio['name'], 'tools');
         <input type="hidden" name="studio_id" value="<?= $studioId ?>">
         <button type="submit" class="btn btn--danger btn--sm"><?= icon('delete') ?> スタジオを削除</button>
     </form>
+<?php endif; ?>
+
+<?php if ($studio['reserve_url']): // 予約ボタンは画面の右下に浮かせる（スクロールしても押せる） ?>
+    <a class="sinfo-reserve-fab" href="<?= h($studio['reserve_url']) ?>" target="_blank" rel="noopener noreferrer" title="予約" aria-label="予約"><?= icon('event_available') ?> 予約</a>
 <?php endif; ?>
 
 <script src="<?= asset_url('assets/vendor/leaflet/leaflet.js') ?>"></script>
