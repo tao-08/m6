@@ -709,9 +709,11 @@
       const prev = rows[rows.length - 1];
       if (prev) {
         // 直前の時間帯の「終了」から始める（続きの時間帯をすぐ入れられるように）
-        const end = Number(prev.querySelector('select[name$="[end]"]').value);
-        row.querySelector('select[name$="[start]"]').value = String(end);
-        row.querySelector('select[name$="[end]"]').value = String((end + 6 * 60) % (24 * 60)); // 6時間後（選択肢は 0:00〜23:30 だけなので、24時間で一周させる。例: 20:00 → 2:00）
+        // 開始・終了は <select>（従来）か hidden（時 + :30 の入力）のどちらか。name の末尾で探せば両方に使える
+        const end = Number(prev.querySelector('[name$="[end]"]').value);
+        row.querySelector('[name$="[start]"]').value = String(end);
+        row.querySelector('[name$="[end]"]').value = String((end + 6 * 60) % (24 * 60)); // 6時間後（時計の時刻は 0:00〜23:30 だけなので、24時間で一周させる。例: 20:00 → 2:00）
+        row.querySelectorAll('[data-tp]').forEach(tpLoad); // hidden に入れた値を、見える方（時・:30）にも反映
       }
       tpl.before(row);
       row.querySelector('input[data-price]')?.focus();
@@ -756,6 +758,29 @@
   // ---- 9. 行の削除 ----
   //   サーバーは「主な欄が空の行 = 削除」なので、その欄を空にして行を隠すだけ（保存するまで DB は変わらない）
   //   フォームの action ごとに「主な欄」の名前が違う。料金表は1つの時間帯に部屋の数だけ料金欄があるので、全部空にする
+  // ===================================================================
+  //  時間帯の入力（時のプルダウン2つ + 「:30」チェック）… studio_time_pair() の相方
+  //    実際に送るのは hidden（[data-tp-s] / [data-tp-e] = 0時からの分）。見える入力が変わったら、そこへ計算して入れる
+  //    開始 = 開始の時 × 60 + (チェックなら 30) / 終了も同じ。→ チェックは開始・終了を一緒に30分ずらす
+  // ===================================================================
+  /** hidden の値 → 見える入力（時・チェック）に反映 */
+  const tpLoad = (tp) => {
+    const s = Number(tp.querySelector('[data-tp-s]').value);
+    const e = Number(tp.querySelector('[data-tp-e]').value);
+    tp.querySelector('[data-tp-hs]').value = String(Math.floor(s / 60));
+    tp.querySelector('[data-tp-he]').value = String(Math.floor(e / 60));
+    tp.querySelector('[data-tp-half]').checked = s % 60 === 30;
+  };
+  const setupTimePair = () => {
+    document.addEventListener('change', (ev) => {
+      const tp = ev.target.closest('[data-tp]');
+      if (!tp) return;
+      const half = tp.querySelector('[data-tp-half]').checked ? 30 : 0;
+      tp.querySelector('[data-tp-s]').value = String(Number(tp.querySelector('[data-tp-hs]').value) * 60 + half);
+      tp.querySelector('[data-tp-e]').value = String(Number(tp.querySelector('[data-tp-he]').value) * 60 + half);
+    });
+  };
+
   const DEL_FIELD = {
     save_rates: 'input[data-price]', save_packs: 'input[name="price[]"]', save_rentals: 'input[name="name[]"]',
     save_equipment: 'input[name="model[]"]', save_rooms: 'input[name="name[]"]', save_discounts: 'input[name="name[]"]',
@@ -830,6 +855,7 @@
   setupRoomChips();
   setupRateEdit();
   setupRowDelete();
+  setupTimePair();
   setupFilter(mapApi);
   setupTargetTabs();
   setupSoloPeople();
