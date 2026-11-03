@@ -238,7 +238,11 @@
 .sinfo-slot + .sinfo-slot { margin-top: 2px; }
 
 /* ---- 新しい行の「追加の時間帯」（曜日・開始・終了を横に並べる。グリッドの1行を丸ごと使う）---- */
-.sinfo-rate-row__extra { grid-column: 1 / -1; display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 6px; }
+/* 新しい見出しの行: 曜日・開始・終了を1か所に縦に並べる（＋ 時間帯 で行を足す。4列目は × の場所） */
+.sinfo-rate-row__slots { grid-column: 1 / -1; display: grid; gap: 6px; }
+.sinfo-rate-row__slot { display: grid; grid-template-columns: 1.4fr 1fr 1fr 32px; gap: 6px; align-items: center; }
+.sinfo-rate-row__slot-add { justify-self: start; padding: 2px 10px; }
+.sinfo-rate-new-add { justify-self: start; }
 
 /* ---- 行の削除ボタン（編集フォーム。押すと行を隠して保存で削除）---- */
 .sinfo-row-del { width: 32px; height: 32px; color: var(--muted); }

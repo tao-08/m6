@@ -8,7 +8,7 @@
  *  5. ＋／－ボタン（[data-step]）… 数字入力をタッチで増減（シミュレーションの人数・一覧の広さ）
  *  6. 広さの絞り込み（#studio-filter）… 一覧のカードと地図のピンを「N帖以上の部屋がある店」だけにする
  *  7. 部屋のチェック欄（.sinfo-chips）… 「全部屋」と個別の部屋を同時に選ばせない
- *  8. 料金の編集（[data-rate-add]）… 見出し（対象・曜日）の＋で空の行を足す
+ *  8. 料金の編集（[data-rate-add]）… 見出し（対象・曜日）の＋で空の行を足す / ＋ 見出し / ＋ 時間帯
  *  9. 行の削除（[data-row-del]）… 行の主な欄を空にして隠す（保存で削除される）
  *
  *  ■ IIFE（即時実行関数）とは
@@ -706,6 +706,43 @@
       }
       tpl.before(row);
       row.querySelector('input[name="price[]"]').focus();
+    });
+
+    // 雛形の '__K__'（と '__N__'）を本物に置き換える。name と data-key と key[] の値
+    const fill = (root, key, n) => {
+      root.querySelectorAll('[name]').forEach((el) => {
+        el.name = el.name.replaceAll('__K__', key).replaceAll('__N__', String(n));
+      });
+      root.querySelectorAll('[data-key]').forEach((el) => { el.dataset.key = key; });
+      const k = root.querySelector('input[name="key[]"]');
+      if (k) k.value = key;
+    };
+
+    let slotSeq = 0; // 追加の時間帯の番号（x[キー][番号][...]。ページ内で重複しなければ何でもいい）
+    document.addEventListener('click', (e) => {
+      // 「＋ 見出し」: 新しい見出しの行をもう1つ足す（保存せずに何個でも作れる）
+      const newBtn = e.target.closest('[data-rate-new-add]');
+      if (newBtn) {
+        const tpl = newBtn.parentElement.querySelector('template[data-rate-new-tpl]');
+        const group = tpl.content.firstElementChild.cloneNode(true);
+        fill(group, 'j' + (++rateRowSeq), 0);
+        newBtn.before(group);
+        group.querySelector('select[name="people[]"]').focus();
+        return;
+      }
+      // 「＋ 時間帯」: 同じ料金で、曜日・開始・終了の行を足す
+      const slotBtn = e.target.closest('[data-slot-add]');
+      if (slotBtn) {
+        const row = slotBtn.closest('[data-key]');
+        const tpl = slotBtn.closest('form').querySelector('template[data-slot-tpl]');
+        const line = tpl.content.firstElementChild.cloneNode(true);
+        fill(line, row.dataset.key, ++slotSeq);
+        slotBtn.before(line);
+        return;
+      }
+      // 追加の時間帯の ×: 行ごと消す（消した欄は送られない）
+      const delBtn = e.target.closest('[data-slot-del]');
+      if (delBtn) delBtn.closest('.sinfo-rate-row__slot').remove();
     });
   };
 

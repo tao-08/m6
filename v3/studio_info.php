@@ -398,6 +398,9 @@ if (is_post()) {
             //   例: 平日 18〜23時 + 土日祝 終日 を同じ料金で1回の入力にする。x[行のキー][n][day|start|end]
             if (!$isPack && (int)$rawId === 0 && $rowRooms !== false) {
                 foreach ((array)($_POST['x'][$key] ?? []) as $x) {
+                    if (!is_array($x)) {
+                        continue; // 形の違う値（改ざん）は無視
+                    }
                     $xd = (string)($x['day'] ?? '');
                     if ($xd === '') {
                         continue; // 未入力の欄
@@ -665,23 +668,21 @@ $discInputs = function (array $disc, string $unit) use ($discounts): string {
 };
 
 /**
- * 追加の時間帯の入力欄（新しい行だけ。2つ）。曜日が空の欄は無視する
- *   同じ料金で「平日 18〜23時」と「土日祝 終日」を1回で入れるためのもの（保存は save_rates の x[キー][n]）
+ * 新しい見出しの行の「曜日・開始・終了」1行分（曜日と時間をここ1か所にまとめる）
+ *   $names = [曜日, 開始, 終了] の name。1行目は day[] / start[] / end[]、追加の行は x[キー][n][day|start|end]
+ *   追加の行（$removable）には × を付ける。× で行ごと消す = 送られない
  */
-$extraSlots = function (string $key): string {
-    $days = '<option value="">＋ 時間帯</option>';
+$slotLine = function (array $names, int $day, int $start, int $end, bool $removable): string {
+    $days = '';
     foreach (STUDIO_DAY_TYPES as $k => $label) {
-        $days .= '<option value="' . $k . '">' . h($label) . '</option>';
+        $days .= '<option value="' . $k . '"' . ($k === $day ? ' selected' : '') . '>' . h($label) . '</option>';
     }
-    $html = '';
-    foreach ([0, 1] as $n) {
-        $html .= '<span class="sinfo-rate-row__extra">'
-            . '<select name="x[' . h($key) . '][' . $n . '][day]" aria-label="追加の時間帯の曜日">' . $days . '</select>'
-            . '<select name="x[' . h($key) . '][' . $n . '][start]" aria-label="追加の開始" data-native>' . studio_time_options(600) . '</select>'
-            . '<select name="x[' . h($key) . '][' . $n . '][end]" aria-label="追加の終了" data-native>' . studio_time_options(1380) . '</select>'
-            . '</span>';
-    }
-    return $html;
+    return '<span class="sinfo-rate-row__slot">'
+        . '<select name="' . h($names[0]) . '" aria-label="曜日">' . $days . '</select>'
+        . '<select name="' . h($names[1]) . '" aria-label="開始" data-native>' . studio_time_options($start) . '</select>'
+        . '<select name="' . h($names[2]) . '" aria-label="終了" data-native>' . studio_time_options($end) . '</select>'
+        . ($removable ? '<button type="button" class="icon-btn sinfo-row-del" data-slot-del title="削除" aria-label="削除">' . icon('close') . '</button>' : '<span></span>')
+        . '</span>';
 };
 
 /**
@@ -693,32 +694,34 @@ $extraSlots = function (string $key): string {
  *          「＋」で行を途中に足しても位置がずれないよう、位置（行番号）ではなくキーで結ぶ。
  *          既存の行は 'e' + 料金の id / 新しい行は 'n' + 連番 / <template> の中は '__K__'（JS が複製のときに本物のキーに置き換える）
  */
-$rateRow = function (array $r, string $key, bool $fixed) use ($discInputs, $roomChips, $extraSlots): string {
+$rateRow = function (array $r, string $key, bool $fixed) use ($discInputs, $roomChips, $slotLine): string {
     $people = $r['people'] === null ? 0 : (int)$r['people'];
-    $html = '<div class="sinfo-rate-row' . ($fixed ? '' : ' sinfo-rate-row--new') . '">'
+    $html = '<div class="sinfo-rate-row' . ($fixed ? '' : ' sinfo-rate-row--new') . '" data-key="' . h($key) . '">'
         . '<input type="hidden" name="id[]" value="' . (int)$r['studio_rate_id'] . '">'
         . '<input type="hidden" name="key[]" value="' . h($key) . '">';
     if ($fixed) {
         $html .= '<input type="hidden" name="people[]" value="' . $people . '">'
             . '<input type="hidden" name="day[]" value="' . (int)$r['day_type'] . '">';
     } else {
-        $days = '';
-        foreach (STUDIO_DAY_TYPES as $k => $label) {
-            $days .= '<option value="' . $k . '"' . ($k === (int)$r['day_type'] ? ' selected' : '') . '>' . h($label) . '</option>';
-        }
-        // 新しい見出しの行だけ、先頭に「対象・曜日」の選択を出す（グリッドの1行を丸ごと使う）
-        $html .= '<span class="sinfo-rate-row__pick">' . icon('add') . '<select name="people[]" aria-label="対象">' . studio_target_options($people ?: null) . '</select>'
-            . '<select name="day[]" aria-label="曜日">' . $days . '</select></span>';
+        // 新しい見出しの行だけ、先頭に「対象」の選択を出す（グリッドの1行を丸ごと使う）
+        $html .= '<span class="sinfo-rate-row__pick">' . icon('add') . '<select name="people[]" aria-label="対象">' . studio_target_options($people ?: null) . '</select></span>';
     }
-    return $html
-        . '<div class="sinfo-rate-row__top">' . $roomChips($key, $r['room_ids'] ?? []) . studio_row_del((int)$r['studio_rate_id']) . '</div>' // 部屋のチェック欄（部屋が未登録なら空）＋削除
+    $html .= '<div class="sinfo-rate-row__top">' . $roomChips($key, $r['room_ids'] ?? []) . studio_row_del((int)$r['studio_rate_id']) . '</div>'; // 部屋のチェック欄（部屋が未登録なら空）＋削除
+    if ($fixed) {
         // 時刻は data-native = 独自の選択 UI に変えず、ブラウザ標準のプルダウン（スマホではドラム式）にする。
         //   選択肢が 61 個（30分きざみ）と多く、細いマスでも文字が切れないため
-        . '<select name="start[]" aria-label="開始" data-native>' . studio_time_options((int)$r['start_min']) . '</select>'
-        . '<select name="end[]" aria-label="終了" data-native>' . studio_time_options((int)$r['end_min']) . '</select>'
+        $html .= '<select name="start[]" aria-label="開始" data-native>' . studio_time_options((int)$r['start_min']) . '</select>'
+            . '<select name="end[]" aria-label="終了" data-native>' . studio_time_options((int)$r['end_min']) . '</select>';
+    } else {
+        // 新しい見出しの行: 曜日・開始・終了を1か所にまとめる。「＋ 時間帯」で同じ料金の時間帯を足せる（JS: setupRateEdit）
+        $html .= '<div class="sinfo-rate-row__slots" data-slots>'
+            . $slotLine(['day[]', 'start[]', 'end[]'], (int)$r['day_type'], (int)$r['start_min'], (int)$r['end_min'], false)
+            . '<button type="button" class="btn btn--sm sinfo-rate-row__slot-add" data-slot-add>' . icon('add') . ' 時間帯</button>'
+            . '</div>';
+    }
+    return $html
         . '<input type="number" name="price[]" min="0" max="999999" value="' . h($r['price']) . '" placeholder="料金" aria-label="1時間の料金" inputmode="numeric">'
         . $discInputs($r['disc'], '1時間の料金')
-        . ($fixed ? '' : $extraSlots($key)) // 新しい行だけ: 同じ料金の追加の時間帯
         . '</div>';
 };
 
@@ -1014,12 +1017,17 @@ render_header($studio['name'], 'tools');
                             </div>
                         </div>
                     <?php endforeach; ?>
-                    <!-- 新しい見出し（対象・曜日）を作る行。料金を入れて保存すると、その見出しの下に並ぶ -->
+                    <?php $newBlank = ['studio_rate_id' => 0, 'people' => null, 'day_type' => 0, 'start_min' => 600, 'end_min' => 1380, 'price' => '', 'disc' => [], 'room_ids' => []]; ?>
+                    <!-- 新しい見出し（対象・曜日）を作る行。料金を入れて保存すると、その見出しの下に並ぶ。「＋ 見出し」で何個でも足せる -->
                     <div class="sinfo-rate-group sinfo-rate-group--new">
                         <div class="sinfo-rate-wrap">
-                            <?= $rateRow(['studio_rate_id' => 0, 'people' => null, 'day_type' => 0, 'start_min' => 600, 'end_min' => 1380, 'price' => '', 'disc' => [], 'room_ids' => []], 'n1', false) ?>
+                            <?= $rateRow($newBlank, 'n1', false) ?>
                         </div>
                     </div>
+                    <button type="button" class="btn btn--sm sinfo-rate-new-add" data-rate-new-add><?= icon('add') ?> 見出し</button>
+                    <!-- 雛形（JS が複製）: 新しい見出しの行 / 追加の時間帯の1行。'__K__' = 行のキー、'__N__' = 時間帯の番号 -->
+                    <template data-rate-new-tpl><div class="sinfo-rate-group sinfo-rate-group--new"><div class="sinfo-rate-wrap"><?= $rateRow($newBlank, '__K__', false) ?></div></div></template>
+                    <template data-slot-tpl><?= $slotLine(['x[__K__][__N__][day]', 'x[__K__][__N__][start]', 'x[__K__][__N__][end]'], 0, 600, 1380, true) ?></template>
             <div><button type="submit" class="btn btn--primary btn--sm" title="料金を空にした行は削除"><?= icon('save') ?> 保存</button></div>
         </form>
     </details>
