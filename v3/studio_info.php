@@ -945,6 +945,7 @@ render_header($studio['name'], 'tools');
             <script type="application/json" id="studio-pins"><?= json_encode([[
                 'id' => $studioId, 'name' => $studio['name'], 'lat' => (float)$studio['lat'], 'lng' => (float)$studio['lng'], 'sub' => $studio['access'] ?? '',
             ]], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?></script>
+            <script type="application/json" id="studio-campuses" data-logo="<?= h(asset_url('assets/meiji-logo.svg')) ?>"><?= json_encode(studio_campuses(), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?></script>
         <?php endif; ?>
     </div>
 

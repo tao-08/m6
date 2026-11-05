@@ -96,7 +96,7 @@
       if (c.fit) fitMarkers.push(m);
     });
 
-    if (pins.length === 1 && !campuses.length) {
+    if (single || (pins.length === 1 && !campuses.length)) { // 詳細ページ（single）は、キャンパスが遠くても表示範囲はスタジオだけ
       map.setView([pins[0].lat, pins[0].lng], 15); // 1本だけ → 周辺も見える拡大率（16 から1段階縮小）
     } else {
       // fitBounds = 全部のピンが入るように拡大率と中心を自動で決める。padding = 端に余白

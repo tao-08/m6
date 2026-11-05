@@ -256,6 +256,20 @@ function studio_merge_same_rate_groups(array $groups): array
     return $out;
 }
 
+/**
+ * 明治大学の4キャンパス（地図にロゴの吹き出しで出す。一覧・詳細で共通）
+ *   座標は国土地理院の住所検索で取った住所の位置。fit = false（生田）は、一覧の最初の表示範囲に含めない（遠いので）
+ */
+function studio_campuses(): array
+{
+    return [
+        ['name' => '駿河台', 'lat' => 35.697712, 'lng' => 139.761398, 'fit' => true],
+        ['name' => '和泉',   'lat' => 35.670834, 'lng' => 139.648285, 'fit' => true],
+        ['name' => '中野',   'lat' => 35.707325, 'lng' => 139.659302, 'fit' => true],
+        ['name' => '生田',   'lat' => 35.613640, 'lng' => 139.550018, 'fit' => false],
+    ];
+}
+
 /** 円の表示（1234 → "¥1,234"）。number_format = 3桁ごとにカンマ */
 function studio_yen(int $yen): string
 {

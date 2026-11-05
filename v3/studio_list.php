@@ -79,14 +79,7 @@ foreach ($studios as $s) {
     }
 }
 
-// 明治大学の4キャンパス（吹き出しロゴで地図に出す）。座標は国土地理院の住所検索で取った住所の位置
-//   fit = false のキャンパス（生田）は、最初の表示範囲に含めない（遠いので、含めると地図が引きすぎる）。ピンは出る
-$campuses = [
-    ['name' => '駿河台', 'lat' => 35.697712, 'lng' => 139.761398, 'fit' => true],
-    ['name' => '和泉',   'lat' => 35.670834, 'lng' => 139.648285, 'fit' => true],
-    ['name' => '中野',   'lat' => 35.707325, 'lng' => 139.659302, 'fit' => true],
-    ['name' => '生田',   'lat' => 35.613640, 'lng' => 139.550018, 'fit' => false],
-];
+$campuses = studio_campuses(); // 明治大学の4キャンパス（lib/studio_info.php）
 $jsonFlags = JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT;
 
 // 絞り込み欄は、広さが入っているスタジオが1つでもあるときだけ出す（全部不明なら絞り込む意味がない）
