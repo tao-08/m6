@@ -15,6 +15,13 @@
 .sinfo-list__tags { display: inline-flex; flex-wrap: wrap; gap: 4px; } /* タグ同士のすき間 */
 .sinfo-list__reserve { flex: none; } /* ボタンは縮めない */
 .sinfo-list__name { font-weight: 800; display: inline-flex; align-items: center; gap: 8px; }
+/* スマホ: 予約ボタンを右上に重ねて、2段め以降（駅・営業時間・料金）をカード全幅で使う。名前だけボタンの分を空ける */
+@media (max-width: 760px) {
+  .sinfo-list__item { position: relative; }
+  /* top / right = カードの padding（スマホは16px）。名前の行とボタンを同じ高さ（34px）にして、縦の中心をそろえる */
+  .sinfo-list__reserve { position: absolute; top: 16px; right: 16px; height: 34px; }
+  .sinfo-list__item:has(.sinfo-list__reserve) .sinfo-list__name { padding-right: 76px; min-height: 34px; }
+}
 .sinfo-list__meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; } /* align-items: center = タグと文字の高さをそろえる */
 .sinfo-list__meta .icon, .sinfo-info .icon { font-size: 16px; vertical-align: -3px; }
 
