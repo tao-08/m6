@@ -165,8 +165,8 @@ function studio_ai_system_prompt(bool $images = false, array $sections = [], arr
         . "# その他\n"
         . "- info.student_note は割引の条件（学生証・年齢確認書類の提示など）。info.access は最寄り駅と徒歩分数（例: 立川駅 北口 徒歩5分）。info.hours は営業時間（例: 平日 10:00-23:00 / 土日祝 9:00-22:00。曜日で違うときは1行にまとめる）\n"
         . "- info.reserve_url は予約ページの URL（無ければ空文字）。URL は https:// から始まる完全な形\n"
-        . "- rentals: マイク・シールド・機材のレンタル。per_hour は「1時間あたり」の料金なら true、「1回あたり」と明記されているものだけ false（書かれていなければ true）\n"
-        . "- equipment: 部屋の常設機材。category は決められた区分から選ぶ。rooms は設置されている部屋名の配列（複数可。全部屋共通なら空の配列 []）\n"
+        . "- rentals: マイク・シールド・機材のレンタル。1行 = 1品目（「SM58、SM57」のように複数をまとめて1行にせず、1つずつ別の行にする）。per_hour は「1時間あたり」の料金なら true、「1回あたり」と明記されているものだけ false（書かれていなければ true）\n"
+        . "- equipment: 部屋の常設機材。1行 = 1機種（ギターアンプ2種類・ドラムのスネアとシンバルなど、複数ある機材は1つずつ別の行にし、1つの model に「、」「/」でつなげない）。category は決められた区分から選ぶ。rooms は設置されている部屋名の配列（複数可。全部屋共通なら空の配列 []）\n"
         . "- rooms.area_jo は部屋の広さを「帖」の数値だけで（例: 12 / 9.5）。畳表記もそのまま帖の数値にする。㎡表記しか無いときは 1帖 = 1.62㎡ で換算して小数1桁まで。広さが書かれていなければ 0\n"
         . "- rooms.size_note は広さ以外の備考（定員・階数・設備など。例: 最大8人 / 2階）。広さの数字や「帖」「畳」は書かない。無ければ空文字\n"
         . "- sources: 参考にしたページの URL（最大5件）。caution: 確かめてほしい点（古い情報かもしれない等）を短く。無ければ空文字";
@@ -240,6 +240,13 @@ function studio_ai_discount_id(PDO $pdo, int $studioId, string $name, int $day, 
         $cache[$name] = (int)$pdo->lastInsertId();
     }
     return $cache[$name];
+}
+
+/** 「SM58、SM57」のように1つの欄にまとめて入っていたものを、1つずつに分ける（区切りは 、 ， , 改行。型番の / や ・ は分けない） */
+function studio_ai_split(string $v): array
+{
+    return array_values(array_filter(array_map('trim', preg_split('/[、，,
+]+/u', $v) ?: []), fn($x) => $x !== ''));
 }
 
 /**
@@ -347,25 +354,29 @@ function studio_ai_normalize(array $ai): array
 
     $rentals = [];
     foreach ((array)($ai['rentals'] ?? []) as $r) {
-        $name = studio_ai_str($r['name'] ?? null, 100);
+        $name = studio_ai_str($r['name'] ?? null, 300);
         $price = studio_ai_yen($r['price'] ?? null);
         if ($name !== null && $price !== null) {
-            $rentals[] = ['name' => $name, 'price' => $price, 'per_hour' => !empty($r['per_hour']) ? 1 : 0];
+            foreach (studio_ai_split($name) as $one) { // まとめて入っていたら1つずつの行にする（料金は同じ）
+                $rentals[] = ['name' => mb_substr($one, 0, 100), 'price' => $price, 'per_hour' => !empty($r['per_hour']) ? 1 : 0];
+            }
         }
     }
 
     $equipment = [];
     foreach ((array)($ai['equipment'] ?? []) as $e) {
-        $model = studio_ai_str($e['model'] ?? null, 100);
+        $model = studio_ai_str($e['model'] ?? null, 500);
         $cat = $e['category'] ?? '';
         $q = $e['quantity'] ?? 1;
         if ($model !== null && in_array($cat, STUDIO_EQUIP_CATEGORIES, true)) {
-            $equipment[] = [
-                'rooms' => studio_ai_rooms($e['rooms'] ?? null),
-                'category' => $cat,
-                'model_name' => $model,
-                'quantity' => is_int($q) && $q >= 0 && $q <= 99 ? $q : 1,
-            ];
+            foreach (studio_ai_split($model) as $one) { // まとめて入っていたら1機種ずつの行にする（部屋・区分・台数は同じ）
+                $equipment[] = [
+                    'rooms' => studio_ai_rooms($e['rooms'] ?? null),
+                    'category' => $cat,
+                    'model_name' => mb_substr($one, 0, 100),
+                    'quantity' => is_int($q) && $q >= 0 && $q <= 99 ? $q : 1,
+                ];
+            }
         }
     }
 
