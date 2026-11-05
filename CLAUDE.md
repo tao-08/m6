@@ -18,6 +18,10 @@
 - 文中に置くラベルは `.label-inline` を足す（文字サイズに追従して行の中央に揃う）
 - 日本語が上に寄って見える分は規格側で `padding-top: max(1px, .1em)` を足して補正済み。個別に補正しない
 
+## デザイントークンの基準
+- 角丸・文字サイズ・時間・影は値を直書きせず、v3/assets/app.css の `:root` のトークン（`--r-*` / `--fs-*` / `--t-*` / `--shadow-*` / `--ring`）から選ぶ
+- CSS を変更したら `php v3/tests/run.php` を実行する。直書きは「直書きなし: ファイル名」の失敗として出る（対象外の条件は v3/tests/css_tokens.php）
+
 ## 質問ルール
 - 要件が曖昧、選択肢が複数ある、設計判断が必要なときは、実装前に必ずAskUserQuestionツールで質問すること
 - 推測で進めない。迷ったら聞く
@@ -47,6 +51,7 @@
   - ドライランが必要なときだけ `-Prod` なしで実行。失敗理由は jobs / annotations API で確認（ログ本体はプロキシで取れない）
   - 未コミットの変更があれば、先にコミットして main に push してから実行する
   - gh は winget で導入済み。PATH に無いときはスクリプトが自動で読み直す
+- Deploy は最初に `php v3/tests/run.php` を実行し、失敗すると本番に上がらない。原因は手元で同じコマンドを実行して確認する
 - 本番に上がるのは main ブランチの v3/ だけ。作業ブランチの変更は main にマージしてからデプロイする
 - config.php は本番サーバー専用。デプロイ対象から除外されている（絶対に上書きしない）
 - FTP の接続情報は GitHub Secrets（FTP_SERVER / FTP_USER / FTP_PASSWORD / FTP_DIR、任意で FTP_PROTOCOL / FTP_PORT）。Claude は値を見ない・入力しない

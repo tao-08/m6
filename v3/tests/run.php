@@ -610,5 +610,32 @@ check('検索順: 複数アーティスト（feat.）は先頭の人で同じ曲
     $tr('曲X', 'A', 'アルバムY', 2020, 'album'),
 ]), ['アルバムY', '曲X']);
 
+echo "css tokens\n";
+// トークン化済みの値（角丸・文字サイズ・時間・影）の直書きを防ぐ。定義は assets/app.css の :root
+require_once __DIR__ . '/css_tokens.php';
+$cssBad = fn(string $css) => array_column(css_token_scan($css), 'prop');
+check('直書き: 角丸', $cssBad('.a { border-radius: 8px; }'), ['border-radius']);
+check('直書き: 文字サイズ', $cssBad('.a { font-size: 14px; }'), ['font-size']);
+check('直書き: font の中の文字サイズ', $cssBad('.a { font: 700 14px/1.4 var(--font); }'), ['font']);
+check('直書き: 時間', $cssBad('.a { transition: opacity .15s ease; }'), ['transition']);
+check('直書き: cubic-bezier の中のカンマで切らない', $cssBad('.a { transition: transform .2s cubic-bezier(.2, .8, .2, 1); }'), ['transition']);
+check('直書き: 切替の待ち時間', $cssBad('.a { transition: visibility 0s linear .12s; }'), ['transition']);
+check('直書き: 影', $cssBad('.a { box-shadow: 0 8px 24px rgb(0 0 0 / .18); }'), ['box-shadow']);
+check('直書き: @media の中も見る', $cssBad('@media (max-width: 760px) { .a { font-size: 14px; } }'), ['font-size']);
+check('許可: トークン', $cssBad('.a { border-radius: var(--r-md); font-size: var(--fs-md); transition: opacity var(--t-fast) ease; box-shadow: var(--shadow-pop); }'), []);
+check('許可: 本体がトークンなら待ち時間は数字でよい', $cssBad('.a { animation: rise var(--t-base) .08s ease-out backwards; }'), []);
+check('許可: font の行の高さ', $cssBad('.a { font: 700 var(--fs-2xs)/16px var(--font); }'), []);
+check('許可: 丸・細い角丸・0', $cssBad('.a { border-radius: 50%; } .b { border-radius: 2px; } .c { border-radius: 0; }'), []);
+check('許可: アイコンの大きさ', $cssBad('.a .icon { font-size: 20px; }'), []);
+check('許可: 可変サイズ', $cssBad('.a { font-size: clamp(26px, 5vw, 36px); }'), []);
+check('許可: 0.4秒以上の演出', $cssBad('.a { animation: spin 1s linear infinite; }'), []);
+check('許可: 内側の影', $cssBad('.a { box-shadow: inset 0 0 0 1px rgb(0 0 0 / .1); }'), []);
+check('許可: コメントの中', $cssBad('.a { /* border-radius: 8px; */ color: red; }'), []);
+check('トークンの定義は検出しない', $cssBad(':root { --r-md: 10px; --fs-md: 15px; --t-fast: .15s; --shadow-pop: 0 8px 24px rgb(0 0 0 / .18); }'), []);
+foreach (glob(__DIR__ . '/../assets/*.css') as $cssFile) {
+    // 失敗したら、どのセレクタのどの値かが expected / actual に出る
+    check('直書きなし: ' . basename($cssFile), css_token_scan((string)file_get_contents($cssFile)), []);
+}
+
 echo $failed ?"\n{$failed} 件失敗\n" : "\nすべて成功\n";
 exit($failed ? 1 : 0);
