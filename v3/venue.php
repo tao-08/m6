@@ -6,8 +6,9 @@
  *  表示: サイト・住所・最寄り駅（全部）・機材（区分ごと）・アクセスマップ・ここで演奏したライブ
  *  編集: ログインしている部員なら誰でも（サイトの URL・住所・駅・機材）。会場名の変更は masters.php（管理者）
  *
- *  POST は4種類（action）。どれも CSRF 検証 → 入力検証 → プリペアドステートメント → リダイレクト（PRG）。
+ *  POST は5種類（action）。どれも CSRF 検証 → 入力検証 → プリペアドステートメント → リダイレクト（PRG）。
  *    save_info … website_url / address
+ *    apply_ai … 「AIで入力」の提案（api_venue_ai.php がセッションに置いたもの）のうち、選んだ項目を反映
  *    save_images … 画像（7枚まで。削除にチェックした分を引いて、選んだ分を足す。lib/attach_image.php の kind = venue）
  *    save_stations / save_equipment … 行ごとの入力欄をまとめて保存。名前（機種名）を空にした行は削除、id=0 の行は追加
  *  行の id は必ず「この会場の行か」を確かめ、WHERE にも venue_id を入れる（他の会場の行を書き換えさせない）
@@ -19,11 +20,9 @@
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/attach_image.php';
+require_once __DIR__ . '/lib/venue_ai.php'; // 機材の区分（VENUE_EQUIP_CATEGORIES）と、AIで入力
 require_login();
 $pdo = db();
-
-/** 機材の区分（この順に表示する。DB には文字列で入れるので、ここにある名前以外は受け付けない） */
-const VENUE_EQUIP_CATEGORIES = ['ギターアンプ', 'ベースアンプ', 'ドラム', 'キーボード', 'PA', 'その他'];
 
 $venueId = (int)($_GET['id'] ?? $_POST['venue_id'] ?? 0);
 $st = $pdo->prepare('SELECT venue_id, name, address, website_url, note FROM venue WHERE venue_id = ?');
@@ -56,6 +55,21 @@ if (is_post()) {
             $pdo->prepare('UPDATE venue SET website_url = ?, address = ?, note = ? WHERE venue_id = ?')
                 ->execute([$url === '' ? null : $url, $address === '' ? null : $address, $note === '' ? null : $note, $venueId]);
             flash('保存しました');
+        }
+        redirect($self);
+    }
+
+    if ($action === 'apply_ai') {
+        $prop = $_SESSION['venue_ai'][$venueId] ?? null;
+        $sections = array_values(array_intersect(array_keys(VENUE_AI_SECTIONS), array_map('strval', (array)($_POST['sections'] ?? []))));
+        if (!is_array($prop)) {
+            flash('AI の結果が見つかりません。もう一度「AIで入力」してください', 'error');
+        } elseif (!$sections) {
+            flash('反映する項目を選んでください', 'error');
+        } else {
+            venue_ai_apply($pdo, $venueId, $prop, $sections);
+            unset($_SESSION['venue_ai'][$venueId]); // 使い終わった提案は捨てる（二重に反映しないように）
+            flash('反映しました');
         }
         redirect($self);
     }
@@ -265,6 +279,37 @@ render_header($venue['name'], 'tools');
     <?php if ($venue['note']): ?><p class="venue-note"><?= nl2br(h($venue['note'])) ?></p><?php endif; ?>
     <details class="venue-edit">
         <summary><?= icon('edit') ?> 編集</summary>
+        <?php if (claude_enabled()): ?>
+        <!-- ✨AIで入力（api_venue_ai.php）。調べる項目と「公式のみ」を選べる。結果のプレビューは JS（assets/venue_ai.js）が #venue-ai-result に作る -->
+        <div class="venue-ai" id="venue-ai" data-venue-id="<?= $venueId ?>" data-csrf="<?= h(csrf_token()) ?>" data-max-images="<?= AI_MAX_IMAGES ?>">
+            <div class="venue-ai__head">
+                <button type="button" class="btn btn--sm" data-ai-run><?= icon('auto_awesome') ?> AIで入力</button>
+                <select data-ai-model aria-label="モデル" title="モデル">
+                    <?php foreach (studio_ai_models() as $mid => $mname): ?>
+                        <option value="<?= h($mid) ?>"<?= $mid === studio_ai_default_model() ? ' selected' : '' ?>><?= h($mname) ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <button type="button" class="btn btn--sm" data-ai-pick title="画像を追加（貼り付けもOK）"><?= icon('add_photo_alternate') ?></button>
+                <input type="file" accept="image/*" multiple hidden data-ai-files>
+                <span class="muted small" data-ai-status></span>
+            </div>
+            <div class="venue-ai__scope">
+                <?php foreach (VENUE_AI_SECTIONS as $key => $label): ?>
+                    <label class="venue-chip"><input type="checkbox" value="<?= h($key) ?>" data-ai-section checked><?= h($label) ?></label>
+                <?php endforeach; ?>
+                <label class="venue-chip"><input type="checkbox" data-ai-official<?= $venue['website_url'] ? '' : ' disabled' ?>>公式のみ</label>
+            </div>
+            <div class="venue-ai__thumbs" data-ai-thumbs hidden></div>
+            <form method="post" class="venue-ai__result" id="venue-ai-result" hidden
+                data-confirm="選んだ項目を AI の結果で置き換えます（最寄り駅・機材は今の行が削除されます）。よろしいですか？">
+                <?= csrf_field() ?>
+                <input type="hidden" name="action" value="apply_ai">
+                <input type="hidden" name="venue_id" value="<?= $venueId ?>">
+                <div data-ai-body></div>
+                <div><button type="submit" class="btn btn--primary btn--sm"><?= icon('download_done') ?> 選んだ項目を反映</button></div>
+            </form>
+        </div>
+        <?php endif; ?>
         <form method="post" class="venue-edit__form">
             <?= csrf_field() ?>
             <input type="hidden" name="action" value="save_info">
@@ -388,4 +433,5 @@ render_header($venue['name'], 'tools');
     </ul>
     <?php endif; ?>
 </section>
+<?php if (claude_enabled()): ?><script src="<?= asset_url('assets/venue_ai.js') ?>"></script><?php endif; ?>
 <?php render_footer();
