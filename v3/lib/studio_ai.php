@@ -125,9 +125,14 @@ function studio_ai_system_prompt(bool $images = false, array $sections = [], arr
         $names = implode('・', array_map(fn($k) => STUDIO_AI_SECTIONS[$k] . '（' . $k . '）', $sections));
         $scope = "# 今回調べる項目\n- 次の項目だけを調べる: {$names}。JSON にはこの項目だけを入れる（他の項目は調べない）\n";
         if (!$images && array_intersect($sections, ['rentals', 'equipment'])) {
-            $scope .= "- レンタル品・機材は料金表と別のページ（「機材」「設備」「備品」「レンタル」「スタジオ紹介」「各部屋のページ」）にあることが多い。公式サイトの該当ページを開いて読む\n"
-                . "- 部屋ごとに機材が違うときは、部屋ごとのページ・表を読んで rooms に部屋名を入れる。全部屋共通のものは rooms を空の配列にする\n"
-                . "- 機材の model は「メーカー名 + 型番」（例: Marshall JCM900 / Roland JC-120 / Pearl Masters / Shure SM58）。台数は quantity。ドラムはセット名とシンバル・ペダルなど付属品が分かれて載っていれば別の行にする\n";
+            $scope .= "- レンタル品・機材は料金表と別のページ（「機材」「設備」「備品」「レンタル」「各部屋のページ」）にあることが多い。公式サイトの該当ページを開いて最後まで読む\n";
+        }
+        if (!$images && in_array('equipment', $sections, true)) {
+            $scope .= "- 機材は「部屋ごとの表」になっていることが多い。1部屋ずつ上から全項目を読み、載っている機材を1つも飛ばさない。先に行数を数えず、全部書き出す\n"
+                . "- 同じ機材が複数の部屋にあるときは1行にまとめ、rooms に該当する部屋名を全部入れる（部屋ごとに行を増やさない）。全部屋共通なら rooms は空の配列\n"
+                . "- 「A / B」「A、B」は別の機材なので1つずつ別の行にする。「A + B」（ヘッド+キャビなどのセット）は1行のまま「Ampeg PF-500 + Aguilar GS412」と書く。「×2」は quantity=2\n"
+                . "- ドラムは1セット = 1行（例: TAMA 22/16/13/12 のセット）。シンバル・ペダルなど別記の付属品は別の行\n"
+                . "- 見出しと category の対応: P.A./ミキサー/スピーカー/モニター → PA、BASS AMP → ベースアンプ、GUITAR AMP → ギターアンプ、DRUMS → ドラム、KEYBOARDS → キーボード（「FREE RENTAL」など機材名が無い項目は行にしない）\n";
         }
     }
     // すでに登録されている部屋・割引区分の名前。同じ表記を使わせる（違う名前を返すと別の部屋・区分として増えてしまうため）
@@ -166,7 +171,7 @@ function studio_ai_system_prompt(bool $images = false, array $sections = [], arr
         . "- info.student_note は割引の条件（学生証・年齢確認書類の提示など）。info.access は最寄り駅と徒歩分数（例: 立川駅 北口 徒歩5分）。info.hours は営業時間（例: 平日 10:00-23:00 / 土日祝 9:00-22:00。曜日で違うときは1行にまとめる）\n"
         . "- info.reserve_url は予約ページの URL（無ければ空文字）。URL は https:// から始まる完全な形\n"
         . "- rentals: マイク・シールド・機材のレンタル。1行 = 1品目（「SM58、SM57」のように複数をまとめて1行にせず、1つずつ別の行にする）。per_hour は「1時間あたり」の料金なら true、「1回あたり」と明記されているものだけ false（書かれていなければ true）\n"
-        . "- equipment: 部屋の常設機材。1行 = 1機種（ギターアンプ2種類・ドラムのスネアとシンバルなど、複数ある機材は1つずつ別の行にし、1つの model に「、」「/」でつなげない）。category は決められた区分から選ぶ。rooms は設置されている部屋名の配列（複数可。全部屋共通なら空の配列 []）\n"
+        . "- equipment: 部屋の常設機材。1行 = 1機種（1つの model に「、」「/」でつなげない。「+」のセットは1行でよい）。model は「メーカー名 + 型番」（例: Marshall JCM900 / Roland JC-120 / Shure SM58）、台数は quantity。category は決められた区分から選ぶ。rooms は設置されている部屋名の配列（全部屋共通なら空の配列 []）\n"
         . "- 部屋名が「1.6st」のように番号をまとめて書いてあるときは、「1st」「6st」のように1部屋ずつ別の行にする（rooms の name、料金・機材の rooms も同じ）\n"
         . "- rooms.area_jo は部屋の広さを「帖」の数値だけで（例: 12 / 9.5）。畳表記もそのまま帖の数値にする。㎡表記しか無いときは 1帖 = 1.62㎡ で換算して小数1桁まで。広さが書かれていなければ 0\n"
         . "- rooms.size_note は広さ以外の備考（定員・階数・設備など。例: 最大8人 / 2階）。広さの数字や「帖」「畳」は書かない。無ければ空文字\n"
@@ -258,8 +263,10 @@ function studio_ai_discount_id(PDO $pdo, int $studioId, string $name, int $day, 
 /** 「SM58、SM57」のように1つの欄にまとめて入っていたものを、1つずつに分ける（区切りは 、 ， , 改行。型番の / や ・ は分けない） */
 function studio_ai_split(string $v): array
 {
+    // 「、」「,」改行に加えて、前後に空白のある「 / 」と全角「／」でも分ける（「Marshall JCM2000 / Roland JC-120」→ 2行）。
+    // 型番の中の「22/16/13」と、ヘッド+キャビのセット「A + B」は分けない
     return array_values(array_filter(array_map('trim', preg_split('/[、，,
-]+/u', $v) ?: []), fn($x) => $x !== ''));
+／]+|\s+\/\s+/u', $v) ?: []), fn($x) => $x !== ''));
 }
 
 /**
