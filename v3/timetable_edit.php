@@ -46,7 +46,7 @@ $st = $pdo->prepare('SELECT * FROM live_day WHERE live_id = ? ORDER BY held_on I
 $st->execute([$liveId]);
 $days = $st->fetchAll();
 
-$st = $pdo->prepare('SELECT b.band_id, b.live_day_id, b.artist_id, b.name, b.play_order, b.start_time, b.end_time, b.needs_check FROM band b
+$st = $pdo->prepare('SELECT b.band_id, b.live_day_id, b.artist_id, b.name, b.play_order, b.start_time, b.end_time, b.needs_check, b.is_omnibus FROM band b
     JOIN live_day d ON d.live_day_id = b.live_day_id
     WHERE d.live_id = ? ORDER BY b.play_order');
 $st->execute([$liveId]);
@@ -174,9 +174,10 @@ if (is_post()) {
                 }
             }
         }
-        $edits[$id] = compact('name', 'start', 'end', 'order', 'flag', 'who', 'assign');
+        $omnibus = !empty($row['omnibus']) || $b['is_omnibus']; // オムニバスの解除はここでは出来ない（曲の編集で外す）
+        $edits[$id] = compact('name', 'start', 'end', 'order', 'flag', 'who', 'assign', 'omnibus');
         // エラーで戻ったときに入力した値で表示し直すため、先に上書きしておく
-        $bands[$id] = array_merge($bands[$id], ['name' => $name, 'start_time' => $start, 'end_time' => $end, 'play_order' => $order, 'needs_check' => $flag, 'check_who' => $who]
+        $bands[$id] = array_merge($bands[$id], ['name' => $name, 'start_time' => $start, 'end_time' => $end, 'play_order' => $order, 'needs_check' => $flag, 'check_who' => $who, 'is_omnibus' => (int)$omnibus]
             + ($assign !== null ? ['members' => $picked] : []));
     }
 
@@ -250,6 +251,9 @@ if (is_post()) {
                 // オムニバスのバンドはコピー元アーティストを持たないので、名前を変えても NULL のまま
                 $artistId = $before['is_omnibus'] || $before['name'] === $e['name'] ? $before['artist_id'] : find_or_create_artist($pdo, $e['name']);
                 $update->execute([$e['name'], $artistId, $e['start'] ?: null, $e['end'] ?: null, $e['order'], $e['flag'], $id]);
+                if ($e['omnibus'] && !$before['is_omnibus']) {
+                    make_band_omnibus($pdo, $id); // 名前を変えた直後でも、今の artist_id から外す
+                }
                 if ($e['assign'] !== null) {
                     sync_band_members($pdo, $index, $id, $e['assign']);
                 }
@@ -382,7 +386,8 @@ render_header('タイムテーブルを編集', 'lives'); ?>
                     <thead><tr>
                         <th aria-label="並び替え"></th><th>順</th><th title="並び替えても時間はその位置に残る">開始
                             <!-- 追随のトグル（ON: 時刻を変えると、それより下の時刻も一緒にずれる。assets/app.js の setupTimetableFollow。全日程で同じ状態） -->
-                            <button type="button" class="tt-follow" data-tt-follow aria-pressed="true" title="追随"><?= icon('link') ?></button></th><th title="並び替えても時間はその位置に残る">終了</th><th>バンド名</th>
+                            <button type="button" class="tt-follow" data-tt-follow aria-pressed="true" title="追随"><?= icon('link') ?></button></th><th title="並び替えても時間はその位置に残る">終了</th><th>バンド名
+                            <label class="tt-omnibus" <?= tip_attr('すべてオムニバス') ?>><input type="checkbox" data-omnibus-all aria-label="すべてオムニバス"><?= icon('library_music') ?></label></th>
                         <th colspan="<?= $cols ?>" data-tt-members-head>出演者</th>
                     </tr></thead>
                     <!-- data-sortable: 左端の ≡ をドラッグで行を並び替える（assets/app.js の setupSlotSort）。
@@ -408,7 +413,9 @@ render_header('タイムテーブルを編集', 'lives'); ?>
                             <!-- バンド名の横に 🚩（楽器の確認待ち。取り込み画面の名簿と同じ部品）。列を増やすと並び替え・列の追加の JS に響くので同じセルに置く -->
                             <td><div class="tt-band-name"><input autocomplete="off" name="<?= $p ?>[name]" value="<?= h($b['name']) ?>" maxlength="100" required data-band-name aria-label="バンド名">
                                 <?= check_picker($p, (int)$b['needs_check'], array_column(array_filter($members, static fn($m) => $m['id'] !== null), 'name', 'id'), $b['check_who'] ?? [], '',
-                                    array_keys(array_filter($instsOf[$id] ?? [], static fn($insts) => in_array(instrument_id_by_short('Vo'), $insts, true)))) ?></div></td>
+                                    array_keys(array_filter($instsOf[$id] ?? [], static fn($insts) => in_array(instrument_id_by_short('Vo'), $insts, true)))) ?>
+                                <!-- オムニバス（まとめてチェック）。すでにオムニバスのバンドは外せない（曲の編集で外す） -->
+                                <label class="tt-omnibus" <?= tip_attr('オムニバス') ?>><input type="checkbox" name="<?= $p ?>[omnibus]" value="1" data-omnibus-check<?= $b['is_omnibus'] ? ' checked disabled' : '' ?> aria-label="オムニバス"><?= icon('library_music') ?></label></div></td>
                             <?php for ($n = 0; $n < $cols; $n++):
                                 $m = $members[$n] ?? ['id' => null, 'name' => '', 'locked' => false];
                                 $stt = $nameStatus["$id-$n"] ?? ['status' => '', 'hint' => '', 'suggest' => []]; ?>

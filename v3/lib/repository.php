@@ -206,6 +206,29 @@ function make_bands_omnibus(PDO $pdo, array $artistIds): int
 }
 
 /**
+ * 1バンドをオムニバスにする（make_bands_omnibus のバンド指定版）。呼ぶ側でトランザクションにすること。
+ *   曲のアーティストが NULL（= バンドと同じ）の曲へ、先に元のコピー元アーティストを書き込んでから外す
+ * @return bool オムニバスにしたら true（すでにオムニバスなら false）
+ */
+function make_band_omnibus(PDO $pdo, int $bandId): bool
+{
+    $st = $pdo->prepare('SELECT artist_id FROM band WHERE band_id = ? AND is_omnibus = 0');
+    $st->execute([$bandId]);
+    $row = $st->fetch();
+    if (!$row) {
+        return false;
+    }
+    if ($row['artist_id'] !== null) {
+        $pdo->prepare('UPDATE song SET artist_id = ? WHERE band_id = ? AND artist_id IS NULL')->execute([$row['artist_id'], $bandId]);
+    }
+    $pdo->prepare('UPDATE band SET is_omnibus = 1, artist_id = NULL WHERE band_id = ?')->execute([$bandId]);
+    if ($row['artist_id'] !== null) {
+        delete_artist_if_unused($pdo, (int)$row['artist_id']); // 曲が使っていれば残る
+    }
+    return true;
+}
+
+/**
  * アーティストを、どこからも使われていなければ消す。呼ぶ側でトランザクションにすること。
  *   オムニバスにしてコピー元を外したバンドの「ボカロバンド」のような名前を、アーティストの表そのものから片付けるため。
  *   消さないとき: 他のバンドのコピー元（= 同じ名前の非オムニバスのバンドがある）・どこかの曲のアーティスト・別称がある

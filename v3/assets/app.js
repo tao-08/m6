@@ -4996,6 +4996,13 @@ function setupTimetableFollow() {
     });
   });
 
+  // ---- オムニバスの一括チェック（見出しのチェックで、その日程の（外せるものすべて）を切り替える） ----
+  document.addEventListener('change', (e) => {
+    const all = e.target.closest?.('[data-omnibus-all]');
+    if (!all) return;
+    all.closest('table')?.querySelectorAll('[data-omnibus-check]:not(:disabled)').forEach((c) => { c.checked = all.checked; });
+  });
+
   // ---- 時刻を変えた ----
   document.addEventListener('change', (e) => {
     const input = e.target;

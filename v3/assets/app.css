@@ -999,6 +999,7 @@ body.is-row-dragging, body.is-row-dragging * { cursor: grabbing !important; user
 .flag-icon { color: var(--warn); } /* 表示だけの旗（注意の帯・見出し・凡例） */
 /* 旗の注意（band.php / band_edit.php）: 文とボタンを横に並べる */
 .check-flag { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.tt-omnibus { display: inline-flex; align-items: center; gap: 2px; cursor: pointer; }
 .tt-band-name { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; } /* タイムテーブル編集: バンド名の横に旗 */
 /* 🚩 の入力部品（check_picker）: 旗を立てたときだけ「理由」「誰について」のトグルボタンを出す。中身はチェックボックス */
 .check-picker { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
