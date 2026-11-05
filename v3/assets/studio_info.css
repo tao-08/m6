@@ -32,7 +32,7 @@
 
 /* ---- 地図 ---- */
 .sinfo-mapcard { padding: 0; overflow: hidden; }  /* 地図をカードの角まで広げる（角丸ははみ出しを隠して保つ） */
-.sinfo-map { width: 100%; border-radius: var(--radius-sm); z-index: 0; } /* z-index: 0 → Leaflet の部品がヘッダーの上に出ないように */
+.sinfo-map { width: 100%; border-radius: var(--r-md); z-index: 0; } /* z-index: 0 → Leaflet の部品がヘッダーの上に出ないように */
 .sinfo-map--list { height: min(52vh, 420px); border-radius: 0; }
 .sinfo-map--one { height: 240px; }
 /* ピン: 赤い涙形（四角を45度回して角を1つだけ尖らせる） */
@@ -59,22 +59,22 @@
 .sinfo-field > span:first-child { color: var(--muted); font-weight: 800; font-size: 12px; }
 .sinfo-sim select, .sinfo-sim input[type=date], .sinfo-sim input[type=number],
 .sinfo-edit input[type=text], .sinfo-edit input[type=url], .sinfo-edit input[type=tel], .sinfo-edit input[type=number], .sinfo-edit select, .sinfo-edit textarea {
-  min-width: 0; width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); font: inherit; }
+  min-width: 0; width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); color: var(--text); font: inherit; }
 /* app.js が select を .live-pick（独自の選択UI）に差し替える。.live-pick--inline は「中身の幅」で広がるため、
    スマホ幅だとマスより横にはみ出して隣の入力（人数の－ボタンなど）に重なっていた → マスの幅いっぱいに収める */
 .sinfo-sim .live-pick--inline { display: block; min-width: 0; }
 .sinfo-sim .live-pick--inline .live-pick__btn { width: 100%; min-width: 0; }
-.sinfo-seg { display: flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.sinfo-seg { display: flex; border: 1px solid var(--border); border-radius: var(--r-md); overflow: hidden; }
 .sinfo-seg label { flex: 1; text-align: center; padding: 8px 4px; cursor: pointer; font-size: 13px; }
 .sinfo-seg input { position: absolute; opacity: 0; pointer-events: none; } /* 丸ボタン自体は隠し、ラベル全体を押せるボタンにする */
 .sinfo-seg label:has(input:checked) { background: var(--accent); color: var(--on-accent); font-weight: 800; }
 .sinfo-check { display: inline-flex; align-items: center; gap: 6px; font-weight: 800; }
 /* レンタル欄の開閉（<details>）。見出しを押すと開け閉めできる */
-.sinfo-rentbox { border: 1px solid var(--border); border-radius: 8px; padding: 0 10px; }
+.sinfo-rentbox { border: 1px solid var(--border); border-radius: var(--r-md); padding: 0 10px; }
 .sinfo-rentbox__head { display: flex; align-items: center; gap: 6px; padding: 8px 0; cursor: pointer; font-weight: 800; font-size: 13px; list-style: none; } /* list-style: none = 標準の ▸ を消す */
 .sinfo-rentbox__head::-webkit-details-marker { display: none; } /* Safari 用に標準の三角を消す */
 .sinfo-rentbox[open] > .sinfo-rentbox__head { color: var(--accent); }
-.sinfo-rentbox__count { min-width: 18px; padding: 0 6px; border-radius: 999px; background: var(--accent); color: var(--on-accent); font-size: 12px; text-align: center; line-height: 18px; }
+.sinfo-rentbox__count { min-width: 18px; padding: 0 6px; border-radius: var(--r-full); background: var(--accent); color: var(--on-accent); font-size: 12px; text-align: center; line-height: 18px; }
 .sinfo-rentbox__count[hidden] { display: none; } /* display を指定すると hidden 属性が負けるので、明示的に隠す */
 .sinfo-rentbox__chev { margin-left: auto; color: var(--muted); transition: transform .2s ease; }
 .sinfo-rentbox[open] > .sinfo-rentbox__head > .sinfo-rentbox__chev { transform: rotate(180deg); } /* 開いたら ▾ を上向きに回す */
@@ -91,7 +91,7 @@
 .sinfo-sim__lines { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; font-size: 13px; }
 .sinfo-sim__lines li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 12px; }
 .sinfo-sim__save { margin: 0; color: var(--headliner); font-weight: 800; font-size: 13px; }
-.sinfo-sim__warn { margin: 0; color: var(--warn); background: var(--warn-bg); border-radius: 8px; padding: 6px 10px; font-size: 13px; }
+.sinfo-sim__warn { margin: 0; color: var(--warn); background: var(--warn-bg); border-radius: var(--r-md); padding: 6px 10px; font-size: 13px; }
 
 /* ---- 編集フォーム（venue.css と同じ作り） ---- */
 .sinfo-edit > summary { cursor: pointer; display: inline-flex; align-items: center; gap: 4px; color: var(--muted); font-size: 13px; list-style: none; }
@@ -143,14 +143,14 @@
 .sinfo-packs li:last-child { border-bottom: 0; padding-bottom: 0; }
 .sinfo-packs__head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .sinfo-pchips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
-.sinfo-pchip { display: inline-flex; flex-direction: column; align-items: center; border: 1px solid var(--border); border-radius: 8px; padding: 4px 10px; line-height: 1.3; font-variant-numeric: tabular-nums; }
+.sinfo-pchip { display: inline-flex; flex-direction: column; align-items: center; border: 1px solid var(--border); border-radius: var(--r-md); padding: 4px 10px; line-height: 1.3; font-variant-numeric: tabular-nums; }
 .sinfo-pchip b { font-size: 11px; color: var(--muted); }
 .sinfo-pchip span { font-weight: 800; font-size: 14px; }
 .sinfo-pchip em { font-style: normal; font-size: 11px; font-weight: 800; color: var(--headliner); }
 .sinfo-sim__pack span:first-child { font-weight: 800; color: var(--headliner); }
 
 /* ---- 人数ステッパー（－ 数字 ＋）。ボタンは指で押しやすい 44px 角（タッチ操作の推奨サイズ） ---- */
-.sinfo-step { display: flex; align-items: stretch; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--surface); }
+.sinfo-step { display: flex; align-items: stretch; border: 1px solid var(--border); border-radius: var(--r-md); overflow: hidden; background: var(--surface); }
 .sinfo-step__btn { flex: none; width: 44px; min-height: 44px; display: grid; place-items: center; border: 0; background: transparent; color: var(--text); cursor: pointer;
   touch-action: manipulation; /* 連打してもダブルタップ拡大にならない */ -webkit-tap-highlight-color: transparent; }
 .sinfo-step__btn:active { background: var(--accent-soft); color: var(--accent); }
@@ -168,7 +168,7 @@
 
 /* ---- 料金・パック・機材の編集: 部屋のチェック欄（押しやすい丸いチップ。チェックで赤く塗る）---- */
 .sinfo-chips { flex: 1 1 100%; display: flex; flex-wrap: wrap; gap: 6px; }
-.sinfo-chip { display: inline-flex; align-items: center; min-height: 36px; padding: 0 12px; border: 1px solid var(--border); border-radius: 999px;
+.sinfo-chip { display: inline-flex; align-items: center; min-height: 36px; padding: 0 12px; border: 1px solid var(--border); border-radius: var(--r-full);
   background: var(--surface); font-size: 13px; cursor: pointer; touch-action: manipulation; }
 .sinfo-chip input { position: absolute; opacity: 0; pointer-events: none; } /* チェック欄自体は隠し、チップ全体を押せるボタンにする（.sinfo-seg と同じ作り） */
 .sinfo-chip:has(input:checked) { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 800; }
@@ -179,7 +179,7 @@
 .sinfo-edit .sinfo-edit__jo input[type=text] { width: 64px; text-align: right; }
 
 /* ---- +1時間延長 ---- */
-.sinfo-sim__ext { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; padding: 8px 12px; border-radius: 8px;
+.sinfo-sim__ext { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; padding: 8px 12px; border-radius: var(--r-md);
   background: var(--accent-soft); font-size: 14px; }
 .sinfo-sim__ext strong { font-size: 18px; font-variant-numeric: tabular-nums; }
 
@@ -189,11 +189,11 @@
 /* 画像のサムネイル（×で外せる） */
 .sinfo-ai__thumbs { display: flex; flex-wrap: wrap; gap: 8px; }
 .sinfo-ai__thumb { position: relative; width: 64px; height: 64px; }
-.sinfo-ai__thumb img { width: 100%; height: 100%; object-fit: cover; border-radius: 8px; border: 1px solid var(--border); }
+.sinfo-ai__thumb img { width: 100%; height: 100%; object-fit: cover; border-radius: var(--r-md); border: 1px solid var(--border); }
 .sinfo-ai__thumb-x { position: absolute; top: -6px; right: -6px; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 50%;
   background: var(--text); color: var(--surface); font-size: 14px; line-height: 22px; cursor: pointer; }
 .sinfo-ai__result { display: grid; gap: 10px; }
-.sinfo-ai__sec { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
+.sinfo-ai__sec { border: 1px solid var(--border); border-radius: var(--r-md); padding: 8px 10px; }
 .sinfo-ai__sec > summary { cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .sinfo-ai__lines { padding-top: 8px; font-size: 13px; overflow-wrap: anywhere; }
 .sinfo-ai__src a { margin-right: 6px; }
@@ -210,7 +210,7 @@
 /* ---- 料金の編集: 対象・曜日の見出し → 行（行ごとに部屋のチップ）---- */
 .sinfo-rate-edit { gap: 12px; }
 /* 見出し（対象・曜日）ごとに枠で囲む */
-.sinfo-rate-group { display: grid; gap: 4px; padding: 8px 10px 10px; border: 1px solid var(--border); border-radius: 10px; }
+.sinfo-rate-group { display: grid; gap: 4px; padding: 8px 10px 10px; border: 1px solid var(--border); border-radius: var(--r-md); }
 .sinfo-rate-group__head { display: flex; align-items: center; gap: 6px; font-size: 13px; }
 .sinfo-rate-group__add { margin-left: auto; padding: 2px 8px; }
 /* 列がはみ出す（割引区分が多い・スマホ）ときは、行のまとまりだけ横スクロール */
@@ -237,7 +237,7 @@
 .sinfo-jump { position: sticky; top: 70px; z-index: 5; display: flex; gap: 6px; margin: 10px -16px 0; padding: 6px 16px; overflow-x: auto; scrollbar-width: none;
   background: var(--bg); }
 .sinfo-jump::-webkit-scrollbar { display: none; }
-.sinfo-jump a { flex: none; display: inline-flex; align-items: center; gap: 4px; min-height: 34px; padding: 0 12px; border: 1px solid var(--border); border-radius: 999px;
+.sinfo-jump a { flex: none; display: inline-flex; align-items: center; gap: 4px; min-height: 34px; padding: 0 12px; border: 1px solid var(--border); border-radius: var(--r-full);
   background: var(--surface); color: var(--text); font-size: 13px; text-decoration: none; }
 .sinfo-jump a:hover { color: var(--accent); border-color: var(--accent); }
 .sinfo-jump .icon { font-size: 18px; }
@@ -253,7 +253,7 @@
 
 /* ---- 予約ボタン: 右下に浮かせる（スマホは下のナビの上。他の .compact-fab と同じ置き方）---- */
 .sinfo-reserve-fab { position: fixed; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); z-index: 26; display: inline-flex; align-items: center; gap: 6px;
-  min-height: 48px; padding: 0 20px 0 16px; border-radius: 999px; background: var(--accent); color: var(--on-accent); font-weight: 800; text-decoration: none;
+  min-height: 48px; padding: 0 20px 0 16px; border-radius: var(--r-full); background: var(--accent); color: var(--on-accent); font-weight: 800; text-decoration: none;
   box-shadow: 0 4px 14px rgba(0, 0, 0, .3); transition: transform .12s ease; }
 .sinfo-reserve-fab:hover { color: var(--on-accent); text-decoration: none; filter: brightness(1.08); }
 .sinfo-reserve-fab:active { transform: scale(.95); }
@@ -303,7 +303,7 @@
 .sinfo-info:has(span) { padding-bottom: 10px; border-bottom: 1px solid var(--border); }
 
 /* ---- パック編集: 時間帯ブロック ---- */
-.sinfo-edit__block { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--border); border-radius: 10px; }
+.sinfo-edit__block { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--border); border-radius: var(--r-md); }
 .sinfo-edit__item { padding-left: 10px; border-left: 3px solid var(--border); }
 
 /* ---- 時間帯の入力: 時 〜 時 + 「:30」チェック（studio_time_pair） ---- */

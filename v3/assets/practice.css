@@ -2,9 +2,9 @@
 .prac-search { display: flex; gap: 8px; margin-bottom: 16px; }
 .prac-search { position: relative; }
 .prac-search .search { flex: 1; min-width: 0; }
-.prac-suggest { position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 20; margin: 0; padding: 4px; list-style: none; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); box-shadow: 0 8px 24px rgba(0, 0, 0, .18); max-height: 60vh; overflow-y: auto; }
+.prac-suggest { position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 20; margin: 0; padding: 4px; list-style: none; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); box-shadow: 0 8px 24px rgba(0, 0, 0, .18); max-height: 60vh; overflow-y: auto; }
 .prac-suggest[hidden] { display: none; }
-.prac-suggest__item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 6px; color: inherit; text-decoration: none; }
+.prac-suggest__item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: var(--r-sm); color: inherit; text-decoration: none; }
 .prac-suggest__item:hover, .prac-suggest__item.is-active { background: rgba(127, 127, 127, .12); }
 .prac-suggest__item > .icon { color: var(--muted); font-size: 20px; }
 .prac-suggest__item--link > .icon { color: var(--accent, currentColor); }
@@ -29,9 +29,9 @@
 .prac-new { padding: 10px 12px; }
 .prac-new summary { cursor: pointer; font-weight: 700; display: flex; align-items: center; gap: 6px; }
 .prac-new__list { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 4px; }
-.prac-new__item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 6px 8px; border: 0; border-radius: var(--radius-sm); background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.prac-new__item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 6px 8px; border: 0; border-radius: var(--r-md); background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .prac-new__item:hover { background: rgba(127, 127, 127, .12); }
-.prac-new__item img { border-radius: 4px; flex: none; }
+.prac-new__item img { border-radius: var(--r-xs); flex: none; }
 @media (max-width: 480px) { .prac-item:not(.prac-item--link) { flex-wrap: wrap; } .prac-item__acts { width: 100%; } }
 /* TAB ◯（楽曲データベース songs.css と同じ見た目） */
 .songs-row__tab { display: inline-flex; align-items: baseline; gap: 4px; line-height: 1; }
