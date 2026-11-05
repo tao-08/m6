@@ -628,13 +628,6 @@ foreach ($rooms as $r) {
     $roomSize[(int)$r['studio_room_id']] = trim(studio_fmt_jo($r['area_jo']) . ($r['size_note'] ? ' ' . $r['size_note'] : ''));
 }
 
-// 部屋 id => 外している設定の説明（「毎時開始」「1時間単位」）。30分スタート・30分単位が両方 ON（既定）の部屋は何も出さない（ほとんどの部屋で同じ表示になるので）
-$roomRule = [];
-foreach ($rooms as $r) {
-    $rule = array_filter([(int)$r['half_start'] ? '' : '毎時開始', (int)$r['half_unit'] ? '' : '1時間単位']);
-    $roomRule[(int)$r['studio_room_id']] = implode(' ', $rule);
-}
-
 // 料金表・パックの時間帯を何分遅らせて見せるか。30分開始の部屋だけの組 = 30 / それ以外 = 0
 //   $rids = 料金・パックの部屋 id の配列（空 = 全部屋）。組の部屋が全部 30分開始のときだけずらす（混在は元の時間のまま。時間帯は部屋ごとに分けて持てないため）
 $roomShift = array_column($rooms, 'half_start', 'studio_room_id');
@@ -1041,7 +1034,7 @@ render_header($studio['name'], 'tools');
             <label class="sinfo-field"><span>時間</span>
                 <select name="dur">
                     <?php for ($m = 60; $m <= 600; $m += 30): ?>
-                        <option value="<?= $m ?>"<?= $m === 120 ? ' selected' : '' ?>><?= h(studio_fmt_min($m)) ?></option>
+                        <option value="<?= $m ?>"<?= $m === 120 ? ' selected' : '' ?>><?= h(studio_fmt_hours($m)) ?></option>
                     <?php endfor; ?>
                 </select></label>
             <!-- 人数: ＋／－ボタンでタッチ操作できるステッパー（数字を直接打つのもOK）。
@@ -1176,7 +1169,7 @@ render_header($studio['name'], 'tools');
                         <!-- 部屋が複数のとき、「・」でつなぐ。画面が狭くて折り返すときは、部屋の頭で改行し、行頭の「・」は出さない（CSS だけ。.sinfo-rooms の説明を参照）。
                              部屋の1つ1つ（名前＋広さ）が .sinfo-room。途中で改行されない（nowrap）ので、「Bスタ 8帖」が2行に割れない -->
                         <span class="sinfo-rooms"><span class="sinfo-rooms__in">
-                            <?php foreach ($g['rooms'] as $rid): ?><span class="sinfo-room"><?= h($roomName[$rid]) ?><?php if (!empty($roomSize[$rid])): ?> <span class="muted small"><?= h($roomSize[$rid]) ?></span><?php endif; ?><?php if (!empty($roomRule[$rid])): ?> <span class="muted small"><?= h($roomRule[$rid]) ?></span><?php endif; ?></span><?php endforeach; ?>
+                            <?php foreach ($g['rooms'] as $rid): ?><span class="sinfo-room"><?= h($roomName[$rid]) ?><?php if (!empty($roomSize[$rid])): ?> <span class="muted small"><?= h($roomSize[$rid]) ?></span><?php endif; ?></span><?php endforeach; ?>
                         </span></span>
                     <?php endif; ?>
                 </h3>

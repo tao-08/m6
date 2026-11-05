@@ -64,6 +64,7 @@
 .sinfo-table-wrap { overflow-x: auto; } /* スマホで表が横にはみ出すときは表だけスクロール */
 .sinfo-table { width: 100%; border-collapse: collapse; font-size: var(--fs-md); }
 .sinfo-table th, .sinfo-table td { padding: 6px 8px; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; }
+@media (min-width: 761px) { .sinfo-table { width: auto; } .sinfo-table th, .sinfo-table td { padding-inline: 8px 20px; } } /* PC: 全幅に広げず、列を左に詰める */
 .sinfo-table th { padding-block: 3px; font-size: var(--fs-xs); color: var(--muted); font-weight: 800; } /* 見出しの行は上下を詰める */
 .sinfo-table .num { text-align: right; font-variant-numeric: tabular-nums; } /* tabular-nums = 数字の幅をそろえて桁を縦に並べる */
 .sinfo-student { color: var(--headliner); font-weight: 800; }

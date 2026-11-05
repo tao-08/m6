@@ -460,10 +460,6 @@
       }
     };
 
-    // 日付を選んだら曜日を自動で切り替える。祝日は判定しないので、祝日は手で「土日祝」「日祝」を選ぶ
-    //   土曜 → 土(3) があれば 土、無ければ 土日祝(2) / 日曜 → 日祝(4) があれば 日祝、無ければ 土日祝(2) / 平日 → 平日(1)
-    //   （土日で料金が分かれているスタジオだけ、ボタンに 3・4 がある。find = 最初に見つかったボタンの番号を使う）
-
     // 部屋ごとの設定（30分スタート可 hs / 30分単位で利用可 hu）に合わせて、「開始」「時間」の選択肢を絞る
     //   最初に全部の選択肢を覚えておき（allOpts）、部屋が変わるたびに「毎時ちょうど（60の倍数）だけ」などに作り直す
     //   作り直したあと、元の値が無くなっていたら 1つ前の「ちょうどの値」（切り捨て）に寄せる。change を出すのは、独自プルダウンの表示文字を更新させるため
@@ -474,11 +470,15 @@
       const room = data.rooms.find((r) => r.id === Number(form.elements.room?.value || 0));
       const hs = room ? room.hs : 1; // 部屋の無いスタジオ = 制限なし
       const hu = room ? room.hu : 1;
+      // 開始の選択肢: 30分開始 → 30分刻み / 毎時開始 → ちょうどだけ / 30分開始 ＋ 1時間単位 → 30分だけ（9:30・10:30 …）
+      //   時間の選択肢: 30分単位なら30分刻み / 1時間単位ならちょうどだけ
+      const halfOnly = hs && !hu;
       [[startSel, hs], [durSel, hu]].forEach(([sel, half]) => {
         const keep = Number(sel.value);
-        const opts = allOpts.get(sel).filter(([v]) => half || Number(v) % 60 === 0);
+        const only30 = sel === startSel && halfOnly;
+        const opts = allOpts.get(sel).filter(([v]) => (only30 ? Number(v) % 60 === 30 : half || Number(v) % 60 === 0));
         sel.replaceChildren(...opts.map(([v, txt]) => new Option(txt, v)));
-        const val = half ? keep : keep - (keep % 60); // 30分が使えないときは、毎時ちょうどに切り捨て
+        const val = only30 ? keep - (keep % 60) + 30 : half ? keep : keep - (keep % 60); // 30分だけ → 同じ時の:30 / 30分が使えないとき → 毎時ちょうどに切り捨て
         sel.value = String(val);
         if (sel.value === '') sel.selectedIndex = 0; // 時間が最小（1:00）を割る場合など
         sel.dispatchEvent(new Event('change', { bubbles: true }));

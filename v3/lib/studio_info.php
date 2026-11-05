@@ -63,6 +63,12 @@ function studio_fmt_min(int $min): string
     return sprintf('%d:%02d', intdiv($min, 60), $min % 60);
 }
 
+/** 分 → 「2時間」「2.5時間」（シミュレーションの「時間」の選択肢用。30分刻みなので小数は .5 だけ） */
+function studio_fmt_hours(int $min): string
+{
+    return rtrim(rtrim(number_format($min / 60, 1, '.', ''), '0'), '.') . '時間';
+}
+
 /**
  * 0時からの分 → 時計の時刻 "H:MM"（24時間で一周。25:00 → "1:00" / 24:00 → "0:00"）
  *   料金表・パックの時間帯の表示に使う。% 1440 = 1日（24時間 = 1440分）で割った余り
