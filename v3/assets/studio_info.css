@@ -434,6 +434,13 @@ h1 .tag--rec { font-size: var(--fs-sm); } /* 見出し（36px）に追従して�
   .sinfo-list__item:hover, .sinfo-list__item:active { transform: none; }
 }
 
+/* ---- 編集履歴・削除済み（復元できる一覧）: 題 + 誰が・いつ + 右端に復元ボタン ---- */
+.sinfo-history { list-style: none; margin: 0; gap: 0; } /* 余白は .togglecard__body（app.css）に任せる */
+.sinfo-history > li { display: flex; align-items: center; flex-wrap: wrap; gap: 2px 10px; padding: 8px 0; border-top: 1px dashed var(--border); }
+.sinfo-history > li:first-child { border-top: 0; }
+.sinfo-history__what { font-weight: 800; font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.sinfo-history__restore { margin-left: auto; }
+
 /* ---- AI 提案の各項目の開閉: 右端に既存の ⌄（.togglecard__chevron。回る動きの時間は app.css 側）。開いたら 180° 回す ---- */
 .sinfo-ai__sec > summary > label { margin-right: auto; } /* チェック付きの題名は左、件数と ⌄ は右に寄せる */
 .sinfo-ai__sec[open] > summary > .togglecard__chevron { transform: rotate(180deg); }

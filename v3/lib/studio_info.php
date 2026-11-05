@@ -20,6 +20,15 @@ declare(strict_types=1);
  */
 const STUDIO_DAY_TYPES = [0 => '全日', 1 => '平日', 2 => '土日祝', 3 => '土', 4 => '日祝'];
 
+/**
+ * スタジオの追加・編集・削除・AIで入力・履歴の復元ができるか。ログインしている人なら誰でも（幹部でなくてよい）
+ *   使うページは require_login() 済み。間違いを戻せるよう、変更は編集履歴（lib/studio_history.php）に残る
+ */
+function can_edit_studio(): bool
+{
+    return current_user() !== null;
+}
+
 /** 機材の区分（この順に表示。会場の機材 venue.php と同じ並びにそろえる） */
 const STUDIO_EQUIP_CATEGORIES = ['ギターアンプ', 'ベースアンプ', 'ドラム', 'キーボード', 'PA', 'その他'];
 

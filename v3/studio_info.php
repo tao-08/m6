@@ -8,11 +8,12 @@
  *    料金シミュレーション（JS: assets/studio_info.js。部屋・日にち・時間・人数・割引区分・レンタルから合計と1人あたりを出す）
  *    部屋と料金表（バンド・個人練習。割引区分ごとの料金・条件も）・パック・レンタル・機材
  *    シミュレーションは「パックの自動適用（安ければ）」と「+1時間延長したらいくら増えるか」も出す
- *  編集（幹部と管理者だけ）: 各カードの「編集」を開くとフォームが出る
+ *  編集（ログインしている人なら誰でも。can_edit_studio）: 各カードの「編集」を開くとフォームが出る
+ *    変更は編集履歴に残り、ページの下の「編集履歴」から変更前に復元できる（lib/studio_history.php。削除したスタジオは一覧の「削除済み」から）
  *
- *  ✨AIで入力（幹部と管理者）: api_studio_ai.php が調べた提案をプレビューし、選んだ項目を apply_ai で反映（lib/studio_ai.php）
- *  POST は9種類（action）。どれも 権限確認 → CSRF 検証 → 入力検証 → プリペアドステートメント → リダイレクト。
- *    save_info / save_rooms / save_discounts / save_rates / save_packs / save_rentals / save_equipment / apply_ai / delete_studio
+ *  ✨AIで入力（ログインしている人なら誰でも）: api_studio_ai.php が調べた提案をプレビューし、選んだ項目を apply_ai で反映（lib/studio_ai.php）
+ *  POST は10種類（action）。どれも 権限確認 → CSRF 検証 → 入力検証 → プリペアドステートメント → リダイレクト。
+ *    save_info / save_rooms / save_discounts / save_rates / save_packs / save_rentals / save_equipment / apply_ai / delete_studio / restore_history
  *    ・料金表とパックには「対象」がある: バンド（people = NULL）か、個人練習 n人（people = n）
  *    ・割引（学割・U20 …）は区分ごと（studio_discount）。区分は「使える曜日」を持ち、料金は区分ごとに中間テーブルへ（migrations/089）
  *    ・料金の編集は「対象・曜日の見出し → 行」に分けて表示する。行ごとに部屋のチェック欄があり、複数の部屋に共通の料金を1行で作れる
@@ -31,9 +32,10 @@ declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/studio_info.php';
 require_once __DIR__ . '/lib/studio_ai.php';
+require_once __DIR__ . '/lib/studio_history.php';
 $user = require_login();
 $pdo = db();
-$canEdit = is_executive();
+$canEdit = can_edit_studio(); // ログインしている人なら誰でも編集できる（変更は編集履歴に残り、復元できる）
 
 $studioId = (int)($_GET['id'] ?? $_POST['studio_id'] ?? 0);
 $st = $pdo->prepare('SELECT * FROM studio WHERE studio_id = ?');
@@ -244,10 +246,27 @@ function studio_uint(string $s, int $max): bool
 //  POST
 // =====================================================================
 if (is_post()) {
-    require_executive();
+    if (!can_edit_studio()) { // 画面にフォームを出していなくても、送られてきたら必ずサーバー側で確かめる
+        error_page(403, '編集できません');
+    }
     verify_csrf();
     $action = (string)($_POST['action'] ?? '');
     $uid = (int)$user['user_id'];
+
+    // ---- 履歴から復元（戻す前の状態も履歴に残る。別のスタジオの履歴番号は受け付けない）----
+    if ($action === 'restore_history') {
+        try {
+            studio_history_restore($pdo, (int)($_POST['history_id'] ?? 0), $uid, $studioId);
+            flash('復元しました');
+        } catch (RuntimeException $e) {
+            flash($e->getMessage(), 'error');
+        }
+        redirect($self);
+    }
+    // 保存・AI反映・削除は、終わったときに中身が変わっていれば「変わる前」を履歴に残す（studio_history_watch）
+    if (isset(STUDIO_HISTORY_ACTIONS[$action])) {
+        studio_history_watch($pdo, $studioId, $action, $uid);
+    }
 
     // ---- 基本情報 -------------------------------------------------------
     if ($action === 'save_info') {
@@ -566,7 +585,7 @@ if (is_post()) {
         redirect($self);
     }
 
-    // ---- スタジオの削除（部屋・料金・レンタル・機材は外部キーの CASCADE で一緒に消える）----
+    // ---- スタジオの削除（部屋・料金・レンタル・機材は外部キーの CASCADE で一緒に消える。履歴には残るので、一覧の「削除済み」から復元できる）----
     if ($action === 'delete_studio') {
         $pdo->prepare('DELETE FROM studio WHERE studio_id = ?')->execute([$studioId]);
         flash("「{$studio['name']}」を削除しました");
@@ -877,11 +896,11 @@ render_header($studio['name'], 'tools');
     <details class="sinfo-edit">
         <summary><?= icon('edit') ?> 編集</summary>
         <?php if ($canEdit && claude_enabled()): ?>
-        <!-- ✨AIで入力（幹部と管理者）。基本情報の「編集」を開いたときだけ見える。結果のプレビューは JS が #studio-ai-result に作る -->
+        <!-- ✨AIで入力（編集できる人 = ログインしていれば誰でも）。基本情報の「編集」を開いたときだけ見える。結果のプレビューは JS が #studio-ai-result に作る -->
         <div class="sinfo-ai" id="studio-ai" data-studio-id="<?= $studioId ?>" data-csrf="<?= h(csrf_token()) ?>" data-max-images="<?= AI_MAX_IMAGES ?>">
             <div class="sinfo-ai__head">
                 <button type="button" class="btn btn--sm" data-ai-run><?= icon('auto_awesome') ?> AIで入力</button>
-                <!-- モデル（Opus = 高精度・高め / Sonnet = 標準 / Haiku = 安い）。初期は config.php の設定値。このボックスは編集できる人（幹部・管理者）にしか出ない -->
+                <!-- モデル（Opus = 高精度・高め / Sonnet = 標準 / Haiku = 安い）。初期は config.php の設定値。このボックスは編集できる人にしか出ない -->
                 <select data-ai-model aria-label="モデル" title="モデル">
                     <?php foreach (studio_ai_models() as $mid => $mname): ?>
                         <option value="<?= h($mid) ?>"<?= $mid === studio_ai_default_model() ? ' selected' : '' ?>><?= h($mname) ?></option>
@@ -1116,8 +1135,14 @@ render_header($studio['name'], 'tools');
                     <?php if (!$g['rooms'] || $allRooms): ?>全部屋<?php else: ?>
                         <!-- 部屋が複数のとき、「・」でつなぐ。画面が狭くて折り返すときは、部屋の頭で改行し、行頭の「・」は出さない（CSS だけ。.sinfo-rooms の説明を参照）。
                              部屋の1つ1つ（名前＋広さ）が .sinfo-room。途中で改行されない（nowrap）ので、「Bスタ 8帖」が2行に割れない -->
+                        <?php
+                        // 部屋の広さが全部同じ（かつ2部屋以上）なら、広さは最後の部屋に1回だけ出す（Ast・Dst・Gst 9帖）。違うなら各部屋の横に出す（Ast 9帖・Bst 12帖）
+                        $headSizes = array_unique(array_map(fn($rid) => $roomSize[$rid] ?? '', $g['rooms']));
+                        $headSameSize = count($g['rooms']) > 1 && count($headSizes) === 1 && reset($headSizes) !== '';
+                        $headLast = count($g['rooms']) - 1;
+                        ?>
                         <span class="sinfo-rooms"><span class="sinfo-rooms__in">
-                            <?php foreach ($g['rooms'] as $rid): ?><span class="sinfo-room"><?= h($roomName[$rid]) ?><?php if (!empty($roomSize[$rid])): ?> <span class="muted small"><?= h($roomSize[$rid]) ?></span><?php endif; ?></span><?php endforeach; ?>
+                            <?php foreach ($g['rooms'] as $k => $rid): ?><span class="sinfo-room"><?= h($roomName[$rid]) ?><?php if ($headSameSize ? $k === $headLast : !empty($roomSize[$rid])): ?> <span class="muted small"><?= h($roomSize[$rid]) ?></span><?php endif; ?></span><?php endforeach; ?>
                         </span></span>
                     <?php endif; ?>
                 </h3>
@@ -1570,8 +1595,40 @@ $packRoomLines = function (array $row) use ($packRoomIds): array {
     <?php endif; ?>
 </section>
 
+<?php
+// 編集履歴（変更前の状態に復元できる）。表をまだ作っていない環境でもページは開けるよう、読めなければ出さない
+$history = [];
+if ($canEdit) {
+    try {
+        $history = studio_history_list($pdo, $studioId);
+    } catch (PDOException $e) {
+        error_log('studio_history_list: ' . $e->getMessage());
+    }
+}
+?>
+<?php if ($history): ?>
+    <details class="card togglecard sinfo-edit sinfo-section" id="history">
+        <summary><?= icon('history') ?> <span class="togglecard__title">編集履歴</span><?= icon('expand_more', 'togglecard__chevron') ?></summary>
+        <ul class="sinfo-history togglecard__body">
+            <?php foreach ($history as $hr): ?>
+                <li>
+                    <span class="sinfo-history__what"><?= h(studio_history_label((string)$hr['action'])) ?></span>
+                    <span class="muted small"><?= h($hr['user_name'] ?? '不明') ?> ・ <?= h(date('n/j H:i', strtotime((string)$hr['created_at']))) ?></span>
+                    <form method="post" class="sinfo-history__restore" data-confirm="この変更の前の状態に復元します。今の状態も履歴に残ります。">
+                        <?= csrf_field() ?>
+                        <input type="hidden" name="action" value="restore_history">
+                        <input type="hidden" name="studio_id" value="<?= $studioId ?>">
+                        <input type="hidden" name="history_id" value="<?= (int)$hr['history_id'] ?>">
+                        <button type="submit" class="btn btn--sm" title="この変更の前に復元" aria-label="この変更の前に復元"><?= icon('restore') ?> 復元</button>
+                    </form>
+                </li>
+            <?php endforeach; ?>
+        </ul>
+    </details>
+<?php endif; ?>
+
 <?php if ($canEdit): ?>
-    <form method="post" class="sinfo-delete" data-confirm="「<?= h($studio['name']) ?>」を削除します（料金・パック・レンタル・機材も削除）。元に戻せません。よろしいですか？">
+    <form method="post" class="sinfo-delete" data-confirm="「<?= h($studio['name']) ?>」を削除します（料金・パック・レンタル・機材も削除）。削除後も、一覧の「削除済み」から復元できます。よろしいですか？">
         <?= csrf_field() ?>
         <input type="hidden" name="action" value="delete_studio">
         <input type="hidden" name="studio_id" value="<?= $studioId ?>">

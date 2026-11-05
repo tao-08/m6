@@ -5,7 +5,7 @@
  * =====================================================================
  *  表示: 全スタジオのピンを1枚の地図（Leaflet + OpenStreetMap）に出し、その下にカードの一覧
  *        カードには 最寄り駅・最大の部屋の広さ（MAXバッジ）・バンドと個人（1人）のいちばん安い1時間の料金・割引区分（学割など）・パックの有無 を出す
- *  追加: 幹部と管理者だけ（名前だけ入れて作り、詳しい情報は studio_info.php で編集）
+ *  追加: ログインしている人なら誰でも（名前だけ入れて作り、詳しい情報は studio_info.php で編集）。削除したスタジオは「削除済み」から復元できる
  *
  *  ■ Leaflet（リーフレット）とは
  *    地図を表示する JavaScript ライブラリ。地図の「絵」（タイル画像）は別の所から借りてくる。
@@ -13,7 +13,7 @@
  *    ライブラリ本体は CDN ではなく assets/vendor/leaflet に置いた（外部サービスが止まっても動くように）
  *
  *  セキュリティ:
- *    ・POST（追加）は require_executive() で権限を確認 → verify_csrf() で CSRF を確認
+ *    ・POST（追加・復元）は can_edit_studio()（ログイン済みか）で権限を確認 → verify_csrf() で CSRF を確認
  *    ・SQL はプリペアドステートメント、画面の文字は h() で XSS 対策
  *    ・地図用のデータは json_encode(JSON_HEX_TAG …) で <script> の中に安全に埋め込む
  * =====================================================================
@@ -21,16 +21,30 @@
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/studio_info.php';
+require_once __DIR__ . '/lib/studio_history.php';
 require_login();
 $pdo = db();
-$canEdit = is_executive(); // 幹部（と管理者）だけ追加・編集できる
+$canEdit = can_edit_studio(); // ログインしている人なら誰でも追加・編集できる（変更は編集履歴に残り、復元できる）
 
 // =====================================================================
-//  POST（スタジオの追加）
+//  POST（スタジオの追加 / 削除したスタジオの復元）
 // =====================================================================
 if (is_post()) {
-    require_executive(); // 画面にフォームを出していなくても、送られてきたら必ずサーバー側で権限を確かめる
+    if (!can_edit_studio()) { // 画面にフォームを出していなくても、送られてきたら必ずサーバー側で権限を確かめる
+        error_page(403, '編集できません');
+    }
     verify_csrf();
+    // 削除したスタジオを、削除する前の状態で復元する（履歴の番号から。lib/studio_history.php）
+    if (($_POST['action'] ?? '') === 'restore_studio') {
+        try {
+            $id = studio_history_restore($pdo, (int)($_POST['history_id'] ?? 0), (int)current_user()['user_id']);
+        } catch (RuntimeException $e) {
+            flash($e->getMessage(), 'error');
+            redirect('studio_list');
+        }
+        flash('復元しました');
+        redirect('studio_info?id=' . $id);
+    }
     $name = trim((string)($_POST['name'] ?? ''));
     if ($name === '' || mb_strlen($name) > 100) {
         flash('スタジオ名を100文字以内で入力してください', 'error');
@@ -228,7 +242,7 @@ render_header('スタジオ情報', 'tools');
 
 <?php if ($canEdit): ?>
     <details class="card togglecard sinfo-edit sinfo-section">
-        <summary><?= icon('add') ?> <span class="togglecard__title">スタジオを追加 <span class="tag">幹部</span></span><?= icon('expand_more', 'togglecard__chevron') ?></summary>
+        <summary><?= icon('add') ?> <span class="togglecard__title">スタジオを追加</span><?= icon('expand_more', 'togglecard__chevron') ?></summary>
         <form method="post" class="sinfo-edit__form togglecard__body">
             <?= csrf_field() ?>
             <div class="sinfo-edit__row">
@@ -237,6 +251,34 @@ render_header('スタジオ情報', 'tools');
             </div>
         </form>
     </details>
+    <?php
+    // 削除したスタジオ（削除前の状態に復元できる）。表をまだ作っていない環境でもページは開けるよう、読めなければ出さない
+    $deleted = [];
+    try {
+        $deleted = studio_history_deleted($pdo);
+    } catch (PDOException $e) {
+        error_log('studio_history_deleted: ' . $e->getMessage());
+    }
+    ?>
+    <?php if ($deleted): ?>
+    <details class="card togglecard sinfo-edit sinfo-section">
+        <summary><?= icon('delete') ?> <span class="togglecard__title">削除済み <span class="tag"><?= count($deleted) ?></span></span><?= icon('expand_more', 'togglecard__chevron') ?></summary>
+        <ul class="sinfo-history togglecard__body">
+            <?php foreach ($deleted as $d): ?>
+                <li>
+                    <span class="sinfo-history__what"><?= h($d['studio_name']) ?></span>
+                    <span class="muted small"><?= h($d['user_name'] ?? '不明') ?> ・ <?= h(date('n/j H:i', strtotime((string)$d['created_at']))) ?></span>
+                    <form method="post" class="sinfo-history__restore">
+                        <?= csrf_field() ?>
+                        <input type="hidden" name="action" value="restore_studio">
+                        <input type="hidden" name="history_id" value="<?= (int)$d['history_id'] ?>">
+                        <button type="submit" class="btn btn--sm" title="削除前の状態に復元" aria-label="<?= h($d['studio_name']) ?>を復元"><?= icon('restore') ?> 復元</button>
+                    </form>
+                </li>
+            <?php endforeach; ?>
+        </ul>
+    </details>
+    <?php endif; ?>
 <?php endif; ?>
 
 <script src="<?= asset_url('assets/vendor/leaflet/leaflet.js') ?>"></script>

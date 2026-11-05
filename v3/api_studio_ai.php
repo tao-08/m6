@@ -37,8 +37,8 @@ function fail(int $status, string $message): never
 if (current_user() === null) {
     fail(401, 'ログインしてください');
 }
-if (!is_executive()) {
-    fail(403, '幹部のみ利用できます'); // AI はお金がかかるので、編集できる人（幹部・管理者）だけ
+if (!can_edit_studio()) {
+    fail(403, '利用できません'); // AI はお金がかかるので、スタジオを編集できる人だけ（今はログインしていれば誰でも）
 }
 if (!is_post()) {
     fail(405, 'POST only');
