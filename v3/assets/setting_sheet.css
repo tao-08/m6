@@ -91,6 +91,8 @@
 
 /* ---- セット図 ---- */
 .stage-tools { display: flex; flex-wrap: wrap; gap: 8px; }
+/* 自動配置: 他のボタンより少しだけ目立たせる（アクセント色の枠と薄い背景） */
+.stage-tools [data-auto] { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
 .stage {
   position: relative;            /* 中の部品を position: absolute で置く基準にする */
   width: 100%;

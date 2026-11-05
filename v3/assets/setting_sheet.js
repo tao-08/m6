@@ -2424,6 +2424,17 @@
         return `${name}.pdf`.replace(/[\\/:*?"<>|]/g, '_');
     };
 
+    /** PDF を作れたことをサーバーに知らせる（管理者の「PDF作成ログ」用）。失敗しても PDF 作成には影響させない */
+    function logMade() {
+        if (DATA.tplPreview) return; // 型紙のお試しは記録しない
+        const token = document.querySelector('meta[name="csrf-token"]')?.content || '';
+        fetch('api_sheet_log', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': token },
+            body: JSON.stringify({ band_id: DATA.bandId || null, band: state.band, date: state.date, template: state.template }),
+        }).catch(() => {});
+    }
+
     let lastFile = null; // 共有ボタン用に、最後に作った PDF を覚えておく
 
     $('[data-make]').addEventListener('click', async (e) => {
@@ -2448,6 +2459,7 @@
             // Web Share API: スマホの「共有」シート（LINE などに送れる）。対応しているときだけボタンを出す
             const share = $('[data-share]');
             share.hidden = !(navigator.canShare && navigator.canShare({ files: [lastFile] }));
+            logMade(); // 管理者が見るログに残す
             askRegister(); // 続けて「DB に登録しますか？」
         } catch (err) {
             console.error(err); // 開発者ツールのコンソールに詳しいエラーを出す
