@@ -2057,9 +2057,9 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
   .member-row-edit > .inst2-slot { order: 0; grid-template-rows: 1fr; opacity: 1; margin-top: 0; transition: none; }
   .member-row-edit > :first-child, .member-row-edit > :nth-child(3), .member-row-edit > .inst2-slot { width: 100%; } /* 名前と楽器は左の列いっぱい */
   .member-row-edit:last-child { border-bottom: 0; padding-bottom: 0; }
-  .sticky-actions { width: 100%; }
-  .sticky-actions .btn { flex: 1; }
-  .sticky-actions:has(.sticky-actions__note:not([hidden])) { flex-wrap: wrap; border-radius: var(--r-lg); }
+  .sticky-actions { width: 100%; flex-wrap: wrap; } /* ボタンが3つ（やり直す / 書き直す / 登録）だと1行に入らずはみ出すので折り返す */
+  .sticky-actions .btn { flex: 1 1 auto; min-width: 0; }
+  .sticky-actions:has(.btn:nth-of-type(3)), .sticky-actions:has(.sticky-actions__note:not([hidden])) { border-radius: var(--r-lg); }
   .sticky-actions__note { flex-basis: 100%; text-align: center; }
   .tabs { top: 66px; }
   /* ライブ詳細の日程タブ（3日程以上）: 横スクロールさせず、画面の幅に全部の日程を等分に並べる（スクロールできると気づきにくいので）。

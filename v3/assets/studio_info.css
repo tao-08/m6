@@ -21,7 +21,7 @@
 /* ---- カード（セクション） ---- */
 .sinfo-section { margin-top: 14px; display: grid; gap: 10px; }
 .sinfo-section > h2 { margin: 0; font-size: var(--fs-md); font-weight: 800; display: flex; align-items: center; gap: 6px; }
-.sinfo-sub { margin: 4px 0 6px; font-size: var(--fs-sm); font-weight: 800; color: var(--muted); }
+.sinfo-sub { margin: 14px 0 3px; font-size: var(--fs-sm); font-weight: 800; color: var(--muted); }
 .sinfo-links { display: flex; flex-wrap: wrap; gap: 8px; }
 .sinfo-info { margin: 0; display: grid; gap: 6px; overflow-wrap: anywhere; }
 .sinfo-note { margin: 0; overflow-wrap: anywhere; }
@@ -48,7 +48,7 @@
 .sinfo-table-wrap { overflow-x: auto; } /* スマホで表が横にはみ出すときは表だけスクロール */
 .sinfo-table { width: 100%; border-collapse: collapse; font-size: var(--fs-md); }
 .sinfo-table th, .sinfo-table td { padding: 6px 8px; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; }
-.sinfo-table th { font-size: var(--fs-xs); color: var(--muted); font-weight: 800; }
+.sinfo-table th { padding-block: 3px; font-size: var(--fs-xs); color: var(--muted); font-weight: 800; } /* 見出しの行は上下を詰める */
 .sinfo-table .num { text-align: right; font-variant-numeric: tabular-nums; } /* tabular-nums = 数字の幅をそろえて桁を縦に並べる */
 .sinfo-student { color: var(--headliner); font-weight: 800; }
 
@@ -260,9 +260,8 @@
 .sinfo-reserve-fab .icon { font-size: 22px; }
 @media (max-width: 760px) { .sinfo-reserve-fab { right: 12px; bottom: calc(76px + env(safe-area-inset-bottom)); } }
 
-/* ---- 料金表: 部屋の見出しに帯・行をしま模様に・料金を大きく ---- */
+/* ---- 料金表: 部屋の見出しに帯・行は罫線で区切る（背景色の縞は「特別な行」に見えるので使わない）・料金を大きく ---- */
 .sinfo-sub { padding-left: 8px; border-left: 3px solid var(--accent); color: var(--text); font-size: var(--fs-md); }
-.sinfo-table tbody tr:nth-child(even) { background: var(--accent-soft); }
 .sinfo-table td:nth-child(n+2) { vertical-align: top; }
 .sinfo-table td.num { font-weight: 800; }
 .sinfo-table td.num:not(.sinfo-student) { font-size: var(--fs-md); }

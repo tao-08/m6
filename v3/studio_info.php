@@ -347,7 +347,8 @@ if (is_post()) {
             $rows[] = [(int)$rawId, [
                 'name' => $name, 'area_jo' => $jo, 'size_note' => $size === '' ? null : $size,
                 'half_start' => isset($_POST['half_start'][$i]) ? 1 : 0,
-                'half_unit' => isset($_POST['half_unit'][$i]) ? 1 : 0,
+                // 30分単位: 一番上のチェック（half_unit_all）で全部屋まとめて。混在のまま触っていなければ、部屋ごとの今の値を保つ
+                'half_unit' => !empty($_POST['half_unit_mixed']) ? (int)(bool)($_POST['half_unit_was'][$i] ?? 0) : (isset($_POST['half_unit_all']) ? 1 : 0),
             ]];
         }
         studio_save_rows($pdo, 'studio_room', 'studio_room_id', $studioId, $rows);
@@ -1084,7 +1085,7 @@ render_header($studio['name'], 'tools');
 <!-- ===== 部屋と料金表（部屋の広さと料金を1枚のカードにまとめた）=====
      部屋ごとのブロック = 見出し（部屋名＋広さ）→ その部屋の料金表。「全部屋」共通の料金は先頭に出す -->
 <section class="card sinfo-section" id="rates">
-    <h2><?= icon('meeting_room') ?> 部屋・料金 <span class="muted small">1時間あたり</span></h2>
+    <h2><?= icon('meeting_room') ?> 部屋・料金</h2>
     <?php if (!$rates && !$rooms): ?><p class="muted small">-</p><?php endif; ?>
     <?php
     // 部屋の組み合わせごとに1つの表（共通の料金は「A・B」の見出しの下に1回だけ出す。全部屋共通は先頭）
@@ -1164,7 +1165,7 @@ render_header($studio['name'], 'tools');
             <table class="sinfo-table">
                 <!-- 割引区分ごとに1列（学割・U20 …）。料金が1つも無い区分の列は出さない -->
                 <!-- 同じ料金（対象・通常・割引すべて同じ）の行は1行にまとめ、時間帯の欄に「曜日 開始〜終了」を縦に並べる（studio_merge_same_price） -->
-                <thead><tr><th>時間帯</th><th class="num">料金</th><?php foreach ($rateDisc as $d): ?><th class="num"><?= h($d['name']) ?></th><?php endforeach; ?></tr></thead>
+                <thead><tr><th>時間帯</th><th class="num">料金 / 1h</th><?php foreach ($rateDisc as $d): ?><th class="num"><?= h($d['name']) ?></th><?php endforeach; ?></tr></thead>
                 <?php foreach ($byPpl as $n => $pplRows): ?>
                 <tbody<?= $soloPanel ? ' data-ppl="' . $n . '"' . ($n === $pplSel ? '' : ' hidden') : '' ?>>
                 <?php foreach (studio_merge_same_price($pplRows) as $m): $r = $m['row']; ?>
@@ -1296,15 +1297,24 @@ render_header($studio['name'], 'tools');
             <input type="hidden" name="action" value="save_rooms">
             <input type="hidden" name="studio_id" value="<?= $studioId ?>">
             <!-- 広さは数値（帖）の欄に分けた。検索で「12帖以上」と比べられるように、単位は帖に統一（畳も同じ数字でOK）。備考は定員・階数など -->
-            <?php foreach (array_merge($rooms, [['studio_room_id' => 0, 'name' => '', 'area_jo' => null, 'size_note' => '', 'half_start' => 1, 'half_unit' => 1]]) as $ri => $r): ?>
+            <?php
+            // 30分単位の予約は、一番上の1つのチェックで全部屋まとめて切り替える（部屋ごとの値は DB に残す）。
+            //   全部屋 ON のときだけチェック。部屋ごとに違うとき（混在）は「−」表示にして、触らなければ部屋ごとの今の値を保つ（half_unit_was）
+            $unitOn = count(array_filter($rooms, fn($r) => (int)$r['half_unit']));
+            $unitAll = $rooms && $unitOn === count($rooms);
+            $unitMixed = $unitOn > 0 && !$unitAll;
+            ?>
+            <label class="sinfo-edit__half"><input type="checkbox" name="half_unit_all" value="1" data-half-unit-all<?= $unitAll ? ' checked' : '' ?>>30分単位の予約</label>
+            <?php if ($unitMixed): ?><input type="hidden" name="half_unit_mixed" value="1" data-half-unit-mixed><?php endif; ?>
+            <?php foreach (array_merge($rooms, [['studio_room_id' => 0, 'name' => '', 'area_jo' => null, 'size_note' => '', 'half_start' => 0, 'half_unit' => 0]]) as $ri => $r): ?>
                 <div class="sinfo-edit__row">
                     <input type="hidden" name="id[]" value="<?= (int)$r['studio_room_id'] ?>">
                     <input autocomplete="off" type="text" class="grow" name="name[]" maxlength="50" value="<?= h($r['name']) ?>" placeholder="部屋名" aria-label="部屋名">
                     <label class="sinfo-edit__jo"><input type="text" name="area_jo[]" inputmode="decimal" maxlength="5" value="<?= h(studio_jo_num($r['area_jo'])) ?>" placeholder="広さ" aria-label="広さ（帖）"><span class="muted small">帖</span></label>
                     <input autocomplete="off" type="text" class="grow" name="size_note[]" maxlength="50" value="<?= h($r['size_note']) ?>" placeholder="備考（定員・階数）" aria-label="備考">
-                    <!-- 30分スタート可 / 30分単位で利用可（料金シミュレーションの選択肢になる）。名前の [番号] = この行の位置 -->
-                    <label class="sinfo-edit__half" title="30分スタート可"><input type="checkbox" name="half_start[<?= $ri ?>]" value="1"<?= (int)$r['half_start'] ? ' checked' : '' ?>>開始:30</label>
-                    <label class="sinfo-edit__half" title="30分単位で利用可"><input type="checkbox" name="half_unit[<?= $ri ?>]" value="1"<?= (int)$r['half_unit'] ? ' checked' : '' ?>>30分単位</label>
+                    <!-- 30分開始（料金シミュレーションの選択肢になる）。名前の [番号] = この行の位置。half_unit_was = 混在のときに保つ今の値 -->
+                    <label class="sinfo-edit__half"><input type="checkbox" name="half_start[<?= $ri ?>]" value="1"<?= (int)$r['half_start'] ? ' checked' : '' ?>>30分開始</label>
+                    <input type="hidden" name="half_unit_was[<?= $ri ?>]" value="<?= (int)$r['half_unit'] ?>">
                     <?= studio_row_del((int)$r['studio_room_id']) ?>
                 </div>
             <?php endforeach; ?>

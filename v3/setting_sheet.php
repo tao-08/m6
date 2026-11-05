@@ -339,7 +339,7 @@ render_header('セッティングシート作成', $blank ? 'tools' : 'lives');
 <dialog class="modal" data-register-dialog aria-labelledby="register-title">
     <form method="dialog" class="modal__body">
         <h3 id="register-title" class="modal__title"><?= icon('queue_music') ?> セットリストを DB に登録しますか？</h3>
-        <p class="muted small">次の画面で曲を検索してサブスクに紐づけ、演奏者を確認してから保存します。</p>
+        <p class="muted small">次の画面で1曲ごとに楽曲情報と演奏者を登録してデータベースに保存できます。ライブが終わるまで非公開にするかどうかも選択できます。</p>
         <ol class="modal__list" data-register-list></ol>
         <div class="form-actions">
             <button type="submit" class="btn btn--ghost" value="no">いいえ</button>

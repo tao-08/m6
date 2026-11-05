@@ -794,6 +794,16 @@
     tp.querySelector('[data-tp-he]').value = String(Math.floor(e / 60));
     tp.querySelector('[data-tp-half]').checked = s % 60 === 30;
   };
+  /* 部屋の編集: 「30分単位の予約」（全部屋まとめて）。部屋ごとに値が違う（混在）ときは「−」表示にする。
+   *   押したら、部屋ごとの値を保つ印（half_unit_mixed）を外して、チェックの状態で全部屋に反映する */
+  const setupHalfUnitAll = () => {
+    const box = document.querySelector('[data-half-unit-all]');
+    if (!box) return;
+    const mixed = document.querySelector('[data-half-unit-mixed]');
+    if (mixed) box.indeterminate = true;
+    box.addEventListener('change', () => mixed?.remove());
+  };
+
   const setupTimePair = () => {
     document.addEventListener('change', (ev) => {
       const tp = ev.target.closest('[data-tp]');
@@ -879,6 +889,7 @@
   setupRateEdit();
   setupRowDelete();
   setupTimePair();
+  setupHalfUnitAll();
   setupFilter(mapApi);
   setupTargetTabs();
   setupSoloPeople();

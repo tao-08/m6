@@ -2455,7 +2455,7 @@
             a.remove();
             setTimeout(() => URL.revokeObjectURL(url), 60_000); // 一時 URL は使い終わったら捨てる（メモリ解放）
             const lay = layoutSetlist();
-            setStatus(lay.rows.length > lay.max ? `できました（${lay.rows.length - lay.max} 曲は入りませんでした）` : 'できました！', lay.rows.length > lay.max);
+            setStatus(lay.rows.length > lay.max ? `${fileName()}をダウンロードしました（${lay.rows.length - lay.max} 曲は入りませんでした）` : `${fileName()}をダウンロードしました`, lay.rows.length > lay.max);
             // Web Share API: スマホの「共有」シート（LINE などに送れる）。対応しているときだけボタンを出す
             const share = $('[data-share]');
             share.hidden = !(navigator.canShare && navigator.canShare({ files: [lastFile] }));
@@ -2490,7 +2490,7 @@
         // 曲名も紐付けも DB と同じなら聞かない（紐付けだけ変えたときも登録を聞く）
         const same = titles.length === db.length && titles.every((t, i) => t === db[i] && tracks[i] === (DATA.dbTracks[i] || ''));
         if (same) {
-            setStatus('できました！ セットリストは DB に登録済みです ✓');
+            setStatus(`${fileName()}をダウンロードしました。セットリストは DB に登録済みです ✓`);
             return;
         }
         // ダイアログは [data-sheet] の外にあるので document から探す
