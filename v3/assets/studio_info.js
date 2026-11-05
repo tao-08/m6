@@ -874,6 +874,66 @@
   const DEL_FIELD = {
     save_rates: 'input[data-price]', save_packs: 'input[name="price[]"]', save_rentals: 'input[name="name[]"]',
     save_equipment: 'input[name="model[]"]', save_rooms: 'input[name="name[]"]', save_discounts: 'input[name="name[]"]',
+    save_areas: 'input[name="area_name[]"]',
+  };
+
+  /**
+   * 並び替え（form[data-reorder] の中の [data-reorder-item] を、[data-reorder-handle] のドラッグ / ↑↓キーで入れ替える）
+   *   保存では送られてきた順に sort_order を振るので、DOM の順番を変えるだけでよい。
+   *   half_start[番号] のように「行の位置」を名前に持つ欄は、動かすたびに位置に合わせて付け直す
+   *   ドラッグ中は、指の位置が上か下の行の真ん中を越えたら入れ替える（削除で隠した行は飛ばす）
+   */
+  const setupReorder = () => {
+    document.querySelectorAll('form[data-reorder]').forEach((form) => {
+      const items = () => [...form.querySelectorAll('[data-reorder-item]')];
+      const visible = () => items().filter((el) => !el.hidden);
+      const renumber = () => items().forEach((row, i) => {
+        row.querySelectorAll('[name]').forEach((el) => {
+          el.name = el.name.replace(/^(half_start|half_unit_was)\[\d+\]$/, `$1[${i}]`);
+        });
+      });
+      let drag = null; // ドラッグ中だけ { row, pointerId }
+      form.addEventListener('pointerdown', (e) => {
+        const handle = e.target.closest('[data-reorder-handle]');
+        if (!handle || drag || (e.pointerType === 'mouse' && e.button !== 0)) return;
+        e.preventDefault();
+        drag = { row: handle.closest('[data-reorder-item]'), pointerId: e.pointerId };
+        drag.row.classList.add('is-dragging');
+        handle.setPointerCapture(e.pointerId);
+      });
+      form.addEventListener('pointermove', (e) => {
+        if (!drag || e.pointerId !== drag.pointerId) return;
+        const all = visible();
+        const i = all.indexOf(drag.row);
+        const mid = (el) => el.getBoundingClientRect().top + el.offsetHeight / 2;
+        if (all[i - 1] && e.clientY < mid(all[i - 1])) {
+          all[i - 1].before(drag.row);
+          renumber();
+        } else if (all[i + 1] && e.clientY > mid(all[i + 1])) {
+          all[i + 1].after(drag.row);
+          renumber();
+        }
+      });
+      const end = (e) => {
+        if (!drag || e.pointerId !== drag.pointerId) return;
+        drag.row.classList.remove('is-dragging');
+        drag = null;
+      };
+      form.addEventListener('pointerup', end);
+      form.addEventListener('pointercancel', end);
+      form.addEventListener('keydown', (e) => {
+        const handle = e.target.closest('[data-reorder-handle]');
+        if (!handle || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
+        e.preventDefault();
+        const row = handle.closest('[data-reorder-item]');
+        const all = visible();
+        const i = all.indexOf(row);
+        if (e.key === 'ArrowUp' && all[i - 1]) all[i - 1].before(row);
+        if (e.key === 'ArrowDown' && all[i + 1]) all[i + 1].after(row);
+        renumber();
+        handle.focus();
+      });
+    });
   };
   const setupRowDelete = () => {
     document.addEventListener('click', (ev) => {
@@ -1106,12 +1166,33 @@
 
     box.addEventListener('toggle', update);
     // バンド ⇔ 個人の切り替えは、下で人数を直してから計算する（先に計算すると、古い人数で一瞬だけ並びが変わってしまう）
-    const notMode = (e) => { if (e.target.name !== 'mode') update(); };
+    //   人数の変更は、広さの絞り込みを書き換えて（→ minArea の input で update が走る）から計算する。ここでは update しない
+    const notMode = (e) => { if (e.target.name !== 'mode' && e.target.name !== 'people') update(); };
     form.addEventListener('input', notMode);
     form.addEventListener('change', notMode);
-    minArea?.addEventListener('input', update);
+    minArea?.addEventListener('input', () => { showFilter(); update(); });
     // バンド ⇔ 個人を切り替えたら人数をそれっぽい値に（詳細ページの試算と同じ。手で変えた人数は覚えておいて戻す）
     const people = form.elements.people;
+    // 人数 → 目安の広さ（帖）。絞り込み側の「目安◯人」の表（setupFilter）の逆引き。個人練習・2人以下は広さで絞らない（0 = 表示もしない）
+    const joFor = (n) => (form.elements.mode.value === 'solo' ? 0 : n <= 2 ? 0 : n === 3 ? 8 : n === 4 ? 10 : n <= 6 ? 12 : n === 7 ? 15 : 20);
+    const filterNote = form.querySelector('[data-sim-filter]'); // 人数の下の「絞り込み：◯帖以上」
+    function showFilter() {
+      const v = Math.max(0, Number(minArea?.value) || 0);
+      if (filterNote) {
+        filterNote.hidden = !(v > 0);
+        filterNote.textContent = '絞り込み：' + v + '帖以上';
+      }
+    }
+    const syncArea = () => {
+      if (!minArea) return;
+      const jo = String(joFor(Math.max(1, Number(people.value) || 1)));
+      if (minArea.value !== jo) {
+        minArea.value = jo;
+        minArea.dispatchEvent(new Event('input', { bubbles: true })); // 絞り込み（setupFilter）と、ここの再計算が動く
+      }
+    };
+    people.addEventListener('input', syncArea);
+    showFilter();
     const remembered = { band: people.value, solo: '1' };
     let lastMode = 'band';
     form.addEventListener('change', (e) => {
@@ -1119,6 +1200,8 @@
       remembered[lastMode] = people.value;
       lastMode = e.target.value;
       people.value = remembered[lastMode];
+      syncArea();
+      showFilter();
       update();
     });
   };
@@ -1246,6 +1329,7 @@
   setupRateEdit();
   setupRateTabs();
   setupRowDelete();
+  setupReorder();
   setupTimePair();
   setupHalfUnitAll();
   setupFilter(mapApi);

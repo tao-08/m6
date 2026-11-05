@@ -98,7 +98,7 @@ $jsonFlags = JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APO
 // 絞り込み欄は、広さが入っているスタジオが1つでもあるときだけ出す（全部不明なら絞り込む意味がない）
 $hasSize = array_filter(array_column($studios, 'max_area'), fn($v) => $v !== null) !== [];
 // エリアの候補: 入力されているエリア名（並びは一覧の並びで最初に出た順）。1つも入っていなければエリアのタブは出さない
-$areas = array_values(array_unique(array_filter(array_column($studios, 'area'), fn($v) => $v !== null && $v !== '')));
+$areas = studio_areas($pdo); // 並び順は「エリアを編集」で決めた順
 
 // 料金比較用のデータ（JS: setupListSim）。[スタジオid => 試算のデータ]。レンタルは比較に使わないので空
 //   スタジオごとに読むので SQL はスタジオ数に比例して増える（数十件までの想定。増えて遅くなったらまとめて読む形に変える）
@@ -190,6 +190,8 @@ render_header('スタジオ情報', 'tools');
                     <button type="button" class="sinfo-step__btn" data-step="1" aria-label="増やす"><?= icon('add') ?></button>
                 </div>
             </div>
+            <!-- 人数に合わせた広さの絞り込み（JS: setupListSim が人数の変更で広さの絞り込みを書き換え、ここに現在の値を出す） -->
+            <span class="muted small" data-sim-filter hidden></span>
         </form>
     </details>
     <script type="application/json" id="studio-sim-all"><?= json_encode($simAll, $jsonFlags) ?></script>

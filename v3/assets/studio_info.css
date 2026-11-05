@@ -445,3 +445,8 @@ h1 .tag--rec, h1 .tag--night { font-size: var(--fs-sm); } /* 見出し（36px）
 /* ---- AI 提案の各項目の開閉: 右端に既存の ⌄（.togglecard__chevron。回る動きの時間は app.css 側）。開いたら 180° 回す ---- */
 .sinfo-ai__sec > summary > label { margin-right: auto; } /* チェック付きの題名は左、件数と ⌄ は右に寄せる */
 .sinfo-ai__sec[open] > summary > .togglecard__chevron { transform: rotate(180deg); }
+
+/* 並び替え（部屋・エリアの編集）: ≡ でつかんだ行を少し浮かせる。touch-action: スマホでドラッグ中に画面が動かないように */
+[data-reorder-handle] { cursor: grab; touch-action: none; }
+[data-reorder-item].is-dragging { background: var(--surface-2); box-shadow: var(--shadow-pop); border-radius: var(--r-sm); }
+[data-reorder-item].is-dragging [data-reorder-handle] { cursor: grabbing; }

@@ -312,6 +312,49 @@ if (is_post()) {
         redirect($self);
     }
 
+    // ---- エリア（名前の変更・削除・並び順。全スタジオの studio.area に反映する）---------
+    //   名前を空にしたエリアは削除（そのエリアのスタジオは「未設定」になる）。同じ名前にそろえると統合される
+    if ($action === 'save_areas') {
+        $olds = (array)($_POST['area_old'] ?? []);
+        $news = (array)($_POST['area_name'] ?? []);
+        $existing = studio_areas($pdo);
+        $order = [];
+        $pdo->beginTransaction();
+        try {
+            foreach ($olds as $i => $old) {
+                $old = (string)$old;
+                if (!in_array($old, $existing, true)) {
+                    continue; // 知らないエリアは無視
+                }
+                $new = trim((string)($news[$i] ?? ''));
+                if (mb_strlen($new) > 30) {
+                    throw new RuntimeException('エリアが長すぎます');
+                }
+                if ($new === '') {
+                    $pdo->prepare('UPDATE studio SET area = NULL WHERE area = ?')->execute([$old]);
+                    continue;
+                }
+                if ($new !== $old) {
+                    $pdo->prepare('UPDATE studio SET area = ? WHERE area = ?')->execute([$new, $old]);
+                }
+                if (!in_array($new, $order, true)) {
+                    $order[] = $new;
+                }
+            }
+            $pdo->exec('DELETE FROM studio_area_order');
+            $ins = $pdo->prepare('INSERT INTO studio_area_order (area, sort_order) VALUES (?, ?)');
+            foreach ($order as $n => $name) {
+                $ins->execute([$name, $n + 1]);
+            }
+            $pdo->commit();
+            flash('保存しました');
+        } catch (Throwable $e) {
+            $pdo->rollBack();
+            flash($e instanceof RuntimeException ? $e->getMessage() : '保存できませんでした', 'error');
+        }
+        redirect($self);
+    }
+
     // ---- 部屋 -----------------------------------------------------------
     if ($action === 'save_rooms') {
         $rows = [];
@@ -926,6 +969,7 @@ render_header($studio['name'], 'tools');
             </form>
         </div>
         <?php endif; ?>
+        <?php $areaList = studio_areas($pdo); ?>
         <form method="post" class="sinfo-edit__form">
             <?= csrf_field() ?>
             <input type="hidden" name="action" value="save_info">
@@ -951,7 +995,7 @@ render_header($studio['name'], 'tools');
             <div class="sinfo-field"><span>エリア</span>
                 <select name="area" aria-label="エリア" data-new-select="__new__">
                     <option value="">— 未設定 —</option>
-                    <?php foreach ($pdo->query("SELECT DISTINCT area FROM studio WHERE area IS NOT NULL AND area <> '' ORDER BY area")->fetchAll(PDO::FETCH_COLUMN) as $a): ?>
+                    <?php foreach ($areaList as $a): ?>
                         <option value="<?= h($a) ?>"<?= $a === $studio['area'] ? ' selected' : '' ?>><?= h($a) ?></option>
                     <?php endforeach; ?>
                     <option value="__new__">＋ 新しいエリアを作る</option>
@@ -970,6 +1014,26 @@ render_header($studio['name'], 'tools');
                 <textarea name="note" rows="3" maxlength="1000"><?= h($studio['note']) ?></textarea></label>
             <div><button type="submit" class="btn btn--primary btn--sm"><?= icon('save') ?> 保存</button></div>
         </form>
+        <!-- エリアの名前変更・削除・並び替え（全スタジオ共通。≡ のドラッグ / ↑↓キー。名前を空にした行は削除）。JS: studio_info.js の setupReorder -->
+        <?php if ($areaList): ?>
+        <details class="sinfo-edit">
+            <summary><?= icon('edit') ?> エリアを編集</summary>
+            <form method="post" class="sinfo-edit__form" data-reorder data-confirm="エリア名を空にしたエリアは、全スタジオで未設定になります。保存しますか？">
+                <?= csrf_field() ?>
+                <input type="hidden" name="action" value="save_areas">
+                <input type="hidden" name="studio_id" value="<?= $studioId ?>">
+                <?php foreach ($areaList as $a): ?>
+                    <div class="sinfo-edit__row" data-reorder-item>
+                        <button type="button" class="drag-handle" data-reorder-handle aria-label="ドラッグで並び替え（↑↓キーでも動く）" title="ドラッグで並び替え"><?= icon('drag_indicator') ?></button>
+                        <input type="hidden" name="area_old[]" value="<?= h($a) ?>">
+                        <input autocomplete="off" type="text" class="grow" name="area_name[]" maxlength="30" value="<?= h($a) ?>" aria-label="エリア名">
+                        <?= studio_row_del(1) ?>
+                    </div>
+                <?php endforeach; ?>
+                <div><button type="submit" class="btn btn--primary btn--sm"><?= icon('save') ?> 保存</button></div>
+            </form>
+        </details>
+        <?php endif; ?>
     </details>
     <?php endif; ?>
 </section>
@@ -1326,7 +1390,7 @@ render_header($studio['name'], 'tools');
     <!-- 部屋（名前・広さ）の編集。同じカードの中に置く。部屋を削除するとその部屋の料金・パック・機材も消える（FK の CASCADE）ので確認ダイアログ付き -->
     <details class="sinfo-edit">
         <summary><?= icon('edit') ?> 部屋を編集</summary>
-        <form method="post" class="sinfo-edit__form" data-confirm="部屋名を空にした部屋は、その部屋の料金・パック・機材も削除されます。保存しますか？">
+        <form method="post" class="sinfo-edit__form" data-reorder data-confirm="部屋名を空にした部屋は、その部屋の料金・パック・機材も削除されます。保存しますか？">
             <?= csrf_field() ?>
             <input type="hidden" name="action" value="save_rooms">
             <input type="hidden" name="studio_id" value="<?= $studioId ?>">
@@ -1341,7 +1405,8 @@ render_header($studio['name'], 'tools');
             <label class="sinfo-edit__half"><input type="checkbox" name="half_unit_all" value="1" data-half-unit-all<?= $unitAll ? ' checked' : '' ?>>30分単位の予約</label>
             <?php if ($unitMixed): ?><input type="hidden" name="half_unit_mixed" value="1" data-half-unit-mixed><?php endif; ?>
             <?php foreach (array_merge($rooms, [['studio_room_id' => 0, 'name' => '', 'area_jo' => null, 'size_note' => '', 'half_start' => 0, 'half_unit' => 0]]) as $ri => $r): ?>
-                <div class="sinfo-edit__row">
+                <div class="sinfo-edit__row" data-reorder-item>
+                    <button type="button" class="drag-handle" data-reorder-handle aria-label="ドラッグで並び替え（↑↓キーでも動く）" title="ドラッグで並び替え"><?= icon('drag_indicator') ?></button>
                     <input type="hidden" name="id[]" value="<?= (int)$r['studio_room_id'] ?>">
                     <input autocomplete="off" type="text" class="grow" name="name[]" maxlength="50" value="<?= h($r['name']) ?>" placeholder="部屋名" aria-label="部屋名">
                     <label class="sinfo-edit__jo"><input type="text" name="area_jo[]" inputmode="decimal" maxlength="5" value="<?= h(studio_jo_num($r['area_jo'])) ?>" placeholder="広さ" aria-label="広さ（帖）"><span class="muted small">帖</span></label>

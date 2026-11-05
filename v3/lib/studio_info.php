@@ -426,3 +426,18 @@ function studio_sim_load(PDO $pdo, int $studioId): array
 
     return studio_sim_payload(studio_discounts($pdo, $studioId), $rooms, $rates, $packs, []);
 }
+
+/**
+ * エリア名の一覧（並び順つき）。studio.area に入っている名前を、studio_area_order の順 → 表に無いものは名前順で返す
+ *   表がまだ無い（マイグレーション前）ときは名前順だけにする
+ */
+function studio_areas(PDO $pdo): array
+{
+    try {
+        $sql = "SELECT DISTINCT s.area FROM studio s LEFT JOIN studio_area_order o ON o.area = s.area
+                WHERE s.area IS NOT NULL AND s.area <> '' ORDER BY o.sort_order IS NULL, o.sort_order, s.area";
+        return $pdo->query($sql)->fetchAll(PDO::FETCH_COLUMN);
+    } catch (PDOException $e) {
+        return $pdo->query("SELECT DISTINCT area FROM studio WHERE area IS NOT NULL AND area <> '' ORDER BY area")->fetchAll(PDO::FETCH_COLUMN);
+    }
+}
