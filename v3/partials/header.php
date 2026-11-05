@@ -144,8 +144,9 @@ $nav = [
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+JP:wght@400;500;700;900&display=swap" rel="stylesheet">
     <!-- アイコン用フォント（Material Symbols Rounded）。lib/bootstrap.php の icon() で使う。
-         display=block: 読み込み中にアイコン名の英単語（edit など）が一瞬見えるのを防ぐ -->
-    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400..600,0..1,0&display=block" rel="stylesheet">
+         display=block: 読み込み中にアイコン名の英単語（edit など）が一瞬見えるのを防ぐ
+         icon_names: 使う名前だけ入れて軽くする（lib/icon_names.php。約 1.2MB → 約 70KB） -->
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400..600,0..1,0&icon_names=<?= h(implode(',', require __DIR__ . '/../lib/icon_names.php')) ?>&display=block" rel="stylesheet">
     <!-- ?v= はキャッシュ対策。ファイルの更新時刻が入る（lib/bootstrap.php の asset_url）ので、CSS・JS を変えても数字を上げなくてよい -->
     <link rel="stylesheet" href="<?= asset_url('assets/app.css') ?>">
     <!-- 豪華な演出。app.css の「後」に読む（同じ強さの規則は後に書いたほうが勝つため）。全部 html.fx 始まりなので、fx クラスが無ければ効かない -->

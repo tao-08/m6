@@ -16,7 +16,8 @@
  *  assets/app.js の setupServiceWorker() から登録している。
  * =====================================================================
  */
-const CACHE = 'abbey-offline-v3';
+const CACHE = 'abbey-offline-v4';
+const FONT_CACHE = 'abbey-fonts-v1'; // Google Fonts の CSS・フォント本体。2回目以降は通信なしで出す
 const OFFLINE_URL = 'offline.html';
 
 // 入れたとき: offline.html だけ先に保存しておく
@@ -29,7 +30,7 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE && k !== FONT_CACHE).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
@@ -73,6 +74,15 @@ self.addEventListener('notificationclick', (event) => {
 
 self.addEventListener('fetch', (event) => {
   const req = event.request;
+  // フォント（Google Fonts）: キャッシュがあればすぐ返し、裏で最新に更新する（stale-while-revalidate）
+  const host = new URL(req.url).hostname;
+  if (req.method === 'GET' && (host === 'fonts.googleapis.com' || host === 'fonts.gstatic.com')) {
+    event.respondWith(caches.open(FONT_CACHE).then((cache) => cache.match(req).then((hit) => {
+      const net = fetch(req).then((res) => { if (res.ok || res.type === 'opaque') cache.put(req, res.clone()); return res; }).catch(() => hit);
+      return hit || net;
+    })));
+    return;
+  }
   // ページを開く（GET）ときだけ見る。フォームの送信（POST）・画像・CSS・fetch() には一切さわらない
   if (req.mode !== 'navigate' || req.method !== 'GET') {
     return;

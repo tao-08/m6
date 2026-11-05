@@ -637,5 +637,22 @@ foreach (glob(__DIR__ . '/../assets/*.css') as $cssFile) {
     check('直書きなし: ' . basename($cssFile), css_token_scan((string)file_get_contents($cssFile)), []);
 }
 
+// アイコン名: リテラルで書いた icon('名前') が lib/icon_names.php に入っているか（無いとフォントが絵にせず、名前の文字のまま出る）
+$iconList = require __DIR__ . '/../lib/icon_names.php';
+check('アイコン名一覧はアルファベット順', $iconList === (function ($a) { sort($a, SORT_STRING); return $a; })($iconList), true);
+$iconMissing = [];
+$srcFiles = array_merge(glob(__DIR__ . '/../*.php'), glob(__DIR__ . '/../lib/*.php'), glob(__DIR__ . '/../partials/*.php'), glob(__DIR__ . '/../assets/*.js'));
+foreach ($srcFiles as $f) {
+    $src = (string)file_get_contents($f);
+    preg_match_all('/\bicon(?:El)?\(\s*[\'"]([a-z][a-z0-9_]*)[\'"]/', $src, $m1);
+    preg_match_all('/class="[^"]*\bicon\b[^"]*"[^>]*>\s*([a-z][a-z0-9_]*)\s*</', $src, $m2);
+    foreach (array_merge($m1[1], $m2[1]) as $n) {
+        if (!in_array($n, $iconList, true)) {
+            $iconMissing[$n] = basename($f);
+        }
+    }
+}
+check('アイコン名: lib/icon_names.php に足し忘れなし', $iconMissing, []);
+
 echo $failed ?"\n{$failed} 件失敗\n" : "\nすべて成功\n";
 exit($failed ? 1 : 0);
