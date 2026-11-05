@@ -958,6 +958,13 @@ render_header($studio['name'], 'tools');
                 <input type="file" accept="image/*" multiple hidden data-ai-files>
                 <span class="muted small" data-ai-status></span>
             </div>
+            <!-- 調べる項目（チェックした項目だけ AI に頼む。少ないほど速く・安く・正確）と、検索元（公式サイトのみ = 公式・予約ページのドメインに限定） -->
+            <div class="sinfo-ai__scope">
+                <?php foreach (STUDIO_AI_SECTIONS as $key => $label): ?>
+                    <label class="sinfo-chip"><input type="checkbox" value="<?= h($key) ?>" data-ai-section checked><?= h($label) ?></label>
+                <?php endforeach; ?>
+                <label class="sinfo-chip"><input type="checkbox" data-ai-official<?= $studio['website_url'] || $studio['reserve_url'] ? '' : ' disabled' ?>>公式のみ</label>
+            </div>
             <div class="sinfo-ai__thumbs" data-ai-thumbs hidden></div>
             <form method="post" class="sinfo-ai__result" id="studio-ai-result" hidden
                 data-confirm="選んだ項目を AI の結果で置き換えます（料金・パック・レンタル・機材は今の行が削除されます）。よろしいですか？">
@@ -1670,7 +1677,7 @@ $packRoomLines = function (array $row) use ($packRoomIds): array {
                 </div>
                 <?php return ob_get_clean();
             };
-            $rentalBlank = ['studio_rental_id' => 0, 'name' => '', 'price' => '', 'per_hour' => 0];
+            $rentalBlank = ['studio_rental_id' => 0, 'name' => '', 'price' => '', 'per_hour' => 1]; // 単位の初期値は /h
             foreach (array_merge($rentals, [$rentalBlank, $rentalBlank]) as $r) {
                 echo $rentalRow($r);
             }

@@ -450,3 +450,6 @@ h1 .tag--rec, h1 .tag--night { font-size: var(--fs-sm); } /* 見出し（36px）
 [data-reorder-handle] { cursor: grab; touch-action: none; }
 [data-reorder-item].is-dragging { background: var(--surface-2); box-shadow: var(--shadow-pop); border-radius: var(--r-sm); }
 [data-reorder-item].is-dragging [data-reorder-handle] { cursor: grabbing; }
+
+/* AIで入力: 調べる項目のチェック（チップ）。折り返して並べる */
+.sinfo-ai__scope { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }

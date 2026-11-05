@@ -728,6 +728,10 @@
         const fd = new FormData();
         fd.append('studio_id', box.dataset.studioId);
         fd.append('model', box.querySelector('[data-ai-model]').value);
+        const picked = [...box.querySelectorAll('[data-ai-section]:checked')];
+        if (!picked.length) throw new Error('調べる項目を選んでください');
+        picked.forEach((c) => fd.append('sections[]', c.value));
+        if (box.querySelector('[data-ai-official]')?.checked) fd.append('source', 'official');
         images.forEach((it) => fd.append('images[]', it.file, it.file.name));
         const res = await fetch('api_studio_ai', {
           method: 'POST',

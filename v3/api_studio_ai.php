@@ -10,6 +10,8 @@
  *  リクエスト（POST, multipart/form-data = FormData。画像ファイルを送れる形式）
  *    studio_id … スタジオの id
  *    model     … 使うモデル（lib/studio_ai.php の studio_ai_models() にあるものだけ。省略・不明なら初期のモデル）
+ *    sections[] … 調べる項目（info / rooms / discounts / rates / packs / rentals / equipment）。省略・空なら全部
+ *    source    … 'official' なら検索を公式サイト・予約ページのドメインだけにする（省略なら制限なし）
  *    images[]  … 画像ファイル（任意・最大 AI_MAX_IMAGES 枚）。あれば画像だけを読む（ウェブ検索なし）。無ければウェブ検索
  *    ヘッダー X-CSRF-Token に CSRF トークン
  *  レスポンス: {"ok":true, "proposal":{…}, "yen":12.3}
@@ -53,11 +55,21 @@ $model = (string)($_POST['model'] ?? '');
 if ($model !== '' && !isset(studio_ai_models()[$model])) {
     fail(400, 'モデルが正しくありません'); // 一覧に無いモデル名は API に流さない
 }
-$st = db()->prepare('SELECT studio_id, name, website_url, address, access FROM studio WHERE studio_id = ?');
+$st = db()->prepare('SELECT studio_id, name, website_url, reserve_url, address, access FROM studio WHERE studio_id = ?');
 $st->execute([$studioId]);
 $studio = $st->fetch();
 if (!$studio) {
     fail(404, 'スタジオが見つかりません');
+}
+// 調べる項目（sections[]）と検索元（source）。項目は決められたキーだけ通す。空 = 全部
+$sections = array_values(array_intersect(array_keys(STUDIO_AI_SECTIONS), array_map('strval', (array)($_POST['sections'] ?? []))));
+$officialOnly = ($_POST['source'] ?? '') === 'official';
+// すでに登録されている部屋・割引区分の名前を AI に教える（同じ表記で返させて、別の部屋・区分が増えないように）
+foreach (['known_rooms' => 'SELECT name FROM studio_room WHERE studio_id = ? ORDER BY sort_order, studio_room_id',
+          'known_discounts' => 'SELECT name FROM studio_discount WHERE studio_id = ? ORDER BY sort_order, studio_discount_id'] as $key => $sql) {
+    $q = db()->prepare($sql);
+    $q->execute([$studioId]);
+    $studio[$key] = $q->fetchAll(PDO::FETCH_COLUMN);
 }
 
 // ---- アップロードされた画像 ----
@@ -89,7 +101,7 @@ if (count($images) > AI_MAX_IMAGES) {
 // AI の返事は数十秒かかるので、いったん書き込みを終えてロックを外し、終わってから開き直す
 session_write_close();
 try {
-    $proposal = studio_ai_suggest($studio, $images, $model);
+    $proposal = studio_ai_suggest($studio, $images, $model, $sections, $officialOnly);
 } catch (RuntimeException $e) {
     fail(502, $e->getMessage());
 }
