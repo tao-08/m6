@@ -218,7 +218,8 @@
 .sinfo-step__unit { align-self: center; padding-right: 2px; font-size: var(--fs-xs); }
 
 /* ---- おすすめラベル（一覧のカード・詳細の見出し。幹部が付ける）---- */
-h1 .tag--rec { font-size: var(--fs-sm); } /* 見出し（36px）に追従して大きくならないよう固定（.label-inline は文字サイズに比例するため） */
+.tag--night { color: var(--se); border-color: color-mix(in srgb, var(--se) 40%, transparent); background: var(--se-bg); } /* 深夜早朝（おすすめの赤とは別の、くすんだ青） */
+h1 .tag--rec, h1 .tag--night { font-size: var(--fs-sm); } /* 見出し（36px）に追従して大きくならないよう固定（.label-inline は文字サイズに比例するため） */
 .tag--rec { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, transparent); background: var(--accent-soft); }
 
 /* ---- 料金・パック・機材の編集: 部屋のチェック欄（押しやすい丸いチップ。チェックで赤く塗る）---- */

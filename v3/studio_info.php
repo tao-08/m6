@@ -275,9 +275,15 @@ if (is_post()) {
         foreach (['name', 'website_url', 'reserve_url', 'address', 'access', 'area', 'hours', 'phone', 'student_note', 'note'] as $k) {
             $f[$k] = trim(str_replace("\r\n", "\n", (string)($_POST[$k] ?? '')));
         }
+        // エリアはプルダウン。「＋ 新しいエリアを作る」（__new__）のときは、入力欄の名前を使う
+        $areaNew = $f['area'] === '__new__';
+        if ($areaNew) {
+            $f['area'] = trim((string)($_POST['area_new'] ?? ''));
+        }
         $coords = studio_parse_coords((string)($_POST['coords'] ?? ''));
         $error = match (true) { // match(true) = 上から順に条件を見て、最初に true になった値を返す
             $f['name'] === '' || mb_strlen($f['name']) > 100 => 'スタジオ名を100文字以内で入力してください',
+            $areaNew && $f['area'] === '' => '新しいエリア名を入力してください',
             !studio_url_ok($f['website_url']) => 'サイトの URL が正しくありません',
             !studio_url_ok($f['reserve_url']) => '予約ページの URL が正しくありません',
             mb_strlen($f['address']) > 255 => '住所が長すぎます',
@@ -297,9 +303,10 @@ if (is_post()) {
         // 空の欄は NULL で保存（「未登録」を空文字ではなく NULL で表すのが DB の定番。IS NULL で探せる）
         $nul = fn(string $v) => $v === '' ? null : $v;
         $recommended = isset($_POST['recommended']) ? 1 : 0; // チェックを外した欄は送られてこないので、あるかどうかで決める
-        $pdo->prepare('UPDATE studio SET name = ?, website_url = ?, reserve_url = ?, address = ?, access = ?, area = ?, recommended = ?, hours = ?, phone = ?,
+        $lateNight = isset($_POST['late_night']) ? 1 : 0; // おすすめと同じ（チェックを外すと送られてこない）
+        $pdo->prepare('UPDATE studio SET name = ?, website_url = ?, reserve_url = ?, address = ?, access = ?, area = ?, recommended = ?, late_night = ?, hours = ?, phone = ?,
                 lat = ?, lng = ?, student_note = ?, note = ?, updated_by = ? WHERE studio_id = ?')
-            ->execute([$f['name'], $nul($f['website_url']), $nul($f['reserve_url']), $nul($f['address']), $nul($f['access']), $nul($f['area']), $recommended, $nul($f['hours']),
+            ->execute([$f['name'], $nul($f['website_url']), $nul($f['reserve_url']), $nul($f['address']), $nul($f['access']), $nul($f['area']), $recommended, $lateNight, $nul($f['hours']),
                 $nul(mb_convert_kana($f['phone'], 'n')), $coords[0], $coords[1], $nul($f['student_note']), $nul($f['note']), $uid, $studioId]);
         flash('保存しました');
         redirect($self);
@@ -850,7 +857,7 @@ render_header($studio['name'], 'tools');
 <link rel="stylesheet" href="<?= asset_url('assets/vendor/leaflet/leaflet.css') ?>">
 <link rel="stylesheet" href="<?= asset_url('assets/studio_info.css') ?>">
 <nav class="crumbs"><a href="tools">ツール</a> / <a href="studio_list">スタジオ情報</a></nav>
-<h1 class="display display--sm"><?= h($studio['name']) ?><?php if ($studio['recommended']): ?> <span class="tag tag--rec label-inline">おすすめ</span><?php endif; ?></h1>
+<h1 class="display display--sm"><?= h($studio['name']) ?><?php if ($studio['recommended']): ?> <span class="tag tag--rec label-inline">おすすめ</span><?php endif; ?><?php if ($studio['late_night']): ?> <span class="tag tag--night label-inline">深夜早朝</span><?php endif; ?></h1>
 
 <!-- ページ内ジャンプ（縦に長いので、各カードへ一発で飛べる。画面上部に貼り付く） -->
 <nav class="sinfo-jump" aria-label="ページ内移動">
@@ -942,13 +949,20 @@ render_header($studio['name'], 'tools');
                 </span></label>
             <label class="sinfo-field"><span>最寄り駅</span>
                 <input autocomplete="off" type="text" name="access" maxlength="100" value="<?= h($studio['access']) ?>" placeholder="立川駅 北口 徒歩5分"></label>
-            <!-- エリア: 一覧の絞り込みに使う名前（例: 新宿）。他のスタジオに入っている名前は候補に出る（同じ名前をそろえやすいように） -->
-            <label class="sinfo-field"><span>エリア</span>
-                <input autocomplete="off" type="text" name="area" maxlength="30" list="studio-area-list" value="<?= h($studio['area']) ?>" placeholder="新宿"></label>
-            <datalist id="studio-area-list">
-                <?php foreach ($pdo->query('SELECT DISTINCT area FROM studio WHERE area IS NOT NULL ORDER BY area')->fetchAll(PDO::FETCH_COLUMN) as $a): ?><option value="<?= h($a) ?>"><?php endforeach; ?>
-            </datalist>
+            <!-- エリア: 一覧の絞り込みに使う名前（例: 新宿）。他のスタジオに入っている名前から選ぶ（同じ名前をそろえやすいように）。
+                 ない名前は「＋ 新しいエリアを作る」を選ぶと入力欄が出る（会場・日程名と同じ仕組み。JS: app.js の data-new-select / data-new-input）-->
+            <div class="sinfo-field"><span>エリア</span>
+                <select name="area" aria-label="エリア" data-new-select="__new__">
+                    <option value="">— 未設定 —</option>
+                    <?php foreach ($pdo->query("SELECT DISTINCT area FROM studio WHERE area IS NOT NULL AND area <> '' ORDER BY area")->fetchAll(PDO::FETCH_COLUMN) as $a): ?>
+                        <option value="<?= h($a) ?>"<?= $a === $studio['area'] ? ' selected' : '' ?>><?= h($a) ?></option>
+                    <?php endforeach; ?>
+                    <option value="__new__">＋ 新しいエリアを作る</option>
+                </select>
+                <input autocomplete="off" type="text" name="area_new" maxlength="30" placeholder="新宿" aria-label="新しいエリア名" data-new-input hidden>
+            </div>
             <label class="sinfo-check"><input type="checkbox" name="recommended" value="1"<?= $studio['recommended'] ? ' checked' : '' ?>> おすすめ</label>
+            <label class="sinfo-check"><input type="checkbox" name="late_night" value="1"<?= $studio['late_night'] ? ' checked' : '' ?>> 深夜早朝</label>
             <label class="sinfo-field"><span>営業時間</span>
                 <input autocomplete="off" type="text" name="hours" maxlength="200" value="<?= h($studio['hours']) ?>" placeholder="平日 10:00-23:00 / 土日祝 9:00-22:00"></label>
             <label class="sinfo-field"><span>電話</span>

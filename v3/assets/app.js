@@ -1555,10 +1555,10 @@ function setupSmallThings() {
   }
 
   // 会場・日程名のプルダウン（取り込み・ライブ編集）: 「＋ 新しい○○を作る」を選んだときだけ名前の入力欄を出す
-  //   日程名は data-new-select="__new__"（「new」という日程名とぶつからないように）、会場は 'new'
+  //   日程名は data-new-select="__new__"（「new」という日程名とぶつからないように）、会場は 'new'。スタジオのエリア（.sinfo-field）も同じ
   document.addEventListener('change', (e) => {
     if (!e.target.matches('[data-venue-select], [data-new-select]')) return;
-    const box = e.target.closest('.field').querySelector('[data-venue-new], [data-new-input]');
+    const box = e.target.closest('.field, .sinfo-field').querySelector('[data-venue-new], [data-new-input]');
     box.hidden = e.target.value !== (e.target.dataset.newSelect || 'new');
     if (!box.hidden) box.focus();
   });
