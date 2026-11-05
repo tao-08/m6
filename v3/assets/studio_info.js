@@ -412,9 +412,8 @@
       // ---- お得情報（パック・割引区分） ----
       if (r.packSave > 0) out.append(el('p', 'sinfo-sim__save', r.pack.name + 'で ' + yen(r.packSave) + ' お得'));
       if (disc) {
-        out.append(el('p', 'sinfo-sim__save', d.name + '適用中'));
         const diff = calc(v, 0, v.dur).total - r.total; // 割引なしで計算した合計との差
-        if (diff > 0) out.append(el('p', 'sinfo-sim__save', d.name + 'で ' + yen(diff) + ' お得'));
+        out.append(el('p', 'sinfo-sim__save', d.name + '適用中' + (diff > 0 ? '（' + yen(diff) + ' お得）' : '')));
       } else if (d) {
         // 区分を選んだのに、この曜日では使えない → 通常料金で計算したことを知らせる
         out.append(el('p', 'sinfo-sim__warn', d.name + 'は' + DAY_ONLY[d.day] + '（通常料金で計算）'));
