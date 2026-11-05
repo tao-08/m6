@@ -860,6 +860,14 @@ $rateRow = function (array $slot, string $key, bool $fixed, array $roomLines) us
             . '<button type="button" class="btn btn--sm sinfo-slot-edit__slot-add" data-slot-add>' . icon('add') . ' 時間帯</button>'
             . '</div>';
     }
+    // 列の見出し（料金・割引区分）。部屋の行と同じグリッドにして列をそろえる
+    if ($discounts) {
+        $html .= '<div class="sinfo-rate-room sinfo-rate-room--head" aria-hidden="true"><span></span><span>料金</span>';
+        foreach ($discounts as $d) {
+            $html .= '<span>' . h($d['name']) . '</span>';
+        }
+        $html .= '</div>';
+    }
     foreach ($roomLines as [$rid, $rname]) {
         $line = $slot['lines'][$rid] ?? ['id' => 0, 'price' => '', 'disc_raw' => []];
         $ln = $n . '[room][' . (int)$rid . ']';
@@ -1247,21 +1255,55 @@ render_header($studio['name'], 'tools');
             $groups[($s['people'] ?? 0) . '|' . $s['day_type']][] = $s;
         }
         $newBlank = ['people' => null, 'day_type' => 0, 'start_min' => 600, 'end_min' => 1380, 'lines' => []];
+        // タブは2段: 上 = 対象（バンド / 1人 / 2人 … / ＋）、下 = 選んだ対象の曜日。隠れたタブの欄も一緒に送信される（hidden は表示を隠すだけ）
+        //   $rateTargets[対象] = [曜日, …]。パネルのキー = 'people|day'（$groups のキーと同じ）。見出しが無ければ「＋」のタブを開く
+        //   タブと一括入力はフォームの外に置く（送信しない）
+        $rateTargets = [];
+        foreach (array_keys($groups) as $gk) {
+            [$people, $day] = array_map('intval', explode('|', (string)$gk));
+            $rateTargets[$people][] = $day;
+        }
+        $rateTabSel = array_key_first($groups) ?? 'new';
+        $rateTargetSel = $groups ? array_key_first($rateTargets) : 'new';
         ?>
-        <form method="post" class="sinfo-edit__form sinfo-rate-edit">
+        <div class="sinfo-rate-tools" data-rate-tools data-studio="<?= $studioId ?>">
+            <div class="sinfo-seg sinfo-seg--disc" role="radiogroup" aria-label="対象">
+                <?php foreach ($rateTargets as $people => $days): ?>
+                    <label><input type="radio" name="rate_target" value="<?= $people ?>"<?= $people === $rateTargetSel ? ' checked' : '' ?>> <?= $people === 0 ? 'バンド' : $people . '人' ?></label>
+                <?php endforeach; ?>
+                <label aria-label="見出しを追加"><input type="radio" name="rate_target" value="new"<?= $rateTargetSel === 'new' ? ' checked' : '' ?>> <?= icon('add') ?></label>
+            </div>
+            <?php foreach ($rateTargets as $people => $days): ?>
+                <div class="sinfo-seg sinfo-seg--disc" role="radiogroup" aria-label="曜日" data-rate-days="<?= $people ?>"<?= $people === $rateTargetSel ? '' : ' hidden' ?>>
+                    <?php foreach ($days as $i => $day): ?>
+                        <label><input type="radio" name="rate_day_<?= $people ?>" value="<?= $day ?>"<?= $i === 0 ? ' checked' : '' ?>> <?= h(STUDIO_DAY_TYPES[$day] ?? '') ?></label>
+                    <?php endforeach; ?>
+                </div>
+            <?php endforeach; ?>
+            <!-- 割引の一括入力: 開いているタブの、料金が入っている部屋の割引欄へ反映する（保存を押すまで DB は変わらない）。JS: setupRateTabs -->
+            <?php foreach ($discounts as $d): ?>
+                <div class="sinfo-rate-bulk" data-rate-bulk="<?= (int)$d['studio_discount_id'] ?>">
+                    <span class="sinfo-rate-bulk__name"><?= h($d['name']) ?></span>
+                    <select aria-label="<?= h($d['name']) ?>の種類" data-native>
+                        <?php foreach (STUDIO_DISC_KINDS as $k => $label): ?><option value="<?= $k ?>"<?= $k === 2 ? ' selected' : '' ?>><?= h($label) ?></option><?php endforeach; ?>
+                    </select>
+                    <input type="number" min="0" max="999999" inputmode="numeric" aria-label="<?= h($d['name']) ?>の値">
+                    <button type="button" class="btn btn--sm" title="全部屋に反映" aria-label="<?= h($d['name']) ?>を全部屋に反映">反映</button>
+                </div>
+            <?php endforeach; ?>
+        </div>
+        <form method="post" class="sinfo-edit__form sinfo-rate-edit<?= count($discounts) > 1 ? ' sinfo-rate-edit--stack' : '' ?>">
             <?= csrf_field() ?>
             <input type="hidden" name="action" value="save_rates">
             <input type="hidden" name="studio_id" value="<?= $studioId ?>">
                     <?php foreach ($groups as $gk => $list):
-                        [$people, $day] = array_map('intval', explode('|', $gk));
+                        [$people, $day] = array_map('intval', explode('|', (string)$gk));
                         $last = end($list); // end = 配列の最後の要素（＋で足す時間帯の開始時刻を、最後の時間帯の終了時刻にする）
                         $blank = ['people' => $people ?: null, 'day_type' => $day, 'start_min' => (int)$last['end_min'],
                             'end_min' => min(STUDIO_MAX_MIN, (int)$last['end_min'] + 360), 'lines' => []];
                     ?>
-                        <div class="sinfo-rate-group" data-rate-group>
+                        <div class="sinfo-rate-group" data-rate-group data-rate-panel="<?= h((string)$gk) ?>"<?= (string)$gk === (string)$rateTabSel ? '' : ' hidden' ?>>
                             <div class="sinfo-rate-group__head">
-                                <strong><?= h(studio_target_label($people ?: null)) ?></strong>
-                                <span class="tag"><?= h(STUDIO_DAY_TYPES[$day] ?? '') ?></span>
                                 <button type="button" class="btn btn--sm sinfo-rate-group__add" data-rate-add title="時間帯を追加" aria-label="時間帯を追加"><?= icon('add') ?></button>
                             </div>
                             <?php foreach ($list as $s): ?><?= $rateRow($s, $s['key'], true, $roomLines) ?><?php endforeach; ?>
@@ -1270,12 +1312,14 @@ render_header($studio['name'], 'tools');
                         </div>
                     <?php endforeach; ?>
                     <!-- 新しい見出し（対象・曜日）を作る時間帯。料金を入れて保存すると、その見出しの下に並ぶ。「＋ 見出し」で何個でも足せる -->
+                    <div class="sinfo-rate-new" data-rate-panel="new"<?= $rateTabSel === 'new' ? '' : ' hidden' ?>>
                     <div class="sinfo-rate-group sinfo-rate-group--new">
                         <?= $rateRow($newBlank, 'n1', false, $roomLines) ?>
                     </div>
                     <button type="button" class="btn btn--sm sinfo-rate-new-add" data-rate-new-add><?= icon('add') ?> 見出し</button>
                     <!-- 雛形（JS が複製）: 新しい見出し / 追加の時間帯の1行。'__K__' = 時間帯のキー、'__N__' = 追加の時間帯の番号 -->
                     <template data-rate-new-tpl><div class="sinfo-rate-group sinfo-rate-group--new"><?= $rateRow($newBlank, '__K__', false, $roomLines) ?></div></template>
+                    </div>
                     <template data-slot-tpl><?= $slotLine(['x[__K__][__N__][day]', 'x[__K__][__N__][start]', 'x[__K__][__N__][end]'], 0, 600, 1380, true) ?></template>
             <div><button type="submit" class="btn btn--primary btn--sm" title="料金を空にした行は削除"><?= icon('save') ?> 保存</button></div>
         </form>

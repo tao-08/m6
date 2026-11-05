@@ -905,12 +905,96 @@
     document.querySelectorAll('input[name^="pack_len_"]:checked').forEach(apply);
   };
 
+  // ===================================================================
+  //  料金の編集: 2段のタブ（対象 / 曜日）と 割引の一括入力
+  //     ・対象（rate_target）と曜日（rate_day_対象）から [data-rate-panel="対象|曜日"] を選ぶ。隠れたタブの欄も一緒に保存される
+  //     ・隠れた欄に不正な値があると、ブラウザは欄を見せられず送信を止めるので、その欄のタブを開く
+  //     ・保存後は開いていたタブのまま、フォームを開き直す（sessionStorage は1回使ったら消す。使えない環境では先頭のタブのまま）
+  //     ・「反映」は開いているタブの、料金が入っている部屋の割引欄を書き換える（保存を押すまで DB は変わらない）
+  // ===================================================================
+  const setupRateTabs = () => {
+    const tools = document.querySelector('[data-rate-tools]');
+    if (!tools) return;
+    const form = tools.parentElement.querySelector('form.sinfo-rate-edit');
+    const panels = form.querySelectorAll('[data-rate-panel]');
+    const radio = (name, value) => tools.querySelector(`input[name="${name}"][value="${value}"]`);
+
+    /** ラジオの選択に合わせて、曜日のタブとパネルを出し分ける */
+    const sync = () => {
+      const target = tools.querySelector('input[name="rate_target"]:checked').value;
+      tools.querySelectorAll('[data-rate-days]').forEach((d) => { d.hidden = d.dataset.rateDays !== target; });
+      const day = tools.querySelector(`input[name="rate_day_${target}"]:checked`)?.value;
+      const key = target === 'new' ? 'new' : target + '|' + day;
+      panels.forEach((p) => { p.hidden = p.dataset.ratePanel !== key; });
+    };
+    /** 'new' か '対象|曜日' のタブを開く。そのタブが無ければ false */
+    const open = (key) => {
+      const [target, day] = key.split('|');
+      const t = radio('rate_target', target);
+      const d = target === 'new' ? t : radio('rate_day_' + target, day);
+      if (!t || !d) return false;
+      t.checked = true;
+      d.checked = true;
+      sync();
+      return true;
+    };
+
+    tools.addEventListener('change', (e) => {
+      if (e.target.name.startsWith('rate_')) sync();
+    });
+    form.addEventListener('invalid', (e) => {
+      const panel = e.target.closest('[data-rate-panel]');
+      if (panel?.hidden) open(panel.dataset.ratePanel);
+    }, true); // invalid は親へ伝わらないので、capture（外側から内側へ）で受ける
+
+    const storeKey = 'rateEdit:' + tools.dataset.studio;
+    form.addEventListener('submit', () => {
+      try {
+        sessionStorage.setItem(storeKey, form.querySelector('[data-rate-panel]:not([hidden])').dataset.ratePanel);
+      } catch (e) { /* 保存できなくても、先頭のタブで開くだけ */ }
+    });
+
+    tools.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-rate-bulk] button');
+      if (!btn) return;
+      const bulk = btn.closest('[data-rate-bulk]');
+      const kind = bulk.querySelector('select').value;
+      const input = bulk.querySelector('input');
+      input.max = kind === '2' ? '100' : '999999'; // ％引きは100まで（サーバー側と同じ）
+      if (input.value === '' || !input.reportValidity()) return;
+      const did = bulk.dataset.rateBulk;
+      form.querySelectorAll('[data-rate-panel]:not([hidden]) .sinfo-rate-room:not(.sinfo-rate-room--head)').forEach((room) => {
+        if (room.querySelector('[data-price]').value === '') return;
+        room.querySelector(`select[name$="[dk][${did}]"]`).value = kind;
+        room.querySelector(`input[name$="[dv][${did}]"]`).value = input.value;
+      });
+    });
+    // ブラウザの「戻る」などでラジオの選択だけ復元されたときにも、表示を合わせておく
+    sync();
+
+    // 保存の直後: 開いていたタブとフォームを元に戻す
+    let saved = null;
+    try {
+      saved = sessionStorage.getItem(storeKey);
+      sessionStorage.removeItem(storeKey);
+    } catch (e) { /* 読めなければ何もしない */ }
+    if (saved) {
+      open(saved);
+      tools.closest('details').open = true;
+      // URL の #rates へのジャンプが読み込みの最後に走るので、そのあとにタブの位置へ動かす
+      const toTools = () => setTimeout(() => tools.scrollIntoView({ behavior: 'instant' }), 0);
+      if (document.readyState === 'complete') toTools();
+      else window.addEventListener('load', toTools, { once: true });
+    }
+  };
+
   // DOMContentLoaded を待たなくても、このファイルはページの最後で読むので要素はもう全部ある
   const mapApi = setupMap();
   setupGeo();
   setupStepper();
   setupRoomChips();
   setupRateEdit();
+  setupRateTabs();
   setupRowDelete();
   setupTimePair();
   setupHalfUnitAll();

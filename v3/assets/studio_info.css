@@ -307,12 +307,27 @@
 .sinfo-slot-edit__slots { display: grid; gap: 6px; }
 .sinfo-slot-edit__slot-add { justify-self: start; padding: 2px 10px; }
 .sinfo-slot-edit select, .sinfo-slot-edit input[type=number] { width: 100%; min-width: 0; padding: 8px 6px; }
-/* 部屋の行: 部屋名と1時間の料金を1行に。割引区分は次の行に、区分ごとに「種類 + 値」で並べる */
-.sinfo-rate-room { display: grid; grid-template-columns: 4.5em minmax(0, 1fr); gap: 6px; align-items: center; }
+/* 部屋の行: 部屋名・料金・割引を1行に。割引区分の数だけ列が自動で増える（grid-auto-flow: column）。見出しの行も同じ作りなので列がそろう */
+.sinfo-rate-room { display: grid; grid-template-columns: 3.5em minmax(56px, 1fr); grid-auto-flow: column; grid-auto-columns: minmax(112px, 1.4fr); gap: 6px; align-items: center; }
+.sinfo-rate-room--head { font-size: var(--fs-2xs); font-weight: 800; color: var(--muted); }
 .sinfo-rate-room__name { font-weight: 800; font-size: var(--fs-sm); overflow-wrap: anywhere; }
-.sinfo-disc-cell { grid-column: 1 / -1; display: grid; grid-template-columns: 4.5em 5em minmax(0, 1fr); gap: 6px; align-items: center; }
-.sinfo-disc-cell__name { text-align: right; overflow-wrap: anywhere; }
+.sinfo-disc-cell { display: grid; grid-template-columns: minmax(0, 4.6em) minmax(0, 1fr); gap: 4px; align-items: center; }
+.sinfo-disc-cell__name { display: none; } /* 区分名は列の見出しに出す */
+/* 割引区分が2つ以上で幅が足りないスマホ: 割引を部屋の下に1つずつ並べ、区分名を行に出す */
+@media (max-width: 480px) {
+  .sinfo-rate-edit--stack .sinfo-rate-room--head { display: none; }
+  .sinfo-rate-edit--stack .sinfo-rate-room { grid-auto-flow: row; }
+  .sinfo-rate-edit--stack .sinfo-disc-cell { grid-column: 1 / -1; grid-template-columns: 3.5em 4.6em minmax(0, 1fr); }
+  .sinfo-rate-edit--stack .sinfo-disc-cell__name { display: block; text-align: right; overflow-wrap: anywhere; }
+}
+.sinfo-rate-new { display: grid; gap: 12px; }
 .sinfo-rate-new-add { justify-self: start; }
+[data-rate-panel][hidden], [data-rate-days][hidden] { display: none !important; } /* display を指定した要素でも hidden を効かせる */
+/* タブと割引の一括入力（フォームの上）。scroll-margin-top = 保存後に戻ったとき、上に貼り付くヘッダーの下に出す */
+.sinfo-rate-tools { display: grid; gap: 8px; padding-top: 10px; scroll-margin-top: 110px; }
+.sinfo-rate-bulk { display: grid; grid-template-columns: minmax(0, auto) 4.6em minmax(0, 1fr) auto; gap: 6px; align-items: center; }
+.sinfo-rate-bulk__name { font-weight: 800; font-size: var(--fs-sm); }
+.sinfo-edit .sinfo-rate-bulk select, .sinfo-edit .sinfo-rate-bulk input { width: 100%; min-width: 0; padding: 8px 6px; }
 
 /* ---- 基本情報: 住所・最寄り駅の下に区切り線（どちらも無いときは出さない）---- */
 .sinfo-info:has(span) { padding-bottom: 10px; border-bottom: 1px solid var(--border); }
