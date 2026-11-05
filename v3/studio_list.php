@@ -4,7 +4,7 @@
  *  studio_list.php — スタジオ情報の一覧＋スタジオマップ（tools.php から入る）
  * =====================================================================
  *  表示: 全スタジオのピンを1枚の地図（Leaflet + OpenStreetMap）に出し、その下にカードの一覧
- *        カードには 最寄り駅・最大の部屋の広さ（MAXバッジ）・バンドと個人（1人）のいちばん安い1時間の料金・割引区分（学割など）を出す
+ *        カードには 最寄り駅・最大の部屋の広さ（MAXバッジ）・バンドと個人（1人）のいちばん安い1時間の料金・割引区分（学割など）・パックの有無 を出す
  *  追加: 幹部と管理者だけ（名前だけ入れて作り、詳しい情報は studio_info.php で編集）
  *
  *  ■ Leaflet（リーフレット）とは
@@ -52,6 +52,7 @@ if (is_post()) {
 // MIN() = 最小値。相関サブクエリでスタジオごとに「バンドのいちばん安い1時間の料金」「割引区分の名前」をまとめて取る
 // GROUP_CONCAT = 複数行の値を1つの文字列につなげる（区切りはタブ。区分名にタブは入らないので、あとで explode で分けられる）
 //   \'\t\' = PHP の '…' の中に SQL の文字列 '\t'（タブ）を書くため、' の前に \ を付けている
+// EXISTS (SELECT 1 …) = 1行でもあれば 1。パックがあるかのタグに使う（件数は要らないので COUNT より速い）
 //   max_area = そのスタジオでいちばん広い部屋の帖数（広さの絞り込み用。部屋の広さが未入力なら NULL）
 //   （スタジオの数だけ SQL を投げる「N+1 問題」を避けるため、1回の SQL で済ませる）
 $studios = $pdo->query('SELECT s.studio_id, s.name, s.access, s.area, s.recommended, s.hours, s.lat, s.lng, s.reserve_url,
@@ -59,7 +60,8 @@ $studios = $pdo->query('SELECT s.studio_id, s.name, s.access, s.area, s.recommen
         (SELECT MIN(r.price) FROM studio_rate r WHERE r.studio_id = s.studio_id AND r.people = 1) AS min_solo_price,
         (SELECT GROUP_CONCAT(d.name ORDER BY d.sort_order, d.studio_discount_id SEPARATOR \'\t\') FROM studio_discount d
             WHERE d.studio_id = s.studio_id) AS disc_names,
-        (SELECT MAX(m.area_jo) FROM studio_room m WHERE m.studio_id = s.studio_id) AS max_area
+        (SELECT MAX(m.area_jo) FROM studio_room m WHERE m.studio_id = s.studio_id) AS max_area,
+        EXISTS (SELECT 1 FROM studio_pack p WHERE p.studio_id = s.studio_id) AS has_pack
     FROM studio s ORDER BY s.sort_order, s.studio_id')->fetchAll();
 
 // 地図に渡すのは座標が入っているスタジオだけ
@@ -191,14 +193,15 @@ render_header('スタジオ情報', 'tools');
                  data-studio-id / data-max-area は JS（絞り込み・地図のピン連動）が読むので、外側の div に付けたまま -->
             <div class="card sinfo-list__item" data-studio-id="<?= (int)$s['studio_id'] ?>" data-max-area="<?= h($s['max_area'] === null ? '' : studio_jo_num($s['max_area'])) ?>" data-area="<?= h($s['area'] ?? '') ?>">
             <a class="sinfo-list__link" href="studio_info?id=<?= (int)$s['studio_id'] ?>">
-                <!-- 1段め: スタジオ名（と おすすめ）。割引のタグ（学割など）は2段めの先頭へ -->
+                <!-- 1段め: スタジオ名（と おすすめ）。割引のタグ（学割など）とパックは2段めの先頭へ -->
                 <span class="sinfo-list__name"><?= h($s['name']) ?><?php if ($s['recommended']): ?><span class="tag tag--rec">おすすめ</span><?php endif; ?></span>
                 <span class="sinfo-list__sim" data-list-sim hidden></span>
                 <span class="muted small sinfo-list__meta">
                     <?php $discTags = $s['disc_names'] === null ? [] : explode("\t", $s['disc_names']); // 割引区分の名前（学割・U20 …） ?>
-                    <?php if ($discTags): ?>
+                    <?php if ($discTags || $s['has_pack']): ?>
                         <span class="sinfo-list__tags">
                             <?php foreach ($discTags as $t): ?><span class="tag tag--plan"><?= h($t) ?></span><?php endforeach; ?>
+                            <?php if ($s['has_pack']): ?><span class="tag">パック</span><?php endif; ?>
                         </span>
                     <?php endif; ?>
                     <?php if ($s['access']): ?><span><?= icon('train') ?> <?= h($s['access']) ?></span><?php endif; ?>
