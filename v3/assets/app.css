@@ -55,6 +55,8 @@
   --fs-xl: 18px;   /* バンド名・モーダル見出し */
   --fs-2xl: 22px;  /* 見出し */
   --fs-3xl: 28px;  /* 大見出し */
+  /* ラベルの高さ（楽器ラベル・タグ・ピル・チップ・✓バッジ共通。末尾の「ラベルの規格」で使う） */
+  --label-h-sm: 16px; --label-h: 20px; --label-h-lg: 24px;
   /* 動きの時間 */
   --t-fast: .15s;
   --t-base: .2s;
@@ -267,7 +269,7 @@ form.row-form input, form.row-form select { flex: 1; min-width: 10em; }
 .btn-trash:disabled { color: var(--muted); border-color: var(--border); opacity: .5; cursor: not-allowed;
   pointer-events: none; /* マウスは外側の .tooltip に拾わせる */ }
 
-/* 消せないゴミ箱を包む span。ポップアップ本体は app.js の setupSetlistTip（data-setlist-tip）が .album-tip として出す。
+/* 消せないゴミ箱を包む span。ポップアップ本体は app.js の setupTip（data-tip）が .album-tip として出す。
    以前は ::after（CSS だけのツールチップ）で出していたが、スマホで出たまま残り、フェードも効かなかったので共通のポップアップに統一した */
 .tooltip { position: relative; display: inline-block; cursor: not-allowed; }
 .btn--block { width: 100%; }
@@ -421,8 +423,8 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .live-card__yt { position: relative; z-index: 1; display: inline-flex; align-items: center; line-height: 0; margin-left: 6px; }
 .live-card__yt svg { width: 23px; height: 16px; }
 .live-card__yt:hover svg { opacity: .8; }
-.live-card__venue { position: relative; z-index: 1; color: inherit; }
-.live-card__venue:hover { color: var(--accent); }
+.live-card__venue, .live-card__date { position: relative; z-index: 1; color: inherit; }
+.live-card__venue:hover, .live-card__date:hover { color: var(--accent); }
 .live-card:hover { color: inherit; transform: translateY(-3px); border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); }
 .live-card__head { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; }
 .live-card__head h3 { font-size: var(--fs-xl); font-weight: 800; }
@@ -675,15 +677,16 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
   /* 消えるとき: 透明になる間（.2s）は visibility を hidden にしない。
      visibility は「だんだん」変えられないので、transition の遅延（第3引数 .2s）で切り替えを後ろにずらす。
      これを入れないと opacity が下がり始める前に hidden になり、フェードが見えない */
-  transition: opacity var(--t-base) ease, visibility 0s linear var(--t-base); }
+  transition: opacity var(--t-fast) ease, visibility 0s linear var(--t-fast); }
 /* 出るとき: visibility はすぐ visible（遅延 0）。opacity だけフェードで出す */
-.album-tip.is-visible { opacity: 1; visibility: visible; transition: opacity var(--t-base) ease, visibility 0s linear 0s; }
+.album-tip.is-visible { opacity: 1; visibility: visible; transition: opacity var(--t-fast) ease, visibility 0s linear 0s; }
 /* メンバー一覧の右端の名前列。PC は表が画面に収まるので出さない（スマホは下の @media で出す） */
 .table--members .name-end, .table--members .rank-end { display: none; }
 /* メンバー一覧の担当楽器「ほか」: 楽器のバッジは色が薄いので、黒い背景ではなくカードと同じ白い背景に出す */
 .album-tip--parts { background: var(--surface); color: var(--text); border: 1px solid var(--border); padding: 8px; }
 .album-tip--parts .partbar { margin: 0; gap: 4px; }
 /* 中にリンクがあるポップアップ（バンド編集の ⚠）: 押せるようにして、リンクだけ青字＋下線 */
+.part[data-tip] { cursor: default; } /* iOS は cursor 指定のある要素でないとタップ（click）が届かないことがある */
 .album-tip--link { pointer-events: auto; font-size: var(--fs-sm); }
 .tip-link { color: #1a6fd6; text-decoration: underline; text-underline-offset: 2px; }
 .tip-link:hover { color: #0b4fa6; }
@@ -2937,8 +2940,6 @@ button.ttb-m { cursor: pointer; text-decoration: underline dotted; }
 }
 
 /* 楽器ラベルの名前ポップアップ（app.js） */
-.part-tip { position: fixed; z-index: 100; padding: 3px 8px; border-radius: var(--r-sm); background: var(--text); color: var(--surface); font: 600 var(--fs-xs)/1.5 var(--font); pointer-events: none; white-space: nowrap; }
-.part-tip[hidden] { display: none; }
 
 /* deploy cache bust */
 
@@ -2960,3 +2961,24 @@ button.ttb-m { cursor: pointer; text-decoration: underline dotted; }
 .inst-admin .inst-admin__hex { width: 6.5em; min-width: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; } /* 色コードは等幅（0 と o が見分けやすい） */
 .inst-admin .inst-admin__hex.is-invalid { border-color: var(--danger); } /* 色コードの形が違うあいだは赤い枠 */
 .inst-admin__merge select { min-width: 7em; }
+
+/* =====================================================================
+ * ラベルの規格（上下中央揃え）
+ *   楽器ラベル・タグ・ピル・チップ・✓バッジは、ここで高さと中央揃えをそろえる。
+ *   ・高さは min-height（--label-h-sm/--label-h/--label-h-lg）。複数行になったら伸びる
+ *   ・inline-flex + align-items: center + line-height: 1 で、行高の違いによるずれを消す
+ *   ・日本語は字面が枠の上に寄って見えるので、padding-top を max(1px, .1em) だけ足して下げる
+ *     （小さいラベルでも最低 1px 下がる）。個別の padding に負けないよう !important で上書きする（上下だけ）
+ *   ・横の余白・文字サイズ・色は各クラスのまま。新しいラベルを作るときは、このリストに足す
+ *   ・文中に置くラベルは .label-inline を足す（周りの文字サイズに追従して、行の中央に揃う）
+ * ===================================================================== */
+:is(.part, .tag:not(.tag--flag), .se-mark, .setlist-badge, .pill, .chip:not(.chip--xs)) {
+  display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box;
+  min-height: var(--label-h); line-height: 1;
+  padding-top: max(1px, .1em) !important; padding-bottom: 0 !important;
+}
+:is(.pill, .chip:not(.chip--xs)) { min-height: var(--label-h-lg); }
+:is(.partbar--partner, .partner__live) .part { min-height: var(--label-h-sm); }
+.chip--lg { min-height: 32px; }
+.pill:empty { display: none; } /* 上の display より後ろに書いて、空のピルを隠す動きを残す */
+.label-inline { vertical-align: middle; margin-inline: .2em; font-size: .75em; min-height: 1.45em; }

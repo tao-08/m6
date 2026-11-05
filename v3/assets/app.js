@@ -41,7 +41,8 @@
  *    data-preview       … バンドページのセットリストの ▶（30秒試聴）
  *    data-toasts        … お知らせのポップアップ（4秒で消える）
  *    data-album-tip     … メンバー一覧のジャケットに乗せるとアルバム名・アーティスト名を出す
- *    data-setlist-tip   … セットリストの ✓ を押すと「セットリスト登録済（◯曲）」を出す（よく組むメンバーのメダルも同じ仕組み）
+ *    data-tip           … 共通のポップアップ。PC は乗せる／スマホはタップでフェード表示（外れたらすぐ消える）。
+ *                          PHP では tip_attr('文') を使う（title は使わない）。セトリの ✓・楽器ラベル・メダルなど全部これ
  *    open.spotify.com のリンク … Spotify のアプリで開く（PC はデスクトップアプリ）
  *    data-vo-sum-toggle … 統計の「Voを合算する」をページ移動なしで切り替える
  * =====================================================================
@@ -107,7 +108,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupPreview();
   setupLikes();
   setupAlbumTip();
-  setupSetlistTip();
+  setupTip();
   setupSetlistNames();
   setupSpotifyAppLinks();
   setupVoSum();
@@ -153,7 +154,7 @@ function setupAlbumTip() {
     const left = Math.min(Math.max(8, r.left + r.width / 2 - t.width / 2), window.innerWidth - t.width - 8);
     tip.style.top = `${top}px`;
     tip.style.left = `${left}px`;
-    // スマホだけ、時間がたつと自動で消す（文字数に比例。最短2.5秒・最長10秒。setupSetlistTip と同じ式）
+    // スマホだけ、時間がたつと自動で消す（文字数に比例。最短2.5秒・最長10秒。setupTip と同じ式）
     if (!canHover.matches) {
       const ms = Math.min(10000, Math.max(2500, 1500 + tip.textContent.length * 100));
       autoTimer = setTimeout(hide, ms);
@@ -248,12 +249,12 @@ function setupSpotifyAppLinks() {
 }
 
 /* ---------------------------------------------------------------------
- * セットリストの ✓（[data-setlist-tip]）を押したら「セットリスト登録済（◯曲）」をポップアップで出す
+ * セットリストの ✓（[data-tip]）を押したら「セットリスト登録済（◯曲）」をポップアップで出す
  *   スマホには「マウスを乗せる」が無いので、title では出ない → 押したら出す。もう一度押すか、他の所を押すと消える。
  *   見た目はジャケットのポップアップ（.album-tip）と同じ。1個だけ作って使い回す。
  * ------------------------------------------------------------------- */
-function setupSetlistTip() {
-  if (!document.querySelector('[data-setlist-tip]')) return;
+function setupTip() {
+  if (!document.querySelector('[data-tip]')) return;
   const tip = document.createElement('div');
   tip.className = 'album-tip';
   tip.setAttribute('role', 'tooltip');
@@ -262,12 +263,28 @@ function setupSetlistTip() {
   let hideTimer = 0;
   let autoTimer = 0;  // スマホ用: 一定時間たったら自動で消すタイマー
 
+  let swapTimer = 0;  // 表示中に別のバッジへ移るとき、フェードアウトを待つタイマー
+
   const hide = () => {
     clearTimeout(autoTimer); // 手動で消したら、残っているタイマーも止める（古いタイマーが次のポップアップを消すのを防ぐ）
+    clearTimeout(swapTimer);
     tip.classList.remove('is-visible'); // フェードは CSS（.album-tip の transition）がやる。JS は is-visible を外すだけ
     current = null;
   };
+  // 出ている最中に別のバッジへ移ったら、いったんフェードアウトしてから中身と位置を替えてフェードインする
+  //   （そのまま中身を替えると、位置が瞬間移動するだけでアニメーションにならない）。待ち時間は CSS の transition（.12s）より少し短く
   const show = (badge) => {
+    clearTimeout(swapTimer);
+    if (current && current !== badge && tip.classList.contains('is-visible')) {
+      clearTimeout(autoTimer);
+      tip.classList.remove('is-visible');
+      current = badge;
+      swapTimer = setTimeout(() => render(badge), 100);
+    } else {
+      render(badge);
+    }
+  };
+  const render = (badge) => {
     clearTimeout(autoTimer); // 別のバッジを続けて押したとき、前のタイマーを引き継がない
     // 中に [data-tip-body]（メンバー一覧の担当楽器「ほか」）があれば、そのバッジを写して出す。
     // サーバーが h() 済みで出した要素を複製するだけなので安全。無ければ文字だけ（textContent なので HTML として解釈されない）
@@ -278,7 +295,7 @@ function setupSetlistTip() {
       copy.hidden = false;
       tip.replaceChildren(copy);
     } else {
-      tip.textContent = badge.dataset.setlistTip;
+      tip.textContent = badge.dataset.tip;
     }
     tip.classList.toggle('album-tip--parts', !!body);
     tip.classList.toggle('album-tip--link', !!tip.querySelector('a')); // リンクがあるときだけ、ポップアップを押せるようにする
@@ -309,13 +326,21 @@ function setupSetlistTip() {
     // ポップアップの上にマウスがある間は消さない（中のリンクを押せるように）。
     // バッジ → ポップアップへ動かす途中のすき間で消えないよう、消すのは少し待ってから
     clearTimeout(hideTimer);
-    const badge = e.target.closest('[data-setlist-tip]');
-    if (badge) { if (badge !== current) show(badge); } else if (current && !tip.contains(e.target)) hideTimer = setTimeout(hide, 250);
+    // ポップアップの中に写した楽器ラベルなど（data-tip 付き）には反応しない（中身が入れ替わってしまう）
+    const badge = tip.contains(e.target) ? null : e.target.closest('[data-tip]');
+    if (badge) { if (badge !== current) show(badge); return; }
+    if (!current || tip.contains(e.target)) return;
+    // リンクがあるポップアップだけ、押しに行く猶予（250ms）を置く。文字だけのものは外れたらすぐ消す
+    if (tip.querySelector('a')) hideTimer = setTimeout(hide, 250); else hide();
+  });
+  // ウィンドウの外へ出たときは mouseover が起きないので、ここで消す
+  document.addEventListener('mouseout', (e) => {
+    if (canHover.matches && !e.relatedTarget && !tip.querySelector('a')) hide();
   });
 
   // スマホは押したら出す。もう一度押すか、他の所を押すと消える
   document.addEventListener('click', (e) => {
-    const badge = e.target.closest('[data-setlist-tip]');
+    const badge = tip.contains(e.target) ? null : e.target.closest('[data-tip]');
     if (!badge) { if (!tip.contains(e.target)) hide(); return; } // ポップアップの中（リンク）を押したときは消さない
     // <summary> の中のバッジ（よく組むメンバーのメダル）: 押しても一緒に出たバンドを開け閉めしない。
     //   preventDefault() =「ブラウザが本来やる動き（ここでは <details> の開け閉め）を止める」
@@ -330,11 +355,11 @@ function setupSetlistTip() {
   //   スマホは押すとフォーカスも動くので、拾うと click（上）の「もう一度押した」判定とぶつかって、出した瞬間に消える
   document.addEventListener('focusin', (e) => {
     if (!canHover.matches || !e.target.matches(':focus-visible')) return;
-    const badge = e.target.closest('[data-setlist-tip]');
+    const badge = e.target.closest('[data-tip]');
     if (badge) show(badge);
   });
   document.addEventListener('focusout', (e) => {
-    if (canHover.matches && e.target.closest('[data-setlist-tip]') === current) hide();
+    if (canHover.matches && e.target.closest('[data-tip]') === current) hide();
   });
 
   // fixed なのでスクロールするとずれる → 隠す。capture: true で、ページだけでなく表の横スクロールでも隠す
@@ -5942,37 +5967,5 @@ function setupAliasField() {
   });
 }
 
-/* 楽器ラベル（.part）の名前ポップアップ: PC はマウスオーバー、スマホはタップ。
-   title は標準の吹き出しが出てしまうので、初回に data-tip へ移す */
-{
-  const tip = document.createElement('div');
-  tip.className = 'part-tip';
-  tip.hidden = true;
-  document.body.appendChild(tip);
-  let timer = 0;
-  const hide = () => { tip.hidden = true; clearTimeout(timer); };
-  const show = (el) => {
-    if (el.title) { el.dataset.tip = el.title; el.removeAttribute('title'); }
-    if (!el.dataset.tip) return;
-    tip.textContent = el.dataset.tip;
-    tip.hidden = false;
-    const r = el.getBoundingClientRect();
-    const w = tip.offsetWidth;
-    tip.style.left = Math.max(4, Math.min(innerWidth - w - 4, r.left + r.width / 2 - w / 2)) + 'px';
-    tip.style.top = (r.top >= tip.offsetHeight + 8 ? r.top - tip.offsetHeight - 6 : r.bottom + 6) + 'px';
-  };
-  document.addEventListener('pointerover', (e) => {
-    const el = e.pointerType === 'mouse' && e.target.closest('.part');
-    if (el) show(el);
-  });
-  document.addEventListener('pointerout', (e) => { if (e.pointerType === 'mouse' && e.target.closest('.part')) hide(); });
-  document.addEventListener('click', (e) => {
-    const el = e.target.closest('.part');
-    hide();
-    if (el && e.pointerType !== 'mouse' && e.detail <= 1 && matchMedia('(hover: none)').matches) {
-      show(el);
-      timer = setTimeout(hide, 1800);
-    }
-  });
-  addEventListener('scroll', hide, { passive: true });
-}
+/* 楽器ラベル（.part）のポップアップは、共通の data-tip（setupTip）に統一した。
+   以前ここにあった専用のポップアップ（.part-tip）は二重に出るので削除 */

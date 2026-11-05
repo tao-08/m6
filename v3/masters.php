@@ -350,11 +350,11 @@ if ($tab === 'artist') {
 $counts = ['venue' => count($venues), 'day' => count($days), 'role' => count($roles), 'artist' => count($artists)];
 
 /** 消せないときのグレーアウトしたゴミ箱（disabled のボタンはマウスの反応が鈍いので、外側の span でポップアップを出す）
- *  ポップアップは app.js の setupSetlistTip（data-setlist-tip）が出す。PC は乗せる、スマホは押すと出て、自動で消える。
+ *  ポップアップは app.js の setupTip（data-tip）が出す。PC は乗せる、スマホは押すと出て、自動で消える。
  *  文字は h()（htmlspecialchars）を通して属性に入れ、JS 側は textContent で入れる（XSS 対策の二重がけ） */
 function trash_disabled(string $why): string
 {
-    return '<span class="tooltip" data-setlist-tip="' . h($why) . '" tabindex="0">'
+    return '<span class="tooltip" data-tip="' . h($why) . '" tabindex="0">'
         . '<button class="btn-trash" type="button" disabled aria-label="削除（' . h($why) . '）">' . icon('delete') . '</button></span>';
 }
 
@@ -578,7 +578,7 @@ render_header($tabs[$tab][0] . 'の管理');
                 <td>
                     <?php if ((int)$a['used'] > 0 && (int)$a['setlist'] === (int)$a['used']): // 全部のバンドが登録済 → ✓ ?>
                         <?php $label = 'セットリスト登録済（全' . (int)$a['used'] . '組）'; // 見た目と押したときのポップアップは setlist_badge と同じ ?>
-                        <button type="button" class="setlist-badge" data-setlist-tip="<?= h($label) ?>" aria-label="<?= h($label) ?>"><?= icon('check') ?><span class="setlist-badge__text">セットリスト</span></button>
+                        <button type="button" class="setlist-badge" data-tip="<?= h($label) ?>" aria-label="<?= h($label) ?>"><?= icon('check') ?><span class="setlist-badge__text">セットリスト</span></button>
                     <?php elseif ((int)$a['setlist'] > 0): ?>
                         <span class="muted small"><?= (int)$a['setlist'] ?>/<?= (int)$a['used'] ?> 組</span>
                     <?php endif; ?>

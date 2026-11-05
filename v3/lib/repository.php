@@ -989,7 +989,7 @@ function setlist_badge(int $registered, int $planned, int $linked = 0): string
     if ($registered <= 0 || $planned <= 0 || $registered < $planned) { // 曲数が未入力（0）のバンドには出さない
         return '';
     }
-    // ✓ が「登録済」の意味。押すと「セットリスト登録済（◯曲）」のポップアップが出る（app.js の setupSetlistTip）。
+    // ✓ が「登録済」の意味。押すと「セットリスト登録済（◯曲）」のポップアップが出る（app.js の setupTip）。
     // スマホでは「セットリスト」の文字を隠して ✓ だけ。押せる部品なので <span> ではなく <button>
     // サブスク連携（song.track_id）済みの曲が半分未満ならくすんだ色（is-dim）
     $label = 'セットリスト登録済（' . $registered . '曲）';
@@ -997,7 +997,7 @@ function setlist_badge(int $registered, int $planned, int $linked = 0): string
     if ($dim !== '') {
         $label .= '・楽曲情報未登録あり';
     }
-    return '<button type="button" class="setlist-badge' . $dim . '" data-setlist-tip="' . h($label) . '" aria-label="' . h($label) . '">'
+    return '<button type="button" class="setlist-badge' . $dim . '" data-tip="' . h($label) . '" aria-label="' . h($label) . '">'
         . icon('check') . '<span class="setlist-badge__text">セットリスト</span></button>';
 }
 
@@ -1410,11 +1410,23 @@ function inst_tokens(array $parts): array
     return array_values(array_unique($t));
 }
 
+/**
+ * 共通ポップアップの属性（app.js の setupTip）。ラベル・アイコンの説明は title ではなくこれで付ける。
+ *   使い方: <span class="x" <?= tip_attr('説明') ?>>…</span>
+ *   スマホで押せるよう、押せない要素（span など）に付けるときは CSS で cursor を指定しておく（iOS 対策）
+ *   読み上げ用の aria-label は要素に文字が無いアイコンのときだけ別に付ける
+ */
+function tip_attr(string $text): string
+{
+    return 'data-tip="' . h($text) . '"';
+}
+
 function part_badge(array $part, string $suffix = ''): string
 {
     $segs = $part['segments'];
     if (count($segs) === 1) {
-        return '<span class="part part--' . h($segs[0]['class']) . '" title="' . h($part['title']) . '">' . h($segs[0]['short'] . $suffix) . '</span>';
+        // title は使わず data-tip（app.js の setupTip のフェードのポップアップ。スマホはタップで出る）
+        return '<span class="part part--' . h($segs[0]['class']) . '" data-tip="' . h($part['title']) . '">' . h($segs[0]['short'] . $suffix) . '</span>';
     }
     // 背景: 楽器ごとに幅を等分して塗り、境目の前後 10% だけ色を混ぜる
     //   class は instrument_class() が返す決まった名前（vo / gt …）だけなので、style に入れても安全
@@ -1432,7 +1444,7 @@ function part_badge(array $part, string $suffix = ''): string
     }
     // 組み合わせのクラス（part--key-cho など）。CSS で組み合わせごとに幅を変えるため
     $combo = 'part--' . implode('-', array_column($segs, 'class'));
-    return '<span class="part part--split ' . h($combo) . ($suffix !== '' ? ' part--auto' : '') . '" title="' . h($part['title'])
+    return '<span class="part part--split ' . h($combo) . ($suffix !== '' ? ' part--auto' : '') . '" data-tip="' . h($part['title'])
         . '" style="background: linear-gradient(90deg, ' . h(implode(', ', $stops)) . ')">' . $text . '</span>';
 }
 
@@ -1455,9 +1467,9 @@ function part_marks(array $tally, bool $withCount = false, string $class = '', i
         $html .= $badge($t);
     }
     if ($rest) {
-        // 押す（PC は乗せる）と、中の [data-tip-body] のバッジをポップアップに写して出す（app.js の setupSetlistTip）
+        // 押す（PC は乗せる）と、中の [data-tip-body] のバッジをポップアップに写して出す（app.js の setupTip）
         $names = implode(' ', array_column($rest, 'short'));
-        $html .= '<button type="button" class="more-names" data-setlist-tip="' . h($names) . '" aria-label="' . h('ほか: ' . $names) . '">ほか'
+        $html .= '<button type="button" class="more-names" data-tip="' . h($names) . '" aria-label="' . h('ほか: ' . $names) . '">ほか'
             . '<span class="partbar" data-tip-body hidden>' . implode('', array_map($badge, $rest)) . '</span></button>';
     }
     return $html . '</div>';
@@ -1474,9 +1486,9 @@ function partner_medal(int $rank, string $name, string $what = 'よく組むメ�
     // 押すと（PC はマウスを乗せると）出すポップアップの文。画面には書かず、ポップアップと読み上げだけで伝える
     $label = $name . 'の' . $what . '第' . $rank . '位'; // $what = どのランキングか（よく組むメンバー / よく演奏するメンバー）
     // <button> で包む: 指で押せる「部品」にするため（<svg> だけだとキーボードで選べない）。
-    //   data-setlist-tip を付けると、セトリの ✓ と同じポップアップ（app.js の setupSetlistTip）がこの文を出す
+    //   data-tip を付けると、セトリの ✓ と同じポップアップ（app.js の setupTip）がこの文を出す
     //   h() で " や < を無害な文字に置き換えてから属性に入れる（XSS 対策）
-    return '<button type="button" class="medal-btn" data-setlist-tip="' . h($label) . '" aria-label="' . h($label) . '">'
+    return '<button type="button" class="medal-btn" data-tip="' . h($label) . '" aria-label="' . h($label) . '">'
         . '<svg class="medal medal--' . $rank . '" viewBox="0 0 16 20" aria-hidden="true">'
         // リボン（左右2本の帯。左は明るい色、右は暗い色）
         . '<path d="M3 0h4l2 7H5z" fill="var(--m-light)"/><path d="M9 0h4l-2 7H7z" fill="var(--m-dark)"/>'

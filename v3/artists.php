@@ -206,11 +206,11 @@ render_header('アーティスト', 'artists');
                     </td>
                     <td>
                         <?php if ($tp = $topPlayers[$id] ?? []): ?>
-                            <?php // 同率1位が多いとごちゃつくので、名前は3人まで。残りは「ほか◯人」にまとめ、乗せる（スマホは押す）と名前を出す（app.js の setupSetlistTip を使い回す）
+                            <?php // 同率1位が多いとごちゃつくので、名前は3人まで。残りは「ほか◯人」にまとめ、乗せる（スマホは押す）と名前を出す（app.js の setupTip を使い回す）
                             $shown = array_slice($tp, 0, 3);
                             $rest = array_column(array_slice($tp, 3), 'name'); ?>
                             <?php foreach ($shown as $i => $m): ?><?= $i > 0 ? ' ' : '' ?><a href="member?id=<?= (int)$m['member_id'] ?>"><?= h($m['name']) ?></a><?php endforeach; ?>
-                            <?php if ($rest): ?><button type="button" class="more-names" data-setlist-tip="<?= h(implode(' ', $rest)) ?>" aria-label="<?= h('ほか: ' . implode(' ', $rest)) ?>">ほか<?= count($rest) ?>人</button><?php endif; ?>
+                            <?php if ($rest): ?><button type="button" class="more-names" data-tip="<?= h(implode(' ', $rest)) ?>" aria-label="<?= h('ほか: ' . implode(' ', $rest)) ?>">ほか<?= count($rest) ?>人</button><?php endif; ?>
                             <span class="muted small"><?= (int)$tp[0]['n'] ?>回</span>
                         <?php else: ?>
                             <span class="muted small">—</span>

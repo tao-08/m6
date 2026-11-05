@@ -104,7 +104,7 @@ $list = $pdo->query('SELECT i.instrument_id, i.short_name, i.name, i.color, ' . 
 /** 消せないときのグレーアウトしたゴミ箱（masters.php と同じ見た目。押すとポップアップで理由が出る） */
 function locked_mark(string $why): string
 {
-    return '<span class="tooltip" data-setlist-tip="' . h($why) . '" tabindex="0">'
+    return '<span class="tooltip" data-tip="' . h($why) . '" tabindex="0">'
         . '<button class="btn-trash" type="button" disabled aria-label="' . h($why) . '">' . icon('lock') . '</button></span>';
 }
 

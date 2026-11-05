@@ -411,8 +411,8 @@ render_header($isNew ? 'バンドを追加' : 'バンドを編集', 'lives');
                 <div class="member-row-edit member-row-edit--locked">
                     <!-- 上の段: 名前 / 印、下の段: 楽器 / Cho（下の編集できる行と同じ並び） -->
                     <input autocomplete="off" value="<?= h($m['name']) ?>" disabled aria-label="名前" class="name-input">
-                    <!-- ⚠ マウスを乗せる・押すと、下の #lock-tip（リンク付き）をポップアップで出す（assets/app.js の setupSetlistTip） -->
-                    <button type="button" class="lock-warn" data-setlist-tip data-tip-from="#lock-tip" aria-label="編集できない理由を見る"><?= icon('warning') ?></button>
+                    <!-- ⚠ マウスを乗せる・押すと、下の #lock-tip（リンク付き）をポップアップで出す（assets/app.js の setupTip） -->
+                    <button type="button" class="lock-warn" data-tip data-tip-from="#lock-tip" aria-label="編集できない理由を見る"><?= icon('warning') ?></button>
                     <select disabled aria-label="楽器"><?= instrument_choice_options($m['choice']) ?></select>
                     <?= chorus_toggle('', $m['cho'], $m['choice'], true) ?>
                 </div>

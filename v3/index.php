@@ -197,7 +197,7 @@ render_header('ライブ一覧', 'lives');
 <?php if ($flagged): ?>
     <section class="card check-list" data-check-list>
         <h2 class="section-title section-title--card section-title--tool"><?= icon('flag', 'icon--fill flag-icon') ?>確認依頼が届いています
-            <button type="button" class="info-tip" data-setlist-tip="メンバーが未登録のバンドは、そのライブに関係する学年（現役の学年の前後3年、OB出演時は出演者の学年）の方に表示されています。情報をお持ちの方は情報提供にご協力お願いします。" aria-label="補足を表示"><?= icon('info') ?></button></h2>
+            <button type="button" class="info-tip" data-tip="メンバーが未登録のバンドは、そのライブに関係する学年（現役の学年の前後3年、OB出演時は出演者の学年）の方に表示されています。情報をお持ちの方は情報提供にご協力お願いします。" aria-label="補足を表示"><?= icon('info') ?></button></h2>
         <ul>
             <?php foreach ($flagged as $f): ?>
                 <li data-check-item><div class="check-list__text"><a href="band?id=<?= (int)$f['band_id'] ?>"><?= h($f['name']) ?></a>
@@ -262,7 +262,8 @@ render_header('ライブ一覧', 'lives');
                             <?php foreach ($live['days'] as $d): ?>
                                 <li>
                                     <span class="day-no"><?= h($d['label'] ?: '—') ?></span>
-                                    <span><?= h(fmt_date($d['date']) ?: '日付未設定') ?></span>
+                                    <?php // 日付を押すと、そのライブページの該当日程タブへ（live.php の #day-ID） ?>
+                                    <a class="live-card__date" href="live?id=<?= (int)$liveId ?>#day-<?= (int)$d['live_day_id'] ?>"><?= h(fmt_date($d['date']) ?: '日付未設定') ?></a>
                                     <span class="muted ellipsis"><?php if ($d['venue_id']): ?><a class="live-card__venue" href="venue?id=<?= (int)$d['venue_id'] ?>"><?= h($d['venue_name']) ?></a><?php endif; ?></span>
                                     <?php // 足りないものをアイコンで（文字は title のポップアップだけ）。追加はライブページの日程から ?>
                                     <span class="day-missing">
