@@ -261,9 +261,9 @@ render_header('ライブ一覧', 'lives');
                         <ul class="live-card__days">
                             <?php foreach ($live['days'] as $d): ?>
                                 <li>
-                                    <span class="day-no"><?= h($d['label'] ?: '—') ?></span>
-                                    <?php // 日付を押すと、そのライブページの該当日程タブへ（live.php の #day-ID） ?>
-                                    <a class="live-card__date" href="live?id=<?= (int)$liveId ?>#day-<?= (int)$d['live_day_id'] ?>"><?= h(fmt_date($d['date']) ?: '日付未設定') ?></a>
+                                    <?php // 日程名を押すと、そのライブページの該当日程タブへ（live.php の #day-ID） ?>
+                                    <a class="day-no live-card__date" href="live?id=<?= (int)$liveId ?>#day-<?= (int)$d['live_day_id'] ?>"><?= h($d['label'] ?: '—') ?></a>
+                                    <span><?= h(fmt_date($d['date']) ?: '日付未設定') ?></span>
                                     <span class="muted ellipsis"><?php if ($d['venue_id']): ?><a class="live-card__venue" href="venue?id=<?= (int)$d['venue_id'] ?>"><?= h($d['venue_name']) ?></a><?php endif; ?></span>
                                     <?php // 足りないものをアイコンで（文字は title のポップアップだけ）。追加はライブページの日程から ?>
                                     <span class="day-missing">
