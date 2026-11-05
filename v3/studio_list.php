@@ -55,7 +55,7 @@ if (is_post()) {
 // EXISTS (SELECT 1 …) = 1行でもあれば 1。個人練習の料金・パックがあるかのタグに使う（件数は要らないので COUNT より速い）
 //   max_area = そのスタジオでいちばん広い部屋の帖数（広さの絞り込み用。部屋の広さが未入力なら NULL）
 //   （スタジオの数だけ SQL を投げる「N+1 問題」を避けるため、1回の SQL で済ませる）
-$studios = $pdo->query('SELECT s.studio_id, s.name, s.access, s.lat, s.lng, s.reserve_url,
+$studios = $pdo->query('SELECT s.studio_id, s.name, s.access, s.hours, s.lat, s.lng, s.reserve_url,
         (SELECT MIN(r.price) FROM studio_rate r WHERE r.studio_id = s.studio_id AND r.people IS NULL) AS min_price,
         (SELECT MIN(r.price) FROM studio_rate r WHERE r.studio_id = s.studio_id AND r.people = 1) AS min_solo_price,
         (SELECT GROUP_CONCAT(d.name ORDER BY d.sort_order, d.studio_discount_id SEPARATOR \'\t\') FROM studio_discount d
@@ -135,6 +135,7 @@ render_header('スタジオ情報', 'tools');
                         </span>
                     <?php endif; ?>
                     <?php if ($s['access']): ?><span><?= icon('train') ?> <?= h($s['access']) ?></span><?php endif; ?>
+                    <?php if ($s['hours']): ?><span><?= icon('schedule') ?> <?= h($s['hours']) ?></span><?php endif; ?>
                     <!-- 広さ: 枠なしの小さな薄い「MAX」＋帖数（= いちばん広い部屋だとひと目でわかる）。
                          .sinfo-area が inline-flex（中身を横並びにして align-items:center で上下中央にそろえる）。CSS: .sinfo-area / .sinfo-max -->
                     <?php if ($s['max_area'] !== null): ?><span class="sinfo-area" title="いちばん広い部屋"><span class="sinfo-max">MAX</span><?= h(studio_fmt_jo($s['max_area'])) ?></span><?php endif; ?>
