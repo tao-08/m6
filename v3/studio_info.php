@@ -1085,7 +1085,7 @@ render_header($studio['name'], 'tools');
         }
         $pplSel = $pplList[0] ?? 0;
     ?>
-    <div<?= $panel !== null ? ' data-tab-panel="' . $panel . '"' . ($panel === 'solo' ? ' hidden' : '') : '' ?>>
+    <div class="sinfo-rate-grid"<?= $panel !== null ? ' data-tab-panel="' . $panel . '"' . ($panel === 'solo' ? ' hidden' : '') : '' ?>>
     <?php if ($pplList): ?>
         <!-- 人数チップ（ラジオボタンをボタン風に。.sinfo-seg と同じ作り）。選んだ人数の料金だけを表に出す -->
         <div class="sinfo-seg sinfo-ppl" role="radiogroup" aria-label="人数">
@@ -1233,7 +1233,7 @@ render_header($studio['name'], 'tools');
                 </div>
             <?php endforeach; ?>
         </div>
-        <form method="post" class="sinfo-edit__form sinfo-rate-edit<?= count($discounts) > 1 ? ' sinfo-rate-edit--stack' : '' ?>">
+        <form method="post" class="sinfo-edit__form sinfo-rate-edit<?= count($discounts) > 1 ? ' sinfo-rate-edit--stack' : '' ?><?= $discounts ? ' sinfo-rate-edit--disc' : '' ?>">
             <?= csrf_field() ?>
             <input type="hidden" name="action" value="save_rates">
             <input type="hidden" name="studio_id" value="<?= $studioId ?>">
@@ -1423,8 +1423,8 @@ $packRoomLines = function (array $row) use ($packRoomIds): array {
                                      「名前＋広さ」は途中で折り返さない（.sinfo-pack-room）。同じ広さのときは、最後の部屋と広さを1つの塊にする -->
                                 <td class="sinfo-pack-rooms"><?php if (!$roomName): ?>料金<?php elseif ($line['rids'] === $packRoomIds && count($line['rids']) > 1): ?>全部屋<?php else: foreach ($line['rids'] as $k => $rid): ?><?= $k ? '・' : '' ?><span class="sinfo-pack-room"><?= h($roomName[$rid]) ?><?php if ($sameJo ? $k === count($line['rids']) - 1 : !empty($roomJo[$rid])): ?> <span class="muted small"><?= h($roomJo[$rid]) ?></span><?php endif; ?></span><?php endforeach; endif; ?></td>
                                 <td class="num">
-                                    <?= h(studio_yen((int)$c['price'])) ?>
-                                    <?php foreach ($c['disc'] as $did => $dp): ?><em class="sinfo-pack-disc" data-tip="<?= h($discName[$did] ?? '') ?>"><?= h(studio_yen($dp)) ?></em><?php endforeach; ?>
+                                    <?= h(studio_yen((int)$c['price'])) ?><span class="sinfo-pack-hour" data-tip="1時間あたり"><?= h(studio_yen((int)round((int)$c['price'] * 60 / $len))) ?>/h</span>
+                                    <?php foreach ($c['disc'] as $did => $dp): ?><em class="sinfo-pack-disc" data-tip="<?= h($discName[$did] ?? '') ?>"><?= h(studio_yen($dp)) ?><span class="sinfo-pack-hour"><?= h(studio_yen((int)round((int)$dp * 60 / $len))) ?>/h</span></em><?php endforeach; ?>
                                 </td>
                             </tr>
                             <?php endforeach; ?>

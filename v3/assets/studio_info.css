@@ -173,6 +173,7 @@
 .sinfo-pack-table .sinfo-pack-rooms { white-space: normal; } /* 部屋が多いときは折り返す（横にはみ出さない） */
 .sinfo-pack-room { white-space: nowrap; } /* 「Ast 9帖」の途中では折り返さない（折り返すのは部屋の区切りの「・」のところ） */
 .sinfo-pack-slot { cursor: help; }
+.sinfo-pack-hour { margin-left: 6px; font-size: var(--fs-xs); font-weight: 400; color: var(--muted); cursor: help; white-space: nowrap; } /* 1時間あたり（価格の横に小さく） */
 .sinfo-pack-disc { display: block; font-style: normal; font-size: var(--fs-xs); color: var(--headliner); cursor: help; }
 .sinfo-sim__pack span:first-child { font-weight: 800; color: var(--headliner); }
 
@@ -217,6 +218,7 @@
 .sinfo-step__unit { align-self: center; padding-right: 2px; font-size: var(--fs-xs); }
 
 /* ---- おすすめラベル（一覧のカード・詳細の見出し。幹部が付ける）---- */
+h1 .tag--rec { font-size: var(--fs-sm); } /* 見出し（36px）に追従して大きくならないよう固定（.label-inline は文字サイズに比例するため） */
 .tag--rec { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, transparent); background: var(--accent-soft); }
 
 /* ---- 料金・パック・機材の編集: 部屋のチェック欄（押しやすい丸いチップ。チェックで赤く塗る）---- */
@@ -300,6 +302,26 @@
 /* ---- 基本情報: PC は左に文字・右に地図 ---- */
 .sinfo-basic { display: grid; gap: 10px; }
 .sinfo-basic__text { display: grid; gap: 8px; align-content: start; min-width: 0; }
+/* ---- PC: 編集フォーム。入力欄を全幅に伸ばさない（スマホは今まで通り）----
+   ・割引なし: 部屋ごとの料金を複数列に並べる（見出し行は列がそろわないので隠す）/ 割引あり: 1部屋1行のまま、幅だけ絞る
+   ・タブ・一括入力・時間の選択は読みやすい幅で止める */
+@media (min-width: 761px) {
+  .sinfo-edit__form { max-width: 720px; }
+  .sinfo-rate-tools, .sinfo-rate-edit { max-width: 720px; }
+  .sinfo-rate-tools > .sinfo-seg { max-width: 480px; }
+  .sinfo-slot-edit__time { max-width: 480px; }
+  .sinfo-rate-edit:not(.sinfo-rate-edit--disc) .sinfo-slot-edit { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+  .sinfo-rate-edit:not(.sinfo-rate-edit--disc) .sinfo-slot-edit > :not(.sinfo-rate-room) { grid-column: 1 / -1; }
+  .sinfo-rate-edit:not(.sinfo-rate-edit--disc) .sinfo-rate-room--head { display: none; }
+}
+/* ---- PC: 料金表の部屋グループを横に並べる（スマホは今まで通り縦）。タブは全幅に広げず、パックのタブと同じ幅にそろえる ---- */
+@media (min-width: 761px) {
+  .sinfo-rate-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px 24px; align-items: start; }
+  .sinfo-rate-grid > .sinfo-ppl { grid-column: 1 / -1; }
+  .sinfo-rate-grid > [hidden] { display: none; }
+  .sinfo-rate-grid .sinfo-table { width: 100%; }
+  #studio-target-tabs, .sinfo-ppl { max-width: 360px; }
+}
 @media (min-width: 761px) {
   .sinfo-basic--map { grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 16px; }
   .sinfo-basic--map .sinfo-map--one { height: 220px; }
@@ -393,21 +415,21 @@
 @media (hover: hover) { .sinfo-list__item:hover { transform: translateY(-2px); box-shadow: var(--shadow-pop); } }
 .sinfo-list__item:active { transform: scale(.985); }
 .sinfo-edit[open] > .sinfo-edit__form, .sinfo-edit[open] > .sinfo-ai { animation: day-fade var(--t-base) var(--ease-out); }
-/* タブで切り替わる中身（パックの時間・料金の対象/曜日・バンド/個人・絞り込みのエリア/広さ・個人の人数）: 出てくるときに下からふわっと */
-[data-pack-len]:not([hidden]), [data-rate-panel]:not([hidden]), [data-rate-days]:not([hidden]), [data-tab-panel]:not([hidden]),
-[data-filter-panel]:not([hidden]), [data-ppl]:not([hidden]) { animation: soft-in var(--t-base) var(--ease-out); }
-/* 選択の帯（タブ・ボタン列の選ばれている所の赤）が、次の項目へ滑って移る。JS（setupSegSlide）が帯の位置と幅（--seg-x / --seg-w）を入れる。
-   折り返す列（.sinfo-seg--disc）は帯の位置が決められないので対象外。帯が動く間、文字の色も同じ時間で変える */
+/* タブで切り替わる中身の動き（高さ・ふわっと）は JS（switchPanels）。切り替えたときだけ動かす。
+   枠の高さが動く間も、中の行は本来の高さのまま（grid / flex は枠の高さに合わせて行を伸縮させるので止める） */
+.is-panel-moving { align-content: start; grid-auto-rows: max-content; }
+.is-panel-moving > * { flex-shrink: 0; }
+/* 選択の帯（タブ・ボタン列の選ばれている所の赤）が、次の項目へ滑って移る。JS（setupSegSlide）が帯の位置と大きさ（--seg-x / -y / -w / -h）を入れる。
+   帯は高さの動きと同じ時間。文字の色は帯が離れるより遅れないよう短く。太さは途中で変えられず文字がズレるので全項目でそろえる */
 .sinfo-seg.has-pill { position: relative; }
-.sinfo-seg.has-pill::before { content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: var(--seg-w); transform: translateX(var(--seg-x)); background: var(--accent); pointer-events: none; }
-.sinfo-seg.has-pill.is-ready::before { transition: transform var(--t-base) var(--ease-out), width var(--t-base) var(--ease-out); } /* 最初の配置では動かさない（is-ready が付いてから） */
-.sinfo-seg.has-pill label { position: relative; transition: color var(--t-base) var(--ease-out); } /* 文字は帯の上 */
-.sinfo-seg.has-pill label:has(input:checked) { background: transparent; }
+.sinfo-seg.has-pill::before { content: ""; position: absolute; top: 0; left: 0; width: var(--seg-w); height: var(--seg-h); transform: translate(var(--seg-x), var(--seg-y)); background: var(--accent); pointer-events: none; }
+.sinfo-seg.has-pill.is-ready::before { transition: transform var(--t-slow) var(--ease-out), width var(--t-slow) var(--ease-out), height var(--t-slow) var(--ease-out); } /* 最初の配置では動かさない（is-ready が付いてから） */
+.sinfo-seg.has-pill label { position: relative; font-weight: 700; transition: color var(--t-fast) var(--ease-out); } /* 文字は帯の上 */
+.sinfo-seg.has-pill label:has(input:checked) { background: transparent; font-weight: 700; }
 .sinfo-list__sim:not([hidden]) > *, #studio-sim-result > * { animation: sinfo-fade var(--t-fast) var(--ease-out); }
 .sinfo-seg label, .sinfo-chip, .sinfo-step__btn { transition: background-color var(--t-fast) ease, color var(--t-fast) ease, border-color var(--t-fast) ease; }
 @media (prefers-reduced-motion: reduce) {
-  .sinfo-list.is-enter > li, .sinfo-edit[open] > .sinfo-edit__form, .sinfo-edit[open] > .sinfo-ai, [data-pack-len], [data-rate-panel], [data-rate-days], [data-tab-panel],
-  [data-filter-panel], [data-ppl], .sinfo-list__sim > *, #studio-sim-result > * { animation: none !important; }
+  .sinfo-list.is-enter > li, .sinfo-edit[open] > .sinfo-edit__form, .sinfo-edit[open] > .sinfo-ai, .sinfo-list__sim > *, #studio-sim-result > * { animation: none !important; }
   .sinfo-list__item, .sinfo-seg label, .sinfo-chip, .sinfo-step__btn, .sinfo-seg.has-pill.is-ready::before { transition: none; }
   .sinfo-list__item:hover, .sinfo-list__item:active { transform: none; }
 }

@@ -208,7 +208,7 @@
     };
 
     box.addEventListener('change', (e) => {
-      if (e.target.name === 'filter_tab') showTab();
+      if (e.target.name === 'filter_tab') switchPanels(box.querySelectorAll('[data-filter-panel]'), showTab);
       else if (e.target.name === 'area') apply();
     });
     size?.addEventListener('input', apply);
@@ -890,6 +890,45 @@
   };
 
   // ===================================================================
+  //  タブの中身を切り替える共通処理（apply の中で hidden を切り替える）
+  //     ・枠（パネルの親）の高さを滑らかに変える → 下の内容が一瞬で飛ばない
+  //     ・新しく見えた要素を下からふわっと出す。入れ子のときは一番外側だけ動かす（二重にかけると動きが重なる）
+  //     ・連打されても、動いている途中の高さから次へつなぐ
+  //     ・「動きを減らす」設定のときは切り替えるだけ
+  // ===================================================================
+  const switchPanels = (panelList, apply) => {
+    const panels = [...panelList];
+    const hiddenBefore = new Set(panels.filter((p) => p.hidden));
+    // <table> の中身（tbody）は親の高さを動かせないので、表の外側を枠にする
+    const frames = [...new Set(panels.map((p) => p.closest('table')?.parentElement ?? p.parentElement))];
+    const heights = new Map(frames.map((f) => [f, f.offsetHeight]));
+    // 動作中の高さは測り終えたので止める（止めないと、切り替え後の本来の高さを測れない）
+    frames.forEach((f) => {
+      f.getAnimations().forEach((a) => { if (a.id === 'panel-height') a.cancel(); });
+      f.classList.remove('is-panel-moving');
+    });
+    apply();
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+    const css = getComputedStyle(document.documentElement);
+    const easing = css.getPropertyValue('--ease-out').trim() || 'ease-out';
+    const slow = (parseFloat(css.getPropertyValue('--t-slow')) || 0.3) * 1000;
+    const base = (parseFloat(css.getPropertyValue('--t-base')) || 0.2) * 1000;
+    frames.forEach((f) => {
+      const from = heights.get(f);
+      const to = f.offsetHeight;
+      if (Math.abs(from - to) < 1) return;
+      f.classList.add('is-panel-moving'); // 動く間、枠の中身が高さに合わせて伸び縮みしないようにする（CSS）
+      const a = f.animate([{ height: from + 'px', overflow: 'hidden' }, { height: to + 'px', overflow: 'hidden' }], { id: 'panel-height', duration: slow, easing });
+      a.onfinish = () => f.classList.remove('is-panel-moving');
+    });
+    const shown = panels.filter((p) => hiddenBefore.has(p) && !p.hidden);
+    shown.filter((p) => !shown.some((q) => q !== p && q.contains(p))).forEach((p) => {
+      p.animate([{ opacity: 0, transform: 'translateY(6px)' }, { opacity: 1, transform: 'none' }], { duration: base, easing });
+    });
+  };
+
+  // ===================================================================
   //  バンド練習 / 個人練習のタブ（料金表とパック専用）
   //     ・PHP が作った #studio-target-tabs（ラジオボタン）が切り替わったら、
   //       data-tab-panel="band|solo" を持つ要素（料金表・パックの行）のうち、選ばれていない方を hidden で隠す
@@ -912,7 +951,8 @@
     };
 
     tabs.addEventListener('change', (e) => {
-      if (e.target.name === 'tab_target') apply(e.target.value);
+      if (e.target.name !== 'tab_target') return;
+      switchPanels(document.querySelectorAll('[data-tab-panel], [data-tab-has]'), () => apply(e.target.value));
     });
     // ブラウザの「戻る」などでラジオの選択だけ復元されたときにも、表示を合わせておく
     apply(tabs.querySelector('input[name="tab_target"]:checked').value);
@@ -929,11 +969,13 @@
     document.addEventListener('change', (e) => {
       if (e.target.name !== 'solo_ppl') return;
       const n = e.target.value;
-      document.querySelectorAll('[data-ppl]').forEach((t) => {
-        t.hidden = t.dataset.ppl !== n;
-      });
-      document.querySelectorAll('[data-ppl-has]').forEach((g) => {
-        g.hidden = !g.dataset.pplHas.split(' ').includes(n);
+      switchPanels(document.querySelectorAll('[data-ppl], [data-ppl-has]'), () => {
+        document.querySelectorAll('[data-ppl]').forEach((t) => {
+          t.hidden = t.dataset.ppl !== n;
+        });
+        document.querySelectorAll('[data-ppl-has]').forEach((g) => {
+          g.hidden = !g.dataset.pplHas.split(' ').includes(n);
+        });
       });
     });
   };
@@ -949,7 +991,8 @@
       });
     };
     document.addEventListener('change', (e) => {
-      if (e.target.name?.startsWith('pack_len_')) apply(e.target);
+      if (!e.target.name?.startsWith('pack_len_')) return;
+      switchPanels(e.target.closest('.sinfo-pack-target').querySelectorAll('[data-pack-len]'), () => apply(e.target));
     });
     // ブラウザの「戻る」などでラジオの選択だけ復元されたときにも、表示を合わせておく
     document.querySelectorAll('input[name^="pack_len_"]:checked').forEach(apply);
@@ -1111,11 +1154,12 @@
       t.checked = true;
       d.checked = true;
       sync();
+      document.dispatchEvent(new Event('seg:refresh')); // change が出ない切り替えなので、選択の帯に伝える（setupSegSlide）
       return true;
     };
 
     tools.addEventListener('change', (e) => {
-      if (e.target.name.startsWith('rate_')) sync();
+      if (e.target.name.startsWith('rate_')) switchPanels([...panels, ...tools.querySelectorAll('[data-rate-days]')], sync);
     });
     form.addEventListener('invalid', (e) => {
       const panel = e.target.closest('[data-rate-panel]');
@@ -1168,10 +1212,10 @@
   //     ・選ばれている項目（label）の位置と幅を --seg-x / --seg-w として列に入れる。CSS の ::before（赤い帯）がそこへ動く
   //     ・列が隠れているとき（閉じた <details> の中・hidden のタブなど）は幅が 0 なので、表示されて大きさが変わったとき（ResizeObserver）にもう一度測る
   //     ・最初の配置では動かさない。測れた次のフレームで is-ready を付けて、それ以降の切り替えだけ動かす
-  //     ・折り返す列（--disc）は対象外 / ラジオが無い列も対象外
+  //     ・折り返す列（--disc）は縦の位置と高さ（--seg-y / --seg-h）も入れて、行をまたいで動かす / ラジオが無い列は対象外
   // ===================================================================
   const setupSegSlide = () => {
-    const segs = [...document.querySelectorAll('.sinfo-seg:not(.sinfo-seg--disc)')].filter((s) => s.querySelector('input[type="radio"]'));
+    const segs = [...document.querySelectorAll('.sinfo-seg')].filter((s) => s.querySelector('input[type="radio"]'));
     if (!segs.length) return;
     const place = (seg) => {
       const on = seg.querySelector('input:checked')?.closest('label');
@@ -1180,7 +1224,9 @@
       const first = !seg.classList.contains('has-pill');
       if (first) seg.classList.add('has-pill');
       seg.style.setProperty('--seg-x', on.offsetLeft + 'px'); // offsetLeft = 列（position: relative）の左端からの距離
+      seg.style.setProperty('--seg-y', on.offsetTop + 'px');
       seg.style.setProperty('--seg-w', on.offsetWidth + 'px');
+      seg.style.setProperty('--seg-h', on.offsetHeight + 'px');
       if (first) requestAnimationFrame(() => requestAnimationFrame(() => seg.classList.add('is-ready')));
     };
     const watch = new ResizeObserver((entries) => entries.forEach((e) => place(e.target)));
@@ -1189,6 +1235,7 @@
       const seg = e.target.closest?.('.sinfo-seg');
       if (seg && segs.includes(seg)) place(seg);
     });
+    document.addEventListener('seg:refresh', () => segs.forEach(place));
   };
 
   // DOMContentLoaded を待たなくても、このファイルはページの最後で読むので要素はもう全部ある
