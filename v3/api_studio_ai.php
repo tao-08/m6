@@ -64,6 +64,7 @@ if (!$studio) {
 // 調べる項目（sections[]）と検索元（source）。項目は決められたキーだけ通す。空 = 全部
 $sections = array_values(array_intersect(array_keys(STUDIO_AI_SECTIONS), array_map('strval', (array)($_POST['sections'] ?? []))));
 $officialOnly = ($_POST['source'] ?? '') === 'official';
+$studio['extra'] = ai_extra_clean($_POST['extra'] ?? ''); // 追加指示（任意・500文字まで）
 // すでに登録されている部屋・割引区分の名前を AI に教える（同じ表記で返させて、別の部屋・区分が増えないように）
 foreach (['known_rooms' => 'SELECT name FROM studio_room WHERE studio_id = ? ORDER BY sort_order, studio_room_id',
           'known_discounts' => 'SELECT name FROM studio_discount WHERE studio_id = ? ORDER BY sort_order, studio_discount_id'] as $key => $sql) {

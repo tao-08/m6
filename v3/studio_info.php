@@ -965,6 +965,11 @@ render_header($studio['name'], 'tools');
                 <?php endforeach; ?>
                 <label class="sinfo-chip"><input type="checkbox" data-ai-official<?= $studio['website_url'] || $studio['reserve_url'] ? '' : ' disabled' ?>>公式のみ</label>
             </div>
+            <!-- 追加指示（任意）。アイコンで開閉。毎回入力（保存しない） -->
+            <details class="ai-extra">
+                <summary class="btn btn--sm" aria-label="追加指示" title="追加指示"><?= icon('edit_note') ?></summary>
+                <textarea data-ai-extra rows="2" maxlength="500" aria-label="追加指示"></textarea>
+            </details>
             <div class="sinfo-ai__thumbs" data-ai-thumbs hidden></div>
             <form method="post" class="sinfo-ai__result" id="studio-ai-result" hidden
                 data-confirm="選んだ項目を AI の結果で置き換えます（料金・パック・レンタル・機材は今の行が削除されます）。よろしいですか？">

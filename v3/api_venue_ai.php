@@ -53,6 +53,7 @@ if (!$venue) {
 }
 $sections = array_values(array_intersect(array_keys(VENUE_AI_SECTIONS), array_map('strval', (array)($_POST['sections'] ?? []))));
 $officialOnly = ($_POST['source'] ?? '') === 'official';
+$venue['extra'] = ai_extra_clean($_POST['extra'] ?? ''); // 追加指示（任意・500文字まで）
 
 $images = [];
 $f = $_FILES['images'] ?? null;

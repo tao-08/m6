@@ -299,6 +299,11 @@ render_header($venue['name'], 'tools');
                 <?php endforeach; ?>
                 <label class="venue-chip"><input type="checkbox" data-ai-official<?= $venue['website_url'] ? '' : ' disabled' ?>>公式のみ</label>
             </div>
+            <!-- 追加指示（任意）。アイコンで開閉。毎回入力（保存しない） -->
+            <details class="ai-extra">
+                <summary class="btn btn--sm" aria-label="追加指示" title="追加指示"><?= icon('edit_note') ?></summary>
+                <textarea data-ai-extra rows="2" maxlength="500" aria-label="追加指示"></textarea>
+            </details>
             <div class="venue-ai__thumbs" data-ai-thumbs hidden></div>
             <form method="post" class="venue-ai__result" id="venue-ai-result" hidden
                 data-confirm="選んだ項目を AI の結果で置き換えます（最寄り駅・機材は今の行が削除されます）。よろしいですか？">
@@ -361,17 +366,22 @@ render_header($venue['name'], 'tools');
 <!-- 機材 -->
 <section class="card venue-section">
     <h2><?= icon('speaker') ?> 機材</h2>
-    <?php if (!$equipment): ?><p class="muted small">-</p><?php endif; ?>
-    <?php foreach (VENUE_EQUIP_CATEGORIES as $cat): if (empty($equipByCat[$cat])) continue; ?>
-        <div>
-            <h3 class="venue-equip__cat"><?= h($cat) ?></h3>
-            <ul class="venue-equip__list">
-                <?php foreach ($equipByCat[$cat] as $e): ?>
-                    <li><?= h($e['model_name']) ?> <span class="muted">× <?= (int)$e['quantity'] ?></span></li>
-                <?php endforeach; ?>
-            </ul>
-        </div>
-    <?php endforeach; ?>
+    <?php if (!$equipment): ?><p class="muted small">-</p><?php else: ?>
+    <!-- 一覧は折りたたみ可（初期は開く）。開閉は <details> の標準動作 -->
+    <details class="venue-fold" open>
+        <summary aria-label="機材一覧の開閉"><span class="muted small"><?= count($equipment) ?>件</span></summary>
+        <?php foreach (VENUE_EQUIP_CATEGORIES as $cat): if (empty($equipByCat[$cat])) continue; ?>
+            <div>
+                <h3 class="venue-equip__cat"><?= h($cat) ?></h3>
+                <ul class="venue-equip__list">
+                    <?php foreach ($equipByCat[$cat] as $e): ?>
+                        <li><?= h($e['model_name']) ?> <span class="muted">× <?= (int)$e['quantity'] ?></span></li>
+                    <?php endforeach; ?>
+                </ul>
+            </div>
+        <?php endforeach; ?>
+    </details>
+    <?php endif; ?>
     <details class="venue-edit">
         <summary><?= icon('edit') ?> 編集</summary>
         <form method="post" class="venue-edit__form">

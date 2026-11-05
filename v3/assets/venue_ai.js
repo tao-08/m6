@@ -162,6 +162,8 @@
       fd.append('model', box.querySelector('[data-ai-model]').value);
       picked.forEach((c) => fd.append('sections[]', c.value));
       if (box.querySelector('[data-ai-official]')?.checked) fd.append('source', 'official');
+      const extra = box.querySelector('[data-ai-extra]')?.value.trim();
+      if (extra) fd.append('extra', extra);
       images.forEach((it) => fd.append('images[]', it.file, it.file.name));
       const res = await fetch('api_venue_ai', { method: 'POST', headers: { 'X-CSRF-Token': box.dataset.csrf }, body: fd });
       const data = await res.json().catch(() => ({ error: 'サーバーの返事を読めませんでした' }));

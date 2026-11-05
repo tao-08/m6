@@ -153,7 +153,8 @@ function venue_ai_suggest(array $venue, array $images = [], ?string $model = nul
             $label .= "\n{$l}: " . $venue[$k];
         }
     }
-    $content = [['type' => 'text', 'text' => $label]];
+    $extra = ai_extra_clean($venue['extra'] ?? '');
+    $content = [['type' => 'text', 'text' => $label . ($extra !== '' ? ai_extra_text($extra) : '')]];
 
     if ($images) {
         foreach ($images as $i => $img) {

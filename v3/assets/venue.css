@@ -53,3 +53,6 @@
 .venue-ai__lines { list-style: none; margin: 0; padding: 8px 0 0; display: grid; gap: 4px; font-size: var(--fs-sm); overflow-wrap: anywhere; }
 .venue-ai__warn { margin: 0; color: var(--warn); background: var(--warn-bg); border-radius: var(--r-md); padding: 6px 10px; font-size: var(--fs-sm); }
 .venue-ai__src a { margin-right: 6px; }
+
+/* 機材一覧の折りたたみ（summary の ▶ を件数の横に出す） */
+.venue-fold > summary { cursor: pointer; padding: 4px 0; }

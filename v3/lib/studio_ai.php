@@ -131,7 +131,7 @@ function studio_ai_system_prompt(bool $images = false, array $sections = [], arr
             $scope .= "- 機材は「部屋ごとの表」になっていることが多い。1部屋ずつ上から全項目を読み、載っている機材を1つも飛ばさない。先に行数を数えず、全部書き出す\n"
                 . "- 同じ機材が複数の部屋にあるときは1行にまとめ、rooms に該当する部屋名を全部入れる（部屋ごとに行を増やさない）。全部屋共通なら rooms は空の配列\n"
                 . "- 「A / B」「A、B」は別の機材なので1つずつ別の行にする。「A + B」（ヘッド+キャビなどのセット）は1行のまま「Ampeg PF-500 + Aguilar GS412」と書く。「×2」は quantity=2\n"
-                . "- ドラムは1セット = 1行（例: TAMA 22/16/13/12 のセット）。シンバル・ペダルなど別記の付属品は別の行\n"
+                . "- ドラムは1セット = 1行で、サイズ一覧は括弧に入れてそのまま書く（例: LUDWIG VISTALITE (12,13,14,16,22)）。シンバル・ペダルなど別記の付属品は別の行\n"
                 . "- 見出しと category の対応: P.A./ミキサー/スピーカー/モニター → PA、BASS AMP → ベースアンプ、GUITAR AMP → ギターアンプ、DRUMS → ドラム、KEYBOARDS → キーボード（「FREE RENTAL」など機材名が無い項目は行にしない）\n";
         }
     }
@@ -186,6 +186,18 @@ function studio_ai_min(mixed $hm): ?int
     }
     $min = (int)$m[1] * 60 + (int)$m[2];
     return ($min % 30 === 0 && $min <= STUDIO_MAX_MIN) ? $min : null;
+}
+
+/** 画面から送られた「追加指示」を整える（前後の空白を取り、500文字まで。空なら ''） */
+function ai_extra_clean(mixed $v): string
+{
+    return is_string($v) ? mb_substr(trim($v), 0, 500) : '';
+}
+
+/** 追加指示を AI に渡す文（ユーザーメッセージの末尾に足す）。出力形式やこれまでの守ることは変えさせない */
+function ai_extra_text(string $extra): string
+{
+    return "\n\n# 追加の指示（利用者の入力。調べ方や重視する点として従う。ただし JSON の形式と上の「守ること」は変えない）\n" . $extra;
 }
 
 /** 文字列を整える（前後の空白を取り、長さの上限で切る。空なら null） */
@@ -265,8 +277,34 @@ function studio_ai_split(string $v): array
 {
     // 「、」「,」改行に加えて、前後に空白のある「 / 」と全角「／」でも分ける（「Marshall JCM2000 / Roland JC-120」→ 2行）。
     // 型番の中の「22/16/13」と、ヘッド+キャビのセット「A + B」は分けない
-    return array_values(array_filter(array_map('trim', preg_split('/[、，,
-／]+|\s+\/\s+/u', $v) ?: []), fn($x) => $x !== ''));
+    // ただし括弧の中は分けない（「LUDWIG VISTALITE (12,13,14,16,22)」のサイズ一覧が崩れないように）
+    $parts = [];
+    $cur = '';
+    $depth = 0;
+    foreach (preg_split('//u', $v, -1, PREG_SPLIT_NO_EMPTY) ?: [] as $i => $ch) {
+        if (mb_strpos('([（［「', $ch) !== false) {
+            $depth++;
+        } elseif (mb_strpos(')]）］」', $ch) !== false) {
+            $depth = max(0, $depth - 1);
+        }
+        if ($depth === 0 && mb_strpos("、，,\n／", $ch) !== false) {
+            $parts[] = $cur;
+            $cur = '';
+        } else {
+            $cur .= $ch;
+        }
+    }
+    $parts[] = $cur;
+    $out = [];
+    foreach ($parts as $p) {
+        foreach (preg_split('/\s+\/\s+(?![^(（]*[)）])/u', $p) ?: [] as $q) { // 括弧の外にある「 / 」でも分ける
+            $q = trim($q);
+            if ($q !== '') {
+                $out[] = $q;
+            }
+        }
+    }
+    return $out;
 }
 
 /**
@@ -462,7 +500,8 @@ function studio_ai_suggest(array $studio, array $images = [], ?string $model = n
             $label .= "\n{$l}: " . $studio[$k];
         }
     }
-    $content = [['type' => 'text', 'text' => $label]];
+    $extra = ai_extra_clean($studio['extra'] ?? '');
+    $content = [['type' => 'text', 'text' => $label . ($extra !== '' ? ai_extra_text($extra) : '')]];
 
     if ($images) {
         // 画像つき: 画像を縮小（長辺 1568px の JPEG）して base64 で送る。検索は付けない = 速くて安い
