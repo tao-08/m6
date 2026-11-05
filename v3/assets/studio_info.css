@@ -46,6 +46,15 @@
 .sinfo-pin span { display: block; width: 26px; height: 26px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg);
   background: var(--accent); border: 3px solid #fff; box-shadow: var(--shadow-sm); }
 .sinfo-pop a { font-weight: 800; }
+/* 大学の吹き出し: 白い角丸の箱にロゴ＋下向きのしっぽ。スタジオのピンより下に重ねる（z-index は Leaflet のマーカー順に任せる） */
+/* しっぽ = 三角形2枚（::before = 枠の色 / ::after = 白で少し小さく重ねて、枠線だけが残る）。先端が地点の真上に来る */
+.sinfo-campus__bubble { position: relative; box-sizing: border-box; display: flex; align-items: center; justify-content: center; width: 44px; height: 40px;
+  background: #fff; border: 2px solid #2a2a86; border-radius: var(--r-md); box-shadow: var(--shadow-sm); }
+.sinfo-campus__bubble::before, .sinfo-campus__bubble::after { content: ""; position: absolute; left: 50%; width: 0; height: 0;
+  border-style: solid; border-color: #2a2a86 transparent transparent; }
+.sinfo-campus__bubble::before { bottom: -12px; margin-left: -8px; border-width: 12px 8px 0; }
+.sinfo-campus__bubble::after { bottom: -10px; margin-left: -6px; border-width: 10px 6px 0; border-color: #fff transparent transparent; }
+.sinfo-campus__bubble img { width: 26px; height: 26px; }
 /* ダークモード: 地図の絵だけ色を反転して暗くする（ピンやポップアップは反転しない） */
 [data-theme="dark"] .sinfo-map .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(.85) contrast(.9); }
 [data-theme="dark"] .leaflet-popup-content-wrapper, [data-theme="dark"] .leaflet-popup-tip { background: var(--surface); color: var(--text); }

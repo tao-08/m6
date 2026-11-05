@@ -85,11 +85,22 @@
       return L.marker([p.lat, p.lng], { icon, title: p.name }).bindPopup(pop).addTo(map);
     });
 
-    if (pins.length === 1) {
+    // 大学の吹き出し（一覧の地図だけ）。ロゴ画像の吹き出し = divIcon。fit: false（生田）は最初の表示範囲に入れない
+    const campusEl = document.getElementById('studio-campuses');
+    const campuses = readJson('studio-campuses') || [];
+    const fitMarkers = [];
+    campuses.forEach((c) => {
+      const html = '<span class="sinfo-campus__bubble"><img src="' + encodeURI(campusEl.dataset.logo) + '" alt=""></span>';
+      const cIcon = L.divIcon({ className: 'sinfo-campus', html, iconSize: [44, 50], iconAnchor: [22, 50] });
+      const m = L.marker([c.lat, c.lng], { icon: cIcon, title: '明治大学 ' + c.name, keyboard: false }).addTo(map);
+      if (c.fit) fitMarkers.push(m);
+    });
+
+    if (pins.length === 1 && !campuses.length) {
       map.setView([pins[0].lat, pins[0].lng], 15); // 1本だけ → 周辺も見える拡大率（16 から1段階縮小）
     } else {
       // fitBounds = 全部のピンが入るように拡大率と中心を自動で決める。padding = 端に余白
-      map.fitBounds(L.featureGroup(markers).getBounds(), { padding: [30, 30], maxZoom: 16 });
+      map.fitBounds(L.featureGroup([...markers, ...fitMarkers]).getBounds(), { padding: [30, 30], maxZoom: 16 });
     }
 
     // 一覧のカードにマウスを乗せたら、そのピンのポップアップを開く（どのカードがどこか分かるように）
