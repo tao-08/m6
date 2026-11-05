@@ -45,6 +45,8 @@
  *                          PHP では tip_attr('文') を使う（title は使わない）。セトリの ✓・楽器ラベル・メダルなど全部これ
  *    open.spotify.com のリンク … Spotify のアプリで開く（PC はデスクトップアプリ）
  *    data-vo-sum-toggle … 統計の「Voを合算する」をページ移動なしで切り替える
+ *    data-search-suggest … 検索ページの入力欄で検索語の候補を出す（api_search_suggest.php。メンバー・バンド・アーティスト・ライブ・会場・係・学部・曲名）
+ *    data-autofocus-pc  … PC だけ、開いたとき入力欄にカーソルを置く（スマホはキーボードが出てアニメが途切れるので置かない）
  * =====================================================================
  */
 
@@ -112,6 +114,8 @@ document.addEventListener('DOMContentLoaded', () => {
   setupSetlistNames();
   setupSpotifyAppLinks();
   setupVoSum();
+  setupAutofocusPc();
+  setupSearchSuggest();
   setupYoutubeLeftover();
   setupBackButton();
   setupTutorial();
@@ -1748,6 +1752,148 @@ function setupYoutubeLeftover() {
   form.addEventListener('change', update); // setupSelectPick のポップアップで選んでも change が出る
 }
 
+/** data-autofocus-pc … PC（マウスのある環境）だけ、開いたとき入力欄にカーソルを置く。
+ *  スマホは autofocus だとキーボードが開いて、ページ遷移のアニメーションが途切れるため使わない */
+function setupAutofocusPc() {
+  if (!matchMedia('(hover: hover) and (pointer: fine)').matches) return;
+  document.querySelector('[data-autofocus-pc]')?.focus({ preventScroll: true });
+}
+
+/** data-search-suggest … 検索ページの入力欄で、打っている途中に検索語の候補を出す（api_search_suggest.php）。
+ *  候補を選ぶとその語で検索する。↑↓ で選んで Enter、Esc で閉じる。
+ *  通信は 150ms 待ってから（打ち続けている間は送らない）。前の問い合わせは中止し、同じ文字の結果は覚えておく。
+ *  日本語の変換中も候補を出す（ふりがなで当てるため）。ただし変換中の ↑↓ Enter は IME のものなので触らない */
+function setupSearchSuggest() {
+  const input = document.querySelector('[data-search-suggest]');
+  if (!input) return;
+  const KIND = { member: 'メンバー', band: 'バンド', artist: 'アーティスト', live: 'ライブ', venue: '会場', role: '係', faculty: '学部', song: '曲名' };
+  const cache = new Map(); // 入力した文字 → 候補の配列
+  let ctrl = null;         // 通信中の問い合わせ（新しく打ったら中止する）
+  let timer = 0;
+  let pop = null;
+  let buttons = [];
+  let list = [];
+  let active = -1;
+
+  const close = () => {
+    pop?.remove();
+    pop = null; buttons = []; list = []; active = -1;
+    input.setAttribute('aria-expanded', 'false');
+    input.removeAttribute('aria-activedescendant');
+  };
+
+  const place = () => {
+    if (!pop) return;
+    const r = input.getBoundingClientRect();
+    pop.style.left = `${r.left}px`;
+    pop.style.top = `${r.bottom + 4}px`;
+    pop.style.minWidth = `${r.width}px`;
+    // 8件がそのまま入る高さにする（既定の上限だと最後の1件がスクロールバーで切れる）。画面の下に入りきらないときだけ縮める
+    pop.style.maxHeight = 'none';
+    pop.style.maxHeight = `${Math.min(pop.offsetHeight, window.innerHeight - r.bottom - 12)}px`;
+  };
+
+  const choose = (text) => {
+    input.value = text;
+    close();
+    input.form?.requestSubmit();
+  };
+
+  const setActive = (i) => {
+    active = i;
+    buttons.forEach((b, j) => b.classList.toggle('is-active', j === i));
+    if (i >= 0) input.setAttribute('aria-activedescendant', buttons[i].id);
+    else input.removeAttribute('aria-activedescendant');
+  };
+
+  // 一致した部分を赤くする（textContent で組むので XSS にならない）
+  const label = (text, q) => {
+    const span = document.createElement('span');
+    span.className = 'live-pop__name';
+    const at = text.toLowerCase().indexOf(q.toLowerCase());
+    if (at < 0) { span.textContent = text; return span; }
+    const mark = document.createElement('mark');
+    mark.textContent = text.slice(at, at + q.length);
+    span.append(text.slice(0, at), mark, text.slice(at + q.length));
+    return span;
+  };
+
+  const render = (items, q) => {
+    close();
+    if (!items.length || document.activeElement !== input) return;
+    list = items;
+    pop = document.createElement('div');
+    pop.className = 'live-pop live-pop--float suggest-pop';
+    pop.id = 'search-suggest-pop';
+    pop.setAttribute('role', 'listbox');
+    buttons = items.map((it, i) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.tabIndex = -1;
+      b.id = `search-suggest-${i}`;
+      b.className = 'live-pop__item';
+      b.setAttribute('role', 'option');
+      const kind = document.createElement('span');
+      kind.className = 'suggest-pop__kana';
+      kind.textContent = KIND[it.kind] || '';
+      b.append(label(it.text, q), kind);
+      b.addEventListener('click', () => choose(it.text));
+      pop.append(b);
+      return b;
+    });
+    // 押した瞬間に入力欄からフォーカスが外れて（blur で）消えないようにする
+    ['mousedown', 'pointerdown'].forEach((ev) => pop.addEventListener(ev, (e) => e.preventDefault()));
+    document.body.append(pop);
+    place();
+    input.setAttribute('aria-expanded', 'true');
+    input.setAttribute('aria-controls', pop.id);
+  };
+
+  const load = async (q) => {
+    ctrl?.abort();
+    ctrl = new AbortController();
+    try {
+      const res = await fetch(`api_search_suggest?q=${encodeURIComponent(q)}`, { credentials: 'same-origin', signal: ctrl.signal });
+      if (!res.ok) return;
+      const items = (await res.json()).items || [];
+      cache.set(q, items);
+      if (input.value.trim() === q) render(items, q); // 返ってくる間に打ち直していたら捨てる
+    } catch (e) { /* 中止・通信エラーは何も出さない（候補が出ないだけ） */ }
+  };
+
+  input.setAttribute('role', 'combobox');
+  input.setAttribute('aria-autocomplete', 'list');
+  input.setAttribute('aria-expanded', 'false');
+
+  input.addEventListener('input', () => {
+    clearTimeout(timer);
+    const q = input.value.trim();
+    if (!q) { ctrl?.abort(); close(); return; }
+    if (cache.has(q)) { render(cache.get(q), q); return; }
+    timer = setTimeout(() => load(q), 150);
+  });
+
+  input.addEventListener('keydown', (e) => {
+    if (e.isComposing || e.keyCode === 229 || !pop) return;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const n = list.length;
+      setActive(e.key === 'ArrowDown' ? (active + 1) % n : (active - 1 + n) % n);
+    } else if (e.key === 'Enter' && active >= 0) {
+      e.preventDefault();
+      choose(list[active].text);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      close();
+    }
+  });
+
+  input.addEventListener('focusout', () => { clearTimeout(timer); ctrl?.abort(); close(); });
+  window.addEventListener('scroll', place, true);
+  window.addEventListener('resize', place);
+  window.visualViewport?.addEventListener('resize', place);
+}
+
 function setupVoSum() {
   const toggles = [...document.querySelectorAll('[data-vo-sum-toggle]')];
   if (!toggles.length) return;
@@ -2022,10 +2168,14 @@ function setupFilter() {
     const items = document.querySelectorAll(input.dataset.filter);
     input.addEventListener('input', () => {
       const q = input.value.trim().toLowerCase();
+      const shown = [];
       items.forEach((el) => {
         const text = (el.dataset.text || el.textContent).toLowerCase();
-        el.hidden = q !== '' && !text.includes(q);
+        const hide = q !== '' && !text.includes(q);
+        if (el.hidden && !hide) shown.push(el); // 隠れていたのが出てきたものだけ動かす
+        el.hidden = hide;
       });
+      animateIn(shown, 200);
     });
   });
 }
