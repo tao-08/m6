@@ -14,7 +14,13 @@
 .sinfo-list__link { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; color: inherit; text-decoration: none; }
 .sinfo-list__tags { display: inline-flex; flex-wrap: wrap; gap: 4px; } /* タグ同士のすき間 */
 .sinfo-list__reserve { flex: none; } /* ボタンは縮めない */
-.sinfo-list__name { font-weight: 800; display: inline-flex; align-items: center; gap: 8px; }
+/* 料金比較の結果（合計・1人あたり・部屋 …）。JS: setupListSim */
+.sinfo-list__sim { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; font-size: var(--fs-sm); }
+.sinfo-list__sim[hidden] { display: none; }
+.sinfo-list__yen { font-size: var(--fs-lg); font-weight: 900; font-variant-numeric: tabular-nums; }
+.sinfo-list__per { font-size: var(--fs-xs); font-weight: 800; color: var(--accent); }
+.sinfo-list__per strong { font-size: var(--fs-lg); font-weight: 900; font-variant-numeric: tabular-nums; } /* 割り勘の額は合計と同じ大きさで見せる */
+.sinfo-list__name { font-weight: 800; display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
 /* スマホ: 予約ボタンを右上に重ねて、2段め以降（駅・営業時間・料金）をカード全幅で使う。名前だけボタンの分を空ける */
 @media (max-width: 760px) {
   .sinfo-list__item { position: relative; }
@@ -110,10 +116,14 @@
 .sinfo-sim__save { margin: 0; color: var(--headliner); font-weight: 800; font-size: var(--fs-sm); }
 .sinfo-sim__warn { margin: 0; color: var(--warn); background: var(--warn-bg); border-radius: var(--r-md); padding: 6px 10px; font-size: var(--fs-sm); }
 
-/* ---- 編集フォーム（venue.css と同じ作り） ---- */
-.sinfo-edit > summary { cursor: pointer; display: inline-flex; align-items: center; gap: 4px; color: var(--muted); font-size: var(--fs-sm); list-style: none; }
-.sinfo-edit > summary::-webkit-details-marker { display: none; }
-.sinfo-edit[open] > summary { color: var(--accent); }
+/* ---- 編集フォーム（venue.css と同じ作り）----
+   ・カードの中の「✎ 編集」は、小さく薄い文字の開閉（会場ページと同じ）。開いたら赤
+   ・カードごと開閉するもの（試算・スタジオ追加）は、サイト共通の .togglecard（app.css。アイコン＋題名＋右端の ⌄ が開くと回る）を使う
+     → .sinfo-edit のうち .togglecard のものには、下の小さい文字の見た目を当てない（:not(.togglecard)） */
+.sinfo-edit:not(.togglecard) > summary { cursor: pointer; display: inline-flex; align-items: center; gap: 4px; color: var(--muted); font-size: var(--fs-sm); list-style: none; }
+.sinfo-edit:not(.togglecard) > summary::-webkit-details-marker { display: none; }
+.sinfo-edit[open]:not(.togglecard) > summary { color: var(--accent); }
+.sinfo-section.togglecard { gap: 0; } /* 見出しと中身の間は、togglecard の余白だけにする（.sinfo-section の gap を足さない） */ /* 見出しと中身の間は、togglecard の余白だけにする（.sinfo-section の gap を足さない） */
 .sinfo-edit__form { display: grid; gap: 8px; padding-top: 10px; }
 .sinfo-edit__row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .sinfo-edit .sinfo-edit__row > * { width: auto; }
@@ -161,6 +171,7 @@
 .sinfo-pack-table th { padding-block: 10px 4px; color: var(--text); font-size: var(--fs-sm); }
 .sinfo-pack-table tbody:first-child th { padding-top: 2px; }
 .sinfo-pack-table .sinfo-pack-rooms { white-space: normal; } /* 部屋が多いときは折り返す（横にはみ出さない） */
+.sinfo-pack-room { white-space: nowrap; } /* 「Ast 9帖」の途中では折り返さない（折り返すのは部屋の区切りの「・」のところ） */
 .sinfo-pack-slot { cursor: help; }
 .sinfo-pack-disc { display: block; font-style: normal; font-size: var(--fs-xs); color: var(--headliner); cursor: help; }
 .sinfo-sim__pack span:first-child { font-weight: 800; color: var(--headliner); }
@@ -177,10 +188,36 @@
   -moz-appearance: textfield; appearance: textfield; } /* ブラウザ標準の小さい▲▼は消す（＋／－があるので） */
 .sinfo-step input::-webkit-outer-spin-button, .sinfo-step input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 
-/* ---- 一覧の広さ絞り込み（アイコン － 数字 ＋ 帖以上 ）---- */
-.sinfo-filter { margin-top: 14px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
-.sinfo-filter .sinfo-step { width: 150px; }
-.sinfo-filter__label .icon { font-size: 22px; color: var(--muted); vertical-align: middle; }
+/* ---- 一覧の絞り込み（タブ［エリア / 広さ］＋ 入力欄 ＋ 件数）---- */
+/* 1行に収める（スマホ幅でも折り返さない）。padding-block = 上下の余白を詰める（.card は20px）。件数だけは幅が足りないとき次の行へ落ちてよい */
+.sinfo-filter { margin-top: 14px; padding-block: 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+.sinfo-filter__panel { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.sinfo-filter__panel[hidden] { display: none; }
+.sinfo-filter .sinfo-step { width: 92px; }
+.sinfo-filter .sinfo-step__btn { width: 30px; min-height: 40px; }
+.sinfo-filter .sinfo-step input[type=number] { font-size: var(--fs-md); }
+.sinfo-filter__info { white-space: nowrap; font-size: var(--fs-xs); }
+.sinfo-filter select, .sinfo-filter .live-pick { min-width: 9em; }
+.sinfo-filter__tabs { flex: none; }
+.sinfo-filter__tabs label { padding: 9px 7px; font-size: var(--fs-xs); white-space: nowrap; position: relative; }
+/* 開いていないタブで条件が効いているとき、タブの右上に小さな点（見えない所で絞り込まれていることに気づけるように） */
+.sinfo-filter__tabs label[data-on]:not(:has(input:checked))::after { content: ""; position: absolute; top: 5px; right: 5px; width: 6px; height: 6px; border-radius: var(--r-full); background: var(--accent); }
+[data-filter-count]:empty { display: none; }
+
+/* ---- 料金比較カード（一覧）: 縦を詰めた並べ方。項目名は付けない（中身で分かる）----
+   1行め = 対象（バンド / 個人）＋ 割引 / 2行め = 曜日 ＋ 開始 / 3行め = 時間 ＋ 人数 */
+.sinfo-sim--compact { gap: 8px; padding-top: 6px; }
+.sinfo-sim__top { display: flex; gap: 8px; align-items: stretch; }
+.sinfo-sim__top .sinfo-seg { flex: 1; }
+.sinfo-sim__top .sinfo-chip { min-height: 0; }
+.sinfo-sim--compact .sinfo-seg--mode label { padding-block: 8px; font-size: var(--fs-sm); }
+.sinfo-sim--compact .sinfo-sim__grid { grid-template-columns: 1fr 1fr; gap: 8px; align-items: stretch; }
+.sinfo-sim--compact .sinfo-sim__grid > .sinfo-seg label { display: grid; place-items: center; padding-block: 0; }
+.sinfo-sim--compact .sinfo-step__btn { width: 38px; min-height: 40px; }
+.sinfo-step__unit { align-self: center; padding-right: 2px; font-size: var(--fs-xs); }
+
+/* ---- おすすめラベル（一覧のカード・詳細の見出し。幹部が付ける）---- */
+.tag--rec { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, transparent); background: var(--accent-soft); }
 
 /* ---- 料金・パック・機材の編集: 部屋のチェック欄（押しやすい丸いチップ。チェックで赤く塗る）---- */
 .sinfo-chips { flex: 1 1 100%; display: flex; flex-wrap: wrap; gap: 6px; }
@@ -210,7 +247,7 @@
   background: var(--text); color: var(--surface); font-size: var(--fs-md); line-height: 22px; cursor: pointer; }
 .sinfo-ai__result { display: grid; gap: 10px; }
 .sinfo-ai__sec { border: 1px solid var(--border); border-radius: var(--r-md); padding: 8px 10px; }
-.sinfo-ai__sec > summary { cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.sinfo-ai__sec > summary { cursor: pointer; display: flex; align-items: center; gap: 8px; }
 .sinfo-ai__lines { padding-top: 8px; font-size: var(--fs-sm); overflow-wrap: anywhere; }
 .sinfo-ai__src a { margin-right: 6px; }
 
@@ -343,3 +380,28 @@
 
 /* 部屋の編集: 30分スタート・30分単位のチェック */
 .sinfo-edit__half { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; font-size: var(--fs-sm); }
+
+/* ---- 動き（時間・イージングは app.css の --t-* / --ease-out。「動きを減らす」設定のときは全部切る）----
+   ・一覧のカード: 読み込み時に下から順に登場（--i = 何番目か。8番目以降は同時）/ PC は乗せると浮き、押すと沈む（hover: hover = マウスのある端末だけ。スマホで押したまま浮かないように）
+   ・フォーム・タブの中身: 開いたとき・切り替えたときに下から出る / 試算の結果: 値が変わったとき一瞬薄くなってから戻る（更新されたのが分かる）
+   ・並べ替え（安い順）の滑らかな移動は JS（setupListSim の glide） */
+@keyframes sinfo-rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes sinfo-fade { from { opacity: .35; } to { opacity: 1; } }
+.sinfo-list.is-enter > li { animation: sinfo-rise var(--t-slow) var(--ease-out) backwards; animation-delay: calc(min(var(--i, 0), 8) * var(--t-fast) / 3); }
+.sinfo-list__item { transition: transform var(--t-base) var(--ease-out), box-shadow var(--t-base) var(--ease-out); }
+@media (hover: hover) { .sinfo-list__item:hover { transform: translateY(-2px); box-shadow: var(--shadow-pop); } }
+.sinfo-list__item:active { transform: scale(.985); }
+.sinfo-edit[open] > .sinfo-edit__form { animation: day-fade var(--t-base) var(--ease-out); }
+[data-pack-len]:not([hidden]), [data-rate-panel]:not([hidden]), [data-tab-panel]:not([hidden]) { animation: soft-in var(--t-base) var(--ease-out); }
+.sinfo-list__sim:not([hidden]) > *, #studio-sim-result > * { animation: sinfo-fade var(--t-fast) var(--ease-out); }
+.sinfo-seg label, .sinfo-chip, .sinfo-step__btn { transition: background-color var(--t-fast) ease, color var(--t-fast) ease, border-color var(--t-fast) ease; }
+@media (prefers-reduced-motion: reduce) {
+  .sinfo-list.is-enter > li, .sinfo-edit[open] > .sinfo-edit__form, [data-pack-len], [data-rate-panel], [data-tab-panel],
+  .sinfo-list__sim > *, #studio-sim-result > * { animation: none !important; }
+  .sinfo-list__item, .sinfo-seg label, .sinfo-chip, .sinfo-step__btn { transition: none; }
+  .sinfo-list__item:hover, .sinfo-list__item:active { transform: none; }
+}
+
+/* ---- AI 提案の各項目の開閉: 右端に既存の ⌄（.togglecard__chevron。回る動きの時間は app.css 側）。開いたら 180° 回す ---- */
+.sinfo-ai__sec > summary > label { margin-right: auto; } /* チェック付きの題名は左、件数と ⌄ は右に寄せる */
+.sinfo-ai__sec[open] > summary > .togglecard__chevron { transform: rotate(180deg); }

@@ -868,6 +868,7 @@ input[type="checkbox"], .field input[type="radio"] { accent-color: var(--accent)
 .live-pick[data-select-pick] { z-index: auto; }
 .live-pick__btn:disabled { opacity: .5; cursor: not-allowed; }
 .live-pick__btn > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.live-pick__btn > span:first-child:empty::before { content: "\200b"; } /* 文字が空でも1行分の高さを保つ（\200b = 幅のない空白） */
 .live-pick--inline { display: inline-block; vertical-align: middle; }
 .live-pick--inline .live-pick__btn { width: auto; min-width: 6em; padding: 7px 10px 7px 13px; font-weight: 700; }
 .live-pick--sm .live-pick__btn { min-width: 4.5em; padding: 4px 6px 4px 9px; font-size: var(--fs-xs); border-radius: var(--r-md); gap: 4px; }

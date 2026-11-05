@@ -4,7 +4,7 @@
  *  studio_list.php — スタジオ情報の一覧＋スタジオマップ（tools.php から入る）
  * =====================================================================
  *  表示: 全スタジオのピンを1枚の地図（Leaflet + OpenStreetMap）に出し、その下にカードの一覧
- *        カードには 最寄り駅・最大の部屋の広さ（MAXバッジ）・バンドと個人（1人）のいちばん安い1時間の料金・学割／個人練習／パックの有無 を出す
+ *        カードには 最寄り駅・最大の部屋の広さ（MAXバッジ）・バンドと個人（1人）のいちばん安い1時間の料金・割引区分（学割など）を出す
  *  追加: 幹部と管理者だけ（名前だけ入れて作り、詳しい情報は studio_info.php で編集）
  *
  *  ■ Leaflet（リーフレット）とは
@@ -52,17 +52,14 @@ if (is_post()) {
 // MIN() = 最小値。相関サブクエリでスタジオごとに「バンドのいちばん安い1時間の料金」「割引区分の名前」をまとめて取る
 // GROUP_CONCAT = 複数行の値を1つの文字列につなげる（区切りはタブ。区分名にタブは入らないので、あとで explode で分けられる）
 //   \'\t\' = PHP の '…' の中に SQL の文字列 '\t'（タブ）を書くため、' の前に \ を付けている
-// EXISTS (SELECT 1 …) = 1行でもあれば 1。個人練習の料金・パックがあるかのタグに使う（件数は要らないので COUNT より速い）
 //   max_area = そのスタジオでいちばん広い部屋の帖数（広さの絞り込み用。部屋の広さが未入力なら NULL）
 //   （スタジオの数だけ SQL を投げる「N+1 問題」を避けるため、1回の SQL で済ませる）
-$studios = $pdo->query('SELECT s.studio_id, s.name, s.access, s.hours, s.lat, s.lng, s.reserve_url,
+$studios = $pdo->query('SELECT s.studio_id, s.name, s.access, s.area, s.recommended, s.hours, s.lat, s.lng, s.reserve_url,
         (SELECT MIN(r.price) FROM studio_rate r WHERE r.studio_id = s.studio_id AND r.people IS NULL) AS min_price,
         (SELECT MIN(r.price) FROM studio_rate r WHERE r.studio_id = s.studio_id AND r.people = 1) AS min_solo_price,
         (SELECT GROUP_CONCAT(d.name ORDER BY d.sort_order, d.studio_discount_id SEPARATOR \'\t\') FROM studio_discount d
             WHERE d.studio_id = s.studio_id) AS disc_names,
-        (SELECT MAX(m.area_jo) FROM studio_room m WHERE m.studio_id = s.studio_id) AS max_area,
-        EXISTS (SELECT 1 FROM studio_rate r WHERE r.studio_id = s.studio_id AND r.people IS NOT NULL) AS has_solo,
-        EXISTS (SELECT 1 FROM studio_pack p WHERE p.studio_id = s.studio_id) AS has_pack
+        (SELECT MAX(m.area_jo) FROM studio_room m WHERE m.studio_id = s.studio_id) AS max_area
     FROM studio s ORDER BY s.sort_order, s.studio_id')->fetchAll();
 
 // 地図に渡すのは座標が入っているスタジオだけ
@@ -83,7 +80,16 @@ $campuses = studio_campuses(); // 明治大学の4キャンパス（lib/studio_i
 $jsonFlags = JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT;
 
 // 絞り込み欄は、広さが入っているスタジオが1つでもあるときだけ出す（全部不明なら絞り込む意味がない）
-$hasArea = array_filter(array_column($studios, 'max_area'), fn($v) => $v !== null) !== [];
+$hasSize = array_filter(array_column($studios, 'max_area'), fn($v) => $v !== null) !== [];
+// エリアの候補: 入力されているエリア名（並びは一覧の並びで最初に出た順）。1つも入っていなければエリアのタブは出さない
+$areas = array_values(array_unique(array_filter(array_column($studios, 'area'), fn($v) => $v !== null && $v !== '')));
+
+// 料金比較用のデータ（JS: setupListSim）。[スタジオid => 試算のデータ]。レンタルは比較に使わないので空
+//   スタジオごとに読むので SQL はスタジオ数に比例して増える（数十件までの想定。増えて遅くなったらまとめて読む形に変える）
+$simAll = [];
+foreach ($studios as $s) {
+    $simAll[(int)$s['studio_id']] = studio_sim_load($pdo, (int)$s['studio_id']);
+}
 
 render_header('スタジオ情報', 'tools');
 ?>
@@ -101,41 +107,98 @@ render_header('スタジオ情報', 'tools');
     <script type="application/json" id="studio-campuses" data-logo="<?= h(asset_url('assets/meiji-logo.svg')) ?>"><?= json_encode($campuses, $jsonFlags) ?></script>
 <?php endif; ?>
 
-<?php if ($hasArea): ?>
-    <!-- 広さの絞り込み: 「N帖以上の部屋があるスタジオ」だけ残す（JS: setupFilter）。0 = 絞り込みなし。＋／－は共通の setupStepper -->
+<?php if ($areas || $hasSize): ?>
+    <!-- 絞り込み（JS: setupFilter）。エリアと広さの両方があるときはタブで切り替える（両方の条件が同時に効く）
+         ・エリア: 選んだエリアのスタジオだけ残す。広さ: 「N帖以上の部屋があるスタジオ」だけ残す（既定 10帖。0 = 絞り込みなし）。＋／－は共通の setupStepper
+         ・件数（N / M）は、絞り込みで隠れたスタジオがあるときだけ出す -->
+    <?php $filterTabs = $areas && $hasSize; ?>
     <div class="card sinfo-filter" id="studio-filter">
-        <span class="sinfo-filter__label" title="広さ"><?= icon('square_foot') ?></span>
-        <div class="sinfo-step">
-            <button type="button" class="sinfo-step__btn" data-step="-1" aria-label="減らす"><?= icon('remove') ?></button>
-            <input type="number" min="0" max="100" value="0" inputmode="numeric" aria-label="広さ（帖）の下限">
-            <button type="button" class="sinfo-step__btn" data-step="1" aria-label="増やす"><?= icon('add') ?></button>
-        </div>
-        <span class="muted">帖以上</span>
+        <?php if ($filterTabs): ?>
+            <div class="sinfo-seg sinfo-filter__tabs" role="radiogroup" aria-label="絞り込み">
+                <label><input type="radio" name="filter_tab" value="area"> エリア</label>
+                <label><input type="radio" name="filter_tab" value="size" checked> 広さ</label>
+            </div>
+        <?php endif; ?>
+        <?php if ($areas): ?>
+            <div class="sinfo-filter__panel" data-filter-panel="area"<?= $filterTabs ? ' hidden' : '' ?>>
+                <select name="area" aria-label="エリア">
+                    <option value="">すべて</option>
+                    <?php foreach ($areas as $a): ?><option value="<?= h($a) ?>"><?= h($a) ?></option><?php endforeach; ?>
+                </select>
+            </div>
+        <?php endif; ?>
+        <?php if ($hasSize): ?>
+            <div class="sinfo-filter__panel" data-filter-panel="size">
+                <div class="sinfo-step">
+                    <button type="button" class="sinfo-step__btn" data-step="-1" aria-label="減らす"><?= icon('remove') ?></button>
+                    <input type="number" name="size" min="0" max="100" value="10" inputmode="numeric" aria-label="広さ（帖）の下限">
+                    <button type="button" class="sinfo-step__btn" data-step="1" aria-label="増やす"><?= icon('add') ?></button>
+                </div>
+                <span class="muted">帖以上</span>
+                <span class="sinfo-filter__info" data-filter-people></span>
+            </div>
+        <?php endif; ?>
         <span class="muted small" data-filter-count></span>
     </div>
+<?php endif; ?>
+
+<?php if ($studios): ?>
+    <!-- 料金比較: 開くと、この条件で全スタジオを計算してカードに出し、安い順に並べる（JS: setupListSim）。人数の＋／－は共通の setupStepper
+         縦を詰めるため、項目名は付けず（中身で分かる）、「割引」は対象の行の右に置く -->
+    <details class="card togglecard sinfo-edit sinfo-section" id="studio-list-sim">
+        <summary><?= icon('calculate') ?> <span class="togglecard__title">料金シミュレーション</span><?= icon('expand_more', 'togglecard__chevron') ?></summary>
+        <form class="sinfo-sim sinfo-sim--compact sinfo-edit__form togglecard__body" onsubmit="return false">
+            <div class="sinfo-sim__top">
+                <div class="sinfo-seg sinfo-seg--mode" role="radiogroup" aria-label="対象">
+                    <label><input type="radio" name="mode" value="band" checked> <?= icon('groups') ?> バンド練習</label>
+                    <label><input type="radio" name="mode" value="solo"> <?= icon('person') ?> 個人練習</label>
+                </div>
+                <label class="sinfo-chip"><input type="checkbox" name="disc" value="1"> 割引</label>
+            </div>
+            <div class="sinfo-sim__grid">
+                <div class="sinfo-seg" role="radiogroup" aria-label="曜日">
+                    <label><input type="radio" name="day" value="1" checked> 平日</label>
+                    <label><input type="radio" name="day" value="3"> 土</label>
+                    <label><input type="radio" name="day" value="4"> 日祝</label>
+                </div>
+                <select name="start" aria-label="開始"><?= studio_time_options(16 * 60) ?></select>
+                <select name="dur" aria-label="時間">
+                    <?php for ($m = 60; $m <= 600; $m += 30): ?>
+                        <option value="<?= $m ?>"<?= $m === 120 ? ' selected' : '' ?>><?= h(studio_fmt_hours($m)) ?></option>
+                    <?php endfor; ?>
+                </select>
+                <div class="sinfo-step">
+                    <button type="button" class="sinfo-step__btn" data-step="-1" aria-label="減らす"><?= icon('remove') ?></button>
+                    <input type="number" name="people" min="1" max="30" value="4" inputmode="numeric" aria-label="人数">
+                    <span class="sinfo-step__unit muted">人</span>
+                    <button type="button" class="sinfo-step__btn" data-step="1" aria-label="増やす"><?= icon('add') ?></button>
+                </div>
+            </div>
+        </form>
+    </details>
+    <script type="application/json" id="studio-sim-all"><?= json_encode($simAll, $jsonFlags) ?></script>
 <?php endif; ?>
 
 <?php if (!$studios): ?>
     <div class="empty card"><p class="empty__title">スタジオがありません</p></div>
 <?php else: ?>
 <p class="muted small" data-filter-empty hidden><?= icon('search_off') ?> 該当なし</p>
-<ul class="sinfo-list">
-    <?php foreach ($studios as $s): ?>
-        <li>
+<ul class="sinfo-list is-enter">
+    <?php foreach ($studios as $i => $s): ?>
+        <li style="--i: <?= (int)$i ?>">
             <!-- カード = div。<a> の中に <a>（予約ボタン）を入れるのは HTML のルール違反（リンクの入れ子は禁止）なので、
                  「詳細へのリンク（本体）」と「予約ボタン」を、div の中に横並びの兄弟として置く。
                  data-studio-id / data-max-area は JS（絞り込み・地図のピン連動）が読むので、外側の div に付けたまま -->
-            <div class="card sinfo-list__item" data-studio-id="<?= (int)$s['studio_id'] ?>" data-max-area="<?= h($s['max_area'] === null ? '' : studio_jo_num($s['max_area'])) ?>">
+            <div class="card sinfo-list__item" data-studio-id="<?= (int)$s['studio_id'] ?>" data-max-area="<?= h($s['max_area'] === null ? '' : studio_jo_num($s['max_area'])) ?>" data-area="<?= h($s['area'] ?? '') ?>">
             <a class="sinfo-list__link" href="studio_info?id=<?= (int)$s['studio_id'] ?>">
-                <!-- 1段め: スタジオ名だけ。タグ（学割・個人・パック）は2段めの先頭へ -->
-                <span class="sinfo-list__name"><?= h($s['name']) ?></span>
+                <!-- 1段め: スタジオ名（と おすすめ）。割引のタグ（学割など）は2段めの先頭へ -->
+                <span class="sinfo-list__name"><?= h($s['name']) ?><?php if ($s['recommended']): ?><span class="tag tag--rec">おすすめ</span><?php endif; ?></span>
+                <span class="sinfo-list__sim" data-list-sim hidden></span>
                 <span class="muted small sinfo-list__meta">
                     <?php $discTags = $s['disc_names'] === null ? [] : explode("\t", $s['disc_names']); // 割引区分の名前（学割・U20 …） ?>
-                    <?php if ($discTags || $s['has_solo'] || $s['has_pack']): ?>
+                    <?php if ($discTags): ?>
                         <span class="sinfo-list__tags">
                             <?php foreach ($discTags as $t): ?><span class="tag tag--plan"><?= h($t) ?></span><?php endforeach; ?>
-                            <?php if ($s['has_solo']): ?><span class="tag">個人</span><?php endif; ?>
-                            <?php if ($s['has_pack']): ?><span class="tag">パック</span><?php endif; ?>
                         </span>
                     <?php endif; ?>
                     <?php if ($s['access']): ?><span><?= icon('train') ?> <?= h($s['access']) ?></span><?php endif; ?>
@@ -161,9 +224,9 @@ render_header('スタジオ情報', 'tools');
 <?php endif; ?>
 
 <?php if ($canEdit): ?>
-    <details class="card sinfo-edit sinfo-section">
-        <summary><?= icon('add') ?> スタジオを追加 <span class="tag">幹部</span></summary>
-        <form method="post" class="sinfo-edit__form">
+    <details class="card togglecard sinfo-edit sinfo-section">
+        <summary><?= icon('add') ?> <span class="togglecard__title">スタジオを追加 <span class="tag">幹部</span></span><?= icon('expand_more', 'togglecard__chevron') ?></summary>
+        <form method="post" class="sinfo-edit__form togglecard__body">
             <?= csrf_field() ?>
             <div class="sinfo-edit__row">
                 <input autocomplete="off" type="text" class="grow" name="name" maxlength="100" required placeholder="スタジオ名" aria-label="スタジオ名">

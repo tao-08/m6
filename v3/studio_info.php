@@ -63,46 +63,6 @@ function studio_post_rooms(int|string $i, array $ownRoomIds): array|false
     return array_diff($picked, $ownRoomIds) === [] ? $picked : false; // array_diff = 自分のスタジオの部屋に無い id があるか
 }
 
-/** 親の行（料金など）に 'room_ids'（部屋 id の配列。空 = 全部屋共通）を足して返す。SQL は1回（N+1 を避ける） */
-function studio_attach_rooms(PDO $pdo, string $table, int $studioId, array $rows, array $roomOrder): array
-{
-    [$link, $pk] = STUDIO_ROOM_LINKS[$table];
-    $st = $pdo->prepare("SELECT l.$pk, l.studio_room_id FROM $link l JOIN $table t ON t.$pk = l.$pk WHERE t.studio_id = ?");
-    $st->execute([$studioId]);
-    $map = [];
-    foreach ($st->fetchAll(PDO::FETCH_NUM) as [$parent, $room]) {
-        $map[(int)$parent][] = (int)$room;
-    }
-    foreach ($rows as &$r) { // & = 参照。ループの中で $r を書き換えると、元の配列の行が変わる
-        // 部屋の並び順（画面で上に出る順）にそろえる。array_intersect は $roomOrder の順を保つ
-        $r['room_ids'] = array_values(array_intersect($roomOrder, $map[(int)$r[$pk]] ?? []));
-    }
-    unset($r); // 参照は使い終わったら必ず解除する（残すと次のループで事故る PHP の定番の落とし穴）
-    return $rows;
-}
-
-/**
- * 料金・パックの行に 'disc'（[割引区分 id => その区分の料金]。無い区分はキーごと無い）を足して返す
- *   studio_attach_rooms と同じく、SQL は1回だけ（行の数だけ SQL を投げる N+1 問題を避ける）
- */
-function studio_attach_discounts(PDO $pdo, string $table, int $studioId, array $rows): array
-{
-    [$link, $pk] = STUDIO_DISCOUNT_LINKS[$table];
-    $st = $pdo->prepare("SELECT l.$pk, l.studio_discount_id, l.price, l.kind FROM $link l JOIN $table t ON t.$pk = l.$pk WHERE t.studio_id = ?");
-    $st->execute([$studioId]);
-    $map = [];
-    foreach ($st->fetchAll(PDO::FETCH_NUM) as [$parent, $disc, $price, $kind]) {
-        $map[(int)$parent][(int)$disc] = [(int)$kind, (int)$price];
-    }
-    foreach ($rows as &$r) {
-        // disc_raw = 入力した値そのまま [区分id => [種類, 値]]（編集画面用）/ disc = 割引後の料金 [区分id => 料金]（表示・シミュレーション用）
-        $r['disc_raw'] = $map[(int)$r[$pk]] ?? [];
-        $r['disc'] = array_map(fn($d) => studio_disc_apply((int)$r['price'], $d[0], $d[1]), $r['disc_raw']);
-    }
-    unset($r);
-    return $rows;
-}
-
 /**
  * フォームの割引区分ごとの料金 disc[区分id][行番号] を読む → [区分 id => 料金]（空欄の区分は入れない）
  *   false = 数字ではない値が入っている
@@ -293,7 +253,7 @@ if (is_post()) {
     if ($action === 'save_info') {
         // ?? '' = 送られてこなかったら空文字。trim = 前後の空白を取る
         $f = [];
-        foreach (['name', 'website_url', 'reserve_url', 'address', 'access', 'hours', 'phone', 'student_note', 'note'] as $k) {
+        foreach (['name', 'website_url', 'reserve_url', 'address', 'access', 'area', 'hours', 'phone', 'student_note', 'note'] as $k) {
             $f[$k] = trim(str_replace("\r\n", "\n", (string)($_POST[$k] ?? '')));
         }
         $coords = studio_parse_coords((string)($_POST['coords'] ?? ''));
@@ -303,6 +263,7 @@ if (is_post()) {
             !studio_url_ok($f['reserve_url']) => '予約ページの URL が正しくありません',
             mb_strlen($f['address']) > 255 => '住所が長すぎます',
             mb_strlen($f['access']) > 100 => '最寄り駅が長すぎます',
+            mb_strlen($f['area']) > 30 => 'エリアが長すぎます',
             mb_strlen($f['hours']) > 200 => '営業時間が長すぎます',
             $f['phone'] !== '' && !preg_match('/^[0-9０-９+\-() ]{1,30}$/u', $f['phone']) => '電話番号が正しくありません',
             $coords === false => '座標は「35.6812, 139.7671」の形で入力してください',
@@ -316,9 +277,10 @@ if (is_post()) {
         }
         // 空の欄は NULL で保存（「未登録」を空文字ではなく NULL で表すのが DB の定番。IS NULL で探せる）
         $nul = fn(string $v) => $v === '' ? null : $v;
-        $pdo->prepare('UPDATE studio SET name = ?, website_url = ?, reserve_url = ?, address = ?, access = ?, hours = ?, phone = ?,
+        $recommended = isset($_POST['recommended']) ? 1 : 0; // チェックを外した欄は送られてこないので、あるかどうかで決める
+        $pdo->prepare('UPDATE studio SET name = ?, website_url = ?, reserve_url = ?, address = ?, access = ?, area = ?, recommended = ?, hours = ?, phone = ?,
                 lat = ?, lng = ?, student_note = ?, note = ?, updated_by = ? WHERE studio_id = ?')
-            ->execute([$f['name'], $nul($f['website_url']), $nul($f['reserve_url']), $nul($f['address']), $nul($f['access']), $nul($f['hours']),
+            ->execute([$f['name'], $nul($f['website_url']), $nul($f['reserve_url']), $nul($f['address']), $nul($f['access']), $nul($f['area']), $recommended, $nul($f['hours']),
                 $nul(mb_convert_kana($f['phone'], 'n')), $coords[0], $coords[1], $nul($f['student_note']), $nul($f['note']), $uid, $studioId]);
         flash('保存しました');
         redirect($self);
@@ -626,6 +588,7 @@ $roomName = array_column($rooms, 'name', 'studio_room_id'); // [部屋id => 部�
 $roomSize = [];
 foreach ($rooms as $r) {
     $roomSize[(int)$r['studio_room_id']] = trim(studio_fmt_jo($r['area_jo']) . ($r['size_note'] ? ' ' . $r['size_note'] : ''));
+    $roomJo[(int)$r['studio_room_id']] = studio_fmt_jo($r['area_jo']); // 広さだけ（備考なし）。パックの表の部屋名の横に出す。広さ不明は ''
 }
 
 // 料金表・パックの時間帯を何分遅らせて見せるか。30分開始の部屋だけの組 = 30 / それ以外 = 0
@@ -738,34 +701,7 @@ $rowsOfTarget = fn(array $rows, string $target): array => array_values(array_fil
 // 料金シミュレーション用のデータ（JS へ渡す）。キーは短く、値は数値にしておく
 //   dp = 割引区分ごとの料金 {区分id: 料金}。(object) にするのは、空のときに [] ではなく {} として JSON にするため
 //        （PHP の空配列は json_encode で [] になる。JS では r.dp[3] がどちらでも undefined なので動くが、形をそろえておく）
-$simData = [
-    'discounts' => array_map(fn($d) => ['id' => $d['studio_discount_id'], 'name' => $d['name'], 'day' => $d['day_type']], $usedDisc),
-    // hs = 30分スタート可 / hu = 30分単位で利用可（JS が開始・時間の選択肢を絞る）
-    'rooms' => array_map(fn($r) => ['id' => (int)$r['studio_room_id'], 'name' => $r['name'], 'hs' => (int)$r['half_start'], 'hu' => (int)$r['half_unit'], 'sh' => (int)$r['half_start'] ? 30 : 0], $rooms), // sh = 料金の時間帯を遅らせる分（30分開始の部屋は30）
-    'rates' => array_map(fn($r) => [
-        'rooms' => $r['room_ids'], // 空 = 全部屋共通
-        'ppl' => $r['people'] === null ? 0 : (int)$r['people'], // 0 = バンド
-        'day' => (int)$r['day_type'],
-        's' => (int)$r['start_min'],
-        'e' => (int)$r['end_min'],
-        'p' => (int)$r['price'],
-        'dp' => (object)$r['disc'],
-    ], $rates),
-    'packs' => array_map(fn($r) => [
-        'name' => $r['name'],
-        'rooms' => $r['room_ids'],
-        'ppl' => $r['people'] === null ? 0 : (int)$r['people'],
-        'day' => (int)$r['day_type'],
-        's' => (int)$r['start_min'],
-        'e' => (int)$r['end_min'],
-        'min' => $r['minutes'] === null ? null : (int)$r['minutes'],
-        'p' => (int)$r['price'],
-        'dp' => (object)$r['disc'],
-    ], $packs),
-    'rentals' => array_map(fn($r) => [
-        'id' => (int)$r['studio_rental_id'], 'name' => $r['name'], 'p' => (int)$r['price'], 'hour' => (bool)$r['per_hour'],
-    ], $rentals),
-];
+$simData = studio_sim_payload($usedDisc, $rooms, $rates, $packs, $rentals);
 
 // 地図: 座標があれば Leaflet でピン1本。Google マップのリンクは「経路検索」に使える（座標が無ければ住所 → 名前で検索）
 $hasPin = $studio['lat'] !== null && $studio['lng'] !== null;
@@ -895,7 +831,7 @@ render_header($studio['name'], 'tools');
 <link rel="stylesheet" href="<?= asset_url('assets/vendor/leaflet/leaflet.css') ?>">
 <link rel="stylesheet" href="<?= asset_url('assets/studio_info.css') ?>">
 <nav class="crumbs"><a href="tools">ツール</a> / <a href="studio_list">スタジオ情報</a></nav>
-<h1 class="display display--sm"><?= h($studio['name']) ?></h1>
+<h1 class="display display--sm"><?= h($studio['name']) ?><?php if ($studio['recommended']): ?> <span class="tag tag--rec label-inline">おすすめ</span><?php endif; ?></h1>
 
 <!-- ページ内ジャンプ（縦に長いので、各カードへ一発で飛べる。画面上部に貼り付く） -->
 <nav class="sinfo-jump" aria-label="ページ内移動">
@@ -988,6 +924,13 @@ render_header($studio['name'], 'tools');
                 </span></label>
             <label class="sinfo-field"><span>最寄り駅</span>
                 <input autocomplete="off" type="text" name="access" maxlength="100" value="<?= h($studio['access']) ?>" placeholder="立川駅 北口 徒歩5分"></label>
+            <!-- エリア: 一覧の絞り込みに使う名前（例: 新宿）。他のスタジオに入っている名前は候補に出る（同じ名前をそろえやすいように） -->
+            <label class="sinfo-field"><span>エリア</span>
+                <input autocomplete="off" type="text" name="area" maxlength="30" list="studio-area-list" value="<?= h($studio['area']) ?>" placeholder="新宿"></label>
+            <datalist id="studio-area-list">
+                <?php foreach ($pdo->query('SELECT DISTINCT area FROM studio WHERE area IS NOT NULL ORDER BY area')->fetchAll(PDO::FETCH_COLUMN) as $a): ?><option value="<?= h($a) ?>"><?php endforeach; ?>
+            </datalist>
+            <label class="sinfo-check"><input type="checkbox" name="recommended" value="1"<?= $studio['recommended'] ? ' checked' : '' ?>> おすすめ</label>
             <label class="sinfo-field"><span>営業時間</span>
                 <input autocomplete="off" type="text" name="hours" maxlength="200" value="<?= h($studio['hours']) ?>" placeholder="平日 10:00-23:00 / 土日祝 9:00-22:00"></label>
             <label class="sinfo-field"><span>電話</span>
@@ -1037,7 +980,7 @@ render_header($studio['name'], 'tools');
                         <label><input type="radio" name="day" value="2"> 土日祝</label>
                     <?php endif; ?>
                 </div></div>
-            <label class="sinfo-field"><span>開始</span><select name="start"><?= studio_time_options(18 * 60) ?></select></label>
+            <label class="sinfo-field"><span>開始</span><select name="start"><?= studio_time_options(16 * 60) ?></select></label>
             <label class="sinfo-field"><span>時間</span>
                 <select name="dur">
                     <?php for ($m = 60; $m <= 600; $m += 30): ?>
@@ -1049,7 +992,7 @@ render_header($studio['name'], 'tools');
             <div class="sinfo-field"><span>人数</span>
                 <div class="sinfo-step">
                     <button type="button" class="sinfo-step__btn" data-step="-1" aria-label="減らす"><?= icon('remove') ?></button>
-                    <input type="number" name="people" min="1" max="30" value="5" inputmode="numeric" aria-label="人数">
+                    <input type="number" name="people" min="1" max="30" value="4" inputmode="numeric" aria-label="人数">
                     <button type="button" class="sinfo-step__btn" data-step="1" aria-label="増やす"><?= icon('add') ?></button>
                 </div></div>
         </div>
@@ -1471,9 +1414,16 @@ $packRoomLines = function (array $row) use ($packRoomIds): array {
                         <?php foreach ($rows as $row): ?>
                         <tbody>
                             <tr><th colspan="2" scope="rowgroup"><span class="sinfo-slot sinfo-pack-slot" data-tip="<?= h($row['name']) ?>"><span class="sinfo-slot__day"><?= h(STUDIO_DAY_TYPES[$row['day']] ?? '') ?></span><?= h(studio_fmt_clock($row['start'])) ?>〜<?= h(studio_fmt_clock($row['end'])) ?></span></th></tr>
-                            <?php foreach ($packRoomLines($row) as $line): $c = $line['pack']; ?>
+                            <?php foreach ($packRoomLines($row) as $line):
+                                $c = $line['pack'];
+                                // この行の部屋の広さが全部同じ（かつ2部屋以上）なら、広さは最後に1回だけ出す。違うなら各部屋の横に出す
+                                $jos = array_unique(array_map(fn($rid) => $roomJo[$rid] ?? '', $line['rids']));
+                                $sameJo = count($line['rids']) > 1 && count($jos) === 1 && reset($jos) !== '';
+                            ?>
                             <tr>
-                                <td class="sinfo-pack-rooms"><?= !$roomName ? '料金' : ($line['rids'] === $packRoomIds && count($line['rids']) > 1 ? '全部屋' : h(implode('・', array_map(fn($rid) => $roomName[$rid], $line['rids'])))) ?></td>
+                                <!-- 部屋名の横に広さ。広さがバラバラ = 各部屋の横（Ast 9帖・Dst 11帖）/ 全部同じ = 最後に1回（Ast・Dst・Gst 9帖）。
+                                     「名前＋広さ」は途中で折り返さない（.sinfo-pack-room）。同じ広さのときは、最後の部屋と広さを1つの塊にする -->
+                                <td class="sinfo-pack-rooms"><?php if (!$roomName): ?>料金<?php elseif ($line['rids'] === $packRoomIds && count($line['rids']) > 1): ?>全部屋<?php else: foreach ($line['rids'] as $k => $rid): ?><?= $k ? '・' : '' ?><span class="sinfo-pack-room"><?= h($roomName[$rid]) ?><?php if ($sameJo ? $k === count($line['rids']) - 1 : !empty($roomJo[$rid])): ?> <span class="muted small"><?= h($roomJo[$rid]) ?></span><?php endif; ?></span><?php endforeach; endif; ?></td>
                                 <td class="num">
                                     <?= h(studio_yen((int)$c['price'])) ?>
                                     <?php foreach ($c['disc'] as $did => $dp): ?><em class="sinfo-pack-disc" data-tip="<?= h($discName[$did] ?? '') ?>"><?= h(studio_yen($dp)) ?></em><?php endforeach; ?>

@@ -320,3 +320,100 @@ function studio_parse_jo(string $raw): float|null|false
     $v = (float)$raw;
     return $v >= 0.5 ? $v : false;
 }
+
+/** 親の行（料金など）に 'room_ids'（部屋 id の配列。空 = 全部屋共通）を足して返す。SQL は1回（N+1 を避ける） */
+function studio_attach_rooms(PDO $pdo, string $table, int $studioId, array $rows, array $roomOrder): array
+{
+    [$link, $pk] = STUDIO_ROOM_LINKS[$table];
+    $st = $pdo->prepare("SELECT l.$pk, l.studio_room_id FROM $link l JOIN $table t ON t.$pk = l.$pk WHERE t.studio_id = ?");
+    $st->execute([$studioId]);
+    $map = [];
+    foreach ($st->fetchAll(PDO::FETCH_NUM) as [$parent, $room]) {
+        $map[(int)$parent][] = (int)$room;
+    }
+    foreach ($rows as &$r) { // & = 参照。ループの中で $r を書き換えると、元の配列の行が変わる
+        // 部屋の並び順（画面で上に出る順）にそろえる。array_intersect は $roomOrder の順を保つ
+        $r['room_ids'] = array_values(array_intersect($roomOrder, $map[(int)$r[$pk]] ?? []));
+    }
+    unset($r); // 参照は使い終わったら必ず解除する（残すと次のループで事故る PHP の定番の落とし穴）
+    return $rows;
+}
+
+/**
+ * 料金・パックの行に 'disc'（[割引区分 id => その区分の料金]。無い区分はキーごと無い）を足して返す
+ *   studio_attach_rooms と同じく、SQL は1回だけ（行の数だけ SQL を投げる N+1 問題を避ける）
+ */
+function studio_attach_discounts(PDO $pdo, string $table, int $studioId, array $rows): array
+{
+    [$link, $pk] = STUDIO_DISCOUNT_LINKS[$table];
+    $st = $pdo->prepare("SELECT l.$pk, l.studio_discount_id, l.price, l.kind FROM $link l JOIN $table t ON t.$pk = l.$pk WHERE t.studio_id = ?");
+    $st->execute([$studioId]);
+    $map = [];
+    foreach ($st->fetchAll(PDO::FETCH_NUM) as [$parent, $disc, $price, $kind]) {
+        $map[(int)$parent][(int)$disc] = [(int)$kind, (int)$price];
+    }
+    foreach ($rows as &$r) {
+        // disc_raw = 入力した値そのまま [区分id => [種類, 値]]（編集画面用）/ disc = 割引後の料金 [区分id => 料金]（表示・シミュレーション用）
+        $r['disc_raw'] = $map[(int)$r[$pk]] ?? [];
+        $r['disc'] = array_map(fn($d) => studio_disc_apply((int)$r['price'], $d[0], $d[1]), $r['disc_raw']);
+    }
+    unset($r);
+    return $rows;
+}
+/**
+ * 料金シミュレーションに渡すデータ（JS: simEngine）。キーは短く、値は数値にしておく
+ *   dp = 割引区分ごとの料金 {区分id: 料金}。(object) にするのは、空のときに [] ではなく {} として JSON にするため
+ *   部屋: hs = 30分スタート可 / hu = 30分単位で利用可 / sh = 料金の時間帯を遅らせる分（30分開始の部屋は30）/ a = 広さ（帖。不明は null）/ sz = 広さの表示
+ */
+function studio_sim_payload(array $discounts, array $rooms, array $rates, array $packs, array $rentals): array
+{
+    return [
+        "discounts" => array_map(fn($d) => ["id" => $d["studio_discount_id"], "name" => $d["name"], "day" => $d["day_type"]], $discounts),
+        "rooms" => array_map(fn($r) => [
+            "id" => (int)$r["studio_room_id"], "name" => $r["name"], "hs" => (int)$r["half_start"], "hu" => (int)$r["half_unit"],
+            "sh" => (int)$r["half_start"] ? 30 : 0, "a" => $r["area_jo"] === null ? null : (float)$r["area_jo"], "sz" => studio_fmt_jo($r["area_jo"]),
+        ], $rooms),
+        "rates" => array_map(fn($r) => [
+            "rooms" => $r["room_ids"], // 空 = 全部屋共通
+            "ppl" => $r["people"] === null ? 0 : (int)$r["people"], // 0 = バンド
+            "day" => (int)$r["day_type"],
+            "s" => (int)$r["start_min"],
+            "e" => (int)$r["end_min"],
+            "p" => (int)$r["price"],
+            "dp" => (object)$r["disc"],
+        ], $rates),
+        "packs" => array_map(fn($r) => [
+            "name" => $r["name"],
+            "rooms" => $r["room_ids"],
+            "ppl" => $r["people"] === null ? 0 : (int)$r["people"],
+            "day" => (int)$r["day_type"],
+            "s" => (int)$r["start_min"],
+            "e" => (int)$r["end_min"],
+            "min" => $r["minutes"] === null ? null : (int)$r["minutes"],
+            "p" => (int)$r["price"],
+            "dp" => (object)$r["disc"],
+        ], $packs),
+        "rentals" => array_map(fn($r) => [
+            "id" => (int)$r["studio_rental_id"], "name" => $r["name"], "p" => (int)$r["price"], "hour" => (bool)$r["per_hour"],
+        ], $rentals),
+    ];
+}
+
+/** 一覧の料金比較用に、1つのスタジオのデータを読む（レンタルは比較に使わないので読まない） */
+function studio_sim_load(PDO $pdo, int $studioId): array
+{
+    $st = $pdo->prepare("SELECT studio_room_id, name, area_jo, half_start, half_unit FROM studio_room WHERE studio_id = ? ORDER BY sort_order, studio_room_id");
+    $st->execute([$studioId]);
+    $rooms = $st->fetchAll();
+    $order = array_map("intval", array_column($rooms, "studio_room_id"));
+
+    $st = $pdo->prepare("SELECT studio_rate_id, people, day_type, start_min, end_min, price FROM studio_rate WHERE studio_id = ?");
+    $st->execute([$studioId]);
+    $rates = studio_attach_discounts($pdo, "studio_rate", $studioId, studio_attach_rooms($pdo, "studio_rate", $studioId, $st->fetchAll(), $order));
+
+    $st = $pdo->prepare("SELECT studio_pack_id, people, name, day_type, start_min, end_min, minutes, price FROM studio_pack WHERE studio_id = ?");
+    $st->execute([$studioId]);
+    $packs = studio_attach_discounts($pdo, "studio_pack", $studioId, studio_attach_rooms($pdo, "studio_pack", $studioId, $st->fetchAll(), $order));
+
+    return studio_sim_payload(studio_discounts($pdo, $studioId), $rooms, $rates, $packs, []);
+}

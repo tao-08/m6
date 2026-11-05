@@ -150,41 +150,82 @@
   };
 
   // ===================================================================
-  //  6. 広さの絞り込み（スタジオ一覧）
-  //     各カードの data-max-area（そのスタジオでいちばん広い部屋の帖数。不明は空）が、入力した帖数以上のものだけ残す
-  //     0 = 絞り込みなし。広さが不明のスタジオは、絞り込み中は出さない（条件を満たすか分からないため）
-  //     入力値は URL（?min=12）にも入れる → 絞り込んだ状態のまま URL を共有できる
+  //  6. 絞り込み（スタジオ一覧）: 広さ と エリア（両方の条件が同時に効く）
+  //     ・広さ: 各カードの data-max-area（そのスタジオでいちばん広い部屋の帖数。不明は空）が、入力した帖数以上のものだけ残す
+  //       0 = 絞り込みなし。広さが不明のスタジオは、絞り込み中は出さない（条件を満たすか分からないため）
+  //     ・エリア: 各カードの data-area が、選んだエリアと同じものだけ残す（空 = すべて。エリア未入力のスタジオは、選んでいる間は出さない）
+  //     ・エリアと広さの両方があるときは、タブ（name="filter_tab"）で入力欄を切り替える。切り替えても条件は残る
+  //     ・値は URL（?min=12&area=新宿）にも入れる → 絞り込んだ状態のまま URL を共有できる。既定の値（広さ 10帖・エリアなし）は書かない
   // ===================================================================
   const setupFilter = (mapApi) => {
     const box = document.getElementById('studio-filter');
     if (!box) return;
-    const input = box.querySelector('input[type=number]');
+    const size = box.querySelector('input[name="size"]'); // 広さの入力（無ければ null）
+    const area = box.querySelector('select[name="area"]'); // エリアの選択（無ければ null）
     const count = box.querySelector('[data-filter-count]');
+    const people = box.querySelector('[data-filter-people]');
     const empty = document.querySelector('[data-filter-empty]');
     const cards = [...document.querySelectorAll('.sinfo-list [data-studio-id]')]; // [...NodeList] = 配列に変換
+    const params = new URL(location.href).searchParams;
+    const sizeDefault = size ? Number(size.defaultValue) || 0 : 0; // HTML に書いた初期値。この値のときは URL に書かない
+
+    // ---- タブ（エリア / 広さ）----
+    const tabLabel = (v) => box.querySelector(`input[name="filter_tab"][value="${v}"]`)?.closest('label');
+    const showTab = () => {
+      const v = box.querySelector('input[name="filter_tab"]:checked')?.value;
+      if (!v) return; // タブが無い（片方だけ）ときは、そのまま見せる
+      box.querySelectorAll('[data-filter-panel]').forEach((p) => { p.hidden = p.dataset.filterPanel !== v; });
+    };
 
     const apply = () => {
-      const min = Math.max(0, Number(input.value) || 0);
+      const min = size ? Math.max(0, Number(size.value) || 0) : 0;
+      const areaName = area ? area.value : '';
       const visible = new Set();
       cards.forEach((card) => {
         const max = card.dataset.maxArea === '' ? null : Number(card.dataset.maxArea);
-        const ok = min <= 0 || (max !== null && max >= min);
+        const ok = (min <= 0 || (max !== null && max >= min)) && (areaName === '' || card.dataset.area === areaName);
         card.closest('li').hidden = !ok; // hidden 属性 = 表示から外す（HTML 標準）
         if (ok) visible.add(card.dataset.studioId);
       });
-      count.textContent = min > 0 ? visible.size + ' / ' + cards.length : '';
+      count.textContent = visible.size < cards.length ? visible.size + ' / ' + cards.length : ''; // 隠れたスタジオがあるときだけ
+      if (people) {
+        // 目安の人数（定員ではなく、バンドで無理なく入れる人数）。サークルの実感とスタジオ各社の目安から決めた表
+        const guide = min < 8 ? '2人' : min < 10 ? '3人' : min < 11 ? '3〜4人' : min < 12 ? '4〜5人' : min < 15 ? '5〜6人' : min < 20 ? '6〜7人' : '7人〜';
+        people.textContent = min > 0 ? '目安' + guide : '';
+      }
+      // 今開いていないタブで条件が効いているとき、そのタブに印を付ける（CSS: data-on）
+      tabLabel('area')?.toggleAttribute('data-on', areaName !== '');
+      tabLabel('size')?.toggleAttribute('data-on', min !== sizeDefault);
       if (empty) empty.hidden = visible.size > 0;
       if (mapApi) mapApi.setVisible(visible);
       // history.replaceState = ページを移動せず URL だけ書き換える（戻るボタンの履歴は増やさない）
       const url = new URL(location.href);
-      if (min > 0) url.searchParams.set('min', String(min));
+      if (size && min !== sizeDefault) url.searchParams.set('min', String(min));
       else url.searchParams.delete('min');
+      if (areaName) url.searchParams.set('area', areaName);
+      else url.searchParams.delete('area');
       history.replaceState(null, '', url);
     };
 
-    input.addEventListener('input', apply);
-    const first = Number(new URL(location.href).searchParams.get('min'));
-    if (first > 0) input.value = String(Math.min(Number(input.max) || 100, first));
+    box.addEventListener('change', (e) => {
+      if (e.target.name === 'filter_tab') showTab();
+      else if (e.target.name === 'area') apply();
+    });
+    size?.addEventListener('input', apply);
+
+    // URL の値を入力欄へ（共有された URL・リロードで同じ絞り込みに戻す）
+    const m = params.get('min');
+    if (size && m !== null && m !== '' && Number.isFinite(Number(m))) {
+      size.value = String(Math.min(Number(size.max) || 100, Math.max(0, Number(m))));
+    }
+    const a = params.get('area');
+    if (area && a && [...area.options].some((o) => o.value === a)) {
+      area.value = a;
+      area.dispatchEvent(new Event('change', { bubbles: true })); // 独自の選択 UI の表示文字も更新させる
+      const t = box.querySelector('input[name="filter_tab"][value="area"]');
+      if (t) t.checked = true; // エリアで絞り込んだ URL は、エリアのタブから開く
+    }
+    showTab();
     apply();
   };
 
@@ -232,12 +273,8 @@
   //     ・パック: 予約が収まるパックのうち、通常料金より安いものを自動で使う
   //     ・+1時間延長したら、合計がいくら増えるか
   // ===================================================================
-  const setupSim = () => {
-    const form = document.getElementById('studio-sim');
-    const data = readJson('studio-sim-data');
-    const out = document.getElementById('studio-sim-result');
-    if (!form || !data || !out) return;
-
+  /** 料金の計算（詳細ページの試算と、一覧の比較で共通）。data = PHP の studio_sim_payload() の中身 */
+  const simEngine = (data) => {
     const DAY = 24 * 60;
     // 日をまたぐ時間帯は DB に「終了 = 翌日の時刻 + 24時間」で入っている（23:00〜10:00 → 1380〜2040。古いデータには 22:00〜29:00 のような値もある）ので、予約の時刻を 0 / -24h / +24h ずらして比べる
     const SHIFTS = [0, -DAY, DAY];
@@ -282,27 +319,6 @@
      *   r.dp = {区分id: 料金}。その時間帯・パックに区分の料金が無ければ undefined → 通常料金
      */
     const priceOf = (r, disc) => (disc && r.dp[disc] != null ? r.dp[disc] : r.p);
-
-    /** 区分 id → 区分 {id, name, day}（無ければ null）。day = 使える曜日 0 全日 / 1 平日のみ / 2 土日祝のみ / 3 土のみ / 4 日祝のみ */
-    const discOf = (id) => data.discounts.find((d) => d.id === id) || null;
-    const DAY_ONLY = ['', '平日のみ', '土日祝のみ', '土のみ', '日祝のみ'];
-
-    /** 入力の値を読む（FormData = フォームの入力をまとめて取れるブラウザ標準の仕組み） */
-    const read = () => {
-      const fd = new FormData(form);
-      const people = Math.max(1, Number(fd.get('people')) || 1);
-      return {
-        solo: fd.get('mode') === 'solo',
-        ppl: fd.get('mode') === 'solo' ? people : 0, // 料金表の people と比べる値（0 = バンド）
-        room: Number(fd.get('room') || 0),
-        day: Number(fd.get('day') || 1),
-        start: Number(fd.get('start')),
-        dur: Number(fd.get('dur')),
-        people,
-        disc: Number(fd.get('disc') || 0), // 選んだ割引区分の id（0 = なし。割引の無いスタジオは選択欄ごと無い → 0）
-        rentals: data.rentals.map((r) => ({ ...r, qty: Math.max(0, Number(fd.get('rental_' + r.id)) || 0) })),
-      };
-    };
 
     /**
      * 通常料金（30分ごとに料金の行を探して足す）。同じ料金が続く所は1つの「区間」にまとめる
@@ -372,6 +388,38 @@
         packSave: usePack && normal.missing === 0 ? Math.round(normal.total - pack.price) : 0,
         missing: usePack ? 0 : normal.missing,
         rentals,
+      };
+    };
+
+    return { calc, dayOk };
+  };
+
+  const setupSim = () => {
+    const form = document.getElementById('studio-sim');
+    const data = readJson('studio-sim-data');
+    const out = document.getElementById('studio-sim-result');
+    if (!form || !data || !out) return;
+
+    const { calc, dayOk } = simEngine(data);
+
+    /** 区分 id → 区分 {id, name, day}（無ければ null）。day = 使える曜日 0 全日 / 1 平日のみ / 2 土日祝のみ / 3 土のみ / 4 日祝のみ */
+    const discOf = (id) => data.discounts.find((d) => d.id === id) || null;
+    const DAY_ONLY = ['', '平日のみ', '土日祝のみ', '土のみ', '日祝のみ'];
+
+    /** 入力の値を読む（FormData = フォームの入力をまとめて取れるブラウザ標準の仕組み） */
+    const read = () => {
+      const fd = new FormData(form);
+      const people = Math.max(1, Number(fd.get('people')) || 1);
+      return {
+        solo: fd.get('mode') === 'solo',
+        ppl: fd.get('mode') === 'solo' ? people : 0, // 料金表の people と比べる値（0 = バンド）
+        room: Number(fd.get('room') || 0),
+        day: Number(fd.get('day') || 1),
+        start: Number(fd.get('start')),
+        dur: Number(fd.get('dur')),
+        people,
+        disc: Number(fd.get('disc') || 0), // 選んだ割引区分の id（0 = なし。割引の無いスタジオは選択欄ごと無い → 0）
+        rentals: data.rentals.map((r) => ({ ...r, qty: Math.max(0, Number(fd.get('rental_' + r.id)) || 0) })),
       };
     };
 
@@ -486,7 +534,7 @@
     };
     form.elements.room?.addEventListener('change', applyRoomRule);
 
-    // バンド ⇔ 個人を切り替えたら人数をそれっぽい値に（バンド 5人 / 個人 1人）。手で変えた人数は覚えておいて戻す
+    // バンド ⇔ 個人を切り替えたら人数をそれっぽい値に（バンド 4人 / 個人 1人）。手で変えた人数は覚えておいて戻す
     const people = form.elements.people;
     const remembered = { band: people.value, solo: '1' };
     let lastMode = form.elements.mode.value;
@@ -562,7 +610,9 @@
         cb.value = key;
         cb.checked = true;
         label.append(cb, document.createTextNode(' ' + SECTIONS[key]));
-        sum.append(label, el('span', 'muted small', lines.length + '件'));
+        const chev = el('span', 'icon togglecard__chevron', 'expand_more'); // 開閉の印は、サイト共通の ⌄（PHP の icon() と同じ作り）
+        chev.setAttribute('aria-hidden', 'true');
+        sum.append(label, el('span', 'muted small', lines.length + '件'), chev);
         const ul = el('ul', 'sinfo-plain sinfo-ai__lines');
         lines.forEach((t) => ul.append(el('li', '', t)));
         d.append(sum, ul);
@@ -906,6 +956,131 @@
   };
 
   // ===================================================================
+  //  一覧の料金比較（#studio-list-sim）: 1つの条件で全スタジオを計算し、カードに最安の部屋を出して安い順に並べる
+  //     ・開いている間だけ計算する。閉じると元の並びに戻す
+  //     ・広さの絞り込み（#studio-filter）を満たす部屋だけで比べる
+  //     ・割引スイッチ ON: 選んだ曜日に使える区分のうち、いちばん安くなるものを使う
+  //     ・料金が足りない時間がある部屋は、合計が正しく出ないので候補から外す。候補が無い店は「料金未登録」で一番下
+  // ===================================================================
+  const setupListSim = () => {
+    const box = document.getElementById('studio-list-sim');
+    const all = readJson('studio-sim-all');
+    if (!box || !all) return;
+    const form = box.querySelector('form');
+    const list = document.querySelector('.sinfo-list');
+    const items = [...list.children]; // 元の並び（閉じたときに戻す）
+    const minArea = document.querySelector('#studio-filter input[name="size"]');
+    const engines = new Map(); // スタジオ id → 計算の部品（1回作って使い回す）
+
+    /** 部屋の開始・時間の決まりに合わせる（詳細ページの applyRoomRule と同じ） */
+    const fit = (room, start, dur) => {
+      if (!room) return { start, dur };
+      const s = room.hs && !room.hu ? start - (start % 60) + 30 : room.hs ? start : start - (start % 60);
+      return { start: s, dur: room.hu ? dur : dur - (dur % 60) };
+    };
+
+    /** 1つのスタジオの最安（無ければ null） */
+    const best = (id, c) => {
+      const data = all[id];
+      if (!engines.has(id)) engines.set(id, simEngine(data));
+      const { calc, dayOk } = engines.get(id);
+      const rooms = data.rooms.length ? data.rooms : [null];
+      const discs = c.disc ? [{ id: 0 }, ...data.discounts.filter((d) => dayOk(d.day, c.day))] : [{ id: 0 }];
+      let top = null;
+      rooms.forEach((room) => {
+        if (c.area > 0 && !(room?.a >= c.area)) return; // 広さ不明の部屋は、絞り込み中は候補にしない（絞り込みと同じ考え方）
+        const { start, dur } = fit(room, c.start, c.dur);
+        const v = { ppl: c.ppl, room: room ? room.id : 0, day: c.day, start, rentals: [] };
+        discs.forEach((d) => {
+          const r = calc(v, d.id, dur);
+          if (r.missing || (!r.pack && !r.normal.segs.length)) return;
+          if (!top || r.total < top.total) top = { total: r.total, room, start, dur, disc: d.name || '', pack: r.pack?.name || '' };
+        });
+      });
+      return top;
+    };
+
+    // ---- カードの動き（FLIP = 動かす前の位置を覚え、並べ替えたあと「元の位置 → 今の位置」へ滑らせる）----
+    //   時間・イージングは CSS の変数（--t-slow / --ease-out）から読む → 他の動きと同じ速さにそろう
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)'); // 「動きを減らす」設定のときは滑らせない
+    const snap = () => new Map(items.map((li) => [li, li.getBoundingClientRect().top]));
+    const glide = (before) => {
+      if (reduce.matches) return;
+      const css = getComputedStyle(document.documentElement);
+      const duration = (parseFloat(css.getPropertyValue('--t-slow')) || 0.3) * 1000;
+      const easing = css.getPropertyValue('--ease-out').trim() || 'ease-out';
+      items.forEach((li) => {
+        if (li.hidden) return;
+        const dy = before.get(li) - li.getBoundingClientRect().top;
+        if (Math.abs(dy) >= 1) li.animate([{ transform: `translateY(${dy}px)` }, { transform: 'none' }], { duration, easing });
+      });
+    };
+
+    const render = () => {
+      const before = snap();
+      const fd = new FormData(form);
+      const solo = fd.get('mode') === 'solo';
+      const people = Math.max(1, Number(fd.get('people')) || 1);
+      const c = {
+        ppl: solo ? people : 0, day: Number(fd.get('day')), start: Number(fd.get('start')), dur: Number(fd.get('dur')),
+        disc: fd.get('disc') === '1', area: Math.max(0, Number(minArea?.value) || 0),
+      };
+      const rows = items.map((li, i) => {
+        const card = li.querySelector('[data-studio-id]');
+        const out = card.querySelector('[data-list-sim]');
+        const b = best(card.dataset.studioId, c);
+        out.hidden = false;
+        out.replaceChildren();
+        if (b) {
+          const per = el('span', 'sinfo-list__per', '1人 ');
+          per.append(el('strong', '', yen(Math.ceil(b.total / people))));
+          out.append(el('strong', 'sinfo-list__yen', yen(b.total)), per);
+          if (b.room) out.append(el('span', 'muted', b.room.name + (b.room.sz ? ' ' + b.room.sz : '')));
+          if (b.start !== c.start || b.dur !== c.dur) out.append(el('span', 'muted', clock(b.start) + '〜 ' + b.dur / 60 + '時間'));
+          if (b.disc) out.append(el('span', 'tag tag--plan', b.disc));
+          if (b.pack) out.append(el('span', 'muted', b.pack));
+        } else {
+          out.append(el('span', 'muted', '料金未登録'));
+        }
+        return { li, i, total: b ? b.total : Infinity };
+      });
+      rows.sort((a, b) => a.total - b.total || a.i - b.i);
+      list.append(...rows.map((r) => r.li)); // append = 既にある要素は移動になる
+      glide(before);
+    };
+
+    const clear = () => {
+      const before = snap();
+      list.querySelectorAll('[data-list-sim]').forEach((o) => { o.hidden = true; });
+      list.append(...items);
+      glide(before);
+    };
+    const update = () => {
+      list.classList.remove('is-enter'); // 読み込み時の登場アニメは1回だけ（要素を動かすと CSS のアニメが最初からやり直しになるため）
+      if (box.open) render();
+      else clear();
+    };
+
+    box.addEventListener('toggle', update);
+    // バンド ⇔ 個人の切り替えは、下で人数を直してから計算する（先に計算すると、古い人数で一瞬だけ並びが変わってしまう）
+    const notMode = (e) => { if (e.target.name !== 'mode') update(); };
+    form.addEventListener('input', notMode);
+    form.addEventListener('change', notMode);
+    minArea?.addEventListener('input', update);
+    // バンド ⇔ 個人を切り替えたら人数をそれっぽい値に（詳細ページの試算と同じ。手で変えた人数は覚えておいて戻す）
+    const people = form.elements.people;
+    const remembered = { band: people.value, solo: '1' };
+    let lastMode = 'band';
+    form.addEventListener('change', (e) => {
+      if (e.target.name !== 'mode') return;
+      remembered[lastMode] = people.value;
+      lastMode = e.target.value;
+      people.value = remembered[lastMode];
+      update();
+    });
+  };
+
+  // ===================================================================
   //  料金の編集: 2段のタブ（対象 / 曜日）と 割引の一括入力
   //     ・対象（rate_target）と曜日（rate_day_対象）から [data-rate-panel="対象|曜日"] を選ぶ。隠れたタブの欄も一緒に保存される
   //     ・隠れた欄に不正な値があると、ブラウザは欄を見せられず送信を止めるので、その欄のタブを開く
@@ -1003,5 +1178,6 @@
   setupSoloPeople();
   setupPackLen();
   setupSim();
+  setupListSim();
   setupAi();
 })();
