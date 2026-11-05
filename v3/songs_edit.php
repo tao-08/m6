@@ -18,6 +18,8 @@
  *  曲の紐付け: 🔍で Spotify / iTunes の曲を検索して選ぶ（assets/app.js の setupTrackSearch → api_track_search.php）。
  *    選んだ曲のキー（"spotify:xxxx"）だけが送られてくるので、曲名・ジャケットはサーバーが取り直す。
  *
+ *    セッティングシートから来たときは、紐付けていない曲のうち、アーティスト名と曲名が track テーブルと完全一致するものを自動で紐付ける（track に無ければ🔍と同じ検索で完全一致を探す）。
+ *
  *  保存の中身は lib/repository.php の save_songs()。
  * =====================================================================
  */
@@ -262,6 +264,8 @@ if ($fromSheet) {
         $t = track_lookup($key[0], $key[1]);
         return $t === null ? null : ['title' => $t['title'], 'artist_name' => $t['artist_name'], 'artwork_url' => $t['artwork_url']];
     };
+    $autoSt = $pdo->prepare('SELECT source, track_id, title, artist_name, artwork_url FROM track
+        WHERE BINARY title = ? AND BINARY artist_name = ? ORDER BY source DESC, track_id LIMIT 1');
     $cards = [];
     foreach ($sheetTitles as $i => $title) {
         // array_shift: 配列の先頭を取り出す（同じ曲名の2回目には、2つ目の登録済みの曲を使う）
@@ -274,6 +278,22 @@ if ($fromSheet) {
                 'track_source' => $key[0], 'track_id' => $key[1],
                 'track_title' => $info['title'], 'track_artist' => $info['artist_name'], 'artwork_url' => $info['artwork_url'],
             ]);
+        }
+        // まだ紐付いていない曲は、アーティスト名と曲名が完全一致する曲が track テーブル（紐付け済みの曲の情報）にあれば自動で紐付ける
+        //   アーティスト: オムニバスは曲ごとのアーティスト（無ければ探さない）、それ以外はバンドのアーティスト
+        //   BINARY = 大文字小文字・全半角も区別して比べる。複数あれば Spotify を優先（'spotify' > 'itunes'）
+        if ($card['track_id'] === null && !$card['is_se']) {
+            $artistForMatch = $band['is_omnibus'] ? ($card['artist_name'] ?? '') : $defaultArtist;
+            if ($artistForMatch !== '') {
+                $autoSt->execute([$title, $artistForMatch]);
+                $hit = $autoSt->fetch() ?: track_find_exact($title, $artistForMatch); // 無ければ🔍と同じ検索（未登録の曲。保存のときに track へ入る）
+                if ($hit) {
+                    $card = array_merge($card, [
+                        'track_source' => $hit['source'], 'track_id' => $hit['track_id'],
+                        'track_title' => $hit['title'], 'track_artist' => $hit['artist_name'], 'artwork_url' => $hit['artwork_url'],
+                    ]);
+                }
+            }
         }
         $card['track_no'] = $i + 1;
         $cards[] = $card;

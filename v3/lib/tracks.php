@@ -112,6 +112,28 @@ function track_sort_by_version(array $tracks): array
     return $sorted;
 }
 
+/**
+ * 「曲名 アーティスト」で検索して、曲名とアーティスト名が完全一致する曲を返す（セッティングシートからの自動紐付け用）。
+ *   🔍ボタン（api_track_search.php）と同じ検索・同じ並べ替えで、上から見て最初に一致したもの = メインの版
+ *   アーティスト: Spotify は共演を「A, B」と返すので、全体か「, 」で分けた1人分が完全一致すればよい
+ * @return array|null 曲（lib/tracks.php 先頭の形）。見つからない・通信失敗なら null
+ */
+function track_find_exact(string $title, string $artist): ?array
+{
+    $title = trim($title);
+    $artist = trim($artist);
+    if ($title === '' || $artist === '') {
+        return null;
+    }
+    ['tracks' => $tracks] = track_search("$title $artist", 10);
+    foreach (track_sort_by_version($tracks ?? []) as $t) {
+        if ($t['title'] === $title && ($t['artist_name'] === $artist || in_array($artist, explode(', ', $t['artist_name']), true))) {
+            return $t;
+        }
+    }
+    return null;
+}
+
 /** source と track_id から1曲を取り直す（保存するとき用）。見つからない・通信失敗なら null */
 function track_lookup(string $source, string $trackId): ?array
 {
