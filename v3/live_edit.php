@@ -97,7 +97,7 @@ function read_day_input(mixed $in, array $venues, array $labels, int $registered
     }
     // compact は ['label' => $label, ...] と同じ。*_sel / *_new はエラーで戻ったときの表示用
     return [compact('label', 'date', 'venue', 'note', 'total') + ['venue_sel' => $venueSel, 'venue_new' => $venueNew,
-        'label_sel' => $labelSel, 'label_new' => $labelNew], $errors];
+        'label_sel' => $labelSel, 'label_new' => $labelNew, 'order_unset' => !empty($in['order_unset'])], $errors];
 }
 
 /** 会場のプルダウン（＋「新しい会場を作る」を選んだときだけ出る入力欄）。$prefix は d[ID] / nd */
@@ -479,8 +479,10 @@ if (is_post()) {
                 $tmp->execute([$id]);
             }
             $update = $pdo->prepare('UPDATE live_day SET label = ?, held_on = ?, venue_id = ?, note = ?, total_bands = ? WHERE live_day_id = ?');
+            $updateTori = $pdo->prepare('UPDATE live_day SET order_unset = ? WHERE live_day_id = ?'); // 「トリなし」のチェック
             foreach ($dayInputs as $id => $in) {
                 $update->execute([...day_params($pdo, $in), $id]); // ...（スプレッド構文）で配列を展開して、最後に id を足す
+                $updateTori->execute([$in['order_unset'] ? 1 : 0, $id]);
             }
             $insertDay = $pdo->prepare('INSERT INTO live_day (label, held_on, venue_id, note, total_bands, live_id) VALUES (?, ?, ?, ?, ?, ?)');
             foreach ($wantsNewDay ? [$newDay, ...$extraDays] : [] as $in) {
@@ -538,7 +540,7 @@ if (is_post()) {
     foreach ($days as &$d) {
         $in = $dayInputs[(int)$d['live_day_id']];
         $d = array_merge($d, ['label' => $in['label'], 'label_sel' => $in['label_sel'], 'label_new' => $in['label_new'], 'held_on' => $in['date'], 'venue_name' => $in['venue'], 'venue_sel' => $in['venue_sel'], 'venue_new' => $in['venue_new'],
-            'note' => $in['note'], 'total_bands' => $in['total']]);
+            'note' => $in['note'], 'total_bands' => $in['total'], 'order_unset' => $in['order_unset']]);
     }
     unset($d);
 }
@@ -647,6 +649,7 @@ if ($isNew) {
             <?= total_bands_field("d[$id]", (string)$d['total_bands'], (int)$d['band_count']) ?>
             <label class="field field--wide"><span>メモ</span><input autocomplete="off" name="d[<?= $id ?>][note]" value="<?= h($d['note']) ?>"></label>
         </div>
+        <label class="new-day-toggle"><input type="checkbox" name="d[<?= $id ?>][order_unset]" value="1"<?= !empty($d['order_unset']) ? ' checked' : '' ?>> トリなし</label>
         <p class="day-actions">
             <a class="btn btn--ghost btn--sm" href="band_edit?day=<?= $id ?>">＋ この日程にバンドを追加</a>
             <?php if (is_admin()): ?>

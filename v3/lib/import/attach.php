@@ -231,6 +231,9 @@ function commit_attach_plan(PDO $pdo, array $plan, array $input): int
             // ---- 2. 休憩はタイムテーブルの内容で入れ直す ----
             $pdo->prepare('DELETE FROM live_break WHERE live_day_id = ?')->execute([$dayId]);
             insert_breaks($pdo, $dayId, $rows, $breakRows);
+
+            // ---- 3. 出演順が確定したので、トリを付けられるようにする ----
+            $pdo->prepare('UPDATE live_day SET order_unset = 0 WHERE live_day_id = ?')->execute([$dayId]);
         } else {
             // ---- 名簿だけ: 対応付けたバンドにメンバーを入れる（順番・時間は触らない） ----
             foreach ($rows as $r) {

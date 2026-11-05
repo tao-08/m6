@@ -958,10 +958,12 @@ const MEMBERSHIP_SQL = 'SELECT DISTINCT band_id, member_id FROM band_member';
  * トリ = その日程で出演順が一番うしろのバンド。
  * ただし総バンド数（live_day.total_bands）より登録済みが少ない日程は、本当の最後のバンドが
  * 登録されていない → 登録済みの最後はトリではないので、その日程の行を出さない（HAVING）。
+ * 名簿だけを取り込んで出演順が未確定の日程（live_day.order_unset = 1）も同じく出さない（WHERE）。
  *   使い方: JOIN (" . HEADLINER_SQL . ") last ON last.live_day_id = b.live_day_id AND last.max_order = b.play_order
  */
 const HEADLINER_SQL = 'SELECT b.live_day_id, MAX(b.play_order) AS max_order
     FROM band b JOIN live_day d ON d.live_day_id = b.live_day_id
+    WHERE d.order_unset = 0
     GROUP BY b.live_day_id, d.total_bands
     HAVING d.total_bands IS NULL OR COUNT(*) >= d.total_bands';
 

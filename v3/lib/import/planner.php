@@ -1018,8 +1018,8 @@ function commit_import_plan(PDO $pdo, array $plan, array $input): array
             }
 
             // ---- live_day ----
-            $pdo->prepare('INSERT INTO live_day (live_id, label, held_on, venue_id) VALUES (?, ?, ?, ?)')
-                ->execute([$liveId, $label, $date, $venueId]);
+            $pdo->prepare('INSERT INTO live_day (live_id, label, held_on, venue_id, order_unset) VALUES (?, ?, ?, ?, ?)')
+                ->execute([$liveId, $label, $date, $venueId, !empty($plan['order_unset']) ? 1 : 0]);
             $dayId = (int)$pdo->lastInsertId();
             change_created($pdo, $op, 'day', $dayId); // 元に戻すと、この日程（と中のバンド）を消す
             $imported[] = "{$liveYear}年度 {$liveName} {$label}" . ($existing !== false ? '（上書き）' : '');

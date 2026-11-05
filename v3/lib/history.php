@@ -671,6 +671,7 @@ function change_diff(PDO $pdo, string $type, ?array $now, array $before): array
         $add('会場', $venue($n), $venue($b));
         $add('メモ', $val($n, 'note'), $val($b, 'note'));
         $add('総バンド数', $val($n, 'total_bands'), $val($b, 'total_bands'));
+        $add('トリなし', !empty($n['order_unset']) ? '✓' : '', !empty($b['order_unset']) ? '✓' : ''); // 列を足す前の履歴には無いので empty で見る
         $breaks = static fn(array $list) => implode(' / ', array_map(
             static fn($k) => $k['name'] . ($k['start_time'] ? ' ' . fmt_time($k['start_time']) : '') . '（' . $k['after_order'] . '組目の後）', $list));
         $add('休憩', $breaks($now['live_break'] ?? []), $breaks($before['live_break']));

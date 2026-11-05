@@ -248,11 +248,13 @@ if (is_post()) {
     if ($action === 'skip_tt' && isset($_SESSION['import_plan']['manual_rows'])) {
         $input['r'] = default_manual_rows($_SESSION['import_plan']);
         $action = 'manual_tt';
+        $orderUnset = true; // 名簿の順に並んでいるだけで、出演順は未確定（トリを付けない）
     }
 
     // ---------- タイムテーブルの手入力 → プレビューへ ----------
     if ($action === 'manual_tt' && isset($_SESSION['import_plan'])) {
         $plan = $_SESSION['import_plan'];
+        $plan['order_unset'] = $orderUnset ?? false; // スキップ後に手入力へ戻って送り直したら、出演順は確定扱いに戻す
         // 入力は文字列だけ取り出して残す（エラーで戻ったとき・プレビューから書き直すとき用）
         $plan['manual_rows'] = [];
         foreach (array_slice(array_values((array)($input['r'] ?? [])), 0, MAX_MANUAL_ROWS) as $r) {

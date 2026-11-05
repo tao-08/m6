@@ -213,8 +213,8 @@ render_header($live['name'], 'lives');
                 }
             }
             $isMine = $user['member_id'] && in_array($user['member_id'], $memberIds, true);
-            // 最後 = トリ。ただし総バンド数まで登録されていない日程は、登録済みの最後が本当の最後ではないのでトリにしない
-            $isLast = $bi === count($bands) - 1 && count($bands) >= $dayTotal($d); ?>
+            // 最後 = トリ。ただし総バンド数まで登録されていない日程は、登録済みの最後が本当の最後ではないのでトリにしない。出演順が未確定（order_unset）の日程も同じ
+            $isLast = $bi === count($bands) - 1 && count($bands) >= $dayTotal($d) && !$d['order_unset']; ?>
             <li class="slot<?= $isLast ? ' slot--headliner' : '' ?><?= $isMine ? ' slot--mine' : '' ?>">
                 <!-- 左の列: 出演順の番号 → 開始 → 終了（時刻が無いバンドは番号だけ）。
                      番号をカードの中ではなくここに置いて、バンド名に横幅を回す（なるべく1行で出す） -->

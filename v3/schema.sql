@@ -160,6 +160,7 @@ CREATE TABLE live_day (
     venue_id     INT UNSIGNED NULL,                    -- 不明なら NULL
     note         TEXT         NULL,
     total_bands  SMALLINT UNSIGNED NULL,               -- 総バンド数（手入力）。NULL = 登録済みのバンド数を使う。登録済みより少ないとトリ無し（migrations/013）
+    order_unset  TINYINT(1) UNSIGNED NOT NULL DEFAULT 0, -- 1 = 名簿だけの取り込みで出演順が未確定。トリ無し（migrations/092）
     PRIMARY KEY (live_day_id),
     UNIQUE KEY uq_live_day_label (live_id, label),     -- 同じライブに「1日目」が2つできない
     KEY idx_live_day_held_on (held_on),

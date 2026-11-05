@@ -109,6 +109,8 @@ if (is_post()) {
 
     $edits = [];        // band_id => [name, start, end, order, flag, 登録する [名前, instrument_id] の配列（null = メンバーは触らない）]
     $ordersByDay = [];  // live_day_id => [出演順 => band_id]（同じ日に同じ番号が2つないか確かめる）
+    $timedBefore = [];  // live_day_id => true（保存前から時刻が入っていた日程）
+    $timedNow = [];     // live_day_id => true（今回の入力で時刻が入っている日程）。今回初めて入った日程は、保存時に order_unset を外す
     foreach ($bands as $id => $b) {
         $row = $in[$id] ?? null;
         if (!is_array($row)) {
@@ -133,6 +135,12 @@ if (is_post()) {
             $errors[] = "{$label}: 出演順 {$order} が重なっています"; // DB の UNIQUE (live_day_id, play_order) と同じルール
         }
         $ordersByDay[(int)$b['live_day_id']][$order] = $id;
+        if (!empty($b['start_time'])) {
+            $timedBefore[(int)$b['live_day_id']] = true;
+        }
+        if ($start !== '') {
+            $timedNow[(int)$b['live_day_id']] = true;
+        }
         $entries[(int)$b['live_day_id']][] = [(int)($row['pos'] ?? 9999), 'band', $id];
 
         // ---- 出演者（名前だけ） ----
@@ -249,6 +257,11 @@ if (is_post()) {
                     sync_band_members($pdo, $index, $id, $e['assign']);
                 }
                 save_check_members($pdo, $id, $e['flag'], $e['who']); // メンバーを入れ替えた後に（外した人は入らない）
+            }
+            $settle = $pdo->prepare('UPDATE live_day SET order_unset = 0 WHERE live_day_id = ?');
+            // 時刻が前からある日程は触らない（ライブ編集で付けた「トリなし」を、時刻の修正で外さないため）
+            foreach (array_keys(array_diff_key($timedNow, $timedBefore)) as $dayId) {
+                $settle->execute([$dayId]);
             }
             $pdo->commit();
         } catch (Throwable $ex) {

@@ -72,9 +72,9 @@ if ($faculty !== '' || $roleName !== null) {
 } elseif ($q !== '') {
     $pdo = db();
     $like = '%' . escape_like(mb_substr($q, 0, 50)) . '%';
-    // 「トリ」「🐔」「🐦」で検索したら、各日程のトリ（play_order が一番大きいバンド）も出す。🐦️ の後ろの U+FE0F は外して比べる
+    // 「トリ」「🐔」「🐦」で検索したら、各日程のトリ（HEADLINER_SQL）も出す。🐦️ の後ろの U+FE0F は外して比べる
     $tori = in_array(str_replace("\u{FE0F}", '', $q), ['トリ', '🐔', '🐦'], true) ? 1 : 0;
-    $toriSql = ' OR (? = 1 AND b.play_order = (SELECT MAX(x.play_order) FROM band x WHERE x.live_day_id = b.live_day_id))';
+    $toriSql = ' OR (? = 1 AND b.play_order = (SELECT last.max_order FROM (' . HEADLINER_SQL . ') last WHERE last.live_day_id = b.live_day_id))';
 
     // ---- ライブ（ライブ名・会場名・日程名・日程のメモ） ----
     $st = $pdo->prepare('SELECT DISTINCT lm.live_id, lm.fiscal_year AS year, lm.name

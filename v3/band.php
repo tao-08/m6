@@ -27,7 +27,7 @@ $bandId = (int)($_GET['id'] ?? 0);
 $pdo = db();
 
 // ---- 1. バンド本体 ----
-$st = $pdo->prepare('SELECT b.*, a.name AS artist_name, d.live_id, d.label, d.held_on, d.total_bands, l.name AS live_name, l.fiscal_year,
+$st = $pdo->prepare('SELECT b.*, a.name AS artist_name, d.live_id, d.label, d.held_on, d.total_bands, d.order_unset, l.name AS live_name, l.fiscal_year,
         v.name AS venue_name, d.venue_id
     FROM band b
     JOIN live_day d ON d.live_day_id = b.live_day_id
@@ -69,12 +69,12 @@ if (is_post() && ($_POST['action'] ?? '') === 'checked') {
 
 // トリ = その日程で出演順が一番うしろ。組数（COUNT）は「7/14」の分母に使う（MAX だと欠番があるとずれる）
 //   総バンド数（live_day.total_bands）が入っていれば分母はそちら。登録済みが総バンド数に足りない日程は、
-//   登録済みの最後が本当の最後ではないのでトリにしない
+//   登録済みの最後が本当の最後ではないのでトリにしない。出演順が未確定（order_unset）の日程も同じ
 $st = $pdo->prepare('SELECT MAX(play_order), COUNT(*) FROM band WHERE live_day_id = ?');
 $st->execute([$band['live_day_id']]);
 [$maxOrder, $registered] = $st->fetch(PDO::FETCH_NUM);
 $bandCount = max((int)$registered, (int)$band['total_bands']);
-$isLast = (int)$maxOrder === (int)$band['play_order'] && (int)$registered >= $bandCount;
+$isLast = (int)$maxOrder === (int)$band['play_order'] && (int)$registered >= $bandCount && !$band['order_unset'];
 
 // 「← 前のバンド / 次のバンド →」: 同じライブのバンドを live.php と同じ順（日程 → 出演順）に並べて、前後を取る
 //   日程をまたぐ（1日目のトリの次 = 2日目の1番目）。1ライブ数十組なので全部取ってきて PHP で探す
