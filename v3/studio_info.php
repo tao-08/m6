@@ -729,7 +729,7 @@ $rowsOfTarget = fn(array $rows, string $target): array => array_values(array_fil
 //        （PHP の空配列は json_encode で [] になる。JS では r.dp[3] がどちらでも undefined なので動くが、形をそろえておく）
 $simData = studio_sim_payload($usedDisc, $rooms, $rates, $packs, $rentals);
 
-// 地図: 座標があれば Leaflet でピン1本。Google マップのリンクは「経路検索」に使える（座標が無ければ住所 → 名前で検索）
+// 地図: 座標があれば Google マップの埋め込みでピン1本（一覧は Leaflet）。Google マップのリンクは「経路検索」に使える（座標が無ければ住所 → 名前で検索）
 $hasPin = $studio['lat'] !== null && $studio['lng'] !== null;
 $gmapQuery = $hasPin ? $studio['lat'] . ',' . $studio['lng'] : (string)($studio['address'] ?: $studio['name']);
 $gmapUrl = 'https://www.google.com/maps/search/?api=1&query=' . rawurlencode($gmapQuery);
@@ -854,7 +854,6 @@ $rateRow = function (array $slot, string $key, bool $fixed, array $roomLines) us
 
 render_header($studio['name'], 'tools');
 ?>
-<link rel="stylesheet" href="<?= asset_url('assets/vendor/leaflet/leaflet.css') ?>">
 <link rel="stylesheet" href="<?= asset_url('assets/studio_info.css') ?>">
 <nav class="crumbs"><a href="tools">ツール</a> / <a href="studio_list">スタジオ情報</a></nav>
 <h1 class="display display--sm"><?= h($studio['name']) ?><?php if ($studio['recommended']): ?> <span class="tag tag--rec label-inline">おすすめ</span><?php endif; ?><?php if ($studio['late_night']): ?> <span class="tag tag--night label-inline">深夜早朝</span><?php endif; ?></h1>
@@ -891,11 +890,9 @@ render_header($studio['name'], 'tools');
             <a class="small" href="<?= h($gmapUrl) ?>" target="_blank" rel="noopener noreferrer"><?= icon('directions') ?> Googleマップで開く</a>
         </div>
         <?php if ($hasPin): ?>
-            <div class="sinfo-map sinfo-map--one" id="studio-map" role="region" aria-label="地図"></div>
-            <script type="application/json" id="studio-pins"><?= json_encode([[
-                'id' => $studioId, 'name' => $studio['name'], 'lat' => (float)$studio['lat'], 'lng' => (float)$studio['lng'], 'sub' => $studio['access'] ?? '',
-            ]], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?></script>
-            <script type="application/json" id="studio-campuses" data-logo="<?= h(asset_url('assets/meiji-logo.svg')) ?>"><?= json_encode(studio_campuses(), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?></script>
+            <!-- Google マップの埋め込み（API キー不要の ?output=embed）。座標でピンを1本立てる。一覧の地図（Leaflet）とは別 -->
+            <iframe class="sinfo-map sinfo-map--one" title="地図" loading="lazy" referrerpolicy="no-referrer-when-downgrade" allowfullscreen
+                src="https://maps.google.com/maps?q=<?= h(rawurlencode($gmapQuery)) ?>&amp;z=16&amp;hl=ja&amp;output=embed"></iframe>
         <?php endif; ?>
     </div>
 
@@ -1654,6 +1651,5 @@ if ($canEdit) {
     <a class="sinfo-reserve-fab" href="<?= h($studio['reserve_url']) ?>" target="_blank" rel="noopener noreferrer" title="予約" aria-label="予約"><?= icon('event_available') ?> 予約</a>
 <?php endif; ?>
 
-<script src="<?= asset_url('assets/vendor/leaflet/leaflet.js') ?>"></script>
 <script src="<?= asset_url('assets/studio_info.js') ?>"></script>
 <?php render_footer();

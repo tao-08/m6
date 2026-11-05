@@ -47,7 +47,7 @@
 .sinfo-mapcard { padding: 0; overflow: hidden; }  /* 地図をカードの角まで広げる（角丸ははみ出しを隠して保つ） */
 .sinfo-map { width: 100%; border-radius: var(--r-md); z-index: 0; } /* z-index: 0 → Leaflet の部品がヘッダーの上に出ないように */
 .sinfo-map--list { height: min(52vh, 420px); border-radius: 0; }
-.sinfo-map--one { height: 240px; }
+.sinfo-map--one { height: 240px; border: 0; display: block; } /* Google マップの埋め込み（iframe）。既定の枠線を消す */
 /* ピン: 赤い涙形（四角を45度回して角を1つだけ尖らせる） */
 .sinfo-pin span { display: block; width: 26px; height: 26px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg);
   background: var(--accent); border: 3px solid #fff; box-shadow: var(--shadow-sm); }
