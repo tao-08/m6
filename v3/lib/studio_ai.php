@@ -167,6 +167,7 @@ function studio_ai_system_prompt(bool $images = false, array $sections = [], arr
         . "- info.reserve_url は予約ページの URL（無ければ空文字）。URL は https:// から始まる完全な形\n"
         . "- rentals: マイク・シールド・機材のレンタル。1行 = 1品目（「SM58、SM57」のように複数をまとめて1行にせず、1つずつ別の行にする）。per_hour は「1時間あたり」の料金なら true、「1回あたり」と明記されているものだけ false（書かれていなければ true）\n"
         . "- equipment: 部屋の常設機材。1行 = 1機種（ギターアンプ2種類・ドラムのスネアとシンバルなど、複数ある機材は1つずつ別の行にし、1つの model に「、」「/」でつなげない）。category は決められた区分から選ぶ。rooms は設置されている部屋名の配列（複数可。全部屋共通なら空の配列 []）\n"
+        . "- 部屋名が「1.6st」のように番号をまとめて書いてあるときは、「1st」「6st」のように1部屋ずつ別の行にする（rooms の name、料金・機材の rooms も同じ）\n"
         . "- rooms.area_jo は部屋の広さを「帖」の数値だけで（例: 12 / 9.5）。畳表記もそのまま帖の数値にする。㎡表記しか無いときは 1帖 = 1.62㎡ で換算して小数1桁まで。広さが書かれていなければ 0\n"
         . "- rooms.size_note は広さ以外の備考（定員・階数・設備など。例: 最大8人 / 2階）。広さの数字や「帖」「畳」は書かない。無ければ空文字\n"
         . "- sources: 参考にしたページの URL（最大5件）。caution: 確かめてほしい点（古い情報かもしれない等）を短く。無ければ空文字";
@@ -193,6 +194,18 @@ function studio_ai_str(mixed $v, int $max): ?string
 }
 
 /** 部屋名の配列を整える（文字列だけ・50文字まで・重複なし・20件まで）。空配列 = 全部屋共通 */
+/**
+ * 「1.6st」のように番号が区切り文字（. ・ , 、）でつながった部屋名を、「1st」「6st」に分ける（接尾辞は全部に付ける）
+ *   番号が1つだけの名前（「Ast」「1st」）や、小数に見える「2.5」だけの名前は分けない
+ */
+function studio_ai_expand_room(string $name): array
+{
+    if (preg_match('/^(\d+(?:[.．・,，、]\d+)+)(\D.*)$/u', $name, $m)) {
+        return array_map(fn($n) => $n . $m[2], preg_split('/[.．・,，、]/u', $m[1]));
+    }
+    return [$name];
+}
+
 function studio_ai_rooms(mixed $v): array
 {
     if (!is_array($v)) {
@@ -201,8 +214,8 @@ function studio_ai_rooms(mixed $v): array
     $names = [];
     foreach ($v as $n) {
         $n = studio_ai_str($n, 50);
-        if ($n !== null) {
-            $names[$n] = true; // 名前をキーにして重複を消す
+        foreach ($n === null ? [] : studio_ai_expand_room($n) as $one) {
+            $names[$one] = true; // 名前をキーにして重複を消す
         }
     }
     return array_slice(array_keys($names), 0, 20);
@@ -277,7 +290,9 @@ function studio_ai_normalize(array $ai): array
             // area_jo: 0.5〜999.9 の数値だけ受け取り、小数1桁に丸める（DECIMAL(5,1) に入る形）。それ以外は null = 広さ不明
             $jo = $r['area_jo'] ?? null;
             $jo = (is_int($jo) || is_float($jo)) && $jo >= 0.5 && $jo <= 999.9 ? round((float)$jo, 1) : null;
-            $rooms[$name] = ['name' => $name, 'area_jo' => $jo, 'size_note' => studio_ai_str($r['size_note'] ?? null, 50)]; // 名前をキーにして重複を消す
+            foreach (studio_ai_expand_room($name) as $one) { // 「1.6st」→「1st」「6st」（広さ・備考は同じ）
+                $rooms[$one] = ['name' => $one, 'area_jo' => $jo, 'size_note' => studio_ai_str($r['size_note'] ?? null, 50)]; // 名前をキーにして重複を消す
+            }
         }
     }
 
