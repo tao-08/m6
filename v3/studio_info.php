@@ -1372,7 +1372,10 @@ render_header($studio['name'], 'tools');
             <?= csrf_field() ?>
             <input type="hidden" name="action" value="save_discounts">
             <input type="hidden" name="studio_id" value="<?= $studioId ?>">
-            <?php foreach (array_merge($discounts, count($discounts) < STUDIO_DISCOUNT_MAX ? [['studio_discount_id' => 0, 'name' => '', 'day_type' => 0]] : []) as $d): ?>
+            <?php
+            // 行の HTML は関数にして、既存の行・空の行・「追加」の雛形（<template>）で同じものを使う
+            $discRow = function (array $d): string {
+                ob_start(); ?>
                 <div class="sinfo-edit__row">
                     <input type="hidden" name="id[]" value="<?= (int)$d['studio_discount_id'] ?>">
                     <input autocomplete="off" type="text" class="grow" name="name[]" maxlength="30" value="<?= h($d['name']) ?>" placeholder="区分名（例: 学割 / U20）" aria-label="区分名">
@@ -1383,8 +1386,21 @@ render_header($studio['name'], 'tools');
                     </select>
                     <?= studio_row_del((int)$d['studio_discount_id']) ?>
                 </div>
-            <?php endforeach; ?>
-            <div><button type="submit" class="btn btn--primary btn--sm" title="区分名を空にした行は削除"><?= icon('save') ?> 保存</button></div>
+                <?php return ob_get_clean();
+            };
+            $discBlank = ['studio_discount_id' => 0, 'name' => '', 'day_type' => 0];
+            $discSlots = STUDIO_DISCOUNT_MAX - count($discounts); // あと何個追加できるか
+            foreach (array_merge($discounts, $discSlots > 0 ? [$discBlank] : []) as $d) {
+                echo $discRow($d);
+            }
+            ?>
+            <div>
+                <button type="submit" class="btn btn--primary btn--sm" title="区分名を空にした行は削除"><?= icon('save') ?> 保存</button>
+                <?php if ($discSlots > 0): ?>
+                    <template data-add-tpl><?= $discRow($discBlank) ?></template>
+                    <button type="button" class="btn btn--sm" data-add="template[data-add-tpl]" data-add-max="<?= $discSlots ?>" title="追加" aria-label="追加"><?= icon('add') ?></button>
+                <?php endif; ?>
+            </div>
         </form>
     </details>
     <!-- 部屋（名前・広さ）の編集。同じカードの中に置く。部屋を削除するとその部屋の料金・パック・機材も消える（FK の CASCADE）ので確認ダイアログ付き -->
@@ -1404,20 +1420,32 @@ render_header($studio['name'], 'tools');
             ?>
             <label class="sinfo-edit__half"><input type="checkbox" name="half_unit_all" value="1" data-half-unit-all<?= $unitAll ? ' checked' : '' ?>>30分単位の予約</label>
             <?php if ($unitMixed): ?><input type="hidden" name="half_unit_mixed" value="1" data-half-unit-mixed><?php endif; ?>
-            <?php foreach (array_merge($rooms, [['studio_room_id' => 0, 'name' => '', 'area_jo' => null, 'size_note' => '', 'half_start' => 0, 'half_unit' => 0]]) as $ri => $r): ?>
+            <?php
+            $roomRow = function (int|string $ri, array $r): string {
+                ob_start(); ?>
                 <div class="sinfo-edit__row" data-reorder-item>
                     <button type="button" class="drag-handle" data-reorder-handle aria-label="ドラッグで並び替え（↑↓キーでも動く）" title="ドラッグで並び替え"><?= icon('drag_indicator') ?></button>
                     <input type="hidden" name="id[]" value="<?= (int)$r['studio_room_id'] ?>">
                     <input autocomplete="off" type="text" class="grow" name="name[]" maxlength="50" value="<?= h($r['name']) ?>" placeholder="部屋名" aria-label="部屋名">
                     <label class="sinfo-edit__jo"><input type="text" name="area_jo[]" inputmode="decimal" maxlength="5" value="<?= h(studio_jo_num($r['area_jo'])) ?>" placeholder="広さ" aria-label="広さ（帖）"><span class="muted small">帖</span></label>
                     <input autocomplete="off" type="text" class="grow" name="size_note[]" maxlength="50" value="<?= h($r['size_note']) ?>" placeholder="備考（定員・階数）" aria-label="備考">
-                    <!-- 30分開始（ONの部屋は、開始が毎時30分から。料金表・パックの時間帯も30分遅らせて表示・計算する）。名前の [番号] = この行の位置。half_unit_was = 混在のときに保つ今の値 -->
+                    <!-- 30分開始（ONの部屋は、開始が毎時30分から。料金表・パックの時間帯も30分遅らせて表示・計算する）。名前の [番号] = この行の位置（JS が並び替え・追加のたびに付け直す）。half_unit_was = 混在のときに保つ今の値 -->
                     <label class="sinfo-edit__half"><input type="checkbox" name="half_start[<?= $ri ?>]" value="1"<?= (int)$r['half_start'] ? ' checked' : '' ?>>30分開始</label>
                     <input type="hidden" name="half_unit_was[<?= $ri ?>]" value="<?= (int)$r['half_unit'] ?>">
                     <?= studio_row_del((int)$r['studio_room_id']) ?>
                 </div>
-            <?php endforeach; ?>
-            <div><button type="submit" class="btn btn--primary btn--sm" title="部屋名を空にした行は削除"><?= icon('save') ?> 保存</button></div>
+                <?php return ob_get_clean();
+            };
+            $roomBlank = ['studio_room_id' => 0, 'name' => '', 'area_jo' => null, 'size_note' => '', 'half_start' => 0, 'half_unit' => 0];
+            foreach (array_merge($rooms, [$roomBlank]) as $ri => $r) {
+                echo $roomRow($ri, $r);
+            }
+            ?>
+            <div>
+                <button type="submit" class="btn btn--primary btn--sm" title="部屋名を空にした行は削除"><?= icon('save') ?> 保存</button>
+                <template data-add-tpl><?= $roomRow('__I__', $roomBlank) ?></template>
+                <button type="button" class="btn btn--sm" data-add="template[data-add-tpl]" title="追加" aria-label="追加"><?= icon('add') ?></button>
+            </div>
         </form>
     </details>
     <?php endif; ?>
@@ -1552,7 +1580,29 @@ $packRoomLines = function (array $row) use ($packRoomIds): array {
             $blankItem = ['studio_pack_id' => 0, 'name' => '', 'minutes' => null, 'price' => '', 'disc' => []];
             $editBlocks = array_merge(array_values($packGroups), [$blankBlock]); // 末尾 = 新しいブロック用の空欄
             ?>
-            <?php foreach ($editBlocks as $b => $g): $p = $g['head']; ?>
+            <?php
+            // 行・ブロックの HTML は関数にして、既存・空の行・「追加」の雛形（<template>）で同じものを使う。$b = ブロックの番号（雛形では '__B__'）
+            $packItemRow = function (int|string $b, array $p) use ($discInputs): string {
+                ob_start(); ?>
+                <div class="sinfo-edit__row sinfo-edit__item">
+                    <input type="hidden" name="id[]" value="<?= (int)$p['studio_pack_id'] ?>">
+                    <input type="hidden" name="blk[]" value="<?= h((string)$b) ?>">
+                    <input autocomplete="off" type="text" class="grow" name="name[]" maxlength="50" value="<?= h($p['name']) ?>" placeholder="名前" title="空なら使える時間から自動で付く（例: 3:00パック）" aria-label="パック名">
+                    <select name="minutes[]" aria-label="使える時間">
+                        <option value="">時間帯まるごと</option>
+                        <?php for ($m = 60; $m <= 720; $m += 30): ?>
+                            <option value="<?= $m ?>"<?= $p['minutes'] !== null && (int)$p['minutes'] === $m ? ' selected' : '' ?>><?= h(studio_fmt_min($m)) ?></option>
+                        <?php endfor; ?>
+                    </select>
+                    <input type="number" name="price[]" min="0" max="999999" value="<?= h($p['price']) ?>" placeholder="料金" aria-label="パックの料金" inputmode="numeric">
+                    <?= $discInputs($p['disc'], 'パックの料金') ?>
+                    <?= studio_row_del((int)$p['studio_pack_id']) ?>
+                </div>
+                <?php return ob_get_clean();
+            };
+            $packBlockRow = function (int|string $b, array $g) use ($roomChips, $packItemRow, $blankItem): string {
+                $p = $g['head'];
+                ob_start(); ?>
                 <div class="sinfo-edit__block">
                     <div class="sinfo-edit__row">
                         <select name="bpeople[<?= $b ?>]" aria-label="対象"><?= studio_target_options($p['people'] === null ? null : (int)$p['people']) ?></select>
@@ -1564,25 +1614,23 @@ $packRoomLines = function (array $row) use ($packRoomIds): array {
                         </select>
                         <?= studio_time_pair(['bstart[' . $b . ']', 'bend[' . $b . ']'], (int)$p['start_min'], (int)$p['end_min']) ?>
                     </div>
-                    <?php foreach (array_merge($g['items'], array_fill(0, $g['items'] ? 2 : 3, $blankItem)) as $p): // 既存の行 + 空の行（追加用） ?>
-                        <div class="sinfo-edit__row sinfo-edit__item">
-                            <input type="hidden" name="id[]" value="<?= (int)$p['studio_pack_id'] ?>">
-                            <input type="hidden" name="blk[]" value="<?= $b ?>">
-                            <input autocomplete="off" type="text" class="grow" name="name[]" maxlength="50" value="<?= h($p['name']) ?>" placeholder="名前" title="空なら使える時間から自動で付く（例: 3:00パック）" aria-label="パック名">
-                            <select name="minutes[]" aria-label="使える時間">
-                                <option value="">時間帯まるごと</option>
-                                <?php for ($m = 60; $m <= 720; $m += 30): ?>
-                                    <option value="<?= $m ?>"<?= $p['minutes'] !== null && (int)$p['minutes'] === $m ? ' selected' : '' ?>><?= h(studio_fmt_min($m)) ?></option>
-                                <?php endfor; ?>
-                            </select>
-                            <input type="number" name="price[]" min="0" max="999999" value="<?= h($p['price']) ?>" placeholder="料金" aria-label="パックの料金" inputmode="numeric">
-                            <?= $discInputs($p['disc'], 'パックの料金') ?>
-                            <?= studio_row_del((int)$p['studio_pack_id']) ?>
-                        </div>
+                    <?php foreach (array_merge($g['items'], array_fill(0, $g['items'] ? 2 : 3, $blankItem)) as $item): // 既存の行 + 空の行（追加用） ?>
+                        <?= $packItemRow($b, $item) ?>
                     <?php endforeach; ?>
+                    <div><button type="button" class="btn btn--sm" data-add="template[data-add-item]" title="追加" aria-label="追加"><?= icon('add') ?></button></div>
                 </div>
-            <?php endforeach; ?>
-            <div><button type="submit" class="btn btn--primary btn--sm" title="料金を空にした行は削除"><?= icon('save') ?> 保存</button></div>
+                <?php return ob_get_clean();
+            };
+            foreach ($editBlocks as $b => $g) {
+                echo $packBlockRow($b, $g);
+            }
+            ?>
+            <template data-add-item><?= $packItemRow('__B__', $blankItem) ?></template>
+            <template data-add-block><?= $packBlockRow('__B__', $blankBlock) ?></template>
+            <div>
+                <button type="submit" class="btn btn--primary btn--sm" title="料金を空にした行は削除"><?= icon('save') ?> 保存</button>
+                <button type="button" class="btn btn--sm" data-add="template[data-add-block]" title="時間帯を追加" aria-label="時間帯を追加"><?= icon('add') ?></button>
+            </div>
         </form>
     </details>
     <?php endif; ?>
@@ -1606,7 +1654,9 @@ $packRoomLines = function (array $row) use ($packRoomIds): array {
             <?= csrf_field() ?>
             <input type="hidden" name="action" value="save_rentals">
             <input type="hidden" name="studio_id" value="<?= $studioId ?>">
-            <?php foreach (array_merge($rentals, array_fill(0, 2, ['studio_rental_id' => 0, 'name' => '', 'price' => '', 'per_hour' => 0])) as $r): ?>
+            <?php
+            $rentalRow = function (array $r): string {
+                ob_start(); ?>
                 <div class="sinfo-edit__row">
                     <input type="hidden" name="id[]" value="<?= (int)$r['studio_rental_id'] ?>">
                     <input autocomplete="off" type="text" class="grow" name="name[]" maxlength="100" value="<?= h($r['name']) ?>" placeholder="名前（例: SM58）" aria-label="名前">
@@ -1618,8 +1668,18 @@ $packRoomLines = function (array $row) use ($packRoomIds): array {
                     </select>
                     <?= studio_row_del((int)$r['studio_rental_id']) ?>
                 </div>
-            <?php endforeach; ?>
-            <div><button type="submit" class="btn btn--primary btn--sm" title="名前を空にした行は削除"><?= icon('save') ?> 保存</button></div>
+                <?php return ob_get_clean();
+            };
+            $rentalBlank = ['studio_rental_id' => 0, 'name' => '', 'price' => '', 'per_hour' => 0];
+            foreach (array_merge($rentals, [$rentalBlank, $rentalBlank]) as $r) {
+                echo $rentalRow($r);
+            }
+            ?>
+            <div>
+                <button type="submit" class="btn btn--primary btn--sm" title="名前を空にした行は削除"><?= icon('save') ?> 保存</button>
+                <template data-add-tpl><?= $rentalRow($rentalBlank) ?></template>
+                <button type="button" class="btn btn--sm" data-add="template[data-add-tpl]" title="追加" aria-label="追加"><?= icon('add') ?></button>
+            </div>
         </form>
     </details>
     <?php endif; ?>
@@ -1651,7 +1711,9 @@ $packRoomLines = function (array $row) use ($packRoomIds): array {
             <?= csrf_field() ?>
             <input type="hidden" name="action" value="save_equipment">
             <input type="hidden" name="studio_id" value="<?= $studioId ?>">
-            <?php foreach (array_merge($equipment, array_fill(0, 2, ['studio_equipment_id' => 0, 'room_ids' => [], 'category' => '', 'model_name' => '', 'quantity' => 1])) as $i => $e): ?>
+            <?php
+            $equipRow = function (int|string $i, array $e) use ($roomChips): string {
+                ob_start(); ?>
                 <div class="sinfo-edit__row">
                     <input type="hidden" name="id[]" value="<?= (int)$e['studio_equipment_id'] ?>">
                     <?= $roomChips($i, $e['room_ids']) ?>
@@ -1664,8 +1726,18 @@ $packRoomLines = function (array $row) use ($packRoomIds): array {
                     <input type="number" name="quantity[]" min="0" max="99" value="<?= (int)$e['quantity'] ?>" aria-label="台数" inputmode="numeric">
                     <?= studio_row_del((int)$e['studio_equipment_id']) ?>
                 </div>
-            <?php endforeach; ?>
-            <div><button type="submit" class="btn btn--primary btn--sm" title="機種名を空にした行は削除"><?= icon('save') ?> 保存</button></div>
+                <?php return ob_get_clean();
+            };
+            $equipBlank = ['studio_equipment_id' => 0, 'room_ids' => [], 'category' => '', 'model_name' => '', 'quantity' => 1];
+            foreach (array_merge($equipment, [$equipBlank, $equipBlank]) as $i => $e) {
+                echo $equipRow($i, $e);
+            }
+            ?>
+            <div>
+                <button type="submit" class="btn btn--primary btn--sm" title="機種名を空にした行は削除"><?= icon('save') ?> 保存</button>
+                <template data-add-tpl><?= $equipRow('__I__', $equipBlank) ?></template>
+                <button type="button" class="btn btn--sm" data-add="template[data-add-tpl]" title="追加" aria-label="追加"><?= icon('add') ?></button>
+            </div>
         </form>
     </details>
     <?php endif; ?>

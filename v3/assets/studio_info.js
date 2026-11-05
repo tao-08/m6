@@ -518,9 +518,9 @@
       const room = data.rooms.find((r) => r.id === Number(form.elements.room?.value || 0));
       const hs = room ? room.hs : 1; // 部屋の無いスタジオ = 制限なし
       const hu = room ? room.hu : 1;
-      // 開始の選択肢: 30分開始 → 30分刻み / 毎時開始 → ちょうどだけ / 30分開始 ＋ 1時間単位 → 30分だけ（9:30・10:30 …）
+      // 開始の選択肢: 30分開始 → 30分だけ（9:30・10:30 …）/ 毎時開始 → ちょうどだけ
       //   時間の選択肢: 30分単位なら30分刻み / 1時間単位ならちょうどだけ
-      const halfOnly = hs && !hu;
+      const halfOnly = !!room && hs; // 30分始まりの部屋は、30分単位でも開始を :30 だけにする（部屋の無いスタジオは制限なし）
       [[startSel, hs], [durSel, hu]].forEach(([sel, half]) => {
         const keep = Number(sel.value);
         const only30 = sel === startSel && halfOnly;
@@ -871,6 +871,32 @@
     });
   };
 
+  /**
+   * 行の追加: [data-add="雛形のセレクタ"] のボタンを押すと、フォーム内の <template> を複製して、ボタンの入っている div の直前に入れる
+   *   雛形の中の '__I__' = フォーム内の行の位置（id[] の数 = 末尾に足すので、送信時の位置と一致する。rooms[位置][] / half_start[位置] 用）
+   *   '__B__' = パックのブロック番号（行を足すときは、ボタンの入っているブロックの番号 / 時間帯を足すときは新しい番号）
+   *   data-add-max = 新しい行（id が 0 の行）の上限（割引区分）
+   *   入れた <select> は app.js の MutationObserver が独自の選択 UI にしてくれる
+   */
+  const setupAddRow = () => {
+    document.addEventListener('click', (ev) => {
+      const btn = ev.target.closest('[data-add]');
+      const form = btn?.closest('form');
+      const tpl = form?.querySelector(btn.dataset.add);
+      if (!tpl) return;
+      const max = Number(btn.dataset.addMax) || 0;
+      if (max && form.querySelectorAll('input[name="id[]"][value="0"]').length >= max) return;
+      const block = btn.closest('.sinfo-edit__block');
+      const b = block ? block.querySelector('input[name="blk[]"]')?.value : String(form.querySelectorAll('.sinfo-edit__block').length);
+      const holder = btn.parentElement;
+      holder.insertAdjacentHTML('beforebegin', tpl.innerHTML
+        .replaceAll('__I__', String(form.querySelectorAll('input[name="id[]"]').length))
+        .replaceAll('__B__', b ?? '0'));
+      form.dispatchEvent(new Event('reorder-renumber'));
+      holder.previousElementSibling.querySelector('input[type=text], input[type=number]')?.focus();
+    });
+  };
+
   const DEL_FIELD = {
     save_rates: 'input[data-price]', save_packs: 'input[name="price[]"]', save_rentals: 'input[name="name[]"]',
     save_equipment: 'input[name="model[]"]', save_rooms: 'input[name="name[]"]', save_discounts: 'input[name="name[]"]',
@@ -892,6 +918,7 @@
           el.name = el.name.replace(/^(half_start|half_unit_was)\[\d+\]$/, `$1[${i}]`);
         });
       });
+      form.addEventListener('reorder-renumber', renumber); // 行を足したとき（setupAddRow）にも番号を付け直す
       let drag = null; // ドラッグ中だけ { row, pointerId }
       form.addEventListener('pointerdown', (e) => {
         const handle = e.target.closest('[data-reorder-handle]');
@@ -1078,7 +1105,7 @@
     /** 部屋の開始・時間の決まりに合わせる（詳細ページの applyRoomRule と同じ） */
     const fit = (room, start, dur) => {
       if (!room) return { start, dur };
-      const s = room.hs && !room.hu ? start - (start % 60) + 30 : room.hs ? start : start - (start % 60);
+      const s = start - (start % 60) + (room.hs ? 30 : 0); // 30分始まりの部屋は、30分単位の予約でも開始は :30 だけ（:00 だと内訳が :00 で切れる）
       return { start: s, dur: room.hu ? dur : dur - (dur % 60) };
     };
 
@@ -1330,6 +1357,7 @@
   setupRateTabs();
   setupRowDelete();
   setupReorder();
+  setupAddRow();
   setupTimePair();
   setupHalfUnitAll();
   setupFilter(mapApi);
