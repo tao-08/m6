@@ -142,7 +142,7 @@
 .sinfo-max { font-size: 9px; font-weight: 800; letter-spacing: .06em; line-height: 1; color: var(--muted); }
 
 /* ---- バンド練習 / 個人練習のタブ（料金表・パックを切り替える）---- */
-.sinfo-tabs { margin: 14px 0 0; } /* 上の余白だけ。カード（.sinfo-section）は margin-top: 14px で間隔を取る作りなので、同じ14pxにそろえる（下は次のカードの margin-top が効く） */
+/* 料金カードの見出しの下に置く。見出しとの間隔は .sinfo-section の gap（10px）に任せる */
 /* hidden 属性は display 指定を持つ要素（flex など）だと負けることがあるので、念のため !important で必ず隠す */
 [data-tab-panel][hidden], [data-tab-has][hidden], [data-ppl][hidden], [data-ppl-has][hidden] { display: none !important; }
 
@@ -237,6 +237,7 @@
 .sinfo-sim__ext strong { font-size: var(--fs-xl); font-variant-numeric: tabular-nums; }
 
 /* ---- ✨AIで入力 ---- */
+.sinfo-ai { display: grid; gap: 10px; padding: 10px 0 12px; border-bottom: 1px dashed var(--border); } /* 基本情報の「編集」の先頭に置く。下の入力欄との区切りの点線 */
 .sinfo-ai__head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .sinfo-ai__head select { width: auto; padding: 4px 8px; }
 /* 画像のサムネイル（×で外せる） */
@@ -391,14 +392,23 @@
 .sinfo-list__item { transition: transform var(--t-base) var(--ease-out), box-shadow var(--t-base) var(--ease-out); }
 @media (hover: hover) { .sinfo-list__item:hover { transform: translateY(-2px); box-shadow: var(--shadow-pop); } }
 .sinfo-list__item:active { transform: scale(.985); }
-.sinfo-edit[open] > .sinfo-edit__form { animation: day-fade var(--t-base) var(--ease-out); }
-[data-pack-len]:not([hidden]), [data-rate-panel]:not([hidden]), [data-tab-panel]:not([hidden]) { animation: soft-in var(--t-base) var(--ease-out); }
+.sinfo-edit[open] > .sinfo-edit__form, .sinfo-edit[open] > .sinfo-ai { animation: day-fade var(--t-base) var(--ease-out); }
+/* タブで切り替わる中身（パックの時間・料金の対象/曜日・バンド/個人・絞り込みのエリア/広さ・個人の人数）: 出てくるときに下からふわっと */
+[data-pack-len]:not([hidden]), [data-rate-panel]:not([hidden]), [data-rate-days]:not([hidden]), [data-tab-panel]:not([hidden]),
+[data-filter-panel]:not([hidden]), [data-ppl]:not([hidden]) { animation: soft-in var(--t-base) var(--ease-out); }
+/* 選択の帯（タブ・ボタン列の選ばれている所の赤）が、次の項目へ滑って移る。JS（setupSegSlide）が帯の位置と幅（--seg-x / --seg-w）を入れる。
+   折り返す列（.sinfo-seg--disc）は帯の位置が決められないので対象外。帯が動く間、文字の色も同じ時間で変える */
+.sinfo-seg.has-pill { position: relative; }
+.sinfo-seg.has-pill::before { content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: var(--seg-w); transform: translateX(var(--seg-x)); background: var(--accent); pointer-events: none; }
+.sinfo-seg.has-pill.is-ready::before { transition: transform var(--t-base) var(--ease-out), width var(--t-base) var(--ease-out); } /* 最初の配置では動かさない（is-ready が付いてから） */
+.sinfo-seg.has-pill label { position: relative; transition: color var(--t-base) var(--ease-out); } /* 文字は帯の上 */
+.sinfo-seg.has-pill label:has(input:checked) { background: transparent; }
 .sinfo-list__sim:not([hidden]) > *, #studio-sim-result > * { animation: sinfo-fade var(--t-fast) var(--ease-out); }
 .sinfo-seg label, .sinfo-chip, .sinfo-step__btn { transition: background-color var(--t-fast) ease, color var(--t-fast) ease, border-color var(--t-fast) ease; }
 @media (prefers-reduced-motion: reduce) {
-  .sinfo-list.is-enter > li, .sinfo-edit[open] > .sinfo-edit__form, [data-pack-len], [data-rate-panel], [data-tab-panel],
-  .sinfo-list__sim > *, #studio-sim-result > * { animation: none !important; }
-  .sinfo-list__item, .sinfo-seg label, .sinfo-chip, .sinfo-step__btn { transition: none; }
+  .sinfo-list.is-enter > li, .sinfo-edit[open] > .sinfo-edit__form, .sinfo-edit[open] > .sinfo-ai, [data-pack-len], [data-rate-panel], [data-rate-days], [data-tab-panel],
+  [data-filter-panel], [data-ppl], .sinfo-list__sim > *, #studio-sim-result > * { animation: none !important; }
+  .sinfo-list__item, .sinfo-seg label, .sinfo-chip, .sinfo-step__btn, .sinfo-seg.has-pill.is-ready::before { transition: none; }
   .sinfo-list__item:hover, .sinfo-list__item:active { transform: none; }
 }
 

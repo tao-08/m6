@@ -1163,6 +1163,34 @@
     }
   };
 
+  // ===================================================================
+  //  タブ・ボタン列（.sinfo-seg）の選択の帯を滑らせる
+  //     ・選ばれている項目（label）の位置と幅を --seg-x / --seg-w として列に入れる。CSS の ::before（赤い帯）がそこへ動く
+  //     ・列が隠れているとき（閉じた <details> の中・hidden のタブなど）は幅が 0 なので、表示されて大きさが変わったとき（ResizeObserver）にもう一度測る
+  //     ・最初の配置では動かさない。測れた次のフレームで is-ready を付けて、それ以降の切り替えだけ動かす
+  //     ・折り返す列（--disc）は対象外 / ラジオが無い列も対象外
+  // ===================================================================
+  const setupSegSlide = () => {
+    const segs = [...document.querySelectorAll('.sinfo-seg:not(.sinfo-seg--disc)')].filter((s) => s.querySelector('input[type="radio"]'));
+    if (!segs.length) return;
+    const place = (seg) => {
+      const on = seg.querySelector('input:checked')?.closest('label');
+      if (!on || !on.offsetWidth) return; // 隠れているときは測れない
+      // 先に has-pill（= position: relative）を付けてから測る。付ける前は offsetLeft の基準が列ではなく外側のカードになり、位置がずれる
+      const first = !seg.classList.contains('has-pill');
+      if (first) seg.classList.add('has-pill');
+      seg.style.setProperty('--seg-x', on.offsetLeft + 'px'); // offsetLeft = 列（position: relative）の左端からの距離
+      seg.style.setProperty('--seg-w', on.offsetWidth + 'px');
+      if (first) requestAnimationFrame(() => requestAnimationFrame(() => seg.classList.add('is-ready')));
+    };
+    const watch = new ResizeObserver((entries) => entries.forEach((e) => place(e.target)));
+    segs.forEach((s) => { place(s); watch.observe(s); });
+    document.addEventListener('change', (e) => {
+      const seg = e.target.closest?.('.sinfo-seg');
+      if (seg && segs.includes(seg)) place(seg);
+    });
+  };
+
   // DOMContentLoaded を待たなくても、このファイルはページの最後で読むので要素はもう全部ある
   const mapApi = setupMap();
   setupGeo();
@@ -1180,4 +1208,5 @@
   setupSim();
   setupListSim();
   setupAi();
+  setupSegSlide();
 })();

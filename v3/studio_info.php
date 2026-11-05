@@ -842,34 +842,6 @@ render_header($studio['name'], 'tools');
     <a href="#equipment"><?= icon('speaker') ?> 機材</a>
 </nav>
 
-<?php if ($canEdit && claude_enabled()): ?>
-<!-- ===== ✨AIで入力（幹部と管理者。結果のプレビューは JS が #studio-ai-result に作る） ===== -->
-<section class="card sinfo-section sinfo-ai" id="studio-ai" data-studio-id="<?= $studioId ?>" data-csrf="<?= h(csrf_token()) ?>" data-max-images="<?= AI_MAX_IMAGES ?>">
-    <div class="sinfo-ai__head">
-        <button type="button" class="btn btn--sm" data-ai-run><?= icon('auto_awesome') ?> AIで入力</button>
-        <!-- モデル（Opus = 高精度・高め / Sonnet = 標準 / Haiku = 安い）。初期は config.php の設定値。このボックスは編集できる人（幹部・管理者）にしか出ない -->
-        <select data-ai-model aria-label="モデル" title="モデル">
-            <?php foreach (studio_ai_models() as $mid => $mname): ?>
-                <option value="<?= h($mid) ?>"<?= $mid === studio_ai_default_model() ? ' selected' : '' ?>><?= h($mname) ?></option>
-            <?php endforeach; ?>
-        </select>
-        <!-- 画像（料金表のスクリーンショット・パンフレットの写真など）。選ぶ・貼り付け（Ctrl+V）で最大 <?= AI_MAX_IMAGES ?> 枚。付けると画像だけを読む（ウェブ検索なし） -->
-        <button type="button" class="btn btn--sm" data-ai-pick title="画像を追加（貼り付けもOK）"><?= icon('add_photo_alternate') ?></button>
-        <input type="file" accept="image/*" multiple hidden data-ai-files>
-        <span class="muted small" data-ai-status></span>
-    </div>
-    <div class="sinfo-ai__thumbs" data-ai-thumbs hidden></div>
-    <form method="post" class="sinfo-ai__result" id="studio-ai-result" hidden
-        data-confirm="選んだ項目を AI の結果で置き換えます（料金・パック・レンタル・機材は今の行が削除されます）。よろしいですか？">
-        <?= csrf_field() ?>
-        <input type="hidden" name="action" value="apply_ai">
-        <input type="hidden" name="studio_id" value="<?= $studioId ?>">
-        <div data-ai-body></div>
-        <div><button type="submit" class="btn btn--primary btn--sm"><?= icon('download_done') ?> 選んだ項目を反映</button></div>
-    </form>
-</section>
-<?php endif; ?>
-
 <!-- ===== 基本情報 ===== -->
 <section class="card sinfo-section">
     <div class="sinfo-links">
@@ -904,6 +876,33 @@ render_header($studio['name'], 'tools');
     <?php if ($canEdit): ?>
     <details class="sinfo-edit">
         <summary><?= icon('edit') ?> 編集</summary>
+        <?php if ($canEdit && claude_enabled()): ?>
+        <!-- ✨AIで入力（幹部と管理者）。基本情報の「編集」を開いたときだけ見える。結果のプレビューは JS が #studio-ai-result に作る -->
+        <div class="sinfo-ai" id="studio-ai" data-studio-id="<?= $studioId ?>" data-csrf="<?= h(csrf_token()) ?>" data-max-images="<?= AI_MAX_IMAGES ?>">
+            <div class="sinfo-ai__head">
+                <button type="button" class="btn btn--sm" data-ai-run><?= icon('auto_awesome') ?> AIで入力</button>
+                <!-- モデル（Opus = 高精度・高め / Sonnet = 標準 / Haiku = 安い）。初期は config.php の設定値。このボックスは編集できる人（幹部・管理者）にしか出ない -->
+                <select data-ai-model aria-label="モデル" title="モデル">
+                    <?php foreach (studio_ai_models() as $mid => $mname): ?>
+                        <option value="<?= h($mid) ?>"<?= $mid === studio_ai_default_model() ? ' selected' : '' ?>><?= h($mname) ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <!-- 画像（料金表のスクリーンショット・パンフレットの写真など）。選ぶ・貼り付け（Ctrl+V）で最大 <?= AI_MAX_IMAGES ?> 枚。付けると画像だけを読む（ウェブ検索なし） -->
+                <button type="button" class="btn btn--sm" data-ai-pick title="画像を追加（貼り付けもOK）"><?= icon('add_photo_alternate') ?></button>
+                <input type="file" accept="image/*" multiple hidden data-ai-files>
+                <span class="muted small" data-ai-status></span>
+            </div>
+            <div class="sinfo-ai__thumbs" data-ai-thumbs hidden></div>
+            <form method="post" class="sinfo-ai__result" id="studio-ai-result" hidden
+                data-confirm="選んだ項目を AI の結果で置き換えます（料金・パック・レンタル・機材は今の行が削除されます）。よろしいですか？">
+                <?= csrf_field() ?>
+                <input type="hidden" name="action" value="apply_ai">
+                <input type="hidden" name="studio_id" value="<?= $studioId ?>">
+                <div data-ai-body></div>
+                <div><button type="submit" class="btn btn--primary btn--sm"><?= icon('download_done') ?> 選んだ項目を反映</button></div>
+            </form>
+        </div>
+        <?php endif; ?>
         <form method="post" class="sinfo-edit__form">
             <?= csrf_field() ?>
             <input type="hidden" name="action" value="save_info">
@@ -1035,20 +1034,19 @@ render_header($studio['name'], 'tools');
 </section>
 <?php endif; ?>
 
-<!-- ===== バンド練習 / 個人練習のタブ（両方の料金があるときだけ出す）=====
-     ・ここで選んだ対象に、下の 部屋・料金（料金表）と パック だけが切り替わる（JS: setupTargetTabs）。料金シミュレーションは連動しない
-     ・ラジオボタン（input type="radio"）をボタン風に見せている（.sinfo-seg と同じ作り）。名前は tab_target -->
-<?php if ($hasTabs): ?>
-<div class="sinfo-seg sinfo-seg--mode sinfo-tabs" id="studio-target-tabs" role="radiogroup" aria-label="対象">
-    <label><input type="radio" name="tab_target" value="band" checked> <?= icon('groups') ?> バンド練習</label>
-    <label><input type="radio" name="tab_target" value="solo"> <?= icon('person') ?> 個人練習</label>
-</div>
-<?php endif; ?>
-
 <!-- ===== 部屋と料金表（部屋の広さと料金を1枚のカードにまとめた）=====
      部屋ごとのブロック = 見出し（部屋名＋広さ）→ その部屋の料金表。「全部屋」共通の料金は先頭に出す -->
 <section class="card sinfo-section" id="rates">
     <h2><?= icon('meeting_room') ?> 部屋・料金</h2>
+    <!-- バンド練習 / 個人練習のタブ（両方の料金があるときだけ出す）。見出しの下に置く
+         ・ここで選んだ対象に、この カードの料金表と、下の パック だけが切り替わる（JS: setupTargetTabs）。料金シミュレーションは連動しない
+         ・ラジオボタン（input type="radio"）をボタン風に見せている（.sinfo-seg と同じ作り）。名前は tab_target -->
+    <?php if ($hasTabs): ?>
+    <div class="sinfo-seg sinfo-seg--mode sinfo-tabs" id="studio-target-tabs" role="radiogroup" aria-label="対象">
+        <label><input type="radio" name="tab_target" value="band" checked> <?= icon('groups') ?> バンド練習</label>
+        <label><input type="radio" name="tab_target" value="solo"> <?= icon('person') ?> 個人練習</label>
+    </div>
+    <?php endif; ?>
     <?php if (!$rates && !$rooms): ?><p class="muted small">-</p><?php endif; ?>
     <?php
     // 部屋の組み合わせごとに1つの表（共通の料金は「A・B」の見出しの下に1回だけ出す。全部屋共通は先頭）
