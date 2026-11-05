@@ -8,10 +8,10 @@
 .tab-song { display: flex; align-items: center; gap: 14px; margin-top: 12px; }
 .tab-song__art { width: 72px; height: 72px; border-radius: var(--r-md); object-fit: cover; flex: none; }
 .tab-song__art--none, .tab-head__art--none { display: inline-grid; place-items: center; background: var(--surface-2); color: var(--muted); }
-.tab-song__title { margin: 0; font-size: 20px; font-weight: 800; }
+.tab-song__title { margin: 0; font-size: var(--fs-2xl); font-weight: 800; }
 .tab-song__text p { margin: 4px 0 0; }
 .tab-parts { margin-top: 12px; }
-.tab-parts__heading { margin: 0 0 8px; font-size: 14px; font-weight: 800; color: var(--muted); }
+.tab-parts__heading { margin: 0 0 8px; font-size: var(--fs-md); font-weight: 800; color: var(--muted); }
 .tab-parts__list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .tab-parts__item { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 8px 10px; border-radius: var(--r-md); border: 1px solid var(--border); color: inherit; } /* 48px = 指で押しやすい高さ（タッチの最小サイズの目安は 44〜48px） */
 a.tab-parts__item:hover { border-color: var(--accent); }
@@ -36,7 +36,7 @@ a.tab-parts__item:hover { border-color: var(--accent); }
 .tab-links__site--memo { color: #b8860b; }
 .tab-links__list[hidden] { display: none; }
 .tab-links__name--btn { border: 0; background: none; padding: 0; font: inherit; font-weight: 700; text-align: left; cursor: pointer; }
-.tab-links__count { flex: none; display: inline-flex; align-items: center; gap: 2px; font-size: 12px; }
+.tab-links__count { flex: none; display: inline-flex; align-items: center; gap: 2px; font-size: var(--fs-xs); }
 .tab-links__count .icon { font-size: 16px; }
 .tab-links__name { flex: 1; min-width: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow-wrap: anywhere; line-height: 1.4; font-weight: 700; color: inherit; } /* 長い名前は2行まで見せて、それ以上は … */
 .tab-links__btn { flex: none; display: inline-flex; align-items: center; gap: 4px; }
@@ -46,7 +46,7 @@ a.tab-parts__item:hover { border-color: var(--accent); }
 .tab-links__row2 { flex: 0 0 100%; display: flex; gap: 8px; padding-left: 40px; /* サイトのアイコン（32px）+ gap の下にそろえる */ }
 /* ---- カード（曲全体 + パートごと。tab.php の $renderCard） ---- */
 .tab-card__head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-.tab-card__title { flex: 1; min-width: 0; margin: 0; font-size: 16px; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tab-card__title { flex: 1; min-width: 0; margin: 0; font-size: var(--fs-lg); font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tab-card__inst { flex: none; min-width: 2.2em; font-weight: 800; color: var(--gt); }
 .tab-card__all { flex: none; color: var(--muted); }
 .tab-card .tab-card__memo { margin-top: 10px; }
@@ -54,13 +54,13 @@ a.tab-parts__item:hover { border-color: var(--accent); }
 .tab-addpart { margin-top: 12px; }
 .tab-addpart__chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 .tab-links__name--spacer { flex: 1; } /* サイト名のボタンの右に空きを作って、削除ボタンなどを右端に寄せる */
-.tab-links__sub { display: block; font-weight: 400; font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
+.tab-links__sub { display: block; font-weight: 400; font-size: var(--fs-xs); color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
 .tab-links__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
 .tab-links__add { flex: 1; min-width: min(220px, 100%); display: flex; gap: 6px; }
 .tab-links__add input { flex: 1; min-width: 0; padding: 8px 10px; border-radius: var(--r-md); border: 1px solid var(--border); background: var(--surface); color: var(--text); font: inherit; }
 .tab-links__found { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border); }
 .tab-links__found .tab-links__item { border-style: dashed; }
-.tab-beta { flex: none; font-size: 11px; color: var(--muted); }
+.tab-beta { flex: none; font-size: var(--fs-2xs); color: var(--muted); }
 
 /* ---- YouTube の練習プレイヤー（tab.php?link=。動きは assets/ytplayer.js） ---- */
 .ytp { display: grid; gap: 10px; }
@@ -72,16 +72,16 @@ a.tab-parts__item:hover { border-color: var(--accent); }
 .ytp__tick { position: absolute; top: 0; width: 2px; height: 50%; background: var(--muted); pointer-events: none; }
 .ytp__tick--sec { height: 100%; background: var(--gt); }
 .ytp__line { touch-action: none; }
-.ytp__secs { display: grid; gap: 10px; max-height: 400px; overflow: hidden; transition: max-height .2s ease, opacity .2s ease, margin .2s ease; }
+.ytp__secs { display: grid; gap: 10px; max-height: 400px; overflow: hidden; transition: max-height var(--t-base) ease, opacity var(--t-base) ease, margin var(--t-base) ease; }
 .ytp__secs.is-closed { max-height: 0; opacity: 0; margin-block: -5px; }
-.ytp__del { transition: max-width .2s ease, opacity .2s ease, margin .2s ease; max-width: 44px; overflow: hidden; }
+.ytp__del { transition: max-width var(--t-base) ease, opacity var(--t-base) ease, margin var(--t-base) ease; max-width: 44px; overflow: hidden; }
 .ytp__marks:not(.is-editing) .ytp__del { max-width: 0; opacity: 0; margin-left: -6px; padding-inline: 0; pointer-events: none; }
 .ytp__bubbles { position: relative; height: 26px; margin-top: 6px; }
-.ytp__bubble { position: absolute; top: 0; transform: translateX(-50%); padding: 2px 7px; border-radius: var(--r-md); font-size: 12px; font-weight: 700; line-height: 1.3; white-space: nowrap; background: var(--gt); color: #fff; }
+.ytp__bubble { position: absolute; top: 0; transform: translateX(-50%); padding: 2px 7px; border-radius: var(--r-md); font-size: var(--fs-xs); font-weight: 700; line-height: 1.3; white-space: nowrap; background: var(--gt); color: #fff; }
 .ytp__bubble::before { content: ""; position: absolute; left: 50%; top: -4px; margin-left: -4px; border: 4px solid transparent; border-top: 0; border-bottom-color: var(--gt); }
 .ytp__bubbles--up { height: 0; margin: 0; }
 .ytp__bubbles--up:not(:empty) { height: 26px; margin-bottom: 4px; }
-.ytp__bubble { animation: ytp-pop-down .2s ease-out; }
+.ytp__bubble { animation: ytp-pop-down var(--t-base) ease-out; }
 .ytp__bubble--up { top: auto; bottom: 0; animation-name: ytp-pop-up; }
 .ytp__bubble--up::before { top: auto; bottom: -4px; border-top: 4px solid var(--gt); border-bottom: 0; }
 .ytp__bubble--up.ytp__bubble--own::before { border-top-color: var(--accent); }
@@ -92,12 +92,12 @@ a.tab-parts__item:hover { border-color: var(--accent); }
 .ytp__tick--own { height: 100%; background: var(--accent); opacity: .7; }
 .ytp__mark--own { border-left: 3px solid var(--accent); padding-left: 6px; }
 .ytp__mark .icon-btn.is-armed { color: #fff; background: var(--danger, #d33); }
-.ytp__time { text-align: center; font-variant-numeric: tabular-nums; color: var(--muted); font-size: 13px; }
+.ytp__time { text-align: center; font-variant-numeric: tabular-nums; color: var(--muted); font-size: var(--fs-sm); }
 .ytp__row { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px; }
 .ytp__label { color: var(--muted); }
 .ytp__play { min-width: 64px; min-height: 48px; border-radius: var(--r-full); }
 .ytp__play .icon { font-size: 28px; }
-.ytp__sec { display: inline-flex; align-items: center; gap: 2px; font-size: 13px; color: var(--muted); }
+.ytp__sec { display: inline-flex; align-items: center; gap: 2px; font-size: var(--fs-sm); color: var(--muted); }
 .ytp__sec input { width: 3.4em; padding: 5px 4px; border-radius: var(--r-md); border: 1px solid var(--border); background: var(--surface); color: var(--text); text-align: center; font: inherit; }
 .ytp__rate { min-width: 3.5em; text-align: center; font-weight: 800; font-variant-numeric: tabular-nums; }
 .ytp__marks { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
@@ -128,7 +128,7 @@ a.tab-parts__item:hover { border-color: var(--accent); }
 .ytp.is-full .ytp__dock .tab-chip.is-active, .ytp.is-full .ytp__dock .tab-chip[aria-pressed="true"] { background: var(--accent); }
 .ytp.is-full .ytp__dock .ytp__sec input { background: rgb(0 0 0 / .55); color: #fff; border-color: rgb(255 255 255 / .35); }
 .ytp.is-full .ytp__dock { padding-inline: 60px; }
-.ytp.is-full .ytp__dock [data-ytp-fs] { position: absolute; right: 10px; bottom: 10px; width: 44px; height: 44px; border-radius: 50%; background: var(--danger, #d33); border-color: transparent; box-shadow: 0 2px 8px rgb(0 0 0 / .5); }
+.ytp.is-full .ytp__dock [data-ytp-fs] { position: absolute; right: 10px; bottom: 10px; width: 44px; height: 44px; border-radius: 50%; background: var(--danger, #d33); border-color: transparent; box-shadow: var(--shadow-sm); }
 .ytp.is-full.is-zoom-bottom .ytp__dock [data-ytp-fs] { bottom: auto; top: 10px; }
 .ytp.is-full .ytp__sec--back { display: none; }
 .ytp.is-full .ytp__play { min-height: 40px; }
@@ -143,19 +143,19 @@ body.ytp-lock { overflow: hidden; }
    「1px に潰して画面の外へ」にする、が定番の書き方（アクセシビリティの分野で visually-hidden / sr-only と呼ばれる） */
 .tab-sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 /* 折りたたみ（<details>）の見出し行。min-height 48px = 指で押しやすい高さ。標準の三角（マーカー）は消して、右端の expand_more アイコンを開閉で回す */
-.tab-summary { display: flex; align-items: center; gap: 8px; min-height: 48px; cursor: pointer; list-style: none; font-size: 14px; font-weight: 700; color: var(--text); white-space: normal; }
+.tab-summary { display: flex; align-items: center; gap: 8px; min-height: 48px; cursor: pointer; list-style: none; font-size: var(--fs-md); font-weight: 700; color: var(--text); white-space: normal; }
 .tab-summary::-webkit-details-marker { display: none; } /* Safari の三角 */
-.tab-summary__chev { margin-left: auto; color: var(--muted); transition: transform .2s ease; }
+.tab-summary__chev { margin-left: auto; color: var(--muted); transition: transform var(--t-base) ease; }
 details[open] > .tab-summary > .tab-summary__chev { transform: rotate(180deg); }
 @media (prefers-reduced-motion: reduce) { .tab-summary__chev, .tab-step__chev { transition: none; } } /* 動きを減らす設定の人には、回さずに切り替える */
 
 /* ---- 新規作成フォーム（曲の一覧ページ）---- */
 .tab-parts--empty .tab-parts__heading { margin-bottom: 12px; }
-.tab-parts__heading--cta { display: flex; align-items: center; gap: 6px; font-size: 16px; color: var(--text); }
+.tab-parts__heading--cta { display: flex; align-items: center; gap: 6px; font-size: var(--fs-lg); color: var(--text); }
 /* パートが 1 件以上: 一覧の下の「パートを追加」（閉じた <details>）。点線の枠でボタンだと分かるように */
 .tab-new-wrap { margin-top: 10px; }
 .tab-new-wrap__summary { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 48px; border: 1px dashed var(--border); border-radius: var(--r-md);
-  color: var(--accent); font-size: 14px; font-weight: 700; cursor: pointer; list-style: none; }
+  color: var(--accent); font-size: var(--fs-md); font-weight: 700; cursor: pointer; list-style: none; }
 .tab-new-wrap__summary::-webkit-details-marker { display: none; }
 .tab-new-wrap__summary:hover { border-color: var(--accent); background: var(--accent-soft); }
 .tab-new-wrap[open] > .tab-new-wrap__summary { margin-bottom: 12px; }
@@ -164,7 +164,7 @@ details[open] > .tab-summary > .tab-summary__chev { transform: rotate(180deg); }
    （display: none だとキーボード（矢印キー・Tab）でも、スクリーンリーダーでも操作できなくなる）。label 全体がタイルの見た目 */
 .tab-inst { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 0; padding: 0; border: 0; min-width: 0; } /* fieldset の標準の枠・余白・最小幅を消す */
 .tab-inst__opt { position: relative; display: grid; place-items: center; min-height: 48px; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--r-md);
-  background: var(--surface); color: var(--text); font-size: 14px; font-weight: 700; text-align: center; cursor: pointer; }
+  background: var(--surface); color: var(--text); font-size: var(--fs-md); font-weight: 700; text-align: center; cursor: pointer; }
 .tab-inst__opt input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; pointer-events: none; } /* 見えない・クリックを受けないが、フォーカスは受けられる */
 .tab-inst__opt:hover { border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); }
 .tab-inst__opt:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); } /* :has() = 「中に〇〇がある要素」。選択中のラジオを持つタイルだけ装飾する */
@@ -172,7 +172,7 @@ details[open] > .tab-summary > .tab-summary__chev { transform: rotate(180deg); }
 @media (min-width: 720px) { .tab-inst { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
 @media (max-width: 719px) { .tab-inst__opt:last-of-type:nth-of-type(odd) { grid-column: 1 / -1; } } /* 2 列で最後の 1 つが余るとき（ドラム）は横いっぱい。-of-type = 同じ種類（label）だけを数える（先頭に legend があるので、-child だと数がずれる） */
 /* 詳細（部分 TAB）: 普段は使わないので折りたたむ */
-.tab-new__more > .tab-summary { min-height: 44px; font-size: 13px; color: var(--muted); }
+.tab-new__more > .tab-summary { min-height: 44px; font-size: var(--fs-sm); color: var(--muted); }
 .tab-new__partial { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; padding-bottom: 8px; }
 .tab-new__partial .field { flex: 0 1 9em; }
 .tab-new__partial input[type="number"] { width: 100%; }
@@ -194,7 +194,7 @@ details[open] > .tab-summary > .tab-summary__chev { transform: rotate(180deg); }
      右へはみ出して右端のボタン（？・履歴・編集）の下に潜り込んでいた。ここだけ通常の折り返しに戻す。
      ※ 同じクラス名を別の用途で使い回すと起きる「CSS のクラス名衝突」。根本的には app.css 側のタブを .tabs > .tab に絞る方法もある */
 .tab-head__text { flex: 1; min-width: 0; white-space: normal; }
-.tab-head__title { margin: 0; font-size: 17px; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tab-head__title { margin: 0; font-size: var(--fs-xl); font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tab-head__text p { margin: 2px 0 0; overflow-wrap: anywhere; }
 
 .tab-video { aspect-ratio: 16 / 9; width: min(100%, 420px); border-radius: var(--r-md); overflow: hidden; background: #000;
@@ -226,7 +226,7 @@ details[open] > .tab-summary > .tab-summary__chev { transform: rotate(180deg); }
 .icon-btn--play .icon { font-size: 26px; }
 .icon-btn:disabled { opacity: .35; cursor: default; }
 .tab-chip { min-width: 34px; padding: 6px 10px; border-radius: var(--r-full); border: 1px solid var(--border); background: var(--surface);
-  color: var(--muted); font: 700 12px/1 var(--font); cursor: pointer; }
+  color: var(--muted); font: 700 var(--fs-xs)/1 var(--font); cursor: pointer; }
 .tab-chip:hover { color: var(--text); }
 .tab-chip.is-active, .tab-chip[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
 .tab-chip .icon { font-size: 16px; vertical-align: -.2em; }
@@ -245,22 +245,22 @@ details[open] > .tab-summary > .tab-summary__chev { transform: rotate(180deg); }
 
 /* ===== 準備ステップ（編集モードの上。① 音源 → ② テンポ → ③ 開始位置 → ④ 入力）===== */
 /* app.css の汎用 .tab（日程タブ）の「太字・薄い色・折り返し禁止」が子へ継承されるので（このファイルの .tab-head__text のコメント参照）、この枠の中では普通に戻す */
-.tab-setup, .tab-more { padding: 0 16px; white-space: normal; font-weight: 400; font-size: 14px; color: var(--text); }
+.tab-setup, .tab-more { padding: 0 16px; white-space: normal; font-weight: 400; font-size: var(--fs-md); color: var(--text); }
 .tab-setup__dots { display: inline-flex; gap: 5px; margin-left: 4px; }
 .tab-setup__dot { width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid var(--border); } /* 未完了は輪だけ、完了は accent で塗る */
 .tab-setup__dot.is-done { background: var(--accent); border-color: var(--accent); }
 .tab-steps { list-style: none; margin: 0; padding: 0 0 6px; }
 .tab-step { border-top: 1px solid var(--border); scroll-margin-top: 72px; } /* scrollIntoView で上端に寄せるとき、上に固定のヘッダーに隠れない */
 .tab-step__head { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 48px; padding: 4px 0; border: 0; background: none; color: inherit; text-align: left; cursor: pointer;
-  font: 700 14px/1.2 var(--font); }
+  font: 700 var(--fs-md)/1.2 var(--font); }
 /* 丸い印: 完了 = accent 塗り + ✓ / 次にやるステップ = accent の枠線で番号 / それ以外 = muted の番号 */
-.tab-step__mark { width: 28px; height: 28px; border-radius: 50%; flex: none; display: grid; place-items: center; border: 1.5px solid var(--border); color: var(--muted); font: 800 13px/1 var(--font); }
+.tab-step__mark { width: 28px; height: 28px; border-radius: 50%; flex: none; display: grid; place-items: center; border: 1.5px solid var(--border); color: var(--muted); font: 800 var(--fs-sm)/1 var(--font); }
 .tab-step__mark .icon { font-size: 18px; }
 .tab-step.is-next .tab-step__mark { border-color: var(--accent); color: var(--accent); }
 .tab-step.is-done .tab-step__mark { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
 .tab-step__title { flex: none; }
 .tab-step__sum { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; font-weight: 600; } /* 現在の値の要約（長ければ … で省略） */
-.tab-step__chev { flex: none; color: var(--muted); transition: transform .2s ease; }
+.tab-step__chev { flex: none; color: var(--muted); transition: transform var(--t-base) ease; }
 .tab-step.is-open .tab-step__chev { transform: rotate(180deg); }
 .tab-step__body { display: grid; gap: 12px; max-width: 520px; padding: 4px 0 16px; } /* max-width: 広い画面で、入力欄やボタンが横に伸びすぎないように */
 .tab-step__fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
@@ -281,7 +281,7 @@ details[open] > .tab-summary > .tab-summary__chev { transform: rotate(180deg); }
 /* iOS の Safari は、文字が 16px 未満の入力欄にフォーカスすると画面を勝手に拡大してしまう（拡大したまま戻らず、操作しづらい）。
    指で操作する端末（pointer: coarse）の入力欄だけ 16px にして、これを防ぐ。マウスの PC は今までの大きさのまま */
 @media (pointer: coarse) {
-  .tab-step input, .tab-step select, .tab-more input, .tab-more select, .tab-more textarea { font-size: 16px; }
+  .tab-step input, .tab-step select, .tab-more input, .tab-more select, .tab-more textarea { font-size: var(--fs-lg); }
   .tab-step input, .tab-step select, .tab-more input[type="text"], .tab-more input[type="number"], .tab-more select { min-height: 44px; }
   .tab-step .icon-btn { width: 44px; height: 44px; } /* BPM 計測・現在位置のボタン: タッチの最小サイズ 44px */
 }
@@ -307,15 +307,15 @@ details[open] > .tab-summary > .tab-summary__chev { transform: rotate(180deg); }
 .tg-bar.is-now { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
 .tg-bar.is-tap-next { border-style: dashed; border-color: var(--accent); }
 .tg-bar__head { display: flex; align-items: center; gap: 4px; margin-bottom: 4px; }
-.tg-bar__no { font-size: 12px; font-weight: 800; color: var(--muted); min-width: 1.6em; }
-.tg-bar__sec { flex: 1; min-width: 0; width: 7em; padding: 3px 8px; border-radius: var(--r-sm); border: 1px solid var(--border); background: var(--surface); font-size: 12px; }
+.tg-bar__no { font-size: var(--fs-xs); font-weight: 800; color: var(--muted); min-width: 1.6em; }
+.tg-bar__sec { flex: 1; min-width: 0; width: 7em; padding: 3px 8px; border-radius: var(--r-sm); border: 1px solid var(--border); background: var(--surface); font-size: var(--fs-xs); }
 .tg-bar__head .icon-btn { flex: none; }
 .tg-bar__head .icon-btn.is-active { width: auto; padding: 0 8px; border-radius: var(--r-lg); gap: 2px; display: inline-flex; align-items: center; }
-.tg-bar__ms { font-size: 11px; font-variant-numeric: tabular-nums; }
+.tg-bar__ms { font-size: var(--fs-2xs); font-variant-numeric: tabular-nums; }
 .tg-bar__cells { display: grid; grid-template-columns: 1.4em repeat(var(--cols), 26px); overflow-x: auto; overscroll-behavior-x: contain; }
-.tg-name { display: grid; place-items: center; font-size: 10px; font-weight: 700; color: var(--muted); }
+.tg-name { display: grid; place-items: center; font-size: var(--fs-2xs); font-weight: 700; color: var(--muted); }
 .tg-cell { position: relative; height: 24px; padding: 0; border: 0; border-left: 1px solid transparent; background: none; color: var(--text);
-  font: 700 12px/1 ui-monospace, Menlo, Consolas, monospace; cursor: pointer; }
+  font: 700 var(--fs-xs)/1 ui-monospace, Menlo, Consolas, monospace; cursor: pointer; }
 .tg-cell::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: var(--border); z-index: 0; } /* 弦の線 */
 .tg-cell.is-beat { border-left-color: var(--muted); }
 .tg-cell.has-note { background: var(--surface); z-index: 1; }
@@ -339,10 +339,10 @@ details[open] > .tab-summary > .tab-summary__chev { transform: rotate(180deg); }
   .tg-bar { flex: 1 1 100%; }                                   /* 1 小節 = 1 行（横いっぱい） */
   /* 列は minmax(32px, 1fr): 小節が画面に収まるときは横いっぱいに広がり、収まらないときは 32px のまま、小節の中だけ横スクロール */
   .tg-bar__cells { grid-template-columns: 1.4em repeat(var(--cols), minmax(32px, 1fr)); }
-  .tg-cell { height: 34px; font-size: 14px; }
-  .tg-chord { height: 28px; font-size: 12px; }
+  .tg-cell { height: 34px; font-size: var(--fs-md); }
+  .tg-chord { height: 28px; font-size: var(--fs-xs); }
   .tg-bar__head .icon-btn { width: 36px; height: 36px; }        /* 小節の ＋ ・複製・削除 */
-  .tg-bar__sec { min-height: 36px; font-size: 16px; }           /* 16px: iOS が入力欄を勝手に拡大しない大きさ */
+  .tg-bar__sec { min-height: 36px; font-size: var(--fs-lg); }           /* 16px: iOS が入力欄を勝手に拡大しない大きさ */
 }
 
 /* 保存ボタン（app.css の .sticky-actions）。スマホの画面内キーボードが出ている間は、その真上に出す（下の「画面内キーボード」の media を参照） */
@@ -363,7 +363,7 @@ details[open] > .tab-summary > .tab-summary__chev { transform: rotate(180deg); }
 .tab-search__text > .tab-search__title { white-space: normal; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow-wrap: anywhere; } /* 動画タイトルは折り返して3行まで */
 .tab-search__bpm { font-weight: 800; font-variant-numeric: tabular-nums; }
 .tab-history__who { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tab-history__label { font-size: 11px; font-weight: 800; padding: 2px 8px; border-radius: var(--r-sm); background: var(--surface-2); flex: none; }
+.tab-history__label { font-size: var(--fs-2xs); font-weight: 800; padding: 2px 8px; border-radius: var(--r-sm); background: var(--surface-2); flex: none; }
 .tab-history__label--create, .tab-history__label--restore { color: var(--ok); background: var(--ok-bg); }
 .tab-history__label--delete { color: var(--danger); background: var(--danger-bg); }
 
@@ -377,7 +377,7 @@ details[open] > .tab-summary > .tab-summary__chev { transform: rotate(180deg); }
 .tab-sections { display: flex; flex-wrap: wrap; gap: 6px; }
 .tab-sec { display: inline-flex; align-items: stretch; border: 1px solid color-mix(in srgb, var(--sec) 55%, var(--border)); border-radius: var(--r-full);
   background: color-mix(in srgb, var(--sec) 16%, var(--surface)); overflow: hidden; }
-.tab-sec__go, .tab-sec__loop { border: 0; background: none; color: var(--text); font: 700 12px/1 var(--font); cursor: pointer; padding: 6px 10px; }
+.tab-sec__go, .tab-sec__loop { border: 0; background: none; color: var(--text); font: 700 var(--fs-xs)/1 var(--font); cursor: pointer; padding: 6px 10px; }
 .tab-sec__go:hover, .tab-sec__loop:hover { background: color-mix(in srgb, var(--sec) 28%, transparent); }
 .tab-sec__loop { width: auto; height: auto; border-radius: 0; padding: 0 8px; display: inline-grid; place-items: center; }
 .tab-sec__loop .icon { font-size: 16px; }
@@ -388,7 +388,7 @@ details[open] > .tab-summary > .tab-summary__chev { transform: rotate(180deg); }
 .tab-secrow { display: flex; align-items: center; gap: 6px; }
 .tab-secrow .tab-secpick { flex: 1; min-width: 0; }
 /* 使い方のポップアップ（popover は画面中央に出る） */
-.tab-howto { max-width: min(360px, calc(100vw - 32px)); padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); color: var(--text); box-shadow: 0 8px 28px rgb(0 0 0 / .25); font-size: .9rem; line-height: 1.6; }
+.tab-howto { max-width: min(360px, calc(100vw - 32px)); padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); color: var(--text); box-shadow: var(--shadow-modal); font-size: .9rem; line-height: 1.6; }
 .tab-howto::backdrop { background: rgb(0 0 0 / .25); }
 .tab-howto b { display: flex; align-items: center; gap: 6px; }
 .tab-howto ol { margin: 6px 0; padding-left: 1.3em; }
@@ -402,15 +402,15 @@ details[open] > .tab-summary > .tab-summary__chev { transform: rotate(180deg); }
 
 /* 練習 BPM */
 .tab-pbpm { width: 4.6em; padding: 5px 6px; border-radius: var(--r-md); border: 1px solid var(--border); background: var(--surface); text-align: center;
-  font: 700 13px/1 var(--font); font-variant-numeric: tabular-nums; }
-.tab-loop-step { width: auto; padding: 4px 6px; border-radius: var(--r-md); border: 1px solid var(--border); background: var(--surface); font-size: 12px; }
+  font: 700 var(--fs-sm)/1 var(--font); font-variant-numeric: tabular-nums; }
+.tab-loop-step { width: auto; padding: 4px 6px; border-radius: var(--r-md); border: 1px solid var(--border); background: var(--surface); font-size: var(--fs-xs); }
 
 /* 練習用マーカー（自分だけ。canvas では点線の旗） */
 .tab-markers { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
 .tab-markers__item { display: flex; align-items: center; gap: 6px; padding: 4px 8px; border: 1px dashed var(--accent-2); border-radius: var(--r-md); background: var(--surface); }
-.tab-markers__flag { color: var(--accent-2); font-size: 18px; flex: none; }
+.tab-markers__flag { color: var(--accent-2); font-size: var(--fs-xl); flex: none; }
 .tab-markers__time { font-variant-numeric: tabular-nums; color: var(--muted); white-space: nowrap; }
-.tab-markers__label { flex: 1; min-width: 0; padding: 3px 8px; border-radius: var(--r-sm); border: 1px solid var(--border); background: var(--surface); font-size: 13px; }
+.tab-markers__label { flex: 1; min-width: 0; padding: 3px 8px; border-radius: var(--r-sm); border: 1px solid var(--border); background: var(--surface); font-size: var(--fs-sm); }
 .tab-markers__item .icon-btn { flex: none; }
 .tab-markers__item .icon-btn.is-active { color: var(--accent-2); border-color: var(--accent-2); }
 
@@ -421,7 +421,7 @@ details[open] > .tab-summary > .tab-summary__chev { transform: rotate(180deg); }
 .tab-metro__menu select { width: 100%; }
 
 /* 拍の表示（位置の横の丸）。1拍目は accent。動きを減らす設定のときは、光らせずに色だけ変える */
-.tab-beat { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; vertical-align: -1px; background: var(--border); transition: background .08s ease, transform .08s ease; }
+.tab-beat { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; vertical-align: -1px; background: var(--border); transition: background var(--t-fast) ease, transform var(--t-fast) ease; }
 .tab-beat.is-on { background: var(--muted); transform: scale(1.25); }
 .tab-beat.is-on.is-accent { background: var(--accent); }
 @media (prefers-reduced-motion: reduce) {
@@ -447,29 +447,29 @@ details[open] > .tab-summary > .tab-summary__chev { transform: rotate(180deg); }
 .tab-notes > summary::-webkit-details-marker { display: none; }
 .tab-notes[open] > summary { margin-bottom: 8px; }
 .tab-notes__song { color: var(--muted); margin-bottom: 6px; }
-.tab-memo { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; }
+.tab-memo { white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--fs-md); }
 .tab-memo a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
 .tab-imgs { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 0; padding: 0; list-style: none; }
 .tab-imgs li { position: relative; }
 .tab-imgs__del { position: absolute; top: -6px; right: -6px; width: 20px; height: 20px; padding: 0; border-radius: 50%; border: 1px solid var(--border);
-  background: var(--surface); color: var(--danger); font: 700 14px/1 var(--font); cursor: pointer; }
+  background: var(--surface); color: var(--danger); font: 700 var(--fs-md)/1 var(--font); cursor: pointer; }
 /* 曲のメモ（曲の一覧ページの下。<details> の折りたたみ）。<details> 自体は display: grid にせず（ブラウザによって開閉の動きが崩れる）、中身を包む div を grid にする */
 .tab-notes-edit { margin-top: 12px; padding: 0 16px; }
 .tab-notes-edit__body { display: grid; gap: 8px; padding-bottom: 16px; }
-.tab-notes-edit textarea { width: 100%; padding: 8px 10px; border-radius: var(--r-md); border: 1px solid var(--border); background: var(--surface); font-size: 14px; resize: vertical; }
+.tab-notes-edit textarea { width: 100%; padding: 8px 10px; border-radius: var(--r-md); border: 1px solid var(--border); background: var(--surface); font-size: var(--fs-md); resize: vertical; }
 .tab-notes-edit__actions { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-.tab-settings textarea { width: 100%; padding: 8px 10px; border-radius: var(--r-md); border: 1px solid var(--border); background: var(--surface); font-size: 14px; resize: vertical; }
+.tab-settings textarea { width: 100%; padding: 8px 10px; border-radius: var(--r-md); border: 1px solid var(--border); background: var(--surface); font-size: var(--fs-md); resize: vertical; }
 
 /* ===== コード譜・音の長さ・休符・ドラム・部分 TAB ===== */
 .tg-chord { position: relative; height: 22px; padding: 0; border: 0; border-left: 1px solid transparent; background: none; color: var(--text); cursor: pointer;
-  font: 800 11px/1 var(--font); white-space: nowrap; overflow: visible; text-align: left; z-index: 1; }
+  font: 800 var(--fs-2xs)/1 var(--font); white-space: nowrap; overflow: visible; text-align: left; z-index: 1; }
 .tg-chord.is-beat { border-left-color: var(--border); }
 .tg-chord.has-chord { color: var(--accent); }
 .tg-chord:hover { background: var(--accent-soft); }
 .tg-name--chord { color: var(--accent); }
 .tg-cell.is-sus::after { content: ""; position: absolute; left: 0; right: 0; top: calc(50% - 1px); height: 3px; background: var(--muted); z-index: 0; } /* 前の音が続いている */
 .tg-cell.has-rest { color: var(--muted); font-weight: 600; background: var(--surface); z-index: 1; }
-.tab-chord-now { font: 900 22px/1 var(--font); color: var(--accent); margin-left: 8px; }
+.tab-chord-now { font: 900 var(--fs-2xl)/1 var(--font); color: var(--accent); margin-left: 8px; }
 .tab-new .check { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; color: var(--text); font-weight: 600; }
 .tag[data-partial-label] { vertical-align: 1px; }
 
@@ -486,7 +486,7 @@ details[open] > .tab-summary > .tab-summary__chev { transform: rotate(180deg); }
 .tab-pad__panel { display: grid; gap: 6px; }
 .tab-pad__panel[hidden] { display: none; }
 .tab-pad button { min-width: 30px; height: 34px; padding: 0 6px; border-radius: var(--r-md); border: 1px solid var(--border); background: var(--surface); color: var(--text);
-  font: 700 13px/1 var(--font); cursor: pointer; display: inline-grid; place-items: center; }
+  font: 700 var(--fs-sm)/1 var(--font); cursor: pointer; display: inline-grid; place-items: center; }
 .tab-pad button .icon { font-size: 20px; } /* ↶ ↷ ◀ ▶ ▲ ▼ ✕ は Material のアイコン（文字の記号は端末のフォントで形がバラバラになる） */
 .tab-pad button:active { background: var(--accent-soft); border-color: var(--accent); }
 .tab-pad button.is-active { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
@@ -494,7 +494,7 @@ details[open] > .tab-summary > .tab-summary__chev { transform: rotate(180deg); }
 .tab-pad__big { flex: 1 1 28px; font-size: 16px !important; height: 40px !important; }
 .tab-pad__sm { font-size: 12px !important; }
 .tab-pad__tab { flex: 1 1 60px; }
-.tab-pad__chord { flex: 1 1 80px; min-width: 0; height: 34px; padding: 0 8px; border-radius: var(--r-md); border: 1px solid var(--border); background: var(--surface); font: 800 15px/1 var(--font); }
+.tab-pad__chord { flex: 1 1 80px; min-width: 0; height: 34px; padding: 0 8px; border-radius: var(--r-md); border: 1px solid var(--border); background: var(--surface); font: 800 var(--fs-md)/1 var(--font); }
 @media (pointer: coarse) {
   .tab-pad button { height: 38px; } /* 指で押す端末は、ボタンを少し大きく（マウスの PC は今のまま） */
   .tab-pad button:not(.tab-pad__big) { min-width: 36px; } /* 数字 0〜9（big）は 10 個が 1 行に収まる幅のまま */
@@ -522,7 +522,7 @@ details[open] > .tab-summary > .tab-summary__chev { transform: rotate(180deg); }
 
 /* ===== AI・インポート ===== */
 .tab-import textarea { width: 100%; padding: 8px 10px; border-radius: var(--r-md); border: 1px solid var(--border); background: var(--surface);
-  font: 12px/1.35 ui-monospace, Menlo, Consolas, monospace; resize: vertical; margin-top: 8px; }
+  font: var(--fs-xs)/1.35 ui-monospace, Menlo, Consolas, monospace; resize: vertical; margin-top: 8px; }
 .tab-import__images { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .tab-import__img { position: relative; cursor: pointer; }
 .tab-import__img input { position: absolute; top: 4px; left: 4px; z-index: 1; }
@@ -535,18 +535,18 @@ details[open] > .tab-summary > .tab-summary__chev { transform: rotate(180deg); }
 /* ===== 使い方のモーダル（ヘッダーの ？） ===== */
 .modal.tab-guide { width: min(520px, calc(100vw - 32px)); white-space: normal; font-weight: 400; } /* app.css の .tab（タブ切替のボタン）の nowrap・太字が親から継承されるので戻す */
 .tab-guide .modal__body { max-height: calc(100dvh - 48px); overflow-y: auto; }
-.tab-guide__h { margin: 14px 0 6px; font-size: 13px; font-weight: 800; color: var(--muted); }
+.tab-guide__h { margin: 14px 0 6px; font-size: var(--fs-sm); font-weight: 800; color: var(--muted); }
 .tab-guide .icon { font-size: 18px; vertical-align: -.25em; }
-.tab-guide__steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 14px; } /* 番号は ①〜④ を文字で書いてあるので、<ol> の自動の番号は出さない */
+.tab-guide__steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: var(--fs-md); } /* 番号は ①〜④ を文字で書いてあるので、<ol> の自動の番号は出さない */
 .tab-guide__steps b { white-space: nowrap; }
-.tab-guide__list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 14px; }
+.tab-guide__list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: var(--fs-md); }
 .tab-guide__list li { display: flex; align-items: center; gap: 4px; }
 .tab-guide__list li > .icon, .tab-guide__txt { flex: none; color: var(--accent); }
 .tab-guide__list li > span:last-child { margin-left: 6px; min-width: 0; }
-.tab-guide__txt { font-weight: 800; font-size: 12px; min-width: 18px; }
+.tab-guide__txt { font-weight: 800; font-size: var(--fs-xs); min-width: 18px; }
 .tab-guide__keys { margin: 14px 0 0; }
 .tab-guide .form-actions { justify-content: space-between; align-items: center; }
-.tab-guide__labels { font-size: 13px; }
+.tab-guide__labels { font-size: var(--fs-sm); }
 /* モーダルの中では、ボタン名の文字（::after）を出さない */
 .tab.is-help .tab-guide .btn::after { content: none; }
 
@@ -570,7 +570,7 @@ details[open] > .tab-summary > .tab-summary__chev { transform: rotate(180deg); }
 .tab-help-field { display: inline-flex; flex-direction: column; align-items: center; }
 .tab.is-help .tab-help-field::after {
   content: attr(data-help);
-  margin-top: 2px; font-size: 10px; font-weight: 600; line-height: 1.2; white-space: nowrap; color: var(--muted);
+  margin-top: 2px; font-size: var(--fs-2xs); font-weight: 600; line-height: 1.2; white-space: nowrap; color: var(--muted);
 }
 
 /* ---- YouTube 検索ダイアログ（曲ページ。動きは assets/tab.js の songLinks） ---- */
@@ -586,15 +586,15 @@ details[open] > .tab-summary > .tab-summary__chev { transform: rotate(180deg); }
 .yts__thumb .icon { position: absolute; inset: 0; display: grid; place-items: center; font-size: 36px; color: #fff; text-shadow: 0 0 8px rgb(0 0 0 / .6); }
 .yts__item--play { grid-template-columns: minmax(0, 1fr) auto; }
 .yts__item--play .yts__thumb { grid-column: 1 / -1; }
-.yts__title { overflow-wrap: anywhere; font-weight: 700; font-size: 13px; line-height: 1.4; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
-.yts__ch { display: block; font-weight: 400; font-size: 12px; color: var(--muted); }
+.yts__title { overflow-wrap: anywhere; font-weight: 700; font-size: var(--fs-sm); line-height: 1.4; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+.yts__ch { display: block; font-weight: 400; font-size: var(--fs-xs); color: var(--muted); }
 @media (max-width: 480px) { .yts__item:not(.yts__item--play) { grid-template-columns: 112px minmax(0, 1fr) auto; } }
 
 /* リンクの付け替え（楽器の変更）ダイアログ。.yts の枠を使い回す */
 .lmove { width: min(360px, calc(100vw - 24px)); }
 .lmove[open] { display: block; }
 .lmove__list { list-style: none; margin: 0; padding: 0 36px 0 0; display: grid; gap: 6px; }
-.lmove__opt { display: flex; align-items: center; gap: 8px; width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); color: inherit; font: inherit; font-weight: 700; text-align: left; cursor: pointer; transition: border-color .15s, background .15s; }
+.lmove__opt { display: flex; align-items: center; gap: 8px; width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); color: inherit; font: inherit; font-weight: 700; text-align: left; cursor: pointer; transition: border-color var(--t-fast), background var(--t-fast); }
 .lmove__opt:hover:not(:disabled) { border-color: var(--accent); background: rgba(127, 127, 127, .08); }
 .lmove__opt:disabled { opacity: .4; cursor: default; }
 .lmove__opt--new { border-style: dashed; }

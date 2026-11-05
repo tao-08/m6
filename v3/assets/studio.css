@@ -19,7 +19,7 @@ form.tool-card .tool-card__body { flex: 1; }
 
 /* ---- 数のチップ ---- */
 .std-sum { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
-.std-chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: var(--r-full); font-size: 12px; font-weight: 700;
+.std-chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: var(--r-full); font-size: var(--fs-xs); font-weight: 700;
   background: var(--surface-2); color: var(--muted); }
 .std-chip .icon { font-size: 16px; }
 .std-chip.is-need { background: var(--ok-bg); color: var(--ok); }
@@ -30,7 +30,7 @@ form.tool-card .tool-card__body { flex: 1; }
 /* ---- 要否 ---- */
 .std-share { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px; }
 .std-need { display: grid; gap: 4px; }
-.std-need__day { font-size: 14px; margin: 14px 0 4px; color: var(--muted); }
+.std-need__day { font-size: var(--fs-md); margin: 14px 0 4px; color: var(--muted); }
 .std-need__row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 2px 10px; padding: 8px 10px;
   border: 1px solid var(--border); border-left: 4px solid var(--border); border-radius: var(--r-md); background: var(--surface); }
 .std-need__row.is-need { border-left-color: var(--ok); }
@@ -38,7 +38,7 @@ form.tool-card .tool-card__body { flex: 1; }
 .std-need__main { display: flex; flex-direction: column; min-width: 0; }
 .std-need__name { font-weight: 700; }
 .std-need__members { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.std-need__who { grid-column: 1; font-size: 11px; }
+.std-need__who { grid-column: 1; font-size: var(--fs-2xs); }
 .std-need__seg { grid-column: 2; grid-row: 1 / span 2; }
 .std-need__seg button { padding: 6px 10px; display: inline-flex; }
 .std-need__seg .icon { font-size: 18px; }
@@ -49,7 +49,7 @@ form.tool-card .tool-card__body { flex: 1; }
 
 /* ---- 割当: 表 ---- */
 .std-grid__scroll { padding: 0; overflow-x: auto; -webkit-overflow-scrolling: touch; }
-.std-grid { width: 100%; border-collapse: collapse; font-size: 13px; }
+.std-grid { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
 .std-grid th, .std-grid td { border-bottom: 1px solid var(--border); padding: 0; text-align: center; }
 .std-grid thead th { position: sticky; top: 0; padding: 8px 4px; background: var(--text); color: var(--bg); font-weight: 800; min-width: 96px; }
 /* 時間の列は横にスクロールしても左に残す（position: sticky + left: 0） */
@@ -63,11 +63,11 @@ form.tool-card .tool-card__body { flex: 1; }
 .std-grid__empty { padding: 16px; text-align: center; margin: 0; }
 
 .std-cell { position: relative; height: 52px; padding: 4px !important; border-left: 1px solid var(--border); cursor: pointer;
-  transition: background-color .15s ease, box-shadow .15s ease; }
+  transition: background-color var(--t-fast) ease, box-shadow var(--t-fast) ease; }
 .std-cell:hover { background: var(--surface-2); }
 .std-cell__name { display: block; font-weight: 700; line-height: 1.25; word-break: break-word; }
-.std-cell__empty { color: var(--border); font-size: 18px; }
-.std-cell__day { display: block; font-size: 10px; color: var(--muted); }
+.std-cell__empty { color: var(--border); font-size: var(--fs-xl); }
+.std-cell__day { display: block; font-size: var(--fs-2xs); color: var(--muted); }
 .std-cell__day.is-early { color: var(--warn); }
 .std-cell.is-sel { box-shadow: inset 0 0 0 2px var(--accent); background: var(--accent-soft); }
 .std-cell.is-clash { background: var(--danger-bg); }
@@ -81,14 +81,14 @@ form.tool-card .tool-card__body { flex: 1; }
 .std-pool__more { margin-top: 8px; }
 .std-pool__more summary { cursor: pointer; margin-bottom: 6px; }
 .std-band { display: inline-flex; flex-direction: column; align-items: flex-start; padding: 6px 10px; border: 1px solid var(--border);
-  border-radius: var(--r-md); background: var(--surface); color: var(--text); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+  border-radius: var(--r-md); background: var(--surface); color: var(--text); font: inherit; font-size: var(--fs-sm); font-weight: 700; cursor: pointer; }
 .std-band.is-unknown { border-style: dashed; }   /* 未回答（必要として扱っている） */
 .std-band.is-sel { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
-.std-band__day { font-size: 10px; color: var(--muted); font-weight: 400; }
+.std-band__day { font-size: var(--fs-2xs); color: var(--muted); font-weight: 400; }
 
 /* ---- 割当: 選択中のバンド（画面下に浮かせる） ---- */
 .std-float { position: fixed; left: 50%; bottom: 76px; z-index: 50; transform: translateX(-50%); display: flex; align-items: center; gap: 8px;
-  width: min(480px, calc(100vw - 24px)); padding: 10px 12px; animation: std-up .2s var(--ease-out); }
+  width: min(480px, calc(100vw - 24px)); padding: 10px 12px; animation: std-up var(--t-base) var(--ease-out); }
 .std-float__body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .std-float__body .small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @keyframes std-up { from { opacity: 0; transform: translate(-50%, 8px); } }
@@ -98,7 +98,7 @@ form.tool-card .tool-card__body { flex: 1; }
 .std-set__rooms { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; }
 /* 全消去ボタン: グリッドの1行目を丸ごと使い、右端に寄せる（入力欄と重ならない） */
 .std-set__clear { grid-column: 1 / -1; justify-self: end; display: inline-flex; align-items: center; }
-.std-in { min-width: 0; padding: 7px 9px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); color: var(--text); font: inherit; font-size: 14px; }
+.std-in { min-width: 0; padding: 7px 9px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); color: var(--text); font: inherit; font-size: var(--fs-md); }
 .std-in[type="number"] { width: 72px; }
 .std-in--time { width: 70px; font-variant-numeric: tabular-nums; }
 .std-in--room { width: 72px; text-align: center; font-weight: 700; }
@@ -111,7 +111,7 @@ form.tool-card .tool-card__body { flex: 1; }
 .std-row.is-day .std-row__type { color: var(--accent); }
 .std-row.is-live .std-row__type { color: var(--headliner); }
 .std-row__fields { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.std-row__unit { display: inline-flex; align-items: center; gap: 3px; font-size: 13px; color: var(--muted); }
+.std-row__unit { display: inline-flex; align-items: center; gap: 3px; font-size: var(--fs-sm); color: var(--muted); }
 .std-row__range { font-variant-numeric: tabular-nums; }
 .std-row__ops { display: flex; gap: 2px; }
 .std-row__ops .icon-btn { width: 32px; height: 32px; }
@@ -127,7 +127,7 @@ form.tool-card .tool-card__body { flex: 1; }
    z-index は position が static だと効かないので relative を付ける。
    pointer-events: none = 掴んでいる要素が指の下の判定を邪魔しない */
 .std-cell.is-dragging, .std-band.is-dragging, .std-row.is-dragging, .is-settling { position: relative; z-index: 20; }
-.is-dragging { pointer-events: none; will-change: transform; transition: none !important; box-shadow: 0 8px 22px rgb(0 0 0 / .3); }
+.is-dragging { pointer-events: none; will-change: transform; transition: none !important; box-shadow: var(--shadow-modal); }
 .std-cell.is-dragging { background: var(--surface); box-shadow: 0 8px 22px rgb(0 0 0 / .3), inset 0 0 0 2px var(--accent); }
 .std-band.is-dragging { background: var(--surface); border-color: var(--accent); }
 /* 入れ替えで滑る相手のセル（transform を transition で滑らせる） */
@@ -144,7 +144,7 @@ form.tool-card .tool-card__body { flex: 1; }
   .std-set__title { grid-column: 1 / -1; }
   .std-row { align-items: flex-start; }
   /* スマホでは 4部屋がはみ出さないように、列を細く・文字を小さく */
-  .std-grid { font-size: 12px; }
+  .std-grid { font-size: var(--fs-xs); }
   .std-grid thead th { min-width: 70px; }
   .std-grid__time { width: 52px; min-width: 52px !important; }
 }
@@ -152,11 +152,11 @@ form.tool-card .tool-card__body { flex: 1; }
 /* ---- 回答ページ ---- */
 .std-ans__lead { display: flex; align-items: center; gap: 6px; margin-top: -4px; }
 .std-ans { display: grid; gap: 8px; margin-bottom: 24px; }
-.std-ans__day { font-size: 14px; color: var(--muted); margin: 12px 0 0; }
+.std-ans__day { font-size: var(--fs-md); color: var(--muted); margin: 12px 0 0; }
 .std-ans__band { padding: 14px; }
 .std-ans__band.is-mine { border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
 .std-ans__head { display: flex; align-items: center; gap: 8px; }
-.std-ans__name { font-weight: 800; font-size: 16px; }
+.std-ans__name { font-weight: 800; font-size: var(--fs-lg); }
 .std-ans__members { margin: 4px 0 8px; }
 .std-ans__form { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 8px; }
 .std-ans__seg button { display: inline-flex; align-items: center; gap: 4px; padding: 8px 16px; }

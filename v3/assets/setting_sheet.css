@@ -6,7 +6,7 @@
 
 .sheet { display: grid; gap: 16px; }
 .sheet-card { display: grid; gap: 12px; }
-.sheet-card__title { margin: 0; font-size: 16px; font-weight: 800; display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; }
+.sheet-card__title { margin: 0; font-size: var(--fs-lg); font-weight: 800; display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; }
 
 /* 基本: スマホは2列、広い画面は4列。sheet-grid__wide は2列ぶん使う */
 .sheet-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
@@ -22,19 +22,19 @@
 
 /* パートが印刷済みの表（サークル共通シート）: パート名 | 名前 | マイク✓ */
 .sheet-slots__row { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; gap: 8px; align-items: center; }
-.sheet-slots__label { font-size: 13px; font-weight: 700; color: var(--muted); }
-.sheet-slots__mic { font-size: 13px; white-space: nowrap; }
+.sheet-slots__label { font-size: var(--fs-sm); font-weight: 700; color: var(--muted); }
+.sheet-slots__mic { font-size: var(--fs-sm); white-space: nowrap; }
 .sheet-members .btn { justify-self: start; margin-top: 4px; }
 /* 名前・パート（とセットリストの曲名・要望）の入力欄の見た目を、ほかの欄（app.css の .field input）にそろえる。
  *  ただし行が多いので、縦の余白（padding の上下）だけ小さくしてコンパクトに。行どうしのすき間（gap）は今のまま */
 .sheet-members input:not([type="checkbox"]), .setlist input {
   width: 100%; min-width: 0; padding: 6px 12px; border-radius: var(--r-md); border: 1px solid var(--border);
-  background: var(--surface); color: var(--text); font-size: 15px;
+  background: var(--surface); color: var(--text); font-size: var(--fs-md);
   line-height: 1.65; /* 親から受け継ぐ行の高さが場所で違う（セットリストの中は高い）ので、ここで決めて高さをそろえる */
 }
 /* 選んだとき（フォーカス）の枠も app.css の input:focus と同じに。
  *  上の border の指定の方が強い（詳細度が高い）ので、ここでもう一度書かないと枠の色が変わらない */
-.sheet-members input:not([type="checkbox"]):focus, .setlist input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.sheet-members input:not([type="checkbox"]):focus, .setlist input:focus { outline: none; border-color: var(--accent); box-shadow: var(--ring); }
 
 /* その他の自由記入欄 */
 .sheet-texts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
@@ -59,18 +59,18 @@
 .setlist__handle { cursor: grab; touch-action: none; } /* ≡ の上では指の動きをスクロールにしない（ドラッグに使う） */
 .setlist__btn.is-on { color: var(--accent); }        /* 要望が書いてある曲はアイコンを赤く */
 .setlist__btn--del:hover { color: var(--danger); }
-.setlist__no { font-weight: 700; color: var(--muted); text-align: center; font-size: 13px; }
+.setlist__no { font-weight: 700; color: var(--muted); text-align: center; font-size: var(--fs-sm); }
 .setlist__title { min-width: 0; }
 .setlist__mc { font-weight: 800; letter-spacing: .1em; color: var(--muted); padding: 6px 4px; }
 .setlist__notes { grid-column: 3 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
 .setlist__notes[hidden] { display: none; }
 /* 分数・型紙の追加の列（コーラス/CD など）: 名前付きの小さな欄 */
-.setlist__extra { display: grid; gap: 2px; font-size: 12px; color: var(--muted); }
+.setlist__extra { display: grid; gap: 2px; font-size: var(--fs-xs); color: var(--muted); }
 .setlist__extra--time input { max-width: 7em; }
 /* サブスクの曲の紐付け: 紐付けたらボタンにジャケットを小さく出す */
 .setlist__link img { width: 26px; height: 26px; border-radius: var(--r-xs); object-fit: cover; display: block; }
 .setlist__item .track-results { grid-column: 1 / -1; }
-.setlist__linked { grid-column: 3 / -1; display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); min-width: 0; }
+.setlist__linked { grid-column: 3 / -1; display: flex; align-items: center; gap: 6px; font-size: var(--fs-xs); color: var(--muted); min-width: 0; }
 .setlist__linked span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 480px) {
   .setlist__notes { grid-column: 1 / -1; grid-template-columns: 1fr; } /* スマホでは要望欄を縦に並べて広く */
@@ -80,11 +80,11 @@
 /* ○囲みの選択（セグメントボタン） */
 .sheet-choices { display: grid; gap: 8px; }
 .sheet-choice { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.sheet-choice__title { min-width: 72px; font-size: 13px; font-weight: 700; color: var(--muted); }
+.sheet-choice__title { min-width: 72px; font-size: var(--fs-sm); font-weight: 700; color: var(--muted); }
 /* 選んだ選択肢の説明: ボタンの下。左はボタンの頭（見出しの幅 72px + すき間 6px）にそろえる */
 .sheet-choice__note { margin: -4px 0 0 78px; line-height: 1.5; white-space: pre-line; }
 .sheet-choice__btn {
-  font: inherit; font-size: 14px; padding: 6px 14px; border-radius: var(--r-full); cursor: pointer;
+  font: inherit; font-size: var(--fs-md); padding: 6px 14px; border-radius: var(--r-full); cursor: pointer;
   background: var(--surface); color: var(--text); border: 1px solid var(--border);
 }
 .sheet-choice__btn[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 700; }
@@ -214,8 +214,8 @@ html.is-typing .sheet-preview { top: 8px; bottom: calc(var(--kb, 0px) + 64px); }
 /* 動かせる枠のつかむバー（app.js の floatWin）は、内側の余白の外まで広げて上に貼り付ける */
 .sheet-preview .float-win__bar { margin: -8px -8px 6px; top: -8px; }
 @media (min-width: 761px) { .sheet-preview.float-win .sheet-preview__note { top: 14px; } } /* メッセージはバーの下に貼り付く */
-.sheet-preview canvas { display: block; margin: 0 auto; background: #fff; box-shadow: 0 1px 4px rgb(0 0 0 / .2); }
-.sheet-preview.is-busy canvas { opacity: .6; transition: opacity .2s; }
+.sheet-preview canvas { display: block; margin: 0 auto; background: #fff; box-shadow: var(--shadow-sm); }
+.sheet-preview.is-busy canvas { opacity: .6; transition: opacity var(--t-base); }
 .sheet-preview__note { position: sticky; top: 0; margin: 0 0 6px; text-align: center; color: var(--muted); min-height: 1em; }
 .sheet-preview__note:empty { display: none; }
 @media (max-width: 760px) {
@@ -260,21 +260,21 @@ html.is-typing .sheet-preview { top: 8px; bottom: calc(var(--kb, 0px) + 64px); }
 @media (prefers-reduced-motion: no-preference) {
   /* ボタンを押した瞬間に少し縮む（押した手ごたえ） */
   .sheet-choice__btn, .stage-history .btn, .stage-tools .btn, .stage-panel .btn, .setlist-tools .btn {
-    transition: transform .12s ease, background-color .15s ease, border-color .15s ease, color .15s ease;
+    transition: transform var(--t-fast) ease, background-color var(--t-fast) ease, border-color var(--t-fast) ease, color var(--t-fast) ease;
   }
   :is(.sheet-choice__btn, .stage-history .btn, .stage-tools .btn, .stage-panel .btn, .setlist-tools .btn):active:not(:disabled) { transform: scale(.95); }
   /* 選んだボタンは「ぽん」と弾む */
-  .sheet-choice__btn.is-pop { animation: choice-pop .25s ease-out; }
+  .sheet-choice__btn.is-pop { animation: choice-pop var(--t-base) ease-out; }
   @keyframes choice-pop { 50% { transform: scale(1.08); } }
   /* SE「あり」などで新しく出てきた項目 */
-  .is-entering { animation: soft-in .25s ease-out both; }
+  .is-entering { animation: soft-in var(--t-base) ease-out both; }
   /* 部品を選んだときの設定パネル（曲の要望欄は、開いたときだけ JS が is-entering を付ける） */
-  .stage-panel:not([hidden]) { animation: soft-in .2s ease-out; }
+  .stage-panel:not([hidden]) { animation: soft-in var(--t-base) ease-out; }
   /* プレビュー: 下のボタンの方から広がって出る */
-  .sheet-preview:not([hidden]) { animation: preview-in .2s var(--ease-out); transform-origin: right bottom; }
+  .sheet-preview:not([hidden]) { animation: preview-in var(--t-base) var(--ease-out); transform-origin: right bottom; }
   @keyframes preview-in { from { opacity: 0; transform: scale(.96) translateY(8px); } }
   /* 描画モードの枠は、ふわっと色が付く */
-  .stage { transition: outline-color .2s ease; }
+  .stage { transition: outline-color var(--t-base) ease; }
 }
 
 /* シート内のボタンは白（元に戻す・やり直す・削除・PDF などの主ボタンは除く） */

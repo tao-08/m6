@@ -61,8 +61,8 @@ html.fx .fx-progress {
 }
 
 /* ヘッダーはスクロールすると影が出て、浮いて見える（JS が fx-stuck を付け外し） */
-html.fx .topbar { transition: box-shadow .3s ease, background-color .3s ease; }
-html.fx .topbar.fx-stuck { box-shadow: 0 10px 30px -14px rgba(20, 18, 30, .28); }
+html.fx .topbar { transition: box-shadow var(--t-slow) ease, background-color var(--t-slow) ease; }
+html.fx .topbar.fx-stuck { box-shadow: var(--shadow-pop); }
 
 /* ===== 3. スクロールで「順番にせり上がる」出現 =====
    流れ: [fx-boot] 読み込み中は隠す → JS が fx-wait を付けて隠し直す → 画面に入ったら fx-in を付ける
@@ -82,7 +82,7 @@ html.fx .fx-in {
 
 /* ===== 4. ページを移るときの切り替え（app.css の View Transitions を上書き） =====
    古いページは上へすっと消え、新しいページはバネでせり上がる */
-html.fx::view-transition-old(root) { animation: fx-page-out .16s ease both; }
+html.fx::view-transition-old(root) { animation: fx-page-out var(--t-fast) ease both; }
 html.fx::view-transition-new(root) { animation: fx-page-in .5s var(--fx-spring) both; }
 @keyframes fx-page-out { to { opacity: 0; transform: translateY(-8px) scale(.995); } }
 @keyframes fx-page-in { from { opacity: 0; transform: translateY(18px) scale(.99); } }
@@ -100,9 +100,9 @@ html.fx .display.fx-shine {
 /* ===== 6. ボタン =====
    ホバーでバネのように浮き、押すとへこむ。主ボタン（.btn--primary）は光の帯が走る。
    クリックの瞬間には、輪っか（fx-ping）が広がる（JS が付け外し） */
-html.fx .btn { transition: transform .28s var(--fx-spring), box-shadow .25s ease, background-color .2s ease, border-color .2s ease, color .2s ease; }
+html.fx .btn { transition: transform var(--t-slow) var(--fx-spring), box-shadow var(--t-base) ease, background-color var(--t-base) ease, border-color var(--t-base) ease, color var(--t-base) ease; }
 html.fx .btn:hover { transform: translateY(-2px) scale(1.04); }
-html.fx .btn:active { transform: scale(.94); transition-duration: .08s; }
+html.fx .btn:active { transform: scale(.94); transition-duration: var(--t-fast); }
 
 /* 主ボタンの背景は「光の帯（1枚目）」＋「いつもの赤グラデ（2枚目）」の2枚重ね。
    光の帯は普段は右の外（160%）に隠れていて、ホバーすると左の外（-60%）まで走り抜ける */
@@ -125,17 +125,17 @@ html.fx .fx-ping { animation: fx-ping .6s ease-out; }
 }
 
 /* ナビ（ヘッダーのメニュー）: ホバーで少し浮く。いまのページは赤い光を帯びる */
-html.fx .nav__link { transition: color .15s ease, background-color .15s ease, box-shadow .25s ease, transform .28s var(--fx-spring); }
+html.fx .nav__link { transition: color var(--t-fast) ease, background-color var(--t-fast) ease, box-shadow var(--t-base) ease, transform var(--t-slow) var(--fx-spring); }
 html.fx .nav__link:hover { transform: translateY(-2px); }
 html.fx .nav__link.is-active { box-shadow: inset 0 0 0 1px var(--border), 0 6px 16px -8px var(--fx-glow); }
 
 /* ロゴ: ホバーで弾む */
-html.fx .brand__logo { transition: transform .35s var(--fx-spring); }
+html.fx .brand__logo { transition: transform var(--t-slow) var(--fx-spring); }
 html.fx .brand:hover .brand__logo { transform: translateY(-2px) rotate(-2deg) scale(1.06); }
 
 /* 入力欄: フォーカスすると赤い光のリングがふわっと広がる */
 html.fx input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"]),
-html.fx select, html.fx textarea { transition: box-shadow .3s var(--fx-out), border-color .2s ease; }
+html.fx select, html.fx textarea { transition: box-shadow var(--t-slow) var(--fx-out), border-color var(--t-base) ease; }
 html.fx input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"]):focus-visible,
 html.fx select:focus-visible, html.fx textarea:focus-visible { box-shadow: 0 0 0 5px var(--accent-soft); }
 
@@ -144,7 +144,7 @@ html.fx select:focus-visible, html.fx textarea:focus-visible { box-shadow: 0 0 0
    --tx / --ty は JS がマウス位置から計算して入れる。--mx / --my は光の中心 */
 @media (hover: hover) and (pointer: fine) {
   html.fx:not(.fx-lite) .live-card {
-    transition: transform .4s var(--fx-spring), border-color .2s ease, box-shadow .35s ease;
+    transition: transform .4s var(--fx-spring), border-color var(--t-base) ease, box-shadow var(--t-slow) ease;
   }
   html.fx:not(.fx-lite) .live-card:hover {
     transform: perspective(900px) translateY(-6px) rotateX(var(--tx, 0deg)) rotateY(var(--ty, 0deg));
@@ -160,9 +160,9 @@ html.fx select:focus-visible, html.fx textarea:focus-visible { box-shadow: 0 0 0
 /* ===== 8. ランキング・メダル・バー ===== */
 /* 1〜3位の数字は金・銀・銅。PHP が同率を同じ順位にした data-rank があればそれ、無ければ並び順で判定。
    順位の数字を出さない一覧（.ranking--plain）は対象外 */
-html.fx .ranking:not(.ranking--plain) li[data-rank="1"]::before, html.fx .ranking:not(.ranking--plain) li:not([data-rank]):nth-child(1)::before { color: #c2920a; font-size: 15px; text-shadow: 0 0 12px rgba(247, 215, 116, .8); }
-html.fx .ranking:not(.ranking--plain) li[data-rank="2"]::before, html.fx .ranking:not(.ranking--plain) li:not([data-rank]):nth-child(2)::before { color: #8d97a2; font-size: 14px; }
-html.fx .ranking:not(.ranking--plain) li[data-rank="3"]::before, html.fx .ranking:not(.ranking--plain) li:not([data-rank]):nth-child(3)::before { color: #a8622c; font-size: 14px; }
+html.fx .ranking:not(.ranking--plain) li[data-rank="1"]::before, html.fx .ranking:not(.ranking--plain) li:not([data-rank]):nth-child(1)::before { color: #c2920a; font-size: var(--fs-md); text-shadow: 0 0 12px rgba(247, 215, 116, .8); }
+html.fx .ranking:not(.ranking--plain) li[data-rank="2"]::before, html.fx .ranking:not(.ranking--plain) li:not([data-rank]):nth-child(2)::before { color: #8d97a2; font-size: var(--fs-md); }
+html.fx .ranking:not(.ranking--plain) li[data-rank="3"]::before, html.fx .ranking:not(.ranking--plain) li:not([data-rank]):nth-child(3)::before { color: #a8622c; font-size: var(--fs-md); }
 
 /* 棒グラフ(.bar)は、画面に入ったら左から伸びる（JS が fx-bar-wait を付けて、外すと transition で伸びる） */
 html.fx .bar { transform-origin: 0 50%; transition: transform 1s var(--fx-spring-soft); }
