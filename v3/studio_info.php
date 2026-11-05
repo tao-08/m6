@@ -734,7 +734,6 @@ $rowsOfTarget = fn(array $rows, string $target): array => array_values(array_fil
 ));
 
 /** パックの「使える時間」の表示（NULL = 時間帯まるごと → 時間帯の長さを出す） */
-$packLen = fn(array $p) => studio_fmt_min((int)($p['minutes'] ?? ((int)$p['end_min'] - (int)$p['start_min'])));
 
 // 料金シミュレーション用のデータ（JS へ渡す）。キーは短く、値は数値にしておく
 //   dp = 割引区分ごとの料金 {区分id: 料金}。(object) にするのは、空のときに [] ではなく {} として JSON にするため
@@ -1346,7 +1345,7 @@ render_header($studio['name'], 'tools');
 //   （編集できる人はフォームがこのセクション内にあるので、隠さない）
 $packTargetOf = fn(array $p): string => $p['people'] === null ? 'band' : 'solo';
 $packHas = array_values(array_unique(array_map($packTargetOf, $packs)));
-// 「時間だけ違うパック」（3時間・4時間…）を1つのブロックにまとめる。
+// 編集フォーム用: 「時間だけ違うパック」（3時間・4時間…）を1つのブロックにまとめる。
 //   まとめる条件 = 対象（人数）・部屋・曜日・開始〜終了 がすべて同じ。違うのは「使える時間」と料金だけ。
 //   $packGroups[キー] = 先頭のパック情報 + 'items'（そのブロックのパック一覧）。キー順 = 最初に出てきた順（並び順を崩さない）
 $packGroups = [];
@@ -1357,35 +1356,94 @@ foreach ($packs as $p) {
     $packGroups[$key] ??= ['head' => $p, 'items' => []]; // ??= = まだ無いときだけ代入
     $packGroups[$key]['items'][] = $p;
 }
+// 表の形: 対象（人数）ごと → 使える長さのタブ（3時間・4時間 …）ごとに1つの表。行 = 時間帯（曜日・開始〜終了）/ 列 = 部屋
+//   $packTables[対象][長さ（分）][行キー] = ['day' => 曜日, 'start' => 開始, 'end' => 終了, 'name' => 名前, 'cells' => [部屋id => パック]]
+//   部屋が決まっていないパック（全部屋共通）は全部屋の欄に入れる。部屋が無いスタジオは 0 を1列だけ使う
+$packRoomIds = array_keys($roomName) ?: [0];
+$packTables = [];
+foreach ($packs as $p) {
+    $off = $shiftOf($p['room_ids']);
+    $start = (int)$p['start_min'] + $off;
+    $end = (int)$p['end_min'] + $off;
+    $len = (int)($p['minutes'] ?? ((int)$p['end_min'] - (int)$p['start_min']));
+    $people = (int)($p['people'] ?? 0);
+    $rids = array_values(array_intersect($p['room_ids'] ?: $packRoomIds, $packRoomIds));
+    $slot = (int)$p['day_type'] . '|' . $start . '|' . $end;
+    // 同じ部屋・同じ長さ・同じ時間帯に別のパックがあるときは、上書きせず行を分ける
+    $rowKey = $slot . '#0';
+    for ($i = 1; array_intersect_key(array_flip($rids), $packTables[$people][$len][$rowKey]['cells'] ?? []); $i++) {
+        $rowKey = $slot . '#' . $i;
+    }
+    $row = &$packTables[$people][$len][$rowKey];
+    $row ??= ['day' => (int)$p['day_type'], 'start' => $start, 'end' => $end, 'name' => $p['name'], 'cells' => []];
+    foreach ($rids as $rid) {
+        $row['cells'][$rid] = $p;
+    }
+    unset($row); // 参照を切る（次の周で同じ変数に代入して上書きしないように）
+}
+ksort($packTables);
+foreach ($packTables as &$packLens) {
+    ksort($packLens); // タブは短い順
+    foreach ($packLens as &$packRows) {
+        // 行は開始の早い順 → 曜日の順
+        uasort($packRows, fn($a, $b) => [$a['start'], $a['day'], $a['end']] <=> [$b['start'], $b['day'], $b['end']]);
+    }
+    unset($packRows);
+}
+unset($packLens);
+/** 時間帯1つ分の料金の行: 料金が同じ部屋は1行にまとめる。返り値 = [['rids' => 部屋 id の配列, 'pack' => パック], …]（部屋の並び順） */
+$packRoomLines = function (array $row) use ($packRoomIds): array {
+    $lines = [];
+    foreach ($packRoomIds as $rid) {
+        $c = $row['cells'][$rid] ?? null;
+        if ($c) { // この時間帯に料金が無い部屋は出さない
+            $sig = json_encode([(int)$c['price'], $c['disc']]);
+            $lines[$sig] ??= ['rids' => [], 'pack' => $c];
+            $lines[$sig]['rids'][] = $rid;
+        }
+    }
+    return array_values($lines);
+};
 ?>
 <section class="card sinfo-section" id="packs"<?= $hasTabs && !$canEdit ? ' data-tab-has="' . h(implode(' ', $packHas)) . '"' : '' ?>>
     <h2><?= icon('inventory_2') ?> パック</h2>
     <?php if (!$packs): ?><p class="muted small">-</p><?php else: ?>
-        <ul class="sinfo-plain sinfo-packs">
-            <?php foreach ($packGroups as $g): $p = $g['head']; ?>
-                <li<?= $hasTabs ? ' data-tab-panel="' . $packTargetOf($p) . '"' . ($packTargetOf($p) === 'solo' ? ' hidden' : '') : '' ?>>
-                    <div class="sinfo-packs__head">
-                        <?php if ($hasSolo && $packTargetOf($p) === 'solo'): ?><span class="tag"><?= h(studio_target_label((int)$p['people'])) ?></span><?php endif; ?>
-                        <?php foreach ($p['room_ids'] as $rid): ?><span class="tag"><?= h($roomName[$rid] ?? '') ?></span><?php endforeach; ?>
-                        <span class="muted small">
-                            <?= h(STUDIO_DAY_TYPES[(int)$p['day_type']] ?? '') ?>
-                            <?php $poff = $shiftOf($p['room_ids']); ?>
-                            <?= h(studio_fmt_clock((int)$p['start_min'] + $poff)) ?>〜<?= h(studio_fmt_clock((int)$p['end_min'] + $poff)) ?>
-                        </span>
-                    </div>
-                    <!-- チップ = 1パック。ラベルは「使える時間」（未設定なら名前）。名前は title（ホバー）で見える -->
-                    <div class="sinfo-pchips">
-                        <?php foreach ($g['items'] as $it): ?>
-                            <span class="sinfo-pchip" title="<?= h($it['name']) ?>">
-                                <b><?= h($it['minutes'] !== null ? $packLen($it) : $it['name']) ?></b>
-                                <span><?= h(studio_yen((int)$it['price'])) ?></span>
-                                <?php foreach ($it['disc'] as $did => $dp): ?><em title="<?= h($discName[$did] ?? '') ?>"><?= h(studio_yen($dp)) ?></em><?php endforeach; ?>
-                            </span>
+        <div class="sinfo-packs">
+            <?php foreach ($packTables as $people => $lens):
+                $target = $people === 0 ? 'band' : 'solo';
+                $lenSel = array_key_first($lens); // 最初に開くタブ = いちばん短い時間
+            ?>
+                <div class="sinfo-pack-target"<?= $hasTabs ? ' data-tab-panel="' . $target . '"' . ($target === 'solo' ? ' hidden' : '') : '' ?>>
+                    <?php if ($hasSolo && $target === 'solo'): ?><span class="tag"><?= h(studio_target_label($people)) ?></span><?php endif; ?>
+                    <!-- 使える長さのタブ（ラジオボタンをボタン風に。JS: setupPackLen）。人数ごとにグループを分ける -->
+                    <div class="sinfo-seg sinfo-pack-tabs" role="radiogroup" aria-label="時間">
+                        <?php foreach ($lens as $len => $rows): ?>
+                            <label><input type="radio" name="pack_len_<?= $people ?>" value="<?= $len ?>"<?= $len === $lenSel ? ' checked' : '' ?>> <?= h(studio_fmt_hours($len)) ?></label>
                         <?php endforeach; ?>
                     </div>
-                </li>
+                    <?php foreach ($lens as $len => $rows): ?>
+                    <div data-pack-len="<?= $len ?>"<?= $len === $lenSel ? '' : ' hidden' ?>>
+                    <table class="sinfo-table sinfo-pack-table">
+                        <?php foreach ($rows as $row): ?>
+                        <tbody>
+                            <tr><th colspan="2" scope="rowgroup"><span class="sinfo-slot sinfo-pack-slot" data-tip="<?= h($row['name']) ?>"><span class="sinfo-slot__day"><?= h(STUDIO_DAY_TYPES[$row['day']] ?? '') ?></span><?= h(studio_fmt_clock($row['start'])) ?>〜<?= h(studio_fmt_clock($row['end'])) ?></span></th></tr>
+                            <?php foreach ($packRoomLines($row) as $line): $c = $line['pack']; ?>
+                            <tr>
+                                <td class="sinfo-pack-rooms"><?= !$roomName ? '料金' : ($line['rids'] === $packRoomIds && count($line['rids']) > 1 ? '全部屋' : h(implode('・', array_map(fn($rid) => $roomName[$rid], $line['rids'])))) ?></td>
+                                <td class="num">
+                                    <?= h(studio_yen((int)$c['price'])) ?>
+                                    <?php foreach ($c['disc'] as $did => $dp): ?><em class="sinfo-pack-disc" data-tip="<?= h($discName[$did] ?? '') ?>"><?= h(studio_yen($dp)) ?></em><?php endforeach; ?>
+                                </td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                        <?php endforeach; ?>
+                    </table>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
             <?php endforeach; ?>
-        </ul>
+        </div>
     <?php endif; ?>
     <?php if ($canEdit): ?>
     <details class="sinfo-edit">

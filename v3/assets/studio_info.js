@@ -888,6 +888,23 @@
     });
   };
 
+  // ===================================================================
+  //  パック: 使える長さのタブ（3時間・4時間 …）で表を切り替える
+  //     ・PHP が長さごとに [data-pack-len] の表を作っている。同じ .sinfo-pack-target の中で、選んだ長さ以外を hidden で隠す
+  // ===================================================================
+  const setupPackLen = () => {
+    const apply = (radio) => {
+      radio.closest('.sinfo-pack-target').querySelectorAll('[data-pack-len]').forEach((t) => {
+        t.hidden = t.dataset.packLen !== radio.value;
+      });
+    };
+    document.addEventListener('change', (e) => {
+      if (e.target.name?.startsWith('pack_len_')) apply(e.target);
+    });
+    // ブラウザの「戻る」などでラジオの選択だけ復元されたときにも、表示を合わせておく
+    document.querySelectorAll('input[name^="pack_len_"]:checked').forEach(apply);
+  };
+
   // DOMContentLoaded を待たなくても、このファイルはページの最後で読むので要素はもう全部ある
   const mapApi = setupMap();
   setupGeo();
@@ -900,6 +917,7 @@
   setupFilter(mapApi);
   setupTargetTabs();
   setupSoloPeople();
+  setupPackLen();
   setupSim();
   setupAi();
 })();

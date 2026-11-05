@@ -155,15 +155,14 @@
 .sinfo-ppl label { padding: 6px 4px; }
 
 /* ---- パック ---- */
-.sinfo-packs { gap: 10px; }
-.sinfo-packs li { display: grid; gap: 2px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
-.sinfo-packs li:last-child { border-bottom: 0; padding-bottom: 0; }
-.sinfo-packs__head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.sinfo-pchips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
-.sinfo-pchip { display: inline-flex; flex-direction: column; align-items: center; border: 1px solid var(--border); border-radius: var(--r-md); padding: 4px 10px; line-height: 1.3; font-variant-numeric: tabular-nums; }
-.sinfo-pchip b { font-size: var(--fs-2xs); color: var(--muted); }
-.sinfo-pchip span { font-weight: 800; font-size: var(--fs-md); }
-.sinfo-pchip em { font-style: normal; font-size: var(--fs-2xs); font-weight: 800; color: var(--headliner); }
+.sinfo-packs { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; } /* minmax(0, 1fr) = 表の幅で枠が広がらないようにする（広がると表の横スクロールが効かない） */
+.sinfo-pack-tabs { max-width: 360px; margin-bottom: 8px; }
+.sinfo-pack-table { width: 100%; max-width: 360px; } /* PC でもタブと同じ幅にそろえる（.sinfo-table の width: auto を上書き） */
+.sinfo-pack-table th { padding-block: 10px 4px; color: var(--text); font-size: var(--fs-sm); }
+.sinfo-pack-table tbody:first-child th { padding-top: 2px; }
+.sinfo-pack-table .sinfo-pack-rooms { white-space: normal; } /* 部屋が多いときは折り返す（横にはみ出さない） */
+.sinfo-pack-slot { cursor: help; }
+.sinfo-pack-disc { display: block; font-style: normal; font-size: var(--fs-xs); color: var(--headliner); cursor: help; }
 .sinfo-sim__pack span:first-child { font-weight: 800; color: var(--headliner); }
 
 /* ---- 人数ステッパー（－ 数字 ＋）。ボタンは指で押しやすい 44px 角（タッチ操作の推奨サイズ） ---- */
