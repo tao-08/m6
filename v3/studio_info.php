@@ -293,7 +293,7 @@ if (is_post()) {
     if ($action === 'save_info') {
         // ?? '' = 送られてこなかったら空文字。trim = 前後の空白を取る
         $f = [];
-        foreach (['name', 'website_url', 'reserve_url', 'address', 'access', 'phone', 'student_note', 'note'] as $k) {
+        foreach (['name', 'website_url', 'reserve_url', 'address', 'access', 'hours', 'phone', 'student_note', 'note'] as $k) {
             $f[$k] = trim(str_replace("\r\n", "\n", (string)($_POST[$k] ?? '')));
         }
         $coords = studio_parse_coords((string)($_POST['coords'] ?? ''));
@@ -303,6 +303,7 @@ if (is_post()) {
             !studio_url_ok($f['reserve_url']) => '予約ページの URL が正しくありません',
             mb_strlen($f['address']) > 255 => '住所が長すぎます',
             mb_strlen($f['access']) > 100 => '最寄り駅が長すぎます',
+            mb_strlen($f['hours']) > 200 => '営業時間が長すぎます',
             $f['phone'] !== '' && !preg_match('/^[0-9０-９+\-() ]{1,30}$/u', $f['phone']) => '電話番号が正しくありません',
             $coords === false => '座標は「35.6812, 139.7671」の形で入力してください',
             mb_strlen($f['student_note']) > 500 => '割引の条件が長すぎます',
@@ -315,9 +316,9 @@ if (is_post()) {
         }
         // 空の欄は NULL で保存（「未登録」を空文字ではなく NULL で表すのが DB の定番。IS NULL で探せる）
         $nul = fn(string $v) => $v === '' ? null : $v;
-        $pdo->prepare('UPDATE studio SET name = ?, website_url = ?, reserve_url = ?, address = ?, access = ?, phone = ?,
+        $pdo->prepare('UPDATE studio SET name = ?, website_url = ?, reserve_url = ?, address = ?, access = ?, hours = ?, phone = ?,
                 lat = ?, lng = ?, student_note = ?, note = ?, updated_by = ? WHERE studio_id = ?')
-            ->execute([$f['name'], $nul($f['website_url']), $nul($f['reserve_url']), $nul($f['address']), $nul($f['access']),
+            ->execute([$f['name'], $nul($f['website_url']), $nul($f['reserve_url']), $nul($f['address']), $nul($f['access']), $nul($f['hours']),
                 $nul(mb_convert_kana($f['phone'], 'n')), $coords[0], $coords[1], $nul($f['student_note']), $nul($f['note']), $uid, $studioId]);
         flash('保存しました');
         redirect($self);
@@ -934,6 +935,7 @@ render_header($studio['name'], 'tools');
             <p class="sinfo-info">
                 <?php if ($studio['address']): ?><span><?= icon('location_on') ?> <?= h($studio['address']) ?></span><?php endif; ?>
                 <?php if ($studio['access']): ?><span><?= icon('train') ?> <?= h($studio['access']) ?></span><?php endif; ?>
+                <?php if ($studio['hours']): ?><span><?= icon('schedule') ?> <?= h($studio['hours']) ?></span><?php endif; ?>
             </p>
             <?php if ($studio['note']): ?><p class="sinfo-note"><?= nl2br(h($studio['note'])) ?></p><?php endif; ?>
             <a class="small" href="<?= h($gmapUrl) ?>" target="_blank" rel="noopener noreferrer"><?= icon('directions') ?> Googleマップで開く</a>
@@ -969,6 +971,8 @@ render_header($studio['name'], 'tools');
                 </span></label>
             <label class="sinfo-field"><span>最寄り駅</span>
                 <input autocomplete="off" type="text" name="access" maxlength="100" value="<?= h($studio['access']) ?>" placeholder="立川駅 北口 徒歩5分"></label>
+            <label class="sinfo-field"><span>営業時間</span>
+                <input autocomplete="off" type="text" name="hours" maxlength="200" value="<?= h($studio['hours']) ?>" placeholder="平日 10:00-23:00 / 土日祝 9:00-22:00"></label>
             <label class="sinfo-field"><span>電話</span>
                 <input autocomplete="off" type="tel" name="phone" maxlength="30" value="<?= h($studio['phone']) ?>"></label>
             <label class="sinfo-field"><span>割引の条件</span>
@@ -1005,12 +1009,11 @@ render_header($studio['name'], 'tools');
                     <?php foreach ($rooms as $r): $sz = studio_fmt_jo($r['area_jo']); ?><option value="<?= (int)$r['studio_room_id'] ?>"><?= h($r['name'] . ($sz !== '' ? ' ' . $sz : '')) ?></option><?php endforeach; ?>
                 </select></label>
             <?php endif; ?>
-            <label class="sinfo-field"><span>日付</span><input type="date" name="date"></label>
             <div class="sinfo-field"><span>曜日</span>
                 <div class="sinfo-seg" role="radiogroup">
                     <label><input type="radio" name="day" value="1" checked> 平日</label>
                     <?php if ($splitWeekend): ?>
-                        <!-- 土と日祝で料金が違うスタジオ。日付を選ぶと 土 → 土 / 日 → 日祝 に自動で切り替わる（祝日は判定しないので、祝日は手で「日祝」を選ぶ） -->
+                        <!-- 土と日祝で料金が違うスタジオ。-->
                         <label><input type="radio" name="day" value="3"> 土</label>
                         <label><input type="radio" name="day" value="4"> 日祝</label>
                     <?php else: ?>

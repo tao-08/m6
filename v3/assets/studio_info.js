@@ -86,7 +86,7 @@
     });
 
     if (pins.length === 1) {
-      map.setView([pins[0].lat, pins[0].lng], 16); // 1本だけ → 駅からの道がわかるくらいの拡大率
+      map.setView([pins[0].lat, pins[0].lng], 15); // 1本だけ → 周辺も見える拡大率（16 から1段階縮小）
     } else {
       // fitBounds = 全部のピンが入るように拡大率と中心を自動で決める。padding = 端に余白
       map.fitBounds(L.featureGroup(markers).getBounds(), { padding: [30, 30], maxZoom: 16 });
@@ -112,7 +112,7 @@
         }
       });
       if (shown.length > 1) map.fitBounds(L.featureGroup(shown).getBounds(), { padding: [30, 30], maxZoom: 16 });
-      else if (shown.length === 1) map.setView(shown[0].getLatLng(), 16);
+      else if (shown.length === 1) map.setView(shown[0].getLatLng(), 15);
     };
     return { setVisible };
   };
@@ -399,11 +399,11 @@
       // ---- 内訳 ----
       const ul = el('ul', 'sinfo-sim__lines');
       if (r.pack) {
-        ul.append(line(r.pack.name + (r.pack.disc ? ' ' + d.name : ''), yen(r.pack.price), 'sinfo-sim__pack'));
+        ul.append(line(r.pack.name, yen(r.pack.price), 'sinfo-sim__pack'));
       } else {
         r.normal.segs.forEach((s) => {
           const hours = (s.to - s.from) / 60;
-          ul.append(line(clock(s.from) + '〜' + clock(s.to) + (s.disc ? ' ' + d.name : ''), yen(s.perHour) + '/h × ' + hours + 'h = ' + yen(s.perHour * hours)));
+          ul.append(line(clock(s.from) + '〜' + clock(s.to), yen(s.perHour) + '/h × ' + hours + 'h = ' + yen(s.perHour * hours)));
         });
       }
       r.rentals.forEach((x) => ul.append(line(x.name + ' × ' + x.qty, yen(x.cost))));
@@ -412,6 +412,7 @@
       // ---- お得情報（パック・割引区分） ----
       if (r.packSave > 0) out.append(el('p', 'sinfo-sim__save', r.pack.name + 'で ' + yen(r.packSave) + ' お得'));
       if (disc) {
+        out.append(el('p', 'sinfo-sim__save', d.name + '適用中'));
         const diff = calc(v, 0, v.dur).total - r.total; // 割引なしで計算した合計との差
         if (diff > 0) out.append(el('p', 'sinfo-sim__save', d.name + 'で ' + yen(diff) + ' お得'));
       } else if (d) {
@@ -447,15 +448,6 @@
     // 日付を選んだら曜日を自動で切り替える。祝日は判定しないので、祝日は手で「土日祝」「日祝」を選ぶ
     //   土曜 → 土(3) があれば 土、無ければ 土日祝(2) / 日曜 → 日祝(4) があれば 日祝、無ければ 土日祝(2) / 平日 → 平日(1)
     //   （土日で料金が分かれているスタジオだけ、ボタンに 3・4 がある。find = 最初に見つかったボタンの番号を使う）
-    const date = form.elements.date;
-    date.addEventListener('change', () => {
-      if (!date.value) return;
-      const wd = new Date(date.value + 'T00:00:00').getDay(); // 0 = 日曜 … 6 = 土曜
-      const want = wd === 6 ? [3, 2] : wd === 0 ? [4, 2] : [1];
-      const val = want.find((x) => form.querySelector('input[name="day"][value="' + x + '"]'));
-      form.querySelector('input[name="day"][value="' + val + '"]').checked = true;
-      render();
-    });
 
     // 部屋ごとの設定（30分スタート可 hs / 30分単位で利用可 hu）に合わせて、「開始」「時間」の選択肢を絞る
     //   最初に全部の選択肢を覚えておき（allOpts）、部屋が変わるたびに「毎時ちょうど（60の倍数）だけ」などに作り直す
@@ -513,7 +505,7 @@
 
     const DAYS = ['全日', '平日', '土日祝', '土', '日祝'];
     const SECTIONS = { info: '基本情報', rooms: '部屋', discounts: '割引区分', rates: '料金', packs: 'パック', rentals: 'レンタル', equipment: '機材' };
-    const INFO = { reserve_url: '予約ページ', website_url: 'サイト', address: '住所', access: '最寄り駅', phone: '電話', student_note: '割引の条件', note: 'メモ' };
+    const INFO = { reserve_url: '予約ページ', website_url: 'サイト', address: '住所', access: '最寄り駅', hours: '営業時間', phone: '電話', student_note: '割引の条件', note: 'メモ' };
     const DAY_ONLY = ['全日', '平日のみ', '土日祝のみ', '土のみ', '日祝のみ'];
     const target = (p) => (p == null ? 'バンド練習' :'個人' + p + '人');
     const where = (r) => [target(r.people), r.rooms.length ? r.rooms.join('・') : '全部屋', DAYS[r.day_type]].join('・');

@@ -64,7 +64,7 @@ function studio_ai_schema(): array
     return $obj([
         'found' => ['type' => 'boolean'],
         'info' => $obj([
-            'website_url' => $strN, 'reserve_url' => $strN, 'address' => $strN, 'access' => $strN,
+            'website_url' => $strN, 'reserve_url' => $strN, 'address' => $strN, 'access' => $strN, 'hours' => $strN,
             'phone' => $strN, 'student_note' => $strN, 'note' => $strN,
         ]),
         'rooms' => ['type' => 'array', 'items' => $obj(['name' => $str, 'area_jo' => $numN, 'size_note' => $strN])],
@@ -135,7 +135,7 @@ function studio_ai_system_prompt(bool $images = false): string
         . "- day: その割引が使える曜日。0 = 全日 / 1 = 平日のみ / 2 = 土日祝のみ / 3 = 土曜のみ / 4 = 日曜・祝日のみ\n"
         . "- パック（packs）の discounts も同じ形（パック1回の割引料金）\n"
         . "# その他\n"
-        . "- info.student_note は割引の条件（学生証・年齢確認書類の提示など）。info.access は最寄り駅と徒歩分数（例: 立川駅 北口 徒歩5分）\n"
+        . "- info.student_note は割引の条件（学生証・年齢確認書類の提示など）。info.access は最寄り駅と徒歩分数（例: 立川駅 北口 徒歩5分）。info.hours は営業時間（例: 平日 10:00-23:00 / 土日祝 9:00-22:00。曜日で違うときは1行にまとめる）\n"
         . "- info.reserve_url は予約ページの URL（無ければ空文字）。URL は https:// から始まる完全な形\n"
         . "- rentals: マイク・シールド・機材のレンタル。per_hour は「1時間あたり」の料金なら true、「1回あたり」なら false\n"
         . "- equipment: 部屋の常設機材。category は決められた区分から選ぶ。rooms は設置されている部屋名の配列（複数可。全部屋共通なら空の配列 []）\n"
@@ -221,7 +221,7 @@ function studio_ai_discount_id(PDO $pdo, int $studioId, string $name, int $day, 
 function studio_ai_normalize(array $ai): array
 {
     $info = [];
-    foreach (['website_url' => 255, 'reserve_url' => 255, 'address' => 255, 'access' => 100, 'phone' => 30, 'student_note' => 500, 'note' => 1000] as $k => $max) {
+    foreach (['website_url' => 255, 'reserve_url' => 255, 'address' => 255, 'access' => 100, 'hours' => 200, 'phone' => 30, 'student_note' => 500, 'note' => 1000] as $k => $max) {
         $v = studio_ai_str($ai['info'][$k] ?? null, $max);
         // URL は http(s) だけ（javascript: などを入れさせない）。電話は数字と記号だけ
         if ($v !== null && in_array($k, ['website_url', 'reserve_url'], true) && !studio_url_ok($v)) {

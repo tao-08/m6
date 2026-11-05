@@ -1358,6 +1358,7 @@ CREATE TABLE studio (
     reserve_url  VARCHAR(255)  NULL,             -- 予約ページ
     address      VARCHAR(255)  NULL,
     access       VARCHAR(100)  NULL,             -- 最寄り駅（例: 立川駅 北口 徒歩5分）
+    hours        VARCHAR(200)  NULL,             -- 営業時間（自由記入。例: 平日 10:00-23:00 / 土日祝 9:00-22:00）
     phone        VARCHAR(30)   NULL,
     lat          DECIMAL(9,6)  NULL,
     lng          DECIMAL(9,6)  NULL,
