@@ -2137,7 +2137,8 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
 /* ツール（tools.php）のカード。アイコン＋名前＋説明を横に並べ、カード全体を1つのリンクにする */
 .tool-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; margin: 16px 0; }
 .tool-card { display: flex; gap: 14px; align-items: flex-start; color: var(--text); }
-.tool-card:hover { box-shadow: inset 0 0 0 1px var(--text); }
+.tool-card { transition: transform var(--t-base) ease, border-color var(--t-base) ease; }
+.tool-card:hover { color: var(--text); transform: translateY(-3px); border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); } /* ライブ一覧（.live-card:hover）と同じ */
 .tool-card__icon { font-size: 28px; line-height: 1; }
 .tool-card__body { display: flex; flex-direction: column; gap: 4px; }
 .tool-card__name { font-weight: 700; font-size: var(--fs-lg); }
@@ -2965,7 +2966,8 @@ button.ttb-m { cursor: pointer; text-decoration: underline dotted; }
 
 /* =====================================================================
  * ラベルの規格（上下中央揃え）
- *   楽器ラベル・タグ・ピル・チップ・✓バッジは、ここで高さと中央揃えをそろえる。
+ *   楽器ラベル・タグ・ピル・✓バッジは、ここで高さと中央揃えをそろえる。
+ *   ・名前などのボタン状の .chip は余白を潰さない別枠（下の .chip ルール。padding・line-height は自前のまま）
  *   ・高さは min-height（--label-h-sm/--label-h/--label-h-lg）。複数行になったら伸びる
  *   ・inline-flex + align-items: center + line-height: 1 で、行高の違いによるずれを消す
  *   ・日本語は字面が枠の上に寄って見えるので、padding-top を max(1px, .1em) だけ足して下げる
@@ -2973,13 +2975,18 @@ button.ttb-m { cursor: pointer; text-decoration: underline dotted; }
  *   ・横の余白・文字サイズ・色は各クラスのまま。新しいラベルを作るときは、このリストに足す
  *   ・文中に置くラベルは .label-inline を足す（周りの文字サイズに追従して、行の中央に揃う）
  * ===================================================================== */
-:is(.part, .tag:not(.tag--flag), .se-mark, .setlist-badge, .pill, .chip:not(.chip--xs)) {
+:is(.part, .tag:not(.tag--flag), .se-mark, .setlist-badge, .pill) {
   display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box;
   min-height: var(--label-h); line-height: 1;
   padding-top: max(1px, .1em) !important; padding-bottom: 0 !important;
 }
-:is(.pill, .chip:not(.chip--xs)) { min-height: var(--label-h-lg); }
+.pill { min-height: var(--label-h-lg); }
+/* 名前などのボタン状の .chip: 余白（padding・line-height）は自前のまま、中央揃えと最小高さだけ規格に合わせる。
+   inline-flex は文字と子要素の間の空白を消すので、gap で補う */
+.chip:not(.chip--xs) {
+  display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box;
+  min-height: var(--label-h-lg); gap: .35em;
+}
 :is(.partbar--partner, .partner__live) .part { min-height: var(--label-h-sm); }
-.chip--lg { min-height: 32px; }
 .pill:empty { display: none; } /* 上の display より後ろに書いて、空のピルを隠す動きを残す */
 .label-inline { vertical-align: middle; margin-inline: .2em; font-size: .75em; min-height: 1.45em; }
