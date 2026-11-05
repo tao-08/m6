@@ -1380,6 +1380,7 @@ CREATE TABLE studio_room (
     size_note      VARCHAR(50)  NULL,              -- 備考（例: 最大8人 / 2階）。広さの数字はここに書かない
     half_start     TINYINT(1) UNSIGNED NOT NULL DEFAULT 1, -- 1=30分スタート可 / 0=毎時ちょうどだけ（migrations/091）
     half_unit      TINYINT(1) UNSIGNED NOT NULL DEFAULT 1, -- 1=30分単位で利用可 / 0=1時間単位（migrations/091）
+    shift30        TINYINT(1) UNSIGNED NOT NULL DEFAULT 0, -- 1=30分始まり。料金の時間帯を30分遅らせて表示・計算（migrations/095）
     sort_order     INT UNSIGNED NOT NULL DEFAULT 0,
     PRIMARY KEY (studio_room_id),
     KEY idx_sroom_studio (studio_id),

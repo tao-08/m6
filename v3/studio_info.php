@@ -348,6 +348,7 @@ if (is_post()) {
             $rows[] = [(int)$rawId, [
                 'name' => $name, 'area_jo' => $jo, 'size_note' => $size === '' ? null : $size,
                 'half_start' => isset($_POST['half_start'][$i]) ? 1 : 0,
+                'shift30' => isset($_POST['shift30'][$i]) ? 1 : 0, // 30分始まり（料金の時間帯を30分遅らせる）
                 // 30分単位: 一番上のチェック（half_unit_all）で全部屋まとめて。混在のまま触っていなければ、部屋ごとの今の値を保つ
                 'half_unit' => !empty($_POST['half_unit_mixed']) ? (int)(bool)($_POST['half_unit_was'][$i] ?? 0) : (isset($_POST['half_unit_all']) ? 1 : 0),
             ]];
@@ -617,7 +618,7 @@ if (is_post()) {
 // =====================================================================
 //  表示用のデータ
 // =====================================================================
-$st = $pdo->prepare('SELECT studio_room_id, name, area_jo, size_note, half_start, half_unit FROM studio_room WHERE studio_id = ? ORDER BY sort_order, studio_room_id');
+$st = $pdo->prepare('SELECT studio_room_id, name, area_jo, size_note, half_start, half_unit, shift30 FROM studio_room WHERE studio_id = ? ORDER BY sort_order, studio_room_id');
 $st->execute([$studioId]);
 $rooms = $st->fetchAll();
 $roomName = array_column($rooms, 'name', 'studio_room_id'); // [部屋id => 部屋名]（array_column の第3引数 = キーにする列）
@@ -631,9 +632,25 @@ foreach ($rooms as $r) {
 // 部屋 id => 外している設定の説明（「毎時開始」「1時間単位」）。30分スタート・30分単位が両方 ON（既定）の部屋は何も出さない（ほとんどの部屋で同じ表示になるので）
 $roomRule = [];
 foreach ($rooms as $r) {
-    $rule = array_filter([(int)$r['half_start'] ? '' : '毎時開始', (int)$r['half_unit'] ? '' : '1時間単位']);
+    $rule = array_filter([(int)$r['half_start'] ? '' : '毎時開始', (int)$r['half_unit'] ? '' : '1時間単位', (int)$r['shift30'] ? '30分始まり' : '']);
     $roomRule[(int)$r['studio_room_id']] = implode(' ', $rule);
 }
+
+// 料金表・パックの時間帯を何分遅らせて見せるか。30分始まりの部屋だけの組 = 30 / それ以外 = 0
+//   $rids = 料金・パックの部屋 id の配列（空 = 全部屋）。組の部屋が全部 30分始まりのときだけずらす（混在は元の時間のまま。時間帯は部屋ごとに分けて持てないため）
+$roomShift = array_column($rooms, 'shift30', 'studio_room_id');
+$shiftOf = function (array $rids) use ($roomShift): int {
+    $rids = $rids ?: array_keys($roomShift);
+    if (!$rids) {
+        return 0;
+    }
+    foreach ($rids as $rid) {
+        if (empty($roomShift[$rid])) {
+            return 0;
+        }
+    }
+    return 30;
+};
 
 // 料金表: 表示は「バンド → 個人1人 → 個人2人 …」の順にしたいので、people の NULL を先頭に並べる
 //   ORDER BY people IS NULL DESC = 「NULL か？」が真（1）の行を先に。そのあと人数の小さい順
@@ -733,7 +750,7 @@ $packLen = fn(array $p) => studio_fmt_min((int)($p['minutes'] ?? ((int)$p['end_m
 $simData = [
     'discounts' => array_map(fn($d) => ['id' => $d['studio_discount_id'], 'name' => $d['name'], 'day' => $d['day_type']], $usedDisc),
     // hs = 30分スタート可 / hu = 30分単位で利用可（JS が開始・時間の選択肢を絞る）
-    'rooms' => array_map(fn($r) => ['id' => (int)$r['studio_room_id'], 'name' => $r['name'], 'hs' => (int)$r['half_start'], 'hu' => (int)$r['half_unit']], $rooms),
+    'rooms' => array_map(fn($r) => ['id' => (int)$r['studio_room_id'], 'name' => $r['name'], 'hs' => (int)$r['half_start'], 'hu' => (int)$r['half_unit'], 'sh' => (int)$r['shift30'] ? 30 : 0], $rooms), // sh = 料金の時間帯を遅らせる分（30分始まり）
     'rates' => array_map(fn($r) => [
         'rooms' => $r['room_ids'], // 空 = 全部屋共通
         'ppl' => $r['people'] === null ? 0 : (int)$r['people'], // 0 = バンド
@@ -1151,6 +1168,7 @@ render_header($studio['name'], 'tools');
         // 全部屋が1つのグループにまとまったときは、部屋名を並べず「全部屋」と出す（部屋が2つ以上あるときだけ。1部屋だけのスタジオは部屋名と広さを残す）
         //   array_diff(A, B) = A にあって B に無いもの。部屋 id の全部（$roomName のキー）から、このグループの部屋を引いて、何も残らなければ全部入っている
         $allRooms = count($roomName) >= 2 && $g['rooms'] && !array_diff(array_keys($roomName), $g['rooms']);
+        $off = $shiftOf($g['rooms']); // 30分始まりの部屋だけのグループは、時間帯を30分遅らせて見せる
     ?>
         <div<?= $soloPanel ? ' data-ppl-has="' . $pplHas . '"' . (isset($byPpl[$pplSel]) ? '' : ' hidden') : '' ?>>
             <?php if ($rooms): ?>
@@ -1176,7 +1194,7 @@ render_header($studio['name'], 'tools');
                     <tr>
                         <td>
                             <?php foreach ($m['slots'] as $s): ?>
-                                <span class="sinfo-slot"><span class="sinfo-slot__day"><?= h(STUDIO_DAY_TYPES[(int)$s['day_type']] ?? '') ?></span><?= h(studio_fmt_clock((int)$s['start_min'])) ?>〜<?= h(studio_fmt_clock((int)$s['end_min'])) ?></span>
+                                <span class="sinfo-slot"><span class="sinfo-slot__day"><?= h(STUDIO_DAY_TYPES[(int)$s['day_type']] ?? '') ?></span><?= h(studio_fmt_clock((int)$s['start_min'] + $off)) ?>〜<?= h(studio_fmt_clock((int)$s['end_min'] + $off)) ?></span>
                             <?php endforeach; ?>
                         </td>
                         <td class="num"><?= h(studio_yen((int)$r['price'])) ?></td>
@@ -1310,7 +1328,7 @@ render_header($studio['name'], 'tools');
             ?>
             <label class="sinfo-edit__half"><input type="checkbox" name="half_unit_all" value="1" data-half-unit-all<?= $unitAll ? ' checked' : '' ?>>30分単位の予約</label>
             <?php if ($unitMixed): ?><input type="hidden" name="half_unit_mixed" value="1" data-half-unit-mixed><?php endif; ?>
-            <?php foreach (array_merge($rooms, [['studio_room_id' => 0, 'name' => '', 'area_jo' => null, 'size_note' => '', 'half_start' => 0, 'half_unit' => 0]]) as $ri => $r): ?>
+            <?php foreach (array_merge($rooms, [['studio_room_id' => 0, 'name' => '', 'area_jo' => null, 'size_note' => '', 'half_start' => 0, 'half_unit' => 0, 'shift30' => 0]]) as $ri => $r): ?>
                 <div class="sinfo-edit__row">
                     <input type="hidden" name="id[]" value="<?= (int)$r['studio_room_id'] ?>">
                     <input autocomplete="off" type="text" class="grow" name="name[]" maxlength="50" value="<?= h($r['name']) ?>" placeholder="部屋名" aria-label="部屋名">
@@ -1318,6 +1336,8 @@ render_header($studio['name'], 'tools');
                     <input autocomplete="off" type="text" class="grow" name="size_note[]" maxlength="50" value="<?= h($r['size_note']) ?>" placeholder="備考（定員・階数）" aria-label="備考">
                     <!-- 30分開始（料金シミュレーションの選択肢になる）。名前の [番号] = この行の位置。half_unit_was = 混在のときに保つ今の値 -->
                     <label class="sinfo-edit__half"><input type="checkbox" name="half_start[<?= $ri ?>]" value="1"<?= (int)$r['half_start'] ? ' checked' : '' ?>>30分開始</label>
+                    <!-- 30分始まり = 毎時30分から始まる部屋。ONなら料金表・パックの時間帯を30分遅らせて表示・計算する（DB の時間はそのまま） -->
+                    <label class="sinfo-edit__half"><input type="checkbox" name="shift30[<?= $ri ?>]" value="1"<?= (int)$r['shift30'] ? ' checked' : '' ?>>30分始まり</label>
                     <input type="hidden" name="half_unit_was[<?= $ri ?>]" value="<?= (int)$r['half_unit'] ?>">
                     <?= studio_row_del((int)$r['studio_room_id']) ?>
                 </div>
@@ -1359,7 +1379,8 @@ foreach ($packs as $p) {
                         <?php foreach ($p['room_ids'] as $rid): ?><span class="tag"><?= h($roomName[$rid] ?? '') ?></span><?php endforeach; ?>
                         <span class="muted small">
                             <?= h(STUDIO_DAY_TYPES[(int)$p['day_type']] ?? '') ?>
-                            <?= h(studio_fmt_clock((int)$p['start_min'])) ?>〜<?= h(studio_fmt_clock((int)$p['end_min'])) ?>
+                            <?php $poff = $shiftOf($p['room_ids']); ?>
+                            <?= h(studio_fmt_clock((int)$p['start_min'] + $poff)) ?>〜<?= h(studio_fmt_clock((int)$p['end_min'] + $poff)) ?>
                         </span>
                     </div>
                     <!-- チップ = 1パック。ラベルは「使える時間」（未設定なら名前）。名前は title（ホバー）で見える -->

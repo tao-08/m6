@@ -247,7 +247,10 @@
      *   例) 予約 1:00（t=60）  と 料金 23:00〜10:00（1380〜2040） → t+24h = 1500 が範囲内 → 一致
      *   例) 予約 23:00〜翌2:00 の 0:30 部分（t=1470）と 料金 0:00〜6:00 → t-24h = 30 が範囲内 → 一致
      */
-    const covers = (r, t) => SHIFTS.some((d) => r.s <= t + d && t + d < r.e);
+    const covers = (r, t, off) => SHIFTS.some((d) => r.s <= t + d - off && t + d - off < r.e);
+
+    /** 選んだ部屋の「30分始まり」の分（料金・パックの時間帯を遅らせる分。30 / 0）。部屋が無いスタジオは 0 */
+    const shiftOf = (v) => data.rooms.find((r) => r.id === v.room)?.sh || 0;
 
     /**
      * 曜日が合うか。rowDay = 料金・パック・割引の曜日、v = 選んだ曜日
@@ -267,7 +270,8 @@
      *   部屋の指定（4点）のほうが曜日（最大2点）より強い。sort で「点数が高い順」に並べて先頭を取る
      */
     const findRate = (v, t) => {
-      const hits = data.rates.filter((r) => matches(r, v) && covers(r, t));
+      const off = shiftOf(v);
+      const hits = data.rates.filter((r) => matches(r, v) && covers(r, t, off));
       const score = (r) => (r.rooms.length ? 4 : 0) + (r.day === 0 ? 0 : r.day === v.day ? 2 : 1);
       hits.sort((a, b) => score(b) - score(a));
       return hits[0] || null;
@@ -338,7 +342,8 @@
         if (!matches(pk, v)) return;
         const limit = pk.min ?? pk.e - pk.s; // ?? = 左が null / undefined のときだけ右を使う
         if (dur > limit) return;
-        if (!SHIFTS.some((d) => pk.s <= v.start + d && v.start + dur + d <= pk.e)) return;
+        const off = shiftOf(v);
+        if (!SHIFTS.some((d) => pk.s <= v.start + d - off && v.start + dur + d - off <= pk.e)) return;
         const price = priceOf(pk, disc);
         if (!best || price < best.price) best = { name: pk.name, price, disc: disc && pk.dp[disc] != null };
       });
