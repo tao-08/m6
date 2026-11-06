@@ -2826,12 +2826,14 @@ button.ttb-m { cursor: pointer; text-decoration: underline dotted; }
 @media (prefers-reduced-motion: reduce) { .ttb.is-tswitch .ttb-time, .ttb.is-tswitch .ttb-days { animation: none; } }
 /* タイムテーブル作成: プレビュー（完成形の表と同じ形。セルがそのまま入力欄） */
 .ttb-pv__scroll { padding: 0; overflow-x: auto; }
-.ttb-pv__table { width: 100%; min-width: 620px; border-collapse: collapse; font-size: var(--fs-sm); text-align: center; }
+.ttb-pv__table { width: 100%; min-width: 700px; border-collapse: collapse; font-size: var(--fs-sm); text-align: center; }
 .ttb-pv__table td, .ttb-pv__table th { padding: 0; border: 1px solid var(--border); height: 30px; white-space: nowrap; }
 .ttb-pv__table td.mono { padding: 0 6px; font-variant-numeric: tabular-nums; }
 .ttb-pv__top td { border: 0; font-weight: 800; }
 .ttb-pv__head th { background: color-mix(in srgb, var(--text) 22%, var(--surface)); color: var(--text); font-weight: 800; }
 .ttb-pv__b { font-weight: 700; }
+/* バンド名の欄の最小幅（スマホで長い名前が小さくなりすぎないように）。表の最小幅は、この分だけ増やして key 列が潰れないようにしてある */
+.ttb-pv__fit { min-width: 300px; }
 .ttb-pv__n { width: 52px; }
 .ttb-pv__title { white-space: nowrap; }
 .ttb-pv__title .ttb-pv__in { display: inline-block; vertical-align: middle; width: auto; field-sizing: content; min-width: 4em; text-align: right; }
