@@ -610,6 +610,69 @@ check('検索順: 複数アーティスト（feat.）は先頭の人で同じ曲
     $tr('曲X', 'A', 'アルバムY', 2020, 'album'),
 ]), ['アルバムY', '曲X']);
 
+echo "timetable from live（予定のライブから下書き → 反映する内容）\n";
+require_once __DIR__ . '/../lib/tt_live.php';
+check('持ち時間: 開始と終了の差（秒つきの TIME でも）', tt_diff_min('18:00:00', '18:20:00'), 20);
+check('持ち時間: 片方が無ければ null', tt_diff_min(null, '18:20'), null);
+check('持ち時間: 終了が開始より前は null', tt_diff_min('18:20', '18:00'), null);
+check('持ち時間: 10時間を超えたら null', tt_diff_min('09:00', '20:00'), null);
+// 1日目: A(18:00-18:20) → 転換(18:20-18:30) → B(18:30-18:50) / 2日目: C（時間なし）
+$ttBands = [
+    ['band_id' => 1, 'live_day_id' => 10, 'name' => 'A', 'play_order' => 1, 'song_count' => 3, 'start_time' => '18:00:00', 'end_time' => '18:20:00'],
+    ['band_id' => 2, 'live_day_id' => 10, 'name' => 'B', 'play_order' => 2, 'song_count' => null, 'start_time' => '18:30:00', 'end_time' => '18:50:00'],
+    ['band_id' => 3, 'live_day_id' => 11, 'name' => 'C', 'play_order' => 1, 'song_count' => null, 'start_time' => null, 'end_time' => null],
+];
+$ttMembers = [
+    ['band_id' => 1, 'name' => '山田', 'short_name' => 'Vo'], ['band_id' => 1, 'name' => '山田', 'short_name' => 'Gt'],
+    ['band_id' => 1, 'name' => '佐藤', 'short_name' => 'Dr'],
+];
+$ttBreaks = [['live_day_id' => 10, 'after_order' => 1, 'seq' => 0, 'name' => '転換', 'start_time' => '18:20:00', 'end_time' => '18:30:00']];
+$ttBuilt = tt_live_state_from_rows(5, '9月ライブ', [10, 11], $ttBands, $ttMembers, $ttBreaks);
+$ttState = $ttBuilt['state'];
+check('下書き: 日数はライブの日程の数', $ttState['dayCount'], 2);
+check('下書き: どのライブ・日程・バンドかを覚える', $ttState['live'], ['id' => 5, 'days' => [10, 11], 'bands' => ['b0' => 1, 'b1' => 2, 'b2' => 3]]);
+check('下書き: 1日目の並び（集合 → A → 転換 → B）', array_column($ttState['days'][0]['rows'], 'id'), ['xc1', 'b0', 'xl0k1', 'b1']);
+check('下書き: 持ち時間は今の開始・終了から', array_column($ttState['days'][0]['rows'], 'min'), [30, 20, 10, 20]);
+check('下書き: 集合時間は最初の開始の30分前', $ttState['days'][0]['call'], '17:30');
+check('下書き: 時間が無い日の集合時間は空', $ttState['days'][1]['call'], '');
+check('下書き: 同じ人が2つの楽器でも1人（パートは Vo/Gt）', [$ttState['bands']['b0']['cnt'], $ttState['bands']['b0']['members'][0]['p']], [2, 'Vo/Gt']);
+check('下書き: メンバー未登録の人数は空欄', $ttState['bands']['b1']['cnt'], null);
+check('下書き: 日程希望は全日OKから始める', $ttState['bands']['b2']['avail'], [1, 2]);
+check('下書き: 休憩の行', $ttState['days'][0]['rows'][2], ['id' => 'xl0k1', 't' => 'break', 'x' => '転換', 'min' => 10]);
+$ttArr = tt_live_arrangement($ttState);
+check('反映: 1日目のバンドは時間つきで並び順どおり', $ttArr['days'][0]['bands'], [
+    ['band_id' => 1, 'start' => '18:00', 'end' => '18:20', 'songs' => 3],
+    ['band_id' => 2, 'start' => '18:30', 'end' => '18:50', 'songs' => null],
+]);
+check('反映: 休憩は「1組の後」', $ttArr['days'][0]['breaks'], [['after' => 1, 'seq' => 0, 'name' => '転換', 'start' => '18:20', 'end' => '18:30']]);
+check('反映: 集合は休憩にしない・時間が無ければ null', [$ttArr['days'][1]['bands'], $ttArr['days'][1]['breaks']], [[['band_id' => 3, 'start' => null, 'end' => null, 'songs' => null]], []]);
+check('反映: 下書きに入っているバンド', $ttArr['placed'], [1, 2, 3]);
+// 日をまたいで動かす（C を1日目の最後へ）→ 1日目は3組、2日目は空
+$ttMoved = $ttState;
+$ttMoved['days'][1]['rows'] = [$ttState['days'][1]['rows'][0]];
+$ttMoved['days'][0]['rows'][] = ['id' => 'b2', 'min' => 15];
+$ttMovedArr = tt_live_arrangement($ttMoved);
+check('反映: 別の日へ動かしたバンドは動かした先の日に入る', [array_column($ttMovedArr['days'][0]['bands'], 'band_id'), $ttMovedArr['days'][1]['bands']], [[1, 2, 3], []]);
+check('反映: 動かしたバンドの時間は並びの続き', $ttMovedArr['days'][0]['bands'][2]['start'], '18:50');
+// 非表示のバンドは入れない（反映しても今の位置のまま）
+$ttHidden = $ttState;
+$ttHidden['bands']['b1']['off'] = true;
+$ttHidden['days'][0]['rows'] = array_values(array_filter($ttHidden['days'][0]['rows'], fn($r) => $r['id'] !== 'b1'));
+check('反映: 非表示のバンドは入れない', tt_live_arrangement($ttHidden)['placed'], [1, 3]);
+// 日付をまたぐと終了が開始より前になる → CHECK 制約に引っかかるので終了は捨てる
+$ttMidnight = $ttState;
+$ttMidnight['days'][1] = ['call' => '23:50', 'rows' => [['id' => 'b2', 'min' => 20]]];
+check('反映: 日付をまたぐ終了は捨てる', tt_live_arrangement($ttMidnight)['days'][1]['bands'][0], ['band_id' => 3, 'start' => '23:50', 'end' => null, 'songs' => null]);
+// 「集合」以外のテキスト行（昼食・撤収）は休憩として入る
+$ttText = $ttState;
+$ttText['days'][1] = ['call' => '12:00', 'rows' => [['id' => 'b2', 'min' => 20], ['id' => 'x9', 't' => 'text', 'x' => '撤収', 'min' => 10]]];
+check('反映: 撤収などのテキスト行は休憩として入る', tt_live_arrangement($ttText)['days'][1]['breaks'], [['after' => 1, 'seq' => 0, 'name' => '撤収', 'start' => '12:20', 'end' => '12:30']]);
+// 日数の固定: 予定のライブから作った下書き（live がある）は変えられない。名簿から作った下書きは変えられる
+$ttOp = $ttState;
+check('日数: 予定のライブから作った下書きは変えられない', tt_apply_op($ttOp, ['op' => 'dayCount', 'n' => 1]), false);
+$ttPlain = tt_new_state('名簿ライブ', [['bands' => [['band_name' => 'X', 'members' => [], 'song_count' => null, 'member_count' => null]]]]);
+check('日数: 名簿から作った下書きは変えられる', tt_apply_op($ttPlain, ['op' => 'dayCount', 'n' => 1]), true);
+
 echo "css tokens\n";
 // トークン化済みの値（角丸・文字サイズ・時間・影）の直書きを防ぐ。定義は assets/app.css の :root
 require_once __DIR__ . '/css_tokens.php';

@@ -29,10 +29,15 @@ const TT_ROW_ID = '/^[a-z][a-z0-9]{0,23}$/';
 const TT_KEY_MAX = 60;          // Key（機材メモ）の文字数の上限
 const TT_PRESENCE_SEC = 15;      // この秒数以内に見に来た人を「開いている人」とする
 
-/** 名簿（build_import_plan の rosters）から最初の state を作る。名簿が複数ファイルなら 1ファイル目 = 1日目… と仮に置く */
-function tt_new_state(string $title, array $rosters): array
+/**
+ * 名簿（build_import_plan の rosters）から最初の state を作る。名簿が複数ファイルなら 1ファイル目 = 1日目… と仮に置く
+ * @param int|null $dayCount 日数を決め打ちするとき（予定ライブから作るときは、ライブの日程の数）。null なら名簿の数から決める
+ */
+function tt_new_state(string $title, array $rosters, ?int $dayCount = null): array
 {
-    $dayCount = max(1, min(TT_MAX_DAYS, count($rosters) >= 2 ? count($rosters) : 2));
+    $dayCount = $dayCount !== null
+        ? max(1, min(TT_MAX_DAYS, $dayCount))
+        : max(1, min(TT_MAX_DAYS, count($rosters) >= 2 ? count($rosters) : 2));
     $state = ['title' => $title, 'dayCount' => $dayCount, 'bands' => [], 'grades' => [], 'mix' => 50, 'gap' => true,
         'days' => array_fill(0, TT_MAX_DAYS, ['call' => '', 'rows' => []])];
     // 各日程の一番上に、持ち時間30分のテキスト行「集合」を入れておく（id は x で始まる決まり）
@@ -239,7 +244,8 @@ function tt_apply_op(array &$state, mixed $op): bool
             return true;
 
         case 'dayCount': // 減らしたら、消えた日の行は残った最後の日の後ろへ。日程希望も詰める
-            if (!$int($op['n'] ?? null, 1, TT_MAX_DAYS)) {
+            // 予定ライブから作った下書き（state.live がある）は、日数 = ライブの日程の数で固定（日程と1対1で反映するため）
+            if (isset($state['live']) || !$int($op['n'] ?? null, 1, TT_MAX_DAYS)) {
                 return false;
             }
             $n = $op['n'];

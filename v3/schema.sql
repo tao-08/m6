@@ -1020,10 +1020,13 @@ CREATE TABLE timetable_draft (
     created_at        DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at        DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     published_live_id INT UNSIGNED NULL,
+    live_id           INT UNSIGNED NULL,               -- 予定ライブから作った下書きの元のライブ（migrations/100）。NULL = 名簿ファイルから作った
     PRIMARY KEY (draft_id),
     CONSTRAINT fk_ttd_created FOREIGN KEY (created_by) REFERENCES user_account (user_id)
         ON UPDATE CASCADE ON DELETE SET NULL,
     CONSTRAINT fk_ttd_updated FOREIGN KEY (updated_by) REFERENCES user_account (user_id)
+        ON UPDATE CASCADE ON DELETE SET NULL,
+    CONSTRAINT fk_ttd_live FOREIGN KEY (live_id) REFERENCES live (live_id)
         ON UPDATE CASCADE ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 

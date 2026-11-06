@@ -79,7 +79,8 @@
         s.title = op.x.trim();
         return true;
       case 'dayCount': {
-        if (!isInt(op.n, 1, 3)) return false;
+        // 予定のライブから作った下書き（s.live がある）は、日数 = ライブの日程の数で固定（lib/tt_builder.php の tt_apply_op と同じ）
+        if (s.live || !isInt(op.n, 1, 3)) return false;
         const n = op.n;
         for (let d = n; d < 3; d++) {
           s.days[n - 1].rows.push(...s.days[d].rows);
@@ -711,7 +712,8 @@
       range(state.dayCount).map((d) => el('a', { class: 'ttb-menu__item', href: `tt_builder?id=${boot.id}&csv=${d}` }, icon('download'), `CSV出力（${LABELS[d - 1]}）`)),
       // 画像は <a> ではなくボタン: サーバーへ取りに行かず、ブラウザで描いて保存するため
       range(state.dayCount).map((d) => item('download', `PNG出力（${LABELS[d - 1]}）`, () => exportImage(d))),
-      item('publish', '公開（ライブとして登録）', () => {
+      // 予定のライブから作った下書き（boot.live）は、新しいライブを作らず元のライブへ反映する
+      item('publish', boot.live ? 'ライブに反映' : '公開（ライブとして登録）', () => {
         if (pending.length || inflight) { toast('保存中です。少し待ってからもう一度'); return; }
         document.getElementById('ttb-publish').requestSubmit();
       }),
@@ -1034,7 +1036,8 @@
         el('button', { type: 'button', class: 'btn btn--ghost btn--sm ttb-iconbtn', 'aria-label': '表示に戻す', title: '表示に戻す', onclick: () => commit({ op: 'hide', b: id, on: false }) }, icon('visibility'))))) : null;
     return el('div', { class: 'ttb-avail' },
       el('h2', { class: 'ttb-avail__title', text: '出演日を選択' }),
-      el('div', { class: 'ttb-bar' }, el('span', { class: 'small muted', text: 'ライブ開催日数' }), seg),
+      // 日数の切り替えは名簿から作った下書きだけ（予定のライブから作った下書きは、ライブの日程の数で固定）
+      state.live ? null : el('div', { class: 'ttb-bar' }, el('span', { class: 'small muted', text: 'ライブ開催日数' }), seg),
       el('div', { class: 'ttb-avail__table card', style: `--dc:${dc}` }, head, rows),
       hiddenBox,
       el('button', { type: 'button', class: 'btn btn--primary btn--block', onclick: () => goView('order') }, '出演順へ', icon('arrow_forward')));
