@@ -24,6 +24,8 @@
   const boot = JSON.parse(dataEl.textContent);
   const CSRF = document.querySelector('meta[name="csrf-token"]')?.content || '';
   const LABELS = boot.labels;
+  // 日の名前の後ろに付けるラベル。1日だけのライブの「1日目」は付けない（教室ライブなどは付ける）。lib/tt_builder.php の tt_day_suffix と同じ
+  const daySuffix = (d) => (state.dayCount === 1 && LABELS[d - 1] === '1日目' ? '' : LABELS[d - 1]);
   const INFO = Array.isArray(boot.info) ? {} : boot.info; // PHP の空配列は [] で来る
   const SIMILAR = boot.similar || {}; // DBにいない人の「もしかして」候補 キー => [{n, k}]
   const MAX_ROWS = 80;
@@ -792,7 +794,7 @@
     const top = el('tr', { class: 'ttb-pv__top' },
       td({ colspan: 2 }, field(day.date, (x) => commit({ op: 'date', day: d, x }), { type: 'date', 'aria-label': '開催日' })),
       td({}),
-      td({ class: 'ttb-pv__title' }, field(state.title, (x) => x !== '' && commit({ op: 'title', x: x.slice(0, 100) }), { maxlength: 100, 'aria-label': 'ライブ名' }), el('span', { text: LABELS[d - 1] })),
+      td({ class: 'ttb-pv__title' }, field(state.title, (x) => x !== '' && commit({ op: 'title', x: x.slice(0, 100) }), { maxlength: 100, 'aria-label': 'ライブ名' }), el('span', { text: daySuffix(d) })),
       td({ class: 'ttb-pv__b', text: '会場' }),
       td({ colspan: 2 }, venueSelect(day.venue || '', (x) => commit({ op: 'venue', day: d, x }))));
     const head = el('tr', { class: 'ttb-pv__head' }, ['時間', '持ち時間', 'バンド名', '曲数', '人数', 'key'].map((t, i) => el('th', { colspan: i === 0 ? 2 : null, text: t })));
@@ -888,7 +890,7 @@
     const m = day.date && /^(\d{4})-(\d{2})-(\d{2})$/.test(day.date) ? day.date.split('-').map(Number) : null;
     const meta = pub || { date: m ? `${m[0]}/${m[1]}/${m[2]}` : '', venue: day.venue || '' };
     const hasMeta = !!(meta.date || meta.venue);
-    const title = state.dayCount > 1 ? `${state.title}${LABELS[d - 1]}` : state.title;
+    const title = `${state.title}${daySuffix(d)}`;
     const HEADS = ['時間', '持ち時間', 'バンド名', '曲数', '人数', 'key'];
 
     // --- 3. フォントを読み込んでから描く（読み込み前に描くと、別のフォントで描かれてしまう） ---
@@ -984,7 +986,7 @@
     canvas.toBlob((blob) => {
       if (!blob) { toast('画像を作れませんでした'); return; }
       const url = URL.createObjectURL(blob);   // Blob を指す一時的な URL（このタブの中だけで使える）
-      const a = el('a', { href: url, download: `${state.title}${LABELS[d - 1]}.png` });
+      const a = el('a', { href: url, download: `${state.title}${daySuffix(d)}.png` });
       document.body.append(a);
       a.click();                                // 見えないリンクをクリックしてダウンロードを始める（定番のやり方）
       a.remove();

@@ -97,7 +97,7 @@ function tt_state_from_live(PDO $pdo, int $liveId): ?array
     }
     // 日程は開催日の順（live.php と同じ並び）。下書きの1日目・2日目…はこの順に対応させる
     // 開催日・会場も一緒に取る（プレビューの表示用。下書きでは読み取り専用で、ライブには書き戻さない）
-    $st = $pdo->prepare('SELECT d.live_day_id, d.held_on, v.name AS venue FROM live_day d
+    $st = $pdo->prepare('SELECT d.live_day_id, d.label, d.held_on, v.name AS venue FROM live_day d
         LEFT JOIN venue v ON v.venue_id = d.venue_id
         WHERE d.live_id = ? ORDER BY d.held_on IS NULL, d.held_on, d.live_day_id');
     $st->execute([$liveId]);
@@ -105,7 +105,7 @@ function tt_state_from_live(PDO $pdo, int $liveId): ?array
     $dayIds = array_map(static fn($r) => (int)$r['live_day_id'], $dayRows);
     $dayInfo = [];
     foreach ($dayRows as $r) {
-        $dayInfo[(int)$r['live_day_id']] = ['date' => (string)($r['held_on'] ?? ''), 'venue' => (string)($r['venue'] ?? '')];
+        $dayInfo[(int)$r['live_day_id']] = ['label' => (string)$r['label'], 'date' => (string)($r['held_on'] ?? ''), 'venue' => (string)($r['venue'] ?? '')];
     }
     if (!$dayIds || count($dayIds) > TT_MAX_DAYS) {
         return null;
@@ -187,7 +187,12 @@ function tt_live_state_from_rows(int $liveId, string $name, array $dayIds, array
     }
 
     $state = tt_new_state($name, $rosters, count($dayIds));
-    $state['live'] = ['id' => $liveId, 'days' => array_values($dayIds), 'bands' => $map];
+    // 日のラベル: ライブの日程の名前（「1日目」「教室ライブ」など）をそのまま使う。無ければ位置の既定名
+    $labels = [];
+    foreach (array_values($dayIds) as $di => $dayId) {
+        $labels[] = $dayInfo[$dayId]['label'] ?? DAY_LABELS[$di];
+    }
+    $state['live'] = ['id' => $liveId, 'days' => array_values($dayIds), 'bands' => $map, 'labels' => $labels];
     // 開催日・会場: 登録済みの値をそのまま入れる（予定ライブの下書きでは変えられない = tt_apply_op で拒否する）
     foreach (array_values($dayIds) as $di => $dayId) {
         $state['days'][$di]['date'] = $dayInfo[$dayId]['date'] ?? '';

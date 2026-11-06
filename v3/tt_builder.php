@@ -220,7 +220,7 @@ if (isset($_GET['csv'])) {
     if ($d < 0 || $d >= $state['dayCount']) {
         error_page(400, '日程の指定がおかしいです');
     }
-    $file = $state['title'] . DAY_LABELS[$d] . '.csv';
+    $file = $state['title'] . tt_day_suffix($state, $d) . '.csv';
     header('Content-Type: text/csv; charset=utf-8');
     // 日本語のファイル名は filename* で（RFC 5987）。filename は ASCII の代わり
     header("Content-Disposition: attachment; filename=\"timetable.csv\"; filename*=UTF-8''" . rawurlencode($file));
@@ -263,7 +263,7 @@ $boot = [
     'state' => $state,
     'info' => $info,
     'similar' => (object)$similar,
-    'labels' => array_slice(DAY_LABELS, 0, TT_MAX_DAYS),
+    'labels' => tt_day_labels($state), // 予定のライブから作った下書きは、ライブの日程のラベル（教室ライブなど）
     'venues' => $pdo->query('SELECT name FROM venue ORDER BY sort_order, name')->fetchAll(PDO::FETCH_COLUMN), // プレビューの会場のプルダウン
     'published' => $draft['published_live_id'] !== null ? (int)$draft['published_live_id'] : null,
     'live' => $draft['live_id'] !== null ? (int)$draft['live_id'] : null, // 予定のライブから作った下書きなら、元のライブ（確定 = そのライブへ反映）

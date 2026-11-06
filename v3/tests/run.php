@@ -630,7 +630,7 @@ $ttBreaks = [['live_day_id' => 10, 'after_order' => 1, 'seq' => 0, 'name' => '�
 $ttBuilt = tt_live_state_from_rows(5, '9月ライブ', [10, 11], $ttBands, $ttMembers, $ttBreaks);
 $ttState = $ttBuilt['state'];
 check('下書き: 日数はライブの日程の数', $ttState['dayCount'], 2);
-check('下書き: どのライブ・日程・バンドかを覚える', $ttState['live'], ['id' => 5, 'days' => [10, 11], 'bands' => ['b0' => 1, 'b1' => 2, 'b2' => 3]]);
+check('下書き: どのライブ・日程・バンドかを覚える', $ttState['live'], ['id' => 5, 'days' => [10, 11], 'bands' => ['b0' => 1, 'b1' => 2, 'b2' => 3], 'labels' => ['1日目', '2日目']]);
 check('下書き: 1日目の並び（集合 → A → 転換 → B）', array_column($ttState['days'][0]['rows'], 'id'), ['xc1', 'b0', 'xl0k1', 'b1']);
 check('下書き: 持ち時間は今の開始・終了から', array_column($ttState['days'][0]['rows'], 'min'), [30, 20, 10, 20]);
 check('下書き: 集合時間は最初の開始の30分前', $ttState['days'][0]['call'], '17:30');
@@ -685,6 +685,19 @@ $ttPlainDate = tt_new_state('名簿ライブ', [['bands' => []]]);
 check('日付・会場: 名簿由来は開催日を変えられる', tt_apply_op($ttPlainDate, ['op' => 'date', 'day' => 1, 'x' => '2026-11-01']), true);
 check('日付・会場: 名簿由来は会場を変えられる', tt_apply_op($ttPlainDate, ['op' => 'venue', 'day' => 1, 'x' => '新大久保CLUB Voice']), true);
 check('日付・会場: 入った日付は CSV の日付欄に出る', str_contains(tt_csv($ttDated['state'], 0), '2026/10/30'), true);
+
+// 日のラベル: 1日だけの「1日目」は付けない。教室ライブなど他の名前は1日だけでも付ける
+check('ラベル: 1日だけで1日目は付けない', tt_day_suffix(['dayCount' => 1], 0), '');
+check('ラベル: 1日だけでも教室ライブは付ける', tt_day_suffix(['dayCount' => 1, 'live' => ['labels' => ['教室ライブ']]], 0), '教室ライブ');
+check('ラベル: 2日あれば1日目も付ける', tt_day_suffix(['dayCount' => 2], 0), '1日目');
+check('ラベル: 予定ライブの日程名をそのまま使う', tt_day_label(['live' => ['labels' => ['教室ライブ']]], 0), '教室ライブ');
+check('ラベル: 名簿の下書きは位置の既定名', tt_day_label(['dayCount' => 2], 1), '2日目');
+$ttLbl = tt_live_state_from_rows(6, '9月ライブ', [20], [], [], [], [20 => ['label' => '教室ライブ', 'date' => '', 'venue' => '']]);
+check('ラベル: 下書きに日程名を保存する', $ttLbl['state']['live']['labels'], ['教室ライブ']);
+$ttCsvOne = tt_csv($ttLbl['state'], 0);
+check('ラベル: 1日だけの教室ライブはCSVのタイトルに出る', str_contains($ttCsvOne, '9月ライブ教室ライブ'), true);
+$ttOneDay = tt_live_state_from_rows(7, '9月ライブ', [21], [], [], [], [21 => ['label' => '1日目', 'date' => '', 'venue' => '']]);
+check('ラベル: 1日だけの1日目はCSVのタイトルに出ない', str_contains(tt_csv($ttOneDay['state'], 0), '9月ライブ1日目'), false);
 
 echo "css tokens\n";
 // トークン化済みの値（角丸・文字サイズ・時間・影）の直書きを防ぐ。定義は assets/app.css の :root

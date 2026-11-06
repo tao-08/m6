@@ -611,6 +611,31 @@ function tt_day_rows(array $state, int $d): array
     return $out;
 }
 
+/**
+ * 日のラベル（「1日目」「教室ライブ」など）。予定のライブから作った下書きは、ライブの日程の実際のラベルを使う
+ * （位置で決め打ちすると、1日だけの「教室ライブ」が「1日目」になるため）。古い下書き・名簿からの下書きは DAY_LABELS
+ */
+function tt_day_label(array $state, int $d): string
+{
+    return (string)($state['live']['labels'][$d] ?? DAY_LABELS[$d]);
+}
+
+/** 全日分のラベル（画面の LABELS に渡す。TT_MAX_DAYS 個） */
+function tt_day_labels(array $state): array
+{
+    return array_map(static fn($d) => tt_day_label($state, $d), range(0, TT_MAX_DAYS - 1));
+}
+
+/**
+ * タイトルの後ろに付けるラベル。1日だけのライブの「1日目」は付けない（ライブ名だけにする）。
+ * 教室ライブなど、1日目以外の名前は1日だけでも付ける。
+ */
+function tt_day_suffix(array $state, int $d): string
+{
+    $label = tt_day_label($state, $d);
+    return $state['dayCount'] === 1 && $label === '1日目' ? '' : $label;
+}
+
 /** 'YYYY-MM-DD' の実在する日付か */
 function tt_valid_date(string $x): bool
 {
@@ -657,7 +682,7 @@ function tt_csv(array $state, int $d): string
     $day = $state['days'][$d];
     $date = tt_valid_date((string)($day['date'] ?? '')) ? date('Y/n/d', strtotime($day['date'])) : '';
     $venue = (string)($day['venue'] ?? '');
-    $lines = [[$date, '', '', $state['title'] . DAY_LABELS[$d], $venue !== '' ? '会場' : '', $venue, ''],
+    $lines = [[$date, '', '', $state['title'] . tt_day_suffix($state, $d), $venue !== '' ? '会場' : '', $venue, ''],
         ['時間', '', '持ち時間', 'バンド名', '曲数', '人数', 'key']];
     $all = tt_day_rows($state, $d);
     foreach ($all as $i => $x) {
