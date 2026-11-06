@@ -819,7 +819,8 @@
       td({ class: 'ttb-pv__title' }, field(state.title, (x) => x !== '' && commit({ op: 'title', x: x.slice(0, 100) }), { maxlength: 100, 'aria-label': 'ライブ名' }), el('span', { text: daySuffix(d) })),
       td({ class: 'ttb-pv__b', text: '会場' }),
       td({ colspan: 2 }, venueSelect(day.venue || '', (x) => commit({ op: 'venue', day: d, x }))));
-    const head = el('tr', { class: 'ttb-pv__head' }, ['時間', '持ち時間', 'バンド名', '曲数', '人数', 'key'].map((t, i) => el('th', { colspan: i === 0 ? 2 : null, text: t })));
+    const headCls = { 2: 'ttb-pv__c-name', 5: 'ttb-pv__c-key' }; // 列の幅を CSS で決める（バンド名・key）
+    const head = el('tr', { class: 'ttb-pv__head' }, ['時間', '持ち時間', 'バンド名', '曲数', '人数', 'key'].map((t, i) => el('th', { colspan: i === 0 ? 2 : null, class: headCls[i], text: t })));
 
     let cur = day.call || null;
     const rows = day.rows.map((r, i) => {
@@ -847,10 +848,10 @@
         td({}, bulk === null
           ? minField(r.min, (n) => commit({ op: 'min', id: r.id, min: n }))
           : minField(b.dur ?? bulk, (n) => commit({ op: 'bdur', b: r.id, v: n === bulk ? null : n }))),
-        td({ class: 'ttb-pv__b' }, field(b.name, (x) => x !== '' && commit({ op: 'name', b: r.id, x: x.slice(0, 100) }), { class: 'ttb-pv__in ttb-pv__fit', maxlength: 100, 'aria-label': 'バンド名' })),
+        td({ class: 'ttb-pv__b ttb-pv__c-name' }, field(b.name, (x) => x !== '' && commit({ op: 'name', b: r.id, x: x.slice(0, 100) }), { class: 'ttb-pv__in ttb-pv__fit', maxlength: 100, 'aria-label': 'バンド名' })),
         td({}, countField(b.songs, (n) => commit({ op: 'songs', b: r.id, v: n }), '曲数')),
         td({}, countField(b.cnt, (n) => commit({ op: 'cnt', b: r.id, v: n }), '人数')),
-        td({}, field(b.key, (x) => commit({ op: 'key', b: r.id, x: x.slice(0, 60) }), { maxlength: 60, 'aria-label': 'key' })));
+        td({ class: 'ttb-pv__c-key' }, field(b.key, (x) => commit({ op: 'key', b: r.id, x: x.slice(0, 60) }), { maxlength: 60, 'aria-label': 'key' })));
     });
     return el('div', { class: 'ttb-pv' }, tabs, bar,
       el('div', { class: 'ttb-pv__scroll card' }, el('table', { class: 'ttb-pv__table' }, el('tbody', {}, top, head, rows))));

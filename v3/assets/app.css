@@ -2825,7 +2825,9 @@ button.ttb-m { cursor: pointer; text-decoration: underline dotted; }
 .ttb.is-tswitch .ttb-time, .ttb.is-tswitch .ttb-days { animation: ttb-in var(--t-base) ease-out backwards; --ttb-dir: 0; }
 @media (prefers-reduced-motion: reduce) { .ttb.is-tswitch .ttb-time, .ttb.is-tswitch .ttb-days { animation: none; } }
 /* タイムテーブル作成: プレビュー（完成形の表と同じ形。セルがそのまま入力欄） */
-/* 表の最小幅 652px: スマホで バンド名の列が約 255px（全角1.5文字分、以前の 620px より広い）。実ブラウザで測った値。入力欄に min-width を付ける方式は、指定より広がって key 列が潰れるので使わない */
+/* 表の最小幅 652px。列の幅: バンド名 269px・key 115px（全角1文字分ずつ、広げて・狭めた。実ブラウザで測った値）。入力欄の min-width は指定より大きく広がるので使わず、セルの幅で決める */
+.ttb-pv__c-name { width: 269px; }
+.ttb-pv__c-key { width: 115px; }
 .ttb-pv__scroll { padding: 0; overflow-x: auto; }
 .ttb-pv__table { width: 100%; min-width: 652px; border-collapse: collapse; font-size: var(--fs-sm); text-align: center; }
 .ttb-pv__table td, .ttb-pv__table th { padding: 0; border: 1px solid var(--border); height: 30px; white-space: nowrap; }
