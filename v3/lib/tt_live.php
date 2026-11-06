@@ -96,9 +96,17 @@ function tt_state_from_live(PDO $pdo, int $liveId): ?array
         return null;
     }
     // 日程は開催日の順（live.php と同じ並び）。下書きの1日目・2日目…はこの順に対応させる
-    $st = $pdo->prepare('SELECT live_day_id FROM live_day WHERE live_id = ? ORDER BY held_on IS NULL, held_on, live_day_id');
+    // 開催日・会場も一緒に取る（プレビューの表示用。下書きでは読み取り専用で、ライブには書き戻さない）
+    $st = $pdo->prepare('SELECT d.live_day_id, d.held_on, v.name AS venue FROM live_day d
+        LEFT JOIN venue v ON v.venue_id = d.venue_id
+        WHERE d.live_id = ? ORDER BY d.held_on IS NULL, d.held_on, d.live_day_id');
     $st->execute([$liveId]);
-    $dayIds = array_map('intval', $st->fetchAll(PDO::FETCH_COLUMN));
+    $dayRows = $st->fetchAll();
+    $dayIds = array_map(static fn($r) => (int)$r['live_day_id'], $dayRows);
+    $dayInfo = [];
+    foreach ($dayRows as $r) {
+        $dayInfo[(int)$r['live_day_id']] = ['date' => (string)($r['held_on'] ?? ''), 'venue' => (string)($r['venue'] ?? '')];
+    }
     if (!$dayIds || count($dayIds) > TT_MAX_DAYS) {
         return null;
     }
@@ -125,7 +133,7 @@ function tt_state_from_live(PDO $pdo, int $liveId): ?array
     $st->execute($dayIds);
     $breaks = $st->fetchAll();
 
-    return tt_live_state_from_rows($liveId, (string)$name, $dayIds, $bands, $members, $breaks);
+    return tt_live_state_from_rows($liveId, (string)$name, $dayIds, $bands, $members, $breaks, $dayInfo);
 }
 
 /**
@@ -137,8 +145,9 @@ function tt_state_from_live(PDO $pdo, int $liveId): ?array
  * @param array[] $bands   band_id, live_day_id, name, play_order, song_count, start_time, end_time（日程・出演順の順）
  * @param array[] $members band_id, name, short_name
  * @param array[] $breaks  live_day_id, after_order, seq, name, start_time, end_time（日程・位置の順）
+ * @param array   $dayInfo live_day_id => ['date' => 'YYYY-MM-DD'|'', 'venue' => 会場名|'']。プレビューの開催日・会場に入れる（無ければ空）
  */
-function tt_live_state_from_rows(int $liveId, string $name, array $dayIds, array $bands, array $members, array $breaks): array
+function tt_live_state_from_rows(int $liveId, string $name, array $dayIds, array $bands, array $members, array $breaks, array $dayInfo = []): array
 {
     // メンバー: band_id => [名前 => [楽器の略称, ...]]。同じ人が Vo と Gt の2行でも1人にして、パートは「Vo/Gt」とつなぐ
     $people = [];
@@ -179,6 +188,11 @@ function tt_live_state_from_rows(int $liveId, string $name, array $dayIds, array
 
     $state = tt_new_state($name, $rosters, count($dayIds));
     $state['live'] = ['id' => $liveId, 'days' => array_values($dayIds), 'bands' => $map];
+    // 開催日・会場: 登録済みの値をそのまま入れる（予定ライブの下書きでは変えられない = tt_apply_op で拒否する）
+    foreach (array_values($dayIds) as $di => $dayId) {
+        $state['days'][$di]['date'] = $dayInfo[$dayId]['date'] ?? '';
+        $state['days'][$di]['venue'] = $dayInfo[$dayId]['venue'] ?? '';
+    }
 
     // 各日の行を作り直す: 集合 → バンドと休憩（今の並び）。tt_new_state が作った行は「集合」だけ残す
     foreach (array_values($dayIds) as $di => $dayId) {

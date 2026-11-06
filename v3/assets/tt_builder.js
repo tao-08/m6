@@ -211,10 +211,12 @@
         if (op.g === null) delete s.grades[op.k]; else s.grades[op.k] = op.g;
         return true;
       case 'date':
+        if (s.live) return false; // 予定のライブから作った下書きは読み取り専用（tt_apply_op と同じ）
         if (!isInt(op.day, 1, 3) || typeof op.x !== 'string' || (op.x !== '' && !validDate(op.x))) return false;
         s.days[op.day - 1].date = op.x;
         return true;
       case 'venue':
+        if (s.live) return false; // 同上
         if (!isInt(op.day, 1, 3) || !isStr(op.x, 100)) return false;
         s.days[op.day - 1].venue = op.x.trim();
         return true;
@@ -756,7 +758,7 @@
     const td = (attrs, ...kids) => el('td', attrs, ...kids);
     // セルの入力欄。変更したら保存。保存できない値（空のバンド名など）は元に戻す
     const field = (value, save, attrs = {}) => el('input', {
-      class: 'ttb-pv__in', value: value ?? '', ...attrs,
+      class: 'ttb-pv__in', value: value ?? '', disabled: !!state.live, ...attrs, // 予定のライブの下書きは読み取り専用
       onchange: (e) => { if (!save(e.target.value.trim())) e.target.value = value ?? ''; },
     });
     const minField = (value, save) => field(value, (x) => {
@@ -770,7 +772,7 @@
       const names = [...(boot.venues || [])];
       if (cur && !names.includes(cur)) names.unshift(cur);
       return el('select', {
-        class: 'ttb-pv__in', 'aria-label': '会場',
+        class: 'ttb-pv__in', 'aria-label': '会場', disabled: !!state.live, // 予定のライブの下書きは読み取り専用
         onchange: (e) => {
           if (e.target.value !== '＋') { save(e.target.value); return; }
           // 新しい会場: 名前を入れると下書きに入り、公開（取り込み）のとき会場として登録される

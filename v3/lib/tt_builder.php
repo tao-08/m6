@@ -475,6 +475,10 @@ function tt_apply_op(array &$state, mixed $op): bool
             return true;
 
         case 'date': // プレビュー: 日ごとの開催日（YYYY-MM-DD）。'' で空欄
+            // 予定のライブから作った下書きは、開催日・会場はライブの登録値（読み取り専用）
+            if (isset($state['live'])) {
+                return false;
+            }
             $day = $op['day'] ?? null;
             $x = $op['x'] ?? null;
             if (!$int($day, 1, TT_MAX_DAYS) || !is_string($x) || ($x !== '' && !tt_valid_date($x))) {
@@ -484,6 +488,9 @@ function tt_apply_op(array &$state, mixed $op): bool
             return true;
 
         case 'venue': // プレビュー: 日ごとの会場
+            if (isset($state['live'])) { // 予定のライブから作った下書きは読み取り専用（date と同じ）
+                return false;
+            }
             $day = $op['day'] ?? null;
             if (!$int($day, 1, TT_MAX_DAYS) || !$str($op['x'] ?? null, 100)) {
                 return false;

@@ -673,6 +673,19 @@ check('日数: 予定のライブから作った下書きは変えられない',
 $ttPlain = tt_new_state('名簿ライブ', [['bands' => [['band_name' => 'X', 'members' => [], 'song_count' => null, 'member_count' => null]]]]);
 check('日数: 名簿から作った下書きは変えられる', tt_apply_op($ttPlain, ['op' => 'dayCount', 'n' => 1]), true);
 
+// 開催日・会場: 登録済みの値を入れる。予定ライブ由来は変えられない（名簿由来は変えられる）
+$ttDated = tt_live_state_from_rows(5, '9月ライブ', [10, 11], $ttBands, $ttMembers, $ttBreaks,
+    [10 => ['date' => '2026-10-30', 'venue' => '新大久保CLUB Voice'], 11 => ['date' => '', 'venue' => '']]);
+check('日付・会場: 登録済みの開催日と会場を入れる', [$ttDated['state']['days'][0]['date'], $ttDated['state']['days'][0]['venue']], ['2026-10-30', '新大久保CLUB Voice']);
+check('日付・会場: 未定の日は空欄', [$ttDated['state']['days'][1]['date'], $ttDated['state']['days'][1]['venue']], ['', '']);
+$ttFixed = $ttDated['state'];
+check('日付・会場: 予定ライブ由来は開催日を変えられない', tt_apply_op($ttFixed, ['op' => 'date', 'day' => 1, 'x' => '2026-11-01']), false);
+check('日付・会場: 予定ライブ由来は会場を変えられない', tt_apply_op($ttFixed, ['op' => 'venue', 'day' => 1, 'x' => '別の会場']), false);
+$ttPlainDate = tt_new_state('名簿ライブ', [['bands' => []]]);
+check('日付・会場: 名簿由来は開催日を変えられる', tt_apply_op($ttPlainDate, ['op' => 'date', 'day' => 1, 'x' => '2026-11-01']), true);
+check('日付・会場: 名簿由来は会場を変えられる', tt_apply_op($ttPlainDate, ['op' => 'venue', 'day' => 1, 'x' => '新大久保CLUB Voice']), true);
+check('日付・会場: 入った日付は CSV の日付欄に出る', str_contains(tt_csv($ttDated['state'], 0), '2026/10/30'), true);
+
 echo "css tokens\n";
 // トークン化済みの値（角丸・文字サイズ・時間・影）の直書きを防ぐ。定義は assets/app.css の :root
 require_once __DIR__ . '/css_tokens.php';
