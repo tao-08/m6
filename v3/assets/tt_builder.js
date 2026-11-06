@@ -678,7 +678,29 @@
     root.classList.toggle('is-enter', enter);
     enter = false;
     root.replaceChildren(renderHead(), viewSwitch(), view === 'days' ? renderDays() : view === 'preview' ? renderPreview() : renderOrder());
+    if (view === 'preview') fitPreview();
   }
+
+  /**
+   * プレビューのバンド名: 入力欄からはみ出す長さなら、画像の書き出し（exportImage の text）と同じく
+   * 文字を小さくして収める（1px ずつ下げて、最小 10px。それでも入らない長さは入力欄の中で切れる）。
+   *   scrollWidth = 中身の全体の幅 / clientWidth = 見えている幅。scrollWidth のほうが大きければ、はみ出している。
+   * 列の幅は変えない（実ブラウザで確認済み。入力欄は幅が 100% 指定なので、文字を小さくしても表の列は縮まない）。
+   */
+  function fitPreview() {
+    root.querySelectorAll('input.ttb-pv__fit').forEach((inp) => {
+      inp.style.fontSize = '';   // いったん元の大きさに戻してから測り直す（文字を消したときに大きさが戻るように）
+      let px = parseFloat(getComputedStyle(inp).fontSize);
+      while (px > 10 && inp.scrollWidth > inp.clientWidth) {
+        px -= 1;
+        inp.style.fontSize = `${px}px`;
+      }
+    });
+  }
+  // 入力中・画面幅が変わったとき・フォントの読み込みが終わったときにも合わせ直す
+  root.addEventListener('input', (e) => { if (e.target.matches?.('.ttb-pv__fit')) fitPreview(); });
+  window.addEventListener('resize', () => { if (view === 'preview') fitPreview(); });
+  document.fonts?.ready.then(() => { if (view === 'preview') fitPreview(); });
 
   function statusIcon() {
     const map = { saved: ['cloud_done', '保存済み'], saving: ['sync', '保存中'], error: ['cloud_off', '保存できません（再送します）'] };
@@ -760,7 +782,7 @@
     const td = (attrs, ...kids) => el('td', attrs, ...kids);
     // セルの入力欄。変更したら保存。保存できない値（空のバンド名など）は元に戻す
     const field = (value, save, attrs = {}) => el('input', {
-      class: 'ttb-pv__in', value: value ?? '', disabled: !!state.live, ...attrs, // 予定のライブの下書きは読み取り専用
+      class: 'ttb-pv__in', value: value ?? '', ...attrs,
       onchange: (e) => { if (!save(e.target.value.trim())) e.target.value = value ?? ''; },
     });
     const minField = (value, save) => field(value, (x) => {
@@ -792,7 +814,7 @@
       return n >= 0 && n <= 99 && save(n);
     }, { type: 'number', min: 0, max: 99, inputmode: 'numeric', class: 'ttb-pv__in ttb-pv__num', 'aria-label': label });
     const top = el('tr', { class: 'ttb-pv__top' },
-      td({ colspan: 2 }, field(day.date, (x) => commit({ op: 'date', day: d, x }), { type: 'date', 'aria-label': '開催日' })),
+      td({ colspan: 2 }, field(day.date, (x) => commit({ op: 'date', day: d, x }), { type: 'date', 'aria-label': '開催日', disabled: !!state.live })),
       td({}),
       td({ class: 'ttb-pv__title' }, field(state.title, (x) => x !== '' && commit({ op: 'title', x: x.slice(0, 100) }), { maxlength: 100, 'aria-label': 'ライブ名' }), el('span', { text: daySuffix(d) })),
       td({ class: 'ttb-pv__b', text: '会場' }),
@@ -810,14 +832,14 @@
         return el('tr', { class: 'ttb-pv__extra' },
           td({ colspan: 2, class: 'mono', text: start || '' }),
           td({}, minField(r.min, (n) => commit({ op: 'min', id: r.id, min: n }))),
-          td({ class: 'ttb-pv__b' }, field(r.x, (x) => commit({ op: 'text', id: r.id, x: x.slice(0, 50) }), { maxlength: 50, 'aria-label': '内容' })),
+          td({ class: 'ttb-pv__b' }, field(r.x, (x) => commit({ op: 'text', id: r.id, x: x.slice(0, 50) }), { class: 'ttb-pv__in ttb-pv__fit', maxlength: 50, 'aria-label': '内容' })),
           td({}), td({}), td({}));
       }
       if (!b) {
         return el('tr', { class: 'ttb-pv__extra' },
           td({ class: 'mono', text: start || '' }), td({ class: 'mono', text: start && r.min != null ? cur : '' }),
           td({}, minField(r.min, (n) => commit({ op: 'min', id: r.id, min: n }))),
-          td({ class: 'ttb-pv__b' }, field(r.x, (x) => commit({ op: 'text', id: r.id, x: x.slice(0, 50) }), { maxlength: 50, 'aria-label': '内容' })),
+          td({ class: 'ttb-pv__b' }, field(r.x, (x) => commit({ op: 'text', id: r.id, x: x.slice(0, 50) }), { class: 'ttb-pv__in ttb-pv__fit', maxlength: 50, 'aria-label': '内容' })),
           td({}), td({}), td({}));
       }
       return el('tr', {},
@@ -825,7 +847,7 @@
         td({}, bulk === null
           ? minField(r.min, (n) => commit({ op: 'min', id: r.id, min: n }))
           : minField(b.dur ?? bulk, (n) => commit({ op: 'bdur', b: r.id, v: n === bulk ? null : n }))),
-        td({ class: 'ttb-pv__b' }, field(b.name, (x) => x !== '' && commit({ op: 'name', b: r.id, x: x.slice(0, 100) }), { maxlength: 100, 'aria-label': 'バンド名' })),
+        td({ class: 'ttb-pv__b' }, field(b.name, (x) => x !== '' && commit({ op: 'name', b: r.id, x: x.slice(0, 100) }), { class: 'ttb-pv__in ttb-pv__fit', maxlength: 100, 'aria-label': 'バンド名' })),
         td({}, countField(b.songs, (n) => commit({ op: 'songs', b: r.id, v: n }), '曲数')),
         td({}, countField(b.cnt, (n) => commit({ op: 'cnt', b: r.id, v: n }), '人数')),
         td({}, field(b.key, (x) => commit({ op: 'key', b: r.id, x: x.slice(0, 60) }), { maxlength: 60, 'aria-label': 'key' })));
