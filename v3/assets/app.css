@@ -3052,11 +3052,11 @@ button.ttb-m { cursor: pointer; text-decoration: underline dotted; }
  *   ・新しい行頭アイコンを作ったら、この :is(...) に足すか .icon-lead を付ける
  *   ・studio.css などでは .icon の vertical-align を個別に書かない（tests/run.php が検出する）
  * ===================================================================== */
-:is(.icon-lead, .std-row__type, .std-row__grip, .std-row__ops) {
+:is(.icon-lead, .std-row__type, .std-row__grip, .std-row__warn, .std-row__ops) {
   display: inline-flex; align-items: center; justify-content: center; flex: none; box-sizing: border-box;
   height: var(--ctl-h);
 }
-:is(.icon-lead, .std-row__type, .std-row__grip) .icon { font-size: var(--icon-sz); vertical-align: 0; }
+:is(.icon-lead, .std-row__type, .std-row__grip, .std-row__warn) .icon { font-size: var(--icon-sz); vertical-align: 0; }
 
 /* ===== AIで入力の追加指示（studio_info.php / venue.php）。アイコンの summary で開閉 ===== */
 .ai-extra > summary { list-style: none; display: inline-flex; cursor: pointer; }

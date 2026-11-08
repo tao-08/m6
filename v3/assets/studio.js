@@ -31,8 +31,9 @@ const StudioCore = (() => {
     const m = /^(\d{1,2}):(\d{2})$/.exec(hm || '');
     return m ? Number(m[1]) * 60 + Number(m[2]) : null;
   };
-  // 930 → "15:30"。24時を超えたら「25:00」のように続ける（深夜練習の表記。日付は日付の行でわかる）
-  const fmt = (min) => (min == null ? '' : `${Math.floor(min / 60)}:${String(min % 60).padStart(2, '0')}`);
+  // 930 → "15:30"。24時間表記: 24時を超えたら 0 時に戻る（1500 → "1:00"。日付をまたぐ深夜練習）。内部の分は 24時を超えて数え続ける
+  const fmt = (min) => (min == null ? '' : `${Math.floor(min / 60) % 24}:${String(min % 60).padStart(2, '0')}`);
+  const fmtP = (min) => fmt(min).padStart(5, '0'); // タイムピッカー用（"01:00" の形）
   // [0, 1, …, n-1] を作る
   const range = (n) => Array.from({ length: n }, (_, i) => i);
   // セルのキー「行id:何枠目:何番目の部屋」
@@ -41,13 +42,20 @@ const StudioCore = (() => {
   /**
    * 行ごとの時刻を計算する。
    *   start がある行はその時刻から、無い行は1つ上の行の終わりから。日付の行で一旦リセット（次の行に start が無ければ時刻は空）
-   * @returns 行と同じ並びの配列 [{start, end, slots: [{start, end}]（練習の行だけ）}]（時刻は 0時からの分。不明は null）
+   * @returns 行と同じ並びの配列 [{start, end, clash, slots: [{start, end}]（練習の行だけ）}]（時刻は 0時からの分。不明は null）
+   *          clash … 同じ日付の中で、上の行の終わりより開始が早い（重複）とき、上の行の終わりの分。無ければ null
    */
   function timeline(s) {
     let cur = null;
     return s.rows.map((r) => {
       if (r.t === 'day') { cur = null; return { start: null, end: null }; }
-      const start = r.start ? toMin(r.start) : cur;
+      let start = r.start ? toMin(r.start) : cur;
+      // 24時間表記では、深夜の「0:30」は上の行の終わり（24:30）より小さい。12時間未満の差で日付をまたいだと見なして +24時間
+      //   それ以外で上の行の終わりより早い開始は、同じ日付の中で時間が整合しない（clash = 上の行の終わり）
+      let clash = null;
+      if (r.start && cur != null && start < cur) {
+        if (start + 1440 - cur < 720) start += 1440; else clash = cur;
+      }
       if (r.t === 'block') {
         const len = r.min ?? s.slotMin; // ?? = 左が null / undefined のときだけ右を使う（0 は 0 のまま。|| との違い）
         const slots = range(r.n).map((i) => ({
@@ -55,11 +63,11 @@ const StudioCore = (() => {
           end: start == null ? null : start + len * (i + 1),
         }));
         cur = start == null ? null : start + len * r.n;
-        return { start, end: cur, slots };
+        return { start, end: cur, slots, clash };
       }
       const end = start == null ? null : start + (r.min ?? 0);
       cur = end;
-      return { start, end };
+      return { start, end, clash };
     });
   }
 
@@ -272,7 +280,7 @@ const StudioCore = (() => {
     return { roomOf, moves };
   }
 
-  return { toMin, fmt, range, cellKey, timeline, slotList, placements, analyze, autoAssign, liveDays };
+  return { toMin, fmt, fmtP, range, cellKey, timeline, slotList, placements, analyze, autoAssign, liveDays };
 })();
 
 // Node.js（テスト）から require されたときは、計算の部品だけを渡して終わる
@@ -287,7 +295,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = StudioCore
   const root = document.querySelector('[data-studio]');
   const dataEl = document.getElementById('std-data');
   if (!root || !dataEl) return;
-  const { toMin, fmt, range, cellKey, timeline, slotList, placements, analyze, autoAssign } = StudioCore;
+  const { toMin, fmt, fmtP, range, cellKey, timeline, slotList, placements, analyze, autoAssign } = StudioCore;
 
   const boot = JSON.parse(dataEl.textContent);
   const CSRF = document.querySelector('meta[name="csrf-token"]')?.content || '';
@@ -295,7 +303,6 @@ if (typeof module !== 'undefined' && module.exports) module.exports = StudioCore
   const MULTI = DAYS.length > 1;
   // Map にしておくと「id からバンド」をすぐ引ける（配列の find より速い）
   const BANDS = new Map(boot.bands.map((b) => [b.id, b]));
-  const TIME_RE = /^([01]?\d|2\d):[0-5]\d$/;
   const MAX_ROWS = 60;
   const badEnd = new Map(); // 割り切れない終了時刻を入力した行（行id → {text, total, n}）。保存せず、赤字で残す
 
@@ -952,26 +959,25 @@ if (typeof module !== 'undefined' && module.exports) module.exports = StudioCore
       const n = Number(x);
       if (Number.isInteger(n) && n >= min && n <= max) onset(n); else { toast(`${min}〜${max} で入力`); render(); }
     }, { type: 'number', inputmode: 'numeric', min, max, ...attrs });
-    const time = (value, onset) => input(value, (x) => {
-      const z = x.replace(/[：．.]/g, ':').replace(/^(\d{1,2})(\d{2})$/, '$1:$2'); // 「1530」「15.30」も 15:30 にする
-      if (z === '') { onset(null); return; }
-      if (TIME_RE.test(z)) onset(z.padStart(5, '0')); else { toast('時刻は 15:30 の形で入力'); render(); }
-    }, { inputmode: 'numeric', placeholder: '続き', maxlength: 5, class: 'std-in std-in--time', 'aria-label': '開始' });
+    // 時刻はタイムピッカー（type="time"。24時間表記）。空 = 上の行の終わりから続ける。古いデータの「25:00」は「01:00」に直して見せる
+    //   auto = 開始が空（上の行の終わりから続ける）の行。続きの時刻を薄い色で見せる（変えると、その時刻で固定される）
+    const time = (value, onset, clash, auto) => input(toMin(value) == null ? '' : fmtP(toMin(value)), (x) => onset(x === '' ? null : x),
+      { type: 'time', class: `std-in std-in--time${clash ? ' is-bad' : ''}${auto ? ' is-auto' : ''}`, 'aria-label': '開始', 'aria-invalid': clash ? 'true' : null });
     const setRow = (id, patch) => { badEnd.delete(id); change((s) => { Object.assign(s.rows.find((r) => r.id === id), patch); }); };
     // 終了時刻の欄。保存するのは「1枠の分数 min」のまま（練習: (終了−開始)÷枠数、ライブ・自由記入: 終了−開始）。
     //   割り切れない・範囲外なら保存せず、入力を赤字のまま残す（badEnd）
     const endField = (r, t) => {
       const bad = badEnd.get(r.id);
       return el('input', {
-        class: `std-in std-in--time${bad ? ' is-bad' : ''}`, autocomplete: 'off', inputmode: 'numeric', maxlength: 5, placeholder: '終了', 'aria-label': '終了',
-        value: bad ? bad.text : (t.end == null ? '' : fmt(t.end).padStart(5, '0')), disabled: t.start == null, 'aria-invalid': bad ? 'true' : null,
+        type: 'time', class: `std-in std-in--time${bad ? ' is-bad' : ''}`, 'aria-label': '終了',
+        value: bad ? bad.text : (t.end == null ? '' : fmtP(t.end)), disabled: t.start == null, 'aria-invalid': bad ? 'true' : null,
         onchange: (e) => {
-          const z = e.target.value.trim().replace(/[：．.]/g, ':').replace(/^(\d{1,2})(\d{2})$/, '$1:$2');
+          const z = e.target.value;
           if (z === '') { badEnd.delete(r.id); render(); return; } // 空にしたら元の値へ戻す
-          if (!TIME_RE.test(z)) { toast('時刻は 15:30 の形で入力'); render(); return; }
           const block = r.t === 'block';
           const n = block ? r.n : 1;
-          const total = toMin(z) - t.start;
+          // 24時間表記: 開始より前の時刻は、日付をまたいだ翌日の時刻（22:00 開始・00:30 終了 = 150分）
+          const total = (((toMin(z) - t.start) % 1440) + 1440) % 1440;
           const each = total / n;
           if (!Number.isInteger(each) || (block ? each < 5 || each > 600 : each < 0 || each > 1440)) {
             badEnd.set(r.id, { text: z.padStart(5, '0'), total, n });
@@ -1009,8 +1015,14 @@ if (typeof module !== 'undefined' && module.exports) module.exports = StudioCore
         fields.push(input(r.x, (x) => setRow(r.id, { x: x.slice(0, 30) }), { maxlength: 30, placeholder: '8月6日', 'aria-label': '日付' }));
       } else {
         // 開始〜終了は全ての行で先頭に置く（行ごとに位置がずれない）。折り返しても2つは離さない
-        fields.push(el('span', { class: 'std-row__times' }, time(r.start, (x) => setRow(r.id, { start: x })), el('span', { class: 'std-row__unit', text: '〜' }), endField(r, t)));
+        //   警告は文字を出さず、赤い ⚠ アイコンにして時刻の右に置く。タップ（PC は乗せる）でポップアップに出す
+        //   （終了が割り切れない / 同じ日付で開始が上の行の終了より早い）
+        const bad = badEnd.get(r.id);
+        const warnText = bad ? `${bad.total}分 ÷ ${bad.n}枠` : t.clash != null ? `前の終了 ${fmt(t.clash)} と重複` : null;
+        fields.push(el('span', { class: 'std-row__times' }, time(r.start || (t.start == null ? '' : fmt(t.start)), (x) => setRow(r.id, { start: x }), t.clash != null, !r.start && t.start != null), el('span', { class: 'std-row__unit', text: '〜' }), endField(r, t),
+          warnText ? el('span', { class: 'std-row__warn', 'data-tip': warnText, 'aria-label': warnText }, icon('error')) : null));
         if (r.t === 'block') {
+          fields.push(el('span', { class: 'std-row__br' })); // 枠数は必ず下の段（画面が広くても時刻と同じ段にしない）
           fields.push(el('label', { class: 'std-row__unit' }, num(r.n, (n) => setBlockN(r.id, n ?? 1), 1, 12, { 'aria-label': '枠数' }), '枠'));
         } else {
           fields.push(input(r.x, (x) => setRow(r.id, { x: x.slice(0, 40) }), { maxlength: 40, placeholder: r.t === 'live' ? 'Live 1日目' : '昼食', 'aria-label': '内容', class: 'std-in std-in--grow' }));
@@ -1020,10 +1032,8 @@ if (typeof module !== 'undefined' && module.exports) module.exports = StudioCore
           }
         }
       }
-      // 補足: 練習の行は「1枠の長さ」を小さく表示。終了が割り切れないときは赤字で理由（保存しない）
-      const bad = badEnd.get(r.id);
-      const note = bad ? el('span', { class: 'small std-row__range is-bad', text: `${bad.total}分 ÷ ${bad.n}枠` })
-        : r.t === 'block' && t.start != null ? el('span', { class: 'muted small std-row__range', text: `${r.min ?? state.slotMin}分/枠` }) : null;
+      // 補足: 練習の行は「1枠の長さ」を小さく表示（枠数の右）
+      const note = r.t === 'block' && t.start != null ? el('span', { class: 'muted small std-row__range', text: `${r.min ?? state.slotMin}分/枠` }) : null;
       list.append(el('div', { class: `std-row is-${r.t}`, 'data-row-id': r.id },
         // 左端の取っ手: ここを掴んで上下にドラッグすると行を並べ替えられる（data-drag-now = タッチでも長押し不要）
         el('span', { class: 'std-row__grip', 'data-drag': `row|${r.id}`, 'data-drag-now': true, title: '移動', 'aria-label': '移動' }, icon('drag_indicator')),

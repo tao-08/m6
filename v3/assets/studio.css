@@ -102,9 +102,10 @@ form.tool-card .tool-card__body { flex: 1; }
 .std-set__clear { position: absolute; top: 12px; right: 12px; width: 32px; height: 32px; padding: 0; justify-content: center; }
 .std-in { min-width: 0; height: var(--ctl-h); box-sizing: border-box; padding: 0 9px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); color: var(--text); font: inherit; font-size: var(--fs-md); }
 .std-in[type="number"] { width: 72px; }
-.std-in--time { width: 70px; font-variant-numeric: tabular-nums; }
+.std-in--time { width: 104px; font-variant-numeric: tabular-nums; } /* タイムピッカーは時計マークの分だけ広め */
 .std-in.is-bad { border-color: var(--danger); background: var(--danger-bg); color: var(--danger); font-weight: 700; } /* 割り切れない終了時刻 */
-.std-row__range.is-bad { color: var(--danger); font-weight: 700; }
+.std-in--time.is-auto { color: var(--muted); } /* 開始が空（上の行の終わりから続く）: 続きの時刻を薄く */
+.std-row__warn { color: var(--danger); cursor: pointer; } /* 時間の警告アイコン（タップでポップアップ。高さ・中央は app.css のアイコン規格） */
 .std-in--room { width: 72px; text-align: center; font-weight: 700; }
 .std-in--grow { flex: 1; min-width: 120px; }
 /* 列は minmax(0, 1fr) にする。auto のままだと中身の幅まで広がり、スマホで右の操作ボタンが画面外へはみ出す */
@@ -118,6 +119,7 @@ form.tool-card .tool-card__body { flex: 1; }
 .std-row.is-live .std-row__type { color: var(--headliner); }
 .std-row__fields { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .std-row__times { display: inline-flex; align-items: center; gap: 4px; flex: none; }
+.std-row__br { flex-basis: 100%; height: 0; } /* フレックス行の強制改行 */
 .std-row__unit { display: inline-flex; align-items: center; gap: 3px; font-size: var(--fs-sm); color: var(--muted); }
 .std-row__range { font-variant-numeric: tabular-nums; }
 .std-row__ops { gap: 2px; }
@@ -158,7 +160,7 @@ form.tool-card .tool-card__body { flex: 1; }
   .std-row .std-in--grow { min-width: 140px; } /* 内容欄は狭くしない。入らなければ時刻の下の段へ折り返す */
   .std-row .std-in { padding: 0 6px; }
   .std-row .std-in[type="number"] { width: 52px; }
-  .std-row .std-in--time { width: 58px; }
+  .std-row .std-in--time { width: 92px; }
   .std-row__range { white-space: nowrap; font-size: var(--fs-2xs); }
   /* スマホでは 4部屋がはみ出さないように、列を細く・文字を小さく */
   .std-grid { font-size: var(--fs-xs); }
