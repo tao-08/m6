@@ -297,6 +297,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = StudioCore
   const BANDS = new Map(boot.bands.map((b) => [b.id, b]));
   const TIME_RE = /^([01]?\d|2\d):[0-5]\d$/;
   const MAX_ROWS = 60;
+  const badEnd = new Map(); // 割り切れない終了時刻を入力した行（行id → {text, total, n}）。保存せず、赤字で残す
 
   let state = norm(boot.state);
   let v = boot.v;
@@ -337,7 +338,25 @@ if (typeof module !== 'undefined' && module.exports) module.exports = StudioCore
     children.flat().forEach((c) => { if (c != null && c !== false) e.append(c instanceof Node ? c : String(c)); });
     return e;
   }
-  const icon = (name) => el('span', { class: 'icon', 'aria-hidden': 'true', text: name });
+  // Material Symbols に無い形は SVG で持つ（Lucide, ISC ライセンス。24px 枠・線の太さ 2・currentColor）。大きさ・色は .icon--svg（app.css）
+  const SVG_ICONS = {
+    drum: ['m2 2 8 8', 'm22 2-8 8', 'M7 13.4v7.9', 'M12 14v8', 'M17 13.4v7.9', 'M2 9v8a10 5 0 0 0 20 0V9', ['ellipse', { cx: 12, cy: 9, rx: 10, ry: 5 }]],
+  };
+  const svgIcon = (parts) => {
+    const NS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('class', 'icon icon--svg');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('aria-hidden', 'true');
+    parts.forEach((p) => {
+      const [tag, attrs] = Array.isArray(p) ? p : ['path', { d: p }];
+      const node = document.createElementNS(NS, tag);
+      Object.entries(attrs).forEach(([k, v]) => node.setAttribute(k, String(v)));
+      svg.append(node);
+    });
+    return svg;
+  };
+  const icon = (name) => (SVG_ICONS[name] ? svgIcon(SVG_ICONS[name]) : el('span', { class: 'icon', 'aria-hidden': 'true', text: name }));
   const btn = (label, ic, onclick, cls = 'btn btn--sm', extra = {}) =>
     el('button', { type: 'button', class: cls, onclick, ...extra }, ic ? icon(ic) : null, label ? el('span', { text: label }) : null);
 
@@ -546,9 +565,9 @@ if (typeof module !== 'undefined' && module.exports) module.exports = StudioCore
 
     // 警告の数
     const chips = el('div', { class: 'std-sum' },
-      warn.clash ? el('span', { class: 'std-chip is-clash', title: '同じ時間に同じメンバー' }, icon('error'), `重複 ${warn.clash}`) : null,
-      warn.late ? el('span', { class: 'std-chip is-clash', title: '出演日のライブより後' }, icon('event_busy'), `ライブ後 ${warn.late}`) : null,
-      warn.move ? el('span', { class: 'std-chip is-move', title: '連続で練習するメンバーの部屋が変更' }, icon('directions_walk'), `移動 ${warn.move}`) : null,
+      warn.clash ? el('span', { class: 'std-chip is-clash', 'data-tip': '同じ時間に同じメンバー' }, icon('error'), `重複 ${warn.clash}`) : null,
+      warn.late ? el('span', { class: 'std-chip is-clash', 'data-tip': '出演日のライブより後' }, icon('event_busy'), `ライブ後 ${warn.late}`) : null,
+      warn.move ? el('span', { class: 'std-chip is-move', 'data-tip': '連続で練習するメンバーの部屋が変更' }, icon('directions_walk'), `移動 ${warn.move}`) : null,
       unNeeded.length ? el('span', { class: 'std-chip' }, icon('pending'), `未配置 ${unNeeded.length}`) : null,
       !warn.clash && !warn.late && !warn.move && !unNeeded.length && pos.size ? el('span', { class: 'std-chip is-need' }, icon('check_circle'), 'OK') : null);
 
@@ -938,7 +957,31 @@ if (typeof module !== 'undefined' && module.exports) module.exports = StudioCore
       if (z === '') { onset(null); return; }
       if (TIME_RE.test(z)) onset(z.padStart(5, '0')); else { toast('時刻は 15:30 の形で入力'); render(); }
     }, { inputmode: 'numeric', placeholder: '続き', maxlength: 5, class: 'std-in std-in--time', 'aria-label': '開始' });
-    const setRow = (id, patch) => change((s) => { Object.assign(s.rows.find((r) => r.id === id), patch); });
+    const setRow = (id, patch) => { badEnd.delete(id); change((s) => { Object.assign(s.rows.find((r) => r.id === id), patch); }); };
+    // 終了時刻の欄。保存するのは「1枠の分数 min」のまま（練習: (終了−開始)÷枠数、ライブ・自由記入: 終了−開始）。
+    //   割り切れない・範囲外なら保存せず、入力を赤字のまま残す（badEnd）
+    const endField = (r, t) => {
+      const bad = badEnd.get(r.id);
+      return el('input', {
+        class: `std-in std-in--time${bad ? ' is-bad' : ''}`, autocomplete: 'off', inputmode: 'numeric', maxlength: 5, placeholder: '終了', 'aria-label': '終了',
+        value: bad ? bad.text : (t.end == null ? '' : fmt(t.end).padStart(5, '0')), disabled: t.start == null, 'aria-invalid': bad ? 'true' : null,
+        onchange: (e) => {
+          const z = e.target.value.trim().replace(/[：．.]/g, ':').replace(/^(\d{1,2})(\d{2})$/, '$1:$2');
+          if (z === '') { badEnd.delete(r.id); render(); return; } // 空にしたら元の値へ戻す
+          if (!TIME_RE.test(z)) { toast('時刻は 15:30 の形で入力'); render(); return; }
+          const block = r.t === 'block';
+          const n = block ? r.n : 1;
+          const total = toMin(z) - t.start;
+          const each = total / n;
+          if (!Number.isInteger(each) || (block ? each < 5 || each > 600 : each < 0 || each > 1440)) {
+            badEnd.set(r.id, { text: z.padStart(5, '0'), total, n });
+            render();
+            return;
+          }
+          setRow(r.id, { min: each });
+        },
+      });
+    };
 
     // ---- 部屋・枠の分数・見出し ----
     const R = state.rooms.length;
@@ -957,7 +1000,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = StudioCore
         input(name, (x) => change((s) => { s.rooms[i] = x.slice(0, 12); }), { maxlength: 12, 'aria-label': `部屋${i + 1}`, class: 'std-in std-in--room' }))));
 
     // ---- 行 ----
-    const TYPES = { day: ['calendar_today', '日付'], block: ['meeting_room', '練習'], text: ['edit_note', '自由記入'], live: ['mic', 'ライブ'] };
+    const TYPES = { day: ['calendar_today', '日付'], block: ['meeting_room', '練習', 'スタジオ練習枠'], text: ['edit_note', '自由記入'], live: ['drum', 'ライブ'] };
     const list = el('div', { class: 'std-rows' });
     state.rows.forEach((r, i) => {
       const t = tl[i];
@@ -965,32 +1008,39 @@ if (typeof module !== 'undefined' && module.exports) module.exports = StudioCore
       if (r.t === 'day') {
         fields.push(input(r.x, (x) => setRow(r.id, { x: x.slice(0, 30) }), { maxlength: 30, placeholder: '8月6日', 'aria-label': '日付' }));
       } else {
-        fields.push(time(r.start, (x) => setRow(r.id, { start: x })));
+        // 開始〜終了は全ての行で先頭に置く（行ごとに位置がずれない）。折り返しても2つは離さない
+        fields.push(el('span', { class: 'std-row__times' }, time(r.start, (x) => setRow(r.id, { start: x })), el('span', { class: 'std-row__unit', text: '〜' }), endField(r, t)));
         if (r.t === 'block') {
           fields.push(el('label', { class: 'std-row__unit' }, num(r.n, (n) => setBlockN(r.id, n ?? 1), 1, 12, { 'aria-label': '枠数' }), '枠'));
-          fields.push(el('label', { class: 'std-row__unit' }, num(r.min, (n) => setRow(r.id, { min: n }), 5, 600, { placeholder: String(state.slotMin), 'aria-label': '1枠の分数' }), '分'));
         } else {
           fields.push(input(r.x, (x) => setRow(r.id, { x: x.slice(0, 40) }), { maxlength: 40, placeholder: r.t === 'live' ? 'Live 1日目' : '昼食', 'aria-label': '内容', class: 'std-in std-in--grow' }));
           if (r.t === 'live' && MULTI) {
             fields.push(el('select', { class: 'std-in', 'aria-label': '何日目', onchange: (e) => setRow(r.id, { d: Number(e.target.value) }) },
               DAYS.map((d) => el('option', { value: d.n, selected: d.n === r.d, text: d.label }))));
           }
-          fields.push(el('label', { class: 'std-row__unit' }, num(r.min, (n) => setRow(r.id, { min: n }), 0, 1440, { 'aria-label': '分数' }), '分'));
         }
       }
+      // 補足: 練習の行は「1枠の長さ」を小さく表示。終了が割り切れないときは赤字で理由（保存しない）
+      const bad = badEnd.get(r.id);
+      const note = bad ? el('span', { class: 'small std-row__range is-bad', text: `${bad.total}分 ÷ ${bad.n}枠` })
+        : r.t === 'block' && t.start != null ? el('span', { class: 'muted small std-row__range', text: `${r.min ?? state.slotMin}分/枠` }) : null;
       list.append(el('div', { class: `std-row is-${r.t}`, 'data-row-id': r.id },
         // 左端の取っ手: ここを掴んで上下にドラッグすると行を並べ替えられる（data-drag-now = タッチでも長押し不要）
         el('span', { class: 'std-row__grip', 'data-drag': `row|${r.id}`, 'data-drag-now': true, title: '移動', 'aria-label': '移動' }, icon('drag_indicator')),
-        el('span', { class: 'std-row__type', title: TYPES[r.t][1] }, icon(TYPES[r.t][0])),
-        el('div', { class: 'std-row__fields' }, fields,
-          r.t !== 'day' && t.start != null ? el('span', { class: 'muted small std-row__range', text: `${fmt(t.start)}〜${t.end !== t.start ? fmt(t.end) : ''}` }) : null),
+        el('span', { class: 'std-row__type', 'data-tip': TYPES[r.t][2] || TYPES[r.t][1], 'aria-label': TYPES[r.t][2] || TYPES[r.t][1] }, icon(TYPES[r.t][0])),
+        el('div', { class: 'std-row__fields' }, fields, note),
         el('div', { class: 'std-row__ops' },
-          btn('', 'arrow_upward', () => moveRow(i, -1), 'icon-btn', { 'aria-label': '上へ', disabled: i === 0 }),
-          btn('', 'arrow_downward', () => moveRow(i, 1), 'icon-btn', { 'aria-label': '下へ', disabled: i === state.rows.length - 1 }),
           btn('', 'delete', () => delRow(r.id), 'icon-btn', { 'aria-label': '削除' }))));
     });
     const add = el('div', { class: 'std-add' }, Object.entries(TYPES).map(([t, [ic, label]]) => btn(label, ic, () => addRow(t))));
-    return el('div', {}, settings, list, add);
+    // 枠の過不足: 入れられる数（枠 × 部屋）と、練習が必要なバンド数（不要と答えた以外）を比べる。足りなければ赤
+    const cap = slotList(state).length * R;
+    const need = [...BANDS.keys()].filter(isNeeded).length;
+    const short = need - cap;
+    const capChip = el('div', { class: 'std-sum' },
+      el('span', { class: `std-chip ${short > 0 ? 'is-clash' : 'is-need'}`, 'data-tip': `入る数 ${cap}（枠×部屋）／必要なバンド ${need}` },
+        icon(short > 0 ? 'error' : 'check_circle'), short > 0 ? `${short}枠不足 ${cap} / ${need}` : `枠 ${cap} / ${need}`));
+    return el('div', {}, settings, capChip, list, add);
   }
 
   function newId() {
@@ -1006,9 +1056,6 @@ if (typeof module !== 'undefined' && module.exports) module.exports = StudioCore
         : t === 'live' ? { id: newId(), t, x: 'Live', d: 1, start: null, min: 540 }
           : { id: newId(), t, x: '', start: null, min: 60 };
     change((s) => { s.rows.push(row); });
-  }
-  function moveRow(i, dir) {
-    change((s) => { const [r] = s.rows.splice(i, 1); s.rows.splice(i + dir, 0, r); });
   }
   // 行に置いてあるバンドの数（消す・枠を減らす前の確認に使う）
   const countIn = (id, fromSlot = 0) => Object.keys(state.cells).filter((k) => { const [r, sl] = k.split(':'); return r === id && Number(sl) >= fromSlot; }).length;
@@ -1030,6 +1077,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = StudioCore
     toast(n ? `全行を削除・${n}バンドを未配置に変更` : '全行を削除', { label: '元に戻す', run: undo });
   }
   function setBlockN(id, n) {
+    badEnd.delete(id);
     const lost = countIn(id, n);
     change((s) => {
       s.rows.find((r) => r.id === id).n = n;

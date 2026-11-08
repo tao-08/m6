@@ -57,6 +57,9 @@
   --fs-3xl: 28px;  /* 大見出し */
   /* ラベルの高さ（楽器ラベル・タグ・ピル・チップ・✓バッジ共通。末尾の「ラベルの規格」で使う） */
   --label-h-sm: 16px; --label-h: 20px; --label-h-lg: 24px;
+  /* 入力欄・ボタンの高さと、アイコンの大きさ（末尾の「アイコンの規格」で使う） */
+  --ctl-h: 40px;
+  --icon-sz-sm: 16px; --icon-sz: 18px; --icon-sz-lg: 20px;
   /* 動きの時間 */
   --t-fast: .15s;
   --t-base: .2s;
@@ -156,6 +159,8 @@ a:hover { color: var(--accent); }
   -webkit-font-smoothing: antialiased; font-feature-settings: "liga"; user-select: none;
   font-variation-settings: "FILL" 0, "wght" 500, "GRAD" 0, "opsz" 24; }
 .icon--sm { font-size: 1em; }
+/* SVG のアイコン（フォントに無い形。studio.js の SVG_ICONS）。大きさは .icon の font-size に追従、色は currentColor */
+.icon--svg { width: 1em; height: 1em; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .tab-icon { display: inline-block; font-size: .8em; font-weight: 800; letter-spacing: .04em; line-height: 1; flex: none; opacity: .75; } /* TAB 譜の印（lib/bootstrap.php の tab_icon） */
 .tab-icon.is-fill { opacity: 1; }
 .icon--fill { font-variation-settings: "FILL" 1, "wght" 500, "GRAD" 0, "opsz" 24; }
@@ -3036,6 +3041,22 @@ button.ttb-m { cursor: pointer; text-decoration: underline dotted; }
 :is(.partbar--partner, .partner__live) .part { min-height: var(--label-h-sm); }
 .pill:empty { display: none; } /* 上の display より後ろに書いて、空のピルを隠す動きを残す */
 .label-inline { vertical-align: middle; margin-inline: .2em; font-size: .75em; min-height: 1.45em; }
+
+/* =====================================================================
+ * アイコンの規格（入力欄・ボタンと並ぶアイコンの上下中央揃え）
+ *   入力欄が並ぶ行の先頭・末尾に置くアイコン（種別・取っ手・操作ボタン）は、
+ *   「入力欄1行分の高さ（--ctl-h）」の枠の中で中央に置く。
+ *   ・行が折り返して複数行になっても、いつも1行目の入力欄の中心に合う
+ *   ・行側は align-items: flex-start にして、アイコン側の高さで揃える（padding や margin-top で個別に合わせない）
+ *   ・大きさは --icon-sz-sm / --icon-sz / --icon-sz-lg から選ぶ
+ *   ・新しい行頭アイコンを作ったら、この :is(...) に足すか .icon-lead を付ける
+ *   ・studio.css などでは .icon の vertical-align を個別に書かない（tests/run.php が検出する）
+ * ===================================================================== */
+:is(.icon-lead, .std-row__type, .std-row__grip, .std-row__ops) {
+  display: inline-flex; align-items: center; justify-content: center; flex: none; box-sizing: border-box;
+  height: var(--ctl-h);
+}
+:is(.icon-lead, .std-row__type, .std-row__grip) .icon { font-size: var(--icon-sz); vertical-align: 0; }
 
 /* ===== AIで入力の追加指示（studio_info.php / venue.php）。アイコンの summary で開閉 ===== */
 .ai-extra > summary { list-style: none; display: inline-flex; cursor: pointer; }

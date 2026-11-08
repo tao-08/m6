@@ -759,6 +759,24 @@ foreach (glob(__DIR__ . '/../assets/*.css') as $cssFile) {
     check('直書きなし: ' . basename($cssFile), css_token_scan((string)file_get_contents($cssFile)), []);
 }
 
+// アイコンの規格: トークンと規格のブロックが app.css にあること。
+// スタジオ割の CSS では .icon の vertical-align / 行頭アイコンの個別の高さ合わせを書かない（規格に任せる）
+echo "icon standard\n";
+$appCss = (string)file_get_contents(__DIR__ . '/../assets/app.css');
+check('アイコン規格: トークン定義', preg_match('/--ctl-h:\s*\d+px;\s*--icon-sz-sm:.*--icon-sz:.*--icon-sz-lg:/s', $appCss) === 1, true);
+check('アイコン規格: 規格のブロック', str_contains($appCss, 'アイコンの規格') && str_contains($appCss, ':is(.icon-lead,'), true);
+$iconOwn = [];
+foreach (['studio.css'] as $f) {
+    $css = (string)preg_replace('~/\*.*?\*/~s', '', (string)file_get_contents(__DIR__ . '/../assets/' . $f));
+    preg_match_all('/([^{}]*)\{([^{}]*)\}/', $css, $rules, PREG_SET_ORDER);
+    foreach ($rules as [, $sel, $body]) {
+        if (str_contains($sel, '.icon') && preg_match('/vertical-align\s*:/', $body)) {
+            $iconOwn[] = $f . ': ' . trim((string)preg_replace('/\s+/', ' ', $sel));
+        }
+    }
+}
+check('アイコン規格: 個別の vertical-align なし（studio.css）', $iconOwn, []);
+
 // アイコン名: リテラルで書いた icon('名前') が lib/icon_names.php に入っているか（無いとフォントが絵にせず、名前の文字のまま出る）
 $iconList = require __DIR__ . '/../lib/icon_names.php';
 check('アイコン名一覧はアルファベット順', $iconList === (function ($a) { sort($a, SORT_STRING); return $a; })($iconList), true);

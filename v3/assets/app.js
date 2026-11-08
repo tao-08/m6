@@ -261,7 +261,8 @@ function setupSpotifyAppLinks() {
  *   見た目はジャケットのポップアップ（.album-tip）と同じ。1個だけ作って使い回す。
  * ------------------------------------------------------------------- */
 function setupTip() {
-  if (!document.querySelector('[data-tip]')) return;
+  // data-tip-lazy … JS があとから data-tip を作るページ（スタジオ割）の印。読み込み時に data-tip が無くても準備する
+  if (!document.querySelector('[data-tip], [data-tip-lazy]')) return;
   const tip = document.createElement('div');
   tip.className = 'album-tip';
   tip.setAttribute('role', 'tooltip');

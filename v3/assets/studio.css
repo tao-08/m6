@@ -22,6 +22,7 @@ form.tool-card .tool-card__body { flex: 1; }
 .std-chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: var(--r-full); font-size: var(--fs-xs); font-weight: 700;
   background: var(--surface-2); color: var(--muted); }
 .std-chip .icon { font-size: 16px; }
+.std-chip[data-tip], .std-row__type { cursor: pointer; } /* 押せない span は cursor を指定する（iOS でタップが届かないため） */
 .std-chip.is-need { background: var(--ok-bg); color: var(--ok); }
 .std-chip.is-no { background: var(--surface-2); color: var(--muted); }
 .std-chip.is-clash { background: var(--danger-bg); color: var(--danger); }
@@ -96,32 +97,40 @@ form.tool-card .tool-card__body { flex: 1; }
 /* ---- 時間 ---- */
 .std-set { display: grid; grid-template-columns: auto auto minmax(0, 1fr); gap: 10px; align-items: end; padding: 12px; margin-bottom: 10px; }
 .std-set__rooms { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; }
-/* 全消去ボタン: グリッドの1行目を丸ごと使い、右端に寄せる（入力欄と重ならない） */
-.std-set__clear { grid-column: 1 / -1; justify-self: end; display: inline-flex; align-items: center; }
-.std-in { min-width: 0; padding: 7px 9px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); color: var(--text); font: inherit; font-size: var(--fs-md); }
+/* 全消去ボタン: カードの右上に重ねる（1行ぶんの空きを作らない）。正方形にしてアイコンを中央に置く */
+.std-set { position: relative; }
+.std-set__clear { position: absolute; top: 12px; right: 12px; width: 32px; height: 32px; padding: 0; justify-content: center; }
+.std-in { min-width: 0; height: var(--ctl-h); box-sizing: border-box; padding: 0 9px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); color: var(--text); font: inherit; font-size: var(--fs-md); }
 .std-in[type="number"] { width: 72px; }
 .std-in--time { width: 70px; font-variant-numeric: tabular-nums; }
+.std-in.is-bad { border-color: var(--danger); background: var(--danger-bg); color: var(--danger); font-weight: 700; } /* 割り切れない終了時刻 */
+.std-row__range.is-bad { color: var(--danger); font-weight: 700; }
 .std-in--room { width: 72px; text-align: center; font-weight: 700; }
 .std-in--grow { flex: 1; min-width: 120px; }
-.std-rows { display: grid; gap: 4px; }
-.std-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); }
+/* 列は minmax(0, 1fr) にする。auto のままだと中身の幅まで広がり、スマホで右の操作ボタンが画面外へはみ出す */
+.std-rows { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; }
+.std-row { --ctl-h: 34px; display: flex; align-items: center; gap: 6px; padding: 4px 8px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); }
 .std-row.is-day { background: var(--accent-soft); }
 .std-row.is-live { background: color-mix(in srgb, var(--headliner) 8%, var(--surface)); }
-.std-row__type { color: var(--muted); display: inline-flex; }
+/* 行頭・末尾のアイコンの高さ・中央揃えは app.css の「アイコンの規格」で管理（ここでは色だけ） */
+.std-row__type { color: var(--muted); }
 .std-row.is-day .std-row__type { color: var(--accent); }
 .std-row.is-live .std-row__type { color: var(--headliner); }
 .std-row__fields { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.std-row__times { display: inline-flex; align-items: center; gap: 4px; flex: none; }
 .std-row__unit { display: inline-flex; align-items: center; gap: 3px; font-size: var(--fs-sm); color: var(--muted); }
 .std-row__range { font-variant-numeric: tabular-nums; }
-.std-row__ops { display: flex; gap: 2px; }
+.std-row__ops { gap: 2px; }
+/* 削除ボタン: 他の削除と同じ赤（枠・アイコンが赤、押す直前に塗る） */
 .std-row__ops .icon-btn { width: 32px; height: 32px; }
-.std-row__ops .icon-btn:disabled { opacity: .3; }
+:is(.std-row__ops, .std-head) .icon-btn { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, transparent); }
+:is(.std-row__ops, .std-head) .icon-btn:hover { color: #fff; background: var(--danger); border-color: var(--danger); }
 /* ---------- ドラッグ移動（studio.js の「ドラッグ移動」の節と対） ---------- */
 /* 掴める要素: 文字選択と、タッチ長押しのメニューを出さない（出ると長押しドラッグが途中で切れる） */
 .std-cell[data-drag], .std-band, .std-row__grip { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 .std-cell[data-drag] { cursor: grab; }
 /* 取っ手は touch-action: none = この上ではタッチでスクロールしない（すぐドラッグできる） */
-.std-row__grip { display: inline-flex; align-self: center; color: var(--muted); cursor: grab; touch-action: none; padding: 6px 2px; }
+.std-row__grip { color: var(--muted); cursor: grab; touch-action: none; padding: 0 2px; }
 .std-dragging, .std-dragging * { cursor: grabbing !important; -webkit-user-select: none; user-select: none; }
 /* 掴んでいる本物の要素（JS が translate で指に付いてこさせる）。
    z-index は position が static だと効かないので relative を付ける。
@@ -142,7 +151,15 @@ form.tool-card .tool-card__body { flex: 1; }
 @media (max-width: 560px) {
   .std-set { grid-template-columns: auto auto; }
   .std-set__title { grid-column: 1 / -1; }
-  .std-row { align-items: flex-start; }
+  .std-row { align-items: flex-start; gap: 4px; padding: 4px 6px; }
+  /* 入力欄を1行に収める（時刻・枠数・分・範囲が並ぶ幅まで細く） */
+  .std-row__fields { gap: 4px; }
+  .std-row .std-in--time, .std-row .std-in[type="number"], .std-row select.std-in { flex: none; } /* 時刻・数・選択は縮めない（収まらなければ折り返す） */
+  .std-row .std-in--grow { min-width: 140px; } /* 内容欄は狭くしない。入らなければ時刻の下の段へ折り返す */
+  .std-row .std-in { padding: 0 6px; }
+  .std-row .std-in[type="number"] { width: 52px; }
+  .std-row .std-in--time { width: 58px; }
+  .std-row__range { white-space: nowrap; font-size: var(--fs-2xs); }
   /* スマホでは 4部屋がはみ出さないように、列を細く・文字を小さく */
   .std-grid { font-size: var(--fs-xs); }
   .std-grid thead th { min-width: 70px; }

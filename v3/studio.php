@@ -143,7 +143,7 @@ render_header($liveName . ' — スタジオ割', 'tools');
 ?>
 <link rel="stylesheet" href="<?= asset_url('assets/studio.css') ?>">
 <nav class="crumbs"><a href="tools">ツール</a><span>/</span><a href="studio">スタジオ割</a></nav>
-<div class="std" data-studio>
+<div class="std" data-studio data-tip-lazy>
     <noscript><p class="card">JavaScript を有効にしてください</p></noscript>
 </div>
 <form method="post" id="std-delete" data-confirm="「<?= h($liveName) ?>」のスタジオ割を削除します。元に戻せません。よろしいですか？" hidden>
