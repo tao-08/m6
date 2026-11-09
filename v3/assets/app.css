@@ -523,7 +523,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 /* 開いた一覧（live.php）・ファイル欄（band.php）。中は「プレーヤー → 写真 → リンク」の順に縦に並ぶ */
 .drive-panel { display: grid; gap: 12px; margin-top: 12px; }
 .drive-panel[hidden] { display: none; }
-.band-section > .drive-panel { margin-top: 0; }
+.band-section > .drive-panel { margin-top: 12px; } /* 見出しの下は、メンバー欄（.lineup）と同じ 12px あける */
 .drive-player { margin: 0; }
 .drive-player__name { display: flex; align-items: center; gap: 4px; margin-bottom: 4px; color: var(--muted); font-size: var(--fs-sm); overflow-wrap: anywhere; }
 /* 横幅いっぱい・16:9 で、PC で大きくなりすぎないよう上限 */
