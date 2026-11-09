@@ -174,11 +174,11 @@ $unmatched = array_intersect_key($files, array_flip($match['unmatched'])); // �
 $autoCount = count(array_filter($rows, fn($r) => $r['list'] && !isset($current[(int)$r['band']['band_id']])));
 $warnCount = count(array_filter($rows, fn($r) => $r['warn']));
 
-/** チェックボックス1つ（既存の .pick-chip。種類のアイコン ＋ フォルダ名/ファイル名） */
+/** チェックボックス1つ（既存の .pick-chip。種類のラベル（WAV / JPG …）＋ フォルダ名/ファイル名） */
 $fileChip = static function (int $bandId, array $f, bool $checked): string {
     $label = (($f['folder'] ?? '') !== '' ? $f['folder'] . '/' : '') . drive_strip_ext((string)$f['name']);
     return '<label class="pick-chip pick-chip--who"><input type="checkbox" name="f[' . $bandId . '][]" value="' . h($f['file_id']) . '"'
-        . ($checked ? ' checked' : '') . '>' . icon(drive_kind_icon((string)$f['mime_type']), 'icon--sm') . h($label) . '</label>';
+        . ($checked ? ' checked' : '') . '>' . drive_ext_label((string)$f['name'], (string)$f['mime_type']) . h($label) . '</label>';
 };
 
 render_header('ドライブのファイルを割り当て', 'lives'); ?>
@@ -227,7 +227,7 @@ render_header('ドライブのファイルを割り当て', 'lives'); ?>
                 <h2 class="section-title">未割り当てのファイル（<?= count($unmatched) ?>）</h2>
                 <ul class="yt-leftover">
                     <?php foreach ($unmatched as $f): ?>
-                        <li><a href="<?= h(drive_file_url($f['file_id'])) ?>" target="_blank" rel="noopener noreferrer"><?= icon(drive_kind_icon((string)$f['mime_type']), 'icon--sm') ?> <?= h(($f['folder'] !== '' ? $f['folder'] . '/' : '') . $f['name']) ?></a></li>
+                        <li><a href="<?= h(drive_file_url($f['file_id'])) ?>" target="_blank" rel="noopener noreferrer"><?= drive_ext_label((string)$f['name'], (string)$f['mime_type']) ?> <?= h(($f['folder'] !== '' ? $f['folder'] . '/' : '') . $f['name']) ?></a></li>
                     <?php endforeach; ?>
                 </ul>
             </section>

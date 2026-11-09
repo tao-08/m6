@@ -427,7 +427,7 @@ render_header($isNew ? 'バンドを追加' : 'バンドを編集', 'lives');
             <?php if ($driveFiles): ?>
                 <div class="chip-list chip-list--sm drive-edit">
                     <?php foreach ($driveFiles as $f): ?>
-                        <label class="chip"><input type="checkbox" name="drive_remove[]" value="<?= h($f['file_id']) ?>" hidden<?= in_array($f['file_id'], $driveRemove ?? [], true) ? ' checked' : '' ?>><?= icon(drive_kind_icon((string)$f['mime_type'])) ?><?= h(drive_strip_ext((string)$f['name'])) ?><?= icon('close', 'icon--sm') ?></label>
+                        <label class="chip"><input type="checkbox" name="drive_remove[]" value="<?= h($f['file_id']) ?>" hidden<?= in_array($f['file_id'], $driveRemove ?? [], true) ? ' checked' : '' ?>><?= drive_ext_label((string)$f['name'], (string)$f['mime_type']) ?><?= h(drive_strip_ext((string)$f['name'])) ?><?= icon('close', 'icon--sm') ?></label>
                     <?php endforeach; ?>
                 </div>
             <?php endif; ?>

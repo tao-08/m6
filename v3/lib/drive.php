@@ -280,6 +280,34 @@ function drive_kind_icon(string $mime): string
     };
 }
 
+/**
+ * 種類のラベル（WAV / MP4 / JPG / PDF …）。見た目は楽器ラベル（.part）と同じで、色だけ種類で変える
+ *   拡張子はファイル名から取る。拡張子の無いファイル（Google ドキュメントなど）は mime_type の後ろ半分から作る
+ *   色: 音源 = 緑 / 動画 = 赤 / 写真 = 紫 / PDF = 青 / それ以外 = 灰（CSS の .ext-label--*）
+ */
+function drive_ext_label(string $name, string $mime): string
+{
+    if (preg_match('/\.([A-Za-z0-9]{1,5})$/', $name, $m)) {
+        $ext = $m[1];
+    } else {
+        // Google ドキュメント・スプレッドシート・スライドは拡張子が無いので、決まった名前にする。それ以外は FILE
+        $ext = match ($mime) {
+            'application/vnd.google-apps.document' => 'DOC',
+            'application/vnd.google-apps.spreadsheet' => 'SHEET',
+            'application/vnd.google-apps.presentation' => 'SLIDE',
+            default => 'FILE',
+        };
+    }
+    $kind = match (true) {
+        str_starts_with($mime, 'audio/') => 'audio',
+        str_starts_with($mime, 'video/') => 'video',
+        str_starts_with($mime, 'image/') => 'image',
+        $mime === 'application/pdf' => 'pdf',
+        default => 'other',
+    };
+    return '<span class="part ext-label ext-label--' . $kind . '">' . h(strtoupper($ext)) . '</span>';
+}
+
 /** 写真のサムネイルの URL（共有されたファイルならキーなしで出る。sz=w400 = 幅 400px） */
 function drive_thumb_url(string $fileId): string
 {

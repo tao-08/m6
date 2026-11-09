@@ -415,6 +415,9 @@ check('拡張子はバンド名に当たらない', $dm['bands'][3], []);
 check('どれにも当たらないファイル', $dm['unmatched'], ['fileGroup001', 'fileWav00001']);
 // 種類 → 表示の仕方
 check('種類の振り分け', [drive_kind('audio/wav'), drive_kind('video/mp4'), drive_kind('image/jpeg'), drive_kind('application/pdf')], ['media', 'media', 'image', 'other']);
+function h($s) { return htmlspecialchars((string)$s, ENT_QUOTES); } // lib/bootstrap.php の関数（テスト用の仮のもの）
+check('種類のラベル', [drive_ext_label('ライン.wav', 'audio/wav'), drive_ext_label('MC原稿', 'application/vnd.google-apps.document')],
+    ['<span class="part ext-label ext-label--audio">WAV</span>', '<span class="part ext-label ext-label--other">DOC</span>']);
 check('種類のアイコン', [drive_kind_icon('application/pdf'), drive_kind_icon('audio/mpeg'), drive_kind_icon('text/plain')], ['picture_as_pdf', 'audio_file', 'description']);
 
 echo "manual timetable\n";
