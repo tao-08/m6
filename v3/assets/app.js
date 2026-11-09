@@ -118,6 +118,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupSearchSuggest();
   setupYoutubeLeftover();
   setupDrivePlayer();
+  setupDriveWarmup();
   setupBackButton();
   setupTutorial();
   setupAddToHome();
@@ -1791,6 +1792,53 @@ function setupDrivePlayer() {
     box.hidden = false;
     btn.setAttribute('aria-expanded', 'true');
   });
+}
+
+/* ---------------------------------------------------------------------
+ * live.php / band.php: ドライブのプレーヤーを速く出すための「先読み」
+ *   ドライブのプレーヤー（iframe）は、開くたびにドライブの画面の部品（JS・CSS で 1〜2MB）を読み込むので遅い。
+ *   そこでページを開いたら、押される前に次の2つを済ませておく:
+ *     1. preconnect … drive.google.com との接続（DNS の名前解決・暗号化のあいさつ）を先にしておく
+ *     2. 見えないプレーヤーを1つだけ読み込んで、すぐ消す … 部品がブラウザのキャッシュに残るので、
+ *        本物のプレーヤーを開いたときはキャッシュから出せて速い（音源の中身は再生しないと落ちないので、ギガはほぼ食わない）
+ *   ・データセーバー（navigator.connection.saveData）が ON の端末では何もしない（通信を節約したい人の邪魔をしない）
+ *   ・requestIdleCallback … ブラウザの手が空いたときに実行する。ページの表示を遅くしない
+ *     （Safari には無いので、無ければ setTimeout で少し待ってから）
+ * ------------------------------------------------------------------- */
+function setupDriveWarmup() {
+  // 再生できるものがあるページだけ: live.php は template の中、band.php は最初から置いてある iframe
+  const tpl = [...document.querySelectorAll('template[data-drive-tpl]')].find((t) => t.content.querySelector('iframe'));
+  // getAttribute: template の中の要素は「ページの外」扱いなので、.src より書いたままの値を取るほうが確実
+  const src = tpl?.content.querySelector('iframe').getAttribute('src') || document.querySelector('.drive-player__frame')?.getAttribute('src');
+  if (!src || navigator.connection?.saveData) return;
+
+  // 1. 先に接続しておく（<link rel="preconnect"> を <head> に足すだけ。同じものがあれば足さない）
+  for (const origin of ['https://drive.google.com', 'https://www.gstatic.com']) {
+    if (document.querySelector(`link[rel="preconnect"][href="${origin}"]`)) continue;
+    const link = document.createElement('link');
+    link.rel = 'preconnect';
+    link.href = origin;
+    link.crossOrigin = ''; // フォントなど「別のサイトから取るファイル」の接続も使い回せるように
+    document.head.append(link);
+  }
+  if (!tpl) return; // band.php はプレーヤーがもう読み込まれているので、2. は要らない
+
+  // 2. 見えないプレーヤーで部品をキャッシュに入れる（読み込み終わったら消す。30秒で終わらなくても消す）
+  const warm = () => {
+    const frame = document.createElement('iframe');
+    frame.src = src;
+    frame.title = '';
+    frame.tabIndex = -1;                        // Tab キーでここに止まらないように
+    frame.setAttribute('aria-hidden', 'true');  // 読み上げソフトにも出さない
+    // display: none だと読み込まないブラウザがあるので、大きさ 0・画面の外に置いて「見えないだけ」にする
+    frame.style.cssText = 'position:absolute;width:0;height:0;border:0;left:-9999px;visibility:hidden';
+    const done = () => frame.remove();
+    frame.addEventListener('load', () => setTimeout(done, 3000), { once: true }); // 中の部品の読み込みを少し待ってから消す
+    setTimeout(done, 30000);
+    document.body.append(frame);
+  };
+  if ('requestIdleCallback' in window) requestIdleCallback(warm, { timeout: 4000 });
+  else setTimeout(warm, 1500);
 }
 
 /** data-autofocus-pc … PC（マウスのある環境）だけ、開いたとき入力欄にカーソルを置く。
