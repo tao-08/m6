@@ -417,6 +417,7 @@ check('どれにも当たらないファイル', $dm['unmatched'], ['fileGroup00
 check('種類の振り分け', [drive_kind('audio/wav'), drive_kind('video/mp4'), drive_kind('image/jpeg'), drive_kind('application/pdf')], ['media', 'media', 'image', 'other']);
 function h($s) { return htmlspecialchars((string)$s, ENT_QUOTES); } // lib/bootstrap.php の関数（テスト用の仮のもの）
 function icon($n, $c = '') { return "<i class=\"$c\">$n</i>"; } // lib/bootstrap.php の関数（テスト用の仮のもの）
+check('タイトルがあればタイトル、無ければファイル名', [drive_file_title(['name' => 'mix_v3.wav', 'title' => '本番ミックス']), drive_file_title(['name' => 'mix_v3.wav', 'title' => null])], ['本番ミックス', 'mix_v3']);
 check('種類のアイコン（色付き）', [drive_type_icon('audio/wav'), drive_type_icon('application/pdf'), drive_type_icon('application/vnd.google-apps.document')],
     ['<i class="file-icon file-icon--audio">audio_file</i>', '<i class="file-icon file-icon--pdf">picture_as_pdf</i>', '<i class="file-icon file-icon--other">description</i>']);
 

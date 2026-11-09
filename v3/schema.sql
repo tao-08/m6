@@ -618,6 +618,7 @@ CREATE TABLE band_drive_file (
     band_id    INT UNSIGNED      NOT NULL,
     file_id    VARCHAR(100)      CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
     name       VARCHAR(255)      NOT NULL,
+    title      VARCHAR(100)      NULL,                -- バンド編集で付けるタイトル。NULL ならファイル名（migrations/103）
     mime_type  VARCHAR(100)      CHARACTER SET ascii COLLATE ascii_general_ci NOT NULL DEFAULT '',
     sort_order SMALLINT UNSIGNED NOT NULL DEFAULT 0,
     created_at DATETIME          NOT NULL DEFAULT CURRENT_TIMESTAMP,

@@ -124,6 +124,8 @@ if (is_post()) {
     // ドライブ: 外すファイル（チェック）と、追加するリンク（1行に1つ）
     $driveRemove = array_map('strval', (array)($_POST['drive_remove'] ?? []));
     $driveAdd = trim((string)($_POST['drive_add'] ?? ''));
+    // タイトル: drive_title[ファイル ID] = 入力した文字（空欄ならファイル名を出す）
+    $driveTitles = array_filter((array)($_POST['drive_title'] ?? []), 'is_string');
     // 🚩 確認依頼（チェックが無ければ外す）。理由はビットで複数、誰についてはメンバーID の配列
     $chk = is_array($_POST['chk'] ?? null) ? $_POST['chk'] : [];
     $flag = check_bits($chk['flag'] ?? null, $chk['reason'] ?? []);
@@ -273,6 +275,8 @@ if (is_post()) {
             sync_band_members($pdo, $index, $bandId, $rows);
             save_check_members($pdo, $bandId, $flag, $checkWho); // メンバーを入れ替えた後に（外した人は入らない）
             drive_save_files($pdo, $bandId, $driveNext); // ドライブのファイル（変更前は change_capture で履歴に残っている）
+            // タイトルは今回残したファイルの分だけ（外したファイルや、改造されたリクエストの ID は UPDATE が0件で終わる）
+            drive_save_titles($pdo, $bandId, array_intersect_key($driveTitles, array_flip(array_column($driveNext, 'file_id'))));
             renumber_bands($pdo, $dayId, $bandId, $isNew ? $position : $order);
             if ($isNew) {
                 sync_day_total_bands($pdo, $dayId); // バンドが増えて総バンド数を超えたら追いつかせる
@@ -425,11 +429,17 @@ render_header($isNew ? 'バンドを追加' : 'バンドを編集', 'lives');
              まとめて入れるならライブを編集 → フォルダを貼ってサブフォルダごと割り当て（live_drive.php） -->
         <div class="field field--wide"><span>ドライブのファイル</span>
             <?php if ($driveFiles): ?>
-                <div class="chip-list chip-list--sm drive-edit">
-                    <?php foreach ($driveFiles as $f): ?>
-                        <label class="chip"><input type="checkbox" name="drive_remove[]" value="<?= h($f['file_id']) ?>" hidden<?= in_array($f['file_id'], $driveRemove ?? [], true) ? ' checked' : '' ?>><?= drive_type_icon((string)$f['mime_type']) ?><?= h(drive_strip_ext((string)$f['name'])) ?><?= icon('close', 'icon--sm') ?></label>
+                <!-- 1行 = 1ファイル: 種類のアイコン・タイトルの入力欄（空欄ならファイル名）・✕（押すと外すにチェック → 行が薄くなる） -->
+                <ul class="drive-edit">
+                    <?php foreach ($driveFiles as $f): $fid = (string)$f['file_id']; ?>
+                        <li>
+                            <?= drive_type_icon((string)$f['mime_type']) ?>
+                            <input type="text" name="drive_title[<?= h($fid) ?>]" value="<?= h((string)($driveTitles[$fid] ?? $f['title'] ?? '')) ?>" maxlength="100"
+                                placeholder="<?= h(drive_strip_ext((string)$f['name'])) ?>" aria-label="「<?= h((string)$f['name']) ?>」のタイトル" autocomplete="off">
+                            <label class="drive-edit__remove" title="外す"><input type="checkbox" name="drive_remove[]" value="<?= h($fid) ?>" hidden<?= in_array($fid, $driveRemove ?? [], true) ? ' checked' : '' ?>><?= icon('close') ?></label>
+                        </li>
                     <?php endforeach; ?>
-                </div>
+                </ul>
             <?php endif; ?>
             <textarea name="drive_add" rows="2" placeholder="https://drive.google.com/file/d/…" aria-label="ドライブのリンクを追加（1行に1つ）"><?= h($driveAdd ?? '') ?></textarea>
         </div>

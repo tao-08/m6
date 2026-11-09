@@ -544,10 +544,15 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .file-icon--image { --file-c: var(--ba); }
 .file-icon--pdf { --file-c: var(--headliner); }
 .pick-chip .file-icon { margin-left: -3px; } /* チップの左の余白が広く見えないよう、少し左へ */
-/* バンド編集: 押すと ✕（外す）にチェック → 取り消し線と薄い表示 */
-.drive-edit { margin-bottom: 8px; }
-.drive-edit .chip { cursor: pointer; }
-.drive-edit .chip:has(input:checked) { opacity: .5; text-decoration: line-through; }
+/* バンド編集のファイル: 1行 = アイコン・タイトル欄・✕。✕を押す（外すにチェック）と行が薄くなる */
+.drive-edit { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 6px; }
+.drive-edit li { display: flex; align-items: center; gap: 4px; }
+.drive-edit input[type="text"] { flex: 1; min-width: 0; }
+.drive-edit__remove { display: inline-grid; place-items: center; width: 32px; height: 32px; border-radius: var(--r-md); color: var(--muted); cursor: pointer; }
+.drive-edit__remove:hover { color: var(--danger); background: var(--danger-bg); }
+.drive-edit li:has(input:checked) { opacity: .45; }
+.drive-edit li:has(input:checked) input[type="text"] { text-decoration: line-through; }
+.drive-player .drive-picks { margin-bottom: 8px; } /* 切り替えのチップとプレーヤーの間 */
 /* コメントアイコン: 自前 SVG の吹き出し（lib/repository.php の comment_bubble_svg）の真ん中に件数を重ねる。
    コメントが付いたバンドだけ出る（lib/repository.php の comment_badge）。ライブ詳細の行とメンバーページの出演履歴で共通。
    重ねかた: 親を position: relative にして、数字は position: absolute で中央へ（アイコンと数字を同じ箱に入れて座標を共有する）。

@@ -119,6 +119,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupYoutubeLeftover();
   setupDrivePlayer();
   setupDriveWarmup();
+  setupDriveSwitch();
   setupBackButton();
   setupTutorial();
   setupAddToHome();
@@ -1791,6 +1792,23 @@ function setupDrivePlayer() {
     box.append(tpl.content.cloneNode(true)); // template の中身を複製して入れる（true = 子要素も全部）
     box.hidden = false;
     btn.setAttribute('aria-expanded', 'true');
+  });
+}
+
+/* ---------------------------------------------------------------------
+ * live.php / band.php: 音源・動画が2つ以上あるとき、上のチップ（ラジオボタン）で再生するファイルを切り替える
+ *   プレーヤー（iframe）は1つだけ。選んだファイルの再生用 URL（value）を iframe の src に入れ直す
+ *   ・live.php の一覧はボタンを押してから作られるので、document で change を受ける（イベント委任）
+ *   ・value は PHP がファイル ID から組み立てた drive.google.com の URL だけ。念のためここでも確かめる
+ * ------------------------------------------------------------------- */
+function setupDriveSwitch() {
+  document.addEventListener('change', (e) => {
+    const radio = e.target.closest('input[data-drive-src]');
+    if (!radio?.checked) return;
+    const frame = radio.closest('[data-drive-switch]')?.querySelector('iframe');
+    if (!frame || !radio.value.startsWith('https://drive.google.com/')) return;
+    frame.src = radio.value;                                  // src を変えると、前のファイルは止まって新しいファイルが読み込まれる
+    frame.title = radio.closest('label')?.textContent.trim() || frame.title;
   });
 }
 

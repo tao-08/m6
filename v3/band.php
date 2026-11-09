@@ -356,15 +356,6 @@ render_header($band['name'], 'lives');
     <?php if ($band['note']): ?><p class="band-note"><?= icon('sticky_note_2') ?> <?= h($band['note']) ?></p><?php endif; ?>
 </section>
 
-<?php $driveFiles = drive_load_files($pdo, [$bandId])[$bandId] ?? []; ?>
-<?php if ($driveFiles): ?>
-    <!-- ドライブのファイル: バンドのページは1組だけなので最初から並べる（iframe・画像は loading="lazy" で画面に近づいてから読み込む） -->
-    <section class="card band-section no-print">
-        <h2 class="section-title section-title--card">ファイル <small class="muted"><?= count($driveFiles) ?></small></h2>
-        <div class="drive-panel"><?= drive_files_html($driveFiles) ?></div>
-    </section>
-<?php endif; ?>
-
 <section class="card band-section">
     <?php // 曲が未登録のときは band.song_count（タイムテーブルの曲数）を「予定」として出す。登録済みの曲数と混ぜない ?>
     <h2 class="section-title section-title--card">セットリスト <small class="muted"><?= $songs ? count(array_filter($songs, static fn($s) => !$s['is_se'])) . '曲' : ($hiddenSongCount ? $hiddenSongCount . '曲' : '') ?></small>
@@ -430,6 +421,15 @@ render_header($band['name'], 'lives');
         <p class="no-print"><a class="btn btn--ghost btn--sm" href="songs_edit?band=<?= $bandId ?>"><?= icon('queue_music') ?> セットリストを登録</a></p>
     <?php endif; ?>
 </section>
+
+<?php $driveFiles = drive_load_files($pdo, [$bandId])[$bandId] ?? []; ?>
+<?php if ($driveFiles): ?>
+    <!-- ドライブのファイル（セットリストの下）: バンドのページは1組だけなので最初から並べる（iframe・画像は loading="lazy" で画面に近づいてから読み込む） -->
+    <section class="card band-section no-print">
+        <h2 class="section-title section-title--card">ファイル <small class="muted"><?= count($driveFiles) ?></small></h2>
+        <div class="drive-panel"><?= drive_files_html($driveFiles) ?></div>
+    </section>
+<?php endif; ?>
 
 <?= fan_albums_html($fans, 'マイアルバムに入れているメンバー', $viewerApp, count($fanArtists) > 1) // 見出しはアーティストページと同じ。何組もいるとき（オムニバス）はアーティスト名も ?>
 

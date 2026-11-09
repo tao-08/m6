@@ -259,6 +259,26 @@ function drive_check_response(?array $res, string $what): void
     }
 }
 
+/** 画面に出す名前: タイトルがあればタイトル、無ければファイル名（拡張子なし） */
+function drive_file_title(array $f): string
+{
+    $title = trim((string)($f['title'] ?? ''));
+    return $title !== '' ? $title : drive_strip_ext((string)$f['name']);
+}
+
+/**
+ * タイトルを保存する（バンド編集）。空欄は NULL（= ファイル名を出す）に戻す
+ * @param array<string, string> $titles file_id => タイトル
+ */
+function drive_save_titles(PDO $pdo, int $bandId, array $titles): void
+{
+    $st = $pdo->prepare('UPDATE band_drive_file SET title = ? WHERE band_id = ? AND file_id = ?');
+    foreach ($titles as $fid => $title) {
+        $title = mb_substr(trim((string)$title), 0, 100); // mb_substr: 日本語も1文字ずつ数えて切る（substr だと文字の途中で切れる）
+        $st->execute([$title !== '' ? $title : null, $bandId, (string)$fid]);
+    }
+}
+
 /** 種類 → 表示の仕方。media = プレーヤー / image = サムネイル / other = リンク */
 function drive_kind(string $mime): string
 {
@@ -302,7 +322,7 @@ function drive_thumb_url(string $fileId): string
 /**
  * バンドごとのファイル。全バンド分を1回の SQL で取る（バンドごとに SQL を投げない = N+1 問題の回避）
  * @param int[] $bandIds
- * @return array<int, array> band_id => [['file_id', 'name', 'mime_type'], ...]（並び順どおり）
+ * @return array<int, array> band_id => [['file_id', 'name', 'title', 'mime_type'], ...]（並び順どおり）
  */
 function drive_load_files(PDO $pdo, array $bandIds): array
 {
@@ -312,7 +332,7 @@ function drive_load_files(PDO $pdo, array $bandIds): array
     }
     // IN (?, ?, ?) の ? を個数ぶん作る（値はプレースホルダで渡すので SQL インジェクションにならない）
     $marks = implode(',', array_fill(0, count($bandIds), '?'));
-    $st = $pdo->prepare("SELECT band_id, file_id, name, mime_type FROM band_drive_file
+    $st = $pdo->prepare("SELECT band_id, file_id, name, title, mime_type FROM band_drive_file
         WHERE band_id IN ($marks) ORDER BY band_id, sort_order, name");
     $st->execute($bandIds);
     $out = [];
@@ -324,6 +344,7 @@ function drive_load_files(PDO $pdo, array $bandIds): array
 
 /**
  * バンドのファイルを、渡した一覧と同じにする（無いものは消す・新しいものは足す・あるものは名前と順番を更新）
+ *   title（人が付けたタイトル）は触らない。フォルダを読み直しても消えないように（タイトルは drive_save_titles で保存）
  *   全部消して入れ直さないのは、変わらない行の created_at（いつ紐付けたか）を残すため
  * @param array $files [['file_id', 'name', 'mime_type'], ...]（この順番が sort_order になる）
  */
@@ -364,13 +385,17 @@ function drive_player_html(string $fileId, string $title): string
 /**
  * ファイルの一覧を種類ごとに表示する HTML（band.php と live.php の開いたパネルで共通）
  *   並びは「プレーヤー → 写真 → リンク」。種類ごとに見た目を変える
- *     音源・動画 … .drive-player（iframe。loading="lazy" で画面に近づくまで読み込まない）
+ *     音源・動画 … プレーヤー（iframe）は1つだけ。2つ以上あるときは上のチップで切り替える（ミックス違いが多いので）
+ *                  切り替えは JS（setupDriveSwitch）が iframe の src を差し替えるだけ。全部並べるより軽い
  *     写真       … .live-thumbs（ライブ・バンドの添付画像と同じ見た目）。押すとドライブで開く
  *     それ以外   … .chip-list のチップ。押すとドライブで開く
- * @param array $files [['file_id', 'name', 'mime_type'], ...]
+ *   名前はタイトル（バンド編集で付ける）があればタイトル、無ければファイル名
+ * @param array $files [['file_id', 'name', 'title', 'mime_type'], ...]
  */
 function drive_files_html(array $files): string
 {
+    static $panel = 0; // 1ページに何個も出るので、ラジオボタンの name が重ならないよう番号を振る
+    $panel++;
     $groups = ['media' => [], 'image' => [], 'other' => []];
     foreach ($files as $f) {
         if (drive_id_valid((string)$f['file_id'])) {
@@ -378,15 +403,27 @@ function drive_files_html(array $files): string
         }
     }
     $html = '';
-    foreach ($groups['media'] as $f) {
-        $name = drive_strip_ext((string)$f['name']);
-        $html .= '<figure class="drive-player"><figcaption class="drive-player__name">' . drive_type_icon((string)$f['mime_type']) . h($name) . '</figcaption>'
-            . drive_player_html((string)$f['file_id'], $name) . '</figure>';
+    if ($groups['media']) {
+        $first = $groups['media'][0];
+        $html .= '<figure class="drive-player" data-drive-switch>';
+        if (count($groups['media']) > 1) {
+            // ラジオボタン（1つだけ選べる）。見た目は既存のチップ（.pick-chip）。選ぶと JS がプレーヤーの src を差し替える
+            $html .= '<div class="drive-picks" role="radiogroup" aria-label="再生するファイル">';
+            foreach ($groups['media'] as $i => $f) {
+                $html .= '<label class="pick-chip pick-chip--who"><input type="radio" name="drive-mix-' . $panel . '"'
+                    . ' value="' . h(drive_preview_url((string)$f['file_id'])) . '" data-drive-src' . ($i === 0 ? ' checked' : '') . '>'
+                    . drive_type_icon((string)$f['mime_type']) . h(drive_file_title($f)) . '</label>';
+            }
+            $html .= '</div>';
+        } else {
+            $html .= '<figcaption class="drive-player__name">' . drive_type_icon((string)$first['mime_type']) . h(drive_file_title($first)) . '</figcaption>';
+        }
+        $html .= drive_player_html((string)$first['file_id'], drive_file_title($first)) . '</figure>';
     }
     if ($groups['image']) {
         $html .= '<ul class="live-thumbs drive-thumbs">';
         foreach ($groups['image'] as $f) {
-            $html .= '<li><a class="live-thumbs__btn" href="' . h(drive_file_url((string)$f['file_id'])) . '" target="_blank" rel="noopener noreferrer" aria-label="' . h(drive_strip_ext((string)$f['name'])) . '">'
+            $html .= '<li><a class="live-thumbs__btn" href="' . h(drive_file_url((string)$f['file_id'])) . '" target="_blank" rel="noopener noreferrer" aria-label="' . h(drive_file_title($f)) . '" title="' . h(drive_file_title($f)) . '">'
                 . '<img src="' . h(drive_thumb_url((string)$f['file_id'])) . '" alt="" loading="lazy" referrerpolicy="no-referrer"></a></li>';
         }
         $html .= '</ul>';
@@ -395,7 +432,7 @@ function drive_files_html(array $files): string
         $html .= '<div class="chip-list chip-list--sm drive-links">';
         foreach ($groups['other'] as $f) {
             $html .= '<a class="chip" href="' . h(drive_file_url((string)$f['file_id'])) . '" target="_blank" rel="noopener noreferrer">'
-                . drive_type_icon((string)$f['mime_type']) . h(drive_strip_ext((string)$f['name'])) . '</a>';
+                . drive_type_icon((string)$f['mime_type']) . h(drive_file_title($f)) . '</a>';
         }
         $html .= '</div>';
     }
