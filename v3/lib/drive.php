@@ -268,44 +268,25 @@ function drive_kind(string $mime): string
     return str_starts_with($mime, 'image/') ? 'image' : 'other';
 }
 
-/** 種類ごとのアイコン（リンクのチップに付ける） */
-function drive_kind_icon(string $mime): string
-{
-    return match (true) {           // match(true): 上から順に条件を見て、最初に true になった値を返す
-        $mime === 'application/pdf' => 'picture_as_pdf',
-        str_starts_with($mime, 'audio/') => 'audio_file',
-        str_starts_with($mime, 'video/') => 'movie',
-        str_starts_with($mime, 'image/') => 'image',
-        default => 'description',
-    };
-}
-
 /**
- * 種類のラベル（WAV / MP4 / JPG / PDF …）。見た目は楽器ラベル（.part）と同じで、色だけ種類で変える
- *   拡張子はファイル名から取る。拡張子の無いファイル（Google ドキュメントなど）は mime_type の後ろ半分から作る
- *   色: 音源 = 緑 / 動画 = 赤 / 写真 = 紫 / PDF = 青 / それ以外 = 灰（CSS の .ext-label--*）
+ * 種類のアイコン（色付き）。拡張子の種類ごとに形と色を変える
+ *   音源 = 緑の audio_file / 動画 = 赤の video_file / 写真 = 紫の image / PDF = 青の picture_as_pdf
+ *   Google ドキュメント・スプレッドシート・スライド = それぞれの形 / それ以外 = 灰の description
+ *   色は CSS の .file-icon--*（楽器ラベルと同じ色の変数を使う）
  */
-function drive_ext_label(string $name, string $mime): string
+function drive_type_icon(string $mime): string
 {
-    if (preg_match('/\.([A-Za-z0-9]{1,5})$/', $name, $m)) {
-        $ext = $m[1];
-    } else {
-        // Google ドキュメント・スプレッドシート・スライドは拡張子が無いので、決まった名前にする。それ以外は FILE
-        $ext = match ($mime) {
-            'application/vnd.google-apps.document' => 'DOC',
-            'application/vnd.google-apps.spreadsheet' => 'SHEET',
-            'application/vnd.google-apps.presentation' => 'SLIDE',
-            default => 'FILE',
-        };
-    }
-    $kind = match (true) {
-        str_starts_with($mime, 'audio/') => 'audio',
-        str_starts_with($mime, 'video/') => 'video',
-        str_starts_with($mime, 'image/') => 'image',
-        $mime === 'application/pdf' => 'pdf',
-        default => 'other',
+    // [アイコンの名前, 色の種類]。match(true) は上から順に条件を見て、最初に true になった値を返す
+    [$name, $kind] = match (true) {
+        str_starts_with($mime, 'audio/') => ['audio_file', 'audio'],
+        str_starts_with($mime, 'video/') => ['video_file', 'video'],
+        str_starts_with($mime, 'image/') => ['image', 'image'],
+        $mime === 'application/pdf' => ['picture_as_pdf', 'pdf'],
+        $mime === 'application/vnd.google-apps.spreadsheet' => ['table_chart', 'other'],
+        $mime === 'application/vnd.google-apps.presentation' => ['slideshow', 'other'],
+        default => ['description', 'other'],
     };
-    return '<span class="part ext-label ext-label--' . $kind . '">' . h(strtoupper($ext)) . '</span>';
+    return icon($name, 'file-icon file-icon--' . $kind);
 }
 
 /** 写真のサムネイルの URL（共有されたファイルならキーなしで出る。sz=w400 = 幅 400px） */
@@ -399,7 +380,7 @@ function drive_files_html(array $files): string
     $html = '';
     foreach ($groups['media'] as $f) {
         $name = drive_strip_ext((string)$f['name']);
-        $html .= '<figure class="drive-player"><figcaption class="drive-player__name">' . icon(drive_kind_icon((string)$f['mime_type']), 'icon--sm') . ' ' . h($name) . '</figcaption>'
+        $html .= '<figure class="drive-player"><figcaption class="drive-player__name">' . drive_type_icon((string)$f['mime_type']) . h($name) . '</figcaption>'
             . drive_player_html((string)$f['file_id'], $name) . '</figure>';
     }
     if ($groups['image']) {
@@ -414,7 +395,7 @@ function drive_files_html(array $files): string
         $html .= '<div class="chip-list chip-list--sm drive-links">';
         foreach ($groups['other'] as $f) {
             $html .= '<a class="chip" href="' . h(drive_file_url((string)$f['file_id'])) . '" target="_blank" rel="noopener noreferrer">'
-                . icon(drive_kind_icon((string)$f['mime_type'])) . h(drive_strip_ext((string)$f['name'])) . '</a>';
+                . drive_type_icon((string)$f['mime_type']) . h(drive_strip_ext((string)$f['name'])) . '</a>';
         }
         $html .= '</div>';
     }

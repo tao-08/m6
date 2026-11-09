@@ -174,11 +174,11 @@ $unmatched = array_intersect_key($files, array_flip($match['unmatched'])); // �
 $autoCount = count(array_filter($rows, fn($r) => $r['list'] && !isset($current[(int)$r['band']['band_id']])));
 $warnCount = count(array_filter($rows, fn($r) => $r['warn']));
 
-/** チェックボックス1つ（既存の .pick-chip。種類のラベル（WAV / JPG …）＋ フォルダ名/ファイル名） */
+/** チェックボックス1つ（既存の .pick-chip。種類のアイコン（色付き）＋ フォルダ名/ファイル名） */
 $fileChip = static function (int $bandId, array $f, bool $checked): string {
     $label = (($f['folder'] ?? '') !== '' ? $f['folder'] . '/' : '') . drive_strip_ext((string)$f['name']);
     return '<label class="pick-chip pick-chip--who"><input type="checkbox" name="f[' . $bandId . '][]" value="' . h($f['file_id']) . '"'
-        . ($checked ? ' checked' : '') . '>' . drive_ext_label((string)$f['name'], (string)$f['mime_type']) . h($label) . '</label>';
+        . ($checked ? ' checked' : '') . '>' . drive_type_icon((string)$f['mime_type']) . h($label) . '</label>';
 };
 
 render_header('ドライブのファイルを割り当て', 'lives'); ?>
@@ -214,6 +214,17 @@ render_header('ドライブのファイルを割り当て', 'lives'); ?>
                             <?php else: ?>
                                 <span class="pill muted">該当なし</span>
                             <?php endif; ?>
+                            <?php // 手動で選ぶ: 候補に出なかったファイルも、フォルダの全部から自由にチェックできる（最初は閉じておく）
+                            //   <details> は HTML だけで開け閉めできる部品（JS が要らない）。閉じていても中のチェックは送信される
+                            $others = array_diff_key($files, $r['list']); ?>
+                            <?php if ($others): ?>
+                                <details class="drive-more">
+                                    <summary class="btn btn--ghost btn--sm"><?= icon('add') ?> ほかのファイル（<?= count($others) ?>）</summary>
+                                    <div class="drive-picks">
+                                        <?php foreach ($others as $f): ?><?= $fileChip($id, $f, false) ?><?php endforeach; ?>
+                                    </div>
+                                </details>
+                            <?php endif; ?>
                         </td>
                     </tr>
                 <?php endforeach; ?>
@@ -222,12 +233,14 @@ render_header('ドライブのファイルを割り当て', 'lives'); ?>
         </div>
 
         <?php if ($unmatched): ?>
-            <!-- どのバンドにも当たらなかったファイル。ファイル名を直すか、アーティストの別称を登録すると次から当たる -->
+            <!-- どのバンドにも当たらなかったファイル（自動で当たらなかっただけ。手動でチェックした分はここにも残る）。
+                 ファイル名を直すか、アーティストの別称を登録すると次から自動で当たる -->
             <section>
                 <h2 class="section-title">未割り当てのファイル（<?= count($unmatched) ?>）</h2>
+                <p class="muted small">各バンドの「＋ ほかのファイル」から手動で割り当てできます。</p>
                 <ul class="yt-leftover">
                     <?php foreach ($unmatched as $f): ?>
-                        <li><a href="<?= h(drive_file_url($f['file_id'])) ?>" target="_blank" rel="noopener noreferrer"><?= drive_ext_label((string)$f['name'], (string)$f['mime_type']) ?> <?= h(($f['folder'] !== '' ? $f['folder'] . '/' : '') . $f['name']) ?></a></li>
+                        <li><a href="<?= h(drive_file_url($f['file_id'])) ?>" target="_blank" rel="noopener noreferrer"><?= drive_type_icon((string)$f['mime_type']) ?><?= h(($f['folder'] !== '' ? $f['folder'] . '/' : '') . $f['name']) ?></a></li>
                     <?php endforeach; ?>
                 </ul>
             </section>

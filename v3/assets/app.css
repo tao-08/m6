@@ -531,15 +531,19 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .drive-thumbs { margin: 0; justify-content: flex-start; } /* 写真は添付画像と同じ .live-thumbs。左寄せにするだけ */
 /* 割り当て画面（live_drive.php）: バンドごとのファイルのチェック（既存の .pick-chip）を折り返して並べる */
 .drive-picks { display: flex; flex-wrap: wrap; gap: 6px; }
-/* ファイルの種類のラベル（WAV / JPG / PDF …）。楽器ラベル .part をそのまま使い、色（--part-c）だけ種類で変える */
-.ext-label { min-width: 34px; margin-right: 6px; }
-.ext-label--audio { --part-c: var(--ok); }
-.ext-label--video { --part-c: var(--accent); }
-.ext-label--image { --part-c: var(--ba); }
-.ext-label--pdf { --part-c: var(--headliner); }
-.ext-label--other { --part-c: var(--other); }
-.pick-chip .ext-label { margin-left: -4px; } /* チップの左の余白が広く見えないよう、ラベルを少し左へ */
-.yt-leftover .ext-label { margin-right: 2px; }
+/* 手動で選ぶ「＋ ほかのファイル」。summary は小さいボタンの見た目、開くと下にチップが並ぶ */
+.drive-more { margin-top: 6px; }
+.drive-more > summary { list-style: none; width: fit-content; }      /* 三角の印（▶）を消してボタンだけにする */
+.drive-more > summary::-webkit-details-marker { display: none; }      /* Safari の三角の印 */
+.drive-more[open] > summary { margin-bottom: 6px; }
+/* ファイルの種類のアイコン（lib/drive.php の drive_type_icon）。色は楽器ラベルと同じ変数で、種類ごとに変える
+   文字より少し大きく（--fs-xl = 18px）して、右に 4px あけて名前とくっつかないようにする */
+.file-icon { flex: none; font-size: var(--fs-xl); margin-right: 4px; color: var(--file-c, var(--other)); font-variation-settings: "FILL" 1; }
+.file-icon--audio { --file-c: var(--ok); }
+.file-icon--video { --file-c: var(--accent); }
+.file-icon--image { --file-c: var(--ba); }
+.file-icon--pdf { --file-c: var(--headliner); }
+.pick-chip .file-icon { margin-left: -3px; } /* チップの左の余白が広く見えないよう、少し左へ */
 /* バンド編集: 押すと ✕（外す）にチェック → 取り消し線と薄い表示 */
 .drive-edit { margin-bottom: 8px; }
 .drive-edit .chip { cursor: pointer; }
