@@ -4,13 +4,14 @@
  *  lib/drive.php — Google ドライブのファイルをバンドに紐付ける（1バンドに何個でも・種類は問わない）
  * =====================================================================
  *  流れ:
- *    1. ライブにフォルダのリンク（live.drive_url）を入れる。中は「バンド名のサブフォルダ」に分けておく
+ *    1. ライブにフォルダのリンク（live.drive_url）を入れる
+ *    2. フォルダの中のファイルを、サブフォルダの中まで全部取る（drive_folder_tree）
  *         12月ライブ/
- *           ├ スピッツ(山田)/   ← ライン音源.wav・写真.jpg・セッティングシート.pdf …
- *           └ ELLEGARDEN/
- *    2. サブフォルダの一覧を Google Drive API v3 の files.list で取る
- *    3. サブフォルダ名にバンド名が入っているかで結び付ける（youtube_match_bands をそのまま使う）
- *    4. 確認画面（live_drive.php）で人が確かめてから、サブフォルダの中身を全部 band_drive_file に保存
+ *           ├ スピッツ(山田).wav     ← 直下のファイル
+ *           └ 写真/スピッツ(山田).jpg ← サブフォルダの中のファイル
+ *    3. 「フォルダ名 ＋ ファイル名」にバンド名が入っているかで結び付ける（drive_match_files → youtube_match_bands）
+ *         バンドごとにフォルダを分けた場合（スピッツ/ライン.wav）もフォルダ名で当たる
+ *    4. 確認画面（live_drive.php）で人がチェックしてから band_drive_file に保存
  *
  *  ■ 表示は種類（mime_type）で自動で変える（drive_files_html）
  *    音源・動画 … ドライブのプレーヤーを iframe で埋め込む（…/file/d/ID/preview）
@@ -180,6 +181,53 @@ function drive_folder_children(string $folderId): array
     return $out;
 }
 
+/** サブフォルダをたどる深さの上限（ライブ/写真/2日目/… の 3段まで）。変なフォルダで延々と通信しないように */
+const DRIVE_MAX_DEPTH = 3;
+
+/**
+ * フォルダの中のファイルを、サブフォルダの中まで全部取ってくる
+ *   戻り値: [['file_id' => ..., 'name' => 'スピッツ.jpg', 'mime_type' => 'image/jpeg', 'folder' => '写真'], ...]
+ *     folder = どのサブフォルダにあったか（直下なら ''。2段なら '写真/2日目'）。バンドとの突き合わせにも使う
+ *   たどり方は「幅優先探索」: 今の段のフォルダを全部見てから、次の段へ進む（キューに積んで1つずつ取り出す）
+ * @throws RuntimeException キーが無い・通信できない・フォルダが見つからない
+ */
+function drive_folder_tree(string $folderId): array
+{
+    $files = [];
+    $queue = [[$folderId, '', 0]]; // [フォルダ ID, ここまでのフォルダ名, 深さ]
+    while ($queue) {
+        [$id, $path, $depth] = array_shift($queue); // array_shift: 配列の先頭を取り出す（キュー = 先に入れたものから順に処理）
+        $children = drive_folder_children($id);
+        foreach ($children['files'] as $f) {
+            $files[] = $f + ['folder' => $path]; // + は配列の足し算（左に無いキーだけ右から足す）
+        }
+        if ($depth + 1 < DRIVE_MAX_DEPTH) {
+            foreach ($children['folders'] as $sub) {
+                $queue[] = [$sub['file_id'], ltrim($path . '/' . $sub['name'], '/'), $depth + 1];
+            }
+        }
+    }
+    return $files;
+}
+
+/**
+ * ファイルをバンドに割り当てる（DB も通信も使わない → tests/run.php でテストできる）
+ *   比べる文字は「フォルダ名 ＋ ファイル名（拡張子なし）」。
+ *     写真/スピッツ.jpg … ファイル名で当たる
+ *     スピッツ/ライン.wav … フォルダ名で当たる（バンドごとにフォルダを分けた場合）
+ *   中身は youtube_match_bands（同じロジックを2回書かない = DRY）
+ * @param array $files drive_folder_tree の戻り値
+ * @return array{bands: array<int, string[]>, auto: array<int, string>, unmatched: string[]} 中身はファイル ID
+ */
+function drive_match_files(array $files, array $bands): array
+{
+    $list = [];
+    foreach ($files as $f) {
+        $list[] = ['video_id' => $f['file_id'], 'title' => ($f['folder'] ?? '') . ' ' . drive_strip_ext((string)$f['name'])];
+    }
+    return youtube_match_bands($list, $bands);
+}
+
 /**
  * ファイル1つの名前と種類を取る（バンド編集でリンクを1本ずつ貼ったとき用）
  *   戻り値: ['file_id' => ..., 'name' => ..., 'mime_type' => ...]
@@ -209,25 +257,6 @@ function drive_check_response(?array $res, string $what): void
         $reason = $res['json']['error']['message'] ?? ('HTTP ' . $res['status']);
         throw new RuntimeException("Google ドライブの{$what}を読めませんでした（{$reason}）");
     }
-}
-
-/**
- * サブフォルダをバンドに割り当てる（DB も通信も使わない → tests/run.php でテストできる）
- *   中身は youtube_match_bands。あちらは ['video_id', 'title'] の形を受け取るので、詰め替えて渡すだけ
- *   （同じロジックを2回書かない = DRY: Don't Repeat Yourself）
- *
- * @param array $folders [['file_id' => ..., 'name' => ...], ...]（サブフォルダ）
- * @param array $bands   youtube_match_bands と同じ [band_id => ['name' => ..., 'names' => [...]], ...]
- * @return array{bands: array<int, string[]>, auto: array<int, string>, unmatched: string[]} 中身はフォルダ ID
- */
-function drive_match_bands(array $folders, array $bands): array
-{
-    $list = [];
-    foreach ($folders as $f) {
-        // フォルダ名は拡張子を外さない（「B.B.King」の「.King」を拡張子と間違えて消さないように）
-        $list[] = ['video_id' => $f['file_id'], 'title' => (string)$f['name']];
-    }
-    return youtube_match_bands($list, $bands);
 }
 
 /** 種類 → 表示の仕方。media = プレーヤー / image = サムネイル / other = リンク */

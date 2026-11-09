@@ -529,6 +529,8 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 /* 横幅いっぱい・16:9 で、PC で大きくなりすぎないよう上限 */
 .drive-player__frame { display: block; width: 100%; aspect-ratio: 16 / 9; max-height: 360px; border: 0; border-radius: var(--r-md); background: var(--surface-2); }
 .drive-thumbs { margin: 0; justify-content: flex-start; } /* 写真は添付画像と同じ .live-thumbs。左寄せにするだけ */
+/* 割り当て画面（live_drive.php）: バンドごとのファイルのチェック（既存の .pick-chip）を折り返して並べる */
+.drive-picks { display: flex; flex-wrap: wrap; gap: 6px; }
 /* バンド編集: 押すと ✕（外す）にチェック → 取り消し線と薄い表示 */
 .drive-edit { margin-bottom: 8px; }
 .drive-edit .chip { cursor: pointer; }
