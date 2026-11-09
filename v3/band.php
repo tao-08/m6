@@ -16,6 +16,7 @@
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/tracks.php';
+require_once __DIR__ . '/lib/drive.php'; // ラインミックス（Google ドライブ）の再生
 require_once __DIR__ . '/lib/repository.php';
 require_once __DIR__ . '/lib/comments.php';
 require_once __DIR__ . '/lib/history.php'; // 「確認済み」を誰が押したかを変更履歴に残す
@@ -354,6 +355,15 @@ render_header($band['name'], 'lives');
     <?php endif; ?>
     <?php if ($band['note']): ?><p class="band-note"><?= icon('sticky_note_2') ?> <?= h($band['note']) ?></p><?php endif; ?>
 </section>
+
+<?php $driveId = $band['drive_url'] !== null ? drive_file_id((string)$band['drive_url']) : null; // ID を取り出してから URL を組み立て直す ?>
+<?php if ($driveId !== null): ?>
+    <!-- ラインミックス: バンドのページは1組だけなので、最初からプレーヤーを置く（loading="lazy" で画面に近づいてから読み込む） -->
+    <section class="card band-section no-print">
+        <h2 class="section-title section-title--card"><?= drive_icon() ?> ラインミックス</h2>
+        <div class="drive-player"><?= drive_player_html($driveId, $band['name'] . ' のラインミックス') ?></div>
+    </section>
+<?php endif; ?>
 
 <section class="card band-section">
     <?php // 曲が未登録のときは band.song_count（タイムテーブルの曲数）を「予定」として出す。登録済みの曲数と混ぜない ?>

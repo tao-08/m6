@@ -16,6 +16,7 @@ declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/repository.php';
 require_once __DIR__ . '/lib/youtube.php';
+require_once __DIR__ . '/lib/drive.php'; // ラインミックスのフォルダ（Google ドライブ）
 require_once __DIR__ . '/lib/live_image.php'; // 添付画像（最大5枚）
 require_once __DIR__ . '/lib/history.php'; // 変更履歴（元に戻すための「変更前の状態」を残す）
 require_login();
@@ -28,7 +29,7 @@ $isNew = $liveId === 0; // id が無ければ「新規追加」モード
 $thisYear = current_fiscal_year();
 
 if ($isNew) {
-    $live = ['live_id' => 0, 'fiscal_year' => $thisYear, 'name' => '', 'youtube_url' => null];
+    $live = ['live_id' => 0, 'fiscal_year' => $thisYear, 'name' => '', 'youtube_url' => null, 'drive_url' => null];
     $days = [];
 } else {
     $st = $pdo->prepare('SELECT * FROM live WHERE live_id = ?');
@@ -185,6 +186,8 @@ function live_image_field(array $images, bool $hidden = false): string
 
 // 保存済みのリンクがプレイリストなら「バンドに割り当てる」ボタンを出す（live_youtube.php）
 $savedPlaylist = !$isNew && youtube_playlist_id((string)$live['youtube_url']) !== null;
+// 同じく、保存済みのドライブのフォルダがあれば「ラインミックスを割り当てる」ボタンを出す（live_drive.php）
+$savedFolder = !$isNew && drive_folder_id((string)($live['drive_url'] ?? '')) !== null;
 
 // 追加する日程の初期値: まだ使っていない最初の日程名（新規ライブなら「1日目」）
 $usedLabels = array_column($days, 'label');
@@ -213,6 +216,7 @@ if (is_post()) {
     verify_csrf();
     $name = trim((string)($_POST['name'] ?? $live['name'])); // 統合 ON のときはライブ名の欄は送られてこない
     $youtube = trim((string)($_POST['youtube_url'] ?? ($live['youtube_url'] ?? '')));
+    $drive = trim((string)($_POST['drive_url'] ?? ($live['drive_url'] ?? ''))); // 統合 ON のときは送られてこないので、今の値を使う
 
     // ---- 他のライブに統合（管理者のみ。統合先の日程・バンドを消すことがあるので） ----
     $merge = !$isNew && !empty($_POST['merge']);
@@ -240,6 +244,10 @@ if (is_post()) {
         // 空欄はOK（リンクなし）。入れたなら YouTube の https のリンクだけ受け付ける
         if ($youtube !== '' && !youtube_url_valid($youtube)) {
             $errors[] = 'YouTube のリンクは https://www.youtube.com/… か https://youtu.be/… の形で入力してください';
+        }
+        // ドライブはフォルダのリンクだけ受け付ける（ファイルのリンクを貼るのはバンド編集）
+        if ($drive !== '' && drive_folder_id($drive) === null) {
+            $errors[] = 'ドライブのリンクは https://drive.google.com/drive/folders/… の形（フォルダの共有リンク）で入力してください';
         }
     }
 
@@ -459,8 +467,8 @@ if (is_post()) {
             // 変更履歴: 編集ならライブの行と日程の変更前を残す。新しいライブ・日程は「作った」ことを残す
             $op = change_begin($pdo, $isNew ? 'live_add' : 'live_edit', $year . '年度 ' . $name . ($isNew ? ' を追加' : ' のライブ情報・日程'), $isNew ? null : $liveId);
             if ($isNew) {
-                $pdo->prepare('INSERT INTO live (fiscal_year, name, youtube_url) VALUES (?, ?, ?)')
-                    ->execute([$year, $name, $youtube !== '' ? $youtube : null]);
+                $pdo->prepare('INSERT INTO live (fiscal_year, name, youtube_url, drive_url) VALUES (?, ?, ?, ?)')
+                    ->execute([$year, $name, $youtube !== '' ? $youtube : null, $drive !== '' ? $drive : null]);
                 $liveId = (int)$pdo->lastInsertId();
                 change_created($pdo, $op, 'live', $liveId);
                 change_set_summary($pdo, $op, $year . '年度 ' . $name . ' を追加', $liveId);
@@ -469,8 +477,8 @@ if (is_post()) {
                 foreach (array_keys($dayInputs) as $id) {
                     change_capture($pdo, $op, 'day', (int)$id);
                 }
-                $pdo->prepare('UPDATE live SET fiscal_year = ?, name = ?, youtube_url = ? WHERE live_id = ?')
-                    ->execute([$year, $name, $youtube !== '' ? $youtube : null, $liveId]);
+                $pdo->prepare('UPDATE live SET fiscal_year = ?, name = ?, youtube_url = ?, drive_url = ? WHERE live_id = ?')
+                    ->execute([$year, $name, $youtube !== '' ? $youtube : null, $drive !== '' ? $drive : null, $liveId]);
             }
             // 「1日目 ⇄ 2日目」の入れ替えは、1行ずつ UPDATE すると途中で UNIQUE(live_id, label) にぶつかる
             //   → いったん全部の日程名を重ならない仮の名前（#日程ID）にしてから、本当の値を入れる
@@ -516,6 +524,10 @@ if (is_post()) {
             if (!$isNew && $youtube !== (string)$live['youtube_url'] && youtube_playlist_id($youtube) !== null && $days) {
                 redirect('live_youtube?id=' . $liveId);
             }
+            // ドライブのフォルダも同じ。新しく貼った（変えた）ら、そのままラインミックスの割り当て画面へ
+            if (!$isNew && $drive !== (string)($live['drive_url'] ?? '') && $drive !== '' && $days) {
+                redirect('live_drive?id=' . $liveId);
+            }
             redirect('live?id=' . $liveId);
         } catch (RuntimeException $e) { // 画像のエラー（形式・大きさなど）
             $pdo->rollBack();
@@ -536,7 +548,7 @@ if (is_post()) {
         }
     }
     // エラー時は入力値で表示し直す
-    $live = array_merge($live, ['fiscal_year' => $year, 'name' => $name, 'youtube_url' => $youtube]);
+    $live = array_merge($live, ['fiscal_year' => $year, 'name' => $name, 'youtube_url' => $youtube, 'drive_url' => $drive]);
     foreach ($days as &$d) {
         $in = $dayInputs[(int)$d['live_day_id']];
         $d = array_merge($d, ['label' => $in['label'], 'label_sel' => $in['label_sel'], 'label_new' => $in['label_new'], 'held_on' => $in['date'], 'venue_name' => $in['venue'], 'venue_sel' => $in['venue_sel'], 'venue_new' => $in['venue_new'],
@@ -571,6 +583,8 @@ if ($isNew) {
             <label class="field field--wide"><span>ライブ名</span><input autocomplete="off" name="name" value="<?= h($live['name']) ?>" maxlength="50" placeholder="例: 9月ライブ" required></label>
             <label class="field field--wide"><span>YouTubeプレイリストのリンク（任意）</span><input autocomplete="off" type="url" name="youtube_url" value="<?= h((string)$live['youtube_url']) ?>" maxlength="500" placeholder="https://www.youtube.com/playlist?list=…" inputmode="url"></label>
             <?php if ($savedPlaylist): ?><p class="field--wide yt-assign"><a class="btn btn--ghost btn--sm" href="live_youtube?id=<?= $liveId ?>"><?= youtube_icon() ?> プレイリストの動画をバンドに割り当てる</a></p><?php endif; ?>
+            <label class="field field--wide"><span>ラインミックスのドライブのフォルダ（任意）</span><input autocomplete="off" type="url" name="drive_url" value="<?= h((string)($live['drive_url'] ?? '')) ?>" maxlength="500" placeholder="https://drive.google.com/drive/folders/…" inputmode="url"></label>
+            <?php if ($savedFolder): ?><p class="field--wide yt-assign"><a class="btn btn--ghost btn--sm" href="live_drive?id=<?= $liveId ?>"><?= drive_icon() ?> ラインミックスをバンドに割り当て</a></p><?php endif; ?>
             <?php if (!$isNew): ?><?= live_image_field($images) ?><?php endif; ?>
         </div>
     <?php else: ?>
@@ -599,6 +613,8 @@ if ($isNew) {
             <!-- 統合するとこのライブは消えるので、統合 ON のときは隠す（data-merge-hide） -->
             <label class="field field--wide" data-merge-hide<?= $merging ? ' hidden' : '' ?>><span>YouTubeプレイリストのリンク（任意）</span><input autocomplete="off" type="url" name="youtube_url" value="<?= h((string)$live['youtube_url']) ?>" maxlength="500" placeholder="https://www.youtube.com/watch?v=…" inputmode="url"<?= $merging ? ' disabled' : '' ?>></label>
             <?php if ($savedPlaylist): ?><p class="field--wide yt-assign" data-merge-hide<?= $merging ? ' hidden' : '' ?>><a class="btn btn--ghost btn--sm" href="live_youtube?id=<?= $liveId ?>"><?= youtube_icon() ?> プレイリストの動画をバンドに割り当てる</a></p><?php endif; ?>
+            <label class="field field--wide" data-merge-hide<?= $merging ? ' hidden' : '' ?>><span>ラインミックスのドライブのフォルダ（任意）</span><input autocomplete="off" type="url" name="drive_url" value="<?= h((string)($live['drive_url'] ?? '')) ?>" maxlength="500" placeholder="https://drive.google.com/drive/folders/…" inputmode="url"<?= $merging ? ' disabled' : '' ?>></label>
+            <?php if ($savedFolder): ?><p class="field--wide yt-assign" data-merge-hide<?= $merging ? ' hidden' : '' ?>><a class="btn btn--ghost btn--sm" href="live_drive?id=<?= $liveId ?>"><?= drive_icon() ?> ラインミックスをバンドに割り当て</a></p><?php endif; ?>
             <?= live_image_field($images, $merging) ?>
         </div>
         <?php if ($bandPairs): ?>

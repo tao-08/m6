@@ -29,6 +29,7 @@ const CHANGE_ACTIONS = [
     'flag_check'  => '確認済み',
     'timetable'   => 'タイムテーブル編集',
     'youtube'     => 'YouTube のリンク',
+    'drive'       => 'ラインミックス',
     'live_add'    => 'ライブ追加',
     'live_edit'   => 'ライブ編集',
     'live_merge'  => 'ライブ統合',
@@ -659,6 +660,7 @@ function change_diff(PDO $pdo, string $type, ?array $now, array $before): array
         $add('年度', $val($n, 'fiscal_year'), $val($b, 'fiscal_year'));
         $add('ライブ名', $val($n, 'name'), $val($b, 'name'));
         $add('YouTube', $val($n, 'youtube_url'), $val($b, 'youtube_url'));
+        $add('ラインミックス', $val($n, 'drive_url'), $val($b, 'drive_url'));
         return $rows;
     }
 
@@ -706,6 +708,7 @@ function change_diff(PDO $pdo, string $type, ?array $now, array $before): array
     $add('曲数', $val($n, 'song_count'), $val($b, 'song_count'));
     $add('メモ', $val($n, 'note'), $val($b, 'note'));
     $add('YouTube', $val($n, 'youtube_url'), $val($b, 'youtube_url'));
+    $add('ラインミックス', $val($n, 'drive_url'), $val($b, 'drive_url'));
     $add('確認依頼', $flag($n), $flag($b));
     $add('オムニバス', $onoff($n, 'is_omnibus'), $onoff($b, 'is_omnibus'));
     $add('セトリ非公開', $onoff($n, 'setlist_private'), $onoff($b, 'setlist_private'));

@@ -113,6 +113,7 @@ return [
     'group_off',
     'groups',
     'handshake',
+    'headphones',
     'height',
     'help',
     'hide',

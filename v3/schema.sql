@@ -144,6 +144,7 @@ CREATE TABLE live (
     fiscal_year SMALLINT UNSIGNED NOT NULL,            -- 年度（4月始まり）。YEAR 型は 1901〜2155 しか入らず 0000 も入るので使わない
     name        VARCHAR(50)       NOT NULL,
     youtube_url VARCHAR(500)      NULL,                -- ライブ映像などの YouTube のリンク。無ければ NULL（migrations/008）
+    drive_url   VARCHAR(500)      NULL,                -- ラインミックスを入れた Google ドライブのフォルダのリンク。無ければ NULL（migrations/101）
     PRIMARY KEY (live_id),
     UNIQUE KEY uq_live (fiscal_year, name),
     CONSTRAINT ck_live_year CHECK (fiscal_year BETWEEN 1990 AND 2100)
@@ -260,6 +261,7 @@ CREATE TABLE band (
     song_count  TINYINT UNSIGNED  NULL,                -- 曲数。NULL = 不明（未入力）。0 = 0曲（migrations/014）
     note        VARCHAR(255)      NULL,                -- 鍵盤の私物/貸出など
     youtube_url VARCHAR(500)      NULL,                -- このバンドの演奏動画の YouTube のリンク。無ければ NULL（migrations/012）
+    drive_url   VARCHAR(500)      NULL,                -- このバンドのラインミックス（Google ドライブのファイル）のリンク。無ければ NULL（migrations/101）
     is_omnibus  TINYINT(1)        NOT NULL DEFAULT 0,  -- 1 = いろんなアーティストの曲をやるバンド（曲ごとに song.artist_id を持つ。artist_id は NULL）
     needs_check TINYINT UNSIGNED  NOT NULL DEFAULT 0,  -- 🚩 確認依頼の理由のビット（0 = なし / 1 担当楽器 / 2 Vo か Vo/Gt / 4 メンバー。migrations/015, 026）
     setlist_private TINYINT(1)    NOT NULL DEFAULT 0,  -- 1 = セットリストを終演30分後まで非公開（メンバーと管理者には見える。migrations/023）

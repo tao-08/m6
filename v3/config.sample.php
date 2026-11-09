@@ -38,6 +38,13 @@ return [
         'youtube' => [
             'api_key' => '',
         ],
+        // ラインミックスのフォルダを読んでバンドに割り当てる（live_drive.php）のに使う Google Drive API のキー
+        //   上の YouTube と同じプロジェクトで「Google Drive API」も有効にし、キーの「APIの制限」に Drive API を足せば、
+        //   ここは空のままで youtube.api_key が使われる。別のキーにしたいときだけ入れる
+        //   ※ キーで読めるのは共有が「リンクを知っている全員」のフォルダだけ
+        'drive' => [
+            'api_key' => '',
+        ],
 
         // 曲ページの「検索」（tab.php）で U-FRET・楽器.me のページを探す Tavily のキー（https://tavily.com で無料登録。月1,000回まで無料）
         //   空なら AI 検索だけになる

@@ -8,6 +8,7 @@ require __DIR__ . '/../lib/albums.php'; // itunes.php と spotify.php も読み�
 const DAY_LABELS = ['1日目', '2日目', '3日目', '教室ライブ']; // lib/bootstrap.php の定数（テストでは bootstrap を読まないので同じものを置く）
 function youtube_url_valid(string $url): bool { return true; } // lib/bootstrap.php の関数（テストでは bootstrap を読まないので仮のもの）
 require __DIR__ . '/../lib/youtube.php';
+require __DIR__ . '/../lib/drive.php';
 
 $failed = 0;
 function check(string $label, mixed $actual, mixed $expected): void
@@ -387,6 +388,26 @@ check('別名＋括弧の名前で同名バンドを区別', [$ym['auto'][6] ?? 
 check('どれにも当たらない動画', $ym['unmatched'], ['other______']);
 $ym = youtube_match_bands([$yv('elle', '12月 エルレ')], [5 => $yb('ELLEGARDEN(岩崎)', ['エルレ']), 6 => $yb('ELLEGARDEN(鈴木)', ['エルレ'])]);
 check('括弧の名前が無ければ両方の候補にして自動では決めない', [$ym['bands'][5], $ym['bands'][6], $ym['auto']], [['elle_______'], ['elle_______'], []]);
+
+echo "drive\n";
+// URL の形ごとに ID を取り出せるか（共有リンクの「リンクをコピー」で出る形・アカウント切り替え後の形・古い形）
+$did = '1AbCdEfGhIjKlMnOpQrStUvWxYz012345';
+check('フォルダの共有リンク', drive_folder_id("https://drive.google.com/drive/folders/{$did}?usp=sharing"), $did);
+check('アカウント切り替え後のフォルダ', drive_folder_id("https://drive.google.com/drive/u/1/folders/{$did}"), $did);
+check('ファイルのリンクはフォルダではない', drive_folder_id("https://drive.google.com/file/d/{$did}/view"), null);
+check('ファイルの共有リンク', drive_file_id("https://drive.google.com/file/d/{$did}/view?usp=drive_link"), $did);
+check('古い open?id= の形', drive_file_id("https://drive.google.com/open?id={$did}"), $did);
+check('http は不可', drive_file_id("http://drive.google.com/file/d/{$did}/view"), null);
+check('偽物のホストは不可', drive_file_id("https://drive.google.com.example.com/file/d/{$did}/view"), null);
+check('保存する URL は組み立て直す', drive_file_url($did), "https://drive.google.com/file/d/{$did}/view");
+check('拡張子を外す', drive_strip_ext('12月 スピッツ.wav'), '12月 スピッツ');
+// 突き合わせは youtube_match_bands と同じ。拡張子の「wav」などがバンド名に当たらないこと
+$dm = drive_match_bands([
+    ['file_id' => 'fileSpitz01', 'name' => '12月 スピッツ.wav'], ['file_id' => 'fileMrs0001', 'name' => '12月 Mrs. GREEN APPLE.mp3'],
+    ['file_id' => 'fileWav0001', 'name' => 'mix.wav'],
+], [1 => $yb('スピッツ'), 2 => $yb('Mrs. GREEN APPLE'), 3 => $yb('WAV')]); // 拡張子を外さないと「mixwav」に WAV が当たってしまう
+check('ファイル名でバンドに当たる', [$dm['auto'][1] ?? null, $dm['auto'][2] ?? null], ['fileSpitz01', 'fileMrs0001']);
+check('拡張子はバンド名に当たらない', $dm['unmatched'], ['fileWav0001']);
 
 echo "manual timetable\n";
 $mplan = ['rosters' => [['file' => 'a.pdf', 'bands' => [

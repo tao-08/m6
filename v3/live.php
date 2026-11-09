@@ -20,6 +20,7 @@ require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/repository.php';
 require_once __DIR__ . '/lib/comments.php';
 require_once __DIR__ . '/lib/live_image.php';
+require_once __DIR__ . '/lib/drive.php'; // ラインミックス（Google ドライブ）の再生
 $user = require_login();
 
 $liveId = (int)($_GET['id'] ?? 0); // (int) で数字以外が来ても 0 になる
@@ -236,6 +237,12 @@ render_header($live['name'], 'lives');
                         <?php if ($b['youtube_url'] !== null && youtube_url_valid($b['youtube_url'])): ?>
                             <a class="slot__yt no-print" href="<?= h($b['youtube_url']) ?>" target="_blank" rel="noopener noreferrer" aria-label="「<?= h($b['name']) ?>」を YouTube で見る" title="YouTube で見る"><?= youtube_icon() ?></a>
                         <?php endif; ?>
+                        <?php // ラインミックス: 押すとこのカードの下にドライブのプレーヤーが開く（JS: setupDrivePlayer）
+                        //   URL は DB の文字列をそのまま使わず、ID を取り出してから組み立て直す（変なリンクを出さない）
+                        $driveId = $b['drive_url'] !== null ? drive_file_id((string)$b['drive_url']) : null; ?>
+                        <?php if ($driveId !== null): ?>
+                            <button type="button" class="slot__drive no-print" data-drive-toggle aria-expanded="false" aria-label="「<?= h($b['name']) ?>」のラインミックスを再生" title="ラインミックス"><?= drive_icon() ?></button>
+                        <?php endif; ?>
                         </div>
                         <?php // コメントが付いているバンドだけ、❤ のすぐ左に吹き出し（中に件数）。0 件なら comment_badge() が空文字を返すので何も出ない。
                         //   位置は CSS の .slot__head > .cmt-badge（右端へ寄せる）。.slot__title の外に置くのは、名前が長くて折り返しても ❤ の横に固定するため ?>
@@ -255,6 +262,11 @@ render_header($live['name'], 'lives');
                         <?= setlist_badge((int)$b['setlist_count'], (int)$b['song_count'], (int)$b['linked_count']) ?>
                         <?php if ($b['note']): ?><span class="band-note"><?= icon('sticky_note_2') ?> <?= h($b['note']) ?></span><?php endif; ?>
                     </p>
+                    <?php if ($driveId !== null): ?>
+                        <!-- 再生の枠。最初は空で、ボタンを押したときだけ iframe を入れる（data-src）。
+                             最初から iframe を並べると、バンドが20組なら20個のプレーヤーを読み込んでページが重くなるため -->
+                        <div class="drive-player no-print" data-drive-player data-src="<?= h(drive_preview_url($driveId)) ?>" data-title="<?= h($b['name']) ?>" hidden></div>
+                    <?php endif; ?>
                 </div>
             </li>
         <?php endforeach; ?>

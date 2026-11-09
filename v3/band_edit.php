@@ -18,6 +18,7 @@ declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/repository.php';
 require_once __DIR__ . '/lib/youtube.php'; // プレイリストの動画から選ぶプルダウン
+require_once __DIR__ . '/lib/drive.php'; // ラインミックス（Google ドライブのファイル）のリンク
 require_once __DIR__ . '/lib/history.php'; // 変更履歴（元に戻すための「変更前の状態」を残す）
 require_once __DIR__ . '/lib/attach_image.php'; // バンドの添付画像（最大5枚）
 require_login();
@@ -35,7 +36,7 @@ if ($isNew) {
     if (!$band) {
         error_page(404, '日程が見つかりません');
     }
-    $band += ['band_id' => 0, 'name' => '', 'artist_name' => '', 'song_count' => '', 'note' => '', 'youtube_url' => '', 'needs_check' => 0,
+    $band += ['band_id' => 0, 'name' => '', 'artist_name' => '', 'song_count' => '', 'note' => '', 'youtube_url' => '', 'drive_url' => '', 'needs_check' => 0,
         'start_time' => null, 'end_time' => null, 'play_order' => next_play_order($pdo, $dayId)];
 } else {
     $st = $pdo->prepare('SELECT b.*, a.name AS artist_name, d.live_id, d.label, l.name AS live_name, l.youtube_url AS live_youtube_url FROM band b
@@ -118,6 +119,7 @@ if (is_post()) {
     $songs = (string)($_POST['song_count'] ?? '');
     $note = trim((string)($_POST['note'] ?? ''));
     $youtube = trim((string)($_POST['youtube_url'] ?? ''));
+    $drive = trim((string)($_POST['drive_url'] ?? '')); // ドライブのファイルの共有リンク
     // 🚩 確認依頼（チェックが無ければ外す）。理由はビットで複数、誰についてはメンバーID の配列
     $chk = is_array($_POST['chk'] ?? null) ? $_POST['chk'] : [];
     $flag = check_bits($chk['flag'] ?? null, $chk['reason'] ?? []);
@@ -171,13 +173,19 @@ if (is_post()) {
     if ($youtube !== '' && !youtube_url_valid($youtube)) {
         $errors[] = 'YouTube のリンクは https://www.youtube.com/… か https://youtu.be/… の形で入力してください';
     }
+    // ドライブ: 貼られた URL からファイル ID を取り出し、保存する URL はこちらで組み立てる（?usp=sharing などの余計な部分も落ちる）
+    $driveId = $drive !== '' ? drive_file_id($drive) : null;
+    if ($drive !== '' && $driveId === null) {
+        $errors[] = 'ドライブのリンクは https://drive.google.com/file/d/… の形（ファイルの共有リンク）で入力してください';
+    }
 
     if (!$errors) {
         $index = load_member_index($pdo);
         // アーティスト欄が空ならバンド名から推測（「ヨルシカ（安田）」→ ヨルシカ）
         // オムニバスのバンドはコピー元アーティストを持たない（欄は入力できないので、送られてきても見ない）
         $artistId = !empty($band['is_omnibus']) ? null : find_or_create_artist($pdo, $artistName !== '' ? $artistName : $name);
-        $values = [$artistId, $name, $songs !== '' ? (int)$songs : null, $start ?: null, $end ?: null, $note !== '' ? $note : null, $youtube !== '' ? $youtube : null, $flag];
+        $values = [$artistId, $name, $songs !== '' ? (int)$songs : null, $start ?: null, $end ?: null, $note !== '' ? $note : null, $youtube !== '' ? $youtube : null,
+            $driveId !== null ? drive_file_url($driveId) : null, $flag]; // 並びは下の INSERT / UPDATE の ? の順と同じ
 
         $newFiles = [];
         $pdo->beginTransaction();
@@ -229,13 +237,13 @@ if (is_post()) {
                 $values[3] = $newStart; // $values の並びは start_time, end_time が 4・5 番目
                 $values[4] = $newEnd;
                 // 出演順は UNIQUE なので、いったん最後尾に入れてから renumber_bands で正しい位置に動かす
-                $pdo->prepare('INSERT INTO band (artist_id, name, song_count, start_time, end_time, note, youtube_url, needs_check, live_day_id, play_order)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')->execute([...$values, $dayId, next_play_order($pdo, $dayId)]);
+                $pdo->prepare('INSERT INTO band (artist_id, name, song_count, start_time, end_time, note, youtube_url, drive_url, needs_check, live_day_id, play_order)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')->execute([...$values, $dayId, next_play_order($pdo, $dayId)]);
                 $bandId = (int)$pdo->lastInsertId();
                 change_created($pdo, $op, 'band', $bandId);
             } else {
                 change_capture($pdo, $op, 'band', $bandId);
-                $pdo->prepare('UPDATE band SET artist_id = ?, name = ?, song_count = ?, start_time = ?, end_time = ?, note = ?, youtube_url = ?, needs_check = ?
+                $pdo->prepare('UPDATE band SET artist_id = ?, name = ?, song_count = ?, start_time = ?, end_time = ?, note = ?, youtube_url = ?, drive_url = ?, needs_check = ?
                     WHERE band_id = ?')->execute([...$values, $bandId]);
             }
             // 差分だけ更新（全部消すと曲ごとの演奏記録が CASCADE で消えるため。sync_band_members の説明参照）
@@ -267,7 +275,7 @@ if (is_post()) {
         redirect('band?id=' . $bandId);
     }
     // エラーのときは入力した値をそのまま表示し直す
-    $band = array_merge($band, ['name' => $name, 'artist_name' => $artistName, 'song_count' => $songs, 'note' => $note, 'youtube_url' => $youtube, 'needs_check' => $flag,
+    $band = array_merge($band, ['name' => $name, 'artist_name' => $artistName, 'song_count' => $songs, 'note' => $note, 'youtube_url' => $youtube, 'drive_url' => $drive, 'needs_check' => $flag,
         'play_order' => $order, 'start_time' => $start, 'end_time' => $end]);
     $members = $picked;
 } elseif ($isNew) {
@@ -389,6 +397,8 @@ render_header($isNew ? 'バンドを追加' : 'バンドを編集', 'lives');
         <?php elseif ($ytError !== null): ?>
             <p class="field--wide muted small">ライブのプレイリストを読めなかったので、動画から選べません（<?= h($ytError) ?>）。リンクを直接貼ってください。</p>
         <?php endif; ?>
+        <!-- ラインミックス: ファイルの共有リンクを貼る。まとめて入れるならライブを編集 → フォルダを貼って割り当て（live_drive.php） -->
+        <label class="field field--wide"><span>ラインミックスのドライブのリンク（任意）</span><input autocomplete="off" type="url" name="drive_url" value="<?= h((string)($band['drive_url'] ?? '')) ?>" maxlength="500" placeholder="https://drive.google.com/file/d/…" inputmode="url"></label>
     </div>
     <?= render_suggest_datalist('band-names', $allBandNames) ?>
     <datalist id="artists"><?php foreach ($allArtists as $n): ?><option value="<?= h($n) ?>"><?php endforeach; ?></datalist>

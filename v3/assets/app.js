@@ -117,6 +117,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupAutofocusPc();
   setupSearchSuggest();
   setupYoutubeLeftover();
+  setupDrivePlayer();
   setupBackButton();
   setupTutorial();
   setupAddToHome();
@@ -1750,6 +1751,48 @@ function setupYoutubeLeftover() {
     box.hidden = left === 0;
   };
   form.addEventListener('change', update); // setupSelectPick のポップアップで選んでも change が出る
+}
+
+/* ---------------------------------------------------------------------
+ * live.php: ラインミックス（🎧 ボタン）を押すと、そのバンドのカードの下にドライブのプレーヤーを開く
+ *   ・最初は空の枠 <div data-drive-player data-src="…/preview">。押したときに初めて iframe を作る
+ *     （全バンド分の iframe を最初から並べると、ページの読み込みが重くなるため = 遅延読み込み）
+ *   ・閉じるときは iframe ごと消す。hidden で隠すだけだと、見えないまま音が鳴り続けるため
+ *   ・同時に開くのは1つだけ。別のバンドを開いたら前のプレーヤーは閉じる（2曲同時に鳴らない）
+ *   ・イベント委任: ボタン1つずつに addEventListener せず、document に1つだけ付けて
+ *     「押された要素が 🎧 ボタンか」を closest で調べる（ボタンが何十個あっても登録は1回）
+ * ------------------------------------------------------------------- */
+function setupDrivePlayer() {
+  if (!document.querySelector('[data-drive-toggle]')) return; // ボタンが無いページでは何もしない
+  // ボタン → そのバンドのプレーヤー枠（同じカード .slot の中にある）
+  const boxOf = (btn) => btn.closest('.slot')?.querySelector('[data-drive-player]');
+  const close = (btn) => {
+    const box = boxOf(btn);
+    if (!box) return;
+    box.replaceChildren(); // 中身（iframe）を全部消す → 再生も止まる
+    box.hidden = true;
+    btn.setAttribute('aria-expanded', 'false'); // aria-expanded: 読み上げソフトに「開いている / 閉じている」を伝える
+  };
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-drive-toggle]');
+    if (!btn) return;
+    const box = boxOf(btn);
+    if (!box) return;
+    if (btn.getAttribute('aria-expanded') === 'true') {
+      close(btn);
+      return;
+    }
+    // ほかに開いているプレーヤーがあれば閉じる
+    document.querySelectorAll('[data-drive-toggle][aria-expanded="true"]').forEach(close);
+    const frame = document.createElement('iframe');
+    frame.className = 'drive-player__frame';
+    frame.src = box.dataset.src; // data-src は PHP が ID から組み立てた URL（drive.google.com のものだけ）
+    frame.title = box.dataset.title || 'ラインミックス';
+    frame.allow = 'autoplay';
+    box.append(frame);
+    box.hidden = false;
+    btn.setAttribute('aria-expanded', 'true');
+  });
 }
 
 /** data-autofocus-pc … PC（マウスのある環境）だけ、開いたとき入力欄にカーソルを置く。
