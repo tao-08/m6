@@ -38,7 +38,7 @@ return [
         'youtube' => [
             'api_key' => '',
         ],
-        // ラインミックスのフォルダを読んでバンドに割り当てる（live_drive.php）のに使う Google Drive API のキー
+        // ドライブのフォルダのファイルをバンドに割り当てる（live_drive.php）のに使う Google Drive API のキー
         //   上の YouTube と同じプロジェクトで「Google Drive API」も有効にし、キーの「APIの制限」に Drive API を足せば、
         //   ここは空のままで youtube.api_key が使われる。別のキーにしたいときだけ入れる
         //   ※ キーで読めるのは共有が「リンクを知っている全員」のフォルダだけ

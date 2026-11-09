@@ -97,6 +97,7 @@ return [
     'fit_screen',
     'flag',
     'flag_check',
+    'folder_open',
     'format_list_numbered',
     'format_size',
     'forum',

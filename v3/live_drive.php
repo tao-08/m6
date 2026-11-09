@@ -1,17 +1,18 @@
 <?php
 /**
  * =====================================================================
- *  live_drive.php?id=ライブID — ドライブのフォルダのラインミックスを、そのライブのバンドに割り当てる
+ *  live_drive.php?id=ライブID — ドライブのフォルダの「バンド名のサブフォルダ」を、そのライブのバンドに割り当てる
  * =====================================================================
  *  live_youtube.php（プレイリスト → バンド）のドライブ版。作りも画面もほぼ同じ。
  *    1. ライブのフォルダのリンク（live.drive_url）からフォルダ ID を取り出す
- *    2. フォルダの中の音声・動画ファイルを取ってくる（lib/drive.php の drive_folder_files）
- *    3. ファイル名にバンド名が入っているかで結び付ける（drive_match_bands）
+ *    2. 中のサブフォルダの一覧を取ってくる（lib/drive.php の drive_folder_children）
+ *    3. サブフォルダ名にバンド名が入っているかで結び付ける（drive_match_bands）
  *    4. 確認画面を出す。いきなり保存はしない（間違って上書きされても気づけないので）
+ *    5. 保存すると、選んだサブフォルダの中のファイルを全部、そのバンドに紐付ける（band_drive_file）
  *
  *  選択肢の初期値:
- *    1. 今入っているリンク（前に人が選んだものを勝手に変えない）
- *    2. 迷わず決まったファイル（候補が1つだけ）
+ *    1. 迷わず決まったサブフォルダ（候補が1つだけ）→ 中身を取り直す（後から足したファイルも入る）
+ *    2. 決まらず、すでにファイルがあるバンドは「現在のまま」（前に人が選んだものを勝手に消さない）
  *    3. どちらも無ければ「なし」（候補が2つ以上のバンドは黄色くして、人に選ばせる）
  * =====================================================================
  */
@@ -33,7 +34,7 @@ if (!$live) {
 }
 
 // このライブのバンド（日程順 → 出演順）。キーを band_id にしておくと、あとで $bands[$id] で引ける
-$st = $pdo->prepare('SELECT b.band_id, b.name, b.play_order, b.drive_url, b.artist_id, a.name AS artist_name, d.label
+$st = $pdo->prepare('SELECT b.band_id, b.name, b.play_order, b.artist_id, a.name AS artist_name, d.label
     FROM band b
     JOIN live_day d ON d.live_day_id = b.live_day_id
     LEFT JOIN artist a ON a.artist_id = b.artist_id
@@ -43,50 +44,67 @@ $bands = [];
 foreach ($st as $b) {
     $bands[(int)$b['band_id']] = $b;
 }
+$fileCounts = array_map('count', drive_load_files($pdo, array_keys($bands))); // band_id => 紐付け済みのファイル数
 
 // ---------- 保存 ----------
 if (is_post()) {
     verify_csrf(); // CSRF 対策: フォームに埋めた合言葉（トークン）が合っているか
-    // f[band_id] = 'keep'（今のまま） / ''（なし） / ファイル ID
+    // f[band_id] = 'keep'（現在のまま） / ''（なし = 全部外す） / サブフォルダ ID
     $picks = is_array($_POST['f'] ?? null) ? $_POST['f'] : [];
-    $update = $pdo->prepare('UPDATE band SET drive_url = ? WHERE band_id = ?');
-    $changed = 0;
-    $op = null; // 変更履歴。実際に変わるバンドがあったときだけ作る
-    // トランザクション: 全部成功したら確定（commit）、途中で失敗したら全部取り消し（rollBack）
-    $pdo->beginTransaction();
+    // 先に通信だけ済ませる（サブフォルダの中身を取る）。DB のトランザクションの中で待たない
+    //   トランザクション中に何秒も通信すると、その間ほかの人の保存を待たせてしまうため
+    $plan = []; // band_id => 紐付けるファイルの一覧
+    $folderIdOk = []; // このライブのフォルダの直下にあるサブフォルダだけ受け付ける（POST を書き換えて他人のフォルダを入れさせない）
+    $parent = drive_folder_id((string)$live['drive_url']);
     try {
-        // 回すのは DB から取った「このライブのバンド」だけ（POST の band_id を書き換えて他のライブのバンドを変えさせない）
+        foreach ($parent !== null ? drive_folder_children($parent)['folders'] : [] as $fo) {
+            $folderIdOk[$fo['file_id']] = true;
+        }
         foreach ($bands as $id => $b) {
             $pick = $picks[$id] ?? 'keep';
             if (!is_string($pick) || $pick === 'keep') {
                 continue;
             }
             if ($pick === '') {
-                $url = null;
-            } elseif (drive_id_valid($pick)) {
-                $url = drive_file_url($pick); // URL はこちらで組み立てる（送られてきた文字列をそのまま保存しない）
-            } else {
-                continue; // 改造されたリクエスト。黙って無視する
+                $plan[$id] = [];
+            } elseif (isset($folderIdOk[$pick])) {
+                $plan[$id] = drive_folder_children($pick)['files']; // サブフォルダの中のファイル（さらに下のフォルダは見ない）
+            } // それ以外は改造されたリクエスト。黙って無視する
+        }
+    } catch (RuntimeException $e) {
+        flash($e->getMessage(), 'error');
+        redirect('live_drive?id=' . $liveId);
+    }
+    $changed = 0;
+    $op = null; // 変更履歴。実際に変わるバンドがあったときだけ作る
+    $current = drive_load_files($pdo, array_keys($plan));
+    // トランザクション: 全部成功したら確定（commit）、途中で失敗したら全部取り消し（rollBack）
+    $pdo->beginTransaction();
+    try {
+        foreach ($plan as $id => $files) {
+            // 変わらないなら何もしない（file_id・名前の並びで比べる）
+            $now = array_map(fn($f) => $f['file_id'] . '|' . $f['name'], $current[$id] ?? []);
+            $new = array_map(fn($f) => $f['file_id'] . '|' . $f['name'], $files);
+            if ($now === $new) {
+                continue;
             }
-            if ($url !== $b['drive_url']) {
-                $op ??= change_begin($pdo, 'drive', 'バンドのラインミックス', $liveId); // ??= は「null のときだけ代入」
-                change_capture($pdo, $op, 'band', $id); // 変更前のリンクを履歴に残す
-                $update->execute([$url, $id]);
-                $changed++;
-            }
+            $op ??= change_begin($pdo, 'drive', 'バンドのドライブのファイル', $liveId); // ??= は「null のときだけ代入」
+            change_capture($pdo, $op, 'band', $id); // 変更前の状態（紐付けていたファイルも）を履歴に残す
+            drive_save_files($pdo, $id, $files);
+            $changed++;
         }
         $pdo->commit();
     } catch (Throwable $e) {
         $pdo->rollBack();
         throw $e;
     }
-    flash($changed ? "{$changed} バンドのラインミックスを更新しました" : 'ラインミックスは変更なし');
+    flash($changed ? "{$changed} バンドのファイルを更新しました" : 'ファイルは変更なし');
     redirect('live?id=' . $liveId);
 }
 
 // ---------- フォルダを読んで割り当てる ----------
 $error = null;
-$files = [];  // file_id => 表示名（拡張子なし）
+$folders = [];  // サブフォルダ ID => フォルダ名
 $match = ['bands' => [], 'auto' => [], 'unmatched' => []];
 $folderId = drive_folder_id((string)$live['drive_url']);
 if ($folderId === null) {
@@ -95,11 +113,11 @@ if ($folderId === null) {
     $error = 'このライブにはまだバンドが登録されていません';
 } else {
     try {
-        foreach (drive_folder_files($folderId) as $f) {
-            $files[$f['file_id']] = drive_strip_ext($f['name']);
+        foreach (drive_folder_children($folderId)['folders'] as $f) {
+            $folders[$f['file_id']] = $f['name'];
         }
-        if (!$files) {
-            $error = 'フォルダに音声・動画ファイルがありません';
+        if (!$folders) {
+            $error = 'フォルダの中にサブフォルダがありません。バンドごとにサブフォルダを作って、ファイルを入れてください';
         }
     } catch (RuntimeException $e) {
         $error = $e->getMessage();
@@ -125,7 +143,7 @@ if ($error === null) {
         $input[$id] = ['name' => $b['name'], 'names' => $names];
     }
     $list = [];
-    foreach ($files as $id => $name) {
+    foreach ($folders as $id => $name) {
         $list[] = ['file_id' => $id, 'name' => $name];
     }
     $match = drive_match_bands($list, $input);
@@ -133,27 +151,26 @@ if ($error === null) {
 
 // バンドごとの初期値と状態を決める
 $rows = [];
-$used = []; // 初期値でどこかのバンドに入ったファイル
+$used = []; // 初期値でどこかのバンドに入ったサブフォルダ
 foreach ($bands as $id => $b) {
-    $current = $b['drive_url'] !== null ? drive_file_id($b['drive_url']) : null;
     $candidates = $match['bands'][$id] ?? [];
-    if ($b['drive_url'] !== null && $b['drive_url'] !== '') {
-        // 今のリンクを優先。フォルダのファイルならそのファイルを選んだ状態、違えば「今のまま」
-        $selected = $current !== null && isset($files[$current]) ? $current : 'keep';
-        $status = 'current';
-    } elseif (isset($match['auto'][$id])) {
-        $selected = $match['auto'][$id];
+    $count = $fileCounts[$id] ?? 0;
+    if (isset($match['auto'][$id])) {
+        $selected = $match['auto'][$id]; // 決まったサブフォルダ → 中身を取り直す（増えたファイルも入る）
         $status = 'auto';
+    } elseif ($count > 0) {
+        $selected = 'keep';
+        $status = 'current';
     } else {
         $selected = '';
         $status = $candidates ? 'pick' : 'none';
     }
-    if (isset($files[$selected])) {
+    if (isset($folders[$selected])) {
         $used[$selected] = true;
     }
-    $rows[$id] = ['band' => $b, 'candidates' => $candidates, 'selected' => $selected, 'status' => $status];
+    $rows[$id] = ['band' => $b, 'candidates' => $candidates, 'selected' => $selected, 'status' => $status, 'count' => $count];
 }
-$leftover = array_diff_key($files, $used); // どのバンドにも入っていないファイル（確認用に下に並べる）
+$leftover = array_diff_key($folders, $used); // どのバンドにも入っていないサブフォルダ（確認用に下に並べる）
 $autoCount = count(array_filter($rows, fn($r) => $r['status'] === 'auto'));
 $pickCount = count(array_filter($rows, fn($r) => $r['status'] === 'pick'));
 
@@ -165,16 +182,16 @@ const DRIVE_STATUS = [
     'none'    => ['該当なし', 'pill muted'],
 ];
 
-render_header('ラインミックスを割り当て', 'lives'); ?>
-<nav class="crumbs"><a href="live?id=<?= $liveId ?>"><?= h($live['name']) ?></a><span>/</span><a href="live_edit?id=<?= $liveId ?>">編集</a><span>/</span>ラインミックス</nav>
-<h1 class="display display--sm">ラインミックスをバンドに割り当て</h1>
+render_header('ドライブのファイルを割り当て', 'lives'); ?>
+<nav class="crumbs"><a href="live?id=<?= $liveId ?>"><?= h($live['name']) ?></a><span>/</span><a href="live_edit?id=<?= $liveId ?>">編集</a><span>/</span>ドライブ</nav>
+<h1 class="display display--sm">ドライブのファイルをバンドに割り当て</h1>
 
 <?php if ($error !== null): ?>
     <div class="flash flash--error"><?= h($error) ?></div>
     <p><a class="btn btn--ghost" href="live_edit?id=<?= $liveId ?>">ライブを編集に戻る</a></p>
 <?php else: ?>
     <div class="flash flash--info">
-        <?= count($files) ?> ファイル中 <?= $autoCount ?> バンドを自動で割り当て。
+        サブフォルダ <?= count($folders) ?> 個のうち <?= $autoCount ?> バンドを自動で割り当て。
         <?php if ($pickCount): ?><strong><?= $pickCount ?> バンドは候補が複数あるので選択してください。</strong><?php endif; ?>
     </div>
 
@@ -185,7 +202,7 @@ render_header('ラインミックスを割り当て', 'lives'); ?>
         <input type="hidden" name="live_id" value="<?= $liveId ?>">
         <div class="table-scroll table-scroll--yt">
             <table class="table table--yt">
-                <thead><tr><th>日程</th><th>順</th><th>バンド名</th><th>ファイル</th><th>状態</th></tr></thead>
+                <thead><tr><th>日程</th><th>順</th><th>バンド名</th><th>フォルダ</th><th>状態</th></tr></thead>
                 <tbody>
                 <?php foreach ($rows as $id => $r): $b = $r['band']; [$statusText, $statusClass] = DRIVE_STATUS[$r['status']]; ?>
                     <tr<?= $r['status'] === 'pick' ? ' class="is-warn"' : '' ?>>
@@ -193,20 +210,20 @@ render_header('ラインミックスを割り当て', 'lives'); ?>
                         <td class="num"><?= (int)$b['play_order'] ?></td>
                         <td><?= h($b['name']) ?></td>
                         <td>
-                            <select name="f[<?= $id ?>]" aria-label="「<?= h($b['name']) ?>」のファイル">
+                            <select name="f[<?= $id ?>]" aria-label="「<?= h($b['name']) ?>」のフォルダ">
                                 <option value="">なし</option>
                                 <?php if ($r['selected'] === 'keep'): ?>
-                                    <option value="keep" selected>現在のリンクのまま</option>
+                                    <option value="keep" selected>現在のまま（<?= (int)$r['count'] ?> ファイル）</option>
                                 <?php endif; ?>
                                 <?php if ($r['candidates']): ?>
                                     <optgroup label="候補">
                                         <?php foreach ($r['candidates'] as $fid): ?>
-                                            <option value="<?= h($fid) ?>"<?= $fid === $r['selected'] ? ' selected' : '' ?>><?= h($files[$fid]) ?></option>
+                                            <option value="<?= h($fid) ?>"<?= $fid === $r['selected'] ? ' selected' : '' ?>><?= h($folders[$fid]) ?></option>
                                         <?php endforeach; ?>
                                     </optgroup>
                                 <?php endif; ?>
-                                <optgroup label="フォルダのほかのファイル">
-                                    <?php foreach ($files as $fid => $name): if (in_array($fid, $r['candidates'], true)) continue; ?>
+                                <optgroup label="ほかのサブフォルダ">
+                                    <?php foreach ($folders as $fid => $name): if (in_array($fid, $r['candidates'], true)) continue; ?>
                                         <option value="<?= h($fid) ?>"<?= $fid === $r['selected'] ? ' selected' : '' ?>><?= h($name) ?></option>
                                     <?php endforeach; ?>
                                 </optgroup>
@@ -219,12 +236,12 @@ render_header('ラインミックスを割り当て', 'lives'); ?>
             </table>
         </div>
 
-        <!-- どのバンドにも選ばれていないファイル。全部出しておき、選ばれているものは hidden（JS が出し入れする） -->
+        <!-- どのバンドにも選ばれていないサブフォルダ。全部出しておき、選ばれているものは hidden（JS が出し入れする） -->
         <section data-yt-leftover<?= $leftover ? '' : ' hidden' ?>>
-            <h2 class="section-title">未割り当てのファイル（<span data-yt-left-count><?= count($leftover) ?></span>）</h2>
+            <h2 class="section-title">未割り当てのフォルダ（<span data-yt-left-count><?= count($leftover) ?></span>）</h2>
             <ul class="yt-leftover">
-                <?php foreach ($files as $fid => $name): ?>
-                    <li data-yt-video="<?= h($fid) ?>"<?= isset($leftover[$fid]) ? '' : ' hidden' ?>><a href="<?= h(drive_file_url($fid)) ?>" target="_blank" rel="noopener noreferrer"><?= h($name) ?></a></li>
+                <?php foreach ($folders as $fid => $name): ?>
+                    <li data-yt-video="<?= h($fid) ?>"<?= isset($leftover[$fid]) ? '' : ' hidden' ?>><a href="https://drive.google.com/drive/folders/<?= h($fid) ?>" target="_blank" rel="noopener noreferrer"><?= h($name) ?></a></li>
                 <?php endforeach; ?>
             </ul>
         </section>

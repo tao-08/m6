@@ -29,7 +29,7 @@ const CHANGE_ACTIONS = [
     'flag_check'  => '確認済み',
     'timetable'   => 'タイムテーブル編集',
     'youtube'     => 'YouTube のリンク',
-    'drive'       => 'ラインミックス',
+    'drive'       => 'ドライブのファイル',
     'live_add'    => 'ライブ追加',
     'live_edit'   => 'ライブ編集',
     'live_merge'  => 'ライブ統合',
@@ -42,7 +42,7 @@ const CHANGE_ACTIONS = [
 const CHANGE_KEEP_DAYS = 365;
 
 /** バンドの snapshot に入れる表（どれも band_id を持つ） */
-const CHANGE_BAND_CHILDREN = ['band_member', 'band_check_member', 'song', 'song_performer', 'band_like', 'check_dismiss'];
+const CHANGE_BAND_CHILDREN = ['band_member', 'band_check_member', 'song', 'song_performer', 'band_like', 'check_dismiss', 'band_drive_file'];
 
 /** SQL に名前を入れてよい表（ここに書いたものだけ。外から来た文字は入れない） */
 const CHANGE_TABLES = ['live', 'live_day', 'live_break', 'band', ...CHANGE_BAND_CHILDREN,
@@ -417,6 +417,11 @@ function restore_band(PDO $pdo, int $id, array $snap): int
         change_insert($pdo, 'song_performer', $p);
     }
 
+    // ドライブのファイル（migrations/102 より前の履歴には無いので ?? []）
+    foreach ($snap['band_drive_file'] ?? [] as $f) {
+        change_insert($pdo, 'band_drive_file', $f, true);
+    }
+
     // いいね・✕: 前の分と今の分を両方入れる（同じ人は主キーで1つ。消えたアカウントの分は入れない）
     foreach (['band_like', 'check_dismiss'] as $table) {
         foreach ([...$snap[$table], ...$keep[$table]] as $r) {
@@ -660,7 +665,7 @@ function change_diff(PDO $pdo, string $type, ?array $now, array $before): array
         $add('年度', $val($n, 'fiscal_year'), $val($b, 'fiscal_year'));
         $add('ライブ名', $val($n, 'name'), $val($b, 'name'));
         $add('YouTube', $val($n, 'youtube_url'), $val($b, 'youtube_url'));
-        $add('ラインミックス', $val($n, 'drive_url'), $val($b, 'drive_url'));
+        $add('ドライブ', $val($n, 'drive_url'), $val($b, 'drive_url'));
         return $rows;
     }
 
@@ -708,7 +713,9 @@ function change_diff(PDO $pdo, string $type, ?array $now, array $before): array
     $add('曲数', $val($n, 'song_count'), $val($b, 'song_count'));
     $add('メモ', $val($n, 'note'), $val($b, 'note'));
     $add('YouTube', $val($n, 'youtube_url'), $val($b, 'youtube_url'));
-    $add('ラインミックス', $val($n, 'drive_url'), $val($b, 'drive_url'));
+    // ドライブのファイル: 名前を並べて比べる（拡張子つきのファイル名のまま）
+    $driveNames = static fn(?array $snap): string => implode('・', array_column($snap['band_drive_file'] ?? [], 'name'));
+    $add('ドライブ', $driveNames($now), $driveNames($before));
     $add('確認依頼', $flag($n), $flag($b));
     $add('オムニバス', $onoff($n, 'is_omnibus'), $onoff($b, 'is_omnibus'));
     $add('セトリ非公開', $onoff($n, 'setlist_private'), $onoff($b, 'setlist_private'));

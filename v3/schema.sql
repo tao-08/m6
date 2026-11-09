@@ -144,7 +144,7 @@ CREATE TABLE live (
     fiscal_year SMALLINT UNSIGNED NOT NULL,            -- 年度（4月始まり）。YEAR 型は 1901〜2155 しか入らず 0000 も入るので使わない
     name        VARCHAR(50)       NOT NULL,
     youtube_url VARCHAR(500)      NULL,                -- ライブ映像などの YouTube のリンク。無ければ NULL（migrations/008）
-    drive_url   VARCHAR(500)      NULL,                -- ラインミックスを入れた Google ドライブのフォルダのリンク。無ければ NULL（migrations/101）
+    drive_url   VARCHAR(500)      NULL,                -- Google ドライブのフォルダのリンク（中のサブフォルダをバンドに割り当てる）。無ければ NULL（migrations/101）
     PRIMARY KEY (live_id),
     UNIQUE KEY uq_live (fiscal_year, name),
     CONSTRAINT ck_live_year CHECK (fiscal_year BETWEEN 1990 AND 2100)
@@ -261,7 +261,6 @@ CREATE TABLE band (
     song_count  TINYINT UNSIGNED  NULL,                -- 曲数。NULL = 不明（未入力）。0 = 0曲（migrations/014）
     note        VARCHAR(255)      NULL,                -- 鍵盤の私物/貸出など
     youtube_url VARCHAR(500)      NULL,                -- このバンドの演奏動画の YouTube のリンク。無ければ NULL（migrations/012）
-    drive_url   VARCHAR(500)      NULL,                -- このバンドのラインミックス（Google ドライブのファイル）のリンク。無ければ NULL（migrations/101）
     is_omnibus  TINYINT(1)        NOT NULL DEFAULT 0,  -- 1 = いろんなアーティストの曲をやるバンド（曲ごとに song.artist_id を持つ。artist_id は NULL）
     needs_check TINYINT UNSIGNED  NOT NULL DEFAULT 0,  -- 🚩 確認依頼の理由のビット（0 = なし / 1 担当楽器 / 2 Vo か Vo/Gt / 4 メンバー。migrations/015, 026）
     setlist_private TINYINT(1)    NOT NULL DEFAULT 0,  -- 1 = セットリストを終演30分後まで非公開（メンバーと管理者には見える。migrations/023）
@@ -611,6 +610,22 @@ CREATE TABLE app_setting (
 -- ---------------------------------------------------------------------
 --  band_like — バンドのお気に入り（❤）。画面には数だけ出す（誰が押したかは出さない = 匿名。migrations/022）
 --    複合主キー (band_id, user_id): 同じ人が同じバンドに2回付けられない
+
+-- ---------------------------------------------------------------------
+--  band_drive_file — バンドに紐付けた Google ドライブのファイル（音源・動画・写真・PDF など。説明は migrations/102）
+-- ---------------------------------------------------------------------
+CREATE TABLE band_drive_file (
+    band_id    INT UNSIGNED      NOT NULL,
+    file_id    VARCHAR(100)      CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+    name       VARCHAR(255)      NOT NULL,
+    mime_type  VARCHAR(100)      CHARACTER SET ascii COLLATE ascii_general_ci NOT NULL DEFAULT '',
+    sort_order SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+    created_at DATETIME          NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (band_id, file_id),
+    CONSTRAINT fk_bdf_band FOREIGN KEY (band_id) REFERENCES band (band_id)
+        ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
 -- ---------------------------------------------------------------------
 CREATE TABLE band_like (
     band_id    INT UNSIGNED NOT NULL,

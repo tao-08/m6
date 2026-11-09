@@ -16,7 +16,7 @@ declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/repository.php';
 require_once __DIR__ . '/lib/youtube.php';
-require_once __DIR__ . '/lib/drive.php'; // ラインミックスのフォルダ（Google ドライブ）
+require_once __DIR__ . '/lib/drive.php'; // Google ドライブのフォルダ（中のサブフォルダをバンドに割り当てる）
 require_once __DIR__ . '/lib/live_image.php'; // 添付画像（最大5枚）
 require_once __DIR__ . '/lib/history.php'; // 変更履歴（元に戻すための「変更前の状態」を残す）
 require_login();
@@ -186,7 +186,7 @@ function live_image_field(array $images, bool $hidden = false): string
 
 // 保存済みのリンクがプレイリストなら「バンドに割り当てる」ボタンを出す（live_youtube.php）
 $savedPlaylist = !$isNew && youtube_playlist_id((string)$live['youtube_url']) !== null;
-// 同じく、保存済みのドライブのフォルダがあれば「ラインミックスを割り当てる」ボタンを出す（live_drive.php）
+// 同じく、保存済みのドライブのフォルダがあれば「ドライブのファイルを割り当てる」ボタンを出す（live_drive.php）
 $savedFolder = !$isNew && drive_folder_id((string)($live['drive_url'] ?? '')) !== null;
 
 // 追加する日程の初期値: まだ使っていない最初の日程名（新規ライブなら「1日目」）
@@ -524,7 +524,7 @@ if (is_post()) {
             if (!$isNew && $youtube !== (string)$live['youtube_url'] && youtube_playlist_id($youtube) !== null && $days) {
                 redirect('live_youtube?id=' . $liveId);
             }
-            // ドライブのフォルダも同じ。新しく貼った（変えた）ら、そのままラインミックスの割り当て画面へ
+            // ドライブのフォルダも同じ。新しく貼った（変えた）ら、そのままドライブのファイルの割り当て画面へ
             if (!$isNew && $drive !== (string)($live['drive_url'] ?? '') && $drive !== '' && $days) {
                 redirect('live_drive?id=' . $liveId);
             }
@@ -583,8 +583,8 @@ if ($isNew) {
             <label class="field field--wide"><span>ライブ名</span><input autocomplete="off" name="name" value="<?= h($live['name']) ?>" maxlength="50" placeholder="例: 9月ライブ" required></label>
             <label class="field field--wide"><span>YouTubeプレイリストのリンク（任意）</span><input autocomplete="off" type="url" name="youtube_url" value="<?= h((string)$live['youtube_url']) ?>" maxlength="500" placeholder="https://www.youtube.com/playlist?list=…" inputmode="url"></label>
             <?php if ($savedPlaylist): ?><p class="field--wide yt-assign"><a class="btn btn--ghost btn--sm" href="live_youtube?id=<?= $liveId ?>"><?= youtube_icon() ?> プレイリストの動画をバンドに割り当てる</a></p><?php endif; ?>
-            <label class="field field--wide"><span>ラインミックスのドライブのフォルダ（任意）</span><input autocomplete="off" type="url" name="drive_url" value="<?= h((string)($live['drive_url'] ?? '')) ?>" maxlength="500" placeholder="https://drive.google.com/drive/folders/…" inputmode="url"></label>
-            <?php if ($savedFolder): ?><p class="field--wide yt-assign"><a class="btn btn--ghost btn--sm" href="live_drive?id=<?= $liveId ?>"><?= drive_icon() ?> ラインミックスをバンドに割り当て</a></p><?php endif; ?>
+            <label class="field field--wide"><span>ドライブのフォルダ（任意）</span><input autocomplete="off" type="url" name="drive_url" value="<?= h((string)($live['drive_url'] ?? '')) ?>" maxlength="500" placeholder="https://drive.google.com/drive/folders/…" inputmode="url"></label>
+            <?php if ($savedFolder): ?><p class="field--wide yt-assign"><a class="btn btn--ghost btn--sm" href="live_drive?id=<?= $liveId ?>"><?= drive_icon() ?> ドライブのファイルをバンドに割り当て</a></p><?php endif; ?>
             <?php if (!$isNew): ?><?= live_image_field($images) ?><?php endif; ?>
         </div>
     <?php else: ?>
@@ -613,8 +613,8 @@ if ($isNew) {
             <!-- 統合するとこのライブは消えるので、統合 ON のときは隠す（data-merge-hide） -->
             <label class="field field--wide" data-merge-hide<?= $merging ? ' hidden' : '' ?>><span>YouTubeプレイリストのリンク（任意）</span><input autocomplete="off" type="url" name="youtube_url" value="<?= h((string)$live['youtube_url']) ?>" maxlength="500" placeholder="https://www.youtube.com/watch?v=…" inputmode="url"<?= $merging ? ' disabled' : '' ?>></label>
             <?php if ($savedPlaylist): ?><p class="field--wide yt-assign" data-merge-hide<?= $merging ? ' hidden' : '' ?>><a class="btn btn--ghost btn--sm" href="live_youtube?id=<?= $liveId ?>"><?= youtube_icon() ?> プレイリストの動画をバンドに割り当てる</a></p><?php endif; ?>
-            <label class="field field--wide" data-merge-hide<?= $merging ? ' hidden' : '' ?>><span>ラインミックスのドライブのフォルダ（任意）</span><input autocomplete="off" type="url" name="drive_url" value="<?= h((string)($live['drive_url'] ?? '')) ?>" maxlength="500" placeholder="https://drive.google.com/drive/folders/…" inputmode="url"<?= $merging ? ' disabled' : '' ?>></label>
-            <?php if ($savedFolder): ?><p class="field--wide yt-assign" data-merge-hide<?= $merging ? ' hidden' : '' ?>><a class="btn btn--ghost btn--sm" href="live_drive?id=<?= $liveId ?>"><?= drive_icon() ?> ラインミックスをバンドに割り当て</a></p><?php endif; ?>
+            <label class="field field--wide" data-merge-hide<?= $merging ? ' hidden' : '' ?>><span>ドライブのフォルダ（任意）</span><input autocomplete="off" type="url" name="drive_url" value="<?= h((string)($live['drive_url'] ?? '')) ?>" maxlength="500" placeholder="https://drive.google.com/drive/folders/…" inputmode="url"<?= $merging ? ' disabled' : '' ?>></label>
+            <?php if ($savedFolder): ?><p class="field--wide yt-assign" data-merge-hide<?= $merging ? ' hidden' : '' ?>><a class="btn btn--ghost btn--sm" href="live_drive?id=<?= $liveId ?>"><?= drive_icon() ?> ドライブのファイルをバンドに割り当て</a></p><?php endif; ?>
             <?= live_image_field($images, $merging) ?>
         </div>
         <?php if ($bandPairs): ?>

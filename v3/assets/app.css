@@ -513,18 +513,26 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .slot__yt { display: inline-flex; align-items: center; line-height: 0; margin-left: 8px; }
 .slot__yt svg { width: 23px; height: 16px; }
 .slot__yt:hover svg { opacity: .8; }
-/* ラインミックスの 🎧 ボタン（band.drive_url があるときだけ。live.php）。ボタンの枠・背景は付けずアイコンだけ見せる
-   開いている間（aria-expanded="true"）はアクセントの赤にして、どのバンドが鳴っているかわかるようにする */
-.slot__drive { display: inline-flex; align-items: center; justify-content: center; padding: 2px; border: 0; background: none;
-  color: var(--muted); cursor: pointer; line-height: 0; border-radius: var(--r-sm); transition: color var(--t-fast) var(--ease-out); }
-.slot__drive .icon { font-size: 22px; }
+/* ドライブのファイルの 📂 ボタン（band_drive_file があるときだけ。live.php）。枠・背景は付けずアイコン＋件数
+   開いている間（aria-expanded="true"）はアクセントの赤にして、どのバンドを開いているかわかるようにする */
+.slot__drive { display: inline-flex; align-items: center; gap: 2px; padding: 2px; border: 0; background: none;
+  color: var(--muted); font-size: var(--fs-xs); font-weight: 700; cursor: pointer; border-radius: var(--r-sm); transition: color var(--t-fast) var(--ease-out); }
+.slot__drive .icon { font-size: 20px; }
 .slot__drive:hover { color: var(--text); }
 .slot__drive[aria-expanded="true"] { color: var(--accent); }
-/* ドライブのプレーヤー（live.php はボタンで開閉、band.php は最初から表示）。横幅いっぱい・16:9 で、PC で大きくなりすぎないよう上限 */
-.drive-player { margin-top: 12px; }
-.drive-player[hidden] { display: none; }
+/* 開いた一覧（live.php）・ファイル欄（band.php）。中は「プレーヤー → 写真 → リンク」の順に縦に並ぶ */
+.drive-panel { display: grid; gap: 12px; margin-top: 12px; }
+.drive-panel[hidden] { display: none; }
+.band-section > .drive-panel { margin-top: 0; }
+.drive-player { margin: 0; }
+.drive-player__name { display: flex; align-items: center; gap: 4px; margin-bottom: 4px; color: var(--muted); font-size: var(--fs-sm); overflow-wrap: anywhere; }
+/* 横幅いっぱい・16:9 で、PC で大きくなりすぎないよう上限 */
 .drive-player__frame { display: block; width: 100%; aspect-ratio: 16 / 9; max-height: 360px; border: 0; border-radius: var(--r-md); background: var(--surface-2); }
-.band-section > .drive-player { margin-top: 0; }
+.drive-thumbs { margin: 0; justify-content: flex-start; } /* 写真は添付画像と同じ .live-thumbs。左寄せにするだけ */
+/* バンド編集: 押すと ✕（外す）にチェック → 取り消し線と薄い表示 */
+.drive-edit { margin-bottom: 8px; }
+.drive-edit .chip { cursor: pointer; }
+.drive-edit .chip:has(input:checked) { opacity: .5; text-decoration: line-through; }
 /* コメントアイコン: 自前 SVG の吹き出し（lib/repository.php の comment_bubble_svg）の真ん中に件数を重ねる。
    コメントが付いたバンドだけ出る（lib/repository.php の comment_badge）。ライブ詳細の行とメンバーページの出演履歴で共通。
    重ねかた: 親を position: relative にして、数字は position: absolute で中央へ（アイコンと数字を同じ箱に入れて座標を共有する）。
@@ -619,7 +627,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .timeline--compact .slot__like,
 .timeline--compact .lineup,
 .timeline--compact .slot__body > p.muted,
-.timeline--compact .drive-player { display: none; }
+.timeline--compact .drive-panel { display: none; }
 /* 縮小中も SE と セットリスト登録済のラベルだけは残す（バンド名の右）。それ以外の曲数・名前などは隠す。
    font-size: 0 は、タグに包まれていない文字（アーティスト名の区切りなど）を見えなくするため */
 .timeline--compact .slot__meta { margin: 0 0 0 8px; flex-wrap: nowrap; gap: 6px; font-size: 0; }

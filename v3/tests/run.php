@@ -401,13 +401,17 @@ check('http は不可', drive_file_id("http://drive.google.com/file/d/{$did}/vie
 check('偽物のホストは不可', drive_file_id("https://drive.google.com.example.com/file/d/{$did}/view"), null);
 check('保存する URL は組み立て直す', drive_file_url($did), "https://drive.google.com/file/d/{$did}/view");
 check('拡張子を外す', drive_strip_ext('12月 スピッツ.wav'), '12月 スピッツ');
-// 突き合わせは youtube_match_bands と同じ。拡張子の「wav」などがバンド名に当たらないこと
+// サブフォルダ名でバンドに割り当てる（突き合わせは youtube_match_bands と同じ）
 $dm = drive_match_bands([
-    ['file_id' => 'fileSpitz01', 'name' => '12月 スピッツ.wav'], ['file_id' => 'fileMrs0001', 'name' => '12月 Mrs. GREEN APPLE.mp3'],
-    ['file_id' => 'fileWav0001', 'name' => 'mix.wav'],
-], [1 => $yb('スピッツ'), 2 => $yb('Mrs. GREEN APPLE'), 3 => $yb('WAV')]); // 拡張子を外さないと「mixwav」に WAV が当たってしまう
-check('ファイル名でバンドに当たる', [$dm['auto'][1] ?? null, $dm['auto'][2] ?? null], ['fileSpitz01', 'fileMrs0001']);
-check('拡張子はバンド名に当たらない', $dm['unmatched'], ['fileWav0001']);
+    ['file_id' => 'folderSpitz', 'name' => 'スピッツ(山田)'], ['file_id' => 'folderMrs01', 'name' => 'Mrs. GREEN APPLE'],
+    ['file_id' => 'folderBBK01', 'name' => 'B.B.King'], ['file_id' => 'folderEtc01', 'name' => '集合写真'],
+], [1 => $yb('スピッツ(山田)'), 2 => $yb('Mrs. GREEN APPLE'), 3 => $yb('B.B.King')]);
+check('サブフォルダ名でバンドに当たる', [$dm['auto'][1] ?? null, $dm['auto'][2] ?? null], ['folderSpitz', 'folderMrs01']);
+check('フォルダ名の「.King」は拡張子扱いしない', $dm['auto'][3] ?? null, 'folderBBK01');
+check('どれにも当たらないフォルダ', $dm['unmatched'], ['folderEtc01']);
+// 種類 → 表示の仕方
+check('種類の振り分け', [drive_kind('audio/wav'), drive_kind('video/mp4'), drive_kind('image/jpeg'), drive_kind('application/pdf')], ['media', 'media', 'image', 'other']);
+check('種類のアイコン', [drive_kind_icon('application/pdf'), drive_kind_icon('audio/mpeg'), drive_kind_icon('text/plain')], ['picture_as_pdf', 'audio_file', 'description']);
 
 echo "manual timetable\n";
 $mplan = ['rosters' => [['file' => 'a.pdf', 'bands' => [
