@@ -46,7 +46,7 @@
     // 備え付けギターアンプの標準（assets/setting_sheet.js の gtAmps() と同じ。型紙に gt_amps が無いとき）
     const GT_AMPS = ['JC', 'Marshall'];
     // セット図に印刷済みの枠（stage_slots の kind）
-    const SLOT_LABELS = { amp: 'アンプの枠', spot: '立ち位置（モニター）' };
+    const SLOT_LABELS = { amp: 'アンプの枠', spot: 'モニターの枠' };
     const PAIR_LABELS ={ part: 'パート1', name: '名前1', part2: 'パート2', name2: '名前2', note: '備考1', note2: '備考2' };
 
     let cfg = null;        // 今の型紙（JSON を読んだもの）。ドラッグはこの中の数字を直接書き換える
@@ -92,21 +92,20 @@
     const groupLabel = (g) => cfg?.choice_labels?.[g] || DATA.choiceLabels[g] || g;
 
     /**
-     * 選択肢1つの設定を { box, mark, text } の形で読む。
-     *   型紙には [箱]（○で囲む）か { box, mark: 'check' | 'none', text } で書いてある。text は選択肢の箱の中に書く
-     *   前の版の text_box（文字を書く別の枠）は使わないので落とす（保存し直すと消える）
+     * 選択肢1つの設定を { box, mark, text, text_box } の形で読む。
+     *   型紙には [箱]（○で囲む）か { box, mark: 'check' | 'none', text, text_box } で書いてある。
+     *   text は選択肢の箱の中に書く。text_box（任意）があれば、文字はその別の枠に書く（○の位置と文字の位置を別にしたいとき）
      */
     const optSpec = (v) => {
         if (Array.isArray(v)) return { box: v };
-        const { text_box: _, ...o } = v;
-        return o;
+        return { ...v };
     };
     /** 選択肢1つの設定を書き戻す。○で囲むだけ（文字なし）なら [箱] の短い形にする */
     function writeOpt(g, name, o) {
-        delete o.text_box;
         if (!o.text) {
             delete o.text;
             delete o.size;
+            delete o.text_box; // 書く文字が無ければ、文字の枠も要らない
         }
         if (!o.mark || o.mark === 'circle') delete o.mark;
         cfg.choices[g][name] = Object.keys(o).length === 1 ? o.box : o;
@@ -202,6 +201,14 @@
                         if (cfg.choice_multi) delete cfg.choice_multi[g];
                     }
                 }, { choice: { g, name } }));
+                // 書く文字の枠（○の位置とは別）。あれば別の枠として動かせる
+                if (isBox(v.text_box) && v.text) {
+                    out.push(rectItem(`choice_text.${g}.${name}`, `${groupLabel(g)}: ${name} →文字「${v.text}」の枠`, 'choices', v.text_box, () => {
+                        const s = optSpec(cfg.choices[g][name]);
+                        delete s.text_box;
+                        writeOpt(g, name, s);
+                    }, { choice: { g, name } }));
+                }
             }
         }
         (cfg.stamps || []).forEach((s, i) => {
@@ -790,6 +797,9 @@
                 if (on) cfg.amps_printed = true;
                 else delete cfg.amps_printed;
             });
+            // 印刷済みのアンプ・モニターの枠（自動配置でここに吸着させる）
+            panelButton('＋ アンプの枠', () => addSlot('amp'));
+            panelButton('＋ モニターの枠', () => addSlot('spot'));
             // 自動配置の範囲: セット図の枠の各辺から 10pt 内側に置く（狭い枠ならそのまま同じ大きさ）
             if (!isBox(cfg.stage_auto)) {
                 panelButton('＋ 自動配置の枠', () => {
@@ -830,6 +840,25 @@
             out.append(l);
             if (it.stamp.shape) num('線の太さ', () => it.stamp.line || 0.9, (v) => { it.stamp.line = Math.max(0.1, r1(v)); });
         }
+    }
+
+    /**
+     * セット図に印刷済みの枠を足す（stage_slots）。見えている所の真ん中（セット図の枠の中に収める）に置く
+     *   amp: 自動配置でアンプの名前（JC・Ba Amp など）を中に書く / spot: モニター。その奥（上）に人の丸とマイクを置く
+     */
+    function addSlot(kind) {
+        const [sx0, sy0, sx1, sy1] = cfg.stage;
+        const [hw, hh] = kind === 'amp' ? [30, 18] : [20, 8];
+        const [vx, vy] = visibleCenter();
+        const cx = Math.min(Math.max(vx, sx0 + hw), sx1 - hw);
+        const cy = Math.min(Math.max(vy, sy0 + hh), sy1 - hh);
+        cfg.stage_slots = Array.isArray(cfg.stage_slots) ? cfg.stage_slots : [];
+        cfg.stage_slots.push({ kind, box: [r1(cx - hw), r1(cy - hh), r1(cx + hw), r1(cy + hh)] });
+        selectedId = `stage_slots.${cfg.stage_slots.length - 1}`;
+        note.textContent = kind === 'amp'
+            ? 'アンプの枠を置きました。シートの四角に合わせてください。自動配置で、ここにアンプの名前を書きます。'
+            : 'モニターの枠を置きました。シートのモニターに合わせてください。自動配置で、この奥に人とマイクを置きます。';
+        changed(true);
     }
 
     /** 備え付けギターアンプ（gt_amps）: 作成画面の四角の候補・自動配置で並んでいる順に使う。フォームの「登録済テンプレートから編集する」の下に出す */
@@ -1255,13 +1284,28 @@
         });
         ml.append(mc, ' 複数選択可');
         out.append(ml);
-        // 選んだときに書く文字。選択肢の枠の中に書く（別の枠は作らない）
+        // 選んだときに書く文字。ふつうは選択肢の枠の中に書く（下の「文字の枠を別にする」で別の場所にできる）
         textInput('選んだときに書く文字', spec.text || '', (v) => {
             writeOpt(g, name, { ...spec, text: v });
             changed(true);
         }, true);
         // 書く文字の大きさ（文字が無いときは保存しない: writeOpt が消す）
         if (spec.text) sizeInput(spec, () => writeOpt(g, name, spec));
+        // 文字の枠を、○（選択肢の枠）とは別の場所にする。足すときは選択肢の枠の右に同じ大きさで置く
+        if (spec.text) {
+            toggle('文字の枠を別にする', isBox(spec.text_box), (on) => {
+                if (on) {
+                    const [x0, y0, x1, y1] = spec.box;
+                    spec.text_box = [r1(x1 + 6), y0, r1(x1 + 6 + Math.max(x1 - x0, 40)), y1];
+                    selectedId = `choice_text.${g}.${name}`;
+                    note.textContent = '文字の枠を足しました。ドラッグで書きたい場所に合わせてください。○は元の枠に付きます。';
+                } else {
+                    delete spec.text_box;
+                    selectedId = `choices.${g}.${name}`;
+                }
+                writeOpt(g, name, spec);
+            });
+        }
         panelButton('＋ このグループに選択肢を足す', () => {
             // 最後の選択肢の箱の右に、同じ大きさ・同じ印で置く（書く文字は人によって違うので写さない）
             const boxes = Object.values(cfg.choices[g]).map((v) => (Array.isArray(v) ? v : v.box));
@@ -1558,8 +1602,7 @@
         // セット図に印刷済みのもの（セット図の枠があるときだけ）
         if (isBox(cfg?.stage)) {
             if (!isBox(cfg.drum)) opt('drum', 'ドラムの枠（自動配置で避ける）');
-            opt('slot:amp', '印刷済みのアンプの枠');
-            opt('slot:spot', '立ち位置（モニター）の枠');
+            // 印刷済みのアンプ・モニターの枠は、セット図の枠の詳細設定（⚙）から足す（addSlot）
         }
         opt('text', '自由記入欄');
         opt('stamp', '固定の文字（いつも書く）');
@@ -1616,16 +1659,6 @@
             cfg.drum = [x(-35), y(-20), x(35), y(20)];
             selectedId = 'drum';
             note.textContent = 'ドラムの枠を置きました。シートのドラムの四角に合わせてください。アンプや人はこれを避けて並べます。';
-        } else if (what.startsWith('slot:')) {
-            // 印刷済みの枠。アンプ: 自動配置で名前（JC・Ba Amp など）を中に書く / 立ち位置: モニターの奥（上）に人の丸とマイクを置く
-            const kind = what.slice(5);
-            cfg.stage_slots = Array.isArray(cfg.stage_slots) ? cfg.stage_slots : [];
-            const [hw, hh] = kind === 'amp' ? [30, 18] : [20, 8];
-            cfg.stage_slots.push({ kind, box: [x(-hw), y(-hh), x(hw), y(hh)] });
-            selectedId = `stage_slots.${cfg.stage_slots.length - 1}`;
-            note.textContent = kind === 'amp'
-                ? 'アンプの枠を置きました。シートの四角に合わせてください。自動配置で、ここにアンプの名前を書きます。'
-                : '立ち位置（モニター）の枠を置きました。シートのモニターに合わせてください。自動配置で、この奥に人とマイクを置きます。';
         } else if (what === 'text') {
             cfg.texts = Array.isArray(cfg.texts) ? cfg.texts : [];
             let n = cfg.texts.length + 1;

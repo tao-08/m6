@@ -1451,7 +1451,7 @@
     const boxLabels = () => [...gtAmps(), 'Ba Amp', 'Key', 'E.Pf'];
 
     /**
-     * セット図に印刷済みの枠（型紙の stage_slots）。kind: 'amp'（アンプの四角）/ 'spot'（立ち位置のモニター）
+     * セット図に印刷済みの枠（型紙の stage_slots）。kind: 'amp'（アンプの四角）/ 'spot'（モニター。奥に人を立たせる）
      *   型紙はページの座標なので、セット図の枠の中の座標（部品と同じ。左上が 0）に直して返す { x0, y0, x1, y1, cx, cy }
      */
     function stageSlots(kind) {
@@ -2094,7 +2094,7 @@
         };
 
         /**
-         * 立ち位置（モニター）の枠があれば、そこに置く。モニターの奥（上）にマイク、その奥に人の丸（キーボードは四角）
+         * 印刷済みのモニターの枠があれば、そこに置く。モニターの奥（上）にマイク、その奥に人の丸（キーボードは四角）
          *   上で決めた x に近い枠へ、左右の順番を崩さずに割り当てる（alignInOrder）。
          *   いちばん手前の列より奥にある枠（左右の端のモニターなど）は大きな罰を足して、手前の列が埋まってから使う
          *   （奥にある分だけの小さな罰だと、手前が空いているのに端のモニターへ行くことがある）
@@ -2497,11 +2497,13 @@
             }
             // 書き方は2通り: [箱] だけ（○で囲む）か { box: [箱], mark: 'check' | 'none', text }
             //   mark: 'check' = ✓ / 'none' = 印なし / 無し = ○。text があれば箱の中に書く（例: 2タム →「（2Tom）」）
-            //   前の版の text_box（文字を書く別の枠）は使わない
+            //   text_box があれば、文字はその別の枠に書く（○の位置と文字の位置を別にするとき）
             const box = Array.isArray(spec) ? spec : spec.box;
             const [x0, top, x1, bottom] = box;
             if (!Array.isArray(spec) && spec.text) {
-                drawInBox(spec.text, box, { size: (spec.size || 10) * fs, min: 5, pad: 1 });
+                // text_box があれば、文字は○の位置とは別のその枠に書く
+                const tb = Array.isArray(spec.text_box) && spec.text_box.length === 4 && spec.text_box.every(Number.isFinite) ? spec.text_box : box;
+                drawInBox(spec.text, tb, { size: (spec.size || 10) * fs, min: 5, pad: 1 });
             }
             if (!Array.isArray(spec) && spec.mark === 'none') {
                 continue;
