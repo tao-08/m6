@@ -672,7 +672,39 @@
      * 選んでいる枠のパネル（数字・名前・削除）と、詳細設定（列を足す・印刷済み・印 など）。
      * 詳細設定の中身は選んでいる枠ごとに変わる。何も無い枠では ⚙ を押せなくする
      */
+    let panelAnim = null;
+    let lastKeys = new Set();
     function drawPanel() {
+        const panelBefore = panel.offsetHeight;
+        const keysBefore = lastKeys;
+        const wasSame = (lastSel === selectedId);
+        lastSel = selectedId;
+        drawPanelInner();
+        // 同じ枠のまま項目が増減したとき: 新しい項目をフェードイン、本体の高さの変化をなめらかに
+        if (reduceMotion() || !wasSame) {
+            lastKeys = collectKeys();
+            return;
+        }
+        lastKeys = collectKeys();
+        for (const [k, node] of keyedNodes()) {
+            if (!keysBefore.has(k)) {
+                node.animate([{ opacity: 0, transform: 'translateY(-4px)' }, { opacity: 1, transform: 'none' }], { duration: 200, easing: 'ease-out' });
+            }
+        }
+        const h = panel.offsetHeight;
+        if (Math.abs(panelBefore - h) > 1) {
+            panelAnim?.cancel();
+            panel.style.overflow = 'hidden';
+            panelAnim = panel.animate([{ height: `${panelBefore}px` }, { height: `${h}px` }], { duration: 200, easing: 'cubic-bezier(.2, .8, .2, 1)' });
+            panelAnim.onfinish = panelAnim.oncancel = () => { panel.style.overflow = ''; };
+        }
+    }
+    let lastSel = null;
+    /** 項目（ラベル付きの入力）を、ラベル文字で見分ける */
+    const keyedNodes = () => [...root.querySelectorAll('[data-ed-panel] > label, [data-ed-adv-box] label, [data-ed-adv-box] .ed-adv__rows')]
+        .map((n, i) => [`${n.textContent.trim().slice(0, 30)}#${n.tagName}`, n]);
+    const collectKeys = () => new Set(keyedNodes().map(([k]) => k));
+    function drawPanelInner() {
         const it = items.find((x) => x.id === selectedId);
         const advBefore = advBox.hidden ? null : advBox.offsetHeight; // 描き直す前の詳細設定の高さ（高さが変わるときの動きの始まり）
         panel.textContent = '';

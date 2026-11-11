@@ -2521,8 +2521,9 @@
             page.drawEllipse({
                 x: (x0 + x1) / 2,
                 y: Y((top + bottom) / 2),
-                xScale: (x1 - x0) / 2 + 4,
-                yScale: (bottom - top) / 2 + 2.5,
+                // 枠の内径ぴったりに描く（線の太さの半分だけ内側）。正方形の枠なら真円になる
+                xScale: Math.max(0.5, (x1 - x0) / 2 - 0.45),
+                yScale: Math.max(0.5, (bottom - top) / 2 - 0.45),
                 borderColor: black,
                 borderWidth: 0.9,
                 // color を書かない → 中は塗らない（線だけ）
