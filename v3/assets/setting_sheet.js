@@ -81,6 +81,8 @@
             date: ini.date,
             order: ini.order,
             rep: ini.rep || '',
+            time_start: '', // 出演時刻の開始・終了（'18:30'）。PDF には「18:30~18:50」と書く
+            time_end: '',
             // [...配列] でコピーしてから map。元の DATA を書き換えないため
             members: ini.members.map((m) => ({ part: m.part, name: m.name, note: '' })),
             memberNotes: false, // true = メンバーごとの備考欄を出し、PDF の名前の後ろに（備考）として書く
@@ -490,6 +492,11 @@
         if (key === 'month' || key === 'day') {
             const m = (state.date || '').match(/(\d{1,2})\D+(\d{1,2})\D*$/);
             return m ? String(+m[key === 'month' ? 1 : 2]) : ''; // +: 「01」→ 1
+        }
+        if (key === 'time_range') {
+            const s = state.time_start || '';
+            const e = state.time_end || '';
+            return s || e ? `${s || '--:--'}~${e || '--:--'}` : ''; // 片方だけなら、もう片方は --:--
         }
         if (key === 'count') {
             const n = memberCount();
@@ -2897,7 +2904,7 @@
     /** 型紙のお試しに入れる仮の値（毎回同じ）。曲は型紙の行数ぶん、自由記入欄は欄の名前をそのまま書く */
     function sampleState() {
         const s = defaultState();
-        Object.assign(s, { band: 'サンプルバンド', kana: 'サンプルバンド', date: '2026/10/12', order: '3', rep: '山田 太郎' });
+        Object.assign(s, { band: 'サンプルバンド', kana: 'サンプルバンド', date: '2026/10/12', order: '3', rep: '山田 太郎', time_start: '18:30', time_end: '18:50' });
         s.members = SAMPLE_BAND.map(([part, name]) => ({ part, name }));
         // 書き込む表は、2組目まで全部の行を埋める（枠の下の方まで確かめられるように。パートが印刷済みの表は上の7人を振り分けるだけ）
         const mt = tpl().members;

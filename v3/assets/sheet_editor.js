@@ -41,7 +41,7 @@
     const SVG_NS = 'http://www.w3.org/2000/svg';
 
     // 1行の欄。year / month / day は「年」「月」が印刷済みのシート用（出演日から数字だけ書く）
-    const FIELD_LABELS = { band: 'バンド名', kana: 'フリガナ', date: '出演日', year: '年', month: '月', day: '日', order: '出演順', rep: '代表者氏名', count: '出演人数' };
+    const FIELD_LABELS = { band: 'バンド名', kana: 'フリガナ', date: '出演日', year: '年', month: '月', day: '日', order: '出演順', rep: '代表者氏名', count: '出演人数', time_range: '出演時刻' };
     const COL_LABELS = { part: 'パート', name: '氏名', part2: 'パート', name2: '氏名', mic: 'マイク', no: '曲順', title: '曲名', sound: '音響', light: '照明', request: '備考（音響・照明）', note: '備考', note2: '備考', time: '分数', mc: 'MC' };
     // 備え付けギターアンプの標準（assets/setting_sheet.js の gtAmps() と同じ。型紙に gt_amps が無いとき）
     const GT_AMPS = ['JC', 'Marshall'];

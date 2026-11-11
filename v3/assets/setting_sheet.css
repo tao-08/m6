@@ -8,6 +8,8 @@
 .sheet-card { display: grid; gap: 12px; }
 .sheet-card__title { margin: 0; font-size: var(--fs-lg); font-weight: 800; display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; }
 
+.sheet-time { display: flex; align-items: center; gap: 6px; }
+.sheet-time input { flex: 1; padding-block: 9px; } /* 時刻入力は中の余白で2px高くなるので、ほかの入力欄の高さにそろえる */
 /* 基本: スマホは2列、広い画面は4列。sheet-grid__wide は2列ぶん使う */
 .sheet-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .sheet-grid__wide { grid-column: span 2; }

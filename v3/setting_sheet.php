@@ -238,6 +238,10 @@ render_header('セッティングシート作成', $blank ? 'tools' : 'lives');
             <label class="field" data-field="date year month day">出演日 <input autocomplete="off" type="text" data-f="date" maxlength="20" placeholder="2026/10/12"></label>
             <label class="field" data-field="order">出演順 <input autocomplete="off" type="text" data-f="order" maxlength="3" inputmode="numeric"></label>
             <label class="field" data-field="rep">代表者氏名 <input autocomplete="off" type="text" data-f="rep" maxlength="50"></label>
+            <!-- 出演時刻: 開始 ~ 終了（PDF には「18:30~18:50」と書く） -->
+            <div class="field" data-field="time_range">出演時刻
+                <span class="sheet-time"><input type="time" data-f="time_start" aria-label="開始"> ~ <input type="time" data-f="time_end" aria-label="終了"></span>
+            </div>
         </div>
     </section>
 

@@ -300,6 +300,7 @@ if (is_post()) {
             }
             delete_sheet_pdf($newPng);
             $error = $e->getMessage();
+            flash($error, 'error'); // 画面上部のトーストにも出す（移動しない再表示でも気づけるように。header.php で表示）
         }
     }
 }
@@ -353,7 +354,9 @@ render_header('セッティングシート編集', 'tools');
         <p class="small"><a href="sheet_templates">＋ 新しい型紙を登録する</a> ・ <a href="<?= h($editing['pdf_path']) ?>" target="_blank" rel="noopener">今の PDF を見る</a></p>
     <?php endif; ?>
     <?php if ($error !== null): ?>
-        <div class="flash flash--error"><?= h($error) ?></div>
+        <div class="flash flash--error" data-form-error><?= h($error) ?></div>
+        <!-- 保存に失敗するとページ移動せず再表示される（先頭に戻る）ので、エラーの場所まで動かす -->
+        <script>document.querySelector('[data-form-error]')?.scrollIntoView({ block: 'center' });</script>
     <?php endif; ?>
     <form method="post" enctype="multipart/form-data" class="sheet-tpl-form"<?= unsaved_attr() ?>>
         <?= csrf_field() ?>

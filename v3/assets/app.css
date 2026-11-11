@@ -2230,6 +2230,11 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
 .ed-row--opt .ed-row__name::before { content: "○ "; opacity: .6; }
 .ed-row__opts { display: inline-flex; flex-wrap: wrap; gap: 2px 8px; font-size: var(--fs-xs); color: var(--text); }
 .sheet-ed__panel { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; min-height: 34px; }
+/* 型紙エディタの入力欄・プルダウンを、標準の入力欄（.field input）と同じ見た目に。パネルは詰まっているので余白だけ小さく */
+.sheet-ed input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"]), .sheet-ed select, [data-ed-font] {
+  padding: 5px 10px; border-radius: var(--r-md); border: 1px solid var(--border);
+  background: var(--surface); color: var(--text); font-size: var(--fs-sm); line-height: 1.5; min-width: 0;
+}
 .ed-num { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-sm); }
 .ed-num input { width: 84px; }
 /* 詳細設定（印刷済みのアンプ・パート）。バーの下に開く */
