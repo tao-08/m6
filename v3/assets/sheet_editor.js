@@ -42,7 +42,7 @@
 
     // 1行の欄。year / month / day は「年」「月」が印刷済みのシート用（出演日から数字だけ書く）
     const FIELD_LABELS = { band: 'バンド名', kana: 'フリガナ', date: '出演日', year: '年', month: '月', day: '日', order: '出演順', rep: '代表者氏名', count: '出演人数' };
-    const COL_LABELS = { part: 'パート', name: '氏名', part2: 'パート', name2: '氏名', mic: 'マイク', no: '曲順', title: '曲名', sound: '音響', light: '照明', request: '備考（音響・照明）', time: '分数', mc: 'MC' };
+    const COL_LABELS = { part: 'パート', name: '氏名', part2: 'パート', name2: '氏名', mic: 'マイク', no: '曲順', title: '曲名', sound: '音響', light: '照明', request: '備考（音響・照明）', note: '備考', time: '分数', mc: 'MC' };
     // 備え付けギターアンプの標準（assets/setting_sheet.js の gtAmps() と同じ。型紙に gt_amps が無いとき）
     const GT_AMPS = ['JC', 'Marshall'];
     const PAIR_LABELS ={ part: 'パート1', name: '名前1', part2: 'パート2', name2: '名前2' };
@@ -750,11 +750,14 @@
 
     /** 詳細設定: 枠ごとの、列を足す・入れ替える・印刷済みのもの・印や囲み など */
     function drawAdvanced(it, num) {
-        if (it.id === 'members' && it.t.mode !== 'slots') {
+        if (it.id === 'members') {
             section('列');
-            membersPairPanel(it.t);
-            membersSwapPanel(it.t);
-            membersFixedPanel(it.t);
+            if (it.t.mode !== 'slots') {
+                membersPairPanel(it.t);
+                membersSwapPanel(it.t);
+                membersFixedPanel(it.t);
+            }
+            membersNotePanel(it.t);
         }
         if (it.id === 'fields.kana') {
             // 作成画面の欄の名前（シートの表記に合わせる）。省略 = フリガナ
@@ -914,6 +917,21 @@
             const second = [r1(x + w1), r1(x + w1 + w2)];
             [t.part2, t.name2] = nameFirst ? [second, first] : [first, second];
             note.textContent = '右にもう1組置きました。左の組が埋まったら、右の組の上から書きます。線をドラッグして合わせてください。';
+        });
+    }
+
+    /**
+     * メンバー表: 備考の列（members.note = [左, 右]）。あるシートは作成画面で備考欄が常に出て、PDF のこの列に書く。
+     * 無いシートは、作成画面の備考のオプションをオンにすると名前の後ろに（備考）と書く。足すときは表のいちばん右に 60pt
+     */
+    function membersNotePanel(t) {
+        const cols = Object.keys(t).filter((k) => isCol(t[k]) && k !== 'lines' && k !== 'note').map((k) => t[k]);
+        if (!cols.length) return;
+        toggle('備考の列', isCol(t.note), (on) => {
+            if (!on) { delete t.note; return; }
+            const right = Math.max(...cols.flat());
+            t.note = [r1(right), r1(right + 60)];
+            note.textContent = '表の右に備考の列を足しました。線をドラッグして合わせてください。';
         });
     }
 

@@ -189,6 +189,14 @@
         });
     }
 
+    /** メンバー表に備考の列（members.note = [左, 右]）があるか。あれば PDF のその列に書く */
+    const noteCol = () => {
+        const c = tpl().members?.note;
+        return Array.isArray(c) && c.length === 2 && c.every(Number.isFinite) ? [Math.min(...c), Math.max(...c)] : null;
+    };
+    /** 備考欄を出すか。備考の列があるシートは常に出す。無いシートはオプション（名前の後ろに（備考）と書く） */
+    const notesOn = () => !!noteCol() || !!state.memberNotes;
+
     /** パート文字列（"Vo/Gt"）→ 小文字の配列 ['vo', 'gt'] */
     const partList = (part) => part.toLowerCase().split(/[\/／・,、\s]+/).filter((x) => x !== '');
 
@@ -271,7 +279,7 @@
             mic.addEventListener('change', () => { v.mic = mic.checked; renderTexts(); save(); });
             micWrap.append(mic, 'マイク');
             row.append(label, name, micWrap);
-            if (state.memberNotes) {
+            if (notesOn()) {
                 const memo = document.createElement('input');
                 memo.type = 'text';
                 memo.className = 'sheet-members__memo';
@@ -323,8 +331,9 @@
         const key = (p) => partList(p).join('/'); // 同じパートかどうか（大文字小文字・区切りの違いは同じ）
         const people = state.members.filter((m) => m.name.trim() !== '' || m.part.trim() !== '')
             .map((m) => {
-                const note = state.memberNotes ? (m.note || '').trim() : '';
-                return { name: m.name.trim() + (note ? `（${note}）` : ''), part: m.part.trim(), parts: partList(m.part) };
+                const note = notesOn() ? (m.note || '').trim() : '';
+                // 備考の列があれば別の列に書く。無ければ名前の後ろに（備考）
+                return { name: m.name.trim() + (note && !noteCol() ? `（${note}）` : ''), note: noteCol() ? note : '', part: m.part.trim(), parts: partList(m.part) };
             });
         const used = new Set();
         const rows = [];
@@ -340,13 +349,13 @@
             const free = people.filter((p) => !used.has(p));
             const p = free.find((x) => x.parts.length === 1 && x.parts[0] === want) || free.find((x) => x.parts.includes(want));
             if (p) used.add(p);
-            rows.push({ slot, names: p ? [fixedName(p, label)] : [], part: label, fixed: true });
+            rows.push({ slot, names: p ? [fixedName(p, label)] : [], notes: p && p.note ? [p.note] : [], part: label, fixed: true });
         }
         // 2. 残りの人（同じパートでまとめるときのために、1人ずつの行にしておく）
         const fixedSlots = new Set(fixedRows.map(([i]) => i));
         const freeSlots = [];
         for (let i = 0; i < cap; i++) if (!fixedSlots.has(i)) freeSlots.push(i);
-        let rest = people.filter((p) => !used.has(p)).map((p) => ({ names: [p.name], part: p.part, people: [p] }));
+        let rest = people.filter((p) => !used.has(p)).map((p) => ({ names: [p.name], notes: p.note ? [p.note] : [], part: p.part, people: [p] }));
         // 3. 入りきらなければまとめる
         while (rest.length > freeSlots.length) {
             // 印刷済みの行と同じパートの人を、その行に足す（後ろの人から）
@@ -355,6 +364,7 @@
                 const p = rest[idx].people[0];
                 const f = rows.find((x) => x.fixed && p.parts.includes(partList(x.part)[0]));
                 f.names.push(fixedName(p, f.part));
+                if (p.note) f.notes.push(p.note);
                 rest.splice(idx, 1);
                 continue;
             }
@@ -364,6 +374,7 @@
                 const k = rest.findIndex((r, n) => n < j && r.part !== '' && key(r.part) === key(rest[j].part));
                 if (k >= 0) {
                     rest[k].names.push(...rest[j].names);
+                    rest[k].notes.push(...rest[j].notes);
                     rest[k].people.push(...rest[j].people);
                     rest.splice(j, 1);
                     merged = true;
@@ -372,7 +383,7 @@
             if (!merged) break; // まとめられる人がいない → 入らない人は書かない
         }
         const dropped = rest.slice(freeSlots.length).reduce((n, r) => n + r.names.length, 0);
-        rest.slice(0, freeSlots.length).forEach((r, n) => rows.push({ slot: freeSlots[n], names: r.names, part: r.part, fixed: false }));
+        rest.slice(0, freeSlots.length).forEach((r, n) => rows.push({ slot: freeSlots[n], names: r.names, notes: r.notes, part: r.part, fixed: false }));
         return { rows, dropped };
     }
 
@@ -383,16 +394,14 @@
         const hint = $('[data-members-hint]');
         const noteWrap = $('[data-members-note-wrap]');
         const noteBox = $('[data-members-note]');
+        noteWrap.hidden = !!noteCol(); // 備考の列があるシートは常に出すのでオプションは要らない
+        noteBox.checked = !!state.memberNotes;
         if (tpl().members?.mode === 'slots') {
-            noteWrap.hidden = false;
-            noteBox.checked = !!state.memberNotes;
             hint.textContent = 'マイクを使う人に✓';
             renderSlots(box);
             return;
         }
         hint.textContent = 'パートは Vo / Gt / Ba / Dr / Key などを入力';
-        noteWrap.hidden = false;
-        noteBox.checked = !!state.memberNotes;
         // メンバー表が無い型紙（PDF には書かない）でも、セット図の自動配置・出演人数に使うので入力欄は出す
         const mt = tpl().members;
         const rows = mt ? mt.rows * memberCols(mt).length : 5; // 4列の表なら行数の2倍
@@ -427,7 +436,7 @@
             } else {
                 row.append(part, name);
             }
-            if (state.memberNotes) {
+            if (notesOn()) {
                 const memo = document.createElement('input');
                 memo.type = 'text';
                 memo.className = 'sheet-members__memo';
@@ -2211,8 +2220,12 @@
                 }
                 const [top, bottom] = sl.box;
                 // 「A・B」の2人は2行に分けると読みやすい
-                const note = state.memberNotes ? (v.note || '').trim() : '';
-                drawInBox(v.name.split('・').join('\n') + (note && v.name.trim() !== '' ? `（${note}）` : ''), [mt.name[0] + 4, top, mt.name[1], bottom], { size: 14, min: 6 });
+                const note = notesOn() && v.name.trim() !== '' ? (v.note || '').trim() : '';
+                const nc = noteCol();
+                drawInBox(v.name.split('・').join('\n') + (note && !nc ? `（${note}）` : ''), [mt.name[0] + 4, top, mt.name[1], bottom], { size: 14, min: 6 });
+                if (note && nc) {
+                    drawInBox(note, [nc[0] + 2, top, nc[1], bottom], { size: 10, min: 5, wrap: true, pad: 1 });
+                }
                 if (v.mic && v.name.trim() !== '') {
                     drawInBox('〇', [mt.mic[0], top, mt.mic[1], bottom], { size: 16, align: 'center' });
                 }
@@ -2228,6 +2241,10 @@
                     drawInBox(r.part, [partCol[0], top, partCol[1], bottom], { size: 9, align: 'center', pad: 1 });
                 }
                 drawInBox(r.names.join('・'), [nameCol[0] + 3, top, nameCol[1], bottom], { size: 11 });
+                const nc = noteCol();
+                if (nc && r.notes.length) { // 備考の列（右の組があっても、備考は表の右端の1列）
+                    drawInBox(r.notes.join('・'), [nc[0] + 2, top, nc[1], bottom], { size: 9, min: 5, wrap: true, pad: 1 });
+                }
             }
         }
 
