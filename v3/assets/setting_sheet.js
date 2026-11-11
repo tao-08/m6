@@ -82,7 +82,8 @@
             order: ini.order,
             rep: ini.rep || '',
             // [...配列] でコピーしてから map。元の DATA を書き換えないため
-            members: ini.members.map((m) => ({ part: m.part, name: m.name })),
+            members: ini.members.map((m) => ({ part: m.part, name: m.name, note: '' })),
+            memberNotes: false, // true = メンバーごとの備考欄を出し、PDF の名前の後ろに（備考）として書く
             // セットリスト。1曲 = { id, mc: false, title, sound, light, track, trackTitle, art, time, cols } / MC = { id, mc: true }
             //   track: 紐付けた Spotify / iTunes の曲（'spotify:xxxx'。空 = なし）/ time: 分数（'3:45'）/ cols: 型紙の追加の列 { key: 文字 }
             songs: ini.songs.map((s, i) => newSong(i + 1, { title: s.title, track: s.track, trackTitle: s.trackTitle, art: s.art })),
@@ -270,6 +271,16 @@
             mic.addEventListener('change', () => { v.mic = mic.checked; renderTexts(); save(); });
             micWrap.append(mic, 'マイク');
             row.append(label, name, micWrap);
+            if (state.memberNotes) {
+                const memo = document.createElement('input');
+                memo.type = 'text';
+                memo.className = 'sheet-members__memo';
+                memo.placeholder = '備考';
+                memo.maxLength = 30;
+                memo.value = v.note || '';
+                memo.addEventListener('input', () => { v.note = memo.value; save(); });
+                row.append(memo);
+            }
             box.append(row);
         }
         // 振り分け直しボタン（「基本」のメンバーは DB の内容なので、それを元にやり直す）
@@ -278,7 +289,7 @@
         redo.className = 'btn btn--sm btn--ghost';
         redo.textContent = 'DB のメンバーから振り分け直す';
         redo.addEventListener('click', () => {
-            state.members = DATA.initial.members.map((m) => ({ part: m.part, name: m.name }));
+            state.members = DATA.initial.members.map((m) => ({ part: m.part, name: m.name, note: '' }));
             assignSlots();
             renderMembers();
             renderTexts();
@@ -311,7 +322,10 @@
         const fixed = mt.fixed && typeof mt.fixed === 'object' ? mt.fixed : {};
         const key = (p) => partList(p).join('/'); // 同じパートかどうか（大文字小文字・区切りの違いは同じ）
         const people = state.members.filter((m) => m.name.trim() !== '' || m.part.trim() !== '')
-            .map((m) => ({ name: m.name.trim(), part: m.part.trim(), parts: partList(m.part) }));
+            .map((m) => {
+                const note = state.memberNotes ? (m.note || '').trim() : '';
+                return { name: m.name.trim() + (note ? `（${note}）` : ''), part: m.part.trim(), parts: partList(m.part) };
+            });
         const used = new Set();
         const rows = [];
         // 印刷済みの行の人の名前。パートが違えば（Vo/Gt）を付ける
@@ -367,12 +381,18 @@
         const box = $('[data-members]');
         box.textContent = ''; // 中身を空にする
         const hint = $('[data-members-hint]');
+        const noteWrap = $('[data-members-note-wrap]');
+        const noteBox = $('[data-members-note]');
         if (tpl().members?.mode === 'slots') {
+            noteWrap.hidden = false;
+            noteBox.checked = !!state.memberNotes;
             hint.textContent = 'マイクを使う人に✓';
             renderSlots(box);
             return;
         }
         hint.textContent = 'パートは Vo / Gt / Ba / Dr / Key などを入力';
+        noteWrap.hidden = false;
+        noteBox.checked = !!state.memberNotes;
         // メンバー表が無い型紙（PDF には書かない）でも、セット図の自動配置・出演人数に使うので入力欄は出す
         const mt = tpl().members;
         const rows = mt ? mt.rows * memberCols(mt).length : 5; // 4列の表なら行数の2倍
@@ -407,6 +427,16 @@
             } else {
                 row.append(part, name);
             }
+            if (state.memberNotes) {
+                const memo = document.createElement('input');
+                memo.type = 'text';
+                memo.className = 'sheet-members__memo';
+                memo.placeholder = '備考';
+                memo.maxLength = 30;
+                memo.value = m.note || '';
+                memo.addEventListener('input', () => { m.note = memo.value; save(); });
+                row.append(memo);
+            }
             box.append(row);
         }
         // 枠より多い人を書きたいとき（同じパートの人は1行にまとめて書く）
@@ -415,7 +445,7 @@
         more.className = 'btn btn--sm btn--ghost';
         more.textContent = '＋ メンバーを足す';
         more.addEventListener('click', () => {
-            state.members.push({ part: '', name: '' });
+            state.members.push({ part: '', name: '', note: '' });
             renderMembers();
             save();
             box.querySelector('.sheet-members__row:last-of-type input')?.focus();
@@ -2181,7 +2211,8 @@
                 }
                 const [top, bottom] = sl.box;
                 // 「A・B」の2人は2行に分けると読みやすい
-                drawInBox(v.name.split('・').join('\n'), [mt.name[0] + 4, top, mt.name[1], bottom], { size: 14, min: 6 });
+                const note = state.memberNotes ? (v.note || '').trim() : '';
+                drawInBox(v.name.split('・').join('\n') + (note && v.name.trim() !== '' ? `（${note}）` : ''), [mt.name[0] + 4, top, mt.name[1], bottom], { size: 14, min: 6 });
                 if (v.mic && v.name.trim() !== '') {
                     drawInBox('〇', [mt.mic[0], top, mt.mic[1], bottom], { size: 16, align: 'center' });
                 }
@@ -2562,6 +2593,13 @@
         tplSelect.value = state.template;
         selectedId = null;
         renderAll();
+    });
+
+    // メンバーの備考欄のオン・オフ（切り替えても入力済みの備考は残る）
+    $('[data-members-note]').addEventListener('change', (e) => {
+        state.memberNotes = e.target.checked;
+        renderMembers();
+        save();
     });
 
     function renderAll() {

@@ -19,9 +19,13 @@
 .sheet-members { display: grid; gap: 6px; }
 .sheet-members__row { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 6px; }
 .sheet-members__row.is-name-first { grid-template-columns: minmax(0, 1fr) 76px; } /* 名前が左のシート（MEMBER → Position） */
+.sheet-members__row .sheet-members__memo { grid-column: 1 / -1; } /* 備考は次の行に横いっぱい */
+.sheet-members__note-toggle { margin-left: auto; cursor: pointer; align-self: center; }
+.sheet-members__note-toggle[hidden] { display: none; }
 
 /* パートが印刷済みの表（サークル共通シート）: パート名 | 名前 | マイク✓ */
 .sheet-slots__row { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+.sheet-slots__row .sheet-members__memo { grid-column: 1 / -1; }
 .sheet-slots__label { font-size: var(--fs-sm); font-weight: 700; color: var(--muted); }
 .sheet-slots__mic { font-size: var(--fs-sm); white-space: nowrap; }
 .sheet-members .btn { justify-self: start; margin-top: 4px; }

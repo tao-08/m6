@@ -243,7 +243,8 @@ render_header('セッティングシート作成', $blank ? 'tools' : 'lives');
 
     <!-- ===== メンバー ===== -->
     <section class="card sheet-card">
-        <h2 class="sheet-card__title">メンバー <span class="muted small" data-members-hint></span></h2>
+        <h2 class="sheet-card__title">メンバー <span class="muted small" data-members-hint></span>
+            <label class="check sheet-members__note-toggle" data-members-note-wrap data-tip="メンバーごとの備考欄"><input type="checkbox" data-members-note> <?= icon('edit_note') ?></label></h2>
         <!-- 行は JS が作る。会場のシートによって「パートを自由に書く表」か「パートが印刷済みの表」になる -->
         <div class="sheet-members" data-members></div>
     </section>
