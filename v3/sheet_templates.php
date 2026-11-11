@@ -413,14 +413,12 @@ render_header('セッティングシート編集', 'tools');
         <!-- 枠の配置エディタ（assets/sheet_editor.js） -->
         <div class="sheet-ed" data-sheet-editor>
             <div class="sheet-ed__bar">
-                <label class="small">表示倍率
-                    <select data-ed-zoom>
-                        <option value="1">幅に合わせる</option>
-                        <option value="1.5">1.5 倍</option>
-                        <option value="2">2 倍</option>
-                        <option value="3">3 倍</option>
-                    </select>
-                </label>
+                <!-- 表示倍率（ラジオ。見た目だけボタン風の .pick。1 = 枠の幅に合わせる。assets/sheet_editor.js の zoomRadios） -->
+                <div class="pick pick--bar" role="radiogroup" aria-label="表示倍率" title="表示倍率">
+                    <?php foreach (['1' => '1×', '1.5' => '1.5×', '2' => '2×', '3' => '3×'] as $zv => $zl): ?>
+                        <label><input type="radio" name="ed-zoom" value="<?= $zv ?>" data-ed-zoom<?= (string)$zv === '1' ? ' checked' : '' ?>><span><?= $zl ?></span></label>
+                    <?php endforeach; ?>
+                </div>
                 <!-- 中身は assets/sheet_editor.js の fillAddMenu() が作る（型紙にまだ無い欄だけ） -->
                 <select data-ed-add aria-label="枠を足す"><option value="">＋ 要素を追加…</option></select>
                 <!-- 要素の一覧（ポップアップ）。その他の項目の並び替え・入れ子もここで（sheet_editor.js の drawList） -->

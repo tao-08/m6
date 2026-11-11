@@ -2255,6 +2255,9 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
 [data-ed-adv][aria-expanded="true"] { background: var(--accent-soft); color: var(--accent); }
 .ed-text input { width: 160px; }
 .sheet-ed__bar select[data-ed-add] { width: auto; }
+/* 表示倍率のラジオ（.pick の見た目だけ借りる。名簿の表の外なので、枠は自分で付ける） */
+.pick--bar { display: inline-flex; gap: 1px; padding: 2px; border-radius: var(--r-md); background: var(--surface-2); border: 1px solid var(--border); }
+.pick--bar span { padding: 3px 10px; font-size: var(--fs-sm); }
 .sheet-ed__scroll { overflow: auto; max-height: 80vh; border: 1px solid var(--border); border-radius: var(--r-md); background: #fff; }
 .sheet-ed__wrap { position: relative; width: 100%; aspect-ratio: 595 / 842; }
 .sheet-ed__wrap canvas, .sheet-ed__wrap svg { position: absolute; inset: 0; width: 100%; height: 100%; }

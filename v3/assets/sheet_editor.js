@@ -36,7 +36,7 @@
     const advBtn = root.querySelector('[data-ed-adv]');
     const advBox = root.querySelector('[data-ed-adv-box]');
     let out = panel;       // numInput / textInput / panelButton を足す先（panel か advBox）
-    const zoomSelect = root.querySelector('[data-ed-zoom]');
+    const zoomRadios = [...root.querySelectorAll('[data-ed-zoom]')]; // 表示倍率のラジオ（value = 倍率。1 = 幅に合わせる）
     const fontInput = root.querySelector('[data-ed-font]');
     const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -1923,11 +1923,12 @@
         });
     }
 
-    zoomSelect.addEventListener('change', () => {
-        zoom = +zoomSelect.value;
+    zoomRadios.forEach((radio) => radio.addEventListener('change', () => {
+        if (!radio.checked) return;
+        zoom = +radio.value;
         wrap.style.width = `${zoom * 100}%`;
         renderPdf();
-    });
+    }));
 
     /** セット図の枠の中を PNG（data URL）に切り抜く。PDF がまだ描けていなければ '' */
     function stagePng() {
