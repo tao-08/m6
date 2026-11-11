@@ -991,12 +991,13 @@
     const ampInput = document.querySelector('[data-gt-amps-input]');
     const nowAmps = () => (Array.isArray(cfg?.gt_amps) ? cfg.gt_amps : GT_AMPS);
     const setAmps = (next) => {
-        if (next.length === 0 || next.join('\n') === GT_AMPS.join('\n')) delete cfg.gt_amps;
+        // 空でもそのまま保存する（消して標準に戻る、にしない）。標準と同じ並びのときだけ書かない
+        if (next.join('\n') === GT_AMPS.join('\n')) delete cfg.gt_amps;
         else cfg.gt_amps = next;
         changed(true);
     };
     ampInput?.addEventListener('keydown', (e) => {
-        if (e.key !== 'Enter') return;
+        if (e.key !== 'Enter' || e.isComposing) return; // 日本語の変換を確定する Enter では追加しない
         e.preventDefault(); // フォームを送信しない
         const v = ampInput.value.trim();
         if (!cfg || !v) return;
