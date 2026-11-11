@@ -42,10 +42,10 @@
 
     // 1行の欄。year / month / day は「年」「月」が印刷済みのシート用（出演日から数字だけ書く）
     const FIELD_LABELS = { band: 'バンド名', kana: 'フリガナ', date: '出演日', year: '年', month: '月', day: '日', order: '出演順', rep: '代表者氏名', count: '出演人数' };
-    const COL_LABELS = { part: 'パート', name: '氏名', part2: 'パート', name2: '氏名', mic: 'マイク', no: '曲順', title: '曲名', sound: '音響', light: '照明', request: '備考（音響・照明）', note: '備考', time: '分数', mc: 'MC' };
+    const COL_LABELS = { part: 'パート', name: '氏名', part2: 'パート', name2: '氏名', mic: 'マイク', no: '曲順', title: '曲名', sound: '音響', light: '照明', request: '備考（音響・照明）', note: '備考', note2: '備考', time: '分数', mc: 'MC' };
     // 備え付けギターアンプの標準（assets/setting_sheet.js の gtAmps() と同じ。型紙に gt_amps が無いとき）
     const GT_AMPS = ['JC', 'Marshall'];
-    const PAIR_LABELS ={ part: 'パート1', name: '名前1', part2: 'パート2', name2: '名前2' };
+    const PAIR_LABELS ={ part: 'パート1', name: '名前1', part2: 'パート2', name2: '名前2', note: '備考1', note2: '備考2' };
 
     let cfg = null;        // 今の型紙（JSON を読んだもの）。ドラッグはこの中の数字を直接書き換える
     let items = [];        // 画面に出す枠の一覧（buildItems で cfg から作る）
@@ -700,7 +700,7 @@
                 const b = it.t.top + it.t.row_h * it.t.rows;
                 it.t.rows = n;
                 it.t.row_h = +((b - it.t.top) / n).toFixed(3);
-            });
+            }, '1');
         } else {
             const s = document.createElement('span');
             s.className = 'muted small';
@@ -860,13 +860,13 @@
     }
 
     /** パネルに数字の入力欄を1つ足す */
-    function numInput(label, get, set) {
+    function numInput(label, get, set, step = '0.1') {
         const l = document.createElement('label');
         l.className = 'ed-num';
         l.textContent = label;
         const inp = document.createElement('input');
         inp.type = 'number';
-        inp.step = '0.1';
+        inp.step = step; // 行数は整数（0.1 刻みだと △ で 5.1 になって 5 に戻る）
         inp.value = String(+get().toFixed(3));
         inp.addEventListener('change', () => {
             if (inp.value === '' || !Number.isFinite(+inp.value)) return;
@@ -904,18 +904,24 @@
             if (!on) {
                 delete t.part2;
                 delete t.name2;
+                delete t.note2;
                 return;
             }
-            // 1組目のいちばん右の線から、1組目と同じ並び（名前が先 / パートが先）・同じ幅で置く。
+            // 1組目のいちばん右の線（備考の列があればその右）から、1組目と同じ並び（名前が先 / パートが先）・同じ幅で置く。
             // 1組目の列に重ねると線がくっついて（groupRefs）離せなくなる
             const pw2 = Math.abs(t.part[1] - t.part[0]);
             const nw = Math.abs(t.name[1] - t.name[0]);
-            const x = Math.max(...t.part, ...t.name);
+            const x = Math.max(...t.part, ...t.name, ...(isCol(t.note) ? t.note : []));
             const nameFirst = Math.min(...t.name) < Math.min(...t.part);
             const [w1, w2] = nameFirst ? [nw, pw2] : [pw2, nw];
             const first = [r1(x), r1(x + w1)];
             const second = [r1(x + w1), r1(x + w1 + w2)];
             [t.part2, t.name2] = nameFirst ? [second, first] : [first, second];
+            // 1組目に備考の列があれば、2組目にも同じ幅で足す
+            if (isCol(t.note)) {
+                const right = x + w1 + w2;
+                t.note2 = [r1(right), r1(right + Math.abs(t.note[1] - t.note[0]))];
+            }
             note.textContent = '右にもう1組置きました。左の組が埋まったら、右の組の上から書きます。線をドラッグして合わせてください。';
         });
     }
@@ -925,13 +931,22 @@
      * 無いシートは、作成画面の備考のオプションをオンにすると名前の後ろに（備考）と書く。足すときは表のいちばん右に 60pt
      */
     function membersNotePanel(t) {
-        const cols = Object.keys(t).filter((k) => isCol(t[k]) && k !== 'lines' && k !== 'note').map((k) => t[k]);
+        const cols = Object.keys(t).filter((k) => isCol(t[k]) && k !== 'lines' && k !== 'note' && k !== 'note2').map((k) => t[k]);
         if (!cols.length) return;
         toggle('備考の列', isCol(t.note), (on) => {
-            if (!on) { delete t.note; return; }
-            const right = Math.max(...cols.flat());
-            t.note = [r1(right), r1(right + 60)];
-            note.textContent = '表の右に備考の列を足しました。線をドラッグして合わせてください。';
+            if (!on) { delete t.note; delete t.note2; return; }
+            const w = 60;
+            const hasPair = isCol(t.part2) && isCol(t.name2);
+            // 1組目（パート・氏名）のすぐ右に置く。2組目があるときは、2組目を備考の幅だけ右にずらして場所を空ける
+            const first = [t.part, t.name, t.mic].filter(isCol).flat();
+            const right = Math.max(...first);
+            t.note = [r1(right), r1(right + w)];
+            if (hasPair) {
+                for (const k of ['part2', 'name2']) t[k] = [r1(t[k][0] + w), r1(t[k][1] + w)];
+                const right2 = Math.max(...t.part2, ...t.name2);
+                t.note2 = [r1(right2), r1(right2 + w)];
+            }
+            note.textContent = hasPair ? '各組の右に備考の列を足しました。線をドラッグして合わせてください。' : '表の右に備考の列を足しました。線をドラッグして合わせてください。';
         });
     }
 
@@ -996,6 +1011,14 @@
                 changed(true);
             });
             noteRow.append(sel);
+        }
+        // 別々の列のとき: 音響と照明の左右を入れ替える（シートが「照明 → 音響」の順のとき）。線の位置はそのまま
+        if (isCol(t.sound) && isCol(t.light)) {
+            panelButton('⇄ 音響と照明を入れ替える', () => {
+                [t.sound, t.light] = [t.light, t.sound];
+                note.textContent = '線の位置はそのままです。真ん中の線をドラッグして幅を合わせてください。';
+                changed(true);
+            });
         }
         // MC を行に書かず、表の外（曲と曲の境目）に「MC＞」と書くシート。足すときは表の左外に 30pt
         const mcRow = toggle('MC を枠の外に書く', isCol(t.mc), (on) => {

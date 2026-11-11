@@ -190,10 +190,11 @@
     }
 
     /** メンバー表に備考の列（members.note = [左, 右]）があるか。あれば PDF のその列に書く */
-    const noteCol = () => {
-        const c = tpl().members?.note;
-        return Array.isArray(c) && c.length === 2 && c.every(Number.isFinite) ? [Math.min(...c), Math.max(...c)] : null;
-    };
+    const noteColOf = (c) => (Array.isArray(c) && c.length === 2 && c.every(Number.isFinite) ? [Math.min(...c), Math.max(...c)] : null);
+    /** 組ごとの備考の列 [1組目, 2組目]（note / note2。無ければ null） */
+    const noteCols = () => [noteColOf(tpl().members?.note), noteColOf(tpl().members?.note2)];
+    /** どれか1つでも備考の列があれば、その列を返す（無ければ null） */
+    const noteCol = () => noteCols().find(Boolean) || null;
     /** 備考欄を出すか。備考の列があるシートは常に出す。無いシートはオプション（名前の後ろに（備考）と書く） */
     const notesOn = () => !!noteCol() || !!state.memberNotes;
 
@@ -2240,9 +2241,11 @@
                 if (!r.fixed) { // パートが印刷済みの行には書かない
                     drawInBox(r.part, [partCol[0], top, partCol[1], bottom], { size: 9, align: 'center', pad: 1 });
                 }
-                drawInBox(r.names.join('・'), [nameCol[0] + 3, top, nameCol[1], bottom], { size: 11 });
-                const nc = noteCol();
-                if (nc && r.notes.length) { // 備考の列（右の組があっても、備考は表の右端の1列）
+                const nc = noteCols()[Math.floor(r.slot / mt.rows)]; // 組ごとの備考の列
+                // この組に備考の列が無い（ほかの組にはある）ときは、名前の後ろに（備考）
+                const tail = !nc && noteCol() && r.notes.length ? `（${r.notes.join('・')}）` : '';
+                drawInBox(r.names.join('・') + tail, [nameCol[0] + 3, top, nameCol[1], bottom], { size: 11 });
+                if (nc && r.notes.length) {
                     drawInBox(r.notes.join('・'), [nc[0] + 2, top, nc[1], bottom], { size: 9, min: 5, wrap: true, pad: 1 });
                 }
             }
