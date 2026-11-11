@@ -84,6 +84,9 @@
         })).sort((a, b) => a.get() - b.get());
     }
 
+    /** 複製した枠は少しずらして置く（重なって見えなくならないように） */
+    const shifted = (b) => b.map((v) => r1(v + 10));
+
     function rectItem(id, label, kind, box, remove, extra = {}) {
         return { id, label, kind, type: 'rect', box, remove, ...extra };
     }
@@ -185,7 +188,7 @@
         if (isBox(cfg.drum)) out.push(rectItem('drum', 'ドラム（自動配置で避ける）', 'drum', cfg.drum, () => delete cfg.drum));
         // セット図に印刷済みの枠（アンプ・モニター）。自動配置でアンプの名前を書き込む・モニターの奥に人を立たせる
         (Array.isArray(cfg.stage_slots) ? cfg.stage_slots : []).forEach((s, i) => {
-            if (s && isBox(s.box)) out.push(rectItem(`stage_slots.${i}`, SLOT_LABELS[s.kind] || s.kind, 'slots', s.box, () => cfg.stage_slots.splice(i, 1)));
+            if (s && isBox(s.box)) out.push(rectItem(`stage_slots.${i}`, SLOT_LABELS[s.kind] || s.kind, 'slots', s.box, () => cfg.stage_slots.splice(i, 1), { copy: () => { cfg.stage_slots.push({ ...s, box: shifted(s.box) }); return `stage_slots.${cfg.stage_slots.length - 1}`; } }));
         });
         for (const [g, opts] of Object.entries(cfg.choices || {})) {
             for (const [name, v] of Object.entries(opts || {})) {
@@ -200,7 +203,19 @@
                         if (cfg.choice_labels) delete cfg.choice_labels[g];
                         if (cfg.choice_multi) delete cfg.choice_multi[g];
                     }
-                }, { choice: { g, name } }));
+                }, {
+                    choice: { g, name },
+                    copy: () => { // 同じグループに、重ならない名前で複製（名前はパネルで変更できる）
+                        let n = 2;
+                        while (`${name}${n}` in cfg.choices[g]) n++;
+                        const s = optSpec(v);
+                        s.box = shifted(s.box);
+                        if (isBox(s.text_box)) s.text_box = shifted(s.text_box);
+                        cfg.choices[g][`${name}${n}`] = s;
+                        writeOpt(g, `${name}${n}`, s);
+                        return `choices.${g}.${name}${n}`;
+                    },
+                }));
                 // 書く文字の枠（○の位置とは別）。あれば別の枠として動かせる
                 if (isBox(v.text_box) && v.text) {
                     out.push(rectItem(`choice_text.${g}.${name}`, `${groupLabel(g)}: ${name} →文字「${v.text}」の枠`, 'choicetext', v.text_box, () => {
@@ -212,10 +227,18 @@
             }
         }
         (cfg.stamps || []).forEach((s, i) => {
-            if (s && isBox(s.box)) out.push(rectItem(`stamps.${i}`, s.text ? `「${s.text}」` : SHAPES[s.shape] || '（空）', 'stamps', s.box, () => cfg.stamps.splice(i, 1), { stamp: s }));
+            if (s && isBox(s.box)) out.push(rectItem(`stamps.${i}`, s.text ? `「${s.text}」` : SHAPES[s.shape] || '（空）', 'stamps', s.box, () => cfg.stamps.splice(i, 1), { stamp: s, copy: () => { cfg.stamps.push({ ...s, box: shifted(s.box) }); return `stamps.${cfg.stamps.length - 1}`; } }));
         });
         (cfg.texts || []).forEach((t, i) => {
-            if (t && isBox(t.box)) out.push(rectItem(`texts.${i}`, t.label || t.key || `欄${i + 1}`, 'texts', t.box, () => cfg.texts.splice(i, 1), { text: t }));
+            if (t && isBox(t.box)) out.push(rectItem(`texts.${i}`, t.label || t.key || `欄${i + 1}`, 'texts', t.box, () => cfg.texts.splice(i, 1), {
+                text: t,
+                copy: () => { // key は重ならない名前にする
+                    let n = cfg.texts.length + 1;
+                    while (cfg.texts.some((x) => x.key === `text${n}`)) n++;
+                    cfg.texts.push({ ...t, key: `text${n}`, label: t.label ? `${t.label}のコピー` : `新しい欄${n}`, box: shifted(t.box) });
+                    return `texts.${cfg.texts.length - 1}`;
+                },
+            }));
         });
         return out;
     }
@@ -724,6 +747,19 @@
         out = advBox;
         drawAdvanced(it, num);
         out = panel;
+        if (it.copy) {
+            const dup = document.createElement('button');
+            dup.type = 'button';
+            dup.className = 'btn btn--ghost btn--sm';
+            dup.title = 'この枠を複製';
+            dup.setAttribute('aria-label', 'この枠を複製');
+            dup.innerHTML = '<span class="icon" aria-hidden="true">content_copy</span>';
+            dup.addEventListener('click', () => {
+                selectedId = it.copy();
+                changed(true);
+            });
+            panel.append(dup);
+        }
         if (it.remove) {
             const del = document.createElement('button');
             del.type = 'button';
