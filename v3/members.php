@@ -24,7 +24,6 @@ require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/repository.php';
 $user = require_login();
 $pdo = db();
-$thisYear = current_fiscal_year();
 
 // ---- 学年の絞り込み ----
 $e = my_entry_year();
@@ -53,13 +52,6 @@ $slotValue = match (true) {
 // 退会した人を隠すか。初期値は隠す。チェックを外すと JS が URL に ?retired=show を書く
 $hideRetired = ($_GET['retired'] ?? '') !== 'show';
 $hasRetired = (bool)$pdo->query('SELECT 1 FROM member WHERE retired = 1 LIMIT 1')->fetchColumn();
-
-/** 入学年度 → 「4年（2023年度入学）」のような表示 */
-function entry_option_label(int $entryYear): string
-{
-    $grade = grade_of($entryYear);
-    return ($grade !== null ? grade_label($grade) . '（' : '（') . $entryYear . '年度入学）';
-}
 
 $st = $pdo->prepare('SELECT m.member_id, m.name, m.name_kana, m.entry_year, m.retired,
         COUNT(DISTINCT bm.band_id) AS bands,

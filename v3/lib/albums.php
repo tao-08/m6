@@ -310,16 +310,21 @@ function album_match_key(string $name): string
     return preg_replace('/[\s\p{P}\p{S}]+/u', '', $name);
 }
 
-/** そのアプリの検索ページの URL（YouTube Music・LINE MUSIC と、「一番上」が見つからなかったとき用） */
-function album_search_url(string $app, array $album): string
+/** そのアプリの検索ページの URL（$q = 検索語）。アルバム・曲の両方で使う（album_search_url / track_search_url） */
+function music_search_url(string $app, string $q): string
 {
-    $q = album_search_query($album);
     return match ($app) {
         'spotify'       => 'https://open.spotify.com/search/' . rawurlencode($q),
         'apple_music'   => 'https://music.apple.com/jp/search?term=' . rawurlencode($q),
         'youtube_music' => 'https://music.youtube.com/search?q=' . rawurlencode($q),
         default         => 'https://music.line.me/webapp/search?query=' . rawurlencode($q),
     };
+}
+
+/** そのアプリの検索ページの URL（YouTube Music・LINE MUSIC と、「一番上」が見つからなかったとき用） */
+function album_search_url(string $app, array $album): string
+{
+    return music_search_url($app, album_search_query($album));
 }
 
 /**
@@ -356,7 +361,7 @@ function album_open_attrs(string $title, ?int $year, ?string $art, string $liste
     // iTunes は 600px、Spotify は 640px の同じ画像に書き換える（songs.php の songs_large_art と同じ）
     $art = $art === null ? null : str_replace('/ab67616d00001e02', '/ab67616d0000b273', preg_replace('/\d+x\d+bb/', '600x600bb', $art));
     return ' data-album-open data-album-title="' . h($title) . '" data-album-artist="' . h($artist) . '" data-album-year="' . ($year ? (int)$year : '')
-        . '" data-album-art="' . h((string)$art) . '" data-album-app="' . h($listenApp) . '" data-album-url="' . h($listenUrl) . '"';
+        . '" data-album-art="' . h($art) . '" data-album-app="' . h($listenApp) . '" data-album-url="' . h($listenUrl) . '"';
 }
 
 /**

@@ -267,7 +267,7 @@ render_header('練習プレイヤー', 'tools');
                     <?= icon('slow_motion_video') ?>
                     <span class="prac-item__body">
                         <span class="prac-item__title"><?= h($m['title']) ?></span>
-                        <span class="muted small"><?= h((string)$m['artist_name']) ?><?= $m['label'] ? ' · ' . h($m['label']) : '' ?></span>
+                        <span class="muted small"><?= h($m['artist_name']) ?><?= $m['label'] ? ' · ' . h($m['label']) : '' ?></span>
                     </span>
                 </a>
                 <button type="button" class="icon-btn prac-row__x" data-unpractice="<?= (int)$m['link_id'] ?>" title="練習中から外す" aria-label="練習中から外す"><?= icon('close') ?></button>

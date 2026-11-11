@@ -820,7 +820,7 @@ function insert_breaks(PDO $pdo, int $dayId, array $rows, array $breakRows): voi
 /**
  * 名簿の1バンドから「誰がどの楽器か」の一覧を作る: [[名前, instrument_id|null], ...]
  * プレビューの「② 名簿」の表で直した内容（$input['rb']）を使う。
- * 登録（register_roster_members）と、人数の比較（roster_member_count。登録済みのバンドを上書きするか決める）の両方で使う。
+ * 登録（register_roster_members）で使う。
  */
 function roster_assignments(array $plan, array $input, string $rosterRef): array
 {
@@ -870,12 +870,6 @@ function roster_assignments(array $plan, array $input, string $rosterRef): array
         }
     }
     return $assignments;
-}
-
-/** 名簿の1バンドの人数（同じ人が Vo と Gt の2行になっても1人。表記ゆれは member_key でそろえる） */
-function roster_member_count(array $plan, array $input, string $rosterRef): int
-{
-    return count(array_unique(array_map(static fn($a) => member_key($a[0]), roster_assignments($plan, $input, $rosterRef))));
 }
 
 /**

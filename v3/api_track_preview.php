@@ -20,22 +20,19 @@
  */
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
+require_once __DIR__ . '/lib/api.php';
 require_once __DIR__ . '/lib/tracks.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
 // API なのでログイン画面へのリダイレクトではなく、エラーの JSON を返す
 if (current_user() === null) {
-    http_response_code(401);
-    echo json_encode(['error' => 'ログインしてください'], JSON_UNESCAPED_UNICODE);
-    exit;
+    fail(401, 'ログインしてください');
 }
 
 $key = album_parse_key($_GET['track'] ?? null);
 if ($key === null) {
-    http_response_code(400);
-    echo json_encode(['error' => '曲の指定がおかしいです'], JSON_UNESCAPED_UNICODE);
-    exit;
+    fail(400, '曲の指定がおかしいです');
 }
 [$source, $trackId] = $key;
 
@@ -49,9 +46,7 @@ $st = $pdo->prepare('SELECT t.source, t.track_id, t.title, t.artist_name, p.prev
 $st->execute([$source, $trackId]);
 $track = $st->fetch();
 if (!$track) {
-    http_response_code(404);
-    echo json_encode(['error' => '曲が見つかりません'], JSON_UNESCAPED_UNICODE);
-    exit;
+    fail(404, '曲が見つかりません');
 }
 
 // 覚えてある結果を使うとき:
@@ -69,9 +64,7 @@ if ($track['checked_at'] !== null) {
 
 $url = track_preview_find($track);
 if ($url === false) {
-    http_response_code(502); // 502 = この先のサーバー（iTunes）がうまく答えなかった
-    echo json_encode(['error' => '今は試聴を探せません。時間をおいてもう一度試してください'], JSON_UNESCAPED_UNICODE);
-    exit;
+    fail(502, '今は試聴を探せません。時間をおいてもう一度試してください'); // 502 = この先のサーバー（iTunes）がうまく答えなかった
 }
 // 同時に2人が押しても、ON DUPLICATE KEY UPDATE でエラーにしない
 $pdo->prepare('INSERT INTO track_preview (source, track_id, preview_url) VALUES (?, ?, ?)

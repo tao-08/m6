@@ -10,25 +10,7 @@
  */
 (() => {
   'use strict';
-  const token = document.querySelector('meta[name="csrf-token"]')?.content || '';
-  async function post(body) {
-    const res = await fetch('api_tab_save', {
-      method: 'POST',
-      credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': token },
-      body: JSON.stringify(body),
-    });
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(json.error || '通信できませんでした');
-    return json;
-  }
-  function el(tag, cls, text) {
-    const e = document.createElement(tag);
-    if (cls) e.className = cls;
-    if (text !== undefined) e.textContent = text;
-    return e;
-  }
-  const icon = (name) => { const s = el('span', 'icon', name); s.setAttribute('aria-hidden', 'true'); return s; };
+  const post = (body) => apiPost('api_tab_save', body, '通信できませんでした');
 
   // ---- 0. 未ログインのピン留め: 端末（localStorage）に持つ。ログインすると使われない ----
   const GUEST = !!window.PRAC_GUEST;
@@ -47,19 +29,19 @@
     const ul = document.querySelector('[data-guest-pins]');
     if (ul && pins.length) {
       ul.replaceChildren(...pins.map((p) => {
-        const li = el('li', 'card prac-item');
-        const a = el('a', 'prac-item__main');
+        const li = mkEl('li', 'card prac-item');
+        const a = mkEl('a', 'prac-item__main');
         a.href = 'practice?key=' + encodeURIComponent(p.key);
-        const body = el('span', 'prac-item__body');
-        body.append(el('span', 'prac-item__title', p.title), el('span', 'muted small', p.artist || ''));
-        a.append(icon('search'), body);
-        const x = el('button', 'icon-btn prac-pin is-on');
+        const body = mkEl('span', 'prac-item__body');
+        body.append(mkEl('span', 'prac-item__title', p.title), mkEl('span', 'muted small', p.artist || ''));
+        a.append(iconEl('search'), body);
+        const x = mkEl('button', 'icon-btn prac-pin is-on');
         x.type = 'button';
         x.dataset.pin = '';
         Object.assign(x.dataset, { key: p.key, title: p.title, artist: p.artist || '' });
         x.setAttribute('aria-pressed', 'true');
         x.title = x.ariaLabel = 'ピン留め';
-        x.appendChild(icon('push_pin'));
+        x.appendChild(iconEl('push_pin'));
         li.append(a, x);
         return li;
       }));
@@ -82,13 +64,7 @@
     }
     btn.disabled = true;
     try {
-      const res = await fetch('api_practice_pin', {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': token },
-        body: JSON.stringify({ key: btn.dataset.key, title: btn.dataset.title, artist: btn.dataset.artist, on }),
-      });
-      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'ピン留めできませんでした');
+      await apiPost('api_practice_pin', { key: btn.dataset.key, title: btn.dataset.title, artist: btn.dataset.artist, on }, 'ピン留めできませんでした');
       location.reload();
     } catch (err) {
       btn.disabled = false;
@@ -119,7 +95,7 @@
     const qInput = form.elements.q;
     const list = dlg.querySelector('[data-yts-list]');
     let ctx = null; // 開いた曲 { key, songId, urls: {url: link_id} }
-    const setMsg = (text) => list.replaceChildren(el('li', 'muted small', text));
+    const setMsg = (text) => list.replaceChildren(mkEl('li', 'muted small', text));
 
     // 動画タイトルから楽器を判別（登録先のパートのカード）。1つに決まらなければ etc（その他）のカード。あとで tab 画面で変更できる
     const INST = [
@@ -168,20 +144,20 @@
         list.scrollTop = 0;
         if (!json.items.length) { setMsg('見つかりませんでした'); return; }
         json.items.forEach((v, i) => {
-          const li = el('li', 'yts__item');
+          const li = mkEl('li', 'yts__item');
           li.style.setProperty('--i', i);
-          const thumb = el('button', 'yts__thumb');
+          const thumb = mkEl('button', 'yts__thumb');
           thumb.type = 'button';
           thumb.title = '試し見';
-          const img = el('img');
+          const img = mkEl('img');
           img.src = 'https://i.ytimg.com/vi/' + encodeURIComponent(v.video_id) + '/mqdefault.jpg';
           img.alt = '';
           img.loading = 'lazy';
-          thumb.append(img, icon('play_circle'));
+          thumb.append(img, iconEl('play_circle'));
           thumb.addEventListener('click', () => {
             list.querySelectorAll('.yts__item--play').forEach((o) => o.classList.remove('yts__item--play'));
             list.querySelectorAll('iframe').forEach((f) => f.replaceWith(f._img));
-            const frame = el('iframe');
+            const frame = mkEl('iframe');
             frame.src = 'https://www.youtube.com/embed/' + encodeURIComponent(v.video_id) + '?autoplay=1&playsinline=1&rel=0';
             frame.allow = 'autoplay; encrypted-media; picture-in-picture';
             frame.title = v.title;
@@ -189,13 +165,13 @@
             img.replaceWith(frame);
             li.classList.add('yts__item--play');
           });
-          const text = el('span', 'yts__title', v.title);
-          text.appendChild(el('span', 'yts__ch', v.channel));
-          const btn = el('button', 'btn btn--primary btn--sm');
+          const text = mkEl('span', 'yts__title', v.title);
+          text.appendChild(mkEl('span', 'yts__ch', v.channel));
+          const btn = mkEl('button', 'btn btn--primary btn--sm');
           btn.type = 'button';
           btn.title = '練習プレイヤー';
           btn.setAttribute('aria-label', '練習プレイヤー');
-          btn.appendChild(icon('slow_motion_video'));
+          btn.appendChild(iconEl('slow_motion_video'));
           const inst = detectInst(v.title); // 判別できた楽器を見せる（登録済みでも。etc は出さない）
           if (inst && inst !== 'etc') { btn.append(' ' + inst); btn.title = ctx.free || ctx.urls[v.url] ? inst : inst + ' に追加して練習プレイヤー'; }
           btn.addEventListener('click', () => go(v, btn));
@@ -276,13 +252,13 @@
         const json = await res.json();
         active = -1;
         box.replaceChildren(...json.items.map((s, i) => {
-          const li = el('li');
-          const a = el('a', 'prac-suggest__item' + (s.links ? ' prac-suggest__item--link' : ''));
+          const li = mkEl('li');
+          const a = mkEl('a', 'prac-suggest__item' + (s.links ? ' prac-suggest__item--link' : ''));
           a.style.setProperty('--i', i); // 出てくる順番（CSS のアニメーションの遅れ）
           a.href = s.url; // サーバーが作った tab?link= / practice?key= だけ
-          const body = el('span', 'prac-item__body');
-          body.append(el('span', 'prac-item__title', s.title), el('span', 'muted small', s.artist));
-          a.append(icon(s.links ? 'slow_motion_video' : 'search'), body);
+          const body = mkEl('span', 'prac-item__body');
+          body.append(mkEl('span', 'prac-item__title', s.title), mkEl('span', 'muted small', s.artist));
+          a.append(iconEl(s.links ? 'slow_motion_video' : 'search'), body);
           a.addEventListener('mousedown', (e) => e.preventDefault()); // blur で閉じる前にクリックを通す
           li.appendChild(a);
           return li;
@@ -310,34 +286,34 @@
     const load = async () => {
       if (loaded || !box.open) return;
       loaded = true;
-      list.replaceChildren(el('li', 'muted small', '…'));
+      list.replaceChildren(mkEl('li', 'muted small', '…'));
       try {
         const res = await fetch('api_track_search?q=' + encodeURIComponent(box.dataset.q), { credentials: 'same-origin' });
         const json = await res.json();
         if (!res.ok) throw new Error(json.error || '検索できませんでした');
         list.replaceChildren();
-        if (!json.tracks.length) list.appendChild(el('li', 'muted small', '見つかりません'));
+        if (!json.tracks.length) list.appendChild(mkEl('li', 'muted small', '見つかりません'));
         json.tracks.forEach((t) => {
-          const li = el('li');
-          const b = el('button', 'prac-new__item');
+          const li = mkEl('li');
+          const b = mkEl('button', 'prac-new__item');
           b.type = 'button';
           if (typeof t.artwork_url === 'string' && t.artwork_url.startsWith('https://')) {
-            const img = el('img');
+            const img = mkEl('img');
             img.src = t.artwork_url;
             img.alt = '';
             img.width = img.height = 40;
             b.appendChild(img);
           }
-          const text = el('span', 'prac-item__body');
-          text.append(el('span', 'prac-item__title', t.title), el('span', 'muted small', [t.artist_name, t.album_title].filter(Boolean).join(' · ')));
-          b.append(text, icon('add'));
+          const text = mkEl('span', 'prac-item__body');
+          text.append(mkEl('span', 'prac-item__title', t.title), mkEl('span', 'muted small', [t.artist_name, t.album_title].filter(Boolean).join(' · ')));
+          b.append(text, iconEl('add'));
           b.addEventListener('click', () => { form.elements.track.value = t.key; form.submit(); });
           li.appendChild(b);
           list.appendChild(li);
         });
       } catch (err) {
         loaded = false;
-        list.replaceChildren(el('li', 'small', err.message));
+        list.replaceChildren(mkEl('li', 'small', err.message));
       }
     };
     box.addEventListener('toggle', load);

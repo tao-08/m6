@@ -16,34 +16,18 @@
  */
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
+require_once __DIR__ . '/lib/api.php';
 require_once __DIR__ . '/lib/tab_ai.php';
 require_once __DIR__ . '/lib/live_image.php'; // LIVE_IMAGE_DIR
 
 header('Content-Type: application/json; charset=utf-8');
 
-function fail(int $status, string $message): never
-{
-    http_response_code($status);
-    echo json_encode(['error' => $message], JSON_UNESCAPED_UNICODE);
-    exit;
-}
-
-$user = current_user();
-if ($user === null) {
-    fail(401, 'ログインしてください');
-}
-if (!tab_allowed()) {
-    fail(403, '管理人のみ利用できます'); // 今は管理人だけ（lib/tabs.php の tab_allowed）
-}
-if (!is_post()) {
-    fail(405, 'POST only');
-}
-verify_csrf();
+$user = api_user(tab_allowed(...), '管理人のみ利用できます'); // 今は管理人だけ（lib/tabs.php の tab_allowed）
 if (!claude_enabled()) {
     fail(503, 'AI は設定されていません');
 }
 
-$body = json_decode((string)file_get_contents('php://input'), true);
+$body = api_body();
 if (!is_array($body)) {
     fail(400, '送られた内容がおかしいです');
 }

@@ -485,13 +485,6 @@ render_header('集計', 'stats');
  *   ラジオボタンを「タブ」の見た目にしているだけなので、JS なしでも「適用」ボタンで送れる。
  *   data-autosubmit を付けた入力は、変えた瞬間に送信される（assets/app.js）。
  */
-$yearOptions = static function (int $selected, array $list): string {
-    $html = '';
-    foreach ($list as $y) {
-        $html .= '<option value="' . (int)$y . '"' . ($y === $selected ? ' selected' : '') . '>' . (int)$y . '</option>';
-    }
-    return $html;
-};
 $entryYears = range($thisYear, $entryMin); // 新しい順
 // 年度スロット（'26 表記・タップでプルダウン）。回したら hidden の name を書き換えて送信する（app.js の setupSlotInput）
 $yearSlot = static function (string $name, int $selected, array $list, string $label, string $unit = '年度'): string {

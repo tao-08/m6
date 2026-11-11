@@ -14,28 +14,14 @@
  */
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
+require_once __DIR__ . '/lib/api.php';
 require __DIR__ . '/lib/board.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
-/** エラーの JSON を返して終わる */
-function fail(int $status, string $message): never
-{
-    http_response_code($status);
-    echo json_encode(['error' => $message], JSON_UNESCAPED_UNICODE);
-    exit;
-}
+$user = api_user(); // 未ログイン・POST 以外・CSRF 不一致はここで JSON のエラーを返して終わる
 
-$user = current_user();
-if ($user === null) {
-    fail(401, 'ログインしてください');
-}
-if (!is_post()) {
-    fail(405, 'POST only');
-}
-verify_csrf();
-
-$body = json_decode((string)file_get_contents('php://input'), true);
+$body = api_body();
 $threadId = is_int($body['thread_id'] ?? null) ? $body['thread_id'] : 0;
 if ($threadId <= 0) {
     fail(400, 'スレッドの指定がおかしいです');
@@ -50,13 +36,7 @@ if (!$thread || $thread['deleted_at'] !== null || !board_can_view($user, $thread
     fail(404, 'スレッドが見つかりません');
 }
 try {
-    // まず消してみる。1行消えた = ミュート中だった → 外した。0行 → 付ける（連打しても食い違わない）
-    $del = $pdo->prepare('DELETE FROM board_thread_mute WHERE user_id = ? AND thread_id = ?');
-    $del->execute([$userId, $threadId]);
-    $muted = $del->rowCount() === 0;
-    if ($muted) {
-        $pdo->prepare('INSERT IGNORE INTO board_thread_mute (user_id, thread_id) VALUES (?, ?)')->execute([$userId, $threadId]);
-    }
+    $muted = api_toggle($pdo, 'board_thread_mute', 'thread_id', $threadId, $userId); // ミュート中なら外す、でなければ付ける（lib/api.php）
 } catch (PDOException $e) {
     fail(500, config('debug') ? $e->getMessage() : 'ミュートを保存できませんでした');
 }

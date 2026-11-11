@@ -20,11 +20,7 @@ $st = $pdo->prepare('SELECT * FROM member WHERE member_id = ?');
 $st->execute([$memberId]);
 $member = $st->fetch();
 if (!$member) {
-    http_response_code(404);
-    render_header('見つかりません');
-    echo '<div class="empty card"><p class="empty__title">メンバーが見つかりません</p><a class="btn" href="members">一覧へ戻る</a></div>';
-    render_footer();
-    exit;
+    not_found_page('メンバーが見つかりません', 'members');
 }
 
 // ---- 出演履歴（新しい順） ----

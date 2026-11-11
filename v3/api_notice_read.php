@@ -13,25 +13,11 @@
  */
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
+require_once __DIR__ . '/lib/api.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
-/** エラーの JSON を返して終わる */
-function fail(int $status, string $message): never
-{
-    http_response_code($status);
-    echo json_encode(['error' => $message], JSON_UNESCAPED_UNICODE);
-    exit;
-}
-
-$user = current_user();
-if ($user === null) {
-    fail(401, 'ログインしてください');
-}
-if (!is_post()) {
-    fail(405, 'POST only');
-}
-verify_csrf(); // JS から X-CSRF-Token ヘッダーで送られてくる
+$user = api_user(); // 未ログイン・POST 以外・CSRF 不一致はここで JSON のエラーを返して終わる
 
 $pdo = db();
 $uid = (int)$user['user_id'];
@@ -41,4 +27,6 @@ foreach (notice_recent($uid, $system) as $n) {
     $mark->execute([$uid, (int)$n['notice_id']]);
 }
 
-echo json_encode(['ok' => true, 'tab' => notice_unread_count($uid, $system), 'unread' => notice_unread_count($uid, true) + notice_unread_count($uid, false)], JSON_UNESCAPED_UNICODE);
+$unreadNotif = notice_unread_count($uid, true);
+$unreadNotice = notice_unread_count($uid, false);
+echo json_encode(['ok' => true, 'tab' => $system ? $unreadNotif : $unreadNotice, 'unread' => $unreadNotif + $unreadNotice], JSON_UNESCAPED_UNICODE);

@@ -19,7 +19,6 @@
   if (!dataEl || !root) return;
   const D = JSON.parse(dataEl.textContent);
   const P = D.practice; // {m: [{t, e, l}], ab: [A, B] | null, rate, back}（時刻はミリ秒）
-  const token = document.querySelector('meta[name="csrf-token"]')?.content || '';
   const $ = (sel) => root.querySelector(sel);
 
   // 未ログインの設定は端末（localStorage）に持つ。形は読むときに確かめる
@@ -67,14 +66,6 @@
   const now = () => (ready ? Math.round((player.getCurrentTime() || 0) * 1000) : 0);
   const dur = () => (ready ? Math.round((player.getDuration() || 0) * 1000) : 0);
   const seek = (ms, ahead = true) => { if (ready) player.seekTo(Math.max(0, ms) / 1000, ahead); };
-  const icon = (name) => { const s = document.createElement('span'); s.className = 'icon'; s.setAttribute('aria-hidden', 'true'); s.textContent = name; return s; };
-  function notify(message, type) {
-    const t = document.createElement('div');
-    t.className = 'toast' + (type === 'error' ? ' toast--error' : '');
-    t.setAttribute('role', 'status');
-    t.textContent = message;
-    if (typeof window.showToast === 'function') window.showToast(t); else window.alert(message);
-  }
 
   // ---- 自動保存（変更から約1秒後。ページを閉じるときは keepalive で送る） ----
   let saveTimer = null;
@@ -88,13 +79,7 @@
   };
   const personal = () => P.m; // 共通の表（マイグレーション 080）が無い・保存できない場合に備え、ラベル付きも自分の分に残す（読み込み時は共通のほうが優先される）
   const sharedList = () => P.m.filter((m) => SHARED.has(m.l)).map((m) => ({ t: m.t, l: m.l }));
-  const post = (body, keepalive) => fetch('api_tab_save', {
-    method: 'POST',
-    keepalive: !!keepalive,
-    credentials: 'same-origin',
-    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': token },
-    body: JSON.stringify(body),
-  }).then(async (res) => { if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || '保存できませんでした'); });
+  const post = (body, keepalive) => apiPost('api_tab_save', body, '保存できませんでした', { keepalive: !!keepalive });
   let sentShared = JSON.stringify(sharedList()); // 変わったときだけ共通マーカーを送る
   const sendShared = (keepalive) => {
     const list = sharedList(), sig = JSON.stringify(list), prev = sentShared;
@@ -117,7 +102,7 @@
   ]);
   function changed() {
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => { saveTimer = null; send().catch((e) => notify(e.message, 'error')); }, 1000);
+    saveTimer = setTimeout(() => { saveTimer = null; send().catch((e) => flashToast(e.message, 'error')); }, 1000);
   }
   window.addEventListener('pagehide', () => { if (saveTimer) { clearTimeout(saveTimer); send(true).catch(() => {}); } });
 
@@ -126,12 +111,7 @@
   function markPracticing() {
     if (marked || D.guest) return;
     marked = true;
-    fetch('api_tab_save', {
-      method: 'POST',
-      credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': token },
-      body: JSON.stringify({ action: 'link_practicing', link_id: D.link_id, on: true }),
-    }).catch(() => { marked = false; });
+    postJson('api_tab_save', { action: 'link_practicing', link_id: D.link_id, on: true }).catch(() => { marked = false; });
   }
 
   // ---- YouTube の IFrame API ----
@@ -303,7 +283,7 @@
   }
   editBtn.addEventListener('click', () => { editing = !editing; applyEdit(); });
   function addMark(label) {
-    if (P.m.length >= 100) { notify('マークは100個までです', 'error'); return; }
+    if (P.m.length >= 100) { flashToast('マークは100個までです', 'error'); return; }
     P.m.push({ t: now(), e: null, l: label || '' });
     P.m.sort((x, y) => x.t - y.t);
     changed();
@@ -354,14 +334,14 @@
       ab.className = 'icon-btn';
       ab.title = '次のマークまでを AB リピート';
       ab.setAttribute('aria-label', ab.title);
-      ab.appendChild(icon('repeat_one'));
+      ab.appendChild(iconEl('repeat_one'));
       ab.addEventListener('click', () => repeatMark(m));
       const del = document.createElement('button');
       del.type = 'button';
       del.className = 'icon-btn ytp__del';
       del.title = '削除';
       del.setAttribute('aria-label', '削除');
-      del.appendChild(icon('delete'));
+      del.appendChild(iconEl('delete'));
       // 削除は2回押し（1回目で赤くなり、3秒以内にもう一度押すと削除）
       let armTimer = null;
       del.addEventListener('click', () => {
@@ -463,7 +443,7 @@
   }).observe(bubbles);
 
   function render() {
-    playBtn.replaceChildren(icon(playing ? 'pause' : 'play_arrow'));
+    playBtn.replaceChildren(iconEl(playing ? 'pause' : 'play_arrow'));
     const ab = P.ab || (pendingAB ? [pendingAB.a, pendingAB.b] : [null, null]);
     $('[data-ytp-at]').textContent = ab[0] !== null ? fmt(ab[0]) : '';
     $('[data-ytp-bt]').textContent = ab[1] !== null ? fmt(ab[1]) : '';

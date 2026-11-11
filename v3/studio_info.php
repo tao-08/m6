@@ -790,10 +790,10 @@ $roomChips = function (int|string $i, array $selected) use ($rooms): string {
     }
     $all = $selected === [];
     $html = '<span class="sinfo-chips" role="group" aria-label="部屋">'
-        . '<label class="sinfo-chip"><input type="checkbox" name="rooms[' . h((string)$i) . '][]" value="0" data-room-all' . ($all ? ' checked' : '') . '> 全部屋</label>';
+        . '<label class="sinfo-chip"><input type="checkbox" name="rooms[' . h($i) . '][]" value="0" data-room-all' . ($all ? ' checked' : '') . '> 全部屋</label>';
     foreach ($rooms as $r) {
         $id = (int)$r['studio_room_id'];
-        $html .= '<label class="sinfo-chip"><input type="checkbox" name="rooms[' . h((string)$i) . '][]" value="' . $id . '"'
+        $html .= '<label class="sinfo-chip"><input type="checkbox" name="rooms[' . h($i) . '][]" value="' . $id . '"'
             . (in_array($id, $selected, true) ? ' checked' : '') . '> ' . h($r['name']) . '</label>';
     }
     return $html . '</span>';
@@ -1270,7 +1270,7 @@ render_header($studio['name'], 'tools');
             <?php foreach ($usedDisc as $d): ?>
                 <span class="tag tag--plan"><?= h($d['name']) ?><?php if ($d['day_type']): ?> <?= h(studio_discount_day_label($d['day_type'])) ?><?php endif; ?></span>
             <?php endforeach; ?>
-            <?= nl2br(h((string)$studio['student_note'])) ?>
+            <?= nl2br(h($studio['student_note'])) ?>
         </p>
     <?php endif; ?>
 
@@ -1355,7 +1355,7 @@ render_header($studio['name'], 'tools');
                         $blank = ['people' => $people ?: null, 'day_type' => $day, 'start_min' => (int)$last['end_min'],
                             'end_min' => min(STUDIO_MAX_MIN, (int)$last['end_min'] + 360), 'lines' => []];
                     ?>
-                        <div class="sinfo-rate-group" data-rate-group data-rate-panel="<?= h((string)$gk) ?>"<?= (string)$gk === (string)$rateTabSel ? '' : ' hidden' ?>>
+                        <div class="sinfo-rate-group" data-rate-group data-rate-panel="<?= h($gk) ?>"<?= (string)$gk === (string)$rateTabSel ? '' : ' hidden' ?>>
                             <div class="sinfo-rate-group__head">
                                 <button type="button" class="btn btn--sm sinfo-rate-group__add" data-rate-add title="時間帯を追加" aria-label="時間帯を追加"><?= icon('add') ?></button>
                             </div>
@@ -1598,7 +1598,7 @@ $packRoomLines = function (array $row) use ($packRoomIds): array {
                 ob_start(); ?>
                 <div class="sinfo-edit__row sinfo-edit__item">
                     <input type="hidden" name="id[]" value="<?= (int)$p['studio_pack_id'] ?>">
-                    <input type="hidden" name="blk[]" value="<?= h((string)$b) ?>">
+                    <input type="hidden" name="blk[]" value="<?= h($b) ?>">
                     <input autocomplete="off" type="text" class="grow" name="name[]" maxlength="50" value="<?= h($p['name']) ?>" placeholder="名前" title="空なら使える時間から自動で付く（例: 3:00パック）" aria-label="パック名">
                     <select name="minutes[]" aria-label="使える時間">
                         <option value="">時間帯まるごと</option>

@@ -10,32 +10,7 @@
  */
 (() => {
   'use strict';
-  const token = document.querySelector('meta[name="csrf-token"]')?.content || '';
-  async function post(body) {
-    const res = await fetch('api_tab_save', {
-      method: 'POST',
-      credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': token },
-      body: JSON.stringify(body),
-    });
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(json.error || '通信できませんでした');
-    return json;
-  }
-  function notify(message, type) {
-    const t = document.createElement('div');
-    t.className = 'flash flash--' + (type || 'success');
-    t.setAttribute('role', 'status');
-    t.textContent = message;
-    if (typeof window.showToast === 'function') window.showToast(t); else window.alert(message);
-  }
-  function icon(name) {
-    const s = document.createElement('span');
-    s.className = 'icon';
-    s.setAttribute('aria-hidden', 'true');
-    s.textContent = name;
-    return s;
-  }
+  const post = (body) => apiPost('api_tab_save', body, '通信できませんでした');
   // 埋め込みプレイヤー。video_id は PHP / API が 11 文字の英数字と - _ だけに検証したもの
   function embed(videoId, title) {
     const f = document.createElement('iframe');
@@ -70,7 +45,7 @@
         if (autoBtn) autoBtn.hidden = false;
       } catch (err) {
         btn.disabled = false;
-        notify(err.message || '削除できませんでした', 'error');
+        flashToast(err.message || '削除できませんでした', 'error');
       }
     });
     const bindItem = (li) => {
@@ -126,7 +101,7 @@
           img.src = 'https://i.ytimg.com/vi/' + encodeURIComponent(v.video_id) + '/mqdefault.jpg';
           img.alt = '';
           img.loading = 'lazy';
-          thumb.append(img, icon('play_circle'));
+          thumb.append(img, iconEl('play_circle'));
           thumb.addEventListener('click', () => { // 試し見（押したらその場で埋め込みに差し替え）
             li.classList.add('yts__item--play');
             thumb.replaceChildren(embed(v.video_id, v.title));
@@ -143,7 +118,7 @@
           pick.className = 'icon-btn';
           pick.title = pick.ariaLabel = v.added ? '設定中' : '設定';
           pick.disabled = !!v.added;
-          pick.appendChild(icon(v.added ? 'check' : 'add'));
+          pick.appendChild(iconEl(v.added ? 'check' : 'add'));
           pick.addEventListener('click', async () => {
             pick.disabled = true;
             try {
@@ -151,7 +126,7 @@
               closeDlg();
             } catch (err) {
               pick.disabled = false;
-              notify(err.message || '設定できませんでした', 'error');
+              flashToast(err.message || '設定できませんでした', 'error');
             }
           });
           li.append(thumb, text, pick);
@@ -171,10 +146,10 @@
         autoBtn.disabled = true;
         try {
           const items = await find();
-          if (!items.length) { notify('見つかりませんでした', 'error'); return; }
+          if (!items.length) { flashToast('見つかりませんでした', 'error'); return; }
           await setMv(items[0]);
         } catch (err) {
-          notify(err.message || '設定できませんでした', 'error');
+          flashToast(err.message || '設定できませんでした', 'error');
         } finally {
           autoBtn.disabled = false;
         }
@@ -195,7 +170,7 @@
     // 閉じるときも動かす: is-closing を付けて、アニメーションが終わってから close()（Esc も同じ）
     const closeModal = () => {
       if (!modal.open || modal.classList.contains('is-closing')) return;
-      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { modal.close(); return; }
+      if (reduceMotion) { modal.close(); return; }
       modal.classList.add('is-closing');
       modal.addEventListener('animationend', () => { modal.classList.remove('is-closing'); modal.close(); }, { once: true });
     };
@@ -205,7 +180,7 @@
     if (zoomBtn && zoom) {
       const closeZoom = () => {
         if (!zoom.open || zoom.classList.contains('is-closing')) return;
-        if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { zoom.close(); return; }
+        if (reduceMotion) { zoom.close(); return; }
         zoom.classList.add('is-closing');
         // ::backdrop や中身のアニメーションも zoom に届くので、閉じるアニメーション（songs-zoom-out）だけを待つ。1回だけ動かす（残すと次に開いた直後に閉じる）
         const onEnd = (e) => {
@@ -293,7 +268,7 @@
         const b = document.createElement('button');
         b.type = 'button';
         b.className = 'songs-history__item';
-        b.append(icon('history'), document.createTextNode(word)); // textContent 相当（innerHTML は使わない）
+        b.append(iconEl('history'), document.createTextNode(word)); // textContent 相当（innerHTML は使わない）
         // mousedown で処理（click だと先にバーの blur で閉じてしまう）
         b.addEventListener('mousedown', (e) => {
           e.preventDefault();
@@ -335,13 +310,6 @@
   const hidden = form.querySelector('[data-song-track]');
   const submit = form.querySelector('[data-song-submit]');
 
-  function el(tag, cls, text) {
-    const e = document.createElement(tag);
-    if (cls) e.className = cls;
-    if (text !== undefined) e.textContent = text;
-    return e;
-  }
-
   function choose(t) {
     hidden.value = t.key;
     submit.disabled = false;
@@ -353,33 +321,33 @@
   async function search() {
     const term = q.value.trim();
     if (term === '') return;
-    list.replaceChildren(el('li', 'muted small', '…'));
+    list.replaceChildren(mkEl('li', 'muted small', '…'));
     try {
       const res = await fetch(`api_track_search?q=${encodeURIComponent(term)}`, { credentials: 'same-origin' });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || '検索できませんでした');
       list.replaceChildren();
-      if (json.tracks.length === 0) list.appendChild(el('li', 'muted small', '見つかりません'));
+      if (json.tracks.length === 0) list.appendChild(mkEl('li', 'muted small', '見つかりません'));
       json.tracks.forEach((t) => {
-        const li = el('li');
-        const b = el('button', 'songs-add__result');
+        const li = mkEl('li');
+        const b = mkEl('button', 'songs-add__result');
         b.type = 'button';
         if (typeof t.artwork_url === 'string' && t.artwork_url.startsWith('https://')) {
-          const img = el('img');
+          const img = mkEl('img');
           img.src = t.artwork_url;
           img.alt = '';
           img.width = img.height = 40;
           b.appendChild(img);
         }
-        const text = el('span', 'songs-add__result-text');
-        text.append(el('span', 'songs-add__result-title', t.title), el('span', 'muted small', t.artist_name));
+        const text = mkEl('span', 'songs-add__result-text');
+        text.append(mkEl('span', 'songs-add__result-title', t.title), mkEl('span', 'muted small', t.artist_name));
         b.appendChild(text);
         b.addEventListener('click', () => choose(t));
         li.appendChild(b);
         list.appendChild(li);
       });
     } catch (err) {
-      list.replaceChildren(el('li', 'small', err.message || '検索できませんでした'));
+      list.replaceChildren(mkEl('li', 'small', err.message || '検索できませんでした'));
     }
   }
 

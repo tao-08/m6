@@ -14,28 +14,12 @@
  */
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
+require_once __DIR__ . '/lib/api.php';
 require_once __DIR__ . '/lib/tt_builder.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
-function fail(int $status, string $message): never
-{
-    http_response_code($status);
-    echo json_encode(['error' => $message], JSON_UNESCAPED_UNICODE);
-    exit;
-}
-
-$user = current_user();
-if ($user === null) {
-    fail(401, 'ログインしてください');
-}
-if (!is_executive()) {
-    fail(403, '幹部のみ使えます');
-}
-if (!is_post()) {
-    fail(405, 'POST only');
-}
-verify_csrf();
+$user = api_user(is_executive(...), '幹部のみ使えます');
 // 数秒おきに呼ばれるので、セッションのロックをすぐ外す（他のタブ・ページの読み込みを待たせない）
 session_write_close();
 

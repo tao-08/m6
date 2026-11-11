@@ -1520,11 +1520,6 @@ function partner_medal(int $rank, string $name, string $what = 'よく組むメ�
         . '</svg></button>';
 }
 
-function detach_members(PDO $pdo, int $bandId): void
-{
-    $pdo->prepare('DELETE FROM band_member WHERE band_id = ?')->execute([$bandId]);
-}
-
 /**
  * バンドのメンバーを「フォームの内容と同じ状態」にそろえる（差分だけ更新）。
  *
@@ -1646,6 +1641,63 @@ function lives_with_labels(PDO $pdo): array
         FROM live l LEFT JOIN live_day d ON d.live_id = l.live_id
         GROUP BY l.live_id, l.fiscal_year, l.name
         ORDER BY l.fiscal_year DESC, l.name")->fetchAll();
+}
+
+/** ライブを 1 件取る（live の全列）。無ければ 404 のエラーページを出して終了する */
+function live_or_404(PDO $pdo, int $liveId): array
+{
+    $st = $pdo->prepare('SELECT * FROM live WHERE live_id = ?'); // プリペアドステートメント（SQL インジェクション対策）
+    $st->execute([$liveId]);
+    $live = $st->fetch();
+    if (!$live) {
+        error_page(404, 'ライブが見つかりません');
+    }
+    return $live;
+}
+
+/**
+ * ライブのバンドを日程順 → 出演順で取る。キーを band_id にしておくと、あとで $bands[$id] で引ける
+ *   $withYoutube = true … band.youtube_url も取る（live_youtube.php 用）
+ */
+function live_bands_by_id(PDO $pdo, int $liveId, bool $withYoutube = false): array
+{
+    $st = $pdo->prepare('SELECT b.band_id, b.name, b.play_order, ' . ($withYoutube ? 'b.youtube_url, ' : '') . 'b.artist_id, a.name AS artist_name, d.label
+        FROM band b
+        JOIN live_day d ON d.live_day_id = b.live_day_id
+        LEFT JOIN artist a ON a.artist_id = b.artist_id
+        WHERE d.live_id = ? ORDER BY d.held_on IS NULL, d.held_on, d.live_day_id, b.play_order');
+    $st->execute([$liveId]);
+    $bands = [];
+    foreach ($st as $b) {
+        $bands[(int)$b['band_id']] = $b;
+    }
+    return $bands;
+}
+
+/**
+ * ファイル名・動画タイトルとバンドを突き合わせるための入力: band_id => ['name' => バンド名, 'names' => [アーティスト名, 別称…]]
+ *   探す名前: バンド名（突き合わせ側で括弧の前を使う）・アーティスト名・アーティストの別称（エルレ → ELLEGARDEN など）
+ *   別称は全バンド分を1回の SQL で取る（バンドごとに SQL を投げない = N+1 問題の回避）
+ *   $bands = live_bands_by_id() の結果
+ */
+function band_match_input(PDO $pdo, int $liveId, array $bands): array
+{
+    $st = $pdo->prepare('SELECT DISTINCT al.artist_id, al.name FROM artist_alias al
+        JOIN band b ON b.artist_id = al.artist_id
+        JOIN live_day d ON d.live_day_id = b.live_day_id
+        WHERE d.live_id = ?');
+    $st->execute([$liveId]);
+    $aliases = [];
+    foreach ($st as $r) {
+        $aliases[(int)$r['artist_id']][] = $r['name'];
+    }
+    $input = [];
+    foreach ($bands as $id => $b) {
+        // ...（スプレッド構文）で別称の配列を展開して、アーティスト名の後ろに並べる
+        $names = $b['artist_id'] ? [(string)$b['artist_name'], ...($aliases[(int)$b['artist_id']] ?? [])] : [];
+        $input[$id] = ['name' => $b['name'], 'names' => $names];
+    }
+    return $input;
 }
 
 /**

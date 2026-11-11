@@ -13,27 +13,13 @@
  */
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
+require_once __DIR__ . '/lib/api.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
-/** エラーの JSON を返して終わる */
-function fail(int $status, string $message): never
-{
-    http_response_code($status);
-    echo json_encode(['error' => $message], JSON_UNESCAPED_UNICODE);
-    exit;
-}
+$user = api_user(); // 未ログイン・POST 以外・CSRF 不一致はここで JSON のエラーを返して終わる
 
-$user = current_user();
-if ($user === null) {
-    fail(401, 'ログインしてください');
-}
-if (!is_post()) {
-    fail(405, 'POST only');
-}
-verify_csrf();
-
-$body = json_decode((string)file_get_contents('php://input'), true);
+$body = api_body();
 $commentId = is_int($body['comment_id'] ?? null) ? $body['comment_id'] : 0;
 if ($commentId <= 0) {
     fail(400, 'コメントの指定がおかしいです');
@@ -48,16 +34,7 @@ if (!$st->fetchColumn()) {
 }
 try {
     $pdo->beginTransaction();
-    // まず消してみる。1行消えた = 付いていた → 外した。0行 = 付いていなかった → 付ける
-    $del = $pdo->prepare('DELETE FROM comment_like WHERE comment_id = ? AND user_id = ?');
-    $del->execute([$commentId, $userId]);
-    $liked = $del->rowCount() === 0;
-    if ($liked) {
-        $pdo->prepare('INSERT IGNORE INTO comment_like (comment_id, user_id) VALUES (?, ?)')->execute([$commentId, $userId]);
-    }
-    $st = $pdo->prepare('SELECT COUNT(*) FROM comment_like WHERE comment_id = ?');
-    $st->execute([$commentId]);
-    $count = (int)$st->fetchColumn();
+    [$liked, $count] = api_toggle_count($pdo, 'comment_like', 'comment_id', $commentId, $userId); // 付ける ⇔ 外す（lib/api.php）
     $pdo->commit();
 } catch (PDOException $e) {
     if ($pdo->inTransaction()) {

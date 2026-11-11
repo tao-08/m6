@@ -32,12 +32,7 @@ if ($isNew) {
     $live = ['live_id' => 0, 'fiscal_year' => $thisYear, 'name' => '', 'youtube_url' => null, 'drive_url' => null];
     $days = [];
 } else {
-    $st = $pdo->prepare('SELECT * FROM live WHERE live_id = ?');
-    $st->execute([$liveId]);
-    $live = $st->fetch();
-    if (!$live) {
-        error_page(404, 'ライブが見つかりません');
-    }
+    $live = live_or_404($pdo, $liveId);
     // band_count: その日程に登録済みのバンド数。総バンド数はこれより少なくできない
     $st = $pdo->prepare('SELECT d.*, v.name AS venue_name,
             (SELECT COUNT(*) FROM band b WHERE b.live_day_id = d.live_day_id) AS band_count
@@ -61,7 +56,6 @@ function read_day_input(mixed $in, array $venues, array $labels, int $registered
     $date = (string)($in['held_on'] ?? '');
     $venueSel = (string)($in['venue_id'] ?? '');      // venue_id / 'new' / ''（未設定）
     $venueNew = trim((string)($in['venue_new'] ?? '')); // 'new' のときの新しい会場名
-    $note = trim((string)($in['note'] ?? ''));
     $total = trim(mb_convert_kana((string)($in['total_bands'] ?? ''), 'n')); // 総バンド数。全角数字も受け付ける。空欄 = 未入力
     $errors = [];
     // 日程名: プルダウンで選んだ日程名 or 新規作成（lib/repository.php。取り込み画面と同じ）
@@ -581,9 +575,9 @@ if ($isNew) {
     <?php if (!$canMerge): ?>
         <div class="form-grid">
             <label class="field field--wide"><span>ライブ名</span><input autocomplete="off" name="name" value="<?= h($live['name']) ?>" maxlength="50" placeholder="例: 9月ライブ" required></label>
-            <label class="field field--wide"><span>YouTubeプレイリストのリンク（任意）</span><input autocomplete="off" type="url" name="youtube_url" value="<?= h((string)$live['youtube_url']) ?>" maxlength="500" placeholder="https://www.youtube.com/playlist?list=…" inputmode="url"></label>
+            <label class="field field--wide"><span>YouTubeプレイリストのリンク（任意）</span><input autocomplete="off" type="url" name="youtube_url" value="<?= h($live['youtube_url']) ?>" maxlength="500" placeholder="https://www.youtube.com/playlist?list=…" inputmode="url"></label>
             <?php if ($savedPlaylist): ?><p class="field--wide yt-assign"><a class="btn btn--ghost btn--sm" href="live_youtube?id=<?= $liveId ?>"><?= youtube_icon() ?> プレイリストの動画をバンドに割り当てる</a></p><?php endif; ?>
-            <label class="field field--wide"><span>ドライブのフォルダ（任意）</span><input autocomplete="off" type="url" name="drive_url" value="<?= h((string)($live['drive_url'] ?? '')) ?>" maxlength="500" placeholder="https://drive.google.com/drive/folders/…" inputmode="url"></label>
+            <label class="field field--wide"><span>ドライブのフォルダ（任意）</span><input autocomplete="off" type="url" name="drive_url" value="<?= h($live['drive_url'] ?? '') ?>" maxlength="500" placeholder="https://drive.google.com/drive/folders/…" inputmode="url"></label>
             <?php if ($savedFolder): ?><p class="field--wide yt-assign"><a class="btn btn--ghost btn--sm" href="live_drive?id=<?= $liveId ?>"><?= drive_icon() ?> ドライブのファイルをバンドに割り当て</a></p><?php endif; ?>
             <?php if (!$isNew): ?><?= live_image_field($images) ?><?php endif; ?>
         </div>
@@ -602,7 +596,7 @@ if ($isNew) {
                 <input type="hidden" name="merge_live_id" value="<?= $mergeLive ? (int)$mergeLive['live_id'] : '' ?>" data-live-id<?= $merging ? '' : ' disabled' ?>>
                 <div class="live-pick" data-live-pick-wrap<?= $merging ? '' : ' hidden' ?>>
                     <button type="button" class="live-pick__btn" aria-haspopup="listbox" aria-expanded="false" data-live-pick
-                        data-year="<?= $mergeLive ? (int)$mergeLive['fiscal_year'] : '' ?>" data-labels="<?= $mergeLive ? h((string)$mergeLive['labels']) : '' ?>"
+                        data-year="<?= $mergeLive ? (int)$mergeLive['fiscal_year'] : '' ?>" data-labels="<?= $mergeLive ? h($mergeLive['labels']) : '' ?>"
                         data-name="<?= $mergeLive ? h($mergeLive['name']) : '' ?>">
                         <span data-live-pick-text<?= $mergeLive ? '' : ' class="is-placeholder"' ?>><?= $mergeLive ? h($mergeLive['fiscal_year'] . '年度 ' . $mergeLive['name']) : 'ライブを選択' ?></span>
                         <?= icon('expand_more') ?>
@@ -611,9 +605,9 @@ if ($isNew) {
                 <small class="merge-note" data-merge-note></small>
             </div>
             <!-- 統合するとこのライブは消えるので、統合 ON のときは隠す（data-merge-hide） -->
-            <label class="field field--wide" data-merge-hide<?= $merging ? ' hidden' : '' ?>><span>YouTubeプレイリストのリンク（任意）</span><input autocomplete="off" type="url" name="youtube_url" value="<?= h((string)$live['youtube_url']) ?>" maxlength="500" placeholder="https://www.youtube.com/watch?v=…" inputmode="url"<?= $merging ? ' disabled' : '' ?>></label>
+            <label class="field field--wide" data-merge-hide<?= $merging ? ' hidden' : '' ?>><span>YouTubeプレイリストのリンク（任意）</span><input autocomplete="off" type="url" name="youtube_url" value="<?= h($live['youtube_url']) ?>" maxlength="500" placeholder="https://www.youtube.com/watch?v=…" inputmode="url"<?= $merging ? ' disabled' : '' ?>></label>
             <?php if ($savedPlaylist): ?><p class="field--wide yt-assign" data-merge-hide<?= $merging ? ' hidden' : '' ?>><a class="btn btn--ghost btn--sm" href="live_youtube?id=<?= $liveId ?>"><?= youtube_icon() ?> プレイリストの動画をバンドに割り当てる</a></p><?php endif; ?>
-            <label class="field field--wide" data-merge-hide<?= $merging ? ' hidden' : '' ?>><span>ドライブのフォルダ（任意）</span><input autocomplete="off" type="url" name="drive_url" value="<?= h((string)($live['drive_url'] ?? '')) ?>" maxlength="500" placeholder="https://drive.google.com/drive/folders/…" inputmode="url"<?= $merging ? ' disabled' : '' ?>></label>
+            <label class="field field--wide" data-merge-hide<?= $merging ? ' hidden' : '' ?>><span>ドライブのフォルダ（任意）</span><input autocomplete="off" type="url" name="drive_url" value="<?= h($live['drive_url'] ?? '') ?>" maxlength="500" placeholder="https://drive.google.com/drive/folders/…" inputmode="url"<?= $merging ? ' disabled' : '' ?>></label>
             <?php if ($savedFolder): ?><p class="field--wide yt-assign" data-merge-hide<?= $merging ? ' hidden' : '' ?>><a class="btn btn--ghost btn--sm" href="live_drive?id=<?= $liveId ?>"><?= drive_icon() ?> ドライブのファイルをバンドに割り当て</a></p><?php endif; ?>
             <?= live_image_field($images, $merging) ?>
         </div>

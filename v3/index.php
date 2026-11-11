@@ -20,10 +20,7 @@ $pdo = db();
 //     出演者の入部年度と同じ人に出す。NULL の入部年度は OB 判定にも一致にも使われない
 //   about_me: 「誰について」に自分が選ばれているか / no_members: メンバーが1人もいないか
 //   member_id が NULL（紐付いていない人）や入部年度が未登録の人は、「= NULL」「BETWEEN NULL」がどの行とも一致しないので、未登録バンドは出ない
-$st = $pdo->prepare('SELECT entry_year FROM member WHERE member_id = ?');
-$st->execute([$user['member_id']]);
-$entryYear = $st->fetchColumn();
-$entryYear = $entryYear === false || $entryYear === null ? null : (int)$entryYear;
+$entryYear = my_entry_year();
 
 $st = $pdo->prepare('SELECT b.band_id, b.name, b.needs_check, l.fiscal_year, l.name AS live_name, d.label,
         EXISTS (SELECT 1 FROM band_check_member c WHERE c.band_id = b.band_id AND c.member_id = ?) AS about_me,

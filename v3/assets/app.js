@@ -130,6 +130,68 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 /* ---------------------------------------------------------------------
+ * 共通の小さな部品（app.js は全ページで先に読み込まれるので、practice.js / songs.js / tab.js / ytplayer.js /
+ *   studio.js / tt_builder.js からもそのまま呼べる）
+ * ------------------------------------------------------------------- */
+
+/** CSRF トークン（<meta name="csrf-token">） */
+const csrfToken = () => document.querySelector('meta[name="csrf-token"]')?.content || '';
+
+/** JSON を POST する（CSRF ヘッダー付き）。Response をそのまま返す（エラーの扱いは呼び出し側）。opts は fetch に足す設定（keepalive など） */
+function postJson(url, body, opts = {}) {
+  return fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },
+    body: JSON.stringify(body),
+    ...opts,
+  });
+}
+
+/** postJson して JSON を返す。失敗（!ok）は json.error（無ければ fallback）の Error を投げる */
+async function apiPost(url, body, fallback, opts) {
+  const res = await postJson(url, body, opts);
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || fallback);
+  return json;
+}
+
+/** 要素を作る: mkEl('div', 'クラス', '文字')。文字は textContent に入る */
+function mkEl(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+
+/** 要素を作る: mkNode('div', {class: 'x', text: '文字', onclick: fn}, 子要素…)。text は textContent に入るので HTML として解釈されない */
+function mkNode(tag, attrs = {}, ...children) {
+  const e = document.createElement(tag);
+  Object.entries(attrs).forEach(([k, val]) => {
+    if (val == null || val === false) return;
+    if (k === 'class') e.className = val;
+    else if (k === 'text') e.textContent = val;
+    else if (k.startsWith('on')) e.addEventListener(k.slice(2), val);
+    else e.setAttribute(k, val === true ? '' : val);
+  });
+  children.flat().forEach((c) => { if (c != null && c !== false) e.append(c instanceof Node ? c : String(c)); });
+  return e;
+}
+
+/** 固定位置のポップアップ(.album-tip)を anchor の真上に置く。上に入らないときは下。左右は画面からはみ出さないように寄せる */
+function placeTip(tip, anchor) {
+  const r = anchor.getBoundingClientRect();
+  const t = tip.getBoundingClientRect();
+  let top = r.top - t.height - 8;
+  if (top < 8) top = r.bottom + 8;
+  const left = Math.min(Math.max(8, r.left + r.width / 2 - t.width / 2), window.innerWidth - t.width - 8);
+  tip.style.top = `${top}px`;
+  tip.style.left = `${left}px`;
+}
+
+/** スマホでポップアップが自動で消えるまでの時間（文字数に比例。1500ms + 1文字100ms、最短2.5秒・最長10秒） */
+const tipHideMs = (tip) => Math.min(10000, Math.max(2500, 1500 + tip.textContent.length * 100));
+
+/* ---------------------------------------------------------------------
  * メンバー一覧のジャケットにマウスを乗せたら、アルバム名とアーティスト名をポップアップで出す（[data-album-tip]）
  *   表のカード（.table-card）は overflow: hidden なので、ジャケットの中に置くと端で切れる。
  *   → ページに1個だけ position: fixed のポップアップを作り、乗せたジャケットの上に動かして使い回す。
@@ -153,19 +215,8 @@ function setupAlbumTip() {
     tip.querySelector('.album-tip__title').textContent = img.dataset.tipTitle;
     tip.querySelector('.album-tip__artist').textContent = img.dataset.tipArtist;
     tip.classList.add('is-visible');
-    // ジャケットの真上に出す。上に入らないときは下に出し、左右は画面からはみ出さないように寄せる
-    const r = img.getBoundingClientRect();
-    const t = tip.getBoundingClientRect();
-    let top = r.top - t.height - 8;
-    if (top < 8) top = r.bottom + 8;
-    const left = Math.min(Math.max(8, r.left + r.width / 2 - t.width / 2), window.innerWidth - t.width - 8);
-    tip.style.top = `${top}px`;
-    tip.style.left = `${left}px`;
-    // スマホだけ、時間がたつと自動で消す（文字数に比例。最短2.5秒・最長10秒。setupTip と同じ式）
-    if (!canHover.matches) {
-      const ms = Math.min(10000, Math.max(2500, 1500 + tip.textContent.length * 100));
-      autoTimer = setTimeout(hide, ms);
-    }
+    placeTip(tip, img); // ジャケットの真上に出す
+    if (!canHover.matches) autoTimer = setTimeout(hide, tipHideMs(tip)); // スマホだけ、時間がたつと自動で消す
   };
   const hide = () => {
     clearTimeout(autoTimer); // 手動で消したら、残っているタイマーも止める
@@ -177,16 +228,11 @@ function setupAlbumTip() {
   // スマホはタップすると mouseover / focusin も自動で起きる（互換のための動き）。
   // それを拾うと、直後の click（下）が「同じジャケットをもう一度押した」と判定されて、出した瞬間に消えてしまう。
   // → マウスがある端末だけで拾う。スマホは click だけで扱う
-  document.addEventListener('mouseover', (e) => {
+  ['mouseover', 'focusin'].forEach((type) => document.addEventListener(type, (e) => {
     if (!canHover.matches) return;
     const img = e.target.closest('[data-album-tip] [data-tip-title]');
     if (img) show(img); else hide();
-  });
-  document.addEventListener('focusin', (e) => {
-    if (!canHover.matches) return;
-    const img = e.target.closest('[data-album-tip] [data-tip-title]');
-    if (img) show(img); else hide();
-  });
+  }));
   // スマホは押したら出す。同じジャケットをもう一度押すか、他の所を押すと消える
   document.addEventListener('click', (e) => {
     if (canHover.matches) return; // PC は上の mouseover で足りる
@@ -309,22 +355,12 @@ function setupTip() {
     tip.classList.toggle('album-tip--link', !!tip.querySelector('a')); // リンクがあるときだけ、ポップアップを押せるようにする
     tip.classList.add('is-visible');
     current = badge;
-    // バッジの真上に出す。上に入らないときは下。左右は画面からはみ出さないように寄せる
-    const r = badge.getBoundingClientRect();
-    const t = tip.getBoundingClientRect();
-    let top = r.top - t.height - 8;
-    if (top < 8) top = r.bottom + 8;
-    const left = Math.min(Math.max(8, r.left + r.width / 2 - t.width / 2), window.innerWidth - t.width - 8);
-    tip.style.top = `${top}px`;
-    tip.style.left = `${left}px`;
+    placeTip(tip, badge); // バッジの真上に出す
 
     // スマホ（マウスが無い端末）だけ、時間がたつと自動で消す。
     //   ・中にリンクがあるポップアップは対象外（押す前に消えると困る）
     //   ・長い文章は読み終わる前に消えないよう、文字数に比例して長くする（1500ms + 1文字100ms、最短2.5秒・最長10秒）
-    if (!canHover.matches && !tip.querySelector('a')) {
-      const ms = Math.min(10000, Math.max(2500, 1500 + tip.textContent.length * 100));
-      autoTimer = setTimeout(hide, ms);
-    }
+    if (!canHover.matches && !tip.querySelector('a')) autoTimer = setTimeout(hide, tipHideMs(tip));
   };
 
   // PC（マウスがある端末）はマウスを乗せたら出して、外したら消す
@@ -417,13 +453,36 @@ function showToast(toast) {
   const close = () => {
     if (gone) return;
     gone = true;
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { toast.remove(); return; }
+    if (reduceMotion) { toast.remove(); return; }
     toast.classList.add('is-leaving');                          // CSS でフェードアウト
     toast.addEventListener('transitionend', () => toast.remove(), { once: true });
     setTimeout(() => toast.remove(), 500);                      // transitionend が来なかったとき用
   };
   setTimeout(close, TOAST_MS);
   toast.addEventListener('click', close);
+}
+
+/** 文字だけのお知らせを出す（cls = 見た目のクラス、role = 読み上げ用） */
+function toastText(text, cls = '', role = '') {
+  const t = document.createElement('div');
+  if (cls) t.className = cls;
+  if (role) t.setAttribute('role', role);
+  t.textContent = text;
+  showToast(t);
+}
+
+/** 画面上部のお知らせ（type = 'error' / 'warn' / 省略は成功） */
+const flashToast = (message, type) => toastText(message, 'flash flash--' + (type || 'success'), 'status');
+
+/** ttb-toast: 右下に一時的に出す小さなお知らせ（studio.js / tt_builder.js）。action = {label, run} で「元に戻す」などのボタンを付けられる。ms = 消えるまでの時間 */
+let actionToastEl = null;
+function showActionToast(msg, action, ms) {
+  actionToastEl?.remove();
+  actionToastEl = mkNode('div', { class: 'ttb-toast', role: 'status' }, mkNode('span', { text: msg }),
+    action ? mkNode('button', { type: 'button', class: 'btn btn--ghost btn--sm', text: action.label, onclick: () => { action.run(); actionToastEl?.remove(); } }) : null);
+  document.body.append(actionToastEl);
+  const mine = actionToastEl;
+  setTimeout(() => mine.remove(), action ? 8000 : ms);
 }
 
 function setupToasts() {
@@ -514,7 +573,6 @@ function setupSongs() {
   const layoutTop = (el) => el.getBoundingClientRect().top - new DOMMatrixReadOnly(getComputedStyle(el).transform).m42;
   // 入れ替えのアニメーション（FLIP）: 動かす前の位置を測る → DOM を入れ替える → 前の位置から今の位置へ滑らせる
   //   skip = ドラッグ中のカード（指に付いているので滑らせない）
-  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const move = (change, skip = null) => {
     const before = new Map(cards().map((c) => [c, c.getBoundingClientRect().top]));
     change();
@@ -743,7 +801,7 @@ function setupSongs() {
         // 消えるアニメーションの途中で保存されても送られないように、先に入力欄を無効にしておく（disabled の欄は送信されない）
         card.querySelectorAll('[name]').forEach((el) => { el.disabled = true; });
         renumber();
-        if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        if (reduceMotion) {
           card.remove();
           return;
         }
@@ -986,10 +1044,7 @@ function setupPreview() {
     btn.querySelector('.icon').textContent = 'music_off';
   };
   const fail = (text) => {
-    const toast = document.createElement('div');
-    toast.className = 'flash flash--warn';
-    toast.textContent = text;
-    showToast(toast);
+    toastText(text, 'flash flash--warn');
   };
 
   const start = async (btn, refresh = false) => {
@@ -1185,8 +1240,7 @@ function setupBackButton() {
   });
   document.body.append(box);
 
-  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  if (before.length && !reduce) {
+  if (before.length && !reduceMotion) {
     const ghostBox = document.createElement('div');
     ghostBox.className = 'back-fabs back-fabs--ghost' + (lift ? ' back-fabs--lift' : '');
     ghostBox.setAttribute('aria-hidden', 'true');
@@ -1216,7 +1270,7 @@ function setupBackButton() {
     setTimeout(clean, 600);
   }
   shown.forEach((a) => a.addEventListener('animationend', () => a.classList.remove('is-entering'), { once: true }));
-  if (reduce) shown.forEach((a) => a.classList.remove('is-entering'));
+  if (reduceMotion) shown.forEach((a) => a.classList.remove('is-entering'));
   if (!items.length) return;
 
   // スクロール中は隠し、止まったらすぐ出す（読んでいる所にかぶらないように）。隠すのはスマホと、左の余白が無い幅の PC だけ（app.css）
@@ -1239,7 +1293,6 @@ function setupBackButton() {
 function setupBoardMute() {
   const btn = document.querySelector('[data-board-mute]');
   if (!btn) return;
-  const token = document.querySelector('meta[name="csrf-token"]')?.content || '';
   const paint = (muted) => {
     btn.classList.toggle('is-active', muted);
     btn.setAttribute('aria-pressed', String(muted));
@@ -1255,20 +1308,14 @@ function setupBoardMute() {
     void btn.offsetWidth; // 一度描き直させて、アニメーションを最初からやり直す
     btn.classList.add('is-pop');
     try {
-      const res = await fetch('api_board_mute', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': token },
-        body: JSON.stringify({ thread_id: Number(btn.dataset.boardMute) }),
-      });
+      const res = await postJson('api_board_mute', { thread_id: Number(btn.dataset.boardMute) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || '保存できませんでした');
       paint(data.muted);
     } catch (err) {
       console.error('ミュートの通信エラー:', err);
       paint(before);
-      const toast = document.createElement('div');
-      toast.textContent = 'ミュートを保存できませんでした。ページを再読み込みしてやり直してください';
-      showToast(toast);
+      toastText('ミュートを保存できませんでした。ページを再読み込みしてやり直してください');
     } finally {
       pending = false;
     }
@@ -1370,22 +1417,21 @@ function setupBoardPanels() {
  *   選んだものは返信欄の上にチップで並べ、送信用に hidden の reply_to[] を入れる。チップを押しても解除できる。
  *   書き込み番号は textContent で入れる（innerHTML は使わない）
  * ------------------------------------------------------------------- */
-function setupBoardReply() {
-  const box = document.querySelector('[data-board-reply-to]');
-  if (!box) return;
+/**
+ * 返信先のチップ選び（掲示板・コメント共通）。box = チップを並べる欄、buttons = Map(id → 返信ボタン)。
+ *   animate … 新しく増えたチップだけ is-entering を付ける（掲示板）。コメントは付けない
+ */
+function makeReplyPicker(box, buttons, animate) {
   const MAX = 10;
-  const picked = new Map(); // post_id → 書き込み番号
-  const buttons = new Map(
-    [...document.querySelectorAll('[data-board-reply]')].map((b) => [b.dataset.boardReply, b]),
-  );
-  const shown = new Set(); // もう出しているチップ（新しく増えた分だけアニメーションさせる）
+  const picked = new Map(); // id → 書き込み・コメントの番号
+  const shown = new Set(); // もう出しているチップ（animate のとき、新しく増えた分だけアニメーションさせる）
   const render = () => {
     box.replaceChildren();
     shown.forEach((id) => { if (!picked.has(id)) shown.delete(id); });
     picked.forEach((no, id) => {
       const chip = document.createElement('button');
       chip.type = 'button';
-      chip.className = 'tag board-reply__chip' + (shown.has(id) ? '' : ' is-entering');
+      chip.className = 'tag board-reply__chip' + (animate && !shown.has(id) ? ' is-entering' : '');
       shown.add(id);
       chip.setAttribute('aria-label', `>>${no} の返信を解除`);
       chip.textContent = `>>${no} ×`;
@@ -1414,6 +1460,12 @@ function setupBoardReply() {
     // 最初の1件を選んだときだけ返信欄へ移す（続けて選ぶときは動かさない）
     if (first && picked.has(id)) box.closest('form')?.querySelector('textarea')?.focus();
   }));
+}
+
+function setupBoardReply() {
+  const box = document.querySelector('[data-board-reply-to]');
+  if (!box) return;
+  makeReplyPicker(box, new Map([...document.querySelectorAll('[data-board-reply]')].map((b) => [b.dataset.boardReply, b])), true);
 }
 
 /* ---------------------------------------------------------------------
@@ -1447,40 +1499,7 @@ function setupComments() {
   window.addEventListener('hashchange', openFor);
 
   const box = root.querySelector('[data-comment-reply-to]');
-  const MAX = 10;
-  const picked = new Map(); // comment_id → 番号
-  const buttons = new Map([...root.querySelectorAll('[data-comment-reply]')].map((b) => [b.dataset.commentReply, b]));
-  const render = () => {
-    box.replaceChildren();
-    picked.forEach((no, id) => {
-      const chip = document.createElement('button');
-      chip.type = 'button';
-      chip.className = 'tag board-reply__chip';
-      chip.setAttribute('aria-label', `>>${no} の返信を解除`);
-      chip.textContent = `>>${no} ×`;
-      chip.addEventListener('click', () => toggle(id));
-      const input = document.createElement('input');
-      input.type = 'hidden';
-      input.name = 'reply_to[]';
-      input.value = id;
-      box.append(chip, input);
-    });
-    box.hidden = picked.size === 0;
-    buttons.forEach((b, id) => {
-      b.classList.toggle('is-active', picked.has(id));
-      b.setAttribute('aria-pressed', String(picked.has(id)));
-    });
-  };
-  const toggle = (id) => {
-    if (picked.has(id)) picked.delete(id);
-    else if (picked.size < MAX) picked.set(id, buttons.get(id)?.dataset.no ?? '');
-    render();
-  };
-  buttons.forEach((b, id) => b.addEventListener('click', () => {
-    const first = picked.size === 0;
-    toggle(id);
-    if (first && picked.has(id)) box.closest('form')?.querySelector('textarea')?.focus();
-  }));
+  makeReplyPicker(box, new Map([...root.querySelectorAll('[data-comment-reply]')].map((b) => [b.dataset.commentReply, b])), false);
 }
 
 /* ---------------------------------------------------------------------
@@ -1521,11 +1540,13 @@ function setupSmallThings() {
   });
   // 絞り込みが浮く位置（sticky の top）にどれだけ近いか → --stuck（0〜1）。残り 80px から近づくほど 1 に（スマホは見出しが薄くなる）
   document.querySelectorAll('.stats-filter').forEach((box) => {
+    let stickyTop = parseFloat(getComputedStyle(box).top); // sticky の top は CSS（画面幅で変わる）。毎回は読まず、読み込み時と画面幅の変更時だけ読む
     const check = () => {
-      const rest = box.getBoundingClientRect().top - parseFloat(getComputedStyle(box).top);
+      const rest = box.getBoundingClientRect().top - stickyTop;
       box.style.setProperty('--stuck', Math.min(1, Math.max(0, 1 - rest / 80)).toFixed(3));
     };
     window.addEventListener('scroll', check, { passive: true });
+    window.addEventListener('resize', () => { stickyTop = parseFloat(getComputedStyle(box).top); check(); });
     check();
   });
 
@@ -1579,7 +1600,7 @@ function setupSmallThings() {
   //   toggle イベントは開いて1回描画した後に来る（そこから動かすと、一瞬全部見えてから消えて出直す）ので、
   //   開く直前の summary のクリックで動かし始める（Enter / スペースで開いたときも click が来る）。動きを減らす設定の人には動かさない
   document.querySelectorAll('.usermenu').forEach((menu) => menu.querySelector('summary')?.addEventListener('click', () => {
-    if (menu.open || matchMedia('(prefers-reduced-motion: reduce)').matches) return; // menu.open = これから閉じる
+    if (menu.open || reduceMotion) return; // menu.open = これから閉じる
     menu.querySelector('.usermenu__panel')?.animate(
       [{ opacity: 0, transform: 'translateY(-6px) scale(.96)' }, { opacity: 1, transform: 'none' }],
       { duration: 180, easing: 'cubic-bezier(.2, .9, .3, 1.1)' });
@@ -1599,9 +1620,8 @@ function setupSmallThings() {
   const markRead = (tab) => {
     const count = tab.querySelector('[data-notif-count]');
     if (!count) return;
-    const token = document.querySelector('meta[name="csrf-token"]')?.content || '';
     const body = new URLSearchParams({ kind: tab.dataset.notifTab });
-    fetch('api_notice_read.php', { method: 'POST', headers: { 'X-CSRF-Token': token }, body })
+    fetch('api_notice_read.php', { method: 'POST', headers: { 'X-CSRF-Token': csrfToken() }, body })
       .then((r) => r.json())
       .then((d) => {
         if (typeof d.unread !== 'number') return;
@@ -1626,7 +1646,7 @@ function setupSmallThings() {
       bell.closest('details').querySelector(`[data-notif-pane="${t.dataset.notifTab}"]`).hidden = !on;
     });
     // 切り替えた先のタブを、タブの並びの向き（通知=左 / お知らせ=右）から軽くスライドして出す
-    if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    if (!reduceMotion) {
       const dir = tab === tabs[0] ? -12 : 12;
       bell.closest('details').querySelector(`[data-notif-pane="${tab.dataset.notifTab}"]`).animate(
         [{ opacity: 0, transform: `translateX(${dir}px)` }, { opacity: 1, transform: 'none' }],
@@ -1649,7 +1669,7 @@ function setupSmallThings() {
         if (match) count++;
       });
       if (empty) empty.hidden = count > 0;
-      if (animate && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      if (animate && !reduceMotion) {
         // 表示される記事を全部ふわっと出す（「すべて」⇔各カテゴリのように、前後で表示されたままの記事も動かすため JS で動かす）
         [...items, empty].filter((el) => el && !el.hidden).forEach((el) => el.animate(
           [{ opacity: 0, transform: 'translateY(6px)' }, { opacity: 1, transform: 'none' }],
@@ -1684,7 +1704,7 @@ function setupSmallThings() {
   document.querySelectorAll('.togglecard').forEach((card) => {
     if (card.id && location.hash === '#' + card.id) openWithoutAnimation(card); // 高さのアニメ無しで開く（飛び先がズレないように）
     card.querySelector('summary')?.addEventListener('click', () => {
-      if (card.open || matchMedia('(prefers-reduced-motion: reduce)').matches) return; // card.open = これから閉じる
+      if (card.open || reduceMotion) return; // card.open = これから閉じる
       card.querySelector('.togglecard__body, .notice-body')?.animate(
         [{ opacity: 0, transform: 'translateY(-8px)' }, { opacity: 1, transform: 'none' }],
         { duration: 220, easing: 'cubic-bezier(.2, .9, .3, 1.1)' });
@@ -2154,7 +2174,6 @@ function setupPush() {
   const wrap = document.querySelector('[data-push]');
   if (!wrap) return;
   const box = wrap.querySelector('[data-push-toggle]');
-  const token = document.querySelector('meta[name="csrf-token"]')?.content || '';
   wrap.hidden = false;
   // 端末の登録・解除が終わるまで、下の保存ボタンは押せない
   const saveBtns = document.querySelectorAll('[data-push-form] button[type="submit"]');
@@ -2185,17 +2204,8 @@ function setupPush() {
     return Uint8Array.from(raw, (c) => c.charCodeAt(0));
   };
   const post = async (body) => {
-    const res = await fetch('api_push_subscribe', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': token },
-      body: JSON.stringify(body),
-    });
+    const res = await postJson('api_push_subscribe', body);
     if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || '保存できませんでした');
-  };
-  const toast = (text) => {
-    const el = document.createElement('div');
-    el.textContent = text;
-    showToast(el);
   };
 
   // いまの状態を反映（この端末がすでに購読していれば ON）
@@ -2227,7 +2237,7 @@ function setupPush() {
       console.error('プッシュ通知の設定エラー:', err);
       box.checked = !want;
       if (Notification.permission === 'denied') lock('ブラウザの設定で通知がブロックされています');
-      toast('プッシュ通知を設定できませんでした');
+      toastText('プッシュ通知を設定できませんでした');
     } finally {
       if (Notification.permission !== 'denied') box.disabled = false;
       setBusy(false);
@@ -2245,7 +2255,6 @@ function setupPush() {
 function setupPushLogout() {
   const form = document.querySelector('form[action="logout"]');
   if (!form || !('serviceWorker' in navigator) || !('PushManager' in window)) return;
-  const token = document.querySelector('meta[name="csrf-token"]')?.content || '';
   let done = false;
   form.addEventListener('submit', async (e) => {
     if (done) return;
@@ -2254,11 +2263,7 @@ function setupPushLogout() {
       const reg = await navigator.serviceWorker.getRegistration();
       const sub = await reg?.pushManager.getSubscription();
       if (!sub) return;
-      await fetch('api_push_subscribe', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': token },
-        body: JSON.stringify({ action: 'unsubscribe', endpoint: sub.endpoint }),
-      });
+      await postJson('api_push_subscribe', { action: 'unsubscribe', endpoint: sub.endpoint });
       await sub.unsubscribe();
     })().catch(() => { /* 解除できなくてもログアウトは続ける */ });
     await Promise.race([work, new Promise((resolve) => setTimeout(resolve, 3000))]);
@@ -2528,7 +2533,7 @@ async function liveFilter(form) {
       targets().forEach((el) => el.classList.remove('is-updating'));
     };
     history.replaceState(null, '', location.pathname + query);
-    if (document.startViewTransition && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    if (document.startViewTransition && !reduceMotion) {
       document.documentElement.classList.add('live-vt');
       try { await document.startViewTransition(swap).finished; } finally { document.documentElement.classList.remove('live-vt'); }
     } else {
@@ -2785,7 +2790,7 @@ function setupInstFilter() {
         });
       }
       // 絞り込み後の一覧をふわっと出す（動きを減らす設定なら出さない）
-      if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      if (!reduceMotion) {
         list.animate([{ opacity: 0, transform: 'translateY(6px)' }, { opacity: 1, transform: 'none' }], { duration: 220, easing: 'ease-out' });
       }
       open(false);
@@ -2855,9 +2860,8 @@ function setupTimelineCompact() {
   const buttons = document.querySelectorAll('[data-timeline-compact]');
   if (!buttons.length) return;
   const KEY = 'timelineCompact';
-  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)');
   const apply = (on, animate = false) => {
-    const slots = animate && !reduce.matches ? [...document.querySelectorAll('.timeline .slot')].filter((s) => s.offsetParent !== null) : [];
+    const slots = animate && !reduceMotion ? [...document.querySelectorAll('.timeline .slot')].filter((s) => s.offsetParent !== null) : [];
     // 行の高さと、行の上端から見たバンド名の位置（名前は中央へ飛ばずに、元の位置からスライドさせる）
     const measure = (s) => {
       const r = s.getBoundingClientRect();
@@ -3097,7 +3101,6 @@ function setupNameCheck() {
   const cells = () => [...document.querySelectorAll('[data-name-cell]')];
   if (!cells().length) return;
 
-  const token = document.querySelector('meta[name="csrf-token"]')?.content || '';
   let timer = null;
   let requestNo = 0; // 古い通信の結果が後から届いて上書きしないように番号を振る
 
@@ -3105,11 +3108,7 @@ function setupNameCheck() {
     const inputs = cells();
     const myNo = ++requestNo;
     try {
-      const res = await fetch('api_name_check', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': token },
-        body: JSON.stringify({ cells: inputs.map((i) => i.value) }),
-      });
+      const res = await postJson('api_name_check', { cells: inputs.map((i) => i.value) });
       if (!res.ok || myNo !== requestNo) return;
       const results = await res.json();
       inputs.forEach((input, i) => {
@@ -4008,6 +4007,23 @@ function renumberSlots(tbody) {
   });
 }
 
+/**
+ * ドラッグ中の自動スクロール: 指の高さ（getY。ドラッグが終わっていれば undefined）が画面の上端・下端に近いと、16ms ごとに 12px ずつスクロールして onScroll を呼ぶ。
+ *   戻り値は setInterval の id（ドラッグが終わったら clearInterval）
+ */
+function autoScrollWhileDragging(getY, onScroll) {
+  return setInterval(() => {
+    const y = getY();
+    if (y == null) return;
+    const edge = 60;
+    const dy = y < edge ? -12 : y > window.innerHeight - edge ? 12 : 0;
+    if (dy) {
+      window.scrollBy(0, dy);
+      onScroll();
+    }
+  }, 16);
+}
+
 /* ---------------------------------------------------------------------
  * タイムテーブルの行の並び替え（左端の ≡ をドラッグ。↑↓キーでも動く）
  *   時間の列（data-time のセル）は「何行目か」に固定: 行を動かしたら、時間のセルだけ元の位置の行に戻す。
@@ -4031,7 +4047,6 @@ function setupSlotSort() {
   if (!bodies.length) return;
 
   // 「動きを減らす」設定の人にはアニメーションしない
-  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   // 動かすセル（時間以外。時間を行に付けたまま動かす行は全部）
   const cellsOf = (tr) => [...tr.querySelectorAll(tr.hasAttribute('data-free-time') ? 'td' : 'td:not([data-time])')];
 
@@ -4137,15 +4152,7 @@ function setupSlotSort() {
     row.classList.add('is-dragging');
     document.body.classList.add('is-row-dragging');
     // 画面の上端・下端に近づけたら自動でスクロール（長い表を一度に動かせるように）
-    drag.timer = setInterval(() => {
-      if (!drag) return;
-      const edge = 60;
-      const dy = drag.y < edge ? -12 : drag.y > window.innerHeight - edge ? 12 : 0;
-      if (dy) {
-        window.scrollBy(0, dy);
-        moveTo(drag.y);
-      }
-    }, 16);
+    drag.timer = autoScrollWhileDragging(() => drag?.y, () => moveTo(drag.y));
   });
   document.addEventListener('pointermove', (e) => {
     if (!drag || e.pointerId !== drag.pointerId) return;
@@ -4192,8 +4199,6 @@ function setupAlbumSort() {
   const list = document.querySelector('[data-album-sort]');
   if (!list) return; // 0枚・1枚でも準備しておく（ページ移動なしで追加されて2枚以上になることがあるので）
   const status = document.querySelector('[data-album-sort-status]');
-  const token = document.querySelector('meta[name="csrf-token"]').content;
-  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const cards = () => [...list.children];
   const idsOf = () => cards().map((li) => li.dataset.id); // "spotify:xxxx" のようなキーの並び
   let saved = idsOf().join(); // 最後に保存できた並び。これと比べて、変わったときだけ送る
@@ -4251,11 +4256,7 @@ function setupAlbumSort() {
     saving = true;
     showStatus('保存中…');
     try {
-      const res = await fetch('api_album_order', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': token },
-        body: JSON.stringify({ member_id: Number(list.dataset.memberId), order }),
-      }).catch(() => null); // 通信そのものが失敗したら null
+      const res = await postJson('api_album_order', { member_id: Number(list.dataset.memberId), order }).catch(() => null); // 通信そのものが失敗したら null
       if (!res) throw new Error('通信できませんでした。もう一度動かしてみてください');
       const data = await res.json().catch(() => ({}));
       if (!res.ok || data.error) throw new Error(data.error || '保存できませんでした。ページを再読み込みしてください');
@@ -4331,15 +4332,7 @@ function setupAlbumSort() {
     if (type === 'touch') navigator.vibrate?.(10); // 対応している端末だけ短く震わせて、つかんだことを伝える
     follow();
     // 画面の上端・下端に近づけたら自動でスクロール（30枚あると画面に収まらないので）
-    drag.timer = setInterval(() => {
-      if (!drag) return;
-      const edge = 60;
-      const dy = drag.y < edge ? -12 : drag.y > window.innerHeight - edge ? 12 : 0;
-      if (dy) {
-        window.scrollBy(0, dy);
-        moveTo();
-      }
-    }, 16);
+    drag.timer = autoScrollWhileDragging(() => drag?.y, () => moveTo());
   };
 
   const end = (e) => {
@@ -4463,7 +4456,7 @@ function setupAlbumModal() {
   // 閉じるときも動かす: is-closing を付けて、縮むアニメーション（album-modal-out）が終わってから close()（Esc も同じ）
   const closeModal = () => {
     if (!dlg.open || dlg.classList.contains('is-closing')) return;
-    if (matchMedia('(prefers-reduced-motion: reduce)').matches) { dlg.close(); return; }
+    if (reduceMotion) { dlg.close(); return; }
     dlg.classList.add('is-closing');
     // ::backdrop や中身のアニメーションも dlg に届くので、閉じるアニメーションだけを待つ。1回だけ動かす
     const onEnd = (e) => {
@@ -4543,7 +4536,6 @@ function setupAlbumBox() {
   const more = box.querySelector('[data-album-more]');
   // 閉じているときに見せる枚数。PC は5枚、スマホ（600px 以下）は1行3枚（CSS の nth-child と合わせる）
   const shown = () => (window.matchMedia('(max-width: 600px)').matches ? 3 : 5);
-  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   // 画面の表示を「開いているか」に合わせる
   const render = () => {
@@ -4601,7 +4593,6 @@ function setupOnePartnerBox(box) {
   const items = [...box.querySelectorAll('.ranking > li')]; // 全員の <li>（退会者の <li> も含む）
   const SHOWN = Number(box.dataset.shown) || 5;
   const moreLabel = box.dataset.moreLabel || 'すべて表示';
-  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   // 「退会者を非表示」チェック（よく組むメンバーだけ。member.php が退会者のいるときだけ出す）
   const filterRow = box.querySelector('[data-retired-filter]');
@@ -4759,7 +4750,7 @@ function setupOnePartnerBox(box) {
  *   ▸ を開いたとき、上位5位の行を上から順にふわっと出す（よく組むメンバーと同じく、開く「前」の click で動かし始める）
  * ------------------------------------------------------------------- */
 function setupKings() {
-  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  if (reduceMotion) return;
   document.querySelectorAll('.kings').forEach((list) => {
     list.addEventListener('click', (e) => {
       const summary = e.target.closest('.partner > summary');
@@ -4785,7 +4776,6 @@ function setupKings() {
 function setupAlbumAdd() {
   const list = document.querySelector('[data-album-sort]');
   if (!list) return;
-  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   document.addEventListener('submit', async (e) => {
     const form = e.target.closest('form[data-album-add]');
@@ -5061,11 +5051,7 @@ function setupTimetableFollow() {
   const warn = (input) => {
     const text = '日付をまたぐため追随できません';
     if (document.querySelector('[data-toasts]')) {
-      const el = document.createElement('div');
-      el.className = 'flash flash--error';
-      el.setAttribute('role', 'status');
-      el.textContent = text;
-      showToast(el);
+      flashToast(text, 'error');
       return;
     }
     input.setCustomValidity(text);
@@ -5235,7 +5221,6 @@ function setupPicks() {
 
   // ---- etc → 楽器追加のモーダル ----
   const dialog = document.querySelector('[data-new-instrument]');
-  const token = document.querySelector('meta[name="csrf-token"]')?.content || '';
   let pending = null; // モーダルを開いている間だけ { group: どの欄か, prev: 直前の選択 }
 
   const showError = (message) => {
@@ -5331,11 +5316,7 @@ function setupPicks() {
     const submit = form.querySelector('[type="submit"]');
     submit.disabled = true; // 二重送信防止
     try {
-      const res = await fetch('api_instrument', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': token },
-        body: JSON.stringify({ short_name: shortName, name }),
-      });
+      const res = await postJson('api_instrument', { short_name: shortName, name });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || data.error) {
         showError(data.error || '追加できませんでした。ページを再読み込みしてやり直してください');
@@ -5502,11 +5483,9 @@ function setupCheckPicker() {
 function setupCheckDismiss() {
   const list = document.querySelector('[data-check-list]');
   if (!list) return;
-  const token = document.querySelector('meta[name="csrf-token"]')?.content || '';
-  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)');
   // アニメーションが終わったら消す（動きを減らす設定のときは、すぐ消す）
   const leave = (el) => {
-    if (reduce.matches) { el.remove(); return; }
+    if (reduceMotion) { el.remove(); return; }
     el.style.height = `${el.offsetHeight}px`; // 高さを数字で固定してから 0 へ → なめらかに詰まる
     void el.offsetHeight; // ここで一度レイアウトを確定させる（しないと「固定した高さ」を飛ばしていきなり 0 になる）
     el.classList.add('is-leaving');
@@ -5521,7 +5500,7 @@ function setupCheckDismiss() {
     if (!btn) return;
     btn.disabled = true;
     const body = new URLSearchParams({ band_id: btn.dataset.checkDismiss });
-    fetch('api_check_dismiss', { method: 'POST', headers: { 'X-CSRF-Token': token }, body, keepalive: true }).catch(() => {});
+    fetch('api_check_dismiss', { method: 'POST', headers: { 'X-CSRF-Token': csrfToken() }, body, keepalive: true }).catch(() => {});
     const item = btn.closest('[data-check-item]');
     if (list.querySelectorAll('[data-check-item]').length === 1) leave(list); else leave(item);
   });
@@ -5532,12 +5511,11 @@ function setupCheckDismiss() {
  * ------------------------------------------------------------------- */
 function setupMemberRows() {
   if (!document.querySelector('[data-rows]')) return;
-  // 行の集まり（[data-rows]）が1ページに何個あってもいいように、document で待ち受ける
-  //   バンド編集: 1個だけ / タイムテーブル編集: バンドの数だけ（[data-rows-wrap] の中のボタン → その中の [data-rows]）
+  // document で待ち受ける（行の集まり [data-rows] はバンド編集の1個だけ）
   document.addEventListener('click', (e) => {
     const add = e.target.closest('[data-add-row]');
     if (add) {
-      const rows = add.closest('[data-rows-wrap]')?.querySelector('[data-rows]') || document.querySelector('[data-rows]');
+      const rows = document.querySelector('[data-rows]');
       const row = rows.lastElementChild.cloneNode(true); // 最後の行をコピーして
       const input = row.querySelector('[data-name-cell]') || row.querySelector('input');
       input.value = '';
@@ -5841,7 +5819,6 @@ function setupSuggest() {
  *   失敗したら押す前の見た目に戻す。同じバンドのボタンが1ページに複数あっても全部そろえる
  * ------------------------------------------------------------------- */
 function setupLikes() {
-  const token = document.querySelector('meta[name="csrf-token"]')?.content || '';
   const pending = new Set(); // 通信中のバンドID（結果が返るまで同じバンドの2回目は受け付けない）
 
   // 同じバンドの ❤ を全部、liked / count の見た目にする
@@ -5881,20 +5858,14 @@ function setupLikes() {
 
     // 2. サーバーに送って、本当の値で書き直す
     try {
-      const res = await fetch(api, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': token },
-        body: JSON.stringify({ [KEYS[api]]: Number(id) }),
-      });
+      const res = await postJson(api, { [KEYS[api]]: Number(id) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || '保存できませんでした');
       paint(api, id, data.liked, data.count);
     } catch (err) {
       console.error('お気に入りの通信エラー:', err);
       paint(api, id, before.liked, before.count); // 失敗したので押す前に戻す
-      const toast = document.createElement('div');
-      toast.textContent = 'お気に入りを保存できませんでした。ページを再読み込みしてやり直してください';
-      showToast(toast);
+      toastText('お気に入りを保存できませんでした。ページを再読み込みしてやり直してください');
     } finally {
       pending.delete(key);
     }
@@ -5950,9 +5921,8 @@ function setupTutorial() {
   dialog.addEventListener('close', () => {
     if (!dialog.hasAttribute('data-tutorial-auto')) return; // 見たことがある人がメニューから開いた回は、送らなくていい
     dialog.removeAttribute('data-tutorial-auto');
-    const token = document.querySelector('meta[name="csrf-token"]')?.content || '';
     // keepalive: 閉じてすぐ別のページへ移っても送信が途中で切られない
-    fetch('api_tutorial_seen', { method: 'POST', headers: { 'X-CSRF-Token': token }, keepalive: true }).catch(() => {});
+    fetch('api_tutorial_seen', { method: 'POST', headers: { 'X-CSRF-Token': csrfToken() }, keepalive: true }).catch(() => {});
   });
 
   const open = () => {
@@ -5980,18 +5950,13 @@ function setupKanaAi() {
   const nameInput = form.querySelector('input[name="name"]');
   const kanaInput = form.querySelector('input[name="name_kana"]');
   const status = form.querySelector('[data-kana-ai-status]');
-  const token = document.querySelector('meta[name="csrf-token"]')?.content || '';
   btn.addEventListener('click', async () => {
     const name = nameInput.value.trim();
     if (!name) return;
     btn.disabled = true;
     status.textContent = 'AI に聞いています…';
     try {
-      const res = await fetch('api_artist_kana', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': token },
-        body: JSON.stringify({ name }),
-      });
+      const res = await postJson('api_artist_kana', { name });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.kana) throw new Error(data.error || 'AI の呼び出しに失敗しました');
       kanaInput.value = data.kana;

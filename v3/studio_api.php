@@ -21,36 +21,12 @@
  */
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
+require_once __DIR__ . '/lib/api.php';
 require_once __DIR__ . '/lib/studio.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
-/** エラーを JSON で返して終わる。never = この関数からは戻ってこない（必ず exit する）という型 */
-function fail(int $status, string $message, array $extra = []): never
-{
-    http_response_code($status);
-    echo json_encode(['error' => $message] + $extra, JSON_UNESCAPED_UNICODE);
-    exit;
-}
-
-/** 成功を JSON で返して終わる */
-function ok(array $data): never
-{
-    echo json_encode($data, JSON_UNESCAPED_UNICODE);
-    exit;
-}
-
-$user = current_user();
-if ($user === null) {
-    fail(401, 'ログインしてください');
-}
-if (!is_executive()) {
-    fail(403, '幹部のみ使えます');
-}
-if (!is_post()) {
-    fail(405, 'POST only');
-}
-verify_csrf(); // fetch() からは X-CSRF-Token ヘッダーで送る
+$user = api_user(is_executive(...), '幹部のみ使えます');
 session_write_close(); // セッションのロックをすぐ外す（数十秒おきに呼ばれるので、他のタブの読み込みを待たせない）
 
 $raw = (string)file_get_contents('php://input'); // php://input = POST の本文そのもの（JSON はここから読む。$_POST はフォーム形式のときだけ）
@@ -96,7 +72,7 @@ try {
             $pdo->prepare('UPDATE studio_plan SET state = ?, version = ?, updated_by = ?, updated_at = NOW() WHERE live_id = ?')
                 ->execute([json_encode($state, JSON_UNESCAPED_UNICODE), $v, $me, $liveId]);
             $pdo->commit();
-            ok(['v' => $v]);
+            api_ok(['v' => $v]);
 
         // ---------- 回答と他の人の変更の受け取り ----------
         case 'poll':
@@ -108,7 +84,7 @@ try {
             if ((int)$plan['version'] !== ($body['v'] ?? null)) {
                 $res['state'] = studio_sanitize($plan['state'], $bandIds);
             }
-            ok($res);
+            api_ok($res);
 
         // ---------- 幹部が要否を入れる ----------
         case 'need':
@@ -118,20 +94,20 @@ try {
                 fail(400, '内容がおかしいです');
             }
             studio_save_need($pdo, $band, $need, $me, false);
-            ok(['needs' => (object)studio_needs($pdo, $bandIds)]);
+            api_ok(['needs' => (object)studio_needs($pdo, $bandIds)]);
 
         // ---------- 受付・締切 ----------
         case 'open':
             $open = ($body['open'] ?? false) === true;
             $st = $pdo->prepare('UPDATE studio_plan SET answer_open = ? WHERE live_id = ?');
             $st->execute([$open ? 1 : 0, $liveId]);
-            ok(['open' => $open]);
+            api_ok(['open' => $open]);
 
         // ---------- 共有リンクの作り直し ----------
         case 'token':
             $token = studio_new_token();
             $pdo->prepare('UPDATE studio_plan SET share_token = ? WHERE live_id = ?')->execute([$token, $liveId]);
-            ok(['token' => $token]);
+            api_ok(['token' => $token]);
 
         default:
             fail(400, '不明な操作です');

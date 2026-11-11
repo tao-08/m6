@@ -234,7 +234,7 @@ function notice_body_html(string $body): string
  */
 function unsaved_attr(): string
 {
-    return $_SERVER['REQUEST_METHOD'] === 'POST' ? ' data-unsaved="posted"' : ' data-unsaved';
+    return is_post() ? ' data-unsaved="posted"' : ' data-unsaved';
 }
 
 /**
@@ -442,6 +442,17 @@ function redirect(string $path): never
     exit;
 }
 
+/** 普通は $url へ移動する。?json=1 のときだけ、移動せず {"url": …} を返す（スマホの app.js が飛び先だけを聞きに来る） */
+function redirect_or_json(string $url): never
+{
+    if (($_GET['json'] ?? '') === '1') {
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['url' => $url], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    redirect($url);
+}
+
 function is_post(): bool
 {
     return ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST';
@@ -597,6 +608,21 @@ function notice_unread_count(int $userId, bool $system): int
     return (int)$st->fetchColumn();
 }
 
+/**
+ * 未読の数を「通知」と「お知らせ」まとめて1回の問い合わせで数える（全ページのヘッダーが使う）。
+ * 別々に2回数えていたのを、SUM(条件) で条件ごとの数を同時に出して1回にした。条件は notice_unread_count と同じ
+ * 戻り値: ['notif' => 通知（自動）の未読数, 'notice' => お知らせ（告知）の未読数]
+ */
+function notice_unread_counts(int $userId): array
+{
+    $st = db()->prepare('SELECT SUM(' . notice_kind_sql(true) . ') AS notif, SUM(' . notice_kind_sql(false) . ') AS notice
+        FROM notice n LEFT JOIN notice_read r ON r.notice_id = n.notice_id AND r.user_id = ?
+        WHERE r.user_id IS NULL AND n.publish_at <= NOW() AND (n.target_user_id IS NULL OR n.target_user_id = ?)');
+    $st->execute([$userId, $userId]);
+    $row = $st->fetch();
+    return ['notif' => (int)$row['notif'], 'notice' => (int)$row['notice']]; // 該当が0行だと SUM は NULL → (int) で 0
+}
+
 // ベルのポップアップの各タブに出す件数（api_notice_read.php も同じ件数だけ既読にする）
 const NOTIF_POPUP_LIMIT = 5;
 
@@ -647,7 +673,10 @@ function require_login(): array
         redirect('login'); // ログイン画面なのは見ればわかるので「ログインしてください」のお知らせは出さない
     }
     // DB を作り直した・管理者に削除された等でアカウントが消えていたら、古いセッションを捨てる
-    $st = db()->prepare('SELECT name, is_admin, is_executive, member_id, hide_retired_suggest, show_back_button, count_upcoming, see_anonymous, password_changed_at FROM user_account WHERE user_id = ?');
+    // メンバーの入学年度・退会も同じ問い合わせで一緒に読む（my_entry_year / board_scope が別に引かなくて済むように）
+    $st = db()->prepare('SELECT u.name, u.is_admin, u.is_executive, u.member_id, u.hide_retired_suggest, u.show_back_button, u.count_upcoming, u.see_anonymous, u.password_changed_at,
+            m.entry_year, m.retired
+        FROM user_account u LEFT JOIN member m ON m.member_id = u.member_id WHERE u.user_id = ?');
     $st->execute([$user['user_id']]);
     $row = $st->fetch();
     if (!$row) {
@@ -675,7 +704,27 @@ function require_login(): array
     $_SESSION['user']['back_button'] = (bool)$row['show_back_button']; // partials/header.php が見る
     $_SESSION['user']['count_upcoming'] = (bool)$row['count_upcoming']; // member.php が見る
     $_SESSION['user']['see_anonymous'] = (bool)$row['see_anonymous']; // sees_real_names() が見る（管理者のみ意味あり）
+    // 入学年度・退会はセッションには入れない（名簿を直したとき古い値が残るため）。このリクエストの間だけ覚える
+    request_member_info([
+        'user_id'    => (int)$user['user_id'],
+        'member_id'  => $_SESSION['user']['member_id'],
+        'entry_year' => $row['entry_year'] === null ? null : (int)$row['entry_year'],
+        'retired'    => (bool)$row['retired'],
+    ]);
     return $_SESSION['user'];
+}
+
+/**
+ * require_login() が読んだ「ログイン中ユーザーのメンバー情報」（入学年度・退会）を、そのリクエストの間だけ覚えておく入れ物。
+ * 引数ありで保存、引数なしで取り出す（require_login を通っていないページは null → 呼び出し側が DB から引く）
+ */
+function request_member_info(?array $set = null): ?array
+{
+    static $info = null;
+    if ($set !== null) {
+        $info = $set;
+    }
+    return $info;
 }
 
 /**
@@ -836,14 +885,19 @@ function grade_slot_item(string $value, string $labelHtml, string $current, stri
 
 /**
  * ログイン中ユーザーの入学年度。アカウントがメンバーに紐付いていない・未登録なら null。
- * セッションには member_id しか入っていないので member テーブルから引く。
- * （セッションに entry_year を入れると、後で名簿を直したときに古い値が残るため毎回 DB を見る）
+ * セッションには member_id しか入っていない。require_login() が毎回読み直した値（request_member_info）があればそれを使い、
+ * 無い（require_login を通っていない）ときだけ member テーブルから引く。
+ * （セッションに entry_year を入れると、後で名簿を直したときに古い値が残るため、セッションには入れない）
  */
 function my_entry_year(): ?int
 {
     $memberId = current_user()['member_id'] ?? null;
     if ($memberId === null) {
         return null;
+    }
+    $me = request_member_info();
+    if ($me !== null && $me['member_id'] === (int)$memberId) {
+        return $me['entry_year']; // require_login() の問い合わせで読み済み（もう1回引かない）
     }
     $st = db()->prepare('SELECT entry_year FROM member WHERE member_id = ?');
     $st->execute([$memberId]);
@@ -978,6 +1032,16 @@ function render_header(string $title, string $active = ''): void
 function render_footer(): void
 {
     require __DIR__ . '/../partials/footer.php';
+}
+
+/** 「見つかりません」のページを 404 で出して終了する。$message = 「バンドが見つかりません」など、$backHref = 戻り先 */
+function not_found_page(string $message, string $backHref = './'): never
+{
+    http_response_code(404);
+    render_header('見つかりません');
+    echo '<div class="empty card"><p class="empty__title">' . $message . '</p><a class="btn" href="' . $backHref . '">一覧へ戻る</a></div>';
+    render_footer();
+    exit;
 }
 
 

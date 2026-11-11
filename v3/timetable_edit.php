@@ -35,12 +35,7 @@ require_login();
 
 $pdo = db();
 $liveId = (int)($_GET['id'] ?? 0);
-$st = $pdo->prepare('SELECT * FROM live WHERE live_id = ?');
-$st->execute([$liveId]);
-$live = $st->fetch();
-if (!$live) {
-    error_page(404, 'ライブが見つかりません');
-}
+$live = live_or_404($pdo, $liveId);
 
 // ---- 日程・バンド・メンバー（live.php と同じく SQL 3回でまとめて取る = N+1 にしない） ----
 $st = $pdo->prepare('SELECT * FROM live_day WHERE live_id = ? ORDER BY held_on IS NULL, held_on, live_day_id');

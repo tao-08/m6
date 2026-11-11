@@ -11,7 +11,7 @@
  */
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
-$user = require_login();
+require_login();
 require_once __DIR__ . '/lib/repository.php'; // artist_plays_sql()
 require_once __DIR__ . '/lib/claude.php';
 $pdo = db();

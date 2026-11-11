@@ -18,7 +18,7 @@ $pickLives = array_filter($lives, static fn($lv) => (int)$lv['live_id'] !== $exc
                 <p class="live-pop__year" data-year-head="<?= (int)$lv['fiscal_year'] ?>"><?= (int)$lv['fiscal_year'] ?>年度</p>
             <?php endif; ?>
             <button type="button" class="live-pop__item" role="option" data-live-option="<?= (int)$lv['live_id'] ?>"
-                data-year="<?= (int)$lv['fiscal_year'] ?>" data-name="<?= h($lv['name']) ?>" data-labels="<?= h((string)$lv['labels']) ?>">
+                data-year="<?= (int)$lv['fiscal_year'] ?>" data-name="<?= h($lv['name']) ?>" data-labels="<?= h($lv['labels']) ?>">
                 <span class="live-pop__name"><?= h($lv['name']) ?></span>
                 <small class="muted"><?= $lv['labels'] !== null ? '登録済み: ' . h($lv['labels']) : '日程なし' ?></small>
             </button>

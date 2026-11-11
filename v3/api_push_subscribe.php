@@ -17,31 +17,17 @@
  */
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
+require_once __DIR__ . '/lib/api.php';
 require __DIR__ . '/lib/push.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
-/** エラーの JSON を返して終わる */
-function fail(int $status, string $message): never
-{
-    http_response_code($status);
-    echo json_encode(['error' => $message], JSON_UNESCAPED_UNICODE);
-    exit;
-}
-
-$user = current_user();
-if ($user === null) {
-    fail(401, 'ログインしてください');
-}
-if (!is_post()) {
-    fail(405, 'POST only');
-}
-verify_csrf();
+$user = api_user(); // 未ログイン・POST 以外・CSRF 不一致はここで JSON のエラーを返して終わる
 if (!push_enabled()) {
     fail(503, 'プッシュ通知はまだ使えません');
 }
 
-$body = json_decode((string)file_get_contents('php://input'), true);
+$body = api_body();
 $action = is_array($body) && is_string($body['action'] ?? null) ? $body['action'] : '';
 $endpoint = is_array($body) && is_string($body['endpoint'] ?? null) ? $body['endpoint'] : '';
 if (!push_endpoint_allowed($endpoint)) {

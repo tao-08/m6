@@ -284,13 +284,7 @@ function track_search_query(array $track): string
 /** そのアプリの検索ページの URL（YouTube Music・LINE MUSIC と、見つからなかったとき用） */
 function track_search_url(string $app, array $track): string
 {
-    $q = track_search_query($track);
-    return match ($app) {
-        'spotify'       => 'https://open.spotify.com/search/' . rawurlencode($q),
-        'apple_music'   => 'https://music.apple.com/jp/search?term=' . rawurlencode($q),
-        'youtube_music' => 'https://music.youtube.com/search?q=' . rawurlencode($q),
-        default         => 'https://music.line.me/webapp/search?query=' . rawurlencode($q),
-    };
+    return music_search_url($app, track_search_query($track));
 }
 
 /**
@@ -436,15 +430,31 @@ function track_preview_marks(PDO $pdo, array $tracks, string $q): array
  */
 function track_preview_cache_for(PDO $pdo, array $keys): array
 {
+    // 曲ごとに1回ずつ問い合わせると、曲が N 曲あれば N 回になる（N+1 問題）。
+    // 「(source, track_id) のどれか」を OR でつないで、まとめて1回で読む。値は ? に入れる（SQL に直接書かない）
+    $keys = array_values(array_unique($keys));
+    $found = [];
+    foreach (array_chunk($keys, 200) as $chunk) { // 長くなりすぎないよう200曲ずつ
+        $where = [];
+        $params = [];
+        foreach ($chunk as $key) {
+            [$source, $trackId] = explode(':', $key, 2);
+            $where[] = '(source = ? AND track_id = ?)';
+            array_push($params, $source, $trackId);
+        }
+        $st = $pdo->prepare('SELECT source, track_id, preview_url FROM track_preview
+            WHERE (' . implode(' OR ', $where) . ')
+            AND (preview_url IS NOT NULL OR checked_at > NOW() - INTERVAL ' . ALBUM_NOT_FOUND_RETRY_DAYS . ' DAY)');
+        $st->execute($params);
+        foreach ($st->fetchAll() as $row) {
+            $found[$row['source'] . ':' . $row['track_id']] = $row['preview_url'];
+        }
+    }
+    // 戻り値の並び・キーは今までと同じ（渡されたキーの順。覚えていない曲は入れない）
     $cache = [];
-    $st = $pdo->prepare('SELECT preview_url FROM track_preview WHERE source = ? AND track_id = ?
-        AND (preview_url IS NOT NULL OR checked_at > NOW() - INTERVAL ' . ALBUM_NOT_FOUND_RETRY_DAYS . ' DAY)');
-    foreach (array_unique($keys) as $key) {
-        [$source, $trackId] = explode(':', $key, 2);
-        $st->execute([$source, $trackId]);
-        $row = $st->fetch();
-        if ($row) {
-            $cache[$key] = $row['preview_url'];
+    foreach ($keys as $key) {
+        if (array_key_exists($key, $found)) {
+            $cache[$key] = $found[$key];
         }
     }
     return $cache;
@@ -459,15 +469,30 @@ function track_link_cache_for(PDO $pdo, ?string $app, array $keys): array
     if (($app !== 'spotify' && $app !== 'apple_music') || !$keys) {
         return [];
     }
+    // track_preview_cache_for と同じ理由で、曲ごとではなくまとめて1回で読む
+    $keys = array_values(array_unique($keys));
+    $found = [];
+    foreach (array_chunk($keys, 200) as $chunk) {
+        $where = [];
+        $params = [];
+        foreach ($chunk as $key) {
+            [$source, $trackId] = explode(':', $key, 2);
+            $where[] = '(source = ? AND track_id = ?)';
+            array_push($params, $source, $trackId);
+        }
+        $params[] = $app;
+        $st = $pdo->prepare('SELECT source, track_id, url FROM track_link_cache
+            WHERE (' . implode(' OR ', $where) . ') AND app = ?
+            AND (url IS NOT NULL OR checked_at > NOW() - INTERVAL ' . ALBUM_NOT_FOUND_RETRY_DAYS . ' DAY)');
+        $st->execute($params);
+        foreach ($st->fetchAll() as $row) {
+            $found[$row['source'] . ':' . $row['track_id']] = $row['url'];
+        }
+    }
     $cache = [];
-    $st = $pdo->prepare('SELECT url FROM track_link_cache WHERE source = ? AND track_id = ? AND app = ?
-        AND (url IS NOT NULL OR checked_at > NOW() - INTERVAL ' . ALBUM_NOT_FOUND_RETRY_DAYS . ' DAY)');
-    foreach (array_unique($keys) as $key) {
-        [$source, $trackId] = explode(':', $key, 2);
-        $st->execute([$source, $trackId, $app]);
-        $row = $st->fetch();
-        if ($row) {
-            $cache[$key] = $row['url'];
+    foreach ($keys as $key) {
+        if (array_key_exists($key, $found)) {
+            $cache[$key] = $found[$key];
         }
     }
     return $cache;

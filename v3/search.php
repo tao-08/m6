@@ -292,8 +292,8 @@ render_header($filterLabel ?? ($q !== '' ? "「{$q}」の検索結果" : '検索
             <h2 class="section-title">曲名 <span class="muted"><?= count($songs) ?></span></h2>
             <div class="chip-list">
                 <?php foreach ($songs as $key => $s): ?>
-                    <a class="chip chip--lg" href="songs?<?= h(http_build_query(['open' => $key])) ?>"><?= h((string)$s['title']) ?>
-                        <?php if ($s['artist']): ?><span class="muted small"><?= h((string)$s['artist']) ?></span><?php endif; ?></a>
+                    <a class="chip chip--lg" href="songs?<?= h(http_build_query(['open' => $key])) ?>"><?= h($s['title']) ?>
+                        <?php if ($s['artist']): ?><span class="muted small"><?= h($s['artist']) ?></span><?php endif; ?></a>
                 <?php endforeach; ?>
             </div>
         </section>

@@ -16,28 +16,13 @@
  */
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
+require_once __DIR__ . '/lib/api.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
-/** エラーの JSON を返して終わる */
-function fail(int $status, string $message): never
-{
-    http_response_code($status);
-    echo json_encode(['error' => $message], JSON_UNESCAPED_UNICODE);
-    exit;
-}
+$user = api_user(); // 未ログイン・POST 以外・CSRF 不一致はここで JSON のエラーを返して終わる
 
-// API なのでログイン画面へのリダイレクトではなく、エラーの JSON を返す
-$user = current_user();
-if ($user === null) {
-    fail(401, 'ログインしてください');
-}
-if (!is_post()) {
-    fail(405, 'POST only');
-}
-verify_csrf(); // JS から X-CSRF-Token ヘッダーで送られてくる
-
-$body = json_decode((string)file_get_contents('php://input'), true);
+$body = api_body();
 $bandId = is_int($body['band_id'] ?? null) ? $body['band_id'] : 0;
 if ($bandId <= 0) {
     fail(400, 'バンドの指定がおかしいです');
@@ -54,18 +39,7 @@ try {
         $pdo->rollBack();
         fail(404, 'バンドが見つかりません');
     }
-    // まず消してみる。1行消えた = 付いていた → 外した。0行 = 付いていなかった → 付ける
-    //   「SELECT してから INSERT / DELETE」より、連打しても食い違わない
-    $del = $pdo->prepare('DELETE FROM band_like WHERE band_id = ? AND user_id = ?');
-    $del->execute([$bandId, $userId]);
-    $liked = $del->rowCount() === 0;
-    if ($liked) {
-        // INSERT IGNORE: 同時に2回届いても主キーで1行だけになる
-        $pdo->prepare('INSERT IGNORE INTO band_like (band_id, user_id) VALUES (?, ?)')->execute([$bandId, $userId]);
-    }
-    $st = $pdo->prepare('SELECT COUNT(*) FROM band_like WHERE band_id = ?');
-    $st->execute([$bandId]);
-    $count = (int)$st->fetchColumn();
+    [$liked, $count] = api_toggle_count($pdo, 'band_like', 'band_id', $bandId, $userId); // 付ける ⇔ 外す（lib/api.php）
     $pdo->commit();
 } catch (PDOException $e) {
     if ($pdo->inTransaction()) {

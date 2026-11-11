@@ -15,6 +15,7 @@
  */
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
+require_once __DIR__ . '/lib/api.php';
 require_once __DIR__ . '/lib/import/planner.php';
 
 header('Content-Type: application/json; charset=utf-8');
@@ -33,7 +34,7 @@ if (!is_post()) {
 verify_csrf(); // JS から X-CSRF-Token ヘッダーで送られてくる
 
 // php://input = リクエストの本文そのもの。JSON は $_POST に入らないのでここから読む
-$body = json_decode((string)file_get_contents('php://input'), true);
+$body = api_body();
 $cells = is_array($body['cells'] ?? null) ? array_slice($body['cells'], 0, 2000) : [];
 $cells = array_map(static fn($c) => is_string($c) ? mb_substr($c, 0, 200) : '', $cells);
 

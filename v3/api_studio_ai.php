@@ -24,28 +24,13 @@
  */
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
+require_once __DIR__ . '/lib/api.php';
 require_once __DIR__ . '/lib/studio_ai.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
-/** エラーを JSON で返して終わる（never = この関数からは戻ってこない、という型） */
-function fail(int $status, string $message): never
-{
-    http_response_code($status);
-    echo json_encode(['error' => $message], JSON_UNESCAPED_UNICODE);
-    exit;
-}
-
-if (current_user() === null) {
-    fail(401, 'ログインしてください');
-}
-if (!can_edit_studio()) {
-    fail(403, '利用できません'); // AI はお金がかかるので、スタジオを編集できる人だけ（今はログインしていれば誰でも）
-}
-if (!is_post()) {
-    fail(405, 'POST only');
-}
-verify_csrf(); // fetch() からは X-CSRF-Token ヘッダーで送る
+// AI はお金がかかるので、スタジオを編集できる人だけ（今はログインしていれば誰でも）
+api_user(can_edit_studio(...), '利用できません');
 if (!claude_enabled()) {
     fail(503, 'AI は設定されていません');
 }
@@ -75,28 +60,7 @@ foreach (['known_rooms' => 'SELECT name FROM studio_room WHERE studio_id = ? ORD
 
 // ---- アップロードされた画像 ----
 //   $_FILES['images'] は複数ファイルのとき「name[] / tmp_name[] / error[] …」と項目ごとの配列になる（PHP の仕様）
-$images = [];
-$f = $_FILES['images'] ?? null;
-if (is_array($f) && is_array($f['name'])) {
-    foreach ($f['name'] as $i => $name) {
-        $err = (int)$f['error'][$i];
-        if ($err === UPLOAD_ERR_NO_FILE) {
-            continue;
-        }
-        if ($err !== UPLOAD_ERR_OK) {
-            // INI_SIZE / FORM_SIZE = サーバーの上限（php.ini）を超えた
-            fail(400, in_array($err, [UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE], true) ? '画像が大きすぎます' : '画像を受け取れませんでした');
-        }
-        // is_uploaded_file = 本当に今の POST でアップロードされた一時ファイルか（サーバー上の別のファイルのパスを偽装されない）
-        if (!is_uploaded_file($f['tmp_name'][$i]) || $f['size'][$i] > 10 * 1024 * 1024) {
-            fail(400, '画像は1枚10MBまでです');
-        }
-        $images[] = ['path' => $f['tmp_name'][$i], 'name' => basename((string)$name)];
-    }
-}
-if (count($images) > AI_MAX_IMAGES) {
-    fail(400, '画像は一度に ' . AI_MAX_IMAGES . ' 枚までです');
-}
+$images = api_ai_images(); // 1枚10MB・AI_MAX_IMAGES 枚まで（lib/api.php）
 
 // セッションはこの処理の間ロックされる（同じ人の別タブの読み込みが待たされる）。
 // AI の返事は数十秒かかるので、いったん書き込みを終えてロックを外し、終わってから開き直す

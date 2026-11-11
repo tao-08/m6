@@ -302,8 +302,8 @@ if (typeof module !== 'undefined' && module.exports) module.exports = StudioCore
   if (!root || !dataEl) return;
   const { toMin, fmt, fmtP, range, cellKey, timeline, slotList, placements, analyze, autoAssign } = StudioCore;
 
+  const el = mkNode; // el('div', {class: 'x', text: '文字', onclick: fn}, 子要素…) で要素を作る（app.js）
   const boot = JSON.parse(dataEl.textContent);
-  const CSRF = document.querySelector('meta[name="csrf-token"]')?.content || '';
   const DAYS = boot.days;
   const MULTI = DAYS.length > 1;
   // Map にしておくと「id からバンド」をすぐ引ける（配列の find より速い）
@@ -338,19 +338,6 @@ if (typeof module !== 'undefined' && module.exports) module.exports = StudioCore
   const dayLabel = (n) => DAYS[n - 1]?.label || `${n}日目`;
 
   /* ---------- 小さな部品 ---------- */
-  // el('div', {class: 'x', text: '文字', onclick: fn}, 子要素…) で要素を作る。text は textContent に入るので HTML として解釈されない
-  function el(tag, attrs = {}, ...children) {
-    const e = document.createElement(tag);
-    Object.entries(attrs).forEach(([k, val]) => {
-      if (val == null || val === false) return;
-      if (k === 'class') e.className = val;
-      else if (k === 'text') e.textContent = val;
-      else if (k.startsWith('on')) e.addEventListener(k.slice(2), val);
-      else e.setAttribute(k, val === true ? '' : val);
-    });
-    children.flat().forEach((c) => { if (c != null && c !== false) e.append(c instanceof Node ? c : String(c)); });
-    return e;
-  }
   // Material Symbols に無い形は SVG で持つ（Lucide, ISC ライセンス。24px 枠・線の太さ 2・currentColor）。大きさ・色は .icon--svg（app.css）
   const SVG_ICONS = {
     drum: ['m2 2 8 8', 'm22 2-8 8', 'M7 13.4v7.9', 'M12 14v8', 'M17 13.4v7.9', 'M2 9v8a10 5 0 0 0 20 0V9', ['ellipse', { cx: 12, cy: 9, rx: 10, ry: 5 }]],
@@ -373,23 +360,11 @@ if (typeof module !== 'undefined' && module.exports) module.exports = StudioCore
   const btn = (label, ic, onclick, cls = 'btn btn--sm', extra = {}) =>
     el('button', { type: 'button', class: cls, onclick, ...extra }, ic ? icon(ic) : null, label ? el('span', { text: label }) : null);
 
-  let toastEl = null;
-  function toast(msg, action) {
-    toastEl?.remove();
-    toastEl = el('div', { class: 'ttb-toast', role: 'status' }, el('span', { text: msg }),
-      action ? el('button', { type: 'button', class: 'btn btn--ghost btn--sm', text: action.label, onclick: () => { action.run(); toastEl?.remove(); } }) : null);
-    document.body.append(toastEl);
-    const mine = toastEl;
-    setTimeout(() => mine.remove(), action ? 8000 : 3500);
-  }
+  function toast(msg, action) { showActionToast(msg, action, 3500); }
 
   // サーバーに JSON を送る。fetch = ブラウザから HTTP リクエストを送る標準の関数（Promise を返すので await で待てる）
   async function api(body) {
-    const res = await fetch('studio_api', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF },
-      body: JSON.stringify({ live: boot.live, ...body }),
-    });
+    const res = await postJson('studio_api', { live: boot.live, ...body });
     const json = await res.json().catch(() => ({}));
     return { ok: res.ok, status: res.status, json };
   }
@@ -536,7 +511,6 @@ if (typeof module !== 'undefined' && module.exports) module.exports = StudioCore
    *   バンドを動かすと、名前の長さで列の幅・行の高さが変わる。そのまま描き直すとガタッと飛ぶので、
    *   セルは「位置 + 大きさ（scale）」で、中の文字は逆向きの scale で歪まないように、枠は高さで、未配置の置き場は位置で滑らせる。 */
   let lastView = null;
-  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   function measureGrid() {
     const rows = [...root.querySelectorAll('.std-grid tr')];
     if (!rows.length) return null;
@@ -788,7 +762,6 @@ if (typeof module !== 'undefined' && module.exports) module.exports = StudioCore
     const HOLD_MS = 350;   // タッチ: 長押しの時間
     const MOVE_PX = 6;     // マウス・取っ手: 動いたらドラッグとみなす距離
     const EDGE = 70;       // 画面の端からこの距離に入ると自動スクロール
-    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches; // 「動きを減らす」設定の人にはアニメーションを出さない
     let d = null;          // ドラッグ中の情報（無いときは null）
     let suppressClick = false; // ドラッグ直後に出る「クリック」を捨てるための旗
 
@@ -843,7 +816,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = StudioCore
           if (d.kind === 'cell' && drop.kind === 'cell') {
             // 相手のバンドを、掴んでいるセルの元の位置へ滑らせる（これが「その場で入れ替わる」見た目）
             const from = home(d.box), to = home(drop.el);
-            drop.el.style.transition = reduce ? 'none' : 'transform .16s ease-out';
+            drop.el.style.transition = reduceMotion ? 'none' : 'transform .16s ease-out';
             drop.el.style.transform = `translate(${from.left - to.left}px, ${from.top - to.top}px)`;
             d.touched.add(drop.el);
           } else {
@@ -868,7 +841,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = StudioCore
       if (!change) return;
       const before = new Map(rows.map((el) => [el, el.getBoundingClientRect().top]));
       change();
-      if (reduce) return;
+      if (reduceMotion) return;
       all().forEach((el) => {
         if (el === d.box) return; // 掴んでいる行は指に付いているので滑らせない
         el.getAnimations().forEach((a) => a.cancel()); // 滑っている途中なら止めてから測る
@@ -936,7 +909,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = StudioCore
     // 着地: 離した場所（from = 離した瞬間の見た目の矩形）から、本来の場所へ滑らせる
     function settle(sel, from) {
       const el = root.querySelector(sel);
-      if (!el || !from || reduce) return;
+      if (!el || !from || reduceMotion) return;
       const r = el.getBoundingClientRect();
       const dx = from.left - r.left, dy = from.top - r.top;
       if (Math.abs(dx) + Math.abs(dy) < 1) return;

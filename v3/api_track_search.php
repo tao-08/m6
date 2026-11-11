@@ -19,6 +19,7 @@
  */
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
+require_once __DIR__ . '/lib/api.php';
 require_once __DIR__ . '/lib/tracks.php';
 
 header('Content-Type: application/json; charset=utf-8');
@@ -26,9 +27,7 @@ header('Content-Type: application/json; charset=utf-8');
 // API なのでログイン画面へのリダイレクトではなく、エラーの JSON を返す
 require_once __DIR__ . '/lib/tabs.php';
 if (current_user() === null && !guest_take('#g_track', 30)) { // 未ログインも使える（練習プレイヤーの曲登録）。外部 API を使うので1時間あたりの回数制限つき
-    http_response_code(429);
-    echo json_encode(['error' => '検索が多すぎます。しばらくたってからもう一度お試しください'], JSON_UNESCAPED_UNICODE);
-    exit;
+    fail(429, '検索が多すぎます。しばらくたってからもう一度お試しください');
 }
 
 $q = mb_substr(trim((string)($_GET['q'] ?? '')), 0, 100);
@@ -42,9 +41,7 @@ if ($q === '') {
 //   （Spotify は10件ずつしか取れないので、20件 = 通信2回。少し遅くなる代わりに、メインの版が見つかりやすくなる）
 ['tracks' => $tracks] = track_search($q, 20);
 if ($tracks === null) {
-    http_response_code(502); // 502 = この先のサーバー（Spotify / iTunes）がうまく答えなかった
-    echo json_encode(['error' => '今は検索できません。時間をおいてもう一度試してください'], JSON_UNESCAPED_UNICODE);
-    exit;
+    fail(502, '今は検索できません。時間をおいてもう一度試してください'); // 502 = この先のサーバー（Spotify / iTunes）がうまく答えなかった
 }
 
 // 同じ曲の中で「オリジナル・アルバム → シングル → ベスト・ライブ等」の順に並べ替えてから、上から10件だけ返す

@@ -398,12 +398,12 @@ render_header($isNew ? 'バンドを追加' : 'バンドを編集', 'lives');
             <label class="field field--wide"><span>コピー元アーティスト</span><input name="artist" value="<?= h($band['artist_name']) ?>" data-suggest-list="artists" autocomplete="off" maxlength="100"></label>
         <?php endif; ?>
         <label class="field"><span>出演順</span><input type="number" min="1" name="play_order" value="<?= h($band['play_order']) ?>" required></label>
-        <label class="field"><span>曲数</span><input type="number" min="0" max="255" name="song_count" value="<?= h((string)$band['song_count']) ?>"></label>
+        <label class="field"><span>曲数</span><input type="number" min="0" max="255" name="song_count" value="<?= h($band['song_count']) ?>"></label>
         <label class="field"><span>開始</span><input type="time" step="300" name="start_time" value="<?= h(fmt_time($band['start_time'])) ?>"></label>
         <label class="field"><span>終了</span><input type="time" step="300" name="end_time" value="<?= h(fmt_time($band['end_time'])) ?>"></label>
         <label class="field field--wide"><span>メモ</span><input autocomplete="off" name="note" value="<?= h($band['note']) ?>" maxlength="255"></label>
         <div class="field field--wide"><span>画像の追加・削除</span><?= attach_field_html('band', $images) ?></div>
-        <label class="field field--wide"><span>YouTube のリンク（任意）</span><span class="field__hint"><a href="live_edit?id=<?= (int)$band['live_id'] ?>">ライブを編集</a>からプレイリストを追加すると各バンドのリンクを一括で登録できます</span><input autocomplete="off" type="url" name="youtube_url" value="<?= h((string)$band['youtube_url']) ?>" maxlength="500" placeholder="https://www.youtube.com/watch?v=…" inputmode="url"></label>
+        <label class="field field--wide"><span>YouTube のリンク（任意）</span><span class="field__hint"><a href="live_edit?id=<?= (int)$band['live_id'] ?>">ライブを編集</a>からプレイリストを追加すると各バンドのリンクを一括で登録できます</span><input autocomplete="off" type="url" name="youtube_url" value="<?= h($band['youtube_url']) ?>" maxlength="500" placeholder="https://www.youtube.com/watch?v=…" inputmode="url"></label>
         <?php if ($ytVideos): ?>
             <!-- name を付けない（送信しない）。選ぶと JS が上の URL 欄に入れる -->
             <label class="field field--wide"><span>ライブのプレイリストから選ぶ</span>
@@ -434,8 +434,8 @@ render_header($isNew ? 'バンドを追加' : 'バンドを編集', 'lives');
                     <?php foreach ($driveFiles as $f): $fid = (string)$f['file_id']; ?>
                         <li>
                             <?= drive_type_icon((string)$f['mime_type']) ?>
-                            <input type="text" name="drive_title[<?= h($fid) ?>]" value="<?= h((string)($driveTitles[$fid] ?? $f['title'] ?? '')) ?>" maxlength="100"
-                                placeholder="<?= h(drive_strip_ext((string)$f['name'])) ?>" aria-label="「<?= h((string)$f['name']) ?>」のタイトル" autocomplete="off">
+                            <input type="text" name="drive_title[<?= h($fid) ?>]" value="<?= h($driveTitles[$fid] ?? $f['title'] ?? '') ?>" maxlength="100"
+                                placeholder="<?= h(drive_strip_ext((string)$f['name'])) ?>" aria-label="「<?= h($f['name']) ?>」のタイトル" autocomplete="off">
                             <label class="drive-edit__remove" title="外す"><input type="checkbox" name="drive_remove[]" value="<?= h($fid) ?>" hidden<?= in_array($fid, $driveRemove ?? [], true) ? ' checked' : '' ?>><?= icon('close') ?></label>
                         </li>
                     <?php endforeach; ?>

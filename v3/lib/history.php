@@ -193,7 +193,7 @@ function change_decode(?string $blob): ?array
     if ($blob === null) {
         return null;
     }
-    $json = $blob[0] === 'Z' ? gzinflate((string)base64_decode(substr($blob, 1), true)) : substr($blob, 1);
+    $json = ($blob[0] ?? '') === 'Z' ? gzinflate((string)base64_decode(substr($blob, 1), true)) : substr($blob, 1);
     if (!is_string($json)) {
         throw new RuntimeException('履歴の中身を読めませんでした');
     }

@@ -15,7 +15,6 @@
 .tab-parts__list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .tab-parts__item { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 8px 10px; border-radius: var(--r-md); border: 1px solid var(--border); color: inherit; } /* 48px = 指で押しやすい高さ（タッチの最小サイズの目安は 44〜48px） */
 a.tab-parts__item:hover { border-color: var(--accent); }
-.tab-parts__inst { font-weight: 800; color: var(--gt); min-width: 2.2em; }
 .tab-parts__name { font-weight: 700; }
 .tab-parts__date { margin-left: auto; }
 .tab-parts__item > .icon:last-child { color: var(--muted); }
@@ -47,8 +46,6 @@ a.tab-parts__item:hover { border-color: var(--accent); }
 /* ---- カード（曲全体 + パートごと。tab.php の $renderCard） ---- */
 .tab-card__head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
 .tab-card__title { flex: 1; min-width: 0; margin: 0; font-size: var(--fs-lg); font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tab-card__inst { flex: none; min-width: 2.2em; font-weight: 800; color: var(--gt); }
-.tab-card__all { flex: none; color: var(--muted); }
 .tab-card .tab-card__memo { margin-top: 10px; }
 .tab-links.tab-card { display: block; } /* 下の .tab-links（プレイヤー画面のリンク行）の横並びを、カードには効かせない（リンクが無いとヘッダーとボタンが同じ行に並んでズレる） */
 .tab-addpart { margin-top: 12px; }
@@ -150,8 +147,6 @@ details[open] > .tab-summary > .tab-summary__chev { transform: rotate(180deg); }
 @media (prefers-reduced-motion: reduce) { .tab-summary__chev, .tab-step__chev { transition: none; } } /* 動きを減らす設定の人には、回さずに切り替える */
 
 /* ---- 新規作成フォーム（曲の一覧ページ）---- */
-.tab-parts--empty .tab-parts__heading { margin-bottom: 12px; }
-.tab-parts__heading--cta { display: flex; align-items: center; gap: 6px; font-size: var(--fs-lg); color: var(--text); }
 /* パートが 1 件以上: 一覧の下の「パートを追加」（閉じた <details>）。点線の枠でボタンだと分かるように */
 .tab-new-wrap { margin-top: 10px; }
 .tab-new-wrap__summary { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 48px; border: 1px dashed var(--border); border-radius: var(--r-md);

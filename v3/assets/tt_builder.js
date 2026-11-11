@@ -21,8 +21,8 @@
   const dataEl = document.getElementById('ttb-data');
   if (!root || !dataEl) return;
 
+  const el = mkNode; // el('div', {class: 'x', text: '文字', onclick: fn}, 子要素…) で要素を作る（app.js）
   const boot = JSON.parse(dataEl.textContent);
-  const CSRF = document.querySelector('meta[name="csrf-token"]')?.content || '';
   const LABELS = boot.labels;
   // 日の名前の後ろに付けるラベル。1日だけのライブの「1日目」は付けない（教室ライブなどは付ける）。lib/tt_builder.php の tt_day_suffix と同じ
   const daySuffix = (d) => (state.dayCount === 1 && LABELS[d - 1] === '1日目' ? '' : LABELS[d - 1]);
@@ -320,11 +320,7 @@
     inflight = ops;
     let next = document.hidden ? 10000 : 2500;
     try {
-      const res = await fetch('tt_builder_api', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF },
-        body: JSON.stringify({ id: boot.id, v, ops, focus }),
-      });
+      const res = await postJson('tt_builder_api', { id: boot.id, v, ops, focus });
       const j = await res.json().catch(() => ({ error: '通信エラー' }));
       if (!res.ok) {
         if (res.status === 404) { toast(j.error); next = 60000; }
@@ -585,11 +581,10 @@
 
   /** 再描画の前後で行の位置を比べ、動いた行は元の位置から滑らせ、新しく現れた行（別の日から来た）はふわっと出す */
   function animateRows(change) {
-    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
     const before = new Map();
-    if (!reduce) root.querySelectorAll('.ttb-row').forEach((x) => before.set(x.dataset.id, x.getBoundingClientRect().top));
+    if (!reduceMotion) root.querySelectorAll('.ttb-row').forEach((x) => before.set(x.dataset.id, x.getBoundingClientRect().top));
     change();
-    if (reduce) return;
+    if (reduceMotion) return;
     root.querySelectorAll('.ttb-row').forEach((x) => {
       const old = before.get(x.dataset.id);
       if (old == null) { x.animate([{ opacity: 0, transform: 'translateY(4px)' }, { opacity: 1, transform: 'none' }], { duration: 180, easing: 'ease-out' }); return; }
@@ -599,18 +594,6 @@
   }
 
   /* ===================== 小さい部品 ===================== */
-  function el(tag, attrs = {}, ...children) {
-    const e = document.createElement(tag);
-    Object.entries(attrs).forEach(([k, val]) => {
-      if (val == null || val === false) return;
-      if (k === 'class') e.className = val;
-      else if (k === 'text') e.textContent = val;
-      else if (k.startsWith('on')) e.addEventListener(k.slice(2), val);
-      else e.setAttribute(k, val === true ? '' : val);
-    });
-    children.flat().forEach((c) => { if (c != null && c !== false) e.append(c instanceof Node ? c : String(c)); });
-    return e;
-  }
   const icon = (name) => el('span', { class: 'icon', 'aria-hidden': 'true', text: name });
   const hueOf = (n) => (n * 67) % 360;
   const addMin = (hm, m) => {
@@ -637,15 +620,7 @@
     return parsed.map((p) => (p.head === null ? p.raw : [...p.head][0] + p.inst)).join('/');
   }
 
-  let toastEl = null;
-  function toast(msg, action) {
-    toastEl?.remove();
-    toastEl = el('div', { class: 'ttb-toast', role: 'status' }, el('span', { text: msg }),
-      action ? el('button', { type: 'button', class: 'btn btn--ghost btn--sm', text: action.label, onclick: () => { action.run(); toastEl?.remove(); } }) : null);
-    document.body.append(toastEl);
-    const mine = toastEl;
-    setTimeout(() => mine.remove(), action ? 8000 : 4000);
-  }
+  function toast(msg, action) { showActionToast(msg, action, 4000); }
 
   // ポップアップ（メニュー・学年の選択）。外を押すと閉じる
   let popEl = null;
@@ -1327,7 +1302,7 @@
   function flyToTab(rowEl, day) {
     const tab = root.querySelector(`[data-day-tab="${day}"]`);
     const cur = root.querySelector('[data-day-tab].is-on');
-    if (!tab || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    if (!tab || reduceMotion) return;
     const a = rowEl.getBoundingClientRect();
     const dir = cur && tab.getBoundingClientRect().left < cur.getBoundingClientRect().left ? -1 : 1;
     const ghost = rowEl.cloneNode(true);
@@ -1407,7 +1382,7 @@
       if (needRender) render();
       // 離した位置から新しい位置へすっと収まる（他の行は動かしながら既に新しい位置にいる）
       const landed = [...root.querySelectorAll('.ttb-row')].find((x) => x.dataset.id === id);
-      if (landed && !tabDay && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      if (landed && !tabDay && !reduceMotion) {
         const dy = dropTop - landed.getBoundingClientRect().top;
         if (Math.abs(dy) > 1) landed.animate([{ transform: `translateY(${dy}px)`, boxShadow: 'var(--shadow)' }, { transform: 'none', boxShadow: '0 0 0 transparent' }], { duration: 150, easing: 'ease-out' });
       }

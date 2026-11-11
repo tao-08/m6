@@ -233,7 +233,6 @@ $renderCard = static function (string $part, ?array $info) use ($partKey, $links
     $k = $partKey($part);
     $myLinks = $linksByPart[$k] ?? [];
     $meta = $metaByPart[$k] ?? ['meta_id' => 0, 'memo' => null];
-    $hasMemo = (string)($meta['memo'] ?? '') !== '' || ($imagesByMeta[(int)$meta['meta_id']] ?? []) !== [];
     $myTab = null; // このパートの自作 TAB（パートごとに1つまで）
     foreach ($parts as $p) {
         if ($partKey($p['part']) === $k && $part !== '') {
@@ -339,7 +338,7 @@ foreach ($partCards as $pc) {
     <summary class="tab-new-wrap__summary"><?= icon('add') ?> 楽器</summary>
     <div class="tab-addpart__chips">
         <?php foreach (['2' => 'ギター', '3' => 'ベース', '4' => 'ドラム', 'live' => 'ライブ版', 'etc' => 'その他'] as $addKey => $addLabel): ?>
-            <button type="button" class="tab-chip" data-part-add="<?= h((string)$addKey) ?>"><?= h($addLabel) ?></button>
+            <button type="button" class="tab-chip" data-part-add="<?= h($addKey) ?>"><?= h($addLabel) ?></button>
         <?php endforeach; ?>
     </div>
 </details>

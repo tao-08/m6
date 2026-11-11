@@ -13,25 +13,11 @@
  */
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
+require_once __DIR__ . '/lib/api.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
-/** エラーの JSON を返して終わる */
-function fail(int $status, string $message): never
-{
-    http_response_code($status);
-    echo json_encode(['error' => $message], JSON_UNESCAPED_UNICODE);
-    exit;
-}
-
-$user = current_user();
-if ($user === null) {
-    fail(401, 'ログインしてください');
-}
-if (!is_post()) {
-    fail(405, 'POST only');
-}
-verify_csrf(); // JS から X-CSRF-Token ヘッダーで送られてくる
+$user = api_user(); // 未ログイン・POST 以外・CSRF 不一致はここで JSON のエラーを返して終わる
 
 // INSERT ... SELECT: 本当にあるバンドだけ記録する（無い ID は 0 行になるだけ）。2回押しても主キーで1行のまま（IGNORE）
 db()->prepare('INSERT IGNORE INTO check_dismiss (user_id, band_id) SELECT ?, band_id FROM band WHERE band_id = ?')

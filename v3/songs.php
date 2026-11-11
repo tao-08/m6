@@ -528,7 +528,7 @@ $bandsHtml = static function (array $v, ?array $main = null) use ($back): string
     /** ジャケットとアルバム名（無ければ音符） */
     $artHtml = static fn(array $x): string => '<span class="songs-confirm__side">'
         . ($x['art'] ? '<img src="' . h($x['art']) . '" alt="" width="64" height="64">' : '<span class="songs-confirm__none">' . icon('music_note') . '</span>')
-        . '<span class="small">' . h((string)($x['album'] ?: '不明')) . '</span></span>';
+        . '<span class="small">' . h($x['album'] ?: '不明') . '</span></span>';
     $canMerge = $main !== null && $v['src'] !== null && $main['src'] !== null;
     $out = '<ul class="songs-bands">';
     foreach ($v['bands'] as $b) {

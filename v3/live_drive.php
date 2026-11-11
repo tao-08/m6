@@ -28,24 +28,10 @@ require_login();
 $pdo = db();
 // (int) で型をそろえる。数字以外が来ても 0 になり、下の SELECT で「見つからない」になる
 $liveId = (int)($_GET['id'] ?? $_POST['live_id'] ?? 0);
-$st = $pdo->prepare('SELECT * FROM live WHERE live_id = ?'); // プリペアドステートメント（SQL インジェクション対策）
-$st->execute([$liveId]);
-$live = $st->fetch();
-if (!$live) {
-    error_page(404, 'ライブが見つかりません');
-}
+$live = live_or_404($pdo, $liveId);
 
-// このライブのバンド（日程順 → 出演順）。キーを band_id にしておくと、あとで $bands[$id] で引ける
-$st = $pdo->prepare('SELECT b.band_id, b.name, b.play_order, b.artist_id, a.name AS artist_name, d.label
-    FROM band b
-    JOIN live_day d ON d.live_day_id = b.live_day_id
-    LEFT JOIN artist a ON a.artist_id = b.artist_id
-    WHERE d.live_id = ? ORDER BY d.held_on IS NULL, d.held_on, d.live_day_id, b.play_order');
-$st->execute([$liveId]);
-$bands = [];
-foreach ($st as $b) {
-    $bands[(int)$b['band_id']] = $b;
-}
+// このライブのバンド（日程順 → 出演順）。キーは band_id
+$bands = live_bands_by_id($pdo, $liveId);
 $current = drive_load_files($pdo, array_keys($bands)); // band_id => 紐付け済みのファイル
 
 // ---------- フォルダを読む（表示でも保存でも使う） ----------
@@ -131,23 +117,8 @@ if (is_post()) {
 $match = ['bands' => [], 'unmatched' => []];
 $owners = []; // file_id => 当たったバンドの数（2以上なら自動でチェックしない）
 if ($error === null) {
-    // 名前の中で探す名前: バンド名（lib 側で括弧の前を使う）・アーティスト名・アーティストの別称（エルレ → ELLEGARDEN など）
-    //   live_youtube.php と同じ。別称は全バンド分を1回の SQL で取る（バンドごとに SQL を投げない = N+1 問題の回避）
-    $st = $pdo->prepare('SELECT DISTINCT al.artist_id, al.name FROM artist_alias al
-        JOIN band b ON b.artist_id = al.artist_id
-        JOIN live_day d ON d.live_day_id = b.live_day_id
-        WHERE d.live_id = ?');
-    $st->execute([$liveId]);
-    $aliases = [];
-    foreach ($st as $r) {
-        $aliases[(int)$r['artist_id']][] = $r['name'];
-    }
-    $input = [];
-    foreach ($bands as $id => $b) {
-        // ...（スプレッド構文）で別称の配列を展開して、アーティスト名の後ろに並べる
-        $names = $b['artist_id'] ? [(string)$b['artist_name'], ...($aliases[(int)$b['artist_id']] ?? [])] : [];
-        $input[$id] = ['name' => $b['name'], 'names' => $names];
-    }
+    // 名前の中で探す名前: バンド名・アーティスト名・アーティストの別称（lib/repository.php の band_match_input）
+    $input = band_match_input($pdo, $liveId, $bands);
     $match = drive_match_files(array_values($files), $input);
     foreach ($match['bands'] as $ids) {
         foreach ($ids as $fid) {

@@ -18,24 +18,12 @@
  */
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
+require_once __DIR__ . '/lib/api.php';
 require_once __DIR__ . '/lib/venue_ai.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
-function fail(int $status, string $message): never
-{
-    http_response_code($status);
-    echo json_encode(['error' => $message], JSON_UNESCAPED_UNICODE);
-    exit;
-}
-
-if (current_user() === null) {
-    fail(401, 'ログインしてください');
-}
-if (!is_post()) {
-    fail(405, 'POST only');
-}
-verify_csrf();
+api_user(); // 未ログイン・POST 以外・CSRF 不一致はここで JSON のエラーを返して終わる
 if (!claude_enabled()) {
     fail(503, 'AI は設定されていません');
 }
@@ -55,26 +43,7 @@ $sections = array_values(array_intersect(array_keys(VENUE_AI_SECTIONS), array_ma
 $officialOnly = ($_POST['source'] ?? '') === 'official';
 $venue['extra'] = ai_extra_clean($_POST['extra'] ?? ''); // 追加指示（任意・500文字まで）
 
-$images = [];
-$f = $_FILES['images'] ?? null;
-if (is_array($f) && is_array($f['name'])) {
-    foreach ($f['name'] as $i => $name) {
-        $err = (int)$f['error'][$i];
-        if ($err === UPLOAD_ERR_NO_FILE) {
-            continue;
-        }
-        if ($err !== UPLOAD_ERR_OK) {
-            fail(400, in_array($err, [UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE], true) ? '画像が大きすぎます' : '画像を受け取れませんでした');
-        }
-        if (!is_uploaded_file($f['tmp_name'][$i]) || $f['size'][$i] > 10 * 1024 * 1024) {
-            fail(400, '画像は1枚10MBまでです');
-        }
-        $images[] = ['path' => $f['tmp_name'][$i], 'name' => basename((string)$name)];
-    }
-}
-if (count($images) > AI_MAX_IMAGES) {
-    fail(400, '画像は一度に ' . AI_MAX_IMAGES . ' 枚までです');
-}
+$images = api_ai_images(); // 1枚10MB・AI_MAX_IMAGES 枚まで（lib/api.php）
 
 // AI の返事は数十秒かかるので、いったんセッションのロックを外す（同じ人の別タブが待たされないように）
 session_write_close();

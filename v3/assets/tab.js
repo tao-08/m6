@@ -17,9 +17,7 @@
 (() => {
   'use strict';
 
-  const token = document.querySelector('meta[name="csrf-token"]')?.content || '';
-
-  // 曲の一覧ページ: 削除した TAB の「復元」ボタン（post() / notify() は下にある関数宣言なので、ここから呼べる）
+  // 曲の一覧ページ: 削除した TAB の「復元」ボタン（post() / flashToast() は下にある関数宣言なので、ここから呼べる）
   document.querySelectorAll('[data-restore]').forEach((btn) => {
     btn.addEventListener('click', async () => {
       if (!window.confirm('復元しますか？')) return;
@@ -29,7 +27,7 @@
         window.location.href = json.redirect;
       } catch (err) {
         btn.disabled = false;
-        notify(err.message || '復元できませんでした', 'error');
+        flashToast(err.message || '復元できませんでした', 'error');
       }
     });
   });
@@ -114,7 +112,7 @@
       fd.append('kind', kind);
       fd.append('id', String(id));
       if (part) fd.append('part', part);
-      const res = await fetch('api_tab_image', { method: 'POST', credentials: 'same-origin', headers: { 'X-CSRF-Token': token }, body: fd });
+      const res = await fetch('api_tab_image', { method: 'POST', credentials: 'same-origin', headers: { 'X-CSRF-Token': csrfToken() }, body: fd });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json.error || '画像を保存できませんでした');
       box.ids = json.images;
@@ -153,7 +151,7 @@
             const fd = new FormData();
             fd.append('action', 'remove');
             fd.append('image_id', String(imgId));
-            try { await send(fd); } catch (err) { notify(err.message, 'error'); }
+            try { await send(fd); } catch (err) { flashToast(err.message, 'error'); }
           });
           li.appendChild(del);
         }
@@ -167,7 +165,7 @@
       fd.append('action', 'add');
       [...input.files].forEach((f) => fd.append('images[]', f));
       input.value = '';
-      try { await send(fd); } catch (err) { notify(err.message, 'error'); }
+      try { await send(fd); } catch (err) { flashToast(err.message, 'error'); }
     });
     // 画像を全部消す（メモの行の削除ボタン用。1枚ずつ remove を送る）
     box.removeAll = async () => {
@@ -242,7 +240,7 @@
                 syncMemoRow();
               } catch (err) {
                 del.disabled = false;
-                notify(err.message || '削除できませんでした', 'error');
+                flashToast(err.message || '削除できませんでした', 'error');
                 syncMemoRow(); // 途中まで消えていたら行も合わせる
               }
             });
@@ -266,9 +264,9 @@
           await post({ action: 'song_memo', song_key: S.key, part, memo: text.value });
           savedMemo = text.value;
           syncMemoRow();
-          notify('保存しました');
+          flashToast('保存しました');
         } catch (err) {
-          notify(err.message || '保存できませんでした', 'error');
+          flashToast(err.message || '保存できませんでした', 'error');
         } finally {
           btn.disabled = false;
         }
@@ -284,7 +282,7 @@
           window.location.reload();
         } catch (err) {
           btn.disabled = false;
-          notify(err.message || '削除できませんでした', 'error');
+          flashToast(err.message || '削除できませんでした', 'error');
         }
       });
     });
@@ -296,7 +294,7 @@
         window.location.reload();
       } catch (err) {
         btn.disabled = false;
-        notify(err.message || '追加できませんでした', 'error');
+        flashToast(err.message || '追加できませんでした', 'error');
       }
     }));
   }
@@ -311,7 +309,6 @@
    * --------------------------------------------------------------- */
   function songLinks(S, box, part) {
     const SITES = { ufret: ['U-FRET', 'queue_music'], gakki: ['楽器.me', 'piano'], songsterr: ['Songsterr', 'music_note'], youtube: ['YouTube', 'smart_display'] };
-    const icon = (name) => { const s = document.createElement('span'); s.className = 'icon'; s.setAttribute('aria-hidden', 'true'); s.textContent = name; return s; };
     const ids = { song_key: S.key, part, ...(S.song_id ? { song_id: S.song_id } : {}) };
     const add = async (url, label) => {
       await post({ action: 'link_add', ...ids, url, label: label || '' });
@@ -324,7 +321,7 @@
       // 日本語入りの URL はパーセントエンコードした形にする（サーバーは ASCII の URL だけ受け付ける）。% が壊れていればそのまま送る
       let url = input.value.trim();
       try { url = encodeURI(decodeURI(url)); } catch { /* そのまま */ }
-      try { await add(url); } catch (err) { notify(err.message || '登録できませんでした', 'error'); }
+      try { await add(url); } catch (err) { flashToast(err.message || '登録できませんでした', 'error'); }
     });
 
     box.querySelectorAll('[data-link-del]').forEach((btn) => btn.addEventListener('click', async () => {
@@ -335,7 +332,7 @@
         btn.closest('li').remove();
       } catch (err) {
         btn.disabled = false;
-        notify(err.message || '削除できませんでした', 'error');
+        flashToast(err.message || '削除できませんでした', 'error');
       }
     }));
 
@@ -362,7 +359,7 @@
           window.location.reload();
         } catch (err) {
           moveDlg.querySelectorAll('button').forEach((b) => { b.disabled = false; });
-          notify(err.message || '変更できませんでした', 'error');
+          flashToast(err.message || '変更できませんでした', 'error');
         }
       }));
     }
@@ -399,13 +396,13 @@
             img.src = 'https://i.ytimg.com/vi/' + encodeURIComponent(v.video_id) + '/mqdefault.jpg';
             img.alt = '';
             img.loading = 'lazy';
-            thumb.append(img, icon('play_circle'));
+            thumb.append(img, iconEl('play_circle'));
             thumb.addEventListener('click', () => {
               list.querySelectorAll('iframe').forEach((f) => { // 再生は同時に1本だけ（ほかは元のサムネイルに戻す）
                 const old = f.closest('.yts__item');
                 old.classList.remove('yts__item--play');
                 f.replaceWith(old._thumbImg);
-                old.querySelector('.yts__thumb').appendChild(icon('play_circle'));
+                old.querySelector('.yts__thumb').appendChild(iconEl('play_circle'));
               });
               const frame = document.createElement('iframe');
               frame.src = 'https://www.youtube.com/embed/' + encodeURIComponent(v.video_id) + '?autoplay=1&playsinline=1&rel=0';
@@ -430,7 +427,7 @@
             btn.title = v.added ? '登録済み' : '登録';
             btn.setAttribute('aria-label', btn.title);
             btn.disabled = !!v.added;
-            btn.appendChild(icon(v.added ? 'check' : 'add'));
+            btn.appendChild(iconEl(v.added ? 'check' : 'add'));
             btn.addEventListener('click', async () => {
               btn.disabled = true;
               try {
@@ -439,7 +436,7 @@
                 ytsDlg.close(); // 閉じたときに再読み込み（下の close イベント）
               } catch (err) {
                 btn.disabled = false;
-                notify(err.message || '登録できませんでした', 'error');
+                flashToast(err.message || '登録できませんでした', 'error');
               }
             });
             li.append(thumb, text, btn);
@@ -488,10 +485,10 @@
           const parts = [];
           if (json.searches) parts.push('検索 ' + json.searches + '回');
           if (json.usage) parts.push('AI 約' + json.usage.yen + '円・検索' + json.usage.web_search_requests + '回');
-          notify(parts.join(' / '));
+          flashToast(parts.join(' / '));
         }
         found.replaceChildren();
-        if (!json.items.length) { notify('見つかりませんでした'); return; }
+        if (!json.items.length) { flashToast('見つかりませんでした'); return; }
         json.items.forEach((it) => {
           const [siteLabel, siteIcon] = SITES[it.site] || ['', 'link'];
           const li = document.createElement('li');
@@ -499,7 +496,7 @@
           const mark = document.createElement('span');
           mark.className = 'tab-links__site tab-links__site--' + it.site;
           mark.title = siteLabel;
-          mark.appendChild(icon(siteIcon));
+          mark.appendChild(iconEl(siteIcon));
           const a = document.createElement('a');
           a.className = 'tab-links__name';
           a.href = it.url; // サーバーが https・4サイトのホストだけに絞ってある
@@ -516,17 +513,17 @@
           btn.title = it.added ? '登録済み' : '登録';
           btn.setAttribute('aria-label', btn.title);
           btn.disabled = !!it.added;
-          btn.appendChild(icon(it.added ? 'check' : 'add'));
+          btn.appendChild(iconEl(it.added ? 'check' : 'add'));
           btn.addEventListener('click', async () => {
             btn.disabled = true;
-            try { await add(it.url, it.title); } catch (err) { btn.disabled = false; notify(err.message || '登録できませんでした', 'error'); }
+            try { await add(it.url, it.title); } catch (err) { btn.disabled = false; flashToast(err.message || '登録できませんでした', 'error'); }
           });
           li.append(mark, a, btn);
           found.appendChild(li);
         });
         found.hidden = false;
       } catch (err) {
-        notify(err.message || '検索できませんでした', 'error');
+        flashToast(err.message || '検索できませんでした', 'error');
       } finally {
         aiBtn.disabled = false;
         aiBtn.classList.remove('is-loading');
@@ -638,8 +635,6 @@
   }
   /** TAB の時刻 musicTime を、AudioContext の時刻にする（now = 今の TAB の時刻、rate = 再生の速さ。遅いほどクリックの間隔が空く） */
   function audioTimeFor(ctxNow, musicTime, nowMusic, rate) { return ctxNow + Math.max(0, (musicTime - nowMusic) / rate); }
-  /** 内部時計: 基準の時刻から、実際に経った秒 × 速さ だけ進んだ TAB の時刻（同期解除中の位置） */
-  function internalTime(base, elapsedSec, rate) { return base + elapsedSec * rate; }
   /** BPM 計測: タップした時刻（ミリ秒）から BPM。4回未満は null。中央値から ±25% を外れた間隔（打ち間違い）は捨てて平均する */
   function tapTempoBpm(stamps) {
     if (stamps.length < 4) return null;
@@ -1233,7 +1228,6 @@
 
   /** time（秒）がある小節の番号。最初の小節より前なら -1 */
   function barAt(time) { return barIndexAt(starts, st.bars.length, time); }
-  const noteTime = (i, step) => starts[i] + step / stepsPerBar() * durs[i];
 
   /* ---------------------------------------------------------------
    * 曲のマーカー（セクション。全員で共有）
@@ -1335,7 +1329,7 @@
     const i = targetBar();
     const n = Math.min(64, Math.floor(Number(secN.value)) || 0);
     if (n >= 1) {
-      if (st.bars.length + n > MAX_BARS) { notify('小節は最大' + MAX_BARS + 'です', 'error'); return; }
+      if (st.bars.length + n > MAX_BARS) { flashToast('小節は最大' + MAX_BARS + 'です', 'error'); return; }
       const at = i + 1;
       const bars = Array.from({ length: n }, newBar);
       bars[0].s = b.dataset.sec;
@@ -1394,7 +1388,7 @@
     try {
       await post({ action: 'practice', tab_id: D.tab_id, data: practiceData() }, true);
     } catch (err) {
-      notify(err.message || '練習の設定を保存できませんでした', 'error');
+      flashToast(err.message || '練習の設定を保存できませんでした', 'error');
     }
   }
   // タブを閉じる・切り替えるときに、予約したままの保存を先に送る
@@ -1403,7 +1397,7 @@
 
   const markersEl = $('[data-markers]');
   function addMarker() {
-    if (practice.m.length >= 100) { notify('マーカーは最大100個です', 'error'); return; }
+    if (practice.m.length >= 100) { flashToast('マーカーは最大100個です', 'error'); return; }
     practice.m.push({ t: Math.max(0, Math.round(clock.time() * 1000)), e: null, l: '' });
     practice.m.sort((x, y) => x.t - y.t);
     renderMarkers();
@@ -1956,19 +1950,13 @@
   const pad = $('[data-pad]');
   let gridBuilt = false;
 
-  function el(tag, cls, text) {
-    const e = document.createElement(tag);
-    if (cls) e.className = cls;
-    if (text !== undefined) e.textContent = text;
-    return e;
-  }
   function iconBtn(act, icon, label) {
-    const b = el('button', 'icon-btn icon-btn--sm');
+    const b = mkEl('button', 'icon-btn icon-btn--sm');
     b.type = 'button';
     b.dataset.act = act;
     b.title = label;
     b.setAttribute('aria-label', label);
-    const i = el('span', 'icon', icon);
+    const i = mkEl('span', 'icon', icon);
     i.setAttribute('aria-hidden', 'true');
     b.appendChild(i);
     return b;
@@ -1979,14 +1967,14 @@
   function buildBar(i) {
     const bar = st.bars[i];
     const N = stepsPerBar();
-    const box = el('div', 'tg-bar');
+    const box = mkEl('div', 'tg-bar');
     box.dataset.bar = String(i);
     if (secOf[i] >= 0) box.style.setProperty('--sec', secColor(sections[secOf[i]].name)); // セクションの色（見出しに薄く付ける）
     if (tapMode && tapIdx === i) box.classList.add('is-tap-next');
 
-    const head = el('div', 'tg-bar__head');
-    head.appendChild(el('span', 'tg-bar__no', String(st.firstBar + i)));
-    const sec = el('input', 'tg-bar__sec');
+    const head = mkEl('div', 'tg-bar__head');
+    head.appendChild(mkEl('span', 'tg-bar__no', String(st.firstBar + i)));
+    const sec = mkEl('input', 'tg-bar__sec');
     sec.type = 'text';
     sec.maxLength = SECTION_MAX;
     sec.placeholder = 'セクション';
@@ -1995,7 +1983,7 @@
     if (bar.t !== null) {
       const tp = iconBtn('untap', 'touch_app', 'タップ解除');
       tp.classList.add('is-active');
-      tp.appendChild(el('span', 'tg-bar__ms', fmtMs(bar.t)));
+      tp.appendChild(mkEl('span', 'tg-bar__ms', fmtMs(bar.t)));
       head.appendChild(tp);
     }
     head.appendChild(iconBtn('add', 'add', '後ろに追加'));
@@ -2003,14 +1991,14 @@
     head.appendChild(iconBtn('del', 'delete', '削除'));
     box.appendChild(head);
 
-    const cells = el('div', 'tg-bar__cells');
+    const cells = mkEl('div', 'tg-bar__cells');
     cells.style.setProperty('--cols', String(N));
     if (!isDrum) { // コードの行（弦の上）。マスを押すと、画面内キーボードのコード入力でそのステップにコードを付ける
-      const cn = el('span', 'tg-name tg-name--chord', '♪');
+      const cn = mkEl('span', 'tg-name tg-name--chord', '♪');
       cn.title = 'コード';
       cells.appendChild(cn);
       for (let s = 0; s < N; s++) {
-        const cc = el('button', 'tg-chord' + (s % st.steps === 0 ? ' is-beat' : ''), bar.c[s] || '');
+        const cc = mkEl('button', 'tg-chord' + (s % st.steps === 0 ? ' is-beat' : ''), bar.c[s] || '');
         cc.type = 'button';
         cc.tabIndex = -1;
         cc.dataset.s = String(s);
@@ -2020,11 +2008,11 @@
       }
     }
     for (let r = 0; r < strings; r++) {
-      const nm = el('span', 'tg-name', stringNote(r));
+      const nm = mkEl('span', 'tg-name', stringNote(r));
       nm.dataset.r = String(r); // 弦の番号を持たせておく（チューニングを変えたとき relabelStrings がこれで書き直す）
       cells.appendChild(nm);
       for (let s = 0; s < N; s++) {
-        const c = el('button', 'tg-cell' + (s % st.steps === 0 ? ' is-beat' : '') + (isDrum && r === DRUM_HH ? ' is-hh' : ''));
+        const c = mkEl('button', 'tg-cell' + (s % st.steps === 0 ? ' is-beat' : '') + (isDrum && r === DRUM_HH ? ' is-hh' : ''));
         c.type = 'button';
         c.tabIndex = -1;             // 数千個のボタンを Tab で辿らせない（移動は矢印キー）
         c.dataset.s = String(s);
@@ -2199,7 +2187,7 @@
     const bar = st.bars[b];
     if (name === null || name === '') delete bar.c[s];
     else if (chordRe.test(name)) bar.c[s] = name;
-    else { notify('コード名がおかしいです', 'error'); return false; }
+    else { flashToast('コード名がおかしいです', 'error'); return false; }
     recompute();
     commit(null);
     replaceBar(b);
@@ -2327,7 +2315,7 @@
   pad.addEventListener('mousedown', (e) => e.preventDefault());
 
   function insertBar(at, ...bars) {
-    if (st.bars.length + bars.length > MAX_BARS) { notify('小節は最大' + MAX_BARS + 'です', 'error'); return; }
+    if (st.bars.length + bars.length > MAX_BARS) { flashToast('小節は最大' + MAX_BARS + 'です', 'error'); return; }
     st.bars.splice(at, 0, ...bars);
     sel = null;
     recompute(); renderGrid(); commit();
@@ -2340,7 +2328,7 @@
    *   ボタンは data-kb="種類:値"。押しても入力欄のフォーカス・マスの選択を外さない（mousedown を止める）
    * --------------------------------------------------------------- */
   function kbBtn(label, kbData, cls, title) {
-    const b = el('button', cls || '', label);
+    const b = mkEl('button', cls || '', label);
     b.type = 'button';
     b.dataset.kb = kbData;
     if (title) {
@@ -2354,13 +2342,13 @@
   /** アイコン（Material Symbols）のボタン。↶ ↷ ◀ ▶ ▲ ▼ のような「文字の記号」は、端末（フォント）によって形がバラバラなので、アイコンにそろえる */
   function kbIcon(iconName, kbData, cls, title) {
     const b = kbBtn('', kbData, cls, title);
-    const i = el('span', 'icon', iconName);
+    const i = mkEl('span', 'icon', iconName);
     i.setAttribute('aria-hidden', 'true');
     b.appendChild(i);
     return b;
   }
   function kbRow(...children) {
-    const r = el('div', 'tab-pad__row');
+    const r = mkEl('div', 'tab-pad__row');
     children.flat().forEach((c) => r.appendChild(c));
     return r;
   }
@@ -2380,7 +2368,7 @@
     pad.appendChild(tabs);
 
     // ---- 音のパネル ----
-    const note = el('div', 'tab-pad__panel');
+    const note = mkEl('div', 'tab-pad__panel');
     note.dataset.panel = 'note';
     if (isDrum) {
       note.appendChild(kbRow(kbBtn('通常', 'fret:1', 'tab-pad__big', '通常（1）'), kbBtn('アクセント', 'fret:2', 'tab-pad__big', 'アクセント（2）'),
@@ -2406,9 +2394,9 @@
 
     // ---- コードのパネル ----
     if (!isDrum) {
-      const chord = el('div', 'tab-pad__panel');
+      const chord = mkEl('div', 'tab-pad__panel');
       chord.dataset.panel = 'chord';
-      const input = el('input', 'tab-pad__chord');
+      const input = mkEl('input', 'tab-pad__chord');
       input.type = 'text';
       input.maxLength = 16;
       input.placeholder = 'Am7';
@@ -2420,7 +2408,7 @@
       chord.appendChild(kbRow(...['A', 'B', 'C', 'D', 'E', 'F', 'G'].map((n) => kbBtn(n, `root:${n}`, 'tab-pad__big')), kbBtn('#', 'acc:#', 'tab-pad__sm'), kbBtn('b', 'acc:b', 'tab-pad__sm')));
       chord.appendChild(kbRow(...['m', '7', 'M7', 'm7', 'sus4', 'add9', '6', 'dim', 'aug', '9'].map((q) => kbBtn(q, `q:${q}`, 'tab-pad__sm')),
         kbBtn('/', 'slash', 'tab-pad__sm', 'オンコード'), kbBtn('N.C.', 'nc', 'tab-pad__sm'), kbBtn('⌫', 'chord-back', 'tab-pad__sm', '1文字消す')));
-      const recent = el('div', 'tab-pad__row tab-pad__recent');
+      const recent = mkEl('div', 'tab-pad__row tab-pad__recent');
       recent.dataset.recent = '1';
       chord.appendChild(recent);
       pad.appendChild(chord);
@@ -2738,7 +2726,7 @@
   $('[data-wave-detect]').addEventListener('click', () => {
     if (!wave) return;
     const t = detectHead();
-    if (t === null) { notify('音を検知できませんでした', 'error'); return; }
+    if (t === null) { flashToast('音を検知できませんでした', 'error'); return; }
     setOffset(t * 1000);
   });
   if (window.ResizeObserver) new ResizeObserver(() => drawWave()).observe(waveCanvas); // 畳んだステップを開いたとき・画面の幅が変わったとき
@@ -2981,9 +2969,9 @@
       const bpm = detectBpm(chans, buf.sampleRate);
       if (bpm === null) throw new Error('BPM を検知できませんでした');
       setBpm(bpm);
-      notify(`BPM ${bpm}`);
+      flashToast(`BPM ${bpm}`);
     } catch (err) {
-      notify('BPM を検知できませんでした', 'error');
+      flashToast('BPM を検知できませんでした', 'error');
     } finally {
       if (ctx) ctx.close().catch(() => {});
       detectBtn.disabled = !srcFile;
@@ -3010,35 +2998,35 @@
         // AI は記憶による推定: 候補として出し、押したときだけ反映する。確認は「開始位置から確認」のメトロノームで
         searchStatus.textContent = items.length ? (action === 'bpm_ai' ? '推定値です。メトロノームで確認してください' : '') : '見つかりませんでした';
         items.forEach((it) => {
-          const li = el('li');
-          const b = el('button', 'tab-search__btn');
+          const li = mkEl('li');
+          const b = mkEl('button', 'tab-search__btn');
           b.type = 'button';
-          const text = el('span', 'tab-search__text');
+          const text = mkEl('span', 'tab-search__text');
           if (action === 'yt_search') {
-            const img = el('img');
+            const img = mkEl('img');
             img.src = `https://i.ytimg.com/vi/${encodeURIComponent(it.video_id)}/mqdefault.jpg`;
             img.alt = '';
             img.loading = 'lazy';
-            text.append(el('span', 'tab-search__title', it.title), el('span', 'muted small', it.channel));
+            text.append(mkEl('span', 'tab-search__title', it.title), mkEl('span', 'muted small', it.channel));
             b.append(img, text);
             b.addEventListener('click', () => {
               inputs.youtube.value = 'https://www.youtube.com/watch?v=' + encodeURIComponent(it.video_id);
               inputs.youtube.dispatchEvent(new Event('input', { bubbles: true }));
               inputs.youtube.dispatchEvent(new Event('change', { bubbles: true }));
               searchDlg.close();
-              notify('反映しました（保存はまだです）');
+              flashToast('反映しました（保存はまだです）');
             });
           } else {
             // 主な値は信頼度、別案（倍・半分）はその旨を添える
             const conf = { high: '高', medium: '中', low: '低' }[it.confidence] || '';
             const basis = it.basis === 'web' ? 'ウェブ' : '記憶'; // 根拠: ウェブで見つけた値 / AI の記憶（こちらは外れやすい）
-            text.append(el('span', 'tab-search__bpm', 'BPM ' + it.bpm + (it.note ? `（${it.note}）` : '')),
-              el('span', 'muted small', [it.time_sig, basis, it.note ? '' : '信頼度 ' + conf].filter(Boolean).join(' · ')));
+            text.append(mkEl('span', 'tab-search__bpm', 'BPM ' + it.bpm + (it.note ? `（${it.note}）` : '')),
+              mkEl('span', 'muted small', [it.time_sig, basis, it.note ? '' : '信頼度 ' + conf].filter(Boolean).join(' · ')));
             b.append(text);
             b.addEventListener('click', () => {
               setBpm(Number(it.bpm));
               searchDlg.close();
-              notify('反映しました（保存はまだです）');
+              flashToast('反映しました（保存はまだです）');
             });
           }
           li.appendChild(b);
@@ -3143,9 +3131,9 @@
         li.classList.toggle('is-next', status === 'next');
         const mark = $('[data-step-mark]', li);
         if (status === 'done') { // 完了 = ✓ のアイコン（読み上げ用に「完了」の文字も隠して入れる）
-          const ic = el('span', 'icon', 'check');
+          const ic = mkEl('span', 'icon', 'check');
           ic.setAttribute('aria-hidden', 'true');
-          mark.replaceChildren(ic, el('span', 'tab-sr', '完了'));
+          mark.replaceChildren(ic, mkEl('span', 'tab-sr', '完了'));
         } else {
           mark.textContent = String(i + 1);
         }
@@ -3154,7 +3142,7 @@
       if (sum.textContent !== state[n].sum) sum.textContent = state[n].sum; // 要約は textContent で入れる（ユーザーの文字を HTML として解釈させない）
     });
     // 「準備」の見出しの右の 4 つの丸（畳んだ 1 行でも、進み具合が分かる）。丸は最初の 1 回だけ作る
-    if (!dotsEl.childElementCount) SETUP_ORDER.forEach(() => dotsEl.appendChild(el('span', 'tab-setup__dot')));
+    if (!dotsEl.childElementCount) SETUP_ORDER.forEach(() => dotsEl.appendChild(mkEl('span', 'tab-setup__dot')));
     [...dotsEl.children].forEach((d, i) => d.classList.toggle('is-done', state[SETUP_ORDER[i]].done));
     dotsEl.setAttribute('aria-label', `${doneCount}/${SETUP_ORDER.length}`);
     // ① の「次へ」は、YouTube の URL が正しいときだけ押せる（音源を使わないなら、隣の「音源なし」）
@@ -3177,9 +3165,8 @@
       $('.tab-step__body', li).hidden = !open;
     });
     if (scroll && name && stepEls[name]) {
-      const calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches; // 動きを減らす設定の人には、滑らかなスクロールにしない
-      // 他のステップが閉じて高さが変わったあとの位置で動かすため、次のフレームに回す
-      requestAnimationFrame(() => stepEls[name].scrollIntoView({ block: name === 'start' ? 'start' : 'nearest', behavior: calm ? 'auto' : 'smooth' }));
+      // 他のステップが閉じて高さが変わったあとの位置で動かすため、次のフレームに回す。動きを減らす設定の人には、滑らかなスクロールにしない
+      requestAnimationFrame(() => stepEls[name].scrollIntoView({ block: name === 'start' ? 'start' : 'nearest', behavior: reduceMotion ? 'auto' : 'smooth' }));
     }
   }
   /** 「次へ」で次に開くステップ。③ 開始位置は、音源が無いと要らない（自動で完了）ので飛ばす。最後まで来たら null（全部閉じる） */
@@ -3212,8 +3199,7 @@
     const firstBar = grid.children[0];
     if (firstBar) {
       // キーボードが出たあと（次のフレーム）に動かす。動きを減らす設定（prefers-reduced-motion）の人には、滑らかなスクロールにしない
-      const calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-      requestAnimationFrame(() => firstBar.scrollIntoView({ block: 'start', behavior: calm ? 'auto' : 'smooth' }));
+      requestAnimationFrame(() => firstBar.scrollIntoView({ block: 'start', behavior: reduceMotion ? 'auto' : 'smooth' }));
     }
   }
 
@@ -3261,26 +3247,9 @@
     // 設定の変更・音符の入力・元に戻す / やり直す・インポートは、どれもここを通る。だから準備ステップの更新は、ここ 1 か所から呼べばよい
     updateSetup();
   }
-  /** 画面上部のお知らせ（app.js の showToast）で知らせる */
-  function notify(message, type) {
-    const t = document.createElement('div');
-    t.className = 'flash flash--' + (type || 'success');
-    t.setAttribute('role', 'status');
-    t.textContent = message;
-    if (typeof window.showToast === 'function') window.showToast(t); else window.alert(message);
-  }
-
-  async function post(body, keepalive, url = 'api_tab_save') {
-    const res = await fetch(url, {
-      method: 'POST',
-      keepalive: !!keepalive, // ページを閉じる直前の送信用
-      credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': token },
-      body: JSON.stringify(body),
-    });
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(json.error || '保存できませんでした');
-    return json;
+  // keepalive = ページを閉じる直前の送信用
+  function post(body, keepalive, url = 'api_tab_save') {
+    return apiPost(url, body, '保存できませんでした', { keepalive: !!keepalive });
   }
 
   async function save() {
@@ -3293,9 +3262,9 @@
       updatedAt = json.updated_at;
       savedStr = JSON.stringify(body);
       refreshDirty();
-      notify('保存しました');
+      flashToast('保存しました');
     } catch (err) {
-      notify(err.message || '通信に失敗しました', 'error'); // 409（他の人が更新）もここに来る
+      flashToast(err.message || '通信に失敗しました', 'error'); // 409（他の人が更新）もここに来る
     } finally {
       saving = false;
       saveBtn.disabled = false;
@@ -3313,7 +3282,7 @@
         leaving = true;
         window.location.href = json.redirect;
       } catch (err) {
-        notify(err.message || '削除できませんでした', 'error');
+        flashToast(err.message || '削除できませんでした', 'error');
       }
     });
   }
@@ -3404,7 +3373,7 @@
     commit();
     updatePartialUi();
     importDlg.close();
-    notify('反映しました（保存はまだです）');
+    flashToast('反映しました（保存はまだです）');
   }));
 
   /* ---- 履歴: 開いたときに一覧を取りに行く。先頭 = 今の状態なので、復元ボタンは2行目から ---- */
@@ -3416,14 +3385,14 @@
     try {
       const json = await post({ action: 'history', tab_id: D.tab_id });
       json.items.forEach((it, idx) => {
-        const li = el('li', 'tab-history__item');
-        li.appendChild(el('span', 'tab-history__label tab-history__label--' + it.action, it.label));
-        li.appendChild(el('span', 'tab-history__who muted small', it.at + ' · ' + it.user)); // 名前は textContent で入れる
+        const li = mkEl('li', 'tab-history__item');
+        li.appendChild(mkEl('span', 'tab-history__label tab-history__label--' + it.action, it.label));
+        li.appendChild(mkEl('span', 'tab-history__who muted small', it.at + ' · ' + it.user)); // 名前は textContent で入れる
         if (idx > 0) {
-          const b = el('button', 'btn btn--sm');
+          const b = mkEl('button', 'btn btn--sm');
           b.type = 'button';
           b.dataset.rev = String(it.rev_id);
-          const ic = el('span', 'icon', 'restore');
+          const ic = mkEl('span', 'icon', 'restore');
           ic.setAttribute('aria-hidden', 'true');
           b.append(ic, ' 復元');
           li.appendChild(b);
@@ -3432,7 +3401,7 @@
       });
     } catch (err) {
       histDlg.close();
-      notify(err.message || '履歴を取得できませんでした', 'error');
+      flashToast(err.message || '履歴を取得できませんでした', 'error');
     }
   }
   $('[data-history-open]').addEventListener('click', openHistory);
@@ -3449,7 +3418,7 @@
       window.location.href = json.redirect;
     } catch (err) {
       b.disabled = false;
-      notify(err.message || '復元できませんでした', 'error');
+      flashToast(err.message || '復元できませんでした', 'error');
     }
   });
 

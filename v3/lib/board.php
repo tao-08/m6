@@ -24,9 +24,16 @@ function board_scope(array $user): array
     $entryYear = null;
     $active = false;
     if (!empty($user['member_id'])) {
-        $st = db()->prepare('SELECT entry_year, retired FROM member WHERE member_id = ?');
-        $st->execute([(int)$user['member_id']]);
-        if ($m = $st->fetch()) {
+        $me = request_member_info(); // ログイン中の本人なら require_login() が読み済み（毎ページの問い合わせを1回減らす）
+        if ($me !== null && $me['user_id'] === $uid && $me['member_id'] === (int)$user['member_id']) {
+            $m = ['entry_year' => $me['entry_year'], 'retired' => $me['retired']];
+        } else {
+            // 他の人（lib/push.php が通知先ごとに呼ぶ）や require_login を通っていない場合は、今までどおり DB から引く
+            $st = db()->prepare('SELECT entry_year, retired FROM member WHERE member_id = ?');
+            $st->execute([(int)$user['member_id']]);
+            $m = $st->fetch();
+        }
+        if ($m) {
             $entryYear = $m['entry_year'] === null ? null : (int)$m['entry_year'];
             $grade = grade_of($entryYear);
             $active = !$m['retired'] && $grade !== null && $grade <= 4;

@@ -107,9 +107,9 @@
     bars.forEach((b) => { b.classList.add('fx-bar-wait'); barIo.observe(b); });
 
     /* ---- 数字のカウントアップ ----
-       対象: .stats dd と [data-countup]。「123」「1,234」のような数字だけの文字（子要素なし）に限る。
+       対象: .stats dd。「123」「1,234」のような数字だけの文字（子要素なし）に限る。
        「12:30」「3回」のような他の文字が混ざるものは触らない（壊さないため） */
-    const counters = [...document.querySelectorAll('.stats dd, [data-countup]')]
+    const counters = [...document.querySelectorAll('.stats dd')]
       .filter((el) => el.children.length === 0 && /^\d{1,3}(,\d{3})*$|^\d+$/.test(el.textContent.trim()));
     const countIo = new IntersectionObserver((entries) => {
       entries.forEach((entry) => {

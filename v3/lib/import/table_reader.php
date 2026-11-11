@@ -172,7 +172,7 @@ function pdf_words_to_rows(array $words, ?array &$columns): array
     $rows = [];
     $bodyLines = $lines;
 
-    foreach ($lines as $i => $line) {
+    foreach ($lines as $line) {
         $text = implode('', array_column($line['phrases'], 'text'));
         if (str_contains($text, 'バンド名')) {
             // 見出しセル内で折り返された文字（「持ち時/間」など）も拾うため、上下に近い行も見出しに含める

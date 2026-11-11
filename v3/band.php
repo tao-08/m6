@@ -39,11 +39,7 @@ $st = $pdo->prepare('SELECT b.*, a.name AS artist_name, d.live_id, d.label, d.he
 $st->execute([$bandId]);
 $band = $st->fetch();
 if (!$band) {
-    http_response_code(404);
-    render_header('見つかりません');
-    echo '<div class="empty card"><p class="empty__title">バンドが見つかりません</p><a class="btn" href="./">一覧へ戻る</a></div>';
-    render_footer();
-    exit;
+    not_found_page('バンドが見つかりません');
 }
 $liveUrl = 'live?id=' . (int)$band['live_id'] . '#day-' . (int)$band['live_day_id'];
 

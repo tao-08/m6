@@ -111,7 +111,7 @@ function manual_row_html(string $i, array $r, array $rosterChoices, array $dayLa
     $sel = static fn(string $v, string $cur) => $v === $cur ? ' selected' : '';
     $opts = '<option value="">— 使わない —</option><optgroup label="名簿のバンド">';
     foreach ($rosterChoices as $label => $ref) {
-        $opts .= '<option value="' . h($ref) . '"' . $sel($ref, $pick) . '>' . h((string)$label) . '</option>';
+        $opts .= '<option value="' . h($ref) . '"' . $sel($ref, $pick) . '>' . h($label) . '</option>';
     }
     $opts .= '</optgroup><optgroup label="バンド以外">';
     foreach (MANUAL_BREAKS as $b) {
@@ -121,7 +121,7 @@ function manual_row_html(string $i, array $r, array $rosterChoices, array $dayLa
     return '<tr' . ($pick === '' ? ' class="is-excluded"' : '') . '>' . $handle
         . '<td class="mono nowrap" data-manual-no></td>'
         . '<td><select name="r[' . $i . '][pick]" aria-label="バンド" data-manual-pick>' . $opts . '</select></td>'
-        . '<td><input type="number" class="input-num" min="0" max="255" name="r[' . $i . '][songs]" value="' . h((string)($r['songs'] ?? '')) . '" aria-label="曲数"></td>'
+        . '<td><input type="number" class="input-num" min="0" max="255" name="r[' . $i . '][songs]" value="' . h($r['songs'] ?? '') . '" aria-label="曲数"></td>'
         . '</tr>';
 }
 
@@ -775,7 +775,7 @@ if ($plan === null): // ==================== アップロード画面 ==========
                     <input type="hidden" name="tt[<?= $ti ?>][live_id]" value="<?= $mergeLive ? (int)$mergeLive['live_id'] : '' ?>" data-live-id<?= $merge ? '' : ' disabled' ?>>
                     <div class="live-pick" data-live-pick-wrap<?= $merge ? '' : ' hidden' ?>>
                         <button type="button" class="live-pick__btn" aria-haspopup="listbox" aria-expanded="false" data-live-pick
-                            data-year="<?= $mergeLive ? (int)$mergeLive['fiscal_year'] : '' ?>" data-labels="<?= $mergeLive ? h((string)$mergeLive['labels']) : '' ?>">
+                            data-year="<?= $mergeLive ? (int)$mergeLive['fiscal_year'] : '' ?>" data-labels="<?= $mergeLive ? h($mergeLive['labels']) : '' ?>">
                             <span data-live-pick-text<?= $mergeLive ? '' : ' class="is-placeholder"' ?>><?= $mergeLive ? h($mergeLive['fiscal_year'] . '年度 ' . $mergeLive['name']) : 'ライブを選択' ?></span>
                             <?= icon('expand_more') ?>
                         </button>
@@ -1004,7 +1004,7 @@ if ($plan === null): // ==================== アップロード画面 ==========
 // 登録済みのメンバーがいるバンドに名簿を選んだら、「登録済み」と「名簿」を並べて、入れ直すかを選べるようにする
 //   ・登録済みが0人 … 何も出さない（そのまま入れる） / 1人以上 … チェックと見比べ（details）を出す。初期値は OFF
 //   ・名簿に無い人・登録に無い人は色を付ける（名前は空白と異体字をそろえて比べる。完全ではない）
-//   ・おすすめの目印（2人以下 / 名簿のほうが多い）は、lib/import/attach.php の overwrite_hint と同じ基準
+//   ・おすすめの目印は、登録が2人以下 / 名簿のほうが多い
 (() => {
     const data = JSON.parse(document.getElementById('compare-data').textContent);
     const rosterKeys = {}; // 検索欄の文字 → 'ri:bi'

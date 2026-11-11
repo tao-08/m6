@@ -129,7 +129,6 @@
 .sinfo-edit .sinfo-edit__row > * { width: auto; }
 .sinfo-edit__row .grow { flex: 1 1 140px; }
 .sinfo-edit__row input[type=number] { width: 90px; }
-.sinfo-edit__rate { padding-bottom: 8px; border-bottom: 1px dashed var(--border); }
 .sinfo-delete { margin-top: 20px; display: flex; justify-content: flex-end; }
 
 /* ---- バンド / 個人練習の切り替え（シミュレーションの一番上。少し大きめのボタン） ---- */
@@ -270,15 +269,11 @@ h1 .tag--rec, h1 .tag--night { font-size: var(--fs-sm); } /* 見出し（36px）
 .sinfo-rate-group { display: grid; gap: 4px; padding: 8px 10px 10px; border: 1px solid var(--border); border-radius: var(--r-md); }
 .sinfo-rate-group__head { display: flex; align-items: center; gap: 6px; font-size: var(--fs-sm); }
 .sinfo-rate-group__add { margin-left: auto; padding: 2px 8px; }
-/* 列がはみ出す（割引区分が多い・スマホ）ときは、行のまとまりだけ横スクロール */
-.sinfo-rate-wrap { overflow-x: auto; display: grid; gap: 4px; }
 /* 1行 = CSS グリッド。列: 開始 | 終了 | 料金 | 割引区分 × n。--cols（列の数）はフォームの style で渡す
    repeat(n, X) = X を n 回くり返す。見出しの行も同じグリッドなので、列名と入力欄が縦にそろう */
 .sinfo-rate-row { display: grid; grid-template-columns: repeat(var(--cols, 3), minmax(62px, 1fr)); gap: 6px; align-items: center; min-width: min-content; }
 .sinfo-rate-row--head { font-weight: 800; font-size: var(--fs-2xs); }
 .sinfo-edit .sinfo-rate-row select, .sinfo-edit .sinfo-rate-row input[type=number] { width: 100%; min-width: 0; padding: 8px 6px; }
-/* 新しい見出しを作る行: 先頭に「対象・曜日」の選択を1行まるごと使って出す（grid-column: 1 / -1 = 最初の列から最後の列まで） */
-.sinfo-rate-row__pick { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; color: var(--muted); }
 /* 行ごとの部屋チップ: グリッドの1行を丸ごと使う（grid-column: 1 / -1）。見出し行の次からは、行の間に点線を入れて区切る */
 .sinfo-rate-row .sinfo-chips { grid-column: 1 / -1; }
 .sinfo-rate-row:not(.sinfo-rate-row--head) + .sinfo-rate-row { padding-top: 6px; border-top: 1px dashed var(--border); }
@@ -346,16 +341,12 @@ h1 .tag--rec, h1 .tag--night { font-size: var(--fs-sm); } /* 見出し（36px）
 .sinfo-slot + .sinfo-slot { margin-top: 2px; }
 
 /* ---- 新しい行の「追加の時間帯」（曜日・開始・終了を横に並べる。グリッドの1行を丸ごと使う）---- */
-/* 新しい見出しの行: 曜日・開始・終了を1か所に縦に並べる（＋ 時間帯 で行を足す。4列目は × の場所） */
-.sinfo-rate-row__slots { grid-column: 1 / -1; display: grid; gap: 6px; }
 .sinfo-rate-row__slot { display: grid; grid-template-columns: 1.2fr 2.8fr 32px; gap: 6px; align-items: center; }
 
 /* ---- 行の削除ボタン（編集フォーム。押すと行を隠して保存で削除）---- */
 .sinfo-row-del { width: 32px; height: 32px; color: var(--muted); }
 .sinfo-row-del:hover { color: var(--danger, var(--accent)); }
 .sinfo-row-del .icon { font-size: 18px; }
-.sinfo-rate-row__top { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; }
-.sinfo-rate-row__top .sinfo-chips { flex: 1 1 auto; }
 .sinfo-rate-row[hidden], .sinfo-edit__row[hidden], .sinfo-slot-edit[hidden] { display: none; } /* display を指定した要素でも hidden を効かせる */
 
 /* ---- 料金の編集: 時間帯（.sinfo-slot-edit）の下に、部屋ごとの料金（.sinfo-rate-room）---- */

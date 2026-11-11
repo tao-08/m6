@@ -13,25 +13,11 @@
  */
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
+require_once __DIR__ . '/lib/api.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
-/** エラーの JSON を返して終わる */
-function fail(int $status, string $message): never
-{
-    http_response_code($status);
-    echo json_encode(['error' => $message], JSON_UNESCAPED_UNICODE);
-    exit;
-}
-
-$user = current_user();
-if ($user === null) {
-    fail(401, 'ログインしてください');
-}
-if (!is_post()) {
-    fail(405, 'POST only');
-}
-verify_csrf(); // JS から X-CSRF-Token ヘッダーで送られてくる
+$user = api_user(); // 未ログイン・POST 以外・CSRF 不一致はここで JSON のエラーを返して終わる
 
 // 2回目以降に閉じたとき（「もう一度見る」から）も、最初に見た日時は残す → COALESCE で NULL のときだけ入れる
 db()->prepare('UPDATE user_account SET tutorial_seen_at = COALESCE(tutorial_seen_at, NOW()) WHERE user_id = ?')

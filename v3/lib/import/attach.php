@@ -40,22 +40,6 @@ function attach_target(PDO $pdo, int $dayId): ?array
 }
 
 /**
- * 名簿での入れ直しを「おすすめ」する基準。プレビューの目印に出すだけで、実際に入れ直すかは利用者がチェックで決める。
- *   登録が2人以下 … 足りない可能性が高い / 名簿のほうが多い … 人数が増える
- * 入れ直し = 今の band_member を全部消してから名簿で入れる。手で直した担当楽器も名簿の内容になる。
- * 変更履歴に残るので、管理者は元に戻せる。
- *
- * @return string おすすめの理由（空文字 = おすすめしない）
- */
-function overwrite_hint(int $registered, int $roster): string
-{
-    if ($registered <= 2) {
-        return '登録が2人以下';
-    }
-    return $roster > $registered ? '名簿のほうが多い' : '';
-}
-
-/**
  * 日程の既存バンドを出演順で取る。member_count = 登録済みのメンバー数（同じ人が2つの楽器でも1人）。
  *   COUNT(DISTINCT 列) … 重複を除いて数える。band_member は (band, member, 楽器) が主キーなので DISTINCT が要る
  */
@@ -130,7 +114,7 @@ function build_attach_plan(PDO $pdo, array $plan, array $target): array
         'members' => [],
     ], $bands);
     $taken = []; // 既存バンド1つは1枠にだけ対応させる（先に見つかった枠が優先）
-    foreach ($plan['timetables'][0]['slots'] as $si => &$slot) {
+    foreach ($plan['timetables'][0]['slots'] as &$slot) {
         $slot['band_id'] = null;
         if (!$slot['is_band']) {
             continue;

@@ -22,24 +22,10 @@ require_login();
 
 $pdo = db();
 $liveId = (int)($_GET['id'] ?? $_POST['live_id'] ?? 0);
-$st = $pdo->prepare('SELECT * FROM live WHERE live_id = ?');
-$st->execute([$liveId]);
-$live = $st->fetch();
-if (!$live) {
-    error_page(404, 'ライブが見つかりません');
-}
+$live = live_or_404($pdo, $liveId);
 
 // このライブのバンド（日程順 → 出演順）
-$st = $pdo->prepare('SELECT b.band_id, b.name, b.play_order, b.youtube_url, b.artist_id, a.name AS artist_name, d.label
-    FROM band b
-    JOIN live_day d ON d.live_day_id = b.live_day_id
-    LEFT JOIN artist a ON a.artist_id = b.artist_id
-    WHERE d.live_id = ? ORDER BY d.held_on IS NULL, d.held_on, d.live_day_id, b.play_order');
-$st->execute([$liveId]);
-$bands = [];
-foreach ($st as $b) {
-    $bands[(int)$b['band_id']] = $b;
-}
+$bands = live_bands_by_id($pdo, $liveId, true);
 
 // ---------- 保存 ----------
 if (is_post()) {
@@ -99,21 +85,8 @@ if ($playlistId === null) {
 }
 
 if ($error === null) {
-    // タイトルの中で探す名前: バンド名（lib 側で括弧の前を使う）・アーティスト名・アーティストの別称（エルレ → ELLEGARDEN など）
-    $st = $pdo->prepare('SELECT DISTINCT al.artist_id, al.name FROM artist_alias al
-        JOIN band b ON b.artist_id = al.artist_id
-        JOIN live_day d ON d.live_day_id = b.live_day_id
-        WHERE d.live_id = ?');
-    $st->execute([$liveId]);
-    $aliases = [];
-    foreach ($st as $r) {
-        $aliases[(int)$r['artist_id']][] = $r['name'];
-    }
-    $input = [];
-    foreach ($bands as $id => $b) {
-        $names = $b['artist_id'] ? [(string)$b['artist_name'], ...($aliases[(int)$b['artist_id']] ?? [])] : [];
-        $input[$id] = ['name' => $b['name'], 'names' => $names];
-    }
+    // タイトルの中で探す名前: バンド名・アーティスト名・アーティストの別称（lib/repository.php の band_match_input）
+    $input = band_match_input($pdo, $liveId, $bands);
     $list = [];
     foreach ($videos as $id => $title) {
         $list[] = ['video_id' => $id, 'title' => $title];

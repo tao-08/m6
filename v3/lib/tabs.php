@@ -186,18 +186,6 @@ function tab_tuning_valid_for(string $kind, string $tuning): bool
         && count(array_unique($lanes)) === count($lanes) && !array_diff($lanes, TAB_DRUM_LANES);
 }
 
-/** 候補に一致するチューニングの名前（無ければ null = カスタム） */
-function tab_tuning_name(string $tuning): ?string
-{
-    $tuning = trim(preg_replace('/ +/', ' ', $tuning) ?? '');
-    foreach (TAB_TUNINGS[tab_string_count($tuning)] ?? [] as $name => $notes) {
-        if ($notes === $tuning) {
-            return $name;
-        }
-    }
-    return null;
-}
-
 /** チューニングの弦の数 */
 function tab_string_count(string $tuning): int
 {

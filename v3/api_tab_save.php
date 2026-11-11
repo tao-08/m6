@@ -34,6 +34,7 @@
  */
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
+require_once __DIR__ . '/lib/api.php';
 require_once __DIR__ . '/lib/tabs.php';
 require_once __DIR__ . '/lib/repository.php'; // band_setlist_visibility（tab_resolve_song）
 require_once __DIR__ . '/lib/attach_image.php'; // パートのカードを消すとき、メモの画像も消す
@@ -42,14 +43,6 @@ require_once __DIR__ . '/lib/claude.php';  // claude_json()（BPM の AI 推定�
 
 header('Content-Type: application/json; charset=utf-8');
 
-/** エラーの JSON を返して終わる */
-function fail(int $status, string $message): never
-{
-    http_response_code($status);
-    echo json_encode(['error' => $message], JSON_UNESCAPED_UNICODE);
-    exit;
-}
-
 // API なのでログイン画面へのリダイレクトではなく、エラーの JSON を返す
 $user = current_user();
 if (!is_post()) {
@@ -57,7 +50,7 @@ if (!is_post()) {
 }
 verify_csrf(); // JS から X-CSRF-Token ヘッダーで送られてくる
 
-$body = json_decode((string)file_get_contents('php://input'), true);
+$body = api_body();
 if (!is_array($body)) {
     fail(400, '送られた内容がおかしいです');
 }
@@ -104,6 +97,34 @@ function resolve_part(PDO $pdo, string $songKey, mixed $raw): string
     return $found['part'];
 }
 
+/** YouTube のリンク（link_id）があるか確かめる。無ければ 404 */
+function require_youtube_link(PDO $pdo, int $linkId): void
+{
+    $st = $pdo->prepare('SELECT 1 FROM song_link WHERE link_id = ? AND site = \'youtube\'');
+    $st->execute([$linkId]);
+    if (!$st->fetchColumn()) {
+        fail(404, 'リンクが見つかりません');
+    }
+}
+
+/** 1枚のカード（曲 + パート）のリンクが上限に達していたら 400 */
+function require_link_room(PDO $pdo, string $songKey, string $part): void
+{
+    $st = $pdo->prepare('SELECT COUNT(*) FROM song_link WHERE song_key = ? AND part = ?');
+    $st->execute([$songKey, $part]);
+    if ((int)$st->fetchColumn() >= TAB_SONG_LINK_MAX) {
+        fail(400, 'リンクは1カードに' . TAB_SONG_LINK_MAX . '件までです');
+    }
+}
+
+/** そのカードに登録済みの URL（array_flip 済み。isset($have[URL]) で調べる） */
+function song_link_urls(PDO $pdo, string $songKey, string $part): array
+{
+    $st = $pdo->prepare('SELECT url FROM song_link WHERE song_key = ? AND part = ?');
+    $st->execute([$songKey, $part]);
+    return array_flip($st->fetchAll(PDO::FETCH_COLUMN));
+}
+
 if ($action === 'yt_free_search') {
     // DB に無い曲の動画検索（未ログイン用。曲に紐付けない = DB に何も書かない）。検索語は必須
     $q = is_string($body['q'] ?? null) ? trim($body['q']) : '';
@@ -125,8 +146,7 @@ if ($action === 'yt_free_search') {
     }
     $items = array_map(static fn($v) => ['video_id' => $v['video_id'], 'url' => youtube_watch_url($v['video_id']), 'title' => $v['title'],
         'channel' => $v['channel'], 'added' => false], $found);
-    echo json_encode(['ok' => true, 'q' => $q, 'items' => $items], JSON_UNESCAPED_UNICODE);
-    exit;
+    api_ok(['ok' => true, 'q' => $q, 'items' => $items]);
 }
 
 if ($action === 'delete') {
@@ -150,8 +170,7 @@ if ($action === 'delete') {
         fail(500, db_error($e, '削除できませんでした'));
     }
     flash('TAB を削除しました');
-    echo json_encode(['ok' => true, 'redirect' => 'tab?key=' . rawurlencode($row['song_key'])], JSON_UNESCAPED_UNICODE);
-    exit;
+    api_ok(['ok' => true, 'redirect' => 'tab?key=' . rawurlencode($row['song_key'])]);
 }
 
 if ($action === 'history') {
@@ -167,8 +186,7 @@ if ($action === 'history') {
         'at'     => date('Y/n/j H:i', (int)strtotime($r['created_at'])),
         'user'   => $r['name'] ?? '（削除済み）',
     ], $st->fetchAll());
-    echo json_encode(['ok' => true, 'items' => $items], JSON_UNESCAPED_UNICODE);
-    exit;
+    api_ok(['ok' => true, 'items' => $items]);
 }
 
 if ($action === 'song_memo') {
@@ -189,8 +207,7 @@ if ($action === 'song_memo') {
     } catch (PDOException $e) {
         fail(500, db_error($e, '保存できませんでした'));
     }
-    echo json_encode(['ok' => true], JSON_UNESCAPED_UNICODE);
-    exit;
+    api_ok(['ok' => true]);
 }
 
 if (in_array($action, ['link_search', 'link_add', 'yt_link_search', 'part_add', 'part_delete'], true)) {
@@ -232,8 +249,7 @@ if (in_array($action, ['link_search', 'link_add', 'yt_link_search', 'part_add', 
         } catch (PDOException $e) {
             fail(($e->errorInfo[1] ?? 0) === 1062 ? 409 : 500, ($e->errorInfo[1] ?? 0) === 1062 ? '同じパート名がすでにあります' : db_error($e, '追加できませんでした'));
         }
-        echo json_encode(['ok' => true, 'part' => $name], JSON_UNESCAPED_UNICODE);
-        exit;
+        api_ok(['ok' => true, 'part' => $name]);
     }
     if ($action === 'part_delete') {
         // パートのカードを消す（リンク・メモ・画像ごと）。自作 TAB があるパートは消せない（TAB の削除は TAB の画面から）
@@ -265,8 +281,7 @@ if (in_array($action, ['link_search', 'link_add', 'yt_link_search', 'part_add', 
             fail(500, db_error($e, '削除できませんでした'));
         }
         array_map('live_image_unlink', $removeFiles); // コミットのあとにファイルを消す
-        echo json_encode(['ok' => true], JSON_UNESCAPED_UNICODE);
-        exit;
+        api_ok(['ok' => true]);
     }
     $part = resolve_part($pdo, $key, $body['part'] ?? ''); // リンクの検索・登録: '' = 曲全体のカード、それ以外 = そのパートのカード
     if ($action === 'link_search') {
@@ -293,12 +308,9 @@ if (in_array($action, ['link_search', 'link_add', 'yt_link_search', 'part_add', 
             $items = $_SESSION['tab_search'][$cacheKey];
         }
         // 登録済みのものには印を付ける（画面で「登録」ボタンを出さない）
-        $st = $pdo->prepare('SELECT url FROM song_link WHERE song_key = ? AND part = ?');
-        $st->execute([$key, $part]);
-        $have = array_flip($st->fetchAll(PDO::FETCH_COLUMN));
+        $have = song_link_urls($pdo, $key, $part);
         $items = array_map(static fn($it) => $it + ['added' => isset($have[$it['url']])], $items);
-        echo json_encode(['ok' => true, 'items' => $items, 'usage' => $usage, 'searches' => $searches], JSON_UNESCAPED_UNICODE);
-        exit;
+        api_ok(['ok' => true, 'items' => $items, 'usage' => $usage, 'searches' => $searches]);
     }
     if ($action === 'yt_link_search') {
         // YouTube 専用の検索（埋め込みできる動画だけ）。検索語は画面で直せる（ギター・ベースなどを足せるように）が、長さと文字は絞る。空なら曲名 + アーティスト
@@ -325,13 +337,10 @@ if (in_array($action, ['link_search', 'link_add', 'yt_link_search', 'part_add', 
         } else {
             $found = $_SESSION['tab_search'][$cacheKey];
         }
-        $st = $pdo->prepare('SELECT url FROM song_link WHERE song_key = ? AND part = ?');
-        $st->execute([$key, $part]);
-        $have = array_flip($st->fetchAll(PDO::FETCH_COLUMN));
+        $have = song_link_urls($pdo, $key, $part);
         $items = array_map(static fn($v) => ['video_id' => $v['video_id'], 'url' => youtube_watch_url($v['video_id']), 'title' => $v['title'],
             'channel' => $v['channel'], 'added' => isset($have[youtube_watch_url($v['video_id'])])], $found);
-        echo json_encode(['ok' => true, 'q' => $q, 'items' => $items], JSON_UNESCAPED_UNICODE);
-        exit;
+        api_ok(['ok' => true, 'q' => $q, 'items' => $items]);
     }
     // 登録
     $norm = tab_link_normalize($body['url'] ?? null);
@@ -367,11 +376,7 @@ if (in_array($action, ['link_search', 'link_add', 'yt_link_search', 'part_add', 
             $newPart = [$part, $instId];
         }
     }
-    $st = $pdo->prepare('SELECT COUNT(*) FROM song_link WHERE song_key = ? AND part = ?');
-    $st->execute([$key, $part]);
-    if ((int)$st->fetchColumn() >= TAB_SONG_LINK_MAX) {
-        fail(400, 'リンクは1カードに' . TAB_SONG_LINK_MAX . '件までです');
-    }
+    require_link_room($pdo, $key, $part);
     try {
         $pdo->beginTransaction();
         if ($newPart !== null) {
@@ -391,8 +396,7 @@ if (in_array($action, ['link_search', 'link_add', 'yt_link_search', 'part_add', 
         }
         fail(($e->errorInfo[1] ?? 0) === 1062 ? 409 : 500, ($e->errorInfo[1] ?? 0) === 1062 ? '登録済みです' : db_error($e, '登録できませんでした'));
     }
-    echo json_encode(['ok' => true, 'link' => ['id' => $linkId, 'site' => $norm[0], 'url' => $norm[1], 'label' => $label, 'part' => $part]], JSON_UNESCAPED_UNICODE);
-    exit;
+    api_ok(['ok' => true, 'link' => ['id' => $linkId, 'site' => $norm[0], 'url' => $norm[1], 'label' => $label, 'part' => $part]]);
 }
 
 if ($action === 'link_delete') {
@@ -402,8 +406,7 @@ if ($action === 'link_delete') {
     if ($st->rowCount() === 0) {
         fail(404, 'リンクが見つかりません');
     }
-    echo json_encode(['ok' => true], JSON_UNESCAPED_UNICODE);
-    exit;
+    api_ok(['ok' => true]);
 }
 
 if ($action === 'link_move') {
@@ -437,14 +440,9 @@ if ($action === 'link_move') {
         }
     }
     if (mb_strtolower($part) === mb_strtolower((string)$link['part'])) {
-        echo json_encode(['ok' => true, 'part' => $link['part']], JSON_UNESCAPED_UNICODE); // 同じカードへ: 何もしない
-        exit;
+        api_ok(['ok' => true, 'part' => $link['part']]); // 同じカードへ: 何もしない
     }
-    $st = $pdo->prepare('SELECT COUNT(*) FROM song_link WHERE song_key = ? AND part = ?');
-    $st->execute([$key, $part]);
-    if ((int)$st->fetchColumn() >= TAB_SONG_LINK_MAX) {
-        fail(400, 'リンクは1カードに' . TAB_SONG_LINK_MAX . '件までです');
-    }
+    require_link_room($pdo, $key, $part);
     try {
         $pdo->beginTransaction();
         if ($newPart !== null) {
@@ -459,8 +457,7 @@ if ($action === 'link_move') {
         }
         fail(500, db_error($e, '変更できませんでした'));
     }
-    echo json_encode(['ok' => true, 'part' => $part], JSON_UNESCAPED_UNICODE);
-    exit;
+    api_ok(['ok' => true, 'part' => $part]);
 }
 
 if ($action === 'link_practice') {
@@ -470,11 +467,7 @@ if ($action === 'link_practice') {
     if ($clean === null) {
         fail(400, 'データがおかしいです');
     }
-    $st = $pdo->prepare('SELECT 1 FROM song_link WHERE link_id = ? AND site = \'youtube\'');
-    $st->execute([$linkId]);
-    if (!$st->fetchColumn()) {
-        fail(404, 'リンクが見つかりません');
-    }
+    require_youtube_link($pdo, $linkId);
     try {
         $pdo->prepare('INSERT INTO song_link_practice (link_id, user_id, data) VALUES (?, ?, ?)
                 ON DUPLICATE KEY UPDATE data = VALUES(data)')
@@ -482,8 +475,7 @@ if ($action === 'link_practice') {
     } catch (PDOException $e) {
         fail(500, db_error($e, '保存できませんでした'));
     }
-    echo json_encode(['ok' => true], JSON_UNESCAPED_UNICODE);
-    exit;
+    api_ok(['ok' => true]);
 }
 
 if ($action === 'practice_prefs') {
@@ -498,8 +490,7 @@ if ($action === 'practice_prefs') {
     } catch (PDOException $e) {
         fail(500, db_error($e, '保存できませんでした'));
     }
-    echo json_encode(['ok' => true], JSON_UNESCAPED_UNICODE);
-    exit;
+    api_ok(['ok' => true]);
 }
 
 if ($action === 'link_shared') {
@@ -516,29 +507,20 @@ if ($action === 'link_shared') {
         }
         $m[] = ['t' => $mk['t'], 'l' => $mk['l']];
     }
-    $st = $pdo->prepare('SELECT 1 FROM song_link WHERE link_id = ? AND site = \'youtube\'');
-    $st->execute([$linkId]);
-    if (!$st->fetchColumn()) {
-        fail(404, 'リンクが見つかりません');
-    }
+    require_youtube_link($pdo, $linkId);
     try {
         $pdo->prepare('INSERT INTO song_link_shared_mark (link_id, data) VALUES (?, ?) ON DUPLICATE KEY UPDATE data = VALUES(data)')
             ->execute([$linkId, json_encode($m, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)]);
     } catch (PDOException $e) {
         fail(500, db_error($e, '保存できませんでした（マイグレーション 080 が未実行）'));
     }
-    echo json_encode(['ok' => true], JSON_UNESCAPED_UNICODE);
-    exit;
+    api_ok(['ok' => true]);
 }
 
 if ($action === 'link_practicing') {
     // 練習中リスト（practice.php）に出す / 外す（自分だけ）。再生したら on、× で off。外しても練習の設定は残す
     $linkId = tab_int($body['link_id'] ?? null) ?? 0;
-    $st = $pdo->prepare('SELECT 1 FROM song_link WHERE link_id = ? AND site = \'youtube\'');
-    $st->execute([$linkId]);
-    if (!$st->fetchColumn()) {
-        fail(404, 'リンクが見つかりません');
-    }
+    require_youtube_link($pdo, $linkId);
     try {
         if (($body['on'] ?? false) === true) {
             $default = json_encode(tab_sanitize_link_practice(['m' => [], 'ab' => null]), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
@@ -551,8 +533,7 @@ if ($action === 'link_practicing') {
     } catch (PDOException $e) {
         fail(500, db_error($e, '保存できませんでした'));
     }
-    echo json_encode(['ok' => true], JSON_UNESCAPED_UNICODE);
-    exit;
+    api_ok(['ok' => true]);
 }
 
 if ($action === 'practice') {
@@ -574,8 +555,7 @@ if ($action === 'practice') {
     } catch (PDOException $e) {
         fail(500, db_error($e, '保存できませんでした'));
     }
-    echo json_encode(['ok' => true], JSON_UNESCAPED_UNICODE);
-    exit;
+    api_ok(['ok' => true]);
 }
 
 if (in_array($action, ['yt_search', 'bpm_ai'], true)) {
@@ -607,8 +587,7 @@ if (in_array($action, ['yt_search', 'bpm_ai'], true)) {
     } else {
         $items = $_SESSION['tab_search'][$cacheKey];
     }
-    echo json_encode(['ok' => true, 'items' => $items], JSON_UNESCAPED_UNICODE);
-    exit;
+    api_ok(['ok' => true, 'items' => $items]);
 }
 
 if ($action === 'restore') {
@@ -683,8 +662,7 @@ if ($action === 'restore') {
         fail(500, db_error($e, '復元できませんでした'));
     }
     flash('TAB を復元しました');
-    echo json_encode(['ok' => true, 'redirect' => 'tab?id=' . $tabId], JSON_UNESCAPED_UNICODE);
-    exit;
+    api_ok(['ok' => true, 'redirect' => 'tab?id=' . $tabId]);
 }
 
 if ($action !== 'save') {
@@ -825,4 +803,4 @@ try {
     fail(500, db_error($e, '保存できませんでした'));
 }
 
-echo json_encode(['ok' => true, 'updated_at' => $updatedAt], JSON_UNESCAPED_UNICODE);
+api_ok(['ok' => true, 'updated_at' => $updatedAt]);

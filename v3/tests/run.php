@@ -512,7 +512,6 @@ check('練習: 終点が開始より前', tab_sanitize_practice(['m' => [['t' =>
 check('練習: A が B より後', tab_sanitize_practice(['ab' => [3000, 1000]]), null);
 check('練習: マーカー101個', tab_sanitize_practice(['m' => array_fill(0, 101, ['t' => 0])]), null);
 check('練習: BPM の範囲外', tab_sanitize_practice(['bpm' => 10]), null);
-check('チューニング名: 候補', [tab_tuning_name('D A D G B E'), tab_tuning_name('E A D G B F')], ['ドロップD', null]);
 check('チューニング候補はすべて正しい', (static function () {
     foreach (TAB_TUNINGS as $n => $set) {
         foreach ($set as $notes) {

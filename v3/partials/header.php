@@ -13,8 +13,10 @@ $user = current_user();
 $unreadNotices = 0;
 if ($user) {
     // 行が無いお知らせ＝未読（notice_read は読んだ記録）。告知（お知らせ）と自動の通知（ベル）は別に数える
-    $unreadNotices = notice_unread_count((int)$user['user_id'], false);
-    $unreadNotifs = notice_unread_count((int)$user['user_id'], true);
+    // 2種類の未読数は、問い合わせ1回でまとめて数える
+    $unreadCounts = notice_unread_counts((int)$user['user_id']);
+    $unreadNotices = $unreadCounts['notice'];
+    $unreadNotifs = $unreadCounts['notif'];
     // ベルのポップアップのタブ（key は api_notice_read.php の kind と同じ）
     $notifTabs = [
         'notif'  => ['label' => '通知', 'href' => 'notices', 'unread' => $unreadNotifs, 'items' => notice_recent((int)$user['user_id'], true)],
@@ -170,19 +172,15 @@ $nav = [
             <img src="assets/online.png" alt="AbbeyRoad.online" class="brand__logo brand__logo--light" width="146" height="40">
             <img src="assets/logo-dark.png" alt="" class="brand__logo brand__logo--dark" width="146" height="40">
         </a>
-        <?php if ($user): ?>
+        <?php if ($user): /* ナビ・検索・掲示板・通知は同じ条件なので、ひとつの if にまとめてある */ ?>
         <nav class="nav" aria-label="メイン">
             <?php foreach ($nav as $key => [$href, $label]): ?>
                 <a href="<?= h($href) ?>" class="nav__link<?= $activeNav === $key ? ' is-active' : '' ?>"><?= h($label) ?></a>
             <?php endforeach; ?>
         </nav>
-        <?php endif; ?>
-        <?php if ($user): ?>
         <a href="search" class="icon-btn<?= $activeNav === 'search' ? ' is-active' : '' ?>" aria-label="検索" title="検索">
             <?= icon('search') ?>
         </a>
-        <?php endif; ?>
-        <?php if ($user): ?>
         <a href="board" class="icon-btn<?= $activeNav === 'board' ? ' is-active' : '' ?>" aria-label="アビーボード" title="アビーボード">
             <?= icon('forum') ?>
             <?php if ($unreadBoard > 0): ?><span class="badge-dot"><?= $unreadBoard > 9 ? '9+' : $unreadBoard ?></span><?php endif; ?>

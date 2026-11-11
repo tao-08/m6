@@ -16,6 +16,7 @@
  * =====================================================================
  */
 declare(strict_types=1);
+require_once __DIR__ . '/history.php'; // change_encode / change_decode（snapshot を圧縮して DB に入れる・読み戻す。ライブの履歴と同じ）
 
 /** 操作の種類 → 画面に出す名前 */
 const STUDIO_HISTORY_ACTIONS = [
@@ -105,23 +106,6 @@ function studio_history_same(?array $a, ?array $b): bool
     return json_encode($strip($a)) === json_encode($strip($b));
 }
 
-/** snapshot → DB に入れる文字。JSON を圧縮して base64（文字コードの変換をさせないため ASCII にする）。先頭 Z = 圧縮 / J = そのまま */
-function studio_history_encode(array $data): string
-{
-    $json = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
-    $z = function_exists('gzdeflate') ? gzdeflate($json, 6) : false;
-    return $z !== false ? 'Z' . base64_encode($z) : 'J' . $json;
-}
-
-function studio_history_decode(string $blob): array
-{
-    $json = ($blob[0] ?? '') === 'Z' ? gzinflate((string)base64_decode(substr($blob, 1), true)) : substr($blob, 1);
-    if (!is_string($json)) {
-        throw new RuntimeException('履歴の中身を読めませんでした');
-    }
-    return json_decode($json, true, 512, JSON_THROW_ON_ERROR);
-}
-
 // =====================================================================
 //  記録する
 // =====================================================================
@@ -131,7 +115,7 @@ function studio_history_add(PDO $pdo, string $action, array $before, ?int $userI
 {
     $pdo->exec('DELETE FROM studio_history WHERE created_at < NOW() - INTERVAL ' . STUDIO_HISTORY_KEEP_DAYS . ' DAY');
     $pdo->prepare('INSERT INTO studio_history (studio_id, studio_name, user_id, action, snapshot) VALUES (?, ?, ?, ?, ?)')
-        ->execute([(int)$before['studio']['studio_id'], mb_substr((string)$before['studio']['name'], 0, 100), $userId, $action, studio_history_encode($before)]);
+        ->execute([(int)$before['studio']['studio_id'], mb_substr((string)$before['studio']['name'], 0, 100), $userId, $action, change_encode($before)]);
 }
 
 /**
@@ -206,7 +190,7 @@ function studio_history_restore(PDO $pdo, int $historyId, ?int $userId, ?int $on
     if (!$h || ($onlyStudioId !== null && (int)$h['studio_id'] !== $onlyStudioId)) {
         throw new RuntimeException('その履歴は見つかりません（1年より前のものは削除されます）');
     }
-    $snap = studio_history_decode((string)$h['snapshot']);
+    $snap = change_decode((string)$h['snapshot']);
     $studioId = (int)$snap['studio']['studio_id'];
 
     $pdo->beginTransaction();

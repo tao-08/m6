@@ -15,30 +15,25 @@
  */
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
+require_once __DIR__ . '/lib/api.php';
 require_once __DIR__ . '/lib/tracks.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
 // API なのでログイン画面へのリダイレクトではなく、エラーの JSON を返す
 if (current_user() === null) {
-    http_response_code(401);
-    echo json_encode(['error' => 'ログインしてください'], JSON_UNESCAPED_UNICODE);
-    exit;
+    fail(401, 'ログインしてください');
 }
 
 // キーの形を確かめる（ブラウザから来た値は信用しない）
 $key = album_parse_key($_GET['key'] ?? null);
 if ($key === null) {
-    http_response_code(400);
-    echo json_encode(['error' => '曲の指定がおかしいです'], JSON_UNESCAPED_UNICODE);
-    exit;
+    fail(400, '曲の指定がおかしいです');
 }
 
 $t = track_lookup($key[0], $key[1]);
 if ($t === null) {
-    http_response_code(502); // 502 = この先のサーバー（Spotify / iTunes）がうまく答えなかった
-    echo json_encode(['error' => '曲の情報を取れませんでした'], JSON_UNESCAPED_UNICODE);
-    exit;
+    fail(502, '曲の情報を取れませんでした'); // 502 = この先のサーバー（Spotify / iTunes）がうまく答えなかった
 }
 
 echo json_encode([

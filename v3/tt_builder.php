@@ -154,7 +154,7 @@ if ($id <= 0) {
                     <span class="tool-card__icon"><?= icon($d['published_live_id'] ? 'task_alt' : 'edit_note') ?></span>
                     <span class="tool-card__body">
                         <span class="tool-card__name"><?= h($d['title']) ?></span>
-                        <span class="muted small"><?= h(date('n/j H:i', strtotime($d['updated_at']))) ?> <?= h((string)$d['updated_name']) ?></span>
+                        <span class="muted small"><?= h(date('n/j H:i', strtotime($d['updated_at']))) ?> <?= h($d['updated_name']) ?></span>
                     </span>
                 </a>
             <?php endforeach; ?>

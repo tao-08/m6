@@ -17,29 +17,13 @@
  */
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
+require_once __DIR__ . '/lib/api.php';
 require_once __DIR__ . '/lib/tabs.php';
 require_once __DIR__ . '/lib/attach_image.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
-function fail(int $status, string $message): never
-{
-    http_response_code($status);
-    echo json_encode(['error' => $message], JSON_UNESCAPED_UNICODE);
-    exit;
-}
-
-$user = current_user();
-if ($user === null) {
-    fail(401, 'ログインしてください');
-}
-if (!tab_allowed()) {
-    fail(403, '管理人のみ利用できます'); // 今は管理人だけ（lib/tabs.php の tab_allowed）
-}
-if (!is_post()) {
-    fail(405, 'POST only');
-}
-verify_csrf();
+$user = api_user(tab_allowed(...), '管理人のみ利用できます'); // 今は管理人だけ（lib/tabs.php の tab_allowed）
 
 $pdo = db();
 $userId = (int)$user['user_id'];
