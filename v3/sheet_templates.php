@@ -140,6 +140,14 @@ function parse_sheet_config(string $json): array
             $broken[] = '備え付けギターアンプ（gt_amps）';
         }
     }
+    // セット図に印刷済みの枠（stage_slots）: 任意。[{kind: 'amp' | 'spot', box: [左, 上, 右, 下]}, ...] を 30 個まで
+    if (array_key_exists('stage_slots', $config)) {
+        $ss = $config['stage_slots'];
+        $sOk = static fn($x): bool => is_array($x) && in_array($x['kind'] ?? null, ['amp', 'spot'], true) && $isBox($x['box'] ?? null);
+        if (!is_array($ss) || !array_is_list($ss) || count($ss) > 30 || count(array_filter($ss, $sOk)) !== count($ss)) {
+            $broken[] = 'セット図の印刷済みの枠（stage_slots）';
+        }
+    }
     // 見出し（headings）: 任意。[{key: 'h1', label: 'SE'}, ...]。作成画面ではここから別のカードにする
     if (array_key_exists('headings', $config)) {
         $h = $config['headings'];

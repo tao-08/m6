@@ -140,6 +140,7 @@
   cursor: grab;
 }
 .st-item--box { border: 1px solid #000; background: rgba(255, 255, 255, .6); }
+.st-item--box.is-on-slot { border-style: dashed; border-color: rgba(0, 0, 0, .35); background: transparent; } /* 印刷済みのアンプの枠の上（PDF は枠線なし） */
 .st-item--circle { border: 1px solid #000; border-radius: 50%; background: rgba(255, 255, 255, .6); }
 .st-item--text { white-space: pre; padding: 2px; }
 .st-item--mic svg { width: 100%; height: 100%; display: block; overflow: visible; }

@@ -1374,6 +1374,8 @@
         el.style.top = `${it.y * k}px`;
         // translate(-50%, -50%): 要素の中心を left/top の点に合わせる。そのあと中心で回す
         el.style.transform = `translate(-50%, -50%) rotate(${it.rot}deg)`;
+        // 印刷済みのアンプの枠の上: PDF では枠線を描かないので、画面でも点線にして見分ける（ドラッグで外せば普通の四角に戻る）
+        el.classList.toggle('is-on-slot', onAmpSlot(it));
         if (it.type === 'text') {
             el.style.fontSize = `${base('text') * it.scale * k}px`;
         } else {
@@ -1449,6 +1451,101 @@
     const boxLabels = () => [...gtAmps(), 'Ba Amp', 'Key', 'E.Pf'];
 
     /**
+     * セット図に印刷済みの枠（型紙の stage_slots）。kind: 'amp'（アンプの四角）/ 'spot'（立ち位置のモニター）
+     *   型紙はページの座標なので、セット図の枠の中の座標（部品と同じ。左上が 0）に直して返す { x0, y0, x1, y1, cx, cy }
+     */
+    function stageSlots(kind) {
+        const [sx, sy] = tpl().stage;
+        const list = Array.isArray(tpl().stage_slots) ? tpl().stage_slots : [];
+        return list
+            .filter((s) => s && s.kind === kind && Array.isArray(s.box) && s.box.length === 4 && s.box.every(Number.isFinite))
+            .map(({ box: [a, b, c, d] }) => {
+                const x0 = Math.min(a, c) - sx, x1 = Math.max(a, c) - sx, y0 = Math.min(b, d) - sy, y1 = Math.max(b, d) - sy;
+                return { x0, y0, x1, y1, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2 };
+            });
+    }
+
+    /** 四角の部品が印刷済みのアンプの枠の上にあるか（回していない・中心が枠の中）。あれば枠線を描かずに文字だけ書く */
+    function onAmpSlot(it) {
+        if (it.type !== 'box' || ((it.rot % 360) + 360) % 360 !== 0) {
+            return false;
+        }
+        return stageSlots('amp').some((s) => it.x >= s.x0 && it.x <= s.x1 && it.y >= s.y0 && it.y <= s.y1);
+    }
+
+    /**
+     * 左右の順番を崩さずに、n 個のもの（x の小さい順）を m 個の枠（x の小さい順）に割り当てる（動的計画法）。
+     *   cost(i, j): i 番目を j 番目の枠に置いたときのずれ。合計がいちばん小さい組み合わせを選ぶ
+     *   「いちばん近い枠」を1つずつ選ぶと、2つが同じ枠を取り合ったときに片方が反対側へ飛ばされる（Vo が端へ行く）ので、まとめて決める
+     *   枠が足りないときは、入らないものを -1 にする（枠が足りる限り、全部を入れる）
+     * 戻り値: [i 番目が入る枠の番号 or -1, …]
+     */
+    function alignInOrder(n, m, cost) {
+        const SKIP = 1e6; // 枠に入れないことの罰（ずれよりずっと大きく）
+        // dp[i][j]: 最初の i 個を、最初の j 個の枠までに置いたときの、いちばん小さい合計
+        const dp = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
+        const how = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0)); // 0: 置く / 1: 入れない / 2: 枠を空ける
+        for (let i = 1; i <= n; i++) {
+            dp[i][0] = dp[i - 1][0] + SKIP;
+            how[i][0] = 1;
+            for (let j = 1; j <= m; j++) {
+                const c = [dp[i - 1][j - 1] + cost(i - 1, j - 1), dp[i - 1][j] + SKIP, dp[i][j - 1]];
+                const k = c.indexOf(Math.min(...c));
+                dp[i][j] = c[k];
+                how[i][j] = k;
+            }
+        }
+        // 後ろからたどって、どれをどの枠に置いたかを取り出す
+        const res = new Array(n).fill(-1);
+        for (let i = n, j = m; i > 0;) {
+            const k = how[i][j];
+            if (k === 0) {
+                res[i - 1] = j - 1;
+                i--;
+                j--;
+            } else if (k === 1) {
+                i--;
+            } else {
+                j--;
+            }
+        }
+        return res;
+    }
+
+    /** アンプの名前・選択肢の名前を、比べる単語に分ける（"Roland JC-120" → ['roland', 'jc', '120']。全角も半角に） */
+    const nameWords = (s) => String(s).normalize('NFKC').toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((x) => x !== '');
+
+    /**
+     * セット図に書いたアンプ（四角の文字）に合わせて、機材リストの選択肢（○）を付ける。
+     *   「アンプのグループ」= 備え付けギターアンプ（gt_amps）のどれかに当てはまる選択肢があるグループ
+     *   当てはまる = アンプの名前の単語が全部、選択肢の名前に入っている（JC → 「Roland JC-120」。「Marshall JCM900」には当てはまらない）
+     *   そのグループは、セット図にある四角に当てはまる選択肢だけを選んだ状態にする（複数選択のグループは全部、1つだけのグループは最初の1つ）
+     * 戻り値: 選択を変えたか
+     */
+    function syncAmpChoices() {
+        const match = (label, opt) => {
+            const lw = nameWords(label);
+            const ow = nameWords(opt);
+            return lw.length > 0 && lw.every((w) => ow.includes(w));
+        };
+        const labels = state.items.filter((it) => it.type === 'box').map((it) => it.label);
+        let changed = false;
+        for (const [g, opts] of Object.entries(tpl().choices || {})) {
+            const names = Object.keys(opts || {});
+            if (!names.some((o) => gtAmps().some((a) => match(a, o)))) {
+                continue; // アンプの選択肢ではないグループ（SE の有無など）は触らない
+            }
+            const hit = names.filter((o) => labels.some((l) => match(l, o)));
+            const next = tpl().choice_multi?.[g] ? hit : (hit[0] || '');
+            if (JSON.stringify(next) !== JSON.stringify(state.choices[g] ?? (tpl().choice_multi?.[g] ? [] : ''))) {
+                state.choices[g] = next;
+                changed = true;
+            }
+        }
+        return changed;
+    }
+
+    /**
      * 丸・四角を選んだときの「名前ボタン」。押すとその名前が中の文字になる。
      *   丸: メンバー欄に入力されている人のパートだけ出す。
      *       「Vo/Gt」の人は Vo と Gt の2つに分ける。同じ楽器は1つにまとめる（大文字小文字は区別しない）
@@ -1493,6 +1590,9 @@
             b.addEventListener('click', () => {
                 findItem(selectedId).label = name;
                 panel.querySelector('[data-p="label"]').value = name;
+                if (it.type === 'box' && syncAmpChoices()) {
+                    renderChoices();
+                }
                 renderStage();
                 save();
             });
@@ -1687,6 +1787,9 @@
                 return;
             }
             autoLayout();
+            if (syncAmpChoices()) {
+                renderChoices(); // 置いたアンプに合わせて、機材リストの○も付け直した
+            }
             select(null);
             save();
         });
@@ -1758,6 +1861,9 @@
         panel.querySelector('[data-p="label"]').addEventListener('input', (e) => {
             const it = findItem(selectedId);
             it.label = e.target.value;
+            if (it.type === 'box' && syncAmpChoices()) {
+                renderChoices(); // アンプの名前を変えたら、機材リストの○も合わせる
+            }
             renderStage();
             save();
         });
@@ -1810,6 +1916,8 @@
      *     - Vo/Ba・Vo/Key の人は真ん中（ボーカルの位置）
      *     - Gt がいなくて Key がいるときは、キーボードの四角を Gt の丸の位置に
      *     - 左 → 真ん中 → 右 を同じ間隔で並べ、真ん中のグループを横の真ん中に。左が空なら Gt.1 を左へ
+     *   印刷済みの枠（型紙の stage_slots）があるシート（新宿 Motion など）は、上で決めた位置を「理想の位置」として、
+     *   近い枠に吸着させる（アンプ → アンプの枠に名前だけ、人 → モニターの奥）。枠が無い・足りない分は今まで通り
      */
     function autoLayout() {
         state.items = [];
@@ -1846,6 +1954,7 @@
         //   入りきらないときは、アンプを小さくして（scale）入れる
         const gtN = count('gt');
         const gtX = [];
+        const gtBoxes = []; // 置くギターアンプの四角（印刷済みのアンプの枠があれば、下でそこに移す）
         if (gtN > 0) {
             const gap = 4 * stageScale();
             const room = w - drumR - gap * 2; // 右のすき間（ドラムと枠の端から gap ずつ空ける）
@@ -1856,16 +1965,36 @@
             for (let i = 0; i < gtN; i++) {
                 const x = left + aw / 2 + i * (aw + gap);
                 gtX.push(x);
-                if (!tpl().amps_printed) { // アンプが印刷済みのシートは四角を置かない（位置は人の丸に使う）
-                    put('box', { x, y: ampY, scale, label: gtAmps()[i] || 'Gt Amp' });
-                }
+                gtBoxes.push({ x, scale, label: gtAmps()[i] || 'Gt Amp', gt: i });
             }
         }
         // ---- ベースアンプ: ドラムの左のすき間の真ん中 ----
-        const baX = clampX(drumL / 2);
-        if (count('ba') > 0 && !tpl().amps_printed) {
-            put('box', { x: baX, y: ampY, label: 'Ba Amp' });
-        }
+        let baX = clampX(drumL / 2);
+        const ampBoxes = [...(count('ba') > 0 ? [{ x: baX, scale: 1, label: 'Ba Amp', ba: true }] : []), ...gtBoxes];
+
+        // ---- アンプの四角を置く ----
+        //   印刷済みのアンプの枠（stage_slots の amp）があれば、上で決めた位置に近い枠へ、左右の順番を崩さずに割り当てる。
+        //   枠と同じ大きさの四角にする（PDF には枠線を描かず、名前だけ書く。onAmpSlot）。その人の丸も枠の前に来るように位置を直す
+        //   枠が無い・足りない分は、今まで通りの位置に四角（アンプが印刷済みのシートは四角を置かない）
+        const ampSlots = stageSlots('amp').map((s) => ({ ...s, cx: s.cx - ox, cy: s.cy - oy })).sort((a, b) => a.cx - b.cx);
+        ampBoxes.sort((a, b) => a.x - b.x);
+        const ampAt = alignInOrder(ampBoxes.length, ampSlots.length, (i, j) => Math.abs(ampBoxes[i].x - ampSlots[j].cx));
+        ampBoxes.forEach((a, i) => {
+            const s = ampSlots[ampAt[i]];
+            if (!s) {
+                if (!tpl().amps_printed) {
+                    put('box', { x: a.x, y: ampY, scale: a.scale, label: a.label });
+                }
+                return;
+            }
+            const sc = (s.y1 - s.y0) / base('boxH');
+            addItem('box', { x: s.cx + ox, y: s.cy + oy, scale: sc, stretch: (s.x1 - s.x0) / (base('boxW') * sc), label: a.label });
+            if (a.ba) {
+                baX = s.cx;
+            } else {
+                gtX[a.gt] = s.cx;
+            }
+        });
         // ---- キーボード: 左側の真ん中の高さ ----
         //   3人以外のバンドで Gt がいないときは、左ではなく Gt の丸の位置（下の段の右）に置く（keyRight）
         const small = people.length === 3; // 3人のバンド（Dr も数える）は今まで通りの並べ方
@@ -1964,12 +2093,41 @@
             }
         };
 
+        /**
+         * 立ち位置（モニター）の枠があれば、そこに置く。モニターの奥（上）にマイク、その奥に人の丸（キーボードは四角）
+         *   上で決めた x に近い枠へ、左右の順番を崩さずに割り当てる（alignInOrder）。
+         *   いちばん手前の列より奥にある枠（左右の端のモニターなど）は大きな罰を足して、手前の列が埋まってから使う
+         *   （奥にある分だけの小さな罰だと、手前が空いているのに端のモニターへ行くことがある）
+         *   枠が無い・足りないときは、今まで通りの位置に置く
+         */
+        const spots = stageSlots('spot').map((s) => ({ ...s, cx: s.cx - ox, cy: s.cy - oy, y0: s.y0 - oy })).sort((a, b) => a.cx - b.cx);
+        const frontY = spots.length ? Math.max(...spots.map((s) => s.cy)) : 0;
+        const placeRow = (entries) => {
+            const es = [...entries].sort((a, b) => a.x - b.x);
+            const back = (s) => (frontY - s.cy > 4 ? 1000 + (frontY - s.cy) : 0); // 手前の列（4pt 以内のずれは同じ列）より奥
+            const at = alignInOrder(es.length, spots.length, (i, j) => Math.abs(es[i].x - spots[j].cx) + back(spots[j]));
+            es.forEach((e, i) => {
+                const s = spots[at[i]];
+                if (!s) {
+                    place(e.o, e.x);
+                    return;
+                }
+                const bottom = s.y0 - 2; // モニターの上の端の少し奥
+                const unitH = e.o.key ? base('boxH') : circle;
+                const y = bottom - (e.o.mic ? micLen + 2 : 0) - unitH / 2;
+                put(e.o.key ? 'box' : 'circle', { x: s.cx, y, label: e.o.key ? 'Key' : e.o.label });
+                if (e.o.mic) {
+                    put('mic', { x: s.cx, y: bottom - micLen / 2, label: '' });
+                }
+            });
+        };
+
         if (small || others.length === 0) {
             // 3人のバンド・真ん中に誰もいないバンド: 今まで通り（左右はアンプの前、真ん中の人は枠の真ん中 4 割に等間隔）
-            for (const o of [...left, ...right]) {
-                place(o, o.x);
-            }
-            others.forEach((o, i) => place(o, w * 0.3 + (w * 0.4 * (i + 1)) / (others.length + 1)));
+            placeRow([
+                ...[...left, ...right].map((o) => ({ o, x: o.x })),
+                ...others.map((o, i) => ({ o, x: w * 0.3 + (w * 0.4 * (i + 1)) / (others.length + 1) })),
+            ]);
             return;
         }
 
@@ -2005,7 +2163,7 @@
                 xs[L + C + j] = Math.min(maxX, from + ((w - from) * (j + 1)) / (R + 1));
             }
         }
-        row.forEach((o, k) => place(o, xs[k]));
+        placeRow(row.map((o, k) => ({ o, x: xs[k] })));
     }
 
     /**
@@ -2433,7 +2591,10 @@
                     const s = (q) => { const r = toPdf(it, q[0], q[1]); return `${svgNum(r.x)} ${svgNum(-r.y)}`; };
                     path = `M ${s(seg[0][0])} ` + seg.slice(1).map((c3) => `C ${c3.map(s).join(' ')}`).join(' ') + ' Z';
                 }
-                page.drawSvgPath(path, { x: 0, y: 0, borderColor: black, borderWidth: 1 });
+                // 印刷済みのアンプの枠の上にある四角は、枠線を描かない（シートの四角と二重にならないように。名前だけ書く）
+                if (!onAmpSlot(it)) {
+                    page.drawSvgPath(path, { x: 0, y: 0, borderColor: black, borderWidth: 1 });
+                }
             }
             // 文字（box / circle / text 共通）。回転に合わせて文字も回す
             const lines = it.label.split('\n').filter((l, i, arr) => l !== '' || arr.length === 1);
@@ -2970,6 +3131,7 @@
             const all = state.members;
             state.members = all.slice(0, SAMPLE_BAND.length);
             autoLayout();
+            syncAmpChoices(); // 型紙のお試しでも、置いたアンプに合わせて機材リストの○を付ける
             state.members = all;
             renderAll();
             if (first) {

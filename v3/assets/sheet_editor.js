@@ -45,6 +45,8 @@
     const COL_LABELS = { part: 'パート', name: '氏名', part2: 'パート', name2: '氏名', mic: 'マイク', no: '曲順', title: '曲名', sound: '音響', light: '照明', request: '備考（音響・照明）', note: '備考', note2: '備考', time: '分数', mc: 'MC' };
     // 備え付けギターアンプの標準（assets/setting_sheet.js の gtAmps() と同じ。型紙に gt_amps が無いとき）
     const GT_AMPS = ['JC', 'Marshall'];
+    // セット図に印刷済みの枠（stage_slots の kind）
+    const SLOT_LABELS = { amp: 'アンプの枠', spot: '立ち位置（モニター）' };
     const PAIR_LABELS ={ part: 'パート1', name: '名前1', part2: 'パート2', name2: '名前2', note: '備考1', note2: '備考2' };
 
     let cfg = null;        // 今の型紙（JSON を読んだもの）。ドラッグはこの中の数字を直接書き換える
@@ -182,6 +184,10 @@
         // 自動配置で部品を並べる範囲（セット図の枠の内側。はみ出さないように fitAuto() で収める）
         if (isBox(cfg.stage_auto)) out.push(rectItem('stage_auto', '自動配置の範囲', 'stage_auto', cfg.stage_auto, () => delete cfg.stage_auto));
         if (isBox(cfg.drum)) out.push(rectItem('drum', 'ドラム（自動配置で避ける）', 'drum', cfg.drum, () => delete cfg.drum));
+        // セット図に印刷済みの枠（アンプ・モニター）。自動配置でアンプの名前を書き込む・モニターの奥に人を立たせる
+        (Array.isArray(cfg.stage_slots) ? cfg.stage_slots : []).forEach((s, i) => {
+            if (s && isBox(s.box)) out.push(rectItem(`stage_slots.${i}`, SLOT_LABELS[s.kind] || s.kind, 'slots', s.box, () => cfg.stage_slots.splice(i, 1)));
+        });
         for (const [g, opts] of Object.entries(cfg.choices || {})) {
             for (const [name, v] of Object.entries(opts || {})) {
                 const box = isBox(v) ? v : (v && isBox(v.box) ? v.box : null);
@@ -1549,6 +1555,12 @@
         for (const [k, label] of Object.entries(FIELD_LABELS)) {
             if (!cfg?.fields?.[k]) opt(`field:${k}`, label);
         }
+        // セット図に印刷済みのもの（セット図の枠があるときだけ）
+        if (isBox(cfg?.stage)) {
+            if (!isBox(cfg.drum)) opt('drum', 'ドラムの枠（自動配置で避ける）');
+            opt('slot:amp', '印刷済みのアンプの枠');
+            opt('slot:spot', '立ち位置（モニター）の枠');
+        }
         opt('text', '自由記入欄');
         opt('stamp', '固定の文字（いつも書く）');
         opt('shape', '図形（四角・丸）');
@@ -1600,6 +1612,20 @@
             cfg.fields[k] = { box: [r1(cx - hw), r1(cy - 7), r1(cx + hw), r1(cy + 7)], size: 11, align: narrow ? 'center' : 'left' };
             selectedId = `fields.${k}`;
             note.textContent = `「${FIELD_LABELS[k]}」を見えている所に置きました。ドラッグで合わせてください。`;
+        } else if (what === 'drum') {
+            cfg.drum = [x(-35), y(-20), x(35), y(20)];
+            selectedId = 'drum';
+            note.textContent = 'ドラムの枠を置きました。シートのドラムの四角に合わせてください。アンプや人はこれを避けて並べます。';
+        } else if (what.startsWith('slot:')) {
+            // 印刷済みの枠。アンプ: 自動配置で名前（JC・Ba Amp など）を中に書く / 立ち位置: モニターの奥（上）に人の丸とマイクを置く
+            const kind = what.slice(5);
+            cfg.stage_slots = Array.isArray(cfg.stage_slots) ? cfg.stage_slots : [];
+            const [hw, hh] = kind === 'amp' ? [30, 18] : [20, 8];
+            cfg.stage_slots.push({ kind, box: [x(-hw), y(-hh), x(hw), y(hh)] });
+            selectedId = `stage_slots.${cfg.stage_slots.length - 1}`;
+            note.textContent = kind === 'amp'
+                ? 'アンプの枠を置きました。シートの四角に合わせてください。自動配置で、ここにアンプの名前を書きます。'
+                : '立ち位置（モニター）の枠を置きました。シートのモニターに合わせてください。自動配置で、この奥に人とマイクを置きます。';
         } else if (what === 'text') {
             cfg.texts = Array.isArray(cfg.texts) ? cfg.texts : [];
             let n = cfg.texts.length + 1;
