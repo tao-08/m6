@@ -22,6 +22,7 @@
  *  ・「開始」の見出しの 🔗 が ON の間は「追随」: 時刻を変えると、それより下の行の時刻も同じ分だけ一緒にずれる
  *    （1行目の開始 = 集合時間のズレ。休憩の行を動かす・消すときも詰める）。サーバーは何もしない。ずれた結果を入力欄に入れるだけで、保存は今までどおり
  *    （assets/app.js の setupTimetableFollow。重なり・終了が開始以前の欄だけ is-error の色が付く）
+ *  ・各日程の「取り込み」ボタン = 修正後のタイムテーブル（画像・CSV など）を import?day=日程ID のプレビューへ渡す（lib/import/attach.php）
  *  ・曲数・メモ・コピー元アーティストはここでは触らない（band_edit.php で直す）。
  *    ただしバンド名を変えたときは、コピー元アーティストも新しい名前から決め直す（オムニバスのバンドは無しのまま）
  * =====================================================================
@@ -370,12 +371,15 @@ render_header('タイムテーブルを編集', 'lives'); ?>
 				</div>
 
 				</div>
-                <?php if ($dayBands): ?>
-                    <div class="tt-actions">
+                <div class="tt-actions">
+                    <?php if ($dayBands): ?>
                         <button type="button" class="btn btn--ghost btn--sm" data-add-tt-break data-day="<?= $dayId ?>">＋ 休憩を追加</button>
                         <button type="button" class="btn btn--ghost btn--sm" data-add-tt-col>＋ 列を追加</button>
-                    </div>
-                <?php endif; ?>
+                    <?php endif; ?>
+                    <!-- 修正されたタイムテーブルの画像・CSV・Excel・PDF を取り込む（import.php?day= → lib/import/attach.php。バンド名で既存バンドに対応付けるプレビューで確認してから反映。
+                         この画面で未保存の変更があれば、離れる前にブラウザが警告する） -->
+                    <a class="btn btn--ghost btn--sm" href="import?day=<?= $dayId ?>" aria-label="タイムテーブルを取り込む" title="画像・CSV などから取り込む"><?= icon('upload_file') ?> 取り込み</a>
+                </div>
             </header>
             <?php if (!$dayBands): ?>
                 <p class="muted">バンドが登録されていません</p>
