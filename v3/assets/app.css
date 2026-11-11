@@ -2206,6 +2206,8 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
   padding: 10px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); box-shadow: var(--shadow); }
 .ed-pop[hidden] { display: none; }
 .ed-pop:not([hidden]) { animation: live-pop-in var(--t-fast) ease-out; transform-origin: top left; }
+.ed-pop.is-leaving:not([hidden]) { animation: ed-pop-out var(--t-fast) ease-in forwards; pointer-events: none; } /* 閉じるときのフェードアウト（JS が終わったら hidden にする） */
+@keyframes ed-pop-out { to { opacity: 0; transform: translateY(-4px) scaleY(.97); } }
 @media (prefers-reduced-motion: reduce) { .ed-pop:not([hidden]), .nav__link, .icon-btn, .chip { animation: none; transition: none; } }
 .ed-pop__head { font-weight: 700; }
 .ed-amps { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; } .ed-amps input { width: 140px; }

@@ -346,13 +346,33 @@
      *  並びは cfg.extras_order、親子は show_if / with_choice に書く（作成画面 setting_sheet.js の extrasTree と同じ決め方）
      * ----------------------------------------------------------------- */
     const listBtn = root.querySelector('[data-ed-list-btn]');
-    listBtn.addEventListener('click', () => {
-        list.hidden = !list.hidden;
-        listBtn.setAttribute('aria-expanded', String(!list.hidden));
-        drawList();
-    });
+    const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let listLeave = 0;
+    /** 一覧を開く・閉じる。開くときは CSS のアニメーション、閉じるときは .is-leaving でフェードアウトしてから隠す */
+    function setListOpen(open) {
+        clearTimeout(listLeave);
+        list.classList.remove('is-leaving');
+        if (open) {
+            list.hidden = false;
+            drawList();
+        } else if (!list.hidden) {
+            if (reduceMotion()) {
+                list.hidden = true;
+            } else {
+                list.classList.add('is-leaving');
+                listLeave = setTimeout(() => { list.hidden = true; list.classList.remove('is-leaving'); }, 150); // = --t-fast
+            }
+        }
+        listBtn.setAttribute('aria-expanded', String(open));
+    }
+    const listOpen = () => !list.hidden && !list.classList.contains('is-leaving');
+    listBtn.addEventListener('click', () => setListOpen(!listOpen()));
     document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && !list.hidden) listBtn.click();
+        if (e.key === 'Escape' && listOpen()) setListOpen(false);
+    });
+    // ボタンと一覧の外を押したら閉じる（一覧の中の並べ替えのドラッグは外に出ても、押し始めが中なら閉じない）
+    document.addEventListener('pointerdown', (e) => {
+        if (listOpen() && !list.contains(e.target) && !listBtn.contains(e.target)) setListOpen(false);
     });
 
     /** その他の項目の木。{ nodes: [{ kind: 'c' | 't', key, id: 'c:キー', parent, opts: [選択肢] | null }], children(g) } */
@@ -654,13 +674,14 @@
      */
     function drawPanel() {
         const it = items.find((x) => x.id === selectedId);
+        const advBefore = advBox.hidden ? null : advBox.offsetHeight; // 描き直す前の詳細設定の高さ（高さが変わるときの動きの始まり）
         panel.textContent = '';
         advBox.textContent = '';
         out = panel;
         gtAmpsPanel();
         if (!it) {
             panel.innerHTML = '<span class="muted small">Ctrlキーをホールドして正方形に編集。矢印キーで 0.5pt（Shift で 5pt）ずつ調整可。</span>';
-            syncAdv();
+            syncAdv(advBefore);
             return;
         }
         const title = document.createElement('strong');
@@ -687,16 +708,50 @@
         }
         // ⚙ 詳細設定は消すボタンの右（中身が無い枠では出さない）
         panel.append(advBtn);
-        syncAdv();
+        syncAdv(advBefore);
     }
 
     /** 詳細設定の中身が無ければ ⚙ を隠して閉じる。開いていたら、別の枠を選んでも開いたまま */
     let advOpen = false;
-    function syncAdv() {
+    let advAnim = null;
+    /**
+     * 詳細設定の開閉・高さの変化をなめらかに（WAAPI。高さと余白・枠線を 0 ⇔ 本来の値で動かす）
+     *   before: 中身を描き直す前の高さ。開いたまま中身が変わって高さが変わるときも、前の高さから動かす
+     */
+    function syncAdv(before = null) {
         const has = advBox.childElementCount > 0;
+        const open = has && advOpen;
         advBtn.hidden = !has;
-        advBox.hidden = !(has && advOpen);
-        advBtn.setAttribute('aria-expanded', String(has && advOpen));
+        advBtn.setAttribute('aria-expanded', String(open));
+        const wasShown = !advBox.hidden;
+        advAnim?.cancel();
+        advBox.style.overflow = '';
+        if (reduceMotion() || (!open && !has)) {
+            advBox.hidden = !open;
+            return;
+        }
+        const run = (keyframes, onDone) => {
+            advBox.style.overflow = 'hidden';
+            advAnim = advBox.animate(keyframes, { duration: 200, easing: 'cubic-bezier(.2, .8, .2, 1)', fill: 'forwards' });
+            advAnim.onfinish = () => {
+                onDone?.();
+                advAnim?.cancel(); // fill を外して、本来のスタイルに戻す
+                advBox.style.overflow = '';
+            };
+        };
+        const cs = getComputedStyle(advBox);
+        const edge = (to) => ({ paddingTop: [to ? '0px' : cs.paddingTop, to ? cs.paddingTop : '0px'], paddingBottom: [to ? '0px' : cs.paddingBottom, to ? cs.paddingBottom : '0px'], borderTopWidth: [to ? '0px' : cs.borderTopWidth, to ? cs.borderTopWidth : '0px'], borderBottomWidth: [to ? '0px' : cs.borderBottomWidth, to ? cs.borderBottomWidth : '0px'] });
+        if (open && !wasShown) { // 開く
+            advBox.hidden = false;
+            const h = advBox.offsetHeight;
+            run({ height: ['0px', `${h}px`], opacity: [0, 1], ...edge(true) });
+        } else if (open) { // 開いたまま、中身が変わって高さが変わる
+            const h = advBox.offsetHeight;
+            if (before !== null && Math.abs(before - h) > 1) run({ height: [`${before}px`, `${h}px`] });
+        } else if (wasShown) { // 閉じる: 見えたまま縮めてから隠す
+            const h = advBox.offsetHeight;
+            run({ height: [`${h}px`, '0px'], opacity: [1, 0], ...edge(false) }, () => { advBox.hidden = true; });
+        }
     }
     advBtn.addEventListener('click', () => {
         advOpen = !advOpen;
