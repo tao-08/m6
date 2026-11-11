@@ -931,9 +931,8 @@
                 if (on) cfg.amps_printed = true;
                 else delete cfg.amps_printed;
             });
-            // 印刷済みのアンプ・モニターの枠（自動配置でここに吸着させる）
+            // 印刷済みのアンプの枠（自動配置でここにアンプの名前を書く）。モニターの枠は廃止（既存の型紙の枠は残るが自動配置では使わない）
             panelButton('＋ アンプの枠', () => addSlot('amp'));
-            panelButton('＋ モニターの枠', () => addSlot('spot'));
             // 自動配置の範囲: セット図の枠の各辺から 10pt 内側に置く（狭い枠ならそのまま同じ大きさ）
             if (!isBox(cfg.stage_auto)) {
                 panelButton('＋ 自動配置の枠', () => {

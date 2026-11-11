@@ -2102,7 +2102,8 @@
          *   （奥にある分だけの小さな罰だと、手前が空いているのに端のモニターへ行くことがある）
          *   枠が無い・足りないときは、今まで通りの位置に置く
          */
-        const spots = stageSlots('spot').map((s) => ({ ...s, cx: s.cx - ox, cy: s.cy - oy, y0: s.y0 - oy })).sort((a, b) => a.cx - b.cx);
+        // 廃止: モニターの枠の前に人を置く配置は使わない（既存の型紙の spot は無視する）
+        const spots = [].map((s) => ({ ...s, cx: s.cx - ox, cy: s.cy - oy, y0: s.y0 - oy })).sort((a, b) => a.cx - b.cx);
         const frontY = spots.length ? Math.max(...spots.map((s) => s.cy)) : 0;
         const placeRow = (entries) => {
             const es = [...entries].sort((a, b) => a.x - b.x);
