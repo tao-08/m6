@@ -176,7 +176,9 @@ const StudioCore = (() => {
    *      完璧な答えを出すのは難しい（NP 困難）。なので「置きにくい順に貪欲に置く」を、順番を少しずつランダムに変えて何百回も試し、
    *      いちばん良かったものを採用する（ランダム化貪欲法 + リスタート。実務でもよく使う割り切り）
    *   ② 部屋決め: 1つ前の枠にいた人が同じ部屋に残れるように、枠ごとに部屋を選ぶ
-   * 良さの点数（小さいほど良い）: 置けなかったバンド × 10000 + 2日目なのに前の日のライブ後に置けなかった × 100 + 部屋を移る人数
+   * 良さの点数（小さいほど良い）: 置けなかったバンド × 1000000 + 2日目なのに前の日のライブ後に置けなかった × 10000
+   *   + 詰め具合（置いたバンドの枠の番号の合計。後ろの枠ほど大きい）× 100 + 部屋を移る人数
+   *   → 部屋が空いていれば、なるべく前の枠に詰めて、後ろの時間を使わない
    *
    * @param targets 置きたいバンドの id の配列
    * @param fixed   動かさないバンド Map(band_id => {slot, room})（「未配置だけ」のとき今の配置）
@@ -214,7 +216,7 @@ const StudioCore = (() => {
           // 点数: 寄せたい枠なら大きく加点。その中では早い枠。寄せられない2日目のバンドは、なるべく遅い枠（自分のライブに近い方）
           const pref = isPreferred(band, sl, lives);
           let sc = pref ? 1000 - i : (wantsPreferred(band, lives) ? i : -i);
-          sc += t === 0 ? 0 : rand() * 2; // 同点に近いものはランダムに選んで、試すたびに違う形を探す
+          sc += t === 0 ? 0 : rand() * 0.5; // 枠の番号の差（1以上）を覆さない大きさで、同点だけランダムに選ぶ（詰める方を優先するため）
           if (sc > pickScore) { pickScore = sc; pick = i; }
         });
         if (pick < 0) { unplaced.push(id); return; }
@@ -222,9 +224,12 @@ const StudioCore = (() => {
         bySlot[pick].push(id);
       });
       const rooms = assignRooms(slots, bySlot, fixed, R, mem);
-      const score = unplaced.length * 10000 + missPref * 100 + rooms.moves;
+      // 詰め具合: 置いたバンドの「枠の番号」の合計。後ろの枠を使うほど大きい（部屋が空いていれば前の枠に詰めた方が小さい）。
+      //   部屋移動（1人ずつ数える）より優先したいので 100 倍する
+      let compact = 0;
+      bySlot.forEach((ids, i) => { compact += i * ids.length; });
+      const score = unplaced.length * 1000000 + missPref * 10000 + compact * 100 + rooms.moves;
       if (!best || score < best.score) best = { score, bySlot, roomOf: rooms.roomOf, unplaced };
-      if (score === 0) break; // 文句なしの答えが出たら終わり
     }
 
     const cells = {};
@@ -313,7 +318,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = StudioCore
   let shareUrl = boot.shareUrl;
   let view = ['#need', '#grid', '#rows'].includes(location.hash) ? location.hash.slice(1)
     : (Object.keys(state.cells).length ? 'grid' : 'need');
-  let selected = null;           // 選択中: {cell: キー} か {band: id}
+  let selected = null;           // 選択中: {cell: キー} か {band: id}（バンドの詳細と「外す」を見るため。配置の移動はドラッグだけ）
   let dragLock = false;          // ドラッグ中は render() で画面を作り直さない（掴んでいる要素が消えるため）
   let renderPending = false;     // ドラッグ中に描き直しが要求された。離したあとにまとめて1回やる
   let dirty = false;             // まだ保存していない変更がある
@@ -321,6 +326,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = StudioCore
   let status = 'saved';          // saved | saving | error
   let saveTimer = 0;
   const undoStack = [];          // 元に戻す用（変更前の state の JSON 文字列）
+  const redoStack = [];          // やり直す用（元に戻す前の state の JSON 文字列）。新しい変更をしたら捨てる
 
   function norm(s) {
     if (Array.isArray(s.cells)) s.cells = {}; // PHP の空配列は [] で来る
@@ -403,22 +409,26 @@ if (typeof module !== 'undefined' && module.exports) module.exports = StudioCore
     const before = JSON.stringify(state);
     fn(state);
     if (JSON.stringify(state) === before) return;
-    if (undo) { undoStack.push(before); if (undoStack.length > 50) undoStack.shift(); }
+    if (undo) { undoStack.push(before); if (undoStack.length > 50) undoStack.shift(); redoStack.length = 0; }
     dirty = true;
     render();
     clearTimeout(saveTimer);
     saveTimer = setTimeout(save, 800); // 0.8 秒まとめてから送る（連続で変えたとき毎回送らない = デバウンス）
   }
-  function undo() {
-    const prev = undoStack.pop();
-    if (!prev) return;
-    state = norm(JSON.parse(prev));
+  // 元に戻す / やり直す: 片方の履歴から1つ取り出して復元し、いまの state をもう片方の履歴へ積む
+  function stepHistory(from, to) {
+    const next = from.pop();
+    if (!next) return;
+    to.push(JSON.stringify(state));
+    state = norm(JSON.parse(next));
     selected = null;
     dirty = true;
     render();
     clearTimeout(saveTimer);
     saveTimer = setTimeout(save, 800);
   }
+  const undo = () => stepHistory(undoStack, redoStack);
+  const redo = () => stepHistory(redoStack, undoStack);
 
   async function save() {
     if (saving) { saveTimer = setTimeout(save, 500); return; }
@@ -433,6 +443,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = StudioCore
       } else if (r.status === 409 && r.json.conflict) {
         // 他の人が先に保存していた → その内容を読み込む（自分の直前の変更は捨てる。元に戻すで取り戻せる）
         undoStack.push(sent);
+        redoStack.length = 0;
         state = norm(r.json.state); v = r.json.v; dirty = false; status = 'saved';
         toast('他の人の変更を読み込みました', { label: '元に戻す', run: undo });
         render();
@@ -465,9 +476,10 @@ if (typeof module !== 'undefined' && module.exports) module.exports = StudioCore
   // 保存前にページを閉じようとしたら確認（beforeunload）
   window.addEventListener('beforeunload', (e) => { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
   document.addEventListener('keydown', (e) => {
-    if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || '')) {
-      e.preventDefault(); undo();
-    }
+    if (!(e.ctrlKey || e.metaKey) || /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || '')) return;
+    const k = e.key.toLowerCase();
+    if (k === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
+    else if ((k === 'z' && e.shiftKey) || k === 'y') { e.preventDefault(); redo(); }
   });
 
   /* ---------- 描画 ---------- */
@@ -494,10 +506,75 @@ if (typeof module !== 'undefined' && module.exports) module.exports = StudioCore
         el('button', { type: 'button', role: 'tab', class: view === k ? 'is-on' : '', 'aria-selected': String(view === k),
           onclick: () => { view = k; selected = null; history.replaceState(null, '', `#${k}`); render(); } }, icon(ic), el('span', { text: label }))));
     const body = view === 'need' ? renderNeed() : view === 'rows' ? renderRows() : renderGrid();
-    root.replaceChildren(head, tabs, body);
+    // 画面の下に浮かせる 元に戻す / やり直す（タイムテーブル作成・曲の編集と同じ規格 .ttb-float。全タブ共通）
+    const floating = el('div', { class: 'ttb-float' },
+      el('button', { type: 'button', class: 'btn btn--sm', 'aria-label': '元に戻す', title: '元に戻す', disabled: !undoStack.length, onclick: undo }, icon('undo')),
+      el('button', { type: 'button', class: 'btn btn--sm', 'aria-label': 'やり直す', title: 'やり直す', disabled: !redoStack.length, onclick: redo }, icon('redo')));
+    const oldFloat = root.querySelector('.std-float:not(.is-leaving)'); // 描き直す前の「選択中バー」
+    const before = view === 'grid' && lastView === 'grid' ? measureGrid() : null; // 描き直す前の表の寸法（変わったら滑らせる）
+    lastView = view;
+    root.replaceChildren(head, tabs, body, floating);
+    // 選択中バーの出入り: 出るときは CSS のアニメーション。別のバンドへ選択を移すだけのときは出し直さない。
+    //   選択解除（バーが消えるとき）は、描き直しで一瞬で消えてしまうので、前のバーの複製を残して、フェードアウトしてから消す
+    const newFloat = root.querySelector('.std-float');
+    if (newFloat && oldFloat) newFloat.classList.add('no-anim');
+    else if (!newFloat && oldFloat && view === 'grid') {
+      const ghost = oldFloat.cloneNode(true);
+      ghost.classList.add('is-leaving');
+      ghost.querySelectorAll('button').forEach((b) => { b.disabled = true; });
+      root.append(ghost);
+      ghost.addEventListener('animationend', () => ghost.remove());
+      setTimeout(() => ghost.remove(), 500); // アニメーションが動かない環境（動きを減らす設定など）の保険
+    }
     renderStatus();
     const sc = root.querySelector('.std-grid__scroll');
     if (sc) sc.scrollLeft = scrollX;
+    if (before) animateGrid(before);
+  }
+
+  /* 表の寸法の変化をアニメーションにする（FLIP: 変わる前の寸法を測る → 描き直す → 前の寸法から今の寸法へ滑らせる）
+   *   バンドを動かすと、名前の長さで列の幅・行の高さが変わる。そのまま描き直すとガタッと飛ぶので、
+   *   セルは「位置 + 大きさ（scale）」で、中の文字は逆向きの scale で歪まないように、枠は高さで、未配置の置き場は位置で滑らせる。 */
+  let lastView = null;
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function measureGrid() {
+    const rows = [...root.querySelectorAll('.std-grid tr')];
+    if (!rows.length) return null;
+    return {
+      // ドラッグの後始末で滑っている最中のセル（style.transition が残っている）は、寸法が途中なので測らない
+      cells: rows.map((tr) => [...tr.children].map((td) => (td.style.transition ? null : td.getBoundingClientRect()))),
+      card: root.querySelector('.std-grid__scroll')?.getBoundingClientRect() ?? null,
+      pool: root.querySelector('.std-pool')?.getBoundingClientRect() ?? null,
+    };
+  }
+  function animateGrid(b) {
+    if (reduceMotion) return;
+    const rows = [...root.querySelectorAll('.std-grid tr')];
+    if (rows.length !== b.cells.length) return; // 行の数が変わった（時間タブの編集など）ときは滑らせない
+    const opt = { duration: 200, easing: 'ease-out' };
+    rows.forEach((tr, i) => {
+      if (tr.children.length !== b.cells[i].length) return;
+      [...tr.children].forEach((td, j) => {
+        const o = b.cells[i][j];
+        if (!o) return;
+        const r = td.getBoundingClientRect();
+        const dx = o.left - r.left, dy = o.top - r.top, sx = o.width / r.width, sy = o.height / r.height;
+        if (Math.abs(dx) < 1 && Math.abs(dy) < 1 && Math.abs(sx - 1) < 0.01 && Math.abs(sy - 1) < 0.01) return;
+        const from = { transformOrigin: '0 0', transform: `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})` };
+        td.animate([from, { transformOrigin: '0 0', transform: 'none' }], opt);
+        [...td.children].forEach((c) => c.animate([{ transformOrigin: '0 0', transform: `scale(${1 / sx}, ${1 / sy})` }, { transformOrigin: '0 0', transform: 'none' }], opt));
+      });
+    });
+    const card = root.querySelector('.std-grid__scroll');
+    if (card && b.card) {
+      const h = card.getBoundingClientRect().height;
+      if (Math.abs(h - b.card.height) >= 1) card.animate([{ height: `${b.card.height}px` }, { height: `${h}px` }], opt);
+    }
+    const pool = root.querySelector('.std-pool');
+    if (pool && b.pool) {
+      const dy = b.pool.top - pool.getBoundingClientRect().top;
+      if (Math.abs(dy) >= 1) pool.animate([{ transform: `translateY(${dy}px)` }, { transform: 'none' }], opt);
+    }
   }
 
   /* ---------- 要否 ---------- */
@@ -565,9 +642,9 @@ if (typeof module !== 'undefined' && module.exports) module.exports = StudioCore
 
     // 操作ボタン
     const bar = el('div', { class: 'std-bar' },
-      btn('自動配置', 'auto_awesome', () => runAuto(false), 'btn btn--primary btn--sm'),
-      unNeeded.length && Object.keys(state.cells).length ? btn('未配置のみ', 'playlist_add', () => runAuto(true)) : null,
-      btn('', 'undo', undo, 'icon-btn', { title: '元に戻す', 'aria-label': '元に戻す', disabled: !undoStack.length }),
+      btn('自動配置', 'auto_awesome', runAuto, 'btn btn--primary btn--sm'),
+      // リセット: 配置だけ全部外す（時間・要否の設定は残る。「元に戻す」で復元できるので確認は出さない）
+      btn('', 'restart_alt', resetCells, 'icon-btn', { title: 'リセット', 'aria-label': 'リセット', disabled: !Object.keys(state.cells).length }),
       btn('画像', 'image', exportImage));
 
     // 警告の数
@@ -653,22 +730,12 @@ if (typeof module !== 'undefined' && module.exports) module.exports = StudioCore
       b && MULTI ? el('span', { class: `std-cell__day${w?.early ? ' is-early' : ''}`, text: dayLabel(b.day) }) : null);
   }
 
-  // セルを押したとき: 何も選んでいなければ選ぶ / 選んでいれば入れ替え・移動・配置
+  // セル・バンドを押したとき: 選択 / 選択解除だけ（詳細と「外す」を見る）。配置の移動・入れ替えはドラッグだけ
   function onCell(key) {
-    if (selected?.cell === key) { selected = null; render(); return; }
-    if (selected?.cell) {
-      const from = selected.cell;
-      selected = null;
-      moveCell(from, key);
-      return;
-    }
-    if (selected?.band != null) {
-      const id = selected.band;
-      selected = null;
-      change((s) => { s.cells[key] = id; }); // 行き先にいたバンドは未配置に戻る
-      return;
-    }
-    if (state.cells[key] != null) { selected = { cell: key }; render(); }
+    if (selected?.cell === key) selected = null;
+    else if (state.cells[key] != null) selected = { cell: key };
+    else selected = null;
+    render();
   }
   function onBand(id) {
     selected = selected?.band === id ? null : { band: id };
@@ -697,7 +764,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = StudioCore
    *   開始の条件: マウスは 6px 動かしたら / タッチは 0.35 秒の長押し（それまでは普通にスクロール）
    */
 
-  // セル同士の移動・入れ替え（タップ操作の onCell とドラッグで共通）
+  // セル同士の移動・入れ替え（ドラッグで使う）
   function moveCell(from, to) {
     if (from === to) return;
     change((s) => {
@@ -744,8 +811,16 @@ if (typeof module !== 'undefined' && module.exports) module.exports = StudioCore
     // 掴んだ要素を指に付いてこさせる。「指の位置 − 掴んだ点 − 本来の位置」だけ translate でずらす
     function follow() {
       const h = home(d.box);
-      const dx = d.kind === 'row' ? 0 : d.x - d.gx - h.left; // 行は縦にだけ動く
+      let dx = d.kind === 'row' ? 0 : d.x - d.gx - h.left; // 行は縦にだけ動く
       const dy = d.y - d.gy - h.top;
+      if (d.kind !== 'row') {
+        // 横は範囲の外へ出さない（セルは表の枠の中、チップは画面の中）。出すと、はみ出した分だけ表の横スクロール幅が伸び、
+        // 自動スクロールが「右端に近い」と判定し続けて、どこまでも右へ動いてしまう
+        const lim = d.kind === 'cell' ? root.querySelector('.std-grid__scroll')?.getBoundingClientRect() : null;
+        const minL = lim ? lim.left : 0;
+        const maxL = (lim ? lim.right : window.innerWidth) - h.width;
+        dx = Math.max(minL, Math.min(h.left + dx, maxL)) - h.left;
+      }
       d.box.style.transform = `translate(${dx}px, ${dy}px)`;
     }
 
@@ -834,7 +909,8 @@ if (typeof module !== 'undefined' && module.exports) module.exports = StudioCore
       const sc = d.kind === 'row' ? null : root.querySelector('.std-grid__scroll');
       if (sc) {
         const r = sc.getBoundingClientRect();
-        if (d.y >= r.top && d.y <= r.bottom) {
+        // 表の中で端に寄せたときだけ横スクロール（表の外では動かさない）
+        if (d.y >= r.top && d.y <= r.bottom && d.x >= r.left && d.x <= r.right) {
           if (d.x < r.left + EDGE) sc.scrollLeft -= speed;
           else if (d.x > r.right - EDGE) sc.scrollLeft += speed;
         }
@@ -933,12 +1009,10 @@ if (typeof module !== 'undefined' && module.exports) module.exports = StudioCore
     root.addEventListener('contextmenu', (e) => { if (e.target.closest('[data-drag]')) e.preventDefault(); });
   }
 
-  function runAuto(keep) {
-    if (!keep && Object.keys(state.cells).length && !confirm('現在の割り当てを上書きします')) return;
-    const slots = slotList(state);
-    const fixed = keep ? placements(state, slots) : new Map();
+  // 自動配置: 今の配置は消して、練習が必要な全バンド（未配置も含む）をあらためて置く。「元に戻す」で復元できる
+  function runAuto() {
     const targets = [...BANDS.keys()].filter(isNeeded);
-    const res = autoAssign(state, BANDS, targets, fixed);
+    const res = autoAssign(state, BANDS, targets, new Map());
     selected = null;
     change((s) => { s.cells = res.cells; });
     const warn = analyze(state, BANDS);
@@ -946,6 +1020,12 @@ if (typeof module !== 'undefined' && module.exports) module.exports = StudioCore
     if (res.unplaced.length) msgs.push(`未配置 ${res.unplaced.length}（枠が不足）`);
     if (warn.move) msgs.push(`移動 ${warn.move}`);
     toast(msgs.length ? msgs.join(' / ') : '配置しました', { label: '元に戻す', run: undo });
+  }
+  // リセット: 配置だけ全部外す（バンドは未配置に戻る）
+  function resetCells() {
+    selected = null;
+    change((s) => { s.cells = {}; });
+    toast('リセットしました', { label: '元に戻す', run: undo });
   }
 
   /* ---------- 時間 ---------- */
@@ -961,32 +1041,42 @@ if (typeof module !== 'undefined' && module.exports) module.exports = StudioCore
     }, { type: 'number', inputmode: 'numeric', min, max, ...attrs });
     // 時刻はタイムピッカー（type="time"。24時間表記）。空 = 上の行の終わりから続ける。古いデータの「25:00」は「01:00」に直して見せる
     //   auto = 開始が空（上の行の終わりから続ける）の行。続きの時刻を薄い色で見せる（変えると、その時刻で固定される）
-    const time = (value, onset, clash, auto) => input(toMin(value) == null ? '' : fmtP(toMin(value)), (x) => onset(x === '' ? null : x),
-      { type: 'time', class: `std-in std-in--time${clash ? ' is-bad' : ''}${auto ? ' is-auto' : ''}`, 'aria-label': '開始', 'aria-invalid': clash ? 'true' : null });
+    // 保存はすぐにせず、入力が止まって 1 秒後か、欄から離れたとき（blur）にまとめて1回だけ行う。
+    //   change のたびに保存すると、画面を描き直して欄が作り直され、「時」を1文字打っただけでフォーカスが外れて「分」に進めなくなる
+    const timeField = (value, handler, attrs) => {
+      let timer = 0;
+      let fired = false;
+      const commit = (el0) => {
+        clearTimeout(timer);
+        if (fired || el0.value === el0.defaultValue) return; // 変わっていない・保存済みなら何もしない
+        fired = true;
+        handler(el0.value);
+      };
+      return el('input', { type: 'time', step: 900, autocomplete: 'off', value, ...attrs,
+        onchange: (e) => { clearTimeout(timer); const t0 = e.target; timer = setTimeout(() => commit(t0), 1000); },
+        onblur: (e) => commit(e.target) });
+    };
+    const time = (value, onset, clash, auto) => timeField(toMin(value) == null ? '' : fmtP(toMin(value)), (x) => onset(x === '' ? null : x),
+      { class: `std-in std-in--time${clash ? ' is-bad' : ''}${auto ? ' is-auto' : ''}`, 'aria-label': '開始', 'aria-invalid': clash ? 'true' : null });
     const setRow = (id, patch) => { badEnd.delete(id); change((s) => { Object.assign(s.rows.find((r) => r.id === id), patch); }); };
     // 終了時刻の欄。保存するのは「1枠の分数 min」のまま（練習: (終了−開始)÷枠数、ライブ・自由記入: 終了−開始）。
     //   割り切れない・範囲外なら保存せず、入力を赤字のまま残す（badEnd）
     const endField = (r, t) => {
       const bad = badEnd.get(r.id);
-      return el('input', {
-        type: 'time', class: `std-in std-in--time${bad ? ' is-bad' : ''}`, 'aria-label': '終了',
-        value: bad ? bad.text : (t.end == null ? '' : fmtP(t.end)), disabled: t.start == null, 'aria-invalid': bad ? 'true' : null,
-        onchange: (e) => {
-          const z = e.target.value;
-          if (z === '') { badEnd.delete(r.id); render(); return; } // 空にしたら元の値へ戻す
-          const block = r.t === 'block';
-          const n = block ? r.n : 1;
-          // 24時間表記: 開始より前の時刻は、日付をまたいだ翌日の時刻（22:00 開始・00:30 終了 = 150分）
-          const total = (((toMin(z) - t.start) % 1440) + 1440) % 1440;
-          const each = total / n;
-          if (!Number.isInteger(each) || (block ? each < 5 || each > 600 : each < 0 || each > 1440)) {
-            badEnd.set(r.id, { text: z.padStart(5, '0'), total, n });
-            render();
-            return;
-          }
-          setRow(r.id, { min: each });
-        },
-      });
+      return timeField(bad ? bad.text : (t.end == null ? '' : fmtP(t.end)), (z) => {
+        if (z === '') { badEnd.delete(r.id); render(); return; } // 空にしたら元の値へ戻す
+        const block = r.t === 'block';
+        const n = block ? r.n : 1;
+        // 24時間表記: 開始より前の時刻は、日付をまたいだ翌日の時刻（22:00 開始・00:30 終了 = 150分）
+        const total = (((toMin(z) - t.start) % 1440) + 1440) % 1440;
+        const each = total / n;
+        if (!Number.isInteger(each) || (block ? each < 5 || each > 600 : each < 0 || each > 1440)) {
+          badEnd.set(r.id, { text: z.padStart(5, '0'), total, n });
+          render();
+          return;
+        }
+        setRow(r.id, { min: each });
+      }, { class: `std-in std-in--time${bad ? ' is-bad' : ''}`, 'aria-label': '終了', disabled: t.start == null, 'aria-invalid': bad ? 'true' : null });
     };
 
     // ---- 部屋・枠の分数・見出し ----
@@ -1059,9 +1149,21 @@ if (typeof module !== 'undefined' && module.exports) module.exports = StudioCore
     while (used.has(`r${i}`)) i++;
     return `r${i}`;
   }
+  // 日付の行を足すときの初期値: 現在ある日付の行のうち一番下の「◯月◯日」の次の日（読めなければ空）。月末は翌月へ繰り上がる
+  function nextDayText() {
+    for (let i = state.rows.length - 1; i >= 0; i--) {
+      const r = state.rows[i];
+      const m = r.t === 'day' ? /(\d{1,2})月\s*(\d{1,2})日/.exec(r.x || '') : null;
+      if (m) {
+        const d = new Date(new Date().getFullYear(), Number(m[1]) - 1, Number(m[2]) + 1);
+        return `${d.getMonth() + 1}月${d.getDate()}日`;
+      }
+    }
+    return '';
+  }
   function addRow(t) {
     if (state.rows.length >= MAX_ROWS) { toast('行が多すぎます'); return; }
-    const row = t === 'day' ? { id: newId(), t, x: '' }
+    const row = t === 'day' ? { id: newId(), t, x: nextDayText() }
       : t === 'block' ? { id: newId(), t, start: null, n: 2, min: null }
         : t === 'live' ? { id: newId(), t, x: 'Live', d: 1, start: null, min: 540 }
           : { id: newId(), t, x: '', start: null, min: 60 };

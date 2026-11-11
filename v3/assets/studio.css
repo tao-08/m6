@@ -70,10 +70,10 @@ form.tool-card .tool-card__body { flex: 1; }
 .std-cell__empty { color: var(--border); font-size: var(--fs-xl); }
 .std-cell__day { display: block; font-size: var(--fs-2xs); color: var(--muted); }
 .std-cell__day.is-early { color: var(--warn); }
-.std-cell.is-sel { box-shadow: inset 0 0 0 2px var(--accent); background: var(--accent-soft); }
 .std-cell.is-clash { background: var(--danger-bg); }
 .std-cell.is-clash .std-cell__name { color: var(--danger); }
 .std-cell.is-move { background: var(--warn-bg); }
+.std-cell.is-sel { box-shadow: inset 0 0 0 2px var(--accent); background: var(--accent-soft); }
 .std-cell.is-no .std-cell__name { text-decoration: line-through; color: var(--muted); } /* 「不要」と答えたのに置いてあるバンド */
 
 /* ---- 割当: 未配置のバンド ---- */
@@ -92,6 +92,12 @@ form.tool-card .tool-card__body { flex: 1; }
   width: min(480px, calc(100vw - 24px)); padding: 10px 12px; animation: std-up var(--t-base) var(--ease-out); }
 .std-float__body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .std-float__body .small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* スマホ: 左下に「元に戻す / やり直す」（.ttb-float）が積まれるので、その上に出す */
+@media (max-width: 760px) { .std-float { bottom: calc(184px + env(safe-area-inset-bottom)); } }
+.std-float.no-anim { animation: none; }
+.std-float.is-leaving { animation: std-down var(--t-base) var(--ease-out) forwards; pointer-events: none; } /* 選択解除: フェードアウト */
+@keyframes std-down { to { opacity: 0; transform: translate(-50%, 8px); } }
+@media (prefers-reduced-motion: reduce) { .std-float, .std-float.is-leaving { animation: none; } .std-float.is-leaving { display: none; } }
 @keyframes std-up { from { opacity: 0; transform: translate(-50%, 8px); } }
 
 /* ---- 時間 ---- */

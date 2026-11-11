@@ -193,7 +193,6 @@ return [
     'pin',
     'play_arrow',
     'play_circle',
-    'playlist_add',
     'poll',
     'polyline',
     'pool',
