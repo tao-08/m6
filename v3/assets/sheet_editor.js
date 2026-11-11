@@ -110,6 +110,7 @@
             delete o.size;
             delete o.text_box; // 書く文字が無ければ、文字の枠も要らない
         }
+        if (!o.amp) delete o.amp; // 「アンプと連動」が無ければ書かない
         if (!o.mark || o.mark === 'circle') delete o.mark;
         cfg.choices[g][name] = Object.keys(o).length === 1 ? o.box : o;
     }
@@ -1393,6 +1394,21 @@
         });
         l.append(sel);
         out.append(l);
+        // アンプと連動: セット図にそのアンプを置くと、この選択肢が自動で選ばれる（アンプは複数台なので、グループは複数選択にする）
+        const al = document.createElement('label');
+        al.className = 'ed-num ed-text';
+        al.textContent = 'アンプと連動';
+        const asel = document.createElement('select');
+        asel.append(new Option('なし', '', false, !spec.amp));
+        const amps = nowAmps();
+        for (const a of spec.amp && !amps.includes(spec.amp) ? [...amps, spec.amp] : amps) asel.append(new Option(a, a, false, spec.amp === a));
+        asel.addEventListener('change', () => {
+            if (asel.value) cfg.choice_multi = { ...(cfg.choice_multi || {}), [g]: true };
+            writeOpt(g, name, { ...spec, amp: asel.value });
+            changed(true);
+        });
+        al.append(asel);
+        out.append(al);
         // このグループは複数選べる（cfg.choice_multi[g] = true）
         const ml = document.createElement('label');
         ml.className = 'ed-check';

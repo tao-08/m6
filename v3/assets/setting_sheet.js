@@ -1532,10 +1532,12 @@
         let changed = false;
         for (const [g, opts] of Object.entries(tpl().choices || {})) {
             const names = Object.keys(opts || {});
-            if (!names.some((o) => gtAmps().some((a) => match(a, o)))) {
+            // 型紙で「アンプと連動」を指定した選択肢（{ amp: 'JC' }）は、その名前のアンプがセット図にあれば選ぶ。指定が無ければ名前の単語で比べる
+            const ampOf = (o) => (opts[o] && !Array.isArray(opts[o]) && typeof opts[o].amp === 'string' ? opts[o].amp : '');
+            if (!names.some((o) => ampOf(o) !== '' || gtAmps().some((a) => match(a, o)))) {
                 continue; // アンプの選択肢ではないグループ（SE の有無など）は触らない
             }
-            const hit = names.filter((o) => labels.some((l) => match(l, o)));
+            const hit = names.filter((o) => labels.some((l) => (ampOf(o) !== '' ? match(ampOf(o), l) : match(l, o))));
             const next = tpl().choice_multi?.[g] ? hit : (hit[0] || '');
             if (JSON.stringify(next) !== JSON.stringify(state.choices[g] ?? (tpl().choice_multi?.[g] ? [] : ''))) {
                 state.choices[g] = next;
