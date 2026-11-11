@@ -703,6 +703,7 @@
      * 詳細設定の中身は選んでいる枠ごとに変わる。何も無い枠では ⚙ を押せなくする
      */
     let panelAnim = null;
+    let dragging = false; // 枠をつかんでいる間（pointerdown から、離して描き直し終わるまで）
     let lastKeys = new Set();
     function drawPanel() {
         const panelBefore = panel.offsetHeight;
@@ -711,7 +712,7 @@
         lastSel = selectedId;
         drawPanelInner();
         // 同じ枠のまま項目が増減したとき: 新しい項目をフェードイン、本体の高さの変化をなめらかに
-        if (reduceMotion() || !wasSame) {
+        if (reduceMotion() || dragging || !wasSame) {
             lastKeys = collectKeys();
             return;
         }
@@ -802,7 +803,8 @@
         const wasShown = !advBox.hidden;
         advAnim?.cancel();
         advBox.style.overflow = '';
-        if (reduceMotion() || (!open && !has)) {
+        // ドラッグの前後は動かさない（高さのアニメーションでキャンバスが動くと、つかんだ枠がずれて揺れる）
+        if (reduceMotion() || dragging || (!open && !has)) {
             advBox.hidden = !open;
             return;
         }
@@ -1582,6 +1584,8 @@
         const edge = it.type === 'rect' && what.startsWith('edge') ? +what.slice(4) : null;
         drag = { from: toPt(e), ops: dragOps(it, what), moved: false, box: it.box, edge };
         svg.setPointerCapture(e.pointerId); // 枠の外までマウスが出ても、離すまで追いかける
+        dragging = true;
+        panelAnim?.cancel();
         draw();
     });
     svg.addEventListener('pointermove', (e) => {
@@ -1626,6 +1630,7 @@
     const endDrag = () => {
         if (drag && drag.moved) changed(true);
         drag = null;
+        dragging = false;
     };
     svg.addEventListener('pointerup', endDrag);
     svg.addEventListener('pointercancel', endDrag);
