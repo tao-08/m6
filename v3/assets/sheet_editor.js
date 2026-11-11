@@ -256,7 +256,7 @@
     /** 画面の 1px が何 pt か（文字の大きさ・つかめる線の太さを画面に合わせる） */
     const ptPerPx = () => pw / (svg.getBoundingClientRect().width || pw);
 
-    function draw() {
+    function draw(light = false) {
         svg.setAttribute('viewBox', `0 0 ${pw} ${ph}`);
         svg.textContent = '';
         const k = ptPerPx();
@@ -357,9 +357,15 @@
             sel.querySelectorAll('.ed-edge').forEach((e) => top.append(e.cloneNode()));
             svg.append(top);
         }
+        // ドラッグ中は一覧とパネルを作り直さない（開いた設定がガタガタ揺れるため）。数字の欄だけ今の値にする
+        if (light) {
+            numSync.forEach((f) => f());
+            return;
+        }
         drawList();
         drawPanel();
     }
+    const numSync = []; // パネルの数字欄を今の値に合わせる関数（drawPanel のたびに作り直す）
 
     /* -----------------------------------------------------------------
      *  要素の一覧（ツールバーの ☰ で開くポップアップ）
@@ -733,6 +739,7 @@
         const advBefore = advBox.hidden ? null : advBox.offsetHeight; // 描き直す前の詳細設定の高さ（高さが変わるときの動きの始まり）
         panel.textContent = '';
         advBox.textContent = '';
+        numSync.length = 0;
         out = panel;
         gtAmpsPanel();
         if (!it) {
@@ -1029,6 +1036,7 @@
         inp.type = 'number';
         inp.step = step; // 行数は整数（0.1 刻みだと △ で 5.1 になって 5 に戻る）
         inp.value = String(+get().toFixed(3));
+        numSync.push(() => { inp.value = String(+get().toFixed(3)); });
         inp.addEventListener('change', () => {
             if (inp.value === '' || !Number.isFinite(+inp.value)) return;
             set(+inp.value);
@@ -1406,6 +1414,11 @@
         asel.addEventListener('change', () => {
             if (asel.value) cfg.choice_multi = { ...(cfg.choice_multi || {}), [g]: true };
             writeOpt(g, name, { ...spec, amp: asel.value });
+            // 選択肢の名前もアンプの名前に合わせる（同じ名前がこのグループに無いとき）
+            if (asel.value && asel.value !== name && !(asel.value in cfg.choices[g])) {
+                renameOption(g, name, asel.value);
+                selectedId = `choices.${g}.${asel.value}`;
+            }
             changed(true);
         });
         al.append(asel);
@@ -1581,7 +1594,7 @@
         if (drag.edge !== null && (e.ctrlKey || e.shiftKey)) square(drag.box, drag.edge);
         fitAuto();
         drag.moved = true;
-        draw();
+        draw(true);
     });
 
     /**
