@@ -2262,6 +2262,8 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
 .ed-k-fields { --c: #2563eb; } .ed-k-members { --c: #16a34a; } .ed-k-setlist { --c: #9333ea; }
 .ed-k-stage { --c: #ea580c; } .ed-k-drum { --c: #64748b; } .ed-k-choices { --c: #db2777; } .ed-k-texts { --c: #0d9488; }
 .ed-k-stamps { --c: #854d0e; } .ed-k-stage_auto { --c: #ca8a04; } .ed-k-slots { --c: #0891b2; }
+.ed-k-choicetext { --c: #be185d; } /* 選択肢の文字の枠: ○の枠（ピンク）より濃い色の点線で見分ける */
+.ed-k-choicetext .ed-body { stroke-dasharray: 4 3; fill-opacity: .2; }
 .ed-k-stage_auto .ed-body { stroke-dasharray: 4 3; } /* 自動配置の範囲は点線（セット図の枠と見分ける） */
 /* 型紙のプレビュー: ボタンは枠の下の行（.tpl-under）の右。開いている間は「閉じる」が右下に浮き、その上に枠が浮く（中は setting_sheet?tpl_preview=1 の iframe）。
  * 見た目はセッティングシート作成の画面のプレビュー（setting_sheet.css の .sheet-preview）に合わせる */

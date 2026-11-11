@@ -203,7 +203,7 @@
                 }, { choice: { g, name } }));
                 // 書く文字の枠（○の位置とは別）。あれば別の枠として動かせる
                 if (isBox(v.text_box) && v.text) {
-                    out.push(rectItem(`choice_text.${g}.${name}`, `${groupLabel(g)}: ${name} →文字「${v.text}」の枠`, 'choices', v.text_box, () => {
+                    out.push(rectItem(`choice_text.${g}.${name}`, `${groupLabel(g)}: ${name} →文字「${v.text}」の枠`, 'choicetext', v.text_box, () => {
                         const s = optSpec(cfg.choices[g][name]);
                         delete s.text_box;
                         writeOpt(g, name, s);
@@ -254,9 +254,10 @@
                 const edge = (xa, ya, xb, yb, which) => el('line', { x1: xa, y1: ya, x2: xb, y2: yb, class: `ed-edge ed-edge--${which < 2 ? 'v' : 'h'}`, 'data-drag': `edge${which}`, 'vector-effect': 'non-scaling-stroke' });
                 // which: 0=左 1=右 2=上 3=下
                 g.append(edge(x0, y0, x0, y1, 0), edge(x1, y0, x1, y1, 1), edge(x0, y0, x1, y0, 2), edge(x0, y1, x1, y1, 3));
-                if (it.id === selectedId || (x1 - x0) / k > 50) {
+                // 文字の枠（選択肢の○とは別）は、小さくても短いラベル「文字」をいつも出して見分けられるようにする
+                if (it.id === selectedId || (x1 - x0) / k > 50 || it.kind === 'choicetext') {
                     const t = el('text', { x: x0 + 2 * k, y: y0 + 11 * k, class: 'ed-label', 'font-size': 10 * k, 'stroke-width': 3 * k });
-                    t.textContent = it.label;
+                    t.textContent = it.kind === 'choicetext' && it.id !== selectedId && (x1 - x0) / k <= 50 ? '文字' : it.label;
                     g.append(t);
                 }
             } else {
@@ -565,7 +566,7 @@
         const others = document.createElement('div');
         others.className = 'ed-pop__chips';
         for (const it of items) {
-            if (it.kind === 'choices' || it.kind === 'texts') continue;
+            if (it.kind === 'choices' || it.kind === 'choicetext' || it.kind === 'texts') continue;
             const b = document.createElement('button');
             b.type = 'button';
             b.className = `ed-chip ed-k-${it.kind}${it.id === selectedId ? ' is-selected' : ''}`;
@@ -1296,7 +1297,8 @@
             toggle('文字の枠を別にする', isBox(spec.text_box), (on) => {
                 if (on) {
                     const [x0, y0, x1, y1] = spec.box;
-                    spec.text_box = [r1(x1 + 6), y0, r1(x1 + 6 + Math.max(x1 - x0, 40)), y1];
+                    // 隣の選択肢の枠に重ならないよう、選択肢の枠の少し下に置く（あとでドラッグで動かす）
+                    spec.text_box = [r1(x0), r1(y1 + 6), r1(x0 + Math.max(x1 - x0, 40)), r1(y1 + 6 + Math.max(y1 - y0, 12))];
                     selectedId = `choice_text.${g}.${name}`;
                     note.textContent = '文字の枠を足しました。ドラッグで書きたい場所に合わせてください。○は元の枠に付きます。';
                 } else {
