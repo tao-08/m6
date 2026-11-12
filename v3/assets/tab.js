@@ -1171,6 +1171,7 @@
     });
     $$('[data-rate]').forEach((b) => b.classList.toggle('is-active', Math.abs(Number(b.dataset.rate) - clock.rate) < 0.01));
     syncPbpmField();
+    syncMiniRate();
     requestFrame();
   }
 
@@ -1356,6 +1357,7 @@
    * --------------------------------------------------------------- */
   function updateAbButtons() {
     $$('[data-ab]').forEach((b) => b.classList.toggle('is-active', (b.dataset.ab === 'a' && loop.a !== null) || (b.dataset.ab === 'b' && loop.b !== null)));
+    $$('[data-mini-loop]').forEach((b) => b.classList.toggle('is-active', loop.a !== null && loop.b !== null)); // キーボードのミニバー
   }
   function setLoop(a, b) {
     loop = { a, b };
@@ -2358,8 +2360,59 @@
     r.classList.add('tab-pad__row--scroll');
     return r;
   }
+  /*
+   * ミニバー（キーボードの一番上の行）
+   *   キーボードを出すと、上の操作バー（.tab-bar）は画面の外になる。耳コピをしながら音を入れるのに要る
+   *   5秒戻し・再生・速度・選択小節リピート だけを、キーボードの一番上に置く。
+   *   再生と5秒戻しは data-play / data-seek を付けるだけで、root のクリック処理（上の root.addEventListener('click')）が拾って動かす。
+   *   速度とリピートは、下の pad のクリック処理（data-kb の rate / loopbar）で動かす。
+   */
+  /** 速度の段階（YouTube は 0.9 倍が無いので、ミニバーは 3 段だけ） */
+  const MINI_RATES = [1, 0.75, 0.5];
+  /** 今実際に効いている速度（YouTube は丸められた値。音源をまだ作る前は clock が null なので、設定値で代用） */
+  function effectiveRate() {
+    return clock && clock.kind === 'yt' ? clock.rate : currentRate();
+  }
+  /** ミニバーの速度ボタン: 「×0.75」のように現在の速度を出す。元の速度（×1）のときだけ、色を付けない */
+  function syncMiniRate() {
+    const btn = $('[data-mini-rate]', pad);
+    if (!btn) return; // ミニバーを作る前（起動の途中）は何もしない
+    const r = effectiveRate();
+    btn.textContent = '×' + Number(r.toFixed(2)); // Number(...) で「0.50」→「0.5」のように末尾の 0 を落とす
+    btn.classList.toggle('is-active', Math.abs(r - 1) >= 0.01);
+  }
+  /** 速度ボタンを押すたび、1 → 0.75 → 0.5 → 1 …と、いまより遅い次の段階へ（段階の間にいるときも、次に遅い段階へ） */
+  function cycleMiniRate() {
+    const r = effectiveRate();
+    const rate = r > MINI_RATES[1] + 0.01 ? MINI_RATES[1] : r > MINI_RATES[2] + 0.01 ? MINI_RATES[2] : 1;
+    setPracticeBpm(rate === 1 ? null : Math.round(st.bpm * rate * 10) / 10);
+  }
+  function renderMiniBar() {
+    // data-kb を付けずに作りたいので、kbIcon で作ってから data-kb を外し、必要な属性だけ付け直す
+    const seek = kbIcon('replay_5', '', '', '5秒戻る');
+    delete seek.dataset.kb;
+    seek.dataset.seek = '-5';
+    const play = kbIcon('play_arrow', '', 'tab-pad__play', '再生（Space）');
+    delete play.dataset.kb;
+    play.dataset.play = '';
+    $('.icon', play).classList.add('icon--fill');
+    // 作った直後の表示: 起動の途中は clock がまだ無い（音源は後で setSource が作り、そのときの onClockChange が反映する）ので、あるときだけ合わせる
+    if (clock && (clock.playing || counting)) {
+      $('.icon', play).textContent = 'pause';
+      play.title = '一時停止（Space）';
+      play.setAttribute('aria-label', '一時停止');
+    }
+    const rate = kbBtn('×1', 'rate', 'tab-pad__sm', '速度');
+    rate.dataset.miniRate = '';
+    const loopBar = kbIcon('repeat', 'loopbar', 'tab-pad__sm', '選択小節をリピート');
+    loopBar.dataset.miniLoop = '';
+    return kbRow(seek, play, rate, loopBar);
+  }
   function renderKeyboard() {
     pad.replaceChildren();
+    const mini = renderMiniBar();
+    mini.classList.add('tab-pad__mini');
+    pad.appendChild(mini);
     // 上のタブ: 音 / コード（ドラム譜はコードなし）+ 元に戻す・やり直す + 閉じる（×）
     //   閉じる: スマホには Esc キーが無く、キーボードを閉じる方法が無かったので足した（マスの選択を外すと、キーボードも消える）
     const tabs = kbRow(kbBtn('音', 'panel:note', 'tab-pad__tab', '音を入力'), ...(isDrum ? [] : [kbBtn('コード', 'panel:chord', 'tab-pad__tab', 'コードを入力')]),
@@ -2414,6 +2467,8 @@
       pad.appendChild(chord);
     }
     updateKeyboard();
+    syncMiniRate();   // 作ったばかりのミニバーを、いまの速度・リピートの状態に合わせる
+    updateAbButtons();
   }
   /** ボタンの押せる・押せない・押している状態を、今の状態に合わせる */
   function updateKeyboard() {
@@ -2462,6 +2517,11 @@
     else if (kind === 'dot') { kb.dot = !kb.dot; if (kb.dot) kb.trip = false; }
     else if (kind === 'trip') { kb.trip = !kb.trip; if (kb.trip) kb.dot = false; }
     else if (kind === 'chordmode') kb.chord = !kb.chord;
+    else if (kind === 'rate') cycleMiniRate(); // ミニバー: マスを選んでいなくても動かす
+    else if (kind === 'loopbar') { // ミニバー: リピート中なら解除、そうでなければ選択中の小節をリピート（再生は始めない）
+      if (loop.a !== null && loop.b !== null) setLoop(null, null);
+      else if (sel) { setLoop(starts[sel.b], starts[sel.b + 1]); seekTo(starts[sel.b]); }
+    }
     else if (kind === 'close') { sel = null; markSel(); } // 閉じる（×）: マスの選択を外す = キーボードが消える（PC の Esc と同じ）
     else if (sel) {
       lastDigit = null;

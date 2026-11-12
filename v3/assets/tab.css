@@ -233,6 +233,7 @@ details[open] > .tab-summary > .tab-summary__chev { transform: rotate(180deg); }
 /* ===== 編集中 / 練習中の出し分け =====
    .is-editing は JS（setMode）が編集モードのあいだ <div class="tab"> に付ける。
    ・data-practice-only … 練習用の操作（速度・練習 BPM・A/B・ループごとの BPM 増加・マーカー・同期解除・練習用マーカー一覧）。編集中は隠して、画面を片付ける
+     編集中でも耳コピに要る速度・リピートは、キーボードの上のミニバー（.tab-pad__mini。tab.js の renderKeyboard）から使える
    ・data-edit-only     … 編集用（準備ステップ・詳細設定）。練習中は隠す
    !important を付けるのは、.tab-bar__group { display: flex } のような、ほかの指定（同じ強さで後ろにあるもの）に負けないため */
 .tab.is-editing [data-practice-only] { display: none !important; }
@@ -494,6 +495,15 @@ details[open] > .tab-summary > .tab-summary__chev { transform: rotate(180deg); }
   .tab-pad button { height: 38px; } /* 指で押す端末は、ボタンを少し大きく（マウスの PC は今のまま） */
   .tab-pad button:not(.tab-pad__big) { min-width: 36px; } /* 数字 0〜9（big）は 10 個が 1 行に収まる幅のまま */
 }
+/* ミニバー（キーボードの一番上の行。tab.js の renderKeyboard が作る）: 5秒戻し・再生・速度・選択小節リピート。
+   縦スクロールするキーボード（スマホは max-height 45dvh）でも、sticky で一番上に残る。
+   margin の -8px = .tab-pad の padding を打ち消して、行を端から端まで広げる（背景を敷くため）。角丸は .tab-pad の overflow が切るので、ここでは付けない。
+   top: -8px = sticky の基準は .tab-pad の「padding の内側」。0 だと 8px 下にずれて、下の行（音 / コード）に重なった（実測）ので、padding の分だけ上へ。下の指定は上の @media (pointer: coarse) より後ろに書いて、同じ強さでも勝たせる */
+.tab-pad__mini { position: sticky; top: -8px; z-index: 1; margin: -8px -8px 0; padding: 8px 8px 6px; background: var(--bg); border-bottom: 1px solid var(--border); }
+.tab-pad .tab-pad__mini button { height: 44px; min-width: 44px; } /* 指で押しやすい大きさ */
+.tab-pad .tab-pad__mini .tab-pad__play { flex: 1 1 64px; color: var(--on-accent); background: var(--accent); border-color: var(--accent); }
+.tab-pad .tab-pad__mini .tab-pad__play .icon { font-size: 26px; }
+.tab-pad .tab-pad__mini [data-mini-rate] { min-width: 56px; } /* 「×1」と「×0.75」で行の幅が変わらないように */
 /* スマホ幅（〜899px）: 画面の一番下にぴったり付ける。下の余白 = iPhone のホームバーの高さ（env(safe-area-inset-bottom)。viewport-fit=cover のときだけ値が入る）
    max-height 45vh: 画面の半分近くまでで止めて、中は縦スクロール。dvh = アドレスバーの出入りを考えた「いまの画面の高さ」（古いブラウザは上の vh のまま） */
 @media (max-width: 899px) {
