@@ -579,16 +579,28 @@
    *   時刻は全部「元のテンポの TAB の時間軸（秒）」。練習 BPM で遅くしても、この時間軸の数字は変わらず、進む速さ（rate）だけが変わる
    * ---------------------------------------------------------------
    */
-  /** 各小節の頭の時刻 starts（最後に曲の終わりも入る）と、小節の長さ durs。bars[i].t（タップ・ミリ秒）があればそれを優先 */
+  /**
+   * 各小節の頭の時刻 starts（最後に曲の終わりも入る）と、小節の長さ durs。bars[i].t（タップ・ミリ秒）があればそれを優先
+   *   叩いていない小節は、前後の「叩いた小節」の間を均等に割る → 8〜16小節おきに叩くだけで全体が合う
+   *   （以前は BPM の長さで進めて、次に叩いた小節の直前の 1 小節だけにズレを押しつけていたので、そこだけ伸び縮みしていた）
+   *   基準点 = 叩いた小節。1 小節目を叩いていないときは、1 小節目が offset の位置にあるものとして基準点にする
+   *   ただし区間の 1 小節が BPM の長さの 0.5〜2 倍の外なら、打ち間違いとみなして従来どおり（前の基準点 + BPM の長さ）で進める
+   *   最後に叩いた小節より後ろは、後ろに基準点がないので BPM の長さのまま
+   */
   function computeTimeline(bars, beats, bpm, offsetMs) {
     const n = bars.length;
     const bd = beats * 60 / bpm;
     const starts = new Array(n + 1);
-    let lastTap = -1;
+    const nextTap = new Array(n).fill(-1);   // i より後ろで最初に叩いた小節の番号（なければ -1）
+    for (let i = n - 2; i >= 0; i--) nextTap[i] = bars[i + 1].t !== null ? i + 1 : nextTap[i + 1];
+    let a = 0, ta = offsetMs / 1000;          // 前の基準点（小節の番号と時刻）。叩くまでは 1 小節目の offset
     for (let i = 0; i < n; i++) {
-      if (bars[i].t !== null) { starts[i] = bars[i].t / 1000; lastTap = i; }
-      else if (lastTap >= 0) starts[i] = starts[lastTap] + (i - lastTap) * bd;
-      else starts[i] = offsetMs / 1000 + i * bd;
+      if (bars[i].t !== null) { starts[i] = bars[i].t / 1000; a = i; ta = starts[i]; continue; }
+      const b = nextTap[i];
+      const tb = b >= 0 ? bars[b].t / 1000 : 0;
+      const len = b >= 0 ? (tb - ta) / (b - a) : 0;
+      const sane = b >= 0 && tb > ta && len >= bd * 0.5 && len <= bd * 2;
+      starts[i] = ta + (i - a) * (sane ? len : bd);
     }
     starts[n] = starts[n - 1] + bd;
     const durs = [];
@@ -1223,7 +1235,7 @@
 
   /* ---------------------------------------------------------------
    * 2. タイミング
-   *   starts[i] … i 小節目が始まる秒。bars[i].t（タップ）があればそれ。無ければ直前のタップ済みの小節から BPM で数える
+   *   starts[i] … i 小節目が始まる秒。bars[i].t（タップ）があればそれ。無ければ前後のタップ済みの小節の間を均等に割る（後ろにタップが無ければ BPM で数える）
    *   durs[i]   … i 小節目の長さ。次の小節の頭までの長さ（タップで補正した分だけ伸び縮みする）
    * --------------------------------------------------------------- */
   let starts = [], durs = [];
@@ -2399,7 +2411,7 @@
     const btn = $('[data-mini-rate]', pad);
     if (!btn) return; // ミニバーを作る前（起動の途中）は何もしない
     const r = effectiveRate();
-    btn.textContent = '×' + Number(r.toFixed(2)); // Number(...) で「0.50」→「0.5」のように末尾の 0 を落とす
+    btn.textContent = '速度×' + Number(r.toFixed(2)); // Number(...) で「0.50」→「0.5」のように末尾の 0 を落とす。「×1」だけでは速度と伝わらないので「速度」を付ける
     btn.classList.toggle('is-active', Math.abs(r - 1) >= 0.01);
   }
   /** 速度ボタンを押すたび、1 → 0.75 → 0.5 → 1 …と、いまより遅い次の段階へ（段階の間にいるときも、次に遅い段階へ） */
@@ -2423,10 +2435,11 @@
       play.title = '一時停止（Space）';
       play.setAttribute('aria-label', '一時停止');
     }
-    const rate = kbBtn('×1', 'rate', 'tab-pad__sm', '速度');
+    const rate = kbBtn('速度×1', 'rate', 'tab-pad__sm', '速度');
     rate.dataset.miniRate = '';
     const loopBar = kbIcon('repeat', 'loopbar', 'tab-pad__sm', '選択小節をリピート');
     loopBar.dataset.miniLoop = '';
+    loopBar.appendChild(mkEl('span', '', '1小節')); // アイコンだけでは「選んだ 1 小節だけを繰り返す」と伝わらないので、範囲を文字で添える
     return kbRow(seek, play, rate, loopBar);
   }
   function renderKeyboard() {
@@ -3021,7 +3034,7 @@
     tapFit = fit ? { ...fit, mode } : null;
     if (fit) setBpm(fit.bpm);
     const n = bpmTaps.times.length;
-    bpmTapSum.textContent = fit ? `${n}拍 ±${fit.bpmErr.toFixed(1)}` : `${n}拍`;
+    bpmTapSum.textContent = fit ? `${n}拍・誤差±${fit.bpmErr.toFixed(1)}` : `${n}拍`; // 「±0.3」だけでは何の数字か伝わらないので「誤差」と書く（単位は BPM）
     bpmTapOffsetBtn.disabled = !(tapFit && mode === 'song' && n >= 8);
   }
   bpmTapBtn.addEventListener('pointerdown', (e) => {
