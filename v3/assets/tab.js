@@ -2087,6 +2087,7 @@
     $$('.tg-cell.is-sel', grid).forEach((c) => c.classList.remove('is-sel'));
     if (sel && cellEl(sel.b, sel.s, sel.r)) cellEl(sel.b, sel.s, sel.r).classList.add('is-sel');
     pad.hidden = !(editMode && sel);
+    if (pad.hidden) kb.tens = 0; // キーボードを閉じたら「10+」「20+」の押しっぱなしも解除（次に開いたとき勝手に 10 番台にならない）
     document.body.classList.toggle('has-tab-pad', !pad.hidden); // 画面の下・横にキーボードが出ている間、保存ボタンなどを避ける（tab.css）
     syncPadHeight(); // 出した・隠した直後の高さを、すぐ CSS 変数に反映する
     updateSecPick();
@@ -2128,7 +2129,8 @@
    *   音価（kb.base = 1拍を1とした長さ、dot = 付点、trip = 3連）は、今の分割で整数のマス数になるものだけ使える
    *   パソコンのキー: 数字 = フレット / r = 休符 / x = ミュート / c = 和音 / - + = 音価を短く・長く / . = 付点 / , = 3連 / Backspace = 削除 / 矢印 = カーソル
    * --------------------------------------------------------------- */
-  const kb = { base: 1, dot: false, trip: false, chord: false, panel: 'note', chordBuf: '' };
+  // tens = 画面の「10+」「20+」の押している状態（0 = 押していない / 1 = 10 番台 / 2 = 20 番台）。次の数字ボタン 1 回で、10 の位として足されて消える
+  const kb = { base: 1, dot: false, trip: false, chord: false, panel: 'note', chordBuf: '', tens: 0 };
   const BASES = [['全', 4], ['2分', 2], ['4分', 1], ['8分', 0.5], ['16分', 0.25], ['32分', 0.125]];
   /** 音価 → マス数。今の分割で割り切れなければ null */
   function durFor(base, dot, trip) {
@@ -2387,10 +2389,10 @@
     children.flat().forEach((c) => r.appendChild(c));
     return r;
   }
-  /** 折り返さず横スクロールする行（ボタンの数が多い行用） */
-  function kbScrollRow(...children) {
+  /** スマホで 1 行に収める行（音価・数字・道具）: ボタンが幅を等分する。横スクロールも折り返しもしない（CSS の tab-pad__row--fit） */
+  function kbFitRow(...children) {
     const r = kbRow(...children);
-    r.classList.add('tab-pad__row--scroll');
+    r.classList.add('tab-pad__row--fit');
     return r;
   }
   /*
@@ -2447,11 +2449,17 @@
     const mini = renderMiniBar();
     mini.classList.add('tab-pad__mini');
     pad.appendChild(mini);
-    // 上のタブ: 音 / コード（ドラム譜はコードなし）+ 元に戻す・やり直す + 閉じる（×）
+    // 上のタブ: 音 / コード（ドラム譜はコードなし）+ 元に戻す・やり直す + 保存 + 閉じる（×）
     //   閉じる: スマホには Esc キーが無く、キーボードを閉じる方法が無かったので足した（マスの選択を外すと、キーボードも消える）
+    //   保存: スマホはキーボードの上に浮かせていた保存バーが選んだ小節を隠していたので、バーをやめてキーボードの中に置いた（広い画面は今までどおり浮かぶバーがあるので、CSS でこのボタンは隠す）
+    //   アイコンだけでは「何が保存されるか」が分かりにくいので、文字「保存」も並べる。未保存のときは updateSaveKey が色を付ける
+    const saveKey = kbIcon('save', 'save', 'tab-pad__sm tab-pad__save', '保存');
+    saveKey.appendChild(mkEl('span', '', '保存'));
     const tabs = kbRow(kbBtn('音', 'panel:note', 'tab-pad__tab', '音を入力'), ...(isDrum ? [] : [kbBtn('コード', 'panel:chord', 'tab-pad__tab', 'コードを入力')]),
       kbIcon('undo', 'undo', 'tab-pad__sm', '元に戻す（Ctrl+Z）'), kbIcon('redo', 'redo', 'tab-pad__sm', 'やり直す（Ctrl+Y）'),
+      saveKey,
       kbIcon('close', 'close', 'tab-pad__sm tab-pad__close', '閉じる（Esc）'));
+    tabs.classList.add('tab-pad__row--tabs'); // 折り返さない行（幅 320px の端末でも、ボタンが少し縮んで 1 行に収まる。CSS 参照）
     pad.appendChild(tabs);
 
     // ---- 音のパネル ----
@@ -2462,19 +2470,21 @@
         kbBtn('ゴースト', 'fret:3', 'tab-pad__big', 'ゴースト（3）'), kbBtn('オープン', 'fret:4', 'tab-pad__big', 'オープン（4・HH のみ）')));
       note.appendChild(kbRow(...st.tuning.map((lane, r) => kbBtn(lane, `lane:${r}`, 'tab-pad__sm', 'レーン ' + lane))));
     } else {
-      note.appendChild(kbRow(...Array.from({ length: 10 }, (_, f) => kbBtn(String(f), `fret:${f}`, 'tab-pad__big'))));
-      // 数が多い行（フレット 10〜24・音価）は、折り返さず 1 行のまま横スクロール（tab-pad__row--scroll）: 折り返すとキーボードが高くなって、譜面を隠してしまう
-      note.appendChild(kbScrollRow(...Array.from({ length: 15 }, (_, i) => kbBtn(String(i + 10), `fret:${i + 10}`, 'tab-pad__sm'))));
-      note.appendChild(kbScrollRow(...BASES.map(([label, base]) => kbBtn(label, `base:${base}`, 'tab-pad__sm', `音価 ${label}`)),
+      // 上から 音価（全〜32分・付点・3連）→ 数字 0〜9 の順。どれも 1 行に収める（kbFitRow）: 折り返す・横スクロールで隠れるボタンがあると、初めての人が見つけられない
+      //   音価を数字の上に置くのは、「長さを決めてから、フレットを押す」順番に読めるから
+      note.appendChild(kbFitRow(...BASES.map(([label, base]) => kbBtn(label, `base:${base}`, 'tab-pad__sm', `音価 ${label}`)),
         kbBtn('付点', 'dot', 'tab-pad__sm', '付点（.）'), kbBtn('3連', 'trip', 'tab-pad__sm', '3連（,）')));
+      note.appendChild(kbFitRow(...Array.from({ length: 10 }, (_, f) => kbBtn(String(f), `fret:${f}`, 'tab-pad__big'))));
     }
-    // 移動（◀ ▶ ▲ ▼）と削除。弦の譜面は「x・休符・和音」と同じ行にまとめる（スマホの幅で 1 行に収まる。行が減るぶん、キーボードが低くなって譜面が隠れにくい）
+    // 移動（◀ ▶ ▲ ▼）と削除。弦の譜面は「10+・20+・x・休符・和音」と同じ 1 行（10 個）にまとめる（行が減るぶん、キーボードが低くなって譜面が隠れにくい）
+    //   10+ / 20+ = 10〜24 フレット用の「10 の位」キー。先に押してから数字を押す（10+ → 2 で 12）。もう一度押すと取り消し
     const moveBtns = [kbIcon('chevron_left', 'move:-1:0', 'tab-pad__sm', '左（←）'), kbIcon('chevron_right', 'move:1:0', 'tab-pad__sm', '右（→）'),
       kbIcon('keyboard_arrow_up', 'move:0:-1', 'tab-pad__sm', '上の弦（↑）'), kbIcon('keyboard_arrow_down', 'move:0:1', 'tab-pad__sm', '下の弦（↓）'),
       kbBtn('削除', 'del', 'tab-pad__sm', '削除（Backspace）')];
     if (isDrum) note.appendChild(kbRow(...moveBtns));
     else {
-      note.appendChild(kbRow(kbBtn('x', 'fret:-1', 'tab-pad__sm', 'ミュート（x）'), kbBtn('休符', 'rest', 'tab-pad__sm', '休符（r）'),
+      note.appendChild(kbFitRow(kbBtn('10+', 'tens:1', 'tab-pad__sm', '10〜19フレット'), kbBtn('20+', 'tens:2', 'tab-pad__sm', '20〜24フレット'),
+        kbBtn('x', 'fret:-1', 'tab-pad__sm', 'ミュート（x）'), kbBtn('休符', 'rest', 'tab-pad__sm', '休符（r）'),
         kbBtn('和音', 'chordmode', 'tab-pad__sm', '和音: 同じ位置に重ねる（c）'), ...moveBtns));
     }
     pad.appendChild(note);
@@ -2503,6 +2513,7 @@
     updateKeyboard();
     syncMiniRate();   // 作ったばかりのミニバーを、いまの速度・リピートの状態に合わせる
     updateAbButtons();
+    updateSaveKey();  // 作ったばかりの保存ボタンを、いまの未保存・保存中の状態に合わせる
   }
   /** ボタンの押せる・押せない・押している状態を、今の状態に合わせる */
   function updateKeyboard() {
@@ -2527,6 +2538,9 @@
       dotBtn.classList.toggle('is-active', kb.dot);
       tripBtn.classList.toggle('is-active', kb.trip);
       $('[data-kb="chordmode"]', pad).classList.toggle('is-active', kb.chord);
+      // 10+ / 20+: 押している方を光らせる。20 番台は 24 が上限なので、数字 5〜9 は押せない（MAX_FRET - 20 = 4 より大きい数字）
+      $$('[data-kb^="tens:"]', pad).forEach((b) => b.classList.toggle('is-active', Number(b.dataset.kb.slice(5)) === kb.tens));
+      $$('[data-kb^="fret:"]', pad).forEach((b) => { b.disabled = kb.tens > 0 && Number(b.dataset.kb.slice(5)) > MAX_FRET - kb.tens * 10; });
       const chordInput = $('[data-chord-input]', pad);
       if (chordInput && chordInput.value !== kb.chordBuf) chordInput.value = kb.chordBuf;
       $('[data-kb="chord-ok"]', pad).disabled = !chordRe.test(kb.chordBuf);
@@ -2544,6 +2558,8 @@
     if (!b || b.disabled) return;
     const [kind, v1, v2] = b.dataset.kb.split(':');
     const val = b.dataset.kb.slice(kind.length + 1);
+    // 「10+」「20+」は次の数字 1 回のためのキー。音価・付点・3連・和音・ミニバー・保存、それに数字そのもの（下の fret で使って消す）以外の操作（x・休符・移動・削除・レーン・タブ切替・閉じる・元に戻す…）では解除する
+    if (!['tens', 'fret', 'base', 'dot', 'trip', 'chordmode', 'rate', 'loopbar', 'save'].includes(kind)) kb.tens = 0;
     if (kind === 'panel') { kb.panel = val; }
     else if (kind === 'undo') undo();
     else if (kind === 'redo') redo();
@@ -2551,6 +2567,8 @@
     else if (kind === 'dot') { kb.dot = !kb.dot; if (kb.dot) kb.trip = false; }
     else if (kind === 'trip') { kb.trip = !kb.trip; if (kb.trip) kb.dot = false; }
     else if (kind === 'chordmode') kb.chord = !kb.chord;
+    else if (kind === 'tens') kb.tens = kb.tens === Number(val) ? 0 : Number(val); // 同じキーをもう一度で取り消し、もう一方のキーなら切り替え
+    else if (kind === 'save') save(); // 保存（スマホは保存バーの代わり）。save は下の方で宣言した関数（function 宣言は上に引き上げられるので、クリックの時点では使える）
     else if (kind === 'rate') cycleMiniRate(); // ミニバー: マスを選んでいなくても動かす
     else if (kind === 'loopbar') { // ミニバー: リピート中なら解除、そうでなければ選択中の小節をリピート（再生は始めない）
       if (loop.a !== null && loop.b !== null) setLoop(null, null);
@@ -2559,7 +2577,13 @@
     else if (kind === 'close') { sel = null; markSel(); } // 閉じる（×）: マスの選択を外す = キーボードが消える（PC の Esc と同じ）
     else if (sel) {
       lastDigit = null;
-      if (kind === 'fret') placeNote(Number(val));
+      if (kind === 'fret') {
+        // 10+ / 20+ が押されていれば、数字（0〜9）を 1 の位にして 10 番台・20 番台のフレットに。x（-1）は対象外。使ったら解除
+        const n = Number(val);
+        const fret = kb.tens > 0 && n >= 0 ? kb.tens * 10 + n : n;
+        kb.tens = 0;
+        if (fret <= MAX_FRET) placeNote(fret); // 24 を超える組み合わせは、ボタンを押せなくしてあるのでここには来ないが、念のため
+      }
       else if (kind === 'lane') select(sel.b, sel.s, Number(val), true); // ドラム: レーンを選ぶ
       else if (kind === 'rest') placeRest();
       else if (kind === 'move') moveSel(Number(v1), Number(v2));
@@ -3368,6 +3392,14 @@
     }
     // 設定の変更・音符の入力・元に戻す / やり直す・インポートは、どれもここを通る。だから準備ステップの更新は、ここ 1 か所から呼べばよい
     updateSetup();
+    updateSaveKey();
+  }
+  /** 画面内キーボードの保存ボタン: 未保存のときは色を付けて知らせる（スマホは「未保存」の文字がある保存バーを隠すので、その代わり）。保存中は押せない */
+  function updateSaveKey() {
+    const b = $('[data-kb="save"]', pad);
+    if (!b) return; // キーボードを作る前（起動の途中）は何もしない
+    b.classList.toggle('is-active', dirty);
+    b.disabled = saving;
   }
   // keepalive = ページを閉じる直前の送信用
   function post(body, keepalive, url = 'api_tab_save') {
@@ -3378,6 +3410,7 @@
     if (saving) return;
     saving = true;
     saveBtn.disabled = true;
+    updateSaveKey();
     const body = payload();
     try {
       const json = await post({ action: 'save', tab_id: D.tab_id, updated_at: updatedAt, ...body });
@@ -3390,6 +3423,7 @@
     } finally {
       saving = false;
       saveBtn.disabled = false;
+      updateSaveKey();
     }
   }
   saveBtn.addEventListener('click', save);

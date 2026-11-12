@@ -330,13 +330,11 @@ details[open] > .tab-summary > .tab-summary__chev { transform: rotate(180deg); }
 .tg-cell.is-sel { outline: 2px solid var(--accent); outline-offset: -2px; background: var(--accent-soft); z-index: 2; }
 .tg-add { justify-self: start; }
 /* 選んだマスをスクロールで見せるときの余白（scrollIntoView が守る）。
-   下: キーボード（.tab-pad）の高さ --tab-pad-h（JS が測って入れる。出ていなければ 0）+ 16px。上: ページ上端に固定のヘッダーに隠れない分 */
+   下: キーボード（.tab-pad）の高さ --tab-pad-h（JS が測って入れる。出ていなければ 0）+ 16px。上: ページ上端に固定のヘッダーに隠れない分。
+   スマホでは保存のバー（.tab-actions）がキーボードの上に浮かんで選んだ小節を隠していたので、バーをやめて保存ボタンをキーボードの中に移した（下の「画面内キーボード」）。
+   だから、バーの分の余白は足さない */
 .tg-cell, .tg-chord { scroll-margin-bottom: calc(var(--tab-pad-h, 0px) + 16px); scroll-margin-top: 80px; }
 .tg-bar { scroll-margin-top: 80px; } /* 「入力へ」で 1 小節目の頭までスクロールするとき、ヘッダーの下に出る */
-/* スマホ: キーボードの上に、保存のバー（.tab-actions）も出る。その分（約 68px）も避ける */
-@media (max-width: 899px) {
-  body.has-tab-pad .tg-cell, body.has-tab-pad .tg-chord { scroll-margin-bottom: calc(var(--tab-pad-h, 0px) + 84px); }
-}
 /* 指で操作する端末（pointer: coarse）だけ、マスなどを大きくする。
    @media (pointer: coarse) = 「メインの入力装置が指（精度が粗い）」。画面の幅ではなく入力装置で分けるので、タブレットも指なら大きくなる。
    マウスの PC は今のまま（1 画面にたくさん並べる密度を保つ）。タッチ操作の最小サイズの目安は 44px だが、
@@ -351,7 +349,7 @@ details[open] > .tab-summary > .tab-summary__chev { transform: rotate(180deg); }
   .tg-bar__sec { min-height: 36px; font-size: var(--fs-lg); }           /* 16px: iOS が入力欄を勝手に拡大しない大きさ */
 }
 
-/* 保存ボタン（app.css の .sticky-actions）。スマホの画面内キーボードが出ている間は、その真上に出す（下の「画面内キーボード」の media を参照） */
+/* 保存・削除のバー（app.css の .sticky-actions）。スマホの画面内キーボードが出ている間は隠す（保存はキーボードの中のボタンで行う。下の「画面内キーボード」の media を参照） */
 .tab-actions { z-index: 12; }
 
 
@@ -484,10 +482,7 @@ details[open] > .tab-summary > .tab-summary__chev { transform: rotate(180deg); }
 .tab-pad:not([hidden]) { display: grid; gap: 6px; position: fixed; z-index: 28; padding: 8px; background: color-mix(in srgb, var(--bg) 94%, transparent);
   backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid var(--border); box-shadow: var(--shadow); }
 .tab-pad__row { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
-/* ボタンが多い行（フレット 10〜24・音価）は折り返さず、1 行のまま横スクロール: 折り返すとキーボードが高くなり、譜面を隠してしまう */
-.tab-pad__row--scroll { flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
-.tab-pad__row--scroll::-webkit-scrollbar { display: none; }
-.tab-pad__row--scroll > button { flex: none; }
+.tab-pad__row--tabs { flex-wrap: nowrap; } /* 上のタブの行: 幅 320px の端末でも折り返さない（ボタンが少し縮む） */
 .tab-pad__close { margin-left: auto; }
 .tab-pad__panel { display: grid; gap: 6px; }
 .tab-pad__panel[hidden] { display: none; }
@@ -500,10 +495,26 @@ details[open] > .tab-summary > .tab-summary__chev { transform: rotate(180deg); }
 .tab-pad__big { flex: 1 1 28px; font-size: 16px !important; height: 40px !important; }
 .tab-pad__sm { font-size: 12px !important; }
 .tab-pad__tab { flex: 1 1 60px; }
+.tab-pad .tab-pad__save { display: inline-flex; align-items: center; gap: 2px; padding: 0 8px; } /* 保存: アイコンと文字「保存」を横に並べる */
 .tab-pad__chord { flex: 1 1 80px; min-width: 0; height: 34px; padding: 0 8px; border-radius: var(--r-md); border: 1px solid var(--border); background: var(--surface); font: 800 var(--fs-md)/1 var(--font); }
 @media (pointer: coarse) {
-  .tab-pad button { height: 38px; } /* 指で押す端末は、ボタンを少し大きく（マウスの PC は今のまま） */
+  /* 指で押す端末は、すべてのボタンを 44px の高さに（タッチ操作の最小サイズの目安。マウスの PC は 34px / 40px のまま）。
+     !important = .tab-pad__big の「height: 40px !important」より強くするため（!important 同士は、セレクターが強い方が勝つ） */
+  .tab-pad button { height: 44px !important; }
+  .tab-pad__chord { height: 44px; } /* コード名の入力欄も、隣の OK ボタンと高さをそろえる */
   .tab-pad button:not(.tab-pad__big) { min-width: 36px; } /* 数字 0〜9（big）は 10 個が 1 行に収まる幅のまま */
+}
+/* 1 行に収める行（tab.js の kbFitRow: 音価・数字 0〜9・10+ など）。
+   スマホ幅（〜899px）: 折り返さず、ボタンが幅を等分する（flex: 1 1 0 = 基準の幅 0 から均等に伸ばす。min-width: 0 = 中身より縮んでよい）。横スクロールは使わない: 隠れたボタンは初めての人が見つけられない。
+   padding 0: 10 個並べると 1 つが約 32px（幅 375px の場合）。文字「休符」（12px × 2 文字 = 24px）が収まるよう、左右の余白をなくす。
+   上の @media (pointer: coarse) の min-width: 36px より後ろに書いて、同じ強さでも勝たせる */
+.tab-pad .tab-pad__row--fit { flex-wrap: nowrap; }
+.tab-pad .tab-pad__row--fit > button { flex: 1 1 0; min-width: 0; padding: 0; }
+/* 広い画面（900px〜）の横パネルは幅 270px。折り返してよいが、26px より細くはしない */
+@media (min-width: 900px) {
+  .tab-pad .tab-pad__row--fit { flex-wrap: wrap; }
+  .tab-pad .tab-pad__row--fit > button { flex: 1 1 28px; min-width: 26px; }
+  .tab-pad .tab-pad__save { display: none; } /* 広い画面は浮かぶ保存バーがあるので、キーボードの保存ボタンは出さない（保存が 2 つになる） */
 }
 /* ミニバー（キーボードの一番上の行。tab.js の renderKeyboard が作る）: 5秒戻し・再生・速度・選択小節リピート。
    縦スクロールするキーボード（スマホは max-height 45dvh）でも、sticky で一番上に残る。
@@ -520,13 +531,13 @@ details[open] > .tab-summary > .tab-summary__chev { transform: rotate(180deg); }
 @media (max-width: 899px) {
   .tab-pad:not([hidden]) { left: 0; right: 0; bottom: 0; padding-bottom: calc(8px + env(safe-area-inset-bottom)); border-width: 1px 0 0;
     max-height: 45vh; max-height: 45dvh; overflow-y: auto; overscroll-behavior: contain; }
-  /* キーボードの真上に保存のバー。--tab-pad-h = キーボードの高さ（JS の syncPadHeight が測って入れる）。
-     以前は 290px 固定で、キーボードが高い（パネルが多い・文字が大きい）と、保存ボタンがキーボードの後ろに隠れていた */
-  body.has-tab-pad .tab-actions { bottom: calc(var(--tab-pad-h, 0px) + 8px); }
+  /* 保存のバー（.tab-actions）はキーボードの間は隠す: キーボードの上に浮かせると、選んだ小節を隠していた。
+     保存はキーボードの「保存」ボタン（tab.js の data-kb="save"）でする。TAB の削除はバーの中なので、キーボードを閉じる（×）と出てくる */
+  body.has-tab-pad .tab-actions { display: none; }
   /* 入力に集中できるよう・押し間違えないよう、左下の「戻る」ボタンを隠す */
   body.has-tab-pad .back-fabs { display: none; }
-  /* ページの一番下までスクロールしたとき、最後の小節がキーボードと保存のバーの後ろに隠れないよう、下に余白を足す */
-  body.has-tab-pad { padding-bottom: calc(var(--tab-pad-h, 0px) + 76px); }
+  /* ページの一番下までスクロールしたとき、最後の小節がキーボードの後ろに隠れないよう、下に余白を足す */
+  body.has-tab-pad { padding-bottom: calc(var(--tab-pad-h, 0px) + 16px); }
 }
 /* 下のナビ（.nav）は app.css が 760px 以下で画面の下に固定している。キーボードと重なるので隠す（761px 以上のナビは上のヘッダーの中なので隠さない） */
 @media (max-width: 760px) {
