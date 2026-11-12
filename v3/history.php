@@ -61,8 +61,10 @@ function render_history_preview(array $preview, bool $asLog = false): void
                         <table class="table history-diff">
                             <thead><tr><th>項目</th><?= $asLog ? '<th>変更前</th><th>変更後</th>' : '<th>現在</th><th>復元後</th>' ?></tr></thead>
                             <tbody>
-                                <?php foreach ($p['changes'] as [$item, $now, $after]): ?>
-                                    <tr><th scope="row"><?= h($item) ?></th><?php if ($asLog): ?><td class="history-diff__after"><?= change_cell_html($after) ?></td><td class="history-diff__now"><?= change_cell_html($now) ?></td><?php else: ?><td class="history-diff__now"><?= change_cell_html($now) ?></td><td class="history-diff__after"><?= change_cell_html($after) ?></td><?php endif; ?></tr>
+                                <?php foreach ($p['changes'] as [$item, $now, $after]):
+                                    // 左の列 = 消える側（赤）、右の列 = 残る側（緑）。一覧は「変更前 → 変更後」なので、変更前（$after）が左
+                                    [$old, $new] = $asLog ? [$after, $now] : [$now, $after]; ?>
+                                    <tr><th scope="row"><?= h($item) ?></th><td class="history-diff__now"><?= change_cell_html($old) ?></td><td class="history-diff__after"><?= change_cell_html($new) ?></td></tr>
                                 <?php endforeach; ?>
                             </tbody>
                         </table>
@@ -224,11 +226,18 @@ render_header('変更履歴');
                     <span class="small"><?= icon('person') ?><?= $o['user_name'] !== null ? h($o['user_name']) : '<span class="muted">削除済みのユーザー</span>' ?></span>
                 </div>
                 <?php // 何の項目が変わったか。件数が多い操作（取り込みなど）は重いので出さない
-                $items = !empty($units[$id]) && count($units[$id]) <= 30 ? change_op_items(change_preview($pdo, $id, true)) : []; ?>
+                $items = [];
+                if (!empty($units[$id]) && count($units[$id]) <= 30) {
+                    try {
+                        $items = change_op_items(change_preview($pdo, $id, true));
+                    } catch (Throwable $e) { // 古い履歴が読めないなどで、一覧全体を止めない（中身は「変更内容」を開けば分かる）
+                        error_log('history items #' . $id . ': ' . $e->getMessage());
+                    }
+                } ?>
                 <p class="history-item__summary"><?= h($o['summary']) ?><?php if ($items): ?> <span class="muted small">· <?= h(implode('・', $items)) ?></span><?php endif; ?></p>
                 <?php if (!empty($units[$id])): ?>
-                    <!-- 開くと、確認画面と同じ「戻すと何がどう変わるか」の表を読み込む（下の script） -->
-                    <details class="history-item__units" data-preview="history?op=<?= $id ?>&amp;part=1">
+                    <!-- 開くと、確認画面と同じ「戻すと何がどう変わるか」の表を読み込む（下の script）。data-preview は app.js の試聴ボタンの目印とぶつかるので使わない -->
+                    <details class="history-item__units" data-diff-src="history?op=<?= $id ?>&amp;part=1">
                         <summary class="muted small">変更内容（<?= count($units[$id]) ?>）</summary>
                         <ul>
                             <?php foreach ($units[$id] as $u): ?>
@@ -260,7 +269,7 @@ render_header('変更履歴');
     </nav>
     <script>
     // 「変わったもの」を初めて開いたときに、戻すと何がどう変わるかの表を読み込む（一覧を開くたびに全部計算すると重いので）
-    document.querySelectorAll('.history-item__units[data-preview]').forEach((box) => {
+    document.querySelectorAll('.history-item__units[data-diff-src]').forEach((box) => {
         box.addEventListener('toggle', async () => {
             if (!box.open || box.dataset.loaded) return;
             box.dataset.loaded = '1';
@@ -268,7 +277,7 @@ render_header('変更履歴');
             const body = box.querySelector('.history-item__compare-body');
             compare.hidden = false;
             try {
-                const res = await fetch(box.dataset.preview, { credentials: 'same-origin' });
+                const res = await fetch(box.dataset.diffSrc, { credentials: 'same-origin' });
                 if (!res.ok) throw new Error(res.status);
                 body.innerHTML = await res.text(); // サーバーが h() を通して作った HTML
             } catch (e) {
