@@ -265,6 +265,16 @@ details[open] > .tab-summary > .tab-summary__chev { transform: rotate(180deg); }
 .tab-step__hint .icon { font-size: 18px; color: var(--accent); }
 .tab-step__mini { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; } /* ③ の開始位置の微調整 / 確認 / 再生 */
 .tab-step__mini .btn { min-width: 56px; padding-inline: 8px; font-variant-numeric: tabular-nums; }
+/* ② の BPM 計測: 再生・5秒戻し / 大きなタップ面 / 開始位置。連打するので、拡大・文字選択・長押しメニューが出ないようにする */
+.tab-beat-tap { display: grid; gap: 8px; }
+.tab-beat-tap .btn { min-height: 44px; }
+.tab-beat-tap__pad { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; height: 72px; padding: 0 12px;
+  border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface); color: var(--text); cursor: pointer;
+  font: 700 var(--fs-md)/1 var(--font); font-variant-numeric: tabular-nums; white-space: nowrap; /* .tab の太字・薄い色・折り返し禁止を、ここで読みやすく戻す */
+  touch-action: manipulation; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent;
+  transition: background-color var(--t-fast) ease, border-color var(--t-fast) ease; }
+.tab-beat-tap__pad .icon { font-size: var(--fs-3xl); color: var(--accent); }
+.tab-beat-tap__pad:active { background: var(--accent-soft); border-color: var(--accent); }
 .tab-wave { position: relative; }
 .tab-wave__canvas { display: block; width: 100%; height: 72px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); touch-action: pan-y; cursor: grab; }
 .tab-wave__canvas.is-dragging { cursor: grabbing; }

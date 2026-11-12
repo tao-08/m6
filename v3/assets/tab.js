@@ -635,17 +635,38 @@
   }
   /** TAB の時刻 musicTime を、AudioContext の時刻にする（now = 今の TAB の時刻、rate = 再生の速さ。遅いほどクリックの間隔が空く） */
   function audioTimeFor(ctxNow, musicTime, nowMusic, rate) { return ctxNow + Math.max(0, (musicTime - nowMusic) / rate); }
-  /** BPM 計測: タップした時刻（ミリ秒）から BPM。4回未満は null。中央値から ±25% を外れた間隔（打ち間違い）は捨てて平均する */
-  function tapTempoBpm(stamps) {
-    if (stamps.length < 4) return null;
+  /**
+   * BPM 計測: 叩いた拍の時刻（秒、昇順）全部に直線 t = a + b·k（k = 何拍目か）を当てはめて、BPM と 1 拍目の時刻を出す。4回未満は null
+   *   直近の数回だけの平均だと、指のぶれ（20〜30ms）がそのまま BPM の誤差になる。全部を使えば、叩くほどぶれが打ち消し合って正確になる
+   *   拍の番号 k: 間隔の中央値を 1 拍の長さの目安にして、前の拍から round(間隔 / 目安) 拍進んだものとする（叩き忘れは 2 拍、ぶれた 1 拍は 1 拍のまま）
+   *   最小二乗法: 傾き b = 1 拍の秒数（BPM = 60 / b）、切片 a = 1 拍目の時刻
+   *   bpmErr: 傾きの標準誤差（残差の標準偏差 ÷ √Σ(k − 平均k)²）を BPM に直したもの。±いくつ、の目安
+   * @returns {{bpm:number, first:number, n:number, bpmErr:number}|null} bpm は小数2桁に丸める。20〜400 の外・傾きが 0 以下は null
+   */
+  function fitBeats(times) {
+    const n = times.length;
+    if (n < 4) return null;
     const iv = [];
-    for (let i = 1; i < stamps.length; i++) iv.push(stamps[i] - stamps[i - 1]);
+    for (let i = 1; i < n; i++) iv.push(times[i] - times[i - 1]);
     const sorted = iv.slice().sort((a, b) => a - b);
-    const med = sorted[Math.floor(sorted.length / 2)];
-    const good = iv.filter((x) => Math.abs(x - med) <= med * 0.25);
-    const use = good.length ? good : iv;
-    const bpm = 60000 / (use.reduce((a, b) => a + b, 0) / use.length);
-    return bpm >= 20 && bpm <= 400 ? Math.round(bpm * 100) / 100 : null;
+    const p0 = sorted[Math.floor(sorted.length / 2)];
+    if (!(p0 > 0)) return null;
+    const ks = [0];
+    for (let i = 1; i < n; i++) ks.push(ks[i - 1] + Math.max(1, Math.round((times[i] - times[i - 1]) / p0)));
+    const mk = ks.reduce((s, k) => s + k, 0) / n;
+    const mt = times.reduce((s, t) => s + t, 0) / n;
+    let sxx = 0, sxy = 0;
+    for (let i = 0; i < n; i++) { sxx += (ks[i] - mk) ** 2; sxy += (ks[i] - mk) * (times[i] - mt); }
+    if (sxx <= 0) return null;
+    const b = sxy / sxx;
+    const a = mt - b * mk;
+    if (!(b > 0)) return null;
+    const bpm = 60 / b;
+    if (bpm < 20 || bpm > 400) return null;
+    let ss = 0;
+    for (let i = 0; i < n; i++) ss += (times[i] - a - b * ks[i]) ** 2;
+    const seB = Math.sqrt(ss / (n - 2)) / Math.sqrt(sxx);
+    return { bpm: Math.round(bpm * 100) / 100, first: a, n, bpmErr: 60 * seB / (b * b) };
   }
   /**
    * BPM 自動検知: 音声（チャンネルごとの Float32Array の配列）から BPM を推定する。10秒未満・無音に近いときは null
@@ -2977,14 +2998,42 @@
     linksEdit.querySelector('.tab-links-edit__row:last-child input')?.focus();
   });
 
-  /* ---- BPM 計測: 曲に合わせて4回以上タップすると BPM が決まる（小節の頭を合わせる「タップ」とは別）---- */
-  let bpmTaps = [];
-  $('[data-bpm-tap]').addEventListener('click', () => {
-    const now = performance.now();
-    if (bpmTaps.length && now - bpmTaps[bpmTaps.length - 1] > 2000) bpmTaps = []; // 2秒あいたら最初から
-    bpmTaps = [...bpmTaps, now].slice(-8);
-    const bpm = tapTempoBpm(bpmTaps);
-    if (bpm !== null) setBpm(bpm);
+  /* ---- BPM 計測: 曲を流しながら拍を叩き続ける。叩いた全部から BPM を出す（叩くほど正確）。小節の頭を合わせる「タップ」とは別 ----
+   *   時刻は、再生中なら曲の時刻（clock.time()。再生速度が 1 でなくても曲そのものの BPM が出る）、止まっていれば壁時計（performance.now()）
+   *   click は指を離した時に起きるので、押した瞬間に起きる pointerdown で測る。キーボード（Enter）は click の detail が 0 なので、そちらで拾う
+   *   「開始位置」ボタン: 1小節目の頭から叩き始めたとき、1 拍目の時刻（fit.first）を開始位置にする。8拍以上・曲の時刻で測ったときだけ */
+  const bpmTapBtn = $('[data-bpm-tap]');
+  const bpmTapSum = $('[data-bpm-tap-sum]');
+  const bpmTapOffsetBtn = $('[data-bpm-tap-offset]');
+  let bpmTaps = { mode: 'wall', times: [] }; // mode: 'song'（曲の時刻）| 'wall'（壁時計）
+  let tapFit = null;                         // 直近の fitBeats の結果 + mode
+  function tapBeat() {
+    // 音源なし（kind = 'none'）は、曲の時刻が BPM から作られる。その時刻で測ると「測った BPM → 進む速さが変わる → 次の測定がずれる」と堂々巡りになる（実測: 120 で叩いて 392 になった）ので、壁時計で測る
+    const mode = clock.playing && clock.kind !== 'none' ? 'song' : 'wall';
+    const t = mode === 'song' ? clock.time() : performance.now() / 1000;
+    const prev = bpmTaps.times[bpmTaps.times.length - 1];
+    if (mode !== bpmTaps.mode) bpmTaps = { mode, times: [] };    // 再生・停止が切り替わったら、時刻の基準が違うので最初から
+    else if (prev !== undefined && (t - prev > 2 || (mode === 'song' && t <= prev))) bpmTaps.times = []; // 2秒あいた・曲を戻した（A-B リピートの折り返し）ら最初から
+    // 古い拍は捨てない: 捨てると「1 拍目」が途中の拍に変わり、「開始位置」が 1小節目の頭でなくなる。1曲ぶん叩いても 1000 拍に届かないので、上限は暴走よけだけ
+    if (bpmTaps.times.length >= 1000) bpmTaps.times = [];
+    bpmTaps.times.push(t);
+    const fit = fitBeats(bpmTaps.times);
+    tapFit = fit ? { ...fit, mode } : null;
+    if (fit) setBpm(fit.bpm);
+    const n = bpmTaps.times.length;
+    bpmTapSum.textContent = fit ? `${n}拍 ±${fit.bpmErr.toFixed(1)}` : `${n}拍`;
+    bpmTapOffsetBtn.disabled = !(tapFit && mode === 'song' && n >= 8);
+  }
+  bpmTapBtn.addEventListener('pointerdown', (e) => {
+    if (e.button) return; // 右クリックなどは無視
+    tapBeat();
+  });
+  bpmTapBtn.addEventListener('click', (e) => { if (e.detail === 0) tapBeat(); }); // キーボード操作（マウス・タッチの click は pointerdown で数え済み）
+  bpmTapBtn.addEventListener('contextmenu', (e) => e.preventDefault()); // スマホの長押しメニューを出さない
+  bpmTapOffsetBtn.addEventListener('click', () => {
+    if (!tapFit) return;
+    setOffset(tapFit.first * 1000);
+    bpmTapOffsetBtn.disabled = true; // 次に叩くまで押せない（同じ値を何度も入れない）
   });
   /** BPM を設定する（タップ計測・検索・自動検知で共通）。保存はしない */
   function setBpm(bpm) {

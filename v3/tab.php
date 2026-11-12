@@ -808,8 +808,6 @@ render_header($tab['title'] . ' ' . $tab['part'], 'lives');
                         <label class="field tab-step__wide">BPM
                             <span class="tab-settings__row">
                                 <input type="number" data-set="bpm" min="20" max="400" step="0.01" inputmode="decimal">
-                                <!-- BPM 計測: 曲に合わせて4回以上タップ（小節の頭を合わせる「タップ」とは別） -->
-                                <button type="button" class="icon-btn" data-bpm-tap aria-label="BPM計測" title="BPM計測（4回以上タップ）"><?= icon('speed') ?></button>
                                 <!-- 自動検知: 手元のファイルを開いているときだけ（YouTube の音はブラウザから読めない） -->
                                 <button type="button" class="icon-btn" data-bpm-detect aria-label="BPM自動検知" title="BPM自動検知（ファイル）" disabled><?= icon('graphic_eq') ?></button>
                                 <?php // AI 推定: 記憶による推定なので、候補として出して、押したときだけ反映する ?>
@@ -824,6 +822,17 @@ render_header($tab['title'] . ' ' . $tab['part'], 'lives');
                                 <?php endforeach; ?>
                             </span>
                         </label>
+                        <?php // BPM 計測: 曲を流しながら拍を叩き続ける → 叩いた全部の拍から BPM を出す（叩くほど正確）。小節の頭を合わせる「タップ」とは別 ?>
+                        <?php // 1小節目の頭から叩き始めたときは「開始位置」で、1拍目の時刻をそのまま開始位置にできる（8拍以上叩くと押せる） ?>
+                        <?php // 再生・5秒戻しは data-play / data-seek なので、root のクリック処理（assets/tab.js）がそのまま動かす ?>
+                        <div class="tab-beat-tap tab-step__wide">
+                            <div class="tab-step__mini">
+                                <button type="button" class="icon-btn" data-seek="-5" aria-label="5秒戻る" title="5秒戻る"><?= icon('replay_5') ?></button>
+                                <button type="button" class="icon-btn icon-btn--play" data-play aria-label="再生" title="再生（Space）"><?= icon('play_arrow', 'icon--fill') ?></button>
+                            </div>
+                            <button type="button" class="tab-beat-tap__pad" data-bpm-tap aria-label="BPM計測" title="BPM計測（拍に合わせてタップ）"><?= icon('touch_app') ?><span class="tab-beat-tap__sum" data-bpm-tap-sum aria-live="polite"></span></button>
+                            <button type="button" class="btn" data-bpm-tap-offset disabled aria-label="1拍目を開始位置に設定" title="1拍目を開始位置に設定"><?= icon('my_location') ?> 開始位置</button>
+                        </div>
                         <label class="field">拍子 <input type="number" data-set="beats" min="1" max="16" step="1" inputmode="numeric"></label>
                         <label class="field">分割
                             <select data-set="steps">
@@ -1123,7 +1132,7 @@ render_header($tab['title'] . ' ' . $tab['part'], 'lives');
                 <li><?= icon('label') ?><span>小節を選んでセクション名を付ける</span></li>
                 <li><?= icon('upload_file') ?><span>インポート: 文字・画像の TAB を取込</span></li>
                 <li><?= icon('touch_app') ?><span>タップ: 再生しながら小節の頭で T を押して位置を補正</span></li>
-                <li><?= icon('speed') ?><span>BPM 計測: 曲に合わせて4回以上タップ</span></li>
+                <li><?= icon('speed') ?><span>BPM 計測: 曲に合わせて拍を叩き続ける（叩くほど正確）</span></li>
                 <li><?= icon('search') ?><?= icon('graphic_eq') ?><span>動画・BPM の検索 / ファイルから BPM 自動検知</span></li>
                 <li><?= icon('undo') ?><?= icon('redo') ?><span>元に戻す・やり直す</span></li>
                 <li><?= icon('history') ?><span>履歴から復元</span></li>
