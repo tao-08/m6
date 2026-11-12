@@ -40,7 +40,7 @@ if (is_post()) {
 function render_history_preview(array $preview, bool $asLog = false): void
 {
     $typeNames = ['live' => 'ライブ', 'day' => '日程', 'band' => 'バンド'];
-    // $asLog: 一覧用。その変更の「変更前 → 変更後」として見せる（変更前 = 戻した後、変更後 = 今）
+    // $asLog: 一覧用。その変更の「変更前 → 変更後」として見せる（変更前 = 戻した後、変更後 = その変更の直後。次にそれを変えた操作の変更前で、無ければ現在）
     $kinds = $asLog ? ['change' => '変更', 'delete' => '追加', 'revive' => '削除'] : ['change' => '変更', 'delete' => '削除', 'revive' => '復活'];
     $same = array_filter($preview, static fn($p) => $p['kind'] === 'same');
     $name = static fn(array $p) => $p['url'] !== null ? '<a href="' . h($p['url']) . '">' . h($p['label']) . '</a>' : h($p['label']);
@@ -82,7 +82,7 @@ function render_history_preview(array $preview, bool $asLog = false): void
 
 // ---------- 一覧の「変わったもの」を開いたときに読み込む部分（?op=ID&part=1）: 確認画面と同じ比べる表だけ返す ----------
 if (ctype_digit((string)($_GET['op'] ?? '')) && isset($_GET['part'])) {
-    render_history_preview(change_preview($pdo, (int)$_GET['op']), true);
+    render_history_preview(change_preview($pdo, (int)$_GET['op'], true), true);
     exit;
 }
 
@@ -223,7 +223,9 @@ render_header('変更履歴');
                     <span class="small"><?= h(fmt_datetime($o['created_at'])) ?></span>
                     <span class="small"><?= icon('person') ?><?= $o['user_name'] !== null ? h($o['user_name']) : '<span class="muted">削除済みのユーザー</span>' ?></span>
                 </div>
-                <p class="history-item__summary"><?= h($o['summary']) ?></p>
+                <?php // 何の項目が変わったか。件数が多い操作（取り込みなど）は重いので出さない
+                $items = !empty($units[$id]) && count($units[$id]) <= 30 ? change_op_items(change_preview($pdo, $id, true)) : []; ?>
+                <p class="history-item__summary"><?= h($o['summary']) ?><?php if ($items): ?> <span class="muted small">· <?= h(implode('・', $items)) ?></span><?php endif; ?></p>
                 <?php if (!empty($units[$id])): ?>
                     <!-- 開くと、確認画面と同じ「戻すと何がどう変わるか」の表を読み込む（下の script） -->
                     <details class="history-item__units" data-preview="history?op=<?= $id ?>&amp;part=1">

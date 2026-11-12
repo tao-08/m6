@@ -538,28 +538,85 @@ function change_band_day(PDO $pdo, int $bandId): ?int
 // =====================================================================
 
 /**
+ * 操作 $opId の各ライブ・日程・バンドについて、「その直後の状態」を引く。
+ *   直後の状態 = その後で最初に同じものを記録した操作の snapshot（その操作の変更前 = この操作の直後）
+ * @return array<string, ?string> "band:12" => 生の snapshot 文字列。NULL は「後の操作で作られた = 直後には無かった」。
+ *   キーが無い = 後の操作が無い = 直後の状態は今の状態（array_key_exists で調べること）
+ */
+function change_after_snapshots(PDO $pdo, int $opId): array
+{
+    $st = $pdo->prepare('SELECT a.unit_type, a.unit_id, b.snapshot FROM change_unit a
+        JOIN change_unit b ON b.unit_type = a.unit_type AND b.unit_id = a.unit_id
+            AND b.op_id = (SELECT MIN(c.op_id) FROM change_unit c WHERE c.unit_type = a.unit_type AND c.unit_id = a.unit_id AND c.op_id > a.op_id)
+        WHERE a.op_id = ?');
+    $st->execute([$opId]);
+    $out = [];
+    foreach ($st->fetchAll() as $r) {
+        $out[$r['unit_type'] . ':' . (int)$r['unit_id']] = $r['snapshot'];
+    }
+    return $out;
+}
+
+/**
+ * change_preview($pdo, $opId, true) の結果から、変わった項目名を並べる（重複なし、出てきた順）。
+ *   変更 → 変わった項目名 / その操作で作られた → 「バンド追加」など / その操作で消えた → 「バンド削除」など
+ * @return string[]
+ */
+function change_op_items(array $preview): array
+{
+    $typeNames = ['live' => 'ライブ', 'day' => '日程', 'band' => 'バンド'];
+    $items = [];
+    foreach ($preview as $p) {
+        if ($p['kind'] === 'change') {
+            foreach ($p['changes'] as $row) {
+                $items[] = $row[0];
+            }
+        } elseif ($p['kind'] === 'delete') {
+            $items[] = $typeNames[$p['type']] . '追加';
+        } elseif ($p['kind'] === 'revive') {
+            $items[] = $typeNames[$p['type']] . '削除';
+        }
+    }
+    return array_values(array_unique($items));
+}
+
+/**
  * 操作 $opId を元に戻すと、今の状態から何が変わるかを並べる。
  * @return array<int, array{type: string, label: string, kind: string, changes: array<int, array{0: string, 1: string, 2: string}>}>
  *   kind … change（中身が変わる）/ delete（その操作で作られたので消える）/ revive（今は無いので復活する）/ same（変わらない）
  *   changes … [項目名, 今, 戻した後] の並び
+ * $asLog = false: 確認画面。「今の状態」と比べる（戻すと今から何が変わるか）
+ * $asLog = true : 一覧の履歴。「その操作の直後の状態」と比べる（あとで別の操作が同じものを変えていても、その差は混ぜない）
+ *   直後の状態 = 次にそれを変えた操作の変更前。次の操作が無ければ今の状態
  */
-function change_preview(PDO $pdo, int $opId): array
+function change_preview(PDO $pdo, int $opId, bool $asLog = false): array
 {
     $st = $pdo->prepare("SELECT unit_type, unit_id, label, snapshot FROM change_unit WHERE op_id = ?
         ORDER BY FIELD(unit_type, 'live', 'day', 'band'), label");
     $st->execute([$opId]);
     $out = [];
+    $after = $asLog ? change_after_snapshots($pdo, $opId) : [];
     foreach ($st->fetchAll() as $u) {
         $type = $u['unit_type'];
         $id = (int)$u['unit_id'];
         $before = change_decode($u['snapshot']); // 戻した後の状態（null = 消える）
-        $now = change_snapshot($pdo, $type, $id);
-        $label = $now !== null ? change_label($pdo, $type, $id) : $u['label'];
+        $key = $type . ':' . $id;
+        // 比べる相手: 一覧は「その操作の直後」（後の操作が無ければ今）、確認画面は今
+        if ($asLog && array_key_exists($key, $after)) {
+            $now = change_decode($after[$key]);
+            $label = change_label($pdo, $type, $id); // 今も存在するか（無ければ「（削除済み）」が返る）
+            if ($label === '（削除済み）') {
+                $label = $u['label'];
+            }
+        } else {
+            $now = change_snapshot($pdo, $type, $id);
+            $label = $now !== null ? change_label($pdo, $type, $id) : $u['label'];
+        }
         if ($before === null) {
             $kind = $now === null ? 'same' : 'delete';
             $changes = [];
         } else {
-            $changes = change_diff($pdo, $type, $now, $before);
+            $changes = change_diff($pdo, $type, $now, $before, $asLog);
             $kind = $now === null ? 'revive' : ($changes ? 'change' : 'same');
         }
         $out[] = ['type' => $type, 'id' => $id, 'label' => $label, 'kind' => $kind, 'changes' => $changes];
@@ -648,8 +705,9 @@ function change_join_parts(array $parts, string $tail = ''): array|string
 /**
  * 2つの状態の違いを [項目名, 今, 戻した後] で返す（$now が null = 今は無い → 戻した後の中身を全部出す）
  * 「今」「戻した後」は文字か、リンクを含む部品の配列（change_cell_html で HTML にする）
+ * $asLog = true（一覧の履歴）: メンバー行を「追加 / 削除」の文言にする（$now = その操作の直後の状態）
  */
-function change_diff(PDO $pdo, string $type, ?array $now, array $before): array
+function change_diff(PDO $pdo, string $type, ?array $now, array $before, bool $asLog = false): array
 {
     $rows = [];
     $add = static function (string $name, string $a, string $b) use (&$rows): void {
@@ -748,7 +806,9 @@ function change_diff(PDO $pdo, string $type, ?array $now, array $before): array
     $leave = $diffM($nowM, $beforeM);
     $join = $diffM($beforeM, $nowM);
     if ($leave || $join) {
-        $rows[] = ['メンバー', $leave ? change_join_parts($leave, ' が外れる') : '（外れる人なし）', $join ? change_join_parts($join, ' が入る') : '（入る人なし）'];
+        $rows[] = $asLog
+            ? ['メンバー', $leave ? change_join_parts($leave, ' を追加') : '（追加なし）', $join ? change_join_parts($join, ' を削除') : '（削除なし）']
+            : ['メンバー', $leave ? change_join_parts($leave, ' が外れる') : '（外れる人なし）', $join ? change_join_parts($join, ' が入る') : '（入る人なし）'];
     }
     $who = static fn(array $list) => array_map(static fn($c) => (int)$c['member_id'], $list);
     $nowC = $who($now['band_check_member'] ?? []);
