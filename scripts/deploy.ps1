@@ -6,6 +6,9 @@ param([switch]$Prod)
 # winget で入れた gh は、開いたままのターミナルだと PATH に載っていないことがあるので読み直す
 $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
 
+# gh の出力（UTF-8）を Windows PowerShell 5.1 が既定の Shift_JIS で読むと日本語のジョブ名が文字化けし、JSON が壊れる
+[Console]::OutputEncoding = [Text.Encoding]::UTF8
+
 $dry = if ($Prod) { 'false' } else { 'true' }
 
 # 起動前の最新の実行ID。PCとGitHubの時計はズレうるので、時刻ではなくID（増え続ける番号）で新しい実行を見分ける
