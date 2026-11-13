@@ -427,6 +427,45 @@
   const TAP_MS = 250;  // タップ・フリックの時間
   const SLOP = 10;     // タップとみなす指のぶれ（px）
 
+  /* ---------- 操作設定（localStorage に保存。読めない・壊れている値は初期値に戻す） ---------- */
+  const SETTINGS_KEY = 'block.controls.v1';
+  const GESTURE_ACTS = ['cw', 'ccw', 'hard', 'hold', 'none'];
+  const BUTTON_ACTS = ['ccw', 'cw', 'hold', 'hard', 'pause', 'none'];
+  const GESTURE_KEYS = ['tapL', 'tapR', 'flickDown', 'flickUp'];
+  const MOVE_RANGE = [0.4, 1.5];   // 横移動: 1 マス動くのに必要な指の移動量（マス幅の倍率）。小さいほど敏感
+  const FLICK_RANGE = [0.15, 0.8]; // フリック判定の速さ（px/ms）。小さいほど敏感
+  const SETTINGS_DEFAULT = Object.freeze({
+    gesture: Object.freeze({ tapL: 'cw', tapR: 'cw', flickDown: 'hard', flickUp: 'hold' }),
+    move: 0.8,
+    flick: 0.35,
+    buttons: Object.freeze(['ccw', 'hold', 'pause', 'cw']),
+  });
+
+  function cloneDefault() {
+    return { gesture: { ...SETTINGS_DEFAULT.gesture }, move: SETTINGS_DEFAULT.move, flick: SETTINGS_DEFAULT.flick, buttons: SETTINGS_DEFAULT.buttons.slice() };
+  }
+  /** 範囲に収めて 0.05 刻みにそろえる。数でなければ初期値 */
+  function clampStep(v, range, fallback) {
+    if (typeof v !== 'number' || !Number.isFinite(v)) return fallback;
+    const n = Math.round(Math.min(range[1], Math.max(range[0], v)) / 0.05) * 0.05;
+    return Math.round(n * 100) / 100;
+  }
+  /** 保存された値（何が入っているか分からない）を検証して、使える形にする */
+  function sanitizeSettings(raw) {
+    const out = cloneDefault();
+    if (!raw || typeof raw !== 'object') return out;
+    const g = raw.gesture && typeof raw.gesture === 'object' ? raw.gesture : {};
+    for (const k of GESTURE_KEYS) if (GESTURE_ACTS.includes(g[k])) out.gesture[k] = g[k];
+    out.move = clampStep(raw.move, MOVE_RANGE, out.move);
+    out.flick = clampStep(raw.flick, FLICK_RANGE, out.flick);
+    if (Array.isArray(raw.buttons) && raw.buttons.length === 4 && raw.buttons.every((a) => BUTTON_ACTS.includes(a))) out.buttons = raw.buttons.slice();
+    return out;
+  }
+  /** フリックとみなす距離（マス）。速さの設定に連動: 0.15 → 1 マス、0.35（初期）→ 2 マス、0.8 → 3 マス */
+  function flickCells(speed) {
+    return speed <= 0.35 ? 1 + (speed - 0.15) / 0.2 : 2 + (speed - 0.35) / 0.45;
+  }
+
   function initUi() {
     const app = document.getElementById('block-app');
     if (!app) return;
@@ -442,6 +481,9 @@
     const ctxHold = cvHold.getContext('2d');
     const ctxNext = cvNext.getContext('2d');
     const fmt = (n) => Number(n).toLocaleString('en-US');
+    const setDlg = document.getElementById('block-settings');
+    const gearBtn = document.getElementById('block-gear');
+    let settings = loadSettings();
 
     let state = 'ready'; // ready | playing | paused | over
     let game = null;
@@ -771,6 +813,7 @@
     }
 
     document.addEventListener('keydown', (e) => {
+      if (setDlg && setDlg.open) return; // 操作設定を開いている間は、ゲームのキー操作を受けない（Esc は設定を閉じるだけ）
       const t = e.target;
       if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
       const a = KEYMAP[e.code];
@@ -815,23 +858,132 @@
     /* ---------- ボタン ---------- */
     app.querySelectorAll('[data-act]').forEach((btn) => {
       const name = btn.dataset.act;
-      const run = () => {
+      btn.addEventListener('click', () => {
         if (name === 'start' || name === 'restart') start();
         else if (name === 'resume') resume();
         else if (name === 'retry') submit();
-        else if (name === 'rotate-left') act('ccw');
-        else if (name === 'rotate-right') act('cw');
-        else if (name === 'hold') act('hold');
-        else if (name === 'pause') { if (state === 'playing' || state === 'paused') act('pause'); }
-      };
-      if (btn.classList.contains('block-btn')) {
-        // 操作ボタンは、指が触れた瞬間に反応させる（click は指を離すまで待つ）
-        btn.addEventListener('pointerdown', (e) => { e.preventDefault(); run(); });
-        btn.addEventListener('click', (e) => { if (e.detail === 0) run(); }); // キーボードで押したとき
-      } else {
-        btn.addEventListener('click', () => { run(); btn.blur(); });
-      }
+        btn.blur();
+      });
     });
+
+    // 盤面の下の操作ボタン。割り当ては設定で変えられる（data-slot = 左から 0〜3）
+    const BTN_DEF = {
+      ccw: { label: '左回転', icon: 'rotate_left', key: 'Z' },
+      cw: { label: '右回転', icon: 'rotate_right', key: '↑' },
+      hold: { label: 'HOLD', text: 'HOLD', key: 'C' },
+      hard: { label: 'ハードドロップ', icon: 'vertical_align_bottom', key: 'Space' },
+      pause: { label: '一時停止', icon: 'pause', key: 'Esc' },
+    };
+    const ctlBox = $('.block-controls');
+    const slotBtns = Array.from(ctlBox.querySelectorAll('[data-slot]'));
+
+    function runButton(action) {
+      if (action === 'pause') { if (state === 'playing' || state === 'paused') act('pause'); }
+      else act(action);
+    }
+
+    slotBtns.forEach((btn, i) => {
+      // 指が触れた瞬間に反応させる（click は指を離すまで待つ）
+      btn.addEventListener('pointerdown', (e) => { e.preventDefault(); runButton(settings.buttons[i]); });
+      btn.addEventListener('click', (e) => { if (e.detail === 0) runButton(settings.buttons[i]); }); // キーボードで押したとき
+    });
+
+    /** 設定どおりにボタンの見た目を作り直す。「なし」の枠は隠し、残りが均等幅に広がる */
+    function applyButtons() {
+      let shownN = 0;
+      slotBtns.forEach((btn, i) => {
+        const a = settings.buttons[i];
+        btn.hidden = a === 'none';
+        if (a === 'none') return;
+        shownN++;
+        const d = BTN_DEF[a];
+        btn.setAttribute('aria-label', d.label);
+        btn.title = d.label + ' (' + d.key + ')';
+        btn.classList.toggle('block-btn--text', !d.icon);
+        if (d.icon) {
+          const ic = document.createElement('span');
+          ic.className = 'icon';
+          ic.setAttribute('aria-hidden', 'true');
+          ic.textContent = d.icon;
+          btn.replaceChildren(ic);
+        } else {
+          btn.textContent = d.text;
+        }
+      });
+      ctlBox.hidden = shownN === 0;
+      ctlBox.style.setProperty('--block-btn-n', String(Math.max(shownN, 1)));
+    }
+
+    /* ---------- 操作設定 ---------- */
+    function loadSettings() {
+      try {
+        const raw = localStorage.getItem(SETTINGS_KEY);
+        return raw ? sanitizeSettings(JSON.parse(raw)) : cloneDefault();
+      } catch (err) {
+        return cloneDefault();
+      }
+    }
+    function saveSettings() {
+      try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (err) { /* 保存できなくても今回は反映される */ }
+    }
+
+    // スライダーは右ほど敏感（= 内部の値は小さい）。表示の値は 最小 + 最大 - 内部値 で反転する
+    const flip = (v, range) => Math.round((range[0] + range[1] - v) * 100) / 100;
+
+    let syncing = false; // パネルの表示を設定に合わせている間は、change を「ユーザーの操作」として扱わない
+    function syncPanel() {
+      syncing = true;
+      // 共通のプルダウン（app.js の setupSelectPick）は change を聞いてボタンの文字を合わせるので、値を入れたら change を出す
+      const put = (el, v) => { el.value = v; el.dispatchEvent(new Event('change', { bubbles: true })); };
+      setDlg.querySelectorAll('[data-set-gesture]').forEach((el) => put(el, settings.gesture[el.dataset.setGesture]));
+      setDlg.querySelectorAll('[data-set-button]').forEach((el) => put(el, settings.buttons[Number(el.dataset.setButton)]));
+      syncing = false;
+      setDlg.querySelector('[data-set-range="move"]').value = String(flip(settings.move, MOVE_RANGE));
+      setDlg.querySelector('[data-set-range="flick"]').value = String(flip(settings.flick, FLICK_RANGE));
+    }
+
+    function setupSettings() {
+      applyButtons();
+      if (!setDlg || !gearBtn) return;
+      syncPanel();
+      gearBtn.addEventListener('click', () => {
+        if (state === 'playing') pause(); // ゲーム中なら一時停止。閉じても自動では再開しない
+        syncPanel();
+        if (!setDlg.open) setDlg.showModal();
+        gearBtn.blur();
+      });
+      setDlg.querySelector('[data-set="close"]').addEventListener('click', () => setDlg.close());
+      setDlg.addEventListener('click', (e) => { if (e.target === setDlg) setDlg.close(); }); // 枠の外（背景）を押したら閉じる
+      setDlg.addEventListener('change', (e) => {
+        if (syncing) return;
+        const el = e.target;
+        if (el.dataset.setGesture) {
+          const k = el.dataset.setGesture;
+          if (GESTURE_KEYS.includes(k) && GESTURE_ACTS.includes(el.value)) settings.gesture[k] = el.value;
+        } else if (el.dataset.setButton !== undefined) {
+          const i = Number(el.dataset.setButton);
+          if (i >= 0 && i < 4 && BUTTON_ACTS.includes(el.value)) settings.buttons[i] = el.value;
+          applyButtons();
+          layout(); // 操作ボタンの高さが変わりうるので、盤面の大きさを取り直す
+        }
+        saveSettings();
+      });
+      setDlg.addEventListener('input', (e) => {
+        const which = e.target.dataset.setRange;
+        if (!which) return;
+        const v = Number(e.target.value);
+        if (which === 'move') settings.move = clampStep(flip(v, MOVE_RANGE), MOVE_RANGE, SETTINGS_DEFAULT.move);
+        else if (which === 'flick') settings.flick = clampStep(flip(v, FLICK_RANGE), FLICK_RANGE, SETTINGS_DEFAULT.flick);
+        saveSettings();
+      });
+      setDlg.querySelector('[data-set="reset"]').addEventListener('click', () => {
+        settings = cloneDefault();
+        saveSettings();
+        syncPanel();
+        applyButtons();
+        layout();
+      });
+    }
 
     /* ---------- スマホのジェスチャー ---------- */
     let gesture = null;
@@ -861,9 +1013,9 @@
       g.py = e.clientY;
       const c = geo.c;
       if (g.axis === 'h') {
-        // 横ドラッグ: 1 マス幅の 0.8 倍たまるごとに 1 マス（速く動かせば連続で動く）
+        // 横ドラッグ: 1 マス幅の設定倍（初期 0.8 倍）たまるごとに 1 マス（速く動かせば連続で動く）
         g.accX += dx;
-        const step = c * 0.8;
+        const step = c * settings.move;
         while (g.accX >= step) { game.move(1); g.accX -= step; }
         while (g.accX <= -step) { game.move(-1); g.accX += step; }
       }
@@ -876,6 +1028,14 @@
       render();
       if (game.over) finish();
     });
+
+    /** ジェスチャーの割り当てを実行する（'none' は何もしない） */
+    function runGesture(name) {
+      if (name === 'cw') game.rotate(1);
+      else if (name === 'ccw') game.rotate(-1);
+      else if (name === 'hard') game.hardDrop();
+      else if (name === 'hold') game.holdPiece();
+    }
 
     function flushSoft(g) {
       while (g.accY >= geo.c) {
@@ -894,10 +1054,16 @@
       const dur = Math.max(1, e.timeStamp - g.t0);
       const c = geo.c;
       if (!g.axis) {
-        if (Math.hypot(tx, ty) < SLOP && dur < TAP_MS) game.rotate(1); // タップ = 右回転
+        if (Math.hypot(tx, ty) < SLOP && dur < TAP_MS) { // タップ。盤面の中央より左か右かで割り当てを変える
+          const r = cvBoard.getBoundingClientRect();
+          runGesture(e.clientX < r.left + r.width / 2 ? settings.gesture.tapL : settings.gesture.tapR);
+        }
       } else if (g.axis === 'v') {
-        if (ty > 2 * c && dur < TAP_MS && ty / dur > 0.35) game.hardDrop();       // 下フリック
-        else if (-ty > 2 * c && dur < TAP_MS && -ty / dur > 0.35) game.holdPiece(); // 上フリック
+        const dist = flickCells(settings.flick) * c;
+        const down = settings.gesture.flickDown;
+        const up = settings.gesture.flickUp;
+        if (ty > dist && dur < TAP_MS && ty / dur > settings.flick && down !== 'none') runGesture(down);       // 下フリック
+        else if (-ty > dist && dur < TAP_MS && -ty / dur > settings.flick && up !== 'none') runGesture(up);   // 上フリック
         else flushSoft(g);
       } else {
         flushSoft(g);
@@ -916,6 +1082,7 @@
 
     window.addEventListener('resize', layout);
     window.addEventListener('orientationchange', layout);
+    setupSettings();
     layout();
   }
 

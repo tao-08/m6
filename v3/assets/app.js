@@ -3583,7 +3583,8 @@ function setupSelectPick() {
       });
       pop.append(item);
     });
-    document.body.append(pop);
+    // <dialog>（showModal）の中のボタンなら、ポップアップも dialog の中に出す。body の直下だと dialog（最前面の層）に隠れて見えず、触れもしない
+    (btn.closest('dialog') || document.body).append(pop);
 
     // ボタンの真下に出す。下に入りきらなければ上に出す
     const r = btn.getBoundingClientRect();

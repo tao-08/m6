@@ -25,7 +25,9 @@ main.container:has(.block-app) { padding-top: 12px; }
 .block-app, .block-app * { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 
 /* ----- SCORE / LEVEL / LINES ----- */
-.block-stats { width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.block-stats { width: 100%; display: grid; grid-template-columns: repeat(3, 1fr) auto; gap: 6px; }
+/* 操作設定の歯車。SCORE などと同じ高さの縦長の角丸ボタンにする */
+.block-gear { width: 40px; height: auto; border-radius: var(--r-md); }
 .block-stat { display: flex; flex-direction: column; align-items: center; line-height: 1.2; padding: 3px 4px;
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); }
 .block-stat__k { font-size: var(--fs-2xs); font-weight: 800; letter-spacing: .08em; color: var(--muted); }
@@ -69,7 +71,8 @@ main.container:has(.block-app) { padding-top: 12px; }
 }
 
 /* ----- 操作ボタン（スマホの親指で押しやすい大きさ） ----- */
-.block-controls { width: 100%; display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.block-controls { width: 100%; display: grid; grid-template-columns: repeat(var(--block-btn-n, 4), 1fr); gap: 8px; }
+.block-controls[hidden], .block-btn[hidden] { display: none; } /* 設定で「なし」にした枠。残りが均等幅に広がる */
 .block-btn { height: 56px; display: grid; place-items: center; padding: 0; cursor: pointer;
   border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface); color: var(--text);
   font: 800 var(--fs-md)/1 var(--font); touch-action: manipulation;
@@ -95,3 +98,14 @@ main.container:has(.block-app) { padding-top: 12px; }
 @media (max-width: 760px) {
   body:has(.block-app) .back-fabs { display: none; }
 }
+
+/* ----- 操作設定（共通の .modal を使う） ----- */
+.block-set { width: min(380px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow: hidden auto; }
+.block-set .modal__body { padding: 16px 18px 18px; display: grid; gap: 8px; }
+.block-set__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.block-set__head .modal__title { margin: 0; }
+.block-set__title { margin: 8px 0 0; font-size: var(--fs-sm); font-weight: 800; color: var(--muted); letter-spacing: .04em; }
+.block-set__row { grid-template-columns: 8em 1fr; align-items: center; gap: 8px; }
+.block-set__row select { padding: 8px 12px; }
+.block-set__row input[type="range"] { accent-color: var(--accent); width: 100%; margin: 0; }
+.block-set .form-actions { justify-content: flex-end; margin-top: 8px; }
