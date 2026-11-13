@@ -435,7 +435,7 @@
   const MOVE_RANGE = [0.4, 1.5];   // 横移動: 1 マス動くのに必要な指の移動量（マス幅の倍率）。小さいほど敏感
   const FLICK_RANGE = [0.15, 0.8]; // フリック判定の速さ（px/ms）。小さいほど敏感
   const SETTINGS_DEFAULT = Object.freeze({
-    gesture: Object.freeze({ tapL: 'cw', tapR: 'cw', flickDown: 'hard', flickUp: 'hold' }),
+    gesture: Object.freeze({ tapL: 'ccw', tapR: 'cw', flickDown: 'hard', flickUp: 'hold' }),
     move: 0.8,
     flick: 0.35,
     buttons: Object.freeze(['ccw', 'hold', 'pause', 'cw']),
