@@ -956,7 +956,7 @@ render_header($tab['title'] . ' ' . $tab['part'], 'lives');
         <div class="tab-bar__group" role="group" aria-label="音源">
             <button type="button" class="icon-btn" data-src="yt" aria-label="YouTube" title="YouTube"><?= youtube_icon() ?></button>
             <button type="button" class="icon-btn" data-src="file" aria-label="ファイル" title="ファイル"><?= icon('audio_file') ?></button>
-            <button type="button" class="icon-btn" data-src="none" aria-label="音源なし" title="音源なし"><?= icon('timer') ?></button>
+            <button type="button" class="icon-btn" data-src="none" aria-label="音源なし" title="音源なし"><?= icon('music_off') ?></button>
             <!-- 同期解除: 音源は止めて、今の位置から内部時計で進む（好きな BPM で練習できる） -->
             <button type="button" class="icon-btn" data-unsync data-practice-only aria-pressed="false" aria-label="同期解除" title="同期解除"><?= icon('link') ?></button>
             <!-- ファイルはサーバーに送らない。ブラウザの中で再生するだけ -->
@@ -993,7 +993,7 @@ render_header($tab['title'] . ' ' . $tab['part'], 'lives');
         <div class="tab-bar__group">
             <!-- メトロノーム: ボタンはオン・オフ。▾（または長押し）で、細分・音量・カウントインの設定が開く -->
             <span class="tab-metro">
-                <button type="button" class="icon-btn" data-metro aria-pressed="false" aria-label="メトロノーム" title="メトロノーム"><?= icon('music_note') ?></button>
+                <button type="button" class="icon-btn" data-metro aria-pressed="false" aria-label="メトロノーム" title="メトロノーム"><?= metronome_icon() ?></button>
                 <button type="button" class="icon-btn icon-btn--sm" data-metro-menu-toggle aria-expanded="false" aria-label="メトロノーム設定" title="メトロノーム設定"><?= icon('arrow_drop_down') ?></button>
                 <div class="tab-metro__menu card" data-metro-menu hidden>
                     <label class="field">細分
@@ -1128,14 +1128,14 @@ render_header($tab['title'] . ' ' . $tab['part'], 'lives');
 
             <h4 class="tab-guide__h">練習</h4>
             <ul class="tab-guide__list">
-                <li><?= icon('smart_display') ?><?= icon('audio_file') ?><?= icon('timer') ?><span>音源: YouTube / 手元のファイル（送信なし）/ なし</span></li>
+                <li><?= icon('smart_display') ?><?= icon('audio_file') ?><?= icon('music_off') ?><span>音源: YouTube / 手元のファイル（送信なし）/ なし</span></li>
                 <li><?= icon('link') ?><span>同期解除: 音源を止めて好きな BPM で進む</span></li>
                 <li><?= icon('touch_app') ?><span>TAB をタップでその位置へ移動</span></li>
                 <li><span class="tab-guide__txt">×0.5</span><span>速度・練習 BPM</span></li>
                 <li><span class="tab-guide__txt">A B</span><span>A→B リピート（+2 などでループごとに BPM 増加）</span></li>
                 <li><?= icon('loop') ?><span>セクション横のアイコンでその部分だけ繰り返し</span></li>
                 <li><?= icon('flag') ?><span>練習用マーカー（自分だけに表示）</span></li>
-                <li><?= icon('music_note') ?><span>メトロノーム（▾ で細分・音量・カウント）</span></li>
+                <li><?= metronome_icon() ?><span>メトロノーム（▾ で細分・音量・カウント）</span></li>
                 <li><?= icon('zoom_in') ?><span>拡大・縮小</span></li>
             </ul>
 

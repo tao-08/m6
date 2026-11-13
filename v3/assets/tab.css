@@ -208,6 +208,7 @@ details[open] > .tab-summary > .tab-summary__chev { transform: rotate(180deg); }
 .tab-video__reset { right: 4px; }
 .tab-video__size { position: absolute; right: 0; bottom: 0; width: 28px; height: 28px; cursor: nwse-resize; touch-action: none;
   background: linear-gradient(135deg, transparent 55%, rgba(255, 255, 255, .85) 55% 62%, transparent 62% 72%, rgba(255, 255, 255, .85) 72% 79%, transparent 79%); }
+.icon-btn .metro-icon { width: 20px; height: 20px; } /* メトロノーム（SVG）。フォントのアイコン（20px）と同じ大きさ */
 .icon-btn:disabled .youtube-icon { filter: grayscale(1); opacity: .5; }
 .tab-video [data-video-mount], .tab-video iframe { width: 100%; height: 100%; border: 0; display: block; } /* iframe は mount の中に入るので、mount も枠いっぱいにする（高さが無いと上に小さく寄る） */
 
@@ -576,7 +577,8 @@ details[open] > .tab-summary > .tab-summary__chev { transform: rotate(180deg); }
 .tab-guide__steps b { white-space: nowrap; }
 .tab-guide__list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: var(--fs-md); }
 .tab-guide__list li { display: flex; align-items: center; gap: 4px; }
-.tab-guide__list li > .icon, .tab-guide__txt { flex: none; color: var(--accent); }
+.tab-guide .metro-icon { width: 18px; height: 18px; }
+.tab-guide__list li > .icon, .tab-guide__list li > .metro-icon, .tab-guide__txt { flex: none; color: var(--accent); }
 .tab-guide__list li > span:last-child { margin-left: 6px; min-width: 0; }
 .tab-guide__txt { font-weight: 800; font-size: var(--fs-xs); min-width: 18px; }
 .tab-guide__keys { margin: 14px 0 0; }

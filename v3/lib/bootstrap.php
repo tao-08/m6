@@ -351,6 +351,14 @@ function tab_icon(bool $fill = false): string
     return '<span class="tab-icon' . ($fill ? ' is-fill' : '') . '" aria-hidden="true">TAB</span>';
 }
 
+/** メトロノームのアイコン（台形の本体 + 斜めの振り子）。Material Symbols にメトロノームが無いので SVG で持つ。色は currentColor（オンのときの色がそのまま付く） */
+function metronome_icon(): string
+{
+    return '<svg class="metro-icon" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+        . '<path d="M9.2 3h5.6L19 21H5L9.2 3z"/><path d="M6.2 16h11.6"/><path d="M12 16l5.5-10"/>'
+        . '<circle cx="14.75" cy="11" r="1.7" fill="currentColor" stroke="none"/></svg>';
+}
+
 /** YouTube のロゴ（赤い再生ボタン）。Material Symbols にブランドのロゴは無いので SVG で持つ */
 function youtube_icon(): string
 {
