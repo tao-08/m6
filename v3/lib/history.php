@@ -683,7 +683,7 @@ function change_member_part(PDO $pdo, int $id, string $suffix = ''): array|strin
     return $name === '（削除済み）' ? $name . $suffix : ['text' => $name . $suffix, 'href' => 'member?id=' . $id];
 }
 
-/** 部品を「、」でつなぐ（空なら「（なし）」） */
+/** 部品を1行に1つずつ並べる（空なら「（なし）」）。$tail は各行の後ろにつける（「 を追加」など） */
 function change_join_parts(array $parts, string $tail = ''): array|string
 {
     if (!$parts) {
@@ -692,12 +692,12 @@ function change_join_parts(array $parts, string $tail = ''): array|string
     $out = [];
     foreach ($parts as $i => $p) {
         if ($i > 0) {
-            $out[] = '、';
+            $out[] = "\n"; // 表のマスは white-space: pre-line なので改行になる
         }
         $out[] = $p;
-    }
-    if ($tail !== '') {
-        $out[] = $tail;
+        if ($tail !== '') {
+            $out[] = $tail;
+        }
     }
     return $out;
 }
@@ -737,7 +737,7 @@ function change_diff(PDO $pdo, string $type, ?array $now, array $before, bool $a
         $add('メモ', $val($n, 'note'), $val($b, 'note'));
         $add('総バンド数', $val($n, 'total_bands'), $val($b, 'total_bands'));
         $add('トリなし', !empty($n['order_unset']) ? '✓' : '', !empty($b['order_unset']) ? '✓' : ''); // 列を足す前の履歴には無いので empty で見る
-        $breaks = static fn(array $list) => implode(' / ', array_map(
+        $breaks = static fn(array $list) => implode("\n", array_map( // 1行に1つ
             static fn($k) => $k['name'] . ($k['start_time'] ? ' ' . fmt_time($k['start_time']) : '') . '（' . $k['after_order'] . '組目の後）', $list));
         $add('休憩', $breaks($now['live_break'] ?? []), $breaks($before['live_break']));
         return $rows;
@@ -772,7 +772,7 @@ function change_diff(PDO $pdo, string $type, ?array $now, array $before, bool $a
     $add('メモ', $val($n, 'note'), $val($b, 'note'));
     $add('YouTube', $val($n, 'youtube_url'), $val($b, 'youtube_url'));
     // ドライブのファイル: 名前を並べて比べる（拡張子つきのファイル名のまま）
-    $driveNames = static fn(?array $snap): string => implode('・', array_column($snap['band_drive_file'] ?? [], 'name'));
+    $driveNames = static fn(?array $snap): string => implode("\n", array_column($snap['band_drive_file'] ?? [], 'name')); // 1行に1つ
     $add('ドライブ', $driveNames($now), $driveNames($before));
     $add('確認依頼', $flag($n), $flag($b));
     $add('オムニバス', $onoff($n, 'is_omnibus'), $onoff($b, 'is_omnibus'));
@@ -818,10 +818,10 @@ function change_diff(PDO $pdo, string $type, ?array $now, array $before, bool $a
         $rows[] = ['確認の対象', $whoParts($nowC), $whoParts($beforeC)];
     }
 
-    // セトリ: 曲名を順番に並べて比べる
+    // セトリ: 曲名を順番に、番号つきで1行に1曲ずつ並べて比べる
     $songs = static function (array $list): string {
         usort($list, static fn($x, $y) => $x['track_no'] <=> $y['track_no']);
-        return implode(' / ', array_map(static fn($s) => $s['title'], $list));
+        return implode("\n", array_map(static fn($i, $s) => ($i + 1) . '. ' . $s['title'], array_keys($list), $list));
     };
     $add('セットリスト', $songs($now['song'] ?? []), $songs($before['song']));
     // 曲ごとの演奏者は数が多いので、変わるかどうかと件数だけ（曲の ID ではなく「何曲目・誰・何の楽器」で比べる）
