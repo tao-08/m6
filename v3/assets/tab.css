@@ -267,9 +267,13 @@ details[open] > .tab-summary > .tab-summary__chev { transform: rotate(180deg); }
 .tab-step__hint .icon { font-size: 18px; color: var(--accent); }
 .tab-step__mini { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; } /* ③ の開始位置の微調整 / 確認 / 再生 */
 .tab-step__mini .btn { min-width: 56px; padding-inline: 8px; font-variant-numeric: tabular-nums; }
-/* ± 4個 + 確認 + 再生 の 6個並び: 375px 幅だと最後の 1個だけ次の行に落ちるので、1行に均等に収める（ボタン名を表示中は文字が入るので折り返す） */
-.tab:not(.is-help) .tab-step__mini--fit { flex-wrap: nowrap; gap: 4px; }
-.tab:not(.is-help) .tab-step__mini--fit .btn { flex: 1 1 0; min-width: 0; padding-inline: 2px; }
+/* ± 4個 + 確認 + 再生 の 6個並び: 375px 幅だと最後の 1個だけ次の行に落ちるので、1行に均等に収める */
+.tab-step__mini--fit { flex-wrap: nowrap; gap: 4px; }
+.tab-step__mini--fit .btn { flex: 1 1 0; min-width: 0; padding-inline: 2px; }
+/* ボタン名を表示中（初めて開いたときは ON）も、± の数字のボタンには名前を出さない: 数字の横に「開始位置 -0.1秒」が並んで 3行に崩れる。何の ± かは上の見出し・入力欄のラベルでわかる */
+.tab.is-help .tab-step__mini.tab-step__mini--fit .btn[aria-label]::after { content: none; }
+/* ボタン名を表示中は「開始位置から確認」などの名前でアイコンのボタンが広がるので、± は文字を小さくして 1行に収める */
+.tab.is-help .tab-step__mini--fit .btn { padding-inline: 0; font-size: var(--fs-sm); }
 /* ③ の後半の確認: 上の開始位置の ±（秒）と見た目が似るので、区切り線と見出し（現在の BPM 付き）で別物だと分かるようにする */
 .tab-late { display: grid; gap: 8px; padding-top: 12px; border-top: 1px solid var(--border); }
 .tab-late__head { display: flex; justify-content: space-between; align-items: baseline; margin: 0; font-weight: 600; }
