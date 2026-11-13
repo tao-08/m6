@@ -104,7 +104,7 @@
 
   /** ライン消去の表示用の文字（盤面の上に出す）。先頭が主役 */
   function describeClear(info) {
-    const names = ['', 'シングル', 'ダブル', 'トリプル', '4ライン'];
+    const names = ['', 'シングル', 'ダブル', 'トリプル', 'テ◯リス'];
     const out = [];
     let head = info.tspin === 'full' ? 'Tスピン' : info.tspin === 'mini' ? 'Tスピン Mini' : '';
     if (info.lines > 0) head = head ? head + ' ' + names[info.lines] : names[info.lines];
