@@ -895,7 +895,7 @@
 
   /* ---------------------------------------------------------------
    * 1. 時計
-   *   どれも同じ形: time()（秒）/ playing / play() / pause() / seek(秒) / setRate(倍速) / rate / destroy()
+   *   どれも同じ形: time()（秒）/ duration()（曲の長さ・秒。わからなければ 0）/ playing / play() / pause() / seek(秒) / setRate(倍速) / rate / destroy()
    *   time() は描画のたびに呼ばれる。音源が返す時刻は粗い（YouTube は 0.25 秒おきなど）ので、
    *   前回の時刻 + 経過時間 で補間し、新しい実測値が 0.15 秒以上ずれたときだけ合わせ直す（smoother）
    * --------------------------------------------------------------- */
@@ -925,6 +925,7 @@
     return {
       kind: 'none',
       time,
+      duration: () => 0,                 // 曲がないので長さもない
       get playing() { return playing; },
       get rate() { return rate; },
       play() { if (!playing) { at = performance.now(); playing = true; onChange(); } },
@@ -950,6 +951,7 @@
     return {
       kind: 'file',
       time: () => sm.time(),
+      duration: () => (Number.isFinite(a.duration) ? a.duration : 0), // 読み込み前は NaN、ストリームは Infinity
       get playing() { return isPlaying(); },
       get rate() { return a.playbackRate; },
       play() { a.play().catch(() => {}); },
@@ -999,6 +1001,10 @@
     return {
       kind: 'yt',
       time: () => sm.time(),
+      duration: () => { // 準備前・生配信などは 0 や NaN のことがある
+        const d = ready && player.getDuration ? player.getDuration() : 0;
+        return Number.isFinite(d) && d > 0 ? d : 0;
+      },
       get playing() { return state === 1 || state === 3; }, // 3 = 読み込み中（再生待ち）
       get rate() { return rate; },
       play() { run(() => player.playVideo()); },
@@ -1134,6 +1140,8 @@
     loadWave(srcFile);                   // 開始位置の波形も同じファイルから
     const detectBtn = $('[data-bpm-detect]');
     if (detectBtn) detectBtn.disabled = !srcFile;
+    const lateBox = $('[data-late-check]');
+    if (lateBox) lateBox.hidden = kind === 'none'; // 音源なしは合わせる相手の曲がないので「後半の確認」を隠す
     videoBox.hidden = kind !== 'yt';
     clock.setRate(currentRate());
     if (prevTime > 0) clock.seek(prevTime);
@@ -2643,6 +2651,10 @@
   };
   inputs.part.value = st.part;
   inputs.bpm.value = String(st.bpm);
+  /** ③ の「後半の確認」に出す、いまの BPM（② の入力欄と同じ値。BPM が変わる所から呼ぶ） */
+  const bpmNowEl = $('[data-bpm-now]');
+  function syncBpmNow() { bpmNowEl.textContent = String(st.bpm); }
+  syncBpmNow();
   inputs.beats.value = String(st.beats);
   inputs.steps.value = String(st.steps);
   inputs.offset.value = (st.offsetMs / 1000).toFixed(2);
@@ -2678,7 +2690,7 @@
   });
   inputs.bpm.addEventListener('input', () => {
     const v = parseFloat(inputs.bpm.value);
-    if (v >= 20 && v <= 400) { st.bpm = v; recompute(); clock.setRate(currentRate()); syncPbpmField(); requestFrame(); refreshDirty(); } // 元の BPM が変わると、練習 BPM との比（速度）も変わる
+    if (v >= 20 && v <= 400) { st.bpm = v; syncBpmNow(); recompute(); clock.setRate(currentRate()); syncPbpmField(); requestFrame(); refreshDirty(); } // 元の BPM が変わると、練習 BPM との比（速度）も変わる
   });
   inputs.bpm.addEventListener('change', () => { inputs.bpm.value = String(st.bpm); }); // 範囲外の入力は直前の値に戻す
   inputs.offset.addEventListener('input', () => {
@@ -2707,6 +2719,33 @@
     if (!clock.playing) clock.play();      // カウントインは要らない（すぐ1拍目が鳴る）
   }
   $('[data-offset-play]').addEventListener('click', playFromOffset);
+  /*
+   * 後半から確認: 曲頭を合わせたあと、曲の後半をメトロノーム付きで鳴らす。BPM がわずかに違うと、曲頭は合っても後半で少しずつずれる。
+   *   その差をいちばん聴き取りやすいのが後半なので、そこへ飛んで、BPM の ± を押しながらクリックと曲を合わせる。
+   *   位置: 曲の長さが取れれば「開始位置から曲の終わりまでの 3/4」。取れなければ（音源の読み込み前など）開始位置の 64 小節あと
+   *   小節の頭に吸着: 最初のクリックがアクセント（1拍目）になるように。TAB の小節より後ろは、メトロノームと同じく最後の小節と同じ長さが続くものとして数える
+   */
+  function playFromLate() {
+    const off = st.offsetMs / 1000;
+    const dur = (unsynced && mediaClock ? mediaClock : clock).duration(); // 同期解除中は内部時計（長さ 0）に替わっているので、止めた音源のほうから長さを取る
+    const target = dur > off ? off + (dur - off) * 0.75 : off + 64 * st.beats * 60 / st.bpm;
+    const n = starts.length - 1;           // 小節の数（starts の最後は曲の終わり）
+    const end = starts[n - 1] + durs[n - 1];
+    let pos;
+    if (target > end) {
+      const len = durs[n - 1];
+      pos = end + Math.round((target - end) / len) * len;
+    } else {
+      pos = starts[Math.max(0, barAt(target))];
+    }
+    ensureAudio();
+    if (!metro.on) { metro.on = true; metroChanged(); }
+    if (counting) cancelCountIn();
+    seekTo(pos);
+    metroReset(pos);                       // その位置ちょうどの1拍目を飛ばさない（playFromOffset と同じ）
+    if (!clock.playing) clock.play();
+  }
+  $('[data-late-play]').addEventListener('click', playFromLate);
   $$('[data-offset-nudge]').forEach((b) => b.addEventListener('click', () => {
     setOffset(st.offsetMs + Number(b.dataset.offsetNudge) * 1000);
     if (clock.playing) playFromOffset();
@@ -3038,12 +3077,10 @@
   /* ---- BPM 計測: 曲を流しながら拍を叩き続ける。叩いた全部から BPM を出す（叩くほど正確）。小節の頭を合わせる「タップ」とは別 ----
    *   時刻は、再生中なら曲の時刻（clock.time()。再生速度が 1 でなくても曲そのものの BPM が出る）、止まっていれば壁時計（performance.now()）
    *   click は指を離した時に起きるので、押した瞬間に起きる pointerdown で測る。キーボード（Enter）は click の detail が 0 なので、そちらで拾う
-   *   「開始位置」ボタン: 1小節目の頭から叩き始めたとき、1 拍目の時刻（fit.first）を開始位置にする。8拍以上・曲の時刻で測ったときだけ */
+   *   開始位置はここでは決めない（③ で手動で合わせる。曲の頭は無音・ブレスなどで、叩いた 1 拍目と一致しないことが多いため） */
   const bpmTapBtn = $('[data-bpm-tap]');
   const bpmTapSum = $('[data-bpm-tap-sum]');
-  const bpmTapOffsetBtn = $('[data-bpm-tap-offset]');
   let bpmTaps = { mode: 'wall', times: [] }; // mode: 'song'（曲の時刻）| 'wall'（壁時計）
-  let tapFit = null;                         // 直近の fitBeats の結果 + mode
   function tapBeat() {
     // 音源なし（kind = 'none'）は、曲の時刻が BPM から作られる。その時刻で測ると「測った BPM → 進む速さが変わる → 次の測定がずれる」と堂々巡りになる（実測: 120 で叩いて 392 になった）ので、壁時計で測る
     const mode = clock.playing && clock.kind !== 'none' ? 'song' : 'wall';
@@ -3051,15 +3088,13 @@
     const prev = bpmTaps.times[bpmTaps.times.length - 1];
     if (mode !== bpmTaps.mode) bpmTaps = { mode, times: [] };    // 再生・停止が切り替わったら、時刻の基準が違うので最初から
     else if (prev !== undefined && (t - prev > 2 || (mode === 'song' && t <= prev))) bpmTaps.times = []; // 2秒あいた・曲を戻した（A-B リピートの折り返し）ら最初から
-    // 古い拍は捨てない: 捨てると「1 拍目」が途中の拍に変わり、「開始位置」が 1小節目の頭でなくなる。1曲ぶん叩いても 1000 拍に届かないので、上限は暴走よけだけ
+    // 古い拍は捨てない: 叩いた全部の拍から当てはめるほど BPM が正確になる。1曲ぶん叩いても 1000 拍に届かないので、上限は暴走よけだけ
     if (bpmTaps.times.length >= 1000) bpmTaps.times = [];
     bpmTaps.times.push(t);
     const fit = fitBeats(bpmTaps.times);
-    tapFit = fit ? { ...fit, mode } : null;
     if (fit) setBpm(fit.bpm);
     const n = bpmTaps.times.length;
     bpmTapSum.textContent = fit ? `${n}拍・誤差±${fit.bpmErr.toFixed(1)}` : `${n}拍`; // 「±0.3」だけでは何の数字か伝わらないので「誤差」と書く（単位は BPM）
-    bpmTapOffsetBtn.disabled = !(tapFit && mode === 'song' && n >= 8);
   }
   bpmTapBtn.addEventListener('pointerdown', (e) => {
     if (e.button) return; // 右クリックなどは無視
@@ -3067,15 +3102,11 @@
   });
   bpmTapBtn.addEventListener('click', (e) => { if (e.detail === 0) tapBeat(); }); // キーボード操作（マウス・タッチの click は pointerdown で数え済み）
   bpmTapBtn.addEventListener('contextmenu', (e) => e.preventDefault()); // スマホの長押しメニューを出さない
-  bpmTapOffsetBtn.addEventListener('click', () => {
-    if (!tapFit) return;
-    setOffset(tapFit.first * 1000);
-    bpmTapOffsetBtn.disabled = true; // 次に叩くまで押せない（同じ値を何度も入れない）
-  });
-  /** BPM を設定する（タップ計測・検索・自動検知で共通）。保存はしない */
+  /** BPM を設定する（タップ計測・検索・自動検知・微調整で共通）。保存はしない */
   function setBpm(bpm) {
     st.bpm = bpm;
     inputs.bpm.value = String(bpm);
+    syncBpmNow();
     recompute();
     clock.setRate(currentRate());
     syncPbpmField();
@@ -3083,7 +3114,7 @@
     refreshDirty();
   }
 
-  /* ---- BPM 微調整（−1 / −0.1 / +0.1 / +1）: 押し続けると連続で変わる。1回ごとに 20〜400 に収め、小数2桁に丸める ---- */
+  /* ---- BPM 微調整（−1 / −0.1 / −0.01 / +0.01 / +0.1 / +1。③ の後半の確認にも同じボタンがある）: 押し続けると連続で変わる。1回ごとに 20〜400 に収め、小数2桁に丸める ---- */
   $$('[data-bpm-step]').forEach((btn) => {
     const step = Number(btn.dataset.bpmStep);
     const nudge = () => setBpm(clamp(Math.round((st.bpm + step) * 100) / 100, 20, 400));
@@ -3517,7 +3548,7 @@
     const add = imported.bars.map(barFromJson);
     if (btn.dataset.importApply === 'replace') {
       st.bars = add.slice(0, MAX_BARS);
-      if (imported.bpm) { st.bpm = imported.bpm; inputs.bpm.value = String(st.bpm); }
+      if (imported.bpm) { st.bpm = imported.bpm; inputs.bpm.value = String(st.bpm); syncBpmNow(); }
       if (imported.tuning) setTuning(imported.tuning.split(' '));
     } else {
       st.bars = st.bars.concat(add).slice(0, MAX_BARS);

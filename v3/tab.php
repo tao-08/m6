@@ -817,13 +817,12 @@ render_header($tab['title'] . ' ' . $tab['part'], 'lives');
                             </span>
                             <?php // 微調整: 押すたびに加減。押し続けると連続で変わる（assets/tab.js の BPM 微調整） ?>
                             <span class="tab-bpm-steps" role="group" aria-label="BPM調整">
-                                <?php foreach ([-1, -0.1, 0.1, 1] as $n): ?>
+                                <?php foreach ([-1, -0.1, -0.01, 0.01, 0.1, 1] as $n): ?>
                                     <button type="button" class="tab-chip" data-bpm-step="<?= $n ?>"><?= $n > 0 ? '+' : '−' ?><?= abs($n) ?></button>
                                 <?php endforeach; ?>
                             </span>
                         </label>
                         <?php // BPM 計測: 曲を流しながら拍を叩き続ける → 叩いた全部の拍から BPM を出す（叩くほど正確）。小節の頭を合わせる「タップ」とは別 ?>
-                        <?php // 1小節目の頭から叩き始めたときは「開始位置」で、1拍目の時刻をそのまま開始位置にできる（8拍以上叩くと押せる） ?>
                         <?php // 再生・5秒戻しは data-play / data-seek なので、root のクリック処理（assets/tab.js）がそのまま動かす ?>
                         <div class="tab-beat-tap tab-step__wide">
                             <div class="tab-step__mini">
@@ -831,9 +830,7 @@ render_header($tab['title'] . ' ' . $tab['part'], 'lives');
                                 <button type="button" class="icon-btn icon-btn--play" data-play aria-label="再生" title="再生（Space）"><?= icon('play_arrow', 'icon--fill') ?></button>
                             </div>
                             <button type="button" class="tab-beat-tap__pad" data-bpm-tap aria-label="BPM計測" title="BPM計測（拍に合わせてタップ）"><?= icon('touch_app') ?><span>拍をタップ</span><span class="tab-beat-tap__sum" data-bpm-tap-sum aria-live="polite"></span></button>
-                            <?php // 初めての人向け: アイコンだけでは「叩くもの」と伝わらないので、タップ面に文字を入れる。「開始位置」は押せる条件を下に書く（最初は押せないため） ?>
-                            <button type="button" class="btn" data-bpm-tap-offset disabled><?= icon('my_location') ?> 1拍目を開始位置に設定</button>
-                            <p class="tab-step__hint muted small">1小節目の頭から8拍以上タップで有効</p>
+                            <?php // 初めての人向け: アイコンだけでは「叩くもの」と伝わらないので、タップ面に文字を入れる。開始位置は ③ で手動で合わせる ?>
                         </div>
                         <label class="field">拍子 <input type="number" data-set="beats" min="1" max="16" step="1" inputmode="numeric"></label>
                         <label class="field">分割
@@ -867,7 +864,7 @@ render_header($tab['title'] . ' ' . $tab['part'], 'lives');
                         </span>
                     </div>
                     <?php // 開始位置そのものを動かす（再生中なら、動かすたびに開始位置の少し前から鳴らし直す。メトロノームと聴き比べて合わせる） ?>
-                    <div class="tab-step__mini">
+                    <div class="tab-step__mini tab-step__mini--fit">
                         <button type="button" class="btn" data-offset-nudge="-0.1" aria-label="開始位置 -0.1秒">-0.1</button>
                         <button type="button" class="btn" data-offset-nudge="-0.01" aria-label="開始位置 -0.01秒">-0.01</button>
                         <button type="button" class="icon-btn icon-btn--play" data-offset-play aria-label="開始位置から確認" title="開始位置から確認（メトロノーム付き）"><?= icon('start') ?></button>
@@ -881,6 +878,19 @@ render_header($tab['title'] . ' ' . $tab['part'], 'lives');
                             <button type="button" class="icon-btn" data-offset-now aria-label="現在位置" title="現在位置"><?= icon('my_location') ?></button>
                         </span>
                     </label>
+                    <?php // 後半の確認: 曲頭を合わせたあと、曲の後半をメトロノーム付きで鳴らして BPM を詰める（BPM がわずかに違うと、曲頭は合っても後半でずれる） ?>
+                    <div class="tab-late" data-late-check>
+                        <p class="tab-late__head">後半の確認 <span class="tab-late__bpm">BPM <output data-bpm-now></output></span></p>
+                        <div class="tab-step__mini tab-step__mini--fit">
+                            <button type="button" class="btn" data-bpm-step="-0.1" aria-label="BPM -0.1">−0.1</button>
+                            <button type="button" class="btn" data-bpm-step="-0.01" aria-label="BPM -0.01">−0.01</button>
+                            <button type="button" class="icon-btn icon-btn--play" data-late-play aria-label="後半から確認" title="後半から確認（メトロノーム付き）"><?= icon('fast_forward') ?></button>
+                            <button type="button" class="icon-btn icon-btn--play" data-play aria-label="再生" title="再生（Space）"><?= icon('play_arrow', 'icon--fill') ?></button>
+                            <button type="button" class="btn" data-bpm-step="0.01" aria-label="BPM +0.01">+0.01</button>
+                            <button type="button" class="btn" data-bpm-step="0.1" aria-label="BPM +0.1">+0.1</button>
+                        </div>
+                        <p class="tab-step__hint muted small">クリックが遅れる → ＋　先に鳴る → −</p>
+                    </div>
                     <div class="tab-step__actions"><button type="button" class="btn btn--primary" data-setup-next>次へ</button></div>
                 </div>
             </li>
@@ -1135,6 +1145,7 @@ render_header($tab['title'] . ' ' . $tab['part'], 'lives');
                 <li><?= icon('upload_file') ?><span>インポート: 文字・画像の TAB を取込</span></li>
                 <li><?= icon('touch_app') ?><span>タップ: 再生しながら小節の頭で T を押して位置を補正（数小節おきでも可）</span></li>
                 <li><?= icon('speed') ?><span>BPM 計測: 曲に合わせて拍を叩き続ける（叩くほど正確）</span></li>
+                <li><?= icon('fast_forward') ?><span>後半の確認: 曲頭を合わせたあと、後半をメトロノーム付きで再生して BPM を微調整</span></li>
                 <li><?= icon('search') ?><?= icon('graphic_eq') ?><span>動画・BPM の検索 / ファイルから BPM 自動検知</span></li>
                 <li><?= icon('undo') ?><?= icon('redo') ?><span>元に戻す・やり直す</span></li>
                 <li><?= icon('history') ?><span>履歴から復元</span></li>

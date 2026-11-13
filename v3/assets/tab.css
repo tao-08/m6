@@ -196,7 +196,8 @@ details[open] > .tab-summary > .tab-summary__chev { transform: rotate(180deg); }
   position: sticky; top: 70px; z-index: 6; } /* スクロールしてもヘッダーの下に残る（スマホは下の media で小さくする） */
 @media (max-width: 600px) { .tab-video { width: min(100%, 240px); } }
 .tab-bpm-steps { display: flex; gap: 6px; margin-top: 6px; }
-.tab-bpm-steps .tab-chip { touch-action: manipulation; user-select: none; -webkit-user-select: none; font-variant-numeric: tabular-nums; }
+.tab-bpm-steps .tab-chip { flex: 1 1 0; min-width: 0; padding-inline: 4px; touch-action: manipulation; user-select: none; -webkit-user-select: none; font-variant-numeric: tabular-nums; } /* 6個（±1 / ±0.1 / ±0.01）が375px幅でも1行に収まるよう、均等に分けて余白を詰める */
+@media (pointer: coarse) { .tab-bpm-steps .tab-chip { min-height: 44px; } }
 .icon-btn .youtube-icon { width: 22px; height: auto; } /* 音源ボタンの YouTube ロゴ。ボタンの中身の幅（36 - 左右 padding 6）に収めないと右にずれる */
 /* 動画の移動・大きさ: ドラッグしたら fixed で好きな位置に浮かせる（位置・幅は JS が style に入れる）。iframe の上はクリックを奪われるので、操作はつまみ・角だけ */
 .tab-video.is-float { position: fixed; z-index: 30; box-shadow: var(--shadow); }
@@ -265,7 +266,14 @@ details[open] > .tab-summary > .tab-summary__chev { transform: rotate(180deg); }
 .tab-step__hint .icon { font-size: 18px; color: var(--accent); }
 .tab-step__mini { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; } /* ③ の開始位置の微調整 / 確認 / 再生 */
 .tab-step__mini .btn { min-width: 56px; padding-inline: 8px; font-variant-numeric: tabular-nums; }
-/* ② の BPM 計測: 再生・5秒戻し / 大きなタップ面 / 開始位置。連打するので、拡大・文字選択・長押しメニューが出ないようにする */
+/* ± 4個 + 確認 + 再生 の 6個並び: 375px 幅だと最後の 1個だけ次の行に落ちるので、1行に均等に収める（ボタン名を表示中は文字が入るので折り返す） */
+.tab:not(.is-help) .tab-step__mini--fit { flex-wrap: nowrap; gap: 4px; }
+.tab:not(.is-help) .tab-step__mini--fit .btn { flex: 1 1 0; min-width: 0; padding-inline: 2px; }
+/* ③ の後半の確認: 上の開始位置の ±（秒）と見た目が似るので、区切り線と見出し（現在の BPM 付き）で別物だと分かるようにする */
+.tab-late { display: grid; gap: 8px; padding-top: 12px; border-top: 1px solid var(--border); }
+.tab-late__head { display: flex; justify-content: space-between; align-items: baseline; margin: 0; font-weight: 600; }
+.tab-late__bpm { font-variant-numeric: tabular-nums; }
+/* ② の BPM 計測: 再生・5秒戻し / 大きなタップ面。連打するので、拡大・文字選択・長押しメニューが出ないようにする */
 .tab-beat-tap { display: grid; gap: 8px; }
 .tab-beat-tap .btn { min-height: 44px; }
 .tab-beat-tap__pad { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; height: 72px; padding: 0 12px;
