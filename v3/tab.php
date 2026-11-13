@@ -758,12 +758,12 @@ render_header($tab['title'] . ' ' . $tab['part'], 'lives');
             <input type="file" multiple hidden data-img-input></label>
     </details>
 
-    <?php /* ===== 準備ステップ（編集モードのときだけ）: ① 音源 → ② テンポ → ③ 開始位置 → ④ 入力 =====
+    <?php /* ===== 準備ステップ（編集モードのときだけ）: ① 音源 → ② 開始位置 → ③ テンポ → ④ 入力 =====
        初めての人が「何から手を付けるか」で迷わないよう、編集画面の上に手順を出す（プログレッシブ・ディスクロージャー =
        最初から全部の設定を見せず、いま必要なものだけを順に出す、という UI の定番の考え方）。
        ・各ステップは見出しのボタンを押すと開く（アコーディオン = 1つ開くと他は閉じる）。完了したステップは ✓
        ・全部終わっている TAB は、1 行（準備 ●●●●）に畳んで出す
-       ・位置は、ヘッダー・メモのすぐ下 = 動画（下の [data-video]）の上。③ の開始位置合わせは、すぐ下の動画を見ながらできる
+       ・位置は、ヘッダー・メモのすぐ下 = 動画（下の [data-video]）の上。② の開始位置合わせは、すぐ下の動画を見ながらできる
        ・data-edit-only … 編集モードのときだけ見せる印（tab.css）。練習モードでは消える
        ・入力欄（data-set="…"）は、以前は下の「設定」カードにあったものを移しただけ。JS は root の中から探すので、場所が変わっても動く
        ・ステップの完了の判定・要約の文字・開閉は assets/tab.js の updateSetup() / openStep() */ ?>
@@ -796,57 +796,9 @@ render_header($tab['title'] . ' ' . $tab['part'], 'lives');
                     </div>
                 </div>
             </li>
-            <li class="tab-step" data-step="tempo">
-                <button type="button" class="tab-step__head" aria-expanded="false" aria-controls="tab-step-tempo">
-                    <span class="tab-step__mark" data-step-mark>2</span>
-                    <span class="tab-step__title">テンポ</span>
-                    <span class="tab-step__sum muted small" data-step-sum></span>
-                    <?= icon('expand_more', 'tab-step__chev') ?>
-                </button>
-                <div class="tab-step__body" id="tab-step-tempo" hidden>
-                    <div class="tab-step__fields">
-                        <label class="field tab-step__wide">BPM
-                            <span class="tab-settings__row">
-                                <input type="number" data-set="bpm" min="20" max="400" step="0.01" inputmode="decimal">
-                                <!-- 自動検知: 手元のファイルを開いているときだけ（YouTube の音はブラウザから読めない） -->
-                                <button type="button" class="icon-btn" data-bpm-detect aria-label="BPM自動検知" title="BPM自動検知（ファイル）" disabled><?= icon('graphic_eq') ?></button>
-                                <?php // AI 推定: 記憶による推定なので、候補として出して、押したときだけ反映する ?>
-                                <?php if (claude_enabled()): ?>
-                                    <button type="button" class="icon-btn" data-search-open="bpm_ai" aria-label="BPM AI推定" title="BPM AI推定"><?= icon('auto_awesome') ?></button>
-                                <?php endif; ?>
-                            </span>
-                            <?php // 微調整: 押すたびに加減。押し続けると連続で変わる（assets/tab.js の BPM 微調整） ?>
-                            <span class="tab-bpm-steps" role="group" aria-label="BPM調整">
-                                <?php foreach ([-1, -0.1, -0.01, 0.01, 0.1, 1] as $n): ?>
-                                    <button type="button" class="tab-chip" data-bpm-step="<?= $n ?>"><?= $n > 0 ? '+' : '−' ?><?= abs($n) ?></button>
-                                <?php endforeach; ?>
-                            </span>
-                        </label>
-                        <?php // BPM 計測: 曲を流しながら拍を叩き続ける → 叩いた全部の拍から BPM を出す（叩くほど正確）。小節の頭を合わせる「タップ」とは別 ?>
-                        <?php // 再生・5秒戻しは data-play / data-seek なので、root のクリック処理（assets/tab.js）がそのまま動かす ?>
-                        <div class="tab-beat-tap tab-step__wide">
-                            <div class="tab-step__mini">
-                                <button type="button" class="icon-btn" data-seek="-5" aria-label="5秒戻る" title="5秒戻る"><?= icon('replay_5') ?></button>
-                                <button type="button" class="icon-btn icon-btn--play" data-play aria-label="再生" title="再生（Space）"><?= icon('play_arrow', 'icon--fill') ?></button>
-                            </div>
-                            <button type="button" class="tab-beat-tap__pad" data-bpm-tap aria-label="BPM計測" title="BPM計測（拍に合わせてタップ）"><?= icon('touch_app') ?><span>拍をタップ</span><span class="tab-beat-tap__sum" data-bpm-tap-sum aria-live="polite"></span></button>
-                            <?php // 初めての人向け: アイコンだけでは「叩くもの」と伝わらないので、タップ面に文字を入れる。開始位置は ③ で手動で合わせる ?>
-                        </div>
-                        <label class="field">拍子 <input type="number" data-set="beats" min="1" max="16" step="1" inputmode="numeric"></label>
-                        <label class="field">分割
-                            <select data-set="steps">
-                                <?php foreach ([1 => '4分', 2 => '8分', 3 => '3連', 4 => '16分', 6 => '6連', 8 => '32分'] as $v => $label): ?>
-                                    <option value="<?= $v ?>"><?= $label ?></option>
-                                <?php endforeach; ?>
-                            </select>
-                        </label>
-                    </div>
-                    <div class="tab-step__actions"><button type="button" class="btn btn--primary" data-setup-next>次へ</button></div>
-                </div>
-            </li>
             <li class="tab-step" data-step="start">
                 <button type="button" class="tab-step__head" aria-expanded="false" aria-controls="tab-step-start">
-                    <span class="tab-step__mark" data-step-mark>3</span>
+                    <span class="tab-step__mark" data-step-mark>2</span>
                     <span class="tab-step__title">開始位置</span>
                     <span class="tab-step__sum muted small" data-step-sum></span>
                     <?= icon('expand_more', 'tab-step__chev') ?>
@@ -878,18 +830,66 @@ render_header($tab['title'] . ' ' . $tab['part'], 'lives');
                             <button type="button" class="icon-btn" data-offset-now aria-label="現在位置" title="現在位置"><?= icon('my_location') ?></button>
                         </span>
                     </label>
-                    <?php // 後半の確認: 曲頭を合わせたあと、曲の後半をメトロノーム付きで鳴らして BPM を詰める（BPM がわずかに違うと、曲頭は合っても後半でずれる） ?>
-                    <div class="tab-late" data-late-check>
-                        <p class="tab-late__head">後半の確認 <span class="tab-late__bpm">BPM <output data-bpm-now></output></span></p>
-                        <div class="tab-step__mini tab-step__mini--fit">
-                            <button type="button" class="btn" data-bpm-step="-0.1" aria-label="BPM -0.1">−0.1</button>
-                            <button type="button" class="btn" data-bpm-step="-0.01" aria-label="BPM -0.01">−0.01</button>
-                            <button type="button" class="icon-btn icon-btn--play" data-late-play aria-label="後半から確認" title="後半から確認（メトロノーム付き）"><?= icon('fast_forward') ?></button>
-                            <button type="button" class="icon-btn icon-btn--play" data-play aria-label="再生" title="再生（Space）"><?= icon('play_arrow', 'icon--fill') ?></button>
-                            <button type="button" class="btn" data-bpm-step="0.01" aria-label="BPM +0.01">+0.01</button>
-                            <button type="button" class="btn" data-bpm-step="0.1" aria-label="BPM +0.1">+0.1</button>
+                    <div class="tab-step__actions"><button type="button" class="btn btn--primary" data-setup-next>次へ</button></div>
+                </div>
+            </li>
+            <li class="tab-step" data-step="tempo">
+                <button type="button" class="tab-step__head" aria-expanded="false" aria-controls="tab-step-tempo">
+                    <span class="tab-step__mark" data-step-mark>3</span>
+                    <span class="tab-step__title">テンポ</span>
+                    <span class="tab-step__sum muted small" data-step-sum></span>
+                    <?= icon('expand_more', 'tab-step__chev') ?>
+                </button>
+                <div class="tab-step__body" id="tab-step-tempo" hidden>
+                    <div class="tab-step__fields">
+                        <label class="field tab-step__wide">BPM
+                            <span class="tab-settings__row">
+                                <input type="number" data-set="bpm" min="20" max="400" step="0.01" inputmode="decimal">
+                                <!-- 自動検知: 手元のファイルを開いているときだけ（YouTube の音はブラウザから読めない） -->
+                                <button type="button" class="icon-btn" data-bpm-detect aria-label="BPM自動検知" title="BPM自動検知（ファイル）" disabled><?= icon('graphic_eq') ?></button>
+                                <?php // AI 推定: 記憶による推定なので、候補として出して、押したときだけ反映する ?>
+                                <?php if (claude_enabled()): ?>
+                                    <button type="button" class="icon-btn" data-search-open="bpm_ai" aria-label="BPM AI推定" title="BPM AI推定"><?= icon('auto_awesome') ?></button>
+                                <?php endif; ?>
+                            </span>
+                            <?php // 微調整: 押すたびに加減。押し続けると連続で変わる（assets/tab.js の BPM 微調整） ?>
+                            <span class="tab-bpm-steps" role="group" aria-label="BPM調整">
+                                <?php foreach ([-1, -0.1, -0.01, 0.01, 0.1, 1] as $n): ?>
+                                    <button type="button" class="tab-chip" data-bpm-step="<?= $n ?>"><?= $n > 0 ? '+' : '−' ?><?= abs($n) ?></button>
+                                <?php endforeach; ?>
+                            </span>
+                        </label>
+                        <?php // BPM 計測: 曲を流しながら拍を叩き続ける → 叩いた全部の拍から BPM を出す（叩くほど正確）。小節の頭を合わせる「タップ」とは別 ?>
+                        <?php // 再生・5秒戻しは data-play / data-seek なので、root のクリック処理（assets/tab.js）がそのまま動かす ?>
+                        <div class="tab-beat-tap tab-step__wide">
+                            <div class="tab-step__mini">
+                                <button type="button" class="icon-btn" data-seek="-5" aria-label="5秒戻る" title="5秒戻る"><?= icon('replay_5') ?></button>
+                                <button type="button" class="icon-btn icon-btn--play" data-play aria-label="再生" title="再生（Space）"><?= icon('play_arrow', 'icon--fill') ?></button>
+                            </div>
+                            <button type="button" class="tab-beat-tap__pad" data-bpm-tap aria-label="BPM計測" title="BPM計測（拍に合わせてタップ）"><?= icon('touch_app') ?><span>拍をタップ</span><span class="tab-beat-tap__sum" data-bpm-tap-sum aria-live="polite"></span></button>
+                            <?php // 初めての人向け: アイコンだけでは「叩くもの」と伝わらないので、タップ面に文字を入れる。開始位置は ② で手動で合わせる ?>
                         </div>
-                        <p class="tab-step__hint muted small">クリックが遅れる → ＋　先に鳴る → −</p>
+                        <?php // 後半の確認: 曲の後半をメトロノーム付きで鳴らして BPM を詰める（BPM がわずかに違うと、曲頭は合っても後半でずれる）。② で曲頭を合わせたあとに使う ?>
+                        <div class="tab-late tab-step__wide" data-late-check>
+                            <p class="tab-late__head">後半の確認 <span class="tab-late__bpm">BPM <output data-bpm-now></output></span></p>
+                            <div class="tab-step__mini tab-step__mini--fit">
+                                <button type="button" class="btn" data-bpm-step="-0.1" aria-label="BPM -0.1">−0.1</button>
+                                <button type="button" class="btn" data-bpm-step="-0.01" aria-label="BPM -0.01">−0.01</button>
+                                <button type="button" class="icon-btn icon-btn--play" data-late-play aria-label="後半から確認" title="後半から確認（メトロノーム付き）"><?= icon('fast_forward') ?></button>
+                                <button type="button" class="icon-btn icon-btn--play" data-play aria-label="再生" title="再生（Space）"><?= icon('play_arrow', 'icon--fill') ?></button>
+                                <button type="button" class="btn" data-bpm-step="0.01" aria-label="BPM +0.01">+0.01</button>
+                                <button type="button" class="btn" data-bpm-step="0.1" aria-label="BPM +0.1">+0.1</button>
+                            </div>
+                            <p class="tab-step__hint muted small">クリックが遅れる → ＋　先に鳴る → −</p>
+                        </div>
+                        <label class="field">拍子 <input type="number" data-set="beats" min="1" max="16" step="1" inputmode="numeric"></label>
+                        <label class="field">分割
+                            <select data-set="steps">
+                                <?php foreach ([1 => '4分', 2 => '8分', 3 => '3連', 4 => '16分', 6 => '6連', 8 => '32分'] as $v => $label): ?>
+                                    <option value="<?= $v ?>"><?= $label ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </label>
                     </div>
                     <div class="tab-step__actions"><button type="button" class="btn btn--primary" data-setup-next>次へ</button></div>
                 </div>
@@ -1120,8 +1120,8 @@ render_header($tab['title'] . ' ' . $tab['part'], 'lives');
             <ol class="tab-guide__steps">
                 <li><b><?= icon('edit') ?> 編集</b>を開くと、上に<b>準備</b>が出る</li>
                 <li><b>① 音源</b>: YouTube の URL（無ければ「音源なし」）</li>
-                <li><b>② テンポ</b>: BPM・拍子・分割</li>
-                <li><b>③ 開始位置</b>: 1小節目の頭で止めて <?= icon('my_location') ?></li>
+                <li><b>② 開始位置</b>: 1小節目の頭で止めて <?= icon('my_location') ?></li>
+                <li><b>③ テンポ</b>: BPM・拍子・分割</li>
                 <li><b>④ 入力</b>: マスを選んで<b>画面内キーボード</b>で入力</li>
                 <li><b><?= icon('save') ?> 保存</b> → <b><?= icon('school') ?> 練習</b></li>
             </ol>
@@ -1164,6 +1164,8 @@ render_header($tab['title'] . ' ' . $tab['part'], 'lives');
     <!-- スマホ用のフレットパッド。マスを選んでいる間だけ画面下に出る -->
     <!-- 画面内キーボード（JS が作る。編集モードでマスを選んでいる間だけ。スマホは下、広い画面は右の横） -->
     <div class="tab-pad" data-pad hidden></div>
+    <?php // 練習中のミニバー（スマホ幅の練習画面だけ画面の下に固定。中身は JS が編集中のミニバーと同じものを作る。出し分けは tab.css の .tab-pad--practice） ?>
+    <div class="tab-pad tab-pad--practice" data-practice-mini></div>
 </div>
 
 <script src="<?= asset_url('assets/tab.js') ?>" defer></script>

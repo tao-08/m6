@@ -1224,6 +1224,8 @@ function setupBackButton() {
   if (document.querySelector('meta[name="back-button"]')?.content === 'off') items = [];
   // タイムテーブル作成の編集画面は、元に戻す / やり直すを左下に浮かせるので戻るボタンは出さない
   if (document.querySelector('[data-tt-builder]')) items = [];
+  // TAB の練習・編集画面（[data-tab]）も出さない: 「拍をタップ」やマーカー追加の上に被る。戻るのは画面上のパンくず（楽曲データベース / 曲名）でできる
+  if (document.querySelector('[data-tab]')) items = [];
   save(SHOWN, items.map((t) => ({ url: t.url, title: t.title })));
   if (!items.length && !before.length) return;
   const same = (a, b) => keyOf(a.url) === keyOf(b.url) && a.title === b.title;

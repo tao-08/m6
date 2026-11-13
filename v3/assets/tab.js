@@ -1150,7 +1150,7 @@
     metroReset();
     updateUnsyncBtn();
     onClockChange();
-    updateSetup(); // 音源が変わると、準備ステップの ①（音源）③（開始位置が要るか）の判定が変わる
+    updateSetup(); // 音源が変わると、準備ステップの ①（音源）②（開始位置が要るか）の判定が変わる
   }
 
   /*
@@ -1202,7 +1202,7 @@
 
   function onClockChange() {
     const on = clock.playing || counting;
-    // 再生ボタンは2つある（操作バーと、準備ステップ ③ のミニ操作）。$('[data-play]') は DOM で先に出てくる1つ目しか返さないので、
+    // 再生ボタンは2つある（操作バーと、準備ステップ ② ③ のミニ操作）。$('[data-play]') は DOM で先に出てくる1つ目しか返さないので、
     // $$（= querySelectorAll）で全部に反映する。片方だけ「再生」のまま、のような食い違いを防ぐ
     const label = on ? '一時停止' : '再生';
     $$('[data-play]').forEach((btn) => {
@@ -1947,11 +1947,11 @@
     if (!btn || !root.contains(btn)) return;
     const d = btn.dataset;
     if (d.play !== undefined) togglePlay();
-    else if (d.restart !== undefined) { // 最初から: 止めて 0 秒に戻し、そのまま再生（カウントインがあれば鳴らしてから）
-      ensureAudio();
+    else if (d.restart !== undefined) { // 最初から: 止めて「開始位置の 1小節前」に戻し、そのまま再生（カウントインがあれば鳴らしてから）
+      ensureAudio();                    // 0 秒まで戻すと、開始位置が曲の後ろ（例: 25.9 秒）のとき、譜面が動き出すまで長く待つため。音源なし・開始位置 0 は従来どおり 0 秒
       if (counting) cancelCountIn();
       clock.pause();
-      seekTo(0);
+      seekTo(clock.kind === 'none' ? 0 : Math.max(0, st.offsetMs / 1000 - st.beats * 60 / st.bpm));
       if (metro.count > 0 && audioCtx) startCountIn(); else clock.play();
     }
     else if (d.seek !== undefined) seekTo(clock.time() + Number(d.seek));
@@ -2409,6 +2409,7 @@
    *   5秒戻し・再生・速度・選択小節リピート だけを、キーボードの一番上に置く。
    *   再生と5秒戻しは data-play / data-seek を付けるだけで、root のクリック処理（上の root.addEventListener('click')）が拾って動かす。
    *   速度とリピートは、下の pad のクリック処理（data-kb の rate / loopbar）で動かす。
+   *   同じミニバーを、練習中（編集でない）のスマホ幅では画面の下にも固定で出す（renderPracticeBar。ボタン・CSS・動きは共通）。
    */
   /** 速度の段階（YouTube は 0.9 倍が無いので、ミニバーは 3 段だけ） */
   const MINI_RATES = [1, 0.75, 0.5];
@@ -2416,19 +2417,31 @@
   function effectiveRate() {
     return clock && clock.kind === 'yt' ? clock.rate : currentRate();
   }
-  /** ミニバーの速度ボタン: 「×0.75」のように現在の速度を出す。元の速度（×1）のときだけ、色を付けない */
+  /** ミニバーの速度ボタン: 「×0.75」のように現在の速度を出す。元の速度（×1）のときだけ、色を付けない
+   *  ミニバーは 2 つある（編集中のキーボードの上と、練習中の画面下）ので、$$ で全部に反映する */
   function syncMiniRate() {
-    const btn = $('[data-mini-rate]', pad);
-    if (!btn) return; // ミニバーを作る前（起動の途中）は何もしない
+    const btns = $$('[data-mini-rate]');
+    if (!btns.length) return; // ミニバーを作る前（起動の途中）は何もしない
     const r = effectiveRate();
-    btn.textContent = '速度×' + Number(r.toFixed(2)); // Number(...) で「0.50」→「0.5」のように末尾の 0 を落とす。「×1」だけでは速度と伝わらないので「速度」を付ける
-    btn.classList.toggle('is-active', Math.abs(r - 1) >= 0.01);
+    const text = '速度×' + Number(r.toFixed(2)); // Number(...) で「0.50」→「0.5」のように末尾の 0 を落とす。「×1」だけでは速度と伝わらないので「速度」を付ける
+    btns.forEach((btn) => {
+      btn.textContent = text;
+      btn.classList.toggle('is-active', Math.abs(r - 1) >= 0.01);
+    });
   }
   /** 速度ボタンを押すたび、1 → 0.75 → 0.5 → 1 …と、いまより遅い次の段階へ（段階の間にいるときも、次に遅い段階へ） */
   function cycleMiniRate() {
     const r = effectiveRate();
     const rate = r > MINI_RATES[1] + 0.01 ? MINI_RATES[1] : r > MINI_RATES[2] + 0.01 ? MINI_RATES[2] : 1;
     setPracticeBpm(rate === 1 ? null : Math.round(st.bpm * rate * 10) / 10);
+  }
+  /** ミニバーの 1小節リピート: リピート中なら解除、そうでなければ 1 小節をリピート（再生は始めない）。
+   *  繰り返す小節 = 編集中は選択中の小節 / 練習中は選択が無いので、いま再生している小節（開始位置より前なら 1小節目） */
+  function toggleMiniLoop() {
+    if (loop.a !== null && loop.b !== null) { setLoop(null, null); return; }
+    const bar = editMode && sel ? sel.b : Math.max(0, barAt(clock.time()));
+    setLoop(starts[bar], starts[bar + 1]);
+    seekTo(starts[bar]);
   }
   function renderMiniBar() {
     // data-kb を付けずに作りたいので、kbIcon で作ってから data-kb を外し、必要な属性だけ付け直す
@@ -2523,6 +2536,26 @@
     updateAbButtons();
     updateSaveKey();  // 作ったばかりの保存ボタンを、いまの未保存・保存中の状態に合わせる
   }
+  /** 練習中のミニバー（スマホ幅だけ画面の下に固定。tab.css の .tab-pad--practice）: 編集中のミニバーと同じ並び・ボタン。
+   *  練習画面は操作の枠（.tab-bar）が縦に長く、譜面までスクロールすると再生・速度が画面の外に出てしまうため。
+   *  再生・5秒戻しは data-play / data-seek なので root のクリック処理が拾う。速度・リピートはここで動かす（pad の中ではないので、pad の処理は届かない） */
+  const practiceBar = $('[data-practice-mini]');
+  function renderPracticeBar() {
+    if (!practiceBar) return;
+    const mini = renderMiniBar();
+    mini.classList.add('tab-pad__mini');
+    const loopBtn = $('[data-mini-loop]', mini);
+    loopBtn.title = '再生中の小節をリピート'; // 編集中は「選択小節」だが、練習中は選択が無いので文言を変える
+    loopBtn.setAttribute('aria-label', '再生中の小節をリピート');
+    practiceBar.replaceChildren(mini);
+    practiceBar.addEventListener('click', (e) => {
+      const kind = e.target.closest('[data-kb]')?.dataset.kb;
+      if (kind === 'rate') cycleMiniRate();
+      else if (kind === 'loopbar') toggleMiniLoop();
+    });
+    syncMiniRate();
+    updateAbButtons();
+  }
   /** ボタンの押せる・押せない・押している状態を、今の状態に合わせる */
   function updateKeyboard() {
     if (!pad.firstChild) return;
@@ -2578,10 +2611,7 @@
     else if (kind === 'tens') kb.tens = kb.tens === Number(val) ? 0 : Number(val); // 同じキーをもう一度で取り消し、もう一方のキーなら切り替え
     else if (kind === 'save') save(); // 保存（スマホは保存バーの代わり）。save は下の方で宣言した関数（function 宣言は上に引き上げられるので、クリックの時点では使える）
     else if (kind === 'rate') cycleMiniRate(); // ミニバー: マスを選んでいなくても動かす
-    else if (kind === 'loopbar') { // ミニバー: リピート中なら解除、そうでなければ選択中の小節をリピート（再生は始めない）
-      if (loop.a !== null && loop.b !== null) setLoop(null, null);
-      else if (sel) { setLoop(starts[sel.b], starts[sel.b + 1]); seekTo(starts[sel.b]); }
-    }
+    else if (kind === 'loopbar') toggleMiniLoop(); // ミニバー: リピート中なら解除、そうでなければ選択中の小節をリピート（再生は始めない）
     else if (kind === 'close') { sel = null; markSel(); } // 閉じる（×）: マスの選択を外す = キーボードが消える（PC の Esc と同じ）
     else if (sel) {
       lastDigit = null;
@@ -2651,7 +2681,7 @@
   };
   inputs.part.value = st.part;
   inputs.bpm.value = String(st.bpm);
-  /** ③ の「後半の確認」に出す、いまの BPM（② の入力欄と同じ値。BPM が変わる所から呼ぶ） */
+  /** ③ の「後半の確認」に出す、いまの BPM（③ の入力欄と同じ値。BPM が変わる所から呼ぶ） */
   const bpmNowEl = $('[data-bpm-now]');
   function syncBpmNow() { bpmNowEl.textContent = String(st.bpm); }
   syncBpmNow();
@@ -3077,7 +3107,7 @@
   /* ---- BPM 計測: 曲を流しながら拍を叩き続ける。叩いた全部から BPM を出す（叩くほど正確）。小節の頭を合わせる「タップ」とは別 ----
    *   時刻は、再生中なら曲の時刻（clock.time()。再生速度が 1 でなくても曲そのものの BPM が出る）、止まっていれば壁時計（performance.now()）
    *   click は指を離した時に起きるので、押した瞬間に起きる pointerdown で測る。キーボード（Enter）は click の detail が 0 なので、そちらで拾う
-   *   開始位置はここでは決めない（③ で手動で合わせる。曲の頭は無音・ブレスなどで、叩いた 1 拍目と一致しないことが多いため） */
+   *   開始位置はここでは決めない（② で手動で合わせる。曲の頭は無音・ブレスなどで、叩いた 1 拍目と一致しないことが多いため） */
   const bpmTapBtn = $('[data-bpm-tap]');
   const bpmTapSum = $('[data-bpm-tap-sum]');
   let bpmTaps = { mode: 'wall', times: [] }; // mode: 'song'（曲の時刻）| 'wall'（壁時計）
@@ -3226,7 +3256,7 @@
   pbpmEl.addEventListener('blur', syncPbpmField); // 入力が終わったら、実際に効いた BPM（YouTube で丸められたとき）に直す
 
   /* ---------------------------------------------------------------
-   * 準備ステップ（編集モードの上に出る ① 音源 → ② テンポ → ③ 開始位置 → ④ 入力）
+   * 準備ステップ（編集モードの上に出る ① 音源 → ② 開始位置 → ③ テンポ → ④ 入力）
    *   初めての人が「何から手を付けるか」で迷わないための手順。HTML は tab.php の <details data-setup>。
    *   ・完了の判定は updateSetup() がまとめて行う。「いまの設定の値」から決めるので、設定を変えれば自動で ✓ が付く
    *     （値から決められないもの = 「次へ」「音源なし」を押した、は「フラグ」として、この端末の localStorage に覚えておく。
@@ -3236,14 +3266,14 @@
    *   ・見出しのボタンを押すとステップが開く。1つ開くと他は閉じる（アコーディオン）
    * --------------------------------------------------------------- */
   const setupEl = $('[data-setup]');
-  const SETUP_ORDER = ['src', 'tempo', 'start', 'input'];
+  const SETUP_ORDER = ['src', 'start', 'tempo', 'input'];
   const stepEls = {};
   SETUP_ORDER.forEach((n) => { stepEls[n] = setupEl ? $(`[data-step="${n}"]`, setupEl) : null; });
   const dotsEl = setupEl ? $('[data-setup-dots]', setupEl) : null;
 
   // フラグ（「次へ」「音源なし」を押したか）。localStorage は使えない環境（プライベートモード等）もあるので、必ず try/catch で包む
   const setupKey = `tabSetup:${D.tab_id}`;
-  const setupFlags = { src: false, tempo: false, start: false };
+  const setupFlags = { src: false, start: false, tempo: false };
   try {
     const saved = JSON.parse(localStorage.getItem(setupKey) || '{}');
     Object.keys(setupFlags).forEach((k) => { setupFlags[k] = !!(saved && saved[k]); }); // 知っている名前だけ取り出す（壊れた値は無視）
@@ -3330,7 +3360,7 @@
   /**
    * name のステップだけ開く（null なら全部閉じる）。aria-expanded は、スクリーンリーダーに「いま開いている」と伝える属性
    * scroll = true（ボタンを押して開いたとき）: 開いたステップが画面に見える位置までスクロールする。
-   *   ③ 開始位置だけは、ステップを画面の上端に寄せる（block: 'start'）: すぐ下にある動画も一緒に見えて、動画を見ながら位置を合わせられるため。
+   *   ② 開始位置だけは、ステップを画面の上端に寄せる（block: 'start'）: すぐ下にある動画も一緒に見えて、動画を見ながら位置を合わせられるため。
    *   ほかは 'nearest'（すでに見えていれば動かさない） */
   function openStep(name, scroll) {
     SETUP_ORDER.forEach((n) => {
@@ -3346,7 +3376,7 @@
       requestAnimationFrame(() => stepEls[name].scrollIntoView({ block: name === 'start' ? 'start' : 'nearest', behavior: reduceMotion ? 'auto' : 'smooth' }));
     }
   }
-  /** 「次へ」で次に開くステップ。③ 開始位置は、音源が無いと要らない（自動で完了）ので飛ばす。最後まで来たら null（全部閉じる） */
+  /** 「次へ」で次に開くステップ。② 開始位置は、音源が無いと要らない（自動で完了）ので飛ばす。最後まで来たら null（全部閉じる） */
   function nextAfter(name) {
     const state = setupState();
     for (let i = SETUP_ORDER.indexOf(name) + 1; i < SETUP_ORDER.length; i++) {
@@ -3392,7 +3422,7 @@
         return;
       }
       const d = btn.dataset;
-      if (d.setupSkipSrc !== undefined) { // ① 音源なし: ① を完了にして ② へ
+      if (d.setupSkipSrc !== undefined) { // ① 音源なし: ① を完了にして次（音源が無いので ③ テンポ）へ
         setSetupFlag('src');
         updateSetup();
         openStep(nextAfter('src'), true);
@@ -3698,6 +3728,7 @@
   updateAbButtons();
   syncMetroUi();
   renderKeyboard();
+  renderPracticeBar();
   updatePartialUi();
   renderNotes();
   renderMarkers();

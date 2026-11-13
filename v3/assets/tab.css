@@ -195,6 +195,9 @@ details[open] > .tab-summary > .tab-summary__chev { transform: rotate(180deg); }
 .tab-video { aspect-ratio: 16 / 9; width: min(100%, 420px); border-radius: var(--r-md); overflow: hidden; background: #000;
   position: sticky; top: 70px; z-index: 6; } /* スクロールしてもヘッダーの下に残る（スマホは下の media で小さくする） */
 @media (max-width: 600px) { .tab-video { width: min(100%, 240px); } }
+/* スマホ幅で画面内キーボードを開いて入力している間は、貼り付いた動画が 1小節目の入力欄を隠すので、動画は譜面と一緒に流す（音は鳴り続ける）。
+   ドラッグで浮かせた動画（.is-float）は、ユーザーが置いた場所なのでそのまま */
+@media (max-width: 899px) { body.has-tab-pad .tab-video:not(.is-float) { position: static; } }
 .tab-bpm-steps { display: flex; gap: 6px; margin-top: 6px; }
 .tab-bpm-steps .tab-chip { flex: 1 1 0; min-width: 0; padding-inline: 4px; touch-action: manipulation; user-select: none; -webkit-user-select: none; font-variant-numeric: tabular-nums; } /* 6個（±1 / ±0.1 / ±0.01）が375px幅でも1行に収まるよう、均等に分けて余白を詰める */
 @media (pointer: coarse) { .tab-bpm-steps .tab-chip { min-height: 44px; } }
@@ -241,7 +244,7 @@ details[open] > .tab-summary > .tab-summary__chev { transform: rotate(180deg); }
 .tab.is-editing [data-practice-only] { display: none !important; }
 .tab:not(.is-editing) [data-edit-only] { display: none !important; }
 
-/* ===== 準備ステップ（編集モードの上。① 音源 → ② テンポ → ③ 開始位置 → ④ 入力）===== */
+/* ===== 準備ステップ（編集モードの上。① 音源 → ② 開始位置 → ③ テンポ → ④ 入力）===== */
 /* app.css の汎用 .tab（日程タブ）の「太字・薄い色・折り返し禁止」が子へ継承されるので（このファイルの .tab-head__text のコメント参照）、この枠の中では普通に戻す */
 .tab-setup, .tab-more { padding: 0 16px; white-space: normal; font-weight: 400; font-size: var(--fs-md); color: var(--text); }
 .tab-setup__dots { display: inline-flex; gap: 5px; margin-left: 4px; }
@@ -265,7 +268,7 @@ details[open] > .tab-summary > .tab-summary__chev { transform: rotate(180deg); }
 .tab-step__wide { grid-column: 1 / -1; }
 .tab-step__hint { display: flex; align-items: center; gap: 4px; margin: 0; }
 .tab-step__hint .icon { font-size: 18px; color: var(--accent); }
-.tab-step__mini { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; } /* ③ の開始位置の微調整 / 確認 / 再生 */
+.tab-step__mini { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; } /* ② の開始位置の微調整 / 確認 / 再生（③ の後半の確認も同じ並び） */
 .tab-step__mini .btn { min-width: 56px; padding-inline: 8px; font-variant-numeric: tabular-nums; }
 /* ± 4個 + 確認 + 再生 の 6個並び: 375px 幅だと最後の 1個だけ次の行に落ちるので、1行に均等に収める */
 .tab-step__mini--fit { flex-wrap: nowrap; gap: 4px; }
@@ -274,11 +277,11 @@ details[open] > .tab-summary > .tab-summary__chev { transform: rotate(180deg); }
 .tab.is-help .tab-step__mini.tab-step__mini--fit .btn[aria-label]::after { content: none; }
 /* ボタン名を表示中は「開始位置から確認」などの名前でアイコンのボタンが広がるので、± は文字を小さくして 1行に収める */
 .tab.is-help .tab-step__mini--fit .btn { padding-inline: 0; font-size: var(--fs-sm); }
-/* ③ の後半の確認: 上の開始位置の ±（秒）と見た目が似るので、区切り線と見出し（現在の BPM 付き）で別物だと分かるようにする */
-.tab-late { display: grid; gap: 8px; padding-top: 12px; border-top: 1px solid var(--border); }
+/* ③ の後半の確認（拍をタップと、拍子・分割の間）: ② の開始位置の ±（秒）と見た目が似るので、上下の区切り線と見出し（現在の BPM 付き）で別物だと分かるようにする */
+.tab-late { display: grid; gap: 8px; padding-block: 12px; border-block: 1px solid var(--border); }
 .tab-late__head { display: flex; justify-content: space-between; align-items: baseline; margin: 0; font-weight: 600; }
 .tab-late__bpm { font-variant-numeric: tabular-nums; }
-/* ② の BPM 計測: 再生・5秒戻し / 大きなタップ面。連打するので、拡大・文字選択・長押しメニューが出ないようにする */
+/* ③ の BPM 計測: 再生・5秒戻し / 大きなタップ面。連打するので、拡大・文字選択・長押しメニューが出ないようにする */
 .tab-beat-tap { display: grid; gap: 8px; }
 .tab-beat-tap .btn { min-height: 44px; }
 .tab-beat-tap__pad { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; height: 72px; padding: 0 12px;
@@ -547,10 +550,25 @@ details[open] > .tab-summary > .tab-summary__chev { transform: rotate(180deg); }
   /* 保存のバー（.tab-actions）はキーボードの間は隠す: キーボードの上に浮かせると、選んだ小節を隠していた。
      保存はキーボードの「保存」ボタン（tab.js の data-kb="save"）でする。TAB の削除はバーの中なので、キーボードを閉じる（×）と出てくる */
   body.has-tab-pad .tab-actions { display: none; }
-  /* 入力に集中できるよう・押し間違えないよう、左下の「戻る」ボタンを隠す */
-  body.has-tab-pad .back-fabs { display: none; }
   /* ページの一番下までスクロールしたとき、最後の小節がキーボードの後ろに隠れないよう、下に余白を足す */
   body.has-tab-pad { padding-bottom: calc(var(--tab-pad-h, 0px) + 16px); }
+}
+/* ===== 練習中のミニバー（.tab-pad--practice。tab.js の renderPracticeBar）=====
+   スマホ幅（〜899px）の練習画面だけ、画面の下に固定で出す: 5秒戻し・再生・速度・1小節リピート（編集中のミニバーと同じボタン。上の .tab-pad__mini の指定を使い回す）。
+   編集中（.is-editing）と 900px 以上では出さない（900px 以上は操作の枠が画面に収まる）。
+   ・760px 以下: 下のナビ（.nav。画面下に固定）の上に浮かせる。値は app.css のほかの浮かぶ部品（.back-fabs など）と同じ 76px
+   ・761〜899px: ナビはヘッダーの中なので、画面の下に近く浮かせる
+   ・body の下余白: 本文の一番下がバーに隠れないように足す（編集中のキーボードの body.has-tab-pad と同じ考え方）
+   ミニバーの行は、キーボード用の sticky・背景・区切り線を外す（バー自身が背景・枠を持つ） */
+.tab-pad--practice:not([hidden]) { display: none; }
+.tab-pad--practice .tab-pad__mini { position: static; margin: 0; padding: 0; background: none; border: 0; }
+@media (max-width: 899px) {
+  .tab:not(.is-editing) .tab-pad--practice:not([hidden]) { display: grid; left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom)); padding: 6px;
+    border-width: 1px; border-radius: var(--r-lg); max-height: none; overflow: visible; }
+  body:has(.tab:not(.is-editing) .tab-pad--practice) { padding-bottom: calc(72px + env(safe-area-inset-bottom)); }
+}
+@media (max-width: 760px) {
+  .tab:not(.is-editing) .tab-pad--practice:not([hidden]) { bottom: calc(76px + env(safe-area-inset-bottom)); }
 }
 /* 下のナビ（.nav）は app.css が 760px 以下で画面の下に固定している。キーボードと重なるので隠す（761px 以上のナビは上のヘッダーの中なので隠さない） */
 @media (max-width: 760px) {
