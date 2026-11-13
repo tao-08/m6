@@ -1169,7 +1169,7 @@
     const label = unsynced ? '同期' : '同期解除';
     unsyncBtn.setAttribute('aria-label', label);
     unsyncBtn.title = label;
-    $('.icon', unsyncBtn).textContent = unsynced ? 'link_off' : 'link';
+    $('.icon', unsyncBtn).textContent = unsynced ? 'link' : 'link_off'; // 絵は「押すと起きること」（ラベルと同じ向き）。同期中 = 切れた鎖（解除する）、解除中 = 鎖（同期に戻す）
   }
   function setUnsync(on) {
     if (on === unsynced || srcKind === 'none') return;
