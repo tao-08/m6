@@ -793,5 +793,92 @@ foreach ($srcFiles as $f) {
 }
 check('アイコン名: lib/icon_names.php に足し忘れなし', $iconMissing, []);
 
+// ---------------------------------------------------------------------
+//  スタ連の日程調整（lib/sched.php の計算部分。DB を使わない関数だけ）
+// ---------------------------------------------------------------------
+echo "\nsched\n";
+if (!function_exists('grade_of')) {
+    // lib/bootstrap.php の関数（テスト用の仮のもの。年度を 2026 に固定）
+    function grade_of(?int $entryYear): ?int { return $entryYear === null ? null : 2026 - $entryYear + 1; }
+}
+require_once __DIR__ . '/../lib/sched.php';
+date_default_timezone_set('Asia/Tokyo');
+check('祝日: 2026 春分の日', isset(sched_holidays(2026)['2026-03-20']), true);
+check('祝日: 2026 秋分の日', isset(sched_holidays(2026)['2026-09-23']), true);
+check('祝日: 2026 国民の休日（敬老と秋分の間）', isset(sched_holidays(2026)['2026-09-22']), true);
+check('祝日: 2026 振替休日（5/3 が日曜 → 5/6）', isset(sched_holidays(2026)['2026-05-06']), true);
+check('祝日: 2027 成人の日（1月第2月曜）', isset(sched_holidays(2027)['2027-01-11']), true);
+check('曜日区分: 平日 / 土 / 日 / 祝', [sched_day_type('2026-11-20'), sched_day_type('2026-11-21'), sched_day_type('2026-11-22'), sched_day_type('2026-11-23')], [1, 3, 4, 4]);
+$ss = ['periods' => SCHED_DEFAULT_PERIODS, 'terms' => SCHED_DEFAULT_TERMS, 'breaks' => SCHED_DEFAULT_BREAKS, 'jo' => 3.0];
+check('学期: 秋の授業日 / 冬休み / 夏休み / 祝日', [sched_term_of('2026-11-20', $ss), sched_term_of('2026-12-28', $ss), sched_term_of('2026-08-10', $ss), sched_term_of('2026-11-03', $ss)], [2, null, null, null]);
+check('キャンパス: 選択 > 学年（1・2年 和泉 / 3年〜 駿河台）', [sched_member_campus(2, 2026), sched_member_campus(null, 2025), sched_member_campus(null, 2024), sched_member_campus(null, null)], [2, 1, 2, 1]);
+// 移動時間: 和泉キャンパス → 新宿（直線 約5.6km）は 30分、すぐ近くは徒歩 10分、座標なしは 30分
+$izumi = [35.670834, 139.648285];
+check('移動: 和泉 → 新宿駅あたり = 30分', sched_travel_estimate(sched_distance_km($izumi[0], $izumi[1], 35.6909, 139.7003)), 30);
+check('移動: 駿河台 → 神保町あたり = 10分', sched_travel_estimate(sched_distance_km(35.697712, 139.761398, 35.6959, 139.7577)), 10);
+check('移動: 座標なし = 30分 / 同じ場所 = 0分', [sched_travel_estimate(null), sched_travel_estimate(0.0)], [30, 0]);
+$tv = sched_travel_fn(['campus:和泉' => $izumi, 'studio:1' => [35.6909, 139.7003]], ['campus:和泉|studio:9' => 45]);
+check('移動: 上書きの表が優先 / 場所不明は0分', [$tv('campus:和泉', 'studio:9'), $tv(null, 'studio:1'), $tv('campus:和泉', 'studio:1')], [45, 0, 30]);
+// 遅刻の計算: 10:00 開始・120分。キャンパスの授業が 9:00-10:40、移動 30分 → 11:10 着 = 70分遅れ
+$t0 = 600;
+$zero = static fn($a, $b) => 0;
+$thirty = static fn($a, $b) => ($a === null || $b === null) ? 0 : 30;
+check('遅刻: 予定なし = 0分', sched_member_late([], $t0, 120, 'studio:1', $thirty, 0), 0);
+check('遅刻: 授業＋移動で70分遅れ（上限90分なら来られる）', sched_member_late([[540, 640, 'campus:和泉']], $t0, 120, 'studio:1', $thirty, 90), 70);
+check('遅刻: 上限30分なら来られない', sched_member_late([[540, 640, 'campus:和泉']], $t0, 120, 'studio:1', $thirty, 30), null);
+check('遅刻: 練習の途中で予定（早退は扱わない）', sched_member_late([[660, 700, null]], $t0, 120, 'studio:1', $zero, 90), null);
+check('遅刻: 練習の直後の予定は、移動の分だけかぶれば来られない', sched_member_late([[720, 800, 'campus:和泉']], $t0, 120, 'studio:1', $thirty, 90), null);
+check('遅刻: 練習の直後の予定でも、場所不明なら来られる', sched_member_late([[720, 800, null]], $t0, 120, 'studio:1', $thirty, 0), 0);
+// 候補: 2人・1日・10:00〜14:00 の 2時間。A は 11:00〜12:00 が埋まり → 12:00〜14:00 だけ全員そろう
+$d = '2026-11-21';
+$base = sched_day_abs($d);
+$cand = sched_candidates([
+    'dates' => [$d], 'day_start' => 600, 'day_end' => 840, 'length' => 120, 'late_max' => 0,
+    'members' => [1 => 'A', 2 => 'B'], 'busy' => [1 => [[$base + 660, $base + 720, null]]],
+    'studios' => [5 => ['place' => 'studio:5']], 'practices' => [], 'travel' => $zero,
+]);
+check('候補: 埋まりを避けた窓1つ', array_map(static fn($w) => [$w['from'], $w['to'], $w['starts']], $cand), [[720, 840, [720]]]);
+// 遅刻 OK（60分）にすると、10:00 開始（A が 12:00 着 = 120分遅れ）は無理、11:00 開始（60分遅れ）・11:30 開始（30分遅れ）はOK
+$cand = sched_candidates([
+    'dates' => [$d], 'day_start' => 600, 'day_end' => 840, 'length' => 120, 'late_max' => 60,
+    'members' => [1 => 'A', 2 => 'B'], 'busy' => [1 => [[$base + 600, $base + 720, null]]],
+    'studios' => [5 => ['place' => 'studio:5']], 'practices' => [], 'travel' => $zero,
+]);
+check('候補: 全員そろう枠が先、遅刻の枠は後', array_map(static fn($w) => [$w['from'], $w['late']], $cand), [[720, []], [690, [1 => 30]], [660, [1 => 60]]]);
+// 連続: 同じスタジオで 12:00 に終わる決定済みの練習（共通メンバー1 → ◎）
+$cand = sched_candidates([
+    'dates' => [$d], 'day_start' => 600, 'day_end' => 900, 'length' => 120, 'late_max' => 0,
+    'members' => [1 => 'A', 2 => 'B'], 'busy' => [1 => [[$base + 600, $base + 720, 'studio:5']]],
+    'studios' => [5 => ['place' => 'studio:5']], 'travel' => $zero,
+    'practices' => [['id' => 9, 'title' => 'X', 'status' => 3, 'date' => $d, 's' => $base + 600, 'e' => $base + 720, 'studio_id' => 5, 'members' => [1]]],
+]);
+check('候補: 連続◎ が先頭', [$cand[0]['from'], $cand[0]['adj'], $cand[0]['adj_with']], [720, 2, ['X']]);
+check('部屋: 定員 / 広さの目安 / 不明', [sched_room_fit(5, null, 5, 3.0), sched_room_fit(null, 12.0, 5, 3.0), sched_room_fit(null, null, 5, 3.0)], ['ok', 'small', 'unknown']);
+require_once __DIR__ . '/../lib/sched_ical.php';
+check('iCal URL: webcal → https / Google OK / 他のホストは不可 / ポート付きは不可', [
+    sched_ical_normalize('webcal://p12-caldav.icloud.com/published/2/abc'),
+    sched_ical_normalize('https://calendar.google.com/calendar/ical/x%40gmail.com/private-1/basic.ics') !== null,
+    sched_ical_normalize('https://evil.example.com/a.ics'),
+    sched_ical_normalize('https://calendar.google.com:8443/a.ics'),
+    sched_ical_normalize('http://calendar.google.com/a.ics'),
+], ['https://p12-caldav.icloud.com/published/2/abc', true, null, null, null]);
+check('iCal: 重なりをまとめる', sched_merge_spans([[60, 90], [0, 30], [20, 60]]), [[0, 90]]);
+// .ics の読み取り（vendor/ に sabre/vobject があるときだけ。GitHub Actions には vendor が無いので飛ばす）
+if (is_file(__DIR__ . '/../vendor/autoload.php')) {
+    require_once __DIR__ . '/../vendor/autoload.php';
+    $ics = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\n"
+        // 毎週土曜 10:00-12:00（JST）の繰り返し。2回目（11/28）は例外で削除（EXDATE）
+        . "BEGIN:VEVENT\r\nUID:a\r\nDTSTART;TZID=Asia/Tokyo:20261121T100000\r\nDTEND;TZID=Asia/Tokyo:20261121T120000\r\nRRULE:FREQ=WEEKLY;COUNT=3\r\nEXDATE;TZID=Asia/Tokyo:20261128T100000\r\nSUMMARY:バイト\r\nEND:VEVENT\r\n"
+        // 終日の予定（取り込まない）
+        . "BEGIN:VEVENT\r\nUID:b\r\nDTSTART;VALUE=DATE:20261122\r\nDTEND;VALUE=DATE:20261123\r\nSUMMARY:誕生日\r\nEND:VEVENT\r\n"
+        // 「空き」として登録した予定（取り込まない）
+        . "BEGIN:VEVENT\r\nUID:c\r\nDTSTART:20261122T030000Z\r\nDTEND:20261122T040000Z\r\nTRANSP:TRANSPARENT\r\nEND:VEVENT\r\n"
+        . "END:VCALENDAR\r\n";
+    $from = sched_day_abs('2026-11-20');
+    $got = array_map(static fn($s) => [sched_abs_to_dt($s[0]), sched_abs_to_dt($s[1])], sched_ical_parse($ics, $from, $from + 20 * 1440));
+    check('iCal: 繰り返し・例外日・終日・空き', $got, [['2026-11-21 10:00:00', '2026-11-21 12:00:00'], ['2026-12-05 10:00:00', '2026-12-05 12:00:00']]);
+}
+check('ics: 改行は CRLF・カンマはエスケープ',str_contains(sched_ics(1, 'A,B', $base + 600, $base + 720, '新宿', ''), "SUMMARY:A\\,B\r\n"), true);
+
 echo $failed ?"\n{$failed} 件失敗\n" : "\nすべて成功\n";
 exit($failed ? 1 : 0);

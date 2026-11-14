@@ -1,0 +1,114 @@
+/* =====================================================================
+ *  assets/sched.css — スタ連の日程調整（sched.php / sched_poll.php / sched_me.php / sched_settings.php）
+ * =====================================================================
+ *  角丸・文字サイズ・時間は app.css の :root のトークン（--r-* / --fs-* / --t-*）だけを使う（tests/css_tokens.php が見張っている）
+ *  マスの色は「埋まりの種類」ごとに決める:
+ *    NG（手入力）= アクセントの赤 / 授業 = 青 / カレンダー = 紫 / 練習 = 緑 / 仮予定の注意 = 黄の斜線
+ * ===================================================================== */
+
+.sch-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.sch-meta { margin: -8px 0 14px; }
+.sch-ok { color: var(--ok); }
+.sch-warn { color: var(--warn); }
+
+/* ---------- セクション（マイ予定・設定） ---------- */
+.sch-sec { display: grid; gap: 12px; margin-bottom: 16px; }
+.sch-sec__head { display: flex; align-items: center; gap: 6px; }
+.sch-sec__head .section-title { margin: 0; }
+.sch-row { display: flex; align-items: center; gap: 8px; }
+.sch-row--wrap { flex-wrap: wrap; }
+.sch-row .search { flex: 1; min-width: 0; }
+.sch-label { min-width: 4em; font-weight: 700; }
+
+/* ---------- 作成フォーム ---------- */
+.sch-members { display: grid; gap: 6px; }
+.sch-member-row { display: grid; grid-template-columns: minmax(0, 280px) auto; gap: 6px; align-items: center; }
+.sch-grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.sch-grid2 .field > * { min-width: 0; max-width: 100%; } /* 入力欄・選択欄が列の幅より広がって、スマホで横にはみ出さないように */
+.sch-studios { border: 0; padding: 0; margin: 0; display: grid; gap: 10px; }
+.sch-studios legend { padding: 0; margin-bottom: 6px; }
+.sch-area { border: 1px solid var(--border); border-radius: var(--r-md); padding: 8px 12px; display: grid; gap: 6px; }
+.sch-area__list { display: flex; flex-wrap: wrap; gap: 4px 16px; padding-left: 24px; }
+.sch-area__list .check { font-size: var(--fs-sm); }
+
+/* ---------- 仮決定・決定 ---------- */
+.sch-fixed { display: grid; gap: 8px; border-left: 4px solid var(--warn); margin-bottom: 14px; }
+.sch-fixed.is-final { border-left-color: var(--ok); }
+.sch-fixed__when { display: flex; align-items: center; gap: 6px; font-size: var(--fs-xl); }
+.sch-fixed__where { color: var(--muted); }
+.sch-fixed__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* ---------- 部員と回答 ---------- */
+.sch-people { display: grid; gap: 10px; margin-bottom: 18px; }
+.sch-me-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* ---------- 候補 ---------- */
+.sch-cands__head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.sch-cands__head .section-title { margin: 0; }
+.sch-sort { margin-bottom: 0; }
+.sch-list { display: grid; gap: 10px; margin: 12px 0; }
+.sch-cand { display: grid; gap: 6px; padding: 12px 14px; }
+.sch-cand.is-late { border-style: dashed; }
+.sch-cand__top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.sch-cand__date { font-size: var(--fs-lg); }
+.sch-cand__time { font-variant-numeric: tabular-nums; }
+.sch-cand__mid { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.sch-cand__studio { font-weight: 700; }
+.sch-cand__price { display: inline-flex; align-items: baseline; gap: 4px; flex-wrap: wrap; }
+.sch-cand__notes { display: flex; flex-wrap: wrap; gap: 4px; }
+.sch-cand__notes .pill { cursor: default; }
+.sch-cand__foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.sch-cand__acts { display: flex; gap: 6px; margin-left: auto; }
+.sch-cand .tag[data-tip] { cursor: help; }
+
+/* ---------- NG の時間のマス ---------- */
+.sch-weeknav { display: grid; grid-template-columns: 40px 1fr 40px; align-items: center; text-align: center; }
+.sch-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.sch-legend span { display: inline-flex; align-items: center; gap: 4px; }
+.sch-sw { display: inline-block; width: 12px; height: 12px; border-radius: var(--r-xs); border: 1px solid var(--border); }
+.sch-grid-wrap { overflow-x: auto; }
+.sch-grid { width: 100%; border-collapse: collapse; table-layout: fixed; user-select: none; -webkit-user-select: none; }
+.sch-grid th { font-size: var(--fs-2xs); font-weight: 700; color: var(--muted); white-space: pre-line; line-height: 1.2; padding: 2px; }
+.sch-grid thead th { position: sticky; top: 0; background: var(--surface); z-index: 1; }
+.sch-grid thead th.is-sun { color: var(--accent); }
+.sch-grid thead th.is-sat { color: var(--headliner); }
+.sch-grid tbody th { width: 40px; text-align: right; vertical-align: top; touch-action: pan-y; } /* 時刻の列はスクロールできる */
+.sch-grid td { height: 22px; border: 1px solid var(--border); border-top-style: dotted; padding: 0 2px; font-size: var(--fs-2xs); line-height: 1.1;
+  overflow: hidden; white-space: nowrap; text-overflow: ellipsis; touch-action: none; cursor: pointer; transition: background var(--t-fast); }
+.sch-grid tr.is-hour td { border-top-style: solid; }
+.sch-grid td.is-auto { cursor: not-allowed; color: var(--text); }
+.sch-grid td.is-ng, .sch-sw.is-ng { background: color-mix(in srgb, var(--accent) 55%, transparent); }
+.sch-grid td.is-class, .sch-sw.is-class { background: color-mix(in srgb, var(--headliner) 22%, transparent); }
+.sch-grid td.is-ical, .sch-sw.is-ical { background: color-mix(in srgb, var(--ba) 22%, transparent); }
+.sch-grid td.is-practice, .sch-sw.is-practice { background: color-mix(in srgb, var(--ok) 28%, transparent); }
+.sch-grid td.is-warn { background-image: repeating-linear-gradient(45deg, transparent 0 4px, color-mix(in srgb, var(--warn) 30%, transparent) 4px 6px); }
+
+/* ---------- 時間割 ---------- */
+.sch-tt { display: grid; gap: 8px; }
+.sch-tt__table { border-collapse: collapse; width: 100%; max-width: 420px; table-layout: fixed; }
+.sch-tt__table th { font-size: var(--fs-xs); color: var(--muted); padding: 4px; }
+.sch-tt__table tbody th { width: 52px; text-align: left; }
+.sch-tt__table tbody th small { display: block; font-size: var(--fs-2xs); font-weight: 400; }
+.sch-tt__table td { padding: 2px; }
+.sch-tt__cell { display: block; cursor: pointer; }
+.sch-tt__cell input { position: absolute; opacity: 0; pointer-events: none; } /* 本物のチェックは隠して、隣の span をマスに見せる */
+.sch-tt__cell span { display: block; height: 36px; border-radius: var(--r-sm); border: 1px solid var(--border); background: var(--surface-2);
+  transition: background var(--t-fast), border-color var(--t-fast); }
+.sch-tt__cell input:checked + span { background: color-mix(in srgb, var(--headliner) 40%, transparent); border-color: var(--headliner); }
+.sch-tt__cell input:focus-visible + span { box-shadow: var(--ring); }
+
+/* ---------- キャンパス・カレンダー ---------- */
+.sch-campus { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
+.sch-ical { display: flex; align-items: center; gap: 6px; margin: 0; }
+.sch-answer { margin: 0; }
+
+/* ---------- 設定 ---------- */
+.sch-travel td, .sch-travel th { text-align: center; white-space: nowrap; }
+.sch-studio-list { display: grid; gap: 10px; }
+.sch-studio { display: grid; gap: 4px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+.sch-room { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-left: 24px; font-size: var(--fs-sm); max-width: 360px; }
+
+@media (max-width: 560px) {
+  .sch-grid2 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+  .sch-cand__acts { width: 100%; justify-content: flex-end; }
+}

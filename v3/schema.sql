@@ -37,7 +37,7 @@ SET NAMES utf8mb4;
 -- まっさらな DB に流すと「Note: #1051 '〜' は不明な表です」が表の数だけ出るが、
 -- これは「消そうとした表が最初から無かった」というだけの“お知らせ”で、エラーではない。
 SET FOREIGN_KEY_CHECKS = 0;
-DROP TABLE IF EXISTS block_best, sheet_log, song_link_practice, song_link, song_part, song_work_primary, venue_image, song_catalog, song_tab_ai_usage, song_meta_image, song_tab_image, song_meta, song_tab_practice, song_tab_revision, song_tab, timetable_draft_presence, timetable_draft, band_image, notice_image, board_post_image, live_image, push_subscription, comment_like, comment_reply, comment, board_thread_mute, board_notify_category, board_notify, board_post_like, board_post_reply, board_read, board_post, board_thread, board_category, notice_read, notice, notice_category, change_unit, change_op, inquiry, band_like, app_setting, login_attempt, track_preview, track_link_cache, album_link_cache,
+DROP TABLE IF EXISTS sched_travel, sched_poll_studio, sched_poll_member, sched_poll, sched_busy, sched_class, sched_profile, block_best, sheet_log, song_link_practice, song_link, song_part, song_work_primary, venue_image, song_catalog, song_tab_ai_usage, song_meta_image, song_tab_image, song_meta, song_tab_practice, song_tab_revision, song_tab, timetable_draft_presence, timetable_draft, band_image, notice_image, board_post_image, live_image, push_subscription, comment_like, comment_reply, comment, board_thread_mute, board_notify_category, board_notify, board_post_like, board_post_reply, board_read, board_post, board_thread, board_category, notice_read, notice, notice_category, change_unit, change_op, inquiry, band_like, app_setting, login_attempt, track_preview, track_link_cache, album_link_cache,
     check_dismiss, band_check_member, member_role, role, artist_alias, member_favorite_album, song_performer, song, track, band_member, live_break, band,
     artist, live_day, live, venue, instrument, user_account, member;
 SET FOREIGN_KEY_CHECKS = 1;
@@ -1384,6 +1384,7 @@ CREATE TABLE studio (
     lat          DECIMAL(9,6)  NULL,
     lng          DECIMAL(9,6)  NULL,
     student_note VARCHAR(500)  NULL,             -- 割引の条件（例: 学生証の提示が必要）
+    sched_default TINYINT(1) UNSIGNED NOT NULL DEFAULT 0, -- 1 = 日程調整の初期候補（migrations/105）
     note         VARCHAR(1000) NULL,
     sort_order   INT UNSIGNED  NOT NULL DEFAULT 0,
     updated_by   INT UNSIGNED  NULL,
@@ -1398,6 +1399,7 @@ CREATE TABLE studio_room (
     studio_id      INT UNSIGNED NOT NULL,
     name           VARCHAR(50)  NOT NULL,          -- 部屋名（例: Aスタ）
     area_jo        DECIMAL(5,1) UNSIGNED NULL,     -- 広さ（帖。畳も同じ扱い）。検索・絞り込み用の数値（migrations/087）
+    capacity       TINYINT UNSIGNED NULL,          -- 定員（人）。NULL = 不明（migrations/105）
     size_note      VARCHAR(50)  NULL,              -- 備考（例: 最大8人 / 2階）。広さの数字はここに書かない
     half_start     TINYINT(1) UNSIGNED NOT NULL DEFAULT 0, -- 1=30分開始（料金の時間帯も30分遅らせる） / 0=毎時ちょうど（migrations/091, 095）
     half_unit      TINYINT(1) UNSIGNED NOT NULL DEFAULT 1, -- 1=30分単位で利用可 / 0=1時間単位（migrations/091）
@@ -1554,4 +1556,107 @@ CREATE TABLE block_best (
     KEY idx_block_score (score),
     CONSTRAINT fk_block_user FOREIGN KEY (user_id) REFERENCES user_account (user_id)
         ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- ---------------------------------------------------------------------
+--  sched_* — スタ連の日程調整（sched*.php。説明は migrations/105）
+-- ---------------------------------------------------------------------
+CREATE TABLE sched_profile (
+    member_id     INT UNSIGNED NOT NULL,
+    campus        TINYINT UNSIGNED NULL,          -- 1 = 和泉 / 2 = 駿河台 / NULL = 学年から自動
+    ical_url      VARCHAR(1024) NULL,             -- 暗号化した iCal の URL（lib/sched_ical.php）
+    ical_fetched_at DATETIME   NULL,              -- 最後に読めた日時
+    ical_error    VARCHAR(100) NULL,              -- 最後に読めなかった理由（読めたら NULL）
+    updated_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (member_id),
+    CONSTRAINT fk_sprof_member FOREIGN KEY (member_id) REFERENCES member (member_id)
+        ON UPDATE CASCADE ON DELETE CASCADE,
+    CONSTRAINT ck_sprof_campus CHECK (campus IS NULL OR campus IN (1, 2))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE sched_class (
+    member_id INT UNSIGNED     NOT NULL,
+    term      TINYINT UNSIGNED NOT NULL,          -- 1 = 春 / 2 = 秋
+    weekday   TINYINT UNSIGNED NOT NULL,          -- 1 = 月 〜 6 = 土
+    period    TINYINT UNSIGNED NOT NULL,          -- 1〜6 限
+    PRIMARY KEY (member_id, term, weekday, period),
+    CONSTRAINT fk_sclass_member FOREIGN KEY (member_id) REFERENCES member (member_id)
+        ON UPDATE CASCADE ON DELETE CASCADE,
+    CONSTRAINT ck_sclass_range CHECK (term IN (1, 2) AND weekday BETWEEN 1 AND 6 AND period BETWEEN 1 AND 6)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE sched_busy (
+    sched_busy_id INT UNSIGNED     NOT NULL AUTO_INCREMENT,
+    member_id     INT UNSIGNED     NOT NULL,
+    start_at      DATETIME         NOT NULL,
+    end_at        DATETIME         NOT NULL,
+    source        TINYINT UNSIGNED NOT NULL DEFAULT 0, -- 0 = 手入力 / 1 = iCal
+    PRIMARY KEY (sched_busy_id),
+    -- 「この部員の、この期間の埋まり」を探すので (member_id, start_at) の順で索引を張る（複合インデックスは左の列から使われる）
+    KEY idx_sbusy_member (member_id, start_at),
+    CONSTRAINT fk_sbusy_member FOREIGN KEY (member_id) REFERENCES member (member_id)
+        ON UPDATE CASCADE ON DELETE CASCADE,
+    CONSTRAINT ck_sbusy_range CHECK (end_at > start_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE sched_poll (
+    sched_poll_id INT UNSIGNED      NOT NULL AUTO_INCREMENT,
+    title         VARCHAR(100)      NOT NULL,          -- 例: バンド名
+    date_from     DATE              NOT NULL,          -- 候補の期間
+    date_to       DATE              NOT NULL,
+    day_start     SMALLINT UNSIGNED NOT NULL,          -- 候補の時間帯（0時からの分。例: 600 = 10:00）
+    day_end       SMALLINT UNSIGNED NOT NULL,          -- 例: 1380 = 23:00
+    length_min    SMALLINT UNSIGNED NOT NULL,          -- 練習の長さ（分）
+    late_max      SMALLINT UNSIGNED NOT NULL DEFAULT 0, -- 遅刻を許す上限（分）。0 = 全員そろう枠だけ
+    status        TINYINT UNSIGNED  NOT NULL DEFAULT 0, -- 0 = 調整中 / 1 = 仮決定（日）/ 2 = 仮決定（日時）/ 3 = 決定
+    fix_date      DATE              NULL,
+    fix_start     DATETIME          NULL,
+    fix_end       DATETIME          NULL,
+    fix_studio_id INT UNSIGNED      NULL,
+    fix_room_id   INT UNSIGNED      NULL,
+    version       INT UNSIGNED      NOT NULL DEFAULT 0,
+    created_by    INT UNSIGNED      NULL,
+    created_at    DATETIME          NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at    DATETIME          NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (sched_poll_id),
+    KEY idx_spoll_fix (status, fix_start),             -- 「決定済みの練習」を期間で探す
+    CONSTRAINT fk_spoll_user FOREIGN KEY (created_by) REFERENCES user_account (user_id)
+        ON UPDATE CASCADE ON DELETE SET NULL,
+    CONSTRAINT fk_spoll_studio FOREIGN KEY (fix_studio_id) REFERENCES studio (studio_id)
+        ON UPDATE CASCADE ON DELETE SET NULL,
+    CONSTRAINT fk_spoll_room FOREIGN KEY (fix_room_id) REFERENCES studio_room (studio_room_id)
+        ON UPDATE CASCADE ON DELETE SET NULL,
+    CONSTRAINT ck_spoll_dates CHECK (date_to >= date_from),
+    CONSTRAINT ck_spoll_times CHECK (day_end > day_start AND day_end <= 1440),
+    CONSTRAINT ck_spoll_status CHECK (status BETWEEN 0 AND 3)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE sched_poll_member (
+    sched_poll_id INT UNSIGNED NOT NULL,
+    member_id     INT UNSIGNED NOT NULL,
+    answered_at   DATETIME     NULL,
+    PRIMARY KEY (sched_poll_id, member_id),
+    KEY idx_spm_member (member_id),                    -- 「この部員が呼ばれている調整」を探す
+    CONSTRAINT fk_spm_poll FOREIGN KEY (sched_poll_id) REFERENCES sched_poll (sched_poll_id)
+        ON UPDATE CASCADE ON DELETE CASCADE,
+    CONSTRAINT fk_spm_member FOREIGN KEY (member_id) REFERENCES member (member_id)
+        ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE sched_poll_studio (
+    sched_poll_id INT UNSIGNED NOT NULL,
+    studio_id     INT UNSIGNED NOT NULL,
+    PRIMARY KEY (sched_poll_id, studio_id),
+    KEY idx_sps_studio (studio_id),
+    CONSTRAINT fk_sps_poll FOREIGN KEY (sched_poll_id) REFERENCES sched_poll (sched_poll_id)
+        ON UPDATE CASCADE ON DELETE CASCADE,
+    CONSTRAINT fk_sps_studio FOREIGN KEY (studio_id) REFERENCES studio (studio_id)
+        ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE sched_travel (
+    from_place VARCHAR(30)       NOT NULL,
+    to_place   VARCHAR(30)       NOT NULL,
+    minutes    SMALLINT UNSIGNED NOT NULL,
+    PRIMARY KEY (from_place, to_place)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;

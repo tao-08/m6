@@ -76,6 +76,13 @@ return [
             'private_key' => '',
             'subject'     => 'mailto:', // 連絡先のメールアドレス（例: mailto:contact@example.com）
         ],
+        // スタ連の日程調整（sched_me.php）の「カレンダー連携」で、部員の iCal の URL を暗号化して DB に入れる鍵（32バイトを base64 にしたもの）
+        //   作り方: php -r 'echo base64_encode(random_bytes(32)), "\n";'
+        //   空なら、カレンダー連携だけ使えない（時間割・NG の手入力は使える）。vendor/ に sabre/vobject も要る（composer.json）
+        //   ※ パスワードと同じ。人に見せない・git に入れない。変えると、登録済みの URL が全部読めなくなる（各自で登録し直し）
+        'sched' => [
+            'ical_key' => '',
+        ],
         // true: エラーの詳細を画面に出す（開発中だけ）
         'debug' => false,
     ],

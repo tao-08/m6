@@ -284,5 +284,6 @@ render_header('スタジオ情報', 'tools');
 <?php endif; ?>
 
 <script src="<?= asset_url('assets/vendor/leaflet/leaflet.js') ?>"></script>
+<script src="<?= asset_url('assets/studio_sim.js') ?>"></script><!-- 料金の計算（studio_info.js より先に読む） -->
 <script src="<?= asset_url('assets/studio_info.js') ?>"></script>
 <?php render_footer();

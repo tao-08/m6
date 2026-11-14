@@ -1800,5 +1800,6 @@ if ($canEdit) {
     <a class="sinfo-reserve-fab" href="<?= h($studio['reserve_url']) ?>" target="_blank" rel="noopener noreferrer" title="予約" aria-label="予約"><?= icon('event_available') ?> 予約</a>
 <?php endif; ?>
 
+<script src="<?= asset_url('assets/studio_sim.js') ?>"></script><!-- 料金の計算（studio_info.js より先に読む） -->
 <script src="<?= asset_url('assets/studio_info.js') ?>"></script>
 <?php render_footer();

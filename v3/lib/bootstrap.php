@@ -595,7 +595,7 @@ const NOTICE_COLORS = ['gray' => 'グレー', 'blue' => '青', 'green' => '緑',
 
 // お知らせのカテゴリのうち、サイトが自動で出す通知専用のもの（lib/comments.php・lib/board.php が名前で探す）。
 // 名前・色の変更と削除はできず、管理者の手動投稿でも選べない（notices.php）
-const NOTICE_SYSTEM_CATEGORIES = ['コメント', '掲示板'];
+const NOTICE_SYSTEM_CATEGORIES = ['コメント', '掲示板', 'スタ連']; // スタ連 = 日程調整（lib/sched.php）
 
 /**
  * お知らせを「通知」（自動。ベル・notifications.php）と「お知らせ」（管理者の告知。notices.php）に分ける WHERE 句。n は notice の別名。
