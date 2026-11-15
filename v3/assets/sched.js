@@ -219,6 +219,34 @@
     };
 
     /**
+     * 部屋の「余り」= 定員（無ければ 広さ ÷ 1人あたりの帖）− 人数。0 に近いほど人数にぴったり
+     *   狭すぎる（マイナス）・定員も広さも不明 → null（おすすめの対象外）
+     */
+    const gap = (room) => {
+      const size = room.cap || (room.a ? room.a / data.jo : null);
+      return size == null || size < data.people ? null : size - data.people;
+    };
+
+    /**
+     * おすすめの部屋: 候補に出ている全スタジオの部屋を比べて、余りがいちばん小さい部屋（同点なら複数）
+     *   スタジオごとではなく「候補全体で一番」なので、おすすめが付くのは一部のカードだけになる
+     *   recommend = { スタジオ id: 部屋 }
+     */
+    const recommend = {};
+    let minGap = Infinity;
+    data.studios.forEach((st) => {
+      (data.sim[st.id]?.rooms || []).forEach((r) => {
+        const g = gap(r);
+        if (g !== null && g < minGap) minGap = g;
+      });
+    });
+    data.studios.forEach((st) => {
+      // 小数（広さ ÷ 帖）の誤差で「同じ」を取りこぼさないよう、0.01 未満の差は同点にする
+      const r = (data.sim[st.id]?.rooms || []).find((x) => gap(x) !== null && gap(x) - minGap < 0.01);
+      if (r) recommend[st.id] = r;
+    });
+
+    /**
      * 1つのスタジオ・開始時刻での「いちばん安い部屋」（人数に対して狭すぎる部屋は除く）
      *   戻り値: { total, room, disc } / null（料金未登録）
      */
@@ -339,6 +367,13 @@
         price.append(el('strong', '', yen(q.total)));
         price.append(el('span', 'muted small', ` 1人 ${yen(Math.ceil(q.total / data.people))}`));
         if (q.room) price.append(el('span', 'muted small', ' ' + q.room.name));
+        // おすすめ（人数にいちばん合う部屋）があるスタジオだけ。表示中の最安の部屋と違うなら部屋名も添える
+        const rec = recommend[w.studio];
+        if (rec) {
+          const tag = el('span', 'tag tag--plan', q.room && q.room.id === rec.id ? 'おすすめ' : 'おすすめ ' + rec.name);
+          tag.dataset.tip = `${data.people}人にいちばん合う部屋: ${rec.name}`;
+          price.append(tag);
+        }
         if (q.disc) price.append(el('span', 'tag', q.disc));
         w.price = q.total;
       };
