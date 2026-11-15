@@ -149,9 +149,4 @@ ALTER TABLE studio
 ALTER TABLE studio_room
     ADD COLUMN capacity TINYINT UNSIGNED NULL COMMENT '定員（人）。NULL=不明' AFTER area_jo;
 
--- 新宿ミュージアムとリンキィディンク神保町を初期候補にする（名前に含まれる文字で探す。見つからなければ何も変わらない）
---   本番の名前の書き方がわからないので、両方の表記で探す。外れたら設定画面でチェックを付け直す
-UPDATE studio SET sched_default = 1
- WHERE name LIKE '%ミュージアム%' AND (name LIKE '%新宿%' OR area = '新宿')
-    OR name LIKE '%リンキィディンク%神保町%' OR name LIKE '%リンキィディンク%' AND area = '神保町'
-    OR name LIKE '%Rinky%Dink%' AND (name LIKE '%神保町%' OR area = '神保町');
+-- 初期候補（sched_default）は名前で自動判定しない。デプロイ後に設定画面（sched_settings.php）で幹部がチェックを付ける
