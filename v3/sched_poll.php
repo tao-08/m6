@@ -232,8 +232,7 @@ foreach ($studios as $s) {
 $boot = [
     'poll' => $pollId, 'v' => (int)$poll['version'], 'status' => $status, 'len' => $len, 'people' => count($members), 'jo' => $settings['jo'],
     'canFix' => $canManage, 'csrf' => csrf_token(),
-    // def … 日程調整の初期候補（いつも使うスタジオ）。部屋の「おすすめ」を出さない（使い慣れていて要らないため）
-    'studios' => array_map(static fn($s) => ['id' => (int)$s['studio_id'], 'name' => $s['name'], 'area' => (string)$s['area'], 'reserve' => (string)($s['reserve_url'] ?: $s['website_url']), 'def' => (int)$s['sched_default'] === 1], array_values($studios)),
+    'studios' => array_map(static fn($s) => ['id' => (int)$s['studio_id'], 'name' => $s['name'], 'area' => (string)$s['area'], 'reserve' => (string)($s['reserve_url'] ?: $s['website_url'])], array_values($studios)),
     'sim' => (object)$sim,
     // 窓 → 画面用（日付の表示・曜日区分・遅刻の人の名前を足す）
     'windows' => array_map(static fn($w) => [

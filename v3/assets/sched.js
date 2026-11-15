@@ -219,8 +219,8 @@
     };
 
     /**
-     * 1つのスタジオ・開始時刻での「いちばん安い部屋」と、人数に「ちょうどいい部屋」（合う部屋のうち一番狭い）
-     *   戻り値: { total, room, disc, best } / null（料金未登録）
+     * 1つのスタジオ・開始時刻での「いちばん安い部屋」（人数に対して狭すぎる部屋は除く）
+     *   戻り値: { total, room, disc } / null（料金未登録）
      */
     const quote = (sid, day, start) => {
       const sim = data.sim[sid];
@@ -228,9 +228,6 @@
       engines[sid] ||= window.studioSimEngine(sim); // ||= … 無ければ作って入れる
       const { calc, dayOk } = engines[sid];
       const rooms = sim.rooms.length ? sim.rooms.filter((r) => fit(r) !== 'small') : [null];
-      // 合う部屋のうち、定員（無ければ広さ）がいちばん小さいもの = ちょうどいい
-      const sized = rooms.filter((r) => r && fit(r) === 'ok').sort((a, b) => (a.cap || a.a / data.jo) - (b.cap || b.a / data.jo));
-      const best = sized[0] || null;
       const discs = [{ id: 0, name: '' }, ...sim.discounts.filter((d) => dayOk(d.day, day))];
       let top = null;
       rooms.forEach((room) => {
@@ -241,7 +238,7 @@
           if (!top || r.total < top.total) top = { total: r.total, room, disc: d.name };
         });
       });
-      return top ? { ...top, best } : null;
+      return top;
     };
 
     /** 確定のボタン（POST のフォーム）。kind = date / time / final */
@@ -342,8 +339,6 @@
         price.append(el('strong', '', yen(q.total)));
         price.append(el('span', 'muted small', ` 1人 ${yen(Math.ceil(q.total / data.people))}`));
         if (q.room) price.append(el('span', 'muted small', ' ' + q.room.name));
-        // 「おすすめ」= 人数にちょうどいい部屋。いつも使うスタジオ（日程調整の初期候補）には出さない
-        if (!studios[w.studio]?.def && q.best && q.room && q.best.id === q.room.id) price.append(el('span', 'tag tag--plan', 'おすすめ'));
         if (q.disc) price.append(el('span', 'tag', q.disc));
         w.price = q.total;
       };
