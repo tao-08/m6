@@ -566,7 +566,7 @@ function sched_poll_members(PDO $pdo, int $pollId): array
 /** 調整の候補スタジオ（名前・エリア・予約ページつき） */
 function sched_poll_studios(PDO $pdo, int $pollId): array
 {
-    $st = $pdo->prepare('SELECT s.studio_id, s.name, s.area, s.reserve_url, s.website_url, s.address FROM sched_poll_studio ps
+    $st = $pdo->prepare('SELECT s.studio_id, s.name, s.area, s.reserve_url, s.website_url, s.address, s.sched_default FROM sched_poll_studio ps
         JOIN studio s ON s.studio_id = ps.studio_id WHERE ps.sched_poll_id = ? ORDER BY s.sort_order, s.studio_id');
     $st->execute([$pollId]);
     return $st->fetchAll();

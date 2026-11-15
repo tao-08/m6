@@ -342,7 +342,8 @@
         price.append(el('strong', '', yen(q.total)));
         price.append(el('span', 'muted small', ` 1人 ${yen(Math.ceil(q.total / data.people))}`));
         if (q.room) price.append(el('span', 'muted small', ' ' + q.room.name));
-        if (q.best && q.room && q.best.id === q.room.id) price.append(el('span', 'tag tag--plan', 'おすすめ'));
+        // 「おすすめ」= 人数にちょうどいい部屋。いつも使うスタジオ（日程調整の初期候補）には出さない
+        if (!studios[w.studio]?.def && q.best && q.room && q.best.id === q.room.id) price.append(el('span', 'tag tag--plan', 'おすすめ'));
         if (q.disc) price.append(el('span', 'tag', q.disc));
         w.price = q.total;
       };
