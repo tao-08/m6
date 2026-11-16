@@ -84,6 +84,20 @@ return [
         'sched' => [
             'ical_key' => '',
         ],
+        // マイスケジュールの「Google で連携」（lib/sched_google.php）に使う OAuth クライアント。Google カレンダーの予定を読み込み、決定した練習をカレンダーに入れる
+        //   作り方: Google Cloud Console → API とサービス
+        //     1. 「ライブラリ」で Google Calendar API を有効にする
+        //     2. 「OAuth 同意画面」を作る（ユーザーの種類は「外部」。公開ステータスは「本番環境」にする。「テスト」のままだと7日で連携が切れる）
+        //        スコープは calendar.events と calendar.calendarlist.readonly の2つだけ
+        //     3. 「認証情報」→ OAuth クライアント ID（種類は「ウェブ アプリケーション」）を作る
+        //        「承認済みのリダイレクト URI」に APP_URL + sched_google（例: https://abbeyroad.online/sched_google）を入れる
+        //   Google の審査を受けなくても使えるが、ユーザーは100人まで・連携のとき「確認されていないアプリ」の警告が出る
+        //   どちらかが空、または上の sched.ical_key（トークンの暗号化に使う）が無ければ、Google 連携だけ使えない（iCal の URL の取り込みは使える）
+        //   ※ client_secret はパスワードと同じ。人に見せない・git に入れない
+        'google_oauth' => [
+            'client_id'     => '',
+            'client_secret' => '',
+        ],
         // true: エラーの詳細を画面に出す（開発中だけ）
         'debug' => false,
     ],

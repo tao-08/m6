@@ -11,6 +11,7 @@
  *    classes … 時間割（春・秋）。チェックの付いたコマを入れ直す
  *    copy    … もう片方の学期の時間割を写す
  *    ical / ical_refresh / ical_delete … カレンダー連携（iCal の URL）
+ *    google_refresh / google_disconnect … カレンダー連携（Google。連携を始めるのは sched_google.php。lib/sched_google.php）
  *    feed_reset … 決定した練習の購読 URL を再発行（古い URL は使えなくなる。lib/sched_ical.php の sched_feed_token）
  *    busy    … NG 枠（画面に出ている範囲の手入力分を入れ直す。JS から JSON で送る）
  *    photo_read … カレンダーのスクリーンショット（最大3枚）を AI に読ませて、予定の一覧を JSON で返す（保存はしない。lib/sched_photo.php）
@@ -27,6 +28,7 @@ require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/repository.php'; // tip_attr（ポップアップの説明）
 require_once __DIR__ . '/lib/sched.php';
 require_once __DIR__ . '/lib/sched_ical.php';
+require_once __DIR__ . '/lib/sched_google.php'; // Google カレンダーとの連携（OAuth）
 require_once __DIR__ . '/lib/sched_photo.php'; // 画像から予定を読み込む（claude.php・ai_reader.php も読み込まれる）
 /** 毎週の NG の曜日（1 = 月 〜 7 = 日。date('N') と同じ）。時間割の SCHED_WEEKDAYS は日曜が無いので、日を足す */
 const SCHED_ME_WEEKDAYS = SCHED_WEEKDAYS + [7 => '日'];
@@ -47,6 +49,10 @@ $poll = $pollId > 0 ? sched_poll_load($pdo, $pollId) : null;
 
 /** プロフィールの行を必ず作る（INSERT IGNORE … 既にあれば何もしない） */
 $ensureProfile = static fn() => $pdo->prepare('INSERT IGNORE INTO sched_profile (member_id) VALUES (?)')->execute([$me]);
+
+/** Google 連携中か（連携中は、iCal の URL は使わない。両方が予定を入れ替えると、お互いの取り込みを消し合うため） */
+$googleOn = sched_google_available();
+$g = $googleOn ? sched_google_row($pdo, $me) : null;
 
 /* ==================== 保存 ==================== */
 if (is_post()) {
@@ -105,6 +111,10 @@ if (is_post()) {
     }
 
     if ($action === 'ical') {
+        if ($g !== null) {
+            flash('Google 連携を解除してから登録してください', 'error');
+            redirect($back . '#ical');
+        }
         if (!sched_ical_available()) {
             flash('カレンダー連携は現在使えません', 'error');
             redirect($back . '#ical');
@@ -122,6 +132,9 @@ if (is_post()) {
     }
 
     if ($action === 'ical_refresh') {
+        if ($g !== null) {
+            redirect($back . '#ical');
+        }
         $err = sched_ical_refresh($pdo, $me, true);
         flash($err === null ? 'カレンダーを読み直しました' : $err, $err === null ? 'success' : 'error');
         redirect($back . '#ical');
@@ -133,6 +146,21 @@ if (is_post()) {
         $pdo->prepare('DELETE FROM sched_busy WHERE member_id = ? AND source = 1')->execute([$me]); // 取り込んだ予定も消す
         $pdo->commit();
         flash('カレンダー連携を解除しました');
+        redirect($back . '#ical');
+    }
+
+    // Google 連携: 読み直す（予定を読み直し、まだ入っていない決定済みの練習をカレンダーに入れる）/ 解除（トークンを取り消し、取り込んだ予定も消す）
+    //   連携を始める（Google の許可画面へ行く）のは sched_google.php
+    if ($action === 'google_refresh' && $g !== null) {
+        $err = sched_google_refresh_busy($pdo, $me, true);
+        sched_google_sync_member($pdo, $me);
+        flash($err === null ? 'カレンダーを読み直しました' : $err, $err === null ? 'success' : 'error');
+        redirect($back . '#ical');
+    }
+
+    if ($action === 'google_disconnect' && $g !== null) {
+        sched_google_disconnect($pdo, $me);
+        flash('Google との連携を解除しました');
         redirect($back . '#ical');
     }
 
@@ -443,7 +471,12 @@ if ($poll !== null) {
     $prevUrl = 'sched_me?from=' . date('Y-m-d', strtotime($from . ' -7 day'));
     $nextUrl = 'sched_me?from=' . date('Y-m-d', strtotime($from . ' +7 day'));
 }
-sched_ical_refresh($pdo, $me); // 古ければ読み直す（30分以内に読んでいれば何もしない）
+if ($g !== null) {
+    sched_google_refresh_busy($pdo, $me); // Google 連携中は Google から読む（iCal は使わない）
+    $g = sched_google_row($pdo, $me); // 読み込みの結果（読んだ日時・エラー）を画面に出すため、読み直す
+} else {
+    sched_ical_refresh($pdo, $me); // 古ければ読み直す（30分以内に読んでいれば何もしない）
+}
 $data = sched_collect_busy($pdo, [$me], $days[0], $days[count($days) - 1], $poll === null ? null : $pollId, true, $me); // 最後の $me = 自分の iCal の予定のタイトルを復号して見せる
 $grid = [
     'days' => array_map(static fn($d) => ['date' => $d, 'md' => sched_md($d), 'abs' => sched_day_abs($d), 'dow' => (int)date('w', strtotime($d))], $days),
@@ -580,8 +613,32 @@ render_header('マイスケジュール', 'tools');
 <section class="card sch-sec" id="ical">
     <div class="sch-sec__head"><h2 class="section-title section-title--card">カレンダー連携</h2>
         <button type="button" class="info-tip" data-tutorial-open="ical-help" aria-label="カレンダー連携のやり方" title="カレンダー連携のやり方"><?= icon('info', 'icon--sm') ?></button></div>
-    <?php if (!$icalOn): ?>
-        <p class="muted small">現在使えません（管理者の設定待ち）</p>
+    <?php if ($googleOn && $g === null): // Google 連携の開始。押すと sched_google.php が Google の許可画面へ移動する（iPhone の人は、下の iCal の URL を使う） ?>
+        <form method="post" action="sched_google" class="sch-row">
+            <?= csrf_field() ?><input type="hidden" name="poll" value="<?= $poll !== null ? $pollId : 0 ?>">
+            <button class="btn btn--primary btn--sm" type="submit"><?= icon('event') ?> Google で連携</button>
+        </form>
+    <?php elseif ($g !== null): ?>
+        <p class="sch-ical">
+            <?= icon($g['error'] ? 'warning' : 'sync', 'icon--sm ' . ($g['error'] ? 'sch-warn' : 'sch-ok')) ?>
+            <strong><?= h($g['email'] ?? 'Google カレンダー') ?></strong>
+            <span class="muted small"><?= $g['fetched_at'] !== null ? h(date('n/j G:i', strtotime((string)$g['fetched_at']))) . ' 読込' : '' ?></span>
+        </p>
+        <?php if ($g['error']): ?><p class="flash flash--error"><?= h($g['error']) ?></p><?php endif; ?>
+        <div class="sch-row sch-row--wrap">
+            <?php if ($g['error']): // 切れたとき（または読み込めないとき）は、もう一度許可してもらう ?>
+                <form method="post" action="sched_google"><?= csrf_field() ?><input type="hidden" name="poll" value="<?= $poll !== null ? $pollId : 0 ?>">
+                    <button class="btn btn--sm btn--primary" type="submit"><?= icon('login') ?> 再連携</button></form>
+            <?php endif; ?>
+            <form method="post"><?= csrf_field() ?><input type="hidden" name="action" value="google_refresh"><?php if ($poll !== null): ?><input type="hidden" name="poll" value="<?= $pollId ?>"><?php endif; ?>
+                <button class="btn btn--sm" type="submit"><?= icon('refresh') ?> 読み直す</button></form>
+            <form method="post" data-confirm="Google との連携を解除します。取り込んだ予定も消えます。よろしいですか？"><?= csrf_field() ?><input type="hidden" name="action" value="google_disconnect"><?php if ($poll !== null): ?><input type="hidden" name="poll" value="<?= $pollId ?>"><?php endif; ?>
+                <button class="btn btn--sm btn--danger" type="submit">解除</button></form>
+        </div>
+    <?php endif; ?>
+    <?php if ($g !== null): // Google 連携中は iCal の URL を使わない（上の連携で足りる）。 ?>
+    <?php elseif (!$icalOn): ?>
+        <?php if (!$googleOn): ?><p class="muted small">現在使えません（管理者の設定待ち）</p><?php endif; ?>
     <?php elseif ($prof['ical_url'] !== null): ?>
         <p class="sch-ical">
             <?= icon($prof['ical_error'] ? 'warning' : 'sync', 'icon--sm ' . ($prof['ical_error'] ? 'sch-warn' : 'sch-ok')) ?>
@@ -610,7 +667,9 @@ render_header('マイスケジュール', 'tools');
         <div class="sch-feed">
             <span class="sch-label">決定した練習を追加</span>
             <div class="sch-row sch-row--wrap">
+                <?php if ($g === null): // Google 連携中は、決定した練習が連携で直接入る（購読も入れると二重になる） ?>
                 <a class="btn btn--sm" href="https://calendar.google.com/calendar/render?cid=<?= h(urlencode($feedWebcal)) ?>" target="_blank" rel="noopener"><?= icon('event') ?> Google</a>
+                <?php endif; ?>
                 <a class="btn btn--sm" href="<?= h($feedWebcal) ?>"><?= icon('smartphone') ?> iPhone</a>
                 <form method="post" data-confirm="今の URL は使えなくなります。登録し直してください。よろしいですか？"><?= csrf_field() ?><input type="hidden" name="action" value="feed_reset"><?php if ($poll !== null): ?><input type="hidden" name="poll" value="<?= $pollId ?>"><?php endif; ?>
                     <button class="btn btn--sm" type="submit" title="URL を再発行"><?= icon('refresh') ?> 再発行</button></form>

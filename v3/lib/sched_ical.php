@@ -289,6 +289,22 @@ function sched_merge_spans(array $spans): array
 }
 
 /**
+ * カレンダーから取り込んだ予定（sched_busy の source = 1）を、$spans（sched_merge_spans の形）に入れ替える
+ *   iCal の取り込み（下の sched_ical_refresh）と Google 連携（lib/sched_google.php）の両方が使う
+ *   トランザクションは呼び出し側で張る（読み込み日時の更新まで、まとめて1つの操作にするため）
+ */
+function sched_busy_replace_calendar(PDO $pdo, int $memberId, array $spans): void
+{
+    $pdo->prepare('DELETE FROM sched_busy WHERE member_id = ? AND source = 1')->execute([$memberId]);
+    $ins = $pdo->prepare('INSERT INTO sched_busy (member_id, start_at, end_at, source, title) VALUES (?, ?, ?, 1, ?)');
+    foreach ($spans as $sp) {
+        // タイトルは暗号化して入れる（DB が漏れても読めない）。タイトルが無ければ NULL
+        $title = (string)($sp[2] ?? '');
+        $ins->execute([$memberId, sched_abs_to_dt($sp[0]), sched_abs_to_dt($sp[1]), $title === '' ? null : sched_ical_encrypt($title)]);
+    }
+}
+
+/**
  * 1人の iCal を読み直して、sched_busy（source = 1）を入れ替える
  *   $force = false なら、SCHED_ICAL_TTL 以内に読んだ人は読み直さない
  *   戻り値: null = 成功・読み直し不要 / 文字列 = 失敗の理由
@@ -333,13 +349,7 @@ function sched_ical_refresh(PDO $pdo, int $memberId, bool $force = false): ?stri
     // トランザクション … 「消す」と「入れる」をまとめて1つの操作にする。途中で失敗したら両方なかったことになる（ROLLBACK）
     $pdo->beginTransaction();
     try {
-        $pdo->prepare('DELETE FROM sched_busy WHERE member_id = ? AND source = 1')->execute([$memberId]);
-        $ins = $pdo->prepare('INSERT INTO sched_busy (member_id, start_at, end_at, source, title) VALUES (?, ?, ?, 1, ?)');
-        foreach ($spans as $sp) {
-            // タイトルは暗号化して入れる（DB が漏れても読めない）。タイトルが無ければ NULL
-            $title = (string)($sp[2] ?? '');
-            $ins->execute([$memberId, sched_abs_to_dt($sp[0]), sched_abs_to_dt($sp[1]), $title === '' ? null : sched_ical_encrypt($title)]);
-        }
+        sched_busy_replace_calendar($pdo, $memberId, $spans);
         $pdo->prepare('UPDATE sched_profile SET ical_fetched_at = NOW(), ical_error = NULL WHERE member_id = ?')->execute([$memberId]);
         $pdo->commit();
     } catch (Throwable $e) {
@@ -359,7 +369,10 @@ function sched_ical_refresh_many(PDO $pdo, array $memberIds, int $budget = 6): v
         return;
     }
     $in = implode(',', array_fill(0, count($memberIds), '?'));
+    // Google 連携中の部員は、Google の読み込み（lib/sched_google.php の sched_google_refresh_many）を使うので、ここでは読まない
+    //   （両方が sched_busy の source = 1 を入れ替えると、お互いの取り込みを消し合う）
     $st = $pdo->prepare("SELECT member_id FROM sched_profile WHERE member_id IN ($in) AND ical_url IS NOT NULL
+        AND member_id NOT IN (SELECT member_id FROM sched_google)
         AND (ical_fetched_at IS NULL OR ical_fetched_at < ?) ORDER BY ical_fetched_at");
     $st->execute([...array_map('intval', $memberIds), date('Y-m-d H:i:s', time() - SCHED_ICAL_TTL)]);
     $start = microtime(true);

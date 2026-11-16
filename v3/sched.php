@@ -20,6 +20,7 @@ declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/repository.php'; // member_name_choices / render_suggest_datalist（名前の入力候補）
 require_once __DIR__ . '/lib/sched.php';
+require_once __DIR__ . '/lib/sched_google.php'; // 調整の削除・編集を Google カレンダーに反映する
 $user = require_admin(); // 完成するまで管理者だけ
 $pdo = db();
 
@@ -38,6 +39,8 @@ if (is_post()) {
     }
 
     if ($action === 'delete' && $poll !== null) {
+        // 先に Google カレンダーから予定を消す（DELETE すると sched_google_event の行も CASCADE で消えて、どの予定を消せばいいかわからなくなる）
+        sched_google_remove_poll($pdo, $pollId);
         $pdo->prepare('DELETE FROM sched_poll WHERE sched_poll_id = ?')->execute([$pollId]); // 部員・スタジオの行は ON DELETE CASCADE で一緒に消える
         flash('日程調整を削除しました');
         redirect('sched');
@@ -153,6 +156,8 @@ if (is_post()) {
             $pdo->rollBack();
             throw $e;
         }
+        // 決定済みの練習なら、タイトル・メンバーの変更を Google カレンダーに反映する（外れた人の予定は消え、新しく呼ばれた人には入る）
+        sched_google_sync_poll($pdo, $pollId);
         // 新しく呼ばれた人にだけお知らせ（編集のたびに全員に飛ばさない）
         $added = array_diff($memberIds, $before);
         if ($added) {

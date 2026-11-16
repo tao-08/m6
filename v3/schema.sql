@@ -37,7 +37,7 @@ SET NAMES utf8mb4;
 -- まっさらな DB に流すと「Note: #1051 '〜' は不明な表です」が表の数だけ出るが、
 -- これは「消そうとした表が最初から無かった」というだけの“お知らせ”で、エラーではない。
 SET FOREIGN_KEY_CHECKS = 0;
-DROP TABLE IF EXISTS sched_travel, sched_ignore, sched_weekly, sched_poll_studio, sched_poll_member, sched_poll, sched_busy, sched_class, sched_profile, block_best, sheet_log, song_link_practice, song_link, song_part, song_work_primary, venue_image, song_catalog, song_tab_ai_usage, song_meta_image, song_tab_image, song_meta, song_tab_practice, song_tab_revision, song_tab, timetable_draft_presence, timetable_draft, band_image, notice_image, board_post_image, live_image, push_subscription, comment_like, comment_reply, comment, board_thread_mute, board_notify_category, board_notify, board_post_like, board_post_reply, board_read, board_post, board_thread, board_category, notice_read, notice, notice_category, change_unit, change_op, inquiry, band_like, app_setting, login_attempt, track_preview, track_link_cache, album_link_cache,
+DROP TABLE IF EXISTS sched_google_event, sched_google, sched_travel, sched_ignore, sched_weekly, sched_poll_studio, sched_poll_member, sched_poll, sched_busy, sched_class, sched_profile, block_best, sheet_log, song_link_practice, song_link, song_part, song_work_primary, venue_image, song_catalog, song_tab_ai_usage, song_meta_image, song_tab_image, song_meta, song_tab_practice, song_tab_revision, song_tab, timetable_draft_presence, timetable_draft, band_image, notice_image, board_post_image, live_image, push_subscription, comment_like, comment_reply, comment, board_thread_mute, board_notify_category, board_notify, board_post_like, board_post_reply, board_read, board_post, board_thread, board_category, notice_read, notice, notice_category, change_unit, change_op, inquiry, band_like, app_setting, login_attempt, track_preview, track_link_cache, album_link_cache,
     check_dismiss, band_check_member, member_role, role, artist_alias, member_favorite_album, song_performer, song, track, band_member, live_break, band,
     artist, live_day, live, venue, instrument, user_account, member;
 SET FOREIGN_KEY_CHECKS = 1;
@@ -1690,4 +1690,31 @@ CREATE TABLE sched_travel (
     to_place   VARCHAR(30)       NOT NULL,
     minutes    SMALLINT UNSIGNED NOT NULL,
     PRIMARY KEY (from_place, to_place)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Google カレンダー連携（lib/sched_google.php。説明は migrations/113）
+CREATE TABLE sched_google (
+    member_id      INT UNSIGNED  NOT NULL,
+    refresh_token  VARCHAR(1024) NOT NULL,          -- 暗号化
+    access_token   VARCHAR(2048) NULL,              -- 暗号化
+    access_expires DATETIME      NULL,
+    email          VARCHAR(255)  NULL,
+    fetched_at     DATETIME      NULL,
+    error          VARCHAR(100)  NULL,
+    created_at     DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (member_id),
+    CONSTRAINT fk_sgoogle_member FOREIGN KEY (member_id) REFERENCES member (member_id)
+        ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE sched_google_event (
+    sched_poll_id INT UNSIGNED  NOT NULL,
+    member_id     INT UNSIGNED  NOT NULL,
+    event_id      VARCHAR(255)  NOT NULL,           -- Google の予定 ID
+    PRIMARY KEY (sched_poll_id, member_id),
+    KEY idx_sgevent_member (member_id),             -- 「この部員に入れた予定」を探す（連携の解除）
+    CONSTRAINT fk_sgevent_poll FOREIGN KEY (sched_poll_id) REFERENCES sched_poll (sched_poll_id)
+        ON UPDATE CASCADE ON DELETE CASCADE,
+    CONSTRAINT fk_sgevent_member FOREIGN KEY (member_id) REFERENCES member (member_id)
+        ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;

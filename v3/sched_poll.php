@@ -23,6 +23,7 @@ require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/repository.php'; // tip_attr（ポップアップの説明）
 require_once __DIR__ . '/lib/sched.php';
 require_once __DIR__ . '/lib/sched_ical.php';
+require_once __DIR__ . '/lib/sched_google.php'; // 決定した練習を Google カレンダーに入れる・直す・消す
 $user = require_admin(); // 完成するまで管理者だけ
 $pdo = db();
 
@@ -130,6 +131,7 @@ if (is_post()) {
             }
             throw $e;
         }
+        sched_google_sync_poll($pdo, $pollId); // Google 連携中の部員のカレンダーから、この練習を消す（失敗しても、ここの操作は成功のまま）
         sched_notify($pdo, $pollId, $poll['title'] . ' の日程が調整中に戻りました', '[[sched_poll?id=' . $pollId . '|候補]]から選び直してください', (int)$user['user_id']);
         flash('調整中に戻しました');
         redirect($back);
@@ -223,6 +225,7 @@ if (is_post()) {
             flash($fail, 'error');
             redirect($back);
         }
+        sched_google_sync_poll($pdo, $pollId); // 決定（status = 3）なら Google 連携中の部員のカレンダーに入れる・直す。仮決定なら（前の決定が残っていれば）消す。欠席の人の分も合わせる
         $when = sched_md($date) . ($kind === 'date' ? '' : ' ' . sched_hm($start) . '〜' . sched_hm($start + $len));
         $where = $kind === 'date' ? '' : ' ' . $studioById[$sid]['name'];
         $label = ['date' => '仮決定（日のみ）', 'time' => '仮決定', 'final' => '決定'][$kind];
@@ -245,7 +248,10 @@ $absentWindows = []; // 1人欠席の候補
 $over = null;        // メンバーの予定
 $practices = [];
 if ($status < 3) {
-    sched_ical_refresh_many($pdo, $memberIds); // 古くなった iCal を読み直す（時間で区切るので、表示は最大でも数秒）
+    // 古くなった予定を読み直す（時間で区切るので、表示は最大でも数秒）。Google 連携中の人は Google から、それ以外の人は iCal から。
+    //   全体の上限は 6 秒のまま（Google に使った分を引いた残りを、iCal に回す）
+    $used = sched_google_refresh_many($pdo, $memberIds);
+    sched_ical_refresh_many($pdo, $memberIds, max(1, 6 - (int)ceil($used)));
     // 過去の日は候補にしない（今日の、もう過ぎた時間も）
     $from = max((string)$poll['date_from'], date('Y-m-d'));
     if ($status === 1 && $poll['fix_date'] !== null) {

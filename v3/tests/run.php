@@ -910,6 +910,57 @@ if (is_file(__DIR__ . '/../vendor/autoload.php')) {
     ]);
     check('iCal: タイトル（SUMMARY）を読む', array_column(sched_ical_parse($ics, $from, $from + 20 * 1440), 2), ['バイト', '合宿', '旅行', 'バイト']);
 }
+// Google 連携（ネットにつながない部分だけ）: 予定 → 埋まりの変換・許可画面の URL・権限・カレンダーの選び方
+require_once __DIR__ . '/../lib/sched_google.php';
+$gf = sched_day_abs('2026-11-20');
+$gev = static fn(array $e) => sched_google_events_to_spans([$e], $gf, $gf + 30 * 1440);
+$gspan = static fn(array $r) => array_map(static fn($x) => [sched_abs_to_dt($x[0]), sched_abs_to_dt($x[1]), $x[2] ?? null], $r);
+check('google: 終日は、空き時間（transparent）でも、その日をまるごと埋まりにする（タイトルつき）',
+    $gspan($gev(['summary' => '合宿', 'transparency' => 'transparent', 'start' => ['date' => '2026-11-22'], 'end' => ['date' => '2026-11-23']])),
+    [['2026-11-22 00:00:00', '2026-11-23 00:00:00', '合宿']]);
+check('google: 2日の終日（end.date は終わりの次の日）',
+    $gspan($gev(['summary' => '旅行', 'start' => ['date' => '2026-12-01'], 'end' => ['date' => '2026-12-03']])),
+    [['2026-12-01 00:00:00', '2026-12-03 00:00:00', '旅行']]);
+check('google: 時間指定は UTC との差つきの時刻を読む（JST と UTC のどちらの書き方でも同じ）', [
+    $gspan($gev(['summary' => 'バイト', 'start' => ['dateTime' => '2026-11-21T10:00:00+09:00'], 'end' => ['dateTime' => '2026-11-21T12:00:00+09:00']])),
+    $gspan($gev(['summary' => 'バイト', 'start' => ['dateTime' => '2026-11-21T01:00:00Z'], 'end' => ['dateTime' => '2026-11-21T03:00:00Z']])),
+], [[['2026-11-21 10:00:00', '2026-11-21 12:00:00', 'バイト']], [['2026-11-21 10:00:00', '2026-11-21 12:00:00', 'バイト']]]);
+$gtimed = ['start' => ['dateTime' => '2026-11-21T10:00:00+09:00'], 'end' => ['dateTime' => '2026-11-21T12:00:00+09:00']];
+check('google: 時間指定の空き時間（transparent）・キャンセル・このサイトが書いた練習（abbeySched）・辞退・勤務地は取り込まない', [
+    $gev(['transparency' => 'transparent'] + $gtimed),
+    $gev(['status' => 'cancelled'] + $gtimed),
+    $gev(['summary' => 'スタ連 A', 'extendedProperties' => ['private' => ['abbeySched' => '12']]] + $gtimed),
+    $gev(['attendees' => [['self' => true, 'responseStatus' => 'declined']]] + $gtimed),
+    $gev(['eventType' => 'workingLocation', 'start' => ['date' => '2026-11-21'], 'end' => ['date' => '2026-11-22']]),
+], [[], [], [], [], []]);
+check('google: 重なる予定は1つにまとめてタイトルをつなぐ・範囲の外は切り詰める・終了が無い時間指定は無視', $gspan(sched_google_events_to_spans([
+    ['summary' => 'A', 'start' => ['dateTime' => '2026-11-21T10:00:00+09:00'], 'end' => ['dateTime' => '2026-11-21T11:00:00+09:00']],
+    ['summary' => 'B', 'start' => ['dateTime' => '2026-11-21T10:30:00+09:00'], 'end' => ['dateTime' => '2026-11-21T12:00:00+09:00']],
+    ['summary' => '前から続く', 'start' => ['date' => '2026-11-18'], 'end' => ['date' => '2026-11-21']],
+    ['summary' => '終了なし', 'start' => ['dateTime' => '2026-11-25T10:00:00+09:00']],
+], $gf, $gf + 30 * 1440)), [['2026-11-20 00:00:00', '2026-11-21 00:00:00', '前から続く'], ['2026-11-21 10:00:00', '2026-11-21 12:00:00', 'A / B']]);
+$gu = sched_google_auth_url('STATE1', 'verifier-abc', ['client_id' => 'cid.apps.googleusercontent.com']);
+parse_str((string)parse_url($gu, PHP_URL_QUERY), $gq);
+check('google: 許可画面の URL に PKCE（S256）・offline・2つのスコープ・state が入る', [
+    str_starts_with($gu, 'https://accounts.google.com/o/oauth2/v2/auth?'), $gq['code_challenge'] === sched_google_challenge('verifier-abc'), $gq['code_challenge_method'],
+    $gq['access_type'], $gq['prompt'], $gq['state'], $gq['response_type'], $gq['client_id'], $gq['redirect_uri'], $gq['scope'],
+], [true, true, 'S256', 'offline', 'consent', 'STATE1', 'code', 'cid.apps.googleusercontent.com', 'https://abbeyroad.online/sched_google',
+    'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.calendarlist.readonly']);
+check('google: PKCE の challenge は verifier の SHA-256 の base64url（RFC 7636 の例）', sched_google_challenge('dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk'), 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM');
+check('google: verifier は 43 文字以上の base64url', [strlen(sched_google_new_verifier()) >= 43, preg_match('/^[A-Za-z0-9_-]+$/', sched_google_new_verifier())], [true, 1]);
+check('google: 許可された権限に2つとも入っているか', [
+    sched_google_scopes_ok('https://www.googleapis.com/auth/calendar.calendarlist.readonly https://www.googleapis.com/auth/calendar.events'),
+    sched_google_scopes_ok('https://www.googleapis.com/auth/calendar.events'), sched_google_scopes_ok(''),
+], [true, false, false]);
+check('google: 取り込むカレンダー = 表示中で、削除されておらず、祝日・誕生日でないもの', sched_google_pick_calendars([
+    ['id' => 'me@example.com', 'primary' => true, 'selected' => true, 'deleted' => false],
+    ['id' => 'band@group.calendar.google.com', 'primary' => false, 'selected' => true, 'deleted' => false],
+    ['id' => 'hidden@group.calendar.google.com', 'primary' => false, 'selected' => false, 'deleted' => false],
+    ['id' => 'gone@group.calendar.google.com', 'primary' => false, 'selected' => true, 'deleted' => true],
+    ['id' => 'ja.japanese#holiday@group.v.calendar.google.com', 'primary' => false, 'selected' => true, 'deleted' => false],
+    ['id' => 'addressbook#contacts@group.v.calendar.google.com', 'primary' => false, 'selected' => true, 'deleted' => false],
+]), ['me@example.com', 'band@group.calendar.google.com']);
+check('google: 設定が無ければ使えない（ボタンも出さない・同期もしない）', sched_google_available(), false);
 // 購読するカレンダー: 予定2件 → VEVENT が2つ・UID が別々・カレンダー名と読み直しの合図が入る
 $cal = sched_ics_calendar([
     ['id' => 1, 'title' => 'スタ連 A', 'start' => $base + 600, 'end' => $base + 720, 'location' => '', 'details' => '', 'stamp' => 1700000000],

@@ -14,7 +14,8 @@ $noteTimed = '<p class="muted small">予定のタイトルは本人にのみ表�
 $branches = [
     'google' => [
         ['title' => 'PC版サイトで開く', 'html' =>
-            '<ol>'
+            (sched_google_available() ? '<p class="muted small">「Google で連携」なら、この手順は不要</p>' : '') // Google 連携が使えるときだけ（sched_me.php が lib/sched_google.php を読み込み済み）
+            . '<ol>'
             . '<li><a href="https://calendar.google.com" target="_blank" rel="noopener">Google カレンダー</a>をブラウザで開く（アプリでは取得不可）</li>'
             . '<li>スマートフォンの場合は、ブラウザのメニューから「PC版サイト」に切り替え</li>'
             . '</ol>'],
