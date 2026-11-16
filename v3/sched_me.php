@@ -274,7 +274,7 @@ $icalOn = sched_ical_available();
 render_header('マイ予定', 'tools');
 ?>
 <link rel="stylesheet" href="<?= asset_url('assets/sched.css') ?>">
-<nav class="crumbs"><a href="tools">ツール</a><span>/</span><a href="sched">スタジオ練習の日程調整</a><?php if ($poll !== null): ?><span>/</span><a href="sched_poll?id=<?= $pollId ?>"><?= h($poll['title']) ?></a><?php endif; ?></nav>
+<nav class="crumbs sch-crumbs"><a href="tools">ツール</a><span>/</span><a href="sched">スタジオ練習の日程調整</a><?php if ($poll !== null): ?><span>/</span><a href="sched_poll?id=<?= $pollId ?>"><?= h($poll['title']) ?></a><?php endif; ?></nav>
 <h1 class="display display--sm">マイ予定</h1>
 
 <!-- ===== NG の時間 ===== -->

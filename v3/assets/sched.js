@@ -239,8 +239,14 @@
   // ===================================================================
   //  4. 候補の一覧
   //     ・カード1枚 = 窓1つ（「人の条件が同じで、開始時刻が続いている枠」）。スタジオはカードの中に、料金の安い順に並ぶ
+  //     ・カードは日付ごとに <details>（1日 = 1つ）にまとめる。最初は閉じていて、見出しの1行（日付・時間帯・印・最安の料金）だけが並ぶ
+  //       見出しは、その日のカードを集めて作る（日が1つしか無い一覧だけ、最初から開く）。中のカードは常に PHP の順（i の昇順）
   //     ・開始時刻を選び直すと、取れるスタジオ・遅刻の分・料金を計算し直す
+  //     ・スタジオの行には部屋のプルダウン（広さ・料金つき）が付く。最初は「人数に狭すぎない部屋のうち最安」（無ければ狭い部屋の最安）
+  //       選び直すと、その行の料金・タグだけを書き換える（行は並べ替えない = 選んだ行が飛んで見失わないように）
   //     ・[data-sched-list]（全員そろう候補）と [data-sched-list-absent]（1人欠席の候補）の両方に、同じ並べ替えが効く
+  //       並べ替えは「日の並び」に効く（日付順・おすすめ順・安い順）。<details> は作り直さず並べ直すだけなので、開いた日は開いたまま
+  //     ・日の行は多くても1か月ぶん（31行）なので、「さらに表示」のような分割はしない
   // ===================================================================
   const setupCands = () => {
     const data = readJson('sched-data');
@@ -294,34 +300,46 @@
     });
 
     /**
-     * 1つのスタジオ・開始時刻での「いちばん安い部屋」（人数に対して狭すぎる部屋は除く）
-     *   戻り値: { total, room, disc } / null（料金未登録）
+     * 1つのスタジオ・開始時刻で、料金が出せる部屋ぜんぶの料金（人数に対して狭すぎる部屋も含める。選ぶのは利用者なので）
+     *   部屋ごとに「割引のうち最安」を出す。料金表に無い時間がある部屋は入れない
+     *   戻り値: [{ room, total, disc, small }]（料金の安い順。同額は元の順 = sort は同じ値なら順番を変えない）
+     *     small = 人数に対して狭すぎる部屋か / 部屋が未登録のスタジオは room = null の1件だけ
      */
-    const calcQuote = (sid, day, start) => {
+    const calcRoomQuotes = (sid, day, start) => {
       const sim = data.sim[sid];
-      if (!sim) return null;
+      if (!sim) return [];
       engines[sid] ||= window.studioSimEngine(sim); // ||= … 無ければ作って入れる
       const { calc, dayOk } = engines[sid];
-      const rooms = sim.rooms.length ? sim.rooms.filter((r) => fit(r) !== 'small') : [null];
+      const rooms = sim.rooms.length ? sim.rooms : [null];
       const discs = [{ id: 0, name: '' }, ...sim.discounts.filter((d) => dayOk(d.day, day))];
-      let top = null;
+      const list = [];
       rooms.forEach((room) => {
         const v = { ppl: 0, room: room ? room.id : 0, day, start, rentals: [] };
+        let top = null;
         discs.forEach((d) => {
           const r = calc(v, d.id, data.len);
           if (r.missing || (!r.pack && !r.normal.segs.length)) return; // 料金表に無い時間がある → 比べない
-          if (!top || r.total < top.total) top = { total: r.total, room, disc: d.name };
+          if (!top || r.total < top.total) top = { room, total: r.total, disc: d.name, small: room ? fit(room) === 'small' : false };
         });
+        if (top) list.push(top);
       });
-      return top;
+      return list.sort((a, b) => a.total - b.total);
     };
     // 同じ（スタジオ・曜日区分・開始時刻）は何度も聞かれる（選び直すたび・並べ替えのたび）ので、1回計算したら覚えておく
+    //   覚えた配列は使い回すので、中身を書き換えない（選び直しは「どの要素を選ぶか」だけ変える）
     const quotes = new Map();
-    const quote = (sid, day, start) => {
+    const roomQuotes = (sid, day, start) => {
       const key = `${sid}:${day}:${start}`;
-      if (!quotes.has(key)) quotes.set(key, calcQuote(sid, day, start));
+      if (!quotes.has(key)) quotes.set(key, calcRoomQuotes(sid, day, start));
       return quotes.get(key);
     };
+    /** 最初に選ぶ部屋: 狭すぎない部屋の中で最安。1つも無ければ狭い部屋の中で最安（opts は安い順なので先頭から探す）。無ければ null */
+    const firstPick = (opts) => opts.find((o) => !o.small) || opts[0] || null;
+    /** 部屋の表示: "Fst 12帖"（広さが不明なら "Fst"）。room.sz は PHP の studio_fmt_jo の結果（"12帖" / ""）なので、PHP 側と見た目が必ず同じになる */
+    const roomText = (room) => room.name + (room.sz ? ' ' + room.sz : '');
+    const perHead = (total) => yen(Math.ceil(total / data.people));
+    /** プルダウンの選択肢の文字: "⚠ Fst 12帖 ¥4,860（1人 ¥1,215）" */
+    const optionText = (o) => `${o.small ? '⚠ ' : ''}${roomText(o.room)} ${yen(o.total)}（1人 ${perHead(o.total)}）`;
 
     /** 欠席の人がいるときの添え書き（確認の文に使う） */
     const absentNote = (w) => (w.absent.length ? `（${names[w.absent[0]] || ''}さん欠席）` : '');
@@ -374,7 +392,8 @@
         roomIn.value = sel.room || '';
         // 欠席は日時まで決めるとき（仮決定・決定）だけ有効（サーバーも日だけの仮決定では無視する）
         absentIn.value = kind === 'date' ? '' : w.absent[0] || '';
-        const where = kind === 'date' ? '' : `${hm(sel.start)}〜 ${studios[sel.sid]?.name || ''} `;
+        // 部屋は自分で選べるので、確認の文にも入れる（選び間違いに、押す前に気づけるように）
+        const where = kind === 'date' ? '' : `${hm(sel.start)}〜 ${studios[sel.sid]?.name || ''} ${sel.roomName ? sel.roomName + ' ' : ''}`;
         f.dataset.confirm = `${w.md} ${where}で${label}します${kind === 'date' ? '' : absentNote(w)}。部員に通知が届きます。よろしいですか？`;
       });
       return f;
@@ -382,18 +401,19 @@
 
     let uid = 0; // ラジオボタンの name をカードごとに別にするための連番（同じ name だと、別のカードの選択が外れてしまう）
 
-    /** 候補1件（窓1つ）のカード。戻り値: { node, price }（price は並べ替え用 = 最初の開始時刻での最安） */
+    /** 候補1件（窓1つ）のカード。戻り値: { node, price }（price は日の見出しの「最安」と安い順の並べ替え用 = 最初の開始時刻での最安） */
     const card = (w) => {
       const id = ++uid;
       const c = el('article', 'card sch-cand' + (w.lateMembers.length || w.absent.length ? ' is-late' : ''));
       let start = firstStart(w); // いま選んでいる開始時刻
       let sid = null;            // いま選んでいるスタジオ
       let expanded = false;      // 「ほか n件」を開いたか
-      let items = [];            // いまの開始時刻で取れるスタジオ [{ s, i, q }]（料金の安い順）
+      let items = [];            // いまの開始時刻で取れるスタジオ [{ s, i, opts, q }]（いま選んでいる部屋の料金の安い順）
+                                 //   opts = 選べる部屋の一覧（roomQuotes の結果）/ q = そのうち選んでいる部屋（無ければ null = 料金未登録）
+      const chosen = {};         // スタジオ id → 選んでいる部屋の id（開始時刻を変えても、その時刻で料金が出せるなら引き継ぐ）
 
-      // ---- 1行目: 日付・時間帯・ピル・開始時刻の選択 ----
+      // ---- 1行目: 時間帯・ピル・開始時刻の選択（日付は、まとめている日の見出しに出るので、ここには書かない）----
       const top = el('div', 'sch-cand__top');
-      top.append(el('strong', 'sch-cand__date', w.md));
       top.append(el('span', 'sch-cand__time', `${hm(w.from)}〜${hm(w.to)}`));
       const pills = el('span', 'sch-cand__pills');
       top.append(pills);
@@ -440,43 +460,96 @@
         radio.name = 'sch-c' + id;
         radio.value = x.s.id;
         radio.checked = x.s.id === sid;
-        radio.addEventListener('change', () => {
+        /** このスタジオを選んだ状態にする（ラジオ・枠の色・ピル）。再描画はしない = 開いているプルダウンを閉じない */
+        const choose = () => {
           sid = x.s.id;
+          radio.checked = true;
           box.querySelectorAll('.sch-srow').forEach((r) => r.classList.toggle('is-on', r === lab));
           renderPills();
-        });
+        };
+        radio.addEventListener('change', choose);
         const main = el('span', 'sch-srow__main');
         main.append(el('strong', 'sch-srow__name', studios[x.s.id]?.name || ''));
-        if (x.q?.room) main.append(el('span', 'muted small', x.q.room.name));
-        // おすすめ（人数にいちばん合う部屋）があるスタジオだけ。表示中の最安の部屋と違うなら部屋名も添える
-        const rec = recommend[x.s.id];
-        if (rec) {
-          const tag = el('span', 'tag tag--plan', x.q?.room && x.q.room.id === rec.id ? 'おすすめ' : 'おすすめ ' + rec.name);
-          tag.dataset.tip = `${data.people}人にいちばん合う部屋: ${rec.name}`;
-          main.append(tag);
-        }
-        if (x.q?.disc) main.append(el('span', 'tag', x.q.disc));
-        const adj = x.s.adj[start];
-        if (adj) {
-          const tag = el('span', 'tag ' + (adj.level === 2 ? 'tag--mine' : 'tag--plan'), adj.level === 2 ? '連続◎' : '連続○');
-          tag.dataset.tip = '前後に同じスタジオの練習: ' + adj.with.join('・');
-          main.append(tag);
+        // ---- 部屋: 選べるのが2つ以上ならプルダウン / 1つだけなら文字 / 部屋が未登録（room = null）なら何も出さない ----
+        if (x.opts.length > 1) {
+          const roomSel = el('select', 'select-sm sch-srow__room');
+          roomSel.setAttribute('aria-label', '部屋');
+          x.opts.forEach((o) => {
+            const op = el('option', '', optionText(o)); // textContent で入る（DB から来た部屋名が HTML として解釈されない）
+            op.value = o.room.id;
+            roomSel.append(op);
+          });
+          roomSel.value = x.q.room.id;
+          roomSel.addEventListener('change', () => {
+            x.q = x.opts.find((o) => o.room.id === Number(roomSel.value)); // 並びは変えず、この行の中身だけ更新する
+            chosen[x.s.id] = x.q.room.id;
+            update();
+            choose();
+          });
+          // プルダウンを触っただけでも、そのスタジオを選ぶ（app.js が select を「ボタン + ポップアップ」に変えるので、ボタンのクリックも見る）
+          lab.addEventListener('click', (e) => {
+            if (e.target.closest('select, .live-pick__btn')) choose();
+          });
+          main.append(roomSel);
+        } else if (x.q?.room) {
+          main.append(el('span', 'muted small', roomText(x.q.room)));
         }
         const price = el('span', 'sch-srow__price');
-        if (x.q) {
-          price.append(el('strong', '', yen(x.q.total)));
-          price.append(el('span', 'muted small', `1人 ${yen(Math.ceil(x.q.total / data.people))}`));
-        } else {
-          price.append(el('span', 'muted small', '料金未登録'));
-        }
+        // 選んでいる部屋で変わる所（⚠・おすすめ・割引・料金）。部屋を選び直すたびに、これだけ作り直す
+        let dyn = []; // main に足した「変わる所」の要素（消すときに使う）
+        const update = () => {
+          dyn.forEach((n) => n.remove());
+          dyn = [];
+          const add = (n) => {
+            main.append(n);
+            dyn.push(n);
+          };
+          // 狭すぎる部屋を選んでいるときの注意（押しても何も実行されないので data-tip でよい）
+          if (x.q?.small) {
+            const warn = el('span', 'sch-warn sch-srow__small', '⚠');
+            warn.dataset.tip = `${data.people}人には狭い可能性あり`;
+            add(warn);
+          }
+          // おすすめ（人数にいちばん合う部屋）があるスタジオだけ。選んでいる部屋が違うなら部屋名も添える
+          const rec = recommend[x.s.id];
+          if (rec) {
+            const tag = el('span', 'tag tag--plan', x.q?.room && x.q.room.id === rec.id ? 'おすすめ' : 'おすすめ ' + rec.name);
+            tag.dataset.tip = `${data.people}人にいちばん合う部屋: ${rec.name}`;
+            add(tag);
+          }
+          if (x.q?.disc) add(el('span', 'tag', x.q.disc));
+          const adj = x.s.adj[start];
+          if (adj) {
+            const tag = el('span', 'tag ' + (adj.level === 2 ? 'tag--mine' : 'tag--plan'), adj.level === 2 ? '連続◎' : '連続○');
+            tag.dataset.tip = '前後に同じスタジオの練習: ' + adj.with.join('・');
+            add(tag);
+          }
+          price.replaceChildren();
+          if (x.q) {
+            price.append(el('strong', '', yen(x.q.total)));
+            price.append(el('span', 'muted small', `1人 ${perHead(x.q.total)}`));
+          } else {
+            price.append(el('span', 'muted small', '料金未登録'));
+          }
+        };
+        update();
         lab.append(radio, main, price);
         return lab;
       };
-      /** いまの開始時刻で取れるスタジオを、安い順（料金未登録は最後）に並べ直す。選んでいたスタジオが取れるならそのまま、無ければ先頭 */
+      /**
+       * いまの開始時刻で取れるスタジオを、いま選んでいる部屋の料金の安い順（料金未登録は最後）に並べ直す
+       *   部屋: 前に選んだ部屋がこの時刻でも料金を出せるならそのまま、出せなければ最初の決め方（firstPick）に戻す
+       *   選んでいたスタジオが取れるならそのまま、無ければ先頭
+       */
       const renderStudios = () => {
         items = w.studios
           .filter((s) => s.starts.includes(start))
-          .map((s, i) => ({ s, i, q: quote(s.id, w.day, start) }))
+          .map((s, i) => {
+            const opts = roomQuotes(s.id, w.day, start);
+            const q = opts.find((o) => o.room && o.room.id === chosen[s.id]) || firstPick(opts);
+            chosen[s.id] = q?.room ? q.room.id : null;
+            return { s, i, opts, q };
+          })
           .sort((a, b) => (a.q ? a.q.total : Infinity) - (b.q ? b.q.total : Infinity) || a.i - b.i); // Infinity 同士の引き算は NaN（偽）→ 元の順
         if (!items.some((x) => x.s.id === sid)) sid = items[0].s.id;
         if (items.findIndex((x) => x.s.id === sid) >= SHOW) expanded = true; // 選んでいる行を隠さない
@@ -503,7 +576,7 @@
       if (data.canFix) {
         const getSel = () => {
           const x = items.find((i) => i.s.id === sid);
-          return { start, sid, room: x?.q?.room ? x.q.room.id : null };
+          return { start, sid, room: x?.q?.room ? x.q.room.id : null, roomName: x?.q?.room ? x.q.room.name : '' };
         };
         const acts = el('div', 'sch-cand__acts');
         if (data.status === 0) acts.append(fixForm('date', '日だけ仮決定', w, getSel, false));
@@ -514,36 +587,57 @@
       return { node: c, price };
     };
 
-    // ---- 並べ替え（2つの一覧に同じ並べ替えを効かせる）----
+    /**
+     * 1日ぶんの <details>。es = その日のカード [{ w, i, node, price }]（i の昇順 = PHP の順）
+     *   見出し（summary）は、その日のカードを集めて1行にする: 日付・時間帯・印・最安の料金
+     *   見出しは data-tip を付けない（押すと開閉する操作なので。操作ボタンに付けない規約）
+     *   戻り値: { node, date, best, price }（best / price は並べ替え用）
+     */
+    const dayGroup = (es, open) => {
+      const d = el('details', 'card sch-day');
+      d.open = open;
+      const head = el('summary', 'sch-day__head');
+      head.append(el('strong', 'sch-day__date', es[0].w.md));
+      // 時間帯: その日のカードの いちばん早い開始 〜 いちばん遅い終わり
+      head.append(el('span', 'sch-day__time', `${hm(Math.min(...es.map((e) => e.w.from)))}〜${hm(Math.max(...es.map((e) => e.w.to)))}`));
+      const marks = el('span', 'sch-day__marks'); // 印（あるものだけ）。残りの幅をぜんぶ取って、料金を右端へ押しやる
+      const adj = Math.max(...es.map((e) => e.w.adj)); // その日の連続の最大（2 = ◎ / 1 = ○ / 0 = 無し）
+      if (adj) marks.append(el('span', 'tag ' + (adj === 2 ? 'tag--mine' : 'tag--plan'), adj === 2 ? '連続◎' : '連続○'));
+      if (es.every((e) => e.w.lateMembers.length)) marks.append(el('span', 'pill pill--warn', '遅刻あり')); // 全部のカードが遅刻ありのときだけ（1枚でも遅刻なしがあれば出さない）
+      // 欠席の人（欠席の一覧だけ中身がある）。同じ人が何枚にも出るので、Set で重複を消す
+      [...new Set(es.flatMap((e) => e.w.absent))].forEach((mid) => marks.append(el('span', 'pill pill--warn', `${names[mid] || ''} 欠席`)));
+      head.append(marks);
+      const price = Math.min(...es.map((e) => e.price)); // 料金未登録のカードは Infinity なので、登録済みがあればそちらが選ばれる
+      if (price !== Infinity) head.append(el('span', 'sch-day__price', yen(price) + '〜'));
+      d.append(head);
+      const body = el('div', 'sch-day__body');
+      body.append(...es.map((e) => e.node));
+      d.append(body);
+      return { node: d, date: es[0].w.date, best: Math.min(...es.map((e) => e.i)), price };
+    };
+
+    // ---- 並べ替え（2つの一覧に同じ並べ替えを効かせる。並べ替えるのは日の行）----
     const sorters = {
-      best: (a, b) => a.i - b.i, // PHP の並び（全員そろう → 連続◎ → 連続○ → 遅れが少ない → 日付）
-      date: (a, b) => a.w.date.localeCompare(b.w.date) || a.w.from - b.w.from || a.i - b.i,
-      price: (a, b) => a.price - b.price || a.i - b.i,
+      best: (a, b) => a.best - b.best, // その日のいちばん良いカード（PHP の並びで先）が先の日から
+      date: (a, b) => a.date.localeCompare(b.date), // 'YYYY-MM-DD' なので、文字の比べっこで日付順になる
+      price: (a, b) => a.price - b.price || a.date.localeCompare(b.date), // Infinity - Infinity は NaN（偽）→ 日付順。料金未登録だけの日は Infinity なので最後
     };
     lists.forEach((l) => {
-      l.cards = l.windows.map((w, i) => ({ w, i, ...card(w) }));
+      const byDate = new Map(); // 日付 → その日のカード（windows は PHP の順なので、i の昇順のまま入る）
+      l.windows.forEach((w, i) => {
+        if (!byDate.has(w.date)) byDate.set(w.date, []);
+        byDate.get(w.date).push({ w, i, ...card(w) });
+      });
+      // 日が1つしか無い一覧は、閉じたままだと中身が見えないので最初から開く
+      l.days = [...byDate.values()].map((es) => dayGroup(es, byDate.size === 1));
     });
-    // 一度に出すのは PAGE 枚まで（期間が長いと数十枚になり、スマホで下まで行けなくなるため）。残りは「さらに表示」で足す
-    const PAGE = 10;
-    let sortKey = 'best';
+    let sortKey = 'date';
     const render = (key = sortKey) => {
       sortKey = key;
-      lists.forEach((l) => {
-        l.shown ||= PAGE;
-        const sorted = [...l.cards].sort(sorters[key]);
-        l.node.replaceChildren(...sorted.slice(0, l.shown).map((e) => e.node));
-        if (sorted.length > l.shown) {
-          const more = el('button', 'btn btn--ghost sch-more', `さらに表示（残り ${sorted.length - l.shown}）`);
-          more.type = 'button';
-          more.addEventListener('click', () => {
-            l.shown += PAGE;
-            render();
-          });
-          l.node.append(more);
-        }
-      });
+      // <details> は作り直さず、同じ要素を並べ直すだけ（開閉の状態・中で選んだ開始時刻やスタジオが残る）
+      lists.forEach((l) => l.node.replaceChildren(...[...l.days].sort(sorters[key]).map((g) => g.node)));
     };
-    render('best');
+    render('date');
     document.querySelector('[data-sched-sort]')?.addEventListener('click', (e) => {
       const btn = e.target.closest('[data-sort]');
       if (!btn) return;

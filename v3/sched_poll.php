@@ -50,6 +50,16 @@ $roomName = static function (?int $roomId) use ($pdo): string {
     return (string)($st->fetchColumn() ?: '');
 };
 
+/** 決定・仮決定した部屋の広さ（"12帖"。部屋が無い・広さ不明なら ''）。画面に出すだけ（カレンダーの「場所」には入れない） */
+$roomArea = static function (?int $roomId) use ($pdo): string {
+    if ($roomId === null) {
+        return '';
+    }
+    $st = $pdo->prepare('SELECT area_jo FROM studio_room WHERE studio_room_id = ?'); // プリペアドステートメント（? に値を渡す）
+    $st->execute([$roomId]);
+    return studio_fmt_jo($st->fetchColumn() ?: null); // 該当なし（false）・NULL は null にそろえる → 広さ不明は ''
+};
+
 /** カレンダーの予定に入れる「場所」と「メモ」 */
 $eventInfo = static function () use ($poll, $studioById, $members, $roomName, $pdo): array {
     $sid = $poll['fix_studio_id'] === null ? null : (int)$poll['fix_studio_id'];
@@ -324,7 +334,7 @@ $boot = [
 $fixed = null;
 if ($status >= 1) {
     [$fStudio, $fRoom, $location, $details] = $eventInfo();
-    $fixed = ['studio' => $fStudio, 'room' => $fRoom];
+    $fixed = ['studio' => $fStudio, 'room' => $fRoom, 'area' => $roomArea($poll['fix_room_id'] === null ? null : (int)$poll['fix_room_id'])];
     if ($status >= 2) {
         $s = sched_dt_to_abs($poll['fix_start']);
         $e = sched_dt_to_abs($poll['fix_end']);
@@ -358,7 +368,7 @@ render_header($poll['title'] . ' — 日程調整', 'tools');
     <section class="card sch-fixed<?= $status === 3 ? ' is-final' : '' ?>">
         <div class="sch-fixed__when"><?= icon($status === 3 ? 'event_available' : 'schedule') ?> <strong><?= h($fixed['when']) ?></strong></div>
         <?php if ($fixed['studio'] !== null): ?>
-            <div class="sch-fixed__where"><?= h($fixed['studio']['name']) ?><?= $fixed['room'] !== '' ? ' ' . h($fixed['room']) : '' ?></div>
+            <div class="sch-fixed__where"><?= h($fixed['studio']['name']) ?><?= $fixed['room'] !== '' ? ' ' . h($fixed['room']) : '' ?><?= $fixed['area'] !== '' ? ' ' . h($fixed['area']) : '' ?></div>
         <?php endif; ?>
         <?php $absentNames = array_column(array_filter($members, static fn($m) => (int)$m['fix_absent'] === 1), 'name'); ?>
         <?php if ($absentNames): ?>
@@ -427,10 +437,10 @@ render_header($poll['title'] . ' — 日程調整', 'tools');
     <?php endif; ?>
     <section class="sch-cands" data-sched-cands>
         <div class="sch-cands__head">
-            <h2 class="section-title">候補 <small class="muted"><?= count($windows) ?></small></h2>
+            <h2 class="section-title">候補 <small class="muted"><?= count(array_unique(array_column($windows, 'date'))) ?>日</small></h2>
             <div class="tabs tabs--filter sch-sort" role="tablist" data-sched-sort>
-                <button type="button" class="tab is-active" data-sort="best">おすすめ順</button>
-                <button type="button" class="tab" data-sort="date">日付順</button>
+                <button type="button" class="tab is-active" data-sort="date">日付順</button>
+                <button type="button" class="tab" data-sort="best">おすすめ順</button>
                 <button type="button" class="tab" data-sort="price">安い順</button>
             </div>
         </div>
@@ -442,7 +452,7 @@ render_header($poll['title'] . ' — 日程調整', 'tools');
         <?php endif; ?>
         <div class="sch-list" data-sched-list></div>
         <?php if ($absentWindows): ?>
-            <h2 class="section-title">1人欠席の候補 <small class="muted"><?= count($absentWindows) ?></small></h2>
+            <h2 class="section-title">1人欠席の候補 <small class="muted"><?= count(array_unique(array_column($absentWindows, 'date'))) ?>日</small></h2>
             <div class="sch-list" data-sched-list-absent></div>
         <?php endif; ?>
         <p class="muted small">料金は目安です。スタジオの空き状況は予約ページで確認してください</p>

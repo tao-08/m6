@@ -62,10 +62,23 @@
 .sch-cands__head .section-title { margin: 0; }
 .sch-sort { margin-bottom: 0; }
 .sch-list { display: grid; gap: 10px; margin: 12px 0; }
+/* 1日 = <details> 1つ。見出し（summary）の1行に 日付・時間帯・印・最安の料金、開くと その日のカードが並ぶ */
+.sch-day { padding: 12px 14px; }
+.sch-day__head { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; cursor: pointer; list-style: none; }
+.sch-day__head::-webkit-details-marker { display: none; }
+.sch-day__head::after { content: ""; flex: none; width: 8px; height: 8px; border: solid var(--muted); border-width: 0 2px 2px 0;
+  transform: rotate(45deg); transition: transform var(--t-base); }   /* 開閉の矢印（みんなの予定と同じ。閉じていると ⌄、開くと ⌃） */
+.sch-day[open] > .sch-day__head::after { transform: rotate(-135deg); }
+.sch-day__date { font-size: var(--fs-lg); }
+.sch-day__time { font-variant-numeric: tabular-nums; }
+.sch-day__marks { flex: 1 1 auto; min-width: 0; display: flex; flex-wrap: wrap; gap: 4px; }  /* 残りの幅を取って、料金と矢印を右端へ寄せる */
+.sch-day__head :is(.tag, .pill) { cursor: inherit; }    /* 見出し全体が押せる（開閉）ので、印の上でも指のカーソルのまま */
+.sch-day__price { font-weight: 700; font-variant-numeric: tabular-nums; }
+.sch-day__body { display: grid; gap: 10px; margin-top: 12px; }
+.sch-day__body > .sch-cand { box-shadow: none; border-radius: var(--r-md); } /* 外の箱と二重にならないよう、枠だけ・影なしにする */
 .sch-cand { display: grid; gap: 10px; padding: 12px 14px; }
 .sch-cand.is-late { border-style: dashed; }
 .sch-cand__top { display: flex; align-items: center; gap: 4px 8px; flex-wrap: wrap; }
-.sch-cand__date { font-size: var(--fs-lg); }
 .sch-cand__time { font-variant-numeric: tabular-nums; }
 .sch-cand__pills { display: flex; flex-wrap: wrap; gap: 4px; }
 .sch-cand__pills .pill { cursor: default; }
@@ -78,8 +91,12 @@
 .sch-srow:has(input:focus-visible) { box-shadow: var(--ring); }
 .sch-srow input { accent-color: var(--accent); width: 16px; height: 16px; margin: 0; flex: none; }
 .sch-srow__main { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
-.sch-srow__name { font-weight: 700; }
+.sch-srow__name { font-weight: 700; text-wrap: balance; } /* balance … 折り返すとき、最後の行に1文字だけ残さない（行の長さをそろえる） */
 .sch-srow__price { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: flex-end; gap: 0 6px; text-align: right; }
+/* 部屋のプルダウン。<select> は app.js（setupSelectPick）が「箱（.live-pick）+ ボタン」に包むので、はみ出しを止めるのは箱のほう
+   （ボタンの文字は長いと「…」で省略される）。select 自身にも同じ指定をしておく（data-native などで包まれないとき用） */
+.sch-srow__room, .sch-srow__main > .live-pick { max-width: 100%; min-width: 0; }
+.sch-srow__small { cursor: help; } /* 押せない要素（span）。cursor を指定しないと iOS でタップが届かない（data-tip の規約） */
 .sch-more { justify-self: start; }
 .sch-cand__acts { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
 
@@ -137,4 +154,7 @@
 
 @media (max-width: 560px) {
   .sch-grid2 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+  .sch-srow__price { flex-direction: column; align-items: flex-end; } /* 料金と「1人 ¥…」を縦に積んで、スタジオ名の幅を空ける（横に並べると名前が1〜2文字で折り返す） */
 }
+/* パンくずが3段（ツール / 日程調整 / 調整の題）になるマイ予定: スマホでは項目の途中で折らず、項目ごとに次の行へ送る */
+.sch-crumbs { flex-wrap: wrap; row-gap: 0; }
