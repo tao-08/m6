@@ -111,6 +111,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupLikes();
   setupAlbumTip();
   setupTip();
+  setupTabGlide();
   setupSetlistNames();
   setupSpotifyAppLinks();
   setupVoSum();
@@ -298,6 +299,52 @@ function setupSpotifyAppLinks() {
     } catch {
       window.location.href = a.href; // 聞けなかったら、今までどおりリダイレクトで飛ぶ
     }
+  });
+}
+
+/* ---------------------------------------------------------------------
+ * タブ（.tabs > .tab）の選択中の赤い丸を、選んだタブへ滑らせる（全ページ共通の規格）
+ *   丸は .tabs__glide を1個足して動かす。選択中のタブ自身の背景は消す（app.css の「タブの丸」）。
+ *   選択中 = .is-active（リンク・JS で切り替えるボタン）か、中のラジオが checked（絞り込みの label）。
+ *   JS で is-active を付け替えるタブ（日程調整・通知など）も MutationObserver で拾うので、各ページで呼ぶ必要はない。
+ *   表示されていない間（幅 0）は置かず、見えたとき（ResizeObserver）に置く。最初の1回は動かさずに置く。
+ * ------------------------------------------------------------------- */
+function setupTabGlide() {
+  document.querySelectorAll('.tabs').forEach((tabs) => {
+    const glide = document.createElement('span');
+    glide.className = 'tabs__glide';
+    glide.setAttribute('aria-hidden', 'true');
+    tabs.append(glide); // 末尾に足す（先頭だと .tab:nth-child(3) の数え方がずれる = app.css の日程タブ）
+    // 丸の位置の基準にする。top: auto = .tabs の sticky 用の top: 70px が relative で効いてずれないように
+    if (getComputedStyle(tabs).position === 'static') Object.assign(tabs.style, { position: 'relative', top: 'auto' });
+    tabs.classList.add('has-glide');
+    let placed = false;
+    const place = (to = null) => {
+      const tab = to ?? tabs.querySelector(':scope > .tab.is-active, :scope > .tab:has(input:checked)');
+      if (!tab || !tab.offsetWidth) { glide.style.opacity = '0'; placed = false; return; }
+      if (!placed) glide.style.transition = 'none'; // 最初・再表示のときは滑らせない
+      glide.style.opacity = '';
+      // offset* は整数に丸められて端が 1px 欠けることがあるので、小数まで出る getBoundingClientRect で測る（横スクロール分も足す）
+      const r = tab.getBoundingClientRect();
+      const box = tabs.getBoundingClientRect();
+      const k = box.width / tabs.offsetWidth || 1; // 開くアニメで拡大・縮小している途中（通知メニュー）でも、元の大きさに直して測る
+      glide.style.width = `${r.width / k}px`;
+      glide.style.height = `${r.height / k}px`;
+      glide.style.transform = `translate(${(r.left - box.left) / k - tabs.clientLeft + tabs.scrollLeft}px, ${(r.top - box.top) / k - tabs.clientTop}px)`;
+      if (!placed) { glide.offsetWidth; glide.style.transition = ''; placed = true; } // offsetWidth = 位置を確定させてから transition を戻す
+    };
+    let queued = false;
+    const later = () => { if (!queued) { queued = true; requestAnimationFrame(() => { queued = false; place(); }); } };
+    tabs.addEventListener('change', later); // ラジオ（label のタブ）
+    tabs.addEventListener('click', (e) => {
+      const a = e.target.closest('a.tab');
+      // リンクのタブ: is-active は次のページで付くので、移動する前に押したタブへ滑らせておく（新しいタブで開くときは動かさない）
+      if (a?.parentElement === tabs && !e.defaultPrevented && !e.metaKey && !e.ctrlKey && !e.shiftKey && e.button === 0 && a.target !== '_blank') place(a);
+      else later();
+    });
+    new MutationObserver(later).observe(tabs, { subtree: true, attributes: true, attributeFilter: ['class'], childList: true });
+    new ResizeObserver(() => { placed = false; later(); }).observe(tabs);
+    place();
   });
 }
 

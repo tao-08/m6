@@ -452,6 +452,12 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .tab small { font-weight: 500; }
 button.tab { border: 0; background: none; font: inherit; font-weight: 800; font-size: var(--fs-sm); cursor: pointer; } /* JS で切り替えるタブ（<button>）もリンク・label のタブと同じ見た目に */
 .tab.is-active, .tab.is-active:hover { background: var(--accent); color: var(--on-accent); }
+/* タブの丸: 選択中の赤い丸を選んだタブへ滑らせる（app.js の setupTabGlide が .tabs__glide を足して .has-glide を付ける。JS が無ければ今まで通りタブ自身が赤くなる） */
+.tabs__glide { position: absolute; left: 0; top: 0; z-index: 0; border-radius: var(--r-full); background: var(--accent); pointer-events: none;
+  transition: transform var(--t-slow) var(--ease-out), width var(--t-slow) var(--ease-out), height var(--t-slow) var(--ease-out), opacity var(--t-fast) ease; }
+.tabs.has-glide > .tab { position: relative; z-index: 1; transition: color var(--t-slow) var(--ease-out); }
+.tabs.has-glide > .tab:is(.is-active, :has(input:checked)) { background: none; } /* 丸が代わりに塗る */
+@media (prefers-reduced-motion: reduce) { .tabs__glide, .tabs.has-glide > .tab { transition: none; } }
 /* ライブ詳細の日程タブは押しやすいよう大きめに */
 .tabs--days { gap: 6px; padding: 6px; }
 .tabs--days .tab { padding: 12px 24px; font-size: var(--fs-lg); }
