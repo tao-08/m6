@@ -64,6 +64,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupInstFilter();
   setupTabs();
   setupTimelineCompact();
+  setupHideFar();
   setupConfirm();
   setupLeaveCheck();
   setupUnsavedGuard();
@@ -2942,6 +2943,25 @@ function setupTimelineCompact() {
     apply(on, true);
     try { localStorage.setItem(KEY, on ? '1' : '0'); } catch (e) { /* 覚えられなくても動く */ }
   }));
+  try { apply(localStorage.getItem(KEY) === '1'); } catch (e) { /* 同上 */ }
+}
+
+/* ---------------------------------------------------------------------
+ * ライブ一覧の「1ヶ月以上先を非表示」（input[data-hide-far="#一覧のid"]）
+ *   チェックすると一覧に .hide-far が付いて、data-far のカードを CSS で隠す。状態は localStorage に覚える
+ * ------------------------------------------------------------------- */
+function setupHideFar() {
+  const box = document.querySelector('[data-hide-far]');
+  const list = box && document.querySelector(box.dataset.hideFar);
+  if (!list) return;
+  const KEY = 'liveHideFar';
+  const apply = (on) => { box.checked = on; list.classList.toggle('hide-far', on); };
+  box.addEventListener('change', () => {
+    apply(box.checked);
+    // 解除したときは、出てきたカードをふわっと表示（検索・年度スロットと同じ animateIn）
+    animateIn(box.checked ? [] : list.querySelectorAll('.live-card[data-far]'), 200);
+    try { localStorage.setItem(KEY, box.checked ? '1' : '0'); } catch (e) { /* 覚えられなくても動く */ }
+  });
   try { apply(localStorage.getItem(KEY) === '1'); } catch (e) { /* 同上 */ }
 }
 

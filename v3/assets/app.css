@@ -316,6 +316,9 @@ body:has([data-tutorial-auto]) .toasts { display: none; }
 @media (prefers-reduced-motion: reduce) { .toast { animation: none; transition: none; } }
 
 .toolbar { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; align-items: center; }
+/* 「1ヶ月以上先を非表示」: 隠したあとカードが残らない年度は見出しごと隠す */
+.hide-far .live-card[data-far] { display: none; }
+.hide-far .year:not(:has(.live-card:not([data-far]))) { display: none; }
 .toolbar .search { min-width: 12em; } /* 狭い画面ではボタンが次の行に回る */
 /* 年度スロットがあるツールバー（ライブ一覧・メンバーの出演履歴）: [年度スロット][検索欄 …… 残りの幅いっぱい] */
 .toolbar:has(.year-slot) .search { flex: 1 1 10em; min-width: 0; }

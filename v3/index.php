@@ -137,6 +137,8 @@ foreach ($years as &$lives) {
     uasort($lives, static fn($a, $b) => [!isset($a['first_date']), $b['first_date'] ?? ''] <=> [!isset($b['first_date']), $a['first_date'] ?? '']);
 }
 unset($lives);
+// 「1ヶ月以上先」の境目（最初の日程がこの日より後のライブには data-far を付けて、チェックで隠せるようにする）
+$farFrom = (new DateTimeImmutable('today'))->modify('+1 month')->format('Y-m-d');
 // 年度スロットは新しい年度が先（よく見るのは最近の年度なので）
 $slotYears = array_keys($years);
 rsort($slotYears);
@@ -230,6 +232,7 @@ render_header('ライブ一覧', 'lives');
         </div>
         <!-- data-filter: 入力すると .live-card の data-text で絞り込む（assets/app.js） -->
         <input type="search" autocomplete="off" class="search" placeholder="ライブ名・会場・メモで検索" data-filter=".live-card" aria-label="検索">
+        <label class="check"><input type="checkbox" data-hide-far="#live-list"> 1ヶ月以上先を非表示</label>
         <a class="btn btn--primary" href="import">＋ 新規追加</a>
     </div>
     <!-- .sorted-list: 並び替えボタンを、一番上の年度の見出しの右に重ねて置く（member.php の出演履歴と同じ） -->
@@ -248,7 +251,7 @@ render_header('ライブ一覧', 'lives');
                     $notes = array_filter(array_merge(array_column($live['days'], 'note'), array_column($live['days'], 'band_notes'))); ?>
                     <!-- カードの中に YouTube のリンクを置くため、カード自体は <div> にする（<a> の中に <a> は入れられない）。
                          ライブページへのリンクはライブ名の <a> で、CSS の ::after でカード全体に広げて押せるようにしている -->
-                    <div class="card live-card"
+                    <div class="card live-card"<?= isset($live['first_date']) && $live['first_date'] > $farFrom ? ' data-far' : '' ?>
                        data-text="<?= h($live['name'] . ' ' . implode(' ', $venues) . ' ' . implode(' ', $notes)) ?>">
                         <div class="live-card__head">
                             <h3 class="live-card__title"><a class="live-card__link" href="live?id=<?= (int)$liveId ?>"><?= h($live['name']) ?></a>
