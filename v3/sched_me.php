@@ -1,7 +1,7 @@
 <?php
 /**
  * =====================================================================
- *  sched_me.php — マイ予定（日程調整に使う「自分の埋まり」の入力）
+ *  sched_me.php — マイスケジュール（日程調整に使う「自分の埋まり」の入力）
  * =====================================================================
  *  GET
  *    sched_me                 … 今日から1週間の NG 枠（?from=2026-11-20 で週を移動）
@@ -29,7 +29,7 @@ const SCHED_ME_WEEKLY_MAX = 20;
 $user = require_admin(); // 完成するまで管理者だけ
 $pdo = db();
 if ($user['member_id'] === null) {
-    render_header('マイ予定', 'tools');
+    render_header('マイスケジュール', 'tools');
     echo '<div class="empty card"><p class="empty__title">アカウントが部員に紐づいていません</p><p class="muted small">管理者に紐付けを頼んでください</p></div>';
     render_footer();
     exit;
@@ -46,6 +46,8 @@ $ensureProfile = static fn() => $pdo->prepare('INSERT IGNORE INTO sched_profile 
 if (is_post()) {
     verify_csrf();
     $action = (string)($_POST['action'] ?? '');
+    // 自動保存（assets/sched.js が fetch で送る）: 画面は移動しないので、メッセージもリダイレクトも無しで 204 を返す
+    $auto = ($_SERVER['HTTP_X_AUTOSAVE'] ?? '') === '1';
     $back = 'sched_me' . ($pollId > 0 ? '?poll=' . $pollId . (isset($_POST['week']) ? '&week=' . (int)$_POST['week'] : '') : (isset($_POST['from']) ? '?from=' . urlencode((string)$_POST['from']) : ''));
 
     if ($action === 'campus') {
@@ -59,6 +61,7 @@ if (is_post()) {
     if ($action === 'classes') {
         $term = (int)($_POST['term'] ?? 0);
         if (!isset(SCHED_TERMS[$term])) {
+            if ($auto) { http_response_code(400); exit; }
             redirect($back);
         }
         // "3-2"（水曜2限）の形だけ受け取る。それ以外は捨てる
@@ -75,6 +78,7 @@ if (is_post()) {
             $ins->execute([$me, $term, $w, $p]);
         }
         $pdo->commit();
+        if ($auto) { http_response_code(204); exit; }
         flash(SCHED_TERMS[$term] . 'の時間割を保存しました');
         redirect($back . '#classes');
     }
@@ -133,6 +137,7 @@ if (is_post()) {
         $ws = (int)($in['start'] ?? 0);
         $we = (int)($in['end'] ?? 0);
         if (!$days || count($days) > 7 || $ws < 0 || $we > 1440 || $we <= $ws) {
+            if ($auto) { http_response_code(400); exit; }
             flash('保存できませんでした', 'error');
             redirect($back);
         }
@@ -177,7 +182,8 @@ if (is_post()) {
             $pdo->rollBack();
             throw $e;
         }
-        flash('NG の時間を保存しました');
+        if ($auto) { http_response_code(204); exit; }
+        flash('スケジュールを保存しました');
         redirect($back . '#ng');
     }
 
@@ -271,16 +277,16 @@ $grid = [
 ];
 $icalOn = sched_ical_available();
 
-render_header('マイ予定', 'tools');
+render_header('マイスケジュール', 'tools');
 ?>
 <link rel="stylesheet" href="<?= asset_url('assets/sched.css') ?>">
 <nav class="crumbs sch-crumbs"><a href="tools">ツール</a><span>/</span><a href="sched">スタジオ練習の日程調整</a><?php if ($poll !== null): ?><span>/</span><a href="sched_poll?id=<?= $pollId ?>"><?= h($poll['title']) ?></a><?php endif; ?></nav>
-<h1 class="display display--sm">マイ予定</h1>
+<h1 class="display display--sm">マイスケジュール</h1>
 
 <!-- ===== NG の時間 ===== -->
 <section class="card sch-sec" id="ng">
     <div class="sch-sec__head">
-        <h2 class="section-title section-title--card">NG の時間</h2>
+        <h2 class="section-title section-title--card">スケジュールを編集</h2>
         <span class="info-tip" <?= tip_attr('マスをタップ・なぞって NG を塗る。日付をタップで1日まるごと。授業・カレンダーの予定・毎週の NG・決定した練習は自動で入る') ?>><?= icon('info', 'icon--sm') ?></span>
     </div>
     <div class="sch-weeknav">
@@ -292,12 +298,11 @@ render_header('マイ予定', 'tools');
         <span><i class="sch-sw is-ng"></i>NG</span><span><i class="sch-sw is-class"></i>授業</span><span><i class="sch-sw is-ical"></i>カレンダー</span><span><i class="sch-sw is-weekly"></i>毎週</span><span><i class="sch-sw is-practice"></i>練習</span>
     </div>
     <div class="sch-grid-wrap" data-sched-grid></div>
-    <form method="post" class="form-actions" data-sched-grid-form>
+    <form method="post" data-sched-grid-form>
         <?= csrf_field() ?>
         <input type="hidden" name="action" value="busy">
         <input type="hidden" name="payload" value="">
         <?php if ($poll !== null): ?><input type="hidden" name="poll" value="<?= $pollId ?>"><input type="hidden" name="week" value="<?= (int)($week ?? 0) ?>"><?php else: ?><input type="hidden" name="from" value="<?= h($days[0]) ?>"><?php endif; ?>
-        <button class="btn btn--primary" type="submit" disabled data-sched-grid-save>保存</button>
     </form>
     <?php if ($poll !== null): ?>
         <p class="sch-answer"><a class="btn btn--ghost" href="sched_poll?id=<?= $pollId ?>"><?= icon('chevron_left') ?> 候補・回答完了へ</a></p>
@@ -340,7 +345,7 @@ render_header('マイ予定', 'tools');
         <?php endforeach; ?>
     </div>
     <?php foreach (SCHED_TERMS as $t => $label): ?>
-        <form method="post" class="sch-tt" data-term="<?= $t ?>"<?= $t === $curTerm ? '' : ' hidden' ?><?= unsaved_attr() ?>>
+        <form method="post" class="sch-tt" data-term="<?= $t ?>" data-autosave<?= $t === $curTerm ? '' : ' hidden' ?>>
             <?= csrf_field() ?>
             <input type="hidden" name="action" value="classes"><input type="hidden" name="term" value="<?= $t ?>">
             <?php if ($poll !== null): ?><input type="hidden" name="poll" value="<?= $pollId ?>"><?php endif; ?>
@@ -360,7 +365,6 @@ render_header('マイ予定', 'tools');
             </table>
             <div class="form-actions">
                 <button class="btn btn--ghost btn--sm" type="submit" name="action" value="copy" formnovalidate><?= h(SCHED_TERMS[$t === 1 ? 2 : 1]) ?>から写す</button>
-                <button class="btn btn--primary" type="submit">保存</button>
             </div>
         </form>
     <?php endforeach; ?>

@@ -12,7 +12,7 @@
 .sch-ok { color: var(--ok); }
 .sch-warn { color: var(--warn); }
 
-/* ---------- セクション（マイ予定・設定） ---------- */
+/* ---------- セクション（マイスケジュール・設定） ---------- */
 .sch-sec { display: grid; gap: 12px; margin-bottom: 16px; }
 .sch-sec__head { display: flex; align-items: center; gap: 6px; }
 .sch-sec__head .section-title { margin: 0; }
@@ -111,6 +111,10 @@
 .sch-grid thead th { position: sticky; top: 0; background: var(--surface); z-index: 1; }
 .sch-grid thead th.is-sun { color: var(--accent); }
 .sch-grid thead th.is-sat { color: var(--headliner); }
+.sch-daychk { display: block; width: 10px; height: 10px; margin: 2px auto 0; border: 1.5px solid currentColor; border-radius: 50%; box-sizing: border-box; }
+.sch-grid thead th.is-all .sch-daychk { background: var(--accent); border-color: var(--accent); position: relative; }
+.sch-grid thead th.is-all .sch-daychk::after { content: ''; position: absolute; left: 2.5px; top: 0.5px; width: 2.5px; height: 5px; border: solid #fff; border-width: 0 1.5px 1.5px 0; transform: rotate(45deg); }
+.sch-grid thead th.is-none .sch-daychk { visibility: hidden; }
 .sch-grid thead th[data-day] { cursor: pointer; } /* 日付を押すと1日まるごと NG */
 .sch-grid tbody th { width: 40px; text-align: right; vertical-align: top; touch-action: pan-y; } /* 時刻の列はスクロールできる */
 .sch-grid td { height: 22px; border: 1px solid var(--border); border-top-style: dotted; padding: 0 2px; font-size: var(--fs-2xs); line-height: 1.1;
@@ -156,5 +160,5 @@
   .sch-grid2 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
   .sch-srow__price { flex-direction: column; align-items: flex-end; } /* 料金と「1人 ¥…」を縦に積んで、スタジオ名の幅を空ける（横に並べると名前が1〜2文字で折り返す） */
 }
-/* パンくずが3段（ツール / 日程調整 / 調整の題）になるマイ予定: スマホでは項目の途中で折らず、項目ごとに次の行へ送る */
+/* パンくずが3段（ツール / 日程調整 / 調整の題）になるマイスケジュール: スマホでは項目の途中で折らず、項目ごとに次の行へ送る */
 .sch-crumbs { flex-wrap: wrap; row-gap: 0; }

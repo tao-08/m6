@@ -328,7 +328,7 @@ $st = $pdo->prepare('SELECT p.*,
     ORDER BY p.status = 3, COALESCE(p.fix_date, p.date_from), p.sched_poll_id');
 $st->execute([(int)$user['user_id'], $myMember, date('Y-m-d', strtotime('-7 day'))]);
 $polls = $st->fetchAll();
-// マイ予定の入力状況（時間割もカレンダーも無ければ、入力を促す）
+// マイスケジュールの入力状況（時間割もカレンダーも無ければ、入力を促す）
 $hasClass = $hasIcal = false;
 if ($myMember > 0) {
     $st = $pdo->prepare('SELECT (SELECT COUNT(*) FROM sched_class WHERE member_id = ?) AS c, (SELECT ical_url IS NOT NULL FROM sched_profile WHERE member_id = ?) AS i');
@@ -349,8 +349,8 @@ render_header('スタジオ練習の日程調整', 'tools');
     <a class="card tool-card" href="sched_me">
         <span class="tool-card__icon"><?= icon('event') ?></span>
         <span class="tool-card__body">
-            <span class="tool-card__name">マイ予定<?= (!$hasClass && !$hasIcal) ? ' <span class="pill pill--warn">未入力</span>' : '' ?></span>
-            <span class="muted small">時間割・カレンダー連携・NG の時間</span>
+            <span class="tool-card__name">マイスケジュール<?= (!$hasClass && !$hasIcal) ? ' <span class="pill pill--warn">未入力</span>' : '' ?></span>
+            <span class="muted small">時間割・カレンダー連携・スケジュール編集</span>
         </span>
     </a>
     <?php if (is_executive()): ?>

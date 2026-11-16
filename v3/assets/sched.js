@@ -133,12 +133,37 @@
   //     ・スマホでなぞるとページがスクロールしないよう、マスの上だけ touch-action: none（sched.css）
   //       時刻の列はスクロールできる（そこを持てばページを動かせる）
   // ===================================================================
+  // 自動保存（約1秒まとめて fetch で送る。X-Autosave を付けると sched_me.php は画面を移動せず 204 を返す）
+  //   ページを離れる前・週送りのリンクを押したときは、待たずに今すぐ送る（keepalive = ページ移動後も送り切る）
+  const makeAutosave = (getBody) => {
+    const a = { build: getBody, timer: 0, pending: false };
+    a.flush = () => {
+      clearTimeout(a.timer);
+      if (!a.pending) return Promise.resolve();
+      a.pending = false;
+      return fetch(location.pathname + location.search, { method: 'POST', body: a.build(), headers: { 'X-Autosave': '1' }, keepalive: true })
+        .then((r) => { if (!r.ok) throw new Error(); })
+        .catch(() => { alert('保存できませんでした'); });
+    };
+    a.schedule = () => { a.pending = true; clearTimeout(a.timer); a.timer = setTimeout(a.flush, 1000); };
+    window.addEventListener('pagehide', a.flush);
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') a.flush(); });
+    // 週送りなどの同じ画面内のリンク: 送ってから移動
+    document.addEventListener('click', (e) => {
+      const link = e.target.closest('a[href]');
+      if (!link || !a.pending || e.defaultPrevented || e.ctrlKey || e.metaKey || e.shiftKey || link.target) return;
+      e.preventDefault();
+      a.flush().then(() => { location.href = link.href; });
+    });
+    return a;
+  };
+
   const setupGrid = () => {
     const data = readJson('sched-grid-data');
     const wrap = document.querySelector('[data-sched-grid]');
     const form = document.querySelector('[data-sched-grid-form]');
     if (!data || !wrap || !form) return;
-    const save = form.querySelector('[data-sched-grid-save]');
+    const autosave = makeAutosave(() => new FormData(form));
     const kindLabel = { class: '授業', ical: '予定', weekly: '毎週', practice: '練習' };
 
     const table = el('table', 'sch-grid');
@@ -148,6 +173,7 @@
       const th = el('th', d.dow === 0 ? 'is-sun' : d.dow === 6 ? 'is-sat' : '', d.md.replace(/\((.)\)/, '\n$1')); // 「11/21」改行「土」
       // 日付を押すと、その日を1日まるごと NG にする（操作ボタンなので data-tip は付けず、title と aria-label）
       th.dataset.day = d.date;
+      th.append(el('span', 'sch-daychk')); // 押すと1日まるごと、の印（全部塗られていたら塗りつぶし）
       th.title = '1日まるごと NG';
       th.setAttribute('aria-label', d.md + ' 1日まるごと NG'); // 読み上げで日付が消えないよう、日付も入れる
       head.append(th);
@@ -185,14 +211,22 @@
     table.append(tbody);
     wrap.append(table);
 
+    // 日付の印: その日の塗れるマスが全部 NG なら塗りつぶし
+    const syncDays = () => {
+      thead.querySelectorAll('th[data-day]').forEach((th) => {
+        const day = cells.filter((td) => td.dataset.day === th.dataset.day);
+        th.classList.toggle('is-all', day.length > 0 && day.every((td) => td.classList.contains('is-ng')));
+        th.classList.toggle('is-none', day.length === 0); // 塗れるマスが無い日（授業などで全部埋まっている）
+      });
+    };
+    syncDays();
     let mode = null; // true = 塗る / false = 消す / null = なぞっていない
-    let dirty = false;
     const paint = (td) => {
       if (!td || !td.dataset.abs || td.classList.contains('is-auto')) return;
       if (td.classList.contains('is-ng') !== mode) {
         td.classList.toggle('is-ng', mode);
-        dirty = true;
-        save.disabled = false;
+        autosave.schedule();
+        syncDays();
       }
     };
     table.addEventListener('pointerdown', (e) => {
@@ -221,19 +255,15 @@
     window.addEventListener('pointerup', end);
     window.addEventListener('pointercancel', end);
 
-    // 保存: 塗られているマスの「絶対分」を JSON にして送る
-    form.addEventListener('submit', () => {
+    // 自動保存: 塗られているマスの「絶対分」を JSON にして送る（なぞり終わって約1秒後。ページを離れる前にも送る）
+    autosave.build = () => {
       const payload = {
         days: data.days.map((d) => d.date), start: data.start, end: data.end,
         cells: cells.filter((td) => td.classList.contains('is-ng')).map((td) => Number(td.dataset.abs)),
       };
       form.querySelector('input[name="payload"]').value = JSON.stringify(payload);
-      dirty = false;
-    });
-    // 保存しないまま離れようとしたら警告（beforeunload = ページを離れる直前に来るイベント）
-    window.addEventListener('beforeunload', (e) => {
-      if (dirty) e.preventDefault();
-    });
+      return new FormData(form);
+    };
   };
 
   // ===================================================================
@@ -730,6 +760,11 @@
 
   setupForm();
   setupTerms();
+  // 時間割: チェックを入れるたびに自動保存（学期ごとのフォーム）
+  document.querySelectorAll('form[data-autosave]').forEach((f) => {
+    const a = makeAutosave(() => new FormData(f));
+    f.addEventListener('change', a.schedule);
+  });
   setupGrid();
   setupCands();
   setupOver();
