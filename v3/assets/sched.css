@@ -131,7 +131,9 @@
 .sch-grid thead th.is-sat { color: var(--headliner); }
 .sch-daychk { display: block; width: 10px; height: 10px; margin: 2px auto 0; border: 1px solid var(--muted); border-radius: 50%; box-sizing: border-box; }
 .sch-grid thead th.is-all .sch-daychk { background: var(--accent); border-color: var(--accent); position: relative; }
-.sch-grid thead th.is-all .sch-daychk::after { content: ''; position: absolute; left: 2.5px; top: 0.5px; width: 2.5px; height: 5px; border: solid #fff; border-width: 0 1.5px 1.5px 0; transform: rotate(45deg); }
+/* ✓ は丸の中心に置く。left/top 50% + translate(-50%) で中心に寄せ、L 字を回すと下に重心が寄るので、上へ少し（-60%）持ち上げる。
+   枠の太さを変えても中心からずれないよう、px の位置指定はしない */
+.sch-grid thead th.is-all .sch-daychk::after { content: ''; position: absolute; left: 50%; top: 50%; width: 2.5px; height: 5px; border: solid #fff; border-width: 0 1.5px 1.5px 0; transform: translate(-50%, -60%) rotate(45deg); }
 .sch-grid thead th.is-none .sch-daychk { visibility: hidden; }
 .sch-grid thead th[data-day] { cursor: pointer; } /* 日付を押すと1日まるごと NG */
 .sch-grid tbody th { width: 40px; text-align: right; vertical-align: top; touch-action: pan-y; } /* 時刻の列はスクロールできる */

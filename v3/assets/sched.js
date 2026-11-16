@@ -425,6 +425,30 @@
     });
 
     /**
+     * その部屋をこの開始時刻から借りられるか（スタジオ情報の料金計算 = studio_info.js の applyRoomRule と同じ決まり）
+     *   30分始まりの部屋（hs）は :30 だけ、それ以外の部屋は :00 だけ。部屋の無いスタジオ（room = null）は制限なし
+     */
+    const startOk = (room, m) => !room || m % 60 === (room.hs ? 30 : 0);
+    /** スタジオをこの開始時刻で借りられるか（借りられる部屋が1つでもあるか。部屋が未登録なら制限なし） */
+    const usable = (sid, m) => {
+      const rooms = data.sim[sid]?.rooms || [];
+      return !rooms.length || rooms.some((r) => startOk(r, m));
+    };
+    /**
+     * 候補（窓）から、借りられない開始時刻を除く（PHP は部屋の開始の決まりを見ていないので、ここで絞る）
+     *   スタジオごとの開始時刻を絞り → どのスタジオも借りられない時刻を窓から除き → 時間帯（from / to）を合わせ直す
+     *   1つも残らなければ null（その候補は出さない）
+     */
+    const trimWindow = (w) => {
+      const studios = w.studios
+        .map((s) => ({ ...s, starts: s.starts.filter((m) => usable(s.id, m)) }))
+        .filter((s) => s.starts.length);
+      const starts = w.starts.filter((m) => studios.some((s) => s.starts.includes(m)));
+      if (!starts.length) return null;
+      return { ...w, studios, starts, from: starts[0], to: starts[starts.length - 1] + data.len };
+    };
+
+    /**
      * 1つのスタジオ・開始時刻で、料金が出せる部屋ぜんぶの料金（人数に対して狭すぎる部屋も含める。選ぶのは利用者なので）
      *   部屋ごとに「割引のうち最安」を出す。料金表に無い時間がある部屋は入れない
      *   戻り値: [{ room, total, disc, small }]（料金の安い順。同額は元の順 = sort は同じ値なら順番を変えない）
@@ -439,10 +463,13 @@
       const discs = [{ id: 0, name: '' }, ...sim.discounts.filter((d) => dayOk(d.day, day))];
       const list = [];
       rooms.forEach((room) => {
+        if (!startOk(room, start)) return; // この時刻からは借りられない部屋（30分始まり / 毎時ちょうど始まり）
+        // 1時間単位の部屋で練習が 1時間半などのときは、1時間単位に切り上げて借りる（2時間ぶんの料金）
+        const len = room && !room.hu ? Math.ceil(data.len / 60) * 60 : data.len;
         const v = { ppl: 0, room: room ? room.id : 0, day, start, rentals: [] };
         let top = null;
         discs.forEach((d) => {
-          const r = calc(v, d.id, data.len);
+          const r = calc(v, d.id, len);
           if (r.missing || (!r.pack && !r.normal.segs.length)) return; // 料金表に無い時間がある → 比べない
           if (!top || r.total < top.total) top = { room, total: r.total, disc: d.name, small: room ? fit(room) === 'small' : false };
         });
@@ -532,15 +559,16 @@
       .filter((s) => s.starts.includes(m))
       .map((s) => firstPick(roomQuotes(s.id, w.day, m))?.total ?? Infinity));
     /**
-     * 開始時刻の一覧 → 続いている所（30分ずつ = SCHED_STEP）を「最初の開始〜最後の開始＋練習時間」の時間帯にまとめた文字
-     *   例: [600, 630, 660, 1080] → "10:00〜13:30・18:00〜20:00"。3つ以上あれば2つまで出して「ほか」
+     * 開始時刻の一覧 → 続いている所（間隔1時間以内）を「最初の開始〜最後の開始＋練習時間」の時間帯にまとめた文字
+     *   例: [600, 630, 660, 1080] → "10:00〜13:00・18:00〜20:00"（練習2時間）。3つ以上あれば2つまで出して「ほか」
      */
     const spanText = (starts) => {
       const sorted = [...new Set(starts)].sort((a, b) => a - b); // 別のカードに同じ開始時刻があっても1つに
       const spans = [];
       sorted.forEach((m) => {
         const last = spans[spans.length - 1];
-        if (last && m - last[1] === 30) last[1] = m;
+        // 1時間以内の間隔はつなげる（30分始まりの部屋は :30 だけ・普通の部屋は :00 だけなので、安い開始時刻が1時間おきに並ぶ）
+        if (last && m - last[1] <= 60) last[1] = m;
         else spans.push([m, m]);
       });
       const text = spans.slice(0, 2).map(([a, b]) => `${hm(a)}〜${hm(b + data.len)}`).join('・');
@@ -692,7 +720,19 @@
         //   部屋は各時刻の「最初に選ぶ部屋」で比べる（選んでいる部屋では変わらない）
         const at = x.s.starts.map((m) => [m, firstPick(roomQuotes(x.s.id, w.day, m))?.total ?? Infinity]);
         const low = Math.min(...at.map(([, p]) => p));
-        if (low !== Infinity) {
+        // 開始を30分ずらすと、人数に合う部屋（狭すぎない）でこのスタジオの最安になるとき → 「10:30開始で最安 Ast ¥930/人」
+        //   30分始まりの部屋（:30 だけ）と普通の部屋（:00 だけ）が混ざるスタジオで、いまの時刻では安い部屋が借りられない場合
+        const now = firstPick(x.opts)?.total ?? Infinity; // いまの開始時刻での、このスタジオの最安
+        //   前も後ろも最安なら、時刻を2つ並べる（「9:30・10:30開始で最安 …」）
+        const shifts = [start - 30, start + 30]
+          .filter((m) => x.s.starts.includes(m)) // メンバーが空いていて、借りられる時刻だけ
+          .map((m) => [m, firstPick(roomQuotes(x.s.id, w.day, m))])
+          .filter(([, q]) => q && !q.small && q.total === low && q.total < now);
+        if (shifts.length) {
+          const q = shifts[0][1];
+          const rooms = [...new Set(shifts.map(([, s]) => s.room?.name).filter(Boolean))].join('・'); // 前後で部屋が違えば両方
+          body.append(el('span', 'sch-srow__cheap small', `${shifts.map(([m]) => hm(m)).join('・')}開始で最安 ${rooms ? rooms + ' ' : ''}${perHead(q.total)}/人`));
+        } else if (low !== Infinity) {
           // 時刻で料金が変わらないスタジオは「終日同一料金」（時間帯を書いても意味がない）
           const same = at.every(([, p]) => p === low);
           body.append(el('span', 'sch-srow__cheap muted small', same ? '終日同一料金' : `最安 ${spanText(at.filter(([, p]) => p === low).map(([m]) => m))} ${perHead(low)}/人`));
@@ -795,7 +835,9 @@
     };
     lists.forEach((l) => {
       const byDate = new Map(); // 日付 → その日のカード（windows は PHP の順なので、i の昇順のまま入る）
-      l.windows.forEach((w, i) => {
+      l.windows.forEach((raw, i) => {
+        const w = trimWindow(raw); // 部屋の開始の決まりで借りられない時刻を除く
+        if (!w) return;
         if (!byDate.has(w.date)) byDate.set(w.date, []);
         byDate.get(w.date).push({ w, i, ...card(w) });
       });
