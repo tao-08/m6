@@ -6,7 +6,7 @@
  *  ・権限（一般 / 幹部 / 管理者）の変更
  *  ・メンバーとの紐付け（どのアカウントがどのメンバーか。選び直し・解除もここ）
  *    紐付けると、アカウント名はメンバー名に自動でそろう（sync_account_names()）
- *  ・アカウント削除
+ *  ・アカウントの無効化（投稿者名・履歴を残す）
  *  ・招待コード（新規登録とパスワード再設定の合言葉）の変更（app_setting テーブル。lib/bootstrap.php の invite_code()）
  *  「最後の管理者」が自分の権限を外してしまうと誰も管理できなくなるので、それだけは止める。
  * =====================================================================
@@ -76,13 +76,40 @@ if (is_post()) {
                 flash("{$target['name']} さんを「{$memberName}」と紐付けました");
             }
         }
-    } elseif ($action === 'delete') {
+    } elseif ($action === 'deactivate') {
         if ($userId === $me['user_id']) {
-            flash('自分自身は削除できません', 'error');
+            flash('自分自身は無効化できません', 'error');
+        } elseif ($target['deactivated_at'] !== null) {
+            flash('このアカウントは既に無効化されています', 'error');
+        } elseif (!empty($target['is_admin']) && $adminCount <= 1) {
+            flash('最後の管理者は無効化できません', 'error');
         } else {
-            // アカウントを消すだけ。member（出演記録）は消えない
-            $pdo->prepare('DELETE FROM user_account WHERE user_id = ?')->execute([$userId]);
-            flash("{$target['name']} さんのアカウントを削除しました");
+            $pdo->beginTransaction();
+            try {
+                // 投稿・出演履歴の user_id と name は維持し、認証情報と連携情報だけを無効化する。
+                $pdo->prepare('UPDATE user_account
+                    SET login_id = ?, password_hash = ?, password_changed_at = NOW(),
+                        email = NULL, is_admin = 0, is_executive = 0,
+                        push_board = 0, push_important = 0, push_notice = 0,
+                        deactivated_at = NOW()
+                    WHERE user_id = ?')
+                    ->execute([
+                        'withdrawn-' . (int)$userId,
+                        password_hash(bin2hex(random_bytes(32)), PASSWORD_DEFAULT),
+                        $userId,
+                    ]);
+                $pdo->prepare('DELETE FROM push_subscription WHERE user_id = ?')->execute([$userId]);
+                $pdo->commit();
+            } catch (Throwable $e) {
+                $pdo->rollBack();
+                throw $e;
+            }
+            // Google連携は部員単位で保存されるため、無効化するアカウントの member_id に紐づく連携を解除する。
+            if ($target['member_id'] !== null) {
+                require_once __DIR__ . '/lib/sched_google.php';
+                sched_google_disconnect($pdo, (int)$target['member_id']);
+            }
+            flash("{$target['name']} さんのアカウントを無効化しました。過去の投稿者名と履歴は保持されています");
         }
     }
     redirect(users_url($_GET)); // フォームは今の URL（並び順付き）に送られる
@@ -95,7 +122,7 @@ $dir = $sort === '' ? '' : (($_GET['dir'] ?? '') === 'desc' ? 'desc' : 'asc');
 
 // no_band: 紐付け先のメンバーが1バンドにも出ていない（紐付け間違いの疑い → ⚠ を出す）
 // 名前の順は DB の並び（ORDER BY u.name）をそのまま使う（_i）
-$users = $pdo->query('SELECT u.user_id, u.login_id, u.name, u.is_admin, u.is_executive, u.member_id, m.name AS member_name, m.entry_year,
+$users = $pdo->query('SELECT u.user_id, u.login_id, u.name, u.is_admin, u.is_executive, u.member_id, u.deactivated_at, m.name AS member_name, m.entry_year,
         (u.member_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM band_member bm WHERE bm.member_id = u.member_id)) AS no_band
     FROM user_account u LEFT JOIN member m ON m.member_id = u.member_id ORDER BY u.name, u.user_id')->fetchAll();
 foreach ($users as $i => &$u) {
@@ -148,13 +175,13 @@ render_header('ユーザー管理');
 <div class="card table-card">
     <div class="table-scroll table-scroll--flush">
     <table class="table table--users" data-client-sort data-sort-current="<?= h($sort) ?>" data-dir-current="<?= h($dir) ?>">
-        <thead><tr><?= sort_button_th('entry', '入学年', $sort, $dir, 'asc') ?><?= sort_button_th('name', '名前', $sort, $dir, 'asc') ?><th>ログインID</th><th>メンバー</th><th>権限</th><th></th></tr></thead>
+        <thead><tr><?= sort_button_th('entry', '入学年', $sort, $dir, 'asc') ?><?= sort_button_th('name', '名前', $sort, $dir, 'asc') ?><th>ログインID</th><th>メンバー</th><th>権限</th><th>状態</th><th></th></tr></thead>
         <tbody>
         <?php foreach ($users as $i => $u): ?>
             <tr<?= (int)$u['user_id'] === $me['user_id'] ? ' class="is-me"' : '' ?> data-pos="<?= h(json_encode($positions[$i])) ?>">
                 <td class="muted"><?= $u['entry_year'] !== null ? (int)$u['entry_year'] : '—' ?></td>
                 <td class="strong"><?= h($u['name']) ?></td>
-                <td class="muted"><?= h($u['login_id']) ?></td>
+                <td class="muted"><?= $u['deactivated_at'] === null ? h($u['login_id']) : '—' ?></td>
                 <td>
                     <!-- プルダウンで選んで「保存」。「紐付けない」を選ぶと解除 -->
                     <form method="post" class="inline-form"><?= csrf_field() ?><input type="hidden" name="user_id" value="<?= (int)$u['user_id'] ?>"><input type="hidden" name="action" value="link">
@@ -190,10 +217,11 @@ render_header('ユーザー管理');
                         </select>
                     </form>
                 </td>
+                <td><?= $u['deactivated_at'] === null ? '有効' : '退会済み' ?></td>
                 <td class="num">
-                    <?php if ((int)$u['user_id'] !== $me['user_id']): ?>
-                        <form method="post" class="inline-form" data-confirm="<?= h($u['name']) ?> さんのアカウントを削除します（出演記録は残ります）。よろしいですか？"><?= csrf_field() ?><input type="hidden" name="user_id" value="<?= (int)$u['user_id'] ?>"><input type="hidden" name="action" value="delete">
-                            <button class="btn btn--ghost btn--danger btn--sm" type="submit">削除</button>
+                    <?php if ((int)$u['user_id'] !== $me['user_id'] && $u['deactivated_at'] === null): ?>
+                        <form method="post" class="inline-form" data-confirm="<?= h($u['name']) ?> さんのアカウントを無効化します。ログイン情報・通知登録・Google連携を停止し、過去の投稿者名と出演履歴は残します。元に戻せません。よろしいですか？"><?= csrf_field() ?><input type="hidden" name="user_id" value="<?= (int)$u['user_id'] ?>"><input type="hidden" name="action" value="deactivate">
+                            <button class="btn btn--ghost btn--danger btn--sm" type="submit">退会処理</button>
                         </form>
                     <?php endif; ?>
                 </td>
