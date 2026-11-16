@@ -110,6 +110,11 @@ if (is_post()) {
             if ($target['member_id'] !== null) {
                 require_once __DIR__ . '/lib/sched_google.php';
                 sched_google_disconnect($pdo, (int)$target['member_id']);
+                // iCal URL も連携用の秘密情報なので消し、取り込んだ予定枠を削除する。
+                $pdo->prepare('UPDATE sched_profile SET ical_url = NULL, ical_fetched_at = NULL, ical_error = NULL WHERE member_id = ?')
+                    ->execute([(int)$target['member_id']]);
+                $pdo->prepare('DELETE FROM sched_busy WHERE member_id = ? AND source = 1')
+                    ->execute([(int)$target['member_id']]);
             }
             flash("{$target['name']} さんのアカウントを無効化しました。過去の投稿者名と履歴は保持されています");
         }
