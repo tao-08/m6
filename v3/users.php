@@ -96,7 +96,7 @@ if (is_post()) {
                         deactivated_at = NOW()
                     WHERE user_id = ?')
                     ->execute([
-                        'withdrawn-' . (int)$userId,
+                        '~withdrawn-' . (int)$userId,
                         password_hash(bin2hex(random_bytes(32)), PASSWORD_DEFAULT),
                         $userId,
                     ]);
