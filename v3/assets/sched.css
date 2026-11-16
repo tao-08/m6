@@ -194,6 +194,7 @@
 .sch-campus { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
 .sch-ical { display: flex; align-items: center; gap: 6px; margin: 0; }
 .sch-answer { margin: 0; }
+.sch-feed { display: grid; gap: 8px; padding-top: 12px; border-top: 1px solid var(--border); } /* 購読（決定した練習を追加）。上の取り込みとの区切り */
 
 /* ---------- 設定 ---------- */
 .sch-travel td, .sch-travel th { text-align: center; white-space: nowrap; }

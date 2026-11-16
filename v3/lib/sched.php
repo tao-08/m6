@@ -852,28 +852,56 @@ function sched_gcal_url(string $title, int $startAbs, int $endAbs, string $locat
 }
 
 /**
+ * 予定の「場所」（スタジオ名・部屋・住所）。スタジオが決まっていなければ ''
+ *   マイスケジュールの購読（sched_feed.php）と、日程調整の .ics ダウンロード（sched_poll.php）で同じ文にするため、ここにまとめる
+ */
+function sched_event_location(?string $studioName, string $room, ?string $address): string
+{
+    return $studioName === null ? '' : trim($studioName . ($room !== '' ? ' ' . $room : '') . ' ' . (string)$address);
+}
+
+/** 予定の「メモ」（メンバーと、日程調整のページの URL）。$presentNames は欠席でない人の名前の配列 */
+function sched_event_details(array $presentNames, int $pollId): string
+{
+    return 'メンバー: ' . implode('・', $presentNames) . "\n" . APP_URL . 'sched_poll?id=' . $pollId;
+}
+
+/**
  * .ics ファイル（iCalendar 形式。RFC 5545 という国際規格）の中身。iPhone・Android・Outlook どれでも開ける
  *   ・改行は CRLF（\r\n）と決まっている
  *   ・文字の , ; \ 改行 は \ でエスケープする（規格の決まり）
  *   ・UID … 予定の背番号。同じ UID のファイルをもう一度開くと「更新」として扱われる
+ *
+ * 予定を何件でも入れられる版。$events の1件は
+ *   ['id' => 日程調整の id, 'title' => 題名, 'start' => 開始（絶対分）, 'end' => 終了（絶対分）, 'location' => 場所, 'details' => メモ,
+ *    'stamp' => 最終更新（UNIX 秒。省略すると現在時刻）]
+ * $calName を渡すと「購読するカレンダー」用になり、カレンダー名と「1時間ごとに読み直して」の合図（REFRESH-INTERVAL・X-PUBLISHED-TTL）も入れる
+ *   （Google は合図を無視して半日〜1日おきに読むこともある。iPhone は合図どおりに近い間隔で読む）
  */
-function sched_ics(int $pollId, string $title, int $startAbs, int $endAbs, string $location, string $details): string
+function sched_ics_calendar(array $events, string $calName = ''): string
 {
     $esc = static fn(string $s): string => str_replace(["\\", "\n", ',', ';'], ["\\\\", "\\n", '\\,', '\\;'], str_replace("\r", '', $s));
     $utc = static fn(int $abs): string => gmdate('Ymd\THis\Z', $abs * 60); // 世界標準時（Z = UTC）で書くと、端末のタイムゾーンに関係なく正しく出る
     $host = (defined('APP_URL') ? parse_url(APP_URL, PHP_URL_HOST) : null) ?: 'abbeyroad.online'; // defined … 定数があるか（テストでは bootstrap を読まないので無い）
-    $lines = [
-        'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//AbbeyRoad.online//sched//JA', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
-        'BEGIN:VEVENT',
-        'UID:sched-' . $pollId . '@' . $host,
-        'DTSTAMP:' . gmdate('Ymd\THis\Z'),
-        'DTSTART:' . $utc($startAbs),
-        'DTEND:' . $utc($endAbs),
-        'SUMMARY:' . $esc($title),
-        'LOCATION:' . $esc($location),
-        'DESCRIPTION:' . $esc($details),
-        'END:VEVENT', 'END:VCALENDAR',
-    ];
+    $lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//AbbeyRoad.online//sched//JA', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH'];
+    if ($calName !== '') {
+        array_push($lines, 'X-WR-CALNAME:' . $esc($calName), 'REFRESH-INTERVAL;VALUE=DURATION:PT1H', 'X-PUBLISHED-TTL:PT1H');
+    }
+    foreach ($events as $e) {
+        array_push(
+            $lines,
+            'BEGIN:VEVENT',
+            'UID:sched-' . (int)$e['id'] . '@' . $host, // 予定ごとに固定。日時や場所が変わっても、同じ予定の「更新」として扱われる
+            'DTSTAMP:' . gmdate('Ymd\THis\Z', (int)($e['stamp'] ?? time())),
+            'DTSTART:' . $utc((int)$e['start']),
+            'DTEND:' . $utc((int)$e['end']),
+            'SUMMARY:' . $esc((string)$e['title']),
+            'LOCATION:' . $esc((string)$e['location']),
+            'DESCRIPTION:' . $esc((string)$e['details']),
+            'END:VEVENT'
+        );
+    }
+    $lines[] = 'END:VCALENDAR';
     // 1行は 75 バイトまで（規格の決まり）。長い行は「改行＋空白1つ」で折り返す（読む側はつなげ直す）。
     //   日本語の1文字（UTF-8 で3バイト）の途中で切らないよう、mb_strcut（バイト数で切るが、文字の途中では切らない）を使う
     $folded = [];
@@ -888,4 +916,56 @@ function sched_ics(int $pollId, string $title, int $startAbs, int $endAbs, strin
         $folded[] = ($first ? '' : ' ') . $line;
     }
     return implode("\r\n", $folded) . "\r\n";
+}
+
+/** 予定1件だけの .ics（日程調整1件のダウンロード用。中身は sched_ics_calendar と同じ） */
+function sched_ics(int $pollId, string $title, int $startAbs, int $endAbs, string $location, string $details): string
+{
+    return sched_ics_calendar([['id' => $pollId, 'title' => $title, 'start' => $startAbs, 'end' => $endAbs, 'location' => $location, 'details' => $details]]);
+}
+
+/**
+ * 購読するカレンダー（sched_feed.php）に入れる予定の一覧。その部員が呼ばれていて、決定済み（status = 3）の練習だけ。
+ *   ・欠席（fix_absent = 1）の人には出さない
+ *   ・古すぎる練習は出さない（$sinceDt = 'Y-m-d H:i:s'。これより後に始まるものだけ。カレンダーが際限なく重くならないように）
+ *   ・N+1（1件ずつ SELECT を繰り返して遅くなること）を避けるため、スタジオ・部屋は JOIN で、メンバーは全件ぶんを1回の IN (…) で読む
+ * 戻り値は sched_ics_calendar にそのまま渡せる配列
+ */
+function sched_feed_events(PDO $pdo, int $memberId, string $sinceDt): array
+{
+    $st = $pdo->prepare('SELECT p.sched_poll_id, p.title, p.fix_start, p.fix_end, p.updated_at, s.name AS studio_name, s.address, r.name AS room_name
+        FROM sched_poll_member me
+        JOIN sched_poll p ON p.sched_poll_id = me.sched_poll_id
+        LEFT JOIN studio s ON s.studio_id = p.fix_studio_id
+        LEFT JOIN studio_room r ON r.studio_room_id = p.fix_room_id
+        WHERE me.member_id = ? AND me.fix_absent = 0 AND p.status = 3 AND p.fix_start IS NOT NULL AND p.fix_end IS NOT NULL AND p.fix_start > ?
+        ORDER BY p.fix_start, p.sched_poll_id');
+    $st->execute([$memberId, $sinceDt]);
+    $polls = $st->fetchAll();
+    if ($polls === []) {
+        return [];
+    }
+    // 予定ごとのメンバー（欠席の人は入れない）。順番は画面と同じ（かな順）
+    $ids = array_map('intval', array_column($polls, 'sched_poll_id'));
+    $st = $pdo->prepare('SELECT pm.sched_poll_id, m.name FROM sched_poll_member pm JOIN member m ON m.member_id = pm.member_id
+        WHERE pm.fix_absent = 0 AND pm.sched_poll_id IN (' . implode(',', array_fill(0, count($ids), '?')) . ') ORDER BY m.name_kana, m.name');
+    $st->execute($ids);
+    $namesByPoll = [];
+    foreach ($st->fetchAll() as $r) {
+        $namesByPoll[(int)$r['sched_poll_id']][] = $r['name'];
+    }
+    $events = [];
+    foreach ($polls as $p) {
+        $id = (int)$p['sched_poll_id'];
+        $events[] = [
+            'id' => $id,
+            'title' => 'スタ連 ' . $p['title'],
+            'start' => sched_dt_to_abs($p['fix_start']),
+            'end' => sched_dt_to_abs($p['fix_end']),
+            'location' => sched_event_location($p['studio_name'], (string)($p['room_name'] ?? ''), $p['address']),
+            'details' => sched_event_details($namesByPoll[$id] ?? [], $id),
+            'stamp' => (int)strtotime((string)$p['updated_at']),
+        ];
+    }
+    return $events;
 }

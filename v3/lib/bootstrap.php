@@ -100,7 +100,9 @@ error_reporting(E_ALL);
  */
 const SESSION_DAYS = 60;
 
-if (session_status() !== PHP_SESSION_ACTIVE) {
+// APP_NO_SESSION … ページの先頭で define すると、セッションを始めない（カレンダーアプリが自動で読みに来る sched_feed.php 用。
+//   Cookie を持たない相手に、毎回セッションのファイルと Set-Cookie を作らないため）
+if (!defined('APP_NO_SESSION') && session_status() !== PHP_SESSION_ACTIVE) {
     // strict_mode: サーバーが発行していないセッションID（攻撃者が用意したもの）を受け付けない
     ini_set('session.use_strict_mode', '1');
     ini_set('session.use_only_cookies', '1'); // URL の ?PHPSESSID=… では受け付けない（URL ごと漏れると乗っ取られる）

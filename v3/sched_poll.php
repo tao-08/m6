@@ -71,10 +71,10 @@ $eventInfo = static function () use ($poll, $studioById, $members, $roomName, $p
         $studio = $st->fetch() ?: null;
     }
     $room = $roomName($poll['fix_room_id'] === null ? null : (int)$poll['fix_room_id']);
-    $location = $studio === null ? '' : trim($studio['name'] . ($room !== '' ? ' ' . $room : '') . ' ' . (string)($studio['address'] ?? ''));
+    $location = sched_event_location($studio === null ? null : $studio['name'], $room, $studio['address'] ?? null); // 購読（sched_feed.php）と同じ文にするため lib/sched.php に共通化
     // 欠席の人（fix_absent = 1）はメンバーに入れない
     $present = array_filter($members, static fn($m) => (int)$m['fix_absent'] === 0);
-    $details = 'メンバー: ' . implode('・', array_column($present, 'name')) . "\n" . APP_URL . 'sched_poll?id=' . (int)$poll['sched_poll_id'];
+    $details = sched_event_details(array_column($present, 'name'), (int)$poll['sched_poll_id']);
     return [$studio, $room, $location, $details];
 };
 

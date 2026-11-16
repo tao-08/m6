@@ -52,6 +52,27 @@ function sched_ical_key(): ?string
 }
 
 /**
+ * 購読 URL（sched_feed.php）の「鍵」。部員 id と版から毎回計算するので、DB には保存しない（DB が漏れても URL は作れない）
+ *   hash_hmac = 「秘密の鍵 + 入力」から作る署名。鍵を知らない人は、正しい署名を作れない（当てるのも現実的でない）
+ *   "feed:" を頭に付けて、同じ鍵を使う暗号化（iCal の URL）と署名の使い道を分けている
+ *   先頭 32 文字（128 ビット）だけ使う = URL が長くなりすぎない。当てずっぽうでは破れない長さ
+ *   版（sched_profile.feed_version）が変わると別の値になる = 再発行すると古い URL は使えなくなる
+ *   鍵が無いサーバーでは null（購読の機能ごと出さない）
+ */
+function sched_feed_token(int $memberId, int $version, ?string $key = null): ?string
+{
+    $key ??= sched_ical_key(); // $key はテスト用（鍵を渡せば config.php が無くても計算できる）
+    return $key === null ? null : substr(hash_hmac('sha256', "feed:$memberId:$version", $key), 0, 32);
+}
+
+/** 購読 URL（https）。Google・iPhone に渡すときは、呼び出し側で https:// を webcal:// に置き換える */
+function sched_feed_url(int $memberId, int $version): ?string
+{
+    $token = sched_feed_token($memberId, $version);
+    return $token === null ? null : APP_URL . 'sched_feed?m=' . $memberId . '&t=' . $token;
+}
+
+/**
  * 暗号化 → base64 の文字列
  *   secretbox = 「同じ鍵で暗号化・復号する」方式（共通鍵暗号）。改ざんされていたら復号に失敗するので気づける
  *   nonce = 毎回違う使い捨ての乱数。同じ URL でも毎回違う暗号文になる（暗号文を見比べて同じだとバレないように）

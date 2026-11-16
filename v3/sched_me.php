@@ -11,6 +11,7 @@
  *    classes … 時間割（春・秋）。チェックの付いたコマを入れ直す
  *    copy    … もう片方の学期の時間割を写す
  *    ical / ical_refresh / ical_delete … カレンダー連携（iCal の URL）
+ *    feed_reset … 決定した練習の購読 URL を再発行（古い URL は使えなくなる。lib/sched_ical.php の sched_feed_token）
  *    busy    … NG 枠（画面に出ている範囲の手入力分を入れ直す。JS から JSON で送る）
  *    weekly_add / weekly_delete … 毎週の NG（バイト等。曜日と時間帯を1行ずつ。削除するまで毎週効く）
  *
@@ -130,6 +131,18 @@ if (is_post()) {
         redirect($back . '#ical');
     }
 
+    // 購読 URL（決定した練習をカレンダーに自動で入れる）の再発行。版を +1 すると、古い URL は鍵が合わなくなって使えなくなる
+    //   行が無い部員は INSERT で作る（版 1 から）。ある部員は ON DUPLICATE KEY UPDATE で +1（1回の SQL で「無ければ作る・有れば足す」）
+    if ($action === 'feed_reset') {
+        if (sched_feed_token($me, 0) === null) {
+            flash('購読は現在使えません', 'error');
+            redirect($back . '#ical');
+        }
+        $pdo->prepare('INSERT INTO sched_profile (member_id, feed_version) VALUES (?, 1) ON DUPLICATE KEY UPDATE feed_version = feed_version + 1')->execute([$me]);
+        flash('URL を再発行しました。カレンダーに登録し直してください');
+        redirect($back . '#ical');
+    }
+
     // この予定を無視（授業・カレンダー・毎週の1回分。JS から fetch で送る。on = 1 で無視、0 で元に戻す）
     if ($action === 'ignore') {
         $s = (int)($_POST['s'] ?? 0);
@@ -246,7 +259,7 @@ if (is_post()) {
 }
 
 /* ==================== 表示 ==================== */
-$st = $pdo->prepare('SELECT m.name, m.entry_year, p.campus, p.ical_url, p.ical_fetched_at, p.ical_error FROM member m LEFT JOIN sched_profile p ON p.member_id = m.member_id WHERE m.member_id = ?');
+$st = $pdo->prepare('SELECT m.name, m.entry_year, p.campus, p.ical_url, p.ical_fetched_at, p.ical_error, COALESCE(p.feed_version, 0) AS feed_version FROM member m LEFT JOIN sched_profile p ON p.member_id = m.member_id WHERE m.member_id = ?');
 $st->execute([$me]);
 $prof = $st->fetch();
 $autoCampus = sched_member_campus(null, $prof['entry_year'] === null ? null : (int)$prof['entry_year']);
@@ -442,6 +455,20 @@ render_header('マイスケジュール', 'tools');
             <input class="search" type="url" name="url" required placeholder="https://calendar.google.com/…/basic.ics" autocomplete="off" aria-label="iCal の URL">
             <button class="btn btn--primary btn--sm" type="submit"><?= icon('link') ?> 連携</button>
         </form>
+    <?php endif; ?>
+    <?php // 決定した練習を、自分のカレンダーへ自動で入れる（購読 URL。sched_feed.php）。鍵が無いサーバーでは出さない
+    $feedUrl = sched_feed_url($me, (int)$prof['feed_version']);
+    if ($feedUrl !== null):
+        $feedWebcal = preg_replace('~^https://~', 'webcal://', $feedUrl); // webcal:// … 「購読する」の意味のアドレス。タップするとカレンダーアプリが開く ?>
+        <div class="sch-feed">
+            <span class="sch-label">決定した練習を追加</span>
+            <div class="sch-row sch-row--wrap">
+                <a class="btn btn--sm" href="https://calendar.google.com/calendar/render?cid=<?= h(urlencode($feedWebcal)) ?>" target="_blank" rel="noopener"><?= icon('event') ?> Google</a>
+                <a class="btn btn--sm" href="<?= h($feedWebcal) ?>"><?= icon('smartphone') ?> iPhone</a>
+                <form method="post" data-confirm="今の URL は使えなくなります。登録し直してください。よろしいですか？"><?= csrf_field() ?><input type="hidden" name="action" value="feed_reset"><?php if ($poll !== null): ?><input type="hidden" name="poll" value="<?= $pollId ?>"><?php endif; ?>
+                    <button class="btn btn--sm" type="submit" title="URL を再発行"><?= icon('refresh') ?> 再発行</button></form>
+            </div>
+        </div>
     <?php endif; ?>
 </section>
 <?php require __DIR__ . '/partials/ical_help.php'; // ⓘ から開く「カレンダー連携のやり方」（初回チュートリアルと同じ部品） ?>

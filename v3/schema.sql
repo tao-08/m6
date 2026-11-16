@@ -1567,6 +1567,7 @@ CREATE TABLE sched_profile (
     ical_url      VARCHAR(1024) NULL,             -- 暗号化した iCal の URL（lib/sched_ical.php）
     ical_fetched_at DATETIME   NULL,              -- 最後に読めた日時
     ical_error    VARCHAR(100) NULL,              -- 最後に読めなかった理由（読めたら NULL）
+    feed_version  INT UNSIGNED NOT NULL DEFAULT 0, -- 購読 URL の版。再発行で +1（古い URL は無効。migrations/112）
     updated_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (member_id),
     CONSTRAINT fk_sprof_member FOREIGN KEY (member_id) REFERENCES member (member_id)
