@@ -69,10 +69,10 @@ if (is_post()) {
             $errors[] = '期間は' . SCHED_MAX_DAYS . '日以内にしてください';
         }
         if ($in['day_start'] < 0 || $in['day_end'] > 1440 || $in['day_start'] % SCHED_STEP || $in['day_end'] % SCHED_STEP || $in['day_end'] - $in['day_start'] < $in['length']) {
-            $errors[] = '時間帯が練習の長さより短くなっています';
+            $errors[] = '開始時間帯から終了時間帯までが練習時間より短くなっています';
         }
         if (!in_array($in['length'], SCHED_LENGTHS, true)) {
-            $errors[] = '練習の長さを選んでください';
+            $errors[] = '練習時間を選んでください';
         }
         if (!in_array($in['late_max'], SCHED_LATE_OPTIONS, true)) {
             $errors[] = '遅刻の上限を選んでください';
@@ -249,7 +249,7 @@ if (isset($_GET['new']) || isset($_GET['edit'])) {
     $lead = 2;
     if ($span !== null) {
         $lead = 0;
-        foreach ([1, 2, 3, 4] as $w) {
+        foreach ([1, 2, 4] as $w) { // タブにある週だけ（3週前は無い）
             if ($in['date_to'] === $span[1] && $in['date_from'] === $leadFrom($span[0], $span[1], $w)) {
                 $lead = $w;
                 break;
@@ -331,9 +331,9 @@ if (isset($_GET['new']) || isset($_GET['edit'])) {
         </label>
         <?php // 期間のタブ。name="lead_ui" はサーバーでは読まない（送るのは日付だけ。期間の正は日付の欄） ?>
         <div class="field sch-lead" data-lead<?= $span === null ? ' hidden' : '' ?>>
-            <span>期間</span>
-            <div class="tabs tabs--filter" role="radiogroup" aria-label="期間">
-                <?php foreach ([1 => '1週', 2 => '2週', 3 => '3週', 4 => '4週', 0 => 'カスタム'] as $w => $label): ?>
+            <span>日程調整期間</span>
+            <div class="tabs tabs--filter" role="radiogroup" aria-label="日程調整期間">
+                <?php foreach ([1 => '1週前', 2 => '2週前', 4 => '4週前', 0 => 'カスタム'] as $w => $label): ?>
                     <label class="tab"><input type="radio" name="lead_ui" value="<?= $w ?>"<?= $w === $lead ? ' checked' : '' ?>><?= $label ?></label>
                 <?php endforeach; ?>
             </div>
@@ -342,9 +342,9 @@ if (isset($_GET['new']) || isset($_GET['edit'])) {
         <div class="sch-grid2">
             <label class="field"><span>開始日</span><input type="date" name="date_from" value="<?= h($in['date_from']) ?>" required<?= $dateLocked ? ' readonly' : '' ?>></label>
             <label class="field"><span>終了日</span><input type="date" name="date_to" value="<?= h($in['date_to']) ?>" required<?= $dateLocked ? ' readonly' : '' ?>></label>
-            <label class="field"><span>時間帯（から）</span><select name="day_start"><?= $times(360, 1380, $in['day_start']) ?></select></label>
-            <label class="field"><span>時間帯（まで）</span><select name="day_end"><?= $times(420, 1440, $in['day_end']) ?></select></label>
-            <label class="field"><span>練習の長さ</span><select name="length">
+            <label class="field"><span>開始時間帯</span><select name="day_start"><?= $times(360, 1380, $in['day_start']) ?></select></label>
+            <label class="field"><span>終了時間帯</span><select name="day_end"><?= $times(420, 1440, $in['day_end']) ?></select></label>
+            <label class="field"><span>練習時間</span><select name="length">
                 <?php foreach (SCHED_LENGTHS as $l): ?><option value="<?= $l ?>"<?= $l === $in['length'] ? ' selected' : '' ?>><?= h(studio_fmt_hours($l)) ?></option><?php endforeach; ?>
             </select></label>
             <label class="field"><span>遅刻の上限</span><select name="late_max">

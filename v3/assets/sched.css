@@ -26,6 +26,8 @@
 .sch-member-row { display: grid; grid-template-columns: minmax(0, 280px) auto; gap: 6px; align-items: center; }
 .sch-grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .sch-grid2 .field > * { min-width: 0; max-width: 100%; } /* 入力欄・選択欄が列の幅より広がって、スマホで横にはみ出さないように */
+/* 期間のタブで週を選んでいる間（readonly）の日付はグレーアウト。手で変えられないことを見た目で示す（見た目は .alias-field の無効な欄と同じ） */
+.sch-form input[type="date"][readonly] { background: var(--surface-2); color: var(--muted); cursor: not-allowed; }
 .sch-lead > .tabs { min-width: 0; } /* 期間のタブ: グリッドの中だと中身の幅より縮まず、画面の外にはみ出すため（入りきらなければタブの中で横スクロール） */
 .sch-studios { border: 0; padding: 0; margin: 0; display: grid; gap: 10px; }
 .sch-studios legend { padding: 0; margin-bottom: 6px; }
