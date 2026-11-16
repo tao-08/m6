@@ -2948,7 +2948,7 @@ function setupTimelineCompact() {
 
 /* ---------------------------------------------------------------------
  * ライブ一覧の「1ヶ月以上先を非表示」（input[data-hide-far="#一覧のid"]）
- *   チェックすると一覧に .hide-far が付いて、data-far のカードを CSS で隠す。状態は localStorage に覚える
+ *   チェックすると一覧に .hide-far が付いて、data-far のカードを CSS で隠す。状態は localStorage に覚える（最初はオン）
  * ------------------------------------------------------------------- */
 function setupHideFar() {
   const box = document.querySelector('[data-hide-far]');
@@ -2962,7 +2962,10 @@ function setupHideFar() {
     animateIn(box.checked ? [] : list.querySelectorAll('.live-card[data-far]'), 200);
     try { localStorage.setItem(KEY, box.checked ? '1' : '0'); } catch (e) { /* 覚えられなくても動く */ }
   });
-  try { apply(localStorage.getItem(KEY) === '1'); } catch (e) { /* 同上 */ }
+  // 最初（覚えた値がないとき）はオン。外した人は '0' を覚えているのでオフのまま
+  let saved = null;
+  try { saved = localStorage.getItem(KEY); } catch (e) { /* 覚えが使えなければオン */ }
+  apply(saved !== '0');
 }
 
 /* ---------------------------------------------------------------------

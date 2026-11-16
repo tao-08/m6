@@ -322,6 +322,8 @@ body:has([data-tutorial-auto]) .toasts { display: none; }
 .toolbar .search { min-width: 12em; } /* 狭い画面ではボタンが次の行に回る */
 /* 年度スロットがあるツールバー（ライブ一覧・メンバーの出演履歴）: [年度スロット][検索欄 …… 残りの幅いっぱい] */
 .toolbar:has(.year-slot) .search { flex: 1 1 10em; min-width: 0; }
+/* スマホで次の行に回った「新規追加」は右端に寄せる */
+.toolbar:has(.year-slot) > .btn--primary { margin-left: auto; }
 /* 並び替えボタンを、一番上の年度の見出しの右端に重ねる。
    見出しは並び替え・年度スロットで入れ替わるが、いつも一覧の一番上にあるので、一覧の右上に置けば必ずその横に来る。
    上の端どうしでそろえると、見出しより背の高いボタンの方が真ん中が下に来る → 真ん中どうしでそろえる:
