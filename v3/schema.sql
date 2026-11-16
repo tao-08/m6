@@ -1591,6 +1591,7 @@ CREATE TABLE sched_busy (
     start_at      DATETIME         NOT NULL,
     end_at        DATETIME         NOT NULL,
     source        TINYINT UNSIGNED NOT NULL DEFAULT 0, -- 0 = 手入力 / 1 = iCal
+    title         VARCHAR(600)     NULL, -- 暗号化した予定のタイトル（iCal のみ。lib/sched_ical.php。本人にだけ見せる）
     PRIMARY KEY (sched_busy_id),
     -- 「この部員の、この期間の埋まり」を探すので (member_id, start_at) の順で索引を張る（複合インデックスは左の列から使われる）
     KEY idx_sbusy_member (member_id, start_at),

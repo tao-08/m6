@@ -253,7 +253,7 @@ if ($status < 3) {
     }
     $to = $status === 1 && $poll['fix_date'] !== null ? (string)$poll['fix_date'] : (string)$poll['date_to'];
     if ($from <= $to) {
-        $data = sched_collect_busy($pdo, $memberIds, $from, $to, $pollId);
+        $data = sched_collect_busy($pdo, $memberIds, $from, $to, $pollId, false, $myMember); // 最後 = 自分の iCal の予定のタイトルだけ復号する（他の人の分は '' のまま）
         $practices = $data['practices'];
         if ($studios) {
             $calc = [
@@ -274,16 +274,18 @@ if ($status < 3) {
         }
         // ---- メンバーの予定（週ごとの表の元データ）。授業・練習・それ以外は種類を丸めて送る（プライバシーのため）----
         //   「バイト」「カレンダー」「手入力」のどれなのかは、画面に出さない（まとめて「予定あり」）
-        $overLabel = static fn(array $b): string => match ($b[3]) {
-            'class' => '授業 ' . $b[4],
-            'practice' => '練習 ' . $b[4],
+        //   例外: 自分（$myMember）の iCal の予定だけ、タイトルを見せる（他の人の行には、タイトルを絶対に出さない）
+        $overLabel = static fn(array $b, int $mid): string => match (true) {
+            $b[3] === 'class' => '授業 ' . $b[4],
+            $b[3] === 'practice' => '練習 ' . $b[4],
+            $b[3] === 'ical' && $mid === $myMember && $b[4] !== '' => $b[4],
             default => '予定あり',
         };
         //   見せるのは、この調整を操作できる人（作った人・呼ばれた部員・幹部）だけ。URL の id を変えただけの人に、他人の予定の時間帯を見せない
         if ($canManage) {
             $overBusy = [];
             foreach ($memberIds as $mid) {
-                $overBusy[$mid] = array_map(static fn($b) => [$b[0], $b[1], $overLabel($b)], $data['busy'][$mid] ?? []);
+                $overBusy[$mid] = array_map(static fn($b) => [$b[0], $b[1], $overLabel($b, (int)$mid)], $data['busy'][$mid] ?? []);
             }
             $over = [
                 'days' => array_map(static fn($d) => ['date' => $d, 'md' => sched_md($d), 'abs' => sched_day_abs($d), 'dow' => (int)date('w', strtotime($d))], sched_dates($from, $to)),

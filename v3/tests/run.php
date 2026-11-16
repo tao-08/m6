@@ -885,6 +885,9 @@ check('iCal URL: webcal → https / Google OK / 他のホストは不可 / ポ�
     sched_ical_normalize('http://calendar.google.com/a.ics'),
 ], ['https://p12-caldav.icloud.com/published/2/abc', true, null, null, null]);
 check('iCal: 重なりをまとめる', sched_merge_spans([[60, 90], [0, 30], [20, 60]]), [[0, 90]]);
+// タイトル（3つ目）: 重なる予定は「 / 」でつなぐ（同じタイトルは1つ）。タイトルが無ければ2要素のまま
+check('iCal: 重なる2件のタイトルは「A / B」・同じタイトルは1つ・離れた予定は別々', sched_merge_spans([[20, 60, 'B'], [0, 30, 'A'], [40, 50, 'A'], [100, 120, 'C']]), [[0, 60, 'A / B'], [100, 120, 'C']]);
+check('iCal: タイトルが空なら2要素のまま・空と有りが混ざれば有りだけ残る', sched_merge_spans([[0, 30, ''], [30, 60, ''], [100, 120, ''], [110, 130, 'D']]), [[0, 60], [100, 130, 'D']]);
 // .ics の読み取り（vendor/ に sabre/vobject があるときだけ。GitHub Actions には vendor が無いので飛ばす）
 if (is_file(__DIR__ . '/../vendor/autoload.php')) {
     require_once __DIR__ . '/../vendor/autoload.php';
@@ -899,6 +902,7 @@ if (is_file(__DIR__ . '/../vendor/autoload.php')) {
     $from = sched_day_abs('2026-11-20');
     $got = array_map(static fn($s) => [sched_abs_to_dt($s[0]), sched_abs_to_dt($s[1])], sched_ical_parse($ics, $from, $from + 20 * 1440));
     check('iCal: 繰り返し・例外日・終日・空き', $got, [['2026-11-21 10:00:00', '2026-11-21 12:00:00'], ['2026-12-05 10:00:00', '2026-12-05 12:00:00']]);
+    check('iCal: タイトル（SUMMARY）を読む', array_column(sched_ical_parse($ics, $from, $from + 20 * 1440), 2), ['バイト', 'バイト']);
 }
 check('ics: 改行は CRLF・カンマはエスケープ',str_contains(sched_ics(1, 'A,B', $base + 600, $base + 720, '新宿', ''), "SUMMARY:A\\,B\r\n"), true);
 

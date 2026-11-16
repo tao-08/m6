@@ -296,7 +296,7 @@ if ($poll !== null) {
     $nextUrl = 'sched_me?from=' . date('Y-m-d', strtotime($from . ' +7 day'));
 }
 sched_ical_refresh($pdo, $me); // 古ければ読み直す（30分以内に読んでいれば何もしない）
-$data = sched_collect_busy($pdo, [$me], $days[0], $days[count($days) - 1], $poll === null ? null : $pollId, true);
+$data = sched_collect_busy($pdo, [$me], $days[0], $days[count($days) - 1], $poll === null ? null : $pollId, true, $me); // 最後の $me = 自分の iCal の予定のタイトルを復号して見せる
 $grid = [
     'days' => array_map(static fn($d) => ['date' => $d, 'md' => sched_md($d), 'abs' => sched_day_abs($d), 'dow' => (int)date('w', strtotime($d))], $days),
     'start' => $ws, 'end' => $we, 'step' => SCHED_STEP,

@@ -21,6 +21,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/studio_info.php'; // studio_campuses()（キャンパスの座標）・studio_sim_load()（料金の計算データ）
+require_once __DIR__ . '/sched_ical.php'; // sched_ical_decrypt()（iCal の予定のタイトルを、本人にだけ見せるときに復号する。sched_ical.php 側は sched.php を読まないので、循環しない）
 
 /* =====================================================================
  *  定数
@@ -648,8 +649,10 @@ function sched_can_manage(array $poll, array $user, array $memberIds): bool
  *   種類: class（授業）/ manual（手入力）/ ical / weekly（毎週の予定）/ practice（決定済みの練習）
  *   「この予定を無視」にした授業・カレンダー・毎週の予定（sched_ignore）は埋まりから外す。
  *   $withIgnored = true のときは外さず、6つ目（[5]）に true を付けて残す（マイスケジュールで網掛けにするため）
+ *   $titleFor … この部員の iCal の予定だけ、タイトル（暗号化して保存したもの）を復号してラベル（[4]）に入れる。
+ *     null（既定）なら誰の分も復号しない。他の部員の分は、指定しても絶対に復号しない（タイトルは本人にだけ見せるため）
  */
-function sched_collect_busy(PDO $pdo, array $memberIds, string $from, string $to, ?int $exceptPollId, bool $withIgnored = false): array
+function sched_collect_busy(PDO $pdo, array $memberIds, string $from, string $to, ?int $exceptPollId, bool $withIgnored = false, ?int $titleFor = null): array
 {
     $out = ['busy' => [], 'practices' => [], 'campus' => []];
     $memberIds = array_values(array_unique(array_map('intval', $memberIds)));
@@ -709,10 +712,15 @@ function sched_collect_busy(PDO $pdo, array $memberIds, string $from, string $to
     }
 
     // ---- 手入力・iCal の埋まり ----
-    $st = $pdo->prepare("SELECT member_id, start_at, end_at, source FROM sched_busy WHERE member_id IN ($in) AND end_at > ? AND start_at < ?");
+    $st = $pdo->prepare("SELECT member_id, start_at, end_at, source, title FROM sched_busy WHERE member_id IN ($in) AND end_at > ? AND start_at < ?");
     $st->execute([...$memberIds, sched_abs_to_dt($fromAbs), sched_abs_to_dt($toAbs)]);
     foreach ($st as $r) {
-        $out['busy'][(int)$r['member_id']][] = [sched_dt_to_abs($r['start_at']), sched_dt_to_abs($r['end_at']), null, (int)$r['source'] === 1 ? 'ical' : 'manual', ''];
+        // タイトルは暗号化されている。復号するのは「本人の iCal の予定」だけ（他人の分は、タイトルがあっても '' のまま）
+        $label = '';
+        if ($titleFor !== null && (int)$r['member_id'] === $titleFor && (int)$r['source'] === 1 && $r['title'] !== null) {
+            $label = sched_ical_decrypt($r['title']) ?? '';
+        }
+        $out['busy'][(int)$r['member_id']][] = [sched_dt_to_abs($r['start_at']), sched_dt_to_abs($r['end_at']), null, (int)$r['source'] === 1 ? 'ical' : 'manual', $label];
     }
 
     // ---- ほかの調整の仮決定・決定（この部員たちが1人でも入っているもの）----

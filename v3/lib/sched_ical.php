@@ -12,7 +12,8 @@
  *       → DB の中身が漏れても、鍵が無ければ URL はわからない
  *    2. 読みに行く先は Google と iCloud のドメインだけ（SSRF 対策）
  *       SSRF = サーバーに「内部の URL（http://localhost/… など）を読ませて」中を覗く攻撃。外部の URL を読む機能の定番の穴
- *    3. 予定のタイトル・場所・メモは捨てて、開始と終了だけ保存する
+ *    3. 場所・メモは捨てて、開始・終了とタイトルだけ保存する。タイトルは暗号化して入れ、本人にだけ見せる
+ *       （他の人には「予定あり」。復号するのは lib/sched.php の sched_collect_busy で本人のときだけ）
  *
  *  ■ 繰り返し予定（毎週火曜 など）
  *    .ics の中では RRULE という書き方で「ルール」だけ書かれている。展開（実際の日付の一覧にする）は
@@ -168,7 +169,8 @@ function sched_ical_fetch(string $url): array
 }
 
 /**
- * .ics の中身 → 埋まりの時間帯 [[開始, 終了], …]（絶対分。範囲内に切り詰め、重なりはまとめる）
+ * .ics の中身 → 埋まりの時間帯 [[開始, 終了, タイトル], …]（絶対分。範囲内に切り詰め、重なりはまとめる）
+ *   タイトルが全部空の時間帯は [開始, 終了] の2つだけ（sched_merge_spans を参照）
  *   取り込まないもの:
  *     ・「空き時間」として登録された予定（TRANSP:TRANSPARENT）
  *     ・終日の予定（誕生日・祝日・「◯◯の日」などのメモ代わりが多いので）
@@ -200,24 +202,40 @@ function sched_ical_parse(string $ics, int $fromAbs, int $toAbs): array
         $sa = max($fromAbs, intdiv($s->getTimestamp(), 60));
         $ea = min($toAbs, intdiv($e->getTimestamp(), 60));
         if ($ea > $sa) {
-            $spans[] = [$sa, $ea];
+            // SUMMARY = 予定のタイトル。ここでは平文のまま持ち、DB に入れる直前（sched_ical_refresh）で暗号化する
+            $spans[] = [$sa, $ea, trim((string)($ev->SUMMARY ?? ''))];
         }
     }
     return sched_merge_spans($spans);
 }
 
-/** 重なる・くっつく時間帯を1つにまとめる（[[0,30],[20,60],[60,90]] → [[0,90]]） */
+/**
+ * 重なる・くっつく時間帯を1つにまとめる（[[0,30],[20,60],[60,90]] → [[0,90]]）
+ *   要素の3つ目（タイトル）があれば、まとめた時間帯のタイトルは重複を除いて「 / 」でつなぐ（100 文字まで）。
+ *   タイトルが全部空なら [開始, 終了] の2つのまま返す（手入力の埋まりなど、タイトルを持たない呼び出しの結果を変えないため）
+ */
 function sched_merge_spans(array $spans): array
 {
     usort($spans, static fn($a, $b) => $a[0] <=> $b[0]);
-    $out = [];
-    foreach ($spans as [$s, $e]) {
-        $last = array_key_last($out);
-        if ($last !== null && $s <= $out[$last][1]) {
-            $out[$last][1] = max($out[$last][1], $e);
+    $groups = []; // [[開始, 終了, [タイトル, …]], …]
+    foreach ($spans as $sp) {
+        $s = $sp[0];
+        $e = $sp[1];
+        $title = trim((string)($sp[2] ?? ''));
+        $last = array_key_last($groups);
+        if ($last !== null && $s <= $groups[$last][1]) {
+            $groups[$last][1] = max($groups[$last][1], $e);
         } else {
-            $out[] = [$s, $e];
+            $groups[] = [$s, $e, []];
+            $last = array_key_last($groups);
         }
+        if ($title !== '' && !in_array($title, $groups[$last][2], true)) {
+            $groups[$last][2][] = $title;
+        }
+    }
+    $out = [];
+    foreach ($groups as [$s, $e, $titles]) {
+        $out[] = $titles ? [$s, $e, mb_substr(implode(' / ', $titles), 0, 100)] : [$s, $e];
     }
     return $out;
 }
@@ -268,9 +286,11 @@ function sched_ical_refresh(PDO $pdo, int $memberId, bool $force = false): ?stri
     $pdo->beginTransaction();
     try {
         $pdo->prepare('DELETE FROM sched_busy WHERE member_id = ? AND source = 1')->execute([$memberId]);
-        $ins = $pdo->prepare('INSERT INTO sched_busy (member_id, start_at, end_at, source) VALUES (?, ?, ?, 1)');
-        foreach ($spans as [$s, $e]) {
-            $ins->execute([$memberId, sched_abs_to_dt($s), sched_abs_to_dt($e)]);
+        $ins = $pdo->prepare('INSERT INTO sched_busy (member_id, start_at, end_at, source, title) VALUES (?, ?, ?, 1, ?)');
+        foreach ($spans as $sp) {
+            // タイトルは暗号化して入れる（DB が漏れても読めない）。タイトルが無ければ NULL
+            $title = (string)($sp[2] ?? '');
+            $ins->execute([$memberId, sched_abs_to_dt($sp[0]), sched_abs_to_dt($sp[1]), $title === '' ? null : sched_ical_encrypt($title)]);
         }
         $pdo->prepare('UPDATE sched_profile SET ical_fetched_at = NOW(), ical_error = NULL WHERE member_id = ?')->execute([$memberId]);
         $pdo->commit();
