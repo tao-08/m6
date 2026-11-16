@@ -31,7 +31,7 @@ if (is_post()) {
     $blocked = too_many_failures($loginId);
     // ID が無いときもダミーのハッシュで password_verify する。しないと「無い ID はすぐ返ってくる」ので、
     // 返ってくるまでの時間で「その ID があるか」がばれる
-    $ok = password_verify($password, $row ? $row['password_hash'] : '$2y$10$GRxTS/BQKei4SZMW5x37WuN5Lemm6Yz9M0RTZr2AOnKQYHxG1Xxfe') && $row;
+    $ok = password_verify($password, $row ? $row['password_hash'] : '$2y$10$GRxTS/BQKei4SZMW5x37WuN5Lemm6Yz9M0RTZr2AOnKQYHxG1Xxfe') && $row && empty($row['deactivated_at']);
 
     if ($blocked) {
         $error = 'ログインの失敗が続いたので、しばらく受け付けません。' . LOGIN_WINDOW_MINUTES . '分ほどたってからもう一度試してください';
