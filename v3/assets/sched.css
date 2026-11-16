@@ -81,6 +81,8 @@
 .sch-day[open]::details-content, .sch-over[open]::details-content { height: auto; opacity: 1; }
 @media (prefers-reduced-motion: reduce) { .sch-day::details-content, .sch-over::details-content { transition: none; } } /* 動きを減らす設定の人にはアニメなし */
 .sch-day__date { font-size: var(--fs-lg); }
+.sch-day__date.is-sun { color: var(--accent); }   /* 日・祝日は赤、土は青（表の見出し .sch-grid thead th と同じ色） */
+.sch-day__date.is-sat { color: var(--headliner); }
 .sch-day__time { font-variant-numeric: tabular-nums; }
 .sch-day__marks { flex: 1 1 auto; min-width: 0; display: flex; flex-wrap: wrap; gap: 4px; }  /* 残りの幅を取って、料金と矢印を右端へ寄せる */
 .sch-day__head :is(.tag, .pill) { cursor: inherit; }    /* 見出し全体が押せる（開閉）ので、印の上でも指のカーソルのまま */

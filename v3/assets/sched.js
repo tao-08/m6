@@ -14,6 +14,9 @@
 (() => {
   'use strict';
 
+  /** 表の日付の見出しの色の class: 日曜・祝日（md に「祝」が入る）= is-sun（赤）/ 土曜 = is-sat（青） */
+  const dayClass = (d) => (d.dow === 0 || d.md.includes('祝') ? 'is-sun' : d.dow === 6 ? 'is-sat' : '');
+
   /** <script type="application/json" id="…"> を読む（無ければ null） */
   const readJson = (id) => {
     const n = document.getElementById(id);
@@ -229,7 +232,7 @@
     const head = el('tr');
     head.append(el('th'));
     data.days.forEach((d) => {
-      const th = el('th', d.dow === 0 ? 'is-sun' : d.dow === 6 ? 'is-sat' : '', d.md.replace(/\((.)\)/, '\n$1')); // 「11/21」改行「土」
+      const th = el('th', dayClass(d), d.md.replace(/\((.+?)\)/, '\n$1')); // 「11/21」改行「土」（祝日は「月祝」）
       // 日付を押すと、その日を1日まるごと NG にする（操作ボタンなので data-tip は付けず、title と aria-label）
       th.dataset.day = d.date;
       th.append(el('span', 'sch-daychk')); // 押すと1日まるごと、の印（全部塗られていたら塗りつぶし）
@@ -824,7 +827,8 @@
       const d = el('details', 'card sch-day');
       d.open = open;
       const head = el('summary', 'sch-day__head');
-      head.append(el('strong', 'sch-day__date', es[0].w.md));
+      // 土 = 青 / 日・祝日 = 赤（表の見出しと同じ色）。w.day は料金の曜日区分（3 = 土 / 4 = 日祝）
+      head.append(el('strong', 'sch-day__date' + (es[0].w.day === 4 ? ' is-sun' : es[0].w.day === 3 ? ' is-sat' : ''), es[0].w.md));
       // 時間帯: その日のカードの いちばん早い開始 〜 いちばん遅い終わり
       head.append(el('span', 'sch-day__time', `${hm(Math.min(...es.map((e) => e.w.from)))}〜${hm(Math.max(...es.map((e) => e.w.to)))}`));
       const marks = el('span', 'sch-day__marks'); // 印（あるものだけ）。残りの幅をぜんぶ取って、料金を右端へ押しやる
@@ -916,7 +920,7 @@
       const table = el('table', 'sch-grid sch-grid--over');
       const head = el('tr');
       head.append(el('th'));
-      days.forEach((d) => head.append(el('th', d.dow === 0 ? 'is-sun' : d.dow === 6 ? 'is-sat' : '', d.md.replace(/\((.)\)/, '\n$1')))); // 「11/21」改行「土」
+      days.forEach((d) => head.append(el('th', dayClass(d), d.md.replace(/\((.+?)\)/, '\n$1')))); // 「11/21」改行「土」（祝日は「月祝」）
       const thead = el('thead');
       thead.append(head);
       table.append(thead);

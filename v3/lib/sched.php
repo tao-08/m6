@@ -273,7 +273,8 @@ function sched_hm(int $min): string
 function sched_md(string $date): string
 {
     $t = strtotime($date);
-    return date('n/j', $t) . '(' . SCHED_DOW[(int)date('w', $t)] . ')';
+    // 祝日は曜日のあとに「祝」を付ける（例: 11/23(月祝)）
+    return date('n/j', $t) . '(' . SCHED_DOW[(int)date('w', $t)] . (sched_is_holiday($date) ? '祝' : '') . ')';
 }
 
 /* =====================================================================
