@@ -27,6 +27,11 @@ jobs:
       - name: テスト
         run: php v3/tests/run.php
 
+      # vendor/ は Git に入れていない（.gitignore）ので、ここで composer.lock どおりに入れて一緒に上げる
+      # --no-dev … 開発用のパッケージは入れない
+      - name: ライブラリ（vendor/）の用意
+        run: composer install --working-dir=v3 --no-dev --no-interaction --no-progress --prefer-dist
+
       # 本番に「どのコミットを・いつ」上げたかを残すバージョンファイルを作る
       # → https://abbeyroad.online/deploy.json を開けば本番の中身がすぐわかる
       # （業界では /version.json や /health などで「今動いている版」を公開するのが定番）
