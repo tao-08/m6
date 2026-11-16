@@ -84,11 +84,10 @@ main.container:has(.block-app) { padding-top: 12px; }
 .block-ranking { width: 100%; max-width: 560px; }
 .block-ranking__title { margin: 0 0 8px; font-size: var(--fs-lg); font-weight: 800; }
 .block-ranking__list { list-style: none; margin: 0; padding: 0; }
-.block-ranking__row, .block-ranking__mine { display: grid; grid-template-columns: 2.2em 1fr auto; align-items: center; gap: 8px;
+.block-ranking__row { display: grid; grid-template-columns: 2.2em 1fr auto; align-items: center; gap: 8px;
   padding: 6px 8px; border-bottom: 1px solid var(--border); }
 .block-ranking__row:last-child { border-bottom: 0; }
 .block-ranking__row.is-me { background: var(--accent-soft); border-radius: var(--r-sm); font-weight: 800; }
-.block-ranking__mine { margin: 6px 0 0; border-top: 1px dashed var(--border); border-bottom: 0; font-weight: 800; }
 .block-ranking__rank { text-align: center; color: var(--muted); font-variant-numeric: tabular-nums; }
 .block-ranking__name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .block-ranking__score { font-variant-numeric: tabular-nums; }

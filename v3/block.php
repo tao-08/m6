@@ -4,7 +4,7 @@
  *  block.php — ブロックパズル（tools.php から入る落ちものパズル）
  * =====================================================================
  *  ゲーム本体は assets/block.js（canvas に描く）。ここでは枠・ボタンとランキングを出す。
- *  ランキングは部員ごとの自己ベスト（block_best）。上位 10 人 + 自分の順位。
+ *  ランキングは部員ごとの自己ベスト（block_best）。記録のある全員を名前つきで表示。
  *  点数は ゲームオーバー時に api_block_score.php へ POST される（CSRF は <meta name="csrf-token"> を JS が送る）。
  *  この画面自体は表示するだけ（POST を受けない）。名前は h() でエスケープする。
  * =====================================================================
@@ -91,15 +91,6 @@ render_header('ブロックパズル', 'tools');
             <?php endforeach; ?>
         </ol>
         <p class="block-ranking__empty muted small" data-rank-empty<?= $ranking ? ' hidden' : '' ?>>記録がありません</p>
-        <!-- 自分が上位 10 人の外のときだけ出す自分の順位 -->
-        <?php $inTop = (bool)array_filter($ranking, fn($r) => $r['me']); ?>
-        <p class="block-ranking__mine" data-rank-mine<?= ($mine && !$inTop) ? '' : ' hidden' ?>>
-            <?php if ($mine && !$inTop): ?>
-                <span class="block-ranking__rank"><?= (int)$mine['rank'] ?></span>
-                <span class="block-ranking__name">自己ベスト</span>
-                <span class="block-ranking__score"><?= number_format($mine['score']) ?></span>
-            <?php endif; ?>
-        </p>
     </section>
 </div>
 <?php

@@ -10,7 +10,6 @@
  */
 declare(strict_types=1);
 
-const BLOCK_RANK_LIMIT = 10;       // ランキングに出す人数
 const BLOCK_MAX_SCORE  = 99999999; // 点数の上限（INT UNSIGNED に十分収まる。ありえない値を弾く）
 const BLOCK_MAX_LINES  = 9999;     // ライン数の上限（SMALLINT UNSIGNED に収まる）
 
@@ -22,7 +21,7 @@ function block_level_for_lines(int $lines): int
 
 /**
  * ランキングを取る。[ranking, mine] を返す。
- *   ranking = 上位 10 人 [['rank'=>1, 'name'=>'…', 'score'=>…, 'lines'=>…, 'level'=>…, 'me'=>bool], …]
+ *   ranking = 記録のある全員 [['rank'=>1, 'name'=>'…', 'score'=>…, 'lines'=>…, 'level'=>…, 'me'=>bool], …]
  *   mine    = 自分の記録 ['rank'=>…, 'score'=>…, 'lines'=>…, 'level'=>…]。まだ記録が無ければ null
  * 名前は生のまま返す（画面に出すときは h()、JSON は textContent で入れるのでそのままでよい）
  */
@@ -32,8 +31,7 @@ function block_ranking(PDO $pdo, int $userId): array
     $rows = $pdo->query('SELECT b.user_id, u.name, b.score, b.`lines` AS line_count, b.level
         FROM block_best b JOIN user_account u ON u.user_id = b.user_id
         WHERE b.score > 0
-        ORDER BY b.score DESC, b.updated_at ASC, b.user_id ASC
-        LIMIT ' . BLOCK_RANK_LIMIT)->fetchAll();
+        ORDER BY b.score DESC, b.updated_at ASC, b.user_id ASC')->fetchAll(); // LIMIT なし = 記録のある全員分
 
     $ranking = [];
     $prevScore = null;

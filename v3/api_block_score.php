@@ -7,7 +7,7 @@
  *
  *  リクエスト（POST, JSON）:  {"score": 12345, "lines": 31, "level": 4}
  *  レスポンス（JSON）      :  {"best": true,                     ← 自己ベストを更新したか
- *                              "ranking": [{rank,name,score,lines,level,me}, …],  ← 上位 10 人
+ *                              "ranking": [{rank,name,score,lines,level,me}, …],  ← 記録のある全員
  *                              "mine": {rank,score,lines,level} | null}           ← 自分の順位と自己ベスト
  *  エラー                 :  {"error": "..."}（400 / 401 / 405 / 500）
  *

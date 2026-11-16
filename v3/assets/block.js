@@ -750,7 +750,6 @@
       if (!rankBox) return;
       const list = rankBox.querySelector('[data-rank-list]');
       const empty = rankBox.querySelector('[data-rank-empty]');
-      const mine = rankBox.querySelector('[data-rank-mine]');
       const el = (tag, cls, text) => { const e = document.createElement(tag); e.className = cls; e.textContent = text; return e; };
       const row = (tag, cls, rank, name, score) => {
         const li = document.createElement(tag);
@@ -760,10 +759,6 @@
       };
       list.replaceChildren(...r.ranking.map((x) => row('li', 'block-ranking__row' + (x.me ? ' is-me' : ''), x.rank, x.name, x.score)));
       empty.hidden = r.ranking.length > 0;
-      const outside = r.mine && !r.ranking.some((x) => x.me);
-      mine.hidden = !outside;
-      mine.replaceChildren();
-      if (outside) mine.append(el('span', 'block-ranking__rank', String(r.mine.rank)), el('span', 'block-ranking__name', '自己ベスト'), el('span', 'block-ranking__score', fmt(r.mine.score)));
     }
 
     /* ---------- キーボード（PC） ---------- */
