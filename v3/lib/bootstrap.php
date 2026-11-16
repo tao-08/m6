@@ -450,6 +450,12 @@ function error_page(int $code, string $detail = ''): never
 
 function redirect(string $path): never
 {
+    // フォームの送信（POST）→ 保存できて別のページへ移動する（PRG: Post/Redirect/Get という定番の形）。
+    //   移動先の header.php に「送信が成功して来た」と伝える目印。移動先で1回読んだら消す（flash と同じ仕組み）。
+    //   これを見て、端末の「戻る」で送信元の編集画面に戻らないようにする（partials/header.php の「保存後の戻る」）
+    if (is_post() && session_status() === PHP_SESSION_ACTIVE) {
+        $_SESSION['prg_done'] = true;
+    }
     header('Location: ' . $path);
     exit;
 }

@@ -30,6 +30,12 @@ if ($user) {
     require_once __DIR__ . '/../lib/push.php';
     push_dispatch_after_response();
 }
+// 保存後の「戻る」用（下の <head> の script）。
+//   $prgDone   … フォームを送信して保存でき、このページへ移動して来た（lib/bootstrap.php の redirect() が付けた目印）。1回読んだら消す
+//   $postResp  … このページは送信（POST）の返事そのもの（入力エラーで同じ画面をもう一度出したときなど）
+$prgDone = !empty($_SESSION['prg_done']);
+unset($_SESSION['prg_done']);
+$postResp = is_post();
 $nav = [
     'lives'   => ['./', 'ライブ'],
     'members' => ['members', 'メンバー'],
@@ -109,6 +115,125 @@ $nav = [
             document.querySelector('meta[name="theme-color"]').content = theme === 'dark' ? '#0d0d11' : '#f6f5f1';
         })();
     </script>
+    <?php if (!embed_mode()): // モーダルの <iframe> の中では使わない（中の履歴まで動かしてしまうので） ?>
+    <!--
+        保存後の「戻る」で、送信元（編集画面など）に戻らないようにする。
+          例: ライブ → バンド → 編集 →（保存）→ バンド で端末の「戻る」を押す → 編集も古いバンドも飛ばして「ライブ」へ
+              ライブ → 編集 →（保存）→ バンド なら「戻る」で「ライブ」へ（編集だけ飛ばす）
+
+        ブラウザの履歴（戻る・進むの列）は JavaScript から消せない。そこで「戻ってきた瞬間に、さらに戻る」で飛ばす。
+          ① どの履歴かを見分ける札（prgToken）を history.state に付ける。history.state は履歴1つ1つに付けられる小さなメモで、
+             戻る・進むで戻ってきたときもそのまま残っている。同じ URL の編集画面を2回開いても、札は別なので区別できる
+          ② ページを離れるとき（pagehide）、そのページの URL と札を sessionStorage（このタブの間だけ残る保存場所）に置く
+          ③ 次のページ: サーバーが「保存できて来た」（$prgDone）と言っていたら、②の札を「飛ばす」一覧（prg-skip）に入れる
+          ④ 戻る・進むで来たページの札が一覧にあれば、画面を隠して（is-skipping）すぐに history.go(-n) でさらに戻る
+             戻った先は古い内容のまま復元されることがある（bfcache）ので、読み直す（prg-reload）
+
+        CSS が読まれる前（画面が描かれる前）に隠したいので、app.js ではなくここに直接書いている
+    -->
+    <script>
+        (function () {
+            var POSTED = <?= $prgDone ? 'true' : 'false' ?>;     // 保存できて、このページへ移動して来た
+            var POST_RESP = <?= $postResp ? 'true' : 'false' ?>; // 送信の返事そのもの（入力エラーで同じ画面を出し直した）
+            var SKIP = 'prg-skip', LEFT = 'prg-left', RELOAD = 'prg-reload', MAX = 50;
+            var html = document.documentElement;
+
+            // 比べる用の URL（# 以降は無視。よそのサイトなら null）。assets/app.js の setupBackButton の keyOf と同じ
+            function keyOf(u) {
+                try {
+                    var x = new URL(u, location.href);
+                    return x.origin === location.origin ? x.origin + x.pathname + x.search : null;
+                } catch (e) { return null; }
+            }
+            // sessionStorage はプライベートモードなどで使えないことがある → そのときは何もしない（普通の「戻る」のまま）
+            function load(k) { try { return JSON.parse(sessionStorage.getItem(k)); } catch (e) { return null; } }
+            function save(k, v) { try { sessionStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+            function drop(k) { try { sessionStorage.removeItem(k); } catch (e) {} }
+            // 今の履歴のメモ。ほかの処理（タブ切り替えで URL を変える等）のメモを消さないよう、足して書き戻す
+            function state() { var s = history.state; return s && typeof s === 'object' ? s : {}; }
+            function mark(extra) {
+                try { history.replaceState(Object.assign({}, state(), extra), ''); } catch (e) {}
+            }
+            var here = keyOf(location.href);
+
+            // ① 札を付ける。prgDepth = 送信元を飛ばすとき、何個ぶん戻るか
+            //    入力エラーで出し直した画面（同じ URL の送信の返事）は、元の編集画面の上にもう1個積まれているので +1
+            var left = load(LEFT);
+            drop(LEFT);
+            function ensure() {
+                if (state().prgToken) return;
+                var depth = POST_RESP && left && left.url === here ? (left.depth || 1) + 1 : 1;
+                mark({ prgToken: Math.random().toString(36).slice(2) + Date.now().toString(36), prgDepth: depth });
+            }
+            ensure();
+
+            // ② 離れるとき、このページの札を次のページへ渡す。
+            //    ほかの処理が history.replaceState(null, ...) で札を消していることがあるので、ここで付け直してから渡す
+            addEventListener('pagehide', function () {
+                ensure();
+                save(LEFT, { url: here, token: state().prgToken, depth: state().prgDepth || 1 });
+            });
+
+            // ③ 保存できて来た → 送信元の札を「飛ばす」一覧へ
+            //    referrer（どのページから来たか）が送信元と同じ・今のページとは違う、のときだけ（同じページに戻る保存は対象外）
+            if (POSTED && left && left.token && left.url !== here && left.url === keyOf(document.referrer)) {
+                var skip = load(SKIP) || {};
+                // 送信元の前のページ（左下の戻るボタンが覚えている戻り先。assets/app.js の setupBackButton の back-pages）が
+                // 今のページと同じなら（バンド → 編集 → 保存 → バンド）、その古いバンドも飛ばす
+                var pages = load('back-pages') || {};
+                var before = pages[left.url] && pages[left.url].prev;
+                skip[left.token] = { depth: left.depth || 1, two: !!(before && keyOf(before.url) === here), dest: here };
+                var keys = Object.keys(skip); // 古いものから捨てる（キーは入れた順に並ぶ）
+                keys.slice(0, Math.max(0, keys.length - MAX)).forEach(function (k) { delete skip[k]; });
+                save(SKIP, skip);
+            }
+
+            // ④ 戻る・進むで来たとき
+            //    restored = bfcache（ページがメモリからそのまま復元された）。中身が古いままなので、頼まれていたら読み直す
+            function arrive(viaHistory, restored) {
+                var s = viaHistory ? (load(SKIP) || {})[state().prgToken] : null;
+                if (!s) {
+                    if (load(RELOAD)) {
+                        drop(RELOAD);
+                        if (restored) location.reload();
+                    }
+                    return;
+                }
+                html.classList.add('is-skipping'); // 編集画面を一瞬でも見せない（app.css）
+                save(RELOAD, 1);                   // 戻った先で読み直してもらう
+                var n = s.depth + (s.two ? 1 : 0);
+                // navigation API（Chrome・Edge・新しい Safari）なら、今が履歴の何番目か分かる → 戻れる数だけ戻る
+                var idx = window.navigation && navigation.currentEntry ? navigation.currentEntry.index : -1;
+                function fallback() {
+                    if (s.two) history.go(-s.depth); // 古いバンドまでしか無い → そこへ戻って読み直す
+                    else { drop(RELOAD); location.replace(s.dest); } // 編集画面が最初のページ → 保存後のページに置き換える
+                }
+                if (idx < 0) {
+                    // 分からないブラウザ: とりあえず戻ってみて、1.5秒たってもこのページのままなら、戻れなかったと見なす
+                    var gone = false;
+                    addEventListener('pagehide', function () { gone = true; }, { once: true });
+                    history.go(-n);
+                    setTimeout(function () { if (!gone) fallback(); }, 1500);
+                } else if (idx >= n) {
+                    history.go(-n);
+                } else if (s.two && idx >= s.depth) {
+                    history.go(-s.depth);
+                } else {
+                    drop(RELOAD);
+                    location.replace(s.dest);
+                }
+                setTimeout(function () { html.classList.remove('is-skipping'); }, 4000); // 念のため。何が起きても4秒で見えるように戻す
+            }
+            var navEntry = performance.getEntriesByType && performance.getEntriesByType('navigation')[0];
+            arrive(!!navEntry && navEntry.type === 'back_forward', false);
+            addEventListener('pageshow', function (e) {
+                if (!e.persisted) return; // 普通の読み込みは上で済んでいる
+                html.classList.remove('is-skipping');
+                arrive(true, true);
+            });
+        })();
+    </script>
+    <?php endif; ?>
     <!--
         豪華な演出（assets/fx.css / assets/fx.js）のスイッチ。CSS が読み込まれる「前」に <html> にクラスを付ける。
           FX_MODE … 'full'（全部盛り）/ 'lite'（軽量: 背景のゆらぎ・傾き・ぼかしを止める）/ 'off'（演出なし = 元の見た目）

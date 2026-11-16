@@ -126,6 +126,8 @@ body {
 a { color: inherit; text-decoration: none; }
 a:hover { color: var(--accent); }
 [hidden] { display: none !important; }
+/* 保存後の「戻る」で送信元（編集画面など）を飛ばしている間は、画面を見せない（partials/header.php の「保存後の戻る」） */
+html.is-skipping body { visibility: hidden; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--r-sm); }
 
 .container { width: 100%; max-width: 1120px; margin: 0 auto; padding: 24px 16px 96px; flex: 1; }
