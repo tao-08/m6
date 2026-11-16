@@ -359,7 +359,17 @@ render_header($poll['title'] . ' — 日程調整', 'tools');
     <h1 class="display display--sm"><?= h($poll['title']) ?> <?= sched_status_pill($poll) ?></h1>
     <?php if ($canManage): ?><a class="btn btn--sm btn--ghost" href="sched?edit=<?= $pollId ?>"><?= icon('edit') ?> 編集</a><?php endif; ?>
 </div>
+<?php
+// 向けのライブ（あれば、見出しの下にライブのページへのリンクを出す）
+$live = null;
+if (!empty($poll['live_day_id'])) {
+    $st = $pdo->prepare('SELECT d.live_day_id, d.held_on, l.live_id, l.name FROM live_day d JOIN live l ON l.live_id = d.live_id WHERE d.live_day_id = ?');
+    $st->execute([(int)$poll['live_day_id']]);
+    $live = $st->fetch() ?: null;
+}
+?>
 <p class="muted small sch-meta">
+    <?php if ($live !== null): ?><a href="live?id=<?= (int)$live['live_id'] ?>#day-<?= (int)$live['live_day_id'] ?>"><?= h($live['name'] . ($live['held_on'] !== null ? ' ' . sched_md((string)$live['held_on']) : '')) ?></a> ・ <?php endif; ?>
     <?= h(sched_md($poll['date_from']) . '〜' . sched_md($poll['date_to'])) ?> ・ <?= h(sched_hm((int)$poll['day_start']) . '〜' . sched_hm((int)$poll['day_end'])) ?>
     ・ <?= h(studio_fmt_hours($len)) ?><?= (int)$poll['late_max'] > 0 ? ' ・ 遅刻' . (int)$poll['late_max'] . '分まで' : '' ?>
 </p>

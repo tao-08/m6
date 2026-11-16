@@ -70,6 +70,33 @@
     });
     refresh();
 
+    // ---- ライブ: 選ぶと期間を「開催日の N週間前〜当日」にする（N は期間のタブ。カスタムなら手入力） ----
+    const live = form.querySelector('[data-live-pick]');
+    const leadBox = form.querySelector('[data-lead]');
+    const dFrom = form.querySelector('[name="date_from"]');
+    const dTo = form.querySelector('[name="date_to"]');
+    const applyLead = () => {
+      const held = live.selectedOptions[0]?.dataset.date || ''; // 開催日（Y-m-d）。「なし」なら空
+      const weeks = Number(leadBox.querySelector('input:checked')?.value || 0); // 0 = カスタム
+      leadBox.hidden = !held;
+      const lock = held !== '' && weeks > 0;
+      dFrom.readOnly = dTo.readOnly = lock; // 週を選んでいる間は手で変えさせない（readonly でも値は送信される）
+      if (!lock) return; // 「なし」「カスタム」は日付をそのまま残す
+      // Date.UTC で計算する: ローカル時刻の Date だと、toISOString（UTC）にしたとき日本時間では前日にずれる
+      const [y, m, d] = held.split('-').map(Number);
+      const from = new Date(Date.UTC(y, m - 1, d - 7 * weeks)).toISOString().slice(0, 10);
+      const today = live.dataset.today; // 「今日」はサーバーの日付（端末の時計がずれていても合う）
+      // 開始日は今日より前にしない（Y-m-d の文字列は、大小の比較がそのまま日付の前後になる）。PHP の $leadFrom と同じ計算
+      dFrom.value = from < today && today <= held ? today : from;
+      dTo.value = held;
+      form.dispatchEvent(new Event('input', { bubbles: true })); // 未保存の警告を効かせる
+    };
+    // ライブかタブを変えたときだけ書き換える（開いたときに書き換えると、編集画面で保存済みの期間が消える）
+    if (live && leadBox && dFrom && dTo) {
+      live.addEventListener('change', applyLead);
+      leadBox.addEventListener('change', applyLead);
+    }
+
     // ---- バンドから入力: タイトルと部員の行を、選んだバンドのものに置き換える ----
     const pick = form.querySelector('[data-band-pick]');
     const bands = readJson('sched-bands');
@@ -89,6 +116,11 @@
         refresh(); // 最後の行が埋まっていれば空の行を1つ足し、人数の表示も更新する
         // 値を JS で変えても input イベントは出ないので、自分で出す（未保存の警告を効かせるため）
         form.dispatchEvent(new Event('input', { bubbles: true }));
+        // バンドの出るライブも選ぶ。change を出す → 期間の自動入力（applyLead）と、プルダウンの表示（app.js の setupSelectPick）が動く
+        if (live && band.day) {
+          live.value = String(band.day);
+          live.dispatchEvent(new Event('change', { bubbles: true }));
+        }
       });
     }
 
