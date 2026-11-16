@@ -2947,8 +2947,10 @@ button.ttb-m { cursor: pointer; text-decoration: underline dotted; }
 .inst-pv__bg { display: inline-flex; padding: 6px 10px; border-radius: var(--r-md); border: 1px solid var(--border); }
 .inst-pv__bg--light { background: #ffffff; }
 .inst-pv__bg--dark { background: #16161c; }
-.inst-pv .part { --part-c: var(--pv); }
-@supports (color: oklch(from red l c h)) { .inst-pv__bg--dark .part { --part-c: oklch(from var(--pv) max(l, .78) c h); } }
+.inst-pv--custom .part { --part-c: var(--pv); }
+@supports (color: oklch(from red l c h)) { .inst-pv--custom .inst-pv__bg--dark .part { --part-c: oklch(from var(--pv) max(l, .78) c h); } }
+/* 固定楽器のライト側: ダーク表示中でも明るい地の本来の色になるよう、:root（ライト）の楽器色をここに写して固定する（:root の色を変えたらここも合わせる） */
+.inst-pv__bg--light { --vo: #13915c; --gt: #c58a00; --ba: #7653d6; --dr: #d90f0f; --key: #d6338a; --vn: #e8590c; --sax: #9c7a2e; --prog: #1d6f96; --harm: #4a6b85; --cho: #6fa31a; --other: #6c6a75; }
 
 /* =====================================================================
  * ラベルの規格（上下中央揃え）
@@ -2998,3 +3000,22 @@ button.ttb-m { cursor: pointer; text-decoration: underline dotted; }
 .ai-extra > summary::-webkit-details-marker { display: none; }
 .ai-extra[open] > summary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .ai-extra > textarea { display: block; width: 100%; margin-top: 6px; padding: 8px 12px; border-radius: var(--r-md); border: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: var(--fs-sm); resize: vertical; }
+
+/* ===== 楽器の色の自前ピッカー（app.js の setupInstrumentColorPicker） ===== */
+.cpick-btn { width: 40px; height: 32px; padding: 0; border: 1px solid var(--border); border-radius: var(--r-md); cursor: pointer; flex: none; }
+.cpick-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.cpick { position: absolute; z-index: 60; width: min(300px, calc(100vw - 16px)); display: grid; gap: 12px; padding: 14px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); box-shadow: var(--shadow-pop); }
+.cpick[hidden] { display: none; }
+.cpick__head { display: flex; align-items: center; gap: 10px; }
+.cpick__swatch { flex: 1; height: 28px; border-radius: var(--r-md); border: 1px solid var(--border); }
+.cpick__code { font: var(--fs-sm) ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--muted); }
+.cpick__row { display: grid; grid-template-columns: 1.2em 1fr 4.4em; gap: 10px; align-items: center; }
+.cpick__label { font-weight: 800; color: var(--muted); }
+/* スライダー: 背景（色の帯）は JS が --track に入れる。つまみは指で掴みやすい大きさ */
+.cpick input[type="range"] { -webkit-appearance: none; appearance: none; width: 100%; min-width: 0; height: 14px; padding: 0; border: 0;
+  border-radius: var(--r-full); background: var(--track, var(--surface-2)); touch-action: pan-y; }
+.cpick input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 24px; height: 24px; border-radius: var(--r-full);
+  background: #fff; border: 2px solid var(--text); box-shadow: var(--shadow-sm); cursor: pointer; }
+.cpick input[type="range"]::-moz-range-thumb { width: 20px; height: 20px; border-radius: var(--r-full); background: #fff; border: 2px solid var(--text); box-shadow: var(--shadow-sm); cursor: pointer; }
+.cpick input[type="number"] { width: 100%; min-width: 0; padding: 6px 8px; font-size: var(--fs-lg); text-align: right; } /* 16px 以上: iOS は 16px 未満の欄を押すと画面が拡大される */

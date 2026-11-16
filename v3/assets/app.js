@@ -104,6 +104,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupInstrumentHex();
   setupInstrumentPreview();
   setupInstrumentAutosave();
+  setupInstrumentColorPicker();
   setupBoardPanels();
   setupBoardMute();
   setupBoardTabs();
@@ -6355,6 +6356,140 @@ function setupInstrumentHex() {
       text.classList.remove('is-invalid');
     });
   });
+}
+
+/**
+ * 楽器の色の自前ピッカー（H・S・L のスライダー）。
+ *   なぜ自前か: ブラウザ／OS 標準のピッカーの「カスタム」画面は、サイト側から初期値をいじれない。
+ *   なので標準の <input type="color"> は「値を持つだけ」の部品にして隠し、押せる色見本ボタンから自前のポップアップを開く。
+ *   開いた瞬間に、いま選ばれている色を HSL（色相 H 0〜360 / 彩度 S 0〜100 / 明度 L 0〜100）に直した値が入る。
+ *   スライダーを動かすたび、input[type=color] の値を書き換えて input イベントを出す
+ *   → 色コード欄・プレビュー・自動保存が、標準ピッカーのときと同じように反応する（それぞれ別の関数がこのイベントを聞いている）。
+ *   JS が動かない環境では標準のピッカーがそのまま見えて使える（段階的な機能追加 = プログレッシブエンハンスメント）。
+ */
+function setupInstrumentColorPicker() {
+  const pickers = document.querySelectorAll('[data-inst-color]');
+  if (!pickers.length) return;
+
+  // ---- 色の変換（16進 #rrggbb ⇔ HSL）----
+  const hexToHsl = (hex) => {
+    const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
+    const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+    const l = (max + min) / 2;
+    const s = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
+    let h = 0;
+    if (d !== 0) {
+      if (max === r) h = ((g - b) / d) % 6;
+      else if (max === g) h = (b - r) / d + 2;
+      else h = (r - g) / d + 4;
+      h = (h * 60 + 360) % 360;
+    }
+    return [Math.round(h), Math.round(s * 100), Math.round(l * 100)];
+  };
+  const hslToHex = (h, s, l) => {
+    s /= 100; l /= 100;
+    const a = s * Math.min(l, 1 - l);
+    const f = (n) => {
+      const k = (n + h / 30) % 12;
+      return Math.round(255 * (l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1))));
+    };
+    return '#' + [f(0), f(8), f(4)].map((v) => v.toString(16).padStart(2, '0')).join('');
+  };
+
+  // ---- ポップアップ（ページに1つだけ作って使い回す）----
+  const AXES = [['h', 'H', 360], ['s', 'S', 100], ['l', 'L', 100]];
+  const ranges = {}, numbers = {};
+  const swatch = mkEl('div', 'cpick__swatch');
+  const code = mkEl('span', 'cpick__code');
+  const pop = mkNode('div', { class: 'cpick', role: 'dialog', 'aria-label': '色の調整', hidden: true }, mkNode('div', { class: 'cpick__head' }, swatch, code));
+  AXES.forEach(([key, label, max]) => {
+    // 同じ値を、スライダー（指で動かす）と数字の欄（打ち込む）の両方で持つ。どちらを変えても反対側に写す
+    ranges[key] = mkNode('input', { type: 'range', min: 0, max, step: 1, 'aria-label': label });
+    numbers[key] = mkNode('input', { type: 'number', min: 0, max, step: 1, inputmode: 'numeric', 'aria-label': label + 'の値' });
+    pop.append(mkNode('label', { class: 'cpick__row' }, mkEl('span', 'cpick__label', label), ranges[key], numbers[key]));
+  });
+  document.body.append(pop);
+
+  let current = null; // いま開いている {picker, btn}
+  let dirty = false;  // 開いてから色を変えたか（閉じるときの change = 即保存を出すか決める）
+  const val = (key) => Math.min(Number(ranges[key].max), Math.max(0, Math.round(Number(ranges[key].value) || 0)));
+
+  /** スライダーの背景（色の帯）を、いまの値に合わせて描き直す。見た目のためだけ */
+  const paintTracks = () => {
+    const [h, s, l] = [val('h'), val('s'), val('l')];
+    ranges.h.style.setProperty('--track', 'linear-gradient(to right,' + [0, 60, 120, 180, 240, 300, 360].map((d) => `hsl(${d} ${s}% ${l}%)`).join(',') + ')');
+    ranges.s.style.setProperty('--track', `linear-gradient(to right, hsl(${h} 0% ${l}%), hsl(${h} 100% ${l}%))`);
+    ranges.l.style.setProperty('--track', `linear-gradient(to right, #000, hsl(${h} ${s}% 50%), #fff)`);
+    const hex = hslToHex(h, s, l);
+    swatch.style.background = hex;
+    code.textContent = hex;
+  };
+
+  const sync = (picker, btn) => { btn.style.background = picker.value; };
+
+  /** スライダー・数字の変更 → 色を計算して input[type=color] に入れる */
+  const apply = () => {
+    if (!current) return;
+    const hex = hslToHex(val('h'), val('s'), val('l'));
+    paintTracks();
+    current.picker.value = hex;
+    sync(current.picker, current.btn);
+    current.picker.dispatchEvent(new Event('input', { bubbles: true }));
+    dirty = true;
+  };
+  AXES.forEach(([key]) => {
+    ranges[key].addEventListener('input', () => { numbers[key].value = ranges[key].value; apply(); });
+    numbers[key].addEventListener('input', () => {
+      if (numbers[key].value === '') return; // 打ち直し中（空）は何もしない
+      ranges[key].value = numbers[key].value;
+      numbers[key].value = ranges[key].value; // 範囲外（400 など）は範囲内に丸めた値に直す
+      apply();
+    });
+  });
+
+  const close = () => {
+    if (!current) return;
+    const { picker } = current;
+    current = null;
+    pop.hidden = true;
+    if (dirty) picker.dispatchEvent(new Event('change', { bubbles: true })); // 閉じたら待たずに保存（自動保存は change を即保存として扱う）
+    dirty = false;
+  };
+
+  const open = (picker, btn) => {
+    current = { picker, btn };
+    dirty = false;
+    // ここが肝: いま選ばれている色を HSL にして、スライダーと数字の初期値にする
+    const [h, s, l] = hexToHsl(picker.value);
+    ranges.h.value = numbers.h.value = h;
+    ranges.s.value = numbers.s.value = s;
+    ranges.l.value = numbers.l.value = l;
+    paintTracks();
+    pop.hidden = false;
+    // ボタンの真下に置く。右にはみ出すときは画面内へ寄せる（スマホ対策）
+    const r = btn.getBoundingClientRect();
+    const left = Math.max(8, Math.min(r.left, window.innerWidth - pop.offsetWidth - 8));
+    pop.style.left = `${left + window.scrollX}px`;
+    pop.style.top = `${r.bottom + window.scrollY + 6}px`;
+  };
+
+  pickers.forEach((picker) => {
+    const btn = mkNode('button', { type: 'button', class: 'cpick-btn', 'aria-label': picker.getAttribute('aria-label') || '色' });
+    sync(picker, btn);
+    picker.hidden = true; // 標準のピッカーは値を持つだけにして隠す（フォーム送信の値としては今まで通り使われる）
+    picker.after(btn);
+    btn.addEventListener('click', () => (current && current.btn === btn ? close() : (close(), open(picker, btn))));
+    // 色コード欄に打った色・ほかの経路で変わった色を、見本ボタンにも写す
+    picker.addEventListener('input', () => sync(picker, btn));
+    picker.closest('.inst-admin__colorbox')?.querySelector('[data-inst-hex]')?.addEventListener('input', () => sync(picker, btn));
+  });
+
+  // 外を押す・Esc・スクロール（表が横にスクロールするとボタンの位置がずれるため）で閉じる
+  document.addEventListener('pointerdown', (e) => {
+    if (current && !pop.contains(e.target) && !current.btn.contains(e.target)) close();
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+  window.addEventListener('scroll', (e) => { if (current && !pop.contains(e.target)) close(); }, true);
 }
 
 /**

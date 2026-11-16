@@ -133,7 +133,14 @@ render_header('楽器の管理');
         ?>
             <tr id="row-<?= $iid ?>">
             <?php if (instrument_locked($ins['short_name'])): ?>
-                <td><span class="part part--<?= h($cls) ?>"><?= h($ins['short_name']) ?></span></td>
+                <!-- 固定楽器のプレビュー: ダーク側は data-theme="dark" を付けて、app.css の [data-theme="dark"] の本物の色を使う
+                     （ライト側は app.css の .inst-pv__bg--light で、ダーク表示中でも明るい色に固定している） -->
+                <td>
+                    <span class="inst-pv" aria-hidden="true">
+                        <span class="inst-pv__bg inst-pv__bg--light"><span class="part part--<?= h($cls) ?>"><?= h($ins['short_name']) ?></span></span>
+                        <span class="inst-pv__bg inst-pv__bg--dark" data-theme="dark"><span class="part part--<?= h($cls) ?>"><?= h($ins['short_name']) ?></span></span>
+                    </span>
+                </td>
                 <td></td>
                 <td class="strong"><?= h($ins['short_name']) ?></td>
                 <td><?= h($ins['name']) ?></td>
@@ -145,7 +152,7 @@ render_header('楽器の管理');
                 <!-- 表示（プレビュー）: 実際の楽器ラベル（.part）を、ライト・ダークの両方で出す。色・略称を変えると app.js の setupInstrumentPreview がその場で更新する。
                      --pv に色を入れるだけ。ダークの自動調整（明るさを .78 以上に）は CSS 側で、本番のラベルと同じ式（lib/bootstrap.php の instrument_color_css）にしている -->
                 <td>
-                    <span class="inst-pv" data-inst-preview style="--pv:<?= h($color) ?>" aria-hidden="true">
+                    <span class="inst-pv inst-pv--custom" data-inst-preview style="--pv:<?= h($color) ?>" aria-hidden="true">
                         <span class="inst-pv__bg inst-pv__bg--light"><span class="part" data-inst-preview-label><?= h($ins['short_name']) ?></span></span>
                         <span class="inst-pv__bg inst-pv__bg--dark"><span class="part" data-inst-preview-label><?= h($ins['short_name']) ?></span></span>
                     </span>
@@ -191,7 +198,7 @@ render_header('楽器の管理');
              プレビューは編集の行と同じ部品（setupInstrumentPreview が色・略称の入力に追従させる） -->
         <tr id="row-new">
             <td>
-                <span class="inst-pv" data-inst-preview style="--pv:#6c6a75" aria-hidden="true">
+                <span class="inst-pv inst-pv--custom" data-inst-preview style="--pv:#6c6a75" aria-hidden="true">
                     <span class="inst-pv__bg inst-pv__bg--light"><span class="part" data-inst-preview-label>—</span></span>
                     <span class="inst-pv__bg inst-pv__bg--dark"><span class="part" data-inst-preview-label>—</span></span>
                 </span>
