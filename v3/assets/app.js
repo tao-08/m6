@@ -102,6 +102,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupComments();
   setupAliasField();
   setupInstrumentHex();
+  setupInstrumentPreview();
   setupBoardPanels();
   setupBoardMute();
   setupBoardTabs();
@@ -129,6 +130,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupPush();
   setupPushLogout();
   setupKanaAi();
+  setupArtistAutosave();
 });
 
 /* ---------------------------------------------------------------------
@@ -6045,6 +6047,81 @@ function setupKanaAi() {
 }
 
 /**
+ * 管理 > アーティスト（masters.php）の名前・ふりがな・別称を、保存ボタンなしで自動保存する。
+ *   対象: input[data-artist-save="name|name_kana|aliases"][data-artist-id]
+ *   流れ: 入力 → 0.8秒たっても次の入力が無ければ（デバウンス）api_artist_save に送る
+ *         → 保存中は .is-saving、成功したら .is-saved（緑の枠が少しだけ出る）、失敗したら .is-error ＋ 画面上部にエラー
+ *   デバウンスとは: 入力のたびに送るとサーバーも DB も忙しくなるので、「入力が止まってから1回だけ」送る業界標準の工夫。
+ *   確定（change = 欄を離れた）ときは待たずにすぐ送る。ページを離れる直前も、未保存があれば keepalive で送りきる。
+ */
+function setupArtistAutosave() {
+  const inputs = document.querySelectorAll('input[data-artist-save]');
+  if (!inputs.length) return;
+  const DELAY_MS = 800;
+
+  inputs.forEach((input) => {
+    let timer = null;
+    let saved = input.value;     // 最後に保存できた値（同じ値なら送らない）
+    let seq = 0;                 // 送った順番。遅れて返ってきた古い返事で、新しい入力を上書きしないため
+
+    const save = async (keepalive = false) => {
+      clearTimeout(timer);
+      timer = null;
+      const value = input.value.trim();
+      if (value === saved.trim()) { input.classList.remove('is-saving', 'is-error'); return; }
+      // 名前は必須（空のまま送ると必ずエラーになるので、送らずに赤くするだけ）
+      if (input.dataset.artistSave === 'name' && value === '') { input.classList.add('is-error'); return; }
+      const mine = ++seq;
+      input.classList.remove('is-error', 'is-saved');
+      input.classList.add('is-saving');
+      try {
+        const data = await apiPost('api_artist_save',
+          { artist_id: Number(input.dataset.artistId), field: input.dataset.artistSave, value },
+          '保存できませんでした', { keepalive });
+        if (mine !== seq) return; // もっと新しい入力を送っている。そちらの結果に任せる
+        saved = data.value;
+        if (input.value.trim() === value) input.value = data.value; // 別称は整えた形（「、」区切り）に直す。入力の続きがあれば触らない
+        input.classList.remove('is-saving');
+        input.classList.add('is-saved');
+        setTimeout(() => input.classList.remove('is-saved'), 1200);
+        if (input.dataset.artistSave === 'name') syncArtistRow(input, data.value);
+      } catch (e) {
+        if (mine !== seq) return;
+        input.classList.remove('is-saving');
+        input.classList.add('is-error');
+        flashToast(e.message, 'error');
+      }
+    };
+
+    input.addEventListener('input', () => {
+      input.classList.remove('is-error', 'is-saved');
+      clearTimeout(timer);
+      timer = setTimeout(save, DELAY_MS);
+    });
+    input.addEventListener('change', () => save());
+    // ページを離れる（別タブへ移る・閉じる）直前に、待っている分があれば送る
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden' && timer !== null) save(true);
+    });
+  });
+}
+
+/** 名前を保存したあと、同じ行の絞り込み用の文字・統合/削除の確認文に残っている古い名前を新しい名前に直す */
+function syncArtistRow(input, newName) {
+  const row = input.closest('tr');
+  if (!row) return;
+  const oldName = row.dataset.text;
+  row.dataset.text = newName;
+  if (!oldName || oldName === newName) return;
+  row.querySelectorAll('form[data-confirm]').forEach((f) => {
+    f.dataset.confirm = f.dataset.confirm.split(oldName).join(newName);
+  });
+  row.querySelectorAll('[aria-label]').forEach((el) => {
+    if (el !== input) el.setAttribute('aria-label', el.getAttribute('aria-label').split(oldName).join(newName));
+  });
+}
+
+/**
  * プレビューの浮いた枠を、PC ではウィンドウのように動かせて、右下の角で大きさも変えられるようにする
  * （セッティングシート作成 setting_sheet.js・型紙エディタ sheet_editor.js）。スマホは今のまま（画面いっぱい）。
  *   上に「つかむバー」を足す。位置と大きさは localStorage（key）に覚えて、次に開いたときも同じ所に出す
@@ -6242,6 +6319,28 @@ function setupInstrumentHex() {
     picker.addEventListener('input', () => {
       text.value = picker.value;
       text.classList.remove('is-invalid');
+    });
+  });
+}
+
+/**
+ * 楽器の管理（instruments.php）の「表示」欄: 実際のラベルを、色・略称を変えた瞬間にその場で更新する。
+ *   色: ピッカー（input.inst-admin__color）か色コード欄を変えると、プレビューの --pv（CSS 変数）に色を入れ直す
+ *   略称: 略称の入力欄の文字を、プレビューのラベルの文字に写す
+ *   ※ 見た目の計算（ダークでの明るさ調整）は CSS 側。JS は値を入れるだけ（保存はこれまでどおり「保存」ボタン）
+ */
+function setupInstrumentPreview() {
+  document.querySelectorAll('[data-inst-preview]').forEach((preview) => {
+    const row = preview.closest('tr');
+    const picker = row?.querySelector('[data-inst-color]');
+    const hex = row?.querySelector('[data-inst-hex]');
+    const short = row?.querySelector('input[name="short_name"]');
+    if (!picker) return;
+    const color = () => preview.style.setProperty('--pv', picker.value); // 色コード欄の入力は setupInstrumentHex がピッカーに写すので、ピッカーの値を見ればよい
+    picker.addEventListener('input', color);
+    hex?.addEventListener('input', color); // setupInstrumentHex の input より後に登録しているので、ピッカーは更新済み
+    short?.addEventListener('input', () => {
+      preview.querySelectorAll('[data-inst-preview-label]').forEach((el) => { el.textContent = short.value.trim() || '—'; });
     });
   });
 }

@@ -56,7 +56,7 @@ $pdo = db();
 $tabs = [
     'venue'      => ['会場', '会場の名前の変更・統合・削除ができます。表記ゆれで2つに分かれた会場は「統合」でまとめてください（日程は統合先に付け替わります）。日程で使われている会場は削除できません。'],
     'day'        => ['日程名', '新しく作られた日程名の変更ができます。もうある日程名に変えると、その日程名にまとまります（表記ゆれの統合）。「1日目」などのいつもの日程名は変えられません。'],
-    'artist'     => ['アーティスト', 'コピー元アーティストの名前の変更・統合・削除ができます。表記ゆれで2つに分かれたアーティストは「統合」でまとめてください（バンドと曲は統合先に付け替わり、消える側の名前は別称として残ります）。チェックしたアーティストのバンドは、まとめてオムニバスにできます。'],
+    'artist'     => ['アーティスト', 'コピー元アーティストの名前・ふりがな・別称の編集（入力すると自動で保存されます）、統合、削除ができます。表記ゆれで2つに分かれたアーティストは「統合」でまとめてください（バンドと曲は統合先に付け替わり、消える側の名前は別称として残ります）。チェックしたアーティストのバンドは、まとめてオムニバスにできます。'],
     'role'       => ['係', 'プロフィールで作られた係の名前の変更・統合・削除ができます。表記ゆれで2つに分かれた係は「統合」でまとめてください（付いている人は統合先に移ります）。誰かに付いている係は削除できません。'],
 ];
 $tab = (string)($_GET['tab'] ?? $_POST['tab'] ?? 'venue');
@@ -248,18 +248,6 @@ if (is_post()) {
 
         if (!$target) {
             flash('アーティストが見つかりません', 'error');
-        } elseif ($action === 'rename') {
-            $name = trim((string)($_POST['name'] ?? ''));
-            $dup = $pdo->prepare('SELECT 1 FROM artist WHERE name = ? AND artist_id <> ?');
-            $dup->execute([$name, $id]);
-            if ($name === '' || mb_strlen($name) > 100) {
-                flash('アーティスト名は1〜100文字で入力してください', 'error');
-            } elseif ($dup->fetchColumn()) {
-                flash("「{$name}」というアーティストはすでにあります（まとめるときは「統合」を使ってください）", 'error');
-            } elseif ($name !== $target['name']) {
-                $pdo->prepare('UPDATE artist SET name = ? WHERE artist_id = ?')->execute([$name, $id]);
-                flash("「{$target['name']}」を「{$name}」に変更しました");
-            }
         } elseif ($action === 'merge') {
             // 統合先は名前で受け取る（アーティストは数百あるので、行ごとに <select> を置くと重い。datalist で候補を出す）
             $toName = trim((string)($_POST['to_name'] ?? ''));
@@ -313,13 +301,18 @@ $roles = $pdo->query('SELECT r.role_id, r.name, COUNT(mr.member_id) AS used
 // 並べ替え（?sort=name|used|setlist&dir=asc|desc。覚えるのはファイルの最初）。
 //   SQL は名前の順で取って（_i）、ほかの並びは PHP で作る。見出しを押したら JS が再読み込みなしで並べ替える（sort_positions）
 [$sort, $dir] = $_SESSION['masters_artist_sort'] ?? ['name', ARTIST_SORTS['name'][1]];
-$artists = $pdo->query('SELECT a.artist_id, a.name, COUNT(p.band_id) AS used,
+$artists = $pdo->query('SELECT a.artist_id, a.name, a.name_kana, COUNT(p.band_id) AS used,
         COUNT(CASE WHEN b.song_count > 0 AND b.song_count <= (SELECT COUNT(*) FROM song s WHERE s.band_id = b.band_id AND s.is_se = 0) THEN 1 END) AS setlist
     FROM artist a
     LEFT JOIN (' . artist_plays_sql() . ') p ON p.artist_id = a.artist_id
     LEFT JOIN band b ON b.band_id = p.band_id
-    GROUP BY a.artist_id, a.name
+    GROUP BY a.artist_id, a.name, a.name_kana
     ORDER BY a.name')->fetchAll();
+// 別称（artist_id => [別称, ...]）。別称の入力欄に「、」区切りで入れる
+$aliasesBy = [];
+foreach ($pdo->query('SELECT artist_id, name FROM artist_alias ORDER BY name') as $r) {
+    $aliasesBy[(int)$r['artist_id']][] = $r['name'];
+}
 foreach ($artists as $i => &$a) {
     $a['_i'] = $i;
 }
@@ -560,20 +553,15 @@ render_header($tabs[$tab][0] . 'の管理');
         </tbody>
 
     <?php elseif ($tab === 'artist'): ?>
-        <thead><tr><th>オムニバス</th><?= sort_button_th('name', 'アーティスト名', $sort, $dir, 'asc') ?><?= sort_button_th('used', 'バンド', $sort, $dir, 'desc', 'num') ?><?= sort_button_th('setlist', 'セットリスト', $sort, $dir, 'desc') ?><th>他のアーティストに統合</th><th></th></tr></thead>
+        <thead><tr><th>オムニバス</th><?= sort_button_th('name', 'アーティスト名', $sort, $dir, 'asc') ?><th>ふりがな</th><th>別称</th><?= sort_button_th('used', 'バンド', $sort, $dir, 'desc', 'num') ?><?= sort_button_th('setlist', 'セットリスト', $sort, $dir, 'desc') ?><th>他のアーティストに統合</th><th></th></tr></thead>
         <tbody>
         <?php foreach ($artists as $i => $a): ?>
             <tr id="row-<?= (int)$a['artist_id'] ?>" data-pos="<?= h(json_encode($positions[$i])) ?>" data-artist-row data-text="<?= h($a['name']) ?>">
                 <td><input type="checkbox" name="artist_ids[]" value="<?= (int)$a['artist_id'] ?>" form="omnibus-form" aria-label="「<?= h($a['name']) ?>」のバンドをオムニバスにする"<?= (int)$a['used'] === 0 ? ' disabled' : '' ?>></td>
-                <td>
-                    <form method="post" class="row-form"><?= csrf_field() ?>
-                        <input type="hidden" name="tab" value="artist">
-                        <input type="hidden" name="action" value="rename">
-                        <input type="hidden" name="artist_id" value="<?= (int)$a['artist_id'] ?>">
-                        <input autocomplete="off" name="name" value="<?= h($a['name']) ?>" maxlength="100" required aria-label="アーティスト名">
-                        <button class="btn btn--ghost btn--sm" type="submit">名前を変更</button>
-                    </form>
-                </td>
+                <?php // 名前・ふりがな・別称: 保存ボタンは無い。data-artist-save の欄は、入力が止まって約0.8秒後に api_artist_save.php へ送って自動で保存する ?>
+                <td><input class="autosave" data-artist-save="name" data-artist-id="<?= (int)$a['artist_id'] ?>" autocomplete="off" value="<?= h($a['name']) ?>" maxlength="100" required aria-label="アーティスト名"></td>
+                <td><input class="autosave" data-artist-save="name_kana" data-artist-id="<?= (int)$a['artist_id'] ?>" autocomplete="off" value="<?= h($a['name_kana'] ?? '') ?>" maxlength="100" aria-label="ふりがな"></td>
+                <td><input class="autosave" data-artist-save="aliases" data-artist-id="<?= (int)$a['artist_id'] ?>" autocomplete="off" value="<?= h(implode('、', $aliasesBy[(int)$a['artist_id']] ?? [])) ?>" aria-label="別称（「、」区切り）"></td>
                 <td class="num"><a href="artist?id=<?= (int)$a['artist_id'] ?>"><?= (int)$a['used'] ?></a></td>
                 <td>
                     <?php if ((int)$a['used'] > 0 && (int)$a['setlist'] === (int)$a['used']): // 全部のバンドが登録済 → ✓ ?>

@@ -121,7 +121,7 @@ render_header('楽器の管理');
 <div class="card table-card">
     <div class="table-scroll table-scroll--flush">
     <table class="table table--edit inst-admin">
-        <thead><tr><th>色</th><th>略称</th><th>正式名称</th><th></th><th class="num">使用数</th><th></th></tr></thead>
+        <thead><tr><th>色</th><th>表示</th><th>略称</th><th>正式名称</th><th></th><th class="num">使用数</th><th></th></tr></thead>
         <tbody>
         <?php foreach ($list as $ins):
             $iid = (int)$ins['instrument_id'];
@@ -132,6 +132,7 @@ render_header('楽器の管理');
             <tr id="row-<?= $iid ?>">
             <?php if (instrument_locked($ins['short_name'])): ?>
                 <td><span class="part part--<?= h($cls) ?>"><?= h($ins['short_name']) ?></span></td>
+                <td></td>
                 <td class="strong"><?= h($ins['short_name']) ?></td>
                 <td><?= h($ins['name']) ?></td>
                 <td></td>
@@ -151,6 +152,14 @@ render_header('楽器の管理');
                     <span class="inst-admin__colorbox">
                         <input type="color" name="color" value="<?= h($color) ?>" form="<?= $form ?>" aria-label="「<?= h($ins['name']) ?>」の色" class="inst-admin__color" data-inst-color>
                         <input type="text" value="<?= h($color) ?>" maxlength="7" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="「<?= h($ins['name']) ?>」の色コード" class="inst-admin__hex" data-inst-hex>
+                    </span>
+                </td>
+                <!-- 表示（プレビュー）: 実際の楽器ラベル（.part）を、ライト・ダークの両方で出す。色・略称を変えると app.js の setupInstrumentPreview がその場で更新する。
+                     --pv に色を入れるだけ。ダークの自動調整（明るさを .78 以上に）は CSS 側で、本番のラベルと同じ式（lib/bootstrap.php の instrument_color_css）にしている -->
+                <td>
+                    <span class="inst-pv" data-inst-preview style="--pv:<?= h($color) ?>" aria-hidden="true">
+                        <span class="inst-pv__bg inst-pv__bg--light"><span class="part" data-inst-preview-label><?= h($ins['short_name']) ?></span></span>
+                        <span class="inst-pv__bg inst-pv__bg--dark"><span class="part" data-inst-preview-label><?= h($ins['short_name']) ?></span></span>
                     </span>
                 </td>
                 <td><input autocomplete="off" name="short_name" value="<?= h($ins['short_name']) ?>" maxlength="10" required form="<?= $form ?>" aria-label="略称" class="inst-admin__short"></td>

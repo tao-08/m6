@@ -1018,6 +1018,11 @@ input[type="checkbox"], .field input[type="radio"] { accent-color: var(--accent)
 .table--edit input, .table--edit select { padding: 7px 9px; font-size: var(--fs-md); border-radius: var(--r-md); }
 .table--edit td:first-child, .table--edit th:first-child { padding-left: 20px; }
 .table--edit input[type="checkbox"] { width: 18px; height: 18px; padding: 0; }
+/* 自動保存の入力欄（masters.php のアーティスト。app.js の setupArtistAutosave）: 保存中・保存済み・失敗を枠の色で知らせる */
+.table--edit input.autosave { min-width: 9em; transition: border-color var(--t-base), box-shadow var(--t-base); }
+.table--edit input.autosave.is-saving { border-color: var(--muted); }
+.table--edit input.autosave.is-saved { border-color: var(--ok); box-shadow: 0 0 0 3px var(--ok-bg); }
+.table--edit input.autosave.is-error { border-color: var(--danger); background: var(--danger-bg); }
 .input-num { width: 64px !important; }
 .input-year { width: 110px !important; }
 .entry-actions { padding: 0 20px 18px; flex-wrap: wrap; }
@@ -2934,6 +2939,13 @@ button.ttb-m { cursor: pointer; text-decoration: underline dotted; }
 .inst-admin .inst-admin__hex { width: 6.5em; min-width: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; } /* 色コードは等幅（0 と o が見分けやすい） */
 .inst-admin .inst-admin__hex.is-invalid { border-color: var(--danger); } /* 色コードの形が違うあいだは赤い枠 */
 .inst-admin__merge select { min-width: 7em; }
+/* 色のプレビュー: 実際の .part ラベルを、明るい地と暗い地の両方に置く（--pv = 選んだ色）。ダークは本番と同じく明るさを .78 以上にそろえる */
+.inst-pv { display: inline-flex; gap: 6px; }
+.inst-pv__bg { display: inline-flex; padding: 6px 10px; border-radius: var(--r-md); border: 1px solid var(--border); }
+.inst-pv__bg--light { background: #ffffff; }
+.inst-pv__bg--dark { background: #16161c; }
+.inst-pv .part { --part-c: var(--pv); }
+@supports (color: oklch(from red l c h)) { .inst-pv__bg--dark .part { --part-c: oklch(from var(--pv) max(l, .78) c h); } }
 
 /* =====================================================================
  * ラベルの規格（上下中央揃え）
