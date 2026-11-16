@@ -115,6 +115,7 @@ CREATE TABLE user_account (
     practice_pad   TINYINT UNSIGNED NULL,               -- 練習プレイヤーのリピート前後幅 0〜10 秒（同上）
     see_anonymous BOOLEAN NOT NULL DEFAULT TRUE,        -- 管理者だけ: 匿名・名義の投稿に本名も併記して見る。0 = 一般と同じ表示（account.php・author_html()。migrations/082）
     created_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deactivated_at DATETIME    NULL,                    -- 退会処理日時。NULL = 有効（migrations/114）
     PRIMARY KEY (user_id),
     UNIQUE KEY uq_user_login (login_id),
     UNIQUE KEY uq_user_member (member_id),
