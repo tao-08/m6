@@ -41,6 +41,10 @@ function sched_ical_available(): bool
 /** 暗号化の鍵（32バイト）。config.php の sched.ical_key（base64）。無ければ null = iCal の機能は休む */
 function sched_ical_key(): ?string
 {
+    // PHP の sodium 拡張が無いサーバーでは暗号化できない（定数も無いので先に確かめる）
+    if (!function_exists('sodium_crypto_secretbox')) {
+        return null;
+    }
     $raw = (string)(config('sched')['ical_key'] ?? '');
     $key = base64_decode($raw, true);
     return ($key !== false && strlen($key) === SODIUM_CRYPTO_SECRETBOX_KEYBYTES) ? $key : null;
