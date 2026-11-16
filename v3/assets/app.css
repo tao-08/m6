@@ -1272,6 +1272,21 @@ body.is-row-dragging, body.is-row-dragging * { cursor: grabbing !important; user
   .tutorial__dots { grid-column: 1 / -1; grid-row: 1; justify-content: center; }
 }
 @media (prefers-reduced-motion: reduce) { .tutorial__slide { animation: none; } .tutorial__dot { transition: none; } }
+/* 説明モーダル（partials/ical_help.php）: 画像が無いので、上に余白を足す。点・スキップも無いので、ボタンだけ右に寄せる */
+.tutorial__slide:not(:has(.tutorial__img)) .tutorial__text { padding-top: 28px; }
+.tutorial__nav--plain { display: flex; justify-content: flex-end; }
+/* 端末を選ぶボタン: 横に並べて同じ幅。スマホでは縦に並べる */
+.tutorial__choose { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 16px; }
+.tutorial__choose .btn { border-radius: var(--r-lg); padding: 22px 12px; flex-direction: column; gap: 8px; white-space: normal; text-align: center; line-height: 1.4; }
+.tutorial__choose .btn .icon { font-size: var(--fs-3xl); color: var(--accent); }
+.tutorial__choose .btn:hover { border-color: var(--accent); }
+@media (max-width: 480px) { .tutorial__choose { grid-template-columns: 1fr; } .tutorial__choose .btn { flex-direction: row; padding: 16px 12px; } }
+/* 手順（ol）: 行間をあけて、番号と文の頭をそろえる。文中のアイコンは文字の高さに合わせる */
+.tutorial__text ol { margin: 10px 0 0; padding-left: 1.6em; display: grid; gap: 10px; line-height: 1.7; }
+.tutorial__text li::marker { color: var(--accent); font-weight: 800; }
+.tutorial__text .icon { vertical-align: -.2em; }
+.tutorial__text .small { margin-top: 10px; }
+.tutorial__text a { color: var(--accent); text-decoration: underline; }
 /* 「ホーム画面に追加する」の説明（partials/add_to_home.php、JS: setupAddToHome）。Safari / Chrome を上の切り替えで出し分ける */
 .a2hs { max-height: calc(100dvh - 32px); overflow: hidden auto; }
 .a2hs__switch { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin: 16px 0 4px; padding: 4px;

@@ -419,12 +419,7 @@ render_header('マイスケジュール', 'tools');
 <!-- ===== カレンダー連携 ===== -->
 <section class="card sch-sec" id="ical">
     <div class="sch-sec__head"><h2 class="section-title section-title--card">カレンダー連携</h2>
-        <span class="info-tip" data-tip-from="#ical-help"><?= icon('info', 'icon--sm') ?></span></div>
-    <div id="ical-help" hidden>
-        <p><strong>Google</strong>: パソコンのブラウザで Google カレンダー → 設定 → 自分のカレンダー → 「iCal 形式の非公開 URL」をコピー</p>
-        <p><strong>iCloud</strong>: iPhone のカレンダー → カレンダー一覧の ⓘ → 「公開カレンダー」をオン → リンクを共有でコピー</p>
-        <p>読み込むのは予定の開始と終了の時刻だけ（タイトル等は保存しない）。終日の予定・「空き時間」の予定は無視</p>
-    </div>
+        <button type="button" class="info-tip" data-tutorial-open="ical-help" aria-label="カレンダー連携のやり方" title="カレンダー連携のやり方"><?= icon('info', 'icon--sm') ?></button></div>
     <?php if (!$icalOn): ?>
         <p class="muted small">現在使えません（管理者の設定待ち）</p>
     <?php elseif ($prof['ical_url'] !== null): ?>
@@ -449,5 +444,6 @@ render_header('マイスケジュール', 'tools');
         </form>
     <?php endif; ?>
 </section>
+<?php require __DIR__ . '/partials/ical_help.php'; // ⓘ から開く「カレンダー連携のやり方」（初回チュートリアルと同じ部品） ?>
 <script src="<?= asset_url('assets/sched.js') ?>" defer></script>
 <?php render_footer();

@@ -171,9 +171,11 @@ function sched_ical_fetch(string $url): array
 /**
  * .ics の中身 → 埋まりの時間帯 [[開始, 終了, タイトル], …]（絶対分。範囲内に切り詰め、重なりはまとめる）
  *   タイトルが全部空の時間帯は [開始, 終了] の2つだけ（sched_merge_spans を参照）
+ *   終日の予定は、その日の 0:00〜翌日 0:00 をまるごと埋まりにする（何日も続く予定は、その日数ぶん）。
+ *     Google の終日の予定は、初期設定で「空き時間」になるので、終日だけは「空き時間」でも取り込む。
+ *     いらない日は、マイスケジュールの「この予定を無視」で外せる
  *   取り込まないもの:
- *     ・「空き時間」として登録された予定（TRANSP:TRANSPARENT）
- *     ・終日の予定（誕生日・祝日・「◯◯の日」などのメモ代わりが多いので）
+ *     ・「空き時間」として登録された、時間指定の予定（TRANSP:TRANSPARENT）
  *     ・キャンセルされた予定（STATUS:CANCELLED）
  *   expand() … 繰り返し予定を、範囲内の1回1回の予定に展開する（sabre/vobject）
  */
@@ -185,11 +187,31 @@ function sched_ical_parse(string $ics, int $fromAbs, int $toAbs): array
     $cal = $cal->expand($from, $to);
     $spans = [];
     foreach ($cal->select('VEVENT') as $ev) {
-        if (!isset($ev->DTSTART) || !$ev->DTSTART->hasTime()) {
-            continue; // 終日
-        }
-        if (strtoupper((string)($ev->TRANSP ?? '')) === 'TRANSPARENT' || strtoupper((string)($ev->STATUS ?? '')) === 'CANCELLED') {
+        if (!isset($ev->DTSTART) || strtoupper((string)($ev->STATUS ?? '')) === 'CANCELLED') {
             continue;
+        }
+        $title = trim((string)($ev->SUMMARY ?? ''));
+        if (!$ev->DTSTART->hasTime()) {
+            // 終日: 日付だけ（VALUE=DATE）。DTEND は「終わりの次の日」（11/22 だけの予定なら DTEND は 11/23）
+            //   日本時間の日付として読み、sched_day_abs で「その日の 0:00」にする（UTC で読むと 9 時間ずれる）
+            $tz = new DateTimeZone('Asia/Tokyo');
+            $sDay = $ev->DTSTART->getDateTime($tz)->format('Y-m-d');
+            if (isset($ev->DTEND)) {
+                $eDay = $ev->DTEND->getDateTime($tz)->format('Y-m-d');
+            } elseif (isset($ev->DURATION)) {
+                $eDay = $ev->DTSTART->getDateTime($tz)->add($ev->DURATION->getDateInterval())->format('Y-m-d');
+            } else {
+                $eDay = date('Y-m-d', strtotime($sDay . ' +1 day')); // 長さが書いていない終日の予定は、規格上「その1日」
+            }
+            $sa = max($fromAbs, sched_day_abs($sDay));
+            $ea = min($toAbs, max(sched_day_abs($eDay), sched_day_abs($sDay) + 1440));
+            if ($ea > $sa) {
+                $spans[] = [$sa, $ea, $title];
+            }
+            continue;
+        }
+        if (strtoupper((string)($ev->TRANSP ?? '')) === 'TRANSPARENT') {
+            continue; // 時間指定の「空き時間」は取り込まない
         }
         $s = $ev->DTSTART->getDateTime();
         if (isset($ev->DTEND)) {
@@ -203,7 +225,7 @@ function sched_ical_parse(string $ics, int $fromAbs, int $toAbs): array
         $ea = min($toAbs, intdiv($e->getTimestamp(), 60));
         if ($ea > $sa) {
             // SUMMARY = 予定のタイトル。ここでは平文のまま持ち、DB に入れる直前（sched_ical_refresh）で暗号化する
-            $spans[] = [$sa, $ea, trim((string)($ev->SUMMARY ?? ''))];
+            $spans[] = [$sa, $ea, $title];
         }
     }
     return sched_merge_spans($spans);

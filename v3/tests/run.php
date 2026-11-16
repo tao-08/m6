@@ -894,15 +894,20 @@ if (is_file(__DIR__ . '/../vendor/autoload.php')) {
     $ics = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\n"
         // 毎週土曜 10:00-12:00（JST）の繰り返し。2回目（11/28）は例外で削除（EXDATE）
         . "BEGIN:VEVENT\r\nUID:a\r\nDTSTART;TZID=Asia/Tokyo:20261121T100000\r\nDTEND;TZID=Asia/Tokyo:20261121T120000\r\nRRULE:FREQ=WEEKLY;COUNT=3\r\nEXDATE;TZID=Asia/Tokyo:20261128T100000\r\nSUMMARY:バイト\r\nEND:VEVENT\r\n"
-        // 終日の予定（取り込まない）
-        . "BEGIN:VEVENT\r\nUID:b\r\nDTSTART;VALUE=DATE:20261122\r\nDTEND;VALUE=DATE:20261123\r\nSUMMARY:誕生日\r\nEND:VEVENT\r\n"
+        // 終日の予定（「空き時間」でも、その日をまるごと取り込む）
+        . "BEGIN:VEVENT\r\nUID:b\r\nDTSTART;VALUE=DATE:20261122\r\nDTEND;VALUE=DATE:20261123\r\nTRANSP:TRANSPARENT\r\nSUMMARY:合宿\r\nEND:VEVENT\r\n"
+        // 2日間の終日の予定（DTEND は終わりの次の日）
+        . "BEGIN:VEVENT\r\nUID:d\r\nDTSTART;VALUE=DATE:20261201\r\nDTEND;VALUE=DATE:20261203\r\nSUMMARY:旅行\r\nEND:VEVENT\r\n"
         // 「空き」として登録した予定（取り込まない）
         . "BEGIN:VEVENT\r\nUID:c\r\nDTSTART:20261122T030000Z\r\nDTEND:20261122T040000Z\r\nTRANSP:TRANSPARENT\r\nEND:VEVENT\r\n"
         . "END:VCALENDAR\r\n";
     $from = sched_day_abs('2026-11-20');
     $got = array_map(static fn($s) => [sched_abs_to_dt($s[0]), sched_abs_to_dt($s[1])], sched_ical_parse($ics, $from, $from + 20 * 1440));
-    check('iCal: 繰り返し・例外日・終日・空き', $got, [['2026-11-21 10:00:00', '2026-11-21 12:00:00'], ['2026-12-05 10:00:00', '2026-12-05 12:00:00']]);
-    check('iCal: タイトル（SUMMARY）を読む', array_column(sched_ical_parse($ics, $from, $from + 20 * 1440), 2), ['バイト', 'バイト']);
+    check('iCal: 繰り返し・例外日・終日・空き', $got, [
+        ['2026-11-21 10:00:00', '2026-11-21 12:00:00'], ['2026-11-22 00:00:00', '2026-11-23 00:00:00'],
+        ['2026-12-01 00:00:00', '2026-12-03 00:00:00'], ['2026-12-05 10:00:00', '2026-12-05 12:00:00'],
+    ]);
+    check('iCal: タイトル（SUMMARY）を読む', array_column(sched_ical_parse($ics, $from, $from + 20 * 1440), 2), ['バイト', '合宿', '旅行', 'バイト']);
 }
 check('ics: 改行は CRLF・カンマはエスケープ',str_contains(sched_ics(1, 'A,B', $base + 600, $base + 720, '新宿', ''), "SUMMARY:A\\,B\r\n"), true);
 
