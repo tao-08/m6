@@ -41,6 +41,8 @@ if (is_post()) {
 
     if (!$target) {
         flash('ユーザーが見つかりません', 'error');
+    } elseif ($target['deactivated_at'] !== null && in_array($action, ['set_role', 'link'], true)) {
+        flash('退会済みアカウントは変更できません', 'error');
     } elseif ($action === 'set_role') {
         // 権限は 一般 / 幹部 / 管理者 の3段階（管理者は幹部の権限もすべて持つので、管理者のときは is_executive を 0 にそろえる）
         $role = (string)($_POST['role'] ?? '');
@@ -184,6 +186,7 @@ render_header('ユーザー管理');
                 <td class="muted"><?= $u['deactivated_at'] === null ? h($u['login_id']) : '—' ?></td>
                 <td>
                     <!-- プルダウンで選んで「保存」。「紐付けない」を選ぶと解除 -->
+                    <?php if ($u['deactivated_at'] === null): ?>
                     <form method="post" class="inline-form"><?= csrf_field() ?><input type="hidden" name="user_id" value="<?= (int)$u['user_id'] ?>"><input type="hidden" name="action" value="link">
                         <select name="member_id" aria-label="<?= h($u['name']) ?> さんのメンバー">
                             <option value="0">紐付けない</option>
@@ -196,7 +199,10 @@ render_header('ユーザー管理');
                         </select>
                         <button class="btn btn--sm" type="submit">保存</button>
                     </form>
-                    <?php if ($u['member_id']): ?>
+                    <?php else: ?>
+                        <?= h($u['member_name'] ?? '—') ?>
+                    <?php endif; ?>
+                    <?php if ($u['member_id'] && $u['deactivated_at'] === null): ?>
                         <a class="muted small" href="member?id=<?= (int)$u['member_id'] ?>">マイページ</a>
                         <?php if ($u['no_band']): ?>
                             <span class="status status--warn small" title="このメンバーは1バンドにも出ていません。紐付け先が合っているか確認してください"><?= icon('warning') ?> 出演なし</span>
@@ -209,6 +215,7 @@ render_header('ユーザー管理');
                 <td>
                     <!-- プルダウンを変えるとすぐ保存（data-autosubmit） -->
                     <?php $role = $u['is_admin'] ? 'admin' : ($u['is_executive'] ? 'executive' : 'member'); ?>
+                    <?php if ($u['deactivated_at'] === null): ?>
                     <form method="post" class="inline-form"><?= csrf_field() ?><input type="hidden" name="user_id" value="<?= (int)$u['user_id'] ?>"><input type="hidden" name="action" value="set_role">
                         <select name="role" data-autosubmit aria-label="<?= h($u['name']) ?> さんの権限">
                             <option value="member"<?= $role === 'member' ? ' selected' : '' ?>>一般</option>
@@ -216,6 +223,9 @@ render_header('ユーザー管理');
                             <option value="admin"<?= $role === 'admin' ? ' selected' : '' ?>>管理者</option>
                         </select>
                     </form>
+                    <?php else: ?>
+                        —
+                    <?php endif; ?>
                 </td>
                 <td><?= $u['deactivated_at'] === null ? '有効' : '退会済み' ?></td>
                 <td class="num">
