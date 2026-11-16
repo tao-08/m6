@@ -686,12 +686,12 @@ function require_login(): array
     }
     // DB を作り直した・管理者に削除された等でアカウントが消えていたら、古いセッションを捨てる
     // メンバーの入学年度・退会も同じ問い合わせで一緒に読む（my_entry_year / board_scope が別に引かなくて済むように）
-    $st = db()->prepare('SELECT u.name, u.is_admin, u.is_executive, u.member_id, u.hide_retired_suggest, u.show_back_button, u.count_upcoming, u.see_anonymous, u.password_changed_at,
+    $st = db()->prepare('SELECT u.name, u.is_admin, u.is_executive, u.member_id, u.hide_retired_suggest, u.show_back_button, u.count_upcoming, u.see_anonymous, u.password_changed_at, u.deactivated_at,
             m.entry_year, m.retired
         FROM user_account u LEFT JOIN member m ON m.member_id = u.member_id WHERE u.user_id = ?');
     $st->execute([$user['user_id']]);
     $row = $st->fetch();
-    if (!$row) {
+    if (!$row || $row['deactivated_at'] !== null) {
         $_SESSION = [];
         session_regenerate_id(true);
         flash('アカウントが見つかりません。もう一度ログインしてください', 'error');
