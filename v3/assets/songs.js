@@ -257,6 +257,7 @@
     modal.addEventListener('cancel', (e) => { e.preventDefault(); closeModal(); });
   }
   setupModals(document);
+  window.bindSongModal = bindModal; // 他のページから曲カードを開くとき（app.js の setupSongModalLinks）に使う
 
   // 検索: ページ移動なしで、同じ URL を取り直して一覧だけ入れ替える（並べ替え・ページ送りのリンクは今までどおり）
   const filter = document.querySelector('[data-songs-filter]');

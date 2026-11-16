@@ -52,6 +52,8 @@ $nav = [
     <!-- 左下の「← 前のページ」ボタンに出すページ名（assets/app.js の setupBackButton）。
          ログインしていないページ（ログイン・新規登録）には置かない → ボタンが出ない＆戻り先としても覚えない -->
     <?php if ($user): ?><meta name="page-title" content="<?= h($pageTitle) ?>"><?php endif; ?>
+    <!-- セトリの曲名を押したとき、ページ移動せずに曲カードを開くために、最初に使うときだけ読み込むファイル（assets/app.js の setupSongModalLinks） -->
+    <?php if ($user): ?><meta name="songs-modal-assets" content="<?= asset_url('assets/tab.css') ?> <?= asset_url('assets/songs.css') ?> <?= asset_url('assets/songs.js') ?>"><?php endif; ?>
     <!-- アカウント設定で「戻るボタンを表示する」を外した人。戻り先は覚え続ける（また表示にしたとき、すぐ出せるように） -->
     <?php if ($user && ($user['back_button'] ?? true) === false): ?><meta name="back-button" content="off"><?php endif; ?>
     <!--

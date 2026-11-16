@@ -22,6 +22,7 @@ require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/tracks.php';
 require_once __DIR__ . '/lib/tabs.php';
 require_once __DIR__ . '/lib/youtube.php';
+$songsT0 = microtime(true); // Server-Timing（開発者ツールの「タイミング」で、サーバー側の所要時間が見える）
 $guestAdd = is_post() && ($_POST['action'] ?? '') === 'add_linked'; // 練習プレイヤーからの曲の登録だけは未ログインでもできる（1時間あたりの回数制限つき）
 if (!$guestAdd) {
     require_login(); // 閲覧はログイン者なら誰でも。手動登録の削除・版のまとめなどの書き込み、TAB 譜は管理人だけ（下の POST と tab_allowed）
@@ -378,6 +379,22 @@ $page = min($page, $pages);
 // ?modal=まとまりのキー（曲カードを押したとき songs.js が取りに来る）… その1曲のモーダルだけを返す。
 //   絞り込み・ページに関係なく $works から直接探す（キーは配列の添字として使うだけ。SQL にも HTML にも直接は入れない）
 $modalKey = (string)($_GET['modal'] ?? '');
+// ?modalfor=曲キー（他のページのセトリの曲名から。songs.js / app.js の setupSongModalLinks）… その曲がある版のまとまりを探して、?modal= と同じ断片を返す
+$modalFor = (string)($_GET['modalfor'] ?? '');
+if ($modalFor !== '') {
+    if (tab_key_valid($modalFor)) {
+        foreach ($works as $w) {
+            if (in_array($modalFor, array_column($w['versions'], 'key'), true)) {
+                $modalKey = (string)$w['key'];
+                break;
+            }
+        }
+    }
+    if ($modalKey === '') { // 見つからない / 形がおかしい → 呼び出し側は普通のページ移動に切り替える
+        http_response_code(404);
+        exit;
+    }
+}
 if ($modalKey !== '') {
     $rows = isset($works[$modalKey]) ? [$works[$modalKey]] : [];
     $inlineKey = $modalKey;
@@ -649,6 +666,7 @@ if ($modalKey !== '') {
         exit;
     }
     header('Content-Type: text/html; charset=UTF-8');
+    header(sprintf('Server-Timing: total;dur=%.0f', (microtime(true) - $songsT0) * 1000));
     header('Cache-Control: private, no-store'); // csrf_field() を含むので、共有キャッシュに残さない
     echo $renderModal($rows[0]);
     exit;
