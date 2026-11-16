@@ -103,6 +103,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupAliasField();
   setupInstrumentHex();
   setupInstrumentPreview();
+  setupInstrumentAutosave();
   setupBoardPanels();
   setupBoardMute();
   setupBoardTabs();
@@ -6047,62 +6048,95 @@ function setupKanaAi() {
 }
 
 /**
- * 管理 > アーティスト（masters.php）の名前・ふりがな・別称を、保存ボタンなしで自動保存する。
- *   対象: input[data-artist-save="name|name_kana|aliases"][data-artist-id]
- *   流れ: 入力 → 0.8秒たっても次の入力が無ければ（デバウンス）api_artist_save に送る
- *         → 保存中は .is-saving、成功したら .is-saved（緑の枠が少しだけ出る）、失敗したら .is-error ＋ 画面上部にエラー
+ * 入力欄 1 つを「入力が止まって約0.8秒後に自動保存」にする共通の部品（管理 > アーティスト・楽器の管理）。
+ *   input    … 対象の欄
+ *   opts.url / opts.body(value) … 送り先と、送る JSON（value = 整えた入力値）
+ *   opts.required … true なら空のときは送らず赤くするだけ
+ *   opts.onSaved(savedValue) … 保存できたあとの処理（返ってきた値は、サーバーが整えたもの）
  *   デバウンスとは: 入力のたびに送るとサーバーも DB も忙しくなるので、「入力が止まってから1回だけ」送る業界標準の工夫。
- *   確定（change = 欄を離れた）ときは待たずにすぐ送る。ページを離れる直前も、未保存があれば keepalive で送りきる。
+ *   確定（change = 欄を離れた・ピッカーを閉じた）ときは待たずにすぐ送る。ページを離れる直前も、待っている分は keepalive で送りきる。
+ *   見た目: 保存中 .is-saving / 成功 .is-saved（緑の枠が少しだけ出る）/ 失敗 .is-error ＋ 画面上部にエラー
+ */
+function bindAutosave(input, opts) {
+  const DELAY_MS = 800;
+  let timer = null;
+  let saved = input.value;  // 最後に保存できた値（同じ値なら送らない）
+  let seq = 0;              // 送った順番。遅れて返ってきた古い返事で、新しい入力を上書きしないため
+
+  const save = async (keepalive = false) => {
+    clearTimeout(timer);
+    timer = null;
+    const value = input.value.trim();
+    if (value === saved.trim()) { input.classList.remove('is-saving', 'is-error'); return; }
+    // 必須の欄を空のまま送ると必ずエラーになるので、送らずに赤くするだけ
+    if (opts.required && value === '') { input.classList.add('is-error'); return; }
+    const mine = ++seq;
+    input.classList.remove('is-error', 'is-saved');
+    input.classList.add('is-saving');
+    try {
+      const data = await apiPost(opts.url, opts.body(value), '保存できませんでした', { keepalive });
+      if (mine !== seq) return; // もっと新しい入力を送っている。そちらの結果に任せる
+      saved = data.value;
+      if (input.value.trim() === value && input.type !== 'color') input.value = data.value; // サーバーが整えた形に直す。入力の続きがあれば触らない
+      input.classList.remove('is-saving');
+      input.classList.add('is-saved');
+      setTimeout(() => input.classList.remove('is-saved'), 1200);
+      opts.onSaved?.(data.value);
+    } catch (e) {
+      if (mine !== seq) return;
+      input.classList.remove('is-saving');
+      input.classList.add('is-error');
+      flashToast(e.message, 'error');
+    }
+  };
+
+  // 入力のたびに「0.8秒後に保存」を予約し直す（= デバウンス）。touch() は外から同じ予約をしたいとき用
+  const touch = () => {
+    input.classList.remove('is-error', 'is-saved');
+    clearTimeout(timer);
+    timer = setTimeout(save, DELAY_MS);
+  };
+  input.addEventListener('input', touch);
+  input.addEventListener('change', () => save());
+  // ページを離れる（別タブへ移る・閉じる）直前に、待っている分があれば送る
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden' && timer !== null) save(true);
+  });
+  return { touch };
+}
+
+/**
+ * 管理 > アーティスト（masters.php）の名前・ふりがな・別称を、保存ボタンなしで自動保存する。
+ *   対象: input[data-artist-save="name|name_kana|aliases"][data-artist-id]（送り先は api_artist_save.php）
  */
 function setupArtistAutosave() {
-  const inputs = document.querySelectorAll('input[data-artist-save]');
-  if (!inputs.length) return;
-  const DELAY_MS = 800;
-
-  inputs.forEach((input) => {
-    let timer = null;
-    let saved = input.value;     // 最後に保存できた値（同じ値なら送らない）
-    let seq = 0;                 // 送った順番。遅れて返ってきた古い返事で、新しい入力を上書きしないため
-
-    const save = async (keepalive = false) => {
-      clearTimeout(timer);
-      timer = null;
-      const value = input.value.trim();
-      if (value === saved.trim()) { input.classList.remove('is-saving', 'is-error'); return; }
-      // 名前は必須（空のまま送ると必ずエラーになるので、送らずに赤くするだけ）
-      if (input.dataset.artistSave === 'name' && value === '') { input.classList.add('is-error'); return; }
-      const mine = ++seq;
-      input.classList.remove('is-error', 'is-saved');
-      input.classList.add('is-saving');
-      try {
-        const data = await apiPost('api_artist_save',
-          { artist_id: Number(input.dataset.artistId), field: input.dataset.artistSave, value },
-          '保存できませんでした', { keepalive });
-        if (mine !== seq) return; // もっと新しい入力を送っている。そちらの結果に任せる
-        saved = data.value;
-        if (input.value.trim() === value) input.value = data.value; // 別称は整えた形（「、」区切り）に直す。入力の続きがあれば触らない
-        input.classList.remove('is-saving');
-        input.classList.add('is-saved');
-        setTimeout(() => input.classList.remove('is-saved'), 1200);
-        if (input.dataset.artistSave === 'name') syncArtistRow(input, data.value);
-      } catch (e) {
-        if (mine !== seq) return;
-        input.classList.remove('is-saving');
-        input.classList.add('is-error');
-        flashToast(e.message, 'error');
-      }
-    };
-
-    input.addEventListener('input', () => {
-      input.classList.remove('is-error', 'is-saved');
-      clearTimeout(timer);
-      timer = setTimeout(save, DELAY_MS);
+  document.querySelectorAll('input[data-artist-save]').forEach((input) => {
+    const field = input.dataset.artistSave;
+    bindAutosave(input, {
+      url: 'api_artist_save',
+      body: (value) => ({ artist_id: Number(input.dataset.artistId), field, value }),
+      required: field === 'name',
+      onSaved: (v) => { if (field === 'name') syncArtistRow(input, v); },
     });
-    input.addEventListener('change', () => save());
-    // ページを離れる（別タブへ移る・閉じる）直前に、待っている分があれば送る
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'hidden' && timer !== null) save(true);
+  });
+}
+
+/**
+ * 楽器の管理（instruments.php）の色・略称・正式名称を、保存ボタンなしで自動保存する。
+ *   対象: [data-inst-save="color|short_name|name"][data-inst-id]（送り先は api_instrument_save.php）
+ *   色はピッカーの値だけを送る（色コード欄は setupInstrumentHex がピッカーに写すので、ピッカーを見れば足りる）
+ */
+function setupInstrumentAutosave() {
+  document.querySelectorAll('[data-inst-save]').forEach((input) => {
+    const field = input.dataset.instSave;
+    const ctl = bindAutosave(input, {
+      url: 'api_instrument_save',
+      body: (value) => ({ instrument_id: Number(input.dataset.instId), field, value }),
+      required: field !== 'color',
     });
+    // 色コード欄に打った色は、JS でピッカーの値を書き換えるだけで input イベントが出ない → こちらから保存を予約する
+    //   （setupInstrumentHex が先に登録されているので、このときピッカーは更新済み。形が違う入力ならピッカーは変わらず、保存はされない）
+    if (field === 'color') input.closest('.inst-admin__colorbox')?.querySelector('[data-inst-hex]')?.addEventListener('input', ctl.touch);
   });
 }
 

@@ -10,7 +10,9 @@
  *    色も assets/app.css に固定で書いてある。
  *
  *  それ以外の楽器（Perc / Vn / Sax / Prog / Harm と、名簿の取り込みで「etc」から追加された楽器）
- *    保存 … 色（'#rrggbb'）・略称（UNIQUE。10文字まで）・正式名称（30文字まで）をまとめて更新
+ *    追加 … 表の一番下の行（略称・正式名称・色を入れて ＋）。create_instrument（lib/repository.php）で作る
+    保存 … 保存ボタンは無く、色（'#rrggbb'）・略称（UNIQUE。10文字まで）・正式名称（30文字まで）は
+ *            入力が止まって約0.8秒後に1項目ずつ自動保存（api_instrument_save.php / app.js の setupInstrumentAutosave）
  *            色は instrument.color に入り、ページの <head> の <style> で付く（lib/bootstrap.php の instrument_color_css）
  *    削除 … 使われていない楽器はそのまま消す。
  *            出演記録・TAB 譜で使われている楽器は、統合先を選んで「付け替えてから」消す（lib/repository.php の merge_instrument）
@@ -42,6 +44,30 @@ if (is_post()) {
     $action = (string)($_POST['action'] ?? '');
     $id = (int)($_POST['instrument_id'] ?? 0);
 
+    if ($action === 'add') {
+        // ---- 楽器の追加（api_instrument_save.php と同じ検証。ここは1回で全項目を送る） ----
+        $short = trim(tt_width((string)($_POST['short_name'] ?? '')));
+        $name = trim((string)($_POST['name'] ?? ''));
+        $color = strtolower((string)($_POST['color'] ?? ''));
+        $dup = $pdo->prepare('SELECT 1 FROM instrument WHERE short_name = ?');
+        $dup->execute([$short]);
+        if ($short === '' || mb_strlen($short) > 10 || $name === '' || mb_strlen($name) > 30) {
+            flash('略称は1〜10文字、正式名称は1〜30文字で入力してください', 'error');
+        } elseif (instrument_locked($short)) {
+            flash("略称「{$short}」は使えません", 'error'); // Vo などと同じ略称は、プログラムがどちらを探しているか分からなくなる
+        } elseif ($dup->fetchColumn()) {
+            flash("略称「{$short}」の楽器はすでにあります", 'error');
+        } elseif (!is_hex_color($color)) {
+            flash('色が正しくありません', 'error');
+        } else {
+            $new = create_instrument($pdo, $short, $name); // 表示順は「その他」の手前に入る
+            $pdo->prepare('UPDATE instrument SET color = ? WHERE instrument_id = ?')->execute([$color, $new['instrument_id']]);
+            flash("「{$name}（{$short}）」を追加しました");
+            redirect('instruments#row-' . $new['instrument_id']);
+        }
+        redirect('instruments');
+    }
+
     $st = $pdo->prepare('SELECT i.instrument_id, i.short_name, i.name, i.color, ' . INSTRUMENT_USED_SQL . ' AS used
         FROM instrument i WHERE i.instrument_id = ?');
     $st->execute([$id]);
@@ -52,29 +78,6 @@ if (is_post()) {
     } elseif (instrument_locked($target['short_name'])) {
         // 画面ではボタンを出していないが、フォームを書き換えて送られても止める（サーバー側でも必ず確かめる）
         flash("「{$target['name']}」は変更・削除できません", 'error');
-    } elseif ($action === 'save') {
-        // tt_width = 全角英数字を半角にそろえる（名簿の取り込みで追加するときと同じ）
-        $short = trim(tt_width((string)($_POST['short_name'] ?? '')));
-        $name = trim((string)($_POST['name'] ?? ''));
-        $color = strtolower((string)($_POST['color'] ?? ''));
-
-        $dup = $pdo->prepare('SELECT 1 FROM instrument WHERE short_name = ? AND instrument_id <> ?');
-        $dup->execute([$short, $id]);
-
-        if ($short === '' || mb_strlen($short) > 10 || $name === '' || mb_strlen($name) > 30) {
-            flash('略称は1〜10文字、正式名称は1〜30文字で入力してください', 'error');
-        } elseif (instrument_locked($short)) {
-            // Vo などと同じ略称にすると、プログラムがどちらを探しているか分からなくなる
-            flash("略称「{$short}」は使えません", 'error');
-        } elseif ($dup->fetchColumn()) {
-            flash("略称「{$short}」の楽器はすでにあります", 'error');
-        } elseif (!is_hex_color($color)) {
-            flash('色が正しくありません', 'error');
-        } else {
-            $pdo->prepare('UPDATE instrument SET short_name = ?, name = ?, color = ? WHERE instrument_id = ?')
-                ->execute([$short, $name, $color, $id]);
-            flash("「{$name}（{$short}）」を保存しました");
-        }
     } elseif ($action === 'delete') {
         $used = (int)$target['used'];
         if ($used === 0) {
@@ -121,13 +124,12 @@ render_header('楽器の管理');
 <div class="card table-card">
     <div class="table-scroll table-scroll--flush">
     <table class="table table--edit inst-admin">
-        <thead><tr><th>色</th><th>表示</th><th>略称</th><th>正式名称</th><th></th><th class="num">使用数</th><th></th></tr></thead>
+        <thead><tr><th>表示</th><th>色</th><th>略称</th><th>正式名称</th><th class="num">使用数</th><th></th></tr></thead>
         <tbody>
         <?php foreach ($list as $ins):
             $iid = (int)$ins['instrument_id'];
             $used = (int)$ins['used'];
             $cls = instrument_class($ins['short_name']);
-            $form = 'inst-' . $iid; // 行の入力欄はセルをまたぐので、form="…" 属性でこのフォームに属させる（表の中にフォームを広げられないため）
         ?>
             <tr id="row-<?= $iid ?>">
             <?php if (instrument_locked($ins['short_name'])): ?>
@@ -135,25 +137,11 @@ render_header('楽器の管理');
                 <td></td>
                 <td class="strong"><?= h($ins['short_name']) ?></td>
                 <td><?= h($ins['name']) ?></td>
-                <td></td>
                 <td class="num"><?= $used ?></td>
                 <td class="num"><?= locked_mark('変更・削除不可') ?></td>
             <?php else:
                 // 色が未設定（NULL）の楽器は、その他と同じグレーを初期値として出す
                 $color = is_hex_color($ins['color']) ? strtolower($ins['color']) : '#6c6a75'; ?>
-                <td>
-                    <form method="post" id="<?= $form ?>"><?= csrf_field() ?>
-                        <input type="hidden" name="action" value="save">
-                        <input type="hidden" name="instrument_id" value="<?= $iid ?>">
-                    </form>
-                    <!-- type="color" = ブラウザのカラーピッカー。値は必ず '#rrggbb'（小文字）で送られる。
-                         スマホのピッカーは色コードを打てないことがあるので、隣に色コードの入力欄を置く（name が無いので送信はされない。
-                         打った色は assets/app.js の setupInstrumentHex がピッカーに写す＝送られるのはピッカーの値だけ。形の確認はサーバー側の is_hex_color のまま） -->
-                    <span class="inst-admin__colorbox">
-                        <input type="color" name="color" value="<?= h($color) ?>" form="<?= $form ?>" aria-label="「<?= h($ins['name']) ?>」の色" class="inst-admin__color" data-inst-color>
-                        <input type="text" value="<?= h($color) ?>" maxlength="7" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="「<?= h($ins['name']) ?>」の色コード" class="inst-admin__hex" data-inst-hex>
-                    </span>
-                </td>
                 <!-- 表示（プレビュー）: 実際の楽器ラベル（.part）を、ライト・ダークの両方で出す。色・略称を変えると app.js の setupInstrumentPreview がその場で更新する。
                      --pv に色を入れるだけ。ダークの自動調整（明るさを .78 以上に）は CSS 側で、本番のラベルと同じ式（lib/bootstrap.php の instrument_color_css）にしている -->
                 <td>
@@ -162,9 +150,17 @@ render_header('楽器の管理');
                         <span class="inst-pv__bg inst-pv__bg--dark"><span class="part" data-inst-preview-label><?= h($ins['short_name']) ?></span></span>
                     </span>
                 </td>
-                <td><input autocomplete="off" name="short_name" value="<?= h($ins['short_name']) ?>" maxlength="10" required form="<?= $form ?>" aria-label="略称" class="inst-admin__short"></td>
-                <td><input autocomplete="off" name="name" value="<?= h($ins['name']) ?>" maxlength="30" required form="<?= $form ?>" aria-label="正式名称"></td>
-                <td><button class="btn btn--ghost btn--sm" type="submit" form="<?= $form ?>">保存</button></td>
+                <td>
+                    <!-- type="color" = ブラウザのカラーピッカー。値は必ず '#rrggbb'（小文字）で送られる。
+                         スマホのピッカーは色コードを打てないことがあるので、隣に色コードの入力欄を置く（name が無いので送信はされない。
+                         打った色は assets/app.js の setupInstrumentHex がピッカーに写す＝送られるのはピッカーの値だけ。形の確認はサーバー側の is_hex_color のまま） -->
+                    <span class="inst-admin__colorbox">
+                        <input type="color" value="<?= h($color) ?>" aria-label="「<?= h($ins['name']) ?>」の色" class="inst-admin__color" data-inst-color data-inst-save="color" data-inst-id="<?= $iid ?>">
+                        <input type="text" value="<?= h($color) ?>" maxlength="7" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="「<?= h($ins['name']) ?>」の色コード" class="inst-admin__hex" data-inst-hex>
+                    </span>
+                </td>
+                <td><input autocomplete="off" name="short_name" value="<?= h($ins['short_name']) ?>" maxlength="10" required aria-label="略称" class="inst-admin__short autosave" data-inst-save="short_name" data-inst-id="<?= $iid ?>"></td>
+                <td><input autocomplete="off" name="name" value="<?= h($ins['name']) ?>" maxlength="30" required aria-label="正式名称" class="inst-admin__name autosave" data-inst-save="name" data-inst-id="<?= $iid ?>"></td>
                 <td class="num"><?= $used ?></td>
                 <td class="num">
                     <?php if ($used === 0): ?>
@@ -191,8 +187,29 @@ render_header('楽器の管理');
             <?php endif; ?>
             </tr>
         <?php endforeach; ?>
+        <!-- 追加の行: 入力欄は form="inst-add" 属性で、下のフォームに属させる（表の中にフォームを広げられないため）。
+             プレビューは編集の行と同じ部品（setupInstrumentPreview が色・略称の入力に追従させる） -->
+        <tr id="row-new">
+            <td>
+                <span class="inst-pv" data-inst-preview style="--pv:#6c6a75" aria-hidden="true">
+                    <span class="inst-pv__bg inst-pv__bg--light"><span class="part" data-inst-preview-label>—</span></span>
+                    <span class="inst-pv__bg inst-pv__bg--dark"><span class="part" data-inst-preview-label>—</span></span>
+                </span>
+            </td>
+            <td>
+                <span class="inst-admin__colorbox">
+                    <input type="color" name="color" value="#6c6a75" form="inst-add" aria-label="追加する楽器の色" class="inst-admin__color" data-inst-color>
+                    <input type="text" value="#6c6a75" maxlength="7" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="追加する楽器の色コード" class="inst-admin__hex" data-inst-hex>
+                </span>
+            </td>
+            <td><input autocomplete="off" name="short_name" maxlength="10" required form="inst-add" placeholder="略称" aria-label="追加する楽器の略称" class="inst-admin__short"></td>
+            <td><input autocomplete="off" name="name" maxlength="30" required form="inst-add" placeholder="正式名称" aria-label="追加する楽器の正式名称" class="inst-admin__name"></td>
+            <td></td>
+            <td class="num"><button class="btn btn--sm" type="submit" form="inst-add" aria-label="楽器を追加" title="追加"><?= icon('add') ?></button></td>
+        </tr>
         </tbody>
     </table>
+    <form method="post" id="inst-add"><?= csrf_field() ?><input type="hidden" name="action" value="add"></form>
     </div>
 </div>
 <?php render_footer();
