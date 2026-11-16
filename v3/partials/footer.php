@@ -2,6 +2,7 @@
 <?php if (!embed_mode()): // 埋め込み表示（モーダルの <iframe> の中）では、フッター・モーダル類を出さない（チュートリアルが枠の中で開かないように） ?>
 <footer class="footer">
     <p>&copy; <?= date('Y') ?> <?= h(APP_NAME) ?> by tao__08</p>
+    <p class="footer__links"><a href="privacy">プライバシーポリシー</a><a href="terms">利用規約</a></p>
 </footer>
 <?php require __DIR__ . '/album_modal.php'; // アルバムのモーダル（マイアルバム・セットリストのジャケットを押すと開く）
 
