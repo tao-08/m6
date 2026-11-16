@@ -8,8 +8,8 @@
  *    sched_poll?id=12&ics=1  … 決定した練習の .ics ファイル（カレンダーに追加）
  *  POST（CSRF チェック）
  *    answer … 自分の「回答済み」を切り替える（呼ばれた部員だけ）
- *    fix    … kind = date（日だけ仮決定）/ time（日時まで仮決定）/ final（決定）
- *    reopen … 仮決定・決定を取り消して「調整中」に戻す
+ *    fix    … kind = date（日だけ仮決定）/ time（日時まで仮決定）/ final（決定）。absent = 欠席する部員の id（0 = なし）
+ *    reopen … 仮決定・決定を取り消して「調整中」に戻す（欠席の印も戻す）
  *
  *  ■ 決定ボタンの取り合い（同時に2人が別の調整で同じ部員・同じ時間を決定する）を防ぐ
  *    GET_LOCK('sched_fix') … MySQL / MariaDB の「名前つきの鍵」。同じ名前の鍵は1人しか持てない。
@@ -62,7 +62,9 @@ $eventInfo = static function () use ($poll, $studioById, $members, $roomName, $p
     }
     $room = $roomName($poll['fix_room_id'] === null ? null : (int)$poll['fix_room_id']);
     $location = $studio === null ? '' : trim($studio['name'] . ($room !== '' ? ' ' . $room : '') . ' ' . (string)($studio['address'] ?? ''));
-    $details = 'メンバー: ' . implode('・', array_column($members, 'name')) . "\n" . APP_URL . 'sched_poll?id=' . (int)$poll['sched_poll_id'];
+    // 欠席の人（fix_absent = 1）はメンバーに入れない
+    $present = array_filter($members, static fn($m) => (int)$m['fix_absent'] === 0);
+    $details = 'メンバー: ' . implode('・', array_column($present, 'name')) . "\n" . APP_URL . 'sched_poll?id=' . (int)$poll['sched_poll_id'];
     return [$studio, $room, $location, $details];
 };
 
@@ -105,8 +107,19 @@ if (is_post()) {
     }
 
     if ($action === 'reopen') {
-        $pdo->prepare('UPDATE sched_poll SET status = 0, fix_date = NULL, fix_start = NULL, fix_end = NULL, fix_studio_id = NULL, fix_room_id = NULL, version = version + 1 WHERE sched_poll_id = ?')
-            ->execute([$pollId]);
+        // 2つの UPDATE を1つのトランザクションに入れる（片方だけ成功して、欠席の印だけ残る…を防ぐ）
+        $pdo->beginTransaction();
+        try {
+            $pdo->prepare('UPDATE sched_poll SET status = 0, fix_date = NULL, fix_start = NULL, fix_end = NULL, fix_studio_id = NULL, fix_room_id = NULL, version = version + 1 WHERE sched_poll_id = ?')
+                ->execute([$pollId]);
+            $pdo->prepare('UPDATE sched_poll_member SET fix_absent = 0 WHERE sched_poll_id = ?')->execute([$pollId]);
+            $pdo->commit();
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            throw $e;
+        }
         sched_notify($pdo, $pollId, $poll['title'] . ' の日程が調整中に戻りました', '[[sched_poll?id=' . $pollId . '|候補]]から選び直してください', (int)$user['user_id']);
         flash('調整中に戻しました');
         redirect($back);
@@ -118,6 +131,7 @@ if (is_post()) {
         $start = (int)($_POST['start'] ?? -1);
         $sid = (int)($_POST['studio'] ?? 0);
         $roomId = (int)($_POST['room'] ?? 0);
+        $absentId = (int)($_POST['absent'] ?? 0); // 欠席する人（member_id。0 = なし）
         $len = (int)$poll['length_min'];
         // 期間・時間帯・候補のスタジオの中か（画面を書き換えて範囲外を送られても通さない）
         $okRange = in_array($kind, ['date', 'time', 'final'], true) && $date >= $poll['date_from'] && $date <= $poll['date_to']
@@ -130,6 +144,11 @@ if (is_post()) {
             $st = $pdo->prepare('SELECT 1 FROM studio_room WHERE studio_room_id = ? AND studio_id = ?');
             $st->execute([$roomId, $sid]);
             $roomId = $st->fetchColumn() ? $roomId : 0; // そのスタジオの部屋でなければ、部屋は空にする
+        }
+        // 欠席が有効なのは「日時まで決めるとき」「その調整の部員」「部員が3人以上」だけ（画面を書き換えて送られても、それ以外は 0 にする）
+        //   in_array の第3引数 true … 型も同じか比べる（"1" と 1 を同じとみなさない）
+        if ($kind === 'date' || count($memberIds) < 3 || !in_array($absentId, $memberIds, true)) {
+            $absentId = 0;
         }
         $statusNew = ['date' => 1, 'time' => 2, 'final' => 3][$kind];
         $t0 = sched_day_abs($date) + $start;
@@ -146,6 +165,9 @@ if (is_post()) {
                 $data = sched_collect_busy($pdo, $memberIds, $date, $date, $pollId);
                 $travel = sched_travel_fn(sched_place_coords($pdo), sched_travel_overrides($pdo));
                 foreach ($memberIds as $mid) {
+                    if ($mid === $absentId) {
+                        continue; // 欠席する人は、来られるか確かめない
+                    }
                     if (sched_member_late($data['busy'][$mid] ?? [], $t0, $len, 'studio:' . $sid, $travel, (int)$poll['late_max']) === null) {
                         $fail = 'この時間は ' . ($names[$mid] ?? '') . ' さんが来られなくなりました（ほかの練習が先に決定された等）';
                         break;
@@ -153,9 +175,12 @@ if (is_post()) {
                 }
             }
             if ($fail === null) {
-                $pdo->prepare('UPDATE sched_poll SET status = ?, fix_date = ?, fix_start = ?, fix_end = ?, fix_studio_id = ?, fix_room_id = ?, version = version + 1
-                    WHERE sched_poll_id = ? AND version = ?')
-                    ->execute([
+                // 調整の更新と欠席の印は、同じトランザクションで（片方だけ保存される状態を作らない）
+                $pdo->beginTransaction();
+                try {
+                    $up = $pdo->prepare('UPDATE sched_poll SET status = ?, fix_date = ?, fix_start = ?, fix_end = ?, fix_studio_id = ?, fix_room_id = ?, version = version + 1
+                        WHERE sched_poll_id = ? AND version = ?');
+                    $up->execute([
                         $statusNew, $date,
                         $kind === 'date' ? null : sched_abs_to_dt($t0),
                         $kind === 'date' ? null : sched_abs_to_dt($t0 + $len),
@@ -163,6 +188,21 @@ if (is_post()) {
                         $kind === 'date' || $roomId === 0 ? null : $roomId,
                         $pollId, (int)$poll['version'],
                     ]);
+                    if ($up->rowCount() === 0) {
+                        // version が変わっていた = 確認中に、ほかの人が先に変更した（楽観ロックの失敗）
+                        $pdo->rollBack();
+                        $fail = 'ほかの人が先に変更しました。もう一度確認してください';
+                    } else {
+                        // (member_id = ?) は、一致する行が 1、それ以外が 0。absent が 0 なら全員 0 になる
+                        $pdo->prepare('UPDATE sched_poll_member SET fix_absent = (member_id = ?) WHERE sched_poll_id = ?')->execute([$absentId, $pollId]);
+                        $pdo->commit();
+                    }
+                } catch (Throwable $e) {
+                    if ($pdo->inTransaction()) {
+                        $pdo->rollBack();
+                    }
+                    throw $e; // 鍵は finally で必ず返す
+                }
             }
         } finally {
             // finally … 成功しても例外でも必ず通る。鍵を返し忘れると、次の人が10秒待たされる
@@ -176,8 +216,9 @@ if (is_post()) {
         $when = sched_md($date) . ($kind === 'date' ? '' : ' ' . sched_hm($start) . '〜' . sched_hm($start + $len));
         $where = $kind === 'date' ? '' : ' ' . $studioById[$sid]['name'];
         $label = ['date' => '仮決定（日のみ）', 'time' => '仮決定', 'final' => '決定'][$kind];
-        sched_notify($pdo, $pollId, $poll['title'] . ' の日程が' . $label . 'しました', $when . $where . "\n[[sched_poll?id={$pollId}|詳細]]", (int)$user['user_id']);
-        flash($label . 'しました');
+        $absentNote = $absentId > 0 ? '（' . ($names[$absentId] ?? '') . 'さん欠席）' : '';
+        sched_notify($pdo, $pollId, $poll['title'] . ' の日程が' . $label . 'しました', $when . $where . $absentNote . "\n[[sched_poll?id={$pollId}|詳細]]", (int)$user['user_id']);
+        flash($label . 'しました' . $absentNote);
         redirect($back);
     }
     redirect($back);
@@ -189,7 +230,9 @@ $len = (int)$poll['length_min'];
 $settings = sched_settings($pdo);
 
 // ---- 候補の計算（決定済みなら出さない）----
-$windows = [];
+$windows = [];       // 全員そろう候補
+$absentWindows = []; // 1人欠席の候補
+$over = null;        // みんなの予定
 $practices = [];
 if ($status < 3) {
     sched_ical_refresh_many($pdo, $memberIds); // 古くなった iCal を読み直す（時間で区切るので、表示は最大でも数秒）
@@ -199,19 +242,45 @@ if ($status < 3) {
         $from = (string)$poll['fix_date']; // 日だけ仮決定 → その日の中から時間を選ぶ
     }
     $to = $status === 1 && $poll['fix_date'] !== null ? (string)$poll['fix_date'] : (string)$poll['date_to'];
-    if ($from <= $to && $studios) {
+    if ($from <= $to) {
         $data = sched_collect_busy($pdo, $memberIds, $from, $to, $pollId);
         $practices = $data['practices'];
-        $nowAbs = intdiv(time(), 60);
-        $windows = sched_candidates([
-            'dates' => sched_dates($from, $to),
-            'day_start' => (int)$poll['day_start'], 'day_end' => (int)$poll['day_end'], 'length' => $len, 'late_max' => (int)$poll['late_max'],
-            'members' => array_column($members, 'name', 'member_id'),
-            'busy' => $data['busy'],
-            'not_before' => $nowAbs, // 今より前に始まる枠は出さない
-            'studios' => array_map(static fn($s) => ['place' => 'studio:' . (int)$s['studio_id']], $studioById),
-            'practices' => $practices, 'travel' => sched_travel_fn(sched_place_coords($pdo), sched_travel_overrides($pdo)),
-        ]);
+        if ($studios) {
+            $calc = [
+                'dates' => sched_dates($from, $to),
+                'day_start' => (int)$poll['day_start'], 'day_end' => (int)$poll['day_end'], 'length' => $len, 'late_max' => (int)$poll['late_max'],
+                'members' => array_column($members, 'name', 'member_id'),
+                'busy' => $data['busy'],
+                'not_before' => intdiv(time(), 60), // 今より前に始まる枠は出さない
+                'studios' => array_map(static fn($s) => ['place' => 'studio:' . (int)$s['studio_id']], $studioById),
+                'practices' => $practices, 'travel' => sched_travel_fn(sched_place_coords($pdo), sched_travel_overrides($pdo)),
+            ];
+            $windows = sched_candidates($calc + ['absent_max' => 0]); // まず、全員そろう候補
+            // 全員そろう候補が少なく、部員が3人以上なら、「1人欠席」の候補も出す（2人だと、1人欠席は「1人練習」になってしまう）
+            //   absent_max = 1 の結果には、全員そろう窓も混ざっているので、欠席のある窓（absent が空でないもの）だけ取り出す
+            if (count($members) >= 3 && count($windows) < SCHED_ABSENT_BELOW) {
+                $absentWindows = array_values(array_filter(sched_candidates($calc + ['absent_max' => 1]), static fn($w) => $w['absent']));
+            }
+        }
+        // ---- みんなの予定（週ごとの表の元データ）。授業・練習・それ以外は種類を丸めて送る（プライバシーのため）----
+        //   「バイト」「カレンダー」「手入力」のどれなのかは、画面に出さない（まとめて「予定あり」）
+        $overLabel = static fn(array $b): string => match ($b[3]) {
+            'class' => '授業 ' . $b[4],
+            'practice' => '練習 ' . $b[4],
+            default => '予定あり',
+        };
+        //   見せるのは、この調整を操作できる人（作った人・呼ばれた部員・幹部）だけ。URL の id を変えただけの人に、他人の予定の時間帯を見せない
+        if ($canManage) {
+            $overBusy = [];
+            foreach ($memberIds as $mid) {
+                $overBusy[$mid] = array_map(static fn($b) => [$b[0], $b[1], $overLabel($b)], $data['busy'][$mid] ?? []);
+            }
+            $over = [
+                'days' => array_map(static fn($d) => ['date' => $d, 'md' => sched_md($d), 'abs' => sched_day_abs($d), 'dow' => (int)date('w', strtotime($d))], sched_dates($from, $to)),
+                'start' => (int)$poll['day_start'], 'end' => (int)$poll['day_end'], 'step' => SCHED_STEP,
+                'busy' => (object)$overBusy,
+            ];
+        }
     }
 }
 
@@ -229,17 +298,26 @@ foreach ($studios as $s) {
     unset($r); // foreach の参照を切る（PHP の落とし穴。lib/sched.php の sched_candidates のコメント参照）
     $sim[$sid] = $payload;
 }
+/** 窓 → 画面用（日付の表示・曜日区分を足し、スタジオは配列にする。late / adj は空でも {} になるよう (object) で包む） */
+$winOut = static fn(array $w): array => [
+    'date' => $w['date'], 'md' => sched_md($w['date']), 'day' => sched_day_type($w['date']),
+    'starts' => $w['starts'], 'from' => $w['from'], 'to' => $w['to'],
+    'lateMembers' => $w['late_members'], 'absent' => $w['absent'], 'warn' => $w['warn'], 'adj' => $w['adj'],
+    'studios' => array_map(static fn($sid, $s) => [
+        'id' => $sid, 'starts' => $s['starts'],
+        'late' => (object)array_map(static fn($l) => (object)$l, $s['late']),
+        'adj' => (object)$s['adj'],
+    ], array_keys($w['studios']), array_values($w['studios'])),
+];
 $boot = [
     'poll' => $pollId, 'v' => (int)$poll['version'], 'status' => $status, 'len' => $len, 'people' => count($members), 'jo' => $settings['jo'],
     'canFix' => $canManage, 'csrf' => csrf_token(),
     'studios' => array_map(static fn($s) => ['id' => (int)$s['studio_id'], 'name' => $s['name'], 'area' => (string)$s['area'], 'reserve' => (string)($s['reserve_url'] ?: $s['website_url'])], array_values($studios)),
     'sim' => (object)$sim,
-    // 窓 → 画面用（日付の表示・曜日区分・遅刻の人の名前を足す）
-    'windows' => array_map(static fn($w) => [
-        'date' => $w['date'], 'md' => sched_md($w['date']), 'day' => sched_day_type($w['date']), 'studio' => $w['studio_id'],
-        'starts' => $w['starts'], 'from' => $w['from'], 'to' => $w['to'], 'adj' => $w['adj'], 'adjWith' => $w['adj_with'], 'warn' => $w['warn'],
-        'late' => array_map(static fn($mid, $min) => ['name' => $names[$mid] ?? '', 'min' => $min], array_keys($w['late']), array_values($w['late'])),
-    ], $windows),
+    'names' => (object)$names, // 遅刻・欠席の人の名前（member_id => 名前）
+    'windows' => array_map($winOut, $windows),
+    'absent' => array_map($winOut, $absentWindows),
+    'over' => $over,
 ];
 
 // ---- 仮決定・決定の表示 ----
@@ -281,6 +359,10 @@ render_header($poll['title'] . ' — 日程調整', 'tools');
         <div class="sch-fixed__when"><?= icon($status === 3 ? 'event_available' : 'schedule') ?> <strong><?= h($fixed['when']) ?></strong></div>
         <?php if ($fixed['studio'] !== null): ?>
             <div class="sch-fixed__where"><?= h($fixed['studio']['name']) ?><?= $fixed['room'] !== '' ? ' ' . h($fixed['room']) : '' ?></div>
+        <?php endif; ?>
+        <?php $absentNames = array_column(array_filter($members, static fn($m) => (int)$m['fix_absent'] === 1), 'name'); ?>
+        <?php if ($absentNames): ?>
+            <div class="sch-fixed__absent">欠席: <?= h(implode('・', $absentNames)) ?></div>
         <?php endif; ?>
         <div class="sch-fixed__actions">
             <?php if (isset($fixed['gcal'])): ?>
@@ -326,6 +408,23 @@ render_header($poll['title'] . ' — 日程調整', 'tools');
 </section>
 
 <?php if ($status < 3): ?>
+    <?php if ($over !== null): ?>
+        <?php /* みんなの予定: 中身は assets/sched.js の setupOver が作る。開閉は localStorage に覚える */ ?>
+        <details class="card sch-over" data-sched-over data-tip-lazy>
+            <summary><?= icon('groups') ?> みんなの予定</summary>
+            <div class="sch-over__body">
+                <div class="sch-weeknav">
+                    <button type="button" class="icon-btn" data-over-prev aria-label="前の週" title="前の週"><?= icon('chevron_left') ?></button>
+                    <strong data-over-range></strong>
+                    <button type="button" class="icon-btn" data-over-next aria-label="次の週" title="次の週"><?= icon('chevron_right') ?></button>
+                </div>
+                <div class="sch-legend small muted">
+                    <span><i class="sch-sw is-free"></i>全員空き</span><span><i class="sch-sw is-n1"></i>1人</span><span><i class="sch-sw is-n2"></i>2人以上</span>
+                </div>
+                <div class="sch-grid-wrap" data-sched-over-grid></div>
+            </div>
+        </details>
+    <?php endif; ?>
     <section class="sch-cands" data-sched-cands>
         <div class="sch-cands__head">
             <h2 class="section-title">候補 <small class="muted"><?= count($windows) ?></small></h2>
@@ -342,6 +441,10 @@ render_header($poll['title'] . ' — 日程調整', 'tools');
                 <p class="muted small">期間・時間帯を広げるか、遅刻の上限を延ばしてみてください</p></div>
         <?php endif; ?>
         <div class="sch-list" data-sched-list></div>
+        <?php if ($absentWindows): ?>
+            <h2 class="section-title">1人欠席の候補 <small class="muted"><?= count($absentWindows) ?></small></h2>
+            <div class="sch-list" data-sched-list-absent></div>
+        <?php endif; ?>
         <p class="muted small">料金は目安です。スタジオの空き状況は予約ページで確認してください</p>
     </section>
     <script type="application/json" id="sched-data"><?= json_encode($boot, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP) ?></script>

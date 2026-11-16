@@ -37,7 +37,7 @@ SET NAMES utf8mb4;
 -- まっさらな DB に流すと「Note: #1051 '〜' は不明な表です」が表の数だけ出るが、
 -- これは「消そうとした表が最初から無かった」というだけの“お知らせ”で、エラーではない。
 SET FOREIGN_KEY_CHECKS = 0;
-DROP TABLE IF EXISTS sched_travel, sched_poll_studio, sched_poll_member, sched_poll, sched_busy, sched_class, sched_profile, block_best, sheet_log, song_link_practice, song_link, song_part, song_work_primary, venue_image, song_catalog, song_tab_ai_usage, song_meta_image, song_tab_image, song_meta, song_tab_practice, song_tab_revision, song_tab, timetable_draft_presence, timetable_draft, band_image, notice_image, board_post_image, live_image, push_subscription, comment_like, comment_reply, comment, board_thread_mute, board_notify_category, board_notify, board_post_like, board_post_reply, board_read, board_post, board_thread, board_category, notice_read, notice, notice_category, change_unit, change_op, inquiry, band_like, app_setting, login_attempt, track_preview, track_link_cache, album_link_cache,
+DROP TABLE IF EXISTS sched_travel, sched_weekly, sched_poll_studio, sched_poll_member, sched_poll, sched_busy, sched_class, sched_profile, block_best, sheet_log, song_link_practice, song_link, song_part, song_work_primary, venue_image, song_catalog, song_tab_ai_usage, song_meta_image, song_tab_image, song_meta, song_tab_practice, song_tab_revision, song_tab, timetable_draft_presence, timetable_draft, band_image, notice_image, board_post_image, live_image, push_subscription, comment_like, comment_reply, comment, board_thread_mute, board_notify_category, board_notify, board_post_like, board_post_reply, board_read, board_post, board_thread, board_category, notice_read, notice, notice_category, change_unit, change_op, inquiry, band_like, app_setting, login_attempt, track_preview, track_link_cache, album_link_cache,
     check_dismiss, band_check_member, member_role, role, artist_alias, member_favorite_album, song_performer, song, track, band_member, live_break, band,
     artist, live_day, live, venue, instrument, user_account, member;
 SET FOREIGN_KEY_CHECKS = 1;
@@ -1635,6 +1635,7 @@ CREATE TABLE sched_poll_member (
     sched_poll_id INT UNSIGNED NOT NULL,
     member_id     INT UNSIGNED NOT NULL,
     answered_at   DATETIME     NULL,
+    fix_absent    TINYINT(1) UNSIGNED NOT NULL DEFAULT 0 COMMENT '1=決定した練習を欠席', -- migrations/106
     PRIMARY KEY (sched_poll_id, member_id),
     KEY idx_spm_member (member_id),                    -- 「この部員が呼ばれている調整」を探す
     CONSTRAINT fk_spm_poll FOREIGN KEY (sched_poll_id) REFERENCES sched_poll (sched_poll_id)
@@ -1652,6 +1653,20 @@ CREATE TABLE sched_poll_studio (
         ON UPDATE CASCADE ON DELETE CASCADE,
     CONSTRAINT fk_sps_studio FOREIGN KEY (studio_id) REFERENCES studio (studio_id)
         ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- 毎週くり返す NG（バイト等）。weekday は 1 = 月 〜 7 = 日（migrations/106）
+CREATE TABLE sched_weekly (
+    sched_weekly_id INT UNSIGNED      NOT NULL AUTO_INCREMENT,
+    member_id       INT UNSIGNED      NOT NULL,
+    weekday         TINYINT UNSIGNED  NOT NULL,          -- 1 = 月 〜 7 = 日
+    start_min       SMALLINT UNSIGNED NOT NULL,          -- 0時からの分
+    end_min         SMALLINT UNSIGNED NOT NULL,
+    PRIMARY KEY (sched_weekly_id),
+    KEY idx_sweekly_member (member_id, weekday),         -- 「この部員の、この曜日の NG」を探す
+    CONSTRAINT fk_sweekly_member FOREIGN KEY (member_id) REFERENCES member (member_id)
+        ON UPDATE CASCADE ON DELETE CASCADE,
+    CONSTRAINT ck_sweekly_range CHECK (weekday BETWEEN 1 AND 7 AND end_min > start_min AND end_min <= 1440)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE sched_travel (

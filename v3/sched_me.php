@@ -12,6 +12,7 @@
  *    copy    … もう片方の学期の時間割を写す
  *    ical / ical_refresh / ical_delete … カレンダー連携（iCal の URL）
  *    busy    … NG 枠（画面に出ている範囲の手入力分を入れ直す。JS から JSON で送る）
+ *    weekly_add / weekly_delete … 毎週の NG（バイト等。曜日と時間帯を1行ずつ。削除するまで毎週効く）
  *
  *  自分の予定だけを扱う（member_id はセッションのもの。フォームからは受け取らない＝他人の予定を書き換えられない）
  * =====================================================================
@@ -21,6 +22,10 @@ require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/repository.php'; // tip_attr（ポップアップの説明）
 require_once __DIR__ . '/lib/sched.php';
 require_once __DIR__ . '/lib/sched_ical.php';
+/** 毎週の NG の曜日（1 = 月 〜 7 = 日。date('N') と同じ）。時間割の SCHED_WEEKDAYS は日曜が無いので、日を足す */
+const SCHED_ME_WEEKDAYS = SCHED_WEEKDAYS + [7 => '日'];
+/** 1人が登録できる毎週の NG の数（増やしすぎて画面と計算が重くならないように） */
+const SCHED_ME_WEEKLY_MAX = 20;
 $user = require_admin(); // 完成するまで管理者だけ
 $pdo = db();
 if ($user['member_id'] === null) {
@@ -175,6 +180,33 @@ if (is_post()) {
         flash('NG の時間を保存しました');
         redirect($back . '#ng');
     }
+
+    if ($action === 'weekly_add') {
+        $wd = (int)($_POST['weekday'] ?? 0);
+        $ws = (int)($_POST['start'] ?? -1);
+        $we = (int)($_POST['end'] ?? -1);
+        // 曜日は 1〜7、時刻は 30分刻みで 0:00〜24:00、開始 < 終了（DB の CHECK と同じ条件。フォームを書き換えられても通さない）
+        if ($wd < 1 || $wd > 7 || $ws < 0 || $we > 1440 || $ws >= $we || $ws % SCHED_STEP !== 0 || $we % SCHED_STEP !== 0) {
+            flash('時間を正しく選んでください', 'error');
+            redirect($back . '#weekly');
+        }
+        $st = $pdo->prepare('SELECT COUNT(*) AS n, SUM(weekday = ? AND start_min = ? AND end_min = ?) AS same FROM sched_weekly WHERE member_id = ?');
+        $st->execute([$wd, $ws, $we, $me]);
+        $r = $st->fetch();
+        if ((int)$r['n'] >= SCHED_ME_WEEKLY_MAX) {
+            flash('毎週の NG は' . SCHED_ME_WEEKLY_MAX . '件までです', 'error');
+        } elseif ((int)$r['same'] === 0) { // まったく同じ行があれば足さない
+            // member_id はフォームから受け取らず、セッションの $me を使う（他人の行は作れない）
+            $pdo->prepare('INSERT INTO sched_weekly (member_id, weekday, start_min, end_min) VALUES (?, ?, ?, ?)')->execute([$me, $wd, $ws, $we]);
+        }
+        redirect($back . '#weekly');
+    }
+
+    if ($action === 'weekly_delete') {
+        // member_id も条件に入れる = 他人の行の id を送られても消せない
+        $pdo->prepare('DELETE FROM sched_weekly WHERE sched_weekly_id = ? AND member_id = ?')->execute([(int)($_POST['id'] ?? 0), $me]);
+        redirect($back . '#weekly');
+    }
     redirect($back);
 }
 
@@ -190,6 +222,18 @@ $st->execute([$me]);
 foreach ($st as $r) {
     $classes[(int)$r['term']][$r['weekday'] . '-' . $r['period']] = true;
 }
+// 毎週の NG（曜日 → 開始の順）
+$st = $pdo->prepare('SELECT sched_weekly_id, weekday, start_min, end_min FROM sched_weekly WHERE member_id = ? ORDER BY weekday, start_min, end_min');
+$st->execute([$me]);
+$weekly = $st->fetchAll();
+// 時刻の選択肢（<option> の並び）。開始は 0:00〜23:30、終了は 0:30〜24:00
+$weeklyTimes = static function (int $from, int $to, int $selected): string {
+    $html = '';
+    for ($m = $from; $m <= $to; $m += SCHED_STEP) {
+        $html .= '<option value="' . $m . '"' . ($m === $selected ? ' selected' : '') . '>' . h(sched_hm($m)) . '</option>';
+    }
+    return $html;
+};
 // いま（または次）の学期を先に開く
 $today = date('Y-m-d');
 //   授業期間の中ならその学期、夏休みなら秋、それ以外（冬〜春休み）は春（日曜・祝日でも学期は学期なので、sched_term_of は使わない）
@@ -237,7 +281,7 @@ render_header('マイ予定', 'tools');
 <section class="card sch-sec" id="ng">
     <div class="sch-sec__head">
         <h2 class="section-title section-title--card">NG の時間</h2>
-        <span class="info-tip" <?= tip_attr('マスをタップ・なぞって NG を塗る。授業・カレンダーの予定・決定した練習は自動で入る') ?>><?= icon('info', 'icon--sm') ?></span>
+        <span class="info-tip" <?= tip_attr('マスをタップ・なぞって NG を塗る。日付をタップで1日まるごと。授業・カレンダーの予定・毎週の NG・決定した練習は自動で入る') ?>><?= icon('info', 'icon--sm') ?></span>
     </div>
     <div class="sch-weeknav">
         <?php if ($prevUrl !== null): ?><a class="icon-btn" href="<?= h($prevUrl) ?>#ng" aria-label="前の週" title="前の週"><?= icon('chevron_left') ?></a><?php else: ?><span></span><?php endif; ?>
@@ -245,7 +289,7 @@ render_header('マイ予定', 'tools');
         <?php if ($nextUrl !== null): ?><a class="icon-btn" href="<?= h($nextUrl) ?>#ng" aria-label="次の週" title="次の週"><?= icon('chevron_right') ?></a><?php else: ?><span></span><?php endif; ?>
     </div>
     <div class="sch-legend small muted">
-        <span><i class="sch-sw is-ng"></i>NG</span><span><i class="sch-sw is-class"></i>授業</span><span><i class="sch-sw is-ical"></i>カレンダー</span><span><i class="sch-sw is-practice"></i>練習</span>
+        <span><i class="sch-sw is-ng"></i>NG</span><span><i class="sch-sw is-class"></i>授業</span><span><i class="sch-sw is-ical"></i>カレンダー</span><span><i class="sch-sw is-weekly"></i>毎週</span><span><i class="sch-sw is-practice"></i>練習</span>
     </div>
     <div class="sch-grid-wrap" data-sched-grid></div>
     <form method="post" class="form-actions" data-sched-grid-form>
@@ -260,6 +304,32 @@ render_header('マイ予定', 'tools');
     <?php endif; ?>
 </section>
 <script type="application/json" id="sched-grid-data"><?= json_encode($grid, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP) ?></script>
+
+<!-- ===== 毎週の NG ===== -->
+<section class="card sch-sec" id="weekly">
+    <div class="sch-sec__head">
+        <h2 class="section-title section-title--card">毎週の NG</h2>
+        <span class="info-tip" <?= tip_attr('バイトなど毎週くり返す予定。削除するまで毎週、NG として扱う') ?>><?= icon('info', 'icon--sm') ?></span>
+    </div>
+    <?php foreach ($weekly as $w): ?>
+        <form method="post" class="sch-row sch-weekly-row">
+            <?= csrf_field() ?><input type="hidden" name="action" value="weekly_delete"><input type="hidden" name="id" value="<?= (int)$w['sched_weekly_id'] ?>">
+            <?php if ($poll !== null): ?><input type="hidden" name="poll" value="<?= $pollId ?>"><?php endif; ?>
+            <span><?= h((SCHED_ME_WEEKDAYS[(int)$w['weekday']] ?? '') . ' ' . sched_hm((int)$w['start_min']) . '〜' . sched_hm((int)$w['end_min'])) ?></span>
+            <button class="icon-btn icon-btn--sm" type="submit" aria-label="削除" title="削除"><?= icon('close') ?></button>
+        </form>
+    <?php endforeach; ?>
+    <form method="post" class="sch-row sch-row--wrap">
+        <?= csrf_field() ?><input type="hidden" name="action" value="weekly_add">
+        <?php if ($poll !== null): ?><input type="hidden" name="poll" value="<?= $pollId ?>"><?php endif; ?>
+        <select class="select-sm" name="weekday" aria-label="曜日">
+            <?php foreach (SCHED_ME_WEEKDAYS as $n => $label): ?><option value="<?= $n ?>"><?= h($label) ?></option><?php endforeach; ?>
+        </select>
+        <select class="select-sm" name="start" aria-label="開始"><?= $weeklyTimes(0, 1410, 1080) ?></select>
+        <select class="select-sm" name="end" aria-label="終了"><?= $weeklyTimes(30, 1440, 1320) ?></select>
+        <button class="btn btn--primary btn--sm" type="submit">追加</button>
+    </form>
+</section>
 
 <!-- ===== 時間割 ===== -->
 <section class="card sch-sec" id="classes">

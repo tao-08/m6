@@ -6,7 +6,7 @@
  *  GET
  *    sched            … 自分が入っている（作った）調整の一覧
  *    sched?new        … 新しく作るフォーム
- *    sched?edit=12    … 編集フォーム
+ *    sched?edit=12    … 編集フォーム（その調整を操作できる人だけ。POST と同じ sched_can_manage で確かめる）
  *  POST（CSRF チェック）
  *    save   … 作成 / 保存（sched_poll_id があれば編集）
  *    delete … 削除
@@ -168,6 +168,10 @@ if (isset($_GET['new']) || isset($_GET['edit'])) {
     if ($pollId > 0 && $poll === null) {
         not_found_page('日程調整が見つかりません', 'sched');
     }
+    // 編集フォームも、操作できる人だけに見せる（POST だけ守っていても、URL に ?edit=他人の id と打てば GET で中身が見えてしまう）
+    if ($poll !== null && !sched_can_manage($poll, $user, array_column(sched_poll_members($pdo, $pollId), 'member_id'))) {
+        error_page(403, 'この日程調整は操作できません');
+    }
     // 初期値: 明日から2週間・10:00〜23:00・2時間・遅刻30分まで・自分＋初期候補のスタジオ
     $me = null;
     if ($user['member_id'] !== null) {
@@ -206,6 +210,30 @@ if (isset($_GET['new']) || isset($_GET['edit'])) {
         return $html;
     };
     $allNames = member_name_choices($pdo);
+    // 「バンドから入力」用: 自分がメンバーで、開催日が今日以降のバンドと、そのメンバーの名前（新規作成のときだけ）
+    $bands = [];
+    if ($poll === null && $user['member_id'] !== null) {
+        // 同じバンドに複数の楽器で入っている人もいるので DISTINCT で重複を消す（DISTINCT + ORDER BY は、並べる列も SELECT に入れる必要がある）
+        $st = $pdo->prepare('SELECT DISTINCT b.band_id, b.name AS band_name, l.name AS live_name, d.held_on, b.play_order
+            FROM band_member bm
+            JOIN band b ON b.band_id = bm.band_id
+            JOIN live_day d ON d.live_day_id = b.live_day_id
+            JOIN live l ON l.live_id = d.live_id
+            WHERE bm.member_id = ? AND d.held_on >= ?
+            ORDER BY d.held_on, b.play_order, b.band_id');
+        $st->execute([(int)$user['member_id'], date('Y-m-d')]);
+        foreach ($st->fetchAll() as $r) {
+            $bands[(int)$r['band_id']] = ['id' => (int)$r['band_id'], 'title' => (string)$r['band_name'], 'live' => (string)$r['live_name'], 'names' => []];
+        }
+        if ($bands) {
+            $ph = implode(',', array_fill(0, count($bands), '?'));
+            $st = $pdo->prepare("SELECT DISTINCT bm.band_id, m.name, m.name_kana FROM band_member bm JOIN member m ON m.member_id = bm.member_id WHERE bm.band_id IN ($ph) ORDER BY m.name_kana, m.name");
+            $st->execute(array_keys($bands));
+            foreach ($st as $r) {
+                $bands[(int)$r['band_id']]['names'][] = (string)$r['name'];
+            }
+        }
+    }
     render_header($poll === null ? '日程調整を作成' : '日程調整を編集', 'tools');
     ?>
     <link rel="stylesheet" href="<?= asset_url('assets/sched.css') ?>">
@@ -216,6 +244,17 @@ if (isset($_GET['new']) || isset($_GET['edit'])) {
         <?= csrf_field() ?>
         <input type="hidden" name="action" value="save">
         <input type="hidden" name="sched_poll_id" value="<?= $pollId ?>">
+        <?php if ($bands): ?>
+            <label class="field"><span>バンドから入力</span>
+                <select data-band-pick>
+                    <option value="">選択</option>
+                    <?php foreach ($bands as $b): ?><option value="<?= $b['id'] ?>"><?= h($b['title'] . '（' . $b['live'] . '）') ?></option><?php endforeach; ?>
+                </select>
+            </label>
+            <?php // JS に渡すデータ。<script> の中なので JSON_HEX_TAG / JSON_HEX_AMP で < > & をエスケープする（名前に </script> が入っていても壊れない）
+            $bandJson = array_map(static fn($b) => ['id' => $b['id'], 'title' => $b['title'], 'names' => $b['names']], array_values($bands)); ?>
+            <script type="application/json" id="sched-bands"><?= json_encode($bandJson, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP) ?></script>
+        <?php endif; ?>
         <label class="field"><span>タイトル</span><input name="title" value="<?= h($in['title']) ?>" maxlength="100" required placeholder="例: バンド名" autocomplete="off"></label>
 
         <div class="field">

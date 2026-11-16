@@ -6,8 +6,9 @@
  *    NG（手入力）= アクセントの赤 / 授業 = 青 / カレンダー = 紫 / 練習 = 緑 / 仮予定の注意 = 黄の斜線
  * ===================================================================== */
 
-.sch-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-.sch-meta { margin: -8px 0 14px; }
+.sch-head { display: flex; align-items: center; justify-content: space-between; gap: 8px 12px; flex-wrap: wrap; margin-bottom: 8px; }
+.sch-head .display { margin-bottom: 0; } /* 下の余白は .sch-head で持つ（ボタンが折り返しても、下の行に重ならないように） */
+.sch-meta { margin: 0 0 14px; }
 .sch-ok { color: var(--ok); }
 .sch-warn { color: var(--warn); }
 
@@ -35,31 +36,52 @@
 .sch-fixed { display: grid; gap: 8px; border-left: 4px solid var(--warn); margin-bottom: 14px; }
 .sch-fixed.is-final { border-left-color: var(--ok); }
 .sch-fixed__when { display: flex; align-items: center; gap: 6px; font-size: var(--fs-xl); }
-.sch-fixed__where { color: var(--muted); }
+.sch-fixed__where, .sch-fixed__absent { color: var(--muted); }
 .sch-fixed__actions { display: flex; flex-wrap: wrap; gap: 8px; }
 
 /* ---------- 部員と回答 ---------- */
 .sch-people { display: grid; gap: 10px; margin-bottom: 18px; }
 .sch-me-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 
+/* ---------- みんなの予定（候補の上の <details>）---------- */
+.sch-over { margin-bottom: 18px; }
+.sch-over > summary { display: flex; align-items: center; gap: 8px; cursor: pointer; list-style: none; font-weight: 700; }
+.sch-over > summary::-webkit-details-marker { display: none; }
+.sch-over > summary::after { content: ""; margin-left: auto; width: 8px; height: 8px; border: solid var(--muted); border-width: 0 2px 2px 0;
+  transform: rotate(45deg); transition: transform var(--t-base); }   /* 開閉の矢印（閉じていると ⌄、開くと ⌃） */
+.sch-over[open] > summary::after { transform: rotate(-135deg); }
+.sch-over__body { display: grid; gap: 10px; margin-top: 12px; }
+.sch-grid--over td { touch-action: auto; cursor: default; }          /* 塗れない表なので、なぞってもページがスクロールする */
+.sch-grid--over td[data-tip] { cursor: help; }
+.sch-grid--over td.is-free, .sch-sw.is-free { background: color-mix(in srgb, var(--ok) 22%, transparent); }
+.sch-grid--over td.is-n1, .sch-sw.is-n1 { background: color-mix(in srgb, var(--warn) 40%, transparent); }
+.sch-grid--over td.is-n2, .sch-sw.is-n2 { background: color-mix(in srgb, var(--accent) 45%, transparent); }
+
 /* ---------- 候補 ---------- */
 .sch-cands__head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .sch-cands__head .section-title { margin: 0; }
 .sch-sort { margin-bottom: 0; }
 .sch-list { display: grid; gap: 10px; margin: 12px 0; }
-.sch-cand { display: grid; gap: 6px; padding: 12px 14px; }
+.sch-cand { display: grid; gap: 10px; padding: 12px 14px; }
 .sch-cand.is-late { border-style: dashed; }
-.sch-cand__top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.sch-cand__top { display: flex; align-items: center; gap: 4px 8px; flex-wrap: wrap; }
 .sch-cand__date { font-size: var(--fs-lg); }
 .sch-cand__time { font-variant-numeric: tabular-nums; }
-.sch-cand__mid { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
-.sch-cand__studio { font-weight: 700; }
-.sch-cand__price { display: inline-flex; align-items: baseline; gap: 4px; flex-wrap: wrap; }
-.sch-cand__notes { display: flex; flex-wrap: wrap; gap: 4px; }
-.sch-cand__notes .pill { cursor: default; }
-.sch-cand__foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
-.sch-cand__acts { display: flex; gap: 6px; margin-left: auto; }
-.sch-cand .tag[data-tip] { cursor: help; }
+.sch-cand__pills { display: flex; flex-wrap: wrap; gap: 4px; }
+.sch-cand__pills .pill { cursor: default; }
+.sch-cand__start { margin-left: auto; }
+.sch-cand .tag[data-tip], .sch-cand .pill[data-tip] { cursor: help; }
+.sch-srows { display: grid; gap: 6px; }
+.sch-srow { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--r-md); cursor: pointer;
+  transition: border-color var(--t-fast), background var(--t-fast); }
+.sch-srow.is-on { border-color: var(--accent); background: var(--accent-soft); }
+.sch-srow:has(input:focus-visible) { box-shadow: var(--ring); }
+.sch-srow input { accent-color: var(--accent); width: 16px; height: 16px; margin: 0; flex: none; }
+.sch-srow__main { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+.sch-srow__name { font-weight: 700; }
+.sch-srow__price { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: flex-end; gap: 0 6px; text-align: right; }
+.sch-more { justify-self: start; }
+.sch-cand__acts { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
 
 /* ---------- NG の時間のマス ---------- */
 .sch-weeknav { display: grid; grid-template-columns: 40px 1fr 40px; align-items: center; text-align: center; }
@@ -72,6 +94,7 @@
 .sch-grid thead th { position: sticky; top: 0; background: var(--surface); z-index: 1; }
 .sch-grid thead th.is-sun { color: var(--accent); }
 .sch-grid thead th.is-sat { color: var(--headliner); }
+.sch-grid thead th[data-day] { cursor: pointer; } /* 日付を押すと1日まるごと NG */
 .sch-grid tbody th { width: 40px; text-align: right; vertical-align: top; touch-action: pan-y; } /* 時刻の列はスクロールできる */
 .sch-grid td { height: 22px; border: 1px solid var(--border); border-top-style: dotted; padding: 0 2px; font-size: var(--fs-2xs); line-height: 1.1;
   overflow: hidden; white-space: nowrap; text-overflow: ellipsis; touch-action: none; cursor: pointer; transition: background var(--t-fast); }
@@ -80,8 +103,12 @@
 .sch-grid td.is-ng, .sch-sw.is-ng { background: color-mix(in srgb, var(--accent) 55%, transparent); }
 .sch-grid td.is-class, .sch-sw.is-class { background: color-mix(in srgb, var(--headliner) 22%, transparent); }
 .sch-grid td.is-ical, .sch-sw.is-ical { background: color-mix(in srgb, var(--ba) 22%, transparent); }
+.sch-grid td.is-weekly, .sch-sw.is-weekly { background: color-mix(in srgb, var(--accent) 22%, transparent); }
 .sch-grid td.is-practice, .sch-sw.is-practice { background: color-mix(in srgb, var(--ok) 28%, transparent); }
 .sch-grid td.is-warn { background-image: repeating-linear-gradient(45deg, transparent 0 4px, color-mix(in srgb, var(--warn) 30%, transparent) 4px 6px); }
+
+/* ---------- 毎週の NG ---------- */
+.sch-weekly-row > span { min-width: 7em; font-variant-numeric: tabular-nums; } /* 「火 18:00〜22:00」の削除ボタンの位置をそろえる */
 
 /* ---------- 時間割 ---------- */
 .sch-tt { display: grid; gap: 8px; }
@@ -110,5 +137,4 @@
 
 @media (max-width: 560px) {
   .sch-grid2 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
-  .sch-cand__acts { width: 100%; justify-content: flex-end; }
 }

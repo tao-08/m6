@@ -837,14 +837,16 @@ $cand = sched_candidates([
     'members' => [1 => 'A', 2 => 'B'], 'busy' => [1 => [[$base + 660, $base + 720, null]]],
     'studios' => [5 => ['place' => 'studio:5']], 'practices' => [], 'travel' => $zero,
 ]);
-check('候補: 埋まりを避けた窓1つ', array_map(static fn($w) => [$w['from'], $w['to'], $w['starts']], $cand), [[720, 840, [720]]]);
+check('候補: 埋まりを避けた窓1つ', array_map(static fn($w) => [$w['from'], $w['to'], $w['starts'], array_keys($w['studios'])], $cand), [[720, 840, [720], [5]]]);
 // 遅刻 OK（60分）にすると、10:00 開始（A が 12:00 着 = 120分遅れ）は無理、11:00 開始（60分遅れ）・11:30 開始（30分遅れ）はOK
 $cand = sched_candidates([
     'dates' => [$d], 'day_start' => 600, 'day_end' => 840, 'length' => 120, 'late_max' => 60,
     'members' => [1 => 'A', 2 => 'B'], 'busy' => [1 => [[$base + 600, $base + 720, null]]],
     'studios' => [5 => ['place' => 'studio:5']], 'practices' => [], 'travel' => $zero,
 ]);
-check('候補: 全員そろう枠が先、遅刻の枠は後', array_map(static fn($w) => [$w['from'], $w['late']], $cand), [[720, []], [690, [1 => 30]], [660, [1 => 60]]]);
+// 660・690 開始は「Aだけ遅刻」で条件が同じ → 1つの窓（遅れの分は窓の中のスタジオに開始時刻ごとに入る）。720 開始は全員そろう窓
+check('候補: 全員そろう枠が先、遅刻の枠は後（遅刻の同じ枠は1つの窓）', array_map(static fn($w) => [$w['from'], $w['starts'], $w['late_members']], $cand), [[720, [720], []], [660, [660, 690], [1]]]);
+check('候補: 遅れの分は開始時刻ごと・並べ替え用は最小', [$cand[1]['studios'][5]['late'], $cand[1]['late_min'], $cand[0]['studios'][5]['late']], [[660 => [1 => 60], 690 => [1 => 30]], 30, []]);
 // 連続: 同じスタジオで 12:00 に終わる決定済みの練習（共通メンバー1 → ◎）
 $cand = sched_candidates([
     'dates' => [$d], 'day_start' => 600, 'day_end' => 900, 'length' => 120, 'late_max' => 0,
@@ -852,7 +854,27 @@ $cand = sched_candidates([
     'studios' => [5 => ['place' => 'studio:5']], 'travel' => $zero,
     'practices' => [['id' => 9, 'title' => 'X', 'status' => 3, 'date' => $d, 's' => $base + 600, 'e' => $base + 720, 'studio_id' => 5, 'members' => [1]]],
 ]);
-check('候補: 連続◎ が先頭', [$cand[0]['from'], $cand[0]['adj'], $cand[0]['adj_with']], [720, 2, ['X']]);
+// 720 開始（連続◎）と、遅れ・欠席・注意が同じ 750・780 開始は1つの窓。連続はスタジオの中の開始時刻ごとに入る
+check('候補: 連続◎ の窓が先頭', [$cand[0]['from'], $cand[0]['starts'], $cand[0]['adj'], $cand[0]['studios'][5]['adj']], [720, [720, 750, 780], 2, [720 => ['level' => 2, 'with' => ['X']]]]);
+// スタジオが2つ同じ条件 → 窓は1つで、studios が2つ入る
+$cand = sched_candidates([
+    'dates' => [$d], 'day_start' => 600, 'day_end' => 840, 'length' => 120, 'late_max' => 0,
+    'members' => [1 => 'A', 2 => 'B'], 'busy' => [],
+    'studios' => [5 => ['place' => 'studio:5'], 7 => ['place' => 'studio:7']], 'practices' => [], 'travel' => $zero,
+]);
+check('候補: スタジオ2つが同じ条件なら窓1つ・studios 2つ', [count($cand), array_keys($cand[0]['studios']), $cand[0]['starts']], [1, [5, 7], [600, 630, 660, 690, 720]]);
+// 欠席: B は 10:00〜14:00 ずっと埋まり。absent_max = 1 のときだけ「Bが欠席」の窓が出る（0 では出ない）
+$busyB = [2 => [[$base + 600, $base + 840, null]]];
+$args = [
+    'dates' => [$d], 'day_start' => 600, 'day_end' => 840, 'length' => 120, 'late_max' => 0,
+    'members' => [1 => 'A', 2 => 'B', 3 => 'C'], 'busy' => $busyB,
+    'studios' => [5 => ['place' => 'studio:5']], 'practices' => [], 'travel' => $zero,
+];
+check('候補: absent_max = 0 では1人来られない枠は出ない', sched_candidates($args), []);
+$cand = sched_candidates($args + ['absent_max' => 1]);
+check('候補: absent_max = 1 で欠席つきの窓が出る', array_map(static fn($w) => [$w['absent'], $w['starts']], $cand), [[[2], [600, 630, 660, 690, 720]]]);
+// 欠席が2人（A と B が埋まり）なら、absent_max = 1 でも出ない
+check('候補: 来られない人が2人なら absent_max = 1 でも出ない', sched_candidates(['busy' => $busyB + [1 => [[$base + 600, $base + 840, null]]]] + $args + ['absent_max' => 1]), []);
 check('部屋: 定員 / 広さの目安 / 不明', [sched_room_fit(5, null, 5, 3.0), sched_room_fit(null, 12.0, 5, 3.0), sched_room_fit(null, null, 5, 3.0)], ['ok', 'small', 'unknown']);
 require_once __DIR__ . '/../lib/sched_ical.php';
 check('iCal URL: webcal → https / Google OK / 他のホストは不可 / ポート付きは不可', [
