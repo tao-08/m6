@@ -15,6 +15,7 @@
  *    busy    … NG 枠（画面に出ている範囲の手入力分を入れ直す。JS から JSON で送る）
  *    photo_read … カレンダーのスクリーンショット（最大3枚）を AI に読ませて、予定の一覧を JSON で返す（保存はしない。lib/sched_photo.php）
  *    photo_add  … 確認画面で選んだ予定を sched_busy に入れる（source = 2。JS から JSON で送る）
+ *    photo_delete … 画像から読み込んだ予定を削除（グリッドで予定をタップ →「削除」）
  *    ignore  … 自動で入った予定（授業・カレンダー・画像から読込・毎週）の1回分を無視 / 元に戻す
  *    weekly_add / weekly_delete … 毎週の NG（バイト等。曜日と時間帯を1行ずつ。削除するまで毎週効く）
  *
@@ -172,6 +173,45 @@ if (is_post()) {
         } else {
             $pdo->prepare('DELETE FROM sched_ignore WHERE member_id = ? AND start_at = ? AND end_at = ?')->execute([$me, sched_abs_to_dt($s), sched_abs_to_dt($e)]);
         }
+        http_response_code(204);
+        exit;
+    }
+
+    // 画像から読み込んだ予定を削除（グリッドで予定をタップ →「削除」。JS から fetch で送る）
+    //   消せるのは自分の source = 2 だけ（member_id はセッションの $me。授業・iCal・手入力などは、ここでは消せない）
+    //   同じ時間帯に「この予定を無視」が付いていて、ほかに同じ時間帯の自動の予定が無ければ、無視の印も一緒に消す（残すと、あとで同じ時間帯に入った予定まで無視されるため）
+    if ($action === 'photo_delete') {
+        $s = (int)($_POST['s'] ?? 0);
+        $e = (int)($_POST['e'] ?? 0);
+        if ($e <= $s) {
+            http_response_code(400);
+            exit;
+        }
+        [$sAt, $eAt] = [sched_abs_to_dt($s), sched_abs_to_dt($e)];
+        $pdo->beginTransaction();
+        $del = $pdo->prepare('DELETE FROM sched_busy WHERE member_id = ? AND source = 2 AND start_at = ? AND end_at = ?');
+        $del->execute([$me, $sAt, $eAt]);
+        if ($del->rowCount() === 0) {
+            $pdo->rollBack();
+            http_response_code(404);
+            exit;
+        }
+        $day = substr($sAt, 0, 10);
+        $still = false;
+        foreach (sched_collect_busy($pdo, [$me], $day, $day, null, true)['busy'][$me] ?? [] as $b) {
+            if ($b[0] === $s && $b[1] === $e && in_array($b[3], ['class', 'ical', 'photo', 'weekly'], true)) {
+                $still = true;
+                break;
+            }
+        }
+        if (!$still) {
+            try {
+                $pdo->prepare('DELETE FROM sched_ignore WHERE member_id = ? AND start_at = ? AND end_at = ?')->execute([$me, $sAt, $eAt]);
+            } catch (PDOException) {
+                // sched_ignore がまだ無い（migrations/107 を流していない）DB では、消す印も無いので何もしない（lib/sched.php と同じ扱い）
+            }
+        }
+        $pdo->commit();
         http_response_code(204);
         exit;
     }

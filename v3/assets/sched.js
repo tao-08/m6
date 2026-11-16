@@ -208,10 +208,14 @@
     // マスの見た目を、埋まり（data.busy）から決める。自動の予定があれば塗れない（is-auto）。
     //   「この予定を無視」にした予定（b[4]）は、予定ありに数えず網掛け（is-ignored）。タップすると無視を切り替えられる
     const ignorable = ['class', 'ical', 'photo', 'weekly'];
+    // 終日の予定 = 取り込んだ予定のうち、日の始まり（0:00）から日の終わりまでぴったり埋めるもの。
+    //   表のマスには塗らず、日付の下に予定名だけ出す（練習の候補の計算では、今まで通り1日予定あり）
+    const day0 = data.days[0]?.abs ?? 0;
+    const isAllDay = (b) => (b[2] === 'ical' || b[2] === 'photo') && b[1] > b[0] && (b[0] - day0) % 1440 === 0 && (b[1] - b[0]) % 1440 === 0;
     const classify = (td) => {
       const abs = Number(td.dataset.abs);
       const first = abs === Number(td.dataset.first); // その日の表示の先頭のマス
-      const hit = data.busy.filter((b) => b[0] < abs + data.step && b[1] > abs);
+      const hit = data.busy.filter((b) => !isAllDay(b) && b[0] < abs + data.step && b[1] > abs);
       const auto = hit.find((b) => b[2] !== 'manual' && !b[4]);
       const ign = hit.find((b) => b[4]);
       const item = ign || auto;
@@ -247,6 +251,14 @@
       th.append(el('span', 'sch-daychk')); // 押すと1日まるごと、の印（全部塗られていたら塗りつぶし）
       th.title = '1日まるごと予定あり';
       th.setAttribute('aria-label', d.md + ' 1日まるごと予定あり'); // 読み上げで日付が消えないよう、日付も入れる
+      // その日にかかる終日の予定（何日も続く予定は、その日数ぶんの見出しに出る）。押すと「この予定を無視」のポップアップ
+      data.busy.filter((b) => isAllDay(b) && b[0] < d.abs + 1440 && b[1] > d.abs).forEach((b) => {
+        const chip = el('button', 'sch-allday', b[3] || kindLabel[b[2]]);
+        chip.type = 'button';
+        chip.title = b[3] || kindLabel[b[2]]; // 「…」で切れたときに全文がわかるように
+        chip._item = b;
+        th.append(chip);
+      });
       head.append(th);
     });
     const thead = el('thead');
@@ -290,7 +302,8 @@
     const openPop = (td) => {
       closePop();
       const item = td._item;
-      pop = el('label', 'sch-pop');
+      pop = el('div', 'sch-pop');
+      const ignore = el('label', 'sch-pop__ignore');
       const cb = el('input');
       cb.type = 'checkbox';
       cb.checked = !!item[4];
@@ -307,23 +320,52 @@
           .then((r) => { if (!r.ok) throw new Error(); })
           .catch(() => { alert('保存できませんでした'); item[4] = was; cb.checked = was; classifyAll(); });
       });
-      pop.append(cb, el('span', '', 'この予定を無視'));
+      ignore.append(cb, el('span', '', 'この予定を無視'));
+      pop.append(ignore);
+      // 画像から読み込んだ予定だけは、本当に削除もできる（読み間違いを残さないため）。操作ボタンなので data-tip は付けない
+      if (item[2] === 'photo') {
+        const del = el('button', 'icon-btn icon-btn--sm');
+        del.type = 'button';
+        del.title = '削除';
+        del.setAttribute('aria-label', '削除');
+        const icon = el('span', 'icon', 'delete');
+        icon.setAttribute('aria-hidden', 'true');
+        del.append(icon);
+        del.addEventListener('click', () => {
+          if (!confirm('この予定を削除します。よろしいですか？')) return;
+          const body = new FormData(form);
+          body.set('action', 'photo_delete');
+          body.set('s', item[0]);
+          body.set('e', item[1]);
+          del.disabled = true;
+          autosave.flush() // 塗りかけの手入力を先に保存してから読み直す
+            .then(() => fetch(location.pathname + location.search, { method: 'POST', body, headers: { 'X-Autosave': '1' } }))
+            .then((r) => { if (!r.ok) throw new Error(); location.reload(); })
+            .catch(() => { alert('削除できませんでした'); del.disabled = false; });
+        });
+        pop.append(del);
+      }
       document.body.append(pop);
       const r = td.getBoundingClientRect();
       const pw = pop.offsetWidth;
       pop.style.left = Math.max(8, Math.min(window.innerWidth - pw - 8, r.left + r.width / 2 - pw / 2)) + 'px';
       pop.style.top = Math.min(window.innerHeight - pop.offsetHeight - 8, r.bottom + 4) + 'px';
     };
-    const classifyAll = () => { table.querySelectorAll('tbody td').forEach(classify); syncDays(); };
+    const classifyAll = () => {
+      table.querySelectorAll('tbody td').forEach(classify);
+      thead.querySelectorAll('.sch-allday').forEach((chip) => chip.classList.toggle('is-ignored', !!chip._item[4])); // 無視中は縞模様
+      syncDays();
+    };
+    classifyAll();
     table.addEventListener('click', (e) => {
-      const td = e.target.closest('td');
+      const td = e.target.closest('td, .sch-allday'); // 終日の予定（日付の下）も、マスと同じポップアップ
       if (!td?._item) return;
       e.stopPropagation();
       // ポップアップが出ているときに予定を押したら、開き直さず消す（もう一度押せば開く）
       if (pop) closePop();
       else openPop(td);
     });
-    document.addEventListener('pointerdown', (e) => { if (pop && !pop.contains(e.target) && !e.target.closest('td.is-auto')) closePop(); });
+    document.addEventListener('pointerdown', (e) => { if (pop && !pop.contains(e.target) && !e.target.closest('td.is-auto, .sch-allday')) closePop(); });
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closePop(); });
     window.addEventListener('scroll', closePop, true);
 
@@ -351,7 +393,7 @@
     // 日付の見出しを押す: その日の塗れるマスを全部塗る（もう全部塗られていたら全部消す）
     thead.addEventListener('click', (e) => {
       const th = e.target.closest('th[data-day]');
-      if (!th) return;
+      if (!th || e.target.closest('.sch-allday')) return; // 終日の予定名を押したときは、1日まるごと塗らない（ポップアップだけ）
       const day = cells.filter((td) => td.dataset.day === th.dataset.day);
       if (!day.length) return; // 塗れるマスが無い日（授業などで全部埋まっている）は何もしない
       mode = !day.every((td) => td.classList.contains('is-ng')); // 全部塗られている → 消すモード

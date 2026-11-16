@@ -150,6 +150,10 @@
 .sch-grid thead th.is-all .sch-daychk::after { content: ''; position: absolute; left: 50%; top: 50%; width: 2.5px; height: 5px; border: solid #fff; border-width: 0 1.5px 1.5px 0; transform: translate(-50%, -60%) rotate(45deg); }
 .sch-grid thead th.is-none .sch-daychk { visibility: hidden; }
 .sch-grid thead th[data-day] { cursor: pointer; } /* 日付を押すと1日まるごと NG */
+/* 終日の予定（JS: setupGrid）。日付の下に予定名を1行で（長いと「…」、全文は title）。押すと「この予定を無視」。色は表の「カレンダー」と同じ */
+.sch-allday { display: block; width: 100%; margin-top: 2px; padding: 1px 2px; border: 0; border-radius: var(--r-xs); font: inherit; font-weight: 400; color: var(--text);
+  background: color-mix(in srgb, var(--ba) 22%, transparent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+.sch-allday.is-ignored { background: repeating-linear-gradient(135deg, transparent 0 4px, color-mix(in srgb, var(--ba) 30%, transparent) 4px 8px); color: var(--muted); }
 .sch-grid tbody th { width: 40px; text-align: right; vertical-align: top; touch-action: pan-y; } /* 時刻の列はスクロールできる */
 .sch-grid td { height: 22px; border: 1px solid var(--border); border-top-style: dotted; padding: 0 2px; font-size: var(--fs-2xs); line-height: 1.1;
   overflow: hidden; white-space: nowrap; text-overflow: ellipsis; touch-action: none; cursor: pointer; transition: background var(--t-fast); }
@@ -171,7 +175,8 @@
 .sch-grid td.is-ignored.is-photo { --ev: var(--vn); }
 .sch-grid td.is-ignored.is-weekly { --ev: var(--accent); }
 .sch-grid td.is-ignored.is-practice { --ev: var(--ok); }
-.sch-pop { position: fixed; z-index: 50; display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); box-shadow: var(--shadow-pop); font-size: var(--fs-sm); cursor: pointer; }
+.sch-pop { position: fixed; z-index: 50; display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); box-shadow: var(--shadow-pop); font-size: var(--fs-sm); }
+.sch-pop__ignore { display: flex; align-items: center; gap: 6px; cursor: pointer; } /* 「この予定を無視」（画像の予定は、横に削除ボタン） */
 .sch-grid td.is-ng, .sch-sw.is-ng { background: color-mix(in srgb, var(--accent) 55%, transparent); }
 .sch-grid td.is-class, .sch-sw.is-class { background: color-mix(in srgb, var(--headliner) 22%, transparent); }
 .sch-grid td.is-ical, .sch-sw.is-ical { background: color-mix(in srgb, var(--ba) 22%, transparent); }
