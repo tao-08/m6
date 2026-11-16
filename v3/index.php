@@ -114,6 +114,8 @@ foreach ($upcoming as $liveId => &$u) {
     $u['show_label'] = $prev && $target->diff(new DateTimeImmutable(max($prev)))->days > 1;
 }
 unset($u);
+// カウントダウンは30日以内のライブだけ（一覧のチェックボックスとは関係なし）
+$upcoming = array_filter($upcoming, static fn($u) => $u['days'] <= 30);
 // 自分が出るバンド（予定のライブだけ）。member_id が NULL（メンバーと紐付いていない人）は「= NULL」で何も当たらない
 $myBands = [];
 if ($upcoming && $user['member_id'] !== null) {
