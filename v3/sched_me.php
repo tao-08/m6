@@ -130,6 +130,35 @@ if (is_post()) {
         redirect($back . '#ical');
     }
 
+    // この予定を無視（授業・カレンダー・毎週の1回分。JS から fetch で送る。on = 1 で無視、0 で元に戻す）
+    if ($action === 'ignore') {
+        $s = (int)($_POST['s'] ?? 0);
+        $e = (int)($_POST['e'] ?? 0);
+        $on = (string)($_POST['on'] ?? '') === '1';
+        $day = substr(sched_abs_to_dt($s), 0, 10);
+        // 画面に出ている予定（無視中も含む）の中にある時間帯だけ受け付ける
+        $found = false;
+        if ($e > $s) {
+            foreach (sched_collect_busy($pdo, [$me], $day, $day, null, true)['busy'][$me] ?? [] as $b) {
+                if ($b[0] === $s && $b[1] === $e && in_array($b[3], ['class', 'ical', 'weekly'], true)) {
+                    $found = true;
+                    break;
+                }
+            }
+        }
+        if (!$found) {
+            http_response_code(400);
+            exit;
+        }
+        if ($on) {
+            $pdo->prepare('INSERT IGNORE INTO sched_ignore (member_id, start_at, end_at) VALUES (?, ?, ?)')->execute([$me, sched_abs_to_dt($s), sched_abs_to_dt($e)]);
+        } else {
+            $pdo->prepare('DELETE FROM sched_ignore WHERE member_id = ? AND start_at = ? AND end_at = ?')->execute([$me, sched_abs_to_dt($s), sched_abs_to_dt($e)]);
+        }
+        http_response_code(204);
+        exit;
+    }
+
     if ($action === 'busy') {
         // JS（assets/sched.js）が送る JSON: {"days": ["2026-11-20", …], "start": 540, "end": 1440, "cells": [絶対分, …]}
         $in = json_decode((string)($_POST['payload'] ?? ''), true);
@@ -200,7 +229,7 @@ if (is_post()) {
         $st->execute([$wd, $ws, $we, $me]);
         $r = $st->fetch();
         if ((int)$r['n'] >= SCHED_ME_WEEKLY_MAX) {
-            flash('毎週の NG は' . SCHED_ME_WEEKLY_MAX . '件までです', 'error');
+            flash('毎週の予定ありは' . SCHED_ME_WEEKLY_MAX . '件までです', 'error');
         } elseif ((int)$r['same'] === 0) { // まったく同じ行があれば足さない
             // member_id はフォームから受け取らず、セッションの $me を使う（他人の行は作れない）
             $pdo->prepare('INSERT INTO sched_weekly (member_id, weekday, start_min, end_min) VALUES (?, ?, ?, ?)')->execute([$me, $wd, $ws, $we]);
@@ -267,12 +296,12 @@ if ($poll !== null) {
     $nextUrl = 'sched_me?from=' . date('Y-m-d', strtotime($from . ' +7 day'));
 }
 sched_ical_refresh($pdo, $me); // 古ければ読み直す（1時間以内に読んでいれば何もしない）
-$data = sched_collect_busy($pdo, [$me], $days[0], $days[count($days) - 1], $poll === null ? null : $pollId);
+$data = sched_collect_busy($pdo, [$me], $days[0], $days[count($days) - 1], $poll === null ? null : $pollId, true);
 $grid = [
     'days' => array_map(static fn($d) => ['date' => $d, 'md' => sched_md($d), 'abs' => sched_day_abs($d), 'dow' => (int)date('w', strtotime($d))], $days),
     'start' => $ws, 'end' => $we, 'step' => SCHED_STEP,
-    // 埋まり: [開始, 終了, 種類, ラベル]（場所は画面に要らないので落とす）
-    'busy' => array_map(static fn($b) => [$b[0], $b[1], $b[3], $b[4]], $data['busy'][$me] ?? []),
+    // 埋まり: [開始, 終了, 種類, ラベル, 無視中か]（場所は画面に要らないので落とす）
+    'busy' => array_map(static fn($b) => [$b[0], $b[1], $b[3], $b[4], !empty($b[5])], $data['busy'][$me] ?? []),
     'warn' => array_values(array_map(static fn($p) => ['date' => $p['date'], 'title' => $p['title'], 's' => $p['s'], 'e' => $p['e']], array_filter($data['practices'], static fn($p) => in_array($me, $p['members'], true) && $p['status'] < 3))),
 ];
 $icalOn = sched_ical_available();
@@ -287,7 +316,7 @@ render_header('マイスケジュール', 'tools');
 <section class="card sch-sec" id="ng">
     <div class="sch-sec__head">
         <h2 class="section-title section-title--card">スケジュールを編集</h2>
-        <span class="info-tip" <?= tip_attr('マスをタップ・なぞって NG を塗る。日付をタップで1日まるごと。授業・カレンダーの予定・毎週の NG・決定した練習は自動で入る') ?>><?= icon('info', 'icon--sm') ?></span>
+        <span class="info-tip" <?= tip_attr('マスをタップ・なぞって予定ありを塗る。日付をタップで1日まるごと。授業・カレンダーの予定・毎週の予定あり・決定した練習は自動で入る。自動で入った予定をタップすると、その1回分を無視できる') ?>><?= icon('info', 'icon--sm') ?></span>
     </div>
     <div class="sch-weeknav">
         <?php if ($prevUrl !== null): ?><a class="icon-btn" href="<?= h($prevUrl) ?>#ng" aria-label="前の週" title="前の週"><?= icon('chevron_left') ?></a><?php else: ?><span></span><?php endif; ?>
@@ -295,7 +324,7 @@ render_header('マイスケジュール', 'tools');
         <?php if ($nextUrl !== null): ?><a class="icon-btn" href="<?= h($nextUrl) ?>#ng" aria-label="次の週" title="次の週"><?= icon('chevron_right') ?></a><?php else: ?><span></span><?php endif; ?>
     </div>
     <div class="sch-legend small muted">
-        <span><i class="sch-sw is-ng"></i>NG</span><span><i class="sch-sw is-class"></i>授業</span><span><i class="sch-sw is-ical"></i>カレンダー</span><span><i class="sch-sw is-weekly"></i>毎週</span><span><i class="sch-sw is-practice"></i>練習</span>
+        <span><i class="sch-sw is-ng"></i>予定あり</span><span><i class="sch-sw is-class"></i>授業</span><span><i class="sch-sw is-ical"></i>カレンダー</span><span><i class="sch-sw is-weekly"></i>毎週</span><span><i class="sch-sw is-practice"></i>練習</span>
     </div>
     <div class="sch-grid-wrap" data-sched-grid></div>
     <form method="post" data-sched-grid-form>
@@ -313,8 +342,8 @@ render_header('マイスケジュール', 'tools');
 <!-- ===== 毎週の NG ===== -->
 <section class="card sch-sec" id="weekly">
     <div class="sch-sec__head">
-        <h2 class="section-title section-title--card">毎週の NG</h2>
-        <span class="info-tip" <?= tip_attr('バイトなど毎週くり返す予定。削除するまで毎週、NG として扱う') ?>><?= icon('info', 'icon--sm') ?></span>
+        <h2 class="section-title section-title--card">毎週の予定あり</h2>
+        <span class="info-tip" <?= tip_attr('バイトなど毎週くり返す予定。削除するまで毎週、予定ありとして扱う') ?>><?= icon('info', 'icon--sm') ?></span>
     </div>
     <?php foreach ($weekly as $w): ?>
         <form method="post" class="sch-row sch-weekly-row">

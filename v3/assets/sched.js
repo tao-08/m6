@@ -166,6 +166,30 @@
     const autosave = makeAutosave(() => new FormData(form));
     const kindLabel = { class: '授業', ical: '予定', weekly: '毎週', practice: '練習' };
 
+    // マスの見た目を、埋まり（data.busy）から決める。自動の予定があれば塗れない（is-auto）。
+    //   「この予定を無視」にした予定（b[4]）は、予定ありに数えず網掛け（is-ignored）。タップすると無視を切り替えられる
+    const ignorable = ['class', 'ical', 'weekly'];
+    const classify = (td) => {
+      const abs = Number(td.dataset.abs);
+      const first = abs === Number(td.dataset.first); // その日の表示の先頭のマス
+      const hit = data.busy.filter((b) => b[0] < abs + data.step && b[1] > abs);
+      const auto = hit.find((b) => b[2] !== 'manual' && !b[4]);
+      const ign = hit.find((b) => b[4]);
+      const item = ign || auto;
+      td.classList.remove('is-class', 'is-ical', 'is-weekly', 'is-practice', 'is-auto', 'is-ignored', 'is-ng');
+      td.textContent = '';
+      td._item = null;
+      if (item) {
+        td.classList.add('is-' + item[2], 'is-auto');
+        if (item[4]) td.classList.add('is-ignored');
+        if (ignorable.includes(item[2])) td._item = item;
+        // 予定の最初のマスにだけラベル（授業の「2限」・練習のバンド名）
+        if (item[0] >= abs && item[0] < abs + data.step || first) td.textContent = item[3] || kindLabel[item[2]];
+      } else if (hit.length) {
+        td.classList.add('is-ng');
+      }
+    };
+
     const table = el('table', 'sch-grid');
     const head = el('tr');
     head.append(el('th'));
@@ -174,8 +198,8 @@
       // 日付を押すと、その日を1日まるごと NG にする（操作ボタンなので data-tip は付けず、title と aria-label）
       th.dataset.day = d.date;
       th.append(el('span', 'sch-daychk')); // 押すと1日まるごと、の印（全部塗られていたら塗りつぶし）
-      th.title = '1日まるごと NG';
-      th.setAttribute('aria-label', d.md + ' 1日まるごと NG'); // 読み上げで日付が消えないよう、日付も入れる
+      th.title = '1日まるごと予定あり';
+      th.setAttribute('aria-label', d.md + ' 1日まるごと予定あり'); // 読み上げで日付が消えないよう、日付も入れる
       head.append(th);
     });
     const thead = el('thead');
@@ -190,18 +214,11 @@
         const abs = d.abs + m;
         const td = el('td');
         td.dataset.abs = abs;
+        td.dataset.first = d.abs + data.start; // その日の先頭のマス（ラベルを出す）
         td.dataset.day = d.date; // 日付の見出しから「その日のマス」を探すため
         // このマスにかかる埋まり（自動のもの優先。手入力は塗れる）
-        const hit = data.busy.filter((b) => b[0] < abs + data.step && b[1] > abs);
-        const auto = hit.find((b) => b[2] !== 'manual');
-        if (auto) {
-          td.className = 'is-' + auto[2] + ' is-auto';
-          // 予定の最初のマスにだけラベル（授業の「2限」・練習のバンド名）
-          if (auto[0] >= abs && auto[0] < abs + data.step || abs === d.abs + data.start) td.textContent = auto[3] || kindLabel[auto[2]];
-        } else {
-          if (hit.length) td.classList.add('is-ng');
-          cells.push(td);
-        }
+        classify(td);
+        if (!td.classList.contains('is-auto')) cells.push(td);
         // 仮決定の注意（その日に仮予定がある）
         if (data.warn.some((w) => w.date === d.date && (w.s === null || (w.s < abs + data.step && w.e > abs)))) td.classList.add('is-warn');
         tr.append(td);
@@ -220,6 +237,45 @@
       });
     };
     syncDays();
+    // ---- 自動で入った予定をタップ → 「この予定を無視」のチェックボックス（その1回分だけ）----
+    let pop = null;
+    const closePop = () => { pop?.remove(); pop = null; };
+    const openPop = (td) => {
+      closePop();
+      const item = td._item;
+      pop = el('label', 'sch-pop');
+      const cb = el('input');
+      cb.type = 'checkbox';
+      cb.checked = !!item[4];
+      cb.addEventListener('change', () => {
+        const body = new FormData(form);
+        body.set('action', 'ignore');
+        body.set('s', item[0]);
+        body.set('e', item[1]);
+        body.set('on', cb.checked ? '1' : '0');
+        const was = !cb.checked;
+        item[4] = cb.checked;
+        classifyAll();
+        fetch(location.pathname + location.search, { method: 'POST', body, headers: { 'X-Autosave': '1' } })
+          .then((r) => { if (!r.ok) throw new Error(); })
+          .catch(() => { alert('保存できませんでした'); item[4] = was; cb.checked = was; classifyAll(); });
+      });
+      pop.append(cb, el('span', '', 'この予定を無視'));
+      document.body.append(pop);
+      const r = td.getBoundingClientRect();
+      const pw = pop.offsetWidth;
+      pop.style.left = Math.max(8, Math.min(window.innerWidth - pw - 8, r.left + r.width / 2 - pw / 2)) + 'px';
+      pop.style.top = Math.min(window.innerHeight - pop.offsetHeight - 8, r.bottom + 4) + 'px';
+    };
+    const classifyAll = () => { table.querySelectorAll('tbody td').forEach(classify); syncDays(); };
+    table.addEventListener('click', (e) => {
+      const td = e.target.closest('td');
+      if (td?._item) { e.stopPropagation(); openPop(td); }
+    });
+    document.addEventListener('pointerdown', (e) => { if (pop && !pop.contains(e.target) && !e.target.closest('td.is-auto')) closePop(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closePop(); });
+    window.addEventListener('scroll', closePop, true);
+
     let mode = null; // true = 塗る / false = 消す / null = なぞっていない
     const paint = (td) => {
       if (!td || !td.dataset.abs || td.classList.contains('is-auto')) return;

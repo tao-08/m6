@@ -121,6 +121,9 @@
   overflow: hidden; white-space: nowrap; text-overflow: ellipsis; touch-action: none; cursor: pointer; transition: background var(--t-fast); }
 .sch-grid tr.is-hour td { border-top-style: solid; }
 .sch-grid td.is-auto { cursor: not-allowed; color: var(--text); }
+.sch-grid td.is-auto:is(.is-class, .is-ical, .is-weekly) { cursor: pointer; } /* タップで「この予定を無視」 */
+.sch-grid td.is-ignored { opacity: .6; background-image: repeating-linear-gradient(45deg, transparent 0 3px, color-mix(in srgb, var(--muted) 55%, transparent) 3px 5px); } /* 無視した予定は網掛け */
+.sch-pop { position: fixed; z-index: 50; display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); box-shadow: var(--shadow-pop); font-size: var(--fs-sm); cursor: pointer; }
 .sch-grid td.is-ng, .sch-sw.is-ng { background: color-mix(in srgb, var(--accent) 55%, transparent); }
 .sch-grid td.is-class, .sch-sw.is-class { background: color-mix(in srgb, var(--headliner) 22%, transparent); }
 .sch-grid td.is-ical, .sch-sw.is-ical { background: color-mix(in srgb, var(--ba) 22%, transparent); }

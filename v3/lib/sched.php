@@ -644,9 +644,11 @@ function sched_can_manage(array $poll, array $user, array $memberIds): bool
  * 部員たちの「埋まり」と、ほかの調整の仮決定・決定を集める（sched_candidates に渡す形）
  *   $exceptPollId … いま計算している調整（自分自身の決定は埋まりにしない）
  *   戻り値: ['busy' => [member_id => [[開始, 終了, 場所キー|null, 種類, ラベル], …]], 'practices' => [...], 'campus' => [member_id => 1|2]]
- *   種類: class（授業）/ manual（手入力）/ ical / weekly（毎週の NG）/ practice（決定済みの練習）
+ *   種類: class（授業）/ manual（手入力）/ ical / weekly（毎週の予定）/ practice（決定済みの練習）
+ *   「この予定を無視」にした授業・カレンダー・毎週の予定（sched_ignore）は埋まりから外す。
+ *   $withIgnored = true のときは外さず、6つ目（[5]）に true を付けて残す（マイスケジュールで網掛けにするため）
  */
-function sched_collect_busy(PDO $pdo, array $memberIds, string $from, string $to, ?int $exceptPollId): array
+function sched_collect_busy(PDO $pdo, array $memberIds, string $from, string $to, ?int $exceptPollId, bool $withIgnored = false): array
 {
     $out = ['busy' => [], 'practices' => [], 'campus' => []];
     $memberIds = array_values(array_unique(array_map('intval', $memberIds)));
@@ -753,6 +755,32 @@ function sched_collect_busy(PDO $pdo, array $memberIds, string $from, string $to
             foreach (array_intersect($pm, $memberIds) as $mid) {
                 $out['busy'][$mid][] = [$s, $e, $r['fix_studio_id'] === null ? null : 'studio:' . (int)$r['fix_studio_id'], 'practice', (string)$r['title']];
             }
+        }
+    }
+    // ---- 「この予定を無視」にした1回分（授業・カレンダー・毎週）----
+    try {
+        $st = $pdo->prepare("SELECT member_id, start_at, end_at FROM sched_ignore WHERE member_id IN ($in) AND end_at > ? AND start_at < ?");
+        $st->execute([...$memberIds, sched_abs_to_dt($fromAbs), sched_abs_to_dt($toAbs)]);
+        $ignored = [];
+        foreach ($st as $r) {
+            $ignored[(int)$r['member_id'] . '|' . sched_dt_to_abs($r['start_at']) . '|' . sched_dt_to_abs($r['end_at'])] = true;
+        }
+    } catch (PDOException) {
+        $ignored = []; // sched_ignore がまだ無い（migrations/107 を流していない）DB でも止まらないように
+    }
+    if ($ignored) {
+        foreach ($out['busy'] as $mid => $list) {
+            $keep = [];
+            foreach ($list as $b) {
+                if (in_array($b[3], ['class', 'ical', 'weekly'], true) && isset($ignored[$mid . '|' . $b[0] . '|' . $b[1]])) {
+                    if (!$withIgnored) {
+                        continue;
+                    }
+                    $b[5] = true;
+                }
+                $keep[] = $b;
+            }
+            $out['busy'][$mid] = $keep;
         }
     }
     return $out;
