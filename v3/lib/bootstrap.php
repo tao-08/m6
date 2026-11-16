@@ -136,6 +136,8 @@ if (!defined('APP_NO_SESSION') && session_status() !== PHP_SESSION_ACTIVE) {
  *   nosniff           : 画像や CSV を HTML / JS と勘違いして実行させない
  *   frame-ancestors   : 他のサイトの <iframe> の中に表示させない（透明な枠を重ねてボタンを押させるクリックジャッキング対策）
  *   form-action 'self': フォームの送り先をこのサイトだけにする（XSS で偽のフォームを仕込まれても外へ送れない）
+ *     例外は accounts.google.com だけ。「Google で連携」（sched_google.php）はフォームを送った後に Google の許可画面へ移動する。
+ *     ブラウザは移動先も form-action で確かめるので、無いと止められる（Google のログイン画面へ送っても、攻撃者には何も届かない）
  *   Referrer-Policy   : 外のサイト（Spotify・YouTube など）へ移るとき、こちらの URL（member?id=… など）を渡さない。渡すのはドメインだけ
  *   X-Robots-Tag      : 検索エンジンに載せない（ログイン画面も含めて。サークル内向けのサイトなので）
  *   HSTS              : 一度 https で来たブラウザは、次から必ず https で来る（途中で http に書き換えられる攻撃を防ぐ）
@@ -144,7 +146,7 @@ if (!headers_sent()) {
     header_remove('X-Powered-By'); // 「PHP/8.2.12」とバージョンを教えない（古いバージョンの弱点を狙われる手がかりになる）
     header('X-Content-Type-Options: nosniff');
     header('X-Frame-Options: DENY'); // frame-ancestors を知らない古いブラウザ用
-    header("Content-Security-Policy: frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'");
+    header("Content-Security-Policy: frame-ancestors 'none'; base-uri 'self'; form-action 'self' https://accounts.google.com; object-src 'none'");
     header('Referrer-Policy: strict-origin-when-cross-origin');
     header('Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()');
     header('X-Robots-Tag: noindex, nofollow');
