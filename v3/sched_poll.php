@@ -23,7 +23,7 @@ require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/repository.php'; // tip_attr（ポップアップの説明）
 require_once __DIR__ . '/lib/sched.php';
 require_once __DIR__ . '/lib/sched_ical.php';
-$user = require_login();
+$user = require_admin(); // 完成するまで管理者だけ
 $pdo = db();
 
 $pollId = (int)($_REQUEST['id'] ?? 0);

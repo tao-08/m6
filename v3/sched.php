@@ -19,7 +19,7 @@ declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/repository.php'; // member_name_choices / render_suggest_datalist（名前の入力候補）
 require_once __DIR__ . '/lib/sched.php';
-$user = require_login();
+$user = require_admin(); // 完成するまで管理者だけ
 $pdo = db();
 
 /* ==================== 保存・削除 ==================== */
