@@ -97,6 +97,9 @@ main.container:has(.block-app) { padding-top: 12px; }
 /* 開閉ボタン（中央寄せ）。display を指定するので、hidden 属性が効くように [hidden] で上書きする */
 .block-ranking__toggle { display: grid; margin: 4px auto 0; }
 .block-ranking__toggle[hidden] { display: none; }
+/* 展開中は ⌄ を上下反転（⌃ に見せる）。アイコンは expand_more のまま */
+.block-ranking__toggle .icon { transition: transform var(--t-fast) ease; }
+.block-ranking__toggle[aria-expanded="true"] .icon { transform: rotate(180deg); }
 
 /* スマホでは左下の「戻る」ボタンがゲームの操作ボタンに重なるので隠す（下のナビの「ツール」から戻れる） */
 @media (max-width: 760px) {

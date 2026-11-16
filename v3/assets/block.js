@@ -714,7 +714,7 @@
           const label = open ? '畳む' : 'すべて表示';
           tgl.setAttribute('aria-label', label);
           tgl.title = label;
-          tgl.querySelector('.icon').textContent = open ? 'expand_less' : 'expand_more'; // アイコンは文字で指定するフォント
+          // 向きの反転は CSS（[aria-expanded="true"] で回転）。アイコン名の差し替えはしない: フォントは使う名前だけ読み込む（lib/icon_names.php）ので、名前を足し忘れると文字のまま出てしまう
         });
       }
     }
