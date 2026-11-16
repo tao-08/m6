@@ -1,7 +1,7 @@
 <?php
 /**
  * =====================================================================
- *  sched.php — スタ連の日程調整（一覧・作成・編集）
+ *  sched.php — スタジオ練習の日程調整（一覧・作成・編集）
  * =====================================================================
  *  GET
  *    sched            … 自分が入っている（作った）調整の一覧
@@ -209,7 +209,7 @@ if (isset($_GET['new']) || isset($_GET['edit'])) {
     render_header($poll === null ? '日程調整を作成' : '日程調整を編集', 'tools');
     ?>
     <link rel="stylesheet" href="<?= asset_url('assets/sched.css') ?>">
-    <nav class="crumbs"><a href="tools">ツール</a><span>/</span><a href="sched">スタ連の日程調整</a></nav>
+    <nav class="crumbs"><a href="tools">ツール</a><span>/</span><a href="sched">スタジオ練習の日程調整</a></nav>
     <h1 class="display display--sm"><?= $poll === null ? '日程調整を作成' : '日程調整を編集' ?></h1>
     <?php foreach ($errors as $e): ?><div class="flash flash--error"><?= h($e) ?></div><?php endforeach; ?>
     <form method="post" class="card form-card sch-form" data-sched-form<?= unsaved_attr() ?>>
@@ -298,12 +298,12 @@ if ($myMember > 0) {
     $hasClass = (int)$r['c'] > 0;
     $hasIcal = (bool)$r['i'];
 }
-render_header('スタ連の日程調整', 'tools');
+render_header('スタジオ練習の日程調整', 'tools');
 ?>
 <link rel="stylesheet" href="<?= asset_url('assets/sched.css') ?>">
 <nav class="crumbs"><a href="tools">ツール</a></nav>
 <div class="sch-head">
-    <h1 class="display display--sm">スタ連の日程調整</h1>
+    <h1 class="display display--sm">スタジオ練習の日程調整</h1>
     <a class="btn btn--primary" href="sched?new"><?= icon('add') ?> 作成</a>
 </div>
 <div class="tool-list">

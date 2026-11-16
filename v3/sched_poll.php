@@ -266,7 +266,7 @@ foreach ($members as $m) {
 render_header($poll['title'] . ' — 日程調整', 'tools');
 ?>
 <link rel="stylesheet" href="<?= asset_url('assets/sched.css') ?>">
-<nav class="crumbs"><a href="tools">ツール</a><span>/</span><a href="sched">スタ連の日程調整</a></nav>
+<nav class="crumbs"><a href="tools">ツール</a><span>/</span><a href="sched">スタジオ練習の日程調整</a></nav>
 <div class="sch-head">
     <h1 class="display display--sm"><?= h($poll['title']) ?> <?= sched_status_pill($poll) ?></h1>
     <?php if ($canManage): ?><a class="btn btn--sm btn--ghost" href="sched?edit=<?= $pollId ?>"><?= icon('edit') ?> 編集</a><?php endif; ?>

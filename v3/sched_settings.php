@@ -136,7 +136,7 @@ $defaultStudios = array_filter($studios, static fn($s) => (int)$s['sched_default
 render_header('日程調整の設定', 'tools');
 ?>
 <link rel="stylesheet" href="<?= asset_url('assets/sched.css') ?>">
-<nav class="crumbs"><a href="tools">ツール</a><span>/</span><a href="sched">スタ連の日程調整</a></nav>
+<nav class="crumbs"><a href="tools">ツール</a><span>/</span><a href="sched">スタジオ練習の日程調整</a></nav>
 <h1 class="display display--sm">日程調整の設定</h1>
 
 <section class="card sch-sec" id="travel">
