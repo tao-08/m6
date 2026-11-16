@@ -249,7 +249,7 @@ if (isset($_GET['new']) || isset($_GET['edit'])) {
     $lead = 2;
     if ($span !== null) {
         $lead = 0;
-        foreach ([1, 2, 4] as $w) { // タブにある週だけ（3週前は無い）
+        foreach ([1, 2, 3] as $w) { // タブにある週だけ（4週前は無い）
             if ($in['date_to'] === $span[1] && $in['date_from'] === $leadFrom($span[0], $span[1], $w)) {
                 $lead = $w;
                 break;
@@ -333,7 +333,7 @@ if (isset($_GET['new']) || isset($_GET['edit'])) {
         <div class="field sch-lead" data-lead<?= $span === null ? ' hidden' : '' ?>>
             <span>日程調整期間</span>
             <div class="tabs tabs--filter" role="radiogroup" aria-label="日程調整期間">
-                <?php foreach ([1 => '1週前', 2 => '2週前', 4 => '4週前', 0 => 'カスタム'] as $w => $label): ?>
+                <?php foreach ([1 => '1週前', 2 => '2週前', 3 => '3週前', 0 => 'カスタム'] as $w => $label): ?>
                     <label class="tab"><input type="radio" name="lead_ui" value="<?= $w ?>"<?= $w === $lead ? ' checked' : '' ?>><?= $label ?></label>
                 <?php endforeach; ?>
             </div>
