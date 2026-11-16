@@ -163,10 +163,58 @@
 
   // 曲名を押すと、その行の <dialog> に演奏履歴・数字を出す。背景（dialog 自体）を押しても閉じる
   // 検索で一覧を差し替えたあとにも呼ぶので、root の中だけを対象にする
+  //
+  // 曲カード（<dialog>）の中身は、重くなるので一覧には最初から入れていない（?open= の曲だけ例外）。
+  // 押したとき（または押す直前の touchstart / mouseenter）に、songs?modal=… で1曲ぶんだけ取りに来て、li の中に差し込む。
+  const modalLoads = new WeakMap(); // li → 取得中の Promise（連打・先読みと本番の押下で二重に取りに行かない）
+  function loadModal(li) {
+    const ready = li.querySelector('[data-song-modal]');
+    if (ready) return Promise.resolve(ready);
+    if (modalLoads.has(li)) return modalLoads.get(li);
+    // 今の絞り込み・並び・ページのまま取りに行く（フォームの戻り先 back がそれになる）。open / at / modal は外す
+    const params = new URLSearchParams(location.search);
+    ['open', 'at', 'modal', 'p'].forEach((k) => params.delete(k));
+    const page = li.closest('[data-page]')?.dataset.page;
+    if (page && page !== '1') params.set('p', page);
+    params.set('modal', li.dataset.workKey);
+    const job = fetch('songs?' + params, { credentials: 'same-origin' })
+      .then((res) => { if (!res.ok) throw new Error(); return res.text(); })
+      .then((html) => {
+        // <template> に入れると、スクリプトは動かさずに DOM だけ作れる（サーバーが h() で無害化済みの HTML）
+        const tpl = document.createElement('template');
+        tpl.innerHTML = html.trim();
+        const modal = tpl.content.firstElementChild;
+        if (!modal || !modal.matches('[data-song-modal]')) throw new Error();
+        li.appendChild(modal);
+        bindModal(modal);
+        return modal;
+      })
+      .finally(() => modalLoads.delete(li));
+    modalLoads.set(li, job);
+    return job;
+  }
+
   function setupModals(root) {
-  root.querySelectorAll('[data-song-open]').forEach((btn) => {
-    const modal = btn.closest('li').querySelector('[data-song-modal]');
-    btn.addEventListener('click', () => modal.showModal());
+    root.querySelectorAll('[data-song-open]').forEach((btn) => {
+      const li = btn.closest('li');
+      const ready = li.querySelector('[data-song-modal]');
+      if (ready) bindModal(ready); // 最初から入っている曲（?open= の曲）
+      // 押す前に取り始める: PC は乗せたとき、スマホは触れた瞬間。取り終わっていれば、押した瞬間に開く
+      const prefetch = () => { loadModal(li).catch(() => {}); };
+      btn.addEventListener('mouseenter', prefetch, { once: true });
+      btn.addEventListener('touchstart', prefetch, { once: true, passive: true });
+      btn.addEventListener('click', async () => {
+        try {
+          (await loadModal(li)).showModal();
+        } catch (err) {
+          flashToast('曲を読み込めませんでした', 'error');
+        }
+      });
+    });
+  }
+
+  // 1つの <dialog>（曲カード）に、閉じる・拡大・メインにまとめる・MV などの動きを付ける
+  function bindModal(modal) {
     // 閉じるときも動かす: is-closing を付けて、アニメーションが終わってから close()（Esc も同じ）
     const closeModal = () => {
       if (!modal.open || modal.classList.contains('is-closing')) return;
@@ -207,7 +255,6 @@
     modal.querySelector('[data-song-close]').addEventListener('click', closeModal);
     modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
     modal.addEventListener('cancel', (e) => { e.preventDefault(); closeModal(); });
-  });
   }
   setupModals(document);
 
