@@ -305,7 +305,11 @@
     const classifyAll = () => { table.querySelectorAll('tbody td').forEach(classify); syncDays(); };
     table.addEventListener('click', (e) => {
       const td = e.target.closest('td');
-      if (td?._item) { e.stopPropagation(); openPop(td); }
+      if (!td?._item) return;
+      e.stopPropagation();
+      // ポップアップが出ているときに予定を押したら、開き直さず消す（もう一度押せば開く）
+      if (pop) closePop();
+      else openPop(td);
     });
     document.addEventListener('pointerdown', (e) => { if (pop && !pop.contains(e.target) && !e.target.closest('td.is-auto')) closePop(); });
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closePop(); });
@@ -459,8 +463,8 @@
     /** 部屋の表示: "Fst 12帖"（広さが不明なら "Fst"）。room.sz は PHP の studio_fmt_jo の結果（"12帖" / ""）なので、PHP 側と見た目が必ず同じになる */
     const roomText = (room) => room.name + (room.sz ? ' ' + room.sz : '');
     const perHead = (total) => yen(Math.ceil(total / data.people));
-    /** プルダウンの選択肢の文字: "⚠ Fst 12帖 ¥4,860（1人 ¥1,215）" */
-    const optionText = (o) => `${o.small ? '⚠ ' : ''}${roomText(o.room)} ${yen(o.total)}（1人 ${perHead(o.total)}）`;
+    /** プルダウンの選択肢の文字: "⚠ Fst 12帖 ¥1,215/人"（合計は出さない。長いと、スマホで行からはみ出すため） */
+    const optionText = (o) => `${o.small ? '⚠ ' : ''}${roomText(o.room)} ${perHead(o.total)}/人`;
 
     /** 欠席の人がいるときの添え書き（確認の文に使う） */
     const absentNote = (w) => (w.absent.length ? `（${names[w.absent[0]] || ''}さん欠席）` : '');
@@ -647,8 +651,8 @@
           }
           price.replaceChildren();
           if (x.q) {
-            price.append(el('strong', '', yen(x.q.total)));
-            price.append(el('span', 'muted small', `1人 ${perHead(x.q.total)}`));
+            price.append(el('strong', '', perHead(x.q.total) + '/人')); // 黒い太字は1人あたり、合計は薄く
+            price.append(el('span', 'muted small', yen(x.q.total)));
           } else {
             price.append(el('span', 'muted small', '料金未登録'));
           }
@@ -729,7 +733,7 @@
       [...new Set(es.flatMap((e) => e.w.absent))].forEach((mid) => marks.append(el('span', 'pill pill--warn', `${names[mid] || ''} 欠席`)));
       head.append(marks);
       const price = Math.min(...es.map((e) => e.price)); // 料金未登録のカードは Infinity なので、登録済みがあればそちらが選ばれる
-      if (price !== Infinity) head.append(el('span', 'sch-day__price', yen(price) + '〜'));
+      if (price !== Infinity) head.append(el('span', 'sch-day__price', perHead(price) + '/人〜')); // 並べ替えは合計（price）のまま。見せるのは1人あたり
       d.append(head);
       const body = el('div', 'sch-day__body');
       body.append(...es.map((e) => e.node));

@@ -99,6 +99,9 @@
 /* 部屋のプルダウン。<select> は app.js（setupSelectPick）が「箱（.live-pick）+ ボタン」に包むので、はみ出しを止めるのは箱のほう
    （ボタンの文字は長いと「…」で省略される）。select 自身にも同じ指定をしておく（data-native などで包まれないとき用） */
 .sch-srow__room, .sch-srow__main > .live-pick { max-width: 100%; min-width: 0; }
+.sch-srow__main > .live-pick .live-pick__btn { max-width: 100%; }
+/* グリッドの列は、何も指定しないと中身の文字の幅（nowrap のプルダウン）まで広がって、スマホで外の箱ごと横に伸びる → minmax(0, 1fr) で「箱の幅まで」に止める */
+.sch-day__body, .sch-cand, .sch-srows { grid-template-columns: minmax(0, 1fr); }
 .sch-srow__small { cursor: help; } /* 押せない要素（span）。cursor を指定しないと iOS でタップが届かない（data-tip の規約） */
 .sch-more { justify-self: start; }
 .sch-cand__acts { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
@@ -114,7 +117,7 @@
 .sch-grid thead th { position: sticky; top: 0; background: var(--surface); z-index: 1; }
 .sch-grid thead th.is-sun { color: var(--accent); }
 .sch-grid thead th.is-sat { color: var(--headliner); }
-.sch-daychk { display: block; width: 10px; height: 10px; margin: 2px auto 0; border: 1.5px solid currentColor; border-radius: 50%; box-sizing: border-box; }
+.sch-daychk { display: block; width: 10px; height: 10px; margin: 2px auto 0; border: 1px solid var(--muted); border-radius: 50%; box-sizing: border-box; }
 .sch-grid thead th.is-all .sch-daychk { background: var(--accent); border-color: var(--accent); position: relative; }
 .sch-grid thead th.is-all .sch-daychk::after { content: ''; position: absolute; left: 2.5px; top: 0.5px; width: 2.5px; height: 5px; border: solid #fff; border-width: 0 1.5px 1.5px 0; transform: rotate(45deg); }
 .sch-grid thead th.is-none .sch-daychk { visibility: hidden; }
