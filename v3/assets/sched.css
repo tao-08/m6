@@ -142,7 +142,15 @@
 .sch-grid tr.is-hour td { border-top-style: solid; }
 .sch-grid td.is-auto { cursor: not-allowed; color: var(--text); }
 .sch-grid td.is-auto:is(.is-class, .is-ical, .is-weekly) { cursor: pointer; } /* タップで「この予定を無視」 */
-.sch-grid td.is-ignored { opacity: .6; background-image: repeating-linear-gradient(45deg, transparent 0 3px, color-mix(in srgb, var(--muted) 55%, transparent) 3px 5px); } /* 無視した予定は網掛け */
+/* 無視した予定 = 無効。斜めの縞（透明 + 薄くなった予定色）で、ふつうの予定（ベタ塗り）と見分けがつくようにする。
+   背景を薄くする opacity は使わない（縞まで薄くなって見えなくなる）。文字だけ薄くして「効いていない」感じを出す
+   .is-auto も付けて詳細度を上げる: 下にある .is-class / .is-weekly などの background（まとめ書き）が、縞を打ち消してしまうため */
+.sch-grid td.is-auto.is-ignored { background-color: transparent; background-image: repeating-linear-gradient(135deg, transparent 0 4px, color-mix(in srgb, var(--ev, var(--muted)) 30%, transparent) 4px 8px); color: var(--muted); }
+/* 縞の色 = その予定の色（種類ごと）。透明の縞と、薄くなった予定色の縞の2色になる（ベタ塗りの背景は縞に置き換わる） */
+.sch-grid td.is-ignored.is-class { --ev: var(--headliner); }
+.sch-grid td.is-ignored.is-ical { --ev: var(--ba); }
+.sch-grid td.is-ignored.is-weekly { --ev: var(--accent); }
+.sch-grid td.is-ignored.is-practice { --ev: var(--ok); }
 .sch-pop { position: fixed; z-index: 50; display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); box-shadow: var(--shadow-pop); font-size: var(--fs-sm); cursor: pointer; }
 .sch-grid td.is-ng, .sch-sw.is-ng { background: color-mix(in srgb, var(--accent) 55%, transparent); }
 .sch-grid td.is-class, .sch-sw.is-class { background: color-mix(in srgb, var(--headliner) 22%, transparent); }

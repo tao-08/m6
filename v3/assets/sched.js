@@ -471,7 +471,8 @@
         discs.forEach((d) => {
           const r = calc(v, d.id, len);
           if (r.missing || (!r.pack && !r.normal.segs.length)) return; // 料金表に無い時間がある → 比べない
-          if (!top || r.total < top.total) top = { room, total: r.total, disc: d.name, small: room ? fit(room) === 'small' : false };
+          // pack = 使ったパック料金の名前（通常料金より安いとき。無ければ ''）
+          if (!top || r.total < top.total) top = { room, total: r.total, disc: d.name, pack: r.pack ? r.pack.name : '', small: room ? fit(room) === 'small' : false };
         });
         if (top) list.push(top);
       });
@@ -555,9 +556,15 @@
     };
 
     /** その開始時刻でいちばん安い料金（合計）= 取れるスタジオの「最初に選ぶ部屋」の料金の最小。1つも出せなければ Infinity */
-    const minAt = (w, m) => Math.min(Infinity, ...w.studios
-      .filter((s) => s.starts.includes(m))
-      .map((s) => firstPick(roomQuotes(s.id, w.day, m))?.total ?? Infinity));
+    const minAt = (w, m) => minInfo(w, m)[0];
+    /** minAt の詳細: [最安の料金, その料金になるスタジオの id の配列]。最安が出せなければ [Infinity, []] */
+    const minInfo = (w, m) => {
+      const list = w.studios
+        .filter((s) => s.starts.includes(m))
+        .map((s) => [firstPick(roomQuotes(s.id, w.day, m))?.total ?? Infinity, s.id]);
+      const low = Math.min(Infinity, ...list.map(([p]) => p));
+      return [low, low === Infinity ? [] : list.filter(([p]) => p === low).map(([, id]) => id)];
+    };
     /**
      * 開始時刻の一覧 → 続いている所（間隔1時間以内）を「最初の開始〜最後の開始＋練習時間」の時間帯にまとめた文字
      *   例: [600, 630, 660, 1080] → "10:00〜13:00・18:00〜20:00"（練習2時間）。3つ以上あれば2つまで出して「ほか」
@@ -609,13 +616,13 @@
         });
       };
       // 開始時刻ごとの最安（合計）。プルダウンの料金と、日の見出しの安い時間帯に使う
-      const mins = w.starts.map((m) => [m, minAt(w, m)]);
+      const mins = w.starts.map((m) => { const [p, sids] = minInfo(w, m); return [m, p, sids]; }); // [開始時刻, 最安, その最安のスタジオ id]
       let sel = null;
       if (w.starts.length > 1) {
         sel = el('select', 'select-sm sch-cand__start');
         sel.setAttribute('aria-label', '開始時刻');
         mins.forEach(([m, p]) => {
-          const o = el('option', '', `${hm(m)}〜${hm(m + data.len)}${p !== Infinity ? ' ' + perHead(p) + '/人' : ''}`);
+          const o = el('option', '', `${hm(m)}〜${hm(m + data.len)}${p !== Infinity ? ' ' + perHead(p) + '/人〜' : ''}`); // 〜 = その時刻に取れるスタジオのうちの最安（スタジオ・部屋で高くなる）
           o.value = m;
           sel.append(o);
         });
@@ -646,6 +653,12 @@
           renderPills();
         };
         radio.addEventListener('change', choose);
+        // ラベル（割引・パック・おすすめ・連続）を押したときのポップアップ（data-tip）が出てすぐ消えるのを防ぐ:
+        //   行は <label> なので、押すとラジオへの2回目のクリックが飛び、app.js の setupTip が「ラベル以外を押した」と見て消してしまう。
+        //   ラベルでは preventDefault() で、ラジオへの転送（= 行の選択）を止める（行のほかの所を押せば選べる）
+        lab.addEventListener('click', (e) => {
+          if (e.target.closest('.tag[data-tip]')) e.preventDefault();
+        });
         const main = el('span', 'sch-srow__main');
         // 名前は1行目を横いっぱいに使う（部屋・ピル・料金は2行目）。右に料金があると、名前の幅が狭くなって折り返すため
         const nameEl = el('strong', 'sch-srow__name', studios[x.s.id]?.name || '');
@@ -696,7 +709,17 @@
             tag.dataset.tip = `${data.people}人にいちばん合う部屋: ${rec.name}`;
             add(tag);
           }
-          if (x.q?.disc) add(el('span', 'tag', x.q.disc));
+          // 割引・パックのラベルは、押す（乗せる）と「適用後の料金」と説明する（押しても何も実行されないので data-tip でよい。cursor は sched.css の .sch-cand .tag[data-tip]）
+          if (x.q?.disc) {
+            const tag = el('span', 'tag', x.q.disc);
+            tag.dataset.tip = '割引適用後の料金を表示中';
+            add(tag);
+          }
+          if (x.q?.pack) { // パック料金が適用されているとき（例「3時間パック」）
+            const tag = el('span', 'tag', x.q.pack);
+            tag.dataset.tip = 'パック適用後の料金を表示中';
+            add(tag);
+          }
           const adj = x.s.adj[start];
           if (adj) {
             const tag = el('span', 'tag ' + (adj.level === 2 ? 'tag--mine' : 'tag--plan'), adj.level === 2 ? '連続◎' : '連続○');
@@ -817,7 +840,11 @@
       if (price !== Infinity) {
         // 最安になる時間帯。どの時刻も同じ料金なら「終日同一料金」
         const same = all.every(([, p]) => p === price);
-        head.append(el('span', 'sch-day__cheap muted small', same ? '終日同一料金' : spanText(all.filter(([, p]) => p === price).map(([m]) => m))));
+        // 最安の時間帯の横に、その料金になるスタジオ名（2つまで。それ以上は「ほか」）
+        const cheap = all.filter(([, p]) => p === price);
+        const sids = [...new Set(cheap.flatMap(([, , ids]) => ids))];
+        const studioText = sids.slice(0, 2).map((id) => studios[id]?.name || '').filter(Boolean).join('・') + (sids.length > 2 ? ' ほか' : '');
+        head.append(el('span', 'sch-day__cheap muted small', same ? '終日同一料金' : `最安 ${spanText(cheap.map(([m]) => m))} ${studioText}`.trim()));
         head.append(el('span', 'sch-day__price', perHead(price) + '/人〜')); // 並べ替えは合計（price）のまま。見せるのは1人あたり
       }
       d.append(head);
