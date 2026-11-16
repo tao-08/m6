@@ -702,6 +702,23 @@
     const btnRetry = $('[data-act="retry"]');
     const rankBox = document.getElementById('block-ranking');
 
+    /* ---------- ランキングの「すべて表示 / 畳む」 ---------- */
+    // ボタンを押すたびに一覧の is-collapsed を付け外しする（隠す・見せるは CSS の .is-collapsed .is-fold）
+    if (rankBox) {
+      const tgl = rankBox.querySelector('[data-rank-toggle]');
+      const lst = rankBox.querySelector('[data-rank-list]');
+      if (tgl && lst) {
+        tgl.addEventListener('click', () => {
+          const open = lst.classList.toggle('is-collapsed') === false; // toggle は「付いた」なら true を返す → false なら展開中
+          tgl.setAttribute('aria-expanded', String(open));
+          const label = open ? '畳む' : 'すべて表示';
+          tgl.setAttribute('aria-label', label);
+          tgl.title = label;
+          tgl.querySelector('.icon').textContent = open ? 'expand_less' : 'expand_more'; // アイコンは文字で指定するフォント
+        });
+      }
+    }
+
     function finish() {
       state = 'over';
       cancelAnimationFrame(raf);
@@ -750,15 +767,18 @@
       if (!rankBox) return;
       const list = rankBox.querySelector('[data-rank-list]');
       const empty = rankBox.querySelector('[data-rank-empty]');
+      const toggle = rankBox.querySelector('[data-rank-toggle]');
       const el = (tag, cls, text) => { const e = document.createElement(tag); e.className = cls; e.textContent = text; return e; };
+      // 畳む行（x.fold）は is-fold を付ける。実際に隠すのは CSS（一覧が is-collapsed のとき）。開閉の状態は一覧の class が持つので、再描画しても保たれる
       const row = (tag, cls, rank, name, score) => {
         const li = document.createElement(tag);
         li.className = cls;
         li.append(el('span', 'block-ranking__rank', String(rank)), el('span', 'block-ranking__name', name), el('span', 'block-ranking__score', fmt(score)));
         return li;
       };
-      list.replaceChildren(...r.ranking.map((x) => row('li', 'block-ranking__row' + (x.me ? ' is-me' : ''), x.rank, x.name, x.score)));
+      list.replaceChildren(...r.ranking.map((x) => row('li', 'block-ranking__row' + (x.me ? ' is-me' : '') + (x.fold ? ' is-fold' : ''), x.rank, x.name, x.score)));
       empty.hidden = r.ranking.length > 0;
+      if (toggle) toggle.hidden = !r.ranking.some((x) => x.fold); // 畳む行が無ければボタンも要らない
     }
 
     /* ---------- キーボード（PC） ---------- */

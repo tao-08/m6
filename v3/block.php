@@ -4,7 +4,7 @@
  *  block.php — ブロックパズル（tools.php から入る落ちものパズル）
  * =====================================================================
  *  ゲーム本体は assets/block.js（canvas に描く）。ここでは枠・ボタンとランキングを出す。
- *  ランキングは部員ごとの自己ベスト（block_best）。記録のある全員を名前つきで表示。
+ *  ランキングは部員ごとの自己ベスト（block_best）。記録のある全員を名前つきで表示（10 人目まで + 自分以外は畳み、ボタンで全員表示）。
  *  点数は ゲームオーバー時に api_block_score.php へ POST される（CSRF は <meta name="csrf-token"> を JS が送る）。
  *  この画面自体は表示するだけ（POST を受けない）。名前は h() でエスケープする。
  * =====================================================================
@@ -81,9 +81,10 @@ render_header('ブロックパズル', 'tools');
 
     <section class="block-ranking card" id="block-ranking" aria-label="ランキング">
         <h2 class="block-ranking__title">ランキング</h2>
-        <ol class="block-ranking__list" data-rank-list>
+        <!-- is-collapsed の間は .is-fold の行を CSS で隠す。ボタンで is-collapsed を付け外しする（assets/block.js の setupRankToggle） -->
+        <ol class="block-ranking__list is-collapsed" data-rank-list>
             <?php foreach ($ranking as $r): ?>
-                <li class="block-ranking__row<?= $r['me'] ? ' is-me' : '' ?>">
+                <li class="block-ranking__row<?= $r['me'] ? ' is-me' : '' ?><?= $r['fold'] ? ' is-fold' : '' ?>">
                     <span class="block-ranking__rank"><?= (int)$r['rank'] ?></span>
                     <span class="block-ranking__name"><?= h($r['name']) ?></span>
                     <span class="block-ranking__score"><?= number_format($r['score']) ?></span>
@@ -91,6 +92,8 @@ render_header('ブロックパズル', 'tools');
             <?php endforeach; ?>
         </ol>
         <p class="block-ranking__empty muted small" data-rank-empty<?= $ranking ? ' hidden' : '' ?>>記録がありません</p>
+        <!-- 押すと全員表示 / 畳むを切り替える。操作ボタンなので data-tip ではなく title と aria-label（CLAUDE.md の基準）。畳む行が無いときは隠す -->
+        <button type="button" class="icon-btn block-ranking__toggle" data-rank-toggle aria-expanded="false" aria-label="すべて表示" title="すべて表示"<?= array_filter($ranking, fn($r) => $r['fold']) ? '' : ' hidden' ?>><?= icon('expand_more') ?></button>
     </section>
 </div>
 <?php

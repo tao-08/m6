@@ -10,6 +10,7 @@
  */
 declare(strict_types=1);
 
+const BLOCK_RANK_SHOW  = 10;       // 畳んだ状態で見せる人数（これより下は、自分以外「すべて表示」を押すまで隠す）
 const BLOCK_MAX_SCORE  = 99999999; // 点数の上限（INT UNSIGNED に十分収まる。ありえない値を弾く）
 const BLOCK_MAX_LINES  = 9999;     // ライン数の上限（SMALLINT UNSIGNED に収まる）
 
@@ -21,7 +22,8 @@ function block_level_for_lines(int $lines): int
 
 /**
  * ランキングを取る。[ranking, mine] を返す。
- *   ranking = 記録のある全員 [['rank'=>1, 'name'=>'…', 'score'=>…, 'lines'=>…, 'level'=>…, 'me'=>bool], …]
+ *   ranking = 記録のある全員 [['rank'=>1, 'name'=>'…', 'score'=>…, 'lines'=>…, 'level'=>…, 'me'=>bool, 'fold'=>bool], …]
+ *     fold = 畳んだとき隠す行（BLOCK_RANK_SHOW 人目より後ろで、自分ではない人）。画面は fold の行にだけ class を付ける
  *   mine    = 自分の記録 ['rank'=>…, 'score'=>…, 'lines'=>…, 'level'=>…]。まだ記録が無ければ null
  * 名前は生のまま返す（画面に出すときは h()、JSON は textContent で入れるのでそのままでよい）
  */
@@ -38,6 +40,7 @@ function block_ranking(PDO $pdo, int $userId): array
     $prevRank = 0;
     foreach ($rows as $i => $r) {
         $score = (int)$r['score'];
+        $isMe = (int)$r['user_id'] === $userId;
         $rank = $score === $prevScore ? $prevRank : $i + 1; // 同点は前の人と同じ順位
         $ranking[] = [
             'rank'  => $rank,
@@ -45,7 +48,9 @@ function block_ranking(PDO $pdo, int $userId): array
             'score' => $score,
             'lines' => (int)$r['line_count'],
             'level' => (int)$r['level'],
-            'me'    => (int)$r['user_id'] === $userId,
+            'me'    => $isMe,
+            // 10 人目までと自分は常に見せる。それ以外は畳む（判定をここ 1 か所にして、PHP の表示と JSON で食い違わないようにする）
+            'fold'  => $i >= BLOCK_RANK_SHOW && !$isMe,
         ];
         $prevScore = $score;
         $prevRank = $rank;

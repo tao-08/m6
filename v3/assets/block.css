@@ -92,6 +92,11 @@ main.container:has(.block-app) { padding-top: 12px; }
 .block-ranking__name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .block-ranking__score { font-variant-numeric: tabular-nums; }
 .block-ranking__empty { margin: 0; }
+/* 畳んでいる間は、10 人目より後ろで自分ではない行（.is-fold）を隠す */
+.block-ranking__list.is-collapsed .block-ranking__row.is-fold { display: none; }
+/* 開閉ボタン（中央寄せ）。display を指定するので、hidden 属性が効くように [hidden] で上書きする */
+.block-ranking__toggle { display: grid; margin: 4px auto 0; }
+.block-ranking__toggle[hidden] { display: none; }
 
 /* スマホでは左下の「戻る」ボタンがゲームの操作ボタンに重なるので隠す（下のナビの「ツール」から戻れる） */
 @media (max-width: 760px) {
