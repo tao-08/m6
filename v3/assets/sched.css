@@ -94,6 +94,8 @@
 .sch-srow:has(input:focus-visible) { box-shadow: var(--ring); }
 .sch-srow input { accent-color: var(--accent); width: 16px; height: 16px; margin: 0; flex: none; }
 .sch-srow__main { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+.sch-srow__body { flex: 1; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; } /* 1行目 = 名前、2行目 = 部屋・ピル・料金 */
+.sch-srow__sub { display: flex; align-items: center; justify-content: space-between; gap: 4px 10px; }
 .sch-srow__name { font-weight: 700; text-wrap: balance; } /* balance … 折り返すとき、最後の行に1文字だけ残さない（行の長さをそろえる） */
 .sch-srow__price { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: flex-end; gap: 0 6px; text-align: right; }
 /* 部屋のプルダウン。<select> は app.js（setupSelectPick）が「箱（.live-pick）+ ボタン」に包むので、はみ出しを止めるのは箱のほう

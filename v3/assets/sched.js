@@ -594,7 +594,8 @@
         };
         radio.addEventListener('change', choose);
         const main = el('span', 'sch-srow__main');
-        main.append(el('strong', 'sch-srow__name', studios[x.s.id]?.name || ''));
+        // 名前は1行目を横いっぱいに使う（部屋・ピル・料金は2行目）。右に料金があると、名前の幅が狭くなって折り返すため
+        const nameEl = el('strong', 'sch-srow__name', studios[x.s.id]?.name || '');
         // ---- 部屋: 選べるのが2つ以上ならプルダウン / 1つだけなら文字 / 部屋が未登録（room = null）なら何も出さない ----
         if (x.opts.length > 1) {
           const roomSel = el('select', 'select-sm sch-srow__room');
@@ -658,7 +659,11 @@
           }
         };
         update();
-        lab.append(radio, main, price);
+        const sub = el('span', 'sch-srow__sub');
+        sub.append(main, price);
+        const body = el('span', 'sch-srow__body');
+        body.append(nameEl, sub);
+        lab.append(radio, body);
         return lab;
       };
       /**
