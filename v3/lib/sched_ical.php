@@ -256,6 +256,8 @@ function sched_ical_parse(string $ics, int $fromAbs, int $toAbs): array
  * 重なる・くっつく時間帯を1つにまとめる（[[0,30],[20,60],[60,90]] → [[0,90]]）
  *   要素の3つ目（タイトル）があれば、まとめた時間帯のタイトルは重複を除いて「 / 」でつなぐ（100 文字まで）。
  *   タイトルが全部空なら [開始, 終了] の2つのまま返す（手入力の埋まりなど、タイトルを持たない呼び出しの結果を変えないため）
+ *   くっつくだけ（前の終わり = 次の始まり）の予定は、タイトルが同じ（または両方空）のときだけまとめる。
+ *     例: 終日の「合宿」と、次の日の終日「旅行」は別々のまま（まとめると「合宿 / 旅行」が2日ぶんに付いてしまう）
  */
 function sched_merge_spans(array $spans): array
 {
@@ -266,7 +268,10 @@ function sched_merge_spans(array $spans): array
         $e = $sp[1];
         $title = trim((string)($sp[2] ?? ''));
         $last = array_key_last($groups);
-        if ($last !== null && $s <= $groups[$last][1]) {
+        $overlap = $last !== null && $s < $groups[$last][1];
+        // くっつくだけのとき: 前のかたまりのタイトルが、今の予定のタイトルと同じ（空なら空）ならまとめる
+        $touchSame = $last !== null && $s === $groups[$last][1] && $groups[$last][2] === ($title === '' ? [] : [$title]);
+        if ($overlap || $touchSame) {
             $groups[$last][1] = max($groups[$last][1], $e);
         } else {
             $groups[] = [$s, $e, []];
