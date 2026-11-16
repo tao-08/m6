@@ -118,6 +118,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupTabGlide();
   setupSetlistNames();
   setupSpotifyAppLinks();
+  setupSongModalLinks();
   setupVoSum();
   setupAutofocusPc();
   setupSearchSuggest();
@@ -303,6 +304,75 @@ function setupSpotifyAppLinks() {
       if (goUri) openInApp(goUri, url); else window.location.href = url;
     } catch {
       window.location.href = a.href; // 聞けなかったら、今までどおりリダイレクトで飛ぶ
+    }
+  });
+}
+
+/* ---------------------------------------------------------------------
+ * セトリなどの曲名（songs?open=曲キー）を押したとき、ページ移動せずに、そのページの上に曲カードを開く
+ *   楽曲データベースへ移動すると 100 曲ぶんの一覧ごと読み込むので重い。ここでは次の2つだけ取る:
+ *     1. 曲カードの見た目と動き（tab.css / songs.css / songs.js）… 最初に使うときだけ読み込む（<meta name="songs-modal-assets">）
+ *     2. その曲1つぶんの HTML（songs?modalfor=曲キー）
+ *   リンクに乗せた・触れた時点で先に取り始めるので、押したときにはほぼ揃っている。
+ *   取れなかったら、リンクの本来の動き（ページ移動）に切り替える。Ctrl+クリックなど（別タブで開きたい）はそのままブラウザに任せる。
+ *   サーバーが h() で無害化した HTML だけを <template> 経由で差し込む（スクリプトは動かさない）。
+ * ------------------------------------------------------------------- */
+function setupSongModalLinks() {
+  const assets = (document.querySelector('meta[name="songs-modal-assets"]')?.content || '').split(' ').filter(Boolean);
+  if (assets.length !== 3 || document.querySelector('[data-songs-results]')) return; // ログインしていない / 楽曲データベース自身では不要
+  const [tabCss, songsCss, songsJs] = assets;
+  let assetsReady = null;
+  const loadAssets = () => assetsReady ??= new Promise((resolve, reject) => {
+    for (const href of [tabCss, songsCss]) {
+      const l = document.createElement('link');
+      l.rel = 'stylesheet';
+      l.href = href;
+      document.head.appendChild(l);
+    }
+    const sc = document.createElement('script');
+    sc.src = songsJs;
+    sc.onload = resolve;
+    sc.onerror = () => { assetsReady = null; reject(new Error('songs.js')); };
+    document.head.appendChild(sc);
+  });
+  const modals = new Map(); // 曲キー → 取得中 / 取得済みの Promise<dialog>（同じ曲を何度押しても1回だけ取る）
+  const fetchModal = (key) => {
+    if (!modals.has(key)) {
+      const job = fetch('songs?modalfor=' + encodeURIComponent(key), { credentials: 'same-origin' })
+        .then((res) => { if (!res.ok) throw new Error(); return res.text(); })
+        .then(async (html) => {
+          const tpl = document.createElement('template');
+          tpl.innerHTML = html.trim();
+          const modal = tpl.content.firstElementChild;
+          if (!modal || !modal.matches('[data-song-modal]')) throw new Error();
+          await loadAssets(); // bindSongModal（songs.js）が要る
+          document.body.appendChild(modal);
+          window.bindSongModal(modal);
+          return modal;
+        });
+      job.catch(() => modals.delete(key)); // 失敗は覚えない（次に押したとき取り直す）
+      modals.set(key, job);
+    }
+    return modals.get(key);
+  };
+  const keyOf = (e) => {
+    const a = e.target.closest?.('a[href^="songs?open="]');
+    if (!a) return null;
+    const key = new URL(a.href, location.href).searchParams.get('open');
+    return key ? { a, key } : null;
+  };
+  const prefetch = (e) => { const hit = keyOf(e); if (hit) fetchModal(hit.key).catch(() => {}); };
+  document.addEventListener('mouseover', prefetch, { passive: true });
+  document.addEventListener('touchstart', prefetch, { passive: true });
+  document.addEventListener('click', async (e) => {
+    if (e.defaultPrevented || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+    const hit = keyOf(e);
+    if (!hit) return;
+    e.preventDefault();
+    try {
+      (await fetchModal(hit.key)).showModal();
+    } catch {
+      window.location.href = hit.a.href; // 取れなかったら今までどおり楽曲データベースへ移動
     }
   });
 }
