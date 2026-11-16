@@ -17,6 +17,11 @@
 - 文中に置くラベルは `.label-inline` を足す（文字サイズに追従して行の中央に揃う）
 - 日本語が上に寄って見える分は規格側で `padding-top: max(1px, .1em)` を足して補正済み。個別に補正しない
 
+## タブの基準
+- 切り替えのタブは `.tabs > .tab` で作る。選択中は `.is-active`（リンク・JS で切り替える `<button>`）か、中のラジオを checked（絞り込みは `.tabs--filter` + `<label class="tab"><input type="radio">`、即送信は `data-autosubmit`）
+- 赤い丸が滑る動きは v3/assets/app.js の `setupTabGlide` が全ページの `.tabs` に自動で付ける。個別に背景やアニメを書かない
+- 丸ボタンの並び（ラジオの `.check` など）で選ばせる所はタブにそろえる
+
 ## デザイントークンの基準
 - 角丸・文字サイズ・時間・影は値を直書きせず、v3/assets/app.css の `:root` のトークン（`--r-*` / `--fs-*` / `--t-*` / `--shadow-*` / `--ring`）から選ぶ
 - CSS を変更したら `php v3/tests/run.php` を実行する。直書きは「直書きなし: ファイル名」の失敗として出る（対象外の条件は v3/tests/css_tokens.php）
