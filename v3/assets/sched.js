@@ -5,7 +5,7 @@
  *  2. 時間割の学期タブ（sched_me.php の [data-sched-terms]）
  *  3. NG の時間のマス（sched_me.php の #sched-grid-data）… タップ・なぞって塗る、日付を押して1日まるごと → JSON で送信
  *  4. 候補の一覧（sched_poll.php の #sched-data）… 料金を計算して並べ、仮決定・決定のボタンを付ける
- *  5. みんなの予定（sched_poll.php の [data-sched-over]）… 全員の埋まりを重ねた週ごとの表
+ *  5. メンバーの予定（sched_poll.php の [data-sched-over]）… 全員の埋まりを重ねた週ごとの表
  *
  *  ■ XSS 対策
  *    DB から来た文字（バンド名・スタジオ名・部員名）は textContent で入れる（HTML として解釈されない）
@@ -469,14 +469,17 @@
     /** 欠席の人がいるときの添え書き（確認の文に使う） */
     const absentNote = (w) => (w.absent.length ? `（${names[w.absent[0]] || ''}さん欠席）` : '');
 
-    /** 最初に選ぶ開始時刻: 連続（◎ > ○）がいちばん高いマスがある開始時刻。連続が無ければ先頭 */
+    /** 最初に選ぶ開始時刻: 連続（◎ > ○）がいちばん高いマスがある開始時刻。同じ高さ（連続が無いときも）なら安い方、それも同じなら早い方 */
     const firstStart = (w) => {
       let best = w.starts[0];
       let top = -1;
+      let cheap = Infinity;
       w.starts.forEach((m) => {
         const level = Math.max(0, ...w.studios.map((s) => s.adj[m]?.level || 0));
-        if (level > top) {
+        const p = minAt(w, m);
+        if (level > top || (level === top && p < cheap)) {
           top = level;
+          cheap = p;
           best = m;
         }
       });
@@ -524,9 +527,29 @@
       return f;
     };
 
+    /** その開始時刻でいちばん安い料金（合計）= 取れるスタジオの「最初に選ぶ部屋」の料金の最小。1つも出せなければ Infinity */
+    const minAt = (w, m) => Math.min(Infinity, ...w.studios
+      .filter((s) => s.starts.includes(m))
+      .map((s) => firstPick(roomQuotes(s.id, w.day, m))?.total ?? Infinity));
+    /**
+     * 開始時刻の一覧 → 続いている所（30分ずつ = SCHED_STEP）を「最初の開始〜最後の開始＋練習時間」の時間帯にまとめた文字
+     *   例: [600, 630, 660, 1080] → "10:00〜13:30・18:00〜20:00"。3つ以上あれば2つまで出して「ほか」
+     */
+    const spanText = (starts) => {
+      const sorted = [...new Set(starts)].sort((a, b) => a - b); // 別のカードに同じ開始時刻があっても1つに
+      const spans = [];
+      sorted.forEach((m) => {
+        const last = spans[spans.length - 1];
+        if (last && m - last[1] === 30) last[1] = m;
+        else spans.push([m, m]);
+      });
+      const text = spans.slice(0, 2).map(([a, b]) => `${hm(a)}〜${hm(b + data.len)}`).join('・');
+      return spans.length > 2 ? text + ' ほか' : text;
+    };
+
     let uid = 0; // ラジオボタンの name をカードごとに別にするための連番（同じ name だと、別のカードの選択が外れてしまう）
 
-    /** 候補1件（窓1つ）のカード。戻り値: { node, price }（price は日の見出しの「最安」と安い順の並べ替え用 = 最初の開始時刻での最安） */
+    /** 候補1件（窓1つ）のカード。戻り値: { node, price, mins }（price = 最初の開始時刻での最安 / mins = [開始時刻, 最安] の一覧。日の見出し用） */
     const card = (w) => {
       const id = ++uid;
       const c = el('article', 'card sch-cand' + (w.lateMembers.length || w.absent.length ? ' is-late' : ''));
@@ -557,12 +580,14 @@
           pills.append(p);
         });
       };
+      // 開始時刻ごとの最安（合計）。プルダウンの料金と、日の見出しの安い時間帯に使う
+      const mins = w.starts.map((m) => [m, minAt(w, m)]);
       let sel = null;
       if (w.starts.length > 1) {
         sel = el('select', 'select-sm sch-cand__start');
         sel.setAttribute('aria-label', '開始時刻');
-        w.starts.forEach((m) => {
-          const o = el('option', '', `${hm(m)}〜${hm(m + data.len)}`);
+        mins.forEach(([m, p]) => {
+          const o = el('option', '', `${hm(m)}〜${hm(m + data.len)}${p !== Infinity ? ' ' + perHead(p) + '/人' : ''}`);
           o.value = m;
           sel.append(o);
         });
@@ -663,6 +688,15 @@
         sub.append(main, price);
         const body = el('span', 'sch-srow__body');
         body.append(nameEl, sub);
+        // このスタジオの最安: 取れる開始時刻のうち、いちばん安い時刻の時間帯と料金。時刻で料金が変わるスタジオだけ出す
+        //   部屋は各時刻の「最初に選ぶ部屋」で比べる（選んでいる部屋では変わらない）
+        const at = x.s.starts.map((m) => [m, firstPick(roomQuotes(x.s.id, w.day, m))?.total ?? Infinity]);
+        const low = Math.min(...at.map(([, p]) => p));
+        if (low !== Infinity) {
+          // 時刻で料金が変わらないスタジオは「終日同一料金」（時間帯を書いても意味がない）
+          const same = at.every(([, p]) => p === low);
+          body.append(el('span', 'sch-srow__cheap muted small', same ? '終日同一料金' : `最安 ${spanText(at.filter(([, p]) => p === low).map(([m]) => m))} ${perHead(low)}/人`));
+        }
         lab.append(radio, body);
         return lab;
       };
@@ -714,7 +748,7 @@
         acts.append(fixForm('final', '決定', w, getSel, true));
         c.append(acts);
       }
-      return { node: c, price };
+      return { node: c, price, mins };
     };
 
     /**
@@ -737,8 +771,15 @@
       // 欠席の人（欠席の一覧だけ中身がある）。同じ人が何枚にも出るので、Set で重複を消す
       [...new Set(es.flatMap((e) => e.w.absent))].forEach((mid) => marks.append(el('span', 'pill pill--warn', `${names[mid] || ''} 欠席`)));
       head.append(marks);
-      const price = Math.min(...es.map((e) => e.price)); // 料金未登録のカードは Infinity なので、登録済みがあればそちらが選ばれる
-      if (price !== Infinity) head.append(el('span', 'sch-day__price', perHead(price) + '/人〜')); // 並べ替えは合計（price）のまま。見せるのは1人あたり
+      // 最安: その日のどの開始時刻・スタジオでもいちばん安い料金（合計）。料金未登録は Infinity なので、登録済みがあればそちらが選ばれる
+      const all = es.flatMap((e) => e.mins); // [開始時刻, 最安] の一覧（その日の全カード）
+      const price = Math.min(...all.map(([, p]) => p));
+      if (price !== Infinity) {
+        // 最安になる時間帯。どの時刻も同じ料金なら「終日同一料金」
+        const same = all.every(([, p]) => p === price);
+        head.append(el('span', 'sch-day__cheap muted small', same ? '終日同一料金' : spanText(all.filter(([, p]) => p === price).map(([m]) => m))));
+        head.append(el('span', 'sch-day__price', perHead(price) + '/人〜')); // 並べ替えは合計（price）のまま。見せるのは1人あたり
+      }
       d.append(head);
       const body = el('div', 'sch-day__body');
       body.append(...es.map((e) => e.node));
@@ -777,7 +818,7 @@
   };
 
   // ===================================================================
-  //  5. みんなの予定（sched_poll.php の <details data-sched-over>）
+  //  5. メンバーの予定（sched_poll.php の <details data-sched-over>）
   //     ・部員全員の埋まりを重ねて、30分ごとに「何人埋まっているか」を色で見せる（7日ずつ・前後の週ボタンで切り替え）
   //     ・マスに乗せる（スマホはタップ）と、誰がどの種類で埋まっているかを出す。種類は サーバー側で「授業・練習・予定」に丸めてある
   //     ・開閉は localStorage に覚える（開けないブラウザでも動くよう try/catch で囲む）

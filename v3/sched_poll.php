@@ -242,7 +242,7 @@ $settings = sched_settings($pdo);
 // ---- 候補の計算（決定済みなら出さない）----
 $windows = [];       // 全員そろう候補
 $absentWindows = []; // 1人欠席の候補
-$over = null;        // みんなの予定
+$over = null;        // メンバーの予定
 $practices = [];
 if ($status < 3) {
     sched_ical_refresh_many($pdo, $memberIds); // 古くなった iCal を読み直す（時間で区切るので、表示は最大でも数秒）
@@ -272,7 +272,7 @@ if ($status < 3) {
                 $absentWindows = array_values(array_filter(sched_candidates($calc + ['absent_max' => 1]), static fn($w) => $w['absent']));
             }
         }
-        // ---- みんなの予定（週ごとの表の元データ）。授業・練習・それ以外は種類を丸めて送る（プライバシーのため）----
+        // ---- メンバーの予定（週ごとの表の元データ）。授業・練習・それ以外は種類を丸めて送る（プライバシーのため）----
         //   「バイト」「カレンダー」「手入力」のどれなのかは、画面に出さない（まとめて「予定あり」）
         $overLabel = static fn(array $b): string => match ($b[3]) {
             'class' => '授業 ' . $b[4],
@@ -434,9 +434,9 @@ if (!empty($poll['live_id'])) {
 
 <?php if ($status < 3): ?>
     <?php if ($over !== null): ?>
-        <?php /* みんなの予定: 中身は assets/sched.js の setupOver が作る。開閉は localStorage に覚える */ ?>
+        <?php /* メンバーの予定: 中身は assets/sched.js の setupOver が作る。開閉は localStorage に覚える */ ?>
         <details class="card sch-over" data-sched-over data-tip-lazy>
-            <summary><?= icon('groups') ?> みんなの予定</summary>
+            <summary><?= icon('groups') ?> メンバーの予定</summary>
             <div class="sch-over__body">
                 <div class="sch-weeknav">
                     <button type="button" class="icon-btn" data-over-prev aria-label="前の週" title="前の週"><?= icon('chevron_left') ?></button>

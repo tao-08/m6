@@ -46,7 +46,7 @@
 .sch-people { display: grid; gap: 10px; margin-bottom: 18px; }
 .sch-me-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 
-/* ---------- みんなの予定（候補の上の <details>）---------- */
+/* ---------- メンバーの予定（候補の上の <details>）---------- */
 .sch-over { margin-bottom: 18px; }
 .sch-over > summary { display: flex; align-items: center; gap: 8px; cursor: pointer; list-style: none; font-weight: 700; }
 .sch-over > summary::-webkit-details-marker { display: none; }
@@ -70,13 +70,22 @@
 .sch-day__head { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; cursor: pointer; list-style: none; }
 .sch-day__head::-webkit-details-marker { display: none; }
 .sch-day__head::after { content: ""; flex: none; width: 8px; height: 8px; border: solid var(--muted); border-width: 0 2px 2px 0;
-  transform: rotate(45deg); transition: transform var(--t-base); }   /* 開閉の矢印（みんなの予定と同じ。閉じていると ⌄、開くと ⌃） */
+  transform: rotate(45deg); transition: transform var(--t-base); }   /* 開閉の矢印（メンバーの予定と同じ。閉じていると ⌄、開くと ⌃） */
 .sch-day[open] > .sch-day__head::after { transform: rotate(-135deg); }
+/* 開閉のアニメ（日付のカード・メンバーの予定）。中身（::details-content）の高さと透明度を滑らかに変える。
+   interpolate-size で height: 0 ↔ auto を補間できる。content-visibility も一緒に遷移させないと、閉じる側が一瞬で消える。
+   対応していないブラウザでは今までどおり、アニメなしで開閉する */
+.sch-day, .sch-over { interpolate-size: allow-keywords; }
+.sch-day::details-content, .sch-over::details-content { height: 0; opacity: 0; overflow: clip;
+  transition: height var(--t-slow) ease, opacity var(--t-slow) ease, content-visibility var(--t-slow) allow-discrete; }
+.sch-day[open]::details-content, .sch-over[open]::details-content { height: auto; opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .sch-day::details-content, .sch-over::details-content { transition: none; } } /* 動きを減らす設定の人にはアニメなし */
 .sch-day__date { font-size: var(--fs-lg); }
 .sch-day__time { font-variant-numeric: tabular-nums; }
 .sch-day__marks { flex: 1 1 auto; min-width: 0; display: flex; flex-wrap: wrap; gap: 4px; }  /* 残りの幅を取って、料金と矢印を右端へ寄せる */
 .sch-day__head :is(.tag, .pill) { cursor: inherit; }    /* 見出し全体が押せる（開閉）ので、印の上でも指のカーソルのまま */
 .sch-day__price { font-weight: 700; font-variant-numeric: tabular-nums; }
+.sch-day__cheap { order: 1; flex-basis: 100%; font-variant-numeric: tabular-nums; } /* 最安の時間帯は見出しの2行目（order で矢印 ::after より後ろへ）。1行目に詰めると料金が折り返すため */
 .sch-day__body { display: grid; gap: 10px; margin-top: 12px; }
 .sch-day__body > .sch-cand { box-shadow: none; border-radius: var(--r-md); } /* 外の箱と二重にならないよう、枠だけ・影なしにする */
 .sch-cand { display: grid; gap: 10px; padding: 12px 14px; }
@@ -95,6 +104,7 @@
 .sch-srow input { accent-color: var(--accent); width: 16px; height: 16px; margin: 0; flex: none; }
 .sch-srow__main { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
 .sch-srow__body { flex: 1; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; } /* 1行目 = 名前、2行目 = 部屋・ピル・料金 */
+.sch-srow__cheap { font-variant-numeric: tabular-nums; }
 .sch-srow__sub { display: flex; align-items: center; justify-content: space-between; gap: 4px 10px; }
 .sch-srow__name { font-weight: 700; text-wrap: balance; } /* balance … 折り返すとき、最後の行に1文字だけ残さない（行の長さをそろえる） */
 .sch-srow__price { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: flex-end; gap: 0 6px; text-align: right; }
