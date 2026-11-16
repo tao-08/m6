@@ -303,11 +303,13 @@ render_header('マイ予定', 'tools');
     <form method="post" class="sch-campus">
         <?= csrf_field() ?><input type="hidden" name="action" value="campus">
         <?php if ($poll !== null): ?><input type="hidden" name="poll" value="<?= $pollId ?>"><?php endif; ?>
-        <label class="check"><input type="radio" name="campus" value="0"<?= $chosenCampus === 0 ? ' checked' : '' ?>> 自動（<?= h(SCHED_CAMPUSES[$autoCampus]) ?>）</label>
-        <?php foreach (SCHED_CAMPUSES as $c => $name): ?>
-            <label class="check"><input type="radio" name="campus" value="<?= $c ?>"<?= $chosenCampus === $c ? ' checked' : '' ?>> <?= h($name) ?></label>
-        <?php endforeach; ?>
-        <button class="btn btn--sm" type="submit">保存</button>
+        <div class="tabs tabs--filter" role="radiogroup" aria-label="キャンパス">
+            <label class="tab"><input type="radio" name="campus" value="0" data-autosubmit<?= $chosenCampus === 0 ? ' checked' : '' ?>>自動（<?= h(SCHED_CAMPUSES[$autoCampus]) ?>）</label>
+            <?php foreach (SCHED_CAMPUSES as $c => $name): ?>
+                <label class="tab"><input type="radio" name="campus" value="<?= $c ?>" data-autosubmit<?= $chosenCampus === $c ? ' checked' : '' ?>><?= h($name) ?></label>
+            <?php endforeach; ?>
+        </div>
+        <noscript><button class="btn btn--sm" type="submit">保存</button></noscript>
     </form>
 </section>
 

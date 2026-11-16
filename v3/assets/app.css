@@ -450,6 +450,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
   border-radius: var(--r-full); width: max-content; max-width: 100%; position: sticky; top: 70px; z-index: 5; box-shadow: var(--shadow); }
 .tab { padding: 8px 16px; border-radius: var(--r-full); font-weight: 800; font-size: var(--fs-sm); color: var(--muted); display: flex; gap: 8px; align-items: baseline; white-space: nowrap; }
 .tab small { font-weight: 500; }
+button.tab { border: 0; background: none; font: inherit; font-weight: 800; font-size: var(--fs-sm); cursor: pointer; } /* JS で切り替えるタブ（<button>）もリンク・label のタブと同じ見た目に */
 .tab.is-active, .tab.is-active:hover { background: var(--accent); color: var(--on-accent); }
 /* ライブ詳細の日程タブは押しやすいよう大きめに */
 .tabs--days { gap: 6px; padding: 6px; }
