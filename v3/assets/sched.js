@@ -222,7 +222,15 @@
         if (item[4]) td.classList.add('is-ignored');
         if (ignorable.includes(item[2])) td._item = item;
         // 予定の最初のマスにだけラベル（授業の「2限」・練習のバンド名）
-        if (item[0] >= abs && item[0] < abs + data.step || first) td.textContent = item[3] || kindLabel[item[2]];
+        //   ラベルは予定の高さ（マスの数）いっぱいまで折り返す。2行を超える分は「…」（CSS: .sch-lbl）
+        if (item[0] >= abs && item[0] < abs + data.step || first) {
+          const dayEnd = Number(td.dataset.first) - data.start + data.end; // その日の表示の終わり
+          const rows = Math.max(1, Math.ceil((Math.min(item[1], dayEnd) - abs) / data.step));
+          const lbl = el('span', 'sch-lbl', item[3] || kindLabel[item[2]]);
+          lbl.style.setProperty('--rows', rows);
+          lbl.style.setProperty('--lines', Math.min(2, rows));
+          td.append(lbl);
+        }
       } else if (hit.length) {
         td.classList.add('is-ng');
       }
