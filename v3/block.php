@@ -60,7 +60,7 @@ render_header('ブロックパズル', 'tools');
                     <p class="block-result__rank" data-result="rank"></p>
                     <p class="block-result__err" data-result="err" hidden></p>
                     <button type="button" class="btn block-big" data-act="retry" hidden><?= icon('restart_alt') ?> 再送信</button>
-                    <button type="button" class="btn btn--primary block-big" data-act="restart"><?= icon('restart_alt') ?> 再開始</button>
+                    <button type="button" class="btn btn--primary block-big" data-act="restart"><?= icon('restart_alt') ?> リスタート</button>
                 </div>
             </div>
 
