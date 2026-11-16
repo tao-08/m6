@@ -70,25 +70,28 @@
     });
     refresh();
 
-    // ---- ライブ: 選ぶと期間を「開催日の N週間前〜当日」にする（N は期間のタブ。カスタムなら手入力） ----
+    // ---- ライブ: 選ぶと期間を「初日の N週間前〜最終日」にする（N は期間のタブ。カスタムなら手入力） ----
+    // 何日目に出るかは練習を決める時点でわからないことが多いので、最終日まで候補に入れる
     const live = form.querySelector('[data-live-pick]');
     const leadBox = form.querySelector('[data-lead]');
     const dFrom = form.querySelector('[name="date_from"]');
     const dTo = form.querySelector('[name="date_to"]');
     const applyLead = () => {
-      const held = live.selectedOptions[0]?.dataset.date || ''; // 開催日（Y-m-d）。「なし」なら空
+      const opt = live.selectedOptions[0];
+      const first = opt?.dataset.first || ''; // 初日（Y-m-d）。「なし」・日程が未登録なら空
+      const last = opt?.dataset.last || '';   // 最終日
       const weeks = Number(leadBox.querySelector('input:checked')?.value || 0); // 0 = カスタム
-      leadBox.hidden = !held;
-      const lock = held !== '' && weeks > 0;
+      leadBox.hidden = !first;
+      const lock = first !== '' && weeks > 0;
       dFrom.readOnly = dTo.readOnly = lock; // 週を選んでいる間は手で変えさせない（readonly でも値は送信される）
       if (!lock) return; // 「なし」「カスタム」は日付をそのまま残す
       // Date.UTC で計算する: ローカル時刻の Date だと、toISOString（UTC）にしたとき日本時間では前日にずれる
-      const [y, m, d] = held.split('-').map(Number);
+      const [y, m, d] = first.split('-').map(Number);
       const from = new Date(Date.UTC(y, m - 1, d - 7 * weeks)).toISOString().slice(0, 10);
       const today = live.dataset.today; // 「今日」はサーバーの日付（端末の時計がずれていても合う）
       // 開始日は今日より前にしない（Y-m-d の文字列は、大小の比較がそのまま日付の前後になる）。PHP の $leadFrom と同じ計算
-      dFrom.value = from < today && today <= held ? today : from;
-      dTo.value = held;
+      dFrom.value = from < today && today <= last ? today : from;
+      dTo.value = last;
       form.dispatchEvent(new Event('input', { bubbles: true })); // 未保存の警告を効かせる
     };
     // ライブかタブを変えたときだけ書き換える（開いたときに書き換えると、編集画面で保存済みの期間が消える）
@@ -117,8 +120,8 @@
         // 値を JS で変えても input イベントは出ないので、自分で出す（未保存の警告を効かせるため）
         form.dispatchEvent(new Event('input', { bubbles: true }));
         // バンドの出るライブも選ぶ。change を出す → 期間の自動入力（applyLead）と、プルダウンの表示（app.js の setupSelectPick）が動く
-        if (live && band.day) {
-          live.value = String(band.day);
+        if (live && band.liveId) {
+          live.value = String(band.liveId);
           live.dispatchEvent(new Event('change', { bubbles: true }));
         }
       });

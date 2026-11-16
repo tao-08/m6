@@ -362,14 +362,19 @@ render_header($poll['title'] . ' — 日程調整', 'tools');
 <?php
 // 向けのライブ（あれば、見出しの下にライブのページへのリンクを出す）
 $live = null;
-if (!empty($poll['live_day_id'])) {
-    $st = $pdo->prepare('SELECT d.live_day_id, d.held_on, l.live_id, l.name FROM live_day d JOIN live l ON l.live_id = d.live_id WHERE d.live_day_id = ?');
-    $st->execute([(int)$poll['live_day_id']]);
+if (!empty($poll['live_id'])) {
+    // 初日・最終日は日程（live_day）の最小・最大。集計（MIN/MAX）するので GROUP BY でライブ1行にまとめる
+    $st = $pdo->prepare('SELECT l.live_id, l.name, MIN(d.held_on) AS first_on, MAX(d.held_on) AS last_on
+        FROM live l LEFT JOIN live_day d ON d.live_id = l.live_id WHERE l.live_id = ? GROUP BY l.live_id, l.name');
+    $st->execute([(int)$poll['live_id']]);
     $live = $st->fetch() ?: null;
 }
 ?>
 <p class="muted small sch-meta">
-    <?php if ($live !== null): ?><a href="live?id=<?= (int)$live['live_id'] ?>#day-<?= (int)$live['live_day_id'] ?>"><?= h($live['name'] . ($live['held_on'] !== null ? ' ' . sched_md((string)$live['held_on']) : '')) ?></a> ・ <?php endif; ?>
+    <?php if ($live !== null):
+        $when = $live['first_on'] === null ? '' : ' ' . sched_md((string)$live['first_on']) . ($live['last_on'] !== $live['first_on'] ? '〜' . sched_md((string)$live['last_on']) : ''); ?>
+        <a href="live?id=<?= (int)$live['live_id'] ?>"><?= h($live['name'] . $when) ?></a> ・
+    <?php endif; ?>
     <?= h(sched_md($poll['date_from']) . '〜' . sched_md($poll['date_to'])) ?> ・ <?= h(sched_hm((int)$poll['day_start']) . '〜' . sched_hm((int)$poll['day_end'])) ?>
     ・ <?= h(studio_fmt_hours($len)) ?><?= (int)$poll['late_max'] > 0 ? ' ・ 遅刻' . (int)$poll['late_max'] . '分まで' : '' ?>
 </p>

@@ -1608,7 +1608,7 @@ CREATE TABLE sched_poll (
     day_end       SMALLINT UNSIGNED NOT NULL,          -- 例: 1380 = 23:00
     length_min    SMALLINT UNSIGNED NOT NULL,          -- 練習の長さ（分）
     late_max      SMALLINT UNSIGNED NOT NULL DEFAULT 0, -- 遅刻を許す上限（分）。0 = 全員そろう枠だけ
-    live_day_id   INT UNSIGNED      NULL,              -- 向けのライブの日程。NULL = ライブと関係ない（migrations/109）
+    live_id       INT UNSIGNED      NULL,              -- 向けのライブ。NULL = ライブと関係ない（migrations/109, 110）
     status        TINYINT UNSIGNED  NOT NULL DEFAULT 0, -- 0 = 調整中 / 1 = 仮決定（日）/ 2 = 仮決定（日時）/ 3 = 決定
     fix_date      DATE              NULL,
     fix_start     DATETIME          NULL,
@@ -1621,15 +1621,15 @@ CREATE TABLE sched_poll (
     updated_at    DATETIME          NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (sched_poll_id),
     KEY idx_spoll_fix (status, fix_start),             -- 「決定済みの練習」を期間で探す
-    KEY idx_spoll_live_day (live_day_id),
+    KEY idx_spoll_live (live_id),
     CONSTRAINT fk_spoll_user FOREIGN KEY (created_by) REFERENCES user_account (user_id)
         ON UPDATE CASCADE ON DELETE SET NULL,
     CONSTRAINT fk_spoll_studio FOREIGN KEY (fix_studio_id) REFERENCES studio (studio_id)
         ON UPDATE CASCADE ON DELETE SET NULL,
     CONSTRAINT fk_spoll_room FOREIGN KEY (fix_room_id) REFERENCES studio_room (studio_room_id)
         ON UPDATE CASCADE ON DELETE SET NULL,
-    CONSTRAINT fk_spoll_live_day FOREIGN KEY (live_day_id) REFERENCES live_day (live_day_id)
-        ON UPDATE CASCADE ON DELETE SET NULL,          -- ライブの日程を消しても調整は残す
+    CONSTRAINT fk_spoll_live FOREIGN KEY (live_id) REFERENCES live (live_id)
+        ON UPDATE CASCADE ON DELETE SET NULL,          -- ライブを消しても調整は残す
     CONSTRAINT ck_spoll_dates CHECK (date_to >= date_from),
     CONSTRAINT ck_spoll_times CHECK (day_end > day_start AND day_end <= 1440),
     CONSTRAINT ck_spoll_status CHECK (status BETWEEN 0 AND 3)

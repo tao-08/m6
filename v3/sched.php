@@ -11,7 +11,7 @@
  *    save   … 作成 / 保存（sched_poll_id があれば編集）
  *    delete … 削除
  *
- *  ライブ（live_day）を選ぶと、期間を「開催日の N週間前〜当日」にする（JS。sched_poll.live_day_id に保存）
+ *  ライブを選ぶと、期間を「ライブ初日の N週間前〜最終日」にする（JS。sched_poll.live_id に保存）
  *  作れるのはログインしている部員なら誰でも。編集・削除は「作った人・呼ばれた部員・幹部」（sched_can_manage）
  *  候補の計算・確定は sched_poll.php、自分の予定の入力は sched_me.php
  * =====================================================================
@@ -53,7 +53,7 @@ if (is_post()) {
             'day_end'   => (int)($_POST['day_end'] ?? 0),
             'length'    => (int)($_POST['length'] ?? 0),
             'late_max'  => (int)($_POST['late_max'] ?? 0),
-            'live_day'  => (int)($_POST['live_day'] ?? 0), // 0 = ライブなし
+            'live'      => (int)($_POST['live'] ?? 0), // 0 = ライブなし
         ];
         $names = array_values(array_unique(array_filter(array_map(static fn($n) => trim((string)$n), (array)($_POST['m_name'] ?? [])), static fn($n) => $n !== '')));
         $studioIds = array_values(array_unique(array_filter(array_map('intval', (array)($_POST['studio'] ?? [])), static fn($v) => $v > 0)));
@@ -77,10 +77,10 @@ if (is_post()) {
         if (!in_array($in['late_max'], SCHED_LATE_OPTIONS, true)) {
             $errors[] = '遅刻の上限を選んでください';
         }
-        if ($in['live_day'] > 0) {
-            // 送られてきた id のライブの日程が本当にあるか（無い id を入れると外部キーで INSERT が落ちる）
-            $st = $pdo->prepare('SELECT 1 FROM live_day WHERE live_day_id = ?');
-            $st->execute([$in['live_day']]);
+        if ($in['live'] > 0) {
+            // 送られてきた id のライブが本当にあるか（無い id を入れると外部キーで INSERT が落ちる）
+            $st = $pdo->prepare('SELECT 1 FROM live WHERE live_id = ?');
+            $st->execute([$in['live']]);
             if (!$st->fetchColumn()) {
                 $errors[] = 'ライブが見つかりません';
             }
@@ -121,14 +121,14 @@ if (is_post()) {
 
         $pdo->beginTransaction();
         try {
-            $vals = [$in['title'], $in['date_from'], $in['date_to'], $in['day_start'], $in['day_end'], $in['length'], $in['late_max'], $in['live_day'] > 0 ? $in['live_day'] : null];
+            $vals = [$in['title'], $in['date_from'], $in['date_to'], $in['day_start'], $in['day_end'], $in['length'], $in['late_max'], $in['live'] > 0 ? $in['live'] : null];
             if ($poll === null) {
-                $pdo->prepare('INSERT INTO sched_poll (title, date_from, date_to, day_start, day_end, length_min, late_max, live_day_id, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+                $pdo->prepare('INSERT INTO sched_poll (title, date_from, date_to, day_start, day_end, length_min, late_max, live_id, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
                     ->execute([...$vals, (int)$user['user_id']]);
                 $pollId = (int)$pdo->lastInsertId();
                 $before = [];
             } else {
-                $pdo->prepare('UPDATE sched_poll SET title = ?, date_from = ?, date_to = ?, day_start = ?, day_end = ?, length_min = ?, late_max = ?, live_day_id = ?, version = version + 1 WHERE sched_poll_id = ?')
+                $pdo->prepare('UPDATE sched_poll SET title = ?, date_from = ?, date_to = ?, day_start = ?, day_end = ?, length_min = ?, late_max = ?, live_id = ?, version = version + 1 WHERE sched_poll_id = ?')
                     ->execute([...$vals, $pollId]);
                 $before = array_map('intval', array_column(sched_poll_members($pdo, $pollId), 'member_id'));
             }
@@ -193,8 +193,8 @@ if (isset($_GET['new']) || isset($_GET['edit'])) {
     $in = $poll !== null ? [
         'title' => $poll['title'], 'date_from' => $poll['date_from'], 'date_to' => $poll['date_to'], 'day_start' => (int)$poll['day_start'],
         'day_end' => (int)$poll['day_end'], 'length' => (int)$poll['length_min'], 'late_max' => (int)$poll['late_max'],
-        'live_day' => (int)($poll['live_day_id'] ?? 0),
-    ] : ['title' => '', 'date_from' => date('Y-m-d', strtotime('+1 day')), 'date_to' => date('Y-m-d', strtotime('+14 day')), 'day_start' => 600, 'day_end' => 1380, 'length' => 120, 'late_max' => 30, 'live_day' => 0];
+        'live' => (int)($poll['live_id'] ?? 0),
+    ] : ['title' => '', 'date_from' => date('Y-m-d', strtotime('+1 day')), 'date_to' => date('Y-m-d', strtotime('+14 day')), 'day_start' => 600, 'day_end' => 1380, 'length' => 120, 'late_max' => 30, 'live' => 0];
     $names = $poll !== null ? array_column(sched_poll_members($pdo, $pollId), 'name') : ($me !== null ? [$me] : []);
     $chosen = $poll !== null ? array_map('intval', array_column(sched_poll_studios($pdo, $pollId), 'studio_id')) : null;
     $errors = [];
@@ -222,43 +222,46 @@ if (isset($_GET['new']) || isset($_GET['edit'])) {
         return $html;
     };
     $allNames = member_name_choices($pdo);
-    // ライブの選択肢: これからの日程（開催日の順）。編集中の調整に保存済みの日程は、過ぎていても残す（選び直さないと消えてしまうため）
+    // ライブの選択肢: 最終日が今日以降のライブ（初日の順）。初日・最終日は日程（live_day）の最小・最大
+    // 何日目に出るかは練習を決める時点でわからないことが多いので、日程ではなくライブで選ぶ
+    // 編集中の調整に保存済みのライブは、終わっていても残す（選び直さないと消えてしまうため）
+    // LEFT JOIN + HAVING … 日程の無いライブも行を残し、集計（MAX）したあとで絞る（WHERE では集計前に絞ってしまう）
     $today = date('Y-m-d');
-    $st = $pdo->prepare('SELECT d.live_day_id, d.label, d.held_on, l.name,
-            (SELECT COUNT(*) FROM live_day x WHERE x.live_id = d.live_id) AS n_days
-        FROM live_day d JOIN live l ON l.live_id = d.live_id
-        WHERE d.held_on >= ? OR d.live_day_id = ?
-        ORDER BY d.held_on, d.live_day_id');
-    $st->execute([$today, $in['live_day']]);
-    $liveDays = $st->fetchAll();
-    // 期間のタブ（何週間前から）の初期状態: 保存済みの期間が「開催日の N週間前〜当日」と一致すれば N、しなければカスタム（0）
+    $st = $pdo->prepare('SELECT l.live_id, l.name, MIN(d.held_on) AS first_on, MAX(d.held_on) AS last_on
+        FROM live l LEFT JOIN live_day d ON d.live_id = l.live_id
+        GROUP BY l.live_id, l.name
+        HAVING last_on >= ? OR l.live_id = ?
+        ORDER BY first_on, l.live_id');
+    $st->execute([$today, $in['live']]);
+    $lives = $st->fetchAll();
+    // 期間のタブ（何週間前から）の初期状態: 保存済みの期間が「初日の N週間前〜最終日」と一致すれば N、しなければカスタム（0）
     // 開始日は今日より前にしない（過ぎた日を候補にしても意味がないため）。JS の計算と同じ
-    $leadFrom = static function (string $held, int $weeks) use ($today): string {
-        $from = date('Y-m-d', strtotime($held . ' -' . (7 * $weeks) . ' day'));
-        return $from < $today && $today <= $held ? $today : $from; // Y-m-d の文字列は、大小の比較がそのまま日付の前後になる
+    $leadFrom = static function (string $first, string $last, int $weeks) use ($today): string {
+        $from = date('Y-m-d', strtotime($first . ' -' . (7 * $weeks) . ' day'));
+        return $from < $today && $today <= $last ? $today : $from; // Y-m-d の文字列は、大小の比較がそのまま日付の前後になる
     };
-    $heldOn = null;
-    foreach ($liveDays as $d) {
-        if ((int)$d['live_day_id'] === $in['live_day'] && $d['held_on'] !== null) {
-            $heldOn = (string)$d['held_on'];
+    $span = null; // 選んでいるライブの [初日, 最終日]
+    foreach ($lives as $l) {
+        if ((int)$l['live_id'] === $in['live'] && $l['first_on'] !== null) {
+            $span = [(string)$l['first_on'], (string)$l['last_on']];
         }
     }
     $lead = 2;
-    if ($heldOn !== null) {
+    if ($span !== null) {
         $lead = 0;
         foreach ([1, 2, 3, 4] as $w) {
-            if ($in['date_to'] === $heldOn && $in['date_from'] === $leadFrom($heldOn, $w)) {
+            if ($in['date_to'] === $span[1] && $in['date_from'] === $leadFrom($span[0], $span[1], $w)) {
                 $lead = $w;
                 break;
             }
         }
     }
-    $dateLocked = $heldOn !== null && $lead > 0; // 週を選んでいる間は、日付を手で変えられないようにする
+    $dateLocked = $span !== null && $lead > 0; // 週を選んでいる間は、日付を手で変えられないようにする
     // 「バンドから入力」用: 自分がメンバーで、開催日が今日以降のバンドと、そのメンバーの名前（新規作成のときだけ）
     $bands = [];
     if ($poll === null && $user['member_id'] !== null) {
         // 同じバンドに複数の楽器で入っている人もいるので DISTINCT で重複を消す（DISTINCT + ORDER BY は、並べる列も SELECT に入れる必要がある）
-        $st = $pdo->prepare('SELECT DISTINCT b.band_id, b.name AS band_name, l.name AS live_name, d.live_day_id, d.held_on, b.play_order
+        $st = $pdo->prepare('SELECT DISTINCT b.band_id, b.name AS band_name, l.name AS live_name, l.live_id, d.held_on, b.play_order
             FROM band_member bm
             JOIN band b ON b.band_id = bm.band_id
             JOIN live_day d ON d.live_day_id = b.live_day_id
@@ -267,7 +270,7 @@ if (isset($_GET['new']) || isset($_GET['edit'])) {
             ORDER BY d.held_on, b.play_order, b.band_id');
         $st->execute([(int)$user['member_id'], date('Y-m-d')]);
         foreach ($st->fetchAll() as $r) {
-            $bands[(int)$r['band_id']] = ['id' => (int)$r['band_id'], 'title' => (string)$r['band_name'], 'live' => (string)$r['live_name'], 'day' => (int)$r['live_day_id'], 'names' => []];
+            $bands[(int)$r['band_id']] = ['id' => (int)$r['band_id'], 'title' => (string)$r['band_name'], 'live' => (string)$r['live_name'], 'liveId' => (int)$r['live_id'], 'names' => []];
         }
         if ($bands) {
             $ph = implode(',', array_fill(0, count($bands), '?'));
@@ -296,7 +299,7 @@ if (isset($_GET['new']) || isset($_GET['edit'])) {
                 </select>
             </label>
             <?php // JS に渡すデータ。<script> の中なので JSON_HEX_TAG / JSON_HEX_AMP で < > & をエスケープする（名前に </script> が入っていても壊れない）
-            $bandJson = array_map(static fn($b) => ['id' => $b['id'], 'title' => $b['title'], 'day' => $b['day'], 'names' => $b['names']], array_values($bands)); ?>
+            $bandJson = array_map(static fn($b) => ['id' => $b['id'], 'title' => $b['title'], 'liveId' => $b['liveId'], 'names' => $b['names']], array_values($bands)); ?>
             <script type="application/json" id="sched-bands"><?= json_encode($bandJson, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP) ?></script>
         <?php endif; ?>
         <label class="field"><span>タイトル</span><input name="title" value="<?= h($in['title']) ?>" maxlength="100" required placeholder="例: バンド名" autocomplete="off"></label>
@@ -315,16 +318,19 @@ if (isset($_GET['new']) || isset($_GET['edit'])) {
         <?= render_suggest_datalist('member-names', array_keys($allNames), $allNames) ?>
 
         <label class="field"><span>ライブ</span>
-            <?php // data-date … 開催日。JS がこれと data-today から期間を計算する ?>
-            <select name="live_day" data-live-pick data-today="<?= h($today) ?>">
+            <?php // data-first / data-last … ライブの初日・最終日。JS がこれと data-today から期間を計算する ?>
+            <select name="live" data-live-pick data-today="<?= h($today) ?>">
                 <option value="">なし</option>
-                <?php foreach ($liveDays as $d): ?>
-                    <option value="<?= (int)$d['live_day_id'] ?>" data-date="<?= h((string)$d['held_on']) ?>"<?= (int)$d['live_day_id'] === $in['live_day'] ? ' selected' : '' ?>><?= h($d['name'] . ((int)$d['n_days'] > 1 ? ' ' . $d['label'] : '') . ($d['held_on'] !== null ? ' ' . sched_md((string)$d['held_on']) : '')) ?></option>
+                <?php foreach ($lives as $l):
+                    $first = (string)($l['first_on'] ?? '');
+                    $last = (string)($l['last_on'] ?? '');
+                    $when = $first === '' ? '' : ' ' . sched_md($first) . ($last !== $first ? '〜' . sched_md($last) : ''); ?>
+                    <option value="<?= (int)$l['live_id'] ?>" data-first="<?= h($first) ?>" data-last="<?= h($last) ?>"<?= (int)$l['live_id'] === $in['live'] ? ' selected' : '' ?>><?= h($l['name'] . $when) ?></option>
                 <?php endforeach; ?>
             </select>
         </label>
         <?php // 期間のタブ。name="lead_ui" はサーバーでは読まない（送るのは日付だけ。期間の正は日付の欄） ?>
-        <div class="field sch-lead" data-lead<?= $heldOn === null ? ' hidden' : '' ?>>
+        <div class="field sch-lead" data-lead<?= $span === null ? ' hidden' : '' ?>>
             <span>期間</span>
             <div class="tabs tabs--filter" role="radiogroup" aria-label="期間">
                 <?php foreach ([1 => '1週', 2 => '2週', 3 => '3週', 4 => '4週', 0 => 'カスタム'] as $w => $label): ?>
@@ -385,7 +391,7 @@ $myMember = $user['member_id'] === null ? 0 : (int)$user['member_id'];
 $st = $pdo->prepare('SELECT p.*,
         (SELECT COUNT(*) FROM sched_poll_member x WHERE x.sched_poll_id = p.sched_poll_id) AS n_members,
         (SELECT COUNT(x.answered_at) FROM sched_poll_member x WHERE x.sched_poll_id = p.sched_poll_id) AS n_answered,
-        (SELECT l.name FROM live_day d JOIN live l ON l.live_id = d.live_id WHERE d.live_day_id = p.live_day_id) AS live_name
+        (SELECT l.name FROM live l WHERE l.live_id = p.live_id) AS live_name
     FROM sched_poll p
     WHERE (p.created_by = ? OR EXISTS (SELECT 1 FROM sched_poll_member y WHERE y.sched_poll_id = p.sched_poll_id AND y.member_id = ?))
       AND COALESCE(p.fix_date, p.date_to) >= ?
