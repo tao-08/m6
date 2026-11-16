@@ -89,13 +89,10 @@ function studio_ai_schema(array $sections = []): array
     return $obj($all);
 }
 
-/**
- * 選べるモデル（モデル ID => 画面に出す名前）。料金表（CLAUDE_PRICES）にあるモデルだけ
- *   画面から送られてきたモデル名は、必ずこの一覧に無いと使わない（任意のモデル名を API に流させない）
- */
+/** 選べるモデル（lib/claude.php の claude_models() と同じ。マイスケジュールの画像読込と共通） */
 function studio_ai_models(): array
 {
-    return ['claude-opus-5-5' => 'Opus', 'claude-sonnet-5-5' => 'Sonnet', 'claude-haiku-5-5' => 'Haiku'];
+    return claude_models();
 }
 
 /** 初期のモデル = config.php の anthropic.model（一覧に無い・未設定なら Opus） */

@@ -6,6 +6,7 @@
  *  3. NG の時間のマス（sched_me.php の #sched-grid-data）… タップ・なぞって塗る、日付を押して1日まるごと → JSON で送信
  *  4. 候補の一覧（sched_poll.php の #sched-data）… 料金を計算して並べ、仮決定・決定のボタンを付ける
  *  5. メンバーの予定（sched_poll.php の [data-sched-over]）… 全員の埋まりを重ねた週ごとの表
+ *  6. 画像から予定を読み込む（sched_me.php の [data-photo-open]）… スクリーンショットを AI に読ませて、確認してから追加
  *
  *  ■ XSS 対策
  *    DB から来た文字（バンド名・スタジオ名・部員名）は textContent で入れる（HTML として解釈されない）
@@ -202,11 +203,11 @@
     const form = document.querySelector('[data-sched-grid-form]');
     if (!data || !wrap || !form) return;
     const autosave = makeAutosave(() => new FormData(form));
-    const kindLabel = { class: '授業', ical: '予定', weekly: '毎週', practice: '練習' };
+    const kindLabel = { class: '授業', ical: '予定', photo: '予定', weekly: '毎週', practice: '練習' };
 
     // マスの見た目を、埋まり（data.busy）から決める。自動の予定があれば塗れない（is-auto）。
     //   「この予定を無視」にした予定（b[4]）は、予定ありに数えず網掛け（is-ignored）。タップすると無視を切り替えられる
-    const ignorable = ['class', 'ical', 'weekly'];
+    const ignorable = ['class', 'ical', 'photo', 'weekly'];
     const classify = (td) => {
       const abs = Number(td.dataset.abs);
       const first = abs === Number(td.dataset.first); // その日の表示の先頭のマス
@@ -214,7 +215,7 @@
       const auto = hit.find((b) => b[2] !== 'manual' && !b[4]);
       const ign = hit.find((b) => b[4]);
       const item = ign || auto;
-      td.classList.remove('is-class', 'is-ical', 'is-weekly', 'is-practice', 'is-auto', 'is-ignored', 'is-ng');
+      td.classList.remove('is-class', 'is-ical', 'is-photo', 'is-weekly', 'is-practice', 'is-auto', 'is-ignored', 'is-ng');
       td.textContent = '';
       td._item = null;
       if (item) {
@@ -1028,6 +1029,212 @@
     });
   };
 
+  // ===================================================================
+  //  6. 画像から予定を読み込む（sched_me.php の [data-photo-open]）
+  //     iCal で連携できないカレンダー（TimeTree・Android の標準アプリなど）の人が、スクリーンショットを選ぶ
+  //     流れ: 画像を選ぶ → photo_read（AI が予定を読む。数十秒かかる）→ 確認画面（<dialog>）で直す・外す → photo_add → 画面を読み直す
+  //     ・AI の読み間違いはあるので、確認画面で日付・時間・タイトルを直せる。終了時刻が無い・開始 >= 終了の行は、直すまで追加できない
+  //     ・AI の返事（タイトルなど）は、必ず textContent / value で入れる（HTML として解釈させない = XSS 対策）
+  // ===================================================================
+  const setupPhoto = () => {
+    const openBtn = document.querySelector('[data-photo-open]');
+    const input = document.querySelector('[data-photo-input]');
+    const form = document.querySelector('[data-sched-grid-form]'); // CSRF トークンと、今の週（from / poll / week）を持っている
+    if (!openBtn || !input || !form) return;
+    const MAX_IMAGES = 3;               // lib/sched_photo.php の SCHED_PHOTO_MAX_IMAGES と同じ
+    const MAX_BYTES = 10 * 1024 * 1024; // 〃 SCHED_PHOTO_MAX_BYTES
+    const MAX_ADD = 100;                // 〃 SCHED_PHOTO_MAX_ADD
+    const STEP = 30;
+
+    // モデルの選択。前回選んだものを覚えておく（この端末だけ。使えない環境では覚えないだけで、初期のモデルで動く）
+    const modelSel = document.querySelector('[data-photo-model]');
+    const MODEL_KEY = 'sched-photo-model';
+    if (modelSel) {
+      try {
+        const saved = localStorage.getItem(MODEL_KEY);
+        if (saved && [...modelSel.options].some((o) => o.value === saved)) modelSel.value = saved;
+      } catch (e) { /* 保存できない環境 */ }
+      modelSel.addEventListener('change', () => {
+        try { localStorage.setItem(MODEL_KEY, modelSel.value); } catch (e) { /* 保存できない環境 */ }
+      });
+    }
+
+    /** サーバーに送る（表示中のページ = 今の週のまま）。X-Autosave は「画面を移動しない」合図 */
+    const send = (fd) => fetch(location.pathname + location.search, { method: 'POST', body: fd, headers: { 'X-Autosave': '1' } });
+
+    const setBusy = (on) => {
+      openBtn.disabled = on;
+      openBtn.classList.toggle('is-busy', on);
+      openBtn.setAttribute('aria-busy', on ? 'true' : 'false');
+    };
+
+    // ---- 1. 画像を選ぶ → 読み込む ----
+    openBtn.addEventListener('click', () => input.click());
+    input.addEventListener('change', async () => {
+      const files = [...input.files];
+      input.value = ''; // 同じ画像をもう一度選んでも change が起きるように
+      if (!files.length) return;
+      if (files.length > MAX_IMAGES) {
+        alert('画像は ' + MAX_IMAGES + ' 枚までです');
+        return;
+      }
+      if (files.some((f) => f.size > MAX_BYTES)) {
+        alert('画像は 1 枚 ' + MAX_BYTES / 1048576 + 'MB までです');
+        return;
+      }
+      const fd = new FormData(form);
+      fd.delete('payload');
+      fd.set('action', 'photo_read');
+      files.forEach((f) => fd.append('images[]', f));
+      if (modelSel) fd.set('model', modelSel.value);
+      setBusy(true);
+      try {
+        const res = await send(fd);
+        let body = null;
+        try {
+          body = await res.json();
+        } catch (e) {
+          // JSON でなければ（サーバーのエラーページなど）、下の汎用のメッセージにする
+        }
+        if (!res.ok || !body || !Array.isArray(body.events)) {
+          alert(body?.error || '読み込めませんでした');
+          return;
+        }
+        openConfirm(body.events, Array.isArray(body.notes) ? body.notes : []);
+      } catch (e) {
+        alert('通信できませんでした');
+      } finally {
+        setBusy(false);
+      }
+    });
+
+    // ---- 2. 確認画面 ----
+    /** <option> の並び。空（— = 未入力）+ 30分刻み */
+    const timeOptions = (from, to) => {
+      const frag = document.createDocumentFragment();
+      const blank = el('option', '', '—');
+      blank.value = '';
+      frag.append(blank);
+      for (let m = from; m <= to; m += STEP) {
+        const o = el('option', '', hm(m));
+        o.value = String(m);
+        frag.append(o);
+      }
+      return frag;
+    };
+    /** 読み上げ用のラベル（aria-label）を付けた要素を作る */
+    const field = (tag, label) => {
+      const n = el(tag);
+      n.setAttribute('aria-label', label);
+      return n;
+    };
+
+    const openConfirm = (events, notes) => {
+      const dlg = el('dialog', 'modal sch-photo');
+      const body = el('div', 'modal__body');
+      body.append(el('h3', 'modal__title', '画像から読込'));
+      if (notes.length) {
+        const ul = el('ul', 'sch-photo__notes muted small');
+        notes.forEach((n) => ul.append(el('li', '', n)));
+        body.append(ul);
+      }
+      const rows = [];
+      const list = el('div', 'sch-photo__list');
+      events.forEach((ev) => {
+        const row = el('div', 'sch-photo__row');
+        const cb = field('input', '追加');
+        cb.type = 'checkbox';
+        // 終了時刻が無い予定（終日以外）は、最初は外しておく（直してから自分で入れる）
+        cb.checked = !!ev.all_day || ev.end != null;
+        const date = field('input', '日付');
+        date.type = 'date';
+        date.value = ev.date || '';
+        const start = field('select', '開始');
+        start.append(timeOptions(0, 24 * 60 - STEP));
+        start.value = ev.start == null ? '' : String(ev.start);
+        const end = field('select', '終了');
+        end.append(timeOptions(STEP, 24 * 60));
+        end.value = ev.end == null ? '' : String(ev.end);
+        const title = field('input', 'タイトル');
+        title.type = 'text';
+        title.maxLength = 100;
+        title.value = ev.title || '';
+        title.className = 'sch-photo__title';
+        const range = el('span', 'sch-photo__range');
+        range.append(start, el('span', 'muted', '〜'), end);
+        row.append(cb, date, range, title);
+        list.append(row);
+        rows.push({ row, cb, date, start, end, title });
+      });
+      body.append(list);
+
+      const acts = el('div', 'form-actions');
+      const over = el('span', 'sch-photo__over small', MAX_ADD + '件まで');
+      over.hidden = true;
+      const cancel = el('button', 'btn btn--ghost', events.length ? 'キャンセル' : '閉じる');
+      cancel.type = 'button';
+      const add = el('button', 'btn btn--primary', '追加');
+      add.type = 'button';
+      acts.append(over, cancel);
+      if (events.length) acts.append(add);
+      else body.append(el('p', 'muted', '予定が見つかりませんでした'));
+      body.append(acts);
+      dlg.append(body);
+
+      // 追加できる状態か確かめて、ダメな欄を赤くする（チェックの付いた行だけ見る）
+      const refresh = () => {
+        let bad = false;
+        let count = 0;
+        rows.forEach((r) => {
+          r.row.classList.toggle('is-off', !r.cb.checked);
+          const s = r.start.value === '' ? null : Number(r.start.value);
+          const e = r.end.value === '' ? null : Number(r.end.value);
+          const ok = {
+            date: r.date.value !== '',
+            start: s !== null,
+            end: e !== null && (s === null || e > s), // 終了が無い・開始以前はダメ
+          };
+          if (r.cb.checked) {
+            count++;
+            if (!ok.date || !ok.start || !ok.end) bad = true;
+          }
+          r.date.setAttribute('aria-invalid', r.cb.checked && !ok.date ? 'true' : 'false');
+          r.start.setAttribute('aria-invalid', r.cb.checked && !ok.start ? 'true' : 'false');
+          r.end.setAttribute('aria-invalid', r.cb.checked && !ok.end ? 'true' : 'false');
+        });
+        over.hidden = count <= MAX_ADD;
+        add.disabled = count === 0 || count > MAX_ADD || bad;
+      };
+      list.addEventListener('input', refresh);
+      list.addEventListener('change', refresh);
+      refresh();
+
+      cancel.addEventListener('click', () => dlg.close());
+      dlg.addEventListener('close', () => dlg.remove()); // Esc でも閉じたら片付ける
+      add.addEventListener('click', async () => {
+        const items = rows.filter((r) => r.cb.checked).map((r) => ({
+          date: r.date.value, start: Number(r.start.value), end: Number(r.end.value), title: r.title.value.trim(),
+        }));
+        const fd = new FormData(form);
+        fd.set('action', 'photo_add');
+        fd.set('payload', JSON.stringify({ items }));
+        add.disabled = true;
+        cancel.disabled = true;
+        try {
+          const res = await send(fd);
+          if (!res.ok) throw new Error();
+          location.reload(); // 今の週のまま読み直して、グリッドに出す
+        } catch (e) {
+          alert('追加できませんでした');
+          cancel.disabled = false;
+          refresh();
+        }
+      });
+      document.body.append(dlg);
+      dlg.showModal();
+    };
+  };
+
   setupForm();
   setupTerms();
   // 時間割: チェックを入れるたびに自動保存（学期ごとのフォーム）
@@ -1038,4 +1245,5 @@
   setupGrid();
   setupCands();
   setupOver();
+  setupPhoto();
 })();

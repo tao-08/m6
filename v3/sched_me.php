@@ -13,6 +13,9 @@
  *    ical / ical_refresh / ical_delete … カレンダー連携（iCal の URL）
  *    feed_reset … 決定した練習の購読 URL を再発行（古い URL は使えなくなる。lib/sched_ical.php の sched_feed_token）
  *    busy    … NG 枠（画面に出ている範囲の手入力分を入れ直す。JS から JSON で送る）
+ *    photo_read … カレンダーのスクリーンショット（最大3枚）を AI に読ませて、予定の一覧を JSON で返す（保存はしない。lib/sched_photo.php）
+ *    photo_add  … 確認画面で選んだ予定を sched_busy に入れる（source = 2。JS から JSON で送る）
+ *    ignore  … 自動で入った予定（授業・カレンダー・画像から読込・毎週）の1回分を無視 / 元に戻す
  *    weekly_add / weekly_delete … 毎週の NG（バイト等。曜日と時間帯を1行ずつ。削除するまで毎週効く）
  *
  *  自分の予定だけを扱う（member_id はセッションのもの。フォームからは受け取らない＝他人の予定を書き換えられない）
@@ -23,6 +26,7 @@ require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/repository.php'; // tip_attr（ポップアップの説明）
 require_once __DIR__ . '/lib/sched.php';
 require_once __DIR__ . '/lib/sched_ical.php';
+require_once __DIR__ . '/lib/sched_photo.php'; // 画像から予定を読み込む（claude.php・ai_reader.php も読み込まれる）
 /** 毎週の NG の曜日（1 = 月 〜 7 = 日。date('N') と同じ）。時間割の SCHED_WEEKDAYS は日曜が無いので、日を足す */
 const SCHED_ME_WEEKDAYS = SCHED_WEEKDAYS + [7 => '日'];
 /** 1人が登録できる毎週の NG の数（増やしすぎて画面と計算が重くならないように） */
@@ -143,7 +147,7 @@ if (is_post()) {
         redirect($back . '#ical');
     }
 
-    // この予定を無視（授業・カレンダー・毎週の1回分。JS から fetch で送る。on = 1 で無視、0 で元に戻す）
+    // この予定を無視（授業・カレンダー・画像から読込・毎週の1回分。JS から fetch で送る。on = 1 で無視、0 で元に戻す）
     if ($action === 'ignore') {
         $s = (int)($_POST['s'] ?? 0);
         $e = (int)($_POST['e'] ?? 0);
@@ -153,7 +157,7 @@ if (is_post()) {
         $found = false;
         if ($e > $s) {
             foreach (sched_collect_busy($pdo, [$me], $day, $day, null, true)['busy'][$me] ?? [] as $b) {
-                if ($b[0] === $s && $b[1] === $e && in_array($b[3], ['class', 'ical', 'weekly'], true)) {
+                if ($b[0] === $s && $b[1] === $e && in_array($b[3], ['class', 'ical', 'photo', 'weekly'], true)) {
                     $found = true;
                     break;
                 }
@@ -170,6 +174,97 @@ if (is_post()) {
         }
         http_response_code(204);
         exit;
+    }
+
+    // 画像から予定を読む（JS から multipart で送る。保存はせず、読んだ予定の一覧を JSON で返すだけ）
+    //   成功: {"events": [...], "notes": [...]} / 失敗: {"error": "..."}（HTTP 4xx・5xx）
+    //   画像は AI に送るだけで、サーバーには残さない（アップロードの一時ファイルは、この処理が終わると PHP が消す）
+    if ($action === 'photo_read') {
+        header('Content-Type: application/json; charset=utf-8');
+        $reply = static function (int $status, array $body): never {
+            http_response_code($status);
+            echo json_encode($body, JSON_UNESCAPED_UNICODE);
+            exit;
+        };
+        if (!claude_enabled()) {
+            $reply(503, ['error' => '画像からの読込は現在使えません']);
+        }
+        // $_FILES['images'] は、1枚でも複数でも「項目ごとの配列」に直してから使う
+        $up = $_FILES['images'] ?? null;
+        $files = [];
+        if (is_array($up)) {
+            foreach ((array)$up['tmp_name'] as $i => $tmp) {
+                $files[] = ['path' => (string)$tmp, 'name' => basename((string)((array)$up['name'])[$i]), 'error' => (int)((array)$up['error'])[$i], 'size' => (int)((array)$up['size'])[$i]];
+            }
+        }
+        if (!$files) {
+            $reply(400, ['error' => '画像を選択してください']);
+        }
+        if (count($files) > SCHED_PHOTO_MAX_IMAGES) {
+            $reply(400, ['error' => '画像は ' . SCHED_PHOTO_MAX_IMAGES . ' 枚までです']);
+        }
+        foreach ($files as $f) {
+            if ($f['error'] === UPLOAD_ERR_INI_SIZE || $f['error'] === UPLOAD_ERR_FORM_SIZE || $f['size'] > SCHED_PHOTO_MAX_BYTES) {
+                $reply(400, ['error' => '画像は 1 枚 ' . (SCHED_PHOTO_MAX_BYTES / 1048576) . 'MB までです']);
+            }
+            if ($f['error'] !== UPLOAD_ERR_OK || !is_uploaded_file($f['path'])) { // is_uploaded_file … 本当にアップロードされたファイルか（サーバー上の別のファイルを指定されていないか）
+                $reply(400, ['error' => '画像を受け取れませんでした。もう一度試してください']);
+            }
+        }
+        try {
+            $reply(200, sched_photo_read($files, date('Y-m-d'), (string)($_POST['model'] ?? ''))); // model は一覧（claude_models）に無ければ初期のモデル
+        } catch (RuntimeException $e) {
+            $reply(502, ['error' => $e->getMessage()]); // 画面に出してよい文言（画像として読めない・AI の失敗など）
+        }
+    }
+
+    // 画像から読んだ予定を追加（確認画面の「追加」。JS から JSON で送る）
+    //   {"items": [{"date": "2026-11-20", "start": 540, "end": 600, "title": "バイト"}, …]}（開始・終了は 0:00 からの分）
+    //   タイトルは iCal と同じく暗号化して入れる（鍵が無いサーバーでは入れない = 時間だけ）。member_id はセッションの $me
+    if ($action === 'photo_add') {
+        $in = json_decode((string)($_POST['payload'] ?? ''), true);
+        $items = sched_photo_normalize_add(is_array($in) ? ($in['items'] ?? null) : null);
+        if ($items === null) {
+            if ($auto) { http_response_code(400); exit; }
+            flash('追加できませんでした', 'error');
+            redirect($back . '#ng');
+        }
+        $canEncrypt = sched_ical_available();
+        // 日付・時刻 → DATETIME。同じ予定を2回入れないために、「開始|終了|タイトル」の目印を作っておく
+        $rows = [];
+        foreach ($items as $it) {
+            $d0 = sched_day_abs($it['date']);
+            $title = $canEncrypt ? $it['title'] : '';
+            $rows[] = [sched_abs_to_dt($d0 + $it['start']), sched_abs_to_dt($d0 + $it['end']), $title];
+        }
+        $pdo->beginTransaction();
+        try {
+            // すでに入っている「画像から読込」の予定（この人の source = 2 だけ）。タイトルは暗号化されている（毎回違う文字列になる）ので、復号して比べる
+            $st = $pdo->prepare('SELECT start_at, end_at, title FROM sched_busy WHERE member_id = ? AND source = 2 AND start_at >= ? AND start_at <= ?');
+            $st->execute([$me, min(array_column($rows, 0)), max(array_column($rows, 0))]);
+            $have = [];
+            foreach ($st as $r) {
+                $have[$r['start_at'] . '|' . $r['end_at'] . '|' . ($r['title'] === null ? '' : (sched_ical_decrypt($r['title']) ?? ''))] = true;
+            }
+            $ins = $pdo->prepare('INSERT INTO sched_busy (member_id, start_at, end_at, source, title) VALUES (?, ?, ?, 2, ?)');
+            $added = 0;
+            foreach ($rows as [$s, $e, $title]) {
+                $key = $s . '|' . $e . '|' . $title;
+                if (isset($have[$key])) {
+                    continue; // 同じ予定がすでにある（同じ画像をもう一度読んだとき）
+                }
+                $have[$key] = true;
+                $ins->execute([$me, $s, $e, $title !== '' ? sched_ical_encrypt($title) : null]);
+                $added++;
+            }
+            $pdo->commit();
+        } catch (Throwable $e) {
+            $pdo->rollBack();
+            throw $e;
+        }
+        if ($auto) { http_response_code(204); exit; }
+        flash($added . '件の予定を追加しました');
+        redirect($back . '#ng');
     }
 
     if ($action === 'busy') {
@@ -330,6 +425,16 @@ render_header('マイスケジュール', 'tools');
     <div class="sch-sec__head">
         <h2 class="section-title section-title--card">スケジュールを編集</h2>
         <span class="info-tip" <?= tip_attr('マスをタップ・なぞって予定ありを塗る。日付をタップで1日まるごと。授業・カレンダーの予定・毎週の予定あり・決定した練習は自動で入る。自動で入った予定をタップすると、その1回分を無視できる') ?>><?= icon('info', 'icon--sm') ?></span>
+        <?php if (claude_enabled()): // カレンダーのスクリーンショットから予定を読み込む（assets/sched.js の setupPhoto）。操作ボタンなので data-tip は付けない ?>
+            <button type="button" class="icon-btn icon-btn--sm sch-photo-btn" data-photo-open aria-label="画像から読込" title="画像から読込"><?= icon('add_photo_alternate') ?></button>
+            <input type="file" accept="image/*" multiple hidden data-photo-input>
+            <!-- 読込に使うモデル（Opus = 高精度・高め / Sonnet = 標準 / Haiku = 安い）。前回選んだものを JS が覚えておく -->
+            <select class="select-sm" data-photo-model aria-label="モデル" title="モデル">
+                <?php foreach (claude_models() as $mid => $mname): ?>
+                    <option value="<?= h($mid) ?>"<?= $mid === sched_photo_default_model() ? ' selected' : '' ?>><?= h($mname) ?></option>
+                <?php endforeach; ?>
+            </select>
+        <?php endif; ?>
     </div>
     <div class="sch-weeknav">
         <?php if ($prevUrl !== null): ?><a class="icon-btn" href="<?= h($prevUrl) ?>#ng" aria-label="前の週" title="前の週"><?= icon('chevron_left') ?></a><?php else: ?><span></span><?php endif; ?>
@@ -337,7 +442,7 @@ render_header('マイスケジュール', 'tools');
         <?php if ($nextUrl !== null): ?><a class="icon-btn" href="<?= h($nextUrl) ?>#ng" aria-label="次の週" title="次の週"><?= icon('chevron_right') ?></a><?php else: ?><span></span><?php endif; ?>
     </div>
     <div class="sch-legend small muted">
-        <span><i class="sch-sw is-ng"></i>予定あり</span><span><i class="sch-sw is-class"></i>授業</span><span><i class="sch-sw is-ical"></i>カレンダー</span><span><i class="sch-sw is-weekly"></i>毎週</span><span><i class="sch-sw is-practice"></i>練習</span>
+        <span><i class="sch-sw is-ng"></i>予定あり</span><span><i class="sch-sw is-class"></i>授業</span><span><i class="sch-sw is-ical"></i>カレンダー</span><span><i class="sch-sw is-photo"></i>画像</span><span><i class="sch-sw is-weekly"></i>毎週</span><span><i class="sch-sw is-practice"></i>練習</span>
     </div>
     <div class="sch-grid-wrap" data-sched-grid></div>
     <form method="post" data-sched-grid-form>

@@ -646,10 +646,10 @@ function sched_can_manage(array $poll, array $user, array $memberIds): bool
  * 部員たちの「埋まり」と、ほかの調整の仮決定・決定を集める（sched_candidates に渡す形）
  *   $exceptPollId … いま計算している調整（自分自身の決定は埋まりにしない）
  *   戻り値: ['busy' => [member_id => [[開始, 終了, 場所キー|null, 種類, ラベル], …]], 'practices' => [...], 'campus' => [member_id => 1|2]]
- *   種類: class（授業）/ manual（手入力）/ ical / weekly（毎週の予定）/ practice（決定済みの練習）
- *   「この予定を無視」にした授業・カレンダー・毎週の予定（sched_ignore）は埋まりから外す。
+ *   種類: class（授業）/ manual（手入力）/ ical / photo（画像から読み込んだ予定）/ weekly（毎週の予定）/ practice（決定済みの練習）
+ *   「この予定を無視」にした授業・カレンダー・画像から読み込んだ予定・毎週の予定（sched_ignore）は埋まりから外す。
  *   $withIgnored = true のときは外さず、6つ目（[5]）に true を付けて残す（マイスケジュールで網掛けにするため）
- *   $titleFor … この部員の iCal の予定だけ、タイトル（暗号化して保存したもの）を復号してラベル（[4]）に入れる。
+ *   $titleFor … この部員の iCal・画像から読み込んだ予定だけ、タイトル（暗号化して保存したもの）を復号してラベル（[4]）に入れる。
  *     null（既定）なら誰の分も復号しない。他の部員の分は、指定しても絶対に復号しない（タイトルは本人にだけ見せるため）
  */
 function sched_collect_busy(PDO $pdo, array $memberIds, string $from, string $to, ?int $exceptPollId, bool $withIgnored = false, ?int $titleFor = null): array
@@ -715,12 +715,12 @@ function sched_collect_busy(PDO $pdo, array $memberIds, string $from, string $to
     $st = $pdo->prepare("SELECT member_id, start_at, end_at, source, title FROM sched_busy WHERE member_id IN ($in) AND end_at > ? AND start_at < ?");
     $st->execute([...$memberIds, sched_abs_to_dt($fromAbs), sched_abs_to_dt($toAbs)]);
     foreach ($st as $r) {
-        // タイトルは暗号化されている。復号するのは「本人の iCal の予定」だけ（他人の分は、タイトルがあっても '' のまま）
+        // タイトルは暗号化されている。復号するのは「本人の iCal・画像から読み込んだ予定」だけ（他人の分は、タイトルがあっても '' のまま）
         $label = '';
-        if ($titleFor !== null && (int)$r['member_id'] === $titleFor && (int)$r['source'] === 1 && $r['title'] !== null) {
+        if ($titleFor !== null && (int)$r['member_id'] === $titleFor && in_array((int)$r['source'], [1, 2], true) && $r['title'] !== null) {
             $label = sched_ical_decrypt($r['title']) ?? '';
         }
-        $out['busy'][(int)$r['member_id']][] = [sched_dt_to_abs($r['start_at']), sched_dt_to_abs($r['end_at']), null, (int)$r['source'] === 1 ? 'ical' : 'manual', $label];
+        $out['busy'][(int)$r['member_id']][] = [sched_dt_to_abs($r['start_at']), sched_dt_to_abs($r['end_at']), null, match ((int)$r['source']) { 1 => 'ical', 2 => 'photo', default => 'manual' }, $label]; // source: 0 = 手入力 / 1 = iCal / 2 = 画像から読込
     }
 
     // ---- ほかの調整の仮決定・決定（この部員たちが1人でも入っているもの）----
@@ -781,7 +781,7 @@ function sched_collect_busy(PDO $pdo, array $memberIds, string $from, string $to
         foreach ($out['busy'] as $mid => $list) {
             $keep = [];
             foreach ($list as $b) {
-                if (in_array($b[3], ['class', 'ical', 'weekly'], true) && isset($ignored[$mid . '|' . $b[0] . '|' . $b[1]])) {
+                if (in_array($b[3], ['class', 'ical', 'photo', 'weekly'], true) && isset($ignored[$mid . '|' . $b[0] . '|' . $b[1]])) {
                     if (!$withIgnored) {
                         continue;
                     }

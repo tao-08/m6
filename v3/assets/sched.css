@@ -3,7 +3,7 @@
  * =====================================================================
  *  角丸・文字サイズ・時間は app.css の :root のトークン（--r-* / --fs-* / --t-*）だけを使う（tests/css_tokens.php が見張っている）
  *  マスの色は「埋まりの種類」ごとに決める:
- *    NG（手入力）= アクセントの赤 / 授業 = 青 / カレンダー = 紫 / 練習 = 緑 / 仮予定の注意 = 黄の斜線
+ *    NG（手入力）= アクセントの赤 / 授業 = 青 / カレンダー = 紫 / 画像から読込 = オレンジ / 練習 = 緑 / 仮予定の注意 = 黄の斜線
  * ===================================================================== */
 
 .sch-head { display: flex; align-items: center; justify-content: space-between; gap: 8px 12px; flex-wrap: wrap; margin-bottom: 8px; }
@@ -160,7 +160,7 @@
 .sch-lbl { position: absolute; top: 1px; left: 2px; right: 2px; max-height: calc(var(--rows, 1) * 22px - 2px); white-space: normal; overflow-wrap: anywhere;
   overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: var(--lines, 1); line-clamp: var(--lines, 1); pointer-events: none; }
 .sch-grid td.is-auto { cursor: not-allowed; color: var(--text); }
-.sch-grid td.is-auto:is(.is-class, .is-ical, .is-weekly) { cursor: pointer; } /* タップで「この予定を無視」 */
+.sch-grid td.is-auto:is(.is-class, .is-ical, .is-photo, .is-weekly) { cursor: pointer; } /* タップで「この予定を無視」 */
 /* 無視した予定 = 無効。斜めの縞（透明 + 薄くなった予定色）で、ふつうの予定（ベタ塗り）と見分けがつくようにする。
    背景を薄くする opacity は使わない（縞まで薄くなって見えなくなる）。文字だけ薄くして「効いていない」感じを出す
    .is-auto も付けて詳細度を上げる: 下にある .is-class / .is-weekly などの background（まとめ書き）が、縞を打ち消してしまうため */
@@ -168,15 +168,38 @@
 /* 縞の色 = その予定の色（種類ごと）。透明の縞と、薄くなった予定色の縞の2色になる（ベタ塗りの背景は縞に置き換わる） */
 .sch-grid td.is-ignored.is-class { --ev: var(--headliner); }
 .sch-grid td.is-ignored.is-ical { --ev: var(--ba); }
+.sch-grid td.is-ignored.is-photo { --ev: var(--vn); }
 .sch-grid td.is-ignored.is-weekly { --ev: var(--accent); }
 .sch-grid td.is-ignored.is-practice { --ev: var(--ok); }
 .sch-pop { position: fixed; z-index: 50; display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); box-shadow: var(--shadow-pop); font-size: var(--fs-sm); cursor: pointer; }
 .sch-grid td.is-ng, .sch-sw.is-ng { background: color-mix(in srgb, var(--accent) 55%, transparent); }
 .sch-grid td.is-class, .sch-sw.is-class { background: color-mix(in srgb, var(--headliner) 22%, transparent); }
 .sch-grid td.is-ical, .sch-sw.is-ical { background: color-mix(in srgb, var(--ba) 22%, transparent); }
+.sch-grid td.is-photo, .sch-sw.is-photo { background: color-mix(in srgb, var(--vn) 24%, transparent); }
 .sch-grid td.is-weekly, .sch-sw.is-weekly { background: color-mix(in srgb, var(--accent) 22%, transparent); }
 .sch-grid td.is-practice, .sch-sw.is-practice { background: color-mix(in srgb, var(--ok) 28%, transparent); }
 .sch-grid td.is-warn { background-image: repeating-linear-gradient(45deg, transparent 0 4px, color-mix(in srgb, var(--warn) 30%, transparent) 4px 6px); }
+
+/* ---------- 画像から予定を読み込む（assets/sched.js の setupPhoto）---------- */
+/* 読み込み中: アイコンを隠して、同じ位置にくるくる回る輪を出す（keyframes spin は app.css） */
+.sch-photo-btn.is-busy { cursor: progress; }
+.sch-photo-btn.is-busy .icon { visibility: hidden; }
+.sch-photo-btn.is-busy::after { content: ""; position: absolute; left: 50%; top: 50%; width: 16px; height: 16px; margin: -8px 0 0 -8px; box-sizing: border-box;
+  border: 2px solid var(--surface-2); border-top-color: var(--accent); border-radius: var(--r-full); animation: spin .9s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .sch-photo-btn.is-busy::after { animation-duration: 3s; } }
+/* 確認画面: 1件 = 1行（チェック・日付・時間 の下にタイトル）。件数が多いので、一覧の中だけスクロールする */
+.sch-photo { width: min(560px, calc(100vw - 16px)); }
+.sch-photo__notes { margin: 8px 0 0; padding-left: 1.2em; }
+.sch-photo__list { display: grid; margin-top: 12px; max-height: 55vh; overflow-y: auto; }
+.sch-photo__row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 8px 0; border-bottom: 1px solid var(--border); transition: opacity var(--t-fast); }
+.sch-photo__row.is-off { opacity: .5; } /* 外した行（追加しない） */
+.sch-photo__row input[type="checkbox"] { flex: none; width: 18px; height: 18px; margin: 0; accent-color: var(--accent); cursor: pointer; }
+.sch-photo__row :is(input[type="date"], input[type="text"], select) { min-width: 0; padding: 5px 8px; border: 1px solid var(--border); border-radius: var(--r-md);
+  background: var(--surface); color: var(--text); font-size: var(--fs-sm); }
+.sch-photo__row :is(input, select)[aria-invalid="true"] { border-color: var(--danger); background: var(--danger-bg); } /* 追加できない欄（終了が無い・開始以前など） */
+.sch-photo__range { display: inline-flex; align-items: center; gap: 4px; }
+.sch-photo__title { flex: 1 1 calc(100% - 26px); margin-left: 26px; } /* 2行目 = タイトル（チェックの幅だけ右へ寄せて、日付とそろえる） */
+.sch-photo__over { margin-right: auto; color: var(--danger); }
 
 /* ---------- 毎週の NG ---------- */
 .sch-weekly-row > span { min-width: 7em; font-variant-numeric: tabular-nums; } /* 「火 18:00〜22:00」の削除ボタンの位置をそろえる */

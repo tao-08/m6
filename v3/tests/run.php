@@ -926,5 +926,32 @@ check('feed: 版が違えば別の鍵・部員が違えば別の鍵・秘密が�
 check('feed: 秘密の鍵が無ければ null', sched_feed_token(5, 0), null);
 check('ics: 改行は CRLF・カンマはエスケープ',str_contains(sched_ics(1, 'A,B', $base + 600, $base + 720, '新宿', ''), "SUMMARY:A\\,B\r\n"), true);
 
+// 画像から読み込んだ予定（AI の返事の整形・「追加」の検証）
+require_once __DIR__ . '/../lib/sched_photo.php';
+$pc = sched_photo_clean(['events' => [
+    ['date' => '2026-11-21', 'all_day' => false, 'start' => '09:10', 'end' => '10:40', 'title' => '  バイト  '],   // 開始は切り下げ・終了は切り上げ
+    ['date' => '2026-11-21', 'all_day' => false, 'start' => '09:10', 'end' => '10:40', 'title' => 'バイト'],       // 同じ予定（重なった画像）→ 1件
+    ['date' => '2026-11-20', 'all_day' => true, 'start' => '13:00', 'end' => null, 'title' => '合宿'],            // 終日は 0:00〜24:00
+    ['date' => '2026-11-22', 'all_day' => false, 'start' => '18:00', 'end' => null, 'title' => '飲み会'],         // 終了なし = null のまま
+    ['date' => '2026-02-30', 'all_day' => true, 'start' => null, 'end' => null, 'title' => '存在しない日'],       // 捨てる
+    ['date' => '2026-11-23', 'all_day' => false, 'start' => '25:00', 'end' => '26:00', 'title' => '読めない時刻'], // 時刻は null（行は残る）
+], 'notes' => ['確認してください', '', 5]]);
+check('photo: 整形（日付順・丸め・重複・終日・終了なし・不正な日付）', array_map(static fn($e) => [$e['date'], $e['all_day'], $e['start'], $e['end'], $e['title']], $pc['events']), [
+    ['2026-11-20', true, 0, 1440, '合宿'],
+    ['2026-11-21', false, 540, 660, 'バイト'],
+    ['2026-11-22', false, 1080, null, '飲み会'],
+    ['2026-11-23', false, null, null, '読めない時刻'],
+]);
+check('photo: notes は文字列だけ', $pc['notes'], ['確認してください']);
+check('photo: タイトルは100文字まで', mb_strlen(sched_photo_clean(['events' => [['date' => '2026-11-20', 'all_day' => true, 'start' => null, 'end' => null, 'title' => str_repeat('あ', 150)]], 'notes' => []])['events'][0]['title']), 100);
+check('photo: 24:00 の終了はそのまま', sched_photo_clean(['events' => [['date' => '2026-11-20', 'all_day' => false, 'start' => '23:00', 'end' => '24:00', 'title' => 'x']], 'notes' => []])['events'][0]['end'], 1440);
+$pa = ['date' => '2026-11-20', 'start' => 540, 'end' => 600, 'title' => 'バイト'];
+check('photo_add: 正しい予定は通る', sched_photo_normalize_add([$pa]), [$pa]);
+check('photo_add: 30分刻みでない・開始 >= 終了・範囲外・実在しない日付・空・文字の時刻は null', [
+    sched_photo_normalize_add([['start' => 545] + $pa]), sched_photo_normalize_add([['end' => 540] + $pa]), sched_photo_normalize_add([['end' => 1470] + $pa]),
+    sched_photo_normalize_add([['date' => '2026-13-01'] + $pa]), sched_photo_normalize_add([]), sched_photo_normalize_add([['start' => '540'] + $pa]),
+], [null, null, null, null, null, null]);
+check('photo_add: 101件は null', sched_photo_normalize_add(array_fill(0, 101, $pa)), null);
+
 echo $failed ?"\n{$failed} 件失敗\n" : "\nすべて成功\n";
 exit($failed ? 1 : 0);

@@ -48,6 +48,15 @@ function claude_usage_cost(string $model, array $u): float
     return ($in * $p['in'] + $write * $p['in'] * 1.25 + $read * $p['cache'] + $out * $p['out']) / 1e6 + $search * CLAUDE_WEB_SEARCH_USD;
 }
 
+/**
+ * 画面で選べるモデル（モデル ID => 画面に出す名前）。料金表（CLAUDE_PRICES）にあるモデルだけ
+ *   画面から送られてきたモデル名は、必ずこの一覧に無いと使わない（任意のモデル名を API に流させない）
+ */
+function claude_models(): array
+{
+    return ['claude-opus-5-5' => 'Opus', 'claude-sonnet-5-5' => 'Sonnet', 'claude-haiku-5-5' => 'Haiku'];
+}
+
 function claude_enabled(): bool
 {
     return (string)(config('anthropic')['api_key'] ?? '') !== '';
