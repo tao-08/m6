@@ -150,10 +150,9 @@
 .sch-grid thead th.is-all .sch-daychk::after { content: ''; position: absolute; left: 50%; top: 50%; width: 2.5px; height: 5px; border: solid #fff; border-width: 0 1.5px 1.5px 0; transform: translate(-50%, -60%) rotate(45deg); }
 .sch-grid thead th.is-none .sch-daychk { visibility: hidden; }
 .sch-grid thead th[data-day] { cursor: pointer; } /* 日付を押すと1日まるごと NG */
-/* 終日の予定（JS: setupGrid）。日付の下に予定名を1行で（長いと「…」、全文は title）。押すと「この予定を無視」。色は表の「カレンダー」と同じ */
-.sch-allday { display: block; width: 100%; margin-top: 2px; padding: 1px 2px; border: 0; border-radius: var(--r-xs); font: inherit; font-weight: 400; color: var(--text);
+/* 終日の予定（JS: setupGrid）。日付の下に予定名を1行で（長いと「…」、全文は押すと data-tip で出る）。予定ありには数えない。色は表の「カレンダー」と同じ */
+.sch-allday { display: block; width: 100%; margin-top: 2px; padding: 1px 2px; border-radius: var(--r-xs); font-weight: 400; color: var(--text);
   background: color-mix(in srgb, var(--ba) 22%, transparent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
-.sch-allday.is-ignored { background: repeating-linear-gradient(135deg, transparent 0 4px, color-mix(in srgb, var(--ba) 30%, transparent) 4px 8px); color: var(--muted); }
 .sch-grid tbody th { width: 40px; text-align: right; vertical-align: top; touch-action: pan-y; } /* 時刻の列はスクロールできる */
 .sch-grid td { height: 22px; border: 1px solid var(--border); border-top-style: dotted; padding: 0 2px; font-size: var(--fs-2xs); line-height: 1.1;
   overflow: hidden; white-space: nowrap; text-overflow: ellipsis; touch-action: none; cursor: pointer; transition: background var(--t-fast); }
@@ -187,11 +186,12 @@
 
 /* ---------- 画像から予定を読み込む（assets/sched.js の setupPhoto）---------- */
 /* 読み込み中: アイコンを隠して、同じ位置にくるくる回る輪を出す（keyframes spin は app.css） */
+.sch-photo-bar { margin-top: 12px; } /* 表の下の「画像から読込」とモデル */
 .sch-photo-btn.is-busy { cursor: progress; }
-.sch-photo-btn.is-busy .icon { visibility: hidden; }
-.sch-photo-btn.is-busy::after { content: ""; position: absolute; left: 50%; top: 50%; width: 16px; height: 16px; margin: -8px 0 0 -8px; box-sizing: border-box;
+.sch-photo-btn.is-busy .icon { display: none; } /* 読み込み中: アイコンの代わりに、同じ場所（文字の左）で輪が回る */
+.sch-photo-btn.is-busy::before { content: ""; flex: none; width: 16px; height: 16px; box-sizing: border-box;
   border: 2px solid var(--surface-2); border-top-color: var(--accent); border-radius: var(--r-full); animation: spin .9s linear infinite; }
-@media (prefers-reduced-motion: reduce) { .sch-photo-btn.is-busy::after { animation-duration: 3s; } }
+@media (prefers-reduced-motion: reduce) { .sch-photo-btn.is-busy::before { animation-duration: 3s; } }
 /* 確認画面: 1件 = 1行（チェック・日付・時間 の下にタイトル）。件数が多いので、一覧の中だけスクロールする */
 .sch-photo { width: min(560px, calc(100vw - 16px)); }
 .sch-photo__notes { margin: 8px 0 0; padding-left: 1.2em; }

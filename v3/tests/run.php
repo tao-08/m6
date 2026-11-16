@@ -952,6 +952,11 @@ check('photo_add: 30分刻みでない・開始 >= 終了・範囲外・実在�
     sched_photo_normalize_add([['date' => '2026-13-01'] + $pa]), sched_photo_normalize_add([]), sched_photo_normalize_add([['start' => '540'] + $pa]),
 ], [null, null, null, null, null, null]);
 check('photo_add: 101件は null', sched_photo_normalize_add(array_fill(0, 101, $pa)), null);
+// 終日の予定（予定ありに数えない）の判定: 0:00〜翌0:00（何日でも）だけ終日
+check('終日: 1日・2日は終日、時刻つき・0:00〜23:30 は違う', [
+    sched_busy_is_allday('2026-11-20 00:00:00', '2026-11-21 00:00:00'), sched_busy_is_allday('2026-11-20 00:00:00', '2026-11-22 00:00:00'),
+    sched_busy_is_allday('2026-11-20 09:00:00', '2026-11-21 00:00:00'), sched_busy_is_allday('2026-11-20 00:00:00', '2026-11-20 23:30:00'),
+], [true, true, false, false]);
 
 echo $failed ?"\n{$failed} 件失敗\n" : "\nすべて成功\n";
 exit($failed ? 1 : 0);

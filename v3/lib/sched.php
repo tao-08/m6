@@ -642,6 +642,12 @@ function sched_can_manage(array $poll, array $user, array $memberIds): bool
         || is_executive();
 }
 
+/** 終日の予定か（0:00 に始まり 0:00 に終わる。何日続いても可）。assets/sched.js の isAllDay と同じ条件 */
+function sched_busy_is_allday(string $startAt, string $endAt): bool
+{
+    return substr($startAt, 11) === '00:00:00' && substr($endAt, 11) === '00:00:00' && $endAt > $startAt;
+}
+
 /**
  * 部員たちの「埋まり」と、ほかの調整の仮決定・決定を集める（sched_candidates に渡す形）
  *   $exceptPollId … いま計算している調整（自分自身の決定は埋まりにしない）
@@ -649,6 +655,7 @@ function sched_can_manage(array $poll, array $user, array $memberIds): bool
  *   種類: class（授業）/ manual（手入力）/ ical / photo（画像から読み込んだ予定）/ weekly（毎週の予定）/ practice（決定済みの練習）
  *   「この予定を無視」にした授業・カレンダー・画像から読み込んだ予定・毎週の予定（sched_ignore）は埋まりから外す。
  *   $withIgnored = true のときは外さず、6つ目（[5]）に true を付けて残す（マイスケジュールで網掛けにするため）
+ *   終日の予定（カレンダー・画像）は予定ありに数えない。$withIgnored = true のときだけ残す（マイスケジュールで日付の下に予定名を出すため）
  *   $titleFor … この部員の iCal・画像から読み込んだ予定だけ、タイトル（暗号化して保存したもの）を復号してラベル（[4]）に入れる。
  *     null（既定）なら誰の分も復号しない。他の部員の分は、指定しても絶対に復号しない（タイトルは本人にだけ見せるため）
  */
@@ -715,6 +722,11 @@ function sched_collect_busy(PDO $pdo, array $memberIds, string $from, string $to
     $st = $pdo->prepare("SELECT member_id, start_at, end_at, source, title FROM sched_busy WHERE member_id IN ($in) AND end_at > ? AND start_at < ?");
     $st->execute([...$memberIds, sched_abs_to_dt($fromAbs), sched_abs_to_dt($toAbs)]);
     foreach ($st as $r) {
+        // 終日の予定（カレンダー・画像の 0:00〜翌0:00 の予定。「旅行」「〇〇の誕生日」など）は、予定ありとして数えない
+        //   時間の決まった予定ではないので、練習の候補を消さない。マイスケジュール（$withIgnored = true）では日付の下に予定名だけ出すので残す
+        if (!$withIgnored && in_array((int)$r['source'], [1, 2], true) && sched_busy_is_allday((string)$r['start_at'], (string)$r['end_at'])) {
+            continue;
+        }
         // タイトルは暗号化されている。復号するのは「本人の iCal・画像から読み込んだ予定」だけ（他人の分は、タイトルがあっても '' のまま）
         $label = '';
         if ($titleFor !== null && (int)$r['member_id'] === $titleFor && in_array((int)$r['source'], [1, 2], true) && $r['title'] !== null) {

@@ -465,16 +465,6 @@ render_header('マイスケジュール', 'tools');
     <div class="sch-sec__head">
         <h2 class="section-title section-title--card">スケジュールを編集</h2>
         <span class="info-tip" <?= tip_attr('マスをタップ・なぞって予定ありを塗る。日付をタップで1日まるごと。授業・カレンダーの予定・毎週の予定あり・決定した練習は自動で入る。自動で入った予定をタップすると、その1回分を無視できる') ?>><?= icon('info', 'icon--sm') ?></span>
-        <?php if (claude_enabled()): // カレンダーのスクリーンショットから予定を読み込む（assets/sched.js の setupPhoto）。操作ボタンなので data-tip は付けない ?>
-            <button type="button" class="icon-btn icon-btn--sm sch-photo-btn" data-photo-open aria-label="画像から読込" title="画像から読込"><?= icon('add_photo_alternate') ?></button>
-            <input type="file" accept="image/*" multiple hidden data-photo-input>
-            <!-- 読込に使うモデル（Opus = 高精度・高め / Sonnet = 標準 / Haiku = 安い）。前回選んだものを JS が覚えておく -->
-            <select class="select-sm" data-photo-model aria-label="モデル" title="モデル">
-                <?php foreach (claude_models() as $mid => $mname): ?>
-                    <option value="<?= h($mid) ?>"<?= $mid === sched_photo_default_model() ? ' selected' : '' ?>><?= h($mname) ?></option>
-                <?php endforeach; ?>
-            </select>
-        <?php endif; ?>
     </div>
     <div class="sch-weeknav">
         <?php if ($prevUrl !== null): ?><a class="icon-btn" href="<?= h($prevUrl) ?>#ng" aria-label="前の週" title="前の週"><?= icon('chevron_left') ?></a><?php else: ?><span></span><?php endif; ?>
@@ -491,6 +481,18 @@ render_header('マイスケジュール', 'tools');
         <input type="hidden" name="payload" value="">
         <?php if ($poll !== null): ?><input type="hidden" name="poll" value="<?= $pollId ?>"><input type="hidden" name="week" value="<?= (int)($week ?? 0) ?>"><?php else: ?><input type="hidden" name="from" value="<?= h($days[0]) ?>"><?php endif; ?>
     </form>
+    <?php if (claude_enabled()): // カレンダーのスクリーンショットから予定を読み込む（assets/sched.js の setupPhoto）。表の下。操作ボタンなので data-tip は付けない ?>
+        <div class="sch-row sch-photo-bar">
+            <button type="button" class="btn btn--sm sch-photo-btn" data-photo-open><?= icon('add_photo_alternate') ?> 画像から読込</button>
+            <input type="file" accept="image/*" multiple hidden data-photo-input>
+            <!-- 読込に使うモデル（Opus = 高精度・高め / Sonnet = 標準 / Haiku = 安い）。前回選んだものを JS が覚えておく -->
+            <select class="select-sm" data-photo-model aria-label="モデル" title="モデル">
+                <?php foreach (claude_models() as $mid => $mname): ?>
+                    <option value="<?= h($mid) ?>"<?= $mid === sched_photo_default_model() ? ' selected' : '' ?>><?= h($mname) ?></option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+    <?php endif; ?>
     <?php if ($poll !== null): ?>
         <p class="sch-answer"><a class="btn btn--ghost" href="sched_poll?id=<?= $pollId ?>"><?= icon('chevron_left') ?> 候補・回答完了へ</a></p>
     <?php endif; ?>

@@ -251,12 +251,13 @@
       th.append(el('span', 'sch-daychk')); // 押すと1日まるごと、の印（全部塗られていたら塗りつぶし）
       th.title = '1日まるごと予定あり';
       th.setAttribute('aria-label', d.md + ' 1日まるごと予定あり'); // 読み上げで日付が消えないよう、日付も入れる
-      // その日にかかる終日の予定（何日も続く予定は、その日数ぶんの見出しに出る）。押すと「この予定を無視」のポップアップ
+      // その日にかかる終日の予定（何日も続く予定は、その日数ぶんの見出しに出る）。予定ありには数えない（lib/sched.php）ので、予定名を見せるだけ
+      //   押すと予定名の全文をポップアップ（data-tip = app.js の setupTip。押しても何も実行されないラベルなので data-tip）
       data.busy.filter((b) => isAllDay(b) && b[0] < d.abs + 1440 && b[1] > d.abs).forEach((b) => {
-        const chip = el('button', 'sch-allday', b[3] || kindLabel[b[2]]);
-        chip.type = 'button';
-        chip.title = b[3] || kindLabel[b[2]]; // 「…」で切れたときに全文がわかるように
-        chip._item = b;
+        const name = b[3] || kindLabel[b[2]];
+        const chip = el('span', 'sch-allday', name);
+        chip.dataset.tip = name;
+        chip.title = ''; // 見出し（th）の title「1日まるごと予定あり」を、予定名の上では出さない
         th.append(chip);
       });
       head.append(th);
@@ -353,19 +354,18 @@
     };
     const classifyAll = () => {
       table.querySelectorAll('tbody td').forEach(classify);
-      thead.querySelectorAll('.sch-allday').forEach((chip) => chip.classList.toggle('is-ignored', !!chip._item[4])); // 無視中は縞模様
       syncDays();
     };
     classifyAll();
     table.addEventListener('click', (e) => {
-      const td = e.target.closest('td, .sch-allday'); // 終日の予定（日付の下）も、マスと同じポップアップ
+      const td = e.target.closest('td');
       if (!td?._item) return;
       e.stopPropagation();
       // ポップアップが出ているときに予定を押したら、開き直さず消す（もう一度押せば開く）
       if (pop) closePop();
       else openPop(td);
     });
-    document.addEventListener('pointerdown', (e) => { if (pop && !pop.contains(e.target) && !e.target.closest('td.is-auto, .sch-allday')) closePop(); });
+    document.addEventListener('pointerdown', (e) => { if (pop && !pop.contains(e.target) && !e.target.closest('td.is-auto')) closePop(); });
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closePop(); });
     window.addEventListener('scroll', closePop, true);
 
@@ -393,7 +393,7 @@
     // 日付の見出しを押す: その日の塗れるマスを全部塗る（もう全部塗られていたら全部消す）
     thead.addEventListener('click', (e) => {
       const th = e.target.closest('th[data-day]');
-      if (!th || e.target.closest('.sch-allday')) return; // 終日の予定名を押したときは、1日まるごと塗らない（ポップアップだけ）
+      if (!th || e.target.closest('.sch-allday')) return; // 終日の予定名を押したときは、1日まるごと塗らない（予定名のポップアップだけ）
       const day = cells.filter((td) => td.dataset.day === th.dataset.day);
       if (!day.length) return; // 塗れるマスが無い日（授業などで全部埋まっている）は何もしない
       mode = !day.every((td) => td.classList.contains('is-ng')); // 全部塗られている → 消すモード
