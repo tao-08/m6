@@ -1029,6 +1029,20 @@ const HEADLINER_SQL = 'SELECT b.live_day_id, MAX(b.play_order) AS max_order
     GROUP BY b.live_day_id, d.total_bands
     HAVING d.total_bands IS NULL OR COUNT(*) >= d.total_bands';
 
+/**
+ * 埋め込み表示（ほかのページのモーダルの <iframe> の中に出す）か。true を渡すとオンにする
+ *   オンのときは、ヘッダー（ナビ）・フッター・チュートリアルを出さない（partials/header.php・footer.php が見る）
+ *   static … 関数の中で、呼び出しをまたいで値を覚えておく変数
+ */
+function embed_mode(?bool $set = null): bool
+{
+    static $on = false;
+    if ($set !== null) {
+        $on = $set;
+    }
+    return $on;
+}
+
 /** ヘッダー（<html> 〜 <main>）を出す。$active はナビのどこを光らせるか */
 function render_header(string $title, string $active = ''): void
 {

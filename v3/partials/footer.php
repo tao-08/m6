@@ -1,4 +1,5 @@
 </main>
+<?php if (!embed_mode()): // 埋め込み表示（モーダルの <iframe> の中）では、フッター・モーダル類を出さない（チュートリアルが枠の中で開かないように） ?>
 <footer class="footer">
     <p>&copy; <?= date('Y') ?> <?= h(APP_NAME) ?> by tao__08</p>
 </footer>
@@ -20,6 +21,7 @@ if (!empty($_SESSION['user'])) {
     // 「ホーム画面に追加する」の説明。右上メニュー（スマホだけ）から開く
     require __DIR__ . '/add_to_home.php';
 }
+endif;
 ?>
 </body>
 </html>

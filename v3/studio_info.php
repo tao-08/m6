@@ -37,6 +37,16 @@ $user = require_login();
 $pdo = db();
 $canEdit = can_edit_studio(); // ログインしている人なら誰でも編集できる（変更は編集履歴に残り、復元できる）
 
+// ?embed … 日程調整の候補カード（assets/sched.js）のモーダルの <iframe> の中に出す。見るだけ（編集・履歴・削除は出さない）
+//   全ページ共通のヘッダー（lib/bootstrap.php）は「どの <iframe> の中にも出さない」なので、このときだけ「同じサイトの中なら可」に上書きする。
+//   header() は同じ名前のヘッダーを上書きする（2つ目の引数 replace が初期値 true のため）
+if (isset($_GET['embed']) && $_SERVER['REQUEST_METHOD'] === 'GET') {
+    embed_mode(true);
+    $canEdit = false;
+    header('X-Frame-Options: SAMEORIGIN');
+    header("Content-Security-Policy: frame-ancestors 'self'; base-uri 'self'; form-action 'self'; object-src 'none'");
+}
+
 $studioId = (int)($_GET['id'] ?? $_POST['studio_id'] ?? 0);
 $st = $pdo->prepare('SELECT * FROM studio WHERE studio_id = ?');
 $st->execute([$studioId]);
@@ -898,8 +908,10 @@ $rateRow = function (array $slot, string $key, bool $fixed, array $roomLines) us
 render_header($studio['name'], 'tools');
 ?>
 <link rel="stylesheet" href="<?= asset_url('assets/studio_info.css') ?>">
+<?php if (!embed_mode()): // 埋め込み表示では、パンくずと名前（モーダルの見出しに出る）を出さない ?>
 <nav class="crumbs"><a href="tools">ツール</a> / <a href="studio_list">スタジオ情報</a></nav>
-<h1 class="display display--sm"><?= h($studio['name']) ?><?php if ($studio['recommended']): ?> <span class="tag tag--rec label-inline">おすすめ</span><?php endif; ?><?php if ($studio['late_night']): ?> <span class="tag tag--night label-inline">深夜早朝</span><?php endif; ?></h1>
+<?php endif; ?>
+<h1<?= embed_mode() ? ' hidden' : '' ?> class="display display--sm"><?= h($studio['name']) ?><?php if ($studio['recommended']): ?> <span class="tag tag--rec label-inline">おすすめ</span><?php endif; ?><?php if ($studio['late_night']): ?> <span class="tag tag--night label-inline">深夜早朝</span><?php endif; ?></h1>
 
 <!-- ページ内ジャンプ（縦に長いので、各カードへ一発で飛べる。画面上部に貼り付く） -->
 <nav class="sinfo-jump" aria-label="ページ内移動">

@@ -108,7 +108,19 @@
 .sch-srow__body { flex: 1; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; } /* 1行目 = 名前、2行目 = 部屋・ピル・料金 */
 .sch-srow__cheap { font-variant-numeric: tabular-nums; }
 .sch-srow__sub { display: flex; align-items: center; justify-content: space-between; gap: 4px 10px; }
-.sch-srow__name { font-weight: 700; text-wrap: balance; } /* balance … 折り返すとき、最後の行に1文字だけ残さない（行の長さをそろえる） */
+/* 名前はボタン（押すとスタジオ情報のモーダル）。見た目は文字のまま、点線の下線で「押せる」ことを示す */
+.sch-srow__name { padding: 0; border: 0; background: none; color: inherit; font: inherit; font-weight: 700; text-align: left; cursor: pointer;
+  text-decoration: underline dotted var(--muted); text-underline-offset: 3px; text-wrap: balance; }
+.sch-srow__name:hover { color: var(--accent); text-decoration-color: currentColor; }
+/* スタジオ情報のモーダル: 見出し（名前・↗・×）+ studio_info?embed の <iframe>。画面いっぱいに近い大きさ */
+.sch-studio { width: min(760px, calc(100vw - 16px)); height: calc(100dvh - 32px); max-height: none; overflow: hidden; }
+.sch-studio[open] { display: flex; flex-direction: column; }
+.sch-studio__head { display: flex; align-items: center; gap: 4px; padding: 6px 6px 6px 16px; border-bottom: 1px solid var(--border); }
+.sch-studio__title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sch-studio__btn { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; padding: 0; border: 0; border-radius: var(--r-full);
+  background: none; color: var(--muted); cursor: pointer; }
+.sch-studio__btn:hover { background: var(--surface-2); color: var(--text); text-decoration: none; }
+.sch-studio__frame { flex: 1; width: 100%; border: 0; background: var(--bg); } /* balance … 折り返すとき、最後の行に1文字だけ残さない（行の長さをそろえる） */
 .sch-srow__price { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: flex-end; gap: 0 6px; text-align: right; }
 /* 部屋のプルダウン。<select> は app.js（setupSelectPick）が「箱（.live-pick）+ ボタン」に包むので、はみ出しを止めるのは箱のほう
    （ボタンの文字は長いと「…」で省略される）。select 自身にも同じ指定をしておく（data-native などで包まれないとき用） */

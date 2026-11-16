@@ -1186,6 +1186,8 @@ function setupBackButton() {
   const load = (k, fallback) => { try { return JSON.parse(sessionStorage.getItem(k)) ?? fallback; } catch { return fallback; } };
   const save = (k, v) => { try { sessionStorage.setItem(k, JSON.stringify(v)); } catch { /* 何もしない */ } };
   const drop = (k) => { try { sessionStorage.removeItem(k); } catch { /* 何もしない */ } };
+  // 埋め込み表示（モーダルの <iframe> の中。body.is-embed）は、戻るボタンを出さず、戻り先の記録にも入れない（外のページの戻り先が変わらないように）
+  if (document.body.classList.contains('is-embed')) return;
 
   // 次のページのために「フォームを送信した / リンクで移動した」を覚える
   document.addEventListener('submit', (e) => {

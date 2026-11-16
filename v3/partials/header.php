@@ -161,7 +161,8 @@ $nav = [
     <script src="<?= asset_url('assets/app.js') ?>" defer></script>
     <script src="<?= asset_url('assets/fx.js') ?>" defer></script><!-- 演出。app.js の「後」に動かす（defer は書いた順に動く） -->
 </head>
-<body>
+<body<?= embed_mode() ? ' class="is-embed"' : '' ?>>
+<?php if (!embed_mode()): // 埋め込み表示（モーダルの <iframe> の中）ではナビを出さない ?>
 <header class="topbar">
     <div class="topbar__inner">
         <!--
@@ -262,6 +263,7 @@ $nav = [
         <?php endif; ?>
     </div>
 </header>
+<?php endif; ?>
 <!-- お知らせ（「更新しました」など）はヘッダーの下に固定で出し、4秒で消す（assets/app.js の setupToasts） -->
 <div class="toasts" data-toasts aria-live="polite">
 <?php foreach (take_flashes() as $f): ?>

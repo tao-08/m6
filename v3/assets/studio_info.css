@@ -331,6 +331,9 @@ h1 .tag--rec, h1 .tag--night { font-size: var(--fs-sm); } /* 見出し（36px）
 .sinfo-reserve-fab:active { transform: scale(.95); }
 .sinfo-reserve-fab .icon { font-size: 22px; }
 @media (max-width: 760px) { .sinfo-reserve-fab { right: 12px; bottom: calc(76px + env(safe-area-inset-bottom)); } }
+/* 埋め込み表示（日程調整のモーダルの <iframe> の中）: 上のナビ・下のタブが無いので、貼り付く位置・浮かせる位置を詰める */
+.is-embed .sinfo-jump { top: 0; }
+.is-embed .sinfo-reserve-fab { bottom: 16px; }
 
 /* ---- 料金表: 部屋の見出しに帯・行は罫線で区切る（背景色の縞は「特別な行」に見えるので使わない）・料金を大きく ---- */
 .sinfo-sub { padding-left: 8px; border-left: 3px solid var(--accent); color: var(--text); font-size: var(--fs-md); }

@@ -390,6 +390,48 @@
     const SHOW = 3; // スタジオの行を最初に何行出すか（残りは「ほか n件」）
 
     /**
+     * スタジオ情報のモーダル（候補カードのスタジオ名を押すと開く）
+     *   中身は studio_info.php?embed（見るだけの表示）を <iframe> で出す。<dialog> は最初に開くときに1つだけ作って使い回す
+     *   見出しの ↗ は、スタジオ情報のページを別のタブで開く
+     */
+    let studioDlg = null;
+    const openStudio = (sid) => {
+      if (!studioDlg) {
+        studioDlg = el('dialog', 'modal sch-studio');
+        const head = el('div', 'sch-studio__head');
+        const title = el('strong', 'sch-studio__title');
+        const open = el('a', 'sch-studio__btn');
+        open.target = '_blank';
+        open.rel = 'noopener';
+        open.title = 'ページを開く';
+        open.setAttribute('aria-label', 'ページを開く');
+        open.append(el('span', 'icon', 'open_in_new'));
+        const close = el('button', 'sch-studio__btn');
+        close.type = 'button';
+        close.title = '閉じる';
+        close.setAttribute('aria-label', '閉じる');
+        close.append(el('span', 'icon', 'close'));
+        close.addEventListener('click', () => studioDlg.close());
+        head.append(title, open, close);
+        const frame = el('iframe', 'sch-studio__frame');
+        studioDlg.append(head, frame);
+        // 外側（背景）を押しても閉じる。<dialog> 自体が押された = 中身の外側
+        studioDlg.addEventListener('click', (e) => { if (e.target === studioDlg) studioDlg.close(); });
+        document.body.append(studioDlg);
+      }
+      const url = 'studio_info?id=' + encodeURIComponent(sid);
+      studioDlg.querySelector('.sch-studio__title').textContent = studios[sid]?.name || '';
+      studioDlg.querySelector('.sch-studio__btn').href = url;
+      const frame = studioDlg.querySelector('.sch-studio__frame');
+      frame.title = studios[sid]?.name || 'スタジオ情報';
+      if (frame.dataset.sid !== String(sid)) { // 同じスタジオなら読み直さない（スクロール位置・試算の入力が残る）
+        frame.dataset.sid = sid;
+        frame.src = url + '&embed';
+      }
+      studioDlg.showModal();
+    };
+
+    /**
      * 部屋が人数に合うか（PHP の sched_room_fit と同じ判定）
      *   'ok' / 'small' / 'unknown'（定員も広さも不明）
      */
@@ -664,7 +706,13 @@
         });
         const main = el('span', 'sch-srow__main');
         // 名前は1行目を横いっぱいに使う（部屋・ピル・料金は2行目）。右に料金があると、名前の幅が狭くなって折り返すため
-        const nameEl = el('strong', 'sch-srow__name', studios[x.s.id]?.name || '');
+        //   名前はボタン: 押すとスタジオ情報をモーダルで開く（行の選択はしない。<label> の中のボタンは、ラジオへクリックを転送しない）
+        const nameEl = el('button', 'sch-srow__name', studios[x.s.id]?.name || '');
+        nameEl.type = 'button';
+        nameEl.addEventListener('click', (e) => {
+          e.preventDefault();
+          openStudio(x.s.id);
+        });
         // ---- 部屋: 選べるのが2つ以上ならプルダウン / 1つだけなら文字 / 部屋が未登録（room = null）なら何も出さない ----
         if (x.opts.length > 1) {
           const roomSel = el('select', 'select-sm sch-srow__room');
