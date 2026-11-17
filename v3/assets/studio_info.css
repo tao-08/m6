@@ -480,6 +480,6 @@ h1 .tag--rec, h1 .tag--night { font-size: var(--fs-sm); } /* 見出し（36px）
 /* レンタルのジャンルのタブ（10個を超えたら）。行は display を持つので、hidden を効かせ直す */
 .sinfo-rent-tabs { margin-bottom: 8px; min-width: 0; scrollbar-width: none; } /* min-width: 0 = 親（grid）の幅を内容に合わせて広げさせず、はみ出す分はタブ内で横スクロール */
 .sinfo-rent-tabs::-webkit-scrollbar { display: none; }
-@media (max-width: 600px) { .sinfo-rent-tabs { gap: 2px; padding: 2px; } .sinfo-rent-tabs .tab { padding: 5px 10px; gap: 4px; font-size: var(--fs-xs); } } /* スマホはコンパクトに */
+@media (max-width: 600px) { .sinfo-rent-tabs { flex-wrap: wrap; overflow: visible; gap: 2px; padding: 2px; border-radius: var(--r-lg); } .sinfo-rent-tabs .tab { padding: 3px 8px; gap: 2px; font-size: var(--fs-xs); } .sinfo-rent-tabs .tab small { font-size: var(--fs-xs); } } /* スマホは小さくして、入らない分は2段に折り返す（赤い丸は縦の位置も追従する: app.js setupTabGlide） */
 [data-rent-genre][hidden] { display: none !important; }
 .sinfo-sim__discs .sinfo-chip[data-off] { opacity: .45; } /* 選んだ曜日で使えない割引区分 */

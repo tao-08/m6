@@ -33,7 +33,7 @@ function can_edit_studio(): bool
 const STUDIO_EQUIP_CATEGORIES = ['ギターアンプ', 'ベースアンプ', 'ドラム', 'キーボード', 'PA', 'その他'];
 
 /** レンタルのジャンル（studio_rental.genre。この順にタブを並べる）。STUDIO_RENTAL_TABS_OVER 個を超えたらタブで分ける */
-const STUDIO_RENTAL_GENRES = [1 => '楽器', 2 => 'アンプ', 3 => 'ドラム', 4 => 'キーボード', 5 => 'エフェクター', 9 => 'その他'];
+const STUDIO_RENTAL_GENRES = [1 => 'ギター・ベース', 2 => 'アンプ', 3 => 'ドラム', 4 => 'キーボード', 5 => 'エフェクター', 9 => 'その他'];
 const STUDIO_RENTAL_TABS_OVER = 10;
 
 /**
