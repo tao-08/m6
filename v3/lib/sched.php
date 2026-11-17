@@ -103,6 +103,8 @@ const SCHED_DEFAULT_FARE_GAP_MIN = 240;
 
 /** 移動時間: 乗換1回あたりに足す分（NAVITIME の乗換・待ちの平均は長めなので、区間の合計 + この分で出す。設定画面で変える） */
 const SCHED_DEFAULT_TRANSFER_MIN = 3;
+/** 取り込んだ予定の前後に付ける枠の、初期の分数（sched_profile.buf_min が NULL の人。migrations/121） */
+const SCHED_DEFAULT_BUF_MIN = 60;
 
 /** 「1人あたり何帖あれば足りるか」の目安の初期値（部屋の広さからの判定に使う） */
 const SCHED_DEFAULT_JO_PER_PERSON = 3.0;
@@ -786,13 +788,16 @@ function sched_collect_busy(PDO $pdo, array $memberIds, string $from, string $to
         $out['campus'][(int)$r['member_id']] = sched_member_campus($r['campus'] === null ? null : (int)$r['campus'], $r['entry_year'] === null ? null : (int)$r['entry_year']);
     }
 
-    // ---- 取り込んだ予定の前後に付ける枠の分数（sched_profile.buf_min。0 = 付けない）----
+    // ---- 取り込んだ予定の前後に付ける枠の分数（sched_profile.buf_min。NULL・プロフィール無し = 初期の SCHED_DEFAULT_BUF_MIN、0 = 付けない）----
     $bufMin = []; // [member_id => 分]
     try {
-        $st = $pdo->prepare("SELECT member_id, buf_min FROM sched_profile WHERE member_id IN ($in) AND buf_min > 0");
+        $st = $pdo->prepare("SELECT m.member_id, p.buf_min FROM member m LEFT JOIN sched_profile p ON p.member_id = m.member_id WHERE m.member_id IN ($in)");
         $st->execute($memberIds);
         foreach ($st as $r) {
-            $bufMin[(int)$r['member_id']] = (int)$r['buf_min'];
+            $min = $r['buf_min'] === null ? SCHED_DEFAULT_BUF_MIN : (int)$r['buf_min'];
+            if ($min > 0) {
+                $bufMin[(int)$r['member_id']] = $min;
+            }
         }
     } catch (PDOException) {
         // buf_min がまだ無い（migrations/120 を流していない）DB でも止まらないように。枠は付けない

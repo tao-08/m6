@@ -534,7 +534,7 @@ if (is_post()) {
 }
 
 /* ==================== 表示 ==================== */
-$st = $pdo->prepare('SELECT m.name, m.entry_year, p.campus, p.home_station, p.pass_to, p.pass_via, COALESCE(p.pass_on, 1) AS pass_on, COALESCE(p.buf_min, 0) AS buf_min, p.ev_title, p.ev_location, p.ev_details, p.ical_url, p.ical_fetched_at, p.ical_error, COALESCE(p.feed_version, 0) AS feed_version FROM member m LEFT JOIN sched_profile p ON p.member_id = m.member_id WHERE m.member_id = ?');
+$st = $pdo->prepare('SELECT m.name, m.entry_year, p.campus, p.home_station, p.pass_to, p.pass_via, COALESCE(p.pass_on, 1) AS pass_on, COALESCE(p.buf_min, ' . SCHED_DEFAULT_BUF_MIN . ') AS buf_min, p.ev_title, p.ev_location, p.ev_details, p.ical_url, p.ical_fetched_at, p.ical_error, COALESCE(p.feed_version, 0) AS feed_version FROM member m LEFT JOIN sched_profile p ON p.member_id = m.member_id WHERE m.member_id = ?');
 $st->execute([$me]);
 $prof = $st->fetch();
 $autoCampus = sched_member_campus(null, $prof['entry_year'] === null ? null : (int)$prof['entry_year']);
@@ -792,16 +792,6 @@ render_header('マイスケジュール', 'tools');
 <section class="card sch-sec" id="ical">
     <div class="sch-sec__head"><h2 class="section-title section-title--card">カレンダー連携</h2>
         <button type="button" class="info-tip" data-tutorial-open="ical-help" aria-label="カレンダー連携のやり方" title="カレンダー連携のやり方"><?= icon('info', 'icon--sm') ?></button></div>
-    <?php // 取り込んだ予定（iCal・Google・画像）の前後に付ける、手動と同じ「予定あり」の枠の分数（0〜120・30分刻み） ?>
-    <form method="post" class="sch-row sch-row--wrap">
-        <?= csrf_field() ?><input type="hidden" name="action" value="buf_min">
-        <?php if ($poll !== null): ?><input type="hidden" name="poll" value="<?= $pollId ?>"><?php endif; ?>
-        <span class="sch-label">連携した予定の前後にスタジオを入れない</span>
-        <select name="minutes" class="select-sm" data-autosubmit aria-label="予定の前後に付ける予定ありの枠">
-            <?php foreach (range(0, 120, 30) as $mm): ?><option value="<?= $mm ?>"<?= (int)$prof['buf_min'] === $mm ? ' selected' : '' ?>><?= $mm === 0 ? 'なし' : $mm . '分' ?></option><?php endforeach; ?>
-        </select>
-        <noscript><button class="btn btn--sm" type="submit">保存</button></noscript>
-    </form>
     <?php if ($googleOn && $g === null): // Google 連携の開始。押すと sched_google.php が Google の許可画面へ移動する（iPhone の人は、下の iCal の URL を使う） ?>
         <form method="post" action="sched_google" class="sch-row">
             <?= csrf_field() ?><input type="hidden" name="poll" value="<?= $poll !== null ? $pollId : 0 ?>">
@@ -866,6 +856,16 @@ render_header('マイスケジュール', 'tools');
             </div>
         </div>
     <?php endif; ?>
+    <?php // 取り込んだ予定（iCal・Google・画像）の前後に付ける、手動と同じ「予定あり」の枠の分数（0〜120・30分刻み）。連携の欄の下に置く ?>
+    <form method="post" class="sch-row sch-row--wrap">
+        <?= csrf_field() ?><input type="hidden" name="action" value="buf_min">
+        <?php if ($poll !== null): ?><input type="hidden" name="poll" value="<?= $pollId ?>"><?php endif; ?>
+        <span class="sch-label">連携した予定の前後にスタジオを入れない</span>
+        <select name="minutes" class="select-sm" data-autosubmit aria-label="予定の前後に付ける予定ありの枠">
+            <?php foreach (range(0, 120, 30) as $mm): ?><option value="<?= $mm ?>"<?= (int)$prof['buf_min'] === $mm ? ' selected' : '' ?>><?= $mm === 0 ? 'なし' : $mm . '分' ?></option><?php endforeach; ?>
+        </select>
+        <noscript><button class="btn btn--sm" type="submit">保存</button></noscript>
+    </form>
     <?php // 決定した練習をカレンダーに入れるときの書式（Google・購読・.ics・追加リンクの全部に効く）。{…} は押すと入力欄に入る ?>
     <?php
     // 書式のプレビュー用の見本（スタジオミュージアム 新宿店の Ast。無ければ決め打ち）。入力するたびに assets/sched.js が書式へ差し込んで表示する
