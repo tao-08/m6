@@ -753,7 +753,7 @@
         //   行は <label> なので、押すとラジオへの2回目のクリックが飛び、app.js の setupTip が「ラベル以外を押した」と見て消してしまう。
         //   ラベルでは preventDefault() で、ラジオへの転送（= 行の選択）を止める（行のほかの所を押せば選べる）
         lab.addEventListener('click', (e) => {
-          if (e.target.closest('.tag[data-tip]')) e.preventDefault();
+          if (e.target.closest('.tag[data-tip], .sch-warn[data-tip]')) e.preventDefault();
         });
         const main = el('span', 'sch-srow__main');
         // 名前は1行目を横いっぱいに使う（部屋・ピル・料金は2行目）。右に料金があると、名前の幅が狭くなって折り返すため
@@ -997,13 +997,24 @@
       const hit = same.find((f) => f.starts.includes(m)) || same[0]; // 押した時刻から始められるカードを優先
       if (!hit) return false;
       hit.setStart(m);
-      hit.day.open = true;
-      hit.card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      hit.card.classList.remove('is-focus');
-      void hit.card.offsetWidth; // アニメを最初からやり直す
-      hit.card.classList.add('is-focus');
-      hit.card.tabIndex = -1;
-      hit.card.focus({ preventScroll: true });
+      const go = () => {
+        hit.card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        hit.card.classList.remove('is-focus');
+        void hit.card.offsetWidth; // アニメを最初からやり直す
+        hit.card.classList.add('is-focus');
+        hit.card.tabIndex = -1;
+        hit.card.focus({ preventScroll: true });
+      };
+      if (hit.day.open) {
+        go();
+      } else {
+        // 閉じていた日: 開くアニメ（::details-content の高さ 0 → auto）が終わってから動かす。途中だとカードの位置がまだずれていて、ちゃんと着かない
+        hit.day.open = true;
+        let done = false;
+        const once = (e) => { if (e && e.target !== hit.day) return; if (!done) { done = true; hit.day.removeEventListener('transitionend', once); go(); } };
+        hit.day.addEventListener('transitionend', once);
+        setTimeout(once, 600); // アニメ無し（動きを減らす設定）でも動くように
+      }
       return true;
     };
     let sortKey = 'date';

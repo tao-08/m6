@@ -58,7 +58,7 @@
 .sch-grid--over td[data-tip] { cursor: help; }
 .sch-grid--over td[data-date] { cursor: pointer; }
 .sch-grid--over td.is-free, .sch-sw.is-free { background: color-mix(in srgb, var(--ok) 22%, transparent); }
-.sch-grid--over td.is-free.is-cheap, .sch-sw.is-free.is-cheap { background: color-mix(in srgb, var(--headliner) 30%, transparent); } /* 全員空きで、その日の最安の時間帯 */
+.sch-grid--over td.is-free.is-cheap, .sch-sw.is-free.is-cheap { background: repeating-linear-gradient(45deg, color-mix(in srgb, var(--headliner) 40%, transparent) 0 4px, color-mix(in srgb, var(--ok) 28%, transparent) 4px 8px); } /* 全員空きで、その日の最安の時間帯 = 緑と青の斜線の網掛け */
 .sch-grid--over td.is-n1, .sch-sw.is-n1 { background: color-mix(in srgb, var(--warn) 40%, transparent); }
 .sch-grid--over td.is-n2, .sch-sw.is-n2 { background: color-mix(in srgb, var(--accent) 45%, transparent); }
 
@@ -101,7 +101,7 @@
 .sch-cand__pills { display: flex; flex-wrap: wrap; gap: 4px; }
 .sch-cand__pills .pill { cursor: default; }
 .sch-cand__start { margin-left: auto; }
-.sch-cand .tag[data-tip], .sch-cand .pill[data-tip] { cursor: help; }
+.sch-cand :is(.tag, .pill, .sch-warn)[data-tip] { cursor: help; }
 .sch-srows { display: grid; gap: 6px; }
 .sch-srow { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--r-md); cursor: pointer;
   transition: border-color var(--t-fast), background var(--t-fast); }
