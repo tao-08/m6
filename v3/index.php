@@ -9,6 +9,10 @@
  */
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
+if (current_user() === null) { // 未ログインは説明ページ（Google 審査の「ホームページ」。ログイン画面は login へ）
+    require __DIR__ . '/partials/landing.php';
+    exit;
+}
 $user = require_login();
 
 $pdo = db();

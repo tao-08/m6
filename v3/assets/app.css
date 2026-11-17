@@ -848,6 +848,18 @@ td .tag--plan { margin-top: 4px; } /* アーティストの演奏履歴: 日付�
 [data-theme="dark"] .auth__logo .brand__logo--light { display: none; }
 [data-theme="dark"] .auth__logo .brand__logo--dark { display: block; }
 .auth__card { display: grid; gap: 14px; padding: 28px; }
+/* 未ログインのトップ（partials/landing.php）。Google 審査用のサービス説明 */
+.landing { display: grid; gap: 32px; max-width: 960px; margin: 0 auto; }
+.landing__hero { display: grid; justify-items: start; gap: 16px; padding-top: 24px; }
+.landing__lead { margin: 0; font-size: var(--fs-xl); line-height: 1.7; }
+.landing__cta { display: flex; flex-wrap: wrap; gap: 10px; }
+.landing__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+.landing__grid h2 { display: flex; align-items: center; gap: 6px; font-size: var(--fs-lg); margin: 0 0 8px; }
+.landing__grid p { margin: 0 0 8px; line-height: 1.7; }
+.landing__shots { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+.landing__shots figure { margin: 0; display: grid; gap: 6px; }
+.landing__shots img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: var(--r-lg); }
+
 .auth__card h2 { font-size: var(--fs-2xl); font-weight: 800; }
 .field { display: grid; align-content: start; gap: 6px; font-size: var(--fs-sm); font-weight: 600; color: var(--muted); }
 /* align-content: start … 同じ行のほかの欄が高くなっても（下に注意文が出たときなど）、ラベルと入力欄は伸ばさず上に詰める */
