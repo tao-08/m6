@@ -669,7 +669,8 @@ if (!empty($poll['live_id'])) {
     <?php endif; ?>
     <section class="sch-cands" data-sched-cands>
         <div class="sch-cands__head">
-            <h2 class="section-title">候補 <small class="muted"><?= count(array_unique(array_column($windows, 'date'))) ?>日</small></h2>
+            <h2 class="section-title">候補 <small class="muted"><?= count(array_unique(array_column($windows, 'date'))) ?>日</small>
+                <span class="info-tip" <?= tip_attr('交通費はメンバー全員の定期外運賃の合計、時間はメンバー内で最も遠い人の所要時間が表示されています。') ?>><?= icon('info', 'icon--sm') ?></span></h2>
             <div class="tabs tabs--filter sch-sort" role="tablist" data-sched-sort>
                 <button type="button" class="tab is-active" data-sort="date">日付順</button>
                 <button type="button" class="tab" data-sort="best">おすすめ順</button>
