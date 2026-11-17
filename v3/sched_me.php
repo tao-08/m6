@@ -551,12 +551,14 @@ $today = date('Y-m-d');
 //   授業期間の中ならその学期、夏休みなら秋、それ以外（冬〜春休み）は春（日曜・祝日でも学期は学期なので、sched_term_of は使わない）
 $curTerm = ($today >= $settings['terms'][2][0] && $today <= $settings['terms'][2][1]) || ($today > $settings['terms'][1][1] && $today < $settings['terms'][2][0]) ? 2 : 1;
 
-// ---- NG 枠の範囲（7日ずつ）----
+// ---- NG 枠の範囲（月曜〜日曜の7日ずつ。表の左端は月曜）----
+$mondayOf = static fn(string $d): string => date('Y-m-d', strtotime($d . ' -' . ((int)date('N', strtotime($d)) - 1) . ' day')); // date('N') … 月曜 = 1 〜 日曜 = 7
 if ($poll !== null) {
     $all = sched_dates(max((string)$poll['date_from'], $today), (string)$poll['date_to']);
     if (!$all) {
         $all = sched_dates((string)$poll['date_from'], (string)$poll['date_to']);
     }
+    $all = $all ? sched_dates($mondayOf($all[0]), date('Y-m-d', strtotime($mondayOf($all[count($all) - 1]) . ' +6 day'))) : []; // 最初の週は月曜から、最後の週は日曜まで（調整の期間の外の日も、その週の中なら出る）
     $week = max(0, min((int)($_GET['week'] ?? 0), intdiv(count($all) - 1, 7)));
     $days = array_slice($all, $week * 7, 7);
     $ws = (int)$poll['day_start'];
@@ -565,7 +567,7 @@ if ($poll !== null) {
     $nextUrl = ($week + 1) * 7 < count($all) ? 'sched_me?poll=' . $pollId . '&week=' . ($week + 1) : null;
 } else {
     $from = (string)($_GET['from'] ?? $today);
-    $from = preg_match('/^\d{4}-\d{2}-\d{2}$/', $from) && strtotime($from) ? date('Y-m-d', strtotime($from)) : $today;
+    $from = $mondayOf(preg_match('/^\d{4}-\d{2}-\d{2}$/', $from) && strtotime($from) ? date('Y-m-d', strtotime($from)) : $today); // その日を含む週の月曜から
     $days = sched_dates($from, date('Y-m-d', strtotime($from . ' +6 day')));
     $ws = 540;
     $we = 1440;
