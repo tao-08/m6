@@ -4,7 +4,8 @@
  *  1. 地図（#studio-map）… Leaflet で OpenStreetMap を出し、#studio-pins の JSON からピンを立てる
  *  2. 座標の取得（[data-geo-lookup]）… 住所 → 緯度・経度（国土地理院の住所検索 API）
  *  3. 料金シミュレーション（#studio-sim）… 入力が変わるたびに合計・1人あたり・内訳・パック・+1時間延長を計算して表示
- *  4. ✨AIで入力（#studio-ai）… AI の提案をプレビューして、反映する項目を選ぶ
+ *  4. ✨AI（#studio-ai）… タブ「AIで検索」（ウェブ検索・画像で調べる）／「AIで編集」（今のデータを指示どおりに書き換える）。
+ *       どちらも AI の提案をプレビュー（編集は今との差を 旧 → 新 で出す）して、反映する項目を選ぶ
  *  5. ＋／－ボタン（[data-step]）… 数字入力をタッチで増減（シミュレーションの人数・一覧の広さ）
  *  6. 広さの絞り込み（#studio-filter）… 一覧のカードと地図のピンを「N帖以上の部屋がある店」だけにする
  *  7. 部屋のチェック欄（.sinfo-chips）… 「全部屋」と個別の部屋を同時に選ばせない
@@ -447,8 +448,8 @@
   };
 
   // ===================================================================
-  //  4. ✨AIで入力（幹部と管理者）
-  //     api_studio_ai.php に頼む → 提案をプレビュー → 項目ごとにチェックして「反映」（studio_info.php の apply_ai）
+  //  4. ✨AI（AIで検索 / AIで編集。編集できる人）
+  //     api_studio_ai.php に頼む（検索 = 既定 / 編集 = mode=edit + instruction）→ 提案をプレビュー → 項目ごとにチェックして「反映」（studio_info.php の apply_ai）
   //     提案の中身はサーバーのセッションにあるので、ここから送るのは「どの項目を使うか」のチェックだけ
   // ===================================================================
   const setupAi = () => {
@@ -483,18 +484,124 @@
       equipment: (p) => p.equipment.map((r) => (r.rooms.length ? r.rooms.join('・') + ' ' : '') + r.category + ': ' + r.model_name + (r.quantity !== 1 ? ' × ' + r.quantity : '')),
     };
 
+    // ---- 「AIで編集」のプレビュー: 今の内容（current）と提案を比べて、変わったところだけを出す ----
+    //   提案の中身はサーバーが「本当に変わった項目」だけに絞ってある（lib/studio_ai.php の studio_ai_edit）。ここでは項目の中の行を比べる
+
+    /** 行を「並びに関係なく比べられる」文字列にする（サーバーの studio_ai_row_keys と同じ考え方）。部屋名は並べ替え、キーの順も固定する */
+    const canon = (row) => JSON.stringify(row, (k, v) => {
+      if (Array.isArray(v) && k === 'rooms') return [...v].sort();
+      if (v && typeof v === 'object' && !Array.isArray(v)) return Object.fromEntries(Object.keys(v).sort().map((x) => [x, v[x]])); // キーを並べ替えた新しい物に
+      return v;
+    });
+    /** 行の「同じ所」の目印。今の行と提案の行を、価格など以外が同じもの同士で組にして「旧 → 新」と出すため */
+    const rooms_ = (r) => [...r.rooms].sort().join(',');
+    const SAME_SLOT = {
+      rates: (r) => [rooms_(r), r.people, r.day_type, r.start_min, r.end_min].join('|'),
+      packs: (r) => [r.name, rooms_(r), r.people, r.day_type, r.start_min, r.end_min].join('|'),
+      rentals: (r) => r.name,
+      equipment: (r) => [r.category, r.model_name, rooms_(r)].join('|'),
+    };
+    /** 1行の文字（検索のプレビューと同じ書き方） */
+    const lineOf = (key, row) => LINES[key]({ [key]: [row] })[0];
+
+    /**
+     * 料金・パック・レンタル・機材（丸ごと置き換え）の差: 並びを無視して行を数え合わせる
+     *   戻り値: items = 変わった行 [{ old, now }]（旧だけ = 削除 / 新だけ = 追加 / 両方 = 変更）, same = 変わらない行
+     */
+    const diffRows = (key, cur, prop) => {
+      const left = new Map(); // 今の行: 目印 → [行, …]（同じ行が2つあれば2つ入る）
+      cur.forEach((r) => { const k = canon(r); left.set(k, [...(left.get(k) || []), r]); });
+      const added = [];
+      const same = [];
+      prop.forEach((r) => {
+        const q = left.get(canon(r));
+        if (q && q.length) { q.shift(); same.push(r); } else added.push(r);
+      });
+      // 今にしか無い行（= 削除か、変更の「旧」）。同じ所の追加行があれば組にする
+      const pool = new Map();
+      [...left.values()].flat().forEach((r) => { const k = SAME_SLOT[key](r); pool.set(k, [...(pool.get(k) || []), r]); });
+      const items = added.map((r) => ({ old: pool.get(SAME_SLOT[key](r))?.shift() ?? null, now: r }));
+      [...pool.values()].flat().forEach((r) => items.push({ old: r, now: null }));
+      return { items, same };
+    };
+
+    /** 項目ごとの差 → { items: [{ head, old, now }]（文字）, same: [文字] }。old だけ = 削除 / now だけ = 追加 */
+    const editDiff = (key, p) => {
+      const cur = p.current?.[key];
+      if (key === 'info') {
+        const items = Object.keys(INFO).filter((k) => p.info[k]).map((k) => ({ head: INFO[k], old: cur?.[k] || null, now: p.info[k], plain: true }));
+        return { items, same: [] };
+      }
+      if (key === 'rooms' || key === 'discounts') {
+        // 提案にあるのは新しい行と値が変わった行だけ（部屋・区分は削除できない）。同じ名前の今の行があれば、空の欄は今の値で補って「旧 → 新」にする
+        const items = p[key].map((r) => {
+          const c = (cur || []).find((x) => x.name === r.name);
+          // 空の欄（null）は「変えない」なので、今の値で補ってから「旧 → 新」にする
+          const now = c ? Object.fromEntries(Object.entries(r).map(([k, v]) => [k, v == null ? c[k] : v])) : r;
+          return { old: c ? lineOf(key, c) : null, now: lineOf(key, now) };
+        });
+        return { items, same: [] };
+      }
+      const d = diffRows(key, cur || [], p[key]);
+      return {
+        items: d.items.map((it) => ({ old: it.old ? lineOf(key, it.old) : null, now: it.now ? lineOf(key, it.now) : null })),
+        same: d.same.map((r) => lineOf(key, r)),
+      };
+    };
+
+    /** 差の <li>: 旧 → 新（旧は取り消し線）/ 追加（新だけ）/ 削除（旧だけ）。文字は textContent で入れる（XSS 対策） */
+    const diffItem = (it) => {
+      const li = el('li');
+      if (it.head) li.append(document.createTextNode(it.head + ': '));
+      if (it.old && it.now) {
+        li.append(el('span', 'sinfo-ai__old', it.old), document.createTextNode(' → '), el('span', 'sinfo-ai__new', it.now));
+      } else if (it.now) {
+        if (!it.plain) li.append(el('span', 'sinfo-ai__tag', '追加'));
+        li.append(el('span', 'sinfo-ai__new', it.now));
+      } else {
+        li.append(el('span', 'sinfo-ai__tag', '削除'), el('span', 'sinfo-ai__old', it.old));
+      }
+      return li;
+    };
+
     const show = (p, yenUsed) => {
       body.replaceChildren();
-      if (!p.found) {
+      const edit = p.edit === true; // 編集の提案か（changed の項目だけを、今との差で出す）
+      if (!p.found && !edit) {
         body.append(el('p', 'sinfo-sim__warn', '情報が見つかりませんでした。サイトの URL を入れてから試すと見つかりやすくなります'));
       }
       let any = false;
       Object.keys(SECTIONS).forEach((key) => {
-        const lines = LINES[key](p);
-        if (!lines.length) return; // 提案が無い項目は出さない（反映もできない）
+        let count;
+        let content;
+        if (edit) {
+          if (!(p.changed || []).includes(key)) return;
+          const d = editDiff(key, p);
+          if (!d.items.length) return;
+          count = d.items.length;
+          content = el('div');
+          const ul = el('ul', 'sinfo-plain sinfo-ai__lines');
+          d.items.forEach((it) => ul.append(diffItem(it)));
+          content.append(ul);
+          if (d.same.length) { // 変わらない行は畳んでおく（数だけ見せる）
+            const same = el('details', 'sinfo-ai__same');
+            same.append(el('summary', 'muted small', '変更なし ' + d.same.length + '件'));
+            const sul = el('ul', 'sinfo-plain sinfo-ai__lines');
+            d.same.forEach((t) => sul.append(el('li', '', t)));
+            same.append(sul);
+            content.append(same);
+          }
+        } else {
+          const lines = LINES[key](p);
+          if (!lines.length) return; // 提案が無い項目は出さない（反映もできない）
+          count = lines.length;
+          content = el('ul', 'sinfo-plain sinfo-ai__lines');
+          lines.forEach((t) => content.append(el('li', '', t)));
+        }
         any = true;
         // <details> で畳む。見出しのチェックボックスが「この項目を反映するか」
         const d = el('details', 'sinfo-ai__sec');
+        if (edit) d.open = true; // 編集は変わった所を見て確かめるので、最初から開く
         const sum = el('summary');
         const label = el('label', 'sinfo-check');
         const cb = el('input');
@@ -505,10 +612,8 @@
         label.append(cb, document.createTextNode(' ' + SECTIONS[key]));
         const chev = el('span', 'icon togglecard__chevron', 'expand_more'); // 開閉の印は、サイト共通の ⌄（PHP の icon() と同じ作り）
         chev.setAttribute('aria-hidden', 'true');
-        sum.append(label, el('span', 'muted small', lines.length + '件'), chev);
-        const ul = el('ul', 'sinfo-plain sinfo-ai__lines');
-        lines.forEach((t) => ul.append(el('li', '', t)));
-        d.append(sum, ul);
+        sum.append(label, el('span', 'muted small', count + '件'), chev);
+        d.append(sum, content);
         body.append(d);
       });
       if (p.caution) body.append(el('p', 'sinfo-sim__warn', p.caution));
@@ -601,17 +706,38 @@
     // 貼り付け（Ctrl+V / スクリーンショット）。入力欄への文字の貼り付けは邪魔しない（画像があるときだけ受け取る）
     document.addEventListener('paste', (e) => {
       const files = [...(e.clipboardData?.files || [])].filter((f) => f.type.startsWith('image/'));
-      if (!files.length) return;
+      if (!files.length || box.querySelector('[data-ai-panel="search"]').hidden) return; // 編集のタブでは画像を使わないので、貼り付けは受け取らない
       e.preventDefault();
       addImages(files);
     });
 
-    btn.addEventListener('click', async () => {
+    // ---- タブ（AIで検索 / AIで編集）----
+    //   選択中のタブに .is-active、もう一方の中身は hidden。赤い丸の動きは app.js の setupTabGlide が .tabs に自動で付ける
+    //   リクエストの最中に切り替えてもよい（結果は届いたらプレビューに出る）
+    const tabButtons = [...box.querySelectorAll('[data-ai-tab]')];
+    const panels = [...box.querySelectorAll('[data-ai-panel]')];
+    tabButtons.forEach((tab) => {
+      tab.addEventListener('click', () => {
+        tabButtons.forEach((t) => {
+          t.classList.toggle('is-active', t === tab);
+          t.setAttribute('aria-selected', String(t === tab));
+        });
+        panels.forEach((p) => { p.hidden = p.dataset.aiPanel !== tab.dataset.aiTab; });
+      });
+    });
+
+    // ---- 実行（検索 / 編集 共通）----
+    //   mode 'search' … ウェブ検索（か画像）で調べる / 'edit' … 今のデータを指示どおりに書き換える
+    //   どちらも同じ API（api_studio_ai.php）に送り、同じプレビュー（show）に出す。待っている間は両方の実行ボタンを止める
+    const editBtn = box.querySelector('[data-ai-edit-run]');
+    const instruction = box.querySelector('[data-ai-instruction]');
+    const run = async (mode) => {
       btn.disabled = true;
+      editBtn.disabled = true;
       form.hidden = true;
       // 待ち時間（数十秒〜1分）を秒で見せる。setInterval = 決まった間隔でくり返し実行
       const t0 = Date.now();
-      const verb = images.length ? '読んでいます' : '調べています'; // 画像があれば画像だけを読む（検索しない）
+      const verb = mode === 'edit' ? '編集しています' : images.length ? '読んでいます' : '調べています'; // 画像があれば画像だけを読む（検索しない）
       const tick = () => { status.textContent = verb + '… ' + Math.round((Date.now() - t0) / 1000) + '秒'; };
       tick();
       const timer = setInterval(tick, 1000);
@@ -621,19 +747,27 @@
         const fd = new FormData();
         fd.append('studio_id', box.dataset.studioId);
         fd.append('model', box.querySelector('[data-ai-model]').value);
-        const picked = [...box.querySelectorAll('[data-ai-section]:checked')];
-        if (!picked.length) throw new Error('調べる項目を選んでください');
-        picked.forEach((c) => fd.append('sections[]', c.value));
-        if (box.querySelector('[data-ai-official]')?.checked) fd.append('source', 'official');
-        const extra = box.querySelector('[data-ai-extra]')?.value.trim();
-        if (extra) fd.append('extra', extra);
-        images.forEach((it) => fd.append('images[]', it.file, it.file.name));
+        if (mode === 'edit') {
+          const text = instruction.value.trim();
+          if (!text) throw new Error('指示を入力してください');
+          fd.append('mode', 'edit');
+          fd.append('instruction', text);
+        } else {
+          const picked = [...box.querySelectorAll('[data-ai-section]:checked')];
+          if (!picked.length) throw new Error('調べる項目を選んでください');
+          picked.forEach((c) => fd.append('sections[]', c.value));
+          if (box.querySelector('[data-ai-official]')?.checked) fd.append('source', 'official');
+          const extra = box.querySelector('[data-ai-extra]')?.value.trim();
+          if (extra) fd.append('extra', extra);
+          images.forEach((it) => fd.append('images[]', it.file, it.file.name));
+        }
         const res = await fetch('api_studio_ai', {
           method: 'POST',
           headers: { 'X-CSRF-Token': box.dataset.csrf },
           body: fd,
         });
         const data = await res.json().catch(() => ({ error: 'サーバーの返事を読めませんでした' }));
+        // 編集で何も変わらないとき（422）は、失敗ではなく「変更なし」のお知らせ。サーバーのメッセージをそのまま見せる
         if (!res.ok || !data.ok) throw new Error(data.error || 'HTTP ' + res.status);
         show(data.proposal, data.yen);
       } catch (e) {
@@ -641,6 +775,16 @@
       } finally {
         clearInterval(timer);
         btn.disabled = false;
+        editBtn.disabled = false;
+      }
+    };
+    btn.addEventListener('click', () => run('search'));
+    editBtn.addEventListener('click', () => run('edit'));
+    // 指示の入力欄: Ctrl（Mac は Cmd）+ Enter で実行。日本語入力の変換中の Enter（isComposing）は無視する
+    instruction.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !e.isComposing && !editBtn.disabled) {
+        e.preventDefault();
+        editBtn.click();
       }
     });
   };

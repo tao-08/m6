@@ -21,7 +21,8 @@
  *      エラーの flash があれば出し、表示の部分（カードの読み取り用の表示）を差し替える。X-Autosave: 1 のヘッダーが「自動保存の POST」の目印
  *    ・履歴: 自動保存は打つたびに走るので、同じ人が同じ操作で続けた分は 10 分のあいだ1行にまとめる（studio_history_watch の $auto）
  *
- *  ✨AIで入力（ログインしている人なら誰でも）: api_studio_ai.php が調べた提案をプレビューし、選んだ項目を apply_ai で反映（lib/studio_ai.php）
+ *  ✨AI（ログインしている人なら誰でも）: 基本情報の「編集」の先頭に、タブ「AIで検索」「AIで編集」を置く。どちらも api_studio_ai.php が提案を作り、
+ *    プレビューで選んだ項目を apply_ai で反映する（lib/studio_ai.php）。検索 = ウェブ検索（か画像）で調べて埋める / 編集 = 今のデータを指示どおりに書き換える（変わる項目だけ出る）
  *  POST は10種類（action）。どれも 権限確認 → CSRF 検証 → 入力検証 → プリペアドステートメント → リダイレクト。
  *    save_info / save_rooms / save_discounts / save_rates / save_packs / save_rentals / save_equipment / apply_ai / delete_studio / restore_history
  *    ・料金表とパックには「対象」がある: バンド（people = NULL）か、個人練習 n人（people = n）
@@ -983,34 +984,49 @@ render_header($studio['name'], 'tools');
     <details class="sinfo-edit">
         <summary><?= icon('edit') ?> 編集</summary>
         <?php if ($canEdit && claude_enabled()): ?>
-        <!-- ✨AIで入力（編集できる人 = ログインしていれば誰でも）。基本情報の「編集」を開いたときだけ見える。結果のプレビューは JS が #studio-ai-result に作る -->
+        <!-- AIで検索 / AIで編集（編集できる人 = ログインしていれば誰でも）。基本情報の「編集」を開いたときだけ見える。結果のプレビューは JS が #studio-ai-result に作る -->
         <div class="sinfo-ai" id="studio-ai" data-studio-id="<?= $studioId ?>" data-csrf="<?= h(csrf_token()) ?>" data-max-images="<?= AI_MAX_IMAGES ?>">
             <div class="sinfo-ai__head">
-                <button type="button" class="btn btn--sm" data-ai-run><?= icon('auto_awesome') ?> AIで入力</button>
-                <!-- モデル（Opus = 高精度・高め / Sonnet = 標準 / Haiku = 安い）。初期は config.php の設定値。このボックスは編集できる人にしか出ない -->
+                <!-- モデル（Opus = 高精度・高め / Sonnet = 標準 / Haiku = 安い）。検索・編集で共通。初期は config.php の設定値。このボックスは編集できる人にしか出ない -->
                 <select data-ai-model aria-label="モデル" title="モデル">
                     <?php foreach (studio_ai_models() as $mid => $mname): ?>
                         <option value="<?= h($mid) ?>"<?= $mid === studio_ai_default_model() ? ' selected' : '' ?>><?= h($mname) ?></option>
                     <?php endforeach; ?>
                 </select>
-                <!-- 画像（料金表のスクリーンショット・パンフレットの写真など）。選ぶ・貼り付け（Ctrl+V）で最大 <?= AI_MAX_IMAGES ?> 枚。付けると画像だけを読む（ウェブ検索なし） -->
-                <button type="button" class="btn btn--sm" data-ai-pick title="画像を追加（貼り付けもOK）"><?= icon('add_photo_alternate') ?></button>
-                <input type="file" accept="image/*" multiple hidden data-ai-files>
                 <span class="muted small" data-ai-status></span>
             </div>
-            <!-- 調べる項目（チェックした項目だけ AI に頼む。少ないほど速く・安く・正確）と、検索元（公式サイトのみ = 公式・予約ページのドメインに限定） -->
-            <div class="sinfo-ai__scope">
-                <?php foreach (STUDIO_AI_SECTIONS as $key => $label): ?>
-                    <label class="sinfo-chip"><input type="checkbox" value="<?= h($key) ?>" data-ai-section checked><?= h($label) ?></label>
-                <?php endforeach; ?>
-                <label class="sinfo-chip"><input type="checkbox" data-ai-official<?= $studio['website_url'] || $studio['reserve_url'] ? '' : ' disabled' ?>>公式のみ</label>
+            <!-- 使い方の切り替え。タブの赤い丸の動きは app.js の setupTabGlide が付ける。切り替えは JS（studio_info.js の setupAi）。待っている間に切り替えてもよい -->
+            <div class="tabs tabs--static sinfo-ai__tabs" role="tablist" aria-label="AIの使い方">
+                <button type="button" class="tab is-active" role="tab" aria-selected="true" data-ai-tab="search">AIで検索</button>
+                <button type="button" class="tab" role="tab" aria-selected="false" data-ai-tab="edit">AIで編集</button>
             </div>
-            <!-- 追加指示（任意）。アイコンで開閉。毎回入力（保存しない） -->
-            <details class="ai-extra">
-                <summary class="btn btn--sm" aria-label="追加指示" title="追加指示"><?= icon('edit_note') ?></summary>
-                <textarea data-ai-extra rows="2" maxlength="500" aria-label="追加指示"></textarea>
-            </details>
-            <div class="sinfo-ai__thumbs" data-ai-thumbs hidden></div>
+            <!-- AIで検索: ウェブ検索（または画像）で調べて、空欄を埋める提案を作る -->
+            <div class="sinfo-ai__panel" data-ai-panel="search">
+                <!-- 調べる項目（チェックした項目だけ AI に頼む。少ないほど速く・安く・正確）と、検索元（公式サイトのみ = 公式・予約ページのドメインに限定） -->
+                <div class="sinfo-ai__scope">
+                    <?php foreach (STUDIO_AI_SECTIONS as $key => $label): ?>
+                        <label class="sinfo-chip"><input type="checkbox" value="<?= h($key) ?>" data-ai-section checked><?= h($label) ?></label>
+                    <?php endforeach; ?>
+                    <label class="sinfo-chip"><input type="checkbox" data-ai-official<?= $studio['website_url'] || $studio['reserve_url'] ? '' : ' disabled' ?>>公式のみ</label>
+                </div>
+                <div class="sinfo-ai__tools">
+                    <!-- 画像（料金表のスクリーンショット・パンフレットの写真など）。選ぶ・貼り付け（Ctrl+V）で最大 <?= AI_MAX_IMAGES ?> 枚。付けると画像だけを読む（ウェブ検索なし） -->
+                    <button type="button" class="btn btn--sm" data-ai-pick title="画像を追加（貼り付けもOK）" aria-label="画像を追加"><?= icon('add_photo_alternate') ?></button>
+                    <input type="file" accept="image/*" multiple hidden data-ai-files>
+                    <!-- 追加指示（任意）。開閉。毎回入力（保存しない） -->
+                    <details class="ai-extra">
+                        <summary class="btn btn--sm"><?= icon('edit_note') ?> プロンプトを入力</summary>
+                        <textarea data-ai-extra rows="2" maxlength="500" aria-label="追加指示"></textarea>
+                    </details>
+                </div>
+                <div class="sinfo-ai__thumbs" data-ai-thumbs hidden></div>
+                <div><button type="button" class="btn btn--primary btn--sm" data-ai-run><?= icon('auto_awesome') ?> 検索</button></div>
+            </div>
+            <!-- AIで編集: 今の登録データを AI に渡し、指示どおりに書き換えた提案を作る（変わる項目だけプレビューに出る） -->
+            <div class="sinfo-ai__panel" data-ai-panel="edit" hidden>
+                <textarea data-ai-instruction rows="3" maxlength="500" placeholder="平日の料金を全部100円上げる" aria-label="編集の指示"></textarea>
+                <div><button type="button" class="btn btn--primary btn--sm" data-ai-edit-run><?= icon('auto_fix_high') ?> 編集</button></div>
+            </div>
             <form method="post" class="sinfo-ai__result" id="studio-ai-result" hidden
                 data-confirm="選んだ項目を AI の結果で置き換えます（料金・パック・レンタル・機材は今の行が削除されます）。よろしいですか？">
                 <?= csrf_field() ?>

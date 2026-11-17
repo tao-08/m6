@@ -1109,5 +1109,59 @@ check('終日: 1日・2日は終日、時刻つき・0:00〜23:30 は違う', [
     sched_busy_is_allday('2026-11-20 09:00:00', '2026-11-21 00:00:00'), sched_busy_is_allday('2026-11-20 00:00:00', '2026-11-20 23:30:00'),
 ], [true, true, false, false]);
 
+echo "studio ai edit\n";
+require_once __DIR__ . '/../lib/studio_ai.php';
+// 今のデータ（DB から書き出した形）を作る。25:00〜29:00 の古い書き方・部屋ごとに分かれた同じ料金・名前に「／」を含むレンタルを入れておく
+$sc = [
+    'found' => true, 'info' => ['address' => '東京都千代田区1-1', 'access' => '神保町駅 徒歩3分'],
+    'rooms' => [['name' => '1st', 'area_jo' => 12.0, 'size_note' => null], ['name' => '2st', 'area_jo' => null, 'size_note' => '2階']],
+    'discounts' => [['name' => '学割', 'day_type' => 1]],
+    'rates' => [
+        ['rooms' => ['1st'], 'people' => null, 'day_type' => 1, 'start_min' => 600, 'end_min' => 1080, 'price' => 2000, 'discounts' => ['学割' => 1800]],
+        ['rooms' => ['2st'], 'people' => null, 'day_type' => 1, 'start_min' => 600, 'end_min' => 1080, 'price' => 2000, 'discounts' => ['学割' => 1800]],
+        ['rooms' => [], 'people' => 1, 'day_type' => 0, 'start_min' => 1500, 'end_min' => 1740, 'price' => 900, 'discounts' => []],
+    ],
+    'packs' => [['name' => '深夜', 'rooms' => ['1st', '2st'], 'people' => null, 'day_type' => 0, 'start_min' => 1380, 'end_min' => 2040, 'price' => 4000, 'discounts' => [], 'minutes' => null]],
+    'rentals' => [['name' => 'エレキギター／ベース', 'price' => 140, 'per_hour' => 1]],
+    'equipment' => [['rooms' => ['1st'], 'category' => 'ドラム', 'model_name' => 'Pearl Export', 'quantity' => 1]],
+    'sources' => [], 'caution' => null,
+];
+$sh = studio_ai_to_schema($sc);
+check('AI編集: 同じ料金の部屋は1行にまとめて AI に見せる', [count($sh['rates']), $sh['rates'][0]['rooms']], [2, ['1st', '2st']]);
+check('AI編集: 時刻は HH:MM・古い25:00は1:00・日またぎは終了が前・バンドは target 0', [$sh['rates'][1]['start'], $sh['rates'][1]['end'], $sh['rates'][1]['target'], $sh['packs'][0]['start'], $sh['packs'][0]['end'], $sh['rates'][0]['target']], ['01:00', '05:00', 1, '23:00', '10:00', 0]);
+check('AI編集: 空の欄は空文字・0（null は使わない）', [$sh['info']['phone'], $sh['rooms'][1]['area_jo'], $sh['rooms'][0]['size_note'], $sh['packs'][0]['minutes']], ['', 0.0, '', 0]);
+$cur = studio_ai_normalize($sh, true);
+check('AI編集: 今のデータは normalize を通すと部屋ごとの行に戻る', count($cur['rates']), 3);
+check('AI編集: 「／」入りのレンタル名は分けない（keepNames）', [count($cur['rentals']), count(studio_ai_normalize($sh)['rentals'])], [1, 2]);
+$ai = $sh + ['found' => true, 'sources' => [], 'caution' => '', 'changed' => ['info', 'rooms', 'discounts', 'rates', 'packs', 'rentals', 'equipment']];
+$diff = fn(array $a, array $claimed) => array_keys(studio_ai_edit_diff($cur, studio_ai_normalize($a, true), $claimed, ['学割' => true], $a));
+check('AI編集: 何も変えていなければ、変更なし', $diff($ai, $ai['changed']), []);
+$a2 = $ai;
+$a2['rates'][0]['price'] = 2100;
+check('AI編集: 料金を変えたら rates だけ変わる', $diff($a2, ['rates']), ['rates']);
+check('AI編集: AI が「変えた」と言っていない項目は比べない（空で返ってきても削除扱いにしない）', $diff(['rentals' => []] + $ai, ['rates']), []);
+$a3 = $ai;
+$a3['rates'] = array_reverse($a3['rates']);
+check('AI編集: 行の並びが変わっただけなら変更なし', $diff($a3, ['rates']), []);
+$a4 = $ai;
+$a4['rates'][0]['rooms'] = ['2st', '1st'];
+check('AI編集: 部屋名の並びが違うだけなら変更なし', $diff($a4, ['rates']), []);
+$a5 = ['info' => ['address' => '東京都千代田区1-1', 'access' => '', 'website_url' => 'https://example.com/'] + $ai['info']] + $ai;
+$d5 = studio_ai_edit_diff($cur, studio_ai_normalize($a5, true), ['info'], [], $a5);
+check('AI編集: info は今と違う欄だけ残す', $d5['info'] ?? null, ['website_url' => 'https://example.com/']);
+$a6 = $ai;
+$a6['rooms'] = [['name' => '1st', 'area_jo' => 0.0, 'size_note' => ''], ['name' => '3st', 'area_jo' => 8.0, 'size_note' => '']];
+check('AI編集: rooms は新しい部屋だけ（空・0 は変えない扱い）', array_column(studio_ai_edit_diff($cur, studio_ai_normalize($a6, true), ['rooms'], [], $a6)['rooms'] ?? [], 'name'), ['3st']);
+$a7 = $ai;
+$a7['discounts'] = [];
+check('AI編集: discounts に書かれていない区分は、料金に出てきても比べない', array_keys(studio_ai_edit_diff($cur, studio_ai_normalize($a7, true), ['discounts'], [], $a7)), []);
+check('AI編集: 行を返したのに全部捨てられたら採用しない（全削除を防ぐ）', array_keys(studio_ai_edit_diff($cur, studio_ai_normalize(['rentals' => [['name' => 'x', 'price' => -1, 'per_hour' => true]]], true), ['rentals'], [], ['rentals' => [['x']]])), []);
+check('AI編集: 空にする編集（パックを全部消す）は通る', array_keys(studio_ai_edit_diff($cur, studio_ai_normalize(['packs' => []] + $ai, true), ['packs'], [], ['packs' => []] + $ai)), ['packs']);
+check('AI編集: スキーマに changed を足せる', (static function () {
+    $s = studio_ai_schema();
+    $s['properties']['changed'] = ['type' => 'array', 'items' => ['type' => 'string', 'enum' => array_keys(STUDIO_AI_SECTIONS)]];
+    return array_keys($s['properties']);
+})() === array_merge(['found'], array_keys(STUDIO_AI_SECTIONS), ['sources', 'caution', 'changed']), true);
+
 echo $failed ?"\n{$failed} 件失敗\n" : "\nすべて成功\n";
 exit($failed ? 1 : 0);
