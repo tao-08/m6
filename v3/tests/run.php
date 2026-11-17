@@ -885,7 +885,8 @@ check('学年暦の通知: 3/24 まで無し・3/25 から・知らせ済み・�
     sched_calendar_reminder_year($calNow('2027-03-30'), null, '2027'),
     sched_calendar_reminder_year($calNow('2027-03-30'), '2027-03-26 09:00:00', null),
     sched_calendar_reminder_year($calNow('2027-04-02'), '2026-04-01 10:00:00', '2026'),
-], [null, 2027, null, null, 2027]);
+    sched_calendar_reminder_year($calNow('2027-11-17'), '2026-04-01 10:00:00', '2026'),
+], [null, 2027, null, null, 2027, null]);
 require_once __DIR__ . '/../lib/sched_calendar.php';
 $calOk = sched_cal_normalize(['terms' => [['term' => 2, 'from' => '2026-09-20', 'to' => '2027-01-23'], ['term' => 1, 'from' => '2026-04-10', 'to' => '2026-07-22']],
     'breaks' => [['from' => '2026-12-25', 'to' => '2027-01-07'], ['from' => '2026-02-30', 'to' => '2026-03-01'], ['from' => '2026-05-02', 'to' => '2026-05-01']], 'notes' => [' 確認 ', '']]);

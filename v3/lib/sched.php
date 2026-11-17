@@ -146,7 +146,7 @@ function sched_setting_save(PDO $pdo, string $key, string $value, int $userId): 
 
 /**
  * 学年暦の更新を知らせる時期か。知らせるなら、その年（3/25 の年）を返す。不要なら null
- *   ・3/25 以降（3月最終週〜）
+ *   ・3/25〜4/30（3月最終週〜）
  *   ・その年にもう知らせた（$lastYear が同じ年以上）なら不要
  *   ・学年暦（sched_terms）をその年の 3/25 以降に保存済みなら不要
  */
@@ -154,7 +154,8 @@ function sched_calendar_reminder_year(DateTimeImmutable $now, ?string $termsUpda
 {
     $y = (int)$now->format('Y');
     $from = sprintf('%04d-03-25', $y);
-    if ($now->format('Y-m-d') < $from) {
+    $today = $now->format('Y-m-d');
+    if ($today < $from || $today > sprintf('%04d-04-30', $y)) { // 3/25〜4/30 だけ（年度の途中に出さない）
         return null;
     }
     if ($lastYear !== null && (int)$lastYear >= $y) {

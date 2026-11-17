@@ -254,6 +254,21 @@
 /* ---------- 設定 ---------- */
 .sch-travel td, .sch-travel th { text-align: center; white-space: nowrap; }
 .sch-studio-list { display: grid; gap: 8px; }
+/* 設定の入力欄（日付・時刻・数・ファイル）。app.css は .field の中だけ整えるので、ここで同じ見た目にそろえる */
+.sch-sec .sch-row :is(input[type="date"], input[type="time"], input[type="number"], input[type="file"]) {
+  width: auto; padding: 8px 10px; border-radius: var(--r-md); border: 1px solid var(--border);
+  background: var(--surface); color: var(--text); font: inherit; font-size: var(--fs-md); min-width: 0;
+}
+.sch-sec .sch-row input.input-num { width: 64px; }
+/* 学年暦・時限の「開始 〜 終了」は、スマホでも1行に収める（折り返すと〜が行末に残る） */
+.sch-terms .sch-row, .sch-periods .sch-row { flex-wrap: nowrap; }
+.sch-terms .sch-row input[type="date"], .sch-periods .sch-row input[type="time"] { flex: 1; min-width: 0; }
+@media (max-width: 560px) {
+  .sch-terms .sch-label, .sch-periods .sch-label { min-width: 2.6em; }
+  .sch-terms .sch-row input[type="date"], .sch-periods .sch-row input[type="time"] { padding: 6px; font-size: var(--fs-sm); }
+}
+.sch-sec .sch-row input[type="file"] { flex: 1; max-width: 100%; }
+.sch-sec .sch-row input[type="file"]::file-selector-button { margin-right: 8px; padding: 4px 10px; border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--surface-2); color: var(--text); font: inherit; cursor: pointer; }
 .sch-set-studio .check { flex-wrap: wrap; } /* 注意: .sch-studio はスタジオ情報のモーダル（高さ・幅が大きい）なので、設定の一覧には使わない */
 
 @media (max-width: 560px) {
