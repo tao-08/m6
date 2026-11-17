@@ -957,6 +957,8 @@
       return { node: d, date: es[0].w.date, best: Math.min(...es.map((e) => e.i)), price };
     };
 
+    const focusables = []; // 全カードの { date, from, to, card, day }（表のマスから探す用）
+
     // ---- 並べ替え（2つの一覧に同じ並べ替えを効かせる。並べ替えるのは日の行）----
     const sorters = {
       best: (a, b) => a.best - b.best, // その日のいちばん良いカード（PHP の並びで先）が先の日から
@@ -972,8 +974,25 @@
         byDate.get(w.date).push({ w, i, ...card(w) });
       });
       // 日が1つしか無い一覧は、閉じたままだと中身が見えないので最初から開く
-      l.days = [...byDate.values()].map((es) => dayGroup(es, byDate.size === 1));
+      l.days = [...byDate.values()].map((es) => {
+        const g = dayGroup(es, byDate.size === 1);
+        es.forEach((e) => focusables.push({ date: e.w.date, from: e.w.from, to: e.w.to, card: e.node, day: g.node }));
+        return g;
+      });
     });
+    // メンバーの予定の表のマスから呼ぶ: その日・時刻にかかる候補のカードを開いて、見える所へ動かして強調する（候補が無ければ何もしない）
+    window.schedFocusCand = (date, m) => {
+      const hit = focusables.find((f) => f.date === date && f.from <= m && m < f.to);
+      if (!hit) return false;
+      hit.day.open = true;
+      hit.card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      hit.card.classList.remove('is-focus');
+      void hit.card.offsetWidth; // アニメを最初からやり直す
+      hit.card.classList.add('is-focus');
+      hit.card.tabIndex = -1;
+      hit.card.focus({ preventScroll: true });
+      return true;
+    };
     let sortKey = 'date';
     const render = (key = sortKey) => {
       sortKey = key;
@@ -1037,6 +1056,8 @@
           });
           const td = el('td', who.length === 0 ? 'is-free' : who.length === 1 ? 'is-n1' : 'is-n2');
           if (who.length) td.dataset.tip = who.join('・'); // 属性に入れる（HTML としては解釈されない）
+          td.dataset.date = d.date;
+          td.dataset.min = m;
           tr.append(td);
         });
         tbody.append(tr);
@@ -1047,6 +1068,11 @@
       prev.disabled = page === 0;
       next.disabled = page === weeks.length - 1;
     };
+    // マスを押すと、その日・時刻の候補カードを開いて強調する（候補が無いマスは何も起きない）
+    wrap.addEventListener('click', (e) => {
+      const td = e.target.closest('td[data-date]');
+      if (td && window.schedFocusCand) window.schedFocusCand(td.dataset.date, Number(td.dataset.min));
+    });
     prev.addEventListener('click', () => {
       if (page > 0) page--;
       draw();
