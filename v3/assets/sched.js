@@ -952,6 +952,10 @@
         const same = all.every(([, p]) => p === price);
         // 最安の時間帯の横に、その料金になるスタジオ名（2つまで。それ以上は「ほか」）
         const cheap = all.filter(([, p]) => p === price);
+        if (!same) { // メンバーの予定の表で、全員空きのマスを青くする時間帯（最安の開始〜練習時間）
+          const r = (window.schedCheap ||= {});
+          (r[es[0].w.date] ||= []).push(...cheap.map(([m]) => [m, m + data.len]));
+        }
         const sids = [...new Set(cheap.flatMap(([, , ids]) => ids))];
         const studioText = sids.slice(0, 2).map((id) => studios[id]?.name || '').filter(Boolean).join('・') + (sids.length > 2 ? ' ほか' : '');
         head.append(el('span', 'sch-day__cheap muted small', same ? '終日同一料金' : `最安 ${spanText(cheap.map(([m]) => m))} ${studioText}`.trim()));
@@ -1086,6 +1090,8 @@
             if (hit) who.push(`${names[id]}（${hit[2]}）`);
           });
           const td = el('td', who.length === 0 ? 'is-free' : who.length === 1 ? 'is-n1' : 'is-n2');
+          // 全員空きのマスのうち、その日の最安の時間帯は青（候補カードの最安と同じ時間帯）
+          if (!who.length && (window.schedCheap?.[d.date] || []).some(([a, b]) => m >= a && m < b)) td.classList.add('is-cheap');
           if (who.length) td.dataset.tip = who.join('・'); // 属性に入れる（HTML としては解釈されない）
           td.dataset.date = d.date;
           td.dataset.min = m;

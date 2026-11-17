@@ -492,7 +492,7 @@ if (!empty($poll['live_id'])) {
                     <button type="button" class="icon-btn" data-over-next aria-label="次の週" title="次の週"><?= icon('chevron_right') ?></button>
                 </div>
                 <div class="sch-legend small muted">
-                    <span><i class="sch-sw is-free"></i>全員空き</span><span><i class="sch-sw is-n1"></i>1人</span><span><i class="sch-sw is-n2"></i>2人以上</span>
+                    <span><i class="sch-sw is-free"></i>全員空き</span><span><i class="sch-sw is-free is-cheap"></i>最安</span><span><i class="sch-sw is-n1"></i>1人</span><span><i class="sch-sw is-n2"></i>2人以上</span>
                 </div>
                 <div class="sch-grid-wrap" data-sched-over-grid></div>
             </div>

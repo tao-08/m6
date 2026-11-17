@@ -58,6 +58,7 @@
 .sch-grid--over td[data-tip] { cursor: help; }
 .sch-grid--over td[data-date] { cursor: pointer; }
 .sch-grid--over td.is-free, .sch-sw.is-free { background: color-mix(in srgb, var(--ok) 22%, transparent); }
+.sch-grid--over td.is-free.is-cheap, .sch-sw.is-free.is-cheap { background: color-mix(in srgb, var(--headliner) 30%, transparent); } /* 全員空きで、その日の最安の時間帯 */
 .sch-grid--over td.is-n1, .sch-sw.is-n1 { background: color-mix(in srgb, var(--warn) 40%, transparent); }
 .sch-grid--over td.is-n2, .sch-sw.is-n2 { background: color-mix(in srgb, var(--accent) 45%, transparent); }
 
@@ -88,7 +89,7 @@
 .sch-day__marks { flex: 1 1 auto; min-width: 0; display: flex; flex-wrap: wrap; gap: 4px; }  /* 残りの幅を取って、料金と矢印を右端へ寄せる */
 .sch-day__head :is(.tag, .pill) { cursor: inherit; }    /* 見出し全体が押せる（開閉）ので、印の上でも指のカーソルのまま */
 .sch-day__price { font-weight: 700; font-variant-numeric: tabular-nums; }
-.sch-day__head .sch-day__cheap { color: var(--headliner); order: 1; flex-basis: 100%; font-variant-numeric: tabular-nums; } /* 最安の時間帯は見出しの2行目（order で矢印 ::after より後ろへ）。1行目に詰めると料金が折り返すため */
+.sch-day__cheap { order: 1; flex-basis: 100%; font-variant-numeric: tabular-nums; } /* 最安の時間帯は見出しの2行目（order で矢印 ::after より後ろへ）。1行目に詰めると料金が折り返すため */
 .sch-day__body { display: grid; gap: 10px; margin-top: 12px; }
 .sch-day__body > .sch-cand { box-shadow: none; border-radius: var(--r-md); } /* 外の箱と二重にならないよう、枠だけ・影なしにする */
 .sch-cand { display: grid; gap: 10px; padding: 12px 14px; }
