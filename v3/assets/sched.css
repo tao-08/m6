@@ -173,6 +173,7 @@
 .sch-grid td:has(> .sch-lbl) { position: relative; overflow: visible; }
 .sch-lbl { position: absolute; top: 1px; left: 2px; right: 2px; max-height: calc(var(--rows, 1) * 22px - 2px); white-space: normal; overflow-wrap: anywhere;
   overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: var(--lines, 1); line-clamp: var(--lines, 1); pointer-events: none; }
+.sch-lbl--prov { top: 6px; left: 7px; right: 7px; max-height: calc(var(--rows, 1) * 22px - 12px); } /* 仮決定の箱（マスより一回り小さい）からはみ出さないよう、さらに内側へ */
 .sch-grid td.is-auto { cursor: not-allowed; color: var(--text); }
 .sch-grid td.is-auto:is(.is-class, .is-ical, .is-photo, .is-weekly) { cursor: pointer; } /* タップで「この予定を無視」 */
 /* 無視した予定 = 無効。斜めの縞（透明 + 薄くなった予定色）で、ふつうの予定（ベタ塗り）と見分けがつくようにする。
@@ -191,8 +192,10 @@
 .sch-grid td:is(.is-ical, .is-photo), .sch-sw:is(.is-ical, .is-photo) { background: color-mix(in srgb, var(--vn) 24%, transparent); }
 .sch-grid td.is-weekly, .sch-sw.is-weekly { background: color-mix(in srgb, var(--accent) 22%, transparent); }
 .sch-grid td.is-practice, .sch-sw.is-practice { background: color-mix(in srgb, var(--ba) 40%, transparent); } /* 練習 = スタジオ練習（メンバーの予定表と同じ紫） */
-/* 仮決定: スタジオ練習の紫を少し透かして重ねる（下のマスの色は残る。マイスケジュールもメンバーの予定表も同じ色） */
-.sch-grid td.is-prov, .sch-sw.is-prov { background-image: linear-gradient(color-mix(in srgb, var(--ba) 22%, transparent), color-mix(in srgb, var(--ba) 22%, transparent)); }
+/* 仮決定: スタジオ練習の紫を少し透かした、マスより一回り小さい角丸の箱（JS が表の上に重ねる。マイスケジュールもメンバーの予定表も同じ） */
+.sch-prov { position: absolute; box-sizing: border-box; pointer-events: none; border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--ba) 28%, transparent); }
+.sch-sw.is-prov { background: color-mix(in srgb, var(--ba) 28%, transparent); } /* 凡例の見本 */
 .sch-allday--prov { background: color-mix(in srgb, var(--ba) 22%, transparent); } /* 日だけ仮決定（日付の下の題名） */
 
 /* ---------- 画像から予定を読み込む（assets/sched.js の setupPhoto）---------- */

@@ -734,8 +734,8 @@ button.tab { border: 0; background: none; font: inherit; font-weight: 800; font-
 .thumbs { display: flex; gap: 4px; }
 .thumbs__img { width: 40px; height: 40px; flex: none; object-fit: cover; border-radius: var(--r-xs); background: var(--surface-2); }
 .thumbs__img:hover, .thumbs__img:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.album-tip { position: fixed; z-index: 100; display: grid; gap: 2px; max-width: 260px; padding: 8px 10px; border-radius: var(--r-md);
-  background: var(--text); color: var(--bg); font-size: var(--fs-xs); line-height: 1.4; pointer-events: none;
+.album-tip { position: fixed; z-index: 100; display: grid; gap: 2px; width: max-content; max-width: min(260px, calc(100vw - 16px)); padding: 8px 10px; border-radius: var(--r-md);
+  background: var(--text); color: var(--bg); font-size: var(--fs-xs); line-height: 1.4; pointer-events: none; white-space: pre-line; /* data-tip の中の改行で折り返す */
   opacity: 0; visibility: hidden; box-shadow: var(--shadow-pop);
   /* 消えるとき: 透明になる間（.2s）は visibility を hidden にしない。
      visibility は「だんだん」変えられないので、transition の遅延（第3引数 .2s）で切り替えを後ろにずらす。

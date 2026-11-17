@@ -332,7 +332,7 @@ if ($status < 3) {
         $where = $canManage ? $practiceWhere($practices) : [];
         $overLabel = static fn(array $b, int $mid): string => match (true) {
             $b[3] === 'class' => '授業 ' . $b[4],
-            $b[3] === 'practice' => ($where[$b[4] . '|' . $b[0]] ?? '') ?: '練習 ' . $b[4], // スタジオ名 部屋名（分からなければ「練習 題」）
+            $b[3] === 'practice' => $where[$b[4] . '|' . $b[0]] ?? '', // スタジオ名 部屋名（分からなければ空。題は5つ目で渡す）
             in_array($b[3], ['ical', 'photo'], true) && $mid === $myMember && $b[4] !== '' => $b[4],
             default => '予定あり',
         };
@@ -340,7 +340,7 @@ if ($status < 3) {
         if ($canManage) {
             $overBusy = [];
             foreach ($memberIds as $mid) {
-                $overBusy[$mid] = array_map(static fn($b) => [$b[0], $b[1], $overLabel($b, (int)$mid), $b[3] === 'practice' ? 1 : 0], $data['busy'][$mid] ?? []); // 4つ目 = 練習か（表の色分け用）
+                $overBusy[$mid] = array_map(static fn($b) => [$b[0], $b[1], $overLabel($b, (int)$mid), $b[3] === 'practice' ? 1 : 0, $b[3] === 'practice' ? $b[4] : ''], $data['busy'][$mid] ?? []); // 4つ目 = 練習か（表の色分け用）/ 5つ目 = 練習の題（ポップアップ用）
             }
             // 仮決定（日だけ・時間まで）: ほかの調整の分（部員が重なるもの）と、この調整の分。日だけは日付の下に題名、時間まではマスに色を重ねる
             $prov = [];

@@ -189,6 +189,9 @@ function mkNode(tag, attrs = {}, ...children) {
 
 /** 固定位置のポップアップ(.album-tip)を anchor の真上に置く。上に入らないときは下。左右は画面からはみ出さないように寄せる */
 function placeTip(tip, anchor) {
+  // 測る前に左上へ戻す（前に画面の右端で出した位置のままだと、position: fixed の幅が端までの残りに縮んで、文字が折り返してしまう）
+  tip.style.left = '0px';
+  tip.style.top = '0px';
   const r = anchor.getBoundingClientRect();
   const t = tip.getBoundingClientRect();
   let top = r.top - t.height - 8;

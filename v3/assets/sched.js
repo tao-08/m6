@@ -246,7 +246,7 @@
       if (prov && !td.querySelector('.sch-lbl') && (prov.s >= abs || first)) {
         const dayEnd = Number(td.dataset.first) - data.start + data.end;
         const rows = Math.max(1, Math.ceil((Math.min(prov.e, dayEnd) - abs) / data.step));
-        const lbl = el('span', 'sch-lbl', prov.title);
+        const lbl = el('span', 'sch-lbl sch-lbl--prov', prov.title); // 仮決定の箱（四方 PROV_INSET 縮めてある）の中に収める
         lbl.style.setProperty('--rows', rows);
         lbl.style.setProperty('--lines', Math.min(2, rows));
         td.append(lbl);
@@ -304,6 +304,32 @@
     }
     table.append(tbody);
     wrap.append(table);
+
+    // 仮決定（時間まで決めたもの）の枠: マスより一回り小さく、角を丸めた箱を、表の上に重ねる（続くマスで1つ。押しても下のマスが反応する）
+    const drawProv = () => {
+      wrap.querySelectorAll('.sch-prov').forEach((n) => n.remove());
+      const rows = tbody.rows;
+      const w = wrap.getBoundingClientRect();
+      data.warn.filter((x) => x.s !== null).forEach((x) => {
+        const ci = data.days.findIndex((d) => d.date === x.date);
+        if (ci < 0) return;
+        const r0 = Math.max(0, Math.floor((x.s - data.days[ci].abs - data.start) / data.step));
+        const r1 = Math.min(rows.length, Math.ceil((x.e - data.days[ci].abs - data.start) / data.step)) - 1;
+        const first = rows[r0]?.cells[ci + 1];
+        const last = rows[r1]?.cells[ci + 1];
+        if (!first || !last) return;
+        const a = first.getBoundingClientRect();
+        const z = last.getBoundingClientRect();
+        const box = el('div', 'sch-prov');
+        box.style.left = `${a.left - w.left + wrap.scrollLeft + PROV_INSET}px`;
+        box.style.top = `${a.top - w.top + wrap.scrollTop + PROV_INSET}px`;
+        box.style.width = `${a.width - PROV_INSET * 2}px`;
+        box.style.height = `${z.bottom - a.top - PROV_INSET * 2}px`;
+        wrap.append(box);
+      });
+    };
+    drawProv();
+    window.addEventListener('resize', drawProv);
 
     // 日付の印: その日の塗れるマスが全部 NG なら塗りつぶし
     const syncDays = () => {
@@ -444,6 +470,7 @@
   //       並べ替えは「日の並び」に効く（日付順・おすすめ順・安い順）。<details> は作り直さず並べ直すだけなので、開いた日は開いたまま
   //     ・日の行は多くても1か月ぶん（31行）なので、「さらに表示」のような分割はしない
   // ===================================================================
+  const PROV_INSET = 4; // 仮決定の箱を、マスの四方から内側へ縮める量（px）
   const setupCands = () => {
     const data = readJson('sched-data');
     if (!data || !window.studioSimEngine) return;
@@ -1143,8 +1170,8 @@
     const next = box.querySelector('[data-over-next]');
     const range = box.querySelector('[data-over-range]');
     const provs = over.prov || []; // 仮決定（日だけ = s が null / 時間まで）
-    /** 仮決定のポップアップ: 練習の題名ではなく、その練習に入る人の名前（個人名）+ 場所 */
-    const provTip = (p) => `${(p.members || []).map((id) => names[id]).filter(Boolean).join('・')}（仮決定${p.where ? ' ' + p.where : ''}）`;
+    /** 仮決定のポップアップ: 1行目 = その練習に入る人の名前（個人名）と練習名 / 2行目 = スタジオ名 部屋名（改行は .album-tip の white-space: pre-line） */
+    const provTip = (p) => `${(p.members || []).map((id) => names[id]).filter(Boolean).join('・')}（${p.title}）${p.where ? '\n' + p.where : ''}`;
     const weeks = []; // 7日ずつに区切る
     for (let i = 0; i < over.days.length; i += 7) weeks.push(over.days.slice(i, i + 7));
     let page = 0;
@@ -1202,7 +1229,32 @@
         flush();
       });
     };
-    window.addEventListener('resize', () => { applyCheap(); applyPick(); });
+    /** 仮決定（時間まで決めたもの）の枠: マスより一回り小さく、角を丸めた箱を表の上に重ねる（続くマスで1つ。押しても下のマスが反応する） */
+    const applyProv = () => {
+      wrap.querySelectorAll('.sch-prov').forEach((n) => n.remove());
+      const rows = wrap.querySelector('tbody')?.rows;
+      if (!rows) return;
+      const w = wrap.getBoundingClientRect();
+      const days = weeks[page];
+      provs.filter((p) => p.s !== null).forEach((p) => {
+        const ci = days.findIndex((d) => d.date === p.date);
+        if (ci < 0) return;
+        const r0 = Math.max(0, Math.floor((p.s - days[ci].abs - over.start) / over.step));
+        const r1 = Math.min(rows.length, Math.ceil((p.e - days[ci].abs - over.start) / over.step)) - 1;
+        const first = rows[r0]?.cells[ci + 1];
+        const last = rows[r1]?.cells[ci + 1];
+        if (!first || !last) return;
+        const a = first.getBoundingClientRect();
+        const z = last.getBoundingClientRect();
+        const box = el('div', 'sch-prov');
+        box.style.left = `${a.left - w.left + wrap.scrollLeft + PROV_INSET}px`;
+        box.style.top = `${a.top - w.top + wrap.scrollTop + PROV_INSET}px`;
+        box.style.width = `${a.width - PROV_INSET * 2}px`;
+        box.style.height = `${z.bottom - a.top - PROV_INSET * 2}px`;
+        wrap.append(box);
+      });
+    };
+    window.addEventListener('resize', () => { applyCheap(); applyProv(); applyPick(); });
 
     const draw = () => {
       const days = weeks[page];
@@ -1234,14 +1286,16 @@
           const abs = d.abs + m;
           // このマスにかかる埋まりを、人ごとに最初の1つだけ拾う（同じ人の埋まりが重なっていても1人と数える）
           const who = [];
-          const groups = new Map(); // 予定の種類（予定あり・スタジオ名 部屋名など）→ 名前の一覧。同じ種類の人は名前をまとめて、あとに1回だけ書く
+          const groups = new Map(); // 予定の種類（予定あり・同じ練習など）→ { ns: 名前の一覧, text: 名前のあとに続ける文 }。同じ種類の人は名前をまとめて、あとに1回だけ書く
           let sp = false; // スタジオ練習（決定した練習）で埋まっている人がいるか
           busy.forEach(([id, list]) => {
             const hit = list.find((b) => b[0] < abs + over.step && b[1] > abs);
             if (hit) {
               who.push(names[id]);
-              if (!groups.has(hit[2])) groups.set(hit[2], []);
-              groups.get(hit[2]).push(names[id]);
+              // スタジオ練習（決定）は仮決定と同じ形: 「名前（練習名）」+ 改行 + 「スタジオ名 部屋名」。それ以外は「名前（予定あり）」など
+              const key = hit[3] ? `P|${hit[4]}|${hit[2]}` : `B|${hit[2]}`;
+              if (!groups.has(key)) groups.set(key, { ns: [], text: hit[3] ? `（${hit[4]}）${hit[2] ? '\n' + hit[2] : ''}` : `（${hit[2]}）` });
+              groups.get(key).ns.push(names[id]);
               if (hit[3]) sp = true;
             }
           });
@@ -1251,8 +1305,8 @@
           // 仮決定（時間まで決めたもの）: スタジオ練習の色を少し透かして重ねる。埋まりにはしないので、押せるかどうかは変わらない
           const pv = provs.filter((p) => p.date === d.date && p.s !== null && p.s < abs + over.step && p.e > abs);
           if (pv.length) td.classList.add('is-prov');
-          const tips = [...groups].map(([label, ns]) => `${ns.join('・')}（${label}）`).concat(pv.map(provTip));
-          if (tips.length) td.dataset.tip = tips.join(' / '); // 属性に入れる（HTML としては解釈されない）
+          const tips = [...groups.values()].map((g) => g.ns.join('・') + g.text).concat(pv.map(provTip));
+          if (tips.length) td.dataset.tip = tips.join('\n'); // 属性に入れる（HTML としては解釈されない）
           // 押せるのは、そこから始まる候補（欠席なし・遅刻と早退が上限に収まる枠）があるマスだけ。空きのマスでも、練習の途中に予定がかかって早退が上限を超えるなら押せない
           //   候補を出していない画面（決定済みなど）では、全員空きのマスだけ
           if (window.schedHasCand ? window.schedHasCand(d.date, m) : !who.length) {
@@ -1266,6 +1320,7 @@
       table.append(tbody);
       wrap.replaceChildren(table);
       applyCheap();
+      applyProv();
       applyPick();
       range.textContent = `${days[0].md}〜${days[days.length - 1].md}`;
       prev.disabled = page === 0;
