@@ -43,7 +43,7 @@ render_header('プライバシーポリシー');
     <h2 id="google">3. Google カレンダーのデータ</h2>
     <p>「Google で連携」を利用した場合に限り、Google アカウントから次の権限を受け取ります。</p>
     <ul>
-        <li>カレンダーの一覧の読み取り（<code>calendar.calendarlist.readonly</code>）：取り込むカレンダーを選ぶため</li>
+        <li>カレンダーの一覧の読み取り（<code>calendar.calendarlist.readonly</code>）：Google カレンダーで表示中のカレンダーを判別し、予定を読み込む対象にするため</li>
         <li>予定の読み取り（<code>calendar.events</code>）：予定の開始・終了の時刻とタイトルを読み、練習の候補から予定のある時間を外すため</li>
         <li>予定の作成・変更・削除（<code>calendar.events</code>）：日程調整で決定した練習を、本人のカレンダーに入れ、変更・取り消しを反映するため（本サービスが作った予定だけを変更します）</li>
     </ul>
