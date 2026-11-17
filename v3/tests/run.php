@@ -892,6 +892,18 @@ $calOk = sched_cal_normalize(['terms' => [['term' => 2, 'from' => '2026-09-20', 
     'breaks' => [['from' => '2026-12-25', 'to' => '2027-01-07'], ['from' => '2026-02-30', 'to' => '2026-03-01'], ['from' => '2026-05-02', 'to' => '2026-05-01']], 'notes' => [' 確認 ', '']]);
 check('学年暦AI: 春秋にそろえる・壊れた休業は捨てる・notes を整える', [array_keys($calOk['terms']), $calOk['terms'][1], $calOk['breaks'], $calOk['notes']],
     [[1, 2], ['2026-04-10', '2026-07-22'], [['2026-12-25', '2027-01-07']], ['確認']]);
+// 2026年度学年暦そのまま: 臨時休業 5/1〜5/2・大学祭週間 10/29〜11/3・臨時休業 12/23〜24 + 冬季休業 12/25〜1/7（続くので1つに）・臨時休業 1/16（単発）
+$calBr = sched_cal_normalize(['terms' => [['term' => 1, 'from' => '2026-04-10', 'to' => '2026-07-22'], ['term' => 2, 'from' => '2026-09-20', 'to' => '2027-01-23']],
+    'breaks' => [['from' => '2027-01-16', 'to' => '2027-01-16'], ['from' => '2026-12-25', 'to' => '2027-01-07'], ['from' => '2026-10-29', 'to' => '2026-11-03'],
+        ['from' => '2026-12-23', 'to' => '2026-12-24'], ['from' => '2026-05-01', 'to' => '2026-05-02']], 'notes' => []]);
+check('学年暦AI: 臨時休業・大学祭週間も休業に入る（日付順・続く休業は1つ）', $calBr['breaks'],
+    [['2026-05-01', '2026-05-02'], ['2026-10-29', '2026-11-03'], ['2026-12-23', '2027-01-07'], ['2027-01-16', '2027-01-16']]);
+$calMany = [];
+for ($i = 1; $i <= 8; $i++) { $calMany[] = ['from' => sprintf('2026-05-%02d', $i * 3), 'to' => sprintf('2026-05-%02d', $i * 3)]; } // 離れた8件
+$calManyOut = sched_cal_normalize(['terms' => [['term' => 1, 'from' => '2026-04-10', 'to' => '2026-07-22'], ['term' => 2, 'from' => '2026-09-20', 'to' => '2027-01-23']], 'breaks' => $calMany, 'notes' => []]);
+check('学年暦AI: 休業は上限まで・あふれたら notes で知らせる', [count($calManyOut['breaks']), count($calManyOut['notes'])], [SCHED_MAX_BREAKS, 1]);
+// 休業が上限まで入っても、保存する JSON は VARCHAR(255) に収まる
+check('学年暦AI: 休業が上限でも JSON は255文字以内', strlen((string)json_encode(['terms' => $calBr['terms'], 'breaks' => array_fill(0, SCHED_MAX_BREAKS, ['2026-12-25', '2027-01-07'])])) <= 255, true);
 $calErr = false;
 try { sched_cal_normalize(['terms' => [['term' => 1, 'from' => '2026-04-10', 'to' => '2026-07-22']], 'breaks' => [], 'notes' => []]); } catch (RuntimeException $e) { $calErr = true; }
 check('学年暦AI: 秋学期が無ければエラー', $calErr, true);

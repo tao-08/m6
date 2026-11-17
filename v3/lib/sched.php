@@ -88,6 +88,12 @@ const SCHED_DEFAULT_TERMS = [
 ];
 const SCHED_DEFAULT_BREAKS = [['2026-12-25', '2027-01-07']];
 
+/**
+ * 休業（冬季休業・臨時休講・大学祭週間など、授業期間の中で授業が無い期間）の最大件数
+ *   app_setting.setting_value が VARCHAR(255)。学期2つ分と合わせて JSON が 254 文字に収まるのが6件まで
+ */
+const SCHED_MAX_BREAKS = 6;
+
 /** 交通費: 練習の前後この分数以内に授業があれば、学校から来る・学校へ帰るものとして運賃を出す（設定画面で変える）の初期値 */
 const SCHED_DEFAULT_FARE_GAP_MIN = 240;
 

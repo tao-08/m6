@@ -86,8 +86,8 @@ if (is_post()) {
                 $breaks[] = [(string)$f, $to];
             }
         }
-        $json = json_encode(['terms' => $terms, 'breaks' => array_slice($breaks, 0, 4)]);
-        sched_setting_save($pdo, 'sched_terms', $json, $uid); // 255文字に収まる（日付 10文字 × 12 ＋ 記号）
+        $json = json_encode(['terms' => $terms, 'breaks' => array_slice($breaks, 0, SCHED_MAX_BREAKS)]);
+        sched_setting_save($pdo, 'sched_terms', $json, $uid); // 255文字に収まる（SCHED_MAX_BREAKS の説明）
         flash('学年暦を保存しました');
         redirect('sched_settings#terms');
     }
@@ -326,7 +326,7 @@ render_header('日程調整の設定', 'tools');
             <div class="sch-row sch-row--wrap"><span class="sch-label"><?= h($label) ?></span>
                 <input type="date" name="tf[<?= $t ?>]" value="<?= h($settings['terms'][$t][0]) ?>" required> 〜 <input type="date" name="tt[<?= $t ?>]" value="<?= h($settings['terms'][$t][1]) ?>" required></div>
         <?php endforeach; ?>
-        <?php foreach ([...$settings['breaks'], ['', ''], ['', '']] as $i => [$bf, $bt]): if ($i >= 4) { break; } ?>
+        <?php foreach ([...$settings['breaks'], ['', ''], ['', '']] as $i => [$bf, $bt]): if ($i >= SCHED_MAX_BREAKS) { break; } ?>
             <div class="sch-row sch-row--wrap"><span class="sch-label">休業</span>
                 <input type="date" name="bf[<?= $i ?>]" value="<?= h($bf) ?>"> 〜 <input type="date" name="bt[<?= $i ?>]" value="<?= h($bt) ?>"></div>
         <?php endforeach; ?>

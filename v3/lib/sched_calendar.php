@@ -20,8 +20,10 @@ const SCHED_CAL_PROMPT = <<<'PROMPT'
 ## 取り出すもの
 - terms: 春学期（term = 1）と秋学期（term = 2）の授業期間。from = 授業開始日、to = 授業最終日（YYYY-MM-DD）
   - 試験期間・補講期間・入学式・オリエンテーションは含めない。秋学期は翌年にまたがる（例 2026-09-20 〜 2027-01-23）
-- breaks: 授業期間の中にある、授業が無い連続した休業（冬季休業・春季休業など）。from / to（YYYY-MM-DD）
-  - 単発の祝日・振替休日・学園祭の休講は入れない。夏季休業は学期の外なので入れない
+- breaks: 授業期間の中にある、授業が無い期間。from / to（YYYY-MM-DD）。1日だけなら from = to
+  - 入れる: 冬季休業、臨時休業（休講）日、大学祭週間（全学休講の期間。明大祭・生明祭など個別の日程ではなく「大学祭週間」の期間）
+  - 入れない: 祝日・振替休日（別に扱う）、休日授業実施日・補講日（授業がある日）、学期の外の休業（夏季休業・春季休業）
+  - 日が続くものは1つにまとめる（例 臨時休業 12/23〜12/24 と冬季休業 12/25〜1/7 → 12/23〜1/7）
 
 ## 決まり
 - 年は PDF の年度から補って、必ず YYYY-MM-DD で書く
@@ -92,14 +94,40 @@ function sched_cal_normalize(array $data): array
         }
     }
     $notes = array_values(array_filter(array_map(static fn($n) => trim((string)$n), (array)($data['notes'] ?? [])), static fn($n) => $n !== ''));
-    return ['terms' => $terms, 'breaks' => array_slice($breaks, 0, 4), 'notes' => $notes];
+    $breaks = sched_cal_merge_ranges($breaks);
+    if (count($breaks) > SCHED_MAX_BREAKS) {
+        $notes[] = '休業が' . SCHED_MAX_BREAKS . '件を超えたため、後ろの' . (count($breaks) - SCHED_MAX_BREAKS) . '件は入れていません';
+    }
+    return ['terms' => $terms, 'breaks' => array_slice($breaks, 0, SCHED_MAX_BREAKS), 'notes' => $notes];
+}
+
+/**
+ * 日付の範囲を日付順に並べて、重なる・翌日から続くものを1つにまとめる（休業の件数を減らす）
+ *   例 [12/23〜12/24] + [12/25〜1/7] → [12/23〜1/7]
+ * @param array<int, array{0:string,1:string}> $ranges
+ * @return array<int, array{0:string,1:string}>
+ */
+function sched_cal_merge_ranges(array $ranges): array
+{
+    usort($ranges, static fn($a, $b) => strcmp($a[0], $b[0]));
+    $out = [];
+    foreach ($ranges as [$f, $to]) {
+        $last = count($out) - 1;
+        // 前の範囲の終わりの翌日以前に始まるなら続いている（'YYYY-MM-DD' は文字列のまま大小が比べられる）
+        if ($last >= 0 && $f <= date('Y-m-d', strtotime($out[$last][1] . ' +1 day'))) {
+            $out[$last][1] = max($out[$last][1], $to);
+        } else {
+            $out[] = [$f, $to];
+        }
+    }
+    return $out;
 }
 
 /**
  * 学年暦の PDF を読む。
  * @throws RuntimeException 画面に出してよい日本語のメッセージ
  */
-function sched_calendar_read_pdf(string $path): array
+function sched_calendar_read_pdf(string $path, ?string $model = null): array
 {
     $raw = (string)file_get_contents($path);
     if (!str_starts_with($raw, '%PDF')) { // 拡張子は偽装できるので中身で確かめる
@@ -113,7 +141,7 @@ function sched_calendar_read_pdf(string $path): array
         ['type' => 'text', 'text' => 'この学年暦から、学期の授業期間と休業を取り出してください。'],
     ];
     try {
-        $data = claude_json(SCHED_CAL_PROMPT, $content, sched_cal_schema(), 4000, 120);
+        $data = claude_json(SCHED_CAL_PROMPT, $content, sched_cal_schema(), 4000, 120, $model);
     } catch (RuntimeException $e) {
         throw match ($e->getCode()) {
             CLAUDE_ERR_REFUSAL => new RuntimeException('AI がこの PDF の読み取りを断りました。別の PDF で試してください'),
