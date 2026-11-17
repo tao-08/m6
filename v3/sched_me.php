@@ -793,14 +793,13 @@ render_header('マイスケジュール', 'tools');
     <div class="sch-sec__head"><h2 class="section-title section-title--card">カレンダー連携</h2>
         <button type="button" class="info-tip" data-tutorial-open="ical-help" aria-label="カレンダー連携のやり方" title="カレンダー連携のやり方"><?= icon('info', 'icon--sm') ?></button></div>
     <?php // 取り込んだ予定（iCal・Google・画像）の前後に付ける、手動と同じ「予定あり」の枠の分数（0〜120・30分刻み） ?>
-    <form method="post" class="sch-row">
+    <form method="post" class="sch-row sch-row--wrap">
         <?= csrf_field() ?><input type="hidden" name="action" value="buf_min">
         <?php if ($poll !== null): ?><input type="hidden" name="poll" value="<?= $pollId ?>"><?php endif; ?>
-        <span class="sch-label">予定の前後</span>
+        <span class="sch-label">連携した予定の前後にスタジオを入れない</span>
         <select name="minutes" class="select-sm" data-autosubmit aria-label="予定の前後に付ける予定ありの枠">
             <?php foreach (range(0, 120, 30) as $mm): ?><option value="<?= $mm ?>"<?= (int)$prof['buf_min'] === $mm ? ' selected' : '' ?>><?= $mm === 0 ? 'なし' : $mm . '分' ?></option><?php endforeach; ?>
         </select>
-        <span class="info-tip" <?= tip_attr('取り込んだ予定の前後に、手動と同じ予定ありの枠を付ける。タップで消せる') ?>><?= icon('info', 'icon--sm') ?></span>
         <noscript><button class="btn btn--sm" type="submit">保存</button></noscript>
     </form>
     <?php if ($googleOn && $g === null): // Google 連携の開始。押すと sched_google.php が Google の許可画面へ移動する（iPhone の人は、下の iCal の URL を使う） ?>

@@ -924,7 +924,7 @@ function sched_collect_busy(PDO $pdo, array $memberIds, string $from, string $to
                 }
                 $keep[] = $b;
                 // 枠は、無視していない・終日でない iCal・画像の予定の前後に付ける。予定が動いたり消えたりしたら、枠も一緒に変わる（毎回ここで作る）
-                if ($m > 0 && !$isIgnored && in_array($b[3], ['ical', 'photo'], true) && !($b[1] > $b[0] && $b[0] % 1440 === 0 && ($b[1] - $b[0]) % 1440 === 0)) {
+                if ($m > 0 && !$isIgnored && in_array($b[3], ['ical', 'photo'], true) && !sched_busy_is_allday(sched_abs_to_dt($b[0]), sched_abs_to_dt($b[1]))) { // 終日の予定の前後には付けない（絶対分は日本時間だと 1440 の倍数にならないので、日時の文字で判定する）
                     $frames[] = [$b[0] - $m, $b[0], null, 'buffer', ''];
                     $frames[] = [$b[1], $b[1] + $m, null, 'buffer', ''];
                 }
