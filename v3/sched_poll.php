@@ -618,6 +618,9 @@ if (!empty($poll['live_id'])) {
                     <span><i class="sch-sw is-free"></i>全員空き</span><span><i class="sch-sw is-free is-cheap"></i>最安</span><span><i class="sch-sw is-n1"></i>1人予定あり</span><span><i class="sch-sw is-n2"></i>2人以上予定あり</span><span><i class="sch-sw is-sp"></i>スタジオ練習</span><span><i class="sch-sw is-prov"></i>仮決定</span>
                 </div>
                 <div class="sch-grid-wrap" data-sched-over-grid></div>
+                <?php if ($myRow !== null): ?>
+                    <a class="btn btn--sm btn--ghost" href="sched_me?poll=<?= $pollId ?>"><?= icon('calendar_today') ?> マイスケジュール</a>
+                <?php endif; ?>
             </div>
         </details>
     <?php endif; ?>
@@ -631,7 +634,7 @@ if (!empty($poll['live_id'])) {
             </div>
         </div>
         <?php if ($canManage && sched_nav_key() !== '' && $studios): ?>
-            <form method="post" class="sch-row" data-loading data-confirm="呼ばれた人の自宅の駅から、候補のスタジオまでの交通費を調べます（NAVITIME は月500回まで）。よろしいですか？">
+            <form method="post" class="sch-row" data-loading data-confirm="<?= h("メンバーの最寄り駅とスタジオまでの往復交通費を検索します。\nスタジオ練習の前後" . rtrim(rtrim(number_format((int)$settings['fare_gap'] / 60, 1), '0'), '.') . "時間に授業があれば所属キャンパスへの移動も考慮します。") ?>">
                 <?= csrf_field() ?><input type="hidden" name="action" value="fare_fetch"><input type="hidden" name="v" value="<?= (int)$poll['version'] ?>">
                 <button class="btn btn--sm" type="submit">交通費を調べる</button>
                 <span class="info-tip" <?= tip_attr('候補の順位に、定期外の交通費（全員の合計）を足す。自宅の駅と定期はマイスケジュールで登録') ?>><?= icon('info', 'icon--sm') ?></span>

@@ -947,7 +947,15 @@
             price.append(el('strong', '', perHead(x.q.total) + '/人')); // 黒い太字は1人あたり、合計は薄く
             price.append(el('span', 'muted small', yen(x.q.total)));
             const fare = fareAt(w, x.s.id, start);
-            if (fare && fare.sum > 0) price.append(el('span', 'muted small', `交通費 ${yen(fare.sum)}${fare.miss ? '＋' : ''}`)); // ＋ = 駅が未登録・未調査の人がいる（その分は含まない）
+            if (fare && fare.sum > 0) {
+              // 電車マーク +¥000（末尾の＋ = 駅が未登録・未調査の人がいる。その分は含まない）
+              const f = el('span', 'muted small sch-fare');
+              const ic = el('span', 'icon icon--sm', 'train');
+              ic.setAttribute('aria-hidden', 'true');
+              f.append(ic, `+${yen(fare.sum)}${fare.miss ? '＋' : ''}`);
+              f.dataset.tip = '交通費（全員の定期外の運賃の合計）';
+              price.append(f);
+            }
           } else {
             price.append(el('span', 'muted small', '料金未登録'));
           }

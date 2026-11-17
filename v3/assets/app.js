@@ -3262,7 +3262,11 @@ function setupLoading() {
     const box = form.querySelector('[data-loading-box]');
     if (!box) return;
     form.addEventListener('submit', (e) => {
-      if (e.defaultPrevented) return; // 確認ダイアログでキャンセルされたなど
+      // 確認ダイアログ（data-confirm）は document で待ち受けているので、フォームのこの処理のほうが先に走る。
+      //   → 全部の処理が終わってから、キャンセルされていないかを見る
+      setTimeout(() => { if (!e.defaultPrevented) start(); }, 0);
+    });
+    const start = () => {
       const files = [...form.querySelectorAll('input[type=file]')].flatMap((i) => [...i.files]);
       const images = files.filter((f) => /\.(jpe?g|png|webp|gif)$/i.test(f.name)).length;
       if (images > 0) {
@@ -3271,7 +3275,7 @@ function setupLoading() {
       }
       box.hidden = false;
       form.querySelectorAll('button[type=submit]').forEach((b) => { b.disabled = true; });
-    });
+    };
   });
   window.addEventListener('pageshow', (e) => {
     if (!e.persisted) return;

@@ -322,3 +322,6 @@
   .sch-reserve__actions { margin-top: auto; padding-top: 24px; gap: 12px; }
   .sch-reserve__actions .btn { min-height: 56px; font-size: var(--fs-xl); }
 }
+
+/* 候補の交通費（電車マーク +¥000） */
+.sch-fare { display: inline-flex; align-items: center; gap: 2px; }
