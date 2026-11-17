@@ -976,13 +976,14 @@
       // 日が1つしか無い一覧は、閉じたままだと中身が見えないので最初から開く
       l.days = [...byDate.values()].map((es) => {
         const g = dayGroup(es, byDate.size === 1);
-        es.forEach((e) => focusables.push({ date: e.w.date, from: e.w.from, to: e.w.to, card: e.node, day: g.node }));
+        es.forEach((e) => focusables.push({ date: e.w.date, from: e.w.from, to: e.w.to, starts: e.w.starts, card: e.node, day: g.node }));
         return g;
       });
     });
     // メンバーの予定の表のマスから呼ぶ: その日・時刻にかかる候補のカードを開いて、見える所へ動かして強調する（候補が無ければ何もしない）
     window.schedFocusCand = (date, m) => {
-      const hit = focusables.find((f) => f.date === date && f.from <= m && m < f.to);
+      const same = focusables.filter((f) => f.date === date && f.from <= m && m < f.to);
+      const hit = same.find((f) => f.starts.includes(m)) || same[0]; // 押した時刻から始められるカードを優先
       if (!hit) return false;
       hit.day.open = true;
       hit.card.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -1028,6 +1029,8 @@
     const weeks = []; // 7日ずつに区切る
     for (let i = 0; i < over.days.length; i += 7) weeks.push(over.days.slice(i, i + 7));
     let page = 0;
+    const len = Number(boot.len) || over.step; // 練習時間（分）
+    let pick = null; // 押したマス { date, min }
 
     const draw = () => {
       const days = weeks[page];
@@ -1058,6 +1061,12 @@
           if (who.length) td.dataset.tip = who.join('・'); // 属性に入れる（HTML としては解釈されない）
           td.dataset.date = d.date;
           td.dataset.min = m;
+          // 押したマスから練習時間ぶんの枠（前に押した所が今の週に出ていれば、描き直しても残す）
+          if (pick && pick.date === d.date && m >= pick.min && m < pick.min + len) {
+            td.classList.add('is-pick');
+            if (m === pick.min) td.classList.add('is-pick-top');
+            if (m + over.step >= pick.min + len) td.classList.add('is-pick-end');
+          }
           tr.append(td);
         });
         tbody.append(tr);
@@ -1071,7 +1080,10 @@
     // マスを押すと、その日・時刻の候補カードを開いて強調する（候補が無いマスは何も起きない）
     wrap.addEventListener('click', (e) => {
       const td = e.target.closest('td[data-date]');
-      if (td && window.schedFocusCand) window.schedFocusCand(td.dataset.date, Number(td.dataset.min));
+      if (!td) return;
+      pick = { date: td.dataset.date, min: Number(td.dataset.min) };
+      draw();
+      if (window.schedFocusCand) window.schedFocusCand(pick.date, pick.min);
     });
     prev.addEventListener('click', () => {
       if (page > 0) page--;
