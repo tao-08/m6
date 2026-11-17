@@ -669,7 +669,7 @@ if (!empty($poll['live_id'])) {
     <?php endif; ?>
     <section class="sch-cands" data-sched-cands>
         <div class="sch-cands__head">
-            <h2 class="section-title">候補 <small class="muted"><?= count(array_unique(array_column($windows, 'date'))) ?>日</small>
+            <h2 class="section-title"><span>候補 <small class="muted"><?= count(array_unique(array_column($windows, 'date'))) ?>日</small></span>
                 <span class="info-tip" <?= tip_attr('交通費はメンバー全員の定期外運賃の合計、時間はメンバー内で最も遠い人の所要時間が表示されています。') ?>><?= icon('info', 'icon--sm') ?></span></h2>
             <div class="tabs tabs--filter sch-sort" role="tablist" data-sched-sort>
                 <button type="button" class="tab is-active" data-sort="date">日付順</button>
@@ -689,7 +689,7 @@ if (!empty($poll['live_id'])) {
             <form method="post" class="sch-row" data-loading data-confirm="<?= h("メンバーの最寄り駅とスタジオまでの往復交通費を検索します。\nスタジオ練習の前後" . rtrim(rtrim(number_format((int)$settings['fare_gap'] / 60, 1), '0'), '.') . "時間に授業があれば所属キャンパスへの移動も考慮します。") ?>">
                 <?= csrf_field() ?><input type="hidden" name="action" value="fare_fetch"><input type="hidden" name="v" value="<?= (int)$poll['version'] ?>">
                 <button class="btn btn--sm" type="submit">交通費を調べる</button>
-                <span class="info-tip" <?= tip_attr('候補の順位に、定期外の交通費（全員の合計）を足す。自宅の駅と定期はマイスケジュールで登録') ?>><?= icon('info', 'icon--sm') ?></span>
+                <span class="info-tip" <?= tip_attr('マイスケジュールで最寄り駅を登録したメンバーのみ反映されます') ?>><?= icon('info', 'icon--sm') ?></span>
                 <div class="loading" data-loading-box hidden role="status" aria-live="polite">
                     <span class="loading__spinner" aria-hidden="true"></span>
                     <p class="loading__title" data-loading-title>調査中…</p>

@@ -70,7 +70,7 @@
 
 /* ---------- 候補 ---------- */
 .sch-cands__head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
-.sch-cands__head .section-title { margin: 0; }
+.sch-cands__head .section-title { margin: 0; display: flex; align-items: center; gap: 4px; } /* 横の ⓘ を見出しの文字と上下中央にそろえる（「候補 ◯日」は span でまとめて、文字どうしはベースライン揃えのまま） */
 .sch-sort { margin-bottom: 0; }
 .sch-list { display: grid; gap: 10px; margin: 12px 0; }
 /* 1日 = <details> 1つ。見出し（summary）の1行に 日付・時間帯・印・最安の料金、開くと その日のカードが並ぶ */
