@@ -913,7 +913,14 @@
         acts.append(fixForm('final', '決定', w, getSel, true));
         c.append(acts);
       }
-      return { node: c, price, mins };
+      /** 開始時刻を m に合わせる（その時刻が選べるときだけ。表のマスを押したとき用） */
+      const setStart = (m) => {
+        if (!w.starts.includes(m) || m === start) return;
+        start = m;
+        if (sel) sel.value = m;
+        renderStudios();
+      };
+      return { node: c, price, mins, setStart };
     };
 
     /**
@@ -976,7 +983,7 @@
       // 日が1つしか無い一覧は、閉じたままだと中身が見えないので最初から開く
       l.days = [...byDate.values()].map((es) => {
         const g = dayGroup(es, byDate.size === 1);
-        es.forEach((e) => focusables.push({ date: e.w.date, from: e.w.from, to: e.w.to, starts: e.w.starts, card: e.node, day: g.node }));
+        es.forEach((e) => focusables.push({ date: e.w.date, from: e.w.from, to: e.w.to, starts: e.w.starts, setStart: e.setStart, card: e.node, day: g.node }));
         return g;
       });
     });
@@ -985,6 +992,7 @@
       const same = focusables.filter((f) => f.date === date && f.from <= m && m < f.to);
       const hit = same.find((f) => f.starts.includes(m)) || same[0]; // 押した時刻から始められるカードを優先
       if (!hit) return false;
+      hit.setStart(m);
       hit.day.open = true;
       hit.card.scrollIntoView({ behavior: 'smooth', block: 'center' });
       hit.card.classList.remove('is-focus');
@@ -1032,6 +1040,26 @@
     const len = Number(boot.len) || over.step; // 練習時間（分）
     let pick = null; // 押したマス { date, min }
 
+    /** 押したマスから練習時間ぶんの枠。表の上に1つの箱を重ねる（マスの罫線で途切れず、角も丸くできる）。表は作り直さない */
+    const frame = el('div', 'sch-pick');
+    const applyPick = () => {
+      frame.remove();
+      if (!pick) return;
+      const first = wrap.querySelector(`td[data-date="${pick.date}"][data-min="${pick.min}"]`);
+      if (!first) return; // 押した日が今の週に無い
+      const lastMin = Math.min(pick.min + len, over.end) - over.step;
+      const last = wrap.querySelector(`td[data-date="${pick.date}"][data-min="${lastMin}"]`) || first;
+      const w = wrap.getBoundingClientRect();
+      const a = first.getBoundingClientRect();
+      const b = last.getBoundingClientRect();
+      frame.style.left = `${a.left - w.left + wrap.scrollLeft}px`;
+      frame.style.top = `${a.top - w.top + wrap.scrollTop}px`;
+      frame.style.width = `${a.width}px`;
+      frame.style.height = `${b.bottom - a.top}px`;
+      wrap.append(frame);
+    };
+    window.addEventListener('resize', applyPick);
+
     const draw = () => {
       const days = weeks[page];
       const lo = days[0].abs;
@@ -1061,18 +1089,13 @@
           if (who.length) td.dataset.tip = who.join('・'); // 属性に入れる（HTML としては解釈されない）
           td.dataset.date = d.date;
           td.dataset.min = m;
-          // 押したマスから練習時間ぶんの枠（前に押した所が今の週に出ていれば、描き直しても残す）
-          if (pick && pick.date === d.date && m >= pick.min && m < pick.min + len) {
-            td.classList.add('is-pick');
-            if (m === pick.min) td.classList.add('is-pick-top');
-            if (m + over.step >= pick.min + len) td.classList.add('is-pick-end');
-          }
           tr.append(td);
         });
         tbody.append(tr);
       }
       table.append(tbody);
       wrap.replaceChildren(table);
+      applyPick();
       range.textContent = `${days[0].md}〜${days[days.length - 1].md}`;
       prev.disabled = page === 0;
       next.disabled = page === weeks.length - 1;
@@ -1082,8 +1105,9 @@
       const td = e.target.closest('td[data-date]');
       if (!td) return;
       pick = { date: td.dataset.date, min: Number(td.dataset.min) };
-      draw();
-      if (window.schedFocusCand) window.schedFocusCand(pick.date, pick.min);
+      applyPick();
+      // カードを開く・開始時刻を変える（高さが変わる）→ 描き終わってから動かす。同時だと、スクロールの行き先がずれて止まることがある
+      requestAnimationFrame(() => { if (window.schedFocusCand) window.schedFocusCand(pick.date, pick.min); });
     });
     prev.addEventListener('click', () => {
       if (page > 0) page--;

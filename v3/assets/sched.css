@@ -57,10 +57,6 @@
 .sch-grid--over td { touch-action: auto; cursor: default; }          /* 塗れない表なので、なぞってもページがスクロールする */
 .sch-grid--over td[data-tip] { cursor: help; }
 .sch-grid--over td[data-date] { cursor: pointer; }
-.sch-grid--over td.is-pick { box-shadow: inset 2px 0 var(--accent), inset -2px 0 var(--accent); } /* 押したマスから練習時間ぶんの枠 */
-.sch-grid--over td.is-pick-top { box-shadow: inset 2px 0 var(--accent), inset -2px 0 var(--accent), inset 0 2px var(--accent); }
-.sch-grid--over td.is-pick-end { box-shadow: inset 2px 0 var(--accent), inset -2px 0 var(--accent), inset 0 -2px var(--accent); }
-.sch-grid--over td.is-pick-top.is-pick-end { box-shadow: inset 0 0 0 2px var(--accent); }
 .sch-grid--over td.is-free, .sch-sw.is-free { background: color-mix(in srgb, var(--ok) 22%, transparent); }
 .sch-grid--over td.is-n1, .sch-sw.is-n1 { background: color-mix(in srgb, var(--warn) 40%, transparent); }
 .sch-grid--over td.is-n2, .sch-sw.is-n2 { background: color-mix(in srgb, var(--accent) 45%, transparent); }
@@ -92,7 +88,7 @@
 .sch-day__marks { flex: 1 1 auto; min-width: 0; display: flex; flex-wrap: wrap; gap: 4px; }  /* 残りの幅を取って、料金と矢印を右端へ寄せる */
 .sch-day__head :is(.tag, .pill) { cursor: inherit; }    /* 見出し全体が押せる（開閉）ので、印の上でも指のカーソルのまま */
 .sch-day__price { font-weight: 700; font-variant-numeric: tabular-nums; }
-.sch-day__cheap { order: 1; flex-basis: 100%; font-variant-numeric: tabular-nums; } /* 最安の時間帯は見出しの2行目（order で矢印 ::after より後ろへ）。1行目に詰めると料金が折り返すため */
+.sch-day__head .sch-day__cheap { color: var(--headliner); order: 1; flex-basis: 100%; font-variant-numeric: tabular-nums; } /* 最安の時間帯は見出しの2行目（order で矢印 ::after より後ろへ）。1行目に詰めると料金が折り返すため */
 .sch-day__body { display: grid; gap: 10px; margin-top: 12px; }
 .sch-day__body > .sch-cand { box-shadow: none; border-radius: var(--r-md); } /* 外の箱と二重にならないよう、枠だけ・影なしにする */
 .sch-cand { display: grid; gap: 10px; padding: 12px 14px; }
@@ -144,7 +140,8 @@
 .sch-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; }
 .sch-legend span { display: inline-flex; align-items: center; gap: 4px; }
 .sch-sw { display: inline-block; width: 12px; height: 12px; border-radius: var(--r-xs); border: 1px solid var(--border); }
-.sch-grid-wrap { overflow-x: auto; }
+.sch-grid-wrap { overflow-x: auto; position: relative; }
+.sch-pick { position: absolute; box-sizing: border-box; border: 2px solid var(--accent); border-radius: var(--r-sm); pointer-events: none; } /* 押したマスから練習時間ぶんの枠 */
 .sch-grid { width: 100%; border-collapse: collapse; table-layout: fixed; user-select: none; -webkit-user-select: none; }
 .sch-grid th { font-size: var(--fs-2xs); font-weight: 700; color: var(--muted); white-space: pre-line; line-height: 1.2; padding: 2px; }
 .sch-grid thead th { position: sticky; top: 0; background: var(--surface); z-index: 1; }
