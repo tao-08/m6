@@ -341,3 +341,4 @@
    スマホは幅いっぱい、PC は高さで止めて中央に。下の説明とボタンの分（約320px）は残す */
 .tutorial--tall .tutorial__img { aspect-ratio: auto; display: flex; justify-content: center; }
 .tutorial--tall .tutorial__img img { width: auto; height: auto; max-width: 100%; max-height: max(240px, calc(100dvh - 320px)); object-fit: contain; }
+.sch-title .info-tip .icon { font-size: 24px; } /* 大きい見出しの横なので、ⓘ も大きく */

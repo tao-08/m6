@@ -302,12 +302,13 @@ function sched_day_type(string $date): int
 
 /**
  * その日に時間割が効く学期（1 = 春 / 2 = 秋 / null = 授業が無い日）
- *   授業期間の外・休業期間・日曜・祝日は null
+ *   授業期間の外・休業期間・日曜は null
+ *   祝日は授業がある（大学は祝日も授業日）。授業が無い祝日は、休業（臨時休業）として設定に入れる
  *   日付 'YYYY-MM-DD' は文字列のまま比べても大小が正しい（桁がそろっているので）
  */
 function sched_term_of(string $date, array $settings): ?int
 {
-    if (date('w', strtotime($date)) === '0' || sched_is_holiday($date)) {
+    if (date('w', strtotime($date)) === '0') {
         return null;
     }
     foreach ($settings['breaks'] as [$from, $to]) {

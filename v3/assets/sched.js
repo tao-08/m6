@@ -1032,6 +1032,16 @@
               f.dataset.tip = '交通費（全員の定期外の運賃の合計）';
               price.append(f);
             }
+            const tmax = studios[x.s.id]?.tmax;
+            if (tmax != null) {
+              // 時計マーク 最長00分（駅が未登録・未調査の人は含まない）
+              const t = el('span', 'muted small sch-fare');
+              const ic = el('span', 'icon icon--sm', 'schedule');
+              ic.setAttribute('aria-hidden', 'true');
+              t.append(ic, `最長${tmax}分`);
+              t.dataset.tip = '自宅からの片道の所要時間（いちばん遠い人）';
+              price.append(t);
+            }
           } else {
             price.append(el('span', 'muted small', '料金未登録'));
           }

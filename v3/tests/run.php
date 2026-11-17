@@ -810,7 +810,7 @@ check('祝日: 2026 振替休日（5/3 が日曜 → 5/6）', isset(sched_holida
 check('祝日: 2027 成人の日（1月第2月曜）', isset(sched_holidays(2027)['2027-01-11']), true);
 check('曜日区分: 平日 / 土 / 日 / 祝', [sched_day_type('2026-11-20'), sched_day_type('2026-11-21'), sched_day_type('2026-11-22'), sched_day_type('2026-11-23')], [1, 3, 4, 4]);
 $ss = ['periods' => SCHED_DEFAULT_PERIODS, 'terms' => SCHED_DEFAULT_TERMS, 'breaks' => SCHED_DEFAULT_BREAKS, 'jo' => 3.0];
-check('学期: 秋の授業日 / 冬休み / 夏休み / 祝日', [sched_term_of('2026-11-20', $ss), sched_term_of('2026-12-28', $ss), sched_term_of('2026-08-10', $ss), sched_term_of('2026-11-03', $ss)], [2, null, null, null]);
+check('学期: 秋の授業日 / 冬休み / 夏休み / 祝日（授業あり）/ 日曜 / 休業に入れた祝日', [sched_term_of('2026-11-20', $ss), sched_term_of('2026-12-28', $ss), sched_term_of('2026-08-10', $ss), sched_term_of('2026-11-23', $ss), sched_term_of('2026-11-22', $ss), sched_term_of('2026-11-03', ['breaks' => [['2026-10-29', '2026-11-03']]] + $ss)], [2, null, null, 2, null, null]);
 check('キャンパス: 選択 > 学年（1・2年 和泉 / 3年〜 駿河台）', [sched_member_campus(2, 2026), sched_member_campus(null, 2025), sched_member_campus(null, 2024), sched_member_campus(null, null)], [2, 1, 2, 1]);
 // 移動時間: 和泉キャンパス → 新宿（直線 約5.6km）は 30分、すぐ近くは徒歩 10分、座標なしは 30分
 $izumi = [35.670834, 139.648285];

@@ -485,10 +485,30 @@ $winOut = static fn(array $w): array => [
         'fare' => (object)($s['fare'] ?? []), // 開始の分 => ['sum' => 全員の運賃の合計, 'miss' => 不明の片道の数]
     ], array_keys($w['studios']), array_values($w['studios'])),
 ];
+/** スタジオごとの、自宅からの片道の所要時間の最長（分。覚えてある分だけ。だれも分からなければ null） */
+$tripMax = static function (int $sid) use ($pdo, $fareProfiles, $placeCoords, $studioById, $transferMin): ?int {
+    $coord = $placeCoords['studio:' . $sid] ?? null;
+    if ($coord === null) {
+        return null;
+    }
+    try {
+        $dests = sched_studio_dests($pdo, $coord, (string)($studioById[$sid]['access'] ?? ''), false);
+    } catch (SchedNavMiss $e) {
+        return null;
+    }
+    $mins = [];
+    foreach ($fareProfiles as $prof) {
+        $t = sched_member_trip($pdo, $prof, $dests, $transferMin, false);
+        if ($t !== null) {
+            $mins[] = $t['min'];
+        }
+    }
+    return $mins ? max($mins) : null;
+};
 $boot = [
     'poll' => $pollId, 'v' => (int)$poll['version'], 'status' => $status, 'len' => $len, 'people' => count($members), 'jo' => $settings['jo'],
     'canFix' => $canManage, 'csrf' => csrf_token(),
-    'studios' => array_map(static fn($s) => ['id' => (int)$s['studio_id'], 'name' => $s['name'], 'area' => (string)$s['area'], 'reserve' => (string)($s['reserve_url'] ?: $s['website_url'])], array_values($studios)),
+    'studios' => array_map(static fn($s) => ['id' => (int)$s['studio_id'], 'name' => $s['name'], 'area' => (string)$s['area'], 'reserve' => (string)($s['reserve_url'] ?: $s['website_url']), 'tmax' => $tripMax((int)$s['studio_id'])], array_values($studios)),
     'sim' => (object)$sim,
     'names' => (object)$names, // 遅刻・欠席の人の名前（member_id => 名前）
     'windows' => array_map($winOut, $windows),
