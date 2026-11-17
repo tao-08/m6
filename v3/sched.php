@@ -21,6 +21,7 @@ require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/repository.php'; // member_name_choices / render_suggest_datalist（名前の入力候補）
 require_once __DIR__ . '/lib/sched.php';
 require_once __DIR__ . '/lib/sched_google.php'; // 調整の削除・編集を Google カレンダーに反映する
+require_once __DIR__ . '/lib/sched_fare.php';   // スタジオを選ぶ目安（交通費・所要時間。NAVITIME + Google。結果は DB に覚える）
 $user = require_login(); // ログインしていれば誰でも
 $pdo = db();
 
@@ -36,6 +37,50 @@ if (is_post()) {
         if ($poll === null || !sched_can_manage($poll, $user, $mids)) {
             error_page(403, 'この日程調整は操作できません');
         }
+    }
+
+    if ($action === 'trip_stats') {
+        // 作成フォームのスタジオの目安（自宅の最寄り駅 → スタジオ。往復の定期外の運賃の1人平均・片道の所要時間の最短〜最長）。JSON で返す
+        //   fetch = 1 …「交通費・所要時間を調べる」ボタン。NAVITIME・Google の API を呼ぶ（結果は180日覚える）
+        //   fetch = 0 … 覚えてある結果だけ（部員の名前を変えるたびに呼ぶ。API は呼ばない）
+        header('Content-Type: application/json; charset=utf-8');
+        $fetch = ($_POST['fetch'] ?? '') === '1';
+        $names = array_slice(array_values(array_unique(array_filter(array_map(static fn($n) => trim((string)$n), (array)($_POST['m_name'] ?? [])), static fn($n) => $n !== ''))), 0, SCHED_MAX_MEMBERS);
+        $profs = [];
+        if ($names) {
+            $ph = implode(',', array_fill(0, count($names), '?'));
+            $st = $pdo->prepare("SELECT m.member_id, p.home_station, p.pass_to, p.pass_via, p.pass_on FROM member m LEFT JOIN sched_profile p ON p.member_id = m.member_id WHERE m.name IN ($ph)");
+            $st->execute($names);
+            foreach ($st as $r) {
+                $profs[(int)$r['member_id']] = ['home_station' => (string)$r['home_station'], 'pass_to' => (string)$r['pass_to'], 'pass_via' => (string)$r['pass_via'], 'pass_on' => $r['pass_on'] === null ? 1 : (int)$r['pass_on']];
+            }
+        }
+        $error = null;
+        if ($fetch && sched_nav_key() === '') {
+            $fetch = false;
+            $error = '交通費の検索は使えません（NAVITIME の API キーが未設定）';
+        }
+        $transferMin = (int)sched_settings($pdo)['transfer_min'];
+        $out = [];
+        foreach (sched_place_coords($pdo) as $place => $coord) {
+            if (!str_starts_with($place, 'studio:')) {
+                continue;
+            }
+            $trips = [];
+            foreach ($profs as $prof) {
+                try {
+                    $trips[] = sched_member_trip($pdo, $prof, $coord, $transferMin, $fetch);
+                } catch (RuntimeException $e) {
+                    // 1回の上限・API キーの不備など。残りは覚えてある結果だけで出す
+                    $error = $e->getMessage();
+                    $fetch = false;
+                    $trips[] = sched_member_trip($pdo, $prof, $coord, $transferMin, false);
+                }
+            }
+            $out[substr($place, 7)] = sched_studio_trip_stats($trips);
+        }
+        echo json_encode(['studios' => $out, 'members' => count($profs), 'error' => $error], JSON_UNESCAPED_UNICODE);
+        exit;
     }
 
     if ($action === 'delete' && $poll !== null) {
@@ -357,14 +402,22 @@ if (isset($_GET['new']) || isset($_GET['edit'])) {
             </select></label>
         </div>
 
-        <fieldset class="field sch-studios">
+        <fieldset class="field sch-studios" data-tip-lazy>
             <legend>スタジオ</legend>
+            <?php // 交通費・所要時間の目安（中身は assets/sched.js の setupTrip が入れる）。NAVITIME のキーがあるときだけ調べられる ?>
+            <?php if ($byArea && sched_nav_key() !== ''): ?>
+                <div class="sch-row sch-trip-head" data-trip-head>
+                    <button type="button" class="btn btn--sm" data-trip-fetch><?= icon('train') ?> 交通費・所要時間を調べる</button>
+                    <span class="info-tip" <?= tip_attr('自宅の最寄り駅から各スタジオまで。往復の定期外の交通費（1人平均）と、片道の所要時間（最短〜最長）。駅はマイスケジュールで登録') ?>><?= icon('info', 'icon--sm') ?></span>
+                    <span class="muted small" data-trip-status role="status" aria-live="polite"></span>
+                </div>
+            <?php endif; ?>
             <?php foreach ($byArea as $area => $list): ?>
                 <div class="sch-area" data-area>
                     <label class="check sch-area__head"><input type="checkbox" data-area-all> <strong><?= h($area) ?></strong></label>
                     <div class="sch-area__list">
                         <?php foreach ($list as $s): ?>
-                            <label class="check"><input type="checkbox" name="studio[]" value="<?= (int)$s['studio_id'] ?>"<?= in_array((int)$s['studio_id'], $chosen, true) ? ' checked' : '' ?>> <?= h($s['name']) ?></label>
+                            <label class="check"><input type="checkbox" name="studio[]" value="<?= (int)$s['studio_id'] ?>"<?= in_array((int)$s['studio_id'], $chosen, true) ? ' checked' : '' ?>> <span class="sch-studio-name"><?= h($s['name']) ?><span class="sch-trip muted small" data-trip="<?= (int)$s['studio_id'] ?>" hidden></span></span></label>
                         <?php endforeach; ?>
                     </div>
                 </div>

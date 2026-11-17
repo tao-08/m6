@@ -415,9 +415,12 @@ if (is_post()) {
             }
             // チェックボックスは外れていると何も送られない。name を half_start[行番号] にして、「その番号が送られてきたか」で ON/OFF を決める
             //   （行番号 $i は id[] の位置と同じ。isset = 送られてきた = チェックが入っている）
+            //   0分開始・30分開始の両方を外したときは、0分開始にする（どちらかでは開始できるはず）
+            $half = isset($_POST['half_start'][$i]) ? 1 : 0;
             $rows[] = [(int)$rawId, [
                 'name' => $name, 'area_jo' => $jo, 'size_note' => $size === '' ? null : $size,
-                'half_start' => isset($_POST['half_start'][$i]) ? 1 : 0,
+                'zero_start' => isset($_POST['zero_start'][$i]) || !$half ? 1 : 0,
+                'half_start' => $half,
                 // 30分単位: 一番上のチェック（half_unit_all）で全部屋まとめて。混在のまま触っていなければ、部屋ごとの今の値を保つ
                 'half_unit' => !empty($_POST['half_unit_mixed']) ? (int)(bool)($_POST['half_unit_was'][$i] ?? 0) : (isset($_POST['half_unit_all']) ? 1 : 0),
             ]];
@@ -621,6 +624,8 @@ if (is_post()) {
                 'name' => $name,
                 'price' => (int)$price,
                 'per_hour' => ($_POST['per_hour'][$i] ?? '0') === '1' ? 1 : 0,
+                // ジャンル（タブの振り分け）。選択肢に無い値は、名前から推測
+                'genre' => isset(STUDIO_RENTAL_GENRES[(int)($_POST['genre'][$i] ?? 0)]) ? (int)$_POST['genre'][$i] : studio_rental_genre_guess($name),
             ]];
         }
         studio_save_rows($pdo, 'studio_rental', 'studio_rental_id', $studioId, $rows);
@@ -687,7 +692,7 @@ if (is_post()) {
 // =====================================================================
 //  表示用のデータ
 // =====================================================================
-$st = $pdo->prepare('SELECT studio_room_id, name, area_jo, size_note, half_start, half_unit FROM studio_room WHERE studio_id = ? ORDER BY sort_order, studio_room_id');
+$st = $pdo->prepare('SELECT studio_room_id, name, area_jo, size_note, zero_start, half_start, half_unit FROM studio_room WHERE studio_id = ? ORDER BY sort_order, studio_room_id');
 $st->execute([$studioId]);
 $rooms = $st->fetchAll();
 $roomName = array_column($rooms, 'name', 'studio_room_id'); // [部屋id => 部屋名]（array_column の第3引数 = キーにする列）
@@ -699,9 +704,9 @@ foreach ($rooms as $r) {
     $roomJo[(int)$r['studio_room_id']] = studio_fmt_jo($r['area_jo']); // 広さだけ（備考なし）。パックの表の部屋名の横に出す。広さ不明は ''
 }
 
-// 料金表・パックの時間帯を何分遅らせて見せるか。30分開始の部屋だけの組 = 30 / それ以外 = 0
+// 料金表・パックの時間帯を何分遅らせて見せるか。30分開始だけ（0分開始なし）の部屋だけの組 = 30 / それ以外 = 0
 //   $rids = 料金・パックの部屋 id の配列（空 = 全部屋）。組の部屋が全部 30分開始のときだけずらす（混在は元の時間のまま。時間帯は部屋ごとに分けて持てないため）
-$roomShift = array_column($rooms, 'half_start', 'studio_room_id');
+$roomShift = array_map(static fn($r) => (int)$r['half_start'] && !(int)$r['zero_start'] ? 1 : 0, array_column($rooms, null, 'studio_room_id'));
 $shiftOf = function (array $rids) use ($roomShift): int {
     $rids = $rids ?: array_keys($roomShift);
     if (!$rids) {
@@ -734,9 +739,32 @@ $packs = studio_attach_discounts($pdo, 'studio_pack', $studioId, $packs);
 $discounts = studio_discounts($pdo, $studioId);
 $discName = array_column($discounts, 'name', 'studio_discount_id');
 
-$st = $pdo->prepare('SELECT studio_rental_id, name, price, per_hour FROM studio_rental WHERE studio_id = ? ORDER BY sort_order, studio_rental_id');
+$st = $pdo->prepare('SELECT studio_rental_id, name, price, per_hour, genre FROM studio_rental WHERE studio_id = ? ORDER BY sort_order, studio_rental_id');
 $st->execute([$studioId]);
 $rentals = $st->fetchAll();
+// レンタルが STUDIO_RENTAL_TABS_OVER 個を超えたら、ジャンルのタブで分ける（JS: studio_info.js の setupRentalTabs）
+//   $rentalTabs('list'|'sim') … タブの HTML（タブにしないときは ''）。ラジオの name を箱ごとに変えて、一覧とシミュレーションを別々に選べるようにする
+//   $rentalPanel($r) … 行に付ける属性（data-rent-genre。最初のタブ以外は hidden）
+$rentalGroups = studio_rental_tabs($rentals);
+$rentalFirst = $rentalGroups ? array_key_first($rentalGroups) : null;
+$rentalTabs = static function (string $key) use ($rentalGroups, $rentalFirst): string {
+    if ($rentalGroups === null) {
+        return '';
+    }
+    $html = '<div class="tabs tabs--filter sinfo-rent-tabs" role="radiogroup" aria-label="レンタルのジャンル">';
+    foreach ($rentalGroups as $g => $list) {
+        $html .= '<label class="tab"><input type="radio" name="rent_tab_' . h($key) . '" value="' . $g . '" data-rent-tab' . ($g === $rentalFirst ? ' checked' : '') . '>'
+            . h(STUDIO_RENTAL_GENRES[$g]) . ' <small class="muted">' . count($list) . '</small></label>';
+    }
+    return $html . '</div>';
+};
+$rentalPanel = static function (array $r) use ($rentalGroups, $rentalFirst): string {
+    if ($rentalGroups === null) {
+        return '';
+    }
+    $g = studio_rental_genre($r);
+    return ' data-rent-genre="' . $g . '"' . ($g === $rentalFirst ? '' : ' hidden');
+};
 
 $st = $pdo->prepare('SELECT studio_equipment_id, category, model_name, quantity
     FROM studio_equipment WHERE studio_id = ? ORDER BY sort_order, studio_equipment_id');
@@ -1183,9 +1211,10 @@ render_header($studio['name'], 'tools');
                     <span class="sinfo-rentbox__count" data-rental-count hidden>0</span>
                     <?= icon('expand_more', 'sinfo-rentbox__chev') ?>
                 </summary>
+                <?= $rentalTabs('sim') ?>
                 <div class="sinfo-sim__rentals">
                     <?php foreach ($rentals as $r): ?>
-                        <label class="sinfo-rental">
+                        <label class="sinfo-rental"<?= $rentalPanel($r) ?>>
                             <span><?= h($r['name']) ?> <span class="muted small"><?= h(studio_yen((int)$r['price'])) ?><?= $r['per_hour'] ? '/h' : '' ?></span></span>
                             <input type="number" name="rental_<?= (int)$r['studio_rental_id'] ?>" min="0" max="20" value="0" inputmode="numeric" aria-label="<?= h($r['name']) ?>の数">
                         </label>
@@ -1501,14 +1530,15 @@ render_header($studio['name'], 'tools');
                     <input autocomplete="off" type="text" class="grow" name="name[]" maxlength="50" value="<?= h($r['name']) ?>" placeholder="部屋名" aria-label="部屋名">
                     <label class="sinfo-edit__jo"><input type="text" name="area_jo[]" inputmode="decimal" maxlength="5" value="<?= h(studio_jo_num($r['area_jo'])) ?>" placeholder="広さ" aria-label="広さ（帖）"><span class="muted small">帖</span></label>
                     <input autocomplete="off" type="text" class="grow" name="size_note[]" maxlength="50" value="<?= h($r['size_note']) ?>" placeholder="備考（定員・階数）" aria-label="備考">
-                    <!-- 30分開始（ONの部屋は、開始が毎時30分から。料金表・パックの時間帯も30分遅らせて表示・計算する）。名前の [番号] = この行の位置（JS が並び替え・追加のたびに付け直す）。half_unit_was = 混在のときに保つ今の値 -->
+                    <!-- 0分開始・30分開始（開始できる時刻。両方 ON = どちらでも。30分開始だけの部屋は、料金表・パックの時間帯も30分遅らせて表示・計算する）。名前の [番号] = この行の位置（JS が並び替え・追加のたびに付け直す）。half_unit_was = 混在のときに保つ今の値 -->
+                    <label class="sinfo-edit__half"><input type="checkbox" name="zero_start[<?= $ri ?>]" value="1"<?= (int)$r['zero_start'] ? ' checked' : '' ?>>0分開始</label>
                     <label class="sinfo-edit__half"><input type="checkbox" name="half_start[<?= $ri ?>]" value="1"<?= (int)$r['half_start'] ? ' checked' : '' ?>>30分開始</label>
                     <input type="hidden" name="half_unit_was[<?= $ri ?>]" value="<?= (int)$r['half_unit'] ?>">
                     <?= studio_row_del((int)$r['studio_room_id']) ?>
                 </div>
                 <?php return ob_get_clean();
             };
-            $roomBlank = ['studio_room_id' => 0, 'name' => '', 'area_jo' => null, 'size_note' => '', 'half_start' => 0, 'half_unit' => 0];
+            $roomBlank = ['studio_room_id' => 0, 'name' => '', 'area_jo' => null, 'size_note' => '', 'zero_start' => 1, 'half_start' => 0, 'half_unit' => 0];
             foreach (array_merge($rooms, [$roomBlank]) as $ri => $r) {
                 echo $roomRow($ri, $r);
             }
@@ -1713,9 +1743,10 @@ $packRoomLines = function (array $row) use ($packRoomIds): array {
 <section class="card sinfo-section" id="rentals">
     <h2><?= icon('mic') ?> レンタル</h2>
     <?php if (!$rentals): ?><p class="muted small">-</p><?php else: ?>
+        <?= $rentalTabs('list') ?>
         <ul class="sinfo-plain sinfo-price-list">
             <?php foreach ($rentals as $r): ?>
-                <li><span><?= h($r['name']) ?></span><span><?= h(studio_yen((int)$r['price'])) ?><span class="muted small"><?= $r['per_hour'] ? '/h' : '/回' ?></span></span></li>
+                <li<?= $rentalPanel($r) ?>><span><?= h($r['name']) ?></span><span><?= h(studio_yen((int)$r['price'])) ?><span class="muted small"><?= $r['per_hour'] ? '/h' : '/回' ?></span></span></li>
             <?php endforeach; ?>
         </ul>
     <?php endif; ?>
@@ -1738,11 +1769,17 @@ $packRoomLines = function (array $row) use ($packRoomIds): array {
                         <option value="0"<?= (int)$r['per_hour'] === 0 ? ' selected' : '' ?>>/回</option>
                         <option value="1"<?= (int)$r['per_hour'] === 1 ? ' selected' : '' ?>>/h</option>
                     </select>
+                    <?php // ジャンル（10個を超えたらタブで分ける）。未設定の行は名前から推測した値を選んでおく。新しい行は保存のときに名前から推測 ?>
+                    <?php $g = $r['name'] === '' ? 0 : studio_rental_genre($r); ?>
+                    <select name="genre[]" aria-label="ジャンル">
+                        <?php if ($g === 0): ?><option value="0" selected>ジャンル</option><?php endif; ?>
+                        <?php foreach (STUDIO_RENTAL_GENRES as $gid => $glabel): ?><option value="<?= $gid ?>"<?= $gid === $g ? ' selected' : '' ?>><?= h($glabel) ?></option><?php endforeach; ?>
+                    </select>
                     <?= studio_row_del((int)$r['studio_rental_id']) ?>
                 </div>
                 <?php return ob_get_clean();
             };
-            $rentalBlank = ['studio_rental_id' => 0, 'name' => '', 'price' => '', 'per_hour' => 1]; // 単位の初期値は /h
+            $rentalBlank = ['studio_rental_id' => 0, 'name' => '', 'price' => '', 'per_hour' => 1, 'genre' => null]; // 単位の初期値は /h
             foreach (array_merge($rentals, [$rentalBlank, $rentalBlank]) as $r) {
                 echo $rentalRow($r);
             }

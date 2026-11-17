@@ -411,11 +411,12 @@
     const applyRoomRule = () => {
       const room = data.rooms.find((r) => r.id === Number(form.elements.room?.value || 0));
       const hs = room ? room.hs : 1; // 部屋の無いスタジオ = 制限なし
+      const zs = room ? (room.zs ?? !room.hs) : 1; // 0分開始（古いデータに無ければ「30分開始でなければ 0分開始」）
       const hu = room ? room.hu : 1;
-      // 開始の選択肢: 30分開始 → 30分だけ（9:30・10:30 …）/ 毎時開始 → ちょうどだけ
+      // 開始の選択肢: 30分開始だけ → 30分だけ（9:30・10:30 …）/ 0分開始だけ → ちょうどだけ / 両方 → 30分刻み
       //   時間の選択肢: 30分単位なら30分刻み / 1時間単位ならちょうどだけ
-      const halfOnly = !!room && hs; // 30分始まりの部屋は、30分単位でも開始を :30 だけにする（部屋の無いスタジオは制限なし）
-      [[startSel, hs], [durSel, hu]].forEach(([sel, half]) => {
+      const halfOnly = !!room && hs && !zs; // 30分始まりだけの部屋は、30分単位でも開始を :30 だけにする（部屋の無いスタジオは制限なし）
+      [[startSel, hs && zs], [durSel, hu]].forEach(([sel, half]) => {
         const keep = Number(sel.value);
         const only30 = sel === startSel && halfOnly;
         const opts = allOpts.get(sel).filter(([v]) => (only30 ? Number(v) % 60 === 30 : half || Number(v) % 60 === 0));
@@ -963,7 +964,7 @@
       const visible = () => items().filter((el) => !el.hidden);
       const renumber = () => items().forEach((row, i) => {
         row.querySelectorAll('[name]').forEach((el) => {
-          el.name = el.name.replace(/^(half_start|half_unit_was)\[\d+\]$/, `$1[${i}]`);
+          el.name = el.name.replace(/^(zero_start|half_start|half_unit_was)\[\d+\]$/, `$1[${i}]`);
         });
       });
       form.addEventListener('reorder-renumber', renumber); // 行を足したとき（setupAddRow）にも番号を付け直す
@@ -1106,6 +1107,23 @@
   };
 
   // ===================================================================
+  //  レンタルのジャンルのタブ（レンタルが10個を超えたスタジオだけ PHP がタブを出す）
+  //     ・タブ（.sinfo-rent-tabs のラジオ）のすぐ後ろの箱の中で、data-rent-genre が選んだジャンルの行だけ見せる
+  //     ・一覧（#rentals）と料金シミュレーションのレンタル欄は、ラジオの name が別なので別々に選べる
+  //     ・document で待ち受ける（自動保存でカードが差し替わっても動く）
+  // ===================================================================
+  const setupRentalTabs = () => {
+    document.addEventListener('change', (e) => {
+      if (!e.target.matches('[data-rent-tab]')) return;
+      const box = e.target.closest('.sinfo-rent-tabs')?.nextElementSibling;
+      if (!box) return;
+      box.querySelectorAll('[data-rent-genre]').forEach((row) => {
+        row.hidden = row.dataset.rentGenre !== e.target.value;
+      });
+    });
+  };
+
+  // ===================================================================
   //  個人練習の料金表: 人数チップ（1人・2人 …）で表を切り替える
   //     ・PHP が人数ごとに <tbody data-ppl="n"> を作っている。選んだ人数以外の tbody を hidden で隠す
   //     ・data-ppl-has="1 2" を持つ部屋のブロックは、選んだ人数の料金が無ければ見出しごと隠す
@@ -1175,7 +1193,9 @@
     /** 部屋の開始・時間の決まりに合わせる（詳細ページの applyRoomRule と同じ） */
     const fit = (room, start, dur) => {
       if (!room) return { start, dur };
-      const s = start - (start % 60) + (room.hs ? 30 : 0); // 30分始まりの部屋は、30分単位の予約でも開始は :30 だけ（:00 だと内訳が :00 で切れる）
+      const zs = room.zs ?? !room.hs;
+      // 30分始まりだけの部屋は、30分単位の予約でも開始は :30 だけ（:00 だと内訳が :00 で切れる）/ 両方開始できる部屋は 30分刻みのまま
+      const s = room.hs && zs ? start - (start % 30) : start - (start % 60) + (room.hs ? 30 : 0);
       return { start: s, dur: room.hu ? dur : dur - (dur % 60) };
     };
 
@@ -1809,6 +1829,7 @@
   setupHalfUnitAll();
   setupFilter(mapApi);
   setupTargetTabs();
+  setupRentalTabs();
   setupSoloPeople();
   setupPackLen();
   setupSim();

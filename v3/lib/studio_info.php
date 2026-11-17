@@ -32,6 +32,56 @@ function can_edit_studio(): bool
 /** 機材の区分（この順に表示。会場の機材 venue.php と同じ並びにそろえる） */
 const STUDIO_EQUIP_CATEGORIES = ['ギターアンプ', 'ベースアンプ', 'ドラム', 'キーボード', 'PA', 'その他'];
 
+/** レンタルのジャンル（studio_rental.genre。この順にタブを並べる）。STUDIO_RENTAL_TABS_OVER 個を超えたらタブで分ける */
+const STUDIO_RENTAL_GENRES = [1 => '楽器', 2 => 'アンプ', 3 => 'ドラム', 4 => 'キーボード', 5 => 'エフェクター', 9 => 'その他'];
+const STUDIO_RENTAL_TABS_OVER = 10;
+
+/**
+ * レンタルの名前から、ジャンルを推測する（genre が NULL の行・編集の初期値に使う）
+ *   上から順に見る: 付属品（マイク・ケーブル・スタンド）→ ドラム → アンプ → キーボード → エフェクター → 楽器 → その他
+ *   例: 「ギターシールド」は付属品（その他）、「ベースアンプ」はアンプ、「ツインペダル」はドラム
+ */
+function studio_rental_genre_guess(string $name): int
+{
+    $rules = [
+        9 => '/マイク|SM5[78]|ケーブル|シールド|スタンド|譜面台|チューナー|\bDI\b|ダイレクトボックス|電源|ヘッドホン|ヘッドフォン|イヤホン/iu',
+        3 => '/ドラム|スネア|シンバル|ハイハット|タム|キック|ツインペダル|バスドラ|カホン|(?<!アコー)スティック|パーカッション|コンガ|ボンゴ|タンバリン|Drum|Snare|Cymbal|Zildjian|Hi-?Hat|Cajon/iu',
+        2 => '/アンプ|キャビ|\bJC|JC-?\d|マーシャル|Marshall|Ampeg|アンペグ|Twin|ツイン|Hartke|Mesa|Orange|ORANGE|Bassman|ベースマン|\bHead\b|ヘッド$/iu',
+        4 => '/キーボード|シンセ|ピアノ|Keyboard|Piano|Synth|オルガン|Nord|ノード|MOTIF|モチーフ|Fantom|ファントム|KRONOS|クロノス|Juno|MONTAGE|モンタージュ|Rhodes|ローズ|鍵盤/iu',
+        5 => '/エフェクター|エフェクト|ペダル|ディストーション|オーバードライブ|ファズ|コンプ|ディレイ|リバーブ|コーラス|ワウ|ルーパー|マルチ|BOSS|Big ?Muff|Line ?6|HX ?Stomp|Helix|Zoom/iu',
+        1 => '/ギター|ベース|楽器|エレキ|アコギ|ストラト|レスポール|テレキャス|ジャズベ|プレベ|Fender|フェンダー|Gibson|ギブソン|ウクレレ|Guitar|Guiter|Bass|Strato|Tele|Les ?Paul|Precision/iu',
+    ];
+    foreach ($rules as $genre => $re) {
+        if (preg_match($re, $name)) {
+            return $genre;
+        }
+    }
+    return 9;
+}
+
+/** 行のジャンル（保存されていればそれ、無ければ名前から推測） */
+function studio_rental_genre(array $r): int
+{
+    $g = $r['genre'] ?? null;
+    return $g !== null && isset(STUDIO_RENTAL_GENRES[(int)$g]) ? (int)$g : studio_rental_genre_guess((string)$r['name']);
+}
+
+/**
+ * レンタルをジャンルごとに分ける。STUDIO_RENTAL_TABS_OVER 個以下なら null（タブにしない）
+ * @return ?array<int, array> [ジャンル => 行の配列]（STUDIO_RENTAL_GENRES の順。行の無いジャンルは除く）
+ */
+function studio_rental_tabs(array $rentals): ?array
+{
+    if (count($rentals) <= STUDIO_RENTAL_TABS_OVER) {
+        return null;
+    }
+    $out = array_fill_keys(array_keys(STUDIO_RENTAL_GENRES), []);
+    foreach ($rentals as $r) {
+        $out[studio_rental_genre($r)][] = $r;
+    }
+    return array_filter($out);
+}
+
 /** 個人練習の人数の上限（料金表・パックの「対象」の選択肢を 個人1人〜個人6人 にする） */
 const STUDIO_SOLO_MAX = 6;
 
@@ -383,15 +433,15 @@ function studio_attach_discounts(PDO $pdo, string $table, int $studioId, array $
 /**
  * 料金シミュレーションに渡すデータ（JS: simEngine）。キーは短く、値は数値にしておく
  *   dp = 割引区分ごとの料金 {区分id: 料金}。(object) にするのは、空のときに [] ではなく {} として JSON にするため
- *   部屋: hs = 30分スタート可 / hu = 30分単位で利用可 / sh = 料金の時間帯を遅らせる分（30分開始の部屋は30）/ a = 広さ（帖。不明は null）/ sz = 広さの表示
+ *   部屋: zs = 0分スタート可 / hs = 30分スタート可 / hu = 30分単位で利用可 / sh = 料金の時間帯を遅らせる分（30分開始だけの部屋は30）/ a = 広さ（帖。不明は null）/ sz = 広さの表示
  */
 function studio_sim_payload(array $discounts, array $rooms, array $rates, array $packs, array $rentals): array
 {
     return [
         "discounts" => array_map(fn($d) => ["id" => $d["studio_discount_id"], "name" => $d["name"], "day" => $d["day_type"]], $discounts),
         "rooms" => array_map(fn($r) => [
-            "id" => (int)$r["studio_room_id"], "name" => $r["name"], "hs" => (int)$r["half_start"], "hu" => (int)$r["half_unit"],
-            "sh" => (int)$r["half_start"] ? 30 : 0, "a" => $r["area_jo"] === null ? null : (float)$r["area_jo"], "sz" => studio_fmt_jo($r["area_jo"]),
+            "id" => (int)$r["studio_room_id"], "name" => $r["name"], "zs" => (int)$r["zero_start"], "hs" => (int)$r["half_start"], "hu" => (int)$r["half_unit"],
+            "sh" => (int)$r["half_start"] && !(int)$r["zero_start"] ? 30 : 0, "a" => $r["area_jo"] === null ? null : (float)$r["area_jo"], "sz" => studio_fmt_jo($r["area_jo"]),
         ], $rooms),
         "rates" => array_map(fn($r) => [
             "rooms" => $r["room_ids"], // 空 = 全部屋共通
@@ -422,7 +472,7 @@ function studio_sim_payload(array $discounts, array $rooms, array $rates, array 
 /** 一覧の料金比較用に、1つのスタジオのデータを読む（レンタルは比較に使わないので読まない） */
 function studio_sim_load(PDO $pdo, int $studioId): array
 {
-    $st = $pdo->prepare("SELECT studio_room_id, name, area_jo, half_start, half_unit FROM studio_room WHERE studio_id = ? ORDER BY sort_order, studio_room_id");
+    $st = $pdo->prepare("SELECT studio_room_id, name, area_jo, zero_start, half_start, half_unit FROM studio_room WHERE studio_id = ? ORDER BY sort_order, studio_room_id");
     $st->execute([$studioId]);
     $rooms = $st->fetchAll();
     $order = array_map("intval", array_column($rooms, "studio_room_id"));

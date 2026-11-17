@@ -325,3 +325,10 @@
 
 /* 候補の交通費（電車マーク +¥000） */
 .sch-fare { display: inline-flex; align-items: center; gap: 2px; }
+
+/* 作成フォームのスタジオの目安（交通費・所要時間） */
+.sch-trip-head { margin-bottom: 4px; }
+.sch-studio-name { display: inline-flex; flex-direction: column; }
+.sch-trip { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; cursor: default; }
+.sch-trip[hidden] { display: none; }
+.sch-trip__part { display: inline-flex; align-items: center; gap: 2px; }

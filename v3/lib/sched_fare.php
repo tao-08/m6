@@ -232,6 +232,67 @@ function sched_member_fare(PDO $pdo, array $prof, string $origin, array $studioC
 }
 
 /**
+ * 自宅の最寄り駅 → スタジオ の片道（日程調整の作成画面で、スタジオを選ぶ目安に使う）
+ *   fare … 定期外の運賃（円）。min … いちばん早い経路の所要時間（分。徒歩・乗車の合計 + 乗換 × $transferMin）
+ *   自宅の駅が未登録・覚えた結果が無い（$fetch = false のとき）・経路が無い ときは null
+ * @return ?array{fare: ?int, min: ?int}
+ */
+function sched_member_trip(PDO $pdo, array $prof, array $studioCoord, int $transferMin, bool $fetch): ?array
+{
+    $home = (string)($prof['home_station'] ?? '');
+    if ($home === '') {
+        return null;
+    }
+    try {
+        $hc = sched_nav_geocode($pdo, $home, $fetch);
+        if ($hc === null) {
+            return null;
+        }
+        $routes = static fn(array $a, array $b) => sched_nav_routes_cached($pdo, $a, $b, $fetch);
+        $list = $routes($hc, $studioCoord);
+        if (!$list) {
+            return null;
+        }
+        $mins = array_map(static fn(array $r) => sched_nav_door_minutes($r, $transferMin), $list);
+        return ['fare' => sched_nav_fare($routes, $hc, $studioCoord, sched_pass_spec($pdo, $prof, $fetch)), 'min' => min($mins)];
+    } catch (SchedNavMiss $e) {
+        return null;
+    }
+}
+
+/**
+ * スタジオ1つ分の目安を、メンバー全員の片道（sched_member_trip の結果。不明は null）から集計する
+ *   fare … 往復の定期外の運賃の1人平均（円。分かる人だけで平均。誰も分からなければ null）
+ *   lo / hi … 片道の所要時間の最短・最長（分。分かる人だけ）。差 = hi - lo
+ *   known … 所要時間が分かった人数 / total … メンバーの人数
+ * @param array<int, ?array{fare: ?int, min: ?int}> $trips
+ * @return array{fare: ?int, lo: ?int, hi: ?int, known: int, total: int}
+ */
+function sched_studio_trip_stats(array $trips): array
+{
+    $fares = [];
+    $mins = [];
+    foreach ($trips as $t) {
+        if ($t === null) {
+            continue;
+        }
+        if ($t['fare'] !== null) {
+            $fares[] = $t['fare'] * 2; // 往復
+        }
+        if ($t['min'] !== null) {
+            $mins[] = $t['min'];
+        }
+    }
+    return [
+        'fare' => $fares ? (int)round(array_sum($fares) / count($fares)) : null,
+        'lo' => $mins ? min($mins) : null,
+        'hi' => $mins ? max($mins) : null,
+        'known' => count($mins),
+        'total' => count($trips),
+    ];
+}
+
+/**
  * 練習の1コマ（開始 $t0・長さ $len）で、メンバーが「学校から来る / 学校へ帰る」か。前後 $gap 分以内に授業があれば学校
  *   busy … sched_collect_busy の1人分 [[開始, 終了, 場所, 種類, 題], …]（絶対分）
  * @return array{0: string, 1: string} [行き: 'home'|'campus', 帰り: 'home'|'campus']

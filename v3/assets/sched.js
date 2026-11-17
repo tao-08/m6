@@ -148,6 +148,81 @@
       items.forEach((i) => i.addEventListener('change', sync));
       sync();
     });
+
+    setupTrip(form, rows);
+  };
+
+  /**
+   * スタジオの目安: 自宅の最寄り駅 → スタジオ の「往復の交通費（1人平均）」と「片道の所要時間 最短〜最長」
+   *   部員の名前を変えたら、覚えてある結果だけで出し直す（fetch = 0。API は呼ばない）
+   *   「交通費・所要時間を調べる」で API を呼ぶ（fetch = 1）
+   *   所要時間の差（最長 − 最短）がいちばん小さいスタジオに「差最小」を付ける（2人以上分かるスタジオの中で）
+   */
+  const setupTrip = (form, rows) => {
+    const spans = [...form.querySelectorAll('[data-trip]')];
+    if (!spans.length) return;
+    const btn = form.querySelector('[data-trip-fetch]');
+    const status = form.querySelector('[data-trip-status]');
+    const csrf = form.querySelector('[name="csrf"]').value;
+    // 目安はチェックの <label> の中にある → タップで説明を出すとき、チェックが切り替わらないようにする
+    spans.forEach((s) => s.addEventListener('click', (e) => e.preventDefault()));
+
+    const show = (res) => {
+      const st = res.studios || {};
+      const ok = Object.values(st).filter((s) => s.known >= 2).map((s) => s.hi - s.lo);
+      const best = ok.length ? Math.min(...ok) : null;
+      spans.forEach((span) => {
+        const s = st[span.dataset.trip];
+        span.replaceChildren();
+        span.hidden = !s || (s.fare === null && s.lo === null);
+        if (span.hidden) return;
+        const part = (iconName, text) => {
+          const p = el('span', 'sch-trip__part');
+          const ic = el('span', 'icon icon--sm', iconName);
+          ic.setAttribute('aria-hidden', 'true');
+          p.append(ic, text);
+          span.append(p);
+        };
+        if (s.fare !== null) part('train', yen(s.fare) + '/人');
+        if (s.lo !== null) part('schedule', s.lo === s.hi ? `${s.lo}分` : `${s.lo}〜${s.hi}分`);
+        if (best !== null && s.known >= 2 && s.hi - s.lo === best) span.append(el('span', 'tag tag--plan', '差最小'));
+        span.dataset.tip = `往復の交通費（1人平均）・片道の所要時間。${s.total}人中${s.known}人分` + (s.known < s.total ? '（駅が未登録・未調査の人は除く）' : '');
+      });
+    };
+
+    let seq = 0; // 古い返事が後から届いても、新しい表示を上書きしないように
+    const load = (fetchApi) => {
+      const fd = new FormData();
+      fd.append('csrf', csrf);
+      fd.append('action', 'trip_stats');
+      fd.append('fetch', fetchApi ? '1' : '0');
+      rows.querySelectorAll('input[name="m_name[]"]').forEach((i) => { if (i.value.trim()) fd.append('m_name[]', i.value.trim()); });
+      const my = ++seq;
+      return fetch(location.pathname, { method: 'POST', body: fd })
+        .then((r) => r.json())
+        .then((res) => {
+          if (my !== seq) return res;
+          show(res);
+          return res;
+        });
+    };
+
+    let timer = 0;
+    rows.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(() => load(false).catch(() => {}), 600); });
+    rows.addEventListener('click', (e) => { if (e.target.closest('[data-remove-member]')) load(false).catch(() => {}); });
+    form.querySelector('[data-band-pick]')?.addEventListener('change', () => load(false).catch(() => {}));
+    load(false).catch(() => {});
+
+    if (!btn) return;
+    btn.addEventListener('click', () => {
+      if (!confirm('部員の自宅の最寄り駅から、全スタジオまでの交通費と所要時間を検索します。')) return;
+      btn.disabled = true;
+      status.textContent = '調査中…';
+      load(true)
+        .then((res) => { status.textContent = res.error || ''; })
+        .catch(() => { status.textContent = '調べられませんでした。もう一度押してください'; })
+        .finally(() => { btn.disabled = false; });
+    });
   };
 
   // ===================================================================
@@ -615,9 +690,10 @@
 
     /**
      * その部屋をこの開始時刻から借りられるか（スタジオ情報の料金計算 = studio_info.js の applyRoomRule と同じ決まり）
-     *   30分始まりの部屋（hs）は :30 だけ、それ以外の部屋は :00 だけ。部屋の無いスタジオ（room = null）は制限なし
+     *   0分開始（zs）なら :00、30分開始（hs）なら :30 から借りられる（両方なら どちらでも）。部屋の無いスタジオ（room = null）は制限なし
+     *   zs が無い古いデータは「30分開始でなければ 0分開始」とみなす
      */
-    const startOk = (room, m) => !room || m % 60 === (room.hs ? 30 : 0);
+    const startOk = (room, m) => !room || (m % 60 === 30 ? !!room.hs : m % 60 === 0 && !!(room.zs ?? !room.hs));
     /** スタジオをこの開始時刻で借りられるか（借りられる部屋が1つでもあるか。部屋が未登録なら制限なし） */
     const usable = (sid, m) => {
       const rooms = data.sim[sid]?.rooms || [];

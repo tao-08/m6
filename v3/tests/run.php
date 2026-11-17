@@ -940,6 +940,15 @@ check('定期外の運賃: 前後2時間以内に授業があれば学校（行�
     sched_fare_legs([[600, 700, null, 'manual', '']], 720, 60, 120),
     sched_fare_legs($fBusy, 1200, 60, 120), sched_fare_legs($fBusy, 1200, 60, 240), // 授業の終わり(1000)の200分後: 設定2時間なら自宅 / 4時間なら学校
 ], [['campus', 'campus'], ['campus', 'home'], ['home', 'home'], ['home', 'home'], ['home', 'home'], ['campus', 'home']]);
+check('スタジオの目安: 往復の運賃の1人平均・片道の所要時間の最短〜最長（不明の人は除く）', [
+    sched_studio_trip_stats([['fare' => 200, 'min' => 25], ['fare' => 300, 'min' => 40], null, ['fare' => null, 'min' => 30]]),
+    sched_studio_trip_stats([null, null]),
+    sched_studio_trip_stats([]),
+], [
+    ['fare' => 500, 'lo' => 25, 'hi' => 40, 'known' => 3, 'total' => 4], // (400 + 600) / 2
+    ['fare' => null, 'lo' => null, 'hi' => null, 'known' => 0, 'total' => 2],
+    ['fare' => null, 'lo' => null, 'hi' => null, 'known' => 0, 'total' => 0],
+]);
 // 実データ: 定期 = 東中神〜御茶ノ水（青梅線 → 中央線特快）。途中駅の新宿までは定期の中、高尾（逆方向）は外
 $navLoad = static fn(string $n) => sched_nav_parse(json_decode((string)file_get_contents(__DIR__ . '/fixtures/navitime_' . $n . '.json'), true));
 $navPassSpec = sched_nav_pass_spec($navLoad('pass'));
@@ -955,6 +964,15 @@ check('NAVITIME: 定期の途中駅（東中神〜御茶ノ水の定期で、新
 ], [[0, 1], [], 2, [false], [0], 1]);
 check('NAVITIME: 出発は次の平日の昼', sched_nav_time(new DateTimeImmutable('2027-03-26 20:00', new DateTimeZone('Asia/Tokyo'))), '2027-03-29T12:00:00');
 check('部屋: 広さの目安 / 不明', [sched_room_fit(15.0, 5, 3.0), sched_room_fit(12.0, 5, 3.0), sched_room_fit(null, 5, 3.0)], ['ok', 'small', 'unknown']);
+check('レンタルのジャンル: 名前から推測（付属品 → ドラム → アンプ → キーボード → エフェクター → 楽器 → その他）', array_map('studio_rental_genre_guess', [
+    'エレキギター（Stratocaster）', 'アコースティックエレキギター', 'Jazz Bass', 'ベースアンプ', 'JC-120', 'ツインペダル', 'コンガ', 'Zildjian China Cymbal 18',
+    'シンセ（JUNO-DS61）', 'Keyboard', 'エフェクター（BD-2）', 'ワウ（Cry Baby）', 'ギターシールド', 'DI（SansAmp Bass Driver DI）', 'SM58', 'メトロノーム',
+]), [1, 1, 1, 2, 2, 3, 3, 3, 4, 4, 5, 5, 9, 9, 9, 9]);
+check('レンタルのジャンル: 保存した値が優先 / 10個以下はタブなし / 超えたらジャンルの順', [
+    studio_rental_genre(['name' => 'SM58', 'genre' => 1]), studio_rental_genre(['name' => 'SM58', 'genre' => null]), studio_rental_genre(['name' => 'SM58', 'genre' => 7]),
+    studio_rental_tabs(array_fill(0, 10, ['name' => 'SM58', 'genre' => null])),
+    array_keys(studio_rental_tabs([...array_fill(0, 9, ['name' => 'SM58', 'genre' => null]), ['name' => 'シンセ', 'genre' => null], ['name' => 'ギター', 'genre' => null]])),
+], [1, 9, 9, null, [1, 4, 9]]);
 require_once __DIR__ . '/../lib/sched_ical.php';
 check('iCal URL: webcal → https / Google OK / 他のホストは不可 / ポート付きは不可', [
     sched_ical_normalize('webcal://p12-caldav.icloud.com/published/2/abc'),
