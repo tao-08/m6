@@ -130,6 +130,17 @@ function studio_span(string $start, string $end): ?array
 }
 
 /**
+ * 住所の頭の郵便番号を取る（"〒101-0051 東京都…" → "東京都…"）
+ *   住所に郵便番号を入れない決まり。国土地理院の住所検索 API は郵便番号が付いていると 0 件になるため
+ *   〒 の有無・全角数字・ハイフンの種類（- − ‐ ー －）・後ろの空白（全角も）のどれでも取れるようにする
+ *   u = UTF-8 として読む（付けないと日本語が1文字ずつに割れて正しく比べられない）
+ */
+function studio_strip_zip(string $address): string
+{
+    return trim((string)preg_replace('/^\s*(〒\s*)?[0-9０-９]{3}\s*[-−‐ー－]?\s*[0-9０-９]{4}(?![0-9０-９])[\s　]*/u', '', $address));
+}
+
+/**
  * URL として保存してよいか（空は OK = 未登録）
  *   href に入れるので http(s) だけ許す（"javascript:alert(1)" のような URL で XSS させないため）
  */

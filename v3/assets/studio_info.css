@@ -129,6 +129,19 @@
 .sinfo-edit .sinfo-edit__row > * { width: auto; }
 .sinfo-edit__row .grow { flex: 1 1 140px; }
 .sinfo-edit__row input[type=number] { width: 90px; }
+/* 編集フォームの自動保存（JS: studio_info.js の「自動保存」。PHP: studio_save_button）
+   ・ふだんは「保存」ボタン。JS が動くとフォームに .is-autosave が付き、ボタンを隠して状態のアイコンを出す（JS が動かない環境でも保存できるように）
+   ・状態は data-state（saved 保存済み / saving 保存中 / dirty 未保存 / held 空欄で保留 / error 失敗）。説明は data-tip（共通のポップアップ）
+   ・押しても何も起きない表示なので、cursor を指定する（iOS は cursor 指定のある要素でないとタップが届かないことがある） */
+.sinfo-autosave { display: none; align-items: center; justify-content: center; width: 32px; height: 32px; color: var(--muted); cursor: default; }
+.sinfo-edit__form.is-autosave .sinfo-save { display: none; }
+.sinfo-edit__form.is-autosave .sinfo-autosave { display: inline-flex; }
+.sinfo-autosave .icon { font-size: var(--fs-xl); transition: color var(--t-base); }
+.sinfo-autosave[data-state="saved"] { color: var(--ok); }
+.sinfo-autosave[data-state="held"] { color: var(--warn); }
+.sinfo-autosave[data-state="error"] { color: var(--danger); }
+.sinfo-autosave[data-state="saving"] .icon { animation: spin 1s linear infinite; } /* 回る（@keyframes spin は app.css） */
+@media (prefers-reduced-motion: reduce) { .sinfo-autosave[data-state="saving"] .icon { animation-duration: 3s; } }
 .sinfo-delete { margin-top: 20px; display: flex; justify-content: flex-end; }
 
 /* ---- バンド / 個人練習の切り替え（シミュレーションの一番上。少し大きめのボタン） ---- */

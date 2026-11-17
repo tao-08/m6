@@ -10,6 +10,9 @@
  *    ・1行 = 「その操作の前」の状態。復元すると、スタジオ全体がその状態に戻る
  *    ・復元する前の状態も新しい行（action = restore_history）として残す → 戻したこともまた戻せる
  *    ・削除したスタジオも、削除の行（action = delete_studio）から復元できる（履歴は studio を消しても残る）
+ *    ・編集フォームの自動保存（assets/studio_info.js。X-Autosave: 1 付きの POST）は、打つたびに保存されるので、そのまま残すと履歴が埋まる
+ *      → 同じスタジオを同じ人が同じ操作（action）で続けて自動保存したときは、STUDIO_HISTORY_MERGE_MIN 分のあいだ1行にまとめる
+ *        （いちばん古い「変更前」を残し、あとの行は足さない。復元すると、その一連の編集の前に戻る）
  *
  *  戻し方: 部屋・割引区分・料金・パック・レンタル・機材は「今のものを全部消して、snapshot から入れ直す」。
  *          行の番号（*_id）は新しく振る（番号は画面にも URL にも出さないので、同じでなくてよい。スタジオの番号だけは同じに戻す）
@@ -41,6 +44,9 @@ function studio_history_label(string $action): string
 
 /** 履歴を残す日数。これより古い行は、新しく記録するときに消す */
 const STUDIO_HISTORY_KEEP_DAYS = 365;
+
+/** 自動保存の履歴を1行にまとめる時間（分）。この間に同じ人が同じ操作で続けて自動保存しても、履歴は足さない（studio_history_watch の $auto） */
+const STUDIO_HISTORY_MERGE_MIN = 10;
 
 /** 画面に出す件数（スタジオごと） */
 const STUDIO_HISTORY_SHOW = 30;
@@ -119,11 +125,31 @@ function studio_history_add(PDO $pdo, string $action, array $before, ?int $userI
 }
 
 /**
+ * このスタジオの「いちばん新しい履歴」が、同じ人・同じ操作で、STUDIO_HISTORY_MERGE_MIN 分以内のものか（自動保存の履歴をまとめるかの判定）
+ *   「いちばん新しい1行」だけを見る = 間に別の操作（別の項目の保存・別の人の編集）が入ったら、まとめない（続けて起きた編集だけまとめる）
+ *   時間は DB の時計（NOW()）で比べる（created_at も DB の時計で入るので、PHP とのずれが関係しない）
+ *   user_id は NULL（アカウントを消された人）のこともあるので、NULL 同士も「同じ人」として比べる
+ */
+function studio_history_recent_same(PDO $pdo, int $studioId, string $action, ?int $userId): bool
+{
+    $st = $pdo->prepare('SELECT user_id, action, created_at >= NOW() - INTERVAL ' . STUDIO_HISTORY_MERGE_MIN . ' MINUTE AS recent
+            FROM studio_history WHERE studio_id = ? ORDER BY history_id DESC LIMIT 1');
+    $st->execute([$studioId]);
+    $last = $st->fetch(PDO::FETCH_ASSOC);
+    if (!$last || (int)$last['recent'] !== 1 || $last['action'] !== $action) {
+        return false;
+    }
+    return $last['user_id'] === null ? $userId === null : (int)$last['user_id'] === $userId;
+}
+
+/**
  * この POST が終わったとき、スタジオが変わっていれば「変わる前」を1行残す（POST の最初で1回呼ぶ）。
  *   記録に失敗しても、保存そのものは終わっているので、エラーページにはせずログだけ残す
  *   （表をまだ作っていない本番でも、編集は止まらない）
+ *   $auto = 自動保存の POST か（X-Autosave: 1 のヘッダー付き）。true のときは、直前の履歴が同じ人・同じ操作で
+ *           STUDIO_HISTORY_MERGE_MIN 分以内なら、新しい行を足さない（古い「変更前」を残して1行にまとめる）
  */
-function studio_history_watch(PDO $pdo, int $studioId, string $action, ?int $userId): void
+function studio_history_watch(PDO $pdo, int $studioId, string $action, ?int $userId, bool $auto = false): void
 {
     try {
         $before = studio_history_snapshot($pdo, $studioId);
@@ -134,12 +160,15 @@ function studio_history_watch(PDO $pdo, int $studioId, string $action, ?int $use
     if ($before === null) {
         return;
     }
-    register_shutdown_function(static function () use ($pdo, $studioId, $action, $userId, $before): void {
+    register_shutdown_function(static function () use ($pdo, $studioId, $action, $userId, $before, $auto): void {
         try {
             if ($pdo->inTransaction()) {
                 return; // 途中で止まった（保存が終わっていない）
             }
             if (!studio_history_same($before, studio_history_snapshot($pdo, $studioId))) {
+                if ($auto && studio_history_recent_same($pdo, $studioId, $action, $userId)) {
+                    return; // 続けての自動保存: 直前の行（その一連の編集の前の状態）に含まれるので、足さない
+                }
                 studio_history_add($pdo, $action, $before, $userId);
             }
         } catch (Throwable $e) {

@@ -9,7 +9,16 @@
  *  6. 広さの絞り込み（#studio-filter）… 一覧のカードと地図のピンを「N帖以上の部屋がある店」だけにする
  *  7. 部屋のチェック欄（.sinfo-chips）… 「全部屋」と個別の部屋を同時に選ばせない
  *  8. 料金の編集（[data-rate-add]）… 見出し（対象・曜日）の＋で空の行を足す / ＋ 見出し / ＋ 時間帯
- *  9. 行の削除（[data-row-del]）… 行の主な欄を空にして隠す（保存で削除される）
+ *  9. 行の削除（[data-row-del]）… 行の主な欄を空にして隠す（保存で削除される。編集フォームは自動保存なので、押すとすぐ保存）
+ * 10. 自動保存（form[data-autosave]）… 編集フォームの入力・選択・削除・並び替えのたびに、画面を移動せず fetch で保存する
+ *       ・入力 = 1.5 秒、選択・チェック = 0.3 秒まとめてから送る / 削除ボタン・並び替えの直後も送る
+ *       ・「保存」ボタンは隠れ、状態のアイコン（保存済み・保存中・未保存・空欄・失敗）に替わる（PHP: studio_save_button）
+ *       ・既存の行の主な欄が空のとき・入力が不正なときは「保留」（送らない。行の削除はゴミ箱 / × のボタンだけ）
+ *       ・新しい行（id が 0 で中身がある行）は、フォームから離れる・開閉を閉じる・ページを離れるまで送らない。保存後はフォームを
+ *         サーバーの最新に差し替えて、新しい行に DB の番号を持たせる（二重に追加しないため）
+ *       ・保存のたびに、カードの読み取り用の表示（料金表・パック・機材など）もサーバーの最新に差し替える
+ *       ・エリアの名前変更（save_areas）だけは対象外（全スタジオに及び、同名で統合されるので「保存」ボタンのまま）
+ *       ・料金シミュレーション（#studio-sim）は最初に1回だけ料金を読むので、保存では更新しない（開き直すと最新になる）
  *
  *  ■ IIFE（即時実行関数）とは
  *    (() => { ... })() の形。関数を作ってすぐ実行する。中で作った変数が外（ほかの JS）とぶつからない。
@@ -242,7 +251,8 @@
     const coords = form.querySelector('[data-geo-coords]');
 
     btn.addEventListener('click', async () => {
-      const q = addr.value.trim();
+      // 頭の郵便番号（〒101-0051 など）は取る。付いていると住所検索が 0 件になるため（サーバー側も保存時に同じく取る: studio_strip_zip）
+      const q = addr.value.replace(/^\s*(〒\s*)?[0-9０-９]{3}\s*[-−‐ー－]?\s*[0-9０-９]{4}(?![0-9０-９])[\s　]*/u, '').trim();
       if (!q) {
         addr.focus();
         return;
@@ -259,6 +269,7 @@
         }
         const [lng, lat] = list[0].geometry.coordinates; // 分割代入: 配列の1つ目を lng、2つ目を lat に入れる
         coords.value = lat.toFixed(6) + ', ' + lng.toFixed(6);
+        coords.dispatchEvent(new Event('change', { bubbles: true })); // 値を JS で入れたので、自動保存（10.）にも知らせる
       } catch (e) {
         alert('座標を取得できませんでした');
       } finally {
@@ -742,11 +753,16 @@
   /* 部屋の編集: 「30分単位の予約」（全部屋まとめて）。部屋ごとに値が違う（混在）ときは「−」表示にする。
    *   押したら、部屋ごとの値を保つ印（half_unit_mixed）を外して、チェックの状態で全部屋に反映する */
   const setupHalfUnitAll = () => {
-    const box = document.querySelector('[data-half-unit-all]');
-    if (!box) return;
-    const mixed = document.querySelector('[data-half-unit-mixed]');
-    if (mixed) box.indeterminate = true;
-    box.addEventListener('change', () => mixed?.remove());
+    // root の中のチェックに仕込む。自動保存でフォームの中身が差し替わったとき（autosave:replaced）は、新しいチェックにもう一度仕込む
+    const init = (root) => {
+      const box = root.querySelector('[data-half-unit-all]');
+      if (!box) return;
+      const mixed = root.querySelector('[data-half-unit-mixed]');
+      if (mixed) box.indeterminate = true;
+      box.addEventListener('change', () => root.querySelector('[data-half-unit-mixed]')?.remove());
+    };
+    init(document);
+    document.addEventListener('autosave:replaced', (e) => init(e.target));
   };
 
   const setupTimePair = () => {
@@ -807,7 +823,9 @@
         });
       });
       form.addEventListener('reorder-renumber', renumber); // 行を足したとき（setupAddRow）にも番号を付け直す
-      let drag = null; // ドラッグ中だけ { row, pointerId }
+      // 並び替えが終わったことを知らせる（自動保存 10. が聞いて保存する）。ドラッグ中は何度も入れ替わるので、離したときに1回だけ
+      const done = () => form.dispatchEvent(new Event('reorder-done'));
+      let drag = null; // ドラッグ中だけ { row, pointerId, moved }
       form.addEventListener('pointerdown', (e) => {
         const handle = e.target.closest('[data-reorder-handle]');
         if (!handle || drag || (e.pointerType === 'mouse' && e.button !== 0)) return;
@@ -824,15 +842,19 @@
         if (all[i - 1] && e.clientY < mid(all[i - 1])) {
           all[i - 1].before(drag.row);
           renumber();
+          drag.moved = true;
         } else if (all[i + 1] && e.clientY > mid(all[i + 1])) {
           all[i + 1].after(drag.row);
           renumber();
+          drag.moved = true;
         }
       });
       const end = (e) => {
         if (!drag || e.pointerId !== drag.pointerId) return;
         drag.row.classList.remove('is-dragging');
+        const moved = drag.moved;
         drag = null;
+        if (moved) done(); // 動かさずに離しただけなら保存しない
       };
       form.addEventListener('pointerup', end);
       form.addEventListener('pointercancel', end);
@@ -847,6 +869,7 @@
         if (e.key === 'ArrowDown' && all[i + 1]) all[i + 1].after(row);
         renumber();
         handle.focus();
+        done();
       });
     });
   };
@@ -912,9 +935,6 @@
   //     ・両方の料金があるスタジオだけ #studio-target-tabs が出るので、無ければ何もしない
   // ===================================================================
   const setupTargetTabs = () => {
-    const tabs = document.getElementById('studio-target-tabs');
-    if (!tabs) return;
-
     const apply = (target) => {
       // dataset.tabPanel = HTML の data-tab-panel 属性（data- のあとのハイフン区切りは、JS ではキャメルケースになる）
       document.querySelectorAll('[data-tab-panel]').forEach((p) => {
@@ -924,13 +944,21 @@
         s.hidden = !s.dataset.tabHas.split(' ').includes(target);
       });
     };
+    /** 今選ばれているタブに表示を合わせる（動きなし） */
+    const sync = () => {
+      const on = document.querySelector('#studio-target-tabs input[name="tab_target"]:checked');
+      if (on) apply(on.value);
+    };
 
-    tabs.addEventListener('change', (e) => {
+    // document で待ち受ける（イベントの委任）。自動保存（10.）でカードの表示が差し替わっても、タブが新しくなるだけで動く
+    document.addEventListener('change', (e) => {
       if (e.target.name !== 'tab_target') return;
       switchPanels(document.querySelectorAll('[data-tab-panel], [data-tab-has]'), () => apply(e.target.value));
     });
     // ブラウザの「戻る」などでラジオの選択だけ復元されたときにも、表示を合わせておく
-    apply(tabs.querySelector('input[name="tab_target"]:checked').value);
+    sync();
+    // 自動保存でカードの表示を差し替えたあと: 新しい要素は初期の状態（バンドが開いている）で来るので、選ばれているタブに合わせ直す
+    document.addEventListener('studio:display-refreshed', sync);
   };
 
   // ===================================================================
@@ -940,18 +968,24 @@
   //     ・チップ（name="solo_ppl"）が無いページでは、change が来ないので何もしない
   // ===================================================================
   const setupSoloPeople = () => {
+    const apply = (n) => {
+      document.querySelectorAll('[data-ppl]').forEach((t) => {
+        t.hidden = t.dataset.ppl !== n;
+      });
+      document.querySelectorAll('[data-ppl-has]').forEach((g) => {
+        g.hidden = !g.dataset.pplHas.split(' ').includes(n);
+      });
+    };
     // document 全体で change を聞く（イベントの委任）。チップがどこにあっても1か所で受けられる
     document.addEventListener('change', (e) => {
       if (e.target.name !== 'solo_ppl') return;
       const n = e.target.value;
-      switchPanels(document.querySelectorAll('[data-ppl], [data-ppl-has]'), () => {
-        document.querySelectorAll('[data-ppl]').forEach((t) => {
-          t.hidden = t.dataset.ppl !== n;
-        });
-        document.querySelectorAll('[data-ppl-has]').forEach((g) => {
-          g.hidden = !g.dataset.pplHas.split(' ').includes(n);
-        });
-      });
+      switchPanels(document.querySelectorAll('[data-ppl], [data-ppl-has]'), () => apply(n));
+    });
+    // 自動保存（10.）でカードの表示を差し替えたあと: 選ばれている人数に表を合わせ直す（動きなし）
+    document.addEventListener('studio:display-refreshed', () => {
+      const on = document.querySelector('input[name="solo_ppl"]:checked');
+      if (on) apply(on.value);
     });
   };
 
@@ -971,6 +1005,10 @@
     });
     // ブラウザの「戻る」などでラジオの選択だけ復元されたときにも、表示を合わせておく
     document.querySelectorAll('input[name^="pack_len_"]:checked').forEach(apply);
+    // 自動保存（10.）でパックの表示を差し替えたあとも同じ（選ばれている長さに表を合わせ直す）
+    document.addEventListener('studio:display-refreshed', () => {
+      document.querySelectorAll('input[name^="pack_len_"]:checked').forEach(apply);
+    });
   };
 
   // ===================================================================
@@ -1132,7 +1170,8 @@
     const tools = document.querySelector('[data-rate-tools]');
     if (!tools) return;
     const form = tools.parentElement.querySelector('form.sinfo-rate-edit');
-    const panels = form.querySelectorAll('[data-rate-panel]');
+    // 自動保存（10.）でフォームの中身が差し替わるので、パネルは使うたびに探し直す（最初に1回だけ集めない）
+    const panels = () => form.querySelectorAll('[data-rate-panel]');
     const radio = (name, value) => tools.querySelector(`input[name="${name}"][value="${value}"]`);
 
     /** ラジオの選択に合わせて、曜日のタブとパネルを出し分ける */
@@ -1141,7 +1180,7 @@
       tools.querySelectorAll('[data-rate-days]').forEach((d) => { d.hidden = d.dataset.rateDays !== target; });
       const day = tools.querySelector(`input[name="rate_day_${target}"]:checked`)?.value;
       const key = target === 'new' ? 'new' : target + '|' + day;
-      panels.forEach((p) => { p.hidden = p.dataset.ratePanel !== key; });
+      panels().forEach((p) => { p.hidden = p.dataset.ratePanel !== key; });
     };
     /** 'new' か '対象|曜日' のタブを開く。そのタブが無ければ false */
     const open = (key) => {
@@ -1157,7 +1196,7 @@
     };
 
     tools.addEventListener('change', (e) => {
-      if (e.target.name.startsWith('rate_')) switchPanels([...panels, ...tools.querySelectorAll('[data-rate-days]')], sync);
+      if (e.target.name.startsWith('rate_')) switchPanels([...panels(), ...tools.querySelectorAll('[data-rate-days]')], sync);
     });
     form.addEventListener('invalid', (e) => {
       const panel = e.target.closest('[data-rate-panel]');
@@ -1185,6 +1224,19 @@
         room.querySelector(`select[name$="[dk][${did}]"]`).value = kind;
         room.querySelector(`input[name$="[dv][${did}]"]`).value = input.value;
       });
+      form.dispatchEvent(new Event('change', { bubbles: true })); // 値を JS で入れたので、自動保存（10.）にも知らせる
+    });
+
+    // 自動保存（10.）が新しい行の番号を取り込むためにフォームの中身を差し替えたとき:
+    //   上のタブ（対象・曜日。フォームの外にある）も新しい見出しに合わせて作り直し、開いていたタブを開き直す
+    let keep = null;
+    form.addEventListener('autosave:before-replace', () => {
+      keep = form.querySelector('[data-rate-panel]:not([hidden])')?.dataset.ratePanel ?? null;
+    });
+    form.addEventListener('autosave:replaced', (e) => {
+      const next = e.detail.doc.querySelector('[data-rate-tools]');
+      if (next) tools.innerHTML = next.innerHTML;
+      if (!(keep && open(keep))) sync(); // その見出しが無くなっていたら先頭のタブ
     });
     // ブラウザの「戻る」などでラジオの選択だけ復元されたときにも、表示を合わせておく
     sync();
@@ -1213,8 +1265,6 @@
   //     ・折り返す列（--disc）は縦の位置と高さ（--seg-y / --seg-h）も入れて、行をまたいで動かす / ラジオが無い列は対象外
   // ===================================================================
   const setupSegSlide = () => {
-    const segs = [...document.querySelectorAll('.sinfo-seg')].filter((s) => s.querySelector('input[type="radio"]'));
-    if (!segs.length) return;
     const place = (seg) => {
       const on = seg.querySelector('input:checked')?.closest('label');
       if (!on || !on.offsetWidth) return; // 隠れているときは測れない
@@ -1227,13 +1277,377 @@
       seg.style.setProperty('--seg-h', on.offsetHeight + 'px');
       if (first) requestAnimationFrame(() => requestAnimationFrame(() => seg.classList.add('is-ready')));
     };
+    const isRadioSeg = (s) => !!s.querySelector('input[type="radio"]');
     const watch = new ResizeObserver((entries) => entries.forEach((e) => place(e.target)));
-    segs.forEach((s) => { place(s); watch.observe(s); });
+    const watched = new WeakSet(); // もう見張っている列（同じ列を2回見張らない。WeakSet = 消えた列は自動で忘れる）
+    // ページにある列を全部測る。自動保存（10.）でカードの表示が差し替わると新しい列が増えるので、そのたびに呼ぶ
+    const scan = () => document.querySelectorAll('.sinfo-seg').forEach((s) => {
+      if (!isRadioSeg(s)) return;
+      if (!watched.has(s)) {
+        watched.add(s);
+        watch.observe(s);
+      }
+      place(s);
+    });
+    scan();
     document.addEventListener('change', (e) => {
       const seg = e.target.closest?.('.sinfo-seg');
-      if (seg && segs.includes(seg)) place(seg);
+      if (seg && isRadioSeg(seg)) place(seg);
     });
-    document.addEventListener('seg:refresh', () => segs.forEach(place));
+    document.addEventListener('seg:refresh', scan);
+    document.addEventListener('studio:display-refreshed', scan);
+  };
+
+  // ===================================================================
+  //  10. 自動保存（編集フォーム）
+  //     PHP: studio_info.php の <form data-autosave> と studio_save_button()。サーバーの処理は今までの「保存」ボタンと同じ
+  //     （検証 → 保存 → flash → redirect）で、JS が fetch で POST して、リダイレクト先の画面（GET）の HTML を受け取る。
+  //
+  //  ■ いつ送るか
+  //     ・入力（input）… 1.5 秒まとめてから / 選択・チェック（change）… 0.3 秒まとめてから
+  //     ・削除ボタン（ゴミ箱・×）・並び替えの直後 / Enter キー / フォームから離れたとき / ページを離れる・隠すとき
+  //     ・同じフォームの保存は同時に1つだけ。送っている間にまた変わったら、終わってからもう1回送る
+  //     ・全フォームの保存を1列に並べて送る（サーバーの flash は次の GET で消えるので、同時に走らせると別のフォームの結果が混ざる）
+  //
+  //  ■ 送らない（保留）
+  //     ・既存の行（id > 0）の主な欄（DEL_FIELD。名前・料金など）が空 … サーバーは「空 = 削除」と読むので、入力の途中で消えないよう止める
+  //       （行の削除はゴミ箱 / × のボタンだけ。押すと行が隠れるので、保留にならず保存される）
+  //     ・必須・形式・範囲のエラー（checkValidity。吹き出しは出さない）/ 「新しいエリアを作る」で名前が空
+  //  ■ 新しい行（id が 0 で主な欄に中身がある行）
+  //     ・入力の途中（名前だけ・料金だけ）で保存するとエラーになるので、フォームから離れる・開閉を閉じる・ページを離れるまで待つ
+  //     ・保存したら、フォームの中身をサーバーの最新に差し替える。新しい行に DB の番号（id）が入る
+  //       （差し替えないと、次の保存で同じ行がもう1つ追加されてしまう）。送っている間はフォームを触れなくする（inert）
+  //  ■ 保存したあと
+  //     ・カードの読み取り用の表示（details.sinfo-edit 以外）をサーバーの最新に差し替える。選択中のタブ・人数・長さは覚えて戻す
+  //     ・部屋・割引区分を変えたときは、それを使う料金・パック・機材のフォームも差し替える（行・列が変わるため）
+  //     ・編集履歴の一覧も差し替える
+  //  ■ 状態のアイコン（保存済み・保存中・未保存・空欄・失敗）は data-tip で説明する（押しても何も起きない表示なので）
+  // ===================================================================
+  const setupAutosave = () => {
+    const forms = [...document.querySelectorAll('form[data-autosave]')];
+    if (!forms.length) return;
+
+    // 状態 → [アイコン名, 説明]。アイコン名は lib/icon_names.php に入れてある
+    const STATES = {
+      saved: ['cloud_done', '保存済み'],
+      saving: ['sync', '保存中'],
+      dirty: ['pending', '未保存'],
+      held: ['warning', '空欄があるため未保存'],
+      error: ['cloud_off', '保存失敗'],
+    };
+    // 保存したフォーム → 読み取り用の表示を差し替えるカード（'info' = id の無い基本情報のカード / 他は id）
+    //   部屋は料金・パック・機材の表示（部屋名）、割引区分は料金・パックの表示（列）に出る
+    const AFFECT = {
+      save_info: ['info'], save_rooms: ['rates', 'packs', 'equipment'], save_discounts: ['rates', 'packs'],
+      save_rates: ['rates'], save_packs: ['packs'], save_rentals: ['rentals'], save_equipment: ['equipment'],
+    };
+    // 保存したフォーム → 中身（行・列）が変わるので差し替えるほかのフォーム
+    const DEPENDENTS = { save_rooms: ['save_rates', 'save_packs', 'save_equipment'], save_discounts: ['save_rates', 'save_packs'] };
+
+    const states = new Map(); // フォーム → そのフォームの状態
+
+    // ---- 小さな道具 ----
+    const notify = (msg) => {
+      // flashToast は app.js の共通のお知らせ（画面上部）。読み込めていなければ alert
+      if (typeof flashToast === 'function') flashToast(msg, 'error');
+      else alert(msg);
+    };
+    const actionOf = (form) => form.elements.action?.value ?? '';
+
+    /** アイコンと説明を、今の状態に合わせる（フォームの中身が差し替わったあとにも呼ぶ） */
+    const paint = (st) => {
+      const box = st.form.querySelector('[data-autosave-status]');
+      if (!box) return;
+      const [name, text] = STATES[st.state];
+      box.dataset.state = st.state;
+      box.dataset.tip = text; // 共通のポップアップ（app.js の setupTip）が読む
+      box.setAttribute('aria-label', text);
+      const icon = box.querySelector('.icon');
+      if (icon) icon.textContent = name;
+    };
+    const setState = (st, state) => {
+      st.state = state;
+      paint(st);
+    };
+
+    /**
+     * フォームの行を調べる（DEL_FIELD の「主な欄」を手がかりにする）
+     *   held  … 既存の行（id > 0）なのに主な欄が空 = 送ると削除になってしまう
+     *   fresh … 新しい行（id = 0）で主な欄に中身がある = 送ると追加される
+     *   削除ボタンで隠した行（setupRowDelete が欄を空にして hidden にする）は、どちらでもない（削除したい行なので）
+     */
+    const rowsOf = (form) => {
+      const out = { held: false, fresh: false };
+      const sel = DEL_FIELD[actionOf(form)];
+      if (!sel) return out;
+      form.querySelectorAll(sel).forEach((input) => {
+        if (input.closest('.sinfo-slot-edit, .sinfo-rate-row, .sinfo-edit__row')?.hidden) return; // 削除ボタンで隠した行（その行自身が hidden のとき）
+        const row = input.closest('.sinfo-rate-room, .sinfo-edit__row'); // 料金表は部屋ごとの行 / ほかは1行
+        const id = row?.querySelector('input[type="hidden"][name="id[]"], input[type="hidden"][name$="[id]"]');
+        if (!id) return;
+        const filled = input.value.trim() !== '';
+        if (Number(id.value) > 0) {
+          if (!filled) out.held = true;
+        } else if (filled) {
+          out.fresh = true;
+        }
+      });
+      return out;
+    };
+
+    /** 送らずに待つ理由があるか（true = 保留）。吹き出しは出さない（checkValidity / reportValidity は使わない: invalid イベントでタブが切り替わってしまう） */
+    const isHeld = (form) => {
+      if ([...form.elements].some((el) => el.willValidate && !el.validity.valid)) return true;
+      if (rowsOf(form).held) return true;
+      // エリアの「＋ 新しいエリアを作る」を選んだのに、名前が空
+      return [...form.querySelectorAll('select[data-new-select]')].some((sel) => {
+        if (sel.value !== sel.dataset.newSelect) return false;
+        return !(sel.closest('.sinfo-field')?.querySelector('[data-new-input]')?.value.trim());
+      });
+    };
+
+    // ---- 送る ----
+    let chain = Promise.resolve(); // 全フォームの保存を1列に並べる
+    const enqueue = (job) => {
+      const p = chain.then(job);
+      chain = p.catch(() => {});
+      return p;
+    };
+
+    /** POST して、リダイレクト先の画面を受け取る。成功 = { doc } / 失敗 = { error: 画面に出す文 } */
+    const post = async (body, keepalive) => {
+      try {
+        const res = await fetch(location.pathname + location.search, {
+          method: 'POST', body, headers: { 'X-Autosave': '1' }, credentials: 'same-origin', keepalive,
+        });
+        if (!res.ok) return { error: '保存できませんでした' };
+        // fetch は 302 の移動先（GET）まで自動でたどる。その画面に、保存の結果の flash（エラーなら .flash--error）が載っている
+        const doc = new DOMParser().parseFromString(await res.text(), 'text/html');
+        if (!doc.querySelector('.sinfo-section')) return { error: '保存できませんでした' }; // ログイン切れなどで別の画面が返った
+        const err = doc.querySelector('.flash--error');
+        return err ? { error: err.textContent.trim() } : { doc };
+      } catch (e) {
+        return { error: '保存できませんでした' };
+      }
+    };
+
+    /** 同じ action のフォームの中で、$form と同じ順番のものを doc から探す（action が同じフォームが複数あっても取り違えない） */
+    const matchForm = (doc, form) => {
+      const same = (root) => [...root.querySelectorAll('form[data-autosave]')].filter((f) => actionOf(f) === actionOf(form));
+      return same(doc)[same(document).indexOf(form)] ?? null;
+    };
+
+    /** フォームの中身をサーバーの最新に差し替える（新しい行に DB の番号が入る / 部屋・割引区分の変更を反映する）。失敗 = false */
+    const replaceForm = (st, doc) => {
+      const next = matchForm(doc, st.form);
+      if (!next) return false;
+      st.form.dispatchEvent(new CustomEvent('autosave:before-replace', { bubbles: true }));
+      st.form.className = next.className; // 割引区分の数で料金表の列の形（クラス）が変わる
+      st.form.classList.add('is-autosave');
+      st.form.innerHTML = next.innerHTML; // フォーム要素そのものは残す（付けた listener・setupReorder の仕込みが生きる）。<select> は app.js が独自の見た目にする
+      paint(st);
+      st.form.dispatchEvent(new CustomEvent('autosave:replaced', { bubbles: true, detail: { doc } }));
+      return true;
+    };
+
+    /** カード（<section>）の読み取り用の表示を差し替える。編集の枠（details.sinfo-edit）は触らない */
+    const cardOf = (root, key) => root.querySelector(key === 'info' ? 'section.sinfo-section:not([id])' : '#' + key);
+    const swapCard = (card, next) => {
+      const display = ':scope > :not(details.sinfo-edit)';
+      // 選ばれているタブ（ラジオ）を覚えておいて、差し替えたあとに戻す
+      const picked = new Map([...card.querySelectorAll(display + ' input[type="radio"]:checked')].map((r) => [r.name, r.value]));
+      const olds = [...card.children].filter((n) => !n.matches('details.sinfo-edit'));
+      const news = [...next.children].filter((n) => !n.matches('details.sinfo-edit'));
+      const anchor = [...card.children].find((n) => n.matches('details.sinfo-edit')) ?? null;
+      // 上から順に比べて、中身（HTML）が同じものは触らない（地図の <iframe> は、作り直すと読み込み直しになるので残す）
+      news.forEach((n, i) => {
+        if (olds[i]?.outerHTML === n.outerHTML) return;
+        const fresh = document.importNode(n, true);
+        if (olds[i]) olds[i].replaceWith(fresh);
+        else card.insertBefore(fresh, anchor);
+      });
+      olds.slice(news.length).forEach((n) => n.remove());
+      // タブを戻す（その値のタブがまだあるときだけ。無くなっていたら初期の選択のまま）
+      const radios = [...card.querySelectorAll(display + ' input[type="radio"]')];
+      picked.forEach((value, name) => {
+        const hit = radios.find((r) => r.name === name && r.value === value);
+        if (hit) hit.checked = true;
+      });
+    };
+
+    /** 保存が成功したあと、ページの読み取り用の部分を最新にする（シミュレーション #sim は更新しない: 最初に1回だけ料金を読むため） */
+    const refreshAfterSave = (st, doc) => {
+      const action = actionOf(st.form);
+      (AFFECT[action] ?? []).forEach((key) => {
+        const card = cardOf(document, key);
+        const next = cardOf(doc, key);
+        if (card && next) swapCard(card, next);
+      });
+      if (action === 'save_info') {
+        // 名前・おすすめ・深夜早朝は、ページの見出しとタブの題にも出る
+        const h1 = document.querySelector('h1.display');
+        const nextH1 = doc.querySelector('h1.display');
+        if (h1 && nextH1) h1.innerHTML = nextH1.innerHTML;
+        document.title = doc.title;
+      }
+      // 部屋・割引区分を変えたら、それを使うフォームも差し替える。入力の途中（未保存）のフォームは壊さず、そのまま残す
+      (DEPENDENTS[action] ?? []).forEach((a) => {
+        const other = [...states.values()].find((s) => actionOf(s.form) === a);
+        if (other && !other.dirty && !other.saving) replaceForm(other, doc);
+      });
+      // 編集履歴（新しい行が増える）。一覧の中身だけ差し替える（開閉のアニメーションは <summary> に付いているので残す）
+      const hist = document.getElementById('history');
+      const nextHist = doc.getElementById('history');
+      if (hist && nextHist) {
+        const ul = hist.querySelector('ul');
+        const nextUl = nextHist.querySelector('ul');
+        if (ul && nextUl) ul.innerHTML = nextUl.innerHTML;
+      } else if (!hist && nextHist) {
+        (document.querySelector('form.sinfo-delete') ?? document.querySelector('main'))?.before(document.importNode(nextHist, true));
+      }
+      document.dispatchEvent(new Event('studio:display-refreshed')); // タブ・人数・長さ・選択の帯を合わせ直す
+    };
+
+    /** 送り終わったときの処理 */
+    const finish = (st, seq, fresh, result) => {
+      st.saving = false;
+      st.form.inert = false;
+      if (result.error) {
+        setState(st, 'error');
+        notify(result.error);
+      } else {
+        st.dirty = st.seq !== seq; // 送っている間に増えた入力があれば、まだ未保存
+        try {
+          if (fresh && !replaceForm(st, result.doc)) {
+            // 新しい行の番号を受け取れなかった。このまま保存を続けると同じ行が重複するので、ここで止める
+            st.dead = true;
+            setState(st, 'error');
+            notify('ページを再読み込みしてください');
+            return;
+          }
+          refreshAfterSave(st, result.doc);
+        } catch (e) {
+          console.error('studio autosave refresh', e); // 表示の差し替えに失敗しても、保存そのものは終わっている
+        }
+        setState(st, st.dirty ? 'dirty' : 'saved');
+      }
+      if (st.dirty && st.seq !== seq && !st.timer) attempt(st); // 送っている間に変わった分を送る
+    };
+
+    const send = (st, keepalive = false) => {
+      const seq = st.seq; // この送信に入る内容は、ここまでの入力
+      const fresh = rowsOf(st.form).fresh;
+      st.saving = true;
+      setState(st, 'saving');
+      if (fresh) st.form.inert = true; // 新しい行を送る間は触らせない（差し替えで入力が消えないように）
+      const body = new FormData(st.form);
+      const job = async () => finish(st, seq, fresh, await post(body, keepalive));
+      return keepalive ? job() : enqueue(job); // ページを離れるときは、列に並ばず今すぐ（keepalive = 離れたあとも送り切る）
+    };
+
+    /** 送ってよいか見て、よければ送る。leave = フォームを離れた・閉じた（新しい行も待たずに送る） */
+    const attempt = (st, leave = false) => {
+      clearTimeout(st.timer);
+      st.timer = 0;
+      if (!st.dirty || st.saving || st.dead) return; // 送っている最中は、終わったあと（finish）で続きを見る
+      if (isHeld(st.form)) {
+        setState(st, 'held');
+        return;
+      }
+      if (!leave && rowsOf(st.form).fresh) {
+        setState(st, 'dirty'); // 新しい行は、フォームを離れるまで待つ
+        return;
+      }
+      send(st);
+    };
+
+    /** 変わったと記録して、delay ミリ秒あとに送る（続けて変わったら数え直す） */
+    const touch = (st, delay) => {
+      if (st.dead) return;
+      st.dirty = true;
+      st.seq++;
+      if (!st.saving) setState(st, 'dirty');
+      clearTimeout(st.timer);
+      st.timer = setTimeout(() => {
+        st.timer = 0;
+        attempt(st);
+      }, delay);
+    };
+
+    // ---- フォームごとの仕込み ----
+    forms.forEach((form) => {
+      const st = {
+        form, state: 'saved', dirty: false, saving: false, dead: false, seq: 0, timer: 0,
+        // 料金表は、フォームの外にあるタブ・一括入力も「同じフォームの中」とみなす（そこを触っても「離れた」ことにしない）
+        aside: form.classList.contains('sinfo-rate-edit') ? form.parentElement.querySelector('[data-rate-tools]') : null,
+      };
+      states.set(form, st);
+      form.classList.add('is-autosave'); // 「保存」ボタンを隠して、状態のアイコンを出す（CSS）
+
+      form.addEventListener('input', () => touch(st, 1500));
+      form.addEventListener('change', () => touch(st, 300));
+      form.addEventListener('reorder-done', () => touch(st, 300)); // 並び替え（setupReorder）
+      // Enter キー: ふつうの送信（画面が移動する）にせず、今すぐ自動保存にする。確認ダイアログ（data-confirm）も出さない
+      //   setupRateTabs の submit（タブを覚える）より先に動くよう、setupAutosave を先に呼んである
+      form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        touch(st, 0);
+        attempt(st, true); // Enter は「今すぐ保存したい」ので、新しい行も待たずに送る
+      });
+      // 行の削除（ゴミ箱）: 部屋・割引区分は、消える範囲が広いので確認を出す（今までは送信のときに出していた data-confirm）
+      //   capture（外側から先に受ける）で止めると、setupRowDelete が動かず行も消えない
+      form.addEventListener('click', (e) => {
+        if (!e.target.closest('[data-row-del]') || !form.dataset.confirm) return;
+        if (!confirm(form.dataset.confirm)) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+        }
+      }, true);
+      // 削除ボタン: 行を隠す処理（setupRowDelete / setupRateEdit は document で受ける = ここより後）が済んでから保存する
+      form.addEventListener('click', (e) => {
+        if (e.target.closest('[data-row-del], [data-slot-del]')) setTimeout(() => touch(st, 0), 0);
+      });
+    });
+
+    // ---- フォームを離れたとき・閉じたとき ----
+    const flushLeave = (st) => {
+      if (st.dirty && !st.saving) attempt(st, true);
+    };
+    const left = (target) => {
+      if (!(target instanceof Element) || target.closest('.live-pop')) return; // 独自のプルダウンのリスト（body の直下に出る）は、フォームの一部
+      states.forEach((st) => {
+        if (!st.form.contains(target) && !st.aside?.contains(target)) flushLeave(st);
+      });
+    };
+    document.addEventListener('focusin', (e) => left(e.target)); // Tab・クリックで別の所へ
+    document.addEventListener('pointerdown', (e) => left(e.target), true); // 何もない所をクリックしたときは focusin が来ないので、こちらでも
+    // 開閉（details）を閉じたとき。toggle は伝わらない（バブリングしない）ので capture で受ける
+    document.addEventListener('toggle', (e) => {
+      const d = e.target;
+      if (!(d instanceof HTMLDetailsElement) || d.open) return;
+      states.forEach((st) => { if (d.contains(st.form)) flushLeave(st); });
+    }, true);
+
+    // ---- ページを離れる・隠すとき ----
+    //   待っている分は今すぐ送る（keepalive = ページが閉じても送り切る）。保留のフォームは送らない
+    const flushAll = () => {
+      states.forEach((st) => {
+        if (!st.dirty || st.saving || st.dead || isHeld(st.form)) return;
+        clearTimeout(st.timer);
+        st.timer = 0;
+        send(st, true);
+      });
+    };
+    window.addEventListener('pagehide', flushAll);
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushAll(); });
+    // 保存できていない分が残っているとき（保留・待機中・送信中・失敗）は、ブラウザ標準の「離れますか？」を出す
+    window.addEventListener('beforeunload', (e) => {
+      if ([...states.values()].some((st) => st.dirty)) {
+        e.preventDefault();
+        e.returnValue = ''; // 古いブラウザは returnValue に何か入れると出す
+      }
+    });
   };
 
   // DOMContentLoaded を待たなくても、このファイルはページの最後で読むので要素はもう全部ある
@@ -1242,6 +1656,7 @@
   setupStepper();
   setupRoomChips();
   setupRateEdit();
+  setupAutosave(); // setupRateTabs より先（フォームの submit を先に受けて止めるため）
   setupRateTabs();
   setupRowDelete();
   setupReorder();

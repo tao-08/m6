@@ -11,6 +11,16 @@
  *  編集（ログインしている人なら誰でも。can_edit_studio）: 各カードの「編集」を開くとフォームが出る
  *    変更は編集履歴に残り、ページの下の「編集履歴」から変更前に復元できる（lib/studio_history.php。削除したスタジオは一覧の「削除済み」から）
  *
+ *  ■ 自動保存（assets/studio_info.js の「自動保存」。フォームの <form data-autosave>）
+ *    編集フォームは、入力・選択・削除・並び替えのたびに自動で保存される（「保存」ボタンは JS が動いているときは隠れ、状態のアイコンに替わる）。
+ *    ・対象: 基本情報 / 部屋 / 割引区分 / 料金 / パック / レンタル / 機材（save_info 〜 save_equipment）
+ *    ・対象外: save_areas（エリアの名前変更）。エリア名の変更は全スタジオに及び、同じ名前にそろえると統合されてしまう。
+ *      入力の途中で自動保存すると、意図しない統合が取り返しのつかない形で起きうるので、「保存」ボタンのままにしてある
+ *      （AIの結果 apply_ai・履歴の復元 restore_history・スタジオの削除 delete_studio も、確認つきの操作なので自動保存にしない）
+ *    ・サーバーの処理は今までと同じ（検証 → 保存 → flash → redirect）。JS が fetch で POST し、リダイレクト先の画面（GET）を受け取って
+ *      エラーの flash があれば出し、表示の部分（カードの読み取り用の表示）を差し替える。X-Autosave: 1 のヘッダーが「自動保存の POST」の目印
+ *    ・履歴: 自動保存は打つたびに走るので、同じ人が同じ操作で続けた分は 10 分のあいだ1行にまとめる（studio_history_watch の $auto）
+ *
  *  ✨AIで入力（ログインしている人なら誰でも）: api_studio_ai.php が調べた提案をプレビューし、選んだ項目を apply_ai で反映（lib/studio_ai.php）
  *  POST は10種類（action）。どれも 権限確認 → CSRF 検証 → 入力検証 → プリペアドステートメント → リダイレクト。
  *    save_info / save_rooms / save_discounts / save_rates / save_packs / save_rentals / save_equipment / apply_ai / delete_studio / restore_history
@@ -246,6 +256,20 @@ function studio_time_pair(array $names, int $start, int $end): string
         . '</span>';
 }
 
+/**
+ * 編集フォームの末尾に置く「保存」ボタンと、自動保存の状態アイコン（<form data-autosave> 用）
+ *   ・ふだんは「保存」ボタンのまま（JS が動かない環境でも保存できる）。assets/studio_info.js が動くと、フォームに .is-autosave が付いて
+ *     ボタンは隠れ、代わりに状態アイコンが出る（CSS: studio_info.css の .sinfo-autosave）
+ *   ・状態アイコン = 押しても何も実行されない状態表示なので、説明は data-tip（共通のポップアップ）で付ける。
+ *     data-state と中のアイコン・説明の文字は、JS が状態（保存済み・保存中・未保存・空欄・失敗）に合わせて書き換える
+ *   $title = ボタンの説明（title。JS が動かないときだけ見える）
+ */
+function studio_save_button(string $title = ''): string
+{
+    return '<button type="submit" class="btn btn--primary btn--sm sinfo-save"' . ($title !== '' ? ' title="' . h($title) . '"' : '') . '>' . icon('save') . ' 保存</button>'
+        . '<span class="sinfo-autosave" data-autosave-status data-state="saved" role="status" aria-label="保存済み" ' . tip_attr('保存済み') . '>' . icon('cloud_done') . '</span>';
+}
+
 /** 0 以上の整数の文字列か（料金・台数の入力チェック用）。ctype_digit = 全部が 0〜9 の文字か */
 function studio_uint(string $s, int $max): bool
 {
@@ -274,8 +298,10 @@ if (is_post()) {
         redirect($self);
     }
     // 保存・AI反映・削除は、終わったときに中身が変わっていれば「変わる前」を履歴に残す（studio_history_watch）
+    //   $auto = 編集フォームの自動保存（assets/studio_info.js が X-Autosave: 1 を付けて送る）。続けた自動保存は履歴を1行にまとめる
+    $auto = ($_SERVER['HTTP_X_AUTOSAVE'] ?? '') === '1';
     if (isset(STUDIO_HISTORY_ACTIONS[$action])) {
-        studio_history_watch($pdo, $studioId, $action, $uid);
+        studio_history_watch($pdo, $studioId, $action, $uid, $auto);
     }
 
     // ---- 基本情報 -------------------------------------------------------
@@ -286,6 +312,7 @@ if (is_post()) {
             $f[$k] = trim(str_replace("\r\n", "\n", (string)($_POST[$k] ?? '')));
         }
         // エリアはプルダウン。「＋ 新しいエリアを作る」（__new__）のときは、入力欄の名前を使う
+        $f['address'] = studio_strip_zip($f['address']); // 住所に郵便番号は入れない（座標の検索が 0 件になるため。lib/studio_info.php）
         $areaNew = $f['area'] === '__new__';
         if ($areaNew) {
             $f['area'] = trim((string)($_POST['area_new'] ?? ''));
@@ -995,7 +1022,7 @@ render_header($studio['name'], 'tools');
         </div>
         <?php endif; ?>
         <?php $areaList = studio_areas($pdo); ?>
-        <form method="post" class="sinfo-edit__form">
+        <form method="post" class="sinfo-edit__form" data-autosave>
             <?= csrf_field() ?>
             <input type="hidden" name="action" value="save_info">
             <input type="hidden" name="studio_id" value="<?= $studioId ?>">
@@ -1039,12 +1066,14 @@ render_header($studio['name'], 'tools');
                 <textarea name="student_note" rows="2" maxlength="500" placeholder="学生証の提示が必要 など"><?= h($studio['student_note']) ?></textarea></label>
             <label class="sinfo-field"><span>メモ</span>
                 <textarea name="note" rows="3" maxlength="1000"><?= h($studio['note']) ?></textarea></label>
-            <div><button type="submit" class="btn btn--primary btn--sm"><?= icon('save') ?> 保存</button></div>
+            <div><?= studio_save_button() ?></div>
         </form>
         <!-- エリアの名前変更・削除・並び替え（全スタジオ共通。≡ のドラッグ / ↑↓キー。名前を空にした行は削除）。JS: studio_info.js の setupReorder -->
         <?php if ($areaList): ?>
         <details class="sinfo-edit">
             <summary><?= icon('edit') ?> エリアを編集</summary>
+            <!-- このフォームだけは自動保存しない（data-autosave なし）: エリア名の変更は全スタジオに及び、同じ名前にそろえると統合される。
+                 入力の途中で保存されて意図しない統合が起きないよう、「保存」ボタンで確認してから送る -->
             <form method="post" class="sinfo-edit__form" data-reorder data-confirm="エリア名を空にしたエリアは、全スタジオで未設定になります。保存しますか？">
                 <?= csrf_field() ?>
                 <input type="hidden" name="action" value="save_areas">
@@ -1360,7 +1389,7 @@ render_header($studio['name'], 'tools');
                 </div>
             <?php endforeach; ?>
         </div>
-        <form method="post" class="sinfo-edit__form sinfo-rate-edit<?= count($discounts) > 1 ? ' sinfo-rate-edit--stack' : '' ?><?= $discounts ? ' sinfo-rate-edit--disc' : '' ?>">
+        <form method="post" class="sinfo-edit__form sinfo-rate-edit<?= count($discounts) > 1 ? ' sinfo-rate-edit--stack' : '' ?><?= $discounts ? ' sinfo-rate-edit--disc' : '' ?>" data-autosave>
             <?= csrf_field() ?>
             <input type="hidden" name="action" value="save_rates">
             <input type="hidden" name="studio_id" value="<?= $studioId ?>">
@@ -1389,13 +1418,13 @@ render_header($studio['name'], 'tools');
                     <template data-rate-new-tpl><div class="sinfo-rate-group sinfo-rate-group--new"><?= $rateRow($newBlank, '__K__', false, $roomLines) ?></div></template>
                     </div>
                     <template data-slot-tpl><?= $slotLine(['x[__K__][__N__][day]', 'x[__K__][__N__][start]', 'x[__K__][__N__][end]'], 0, 600, 1380, true) ?></template>
-            <div><button type="submit" class="btn btn--primary btn--sm" title="料金を空にした行は削除"><?= icon('save') ?> 保存</button></div>
+            <div><?= studio_save_button('料金を空にした行は削除') ?></div>
         </form>
     </details>
     <!-- 割引区分（学割・U20 …）の編集。使える曜日を選ぶと、シミュレーションがその曜日以外では割引を使わない -->
     <details class="sinfo-edit">
         <summary><?= icon('edit') ?> 割引区分を編集</summary>
-        <form method="post" class="sinfo-edit__form" data-confirm="区分名を空にした区分は、その区分の料金も削除されます。保存しますか？">
+        <form method="post" class="sinfo-edit__form" data-autosave data-confirm="区分名を空にした区分は、その区分の料金も削除されます。保存しますか？">
             <?= csrf_field() ?>
             <input type="hidden" name="action" value="save_discounts">
             <input type="hidden" name="studio_id" value="<?= $studioId ?>">
@@ -1422,7 +1451,7 @@ render_header($studio['name'], 'tools');
             }
             ?>
             <div>
-                <button type="submit" class="btn btn--primary btn--sm" title="区分名を空にした行は削除"><?= icon('save') ?> 保存</button>
+                <?= studio_save_button('区分名を空にした行は削除') ?>
                 <?php if ($discSlots > 0): ?>
                     <template data-add-tpl><?= $discRow($discBlank) ?></template>
                     <button type="button" class="btn btn--sm" data-add="template[data-add-tpl]" data-add-max="<?= $discSlots ?>" title="追加" aria-label="追加"><?= icon('add') ?></button>
@@ -1433,7 +1462,7 @@ render_header($studio['name'], 'tools');
     <!-- 部屋（名前・広さ）の編集。同じカードの中に置く。部屋を削除するとその部屋の料金・パック・機材も消える（FK の CASCADE）ので確認ダイアログ付き -->
     <details class="sinfo-edit">
         <summary><?= icon('edit') ?> 部屋を編集</summary>
-        <form method="post" class="sinfo-edit__form" data-reorder data-confirm="部屋名を空にした部屋は、その部屋の料金・パック・機材も削除されます。保存しますか？">
+        <form method="post" class="sinfo-edit__form" data-autosave data-reorder data-confirm="部屋名を空にした部屋は、その部屋の料金・パック・機材も削除されます。保存しますか？">
             <?= csrf_field() ?>
             <input type="hidden" name="action" value="save_rooms">
             <input type="hidden" name="studio_id" value="<?= $studioId ?>">
@@ -1469,7 +1498,7 @@ render_header($studio['name'], 'tools');
             }
             ?>
             <div>
-                <button type="submit" class="btn btn--primary btn--sm" title="部屋名を空にした行は削除"><?= icon('save') ?> 保存</button>
+                <?= studio_save_button('部屋名を空にした行は削除') ?>
                 <template data-add-tpl><?= $roomRow('__I__', $roomBlank) ?></template>
                 <button type="button" class="btn btn--sm" data-add="template[data-add-tpl]" title="追加" aria-label="追加"><?= icon('add') ?></button>
             </div>
@@ -1596,7 +1625,7 @@ $packRoomLines = function (array $row) use ($packRoomIds): array {
     <?php if ($canEdit): ?>
     <details class="sinfo-edit">
         <summary><?= icon('edit') ?> 編集</summary>
-        <form method="post" class="sinfo-edit__form">
+        <form method="post" class="sinfo-edit__form" data-autosave>
             <?= csrf_field() ?>
             <input type="hidden" name="action" value="save_packs">
             <input type="hidden" name="studio_id" value="<?= $studioId ?>">
@@ -1655,7 +1684,7 @@ $packRoomLines = function (array $row) use ($packRoomIds): array {
             <template data-add-item><?= $packItemRow('__B__', $blankItem) ?></template>
             <template data-add-block><?= $packBlockRow('__B__', $blankBlock) ?></template>
             <div>
-                <button type="submit" class="btn btn--primary btn--sm" title="料金を空にした行は削除"><?= icon('save') ?> 保存</button>
+                <?= studio_save_button('料金を空にした行は削除') ?>
                 <button type="button" class="btn btn--sm" data-add="template[data-add-block]" title="時間帯を追加" aria-label="時間帯を追加"><?= icon('add') ?></button>
             </div>
         </form>
@@ -1677,7 +1706,7 @@ $packRoomLines = function (array $row) use ($packRoomIds): array {
     <?php if ($canEdit): ?>
     <details class="sinfo-edit">
         <summary><?= icon('edit') ?> 編集</summary>
-        <form method="post" class="sinfo-edit__form">
+        <form method="post" class="sinfo-edit__form" data-autosave>
             <?= csrf_field() ?>
             <input type="hidden" name="action" value="save_rentals">
             <input type="hidden" name="studio_id" value="<?= $studioId ?>">
@@ -1703,7 +1732,7 @@ $packRoomLines = function (array $row) use ($packRoomIds): array {
             }
             ?>
             <div>
-                <button type="submit" class="btn btn--primary btn--sm" title="名前を空にした行は削除"><?= icon('save') ?> 保存</button>
+                <?= studio_save_button('名前を空にした行は削除') ?>
                 <template data-add-tpl><?= $rentalRow($rentalBlank) ?></template>
                 <button type="button" class="btn btn--sm" data-add="template[data-add-tpl]" title="追加" aria-label="追加"><?= icon('add') ?></button>
             </div>
@@ -1734,7 +1763,7 @@ $packRoomLines = function (array $row) use ($packRoomIds): array {
     <?php if ($canEdit): ?>
     <details class="sinfo-edit">
         <summary><?= icon('edit') ?> 編集</summary>
-        <form method="post" class="sinfo-edit__form">
+        <form method="post" class="sinfo-edit__form" data-autosave>
             <?= csrf_field() ?>
             <input type="hidden" name="action" value="save_equipment">
             <input type="hidden" name="studio_id" value="<?= $studioId ?>">
@@ -1761,7 +1790,7 @@ $packRoomLines = function (array $row) use ($packRoomIds): array {
             }
             ?>
             <div>
-                <button type="submit" class="btn btn--primary btn--sm" title="機種名を空にした行は削除"><?= icon('save') ?> 保存</button>
+                <?= studio_save_button('機種名を空にした行は削除') ?>
                 <template data-add-tpl><?= $equipRow('__I__', $equipBlank) ?></template>
                 <button type="button" class="btn btn--sm" data-add="template[data-add-tpl]" title="追加" aria-label="追加"><?= icon('add') ?></button>
             </div>
