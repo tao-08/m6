@@ -163,7 +163,7 @@
 .sch-grid thead th[data-day] { cursor: pointer; } /* 日付を押すと1日まるごと NG */
 /* 終日の予定（JS: setupGrid）。日付の下に予定名を1行で（長いと「…」、全文は押すと data-tip で出る）。予定ありには数えない。色は表の「カレンダー」と同じ */
 .sch-allday { display: block; width: 100%; margin-top: 2px; padding: 1px 2px; border-radius: var(--r-xs); font-weight: 400; color: var(--text);
-  background: color-mix(in srgb, var(--ba) 22%, transparent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+  background: color-mix(in srgb, var(--vn) 24%, transparent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
 .sch-grid tbody th { width: 40px; text-align: right; vertical-align: top; touch-action: pan-y; } /* 時刻の列はスクロールできる */
 .sch-grid td { height: 22px; border: 1px solid var(--border); border-top-style: dotted; padding: 0 2px; font-size: var(--fs-2xs); line-height: 1.1;
   overflow: hidden; white-space: nowrap; text-overflow: ellipsis; touch-action: none; cursor: pointer; transition: background var(--t-fast); }
@@ -181,19 +181,19 @@
 .sch-grid td.is-auto.is-ignored { background-color: transparent; background-image: repeating-linear-gradient(135deg, transparent 0 4px, color-mix(in srgb, var(--ev, var(--muted)) 30%, transparent) 4px 8px); color: var(--muted); }
 /* 縞の色 = その予定の色（種類ごと）。透明の縞と、薄くなった予定色の縞の2色になる（ベタ塗りの背景は縞に置き換わる） */
 .sch-grid td.is-ignored.is-class { --ev: var(--headliner); }
-.sch-grid td.is-ignored.is-ical { --ev: var(--ba); }
-.sch-grid td.is-ignored.is-photo { --ev: var(--vn); }
+.sch-grid td.is-ignored:is(.is-ical, .is-photo) { --ev: var(--vn); } /* カレンダーと画像は同じ色（予定の種類の色は、メンバーの予定表とそろえる） */
 .sch-grid td.is-ignored.is-weekly { --ev: var(--accent); }
-.sch-grid td.is-ignored.is-practice { --ev: var(--ok); }
+.sch-grid td.is-ignored.is-practice { --ev: var(--ba); }
 .sch-pop { position: fixed; z-index: 50; display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); box-shadow: var(--shadow-pop); font-size: var(--fs-sm); }
 .sch-pop__ignore { display: flex; align-items: center; gap: 6px; cursor: pointer; } /* 「この予定を無視」（画像の予定は、横に削除ボタン） */
 .sch-grid td.is-ng, .sch-sw.is-ng { background: color-mix(in srgb, var(--accent) 55%, transparent); }
 .sch-grid td.is-class, .sch-sw.is-class { background: color-mix(in srgb, var(--headliner) 22%, transparent); }
-.sch-grid td.is-ical, .sch-sw.is-ical { background: color-mix(in srgb, var(--ba) 22%, transparent); }
-.sch-grid td.is-photo, .sch-sw.is-photo { background: color-mix(in srgb, var(--vn) 24%, transparent); }
+.sch-grid td:is(.is-ical, .is-photo), .sch-sw:is(.is-ical, .is-photo) { background: color-mix(in srgb, var(--vn) 24%, transparent); }
 .sch-grid td.is-weekly, .sch-sw.is-weekly { background: color-mix(in srgb, var(--accent) 22%, transparent); }
-.sch-grid td.is-practice, .sch-sw.is-practice { background: color-mix(in srgb, var(--ok) 28%, transparent); }
-.sch-grid td.is-warn { background-image: repeating-linear-gradient(45deg, transparent 0 4px, color-mix(in srgb, var(--warn) 30%, transparent) 4px 6px); }
+.sch-grid td.is-practice, .sch-sw.is-practice { background: color-mix(in srgb, var(--ba) 40%, transparent); } /* 練習 = スタジオ練習（メンバーの予定表と同じ紫） */
+/* 仮決定: スタジオ練習の紫を少し透かして重ねる（下のマスの色は残る。マイスケジュールもメンバーの予定表も同じ色） */
+.sch-grid td.is-prov, .sch-sw.is-prov { background-image: linear-gradient(color-mix(in srgb, var(--ba) 22%, transparent), color-mix(in srgb, var(--ba) 22%, transparent)); }
+.sch-allday--prov { background: color-mix(in srgb, var(--ba) 22%, transparent); } /* 日だけ仮決定（日付の下の題名） */
 
 /* ---------- 画像から予定を読み込む（assets/sched.js の setupPhoto）---------- */
 /* 読み込み中: アイコンを隠して、同じ位置にくるくる回る輪を出す（keyframes spin は app.css） */

@@ -485,6 +485,15 @@ $grid = [
     'busy' => array_map(static fn($b) => [$b[0], $b[1], $b[3], $b[4], !empty($b[5])], $data['busy'][$me] ?? []),
     'warn' => array_values(array_map(static fn($p) => ['date' => $p['date'], 'title' => $p['title'], 's' => $p['s'], 'e' => $p['e']], array_filter($data['practices'], static fn($p) => in_array($me, $p['members'], true) && $p['status'] < 3))),
 ];
+// この調整（$poll）自身の仮決定も出す（練習の一覧 $data['practices'] は、この調整を除いてあるので）。日だけ（status 1）は s・e が null
+if ($poll !== null && in_array((int)$poll['status'], [1, 2], true) && $poll['fix_date'] !== null && in_array($poll['fix_date'], $days, true)) {
+    $own = (int)$poll['status'] === 2 && $poll['fix_start'] !== null;
+    $mine = $pdo->prepare('SELECT 1 FROM sched_poll_member WHERE sched_poll_id = ? AND member_id = ?');
+    $mine->execute([$pollId, $me]);
+    if ($mine->fetchColumn()) {
+        $grid['warn'][] = ['date' => (string)$poll['fix_date'], 'title' => (string)$poll['title'], 's' => $own ? sched_dt_to_abs($poll['fix_start']) : null, 'e' => $own && $poll['fix_end'] !== null ? sched_dt_to_abs($poll['fix_end']) : null];
+    }
+}
 $icalOn = sched_ical_available();
 
 render_header('マイスケジュール', 'tools');
@@ -505,7 +514,7 @@ render_header('マイスケジュール', 'tools');
         <?php if ($nextUrl !== null): ?><a class="icon-btn" href="<?= h($nextUrl) ?>#ng" aria-label="次の週" title="次の週"><?= icon('chevron_right') ?></a><?php else: ?><span></span><?php endif; ?>
     </div>
     <div class="sch-legend small muted">
-        <span><i class="sch-sw is-ng"></i>予定あり</span><span><i class="sch-sw is-class"></i>授業</span><span><i class="sch-sw is-ical"></i>カレンダー</span><span><i class="sch-sw is-photo"></i>画像</span><span><i class="sch-sw is-weekly"></i>毎週</span><span><i class="sch-sw is-practice"></i>練習</span>
+        <span><i class="sch-sw is-ng"></i>予定あり</span><span><i class="sch-sw is-class"></i>授業</span><span><i class="sch-sw is-ical"></i>カレンダー</span><span><i class="sch-sw is-weekly"></i>毎週</span><span><i class="sch-sw is-practice"></i>練習</span><span><i class="sch-sw is-prov"></i>仮決定</span>
     </div>
     <div class="sch-grid-wrap" data-sched-grid></div>
     <form method="post" data-sched-grid-form>
@@ -617,6 +626,7 @@ render_header('マイスケジュール', 'tools');
         <form method="post" action="sched_google" class="sch-row">
             <?= csrf_field() ?><input type="hidden" name="poll" value="<?= $poll !== null ? $pollId : 0 ?>">
             <button class="btn btn--primary btn--sm" type="submit"><?= icon('event') ?> Google で連携</button>
+            <a class="muted small" href="privacy#google" target="_blank" rel="noopener">プライバシーポリシー</a>
         </form>
     <?php elseif ($g !== null): ?>
         <p class="sch-ical">

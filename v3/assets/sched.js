@@ -239,6 +239,18 @@
       } else if (hit.length) {
         td.classList.add('is-ng');
       }
+      // 仮決定（時間まで決めたもの）: 練習の色を少し透かして重ねる。最初のマスに題名（日だけの仮決定は、日付の下に出している）
+      //   classify は毎回マスを作り直す（textContent = ''）ので、題名もここで入れる（別の所で入れると、作り直しで消える）
+      const prov = data.warn.find((w) => w.date === td.dataset.day && w.s !== null && w.s < abs + data.step && w.e > abs);
+      td.classList.toggle('is-prov', !!prov);
+      if (prov && !td.querySelector('.sch-lbl') && (prov.s >= abs || first)) {
+        const dayEnd = Number(td.dataset.first) - data.start + data.end;
+        const rows = Math.max(1, Math.ceil((Math.min(prov.e, dayEnd) - abs) / data.step));
+        const lbl = el('span', 'sch-lbl', prov.title);
+        lbl.style.setProperty('--rows', rows);
+        lbl.style.setProperty('--lines', Math.min(2, rows));
+        td.append(lbl);
+      }
     };
 
     const table = el('table', 'sch-grid');
@@ -260,6 +272,13 @@
         chip.title = ''; // 見出し（th）の title「1日まるごと予定あり」を、予定名の上では出さない
         th.append(chip);
       });
+      // 日だけ仮決定: 終日の予定と同じように、日付の下に題名（時間は未定なのでマスには塗らない）
+      data.warn.filter((w) => w.date === d.date && w.s === null).forEach((w) => {
+        const chip = el('span', 'sch-allday sch-allday--prov', w.title);
+        chip.dataset.tip = '仮決定: ' + w.title;
+        chip.title = '';
+        th.append(chip);
+      });
       head.append(th);
     });
     const thead = el('thead');
@@ -279,8 +298,6 @@
         // このマスにかかる埋まり（自動のもの優先。手入力は塗れる）
         classify(td);
         if (!td.classList.contains('is-auto')) cells.push(td);
-        // 仮決定の注意（その日に仮予定がある）
-        if (data.warn.some((w) => w.date === d.date && (w.s === null || (w.s < abs + data.step && w.e > abs)))) td.classList.add('is-warn');
         tr.append(td);
       });
       tbody.append(tr);
@@ -502,11 +519,13 @@
     };
 
     /**
-     * おすすめの部屋: 候補に出ている全スタジオの部屋を比べて、余りがいちばん小さい部屋（同点なら複数）
-     *   スタジオごとではなく「候補全体で一番」なので、おすすめが付くのは一部のスタジオだけになる
-     *   recommend = { スタジオ id: 部屋 }
+     * おすすめの部屋の条件（カードごと・選んでいる開始時刻ごとに決まる）
+     *   1. 人数にぴったりの部屋を「ぴったり圏」とする = 余りが、候補に出ている全スタジオの部屋のいちばん小さい余り + 1人以内
+     *   2. その開始時刻で借りられるぴったり圏の部屋のうち、料金がいちばん安い部屋（同じなら余りが小さい方。それも同じ = 同じ料金・同じ広さなら、
+     *      いま選んでいる部屋を優先する。選んでいる部屋があるのに別の同条件の部屋がおすすめされるのを防ぐ）
+     *   余りが出せない部屋（狭すぎる・定員も広さも不明）・料金が出せない部屋は対象外
+     *   → カードに1つだけ付く（そのスタジオの行に出る）
      */
-    const recommend = {};
     let minGap = Infinity;
     data.studios.forEach((st) => {
       (data.sim[st.id]?.rooms || []).forEach((r) => {
@@ -514,11 +533,22 @@
         if (g !== null && g < minGap) minGap = g;
       });
     });
-    data.studios.forEach((st) => {
-      // 小数（広さ ÷ 帖）の誤差で「同じ」を取りこぼさないよう、0.01 未満の差は同点にする
-      const r = (data.sim[st.id]?.rooms || []).find((x) => gap(x) !== null && gap(x) - minGap < 0.01);
-      if (r) recommend[st.id] = r;
-    });
+    const GAP_RANGE = 1; // ぴったり圏の幅（人）
+    /** items（その開始時刻で取れるスタジオ [{ s, opts, q }]）から、おすすめの { sid, room } を選ぶ。curSid = いま選んでいるスタジオ。無ければ null */
+    const pickRecommend = (items, curSid) => {
+      let best = null;
+      items.forEach(({ s, opts, q }) => {
+        opts.forEach((o) => {
+          const g = o.room ? gap(o.room) : null;
+          if (g === null || g - minGap > GAP_RANGE + 0.01) return; // 小数の誤差を見込む
+          // 同点のときの優先: 選んでいる部屋（2）・選んでいるスタジオ（1）
+          const pri = (q?.room && q.room.id === o.room.id ? 2 : 0) + (s.id === curSid ? 1 : 0);
+          const c = { sid: s.id, room: o.room, total: o.total, g, pri };
+          if (!best || c.total < best.total || (c.total === best.total && (c.g < best.g - 0.01 || (Math.abs(c.g - best.g) < 0.01 && c.pri > best.pri)))) best = c;
+        });
+      });
+      return best;
+    };
 
     /**
      * その部屋をこの開始時刻から借りられるか（スタジオ情報の料金計算 = studio_info.js の applyRoomRule と同じ決まり）
@@ -702,11 +732,11 @@
         const cur = items.find((x) => x.s.id === sid);
         const late = cur?.s.late[start] || {};
         w.lateMembers.forEach((mid) => {
-          if (late[mid]) pills.append(el('span', 'pill pill--warn', `${names[mid] || ''} +${late[mid]}分`));
+          if (late[mid]) pills.append(el('span', 'pill pill--warn', `${names[mid] || ''} 遅刻${late[mid]}分`));
         });
         const early = cur?.s.early[start] || {};
         w.earlyMembers.forEach((mid) => {
-          if (early[mid]) pills.append(el('span', 'pill pill--warn', `${names[mid] || ''} -${early[mid]}分`));
+          if (early[mid]) pills.append(el('span', 'pill pill--warn', `${names[mid] || ''} 早退${early[mid]}分`));
         });
         w.absent.forEach((mid) => pills.append(el('span', 'pill pill--warn', `${names[mid] || ''} 欠席`)));
         w.warn.forEach(({ t, where }) => {
@@ -752,7 +782,11 @@
           box.querySelectorAll('.sch-srow').forEach((r) => r.classList.toggle('is-on', r === lab));
           renderPills();
         };
-        radio.addEventListener('change', choose);
+        radio.addEventListener('change', () => {
+          choose();
+          rec = pickRecommend(items, sid); // 選んでいるスタジオが変わると、同点のおすすめの付き先も変わる
+          refreshers.forEach((f) => f());
+        });
         // ラベル（割引・パック・おすすめ・連続）を押したときのポップアップ（data-tip）が出てすぐ消えるのを防ぐ:
         //   行は <label> なので、押すとラジオへの2回目のクリックが飛び、app.js の setupTip が「ラベル以外を押した」と見て消してしまう。
         //   ラベルでは preventDefault() で、ラジオへの転送（= 行の選択）を止める（行のほかの所を押せば選べる）
@@ -781,8 +815,9 @@
           roomSel.addEventListener('change', () => {
             x.q = x.opts.find((o) => o.room.id === Number(roomSel.value)); // 並びは変えず、この行の中身だけ更新する
             chosen[x.s.id] = x.q.room.id;
-            update();
             choose();
+            rec = pickRecommend(items, sid); // 部屋を選び直したら、おすすめも付け直す（同じ料金・広さなら、選んだ部屋に付く）
+            refreshers.forEach((f) => f());
           });
           // プルダウンを触っただけでも、そのスタジオを選ぶ（app.js が select を「ボタン + ポップアップ」に変えるので、ボタンのクリックも見る）
           lab.addEventListener('click', (e) => {
@@ -808,11 +843,10 @@
             warn.dataset.tip = '狭い可能性あり';
             add(warn);
           }
-          // おすすめ（人数にいちばん合う部屋）があるスタジオだけ。選んでいる部屋が違うなら部屋名も添える
-          const rec = recommend[x.s.id];
-          if (rec) {
-            const tag = el('span', 'tag tag--plan', x.q?.room && x.q.room.id === rec.id ? 'おすすめ' : 'おすすめ ' + rec.name);
-            tag.dataset.tip = `${data.people}人にいちばん合う部屋: ${rec.name}`;
+          // おすすめ（人数にぴったりの部屋のうち最安）があるスタジオだけ。選んでいる部屋が違うなら部屋名も添える
+          if (rec && rec.sid === x.s.id) {
+            const tag = el('span', 'tag tag--plan', x.q?.room && x.q.room.id === rec.room.id ? 'おすすめ' : 'おすすめ ' + rec.room.name);
+            tag.dataset.tip = `${data.people}人にぴったりで安い部屋: ${rec.room.name}`;
             add(tag);
           }
           // 割引・パックのラベルは、押す（乗せる）と「適用後の料金」と説明する（押しても何も実行されないので data-tip でよい。cursor は sched.css の .sch-cand .tag[data-tip]）
@@ -841,6 +875,7 @@
           }
         };
         update();
+        refreshers.push(update);
         const sub = el('span', 'sch-srow__sub');
         sub.append(main, price);
         const body = el('span', 'sch-srow__body');
@@ -874,7 +909,10 @@
        *   部屋: 前に選んだ部屋がこの時刻でも料金を出せるならそのまま、出せなければ最初の決め方（firstPick）に戻す
        *   選んでいたスタジオが取れるならそのまま、無ければ先頭
        */
+      let rec = null;            // おすすめ { sid, room }（いまの開始時刻のもの）
+      let refreshers = [];       // 表示中の各行の update（おすすめの付け替え用）
       const renderStudios = () => {
+        refreshers = [];
         items = w.studios
           .filter((s) => s.starts.includes(start))
           .map((s, i) => {
@@ -885,6 +923,7 @@
           })
           .sort((a, b) => (a.q ? a.q.total : Infinity) - (b.q ? b.q.total : Infinity) || a.i - b.i); // Infinity 同士の引き算は NaN（偽）→ 元の順
         if (!items.some((x) => x.s.id === sid)) sid = items[0].s.id;
+        rec = pickRecommend(items, sid);
         if (items.findIndex((x) => x.s.id === sid) >= SHOW) expanded = true; // 選んでいる行を隠さない
         box.replaceChildren();
         items.forEach((x, i) => {
@@ -976,14 +1015,19 @@
       const body = el('div', 'sch-day__body');
       body.append(...es.map((e) => e.node));
       d.append(body);
-      return { node: d, date: es[0].w.date, best: Math.min(...es.map((e) => e.i)), price };
+      // 中のカードの並び: おすすめ順のときだけ、連続（◎ > ○）のあるカードを上へ（同じなら PHP の順）
+      const order = (key) => {
+        const list = key === 'best' ? [...es].sort((x, y) => y.w.adj - x.w.adj || x.i - y.i) : es;
+        body.replaceChildren(...list.map((e) => e.node));
+      };
+      return { node: d, date: es[0].w.date, best: Math.min(...es.map((e) => e.i)), price, order };
     };
 
     const focusables = []; // 全カードの { date, from, to, card, day }（表のマスから探す用）
 
     // ---- 並べ替え（2つの一覧に同じ並べ替えを効かせる。並べ替えるのは日の行）----
     const sorters = {
-      best: (a, b) => a.best - b.best, // その日のいちばん良いカード（PHP の並びで先）が先の日から
+      best: (a, b) => a.price - b.price || a.date.localeCompare(b.date), // おすすめ順 = まず日を安い順（料金未登録の日は最後）。日の中は order() で連続のあるカードを上に
       date: (a, b) => a.date.localeCompare(b.date), // 'YYYY-MM-DD' なので、文字の比べっこで日付順になる
       price: (a, b) => a.price - b.price || a.date.localeCompare(b.date), // Infinity - Infinity は NaN（偽）→ 日付順。料金未登録だけの日は Infinity なので最後
     };
@@ -1051,7 +1095,10 @@
     const render = (key = sortKey) => {
       sortKey = key;
       // <details> は作り直さず、同じ要素を並べ直すだけ（開閉の状態・中で選んだ開始時刻やスタジオが残る）
-      lists.forEach((l) => l.node.replaceChildren(...[...l.days].sort(sorters[key]).map((g) => g.node)));
+      lists.forEach((l) => {
+        l.days.forEach((g) => g.order(key));
+        l.node.replaceChildren(...[...l.days].sort(sorters[key]).map((g) => g.node));
+      });
     };
     /** 日の見出しの開閉の矢印: 入り切らず次の行に落ちるときは消す（矢印を付けた高さと付けない高さを比べて、変わるなら消す。見出し全体が押せるので、矢印が無くても開閉できる） */
     const fitArrows = () => {
@@ -1095,6 +1142,9 @@
     const prev = box.querySelector('[data-over-prev]');
     const next = box.querySelector('[data-over-next]');
     const range = box.querySelector('[data-over-range]');
+    const provs = over.prov || []; // 仮決定（日だけ = s が null / 時間まで）
+    /** 仮決定のポップアップ: 練習の題名ではなく、その練習に入る人の名前（個人名）+ 場所 */
+    const provTip = (p) => `${(p.members || []).map((id) => names[id]).filter(Boolean).join('・')}（仮決定${p.where ? ' ' + p.where : ''}）`;
     const weeks = []; // 7日ずつに区切る
     for (let i = 0; i < over.days.length; i += 7) weeks.push(over.days.slice(i, i + 7));
     let page = 0;
@@ -1163,7 +1213,16 @@
       const table = el('table', 'sch-grid sch-grid--over');
       const head = el('tr');
       head.append(el('th'));
-      days.forEach((d) => head.append(el('th', dayClass(d), d.md.replace(/\((.+?)\)/, '\n$1')))); // 「11/21」改行「土」（祝日は「月祝」）
+      days.forEach((d) => {
+        const th = el('th', dayClass(d), d.md.replace(/\((.+?)\)/, '\n$1')); // 「11/21」改行「土」（祝日は「月祝」）
+        // 日だけ仮決定: 終日の予定と同じように、日付の下に題名（時間は未定なのでマスには塗らない。全文は押すと data-tip）
+        provs.filter((p) => p.date === d.date && p.s === null).forEach((p) => {
+          const chip = el('span', 'sch-allday sch-allday--prov', p.title);
+          chip.dataset.tip = provTip(p);
+          th.append(chip);
+        });
+        head.append(th);
+      });
       const thead = el('thead');
       thead.append(head);
       table.append(thead);
@@ -1175,18 +1234,25 @@
           const abs = d.abs + m;
           // このマスにかかる埋まりを、人ごとに最初の1つだけ拾う（同じ人の埋まりが重なっていても1人と数える）
           const who = [];
+          const groups = new Map(); // 予定の種類（予定あり・スタジオ名 部屋名など）→ 名前の一覧。同じ種類の人は名前をまとめて、あとに1回だけ書く
           let sp = false; // スタジオ練習（決定した練習）で埋まっている人がいるか
           busy.forEach(([id, list]) => {
             const hit = list.find((b) => b[0] < abs + over.step && b[1] > abs);
             if (hit) {
-              who.push(`${names[id]}（${hit[2]}）`);
+              who.push(names[id]);
+              if (!groups.has(hit[2])) groups.set(hit[2], []);
+              groups.get(hit[2]).push(names[id]);
               if (hit[3]) sp = true;
             }
           });
           const td = el('td', (who.length === 0 ? 'is-free' : who.length === 1 ? 'is-n1' : 'is-n2') + (sp ? ' is-sp' : ''));
           // 全員空きのマスのうち、その日の最安の時間帯は青（候補カードの最安と同じ時間帯）
           if (!who.length && (window.schedCheap?.[d.date] || []).some(([a, b]) => m >= a && m < b)) td.classList.add('is-cheap');
-          if (who.length) td.dataset.tip = who.join('・'); // 属性に入れる（HTML としては解釈されない）
+          // 仮決定（時間まで決めたもの）: スタジオ練習の色を少し透かして重ねる。埋まりにはしないので、押せるかどうかは変わらない
+          const pv = provs.filter((p) => p.date === d.date && p.s !== null && p.s < abs + over.step && p.e > abs);
+          if (pv.length) td.classList.add('is-prov');
+          const tips = [...groups].map(([label, ns]) => `${ns.join('・')}（${label}）`).concat(pv.map(provTip));
+          if (tips.length) td.dataset.tip = tips.join(' / '); // 属性に入れる（HTML としては解釈されない）
           // 押せるのは、そこから始まる候補（欠席なし・遅刻と早退が上限に収まる枠）があるマスだけ。空きのマスでも、練習の途中に予定がかかって早退が上限を超えるなら押せない
           //   候補を出していない画面（決定済みなど）では、全員空きのマスだけ
           if (window.schedHasCand ? window.schedHasCand(d.date, m) : !who.length) {

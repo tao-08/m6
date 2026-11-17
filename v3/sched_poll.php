@@ -342,10 +342,30 @@ if ($status < 3) {
             foreach ($memberIds as $mid) {
                 $overBusy[$mid] = array_map(static fn($b) => [$b[0], $b[1], $overLabel($b, (int)$mid), $b[3] === 'practice' ? 1 : 0], $data['busy'][$mid] ?? []); // 4つ目 = 練習か（表の色分け用）
             }
+            // 仮決定（日だけ・時間まで）: ほかの調整の分（部員が重なるもの）と、この調整の分。日だけは日付の下に題名、時間まではマスに色を重ねる
+            $prov = [];
+            foreach ($practices as $pr) {
+                if ((int)$pr['status'] < 3 && array_intersect($pr['members'], $memberIds)) {
+                    $prov[] = ['date' => $pr['date'], 's' => $pr['s'], 'e' => $pr['e'], 'title' => $pr['title'], 'where' => $pr['s'] === null ? '' : ($where[$pr['title'] . '|' . $pr['s']] ?? ''), 'members' => array_values(array_intersect($pr['members'], $memberIds))];
+                }
+            }
+            if (in_array($status, [1, 2], true) && $poll['fix_date'] !== null && $poll['fix_date'] >= $from && $poll['fix_date'] <= $to) {
+                $fs = $status === 2 && $poll['fix_start'] !== null ? sched_dt_to_abs($poll['fix_start']) : null;
+                $fe = $status === 2 && $poll['fix_end'] !== null ? sched_dt_to_abs($poll['fix_end']) : null;
+                $fsid = $poll['fix_studio_id'] === null ? null : (int)$poll['fix_studio_id'];
+                $fWhere = '';
+                if ($fs !== null) {
+                    $fName = $fsid !== null ? (string)($studioById[$fsid]['name'] ?? '') : '';
+                    $fWhere = trim($fName . ' ' . $roomName($poll['fix_room_id'] === null ? null : (int)$poll['fix_room_id']));
+                }
+                $st = $pdo->prepare('SELECT member_id FROM sched_poll_member WHERE sched_poll_id = ? AND fix_absent = 0'); // 欠席する人は入れない
+                $st->execute([$pollId]);
+                $prov[] = ['date' => (string)$poll['fix_date'], 's' => $fs, 'e' => $fe, 'title' => (string)$poll['title'], 'where' => $fWhere, 'members' => array_map('intval', $st->fetchAll(PDO::FETCH_COLUMN))];
+            }
             $over = [
                 'days' => array_map(static fn($d) => ['date' => $d, 'md' => sched_md($d), 'abs' => sched_day_abs($d), 'dow' => (int)date('w', strtotime($d))], sched_dates($from, $to)),
                 'start' => (int)$poll['day_start'], 'end' => (int)$poll['day_end'], 'step' => SCHED_STEP,
-                'busy' => (object)$overBusy,
+                'busy' => (object)$overBusy, 'prov' => $prov,
             ];
         }
     }
@@ -525,7 +545,7 @@ if (!empty($poll['live_id'])) {
                     <button type="button" class="icon-btn" data-over-next aria-label="次の週" title="次の週"><?= icon('chevron_right') ?></button>
                 </div>
                 <div class="sch-legend small muted">
-                    <span><i class="sch-sw is-free"></i>全員空き</span><span><i class="sch-sw is-free is-cheap"></i>最安</span><span><i class="sch-sw is-n1"></i>1人予定あり</span><span><i class="sch-sw is-n2"></i>2人以上予定あり</span><span><i class="sch-sw is-sp"></i>スタジオ練習</span>
+                    <span><i class="sch-sw is-free"></i>全員空き</span><span><i class="sch-sw is-free is-cheap"></i>最安</span><span><i class="sch-sw is-n1"></i>1人予定あり</span><span><i class="sch-sw is-n2"></i>2人以上予定あり</span><span><i class="sch-sw is-sp"></i>スタジオ練習</span><span><i class="sch-sw is-prov"></i>仮決定</span>
                 </div>
                 <div class="sch-grid-wrap" data-sched-over-grid></div>
             </div>
