@@ -1618,6 +1618,8 @@ CREATE TABLE sched_poll (
     fix_end       DATETIME          NULL,
     fix_studio_id INT UNSIGNED      NULL,
     fix_room_id   INT UNSIGNED      NULL,
+    reserved_at   DATETIME          NULL,              -- 「予約完了」を押した日時。NULL = 未予約（migrations/114）
+    reserved_by   INT UNSIGNED      NULL,              -- 押した人（user_account.user_id）
     version       INT UNSIGNED      NOT NULL DEFAULT 0,
     created_by    INT UNSIGNED      NULL,
     created_at    DATETIME          NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -1630,6 +1632,8 @@ CREATE TABLE sched_poll (
     CONSTRAINT fk_spoll_studio FOREIGN KEY (fix_studio_id) REFERENCES studio (studio_id)
         ON UPDATE CASCADE ON DELETE SET NULL,
     CONSTRAINT fk_spoll_room FOREIGN KEY (fix_room_id) REFERENCES studio_room (studio_room_id)
+        ON UPDATE CASCADE ON DELETE SET NULL,
+    CONSTRAINT fk_spoll_reserved_by FOREIGN KEY (reserved_by) REFERENCES user_account (user_id)
         ON UPDATE CASCADE ON DELETE SET NULL,
     CONSTRAINT fk_spoll_live FOREIGN KEY (live_id) REFERENCES live (live_id)
         ON UPDATE CASCADE ON DELETE SET NULL,          -- ライブを消しても調整は残す

@@ -241,3 +241,30 @@
 }
 /* パンくずが3段（ツール / 日程調整 / 調整の題）になるマイスケジュール: スマホでは項目の途中で折らず、項目ごとに次の行へ送る */
 .sch-crumbs { flex-wrap: wrap; row-gap: 0; }
+
+/* ---------- 予約のうながしモーダル（決定して未予約のとき。<dialog class="modal sch-reserve" data-auto-open>）----------
+   PC は通常のモーダル幅。スマホは画面いっぱい・大きな文字（アプリ履歴＝タスク切り替えの小さな画面でも、どのスタジオを予約するかが読める） */
+.sch-reserve { position: fixed; overflow: auto; }
+.sch-reserve__close { position: absolute; top: 8px; right: 8px; }
+.sch-reserve__body { display: grid; gap: 8px; justify-items: center; text-align: center; padding: 44px 22px 22px; }
+.sch-reserve__studio { margin: 0; font-size: var(--fs-3xl); font-weight: 800; line-height: 1.25; overflow-wrap: anywhere; }
+.sch-reserve__when { font-size: var(--fs-2xl); font-weight: 700; }
+.sch-reserve__room { font-size: var(--fs-xl); color: var(--muted); }
+.sch-reserve__actions { display: grid; gap: 10px; width: 100%; margin-top: 16px; }
+.sch-reserve__actions form { margin: 0; }
+.sch-reserve__actions .btn { width: 100%; justify-content: center; }
+.sch-fixed__reserved { cursor: help; } /* 押せない要素（span）。cursor を指定しないと iOS でタップが届かない（data-tip の規約） */
+
+@media (max-width: 600px) {
+  .sch-reserve { width: 100vw; max-width: 100vw; height: 100dvh; max-height: 100dvh; margin: 0; border: 0; border-radius: 0; }
+  .sch-reserve__close { top: max(12px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); }
+  .sch-reserve__body {
+    min-height: 100%; box-sizing: border-box; align-content: center; gap: 16px;
+    padding: calc(56px + env(safe-area-inset-top)) max(24px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left));
+  }
+  .sch-reserve__studio { font-size: clamp(32px, 11vw, 56px); }
+  .sch-reserve__when { font-size: clamp(26px, 8vw, 40px); }
+  .sch-reserve__room { font-size: clamp(22px, 7vw, 34px); }
+  .sch-reserve__actions { margin-top: auto; padding-top: 24px; gap: 12px; }
+  .sch-reserve__actions .btn { min-height: 56px; font-size: var(--fs-xl); }
+}

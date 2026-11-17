@@ -47,6 +47,7 @@
  *    data-vo-sum-toggle … 統計の「Voを合算する」をページ移動なしで切り替える
  *    data-search-suggest … 検索ページの入力欄で検索語の候補を出す（api_search_suggest.php。メンバー・バンド・アーティスト・ライブ・会場・係・学部・曲名）
  *    data-autofocus-pc  … PC だけ、開いたとき入力欄にカーソルを置く（スマホはキーボードが出てアニメが途切れるので置かない）
+ *    data-auto-open     … <dialog> をページを開いたときに自動で開く（日程調整の「予約のうながし」など）
  * =====================================================================
  */
 
@@ -128,6 +129,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupDriveSwitch();
   setupBackButton();
   setupTutorial();
+  setupAutoDialog(); // チュートリアルが自動で開いたあとに呼ぶ（開いているかを見て、閉じるのを待つため）
   setupAddToHome();
   setupServiceWorker();
   setupPush();
@@ -605,6 +607,22 @@ function showActionToast(msg, action, ms) {
   document.body.append(actionToastEl);
   const mine = actionToastEl;
   setTimeout(() => mine.remove(), action ? 8000 : ms);
+}
+
+/* ---------------------------------------------------------------------
+ * 自動で開くモーダル（<dialog data-auto-open>）
+ *   ページを開いたときに showModal() で開く。閉じるのは中の <form method="dialog"> のボタン・Esc・背景のクリック。
+ *   初回のチュートリアル（[data-tutorial-auto]）が同時に開いているときは、それを閉じてから開く（モーダルが重なるのを防ぐ）
+ * ------------------------------------------------------------------- */
+function setupAutoDialog() {
+  const tutorial = document.querySelector('dialog[data-tutorial-auto]');
+  document.querySelectorAll('dialog[data-auto-open]').forEach((dialog) => {
+    // 外側（背景）をクリックしても閉じる。<dialog> 自体がクリックされた = 中身の外側
+    dialog.addEventListener('click', (e) => { if (e.target === dialog) dialog.close(); });
+    const open = () => { if (!dialog.open) dialog.showModal(); };
+    if (tutorial?.open) tutorial.addEventListener('close', open, { once: true });
+    else open();
+  });
 }
 
 function setupToasts() {

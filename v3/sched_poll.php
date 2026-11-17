@@ -10,6 +10,8 @@
  *    answer … 自分の「回答済み」を切り替える（呼ばれた部員だけ）
  *    fix    … kind = date（日だけ仮決定）/ time（日時まで仮決定）/ final（決定）。absent = 欠席する部員の id（0 = なし）
  *    reopen … 仮決定・決定を取り消して「調整中」に戻す（欠席の印も戻す）
+ *    reserve   … 決定した練習のスタジオを「予約済み」にする（reserved_at / reserved_by に記録。通知は送らない）
+ *    unreserve … 予約済みを取り消す（決定はそのまま）。fix・reopen をすると、予約済みも未予約に戻る
  *
  *  ■ 決定ボタンの取り合い（同時に2人が別の調整で同じ部員・同じ時間を決定する）を防ぐ
  *    GET_LOCK('sched_fix') … MySQL / MariaDB の「名前つきの鍵」。同じ名前の鍵は1人しか持てない。
@@ -117,11 +119,31 @@ if (is_post()) {
         redirect($back);
     }
 
+    if ($action === 'reserve') {
+        // 決定（status = 3）した練習だけ「予約済み」にできる。WHERE にも status = 3 を入れて、確認から押すまでの間に決定が外れても通さない
+        if ((int)$poll['status'] !== 3) {
+            flash('まだ決定していません', 'error');
+            redirect($back);
+        }
+        $pdo->prepare('UPDATE sched_poll SET reserved_at = NOW(), reserved_by = ?, version = version + 1 WHERE sched_poll_id = ? AND status = 3')
+            ->execute([(int)$user['user_id'], $pollId]);
+        flash('予約済みにしました');
+        redirect($back);
+    }
+
+    if ($action === 'unreserve') {
+        // 予約済みの取り消し（決定はそのまま。予約のうながしがまた出る）
+        $pdo->prepare('UPDATE sched_poll SET reserved_at = NULL, reserved_by = NULL, version = version + 1 WHERE sched_poll_id = ?')
+            ->execute([$pollId]);
+        flash('予約済みを取り消しました');
+        redirect($back);
+    }
+
     if ($action === 'reopen') {
         // 2つの UPDATE を1つのトランザクションに入れる（片方だけ成功して、欠席の印だけ残る…を防ぐ）
         $pdo->beginTransaction();
         try {
-            $pdo->prepare('UPDATE sched_poll SET status = 0, fix_date = NULL, fix_start = NULL, fix_end = NULL, fix_studio_id = NULL, fix_room_id = NULL, version = version + 1 WHERE sched_poll_id = ?')
+            $pdo->prepare('UPDATE sched_poll SET status = 0, fix_date = NULL, fix_start = NULL, fix_end = NULL, fix_studio_id = NULL, fix_room_id = NULL, reserved_at = NULL, reserved_by = NULL, version = version + 1 WHERE sched_poll_id = ?')
                 ->execute([$pollId]);
             $pdo->prepare('UPDATE sched_poll_member SET fix_absent = 0 WHERE sched_poll_id = ?')->execute([$pollId]);
             $pdo->commit();
@@ -190,7 +212,7 @@ if (is_post()) {
                 // 調整の更新と欠席の印は、同じトランザクションで（片方だけ保存される状態を作らない）
                 $pdo->beginTransaction();
                 try {
-                    $up = $pdo->prepare('UPDATE sched_poll SET status = ?, fix_date = ?, fix_start = ?, fix_end = ?, fix_studio_id = ?, fix_room_id = ?, version = version + 1
+                    $up = $pdo->prepare('UPDATE sched_poll SET status = ?, fix_date = ?, fix_start = ?, fix_end = ?, fix_studio_id = ?, fix_room_id = ?, reserved_at = NULL, reserved_by = NULL, version = version + 1
                         WHERE sched_poll_id = ? AND version = ?');
                     $up->execute([
                         $statusNew, $date,
@@ -352,6 +374,15 @@ if ($status >= 1) {
         $fixed['when'] = sched_md((string)$poll['fix_date']);
     }
 }
+// ---- 予約済みの記録（決定のときだけ。「予約済み」のピルと、予約のうながしモーダルで使う）----
+$reserve = $fixed !== null && $fixed['studio'] !== null ? (string)($fixed['studio']['reserve_url'] ?: $fixed['studio']['website_url']) : ''; // 予約ページ（無ければ公式サイト）
+$reservedAt = $status === 3 ? $poll['reserved_at'] : null;
+$reservedBy = ''; // 押した人の表示名（アカウントが消えていれば ''）
+if ($reservedAt !== null && $poll['reserved_by'] !== null) {
+    $st = $pdo->prepare('SELECT name FROM user_account WHERE user_id = ?');
+    $st->execute([(int)$poll['reserved_by']]);
+    $reservedBy = (string)($st->fetchColumn() ?: '');
+}
 $myRow = null;
 foreach ($members as $m) {
     if ((int)$m['member_id'] === $myMember) {
@@ -389,7 +420,11 @@ if (!empty($poll['live_id'])) {
 
 <?php if ($fixed !== null): ?>
     <section class="card sch-fixed<?= $status === 3 ? ' is-final' : '' ?>">
-        <div class="sch-fixed__when"><?= icon($status === 3 ? 'event_available' : 'schedule') ?> <strong><?= h($fixed['when']) ?></strong></div>
+        <div class="sch-fixed__when"><?= icon($status === 3 ? 'event_available' : 'schedule') ?> <strong><?= h($fixed['when']) ?></strong>
+            <?php if ($reservedAt !== null): ?>
+                <span class="pill pill--ok sch-fixed__reserved" <?= tip_attr(trim($reservedBy . ' ' . date('n/j G:i', strtotime((string)$reservedAt)))) ?>>予約済み</span>
+            <?php endif; ?>
+        </div>
         <?php if ($fixed['studio'] !== null): ?>
             <div class="sch-fixed__where"><?= h($fixed['studio']['name']) ?><?= $fixed['room'] !== '' ? ' ' . h($fixed['room']) : '' ?><?= $fixed['area'] !== '' ? ' ' . h($fixed['area']) : '' ?></div>
         <?php endif; ?>
@@ -402,7 +437,6 @@ if (!empty($poll['live_id'])) {
                 <a class="btn btn--sm" href="<?= h($fixed['gcal']) ?>" target="_blank" rel="noopener"><?= icon('event') ?> Googleカレンダー</a>
                 <a class="btn btn--sm" href="sched_poll?id=<?= $pollId ?>&amp;ics=1"><?= icon('download') ?> .ics</a>
             <?php endif; ?>
-            <?php $reserve = $fixed['studio'] !== null ? (string)($fixed['studio']['reserve_url'] ?: $fixed['studio']['website_url']) : ''; ?>
             <?php if ($reserve !== '' && $status >= 2): ?>
                 <a class="btn btn--sm btn--primary" href="<?= h($reserve) ?>" target="_blank" rel="noopener"><?= icon('open_in_new') ?> 予約ページ</a>
             <?php endif; ?>
@@ -411,6 +445,12 @@ if (!empty($poll['live_id'])) {
                     <?= csrf_field() ?><input type="hidden" name="action" value="reopen"><input type="hidden" name="v" value="<?= (int)$poll['version'] ?>">
                     <button class="btn btn--sm btn--ghost" type="submit">取り消し</button>
                 </form>
+                <?php if ($reservedAt !== null): ?>
+                    <form method="post" data-confirm="予約済みを取り消します。よろしいですか？">
+                        <?= csrf_field() ?><input type="hidden" name="action" value="unreserve"><input type="hidden" name="v" value="<?= (int)$poll['version'] ?>">
+                        <button class="btn btn--sm btn--ghost" type="submit">予約済みを取り消し</button>
+                    </form>
+                <?php endif; ?>
             <?php endif; ?>
         </div>
         <?php if ($status === 2): ?><p class="muted small">仮決定はほかの調整では埋まりとして扱いません（注意だけ出ます）</p><?php endif; ?>
@@ -483,5 +523,28 @@ if (!empty($poll['live_id'])) {
     <script type="application/json" id="sched-data"><?= json_encode($boot, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP) ?></script>
     <script src="<?= asset_url('assets/studio_sim.js') ?>" defer></script>
     <script src="<?= asset_url('assets/sched.js') ?>" defer></script>
+<?php endif; ?>
+
+<?php if ($status === 3 && $poll['reserved_at'] === null && $canManage && $fixed['studio'] !== null): ?>
+    <?php /* 予約のうながし: 決定して未予約のあいだ、開くたびに自動で出る（data-auto-open → app.js の setupAutoDialog）。スマホは全画面で、アプリ履歴を見ても予約先がわかる */ ?>
+    <dialog class="modal sch-reserve" data-auto-open aria-labelledby="sch-reserve-title">
+        <form method="dialog"><button class="icon-btn sch-reserve__close" aria-label="閉じる" title="閉じる"><?= icon('close') ?></button></form>
+        <div class="sch-reserve__body">
+            <h2 class="sch-reserve__studio" id="sch-reserve-title"><?= h($fixed['studio']['name']) ?></h2>
+            <div class="sch-reserve__when"><?= h($fixed['when']) ?></div>
+            <?php if ($fixed['room'] !== '' || $fixed['area'] !== ''): ?>
+                <div class="sch-reserve__room"><?= h(trim($fixed['room'] . ' ' . $fixed['area'])) ?></div>
+            <?php endif; ?>
+            <div class="sch-reserve__actions">
+                <?php if ($reserve !== ''): ?>
+                    <a class="btn btn--primary" href="<?= h($reserve) ?>" target="_blank" rel="noopener"><?= icon('open_in_new') ?> 予約ページ</a>
+                <?php endif; ?>
+                <form method="post">
+                    <?= csrf_field() ?><input type="hidden" name="action" value="reserve"><input type="hidden" name="v" value="<?= (int)$poll['version'] ?>">
+                    <button class="btn<?= $reserve === '' ? ' btn--primary' : '' ?>" type="submit"><?= icon('check') ?> 予約完了</button>
+                </form>
+            </div>
+        </div>
+    </dialog>
 <?php endif; ?>
 <?php render_footer();
