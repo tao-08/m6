@@ -58,9 +58,12 @@
 .sch-grid--over td[data-tip] { cursor: help; }
 .sch-grid--over td[data-date] { cursor: pointer; }
 .sch-grid--over td.is-free, .sch-sw.is-free { background: color-mix(in srgb, var(--ok) 22%, transparent); }
-.sch-grid--over td.is-free.is-cheap, .sch-sw.is-free.is-cheap { background: repeating-linear-gradient(45deg, color-mix(in srgb, var(--headliner) 40%, transparent) 0 4px, color-mix(in srgb, var(--ok) 28%, transparent) 4px 8px); } /* 全員空きで、その日の最安の時間帯 = 緑と青の斜線の網掛け */
+.sch-sw.is-free.is-cheap { --stripe: color-mix(in srgb, var(--headliner) 45%, transparent); background: linear-gradient(135deg, var(--stripe) 0 25%, transparent 25% 50%, var(--stripe) 50% 75%, transparent 75%) 0 0 / 6px 6px, color-mix(in srgb, var(--ok) 22%, transparent); } /* 凡例の見本 */
+.sch-cheap { --stripe: color-mix(in srgb, var(--headliner) 45%, transparent); position: absolute; pointer-events: none; background: linear-gradient(135deg, var(--stripe) 0 15%, transparent 15% 50%, var(--stripe) 50% 65%, transparent 65%) 0 0 / 12px 12px; } /* 全員空きの最安の時間帯 = 青の斜線。続くマスで1つの箱・表の下に敷く。タイルは整数px（半端な周期だと縞がうねる） */
+.sch-grid--over { position: relative; } /* 箱（.sch-cheap）より上に描く */
 .sch-grid--over td.is-n1, .sch-sw.is-n1 { background: color-mix(in srgb, var(--warn) 40%, transparent); }
 .sch-grid--over td.is-n2, .sch-sw.is-n2 { background: color-mix(in srgb, var(--accent) 45%, transparent); }
+.sch-grid--over td.is-sp, .sch-sw.is-sp { background: color-mix(in srgb, var(--ba) 40%, transparent); } /* スタジオ練習（決定した練習）で埋まっているマス。人数の色より優先 */
 
 /* ---------- 候補 ---------- */
 .sch-cands__head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
@@ -73,6 +76,7 @@
 .sch-day__head::-webkit-details-marker { display: none; }
 .sch-day__head::after { content: ""; flex: none; width: 8px; height: 8px; border: solid var(--muted); border-width: 0 2px 2px 0;
   transform: rotate(45deg); transition: transform var(--t-base); }   /* 開閉の矢印（メンバーの予定と同じ。閉じていると ⌄、開くと ⌃） */
+.sch-day__head.no-arrow::after { display: none; } /* 入り切らないときは消す（sched.js の fitArrows） */
 .sch-day[open] > .sch-day__head::after { transform: rotate(-135deg); }
 /* 開閉のアニメ（日付のカード・メンバーの予定）。中身（::details-content）の高さと透明度を滑らかに変える。
    interpolate-size で height: 0 ↔ auto を補間できる。content-visibility も一緒に遷移させないと、閉じる側が一瞬で消える。
@@ -81,6 +85,7 @@
 .sch-day::details-content, .sch-over::details-content { height: 0; opacity: 0; overflow: clip;
   transition: height var(--t-slow) ease, opacity var(--t-slow) ease, content-visibility var(--t-slow) allow-discrete; }
 .sch-day[open]::details-content, .sch-over[open]::details-content { height: auto; opacity: 1; }
+.sch-day.is-instant::details-content { transition: none; } /* 表のマスから開くときは、アニメ無しで一気に開く（すぐ着くように） */
 @media (prefers-reduced-motion: reduce) { .sch-day::details-content, .sch-over::details-content { transition: none; } } /* 動きを減らす設定の人にはアニメなし */
 .sch-day__date { font-size: var(--fs-lg); }
 .sch-day__date.is-sun { color: var(--accent); }   /* 日・祝日は赤、土は青（表の見出し .sch-grid thead th と同じ色） */
@@ -93,7 +98,7 @@
 .sch-day__body { display: grid; gap: 10px; margin-top: 12px; }
 .sch-day__body > .sch-cand { box-shadow: none; border-radius: var(--r-md); } /* 外の箱と二重にならないよう、枠だけ・影なしにする */
 .sch-cand { display: grid; gap: 10px; padding: 12px 14px; }
-.sch-cand.is-focus { outline: 2px solid var(--accent); outline-offset: 2px; animation: sch-focus 1.6s var(--ease, ease-out) 1 forwards; } /* 表のマスから飛んできた候補を一瞬強調 */
+.sch-cand.is-focus { outline: 2px solid var(--accent); outline-offset: -2px; animation: sch-focus 1.6s var(--ease, ease-out) 1 forwards; } /* 表のマスから飛んできた候補を一瞬強調 */
 @keyframes sch-focus { to { outline-color: transparent; } }
 .sch-cand.is-late { border-style: dashed; }
 .sch-cand__top { display: flex; align-items: center; gap: 4px 8px; flex-wrap: wrap; }
@@ -138,6 +143,7 @@
 
 /* ---------- NG の時間のマス ---------- */
 .sch-weeknav { display: grid; grid-template-columns: 40px 1fr 40px; align-items: center; text-align: center; }
+.sch-weeknav .icon-btn:disabled { visibility: hidden; } /* これ以上進めない側の矢印は隠す（幅は残るので、日付は中央のまま） */
 .sch-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; }
 .sch-legend span { display: inline-flex; align-items: center; gap: 4px; }
 .sch-sw { display: inline-block; width: 12px; height: 12px; border-radius: var(--r-xs); border: 1px solid var(--border); }

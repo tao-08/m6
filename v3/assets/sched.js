@@ -683,7 +683,7 @@
     /** 候補1件（窓1つ）のカード。戻り値: { node, price, mins }（price = 最初の開始時刻での最安 / mins = [開始時刻, 最安] の一覧。日の見出し用） */
     const card = (w) => {
       const id = ++uid;
-      const c = el('article', 'card sch-cand' + (w.lateMembers.length || w.absent.length ? ' is-late' : ''));
+      const c = el('article', 'card sch-cand' + (w.lateMembers.length || w.earlyMembers.length || w.absent.length ? ' is-late' : ''));
       let start = firstStart(w); // いま選んでいる開始時刻
       let sid = null;            // いま選んでいるスタジオ
       let expanded = false;      // 「ほか n件」を開いたか
@@ -704,10 +704,14 @@
         w.lateMembers.forEach((mid) => {
           if (late[mid]) pills.append(el('span', 'pill pill--warn', `${names[mid] || ''} +${late[mid]}分`));
         });
+        const early = cur?.s.early[start] || {};
+        w.earlyMembers.forEach((mid) => {
+          if (early[mid]) pills.append(el('span', 'pill pill--warn', `${names[mid] || ''} -${early[mid]}分`));
+        });
         w.absent.forEach((mid) => pills.append(el('span', 'pill pill--warn', `${names[mid] || ''} 欠席`)));
-        w.warn.forEach((t) => {
+        w.warn.forEach(({ t, where }) => {
           const p = el('span', 'pill', '⚠ ' + t);
-          p.dataset.tip = 'この時間・日に仮決定の練習あり';
+          p.dataset.tip = where || 'この時間・日に仮決定の練習あり'; // 仮決定の練習の「スタジオ名 部屋名」（分からなければ、これまでの説明）
           pills.append(p);
         });
       };
@@ -801,7 +805,7 @@
           // 狭すぎる部屋を選んでいるときの注意（押しても何も実行されないので data-tip でよい）
           if (x.q?.small) {
             const warn = el('span', 'sch-warn sch-srow__small', '⚠');
-            warn.dataset.tip = `${data.people}人には狭い可能性あり`;
+            warn.dataset.tip = '狭い可能性あり';
             add(warn);
           }
           // おすすめ（人数にいちばん合う部屋）があるスタジオだけ。選んでいる部屋が違うなら部屋名も添える
@@ -914,11 +918,17 @@
         c.append(acts);
       }
       /** 開始時刻を m に合わせる（その時刻が選べるときだけ。表のマスを押したとき用） */
-      const setStart = (m) => {
-        if (!w.starts.includes(m) || m === start) return;
+      const setStart = (m0) => {
+        // 押した時刻で借りられなければ（部屋の開始の決まりで :00 / :30 だけ等）、いちばん近い開始時刻にする（同じ近さなら後ろ）
+        const m = w.starts.reduce((best, x) => (Math.abs(x - m0) < Math.abs(best - m0) || (Math.abs(x - m0) === Math.abs(best - m0) && x > best) ? x : best), w.starts[0]);
+        if (m === start) return;
         start = m;
-        if (sel) sel.value = m;
-        renderStudios();
+        if (sel) {
+          sel.value = m;
+          sel.dispatchEvent(new Event('change', { bubbles: true })); // プルダウンのボタンの文字を合わせさせる（app.js の変換後は、value を替えただけでは文字が変わらない）。上の change の処理が renderStudios も呼ぶ
+        } else {
+          renderStudios();
+        }
       };
       return { node: c, price, mins, setStart };
     };
@@ -940,7 +950,12 @@
       const marks = el('span', 'sch-day__marks'); // 印（あるものだけ）。残りの幅をぜんぶ取って、料金を右端へ押しやる
       const adj = Math.max(...es.map((e) => e.w.adj)); // その日の連続の最大（2 = ◎ / 1 = ○ / 0 = 無し）
       if (adj) marks.append(el('span', 'tag ' + (adj === 2 ? 'tag--mine' : 'tag--plan'), adj === 2 ? '連続◎' : '連続○'));
-      if (es.every((e) => e.w.lateMembers.length)) marks.append(el('span', 'pill pill--warn', '遅刻あり')); // 全部のカードが遅刻ありのときだけ（1枚でも遅刻なしがあれば出さない）
+      // 全部のカードが遅刻か早退のどちらかを持つときだけ出す（1枚でも遅刻・早退なしがあれば出さない）。遅刻のカードがあれば「遅刻あり」、早退のカードがあれば「早退あり」
+      if (es.every((e) => e.w.lateMembers.length || e.w.earlyMembers.length)) {
+        const hasLate = es.some((e) => e.w.lateMembers.length);
+        const hasEarly = es.some((e) => e.w.earlyMembers.length);
+        marks.append(el('span', 'pill pill--warn', hasLate && hasEarly ? '遅刻・早退あり' : hasLate ? '遅刻あり' : '早退あり')); // 両方あるときは1つにまとめる
+      }
       // 欠席の人（欠席の一覧だけ中身がある）。同じ人が何枚にも出るので、Set で重複を消す
       [...new Set(es.flatMap((e) => e.w.absent))].forEach((mid) => marks.append(el('span', 'pill pill--warn', `${names[mid] || ''} 欠席`)));
       head.append(marks);
@@ -952,10 +967,6 @@
         const same = all.every(([, p]) => p === price);
         // 最安の時間帯の横に、その料金になるスタジオ名（2つまで。それ以上は「ほか」）
         const cheap = all.filter(([, p]) => p === price);
-        if (!same) { // メンバーの予定の表で、全員空きのマスを青くする時間帯（最安の開始〜練習時間）
-          const r = (window.schedCheap ||= {});
-          (r[es[0].w.date] ||= []).push(...cheap.map(([m]) => [m, m + data.len]));
-        }
         const sids = [...new Set(cheap.flatMap(([, , ids]) => ids))];
         const studioText = sids.slice(0, 2).map((id) => studios[id]?.name || '').filter(Boolean).join('・') + (sids.length > 2 ? ' ほか' : '');
         head.append(el('span', 'sch-day__cheap muted small', same ? '終日同一料金' : `最安 ${spanText(cheap.map(([m]) => m))} ${studioText}`.trim()));
@@ -987,16 +998,36 @@
       // 日が1つしか無い一覧は、閉じたままだと中身が見えないので最初から開く
       l.days = [...byDate.values()].map((es) => {
         const g = dayGroup(es, byDate.size === 1);
-        es.forEach((e) => focusables.push({ date: e.w.date, from: e.w.from, to: e.w.to, starts: e.w.starts, setStart: e.setStart, card: e.node, day: g.node }));
+        es.forEach((e) => focusables.push({ date: e.w.date, from: e.w.from, to: e.w.to, starts: e.w.starts, absent: e.w.absent.length, setStart: e.setStart, card: e.node, day: g.node }));
         return g;
       });
     });
+    // メンバーの予定の表の網掛け用: 候補全体（全部の日・時刻）でいちばん安い開始時刻（日 => [[開始, 終了]…]）。全部同じ料金なら無し
+    const priced = []; // [日付, 開始時刻, 最安の料金]
+    lists.forEach((l) => l.windows.forEach((raw) => {
+      const w = trimWindow(raw);
+      if (w) w.starts.forEach((m) => priced.push([w.date, m, minAt(w, m)]));
+    }));
+    const lowest = Math.min(...priced.map(([, , p]) => p));
+    window.schedCheap = {};
+    if (lowest !== Infinity && priced.some(([, , p]) => p !== lowest)) {
+      priced.filter(([, , p]) => p === lowest).forEach(([date, m]) => (window.schedCheap[date] ||= []).push([m, m + data.len]));
+    }
     // メンバーの予定の表のマスから呼ぶ: その日・時刻にかかる候補のカードを開いて、見える所へ動かして強調する（候補が無ければ何もしない）
+    // その日・時刻から始まる、欠席なしの候補（遅刻・早退が上限に収まる枠）があるか。予定で埋まったマスを押せるかの判定に使う
+    window.schedHasCand = (date, m) => focusables.some((f) => f.date === date && !f.absent && f.starts.includes(m));
     window.schedFocusCand = (date, m) => {
       const same = focusables.filter((f) => f.date === date && f.from <= m && m < f.to);
       const hit = same.find((f) => f.starts.includes(m)) || same[0]; // 押した時刻から始められるカードを優先
       if (!hit) return false;
       hit.setStart(m);
+      // 押した日以外の日は、アニメ無しで閉じる（上の日が閉じて高さが変わっても、スクロールの行き先がずれない）
+      new Set(focusables.map((f) => f.day)).forEach((d) => {
+        if (d === hit.day || !d.open) return;
+        d.classList.add('is-instant');
+        d.open = false;
+        setTimeout(() => d.classList.remove('is-instant'), 100);
+      });
       const go = () => {
         hit.card.scrollIntoView({ behavior: 'smooth', block: 'center' });
         hit.card.classList.remove('is-focus');
@@ -1008,12 +1039,11 @@
       if (hit.day.open) {
         go();
       } else {
-        // 閉じていた日: 開くアニメ（::details-content の高さ 0 → auto）が終わってから動かす。途中だとカードの位置がまだずれていて、ちゃんと着かない
+        // 閉じていた日: アニメ無しで一気に開いてから動かす（アニメの終わりを待つと、押してから動くまでワンテンポ遅れる。途中だとカードの位置もずれる）
+        hit.day.classList.add('is-instant');
         hit.day.open = true;
-        let done = false;
-        const once = (e) => { if (e && e.target !== hit.day) return; if (!done) { done = true; hit.day.removeEventListener('transitionend', once); go(); } };
-        hit.day.addEventListener('transitionend', once);
-        setTimeout(once, 600); // アニメ無し（動きを減らす設定）でも動くように
+        go();
+        setTimeout(() => hit.day.classList.remove('is-instant'), 100);
       }
       return true;
     };
@@ -1023,7 +1053,23 @@
       // <details> は作り直さず、同じ要素を並べ直すだけ（開閉の状態・中で選んだ開始時刻やスタジオが残る）
       lists.forEach((l) => l.node.replaceChildren(...[...l.days].sort(sorters[key]).map((g) => g.node)));
     };
+    /** 日の見出しの開閉の矢印: 入り切らず次の行に落ちるときは消す（矢印を付けた高さと付けない高さを比べて、変わるなら消す。見出し全体が押せるので、矢印が無くても開閉できる） */
+    const fitArrows = () => {
+      const heads = lists.flatMap((l) => [...l.node.querySelectorAll('.sch-day__head')]);
+      heads.forEach((h) => h.classList.remove('no-arrow'));
+      const withArrow = heads.map((h) => h.offsetHeight);
+      heads.forEach((h) => h.classList.add('no-arrow'));
+      const without = heads.map((h) => h.offsetHeight);
+      heads.forEach((h, i) => h.classList.toggle('no-arrow', withArrow[i] > without[i]));
+    };
     render('date');
+    fitArrows();
+    if (window.ResizeObserver) {
+      let lastW = 0;
+      const ro = new ResizeObserver(([e]) => { if (Math.round(e.contentRect.width) !== lastW) { lastW = Math.round(e.contentRect.width); fitArrows(); } });
+      lists.forEach((l) => ro.observe(l.node));
+    }
+    document.fonts?.ready.then(fitArrows);
     document.querySelector('[data-sched-sort]')?.addEventListener('click', (e) => {
       const btn = e.target.closest('[data-sort]');
       if (!btn) return;
@@ -1062,8 +1108,11 @@
       if (!pick) return;
       const first = wrap.querySelector(`td[data-date="${pick.date}"][data-min="${pick.min}"]`);
       if (!first) return; // 押した日が今の週に無い
-      const lastMin = Math.min(pick.min + len, over.end) - over.step;
-      const last = wrap.querySelector(`td[data-date="${pick.date}"][data-min="${lastMin}"]`) || first;
+      // 練習時間ぶん下のマス（予定で埋まったマスは data-date が無いので、行をたどって探す）
+      const rows = Math.min(Math.ceil(len / over.step), Math.round((over.end - pick.min) / over.step));
+      let tr = first.parentElement;
+      for (let i = 1; i < rows && tr.nextElementSibling; i++) tr = tr.nextElementSibling;
+      const last = tr.children[first.cellIndex] || first;
       const w = wrap.getBoundingClientRect();
       const a = first.getBoundingClientRect();
       const b = last.getBoundingClientRect();
@@ -1073,7 +1122,37 @@
       frame.style.height = `${b.bottom - a.top}px`;
       wrap.append(frame);
     };
-    window.addEventListener('resize', applyPick);
+    /** 最安の時間帯の網掛け。マスごとに背景を付けると縞がマスの境目で途切れるので、続いているマスをまとめて1つの箱にして重ねる */
+    const applyCheap = () => {
+      wrap.querySelectorAll('.sch-cheap').forEach((n) => n.remove());
+      const w = wrap.getBoundingClientRect();
+      const cells = [...wrap.querySelectorAll('td.is-cheap')];
+      const dates = [...new Set(cells.map((td) => td.dataset.date))];
+      dates.forEach((date) => {
+        const col = cells.filter((td) => td.dataset.date === date).sort((a, b) => a.dataset.min - b.dataset.min);
+        let run = [];
+        const flush = () => {
+          if (!run.length) return;
+          const a = run[0].getBoundingClientRect();
+          const b = run[run.length - 1].getBoundingClientRect();
+          const box = el('div', 'sch-cheap');
+          box.style.left = `${a.left - w.left + wrap.scrollLeft}px`;
+          box.style.top = `${a.top - w.top + wrap.scrollTop}px`;
+          box.style.width = `${a.width}px`;
+          box.style.height = `${b.bottom - a.top}px`;
+          box.style.backgroundPosition = `${-Math.round(a.left - w.left + wrap.scrollLeft)}px ${-Math.round(a.top - w.top + wrap.scrollTop)}px`; // 縞の起点を表全体でそろえる（隣の日の箱ともつながる）
+          wrap.prepend(box); // 表の下に敷く（マスの区切り線が縞の上に見える。マスの色は半透明なので縞が透ける）
+          run = [];
+        };
+        col.forEach((td) => {
+          const prev = run[run.length - 1];
+          if (prev && Number(td.dataset.min) - Number(prev.dataset.min) !== over.step) flush();
+          run.push(td);
+        });
+        flush();
+      });
+    };
+    window.addEventListener('resize', () => { applyCheap(); applyPick(); });
 
     const draw = () => {
       const days = weeks[page];
@@ -1096,22 +1175,31 @@
           const abs = d.abs + m;
           // このマスにかかる埋まりを、人ごとに最初の1つだけ拾う（同じ人の埋まりが重なっていても1人と数える）
           const who = [];
+          let sp = false; // スタジオ練習（決定した練習）で埋まっている人がいるか
           busy.forEach(([id, list]) => {
             const hit = list.find((b) => b[0] < abs + over.step && b[1] > abs);
-            if (hit) who.push(`${names[id]}（${hit[2]}）`);
+            if (hit) {
+              who.push(`${names[id]}（${hit[2]}）`);
+              if (hit[3]) sp = true;
+            }
           });
-          const td = el('td', who.length === 0 ? 'is-free' : who.length === 1 ? 'is-n1' : 'is-n2');
+          const td = el('td', (who.length === 0 ? 'is-free' : who.length === 1 ? 'is-n1' : 'is-n2') + (sp ? ' is-sp' : ''));
           // 全員空きのマスのうち、その日の最安の時間帯は青（候補カードの最安と同じ時間帯）
           if (!who.length && (window.schedCheap?.[d.date] || []).some(([a, b]) => m >= a && m < b)) td.classList.add('is-cheap');
           if (who.length) td.dataset.tip = who.join('・'); // 属性に入れる（HTML としては解釈されない）
-          td.dataset.date = d.date;
-          td.dataset.min = m;
+          // 押せるのは、そこから始まる候補（欠席なし・遅刻と早退が上限に収まる枠）があるマスだけ。空きのマスでも、練習の途中に予定がかかって早退が上限を超えるなら押せない
+          //   候補を出していない画面（決定済みなど）では、全員空きのマスだけ
+          if (window.schedHasCand ? window.schedHasCand(d.date, m) : !who.length) {
+            td.dataset.date = d.date;
+            td.dataset.min = m;
+          }
           tr.append(td);
         });
         tbody.append(tr);
       }
       table.append(tbody);
       wrap.replaceChildren(table);
+      applyCheap();
       applyPick();
       range.textContent = `${days[0].md}〜${days[days.length - 1].md}`;
       prev.disabled = page === 0;

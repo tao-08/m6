@@ -202,7 +202,7 @@ if (is_post()) {
                     if ($mid === $absentId) {
                         continue; // 欠席する人は、来られるか確かめない
                     }
-                    if (sched_member_late($data['busy'][$mid] ?? [], $t0, $len, 'studio:' . $sid, $travel, (int)$poll['late_max']) === null) {
+                    if (sched_member_times($data['busy'][$mid] ?? [], $t0, $len, 'studio:' . $sid, $travel, (int)$poll['late_max']) === null) {
                         $fail = 'この時間は ' . ($names[$mid] ?? '') . ' さんが来られなくなりました（ほかの練習が先に決定された等）';
                         break;
                     }
@@ -264,6 +264,32 @@ $status = (int)$poll['status'];
 $len = (int)$poll['length_min'];
 $settings = sched_settings($pdo);
 
+/**
+ * 練習（決定・仮決定）ごとの「スタジオ名 部屋名」。キーは「題|開始の絶対分」（同じ題の別の日・時間を取り違えない）
+ *   注意のポップアップ（仮決定）と、メンバーの予定表（決定した練習）に出す
+ */
+$practiceWhere = static function (array $practices) use ($pdo): array {
+    $sids = array_values(array_unique(array_filter(array_column($practices, 'studio_id'))));
+    $rids = array_values(array_unique(array_filter(array_column($practices, 'room_id'))));
+    $sNames = [];
+    $rNames = [];
+    if ($sids) {
+        $st = $pdo->prepare('SELECT studio_id, name FROM studio WHERE studio_id IN (' . implode(',', array_fill(0, count($sids), '?')) . ')'); // ? を件数ぶん並べる（プリペアドステートメント）
+        $st->execute($sids);
+        $sNames = $st->fetchAll(PDO::FETCH_KEY_PAIR);
+    }
+    if ($rids) {
+        $st = $pdo->prepare('SELECT studio_room_id, name FROM studio_room WHERE studio_room_id IN (' . implode(',', array_fill(0, count($rids), '?')) . ')');
+        $st->execute($rids);
+        $rNames = $st->fetchAll(PDO::FETCH_KEY_PAIR);
+    }
+    $out = [];
+    foreach ($practices as $pr) {
+        $out[$pr['title'] . '|' . $pr['s']] = trim(($sNames[$pr['studio_id']] ?? '') . ' ' . ($rNames[$pr['room_id']] ?? ''));
+    }
+    return $out;
+};
+
 // ---- 候補の計算（決定済みなら出さない）----
 $windows = [];       // 全員そろう候補
 $absentWindows = []; // 1人欠席の候補
@@ -303,9 +329,10 @@ if ($status < 3) {
         // ---- メンバーの予定（週ごとの表の元データ）。授業・練習・それ以外は種類を丸めて送る（プライバシーのため）----
         //   「バイト」「カレンダー」「手入力」のどれなのかは、画面に出さない（まとめて「予定あり」）
         //   例外: 自分（$myMember）の iCal・画像から読み込んだ予定だけ、タイトルを見せる（他の人の行には、タイトルを絶対に出さない）
+        $where = $canManage ? $practiceWhere($practices) : [];
         $overLabel = static fn(array $b, int $mid): string => match (true) {
             $b[3] === 'class' => '授業 ' . $b[4],
-            $b[3] === 'practice' => '練習 ' . $b[4],
+            $b[3] === 'practice' => ($where[$b[4] . '|' . $b[0]] ?? '') ?: '練習 ' . $b[4], // スタジオ名 部屋名（分からなければ「練習 題」）
             in_array($b[3], ['ical', 'photo'], true) && $mid === $myMember && $b[4] !== '' => $b[4],
             default => '予定あり',
         };
@@ -313,7 +340,7 @@ if ($status < 3) {
         if ($canManage) {
             $overBusy = [];
             foreach ($memberIds as $mid) {
-                $overBusy[$mid] = array_map(static fn($b) => [$b[0], $b[1], $overLabel($b, (int)$mid)], $data['busy'][$mid] ?? []);
+                $overBusy[$mid] = array_map(static fn($b) => [$b[0], $b[1], $overLabel($b, (int)$mid), $b[3] === 'practice' ? 1 : 0], $data['busy'][$mid] ?? []); // 4つ目 = 練習か（表の色分け用）
             }
             $over = [
                 'days' => array_map(static fn($d) => ['date' => $d, 'md' => sched_md($d), 'abs' => sched_day_abs($d), 'dow' => (int)date('w', strtotime($d))], sched_dates($from, $to)),
@@ -338,14 +365,20 @@ foreach ($studios as $s) {
     unset($r); // foreach の参照を切る（PHP の落とし穴。lib/sched.php の sched_candidates のコメント参照）
     $sim[$sid] = $payload;
 }
+// 仮決定の練習の「スタジオ名 部屋名」（注意のポップアップ用。題 => 文字。同じ題が複数あれば最後のもの）
+$warnWhere = [];
+foreach ($practices ? $practiceWhere($practices) : [] as $k => $v) {
+    $warnWhere[substr($k, 0, (int)strrpos($k, '|'))] = $v;
+}
 /** 窓 → 画面用（日付の表示・曜日区分を足し、スタジオは配列にする。late / adj は空でも {} になるよう (object) で包む） */
 $winOut = static fn(array $w): array => [
     'date' => $w['date'], 'md' => sched_md($w['date']), 'day' => sched_day_type($w['date']),
     'starts' => $w['starts'], 'from' => $w['from'], 'to' => $w['to'],
-    'lateMembers' => $w['late_members'], 'absent' => $w['absent'], 'warn' => $w['warn'], 'adj' => $w['adj'],
+    'lateMembers' => $w['late_members'], 'earlyMembers' => $w['early_members'], 'absent' => $w['absent'], 'warn' => array_map(static fn($t) => ['t' => $t, 'where' => $warnWhere[$t] ?? ''], $w['warn']), 'adj' => $w['adj'],
     'studios' => array_map(static fn($sid, $s) => [
         'id' => $sid, 'starts' => $s['starts'],
         'late' => (object)array_map(static fn($l) => (object)$l, $s['late']),
+        'early' => (object)array_map(static fn($l) => (object)$l, $s['early']),
         'adj' => (object)$s['adj'],
     ], array_keys($w['studios']), array_values($w['studios'])),
 ];
@@ -492,7 +525,7 @@ if (!empty($poll['live_id'])) {
                     <button type="button" class="icon-btn" data-over-next aria-label="次の週" title="次の週"><?= icon('chevron_right') ?></button>
                 </div>
                 <div class="sch-legend small muted">
-                    <span><i class="sch-sw is-free"></i>全員空き</span><span><i class="sch-sw is-free is-cheap"></i>最安</span><span><i class="sch-sw is-n1"></i>1人</span><span><i class="sch-sw is-n2"></i>2人以上</span>
+                    <span><i class="sch-sw is-free"></i>全員空き</span><span><i class="sch-sw is-free is-cheap"></i>最安</span><span><i class="sch-sw is-n1"></i>1人予定あり</span><span><i class="sch-sw is-n2"></i>2人以上予定あり</span><span><i class="sch-sw is-sp"></i>スタジオ練習</span>
                 </div>
                 <div class="sch-grid-wrap" data-sched-over-grid></div>
             </div>

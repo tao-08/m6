@@ -829,6 +829,9 @@ check('遅刻: 上限30分なら来られない', sched_member_late([[540, 640, 
 check('遅刻: 練習の途中で予定（早退は扱わない）', sched_member_late([[660, 700, null]], $t0, 120, 'studio:1', $zero, 90), null);
 check('遅刻: 練習の直後の予定は、移動の分だけかぶれば来られない', sched_member_late([[720, 800, 'campus:和泉']], $t0, 120, 'studio:1', $thirty, 90), null);
 check('遅刻: 練習の直後の予定でも、場所不明なら来られる', sched_member_late([[720, 800, null]], $t0, 120, 'studio:1', $thirty, 0), 0);
+check('早退: 練習の途中で予定 → 上限内なら早退（遅刻0・早退60）', sched_member_times([[660, 700, null]], $t0, 120, 'studio:1', $zero, 90), [0, 60]);
+check('早退: 上限30分なら来られない', sched_member_times([[660, 700, null]], $t0, 120, 'studio:1', $zero, 30), null);
+check('早退: 遅刻も早退も要る人は来られない（欠席扱い）', sched_member_times([[540, 640, null], [690, 740, null]], $t0, 120, 'studio:1', $zero, 90), null);
 // 候補: 2人・1日・10:00〜14:00 の 2時間。A は 11:00〜12:00 が埋まり → 12:00〜14:00 だけ全員そろう
 $d = '2026-11-21';
 $base = sched_day_abs($d);

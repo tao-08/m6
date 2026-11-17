@@ -394,15 +394,16 @@ function sched_member_campus(?int $chosen, ?int $entryYear): int
  * ===================================================================== */
 
 /**
- * 1人の部員が、時刻 t0 から len 分の練習に「何分遅れで来られるか」
- *   戻り値: 遅れの分（0 = 最初からいる）/ null = 来られない（途中で抜ける必要がある・遅れが上限を超える）
+ * 1人の部員が、時刻 t0 から len 分の練習に「何分遅れて来て、何分早く抜けるか」
+ *   戻り値: [遅刻の分, 早退の分]（0 = 遅刻・早退なし）/ null = 来られない（欠席扱い）
  *
  *   $busy  … [[開始, 終了, 場所キー|null], …]（絶対分）
  *   $place … 練習するスタジオの場所キー
  *   考え方: 埋まりの前後に移動時間を足して「動けない時間」に広げ、
- *           練習の開始より前から続いている分は「遅刻」、練習の途中で始まるものは「来られない」（早退は扱わない）
+ *           練習の開始より前から続いている分は「遅刻」、練習の途中で始まるもの（以降は抜ける）は「早退」。
+ *           遅刻・早退はどちらも $limit（遅刻の上限）まで許す。遅刻と早退の両方が要る人・ずっといられない人は null（来られない）
  */
-function sched_member_late(array $busy, int $t0, int $len, string $place, callable $travel, int $lateMax): ?int
+function sched_member_times(array $busy, int $t0, int $len, string $place, callable $travel, int $limit): ?array
 {
     $end = $t0 + $len;
     $blocks = [];
@@ -416,15 +417,28 @@ function sched_member_late(array $busy, int $t0, int $len, string $place, callab
     // 始まりの早い順に並べる。<=> は「宇宙船演算子」: 左が小さければ -1、同じなら 0、大きければ 1
     usort($blocks, static fn($x, $y) => $x[0] <=> $y[0]);
     $arrive = $t0; // 来られる時刻
+    $leave = $end; // 抜ける時刻（最後までいるなら $end）
     foreach ($blocks as [$bs, $be]) {
         if ($bs <= $arrive) {
             $arrive = max($arrive, $be); // 来る前から続いている → 来られる時刻が後ろにずれる
         } else {
-            return null; // 来たあとに予定が入っている → 途中で抜けないといけない
+            $leave = $bs; // 来たあとに予定が入っている → ここで抜ける
+            break;
         }
     }
     $late = $arrive - $t0;
-    return ($late > $lateMax || $arrive >= $end) ? null : $late;
+    $early = $end - $leave;
+    if ($arrive >= $leave || $late > $limit || $early > $limit || ($late > 0 && $early > 0)) {
+        return null;
+    }
+    return [$late, $early];
+}
+
+/** 遅れの分だけを返す版（早退が要る人も null = 来られない。早退を数えない呼び出し用） */
+function sched_member_late(array $busy, int $t0, int $len, string $place, callable $travel, int $lateMax): ?int
+{
+    $t = sched_member_times($busy, $t0, $len, $place, $travel, $lateMax);
+    return $t === null || $t[1] > 0 ? null : $t[0];
 }
 
 /**
@@ -446,16 +460,17 @@ function sched_member_late(array $busy, int $t0, int $len, string $place, callab
  *   スタジオは窓の中に持たせる（日 × スタジオごとに窓を作ると、2週間・4スタジオで56枚にもなって選べないため）
  *   [
  *     'date' => '2026-11-21', 'starts' => [開始の分…], 'from' => 最初の開始, 'to' => 最後の開始 + 練習の長さ,
- *     'late_members' => [遅刻する member_id（昇順）], 'absent' => [来られない member_id]（0人なら []）,
+ *     'late_members' => [遅刻する member_id（昇順）], 'early_members' => [早退する member_id（昇順）], 'absent' => [来られない member_id]（0人なら []）,
  *     'warn' => [注意の題…], 'adj' => 窓のどこかのマスの連続（2 = ◎ / 1 = ○ / 0）の最大,
  *     'late_min' => マスごとの「遅れの合計」の最小（並べ替え用。遅刻なしなら 0）,
  *     'studios' => [studio_id => [
  *         'starts' => [このスタジオで取れる開始の分…],
  *         'late'   => [開始の分 => [member_id => 遅れの分]],        // 遅刻があるマスだけ
+ *         'early'  => [開始の分 => [member_id => 早退の分]],        // 早退があるマスだけ
  *         'adj'    => [開始の分 => ['level' => 1|2, 'with' => [題…]]], // 連続があるマスだけ
  *     ]],
  *   ]
- *   窓にまとめるときの目印（キー）に入れるのは「日付・遅刻する人・欠席の人・注意」だけ。
+ *   窓にまとめるときの目印（キー）に入れるのは「日付・遅刻する人・早退する人・欠席の人・注意」だけ。
  *   遅れの分とスタジオと連続は目印に入れない（開始時刻やスタジオを選び直すと変わる値は、窓の中に持たせて画面で切り替える）
  */
 function sched_candidates(array $p): array
@@ -464,7 +479,7 @@ function sched_candidates(array $p): array
     $len = (int)$p['length'];
     $absentMax = (int)($p['absent_max'] ?? 0);
     $studioOrder = array_flip(array_keys($p['studios'])); // スタジオの並び順（窓の中でも同じ順にそろえる）
-    $groups = []; // 目印 => ['date', 'late_members', 'absent', 'warn', 'cells' => [開始の分 => [studio_id => [late, adj, adj_with]]]]
+    $groups = []; // 目印 => ['date', 'late_members', 'early_members', 'absent', 'warn', 'cells' => [開始の分 => [studio_id => [late, adj, adj_with]]]]
     foreach ($p['dates'] as $date) {
         $day0 = sched_day_abs($date);
         // その日の「日だけ仮決定」＝ 時間は未定だが、その日は注意
@@ -482,18 +497,24 @@ function sched_candidates(array $p): array
                 }
                 // ---- 全員の遅れを調べる（来られない人が absent_max を超えたら、この枠は捨てる）----
                 $late = [];
+                $early = [];
                 $absent = [];
                 $ok = true;
                 foreach ($p['members'] as $mid => $_name) {
-                    $l = sched_member_late($p['busy'][$mid] ?? [], $t0, $len, $studio['place'], $p['travel'], (int)$p['late_max']);
+                    $l = sched_member_times($p['busy'][$mid] ?? [], $t0, $len, $studio['place'], $p['travel'], (int)$p['late_max']);
                     if ($l === null) {
                         $absent[] = (int)$mid;
                         if (count($absent) > $absentMax) {
                             $ok = false;
                             break;
                         }
-                    } elseif ($l > 0) {
-                        $late[(int)$mid] = $l;
+                    } else {
+                        if ($l[0] > 0) {
+                            $late[(int)$mid] = $l[0];
+                        }
+                        if ($l[1] > 0) {
+                            $early[(int)$mid] = $l[1];
+                        }
                     }
                 }
                 if (!$ok) {
@@ -518,11 +539,12 @@ function sched_candidates(array $p): array
                     }
                 }
                 ksort($late);
+                ksort($early);
                 $warn = array_values(array_unique($warn));
                 // json_encode … 配列を文字列にして、「同じ条件か」を比べる目印にする
-                $key = json_encode([$date, array_keys($late), $absent, $warn]);
-                $groups[$key] ??= ['date' => $date, 'late_members' => array_keys($late), 'absent' => $absent, 'warn' => $warn, 'cells' => []];
-                $groups[$key]['cells'][$m][(int)$sid] = ['late' => $late, 'adj' => $adj, 'adj_with' => array_values(array_unique($adjWith))];
+                $key = json_encode([$date, array_keys($late), array_keys($early), $absent, $warn]);
+                $groups[$key] ??= ['date' => $date, 'late_members' => array_keys($late), 'early_members' => array_keys($early), 'absent' => $absent, 'warn' => $warn, 'cells' => []];
+                $groups[$key]['cells'][$m][(int)$sid] = ['late' => $late, 'early' => $early, 'adj' => $adj, 'adj_with' => array_values(array_unique($adjWith))];
             }
         }
     }
@@ -551,30 +573,33 @@ function sched_candidates(array $p): array
                     if ($cell['late']) {
                         $studios[$sid]['late'][$m] = $cell['late'];
                     }
+                    if ($cell['early']) {
+                        $studios[$sid]['early'][$m] = $cell['early'];
+                    }
                     if ($cell['adj'] > 0) {
                         $studios[$sid]['adj'][$m] = ['level' => $cell['adj'], 'with' => $cell['adj_with']];
                     }
                     $adjMax = max($adjMax, $cell['adj']);
-                    $sum = array_sum($cell['late']);
+                    $sum = array_sum($cell['late']) + array_sum($cell['early']);
                     $lateMin = $lateMin === null ? $sum : min($lateMin, $sum);
                 }
             }
             uksort($studios, static fn($a, $b) => $studioOrder[$a] <=> $studioOrder[$b]);
             foreach ($studios as &$s) {
-                $s += ['late' => [], 'adj' => []]; // 無いときは空の配列にそろえる（画面側で扱いやすいように）
+                $s += ['late' => [], 'early' => [], 'adj' => []]; // 無いときは空の配列にそろえる（画面側で扱いやすいように）
             }
             unset($s); // foreach の参照を切る（切らないと、あとで $s に代入したとき配列の中身まで変わる。PHP のよくある落とし穴）
             $windows[] = [
                 'date' => $g['date'], 'starts' => $starts, 'from' => $starts[0], 'to' => end($starts) + $len,
-                'late_members' => $g['late_members'], 'absent' => $g['absent'], 'warn' => $g['warn'],
+                'late_members' => $g['late_members'], 'early_members' => $g['early_members'], 'absent' => $g['absent'], 'warn' => $g['warn'],
                 'adj' => $adjMax, 'late_min' => (int)$lateMin, 'studios' => $studios,
             ];
         }
     }
-    // 並び順: 全員そろう（欠席なし）→ 遅刻なし → 連続◎ → 連続○ → 遅れが少ない → 日付 → 時刻（料金での並べ替えは画面の JS でする）
+    // 並び順: 全員そろう（欠席なし）→ 遅刻・早退なし → 連続◎ → 連続○ → 遅れが少ない → 日付 → 時刻（料金での並べ替えは画面の JS でする）
     //   配列同士を <=> で比べると、先頭から順に比べて最初に違った所で決まる。false < true なので「欠席なし」「遅刻なし」が先になる
-    usort($windows, static fn($a, $b) => [count($a['absent']) > 0, count($a['late_members']) > 0, -$a['adj'], $a['late_min'], $a['date'], $a['from']]
-        <=> [count($b['absent']) > 0, count($b['late_members']) > 0, -$b['adj'], $b['late_min'], $b['date'], $b['from']]);
+    usort($windows, static fn($a, $b) => [count($a['absent']) > 0, count($a['late_members']) + count($a['early_members']) > 0, -$a['adj'], $a['late_min'], $a['date'], $a['from']]
+        <=> [count($b['absent']) > 0, count($b['late_members']) + count($b['early_members']) > 0, -$b['adj'], $b['late_min'], $b['date'], $b['from']]);
     return array_slice($windows, 0, SCHED_MAX_WINDOWS);
 }
 
@@ -736,14 +761,14 @@ function sched_collect_busy(PDO $pdo, array $memberIds, string $from, string $to
     }
 
     // ---- ほかの調整の仮決定・決定（この部員たちが1人でも入っているもの）----
-    $st = $pdo->prepare("SELECT DISTINCT p.sched_poll_id, p.title, p.status, p.fix_date, p.fix_start, p.fix_end, p.fix_studio_id
+    $st = $pdo->prepare("SELECT DISTINCT p.sched_poll_id, p.title, p.status, p.fix_date, p.fix_start, p.fix_end, p.fix_studio_id, p.fix_room_id
         FROM sched_poll p JOIN sched_poll_member pm ON pm.sched_poll_id = p.sched_poll_id
         WHERE p.status >= 1 AND pm.member_id IN ($in) AND p.fix_date BETWEEN ? AND ? AND p.sched_poll_id <> ?");
     $st->execute([...$memberIds, $from, $to, $exceptPollId ?? 0]);
     $polls = $st->fetchAll();
     $practiceIds = array_map(static fn($r) => (int)$r['sched_poll_id'], $polls);
     // 連続の判定（○）は、部員が重ならない練習も見るので、同じ期間の「決定・仮決定（日時）」を全部足す
-    $st = $pdo->prepare('SELECT sched_poll_id, title, status, fix_date, fix_start, fix_end, fix_studio_id FROM sched_poll
+    $st = $pdo->prepare('SELECT sched_poll_id, title, status, fix_date, fix_start, fix_end, fix_studio_id, fix_room_id FROM sched_poll
         WHERE status >= 2 AND fix_date BETWEEN ? AND ? AND sched_poll_id <> ?');
     $st->execute([$from, $to, $exceptPollId ?? 0]);
     foreach ($st as $r) {
@@ -769,7 +794,7 @@ function sched_collect_busy(PDO $pdo, array $memberIds, string $from, string $to
         $pm = $members[$pid] ?? [];
         $out['practices'][] = [
             'id' => $pid, 'title' => (string)$r['title'], 'status' => (int)$r['status'], 'date' => (string)$r['fix_date'],
-            's' => $s, 'e' => $e, 'studio_id' => $r['fix_studio_id'] === null ? null : (int)$r['fix_studio_id'], 'members' => $pm,
+            's' => $s, 'e' => $e, 'studio_id' => $r['fix_studio_id'] === null ? null : (int)$r['fix_studio_id'], 'room_id' => $r['fix_room_id'] === null ? null : (int)$r['fix_room_id'], 'members' => $pm,
         ];
         // 決定（3）だけ、その部員の埋まりにする（仮決定は注意だけ）
         if ((int)$r['status'] === 3 && $s !== null) {
