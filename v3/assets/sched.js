@@ -1585,6 +1585,31 @@
     if (!form) return;
     let target = form.querySelector('[name="ev_title"]');
     form.querySelectorAll('input[type="text"][name^="ev_"], textarea').forEach((f) => f.addEventListener('focus', () => { target = f; }));
+    // プレビュー: 見本の値（sched_me.php の data-ev-sample）を書式に差し込んで、各欄の下に出す（lib/sched.php の sched_event_render と同じ規則）
+    let sample = null;
+    try { sample = JSON.parse(form.dataset.evSample || ''); } catch (e) { /* 見本が無ければプレビューは出さない */ }
+    const OLD = { 'タイトル': 'バンド名', 'スタジオ': 'スタジオ名', '短縮': 'スタジオ短縮名' }; // 旧名（SCHED_EVENT_OLD_VARS）
+    const render = (tpl, multi) => {
+      const vars = sample.vars;
+      const shortInput = sample.sid ? form.querySelector(`[name="short[${sample.sid}]"]`) : null;
+      const short = shortInput ? (shortInput.value.trim() || shortInput.placeholder || vars['スタジオ名']) : vars['スタジオ短縮名'];
+      const s = tpl.replace(/\r\n/g, '\n').replace(/\{([^{}]+)\}/g, (m, k) => {
+        k = OLD[k] || k;
+        if (k === 'スタジオ短縮名') return short;
+        return Object.prototype.hasOwnProperty.call(vars, k) ? vars[k] : m;
+      });
+      return multi ? s.replace(/[ \t　]+$/gm, '').replace(/\n{3,}/g, '\n\n').trim() : s.replace(/\s+/g, ' ').trim();
+    };
+    const preview = () => {
+      if (!sample) return;
+      form.querySelectorAll('[data-ev-preview]').forEach((el) => {
+        const f = form.querySelector(`[name="${el.dataset.evPreview}"]`);
+        const v = f.value.trim() === '' ? f.placeholder : f.value; // 空なら初期の書式になる
+        el.textContent = render(v, f.tagName === 'TEXTAREA');
+      });
+    };
+    form.addEventListener('input', preview);
+    preview();
     form.querySelectorAll('[data-ev-ins]').forEach((b) => b.addEventListener('click', () => {
       const s = target.selectionStart ?? target.value.length;
       const e = target.selectionEnd ?? s;
@@ -1592,6 +1617,7 @@
       const pos = s + b.dataset.evIns.length;
       target.focus();
       target.setSelectionRange(pos, pos);
+      preview();
     }));
   };
 

@@ -31,9 +31,13 @@ require_once __DIR__ . '/sched_ical.php'; // sched_ical_decrypt()（iCal の予�
 const SCHED_CAMPUSES = [1 => '和泉', 2 => '駿河台'];
 
 /**
- * キャンパスごとの、定期券の到着駅の候補（sched_profile.pass_to に入る駅名）。和泉は明大前、駿河台は御茶ノ水・神保町周辺の4駅
+ * キャンパスごとの、定期券の到着駅の候補（sched_profile.pass_to に入る駅名）。先頭がそのキャンパスの最寄り駅
+ *   和泉は明大前、駿河台は御茶ノ水・神保町周辺の4駅。どちらにも、他のキャンパスへ通う人のために 明大前・中野・生田 を足してある
  */
-const SCHED_PASS_STATIONS = [1 => ['明大前'], 2 => ['JR御茶ノ水', 'メトロ御茶ノ水', '新御茶ノ水', '神保町']];
+const SCHED_PASS_STATIONS = [
+    1 => ['明大前', '中野', '生田'],
+    2 => ['JR御茶ノ水', 'メトロ御茶ノ水', '新御茶ノ水', '神保町', '明大前', '中野', '生田'],
+];
 
 /** 学期（sched_class.term の値 => 名前） */
 const SCHED_TERMS = [1 => '春学期', 2 => '秋学期'];
@@ -982,16 +986,25 @@ function sched_event_details(array $presentNames, int $pollId): string
 }
 
 /* ---------------------------------------------------------------------
- *  カレンダーに入れる練習の「書式」（タイトル・場所・メモ）。人ごとに変えられる（マイスケジュールの「練習の書式」）
- *    {タイトル}{スタジオ}{短縮}{部屋}{住所}{メンバー}{URL} を差し込める。NULL（未設定）なら下の初期の書式
- *    {短縮} … スタジオ名の短縮形。自分で決めたもの（sched_studio_short）→ スタジオ情報の初期の短縮形（studio.short_name）→ スタジオ名、の順
+ *  カレンダーに入れる練習の「書式」（タイトル・場所・メモ）。人ごとに変えられる（マイスケジュールの「カレンダーに追加する予定の書式」）
+ *    {バンド名}{スタジオ名}{スタジオ短縮名}{部屋}{住所}{メンバー}{URL} を差し込める。NULL（未設定）なら下の初期の書式
+ *    {スタジオ短縮名} … 自分で決めたもの（sched_studio_short）→ スタジオ情報の初期の短縮形（studio.short_name）→ スタジオ名、の順
+ *    旧名 {タイトル}{スタジオ}{短縮} も、同じ意味でそのまま使える（SCHED_EVENT_OLD_VARS。保存済みの書式のため）
  *  Google への書き込み・購読・.ics・「追加」リンクのすべてが、この関数を通る
  * ------------------------------------------------------------------- */
-const SCHED_EVENT_DEFAULTS = ['title' => 'スタ連 {タイトル}', 'location' => '{スタジオ} {部屋} {住所}', 'details' => "メンバー: {メンバー}\n{URL}"];
+const SCHED_EVENT_DEFAULTS = ['title' => '{バンド名} {スタジオ短縮名} {部屋}', 'location' => '{スタジオ名} {部屋} {住所}', 'details' => "メンバー: {メンバー}\n{URL}"];
 /** 書式の最大文字数（Google の予定が際限なく長くならないように） */
 const SCHED_EVENT_MAX = ['title' => 100, 'location' => 200, 'details' => 500];
 /** 差し込める名前 */
-const SCHED_EVENT_VARS = ['タイトル', 'スタジオ', '短縮', '部屋', '住所', 'メンバー', 'URL'];
+const SCHED_EVENT_VARS = ['バンド名', 'スタジオ名', 'スタジオ短縮名', '部屋', '住所', 'メンバー', 'URL'];
+/** 旧名 → 新名（改名前に保存された書式を、新しい名前に読み替える） */
+const SCHED_EVENT_OLD_VARS = ['{タイトル}' => '{バンド名}', '{スタジオ}' => '{スタジオ名}', '{短縮}' => '{スタジオ短縮名}'];
+
+/** 書式の旧名を新名に読み替える */
+function sched_event_upgrade(string $tpl): string
+{
+    return strtr($tpl, SCHED_EVENT_OLD_VARS);
+}
 
 /**
  * その部員の書式。['title' => 書式, 'location' => 書式, 'details' => 書式, 'short' => [studio_id => 短縮形], 'custom' => 初期から変えているか, 'stamp' => 書式の更新時刻]
@@ -1009,7 +1022,7 @@ function sched_event_format(PDO $pdo, ?int $memberId): array
     $fmt['stamp'] = $p ? (int)strtotime((string)$p['updated_at']) : 0; // 書式を変えたときに、購読のカレンダーが予定を更新し直すため
     foreach (['title' => 'ev_title', 'location' => 'ev_location', 'details' => 'ev_details'] as $k => $col) {
         if ($p && $p[$col] !== null && $p[$col] !== '') {
-            $fmt[$k] = (string)$p[$col];
+            $fmt[$k] = sched_event_upgrade((string)$p[$col]); // 旧名で保存された書式は、新しい名前で見せる
             $fmt['custom'] = true;
         }
     }
@@ -1028,7 +1041,7 @@ function sched_event_render(string $tpl, array $vars, bool $multiline): string
     foreach ($vars as $k => $v) {
         $map['{' . $k . '}'] = (string)$v;
     }
-    $s = strtr(str_replace("\r\n", "\n", $tpl), $map);
+    $s = strtr(str_replace("\r\n", "\n", sched_event_upgrade($tpl)), $map);
     if ($multiline) {
         $s = preg_replace('/[ \t　]+$/mu', '', $s) ?? $s;
         return trim(preg_replace("/\n{3,}/", "\n\n", $s) ?? $s);
@@ -1052,7 +1065,7 @@ function sched_event_text(array $fmt, array $c): array
         $short = (string)$c['studio_short'];
     }
     $vars = [
-        'タイトル' => (string)$c['title'], 'スタジオ' => $studio, '短縮' => $short, '部屋' => (string)($c['room'] ?? ''),
+        'バンド名' => (string)$c['title'], 'スタジオ名' => $studio, 'スタジオ短縮名' => $short, '部屋' => (string)($c['room'] ?? ''),
         '住所' => (string)($c['address'] ?? ''), 'メンバー' => implode('・', $c['names'] ?? []),
         'URL' => APP_URL . 'sched_poll?id=' . (int)$c['poll_id'],
     ];
@@ -1066,7 +1079,7 @@ function sched_event_text(array $fmt, array $c): array
 /** 書式の入力を整える（空・初期と同じ・長すぎるものは NULL / 切り詰め）。差し込みの「{…}」は、決まった名前だけ残す必要はない（知らない名前はそのまま文字として出る） */
 function sched_event_clean(string $key, string $v): ?string
 {
-    $v = str_replace(["\r\n", "\r"], "\n", $v);
+    $v = sched_event_upgrade(str_replace(["\r\n", "\r"], "\n", $v));
     $v = $key === 'details' ? trim($v) : trim(preg_replace('/\s+/u', ' ', $v) ?? $v);
     $v = mb_substr($v, 0, SCHED_EVENT_MAX[$key]);
     return $v === '' || $v === SCHED_EVENT_DEFAULTS[$key] ? null : $v;

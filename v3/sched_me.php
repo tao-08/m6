@@ -523,7 +523,7 @@ $prof = $st->fetch();
 $autoCampus = sched_member_campus(null, $prof['entry_year'] === null ? null : (int)$prof['entry_year']);
 $chosenCampus = $prof['campus'] === null ? 0 : (int)$prof['campus'];
 $evFmt = sched_event_format($pdo, $me); // カレンダーに入れる練習の書式（初期のままなら初期の文）
-$evStudios = $pdo->query('SELECT studio_id, name, short_name FROM studio ORDER BY sort_order, studio_id')->fetchAll();
+$evStudios = $pdo->query('SELECT studio_id, name, short_name, address FROM studio ORDER BY sort_order, studio_id')->fetchAll();
 $classes = [1 => [], 2 => []];
 $st = $pdo->prepare('SELECT term, weekday, period FROM sched_class WHERE member_id = ?');
 $st->execute([$me]);
@@ -838,12 +838,32 @@ render_header('マイスケジュール', 'tools');
         </div>
     <?php endif; ?>
     <?php // 決定した練習をカレンダーに入れるときの書式（Google・購読・.ics・追加リンクの全部に効く）。{…} は押すと入力欄に入る ?>
-    <form method="post" class="sch-feed sch-evfmt" data-ev-format>
+    <?php
+    // 書式のプレビュー用の見本（スタジオミュージアム 新宿店の Ast。無ければ決め打ち）。入力するたびに assets/sched.js が書式へ差し込んで表示する
+    $evSample = ['sid' => 0, 'vars' => ['バンド名' => 'サンプルバンド', 'スタジオ名' => 'スタジオミュージアム 新宿店', '部屋' => 'Ast', '住所' => '', 'メンバー' => (string)$prof['name'] . '・サンプル', 'URL' => APP_URL . 'sched_poll?id=1']];
+    foreach ($evStudios as $s) {
+        if (mb_strpos((string)$s['name'], 'ミュージアム') !== false) {
+            $evSample['sid'] = (int)$s['studio_id'];
+            $evSample['vars']['スタジオ名'] = (string)$s['name'];
+            $evSample['vars']['住所'] = (string)($s['address'] ?? '');
+            $evSample['vars']['スタジオ短縮名'] = (string)($evFmt['short'][(int)$s['studio_id']] ?? '') !== '' ? (string)$evFmt['short'][(int)$s['studio_id']] : (string)($s['short_name'] ?? $s['name']);
+            break;
+        }
+    }
+    $evSample['vars']['スタジオ短縮名'] ??= $evSample['vars']['スタジオ名'];
+    ?>
+    <form method="post" class="sch-feed sch-evfmt" data-ev-format data-ev-sample="<?= h(json_encode($evSample, JSON_UNESCAPED_UNICODE)) ?>">
         <?= csrf_field() ?><input type="hidden" name="action" value="event_format"><?php if ($poll !== null): ?><input type="hidden" name="poll" value="<?= $pollId ?>"><?php endif; ?>
-        <span class="sch-label">練習の書式</span>
-        <input class="search" type="text" name="ev_title" maxlength="<?= SCHED_EVENT_MAX['title'] ?>" value="<?= h($evFmt['title']) ?>" placeholder="<?= h(SCHED_EVENT_DEFAULTS['title']) ?>" autocomplete="off" aria-label="タイトル">
-        <input class="search" type="text" name="ev_location" maxlength="<?= SCHED_EVENT_MAX['location'] ?>" value="<?= h($evFmt['location']) ?>" placeholder="<?= h(SCHED_EVENT_DEFAULTS['location']) ?>" autocomplete="off" aria-label="場所">
-        <textarea class="search" name="ev_details" rows="3" maxlength="<?= SCHED_EVENT_MAX['details'] ?>" placeholder="<?= h(SCHED_EVENT_DEFAULTS['details']) ?>" aria-label="メモ"><?= h($evFmt['details']) ?></textarea>
+        <span class="sch-label">カレンダーに追加する予定の書式</span>
+        <label class="sch-evfield"><span class="sch-evfield__name">タイトル</span>
+            <input class="search" type="text" name="ev_title" maxlength="<?= SCHED_EVENT_MAX['title'] ?>" value="<?= h($evFmt['title']) ?>" placeholder="<?= h(SCHED_EVENT_DEFAULTS['title']) ?>" autocomplete="off">
+            <span class="sch-evfield__prev" data-ev-preview="ev_title"></span></label>
+        <label class="sch-evfield"><span class="sch-evfield__name">場所</span>
+            <input class="search" type="text" name="ev_location" maxlength="<?= SCHED_EVENT_MAX['location'] ?>" value="<?= h($evFmt['location']) ?>" placeholder="<?= h(SCHED_EVENT_DEFAULTS['location']) ?>" autocomplete="off">
+            <span class="sch-evfield__prev" data-ev-preview="ev_location"></span></label>
+        <label class="sch-evfield"><span class="sch-evfield__name">メモ</span>
+            <textarea class="search" name="ev_details" rows="3" maxlength="<?= SCHED_EVENT_MAX['details'] ?>" placeholder="<?= h(SCHED_EVENT_DEFAULTS['details']) ?>"><?= h($evFmt['details']) ?></textarea>
+            <span class="sch-evfield__prev sch-evfield__prev--multi" data-ev-preview="ev_details"></span></label>
         <div class="sch-row sch-row--wrap">
             <?php foreach (SCHED_EVENT_VARS as $v): ?><button type="button" class="btn btn--sm" data-ev-ins="{<?= h($v) ?>}">{<?= h($v) ?>}</button><?php endforeach; ?>
         </div>
