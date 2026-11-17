@@ -12,7 +12,7 @@
  *    copy    … もう片方の学期の時間割を写す
  *    ical / ical_refresh / ical_delete … カレンダー連携（iCal の URL）
  *    google_refresh / google_disconnect … カレンダー連携（Google。連携を始めるのは sched_google.php。lib/sched_google.php）
- *    event_format … カレンダーに入れる練習の書式（タイトル・場所・メモ）とスタジオ名の短縮形（lib/sched.php の sched_event_format）。reset で初期に戻す
+ *    event_format … カレンダーに入れる練習の書式（タイトル・場所・メモ）とスタジオ名の略称（lib/sched.php の sched_event_format）。reset で初期に戻す
  *    feed_reset … 決定した練習の購読 URL を再発行（古い URL は使えなくなる。lib/sched_ical.php の sched_feed_token）
  *    busy    … NG 枠（画面に出ている範囲の手入力分を入れ直す。JS から JSON で送る）
  *    photo_read … カレンダーのスクリーンショット（最大3枚）を AI に読ませて、予定の一覧を JSON で返す（保存はしない。lib/sched_photo.php）
@@ -846,11 +846,11 @@ render_header('マイスケジュール', 'tools');
             $evSample['sid'] = (int)$s['studio_id'];
             $evSample['vars']['スタジオ名'] = (string)$s['name'];
             $evSample['vars']['住所'] = (string)($s['address'] ?? '');
-            $evSample['vars']['スタジオ短縮名'] = (string)($evFmt['short'][(int)$s['studio_id']] ?? '') !== '' ? (string)$evFmt['short'][(int)$s['studio_id']] : (string)($s['short_name'] ?? $s['name']);
+            $evSample['vars']['スタジオ略称'] = (string)($evFmt['short'][(int)$s['studio_id']] ?? ''); // 未入力なら空
             break;
         }
     }
-    $evSample['vars']['スタジオ短縮名'] ??= $evSample['vars']['スタジオ名'];
+    $evSample['vars']['スタジオ略称'] ??= '';
     ?>
     <form method="post" class="sch-feed sch-evfmt" data-ev-format data-ev-sample="<?= h(json_encode($evSample, JSON_UNESCAPED_UNICODE)) ?>">
         <?= csrf_field() ?><input type="hidden" name="action" value="event_format"><?php if ($poll !== null): ?><input type="hidden" name="poll" value="<?= $pollId ?>"><?php endif; ?>
@@ -868,10 +868,10 @@ render_header('マイスケジュール', 'tools');
             <?php foreach (SCHED_EVENT_VARS as $v): ?><button type="button" class="btn btn--sm" data-ev-ins="{<?= h($v) ?>}">{<?= h($v) ?>}</button><?php endforeach; ?>
         </div>
         <details class="sch-evshort">
-            <summary class="muted small">短縮形</summary>
+            <summary class="muted small">スタジオ略称を編集（自分のみ適用）</summary>
             <?php foreach ($evStudios as $s): $sid = (int)$s['studio_id']; ?>
                 <label class="sch-row"><span class="grow"><?= h($s['name']) ?></span>
-                    <input class="search" type="text" name="short[<?= $sid ?>]" maxlength="30" value="<?= h($evFmt['short'][$sid] ?? '') ?>" placeholder="<?= h($s['short_name'] ?? $s['name']) ?>" autocomplete="off" aria-label="<?= h($s['name']) ?>の短縮形"></label>
+                    <input class="search" type="text" name="short[<?= $sid ?>]" maxlength="30" value="<?= h($evFmt['short'][$sid] ?? '') ?>" autocomplete="off" aria-label="<?= h($s['name']) ?>の略称"></label>
             <?php endforeach; ?>
         </details>
         <div class="sch-row">

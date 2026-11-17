@@ -971,21 +971,22 @@ $d0 = sched_day_abs('2026-11-21');
 check('iCal: 終日の予定と時間指定の予定は、重なっても別々のまま（時間指定が終日に飲み込まれない）', sched_merge_spans([[$d0, $d0 + 1440, '旅行'], [$d0 + 600, $d0 + 720, '授業'], [$d0 + 650, $d0 + 800, 'バイト']]), [[$d0, $d0 + 1440, '旅行'], [$d0 + 600, $d0 + 800, '授業 / バイト']]);
 defined('APP_URL') || define('APP_URL', 'https://abbeyroad.online/'); // 本番は config.php が決める
 $evc = ['poll_id' => 7, 'title' => '定例', 'studio_id' => 3, 'studio' => 'スタジオノア 立川店', 'studio_short' => 'ノア', 'room' => 'Aスタ', 'address' => '東京都立川市', 'names' => ['甲', '乙']];
-check('書式: 初期の書式（タイトルはバンド名 短縮名 部屋）', sched_event_text(SCHED_EVENT_DEFAULTS + ['short' => []], $evc), ['title' => '定例 ノア Aスタ', 'location' => 'スタジオノア 立川店 Aスタ 東京都立川市', 'details' => "メンバー: 甲・乙
+check('書式: 初期の書式（タイトルはバンド名 短縮名 部屋。略称を入力していなければ空）', [sched_event_text(SCHED_EVENT_DEFAULTS + ['short' => [3 => 'ノア']], $evc)['title'], sched_event_text(SCHED_EVENT_DEFAULTS + ['short' => []], $evc)['title']], ['定例 ノア Aスタ', '定例 Aスタ']);
+check('書式: 初期の書式の場所・メモ', sched_event_text(SCHED_EVENT_DEFAULTS + ['short' => []], $evc), ['title' => '定例 Aスタ', 'location' => 'スタジオノア 立川店 Aスタ 東京都立川市', 'details' => "メンバー: 甲・乙
 " . APP_URL . 'sched_poll?id=7']);
-check('書式: {スタジオ短縮名} は自分の短縮形 → スタジオ情報の短縮形 → スタジオ名の順', [
-    sched_event_text(['title' => '{スタジオ短縮名}', 'location' => '', 'details' => '', 'short' => [3 => 'ぼく用']], $evc)['title'],
-    sched_event_text(['title' => '{スタジオ短縮名}', 'location' => '', 'details' => '', 'short' => []], $evc)['title'],
-    sched_event_text(['title' => '{スタジオ短縮名}', 'location' => '', 'details' => '', 'short' => []], ['studio_short' => null] + $evc)['title'],
-], ['ぼく用', 'ノア', 'スタジオノア 立川店']);
-check('書式: 旧名 {タイトル}{スタジオ}{短縮} も同じ意味で使える', sched_event_text(['title' => '{タイトル} {短縮}', 'location' => '{スタジオ}', 'details' => '', 'short' => []], $evc), ['title' => '定例 ノア', 'location' => 'スタジオノア 立川店', 'details' => '']);
+check('書式: {スタジオ略称} は自分で入力した略称だけ。未入力は空（スタジオ情報の略称・スタジオ名で埋めない）', [
+    sched_event_text(['title' => '{スタジオ略称}', 'location' => '', 'details' => '', 'short' => [3 => 'ぼく用']], $evc)['title'],
+    sched_event_text(['title' => '{スタジオ略称}', 'location' => '', 'details' => '', 'short' => []], $evc)['title'],
+    sched_event_text(['title' => '{スタジオ略称}', 'location' => '', 'details' => '', 'short' => [9 => '別のスタジオ']], $evc)['title'],
+], ['ぼく用', '', '']);
+check('書式: 旧名 {タイトル}{スタジオ}{短縮} も同じ意味で使える', sched_event_text(['title' => '{タイトル} {短縮}', 'location' => '{スタジオ}', 'details' => '', 'short' => [3 => 'ノア']], $evc), ['title' => '定例 ノア', 'location' => 'スタジオノア 立川店', 'details' => '']);
 check('書式: タイトルに {URL} と書かれていても、さらには置き換えない・スタジオ未定の場所は空', [
     sched_event_text(['title' => '{バンド名}', 'location' => '{スタジオ名}', 'details' => '', 'short' => []], ['title' => '{URL}', 'studio' => null] + $evc),
 ], [['title' => '{URL}', 'location' => '', 'details' => '']]);
 check('書式: 入力を整える（初期と同じ・空は NULL、改行・長さ・旧名は新名に）', [
-    sched_event_clean('title', '{バンド名} {スタジオ短縮名} {部屋}'), sched_event_clean('title', '{タイトル} {短縮} {部屋}'), sched_event_clean('title', "  {短縮}
+    sched_event_clean('title', '{バンド名} {スタジオ略称} {部屋}'), sched_event_clean('title', '{タイトル} {短縮} {部屋}'), sched_event_clean('title', "  {短縮}
 練習 "), sched_event_clean('location', '  '), mb_strlen((string)sched_event_clean('title', str_repeat('あ', 300))),
-], [null, null, '{スタジオ短縮名} 練習', null, 100]);
+], [null, null, '{スタジオ略称} 練習', null, 100]);
 check('iCal: タイトルが空なら2要素のまま・空と有りが混ざれば有りだけ残る', sched_merge_spans([[0, 30, ''], [30, 60, ''], [100, 120, ''], [110, 130, 'D']]), [[0, 60], [100, 130, 'D']]);
 // .ics の読み取り（vendor/ に sabre/vobject があるときだけ。GitHub Actions には vendor が無いので飛ばす）
 if (is_file(__DIR__ . '/../vendor/autoload.php')) {

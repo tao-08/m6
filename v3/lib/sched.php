@@ -987,18 +987,18 @@ function sched_event_details(array $presentNames, int $pollId): string
 
 /* ---------------------------------------------------------------------
  *  カレンダーに入れる練習の「書式」（タイトル・場所・メモ）。人ごとに変えられる（マイスケジュールの「カレンダーに追加する予定の書式」）
- *    {バンド名}{スタジオ名}{スタジオ短縮名}{部屋}{住所}{メンバー}{URL} を差し込める。NULL（未設定）なら下の初期の書式
- *    {スタジオ短縮名} … 自分で決めたもの（sched_studio_short）→ スタジオ情報の初期の短縮形（studio.short_name）→ スタジオ名、の順
+ *    {バンド名}{スタジオ名}{スタジオ略称}{部屋}{住所}{メンバー}{URL} を差し込める。NULL（未設定）なら下の初期の書式
+ *    {スタジオ略称} … 自分で入力したもの（sched_studio_short）だけ。入力していないスタジオは空（スタジオ名などで代わりに埋めない）
  *    旧名 {タイトル}{スタジオ}{短縮} も、同じ意味でそのまま使える（SCHED_EVENT_OLD_VARS。保存済みの書式のため）
  *  Google への書き込み・購読・.ics・「追加」リンクのすべてが、この関数を通る
  * ------------------------------------------------------------------- */
-const SCHED_EVENT_DEFAULTS = ['title' => '{バンド名} {スタジオ短縮名} {部屋}', 'location' => '{スタジオ名} {部屋} {住所}', 'details' => "メンバー: {メンバー}\n{URL}"];
+const SCHED_EVENT_DEFAULTS = ['title' => '{バンド名} {スタジオ略称} {部屋}', 'location' => '{スタジオ名} {部屋} {住所}', 'details' => "メンバー: {メンバー}\n{URL}"];
 /** 書式の最大文字数（Google の予定が際限なく長くならないように） */
 const SCHED_EVENT_MAX = ['title' => 100, 'location' => 200, 'details' => 500];
 /** 差し込める名前 */
-const SCHED_EVENT_VARS = ['バンド名', 'スタジオ名', 'スタジオ短縮名', '部屋', '住所', 'メンバー', 'URL'];
+const SCHED_EVENT_VARS = ['バンド名', 'スタジオ名', 'スタジオ略称', '部屋', '住所', 'メンバー', 'URL'];
 /** 旧名 → 新名（改名前に保存された書式を、新しい名前に読み替える） */
-const SCHED_EVENT_OLD_VARS = ['{タイトル}' => '{バンド名}', '{スタジオ}' => '{スタジオ名}', '{短縮}' => '{スタジオ短縮名}'];
+const SCHED_EVENT_OLD_VARS = ['{タイトル}' => '{バンド名}', '{スタジオ}' => '{スタジオ名}', '{短縮}' => '{スタジオ略称}', '{スタジオ短縮名}' => '{スタジオ略称}'];
 
 /** 書式の旧名を新名に読み替える */
 function sched_event_upgrade(string $tpl): string
@@ -1007,7 +1007,7 @@ function sched_event_upgrade(string $tpl): string
 }
 
 /**
- * その部員の書式。['title' => 書式, 'location' => 書式, 'details' => 書式, 'short' => [studio_id => 短縮形], 'custom' => 初期から変えているか, 'stamp' => 書式の更新時刻]
+ * その部員の書式。['title' => 書式, 'location' => 書式, 'details' => 書式, 'short' => [studio_id => 略称], 'custom' => 初期から変えているか, 'stamp' => 書式の更新時刻]
  *   $memberId が null（部員に紐づいていない）なら、初期の書式
  */
 function sched_event_format(PDO $pdo, ?int $memberId): array
@@ -1051,21 +1051,19 @@ function sched_event_render(string $tpl, array $vars, bool $multiline): string
 
 /**
  * 練習1件の「タイトル・場所・メモ」を、書式（sched_event_format の結果）で作る
- *   $c … ['poll_id', 'title' => 調整のタイトル, 'studio_id' => ?int, 'studio' => ?スタジオ名, 'studio_short' => ?初期の短縮形, 'room' => 部屋名, 'address' => ?住所, 'names' => 欠席でない人の名前]
+ *   $c … ['poll_id', 'title' => 調整のタイトル, 'studio_id' => ?int, 'studio' => ?スタジオ名, 'studio_short' => ?初期の略称, 'room' => 部屋名, 'address' => ?住所, 'names' => 欠席でない人の名前]
  *   戻り値: ['title' => …, 'location' => …, 'details' => …]
  */
 function sched_event_text(array $fmt, array $c): array
 {
     $studio = (string)($c['studio'] ?? '');
     $sid = $c['studio_id'] ?? null;
-    $short = $studio;
+    $short = ''; // 自分で略称を入力していないスタジオは空（スタジオ名などで代わりに埋めない）
     if ($sid !== null && ($fmt['short'][(int)$sid] ?? '') !== '') {
         $short = $fmt['short'][(int)$sid];
-    } elseif (($c['studio_short'] ?? '') !== '') {
-        $short = (string)$c['studio_short'];
     }
     $vars = [
-        'バンド名' => (string)$c['title'], 'スタジオ名' => $studio, 'スタジオ短縮名' => $short, '部屋' => (string)($c['room'] ?? ''),
+        'バンド名' => (string)$c['title'], 'スタジオ名' => $studio, 'スタジオ略称' => $short, '部屋' => (string)($c['room'] ?? ''),
         '住所' => (string)($c['address'] ?? ''), 'メンバー' => implode('・', $c['names'] ?? []),
         'URL' => APP_URL . 'sched_poll?id=' . (int)$c['poll_id'],
     ];

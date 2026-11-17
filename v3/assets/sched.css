@@ -243,7 +243,7 @@
 .sch-answer { margin: 0; }
 .sch-feed { display: grid; gap: 8px; padding-top: 12px; border-top: 1px solid var(--border); } /* 購読（決定した練習を追加）。上の取り込みとの区切り */
 
-/* 練習の書式（カレンダーに入れる予定のタイトル・場所・メモ）。入力欄は横いっぱい、短縮形は開閉 */
+/* 練習の書式（カレンダーに入れる予定のタイトル・場所・メモ）。入力欄は横いっぱい、略称は開閉 */
 .sch-evfmt .search { width: 100%; box-sizing: border-box; }
 .sch-evfmt textarea.search { resize: vertical; }
 /* 書式の各欄: 小見出し + 入力欄 + プレビュー（見本の値を差し込んだ結果） */

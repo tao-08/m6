@@ -296,7 +296,7 @@ if (is_post()) {
             $areaNew && $f['area'] === '' => '新しいエリア名を入力してください',
             !studio_url_ok($f['website_url']) => 'サイトの URL が正しくありません',
             !studio_url_ok($f['reserve_url']) => '予約ページの URL が正しくありません',
-            mb_strlen($f['short_name']) > 30 => '短縮形が長すぎます',
+            mb_strlen($f['short_name']) > 30 => '略称が長すぎます',
             mb_strlen($f['address']) > 255 => '住所が長すぎます',
             mb_strlen($f['access']) > 100 => '最寄り駅が長すぎます',
             mb_strlen($f['area']) > 30 => 'エリアが長すぎます',
@@ -1001,7 +1001,7 @@ render_header($studio['name'], 'tools');
             <input type="hidden" name="studio_id" value="<?= $studioId ?>">
             <label class="sinfo-field"><span>スタジオ名</span>
                 <input autocomplete="off" type="text" name="name" maxlength="100" required value="<?= h($studio['name']) ?>"></label>
-            <label class="sinfo-field"><span>短縮形</span>
+            <label class="sinfo-field"><span>略称</span>
                 <input autocomplete="off" type="text" name="short_name" maxlength="30" value="<?= h($studio['short_name'] ?? '') ?>" placeholder="カレンダーの予定に使う略称"></label>
             <label class="sinfo-field"><span>予約ページ</span>
                 <input autocomplete="off" type="url" name="reserve_url" maxlength="255" value="<?= h($studio['reserve_url']) ?>" placeholder="https://"></label>
