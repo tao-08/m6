@@ -878,7 +878,29 @@ $cand = sched_candidates($args + ['absent_max' => 1]);
 check('候補: absent_max = 1 で欠席つきの窓が出る', array_map(static fn($w) => [$w['absent'], $w['starts']], $cand), [[[2], [600, 630, 660, 690, 720]]]);
 // 欠席が2人（A と B が埋まり）なら、absent_max = 1 でも出ない
 check('候補: 来られない人が2人なら absent_max = 1 でも出ない', sched_candidates(['busy' => $busyB + [1 => [[$base + 600, $base + 840, null]]]] + $args + ['absent_max' => 1]), []);
-check('部屋: 定員 / 広さの目安 / 不明', [sched_room_fit(5, null, 5, 3.0), sched_room_fit(null, 12.0, 5, 3.0), sched_room_fit(null, null, 5, 3.0)], ['ok', 'small', 'unknown']);
+$calNow = static fn(string $d) => new DateTimeImmutable($d);
+check('学年暦の通知: 3/24 まで無し・3/25 から・知らせ済み・更新済みは無し', [
+    sched_calendar_reminder_year($calNow('2027-03-24'), null, null),
+    sched_calendar_reminder_year($calNow('2027-03-25'), '2026-04-01 10:00:00', '2026'),
+    sched_calendar_reminder_year($calNow('2027-03-30'), null, '2027'),
+    sched_calendar_reminder_year($calNow('2027-03-30'), '2027-03-26 09:00:00', null),
+    sched_calendar_reminder_year($calNow('2027-04-02'), '2026-04-01 10:00:00', '2026'),
+], [null, 2027, null, null, 2027]);
+require_once __DIR__ . '/../lib/sched_calendar.php';
+$calOk = sched_cal_normalize(['terms' => [['term' => 2, 'from' => '2026-09-20', 'to' => '2027-01-23'], ['term' => 1, 'from' => '2026-04-10', 'to' => '2026-07-22']],
+    'breaks' => [['from' => '2026-12-25', 'to' => '2027-01-07'], ['from' => '2026-02-30', 'to' => '2026-03-01'], ['from' => '2026-05-02', 'to' => '2026-05-01']], 'notes' => [' 確認 ', '']]);
+check('学年暦AI: 春秋にそろえる・壊れた休業は捨てる・notes を整える', [array_keys($calOk['terms']), $calOk['terms'][1], $calOk['breaks'], $calOk['notes']],
+    [[1, 2], ['2026-04-10', '2026-07-22'], [['2026-12-25', '2027-01-07']], ['確認']]);
+$calErr = false;
+try { sched_cal_normalize(['terms' => [['term' => 1, 'from' => '2026-04-10', 'to' => '2026-07-22']], 'breaks' => [], 'notes' => []]); } catch (RuntimeException $e) { $calErr = true; }
+check('学年暦AI: 秋学期が無ければエラー', $calErr, true);
+require_once __DIR__ . '/../lib/sched_travel_google.php';
+check('Google移動時間: 秒→1分切り上げ・返事の読み取り・出発は平日', [
+    sched_google_minutes(1), sched_google_minutes(600), sched_google_minutes(1501),
+    sched_google_seconds(['routes' => [['duration' => '1234s']]]), sched_google_seconds([]),
+    sched_google_departure(new DateTimeImmutable('2027-03-26 20:00', new DateTimeZone('Asia/Tokyo'))),
+], [1, 10, 26, 1234, null, '2027-03-29T03:00:00Z']);
+check('部屋: 広さの目安 / 不明', [sched_room_fit(15.0, 5, 3.0), sched_room_fit(12.0, 5, 3.0), sched_room_fit(null, 5, 3.0)], ['ok', 'small', 'unknown']);
 require_once __DIR__ . '/../lib/sched_ical.php';
 check('iCal URL: webcal → https / Google OK / 他のホストは不可 / ポート付きは不可', [
     sched_ical_normalize('webcal://p12-caldav.icloud.com/published/2/abc'),
@@ -891,6 +913,24 @@ check('iCal: 重なりをまとめる', sched_merge_spans([[60, 90], [0, 30], [2
 // タイトル（3つ目）: 重なる予定は「 / 」でつなぐ（同じタイトルは1つ）。タイトルが無ければ2要素のまま
 check('iCal: 重なる2件のタイトルは「A / B」・同じタイトルは1つ・離れた予定は別々', sched_merge_spans([[20, 60, 'B'], [0, 30, 'A'], [40, 50, 'A'], [100, 120, 'C']]), [[0, 60, 'A / B'], [100, 120, 'C']]);
 check('iCal: くっつくだけの予定は、タイトルが違えば別々・同じならまとめる', sched_merge_spans([[0, 1440, '合宿'], [1440, 2880, '旅行'], [2880, 4320, '旅行'], [5000, 5100, '']]), [[0, 1440, '合宿'], [1440, 4320, '旅行'], [5000, 5100]]);
+$d0 = sched_day_abs('2026-11-21');
+check('iCal: 終日の予定と時間指定の予定は、重なっても別々のまま（時間指定が終日に飲み込まれない）', sched_merge_spans([[$d0, $d0 + 1440, '旅行'], [$d0 + 600, $d0 + 720, '授業'], [$d0 + 650, $d0 + 800, 'バイト']]), [[$d0, $d0 + 1440, '旅行'], [$d0 + 600, $d0 + 800, '授業 / バイト']]);
+defined('APP_URL') || define('APP_URL', 'https://abbeyroad.online/'); // 本番は config.php が決める
+$evc = ['poll_id' => 7, 'title' => '定例', 'studio_id' => 3, 'studio' => 'スタジオノア 立川店', 'studio_short' => 'ノア', 'room' => 'Aスタ', 'address' => '東京都立川市', 'names' => ['甲', '乙']];
+check('書式: 初期の書式は今までの文と同じ', sched_event_text(SCHED_EVENT_DEFAULTS + ['short' => []], $evc), ['title' => 'スタ連 定例', 'location' => 'スタジオノア 立川店 Aスタ 東京都立川市', 'details' => "メンバー: 甲・乙
+" . APP_URL . 'sched_poll?id=7']);
+check('書式: {短縮} は自分の短縮形 → スタジオ情報の短縮形 → スタジオ名の順', [
+    sched_event_text(['title' => '{短縮}', 'location' => '', 'details' => '', 'short' => [3 => 'ぼく用']], $evc)['title'],
+    sched_event_text(['title' => '{短縮}', 'location' => '', 'details' => '', 'short' => []], $evc)['title'],
+    sched_event_text(['title' => '{短縮}', 'location' => '', 'details' => '', 'short' => []], ['studio_short' => null] + $evc)['title'],
+], ['ぼく用', 'ノア', 'スタジオノア 立川店']);
+check('書式: タイトルに {URL} と書かれていても、さらには置き換えない・スタジオ未定の場所は空', [
+    sched_event_text(['title' => '{タイトル}', 'location' => '{スタジオ}', 'details' => '', 'short' => []], ['title' => '{URL}', 'studio' => null] + $evc),
+], [['title' => '{URL}', 'location' => '', 'details' => '']]);
+check('書式: 入力を整える（初期と同じ・空は NULL、改行・長さ）', [
+    sched_event_clean('title', 'スタ連 {タイトル}'), sched_event_clean('title', "  {短縮}
+練習 "), sched_event_clean('location', '  '), mb_strlen((string)sched_event_clean('title', str_repeat('あ', 300))),
+], [null, '{短縮} 練習', null, 100]);
 check('iCal: タイトルが空なら2要素のまま・空と有りが混ざれば有りだけ残る', sched_merge_spans([[0, 30, ''], [30, 60, ''], [100, 120, ''], [110, 130, 'D']]), [[0, 60], [100, 130, 'D']]);
 // .ics の読み取り（vendor/ に sabre/vobject があるときだけ。GitHub Actions には vendor が無いので飛ばす）
 if (is_file(__DIR__ . '/../vendor/autoload.php')) {

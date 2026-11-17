@@ -83,7 +83,7 @@ const SCHED_DEFAULT_TERMS = [
 ];
 const SCHED_DEFAULT_BREAKS = [['2026-12-25', '2027-01-07']];
 
-/** 「1人あたり何帖あれば足りるか」の目安の初期値（部屋の定員が未登録のときに使う） */
+/** 「1人あたり何帖あれば足りるか」の目安の初期値（部屋の広さからの判定に使う） */
 const SCHED_DEFAULT_JO_PER_PERSON = 3.0;
 
 /**
@@ -142,6 +142,65 @@ function sched_settings(PDO $pdo): array
 function sched_setting_save(PDO $pdo, string $key, string $value, int $userId): void
 {
     $pdo->prepare('REPLACE INTO app_setting (setting_key, setting_value, updated_by) VALUES (?, ?, ?)')->execute([$key, $value, $userId]);
+}
+
+/**
+ * 学年暦の更新を知らせる時期か。知らせるなら、その年（3/25 の年）を返す。不要なら null
+ *   ・3/25 以降（3月最終週〜）
+ *   ・その年にもう知らせた（$lastYear が同じ年以上）なら不要
+ *   ・学年暦（sched_terms）をその年の 3/25 以降に保存済みなら不要
+ */
+function sched_calendar_reminder_year(DateTimeImmutable $now, ?string $termsUpdatedAt, ?string $lastYear): ?int
+{
+    $y = (int)$now->format('Y');
+    $from = sprintf('%04d-03-25', $y);
+    if ($now->format('Y-m-d') < $from) {
+        return null;
+    }
+    if ($lastYear !== null && (int)$lastYear >= $y) {
+        return null;
+    }
+    if ($termsUpdatedAt !== null && substr($termsUpdatedAt, 0, 10) >= $from) {
+        return null;
+    }
+    return $y;
+}
+
+/**
+ * 3月最終週から、管理者に「学年暦を更新してください」という重要なお知らせを1回だけ出す（毎年）
+ *   ホームを開いたときに呼ぶ（cron が無くても動く）。失敗しても画面は止めない
+ */
+function sched_calendar_reminder(PDO $pdo): void
+{
+    try {
+        $rows = $pdo->query("SELECT setting_key, setting_value, updated_at FROM app_setting WHERE setting_key IN ('sched_terms', 'sched_cal_notice')")->fetchAll(PDO::FETCH_UNIQUE | PDO::FETCH_ASSOC);
+        $year = sched_calendar_reminder_year(new DateTimeImmutable('now'), $rows['sched_terms']['updated_at'] ?? null, $rows['sched_cal_notice']['setting_value'] ?? null);
+        if ($year === null) {
+            return;
+        }
+        $pdo->beginTransaction();
+        // 先に印を付ける（同時に開かれても1回だけ。印の行が無ければ INSERT、あれば年を進めるときだけ UPDATE）
+        $mark = $pdo->prepare('INSERT INTO app_setting (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value = IF(setting_value < VALUES(setting_value), VALUES(setting_value), setting_value)');
+        $mark->execute(['sched_cal_notice', (string)$year]);
+        if ($mark->rowCount() === 0) { // 他のリクエストが先に出した
+            $pdo->rollBack();
+            return;
+        }
+        $pdo->prepare('INSERT IGNORE INTO notice_category (name, color) VALUES (?, ?)')->execute(['システム', 'gray']);
+        $cat = $pdo->prepare('SELECT category_id FROM notice_category WHERE name = ?');
+        $cat->execute(['システム']);
+        $catId = (int)$cat->fetchColumn();
+        $admins = $pdo->query('SELECT user_id FROM user_account WHERE is_admin = 1 AND deactivated_at IS NULL')->fetchAll(PDO::FETCH_COLUMN);
+        $ins = $pdo->prepare('INSERT INTO notice (target_user_id, category_id, is_important, title, body, link_url) VALUES (?, ?, 1, ?, ?, ?)');
+        foreach ($admins as $uid) {
+            $ins->execute([(int)$uid, $catId, '学年暦の更新', "新年度の学年暦に合わせて、日程調整の学期・休業の日付を更新してください。\n学年暦のPDFを選ぶと、AIが読み取ります。", 'sched_settings#terms']);
+        }
+        $pdo->commit();
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+    }
 }
 
 /* =====================================================================
@@ -605,13 +664,10 @@ function sched_candidates(array $p): array
 
 /**
  * 部屋が人数に合うか
- *   'ok' … 定員（無ければ 広さ ÷ 1人あたりの帖）が人数以上 / 'small' … 狭すぎる / 'unknown' … 定員も広さも不明
+ *   'ok' … 広さ ÷ 1人あたりの帖 が人数以上 / 'small' … 狭すぎる / 'unknown' … 広さが不明
  */
-function sched_room_fit(?int $capacity, ?float $areaJo, int $people, float $joPerPerson): string
+function sched_room_fit(?float $areaJo, int $people, float $joPerPerson): string
 {
-    if ($capacity !== null && $capacity > 0) {
-        return $capacity >= $people ? 'ok' : 'small';
-    }
     if ($areaJo !== null && $areaJo > 0) {
         return $areaJo / $joPerPerson >= $people ? 'ok' : 'small';
     }
@@ -903,6 +959,97 @@ function sched_event_details(array $presentNames, int $pollId): string
     return 'メンバー: ' . implode('・', $presentNames) . "\n" . APP_URL . 'sched_poll?id=' . $pollId;
 }
 
+/* ---------------------------------------------------------------------
+ *  カレンダーに入れる練習の「書式」（タイトル・場所・メモ）。人ごとに変えられる（マイスケジュールの「練習の書式」）
+ *    {タイトル}{スタジオ}{短縮}{部屋}{住所}{メンバー}{URL} を差し込める。NULL（未設定）なら下の初期の書式
+ *    {短縮} … スタジオ名の短縮形。自分で決めたもの（sched_studio_short）→ スタジオ情報の初期の短縮形（studio.short_name）→ スタジオ名、の順
+ *  Google への書き込み・購読・.ics・「追加」リンクのすべてが、この関数を通る
+ * ------------------------------------------------------------------- */
+const SCHED_EVENT_DEFAULTS = ['title' => 'スタ連 {タイトル}', 'location' => '{スタジオ} {部屋} {住所}', 'details' => "メンバー: {メンバー}\n{URL}"];
+/** 書式の最大文字数（Google の予定が際限なく長くならないように） */
+const SCHED_EVENT_MAX = ['title' => 100, 'location' => 200, 'details' => 500];
+/** 差し込める名前 */
+const SCHED_EVENT_VARS = ['タイトル', 'スタジオ', '短縮', '部屋', '住所', 'メンバー', 'URL'];
+
+/**
+ * その部員の書式。['title' => 書式, 'location' => 書式, 'details' => 書式, 'short' => [studio_id => 短縮形], 'custom' => 初期から変えているか, 'stamp' => 書式の更新時刻]
+ *   $memberId が null（部員に紐づいていない）なら、初期の書式
+ */
+function sched_event_format(PDO $pdo, ?int $memberId): array
+{
+    $fmt = SCHED_EVENT_DEFAULTS + ['short' => [], 'custom' => false, 'stamp' => 0];
+    if ($memberId === null) {
+        return $fmt;
+    }
+    $st = $pdo->prepare('SELECT ev_title, ev_location, ev_details, updated_at FROM sched_profile WHERE member_id = ?');
+    $st->execute([$memberId]);
+    $p = $st->fetch();
+    $fmt['stamp'] = $p ? (int)strtotime((string)$p['updated_at']) : 0; // 書式を変えたときに、購読のカレンダーが予定を更新し直すため
+    foreach (['title' => 'ev_title', 'location' => 'ev_location', 'details' => 'ev_details'] as $k => $col) {
+        if ($p && $p[$col] !== null && $p[$col] !== '') {
+            $fmt[$k] = (string)$p[$col];
+            $fmt['custom'] = true;
+        }
+    }
+    $st = $pdo->prepare('SELECT studio_id, short_name FROM sched_studio_short WHERE member_id = ?');
+    $st->execute([$memberId]);
+    foreach ($st as $r) {
+        $fmt['short'][(int)$r['studio_id']] = (string)$r['short_name'];
+    }
+    return $fmt;
+}
+
+/** 書式に値を差し込む（strtr は1回しか置き換えないので、タイトルに「{URL}」と書かれていても、さらに置き換わらない） */
+function sched_event_render(string $tpl, array $vars, bool $multiline): string
+{
+    $map = [];
+    foreach ($vars as $k => $v) {
+        $map['{' . $k . '}'] = (string)$v;
+    }
+    $s = strtr(str_replace("\r\n", "\n", $tpl), $map);
+    if ($multiline) {
+        $s = preg_replace('/[ \t　]+$/mu', '', $s) ?? $s;
+        return trim(preg_replace("/\n{3,}/", "\n\n", $s) ?? $s);
+    }
+    return trim(preg_replace('/\s+/u', ' ', $s) ?? $s);
+}
+
+/**
+ * 練習1件の「タイトル・場所・メモ」を、書式（sched_event_format の結果）で作る
+ *   $c … ['poll_id', 'title' => 調整のタイトル, 'studio_id' => ?int, 'studio' => ?スタジオ名, 'studio_short' => ?初期の短縮形, 'room' => 部屋名, 'address' => ?住所, 'names' => 欠席でない人の名前]
+ *   戻り値: ['title' => …, 'location' => …, 'details' => …]
+ */
+function sched_event_text(array $fmt, array $c): array
+{
+    $studio = (string)($c['studio'] ?? '');
+    $sid = $c['studio_id'] ?? null;
+    $short = $studio;
+    if ($sid !== null && ($fmt['short'][(int)$sid] ?? '') !== '') {
+        $short = $fmt['short'][(int)$sid];
+    } elseif (($c['studio_short'] ?? '') !== '') {
+        $short = (string)$c['studio_short'];
+    }
+    $vars = [
+        'タイトル' => (string)$c['title'], 'スタジオ' => $studio, '短縮' => $short, '部屋' => (string)($c['room'] ?? ''),
+        '住所' => (string)($c['address'] ?? ''), 'メンバー' => implode('・', $c['names'] ?? []),
+        'URL' => APP_URL . 'sched_poll?id=' . (int)$c['poll_id'],
+    ];
+    return [
+        'title' => sched_event_render($fmt['title'], $vars, false),
+        'location' => $studio === '' ? '' : sched_event_render($fmt['location'], $vars, false), // スタジオが決まっていなければ場所は空
+        'details' => sched_event_render($fmt['details'], $vars, true),
+    ];
+}
+
+/** 書式の入力を整える（空・初期と同じ・長すぎるものは NULL / 切り詰め）。差し込みの「{…}」は、決まった名前だけ残す必要はない（知らない名前はそのまま文字として出る） */
+function sched_event_clean(string $key, string $v): ?string
+{
+    $v = str_replace(["\r\n", "\r"], "\n", $v);
+    $v = $key === 'details' ? trim($v) : trim(preg_replace('/\s+/u', ' ', $v) ?? $v);
+    $v = mb_substr($v, 0, SCHED_EVENT_MAX[$key]);
+    return $v === '' || $v === SCHED_EVENT_DEFAULTS[$key] ? null : $v;
+}
+
 /**
  * .ics ファイル（iCalendar 形式。RFC 5545 という国際規格）の中身。iPhone・Android・Outlook どれでも開ける
  *   ・改行は CRLF（\r\n）と決まっている
@@ -970,7 +1117,7 @@ function sched_ics(int $pollId, string $title, int $startAbs, int $endAbs, strin
  */
 function sched_feed_events(PDO $pdo, int $memberId, string $sinceDt): array
 {
-    $st = $pdo->prepare('SELECT p.sched_poll_id, p.title, p.fix_start, p.fix_end, p.updated_at, s.name AS studio_name, s.address, r.name AS room_name
+    $st = $pdo->prepare('SELECT p.sched_poll_id, p.title, p.fix_start, p.fix_end, p.updated_at, p.fix_studio_id, s.name AS studio_name, s.short_name AS studio_short, s.address, r.name AS room_name
         FROM sched_poll_member me
         JOIN sched_poll p ON p.sched_poll_id = me.sched_poll_id
         LEFT JOIN studio s ON s.studio_id = p.fix_studio_id
@@ -991,17 +1138,22 @@ function sched_feed_events(PDO $pdo, int $memberId, string $sinceDt): array
     foreach ($st->fetchAll() as $r) {
         $namesByPoll[(int)$r['sched_poll_id']][] = $r['name'];
     }
+    $fmt = sched_event_format($pdo, $memberId); // この部員の書式（マイスケジュールの「練習の書式」）
     $events = [];
     foreach ($polls as $p) {
         $id = (int)$p['sched_poll_id'];
+        $text = sched_event_text($fmt, [
+            'poll_id' => $id, 'title' => (string)$p['title'], 'studio_id' => $p['fix_studio_id'] === null ? null : (int)$p['fix_studio_id'],
+            'studio' => $p['studio_name'], 'studio_short' => $p['studio_short'], 'room' => (string)($p['room_name'] ?? ''), 'address' => $p['address'], 'names' => $namesByPoll[$id] ?? [],
+        ]);
         $events[] = [
             'id' => $id,
-            'title' => 'スタ連 ' . $p['title'],
+            'title' => $text['title'],
             'start' => sched_dt_to_abs($p['fix_start']),
             'end' => sched_dt_to_abs($p['fix_end']),
-            'location' => sched_event_location($p['studio_name'], (string)($p['room_name'] ?? ''), $p['address']),
-            'details' => sched_event_details($namesByPoll[$id] ?? [], $id),
-            'stamp' => (int)strtotime((string)$p['updated_at']),
+            'location' => $text['location'],
+            'details' => $text['details'],
+            'stamp' => max((int)strtotime((string)$p['updated_at']), $fmt['stamp']),
         ];
     }
     return $events;

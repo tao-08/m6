@@ -1376,6 +1376,7 @@ CREATE TABLE studio_need (
 CREATE TABLE studio (
     studio_id    INT UNSIGNED  NOT NULL AUTO_INCREMENT,
     name         VARCHAR(100)  NOT NULL,
+    short_name   VARCHAR(30)   NULL,             -- スタジオ名の初期の短縮形（カレンダーの予定の {短縮}。migrations/115）
     website_url  VARCHAR(255)  NULL,
     reserve_url  VARCHAR(255)  NULL,             -- 予約ページ
     address      VARCHAR(255)  NULL,
@@ -1400,7 +1401,6 @@ CREATE TABLE studio_room (
     studio_id      INT UNSIGNED NOT NULL,
     name           VARCHAR(50)  NOT NULL,          -- 部屋名（例: Aスタ）
     area_jo        DECIMAL(5,1) UNSIGNED NULL,     -- 広さ（帖。畳も同じ扱い）。検索・絞り込み用の数値（migrations/087）
-    capacity       TINYINT UNSIGNED NULL,          -- 定員（人）。NULL = 不明（migrations/105）
     size_note      VARCHAR(50)  NULL,              -- 備考（例: 最大8人 / 2階）。広さの数字はここに書かない
     half_start     TINYINT(1) UNSIGNED NOT NULL DEFAULT 0, -- 1=30分開始（料金の時間帯も30分遅らせる） / 0=毎時ちょうど（migrations/091, 095）
     half_unit      TINYINT(1) UNSIGNED NOT NULL DEFAULT 1, -- 1=30分単位で利用可 / 0=1時間単位（migrations/091）
@@ -1569,6 +1569,9 @@ CREATE TABLE sched_profile (
     ical_fetched_at DATETIME   NULL,              -- 最後に読めた日時
     ical_error    VARCHAR(100) NULL,              -- 最後に読めなかった理由（読めたら NULL）
     feed_version  INT UNSIGNED NOT NULL DEFAULT 0, -- 購読 URL の版。再発行で +1（古い URL は無効。migrations/112）
+    ev_title      VARCHAR(100) NULL,              -- カレンダーに入れる練習の書式: タイトル（NULL = 初期。migrations/115）
+    ev_location   VARCHAR(200) NULL,              -- 同: 場所
+    ev_details    VARCHAR(500) NULL,              -- 同: メモ
     updated_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (member_id),
     CONSTRAINT fk_sprof_member FOREIGN KEY (member_id) REFERENCES member (member_id)
@@ -1709,6 +1712,18 @@ CREATE TABLE sched_google (
     created_at     DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (member_id),
     CONSTRAINT fk_sgoogle_member FOREIGN KEY (member_id) REFERENCES member (member_id)
+        ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE sched_studio_short (
+    member_id  INT UNSIGNED NOT NULL,
+    studio_id  INT UNSIGNED NOT NULL,
+    short_name VARCHAR(30)  NOT NULL,             -- 人ごとのスタジオ名の短縮形（studio.short_name より優先。migrations/115）
+    PRIMARY KEY (member_id, studio_id),
+    KEY idx_sstshort_studio (studio_id),
+    CONSTRAINT fk_sstshort_member FOREIGN KEY (member_id) REFERENCES member (member_id)
+        ON UPDATE CASCADE ON DELETE CASCADE,
+    CONSTRAINT fk_sstshort_studio FOREIGN KEY (studio_id) REFERENCES studio (studio_id)
         ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 

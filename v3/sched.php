@@ -433,7 +433,7 @@ render_header('スタジオ練習の日程調整', 'tools');
             <span class="tool-card__icon"><?= icon('settings') ?></span>
             <span class="tool-card__body">
                 <span class="tool-card__name">設定 <span class="tag">幹部</span></span>
-                <span class="muted small">時限・学期・移動時間・初期候補のスタジオ・部屋の定員</span>
+                <span class="muted small">時限・学期・移動時間・初期候補のスタジオ</span>
             </span>
         </a>
     <?php endif; ?>

@@ -508,11 +508,11 @@ function sched_google_refresh_many(PDO $pdo, array $memberIds, int $budget = 6):
 /**
  * 練習1件の「Google に入れる予定の中身」と、「誰に入れるか」。
  *   戻り値: ['body' => 予定の中身（決定していなければ null）, 'members' => [部員 id => 入れるか（呼ばれていて、欠席でない）]]
- *   中身は購読（lib/sched.php の sched_feed_events）と同じ: タイトル「スタ連 …」・場所・メモ（メンバーとページの URL）
+ *   タイトル・場所・メモは、部員ごとの書式で作る（sched_google_body_for）。ここでは、全員同じ部分（日時・印）だけを 'body' に入れ、書式の材料を 'ctx' に入れる
  */
 function sched_google_poll_state(PDO $pdo, int $pollId): array
 {
-    $st = $pdo->prepare('SELECT p.title, p.status, p.fix_start, p.fix_end, s.name AS studio_name, s.address, r.name AS room_name
+    $st = $pdo->prepare('SELECT p.title, p.status, p.fix_start, p.fix_end, p.fix_studio_id, s.name AS studio_name, s.short_name AS studio_short, s.address, r.name AS room_name
         FROM sched_poll p
         LEFT JOIN studio s ON s.studio_id = p.fix_studio_id
         LEFT JOIN studio_room r ON r.studio_room_id = p.fix_room_id
@@ -534,17 +534,27 @@ function sched_google_poll_state(PDO $pdo, int $pollId): array
         }
     }
     if (!$decided) {
-        return ['body' => null, 'members' => $members];
+        return ['body' => null, 'members' => $members, 'ctx' => null];
     }
-    return ['body' => [
-        'summary'      => 'スタ連 ' . $p['title'],
-        'location'     => sched_event_location($p['studio_name'], (string)($p['room_name'] ?? ''), $p['address']),
-        'description'  => sched_event_details($present, $pollId),
+    return ['ctx' => [
+        'poll_id' => $pollId, 'title' => (string)$p['title'], 'studio_id' => $p['fix_studio_id'] === null ? null : (int)$p['fix_studio_id'],
+        'studio' => $p['studio_name'], 'studio_short' => $p['studio_short'], 'room' => (string)($p['room_name'] ?? ''), 'address' => $p['address'], 'names' => $present,
+    ], 'body' => [
         'start'        => ['dateTime' => date('c', sched_dt_to_abs($p['fix_start']) * 60), 'timeZone' => 'Asia/Tokyo'],
         'end'          => ['dateTime' => date('c', sched_dt_to_abs($p['fix_end']) * 60), 'timeZone' => 'Asia/Tokyo'],
         // 読み込みのとき、このサイトが書いた予定だと見分ける印（sched_google_event_to_span）
         'extendedProperties' => ['private' => ['abbeySched' => (string)$pollId]],
     ], 'members' => $members];
+}
+
+/** sched_google_poll_state の結果から、その部員に入れる予定の中身（部員ごとの書式でタイトル・場所・メモを作る）。入れない（決定していない・欠席）なら null */
+function sched_google_body_for(PDO $pdo, array $state, int $memberId): ?array
+{
+    if ($state['body'] === null || !($state['members'][$memberId] ?? false)) {
+        return null;
+    }
+    $t = sched_event_text(sched_event_format($pdo, $memberId), $state['ctx']);
+    return ['summary' => $t['title'], 'location' => $t['location'], 'description' => $t['details']] + $state['body'];
 }
 
 /**
@@ -627,7 +637,7 @@ function sched_google_sync_poll(PDO $pdo, int $pollId): void
             }
             $mid = (int)$t['member_id'];
             try {
-                sched_google_sync_one($pdo, $pollId, $mid, $t['event_id'], ($state['members'][$mid] ?? false) ? $state['body'] : null);
+                sched_google_sync_one($pdo, $pollId, $mid, $t['event_id'], sched_google_body_for($pdo, $state, $mid));
             } catch (Throwable $e) {
                 error_log('sched_google_sync_poll: ' . $e->getMessage());
             }
@@ -699,14 +709,49 @@ function sched_google_sync_member(PDO $pdo, int $memberId): void
             $pollId = (int)$r['sched_poll_id'];
             try {
                 $state = sched_google_poll_state($pdo, $pollId);
-                $want = $r['event_id'] === null && ($state['members'][$memberId] ?? false); // todo は入れる、stale は消す
-                sched_google_sync_one($pdo, $pollId, $memberId, $r['event_id'], $want ? $state['body'] : null, false);
+                $want = $r['event_id'] === null; // todo は入れる、stale は消す
+                sched_google_sync_one($pdo, $pollId, $memberId, $r['event_id'], $want ? sched_google_body_for($pdo, $state, $memberId) : null, false);
             } catch (Throwable $e) {
                 error_log('sched_google_sync_member: ' . $e->getMessage());
             }
         }
     } catch (Throwable $e) {
         error_log('sched_google_sync_member: ' . $e->getMessage());
+    }
+}
+
+/**
+ * 書式を変えたあとに呼ぶ。これからの決定済みの練習で、すでに Google に入れてある予定を、新しい書式に直す（PATCH）
+ *   時間切れ・失敗は error_log に出して、次の予定へ（画面の保存は成功のまま）
+ */
+function sched_google_repatch_member(PDO $pdo, int $memberId): void
+{
+    if (!sched_google_available() || sched_google_row($pdo, $memberId) === null) {
+        return;
+    }
+    try {
+        $st = $pdo->prepare('SELECT e.sched_poll_id, e.event_id FROM sched_google_event e
+            JOIN sched_poll p ON p.sched_poll_id = e.sched_poll_id
+            WHERE e.member_id = ? AND p.status = 3 AND p.fix_end > NOW() ORDER BY p.fix_start LIMIT 50');
+        $st->execute([$memberId]);
+        $deadline = microtime(true) + SCHED_GOOGLE_SYNC_SECONDS;
+        foreach ($st->fetchAll() as $r) {
+            if (microtime(true) > $deadline) {
+                error_log('sched_google_repatch_member: 時間切れ member=' . $memberId);
+                break;
+            }
+            try {
+                $pollId = (int)$r['sched_poll_id'];
+                $body = sched_google_body_for($pdo, sched_google_poll_state($pdo, $pollId), $memberId);
+                if ($body !== null) {
+                    sched_google_sync_one($pdo, $pollId, $memberId, $r['event_id'], $body);
+                }
+            } catch (Throwable $e) {
+                error_log('sched_google_repatch_member: ' . $e->getMessage());
+            }
+        }
+    } catch (Throwable $e) {
+        error_log('sched_google_repatch_member: ' . $e->getMessage());
     }
 }
 

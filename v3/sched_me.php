@@ -12,6 +12,7 @@
  *    copy    … もう片方の学期の時間割を写す
  *    ical / ical_refresh / ical_delete … カレンダー連携（iCal の URL）
  *    google_refresh / google_disconnect … カレンダー連携（Google。連携を始めるのは sched_google.php。lib/sched_google.php）
+ *    event_format … カレンダーに入れる練習の書式（タイトル・場所・メモ）とスタジオ名の短縮形（lib/sched.php の sched_event_format）。reset で初期に戻す
  *    feed_reset … 決定した練習の購読 URL を再発行（古い URL は使えなくなる。lib/sched_ical.php の sched_feed_token）
  *    busy    … NG 枠（画面に出ている範囲の手入力分を入れ直す。JS から JSON で送る）
  *    photo_read … カレンダーのスクリーンショット（最大3枚）を AI に読ませて、予定の一覧を JSON で返す（保存はしない。lib/sched_photo.php）
@@ -137,6 +138,37 @@ if (is_post()) {
         }
         $err = sched_ical_refresh($pdo, $me, true);
         flash($err === null ? 'カレンダーを読み直しました' : $err, $err === null ? 'success' : 'error');
+        redirect($back . '#ical');
+    }
+
+    if ($action === 'event_format') {
+        $ensureProfile();
+        $shorts = [];
+        if (!isset($_POST['reset'])) {
+            $cols = ['ev_title' => sched_event_clean('title', (string)($_POST['ev_title'] ?? '')), 'ev_location' => sched_event_clean('location', (string)($_POST['ev_location'] ?? '')), 'ev_details' => sched_event_clean('details', (string)($_POST['ev_details'] ?? ''))];
+            $ids = $pdo->query('SELECT studio_id FROM studio')->fetchAll(PDO::FETCH_COLUMN);
+            foreach ((array)($_POST['short'] ?? []) as $sid => $v) {
+                $v = mb_substr(trim(preg_replace('/\s+/u', ' ', (string)$v) ?? ''), 0, 30);
+                if ($v !== '' && in_array((string)(int)$sid, array_map('strval', $ids), true)) {
+                    $shorts[(int)$sid] = $v;
+                }
+            }
+        } else {
+            $cols = ['ev_title' => null, 'ev_location' => null, 'ev_details' => null];
+        }
+        $pdo->beginTransaction();
+        // updated_at も更新する（購読のカレンダーが、書式の変更を新しい版として読み直すため）
+        $pdo->prepare('UPDATE sched_profile SET ev_title = ?, ev_location = ?, ev_details = ?, updated_at = NOW() WHERE member_id = ?')->execute([...array_values($cols), $me]);
+        $pdo->prepare('DELETE FROM sched_studio_short WHERE member_id = ?')->execute([$me]);
+        $ins = $pdo->prepare('INSERT INTO sched_studio_short (member_id, studio_id, short_name) VALUES (?, ?, ?)');
+        foreach ($shorts as $sid => $v) {
+            $ins->execute([$me, $sid, $v]);
+        }
+        $pdo->commit();
+        if ($g !== null) {
+            sched_google_repatch_member($pdo, $me); // Google に入れてある、これからの練習も新しい書式に直す
+        }
+        flash(isset($_POST['reset']) ? '初期の書式に戻しました' : '書式を保存しました');
         redirect($back . '#ical');
     }
 
@@ -422,11 +454,13 @@ if (is_post()) {
 }
 
 /* ==================== 表示 ==================== */
-$st = $pdo->prepare('SELECT m.name, m.entry_year, p.campus, p.ical_url, p.ical_fetched_at, p.ical_error, COALESCE(p.feed_version, 0) AS feed_version FROM member m LEFT JOIN sched_profile p ON p.member_id = m.member_id WHERE m.member_id = ?');
+$st = $pdo->prepare('SELECT m.name, m.entry_year, p.campus, p.ev_title, p.ev_location, p.ev_details, p.ical_url, p.ical_fetched_at, p.ical_error, COALESCE(p.feed_version, 0) AS feed_version FROM member m LEFT JOIN sched_profile p ON p.member_id = m.member_id WHERE m.member_id = ?');
 $st->execute([$me]);
 $prof = $st->fetch();
 $autoCampus = sched_member_campus(null, $prof['entry_year'] === null ? null : (int)$prof['entry_year']);
 $chosenCampus = $prof['campus'] === null ? 0 : (int)$prof['campus'];
+$evFmt = sched_event_format($pdo, $me); // カレンダーに入れる練習の書式（初期のままなら初期の文）
+$evStudios = $pdo->query('SELECT studio_id, name, short_name FROM studio ORDER BY sort_order, studio_id')->fetchAll();
 $classes = [1 => [], 2 => []];
 $st = $pdo->prepare('SELECT term, weekday, period FROM sched_class WHERE member_id = ?');
 $st->execute([$me]);
@@ -686,6 +720,28 @@ render_header('マイスケジュール', 'tools');
             </div>
         </div>
     <?php endif; ?>
+    <?php // 決定した練習をカレンダーに入れるときの書式（Google・購読・.ics・追加リンクの全部に効く）。{…} は押すと入力欄に入る ?>
+    <form method="post" class="sch-feed sch-evfmt" data-ev-format>
+        <?= csrf_field() ?><input type="hidden" name="action" value="event_format"><?php if ($poll !== null): ?><input type="hidden" name="poll" value="<?= $pollId ?>"><?php endif; ?>
+        <span class="sch-label">練習の書式</span>
+        <input class="search" type="text" name="ev_title" maxlength="<?= SCHED_EVENT_MAX['title'] ?>" value="<?= h($evFmt['title']) ?>" placeholder="<?= h(SCHED_EVENT_DEFAULTS['title']) ?>" autocomplete="off" aria-label="タイトル">
+        <input class="search" type="text" name="ev_location" maxlength="<?= SCHED_EVENT_MAX['location'] ?>" value="<?= h($evFmt['location']) ?>" placeholder="<?= h(SCHED_EVENT_DEFAULTS['location']) ?>" autocomplete="off" aria-label="場所">
+        <textarea class="search" name="ev_details" rows="3" maxlength="<?= SCHED_EVENT_MAX['details'] ?>" placeholder="<?= h(SCHED_EVENT_DEFAULTS['details']) ?>" aria-label="メモ"><?= h($evFmt['details']) ?></textarea>
+        <div class="sch-row sch-row--wrap">
+            <?php foreach (SCHED_EVENT_VARS as $v): ?><button type="button" class="btn btn--sm" data-ev-ins="{<?= h($v) ?>}">{<?= h($v) ?>}</button><?php endforeach; ?>
+        </div>
+        <details class="sch-evshort">
+            <summary class="muted small">短縮形</summary>
+            <?php foreach ($evStudios as $s): $sid = (int)$s['studio_id']; ?>
+                <label class="sch-row"><span class="grow"><?= h($s['name']) ?></span>
+                    <input class="search" type="text" name="short[<?= $sid ?>]" maxlength="30" value="<?= h($evFmt['short'][$sid] ?? '') ?>" placeholder="<?= h($s['short_name'] ?? $s['name']) ?>" autocomplete="off" aria-label="<?= h($s['name']) ?>の短縮形"></label>
+            <?php endforeach; ?>
+        </details>
+        <div class="sch-row">
+            <button class="btn btn--primary btn--sm" type="submit"><?= icon('check') ?> 保存</button>
+            <?php if ($evFmt['custom'] || $evFmt['short']): ?><button class="btn btn--sm" type="submit" name="reset" value="1" formnovalidate><?= icon('restart_alt') ?> 初期に戻す</button><?php endif; ?>
+        </div>
+    </form>
 </section>
 <?php require __DIR__ . '/partials/ical_help.php'; // ⓘ から開く「カレンダー連携のやり方」（初回チュートリアルと同じ部品） ?>
 <script src="<?= asset_url('assets/sched.js') ?>" defer></script>

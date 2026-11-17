@@ -63,22 +63,24 @@ $roomArea = static function (?int $roomId) use ($pdo): string {
     return studio_fmt_jo($st->fetchColumn() ?: null); // 該当なし（false）・NULL は null にそろえる → 広さ不明は ''
 };
 
-/** カレンダーの予定に入れる「場所」と「メモ」 */
-$eventInfo = static function () use ($poll, $studioById, $members, $roomName, $pdo): array {
+/** カレンダーの予定に入れる「タイトル・場所・メモ」。見ている人の書式（マイスケジュールの「練習の書式」）で作る。戻り値: [スタジオ, 部屋, 場所, メモ, タイトル] */
+$eventInfo = static function () use ($poll, $studioById, $members, $roomName, $pdo, $myMember): array {
     $sid = $poll['fix_studio_id'] === null ? null : (int)$poll['fix_studio_id'];
     $studio = $sid !== null ? ($studioById[$sid] ?? null) : null;
-    if ($studio === null && $sid !== null) {
-        // 候補から外したあとでも決定は残るので、スタジオ表から直接読む
-        $st = $pdo->prepare('SELECT studio_id, name, address, reserve_url, website_url FROM studio WHERE studio_id = ?');
+    if ($sid !== null) {
+        // 短縮形（short_name）まで要るので、スタジオ表から直接読む（候補から外したあとでも決定は残る）
+        $st = $pdo->prepare('SELECT studio_id, name, short_name, address, reserve_url, website_url FROM studio WHERE studio_id = ?');
         $st->execute([$sid]);
-        $studio = $st->fetch() ?: null;
+        $studio = $st->fetch() ?: $studio;
     }
     $room = $roomName($poll['fix_room_id'] === null ? null : (int)$poll['fix_room_id']);
-    $location = sched_event_location($studio === null ? null : $studio['name'], $room, $studio['address'] ?? null); // 購読（sched_feed.php）と同じ文にするため lib/sched.php に共通化
     // 欠席の人（fix_absent = 1）はメンバーに入れない
     $present = array_filter($members, static fn($m) => (int)$m['fix_absent'] === 0);
-    $details = sched_event_details(array_column($present, 'name'), (int)$poll['sched_poll_id']);
-    return [$studio, $room, $location, $details];
+    $text = sched_event_text(sched_event_format($pdo, $myMember), [
+        'poll_id' => (int)$poll['sched_poll_id'], 'title' => (string)$poll['title'], 'studio_id' => $sid, 'studio' => $studio['name'] ?? null,
+        'studio_short' => $studio['short_name'] ?? null, 'room' => $room, 'address' => $studio['address'] ?? null, 'names' => array_column($present, 'name'),
+    ]);
+    return [$studio, $room, $text['location'], $text['details'], $text['title']];
 };
 
 /* ==================== .ics のダウンロード ==================== */
@@ -86,11 +88,11 @@ if (isset($_GET['ics'])) {
     if ((int)$poll['status'] < 2 || $poll['fix_start'] === null) {
         not_found_page('まだ日時が決まっていません', 'sched_poll?id=' . $pollId);
     }
-    [, , $location, $details] = $eventInfo();
+    [, , $location, $details, $evTitle] = $eventInfo();
     header('Content-Type: text/calendar; charset=utf-8');
     // attachment … ブラウザに「開く」ではなく「保存（またはカレンダーで開く）」として渡す
     header('Content-Disposition: attachment; filename="sched-' . $pollId . '.ics"');
-    echo sched_ics($pollId, 'スタ連 ' . $poll['title'], sched_dt_to_abs($poll['fix_start']), sched_dt_to_abs($poll['fix_end']), $location, $details);
+    echo sched_ics($pollId, $evTitle, sched_dt_to_abs($poll['fix_start']), sched_dt_to_abs($poll['fix_end']), $location, $details);
     exit;
 }
 
@@ -371,19 +373,11 @@ if ($status < 3) {
     }
 }
 
-// ---- 料金の計算データ（JS: studioSimEngine）。部屋の定員（capacity）を足す ----
+// ---- 料金の計算データ（JS: studioSimEngine） ----
 $sim = [];
 foreach ($studios as $s) {
     $sid = (int)$s['studio_id'];
-    $payload = studio_sim_load($pdo, $sid);
-    $st = $pdo->prepare('SELECT studio_room_id, capacity FROM studio_room WHERE studio_id = ?');
-    $st->execute([$sid]);
-    $cap = array_map(static fn($v) => $v === null ? null : (int)$v, $st->fetchAll(PDO::FETCH_KEY_PAIR));
-    foreach ($payload['rooms'] as &$r) {
-        $r['cap'] = $cap[$r['id']] ?? null;
-    }
-    unset($r); // foreach の参照を切る（PHP の落とし穴。lib/sched.php の sched_candidates のコメント参照）
-    $sim[$sid] = $payload;
+    $sim[$sid] = studio_sim_load($pdo, $sid);
 }
 // 仮決定の練習の「スタジオ名 部屋名」（注意のポップアップ用。題 => 文字。同じ題が複数あれば最後のもの）
 $warnWhere = [];
@@ -416,13 +410,13 @@ $boot = [
 // ---- 仮決定・決定の表示 ----
 $fixed = null;
 if ($status >= 1) {
-    [$fStudio, $fRoom, $location, $details] = $eventInfo();
+    [$fStudio, $fRoom, $location, $details, $evTitle] = $eventInfo();
     $fixed = ['studio' => $fStudio, 'room' => $fRoom, 'area' => $roomArea($poll['fix_room_id'] === null ? null : (int)$poll['fix_room_id'])];
     if ($status >= 2) {
         $s = sched_dt_to_abs($poll['fix_start']);
         $e = sched_dt_to_abs($poll['fix_end']);
         $fixed['when'] = sched_md((string)$poll['fix_date']) . ' ' . date('G:i', $s * 60) . '〜' . date('G:i', $e * 60);
-        $fixed['gcal'] = sched_gcal_url('スタ連 ' . $poll['title'], $s, $e, $location, $details);
+        $fixed['gcal'] = sched_gcal_url($evTitle, $s, $e, $location, $details);
     } else {
         $fixed['when'] = sched_md((string)$poll['fix_date']);
     }

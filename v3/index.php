@@ -51,6 +51,12 @@ $st = $pdo->prepare('SELECT b.band_id, b.name, b.needs_check, l.fiscal_year, l.n
 $st->execute([$user['member_id'], $user['member_id'], $entryYear, $entryYear, $user['user_id']]);
 $flagged = $st->fetchAll();
 
+// 3月最終週から、管理者に学年暦の更新を知らせる（毎年1回。下の重要なお知らせの枠に出る）
+if (is_admin()) {
+    require_once __DIR__ . '/lib/sched.php';
+    sched_calendar_reminder($pdo);
+}
+
 // 重要なお知らせ（未読のものだけ。notices.php やベルで読むと、notice_read に行が入って出なくなる）
 $st = $pdo->prepare('SELECT n.notice_id, n.title FROM notice n
     LEFT JOIN notice_read r ON r.notice_id = n.notice_id AND r.user_id = ?

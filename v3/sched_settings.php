@@ -6,8 +6,8 @@
  *  ほぼ固定で運用する値。年度替わり（学期の日付）と、スタジオが増えたときに触る想定
  *    periods  … 時限の時刻
  *    terms    … 学期の授業期間・休業期間（時間割が効く日）
- *    jo       … 1人あたりの帖数の目安（部屋の定員が未登録のときの判定）
- *    studios  … 日程調整の初期候補・部屋の定員
+ *    jo       … 1人あたりの帖数の目安（部屋が人数に合うかの判定）
+ *    studios  … 日程調整の初期候補
  *    travel   … 移動時間の上書き（ふだんは住所の座標から自動）
  * =====================================================================
  */
@@ -15,6 +15,8 @@ declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/repository.php'; // tip_attr（ポップアップの説明）
 require_once __DIR__ . '/lib/sched.php';
+require_once __DIR__ . '/lib/sched_calendar.php'; // 学年暦 PDF の AI 読み取り
+require_once __DIR__ . '/lib/sched_travel_google.php'; // 移動時間を Google Maps で調べる
 $user = require_executive(); // 幹部・管理者だけ（設定は全員に影響する）
 $pdo = db();
 $settings = sched_settings($pdo);
@@ -46,6 +48,26 @@ if (is_post()) {
         redirect('sched_settings#periods');
     }
 
+    if ($action === 'calendar_pdf') {
+        // 学年暦の PDF を AI に読ませる。保存はしない（フォームに入れて、人が確認して「保存」）
+        $up = $_FILES['pdf'] ?? null;
+        if (!$up || $up['error'] !== UPLOAD_ERR_OK || !is_uploaded_file($up['tmp_name'])) {
+            flash('PDF を選んでください', 'error');
+            redirect('sched_settings#terms');
+        }
+        if (!claude_enabled()) {
+            flash('AI が設定されていません', 'error');
+            redirect('sched_settings#terms');
+        }
+        try {
+            $_SESSION['sched_cal_preview'] = sched_calendar_read_pdf($up['tmp_name']);
+            flash('読み取りました。内容を確認して保存してください');
+        } catch (RuntimeException $e) {
+            flash($e->getMessage(), 'error');
+        }
+        redirect('sched_settings#terms');
+    }
+
     if ($action === 'terms') {
         $terms = [];
         foreach ([1, 2] as $t) {
@@ -66,7 +88,7 @@ if (is_post()) {
         }
         $json = json_encode(['terms' => $terms, 'breaks' => array_slice($breaks, 0, 4)]);
         sched_setting_save($pdo, 'sched_terms', $json, $uid); // 255文字に収まる（日付 10文字 × 12 ＋ 記号）
-        flash('学期を保存しました');
+        flash('学年暦を保存しました');
         redirect('sched_settings#terms');
     }
 
@@ -89,11 +111,6 @@ if (is_post()) {
             $ph = implode(',', array_fill(0, count($defaults), '?'));
             $pdo->prepare("UPDATE studio SET sched_default = 1 WHERE studio_id IN ($ph)")->execute($defaults);
         }
-        $upd = $pdo->prepare('UPDATE studio_room SET capacity = ? WHERE studio_room_id = ?');
-        foreach ((array)($_POST['cap'] ?? []) as $roomId => $cap) {
-            $cap = trim((string)$cap);
-            $upd->execute([$cap === '' ? null : max(1, min(255, (int)$cap)), (int)$roomId]);
-        }
         $pdo->commit();
         flash('スタジオを保存しました');
         redirect('sched_settings#studios');
@@ -115,6 +132,40 @@ if (is_post()) {
         redirect('sched_settings#travel');
     }
 
+    if ($action === 'travel_google') {
+        // 初期候補のスタジオ宛ての組み合わせ（キャンパス → スタジオ、スタジオ ↔ スタジオ）を Google で調べて上書きに保存する
+        //   手入力で上書き済みの組み合わせは触らない（消せば次回また調べられる）
+        $coords = sched_place_coords($pdo);
+        $over = sched_travel_overrides($pdo);
+        $dst = array_map(static fn($id) => 'studio:' . (int)$id, $pdo->query('SELECT studio_id FROM studio WHERE sched_default = 1 ORDER BY sort_order, studio_id')->fetchAll(PDO::FETCH_COLUMN));
+        $src = [...array_map(static fn($c) => 'campus:' . $c, SCHED_CAMPUSES), ...$dst];
+        $pairs = [];
+        foreach ($src as $a) {
+            foreach ($dst as $b) {
+                $k = strcmp($a, $b) < 0 ? $a . '|' . $b : $b . '|' . $a; // 向きは問わないので1組にまとめる
+                if ($a !== $b && !isset($pairs[$k]) && !isset($over[$a . '|' . $b]) && isset($coords[$a], $coords[$b])) {
+                    $pairs[$k] = [$a, $b];
+                }
+            }
+        }
+        $pairs = array_slice($pairs, 0, 40); // 料金・待ち時間の上限
+        $saved = 0;
+        try {
+            foreach ($pairs as [$a, $b]) {
+                $min = sched_google_travel($coords[$a], $coords[$b]);
+                if ($min !== null) {
+                    $pdo->prepare('DELETE FROM sched_travel WHERE from_place = ? AND to_place = ?')->execute([$b, $a]);
+                    $pdo->prepare('REPLACE INTO sched_travel (from_place, to_place, minutes) VALUES (?, ?, ?)')->execute([$a, $b, $min]);
+                    $saved++;
+                }
+            }
+            flash($saved . '件を Google で調べて保存しました');
+        } catch (RuntimeException $e) {
+            flash(($saved ? $saved . '件を保存したあと、' : '') . $e->getMessage(), 'error');
+        }
+        redirect('sched_settings#travel');
+    }
+
     if ($action === 'travel_delete') {
         $pdo->prepare('DELETE FROM sched_travel WHERE from_place = ? AND to_place = ?')->execute([(string)($_POST['from'] ?? ''), (string)($_POST['to'] ?? '')]);
         flash('上書きを削除しました（自動の見積もりに戻ります）');
@@ -124,13 +175,18 @@ if (is_post()) {
 }
 
 $studios = $pdo->query('SELECT studio_id, name, area, sched_default, lat FROM studio ORDER BY sort_order, studio_id')->fetchAll();
-$rooms = [];
-foreach ($pdo->query('SELECT studio_room_id, studio_id, name, area_jo, capacity FROM studio_room ORDER BY sort_order, studio_room_id') as $r) {
-    $rooms[(int)$r['studio_id']][] = $r;
-}
 $places = sched_place_names($pdo);
 $overrides = $pdo->query('SELECT from_place, to_place, minutes FROM sched_travel ORDER BY from_place, to_place')->fetchAll();
 $travel = sched_travel_fn(sched_place_coords($pdo), sched_travel_overrides($pdo));
+// 学年暦 PDF の読み取り結果（1回だけ。フォームの初期値にして、保存するまで DB は変えない）
+$calNotes = [];
+if (isset($_SESSION['sched_cal_preview'])) {
+    $prev = $_SESSION['sched_cal_preview'];
+    unset($_SESSION['sched_cal_preview']);
+    $settings['terms'] = $prev['terms'];
+    $settings['breaks'] = $prev['breaks'];
+    $calNotes = $prev['notes'];
+}
 $defaultStudios = array_filter($studios, static fn($s) => (int)$s['sched_default'] === 1);
 
 render_header('日程調整の設定', 'tools');
@@ -155,6 +211,17 @@ render_header('日程調整の設定', 'tools');
             </tbody>
         </table></div>
     <?php endif; ?>
+    <?php if (sched_google_key() !== '' && $defaultStudios): ?>
+        <form method="post" class="sch-row" data-loading data-confirm="初期候補のスタジオ宛ての移動時間を Google マップで調べて、上書きに保存します。よろしいですか？">
+            <?= csrf_field() ?><input type="hidden" name="action" value="travel_google">
+            <button class="btn btn--sm" type="submit">Googleで調査</button>
+            <div class="loading" data-loading-box hidden role="status" aria-live="polite">
+                <span class="loading__spinner" aria-hidden="true"></span>
+                <p class="loading__title" data-loading-title>調査中…</p>
+                <p class="muted small" data-loading-sub></p>
+            </div>
+        </form>
+    <?php endif; ?>
     <?php foreach ($overrides as $o): ?>
         <form method="post" class="sch-row" data-confirm="上書きを削除します。よろしいですか？">
             <?= csrf_field() ?><input type="hidden" name="action" value="travel_delete">
@@ -176,7 +243,7 @@ render_header('日程調整の設定', 'tools');
 
 <section class="card sch-sec" id="studios">
     <div class="sch-sec__head"><h2 class="section-title section-title--card">スタジオ</h2>
-        <span class="info-tip" <?= tip_attr('✓ = 日程調整を作るとき最初から選ばれる。定員が空の部屋は、広さ ÷ 1人あたりの帖数で判定') ?>><?= icon('info', 'icon--sm') ?></span></div>
+        <span class="info-tip" <?= tip_attr('✓ = 日程調整を作るとき最初から選ばれる。部屋は、広さ ÷ 1人あたりの帖数で判定') ?>><?= icon('info', 'icon--sm') ?></span></div>
     <form method="post" class="sch-row">
         <?= csrf_field() ?><input type="hidden" name="action" value="jo">
         <label>1人あたり <input type="number" name="jo" value="<?= h((string)$settings['jo']) ?>" min="0.5" max="20" step="0.5" class="input-num"> 帖</label>
@@ -186,14 +253,10 @@ render_header('日程調整の設定', 'tools');
         <?= csrf_field() ?><input type="hidden" name="action" value="studios">
         <div class="sch-studio-list">
             <?php foreach ($studios as $s): ?>
-                <div class="sch-studio">
+                <div class="sch-set-studio">
                     <label class="check"><input type="checkbox" name="default[]" value="<?= (int)$s['studio_id'] ?>"<?= (int)$s['sched_default'] === 1 ? ' checked' : '' ?>>
                         <strong><?= h($s['name']) ?></strong> <span class="muted small"><?= h((string)$s['area']) ?></span>
                         <?php if ($s['lat'] === null): ?><span class="pill pill--warn" <?= tip_attr('座標が未登録。移動時間は一律' . SCHED_TRAVEL_UNKNOWN . '分') ?>>座標なし</span><?php endif; ?></label>
-                    <?php foreach ($rooms[(int)$s['studio_id']] ?? [] as $r): ?>
-                        <label class="sch-room"><span><?= h($r['name']) ?> <small class="muted"><?= h(studio_fmt_jo($r['area_jo'])) ?></small></span>
-                            <input type="number" name="cap[<?= (int)$r['studio_room_id'] ?>]" value="<?= h((string)$r['capacity']) ?>" min="1" max="255" class="input-num" placeholder="定員" aria-label="定員"> 人</label>
-                    <?php endforeach; ?>
                 </div>
             <?php endforeach; ?>
         </div>
@@ -202,8 +265,25 @@ render_header('日程調整の設定', 'tools');
 </section>
 
 <section class="card sch-sec" id="terms">
-    <div class="sch-sec__head"><h2 class="section-title section-title--card">学期</h2>
-        <span class="info-tip" <?= tip_attr('時間割が効く授業期間。年度が替わったら学年暦に合わせて直す') ?>><?= icon('info', 'icon--sm') ?></span></div>
+    <div class="sch-sec__head"><h2 class="section-title section-title--card">学年暦</h2>
+        <span class="info-tip" <?= tip_attr('時間割が効く授業期間。年度が替わったら学年暦に合わせて直す。PDFを選ぶとAIが読み取る（保存前に確認）') ?>><?= icon('info', 'icon--sm') ?></span></div>
+    <?php if (claude_enabled()): ?>
+        <form method="post" enctype="multipart/form-data" class="sch-row sch-row--wrap" data-loading>
+            <?= csrf_field() ?><input type="hidden" name="action" value="calendar_pdf">
+            <input type="file" name="pdf" accept=".pdf,application/pdf" required aria-label="学年暦PDF">
+            <button class="btn btn--sm" type="submit">AIで読取</button>
+            <div class="loading" data-loading-box hidden role="status" aria-live="polite">
+                <span class="loading__spinner" aria-hidden="true"></span>
+                <p class="loading__title" data-loading-title>読み込み中…</p>
+                <p class="muted small" data-loading-sub></p>
+            </div>
+        </form>
+    <?php endif; ?>
+    <?php if ($calNotes): ?>
+        <ul class="small">
+            <?php foreach ($calNotes as $n): ?><li><?= h($n) ?></li><?php endforeach; ?>
+        </ul>
+    <?php endif; ?>
     <form method="post" class="sch-terms"<?= unsaved_attr() ?>>
         <?= csrf_field() ?><input type="hidden" name="action" value="terms">
         <?php foreach (SCHED_TERMS as $t => $label): ?>

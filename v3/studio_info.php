@@ -282,7 +282,7 @@ if (is_post()) {
     if ($action === 'save_info') {
         // ?? '' = 送られてこなかったら空文字。trim = 前後の空白を取る
         $f = [];
-        foreach (['name', 'website_url', 'reserve_url', 'address', 'access', 'area', 'hours', 'phone', 'student_note', 'note'] as $k) {
+        foreach (['name', 'short_name', 'website_url', 'reserve_url', 'address', 'access', 'area', 'hours', 'phone', 'student_note', 'note'] as $k) {
             $f[$k] = trim(str_replace("\r\n", "\n", (string)($_POST[$k] ?? '')));
         }
         // エリアはプルダウン。「＋ 新しいエリアを作る」（__new__）のときは、入力欄の名前を使う
@@ -296,6 +296,7 @@ if (is_post()) {
             $areaNew && $f['area'] === '' => '新しいエリア名を入力してください',
             !studio_url_ok($f['website_url']) => 'サイトの URL が正しくありません',
             !studio_url_ok($f['reserve_url']) => '予約ページの URL が正しくありません',
+            mb_strlen($f['short_name']) > 30 => '短縮形が長すぎます',
             mb_strlen($f['address']) > 255 => '住所が長すぎます',
             mb_strlen($f['access']) > 100 => '最寄り駅が長すぎます',
             mb_strlen($f['area']) > 30 => 'エリアが長すぎます',
@@ -314,9 +315,9 @@ if (is_post()) {
         $nul = fn(string $v) => $v === '' ? null : $v;
         $recommended = isset($_POST['recommended']) ? 1 : 0; // チェックを外した欄は送られてこないので、あるかどうかで決める
         $lateNight = isset($_POST['late_night']) ? 1 : 0; // おすすめと同じ（チェックを外すと送られてこない）
-        $pdo->prepare('UPDATE studio SET name = ?, website_url = ?, reserve_url = ?, address = ?, access = ?, area = ?, recommended = ?, late_night = ?, hours = ?, phone = ?,
+        $pdo->prepare('UPDATE studio SET name = ?, short_name = ?, website_url = ?, reserve_url = ?, address = ?, access = ?, area = ?, recommended = ?, late_night = ?, hours = ?, phone = ?,
                 lat = ?, lng = ?, student_note = ?, note = ?, updated_by = ? WHERE studio_id = ?')
-            ->execute([$f['name'], $nul($f['website_url']), $nul($f['reserve_url']), $nul($f['address']), $nul($f['access']), $nul($f['area']), $recommended, $lateNight, $nul($f['hours']),
+            ->execute([$f['name'], $nul($f['short_name']), $nul($f['website_url']), $nul($f['reserve_url']), $nul($f['address']), $nul($f['access']), $nul($f['area']), $recommended, $lateNight, $nul($f['hours']),
                 $nul(mb_convert_kana($f['phone'], 'n')), $coords[0], $coords[1], $nul($f['student_note']), $nul($f['note']), $uid, $studioId]);
         flash('保存しました');
         redirect($self);
@@ -1000,6 +1001,8 @@ render_header($studio['name'], 'tools');
             <input type="hidden" name="studio_id" value="<?= $studioId ?>">
             <label class="sinfo-field"><span>スタジオ名</span>
                 <input autocomplete="off" type="text" name="name" maxlength="100" required value="<?= h($studio['name']) ?>"></label>
+            <label class="sinfo-field"><span>短縮形</span>
+                <input autocomplete="off" type="text" name="short_name" maxlength="30" value="<?= h($studio['short_name'] ?? '') ?>" placeholder="カレンダーの予定に使う略称"></label>
             <label class="sinfo-field"><span>予約ページ</span>
                 <input autocomplete="off" type="url" name="reserve_url" maxlength="255" value="<?= h($studio['reserve_url']) ?>" placeholder="https://"></label>
             <label class="sinfo-field"><span>サイト</span>

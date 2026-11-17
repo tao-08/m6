@@ -528,20 +528,19 @@
 
     /**
      * 部屋が人数に合うか（PHP の sched_room_fit と同じ判定）
-     *   'ok' / 'small' / 'unknown'（定員も広さも不明）
+     *   'ok' / 'small' / 'unknown'（広さが不明）
      */
     const fit = (room) => {
-      if (room.cap) return room.cap >= data.people ? 'ok' : 'small';
       if (room.a) return room.a / data.jo >= data.people ? 'ok' : 'small';
       return 'unknown';
     };
 
     /**
-     * 部屋の「余り」= 定員（無ければ 広さ ÷ 1人あたりの帖）− 人数。0 に近いほど人数にぴったり
-     *   狭すぎる（マイナス）・定員も広さも不明 → null（おすすめの対象外）
+     * 部屋の「余り」= 広さ ÷ 1人あたりの帖 − 人数。0 に近いほど人数にぴったり
+     *   狭すぎる（マイナス）・広さが不明 → null（おすすめの対象外）
      */
     const gap = (room) => {
-      const size = room.cap || (room.a ? room.a / data.jo : null);
+      const size = room.a ? room.a / data.jo : null;
       return size == null || size < data.people ? null : size - data.people;
     };
 
@@ -550,7 +549,7 @@
      *   1. 人数にぴったりの部屋を「ぴったり圏」とする = 余りが、候補に出ている全スタジオの部屋のいちばん小さい余り + 1人以内
      *   2. その開始時刻で借りられるぴったり圏の部屋のうち、料金がいちばん安い部屋（同じなら余りが小さい方。それも同じ = 同じ料金・同じ広さなら、
      *      いま選んでいる部屋を優先する。選んでいる部屋があるのに別の同条件の部屋がおすすめされるのを防ぐ）
-     *   余りが出せない部屋（狭すぎる・定員も広さも不明）・料金が出せない部屋は対象外
+     *   余りが出せない部屋（狭すぎる・広さが不明）・料金が出せない部屋は対象外
      *   → カードに1つだけ付く（そのスタジオの行に出る）
      */
     let minGap = Infinity;
@@ -1565,8 +1564,25 @@
     };
   };
 
+  // 練習の書式（sched_me.php の [data-ev-format]）: {…} のボタンを押すと、最後に触った入力欄のカーソル位置に差し込む
+  const setupEventFormat = () => {
+    const form = document.querySelector('[data-ev-format]');
+    if (!form) return;
+    let target = form.querySelector('[name="ev_title"]');
+    form.querySelectorAll('input[type="text"][name^="ev_"], textarea').forEach((f) => f.addEventListener('focus', () => { target = f; }));
+    form.querySelectorAll('[data-ev-ins]').forEach((b) => b.addEventListener('click', () => {
+      const s = target.selectionStart ?? target.value.length;
+      const e = target.selectionEnd ?? s;
+      target.value = target.value.slice(0, s) + b.dataset.evIns + target.value.slice(e);
+      const pos = s + b.dataset.evIns.length;
+      target.focus();
+      target.setSelectionRange(pos, pos);
+    }));
+  };
+
   setupForm();
   setupTerms();
+  setupEventFormat();
   // 時間割: チェックを入れるたびに自動保存（学期ごとのフォーム）
   document.querySelectorAll('form[data-autosave]').forEach((f) => {
     const a = makeAutosave(() => new FormData(f));
