@@ -54,6 +54,17 @@ $st = $pdo->prepare('SELECT n.notice_id, n.title FROM notice n
 $st->execute([$user['user_id'], $user['user_id']]);
 $importantNotices = $st->fetchAll();
 
+// 📅 呼ばれていて、まだ「回答済み」にしていない日程調整（調整中・日だけ仮決定のあいだ。回答すると出なくなるので ✕ は無い）
+$schedTodo = [];
+if (!empty($user['member_id'])) {
+    $st = $pdo->prepare('SELECT p.sched_poll_id, p.title, p.date_from, p.date_to FROM sched_poll p
+        JOIN sched_poll_member m ON m.sched_poll_id = p.sched_poll_id AND m.member_id = ?
+        WHERE m.answered_at IS NULL AND p.status IN (0, 1) AND p.date_to >= CURDATE()
+        ORDER BY p.date_from, p.sched_poll_id');
+    $st->execute([(int)$user['member_id']]);
+    $schedTodo = $st->fetchAll();
+}
+
 // 日程1行ごとに、そのライブの情報とバンド数をくっつけて取ってくる
 //   LEFT JOIN: 相手が無くても行を残す（バンドが0組の日程も表示するため）
 //   GROUP BY d.live_day_id: 日程ごとに1行にまとめて COUNT(b.band_id) でバンド数を数える
@@ -193,6 +204,19 @@ render_header('ライブ一覧', 'lives');
         <span class="notice-banner__text"><?php foreach ($importantNotices as $n): ?><span><?= h($n['title']) ?></span><?php endforeach; ?></span>
         <?= icon('chevron_right') ?>
     </a>
+<?php endif; ?>
+
+<?php if ($schedTodo): ?>
+    <section class="card check-list">
+        <h2 class="section-title section-title--card section-title--tool"><?= icon('event') ?>日程調整</h2>
+        <ul>
+            <?php foreach ($schedTodo as $s): ?>
+                <li><div class="check-list__text"><a href="sched_me?poll=<?= (int)$s['sched_poll_id'] ?>"><?= h($s['title']) ?></a>
+                    <span class="muted small"><?= h(date('n/j', strtotime((string)$s['date_from']))) ?>〜<?= h(date('n/j', strtotime((string)$s['date_to']))) ?></span>
+                    <span class="chip chip--warn chip--xs">未回答</span></div></li>
+            <?php endforeach; ?>
+        </ul>
+    </section>
 <?php endif; ?>
 
 <?php if ($flagged): ?>
