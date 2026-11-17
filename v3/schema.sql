@@ -1575,6 +1575,7 @@ CREATE TABLE sched_profile (
     home_station  VARCHAR(30)  NULL,              -- 自宅の最寄り駅（= 定期の出発駅。migrations/117）
     pass_to       VARCHAR(30)  NULL,              -- 定期の到着駅（キャンパスの最寄り駅。NULL = 定期なし）
     pass_via      VARCHAR(2000) NULL,             -- 定期の経路（JSON {label, ids}。登録のときに選ぶ。NULL = 最初の経路）
+    pass_on       TINYINT(1)   NOT NULL DEFAULT 1, -- 定期を運賃計算に考慮するか（1 = 考慮 / 0 = 無視して全額。migrations/119）
     updated_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (member_id),
     CONSTRAINT fk_sprof_member FOREIGN KEY (member_id) REFERENCES member (member_id)

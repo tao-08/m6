@@ -1431,6 +1431,9 @@ body.is-row-dragging, body.is-row-dragging * { cursor: grabbing !important; user
 .tabs--filter .tab:has(input:checked) { background: var(--accent); color: var(--on-accent); }
 .tabs--filter .tab:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
 .tabs--filter .tab.is-disabled { opacity: .4; cursor: not-allowed; }
+/* 1つずつ縦に並べるタブ（定期の経路の候補など、文が長くて横に収まらないもの）。長い文は折り返す */
+.tabs--stack { flex-direction: column; width: auto; overflow-x: visible; border-radius: var(--r-lg); }
+.tabs--stack .tab { white-space: normal; border-radius: var(--r-lg); line-height: 1.5; }
 /* 集計の「よく組む学年区分」: ラジオで選んだ区分の表だけ出す（JS なし） */
 .grade-mix__tabs { display: inline-flex; margin-bottom: 10px; }
 /* % と「〇/〇回」は幅を固定して右寄せ（数字の桁数で % の列がずれないように） */

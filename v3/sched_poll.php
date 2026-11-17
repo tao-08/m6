@@ -48,12 +48,13 @@ $names = array_column($members, 'name', 'member_id'); // [member_id => 名前]
 $fareProfiles = [];
 if ($memberIds) {
     $in = implode(',', array_fill(0, count($memberIds), '?'));
-    $st = $pdo->prepare("SELECT m.member_id, m.entry_year, p.campus, p.home_station, p.pass_to, p.pass_via FROM member m LEFT JOIN sched_profile p ON p.member_id = m.member_id WHERE m.member_id IN ($in)");
+    $st = $pdo->prepare("SELECT m.member_id, m.entry_year, p.campus, p.home_station, p.pass_to, p.pass_via, p.pass_on FROM member m LEFT JOIN sched_profile p ON p.member_id = m.member_id WHERE m.member_id IN ($in)");
     $st->execute($memberIds);
     foreach ($st as $r) {
         $fareProfiles[(int)$r['member_id']] = [
             'campus' => sched_member_campus($r['campus'] === null ? null : (int)$r['campus'], $r['entry_year'] === null ? null : (int)$r['entry_year']),
             'home_station' => (string)$r['home_station'], 'pass_to' => (string)$r['pass_to'], 'pass_via' => (string)$r['pass_via'],
+            'pass_on' => $r['pass_on'] === null ? 1 : (int)$r['pass_on'],
         ];
     }
 }

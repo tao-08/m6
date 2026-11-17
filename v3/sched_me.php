@@ -81,8 +81,17 @@ if (is_post()) {
             flash('駅名は30文字までです', 'error');
             redirect($back . '#pass');
         }
+        // 「カスタム」を選んだときは、自由入力の駅名を使う（30文字まで）
+        $custom = $to === '__custom__';
+        if ($custom) {
+            $to = trim((string)($_POST['pass_to_custom'] ?? ''));
+            if (mb_strlen($to) > 30) {
+                flash('駅名は30文字までです', 'error');
+                redirect($back . '#pass');
+            }
+        }
         $ensureProfile();
-        $to = $home !== '' && in_array($to, $valid, true) ? $to : '';
+        $to = $home !== '' && ($custom ? $to !== '' : in_array($to, $valid, true)) ? $to : '';
         $pdo->prepare('UPDATE sched_profile SET home_station = ?, pass_to = ?, pass_via = NULL WHERE member_id = ?') // 駅が変わったかもしれないので、選んだ経路は選び直し
             ->execute([$home === '' ? null : $home, $to === '' ? null : $to, $me]);
         $msg = '定期を保存しました';
@@ -100,6 +109,14 @@ if (is_post()) {
             }
         }
         flash($msg);
+        redirect($back . '#pass');
+    }
+
+    if ($action === 'pass_on') {
+        // 定期を運賃計算に考慮するか（オフ = 定期を無視して全額で計算。定期の駅・経路は消さない）
+        $ensureProfile();
+        $pdo->prepare('UPDATE sched_profile SET pass_on = ? WHERE member_id = ?')->execute([!empty($_POST['pass_on']) ? 1 : 0, $me]);
+        flash('保存しました');
         redirect($back . '#pass');
     }
 
@@ -500,7 +517,7 @@ if (is_post()) {
 }
 
 /* ==================== 表示 ==================== */
-$st = $pdo->prepare('SELECT m.name, m.entry_year, p.campus, p.home_station, p.pass_to, p.pass_via, p.ev_title, p.ev_location, p.ev_details, p.ical_url, p.ical_fetched_at, p.ical_error, COALESCE(p.feed_version, 0) AS feed_version FROM member m LEFT JOIN sched_profile p ON p.member_id = m.member_id WHERE m.member_id = ?');
+$st = $pdo->prepare('SELECT m.name, m.entry_year, p.campus, p.home_station, p.pass_to, p.pass_via, COALESCE(p.pass_on, 1) AS pass_on, p.ev_title, p.ev_location, p.ev_details, p.ical_url, p.ical_fetched_at, p.ical_error, COALESCE(p.feed_version, 0) AS feed_version FROM member m LEFT JOIN sched_profile p ON p.member_id = m.member_id WHERE m.member_id = ?');
 $st->execute([$me]);
 $prof = $st->fetch();
 $autoCampus = sched_member_campus(null, $prof['entry_year'] === null ? null : (int)$prof['entry_year']);
@@ -707,11 +724,32 @@ render_header('マイスケジュール', 'tools');
         <?php if ($poll !== null): ?><input type="hidden" name="poll" value="<?= $pollId ?>"><?php endif; ?>
         <input class="search" type="text" name="home_station" maxlength="30" value="<?= h((string)$prof['home_station']) ?>" placeholder="自宅最寄り駅" autocomplete="off" aria-label="自宅最寄り駅">
         <span>〜</span>
-        <select name="pass_to" class="select-sm" aria-label="定期の到着駅">
+        <?php
+        // 到着駅: 先頭が大学の最寄り駅。「カスタム」を選ぶと駅名を自由入力（保存済みの駅名が一覧に無ければカスタムを選んだ状態）
+        $stations = SCHED_PASS_STATIONS[$chosenCampus ?: $autoCampus];
+        $savedTo = (string)$prof['pass_to'];
+        $isCustom = $savedTo !== '' && !in_array($savedTo, $stations, true);
+        ?>
+        <select name="pass_to" class="select-sm" aria-label="定期の到着駅" data-pass-to>
             <option value="">定期なし</option>
-            <?php foreach (SCHED_PASS_STATIONS[$chosenCampus ?: $autoCampus] as $stn): ?><option value="<?= h($stn) ?>"<?= (string)$prof['pass_to'] === $stn ? ' selected' : '' ?>><?= h($stn) ?></option><?php endforeach; ?>
+            <?php foreach ($stations as $i => $stn): ?><option value="<?= h($stn) ?>"<?= $savedTo === $stn ? ' selected' : '' ?>><?= h($stn) ?><?= $i === 0 ? '（最寄り）' : '' ?></option><?php endforeach; ?>
+            <option value="__custom__"<?= $isCustom ? ' selected' : '' ?>>カスタム</option>
         </select>
+        <input class="search" type="text" name="pass_to_custom" maxlength="30" value="<?= $isCustom ? h($savedTo) : '' ?>" placeholder="駅名" autocomplete="off" aria-label="カスタムの到着駅"<?= $isCustom ? '' : ' hidden' ?>>
+        <script>
+        // カスタムを選んだときだけ駅名の入力欄を出す
+        document.querySelectorAll('select[data-pass-to]').forEach(function (sel) {
+            var input = sel.form.querySelector('input[name="pass_to_custom"]');
+            sel.addEventListener('change', function () { input.hidden = sel.value !== '__custom__'; });
+        });
+        </script>
         <button class="btn btn--sm" type="submit">保存</button>
+    </form>
+    <form method="post" class="sch-row">
+        <?= csrf_field() ?><input type="hidden" name="action" value="pass_on">
+        <?php if ($poll !== null): ?><input type="hidden" name="poll" value="<?= $pollId ?>"><?php endif; ?>
+        <label class="check"><input type="checkbox" name="pass_on" value="1" data-autosubmit<?= (int)$prof['pass_on'] === 1 ? ' checked' : '' ?>>運賃に定期を反映</label>
+        <noscript><button class="btn btn--sm" type="submit">保存</button></noscript>
     </form>
     <?php
     // 定期の経路の候補（複数あるとき、自分の定期に合うものを選ぶ）。候補は「保存」のときに調べて覚えてある
@@ -721,7 +759,7 @@ render_header('マイスケジュール', 'tools');
         <form method="post" class="sch-pass-via">
             <?= csrf_field() ?><input type="hidden" name="action" value="pass_via">
             <?php if ($poll !== null): ?><input type="hidden" name="poll" value="<?= $pollId ?>"><?php endif; ?>
-            <div class="tabs tabs--filter" role="radiogroup" aria-label="定期の経路">
+            <div class="tabs tabs--filter tabs--stack" role="radiogroup" aria-label="定期の経路">
                 <?php foreach ($passCands as $i => $c): ?>
                     <label class="tab"><input type="radio" name="via" value="<?= $i ?>" data-autosubmit<?= is_array($passVia) && ($passVia['ids'] ?? null) === $c['ids'] ? ' checked' : '' ?>><?= h($c['label']) ?></label>
                 <?php endforeach; ?>

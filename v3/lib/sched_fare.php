@@ -154,7 +154,7 @@ function sched_pass_spec(PDO $pdo, array $prof, bool $fetch): ?array
 {
     $home = (string)($prof['home_station'] ?? '');
     $to = (string)($prof['pass_to'] ?? '');
-    if ($home === '' || $to === '') {
+    if ($home === '' || $to === '' || (int)($prof['pass_on'] ?? 1) === 0) { // pass_on = 0 は、定期を無視して全額で計算
         return null;
     }
     $via = json_decode((string)($prof['pass_via'] ?? ''), true);
