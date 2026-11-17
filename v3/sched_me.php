@@ -723,10 +723,11 @@ render_header('マイスケジュール', 'tools');
 <section class="card sch-sec" id="pass">
     <div class="sch-sec__head"><h2 class="section-title section-title--card">定期</h2>
         <span class="info-tip" <?= tip_attr('自宅の最寄り駅から、キャンパスの最寄り駅までの定期。交通費は定期の区間を除いて計算する') ?>><?= icon('info', 'icon--sm') ?></span></div>
-    <form method="post" class="sch-row sch-row--wrap">
+    <form method="post" class="sch-pass">
         <?= csrf_field() ?><input type="hidden" name="action" value="pass">
         <?php if ($poll !== null): ?><input type="hidden" name="poll" value="<?= $pollId ?>"><?php endif; ?>
-        <input class="search" type="text" name="home_station" maxlength="30" value="<?= h((string)$prof['home_station']) ?>" placeholder="自宅最寄り駅" autocomplete="off" aria-label="自宅最寄り駅">
+        <input class="search search--plain" type="text" name="home_station" maxlength="30" value="<?= h((string)$prof['home_station']) ?>" placeholder="自宅最寄り駅" autocomplete="off" aria-label="自宅最寄り駅">
+        <div class="sch-row sch-row--wrap"><?php /* 〜から先（到着駅・保存）は、自宅最寄り駅の下の行 */ ?>
         <span>〜</span>
         <?php
         // 到着駅: 先頭が大学の最寄り駅。「カスタム」を選ぶと駅名を自由入力（保存済みの駅名が一覧に無ければカスタムを選んだ状態）
@@ -739,7 +740,7 @@ render_header('マイスケジュール', 'tools');
             <?php foreach ($stations as $i => $stn): ?><option value="<?= h($stn) ?>"<?= $savedTo === $stn ? ' selected' : '' ?>><?= h($stn) ?><?= $i === 0 ? '（最寄り）' : '' ?></option><?php endforeach; ?>
             <option value="__custom__"<?= $isCustom ? ' selected' : '' ?>>カスタム</option>
         </select>
-        <input class="search" type="text" name="pass_to_custom" maxlength="30" value="<?= $isCustom ? h($savedTo) : '' ?>" placeholder="駅名" autocomplete="off" aria-label="カスタムの到着駅"<?= $isCustom ? '' : ' hidden' ?>>
+        <input class="search search--plain" type="text" name="pass_to_custom" maxlength="30" value="<?= $isCustom ? h($savedTo) : '' ?>" placeholder="駅名" autocomplete="off" aria-label="カスタムの到着駅"<?= $isCustom ? '' : ' hidden' ?>>
         <script>
         // カスタムを選んだときだけ駅名の入力欄を出す
         document.querySelectorAll('select[data-pass-to]').forEach(function (sel) {
@@ -748,6 +749,7 @@ render_header('マイスケジュール', 'tools');
         });
         </script>
         <button class="btn btn--sm" type="submit">保存</button>
+        </div>
     </form>
     <form method="post" class="sch-row">
         <?= csrf_field() ?><input type="hidden" name="action" value="pass_on">
@@ -821,7 +823,7 @@ render_header('マイスケジュール', 'tools');
         <form method="post" class="sch-row">
             <?= csrf_field() ?><input type="hidden" name="action" value="ical">
             <?php if ($poll !== null): ?><input type="hidden" name="poll" value="<?= $pollId ?>"><?php endif; ?>
-            <input class="search" type="url" name="url" required placeholder="https://calendar.google.com/…/basic.ics" autocomplete="off" aria-label="iCal の URL">
+            <input class="search search--plain" type="url" name="url" required placeholder="https://calendar.google.com/…/basic.ics" autocomplete="off" aria-label="iCal の URL">
             <button class="btn btn--primary btn--sm" type="submit"><?= icon('link') ?> 連携</button>
         </form>
     <?php endif; ?>
@@ -865,13 +867,13 @@ render_header('マイスケジュール', 'tools');
         <?= csrf_field() ?><input type="hidden" name="action" value="event_format"><?php if ($poll !== null): ?><input type="hidden" name="poll" value="<?= $pollId ?>"><?php endif; ?>
         <span class="sch-label">カレンダーに追加する予定の書式</span>
         <label class="sch-evfield"><span class="sch-evfield__name">タイトル</span>
-            <input class="search" type="text" name="ev_title" maxlength="<?= SCHED_EVENT_MAX['title'] ?>" value="<?= h($evFmt['title']) ?>" placeholder="<?= h(SCHED_EVENT_DEFAULTS['title']) ?>" autocomplete="off">
+            <input class="search search--plain" type="text" name="ev_title" maxlength="<?= SCHED_EVENT_MAX['title'] ?>" value="<?= h($evFmt['title']) ?>" placeholder="<?= h(SCHED_EVENT_DEFAULTS['title']) ?>" autocomplete="off">
             <span class="sch-evfield__prev" data-ev-preview="ev_title"></span></label>
         <label class="sch-evfield"><span class="sch-evfield__name">場所</span>
-            <input class="search" type="text" name="ev_location" maxlength="<?= SCHED_EVENT_MAX['location'] ?>" value="<?= h($evFmt['location']) ?>" placeholder="<?= h(SCHED_EVENT_DEFAULTS['location']) ?>" autocomplete="off">
+            <input class="search search--plain" type="text" name="ev_location" maxlength="<?= SCHED_EVENT_MAX['location'] ?>" value="<?= h($evFmt['location']) ?>" placeholder="<?= h(SCHED_EVENT_DEFAULTS['location']) ?>" autocomplete="off">
             <span class="sch-evfield__prev" data-ev-preview="ev_location"></span></label>
         <label class="sch-evfield"><span class="sch-evfield__name">メモ</span>
-            <textarea class="search" name="ev_details" rows="3" maxlength="<?= SCHED_EVENT_MAX['details'] ?>" placeholder="<?= h(SCHED_EVENT_DEFAULTS['details']) ?>"><?= h($evFmt['details']) ?></textarea>
+            <textarea class="search search--plain" name="ev_details" rows="3" maxlength="<?= SCHED_EVENT_MAX['details'] ?>" placeholder="<?= h(SCHED_EVENT_DEFAULTS['details']) ?>"><?= h($evFmt['details']) ?></textarea>
             <span class="sch-evfield__prev sch-evfield__prev--multi" data-ev-preview="ev_details"></span></label>
         <div class="sch-row sch-row--wrap">
             <?php foreach (SCHED_EVENT_VARS as $v): ?><button type="button" class="btn btn--sm" data-ev-ins="{<?= h($v) ?>}">{<?= h($v) ?>}</button><?php endforeach; ?>
@@ -880,7 +882,7 @@ render_header('マイスケジュール', 'tools');
             <summary class="muted small">スタジオ略称を編集（自分のみ適用）</summary>
             <?php foreach ($evStudios as $s): $sid = (int)$s['studio_id']; ?>
                 <label class="sch-row"><span class="grow"><?= h($s['name']) ?></span>
-                    <input class="search" type="text" name="short[<?= $sid ?>]" maxlength="30" value="<?= h($evShort($s)) ?>" autocomplete="off" aria-label="<?= h($s['name']) ?>の略称"></label>
+                    <input class="search search--plain" type="text" name="short[<?= $sid ?>]" maxlength="30" value="<?= h($evShort($s)) ?>" autocomplete="off" aria-label="<?= h($s['name']) ?>の略称"></label>
             <?php endforeach; ?>
         </details>
         <div class="sch-row">

@@ -18,6 +18,7 @@
 .sch-sec__head .section-title { margin: 0; }
 .sch-row { display: flex; align-items: center; gap: 8px; }
 .sch-row--wrap { flex-wrap: wrap; }
+.sch-pass { display: grid; gap: 8px; } /* 定期: 自宅最寄り駅の下の行に 〜 到着駅・保存 */
 .sch-row .search { flex: 1; min-width: 0; }
 .sch-label { min-width: 4em; font-weight: 700; }
 
@@ -256,6 +257,7 @@
 .sch-evshort summary { cursor: pointer; }
 .sch-evshort .sch-row .grow { flex: 1; min-width: 0; }
 .sch-evshort .sch-row .search { width: 10em; flex: none; }
+@media (min-width: 561px) { .sch-evshort .sch-row .search { width: 22em; max-width: 60%; } } /* PC は略称の入力欄を広く（スマホは今まで通り） */
 
 /* ---------- 設定 ---------- */
 .sch-travel td, .sch-travel th { text-align: center; white-space: nowrap; }
