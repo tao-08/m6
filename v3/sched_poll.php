@@ -59,8 +59,9 @@ if ($memberIds) {
     }
 }
 $placeCoords = sched_place_coords($pdo);
+$transferMin = (int)sched_settings($pdo)['transfer_min'];
 /** 画面用: 覚えてある結果だけで、メンバー・出発地・スタジオごとの片道の運賃（円。不明は null） */
-$fareOf = static function (int $mid, string $origin, int $sid, bool $fetch = false) use ($pdo, $fareProfiles, $placeCoords): ?int {
+$fareOf = static function (int $mid, string $origin, int $sid, bool $fetch = false) use ($pdo, $fareProfiles, $placeCoords, $studioById, $transferMin): ?int {
     static $memo = [];
     $k = $mid . '|' . $origin . '|' . $sid;
     if (!$fetch && array_key_exists($k, $memo)) {
@@ -68,8 +69,29 @@ $fareOf = static function (int $mid, string $origin, int $sid, bool $fetch = fal
     }
     $coord = $placeCoords['studio:' . $sid] ?? null;
     $prof = $fareProfiles[$mid] ?? null;
-    $v = $coord === null || $prof === null ? null : sched_member_fare($pdo, $prof, $origin, $coord, $fetch);
-    return $memo[$k] = $v;
+    if ($coord === null || $prof === null) {
+        return $memo[$k] = null;
+    }
+    try {
+        // 行き先はスタジオの最寄り駅（複数あれば所要時間が短い方。同じ駅のスタジオは結果を共有する）
+        $dest = sched_studio_dests($pdo, $coord, (string)($studioById[$sid]['access'] ?? ''), $fetch);
+    } catch (SchedNavMiss $e) {
+        return $memo[$k] = null;
+    }
+    return $memo[$k] = sched_member_fare($pdo, $prof, $origin, $dest, $transferMin, $fetch);
+};
+/** 自宅の駅を登録した人 × 候補のスタジオ × 出発地（自宅・学校）ごとに $fn を呼ぶ */
+$fareEach = static function (callable $fn) use ($fareProfiles, $studioById): void {
+    foreach ($fareProfiles as $mid => $prof) {
+        if ($prof['home_station'] === '') {
+            continue;
+        }
+        foreach (array_keys($studioById) as $sid) {
+            foreach (['home', 'campus'] as $origin) {
+                $fn((int)$mid, $origin, (int)$sid);
+            }
+        }
+    }
 };
 
 /** 決定・仮決定した部屋の名前（無ければ ''） */
@@ -151,18 +173,9 @@ if (is_post()) {
     }
 
     if ($action === 'fare_fetch') {
-        // 交通費の元データを調べる（NAVITIME・Google の API を呼ぶ。結果は180日覚える）。自宅の駅を登録している人だけ
+        // 交通費の元データを調べる（NAVITIME・Google の API を呼ぶ。結果は180日覚える。覚えてある分は呼ばない）。自宅の駅を登録している人だけ
         try {
-            foreach ($fareProfiles as $mid => $prof) {
-                if ($prof['home_station'] === '') {
-                    continue;
-                }
-                foreach (array_keys($studioById) as $sid) {
-                    foreach (['home', 'campus'] as $origin) {
-                        $fareOf((int)$mid, $origin, (int)$sid, true);
-                    }
-                }
-            }
+            $fareEach(static fn(int $mid, string $origin, int $sid) => $fareOf($mid, $origin, $sid, true));
             flash('交通費を調べました');
         } catch (RuntimeException $e) {
             flash($e->getMessage(), 'error');
@@ -633,7 +646,15 @@ if (!empty($poll['live_id'])) {
                 <button type="button" class="tab" data-sort="price">安い順</button>
             </div>
         </div>
-        <?php if ($canManage && sched_nav_key() !== '' && $studios): ?>
+        <?php
+        // 調べるボタンは、覚えていない分があるときだけ（作成画面などで調べ済みなら、覚えてある結果がそのまま候補に出ている）
+        $fareMissing = false;
+        if ($canManage && sched_nav_key() !== '' && $studios) {
+            $fareEach(static fn(int $mid, string $origin, int $sid) => $fareOf($mid, $origin, $sid));
+            $fareMissing = sched_nav_misses() > 0;
+        }
+        ?>
+        <?php if ($fareMissing): ?>
             <form method="post" class="sch-row" data-loading data-confirm="<?= h("メンバーの最寄り駅とスタジオまでの往復交通費を検索します。\nスタジオ練習の前後" . rtrim(rtrim(number_format((int)$settings['fare_gap'] / 60, 1), '0'), '.') . "時間に授業があれば所属キャンパスへの移動も考慮します。") ?>">
                 <?= csrf_field() ?><input type="hidden" name="action" value="fare_fetch"><input type="hidden" name="v" value="<?= (int)$poll['version'] ?>">
                 <button class="btn btn--sm" type="submit">交通費を調べる</button>

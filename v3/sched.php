@@ -61,20 +61,45 @@ if (is_post()) {
             $error = '交通費の検索は使えません（NAVITIME の API キーが未設定）';
         }
         $transferMin = (int)sched_settings($pdo)['transfer_min'];
+        $accessOf = [];
+        foreach ($pdo->query('SELECT studio_id, access FROM studio') as $r) {
+            $accessOf[(int)$r['studio_id']] = (string)$r['access'];
+        }
         $out = [];
         foreach (sched_place_coords($pdo) as $place => $coord) {
             if (!str_starts_with($place, 'studio:')) {
                 continue;
             }
+            // 行き先はスタジオの最寄り駅（複数あれば全部。同じ駅のスタジオは NAVITIME の結果を共有）+ 駅からの徒歩。メンバーの前に1回だけ決める
+            $dest = null;
+            $access = $accessOf[(int)substr($place, 7)] ?? '';
+            try {
+                $dest = sched_studio_dests($pdo, $coord, $access, $fetch);
+            } catch (SchedNavMiss $e) {
+                // 覚えた結果が無い → このスタジオは不明
+            } catch (RuntimeException $e) {
+                // 1回の上限・API キーの不備など。残りは覚えてある結果だけで出す
+                $error = $e->getMessage();
+                $fetch = false;
+                try {
+                    $dest = sched_studio_dests($pdo, $coord, $access, false);
+                } catch (SchedNavMiss $e2) {
+                    // 不明
+                }
+            }
             $trips = [];
             foreach ($profs as $prof) {
+                if ($dest === null) {
+                    $trips[] = null;
+                    continue;
+                }
                 try {
-                    $trips[] = sched_member_trip($pdo, $prof, $coord, $transferMin, $fetch);
+                    $trips[] = sched_member_trip($pdo, $prof, $dest, $transferMin, $fetch);
                 } catch (RuntimeException $e) {
                     // 1回の上限・API キーの不備など。残りは覚えてある結果だけで出す
                     $error = $e->getMessage();
                     $fetch = false;
-                    $trips[] = sched_member_trip($pdo, $prof, $coord, $transferMin, false);
+                    $trips[] = sched_member_trip($pdo, $prof, $dest, $transferMin, false);
                 }
             }
             $out[substr($place, 7)] = sched_studio_trip_stats($trips);

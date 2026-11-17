@@ -949,6 +949,19 @@ check('スタジオの目安: 往復の運賃の1人平均・片道の所要時�
     ['fare' => null, 'lo' => null, 'hi' => null, 'known' => 0, 'total' => 2],
     ['fare' => null, 'lo' => null, 'hi' => null, 'known' => 0, 'total' => 0],
 ]);
+check('スタジオの最寄り駅: アクセスから 駅名（JR・駅は除く）と徒歩の分を全部取り出す（徒歩はその駅の後ろ）/ 駅が無ければ []', array_map('sched_studio_access', [
+    '神保町駅 A5出口 徒歩3分（JR御茶ノ水駅 徒歩10分）', 'JR新宿駅 南口 徒歩5分', 'JR新宿駅東南口 徒歩1分', '下北沢駅 徒歩3分（小田急線・京王井の頭線）', '明大前駅 徒歩３分', '', 'バス停前',
+    '御茶ノ水駅（徒歩5分）・新御茶ノ水駅', '新宿駅 徒歩5分 / JR新宿駅 徒歩7分',
+]), [
+    [['station' => '神保町', 'walk' => 3], ['station' => '御茶ノ水', 'walk' => 10]],
+    [['station' => '新宿', 'walk' => 5]], [['station' => '新宿', 'walk' => 1]],
+    [['station' => '下北沢', 'walk' => 3]], [['station' => '明大前', 'walk' => 3]], [], [],
+    [['station' => '御茶ノ水', 'walk' => 5], ['station' => '新御茶ノ水', 'walk' => null]],
+    [['station' => '新宿', 'walk' => 5]], // 同じ駅は最初の1つ
+]);
+check('駅名の書き方をそろえる（JR・駅・空白・全角英数・半角カナ）', array_map('sched_station_norm', [
+    'ＪＲ 高円寺駅', 'jr新宿', '下北沢', ' 明大前駅 ', 'ｼﾓｷﾀ', 'メトロ御茶ノ水',
+]), ['高円寺', '新宿', '下北沢', '明大前', 'シモキタ', 'メトロ御茶ノ水']);
 // 実データ: 定期 = 東中神〜御茶ノ水（青梅線 → 中央線特快）。途中駅の新宿までは定期の中、高尾（逆方向）は外
 $navLoad = static fn(string $n) => sched_nav_parse(json_decode((string)file_get_contents(__DIR__ . '/fixtures/navitime_' . $n . '.json'), true));
 $navPassSpec = sched_nav_pass_spec($navLoad('pass'));

@@ -74,7 +74,7 @@ if (is_post()) {
 
     if ($action === 'pass') {
         // 自宅最寄り駅（= 定期の出発駅）と、定期の到着駅（キャンパスの最寄り駅の候補から選ぶ。空 = 定期なし）
-        $home = trim((string)($_POST['home_station'] ?? ''));
+        $home = sched_station_norm(trim((string)($_POST['home_station'] ?? ''))); // 書き方をそろえる（同じ駅の人と結果を共有するため）
         $to = (string)($_POST['pass_to'] ?? '');
         $valid = array_merge(...array_values(SCHED_PASS_STATIONS));
         if (mb_strlen($home) > 30) {
@@ -84,7 +84,7 @@ if (is_post()) {
         // 「カスタム」を選んだときは、自由入力の駅名を使う（30文字まで）
         $custom = $to === '__custom__';
         if ($custom) {
-            $to = trim((string)($_POST['pass_to_custom'] ?? ''));
+            $to = sched_station_norm(trim((string)($_POST['pass_to_custom'] ?? '')));
             if (mb_strlen($to) > 30) {
                 flash('駅名は30文字までです', 'error');
                 redirect($back . '#pass');
@@ -622,13 +622,13 @@ render_header('マイスケジュール', 'tools');
 ?>
 <link rel="stylesheet" href="<?= asset_url('assets/sched.css') ?>">
 <nav class="crumbs sch-crumbs"><a href="tools">ツール</a><span>/</span><a href="sched">スタジオ練習の日程調整</a><?php if ($poll !== null): ?><span>/</span><a href="sched_poll?id=<?= $pollId ?>"><?= h($poll['title']) ?></a><?php endif; ?></nav>
-<h1 class="display display--sm">マイスケジュール</h1>
+<div class="sch-title"><h1 class="display display--sm">マイスケジュール</h1>
+    <button type="button" class="info-tip" data-tutorial-open="sched-help" aria-label="マイスケジュールの使い方" title="マイスケジュールの使い方"><?= icon('info') ?></button></div>
 
 <!-- ===== NG の時間 ===== -->
 <section class="card sch-sec" id="ng">
     <div class="sch-sec__head">
         <h2 class="section-title section-title--card">スケジュールを編集</h2>
-        <span class="info-tip" <?= tip_attr('マスをタップ・なぞって予定ありを塗る。日付をタップで1日まるごと。授業・カレンダーの予定・繰り返しの予定・決定した練習は自動で入る。自動で入った予定をタップすると、その1回分を無視できる') ?>><?= icon('info', 'icon--sm') ?></span>
     </div>
     <div class="sch-weeknav">
         <?php if ($prevUrl !== null): ?><a class="icon-btn" href="<?= h($prevUrl) ?>#ng" aria-label="前の週" title="前の週"><?= icon('chevron_left') ?></a><?php else: ?><span></span><?php endif; ?>
@@ -873,7 +873,8 @@ render_header('マイスケジュール', 'tools');
     <form method="post" class="sch-pass">
         <?= csrf_field() ?><input type="hidden" name="action" value="pass">
         <?php if ($poll !== null): ?><input type="hidden" name="poll" value="<?= $pollId ?>"><?php endif; ?>
-        <input class="search search--plain" type="text" name="home_station" maxlength="30" value="<?= h((string)$prof['home_station']) ?>" placeholder="自宅最寄り駅" autocomplete="off" aria-label="自宅最寄り駅">
+        <datalist id="sch-stations"><?php foreach (sched_station_suggestions($pdo) as $stn): ?><option value="<?= h($stn) ?>"><?php endforeach; ?></datalist>
+        <input class="search search--plain" type="text" name="home_station" maxlength="30" value="<?= h((string)$prof['home_station']) ?>" placeholder="自宅最寄り駅" autocomplete="off" list="sch-stations" aria-label="自宅最寄り駅">
         <div class="sch-row sch-row--wrap"><?php /* 〜から先（到着駅・保存）は、自宅最寄り駅の下の行 */ ?>
         <span>〜</span>
         <?php
@@ -887,7 +888,7 @@ render_header('マイスケジュール', 'tools');
             <?php foreach ($stations as $i => $stn): ?><option value="<?= h($stn) ?>"<?= $savedTo === $stn ? ' selected' : '' ?>><?= h($stn) ?><?= $i === 0 ? '（最寄り）' : '' ?></option><?php endforeach; ?>
             <option value="__custom__"<?= $isCustom ? ' selected' : '' ?>>カスタム</option>
         </select>
-        <input class="search search--plain" type="text" name="pass_to_custom" maxlength="30" value="<?= $isCustom ? h($savedTo) : '' ?>" placeholder="駅名" autocomplete="off" aria-label="カスタムの到着駅"<?= $isCustom ? '' : ' hidden' ?>>
+        <input class="search search--plain" type="text" name="pass_to_custom" maxlength="30" value="<?= $isCustom ? h($savedTo) : '' ?>" placeholder="駅名" autocomplete="off" list="sch-stations" aria-label="カスタムの到着駅"<?= $isCustom ? '' : ' hidden' ?>>
         <script>
         // カスタムを選んだときだけ駅名の入力欄を出す
         document.querySelectorAll('select[data-pass-to]').forEach(function (sel) {
@@ -923,5 +924,6 @@ render_header('マイスケジュール', 'tools');
 </section>
 
 <?php require __DIR__ . '/partials/ical_help.php'; // ⓘ から開く「カレンダー連携のやり方」（初回チュートリアルと同じ部品） ?>
+<?php require __DIR__ . '/partials/sched_help.php'; // 見出しの ⓘ から開く「マイスケジュールの使い方」（4枚のスクリーンショット） ?>
 <script src="<?= asset_url('assets/sched.js') ?>" defer></script>
 <?php render_footer();

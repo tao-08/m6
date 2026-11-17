@@ -334,3 +334,10 @@
 .sch-trip__part { display: inline-flex; align-items: center; gap: 2px; }
 
 .togglecard__body.sch-sec { margin-bottom: 0; } /* 折りたたみカードの中身（カレンダー連携）。外側のカードに余白があるので */
+/* マイスケジュールの見出し: 右に使い方の ⓘ（押すと partials/sched_help.php のモーダル） */
+.sch-title { display: flex; align-items: center; gap: 8px; margin-bottom: 20px; }
+.sch-title .display { margin-bottom: 0; }
+/* マイスケジュールの使い方（partials/sched_help.php）: 画像がスマホの縦長の切り抜きなので、横長の枠（16:10）をやめて縦に伸ばす。
+   スマホは幅いっぱい、PC は高さで止めて中央に。下の説明とボタンの分（約320px）は残す */
+.tutorial--tall .tutorial__img { aspect-ratio: auto; display: flex; justify-content: center; }
+.tutorial--tall .tutorial__img img { width: auto; height: auto; max-width: 100%; max-height: max(240px, calc(100dvh - 320px)); object-fit: contain; }

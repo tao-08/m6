@@ -7,6 +7,7 @@ declare(strict_types=1);
  * =====================================================================
  *  ・画面を開いたときは、覚えてある結果だけ使う（API は呼ばない。NAVITIME は Basic プランで月500回まで）
  *  ・「交通費を調べる」ボタンを押したときだけ API を呼び、結果を sched_nav_cache に180日覚える
+ *  ・スタジオは最寄り駅（studio.access）まで調べて、同じ駅のスタジオで結果を共有する。徒歩は access の「徒歩N分」、無ければ Google（Routes API）
  *  ・出発地は、練習の前後（設定。初期 4時間）以内に授業があれば学校、なければ自宅（行きと帰りを別々に判定。運賃は片道ずつ足す）
  * =====================================================================
  */
@@ -15,6 +16,19 @@ require_once __DIR__ . '/sched_navitime.php';
 /** キャッシュに無い（API を呼ぶ許可が無いとき）。運賃は「不明」として扱う */
 class SchedNavMiss extends RuntimeException
 {
+    public function __construct(string $message = '')
+    {
+        parent::__construct($message);
+        sched_nav_misses(1);
+    }
+}
+
+/** キャッシュに無かった回数（1回のリクエストの中で数える。0 なら、全部覚えてある = 調べるボタンは要らない） */
+function sched_nav_misses(int $add = 0): int
+{
+    static $n = 0;
+    $n += $add;
+    return $n;
 }
 
 /** 経路・座標の結果を覚えておく日数（運賃改定は年に1回あるかないか） */
@@ -44,10 +58,20 @@ function sched_nav_calls(int $add = 0): int
     return $n;
 }
 
+/** Google の API キー（config.php の drive.api_key → youtube.api_key の順）。未設定なら例外 */
+function sched_google_key(): string
+{
+    $gkey = (string)((config('drive')['api_key'] ?? '') ?: (config('youtube')['api_key'] ?? ''));
+    if ($gkey === '') {
+        throw new RuntimeException('config.php に Google の API キー（youtube.api_key）が設定されていません');
+    }
+    return $gkey;
+}
+
 /** Google の Geocoding API で、駅名 → [緯度, 経度]。見つからなければ null */
 function sched_nav_geocode(PDO $pdo, string $station, bool $fetch): ?array
 {
-    $name = preg_match('/駅$/u', $station) ? $station : $station . '駅';
+    $name = sched_station_norm($station) . '駅'; // 書き方をそろえて、同じ駅は同じ結果を使う
     $key = 'g|' . $name;
     $hit = sched_nav_cache_get($pdo, $key);
     if ($hit !== null) {
@@ -56,10 +80,7 @@ function sched_nav_geocode(PDO $pdo, string $station, bool $fetch): ?array
     if (!$fetch) {
         throw new SchedNavMiss($key);
     }
-    $gkey = (string)((config('drive')['api_key'] ?? '') ?: (config('youtube')['api_key'] ?? ''));
-    if ($gkey === '') {
-        throw new RuntimeException('config.php に Google の API キー（youtube.api_key）が設定されていません');
-    }
+    $gkey = sched_google_key();
     if (sched_nav_calls(1) > SCHED_NAV_MAX_CALLS) {
         throw new RuntimeException('一度に調べられる上限に達しました。もう一度押してください（調べ済みの分は保存されています）');
     }
@@ -101,6 +122,174 @@ function sched_nav_routes_cached(PDO $pdo, array $from, array $to, bool $fetch):
     $list = sched_nav_routes($from, $to, sched_nav_time());
     sched_nav_cache_put($pdo, $key, ['list' => $list]);
     return $list;
+}
+
+/**
+ * 駅名の書き方をそろえる（同じ駅を同じ名前にして、調べた結果を共有するため）。API を呼ばない
+ *   全角の英数字・空白 → 半角 / 半角カナ → 全角 / 空白を消す / 先頭の「JR」と末尾の「駅」を外す
+ *   例: 「ＪＲ 高円寺駅」→「高円寺」
+ */
+function sched_station_norm(string $name): string
+{
+    $s = mb_convert_kana($name, 'asKV');
+    $s = (string)preg_replace('/\s+/u', '', $s);
+    $s = (string)preg_replace('/^JR/iu', '', $s);
+    return (string)preg_replace('/駅$/u', '', $s);
+}
+
+/**
+ * 駅名の入力欄の候補（書き方をそろえた名前の一覧）。登録済みの自宅・定期の駅 + スタジオの最寄り駅 + キャンパスの駅
+ *   誰の駅かは出さない（名前だけ）
+ */
+function sched_station_suggestions(PDO $pdo): array
+{
+    $names = array_merge(...array_values(SCHED_PASS_STATIONS));
+    foreach ($pdo->query('SELECT home_station AS s FROM sched_profile WHERE home_station IS NOT NULL UNION SELECT pass_to FROM sched_profile WHERE pass_to IS NOT NULL') as $r) {
+        $names[] = (string)$r['s'];
+    }
+    foreach ($pdo->query('SELECT access FROM studio WHERE access IS NOT NULL') as $r) {
+        foreach (sched_studio_access((string)$r['access']) as $a) {
+            $names[] = $a['station'];
+        }
+    }
+    $out = array_values(array_unique(array_filter(array_map('sched_station_norm', $names), static fn($s) => $s !== '')));
+    sort($out);
+    return $out;
+}
+
+/**
+ * スタジオのアクセス（studio.access）から、最寄り駅と駅からの徒歩（分）を全部取り出す。API を呼ばない
+ *   駅 … 「○○駅」の名前（sched_station_norm でそろえる）。徒歩 … その駅の後ろ（次の駅まで）の「徒歩N分」（無ければ null）
+ *   例: 「神保町駅 A5出口 徒歩3分（JR御茶ノ水駅 徒歩10分）」→ [['station' => '神保町', 'walk' => 3], ['station' => '御茶ノ水', 'walk' => 10]]
+ *   同じ駅は1つにまとめる。駅が無ければ []
+ * @return array<int, array{station: string, walk: ?int}>
+ */
+function sched_studio_access(string $access): array
+{
+    $s = mb_convert_kana($access, 'asn'); // 全角の英数字・空白 → 半角
+    if (!preg_match_all('/([^\s（）()、，,\/／・]+?)駅/u', $s, $m, PREG_OFFSET_CAPTURE)) {
+        return [];
+    }
+    $out = [];
+    foreach ($m[0] as $i => [$text, $pos]) {
+        $station = sched_station_norm($m[1][$i][0]);
+        if ($station === '' || isset($out[$station])) {
+            continue;
+        }
+        $end = $pos + strlen($text);
+        $next = $m[0][$i + 1][1] ?? strlen($s);
+        $walk = preg_match('/徒歩\s*(\d+)\s*分/u', substr($s, $end, $next - $end), $w) ? (int)$w[1] : null;
+        $out[$station] = ['station' => $station, 'walk' => $walk];
+    }
+    return array_values($out);
+}
+
+/**
+ * Google の Routes API で、2点（[緯度, 経度]）の徒歩の所要時間（分）。経路が無ければ null（結果は sched_nav_cache に覚える）
+ *   キャッシュに無く $fetch = false なら SchedNavMiss
+ * @throws RuntimeException キー未設定・通信・API のエラー
+ */
+function sched_nav_walk_minutes(PDO $pdo, array $from, array $to, bool $fetch): ?int
+{
+    $key = 'w|' . round($from[0], 4) . ',' . round($from[1], 4) . '|' . round($to[0], 4) . ',' . round($to[1], 4);
+    $hit = sched_nav_cache_get($pdo, $key);
+    if ($hit !== null) {
+        return isset($hit['min']) ? (int)$hit['min'] : null;
+    }
+    if (!$fetch) {
+        throw new SchedNavMiss($key);
+    }
+    $gkey = sched_google_key();
+    if (sched_nav_calls(1) > SCHED_NAV_MAX_CALLS) {
+        throw new RuntimeException('一度に調べられる上限に達しました。もう一度押してください（調べ済みの分は保存されています）');
+    }
+    $point = static fn(array $c) => ['location' => ['latLng' => ['latitude' => (float)$c[0], 'longitude' => (float)$c[1]]]];
+    $ch = curl_init('https://routes.googleapis.com/directions/v2:computeRoutes');
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT        => 20,
+        CURLOPT_CONNECTTIMEOUT => 5,
+        CURLOPT_POST           => true,
+        CURLOPT_POSTFIELDS     => json_encode(['origin' => $point($from), 'destination' => $point($to), 'travelMode' => 'WALK', 'languageCode' => 'ja'], JSON_UNESCAPED_UNICODE),
+        CURLOPT_HTTPHEADER     => ['Content-Type: application/json', 'X-Goog-Api-Key: ' . $gkey, 'X-Goog-FieldMask: routes.duration'],
+    ]);
+    $raw = curl_exec($ch);
+    $status = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+    $json = $raw === false ? null : json_decode((string)$raw, true);
+    if ($raw === false || $status >= 400 || !is_array($json)) {
+        throw new RuntimeException('Google で徒歩の時間を調べられませんでした（Routes API の有効化とキーの制限を確認してください）');
+    }
+    $dur = (string)($json['routes'][0]['duration'] ?? ''); // 例 "312s"
+    if ($dur === '' || !preg_match('/^(\d+(?:\.\d+)?)s$/', $dur, $m)) {
+        sched_nav_cache_put($pdo, $key, ['none' => 1]);
+        return null;
+    }
+    $min = (int)ceil((float)$m[1] / 60);
+    sched_nav_cache_put($pdo, $key, ['min' => $min]);
+    return $min;
+}
+
+/**
+ * スタジオまでの経路の「行き先」の候補。最寄り駅（studio.access。複数あれば全部）の座標と、駅からスタジオまでの徒歩（分）
+ *   同じ駅のスタジオは同じ座標になるので、NAVITIME の結果（sched_nav_cache）を共有できる
+ *   徒歩は access の「徒歩N分」、無ければ Google（Routes API）
+ *   駅が分からない・駅の座標が無いときは、スタジオの座標・徒歩 0 の1つだけ
+ *   $fetch = false で覚えた結果が無い駅は飛ばす（全部無ければ SchedNavMiss）
+ * @return array<int, array{coord: array, walk: int}>
+ * @throws SchedNavMiss キャッシュに無く $fetch = false
+ * @throws RuntimeException API のエラー
+ */
+function sched_studio_dests(PDO $pdo, array $studioCoord, string $access, bool $fetch): array
+{
+    $stations = sched_studio_access($access);
+    if (!$stations) {
+        return [['coord' => $studioCoord, 'walk' => 0]];
+    }
+    $out = [];
+    $missed = null;
+    foreach ($stations as $a) {
+        try {
+            $sc = sched_nav_geocode($pdo, $a['station'], $fetch);
+            if ($sc !== null) {
+                $out[] = ['coord' => $sc, 'walk' => $a['walk'] ?? sched_nav_walk_minutes($pdo, $sc, $studioCoord, $fetch) ?? 0];
+            }
+        } catch (SchedNavMiss $e) {
+            $missed = $e;
+        }
+    }
+    if (!$out && $missed !== null) {
+        throw $missed;
+    }
+    return $out ?: [['coord' => $studioCoord, 'walk' => 0]];
+}
+
+/**
+ * 出発地 $oc → スタジオ。行き先の候補（sched_studio_dests）のうち、所要時間（駅まで + 徒歩）がいちばん短い駅を採り、運賃もその駅のもの
+ *   覚えた結果が無い駅（$fetch = false）は飛ばす。どの駅も経路が無ければ null
+ * @return ?array{fare: ?int, min: int}
+ */
+function sched_trip_best(PDO $pdo, array $oc, array $dests, int $transferMin, bool $fetch, ?array $pass): ?array
+{
+    $routes = static fn(array $a, array $b) => sched_nav_routes_cached($pdo, $a, $b, $fetch);
+    $best = null;
+    foreach ($dests as $d) {
+        try {
+            $list = $routes($oc, $d['coord']);
+        } catch (SchedNavMiss $e) {
+            continue;
+        }
+        if (!$list) {
+            continue;
+        }
+        $min = min(array_map(static fn(array $r) => sched_nav_door_minutes($r, $transferMin), $list)) + $d['walk'];
+        if ($best === null || $min < $best['min']) {
+            $best = ['coord' => $d['coord'], 'min' => $min];
+        }
+    }
+    if ($best === null) {
+        return null;
+    }
+    return ['fare' => sched_nav_fare($routes, $oc, $best['coord'], $pass), 'min' => $best['min']];
 }
 
 /** 経路の運賃を、定期の範囲（駅 ID）を除いて数える。運賃が分からなければ null */
@@ -178,7 +367,7 @@ function sched_pass_candidates(PDO $pdo, string $home, string $to, bool $fetch):
 {
     // 'p2|' … 所要時間を「徒歩・乗車の合計 + 乗換」に変えたので、古い 'p|'（NAVITIME の合計の分数入り）は使わない
     // 覚えるのは経路の中身（路線名・合計・乗換回数）。分数の表示は、設定の「乗換1回あたり」で毎回つくる
-    $key = 'p2|' . $home . '|' . $to;
+    $key = 'p2|' . sched_station_norm($home) . '|' . sched_station_norm($to);
     $transferMin = (int)sched_settings($pdo)['transfer_min'];
     $label = static function (array $c) use ($transferMin): array {
         $min = sched_nav_door_minutes($c, $transferMin);
@@ -207,8 +396,9 @@ function sched_pass_candidates(PDO $pdo, string $home, string $to, bool $fetch):
  * メンバーの、出発地（'home' = 自宅最寄り駅 / 'campus'）→ スタジオ の定期外の運賃。分からなければ null
  *   $prof … ['campus' => 1|2, 'home_station' => ?string, 'pass_to' => ?string, 'pass_via' => ?string（JSON）]
  *   $fetch = false … キャッシュにあるものだけ使う（画面を開いたときはこちら。API は呼ばない）
+ *   $dests … スタジオの行き先の候補（sched_studio_dests）。所要時間がいちばん短い駅の運賃
  */
-function sched_member_fare(PDO $pdo, array $prof, string $origin, array $studioCoord, bool $fetch): ?int
+function sched_member_fare(PDO $pdo, array $prof, string $origin, array $dests, int $transferMin, bool $fetch): ?int
 {
     $home = (string)($prof['home_station'] ?? '');
     try {
@@ -225,7 +415,7 @@ function sched_member_fare(PDO $pdo, array $prof, string $origin, array $studioC
         if ($oc === null) {
             return null;
         }
-        return sched_nav_fare(static fn(array $a, array $b) => sched_nav_routes_cached($pdo, $a, $b, $fetch), $oc, $studioCoord, sched_pass_spec($pdo, $prof, $fetch));
+        return sched_trip_best($pdo, $oc, $dests, $transferMin, $fetch, sched_pass_spec($pdo, $prof, $fetch))['fare'] ?? null;
     } catch (SchedNavMiss $e) {
         return null;
     }
@@ -235,9 +425,10 @@ function sched_member_fare(PDO $pdo, array $prof, string $origin, array $studioC
  * 自宅の最寄り駅 → スタジオ の片道（日程調整の作成画面で、スタジオを選ぶ目安に使う）
  *   fare … 定期外の運賃（円）。min … いちばん早い経路の所要時間（分。徒歩・乗車の合計 + 乗換 × $transferMin）
  *   自宅の駅が未登録・覚えた結果が無い（$fetch = false のとき）・経路が無い ときは null
+ *   $dests … スタジオの行き先の候補（sched_studio_dests）。所要時間（駅まで + 徒歩）がいちばん短い駅を採る
  * @return ?array{fare: ?int, min: ?int}
  */
-function sched_member_trip(PDO $pdo, array $prof, array $studioCoord, int $transferMin, bool $fetch): ?array
+function sched_member_trip(PDO $pdo, array $prof, array $dests, int $transferMin, bool $fetch): ?array
 {
     $home = (string)($prof['home_station'] ?? '');
     if ($home === '') {
@@ -248,13 +439,7 @@ function sched_member_trip(PDO $pdo, array $prof, array $studioCoord, int $trans
         if ($hc === null) {
             return null;
         }
-        $routes = static fn(array $a, array $b) => sched_nav_routes_cached($pdo, $a, $b, $fetch);
-        $list = $routes($hc, $studioCoord);
-        if (!$list) {
-            return null;
-        }
-        $mins = array_map(static fn(array $r) => sched_nav_door_minutes($r, $transferMin), $list);
-        return ['fare' => sched_nav_fare($routes, $hc, $studioCoord, sched_pass_spec($pdo, $prof, $fetch)), 'min' => min($mins)];
+        return sched_trip_best($pdo, $hc, $dests, $transferMin, $fetch, sched_pass_spec($pdo, $prof, $fetch));
     } catch (SchedNavMiss $e) {
         return null;
     }
