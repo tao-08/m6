@@ -162,6 +162,10 @@
 .sch-grid thead th.is-all .sch-daychk::after { content: ''; position: absolute; left: 50%; top: 50%; width: 2.5px; height: 5px; border: solid #fff; border-width: 0 1.5px 1.5px 0; transform: translate(-50%, -60%) rotate(45deg); }
 .sch-grid thead th.is-none .sch-daychk { visibility: hidden; }
 .sch-grid thead th[data-day] { cursor: pointer; } /* 日付を押すと1日まるごと NG */
+/* 調整の期間の外の日（月曜始まりの週に入っただけ）: グレーにして触れない */
+.sch-grid thead th.is-off { cursor: not-allowed; opacity: .4; }
+.sch-grid thead th.is-off .sch-daychk { visibility: hidden; }
+.sch-grid td.is-off { background: var(--border); opacity: .5; cursor: not-allowed; pointer-events: none; }
 /* 終日の予定（JS: setupGrid）。日付の下に予定名を1行で（長いと「…」、全文は押すと data-tip で出る）。予定ありには数えない。色は表の「カレンダー」と同じ */
 .sch-allday { display: block; width: 100%; margin-top: 2px; padding: 1px 2px; border-radius: var(--r-xs); font-weight: 400; color: var(--text);
   background: color-mix(in srgb, var(--vn) 24%, transparent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }

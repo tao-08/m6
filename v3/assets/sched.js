@@ -257,7 +257,7 @@
     const head = el('tr');
     head.append(el('th'));
     data.days.forEach((d) => {
-      const th = el('th', dayClass(d), d.md.replace(/\((.+?)\)/, '\n$1')); // 「11/21」改行「土」（祝日は「月祝」）
+      const th = el('th', (dayClass(d) + (d.off ? ' is-off' : '')).trim(), d.md.replace(/\((.+?)\)/, '\n$1')); // 「11/21」改行「土」（祝日は「月祝」）。is-off = 調整の期間の外（グレー・塗れない）
       // 日付を押すと、その日を1日まるごと NG にする（操作ボタンなので data-tip は付けず、title と aria-label）
       th.dataset.day = d.date;
       th.append(el('span', 'sch-daychk')); // 押すと1日まるごと、の印（全部塗られていたら塗りつぶし）
@@ -297,7 +297,8 @@
         td.dataset.day = d.date; // 日付の見出しから「その日のマス」を探すため
         // このマスにかかる埋まり（自動のもの優先。手入力は塗れる）
         classify(td);
-        if (!td.classList.contains('is-auto')) cells.push(td);
+        if (d.off) td.classList.add('is-off'); // 調整の期間の外: グレーにして塗れない（cells に入れない）
+        else if (!td.classList.contains('is-auto')) cells.push(td);
         tr.append(td);
       });
       tbody.append(tr);
@@ -414,7 +415,7 @@
 
     let mode = null; // true = 塗る / false = 消す / null = なぞっていない
     const paint = (td) => {
-      if (!td || !td.dataset.abs || td.classList.contains('is-auto')) return;
+      if (!td || !td.dataset.abs || td.classList.contains('is-auto') || td.classList.contains('is-off')) return;
       if (td.classList.contains('is-ng') !== mode) {
         td.classList.toggle('is-ng', mode);
         autosave.schedule();
@@ -423,7 +424,7 @@
     };
     table.addEventListener('pointerdown', (e) => {
       const td = e.target.closest('td');
-      if (!td || td.classList.contains('is-auto')) return;
+      if (!td || td.classList.contains('is-auto') || td.classList.contains('is-off')) return;
       e.preventDefault();
       mode = !td.classList.contains('is-ng');
       paint(td);
@@ -450,7 +451,7 @@
     // 自動保存: 塗られているマスの「絶対分」を JSON にして送る（なぞり終わって約1秒後。ページを離れる前にも送る）
     autosave.build = () => {
       const payload = {
-        days: data.days.map((d) => d.date), start: data.start, end: data.end,
+        days: data.days.filter((d) => !d.off).map((d) => d.date), start: data.start, end: data.end, // 期間の外の日は送らない（そこの保存済みの予定を消さない）
         cells: cells.filter((td) => td.classList.contains('is-ng')).map((td) => Number(td.dataset.abs)),
       };
       form.querySelector('input[name="payload"]').value = JSON.stringify(payload);

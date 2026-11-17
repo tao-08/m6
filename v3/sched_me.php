@@ -582,7 +582,8 @@ if ($g !== null) {
 }
 $data = sched_collect_busy($pdo, [$me], $days[0], $days[count($days) - 1], $poll === null ? null : $pollId, true, $me); // 最後の $me = 自分の iCal の予定のタイトルを復号して見せる
 $grid = [
-    'days' => array_map(static fn($d) => ['date' => $d, 'md' => sched_md($d), 'abs' => sched_day_abs($d), 'dow' => (int)date('w', strtotime($d))], $days),
+    'days' => array_map(static fn($d) => ['date' => $d, 'md' => sched_md($d), 'abs' => sched_day_abs($d), 'dow' => (int)date('w', strtotime($d)),
+        'off' => $poll !== null && ($d < (string)$poll['date_from'] || $d > (string)$poll['date_to'])], $days), // off … 調整の期間の外の日（月曜始まりの週に入っただけ。グレーにして塗れない）
     'start' => $ws, 'end' => $we, 'step' => SCHED_STEP,
     // 埋まり: [開始, 終了, 種類, ラベル, 無視中か]（場所は画面に要らないので落とす）
     'busy' => array_map(static fn($b) => [$b[0], $b[1], $b[3], $b[4], !empty($b[5])], $data['busy'][$me] ?? []),
