@@ -469,6 +469,11 @@
     if (!box) return;
     const btn = box.querySelector('[data-ai-run]');
     const status = box.querySelector('[data-ai-status]');
+    // モデルの選択は検索・編集の実行ボタンの横にそれぞれあるので、片方を変えたらもう片方も同じ値にする
+    box.addEventListener('change', (e) => {
+      if (!e.target.matches('[data-ai-model]')) return;
+      box.querySelectorAll('[data-ai-model]').forEach((s) => { s.value = e.target.value; s.dispatchEvent(new Event('change')); });
+    });
     const form = document.getElementById('studio-ai-result');
     const body = form.querySelector('[data-ai-body]');
 

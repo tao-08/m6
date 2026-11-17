@@ -32,7 +32,7 @@
 .sinfo-list__meta .icon, .sinfo-info .icon { font-size: 16px; vertical-align: -3px; }
 
 /* ---- カード（セクション） ---- */
-.sinfo-section { margin-top: 14px; display: grid; gap: 10px; }
+.sinfo-section { margin-top: 14px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; } /* minmax(0, 1fr) = 列を内容の幅に広げない（横に長いタブ・表は中でスクロール） */
 .sinfo-section > h2 { margin: 0; font-size: var(--fs-md); font-weight: 800; display: flex; align-items: center; gap: 6px; }
 .sinfo-sub { margin: 14px 0 3px; font-size: var(--fs-sm); font-weight: 800; color: var(--muted); }
 .sinfo-links { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -76,7 +76,7 @@
 .sinfo-student { color: var(--headliner); font-weight: 800; }
 
 /* ---- 料金シミュレーション ---- */
-.sinfo-sim { display: grid; gap: 12px; }
+.sinfo-sim { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; } /* minmax(0, 1fr) = レンタルのタブなど横に長い中身で列を広げない */
 .sinfo-sim__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; } /* 画面幅に合わせて列の数が自動で変わる */
 .sinfo-field { display: grid; gap: 4px; font-size: var(--fs-sm); }
 .sinfo-field > span:first-child { color: var(--muted); font-weight: 800; font-size: var(--fs-xs); }
@@ -254,7 +254,8 @@ h1 .tag--rec, h1 .tag--night { font-size: var(--fs-sm); } /* 見出し（36px）
 /* ---- ✨AIで入力 ---- */
 .sinfo-ai { display: grid; gap: 10px; padding: 10px 0 12px; border-bottom: 1px dashed var(--border); } /* 基本情報の「編集」の先頭に置く。下の入力欄との区切りの点線 */
 .sinfo-ai__head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
-.sinfo-ai__head select { width: auto; padding: 4px 8px; }
+.sinfo-ai__run { display: flex; align-items: center; gap: 8px; }
+.sinfo-ai__run select { width: auto; padding: 4px 8px; }
 /* 画像のサムネイル（×で外せる） */
 /* AIで検索 / AIで編集 のタブと、それぞれの中身（hidden のときは出さない。display を指定すると hidden が効かなくなるため） */
 .sinfo-ai__tabs { margin: 0; } /* タブ（.tabs の下の余白は、この箱では gap に任せる） */
@@ -477,6 +478,8 @@ h1 .tag--rec, h1 .tag--night { font-size: var(--fs-sm); } /* 見出し（36px）
 .sinfo-ai__scope { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 
 /* レンタルのジャンルのタブ（10個を超えたら）。行は display を持つので、hidden を効かせ直す */
-.sinfo-rent-tabs { margin-bottom: 8px; }
+.sinfo-rent-tabs { margin-bottom: 8px; min-width: 0; scrollbar-width: none; } /* min-width: 0 = 親（grid）の幅を内容に合わせて広げさせず、はみ出す分はタブ内で横スクロール */
+.sinfo-rent-tabs::-webkit-scrollbar { display: none; }
+@media (max-width: 600px) { .sinfo-rent-tabs { gap: 2px; padding: 2px; } .sinfo-rent-tabs .tab { padding: 5px 10px; gap: 4px; font-size: var(--fs-xs); } } /* スマホはコンパクトに */
 [data-rent-genre][hidden] { display: none !important; }
 .sinfo-sim__discs .sinfo-chip[data-off] { opacity: .45; } /* 選んだ曜日で使えない割引区分 */

@@ -1013,14 +1013,18 @@ render_header($studio['name'], 'tools');
         <summary><?= icon('edit') ?> 編集</summary>
         <?php if ($canEdit && claude_enabled()): ?>
         <!-- AIで検索 / AIで編集（編集できる人 = ログインしていれば誰でも）。基本情報の「編集」を開いたときだけ見える。結果のプレビューは JS が #studio-ai-result に作る -->
+        <?php
+        // モデルの選択（Opus = 高精度・高め / Sonnet = 標準 / Haiku = 安い）。検索・編集の実行ボタンの横に1つずつ置く（JS が値をそろえる）。初期は config.php の設定値
+        $aiModelSelect = function (): string {
+            $o = '';
+            foreach (studio_ai_models() as $mid => $mname) {
+                $o .= '<option value="' . h($mid) . '"' . ($mid === studio_ai_default_model() ? ' selected' : '') . '>' . h($mname) . '</option>';
+            }
+            return '<select data-ai-model aria-label="モデル" title="モデル">' . $o . '</select>';
+        };
+        ?>
         <div class="sinfo-ai" id="studio-ai" data-studio-id="<?= $studioId ?>" data-csrf="<?= h(csrf_token()) ?>" data-max-images="<?= AI_MAX_IMAGES ?>">
             <div class="sinfo-ai__head">
-                <!-- モデル（Opus = 高精度・高め / Sonnet = 標準 / Haiku = 安い）。検索・編集で共通。初期は config.php の設定値。このボックスは編集できる人にしか出ない -->
-                <select data-ai-model aria-label="モデル" title="モデル">
-                    <?php foreach (studio_ai_models() as $mid => $mname): ?>
-                        <option value="<?= h($mid) ?>"<?= $mid === studio_ai_default_model() ? ' selected' : '' ?>><?= h($mname) ?></option>
-                    <?php endforeach; ?>
-                </select>
                 <span class="muted small" data-ai-status></span>
             </div>
             <!-- 使い方の切り替え。タブの赤い丸の動きは app.js の setupTabGlide が付ける。切り替えは JS（studio_info.js の setupAi）。待っている間に切り替えてもよい -->
@@ -1048,12 +1052,12 @@ render_header($studio['name'], 'tools');
                     </details>
                 </div>
                 <div class="sinfo-ai__thumbs" data-ai-thumbs hidden></div>
-                <div><button type="button" class="btn btn--primary btn--sm" data-ai-run><?= icon('auto_awesome') ?> 検索</button></div>
+                <div class="sinfo-ai__run"><button type="button" class="btn btn--primary btn--sm" data-ai-run><?= icon('auto_awesome') ?> 検索</button><?= $aiModelSelect() ?></div>
             </div>
             <!-- AIで編集: 今の登録データを AI に渡し、指示どおりに書き換えた提案を作る（変わる項目だけプレビューに出る） -->
             <div class="sinfo-ai__panel" data-ai-panel="edit" hidden>
                 <textarea data-ai-instruction rows="3" maxlength="500" placeholder="平日の料金を全部100円上げる" aria-label="編集の指示"></textarea>
-                <div><button type="button" class="btn btn--primary btn--sm" data-ai-edit-run><?= icon('auto_fix_high') ?> 編集</button></div>
+                <div class="sinfo-ai__run"><button type="button" class="btn btn--primary btn--sm" data-ai-edit-run><?= icon('auto_fix_high') ?> 編集</button><?= $aiModelSelect() ?></div>
             </div>
             <form method="post" class="sinfo-ai__result" id="studio-ai-result" hidden
                 data-confirm="選んだ項目を AI の結果で置き換えます（料金・パック・レンタル・機材は今の行が削除されます）。よろしいですか？">
