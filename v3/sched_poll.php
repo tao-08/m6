@@ -452,8 +452,11 @@ if ($status < 3) {
                 $st->execute([$pollId]);
                 $prov[] = ['date' => (string)$poll['fix_date'], 's' => $fs, 'e' => $fe, 'title' => (string)$poll['title'], 'where' => $fWhere, 'members' => array_map('intval', $st->fetchAll(PDO::FETCH_COLUMN))];
             }
+            // 表は月曜〜日曜の7日ずつ（左端は月曜。マイスケジュールと同じ）。調整の期間の外の日は off（グレー・押せない）
+            $overFrom = date('Y-m-d', strtotime($from . ' -' . ((int)date('N', strtotime($from)) - 1) . ' day'));
+            $overTo = date('Y-m-d', strtotime($to . ' +' . (7 - (int)date('N', strtotime($to))) . ' day'));
             $over = [
-                'days' => array_map(static fn($d) => ['date' => $d, 'md' => sched_md($d), 'abs' => sched_day_abs($d), 'dow' => (int)date('w', strtotime($d))], sched_dates($from, $to)),
+                'days' => array_map(static fn($d) => ['date' => $d, 'md' => sched_md($d), 'abs' => sched_day_abs($d), 'dow' => (int)date('w', strtotime($d)), 'off' => $d < $from || $d > $to], sched_dates($overFrom, $overTo)),
                 'start' => (int)$poll['day_start'], 'end' => (int)$poll['day_end'], 'step' => SCHED_STEP,
                 'busy' => (object)$overBusy, 'prov' => $prov,
             ];

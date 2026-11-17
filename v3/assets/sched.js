@@ -1411,7 +1411,7 @@
       const head = el('tr');
       head.append(el('th'));
       days.forEach((d) => {
-        const th = el('th', dayClass(d), d.md.replace(/\((.+?)\)/, '\n$1')); // 「11/21」改行「土」（祝日は「月祝」）
+        const th = el('th', (dayClass(d) + (d.off ? ' is-off' : '')).trim(), d.md.replace(/\((.+?)\)/, '\n$1')); // 「11/21」改行「土」（祝日は「月祝」）。is-off = 調整の期間の外（月曜始まりの週に入っただけ）
         // 日だけ仮決定: 終日の予定と同じように、日付の下に題名（時間は未定なのでマスには塗らない。全文は押すと data-tip）
         provs.filter((p) => p.date === d.date && p.s === null).forEach((p) => {
           const chip = el('span', 'sch-allday sch-allday--prov', p.title);
@@ -1428,6 +1428,10 @@
         const tr = el('tr', m % 60 === 0 ? 'is-hour' : '');
         tr.append(el('th', '', m % 60 === 0 ? hm(m) : ''));
         days.forEach((d) => {
+          if (d.off) {
+            tr.append(el('td', 'is-off')); // 調整の期間の外: グレー・押せない
+            return;
+          }
           const abs = d.abs + m;
           // このマスにかかる埋まりを、人ごとに最初の1つだけ拾う（同じ人の埋まりが重なっていても1人と数える）
           const who = [];
