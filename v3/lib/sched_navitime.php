@@ -26,7 +26,7 @@ function sched_nav_key(): string
 
 /**
  * NAVITIME の返事（route_transit）の1つ目の経路を、使う形にそろえる。API を呼ばない部分（テストできる）
- * @return ?array{min:int, fare:?int, lines:string[], moves:array<int,array{from:array,to:array}>}
+ * @return ?array{min:int, sum:int, transfers:int, fare:?int, lines:string[], moves:array<int,array{from:array,to:array}>}
  *   lines … 乗る路線の名前の順（経路の候補を人が見分けるための題。例 ['ＪＲ中央線', 'ＪＲ総武線']）
  *   moves … 乗車区間（徒歩は除く）の順。from / to = ['id' => 駅ID, 'name' => 駅名, 'lat' => float, 'lon' => float]
  */
@@ -68,7 +68,18 @@ function sched_nav_parse(array $json, int $idx = 0): ?array
             'to'   => ['id' => (string)($links[count($links) - 1]['to']['id'] ?? ''), 'name' => (string)($to['name'] ?? ''), 'lat' => (float)$to['coord']['lat'], 'lon' => (float)$to['coord']['lon']],
         ];
     }
-    return ['min' => (int)$item['summary']['move']['time'], 'fare' => $fare, 'lines' => $lines, 'moves' => $moves];
+    $sum = 0;
+    foreach ($sections as $s) {
+        if (($s['type'] ?? '') === 'move') {
+            $sum += (int)($s['time'] ?? 0);
+        }
+    }
+    return [
+        'min' => (int)$item['summary']['move']['time'], // NAVITIME の合計（乗換・待ちの平均を含む）
+        'sum' => $sum,                                   // 徒歩・乗車の時間の合計（乗換・待ちを含まない）
+        'transfers' => (int)($item['summary']['move']['transit_count'] ?? 0),
+        'fare' => $fare, 'lines' => $lines, 'moves' => $moves,
+    ];
 }
 
 /** 返事の経路の候補ぜんぶ（先頭から $max 件。経路が読めないものは除く） */
@@ -229,6 +240,15 @@ function sched_nav_routes(array $from, array $to, string $time): array
     }
     $json = json_decode((string)$raw, true);
     return is_array($json) ? sched_nav_parse_all($json) : [];
+}
+
+/**
+ * 移動時間（分）= 徒歩・乗車の合計 + 乗換1回あたり $transferMin 分。NAVITIME の合計（min）は乗換・待ちの平均が長めなので使わない
+ *   （時刻表で「12時に一番近い電車」を出すには有料の契約が要る。Basic は平均所要時間）
+ */
+function sched_nav_door_minutes(array $route, int $transferMin): int
+{
+    return ($route['sum'] ?? $route['min']) + ($route['transfers'] ?? 0) * $transferMin; // 古いキャッシュには sum / transfers が無い
 }
 
 /** 経路の1つ目だけ（移動時間の調査用） */

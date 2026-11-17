@@ -91,6 +91,9 @@ const SCHED_DEFAULT_BREAKS = [['2026-12-25', '2027-01-07']];
 /** 交通費: 練習の前後この分数以内に授業があれば、学校から来る・学校へ帰るものとして運賃を出す（設定画面で変える）の初期値 */
 const SCHED_DEFAULT_FARE_GAP_MIN = 240;
 
+/** 移動時間: 乗換1回あたりに足す分（NAVITIME の乗換・待ちの平均は長めなので、区間の合計 + この分で出す。設定画面で変える） */
+const SCHED_DEFAULT_TRANSFER_MIN = 3;
+
 /** 「1人あたり何帖あれば足りるか」の目安の初期値（部屋の広さからの判定に使う） */
 const SCHED_DEFAULT_JO_PER_PERSON = 3.0;
 
@@ -138,12 +141,14 @@ function sched_settings(PDO $pdo): array
     $terms = json_decode((string)($rows['sched_terms'] ?? ''), true);
     $jo = (float)($rows['sched_jo'] ?? 0);
     $gap = (int)($rows['sched_fare_gap'] ?? 0);
+    $transfer = isset($rows['sched_transfer_min']) ? (int)$rows['sched_transfer_min'] : SCHED_DEFAULT_TRANSFER_MIN; // 0 も有効
     $cache = [
         'periods' => is_array($periods) && count($periods) === 6 ? array_combine(range(1, 6), array_values($periods)) : SCHED_DEFAULT_PERIODS,
         'terms'   => is_array($terms['terms'] ?? null) ? [1 => $terms['terms'][1] ?? $terms['terms']['1'], 2 => $terms['terms'][2] ?? $terms['terms']['2']] : SCHED_DEFAULT_TERMS,
         'breaks'  => is_array($terms['breaks'] ?? null) ? $terms['breaks'] : SCHED_DEFAULT_BREAKS,
         'jo'      => $jo > 0 ? $jo : SCHED_DEFAULT_JO_PER_PERSON,
         'fare_gap' => $gap > 0 ? $gap : SCHED_DEFAULT_FARE_GAP_MIN,
+        'transfer_min' => max(0, min(30, $transfer)),
     ];
     return $cache;
 }

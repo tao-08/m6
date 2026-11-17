@@ -900,6 +900,7 @@ $navRoute = sched_nav_parse(json_decode((string)file_get_contents(__DIR__ . '/fi
 $navNames = static fn(array $st) => array_map(static fn($x) => $x['from']['name'] . '>' . $x['to']['name'] . ($x['whole'] ? '*' : ''), $st);
 check('NAVITIME: 経路の読み取り（時間・運賃・乗車区間）', [$navRoute['min'], $navRoute['fare'], count($navRoute['moves']), $navRoute['moves'][0]['from']['name'], end($navRoute['moves'])['to']['name']], [34, 380, 3, '明大前', '神保町']);
 $navPass = ['ids' => ['00008602', '00002919', '00004254'], 'moves' => []]; // 定期: 明大前〜新宿（京王線・京王新線）。途中駅の判定は下の実データのテストで
+check('NAVITIME: 移動時間 = 徒歩・乗車の合計 + 乗換 × 分（明大前→神保町は乗換1回）', [$navRoute['sum'], $navRoute['transfers'], sched_nav_door_minutes($navRoute, 3), sched_nav_door_minutes($navRoute, 0)], [23, 1, 26, 23]);
 check('NAVITIME: 定期の範囲を除いた区間', [
     $navNames(sched_nav_stretches($navRoute['moves'], $navPass)),
     $navNames(sched_nav_stretches($navRoute['moves'], ['ids' => [], 'moves' => []])),

@@ -165,7 +165,7 @@ if (is_post()) {
         try {
             foreach ($pairs as [$a, $b]) {
                 $route = sched_nav_route($coords[$a], $coords[$b], sched_nav_time());
-                $min = $route === null ? null : $route['min'];
+                $min = $route === null ? null : sched_nav_door_minutes($route, (int)$settings['transfer_min']);
                 if ($min === null) {
                     $skipped++; // 経路が見つからない = 直線距離の見積もりのまま
                 } else {
@@ -178,6 +178,17 @@ if (is_post()) {
         } catch (RuntimeException $e) {
             flash(($saved ? $saved . '件を保存したあと、' : '') . $e->getMessage(), 'error');
         }
+        redirect('sched_settings#travel');
+    }
+
+    if ($action === 'transfer_min') {
+        $m = (string)($_POST['minutes'] ?? '');
+        if (!ctype_digit($m) || (int)$m > 30) {
+            flash('0〜30 分で入力してください', 'error');
+            redirect('sched_settings#travel');
+        }
+        sched_setting_save($pdo, 'sched_transfer_min', $m, $uid);
+        flash('保存しました');
         redirect('sched_settings#travel');
     }
 
@@ -227,6 +238,11 @@ render_header('日程調整の設定', 'tools');
         </table></div>
     <?php endif; ?>
     <?php if (sched_nav_key() !== '' && $defaultStudios): ?>
+        <form method="post" class="sch-row">
+            <?= csrf_field() ?><input type="hidden" name="action" value="transfer_min">
+            <label>乗換1回あたり <input type="number" name="minutes" value="<?= (int)$settings['transfer_min'] ?>" min="0" max="30" step="1" class="input-num"> 分を足す</label>
+            <button class="btn btn--sm" type="submit">保存</button>
+        </form>
         <form method="post" class="sch-row" data-loading data-confirm="初期候補のスタジオ宛ての移動時間を NAVITIME で調べて、上書きに保存します。よろしいですか？">
             <?= csrf_field() ?><input type="hidden" name="action" value="travel_navitime">
             <button class="btn btn--sm" type="submit">NAVITIMEで調査</button>
