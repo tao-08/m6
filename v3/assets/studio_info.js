@@ -331,6 +331,11 @@
       const d = discOf(v.disc);
       const discOk = !!d && dayOk(d.day, v.day);
       const disc = discOk ? v.disc : 0;
+      // 割引チップ: 有効（色付き）= 適用中 / 無効・曜日が合わない = 色なし（曜日が合わない区分は data-off で薄く）
+      form.querySelectorAll('input[name="disc"]').forEach((c) => {
+        const x = discOf(Number(c.value));
+        c.closest('label').toggleAttribute('data-off', !!x && !dayOk(x.day, v.day));
+      });
       const r = calc(v, disc, v.dur);
       const perPerson = (yenValue) => Math.ceil(yenValue / v.people); // 割り勘は1円単位で切り上げ（足りなくならないように）
 
@@ -438,6 +443,12 @@
       remembered[lastMode] = people.value;
       lastMode = e.target.value;
       people.value = remembered[lastMode];
+    });
+
+    // 割引チップは同時に1つだけ有効（1つ入れたら他は外す）。全部外す = 割引なし
+    form.addEventListener('change', (e) => {
+      if (e.target.name !== 'disc' || !e.target.checked) return;
+      form.querySelectorAll('input[name="disc"]').forEach((c) => { if (c !== e.target) c.checked = false; });
     });
 
     // input イベント = 値が変わるたび（数字を打つたび）に発生。change より反応が早い

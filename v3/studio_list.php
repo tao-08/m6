@@ -131,8 +131,8 @@ render_header('スタジオ情報', 'tools');
     <div class="card sinfo-filter" id="studio-filter">
         <?php if ($filterTabs): ?>
             <div class="sinfo-seg sinfo-filter__tabs" role="radiogroup" aria-label="絞り込み">
-                <label><input type="radio" name="filter_tab" value="area"> エリア</label>
-                <label><input type="radio" name="filter_tab" value="size" checked> 広さ</label>
+                <label><input type="radio" name="filter_tab" value="area" checked> エリア</label>
+                <label><input type="radio" name="filter_tab" value="size"> 広さ</label>
             </div>
         <?php endif; ?>
         <?php if ($areas): ?>

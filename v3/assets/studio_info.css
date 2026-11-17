@@ -479,3 +479,4 @@ h1 .tag--rec, h1 .tag--night { font-size: var(--fs-sm); } /* 見出し（36px）
 /* レンタルのジャンルのタブ（10個を超えたら）。行は display を持つので、hidden を効かせ直す */
 .sinfo-rent-tabs { margin-bottom: 8px; }
 [data-rent-genre][hidden] { display: none !important; }
+.sinfo-sim__discs .sinfo-chip[data-off] { opacity: .45; } /* 選んだ曜日で使えない割引区分 */

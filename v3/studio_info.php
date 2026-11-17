@@ -1190,15 +1190,13 @@ render_header($studio['name'], 'tools');
                 </div></div>
         </div>
         <?php if ($hasStudent): ?>
-            <!-- 割引区分の選択（なし / 学割 / U20 …）。区分に「使える曜日」があれば、使えない曜日のときは JS が通常料金で計算して理由を出す。
-                 初期値は先頭の区分（これまでの「学割にチェック」と同じ動き） -->
-            <div class="sinfo-field"><span>割引</span>
-                <div class="sinfo-seg sinfo-seg--disc" role="radiogroup" aria-label="割引">
-                    <label><input type="radio" name="disc" value="0"> なし</label>
-                    <?php foreach ($usedDisc as $k => $d): ?>
-                        <label><input type="radio" name="disc" value="<?= $d['studio_discount_id'] ?>"<?= $k === 0 ? ' checked' : '' ?>> <?= h($d['name']) ?></label>
-                    <?php endforeach; ?>
-                </div></div>
+            <!-- 割引区分のチップ（学割 / U20 …）。初期は先頭の区分が有効（色付き）。押すと有効 / 無効が切り替わり、無効は色なし。区分は同時に1つだけ有効。
+                 区分に「使える曜日」があれば、使えない曜日のときは JS が通常料金で計算し、そのチップを薄くする -->
+            <div class="sinfo-chips sinfo-sim__discs" role="group" aria-label="割引">
+                <?php foreach ($usedDisc as $k => $d): ?>
+                    <label class="sinfo-chip"><input type="checkbox" name="disc" value="<?= $d['studio_discount_id'] ?>"<?= $k === 0 ? ' checked' : '' ?>> <?= h($d['name']) ?></label>
+                <?php endforeach; ?>
+            </div>
         <?php endif; ?>
         <?php if ($rentals): ?>
             <!-- レンタル欄: <details> / <summary> = ブラウザ標準の「開け閉めできる箱」（HTMLだけで動く・JS不要）。
