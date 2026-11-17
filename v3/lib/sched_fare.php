@@ -176,10 +176,17 @@ function sched_pass_spec(PDO $pdo, array $prof, bool $fetch): ?array
  */
 function sched_pass_candidates(PDO $pdo, string $home, string $to, bool $fetch): array
 {
-    $key = 'p|' . $home . '|' . $to;
+    // 'p2|' … 所要時間を「徒歩・乗車の合計 + 乗換」に変えたので、古い 'p|'（NAVITIME の合計の分数入り）は使わない
+    // 覚えるのは経路の中身（路線名・合計・乗換回数）。分数の表示は、設定の「乗換1回あたり」で毎回つくる
+    $key = 'p2|' . $home . '|' . $to;
+    $transferMin = (int)sched_settings($pdo)['transfer_min'];
+    $label = static function (array $c) use ($transferMin): array {
+        $min = sched_nav_door_minutes($c, $transferMin);
+        return ['label' => $c['names'] . '（' . $min . '分）'] + $c;
+    };
     $hit = sched_nav_cache_get($pdo, $key);
     if ($hit !== null) {
-        return $hit['list'] ?? [];
+        return array_map($label, $hit['list'] ?? []);
     }
     if (!$fetch) {
         return [];
@@ -189,11 +196,11 @@ function sched_pass_candidates(PDO $pdo, string $home, string $to, bool $fetch):
     $out = [];
     if ($hc !== null && $tc !== null) {
         foreach (sched_nav_routes_cached($pdo, $hc, $tc, true) as $r) {
-            $out[] = ['label' => implode(' → ', $r['lines'] ?: ['徒歩']) . '（' . $r['min'] . '分）'] + sched_nav_pass_spec($r);
+            $out[] = ['names' => implode(' → ', $r['lines'] ?: ['徒歩']), 'sum' => $r['sum'] ?? $r['min'], 'transfers' => $r['transfers'] ?? 0] + sched_nav_pass_spec($r);
         }
     }
     sched_nav_cache_put($pdo, $key, ['list' => $out]);
-    return $out;
+    return array_map($label, $out);
 }
 
 /**
