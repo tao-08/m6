@@ -261,6 +261,21 @@ function sched_ical_parse(string $ics, int $fromAbs, int $toAbs): array
  */
 function sched_merge_spans(array $spans): array
 {
+    // 終日の予定（0:00〜0:00）と時間指定の予定は、別々にまとめる（一緒にすると、終日の予定に時間指定の予定が飲み込まれて消える）
+    $day = [];
+    $timed = [];
+    foreach ($spans as $sp) {
+        if ($sp[1] > $sp[0] && substr(sched_abs_to_dt($sp[0]), 11) === '00:00:00' && substr(sched_abs_to_dt($sp[1]), 11) === '00:00:00') {
+            $day[] = $sp;
+        } else {
+            $timed[] = $sp;
+        }
+    }
+    if ($day && $timed) {
+        $out = [...sched_merge_spans($day), ...sched_merge_spans($timed)];
+        usort($out, static fn($a, $b) => $a[0] <=> $b[0]);
+        return $out;
+    }
     usort($spans, static fn($a, $b) => $a[0] <=> $b[0]);
     $groups = []; // [[開始, 終了, [タイトル, …]], …]
     foreach ($spans as $sp) {
