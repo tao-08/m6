@@ -24,7 +24,7 @@ require_once __DIR__ . '/lib/repository.php'; // tip_attr（ポップアップ�
 require_once __DIR__ . '/lib/sched.php';
 require_once __DIR__ . '/lib/sched_ical.php';
 require_once __DIR__ . '/lib/sched_google.php'; // 決定した練習を Google カレンダーに入れる・直す・消す
-$user = require_admin(); // 完成するまで管理者だけ
+$user = require_login(); // ログインしていれば誰でも
 $pdo = db();
 
 $pollId = (int)($_REQUEST['id'] ?? 0);

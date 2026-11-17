@@ -15,7 +15,7 @@ declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/repository.php'; // tip_attr（ポップアップの説明）
 require_once __DIR__ . '/lib/sched.php';
-$user = require_admin(); // 完成するまで管理者だけ
+$user = require_executive(); // 幹部・管理者だけ（設定は全員に影響する）
 $pdo = db();
 $settings = sched_settings($pdo);
 $uid = (int)$user['user_id'];

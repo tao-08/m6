@@ -21,7 +21,7 @@ require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/repository.php'; // member_name_choices / render_suggest_datalist（名前の入力候補）
 require_once __DIR__ . '/lib/sched.php';
 require_once __DIR__ . '/lib/sched_google.php'; // 調整の削除・編集を Google カレンダーに反映する
-$user = require_admin(); // 完成するまで管理者だけ
+$user = require_login(); // ログインしていれば誰でも
 $pdo = db();
 
 /* ==================== 保存・削除 ==================== */

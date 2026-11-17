@@ -42,11 +42,9 @@ if (is_executive()) {
     $tools[] = ['studio', 'meeting_room', 'スタジオ割',
         '練習の要否を集め、メンバーが重ならないように練習の順番と部屋を決めて画像にします。', '幹部'];
 }
-// スタ連（スタジオ練習）の日程調整（sched.php）。完成するまで管理者だけ
-if (is_admin()) {
-    $tools[] = ['sched', 'event_available', 'スタジオ練習の日程調整',
-        '時間割・カレンダーからメンバー全員の空きを出し、スタジオの料金と一緒に候補を並べます。', '管理者'];
-}
+// スタ連（スタジオ練習）の日程調整（sched.php）。ログインしていれば誰でも
+$tools[] = ['sched', 'event_available', 'スタジオ練習の日程調整',
+    '時間割・カレンダーからメンバー全員の空きを出し、スタジオの料金と一緒に候補を並べます。'];
 // 回答受付中のスタジオ割に自分が出るバンドがあれば、回答ページのカードを先頭に出す
 //   user_account → member → band_member → band → live_day → studio_plan と JOIN でたどる（DISTINCT でライブごとに1行）
 $st = db()->prepare('SELECT DISTINCT l.live_id, l.name FROM user_account u

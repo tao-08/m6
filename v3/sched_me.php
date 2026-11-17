@@ -34,7 +34,7 @@ require_once __DIR__ . '/lib/sched_photo.php'; // 画像から予定を読み込
 const SCHED_ME_WEEKDAYS = SCHED_WEEKDAYS + [7 => '日'];
 /** 1人が登録できる毎週の NG の数（増やしすぎて画面と計算が重くならないように） */
 const SCHED_ME_WEEKLY_MAX = 20;
-$user = require_admin(); // 完成するまで管理者だけ
+$user = require_login(); // ログインしていれば誰でも
 $pdo = db();
 if ($user['member_id'] === null) {
     render_header('マイスケジュール', 'tools');

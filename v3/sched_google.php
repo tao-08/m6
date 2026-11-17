@@ -22,7 +22,7 @@ require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/sched.php';
 require_once __DIR__ . '/lib/sched_ical.php';
 require_once __DIR__ . '/lib/sched_google.php';
-$user = require_admin(); // 完成するまで管理者だけ（マイスケジュールと同じ）
+$user = require_login(); // ログインしていれば誰でも
 if ($user['member_id'] === null) {
     error_page(403, 'アカウントが部員に紐づいていません');
 }
