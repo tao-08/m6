@@ -393,8 +393,9 @@ function sched_pass_candidates(PDO $pdo, string $home, string $to, bool $fetch):
 }
 
 /**
- * メンバーの、出発地（'home' = 自宅最寄り駅 / 'campus'）→ スタジオ の定期外の運賃。分からなければ null
- *   $prof … ['campus' => 1|2, 'home_station' => ?string, 'pass_to' => ?string, 'pass_via' => ?string（JSON）]
+ * メンバーの、出発地 → スタジオ の定期外の運賃。分からなければ null
+ *   $origin … 'home'（自宅最寄り駅）/ 'campus:和泉' のような授業の場所キー / 'campus'（旧: メインのキャンパス）
+ *   $prof … ['campus' => メインのキャンパス番号, 'home_station' => ?string, 'pass_to' => ?string, 'pass_via' => ?string（JSON）]
  *   $fetch = false … キャッシュにあるものだけ使う（画面を開いたときはこちら。API は呼ばない）
  *   $dests … スタジオの行き先の候補（sched_studio_dests）。所要時間がいちばん短い駅の運賃
  */
@@ -403,9 +404,11 @@ function sched_member_fare(PDO $pdo, array $prof, string $origin, array $dests, 
     $home = (string)($prof['home_station'] ?? '');
     try {
         $oc = null;
-        if ($origin === 'campus') {
+        if ($origin === 'campus' || str_starts_with($origin, 'campus:')) {
+            // 'campus:名前' ならその名前、旧形式の 'campus' はメインのキャンパスの名前で、キャンパスの座標を探す
+            $campName = $origin === 'campus' ? (SCHED_CAMPUSES[(int)$prof['campus']] ?? '') : substr($origin, strlen('campus:'));
             foreach (studio_campuses() as $camp) {
-                if ($camp['name'] === (SCHED_CAMPUSES[(int)$prof['campus']] ?? '')) {
+                if ($camp['name'] === $campName) {
                     $oc = [(float)$camp['lat'], (float)$camp['lng']];
                 }
             }
@@ -478,23 +481,30 @@ function sched_studio_trip_stats(array $trips): array
 }
 
 /**
- * 練習の1コマ（開始 $t0・長さ $len）で、メンバーが「学校から来る / 学校へ帰る」か。前後 $gap 分以内に授業があれば学校
+ * 練習の1コマ（開始 $t0・長さ $len）で、メンバーが「どこから来て / どこへ帰るか」。前後 $gap 分以内に授業があれば、その授業の場所
  *   busy … sched_collect_busy の1人分 [[開始, 終了, 場所, 種類, 題], …]（絶対分）
- * @return array{0: string, 1: string} [行き: 'home'|'campus', 帰り: 'home'|'campus']
+ *   前後に授業が複数あれば、練習にいちばん近い授業の場所（行きは直前に終わる授業、帰りは直後に始まる授業）
+ *   授業の場所が無ければ（古いデータ）'campus'（= メインのキャンパス）
+ * @return array{0: string, 1: string} [行き: 'home'|'campus:名前', 帰り: 'home'|'campus:名前']
  */
 function sched_fare_legs(array $busy, int $t0, int $len, int $gap): array
 {
     $in = 'home';
     $out = 'home';
+    $inEnd = null;    // 行きに使った授業の終わり（より遅く終わる = 練習に近い授業を優先するため）
+    $outStart = null; // 帰りに使った授業の始まり（より早く始まる授業を優先）
     foreach ($busy as $b) {
         if (($b[3] ?? '') !== 'class') {
             continue;
         }
-        if ($b[1] <= $t0 && $t0 - $b[1] <= $gap) {
-            $in = 'campus';
+        $place = ($b[2] ?? null) ?: 'campus';
+        if ($b[1] <= $t0 && $t0 - $b[1] <= $gap && ($inEnd === null || $b[1] > $inEnd)) {
+            $in = $place;
+            $inEnd = $b[1];
         }
-        if ($b[0] >= $t0 + $len && $b[0] - ($t0 + $len) <= $gap) {
-            $out = 'campus';
+        if ($b[0] >= $t0 + $len && $b[0] - ($t0 + $len) <= $gap && ($outStart === null || $b[0] < $outStart)) {
+            $out = $place;
+            $outStart = $b[0];
         }
     }
     return [$in, $out];

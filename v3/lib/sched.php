@@ -27,16 +27,19 @@ require_once __DIR__ . '/sched_ical.php'; // sched_ical_decrypt()（iCal の予�
  *  定数
  * ===================================================================== */
 
-/** キャンパス（sched_profile.campus の値 => 名前）。中野・生田は扱わない（部員にいないため） */
-const SCHED_CAMPUSES = [1 => '和泉', 2 => '駿河台'];
+/** キャンパス（sched_profile.campus / campus2 の値 => 名前）。和泉・駿河台・中野・生田の4つ */
+const SCHED_CAMPUSES = [1 => '和泉', 2 => '駿河台', 3 => '中野', 4 => '生田'];
 
 /**
  * キャンパスごとの、定期券の到着駅の候補（sched_profile.pass_to に入る駅名）。先頭がそのキャンパスの最寄り駅
- *   和泉は明大前、駿河台は御茶ノ水・神保町周辺の4駅。どちらにも、他のキャンパスへ通う人のために 明大前・中野・生田 を足してある
+ *   和泉は明大前、駿河台は御茶ノ水・神保町周辺の4駅、中野は中野、生田は生田。
+ *   どのキャンパスにも、他のキャンパスへ通う人のために 明大前・中野・生田 を足してある
  */
 const SCHED_PASS_STATIONS = [
     1 => ['明大前', '中野', '生田'],
     2 => ['JR御茶ノ水', 'メトロ御茶ノ水', '新御茶ノ水', '神保町', '明大前', '中野', '生田'],
+    3 => ['中野', '明大前', '生田'],
+    4 => ['生田', '明大前', '中野'],
 ];
 
 /** 学期（sched_class.term の値 => 名前） */
@@ -465,13 +468,21 @@ function sched_travel_fn(array $coords, array $overrides): Closure
 }
 
 /**
- * 部員のキャンパス（1 = 和泉 / 2 = 駿河台）。プロフィールで選んでいればそれ、無ければ学年から
- *   1・2年 → 和泉、3年以上（OB も）→ 駿河台。入学年度が未登録なら和泉
+ * 部員のメインのキャンパス（SCHED_CAMPUSES の番号）。次の順で決める
+ *   1. プロフィールで選んでいればそれ
+ *   2. 学部（総合数理学部・国際日本学部 → 中野 / 理工学部・農学部 → 生田。学年は問わない）
+ *   3. 学年（1・2年 → 和泉、3年以上（OB も）→ 駿河台。入学年度が未登録なら和泉）
  */
-function sched_member_campus(?int $chosen, ?int $entryYear): int
+function sched_member_campus(?int $chosen, ?int $entryYear, ?string $faculty = null): int
 {
     if ($chosen !== null && isset(SCHED_CAMPUSES[$chosen])) {
         return $chosen;
+    }
+    if ($faculty === '総合数理学部' || $faculty === '国際日本学部') {
+        return 3;
+    }
+    if ($faculty === '理工学部' || $faculty === '農学部') {
+        return 4;
     }
     $grade = grade_of($entryYear);
     return $grade !== null && $grade >= 3 ? 2 : 1;
@@ -761,7 +772,7 @@ function sched_busy_is_allday(string $startAt, string $endAt): bool
 /**
  * 部員たちの「埋まり」と、ほかの調整の仮決定・決定を集める（sched_candidates に渡す形）
  *   $exceptPollId … いま計算している調整（自分自身の決定は埋まりにしない）
- *   戻り値: ['busy' => [member_id => [[開始, 終了, 場所キー|null, 種類, ラベル], …]], 'practices' => [...], 'campus' => [member_id => 1|2]]
+ *   戻り値: ['busy' => [member_id => [[開始, 終了, 場所キー|null, 種類, ラベル], …]], 'practices' => [...], 'campus' => [member_id => メインのキャンパス番号]]
  *   種類: class（授業）/ manual（手入力）/ ical / photo（画像から読み込んだ予定）/ weekly（毎週の予定）/ practice（決定済みの練習）
  *     / buffer（iCal・画像の予定の前後の枠。sched_profile.buf_min 分。予定ありと同じに数える。タップで消した枠は sched_ignore に入れて、予定と同じく外す）
  *   「この予定を無視」にした授業・カレンダー・画像から読み込んだ予定・毎週の予定（sched_ignore）は埋まりから外す。
@@ -783,10 +794,16 @@ function sched_collect_busy(PDO $pdo, array $memberIds, string $from, string $to
     $toAbs = sched_day_abs($to) + 1440;
 
     // ---- キャンパス（プロフィール → 無ければ学年）----
-    $st = $pdo->prepare("SELECT m.member_id, m.entry_year, p.campus FROM member m LEFT JOIN sched_profile p ON p.member_id = m.member_id WHERE m.member_id IN ($in)");
+    //   サブのキャンパス（campus2）も読む。メインと同じ値・未設定（NULL）なら「サブなし」= すべての授業がメインのキャンパス
+    $st = $pdo->prepare("SELECT m.member_id, m.entry_year, m.faculty, p.campus, p.campus2 FROM member m LEFT JOIN sched_profile p ON p.member_id = m.member_id WHERE m.member_id IN ($in)");
     $st->execute($memberIds);
+    $campus2 = []; // [member_id => サブのキャンパス番号]（サブがある人だけ）
     foreach ($st as $r) {
-        $out['campus'][(int)$r['member_id']] = sched_member_campus($r['campus'] === null ? null : (int)$r['campus'], $r['entry_year'] === null ? null : (int)$r['entry_year']);
+        $mid = (int)$r['member_id'];
+        $out['campus'][$mid] = sched_member_campus($r['campus'] === null ? null : (int)$r['campus'], $r['entry_year'] === null ? null : (int)$r['entry_year'], $r['faculty'] === null ? null : (string)$r['faculty']);
+        if ($r['campus2'] !== null && isset(SCHED_CAMPUSES[(int)$r['campus2']]) && (int)$r['campus2'] !== $out['campus'][$mid]) {
+            $campus2[$mid] = (int)$r['campus2'];
+        }
     }
 
     // ---- 取り込んだ予定の前後に付ける枠の分数（sched_profile.buf_min。NULL・プロフィール無し = 初期の SCHED_DEFAULT_BUF_MIN、0 = 付けない）----
@@ -805,11 +822,11 @@ function sched_collect_busy(PDO $pdo, array $memberIds, string $from, string $to
     }
 
     // ---- 授業（時間割 × 期間の日付）----
-    $st = $pdo->prepare("SELECT member_id, term, weekday, period FROM sched_class WHERE member_id IN ($in)");
+    $st = $pdo->prepare("SELECT member_id, term, weekday, period, sub FROM sched_class WHERE member_id IN ($in)");
     $st->execute($memberIds);
-    $classes = []; // [member_id][term][weekday] = [period, …]
+    $classes = []; // [member_id][term][weekday] = [[コマ, サブか(1/0)], …]
     foreach ($st as $r) {
-        $classes[(int)$r['member_id']][(int)$r['term']][(int)$r['weekday']][] = (int)$r['period'];
+        $classes[(int)$r['member_id']][(int)$r['term']][(int)$r['weekday']][] = [(int)$r['period'], (int)$r['sub']];
     }
     foreach (sched_dates($from, $to) as $date) {
         $term = sched_term_of($date, $settings);
@@ -819,9 +836,11 @@ function sched_collect_busy(PDO $pdo, array $memberIds, string $from, string $to
         $wd = (int)date('N', strtotime($date)); // N … 1 = 月 〜 7 = 日
         $day0 = sched_day_abs($date);
         foreach ($classes as $mid => $byTerm) {
-            foreach ($byTerm[$term][$wd] ?? [] as $period) {
+            foreach ($byTerm[$term][$wd] ?? [] as [$period, $isSub]) {
                 [$s, $e] = $settings['periods'][$period];
-                $place = 'campus:' . SCHED_CAMPUSES[$out['campus'][$mid] ?? 1];
+                // 授業の場所: サブの授業（sub = 1）で、サブのキャンパスがあればサブ。それ以外はメインのキャンパス
+                $campusNo = $isSub === 1 && isset($campus2[$mid]) ? $campus2[$mid] : ($out['campus'][$mid] ?? 1);
+                $place = 'campus:' . SCHED_CAMPUSES[$campusNo];
                 $out['busy'][$mid][] = [$day0 + $s, $day0 + $e, $place, 'class', $period . '限'];
             }
         }

@@ -1566,7 +1566,8 @@ CREATE TABLE block_best (
 -- ---------------------------------------------------------------------
 CREATE TABLE sched_profile (
     member_id     INT UNSIGNED NOT NULL,
-    campus        TINYINT UNSIGNED NULL,          -- 1 = 和泉 / 2 = 駿河台 / NULL = 学年から自動
+    campus        TINYINT UNSIGNED NULL,          -- メインのキャンパス。1 = 和泉 / 2 = 駿河台 / 3 = 中野 / 4 = 生田 / NULL = 学部・学年から自動
+    campus2       TINYINT UNSIGNED NULL,          -- サブのキャンパス（1〜4。NULL = なし。メインと同じ値は入れない。migrations/123）
     ical_url      VARCHAR(1024) NULL,             -- 暗号化した iCal の URL（lib/sched_ical.php）
     ical_fetched_at DATETIME   NULL,              -- 最後に読めた日時
     ical_error    VARCHAR(100) NULL,              -- 最後に読めなかった理由（読めたら NULL）
@@ -1583,7 +1584,8 @@ CREATE TABLE sched_profile (
     PRIMARY KEY (member_id),
     CONSTRAINT fk_sprof_member FOREIGN KEY (member_id) REFERENCES member (member_id)
         ON UPDATE CASCADE ON DELETE CASCADE,
-    CONSTRAINT ck_sprof_campus CHECK (campus IS NULL OR campus IN (1, 2))
+    CONSTRAINT ck_sprof_campus CHECK (campus IS NULL OR campus IN (1, 2, 3, 4)),
+    CONSTRAINT ck_sprof_campus2 CHECK (campus2 IS NULL OR campus2 IN (1, 2, 3, 4))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE sched_nav_cache (
@@ -1598,6 +1600,7 @@ CREATE TABLE sched_class (
     term      TINYINT UNSIGNED NOT NULL,          -- 1 = 春 / 2 = 秋
     weekday   TINYINT UNSIGNED NOT NULL,          -- 1 = 月 〜 6 = 土
     period    TINYINT UNSIGNED NOT NULL,          -- 1〜6 限
+    sub       TINYINT(1)       NOT NULL DEFAULT 0, -- 1 = サブのキャンパスの授業 / 0 = メイン（サブが NULL の人は 1 でもメイン扱い。migrations/123）
     PRIMARY KEY (member_id, term, weekday, period),
     CONSTRAINT fk_sclass_member FOREIGN KEY (member_id) REFERENCES member (member_id)
         ON UPDATE CASCADE ON DELETE CASCADE,

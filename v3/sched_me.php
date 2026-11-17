@@ -7,9 +7,8 @@
  *    sched_me                 … 今日から1週間の NG 枠（?from=2026-11-20 で週を移動）
  *    sched_me?poll=12         … その日程調整の期間・時間帯で NG 枠を出す（&week=1 で次の7日）
  *  POST（CSRF チェック）
- *    campus  … キャンパス（自動 / 和泉 / 駿河台）
- *    classes … 時間割（春・秋）。チェックの付いたコマを入れ直す
- *    copy    … もう片方の学期の時間割を写す
+ *    campus  … キャンパス。campus = メイン（和泉 / 駿河台 / 中野 / 生田。未選択の間は学部・学年から自動）・campus2 = サブ（なし / 和泉 / 駿河台 / 中野 / 生田）
+ *    classes … 時間割（春・秋）。チェックの付いたコマを入れ直す（サブのキャンパスの授業は sub[] にも入る）
  *    ical / ical_refresh / ical_delete … カレンダー連携（iCal の URL）
  *    google_refresh / google_disconnect … カレンダー連携（Google。連携を始めるのは sched_google.php。lib/sched_google.php）
  *    event_format … カレンダーに入れる練習の書式（タイトル・場所・メモ）とスタジオ名の略称（lib/sched.php の sched_event_format）。reset で初期に戻す
@@ -65,9 +64,26 @@ if (is_post()) {
     $back = 'sched_me' . ($pollId > 0 ? '?poll=' . $pollId . (isset($_POST['week']) ? '&week=' . (int)$_POST['week'] : '') : (isset($_POST['from']) ? '?from=' . urlencode((string)$_POST['from']) : ''));
 
     if ($action === 'campus') {
+        // メイン（campus）・サブ（campus2）。0 や不正な値は NULL（メイン = 自動 / サブ = なし）
         $c = (int)($_POST['campus'] ?? 0);
+        $c = isset(SCHED_CAMPUSES[$c]) ? $c : null;
+        $c2 = (int)($_POST['campus2'] ?? 0);
+        $c2 = isset(SCHED_CAMPUSES[$c2]) ? $c2 : null;
+        // サブがメイン（自動のときは、自動で決まったキャンパス）と同じなら、サブは「なし」にする
+        $st = $pdo->prepare('SELECT entry_year, faculty FROM member WHERE member_id = ?');
+        $st->execute([$me]);
+        $mem = $st->fetch();
+        $autoNow = sched_member_campus(null, $mem['entry_year'] === null ? null : (int)$mem['entry_year'], $mem['faculty'] === null ? null : (string)$mem['faculty']);
+        // 自動で決まるキャンパスと同じなら NULL（= 自動）で保存する。サブだけ変えたときも、メインが固定されず学年が上がれば自動で変わる
+        if ($c === $autoNow) {
+            $c = null;
+        }
+        $mainNow = $c ?? $autoNow;
+        if ($c2 === $mainNow) {
+            $c2 = null;
+        }
         $ensureProfile();
-        $pdo->prepare('UPDATE sched_profile SET campus = ? WHERE member_id = ?')->execute([isset(SCHED_CAMPUSES[$c]) ? $c : null, $me]);
+        $pdo->prepare('UPDATE sched_profile SET campus = ?, campus2 = ? WHERE member_id = ?')->execute([$c, $c2, $me]);
         flash('キャンパスを保存しました');
         redirect($back . '#campus');
     }
@@ -160,30 +176,22 @@ if (is_post()) {
                 $cells[$v] = [(int)$m[1], (int)$m[2]];
             }
         }
+        // サブのキャンパスの授業（sub[]）。これも "3-2" の形だけ。cls にあるコマのうち、sub にもあるものだけ sub = 1 にする
+        $subCells = [];
+        foreach ((array)($_POST['sub'] ?? []) as $v) {
+            if (preg_match('/^[1-6]-[1-6]$/', (string)$v)) {
+                $subCells[$v] = true;
+            }
+        }
         $pdo->beginTransaction();
         $pdo->prepare('DELETE FROM sched_class WHERE member_id = ? AND term = ?')->execute([$me, $term]);
-        $ins = $pdo->prepare('INSERT INTO sched_class (member_id, term, weekday, period) VALUES (?, ?, ?, ?)');
-        foreach ($cells as [$w, $p]) {
-            $ins->execute([$me, $term, $w, $p]);
+        $ins = $pdo->prepare('INSERT INTO sched_class (member_id, term, weekday, period, sub) VALUES (?, ?, ?, ?, ?)');
+        foreach ($cells as $key => [$w, $p]) {
+            $ins->execute([$me, $term, $w, $p, isset($subCells[$key]) ? 1 : 0]);
         }
         $pdo->commit();
         if ($auto) { http_response_code(204); exit; }
         flash(SCHED_TERMS[$term] . 'の時間割を保存しました');
-        redirect($back . '#classes');
-    }
-
-    if ($action === 'copy') {
-        $to = (int)($_POST['term'] ?? 0);
-        $from = $to === 1 ? 2 : 1;
-        if (isset(SCHED_TERMS[$to])) {
-            $pdo->beginTransaction();
-            $pdo->prepare('DELETE FROM sched_class WHERE member_id = ? AND term = ?')->execute([$me, $to]);
-            // INSERT … SELECT … 別の行を読んで、そのまま新しい行として入れる（1回の SQL で写せる）
-            $pdo->prepare('INSERT INTO sched_class (member_id, term, weekday, period) SELECT member_id, ?, weekday, period FROM sched_class WHERE member_id = ? AND term = ?')
-                ->execute([$to, $me, $from]);
-            $pdo->commit();
-            flash(SCHED_TERMS[$from] . 'の時間割を写しました');
-        }
         redirect($back . '#classes');
     }
 
@@ -539,18 +547,21 @@ if (is_post()) {
 }
 
 /* ==================== 表示 ==================== */
-$st = $pdo->prepare('SELECT m.name, m.entry_year, p.campus, p.home_station, p.pass_to, p.pass_via, COALESCE(p.pass_on, 1) AS pass_on, COALESCE(p.buf_min, ' . SCHED_DEFAULT_BUF_MIN . ') AS buf_min, p.ev_title, p.ev_location, p.ev_details, p.ical_url, p.ical_fetched_at, p.ical_error, COALESCE(p.feed_version, 0) AS feed_version FROM member m LEFT JOIN sched_profile p ON p.member_id = m.member_id WHERE m.member_id = ?');
+$st = $pdo->prepare('SELECT m.name, m.entry_year, m.faculty, p.campus, p.campus2, p.home_station, p.pass_to, p.pass_via, COALESCE(p.pass_on, 1) AS pass_on, COALESCE(p.buf_min, ' . SCHED_DEFAULT_BUF_MIN . ') AS buf_min, p.ev_title, p.ev_location, p.ev_details, p.ical_url, p.ical_fetched_at, p.ical_error, COALESCE(p.feed_version, 0) AS feed_version FROM member m LEFT JOIN sched_profile p ON p.member_id = m.member_id WHERE m.member_id = ?');
 $st->execute([$me]);
 $prof = $st->fetch();
-$autoCampus = sched_member_campus(null, $prof['entry_year'] === null ? null : (int)$prof['entry_year']);
+$autoCampus = sched_member_campus(null, $prof['entry_year'] === null ? null : (int)$prof['entry_year'], $prof['faculty'] === null ? null : (string)$prof['faculty']);
 $chosenCampus = $prof['campus'] === null ? 0 : (int)$prof['campus'];
+$mainCampus = $chosenCampus ?: $autoCampus; // 実際に使うメインのキャンパス（選んでいなければ自動の結果）
+// サブのキャンパス（0 = なし）。メインと同じ値・不正な値は「なし」に数える
+$subCampus = $prof['campus2'] !== null && isset(SCHED_CAMPUSES[(int)$prof['campus2']]) && (int)$prof['campus2'] !== $mainCampus ? (int)$prof['campus2'] : 0;
 $evFmt = sched_event_format($pdo, $me); // カレンダーに入れる練習の書式（初期のままなら初期の文）
 $evStudios = $pdo->query('SELECT studio_id, name, short_name, address FROM studio ORDER BY sort_order, studio_id')->fetchAll();
 $classes = [1 => [], 2 => []];
-$st = $pdo->prepare('SELECT term, weekday, period FROM sched_class WHERE member_id = ?');
+$st = $pdo->prepare('SELECT term, weekday, period, sub FROM sched_class WHERE member_id = ?');
 $st->execute([$me]);
 foreach ($st as $r) {
-    $classes[(int)$r['term']][$r['weekday'] . '-' . $r['period']] = true;
+    $classes[(int)$r['term']][$r['weekday'] . '-' . $r['period']] = (int)$r['sub'] === 1 ? 'sub' : 'main'; // コマ => メインの授業 / サブの授業
 }
 // 毎週の NG（曜日 → 開始の順）
 $st = $pdo->prepare('SELECT sched_weekly_id, weekday, start_min, end_min FROM sched_weekly WHERE member_id = ? ORDER BY weekday, start_min, end_min');
@@ -827,7 +838,8 @@ render_header('マイスケジュール', 'tools');
         <?php endforeach; ?>
     </div>
     <?php foreach (SCHED_TERMS as $t => $label): ?>
-        <form method="post" class="sch-tt" data-term="<?= $t ?>" data-autosave<?= $t === $curTerm ? '' : ' hidden' ?>>
+        <?php // サブのキャンパスがあるときだけ、マスをタップするたびに 空 → メイン → サブ → 空 と回す（assets/sched.js）。頭文字はキャンパス名の1文字目 ?>
+        <form method="post" class="sch-tt" data-term="<?= $t ?>" data-autosave<?= $subCampus ? ' data-main-mark="' . h(mb_substr(SCHED_CAMPUSES[$mainCampus], 0, 1)) . '" data-sub-mark="' . h(mb_substr(SCHED_CAMPUSES[$subCampus], 0, 1)) . '"' : '' ?><?= $t === $curTerm ? '' : ' hidden' ?>>
             <?= csrf_field() ?>
             <input type="hidden" name="action" value="classes"><input type="hidden" name="term" value="<?= $t ?>">
             <?php if ($poll !== null): ?><input type="hidden" name="poll" value="<?= $pollId ?>"><?php endif; ?>
@@ -838,16 +850,14 @@ render_header('マイスケジュール', 'tools');
                     <?php foreach ($settings['periods'] as $p => [$ps, $pe]): ?>
                         <tr>
                             <th><?= $p ?><small><?= h(sched_hm((int)$ps)) ?></small></th>
-                            <?php foreach (SCHED_WEEKDAYS as $w => $wl): $key = $w . '-' . $p; ?>
-                                <td><label class="sch-tt__cell"><input type="checkbox" name="cls[]" value="<?= $key ?>"<?= isset($classes[$t][$key]) ? ' checked' : '' ?> aria-label="<?= h($wl . $p . '限') ?>"><span></span></label></td>
+                            <?php foreach (SCHED_WEEKDAYS as $w => $wl): $key = $w . '-' . $p; $kind = $classes[$t][$key] ?? null; ?>
+                                <?php // サブがあるときだけ、サブ用の隠しチェック（sub[]）と頭文字（data-mark）を置く。sub を cls の前に置くのは、CSS で「サブの授業」を隣の指定で拾うため ?>
+                                <td><label class="sch-tt__cell"><?php if ($subCampus): ?><input type="checkbox" name="sub[]" value="<?= $key ?>"<?= $kind === 'sub' ? ' checked' : '' ?> aria-label="<?= h($wl . $p . '限（' . SCHED_CAMPUSES[$subCampus] . '）') ?>"><?php endif; ?><input type="checkbox" name="cls[]" value="<?= $key ?>"<?= $kind !== null ? ' checked' : '' ?> aria-label="<?= h($wl . $p . '限') ?>"><span<?= $subCampus ? ' data-mark="' . h(mb_substr(SCHED_CAMPUSES[$kind === 'sub' ? $subCampus : $mainCampus], 0, 1)) . '"' : '' ?>></span></label></td>
                             <?php endforeach; ?>
                         </tr>
                     <?php endforeach; ?>
                 </tbody>
             </table>
-            <div class="form-actions">
-                <button class="btn btn--ghost btn--sm" type="submit" name="action" value="copy" formnovalidate><?= h(SCHED_TERMS[$t === 1 ? 2 : 1]) ?>から写す</button>
-            </div>
         </form>
     <?php endforeach; ?>
     <?php // キャンパス（授業の前後の移動時間の計算に使う）。時間割と同じカードに置く ?>
@@ -856,11 +866,24 @@ render_header('マイスケジュール', 'tools');
     <form method="post" class="sch-campus">
         <?= csrf_field() ?><input type="hidden" name="action" value="campus">
         <?php if ($poll !== null): ?><input type="hidden" name="poll" value="<?= $pollId ?>"><?php endif; ?>
-        <div class="tabs tabs--filter" role="radiogroup" aria-label="キャンパス">
-            <label class="tab"><input type="radio" name="campus" value="0" data-autosubmit<?= $chosenCampus === 0 ? ' checked' : '' ?>>自動（<?= h(SCHED_CAMPUSES[$autoCampus]) ?>）</label>
-            <?php foreach (SCHED_CAMPUSES as $c => $name): ?>
-                <label class="tab"><input type="radio" name="campus" value="<?= $c ?>" data-autosubmit<?= $chosenCampus === $c ? ' checked' : '' ?>><?= h($name) ?></label>
-            <?php endforeach; ?>
+        <?php // 2行: メイン（4キャンパス）とサブ（なし / 4キャンパス）。同じフォームなので、片方を押すと両方の値が送られる ?>
+        <div class="sch-campus__row">
+            <span class="sch-campus__label">メイン</span>
+            <div class="tabs tabs--filter" role="radiogroup" aria-label="メインのキャンパス">
+                <?php // 「自動」のタブは無い。選んでいなければ、学部・学年から決まったキャンパス（$mainCampus）が最初から選ばれている ?>
+                <?php foreach (SCHED_CAMPUSES as $c => $name): ?>
+                    <label class="tab"><input type="radio" name="campus" value="<?= $c ?>" data-autosubmit<?= $mainCampus === $c ? ' checked' : '' ?>><?= h($name) ?></label>
+                <?php endforeach; ?>
+            </div>
+        </div>
+        <div class="sch-campus__row">
+            <span class="sch-campus__label">サブ</span>
+            <div class="tabs tabs--filter" role="radiogroup" aria-label="サブのキャンパス">
+                <label class="tab"><input type="radio" name="campus2" value="0" data-autosubmit<?= $subCampus === 0 ? ' checked' : '' ?>>なし</label>
+                <?php foreach (SCHED_CAMPUSES as $c => $name): ?>
+                    <label class="tab"><input type="radio" name="campus2" value="<?= $c ?>" data-autosubmit<?= $subCampus === $c ? ' checked' : '' ?>><?= h($name) ?></label>
+                <?php endforeach; ?>
+            </div>
         </div>
         <noscript><button class="btn btn--sm" type="submit">保存</button></noscript>
     </form>
@@ -879,7 +902,13 @@ render_header('マイスケジュール', 'tools');
         <span>〜</span>
         <?php
         // 到着駅: 先頭が大学の最寄り駅。「カスタム」を選ぶと駅名を自由入力（保存済みの駅名が一覧に無ければカスタムを選んだ状態）
-        $stations = SCHED_PASS_STATIONS[$chosenCampus ?: $autoCampus];
+        $stations = SCHED_PASS_STATIONS[$mainCampus];
+        if ($subCampus) { // サブのキャンパスがあれば、その最寄り駅（候補の先頭）も足す（メインの候補に無いときだけ）
+            $subStation = SCHED_PASS_STATIONS[$subCampus][0];
+            if (!in_array($subStation, $stations, true)) {
+                $stations[] = $subStation;
+            }
+        }
         $savedTo = (string)$prof['pass_to'];
         $isCustom = $savedTo !== '' && !in_array($savedTo, $stations, true);
         ?>

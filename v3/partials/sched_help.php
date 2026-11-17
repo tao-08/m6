@@ -5,7 +5,7 @@
  * =====================================================================
  *  sched_me.php の最後で require する。見た目・動きは初回チュートリアル（partials/tutorial.php）と同じ部品（assets/app.js の setupTutorial）。
  *  自動では開かない（ⓘ を押したときだけ）。
- *  画像は assets/tutorial/sched_*.jpg（スマホの画面の切り抜き。縦長 742×1000 = 371×500 の2倍）。同じ名前のまま差し替えたら ?v= の数字を上げる。
+ *  画像は assets/tutorial/sched_*.jpg（スマホの画面の切り抜き。縦長 1113×1500 = 371×500 の3倍）。カレンダー連携だけは図なので sched_calendar.svg。同じ名前のまま差し替えたら ?v= の数字を上げる。
  *  縦長なので .tutorial--tall（assets/sched.css）で、画像の枠を横長に固定せず、画面の高さに収まる大きさで出す。
  * =====================================================================
  */
@@ -14,7 +14,7 @@ $schedHelp = [
      'text'  => '日付をタップするとその日のすべての時間帯が予定ありになります。'],
     ['img' => 'sched_ignore.jpg', 'title' => '予定をタップして無視',
      'text'  => '自動で入った予定をタップして「この予定を無視」にすると、その時間もスタジオ練習の候補になります。'],
-    ['img' => 'sched_calendar.jpg', 'title' => 'カレンダー連携',
+    ['img' => 'sched_calendar.svg', 'title' => 'カレンダー連携',
      'text'  => 'Google カレンダーや iPhone のカレンダーと連携すると、予定が自動で入ります。'],
     ['img' => 'sched_station.jpg', 'title' => '時間割と最寄り駅',
      'text'  => '時間割・キャンパス・最寄り駅を設定すると、スタジオを選ぶときの所要時間と運賃に反映されます。'],
@@ -25,7 +25,7 @@ $schedHelp = [
         <?php foreach ($schedHelp as $i => $s): ?>
         <section class="tutorial__slide" data-tutorial-slide <?= $i === 0 ? '' : 'hidden' ?>>
             <div class="tutorial__img">
-                <img src="assets/tutorial/<?= h($s['img']) ?>?v=2" alt="" loading="lazy">
+                <img src="assets/tutorial/<?= h($s['img']) ?>?v=3" alt="" loading="lazy">
             </div>
             <div class="tutorial__text">
                 <p class="tutorial__step"><?= $i + 1 ?> / <?= count($schedHelp) ?></p>

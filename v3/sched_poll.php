@@ -44,15 +44,18 @@ $studios = sched_poll_studios($pdo, $pollId);
 $studioById = array_column($studios, null, 'studio_id'); // [studio_id => 行]
 $names = array_column($members, 'name', 'member_id'); // [member_id => 名前]
 
-/** メンバーの交通費の元（自宅最寄り駅・定期・キャンパス）。[member_id => ['campus', 'home_station', 'pass_to']] */
+/** メンバーの交通費の元（自宅最寄り駅・定期・キャンパス）。[member_id => ['campus', 'campus2', 'home_station', 'pass_to', …]]（campus2 = サブのキャンパス。無ければ null） */
 $fareProfiles = [];
 if ($memberIds) {
     $in = implode(',', array_fill(0, count($memberIds), '?'));
-    $st = $pdo->prepare("SELECT m.member_id, m.entry_year, p.campus, p.home_station, p.pass_to, p.pass_via, p.pass_on FROM member m LEFT JOIN sched_profile p ON p.member_id = m.member_id WHERE m.member_id IN ($in)");
+    $st = $pdo->prepare("SELECT m.member_id, m.entry_year, m.faculty, p.campus, p.campus2, p.home_station, p.pass_to, p.pass_via, p.pass_on FROM member m LEFT JOIN sched_profile p ON p.member_id = m.member_id WHERE m.member_id IN ($in)");
     $st->execute($memberIds);
     foreach ($st as $r) {
+        $mainCampus = sched_member_campus($r['campus'] === null ? null : (int)$r['campus'], $r['entry_year'] === null ? null : (int)$r['entry_year'], $r['faculty'] === null ? null : (string)$r['faculty']);
         $fareProfiles[(int)$r['member_id']] = [
-            'campus' => sched_member_campus($r['campus'] === null ? null : (int)$r['campus'], $r['entry_year'] === null ? null : (int)$r['entry_year']),
+            'campus' => $mainCampus,
+            // サブのキャンパス。メインと同じ・未設定なら null（= サブなし）
+            'campus2' => $r['campus2'] !== null && isset(SCHED_CAMPUSES[(int)$r['campus2']]) && (int)$r['campus2'] !== $mainCampus ? (int)$r['campus2'] : null,
             'home_station' => (string)$r['home_station'], 'pass_to' => (string)$r['pass_to'], 'pass_via' => (string)$r['pass_via'],
             'pass_on' => $r['pass_on'] === null ? 1 : (int)$r['pass_on'],
         ];
@@ -80,14 +83,18 @@ $fareOf = static function (int $mid, string $origin, int $sid, bool $fetch = fal
     }
     return $memo[$k] = sched_member_fare($pdo, $prof, $origin, $dest, $transferMin, $fetch);
 };
-/** 自宅の駅を登録した人 × 候補のスタジオ × 出発地（自宅・学校）ごとに $fn を呼ぶ */
+/** 自宅の駅を登録した人 × 候補のスタジオ × 出発地（自宅・メインのキャンパス・サブのキャンパス）ごとに $fn を呼ぶ。出発地は 'home' か授業の場所キー（'campus:和泉' など） */
 $fareEach = static function (callable $fn) use ($fareProfiles, $studioById): void {
     foreach ($fareProfiles as $mid => $prof) {
         if ($prof['home_station'] === '') {
             continue;
         }
         foreach (array_keys($studioById) as $sid) {
-            foreach (['home', 'campus'] as $origin) {
+            $origins = ['home', 'campus:' . SCHED_CAMPUSES[$prof['campus']]];
+            if ($prof['campus2'] !== null) {
+                $origins[] = 'campus:' . SCHED_CAMPUSES[$prof['campus2']];
+            }
+            foreach ($origins as $origin) {
                 $fn((int)$mid, $origin, (int)$sid);
             }
         }

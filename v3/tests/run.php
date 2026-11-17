@@ -812,6 +812,12 @@ check('曜日区分: 平日 / 土 / 日 / 祝', [sched_day_type('2026-11-20'), s
 $ss = ['periods' => SCHED_DEFAULT_PERIODS, 'terms' => SCHED_DEFAULT_TERMS, 'breaks' => SCHED_DEFAULT_BREAKS, 'jo' => 3.0];
 check('学期: 秋の授業日 / 冬休み / 夏休み / 祝日（授業あり）/ 日曜 / 休業に入れた祝日', [sched_term_of('2026-11-20', $ss), sched_term_of('2026-12-28', $ss), sched_term_of('2026-08-10', $ss), sched_term_of('2026-11-23', $ss), sched_term_of('2026-11-22', $ss), sched_term_of('2026-11-03', ['breaks' => [['2026-10-29', '2026-11-03']]] + $ss)], [2, null, null, 2, null, null]);
 check('キャンパス: 選択 > 学年（1・2年 和泉 / 3年〜 駿河台）', [sched_member_campus(2, 2026), sched_member_campus(null, 2025), sched_member_campus(null, 2024), sched_member_campus(null, null)], [2, 1, 2, 1]);
+check('キャンパス: 学部（総合数理・国際日本 → 中野 / 理工・農 → 生田。学年は問わない）・選択が学部より優先・他の学部は学年どおり', [
+    sched_member_campus(null, 2026, '総合数理学部'), sched_member_campus(null, 2020, '国際日本学部'),
+    sched_member_campus(null, 2026, '農学部'), sched_member_campus(null, 2020, '理工学部'),
+    sched_member_campus(1, 2020, '農学部'), sched_member_campus(2, 2026, '総合数理学部'),
+    sched_member_campus(null, 2024, '法学部'), sched_member_campus(null, 2026, null),
+], [3, 3, 4, 4, 1, 2, 2, 1]);
 // 移動時間: 和泉キャンパス → 新宿（直線 約5.6km）は 30分、すぐ近くは徒歩 10分、座標なしは 30分
 $izumi = [35.670834, 139.648285];
 check('移動: 和泉 → 新宿駅あたり = 30分', sched_travel_estimate(sched_distance_km($izumi[0], $izumi[1], 35.6909, 139.7003)), 30);
@@ -939,7 +945,11 @@ check('定期外の運賃: 前後2時間以内に授業があれば学校（行�
     sched_fare_legs($fBusy, 1300, 60, 120),  // 授業から2時間より後 → どちらも自宅
     sched_fare_legs([[600, 700, null, 'manual', '']], 720, 60, 120),
     sched_fare_legs($fBusy, 1200, 60, 120), sched_fare_legs($fBusy, 1200, 60, 240), // 授業の終わり(1000)の200分後: 設定2時間なら自宅 / 4時間なら学校
-], [['campus', 'campus'], ['campus', 'home'], ['home', 'home'], ['home', 'home'], ['home', 'home'], ['campus', 'home']]);
+], [['campus:和泉', 'campus:和泉'], ['campus:和泉', 'home'], ['home', 'home'], ['home', 'home'], ['home', 'home'], ['campus:和泉', 'home']]);
+// サブのキャンパスの授業（場所キーが 'campus:中野'）が後ろにあれば、帰りはそのキャンパス。行きは直前の授業（和泉）
+check('定期外の運賃: 授業の場所キーがそのまま出発地・帰着地になる（サブのキャンパスの授業）', [
+    sched_fare_legs([[600, 700, 'campus:和泉', 'class', '2限'], [900, 1000, 'campus:中野', 'class', '4限']], 780, 120, 120),
+], [['campus:和泉', 'campus:中野']]);
 check('スタジオの目安: 往復の運賃の1人平均・片道の所要時間の最短〜最長（不明の人は除く）', [
     sched_studio_trip_stats([['fare' => 200, 'min' => 25], ['fare' => 300, 'min' => 40], null, ['fare' => null, 'min' => 30]]),
     sched_studio_trip_stats([null, null]),

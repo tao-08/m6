@@ -1757,9 +1757,44 @@
     }));
   };
 
+  // 時間割: サブのキャンパスがあるとき（フォームに data-sub-mark がある）は、マスをタップするたびに 空 → メイン → サブ → 空 と回す。
+  //   マスの中には、メイン用（cls[]）とサブ用（sub[]）の2つの隠しチェックがある。
+  //   メイン = cls だけ ON / サブ = cls と sub の両方 ON / 空 = どちらも OFF
+  //   label の普通のクリック（チェックの切り替え）は止めて、自分で2つの checked を決める
+  const setupClassCycle = () => {
+    document.querySelectorAll('form.sch-tt[data-sub-mark]').forEach((form) => {
+      const mainMark = form.dataset.mainMark;
+      const subMark = form.dataset.subMark;
+      form.querySelectorAll('.sch-tt__cell').forEach((cell) => {
+        const cls = cell.querySelector('input[name="cls[]"]');
+        const sub = cell.querySelector('input[name="sub[]"]');
+        const mark = cell.querySelector('span');
+        if (!cls || !sub || !mark) return;
+        cell.addEventListener('click', (e) => {
+          e.preventDefault();
+          // preventDefault したチェックボックスのクリックは、イベントの後に元の状態へ戻される（キーボードの空白キー）。
+          //   戻されたあとに値を決めるため、次のタイミングで回す
+          setTimeout(() => {
+            if (!cls.checked) {
+              cls.checked = true; sub.checked = false; // 空 → メイン
+            } else if (!sub.checked) {
+              sub.checked = true; // メイン → サブ
+            } else {
+              cls.checked = false; sub.checked = false; // サブ → 空
+            }
+            mark.dataset.mark = sub.checked ? subMark : mainMark;
+            // 既存の自動保存は form の change イベントで動く（cls[]・sub[] の両方が送られる）
+            cls.dispatchEvent(new Event('change', { bubbles: true }));
+          }, 0);
+        });
+      });
+    });
+  };
+
   setupForm();
   setupTerms();
   setupEventFormat();
+  setupClassCycle();
   // 時間割: チェックを入れるたびに自動保存（学期ごとのフォーム）
   document.querySelectorAll('form[data-autosave]').forEach((f) => {
     const a = makeAutosave(() => new FormData(f));

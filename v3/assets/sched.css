@@ -247,9 +247,18 @@
   transition: background var(--t-fast), border-color var(--t-fast); }
 .sch-tt__cell input:checked + span { background: color-mix(in srgb, var(--headliner) 40%, transparent); border-color: var(--headliner); }
 .sch-tt__cell input:focus-visible + span { box-shadow: var(--ring); }
+/* サブのキャンパスがあるとき（フォームに data-sub-mark）: マスにキャンパスの頭文字を出し、サブの授業は別の色にする。
+   隠しのチェックは サブ（name=sub[]）→ メイン（name=cls[]）→ span の順に並べてあるので、「サブが選択中のメイン」を隣の指定で拾える */
+.sch-tt[data-sub-mark] .sch-tt__cell span { display: flex; align-items: center; justify-content: center; font-size: var(--fs-xs); font-weight: 700; color: var(--text); }
+.sch-tt[data-sub-mark] .sch-tt__cell input:checked + span::after { content: attr(data-mark); }
+.sch-tt__cell input[name="sub[]"]:checked + input:checked + span { background: color-mix(in srgb, var(--accent-2) 40%, transparent); border-color: var(--accent-2); }
 
 /* ---------- キャンパス・カレンダー ---------- */
-.sch-campus { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
+.sch-campus { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; } /* メイン・サブの2行。minmax(0, …) … 中身が長くても画面の幅を超えない */
+.sch-campus__row { display: flex; align-items: center; gap: 8px; }
+.sch-campus__row .tabs { min-width: 0; } /* 狭い画面ではタブの側が横にスクロールする */
+@media (max-width: 600px) { .sch-campus__row .tabs { flex-wrap: wrap; overflow: visible; gap: 2px; padding: 2px; border-radius: var(--r-lg); } .sch-campus__row .tab { padding: 5px 10px; font-size: var(--fs-xs); } } /* スマホは小さくして、入らない分は2段に折り返す（中野・生田が隠れないように。赤い丸は app.js setupTabGlide が追従） */
+.sch-campus__label { flex: none; width: 3em; white-space: nowrap; font-size: var(--fs-xs); font-weight: 700; color: var(--muted); }
 .sch-ical { display: flex; align-items: center; gap: 6px; margin: 0; }
 .sch-answer { margin: 0; }
 .sch-feed { display: grid; gap: 8px; padding-top: 12px; border-top: 1px solid var(--border); } /* 購読（決定した練習を追加）。上の取り込みとの区切り */
