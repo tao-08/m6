@@ -988,7 +988,8 @@ function sched_event_details(array $presentNames, int $pollId): string
 /* ---------------------------------------------------------------------
  *  カレンダーに入れる練習の「書式」（タイトル・場所・メモ）。人ごとに変えられる（マイスケジュールの「カレンダーに追加する予定の書式」）
  *    {バンド名}{スタジオ名}{スタジオ略称}{部屋}{住所}{メンバー}{URL} を差し込める。NULL（未設定）なら下の初期の書式
- *    {スタジオ略称} … 自分で入力したもの（sched_studio_short）だけ。入力していないスタジオは空（スタジオ名などで代わりに埋めない）
+ *    {スタジオ略称} … 自分で決めたもの（sched_studio_short。空にしたなら空）→ スタジオ情報の初期の略称（studio.short_name）→ スタジオ名、の順
+ *    場所・メモを空にして保存したときは、初期の書式に戻らず何も入れない（NULL = 初期の書式 / 空文字 = 空）。タイトルだけは空なら初期の書式
  *    旧名 {タイトル}{スタジオ}{短縮} も、同じ意味でそのまま使える（SCHED_EVENT_OLD_VARS。保存済みの書式のため）
  *  Google への書き込み・購読・.ics・「追加」リンクのすべてが、この関数を通る
  * ------------------------------------------------------------------- */
@@ -1021,7 +1022,8 @@ function sched_event_format(PDO $pdo, ?int $memberId): array
     $p = $st->fetch();
     $fmt['stamp'] = $p ? (int)strtotime((string)$p['updated_at']) : 0; // 書式を変えたときに、購読のカレンダーが予定を更新し直すため
     foreach (['title' => 'ev_title', 'location' => 'ev_location', 'details' => 'ev_details'] as $k => $col) {
-        if ($p && $p[$col] !== null && $p[$col] !== '') {
+        // NULL = 初期の書式。場所・メモの空文字は「何も入れない」。タイトルの空文字は初期の書式のまま
+        if ($p && $p[$col] !== null && ($p[$col] !== '' || $k !== 'title')) {
             $fmt[$k] = sched_event_upgrade((string)$p[$col]); // 旧名で保存された書式は、新しい名前で見せる
             $fmt['custom'] = true;
         }
@@ -1058,9 +1060,10 @@ function sched_event_text(array $fmt, array $c): array
 {
     $studio = (string)($c['studio'] ?? '');
     $sid = $c['studio_id'] ?? null;
-    $short = ''; // 自分で略称を入力していないスタジオは空（スタジオ名などで代わりに埋めない）
-    if ($sid !== null && ($fmt['short'][(int)$sid] ?? '') !== '') {
-        $short = $fmt['short'][(int)$sid];
+    // 略称: 自分で決めたもの（空にしたなら空）→ 無ければ初期の略称（スタジオ情報の略称 → スタジオ名）
+    $short = ($c['studio_short'] ?? '') !== '' ? (string)$c['studio_short'] : $studio;
+    if ($sid !== null && isset($fmt['short'][(int)$sid])) {
+        $short = (string)$fmt['short'][(int)$sid];
     }
     $vars = [
         'バンド名' => (string)$c['title'], 'スタジオ名' => $studio, 'スタジオ略称' => $short, '部屋' => (string)($c['room'] ?? ''),
@@ -1080,7 +1083,10 @@ function sched_event_clean(string $key, string $v): ?string
     $v = sched_event_upgrade(str_replace(["\r\n", "\r"], "\n", $v));
     $v = $key === 'details' ? trim($v) : trim(preg_replace('/\s+/u', ' ', $v) ?? $v);
     $v = mb_substr($v, 0, SCHED_EVENT_MAX[$key]);
-    return $v === '' || $v === SCHED_EVENT_DEFAULTS[$key] ? null : $v;
+    if ($v === SCHED_EVENT_DEFAULTS[$key]) {
+        return null; // 初期の書式と同じ
+    }
+    return $v === '' && $key === 'title' ? null : $v; // 場所・メモの空は '' のまま（何も入れない）。タイトルの空は初期の書式
 }
 
 /**

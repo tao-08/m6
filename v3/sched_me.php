@@ -209,10 +209,14 @@ if (is_post()) {
         $shorts = [];
         if (!isset($_POST['reset'])) {
             $cols = ['ev_title' => sched_event_clean('title', (string)($_POST['ev_title'] ?? '')), 'ev_location' => sched_event_clean('location', (string)($_POST['ev_location'] ?? '')), 'ev_details' => sched_event_clean('details', (string)($_POST['ev_details'] ?? ''))];
-            $ids = $pdo->query('SELECT studio_id FROM studio')->fetchAll(PDO::FETCH_COLUMN);
+            // 略称: 初期の略称（スタジオ情報の略称 → スタジオ名）と同じなら覚えない（初期の略称が変わったらそれに従う）。違うものは、空も含めて覚える（空 = 略称を使わない）
+            $defaults = [];
+            foreach ($pdo->query('SELECT studio_id, name, short_name FROM studio') as $r) {
+                $defaults[(int)$r['studio_id']] = (string)($r['short_name'] ?? '') !== '' ? (string)$r['short_name'] : (string)$r['name'];
+            }
             foreach ((array)($_POST['short'] ?? []) as $sid => $v) {
                 $v = mb_substr(trim(preg_replace('/\s+/u', ' ', (string)$v) ?? ''), 0, 30);
-                if ($v !== '' && in_array((string)(int)$sid, array_map('strval', $ids), true)) {
+                if (isset($defaults[(int)$sid]) && $v !== mb_substr($defaults[(int)$sid], 0, 30)) {
                     $shorts[(int)$sid] = $v;
                 }
             }
@@ -841,12 +845,17 @@ render_header('マイスケジュール', 'tools');
     <?php
     // 書式のプレビュー用の見本（スタジオミュージアム 新宿店の Ast。無ければ決め打ち）。入力するたびに assets/sched.js が書式へ差し込んで表示する
     $evSample = ['sid' => 0, 'vars' => ['バンド名' => 'サンプルバンド', 'スタジオ名' => 'スタジオミュージアム 新宿店', '部屋' => 'Ast', '住所' => '', 'メンバー' => (string)$prof['name'] . '・サンプル', 'URL' => APP_URL . 'sched_poll?id=1']];
+    // スタジオの略称（編集欄に入れる値）: 自分で決めたもの（空も含む）→ スタジオ情報の略称 → スタジオ名
+    $evShort = static function (array $s) use ($evFmt): string {
+        $own = $evFmt['short'][(int)$s['studio_id']] ?? null;
+        return $own !== null ? (string)$own : ((string)($s['short_name'] ?? '') !== '' ? (string)$s['short_name'] : (string)$s['name']);
+    };
     foreach ($evStudios as $s) {
         if (mb_strpos((string)$s['name'], 'ミュージアム') !== false) {
             $evSample['sid'] = (int)$s['studio_id'];
             $evSample['vars']['スタジオ名'] = (string)$s['name'];
             $evSample['vars']['住所'] = (string)($s['address'] ?? '');
-            $evSample['vars']['スタジオ略称'] = (string)($evFmt['short'][(int)$s['studio_id']] ?? ''); // 未入力なら空
+            $evSample['vars']['スタジオ略称'] = $evShort($s);
             break;
         }
     }
@@ -871,7 +880,7 @@ render_header('マイスケジュール', 'tools');
             <summary class="muted small">スタジオ略称を編集（自分のみ適用）</summary>
             <?php foreach ($evStudios as $s): $sid = (int)$s['studio_id']; ?>
                 <label class="sch-row"><span class="grow"><?= h($s['name']) ?></span>
-                    <input class="search" type="text" name="short[<?= $sid ?>]" maxlength="30" value="<?= h($evFmt['short'][$sid] ?? '') ?>" autocomplete="off" aria-label="<?= h($s['name']) ?>の略称"></label>
+                    <input class="search" type="text" name="short[<?= $sid ?>]" maxlength="30" value="<?= h($evShort($s)) ?>" autocomplete="off" aria-label="<?= h($s['name']) ?>の略称"></label>
             <?php endforeach; ?>
         </details>
         <div class="sch-row">

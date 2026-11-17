@@ -1604,7 +1604,8 @@
       if (!sample) return;
       form.querySelectorAll('[data-ev-preview]').forEach((el) => {
         const f = form.querySelector(`[name="${el.dataset.evPreview}"]`);
-        const v = f.value.trim() === '' ? f.placeholder : f.value; // 空なら初期の書式になる
+        // タイトルは空なら初期の書式になる。場所・メモは空なら何も入らない
+        const v = f.value.trim() === '' && f.name === 'ev_title' ? f.placeholder : f.value;
         el.textContent = render(v, f.tagName === 'TEXTAREA');
       });
     };
