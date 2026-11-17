@@ -16,6 +16,8 @@
 .sch-sec { display: grid; gap: 12px; margin-bottom: 16px; }
 .sch-sec__head { display: flex; align-items: center; gap: 6px; }
 .sch-sec__head .section-title { margin: 0; }
+.sch-sec__head--sub { padding-top: 12px; border-top: 1px solid var(--border); } /* 1枚のカードの中の2つ目の見出し（時間割の下のキャンパス） */
+.sch-sec__sub { margin: 0; font-size: var(--fs-md); font-weight: 700; }
 .sch-row { display: flex; align-items: center; gap: 8px; }
 .sch-row--wrap { flex-wrap: wrap; }
 .sch-pass { display: grid; gap: 8px; } /* 定期: 自宅最寄り駅の下の行に 〜 到着駅・保存 */
@@ -165,6 +167,8 @@
 /* 調整の期間の外の日（月曜始まりの週に入っただけ）: グレーにして触れない */
 .sch-grid thead th.is-off { cursor: not-allowed; opacity: .4; }
 .sch-grid thead th.is-off .sch-daychk { visibility: hidden; }
+.sch-grid td.is-buf { cursor: pointer; } /* 取り込んだ予定の前後の枠（見た目は手動の予定あり = is-ng と同じ。タップで消す） */
+.sch-grid td.is-bufoff { outline: 1px dashed var(--border); outline-offset: -2px; cursor: pointer; } /* 消した枠（もう一度タップで戻す） */
 .sch-grid td.is-off { background: var(--border); opacity: .5; cursor: not-allowed; pointer-events: none; }
 /* 終日の予定（JS: setupGrid）。日付の下に予定名を1行で（長いと「…」、全文は押すと data-tip で出る）。予定ありには数えない。色は表の「カレンダー」と同じ */
 .sch-allday { display: block; width: 100%; margin-top: 2px; padding: 1px 2px; border-radius: var(--r-xs); font-weight: 400; color: var(--text);
@@ -190,8 +194,10 @@
 .sch-grid td.is-ignored:is(.is-ical, .is-photo) { --ev: var(--vn); } /* カレンダーと画像は同じ色（予定の種類の色は、メンバーの予定表とそろえる） */
 .sch-grid td.is-ignored.is-weekly { --ev: var(--accent); }
 .sch-grid td.is-ignored.is-practice { --ev: var(--ba); }
-.sch-pop { position: fixed; z-index: 50; display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); box-shadow: var(--shadow-pop); font-size: var(--fs-sm); }
-.sch-pop__ignore { display: flex; align-items: center; gap: 6px; cursor: pointer; } /* 「この予定を無視」（画像の予定は、横に削除ボタン） */
+.sch-pop { position: fixed; z-index: 50; display: grid; gap: 6px; width: max-content; max-width: min(260px, calc(100vw - 16px)); padding: 8px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); box-shadow: var(--shadow-pop); font-size: var(--fs-sm); }
+.sch-pop__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; } /* 1行目: 予定名（画像の予定は、右に削除ボタン） */
+.sch-pop__name { font-weight: 700; overflow-wrap: anywhere; }
+.sch-pop__ignore { display: flex; align-items: center; gap: 6px; cursor: pointer; } /* 2行目: 「この予定を無視」 */
 .sch-grid td.is-ng, .sch-sw.is-ng { background: color-mix(in srgb, var(--accent) 55%, transparent); }
 .sch-grid td.is-class, .sch-sw.is-class { background: color-mix(in srgb, var(--headliner) 22%, transparent); }
 .sch-grid td:is(.is-ical, .is-photo), .sch-sw:is(.is-ical, .is-photo) { background: color-mix(in srgb, var(--vn) 24%, transparent); }

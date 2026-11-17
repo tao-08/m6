@@ -760,6 +760,7 @@ function sched_busy_is_allday(string $startAt, string $endAt): bool
  *   $exceptPollId … いま計算している調整（自分自身の決定は埋まりにしない）
  *   戻り値: ['busy' => [member_id => [[開始, 終了, 場所キー|null, 種類, ラベル], …]], 'practices' => [...], 'campus' => [member_id => 1|2]]
  *   種類: class（授業）/ manual（手入力）/ ical / photo（画像から読み込んだ予定）/ weekly（毎週の予定）/ practice（決定済みの練習）
+ *     / buffer（iCal・画像の予定の前後の枠。sched_profile.buf_min 分。予定ありと同じに数える。タップで消した枠は sched_ignore に入れて、予定と同じく外す）
  *   「この予定を無視」にした授業・カレンダー・画像から読み込んだ予定・毎週の予定（sched_ignore）は埋まりから外す。
  *   $withIgnored = true のときは外さず、6つ目（[5]）に true を付けて残す（マイスケジュールで網掛けにするため）
  *   終日の予定（カレンダー・画像）は予定ありに数えない。$withIgnored = true のときだけ残す（マイスケジュールで日付の下に予定名を出すため）
@@ -783,6 +784,18 @@ function sched_collect_busy(PDO $pdo, array $memberIds, string $from, string $to
     $st->execute($memberIds);
     foreach ($st as $r) {
         $out['campus'][(int)$r['member_id']] = sched_member_campus($r['campus'] === null ? null : (int)$r['campus'], $r['entry_year'] === null ? null : (int)$r['entry_year']);
+    }
+
+    // ---- 取り込んだ予定の前後に付ける枠の分数（sched_profile.buf_min。0 = 付けない）----
+    $bufMin = []; // [member_id => 分]
+    try {
+        $st = $pdo->prepare("SELECT member_id, buf_min FROM sched_profile WHERE member_id IN ($in) AND buf_min > 0");
+        $st->execute($memberIds);
+        foreach ($st as $r) {
+            $bufMin[(int)$r['member_id']] = (int)$r['buf_min'];
+        }
+    } catch (PDOException) {
+        // buf_min がまだ無い（migrations/120 を流していない）DB でも止まらないように。枠は付けない
     }
 
     // ---- 授業（時間割 × 期間の日付）----
@@ -896,17 +909,34 @@ function sched_collect_busy(PDO $pdo, array $memberIds, string $from, string $to
     } catch (PDOException) {
         $ignored = []; // sched_ignore がまだ無い（migrations/107 を流していない）DB でも止まらないように
     }
-    if ($ignored) {
+    if ($ignored || $bufMin) {
         foreach ($out['busy'] as $mid => $list) {
             $keep = [];
+            $frames = []; // 取り込んだ予定の前後の枠（種類 'buffer'）
+            $m = $bufMin[$mid] ?? 0;
             foreach ($list as $b) {
-                if (in_array($b[3], ['class', 'ical', 'photo', 'weekly'], true) && isset($ignored[$mid . '|' . $b[0] . '|' . $b[1]])) {
+                $isIgnored = in_array($b[3], ['class', 'ical', 'photo', 'weekly'], true) && isset($ignored[$mid . '|' . $b[0] . '|' . $b[1]]);
+                if ($isIgnored) {
                     if (!$withIgnored) {
                         continue;
                     }
                     $b[5] = true;
                 }
                 $keep[] = $b;
+                // 枠は、無視していない・終日でない iCal・画像の予定の前後に付ける。予定が動いたり消えたりしたら、枠も一緒に変わる（毎回ここで作る）
+                if ($m > 0 && !$isIgnored && in_array($b[3], ['ical', 'photo'], true) && !($b[1] > $b[0] && $b[0] % 1440 === 0 && ($b[1] - $b[0]) % 1440 === 0)) {
+                    $frames[] = [$b[0] - $m, $b[0], null, 'buffer', ''];
+                    $frames[] = [$b[1], $b[1] + $m, null, 'buffer', ''];
+                }
+            }
+            foreach ($frames as $f) {
+                if (isset($ignored[$mid . '|' . $f[0] . '|' . $f[1]])) { // 枠をタップで消した（「この予定を無視」と同じ印）
+                    if (!$withIgnored) {
+                        continue;
+                    }
+                    $f[5] = true;
+                }
+                $keep[] = $f;
             }
             $out['busy'][$mid] = $keep;
         }

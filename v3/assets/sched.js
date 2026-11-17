@@ -216,12 +216,17 @@
       const abs = Number(td.dataset.abs);
       const first = abs === Number(td.dataset.first); // その日の表示の先頭のマス
       const hit = data.busy.filter((b) => !isAllDay(b) && b[0] < abs + data.step && b[1] > abs);
-      const auto = hit.find((b) => b[2] !== 'manual' && !b[4]);
-      const ign = hit.find((b) => b[4]);
+      // 取り込んだ予定の前後の枠（kind 'buffer'）は、授業などとは別に扱う（予定ありの枠: 手動と同じ見た目で、タップで消せる）
+      const frame = hit.find((b) => b[2] === 'buffer' && !b[4]);
+      const frameOff = hit.find((b) => b[2] === 'buffer' && b[4]); // タップで消した枠
+      const rest = hit.filter((b) => b[2] !== 'buffer');
+      const auto = rest.find((b) => b[2] !== 'manual' && !b[4]);
+      const ign = rest.find((b) => b[4]);
       const item = ign || auto;
-      td.classList.remove('is-class', 'is-ical', 'is-photo', 'is-weekly', 'is-practice', 'is-auto', 'is-ignored', 'is-ng');
+      td.classList.remove('is-class', 'is-ical', 'is-photo', 'is-weekly', 'is-practice', 'is-auto', 'is-ignored', 'is-ng', 'is-buf', 'is-bufoff');
       td.textContent = '';
       td._item = null;
+      td._buf = null;
       if (item) {
         td.classList.add('is-' + item[2], 'is-auto');
         if (item[4]) td.classList.add('is-ignored');
@@ -236,8 +241,17 @@
           lbl.style.setProperty('--lines', Math.min(2, rows));
           td.append(lbl);
         }
-      } else if (hit.length) {
+      } else if (rest.length || frame) {
         td.classList.add('is-ng');
+      }
+      if (!item) {
+        if (frame) {
+          td._buf = frame;
+          td.classList.add('is-buf');
+        } else if (frameOff && !rest.length) {
+          td._buf = frameOff; // 消した枠: 薄い点線。もう一度タップすると戻る
+          td.classList.add('is-bufoff');
+        }
       }
       // 仮決定（時間まで決めたもの）: 練習の色を少し透かして重ねる。最初のマスに題名（日だけの仮決定は、日付の下に出している）
       //   classify は毎回マスを作り直す（textContent = ''）ので、題名もここで入れる（別の所で入れると、作り直しで消える）
@@ -348,6 +362,8 @@
       closePop();
       const item = td._item;
       pop = el('div', 'sch-pop');
+      const head = el('div', 'sch-pop__head'); // 1行目: 予定名（画像の予定は右に削除ボタン）。2行目: 「この予定を無視」
+      head.append(el('span', 'sch-pop__name', item[3] || kindLabel[item[2]]));
       const ignore = el('label', 'sch-pop__ignore');
       const cb = el('input');
       cb.type = 'checkbox';
@@ -366,7 +382,7 @@
           .catch(() => { alert('保存できませんでした'); item[4] = was; cb.checked = was; classifyAll(); });
       });
       ignore.append(cb, el('span', '', 'この予定を無視'));
-      pop.append(ignore);
+      pop.append(head, ignore);
       // 画像から読み込んだ予定だけは、本当に削除もできる（読み間違いを残さないため）。操作ボタンなので data-tip は付けない
       if (item[2] === 'photo') {
         const del = el('button', 'icon-btn icon-btn--sm');
@@ -388,7 +404,7 @@
             .then((r) => { if (!r.ok) throw new Error(); location.reload(); })
             .catch(() => { alert('削除できませんでした'); del.disabled = false; });
         });
-        pop.append(del);
+        head.append(del);
       }
       document.body.append(pop);
       const r = td.getBoundingClientRect();
@@ -401,8 +417,28 @@
       syncDays();
     };
     classifyAll();
+    // 前後の枠をタップ: 消す（消した枠をタップすると戻る）。「この予定を無視」と同じ印（sched_ignore）で覚える。予定が動くと枠の時間も変わるので、消した印は外れて枠が付き直す
+    const toggleFrame = (item) => {
+      const body = new FormData(form);
+      body.set('action', 'ignore');
+      body.set('s', item[0]);
+      body.set('e', item[1]);
+      const was = !!item[4];
+      item[4] = !was;
+      body.set('on', item[4] ? '1' : '0');
+      classifyAll();
+      fetch(location.pathname + location.search, { method: 'POST', body, headers: { 'X-Autosave': '1' } })
+        .then((r) => { if (!r.ok) throw new Error(); })
+        .catch(() => { alert('保存できませんでした'); item[4] = was; classifyAll(); });
+    };
     table.addEventListener('click', (e) => {
       const td = e.target.closest('td');
+      if (td?._buf) {
+        e.stopPropagation();
+        closePop();
+        toggleFrame(td._buf);
+        return;
+      }
       if (!td?._item) return;
       e.stopPropagation();
       // ポップアップが出ているときに予定を押したら、開き直さず消す（もう一度押せば開く）
@@ -415,7 +451,7 @@
 
     let mode = null; // true = 塗る / false = 消す / null = なぞっていない
     const paint = (td) => {
-      if (!td || !td.dataset.abs || td.classList.contains('is-auto') || td.classList.contains('is-off')) return;
+      if (!td || !td.dataset.abs || td.classList.contains('is-auto') || td.classList.contains('is-off') || td._buf) return;
       if (td.classList.contains('is-ng') !== mode) {
         td.classList.toggle('is-ng', mode);
         autosave.schedule();
@@ -424,7 +460,7 @@
     };
     table.addEventListener('pointerdown', (e) => {
       const td = e.target.closest('td');
-      if (!td || td.classList.contains('is-auto') || td.classList.contains('is-off')) return;
+      if (!td || td.classList.contains('is-auto') || td.classList.contains('is-off') || td._buf) return; // 前後の枠は、なぞって塗らない（タップで消す）
       e.preventDefault();
       mode = !td.classList.contains('is-ng');
       paint(td);
@@ -452,7 +488,7 @@
     autosave.build = () => {
       const payload = {
         days: data.days.filter((d) => !d.off).map((d) => d.date), start: data.start, end: data.end, // 期間の外の日は送らない（そこの保存済みの予定を消さない）
-        cells: cells.filter((td) => td.classList.contains('is-ng')).map((td) => Number(td.dataset.abs)),
+        cells: cells.filter((td) => td.classList.contains('is-ng') && !td._buf).map((td) => Number(td.dataset.abs)),
       };
       form.querySelector('input[name="payload"]').value = JSON.stringify(payload);
       return new FormData(form);
