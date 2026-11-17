@@ -119,6 +119,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupTabGlide();
   setupSetlistNames();
   setupSpotifyAppLinks();
+  setupExternalLinksToBrowser(); // Spotify の処理より後に登録する（先に処理されたリンクは defaultPrevented で見分ける）
   setupSongModalLinks();
   setupVoSum();
   setupAutofocusPc();
@@ -251,6 +252,29 @@ function setupAlbumTip() {
   });
   // fixed なのでスクロールするとずれる → 隠す。capture: true で、ページだけでなく表の横スクロールでも隠す
   document.addEventListener('scroll', hide, { passive: true, capture: true });
+}
+
+/* ---------------------------------------------------------------------
+ * アプリ化（ホーム画面に追加）した Android で、このサイト以外へのリンクを押したら、標準のブラウザで開く
+ *   何もしないと、アプリの中の小さなブラウザ（Chrome Custom Tab）で開いてしまう。
+ *   → Android の intent:// の URL にして、OS に開く先（標準のブラウザ。YouTube などはそのアプリ）を選ばせる。
+ *   アプリとして開いている時（display-mode: standalone）の Android だけ。PC・iPhone・ふつうのブラウザは今までどおり。
+ * ------------------------------------------------------------------- */
+function setupExternalLinksToBrowser() {
+  const standalone = window.matchMedia('(display-mode: standalone)').matches;
+  if (!standalone || !/Android/i.test(navigator.userAgent)) return;
+  document.addEventListener('click', (e) => {
+    if (e.defaultPrevented || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    const a = e.target.closest('a[href]');
+    if (!a) return;
+    let u;
+    try { u = new URL(a.href, window.location.href); } catch { return; }
+    if (!/^https?:$/.test(u.protocol) || u.origin === window.location.origin) return;
+    e.preventDefault();
+    // intent://ホスト/パス#Intent;scheme=https;…;end（S.browser_fallback_url = 開けなかったときの飛び先）
+    const rest = u.href.replace(/#.*$/, '').slice(u.protocol.length + 2); // 「//」より後ろ（# 以降は intent の区切りとぶつかるので落とす）
+    window.location.href = `intent://${rest}#Intent;scheme=${u.protocol.slice(0, -1)};action=android.intent.action.VIEW;category=android.intent.category.BROWSABLE;S.browser_fallback_url=${encodeURIComponent(u.href)};end`;
+  });
 }
 
 /* ---------------------------------------------------------------------
