@@ -895,12 +895,52 @@ check('学年暦AI: 春秋にそろえる・壊れた休業は捨てる・notes 
 $calErr = false;
 try { sched_cal_normalize(['terms' => [['term' => 1, 'from' => '2026-04-10', 'to' => '2026-07-22']], 'breaks' => [], 'notes' => []]); } catch (RuntimeException $e) { $calErr = true; }
 check('学年暦AI: 秋学期が無ければエラー', $calErr, true);
-require_once __DIR__ . '/../lib/sched_travel_google.php';
-check('Google移動時間: 秒→1分切り上げ・返事の読み取り・出発は平日', [
-    sched_google_minutes(1), sched_google_minutes(600), sched_google_minutes(1501),
-    sched_google_seconds(['routes' => [['duration' => '1234s']]]), sched_google_seconds([]),
-    sched_google_departure(new DateTimeImmutable('2027-03-26 20:00', new DateTimeZone('Asia/Tokyo'))),
-], [1, 10, 26, 1234, null, '2027-03-29T03:00:00Z']);
+require_once __DIR__ . '/../lib/sched_navitime.php';
+$navRoute = sched_nav_parse(json_decode((string)file_get_contents(__DIR__ . '/fixtures/navitime_route.json'), true)); // 明大前 → 神保町（京王線・京王新線・都営新宿線）
+$navNames = static fn(array $st) => array_map(static fn($x) => $x['from']['name'] . '>' . $x['to']['name'] . ($x['whole'] ? '*' : ''), $st);
+check('NAVITIME: 経路の読み取り（時間・運賃・乗車区間）', [$navRoute['min'], $navRoute['fare'], count($navRoute['moves']), $navRoute['moves'][0]['from']['name'], end($navRoute['moves'])['to']['name']], [34, 380, 3, '明大前', '神保町']);
+$navPass = ['ids' => ['00008602', '00002919', '00004254'], 'moves' => []]; // 定期: 明大前〜新宿（京王線・京王新線）。途中駅の判定は下の実データのテストで
+check('NAVITIME: 定期の範囲を除いた区間', [
+    $navNames(sched_nav_stretches($navRoute['moves'], $navPass)),
+    $navNames(sched_nav_stretches($navRoute['moves'], ['ids' => [], 'moves' => []])),
+    sched_nav_stretches($navRoute['moves'], ['ids' => sched_nav_station_ids($navRoute), 'moves' => []]),
+], [['新宿>神保町'], ['明大前>神保町*'], []]);
+require_once __DIR__ . '/../lib/sched_fare.php';
+$fOrigin = [35.6685, 139.6504]; $fStudio = [35.6958, 139.7578];
+$navAlt = ['min' => 50, 'fare' => 300, 'lines' => ['別の経路'], 'moves' => [['from' => $navRoute['moves'][0]['from'], 'to' => end($navRoute['moves'])['to']]]]; // 運賃が安い別の経路（定期は効かない）
+$fRoutes = static function (array $a, array $b) use ($navRoute, $navAlt, $fOrigin, $fStudio) {
+    if ($a === $fOrigin && $b === $fStudio) { return [$navRoute, $navAlt]; }
+    return [['min' => 10, 'fare' => 220, 'lines' => [], 'moves' => []]]; // 定期外の区間（新宿〜神保町）の再検索
+};
+check('定期外の運賃: 定期なし=最安の経路の全額 / 定期が一部=残りの区間 / 定期が効かない=全額 / 徒歩だけ=0', [
+    sched_nav_fare($fRoutes, $fOrigin, $fStudio, null),
+    sched_nav_fare($fRoutes, $fOrigin, $fStudio, $navPass),
+    sched_nav_fare($fRoutes, $fOrigin, $fStudio, ['ids' => [], 'moves' => []]),
+    sched_nav_fare(static fn($a, $b) => [['min' => 8, 'fare' => null, 'lines' => [], 'moves' => []]], $fOrigin, $fStudio, null),
+    sched_nav_fare(static fn($a, $b) => [], $fOrigin, $fStudio, null),
+], [300, 220, 300, 0, null]);
+$fBusy = [[600, 700, 'campus:和泉', 'class', '2限'], [900, 1000, 'campus:和泉', 'class', '4限'], [300, 400, null, 'manual', '']];
+check('定期外の運賃: 前後2時間以内に授業があれば学校（行きと帰りを別々に判定）', [
+    sched_fare_legs($fBusy, 780, 120, 120),  // 授業(〜700)の80分後に開始 → 行きは学校 / 終了880 → 授業(900〜)が20分後 → 帰りも学校
+    sched_fare_legs($fBusy, 1100, 60, 120),  // 授業(〜1000)の100分後 → 行きは学校 / 終了1160 → 後ろに授業なし → 帰りは自宅
+    sched_fare_legs($fBusy, 1300, 60, 120),  // 授業から2時間より後 → どちらも自宅
+    sched_fare_legs([[600, 700, null, 'manual', '']], 720, 60, 120),
+    sched_fare_legs($fBusy, 1200, 60, 120), sched_fare_legs($fBusy, 1200, 60, 240), // 授業の終わり(1000)の200分後: 設定2時間なら自宅 / 4時間なら学校
+], [['campus', 'campus'], ['campus', 'home'], ['home', 'home'], ['home', 'home'], ['home', 'home'], ['campus', 'home']]);
+// 実データ: 定期 = 東中神〜御茶ノ水（青梅線 → 中央線特快）。途中駅の新宿までは定期の中、高尾（逆方向）は外
+$navLoad = static fn(string $n) => sched_nav_parse(json_decode((string)file_get_contents(__DIR__ . '/fixtures/navitime_' . $n . '.json'), true));
+$navPassSpec = sched_nav_pass_spec($navLoad('pass'));
+$navInside = $navLoad('inside');
+$navBeyond = $navLoad('beyond');
+check('NAVITIME: 定期の途中駅（東中神〜御茶ノ水の定期で、新宿まで）は定期の中 / 高尾は外', [
+    sched_nav_covered($navInside['moves'], $navPassSpec),
+    sched_nav_stretches($navInside['moves'], $navPassSpec),
+    count($navInside['moves']),
+    array_map(static fn($x) => $x['whole'], sched_nav_stretches($navBeyond['moves'], $navPassSpec)),
+    sched_nav_covered($navBeyond['moves'], $navPassSpec),
+    count(sched_nav_stretches($navInside['moves'], ['ids' => [], 'moves' => []])),
+], [[0, 1], [], 2, [false], [0], 1]);
+check('NAVITIME: 出発は次の平日の昼', sched_nav_time(new DateTimeImmutable('2027-03-26 20:00', new DateTimeZone('Asia/Tokyo'))), '2027-03-29T12:00:00');
 check('部屋: 広さの目安 / 不明', [sched_room_fit(15.0, 5, 3.0), sched_room_fit(12.0, 5, 3.0), sched_room_fit(null, 5, 3.0)], ['ok', 'small', 'unknown']);
 require_once __DIR__ . '/../lib/sched_ical.php';
 check('iCal URL: webcal → https / Google OK / 他のホストは不可 / ポート付きは不可', [

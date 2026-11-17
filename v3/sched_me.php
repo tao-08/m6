@@ -31,6 +31,7 @@ require_once __DIR__ . '/lib/sched.php';
 require_once __DIR__ . '/lib/sched_ical.php';
 require_once __DIR__ . '/lib/sched_google.php'; // Google カレンダーとの連携（OAuth）
 require_once __DIR__ . '/lib/sched_photo.php'; // 画像から予定を読み込む（claude.php・ai_reader.php も読み込まれる）
+require_once __DIR__ . '/lib/sched_fare.php'; // 定期の経路の候補（NAVITIME・Google。結果は DB に覚える）
 /** 毎週の NG の曜日（1 = 月 〜 7 = 日。date('N') と同じ）。時間割の SCHED_WEEKDAYS は日曜が無いので、日を足す */
 const SCHED_ME_WEEKDAYS = SCHED_WEEKDAYS + [7 => '日'];
 /** 1人が登録できる毎週の NG の数（増やしすぎて画面と計算が重くならないように） */
@@ -69,6 +70,51 @@ if (is_post()) {
         $pdo->prepare('UPDATE sched_profile SET campus = ? WHERE member_id = ?')->execute([isset(SCHED_CAMPUSES[$c]) ? $c : null, $me]);
         flash('キャンパスを保存しました');
         redirect($back . '#campus');
+    }
+
+    if ($action === 'pass') {
+        // 自宅最寄り駅（= 定期の出発駅）と、定期の到着駅（キャンパスの最寄り駅の候補から選ぶ。空 = 定期なし）
+        $home = trim((string)($_POST['home_station'] ?? ''));
+        $to = (string)($_POST['pass_to'] ?? '');
+        $valid = array_merge(...array_values(SCHED_PASS_STATIONS));
+        if (mb_strlen($home) > 30) {
+            flash('駅名は30文字までです', 'error');
+            redirect($back . '#pass');
+        }
+        $ensureProfile();
+        $to = $home !== '' && in_array($to, $valid, true) ? $to : '';
+        $pdo->prepare('UPDATE sched_profile SET home_station = ?, pass_to = ?, pass_via = NULL WHERE member_id = ?') // 駅が変わったかもしれないので、選んだ経路は選び直し
+            ->execute([$home === '' ? null : $home, $to === '' ? null : $to, $me]);
+        $msg = '定期を保存しました';
+        if ($home !== '' && $to !== '' && sched_nav_key() !== '') {
+            // 定期の経路の候補を調べる（自宅駅・到着駅の座標と経路で API を数回使う）。1つしかなければそのまま使う
+            try {
+                $cands = sched_pass_candidates($pdo, $home, $to, true);
+                if (count($cands) === 1) {
+                    $pdo->prepare('UPDATE sched_profile SET pass_via = ? WHERE member_id = ?')->execute([json_encode($cands[0], JSON_UNESCAPED_UNICODE), $me]);
+                } elseif (count($cands) > 1) {
+                    $msg .= '。定期の経路を選んでください';
+                }
+            } catch (RuntimeException $e) {
+                flash($e->getMessage(), 'error');
+            }
+        }
+        flash($msg);
+        redirect($back . '#pass');
+    }
+
+    if ($action === 'pass_via') {
+        // 定期の経路を、候補から選ぶ（候補は 'pass' の保存で調べて覚えてある。番号は候補の並び）
+        $st = $pdo->prepare('SELECT home_station, pass_to FROM sched_profile WHERE member_id = ?');
+        $st->execute([$me]);
+        $pr = $st->fetch();
+        $cands = $pr && $pr['home_station'] !== null && $pr['pass_to'] !== null ? sched_pass_candidates($pdo, (string)$pr['home_station'], (string)$pr['pass_to'], false) : [];
+        $i = (int)($_POST['via'] ?? -1);
+        if (isset($cands[$i])) {
+            $pdo->prepare('UPDATE sched_profile SET pass_via = ? WHERE member_id = ?')->execute([json_encode($cands[$i], JSON_UNESCAPED_UNICODE), $me]);
+            flash('定期の経路を保存しました');
+        }
+        redirect($back . '#pass');
     }
 
     if ($action === 'classes') {
@@ -454,7 +500,7 @@ if (is_post()) {
 }
 
 /* ==================== 表示 ==================== */
-$st = $pdo->prepare('SELECT m.name, m.entry_year, p.campus, p.ev_title, p.ev_location, p.ev_details, p.ical_url, p.ical_fetched_at, p.ical_error, COALESCE(p.feed_version, 0) AS feed_version FROM member m LEFT JOIN sched_profile p ON p.member_id = m.member_id WHERE m.member_id = ?');
+$st = $pdo->prepare('SELECT m.name, m.entry_year, p.campus, p.home_station, p.pass_to, p.pass_via, p.ev_title, p.ev_location, p.ev_details, p.ical_url, p.ical_fetched_at, p.ical_error, COALESCE(p.feed_version, 0) AS feed_version FROM member m LEFT JOIN sched_profile p ON p.member_id = m.member_id WHERE m.member_id = ?');
 $st->execute([$me]);
 $prof = $st->fetch();
 $autoCampus = sched_member_campus(null, $prof['entry_year'] === null ? null : (int)$prof['entry_year']);
@@ -650,6 +696,39 @@ render_header('マイスケジュール', 'tools');
         </div>
         <noscript><button class="btn btn--sm" type="submit">保存</button></noscript>
     </form>
+</section>
+
+<!-- ===== 定期（交通費は定期の区間を除いて計算する） ===== -->
+<section class="card sch-sec" id="pass">
+    <div class="sch-sec__head"><h2 class="section-title section-title--card">定期</h2>
+        <span class="info-tip" <?= tip_attr('自宅の最寄り駅から、キャンパスの最寄り駅までの定期。交通費は定期の区間を除いて計算する') ?>><?= icon('info', 'icon--sm') ?></span></div>
+    <form method="post" class="sch-row sch-row--wrap">
+        <?= csrf_field() ?><input type="hidden" name="action" value="pass">
+        <?php if ($poll !== null): ?><input type="hidden" name="poll" value="<?= $pollId ?>"><?php endif; ?>
+        <input class="search" type="text" name="home_station" maxlength="30" value="<?= h((string)$prof['home_station']) ?>" placeholder="自宅最寄り駅" autocomplete="off" aria-label="自宅最寄り駅">
+        <span>〜</span>
+        <select name="pass_to" class="select-sm" aria-label="定期の到着駅">
+            <option value="">定期なし</option>
+            <?php foreach (SCHED_PASS_STATIONS[$chosenCampus ?: $autoCampus] as $stn): ?><option value="<?= h($stn) ?>"<?= (string)$prof['pass_to'] === $stn ? ' selected' : '' ?>><?= h($stn) ?></option><?php endforeach; ?>
+        </select>
+        <button class="btn btn--sm" type="submit">保存</button>
+    </form>
+    <?php
+    // 定期の経路の候補（複数あるとき、自分の定期に合うものを選ぶ）。候補は「保存」のときに調べて覚えてある
+    $passCands = (string)$prof['home_station'] !== '' && (string)$prof['pass_to'] !== '' ? sched_pass_candidates($pdo, (string)$prof['home_station'], (string)$prof['pass_to'], false) : [];
+    $passVia = json_decode((string)$prof['pass_via'], true);
+    if (count($passCands) > 1): ?>
+        <form method="post" class="sch-pass-via">
+            <?= csrf_field() ?><input type="hidden" name="action" value="pass_via">
+            <?php if ($poll !== null): ?><input type="hidden" name="poll" value="<?= $pollId ?>"><?php endif; ?>
+            <div class="tabs tabs--filter" role="radiogroup" aria-label="定期の経路">
+                <?php foreach ($passCands as $i => $c): ?>
+                    <label class="tab"><input type="radio" name="via" value="<?= $i ?>" data-autosubmit<?= is_array($passVia) && ($passVia['ids'] ?? null) === $c['ids'] ? ' checked' : '' ?>><?= h($c['label']) ?></label>
+                <?php endforeach; ?>
+            </div>
+            <noscript><button class="btn btn--sm" type="submit">保存</button></noscript>
+        </form>
+    <?php endif; ?>
 </section>
 
 <!-- ===== カレンダー連携 ===== -->

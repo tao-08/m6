@@ -569,7 +569,7 @@
           if (g === null || g - minGap > GAP_RANGE + 0.01) return; // 小数の誤差を見込む
           // 同点のときの優先: 選んでいる部屋（2）・選んでいるスタジオ（1）
           const pri = (q?.room && q.room.id === o.room.id ? 2 : 0) + (s.id === curSid ? 1 : 0);
-          const c = { sid: s.id, room: o.room, total: o.total, g, pri };
+          const c = { sid: s.id, room: o.room, total: o.rank ?? o.total, g, pri };
           if (!best || c.total < best.total || (c.total === best.total && (c.g < best.g - 0.01 || (Math.abs(c.g - best.g) < 0.01 && c.pri > best.pri)))) best = c;
         });
       });
@@ -637,6 +637,19 @@
       const key = `${sid}:${day}:${start}`;
       if (!quotes.has(key)) quotes.set(key, calcRoomQuotes(sid, day, start));
       return quotes.get(key);
+    };
+    /**
+     * 交通費（全員の定期外の運賃の合計）。窓 w・スタジオ sid・開始 m ごとに PHP が持たせてくる（{ sum, miss }。miss = 不明の片道の数）
+     *   だれも自宅の駅を登録していなければ null（交通費は順位にも表示にも使わない）
+     */
+    const fareAt = (w, sid, m) => {
+      const f = w.studios.find((s) => s.id === sid)?.fare?.[m];
+      return f && f.miss < data.people * 2 ? f : null;
+    };
+    /** 料金の一覧に、順位用の rank（= 部屋の料金 + 交通費）を足したコピーを返す */
+    const withRank = (opts, w, sid, m) => {
+      const add = fareAt(w, sid, m)?.sum || 0;
+      return opts.map((o) => ({ ...o, rank: o.total + add }));
     };
     /** 最初に選ぶ部屋: 狭すぎない部屋の中で最安。1つも無ければ狭い部屋の中で最安（opts は安い順なので先頭から探す）。無ければ null */
     const firstPick = (opts) => opts.find((o) => !o.small) || opts[0] || null;
@@ -713,7 +726,7 @@
     const minInfo = (w, m) => {
       const list = w.studios
         .filter((s) => s.starts.includes(m))
-        .map((s) => [firstPick(roomQuotes(s.id, w.day, m))?.total ?? Infinity, s.id]);
+        .map((s) => [firstPick(withRank(roomQuotes(s.id, w.day, m), w, s.id, m))?.rank ?? Infinity, s.id]);
       const low = Math.min(Infinity, ...list.map(([p]) => p));
       return [low, low === Infinity ? [] : list.filter(([p]) => p === low).map(([, id]) => id)];
     };
@@ -896,6 +909,8 @@
           if (x.q) {
             price.append(el('strong', '', perHead(x.q.total) + '/人')); // 黒い太字は1人あたり、合計は薄く
             price.append(el('span', 'muted small', yen(x.q.total)));
+            const fare = fareAt(w, x.s.id, start);
+            if (fare && fare.sum > 0) price.append(el('span', 'muted small', `交通費 ${yen(fare.sum)}${fare.miss ? '＋' : ''}`)); // ＋ = 駅が未登録・未調査の人がいる（その分は含まない）
           } else {
             price.append(el('span', 'muted small', '料金未登録'));
           }
@@ -942,12 +957,12 @@
         items = w.studios
           .filter((s) => s.starts.includes(start))
           .map((s, i) => {
-            const opts = roomQuotes(s.id, w.day, start);
+            const opts = withRank(roomQuotes(s.id, w.day, start), w, s.id, start);
             const q = opts.find((o) => o.room && o.room.id === chosen[s.id]) || firstPick(opts);
             chosen[s.id] = q?.room ? q.room.id : null;
             return { s, i, opts, q };
           })
-          .sort((a, b) => (a.q ? a.q.total : Infinity) - (b.q ? b.q.total : Infinity) || a.i - b.i); // Infinity 同士の引き算は NaN（偽）→ 元の順
+          .sort((a, b) => (a.q ? a.q.rank : Infinity) - (b.q ? b.q.rank : Infinity) || a.i - b.i); // Infinity 同士の引き算は NaN（偽）→ 元の順
         if (!items.some((x) => x.s.id === sid)) sid = items[0].s.id;
         rec = pickRecommend(items, sid);
         if (items.findIndex((x) => x.s.id === sid) >= SHOW) expanded = true; // 選んでいる行を隠さない
@@ -967,7 +982,7 @@
         renderPills();
       };
       renderStudios();
-      const price = items[0].q ? items[0].q.total : Infinity; // 「最初に選ばれた開始時刻での最安」（安い順の並べ替え用）
+      const price = items[0].q ? items[0].q.rank : Infinity; // 「最初に選ばれた開始時刻での最安（料金 + 交通費）」（安い順の並べ替え用）
       c.append(box);
 
       // ---- 下段: 確定のボタン ----

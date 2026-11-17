@@ -26,6 +26,7 @@ require_once __DIR__ . '/lib/repository.php'; // tip_attr（ポップアップ�
 require_once __DIR__ . '/lib/sched.php';
 require_once __DIR__ . '/lib/sched_ical.php';
 require_once __DIR__ . '/lib/sched_google.php'; // 決定した練習を Google カレンダーに入れる・直す・消す
+require_once __DIR__ . '/lib/sched_fare.php';   // 定期外の交通費（NAVITIME + Google。結果は DB に覚える）
 $user = require_login(); // ログインしていれば誰でも
 $pdo = db();
 
@@ -42,6 +43,33 @@ $isMember = $myMember !== null && in_array($myMember, $memberIds, true);
 $studios = sched_poll_studios($pdo, $pollId);
 $studioById = array_column($studios, null, 'studio_id'); // [studio_id => 行]
 $names = array_column($members, 'name', 'member_id'); // [member_id => 名前]
+
+/** メンバーの交通費の元（自宅最寄り駅・定期・キャンパス）。[member_id => ['campus', 'home_station', 'pass_to']] */
+$fareProfiles = [];
+if ($memberIds) {
+    $in = implode(',', array_fill(0, count($memberIds), '?'));
+    $st = $pdo->prepare("SELECT m.member_id, m.entry_year, p.campus, p.home_station, p.pass_to, p.pass_via FROM member m LEFT JOIN sched_profile p ON p.member_id = m.member_id WHERE m.member_id IN ($in)");
+    $st->execute($memberIds);
+    foreach ($st as $r) {
+        $fareProfiles[(int)$r['member_id']] = [
+            'campus' => sched_member_campus($r['campus'] === null ? null : (int)$r['campus'], $r['entry_year'] === null ? null : (int)$r['entry_year']),
+            'home_station' => (string)$r['home_station'], 'pass_to' => (string)$r['pass_to'], 'pass_via' => (string)$r['pass_via'],
+        ];
+    }
+}
+$placeCoords = sched_place_coords($pdo);
+/** 画面用: 覚えてある結果だけで、メンバー・出発地・スタジオごとの片道の運賃（円。不明は null） */
+$fareOf = static function (int $mid, string $origin, int $sid, bool $fetch = false) use ($pdo, $fareProfiles, $placeCoords): ?int {
+    static $memo = [];
+    $k = $mid . '|' . $origin . '|' . $sid;
+    if (!$fetch && array_key_exists($k, $memo)) {
+        return $memo[$k];
+    }
+    $coord = $placeCoords['studio:' . $sid] ?? null;
+    $prof = $fareProfiles[$mid] ?? null;
+    $v = $coord === null || $prof === null ? null : sched_member_fare($pdo, $prof, $origin, $coord, $fetch);
+    return $memo[$k] = $v;
+};
 
 /** 決定・仮決定した部屋の名前（無ければ ''） */
 $roomName = static function (?int $roomId) use ($pdo): string {
@@ -118,6 +146,26 @@ if (is_post()) {
     // 楽観ロック: 画面を開いたときの version と違えば、その間に誰かが変えている → やり直してもらう
     if ((int)($_POST['v'] ?? -1) !== (int)$poll['version']) {
         flash('ほかの人が先に変更しました。もう一度確認してください', 'error');
+        redirect($back);
+    }
+
+    if ($action === 'fare_fetch') {
+        // 交通費の元データを調べる（NAVITIME・Google の API を呼ぶ。結果は180日覚える）。自宅の駅を登録している人だけ
+        try {
+            foreach ($fareProfiles as $mid => $prof) {
+                if ($prof['home_station'] === '') {
+                    continue;
+                }
+                foreach (array_keys($studioById) as $sid) {
+                    foreach (['home', 'campus'] as $origin) {
+                        $fareOf((int)$mid, $origin, (int)$sid, true);
+                    }
+                }
+            }
+            flash('交通費を調べました');
+        } catch (RuntimeException $e) {
+            flash($e->getMessage(), 'error');
+        }
         redirect($back);
     }
 
@@ -328,6 +376,32 @@ if ($status < 3) {
                 $absentWindows = array_values(array_filter(sched_candidates($calc + ['absent_max' => 1]), static fn($w) => $w['absent']));
             }
         }
+        // ---- 交通費（覚えてある分だけ）。開始時刻ごとに、全員の定期外の運賃の合計を窓のスタジオに持たせる ----
+        $addFares = static function (array &$ws) use ($fareOf, $data, $len, $memberIds, $settings): void {
+            foreach ($ws as &$w) {
+                foreach ($w['studios'] as $sid => &$s) {
+                    $s['fare'] = [];
+                    foreach ($s['starts'] as $m) {
+                        $sum = 0;
+                        $miss = 0;
+                        foreach ($memberIds as $mid) {
+                            if (in_array($mid, $w['absent'], true)) {
+                                continue;
+                            }
+                            foreach (sched_fare_legs($data['busy'][$mid] ?? [], (int)$m, $len, (int)$settings['fare_gap']) as $origin) {
+                                $f = $fareOf($mid, $origin, (int)$sid);
+                                $f === null ? $miss++ : $sum += $f;
+                            }
+                        }
+                        $s['fare'][$m] = ['sum' => $sum, 'miss' => $miss];
+                    }
+                }
+                unset($s);
+            }
+            unset($w);
+        };
+        $addFares($windows);
+        $addFares($absentWindows);
         // ---- メンバーの予定（週ごとの表の元データ）。授業・練習・それ以外は種類を丸めて送る（プライバシーのため）----
         //   「バイト」「カレンダー」「手入力」のどれなのかは、画面に出さない（まとめて「予定あり」）
         //   例外: 自分（$myMember）の iCal・画像から読み込んだ予定だけ、タイトルを見せる（他の人の行には、タイトルを絶対に出さない）
@@ -394,6 +468,7 @@ $winOut = static fn(array $w): array => [
         'late' => (object)array_map(static fn($l) => (object)$l, $s['late']),
         'early' => (object)array_map(static fn($l) => (object)$l, $s['early']),
         'adj' => (object)$s['adj'],
+        'fare' => (object)($s['fare'] ?? []), // 開始の分 => ['sum' => 全員の運賃の合計, 'miss' => 不明の片道の数]
     ], array_keys($w['studios']), array_values($w['studios'])),
 ];
 $boot = [
@@ -554,6 +629,18 @@ if (!empty($poll['live_id'])) {
                 <button type="button" class="tab" data-sort="price">安い順</button>
             </div>
         </div>
+        <?php if ($canManage && sched_nav_key() !== '' && $studios): ?>
+            <form method="post" class="sch-row" data-loading data-confirm="呼ばれた人の自宅の駅から、候補のスタジオまでの交通費を調べます（NAVITIME は月500回まで）。よろしいですか？">
+                <?= csrf_field() ?><input type="hidden" name="action" value="fare_fetch"><input type="hidden" name="v" value="<?= (int)$poll['version'] ?>">
+                <button class="btn btn--sm" type="submit">交通費を調べる</button>
+                <span class="info-tip" <?= tip_attr('候補の順位に、定期外の交通費（全員の合計）を足す。自宅の駅と定期はマイスケジュールで登録') ?>><?= icon('info', 'icon--sm') ?></span>
+                <div class="loading" data-loading-box hidden role="status" aria-live="polite">
+                    <span class="loading__spinner" aria-hidden="true"></span>
+                    <p class="loading__title" data-loading-title>調査中…</p>
+                    <p class="muted small" data-loading-sub></p>
+                </div>
+            </form>
+        <?php endif; ?>
         <?php if (!$studios): ?>
             <div class="empty card"><p class="empty__title">候補のスタジオがありません</p></div>
         <?php elseif (!$windows): ?>

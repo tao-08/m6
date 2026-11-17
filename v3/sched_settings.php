@@ -16,7 +16,7 @@ require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/repository.php'; // tip_attr（ポップアップの説明）
 require_once __DIR__ . '/lib/sched.php';
 require_once __DIR__ . '/lib/sched_calendar.php'; // 学年暦 PDF の AI 読み取り
-require_once __DIR__ . '/lib/sched_travel_google.php'; // 移動時間を Google Maps で調べる
+require_once __DIR__ . '/lib/sched_navitime.php'; // 移動時間を NAVITIME で調べる
 $user = require_executive(); // 幹部・管理者だけ（設定は全員に影響する）
 $pdo = db();
 $settings = sched_settings($pdo);
@@ -103,6 +103,17 @@ if (is_post()) {
         redirect('sched_settings#studios');
     }
 
+    if ($action === 'fare_gap') {
+        $h = (float)($_POST['hours'] ?? 0);
+        if ($h < 0.5 || $h > 12) {
+            flash('0.5〜12 時間で入力してください', 'error');
+            redirect('sched_settings#studios');
+        }
+        sched_setting_save($pdo, 'sched_fare_gap', (string)(int)round($h * 60), $uid);
+        flash('保存しました');
+        redirect('sched_settings#studios');
+    }
+
     if ($action === 'studios') {
         $defaults = array_map('intval', (array)($_POST['default'] ?? []));
         $pdo->beginTransaction();
@@ -132,8 +143,8 @@ if (is_post()) {
         redirect('sched_settings#travel');
     }
 
-    if ($action === 'travel_google') {
-        // 初期候補のスタジオ宛ての組み合わせ（キャンパス → スタジオ、スタジオ ↔ スタジオ）を Google で調べて上書きに保存する
+    if ($action === 'travel_navitime') {
+        // 初期候補のスタジオ宛ての組み合わせ（キャンパス → スタジオ、スタジオ ↔ スタジオ）を NAVITIME で調べて上書きに保存する
         //   手入力で上書き済みの組み合わせは触らない（消せば次回また調べられる）
         $coords = sched_place_coords($pdo);
         $over = sched_travel_overrides($pdo);
@@ -148,18 +159,22 @@ if (is_post()) {
                 }
             }
         }
-        $pairs = array_slice($pairs, 0, 40); // 料金・待ち時間の上限
+        $pairs = array_slice($pairs, 0, 40); // 月500回の上限・待ち時間への配慮
         $saved = 0;
+        $skipped = 0;
         try {
             foreach ($pairs as [$a, $b]) {
-                $min = sched_google_travel($coords[$a], $coords[$b]);
-                if ($min !== null) {
+                $route = sched_nav_route($coords[$a], $coords[$b], sched_nav_time());
+                $min = $route === null ? null : $route['min'];
+                if ($min === null) {
+                    $skipped++; // 経路が見つからない = 直線距離の見積もりのまま
+                } else {
                     $pdo->prepare('DELETE FROM sched_travel WHERE from_place = ? AND to_place = ?')->execute([$b, $a]);
                     $pdo->prepare('REPLACE INTO sched_travel (from_place, to_place, minutes) VALUES (?, ?, ?)')->execute([$a, $b, $min]);
                     $saved++;
                 }
             }
-            flash($saved . '件を Google で調べて保存しました');
+            flash($saved . '件を保存しました' . ($skipped ? '（' . $skipped . '件は経路が見つからないため、自動の見積もりのまま）' : ''), $saved ? 'success' : 'error');
         } catch (RuntimeException $e) {
             flash(($saved ? $saved . '件を保存したあと、' : '') . $e->getMessage(), 'error');
         }
@@ -211,10 +226,10 @@ render_header('日程調整の設定', 'tools');
             </tbody>
         </table></div>
     <?php endif; ?>
-    <?php if (sched_google_key() !== '' && $defaultStudios): ?>
-        <form method="post" class="sch-row" data-loading data-confirm="初期候補のスタジオ宛ての移動時間を Google マップで調べて、上書きに保存します。よろしいですか？">
-            <?= csrf_field() ?><input type="hidden" name="action" value="travel_google">
-            <button class="btn btn--sm" type="submit">Googleで調査</button>
+    <?php if (sched_nav_key() !== '' && $defaultStudios): ?>
+        <form method="post" class="sch-row" data-loading data-confirm="初期候補のスタジオ宛ての移動時間を NAVITIME で調べて、上書きに保存します。よろしいですか？">
+            <?= csrf_field() ?><input type="hidden" name="action" value="travel_navitime">
+            <button class="btn btn--sm" type="submit">NAVITIMEで調査</button>
             <div class="loading" data-loading-box hidden role="status" aria-live="polite">
                 <span class="loading__spinner" aria-hidden="true"></span>
                 <p class="loading__title" data-loading-title>調査中…</p>
@@ -247,6 +262,11 @@ render_header('日程調整の設定', 'tools');
     <form method="post" class="sch-row">
         <?= csrf_field() ?><input type="hidden" name="action" value="jo">
         <label>1人あたり <input type="number" name="jo" value="<?= h((string)$settings['jo']) ?>" min="0.5" max="20" step="0.5" class="input-num"> 帖</label>
+        <button class="btn btn--sm" type="submit">保存</button>
+    </form>
+    <form method="post" class="sch-row">
+        <?= csrf_field() ?><input type="hidden" name="action" value="fare_gap">
+        <label>授業の前後 <input type="number" name="hours" value="<?= h((string)($settings['fare_gap'] / 60)) ?>" min="0.5" max="12" step="0.5" class="input-num"> 時間以内は学校から交通費を計算</label>
         <button class="btn btn--sm" type="submit">保存</button>
     </form>
     <form method="post"<?= unsaved_attr() ?>>

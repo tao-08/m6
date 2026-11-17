@@ -38,6 +38,13 @@ return [
         'youtube' => [
             'api_key' => '',
         ],
+        // 日程調整の交通費・移動時間（電車の経路と運賃）に使う NAVITIME Route(totalnavi) の RapidAPI キー
+        //   https://rapidapi.com/navitimejapan-navitimejapan/api/navitime-route-totalnavi で Basic（無料・月500回）に登録すると出る「X-RapidAPI-Key」
+        //   空なら交通費は出さない（移動時間は直線距離の見積もりのまま）
+        //   ※ パスワードと同じ。人に見せない・git に入れない
+        'navitime' => [
+            'api_key' => '',
+        ],
         // ドライブのフォルダのファイルをバンドに割り当てる（live_drive.php）のに使う Google Drive API のキー
         //   上の YouTube と同じプロジェクトで「Google Drive API」も有効にし、キーの「APIの制限」に Drive API を足せば、
         //   ここは空のままで youtube.api_key が使われる。別のキーにしたいときだけ入れる

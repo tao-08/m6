@@ -30,6 +30,11 @@ require_once __DIR__ . '/sched_ical.php'; // sched_ical_decrypt()（iCal の予�
 /** キャンパス（sched_profile.campus の値 => 名前）。中野・生田は扱わない（部員にいないため） */
 const SCHED_CAMPUSES = [1 => '和泉', 2 => '駿河台'];
 
+/**
+ * キャンパスごとの、定期券の到着駅の候補（sched_profile.pass_to に入る駅名）。和泉は明大前、駿河台は御茶ノ水・神保町周辺の4駅
+ */
+const SCHED_PASS_STATIONS = [1 => ['明大前'], 2 => ['JR御茶ノ水', 'メトロ御茶ノ水', '新御茶ノ水', '神保町']];
+
 /** 学期（sched_class.term の値 => 名前） */
 const SCHED_TERMS = [1 => '春学期', 2 => '秋学期'];
 
@@ -83,6 +88,9 @@ const SCHED_DEFAULT_TERMS = [
 ];
 const SCHED_DEFAULT_BREAKS = [['2026-12-25', '2027-01-07']];
 
+/** 交通費: 練習の前後この分数以内に授業があれば、学校から来る・学校へ帰るものとして運賃を出す（設定画面で変える）の初期値 */
+const SCHED_DEFAULT_FARE_GAP_MIN = 240;
+
 /** 「1人あたり何帖あれば足りるか」の目安の初期値（部屋の広さからの判定に使う） */
 const SCHED_DEFAULT_JO_PER_PERSON = 3.0;
 
@@ -129,11 +137,13 @@ function sched_settings(PDO $pdo): array
     $periods = json_decode((string)($rows['sched_periods'] ?? ''), true);
     $terms = json_decode((string)($rows['sched_terms'] ?? ''), true);
     $jo = (float)($rows['sched_jo'] ?? 0);
+    $gap = (int)($rows['sched_fare_gap'] ?? 0);
     $cache = [
         'periods' => is_array($periods) && count($periods) === 6 ? array_combine(range(1, 6), array_values($periods)) : SCHED_DEFAULT_PERIODS,
         'terms'   => is_array($terms['terms'] ?? null) ? [1 => $terms['terms'][1] ?? $terms['terms']['1'], 2 => $terms['terms'][2] ?? $terms['terms']['2']] : SCHED_DEFAULT_TERMS,
         'breaks'  => is_array($terms['breaks'] ?? null) ? $terms['breaks'] : SCHED_DEFAULT_BREAKS,
         'jo'      => $jo > 0 ? $jo : SCHED_DEFAULT_JO_PER_PERSON,
+        'fare_gap' => $gap > 0 ? $gap : SCHED_DEFAULT_FARE_GAP_MIN,
     ];
     return $cache;
 }
