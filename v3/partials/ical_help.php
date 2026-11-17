@@ -12,24 +12,15 @@
 // 分岐ごとの手順。html は信頼できる固定の文字列だけ（ユーザーの入力は入れない）ので、そのまま出す
 $noteTimed = '<p class="muted small">予定のタイトルは本人にのみ表示され、他のユーザーからは「予定あり」と表示されます。</p>';
 $branches = [
+    // Google カレンダーは「Google で連携」だけ（iCal の URL での登録はやめた）。連携が使えないサーバーでは、そう出す（sched_me.php が lib/sched_google.php を読み込み済み）
     'google' => [
-        ['title' => 'PC版サイトで開く', 'html' =>
-            (sched_google_available() ? '<p class="muted small">「Google で連携」なら、この手順は不要</p>' : '') // Google 連携が使えるときだけ（sched_me.php が lib/sched_google.php を読み込み済み）
-            . '<ol>'
-            . '<li><a href="https://calendar.google.com" target="_blank" rel="noopener">Google カレンダー</a>をブラウザで開く（アプリでは取得不可）</li>'
-            . '<li>スマートフォンの場合は、ブラウザのメニューから「PC版サイト」に切り替え</li>'
-            . '</ol>'],
-        ['title' => '設定を開く', 'html' =>
-            '<ol>'
-            . '<li>右上の' . icon('settings', 'icon--sm') . ' →「設定」</li>'
-            . '<li>左の「マイカレンダーの設定」で、自分のカレンダーを選択</li>'
-            . '</ol>'],
-        ['title' => '非公開アドレスをコピー', 'html' =>
-            '<ol>'
-            . '<li>「カレンダーの統合」の「iCal 形式の非公開アドレス」をコピー' . icon('content_copy', 'icon--sm') . '</li>'
-            . '<li>この画面の欄に貼り付け</li>'
-            . '</ol>'
-            . $noteTimed],
+        ['title' => 'Google で連携', 'html' => sched_google_available()
+            ? '<ol>'
+              . '<li>「Google で連携」を押す</li>'
+              . '<li>Google アカウントを選んで、カレンダーへのアクセスを許可</li>'
+              . '</ol>'
+              . $noteTimed
+            : '<p class="muted">現在使えません（管理者の設定待ち）</p>'],
     ],
     'icloud' => [
         ['title' => '公開カレンダーをオン', 'html' =>

@@ -332,3 +332,5 @@
 .sch-trip { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; cursor: default; }
 .sch-trip[hidden] { display: none; }
 .sch-trip__part { display: inline-flex; align-items: center; gap: 2px; }
+
+.togglecard__body.sch-sec { margin-bottom: 0; } /* 折りたたみカードの中身（カレンダー連携）。外側のカードに余白があるので */

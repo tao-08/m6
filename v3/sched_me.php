@@ -125,12 +125,12 @@ if (is_post()) {
         $m = (int)($_POST['minutes'] ?? -1);
         if ($m < 0 || $m > 120 || $m % 30 !== 0) {
             flash('0〜120分の30分刻みで選んでください', 'error');
-            redirect($back . '#ical');
+            redirect($back . '#ng');
         }
         $ensureProfile();
         $pdo->prepare('UPDATE sched_profile SET buf_min = ? WHERE member_id = ?')->execute([$m, $me]);
         flash('保存しました');
-        redirect($back . '#ical');
+        redirect($back . '#ng');
     }
 
     if ($action === 'pass_via') {
@@ -197,8 +197,13 @@ if (is_post()) {
             redirect($back . '#ical');
         }
         $url = sched_ical_normalize((string)($_POST['url'] ?? ''));
+        // Google カレンダーは「Google で連携」だけ（iCal の URL での新しい登録は受け付けない。登録済みの人は解除するまでそのまま読む）
+        if ($url !== null && strtolower((string)parse_url($url, PHP_URL_HOST)) === 'calendar.google.com') {
+            flash($googleOn ? 'Google カレンダーは「Google で連携」を使ってください' : 'Google カレンダーは現在使えません', 'error');
+            redirect($back . '#ical');
+        }
         if ($url === null) {
-            flash('Google カレンダーか iCloud の URL を貼ってください', 'error');
+            flash('iCloud の URL を貼ってください', 'error');
             redirect($back . '#ical');
         }
         $ensureProfile();
@@ -517,7 +522,7 @@ if (is_post()) {
         $st->execute([$wd, $ws, $we, $me]);
         $r = $st->fetch();
         if ((int)$r['n'] >= SCHED_ME_WEEKLY_MAX) {
-            flash('毎週の予定ありは' . SCHED_ME_WEEKLY_MAX . '件までです', 'error');
+            flash('繰り返しの予定は' . SCHED_ME_WEEKLY_MAX . '件までです', 'error');
         } elseif ((int)$r['same'] === 0) { // まったく同じ行があれば足さない
             // member_id はフォームから受け取らず、セッションの $me を使う（他人の行は作れない）
             $pdo->prepare('INSERT INTO sched_weekly (member_id, weekday, start_min, end_min) VALUES (?, ?, ?, ?)')->execute([$me, $wd, $ws, $we]);
@@ -623,7 +628,7 @@ render_header('マイスケジュール', 'tools');
 <section class="card sch-sec" id="ng">
     <div class="sch-sec__head">
         <h2 class="section-title section-title--card">スケジュールを編集</h2>
-        <span class="info-tip" <?= tip_attr('マスをタップ・なぞって予定ありを塗る。日付をタップで1日まるごと。授業・カレンダーの予定・毎週の予定あり・決定した練習は自動で入る。自動で入った予定をタップすると、その1回分を無視できる') ?>><?= icon('info', 'icon--sm') ?></span>
+        <span class="info-tip" <?= tip_attr('マスをタップ・なぞって予定ありを塗る。日付をタップで1日まるごと。授業・カレンダーの予定・繰り返しの予定・決定した練習は自動で入る。自動で入った予定をタップすると、その1回分を無視できる') ?>><?= icon('info', 'icon--sm') ?></span>
     </div>
     <div class="sch-weeknav">
         <?php if ($prevUrl !== null): ?><a class="icon-btn" href="<?= h($prevUrl) ?>#ng" aria-label="前の週" title="前の週"><?= icon('chevron_left') ?></a><?php else: ?><span></span><?php endif; ?>
@@ -631,7 +636,7 @@ render_header('マイスケジュール', 'tools');
         <?php if ($nextUrl !== null): ?><a class="icon-btn" href="<?= h($nextUrl) ?>#ng" aria-label="次の週" title="次の週"><?= icon('chevron_right') ?></a><?php else: ?><span></span><?php endif; ?>
     </div>
     <div class="sch-legend small muted">
-        <span><i class="sch-sw is-ng"></i>予定あり</span><span><i class="sch-sw is-class"></i>授業</span><span><i class="sch-sw is-ical"></i>カレンダー</span><span><i class="sch-sw is-weekly"></i>毎週</span><span><i class="sch-sw is-practice"></i>練習</span><span><i class="sch-sw is-prov"></i>仮決定</span>
+        <span><i class="sch-sw is-ng"></i>予定あり</span><span><i class="sch-sw is-class"></i>授業</span><span><i class="sch-sw is-ical"></i>カレンダー</span><span><i class="sch-sw is-weekly"></i>繰り返し</span><span><i class="sch-sw is-practice"></i>練習</span><span><i class="sch-sw is-prov"></i>仮決定</span>
     </div>
     <div class="sch-grid-wrap" data-sched-grid></div>
     <form method="post" data-sched-grid-form>
@@ -652,17 +657,146 @@ render_header('マイスケジュール', 'tools');
             </select>
         </div>
     <?php endif; ?>
+    <?php if ($g !== null): // 取り込んだ予定（iCal・Google・画像）の前後に付ける、手動と同じ「予定あり」の枠の分数（0〜120・30分刻み）。Google 連携中だけ出す（それ以外は初期の SCHED_DEFAULT_BUF_MIN） ?>
+    <form method="post" class="sch-row sch-row--wrap">
+        <?= csrf_field() ?><input type="hidden" name="action" value="buf_min">
+        <?php if ($poll !== null): ?><input type="hidden" name="poll" value="<?= $pollId ?>"><?php endif; ?>
+        <span class="sch-label">連携した予定の前後にスタジオを入れない</span>
+        <select name="minutes" class="select-sm" data-autosubmit aria-label="予定の前後に付ける予定ありの枠">
+            <?php foreach (range(0, 120, 30) as $mm): ?><option value="<?= $mm ?>"<?= (int)$prof['buf_min'] === $mm ? ' selected' : '' ?>><?= $mm === 0 ? 'なし' : $mm . '分' ?></option><?php endforeach; ?>
+        </select>
+        <noscript><button class="btn btn--sm" type="submit">保存</button></noscript>
+    </form>
+    <?php endif; ?>
     <?php if ($poll !== null): ?>
         <p class="sch-answer"><a class="btn btn--ghost" href="sched_poll?id=<?= $pollId ?>"><?= icon('chevron_left') ?> 候補・回答完了へ</a></p>
     <?php endif; ?>
 </section>
 <script type="application/json" id="sched-grid-data"><?= json_encode($grid, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP) ?></script>
 
+<!-- ===== カレンダー連携（折りたたみ。#ical で来たら開く: app.js の .togglecard） ===== -->
+<details class="card togglecard" id="ical">
+<summary><?= icon('event') ?> <span class="togglecard__title">カレンダー連携</span>
+    <button type="button" class="info-tip" data-tutorial-open="ical-help" aria-label="カレンダー連携のやり方" title="カレンダー連携のやり方"><?= icon('info', 'icon--sm') ?></button><?= icon('expand_more', 'togglecard__chevron') ?></summary>
+<div class="togglecard__body sch-sec">
+    <?php if ($googleOn && $g === null): // Google 連携の開始。押すと sched_google.php が Google の許可画面へ移動する（iPhone の人は、下の iCal の URL を使う） ?>
+        <form method="post" action="sched_google" class="sch-row">
+            <?= csrf_field() ?><input type="hidden" name="poll" value="<?= $poll !== null ? $pollId : 0 ?>">
+            <button class="btn btn--primary btn--sm" type="submit"><?= icon('event') ?> Google で連携</button>
+            <a class="muted small" href="privacy#google" target="_blank" rel="noopener">プライバシーポリシー</a>
+        </form>
+    <?php elseif ($g !== null): ?>
+        <p class="sch-ical">
+            <?= icon($g['error'] ? 'warning' : 'sync', 'icon--sm ' . ($g['error'] ? 'sch-warn' : 'sch-ok')) ?>
+            <strong><?= h($g['email'] ?? 'Google カレンダー') ?></strong>
+            <span class="muted small"><?= $g['fetched_at'] !== null ? h(date('n/j G:i', strtotime((string)$g['fetched_at']))) . ' 読込' : '' ?></span>
+        </p>
+        <?php if ($g['error']): ?><p class="flash flash--error"><?= h($g['error']) ?></p><?php endif; ?>
+        <div class="sch-row sch-row--wrap">
+            <?php if ($g['error']): // 切れたとき（または読み込めないとき）は、もう一度許可してもらう ?>
+                <form method="post" action="sched_google"><?= csrf_field() ?><input type="hidden" name="poll" value="<?= $poll !== null ? $pollId : 0 ?>">
+                    <button class="btn btn--sm btn--primary" type="submit"><?= icon('login') ?> 再連携</button></form>
+            <?php endif; ?>
+            <form method="post"><?= csrf_field() ?><input type="hidden" name="action" value="google_refresh"><?php if ($poll !== null): ?><input type="hidden" name="poll" value="<?= $pollId ?>"><?php endif; ?>
+                <button class="btn btn--sm" type="submit"><?= icon('refresh') ?> 読み直す</button></form>
+            <form method="post" data-confirm="Google との連携を解除します。取り込んだ予定も消えます。よろしいですか？"><?= csrf_field() ?><input type="hidden" name="action" value="google_disconnect"><?php if ($poll !== null): ?><input type="hidden" name="poll" value="<?= $pollId ?>"><?php endif; ?>
+                <button class="btn btn--sm btn--danger" type="submit">解除</button></form>
+        </div>
+    <?php endif; ?>
+    <?php if ($g !== null): // Google 連携中は iCal の URL を使わない（上の連携で足りる）。 ?>
+    <?php elseif (!$icalOn): ?>
+        <?php if (!$googleOn): ?><p class="muted small">現在使えません（管理者の設定待ち）</p><?php endif; ?>
+    <?php elseif ($prof['ical_url'] !== null): ?>
+        <p class="sch-ical">
+            <?= icon($prof['ical_error'] ? 'warning' : 'sync', 'icon--sm ' . ($prof['ical_error'] ? 'sch-warn' : 'sch-ok')) ?>
+            <strong><?= h(sched_ical_label(sched_ical_decrypt($prof['ical_url']))) ?></strong>
+            <span class="muted small"><?= $prof['ical_fetched_at'] !== null ? h(date('n/j G:i', strtotime((string)$prof['ical_fetched_at']))) . ' 読込' : '' ?></span>
+        </p>
+        <?php if ($prof['ical_error']): ?><p class="flash flash--error"><?= h($prof['ical_error']) ?></p><?php endif; ?>
+        <div class="sch-row">
+            <form method="post"><?= csrf_field() ?><input type="hidden" name="action" value="ical_refresh"><?php if ($poll !== null): ?><input type="hidden" name="poll" value="<?= $pollId ?>"><?php endif; ?>
+                <button class="btn btn--sm" type="submit"><?= icon('refresh') ?> 読み直す</button></form>
+            <form method="post" data-confirm="カレンダー連携を解除します。取り込んだ予定も消えます。よろしいですか？"><?= csrf_field() ?><input type="hidden" name="action" value="ical_delete"><?php if ($poll !== null): ?><input type="hidden" name="poll" value="<?= $pollId ?>"><?php endif; ?>
+                <button class="btn btn--sm btn--danger" type="submit">解除</button></form>
+        </div>
+    <?php else: ?>
+        <form method="post" class="sch-row">
+            <?= csrf_field() ?><input type="hidden" name="action" value="ical">
+            <?php if ($poll !== null): ?><input type="hidden" name="poll" value="<?= $pollId ?>"><?php endif; ?>
+            <input class="search search--plain" type="url" name="url" required placeholder="webcal://…icloud.com/published/…" autocomplete="off" aria-label="iCal の URL">
+            <button class="btn btn--primary btn--sm" type="submit"><?= icon('link') ?> 連携</button>
+        </form>
+    <?php endif; ?>
+    <?php // 決定した練習を、自分のカレンダーへ自動で入れる（購読 URL。sched_feed.php）。鍵が無いサーバーでは出さない
+    //   Google 連携中は出さない（決定した練習が連携で直接入る。購読も入れると二重になる）
+    $feedUrl = $g === null ? sched_feed_url($me, (int)$prof['feed_version']) : null;
+    if ($feedUrl !== null):
+        $feedWebcal = preg_replace('~^https://~', 'webcal://', $feedUrl); // webcal:// … 「購読する」の意味のアドレス。タップするとカレンダーアプリが開く ?>
+        <div class="sch-feed">
+            <span class="sch-label">決定したスタジオ練習を追加</span>
+            <div class="sch-row sch-row--wrap">
+                <a class="btn btn--sm" href="<?= h($feedWebcal) ?>"><?= icon('smartphone') ?> iPhone</a>
+                <form method="post" data-confirm="今の URL は使えなくなります。登録し直してください。よろしいですか？"><?= csrf_field() ?><input type="hidden" name="action" value="feed_reset"><?php if ($poll !== null): ?><input type="hidden" name="poll" value="<?= $pollId ?>"><?php endif; ?>
+                    <button class="btn btn--sm" type="submit" title="URL を再発行"><?= icon('refresh') ?> 再発行</button></form>
+            </div>
+        </div>
+    <?php endif; ?>
+    <?php // 決定した練習をカレンダーに入れるときの書式（Google・購読・.ics・追加リンクの全部に効く）。{…} は押すと入力欄に入る ?>
+    <?php
+    // 書式のプレビュー用の見本（スタジオミュージアム 新宿店の Ast。無ければ決め打ち）。入力するたびに assets/sched.js が書式へ差し込んで表示する
+    $evSample = ['sid' => 0, 'vars' => ['バンド名' => 'サンプルバンド', 'スタジオ名' => 'スタジオミュージアム 新宿店', '部屋' => 'Ast', '住所' => '', 'メンバー' => (string)$prof['name'] . '・サンプル', 'URL' => APP_URL . 'sched_poll?id=1']];
+    // スタジオの略称（編集欄に入れる値）: 自分で決めたもの（空も含む）→ スタジオ情報の略称 → スタジオ名
+    $evShort = static function (array $s) use ($evFmt): string {
+        $own = $evFmt['short'][(int)$s['studio_id']] ?? null;
+        return $own !== null ? (string)$own : ((string)($s['short_name'] ?? '') !== '' ? (string)$s['short_name'] : (string)$s['name']);
+    };
+    foreach ($evStudios as $s) {
+        if (mb_strpos((string)$s['name'], 'ミュージアム') !== false) {
+            $evSample['sid'] = (int)$s['studio_id'];
+            $evSample['vars']['スタジオ名'] = (string)$s['name'];
+            $evSample['vars']['住所'] = (string)($s['address'] ?? '');
+            $evSample['vars']['スタジオ略称'] = $evShort($s);
+            break;
+        }
+    }
+    $evSample['vars']['スタジオ略称'] ??= '';
+    ?>
+    <form method="post" class="sch-feed sch-evfmt" data-ev-format data-ev-sample="<?= h(json_encode($evSample, JSON_UNESCAPED_UNICODE)) ?>">
+        <?= csrf_field() ?><input type="hidden" name="action" value="event_format"><?php if ($poll !== null): ?><input type="hidden" name="poll" value="<?= $pollId ?>"><?php endif; ?>
+        <span class="sch-label">カレンダーに追加する予定の書式</span>
+        <label class="sch-evfield"><span class="sch-evfield__name">タイトル</span>
+            <input class="search search--plain" type="text" name="ev_title" maxlength="<?= SCHED_EVENT_MAX['title'] ?>" value="<?= h($evFmt['title']) ?>" placeholder="<?= h(SCHED_EVENT_DEFAULTS['title']) ?>" autocomplete="off">
+            <span class="sch-evfield__prev" data-ev-preview="ev_title"></span></label>
+        <label class="sch-evfield"><span class="sch-evfield__name">場所</span>
+            <input class="search search--plain" type="text" name="ev_location" maxlength="<?= SCHED_EVENT_MAX['location'] ?>" value="<?= h($evFmt['location']) ?>" placeholder="<?= h(SCHED_EVENT_DEFAULTS['location']) ?>" autocomplete="off">
+            <span class="sch-evfield__prev" data-ev-preview="ev_location"></span></label>
+        <label class="sch-evfield"><span class="sch-evfield__name">メモ</span>
+            <textarea class="search search--plain" name="ev_details" rows="3" maxlength="<?= SCHED_EVENT_MAX['details'] ?>" placeholder="<?= h(SCHED_EVENT_DEFAULTS['details']) ?>"><?= h($evFmt['details']) ?></textarea>
+            <span class="sch-evfield__prev sch-evfield__prev--multi" data-ev-preview="ev_details"></span></label>
+        <div class="sch-row sch-row--wrap">
+            <?php foreach (SCHED_EVENT_VARS as $v): ?><button type="button" class="btn btn--sm" data-ev-ins="{<?= h($v) ?>}">{<?= h($v) ?>}</button><?php endforeach; ?>
+        </div>
+        <details class="sch-evshort">
+            <summary class="muted small">スタジオ略称を編集（自分のみ適用）</summary>
+            <?php foreach ($evStudios as $s): $sid = (int)$s['studio_id']; ?>
+                <label class="sch-row"><span class="grow"><?= h($s['name']) ?></span>
+                    <input class="search search--plain" type="text" name="short[<?= $sid ?>]" maxlength="30" value="<?= h($evShort($s)) ?>" autocomplete="off" aria-label="<?= h($s['name']) ?>の略称"></label>
+            <?php endforeach; ?>
+        </details>
+        <div class="sch-row">
+            <button class="btn btn--primary btn--sm" type="submit"><?= icon('check') ?> 保存</button>
+            <?php if ($evFmt['custom'] || $evFmt['short']): ?><button class="btn btn--sm" type="submit" name="reset" value="1" formnovalidate><?= icon('restart_alt') ?> 初期に戻す</button><?php endif; ?>
+        </div>
+    </form>
+</div>
+</details>
+
+
 <!-- ===== 毎週の NG ===== -->
 <section class="card sch-sec" id="weekly">
     <div class="sch-sec__head">
-        <h2 class="section-title section-title--card">毎週の予定あり</h2>
-        <span class="info-tip" <?= tip_attr('バイトなど毎週くり返す予定。削除するまで毎週、予定ありとして扱う') ?>><?= icon('info', 'icon--sm') ?></span>
+        <h2 class="section-title section-title--card">繰り返しの予定</h2>
+        <span class="info-tip" <?= tip_attr('バイトなど毎週の予定。削除するまで毎週、予定ありとして扱います') ?>><?= icon('info', 'icon--sm') ?></span>
     </div>
     <?php foreach ($weekly as $w): ?>
         <form method="post" class="sch-row sch-weekly-row">
@@ -718,7 +852,7 @@ render_header('マイスケジュール', 'tools');
     <?php endforeach; ?>
     <?php // キャンパス（授業の前後の移動時間の計算に使う）。時間割と同じカードに置く ?>
     <div class="sch-sec__head sch-sec__head--sub" id="campus"><h3 class="sch-sec__sub">キャンパス</h3>
-        <span class="info-tip" <?= tip_attr('授業の前後の移動時間の計算に使う') ?>><?= icon('info', 'icon--sm') ?></span></div>
+        <span class="info-tip" <?= tip_attr('授業の前後の移動時間の計算に使用します') ?>><?= icon('info', 'icon--sm') ?></span></div>
     <form method="post" class="sch-campus">
         <?= csrf_field() ?><input type="hidden" name="action" value="campus">
         <?php if ($poll !== null): ?><input type="hidden" name="poll" value="<?= $pollId ?>"><?php endif; ?>
@@ -734,8 +868,8 @@ render_header('マイスケジュール', 'tools');
 
 <!-- ===== 定期（交通費は定期の区間を除いて計算する） ===== -->
 <section class="card sch-sec" id="pass">
-    <div class="sch-sec__head"><h2 class="section-title section-title--card">定期</h2>
-        <span class="info-tip" <?= tip_attr('自宅の最寄り駅から、キャンパスの最寄り駅までの定期。交通費は定期の区間を除いて計算する') ?>><?= icon('info', 'icon--sm') ?></span></div>
+    <div class="sch-sec__head"><h2 class="section-title section-title--card">最寄り駅と定期券設定</h2>
+        <span class="info-tip" <?= tip_attr('所要時間と運賃を計算して、スタジオの選択時に使用します') ?>><?= icon('info', 'icon--sm') ?></span></div>
     <form method="post" class="sch-pass">
         <?= csrf_field() ?><input type="hidden" name="action" value="pass">
         <?php if ($poll !== null): ?><input type="hidden" name="poll" value="<?= $pollId ?>"><?php endif; ?>
@@ -788,132 +922,6 @@ render_header('マイスケジュール', 'tools');
     <?php endif; ?>
 </section>
 
-<!-- ===== カレンダー連携 ===== -->
-<section class="card sch-sec" id="ical">
-    <div class="sch-sec__head"><h2 class="section-title section-title--card">カレンダー連携</h2>
-        <button type="button" class="info-tip" data-tutorial-open="ical-help" aria-label="カレンダー連携のやり方" title="カレンダー連携のやり方"><?= icon('info', 'icon--sm') ?></button></div>
-    <?php if ($googleOn && $g === null): // Google 連携の開始。押すと sched_google.php が Google の許可画面へ移動する（iPhone の人は、下の iCal の URL を使う） ?>
-        <form method="post" action="sched_google" class="sch-row">
-            <?= csrf_field() ?><input type="hidden" name="poll" value="<?= $poll !== null ? $pollId : 0 ?>">
-            <button class="btn btn--primary btn--sm" type="submit"><?= icon('event') ?> Google で連携</button>
-            <a class="muted small" href="privacy#google" target="_blank" rel="noopener">プライバシーポリシー</a>
-        </form>
-    <?php elseif ($g !== null): ?>
-        <p class="sch-ical">
-            <?= icon($g['error'] ? 'warning' : 'sync', 'icon--sm ' . ($g['error'] ? 'sch-warn' : 'sch-ok')) ?>
-            <strong><?= h($g['email'] ?? 'Google カレンダー') ?></strong>
-            <span class="muted small"><?= $g['fetched_at'] !== null ? h(date('n/j G:i', strtotime((string)$g['fetched_at']))) . ' 読込' : '' ?></span>
-        </p>
-        <?php if ($g['error']): ?><p class="flash flash--error"><?= h($g['error']) ?></p><?php endif; ?>
-        <div class="sch-row sch-row--wrap">
-            <?php if ($g['error']): // 切れたとき（または読み込めないとき）は、もう一度許可してもらう ?>
-                <form method="post" action="sched_google"><?= csrf_field() ?><input type="hidden" name="poll" value="<?= $poll !== null ? $pollId : 0 ?>">
-                    <button class="btn btn--sm btn--primary" type="submit"><?= icon('login') ?> 再連携</button></form>
-            <?php endif; ?>
-            <form method="post"><?= csrf_field() ?><input type="hidden" name="action" value="google_refresh"><?php if ($poll !== null): ?><input type="hidden" name="poll" value="<?= $pollId ?>"><?php endif; ?>
-                <button class="btn btn--sm" type="submit"><?= icon('refresh') ?> 読み直す</button></form>
-            <form method="post" data-confirm="Google との連携を解除します。取り込んだ予定も消えます。よろしいですか？"><?= csrf_field() ?><input type="hidden" name="action" value="google_disconnect"><?php if ($poll !== null): ?><input type="hidden" name="poll" value="<?= $pollId ?>"><?php endif; ?>
-                <button class="btn btn--sm btn--danger" type="submit">解除</button></form>
-        </div>
-    <?php endif; ?>
-    <?php if ($g !== null): // Google 連携中は iCal の URL を使わない（上の連携で足りる）。 ?>
-    <?php elseif (!$icalOn): ?>
-        <?php if (!$googleOn): ?><p class="muted small">現在使えません（管理者の設定待ち）</p><?php endif; ?>
-    <?php elseif ($prof['ical_url'] !== null): ?>
-        <p class="sch-ical">
-            <?= icon($prof['ical_error'] ? 'warning' : 'sync', 'icon--sm ' . ($prof['ical_error'] ? 'sch-warn' : 'sch-ok')) ?>
-            <strong><?= h(sched_ical_label(sched_ical_decrypt($prof['ical_url']))) ?></strong>
-            <span class="muted small"><?= $prof['ical_fetched_at'] !== null ? h(date('n/j G:i', strtotime((string)$prof['ical_fetched_at']))) . ' 読込' : '' ?></span>
-        </p>
-        <?php if ($prof['ical_error']): ?><p class="flash flash--error"><?= h($prof['ical_error']) ?></p><?php endif; ?>
-        <div class="sch-row">
-            <form method="post"><?= csrf_field() ?><input type="hidden" name="action" value="ical_refresh"><?php if ($poll !== null): ?><input type="hidden" name="poll" value="<?= $pollId ?>"><?php endif; ?>
-                <button class="btn btn--sm" type="submit"><?= icon('refresh') ?> 読み直す</button></form>
-            <form method="post" data-confirm="カレンダー連携を解除します。取り込んだ予定も消えます。よろしいですか？"><?= csrf_field() ?><input type="hidden" name="action" value="ical_delete"><?php if ($poll !== null): ?><input type="hidden" name="poll" value="<?= $pollId ?>"><?php endif; ?>
-                <button class="btn btn--sm btn--danger" type="submit">解除</button></form>
-        </div>
-    <?php else: ?>
-        <form method="post" class="sch-row">
-            <?= csrf_field() ?><input type="hidden" name="action" value="ical">
-            <?php if ($poll !== null): ?><input type="hidden" name="poll" value="<?= $pollId ?>"><?php endif; ?>
-            <input class="search search--plain" type="url" name="url" required placeholder="https://calendar.google.com/…/basic.ics" autocomplete="off" aria-label="iCal の URL">
-            <button class="btn btn--primary btn--sm" type="submit"><?= icon('link') ?> 連携</button>
-        </form>
-    <?php endif; ?>
-    <?php // 決定した練習を、自分のカレンダーへ自動で入れる（購読 URL。sched_feed.php）。鍵が無いサーバーでは出さない
-    $feedUrl = sched_feed_url($me, (int)$prof['feed_version']);
-    if ($feedUrl !== null):
-        $feedWebcal = preg_replace('~^https://~', 'webcal://', $feedUrl); // webcal:// … 「購読する」の意味のアドレス。タップするとカレンダーアプリが開く ?>
-        <div class="sch-feed">
-            <span class="sch-label">決定した練習を追加</span>
-            <div class="sch-row sch-row--wrap">
-                <?php if ($g === null): // Google 連携中は、決定した練習が連携で直接入る（購読も入れると二重になる） ?>
-                <a class="btn btn--sm" href="https://calendar.google.com/calendar/render?cid=<?= h(urlencode($feedWebcal)) ?>" target="_blank" rel="noopener"><?= icon('event') ?> Google</a>
-                <?php endif; ?>
-                <a class="btn btn--sm" href="<?= h($feedWebcal) ?>"><?= icon('smartphone') ?> iPhone</a>
-                <form method="post" data-confirm="今の URL は使えなくなります。登録し直してください。よろしいですか？"><?= csrf_field() ?><input type="hidden" name="action" value="feed_reset"><?php if ($poll !== null): ?><input type="hidden" name="poll" value="<?= $pollId ?>"><?php endif; ?>
-                    <button class="btn btn--sm" type="submit" title="URL を再発行"><?= icon('refresh') ?> 再発行</button></form>
-            </div>
-        </div>
-    <?php endif; ?>
-    <?php // 取り込んだ予定（iCal・Google・画像）の前後に付ける、手動と同じ「予定あり」の枠の分数（0〜120・30分刻み）。連携の欄の下に置く ?>
-    <form method="post" class="sch-row sch-row--wrap">
-        <?= csrf_field() ?><input type="hidden" name="action" value="buf_min">
-        <?php if ($poll !== null): ?><input type="hidden" name="poll" value="<?= $pollId ?>"><?php endif; ?>
-        <span class="sch-label">連携した予定の前後にスタジオを入れない</span>
-        <select name="minutes" class="select-sm" data-autosubmit aria-label="予定の前後に付ける予定ありの枠">
-            <?php foreach (range(0, 120, 30) as $mm): ?><option value="<?= $mm ?>"<?= (int)$prof['buf_min'] === $mm ? ' selected' : '' ?>><?= $mm === 0 ? 'なし' : $mm . '分' ?></option><?php endforeach; ?>
-        </select>
-        <noscript><button class="btn btn--sm" type="submit">保存</button></noscript>
-    </form>
-    <?php // 決定した練習をカレンダーに入れるときの書式（Google・購読・.ics・追加リンクの全部に効く）。{…} は押すと入力欄に入る ?>
-    <?php
-    // 書式のプレビュー用の見本（スタジオミュージアム 新宿店の Ast。無ければ決め打ち）。入力するたびに assets/sched.js が書式へ差し込んで表示する
-    $evSample = ['sid' => 0, 'vars' => ['バンド名' => 'サンプルバンド', 'スタジオ名' => 'スタジオミュージアム 新宿店', '部屋' => 'Ast', '住所' => '', 'メンバー' => (string)$prof['name'] . '・サンプル', 'URL' => APP_URL . 'sched_poll?id=1']];
-    // スタジオの略称（編集欄に入れる値）: 自分で決めたもの（空も含む）→ スタジオ情報の略称 → スタジオ名
-    $evShort = static function (array $s) use ($evFmt): string {
-        $own = $evFmt['short'][(int)$s['studio_id']] ?? null;
-        return $own !== null ? (string)$own : ((string)($s['short_name'] ?? '') !== '' ? (string)$s['short_name'] : (string)$s['name']);
-    };
-    foreach ($evStudios as $s) {
-        if (mb_strpos((string)$s['name'], 'ミュージアム') !== false) {
-            $evSample['sid'] = (int)$s['studio_id'];
-            $evSample['vars']['スタジオ名'] = (string)$s['name'];
-            $evSample['vars']['住所'] = (string)($s['address'] ?? '');
-            $evSample['vars']['スタジオ略称'] = $evShort($s);
-            break;
-        }
-    }
-    $evSample['vars']['スタジオ略称'] ??= '';
-    ?>
-    <form method="post" class="sch-feed sch-evfmt" data-ev-format data-ev-sample="<?= h(json_encode($evSample, JSON_UNESCAPED_UNICODE)) ?>">
-        <?= csrf_field() ?><input type="hidden" name="action" value="event_format"><?php if ($poll !== null): ?><input type="hidden" name="poll" value="<?= $pollId ?>"><?php endif; ?>
-        <span class="sch-label">カレンダーに追加する予定の書式</span>
-        <label class="sch-evfield"><span class="sch-evfield__name">タイトル</span>
-            <input class="search search--plain" type="text" name="ev_title" maxlength="<?= SCHED_EVENT_MAX['title'] ?>" value="<?= h($evFmt['title']) ?>" placeholder="<?= h(SCHED_EVENT_DEFAULTS['title']) ?>" autocomplete="off">
-            <span class="sch-evfield__prev" data-ev-preview="ev_title"></span></label>
-        <label class="sch-evfield"><span class="sch-evfield__name">場所</span>
-            <input class="search search--plain" type="text" name="ev_location" maxlength="<?= SCHED_EVENT_MAX['location'] ?>" value="<?= h($evFmt['location']) ?>" placeholder="<?= h(SCHED_EVENT_DEFAULTS['location']) ?>" autocomplete="off">
-            <span class="sch-evfield__prev" data-ev-preview="ev_location"></span></label>
-        <label class="sch-evfield"><span class="sch-evfield__name">メモ</span>
-            <textarea class="search search--plain" name="ev_details" rows="3" maxlength="<?= SCHED_EVENT_MAX['details'] ?>" placeholder="<?= h(SCHED_EVENT_DEFAULTS['details']) ?>"><?= h($evFmt['details']) ?></textarea>
-            <span class="sch-evfield__prev sch-evfield__prev--multi" data-ev-preview="ev_details"></span></label>
-        <div class="sch-row sch-row--wrap">
-            <?php foreach (SCHED_EVENT_VARS as $v): ?><button type="button" class="btn btn--sm" data-ev-ins="{<?= h($v) ?>}">{<?= h($v) ?>}</button><?php endforeach; ?>
-        </div>
-        <details class="sch-evshort">
-            <summary class="muted small">スタジオ略称を編集（自分のみ適用）</summary>
-            <?php foreach ($evStudios as $s): $sid = (int)$s['studio_id']; ?>
-                <label class="sch-row"><span class="grow"><?= h($s['name']) ?></span>
-                    <input class="search search--plain" type="text" name="short[<?= $sid ?>]" maxlength="30" value="<?= h($evShort($s)) ?>" autocomplete="off" aria-label="<?= h($s['name']) ?>の略称"></label>
-            <?php endforeach; ?>
-        </details>
-        <div class="sch-row">
-            <button class="btn btn--primary btn--sm" type="submit"><?= icon('check') ?> 保存</button>
-            <?php if ($evFmt['custom'] || $evFmt['short']): ?><button class="btn btn--sm" type="submit" name="reset" value="1" formnovalidate><?= icon('restart_alt') ?> 初期に戻す</button><?php endif; ?>
-        </div>
-    </form>
-</section>
 <?php require __DIR__ . '/partials/ical_help.php'; // ⓘ から開く「カレンダー連携のやり方」（初回チュートリアルと同じ部品） ?>
 <script src="<?= asset_url('assets/sched.js') ?>" defer></script>
 <?php render_footer();

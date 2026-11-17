@@ -278,7 +278,7 @@
     const form = document.querySelector('[data-sched-grid-form]');
     if (!data || !wrap || !form) return;
     const autosave = makeAutosave(() => new FormData(form));
-    const kindLabel = { class: '授業', ical: '予定', photo: '予定', weekly: '毎週', practice: '練習' };
+    const kindLabel = { class: '授業', ical: '予定', photo: '予定', weekly: '繰り返し', practice: '練習' };
 
     // マスの見た目を、埋まり（data.busy）から決める。自動の予定があれば塗れない（is-auto）。
     //   「この予定を無視」にした予定（b[4]）は、予定ありに数えず網掛け（is-ignored）。タップすると無視を切り替えられる
