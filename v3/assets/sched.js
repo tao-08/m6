@@ -420,6 +420,8 @@
     };
     drawProv();
     window.addEventListener('resize', drawProv);
+    // 表の幅は、文字の読み込みなどで開いた直後に変わることがある（画面の幅は同じなので resize は来ない）→ 表の大きさが変わったら描き直す
+    if ('ResizeObserver' in window) new ResizeObserver(drawProv).observe(table);
 
     // 日付の印: その日の塗れるマスが全部 NG なら塗りつぶし
     const syncDays = () => {
