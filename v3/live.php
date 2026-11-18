@@ -286,8 +286,8 @@ render_header($live['name'], 'lives');
     $noTimetable = !array_filter($bands, static fn($b) => $b['start_time'] !== null); ?>
     <p class="no-print add-band">
         <a class="btn btn--ghost btn--sm" href="band_edit?day=<?= (int)$d['live_day_id'] ?>">＋ バンドを追加</a>
-        <?php if ($noRoster): ?>
-            <a class="btn btn--ghost btn--sm" href="import?day=<?= (int)$d['live_day_id'] ?>" title="メンバーが2人以下のバンド: <?= count($noRoster) ?>"><?= icon('group_add') ?> 名簿を追加</a>
+        <?php if ($noRoster || !$bands): // バンドが1組もない日程にも出す ?>
+            <a class="btn btn--ghost btn--sm" href="import?day=<?= (int)$d['live_day_id'] ?>"<?= $noRoster ? ' title="メンバーが2人以下のバンド: ' . count($noRoster) . '"' : '' ?>><?= icon('group_add') ?> 名簿を追加</a>
         <?php endif; ?>
         <?php if ($noTimetable): ?>
             <a class="btn btn--ghost btn--sm" href="import?day=<?= (int)$d['live_day_id'] ?>"><?= icon('more_time') ?> タイムテーブルを追加</a>
