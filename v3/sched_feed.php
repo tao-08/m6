@@ -52,4 +52,4 @@ $events = sched_feed_events($pdo, $memberId, date('Y-m-d H:i:s', time() - 60 * 8
 header('Content-Type: text/calendar; charset=utf-8');
 header('X-Robots-Tag: noindex');
 header('Cache-Control: private, max-age=300'); // 5分は同じ中身を使い回してよい（アプリが短い間隔で何度も読みに来ても負担にならない）
-echo sched_ics_calendar($events, 'スタ連');
+echo sched_ics_calendar($events, 'スタジオ練習');
