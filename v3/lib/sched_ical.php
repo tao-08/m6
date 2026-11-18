@@ -25,7 +25,7 @@ declare(strict_types=1);
 /** 取り込む範囲（今日の前日〜この日数先まで） */
 const SCHED_ICAL_DAYS = 120;
 /** 読み直す間隔（秒）。これより新しければ読み直さない（Google・iCloud に何度もアクセスしないため） */
-const SCHED_ICAL_TTL = 1800; // 30分
+const SCHED_ICAL_TTL = 300; // 5分
 /** .ics の大きさの上限（バイト）。何年分も予定がある人でも数MB。大きすぎるものは途中で切る（サーバーのメモリを守る） */
 const SCHED_ICAL_MAX_BYTES = 5 * 1024 * 1024;
 

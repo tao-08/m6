@@ -835,7 +835,7 @@ function sched_google_disconnect(PDO $pdo, int $memberId): void
         $pdo->prepare('DELETE FROM sched_google_event WHERE member_id = ?')->execute([$memberId]);
         $pdo->prepare('DELETE FROM sched_busy WHERE member_id = ? AND source = 1')->execute([$memberId]);
         $pdo->prepare('DELETE FROM sched_google WHERE member_id = ?')->execute([$memberId]);
-        // iCal の URL を登録していた人は、また iCal で読み直せるように「読んだ日時」を消しておく（残すと、30分は読み直されず空のまま）
+        // iCal の URL を登録していた人は、また iCal で読み直せるように「読んだ日時」を消しておく（残すと、SCHED_ICAL_TTL の間は読み直されず空のまま）
         $pdo->prepare('UPDATE sched_profile SET ical_fetched_at = NULL WHERE member_id = ?')->execute([$memberId]);
         $pdo->commit();
     } catch (Throwable $e) {

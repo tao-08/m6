@@ -606,11 +606,13 @@ if ($poll !== null) {
     $prevUrl = 'sched_me?from=' . date('Y-m-d', strtotime($from . ' -7 day'));
     $nextUrl = 'sched_me?from=' . date('Y-m-d', strtotime($from . ' +7 day'));
 }
+// 週の切り替え用（assets/sched.js が先読みする）: ?grid=1 のときは、表のデータだけ JSON で返す。ページを開いたときに読み直し済みなので、ここでは読み直さない（SCHED_ICAL_TTL 以内なら何もしない）
+$gridOnly = ($_GET['grid'] ?? '') === '1';
 if ($g !== null) {
-    sched_google_refresh_busy($pdo, $me); // Google 連携中は Google から読む（iCal は使わない）
+    sched_google_refresh_busy($pdo, $me, !$gridOnly && $g['error'] !== SCHED_GOOGLE_REVOKED); // Google 連携中は Google から読む（iCal は使わない）。自分の分だけなので開くたびに読み直す。連携が切れている間は聞きに行かない
     $g = sched_google_row($pdo, $me); // 読み込みの結果（読んだ日時・エラー）を画面に出すため、読み直す
 } else {
-    sched_ical_refresh($pdo, $me); // 古ければ読み直す（30分以内に読んでいれば何もしない）
+    sched_ical_refresh($pdo, $me, !$gridOnly); // 自分の分だけなので、開くたびに読み直す（候補のページは SCHED_ICAL_TTL ごと）
 }
 $data = sched_collect_busy($pdo, [$me], $days[0], $days[count($days) - 1], $poll === null ? null : $pollId, true, $me); // 最後の $me = 自分の iCal の予定のタイトルを復号して見せる
 $grid = [
@@ -636,6 +638,14 @@ if ($poll !== null) {
         }
     }
 }
+$weekLabel = sched_md($days[0]) . '〜' . sched_md($days[count($days) - 1]);
+if ($gridOnly) {
+    // 表のデータ・週の見出し・前後の週の URL。assets/sched.js が、スワイプ・矢印で隣の週へ移るときに使う（画面は読み直さない）
+    header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: no-store');
+    echo json_encode(['grid' => $grid, 'label' => $weekLabel, 'prev' => $prevUrl, 'next' => $nextUrl, 'from' => $days[0], 'week' => $week ?? null], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP);
+    exit;
+}
 $icalOn = sched_ical_available();
 
 render_header('マイスケジュール', 'tools');
@@ -651,9 +661,10 @@ render_header('マイスケジュール', 'tools');
         <h2 class="section-title section-title--card">スケジュールを編集</h2>
     </div>
     <div class="sch-weeknav">
-        <?php if ($prevUrl !== null): ?><a class="icon-btn" href="<?= h($prevUrl) ?>#ng" aria-label="前の週" title="前の週"><?= icon('chevron_left') ?></a><?php else: ?><span></span><?php endif; ?>
-        <strong><?= h(sched_md($days[0]) . '〜' . sched_md($days[count($days) - 1])) ?></strong>
-        <?php if ($nextUrl !== null): ?><a class="icon-btn" href="<?= h($nextUrl) ?>#ng" aria-label="次の週" title="次の週"><?= icon('chevron_right') ?></a><?php else: ?><span></span><?php endif; ?>
+        <?php // 行き先が無い側は is-none（見えないだけで残す。assets/sched.js が週を移るたびに href と一緒に切り替える） ?>
+        <a class="icon-btn<?= $prevUrl === null ? ' is-none' : '' ?>" data-week-prev href="<?= h(($prevUrl ?? 'sched_me') . '#ng') ?>" aria-label="前の週" title="前の週"><?= icon('chevron_left') ?></a>
+        <strong data-week-label><?= h($weekLabel) ?></strong>
+        <a class="icon-btn<?= $nextUrl === null ? ' is-none' : '' ?>" data-week-next href="<?= h(($nextUrl ?? 'sched_me') . '#ng') ?>" aria-label="次の週" title="次の週"><?= icon('chevron_right') ?></a>
     </div>
     <div class="sch-legend small muted">
         <span><i class="sch-sw is-ng"></i>予定あり</span><span><i class="sch-sw is-class"></i>授業</span><span><i class="sch-sw is-ical"></i>カレンダー</span><span><i class="sch-sw is-weekly"></i>繰り返し</span><span><i class="sch-sw is-practice"></i>練習</span><span><i class="sch-sw is-prov"></i>仮決定</span>
@@ -724,7 +735,7 @@ render_header('マイスケジュール', 'tools');
             <div class="sch-step__body">
                 <div class="tabs">
                     <button type="button" class="tab" data-cal-kind="google" data-label="Google"><?= icon('event') ?>Google</button>
-                    <button type="button" class="tab" data-cal-kind="icloud" data-label="iPhone"><?= icon('smartphone') ?>iPhone</button>
+                    <button type="button" class="tab" data-cal-kind="icloud" data-label="iPhone (iCloud)"><?= icon('smartphone') ?>iPhone (iCloud)</button>
                     <button type="button" class="tab" data-cal-kind="other" data-label="その他"><?= icon('more_horiz') ?>その他</button>
                 </div>
             </div>
@@ -821,8 +832,9 @@ render_header('マイスケジュール', 'tools');
             <summary><span class="sch-step__no">3</span><span class="sch-step__title">練習を自動で追加</span><span class="sch-step__ok" role="img" aria-label="完了" hidden><?= icon('check', 'icon--sm') ?></span><span class="sch-step__val muted small" data-step-val></span></summary>
             <div class="sch-step__body">
                 <div class="sch-panel" data-kind-panel="icloud" hidden>
+                    <p class="muted small">決定したスタジオ練習が、iPhone のカレンダーに自動で入ります</p>
                     <div class="sch-row sch-row--wrap">
-                        <a class="btn btn--sm" href="<?= h($feedWebcal) ?>" data-feed-done><?= icon('smartphone') ?> iPhone</a>
+                        <a class="btn btn--primary btn--sm" href="<?= h($feedWebcal) ?>" data-feed-done><?= icon('event') ?> カレンダーに追加</a>
                     </div>
                 </div>
                 <div class="sch-panel" data-kind-panel="other" hidden>

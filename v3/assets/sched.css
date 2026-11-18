@@ -163,7 +163,7 @@
 
 /* ---------- NG の時間のマス ---------- */
 .sch-weeknav { display: grid; grid-template-columns: 40px 1fr 40px; align-items: center; text-align: center; }
-.sch-weeknav .icon-btn:disabled { visibility: hidden; } /* これ以上進めない側の矢印は隠す（幅は残るので、日付は中央のまま） */
+.sch-weeknav .icon-btn.is-none { visibility: hidden; } /* これ以上進めない側の矢印は隠す（幅は残るので、日付は中央のまま） */
 .sch-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; }
 .sch-legend span { display: inline-flex; align-items: center; gap: 4px; }
 .sch-sw { display: inline-block; width: 12px; height: 12px; border-radius: var(--r-xs); border: 1px solid var(--border); }
@@ -204,7 +204,33 @@
 /* なぞって入力（JS: setupGrid）: 指で操作する端末だけ出す。外れている間は表の上でもスクロールでき、マスはタップで1つずつ */
 .sch-drag { display: none; margin: 0 0 8px; }
 @media (hover: none) { .sch-drag { display: inline-flex; } }
-.sch-grid.is-tap td { touch-action: manipulation; }
+.sch-grid.is-tap, .sch-grid.is-tap :is(td, th) { touch-action: pan-y pinch-zoom; } /* 縦のスクロールはブラウザに任せ、横の動きは JS が受け取って週を切り替える（setupGrid の「横にスワイプ」） */
+/* 横にスワイプ・矢印で週を切り替える（JS: setupGrid）。時刻の列は動かさず、日の列だけが指（--swipe-x）についてくる。
+   動かしている間は wrap に is-swiping が付く。今の週の表（と重ねた仮決定の箱）はそのまま横へずれ、隣の週（.sch-peek）が逆の端から並んで入ってくる。
+   表の時刻の列は隠し、同じ見た目の写し（.sch-peek--time）を上に固定して、ずれた日の列がその下へ潜るようにする。
+   離したときだけ is-swipe-anim で動きを付ける（指を動かしている間は動きなし）。--time-w … 時刻の列の幅 / --days-w … 日の列7つ分の幅（どちらも JS が入れる） */
+.sch-grid-wrap.is-swiping { overflow-x: hidden; } /* ずらした分で横スクロールが出ないように */
+.sch-grid-wrap.is-swiping > :is(.sch-grid, .sch-prov) { transform: translateX(var(--swipe-x, 0px)); }
+.sch-grid-wrap.is-swiping > .sch-grid :is(thead th:first-child, tbody th) { visibility: hidden; }
+.sch-peek { position: absolute; top: 0; left: 0; right: 0; z-index: 1; pointer-events: none; visibility: hidden; }
+.sch-peek.is-on { visibility: visible; }
+.sch-peek__slide { position: relative; } /* 仮決定の箱（絶対配置）の基準 */
+.sch-peek--time { z-index: 2; background: var(--surface); clip-path: inset(0 calc(100% - var(--time-w, 0px)) 0 0); } /* 時刻の列だけ見せる */
+.sch-peek:not(.sch-peek--time) { clip-path: inset(0 0 0 var(--time-w, 0px)); } /* 隣の週は、時刻の列より右だけ見せる */
+.sch-peek:not(.sch-peek--time) :is(thead th:first-child, tbody th) { visibility: hidden; }
+.sch-peek--next > .sch-peek__slide { transform: translateX(calc(var(--swipe-x, 0px) + var(--days-w, 0px))); } /* 次の週は右から */
+.sch-peek--prev > .sch-peek__slide { transform: translateX(calc(var(--swipe-x, 0px) - var(--days-w, 0px))); } /* 前の週は左から */
+.sch-grid-wrap.is-swipe-anim > :is(.sch-grid, .sch-prov), .sch-grid-wrap.is-swipe-anim .sch-peek__slide { transition: transform var(--t-base) var(--ease-out); }
+.sch-grid-wrap.is-swipe-anim .sch-swipe-hint { transition: opacity var(--t-base) var(--ease-out), color var(--t-fast) ease; }
+/* 端のヒント（上の < > と同じ丸ボタン）。ふだんは見えず、スワイプの進み具合（JS が opacity を入れる）に合わせて濃くなる。しきい値を超えたら is-ready で赤に。レイアウトには影響しない */
+.sch-swipe-hint { position: absolute; top: 50%; z-index: 3; transform: translateY(-50%);
+  box-shadow: var(--shadow-pop); opacity: 0; pointer-events: none; transition: color var(--t-fast) ease; }
+.sch-swipe-hint--prev { left: 12px; }
+.sch-swipe-hint--next { right: 12px; }
+.sch-swipe-hint.is-ready { color: var(--accent); border-color: var(--accent); }
+@media (prefers-reduced-motion: reduce) {
+  .sch-grid-wrap.is-swipe-anim > :is(.sch-grid, .sch-prov), .sch-grid-wrap.is-swipe-anim .sch-peek__slide, .sch-grid-wrap.is-swipe-anim .sch-swipe-hint { transition: none; }
+}
 /* 予定のラベル（JS: setupGrid）。最初のマスから、予定の高さ（--rows マス）いっぱいまで折り返し、--lines 行（最大2行）を超える分は「…」。
    マスの外へはみ出して下のマスに重ねるので、そのマスだけ overflow を外す。押すと下のマスに届くよう pointer-events: none */
 .sch-grid td:has(> .sch-lbl) { position: relative; overflow: visible; }
@@ -320,7 +346,7 @@
 .sch-list-steps .icon { vertical-align: middle; }
 /* ① のタブ: 手順の中なので、画面に貼り付けず影も付けない。スマホは小さくして、入らない分は2段に折り返す */
 .sch-step .tabs { position: relative; top: auto; margin-bottom: 0; box-shadow: none; }
-.sch-step .tabs { min-width: 0; max-width: 100%; } /* 手順の本体は grid なので、中身の幅で広がらないように */
+.sch-step .tabs { min-width: 0; width: 100%; max-width: 420px; } /* 枠いっぱい（PC でもスマホの幅まで）に広げる。.tabs の width: max-content のままだと文字の幅に縮む */
 .sch-step .tab { align-items: center; flex: 1 1 auto; justify-content: center; }
 @media (max-width: 600px) { /* スマホは3つを等分して、アイコンを文字の上に（1段に収める） */
   .sch-step .tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); overflow: visible; gap: 2px; padding: 2px; border-radius: var(--r-lg); }

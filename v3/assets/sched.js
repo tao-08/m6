@@ -246,9 +246,10 @@
   //       （Excel の塗りつぶしや when2meet と同じ操作感）
   //     ・スマホでなぞるとページがスクロールしないよう、マスの上だけ touch-action: none（sched.css）
   //       時刻の列はスクロールできる（そこを持てばページを動かせる）
+  //     ・週の切り替え（スワイプ・上の < >）はページを読み直さない。隣の週は ?grid=1 で JSON を先読みし、表を作り直す（setupGrid）
   // ===================================================================
   // 自動保存（約1秒まとめて fetch で送る。X-Autosave を付けると sched_me.php は画面を移動せず 204 を返す）
-  //   ページを離れる前・週送りのリンクを押したときは、待たずに今すぐ送る（keepalive = ページ移動後も送り切る）
+  //   ページを離れる前・週を移る前・ほかのリンクを押したときは、待たずに今すぐ送る（keepalive = ページ移動後も送り切る）
   const makeAutosave = (getBody) => {
     const a = { build: getBody, timer: 0, pending: false };
     a.flush = () => {
@@ -262,7 +263,7 @@
     a.schedule = () => { a.pending = true; clearTimeout(a.timer); a.timer = setTimeout(a.flush, 1000); };
     window.addEventListener('pagehide', a.flush);
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') a.flush(); });
-    // 週送りなどの同じ画面内のリンク: 送ってから移動
+    // 同じ画面内のリンク: 送ってから移動（週の < > は、sched.js の setupGrid が先に受けて、ページを移動せず表を替える）
     document.addEventListener('click', (e) => {
       const link = e.target.closest('a[href]');
       if (!link || !a.pending || e.defaultPrevented || e.ctrlKey || e.metaKey || e.shiftKey || link.target) return;
@@ -272,17 +273,15 @@
     return a;
   };
 
-  const setupGrid = () => {
-    const data = readJson('sched-grid-data');
-    const wrap = document.querySelector('[data-sched-grid]');
-    const form = document.querySelector('[data-sched-grid-form]');
-    if (!data || !wrap || !form) return;
-    const autosave = makeAutosave(() => new FormData(form));
-    const kindLabel = { class: '授業', ical: '予定', photo: '予定', weekly: '繰り返し', practice: '練習' };
+  // ---- 週の表（<table>）を作る ----
+  //   今の週（このあと動かす）も、スワイプで隣に見せる週（見せるだけ）も、同じ関数で作る。ここでは何も動かさない（イベントは付けない）
+  const GRID_KIND = { class: '授業', ical: '予定', photo: '予定', weekly: '繰り返し', practice: '練習' }; // 予定名が空のときの表示
+  const GRID_IGNORABLE = ['class', 'ical', 'photo', 'weekly']; // 「この予定を無視」できる種類
 
+  /** data = sched_me.php の $grid（{days, start, end, step, busy, warn}）→ { table, thead, cells（塗れるマス）, classifyAll, syncDays } */
+  const buildTable = (data) => {
     // マスの見た目を、埋まり（data.busy）から決める。自動の予定があれば塗れない（is-auto）。
     //   「この予定を無視」にした予定（b[4]）は、予定ありに数えず網掛け（is-ignored）。タップすると無視を切り替えられる
-    const ignorable = ['class', 'ical', 'photo', 'weekly'];
     // 終日の予定 = 取り込んだ予定のうち、日の始まり（0:00）から日の終わりまでぴったり埋めるもの。
     //   表のマスには塗らず、日付の下に予定名だけ出す（練習の候補の計算では、今まで通り1日予定あり）
     const day0 = data.days[0]?.abs ?? 0;
@@ -305,13 +304,13 @@
       if (item) {
         td.classList.add('is-' + item[2], 'is-auto');
         if (item[4]) td.classList.add('is-ignored');
-        if (ignorable.includes(item[2])) td._item = item;
+        if (GRID_IGNORABLE.includes(item[2])) td._item = item;
         // 予定の最初のマスにだけラベル（授業の「2限」・練習のバンド名）
         //   ラベルは予定の高さ（マスの数）いっぱいまで折り返す。2行を超える分は「…」（CSS: .sch-lbl）
         if (item[0] >= abs && item[0] < abs + data.step || first) {
           const dayEnd = Number(td.dataset.first) - data.start + data.end; // その日の表示の終わり
           const rows = Math.max(1, Math.ceil((Math.min(item[1], dayEnd) - abs) / data.step));
-          const lbl = el('span', 'sch-lbl', item[3] || kindLabel[item[2]]);
+          const lbl = el('span', 'sch-lbl', item[3] || GRID_KIND[item[2]]);
           lbl.style.setProperty('--rows', rows);
           lbl.style.setProperty('--lines', Math.min(2, rows));
           td.append(lbl);
@@ -355,7 +354,7 @@
       // その日にかかる終日の予定（何日も続く予定は、その日数ぶんの見出しに出る）。予定ありには数えない（lib/sched.php）ので、予定名を見せるだけ
       //   押すと予定名の全文をポップアップ（data-tip = app.js の setupTip。押しても何も実行されないラベルなので data-tip）
       data.busy.filter((b) => isAllDay(b) && b[0] < d.abs + 1440 && b[1] > d.abs).forEach((b) => {
-        const name = b[3] || kindLabel[b[2]];
+        const name = b[3] || GRID_KIND[b[2]];
         const chip = el('span', 'sch-allday', name);
         chip.dataset.tip = name;
         chip.title = ''; // 見出し（th）の title「1日まるごと予定あり」を、予定名の上では出さない
@@ -393,35 +392,6 @@
       tbody.append(tr);
     }
     table.append(tbody);
-    wrap.append(table);
-
-    // 仮決定（時間まで決めたもの）の枠: マスより一回り小さく、角を丸めた箱を、表の上に重ねる（続くマスで1つ。押しても下のマスが反応する）
-    const drawProv = () => {
-      wrap.querySelectorAll('.sch-prov').forEach((n) => n.remove());
-      const rows = tbody.rows;
-      const w = wrap.getBoundingClientRect();
-      data.warn.filter((x) => x.s !== null).forEach((x) => {
-        const ci = data.days.findIndex((d) => d.date === x.date);
-        if (ci < 0) return;
-        const r0 = Math.max(0, Math.floor((x.s - data.days[ci].abs - data.start) / data.step));
-        const r1 = Math.min(rows.length, Math.ceil((x.e - data.days[ci].abs - data.start) / data.step)) - 1;
-        const first = rows[r0]?.cells[ci + 1];
-        const last = rows[r1]?.cells[ci + 1];
-        if (!first || !last) return;
-        const a = first.getBoundingClientRect();
-        const z = last.getBoundingClientRect();
-        const box = el('div', 'sch-prov');
-        box.style.left = `${a.left - w.left + wrap.scrollLeft + PROV_INSET}px`;
-        box.style.top = `${a.top - w.top + wrap.scrollTop + PROV_INSET}px`;
-        box.style.width = `${a.width - PROV_INSET * 2}px`;
-        box.style.height = `${z.bottom - a.top - PROV_INSET * 2}px`;
-        wrap.append(box);
-      });
-    };
-    drawProv();
-    window.addEventListener('resize', drawProv);
-    // 表の幅は、文字の読み込みなどで開いた直後に変わることがある（画面の幅は同じなので resize は来ない）→ 表の大きさが変わったら描き直す
-    if ('ResizeObserver' in window) new ResizeObserver(drawProv).observe(table);
 
     // 日付の印: その日の塗れるマスが全部 NG なら塗りつぶし
     const syncDays = () => {
@@ -431,216 +401,569 @@
         th.classList.toggle('is-none', day.length === 0); // 塗れるマスが無い日（授業などで全部埋まっている）
       });
     };
+    const classifyAll = () => {
+      tbody.querySelectorAll('td').forEach(classify);
+      syncDays();
+    };
     syncDays();
-    // ---- 自動で入った予定をタップ → 「この予定を無視」のチェックボックス（その1回分だけ）----
-    let pop = null;
-    const closePop = () => { pop?.remove(); pop = null; };
-    const openPop = (td) => {
-      closePop();
-      const item = td._item;
-      pop = el('div', 'sch-pop');
-      const head = el('div', 'sch-pop__head'); // 1行目: 予定名（画像の予定は右に削除ボタン）。2行目: 「この予定を無視」
-      head.append(el('span', 'sch-pop__name', item[3] || kindLabel[item[2]]));
-      const ignore = el('label', 'sch-pop__ignore');
-      const cb = el('input');
-      cb.type = 'checkbox';
-      cb.checked = !!item[4];
-      cb.addEventListener('change', () => {
+    return { table, thead, cells, classifyAll, syncDays };
+  };
+
+  /**
+   * 仮決定（時間まで決めたもの）の枠: マスより一回り小さく、角を丸めた箱を、表の上に重ねる（続くマスで1つ。押しても下のマスが反応する）
+   *   host … 箱を入れる場所（position が static でない要素。今の週は wrap、隣の週は .sch-peek__slide）
+   */
+  const drawProv = (host, table, data) => {
+    host.querySelectorAll(':scope > .sch-prov').forEach((n) => n.remove());
+    const rows = table.tBodies[0].rows;
+    const w = host.getBoundingClientRect();
+    data.warn.filter((x) => x.s !== null).forEach((x) => {
+      const ci = data.days.findIndex((d) => d.date === x.date);
+      if (ci < 0) return;
+      const r0 = Math.max(0, Math.floor((x.s - data.days[ci].abs - data.start) / data.step));
+      const r1 = Math.min(rows.length, Math.ceil((x.e - data.days[ci].abs - data.start) / data.step)) - 1;
+      const first = rows[r0]?.cells[ci + 1];
+      const last = rows[r1]?.cells[ci + 1];
+      if (!first || !last) return;
+      const a = first.getBoundingClientRect();
+      const z = last.getBoundingClientRect();
+      const box = el('div', 'sch-prov');
+      box.style.left = `${a.left - w.left + host.scrollLeft + PROV_INSET}px`;
+      box.style.top = `${a.top - w.top + host.scrollTop + PROV_INSET}px`;
+      box.style.width = `${a.width - PROV_INSET * 2}px`;
+      box.style.height = `${z.bottom - a.top - PROV_INSET * 2}px`;
+      host.append(box);
+    });
+  };
+
+  /** 週のデータを取る（sched_me.php?grid=1 が JSON を返す）。url は表の矢印と同じ書き方（sched_me?from=…） */
+  const fetchWeek = (url) => {
+    const u = new URL(url, location.href);
+    u.hash = '';
+    u.searchParams.set('grid', '1');
+    return fetch(u, { headers: { Accept: 'application/json' } }).then((r) => {
+      if (!r.ok) throw new Error();
+      return r.json(); // ログインが切れていて HTML が返ったときは、ここで失敗する
+    });
+  };
+
+  const setupGrid = () => {
+    const firstData = readJson('sched-grid-data');
+    const wrap = document.querySelector('[data-sched-grid]');
+    const form = document.querySelector('[data-sched-grid-form]');
+    if (!firstData || !wrap || !form) return;
+    // 今出している週（mount の戻り値）。自動保存の本文は、いつも今の週の表から作る
+    let live = null;
+    const autosave = makeAutosave(() => live.build());
+    // 週を切り替えている間（動きの最中〜差し替え）。この間は、塗る・新しいスワイプ・矢印を受けない
+    let busy = false;
+
+    const dragCb = document.querySelector('[data-sched-drag]');
+    const undoBtn = document.querySelector('[data-sched-undo]');
+    const redoBtn = document.querySelector('[data-sched-redo]');
+    const labelEl = document.querySelector('[data-week-label]');
+    const navBtn = { prev: document.querySelector('[data-week-prev]'), next: document.querySelector('[data-week-next]') };
+    const prefersReduce = () => !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches; // 「動きを減らす」設定のとき true
+
+    // ---- 前後の週: 行き先の URL（無い側は null）と、先読みしたデータ ----
+    //   URL は矢印（data-week-prev / data-week-next）の href と同じ（#ng は付けない）。週を移るたびに JSON の prev / next で入れ替える
+    const noHash = (u) => (u ? u.replace(/#.*$/, '') : null);
+    const nav = {
+      prev: navBtn.prev && !navBtn.prev.classList.contains('is-none') ? noHash(navBtn.prev.getAttribute('href')) : null,
+      next: navBtn.next && !navBtn.next.classList.contains('is-none') ? noHash(navBtn.next.getAttribute('href')) : null,
+    };
+    const nb = { prev: null, next: null }; // 先読み: { url, data（届いたら入る）, promise }。取れなかったときの data は null のまま
+    const prefetch = () => {
+      ['prev', 'next'].forEach((dir) => {
+        const url = nav[dir];
+        if (!url) { nb[dir] = null; return; }
+        const e = { url, data: null };
+        e.promise = fetchWeek(url).then((j) => { e.data = j; return j; }).catch(() => null);
+        nb[dir] = e;
+      });
+    };
+
+    // ---- 横にスワイプ・矢印で週を切り替える（カレンダーアプリの週表示と同じ動き）----
+    //   「なぞって予定を入力」が外れている間の指だけ（マウス・なぞる入力のときは、これまでの操作のまま）。縦のスクロールはそのまま使える
+    //   時刻の列は動かさず、日の列だけが指についてくる。動かしている間は、隣の週が（予定ごと）逆の端から並んで入ってくる
+    //   しきい値を超えて離すと、残りを動かしてから、隣の週を「今の週」にする（ページは読み直さない）。超えなければ元の位置に戻る
+    //   動きは CSS の transition に任せ、終わったら transitionend で次へ進む（念のため、来なかったときのタイマーも置く）
+    //   隣の週は、開いた直後から裏で先読みしておく（nb）。まだ届いていなければ、届くまで待つ。取れなかったときだけ、ふつうにページを移動する
+    let stage = null; // 動かしている間だけある: { dir, peeks（隣の週の表）, timeBox（時刻の列の写し）, daysW, live }
+    let pid = null; // 見ている指（1本だけ）
+    let sx = 0;
+    let sy = 0;
+    let dx = 0;
+    let axis = null; // null = まだ決めていない / 'x' = 横（スワイプ） / 'y' = 縦（スクロールなので何もしない）
+    let thr = 80; // 週を変えるしきい値（px）
+    let swiped = false; // スワイプした直後の click（マスを塗る）を打ち消すための印
+    let cancelAnim = null;
+
+    // 「この予定を無視」を切り替えたら、前後の週の先読みも取り直す（日をまたぐ予定は、隣の週の表にも出るため）
+    const refreshNeighbors = () => { if (!busy && !stage) prefetch(); };
+
+    // ---- 表を出す（今の週）: 表を作り、イベントを付ける。destroy() で、付けたものを全部外せる ----
+    //   イベントは AbortController の signal で付ける（abort すると、document / window に付けたものも一度に外れる）
+    const mount = (data) => {
+      const ac = new AbortController();
+      const { signal } = ac;
+      const { table, thead, cells, classifyAll, syncDays } = buildTable(data);
+      wrap.prepend(table);
+
+      const redrawProv = () => drawProv(wrap, table, data);
+      redrawProv();
+      window.addEventListener('resize', redrawProv, { signal });
+      // 表の幅は、文字の読み込みなどで開いた直後に変わることがある（画面の幅は同じなので resize は来ない）→ 表の大きさが変わったら描き直す
+      const ro = 'ResizeObserver' in window ? new ResizeObserver(redrawProv) : null;
+      ro?.observe(table);
+
+      // ---- 自動で入った予定をタップ → 「この予定を無視」のチェックボックス（その1回分だけ）----
+      let pop = null;
+      const closePop = () => { pop?.remove(); pop = null; };
+      const openPop = (td) => {
+        closePop();
+        const item = td._item;
+        pop = el('div', 'sch-pop');
+        const head = el('div', 'sch-pop__head'); // 1行目: 予定名（画像の予定は右に削除ボタン）。2行目: 「この予定を無視」
+        head.append(el('span', 'sch-pop__name', item[3] || GRID_KIND[item[2]]));
+        const ignore = el('label', 'sch-pop__ignore');
+        const cb = el('input');
+        cb.type = 'checkbox';
+        cb.checked = !!item[4];
+        cb.addEventListener('change', () => {
+          const body = new FormData(form);
+          body.set('action', 'ignore');
+          body.set('s', item[0]);
+          body.set('e', item[1]);
+          body.set('on', cb.checked ? '1' : '0');
+          const was = !cb.checked;
+          item[4] = cb.checked;
+          classifyAll();
+          fetch(location.pathname + location.search, { method: 'POST', body, headers: { 'X-Autosave': '1' } })
+            .then((r) => { if (!r.ok) throw new Error(); refreshNeighbors(); })
+            .catch(() => { alert('保存できませんでした'); item[4] = was; cb.checked = was; classifyAll(); });
+        });
+        ignore.append(cb, el('span', '', 'この予定を無視'));
+        pop.append(head, ignore);
+        // 画像から読み込んだ予定だけは、本当に削除もできる（読み間違いを残さないため）。操作ボタンなので data-tip は付けない
+        if (item[2] === 'photo') {
+          const del = el('button', 'icon-btn icon-btn--sm');
+          del.type = 'button';
+          del.title = '削除';
+          del.setAttribute('aria-label', '削除');
+          const icon = el('span', 'icon', 'delete');
+          icon.setAttribute('aria-hidden', 'true');
+          del.append(icon);
+          del.addEventListener('click', () => {
+            if (!confirm('この予定を削除します。よろしいですか？')) return;
+            const body = new FormData(form);
+            body.set('action', 'photo_delete');
+            body.set('s', item[0]);
+            body.set('e', item[1]);
+            del.disabled = true;
+            autosave.flush() // 塗りかけの手入力を先に保存してから読み直す
+              .then(() => fetch(location.pathname + location.search, { method: 'POST', body, headers: { 'X-Autosave': '1' } }))
+              .then((r) => { if (!r.ok) throw new Error(); location.reload(); })
+              .catch(() => { alert('削除できませんでした'); del.disabled = false; });
+          });
+          head.append(del);
+        }
+        document.body.append(pop);
+        const r = td.getBoundingClientRect();
+        const pw = pop.offsetWidth;
+        pop.style.left = Math.max(8, Math.min(window.innerWidth - pw - 8, r.left + r.width / 2 - pw / 2)) + 'px';
+        pop.style.top = Math.min(window.innerHeight - pop.offsetHeight - 8, r.bottom + 4) + 'px';
+      };
+      // 前後の枠をタップ: 消す（消した枠をタップすると戻る）。「この予定を無視」と同じ印（sched_ignore）で覚える。予定が動くと枠の時間も変わるので、消した印は外れて枠が付き直す
+      const toggleFrame = (item) => {
         const body = new FormData(form);
         body.set('action', 'ignore');
         body.set('s', item[0]);
         body.set('e', item[1]);
-        body.set('on', cb.checked ? '1' : '0');
-        const was = !cb.checked;
-        item[4] = cb.checked;
+        const was = !!item[4];
+        item[4] = !was;
+        body.set('on', item[4] ? '1' : '0');
         classifyAll();
         fetch(location.pathname + location.search, { method: 'POST', body, headers: { 'X-Autosave': '1' } })
-          .then((r) => { if (!r.ok) throw new Error(); })
-          .catch(() => { alert('保存できませんでした'); item[4] = was; cb.checked = was; classifyAll(); });
-      });
-      ignore.append(cb, el('span', '', 'この予定を無視'));
-      pop.append(head, ignore);
-      // 画像から読み込んだ予定だけは、本当に削除もできる（読み間違いを残さないため）。操作ボタンなので data-tip は付けない
-      if (item[2] === 'photo') {
-        const del = el('button', 'icon-btn icon-btn--sm');
-        del.type = 'button';
-        del.title = '削除';
-        del.setAttribute('aria-label', '削除');
-        const icon = el('span', 'icon', 'delete');
-        icon.setAttribute('aria-hidden', 'true');
-        del.append(icon);
-        del.addEventListener('click', () => {
-          if (!confirm('この予定を削除します。よろしいですか？')) return;
-          const body = new FormData(form);
-          body.set('action', 'photo_delete');
-          body.set('s', item[0]);
-          body.set('e', item[1]);
-          del.disabled = true;
-          autosave.flush() // 塗りかけの手入力を先に保存してから読み直す
-            .then(() => fetch(location.pathname + location.search, { method: 'POST', body, headers: { 'X-Autosave': '1' } }))
-            .then((r) => { if (!r.ok) throw new Error(); location.reload(); })
-            .catch(() => { alert('削除できませんでした'); del.disabled = false; });
-        });
-        head.append(del);
-      }
-      document.body.append(pop);
-      const r = td.getBoundingClientRect();
-      const pw = pop.offsetWidth;
-      pop.style.left = Math.max(8, Math.min(window.innerWidth - pw - 8, r.left + r.width / 2 - pw / 2)) + 'px';
-      pop.style.top = Math.min(window.innerHeight - pop.offsetHeight - 8, r.bottom + 4) + 'px';
-    };
-    const classifyAll = () => {
-      table.querySelectorAll('tbody td').forEach(classify);
-      syncDays();
-    };
-    classifyAll();
-    // 前後の枠をタップ: 消す（消した枠をタップすると戻る）。「この予定を無視」と同じ印（sched_ignore）で覚える。予定が動くと枠の時間も変わるので、消した印は外れて枠が付き直す
-    const toggleFrame = (item) => {
-      const body = new FormData(form);
-      body.set('action', 'ignore');
-      body.set('s', item[0]);
-      body.set('e', item[1]);
-      const was = !!item[4];
-      item[4] = !was;
-      body.set('on', item[4] ? '1' : '0');
-      classifyAll();
-      fetch(location.pathname + location.search, { method: 'POST', body, headers: { 'X-Autosave': '1' } })
-        .then((r) => { if (!r.ok) throw new Error(); })
-        .catch(() => { alert('保存できませんでした'); item[4] = was; classifyAll(); });
-    };
-    table.addEventListener('click', (e) => {
-      const td = e.target.closest('td');
-      if (td?._buf) {
+          .then((r) => { if (!r.ok) throw new Error(); refreshNeighbors(); })
+          .catch(() => { alert('保存できませんでした'); item[4] = was; classifyAll(); });
+      };
+      table.addEventListener('click', (e) => {
+        const td = e.target.closest('td');
+        if (td?._buf) {
+          e.stopPropagation();
+          closePop();
+          toggleFrame(td._buf);
+          return;
+        }
+        if (!td?._item) return;
         e.stopPropagation();
-        closePop();
-        toggleFrame(td._buf);
-        return;
-      }
-      if (!td?._item) return;
-      e.stopPropagation();
-      // ポップアップが出ているときに予定を押したら、開き直さず消す（もう一度押せば開く）
-      if (pop) closePop();
-      else openPop(td);
-    });
-    document.addEventListener('pointerdown', (e) => { if (pop && !pop.contains(e.target) && !e.target.closest('td.is-auto')) closePop(); });
-    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closePop(); });
-    window.addEventListener('scroll', closePop, true);
+        // ポップアップが出ているときに予定を押したら、開き直さず消す（もう一度押せば開く）
+        if (pop) closePop();
+        else openPop(td);
+      }, { signal });
+      document.addEventListener('pointerdown', (e) => { if (pop && !pop.contains(e.target) && !e.target.closest('td.is-auto')) closePop(); }, { signal });
+      document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closePop(); }, { signal });
+      window.addEventListener('scroll', closePop, { capture: true, signal });
 
-    // ---- 元に戻す / やり直す: 塗られている手入力のマス（絶対分の並び）を、なぞり1回・タップ1回・日付1回ごとに積む ----
-    //   「この予定を無視」・前後の枠の切り替えは、その場で保存する別の操作なので対象にしない
-    const undoBtn = document.querySelector('[data-sched-undo]');
-    const redoBtn = document.querySelector('[data-sched-redo]');
-    const snap = () => cells.filter((td) => td.classList.contains('is-ng') && !td._buf).map((td) => td.dataset.abs).join(',');
-    const hist = [snap()];
-    let pos = 0;
-    const refreshHist = () => {
-      if (undoBtn) undoBtn.disabled = pos <= 0;
-      if (redoBtn) redoBtn.disabled = pos >= hist.length - 1;
-    };
-    const commit = () => {
-      const s = snap();
-      if (s === hist[pos]) return;
-      hist.length = pos + 1; // 戻したあとに塗り直したら、やり直しは捨てる
-      hist.push(s);
-      if (hist.length > 50) hist.shift();
-      pos = hist.length - 1;
+      // ---- 元に戻す / やり直す: 塗られている手入力のマス（絶対分の並び）を、なぞり1回・タップ1回・日付1回ごとに積む ----
+      //   「この予定を無視」・前後の枠の切り替えは、その場で保存する別の操作なので対象にしない。週を移ると履歴は空に戻る
+      const snap = () => cells.filter((td) => td.classList.contains('is-ng') && !td._buf).map((td) => td.dataset.abs).join(',');
+      const hist = [snap()];
+      let pos = 0;
+      const refreshHist = () => {
+        if (undoBtn) undoBtn.disabled = pos <= 0;
+        if (redoBtn) redoBtn.disabled = pos >= hist.length - 1;
+      };
+      const commit = () => {
+        const s = snap();
+        if (s === hist[pos]) return;
+        hist.length = pos + 1; // 戻したあとに塗り直したら、やり直しは捨てる
+        hist.push(s);
+        if (hist.length > 50) hist.shift();
+        pos = hist.length - 1;
+        refreshHist();
+      };
+      const stepHist = (d) => {
+        const next = pos + d;
+        if (next < 0 || next >= hist.length || busy) return;
+        pos = next;
+        const on = new Set(hist[pos].split(','));
+        cells.forEach((td) => { if (!td._buf) td.classList.toggle('is-ng', on.has(td.dataset.abs)); });
+        syncDays();
+        autosave.schedule();
+        refreshHist();
+      };
+      undoBtn?.addEventListener('click', () => stepHist(-1), { signal });
+      redoBtn?.addEventListener('click', () => stepHist(1), { signal });
       refreshHist();
+      // Ctrl+Z / Ctrl+Y（Mac は ⌘）。入力欄の中では、その欄の文字の「元に戻す」を優先する
+      document.addEventListener('keydown', (e) => {
+        if (!(e.ctrlKey || e.metaKey) || e.altKey || e.target.closest('input, textarea, select, [contenteditable]')) return;
+        const k = e.key.toLowerCase();
+        if (k === 'z' && !e.shiftKey) { e.preventDefault(); stepHist(-1); }
+        else if (k === 'y' || (k === 'z' && e.shiftKey)) { e.preventDefault(); stepHist(1); }
+      }, { signal });
+
+      // ---- なぞって入力（スマホ）: 外れている間は、指ではなぞらない（表の上でもスクロールできる）。マスはタップで1つずつ ----
+      //   PC（マウス）は常になぞれる。チェックの状態はこの端末に覚えておく（チェックの処理は setupGrid の下のほう。ここは表への反映だけ）
+      const syncDrag = () => table.classList.toggle('is-tap', !dragCb?.checked);
+      syncDrag();
+      let lastType = 'mouse'; // 直前に押した指・マウスの種類（click の pointerType は古い Safari に無いので、pointerdown で覚える）
+      const canDrag = (e) => e.pointerType === 'mouse' || !!dragCb?.checked;
+
+      let mode = null; // true = 塗る / false = 消す / null = なぞっていない
+      // 前後の枠は塗らない（タップで消す）。週を切り替えている間も塗らない
+      const paintable = (td) => !busy && td && td.dataset.abs && !td.classList.contains('is-auto') && !td.classList.contains('is-off') && !td._buf;
+      const paint = (td) => {
+        if (!paintable(td)) return;
+        if (td.classList.contains('is-ng') !== mode) {
+          td.classList.toggle('is-ng', mode);
+          autosave.schedule();
+          syncDays();
+        }
+      };
+      table.addEventListener('pointerdown', (e) => {
+        lastType = e.pointerType;
+        const td = e.target.closest('td');
+        if (!paintable(td) || !canDrag(e)) return; // なぞらないときは click（タップ）で塗る。スクロールしたら click は来ない
+        e.preventDefault();
+        mode = !td.classList.contains('is-ng');
+        paint(td);
+      }, { signal });
+      table.addEventListener('click', (e) => {
+        if (mode !== null || lastType === 'mouse' || dragCb?.checked) return; // なぞる操作は pointerdown で塗り済み
+        const td = e.target.closest('td');
+        if (!paintable(td)) return;
+        mode = !td.classList.contains('is-ng');
+        paint(td);
+        mode = null;
+        commit();
+      }, { signal });
+      // 指を動かしている間: 指の下のマスを探して塗る（elementFromPoint = その座標にある一番上の要素）
+      table.addEventListener('pointermove', (e) => {
+        if (mode === null) return;
+        paint(document.elementFromPoint(e.clientX, e.clientY)?.closest('td'));
+      }, { signal });
+      // 日付の見出しを押す: その日の塗れるマスを全部塗る（もう全部塗られていたら全部消す）
+      thead.addEventListener('click', (e) => {
+        const th = e.target.closest('th[data-day]');
+        if (busy || !th || e.target.closest('.sch-allday')) return; // 終日の予定名を押したときは、1日まるごと塗らない（予定名のポップアップだけ）
+        const day = cells.filter((td) => td.dataset.day === th.dataset.day);
+        if (!day.length) return; // 塗れるマスが無い日（授業などで全部埋まっている）は何もしない
+        mode = !day.every((td) => td.classList.contains('is-ng')); // 全部塗られている → 消すモード
+        day.forEach(paint);
+        mode = null;
+        commit();
+      }, { signal });
+      const end = () => { if (mode === null) return; mode = null; commit(); }; // なぞり1回 = 元に戻す1回
+      window.addEventListener('pointerup', end, { signal });
+      window.addEventListener('pointercancel', end, { signal });
+
+      bindSwipe(table, signal);
+
+      return {
+        table,
+        thead,
+        syncDrag,
+        closePop,
+        // 自動保存の本文: 塗られているマスの「絶対分」を JSON にして送る（なぞり終わって約1秒後。ページを離れる前・週を移る前にも送る）
+        build: () => {
+          const payload = {
+            days: data.days.filter((d) => !d.off).map((d) => d.date), start: data.start, end: data.end, // 期間の外の日は送らない（そこの保存済みの予定を消さない）
+            cells: cells.filter((td) => td.classList.contains('is-ng') && !td._buf).map((td) => Number(td.dataset.abs)),
+          };
+          form.querySelector('input[name="payload"]').value = JSON.stringify(payload);
+          return new FormData(form);
+        },
+        // 付けたものを全部外して、表を消す（次の週を mount する前に呼ぶ）
+        destroy: () => {
+          ac.abort();
+          ro?.disconnect();
+          closePop();
+          wrap.querySelectorAll(':scope > .sch-prov').forEach((n) => n.remove());
+          table.remove();
+        },
+      };
     };
-    const stepHist = (d) => {
-      const next = pos + d;
-      if (next < 0 || next >= hist.length) return;
-      pos = next;
-      const on = new Set(hist[pos].split(','));
-      cells.forEach((td) => { if (!td._buf) td.classList.toggle('is-ng', on.has(td.dataset.abs)); });
-      syncDays();
-      autosave.schedule();
-      refreshHist();
+
+    // 端のヒント: 表の左右に重ねる（絶対配置なのでレイアウトは動かない。ふだんは opacity 0）。週を移っても同じものを使う
+    const mkHint = (next) => {
+      const h = el('span', `icon-btn sch-swipe-hint sch-swipe-hint--${next ? 'next' : 'prev'}`);
+      h.setAttribute('aria-hidden', 'true');
+      h.append(el('span', 'icon', next ? 'chevron_right' : 'chevron_left')); // 上の週の切り替えと同じ < > の丸ボタン
+      return h;
     };
-    undoBtn?.addEventListener('click', () => stepHist(-1));
-    redoBtn?.addEventListener('click', () => stepHist(1));
-    refreshHist();
+    const hintPrev = mkHint(false);
+    const hintNext = mkHint(true);
+    wrap.append(hintPrev, hintNext);
+    const resetHints = () => [hintPrev, hintNext].forEach((h) => { h.style.opacity = ''; h.classList.remove('is-ready'); });
+
+    // transition が終わったら fn を呼ぶ。transitionend が来なくても 600ms 後に呼ぶ
+    const afterAnim = (fn) => {
+      if (cancelAnim) cancelAnim();
+      const tbl = live.table;
+      const onEnd = (e) => { if (e.target === tbl && e.propertyName === 'transform') done(); };
+      const t = setTimeout(() => done(), 600);
+      const cancel = () => { clearTimeout(t); tbl.removeEventListener('transitionend', onEnd); cancelAnim = null; };
+      const done = () => { cancel(); fn(); };
+      tbl.addEventListener('transitionend', onEnd);
+      cancelAnim = cancel;
+    };
+
+    // 動かす準備: 時刻の列の写しを上に固定して置き、表の時刻の列は隠す。隣の週の表は、データが届いていれば作って置く
+    const openStage = () => {
+      if (stage) return stage;
+      const tr = live.table.getBoundingClientRect();
+      const timeW = live.thead.rows[0].cells[0].getBoundingClientRect().width;
+      const st = { dir: null, peeks: {}, timeBox: null, daysW: tr.width - timeW, live };
+      // 時刻の列の写し: 今の表をそのままコピーして、時刻の列より右を CSS で切る（ずれた日の列が、この下へ潜る）
+      st.timeBox = el('div', 'sch-peek sch-peek--time is-on');
+      const slide = el('div', 'sch-peek__slide');
+      slide.append(live.table.cloneNode(true));
+      st.timeBox.append(slide);
+      wrap.append(st.timeBox);
+      wrap.style.setProperty('--time-w', `${timeW}px`);
+      wrap.style.setProperty('--days-w', `${st.daysW}px`);
+      wrap.classList.add('is-swiping');
+      stage = st;
+      // 隣の週が、動かしている途中で届いたときも出す
+      ['prev', 'next'].forEach((dir) => nb[dir]?.promise.then(() => { if (stage === st) ensurePeek(dir); }));
+      return st;
+    };
+    // 隣の週の表（見せるだけ。イベントは付けない）を、データが届いていれば作る。今動かしている向きのものだけ表示する
+    const ensurePeek = (dir) => {
+      const st = stage;
+      const e = nb[dir];
+      if (!st || !e?.data) return;
+      if (!st.peeks[dir]) {
+        const built = buildTable(e.data.grid);
+        const box = el('div', `sch-peek sch-peek--${dir}`);
+        const slide = el('div', 'sch-peek__slide');
+        slide.append(built.table);
+        box.append(slide);
+        wrap.append(box);
+        // 日付の下の終日の予定の分、見出しの高さが違うことがある → 表の本体の位置が今の週とそろうように直す
+        const liveH = st.live.thead.rows[0].getBoundingClientRect().height;
+        const peekH = built.thead.rows[0].getBoundingClientRect().height;
+        if (peekH < liveH) built.thead.rows[0].style.height = `${liveH}px`;
+        else if (peekH > liveH) box.style.top = `${liveH - peekH}px`;
+        drawProv(slide, built.table, e.data.grid);
+        st.peeks[dir] = box;
+      }
+      st.peeks[dir].classList.toggle('is-on', st.dir === dir);
+    };
+    const setDir = (dir) => {
+      const st = stage;
+      st.dir = dir;
+      ['prev', 'next'].forEach((d) => { if (st.peeks[d]) st.peeks[d].classList.toggle('is-on', d === dir); });
+      ensurePeek(dir);
+    };
+    // 見た目を元に戻す
+    const closeStage = () => {
+      if (!stage) return;
+      stage.timeBox.remove();
+      Object.values(stage.peeks).forEach((b) => b.remove());
+      stage = null;
+      wrap.classList.remove('is-swiping', 'is-swipe-anim');
+      ['--swipe-x', '--time-w', '--days-w'].forEach((p) => wrap.style.removeProperty(p));
+      resetHints();
+    };
+    // 指の動き dx に合わせて、表・隣の週・ヒントを動かす
+    const follow = () => {
+      const st = stage;
+      const dir = dx < 0 ? 'next' : 'prev'; // 左へ送る = 次の週
+      const has = !!nav[dir];
+      setDir(dir);
+      const x = has ? Math.max(-st.daysW, Math.min(st.daysW, dx)) : dx * 0.25; // 行き先が無い側は、重たく（4分の1だけ）動かす
+      wrap.style.setProperty('--swipe-x', `${x}px`);
+      const p = has ? Math.min(1, Math.abs(dx) / thr) : 0; // しきい値まで 0 → 1
+      const on = dir === 'next' ? hintNext : hintPrev;
+      const off = dir === 'next' ? hintPrev : hintNext;
+      on.style.opacity = String(p);
+      on.classList.toggle('is-ready', has && p >= 1);
+      off.style.opacity = '0';
+      off.classList.remove('is-ready');
+    };
+    const springBack = () => {
+      if (!stage) return;
+      if (prefersReduce()) { closeStage(); return; }
+      wrap.classList.add('is-swipe-anim');
+      wrap.style.setProperty('--swipe-x', '0px');
+      [hintPrev, hintNext].forEach((h) => { h.style.opacity = '0'; });
+      afterAnim(closeStage);
+    };
+    // 隣の週を今の週にする（表を作り直す。動きはもう終わっていて、隣の週は今の表と同じ位置にある）
+    const swap = (json, url) => {
+      if (cancelAnim) cancelAnim();
+      live.destroy();
+      closeStage();
+      nav.prev = noHash(json.prev);
+      nav.next = noHash(json.next);
+      ['prev', 'next'].forEach((dir) => {
+        const a = navBtn[dir];
+        if (!a) return;
+        a.classList.toggle('is-none', !nav[dir]);
+        if (nav[dir]) a.setAttribute('href', `${nav[dir]}#ng`);
+      });
+      if (labelEl) labelEl.textContent = json.label;
+      // 保存・読込のフォームが持つ「今の週」（sched_me.php の $back が使う）
+      const f = form.elements.namedItem('from');
+      if (f && json.from) f.value = json.from;
+      const w = form.elements.namedItem('week');
+      if (w && json.week !== null && json.week !== undefined) w.value = json.week;
+      history.replaceState(null, '', `${url}#ng`); // 以降の保存・読み直しは、この週の URL に対して行われる
+      live = mount(json.grid);
+      busy = false;
+    };
+    // 隣の週へ移る（スワイプを離したとき・矢印を押したとき）
+    const flip = (dir) => {
+      const e = nb[dir];
+      if (busy || !e || !live) return;
+      busy = true;
+      live.closePop();
+      const saved = autosave.flush(); // 塗りかけの分は、表を替える前に送る（本文は、ここで今の表から作られる）
+      const st = openStage();
+      setDir(dir);
+      const go = (json) => {
+        if (!json) { // 取れなかった: ふつうにページを移動する
+          saved.then(() => { location.href = `${e.url}#ng`; });
+          return;
+        }
+        ensurePeek(dir);
+        const done = () => { swap(json, e.url); saved.then(prefetch); }; // 先読みは、保存が終わってから（離れた週の表に、保存した内容が出るように）
+        if (prefersReduce()) { done(); return; }
+        if (!wrap.style.getPropertyValue('--swipe-x')) wrap.style.setProperty('--swipe-x', '0px');
+        void wrap.offsetWidth; // 今の位置を確定させてから動かす（矢印のときは 0 から）
+        wrap.classList.add('is-swipe-anim');
+        wrap.style.setProperty('--swipe-x', `${dir === 'next' ? -st.daysW : st.daysW}px`);
+        [hintPrev, hintNext].forEach((h) => { h.style.opacity = '0'; });
+        afterAnim(done);
+      };
+      if (e.data) go(e.data); else e.promise.then(go); // 先読みがまだなら、届くまで待つ
+    };
+    const release = () => {
+      const dir = dx < 0 ? 'next' : 'prev';
+      if (!nav[dir] || Math.abs(dx) < thr) { springBack(); return; }
+      flip(dir);
+    };
+
+    // 表（今の週）に指のイベントを付ける。mount から呼ぶ
+    function bindSwipe(table, signal) {
+      pid = null;
+      axis = null;
+      swiped = false;
+      table.addEventListener('pointerdown', (e) => {
+        swiped = false;
+        if (busy || e.pointerType === 'mouse' || dragCb?.checked || !e.isPrimary) return; // マウスとなぞる入力のときは、これまでの操作のまま
+        pid = e.pointerId;
+        sx = e.clientX;
+        sy = e.clientY;
+        dx = 0;
+        axis = null;
+      }, { signal });
+      table.addEventListener('pointermove', (e) => {
+        if (e.pointerId !== pid || axis === 'y') return;
+        dx = e.clientX - sx;
+        const dy = e.clientY - sy;
+        if (axis === null) {
+          if (Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy) * 1.2) { // 横に動かした → スワイプ開始
+            axis = 'x';
+            swiped = true;
+            thr = Math.min(80, wrap.clientWidth * 0.25);
+            if (cancelAnim) cancelAnim(); // 戻っている途中なら止めて、指に付け直す
+            wrap.classList.remove('is-swipe-anim');
+            live.closePop();
+            openStage();
+          } else {
+            if (Math.abs(dy) > 8) axis = 'y'; // 先に縦へ動いた → スクロール。この指では何もしない
+            return;
+          }
+        }
+        follow();
+      }, { signal });
+      const endSwipe = (e, cancelled) => {
+        if (e.pointerId !== pid) return;
+        pid = null;
+        const was = axis;
+        axis = null;
+        if (was !== 'x') return;
+        if (cancelled) springBack(); else release();
+      };
+      table.addEventListener('pointerup', (e) => endSwipe(e, false), { signal });
+      table.addEventListener('pointercancel', (e) => endSwipe(e, true), { signal });
+      // スワイプのあとに来る click は、マスを塗らないよう止める（capture = 他の click の処理より先に受ける）
+      table.addEventListener('click', (e) => {
+        if (!swiped) return;
+        swiped = false;
+        e.stopImmediatePropagation();
+        e.preventDefault();
+      }, { capture: true, signal });
+    }
+
+    // 上の < >: ページを読み直さず、同じ動きで隣の週へ（href は、JS が動かないときのための保険）
+    document.querySelector('.sch-weeknav')?.addEventListener('click', (e) => {
+      const a = e.target.closest('[data-week-prev], [data-week-next]');
+      if (!a || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey || a.classList.contains('is-none')) return;
+      e.preventDefault();
+      if (pid === null) flip(a.hasAttribute('data-week-next') ? 'next' : 'prev');
+    });
+    // なぞって入力のチェック: 状態はこの端末に覚えておく
+    try { if (dragCb) dragCb.checked = localStorage.getItem('sched-drag') === '1'; } catch { /* 保存できない環境 */ }
+    dragCb?.addEventListener('change', () => {
+      live.syncDrag();
+      try { localStorage.setItem('sched-drag', dragCb.checked ? '1' : '0'); } catch { /* 保存できない環境 */ }
+    });
     // 浮きボタンは表が画面に入っている間だけ出す（下の時間割などを編集しているときに、表の操作と取り違えないように）
     const histBar = undoBtn?.closest('.ttb-float');
     if (histBar && 'IntersectionObserver' in window) {
       new IntersectionObserver(([en]) => { histBar.hidden = !en.isIntersecting; }).observe(wrap);
     }
-    // Ctrl+Z / Ctrl+Y（Mac は ⌘）。入力欄の中では、その欄の文字の「元に戻す」を優先する
-    document.addEventListener('keydown', (e) => {
-      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.target.closest('input, textarea, select, [contenteditable]')) return;
-      const k = e.key.toLowerCase();
-      if (k === 'z' && !e.shiftKey) { e.preventDefault(); stepHist(-1); }
-      else if (k === 'y' || (k === 'z' && e.shiftKey)) { e.preventDefault(); stepHist(1); }
-    });
+    // 戻るボタンで、動かしている途中のまま保存されたページが戻ってきたときのため
+    window.addEventListener('pageshow', (e) => { if (e.persisted) { if (cancelAnim) cancelAnim(); closeStage(); busy = false; } });
 
-    // ---- なぞって入力（スマホ）: 外れている間は、指ではなぞらない（表の上でもスクロールできる）。マスはタップで1つずつ ----
-    //   PC（マウス）は常になぞれる。チェックの状態はこの端末に覚えておく
-    const dragCb = document.querySelector('[data-sched-drag]');
-    try { if (dragCb) dragCb.checked = localStorage.getItem('sched-drag') === '1'; } catch { /* 保存できない環境 */ }
-    const syncDrag = () => table.classList.toggle('is-tap', !dragCb?.checked);
-    syncDrag();
-    dragCb?.addEventListener('change', () => {
-      syncDrag();
-      try { localStorage.setItem('sched-drag', dragCb.checked ? '1' : '0'); } catch { /* 保存できない環境 */ }
-    });
-    let lastType = 'mouse'; // 直前に押した指・マウスの種類（click の pointerType は古い Safari に無いので、pointerdown で覚える）
-    const canDrag = (e) => e.pointerType === 'mouse' || !!dragCb?.checked;
-
-    let mode = null; // true = 塗る / false = 消す / null = なぞっていない
-    const paintable = (td) => td && td.dataset.abs && !td.classList.contains('is-auto') && !td.classList.contains('is-off') && !td._buf; // 前後の枠は塗らない（タップで消す）
-    const paint = (td) => {
-      if (!paintable(td)) return;
-      if (td.classList.contains('is-ng') !== mode) {
-        td.classList.toggle('is-ng', mode);
-        autosave.schedule();
-        syncDays();
-      }
-    };
-    table.addEventListener('pointerdown', (e) => {
-      lastType = e.pointerType;
-      const td = e.target.closest('td');
-      if (!paintable(td) || !canDrag(e)) return; // なぞらないときは click（タップ）で塗る。スクロールしたら click は来ない
-      e.preventDefault();
-      mode = !td.classList.contains('is-ng');
-      paint(td);
-    });
-    table.addEventListener('click', (e) => {
-      if (mode !== null || lastType === 'mouse' || dragCb?.checked) return; // なぞる操作は pointerdown で塗り済み
-      const td = e.target.closest('td');
-      if (!paintable(td)) return;
-      mode = !td.classList.contains('is-ng');
-      paint(td);
-      mode = null;
-      commit();
-    });
-    // 指を動かしている間: 指の下のマスを探して塗る（elementFromPoint = その座標にある一番上の要素）
-    table.addEventListener('pointermove', (e) => {
-      if (mode === null) return;
-      paint(document.elementFromPoint(e.clientX, e.clientY)?.closest('td'));
-    });
-    // 日付の見出しを押す: その日の塗れるマスを全部塗る（もう全部塗られていたら全部消す）
-    thead.addEventListener('click', (e) => {
-      const th = e.target.closest('th[data-day]');
-      if (!th || e.target.closest('.sch-allday')) return; // 終日の予定名を押したときは、1日まるごと塗らない（予定名のポップアップだけ）
-      const day = cells.filter((td) => td.dataset.day === th.dataset.day);
-      if (!day.length) return; // 塗れるマスが無い日（授業などで全部埋まっている）は何もしない
-      mode = !day.every((td) => td.classList.contains('is-ng')); // 全部塗られている → 消すモード
-      day.forEach(paint);
-      mode = null;
-      commit();
-    });
-    const end = () => { if (mode === null) return; mode = null; commit(); }; // なぞり1回 = 元に戻す1回
-    window.addEventListener('pointerup', end);
-    window.addEventListener('pointercancel', end);
-
-    // 自動保存: 塗られているマスの「絶対分」を JSON にして送る（なぞり終わって約1秒後。ページを離れる前にも送る）
-    autosave.build = () => {
-      const payload = {
-        days: data.days.filter((d) => !d.off).map((d) => d.date), start: data.start, end: data.end, // 期間の外の日は送らない（そこの保存済みの予定を消さない）
-        cells: cells.filter((td) => td.classList.contains('is-ng') && !td._buf).map((td) => Number(td.dataset.abs)),
-      };
-      form.querySelector('input[name="payload"]').value = JSON.stringify(payload);
-      return new FormData(form);
-    };
+    live = mount(firstData);
+    prefetch();
   };
 
   // ===================================================================
