@@ -129,7 +129,8 @@ if (is_post()) {
             'live'      => (int)($_POST['live'] ?? 0), // 0 = ライブなし
         ];
         $names = array_values(array_unique(array_filter(array_map(static fn($n) => trim((string)$n), (array)($_POST['m_name'] ?? [])), static fn($n) => $n !== '')));
-        $studioIds = array_values(array_unique(array_filter(array_map('intval', (array)($_POST['studio'] ?? [])), static fn($v) => $v > 0)));
+        $studioOn = ($_POST['use_studio'] ?? '') === '1'; // オフ = スタジオを決めない調整（候補は日付と時間帯だけ。スタジオの行は作らない）
+        $studioIds = $studioOn ? array_values(array_unique(array_filter(array_map('intval', (array)($_POST['studio'] ?? [])), static fn($v) => $v > 0))) : [];
         $errors = [];
         if ($in['title'] === '' || mb_strlen($in['title']) > 100) {
             $errors[] = 'タイトルを1〜100文字で入力してください';
@@ -176,19 +177,19 @@ if (is_post()) {
         if (!$memberIds || count($memberIds) > SCHED_MAX_MEMBERS) {
             $errors[] = '部員を1〜' . SCHED_MAX_MEMBERS . '人選んでください';
         }
-        if ($studioIds) {
+        if ($studioOn && $studioIds) {
             $ph = implode(',', array_fill(0, count($studioIds), '?'));
             $st = $pdo->prepare("SELECT studio_id FROM studio WHERE studio_id IN ($ph)");
             $st->execute($studioIds);
             $studioIds = array_map('intval', $st->fetchAll(PDO::FETCH_COLUMN)); // 実在するスタジオだけ残す
         }
-        if (!$studioIds) {
+        if ($studioOn && !$studioIds) {
             $errors[] = 'スタジオを1つ以上選んでください';
         }
 
         if ($errors) {
             // エラーのときは入力をセッションに預けて、フォームに戻す（PRG パターン。再読み込みで二重送信しない）
-            $_SESSION['sched_form'] = ['in' => $in, 'names' => $names, 'studios' => $studioIds, 'errors' => $errors];
+            $_SESSION['sched_form'] = ['in' => $in, 'names' => $names, 'studios' => $studioIds, 'studio_on' => $studioOn, 'errors' => $errors];
             redirect($pollId > 0 ? 'sched?edit=' . $pollId : 'sched?new');
         }
 
@@ -272,14 +273,18 @@ if (isset($_GET['new']) || isset($_GET['edit'])) {
     ] : ['title' => '', 'date_from' => date('Y-m-d', strtotime('+1 day')), 'date_to' => date('Y-m-d', strtotime('+14 day')), 'day_start' => 600, 'day_end' => 1380, 'length' => 120, 'late_max' => 30, 'live' => 0];
     $names = $poll !== null ? array_column(sched_poll_members($pdo, $pollId), 'name') : ($me !== null ? [$me] : []);
     $chosen = $poll !== null ? array_map('intval', array_column(sched_poll_studios($pdo, $pollId), 'studio_id')) : null;
+    $studioOn = $poll === null || (bool)$chosen; // スタジオの行が1つも無い調整 = スタジオを決めない調整
     $errors = [];
     // エラーで戻ってきたときは、さっきの入力で埋める（?? [] … 無ければ空の配列）
     if (isset($_SESSION['sched_form'])) {
-        ['in' => $in, 'names' => $names, 'studios' => $chosen, 'errors' => $errors] = $_SESSION['sched_form'];
+        ['in' => $in, 'names' => $names, 'studios' => $chosen, 'studio_on' => $studioOn, 'errors' => $errors] = $_SESSION['sched_form'];
         unset($_SESSION['sched_form']);
     }
     $studios = $pdo->query("SELECT studio_id, name, area, sched_default FROM studio ORDER BY sort_order, studio_id")->fetchAll();
-    $chosen ??= array_map('intval', array_column(array_filter($studios, static fn($s) => (int)$s['sched_default'] === 1), 'studio_id'));
+    // オフの調整を編集するときも、オンに戻したときの初期候補は出す
+    if (!$chosen) {
+        $chosen = array_map('intval', array_column(array_filter($studios, static fn($s) => (int)$s['sched_default'] === 1), 'studio_id'));
+    }
     // エリアごとにまとめる（エリアの並び順はスタジオ情報と同じ。エリア未入力は「その他」）
     $byArea = [];
     foreach (studio_areas($pdo) as $a) {
@@ -428,7 +433,8 @@ if (isset($_GET['new']) || isset($_GET['edit'])) {
         </div>
 
         <fieldset class="field sch-studios" data-tip-lazy>
-            <legend>スタジオ</legend>
+            <legend><label class="check"><input type="checkbox" name="use_studio" value="1" data-studio-toggle<?= $studioOn ? ' checked' : '' ?>> スタジオを決める</label></legend>
+            <div data-studio-body<?= $studioOn ? '' : ' hidden' ?>>
             <?php // 交通費・所要時間の目安（中身は assets/sched.js の setupTrip が入れる）。NAVITIME のキーがあるときだけ調べられる ?>
             <?php if ($byArea && sched_nav_key() !== ''): ?>
                 <div class="sch-row sch-trip-head" data-trip-head>
@@ -448,6 +454,7 @@ if (isset($_GET['new']) || isset($_GET['edit'])) {
                 </div>
             <?php endforeach; ?>
             <?php if (!$byArea): ?><p class="muted small">スタジオ情報が未登録です。<a class="text-link" href="studio_list">スタジオ情報</a>から追加してください</p><?php endif; ?>
+            </div>
         </fieldset>
 
         <div class="form-actions">

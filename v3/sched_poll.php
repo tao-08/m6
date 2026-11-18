@@ -43,6 +43,12 @@ $canManage = sched_can_manage($poll, $user, $memberIds);
 $myMember = $user['member_id'] === null ? null : (int)$user['member_id'];
 $isMember = $myMember !== null && in_array($myMember, $memberIds, true);
 $studios = sched_poll_studios($pdo, $pollId);
+// スタジオの行が1つも無い調整 = スタジオを決めない調整（作成画面で「スタジオを決める」がオフ）。
+//   候補の計算・表示は「スタジオ id 0 の1つだけ」という形で流す（料金・交通費・部屋は出さない。決定のスタジオは空）
+$noStudio = !$studios;
+if ($noStudio) {
+    $studios = [['studio_id' => 0, 'name' => '', 'area' => '', 'reserve_url' => null, 'website_url' => null, 'address' => null, 'access' => null]];
+}
 $studioById = array_column($studios, null, 'studio_id'); // [studio_id => 行]
 $names = array_column($members, 'name', 'member_id'); // [member_id => 名前]
 
@@ -340,7 +346,7 @@ if (is_post()) {
                                 $pollId, $statusNew, $date,
                                 $kind === 'date' ? null : sched_abs_to_dt($t0),
                                 $kind === 'date' ? null : sched_abs_to_dt($t0 + $len),
-                                $kind === 'date' ? null : $sid,
+                                $kind === 'date' || $sid === 0 ? null : $sid, // スタジオなしの調整は、日時だけ決めてスタジオは空
                                 $kind === 'date' || $roomId === 0 ? null : $roomId,
                                 $absentId > 0 ? $absentId : null,
                             ]);
@@ -368,7 +374,7 @@ if (is_post()) {
         $savedFixId = (int)$st->fetchColumn();
         sched_google_sync_fix($pdo, $savedFixId); // 決定（status = 3）なら Google 連携中の部員のカレンダーに入れる・直す。仮決定なら（前の決定が残っていれば）消す。欠席の人の分も合わせる
         $when = sched_md($date) . ($kind === 'date' ? '' : ' ' . sched_hm($start) . '〜' . sched_hm($start + $len));
-        $where = $kind === 'date' ? '' : ' ' . $studioById[$sid]['name'];
+        $where = $kind === 'date' || $sid === 0 ? '' : ' ' . $studioById[$sid]['name'];
         $label = ['date' => '仮決定（日のみ）', 'time' => '仮決定', 'final' => '決定'][$kind];
         $absentNote = $absentId > 0 ? '（' . ($names[$absentId] ?? '') . 'さん欠席）' : '';
         sched_notify($pdo, $pollId, $poll['title'] . ' の日程が' . $label . 'しました', $when . $where . $absentNote . "\n[[sched_poll?id={$pollId}|詳細]]", (int)$user['user_id']);
@@ -529,6 +535,9 @@ $practices = [];
 $sim = [];
 foreach ($studios as $s) {
     $sid = (int)$s['studio_id'];
+    if ($sid === 0) {
+        continue; // スタジオなしの調整の仮のスタジオには料金が無い
+    }
     $sim[$sid] = studio_sim_load($pdo, $sid);
 }
 // 仮決定の練習の「スタジオ名 部屋名」（注意のポップアップ用。題 => 文字。同じ題が複数あれば最後のもの）
@@ -573,7 +582,7 @@ $boot = [
     'poll' => $pollId, 'v' => (int)$poll['version'], 'len' => $len, 'people' => count($members), 'jo' => $settings['jo'],
     // 決定した日（その日の候補には「日だけ仮決定」を出さない）
     'fixes' => array_map(static fn($f) => ['id' => (int)$f['sched_fix_id'], 'date' => (string)$f['fix_date'], 'status' => (int)$f['status']], $fixes),
-    'canFix' => $canManage, 'csrf' => csrf_token(),
+    'canFix' => $canManage, 'csrf' => csrf_token(), 'noStudio' => $noStudio,
     'studios' => array_map(static fn($s) => ['id' => (int)$s['studio_id'], 'name' => $s['name'], 'area' => (string)$s['area'], 'reserve' => (string)($s['reserve_url'] ?: $s['website_url']), 'tmax' => $tripMax((int)$s['studio_id'])], array_values($studios)),
     'sim' => (object)$sim,
     'names' => (object)$names, // 遅刻・欠席の人の名前（member_id => 名前）
@@ -749,12 +758,12 @@ if (!empty($poll['live_id'])) {
     <section class="sch-cands" data-sched-cands>
         <div class="sch-cands__head">
             <h2 class="section-title"><span>候補 <small class="muted" data-sched-cands-count><?= count(array_unique(array_column($windows, 'date'))) ?>日</small></span>
-                <span class="info-tip" <?= tip_attr('交通費はメンバー全員の定期外運賃の合計、時間はメンバー内で最も遠い人の所要時間が表示されています。') ?>><?= icon('info', 'icon--sm') ?></span></h2>
+                <?php if (!$noStudio): ?><span class="info-tip" <?= tip_attr('交通費はメンバー全員の定期外運賃の合計、時間はメンバー内で最も遠い人の所要時間が表示されています。') ?>><?= icon('info', 'icon--sm') ?></span><?php endif; ?></h2>
             <div class="sch-cands__tools">
                 <div class="tabs tabs--filter sch-sort" role="tablist" data-sched-sort>
                     <button type="button" class="tab is-active" data-sort="date">日付順</button>
                     <button type="button" class="tab" data-sort="best">おすすめ順</button>
-                    <button type="button" class="tab" data-sort="price">安い順</button>
+                    <?php if (!$noStudio): ?><button type="button" class="tab" data-sort="price">安い順</button><?php endif; ?>
                 </div>
                 <?php /* 練習の長さを30分ずつ増減（?len=。サーバーが sched_poll_len で検証する）。上限・下限のボタンは押せない印にする */ ?>
                 <div class="sch-len" data-sched-len>
@@ -775,7 +784,7 @@ if (!empty($poll['live_id'])) {
         <?php
         // 調べるボタンは、覚えていない分があるときだけ（作成画面などで調べ済みなら、覚えてある結果がそのまま候補に出ている）
         $fareMissing = false;
-        if ($canManage && sched_nav_key() !== '' && $studios) {
+        if ($canManage && sched_nav_key() !== '' && $studios && !$noStudio) {
             $fareEach(static fn(int $mid, string $origin, int $sid) => $fareOf($mid, $origin, $sid));
             $fareMissing = sched_nav_misses() > 0;
         }
@@ -806,7 +815,7 @@ if (!empty($poll['live_id'])) {
             <div class="sch-list" data-sched-list-absent></div>
         <?php endif; ?>
         </div>
-        <p class="muted small">料金は目安です。スタジオの空き状況は予約ページで確認してください</p>
+        <?php if (!$noStudio): ?><p class="muted small">料金は目安です。スタジオの空き状況は予約ページで確認してください</p><?php endif; ?>
     </section>
 <?php if ($status === 3): ?>
         </div>

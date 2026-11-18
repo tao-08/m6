@@ -131,6 +131,15 @@
       });
     }
 
+    // ---- 「スタジオを決める」のチェック = オフならスタジオの選択を隠す（送るのはチェックだけ。サーバーがスタジオなしの調整として保存する）----
+    const studioToggle = form.querySelector('[data-studio-toggle]');
+    const studioBody = form.querySelector('[data-studio-body]');
+    if (studioToggle && studioBody) {
+      const syncStudio = () => { studioBody.hidden = !studioToggle.checked; };
+      studioToggle.addEventListener('change', syncStudio);
+      syncStudio();
+    }
+
     // ---- エリアのチェック = その中のスタジオを全部 ON / OFF ----
     form.querySelectorAll('[data-area]').forEach((box) => {
       const all = box.querySelector('[data-area-all]');
@@ -1529,6 +1538,10 @@
         rec = pickRecommend(items, sid);
         if (items.findIndex((x) => x.s.id === sid) >= SHOW) expanded = true; // 選んでいる行を隠さない
         box.replaceChildren();
+        if (data.noStudio) { // スタジオを決めない調整: 行は出さない（スタジオは id 0 の1つだけ。遅刻などのピルだけ出す）
+          renderPills();
+          return;
+        }
         items.forEach((x, i) => {
           if (i < SHOW || expanded) box.append(row(x));
         });
@@ -1545,7 +1558,7 @@
       };
       renderStudios();
       const price = items[0].q ? items[0].q.rank : Infinity; // 「最初に選ばれた開始時刻での最安（料金 + 交通費）」（安い順の並べ替え用）
-      c.append(box);
+      if (!data.noStudio) c.append(box);
 
       // ---- 下段: 確定のボタン ----
       if (data.canFix) {
