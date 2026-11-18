@@ -5,7 +5,7 @@
  * =====================================================================
  *  sched_me.php の #ical セクションの直後で require する。見た目・動きは初回チュートリアル（partials/tutorial.php）と同じ部品。
  *  開くのは [data-tutorial-open="ical-help"]、ページ送り・分岐は assets/app.js の setupTutorial。
- *  最初のページで端末（Google / iPhone）を選ぶと、その端末の手順だけを送る（data-tutorial-branch）。画像は使わず、文字とアイコンだけ。
+ *  最初のページで端末（Google / iPhone / その他）を選ぶと、その端末の手順だけを送る（data-tutorial-branch）。画像は使わず、文字とアイコンだけ。
  *  手順の文言は、Google・iCloud 側の画面が変わったら直す。
  * =====================================================================
  */
@@ -42,6 +42,29 @@ $branches = [
             . '</ol>'
             . '<p class="muted small">以降、決定したスタジオ練習は自動でカレンダーに入ります。開かないときは「決定したスタジオ練習を追加」の iPhone を押してください。</p>'],
     ],
+    // Google・iCloud 以外（TimeTree・Outlook・カレンダー未使用など）。取り込みの URL は Google・iCloud だけ（lib/sched_ical.php）なので、
+    //   同期できる人は Google / iPhone へ戻ってもらい、できない人は「画像から読込」（週表示のスクショ）と購読 URL のコピーで済ませる
+    'other' => [
+        ['title' => 'Google・iPhone と同期できるか確認', 'html' =>
+            '<ul>'
+            . '<li>Android の人 … Google カレンダーに予定を入れると「Google で連携」で取り込めます</li>'
+            . '<li>使っているアプリが Google / iPhone のカレンダーと同期している … 戻って Google / iPhone を選択</li>'
+            . '</ul>'
+            . '<p class="muted small">同期できない人は次へ</p>'],
+        ['title' => '画像から読込', 'html' =>
+            '<ol>'
+            . '<li>カレンダーアプリを<strong>週表示</strong>にしてスクリーンショット</li>'
+            . '<li>マイスケジュールの「' . icon('add_photo_alternate', 'icon--sm') . '画像から読込」で選択（複数枚可）</li>'
+            . '<li>読み取った予定を確認して「追加」</li>'
+            . '</ol>'
+            . '<p class="muted small">週表示が最も正確に読み取れます。予定が変わったら、もう一度読み込んでください。</p>'],
+        ['title' => '練習を自動で追加', 'html' =>
+            '<ol>'
+            . '<li>「決定したスタジオ練習を追加」の「' . icon('content_copy', 'icon--sm') . 'URL をコピー」</li>'
+            . '<li>使っているアプリの「URL でカレンダーを追加（購読）」に貼り付け</li>'
+            . '</ol>'
+            . '<p class="muted small">購読できないアプリは、日程調整の決定画面から 1 件ずつ追加できます。</p>'],
+    ],
 ];
 $sid = 0; // 見出しの id の連番（aria-labelledby 用。ダイアログごとに重ならないよう ical-help- を付ける）
 ?>
@@ -55,6 +78,7 @@ $sid = 0; // 見出しの id の連番（aria-labelledby 用。ダイアログ�
                 <div class="tutorial__choose">
                     <button type="button" class="btn" data-tutorial-choose="google"><?= icon('event') ?>Google カレンダー</button>
                     <button type="button" class="btn" data-tutorial-choose="icloud"><?= icon('smartphone') ?>iPhone（iCloud）</button>
+                    <button type="button" class="btn" data-tutorial-choose="other"><?= icon('more_horiz') ?>その他</button>
                 </div>
             </div>
         </section>

@@ -1945,6 +1945,15 @@
   setupForm();
   setupTerms();
   setupEventFormat();
+  // 購読 URL のコピー（sched_me.php の [data-copy-url]。Outlook など「URL で購読」できるアプリ用）
+  document.querySelectorAll('[data-copy-url]').forEach((btn) => btn.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(btn.dataset.copyUrl); // https のページでだけ使える
+      flashToast('URL をコピーしました');
+    } catch {
+      window.prompt('URL', btn.dataset.copyUrl); // 使えない環境では、選択してコピーしてもらう
+    }
+  }));
   setupClassCycle();
   // 時間割: チェックを入れるたびに自動保存（学期ごとのフォーム）
   document.querySelectorAll('form[data-autosave]').forEach((f) => {

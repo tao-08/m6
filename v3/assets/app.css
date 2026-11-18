@@ -1297,13 +1297,13 @@ body.is-row-dragging, body.is-row-dragging * { cursor: grabbing !important; user
 .tutorial__slide:not(:has(.tutorial__img)) .tutorial__text { padding-top: 28px; }
 .tutorial__nav--plain { display: flex; justify-content: flex-end; }
 /* 端末を選ぶボタン: 横に並べて同じ幅。スマホでは縦に並べる */
-.tutorial__choose { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 16px; }
+.tutorial__choose { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 10px; margin-top: 16px; } /* 選択肢の数だけ横に等分 */
 .tutorial__choose .btn { border-radius: var(--r-lg); padding: 22px 12px; flex-direction: column; gap: 8px; white-space: normal; text-align: center; line-height: 1.4; }
 .tutorial__choose .btn .icon { font-size: var(--fs-3xl); color: var(--accent); }
 .tutorial__choose .btn:hover { border-color: var(--accent); }
-@media (max-width: 480px) { .tutorial__choose { grid-template-columns: 1fr; } .tutorial__choose .btn { flex-direction: row; padding: 16px 12px; } }
+@media (max-width: 480px) { .tutorial__choose { grid-auto-flow: row; grid-template-columns: 1fr; } .tutorial__choose .btn { flex-direction: row; padding: 16px 12px; } }
 /* 手順（ol）: 行間をあけて、番号と文の頭をそろえる。文中のアイコンは文字の高さに合わせる */
-.tutorial__text ol { margin: 10px 0 0; padding-left: 1.6em; display: grid; gap: 10px; line-height: 1.7; }
+.tutorial__text :is(ol, ul) { margin: 10px 0 0; padding-left: 1.6em; display: grid; gap: 10px; line-height: 1.7; }
 .tutorial__text li::marker { color: var(--accent); font-weight: 800; }
 .tutorial__text .icon { vertical-align: -.2em; }
 .tutorial__text .small { margin-top: 10px; }
