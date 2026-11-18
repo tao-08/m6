@@ -6,3 +6,6 @@ src/assets/documents
 
 # FTP 接続設定（サーバー情報を含むのでコミットしない）
 .vscode/sftp.json
+
+# graphify の出力（再生成できる）
+**/graphify-out/

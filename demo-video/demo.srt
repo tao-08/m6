@@ -1,0 +1,63 @@
+1
+00:00:00,000 --> 00:00:12,000
+AbbeyRoad.online: a database and practice-scheduling tool
+for a university band club.
+
+2
+00:00:12,000 --> 00:00:25,000
+A member logs in and opens "My Schedule",
+where the Google Calendar integration is offered.
+
+3
+00:00:25,000 --> 00:00:40,000
+Integration is optional. The member clicks "Connect with Google".
+A link to our privacy policy is shown next to the button.
+
+4
+00:00:40,000 --> 00:00:55,000
+The Google consent screen shows the app name
+and the client ID in the address bar.
+
+5
+00:00:55,000 --> 00:01:15,000
+Two scopes are requested: calendar.calendarlist.readonly
+(list the user's calendars) and calendar.events (read and write events).
+
+6
+00:01:15,000 --> 00:01:30,000
+The user explicitly allows access
+and returns to the app.
+
+7
+00:01:30,000 --> 00:01:55,000
+Scope: calendar.calendarlist.readonly.
+The app lists the calendars shown in the user's Google Calendar
+and reads events only from those.
+
+8
+00:01:55,000 --> 00:02:25,000
+Scope: calendar.events (read).
+Busy times are removed from practice candidates.
+Event titles are visible only to the user; others see only "busy".
+
+9
+00:02:25,000 --> 00:03:00,000
+Scope: calendar.events (create).
+When a practice date is decided, one event is added
+to the user's own Google Calendar.
+
+10
+00:03:00,000 --> 00:03:20,000
+Scope: calendar.events (update / delete).
+Changing or cancelling the practice updates or removes only
+the event created by this app.
+
+11
+00:03:20,000 --> 00:03:40,000
+The user can disconnect at any time.
+This revokes the token and deletes the imported data.
+
+12
+00:03:40,000 --> 00:03:55,000
+Our privacy policy explains how Google user data is used
+and follows the Google API Services User Data Policy, including Limited Use.

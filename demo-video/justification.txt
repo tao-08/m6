@@ -1,0 +1,7 @@
+AbbeyRoad.online is a scheduling tool for a university band club. Members connect Google Calendar to exclude their busy times from practice candidates and add the decided practice to their calendar.
+
+calendar.calendarlist.readonly: lists the calendars shown in the user's Google Calendar, so events are read only from those. No narrower scope can list calendars.
+
+calendar.events: (1) Read event times and titles from those calendars to remove busy times; titles are shown only to the user (freebusy would not show them). (2) Create, update and delete one event per decided practice on the user's own calendar; only events created by the app are modified. Both read and write are required: events.readonly cannot write, and calendar.app.created cannot read existing events.
+
+Data is used only for these features, encrypted at rest, and never sold or used for ads or AI training. Users can disconnect anytime, which revokes the token and deletes data.
