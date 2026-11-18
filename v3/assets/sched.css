@@ -72,7 +72,7 @@
    :where() で詳細度を上げない（上の順番どおり、スタジオ練習 is-sp が人数の色より優先されるように） */
 :where([data-theme="dark"]) :is(.sch-grid--over td.is-free, .sch-sw.is-free) { --cell-bg: color-mix(in srgb, var(--ok) 74%, transparent); background: var(--cell-bg); }
 :where([data-theme="dark"]) .sch-sw.is-free.is-cheap { background: linear-gradient(135deg, var(--stripe) 0 25%, transparent 25% 50%, var(--stripe) 50% 75%, transparent 75%) 0 0 / 6px 6px, color-mix(in srgb, var(--ok) 74%, transparent); }
-:where([data-theme="dark"]) :is(.sch-cheap, .sch-sw.is-free.is-cheap) { --stripe: color-mix(in srgb, var(--headliner) 75%, transparent); } /* 最安の斜線: 明るくした緑に負けないよう濃く */
+:where([data-theme="dark"]) :is(.sch-cheap, .sch-sw.is-free.is-cheap) { --stripe: var(--headliner); } /* 最安の斜線: 明るくした緑に負けないよう濃く */
 :where([data-theme="dark"]) .sch-cheap { background-color: color-mix(in srgb, var(--ok) 74%, transparent); } /* ダークモードは緑がほぼ不透明で、下に敷いた縞が隠れる → 緑は下の箱に塗り、 */
 :where([data-theme="dark"]) .sch-grid--over td.is-free.is-cheap { background: transparent; } /* 最安のマスは透明にして縞を見せる（区切り線は表の側なので縞の上に出る） */
 :where([data-theme="dark"]) :is(.sch-grid--over td.is-n1, .sch-sw.is-n1) { --cell-bg: rgb(250 204 21 / .62); background: var(--cell-bg); }
