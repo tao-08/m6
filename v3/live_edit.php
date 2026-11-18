@@ -662,8 +662,7 @@ if ($isNew) {
         <label class="new-day-toggle"><input type="checkbox" name="d[<?= $id ?>][order_unset]" value="1"<?= !empty($d['order_unset']) ? ' checked' : '' ?>> トリなし</label>
         <p class="day-actions">
             <a class="btn btn--ghost btn--sm" href="band_edit?day=<?= $id ?>">＋ この日程にバンドを追加</a>
-            <a class="btn btn--ghost btn--sm" href="import?day=<?= $id ?>"><?= icon('group_add') ?> 名簿を追加</a>
-            <a class="btn btn--ghost btn--sm" href="import?day=<?= $id ?>"><?= icon('more_time') ?> タイムテーブルを追加</a>
+            <a class="btn btn--ghost btn--sm" href="import?day=<?= $id ?>"><?= icon('group_add') ?> 名簿・タイムテーブルを追加</a>
             <?php if (is_admin()): ?>
                 <!-- form の中に form は入れられない（HTML のルール）ので、削除フォームは下の </form> の外に置き、
                      form="del-day-ID" 属性でボタンとつなぐ -->
