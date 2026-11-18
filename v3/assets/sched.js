@@ -807,6 +807,7 @@
       add('csrf', data.csrf);
       add('action', 'fix');
       add('v', data.v);
+      add('len', data.len); // 画面で増減した練習の長さ（サーバーが検証し直す）
       add('kind', kind);
       add('date', w.date);
       const sidIn = add('studio', '');
@@ -1123,7 +1124,8 @@
           return { start, sid, room: x?.q?.room ? x.q.room.id : null, roomName: x?.q?.room ? x.q.room.name : '' };
         };
         const acts = el('div', 'sch-cand__acts');
-        if (data.status === 0) acts.append(fixForm('date', '日だけ仮決定', w, getSel, false));
+        // 日だけ仮決定は、その日にまだ決定（仮決定）が無いときだけ（1つの調整で別々の日に何回も決められるので、日ごとに見る）
+        if (!(data.fixes || []).some((f) => f.date === w.date)) acts.append(fixForm('date', '日だけ仮決定', w, getSel, false));
         acts.append(fixForm('time', '仮決定', w, getSel, false));
         acts.append(fixForm('final', '決定', w, getSel, true));
         c.append(acts);
@@ -1236,6 +1238,9 @@
       const same = focusables.filter((f) => f.date === date && f.from <= m && m < f.to);
       const hit = same.find((f) => f.starts.includes(m)) || same[0]; // 押した時刻から始められるカードを優先
       if (!hit) return false;
+      // 候補が折りたたまれているとき（決定が1つでもある調整）は、先に開く
+      const fold = hit.day.closest('details[data-sched-fold]');
+      if (fold && !fold.open) fold.open = true;
       hit.setStart(m);
       // 押した日以外の日は、アニメ無しで閉じる（上の日が閉じて高さが変わっても、スクロールの行き先がずれない）
       new Set(focusables.map((f) => f.day)).forEach((d) => {
@@ -1505,6 +1510,28 @@
       } catch (e) {
         // 覚えられなくても動作には困らない
       }
+    });
+  };
+
+  // ===================================================================
+  //  5b. 折りたたみ（sched_poll.php の <details data-sched-fold="覚えるキー">）
+  //     決定が1つでもある調整では、候補を <details> に入れて閉じておく。開閉は localStorage に覚える（開けないブラウザでも動くよう try/catch で囲む）
+  // ===================================================================
+  const setupFold = () => {
+    document.querySelectorAll('details[data-sched-fold]').forEach((box) => {
+      const key = box.dataset.schedFold;
+      try {
+        box.open = localStorage.getItem(key) === '1';
+      } catch (e) {
+        // localStorage が使えない（プライベートモード等）→ 閉じたまま
+      }
+      box.addEventListener('toggle', () => {
+        try {
+          localStorage.setItem(key, box.open ? '1' : '0');
+        } catch (e) {
+          // 覚えられなくても動作には困らない
+        }
+      });
     });
   };
 
@@ -1803,5 +1830,6 @@
   setupGrid();
   setupCands();
   setupOver();
+  setupFold();
   setupPhoto();
 })();

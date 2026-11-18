@@ -1107,7 +1107,7 @@ $cal = sched_ics_calendar([
     ['id' => 1, 'title' => 'スタ連 A', 'start' => $base + 600, 'end' => $base + 720, 'location' => '', 'details' => '', 'stamp' => 1700000000],
     ['id' => 2, 'title' => 'スタ連 B', 'start' => $base + 900, 'end' => $base + 960, 'location' => '', 'details' => ''],
 ], 'スタ連');
-check('ics_calendar: VEVENT が2つ・UID が別々', [substr_count($cal, "BEGIN:VEVENT\r\n"), preg_match_all('/^UID:sched-[12]@/m', $cal)], [2, 2]);
+check('ics_calendar: VEVENT が2つ・UID が別々', [substr_count($cal, "BEGIN:VEVENT\r\n"), preg_match_all('/^UID:sched-f[12]@/m', $cal)], [2, 2]);
 check('ics_calendar: 名前と読み直しの合図・stamp を使う', [str_contains($cal, "X-WR-CALNAME:スタ連\r\n"), str_contains($cal, "REFRESH-INTERVAL;VALUE=DURATION:PT1H\r\n"), str_contains($cal, "DTSTAMP:20231114T221320Z\r\n")], [true, true, true]);
 check('ics: 1件版には名前の行が入らない', str_contains(sched_ics(1, 'A', $base + 600, $base + 720, '', ''), 'X-WR-CALNAME'), false);
 // 購読 URL の鍵（テストでは config.php を読まないので、鍵を直接渡す）

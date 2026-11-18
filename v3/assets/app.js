@@ -6073,7 +6073,7 @@ function setupLikes() {
 /* ---------------------------------------------------------------------
  * チュートリアル・説明モーダル（[data-tutorial-dialog]）
  *   1ページに複数置ける。ログイン中は全ページにある初回チュートリアル（id="tutorial"。partials/tutorial.php）と、
- *   ページごとの説明（例: マイスケジュールの「カレンダー連携のやり方」 id="ical-help"。partials/ical_help.php）。
+ *   ページごとの説明（例: マイスケジュールの「カレンダーの連携方法」 id="ical-help"。partials/ical_help.php）。
  *   まだ見ていない人（data-tutorial-auto）には自動で開く。[data-tutorial-open="ダイアログの id"] を押しても開く（値が空なら tutorial）。
  *   次へ / 戻る / 下の点 / ← → キー / 左右スワイプでページを送る。最後のページの「次へ」は「はじめる」（data-tutorial-done で変えられる）になって閉じる。
  *   自動で開いた回を閉じたら（スキップ・Esc も）api_tutorial_seen に「見た」と送る → 次からは自動では出ない

@@ -1,7 +1,7 @@
 <?php
 /**
  * =====================================================================
- *  partials/ical_help.php — 「カレンダー連携のやり方」の説明モーダル（マイスケジュールの ⓘ から開く）
+ *  partials/ical_help.php — 「カレンダーの連携方法」の説明モーダル（マイスケジュールの ⓘ から開く）
  * =====================================================================
  *  sched_me.php の #ical セクションの直後で require する。見た目・動きは初回チュートリアル（partials/tutorial.php）と同じ部品。
  *  開くのは [data-tutorial-open="ical-help"]、ページ送り・分岐は assets/app.js の setupTutorial。
@@ -19,6 +19,7 @@ $branches = [
               . '<li>「Google で連携」を押す</li>'
               . '<li>Google アカウントを選んで、カレンダーへのアクセスを許可</li>'
               . '</ol>'
+              . '<p class="muted small">決定したスタジオ練習も自動でカレンダーに入ります。</p>'
               . $noteTimed
             : '<p class="muted">現在使えません（管理者の設定待ち）</p>'],
     ],
@@ -31,9 +32,15 @@ $branches = [
         ['title' => 'リンクをコピー', 'html' =>
             '<ol>'
             . '<li>「リンクを共有」→「コピー」</li>'
-            . '<li>この画面の欄に貼り付け</li>'
+            . '<li>この画面の欄に貼り付けて「連携」</li>'
             . '</ol>'
             . $noteTimed],
+        ['title' => '練習を自動で追加', 'html' =>
+            '<ol>'
+            . '<li>連携のあと、カレンダーの購読画面が開く</li>'
+            . '<li>「購読」を押す</li>'
+            . '</ol>'
+            . '<p class="muted small">以降、決定したスタジオ練習は自動でカレンダーに入ります。開かないときは「決定したスタジオ練習を追加」の iPhone を押してください。</p>'],
     ],
 ];
 $sid = 0; // 見出しの id の連番（aria-labelledby 用。ダイアログごとに重ならないよう ical-help- を付ける）
@@ -43,7 +50,7 @@ $sid = 0; // 見出しの id の連番（aria-labelledby 用。ダイアログ�
         <!-- 最初のページ（branch なし）: 端末を選ぶ。選ぶまで「次へ」は出ない -->
         <section class="tutorial__slide" data-tutorial-slide>
             <div class="tutorial__text">
-                <h2 class="modal__title" id="ical-help-title-<?= $sid++ ?>">カレンダー連携のやり方</h2>
+                <h2 class="modal__title" id="ical-help-title-<?= $sid++ ?>">カレンダーの連携方法</h2>
                 <p class="muted">使っているカレンダーを選択</p>
                 <div class="tutorial__choose">
                     <button type="button" class="btn" data-tutorial-choose="google"><?= icon('event') ?>Google カレンダー</button>

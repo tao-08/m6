@@ -468,7 +468,8 @@ if (isset($_GET['new']) || isset($_GET['edit'])) {
 }
 
 /* ==================== 一覧 ==================== */
-// 自分が呼ばれている調整・自分が作った調整。終わったもの（決定した日・期間の最終日が1週間より前）は出さない
+// 自分が呼ばれている調整・自分が作った調整。終わったもの（最後の決定の日・決定が無ければ期間の最終日が1週間より前）は出さない
+//   1つの調整で何回も決められるので、決定（sched_fix）は調整ごとに SELECT せず、下でまとめて1回で読む
 $myMember = $user['member_id'] === null ? 0 : (int)$user['member_id'];
 // 集計は相関サブクエリ（外側の行ごとに数える）で書く。GROUP BY と p.* を混ぜると、MySQL の設定（ONLY_FULL_GROUP_BY）によっては通らないため
 $st = $pdo->prepare('SELECT p.*,
@@ -476,11 +477,21 @@ $st = $pdo->prepare('SELECT p.*,
         (SELECT COUNT(x.answered_at) FROM sched_poll_member x WHERE x.sched_poll_id = p.sched_poll_id) AS n_answered,
         (SELECT l.name FROM live l WHERE l.live_id = p.live_id) AS live_name
     FROM sched_poll p
-    WHERE (p.created_by = ? OR EXISTS (SELECT 1 FROM sched_poll_member y WHERE y.sched_poll_id = p.sched_poll_id AND y.member_id = ?))
-      AND COALESCE(p.fix_date, p.date_to) >= ?
-    ORDER BY p.status = 3, COALESCE(p.fix_date, p.date_from), p.sched_poll_id');
-$st->execute([(int)$user['user_id'], $myMember, date('Y-m-d', strtotime('-7 day'))]);
+    WHERE p.created_by = ? OR EXISTS (SELECT 1 FROM sched_poll_member y WHERE y.sched_poll_id = p.sched_poll_id AND y.member_id = ?)');
+$st->execute([(int)$user['user_id'], $myMember]);
 $polls = $st->fetchAll();
+$fixesByPoll = sched_fixes_load($pdo, array_map('intval', array_column($polls, 'sched_poll_id'))); // [調整の id => [決定…]]（日付順）
+// 並び順と「終わったか」は、決定の日から決める: 先頭 = 最も早い決定の日（無ければ期間の最初）/ 末尾 = 最も遅い決定の日（無ければ期間の最後）
+$cutoff = date('Y-m-d', strtotime('-7 day'));
+foreach ($polls as $i => $p) {
+    $fx = $fixesByPoll[(int)$p['sched_poll_id']] ?? [];
+    $polls[$i]['fixes'] = $fx;
+    $polls[$i]['first_day'] = $fx ? (string)$fx[0]['fix_date'] : (string)$p['date_from'];
+    $polls[$i]['last_day'] = $fx ? (string)$fx[count($fx) - 1]['fix_date'] : (string)$p['date_to'];
+    $polls[$i]['done'] = sched_poll_state($fx) === 3 ? 1 : 0; // 決定済みは後ろ
+}
+$polls = array_values(array_filter($polls, static fn($p) => $p['last_day'] >= $cutoff));
+usort($polls, static fn($a, $b) => [$a['done'], $a['first_day'], (int)$a['sched_poll_id']] <=> [$b['done'], $b['first_day'], (int)$b['sched_poll_id']]);
 // マイスケジュールの入力状況（時間割もカレンダーも無ければ、入力を促す）
 $hasClass = $hasIcal = false;
 if ($myMember > 0) {
@@ -522,17 +533,15 @@ render_header('スタジオ練習の日程調整', 'tools');
     <div class="empty card"><p class="empty__title">日程調整はありません</p></div>
 <?php else: ?>
     <div class="tool-list">
-        <?php foreach ($polls as $p): $status = (int)$p['status']; ?>
+        <?php foreach ($polls as $p): $status = sched_poll_state($p['fixes']); ?>
             <a class="card tool-card" href="sched_poll?id=<?= (int)$p['sched_poll_id'] ?>">
                 <span class="tool-card__icon"><?= icon($status === 3 ? 'event_available' : 'schedule') ?></span>
                 <span class="tool-card__body">
-                    <span class="tool-card__name"><?= h($p['title']) ?> <?= sched_status_pill($p) ?></span>
+                    <span class="tool-card__name"><?= h($p['title']) ?> <?= sched_status_pill($p['fixes']) ?></span>
                     <span class="muted small">
                         <?= $p['live_name'] !== null ? h($p['live_name']) . ' ・ ' : '' ?>
-                        <?php if ($status === 3): ?>
-                            <?= h(sched_md((string)$p['fix_date']) . ' ' . date('G:i', strtotime((string)$p['fix_start'])) . '〜' . date('G:i', strtotime((string)$p['fix_end']))) ?>
-                        <?php elseif ($status >= 1): ?>
-                            <?= h(sched_md((string)$p['fix_date'])) ?><?= $status === 2 ? ' ' . h(date('G:i', strtotime((string)$p['fix_start'])) . '〜' . date('G:i', strtotime((string)$p['fix_end']))) : '' ?>
+                        <?php if ($p['fixes']): // 決定・仮決定の日時を並べる（「11/20(金) 13:00〜15:00・11/27(金) 13:00〜16:00」。日だけの仮決定は日付だけ） ?>
+                            <?= h(implode('・', array_map(static fn($f) => sched_md((string)$f['fix_date']) . ($f['fix_start'] !== null && $f['fix_end'] !== null ? ' ' . date('G:i', strtotime((string)$f['fix_start'])) . '〜' . date('G:i', strtotime((string)$f['fix_end'])) : ''), $p['fixes']))) ?>
                         <?php else: ?>
                             <?= h(sched_md($p['date_from']) . '〜' . sched_md($p['date_to'])) ?> ・ 回答 <?= (int)$p['n_answered'] ?>/<?= (int)$p['n_members'] ?>
                         <?php endif; ?>

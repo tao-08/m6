@@ -51,7 +51,7 @@ const SCHED_WEEKDAYS = [1 => '月', 2 => '火', 3 => '水', 4 => '木', 5 => '�
 /** 表示用の曜日（date('w') = 0 が日曜） */
 const SCHED_DOW = ['日', '月', '火', '水', '木', '金', '土'];
 
-/** 調整の状態（sched_poll.status の値 => 名前） */
+/** 決定1回の状態（sched_fix.status の値 => 名前）。調整全体の状態は sched_poll_state() が sched_fix から導く（0 = 調整中） */
 const SCHED_STATUS = [0 => '調整中', 1 => '仮決定', 2 => '仮決定', 3 => '決定'];
 
 /** 計算・入力の刻み（分）。NG 枠のマス・候補の開始時刻はこの単位 */
@@ -727,17 +727,95 @@ function sched_poll_load(PDO $pdo, int $pollId, bool $lock = false): ?array
     return $st->fetch() ?: null;
 }
 
+/**
+ * 調整の決定（sched_fix）を、まとめて読む。日付順（同じ日は id 順）
+ *   1つの調整で練習を何回でも決められるので、調整1件に決定が複数ぶら下がる。
+ *   一覧のように何件もの調整を出すときは、調整ごとに SELECT せず、id をまとめて1回の IN (…) で読む（N+1 を避ける）
+ *   戻り値: [sched_poll_id => [sched_fix の行（sched_fix_id・status・fix_date・fix_start・fix_end・studio_id・room_id・absent_member_id・reserved_at・reserved_by）…]]
+ */
+function sched_fixes_load(PDO $pdo, array $pollIds): array
+{
+    $pollIds = array_values(array_unique(array_map('intval', $pollIds)));
+    $out = [];
+    if (!$pollIds) {
+        return $out;
+    }
+    $st = $pdo->prepare('SELECT * FROM sched_fix WHERE sched_poll_id IN (' . implode(',', array_fill(0, count($pollIds), '?')) . ') ORDER BY fix_date, sched_fix_id');
+    $st->execute($pollIds);
+    foreach ($st as $r) {
+        $out[(int)$r['sched_poll_id']][] = $r;
+    }
+    return $out;
+}
+
+/** 調整1件の決定（日付順。無ければ []） */
+function sched_poll_fixes(PDO $pdo, int $pollId): array
+{
+    return sched_fixes_load($pdo, [$pollId])[$pollId] ?? [];
+}
+
+/** 決定1回（sched_fix の行。無ければ null）。$pollId を渡すと、その調整のものだけ（ほかの調整の id を送られても通さない） */
+function sched_fix_load(PDO $pdo, int $fixId, ?int $pollId = null): ?array
+{
+    $st = $pdo->prepare('SELECT * FROM sched_fix WHERE sched_fix_id = ?' . ($pollId === null ? '' : ' AND sched_poll_id = ?'));
+    $st->execute($pollId === null ? [$fixId] : [$fixId, $pollId]);
+    return $st->fetch() ?: null;
+}
+
+/**
+ * 調整全体の状態を、決定（sched_fix）の一覧から導く
+ *   決定（3）が1つでもあれば 3 / 無くて仮決定（1・2）が1つでもあれば 2 / どちらも無ければ 0（調整中）
+ *   （調整の行には状態を持たない。決定を足す・消すだけで、状態が自然に変わる）
+ */
+function sched_poll_state(array $fixes): int
+{
+    $state = 0;
+    foreach ($fixes as $f) {
+        if ((int)$f['status'] === 3) {
+            return 3;
+        }
+        $state = 2;
+    }
+    return $state;
+}
+
+/** その決定の欠席者を除いた、練習に出る部員の id（$memberIds は調整の部員の id） */
+function sched_fix_present(array $fix, array $memberIds): array
+{
+    $absent = $fix['absent_member_id'] === null ? null : (int)$fix['absent_member_id'];
+    return array_values(array_filter(array_map('intval', $memberIds), static fn($m) => $m !== $absent));
+}
+
+/**
+ * 候補の画面で増減した練習の長さ（分）
+ *   30分刻み・30分以上・時間帯の幅（day_end - day_start）以下ならその値。外れたり数字でなかったりしたら、調整を作ったときの長さ（length_min）
+ *   URL（?len=）や POST を書き換えて、時間帯に収まらない長さを送られても通さないための検証（画面とサーバーで同じ関数を使う）
+ */
+function sched_poll_len(array $poll, mixed $req): int
+{
+    $base = (int)$poll['length_min'];
+    if (!is_string($req) && !is_int($req)) {
+        return $base;
+    }
+    if (!preg_match('/^\d{1,4}$/', (string)$req)) {
+        return $base;
+    }
+    $len = (int)$req;
+    $max = (int)$poll['day_end'] - (int)$poll['day_start'];
+    return $len >= SCHED_STEP && $len <= $max && $len % SCHED_STEP === 0 ? $len : $base;
+}
+
 /** 調整に呼ばれた部員（名前・回答日時・紐づくアカウント・iCal の有無つき。名前のふりがな順） */
 function sched_poll_members(PDO $pdo, int $pollId): array
 {
-    $st = $pdo->prepare('SELECT m.member_id, m.name, m.entry_year, pm.answered_at, pm.fix_absent, MIN(u.user_id) AS user_id,
+    $st = $pdo->prepare('SELECT m.member_id, m.name, m.entry_year, pm.answered_at, MIN(u.user_id) AS user_id,
             (p.ical_url IS NOT NULL) AS has_ical, p.ical_error
         FROM sched_poll_member pm
         JOIN member m ON m.member_id = pm.member_id
         LEFT JOIN user_account u ON u.member_id = m.member_id
         LEFT JOIN sched_profile p ON p.member_id = m.member_id
         WHERE pm.sched_poll_id = ?
-        GROUP BY m.member_id, m.name, m.entry_year, pm.answered_at, pm.fix_absent, p.ical_url, p.ical_error, m.name_kana
+        GROUP BY m.member_id, m.name, m.entry_year, pm.answered_at, p.ical_url, p.ical_error, m.name_kana
         ORDER BY m.name_kana, m.name');
     $st->execute([$pollId]);
     return $st->fetchAll();
@@ -880,46 +958,41 @@ function sched_collect_busy(PDO $pdo, array $memberIds, string $from, string $to
         $out['busy'][(int)$r['member_id']][] = [sched_dt_to_abs($r['start_at']), sched_dt_to_abs($r['end_at']), null, match ((int)$r['source']) { 1 => 'ical', 2 => 'photo', default => 'manual' }, $label]; // source: 0 = 手入力 / 1 = iCal / 2 = 画像から読込
     }
 
-    // ---- ほかの調整の仮決定・決定（この部員たちが1人でも入っているもの）----
-    $st = $pdo->prepare("SELECT DISTINCT p.sched_poll_id, p.title, p.status, p.fix_date, p.fix_start, p.fix_end, p.fix_studio_id, p.fix_room_id
-        FROM sched_poll p JOIN sched_poll_member pm ON pm.sched_poll_id = p.sched_poll_id
-        WHERE p.status >= 1 AND pm.member_id IN ($in) AND p.fix_date BETWEEN ? AND ? AND p.sched_poll_id <> ?");
-    $st->execute([...$memberIds, $from, $to, $exceptPollId ?? 0]);
-    $polls = $st->fetchAll();
-    $practiceIds = array_map(static fn($r) => (int)$r['sched_poll_id'], $polls);
-    // 連続の判定（○）は、部員が重ならない練習も見るので、同じ期間の「決定・仮決定（日時）」を全部足す
-    $st = $pdo->prepare('SELECT sched_poll_id, title, status, fix_date, fix_start, fix_end, fix_studio_id, fix_room_id FROM sched_poll
-        WHERE status >= 2 AND fix_date BETWEEN ? AND ? AND sched_poll_id <> ?');
-    $st->execute([$from, $to, $exceptPollId ?? 0]);
-    foreach ($st as $r) {
-        if (!in_array((int)$r['sched_poll_id'], $practiceIds, true)) {
-            $polls[] = $r;
-            $practiceIds[] = (int)$r['sched_poll_id'];
-        }
-    }
-    $members = [];
+    // ---- ほかの調整の仮決定・決定（1回 = 1練習。sched_fix の1行）----
+    //   ・この部員たちが1人でも入っている調整の分は、仮決定（日のみ）も含めて全部
+    //   ・連続の判定（○）は、部員が重ならない練習も見るので、同じ期間の「決定・仮決定（日時）」（status >= 2）は部員に関係なく全部足す
+    //   1つの調整で何回も決められるので、同じ調整の練習が複数返ることがある（'id' は調整の id、'fix_id' が決定1回の id）
+    $st = $pdo->prepare("SELECT f.sched_fix_id, f.sched_poll_id, p.title, f.status, f.fix_date, f.fix_start, f.fix_end, f.studio_id, f.room_id, f.absent_member_id
+        FROM sched_fix f JOIN sched_poll p ON p.sched_poll_id = f.sched_poll_id
+        WHERE f.fix_date BETWEEN ? AND ? AND f.sched_poll_id <> ?
+          AND (f.status >= 2 OR EXISTS (SELECT 1 FROM sched_poll_member pm WHERE pm.sched_poll_id = f.sched_poll_id AND pm.member_id IN ($in)))
+        ORDER BY f.fix_date, f.fix_start, f.sched_fix_id");
+    $st->execute([$from, $to, $exceptPollId ?? 0, ...$memberIds]);
+    $fixRows = $st->fetchAll();
+    $pollMembers = []; // [調整の id => [部員の id…]]（調整ごとに1回だけ読む）
+    $practiceIds = array_values(array_unique(array_map(static fn($r) => (int)$r['sched_poll_id'], $fixRows)));
     if ($practiceIds) {
         $in2 = implode(',', array_fill(0, count($practiceIds), '?'));
-        // fix_absent = 1 の人は、その練習を欠席する人。練習の部員に数えない（連続・注意の判定にも、決定の埋まりにも入れない）
-        $st = $pdo->prepare("SELECT sched_poll_id, member_id FROM sched_poll_member WHERE sched_poll_id IN ($in2) AND fix_absent = 0");
+        $st = $pdo->prepare("SELECT sched_poll_id, member_id FROM sched_poll_member WHERE sched_poll_id IN ($in2)");
         $st->execute($practiceIds);
         foreach ($st as $r) {
-            $members[(int)$r['sched_poll_id']][] = (int)$r['member_id'];
+            $pollMembers[(int)$r['sched_poll_id']][] = (int)$r['member_id'];
         }
     }
-    foreach ($polls as $r) {
+    foreach ($fixRows as $r) {
         $pid = (int)$r['sched_poll_id'];
         $s = $r['fix_start'] !== null ? sched_dt_to_abs($r['fix_start']) : null;
         $e = $r['fix_end'] !== null ? sched_dt_to_abs($r['fix_end']) : null;
-        $pm = $members[$pid] ?? [];
+        // 欠席する人は、その練習の部員に数えない（連続・注意の判定にも、決定の埋まりにも入れない）
+        $pm = sched_fix_present($r, $pollMembers[$pid] ?? []);
         $out['practices'][] = [
-            'id' => $pid, 'title' => (string)$r['title'], 'status' => (int)$r['status'], 'date' => (string)$r['fix_date'],
-            's' => $s, 'e' => $e, 'studio_id' => $r['fix_studio_id'] === null ? null : (int)$r['fix_studio_id'], 'room_id' => $r['fix_room_id'] === null ? null : (int)$r['fix_room_id'], 'members' => $pm,
+            'id' => $pid, 'fix_id' => (int)$r['sched_fix_id'], 'title' => (string)$r['title'], 'status' => (int)$r['status'], 'date' => (string)$r['fix_date'],
+            's' => $s, 'e' => $e, 'studio_id' => $r['studio_id'] === null ? null : (int)$r['studio_id'], 'room_id' => $r['room_id'] === null ? null : (int)$r['room_id'], 'members' => $pm,
         ];
         // 決定（3）だけ、その部員の埋まりにする（仮決定は注意だけ）
         if ((int)$r['status'] === 3 && $s !== null) {
             foreach (array_intersect($pm, $memberIds) as $mid) {
-                $out['busy'][$mid][] = [$s, $e, $r['fix_studio_id'] === null ? null : 'studio:' . (int)$r['fix_studio_id'], 'practice', (string)$r['title']];
+                $out['busy'][$mid][] = [$s, $e, $r['studio_id'] === null ? null : 'studio:' . (int)$r['studio_id'], 'practice', (string)$r['title']];
             }
         }
     }
@@ -999,12 +1072,20 @@ function sched_notify_users(PDO $pdo, array $userIds, int $pollId, string $title
     }
 }
 
-/** 状態のラベル（一覧・詳細の見出し）。仮決定は黄、決定は緑 */
-function sched_status_pill(array $poll): string
+/**
+ * 状態のラベル（一覧・詳細の見出し）。仮決定は黄、決定は緑
+ *   $fixes … その調整の決定（sched_fix の行。sched_fixes_load で読んだもの）。決定が2回以上なら「決定 2回」
+ */
+function sched_status_pill(array $fixes): string
 {
-    $s = (int)$poll['status'];
-    $cls = match ($s) { 3 => ' pill--ok', 1, 2 => ' pill--warn', default => '' };
-    return '<span class="pill' . $cls . '">' . h(SCHED_STATUS[$s] ?? '') . '</span>';
+    $s = sched_poll_state($fixes);
+    $cls = match ($s) { 3 => ' pill--ok', 2 => ' pill--warn', default => '' };
+    $label = SCHED_STATUS[$s === 2 ? 2 : $s]; // 仮決定は 1・2 どちらも同じ「仮決定」
+    if ($s === 3) {
+        $n = count(array_filter($fixes, static fn($f) => (int)$f['status'] === 3));
+        $label .= $n >= 2 ? ' ' . $n . '回' : '';
+    }
+    return '<span class="pill' . $cls . '">' . h($label) . '</span>';
 }
 
 /* =====================================================================
@@ -1151,7 +1232,7 @@ function sched_event_clean(string $key, string $v): ?string
  *   ・UID … 予定の背番号。同じ UID のファイルをもう一度開くと「更新」として扱われる
  *
  * 予定を何件でも入れられる版。$events の1件は
- *   ['id' => 日程調整の id, 'title' => 題名, 'start' => 開始（絶対分）, 'end' => 終了（絶対分）, 'location' => 場所, 'details' => メモ,
+ *   ['id' => 決定1回の id（sched_fix_id）, 'title' => 題名, 'start' => 開始（絶対分）, 'end' => 終了（絶対分）, 'location' => 場所, 'details' => メモ,
  *    'stamp' => 最終更新（UNIX 秒。省略すると現在時刻）]
  * $calName を渡すと「購読するカレンダー」用になり、カレンダー名と「1時間ごとに読み直して」の合図（REFRESH-INTERVAL・X-PUBLISHED-TTL）も入れる
  *   （Google は合図を無視して半日〜1日おきに読むこともある。iPhone は合図どおりに近い間隔で読む）
@@ -1169,7 +1250,7 @@ function sched_ics_calendar(array $events, string $calName = ''): string
         array_push(
             $lines,
             'BEGIN:VEVENT',
-            'UID:sched-' . (int)$e['id'] . '@' . $host, // 予定ごとに固定。日時や場所が変わっても、同じ予定の「更新」として扱われる
+            'UID:sched-f' . (int)$e['id'] . '@' . $host, // 決定1回（sched_fix_id）ごとに固定。日時や場所が変わっても、同じ予定の「更新」として扱われる（1つの調整で何回も決めるので、調整の id ではなく決定の id）
             'DTSTAMP:' . gmdate('Ymd\THis\Z', (int)($e['stamp'] ?? time())),
             'DTSTART:' . $utc((int)$e['start']),
             'DTEND:' . $utc((int)$e['end']),
@@ -1196,58 +1277,66 @@ function sched_ics_calendar(array $events, string $calName = ''): string
     return implode("\r\n", $folded) . "\r\n";
 }
 
-/** 予定1件だけの .ics（日程調整1件のダウンロード用。中身は sched_ics_calendar と同じ） */
-function sched_ics(int $pollId, string $title, int $startAbs, int $endAbs, string $location, string $details): string
+/** 予定1件だけの .ics（決定1回のダウンロード用。中身は sched_ics_calendar と同じ。$fixId = sched_fix_id） */
+function sched_ics(int $fixId, string $title, int $startAbs, int $endAbs, string $location, string $details): string
 {
-    return sched_ics_calendar([['id' => $pollId, 'title' => $title, 'start' => $startAbs, 'end' => $endAbs, 'location' => $location, 'details' => $details]]);
+    return sched_ics_calendar([['id' => $fixId, 'title' => $title, 'start' => $startAbs, 'end' => $endAbs, 'location' => $location, 'details' => $details]]);
 }
 
 /**
  * 購読するカレンダー（sched_feed.php）に入れる予定の一覧。その部員が呼ばれていて、決定済み（status = 3）の練習だけ。
- *   ・欠席（fix_absent = 1）の人には出さない
+ *   1つの調整で何回も決められるので、決定1回 = 予定1件（UID は決定の id）
+ *   ・その回で欠席（absent_member_id）の人には出さない
  *   ・古すぎる練習は出さない（$sinceDt = 'Y-m-d H:i:s'。これより後に始まるものだけ。カレンダーが際限なく重くならないように）
  *   ・N+1（1件ずつ SELECT を繰り返して遅くなること）を避けるため、スタジオ・部屋は JOIN で、メンバーは全件ぶんを1回の IN (…) で読む
  * 戻り値は sched_ics_calendar にそのまま渡せる配列
  */
 function sched_feed_events(PDO $pdo, int $memberId, string $sinceDt): array
 {
-    $st = $pdo->prepare('SELECT p.sched_poll_id, p.title, p.fix_start, p.fix_end, p.updated_at, p.fix_studio_id, s.name AS studio_name, s.short_name AS studio_short, s.address, r.name AS room_name
+    $st = $pdo->prepare('SELECT f.sched_fix_id, f.sched_poll_id, p.title, f.fix_start, f.fix_end, f.absent_member_id, p.updated_at, f.studio_id, s.name AS studio_name, s.short_name AS studio_short, s.address, r.name AS room_name
         FROM sched_poll_member me
-        JOIN sched_poll p ON p.sched_poll_id = me.sched_poll_id
-        LEFT JOIN studio s ON s.studio_id = p.fix_studio_id
-        LEFT JOIN studio_room r ON r.studio_room_id = p.fix_room_id
-        WHERE me.member_id = ? AND me.fix_absent = 0 AND p.status = 3 AND p.fix_start IS NOT NULL AND p.fix_end IS NOT NULL AND p.fix_start > ?
-        ORDER BY p.fix_start, p.sched_poll_id');
+        JOIN sched_fix f ON f.sched_poll_id = me.sched_poll_id
+        JOIN sched_poll p ON p.sched_poll_id = f.sched_poll_id
+        LEFT JOIN studio s ON s.studio_id = f.studio_id
+        LEFT JOIN studio_room r ON r.studio_room_id = f.room_id
+        WHERE me.member_id = ? AND (f.absent_member_id IS NULL OR f.absent_member_id <> me.member_id) AND f.status = 3 AND f.fix_start IS NOT NULL AND f.fix_end IS NOT NULL AND f.fix_start > ?
+        ORDER BY f.fix_start, f.sched_fix_id');
     $st->execute([$memberId, $sinceDt]);
-    $polls = $st->fetchAll();
-    if ($polls === []) {
+    $fixes = $st->fetchAll();
+    if ($fixes === []) {
         return [];
     }
-    // 予定ごとのメンバー（欠席の人は入れない）。順番は画面と同じ（かな順）
-    $ids = array_map('intval', array_column($polls, 'sched_poll_id'));
-    $st = $pdo->prepare('SELECT pm.sched_poll_id, m.name FROM sched_poll_member pm JOIN member m ON m.member_id = pm.member_id
-        WHERE pm.fix_absent = 0 AND pm.sched_poll_id IN (' . implode(',', array_fill(0, count($ids), '?')) . ') ORDER BY m.name_kana, m.name');
+    // 調整ごとのメンバー（その回の欠席の人は、下で外す）。順番は画面と同じ（かな順）
+    $ids = array_values(array_unique(array_map('intval', array_column($fixes, 'sched_poll_id'))));
+    $st = $pdo->prepare('SELECT pm.sched_poll_id, pm.member_id, m.name FROM sched_poll_member pm JOIN member m ON m.member_id = pm.member_id
+        WHERE pm.sched_poll_id IN (' . implode(',', array_fill(0, count($ids), '?')) . ') ORDER BY m.name_kana, m.name');
     $st->execute($ids);
-    $namesByPoll = [];
+    $membersByPoll = [];
     foreach ($st->fetchAll() as $r) {
-        $namesByPoll[(int)$r['sched_poll_id']][] = $r['name'];
+        $membersByPoll[(int)$r['sched_poll_id']][] = [(int)$r['member_id'], $r['name']];
     }
     $fmt = sched_event_format($pdo, $memberId); // この部員の書式（マイスケジュールの「練習の書式」）
     $events = [];
-    foreach ($polls as $p) {
-        $id = (int)$p['sched_poll_id'];
+    foreach ($fixes as $f) {
+        $absent = $f['absent_member_id'] === null ? null : (int)$f['absent_member_id'];
+        $names = [];
+        foreach ($membersByPoll[(int)$f['sched_poll_id']] ?? [] as [$mid, $name]) {
+            if ($mid !== $absent) {
+                $names[] = $name;
+            }
+        }
         $text = sched_event_text($fmt, [
-            'poll_id' => $id, 'title' => (string)$p['title'], 'studio_id' => $p['fix_studio_id'] === null ? null : (int)$p['fix_studio_id'],
-            'studio' => $p['studio_name'], 'studio_short' => $p['studio_short'], 'room' => (string)($p['room_name'] ?? ''), 'address' => $p['address'], 'names' => $namesByPoll[$id] ?? [],
+            'poll_id' => (int)$f['sched_poll_id'], 'title' => (string)$f['title'], 'studio_id' => $f['studio_id'] === null ? null : (int)$f['studio_id'],
+            'studio' => $f['studio_name'], 'studio_short' => $f['studio_short'], 'room' => (string)($f['room_name'] ?? ''), 'address' => $f['address'], 'names' => $names,
         ]);
         $events[] = [
-            'id' => $id,
+            'id' => (int)$f['sched_fix_id'],
             'title' => $text['title'],
-            'start' => sched_dt_to_abs($p['fix_start']),
-            'end' => sched_dt_to_abs($p['fix_end']),
+            'start' => sched_dt_to_abs($f['fix_start']),
+            'end' => sched_dt_to_abs($f['fix_end']),
             'location' => $text['location'],
             'details' => $text['details'],
-            'stamp' => max((int)strtotime((string)$p['updated_at']), $fmt['stamp']),
+            'stamp' => max((int)strtotime((string)$f['updated_at']), $fmt['stamp']),
         ];
     }
     return $events;

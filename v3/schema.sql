@@ -37,7 +37,7 @@ SET NAMES utf8mb4;
 -- まっさらな DB に流すと「Note: #1051 '〜' は不明な表です」が表の数だけ出るが、
 -- これは「消そうとした表が最初から無かった」というだけの“お知らせ”で、エラーではない。
 SET FOREIGN_KEY_CHECKS = 0;
-DROP TABLE IF EXISTS sched_nav_cache, sched_google_event, sched_google, sched_travel, sched_ignore, sched_weekly, sched_poll_studio, sched_poll_member, sched_poll, sched_busy, sched_class, sched_profile, block_best, sheet_log, song_link_practice, song_link, song_part, song_work_primary, venue_image, song_catalog, song_tab_ai_usage, song_meta_image, song_tab_image, song_meta, song_tab_practice, song_tab_revision, song_tab, timetable_draft_presence, timetable_draft, band_image, notice_image, board_post_image, live_image, push_subscription, comment_like, comment_reply, comment, board_thread_mute, board_notify_category, board_notify, board_post_like, board_post_reply, board_read, board_post, board_thread, board_category, notice_read, notice, notice_category, change_unit, change_op, inquiry, band_like, app_setting, login_attempt, track_preview, track_link_cache, album_link_cache,
+DROP TABLE IF EXISTS sched_nav_cache, sched_google_event, sched_fix, sched_google, sched_travel, sched_ignore, sched_weekly, sched_poll_studio, sched_poll_member, sched_poll, sched_busy, sched_class, sched_profile, block_best, sheet_log, song_link_practice, song_link, song_part, song_work_primary, venue_image, song_catalog, song_tab_ai_usage, song_meta_image, song_tab_image, song_meta, song_tab_practice, song_tab_revision, song_tab, timetable_draft_presence, timetable_draft, band_image, notice_image, board_post_image, live_image, push_subscription, comment_like, comment_reply, comment, board_thread_mute, board_notify_category, board_notify, board_post_like, board_post_reply, board_read, board_post, board_thread, board_category, notice_read, notice, notice_category, change_unit, change_op, inquiry, band_like, app_setting, login_attempt, track_preview, track_link_cache, album_link_cache,
     check_dismiss, band_check_member, member_role, role, artist_alias, member_favorite_album, song_performer, song, track, band_member, live_break, band,
     artist, live_day, live, venue, instrument, user_account, member;
 SET FOREIGN_KEY_CHECKS = 1;
@@ -1632,20 +1632,21 @@ CREATE TABLE sched_poll (
     length_min    SMALLINT UNSIGNED NOT NULL,          -- 練習の長さ（分）
     late_max      SMALLINT UNSIGNED NOT NULL DEFAULT 0, -- 遅刻を許す上限（分）。0 = 全員そろう枠だけ
     live_id       INT UNSIGNED      NULL,              -- 向けのライブ。NULL = ライブと関係ない（migrations/109, 110）
-    status        TINYINT UNSIGNED  NOT NULL DEFAULT 0, -- 0 = 調整中 / 1 = 仮決定（日）/ 2 = 仮決定（日時）/ 3 = 決定
-    fix_date      DATE              NULL,
-    fix_start     DATETIME          NULL,
-    fix_end       DATETIME          NULL,
-    fix_studio_id INT UNSIGNED      NULL,
-    fix_room_id   INT UNSIGNED      NULL,
-    reserved_at   DATETIME          NULL,              -- 「予約完了」を押した日時。NULL = 未予約（migrations/114）
-    reserved_by   INT UNSIGNED      NULL,              -- 押した人（user_account.user_id）
+    -- ↓ status・fix_*・reserved_* は使っていない（migrations/124 で sched_fix に移した。本番のSQL先流し→デプロイの間、旧コードを壊さないために列だけ残してある）
+    status        TINYINT UNSIGNED  NOT NULL DEFAULT 0, -- （使っていない）旧: 0 = 調整中 / 1 = 仮決定（日）/ 2 = 仮決定（日時）/ 3 = 決定。いまは sched_fix から導く
+    fix_date      DATE              NULL,              -- （使っていない）
+    fix_start     DATETIME          NULL,              -- （使っていない）
+    fix_end       DATETIME          NULL,              -- （使っていない）
+    fix_studio_id INT UNSIGNED      NULL,              -- （使っていない）
+    fix_room_id   INT UNSIGNED      NULL,              -- （使っていない）
+    reserved_at   DATETIME          NULL,              -- （使っていない）旧: 「予約完了」を押した日時（migrations/114）。いまは sched_fix.reserved_at
+    reserved_by   INT UNSIGNED      NULL,              -- （使っていない）
     version       INT UNSIGNED      NOT NULL DEFAULT 0,
     created_by    INT UNSIGNED      NULL,
     created_at    DATETIME          NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at    DATETIME          NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (sched_poll_id),
-    KEY idx_spoll_fix (status, fix_start),             -- 「決定済みの練習」を期間で探す
+    KEY idx_spoll_fix (status, fix_start),             -- （使っていない）旧: 「決定済みの練習」を期間で探す。いまは sched_fix の idx_sfix_status_start
     KEY idx_spoll_live (live_id),
     CONSTRAINT fk_spoll_user FOREIGN KEY (created_by) REFERENCES user_account (user_id)
         ON UPDATE CASCADE ON DELETE SET NULL,
@@ -1666,13 +1667,48 @@ CREATE TABLE sched_poll_member (
     sched_poll_id INT UNSIGNED NOT NULL,
     member_id     INT UNSIGNED NOT NULL,
     answered_at   DATETIME     NULL,
-    fix_absent    TINYINT(1) UNSIGNED NOT NULL DEFAULT 0 COMMENT '1=決定した練習を欠席', -- migrations/106
+    fix_absent    TINYINT(1) UNSIGNED NOT NULL DEFAULT 0 COMMENT '（使っていない）旧: 1=決定した練習を欠席', -- migrations/106。いまは sched_fix.absent_member_id（migrations/124）
     PRIMARY KEY (sched_poll_id, member_id),
     KEY idx_spm_member (member_id),                    -- 「この部員が呼ばれている調整」を探す
     CONSTRAINT fk_spm_poll FOREIGN KEY (sched_poll_id) REFERENCES sched_poll (sched_poll_id)
         ON UPDATE CASCADE ON DELETE CASCADE,
     CONSTRAINT fk_spm_member FOREIGN KEY (member_id) REFERENCES member (member_id)
         ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- 決定した練習（1回 = 1行）。1つの調整で、別々の日に何回でも決められる（migrations/124）
+--   調整全体の状態は、ここから導く: 決定（3）が1つでもあれば「決定」、無ければ仮決定（1・2）が1つでもあれば「仮決定」、どちらも無ければ「調整中」
+CREATE TABLE sched_fix (
+    sched_fix_id     INT UNSIGNED     NOT NULL AUTO_INCREMENT,
+    sched_poll_id    INT UNSIGNED     NOT NULL,
+    status           TINYINT UNSIGNED NOT NULL,          -- 1 = 仮決定（日のみ）/ 2 = 仮決定（日時）/ 3 = 決定
+    fix_date         DATE             NOT NULL,
+    fix_start        DATETIME         NULL,              -- status = 1 は NULL
+    fix_end          DATETIME         NULL,
+    studio_id        INT UNSIGNED     NULL,
+    room_id          INT UNSIGNED     NULL,
+    absent_member_id INT UNSIGNED     NULL,              -- 欠席する部員（1回につき最大1人）
+    reserved_at      DATETIME         NULL,              -- 「予約完了」を押した日時。NULL = 未予約
+    reserved_by      INT UNSIGNED     NULL,              -- 押した人（user_account.user_id）
+    created_at       DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (sched_fix_id),
+    UNIQUE KEY uq_sfix_poll_date (sched_poll_id, fix_date), -- 1つの調整で1日1回
+    KEY idx_sfix_status_start (status, fix_start),          -- 「決定済みの練習」を期間で探す
+    KEY idx_sfix_studio (studio_id),
+    KEY idx_sfix_room (room_id),
+    KEY idx_sfix_absent (absent_member_id),
+    KEY idx_sfix_reserved_by (reserved_by),
+    CONSTRAINT fk_sfix_poll FOREIGN KEY (sched_poll_id) REFERENCES sched_poll (sched_poll_id)
+        ON UPDATE CASCADE ON DELETE CASCADE,
+    CONSTRAINT fk_sfix_studio FOREIGN KEY (studio_id) REFERENCES studio (studio_id)
+        ON UPDATE CASCADE ON DELETE SET NULL,
+    CONSTRAINT fk_sfix_room FOREIGN KEY (room_id) REFERENCES studio_room (studio_room_id)
+        ON UPDATE CASCADE ON DELETE SET NULL,
+    CONSTRAINT fk_sfix_absent FOREIGN KEY (absent_member_id) REFERENCES member (member_id)
+        ON UPDATE CASCADE ON DELETE SET NULL,
+    CONSTRAINT fk_sfix_reserved_by FOREIGN KEY (reserved_by) REFERENCES user_account (user_id)
+        ON UPDATE CASCADE ON DELETE SET NULL,
+    CONSTRAINT ck_sfix_status CHECK (status BETWEEN 1 AND 3)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE sched_poll_studio (
@@ -1744,13 +1780,18 @@ CREATE TABLE sched_studio_short (
         ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+-- Google に入れた練習の予定。決定1回（sched_fix）× 部員ごとに1つ（migrations/124）
 CREATE TABLE sched_google_event (
-    sched_poll_id INT UNSIGNED  NOT NULL,
+    sched_poll_id INT UNSIGNED  NOT NULL,           -- どの調整か（調整を消したとき一緒に消すための FK。同期は sched_fix_id で見る）
+    sched_fix_id  INT UNSIGNED  NOT NULL,
     member_id     INT UNSIGNED  NOT NULL,
     event_id      VARCHAR(255)  NOT NULL,           -- Google の予定 ID
-    PRIMARY KEY (sched_poll_id, member_id),
+    PRIMARY KEY (sched_fix_id, member_id),
+    KEY idx_sgevent_poll (sched_poll_id),
     KEY idx_sgevent_member (member_id),             -- 「この部員に入れた予定」を探す（連携の解除）
     CONSTRAINT fk_sgevent_poll FOREIGN KEY (sched_poll_id) REFERENCES sched_poll (sched_poll_id)
+        ON UPDATE CASCADE ON DELETE CASCADE,
+    CONSTRAINT fk_sgevent_fix FOREIGN KEY (sched_fix_id) REFERENCES sched_fix (sched_fix_id)
         ON UPDATE CASCADE ON DELETE CASCADE,
     CONSTRAINT fk_sgevent_member FOREIGN KEY (member_id) REFERENCES member (member_id)
         ON UPDATE CASCADE ON DELETE CASCADE

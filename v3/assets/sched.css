@@ -72,6 +72,10 @@
 .sch-cands__head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .sch-cands__head .section-title { margin: 0; display: flex; align-items: center; gap: 4px; } /* 横の ⓘ を見出しの文字と上下中央にそろえる（「候補 ◯日」は span でまとめて、文字どうしはベースライン揃えのまま） */
 .sch-sort { margin-bottom: 0; }
+.sch-cands__tools { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; }  /* 並べ替えのタブと、練習の長さの増減を横に並べる */
+.sch-len { display: inline-flex; align-items: center; gap: 6px; }
+.sch-len strong { min-width: 3.6em; text-align: center; font-variant-numeric: tabular-nums; }
+.sch-len .icon-btn.is-disabled { opacity: .4; cursor: default; pointer-events: none; }  /* 上限・下限では押せない（span なので cursor を指定） */
 .sch-list { display: grid; gap: 10px; margin: 12px 0; }
 /* 1日 = <details> 1つ。見出し（summary）の1行に 日付・時間帯・印・最安の料金、開くと その日のカードが並ぶ */
 .sch-day { padding: 12px 14px; }
@@ -306,31 +310,19 @@
 .sch-crumbs { flex-wrap: wrap; row-gap: 0; }
 
 /* ---------- 予約のうながしモーダル（決定して未予約のとき。<dialog class="modal sch-reserve" data-auto-open>）----------
-   PC は通常のモーダル幅。スマホは画面いっぱい・大きな文字（アプリ履歴＝タスク切り替えの小さな画面でも、どのスタジオを予約するかが読める） */
+   予約ページで入れる日時・部屋をメインに。スタジオ名は上に小さく */
 .sch-reserve { position: fixed; overflow: auto; }
 .sch-reserve__close { position: absolute; top: 8px; right: 8px; }
-.sch-reserve__body { display: grid; gap: 8px; justify-items: center; text-align: center; padding: 44px 22px 22px; }
-.sch-reserve__studio { margin: 0; font-size: var(--fs-3xl); font-weight: 800; line-height: 1.25; overflow-wrap: anywhere; }
-.sch-reserve__when { font-size: var(--fs-2xl); font-weight: 700; }
-.sch-reserve__room { font-size: var(--fs-xl); color: var(--muted); }
+.sch-reserve__body { display: grid; gap: 6px; justify-items: center; text-align: center; padding: 40px 22px 22px; }
+.sch-reserve__item { display: grid; gap: 2px; justify-items: center; }  /* 1回分 = 日時と部屋のひとかたまり */
+.sch-reserve__item + .sch-reserve__item { margin-top: 14px; }  /* 回と回のあいだは少し間を空ける */
+.sch-reserve__studio { font-size: var(--fs-md); color: var(--muted); overflow-wrap: anywhere; }
+.sch-reserve__when { margin: 0; font-size: var(--fs-3xl); font-weight: 800; line-height: 1.25; }
+.sch-reserve__room { font-size: var(--fs-2xl); font-weight: 700; overflow-wrap: anywhere; }
 .sch-reserve__actions { display: grid; gap: 10px; width: 100%; margin-top: 16px; }
 .sch-reserve__actions form { margin: 0; }
 .sch-reserve__actions .btn { width: 100%; justify-content: center; }
 .sch-fixed__reserved { cursor: help; } /* 押せない要素（span）。cursor を指定しないと iOS でタップが届かない（data-tip の規約） */
-
-@media (max-width: 600px) {
-  .sch-reserve { width: 100vw; max-width: 100vw; height: 100dvh; max-height: 100dvh; margin: 0; border: 0; border-radius: 0; }
-  .sch-reserve__close { top: max(12px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); }
-  .sch-reserve__body {
-    min-height: 100%; box-sizing: border-box; align-content: center; gap: 16px;
-    padding: calc(56px + env(safe-area-inset-top)) max(24px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left));
-  }
-  .sch-reserve__studio { font-size: clamp(32px, 11vw, 56px); }
-  .sch-reserve__when { font-size: clamp(26px, 8vw, 40px); }
-  .sch-reserve__room { font-size: clamp(22px, 7vw, 34px); }
-  .sch-reserve__actions { margin-top: auto; padding-top: 24px; gap: 12px; }
-  .sch-reserve__actions .btn { min-height: 56px; font-size: var(--fs-xl); }
-}
 
 /* 候補の交通費（電車マーク +¥000） */
 .sch-fare { display: inline-flex; align-items: center; gap: 2px; }

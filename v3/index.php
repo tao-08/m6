@@ -64,12 +64,13 @@ $st = $pdo->prepare('SELECT n.notice_id, n.title FROM notice n
 $st->execute([$user['user_id'], $user['user_id']]);
 $importantNotices = $st->fetchAll();
 
-// 📅 呼ばれていて、まだ「回答済み」にしていない日程調整（調整中・日だけ仮決定のあいだ。回答すると出なくなるので ✕ は無い）
+// 📅 呼ばれていて、まだ「回答済み」にしていない日程調整（日時の決まった練習（sched_fix の status 2・3）がまだ無いあいだ。回答すると出なくなるので ✕ は無い）
 $schedTodo = [];
 if (!empty($user['member_id'])) {
     $st = $pdo->prepare('SELECT p.sched_poll_id, p.title, p.date_from, p.date_to FROM sched_poll p
         JOIN sched_poll_member m ON m.sched_poll_id = p.sched_poll_id AND m.member_id = ?
-        WHERE m.answered_at IS NULL AND p.status IN (0, 1) AND p.date_to >= CURDATE()
+        WHERE m.answered_at IS NULL AND p.date_to >= CURDATE()
+          AND NOT EXISTS (SELECT 1 FROM sched_fix f WHERE f.sched_poll_id = p.sched_poll_id AND f.status >= 2)
         ORDER BY p.date_from, p.sched_poll_id');
     $st->execute([(int)$user['member_id']]);
     $schedTodo = $st->fetchAll();

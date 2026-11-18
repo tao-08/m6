@@ -20,9 +20,9 @@
  *    4. 通信の失敗の詳しい内容は error_log にだけ出す（トークンは書かない）。画面には短い言葉だけ
  *
  *  ■ 読み込み … sched_google_refresh_busy（iCal の取り込みと同じルールで sched_busy の source = 1 に入れる）
- *  ■ 書き込み … sched_google_sync_poll（決定した練習を、連携中の部員の「メインのカレンダー（primary）」に入れる・直す・消す）
- *    練習 × 部員 → Google の予定 ID は sched_google_event に覚える（あとで直す・消すのに要る）
- *    予定には abbeySched（練習の id）を付けておく。読み込みのときに、このサイトが書いた予定は取り込まない
+ *  ■ 書き込み … sched_google_sync_poll / sched_google_sync_fix（決定した練習を、連携中の部員の「メインのカレンダー（primary）」に入れる・直す・消す）
+ *    決定1回（sched_fix）× 部員 → Google の予定 ID は sched_google_event に覚える（あとで直す・消すのに要る）。1つの調整で何回も決められるので、予定も決定1回ごとに1つ
+ *    予定には abbeySched（決定1回の id）を付けておく。読み込みのときに、このサイトが書いた予定は取り込まない
  *    （自分の練習が、「予定あり」として二重に数えられないように）
  * =====================================================================
  */
@@ -506,28 +506,34 @@ function sched_google_refresh_many(PDO $pdo, array $memberIds, int $budget = 6):
  * ===================================================================== */
 
 /**
- * 練習1件の「Google に入れる予定の中身」と、「誰に入れるか」。
- *   戻り値: ['body' => 予定の中身（決定していなければ null）, 'members' => [部員 id => 入れるか（呼ばれていて、欠席でない）]]
+ * 決定1回（sched_fix の1行）の「Google に入れる予定の中身」と、「誰に入れるか」。
+ *   1つの調整で練習を何回も決められるので、Google の予定も決定1回ごとに1つ（sched_google_event は (sched_fix_id, member_id) が主キー）
+ *   戻り値: ['body' => 予定の中身（決定していなければ null）, 'members' => [部員 id => 入れるか（呼ばれていて、その回に欠席でない）]]
  *   タイトル・場所・メモは、部員ごとの書式で作る（sched_google_body_for）。ここでは、全員同じ部分（日時・印）だけを 'body' に入れ、書式の材料を 'ctx' に入れる
  */
-function sched_google_poll_state(PDO $pdo, int $pollId): array
+function sched_google_fix_state(PDO $pdo, int $fixId): array
 {
-    $st = $pdo->prepare('SELECT p.title, p.status, p.fix_start, p.fix_end, p.fix_studio_id, s.name AS studio_name, s.short_name AS studio_short, s.address, r.name AS room_name
-        FROM sched_poll p
-        LEFT JOIN studio s ON s.studio_id = p.fix_studio_id
-        LEFT JOIN studio_room r ON r.studio_room_id = p.fix_room_id
-        WHERE p.sched_poll_id = ?');
-    $st->execute([$pollId]);
+    $st = $pdo->prepare('SELECT f.sched_poll_id, f.status, f.fix_start, f.fix_end, f.studio_id, f.absent_member_id, p.title, s.name AS studio_name, s.short_name AS studio_short, s.address, r.name AS room_name
+        FROM sched_fix f
+        JOIN sched_poll p ON p.sched_poll_id = f.sched_poll_id
+        LEFT JOIN studio s ON s.studio_id = f.studio_id
+        LEFT JOIN studio_room r ON r.studio_room_id = f.room_id
+        WHERE f.sched_fix_id = ?');
+    $st->execute([$fixId]);
     $p = $st->fetch();
-    $st = $pdo->prepare('SELECT pm.member_id, pm.fix_absent, m.name FROM sched_poll_member pm JOIN member m ON m.member_id = pm.member_id
+    if (!$p) {
+        return ['body' => null, 'members' => [], 'ctx' => null]; // 決定が消えている（取り消し済み）→ 誰にも入れない
+    }
+    $st = $pdo->prepare('SELECT pm.member_id, m.name FROM sched_poll_member pm JOIN member m ON m.member_id = pm.member_id
         WHERE pm.sched_poll_id = ? ORDER BY m.name_kana, m.name');
-    $st->execute([$pollId]);
+    $st->execute([(int)$p['sched_poll_id']]);
     $rows = $st->fetchAll();
-    $decided = $p && (int)$p['status'] === 3 && $p['fix_start'] !== null && $p['fix_end'] !== null;
+    $decided = (int)$p['status'] === 3 && $p['fix_start'] !== null && $p['fix_end'] !== null;
+    $absent = $p['absent_member_id'] === null ? null : (int)$p['absent_member_id'];
     $members = [];
     $present = [];
     foreach ($rows as $r) {
-        $in = $decided && (int)$r['fix_absent'] === 0;
+        $in = $decided && (int)$r['member_id'] !== $absent;
         $members[(int)$r['member_id']] = $in;
         if ($in) {
             $present[] = $r['name'];
@@ -537,17 +543,17 @@ function sched_google_poll_state(PDO $pdo, int $pollId): array
         return ['body' => null, 'members' => $members, 'ctx' => null];
     }
     return ['ctx' => [
-        'poll_id' => $pollId, 'title' => (string)$p['title'], 'studio_id' => $p['fix_studio_id'] === null ? null : (int)$p['fix_studio_id'],
+        'poll_id' => (int)$p['sched_poll_id'], 'title' => (string)$p['title'], 'studio_id' => $p['studio_id'] === null ? null : (int)$p['studio_id'],
         'studio' => $p['studio_name'], 'studio_short' => $p['studio_short'], 'room' => (string)($p['room_name'] ?? ''), 'address' => $p['address'], 'names' => $present,
     ], 'body' => [
         'start'        => ['dateTime' => date('c', sched_dt_to_abs($p['fix_start']) * 60), 'timeZone' => 'Asia/Tokyo'],
         'end'          => ['dateTime' => date('c', sched_dt_to_abs($p['fix_end']) * 60), 'timeZone' => 'Asia/Tokyo'],
-        // 読み込みのとき、このサイトが書いた予定だと見分ける印（sched_google_event_to_span）
-        'extendedProperties' => ['private' => ['abbeySched' => (string)$pollId]],
+        // 読み込みのとき、このサイトが書いた予定だと見分ける印（sched_google_event_to_span）。中身は決定1回の id
+        'extendedProperties' => ['private' => ['abbeySched' => (string)$fixId]],
     ], 'members' => $members];
 }
 
-/** sched_google_poll_state の結果から、その部員に入れる予定の中身（部員ごとの書式でタイトル・場所・メモを作る）。入れない（決定していない・欠席）なら null */
+/** sched_google_fix_state の結果から、その部員に入れる予定の中身（部員ごとの書式でタイトル・場所・メモを作る）。入れない（決定していない・欠席）なら null */
 function sched_google_body_for(PDO $pdo, array $state, int $memberId): ?array
 {
     if ($state['body'] === null || !($state['members'][$memberId] ?? false)) {
@@ -558,12 +564,12 @@ function sched_google_body_for(PDO $pdo, array $state, int $memberId): ?array
 }
 
 /**
- * 1人のカレンダーの、練習1件ぶんを「あるべき状態」に合わせる。失敗は例外（呼び出し側が、1人ずつ try/catch して次の人へ進む）
+ * 1人のカレンダーの、決定1回ぶんを「あるべき状態」に合わせる。失敗は例外（呼び出し側が、1人ずつ try/catch して次の人へ進む）
  *   $body が null … 予定は要らない → あれば Google から消す
  *   $body がある … 無ければ作る。あれば（$patch のときだけ）直す
  *   Google 側で本人が予定を消していた（404・410、または status = cancelled で返ってくる）ときは、作り直す
  */
-function sched_google_sync_one(PDO $pdo, int $pollId, int $memberId, ?string $eventId, ?array $body, bool $patch = true): void
+function sched_google_sync_one(PDO $pdo, int $fixId, int $memberId, ?string $eventId, ?array $body, bool $patch = true): void
 {
     if ($body === null && $eventId === null) {
         return;
@@ -576,9 +582,9 @@ function sched_google_sync_one(PDO $pdo, int $pollId, int $memberId, ?string $ev
         $res = sched_google_api('DELETE', 'calendars/primary/events/' . rawurlencode((string)$eventId), $token);
         if (!in_array($res['status'], [200, 204, 404, 410], true)) { // 404・410 = すでに無い（本人が消した）ので、それでよい
             sched_google_log('events.delete', $res);
-            throw new RuntimeException('予定を消せません poll=' . $pollId . ' member=' . $memberId);
+            throw new RuntimeException('予定を消せません fix=' . $fixId . ' member=' . $memberId);
         }
-        $pdo->prepare('DELETE FROM sched_google_event WHERE sched_poll_id = ? AND member_id = ?')->execute([$pollId, $memberId]);
+        $pdo->prepare('DELETE FROM sched_google_event WHERE sched_fix_id = ? AND member_id = ?')->execute([$fixId, $memberId]);
         return;
     }
     if ($eventId !== null) {
@@ -593,24 +599,66 @@ function sched_google_sync_one(PDO $pdo, int $pollId, int $memberId, ?string $ev
         }
         if (!$gone) {
             sched_google_log('events.patch', $res);
-            throw new RuntimeException('予定を直せません poll=' . $pollId . ' member=' . $memberId);
+            throw new RuntimeException('予定を直せません fix=' . $fixId . ' member=' . $memberId);
         }
         // 本人が Google 側で消していた → このまま作り直す
     }
     $res = sched_google_api('POST', 'calendars/primary/events', $token, [], $body);
     if ($res['status'] !== 200 || !is_string($res['json']['id'] ?? null)) {
         sched_google_log('events.insert', $res);
-        throw new RuntimeException('予定を作れません poll=' . $pollId . ' member=' . $memberId);
+        throw new RuntimeException('予定を作れません fix=' . $fixId . ' member=' . $memberId);
     }
-    $pdo->prepare('INSERT INTO sched_google_event (sched_poll_id, member_id, event_id) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE event_id = VALUES(event_id)')
-        ->execute([$pollId, $memberId, mb_substr($res['json']['id'], 0, 255)]);
+    // sched_poll_id は決定の行から写す（INSERT … SELECT。決定が同時に消えていれば何も入らない）
+    $pdo->prepare('INSERT INTO sched_google_event (sched_poll_id, sched_fix_id, member_id, event_id) SELECT sched_poll_id, sched_fix_id, ?, ? FROM sched_fix WHERE sched_fix_id = ?
+        ON DUPLICATE KEY UPDATE event_id = VALUES(event_id)')
+        ->execute([$memberId, mb_substr($res['json']['id'], 0, 255), $fixId]);
 }
 
 /**
- * 練習1件ぶんを、Google 連携中の部員のカレンダーと突き合わせる（決定・取り消し・欠席・調整の編集のあとに呼ぶ）
- *   あるべき状態: status = 3（決定）で、その部員が呼ばれていて、欠席でない → 予定がある。それ以外 → 予定が無い
- *   1人の失敗で全体を止めない（error_log に出して次の人へ）。画面の操作（決定など）は、これが失敗しても成功のまま
- *   機能が無効・連携している人がいなければ、何もしない
+ * 決定1回ぶんを、Google 連携中の部員のカレンダーと突き合わせる
+ *   あるべき状態: status = 3（決定）で、その部員が呼ばれていて、その回に欠席でない → 予定がある。それ以外 → 予定が無い
+ *   1人の失敗で全体を止めない（error_log に出して次の人へ）。$deadline = これを過ぎたら打ち切る時刻（microtime。省略すると、ここから SCHED_GOOGLE_SYNC_SECONDS 秒）
+ *   機能が無効・連携している人がいなければ、何もしない（Google には何も聞かない）
+ */
+function sched_google_sync_fix(PDO $pdo, int $fixId, ?float $deadline = null): void
+{
+    if (!sched_google_available()) {
+        return;
+    }
+    try {
+        // 連携中の部員のうち、「この調整に呼ばれている」か「すでに予定を入れてある（のちに外れた人）」だけ
+        $st = $pdo->prepare('SELECT g.member_id, e.event_id FROM sched_google g
+            LEFT JOIN sched_google_event e ON e.member_id = g.member_id AND e.sched_fix_id = ?
+            LEFT JOIN sched_fix f ON f.sched_fix_id = ?
+            LEFT JOIN sched_poll_member pm ON pm.member_id = g.member_id AND pm.sched_poll_id = f.sched_poll_id
+            WHERE (e.member_id IS NOT NULL OR pm.member_id IS NOT NULL) AND (g.error IS NULL OR g.error <> ?)');
+        $st->execute([$fixId, $fixId, SCHED_GOOGLE_REVOKED]);
+        $targets = $st->fetchAll();
+        if (!$targets) {
+            return; // 連携している人が関係なければ、Google には何も聞かない
+        }
+        $state = sched_google_fix_state($pdo, $fixId);
+        $deadline ??= microtime(true) + SCHED_GOOGLE_SYNC_SECONDS;
+        foreach ($targets as $t) {
+            if (microtime(true) > $deadline) {
+                error_log('sched_google_sync_fix: 時間切れ fix=' . $fixId);
+                break;
+            }
+            $mid = (int)$t['member_id'];
+            try {
+                sched_google_sync_one($pdo, $fixId, $mid, $t['event_id'], sched_google_body_for($pdo, $state, $mid));
+            } catch (Throwable $e) {
+                error_log('sched_google_sync_fix: ' . $e->getMessage());
+            }
+        }
+    } catch (Throwable $e) {
+        error_log('sched_google_sync_fix: ' . $e->getMessage());
+    }
+}
+
+/**
+ * 調整1件の決定すべてを、Google 連携中の部員のカレンダーと突き合わせる（決定・欠席・調整の編集のあとに呼ぶ）
+ *   決定1回ごとに sched_google_sync_fix を呼ぶ。時間切れの上限（SCHED_GOOGLE_SYNC_SECONDS）は調整全体で共有する
  */
 function sched_google_sync_poll(PDO $pdo, int $pollId): void
 {
@@ -618,29 +666,9 @@ function sched_google_sync_poll(PDO $pdo, int $pollId): void
         return;
     }
     try {
-        // 連携中の部員のうち、「この練習に呼ばれている」か「すでに予定を入れてある（のちに外れた人）」だけ
-        $st = $pdo->prepare('SELECT g.member_id, e.event_id FROM sched_google g
-            LEFT JOIN sched_google_event e ON e.member_id = g.member_id AND e.sched_poll_id = ?
-            LEFT JOIN sched_poll_member pm ON pm.member_id = g.member_id AND pm.sched_poll_id = ?
-            WHERE (e.member_id IS NOT NULL OR pm.member_id IS NOT NULL) AND (g.error IS NULL OR g.error <> ?)');
-        $st->execute([$pollId, $pollId, SCHED_GOOGLE_REVOKED]);
-        $targets = $st->fetchAll();
-        if (!$targets) {
-            return; // 連携している人が関係なければ、Google には何も聞かない
-        }
-        $state = sched_google_poll_state($pdo, $pollId);
         $deadline = microtime(true) + SCHED_GOOGLE_SYNC_SECONDS;
-        foreach ($targets as $t) {
-            if (microtime(true) > $deadline) {
-                error_log('sched_google_sync_poll: 時間切れ poll=' . $pollId);
-                break;
-            }
-            $mid = (int)$t['member_id'];
-            try {
-                sched_google_sync_one($pdo, $pollId, $mid, $t['event_id'], sched_google_body_for($pdo, $state, $mid));
-            } catch (Throwable $e) {
-                error_log('sched_google_sync_poll: ' . $e->getMessage());
-            }
+        foreach (sched_poll_fixes($pdo, $pollId) as $f) {
+            sched_google_sync_fix($pdo, (int)$f['sched_fix_id'], $deadline);
         }
     } catch (Throwable $e) {
         error_log('sched_google_sync_poll: ' . $e->getMessage());
@@ -648,7 +676,36 @@ function sched_google_sync_poll(PDO $pdo, int $pollId): void
 }
 
 /**
- * 調整を削除する前に呼ぶ。全員ぶんの予定を Google から消す
+ * 決定1回を消す前に呼ぶ。全員ぶんの予定を Google から消す
+ *   削除のあとだと sched_google_event の行が CASCADE で消えて、どの予定を消せばいいかわからなくなるため、先に呼ぶ
+ */
+function sched_google_remove_fix(PDO $pdo, int $fixId): void
+{
+    if (!sched_google_available()) {
+        return;
+    }
+    try {
+        $st = $pdo->prepare('SELECT member_id, event_id FROM sched_google_event WHERE sched_fix_id = ?');
+        $st->execute([$fixId]);
+        $deadline = microtime(true) + SCHED_GOOGLE_SYNC_SECONDS;
+        foreach ($st->fetchAll() as $r) {
+            if (microtime(true) > $deadline) {
+                error_log('sched_google_remove_fix: 時間切れ fix=' . $fixId);
+                break;
+            }
+            try {
+                sched_google_sync_one($pdo, $fixId, (int)$r['member_id'], $r['event_id'], null);
+            } catch (Throwable $e) {
+                error_log('sched_google_remove_fix: ' . $e->getMessage());
+            }
+        }
+    } catch (Throwable $e) {
+        error_log('sched_google_remove_fix: ' . $e->getMessage());
+    }
+}
+
+/**
+ * 調整を削除する前に呼ぶ。その調整の全部の決定・全員ぶんの予定を Google から消す
  *   削除のあとだと sched_google_event の行が CASCADE で消えて、どの予定を消せばいいかわからなくなるため、先に呼ぶ
  */
 function sched_google_remove_poll(PDO $pdo, int $pollId): void
@@ -657,7 +714,7 @@ function sched_google_remove_poll(PDO $pdo, int $pollId): void
         return;
     }
     try {
-        $st = $pdo->prepare('SELECT member_id, event_id FROM sched_google_event WHERE sched_poll_id = ?');
+        $st = $pdo->prepare('SELECT sched_fix_id, member_id, event_id FROM sched_google_event WHERE sched_poll_id = ?');
         $st->execute([$pollId]);
         $deadline = microtime(true) + SCHED_GOOGLE_SYNC_SECONDS;
         foreach ($st->fetchAll() as $r) {
@@ -666,7 +723,7 @@ function sched_google_remove_poll(PDO $pdo, int $pollId): void
                 break;
             }
             try {
-                sched_google_sync_one($pdo, $pollId, (int)$r['member_id'], $r['event_id'], null);
+                sched_google_sync_one($pdo, (int)$r['sched_fix_id'], (int)$r['member_id'], $r['event_id'], null);
             } catch (Throwable $e) {
                 error_log('sched_google_remove_poll: ' . $e->getMessage());
             }
@@ -678,7 +735,7 @@ function sched_google_remove_poll(PDO $pdo, int $pollId): void
 
 /**
  * 連携した直後（と「読み直す」のとき）に、その部員の分を合わせる
- *   ・これからの決定済みの練習（欠席でない）で、まだ入っていないものを入れる（すでに入っているものは直さない。API を節約）
+ *   ・これからの決定済みの練習（その回に欠席でない）で、まだ入っていないものを入れる（すでに入っているものは直さない。API を節約）
  *   ・欠席・取り消し・メンバーから外れた練習の予定が残っていれば、消す
  *   一時的な失敗で入らなかった練習も、「読み直す」を押せば入る
  */
@@ -689,16 +746,16 @@ function sched_google_sync_member(PDO $pdo, int $memberId): void
     }
     try {
         $deadline = microtime(true) + SCHED_GOOGLE_SYNC_SECONDS;
-        $st = $pdo->prepare('SELECT p.sched_poll_id, e.event_id FROM sched_poll_member pm
-            JOIN sched_poll p ON p.sched_poll_id = pm.sched_poll_id
-            LEFT JOIN sched_google_event e ON e.sched_poll_id = p.sched_poll_id AND e.member_id = pm.member_id
-            WHERE pm.member_id = ? AND pm.fix_absent = 0 AND p.status = 3 AND p.fix_end > NOW() AND e.event_id IS NULL');
+        $st = $pdo->prepare('SELECT f.sched_fix_id, e.event_id FROM sched_poll_member pm
+            JOIN sched_fix f ON f.sched_poll_id = pm.sched_poll_id
+            LEFT JOIN sched_google_event e ON e.sched_fix_id = f.sched_fix_id AND e.member_id = pm.member_id
+            WHERE pm.member_id = ? AND (f.absent_member_id IS NULL OR f.absent_member_id <> pm.member_id) AND f.status = 3 AND f.fix_end > NOW() AND e.event_id IS NULL');
         $st->execute([$memberId]);
         $todo = $st->fetchAll();
-        $st = $pdo->prepare('SELECT e.sched_poll_id, e.event_id FROM sched_google_event e
-            LEFT JOIN sched_poll_member pm ON pm.sched_poll_id = e.sched_poll_id AND pm.member_id = e.member_id
-            LEFT JOIN sched_poll p ON p.sched_poll_id = e.sched_poll_id
-            WHERE e.member_id = ? AND (pm.member_id IS NULL OR pm.fix_absent = 1 OR p.status <> 3)');
+        $st = $pdo->prepare('SELECT e.sched_fix_id, e.event_id FROM sched_google_event e
+            LEFT JOIN sched_fix f ON f.sched_fix_id = e.sched_fix_id
+            LEFT JOIN sched_poll_member pm ON pm.sched_poll_id = f.sched_poll_id AND pm.member_id = e.member_id
+            WHERE e.member_id = ? AND (pm.member_id IS NULL OR f.absent_member_id = e.member_id OR f.status <> 3)');
         $st->execute([$memberId]);
         $stale = $st->fetchAll();
         foreach ([...$todo, ...$stale] as $r) {
@@ -706,11 +763,11 @@ function sched_google_sync_member(PDO $pdo, int $memberId): void
                 error_log('sched_google_sync_member: 時間切れ member=' . $memberId);
                 break;
             }
-            $pollId = (int)$r['sched_poll_id'];
+            $fixId = (int)$r['sched_fix_id'];
             try {
-                $state = sched_google_poll_state($pdo, $pollId);
+                $state = sched_google_fix_state($pdo, $fixId);
                 $want = $r['event_id'] === null; // todo は入れる、stale は消す
-                sched_google_sync_one($pdo, $pollId, $memberId, $r['event_id'], $want ? sched_google_body_for($pdo, $state, $memberId) : null, false);
+                sched_google_sync_one($pdo, $fixId, $memberId, $r['event_id'], $want ? sched_google_body_for($pdo, $state, $memberId) : null, false);
             } catch (Throwable $e) {
                 error_log('sched_google_sync_member: ' . $e->getMessage());
             }
@@ -730,9 +787,9 @@ function sched_google_repatch_member(PDO $pdo, int $memberId): void
         return;
     }
     try {
-        $st = $pdo->prepare('SELECT e.sched_poll_id, e.event_id FROM sched_google_event e
-            JOIN sched_poll p ON p.sched_poll_id = e.sched_poll_id
-            WHERE e.member_id = ? AND p.status = 3 AND p.fix_end > NOW() ORDER BY p.fix_start LIMIT 50');
+        $st = $pdo->prepare('SELECT e.sched_fix_id, e.event_id FROM sched_google_event e
+            JOIN sched_fix f ON f.sched_fix_id = e.sched_fix_id
+            WHERE e.member_id = ? AND f.status = 3 AND f.fix_end > NOW() ORDER BY f.fix_start LIMIT 50');
         $st->execute([$memberId]);
         $deadline = microtime(true) + SCHED_GOOGLE_SYNC_SECONDS;
         foreach ($st->fetchAll() as $r) {
@@ -741,10 +798,10 @@ function sched_google_repatch_member(PDO $pdo, int $memberId): void
                 break;
             }
             try {
-                $pollId = (int)$r['sched_poll_id'];
-                $body = sched_google_body_for($pdo, sched_google_poll_state($pdo, $pollId), $memberId);
+                $fixId = (int)$r['sched_fix_id'];
+                $body = sched_google_body_for($pdo, sched_google_fix_state($pdo, $fixId), $memberId);
                 if ($body !== null) {
-                    sched_google_sync_one($pdo, $pollId, $memberId, $r['event_id'], $body);
+                    sched_google_sync_one($pdo, $fixId, $memberId, $r['event_id'], $body);
                 }
             } catch (Throwable $e) {
                 error_log('sched_google_repatch_member: ' . $e->getMessage());

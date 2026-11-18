@@ -218,6 +218,9 @@ if (is_post()) {
         $pdo->prepare('UPDATE sched_profile SET ical_url = ?, ical_fetched_at = NULL, ical_error = NULL WHERE member_id = ?')->execute([sched_ical_encrypt($url), $me]);
         $err = sched_ical_refresh($pdo, $me, true);
         flash($err === null ? 'カレンダーを連携しました' : '保存しましたが、読み込めませんでした: ' . $err, $err === null ? 'success' : 'error');
+        if ($err === null) {
+            $_SESSION['sched_feed_auto'] = 1; // 連携できたら、次の画面で決定した練習の購読（webcal）も続けて開く（iPhone のみ。assets/sched.js）
+        }
         redirect($back . '#ical');
     }
 
@@ -618,13 +621,19 @@ $grid = [
     'busy' => array_map(static fn($b) => [$b[0], $b[1], $b[3], $b[4], !empty($b[5])], $data['busy'][$me] ?? []),
     'warn' => array_values(array_map(static fn($p) => ['date' => $p['date'], 'title' => $p['title'], 's' => $p['s'], 'e' => $p['e']], array_filter($data['practices'], static fn($p) => in_array($me, $p['members'], true) && $p['status'] < 3))),
 ];
-// この調整（$poll）自身の仮決定も出す（練習の一覧 $data['practices'] は、この調整を除いてあるので）。日だけ（status 1）は s・e が null
-if ($poll !== null && in_array((int)$poll['status'], [1, 2], true) && $poll['fix_date'] !== null && in_array($poll['fix_date'], $days, true)) {
-    $own = (int)$poll['status'] === 2 && $poll['fix_start'] !== null;
+// この調整（$poll）自身の仮決定も出す（練習の一覧 $data['practices'] は、この調整を除いてあるので）。1つの調整で何回も決められるので、仮決定（status 1・2）の全部の回を出す。日だけ（status 1）は s・e が null
+if ($poll !== null) {
     $mine = $pdo->prepare('SELECT 1 FROM sched_poll_member WHERE sched_poll_id = ? AND member_id = ?');
     $mine->execute([$pollId, $me]);
     if ($mine->fetchColumn()) {
-        $grid['warn'][] = ['date' => (string)$poll['fix_date'], 'title' => (string)$poll['title'], 's' => $own ? sched_dt_to_abs($poll['fix_start']) : null, 'e' => $own && $poll['fix_end'] !== null ? sched_dt_to_abs($poll['fix_end']) : null];
+        foreach (sched_poll_fixes($pdo, $pollId) as $fx) {
+            // 日が表の中で、仮決定で、自分がその回に欠席でないものだけ
+            if (!in_array((int)$fx['status'], [1, 2], true) || !in_array((string)$fx['fix_date'], $days, true) || (int)$fx['absent_member_id'] === $me) {
+                continue;
+            }
+            $own = (int)$fx['status'] === 2 && $fx['fix_start'] !== null;
+            $grid['warn'][] = ['date' => (string)$fx['fix_date'], 'title' => (string)$poll['title'], 's' => $own ? sched_dt_to_abs($fx['fix_start']) : null, 'e' => $own && $fx['fix_end'] !== null ? sched_dt_to_abs($fx['fix_end']) : null];
+        }
     }
 }
 $icalOn = sched_ical_available();
@@ -688,7 +697,7 @@ render_header('マイスケジュール', 'tools');
 <!-- ===== カレンダー連携（折りたたみ。#ical で来たら開く: app.js の .togglecard） ===== -->
 <details class="card togglecard" id="ical">
 <summary><?= icon('event') ?> <span class="togglecard__title">カレンダー連携</span>
-    <button type="button" class="info-tip" data-tutorial-open="ical-help" aria-label="カレンダー連携のやり方" title="カレンダー連携のやり方"><?= icon('info', 'icon--sm') ?></button><?= icon('expand_more', 'togglecard__chevron') ?></summary>
+    <button type="button" class="info-tip" data-tutorial-open="ical-help" aria-label="カレンダーの連携方法" title="カレンダーの連携方法"><?= icon('info', 'icon--sm') ?></button><?= icon('expand_more', 'togglecard__chevron') ?></summary>
 <div class="togglecard__body sch-sec">
     <?php if ($googleOn && $g === null): // Google 連携の開始。押すと sched_google.php が Google の許可画面へ移動する（iPhone の人は、下の iCal の URL を使う） ?>
         <form method="post" action="sched_google" class="sch-row">
@@ -743,7 +752,8 @@ render_header('マイスケジュール', 'tools');
     $feedUrl = $g === null ? sched_feed_url($me, (int)$prof['feed_version']) : null;
     if ($feedUrl !== null):
         $feedWebcal = preg_replace('~^https://~', 'webcal://', $feedUrl); // webcal:// … 「購読する」の意味のアドレス。タップするとカレンダーアプリが開く ?>
-        <div class="sch-feed">
+        <?php $feedAuto = !empty($_SESSION['sched_feed_auto']); unset($_SESSION['sched_feed_auto']); // 連携の直後だけ 1 回、購読を自動で開く ?>
+        <div class="sch-feed"<?= $feedAuto ? ' data-feed-auto' : '' ?>>
             <span class="sch-label">決定したスタジオ練習を追加</span>
             <div class="sch-row sch-row--wrap">
                 <a class="btn btn--sm" href="<?= h($feedWebcal) ?>"><?= icon('smartphone') ?> iPhone</a>
@@ -952,7 +962,7 @@ render_header('マイスケジュール', 'tools');
     <?php endif; ?>
 </section>
 
-<?php require __DIR__ . '/partials/ical_help.php'; // ⓘ から開く「カレンダー連携のやり方」（初回チュートリアルと同じ部品） ?>
+<?php require __DIR__ . '/partials/ical_help.php'; // ⓘ から開く「カレンダーの連携方法」（初回チュートリアルと同じ部品） ?>
 <?php require __DIR__ . '/partials/sched_help.php'; // 見出しの ⓘ から開く「マイスケジュールの使い方」（4枚のスクリーンショット） ?>
 <script src="<?= asset_url('assets/sched.js') ?>" defer></script>
 <?php render_footer();
