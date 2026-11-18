@@ -91,12 +91,12 @@
 /* 開閉のアニメ（日付のカード・メンバーの予定）。中身（::details-content）の高さと透明度を滑らかに変える。
    interpolate-size で height: 0 ↔ auto を補間できる。content-visibility も一緒に遷移させないと、閉じる側が一瞬で消える。
    対応していないブラウザでは今までどおり、アニメなしで開閉する */
-.sch-day, .sch-over { interpolate-size: allow-keywords; }
-.sch-day::details-content, .sch-over::details-content { height: 0; opacity: 0; overflow: clip;
+.sch-day, .sch-over, .sch-step, .sch-fold { interpolate-size: allow-keywords; }
+.sch-day::details-content, .sch-over::details-content, .sch-step::details-content, .sch-fold::details-content { height: 0; opacity: 0; overflow: clip;
   transition: height var(--t-slow) ease, opacity var(--t-slow) ease, content-visibility var(--t-slow) allow-discrete; }
-.sch-day[open]::details-content, .sch-over[open]::details-content { height: auto; opacity: 1; }
+.sch-day[open]::details-content, .sch-over[open]::details-content, .sch-step[open]::details-content, .sch-fold[open]::details-content { height: auto; opacity: 1; }
 .sch-day.is-instant::details-content { transition: none; } /* 表のマスから開くときは、アニメ無しで一気に開く（すぐ着くように） */
-@media (prefers-reduced-motion: reduce) { .sch-day::details-content, .sch-over::details-content { transition: none; } } /* 動きを減らす設定の人にはアニメなし */
+@media (prefers-reduced-motion: reduce) { .sch-day::details-content, .sch-over::details-content, .sch-step::details-content, .sch-fold::details-content { transition: none; } } /* 動きを減らす設定の人にはアニメなし */
 .sch-day__date { font-size: var(--fs-lg); }
 .sch-day__date.is-sun { color: var(--accent); }   /* 日・祝日は赤、土は青（表の見出し .sch-grid thead th と同じ色） */
 .sch-day__date.is-sat { color: var(--headliner); }
@@ -279,9 +279,40 @@
 .sch-campus__label { flex: none; width: 3em; white-space: nowrap; font-size: var(--fs-xs); font-weight: 700; color: var(--muted); }
 .sch-ical { display: flex; align-items: center; gap: 6px; margin: 0; }
 .sch-answer { margin: 0; }
-.sch-feed { display: grid; gap: 8px; padding-top: 12px; border-top: 1px solid var(--border); } /* 購読（決定した練習を追加）。上の取り込みとの区切り */
+/* ---------- カレンダー連携の手順（sched_me.php の [data-cal-steps] / assets/sched.js の setupCalSteps）----------
+   ① 使用カレンダー → ② 予定を読込 → ③ 練習を自動で追加。見出し（summary）= 番号・題名・✓・短い内容。今やる手順だけ開く */
+.sch-steps { display: grid; gap: 8px; min-width: 0; } /* カードの中は grid なので、中身（①のタブ）の幅で広がらないように */
+.sch-step { min-width: 0; border: 1px solid var(--border); border-radius: var(--r-md); padding: 0 12px; }
+.sch-step[hidden] { display: none; }
+:is(.sch-step, .sch-fold) > summary { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 10px 0; list-style: none; cursor: pointer; font-weight: 700; }
+:is(.sch-step, .sch-fold) > summary::-webkit-details-marker { display: none; }
+:is(.sch-step, .sch-fold) > summary::after { content: ""; flex: none; margin-left: auto; width: 8px; height: 8px; border: solid var(--muted); border-width: 0 2px 2px 0;
+  transform: rotate(45deg); transition: transform var(--t-base); } /* 開閉の矢印（閉じていると ⌄、開くと ⌃） */
+:is(.sch-step, .sch-fold)[open] > summary::after { transform: rotate(-135deg); }
+.sch-step__no { flex: none; display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: var(--r-full); background: var(--surface-2); color: var(--muted);
+  font-size: var(--fs-xs); font-weight: 800; }
+.sch-step__title { flex: none; }
+.sch-step__ok { background: var(--ok-bg); color: var(--ok); border-radius: var(--r-full); min-width: var(--label-h); } /* 済んだ手順の ✓（ラベルの規格: app.css 末尾） */
+.sch-step__val { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 400; } /* 済んだ内容（アドレス・カレンダー名など）。長いと「…」 */
+.sch-step__body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; padding: 0 0 12px; } /* 列を枠の幅に固定（中身で広がらない） */
+.sch-panel { display: grid; gap: 10px; min-width: 0; }
+.sch-panel p { margin: 0; }
+.sch-list-steps { margin: 0; padding-left: 1.4em; display: grid; gap: 2px; }
+.sch-list-steps .icon { vertical-align: middle; }
+/* ① のタブ: 手順の中なので、画面に貼り付けず影も付けない。スマホは小さくして、入らない分は2段に折り返す */
+.sch-step .tabs { position: relative; top: auto; margin-bottom: 0; box-shadow: none; }
+.sch-step .tabs { min-width: 0; max-width: 100%; } /* 手順の本体は grid なので、中身の幅で広がらないように */
+.sch-step .tab { align-items: center; flex: 1 1 auto; justify-content: center; }
+@media (max-width: 600px) { /* スマホは3つを等分して、アイコンを文字の上に（1段に収める） */
+  .sch-step .tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); overflow: visible; gap: 2px; padding: 2px; border-radius: var(--r-lg); }
+  .sch-step .tab { flex-direction: column; gap: 2px; padding: 6px 4px; font-size: var(--fs-xs); white-space: normal; text-align: center; line-height: 1.2; border-radius: var(--r-md); } }
+/* 手順の下の「予定の書式」（開閉） */
+.sch-fold { border-top: 1px solid var(--border); }
+.sch-fold > summary { padding: 12px 0 8px; }
+.sch-fold[open] > summary { padding-bottom: 12px; }
 
 /* 練習の書式（カレンダーに入れる予定のタイトル・場所・メモ）。入力欄は横いっぱい、略称は開閉 */
+.sch-evfmt { display: grid; gap: 8px; padding-bottom: 4px; }
 .sch-evfmt .search { width: 100%; box-sizing: border-box; }
 .sch-evfmt textarea.search { resize: vertical; }
 /* 書式の各欄: 小見出し + 入力欄 + プレビュー（見本の値を差し込んだ結果） */

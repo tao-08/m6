@@ -1942,9 +1942,94 @@
     });
   };
 
+  // ===================================================================
+  //  7. カレンダー連携の手順（sched_me.php の [data-cal-steps]）
+  //     ① 使用カレンダー → ② 予定を読込 → ③ 練習を自動で追加。各手順は <details>。今やる手順（最初の未完了）だけ開く
+  //     ・① の選択: 連携中ならそのもの（data-kind）、無ければこの端末で前に選んだもの（localStorage）。選び直せる（連携の解除は ② の「解除」）
+  //     ・② の完了: 選んだカレンダーの枠（[data-kind-panel]）の data-done（サーバーが決める。エラーなら 0）。「その他」は判定なし（null）
+  //     ・③ の完了: 「iPhone」「URL をコピー」を押したとき（localStorage に購読 URL の版つきで覚える → 再発行すると未完了に戻る）
+  //     ・ページを読み直さずに反映する。localStorage が使えない環境では覚えないだけで動く
+  // ===================================================================
+  const setupCalSteps = () => {
+    const root = document.querySelector('[data-cal-steps]');
+    if (!root) return;
+    const KIND_KEY = 'sched-cal-kind';
+    const FEED_KEY = 'sched-feed-done';
+    const KINDS = ['google', 'icloud', 'other'];
+    const store = {
+      get: (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } },
+      set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* 保存できない環境 */ } },
+    };
+    const step = (n) => root.querySelector(`:scope > [data-step="${n}"]`);
+    const s1 = step(1), s2 = step(2), s3 = step(3); // s3 は購読 URL が使えないサーバーでは無い
+    const tabs = [...root.querySelectorAll('[data-cal-kind]')];
+    const saved = store.get(KIND_KEY);
+    let kind = KINDS.includes(root.dataset.kind) ? root.dataset.kind : (KINDS.includes(saved) ? saved : '');
+
+    const panelOf = (s) => (s && kind ? [...s.querySelectorAll('[data-kind-panel]')].find((p) => p.dataset.kindPanel === kind) : null) || null;
+    const feedDone = () => !!s3 && store.get(FEED_KEY) === s3.dataset.feedVer;
+    const head = (s, done, val) => {
+      s.querySelector('.sch-step__ok').hidden = !done;
+      s.querySelector('[data-step-val]').textContent = done ? val : '';
+    };
+
+    const render = () => {
+      tabs.forEach((t) => {
+        const on = t.dataset.calKind === kind;
+        t.classList.toggle('is-active', on);
+        t.setAttribute('aria-pressed', on ? 'true' : 'false');
+      });
+      // 選んだカレンダーの枠だけ見せる
+      [s2, s3].forEach((s) => s && s.querySelectorAll('[data-kind-panel]').forEach((p) => { p.hidden = p.dataset.kindPanel !== kind; }));
+      const p2 = panelOf(s2);
+      const p3 = panelOf(s3);
+      s2.hidden = !kind;
+      if (s3) s3.hidden = !p3;
+
+      // 完了（true / false / 判定なし = null）と、見出しの内容
+      const label = tabs.find((t) => t.dataset.calKind === kind)?.dataset.label || '';
+      const d1 = kind !== '';
+      const d2 = p2 && p2.dataset.done !== undefined ? p2.dataset.done === '1' : null;
+      const d3 = p3 ? feedDone() : null;
+      head(s1, d1, label);
+      head(s2, d2 === true, p2?.dataset.val || '');
+      if (s3) head(s3, d3 === true, '');
+
+      // 開くのは最初の未完了。判定なしの手順は、あとに未完了が続く間（または最後の手順のとき）だけ開く
+      const list = [[s1, d1], [s2, d2], [s3, d3]].filter(([s]) => s && !s.hidden);
+      const firstOpen = list.findIndex(([, d]) => d === false);
+      list.forEach(([s, d], i) => {
+        s.open = d === false ? i === firstOpen : d === null ? (firstOpen > i || i === list.length - 1) : false;
+      });
+    };
+
+    tabs.forEach((t) => t.addEventListener('click', () => {
+      kind = t.dataset.calKind;
+      store.set(KIND_KEY, kind);
+      render();
+    }));
+
+    // ③ 「iPhone」「URL をコピー」を押したら完了（押した動作そのもの = リンクの移動・コピーは、それぞれの処理に任せる）
+    root.querySelectorAll('[data-feed-done]').forEach((el) => el.addEventListener('click', () => {
+      if (s3) store.set(FEED_KEY, s3.dataset.feedVer);
+      render();
+    }));
+
+    // 「その他」の「画像から読込」: 表の下の既存ボタン（setupPhoto）へ移動して、そのまま押す
+    root.querySelectorAll('[data-photo-jump]').forEach((el) => el.addEventListener('click', () => {
+      const openBtn = document.querySelector('[data-photo-open]');
+      if (!openBtn) return;
+      openBtn.scrollIntoView({ block: 'center', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+      openBtn.click();
+    }));
+
+    render();
+  };
+
   setupForm();
   setupTerms();
   setupEventFormat();
+  setupCalSteps();
   // 購読 URL のコピー（sched_me.php の [data-copy-url]。Outlook など「URL で購読」できるアプリ用）
   document.querySelectorAll('[data-copy-url]').forEach((btn) => btn.addEventListener('click', async () => {
     try {

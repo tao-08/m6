@@ -3002,7 +3002,7 @@ button.ttb-m { cursor: pointer; text-decoration: underline dotted; }
  *   ・横の余白・文字サイズ・色は各クラスのまま。新しいラベルを作るときは、このリストに足す
  *   ・文中に置くラベルは .label-inline を足す（周りの文字サイズに追従して、行の中央に揃う）
  * ===================================================================== */
-:is(.part, .tag:not(.tag--flag), .se-mark, .setlist-badge, .pill) {
+:is(.part, .tag:not(.tag--flag), .se-mark, .setlist-badge, .pill, .sch-step__ok) {
   display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box;
   min-height: var(--label-h); line-height: 1;
   padding-top: max(1px, .1em) !important; padding-bottom: 0 !important;
