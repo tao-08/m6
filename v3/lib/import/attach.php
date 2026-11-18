@@ -75,6 +75,42 @@ function build_attach_plan(PDO $pdo, array $plan, array $target): array
             $plan['errors'][] = '名簿かタイムテーブルのファイルを選んでください。';
             return $plan;
         }
+        // バンドが1組もない日程: 名簿のバンドをそのまま新しいバンドとして作る（時間・出演順なし。出演順は未確定のまま）
+        //   新規追加の「名簿だけ → スキップ」と同じ扱い。タイムテーブルを追加するときと同じ形（mode = timetable）にそろえる
+        if (!$bands) {
+            $rows = [];
+            foreach ($plan['rosters'] as $ri => $r) {
+                foreach (array_keys($r['bands']) as $bi) {
+                    $rows[] = ['pick' => "$ri:$bi", 'songs' => ''];
+                }
+            }
+            try {
+                [$timetables, $refs] = build_manual_timetables($plan, $rows);
+            } catch (RuntimeException $e) {
+                $plan['errors'][] = $e->getMessage();
+                return $plan;
+            }
+            $timetables[0]['label'] = $target['label'];
+            $plan['timetables'] = [$timetables[0]];
+            $plan['attach']['mode'] = 'timetable';
+            $plan['order_unset'] = true;
+            $plan = finish_import_plan($plan);
+            // 名前での自動の対応付けは使わず、選んだ名簿のバンドをそのまま枠に対応させる
+            foreach ($plan['rosters'] as $ri => $r) {
+                foreach (array_keys($r['bands']) as $bi) {
+                    $plan['rosters'][$ri]['bands'][$bi]['slot'] = '';
+                }
+            }
+            foreach ($refs as $slotKey => $ref) {
+                [$ri, $bi] = array_map('intval', explode(':', $ref));
+                $plan['rosters'][$ri]['bands'][$bi]['slot'] = $slotKey;
+            }
+            foreach ($plan['timetables'][0]['slots'] as &$slot) {
+                $slot['band_id'] = null;
+            }
+            unset($slot);
+            return $plan;
+        }
         $slots = [];
         foreach ($bands as $b) {
             // メンバー登録済みのバンドも並べる（2人以下・名簿のほうが多いときは上書きするため。決めるのは登録時）
@@ -89,9 +125,6 @@ function build_attach_plan(PDO $pdo, array $plan, array $target): array
                 'key_note'     => '',
                 'band_id'      => (int)$b['band_id'], // ← 登録時はこのバンドにメンバーを入れる
             ];
-        }
-        if (!$slots) {
-            $plan['errors'][] = 'この日程にはバンドがありません。';
         }
         $plan['timetables'] = [[
             'title' => '', 'live_name' => '', 'label' => $target['label'], 'month' => null, 'day' => null,
@@ -217,7 +250,8 @@ function commit_attach_plan(PDO $pdo, array $plan, array $input): int
             insert_breaks($pdo, $dayId, $rows, $breakRows);
 
             // ---- 3. 出演順が確定したので、トリを付けられるようにする ----
-            $pdo->prepare('UPDATE live_day SET order_unset = 0 WHERE live_day_id = ?')->execute([$dayId]);
+            //   ただしバンドが1組もない日程に名簿だけ入れたとき（plan['order_unset']）は、名簿の順に並べただけなので未確定のまま
+            $pdo->prepare('UPDATE live_day SET order_unset = ? WHERE live_day_id = ?')->execute([!empty($plan['order_unset']) ? 1 : 0, $dayId]);
         } else {
             // ---- 名簿だけ: 対応付けたバンドにメンバーを入れる（順番・時間は触らない） ----
             foreach ($rows as $r) {
