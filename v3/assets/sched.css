@@ -64,8 +64,12 @@
 .sch-sw.is-free.is-cheap { --stripe: color-mix(in srgb, var(--headliner) 45%, transparent); background: linear-gradient(135deg, var(--stripe) 0 25%, transparent 25% 50%, var(--stripe) 50% 75%, transparent 75%) 0 0 / 6px 6px, color-mix(in srgb, var(--ok) 22%, transparent); } /* 凡例の見本 */
 .sch-cheap { --stripe: color-mix(in srgb, var(--headliner) 45%, transparent); position: absolute; pointer-events: none; background: linear-gradient(135deg, var(--stripe) 0 15%, transparent 15% 50%, var(--stripe) 50% 65%, transparent 65%) 0 0 / 12px 12px; } /* 全員空きの最安の時間帯 = 青の斜線。続くマスで1つの箱・表の下に敷く。タイルは整数px（半端な周期だと縞がうねる） */
 .sch-grid--over { position: relative; } /* 箱（.sch-cheap）より上に描く */
-.sch-grid--over td.is-n1, .sch-sw.is-n1 { background: rgb(250 204 21 / .5); } /* 1人だけ予定あり: はっきりした黄（--warn はライトだと茶色に寄るので使わない） */
+.sch-grid--over td.is-n1, .sch-sw.is-n1 { background: rgb(234 179 8 / .55); } /* 1人だけ予定あり: はっきりした黄（--warn はライトだと茶色に寄るので使わない） */
 .sch-grid--over td.is-n2, .sch-sw.is-n2 { background: rgb(128 128 128 / .22); } /* 2人以上予定あり = 埋まっている: 薄い色味の無いグレー（見なくていい所として目立たせない。空き（緑）を引き立てる） */
+/* ダークモード: 全員空きは明るく（暗い背景で沈まないように）、1人予定ありは暗く（黄が明るすぎて全員空きより目立たないように） */
+[data-theme="dark"] :is(.sch-grid--over td.is-free, .sch-sw.is-free) { background: color-mix(in srgb, var(--ok) 40%, transparent); }
+[data-theme="dark"] .sch-sw.is-free.is-cheap { background: linear-gradient(135deg, var(--stripe) 0 25%, transparent 25% 50%, var(--stripe) 50% 75%, transparent 75%) 0 0 / 6px 6px, color-mix(in srgb, var(--ok) 40%, transparent); }
+[data-theme="dark"] :is(.sch-grid--over td.is-n1, .sch-sw.is-n1) { background: rgb(250 204 21 / .25); }
 .sch-grid.sch-grid--over td.is-off { background: color-mix(in srgb, var(--border) 35%, transparent); opacity: 1; } /* 調整の期間の外: 埋まり（グレー）と見分けがつくよう、白に近く */
 .sch-grid--over td.is-sp, .sch-sw.is-sp { background: color-mix(in srgb, var(--ba) 40%, transparent); } /* スタジオ練習（決定した練習）で埋まっているマス。人数の色より優先 */
 
