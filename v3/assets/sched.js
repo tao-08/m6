@@ -447,6 +447,222 @@
     });
   };
 
+  // ---- 週をめくる動き（マイスケジュールの表・メンバーの予定の表で共通）----
+  //   カレンダーアプリの週表示と同じ動き。時刻の列は動かさず、日の列だけが指（--swipe-x）についてくる。
+  //   動かしている間は、隣の週が（予定ごと）逆の端から並んで入ってくる。
+  //   しきい値を超えて離すと、残りを動かしてから、隣の週を「今の週」にする。超えなければ元の位置に戻る。
+  //   動きは CSS の transition に任せ、終わったら transitionend で次へ進む（念のため、来なかったときのタイマーも置く）
+  //   指での操作は、縦のスクロールはそのまま使える（touch-action: pan-y。CSS 側で指定する）。マウスは使わない（矢印だけ）
+  //   使う側が渡すもの（o）:
+  //     wrap … 表を入れた箱（.sch-grid-wrap）
+  //     liveTable() … 今出している週の表
+  //     hasNeighbor(dir) … 行き先があるか（dir は 'prev' / 'next'）
+  //     peek(dir) … 隣の週の { table, decorate(slide) }（見せるだけ。イベントは付けない。decorate は仮決定の箱などを重ねる）。データがまだ届いていなければ null
+  //     whenReady(dir) … 動かしている途中で、隣の週のデータが届いたら解決する Promise（すぐ使えるなら省略）
+  //     ready(dir) … 隣の週が使えるか。true / false か、それを待つ Promise（false = 取れなかった）
+  //     begin(dir) … めくり始め（ポップアップを閉じる・保存）。戻り値は fail / enter にそのまま渡す
+  //     fail(dir, token) … 隣の週が取れなかったとき（ふつうにページを移動する）
+  //     leave() … 今の表を外す（省略可）。このあと動かす準備を片付けてから enter を呼ぶ
+  //     enter(dir, token) … 隣の週を今の週にして、表を作り直す
+  //     canSwipe(e) … この指でスワイプしてよいか（省略すると、マウス以外はいつでも）
+  //     onSwipeStart() … スワイプを始めたとき（省略可）
+  const makeWeekFlip = (o) => {
+    const { wrap } = o;
+    const prefersReduce = () => !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches; // 「動きを減らす」設定のとき true
+    let busy = false; // 週を切り替えている間（動きの最中〜差し替え）。この間は、新しいスワイプ・矢印を受けない
+    let stage = null; // 動かしている間だけある: { dir, peeks（隣の週の表）, timeBox（時刻の列の写し）, daysW, live }
+    let pid = null; // 見ている指（1本だけ）
+    let sx = 0;
+    let sy = 0;
+    let dx = 0;
+    let axis = null; // null = まだ決めていない / 'x' = 横（スワイプ） / 'y' = 縦（スクロールなので何もしない）
+    let thr = 80; // 週を変えるしきい値（px）
+    let swiped = false; // スワイプした直後の click を打ち消すための印
+    let cancelAnim = null;
+
+    // transition が終わったら fn を呼ぶ。transitionend が来なくても 600ms 後に呼ぶ
+    const afterAnim = (fn) => {
+      if (cancelAnim) cancelAnim();
+      const tbl = o.liveTable();
+      const onEnd = (e) => { if (e.target === tbl && e.propertyName === 'transform') done(); };
+      const t = setTimeout(() => done(), 600);
+      const cancel = () => { clearTimeout(t); tbl.removeEventListener('transitionend', onEnd); cancelAnim = null; };
+      const done = () => { cancel(); fn(); };
+      tbl.addEventListener('transitionend', onEnd);
+      cancelAnim = cancel;
+    };
+
+    // 動かす準備: 時刻の列の写しを上に固定して置き、表の時刻の列は隠す。隣の週の表は、データが届いていれば作って置く
+    const openStage = () => {
+      if (stage) return stage;
+      const live = o.liveTable();
+      const tr = live.getBoundingClientRect();
+      const timeW = live.tHead.rows[0].cells[0].getBoundingClientRect().width;
+      const st = { dir: null, peeks: {}, timeBox: null, daysW: tr.width - timeW, live };
+      // 時刻の列の写し: 今の表をそのままコピーして、時刻の列より右を CSS で切る（ずれた日の列が、この下へ潜る）
+      st.timeBox = el('div', 'sch-peek sch-peek--time is-on');
+      const slide = el('div', 'sch-peek__slide');
+      slide.append(live.cloneNode(true));
+      st.timeBox.append(slide);
+      wrap.append(st.timeBox);
+      wrap.style.setProperty('--time-w', `${timeW}px`);
+      wrap.style.setProperty('--days-w', `${st.daysW}px`);
+      wrap.classList.add('is-swiping');
+      stage = st;
+      // 隣の週が、動かしている途中で届いたときも出す
+      ['prev', 'next'].forEach((dir) => o.whenReady?.(dir)?.then(() => { if (stage === st) ensurePeek(dir); }));
+      return st;
+    };
+    // 隣の週の表（見せるだけ）を、使えれば作る。今動かしている向きのものだけ表示する
+    const ensurePeek = (dir) => {
+      const st = stage;
+      if (!st) return;
+      if (!st.peeks[dir]) {
+        const p = o.peek(dir);
+        if (!p) return;
+        const box = el('div', `sch-peek sch-peek--${dir}`);
+        const slide = el('div', 'sch-peek__slide');
+        slide.append(p.table);
+        box.append(slide);
+        wrap.append(box);
+        // 日付の下の終日の予定の分、見出しの高さが違うことがある → 表の本体の位置が今の週とそろうように直す
+        const liveH = st.live.tHead.rows[0].getBoundingClientRect().height;
+        const peekH = p.table.tHead.rows[0].getBoundingClientRect().height;
+        if (peekH < liveH) p.table.tHead.rows[0].style.height = `${liveH}px`;
+        else if (peekH > liveH) box.style.top = `${liveH - peekH}px`;
+        p.decorate?.(slide);
+        st.peeks[dir] = box;
+      }
+      st.peeks[dir].classList.toggle('is-on', st.dir === dir);
+    };
+    const setDir = (dir) => {
+      const st = stage;
+      st.dir = dir;
+      ['prev', 'next'].forEach((d) => { if (st.peeks[d]) st.peeks[d].classList.toggle('is-on', d === dir); });
+      ensurePeek(dir);
+    };
+    // 見た目を元に戻す
+    const closeStage = () => {
+      if (!stage) return;
+      stage.timeBox.remove();
+      Object.values(stage.peeks).forEach((b) => b.remove());
+      stage = null;
+      wrap.classList.remove('is-swiping', 'is-swipe-anim');
+      ['--swipe-x', '--time-w', '--days-w'].forEach((p) => wrap.style.removeProperty(p));
+    };
+    // 指の動き dx に合わせて、表と隣の週を動かす
+    const follow = () => {
+      const st = stage;
+      const dir = dx < 0 ? 'next' : 'prev'; // 左へ送る = 次の週
+      const has = o.hasNeighbor(dir);
+      setDir(dir);
+      const x = has ? Math.max(-st.daysW, Math.min(st.daysW, dx)) : dx * 0.25; // 行き先が無い側は、重たく（4分の1だけ）動かす
+      wrap.style.setProperty('--swipe-x', `${x}px`);
+    };
+    const springBack = () => {
+      if (!stage) return;
+      if (prefersReduce()) { closeStage(); return; }
+      wrap.classList.add('is-swipe-anim');
+      wrap.style.setProperty('--swipe-x', '0px');
+      afterAnim(closeStage);
+    };
+    // 隣の週へ移る（スワイプを離したとき・矢印を押したとき）
+    const flip = (dir) => {
+      if (busy || !o.hasNeighbor(dir) || !o.liveTable()) return;
+      busy = true;
+      const token = o.begin?.(dir);
+      const st = openStage();
+      setDir(dir);
+      const go = (ok) => {
+        if (!ok) { o.fail?.(dir, token); return; } // 取れなかった
+        ensurePeek(dir);
+        const done = () => {
+          if (cancelAnim) cancelAnim();
+          o.leave?.();
+          closeStage();
+          o.enter(dir, token);
+          busy = false;
+        };
+        if (prefersReduce()) { done(); return; }
+        if (!wrap.style.getPropertyValue('--swipe-x')) wrap.style.setProperty('--swipe-x', '0px');
+        void wrap.offsetWidth; // 今の位置を確定させてから動かす（矢印のときは 0 から）
+        wrap.classList.add('is-swipe-anim');
+        wrap.style.setProperty('--swipe-x', `${dir === 'next' ? -st.daysW : st.daysW}px`);
+        afterAnim(done);
+      };
+      const r = o.ready(dir); // 先読みがまだなら、届くまで待つ
+      if (r && typeof r.then === 'function') r.then(go); else go(r);
+    };
+    const release = () => {
+      const dir = dx < 0 ? 'next' : 'prev';
+      if (!o.hasNeighbor(dir) || Math.abs(dx) < thr) { springBack(); return; }
+      flip(dir);
+    };
+
+    // 表（または表を入れた箱）に指のイベントを付ける。表を作り直すたびに呼ぶなら、signal で外せるようにしておく
+    const bindSwipe = (target, signal) => {
+      pid = null;
+      axis = null;
+      swiped = false;
+      target.addEventListener('pointerdown', (e) => {
+        swiped = false;
+        if (busy || e.pointerType === 'mouse' || !e.isPrimary || (o.canSwipe && !o.canSwipe(e))) return; // マウスのときは、これまでの操作のまま
+        pid = e.pointerId;
+        sx = e.clientX;
+        sy = e.clientY;
+        dx = 0;
+        axis = null;
+      }, { signal });
+      target.addEventListener('pointermove', (e) => {
+        if (e.pointerId !== pid || axis === 'y') return;
+        dx = e.clientX - sx;
+        const dy = e.clientY - sy;
+        if (axis === null) {
+          if (Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy) * 1.2) { // 横に動かした → スワイプ開始
+            axis = 'x';
+            swiped = true;
+            thr = Math.min(80, wrap.clientWidth * 0.25);
+            if (cancelAnim) cancelAnim(); // 戻っている途中なら止めて、指に付け直す
+            wrap.classList.remove('is-swipe-anim');
+            o.onSwipeStart?.();
+            openStage();
+          } else {
+            if (Math.abs(dy) > 8) axis = 'y'; // 先に縦へ動いた → スクロール。この指では何もしない
+            return;
+          }
+        }
+        follow();
+      }, { signal });
+      const endSwipe = (e, cancelled) => {
+        if (e.pointerId !== pid) return;
+        pid = null;
+        const was = axis;
+        axis = null;
+        if (was !== 'x') return;
+        if (cancelled) springBack(); else release();
+      };
+      target.addEventListener('pointerup', (e) => endSwipe(e, false), { signal });
+      target.addEventListener('pointercancel', (e) => endSwipe(e, true), { signal });
+      // スワイプのあとに来る click は、マスを押した扱いにしない（capture = 他の click の処理より先に受ける）
+      target.addEventListener('click', (e) => {
+        if (!swiped) return;
+        swiped = false;
+        e.stopImmediatePropagation();
+        e.preventDefault();
+      }, { capture: true, signal });
+    };
+
+    return {
+      flip,
+      bindSwipe,
+      busy: () => busy,
+      touching: () => pid !== null, // 指がスワイプの途中（このとき矢印は受けない）
+      idle: () => !busy && !stage, // 動かしていない
+      // 戻るボタンで、動かしている途中のまま保存されたページが戻ってきたときのため
+      reset: () => { if (cancelAnim) cancelAnim(); closeStage(); busy = false; },
+    };
+  };
+
   const setupGrid = () => {
     const firstData = readJson('sched-grid-data');
     const wrap = document.querySelector('[data-sched-grid]');
@@ -455,15 +671,12 @@
     // 今出している週（mount の戻り値）。自動保存の本文は、いつも今の週の表から作る
     let live = null;
     const autosave = makeAutosave(() => live.build());
-    // 週を切り替えている間（動きの最中〜差し替え）。この間は、塗る・新しいスワイプ・矢印を受けない
-    let busy = false;
 
     const dragCb = document.querySelector('[data-sched-drag]');
     const undoBtn = document.querySelector('[data-sched-undo]');
     const redoBtn = document.querySelector('[data-sched-redo]');
     const labelEl = document.querySelector('[data-week-label]');
     const navBtn = { prev: document.querySelector('[data-week-prev]'), next: document.querySelector('[data-week-next]') };
-    const prefersReduce = () => !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches; // 「動きを減らす」設定のとき true
 
     // ---- 前後の週: 行き先の URL（無い側は null）と、先読みしたデータ ----
     //   URL は矢印（data-week-prev / data-week-next）の href と同じ（#ng は付けない）。週を移るたびに JSON の prev / next で入れ替える
@@ -483,24 +696,13 @@
       });
     };
 
-    // ---- 横にスワイプ・矢印で週を切り替える（カレンダーアプリの週表示と同じ動き）----
+    // ---- 横にスワイプ・矢印で週を切り替える（動きは makeWeekFlip）----
     //   「なぞって予定を入力」が外れている間の指だけ（マウス・なぞる入力のときは、これまでの操作のまま）。縦のスクロールはそのまま使える
-    //   時刻の列は動かさず、日の列だけが指についてくる。動かしている間は、隣の週が（予定ごと）逆の端から並んで入ってくる
-    //   しきい値を超えて離すと、残りを動かしてから、隣の週を「今の週」にする（ページは読み直さない）。超えなければ元の位置に戻る
-    //   動きは CSS の transition に任せ、終わったら transitionend で次へ進む（念のため、来なかったときのタイマーも置く）
     //   隣の週は、開いた直後から裏で先読みしておく（nb）。まだ届いていなければ、届くまで待つ。取れなかったときだけ、ふつうにページを移動する
-    let stage = null; // 動かしている間だけある: { dir, peeks（隣の週の表）, timeBox（時刻の列の写し）, daysW, live }
-    let pid = null; // 見ている指（1本だけ）
-    let sx = 0;
-    let sy = 0;
-    let dx = 0;
-    let axis = null; // null = まだ決めていない / 'x' = 横（スワイプ） / 'y' = 縦（スクロールなので何もしない）
-    let thr = 80; // 週を変えるしきい値（px）
-    let swiped = false; // スワイプした直後の click（マスを塗る）を打ち消すための印
-    let cancelAnim = null;
+    //   週を切り替えている間（flipper.busy()）は、塗る・新しいスワイプ・矢印を受けない
 
     // 「この予定を無視」を切り替えたら、前後の週の先読みも取り直す（日をまたぐ予定は、隣の週の表にも出るため）
-    const refreshNeighbors = () => { if (!busy && !stage) prefetch(); };
+    const refreshNeighbors = () => { if (flipper.idle()) prefetch(); };
 
     // ---- 表を出す（今の週）: 表を作り、イベントを付ける。destroy() で、付けたものを全部外せる ----
     //   イベントは AbortController の signal で付ける（abort すると、document / window に付けたものも一度に外れる）
@@ -626,7 +828,7 @@
       };
       const stepHist = (d) => {
         const next = pos + d;
-        if (next < 0 || next >= hist.length || busy) return;
+        if (next < 0 || next >= hist.length || flipper.busy()) return;
         pos = next;
         const on = new Set(hist[pos].split(','));
         cells.forEach((td) => { if (!td._buf) td.classList.toggle('is-ng', on.has(td.dataset.abs)); });
@@ -654,7 +856,7 @@
 
       let mode = null; // true = 塗る / false = 消す / null = なぞっていない
       // 前後の枠は塗らない（タップで消す）。週を切り替えている間も塗らない
-      const paintable = (td) => !busy && td && td.dataset.abs && !td.classList.contains('is-auto') && !td.classList.contains('is-off') && !td._buf;
+      const paintable = (td) => !flipper.busy() && td && td.dataset.abs && !td.classList.contains('is-auto') && !td.classList.contains('is-off') && !td._buf;
       const paint = (td) => {
         if (!paintable(td)) return;
         if (td.classList.contains('is-ng') !== mode) {
@@ -688,7 +890,7 @@
       // 日付の見出しを押す: その日の塗れるマスを全部塗る（もう全部塗られていたら全部消す）
       thead.addEventListener('click', (e) => {
         const th = e.target.closest('th[data-day]');
-        if (busy || !th || e.target.closest('.sch-allday')) return; // 終日の予定名を押したときは、1日まるごと塗らない（予定名のポップアップだけ）
+        if (flipper.busy() || !th || e.target.closest('.sch-allday')) return; // 終日の予定名を押したときは、1日まるごと塗らない（予定名のポップアップだけ）
         const day = cells.filter((td) => td.dataset.day === th.dataset.day);
         if (!day.length) return; // 塗れるマスが無い日（授業などで全部埋まっている）は何もしない
         mode = !day.every((td) => td.classList.contains('is-ng')); // 全部塗られている → 消すモード
@@ -700,7 +902,7 @@
       window.addEventListener('pointerup', end, { signal });
       window.addEventListener('pointercancel', end, { signal });
 
-      bindSwipe(table, signal);
+      flipper.bindSwipe(table, signal);
 
       return {
         table,
@@ -727,117 +929,8 @@
       };
     };
 
-    // 端のヒント: 表の左右に重ねる（絶対配置なのでレイアウトは動かない。ふだんは opacity 0）。週を移っても同じものを使う
-    const mkHint = (next) => {
-      const h = el('span', `icon-btn sch-swipe-hint sch-swipe-hint--${next ? 'next' : 'prev'}`);
-      h.setAttribute('aria-hidden', 'true');
-      h.append(el('span', 'icon', next ? 'chevron_right' : 'chevron_left')); // 上の週の切り替えと同じ < > の丸ボタン
-      return h;
-    };
-    const hintPrev = mkHint(false);
-    const hintNext = mkHint(true);
-    wrap.append(hintPrev, hintNext);
-    const resetHints = () => [hintPrev, hintNext].forEach((h) => { h.style.opacity = ''; h.classList.remove('is-ready'); });
-
-    // transition が終わったら fn を呼ぶ。transitionend が来なくても 600ms 後に呼ぶ
-    const afterAnim = (fn) => {
-      if (cancelAnim) cancelAnim();
-      const tbl = live.table;
-      const onEnd = (e) => { if (e.target === tbl && e.propertyName === 'transform') done(); };
-      const t = setTimeout(() => done(), 600);
-      const cancel = () => { clearTimeout(t); tbl.removeEventListener('transitionend', onEnd); cancelAnim = null; };
-      const done = () => { cancel(); fn(); };
-      tbl.addEventListener('transitionend', onEnd);
-      cancelAnim = cancel;
-    };
-
-    // 動かす準備: 時刻の列の写しを上に固定して置き、表の時刻の列は隠す。隣の週の表は、データが届いていれば作って置く
-    const openStage = () => {
-      if (stage) return stage;
-      const tr = live.table.getBoundingClientRect();
-      const timeW = live.thead.rows[0].cells[0].getBoundingClientRect().width;
-      const st = { dir: null, peeks: {}, timeBox: null, daysW: tr.width - timeW, live };
-      // 時刻の列の写し: 今の表をそのままコピーして、時刻の列より右を CSS で切る（ずれた日の列が、この下へ潜る）
-      st.timeBox = el('div', 'sch-peek sch-peek--time is-on');
-      const slide = el('div', 'sch-peek__slide');
-      slide.append(live.table.cloneNode(true));
-      st.timeBox.append(slide);
-      wrap.append(st.timeBox);
-      wrap.style.setProperty('--time-w', `${timeW}px`);
-      wrap.style.setProperty('--days-w', `${st.daysW}px`);
-      wrap.classList.add('is-swiping');
-      stage = st;
-      // 隣の週が、動かしている途中で届いたときも出す
-      ['prev', 'next'].forEach((dir) => nb[dir]?.promise.then(() => { if (stage === st) ensurePeek(dir); }));
-      return st;
-    };
-    // 隣の週の表（見せるだけ。イベントは付けない）を、データが届いていれば作る。今動かしている向きのものだけ表示する
-    const ensurePeek = (dir) => {
-      const st = stage;
-      const e = nb[dir];
-      if (!st || !e?.data) return;
-      if (!st.peeks[dir]) {
-        const built = buildTable(e.data.grid);
-        const box = el('div', `sch-peek sch-peek--${dir}`);
-        const slide = el('div', 'sch-peek__slide');
-        slide.append(built.table);
-        box.append(slide);
-        wrap.append(box);
-        // 日付の下の終日の予定の分、見出しの高さが違うことがある → 表の本体の位置が今の週とそろうように直す
-        const liveH = st.live.thead.rows[0].getBoundingClientRect().height;
-        const peekH = built.thead.rows[0].getBoundingClientRect().height;
-        if (peekH < liveH) built.thead.rows[0].style.height = `${liveH}px`;
-        else if (peekH > liveH) box.style.top = `${liveH - peekH}px`;
-        drawProv(slide, built.table, e.data.grid);
-        st.peeks[dir] = box;
-      }
-      st.peeks[dir].classList.toggle('is-on', st.dir === dir);
-    };
-    const setDir = (dir) => {
-      const st = stage;
-      st.dir = dir;
-      ['prev', 'next'].forEach((d) => { if (st.peeks[d]) st.peeks[d].classList.toggle('is-on', d === dir); });
-      ensurePeek(dir);
-    };
-    // 見た目を元に戻す
-    const closeStage = () => {
-      if (!stage) return;
-      stage.timeBox.remove();
-      Object.values(stage.peeks).forEach((b) => b.remove());
-      stage = null;
-      wrap.classList.remove('is-swiping', 'is-swipe-anim');
-      ['--swipe-x', '--time-w', '--days-w'].forEach((p) => wrap.style.removeProperty(p));
-      resetHints();
-    };
-    // 指の動き dx に合わせて、表・隣の週・ヒントを動かす
-    const follow = () => {
-      const st = stage;
-      const dir = dx < 0 ? 'next' : 'prev'; // 左へ送る = 次の週
-      const has = !!nav[dir];
-      setDir(dir);
-      const x = has ? Math.max(-st.daysW, Math.min(st.daysW, dx)) : dx * 0.25; // 行き先が無い側は、重たく（4分の1だけ）動かす
-      wrap.style.setProperty('--swipe-x', `${x}px`);
-      const p = has ? Math.min(1, Math.abs(dx) / thr) : 0; // しきい値まで 0 → 1
-      const on = dir === 'next' ? hintNext : hintPrev;
-      const off = dir === 'next' ? hintPrev : hintNext;
-      on.style.opacity = String(p);
-      on.classList.toggle('is-ready', has && p >= 1);
-      off.style.opacity = '0';
-      off.classList.remove('is-ready');
-    };
-    const springBack = () => {
-      if (!stage) return;
-      if (prefersReduce()) { closeStage(); return; }
-      wrap.classList.add('is-swipe-anim');
-      wrap.style.setProperty('--swipe-x', '0px');
-      [hintPrev, hintNext].forEach((h) => { h.style.opacity = '0'; });
-      afterAnim(closeStage);
-    };
     // 隣の週を今の週にする（表を作り直す。動きはもう終わっていて、隣の週は今の表と同じ位置にある）
     const swap = (json, url) => {
-      if (cancelAnim) cancelAnim();
-      live.destroy();
-      closeStage();
       nav.prev = noHash(json.prev);
       nav.next = noHash(json.next);
       ['prev', 'next'].forEach((dir) => {
@@ -854,99 +947,40 @@
       if (w && json.week !== null && json.week !== undefined) w.value = json.week;
       history.replaceState(null, '', `${url}#ng`); // 以降の保存・読み直しは、この週の URL に対して行われる
       live = mount(json.grid);
-      busy = false;
     };
-    // 隣の週へ移る（スワイプを離したとき・矢印を押したとき）
-    const flip = (dir) => {
-      const e = nb[dir];
-      if (busy || !e || !live) return;
-      busy = true;
-      live.closePop();
-      const saved = autosave.flush(); // 塗りかけの分は、表を替える前に送る（本文は、ここで今の表から作られる）
-      const st = openStage();
-      setDir(dir);
-      const go = (json) => {
-        if (!json) { // 取れなかった: ふつうにページを移動する
-          saved.then(() => { location.href = `${e.url}#ng`; });
-          return;
-        }
-        ensurePeek(dir);
-        const done = () => { swap(json, e.url); saved.then(prefetch); }; // 先読みは、保存が終わってから（離れた週の表に、保存した内容が出るように）
-        if (prefersReduce()) { done(); return; }
-        if (!wrap.style.getPropertyValue('--swipe-x')) wrap.style.setProperty('--swipe-x', '0px');
-        void wrap.offsetWidth; // 今の位置を確定させてから動かす（矢印のときは 0 から）
-        wrap.classList.add('is-swipe-anim');
-        wrap.style.setProperty('--swipe-x', `${dir === 'next' ? -st.daysW : st.daysW}px`);
-        [hintPrev, hintNext].forEach((h) => { h.style.opacity = '0'; });
-        afterAnim(done);
-      };
-      if (e.data) go(e.data); else e.promise.then(go); // 先読みがまだなら、届くまで待つ
-    };
-    const release = () => {
-      const dir = dx < 0 ? 'next' : 'prev';
-      if (!nav[dir] || Math.abs(dx) < thr) { springBack(); return; }
-      flip(dir);
-    };
-
-    // 表（今の週）に指のイベントを付ける。mount から呼ぶ
-    function bindSwipe(table, signal) {
-      pid = null;
-      axis = null;
-      swiped = false;
-      table.addEventListener('pointerdown', (e) => {
-        swiped = false;
-        if (busy || e.pointerType === 'mouse' || dragCb?.checked || !e.isPrimary) return; // マウスとなぞる入力のときは、これまでの操作のまま
-        pid = e.pointerId;
-        sx = e.clientX;
-        sy = e.clientY;
-        dx = 0;
-        axis = null;
-      }, { signal });
-      table.addEventListener('pointermove', (e) => {
-        if (e.pointerId !== pid || axis === 'y') return;
-        dx = e.clientX - sx;
-        const dy = e.clientY - sy;
-        if (axis === null) {
-          if (Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy) * 1.2) { // 横に動かした → スワイプ開始
-            axis = 'x';
-            swiped = true;
-            thr = Math.min(80, wrap.clientWidth * 0.25);
-            if (cancelAnim) cancelAnim(); // 戻っている途中なら止めて、指に付け直す
-            wrap.classList.remove('is-swipe-anim');
-            live.closePop();
-            openStage();
-          } else {
-            if (Math.abs(dy) > 8) axis = 'y'; // 先に縦へ動いた → スクロール。この指では何もしない
-            return;
-          }
-        }
-        follow();
-      }, { signal });
-      const endSwipe = (e, cancelled) => {
-        if (e.pointerId !== pid) return;
-        pid = null;
-        const was = axis;
-        axis = null;
-        if (was !== 'x') return;
-        if (cancelled) springBack(); else release();
-      };
-      table.addEventListener('pointerup', (e) => endSwipe(e, false), { signal });
-      table.addEventListener('pointercancel', (e) => endSwipe(e, true), { signal });
-      // スワイプのあとに来る click は、マスを塗らないよう止める（capture = 他の click の処理より先に受ける）
-      table.addEventListener('click', (e) => {
-        if (!swiped) return;
-        swiped = false;
-        e.stopImmediatePropagation();
-        e.preventDefault();
-      }, { capture: true, signal });
-    }
+    const flipper = makeWeekFlip({
+      wrap,
+      liveTable: () => live?.table,
+      hasNeighbor: (dir) => !!(nav[dir] && nb[dir]),
+      // 隣の週の表（見せるだけ。イベントは付けない）。データが届いていなければ null
+      peek: (dir) => {
+        const e = nb[dir];
+        if (!e?.data) return null;
+        const built = buildTable(e.data.grid);
+        return { table: built.table, decorate: (slide) => drawProv(slide, built.table, e.data.grid) };
+      },
+      whenReady: (dir) => nb[dir]?.promise,
+      ready: (dir) => (nb[dir].data ? true : nb[dir].promise.then((j) => !!j)), // 先読みがまだなら、届くまで待つ
+      begin: (dir) => {
+        live.closePop();
+        return { e: nb[dir], saved: autosave.flush() }; // 塗りかけの分は、表を替える前に送る（本文は、ここで今の表から作られる）
+      },
+      fail: (dir, t) => { t.saved.then(() => { location.href = `${t.e.url}#ng`; }); }, // 取れなかった: ふつうにページを移動する
+      leave: () => live.destroy(),
+      enter: (dir, t) => {
+        swap(t.e.data, t.e.url);
+        t.saved.then(prefetch); // 先読みは、保存が終わってから（離れた週の表に、保存した内容が出るように）
+      },
+      canSwipe: () => !dragCb?.checked,
+      onSwipeStart: () => live.closePop(),
+    });
 
     // 上の < >: ページを読み直さず、同じ動きで隣の週へ（href は、JS が動かないときのための保険）
-    document.querySelector('.sch-weeknav')?.addEventListener('click', (e) => {
+    (navBtn.prev || navBtn.next)?.closest('.sch-weeknav')?.addEventListener('click', (e) => {
       const a = e.target.closest('[data-week-prev], [data-week-next]');
       if (!a || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey || a.classList.contains('is-none')) return;
       e.preventDefault();
-      if (pid === null) flip(a.hasAttribute('data-week-next') ? 'next' : 'prev');
+      if (!flipper.touching()) flipper.flip(a.hasAttribute('data-week-next') ? 'next' : 'prev');
     });
     // なぞって入力のチェック: 状態はこの端末に覚えておく
     try { if (dragCb) dragCb.checked = localStorage.getItem('sched-drag') === '1'; } catch { /* 保存できない環境 */ }
@@ -960,7 +994,7 @@
       new IntersectionObserver(([en]) => { histBar.hidden = !en.isIntersecting; }).observe(wrap);
     }
     // 戻るボタンで、動かしている途中のまま保存されたページが戻ってきたときのため
-    window.addEventListener('pageshow', (e) => { if (e.persisted) { if (cancelAnim) cancelAnim(); closeStage(); busy = false; } });
+    window.addEventListener('pageshow', (e) => { if (e.persisted) flipper.reset(); });
 
     live = mount(firstData);
     prefetch();
@@ -1753,6 +1787,7 @@
   // ===================================================================
   //  5. メンバーの予定（sched_poll.php の <details data-sched-over>）
   //     ・部員全員の埋まりを重ねて、30分ごとに「何人埋まっているか」を色で見せる（7日ずつ・前後の週ボタンで切り替え）
+  //     ・週の切り替えは、マイスケジュールと同じ動き（makeWeekFlip。スマホは横スワイプ、矢印は動きつきで）。全部の週のデータはページに入っているので、隣の週はその場で作る
   //     ・マスに乗せる（スマホはタップ）と、誰がどの種類で埋まっているかを出す。種類は サーバー側で「授業・練習・予定」に丸めてある
   //     ・開閉は localStorage に覚える（開けないブラウザでも動くよう try/catch で囲む）
   // ===================================================================
@@ -1781,7 +1816,7 @@
     const applyPick = () => {
       frame.remove();
       if (!pick) return;
-      const first = wrap.querySelector(`td[data-date="${pick.date}"][data-min="${pick.min}"]`);
+      const first = wrap.querySelector(`:scope > table td[data-date="${pick.date}"][data-min="${pick.min}"]`); // 今の週の表だけ（動かしている間の隣の週は見ない）
       if (!first) return; // 押した日が今の週に無い
       // 練習時間ぶん下のマス（予定で埋まったマスは data-date が無いので、行をたどって探す）
       const rows = Math.min(Math.ceil(len() / over.step), Math.round((over.end - pick.min) / over.step));
@@ -1797,11 +1832,14 @@
       frame.style.height = `${b.bottom - a.top}px`;
       wrap.append(frame);
     };
-    /** 最安の時間帯の網掛け。マスごとに背景を付けると縞がマスの境目で途切れるので、続いているマスをまとめて1つの箱にして重ねる */
-    const applyCheap = () => {
-      wrap.querySelectorAll('.sch-cheap').forEach((n) => n.remove());
-      const w = wrap.getBoundingClientRect();
-      const cells = [...wrap.querySelectorAll('td.is-cheap')];
+    /**
+     * 最安の時間帯の網掛け。マスごとに背景を付けると縞がマスの境目で途切れるので、続いているマスをまとめて1つの箱にして重ねる
+     *   host … 箱を入れる場所（position が static でない要素。今の週は wrap、隣の週は .sch-peek__slide）/ table … その中の表
+     */
+    const applyCheap = (host, table) => {
+      host.querySelectorAll(':scope > .sch-cheap').forEach((n) => n.remove());
+      const w = host.getBoundingClientRect();
+      const cells = [...table.querySelectorAll('td.is-cheap')];
       const dates = [...new Set(cells.map((td) => td.dataset.date))];
       dates.forEach((date) => {
         const col = cells.filter((td) => td.dataset.date === date).sort((a, b) => a.dataset.min - b.dataset.min);
@@ -1811,12 +1849,12 @@
           const a = run[0].getBoundingClientRect();
           const b = run[run.length - 1].getBoundingClientRect();
           const box = el('div', 'sch-cheap');
-          box.style.left = `${a.left - w.left + wrap.scrollLeft}px`;
-          box.style.top = `${a.top - w.top + wrap.scrollTop}px`;
+          box.style.left = `${a.left - w.left + host.scrollLeft}px`;
+          box.style.top = `${a.top - w.top + host.scrollTop}px`;
           box.style.width = `${a.width}px`;
           box.style.height = `${b.bottom - a.top}px`;
-          box.style.backgroundPosition = `${-Math.round(a.left - w.left + wrap.scrollLeft)}px ${-Math.round(a.top - w.top + wrap.scrollTop)}px`; // 縞の起点を表全体でそろえる（隣の日の箱ともつながる）
-          wrap.prepend(box); // 表の下に敷く（マスの区切り線が縞の上に見える。マスの色は半透明なので縞が透ける）
+          box.style.backgroundPosition = `${-Math.round(a.left - w.left + host.scrollLeft)}px ${-Math.round(a.top - w.top + host.scrollTop)}px`; // 縞の起点を表全体でそろえる（隣の日の箱ともつながる）
+          host.prepend(box); // 表の下に敷く（マスの区切り線が縞の上に見える。マスの色は半透明なので縞が透ける）
           run = [];
         };
         col.forEach((td) => {
@@ -1827,13 +1865,13 @@
         flush();
       });
     };
-    /** 仮決定（時間まで決めたもの）の枠: マスより一回り小さく、角を丸めた箱を表の上に重ねる（続くマスで1つ。押しても下のマスが反応する） */
-    const applyProv = () => {
-      wrap.querySelectorAll('.sch-prov').forEach((n) => n.remove());
-      const rows = wrap.querySelector('tbody')?.rows;
+    /** 仮決定（時間まで決めたもの）の枠: マスより一回り小さく、角を丸めた箱を表の上に重ねる（続くマスで1つ。押しても下のマスが反応する）。host・table は applyCheap と同じ / idx … 何ページ目の週か */
+    const applyProv = (host, table, idx) => {
+      host.querySelectorAll(':scope > .sch-prov').forEach((n) => n.remove());
+      const rows = table.tBodies[0]?.rows;
       if (!rows) return;
-      const w = wrap.getBoundingClientRect();
-      const days = weeks[page];
+      const w = host.getBoundingClientRect();
+      const days = weeks[idx];
       provs.filter((p) => p.s !== null).forEach((p) => {
         const ci = days.findIndex((d) => d.date === p.date);
         if (ci < 0) return;
@@ -1845,18 +1883,27 @@
         const a = first.getBoundingClientRect();
         const z = last.getBoundingClientRect();
         const box = el('div', 'sch-prov');
-        box.style.left = `${a.left - w.left + wrap.scrollLeft + PROV_INSET}px`;
-        box.style.top = `${a.top - w.top + wrap.scrollTop + PROV_INSET}px`;
+        box.style.left = `${a.left - w.left + host.scrollLeft + PROV_INSET}px`;
+        box.style.top = `${a.top - w.top + host.scrollTop + PROV_INSET}px`;
         box.style.width = `${a.width - PROV_INSET * 2}px`;
         box.style.height = `${z.bottom - a.top - PROV_INSET * 2}px`;
-        wrap.append(box);
+        host.append(box);
       });
     };
-    window.addEventListener('resize', () => { applyCheap(); applyProv(); applyPick(); });
+    /** 今の週の表（wrap の中）の印を描き直す（最安・仮決定・押した枠） */
+    const redrawLive = () => {
+      const table = wrap.querySelector(':scope > table');
+      if (!table) return;
+      applyCheap(wrap, table);
+      applyProv(wrap, table, page);
+      applyPick();
+    };
+    window.addEventListener('resize', redrawLive);
     document.addEventListener('sched:len', () => draw()); // 長さを変えた: 最安の印を描き直し、押してある枠も新しい長さにする
 
-    const draw = () => {
-      const days = weeks[page];
+    /** idx ページ目の週の表を作って返す（何も動かさない。今の週も、スワイプで隣に見せる週も、これで作る。イベントは付けない） */
+    const buildWeek = (idx) => {
+      const days = weeks[idx];
       const lo = days[0].abs;
       const hi = days[days.length - 1].abs + 1440;
       // この週にかかる埋まりだけに絞っておく（マスごとに全部を調べると重いので）
@@ -1921,14 +1968,35 @@
         tbody.append(tr);
       }
       table.append(tbody);
-      wrap.replaceChildren(table);
-      applyCheap();
-      applyProv();
-      applyPick();
+      return table;
+    };
+    /** 今の週（page）を出す */
+    const draw = () => {
+      const days = weeks[page];
+      wrap.replaceChildren(buildWeek(page));
+      redrawLive();
       range.textContent = `${days[0].md}〜${days[days.length - 1].md}`;
       prev.disabled = page === 0;
       next.disabled = page === weeks.length - 1;
     };
+    // 週をめくる動き（スマホは横スワイプ。この表は塗れないので、指ではいつでもめくれる）
+    const step = (dir) => (dir === 'next' ? 1 : -1);
+    const flipper = makeWeekFlip({
+      wrap,
+      liveTable: () => wrap.querySelector(':scope > table'),
+      hasNeighbor: (dir) => !!weeks[page + step(dir)],
+      // 隣の週の表。最安・仮決定の印も、その表に重ねる（押した枠は今の週だけ）
+      peek: (dir) => {
+        const idx = page + step(dir);
+        if (!weeks[idx]) return null; // 行き先が無い（端）
+        const table = buildWeek(idx);
+        return { table, decorate: (slide) => { applyCheap(slide, table); applyProv(slide, table, idx); } };
+      },
+      ready: () => true, // 全部の週のデータはもうある
+      onSwipeStart: () => wrap.dispatchEvent(new Event('scroll')), // 出ているポップアップ（data-tip）は、スクロールと同じに消える（app.js の setupTip）
+      enter: (dir) => { page += step(dir); draw(); },
+    });
+    flipper.bindSwipe(wrap); // 表は週ごとに作り直すので、箱に付ける（箱は作り直さない）
     // マスを押すと、その日・時刻の候補カードを開いて強調する（候補が無いマスは何も起きない）
     wrap.addEventListener('click', (e) => {
       const td = e.target.closest('td[data-date]');
@@ -1938,14 +2006,9 @@
       // カードを開く・開始時刻を変える（高さが変わる）→ 描き終わってから動かす。同時だと、スクロールの行き先がずれて止まることがある
       requestAnimationFrame(() => { if (window.schedFocusCand) window.schedFocusCand(pick.date, pick.min); });
     });
-    prev.addEventListener('click', () => {
-      if (page > 0) page--;
-      draw();
-    });
-    next.addEventListener('click', () => {
-      if (page < weeks.length - 1) page++;
-      draw();
-    });
+    // 前後の週のボタン: 動きをつけてめくる（マウスも同じ）。この箱の矢印だけを受ける
+    prev.addEventListener('click', () => { if (!flipper.touching()) flipper.flip('prev'); });
+    next.addEventListener('click', () => { if (!flipper.touching()) flipper.flip('next'); });
     draw();
 
     try {
@@ -1954,6 +2017,7 @@
       // localStorage が使えない（プライベートモード等）→ 閉じたまま
     }
     box.addEventListener('toggle', () => {
+      if (box.open) redrawLive(); // 閉じている間は大きさが測れず、印の箱が付かないので、開いたときに描き直す
       try {
         localStorage.setItem('sched-over-open', box.open ? '1' : '0');
       } catch (e) {

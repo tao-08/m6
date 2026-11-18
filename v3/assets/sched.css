@@ -57,7 +57,8 @@
   transform: rotate(45deg); transition: transform var(--t-base); }   /* 開閉の矢印（閉じていると ⌄、開くと ⌃） */
 .sch-over[open] > summary::after { transform: rotate(-135deg); }
 .sch-over__body { display: grid; gap: 10px; margin-top: 12px; }
-.sch-grid--over td { touch-action: auto; cursor: default; }          /* 塗れない表なので、なぞってもページがスクロールする */
+.sch-grid--over td { cursor: default; }
+.sch-grid.sch-grid--over, .sch-grid.sch-grid--over :is(td, th) { touch-action: pan-y pinch-zoom; } /* 塗れない表なので、縦になぞるとページがスクロールする。横の動きは JS が受け取って週を切り替える（makeWeekFlip） */
 .sch-grid--over td[data-tip] { cursor: help; }
 .sch-grid--over td[data-date] { cursor: pointer; }
 .sch-grid--over td.is-free, .sch-sw.is-free { background: color-mix(in srgb, var(--ok) 22%, transparent); }
@@ -163,7 +164,7 @@
 
 /* ---------- NG の時間のマス ---------- */
 .sch-weeknav { display: grid; grid-template-columns: 40px 1fr 40px; align-items: center; text-align: center; }
-.sch-weeknav .icon-btn.is-none { visibility: hidden; } /* これ以上進めない側の矢印は隠す（幅は残るので、日付は中央のまま） */
+.sch-weeknav .icon-btn:is(:disabled, .is-none) { visibility: hidden; } /* これ以上進めない側の矢印は隠す（幅は残るので、日付は中央のまま）。is-none = マイスケジュール / :disabled = メンバーの予定 */
 .sch-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; }
 .sch-legend span { display: inline-flex; align-items: center; gap: 4px; }
 .sch-sw { display: inline-block; width: 12px; height: 12px; border-radius: var(--r-xs); border: 1px solid var(--border); }
@@ -205,12 +206,12 @@
 .sch-drag { display: none; margin: 0 0 8px; }
 @media (hover: none) { .sch-drag { display: inline-flex; } }
 .sch-grid.is-tap, .sch-grid.is-tap :is(td, th) { touch-action: pan-y pinch-zoom; } /* 縦のスクロールはブラウザに任せ、横の動きは JS が受け取って週を切り替える（setupGrid の「横にスワイプ」） */
-/* 横にスワイプ・矢印で週を切り替える（JS: setupGrid）。時刻の列は動かさず、日の列だけが指（--swipe-x）についてくる。
+/* 横にスワイプ・矢印で週を切り替える（JS: makeWeekFlip。マイスケジュールとメンバーの予定の両方）。時刻の列は動かさず、日の列だけが指（--swipe-x）についてくる。
    動かしている間は wrap に is-swiping が付く。今の週の表（と重ねた仮決定の箱）はそのまま横へずれ、隣の週（.sch-peek）が逆の端から並んで入ってくる。
    表の時刻の列は隠し、同じ見た目の写し（.sch-peek--time）を上に固定して、ずれた日の列がその下へ潜るようにする。
    離したときだけ is-swipe-anim で動きを付ける（指を動かしている間は動きなし）。--time-w … 時刻の列の幅 / --days-w … 日の列7つ分の幅（どちらも JS が入れる） */
 .sch-grid-wrap.is-swiping { overflow-x: hidden; } /* ずらした分で横スクロールが出ないように */
-.sch-grid-wrap.is-swiping > :is(.sch-grid, .sch-prov) { transform: translateX(var(--swipe-x, 0px)); }
+.sch-grid-wrap.is-swiping > :is(.sch-grid, .sch-prov, .sch-cheap, .sch-pick) { transform: translateX(var(--swipe-x, 0px)); }
 .sch-grid-wrap.is-swiping > .sch-grid :is(thead th:first-child, tbody th) { visibility: hidden; }
 .sch-peek { position: absolute; top: 0; left: 0; right: 0; z-index: 1; pointer-events: none; visibility: hidden; }
 .sch-peek.is-on { visibility: visible; }
@@ -220,16 +221,9 @@
 .sch-peek:not(.sch-peek--time) :is(thead th:first-child, tbody th) { visibility: hidden; }
 .sch-peek--next > .sch-peek__slide { transform: translateX(calc(var(--swipe-x, 0px) + var(--days-w, 0px))); } /* 次の週は右から */
 .sch-peek--prev > .sch-peek__slide { transform: translateX(calc(var(--swipe-x, 0px) - var(--days-w, 0px))); } /* 前の週は左から */
-.sch-grid-wrap.is-swipe-anim > :is(.sch-grid, .sch-prov), .sch-grid-wrap.is-swipe-anim .sch-peek__slide { transition: transform var(--t-base) var(--ease-out); }
-.sch-grid-wrap.is-swipe-anim .sch-swipe-hint { transition: opacity var(--t-base) var(--ease-out), color var(--t-fast) ease; }
-/* 端のヒント（上の < > と同じ丸ボタン）。ふだんは見えず、スワイプの進み具合（JS が opacity を入れる）に合わせて濃くなる。しきい値を超えたら is-ready で赤に。レイアウトには影響しない */
-.sch-swipe-hint { position: absolute; top: 50%; z-index: 3; transform: translateY(-50%);
-  box-shadow: var(--shadow-pop); opacity: 0; pointer-events: none; transition: color var(--t-fast) ease; }
-.sch-swipe-hint--prev { left: 12px; }
-.sch-swipe-hint--next { right: 12px; }
-.sch-swipe-hint.is-ready { color: var(--accent); border-color: var(--accent); }
+.sch-grid-wrap.is-swipe-anim > :is(.sch-grid, .sch-prov, .sch-cheap, .sch-pick), .sch-grid-wrap.is-swipe-anim .sch-peek__slide { transition: transform var(--t-base) var(--ease-out); }
 @media (prefers-reduced-motion: reduce) {
-  .sch-grid-wrap.is-swipe-anim > :is(.sch-grid, .sch-prov), .sch-grid-wrap.is-swipe-anim .sch-peek__slide, .sch-grid-wrap.is-swipe-anim .sch-swipe-hint { transition: none; }
+  .sch-grid-wrap.is-swipe-anim > :is(.sch-grid, .sch-prov, .sch-cheap, .sch-pick), .sch-grid-wrap.is-swipe-anim .sch-peek__slide { transition: none; }
 }
 /* 予定のラベル（JS: setupGrid）。最初のマスから、予定の高さ（--rows マス）いっぱいまで折り返し、--lines 行（最大2行）を超える分は「…」。
    マスの外へはみ出して下のマスに重ねるので、そのマスだけ overflow を外す。押すと下のマスに届くよう pointer-events: none */
