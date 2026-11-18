@@ -45,12 +45,12 @@ $branches = [
     // Google・iCloud 以外（TimeTree・Outlook・カレンダー未使用など）。取り込みの URL は Google・iCloud だけ（lib/sched_ical.php）なので、
     //   同期できる人は Google / iPhone へ戻ってもらい、できない人は「画像から読込」（週表示のスクショ）と購読 URL のコピーで済ませる
     'other' => [
-        ['title' => 'Google・iPhone と同期できるか確認', 'html' =>
+        ['title' => 'Google / iPhone と連携できるか確認', 'html' =>
             '<ul>'
-            . '<li>Android の人 … Google カレンダーに予定を入れると「Google で連携」で取り込めます</li>'
-            . '<li>使っているアプリが Google / iPhone のカレンダーと同期している … 戻って Google / iPhone を選択</li>'
+            . '<li>カレンダーアプリから Google / iCloud を経由して取り込めることがあります</li>'
+            . '<li>カレンダーアプリで Google / iCloud と連携させて、予定をアカウントに保存<br>→ 戻って Google / iPhone の説明を選択</li>'
             . '</ul>'
-            . '<p class="muted small">同期できない人は次へ</p>'],
+            . '<p class="muted small">連携できない人は次へ</p>'],
         ['title' => '画像から読込', 'html' =>
             '<ol>'
             . '<li>カレンダーアプリを<strong>週表示</strong>にしてスクリーンショット</li>'
@@ -61,7 +61,7 @@ $branches = [
         ['title' => '練習を自動で追加', 'html' =>
             '<ol>'
             . '<li>「決定したスタジオ練習を追加」の「' . icon('content_copy', 'icon--sm') . 'URL をコピー」</li>'
-            . '<li>使っているアプリの「URL でカレンダーを追加（購読）」に貼り付け</li>'
+            . '<li>使っているアプリの「URL でカレンダーを追加」に貼り付け</li>'
             . '</ol>'
             . '<p class="muted small">購読できないアプリは、日程調整の決定画面から 1 件ずつ追加できます。</p>'],
     ],
