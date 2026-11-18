@@ -37,7 +37,7 @@ SET NAMES utf8mb4;
 -- まっさらな DB に流すと「Note: #1051 '〜' は不明な表です」が表の数だけ出るが、
 -- これは「消そうとした表が最初から無かった」というだけの“お知らせ”で、エラーではない。
 SET FOREIGN_KEY_CHECKS = 0;
-DROP TABLE IF EXISTS sched_nav_cache, sched_google_event, sched_fix, sched_google, sched_travel, sched_ignore, sched_weekly, sched_poll_studio, sched_poll_member, sched_poll, sched_busy, sched_class, sched_profile, block_best, sheet_log, song_link_practice, song_link, song_part, song_work_primary, venue_image, song_catalog, song_tab_ai_usage, song_meta_image, song_tab_image, song_meta, song_tab_practice, song_tab_revision, song_tab, timetable_draft_presence, timetable_draft, band_image, notice_image, board_post_image, live_image, push_subscription, comment_like, comment_reply, comment, board_thread_mute, board_notify_category, board_notify, board_post_like, board_post_reply, board_read, board_post, board_thread, board_category, notice_read, notice, notice_category, change_unit, change_op, inquiry, band_like, app_setting, login_attempt, track_preview, track_link_cache, album_link_cache,
+DROP TABLE IF EXISTS sched_nav_cache, sched_google_event, sched_fix, sched_google, sched_travel, sched_ignore, sched_weekly, sched_poll_studio, sched_poll_member, sched_poll, sched_busy, sched_class, sched_profile, intro_best, block_month_best, block_best, sheet_log, song_link_practice, song_link, song_part, song_work_primary, venue_image, song_catalog, song_tab_ai_usage, song_meta_image, song_tab_image, song_meta, song_tab_practice, song_tab_revision, song_tab, timetable_draft_presence, timetable_draft, band_image, notice_image, board_post_image, live_image, push_subscription, comment_like, comment_reply, comment, board_thread_mute, board_notify_category, board_notify, board_post_like, board_post_reply, board_read, board_post, board_thread, board_category, notice_read, notice, notice_category, change_unit, change_op, inquiry, band_like, app_setting, login_attempt, track_preview, track_link_cache, album_link_cache,
     check_dismiss, band_check_member, member_role, role, artist_alias, member_favorite_album, song_performer, song, track, band_member, live_break, band,
     artist, live_day, live, venue, instrument, user_account, member;
 SET FOREIGN_KEY_CHECKS = 1;
@@ -1558,6 +1558,39 @@ CREATE TABLE block_best (
     PRIMARY KEY (user_id),
     KEY idx_block_score (score),
     CONSTRAINT fk_block_user FOREIGN KEY (user_id) REFERENCES user_account (user_id)
+        ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- ---------------------------------------------------------------------
+--  block_month_best — ブロックパズルの月間ランキング。1人につき1か月1行で、その月の自己ベストより高いときだけ上書きする（migrations/126）
+--    month_start = その月の1日。block_best（月を問わない自己ベスト）とは別に持つ
+-- ---------------------------------------------------------------------
+CREATE TABLE block_month_best (
+    user_id     INT UNSIGNED      NOT NULL,
+    month_start DATE              NOT NULL,
+    score       INT UNSIGNED      NOT NULL,
+    `lines`     SMALLINT UNSIGNED NOT NULL,
+    level       TINYINT UNSIGNED  NOT NULL,
+    updated_at  DATETIME          NOT NULL,
+    PRIMARY KEY (user_id, month_start),
+    KEY idx_block_month_score (month_start, score),
+    CONSTRAINT fk_block_month_user FOREIGN KEY (user_id) REFERENCES user_account (user_id)
+        ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- ---------------------------------------------------------------------
+--  intro_best — イントロクイズ（intro.php）の月間ランキング。1人につき1か月1行で、自己ベストより高いときだけ上書きする（migrations/125）
+--    month_start = その月の1日。絞り込みなしで 10 問遊んだときだけ記録する
+-- ---------------------------------------------------------------------
+CREATE TABLE intro_best (
+    user_id     INT UNSIGNED     NOT NULL,
+    month_start DATE             NOT NULL,
+    score       INT UNSIGNED     NOT NULL,
+    correct     TINYINT UNSIGNED NOT NULL,
+    updated_at  DATETIME         NOT NULL,
+    PRIMARY KEY (user_id, month_start),
+    KEY idx_intro_month_score (month_start, score),
+    CONSTRAINT fk_intro_user FOREIGN KEY (user_id) REFERENCES user_account (user_id)
         ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 

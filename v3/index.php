@@ -65,16 +65,8 @@ $st->execute([$user['user_id'], $user['user_id']]);
 $importantNotices = $st->fetchAll();
 
 // 📅 呼ばれていて、まだ「回答済み」にしていない日程調整（日時の決まった練習（sched_fix の status 2・3）がまだ無いあいだ。回答すると出なくなるので ✕ は無い）
-$schedTodo = [];
-if (!empty($user['member_id'])) {
-    $st = $pdo->prepare('SELECT p.sched_poll_id, p.title, p.date_from, p.date_to FROM sched_poll p
-        JOIN sched_poll_member m ON m.sched_poll_id = p.sched_poll_id AND m.member_id = ?
-        WHERE m.answered_at IS NULL AND p.date_to >= CURDATE()
-          AND NOT EXISTS (SELECT 1 FROM sched_fix f WHERE f.sched_poll_id = p.sched_poll_id AND f.status >= 2)
-        ORDER BY p.date_from, p.sched_poll_id');
-    $st->execute([(int)$user['member_id']]);
-    $schedTodo = $st->fetchAll();
-}
+require_once __DIR__ . '/lib/repository.php';
+$schedTodo = !empty($user['member_id']) ? sched_todo_polls($pdo, (int)$user['member_id']) : [];
 
 // 日程1行ごとに、そのライブの情報とバンド数をくっつけて取ってくる
 //   LEFT JOIN: 相手が無くても行を残す（バンドが0組の日程も表示するため）
@@ -173,6 +165,8 @@ $stats = $pdo->query('SELECT
     (SELECT COUNT(*) FROM band) AS bands,
     (SELECT COUNT(DISTINCT member_id) FROM band_member) AS members')->fetch();
 
+require_once __DIR__ . '/lib/repository.php';
+$studioAnswers = studio_answer_open_lives($pdo, (int)current_user()['user_id']); // 回答受付中のスタジオ割（ツールと同じ）
 render_header('ライブ一覧', 'lives');
 ?>
 <section class="hero">
@@ -215,6 +209,18 @@ render_header('ライブ一覧', 'lives');
         <span class="notice-banner__text"><?php foreach ($importantNotices as $n): ?><span><?= h($n['title']) ?></span><?php endforeach; ?></span>
         <?= icon('chevron_right') ?>
     </a>
+<?php endif; ?>
+
+<?php if ($studioAnswers): ?>
+    <section class="card check-list">
+        <h2 class="section-title section-title--card section-title--tool"><?= icon('meeting_room') ?>スタジオ練習</h2>
+        <ul>
+            <?php foreach ($studioAnswers as $r): ?>
+                <li><div class="check-list__text"><a href="studio_answer?live=<?= (int)$r['live_id'] ?>"><?= h($r['name']) ?></a>
+                    <span class="chip chip--warn chip--xs">回答受付中</span></div></li>
+            <?php endforeach; ?>
+        </ul>
+    </section>
 <?php endif; ?>
 
 <?php if ($schedTodo): ?>

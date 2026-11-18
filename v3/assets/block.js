@@ -700,24 +700,7 @@
     const res = {};
     app.querySelectorAll('[data-result]').forEach((el) => { res[el.dataset.result] = el; });
     const btnRetry = $('[data-act="retry"]');
-    const rankBox = document.getElementById('block-ranking');
-
-    /* ---------- ランキングの「すべて表示 / 畳む」 ---------- */
-    // ボタンを押すたびに一覧の is-collapsed を付け外しする（隠す・見せるは CSS の .is-collapsed .is-fold）
-    if (rankBox) {
-      const tgl = rankBox.querySelector('[data-rank-toggle]');
-      const lst = rankBox.querySelector('[data-rank-list]');
-      if (tgl && lst) {
-        tgl.addEventListener('click', () => {
-          const open = lst.classList.toggle('is-collapsed') === false; // toggle は「付いた」なら true を返す → false なら展開中
-          tgl.setAttribute('aria-expanded', String(open));
-          const label = open ? '畳む' : 'すべて表示';
-          tgl.setAttribute('aria-label', label);
-          tgl.title = label;
-          // 向きの反転は CSS（[aria-expanded="true"] で回転）。アイコン名の差し替えはしない: フォントは使う名前だけ読み込む（lib/icon_names.php）ので、名前を足し忘れると文字のまま出てしまう
-        });
-      }
-    }
+    const rankBox = document.getElementById('block-ranking'); // タブ・畳む・描き直しは assets/ranking.js（partials/ranking_card.php）
 
     function finish() {
       state = 'over';
@@ -750,8 +733,11 @@
       try {
         const r = await post({ score: g.score, lines: g.lines, level: g.level });
         if (g !== game || state !== 'over') { renderRanking(r); return; } // 送信中に再開始された
-        res.best.hidden = !r.best;
-        res.rank.textContent = r.mine ? r.mine.rank + '位' + (r.best ? '' : ' / 自己ベスト ' + fmt(r.mine.score)) : '';
+        // 「自己ベスト更新」はベストスコアを超えたとき、「今月の自己ベスト更新」は今月の記録だけ超えたとき
+        res.best.hidden = !(r.best || r.month_best);
+        res.best.textContent = r.best ? '自己ベスト更新' : '今月の自己ベスト更新';
+        // 順位は月間とベストの両方を短く出す
+        res.rank.textContent = [r.month_mine && '月間 ' + r.month_mine.rank + '位', r.mine && 'ベスト ' + r.mine.rank + '位'].filter(Boolean).join(' / ');
         if (r.mine) app.dataset.best = String(r.mine.score);
         renderRanking(r);
       } catch (e) {
@@ -764,21 +750,7 @@
     }
 
     function renderRanking(r) {
-      if (!rankBox) return;
-      const list = rankBox.querySelector('[data-rank-list]');
-      const empty = rankBox.querySelector('[data-rank-empty]');
-      const toggle = rankBox.querySelector('[data-rank-toggle]');
-      const el = (tag, cls, text) => { const e = document.createElement(tag); e.className = cls; e.textContent = text; return e; };
-      // 畳む行（x.fold）は is-fold を付ける。実際に隠すのは CSS（一覧が is-collapsed のとき）。開閉の状態は一覧の class が持つので、再描画しても保たれる
-      const row = (tag, cls, rank, name, score) => {
-        const li = document.createElement(tag);
-        li.className = cls;
-        li.append(el('span', 'block-ranking__rank', String(rank)), el('span', 'block-ranking__name', name), el('span', 'block-ranking__score', fmt(score)));
-        return li;
-      };
-      list.replaceChildren(...r.ranking.map((x) => row('li', 'block-ranking__row' + (x.me ? ' is-me' : '') + (x.fold ? ' is-fold' : ''), x.rank, x.name, x.score)));
-      empty.hidden = r.ranking.length > 0;
-      if (toggle) toggle.hidden = !r.ranking.some((x) => x.fold); // 畳む行が無ければボタンも要らない
+      if (rankBox) Ranking.render(rankBox, r);
     }
 
     /* ---------- キーボード（PC） ---------- */

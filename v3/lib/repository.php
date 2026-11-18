@@ -2335,3 +2335,45 @@ function alias_field_html(string $userName): string
         . '<span class="alias-field__pop" role="tooltip" hidden>送信者名を入力すると匿名状態になります<br>（管理者を除く）</span></span>'
         . '</div>';
 }
+
+/**
+ * 回答受付中のスタジオ割のうち、自分が出るバンドがあるもの（まだ終わっていないライブだけ）。
+ * ツール・トップ・ヘッダーのバッジで同じ結果を使う（1リクエスト中は使い回す）
+ *   user_account → member → band_member → band → live_day → studio_plan と JOIN でたどる（DISTINCT でライブごとに1行）
+ * @return array [['live_id' => int, 'name' => string], ...]
+ */
+function studio_answer_open_lives(PDO $pdo, int $userId): array
+{
+    static $cache = [];
+    return $cache[$userId] ??= (function () use ($pdo, $userId) {
+        $st = $pdo->prepare('SELECT DISTINCT l.live_id, l.name FROM user_account u
+            JOIN band_member bm ON bm.member_id = u.member_id
+            JOIN band b ON b.band_id = bm.band_id
+            JOIN live_day d ON d.live_day_id = b.live_day_id
+            JOIN live l ON l.live_id = d.live_id
+            JOIN studio_plan p ON p.live_id = l.live_id AND p.answer_open = 1
+            WHERE u.user_id = ? AND d.held_on >= ?
+            ORDER BY l.live_id');
+        $st->execute([$userId, date('Y-m-d')]);
+        return $st->fetchAll();
+    })();
+}
+
+/**
+ * 呼ばれていて、まだ「回答済み」にしていない日程調整（日時の決まった練習 = sched_fix の status 2・3 がまだ無いあいだ）。
+ * トップ・ツール・ヘッダーのバッジで同じ結果を使う（1リクエスト中は使い回す）
+ * @return array [['sched_poll_id', 'title', 'date_from', 'date_to'], ...]
+ */
+function sched_todo_polls(PDO $pdo, int $memberId): array
+{
+    static $cache = [];
+    return $cache[$memberId] ??= (function () use ($pdo, $memberId) {
+        $st = $pdo->prepare('SELECT p.sched_poll_id, p.title, p.date_from, p.date_to FROM sched_poll p
+            JOIN sched_poll_member m ON m.sched_poll_id = p.sched_poll_id AND m.member_id = ?
+            WHERE m.answered_at IS NULL AND p.date_to >= CURDATE()
+              AND NOT EXISTS (SELECT 1 FROM sched_fix f WHERE f.sched_poll_id = p.sched_poll_id AND f.status >= 2)
+            ORDER BY p.date_from, p.sched_poll_id');
+        $st->execute([$memberId]);
+        return $st->fetchAll();
+    })();
+}

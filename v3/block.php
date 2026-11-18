@@ -4,7 +4,8 @@
  *  block.php — ブロックパズル（tools.php から入る落ちものパズル）
  * =====================================================================
  *  ゲーム本体は assets/block.js（canvas に描く）。ここでは枠・ボタンとランキングを出す。
- *  ランキングは部員ごとの自己ベスト（block_best）。記録のある全員を名前つきで表示（10 人目まで + 自分以外は畳み、ボタンで全員表示）。
+ *  ランキングは「月間」（block_month_best）と「ベストスコア」（block_best）の2つ。どちらも記録のある全員を名前つきで表示（10 人目まで + 自分以外は畳み、ボタンで全員表示）。
+ *  カードの部分は partials/ranking_card.php（イントロクイズと共通）。
  *  点数は ゲームオーバー時に api_block_score.php へ POST される（CSRF は <meta name="csrf-token"> を JS が送る）。
  *  この画面自体は表示するだけ（POST を受けない）。名前は h() でエスケープする。
  * =====================================================================
@@ -14,10 +15,12 @@ require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/block.php';
 $user = require_login();
 
-[$ranking, $mine] = block_ranking(db(), (int)$user['user_id']);
+$rankingData = block_rankings(db(), (int)$user['user_id']); // ベストスコア・月間・先月の1位（partials/ranking_card.php が出す）
+$mine = $rankingData['mine'];
 
 render_header('ブロックパズル', 'tools');
 ?>
+<link rel="stylesheet" href="<?= asset_url('assets/ranking.css') ?>">
 <link rel="stylesheet" href="<?= asset_url('assets/block.css') ?>">
 <h1 class="block-sr">ブロックパズル</h1>
 <div class="block-layout">
@@ -79,22 +82,7 @@ render_header('ブロックパズル', 'tools');
         </div>
     </div>
 
-    <section class="block-ranking card" id="block-ranking" aria-label="ランキング">
-        <h2 class="block-ranking__title">ランキング</h2>
-        <!-- is-collapsed の間は .is-fold の行を CSS で隠す。ボタンで is-collapsed を付け外しする（assets/block.js の setupRankToggle） -->
-        <ol class="block-ranking__list is-collapsed" data-rank-list>
-            <?php foreach ($ranking as $r): ?>
-                <li class="block-ranking__row<?= $r['me'] ? ' is-me' : '' ?><?= $r['fold'] ? ' is-fold' : '' ?>">
-                    <span class="block-ranking__rank"><?= (int)$r['rank'] ?></span>
-                    <span class="block-ranking__name"><?= h($r['name']) ?></span>
-                    <span class="block-ranking__score"><?= number_format($r['score']) ?></span>
-                </li>
-            <?php endforeach; ?>
-        </ol>
-        <p class="block-ranking__empty muted small" data-rank-empty<?= $ranking ? ' hidden' : '' ?>>記録がありません</p>
-        <!-- 押すと全員表示 / 畳むを切り替える。操作ボタンなので data-tip ではなく title と aria-label（CLAUDE.md の基準）。畳む行が無いときは隠す -->
-        <button type="button" class="icon-btn block-ranking__toggle" data-rank-toggle aria-expanded="false" aria-label="すべて表示" title="すべて表示"<?= array_filter($ranking, fn($r) => $r['fold']) ? '' : ' hidden' ?>><?= icon('expand_more') ?></button>
-    </section>
+    <?php $rankingId = 'block-ranking'; require __DIR__ . '/partials/ranking_card.php'; ?>
 </div>
 <?php
 // 操作設定（assets/block.js の setupSettings が開け閉めと保存をする）。選択肢の値は JS 側の許可リストと同じ
@@ -140,5 +128,6 @@ $gestureRows = ['tapL' => '左半分タップ', 'tapR' => '右半分タップ', 
         </div>
     </div>
 </dialog>
+<script src="<?= asset_url('assets/ranking.js') ?>" defer></script>
 <script src="<?= asset_url('assets/block.js') ?>" defer></script>
 <?php render_footer();

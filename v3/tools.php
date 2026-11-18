@@ -14,6 +14,7 @@
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 require_login();
+require_once __DIR__ . '/lib/repository.php';
 
 // [行き先, アイコン, 名前, 説明, タグ（権限のラベル。無ければ省略）]
 $tools = [
@@ -28,11 +29,13 @@ $tools = [
     ['sheet_templates', 'edit_document', 'セッティングシート編集（PC推奨）',
         '新しい会場のセッティングシートの PDF を登録し要素を配置して、セッティングシート作成用のテンプレートを編集します。'],
     // 会場の最寄り駅・機材・過去のライブ（誰でも見られて、誰でも編集できる）
-    ['venue_list', 'location_on', '会場リスト', '会場の最寄り駅・機材・過去のライブ'],
+    ['venue_list', 'location_on', 'ライブ会場リスト', '会場の最寄り駅・機材・過去のライブ'],
     // 練習スタジオの情報・料金シミュレーション・地図（見るのも編集もログインしていれば誰でも。変更は編集履歴から復元できる = studio_info.php）
     ['studio_list', 'piano', 'スタジオ情報', '練習スタジオの料金・学割・機材・予約ページ。料金シミュレーションとスタジオマップ付き。'],
     // 落ちものパズル（ログインしていれば誰でも。点数は自己ベストだけ block_best に残り、ランキングに出る）
-    ['block', 'grid_view', 'ブロックパズル', 'テ◯リスができます。部員ランキング付き。'],
+    ['block', 'grid_view', 'ブロックパズル', 'テ◯リスができます。月間ランキング付き。'],
+    // イントロクイズ（ログインしていれば誰でも。点数は自己ベストだけ intro_best に残り、ランキングに出る）
+    ['intro', 'headphones', 'イントロクイズ', 'サークルで演奏された曲の試聴を聴いて曲名を当てます。月間ランキング付き。'],
 ];
 // 名簿から出順を決める（管理者だけ。公開するまでは部員に見せない）
 if (is_executive()) {
@@ -45,24 +48,54 @@ if (is_executive()) {
 // スタ連（スタジオ練習）の日程調整（sched.php）。ログインしていれば誰でも
 $tools[] = ['sched', 'event_available', 'スタジオ練習の日程調整',
     '時間割・カレンダーからメンバー全員の空きを出し、スタジオの料金と一緒に候補を並べます。'];
-// 回答受付中のスタジオ割に自分が出るバンドがあれば、回答ページのカードを先頭に出す
-//   user_account → member → band_member → band → live_day → studio_plan と JOIN でたどる（DISTINCT でライブごとに1行）
-$st = db()->prepare('SELECT DISTINCT l.live_id, l.name FROM user_account u
-    JOIN band_member bm ON bm.member_id = u.member_id
-    JOIN band b ON b.band_id = bm.band_id
-    JOIN live_day d ON d.live_day_id = b.live_day_id
-    JOIN live l ON l.live_id = d.live_id
-    JOIN studio_plan p ON p.live_id = l.live_id AND p.answer_open = 1
-    WHERE u.user_id = ? AND d.held_on >= ?');
-$st->execute([(int)current_user()['user_id'], date('Y-m-d')]);
-foreach (array_reverse($st->fetchAll()) as $r) {
-    // array_unshift = 配列の先頭に足す（逆順にしてから先頭に足すと、元の順で並ぶ）
-    array_unshift($tools, ['studio_answer?live=' . (int)$r['live_id'], 'meeting_room', $r['name'] . ' スタジオ練習', '練習の要否を回答してください。', '回答受付中']);
+// 回答受付中のスタジオ割に自分が出るバンドがあれば、回答ページのカードをタブの上に出す
+$answerCards = []; // 回答受付中のカード。タブの上に常に出す
+foreach (studio_answer_open_lives(db(), (int)current_user()['user_id']) as $r) {
+    $answerCards[] = ['studio_answer?live=' . (int)$r['live_id'], 'meeting_room', $r['name'] . ' スタジオ練習', '練習の要否を回答してください。', '回答受付中'];
 }
+foreach (!empty(current_user()['member_id']) ? sched_todo_polls(db(), (int)current_user()['member_id']) : [] as $p) {
+    $answerCards[] = ['sched_me?poll=' . (int)$p['sched_poll_id'], 'event_available', $p['title'] . ' 日程調整', date('n/j', strtotime((string)$p['date_from'])) . '〜' . date('n/j', strtotime((string)$p['date_to'])) . ' の空きを回答してください。', '未回答'];
+}
+
+// タブ: 行き先 => タブ。ここに無いツールは「便利ツール」に入る
+$tabs = ['data' => 'データ', 'useful' => '便利ツール', 'admin' => '運営ツール', 'game' => 'ゲーム'];
+$tabOf = [
+    'songs' => 'data', 'venue_list' => 'data', 'studio_list' => 'data',
+    'tt_builder' => 'admin', 'studio' => 'admin', 'sheet_templates' => 'admin',
+    'block' => 'game', 'intro' => 'game',
+];
+$grouped = array_fill_keys(array_keys($tabs), []);
+foreach ($tools as $t) {
+    $grouped[$tabOf[$t[0]] ?? 'useful'][] = $t;
+}
+$grouped = array_filter($grouped); // 中身が無いタブ（幹部でないときの運営ツール）は出さない
+$tab = (string)($_GET['tab'] ?? '');
+if (!isset($grouped[$tab])) {
+    $tab = (string)array_key_first($grouped);
+}
+$tools = $grouped[$tab];
 
 render_header('ツール', 'tools');
 ?>
 <h1 class="display display--sm">ツール</h1>
+<?php if ($answerCards): ?>
+<div class="tool-list">
+    <?php foreach ($answerCards as $t): [$href, $ic, $name, $desc] = $t; ?>
+        <a class="card tool-card" href="<?= h($href) ?>">
+            <span class="tool-card__icon"><?= icon($ic) ?></span>
+            <span class="tool-card__body">
+                <span class="tool-card__name"><?= h($name) ?> <span class="tag"><?= h($t[4]) ?></span></span>
+                <span class="muted small"><?= h($desc) ?></span>
+            </span>
+        </a>
+    <?php endforeach; ?>
+</div>
+<?php endif; ?>
+<nav class="tabs tabs--static" aria-label="ツールの種類">
+    <?php foreach (array_keys($grouped) as $k): ?>
+        <a class="tab<?= $k === $tab ? ' is-active' : '' ?>" href="tools?tab=<?= h($k) ?>"<?= $k === $tab ? ' aria-current="page"' : '' ?>><?= h($tabs[$k]) ?></a>
+    <?php endforeach; ?>
+</nav>
 <div class="tool-list">
     <?php foreach ($tools as $t): [$href, $ic, $name, $desc] = $t; $tag = $t[4] ?? null; ?>
         <a class="card tool-card" href="<?= h($href) ?>">
@@ -74,5 +107,7 @@ render_header('ツール', 'tools');
         </a>
     <?php endforeach; ?>
 </div>
+<?php if ($tab === 'useful'): ?>
 <p class="muted small">登録済みのバンドのシートは、バンドのページの「セッティングシート作成」から作ると、メンバーと曲が最初から入ります。</p>
+<?php endif; ?>
 <?php render_footer();

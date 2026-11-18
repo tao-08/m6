@@ -1,0 +1,28 @@
+/* =====================================================================
+ *  assets/ranking.css — ランキングのカード（partials/ranking_card.php）の見た目。ブロックパズル・イントロクイズ共通
+ *  色・角丸・文字サイズ・時間は app.css の変数（:root のトークン）を使う。
+ * ===================================================================== */
+.ranking { width: 100%; max-width: 560px; }
+/* タブ（共通の .tabs）。カードの中なので下の余白を詰め、横幅いっぱいを2等分する */
+.ranking__tabs { margin-bottom: 8px; }
+.ranking__tabs .tab { flex: 1; justify-content: center; }
+.ranking__list { list-style: none; margin: 0; padding: 0; }
+.ranking__row { display: grid; grid-template-columns: 2.2em 1fr auto; align-items: center; gap: 8px;
+  padding: 6px 8px; border-bottom: 1px solid var(--border); }
+.ranking__row:last-child { border-bottom: 0; }
+.ranking__row.is-me { background: var(--accent-soft); border-radius: var(--r-sm); font-weight: 800; }
+.ranking__rank { text-align: center; color: var(--muted); font-variant-numeric: tabular-nums; }
+.ranking__name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ranking__score { font-variant-numeric: tabular-nums; }
+.ranking__empty { margin: 0; padding: 6px 8px; }
+/* 畳んでいる間は、10 人目より後ろで自分ではない行（.is-fold）を隠す */
+.ranking__list.is-collapsed .ranking__row.is-fold { display: none; }
+/* 開閉ボタン（中央寄せ）。display を指定するので、hidden 属性が効くように [hidden] で上書きする */
+.ranking__toggle { display: grid; margin: 4px auto 0; }
+.ranking__toggle[hidden] { display: none; }
+/* 展開中は ⌄ を上下反転（⌃ に見せる）。アイコンは expand_more のまま */
+.ranking__toggle .icon { transition: transform var(--t-fast) ease; }
+.ranking__toggle[aria-expanded="true"] .icon { transform: rotate(180deg); }
+/* 先月の1位（月間の下に小さく） */
+.ranking__last { margin: 8px 8px 0; }
+.ranking__last[hidden] { display: none; }

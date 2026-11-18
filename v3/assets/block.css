@@ -80,26 +80,7 @@ main.container:has(.block-app) { padding-top: 12px; }
 .block-btn:active { transform: scale(.96); background: var(--surface-2); }
 .block-btn .icon { font-size: 28px; vertical-align: 0; }
 
-/* ----- ランキング ----- */
-.block-ranking { width: 100%; max-width: 560px; }
-.block-ranking__title { margin: 0 0 8px; font-size: var(--fs-lg); font-weight: 800; }
-.block-ranking__list { list-style: none; margin: 0; padding: 0; }
-.block-ranking__row { display: grid; grid-template-columns: 2.2em 1fr auto; align-items: center; gap: 8px;
-  padding: 6px 8px; border-bottom: 1px solid var(--border); }
-.block-ranking__row:last-child { border-bottom: 0; }
-.block-ranking__row.is-me { background: var(--accent-soft); border-radius: var(--r-sm); font-weight: 800; }
-.block-ranking__rank { text-align: center; color: var(--muted); font-variant-numeric: tabular-nums; }
-.block-ranking__name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.block-ranking__score { font-variant-numeric: tabular-nums; }
-.block-ranking__empty { margin: 0; }
-/* 畳んでいる間は、10 人目より後ろで自分ではない行（.is-fold）を隠す */
-.block-ranking__list.is-collapsed .block-ranking__row.is-fold { display: none; }
-/* 開閉ボタン（中央寄せ）。display を指定するので、hidden 属性が効くように [hidden] で上書きする */
-.block-ranking__toggle { display: grid; margin: 4px auto 0; }
-.block-ranking__toggle[hidden] { display: none; }
-/* 展開中は ⌄ を上下反転（⌃ に見せる）。アイコンは expand_more のまま */
-.block-ranking__toggle .icon { transition: transform var(--t-fast) ease; }
-.block-ranking__toggle[aria-expanded="true"] .icon { transform: rotate(180deg); }
+/* ランキングは assets/ranking.css（イントロクイズと共通） */
 
 /* スマホでは左下の「戻る」ボタンがゲームの操作ボタンに重なるので隠す（下のナビの「ツール」から戻れる） */
 @media (max-width: 760px) {

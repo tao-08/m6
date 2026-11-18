@@ -1,0 +1,69 @@
+/* =====================================================================
+ *  assets/intro.css — イントロクイズ（intro.php）だけの見た目
+ *  色・角丸・文字サイズ・時間は app.css の変数（:root のトークン）を使う。ランキングは assets/ranking.css。
+ * ===================================================================== */
+
+/* 読み上げ用の見出し（画面には出さない） */
+.intro-sr { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+.intro-layout { display: grid; gap: 16px; justify-items: center; }
+@media (min-width: 900px) {
+  /* PC は左にゲーム、右にランキング */
+  .intro-layout { grid-template-columns: minmax(0, 560px) minmax(260px, 320px); justify-content: center; align-items: start; gap: 32px; }
+}
+
+.intro-app { width: 100%; max-width: 560px; }
+.intro-screen { display: grid; gap: 12px; }
+.intro-screen[hidden], .intro-screen [hidden] { display: none; }
+.intro-big { min-height: 48px; padding-inline: 28px; font-size: var(--fs-lg); justify-content: center; }
+.intro-error { margin: 0; font-size: var(--fs-sm); color: var(--danger); }
+.intro-note { margin: 0; text-align: center; }
+
+/* ----- 絞り込み ----- */
+.intro-filters { display: grid; gap: 10px; }
+
+/* ----- 問番号・合計点・残り時間 ----- */
+.intro-stats { display: flex; justify-content: space-between; align-items: baseline; font-size: var(--fs-lg); font-variant-numeric: tabular-nums; }
+.intro-stat b { font-size: var(--fs-2xl); font-weight: 800; }
+.intro-stat--score b { font-size: var(--fs-3xl); font-weight: 900; }
+.intro-timer { height: 8px; border-radius: var(--r-full); background: var(--surface-2); overflow: hidden; }
+.intro-timer__bar { display: block; height: 100%; border-radius: var(--r-full); background: var(--accent-2); transform-origin: left center; }
+.intro-timer__bar.is-low { background: var(--danger); }
+
+/* 読み込み中（音源が鳴らせるまで） */
+.intro-loading { margin: 0; padding: 32px 0; text-align: center; color: var(--muted); animation: intro-pulse 1s ease-in-out infinite alternate; }
+.intro-loading .icon { font-size: 48px; }
+@keyframes intro-pulse { from { opacity: .35; } to { opacity: 1; } }
+
+/* ----- 4 つの選択肢（スマホの親指で押しやすい大きさ） ----- */
+.intro-choices { display: grid; gap: 8px; }
+.intro-choice { min-height: 56px; padding: 10px 14px; text-align: left; cursor: pointer; overflow-wrap: anywhere;
+  border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface); color: var(--text);
+  font: 700 var(--fs-md)/1.4 var(--font); touch-action: manipulation;
+  transition: transform var(--t-fast) ease, background-color var(--t-fast) ease, border-color var(--t-fast) ease; }
+.intro-choice:not(:disabled):active { transform: scale(.98); background: var(--surface-2); }
+.intro-choice:disabled { cursor: default; }
+.intro-choice:disabled:not(.is-correct, .is-wrong) { opacity: .6; }
+.intro-choice.is-correct { background: var(--ok-bg); border-color: var(--ok); color: var(--ok); }
+.intro-choice.is-wrong { background: var(--danger-bg); border-color: var(--danger); color: var(--danger); }
+
+/* ----- 答え合わせ ----- */
+.intro-answer { display: grid; gap: 12px; }
+.intro-answer__verdict { margin: 0; display: flex; align-items: center; gap: 8px; color: var(--danger); font-size: var(--fs-2xl); }
+.intro-answer__verdict.is-right { color: var(--ok); }
+.intro-answer__verdict .icon { font-size: 32px; }
+.intro-answer__verdict b { font-weight: 900; font-variant-numeric: tabular-nums; }
+.intro-track { display: flex; align-items: center; gap: 12px; }
+.intro-track__art { flex: none; width: 96px; height: 96px; border-radius: var(--r-md); object-fit: cover; background: var(--surface-2); }
+.intro-track__art[hidden] { display: none; }
+.intro-track__text { min-width: 0; }
+.intro-track__title { margin: 0; font-size: var(--fs-xl); font-weight: 800; overflow-wrap: anywhere; }
+.intro-track__artist { margin: 2px 0 0; overflow-wrap: anywhere; }
+.intro-bands { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: var(--fs-sm); }
+.intro-bands a { font-weight: 700; }
+
+/* ----- 終了 ----- */
+.intro-screen[data-screen="over"] { justify-items: center; text-align: center; }
+.intro-result__score { margin: 0; font-size: var(--fs-3xl); font-weight: 900; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.intro-result__best { margin: 0; font-weight: 800; color: var(--accent); }
+.intro-result__rank { margin: 0; font-size: var(--fs-md); min-height: 1.2em; }

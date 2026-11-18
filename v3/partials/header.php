@@ -26,6 +26,10 @@ if ($user) {
     // 掲示板: 未読の書き込みがあるスレの数（見られるスレだけ。lib/board.php）
     require_once __DIR__ . '/../lib/board.php';
     $unreadBoard = board_unread_count($user);
+    require_once __DIR__ . '/../lib/repository.php';
+    // ツールのバッジ: 回答受付中のスタジオ割と未回答の日程調整の数（lib/repository.php）
+    $toolBadge = count(studio_answer_open_lives(db(), (int)$user['user_id']))
+        + (!empty($user['member_id']) ? count(sched_todo_polls(db(), (int)$user['member_id'])) : 0);
     // 公開されたお知らせのプッシュ通知は、応答を返し終わってから送る（lib/push.php）
     require_once __DIR__ . '/../lib/push.php';
     push_dispatch_after_response();
@@ -178,7 +182,7 @@ $nav = [
         <?php if ($user): /* ナビ・検索・掲示板・通知は同じ条件なので、ひとつの if にまとめてある */ ?>
         <nav class="nav" aria-label="メイン">
             <?php foreach ($nav as $key => [$href, $label]): ?>
-                <a href="<?= h($href) ?>" class="nav__link<?= $activeNav === $key ? ' is-active' : '' ?>"><?= h($label) ?></a>
+                <a href="<?= h($href) ?>" class="nav__link<?= $activeNav === $key ? ' is-active' : '' ?>"><?= h($label) ?><?php if ($key === 'tools' && !empty($toolBadge)): ?><span class="badge-dot badge-dot--nav" aria-label="未回答"><?= (int)$toolBadge ?></span><?php endif; ?></a>
             <?php endforeach; ?>
         </nav>
         <a href="search" class="icon-btn<?= $activeNav === 'search' ? ' is-active' : '' ?>" aria-label="検索" title="検索">

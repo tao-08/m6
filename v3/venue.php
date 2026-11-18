@@ -263,7 +263,7 @@ $mapQuery = (string)($venue['address'] ?: $venue['name']);
 render_header($venue['name'], 'tools');
 ?>
 <link rel="stylesheet" href="<?= asset_url('assets/venue.css') ?>">
-<nav class="crumbs"><a href="tools">ツール</a> / <a href="venue_list">会場リスト</a></nav>
+<nav class="crumbs"><a href="tools">ツール</a> / <a href="venue_list">ライブ会場リスト</a></nav>
 <h1 class="display display--sm"><?= h($venue['name']) ?></h1>
 
 <!-- 基本情報 -->

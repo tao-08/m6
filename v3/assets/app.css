@@ -156,6 +156,8 @@ a:hover { color: var(--accent); }
 [data-theme="dark"] .brand__logo--dark { display: block; }
 .nav { display: flex; gap: 4px; }
 .nav__link { padding: 8px 14px; border-radius: var(--r-full); color: var(--muted); font-weight: 600; font-size: var(--fs-md); white-space: nowrap; }
+.nav__link { position: relative; }
+.badge-dot--nav { top: 0; right: 0; } /* ナビの「ツール」の右上（回答受付中の数） */
 .nav__link { transition: color var(--t-fast) ease, background-color var(--t-fast) ease, box-shadow var(--t-fast) ease; }
 .nav__link:hover { color: var(--text); background: var(--surface-2); }
 .nav__link.is-active { color: var(--text); background: var(--surface); box-shadow: inset 0 0 0 1px var(--border); }

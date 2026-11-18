@@ -1,7 +1,7 @@
 <?php
 /**
  * =====================================================================
- *  venue_list.php — 会場リスト（tools.php から入る）
+ *  venue_list.php — ライブ会場リスト（tools.php から入る）
  * =====================================================================
  *  会場ごとに「使った回数（live_day の行数）」と最寄り駅（徒歩がいちばん短い1つ）を出す。
  *  詳細・編集は venue.php。並びは masters.php と同じ venue.sort_order。
@@ -25,11 +25,11 @@ foreach ($pdo->query('SELECT venue_id, station_name, walk_minutes FROM venue_sta
     $nearest[(int)$s['venue_id']] ??= $s;
 }
 
-render_header('会場リスト', 'tools');
+render_header('ライブ会場リスト', 'tools');
 ?>
 <link rel="stylesheet" href="<?= asset_url('assets/venue.css') ?>">
 <nav class="crumbs"><a href="tools">ツール</a></nav>
-<h1 class="display display--sm">会場リスト</h1>
+<h1 class="display display--sm">ライブ会場リスト</h1>
 <?php if (!$venues): ?>
     <div class="empty card"><p class="empty__title">会場がありません</p></div>
 <?php else: ?>
