@@ -92,7 +92,9 @@ function build_attach_plan(PDO $pdo, array $plan, array $target): array
             }
             $timetables[0]['label'] = $target['label'];
             $plan['timetables'] = [$timetables[0]];
+            $plan['timetables'][0]['file'] = '名簿のバンド';
             $plan['attach']['mode'] = 'timetable';
+            $plan['attach']['from_roster'] = true; // 画面の文言は「名簿を追加」のままにする
             $plan['order_unset'] = true;
             $plan = finish_import_plan($plan);
             // 名前での自動の対応付けは使わず、選んだ名簿のバンドをそのまま枠に対応させる
@@ -206,7 +208,8 @@ function commit_attach_plan(PDO $pdo, array $plan, array $input): int
     $pdo->beginTransaction();
     try {
         $isTimetable = $attach['mode'] === 'timetable';
-        $op = change_begin($pdo, 'import', $isTimetable ? 'タイムテーブルを追加' : '名簿を追加', $liveId);
+        $isTimetableFile = $isTimetable && empty($attach['from_roster']); // 文言用: 名簿だけから作ったときは「名簿を追加」
+        $op = change_begin($pdo, 'import', $isTimetableFile ? 'タイムテーブルを追加' : '名簿を追加', $liveId);
         change_capture_day($pdo, $op, $dayId); // 変更前の日程（休憩・全バンド・メンバー）を履歴に残す
         $bandRosters = [];
         $overwriteIds = []; // 名簿で入れ直すバンド（プレビューでチェックされた、登録済みのバンド）
@@ -276,7 +279,7 @@ function commit_attach_plan(PDO $pdo, array $plan, array $input): int
         }
         register_roster_members($pdo, $plan, $input, $apply, $overwriteIds);
         link_users_to_members($pdo);
-        change_set_summary($pdo, $op, attach_title($attach) . ($isTimetable ? ' にタイムテーブルを追加' : ' に名簿を追加'), $liveId);
+        change_set_summary($pdo, $op, attach_title($attach) . ($isTimetableFile ? ' にタイムテーブルを追加' : ' に名簿を追加'), $liveId);
         $pdo->commit();
     } catch (Throwable $e) {
         $pdo->rollBack();

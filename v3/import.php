@@ -314,7 +314,7 @@ if (is_post()) {
                 $liveId = commit_attach_plan($pdo, $_SESSION['import_plan'], $input);
                 unset($_SESSION['import_plan'], $_SESSION['import_form']);
                 refresh_session_member($pdo);
-                flash($attach['mode'] === 'timetable' ? 'タイムテーブルを追加しました！' : '名簿を追加しました！');
+                flash($attach['mode'] === 'timetable' && empty($attach['from_roster']) ? 'タイムテーブルを追加しました！' : '名簿を追加しました！');
                 redirect('live?id=' . $liveId . '#day-' . (int)$attach['live_day_id']); // #day-◯ で、その日程のタブを開く
             }
             $liveIds = commit_import_plan($pdo, $_SESSION['import_plan'], $input);
@@ -755,7 +755,7 @@ if ($plan === null): // ==================== アップロード画面 ==========
 
             <?php if ($attach): // 登録済みの日程への追加: ライブ名・日程・開催日・会場は決まっているので、入力欄の代わりに追加先だけ出す ?>
             <p class="attach-target"><?= icon('subdirectory_arrow_right') ?> <strong><?= h(attach_title($attach)) ?></strong>
-                <span class="muted small"><?= $attach['mode'] === 'timetable' ? '出演順・時間・休憩を反映' : '名簿を紐付け（登録済みのバンドは見比べて選ぶ）' ?></span></p>
+                <span class="muted small"><?= $attach['mode'] === 'timetable' && empty($attach['from_roster']) ? '出演順・時間・休憩を反映' : (!empty($attach['from_roster']) ? '名簿のバンドを新しく登録' : '名簿を紐付け（登録済みのバンドは見比べて選ぶ）') ?></span></p>
             <!-- 下の JS（setupImportPreview）が「取り込まない」のチェックボックスを前提にしているので、見えない形で置いておく -->
             <input type="checkbox" hidden data-skip aria-hidden="true" tabindex="-1">
             <?php else: ?>
@@ -812,7 +812,7 @@ if ($plan === null): // ==================== アップロード画面 ==========
 
             <?php
             // 名簿だけの追加: 並びは DB のまま（並び替え・バンド名・曲数・メモは触らせない）。名簿の対応付けだけ選ぶ
-            $rosterOnly = ($attach['mode'] ?? '') === 'roster';
+            $rosterOnly = ($attach['mode'] ?? '') === 'roster' || !empty($attach['from_roster']); // バンドが1組もない日程の名簿だけも同じ画面（バンド名・曲数は名簿のまま）
             // タイムテーブルの追加: 各枠が「どの既存バンドか」を選ぶ列を足す
             $attachBands = ($attach['mode'] ?? '') === 'timetable' ? attach_day_bands($pdo, (int)$attach['live_day_id']) : [];
             // 「登録済み」と「名簿」を見比べる材料（下の JS が使う）
@@ -859,7 +859,8 @@ if ($plan === null): // ==================== アップロード画面 ==========
                             <td class="mono nowrap muted" data-time><?= h($ts['start_time']) ?><?= $ts['end_time'] ? '–' . h($ts['end_time']) : '' ?></td>
                             <?php if ($rosterOnly): // DB のバンド名のまま。readonly = 見えるし送られるが、書き換えられない ?>
                             <td><input name="tt[<?= $ti ?>][s][<?= $si ?>][name]" value="<?= h($s['band_name']) ?>" readonly data-band-name aria-label="バンド名">
-                                <?= attach_compare_html("tt[$ti][s][$si][overwrite]", !empty($fs['overwrite'])) ?></td>
+                                <?= attach_compare_html("tt[$ti][s][$si][overwrite]", !empty($fs['overwrite'])) ?>
+                                <?php if (!empty($attach['from_roster'])): // 曲数の欄は出さないので、名簿の曲数をそのまま送る ?><input type="hidden" name="tt[<?= $ti ?>][s][<?= $si ?>][songs]" value="<?= h($s['song_count'] ?? '') ?>"><?php endif; ?></td>
                             <?php else: ?>
                             <td><input name="tt[<?= $ti ?>][s][<?= $si ?>][name]" value="<?= h($fs['name'] ?? $s['band_name']) ?>" maxlength="100" data-suggest-list="band-names" autocomplete="off" data-band-name aria-label="バンド名"></td>
                             <?php endif; ?>
