@@ -20,6 +20,9 @@
   const SECONDS = 10;        // 1 問の制限時間（lib/intro.php の INTRO_SECONDS と同じ）
   const LOAD_TIMEOUT = 8000; // 音源がこの時間（ミリ秒）で読めなければ差し替える
   const LOW_SECONDS = 3;     // 残りがこれ以下になったらバーの色を変える
+  const READY_MS = 1000;     // 問の前の Ready を見せる時間（リングが一周する時間。intro.css の intro-ring と同じ）
+  const COUNT_MS = 600;      // 合計点が増えていく時間（終了画面はこの倍）
+  const calm = window.matchMedia('(prefers-reduced-motion: reduce)'); // 動きを減らす設定なら、点数は数えずにすぐ出す
   // 音の長さが 0 の WAV。開始ボタンの中で一度鳴らして、再生の許可をもらうのに使う
   const SILENT = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=';
 
@@ -31,7 +34,12 @@
 
   const readyErr = screens.ready.querySelector('[data-error]');
   const playErr = screens.play.querySelector('[data-error]');
-  const note = $('[data-note]');
+  const notes = app.querySelectorAll('[data-note]'); // 「絞り込み中はランキングに載りません」（タイトル画面と範囲の小窓）
+  const scopeDlg = document.getElementById('intro-scope');
+  const scopeLabel = $('[data-scope-label]');
+  const countEl = $('[data-count]');
+  const btnStart = $('[data-act="start"]');
+  let countOk = !btnStart.disabled; // 出題できる曲が 4 曲以上あるか（無ければ開始できない）
   const stat = { n: $('[data-stat="n"]'), total: $('[data-stat="total"]'), score: $('[data-stat="score"]') };
   const timerBar = $('[data-timer]');
   const loading = $('[data-loading]');
@@ -51,6 +59,31 @@
 
   function showScreen(name) {
     Object.entries(screens).forEach(([k, node]) => { node.hidden = k !== name; });
+  }
+
+  const sleep = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
+
+  /** 数字を今の値から to まで数えて増やす（ease-out）。途中で呼ばれたら、前の数えを止めて今の値から数え直す */
+  function countUp(node, to, ms) {
+    cancelAnimationFrame(node.countRaf);
+    const from = Number(node.dataset.value || 0);
+    node.dataset.value = String(to);
+    if (calm.matches || from === to) { node.textContent = fmt(to); return; }
+    const t0 = performance.now();
+    const step = (now) => {
+      const p = Math.min(1, (now - t0) / ms);
+      node.textContent = fmt(Math.round(from + (to - from) * (1 - (1 - p) ** 3)));
+      if (p < 1) node.countRaf = requestAnimationFrame(step);
+    };
+    node.countRaf = requestAnimationFrame(step);
+  }
+
+  /** Ready のリングを最初から回す。READY_MS たっても読み込み中なら is-wait（くるくる回り続ける）に切り替える */
+  function runReady() {
+    loading.classList.remove('is-run', 'is-wait');
+    void loading.offsetWidth; // 一度描かせて、同じ class を付け直したときもアニメーションを最初から動かす
+    loading.classList.add('is-run');
+    return setTimeout(() => loading.classList.add('is-wait'), READY_MS);
   }
 
   function stopAll() {
@@ -86,10 +119,48 @@
     liveSel.replaceChildren(liveSel.options[0], ...opts);
     liveSel.value = opts.some((o) => o.value === keep) ? keep : '';
   });
-  app.querySelectorAll('[data-filter]').forEach((s) => s.addEventListener('change', () => {
-    note.hidden = !['year', 'live', 'artist'].some((k) => filterEl(k).value !== '');
-  }));
   const filterValue = (k) => (filterEl(k).value === '' ? null : Number(filterEl(k).value));
+  const filtered = () => ['year', 'live', 'artist'].some((k) => filterEl(k).value !== '');
+  const optText = (k) => filterEl(k).selectedOptions[0].textContent;
+
+  /** 範囲のボタンの文字（「すべて」/「2025年度 · アーティスト名」など）。ライブを選んでいれば年度はライブ名に入っているので省く */
+  function scopeText() {
+    const parts = [];
+    if (filterEl('live').value) parts.push(optText('live'));
+    else if (filterEl('year').value) parts.push(`${optText('year')}年度`);
+    if (filterEl('artist').value) parts.push(optText('artist'));
+    return parts.length ? parts.join(' · ') : 'すべて';
+  }
+
+  /** 範囲が変わったら、ボタンの文字・注意書き・出題できる曲の数を直す（曲の数はサーバーに聞く。続けて変えたら最後の答えだけ使う） */
+  let countSeq = 0;
+  async function refreshScope() {
+    const on = filtered();
+    notes.forEach((n) => { n.hidden = !on; });
+    scopeLabel.textContent = scopeText();
+    app.querySelector('[data-act="scope"]').classList.toggle('is-on', on);
+    const seq = ++countSeq;
+    countEl.textContent = '…';
+    try {
+      const r = await post({ action: 'count', year: filterValue('year'), live: filterValue('live'), artist: filterValue('artist') });
+      if (seq !== countSeq) return;
+      countEl.textContent = fmt(r.count);
+      countOk = r.count >= 4; // lib/intro.php の INTRO_MIN_SONGS と同じ
+    } catch (e) {
+      if (seq !== countSeq) return;
+      countEl.textContent = '?';
+      countOk = true; // 数えられなくても、開始はサーバーが判断する
+    }
+    btnStart.disabled = !countOk;
+  }
+  app.querySelectorAll('[data-filter]').forEach((s) => s.addEventListener('change', refreshScope));
+
+  /** 自分の記録の表示（点数と順位）。intro.php の intro_mine_html と同じ形 */
+  function setMine(key, mine) {
+    const dd = app.querySelector(`[data-mine="${key}"]`);
+    if (!mine) { dd.textContent = '—'; return; }
+    dd.replaceChildren(document.createTextNode(fmt(mine.score)), el('small', '', `${mine.rank}位`));
+  }
 
   /* ---------- 音 ---------- */
   function setSource(audio, url) {
@@ -141,9 +212,11 @@
     loading.hidden = false;
     timerBar.style.transform = 'scaleX(1)';
     timerBar.classList.remove('is-low');
+    const readyTimer = runReady();
 
     if (audio.dataset.url !== url) setSource(audio, url);
-    let ok = await waitReady(audio);
+    // Ready は最低 READY_MS 見せる（先読みで音源がもう読めていても、リングが一周するまで待つ）
+    let [ok] = await Promise.all([waitReady(audio), sleep(READY_MS)]);
     while (!ok) { // 鳴らない曲は、サーバーに別の曲へ差し替えてもらう（1 ラウンド 3 回まで）
       if (token !== st.token) return;
       try {
@@ -167,10 +240,12 @@
     }
     if (token !== st.token) return;
 
-    // 選択肢を出すのと同時に再生を始める
+    // 選択肢を出すのと同時に再生を始める（ボタンは上から順に飛び出す: --i = 何番目か）
+    clearTimeout(readyTimer);
     choicesBox.replaceChildren(...choices.map((title, idx) => {
       const b = el('button', 'intro-choice', title);
       b.type = 'button';
+      b.style.setProperty('--i', String(idx));
       b.addEventListener('click', () => submit(idx));
       return b;
     }));
@@ -225,7 +300,7 @@
 
   function showAnswer(r) {
     st.score = r.score;
-    stat.score.textContent = fmt(r.score);
+    countUp(stat.score, r.score, COUNT_MS);
     choicesBox.querySelectorAll('button').forEach((b, idx) => {
       b.classList.toggle('is-correct', idx === r.correct);
       b.classList.toggle('is-wrong', idx === st.pending && idx !== r.correct);
@@ -246,10 +321,9 @@
     $('[data-title]').textContent = r.info.title;
     $('[data-artist]').textContent = r.info.artist;
     $('[data-bands]').replaceChildren(...r.info.bands.map((b) => {
+      // リンクにはしない（押すとページを離れて、遊んでいる途中のラウンドが消えるため）
       const li = document.createElement('li');
-      const a = el('a', '', b.name);
-      a.href = `band?id=${Number(b.id)}`;
-      li.append(a, el('span', 'muted small', ` ${b.live}`));
+      li.append(el('span', 'intro-bands__name', b.name), el('span', 'muted small', ` ${b.live}`));
       return li;
     }));
     answerBox.hidden = false;
@@ -272,7 +346,8 @@
 
   function showOver(r) {
     stopAll();
-    res.score.textContent = fmt(r.score);
+    res.score.dataset.value = '0'; // 終了画面の点数は 0 から数える
+    res.score.textContent = '0';
     // 「自己ベスト更新」はベストスコアを超えたとき、「今月の自己ベスト更新」は今月の記録だけ超えたとき
     res.best.hidden = !(r.best || r.month_best);
     res.best.textContent = r.best ? '自己ベスト更新' : '今月の自己ベスト更新';
@@ -281,7 +356,9 @@
       ? [r.month_mine && `月間 ${r.month_mine.rank}位`, r.mine && `ベスト ${r.mine.rank}位`].filter(Boolean).join(' / ')
       : '';
     if (rankBox) Ranking.render(rankBox, r);
+    if (st.ranked) { setMine('month', r.month_mine); setMine('best', r.mine); }
     showScreen('over');
+    countUp(res.score, r.score, COUNT_MS * 2);
   }
 
   /* ---------- 開始 ---------- */
@@ -293,13 +370,15 @@
       delete a.dataset.url;
       return a.play().then(() => a.pause()).catch(() => {});
     });
-    const btn = $('[data-act="start"]');
+    const btn = btnStart;
     btn.disabled = true;
     try {
       const body = { action: 'start', year: filterValue('year'), live: filterValue('live'), artist: filterValue('artist') };
       const [r] = await Promise.all([post(body), Promise.all(unlocked)]);
       st = { round: r.round, total: r.total, ranked: r.ranked, i: 0, score: 0, token: 0, answered: false, pending: null, next: null, final: null, raf: 0 };
       stat.total.textContent = String(r.total);
+      cancelAnimationFrame(stat.score.countRaf);
+      stat.score.dataset.value = '0';
       stat.score.textContent = '0';
       showScreen('play');
       present(0, r.preview);
@@ -307,9 +386,16 @@
       readyErr.textContent = e.message || '送信できませんでした';
       readyErr.hidden = false;
     } finally {
-      btn.disabled = false;
+      btn.disabled = !countOk;
     }
   }
+
+  // 遊んでいる途中にページを離れようとしたら、ブラウザの「このページを離れますか？」を出す（離れるとラウンドが消える）
+  window.addEventListener('beforeunload', (e) => {
+    if (screens.play.hidden) return;
+    e.preventDefault();
+    e.returnValue = ''; // 古いブラウザは returnValue が要る
+  });
 
   app.addEventListener('click', (e) => {
     const act = e.target.closest('[data-act]')?.dataset.act;
@@ -317,5 +403,11 @@
     else if (act === 'next') next();
     else if (act === 'retry') sendAnswer();
     else if (act === 'again') { stopAll(); showScreen('ready'); }
+    else if (act === 'scope') scopeDlg.showModal();
+    else if (act === 'scope-close') scopeDlg.close();
+    else if (act === 'scope-reset') {
+      ['year', 'live', 'artist'].forEach((k) => { filterEl(k).value = ''; });
+      filterEl('year').dispatchEvent(new Event('change')); // ライブの候補を全部に戻す（refreshScope もここで呼ばれる）
+    }
   });
 })();

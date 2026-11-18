@@ -19,8 +19,41 @@
 .intro-error { margin: 0; font-size: var(--fs-sm); color: var(--danger); }
 .intro-note { margin: 0; text-align: center; }
 
-/* ----- 絞り込み ----- */
+/* ----- タイトル画面 ----- */
+.intro-title { justify-items: center; text-align: center; gap: 16px; padding-block: 28px; overflow: hidden; }
+/* イコライザー（飾り）: 下を軸に伸び縮みする棒。--d（何本目か）で動きをずらす */
+.intro-eq { display: flex; align-items: flex-end; justify-content: center; gap: 6px; height: 56px; }
+.intro-eq span { width: 8px; height: 100%; border-radius: var(--r-full); background: linear-gradient(var(--accent), var(--accent-2));
+  transform-origin: bottom; animation: intro-eq .9s ease-in-out infinite alternate; animation-delay: calc(var(--d, 0) * -.23s); }
+.intro-eq span:nth-child(3n) { animation-duration: 1.2s; }
+.intro-eq span:nth-child(3n + 1) { animation-duration: .7s; }
+@keyframes intro-eq { from { transform: scaleY(.15); } to { transform: scaleY(1); } }
+/* ロゴ（読み上げは h1 の「イントロクイズ」） */
+/* 斜体の右端が background-clip の外に出て欠けるので、左右に少し余白を足す */
+.intro-logo { margin: 0; padding-inline: .12em; font-size: clamp(28px, 9vw, 52px); font-weight: 900; line-height: 1.1; letter-spacing: .02em; white-space: nowrap;
+  font-style: italic; background: linear-gradient(135deg, var(--accent), var(--accent-2)); -webkit-background-clip: text; background-clip: text; color: transparent;
+  animation: intro-jump .6s cubic-bezier(.2, 1.6, .4, 1) both; }
+/* 「(ほぼ)」は小さく、ベースラインに揃えて前に置く */
+.intro-logo__sub { margin-right: .1em; font-size: .38em; letter-spacing: 0; }
+/* 自分の記録 */
+.intro-mine { display: flex; gap: 32px; margin: 0; }
+.intro-mine dt { font-size: var(--fs-xs); color: var(--muted); font-weight: 700; }
+.intro-mine dd { margin: 0; font-size: var(--fs-2xl); font-weight: 900; font-variant-numeric: tabular-nums; }
+.intro-mine small { margin-left: 4px; font-size: var(--fs-sm); color: var(--muted); font-weight: 700; }
+/* 開始ボタンは脈打つ（押せないときは止める） */
+.intro-start { min-width: 200px; animation: intro-call 1.6s ease-out infinite; }
+.intro-start:disabled { animation: none; }
+@keyframes intro-call { 0% { box-shadow: 0 0 0 0 var(--accent-soft); } 70%, 100% { box-shadow: 0 0 0 14px transparent; } }
+/* 範囲のボタン。絞り込み中（is-on）は色を付ける */
+.intro-scope { gap: 6px; max-width: 100%; }
+.intro-scope [data-scope-label] { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.intro-scope__count { color: var(--muted); font-variant-numeric: tabular-nums; }
+.intro-scope.is-on { color: var(--accent); border-color: var(--accent); }
+
+/* ----- 範囲の小窓 ----- */
+.intro-modal__head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
 .intro-filters { display: grid; gap: 10px; }
+.intro-modal .intro-note { margin-top: 10px; }
 
 /* ----- 問番号・合計点・残り時間 ----- */
 .intro-stats { display: flex; justify-content: space-between; align-items: baseline; font-size: var(--fs-lg); font-variant-numeric: tabular-nums; }
@@ -30,10 +63,22 @@
 .intro-timer__bar { display: block; height: 100%; border-radius: var(--r-full); background: var(--accent-2); transform-origin: left center; }
 .intro-timer__bar.is-low { background: var(--danger); }
 
-/* 読み込み中（音源が鳴らせるまで） */
-.intro-loading { margin: 0; padding: 32px 0; text-align: center; color: var(--muted); animation: intro-pulse 1s ease-in-out infinite alternate; }
-.intro-loading .icon { font-size: 48px; }
-@keyframes intro-pulse { from { opacity: .35; } to { opacity: 1; } }
+/* ----- Ready（問の前の 1 秒。音源がまだ読めなければ回り続ける） -----
+ *  is-run  … リングが 1 秒で一周する（JS が問ごとに付け直して動きを最初からにする）
+ *  is-wait … 1 秒たっても読めていないとき。短い弧がくるくる回る */
+.intro-ready { position: relative; width: 140px; height: 140px; margin: 24px auto; display: grid; place-items: center; }
+.intro-ready__ring { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
+.intro-ready__track, .intro-ready__arc { fill: none; stroke-width: 8; }
+.intro-ready__track { stroke: var(--surface-2); }
+.intro-ready__arc { stroke: var(--accent); stroke-linecap: round; stroke-dasharray: 100; stroke-dashoffset: 100; }
+.intro-ready.is-run .intro-ready__arc { animation: intro-ring 1s linear forwards; }
+.intro-ready.is-run .intro-ready__text { animation: intro-beat 1s ease-in-out; }
+.intro-ready.is-wait .intro-ready__arc { animation: none; stroke-dashoffset: 75; }
+.intro-ready.is-wait .intro-ready__ring { animation: intro-spin .8s linear infinite; }
+.intro-ready__text { font-size: var(--fs-2xl); font-weight: 900; letter-spacing: .04em; }
+@keyframes intro-ring { to { stroke-dashoffset: 0; } }
+@keyframes intro-spin { from { transform: rotate(-90deg); } to { transform: rotate(270deg); } }
+@keyframes intro-beat { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.12); } }
 
 /* ----- 4 つの選択肢（スマホの親指で押しやすい大きさ） ----- */
 .intro-choices { display: grid; gap: 8px; }
@@ -46,9 +91,22 @@
 .intro-choice:disabled:not(.is-correct, .is-wrong) { opacity: .6; }
 .intro-choice.is-correct { background: var(--ok-bg); border-color: var(--ok); color: var(--ok); }
 .intro-choice.is-wrong { background: var(--danger-bg); border-color: var(--danger); color: var(--danger); }
+/* 出るとき: 上から順に少しずつずらして飛び出す（--i = 何番目か。JS が付ける） */
+.intro-choice { animation: intro-pop .45s cubic-bezier(.2, 1.4, .4, 1) both; animation-delay: calc(var(--i, 0) * 70ms); }
+/* 正解は弾む・選んだ不正解は横に揺れる（shorthand で animation-delay も 0 に戻る） */
+.intro-choice.is-correct { animation: intro-bounce .5s ease-out; }
+.intro-choice.is-wrong { animation: intro-shake .45s ease-in-out; }
+@keyframes intro-pop { from { opacity: 0; transform: translateY(-12px) scale(.94); } to { opacity: 1; transform: none; } }
+@keyframes intro-bounce { 0%, 100% { transform: scale(1); } 40% { transform: scale(1.06); } 70% { transform: scale(.98); } }
+@keyframes intro-shake { 0%, 100% { transform: translateX(0); } 20%, 60% { transform: translateX(-6px); } 40%, 80% { transform: translateX(6px); } }
 
 /* ----- 答え合わせ ----- */
-.intro-answer { display: grid; gap: 12px; }
+.intro-answer { display: grid; gap: 12px; animation: intro-rise .4s ease-out; }
+/* 正誤のアイコンと獲得点は飛び出す */
+.intro-answer__verdict .icon, .intro-answer__verdict b { animation: intro-jump .5s cubic-bezier(.2, 1.6, .4, 1) both; }
+.intro-answer__verdict b { animation-delay: 80ms; }
+@keyframes intro-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes intro-jump { from { opacity: 0; transform: translateY(10px) scale(.6); } to { opacity: 1; transform: none; } }
 .intro-answer__verdict { margin: 0; display: flex; align-items: center; gap: 8px; color: var(--danger); font-size: var(--fs-2xl); }
 .intro-answer__verdict.is-right { color: var(--ok); }
 .intro-answer__verdict .icon { font-size: 32px; }
@@ -60,10 +118,16 @@
 .intro-track__title { margin: 0; font-size: var(--fs-xl); font-weight: 800; overflow-wrap: anywhere; }
 .intro-track__artist { margin: 2px 0 0; overflow-wrap: anywhere; }
 .intro-bands { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: var(--fs-sm); }
-.intro-bands a { font-weight: 700; }
+.intro-bands__name { font-weight: 700; }
 
 /* ----- 終了 ----- */
 .intro-screen[data-screen="over"] { justify-items: center; text-align: center; }
 .intro-result__score { margin: 0; font-size: var(--fs-3xl); font-weight: 900; line-height: 1.1; font-variant-numeric: tabular-nums; }
-.intro-result__best { margin: 0; font-weight: 800; color: var(--accent); }
+.intro-result__best { margin: 0; font-weight: 800; color: var(--accent); animation: intro-jump .5s cubic-bezier(.2, 1.6, .4, 1) .9s both; }
 .intro-result__rank { margin: 0; font-size: var(--fs-md); min-height: 1.2em; }
+
+/* 動きを減らす設定の端末では、飛び出す・揺れる・回るを止める（Ready のリングは最初から一周した形で見せる） */
+@media (prefers-reduced-motion: reduce) {
+  .intro-app *, .intro-app *::before { animation: none !important; }
+  .intro-ready__arc { stroke-dashoffset: 0; }
+}

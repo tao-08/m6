@@ -49,8 +49,8 @@
       const rows = lists[p.dataset.rankPanel] || [];
       p.querySelector('[data-rank-list]').replaceChildren(...rows.map((x) => {
         const li = document.createElement('li');
-        li.className = 'ranking__row' + (x.me ? ' is-me' : '') + (x.fold ? ' is-fold' : '');
-        li.append(el('span', 'ranking__rank', String(x.rank)), el('span', 'ranking__name', x.name), el('span', 'ranking__score', fmt(x.score)));
+        li.className = 'game-ranking__row' + (x.me ? ' is-me' : '') + (x.fold ? ' is-fold' : '');
+        li.append(el('span', 'game-ranking__rank', String(x.rank)), el('span', 'game-ranking__name', x.name), el('span', 'game-ranking__score', fmt(x.score)));
         return li;
       }));
       p.querySelector('[data-rank-empty]').hidden = rows.length > 0;

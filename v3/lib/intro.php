@@ -29,13 +29,18 @@ const INTRO_LOOKUPS    = 2;   // ラウンドを始めるときに、試聴を�
 const INTRO_BROKEN_MAX = 3;   // 音源が鳴らなかった問を差し替えられる回数（1 ラウンドあたり）
 const INTRO_BAND_MAX   = 20;  // 答え合わせに出すバンドの数の上限
 
-/** 点数。正解したときの 100〜1000 点（速いほど高い）。猶予も過ぎたら 0 点 */
+/**
+ * 点数。正解したときの 100〜1000 点（速いほど高い）。猶予も過ぎたら 0 点。
+ *   下がり方は放物線: 100 + 900 × (1 − t/10)²。最初に急に下がり、後半はゆっくり（即答した人ほど得をする）
+ *   例: 0秒 1000 / 2秒 676 / 4秒 424 / 6秒 244 / 8秒 136 / 10秒 100
+ */
 function intro_points(float $elapsed): int
 {
     if ($elapsed > INTRO_SECONDS + INTRO_GRACE) {
         return 0;
     }
-    return (int)round(100 + 900 * max(0.0, 1 - max(0.0, $elapsed) / INTRO_SECONDS));
+    $left = max(0.0, 1 - max(0.0, $elapsed) / INTRO_SECONDS); // 残り時間の割合（1 → 0）
+    return (int)round(100 + 900 * $left ** 2);
 }
 
 /**
@@ -138,6 +143,15 @@ function intro_lookup_previews(PDO $pdo, array &$pool): void
         $pool[$i]['preview'] = $url;
         $pool[$i]['lookup'] = false;
     }
+}
+
+/** 範囲内で出題できる曲の数（試聴がある曲。同じ曲は 1 曲）。タイトル画面に出す */
+function intro_count(PDO $pdo, array $f): int
+{
+    [$from, $params] = intro_from($f, 'JOIN track_preview p ON p.source = t.source AND p.track_id = t.track_id AND p.preview_url IS NOT NULL');
+    $st = $pdo->prepare('SELECT COUNT(DISTINCT t.source, t.track_id)' . $from);
+    $st->execute($params);
+    return (int)$st->fetchColumn();
 }
 
 /** 範囲内の曲名（重複を除く。試聴の有無は問わない）。ダミーの選択肢の元 */

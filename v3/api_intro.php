@@ -10,6 +10,8 @@
  *  リクエスト（POST, JSON。CSRF は X-CSRF-Token ヘッダー）: {"action": "...", ...}
  *    start  {year?, live?, artist?}   … ラウンドを始める。値は整数か null だけ通す
  *        → {round, total, ranked, preview}   ranked = ランキングに載るラウンドか（絞り込みなし・10 問）
+ *    count  {year?, live?, artist?}   … その範囲で出題できる曲の数（タイトル画面の表示用）
+ *        → {count}
  *    reveal {round, q}                … その問の選択肢を出す。出した時刻を記録（2 回目以降は記録し直さない）
  *        → {choices: [曲名 × 4]}
  *    answer {round, q, choice}        … 回答（choice は 0〜3 か null = 時間切れ）
@@ -122,6 +124,13 @@ try {
                 'used'    => array_column($questions, 'key'), // 出した曲（差し替えで同じ曲を出さない）
             ];
             api_ok(['round' => $round, 'total' => count($questions), 'ranked' => $ranked, 'preview' => $questions[0]['preview']]);
+
+        case 'count': // 範囲を変えたときに、出題できる曲の数を返す（タイトル画面の表示用。ラウンドには触らない）
+            $f = intro_filters_clean($body);
+            if ($f === null) {
+                fail(400, '送信内容がおかしいです');
+            }
+            api_ok(['count' => intro_count($pdo, $f)]);
 
         case 'reveal':
             $r = intro_session_round($body);
