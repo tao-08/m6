@@ -703,7 +703,7 @@ render_header('マイスケジュール', 'tools');
 
 <!-- ===== カレンダー連携（折りたたみ。#ical で来たら開く: app.js の .togglecard） ===== -->
 <details class="card togglecard" id="ical">
-<summary><?= icon('event') ?> <span class="togglecard__title">カレンダー連携<?= ($googleOn || $icalOn) && $g === null && $prof['ical_url'] === null ? ' <span class="pill pill--warn">未連携</span>' : '' // Google も iCal もつないでいない（つなげる設定のサーバーだけ） ?></span>
+<summary><?= icon('event') ?> <span class="togglecard__title">カレンダー連携<?= (($googleOn || $icalOn) && $g === null && $prof['ical_url'] === null) || ($g !== null && $g['error']) ? ' <span class="pill pill--warn">未連携</span>' : '' // Google も iCal もつないでいない（つなげる設定のサーバーだけ）か、Google の連携が切れている（予定が読めていない） ?></span>
     <button type="button" class="info-tip" data-tutorial-open="ical-help" aria-label="カレンダーの連携方法" title="カレンダーの連携方法"><?= icon('info', 'icon--sm') ?></button><?= icon('expand_more', 'togglecard__chevron') ?></summary>
 <div class="togglecard__body sch-sec">
     <?php if ($googleOn && $g === null): // Google 連携の開始。押すと sched_google.php が Google の許可画面へ移動する（iPhone の人は、下の iCal の URL を使う） ?>
@@ -764,6 +764,7 @@ render_header('マイスケジュール', 'tools');
             <span class="sch-label">決定したスタジオ練習を追加</span>
             <div class="sch-row sch-row--wrap">
                 <a class="btn btn--sm" href="<?= h($feedWebcal) ?>"><?= icon('smartphone') ?> iPhone</a>
+                <button type="button" class="btn btn--sm" data-copy-url="<?= h($feedUrl) ?>" aria-label="購読 URL をコピー" title="購読 URL をコピー"><?= icon('content_copy') ?> URL をコピー</button>
                 <form method="post" data-confirm="今の URL は使えなくなります。登録し直してください。よろしいですか？"><?= csrf_field() ?><input type="hidden" name="action" value="feed_reset"><?php if ($poll !== null): ?><input type="hidden" name="poll" value="<?= $pollId ?>"><?php endif; ?>
                     <button class="btn btn--sm" type="submit" title="URL を再発行"><?= icon('refresh') ?> 再発行</button></form>
             </div>

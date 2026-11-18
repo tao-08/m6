@@ -186,9 +186,9 @@
 .sch-grid tr.is-hour td { border-top-style: solid; }
 /* マイスケジュールの表（スマホ）: カードの左右の余白まで広げ、時刻の列を細くして、日の列を太くする（固定レイアウトなので見出しの1行目で幅が決まる） */
 @media (max-width: 760px) {
-  .sch-grid-wrap[data-sched-grid] { margin-inline: -15px; }
-  .sch-grid-wrap[data-sched-grid] .sch-grid thead th:first-child { width: 30px; }
-  .sch-grid-wrap[data-sched-grid] .sch-grid tbody th { width: auto; padding-right: 3px; }
+  .sch-grid-wrap[data-sched-grid] { margin-left: -8px; margin-right: -8px; } /* 左右とも、カードの端に詰まりすぎないよう少し余白を残す */
+  .sch-grid-wrap[data-sched-grid] .sch-grid thead th:first-child { width: 38px; } /* 「10:00」が iPhone の文字幅でも表に被らない幅 */
+  .sch-grid-wrap[data-sched-grid] .sch-grid tbody th { width: auto; padding-right: 5px; }
 }
 /* なぞって入力（JS: setupGrid）: 指で操作する端末だけ出す。外れている間は表の上でもスクロールでき、マスはタップで1つずつ */
 .sch-drag { display: none; margin: 0 0 8px; }
