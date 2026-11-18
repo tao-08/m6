@@ -76,6 +76,8 @@
 .sch-len { display: inline-flex; align-items: center; gap: 6px; }
 .sch-len strong { min-width: 3.6em; text-align: center; font-variant-numeric: tabular-nums; }
 .sch-len .icon-btn.is-disabled { opacity: .4; cursor: default; pointer-events: none; }  /* 上限・下限では押せない（span なので cursor を指定） */
+[data-sched-cands-body] { transition: opacity var(--t-fast); }
+[data-sched-cands-body][aria-busy="true"] { opacity: .5; } /* 長さの − ＋ で次の候補を読み込み中 */
 .sch-list { display: grid; gap: 10px; margin: 12px 0; }
 /* 1日 = <details> 1つ。見出し（summary）の1行に 日付・時間帯・印・最安の料金、開くと その日のカードが並ぶ */
 .sch-day { padding: 12px 14px; }

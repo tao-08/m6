@@ -748,7 +748,7 @@ if (!empty($poll['live_id'])) {
 <?php endif; ?>
     <section class="sch-cands" data-sched-cands>
         <div class="sch-cands__head">
-            <h2 class="section-title"><span>候補 <small class="muted"><?= count(array_unique(array_column($windows, 'date'))) ?>日</small></span>
+            <h2 class="section-title"><span>候補 <small class="muted" data-sched-cands-count><?= count(array_unique(array_column($windows, 'date'))) ?>日</small></span>
                 <span class="info-tip" <?= tip_attr('交通費はメンバー全員の定期外運賃の合計、時間はメンバー内で最も遠い人の所要時間が表示されています。') ?>><?= icon('info', 'icon--sm') ?></span></h2>
             <div class="sch-cands__tools">
                 <div class="tabs tabs--filter sch-sort" role="tablist" data-sched-sort>
@@ -757,7 +757,7 @@ if (!empty($poll['live_id'])) {
                     <button type="button" class="tab" data-sort="price">安い順</button>
                 </div>
                 <?php /* 練習の長さを30分ずつ増減（?len=。サーバーが sched_poll_len で検証する）。上限・下限のボタンは押せない印にする */ ?>
-                <div class="sch-len">
+                <div class="sch-len" data-sched-len>
                     <?php if ($len - SCHED_STEP >= SCHED_STEP): ?>
                         <a class="icon-btn" href="sched_poll?id=<?= $pollId ?>&amp;len=<?= $len - SCHED_STEP ?>" aria-label="30分短く" title="30分短く"><?= icon('remove') ?></a>
                     <?php else: ?>
@@ -792,6 +792,8 @@ if (!empty($poll['live_id'])) {
                 </div>
             </form>
         <?php endif; ?>
+        <?php /* 長さの − ＋ で入れ替える部分（assets/sched.js の setupLen が、新しい長さのページから同じ部分を取ってきて差し替える） */ ?>
+        <div data-sched-cands-body>
         <?php if (!$studios): ?>
             <div class="empty card"><p class="empty__title">候補のスタジオがありません</p></div>
         <?php elseif (!$windows): ?>
@@ -803,6 +805,7 @@ if (!empty($poll['live_id'])) {
             <h2 class="section-title">1人欠席の候補 <small class="muted"><?= count(array_unique(array_column($absentWindows, 'date'))) ?>日</small></h2>
             <div class="sch-list" data-sched-list-absent></div>
         <?php endif; ?>
+        </div>
         <p class="muted small">料金は目安です。スタジオの空き状況は予約ページで確認してください</p>
     </section>
 <?php if ($status === 3): ?>

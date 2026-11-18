@@ -1286,7 +1286,8 @@
       const without = heads.map((h) => h.offsetHeight);
       heads.forEach((h, i) => h.classList.toggle('no-arrow', withArrow[i] > without[i]));
     };
-    render('date');
+    // 長さの − ＋ で作り直したときも、選んでいた並べ替えのまま（初回は日付順）
+    render(document.querySelector('[data-sched-sort] .is-active')?.dataset.sort || 'date');
     fitArrows();
     if (window.ResizeObserver) {
       let lastW = 0;
@@ -1294,11 +1295,59 @@
       lists.forEach((l) => ro.observe(l.node));
     }
     document.fonts?.ready.then(fitArrows);
-    document.querySelector('[data-sched-sort]')?.addEventListener('click', (e) => {
-      const btn = e.target.closest('[data-sort]');
-      if (!btn) return;
-      btn.parentElement.querySelectorAll('[data-sort]').forEach((b) => b.classList.toggle('is-active', b === btn));
-      render(btn.dataset.sort);
+    // 並べ替えのタブは差し替えないので、押したときの処理は1回だけ付ける（作り直すたびに付けると、1回押して何度も並べ替える）。中身は最新の render を呼ぶ
+    candsRender = render;
+    const sortTabs = document.querySelector('[data-sched-sort]');
+    if (sortTabs && !sortTabs.dataset.bound) {
+      sortTabs.dataset.bound = '1';
+      sortTabs.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-sort]');
+        if (!btn) return;
+        btn.parentElement.querySelectorAll('[data-sort]').forEach((b) => b.classList.toggle('is-active', b === btn));
+        candsRender(btn.dataset.sort);
+      });
+    }
+  };
+  let candsRender = () => {}; // いま表示している候補の並べ替え（setupCands が作るたびに入れ替える）
+
+  // ===================================================================
+  //  4b. 練習の長さの − ＋（sched_poll.php の [data-sched-len]）
+  //     候補はサーバーで計算しているので、新しい長さのページを裏で読み、候補の部分だけ差し替える（画面の読み直し・スクロールの移動なし）
+  //     差し替えるのは: 候補の一覧 [data-sched-cands-body] ・日数 ・− ＋ ・計算データ #sched-data。並べ替えのタブはそのまま
+  //     読めなかったときは、ふつうにリンク先へ移る（ページごと読み直す）
+  // ===================================================================
+  const setupLen = () => {
+    let busy = false;
+    document.addEventListener('click', async (e) => {
+      const a = e.target.closest('[data-sched-len] a[href]');
+      if (!a || e.metaKey || e.ctrlKey || e.shiftKey) return;
+      e.preventDefault();
+      if (busy) return;
+      busy = true;
+      const body = document.querySelector('[data-sched-cands-body]');
+      body?.setAttribute('aria-busy', 'true');
+      try {
+        const res = await fetch(a.href, { credentials: 'same-origin' });
+        if (!res.ok) throw new Error(String(res.status));
+        const doc = new DOMParser().parseFromString(await res.text(), 'text/html');
+        const swap = (sel) => {
+          const now = document.querySelector(sel);
+          const next = doc.querySelector(sel);
+          if (!now || !next) throw new Error('missing ' + sel);
+          now.replaceWith(next);
+        };
+        ['[data-sched-cands-body]', '[data-sched-cands-count]', '[data-sched-len]', '#sched-data'].forEach(swap);
+        // 交通費を調べる（POST）も、新しい長さのまま戻ってくるように
+        const len = new URL(a.href, location.href).searchParams.get('len');
+        document.querySelectorAll('[data-sched-cands] input[name=len]').forEach((i) => { i.value = len; });
+        history.replaceState(null, '', a.href); // 読み直したとき・戻ったときも同じ長さ
+        setupCands();
+      } catch (err) {
+        location.href = a.href;
+      } finally {
+        busy = false;
+        document.querySelector('[data-sched-cands-body]')?.removeAttribute('aria-busy');
+      }
     });
   };
 
@@ -1829,6 +1878,7 @@
   });
   setupGrid();
   setupCands();
+  setupLen();
   setupOver();
   setupFold();
   setupPhoto();
