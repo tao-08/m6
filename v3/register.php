@@ -139,6 +139,8 @@ render_header('新規登録');
             <input type="password" name="password" autocomplete="new-password" minlength="8" required></label>
         <label class="field"><span>パスワード（確認）</span>
             <input type="password" name="password_confirm" autocomplete="new-password" minlength="8" required></label>
+        <?php /* 規約の「新規登録で同意したものとする」の根拠。別タブで開く（入力中の内容を消さないため） */ ?>
+        <p class="muted small center">登録すると<a href="terms" class="text-link" target="_blank" rel="noopener">利用規約</a>と<a href="privacy" class="text-link" target="_blank" rel="noopener">プライバシーポリシー</a>に同意したものとします</p>
         <button class="btn btn--primary btn--block" type="submit">登録する</button>
         <p class="muted small center"><a href="login">戻る</a></p>
     </form>
