@@ -50,6 +50,7 @@ render_header('プライバシーポリシー');
     <p>本サービスがカレンダーに作る予定には、題名・日時・場所（スタジオ）・メモ（参加メンバーの名前と日程調整ページのURL）を入れます。</p>
     <p>保存するのは、予定の開始・終了の時刻とタイトル、連携した Google アカウントの表示用の識別子（通常はメールアドレス）、連携用の鍵（トークン）です。タイトルと鍵は暗号化して保存します。予定のタイトルは本人にのみ表示し、他の利用者には「予定あり」とだけ表示します。場所・メモ・参加者などは保存しません。</p>
     <p>本サービスによる Google API から受け取った情報の利用と他のアプリへの移転は、<a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noopener">Google API サービスのユーザーデータに関するポリシー</a>（Limited Use の要件を含む）に従います。Google のデータを第三者に販売・提供すること、広告に使うこと、AI の学習に使うことはありません。また、運営者が Google のデータを人の目で閲覧するのは、利用者の同意がある場合、不正利用の調査などセキュリティ上必要な場合、または法令に従う場合に限ります。</p>
+    <p lang="en">The use and transfer to any other app of information received from Google APIs will adhere to the <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noopener">Google API Services User Data Policy</a>, including the Limited Use requirements. The use of raw or derived Google user data will not be used to develop, improve, or train generalized AI/ML models.</p>
     <p>連携はマイスケジュールの「解除」でいつでも取り消せます。解除すると、Google 側の権限を取り消し、取り込んだ予定と鍵を削除します。<a href="https://myaccount.google.com/permissions" target="_blank" rel="noopener">Google アカウントの設定</a>からも取り消せます。</p>
 
     <h2>4. 外部サービスへの送信</h2>
@@ -67,7 +68,7 @@ render_header('プライバシーポリシー');
     <p>法令に基づく場合または本人の同意がある場合を除き、個人データを第三者に提供しません。ただし、上記の外部サービスを利用した機能の提供に必要な範囲で、情報の取扱いを各事業者に委ねることがあります。</p>
 
     <h2>6. 保存期間・退会・削除</h2>
-    <p>情報は利用目的の達成に必要な期間、適切に管理して保存します。日程調整で取り込んだカレンダー予定は、連携設定に応じて更新・削除します。</p>
+    <p>情報は利用目的の達成に必要な期間、適切に管理して保存します。Google カレンダーから取り込んだ予定（時刻・暗号化したタイトル）は、連携中は読み込みのたびに最新の内容に置き換え、連携の「解除」を押したとき、または退会の手続きをしたときに、直ちに削除します（Google 側の権限の取り消しと、連携用の鍵の削除も同時に行います）。個別の削除は、下の連絡先からも依頼できます。</p>
     <p>退会の申し出を受けた場合、ログインに必要なアカウント情報を無効化し、ログインできない状態にします。ログインID・パスワード等の認証情報、通知登録情報、運営上不要となる連絡先情報、プッシュ通知の登録情報、GoogleカレンダーのOAuthトークン、暗号化したiCal URL等の連携用情報は削除または利用停止します。</p>
     <p>一方、ライブ・出演履歴等の記録の継続性、および投稿の文脈・責任関係を保つため、退会前に作成された掲示板・コメント等の投稿本文と投稿者名、出演履歴等は原則として残します。退会後も過去の投稿者名は「退会者」等に置き換えず、退会前に登録されていた投稿者名を表示します。</p>
     <p>法令上の保存義務がある場合、紛争対応・不正利用防止に必要な場合、または統計・記録の継続に必要な場合は、必要な範囲で情報を保持することがあります。個別の情報の開示・訂正・削除の相談は、下の連絡先までお問い合わせください。</p>
