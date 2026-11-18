@@ -493,6 +493,7 @@ render_header($isNew ? 'バンドを追加' : 'バンドを編集', 'lives');
         <?php endforeach; ?>
     </div>
     <button type="button" class="btn btn--ghost btn--sm" data-add-row>＋ メンバーを追加</button>
+    <a class="btn btn--ghost btn--sm" href="import?day=<?= $dayId ?>" data-leave-check="band-form"><?= icon('group_add') ?> 名簿を追加</a>
     <?= render_suggest_datalist('member-names', array_keys($allNames), $allNames) ?>
 
     <div class="form-actions">
