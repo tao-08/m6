@@ -1297,6 +1297,7 @@
     document.fonts?.ready.then(fitArrows);
     // 並べ替えのタブは差し替えないので、押したときの処理は1回だけ付ける（作り直すたびに付けると、1回押して何度も並べ替える）。中身は最新の render を呼ぶ
     candsRender = render;
+    candsLen = Number(data.len) || 0;
     const sortTabs = document.querySelector('[data-sched-sort]');
     if (sortTabs && !sortTabs.dataset.bound) {
       sortTabs.dataset.bound = '1';
@@ -1309,6 +1310,7 @@
     }
   };
   let candsRender = () => {}; // いま表示している候補の並べ替え（setupCands が作るたびに入れ替える）
+  let candsLen = 0; // いま候補に出している練習の長さ（分）。長さの − ＋ で変わる（メンバーの予定の枠もこれに合わせる）
 
   // ===================================================================
   //  4b. 練習の長さの − ＋（sched_poll.php の [data-sched-len]）
@@ -1342,6 +1344,7 @@
         document.querySelectorAll('[data-sched-cands] input[name=len]').forEach((i) => { i.value = len; });
         history.replaceState(null, '', a.href); // 読み直したとき・戻ったときも同じ長さ
         setupCands();
+        document.dispatchEvent(new CustomEvent('sched:len')); // メンバーの予定（setupOver）に、枠の長さ・最安の印を合わせ直してもらう
       } catch (err) {
         location.href = a.href;
       } finally {
@@ -1374,7 +1377,7 @@
     const weeks = []; // 7日ずつに区切る
     for (let i = 0; i < over.days.length; i += 7) weeks.push(over.days.slice(i, i + 7));
     let page = 0;
-    const len = Number(boot.len) || over.step; // 練習時間（分）
+    const len = () => candsLen || Number(boot.len) || over.step; // 練習時間（分）。長さの − ＋ で変わるので、使うたびに読む
     let pick = null; // 押したマス { date, min }
 
     /** 押したマスから練習時間ぶんの枠。表の上に1つの箱を重ねる（マスの罫線で途切れず、角も丸くできる）。表は作り直さない */
@@ -1385,7 +1388,7 @@
       const first = wrap.querySelector(`td[data-date="${pick.date}"][data-min="${pick.min}"]`);
       if (!first) return; // 押した日が今の週に無い
       // 練習時間ぶん下のマス（予定で埋まったマスは data-date が無いので、行をたどって探す）
-      const rows = Math.min(Math.ceil(len / over.step), Math.round((over.end - pick.min) / over.step));
+      const rows = Math.min(Math.ceil(len() / over.step), Math.round((over.end - pick.min) / over.step));
       let tr = first.parentElement;
       for (let i = 1; i < rows && tr.nextElementSibling; i++) tr = tr.nextElementSibling;
       const last = tr.children[first.cellIndex] || first;
@@ -1454,6 +1457,7 @@
       });
     };
     window.addEventListener('resize', () => { applyCheap(); applyProv(); applyPick(); });
+    document.addEventListener('sched:len', () => draw()); // 長さを変えた: 最安の印を描き直し、押してある枠も新しい長さにする
 
     const draw = () => {
       const days = weeks[page];
