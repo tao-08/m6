@@ -171,28 +171,8 @@ function tt_member_suggest(PDO $pdo, array $state, array $info): array
                 continue;
             }
             $index ??= load_member_index($pdo);
-            $similar = [];
-            $near = [];
-            foreach ($index as $eKey => $e) {
-                if ($eKey === '') {
-                    continue;
-                }
-                if (names_look_similar($key, $eKey)) {
-                    $similar[$eKey] = $e['name'];
-                } elseif (mb_substr($key, 0, 1) === mb_substr($eKey, 0, 1) || mb_strpos($eKey, $key) !== false || mb_strpos($key, $eKey) !== false) {
-                    similar_text($key, $eKey, $pct);
-                    $near[$eKey] = $pct;
-                }
-            }
-            arsort($near);
-            $list = [];
-            foreach ([...array_keys($similar), ...array_keys($near)] as $eKey) {
-                $list[] = ['n' => $index[$eKey]['name'], 'k' => (string)$eKey];
-                if (count($list) >= 3) {
-                    break;
-                }
-            }
-            $out[$key] = $list;
+            // 近い順（一致度 → 出演バンド数）。ひらがなで書かれていればふりがなとも比べる
+            $out[$key] = array_map(static fn($c) => ['n' => $c['name'], 'k' => $c['key']], member_suggest($key, $index, 5));
         }
     }
     return array_filter($out);

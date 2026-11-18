@@ -2136,6 +2136,11 @@ function setupSearchSuggest() {
       kind.className = 'suggest-pop__kana';
       kind.textContent = KIND[it.kind] || '';
       b.append(label(it.text, q), kind);
+      if (it.kana) { // ふりがなで当たったときは、一致した部分を赤くしたふりがなも右に出す
+        const k = label(it.kana, q);
+        k.className = 'suggest-pop__kana';
+        b.append(k);
+      }
       b.addEventListener('click', () => choose(it.text));
       pop.append(b);
       return b;
@@ -4087,6 +4092,21 @@ function setupMergeToggle() {
     }
   };
 
+  // 統合先に同じ日程名があり、開催日が登録済みなら、開催日の欄にその日付を入れる（取り込み画面のみ）
+  const fillDate = (box) => {
+    const card = box.closest('[data-timetable]');
+    if (!card || box.querySelector('[data-merge-toggle]').getAttribute('aria-pressed') !== 'true') return;
+    const btn = box.querySelector('[data-live-pick]');
+    if (!box.querySelector('[data-live-id]').value || !btn.dataset.dates) return;
+    let dates = {};
+    try { dates = JSON.parse(btn.dataset.dates); } catch (err) { return; }
+    const date = dates[dayLabelOf(card.querySelector('[name$="[label]"]'))];
+    const input = card.querySelector('[data-date-input]');
+    if (!date || input.value === date) return;
+    input.value = date;
+    input.dispatchEvent(new Event('input', { bubbles: true })); // 年度の表示などを更新させる
+  };
+
   const setMode = (box, on) => {
     box.querySelector('[data-merge-toggle]').setAttribute('aria-pressed', on ? 'true' : 'false');
     const name = box.querySelector('[data-live-name]');
@@ -4104,6 +4124,7 @@ function setupMergeToggle() {
       closePop();
       name.focus();
     }
+    fillDate(box);
     updateNote(box);
     document.dispatchEvent(new Event('merge-change')); // 「登録する」を押せるかどうかを判定し直してもらう
   };
@@ -4151,6 +4172,8 @@ function setupMergeToggle() {
       btn.dataset.year = opt.dataset.year;
       btn.dataset.labels = opt.dataset.labels;
       btn.dataset.name = opt.dataset.name;
+      btn.dataset.dates = opt.dataset.dates;
+      fillDate(box);
       const text = box.querySelector('[data-live-pick-text]');
       text.textContent = `${opt.dataset.year}年度 ${opt.dataset.name}`;
       text.classList.remove('is-placeholder');
@@ -4173,7 +4196,9 @@ function setupMergeToggle() {
   document.addEventListener('input', (e) => {
     if (!e.target.matches('[data-date-input], [name$="[label]"], [data-label-new], [data-live-name]')) return;
     const box = e.target.closest('[data-timetable]')?.querySelector('[data-merge]');
-    if (box) updateNote(box);
+    if (!box) return;
+    if (!e.target.matches('[data-date-input]')) fillDate(box); // 開催日を手で直したときは上書きしない
+    updateNote(box);
   });
   // ライブ編集: 日程名・「この日程を追加する」を変えたら警告を出し直す
   document.addEventListener('change', (e) => {

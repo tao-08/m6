@@ -648,16 +648,13 @@ function classify_cells(PDO $pdo, array $cells): array
                 continue;
             }
             // DB の人と似ている？
-            $similar = [];
-            foreach ($index as $eKey => $e) {
-                if (names_look_similar($key, $eKey)) {
-                    $similar[] = $e['name'];
-                }
-            }
+            // 近い順（一致度 → 出演バンド数）。ひらがなで書かれていればふりがなとも比べる
+            $cands = member_suggest($key, $index, 5);
+            $similar = array_column(array_filter($cands, static fn($c) => $c['strong']), 'name');
             if ($similar) {
                 $statuses[] = 'similar';
                 $hints[] = "「{$name}」は未登録。登録済みの「" . implode('」「', array_slice($similar, 0, 3)) . '」の書き間違い？';
-                $suggest = [...$suggest, ...array_slice($similar, 0, 3)];
+                $suggest = [...$suggest, ...array_column($cands, 'name')];
                 continue;
             }
             // 今回の取り込みの中の別の新しい名前と似ている？
@@ -675,20 +672,8 @@ function classify_cells(PDO $pdo, array $cells): array
             }
             $statuses[] = 'new';
             $hints[] = "「{$name}」は未登録 → 新しいメンバーとして登録されます";
-            // 似た人がいなくても、いちばん近い登録済みの人を候補に出す（先頭の1文字が同じ / 名前の一部が重なる人から、似ている順に3人）
-            $near = [];
-            foreach ($index as $eKey => $e) {
-                if ($key === '' || $eKey === '') {
-                    continue;
-                }
-                $share = mb_substr($key, 0, 1) === mb_substr($eKey, 0, 1) || mb_strpos($eKey, $key) !== false || mb_strpos($key, $eKey) !== false;
-                if ($share) {
-                    similar_text($key, $eKey, $pct);
-                    $near[$e['name']] = $pct;
-                }
-            }
-            arsort($near);
-            $suggest = [...$suggest, ...array_slice(array_keys($near), 0, 3)];
+            // 似た人がいなくても、いちばん近い登録済みの人を候補に出す（近い順、同じなら出演バンド数が多い順に5人）
+            $suggest = [...$suggest, ...array_column($cands, 'name')];
         }
         // 1つのセルに複数人いるときは、一番注意が必要な色にする
         $status = in_array('new', $statuses, true) ? 'new' : (in_array('similar', $statuses, true) ? 'similar' : 'ok');

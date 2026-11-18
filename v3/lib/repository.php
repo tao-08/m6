@@ -276,10 +276,83 @@ function find_or_create_artist(PDO $pdo, string $bandName): ?int
 function load_member_index(PDO $pdo): array
 {
     $index = [];
-    foreach ($pdo->query('SELECT member_id, name FROM member') as $row) {
-        $index[member_key($row['name'])] = ['id' => (int)$row['member_id'], 'name' => $row['name']];
+    // kana = ふりがな（ひらがなにそろえたもの）/ bands = 出演バンド数（「もしかして」の並び順に使う）
+    foreach ($pdo->query('SELECT m.member_id, m.name, m.name_kana,
+            (SELECT COUNT(DISTINCT bm.band_id) FROM band_member bm WHERE bm.member_id = m.member_id) AS bands
+        FROM member m') as $row) {
+        $index[member_key($row['name'])] = [
+            'id' => (int)$row['member_id'], 'name' => $row['name'],
+            'kana' => kana_key((string)($row['name_kana'] ?? '')), 'bands' => (int)$row['bands'],
+        ];
     }
     return $index;
+}
+
+/** ふりがな・かなの比較用キー（カタカナ・半角カナ・空白をひらがなにそろえる） */
+function kana_key(string $s): string
+{
+    return preg_replace('/\s+/u', '', mb_convert_kana($s, 'cHV')) ?? '';
+}
+
+/**
+ * 登録されていない名前 $key（member_key 済み）に近い登録済みのメンバーを、おすすめ順に返す。
+ *   順番: 一致している度合いが高い順 → 同じなら出演バンド数が多い順
+ *   ひらがな・カタカナで書かれているときは、ふりがなとも比べる
+ *   strong … 書き間違い・ふりがな一致と言えるほど近い（黄色にする）
+ *
+ * @param array $index load_member_index() の結果
+ * @return array [['key' => 照合キー, 'name' => 表示名, 'strong' => bool], ...]
+ */
+function member_suggest(string $key, array $index, int $limit = 5): array
+{
+    if ($key === '') {
+        return [];
+    }
+    $isKana = (bool)preg_match('/^[\p{Hiragana}\p{Katakana}ー]+$/u', $key);
+    $kin = $isKana ? kana_key($key) : '';
+    $len = mb_strlen($key);
+    $rows = [];
+    foreach ($index as $eKey => $e) {
+        if ($eKey === '' || $eKey === $key) {
+            continue;
+        }
+        $score = 0.0;
+        $strong = false;
+        if (names_look_similar($key, $eKey)) {
+            $strong = true;
+            $score = 90;
+        } else {
+            $max = max($len, mb_strlen($eKey));
+            $lev = mb_levenshtein($key, $eKey);
+            $pct = (1 - $lev / $max) * 100;
+            $share = mb_substr($key, 0, 1) === mb_substr($eKey, 0, 1) || mb_strpos($eKey, $key) !== false || mb_strpos($key, $eKey) !== false;
+            if ($share || $pct >= 40 || (min($len, mb_strlen($eKey)) >= 3 && $lev <= 2)) {
+                $score = min(79, max($pct, $share ? 30 : 0));
+            }
+        }
+        // ひらがな（カタカナ）で書かれているとき: ふりがなが同じ・頭が同じ・近いものも拾う
+        $ek = (string)($e['kana'] ?? '');
+        if ($isKana && $ek !== '') {
+            if ($ek === $kin) {
+                [$strong, $score] = [true, 100];
+            } elseif (mb_strlen($kin) >= 2 && (str_starts_with($ek, $kin) || str_starts_with($kin, $ek))) {
+                [$strong, $score] = [true, max($score, 85)];
+            } else {
+                $kmax = max(mb_strlen($kin), mb_strlen($ek));
+                $kpct = (1 - mb_levenshtein($kin, $ek) / $kmax) * 100;
+                if ($kpct >= 50) {
+                    $score = max($score, min(79, $kpct));
+                } elseif (mb_strpos($ek, $kin) !== false) {
+                    $score = max($score, 60);
+                }
+            }
+        }
+        if ($score > 0) {
+            $rows[] = ['key' => (string)$eKey, 'name' => $e['name'], 'strong' => $strong, 'score' => $score, 'bands' => (int)($e['bands'] ?? 0)];
+        }
+    }
+    usort($rows, static fn($a, $b) => [$b['score'], $b['bands'], $a['name']] <=> [$a['score'], $a['bands'], $b['name']]);
+    return array_map(static fn($r) => array_diff_key($r, ['score' => 1, 'bands' => 1]), array_slice($rows, 0, $limit));
 }
 
 /**
@@ -1636,11 +1709,21 @@ function save_songs(PDO $pdo, int $bandId, array $songs): void
  */
 function lives_with_labels(PDO $pdo): array
 {
-    return $pdo->query("SELECT l.live_id, l.fiscal_year, l.name,
+    $lives = $pdo->query("SELECT l.live_id, l.fiscal_year, l.name,
             GROUP_CONCAT(d.label ORDER BY d.label SEPARATOR '・') AS labels
         FROM live l LEFT JOIN live_day d ON d.live_id = l.live_id
         GROUP BY l.live_id, l.fiscal_year, l.name
         ORDER BY l.fiscal_year DESC, l.name")->fetchAll();
+    // 日程名 => 登録済みの開催日（取り込み画面が統合先を選んだとき開催日に入れる）。JSON の文字列で持つ
+    $dates = [];
+    foreach ($pdo->query('SELECT live_id, label, held_on FROM live_day WHERE held_on IS NOT NULL')->fetchAll() as $d) {
+        $dates[(int)$d['live_id']][(string)$d['label']] = (string)$d['held_on'];
+    }
+    foreach ($lives as &$lv) {
+        $lv['dates'] = json_encode($dates[(int)$lv['live_id']] ?? new stdClass(), JSON_UNESCAPED_UNICODE);
+    }
+    unset($lv);
+    return $lives;
 }
 
 /** ライブを 1 件取る（live の全列）。無ければ 404 のエラーページを出して終了する */

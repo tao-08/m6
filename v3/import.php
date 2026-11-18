@@ -775,7 +775,7 @@ if ($plan === null): // ==================== アップロード画面 ==========
                     <input type="hidden" name="tt[<?= $ti ?>][live_id]" value="<?= $mergeLive ? (int)$mergeLive['live_id'] : '' ?>" data-live-id<?= $merge ? '' : ' disabled' ?>>
                     <div class="live-pick" data-live-pick-wrap<?= $merge ? '' : ' hidden' ?>>
                         <button type="button" class="live-pick__btn" aria-haspopup="listbox" aria-expanded="false" data-live-pick
-                            data-year="<?= $mergeLive ? (int)$mergeLive['fiscal_year'] : '' ?>" data-labels="<?= $mergeLive ? h($mergeLive['labels']) : '' ?>">
+                            data-year="<?= $mergeLive ? (int)$mergeLive['fiscal_year'] : '' ?>" data-labels="<?= $mergeLive ? h($mergeLive['labels']) : '' ?>" data-dates="<?= $mergeLive ? h($mergeLive['dates']) : '' ?>">
                             <span data-live-pick-text<?= $mergeLive ? '' : ' class="is-placeholder"' ?>><?= $mergeLive ? h($mergeLive['fiscal_year'] . '年度 ' . $mergeLive['name']) : 'ライブを選択' ?></span>
                             <?= icon('expand_more') ?>
                         </button>

@@ -47,13 +47,13 @@ $COL = 'COLLATE utf8mb4_unicode_520_ci';
  * 並びは「よく出るもの」を上に（人数・回数が多い順）。
  */
 $kinds = [
-    'member' => ["SELECT m.name FROM member m
+    'member' => ["SELECT m.name, m.name_kana FROM member m
                   WHERE m.name $COL LIKE ? OR m.name_kana $COL LIKE ?
                   GROUP BY m.member_id ORDER BY (SELECT COUNT(*) FROM band_member x WHERE x.member_id = m.member_id) DESC, m.name"],
     'band' => ["SELECT b.name FROM band b
                 WHERE b.name $COL LIKE ?
                 GROUP BY b.name ORDER BY COUNT(*) DESC, b.name"],
-    'artist' => ['SELECT a.name FROM artist a
+    'artist' => ['SELECT a.name, a.name_kana FROM artist a
                   ' . (is_admin() ? 'LEFT ' : '') . 'JOIN (' . artist_plays_sql() . ") p ON p.artist_id = a.artist_id
                   WHERE a.name $COL LIKE ? OR a.name_kana $COL LIKE ?
                      OR EXISTS (SELECT 1 FROM artist_alias al WHERE al.artist_id = a.artist_id AND al.name $COL LIKE ?)
@@ -68,6 +68,9 @@ $kinds = [
 
 /** 全角英数・大文字小文字・カタカナ/ひらがなの違いを無視して同じ語か比べるための形 */
 $norm = static fn(string $s): string => mb_strtolower(mb_convert_kana($s, 'KVrnas'), 'UTF-8');
+
+/** ふりがなの照合用（上の $norm に加えて、カタカナもひらがなにそろえる） */
+$nk = static fn(string $s): string => mb_convert_kana($norm($s), 'cs');
 
 $items = [];
 $seen = []; // 同じ文字を2回出さない（バンド名とアーティスト名が同じ、など）
@@ -90,14 +93,19 @@ foreach (['' => $esc . '%', 'any' => '%' . $esc . '%'] as $mode => $pattern) {
         $perKind = 0;
         $st = $pdo->prepare($sql . ' LIMIT ' . (SUGGEST_PER_KIND + 4)); // 重複で捨てる分の余裕
         $st->execute(array_fill(0, substr_count($sql, '?'), $pattern)); // ? の数だけ同じ値を渡す
-        foreach ($st->fetchAll(PDO::FETCH_COLUMN) as $name) {
-            $name = (string)$name;
+        foreach ($st->fetchAll(PDO::FETCH_NUM) as $row) {
+            $name = (string)$row[0];
+            $kana = (string)($row[1] ?? ''); // メンバー・アーティストだけ。ふりがなで当たったときに一緒に出す
             $key = $norm($name);
             if ($name === '' || $key === $q_norm || isset($seen[$key])) {
                 continue; // 打った文字そのままの候補は出さない
             }
             $seen[$key] = true;
-            $items[] = ['text' => $name, 'kind' => $kind];
+            $item = ['text' => $name, 'kind' => $kind];
+            if ($kana !== '' && mb_strpos($nk($name), $nk($q)) === false && mb_strpos($nk($kana), $nk($q)) !== false) {
+                $item['kana'] = preg_replace('/\s+/u', '', $kana); // 名前では当たらず、ふりがなで当たった
+            }
+            $items[] = $item;
             if (++$perKind >= SUGGEST_PER_KIND || count($items) >= SUGGEST_MAX) {
                 break;
             }
