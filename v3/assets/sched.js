@@ -524,9 +524,69 @@
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closePop(); });
     window.addEventListener('scroll', closePop, true);
 
+    // ---- 元に戻す / やり直す: 塗られている手入力のマス（絶対分の並び）を、なぞり1回・タップ1回・日付1回ごとに積む ----
+    //   「この予定を無視」・前後の枠の切り替えは、その場で保存する別の操作なので対象にしない
+    const undoBtn = document.querySelector('[data-sched-undo]');
+    const redoBtn = document.querySelector('[data-sched-redo]');
+    const snap = () => cells.filter((td) => td.classList.contains('is-ng') && !td._buf).map((td) => td.dataset.abs).join(',');
+    const hist = [snap()];
+    let pos = 0;
+    const refreshHist = () => {
+      if (undoBtn) undoBtn.disabled = pos <= 0;
+      if (redoBtn) redoBtn.disabled = pos >= hist.length - 1;
+    };
+    const commit = () => {
+      const s = snap();
+      if (s === hist[pos]) return;
+      hist.length = pos + 1; // 戻したあとに塗り直したら、やり直しは捨てる
+      hist.push(s);
+      if (hist.length > 50) hist.shift();
+      pos = hist.length - 1;
+      refreshHist();
+    };
+    const stepHist = (d) => {
+      const next = pos + d;
+      if (next < 0 || next >= hist.length) return;
+      pos = next;
+      const on = new Set(hist[pos].split(','));
+      cells.forEach((td) => { if (!td._buf) td.classList.toggle('is-ng', on.has(td.dataset.abs)); });
+      syncDays();
+      autosave.schedule();
+      refreshHist();
+    };
+    undoBtn?.addEventListener('click', () => stepHist(-1));
+    redoBtn?.addEventListener('click', () => stepHist(1));
+    refreshHist();
+    // 浮きボタンは表が画面に入っている間だけ出す（下の時間割などを編集しているときに、表の操作と取り違えないように）
+    const histBar = undoBtn?.closest('.ttb-float');
+    if (histBar && 'IntersectionObserver' in window) {
+      new IntersectionObserver(([en]) => { histBar.hidden = !en.isIntersecting; }).observe(wrap);
+    }
+    // Ctrl+Z / Ctrl+Y（Mac は ⌘）。入力欄の中では、その欄の文字の「元に戻す」を優先する
+    document.addEventListener('keydown', (e) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.target.closest('input, textarea, select, [contenteditable]')) return;
+      const k = e.key.toLowerCase();
+      if (k === 'z' && !e.shiftKey) { e.preventDefault(); stepHist(-1); }
+      else if (k === 'y' || (k === 'z' && e.shiftKey)) { e.preventDefault(); stepHist(1); }
+    });
+
+    // ---- なぞって入力（スマホ）: 外れている間は、指ではなぞらない（表の上でもスクロールできる）。マスはタップで1つずつ ----
+    //   PC（マウス）は常になぞれる。チェックの状態はこの端末に覚えておく
+    const dragCb = document.querySelector('[data-sched-drag]');
+    try { if (dragCb) dragCb.checked = localStorage.getItem('sched-drag') === '1'; } catch { /* 保存できない環境 */ }
+    const syncDrag = () => table.classList.toggle('is-tap', !dragCb?.checked);
+    syncDrag();
+    dragCb?.addEventListener('change', () => {
+      syncDrag();
+      try { localStorage.setItem('sched-drag', dragCb.checked ? '1' : '0'); } catch { /* 保存できない環境 */ }
+    });
+    let lastType = 'mouse'; // 直前に押した指・マウスの種類（click の pointerType は古い Safari に無いので、pointerdown で覚える）
+    const canDrag = (e) => e.pointerType === 'mouse' || !!dragCb?.checked;
+
     let mode = null; // true = 塗る / false = 消す / null = なぞっていない
+    const paintable = (td) => td && td.dataset.abs && !td.classList.contains('is-auto') && !td.classList.contains('is-off') && !td._buf; // 前後の枠は塗らない（タップで消す）
     const paint = (td) => {
-      if (!td || !td.dataset.abs || td.classList.contains('is-auto') || td.classList.contains('is-off') || td._buf) return;
+      if (!paintable(td)) return;
       if (td.classList.contains('is-ng') !== mode) {
         td.classList.toggle('is-ng', mode);
         autosave.schedule();
@@ -534,11 +594,21 @@
       }
     };
     table.addEventListener('pointerdown', (e) => {
+      lastType = e.pointerType;
       const td = e.target.closest('td');
-      if (!td || td.classList.contains('is-auto') || td.classList.contains('is-off') || td._buf) return; // 前後の枠は、なぞって塗らない（タップで消す）
+      if (!paintable(td) || !canDrag(e)) return; // なぞらないときは click（タップ）で塗る。スクロールしたら click は来ない
       e.preventDefault();
       mode = !td.classList.contains('is-ng');
       paint(td);
+    });
+    table.addEventListener('click', (e) => {
+      if (mode !== null || lastType === 'mouse' || dragCb?.checked) return; // なぞる操作は pointerdown で塗り済み
+      const td = e.target.closest('td');
+      if (!paintable(td)) return;
+      mode = !td.classList.contains('is-ng');
+      paint(td);
+      mode = null;
+      commit();
     });
     // 指を動かしている間: 指の下のマスを探して塗る（elementFromPoint = その座標にある一番上の要素）
     table.addEventListener('pointermove', (e) => {
@@ -554,8 +624,9 @@
       mode = !day.every((td) => td.classList.contains('is-ng')); // 全部塗られている → 消すモード
       day.forEach(paint);
       mode = null;
+      commit();
     });
-    const end = () => { mode = null; };
+    const end = () => { if (mode === null) return; mode = null; commit(); }; // なぞり1回 = 元に戻す1回
     window.addEventListener('pointerup', end);
     window.addEventListener('pointercancel', end);
 

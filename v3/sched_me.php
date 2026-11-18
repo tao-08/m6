@@ -658,7 +658,14 @@ render_header('マイスケジュール', 'tools');
     <div class="sch-legend small muted">
         <span><i class="sch-sw is-ng"></i>予定あり</span><span><i class="sch-sw is-class"></i>授業</span><span><i class="sch-sw is-ical"></i>カレンダー</span><span><i class="sch-sw is-weekly"></i>繰り返し</span><span><i class="sch-sw is-practice"></i>練習</span><span><i class="sch-sw is-prov"></i>仮決定</span>
     </div>
+    <?php // スマホ（指）でなぞって塗るかどうか。外れていると表の上でもスクロールでき、マスはタップで1つずつ（assets/sched.js の setupGrid）。PC は常になぞれるので出さない ?>
+    <label class="check sch-drag"><input type="checkbox" data-sched-drag>なぞって予定を入力</label>
     <div class="sch-grid-wrap" data-sched-grid></div>
+    <!-- 塗ったマスを戻す / やり直す（assets/sched.js の setupGrid）。見た目はタイムテーブル作成・曲の編集と同じ左下の浮きボタン -->
+    <div class="ttb-float">
+        <button type="button" class="btn btn--sm" data-sched-undo aria-label="元に戻す" title="元に戻す" disabled><?= icon('undo') ?></button>
+        <button type="button" class="btn btn--sm" data-sched-redo aria-label="やり直す" title="やり直す" disabled><?= icon('redo') ?></button>
+    </div>
     <form method="post" data-sched-grid-form>
         <?= csrf_field() ?>
         <input type="hidden" name="action" value="busy">
@@ -696,7 +703,7 @@ render_header('マイスケジュール', 'tools');
 
 <!-- ===== カレンダー連携（折りたたみ。#ical で来たら開く: app.js の .togglecard） ===== -->
 <details class="card togglecard" id="ical">
-<summary><?= icon('event') ?> <span class="togglecard__title">カレンダー連携</span>
+<summary><?= icon('event') ?> <span class="togglecard__title">カレンダー連携<?= ($googleOn || $icalOn) && $g === null && $prof['ical_url'] === null ? ' <span class="pill pill--warn">未連携</span>' : '' // Google も iCal もつないでいない（つなげる設定のサーバーだけ） ?></span>
     <button type="button" class="info-tip" data-tutorial-open="ical-help" aria-label="カレンダーの連携方法" title="カレンダーの連携方法"><?= icon('info', 'icon--sm') ?></button><?= icon('expand_more', 'togglecard__chevron') ?></summary>
 <div class="togglecard__body sch-sec">
     <?php if ($googleOn && $g === null): // Google 連携の開始。押すと sched_google.php が Google の許可画面へ移動する（iPhone の人は、下の iCal の URL を使う） ?>
