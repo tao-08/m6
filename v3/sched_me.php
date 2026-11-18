@@ -929,66 +929,6 @@ render_header('マイスケジュール', 'tools');
     </form>
 </section>
 
-<!-- ===== 時間割 ===== -->
-<section class="card sch-sec" id="classes">
-    <div class="sch-sec__head"><h2 class="section-title section-title--card">時間割</h2></div>
-    <div class="tabs tabs--filter" role="tablist" data-sched-terms>
-        <?php foreach (SCHED_TERMS as $t => $label): ?>
-            <button type="button" class="tab<?= $t === $curTerm ? ' is-active' : '' ?>" data-term-tab="<?= $t ?>"><?= h($label) ?></button>
-        <?php endforeach; ?>
-    </div>
-    <?php foreach (SCHED_TERMS as $t => $label): ?>
-        <?php // サブのキャンパスがあるときだけ、マスをタップするたびに 空 → メイン → サブ → 空 と回す（assets/sched.js）。頭文字はキャンパス名の1文字目 ?>
-        <form method="post" class="sch-tt" data-term="<?= $t ?>" data-autosave<?= $subCampus ? ' data-main-mark="' . h(mb_substr(SCHED_CAMPUSES[$mainCampus], 0, 1)) . '" data-sub-mark="' . h(mb_substr(SCHED_CAMPUSES[$subCampus], 0, 1)) . '"' : '' ?><?= $t === $curTerm ? '' : ' hidden' ?>>
-            <?= csrf_field() ?>
-            <input type="hidden" name="action" value="classes"><input type="hidden" name="term" value="<?= $t ?>">
-            <?php if ($poll !== null): ?><input type="hidden" name="poll" value="<?= $pollId ?>"><?php endif; ?>
-            <p class="muted small"><?= h(date('n/j', strtotime($settings['terms'][$t][0])) . '〜' . date('n/j', strtotime($settings['terms'][$t][1]))) ?></p>
-            <table class="sch-tt__table">
-                <thead><tr><th></th><?php foreach (SCHED_WEEKDAYS as $w): ?><th><?= h($w) ?></th><?php endforeach; ?></tr></thead>
-                <tbody>
-                    <?php foreach ($settings['periods'] as $p => [$ps, $pe]): ?>
-                        <tr>
-                            <th><?= $p ?><small><?= h(sched_hm((int)$ps)) ?></small></th>
-                            <?php foreach (SCHED_WEEKDAYS as $w => $wl): $key = $w . '-' . $p; $kind = $classes[$t][$key] ?? null; ?>
-                                <?php // サブがあるときだけ、サブ用の隠しチェック（sub[]）と頭文字（data-mark）を置く。sub を cls の前に置くのは、CSS で「サブの授業」を隣の指定で拾うため ?>
-                                <td><label class="sch-tt__cell"><?php if ($subCampus): ?><input type="checkbox" name="sub[]" value="<?= $key ?>"<?= $kind === 'sub' ? ' checked' : '' ?> aria-label="<?= h($wl . $p . '限（' . SCHED_CAMPUSES[$subCampus] . '）') ?>"><?php endif; ?><input type="checkbox" name="cls[]" value="<?= $key ?>"<?= $kind !== null ? ' checked' : '' ?> aria-label="<?= h($wl . $p . '限') ?>"><span<?= $subCampus ? ' data-mark="' . h(mb_substr(SCHED_CAMPUSES[$kind === 'sub' ? $subCampus : $mainCampus], 0, 1)) . '"' : '' ?>></span></label></td>
-                            <?php endforeach; ?>
-                        </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
-        </form>
-    <?php endforeach; ?>
-    <?php // キャンパス（授業の前後の移動時間の計算に使う）。時間割と同じカードに置く ?>
-    <div class="sch-sec__head sch-sec__head--sub" id="campus"><h3 class="sch-sec__sub">キャンパス</h3>
-        <span class="info-tip" <?= tip_attr('授業の前後の移動時間の計算に使用します') ?>><?= icon('info', 'icon--sm') ?></span></div>
-    <form method="post" class="sch-campus">
-        <?= csrf_field() ?><input type="hidden" name="action" value="campus">
-        <?php if ($poll !== null): ?><input type="hidden" name="poll" value="<?= $pollId ?>"><?php endif; ?>
-        <?php // 2行: メイン（4キャンパス）とサブ（なし / 4キャンパス）。同じフォームなので、片方を押すと両方の値が送られる ?>
-        <div class="sch-campus__row">
-            <span class="sch-campus__label">メイン</span>
-            <div class="tabs tabs--filter" role="radiogroup" aria-label="メインのキャンパス">
-                <?php // 「自動」のタブは無い。選んでいなければ、学部・学年から決まったキャンパス（$mainCampus）が最初から選ばれている ?>
-                <?php foreach (SCHED_CAMPUSES as $c => $name): ?>
-                    <label class="tab"><input type="radio" name="campus" value="<?= $c ?>" data-autosubmit<?= $mainCampus === $c ? ' checked' : '' ?>><?= h($name) ?></label>
-                <?php endforeach; ?>
-            </div>
-        </div>
-        <div class="sch-campus__row">
-            <span class="sch-campus__label">サブ</span>
-            <div class="tabs tabs--filter" role="radiogroup" aria-label="サブのキャンパス">
-                <label class="tab"><input type="radio" name="campus2" value="0" data-autosubmit<?= $subCampus === 0 ? ' checked' : '' ?>>なし</label>
-                <?php foreach (SCHED_CAMPUSES as $c => $name): ?>
-                    <label class="tab"><input type="radio" name="campus2" value="<?= $c ?>" data-autosubmit<?= $subCampus === $c ? ' checked' : '' ?>><?= h($name) ?></label>
-                <?php endforeach; ?>
-            </div>
-        </div>
-        <noscript><button class="btn btn--sm" type="submit">保存</button></noscript>
-    </form>
-</section>
-
 <!-- ===== 定期（交通費は定期の区間を除いて計算する） ===== -->
 <section class="card sch-sec" id="pass">
     <div class="sch-sec__head"><h2 class="section-title section-title--card">最寄り駅と定期券設定</h2>
@@ -1050,6 +990,66 @@ render_header('マイスケジュール', 'tools');
             <noscript><button class="btn btn--sm" type="submit">保存</button></noscript>
         </form>
     <?php endif; ?>
+</section>
+
+<!-- ===== 時間割 ===== -->
+<section class="card sch-sec" id="classes">
+    <div class="sch-sec__head"><h2 class="section-title section-title--card">時間割</h2></div>
+    <div class="tabs tabs--filter" role="tablist" data-sched-terms>
+        <?php foreach (SCHED_TERMS as $t => $label): ?>
+            <button type="button" class="tab<?= $t === $curTerm ? ' is-active' : '' ?>" data-term-tab="<?= $t ?>"><?= h($label) ?></button>
+        <?php endforeach; ?>
+    </div>
+    <?php foreach (SCHED_TERMS as $t => $label): ?>
+        <?php // サブのキャンパスがあるときだけ、マスをタップするたびに 空 → メイン → サブ → 空 と回す（assets/sched.js）。頭文字はキャンパス名の1文字目 ?>
+        <form method="post" class="sch-tt" data-term="<?= $t ?>" data-autosave<?= $subCampus ? ' data-main-mark="' . h(mb_substr(SCHED_CAMPUSES[$mainCampus], 0, 1)) . '" data-sub-mark="' . h(mb_substr(SCHED_CAMPUSES[$subCampus], 0, 1)) . '"' : '' ?><?= $t === $curTerm ? '' : ' hidden' ?>>
+            <?= csrf_field() ?>
+            <input type="hidden" name="action" value="classes"><input type="hidden" name="term" value="<?= $t ?>">
+            <?php if ($poll !== null): ?><input type="hidden" name="poll" value="<?= $pollId ?>"><?php endif; ?>
+            <p class="muted small"><?= h(date('n/j', strtotime($settings['terms'][$t][0])) . '〜' . date('n/j', strtotime($settings['terms'][$t][1]))) ?></p>
+            <table class="sch-tt__table">
+                <thead><tr><th></th><?php foreach (SCHED_WEEKDAYS as $w): ?><th><?= h($w) ?></th><?php endforeach; ?></tr></thead>
+                <tbody>
+                    <?php foreach ($settings['periods'] as $p => [$ps, $pe]): ?>
+                        <tr>
+                            <th><?= $p ?><small><?= h(sched_hm((int)$ps)) ?></small></th>
+                            <?php foreach (SCHED_WEEKDAYS as $w => $wl): $key = $w . '-' . $p; $kind = $classes[$t][$key] ?? null; ?>
+                                <?php // サブがあるときだけ、サブ用の隠しチェック（sub[]）と頭文字（data-mark）を置く。sub を cls の前に置くのは、CSS で「サブの授業」を隣の指定で拾うため ?>
+                                <td><label class="sch-tt__cell"><?php if ($subCampus): ?><input type="checkbox" name="sub[]" value="<?= $key ?>"<?= $kind === 'sub' ? ' checked' : '' ?> aria-label="<?= h($wl . $p . '限（' . SCHED_CAMPUSES[$subCampus] . '）') ?>"><?php endif; ?><input type="checkbox" name="cls[]" value="<?= $key ?>"<?= $kind !== null ? ' checked' : '' ?> aria-label="<?= h($wl . $p . '限') ?>"><span<?= $subCampus ? ' data-mark="' . h(mb_substr(SCHED_CAMPUSES[$kind === 'sub' ? $subCampus : $mainCampus], 0, 1)) . '"' : '' ?>></span></label></td>
+                            <?php endforeach; ?>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </form>
+    <?php endforeach; ?>
+    <?php // キャンパス（授業の前後の移動時間の計算に使う）。時間割と同じカードに置く ?>
+    <div class="sch-sec__head sch-sec__head--sub" id="campus"><h3 class="sch-sec__sub">キャンパス</h3>
+        <span class="info-tip" <?= tip_attr('授業の前後の移動時間の計算に使用します') ?>><?= icon('info', 'icon--sm') ?></span></div>
+    <form method="post" class="sch-campus">
+        <?= csrf_field() ?><input type="hidden" name="action" value="campus">
+        <?php if ($poll !== null): ?><input type="hidden" name="poll" value="<?= $pollId ?>"><?php endif; ?>
+        <?php // 2行: メイン（4キャンパス）とサブ（なし / 4キャンパス）。同じフォームなので、片方を押すと両方の値が送られる ?>
+        <div class="sch-campus__row">
+            <span class="sch-campus__label">メイン</span>
+            <div class="tabs tabs--filter" role="radiogroup" aria-label="メインのキャンパス">
+                <?php // 「自動」のタブは無い。選んでいなければ、学部・学年から決まったキャンパス（$mainCampus）が最初から選ばれている ?>
+                <?php foreach (SCHED_CAMPUSES as $c => $name): ?>
+                    <label class="tab"><input type="radio" name="campus" value="<?= $c ?>" data-autosubmit<?= $mainCampus === $c ? ' checked' : '' ?>><?= h($name) ?></label>
+                <?php endforeach; ?>
+            </div>
+        </div>
+        <div class="sch-campus__row">
+            <span class="sch-campus__label">サブ</span>
+            <div class="tabs tabs--filter" role="radiogroup" aria-label="サブのキャンパス">
+                <label class="tab"><input type="radio" name="campus2" value="0" data-autosubmit<?= $subCampus === 0 ? ' checked' : '' ?>>なし</label>
+                <?php foreach (SCHED_CAMPUSES as $c => $name): ?>
+                    <label class="tab"><input type="radio" name="campus2" value="<?= $c ?>" data-autosubmit<?= $subCampus === $c ? ' checked' : '' ?>><?= h($name) ?></label>
+                <?php endforeach; ?>
+            </div>
+        </div>
+        <noscript><button class="btn btn--sm" type="submit">保存</button></noscript>
+    </form>
 </section>
 
 <?php require __DIR__ . '/partials/ical_help.php'; // ⓘ から開く「カレンダーの連携方法」（初回チュートリアルと同じ部品） ?>
