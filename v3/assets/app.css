@@ -563,7 +563,7 @@ button.tab { border: 0; background: none; font: inherit; font-weight: 800; font-
 /* 音源のプレーヤー（lib/audio_player.php）: 名前の右に容量・右端に編集の鉛筆。チャプターのチップは下に並べる */
 .audio-player__size { flex: none; font-size: var(--fs-xs); opacity: .75; }
 .audio-player__edit { flex: none; display: inline-grid; place-items: center; width: 28px; height: 28px; margin-left: auto; padding: 0; border: 0; border-radius: var(--r-md);
-  background: none; color: var(--muted); cursor: pointer; }
+  background: none; color: var(--muted); cursor: pointer; transition: color var(--t-fast) ease, background-color var(--t-fast) ease; }
 .audio-player__edit:hover, .audio-player__edit[aria-pressed="true"] { color: var(--accent); }
 .audio-player__edit[aria-pressed="true"] { background: var(--accent-soft); }
 /* 操作部: 再生ボタン・再生位置の棒・時間。チャプターがあるときは、棒の上に吹き出し（.audio-bubble）を並べる
@@ -575,11 +575,19 @@ button.tab { border: 0; background: none; font: inherit; font-weight: 800; font-
 .audio-player__play:hover { opacity: .85; }
 .audio-player__time { flex: none; color: var(--muted); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
 .audio-player__seek { --ap-thumb: 14px; position: relative; flex: 1; min-width: 0; }
+/* 位置 --q（0〜1）。押して飛んだとき（JS が .is-jumping を付ける）だけ値を滑らせる。つまみは本物を隠して、同じ位置に滑る丸を出す（本物は滑らせられない） */
+@property --q { syntax: '<number>'; inherits: true; initial-value: 0; }
+.audio-player__seek.is-jumping { transition: --q var(--t-base) var(--ease-out); }
+.audio-player__seek::after { content: ''; position: absolute; top: 50%; left: calc(var(--ap-thumb) / 2 + (100% - var(--ap-thumb)) * var(--q)); width: var(--ap-thumb); height: var(--ap-thumb);
+  margin: calc(var(--ap-thumb) / -2) 0 0 calc(var(--ap-thumb) / -2); border-radius: var(--r-full); background: var(--accent); opacity: 0; pointer-events: none; }
+.audio-player__seek.is-jumping::after { opacity: 1; }
+.audio-player__seek.is-jumping .audio-player__range::-webkit-slider-thumb { background: transparent; }
+.audio-player__seek.is-jumping .audio-player__range::-moz-range-thumb { background: transparent; }
 .audio-player__bar:has(.has-bubbles) { padding-top: 22px; } /* 吹き出しの分の高さ。再生ボタンと時間は棒に合わせて中央 */
-.audio-player__range { --p: 0%; display: block; width: 100%; height: 20px; margin: 0; padding: 0; background: none; cursor: pointer; -webkit-appearance: none; appearance: none; }
+.audio-player__range { display: block; width: 100%; height: 20px; margin: 0; padding: 0; background: none; cursor: pointer; -webkit-appearance: none; appearance: none; }
 .audio-player__range:disabled { cursor: default; opacity: .5; }
 .audio-player__range:focus-visible { outline: none; }
-.audio-player__range::-webkit-slider-runnable-track { height: 4px; border-radius: var(--r-full); background: linear-gradient(to right, var(--accent) var(--p), var(--border) var(--p)); }
+.audio-player__range::-webkit-slider-runnable-track { height: 4px; border-radius: var(--r-full); background: linear-gradient(to right, var(--accent) calc(var(--q) * 100%), var(--border) calc(var(--q) * 100%)); }
 .audio-player__range::-moz-range-track { height: 4px; border-radius: var(--r-full); background: var(--border); }
 .audio-player__range::-moz-range-progress { height: 4px; border-radius: var(--r-full); background: var(--accent); }
 .audio-player__range::-webkit-slider-thumb { -webkit-appearance: none; width: var(--ap-thumb); height: var(--ap-thumb); margin-top: -5px; border: 0; border-radius: var(--r-full); background: var(--accent); }
@@ -591,34 +599,59 @@ button.tab { border: 0; background: none; font: inherit; font-weight: 800; font-
 .audio-bubble { --hw: 14px; --edge: calc(var(--hw) - 8px);
   --shift: clamp(calc(-1 * var(--edge)), clamp(calc(var(--hw) - var(--x) * 100cqw), 0px, calc(100cqw - var(--hw) - var(--x) * 100cqw)), var(--edge));
   position: absolute; left: calc(var(--x) * 100%); bottom: 5px; transform: translateX(calc(-50% + var(--shift)));
-  --bd: var(--border); --bg: var(--surface-2); /* 枠と中の色。中は不透明にする（三角と重なっても濃くならない） */
+  --bd: var(--border); --ov: transparent; --bg: linear-gradient(var(--ov), var(--ov)), var(--surface-2); /* 枠と中の色。中は不透明にする（三角と重なっても濃くならない）。--ov = 中に重ねる色（再生中の緑） */
   width: calc(var(--hw) * 2); height: 17px; padding: 0; border: 1px solid var(--bd); border-radius: var(--r-sm);
   background: var(--bg); color: var(--text); font: inherit; font-size: var(--fs-2xs); font-weight: 700; line-height: 15px; text-align: center;
-  cursor: pointer; pointer-events: auto; }
+  cursor: pointer; pointer-events: auto;
+  transition: left var(--t-slow) var(--ease-out), --bd var(--t-base) ease, --ov var(--t-base) ease, color var(--t-base) ease; } /* 並びが変わると滑る・再生中の色は ふわっと変わる */
+@property --bd { syntax: '<color>'; inherits: true; initial-value: transparent; }
+@property --ov { syntax: '<color>'; inherits: true; initial-value: transparent; }
 /* 三角: 枠の色の三角（::before）の上に、1px 内側の中の色の三角（::after）を重ねる。::after が吹き出しの下の枠線を消して一続きにする */
 .audio-bubble::before, .audio-bubble::after { content: ''; position: absolute; top: 100%; left: calc(50% - var(--shift)); transform: translateX(-50%);
   clip-path: polygon(0 0, 100% 0, 50% 100%); }
 .audio-bubble::before { width: 10px; height: 6px; margin-top: 0; background: var(--bd); }
 .audio-bubble::after { width: 8px; height: 5px; margin-top: -1px; background: var(--bg); }
 .audio-bubble:hover { color: var(--accent); }
-.audio-bubble.is-current { z-index: 1; --bd: var(--ok); --bg: linear-gradient(var(--ok-bg), var(--ok-bg)), var(--surface-2); color: var(--ok); }
+.audio-bubble.is-current { z-index: 1; --bd: var(--ok); --ov: var(--ok-bg); color: var(--ok); }
 .audio-player__list { margin-top: 8px; }
 .audio-player__list:empty { display: none; }
-.audio-player__add { display: flex; gap: 8px; margin-top: 8px; }
-.audio-player__add[hidden] { display: none; }
-/* チャプターのチップ: 本体を押すとその位置から再生。再生中のものは緑。✕ は編集モード（.is-editing）のときだけ */
-.audio-chapter { gap: 6px; }
+/* 開け閉めする部品（時間の直し・足す操作部）: 高さ 0 → 中身の高さ（grid の行 0fr → 1fr）と透明度で、にゅっと出る。閉じている間は触れない */
+.audio-player__fold { display: grid; grid-template-rows: 0fr; opacity: 0; visibility: hidden;
+  transition: grid-template-rows var(--t-base) ease, opacity var(--t-base) ease, visibility 0s linear var(--t-base); }
+.audio-player__fold > * { min-height: 0; overflow: hidden; padding-inline: 4px; margin-inline: -4px; } /* 左右の 4px は、フォーカスの輪が切れないように */
+.audio-player.is-editing > .audio-player__fold--bar, .audio-player.has-sel > .audio-player__fold--move {
+  grid-template-rows: 1fr; opacity: 1; visibility: visible; transition: grid-template-rows var(--t-base) ease, opacity var(--t-base) ease, visibility 0s; }
+.audio-player__add, .audio-player__move { display: flex; flex-wrap: wrap; align-items: center; gap: 0 8px; }
+.audio-player__add > .btn, .audio-player__move > * { margin-block: 8px 4px; } /* 上下の余白は中に持たせる（外側に付けると、閉じても潰れない） */
+.audio-player__at { width: 6em; padding: 6px 10px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); color: var(--text);
+  font-size: var(--fs-md); font-variant-numeric: tabular-nums; text-align: center; }
+.audio-player__at:invalid { border-color: var(--danger); }
+@media (pointer: coarse) { .audio-player__move > * { min-height: var(--ctl-h); } } /* 指で押しやすい高さ */
+/* チャプターのチップ: 本体を押すとその位置から再生（編集モードでは選ぶ）。再生中のものは緑・選んだものは赤い輪。✕ は編集モード（.is-editing）のときだけ横から出る */
+.audio-chapter { gap: 6px; transition: border-color var(--t-fast) ease, background-color var(--t-fast) ease, box-shadow var(--t-fast) ease; }
 .audio-chapter button { padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
 .audio-chapter__go { display: inline-flex; align-items: center; gap: 6px; }
 .audio-chapter__time { color: var(--muted); font-variant-numeric: tabular-nums; }
-.audio-chapter__del { display: none; color: var(--muted); }
+.audio-chapter__del { display: inline-flex; max-width: 0; margin-left: -6px; overflow: hidden; opacity: 0; visibility: hidden; color: var(--muted);
+  transition: max-width var(--t-base) var(--ease-out), margin-left var(--t-base) var(--ease-out), opacity var(--t-base) ease, color var(--t-fast) ease, visibility 0s linear var(--t-base); }
 .audio-chapter__del:hover { color: var(--danger); }
 .audio-chapter__del .icon { font-size: var(--fs-sm); }
-.audio-player.is-editing .audio-chapter__del { display: inline-flex; }
+.audio-player.is-editing .audio-chapter__del { max-width: 1.5em; margin-left: 0; opacity: 1; visibility: visible;
+  transition: max-width var(--t-base) var(--ease-out), margin-left var(--t-base) var(--ease-out), opacity var(--t-base) ease, color var(--t-fast) ease, visibility 0s; }
 .audio-chapter.is-current { border-color: var(--ok); background: var(--ok-bg); }
-/* 自動で付けた下書き: 破線。保存するまで消せない・直せない */
+.audio-chapter.is-selected { border-color: var(--accent); box-shadow: var(--ring); }
+/* 自動で付けた下書き: 破線。保存するまで消せない */
 .audio-player.is-draft .audio-chapter, .audio-player.is-draft .audio-bubble { border-style: dashed; }
 .audio-player.is-draft .audio-chapter__del { display: none; }
+/* 出入り: 新しいものはぽんと出る（--i = 同時に出る順番。少しずつ遅らせる）。消すものは縮みながら消える */
+@keyframes ap-pop { from { opacity: 0; scale: .8; } }
+@keyframes ap-out { to { opacity: 0; scale: .8; } }
+.audio-chapter.is-new, .audio-bubble.is-new { animation: ap-pop var(--t-base) var(--ease-out) backwards; animation-delay: calc(min(var(--i, 0), 8) * var(--t-fast) / 5); }
+.audio-chapter.is-leaving, .audio-bubble.is-leaving { animation: ap-out var(--t-base) ease-in forwards; pointer-events: none; }
+@media (prefers-reduced-motion: reduce) {
+  .audio-player__fold, .audio-player__edit, .audio-chapter, .audio-chapter__del, .audio-bubble, .audio-player__seek.is-jumping { transition: none; }
+  .audio-chapter.is-new, .audio-bubble.is-new, .audio-chapter.is-leaving, .audio-bubble.is-leaving { animation: none; }
+}
 .audio-player__add .icon { font-size: var(--fs-md); margin-right: 4px; }
 /* 横幅いっぱい・16:9 で、PC で大きくなりすぎないよう上限 */
 .drive-player__frame { display: block; width: 100%; aspect-ratio: 16 / 9; max-height: 360px; border: 0; border-radius: var(--r-md); background: var(--surface-2); }

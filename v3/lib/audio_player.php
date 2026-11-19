@@ -7,7 +7,7 @@
  *  ・band.php では再生位置に「MC」「曲」のチャプターを付けられる（band_audio_chapter。説明は migrations/130）
  *      audio_key … 'a:<band_audio の image_id>' か 'd:<ドライブのファイル ID>'
  *      曲の番号は持たない。時間順に 1, 2, 3… と数えて、セットリストの曲名に当てる（曲名の直しに自動で追従する）
- *  ・チップ・吹き出しの描画と追加・削除は assets/app.js の setupAudioPlayers。保存は api_audio_chapter.php
+ *  ・チップ・吹き出しの描画と追加・削除・時間の直しは assets/app.js の setupAudioPlayers。保存は api_audio_chapter.php
  *  ・「自動で付ける」は音量から下書きを作り（assets/autochapter.js）、「保存」で api_audio_chapter.php の replace が置き換える
  *  ・再生・シークも setupAudioPlayers（自前）。まだ読み込んでいない位置へは、音源に ?from=バイト位置 を付けて、その位置から流してもらう（lib/wav.php）
  * =====================================================================
@@ -82,14 +82,20 @@ function audio_player_html(string $src, string $title, ?int $size, ?array $chapt
         . '<input type="range" class="audio-player__range" data-ap-seek min="0" max="0" step="1" value="0" disabled aria-label="再生位置"></div>'
         . '<span class="audio-player__time" data-ap-time>0:00 / 0:00</span></div>';
     if ($chapterCtx !== null) {
+        // 時間の直し（チップを選んだときだけ開く）と、足す・自動の操作部（編集モードのときだけ開く）。開け閉めの動きは CSS の .audio-player__fold
         $html .= '<div class="chip-list chip-list--sm audio-player__list" data-ap-list></div>'
-            . '<div class="audio-player__add" data-ap-bar hidden>'
+            . '<div class="audio-player__fold audio-player__fold--move"><div class="audio-player__move">'
+            . '<input type="text" class="audio-player__at" data-ap-at inputmode="text" autocomplete="off" maxlength="8" pattern="[0-9]+(:[0-5]?[0-9]){0,2}" aria-label="時間" title="時間">'
+            . '<button type="button" class="btn btn--ghost btn--sm" data-ap-nudge="-1" aria-label="1秒前へ" title="1秒前へ">−1</button>'
+            . '<button type="button" class="btn btn--ghost btn--sm" data-ap-nudge="1" aria-label="1秒後へ" title="1秒後へ">+1</button>'
+            . '<button type="button" class="btn btn--ghost btn--sm" data-ap-here aria-label="今の位置" title="今の位置">今の位置</button></div></div>'
+            . '<div class="audio-player__fold audio-player__fold--bar"><div class="audio-player__add">'
             . '<button type="button" class="btn btn--ghost btn--sm" data-ap-in="idle" data-ap-add="mc">MC</button>'
             . '<button type="button" class="btn btn--ghost btn--sm" data-ap-in="idle" data-ap-add="song">曲</button>'
             . '<button type="button" class="btn btn--ghost btn--sm" data-ap-in="idle" data-ap-auto>' . icon('auto_awesome') . '自動で付ける</button>'
             . '<button type="button" class="btn btn--ghost btn--sm" data-ap-in="busy" data-ap-stop hidden>中止 <span data-ap-pct></span></button>'
             . '<button type="button" class="btn btn--primary btn--sm" data-ap-in="draft" data-ap-save hidden>保存</button>'
-            . '<button type="button" class="btn btn--ghost btn--sm" data-ap-in="draft" data-ap-discard hidden>やめる</button></div>';
+            . '<button type="button" class="btn btn--ghost btn--sm" data-ap-in="draft" data-ap-discard hidden>やめる</button></div></div>';
     }
     return $html . '</figure>';
 }

@@ -2041,6 +2041,8 @@ function setupDriveSwitch() {
  *     バイト位置 = 時刻 × (大きさ ÷ 全体の長さ)。WAV のずれ・サンプルの境界はサーバーが直す
  *   ・チャプター（band.php だけ。data-chapters）: 再生位置の棒の上の吹き出し（MC / 曲の番号）と、下のチップ（時間 ＋ MC / 曲名）。
  *     どちらも押すとその位置から再生する。鉛筆を押すと編集モード: 「MC」「曲」で今の再生位置にチャプターを足し、チップの ✕ で消す（api_audio_chapter.php）
+ *     編集モードでチップを押すと選ばれて、時間を直せる（入力・−1・+1・今の位置）。直した位置の2秒前から流す。連打は少し待って1回で保存する
+ *   ・動き（開け閉め・出入り・並べ替え・つまみの滑り）の時間とイージングは CSS のトークン（--t-* / --ease-out）。減らす設定のときは付けない
  *   ・曲の番号は保存せず、時間順に 1, 2, 3… と数えて songs（セトリの曲名）に当てる
  *   ・同時に鳴らすのは1つだけ
  * ------------------------------------------------------------------- */
@@ -2142,24 +2144,42 @@ function setupAudioPlayers(root = document) {
     let draft = null;     // 自動で付けた下書き [{kind, ms}]。あるあいだは保存済みの代わりにこれを出す
     let ctrl = null;      // 自動で付けている最中の中止用
     let whenTotal = null; // 長さがわかったら呼ぶ（自動で付けるのが待っている）
+    let selId = null;     // 編集モードで選んだチャプターの id（時間を直す相手）
+    let pend = null;      // 保存待ちの時間の直し { id, ms, from }。from = 直す前の時間（失敗したら戻す）
+    let pendTimer = 0;
+    let inflight = 0;     // 送信中の「直し」の数
+    const els = new Map(); // id → { chip, bubble }。描画のたびに作り直さず使い回して、動きをつける
+    const seen = { chip: false, bubble: false }; // 最初の描画は、出てくる動きを付けない
     const now = () => base + audio.currentTime;
     const shown = () => draft || chap.list;
+    const reduced = matchMedia('(prefers-reduced-motion: reduce)');
+    // 動きの時間・イージングは CSS のトークンから読む（減らす設定のときは、呼ぶ側で動かさない）
+    const tok = (name) => getComputedStyle(fig).getPropertyValue(name).trim();
+    const dur = (name) => (parseFloat(tok(name)) || 0) * 1000;
 
-    // 今の再生位置のチャプター（いちばん後ろの「開始が今以前」）に .is-current。チップと吹き出しは同じ並び
+    // 今の再生位置のチャプター（いちばん後ろの「開始が今以前」）に .is-current
     const mark = () => {
       if (!chap) return;
-      const t = now() * 1000;
-      const at = shown().findLastIndex((c) => c.ms <= t);
-      for (const group of [fig.querySelectorAll('.audio-chapter'), bubbles.children]) {
-        [...group].forEach((el, i) => el.classList.toggle('is-current', i === at));
+      const cur = shown().findLast((c) => c.ms <= now() * 1000);
+      for (const el of [...fig.querySelectorAll('.audio-chapter'), ...bubbles.children]) {
+        el.classList.toggle('is-current', !!cur && Number(el.dataset.id) === cur.id);
       }
     };
+    const seekBox = range.parentElement;
     const update = () => {
       const t = dragging ? Number(range.value) : now();
       timeEl.textContent = `${fmtTime(t * 1000)} / ${fmtTime(total * 1000)}`;
       if (!dragging) range.value = t;
-      range.style.setProperty('--p', total ? `${Math.min(100, t / total * 100)}%` : '0%');
+      seekBox.style.setProperty('--q', total ? Math.min(1, t / total) : 0);
       mark();
+    };
+    // 位置が飛ぶとき（押して動かしたとき）だけ、つまみと塗りを滑らせる。再生中・ドラッグ中は付けない
+    let jumpTimer = 0;
+    const jump = () => {
+      if (reduced.matches) return;
+      seekBox.classList.add('is-jumping');
+      clearTimeout(jumpTimer);
+      jumpTimer = setTimeout(() => seekBox.classList.remove('is-jumping'), dur('--t-base') * 1.5);
     };
 
     // t 秒へ。読み込み済みの範囲ならそのまま動かし、そうでなければ ?from= で読み直す。play: true で再生する（省略は今のまま）
@@ -2184,45 +2204,110 @@ function setupAudioPlayers(root = document) {
         base = off > 0 ? t : 0;
       }
       if (resume) audio.play().catch(() => {});
+      jump();
       update();
     };
 
-    // 吹き出し・チップの描画（追加・削除のたびに作り直す）
+    // 選んだチップに印を付け、時間の入力欄（選んだときだけ開く）を今の値にそろえる
+    const atInput = fig.querySelector('[data-ap-at]');
+    const syncSel = () => {
+      if (!chap) return;
+      const c = shown().find((x) => x.id === selId);
+      if (!c) selId = null;
+      fig.classList.toggle('has-sel', !!c && fig.classList.contains('is-editing'));
+      for (const [id, e] of els) e.chip.classList.toggle('is-selected', id === selId);
+      if (c && document.activeElement !== atInput) atInput.value = fmtTime(c.ms); // 打っている最中は触らない
+    };
+
+    // 吹き出し・チップの描画。同じ id のものは使い回して、位置の移り変わり・色の変化を動きにする
+    //   新しいもの: ぽんと出る / 順番が変わったチップ: 元の位置から滑る（FLIP）/ 吹き出し: CSS の left の transition で滑る
     const render = () => {
       if (!chap) return;
-      let n = 0;
       const list = shown();
+      const motion = !reduced.matches;
       fig.classList.toggle('is-draft', !!draft);
+      let n = 0;
       const labels = list.map((c) => {
         if (c.kind !== 'song') return { short: 'MC', full: 'MC' };
         n += 1;
-        return { short: String(n), full: chap.songs[n - 1] ? `${n}.${chap.songs[n - 1]}` : String(n) };
+        return { short: String(n), full: chap.songs[n - 1] ? `${n}. ${chap.songs[n - 1]}` : String(n) };
       });
-      fig.querySelector('[data-ap-list]').replaceChildren(...list.map((c, i) => {
-        const chip = mkEl('span', 'chip audio-chapter');
-        chip.dataset.ms = c.ms;
-        chip.dataset.id = c.id;
-        const go = mkEl('button', 'audio-chapter__go');
-        go.type = 'button';
-        go.append(mkEl('span', 'audio-chapter__time', fmtTime(c.ms)), labels[i].full);
-        const del = mkEl('button', 'audio-chapter__del');
-        del.type = 'button';
-        del.setAttribute('aria-label', '削除');
-        del.title = '削除';
-        del.append(mkEl('span', 'icon', 'close'));
-        del.firstChild.setAttribute('aria-hidden', 'true');
-        chip.append(go, del);
-        return chip;
-      }));
-      bubbles.replaceChildren(...(total ? list.map((c, i) => {
-        const b = mkEl('button', 'audio-bubble', labels[i].short);
-        b.type = 'button';
-        b.dataset.ms = c.ms;
-        b.style.setProperty('--x', Math.min(1, c.ms / 1000 / total));
-        b.setAttribute('aria-label', `${labels[i].full} から再生`);
-        b.title = `${labels[i].full} から再生`;
-        return b;
-      }) : []));
+      const before = new Map([...els].map(([id, e]) => [id, e.chip.getBoundingClientRect()]));
+      const keep = new Set(list.map((c) => c.id));
+      for (const [id, e] of els) {
+        if (keep.has(id)) continue;
+        e.chip.remove();
+        e.bubble?.remove();
+        els.delete(id);
+      }
+      // 出てくる動き。同時に何個も出るとき（下書き）は、少しずつ遅らせる（--i）
+      let fresh = 0;
+      const pop = (el) => {
+        if (!motion) return;
+        el.style.setProperty('--i', fresh);
+        el.classList.add('is-new');
+        el.addEventListener('animationend', () => el.classList.remove('is-new'), { once: true });
+      };
+      const chips = list.map((c, i) => {
+        let e = els.get(c.id);
+        const isNew = !e;
+        if (!e) {
+          const chip = mkEl('span', 'chip audio-chapter');
+          chip.dataset.id = c.id;
+          const go = mkEl('button', 'audio-chapter__go');
+          go.type = 'button';
+          go.append(mkEl('span', 'audio-chapter__time'), document.createTextNode(''));
+          const del = mkEl('button', 'audio-chapter__del');
+          del.type = 'button';
+          del.setAttribute('aria-label', '削除');
+          del.title = '削除';
+          del.append(mkEl('span', 'icon', 'close'));
+          del.firstChild.setAttribute('aria-hidden', 'true');
+          chip.append(go, del);
+          e = { chip, bubble: null };
+          els.set(c.id, e);
+        }
+        e.chip.dataset.ms = c.ms;
+        const go = e.chip.firstChild;
+        go.firstChild.textContent = fmtTime(c.ms);
+        go.lastChild.nodeValue = labels[i].full;
+        if (isNew && seen.chip) pop(e.chip);
+        if (total) {
+          if (!e.bubble) {
+            e.bubble = mkEl('button', 'audio-bubble');
+            e.bubble.type = 'button';
+            e.bubble.dataset.id = c.id;
+            bubbles.append(e.bubble);
+            if (seen.bubble) pop(e.bubble);
+          }
+          e.bubble.textContent = labels[i].short;
+          e.bubble.dataset.ms = c.ms;
+          e.bubble.style.setProperty('--x', Math.min(1, c.ms / 1000 / total));
+          e.bubble.setAttribute('aria-label', `${labels[i].full} から再生`);
+          e.bubble.title = `${labels[i].full} から再生`;
+        } else if (e.bubble) {
+          e.bubble.remove();
+          e.bubble = null;
+        }
+        if (isNew) fresh += 1;
+        return e.chip;
+      });
+      const listEl = fig.querySelector('[data-ap-list]');
+      chips.forEach((chip, i) => { if (listEl.children[i] !== chip) listEl.insertBefore(chip, listEl.children[i] || null); });
+      if (motion) {
+        chips.forEach((chip, i) => {
+          const old = before.get(list[i].id);
+          if (!old) return;
+          const to = chip.getBoundingClientRect();
+          const dx = old.left - to.left;
+          const dy = old.top - to.top;
+          if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return;
+          chip.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }], { duration: dur('--t-slow'), easing: tok('--ease-out') });
+        });
+      }
+      seen.chip = true;
+      if (total) seen.bubble = true;
+      syncSel();
       mark();
     };
 
@@ -2289,10 +2374,24 @@ function setupAudioPlayers(root = document) {
       const bubble = e.target.closest('.audio-bubble');
       const del = e.target.closest('.audio-chapter__del');
       const add = e.target.closest('[data-ap-add]');
+      const nudge = e.target.closest('[data-ap-nudge]');
       if (go || bubble) {
-        seekTo(Number((go ? go.closest('.audio-chapter') : bubble).dataset.ms) / 1000, true);
+        const el = go ? go.closest('.audio-chapter') : bubble;
+        if (go && fig.classList.contains('is-editing')) { // 編集モードのチップは、選んで時間を直せるようにする
+          if (pend && pend.id !== Number(el.dataset.id)) flushMove(false);
+          selId = Number(el.dataset.id);
+          syncSel();
+        }
+        seekTo(Number(el.dataset.ms) / 1000, true);
       } else if (del) {
-        send({ action: 'delete', chapter_id: Number(del.closest('.audio-chapter').dataset.id) });
+        const id = Number(del.closest('.audio-chapter').dataset.id);
+        if (pend?.id === id) { clearTimeout(pendTimer); pend = null; }
+        send({ action: 'delete', chapter_id: id }, leave(els.get(id)));
+      } else if (nudge) {
+        const c = shown().find((x) => x.id === selId);
+        if (c) moveSel(c.ms + Number(nudge.dataset.apNudge) * 1000, 400); // 連打は 400ms 待って1回にまとめる
+      } else if (e.target.closest('[data-ap-here]')) {
+        moveSel(Math.floor(now() * 1000), 0);
       } else if (add) {
         send({ action: 'add', key: chap.key, kind: add.dataset.apAdd, at_ms: Math.floor(now() * 1000) });
       } else if (e.target.closest('[data-ap-auto]')) {
@@ -2307,21 +2406,91 @@ function setupAudioPlayers(root = document) {
         const on = !fig.classList.contains('is-editing');
         fig.classList.toggle('is-editing', on);
         fig.querySelector('[data-ap-edit]').setAttribute('aria-pressed', String(on));
-        fig.querySelector('[data-ap-bar]').hidden = !on;
-        if (!on) { ctrl?.abort(); autoDiscard(); } // 編集を閉じたら、途中の自動も下書きも捨てる
+        if (!on) { // 編集を閉じたら、保存待ちの直しは保存し、途中の自動も下書きも捨てる
+          flushMove(false);
+          selId = null;
+          ctrl?.abort();
+          autoDiscard();
+          syncSel();
+        }
       }
     });
-    // 追加・削除。返事は、その音源の今のチャプター全部。成功したら true
-    const send = async (body) => {
+    // 追加・削除。返事は、その音源の今のチャプター全部。成功したら true。hold = 消える動きが終わるまで待つ Promise
+    const send = async (body, hold) => {
       try {
-        chap.list = (await apiPost('api_audio_chapter.php', { band_id: chap.band, ...body }, '保存できませんでした')).chapters;
+        const res = await apiPost('api_audio_chapter.php', { band_id: chap.band, ...body }, '保存できませんでした');
+        await hold;
+        chap.list = res.chapters;
         render();
         return true;
       } catch (e) {
         flashToast(e.message, 'error');
+        for (const x of els.values()) { x.chip.classList.remove('is-leaving'); x.bubble?.classList.remove('is-leaving'); }
         return false;
       }
     };
+    // 消す動き: チップと吹き出しを薄く縮める。終わったら（減らす設定のときはすぐ）解決する
+    const leave = (e) => {
+      if (!e || reduced.matches) return Promise.resolve();
+      e.chip.classList.add('is-leaving');
+      e.bubble?.classList.add('is-leaving');
+      return new Promise((resolve) => {
+        e.chip.addEventListener('animationend', resolve, { once: true });
+        setTimeout(resolve, dur('--t-base') * 1.5); // animationend が来ない場合の保険
+      });
+    };
+
+    // 時間の直し。画面にはすぐ出し、保存と再生（直した位置の2秒前から）は少し待って1回にまとめる
+    //   shortcut: 返事が前後して届くと古い並びが残りうる。数人が同時に直すなら、番号を付けて新しいものだけ使う
+    const byTime = (a, b) => a.ms - b.ms || a.id - b.id;
+    const flushMove = async (replay = true) => {
+      clearTimeout(pendTimer);
+      const p = pend;
+      if (!p) return;
+      pend = null;
+      if (replay) seekTo(Math.max(0, p.ms / 1000 - 2), true);
+      if (draft) return; // 下書きは「保存」でまとめて保存する
+      inflight += 1;
+      try {
+        const res = await apiPost('api_audio_chapter.php', { band_id: chap.band, action: 'move', chapter_id: p.id, at_ms: p.ms }, '保存できませんでした');
+        if (!pend && inflight === 1) chap.list = res.chapters; // 続きの直しがあるうちは、古い並びに戻さない
+      } catch (e) {
+        flashToast(e.message, 'error');
+        const c = chap.list.find((x) => x.id === p.id);
+        if (c) { c.ms = p.from; chap.list.sort(byTime); }
+      }
+      inflight -= 1;
+      render();
+    };
+    const moveSel = (ms, wait) => {
+      const c = shown().find((x) => x.id === selId);
+      if (!c) return;
+      if (pend && pend.id !== c.id) flushMove(false);
+      ms = Math.max(0, Math.min(Math.round(ms), total ? Math.floor(total * 1000) : 86400000));
+      pend = { id: c.id, ms, from: pend?.id === c.id ? pend.from : c.ms };
+      c.ms = ms;
+      shown().sort(byTime);
+      render();
+      clearTimeout(pendTimer);
+      pendTimer = setTimeout(flushMove, wait);
+    };
+    // 入力: m:ss・h:mm:ss・秒だけ（全角も可）。Enter か外れたら確定、Esc でやめる。読めないときは元に戻す
+    const parseTime = (s) => {
+      const p = s.normalize('NFKC').trim().split(':');
+      if (p.length > 3 || p.some((x) => !/^\d{1,5}$/.test(x)) || p.slice(1).some((x) => Number(x) > 59)) return null;
+      return p.reduce((sum, x) => sum * 60 + Number(x), 0) * 1000;
+    };
+    atInput.addEventListener('blur', () => {
+      const c = shown().find((x) => x.id === selId);
+      if (!c) return;
+      const ms = parseTime(atInput.value);
+      if (ms !== null && ms !== Math.floor(c.ms / 1000) * 1000) moveSel(ms, 0);
+      else atInput.value = fmtTime(c.ms);
+    });
+    atInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') atInput.value = '';
+      if ((e.key === 'Enter' && !e.isComposing) || e.key === 'Escape') atInput.blur();
+    });
 
     // 自動で付ける: 音量から下書きを作る → 聞いて確かめる → 保存（置き換え）かやめる
     const setMode = (m) => fig.querySelectorAll('[data-ap-in]').forEach((b) => { b.hidden = b.dataset.apIn !== m; });
@@ -2346,7 +2515,7 @@ function setupAudioPlayers(root = document) {
           onProgress: (p) => { pct.textContent = `${Math.round(p * 100)}%`; },
         });
         if (!found.length) throw new Error('none');
-        draft = found;
+        draft = found.map((c, i) => ({ ...c, id: i - found.length })); // 保存前の印。負の番号（時間順に並ぶ）で、保存済みの id とぶつからない
         setMode('draft');
         render();
       } catch (e) {
@@ -2358,13 +2527,15 @@ function setupAudioPlayers(root = document) {
     const autoDiscard = () => {
       if (!draft) return;
       draft = null;
+      if (pend?.id < 0) { clearTimeout(pendTimer); pend = null; } // 下書きの直しは捨てる
       setMode('idle');
       render();
     };
     const autoSave = async () => {
       if (chap.list.length && !confirm('今のチャプターを置き換えますか？')) return;
-      if (await send({ action: 'replace', key: chap.key, chapters: draft })) {
+      if (await send({ action: 'replace', key: chap.key, chapters: draft.map(({ kind, ms }) => ({ kind, ms })) })) {
         draft = null;
+        if (pend?.id < 0) { clearTimeout(pendTimer); pend = null; }
         setMode('idle');
         render();
       }
