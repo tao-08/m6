@@ -53,7 +53,7 @@ render_header('イントロクイズ', 'tools');
                 <?= icon('tune') ?><span data-scope-label>すべて</span><span class="intro-scope__count"><span data-count><?= number_format($count) ?></span>曲</span>
             </button>
             <!-- 範囲ボタンの下の吹き出し。補足なので role="note"（見た目は assets/intro.css の .intro-hint） -->
-            <p class="intro-hint" role="note">セットリストを登録すると、曲が増えるよ</p>
+            <p class="intro-hint" role="note">セットリストを登録すると曲が増えるよ</p>
             <p class="intro-error" data-error hidden></p>
             <p class="intro-note muted small" data-note hidden>絞り込み中はランキングに載りません</p>
         </div>
