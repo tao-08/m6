@@ -272,7 +272,8 @@ foreach ($songs as $s) {
     }
 }
 $linkCache = track_link_cache_for($pdo, $viewerApp, $trackKeys);
-// 30秒試聴（▶）の音源。覚えてある曲は URL を HTML に入れておく（押したらすぐ鳴る）。まだの曲は押されたら api_track_preview.php で探す
+// 30秒試聴（▶）の音源。覚えてある曲は URL を HTML に入れておく（押したらすぐ鳴る）。まだの曲は data-lookup を付けておき、
+//   ページを開いたあとに assets/app.js の setupPreview が裏で 1 曲ずつ api_track_preview.php で探す（押されたときも同じ API で探す）
 $previewCache = track_preview_cache_for($pdo, $trackKeys);
 
 // ---- 演奏したアーティストをマイアルバムに入れているメンバー（artist.php と同じ部品。lib/albums.php） ----
@@ -400,7 +401,7 @@ render_header($band['name'], 'lives');
                         $listenApp = listen_app($viewerApp, $song['source']); ?>
                         <span class="setlist__song"><span class="setlist__artwrap"><img class="setlist__art" src="<?= h(preg_replace('/\d+x\d+bb/', '300x300bb', (string)$song['artwork_url'])) // 56px 表示だが、高解像度の画面でぼやけないよう 300px 版 ?>" alt="" loading="lazy" width="56" height="56"><button type="button" class="setlist__listen" aria-haspopup="dialog" aria-label="<?= h($song['title']) ?> の詳細" title="詳細"<?= album_open_attrs((string)($song['album_title'] ?? $song['track_title']), $song['release_year'] ? (int)$song['release_year'] : null, $song['artwork_url'], $listenApp, track_listen_url($viewerApp, $track, array_key_exists($k, $linkCache) ? $linkCache[$k] : false), (string)$song['track_artist']) ?>><?= icon('info') ?></button></span><?= $songText ?></span>
                         <?php if (!array_key_exists($k, $previewCache) || $previewCache[$k] !== null): // 「試聴が無かった」と覚えてある曲には出さない ?>
-                            <button type="button" class="setlist__play no-print" data-preview="<?= h($k) ?>"<?php if (isset($previewCache[$k])): ?> data-preview-url="<?= h($previewCache[$k]) ?>"<?php endif; ?> aria-label="<?= h($song['title']) ?> を30秒試聴" title="30秒試聴"><?= icon('play_arrow', 'icon--fill') ?></button>
+                            <button type="button" class="setlist__play no-print" data-preview="<?= h($k) ?>"<?php if (isset($previewCache[$k])): ?> data-preview-url="<?= h($previewCache[$k]) ?>"<?php elseif (!array_key_exists($k, $previewCache)): ?> data-lookup<?php endif; ?> aria-label="<?= h($song['title']) ?> を30秒試聴" title="30秒試聴"><?= icon('play_arrow', 'icon--fill') ?></button>
                         <?php endif; ?>
                     <?php else: ?>
                         <span class="setlist__song"><span class="setlist__art setlist__art--none"><?= icon('music_note') ?></span><?= $songText ?></span>

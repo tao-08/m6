@@ -1272,6 +1272,31 @@ function setupPreview() {
     stop();
     noPreview(btn);
   });
+
+  // ページを開いたあと、試聴をまだ調べていない曲（band.php が data-lookup を付けたボタン）を、裏で 1 曲ずつ探す。
+  //   ページの表示は待たせない（表示が終わってから動く）。見つかった URL はボタンに持たせるので、押したらすぐ鳴る。
+  //   無かった曲は、押されたときと同じ「試聴がありません」の見た目にする。
+  const LOOKUP_GAP_MS = 3000; // 1 曲ごとの間隔。iTunes は 1 分あたり約 20 回までなので、その範囲に収める
+  const LOOKUP_MAX = 10;      // 1 回のページ表示で探す曲の上限
+  const lookupAll = async () => {
+    const targets = [...document.querySelectorAll('[data-preview][data-lookup]')].slice(0, LOOKUP_MAX);
+    for (const btn of targets) {
+      if (!btn.isConnected || btn.dataset.previewUrl || btn === current) continue; // 押された曲は、押した側が探す
+      try {
+        const res = await fetch(`api_track_preview?track=${encodeURIComponent(btn.dataset.preview)}`, { credentials: 'same-origin' });
+        const data = await res.json();
+        if (!res.ok) break; // iTunes に繋がらないなど。続けて叩かずに、ここで止める
+        if (btn !== current && !btn.dataset.previewUrl) {
+          if (data.url) btn.dataset.previewUrl = data.url;
+          else noPreview(btn);
+        }
+      } catch {
+        break;
+      }
+      await new Promise((resolve) => { setTimeout(resolve, LOOKUP_GAP_MS); });
+    }
+  };
+  lookupAll();
 }
 
 /* ---------------------------------------------------------------------
