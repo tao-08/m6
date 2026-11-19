@@ -42,6 +42,10 @@ if (isset(ATTACH_KINDS[$kind])) {
         $st = $pdo->prepare('SELECT i.*, v.name AS title FROM venue_image i JOIN venue v ON v.venue_id = i.venue_id WHERE i.image_id = ?');
         $st->execute([$id]);
         $img = $st->fetch() ?: null;
+    } elseif ($kind === 'band_audio') {
+        $st = $pdo->prepare('SELECT i.* FROM band_audio i WHERE i.image_id = ?');
+        $st->execute([$id]);
+        $img = $st->fetch() ?: null;
     } else {
         $st = $pdo->prepare('SELECT i.*, b.name AS title FROM band_image i JOIN band b ON b.band_id = i.band_id WHERE i.image_id = ?');
         $st->execute([$id]);
@@ -58,6 +62,45 @@ if (!$img || !preg_match('/^(t_)?[0-9a-f]{16}\.(jpg|pdf|[a-z0-9]{1,8})$/', $name
 }
 header('X-Content-Type-Options: nosniff');
 header('Cache-Control: private, max-age=86400');
+if ($kind === 'band_audio') {
+    // MP3: ページ内のプレーヤーで再生する。シーク（Range）に答える。長く流すので、先にセッションを手放す（ほかの画面が待たされない）
+    session_write_close();
+    $size = filesize($path);
+    $from = 0;
+    $to = $size - 1;
+    if (preg_match('/^bytes=(\d*)-(\d*)$/', $_SERVER['HTTP_RANGE'] ?? '', $m) && ($m[1] !== '' || $m[2] !== '')) {
+        if ($m[1] === '') { // bytes=-N: 終わりから N バイト
+            $from = max(0, $size - (int)$m[2]);
+        } else {
+            $from = (int)$m[1];
+            $to = $m[2] !== '' ? min($to, (int)$m[2]) : $to;
+        }
+        if ($from > $to) {
+            http_response_code(416);
+            header("Content-Range: bytes */$size");
+            exit;
+        }
+        http_response_code(206);
+        header("Content-Range: bytes $from-$to/$size");
+    }
+    header('Content-Type: audio/mpeg');
+    header('Accept-Ranges: bytes');
+    header('Content-Length: ' . ($to - $from + 1));
+    if (isset($_GET['dl'])) {
+        header("Content-Disposition: attachment; filename=\"mix.mp3\"; filename*=UTF-8''" . rawurlencode(preg_replace('/[^\p{L}\p{N}_-]+/u', '_', (string)$img['title']) . '_' . (int)$img['image_id'] . '.mp3'));
+    }
+    $fp = fopen($path, 'rb');
+    fseek($fp, $from);
+    for ($left = $to - $from + 1; $left > 0 && !feof($fp);) {
+        $chunk = (string)fread($fp, min(65536, $left));
+        if ($chunk === '') {
+            break;
+        }
+        echo $chunk;
+        $left -= strlen($chunk);
+    }
+    exit;
+}
 if (($isPdf || $isOther) && isset($_GET['t'])) {
     // PDF・その他のファイルのサムネイルは固定のアイコン（SVG。文字は拡張子で [a-z0-9] だけ）
     $label = strtoupper(live_file_ext((string)$img['file_name']));

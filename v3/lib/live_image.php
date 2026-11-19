@@ -18,7 +18,8 @@ declare(strict_types=1);
 const LIVE_IMAGE_MAX = 5;                       // 1ライブに付けられる枚数
 const LIVE_IMAGE_MAX_BYTES = 15 * 1024 * 1024;  // 1枚あたり（スマホの写真が入る大きさ）
 const LIVE_PDF_MAX_BYTES = 20 * 1024 * 1024;    // PDF（TAB 譜の添付だけ。attach_add の $allowPdf）
-const LIVE_IMAGE_DIR = __DIR__ . '/../storage/live_images';
+const LIVE_AUDIO_MAX_BYTES = 60 * 1024 * 1024;  // バンドのミックス MP3（1ファイル）
+const LIVE_IMAGE_DIR =__DIR__ . '/../storage/live_images';
 
 /** @return array live_id => [画像の行, ...]（表示順） */
 function live_images(PDO $pdo, array $liveIds): array
@@ -201,6 +202,29 @@ function live_other_store(array $file): array
     $name = bin2hex(random_bytes(8)) . '.' . $ext;
     if (!move_uploaded_file($file['tmp_name'], LIVE_IMAGE_DIR . '/' . live_file_disk_name($name))) {
         throw new RuntimeException('ファイルを保存できませんでした');
+    }
+    return ['file_name' => $name, 'taken_at' => null];
+}
+
+/** MP3 を検査して保存する（バンドのミックス音源）。先頭が ID3 タグか MP3 のフレームなら MP3 とみなす。ダメなら RuntimeException */
+function live_audio_store(array $file): array
+{
+    if ($file['error'] === UPLOAD_ERR_INI_SIZE || $file['error'] === UPLOAD_ERR_FORM_SIZE || $file['size'] > LIVE_AUDIO_MAX_BYTES) {
+        throw new RuntimeException('MP3 が大きすぎます（60MB まで）');
+    }
+    if ($file['error'] !== UPLOAD_ERR_OK || !is_uploaded_file($file['tmp_name'])) {
+        throw new RuntimeException('MP3 のアップロードに失敗しました。もう一度選んでください');
+    }
+    $head = (string)@file_get_contents($file['tmp_name'], false, null, 0, 3);
+    if ($head !== 'ID3' && !(strlen($head) >= 2 && $head[0] === "\xFF" && (ord($head[1]) & 0xE0) === 0xE0)) {
+        throw new RuntimeException('MP3 のファイルを選んでください');
+    }
+    if (!is_dir(LIVE_IMAGE_DIR) && !mkdir(LIVE_IMAGE_DIR, 0775, true)) {
+        throw new RuntimeException('保存先のフォルダを作れませんでした');
+    }
+    $name = bin2hex(random_bytes(8)) . '.mp3';
+    if (!move_uploaded_file($file['tmp_name'], LIVE_IMAGE_DIR . '/' . live_file_disk_name($name))) {
+        throw new RuntimeException('MP3 を保存できませんでした');
     }
     return ['file_name' => $name, 'taken_at' => null];
 }

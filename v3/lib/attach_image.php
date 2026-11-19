@@ -17,6 +17,7 @@ const ATTACH_KINDS = [
     'notice' => ['table' => 'notice_image',     'owner' => 'notice_id', 'max' => 5],
     'band'   => ['table' => 'band_image',       'owner' => 'band_id',   'max' => 5],
     'venue'  => ['table' => 'venue_image',      'owner' => 'venue_id',  'max' => 7],
+    'band_audio' => ['table' => 'band_audio',   'owner' => 'band_id',   'max' => 3], // バンドのミックス MP3（再生は attach_image.php）
     // TAB 譜（流れる TAB。tab.php）: パートごと / 曲ごと。TAB を削除しても画像は消さない（復元すると同じ tab_id で戻るため。外部キーなし）
     'song_tab'  => ['table' => 'song_tab_image',  'owner' => 'tab_id',  'max' => 10],
     'song_meta' => ['table' => 'song_meta_image', 'owner' => 'meta_id', 'max' => 10],
@@ -49,6 +50,9 @@ function tab_pdf_ids(array $images): array
 /** TAB 譜（song_tab / song_meta）は PDF・その他のファイルも受け付ける。画像として読めるものは画像、%PDF- は PDF、残りはそのまま保存 */
 function live_attach_store(string $kind, array $up): array
 {
+    if ($kind === 'band_audio') {
+        return live_audio_store($up);
+    }
     if ($kind !== 'song_tab' && $kind !== 'song_meta') {
         return live_image_store($up);
     }
@@ -78,6 +82,11 @@ function attach_add(PDO $pdo, string $kind, int $ownerId, array $uploads, ?int $
         if ($kind === 'band') {
             $pdo->prepare('INSERT INTO band_image (band_id, user_id, file_name, sort_order) VALUES (?, ?, ?, ?)')
                 ->execute([$ownerId, $userId, $saved['file_name'], ++$order]);
+        } elseif ($kind === 'band_audio') {
+            // タイトルはアップロードしたファイル名（拡張子なし）。バンド編集で直せる
+            $title = mb_substr(trim(mb_scrub(pathinfo((string)($up['name'] ?? ''), PATHINFO_FILENAME))), 0, 100);
+            $pdo->prepare('INSERT INTO band_audio (band_id, file_name, title, sort_order) VALUES (?, ?, ?, ?)')
+                ->execute([$ownerId, $saved['file_name'], $title, ++$order]);
         } else {
             $pdo->prepare("INSERT INTO {$k['table']} ({$k['owner']}, file_name, sort_order) VALUES (?, ?, ?)")
                 ->execute([$ownerId, $saved['file_name'], ++$order]);

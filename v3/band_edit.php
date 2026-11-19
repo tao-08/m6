@@ -87,6 +87,7 @@ $checkVocals = array_map('intval', array_column(array_filter(array_merge($locked
 
 $errors = [];
 $images = $isNew ? [] : (attach_images($pdo, 'band', [$bandId])[$bandId] ?? []); // 添付済みの画像
+$audios = $isNew ? [] : (attach_images($pdo, 'band_audio', [$bandId])[$bandId] ?? []); // 添付済みのミックス MP3
 if (is_post()) {
     verify_csrf();
 
@@ -174,6 +175,13 @@ if (is_post()) {
     $uploads = live_image_uploads($_FILES['images'] ?? null);
     if (count($images) - count($removeIds) + count($uploads) > ATTACH_KINDS['band']['max']) {
         $errors[] = '画像は ' . ATTACH_KINDS['band']['max'] . ' 枚までです';
+    }
+    // ミックス MP3: 外すチェックを引いて、新しく選んだ分を足して3つまで。タイトルは audio_title[ID]
+    $audioRemoveIds = array_values(array_intersect(array_map('intval', array_column($audios, 'image_id')), array_map('intval', (array)($_POST['audio_remove'] ?? []))));
+    $audioUploads = live_image_uploads($_FILES['audio'] ?? null);
+    $audioTitles = array_filter((array)($_POST['audio_title'] ?? []), 'is_string');
+    if (count($audios) - count($audioRemoveIds) + count($audioUploads) > ATTACH_KINDS['band_audio']['max']) {
+        $errors[] = 'MP3 は ' . ATTACH_KINDS['band_audio']['max'] . ' つまでです';
     }
     // 空欄はOK（リンクなし）。入れたなら YouTube の https のリンクだけ受け付ける（live_edit.php と同じ）
     if ($youtube !== '' && !youtube_url_valid($youtube)) {
@@ -283,6 +291,16 @@ if (is_post()) {
             }
             $removeFiles = $isNew ? [] : attach_remove($pdo, 'band', $bandId, $removeIds);
             attach_add($pdo, 'band', $bandId, $uploads, (int)current_user()['user_id'], $newFiles);
+            // ミックス MP3: タイトルを直し（このバンドの分だけ）、外す・足す
+            $setTitle = $pdo->prepare('UPDATE band_audio SET title = ? WHERE image_id = ? AND band_id = ?');
+            foreach ($audios as $a) {
+                $t = $audioTitles[$a['image_id']] ?? null;
+                if ($t !== null) {
+                    $setTitle->execute([mb_substr(trim(mb_scrub($t)), 0, 100), $a['image_id'], $bandId]);
+                }
+            }
+            $removeFiles = array_merge($removeFiles, $isNew ? [] : attach_remove($pdo, 'band_audio', $bandId, $audioRemoveIds));
+            attach_add($pdo, 'band_audio', $bandId, $audioUploads, null, $newFiles);
             $pdo->commit();
             array_map('live_image_unlink', $removeFiles);
         } catch (RuntimeException $e) { // 画像のエラー（形式・大きさなど）。保存ごと取り消して、入力を表示し直す
@@ -403,6 +421,21 @@ render_header($isNew ? 'バンドを追加' : 'バンドを編集', 'lives');
         <label class="field"><span>終了</span><input type="time" step="300" name="end_time" value="<?= h(fmt_time($band['end_time'])) ?>"></label>
         <label class="field field--wide"><span>メモ</span><input autocomplete="off" name="note" value="<?= h($band['note']) ?>" maxlength="255"></label>
         <div class="field field--wide"><span>画像の追加・削除</span><?= attach_field_html('band', $images) ?></div>
+        <div class="field field--wide"><span>ミックス MP3</span>
+            <?php if ($audios): ?>
+                <!-- 1行 = 1ファイル: タイトルの入力欄・✕（押すと外すにチェック → 行が薄くなる）。ドライブのファイルと同じ見た目 -->
+                <ul class="drive-edit">
+                    <?php foreach ($audios as $a): $aid = (int)$a['image_id']; ?>
+                        <li>
+                            <?= icon('audio_file', 'file-icon file-icon--audio') ?>
+                            <input type="text" name="audio_title[<?= $aid ?>]" value="<?= h($audioTitles[$aid] ?? $a['title']) ?>" maxlength="100" aria-label="タイトル" autocomplete="off">
+                            <label class="drive-edit__remove" title="外す"><input type="checkbox" name="audio_remove[]" value="<?= $aid ?>" hidden<?= in_array($aid, $audioRemoveIds ?? [], true) ? ' checked' : '' ?>><?= icon('close') ?></label>
+                        </li>
+                    <?php endforeach; ?>
+                </ul>
+            <?php endif; ?>
+            <input type="file" name="audio[]" accept="audio/mpeg,.mp3" multiple aria-label="MP3 を追加（60MB まで、<?= ATTACH_KINDS['band_audio']['max'] ?> つまで）">
+        </div>
         <label class="field field--wide"><span>YouTube のリンク（任意）</span><span class="field__hint"><a href="live_edit?id=<?= (int)$band['live_id'] ?>">ライブを編集</a>からプレイリストを追加すると各バンドのリンクを一括で登録できます</span><input autocomplete="off" type="url" name="youtube_url" value="<?= h($band['youtube_url']) ?>" maxlength="500" placeholder="https://www.youtube.com/watch?v=…" inputmode="url"></label>
         <?php if ($ytVideos): ?>
             <!-- name を付けない（送信しない）。選ぶと JS が上の URL 欄に入れる -->

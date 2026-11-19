@@ -420,10 +420,17 @@ render_header($band['name'], 'lives');
 </section>
 
 <?php $driveFiles = drive_load_files($pdo, [$bandId])[$bandId] ?? []; ?>
-<?php if ($driveFiles): ?>
-    <!-- ドライブのファイル（セットリストの下）: バンドのページは1組だけなので最初から並べる（iframe・画像は loading="lazy" で画面に近づいてから読み込む） -->
+<?php $bandAudios = attach_images($pdo, 'band_audio', [$bandId])[$bandId] ?? []; ?>
+<?php if ($driveFiles || $bandAudios): ?>
+    <!-- ファイル（セットリストの下）: 直接置いた MP3 のプレーヤー → ドライブのファイル。バンドのページは1組だけなので最初から並べる（iframe・画像は loading="lazy" で画面に近づいてから読み込む） -->
     <section class="card band-section no-print">
-        <h2 class="section-title section-title--card">ファイル <small class="muted"><?= count($driveFiles) ?></small></h2>
+        <h2 class="section-title section-title--card">ファイル <small class="muted"><?= count($driveFiles) + count($bandAudios) ?></small></h2>
+        <?php foreach ($bandAudios as $a): ?>
+            <figure class="drive-player">
+                <figcaption class="drive-player__name"><?= icon('audio_file', 'file-icon file-icon--audio') ?><?= h($a['title'] !== '' ? $a['title'] : 'MP3') ?></figcaption>
+                <audio class="band-audio" controls preload="none" src="attach_image?k=band_audio&amp;id=<?= (int)$a['image_id'] ?>"></audio>
+            </figure>
+        <?php endforeach; ?>
         <div class="drive-panel"><?= drive_files_html($driveFiles) ?></div>
     </section>
 <?php endif; ?>

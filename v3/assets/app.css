@@ -552,6 +552,8 @@ button.tab { border: 0; background: none; font: inherit; font-weight: 800; font-
 .drive-panel[hidden] { display: none; }
 .band-section > .drive-panel { margin-top: 12px; } /* 見出しの下は、メンバー欄（.lineup）と同じ 12px あける */
 .drive-player { margin: 0; }
+.band-section > .drive-player { margin-top: 12px; } /* 直接置いた MP3 のプレーヤー（band.php） */
+.band-audio { display: block; width: 100%; }
 .drive-player__name { display: flex; align-items: center; gap: 4px; margin-bottom: 4px; color: var(--muted); font-size: var(--fs-sm); overflow-wrap: anywhere; }
 /* 横幅いっぱい・16:9 で、PC で大きくなりすぎないよう上限 */
 .drive-player__frame { display: block; width: 100%; aspect-ratio: 16 / 9; max-height: 360px; border: 0; border-radius: var(--r-md); background: var(--surface-2); }

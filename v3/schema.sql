@@ -1028,6 +1028,18 @@ CREATE TABLE band_image (
         ON UPDATE CASCADE ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+CREATE TABLE band_audio (
+    image_id   INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    band_id    INT UNSIGNED NOT NULL,
+    file_name  VARCHAR(40)  NOT NULL,
+    title      VARCHAR(100) NOT NULL DEFAULT '',
+    sort_order SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+    PRIMARY KEY (image_id),
+    KEY idx_ba_band (band_id, sort_order),
+    CONSTRAINT fk_ba_band FOREIGN KEY (band_id) REFERENCES band (band_id)
+        ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
 CREATE TABLE timetable_draft (
     draft_id          INT UNSIGNED NOT NULL AUTO_INCREMENT,
     title             VARCHAR(100) NOT NULL,
