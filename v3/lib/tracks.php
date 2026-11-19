@@ -458,6 +458,33 @@ function track_preview_pending(PDO $pdo, int $limit, ?int $bandId = null): array
     return $st->fetchAll();
 }
 
+/**
+ * 試聴の一括調査（intro_previews.php）のカード用の一覧。同じ曲は 1 つ。SE は除く。曲名順
+ *   $state = 'pending'（まだ調べていない）/ 'missing'（調べたが試聴が無かった）
+ *   戻り値: [['source', 'track_id', 'title', 'artist_name', 'artwork_url'], …]（最大 $limit 件）
+ *   $state は SQL に入れず、下で条件を選ぶだけ（入力値は渡さない）
+ */
+function track_preview_cards(PDO $pdo, string $state, int $limit): array
+{
+    $where = $state === 'pending' ? 'p.track_id IS NULL' : 'p.track_id IS NOT NULL AND p.preview_url IS NULL';
+    return $pdo->query('SELECT DISTINCT t.source, t.track_id, t.title, t.artist_name, t.artwork_url
+        FROM song s
+        JOIN track t ON t.source = s.track_source AND t.track_id = s.track_id
+        LEFT JOIN track_preview p ON p.source = t.source AND p.track_id = t.track_id
+        WHERE s.is_se = 0 AND ' . $where . '
+        ORDER BY t.title, t.artist_name LIMIT ' . max(1, $limit))->fetchAll();
+}
+
+/** 調べたが試聴が無かった曲の数（track_preview_cards の 'missing' と同じ条件。同じ曲は 1 曲） */
+function track_preview_missing_count(PDO $pdo): int
+{
+    return (int)$pdo->query('SELECT COUNT(DISTINCT t.source, t.track_id)
+        FROM song s
+        JOIN track t ON t.source = s.track_source AND t.track_id = s.track_id
+        JOIN track_preview p ON p.source = t.source AND p.track_id = t.track_id AND p.preview_url IS NULL
+        WHERE s.is_se = 0')->fetchColumn();
+}
+
 /** まだ一度も試聴を調べていない曲の数（track_preview_pending と同じ条件。同じ曲は 1 曲） */
 function track_preview_pending_count(PDO $pdo): int
 {

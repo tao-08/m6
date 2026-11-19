@@ -1,0 +1,36 @@
+/* =====================================================================
+ *  assets/intro_previews.css — 試聴の一括調査（intro_previews.php）だけの見た目
+ *  色・角丸・文字サイズ・時間は app.css の変数（:root のトークン）を使う。
+ * ===================================================================== */
+
+.preview-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.preview-head p { margin: 0; }
+.preview-sub { margin: 20px 0 8px; font-size: var(--fs-xl); }
+
+/* カードの並び。スマホは 1 列、広い画面は 2 列 */
+.preview-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+@media (min-width: 700px) { .preview-list { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+.preview-card { padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); }
+.preview-card__row { display: flex; align-items: center; gap: 10px; }
+.preview-card__art { flex: none; width: 48px; height: 48px; border-radius: var(--r-xs); object-fit: cover; background: var(--surface-2); }
+.preview-card__text { flex: 1; min-width: 0; }
+.preview-card__title { margin: 0; font-weight: 700; overflow-wrap: anywhere; }
+.preview-card__artist { margin: 2px 0 0; overflow-wrap: anywhere; }
+.preview-card[hidden], .preview-card [hidden] { display: none; }
+
+/* 見つかった: 緑のチェックを出して、枠も緑にする */
+.preview-card__ok { flex: none; color: var(--ok); display: inline-flex; }
+.preview-card__ok .icon { font-size: 28px; }
+.preview-card.is-ok { border-color: var(--ok); background: var(--ok-bg); }
+
+/* 探し直す: 検索語の入力と、候補の並び */
+.preview-search { display: grid; gap: 8px; margin-top: 10px; }
+.preview-search__form { display: flex; gap: 8px; }
+.preview-search__form input { flex: 1; min-width: 0; }
+.preview-candidates { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.preview-cand { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--border); border-radius: var(--r-sm); }
+.preview-cand__text { flex: 1; min-width: 0; font-size: var(--fs-sm); }
+.preview-cand__text b { display: block; overflow-wrap: anywhere; }
+.preview-cand.is-playing { border-color: var(--accent); }
+.preview-error { margin: 0; font-size: var(--fs-sm); color: var(--danger); }
