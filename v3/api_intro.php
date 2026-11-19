@@ -84,7 +84,7 @@ $allTitles = static function () use ($pdo): array {
 try {
     switch ($action) {
         case 'start':
-            $f = intro_filters_clean($body);
+            $f = intro_filters_clean($body, (int)$user['member_id']);
             if ($f === null) {
                 fail(400, '送信内容がおかしいです');
             }
@@ -126,7 +126,7 @@ try {
             api_ok(['round' => $round, 'total' => count($questions), 'ranked' => $ranked, 'preview' => $questions[0]['preview']]);
 
         case 'count': // 範囲を変えたときに、出題できる曲の数を返す（タイトル画面の表示用。ラウンドには触らない）
-            $f = intro_filters_clean($body);
+            $f = intro_filters_clean($body, (int)$user['member_id']);
             if ($f === null) {
                 fail(400, '送信内容がおかしいです');
             }

@@ -44,10 +44,12 @@ function intro_points(float $elapsed): int
 }
 
 /**
- * ブラウザから来た絞り込みを整える。['year' => ?int, 'live' => ?int, 'artist' => ?int]。
+ * ブラウザから来た絞り込みを整える。['year' => ?int, 'live' => ?int, 'artist' => ?int, 'member' => ?int]。
  * 整数か null だけ通す（"2024" や 1.5 は不正 = null を返す）
+ *   mine（自分が出演した曲だけ）は 1 か null だけ通す。通ったときだけ、member に「いまログインしている人」の ID を入れる。
+ *   member をブラウザから受け取らないのは、他の人の ID を送って、その人の出演曲を探られないようにするため
  */
-function intro_filters_clean(mixed $body): ?array
+function intro_filters_clean(mixed $body, int $memberId): ?array
 {
     if (!is_array($body)) {
         return null;
@@ -60,13 +62,18 @@ function intro_filters_clean(mixed $body): ?array
         }
         $f[$k] = $v;
     }
+    $mine = $body['mine'] ?? null;
+    if ($mine !== null && $mine !== 1) {
+        return null;
+    }
+    $f['member'] = $mine === 1 ? $memberId : null;
     return $f;
 }
 
 /** 絞り込みなしか */
 function intro_filters_none(array $f): bool
 {
-    return $f['year'] === null && $f['live'] === null && $f['artist'] === null;
+    return $f['year'] === null && $f['live'] === null && $f['artist'] === null && empty($f['member']);
 }
 
 /**
@@ -93,6 +100,12 @@ function intro_from(array $f, string $joins = ''): array
     if ($f['artist'] !== null) {
         $sql .= ' AND COALESCE(s.artist_id, b.artist_id) = ?';
         $params[] = $f['artist'];
+    }
+    // 自分が出演した曲だけ。song_performer（曲ごとの出演者。idx_sp_member で引く）に、この人が居る曲
+    //   EXISTS: 「条件に合う行が 1 件でもあるか」を調べる書き方。JOIN と違って、楽器が 2 つ（ギター + コーラスなど）でも曲が重複しない
+    if (!empty($f['member'])) {
+        $sql .= ' AND EXISTS (SELECT 1 FROM song_performer sp WHERE sp.song_id = s.song_id AND sp.member_id = ?)';
+        $params[] = $f['member'];
     }
     return [$sql, $params];
 }

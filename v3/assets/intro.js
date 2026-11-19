@@ -122,7 +122,10 @@
     liveSel.value = opts.some((o) => o.value === keep) ? keep : '';
   });
   const filterValue = (k) => (filterEl(k).value === '' ? null : Number(filterEl(k).value));
-  const filtered = () => ['year', 'live', 'artist'].some((k) => filterEl(k).value !== '');
+  const FILTER_KEYS = ['year', 'live', 'artist', 'mine']; // サーバーへ送る絞り込み。mine は 1 か null
+  const filtered = () => FILTER_KEYS.some((k) => filterEl(k).value !== '');
+  /** 絞り込みを送信用にまとめる（{ year, live, artist, mine }） */
+  const filterBody = () => Object.fromEntries(FILTER_KEYS.map((k) => [k, filterValue(k)]));
   const optText = (k) => filterEl(k).selectedOptions[0].textContent;
 
   /** 範囲のボタンの文字（「すべて」/「2025年度 · アーティスト名」など）。ライブを選んでいれば年度はライブ名に入っているので省く */
@@ -131,6 +134,7 @@
     if (filterEl('live').value) parts.push(optText('live'));
     else if (filterEl('year').value) parts.push(`${optText('year')}年度`);
     if (filterEl('artist').value) parts.push(optText('artist'));
+    if (filterEl('mine').value) parts.push('自分の出演');
     return parts.length ? parts.join(' · ') : 'すべて';
   }
 
@@ -144,7 +148,7 @@
     const seq = ++countSeq;
     countEl.textContent = '…';
     try {
-      const r = await post({ action: 'count', year: filterValue('year'), live: filterValue('live'), artist: filterValue('artist') });
+      const r = await post({ action: 'count', ...filterBody() });
       if (seq !== countSeq) return;
       countEl.textContent = fmt(r.count);
       countOk = r.count >= 4; // lib/intro.php の INTRO_MIN_SONGS と同じ
@@ -375,7 +379,7 @@
     const btn = btnStart;
     btn.disabled = true;
     try {
-      const body = { action: 'start', year: filterValue('year'), live: filterValue('live'), artist: filterValue('artist') };
+      const body = { action: 'start', ...filterBody() };
       // 開始が止まり続けないよう、待つ時間に上限を付ける（上限なしだと、ボタンが押せないまま戻らなくなる）
       //   ・再生の許可取り: play() が決着しない端末があるので、待つのは最大 1 秒（過ぎても開始する。許可取りはもう済んでいる）
       //   ・通信: 20 秒で切る（AbortSignal.timeout が無い古いブラウザは、上限なし）
@@ -414,7 +418,7 @@
     else if (act === 'scope') scopeDlg.showModal();
     else if (act === 'scope-close') scopeDlg.close();
     else if (act === 'scope-reset') {
-      ['year', 'live', 'artist'].forEach((k) => { filterEl(k).value = ''; });
+      FILTER_KEYS.forEach((k) => { filterEl(k).value = ''; });
       filterEl('year').dispatchEvent(new Event('change')); // ライブの候補を全部に戻す（refreshScope もここで呼ばれる）
     }
   });

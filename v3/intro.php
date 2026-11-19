@@ -58,7 +58,7 @@ render_header('イントロクイズ', 'tools');
             <p class="intro-note muted small" data-note hidden>絞り込み中はランキングに載りません</p>
         </div>
 
-        <!-- 範囲（年度・ライブ・アーティスト）の小窓 -->
+        <!-- 範囲（年度・ライブ・アーティスト・出演）の小窓 -->
         <dialog class="modal intro-modal" id="intro-scope" aria-labelledby="intro-scope-title">
             <div class="modal__body">
                 <div class="intro-modal__head">
@@ -83,6 +83,13 @@ render_header('イントロクイズ', 'tools');
                     <select data-filter="artist">
                         <option value="">すべて</option>
                         <?php foreach ($artists as $a): ?><option value="<?= (int)$a['artist_id'] ?>"><?= h($a['name']) ?></option><?php endforeach; ?>
+                    </select>
+                </label>
+                <!-- 自分が出演した曲だけ。value="1" は assets/intro.js が mine=1 として送る（誰かは、サーバーがログインから決める） -->
+                <label class="field"><span>出演</span>
+                    <select data-filter="mine">
+                        <option value="">すべて</option>
+                        <option value="1">自分が出演した曲</option>
                     </select>
                 </label>
             </div>
