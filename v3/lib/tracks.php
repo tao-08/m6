@@ -425,6 +425,50 @@ function track_preview_marks(PDO $pdo, array $tracks, string $q): array
 }
 
 /**
+ * 1 曲の試聴を iTunes で探して、結果を track_preview に覚える（api_track_preview.php・イントロクイズ・保存時の下調べで共通）。
+ *   戻り値は track_preview_find と同じ: URL / null（無かった。「無い」と覚える）/ false（通信できなかった。覚えない）
+ *   ON DUPLICATE KEY UPDATE: 同時に2か所から覚えようとしても、エラーにせず後勝ちで上書きする
+ */
+function track_preview_remember(PDO $pdo, array $track): string|false|null
+{
+    $url = track_preview_find($track);
+    if ($url === false) {
+        return false;
+    }
+    $pdo->prepare('INSERT INTO track_preview (source, track_id, preview_url) VALUES (?, ?, ?)
+            ON DUPLICATE KEY UPDATE preview_url = VALUES(preview_url), checked_at = CURRENT_TIMESTAMP')
+        ->execute([$track['source'], $track['track_id'], $url]);
+    return $url;
+}
+
+/**
+ * まだ一度も試聴を調べていない曲（track_preview に行が無い曲。SE は除く。同じ曲は 1 つ）。
+ *   $bandId を渡すと、そのバンドのセトリの曲だけ。$limit = 取る数（0 なら数えるだけ使う track_preview_pending_count を使う）
+ *   ORDER BY RAND(): 通信に失敗した曲が毎回先頭に来て、同じ曲で止まり続けるのを避ける（曲は数百なので軽い）
+ */
+function track_preview_pending(PDO $pdo, int $limit, ?int $bandId = null): array
+{
+    $st = $pdo->prepare('SELECT DISTINCT t.source, t.track_id, t.title, t.artist_name
+        FROM song s
+        JOIN track t ON t.source = s.track_source AND t.track_id = s.track_id
+        LEFT JOIN track_preview p ON p.source = t.source AND p.track_id = t.track_id
+        WHERE s.is_se = 0 AND p.track_id IS NULL AND (? IS NULL OR s.band_id = ?)
+        ORDER BY RAND() LIMIT ' . max(1, $limit));
+    $st->execute([$bandId, $bandId]);
+    return $st->fetchAll();
+}
+
+/** まだ一度も試聴を調べていない曲の数（track_preview_pending と同じ条件。同じ曲は 1 曲） */
+function track_preview_pending_count(PDO $pdo): int
+{
+    return (int)$pdo->query('SELECT COUNT(DISTINCT t.source, t.track_id)
+        FROM song s
+        JOIN track t ON t.source = s.track_source AND t.track_id = s.track_id
+        LEFT JOIN track_preview p ON p.source = t.source AND p.track_id = t.track_id
+        WHERE s.is_se = 0 AND p.track_id IS NULL')->fetchColumn();
+}
+
+/**
  * 覚えてある試聴の URL をまとめて読む（band.php の表示用。通信しない）。
  *   戻り値: [キー => URL または null（無かった）]。覚えていない曲・探し直す時期の曲は入らない
  */

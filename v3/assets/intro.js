@@ -21,6 +21,8 @@
   const LOAD_TIMEOUT = 8000; // 音源がこの時間（ミリ秒）で読めなければ差し替える
   const LOW_SECONDS = 3;     // 残りがこれ以下になったらバーの色を変える
   const READY_MS = 1000;     // 問の前の Ready を見せる時間（リングが一周する時間。intro.css の intro-ring と同じ）
+  const UNLOCK_MAX_MS = 1000;   // 開始ボタンの再生の許可取りを待つ上限（ミリ秒）
+  const START_TIMEOUT_MS = 20000; // 開始の通信を待つ上限（ミリ秒）
   const COUNT_MS = 600;      // 合計点が増えていく時間（終了画面はこの倍）
   const calm = window.matchMedia('(prefers-reduced-motion: reduce)'); // 動きを減らす設定なら、点数は数えずにすぐ出す
   // 音の長さが 0 の WAV。開始ボタンの中で一度鳴らして、再生の許可をもらうのに使う
@@ -55,7 +57,7 @@
   let st = null; // いまのラウンド: {round, total, ranked, i, score, token, answered, pending, next, final, raf}
 
   const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
-  const post = (body) => apiPost('api_intro.php', body, '送信できませんでした');
+  const post = (body, opts) => apiPost('api_intro.php', body, '送信できませんでした', opts);
 
   function showScreen(name) {
     Object.entries(screens).forEach(([k, node]) => { node.hidden = k !== name; });
@@ -374,7 +376,12 @@
     btn.disabled = true;
     try {
       const body = { action: 'start', year: filterValue('year'), live: filterValue('live'), artist: filterValue('artist') };
-      const [r] = await Promise.all([post(body), Promise.all(unlocked)]);
+      // 開始が止まり続けないよう、待つ時間に上限を付ける（上限なしだと、ボタンが押せないまま戻らなくなる）
+      //   ・再生の許可取り: play() が決着しない端末があるので、待つのは最大 1 秒（過ぎても開始する。許可取りはもう済んでいる）
+      //   ・通信: 20 秒で切る（AbortSignal.timeout が無い古いブラウザは、上限なし）
+      const unlockDone = Promise.race([Promise.all(unlocked), sleep(UNLOCK_MAX_MS)]);
+      const opts = typeof AbortSignal.timeout === 'function' ? { signal: AbortSignal.timeout(START_TIMEOUT_MS) } : {};
+      const [r] = await Promise.all([post(body, opts), unlockDone]);
       st = { round: r.round, total: r.total, ranked: r.ranked, i: 0, score: 0, token: 0, answered: false, pending: null, next: null, final: null, raf: 0 };
       stat.total.textContent = String(r.total);
       cancelAnimationFrame(stat.score.countRaf);
@@ -383,7 +390,8 @@
       showScreen('play');
       present(0, r.preview);
     } catch (e) {
-      readyErr.textContent = e.message || '送信できませんでした';
+      // 通信が上限を超えたとき（TimeoutError）は、ブラウザの英語の文言ではなく、こちらの文言を出す
+      readyErr.textContent = e.name === 'TimeoutError' ? '開始できませんでした。もう一度試してください' : (e.message || '送信できませんでした');
       readyErr.hidden = false;
     } finally {
       btn.disabled = !countOk;

@@ -45,6 +45,11 @@ if (is_executive()) {
     $tools[] = ['studio', 'meeting_room', 'スタジオ割',
         '練習の要否を集め、メンバーが重ならないように練習の順番と部屋を決めて画像にします。', '幹部'];
 }
+// 試聴の一括調査（管理者だけ。イントロクイズで出せる曲を増やす）
+if (is_admin()) {
+    $tools[] = ['intro_previews', 'headphones', '試聴の一括調査',
+        '試聴を調べていない曲を探して、イントロクイズで出せる曲を増やします。', '管理者'];
+}
 // スタ連（スタジオ練習）の日程調整（sched.php）。ログインしていれば誰でも
 $tools[] = ['sched', 'event_available', 'スタジオ練習の日程調整',
     '時間割・カレンダーからメンバー全員の空きを出し、スタジオの料金と一緒に候補を並べます。'];
@@ -61,7 +66,7 @@ foreach (!empty(current_user()['member_id']) ? sched_todo_polls(db(), (int)curre
 $tabs = ['data' => 'データ', 'useful' => '便利ツール', 'admin' => '運営ツール', 'game' => 'ゲーム'];
 $tabOf = [
     'songs' => 'data', 'venue_list' => 'data', 'studio_list' => 'data',
-    'tt_builder' => 'admin', 'studio' => 'admin', 'sheet_templates' => 'admin',
+    'tt_builder' => 'admin', 'studio' => 'admin', 'sheet_templates' => 'admin', 'intro_previews' => 'admin',
     'block' => 'game', 'intro' => 'game',
 ];
 $grouped = array_fill_keys(array_keys($tabs), []);

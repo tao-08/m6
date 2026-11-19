@@ -133,13 +133,10 @@ function intro_lookup_previews(PDO $pdo, array &$pool): void
     $todo = array_keys(array_filter($pool, static fn($t) => $t['lookup']));
     shuffle($todo);
     foreach (array_slice($todo, 0, INTRO_LOOKUPS) as $i) {
-        $url = track_preview_find($pool[$i]);
+        $url = track_preview_remember($pdo, $pool[$i]); // 探して覚える（lib/tracks.php）
         if ($url === false) {
             continue;
         }
-        $pdo->prepare('INSERT INTO track_preview (source, track_id, preview_url) VALUES (?, ?, ?)
-                ON DUPLICATE KEY UPDATE preview_url = VALUES(preview_url), checked_at = CURRENT_TIMESTAMP')
-            ->execute([$pool[$i]['source'], $pool[$i]['track_id'], $url]);
         $pool[$i]['preview'] = $url;
         $pool[$i]['lookup'] = false;
     }

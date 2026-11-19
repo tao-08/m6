@@ -62,12 +62,8 @@ if ($track['checked_at'] !== null) {
     }
 }
 
-$url = track_preview_find($track);
+$url = track_preview_remember($pdo, $track); // 探して track_preview に覚える（lib/tracks.php）
 if ($url === false) {
     fail(502, '今は試聴を探せません。時間をおいてもう一度試してください'); // 502 = この先のサーバー（iTunes）がうまく答えなかった
 }
-// 同時に2人が押しても、ON DUPLICATE KEY UPDATE でエラーにしない
-$pdo->prepare('INSERT INTO track_preview (source, track_id, preview_url) VALUES (?, ?, ?)
-        ON DUPLICATE KEY UPDATE preview_url = VALUES(preview_url), checked_at = CURRENT_TIMESTAMP')
-    ->execute([$source, $trackId, $url]);
 echo json_encode(['url' => $url]);

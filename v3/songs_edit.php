@@ -212,6 +212,16 @@ if (is_post() && !$fromSheet) {
             $pdo->rollBack();
             throw $e;
         }
+        // 保存のあと、試聴をまだ調べていない曲を最大 3 曲だけ下調べする（イントロクイズの出題に使う）。
+        //   トランザクションの外でやる: 通信中に DB のロックを持ち続けないため。残りは運営ツールの一括調査で消化する。
+        //   通信に失敗しても保存は成功のまま（例外も握りつぶす）
+        try {
+            foreach (track_preview_pending($pdo, 3, $bandId) as $pending) {
+                track_preview_remember($pdo, $pending);
+            }
+        } catch (Throwable $e) {
+            // 下調べは任せきりでよいので何もしない
+        }
         flash('「' . $band['name'] . '」の曲を保存しました（' . count($songs) . '曲）');
         redirect($backUrl);
     }
