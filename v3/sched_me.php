@@ -54,6 +54,14 @@ $ensureProfile = static fn() => $pdo->prepare('INSERT IGNORE INTO sched_profile 
 /** Google 連携中か（連携中は、iCal の URL は使わない。両方が予定を入れ替えると、お互いの取り込みを消し合うため） */
 $googleOn = sched_google_available();
 $g = $googleOn ? sched_google_row($pdo, $me) : null;
+$pickErr = null;
+$pickCals = null; // 取り込むカレンダーを選ぶモーダルに出す一覧（?pick=1 のときだけ Google から取る）
+if (!is_post() && ($_GET['pick'] ?? '') === '1' && $g !== null && !$g['error']) {
+    $pickCals = sched_google_pick_list($pdo, $me, $pickErr);
+    if ($pickCals === null) {
+        flash($pickErr ?? 'カレンダーが見つかりません', 'error');
+    }
+}
 
 /* ==================== 保存 ==================== */
 if (is_post()) {
@@ -283,6 +291,22 @@ if (is_post()) {
         $err = sched_google_refresh_busy($pdo, $me, true);
         sched_google_sync_member($pdo, $me);
         flash($err === null ? 'カレンダーを読み直しました' : $err, $err === null ? 'success' : 'error');
+        redirect($back . '#ical');
+    }
+
+    // 取り込むカレンダーを選ぶ（モーダルの保存）。送られた id は、Google の一覧にあるものだけ保存する
+    if ($action === 'google_pick' && $g !== null) {
+        $cals = sched_google_pick_list($pdo, $me, $pickErr);
+        $posted = is_array($_POST['cal'] ?? null) ? array_map('strval', $_POST['cal']) : [];
+        $ids = $cals === null ? [] : array_values(array_map(static fn($c) => $c['id'], array_filter($cals, static fn($c) => in_array($c['id'], $posted, true))));
+        if (!$ids) {
+            flash($pickErr ?? 'カレンダーを1つ以上選んでください', 'error');
+            redirect($back . '#ical');
+        }
+        sched_google_chosen_save($pdo, $me, $ids);
+        $err = sched_google_refresh_busy($pdo, $me, true);
+        sched_google_sync_member($pdo, $me);
+        flash($err === null ? 'Google カレンダーを連携しました' : '連携しましたが、読み込めませんでした: ' . $err, $err === null ? 'success' : 'error');
         redirect($back . '#ical');
     }
 
@@ -767,7 +791,7 @@ render_header('マイスケジュール', 'tools');
                                 <form method="post" action="sched_google"><?= csrf_field() ?><input type="hidden" name="poll" value="<?= $poll !== null ? $pollId : 0 ?>">
                                     <button class="btn btn--sm btn--primary" type="submit"><?= icon('login') ?> 再連携</button></form>
                             <?php endif; ?>
-                            <?php if (!$g['error']): ?><a class="btn btn--sm" href="sched_google_pick<?= $poll !== null ? '?poll=' . $pollId : '' ?>"><?= icon('event') ?> カレンダーを選ぶ</a><?php endif; ?>
+                            <?php if (!$g['error']): ?><a class="btn btn--sm" href="sched_me?pick=1<?= $poll !== null ? '&poll=' . $pollId : '' ?>#ical"><?= icon('event') ?> カレンダーを選ぶ</a><?php endif; ?>
                             <form method="post"><?= csrf_field() ?><input type="hidden" name="action" value="google_refresh"><?= $pollHidden ?>
                                 <button class="btn btn--sm" type="submit"><?= icon('refresh') ?> 読み直す</button></form>
                             <form method="post" data-confirm="Google との連携を解除します。取り込んだ予定も消えます。よろしいですか？"><?= csrf_field() ?><input type="hidden" name="action" value="google_disconnect"><?= $pollHidden ?>
@@ -1053,6 +1077,24 @@ render_header('マイスケジュール', 'tools');
     </form>
 </section>
 
+<?php if ($pickCals !== null): // 取り込むカレンダーを選ぶ（連携の直後と「カレンダーを選ぶ」）。最初は選んだもの。まだなら Google で表示中のもの ?>
+    <?php $chosen = sched_google_chosen($pdo, $me); $picked = $chosen ?? array_column(array_filter($pickCals, static fn($c) => $c['selected']), 'id'); ?>
+    <dialog class="modal" data-auto-open aria-labelledby="gpick-title">
+        <form method="post" class="modal__body">
+            <?= csrf_field() ?><input type="hidden" name="action" value="google_pick"><?= $poll !== null ? '<input type="hidden" name="poll" value="' . $pollId . '">' : '' ?>
+            <h2 class="modal__title" id="gpick-title">取り込むカレンダー</h2>
+            <ul>
+                <?php foreach ($pickCals as $c): ?>
+                    <li><label class="check"><input type="checkbox" name="cal[]" value="<?= h($c['id']) ?>"<?= in_array($c['id'], $picked, true) ? ' checked' : '' ?>> <?= h($c['name']) ?></label></li>
+                <?php endforeach; ?>
+            </ul>
+            <div class="form-actions">
+                <button class="btn btn--primary btn--sm" type="submit"><?= icon('check') ?> 保存</button>
+                <button class="btn btn--sm" type="submit" formmethod="dialog" formnovalidate>キャンセル</button>
+            </div>
+        </form>
+    </dialog>
+<?php endif; ?>
 <?php require __DIR__ . '/partials/ical_help.php'; // ⓘ から開く「カレンダーの連携方法」（初回チュートリアルと同じ部品） ?>
 <?php require __DIR__ . '/partials/sched_help.php'; // 見出しの ⓘ から開く「マイスケジュールの使い方」（4枚のスクリーンショット） ?>
 <script src="<?= asset_url('assets/sched.js') ?>" defer></script>

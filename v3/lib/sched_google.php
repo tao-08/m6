@@ -309,6 +309,22 @@ function sched_google_selectable(array $calendars): array
     return array_values(array_filter($calendars, static fn($c) => !$c['deleted'] && !preg_match('~#(holiday|weather|contacts)@group\.v\.calendar\.google\.com$~', $c['id'])));
 }
 
+/** 選択画面に出すカレンダー。失敗は null（$error に画面に出す言葉） */
+function sched_google_pick_list(PDO $pdo, int $memberId, ?string &$error): ?array
+{
+    $token = sched_google_access_token($pdo, $memberId, $error);
+    if ($token === null) {
+        return null;
+    }
+    try {
+        $cals = sched_google_selectable(sched_google_calendars($token));
+    } catch (RuntimeException $e) {
+        $error = $e->getMessage();
+        return null;
+    }
+    return $cals ?: null;
+}
+
 /** 本人が選んだカレンダーの id。まだ選んでいない（選択画面の前に連携した人）は null = 表示中のものをすべて取り込む */
 function sched_google_chosen(PDO $pdo, int $memberId): ?array
 {

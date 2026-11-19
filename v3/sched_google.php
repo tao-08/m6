@@ -8,7 +8,7 @@
  *  GET（Google が戻してくる）
  *    sched_google?code=…&state=…  … 許可された。state を確かめ、code をトークンに交換して保存し、予定を読み込む
  *    sched_google?error=access_denied … 許可されなかった
- *  許可されたら sched_google_pick（取り込むカレンダーを選ぶ画面）へ。キャンセル・失敗は sched_me#ical に戻る。
+ *  許可されたら sched_me?pick=1（取り込むカレンダーを選ぶモーダルが開く）へ。キャンセル・失敗は sched_me#ical に戻る。
  *
  *  ■ 守っていること（仕組みは lib/sched_google.php の冒頭）
  *    ・開始は POST + CSRF（ほかのサイトから勝手に連携を始めさせない）
@@ -104,4 +104,4 @@ try {
     // 表示用なので、取れなくても連携は続ける（読み込みの失敗は、次の行で画面に出る）
 }
 // 取り込むカレンダーを選んでもらう（予定の読み込みは、選んだあと）
-redirect('sched_google_pick' . ($pollId > 0 ? '?poll=' . $pollId : ''));
+redirect('sched_me?pick=1' . ($pollId > 0 ? '&poll=' . $pollId : '') . '#ical');
