@@ -591,14 +591,17 @@ button.tab { border: 0; background: none; font: inherit; font-weight: 800; font-
 .audio-bubble { --hw: 14px; --edge: calc(var(--hw) - 8px);
   --shift: clamp(calc(-1 * var(--edge)), clamp(calc(var(--hw) - var(--x) * 100cqw), 0px, calc(100cqw - var(--hw) - var(--x) * 100cqw)), var(--edge));
   position: absolute; left: calc(var(--x) * 100%); bottom: 5px; transform: translateX(calc(-50% + var(--shift)));
-  width: calc(var(--hw) * 2); height: 17px; padding: 0; border: 1px solid var(--border); border-radius: var(--r-sm);
-  background: var(--surface-2); color: var(--text); font: inherit; font-size: var(--fs-2xs); font-weight: 700; line-height: 15px; text-align: center;
+  --bd: var(--border); --bg: var(--surface-2); /* 枠と中の色。中は不透明にする（三角と重なっても濃くならない） */
+  width: calc(var(--hw) * 2); height: 17px; padding: 0; border: 1px solid var(--bd); border-radius: var(--r-sm);
+  background: var(--bg); color: var(--text); font: inherit; font-size: var(--fs-2xs); font-weight: 700; line-height: 15px; text-align: center;
   cursor: pointer; pointer-events: auto; }
-.audio-bubble::after { content: ''; position: absolute; left: calc(50% - var(--shift)); bottom: -4px; width: 6px; height: 6px;
-  border: solid var(--border); border-width: 0 1px 1px 0; background: var(--surface-2); transform: translateX(-50%) rotate(45deg); }
+/* 三角: 枠の色の三角（::before）の上に、1px 内側の中の色の三角（::after）を重ねる。::after が吹き出しの下の枠線を消して一続きにする */
+.audio-bubble::before, .audio-bubble::after { content: ''; position: absolute; top: 100%; left: calc(50% - var(--shift)); transform: translateX(-50%);
+  clip-path: polygon(0 0, 100% 0, 50% 100%); }
+.audio-bubble::before { width: 10px; height: 6px; margin-top: 0; background: var(--bd); }
+.audio-bubble::after { width: 8px; height: 5px; margin-top: -1px; background: var(--bg); }
 .audio-bubble:hover { color: var(--accent); }
-.audio-bubble.is-current { z-index: 1; border-color: var(--ok); background: var(--ok-bg); color: var(--ok); }
-.audio-bubble.is-current::after { border-color: var(--ok); background: var(--ok-bg); }
+.audio-bubble.is-current { z-index: 1; --bd: var(--ok); --bg: linear-gradient(var(--ok-bg), var(--ok-bg)), var(--surface-2); color: var(--ok); }
 .audio-player__list { margin-top: 8px; }
 .audio-player__list:empty { display: none; }
 .audio-player__add { display: flex; gap: 8px; margin-top: 8px; }
