@@ -37,6 +37,7 @@
   --on-accent: #ffffff;
   --ok: #148a55;      --ok-bg: #e3f5ea;      /* 緑: DB に登録済み */
   --warn: #9a6a00;    --warn-bg: #fff3cf;    /* 黄: 似た人がいる */
+  --info: #1d5fa8;    --info-bg: #e6f1fb;    /* 青: 案内（吹き出し） */
   --danger: #c62f3e;  --danger-bg: #fde6e8;  /* 赤: 新しく登録される */
   /* 楽器の色 */
   --vo: #13915c; --gt: #c58a00; --ba: #7653d6; --dr: #d90f0f; --key: #d6338a; --vn: #e8590c; --sax: #9c7a2e; --prog: #1d6f96; --harm: #4a6b85; --cho: #6fa31a; --other: #6c6a75;
@@ -89,6 +90,7 @@
   --se: #8fb8d8;  --se-bg: rgba(106, 160, 200, .2);
   --ok: #49dc9a;      --ok-bg: rgba(73, 220, 154, .13);
   --warn: #ffcf5c;    --warn-bg: rgba(255, 207, 92, .14);
+  --info: #7db8f5;    --info-bg: rgba(96, 165, 250, .14);
   --danger: #ff6b7d;  --danger-bg: rgba(255, 107, 125, .14);
   --vo: #3ddc97; --gt: #ffc857; --ba: #a78bfa; --dr: #ff6b6b; --key: #ff7eb6; --vn: #ff9f43; --sax: #d4b26a; --prog: #74c4e6; --harm: #9fbad0; --cho: #b5e655; --other: #9d9cad;
   --shadow: 0 1px 0 rgba(255, 255, 255, .03) inset, 0 10px 30px rgba(0, 0, 0, .3);
