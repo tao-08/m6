@@ -65,6 +65,7 @@ if (is_post()) {
     // f[band_id][] = チェックしたファイル ID。チェックが1つも無いバンドは送られてこないので、
     // 画面に出したバンドは shown[] で別に送ってもらう（「全部外した」と「画面に無かった」を区別するため）
     $picks = is_array($_POST['f'] ?? null) ? $_POST['f'] : [];
+    $picksMix = is_array($_POST['m'] ?? null) ? $_POST['m'] : [];
     $shown = array_map('intval', (array)($_POST['shown'] ?? []));
     $changed = 0;
     $op = null; // 変更履歴。実際に変わるバンドがあったときだけ作る
@@ -87,10 +88,11 @@ if (is_post()) {
                     $next[$fid] = $row;
                 }
             }
-            // 変わらないなら何もしない（file_id と名前で比べる。順番だけの違いは無視）
-            $key = static fn(array $rows) => array_map(fn($f) => $f['file_id'] . '|' . $f['name'], $rows);
-            $before = $key($current[$id] ?? []);
-            $after = $key(array_values($next));
+            // ミックス: m[band_id][] = チェックしたファイル ID（受け付けるのは $next の中だけ）
+            $mixPicks = array_map('strval', is_array($picksMix[$id] ?? null) ? $picksMix[$id] : []);
+            // 変わらないなら何もしない（file_id・名前・ミックスで比べる。順番だけの違いは無視）
+            $before = array_map(fn($f) => $f['file_id'] . '|' . $f['name'] . '|' . (int)$f['is_mix'], $current[$id] ?? []);
+            $after = array_map(fn($f) => $f['file_id'] . '|' . $f['name'] . '|' . (int)in_array($f['file_id'], $mixPicks, true), array_values($next));
             sort($before);
             sort($after);
             if ($before === $after) {
@@ -102,6 +104,7 @@ if (is_post()) {
             $rows = array_values($next);
             usort($rows, fn($x, $y) => [$x['folder'] ?? '', $x['name']] <=> [$y['folder'] ?? '', $y['name']]);
             drive_save_files($pdo, $id, $rows);
+            drive_save_mix($pdo, $id, array_keys($next), $mixPicks);
             $changed++;
         }
         $pdo->commit();
@@ -130,13 +133,13 @@ if ($error === null) {
 // バンドごとに「並べるファイル」と「チェックの初期値」を決める
 $rows = [];
 foreach ($bands as $id => $b) {
-    $list = [];   // file_id => ['file' => 行, 'checked' => bool, 'shared' => 2組以上に当たったか]
+    $list = [];   // file_id => ['file' => 行, 'checked' => bool, 'shared' => 2組以上に当たったか, 'mix' => ミックスか]
     foreach ($current[$id] ?? [] as $f) { // 紐付け済み（フォルダに無いものも出して、外せるようにする）
-        $list[$f['file_id']] = ['file' => $files[$f['file_id']] ?? $f, 'checked' => true, 'shared' => false];
+        $list[$f['file_id']] = ['file' => $files[$f['file_id']] ?? $f, 'checked' => true, 'shared' => false, 'mix' => (bool)$f['is_mix']];
     }
     foreach ($match['bands'][$id] ?? [] as $fid) {
         $shared = ($owners[$fid] ?? 0) > 1;
-        $list[$fid] ??= ['file' => $files[$fid], 'checked' => !$shared, 'shared' => $shared];
+        $list[$fid] ??= ['file' => $files[$fid], 'checked' => !$shared, 'shared' => $shared, 'mix' => drive_kind((string)$files[$fid]['mime_type']) === 'media'];
     }
     $hasShared = (bool)array_filter($list, fn($x) => $x['shared'] && !$x['checked']);
     $rows[$id] = ['band' => $b, 'list' => $list, 'warn' => $hasShared];
@@ -145,11 +148,13 @@ $unmatched = array_intersect_key($files, array_flip($match['unmatched'])); // �
 $autoCount = count(array_filter($rows, fn($r) => $r['list'] && !isset($current[(int)$r['band']['band_id']])));
 $warnCount = count(array_filter($rows, fn($r) => $r['warn']));
 
-/** チェックボックス1つ（既存の .pick-chip。種類のアイコン（色付き）＋ フォルダ名/ファイル名） */
-$fileChip = static function (int $bandId, array $f, bool $checked): string {
+/** チェックボックス1つ（既存の .pick-chip。種類のアイコン（色付き）＋ フォルダ名/ファイル名）と、横に MIX の入り切り */
+$fileChip = static function (int $bandId, array $f, bool $checked, bool $mix): string {
     $label = (($f['folder'] ?? '') !== '' ? $f['folder'] . '/' : '') . drive_strip_ext((string)$f['name']);
-    return '<label class="pick-chip pick-chip--who"><input type="checkbox" name="f[' . $bandId . '][]" value="' . h($f['file_id']) . '"'
-        . ($checked ? ' checked' : '') . '>' . drive_type_icon((string)$f['mime_type']) . h($label) . '</label>';
+    return '<span class="drive-pick"><label class="pick-chip pick-chip--who"><input type="checkbox" name="f[' . $bandId . '][]" value="' . h($f['file_id']) . '"'
+        . ($checked ? ' checked' : '') . '>' . drive_type_icon((string)$f['mime_type']) . h($label) . '</label>'
+        . '<label class="drive-edit__mix" title="ミックス"><input type="checkbox" name="m[' . $bandId . '][]" value="' . h($f['file_id']) . '"'
+        . ($mix ? ' checked' : '') . '>MIX</label></span>';
 };
 
 render_header('ドライブのファイルを割り当て', 'lives'); ?>
@@ -180,7 +185,7 @@ render_header('ドライブのファイルを割り当て', 'lives'); ?>
                         <td>
                             <?php if ($r['list']): ?>
                                 <div class="drive-picks">
-                                    <?php foreach ($r['list'] as $x): ?><?= $fileChip($id, $x['file'], $x['checked']) ?><?php endforeach; ?>
+                                    <?php foreach ($r['list'] as $x): ?><?= $fileChip($id, $x['file'], $x['checked'], $x['mix']) ?><?php endforeach; ?>
                                 </div>
                             <?php else: ?>
                                 <span class="pill muted">該当なし</span>
@@ -192,7 +197,7 @@ render_header('ドライブのファイルを割り当て', 'lives'); ?>
                                 <details class="drive-more">
                                     <summary class="btn btn--ghost btn--sm"><?= icon('add') ?> ほかのファイル（<?= count($others) ?>）</summary>
                                     <div class="drive-picks">
-                                        <?php foreach ($others as $f): ?><?= $fileChip($id, $f, false) ?><?php endforeach; ?>
+                                        <?php foreach ($others as $f): ?><?= $fileChip($id, $f, false, drive_kind((string)$f['mime_type']) === 'media') ?><?php endforeach; ?>
                                     </div>
                                 </details>
                             <?php endif; ?>

@@ -621,6 +621,8 @@ CREATE TABLE band_drive_file (
     name       VARCHAR(255)      NOT NULL,
     title      VARCHAR(100)      NULL,                -- バンド編集で付けるタイトル。NULL ならファイル名（migrations/103）
     mime_type  VARCHAR(100)      CHARACTER SET ascii COLLATE ascii_general_ci NOT NULL DEFAULT '',
+    size       BIGINT UNSIGNED   NULL,                -- バイト数。NULL = 不明（migrations/130）
+    is_mix     TINYINT(1)        NOT NULL DEFAULT 0,  -- 1 = ミックス音源（バンドに MIX の印が付く。migrations/129）
     sort_order SMALLINT UNSIGNED NOT NULL DEFAULT 0,
     created_at DATETIME          NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (band_id, file_id),
@@ -1037,6 +1039,19 @@ CREATE TABLE band_audio (
     PRIMARY KEY (image_id),
     KEY idx_ba_band (band_id, sort_order),
     CONSTRAINT fk_ba_band FOREIGN KEY (band_id) REFERENCES band (band_id)
+        ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- 音源の再生位置に付けるチャプター（MC・曲。説明は migrations/130）
+CREATE TABLE band_audio_chapter (
+    chapter_id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    band_id    INT UNSIGNED NOT NULL,
+    audio_key  VARCHAR(110) CHARACTER SET ascii COLLATE ascii_bin NOT NULL, -- 'a:<band_audio.image_id>' か 'd:<ドライブのファイル ID>'
+    kind       ENUM('mc','song') NOT NULL,
+    at_ms      INT UNSIGNED NOT NULL,
+    PRIMARY KEY (chapter_id),
+    KEY idx_bac (band_id, audio_key, at_ms),
+    CONSTRAINT fk_bac_band FOREIGN KEY (band_id) REFERENCES band (band_id)
         ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 

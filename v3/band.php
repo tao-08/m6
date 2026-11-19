@@ -301,6 +301,7 @@ render_header($band['name'], 'lives');
         </p>
         <p class="band-tags">
             <?php if ($isLast): ?><span class="tag tag--tori" aria-label="トリ" title="トリ">🐔</span><?php endif; ?>
+            <?php if (band_mix_ids($pdo, [$bandId])): ?><?= mix_tag() ?><?php endif; ?>
             <?php if ($isMine): ?><span class="tag tag--mine">出演</span><?php endif; ?>
             <?= upcoming_tag($band['held_on']) ?>
             <?= band_artist_links($band, $band['is_omnibus'] ? omnibus_artists_by_band($pdo, [(int)$band['band_id']]) : []) // オムニバスなら曲のアーティストを全部 ?>
@@ -422,16 +423,29 @@ render_header($band['name'], 'lives');
 <?php $driveFiles = drive_load_files($pdo, [$bandId])[$bandId] ?? []; ?>
 <?php $bandAudios = attach_images($pdo, 'band_audio', [$bandId])[$bandId] ?? []; ?>
 <?php if ($driveFiles || $bandAudios): ?>
-    <!-- ファイル（セットリストの下）: 直接置いた MP3 のプレーヤー → ドライブのファイル。バンドのページは1組だけなので最初から並べる（iframe・画像は loading="lazy" で画面に近づいてから読み込む） -->
+    <?php
+    drive_backfill_sizes($pdo, $bandId, $driveFiles); // 容量が分からない音源は、ここで1回だけドライブに聞く
+    // チャプター: 音源ごとの印と、曲の番号に当てるセットリストの曲名（SE 以外・セトリ順。非公開で隠すときは空）
+    $audioChapters = audio_chapters($pdo, $bandId);
+    $chapterSongs = array_column(array_filter($songs, static fn($s) => !$s['is_se']), 'title');
+    $chapterCtx = static fn(string $key): array => ['band_id' => $bandId, 'key' => $key, 'chapters' => $audioChapters[$key] ?? [], 'songs' => $chapterSongs];
+    ?>
+    <!-- ファイル（セットリストの下）: 直接置いた MP3 → ドライブの音源 → そのほか。音源はチャプターを付けられるプレーヤー。バンドのページは1組だけなので最初から並べる（iframe・画像は loading="lazy" で画面に近づいてから読み込む） -->
     <section class="card band-section no-print">
         <h2 class="section-title section-title--card">ファイル <small class="muted"><?= count($driveFiles) + count($bandAudios) ?></small></h2>
         <?php foreach ($bandAudios as $a): ?>
-            <figure class="drive-player">
-                <figcaption class="drive-player__name"><?= icon('audio_file', 'file-icon file-icon--audio') ?><?= h($a['title'] !== '' ? $a['title'] : 'MP3') ?></figcaption>
-                <audio class="band-audio" controls preload="none" src="attach_image?k=band_audio&amp;id=<?= (int)$a['image_id'] ?>"></audio>
-            </figure>
+            <?php $path = LIVE_IMAGE_DIR . '/' . live_file_disk_name((string)$a['file_name']); ?>
+            <?= audio_player_html('attach_image?k=band_audio&id=' . (int)$a['image_id'], $a['title'] !== '' ? $a['title'] : 'MP3',
+                is_file($path) ? (int)filesize($path) : null, $chapterCtx('a:' . (int)$a['image_id'])) ?>
         <?php endforeach; ?>
-        <div class="drive-panel"><?= drive_files_html($driveFiles) ?></div>
+        <?php foreach ($driveFiles as $f): ?>
+            <?php if (str_starts_with((string)$f['mime_type'], 'audio/') && drive_id_valid((string)$f['file_id'])): ?>
+                <?= audio_player_html('drive_audio?band=' . $bandId . '&f=' . rawurlencode((string)$f['file_id']), drive_file_title($f),
+                    $f['size'] ? (int)$f['size'] : null, $chapterCtx('d:' . $f['file_id'])) ?>
+            <?php endif; ?>
+        <?php endforeach; ?>
+        <?php $driveRest = drive_files_html($driveFiles, true); ?>
+        <?php if ($driveRest !== ''): ?><div class="drive-panel"><?= $driveRest ?></div><?php endif; ?>
     </section>
 <?php endif; ?>
 

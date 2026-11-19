@@ -75,6 +75,10 @@ if ($faculty !== '' || $roleName !== null) {
     // 「トリ」「🐔」「🐦」で検索したら、各日程のトリ（HEADLINER_SQL）も出す。🐦️ の後ろの U+FE0F は外して比べる
     $tori = in_array(str_replace("\u{FE0F}", '', $q), ['トリ', '🐔', '🐦'], true) ? 1 : 0;
     $toriSql = ' OR (? = 1 AND b.play_order = (SELECT last.max_order FROM (' . HEADLINER_SQL . ') last WHERE last.live_day_id = b.live_day_id))';
+    // 「MIX」「ミックス」で検索したら、ミックスのあるバンド（ミックスの印を付けたドライブのファイル か MP3）も出す
+    $mix = in_array(mb_strtolower($q), ['mix', 'ミックス'], true) ? 1 : 0;
+    $mixSql = ' OR (? = 1 AND (EXISTS (SELECT 1 FROM band_drive_file f WHERE f.band_id = b.band_id AND f.is_mix = 1)
+        OR EXISTS (SELECT 1 FROM band_audio a WHERE a.band_id = b.band_id)))';
 
     // ---- ライブ（ライブ名・会場名・日程名・日程のメモ） ----
     $st = $pdo->prepare('SELECT DISTINCT lm.live_id, lm.fiscal_year AS year, lm.name
@@ -106,8 +110,8 @@ if ($faculty !== '' || $roleName !== null) {
     //   メンバーとセトリまで出すと1組が縦に長いので、最初は BANDS_PER_PAGE 組だけ。
     //   「もっと見る」を押すと ?bp=2, 3… になり、その分だけ多く出す（URL に残るので戻る・共有しても同じ表示）
     //   バンド名だけでなくメモ（鍵盤の私物/貸出 など）でも当てる。COUNT と本体の WHERE は必ず同じにする（「もっと見る」の残り数がずれるので）
-    $st = $pdo->prepare('SELECT COUNT(*) FROM band b WHERE b.name COLLATE utf8mb4_unicode_520_ci LIKE ? OR b.note COLLATE utf8mb4_unicode_520_ci LIKE ?' . $toriSql);
-    $st->execute([$like, $like, $tori]);
+    $st = $pdo->prepare('SELECT COUNT(*) FROM band b WHERE b.name COLLATE utf8mb4_unicode_520_ci LIKE ? OR b.note COLLATE utf8mb4_unicode_520_ci LIKE ?' . $toriSql . $mixSql);
+    $st->execute([$like, $like, $tori, $mix]);
     $bandTotal = (int)$st->fetchColumn();
 
     $st = $pdo->prepare('SELECT b.band_id, b.name, b.song_count, b.note, ld.live_day_id, ld.label, ld.held_on AS date,
@@ -115,12 +119,13 @@ if ($faculty !== '' || $roleName !== null) {
         FROM band b
         JOIN live_day ld ON ld.live_day_id = b.live_day_id
         JOIN live lm ON lm.live_id = ld.live_id
-        WHERE b.name COLLATE utf8mb4_unicode_520_ci LIKE ? OR b.note COLLATE utf8mb4_unicode_520_ci LIKE ?' . $toriSql . '
+        WHERE b.name COLLATE utf8mb4_unicode_520_ci LIKE ? OR b.note COLLATE utf8mb4_unicode_520_ci LIKE ?' . $toriSql . $mixSql . '
         ORDER BY ld.held_on DESC, b.play_order LIMIT ?');
     $st->bindValue(1, $like);
     $st->bindValue(2, $like);
     $st->bindValue(3, $tori, PDO::PARAM_INT);
-    $st->bindValue(4, BANDS_PER_PAGE * $bandPage, PDO::PARAM_INT); // LIMIT は数値として渡す（文字列 '20' だとエラーになることがある）
+    $st->bindValue(4, $mix, PDO::PARAM_INT);
+    $st->bindValue(5, BANDS_PER_PAGE * $bandPage, PDO::PARAM_INT); // LIMIT は数値として渡す（文字列 '20' だとエラーになることがある）
     $st->execute();
     $bands = $st->fetchAll();
 

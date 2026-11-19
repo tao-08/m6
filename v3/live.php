@@ -71,6 +71,7 @@ $likes = band_likes($pdo, $allBandIds, (int)$user['user_id']);
 $commentCounts = band_comment_counts($pdo, $allBandIds);
 // ドライブのファイル（バンドごと）。これも全バンド分を1回の SQL で取る
 $driveByBand = drive_load_files($pdo, $allBandIds);
+$mixIds = band_mix_ids($pdo, $allBandIds); // ミックスのあるバンド（MIX の印）
 // 休憩・転換など（timetable_edit.php で登録したもの / 取り込みで「バンドではない枠」だったもの）
 $breaksByDay = load_breaks_by_day($pdo, $liveId);
 
@@ -157,6 +158,9 @@ render_header($live['name'], 'lives');
     <?php endforeach; ?>
 </div>
 <?php endif; ?>
+<?php if ($mixIds): // MIX のバンドだけ表示（assets/app.js の setupMixFilter） ?>
+    <button type="button" class="compact-btn compact-btn--mix" data-mix-filter aria-pressed="false" aria-label="MIX のバンドだけ表示" title="MIX のバンドだけ表示"><?= mix_tag() ?></button>
+<?php endif; ?>
 <?php if ($hasBands): ?>
     <button type="button" class="compact-btn" data-timeline-compact aria-pressed="false" aria-label="縮小" title="縮小"><?= icon('unfold_less') ?></button>
 <?php endif; ?>
@@ -214,7 +218,7 @@ render_header($live['name'], 'lives');
             $isMine = $user['member_id'] && in_array($user['member_id'], $memberIds, true);
             // 最後 = トリ。ただし総バンド数まで登録されていない日程は、登録済みの最後が本当の最後ではないのでトリにしない。出演順が未確定（order_unset）の日程も同じ
             $isLast = $bi === count($bands) - 1 && count($bands) >= $dayTotal($d) && !$d['order_unset']; ?>
-            <li class="slot<?= $isLast ? ' slot--headliner' : '' ?><?= $isMine ? ' slot--mine' : '' ?>">
+            <li class="slot<?= $isLast ? ' slot--headliner' : '' ?><?= $isMine ? ' slot--mine' : '' ?><?= isset($mixIds[(int)$b['band_id']]) ? ' slot--mix' : '' ?>">
                 <!-- 左の列: 出演順の番号 → 開始 → 終了（時刻が無いバンドは番号だけ）。
                      番号をカードの中ではなくここに置いて、バンド名に横幅を回す（なるべく1行で出す） -->
                 <div class="slot__time">
@@ -230,6 +234,7 @@ render_header($live['name'], 'lives');
                         $nameWidth = mb_strwidth($b['name']); ?>
                         <h3 class="slot__name<?= $nameWidth > 22 ? ' slot__name--xlong' : ($nameWidth > 16 ? ' slot__name--long' : '') ?>"><a href="band?id=<?= (int)$b['band_id'] ?>"><?= h($b['name']) ?></a></h3>
                         <?php if ($isLast): ?><span class="tag tag--tori" aria-label="トリ" title="トリ">🐔</span><?php endif; ?>
+                        <?php if (isset($mixIds[(int)$b['band_id']])): ?><?= mix_tag() ?><?php endif; ?>
                         <?php if ($b['needs_check']): ?><a class="tag tag--flag no-print" href="band?id=<?= (int)$b['band_id'] ?>" title="確認待ち: <?= h(implode(' / ', check_reason_labels((int)$b['needs_check']))) ?>" aria-label="確認待ち"><?= icon('flag', 'icon--fill') ?></a><?php endif; ?>
                         <?php if ($isMine): ?><span class="tag tag--mine">出演</span><?php endif; ?>
                         <?php if ($b['youtube_url'] !== null && youtube_url_valid($b['youtube_url'])): ?>
@@ -293,6 +298,9 @@ render_header($live['name'], 'lives');
 </section>
 <?php endforeach; ?>
 
+<?php if ($mixIds): // スマホは右下に浮かせる（縮小ボタンの上） ?>
+    <button type="button" class="compact-fab compact-fab--mix no-print" data-mix-filter aria-pressed="false" aria-label="MIX のバンドだけ表示" title="MIX のバンドだけ表示"><?= mix_tag() ?></button>
+<?php endif; ?>
 <?php if ($hasBands): // 縮小 = 左の順番・時刻はそのまま、カードをバンド名だけにする（画面の右下に浮かせる。JS: setupTimelineCompact。全日程が連動） ?>
     <button type="button" class="compact-fab no-print" data-timeline-compact aria-pressed="false" aria-label="縮小" title="縮小"><?= icon('unfold_less') ?></button>
 <?php endif; ?>

@@ -127,6 +127,7 @@ if (is_post()) {
     $driveAdd = trim((string)($_POST['drive_add'] ?? ''));
     // タイトル: drive_title[ファイル ID] = 入力した文字（空欄ならファイル名を出す）
     $driveTitles = array_filter((array)($_POST['drive_title'] ?? []), 'is_string');
+    $driveMix = array_values(array_filter((array)($_POST['drive_mix'] ?? []), 'is_string')); // ミックスにチェックしたファイルの ID
     // 🚩 確認依頼（チェックが無ければ外す）。理由はビットで複数、誰についてはメンバーID の配列
     $chk = is_array($_POST['chk'] ?? null) ? $_POST['chk'] : [];
     $flag = check_bits($chk['flag'] ?? null, $chk['reason'] ?? []);
@@ -283,6 +284,7 @@ if (is_post()) {
             sync_band_members($pdo, $index, $bandId, $rows);
             save_check_members($pdo, $bandId, $flag, $checkWho); // メンバーを入れ替えた後に（外した人は入らない）
             drive_save_files($pdo, $bandId, $driveNext); // ドライブのファイル（変更前は change_capture で履歴に残っている）
+            drive_save_mix($pdo, $bandId, array_column($driveFiles, 'file_id'), $driveMix); // 画面に出したファイルだけ（今回足したものは初期値のまま）
             // タイトルは今回残したファイルの分だけ（外したファイルや、改造されたリクエストの ID は UPDATE が0件で終わる）
             drive_save_titles($pdo, $bandId, array_intersect_key($driveTitles, array_flip(array_column($driveNext, 'file_id'))));
             renumber_bands($pdo, $dayId, $bandId, $isNew ? $position : $order);
@@ -300,6 +302,10 @@ if (is_post()) {
                 }
             }
             $removeFiles = array_merge($removeFiles, $isNew ? [] : attach_remove($pdo, 'band_audio', $bandId, $audioRemoveIds));
+            $delChapters = $pdo->prepare('DELETE FROM band_audio_chapter WHERE band_id = ? AND audio_key = ?'); // 外した MP3 のチャプターも消す
+            foreach ($isNew ? [] : $audioRemoveIds as $aid) {
+                $delChapters->execute([$bandId, 'a:' . $aid]);
+            }
             attach_add($pdo, 'band_audio', $bandId, $audioUploads, null, $newFiles);
             $pdo->commit();
             array_map('live_image_unlink', $removeFiles);
@@ -469,6 +475,7 @@ render_header($isNew ? 'バンドを追加' : 'バンドを編集', 'lives');
                             <?= drive_type_icon((string)$f['mime_type']) ?>
                             <input type="text" name="drive_title[<?= h($fid) ?>]" value="<?= h($driveTitles[$fid] ?? $f['title'] ?? '') ?>" maxlength="100"
                                 placeholder="<?= h(drive_strip_ext((string)$f['name'])) ?>" aria-label="「<?= h($f['name']) ?>」のタイトル" autocomplete="off">
+                            <label class="drive-edit__mix" title="ミックス"><input type="checkbox" name="drive_mix[]" value="<?= h($fid) ?>"<?= (isset($driveMix) ? in_array($fid, $driveMix, true) : (bool)$f['is_mix']) ? ' checked' : '' ?>>MIX</label>
                             <label class="drive-edit__remove" title="外す"><input type="checkbox" name="drive_remove[]" value="<?= h($fid) ?>" hidden<?= in_array($fid, $driveRemove ?? [], true) ? ' checked' : '' ?>><?= icon('close') ?></label>
                         </li>
                     <?php endforeach; ?>

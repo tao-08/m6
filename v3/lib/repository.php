@@ -1384,11 +1384,11 @@ function band_artist_links(array $band, array $omnibusArtists): string
 /**
  * 楽器フィルター（漏斗 → 押すと楽器ラベル → 選ぶと漏斗がその楽器に変わって絞り込む）。app.js の setupInstFilter
  *   $parts: パート（segments・title・order）の一覧。兼任（Vo/Gt など）がある楽器は「単体・兼任・All」に分ける
- *   $target: 絞り込む範囲 / $tori: 🐔（トリのバンドだけ）も出す / $fav: ❤（見ている人がお気に入りにしたバンドだけ。🐔の右）も出す
+ *   $target: 絞り込む範囲 / $tori: 🐔（トリのバンドだけ）も出す / $mix: MIX（ミックスのあるバンドだけ。🐔の右）も出す / $fav: ❤（見ている人がお気に入りにしたバンドだけ。MIX の右）も出す
  *   $items: 行ごとに隠すとき（メンバー一覧の .member-row）。空なら出演履歴の バンド → 日 → 年度 で隠す
  *   行の data-insts は inst_tokens() で作る
  */
-function inst_filter(array $parts, string $target, bool $tori = false, string $items = '', bool $fav = false): string
+function inst_filter(array $parts, string $target, bool $tori = false, string $items = '', bool $fav = false, bool $mix = false): string
 {
     // 楽器ごとに、単体があるか・兼任の組み合わせ（key => パート）を集める
     $groups = [];
@@ -1406,7 +1406,7 @@ function inst_filter(array $parts, string $target, bool $tori = false, string $i
             unset($g);
         }
     }
-    if (count($groups) + ($tori ? 1 : 0) + ($fav ? 1 : 0) < 2) {
+    if (count($groups) + ($tori ? 1 : 0) + ($mix ? 1 : 0) + ($fav ? 1 : 0) < 2) {
         return '';
     }
     // Cho の行は Dr の下（兼任のある楽器の最後）
@@ -1415,6 +1415,7 @@ function inst_filter(array $parts, string $target, bool $tori = false, string $i
         '<button type="button" data-inst="' . h($inst) . '"' . ($aria !== '' ? ' aria-label="' . h($aria) . '"' : '') . '>' . $label . '</button>';
     // ポップアップは表（grid）。楽器ごとに1行で、単体は左端・兼任は真ん中・All は右端の列に揃える
     $rows = [[$opt('', icon('filter_alt_off', 'icon--fill'), 'すべて') . ($tori ? $opt('tori', '<span class="tori-badge">🐔</span>', 'トリ') : '')
+        . ($mix ? $opt('mix', mix_tag(), 'MIX') : '')
         . ($fav ? $opt('fav', icon('favorite'), 'お気に入り') : '')]];
     $plain = []; // 兼任がない楽器は最後に横4列で並べる（etc は一番最後）
     $etc = '';

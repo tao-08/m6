@@ -305,6 +305,11 @@ form.row-form input, form.row-form select { flex: 1; min-width: 10em; }
 /* 「予定」: まだ来ていないライブ（upcoming_tag()）。出演タグと同じ形で、青（トリの線と同じ色）にして見分ける */
 .tag--plan { color: var(--headliner); border-color: color-mix(in srgb, var(--headliner) 40%, transparent); background: color-mix(in srgb, var(--headliner) 10%, transparent); }
 .tag--tori { font-size: var(--fs-md); line-height: 1; padding: 2px 6px; } /* トリの🐔は大きめに */
+/* 「MIX」: ミックス音源のあるバンド（mix_tag()）。緑の角丸に白抜きの M・I・X の SVG。高さはラベルの規格（--label-h）に合わせる
+   （規格の padding-top 1px 分だけ svg を低くして、全体が --label-h になるようにする） */
+.tag--mix { padding-inline: 0; border: 0; background: none; color: var(--ok); }
+.tag--mix svg { display: block; height: calc(var(--label-h) - 1px); width: auto; }
+.tag--mix path { fill: none; stroke: var(--surface); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .tag--flag { padding: 0 2px; background: none; border: 0; color: var(--warn); text-decoration: none; } /* 楽器の確認待ちの旗（live.php） */
 .tag--flag .icon { font-size: 18px; vertical-align: 0; }
 
@@ -555,11 +560,33 @@ button.tab { border: 0; background: none; font: inherit; font-weight: 800; font-
 .band-section > .drive-player { margin-top: 12px; } /* 直接置いた MP3 のプレーヤー（band.php） */
 .band-audio { display: block; width: 100%; }
 .drive-player__name { display: flex; align-items: center; gap: 4px; margin-bottom: 4px; color: var(--muted); font-size: var(--fs-sm); overflow-wrap: anywhere; }
+/* 音源のプレーヤー（lib/audio_player.php）: 名前の右に容量・右端に編集の鉛筆。チャプターのチップは下に並べる */
+.audio-player__size { flex: none; font-size: var(--fs-xs); opacity: .75; }
+.audio-player__edit { flex: none; display: inline-grid; place-items: center; width: 28px; height: 28px; margin-left: auto; padding: 0; border: 0; border-radius: var(--r-md);
+  background: none; color: var(--muted); cursor: pointer; }
+.audio-player__edit:hover, .audio-player__edit[aria-pressed="true"] { color: var(--accent); }
+.audio-player__edit[aria-pressed="true"] { background: var(--accent-soft); }
+.audio-player__list { margin-top: 8px; }
+.audio-player__list:empty { display: none; }
+.audio-player__add { display: flex; gap: 8px; margin-top: 8px; }
+.audio-player__add[hidden] { display: none; }
+/* チャプターのチップ: 本体を押すとその位置から再生。再生中のものは緑。✕ は編集モード（.is-editing）のときだけ */
+.audio-chapter { gap: 6px; }
+.audio-chapter button { padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
+.audio-chapter__go { display: inline-flex; align-items: center; gap: 6px; }
+.audio-chapter__time { color: var(--muted); font-variant-numeric: tabular-nums; }
+.audio-chapter__del { display: none; color: var(--muted); }
+.audio-chapter__del:hover { color: var(--danger); }
+.audio-chapter__del .icon { font-size: var(--fs-sm); }
+.audio-player.is-editing .audio-chapter__del { display: inline-flex; }
+.audio-chapter.is-current { border-color: var(--ok); background: var(--ok-bg); }
 /* 横幅いっぱい・16:9 で、PC で大きくなりすぎないよう上限 */
 .drive-player__frame { display: block; width: 100%; aspect-ratio: 16 / 9; max-height: 360px; border: 0; border-radius: var(--r-md); background: var(--surface-2); }
 .drive-thumbs { margin: 0; justify-content: flex-start; } /* 写真は添付画像と同じ .live-thumbs。左寄せにするだけ */
 /* 割り当て画面（live_drive.php）: バンドごとのファイルのチェック（既存の .pick-chip）を折り返して並べる */
 .drive-picks { display: flex; flex-wrap: wrap; gap: 6px; }
+.drive-pick { display: inline-flex; align-items: center; gap: 2px; }
+.drive-pick:has(.pick-chip input:not(:checked)) .drive-edit__mix { opacity: .45; } /* 割り当てないファイルの MIX は薄く */
 /* 手動で選ぶ「＋ ほかのファイル」。summary は小さいボタンの見た目、開くと下にチップが並ぶ */
 .drive-more { margin-top: 6px; }
 .drive-more > summary { list-style: none; width: fit-content; }      /* 三角の印（▶）を消してボタンだけにする */
@@ -579,8 +606,14 @@ button.tab { border: 0; background: none; font: inherit; font-weight: 800; font-
 .drive-edit input[type="text"] { flex: 1; min-width: 0; }
 .drive-edit__remove { display: inline-grid; place-items: center; width: 32px; height: 32px; border-radius: var(--r-md); color: var(--muted); cursor: pointer; }
 .drive-edit__remove:hover { color: var(--danger); background: var(--danger-bg); }
-.drive-edit li:has(input:checked) { opacity: .45; }
-.drive-edit li:has(input:checked) input[type="text"] { text-decoration: line-through; }
+.drive-edit li:has(.drive-edit__remove input:checked) { opacity: .45; }
+.drive-edit li:has(.drive-edit__remove input:checked) input[type="text"] { text-decoration: line-through; }
+/* MIX の入り切り: 小さなピル。チェック済みは .tag--mix と同じ緑。チェックボックス自体は隠すが、キーボードで触れるよう hidden は使わない */
+.drive-edit__mix { position: relative; flex: none; padding: 4px 8px; border-radius: var(--r-sm); border: 1px solid var(--border); color: var(--muted);
+  font-size: var(--fs-2xs); font-weight: 800; letter-spacing: .04em; cursor: pointer; user-select: none; }
+.drive-edit__mix input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
+.drive-edit__mix:has(input:checked) { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 40%, transparent); background: var(--ok-bg); }
+.drive-edit__mix:has(input:focus-visible) { box-shadow: var(--ring); }
 .drive-player .drive-picks { margin-bottom: 8px; } /* 切り替えのチップとプレーヤーの間 */
 /* コメントアイコン: 自前 SVG の吹き出し（lib/repository.php の comment_bubble_svg）の真ん中に件数を重ねる。
    コメントが付いたバンドだけ出る（lib/repository.php の comment_badge）。ライブ詳細の行とメンバーページの出演履歴で共通。
@@ -670,6 +703,10 @@ button.tab { border: 0; background: none; font: inherit; font-weight: 800; font-
   .compact-fab { display: grid; right: 12px; bottom: calc(76px + env(safe-area-inset-bottom)); }
   .day-bar:not(:has(.tabs)) { display: none; }
 }
+/* MIX のバンドだけ表示（live.php の [data-mix-filter]）。休憩の行も隠れる。ボタンは縮小ボタンの隣（スマホは縮小ボタンの上） */
+.compact-btn--mix .tag--mix svg, .compact-fab--mix .tag--mix svg { height: 16px; } /* 丸ボタンに収まる大きさ */
+@media (max-width: 760px) { .compact-fab--mix { bottom: calc(128px + env(safe-area-inset-bottom)); } }
+.timeline--mix > .slot:not(.slot--mix) { display: none; }
 .timeline--compact .slot:not(.slot--break) .slot__body { display: flex; align-items: center; padding-block: 8px; }
 .timeline--compact .slot__head { flex: 1; min-width: 0; }
 .timeline--compact .slot__title > :not(.slot__name):not(.slot__yt),

@@ -65,6 +65,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupInstFilter();
   setupTabs();
   setupTimelineCompact();
+  setupMixFilter();
   setupHideFar();
   setupConfirm();
   setupLeaveCheck();
@@ -128,6 +129,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupDrivePlayer();
   setupDriveWarmup();
   setupDriveSwitch();
+  setupAudioPlayers();
   setupBackButton();
   setupTutorial();
   setupAutoDialog(); // チュートリアルが自動で開いたあとに呼ぶ（開いているかを見て、閉じるのを待つため）
@@ -2030,6 +2032,96 @@ function setupDriveSwitch() {
 }
 
 /* ---------------------------------------------------------------------
+ * band.php: 音源のチャプター（MC・曲）。プレーヤーは lib/audio_player.php の figure[data-audio-player][data-chapters]
+ *   ・チップ（時間 ＋ MC / 曲名）は data-chapters の JSON から描く。押すとその位置から再生する
+ *   ・鉛筆を押すと編集モード: 「MC」「曲」で今の再生位置にチャプターを足し、チップの ✕ で消す（api_audio_chapter.php）
+ *   ・曲の番号は保存せず、時間順に 1, 2, 3… と数えて songs（セトリの曲名）に当てる
+ *   ・イベント委任: click は document で受ける。timeupdate は泡立たないので、捕捉（capture）で受ける
+ * ------------------------------------------------------------------- */
+function setupAudioPlayers() {
+  const players = document.querySelectorAll('[data-audio-player][data-chapters]');
+  if (!players.length) return;
+  const state = new WeakMap(); // figure → { band, key, list: [{id, kind, ms}], songs }
+  const fmtTime = (ms) => {
+    const s = Math.floor(ms / 1000);
+    const sec = String(s % 60).padStart(2, '0');
+    return s >= 3600 ? `${Math.floor(s / 3600)}:${String(Math.floor(s / 60) % 60).padStart(2, '0')}:${sec}` : `${Math.floor(s / 60)}:${sec}`;
+  };
+  // 今の再生位置のチャプター（いちばん後ろの「開始が今以前」のチップ）に .is-current
+  const mark = (fig) => {
+    const t = (fig.querySelector('audio')?.currentTime || 0) * 1000;
+    const chips = [...fig.querySelectorAll('.audio-chapter')];
+    const at = chips.findLastIndex((c) => Number(c.dataset.ms) <= t);
+    chips.forEach((c, i) => c.classList.toggle('is-current', i === at));
+  };
+  const render = (fig) => {
+    const st = state.get(fig);
+    let n = 0;
+    fig.querySelector('[data-ap-list]').replaceChildren(...st.list.map((c) => {
+      let text = 'MC';
+      if (c.kind === 'song') {
+        n += 1;
+        text = st.songs[n - 1] ? `${n}.${st.songs[n - 1]}` : String(n);
+      }
+      const chip = mkEl('span', 'chip audio-chapter');
+      chip.dataset.ms = c.ms;
+      chip.dataset.id = c.id;
+      const go = mkEl('button', 'audio-chapter__go');
+      go.type = 'button';
+      go.append(mkEl('span', 'audio-chapter__time', fmtTime(c.ms)), text);
+      const del = mkEl('button', 'audio-chapter__del');
+      del.type = 'button';
+      del.setAttribute('aria-label', '削除');
+      del.title = '削除';
+      del.append(mkEl('span', 'icon', 'close'));
+      del.firstChild.setAttribute('aria-hidden', 'true');
+      chip.append(go, del);
+      return chip;
+    }));
+    mark(fig);
+  };
+  players.forEach((fig) => {
+    try { state.set(fig, JSON.parse(fig.dataset.chapters)); } catch (e) { return; }
+    render(fig);
+  });
+  // 追加・削除。返事は、その音源の今のチャプター全部
+  const send = async (fig, body) => {
+    const st = state.get(fig);
+    try {
+      st.list = (await apiPost('api_audio_chapter.php', { band_id: st.band, ...body }, '保存できませんでした')).chapters;
+      render(fig);
+    } catch (e) {
+      flashToast(e.message, 'error');
+    }
+  };
+  document.addEventListener('timeupdate', (e) => {
+    const fig = e.target.closest?.('[data-audio-player]');
+    if (fig && state.has(fig)) mark(fig);
+  }, true);
+  document.addEventListener('click', (e) => {
+    const fig = e.target.closest('[data-audio-player]');
+    if (!fig || !state.has(fig)) return;
+    const audio = fig.querySelector('audio');
+    const go = e.target.closest('.audio-chapter__go');
+    const del = e.target.closest('.audio-chapter__del');
+    const add = e.target.closest('[data-ap-add]');
+    if (go) {
+      audio.currentTime = Number(go.closest('.audio-chapter').dataset.ms) / 1000;
+      audio.play().catch(() => {}); // 自動再生が止められても、位置だけは動く
+    } else if (del) {
+      send(fig, { action: 'delete', chapter_id: Number(del.closest('.audio-chapter').dataset.id) });
+    } else if (add) {
+      send(fig, { action: 'add', key: state.get(fig).key, kind: add.dataset.apAdd, at_ms: Math.floor(audio.currentTime * 1000) });
+    } else if (e.target.closest('[data-ap-edit]')) {
+      const on = !fig.classList.contains('is-editing');
+      fig.classList.toggle('is-editing', on);
+      fig.querySelector('[data-ap-edit]').setAttribute('aria-pressed', String(on));
+      fig.querySelector('[data-ap-bar]').hidden = !on;
+    }
+  });
+}
+
+/* ---------------------------------------------------------------------
  * live.php / band.php: ドライブのプレーヤーを速く出すための「先読み」
  *   ドライブのプレーヤー（iframe）は、開くたびにドライブの画面の部品（JS・CSS で 1〜2MB）を読み込むので遅い。
  *   そこでページを開いたら、押される前に次の2つを済ませておく:
@@ -3095,6 +3187,19 @@ function setupTimelineCompact() {
     try { localStorage.setItem(KEY, on ? '1' : '0'); } catch (e) { /* 覚えられなくても動く */ }
   }));
   try { apply(localStorage.getItem(KEY) === '1'); } catch (e) { /* 同上 */ }
+}
+
+/* ---------------------------------------------------------------------
+ * ライブ詳細の MIX ボタン（[data-mix-filter]）
+ *   押すと全日程のタイムテーブルが MIX のバンド（.slot--mix）だけになる（CSS: .timeline--mix）。もう一度で元に戻る
+ * ------------------------------------------------------------------- */
+function setupMixFilter() {
+  const buttons = document.querySelectorAll('[data-mix-filter]');
+  buttons.forEach((b) => b.addEventListener('click', () => {
+    const on = b.getAttribute('aria-pressed') !== 'true';
+    document.querySelectorAll('.timeline').forEach((t) => t.classList.toggle('timeline--mix', on));
+    buttons.forEach((x) => x.setAttribute('aria-pressed', String(on)));
+  }));
 }
 
 /* ---------------------------------------------------------------------

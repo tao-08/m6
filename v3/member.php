@@ -12,6 +12,7 @@ declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/repository.php';
 require_once __DIR__ . '/lib/albums.php';
+require_once __DIR__ . '/lib/drive.php'; // MIX の印（mix_tag・band_mix_ids）
 $user = require_login();
 
 $memberId = (int)($_GET['id'] ?? 0);
@@ -64,6 +65,7 @@ foreach (band_likes($pdo, array_map(static fn($h) => (int)$h['band_id'], $histor
 
 // 出演履歴のバンドごとのコメント数。履歴の行にコメントアイコンを出すため（全バンド分を1回の SQL で取る）
 $commentCounts = band_comment_counts($pdo, array_map(static fn($h) => (int)$h['band_id'], $history));
+$mixIds = band_mix_ids($pdo, array_map(static fn($h) => (int)$h['band_id'], $history)); // ミックスのあるバンド
 
 // ---- 集計の絞り込み（集計ページ stats.php と同じ ?who= / ?period=） ----
 //   期間: その年度のバンドだけ数える。メンバー: 組んだ相手（自分以外）が「対象メンバー」に1人でもいるバンドだけ数える
@@ -785,7 +787,7 @@ $yearSlot = static function (string $name, int $selected, array $list, string $l
             <!-- 並び替え: 押すたびに新しい順 ⇔ 古い順（JS で並びを逆にするだけ。assets/app.js の setupSortToggle） -->
             <?php // 楽器フィルター（トリのバンドがあれば🐔も）。lib/repository.php の inst_filter
             ?>
-            <?= inst_filter(array_merge(...array_values($partsByBand)), '#history-list', (bool)array_filter($history, static fn($h) => $h['is_last']), '', (bool)$favBandIds) ?>
+            <?= inst_filter(array_merge(...array_values($partsByBand)), '#history-list', (bool)array_filter($history, static fn($h) => $h['is_last']), '', (bool)$favBandIds, (bool)$mixIds) ?>
             <button type="button" class="btn btn--ghost btn--sm sorted-list__btn" data-sort-toggle="#history-list" aria-pressed="false">新しい順 ↓</button>
         <?php endif; ?>
         <div id="history-list">
@@ -810,12 +812,13 @@ $yearSlot = static function (string $name, int $selected, array $list, string $l
                         <!-- その日に出たバンドを出演順に並べる。バンド名からバンド詳細へ -->
                         <ul class="history__bands">
                             <?php foreach ($day['bands'] as $b): ?>
-                                <li class="history__band" data-insts="<?= h(implode(' ', array_merge($b['is_last'] ? ['tori'] : [], isset($favBandIds[(int)$b['band_id']]) ? ['fav'] : [], inst_tokens($partsByBand[(int)$b['band_id']] ?? [])))) ?>">
+                                <li class="history__band" data-insts="<?= h(implode(' ', array_merge($b['is_last'] ? ['tori'] : [], isset($mixIds[(int)$b['band_id']]) ? ['mix'] : [], isset($favBandIds[(int)$b['band_id']]) ? ['fav'] : [], inst_tokens($partsByBand[(int)$b['band_id']] ?? [])))) ?>">
                                     <!-- バンド名と、トリならその横に小さな🐔 -->
                                     <span class="history__name">
                                         <?php if ($favBandIds): // ❤ を付けたバンドが1つでもあれば、全バンドに同じ幅の枠を取る（バンド名の位置が❤の有無でずれない） ?><span class="history__fav"<?= isset($favBandIds[(int)$b['band_id']]) ? ' aria-label="お気に入り" title="お気に入り"' : ' aria-hidden="true"' ?>><?php if (isset($favBandIds[(int)$b['band_id']])): ?><?= icon('favorite', 'like__heart') ?><?php endif; ?></span><?php endif; ?>
                                         <a href="band?id=<?= (int)$b['band_id'] ?>"><?= h($b['band_name']) ?></a>
                                         <?php if ($b['is_last']): ?><span class="tori-badge" aria-label="トリ" title="トリ">🐔</span><?php endif; ?>
+                                        <?php if (isset($mixIds[(int)$b['band_id']])): ?><?= mix_tag() ?><?php endif; ?>
                                         <?php // コメントが付いているバンドだけ、吹き出しの中に件数（live.php の一覧と同じ部品） ?>
                                         <?= comment_badge((int)$b['band_id'], $commentCounts[(int)$b['band_id']] ?? 0) ?>
                                         <?php // 見ている人も一緒に出たバンド（カードの赤枠の理由がどのバンドか分かるように）。live.php の「出演」と同じタグ ?>

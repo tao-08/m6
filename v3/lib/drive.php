@@ -14,7 +14,8 @@
  *    4. 確認画面（live_drive.php）で人がチェックしてから band_drive_file に保存
  *
  *  ■ 表示は種類（mime_type）で自動で変える（drive_files_html）
- *    音源・動画 … ドライブのプレーヤーを iframe で埋め込む（…/file/d/ID/preview）
+ *    音源       … 自前のプレーヤー（audio_player_html）。音は drive_audio.php が中継する
+ *    動画       … ドライブのプレーヤーを iframe で埋め込む（…/file/d/ID/preview）
  *    写真       … サムネイル（ライブ・バンドの添付画像と同じ .live-thumbs の見た目）。押すとドライブで開く
  *    それ以外   … チップ（.chip）のリンク。押すとドライブで開く
  *
@@ -32,6 +33,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/albums.php';  // album_http（通信）
 require_once __DIR__ . '/youtube.php'; // youtube_match_bands（タイトルとバンド名の突き合わせ）を使い回す
+require_once __DIR__ . '/audio_player.php'; // 音源のプレーヤー
 
 /** 読み込むページ数の上限（100件 × 5 = 500ファイル）。変なフォルダで延々と通信しないように */
 const DRIVE_MAX_PAGES = 5;
@@ -148,7 +150,7 @@ function drive_folder_children(string $folderId): array
             // q = 検索条件。「このフォルダが親」かつ「ゴミ箱に入っていない」。ID は検証済み（英数字と - _ だけ）なので ' で囲んでも壊れない
             'q'         => "'" . $folderId . "' in parents and trashed = false",
             // fields = 返してほしい項目だけ指定する（全部もらうと重い。API の定番の作法）
-            'fields'    => 'nextPageToken, files(id, name, mimeType)',
+            'fields'    => 'nextPageToken, files(id, name, mimeType, size)',
             'orderBy'   => 'name',
             'pageSize'  => 100,
             // 共有ドライブ（チームのドライブ）に置いたフォルダも読めるようにする
@@ -170,7 +172,8 @@ function drive_folder_children(string $folderId): array
             if ($mime === DRIVE_FOLDER_MIME) {
                 $out['folders'][] = ['file_id' => $id, 'name' => (string)($f['name'] ?? '')];
             } else {
-                $out['files'][] = ['file_id' => $id, 'name' => (string)($f['name'] ?? ''), 'mime_type' => $mime];
+                // size は文字列で返ってくる。Google のドキュメントなどは無い（null）
+                $out['files'][] = ['file_id' => $id, 'name' => (string)($f['name'] ?? ''), 'mime_type' => $mime, 'size' => isset($f['size']) ? (int)$f['size'] : null];
             }
         }
         $pageToken = (string)($res['json']['nextPageToken'] ?? '');
@@ -230,18 +233,19 @@ function drive_match_files(array $files, array $bands): array
 
 /**
  * ファイル1つの名前と種類を取る（バンド編集でリンクを1本ずつ貼ったとき用）
- *   戻り値: ['file_id' => ..., 'name' => ..., 'mime_type' => ...]
+ *   戻り値: ['file_id' => ..., 'name' => ..., 'mime_type' => ..., 'size' => バイト数 or null]
  * @throws RuntimeException 読めない（共有されていない・存在しない）
  */
 function drive_file_meta(string $fileId): array
 {
     $res = album_http('https://www.googleapis.com/drive/v3/files/' . rawurlencode($fileId) . '?'
-        . http_build_query(['fields' => 'id, name, mimeType', 'supportsAllDrives' => 'true']), ['X-Goog-Api-Key: ' . drive_api_key()]);
+        . http_build_query(['fields' => 'id, name, mimeType, size', 'supportsAllDrives' => 'true']), ['X-Goog-Api-Key: ' . drive_api_key()]);
     drive_check_response($res, 'ファイル');
     if (($res['json']['mimeType'] ?? '') === DRIVE_FOLDER_MIME) {
         throw new RuntimeException('フォルダのリンクです。ファイルのリンクを貼ってください');
     }
-    return ['file_id' => $fileId, 'name' => (string)($res['json']['name'] ?? ''), 'mime_type' => (string)($res['json']['mimeType'] ?? '')];
+    return ['file_id' => $fileId, 'name' => (string)($res['json']['name'] ?? ''), 'mime_type' => (string)($res['json']['mimeType'] ?? ''),
+        'size' => isset($res['json']['size']) ? (int)$res['json']['size'] : null];
 }
 
 /** API の返事を確かめる。だめなら理由つきで例外（2つの関数で同じことを書かないようにまとめた） */
@@ -322,7 +326,7 @@ function drive_thumb_url(string $fileId): string
 /**
  * バンドごとのファイル。全バンド分を1回の SQL で取る（バンドごとに SQL を投げない = N+1 問題の回避）
  * @param int[] $bandIds
- * @return array<int, array> band_id => [['file_id', 'name', 'title', 'mime_type'], ...]（並び順どおり）
+ * @return array<int, array> band_id => [['band_id', 'file_id', 'name', 'title', 'mime_type', 'size', 'is_mix'], ...]（並び順どおり）
  */
 function drive_load_files(PDO $pdo, array $bandIds): array
 {
@@ -332,7 +336,7 @@ function drive_load_files(PDO $pdo, array $bandIds): array
     }
     // IN (?, ?, ?) の ? を個数ぶん作る（値はプレースホルダで渡すので SQL インジェクションにならない）
     $marks = implode(',', array_fill(0, count($bandIds), '?'));
-    $st = $pdo->prepare("SELECT band_id, file_id, name, title, mime_type FROM band_drive_file
+    $st = $pdo->prepare("SELECT band_id, file_id, name, title, mime_type, size, is_mix FROM band_drive_file
         WHERE band_id IN ($marks) ORDER BY band_id, sort_order, name");
     $st->execute($bandIds);
     $out = [];
@@ -346,7 +350,7 @@ function drive_load_files(PDO $pdo, array $bandIds): array
  * バンドのファイルを、渡した一覧と同じにする（無いものは消す・新しいものは足す・あるものは名前と順番を更新）
  *   title（人が付けたタイトル）は触らない。フォルダを読み直しても消えないように（タイトルは drive_save_titles で保存）
  *   全部消して入れ直さないのは、変わらない行の created_at（いつ紐付けたか）を残すため
- * @param array $files [['file_id', 'name', 'mime_type'], ...]（この順番が sort_order になる）
+ * @param array $files [['file_id', 'name', 'mime_type', 'size'], ...]（この順番が sort_order になる）
  */
 function drive_save_files(PDO $pdo, int $bandId, array $files): void
 {
@@ -354,17 +358,88 @@ function drive_save_files(PDO $pdo, int $bandId, array $files): void
     if ($keep) {
         $marks = implode(',', array_fill(0, count($keep), '?'));
         $pdo->prepare("DELETE FROM band_drive_file WHERE band_id = ? AND file_id NOT IN ($marks)")->execute([$bandId, ...$keep]);
+        // 外したファイルのチャプターも消す
+        $pdo->prepare("DELETE FROM band_audio_chapter WHERE band_id = ? AND audio_key LIKE 'd:%' AND audio_key NOT IN ($marks)")
+            ->execute([$bandId, ...array_map(static fn($id) => 'd:' . $id, $keep)]);
     } else {
         $pdo->prepare('DELETE FROM band_drive_file WHERE band_id = ?')->execute([$bandId]);
+        $pdo->prepare("DELETE FROM band_audio_chapter WHERE band_id = ? AND audio_key LIKE 'd:%'")->execute([$bandId]);
     }
     // ON DUPLICATE KEY UPDATE: 主キー（band_id, file_id）がもうあれば INSERT の代わりに UPDATE する（MySQL の「あれば更新・無ければ追加」）
-    $up = $pdo->prepare('INSERT INTO band_drive_file (band_id, file_id, name, mime_type, sort_order) VALUES (?, ?, ?, ?, ?)
-        ON DUPLICATE KEY UPDATE name = VALUES(name), mime_type = VALUES(mime_type), sort_order = VALUES(sort_order)');
+    //   is_mix は新しい行の初期値だけ（音源・動画ならミックス）。あるものは UPDATE しない = 付け外しを残す
+    //   size は分かったときだけ更新する（フォルダを読み直しても、分かっている値を NULL で消さない）
+    $up = $pdo->prepare('INSERT INTO band_drive_file (band_id, file_id, name, mime_type, size, is_mix, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE name = VALUES(name), mime_type = VALUES(mime_type), size = COALESCE(VALUES(size), size), sort_order = VALUES(sort_order)');
     foreach (array_values($files) as $i => $f) {
         if (!drive_id_valid((string)$f['file_id'])) {
             continue;
         }
-        $up->execute([$bandId, $f['file_id'], mb_substr((string)$f['name'], 0, 255), substr((string)$f['mime_type'], 0, 100), $i + 1]);
+        $mime = substr((string)$f['mime_type'], 0, 100);
+        $up->execute([$bandId, $f['file_id'], mb_substr((string)$f['name'], 0, 255), $mime, isset($f['size']) ? (int)$f['size'] : null, drive_kind($mime) === 'media' ? 1 : 0, $i + 1]);
+    }
+}
+
+/**
+ * ミックスの印を保存する（バンド編集・割り当て）。画面に出したファイルだけ、選ばれていれば 1・無ければ 0
+ *   同じ保存で足したファイル（チェックボックスが無い）は触らない = 初期値のまま
+ * @param string[] $shownFileIds 画面に出したファイルの ID
+ * @param string[] $mixFileIds   チェックされたファイルの ID
+ */
+function drive_save_mix(PDO $pdo, int $bandId, array $shownFileIds, array $mixFileIds): void
+{
+    $st = $pdo->prepare('UPDATE band_drive_file SET is_mix = ? WHERE band_id = ? AND file_id = ?');
+    foreach ($shownFileIds as $fid) {
+        $st->execute([in_array((string)$fid, $mixFileIds, true) ? 1 : 0, $bandId, (string)$fid]);
+    }
+}
+
+/**
+ * ミックスのあるバンド（ミックスの印を付けたドライブのファイル か、アップロードした MP3 がある）
+ * @param int[] $bandIds
+ * @return array<int, true> band_id => true
+ */
+function band_mix_ids(PDO $pdo, array $bandIds): array
+{
+    $bandIds = array_values(array_unique(array_map('intval', $bandIds)));
+    if (!$bandIds) {
+        return [];
+    }
+    $marks = implode(',', array_fill(0, count($bandIds), '?'));
+    $st = $pdo->prepare("SELECT band_id FROM band_drive_file WHERE is_mix = 1 AND band_id IN ($marks)
+        UNION SELECT band_id FROM band_audio WHERE band_id IN ($marks)");
+    $st->execute([...$bandIds, ...$bandIds]);
+    return array_fill_keys(array_map('intval', $st->fetchAll(PDO::FETCH_COLUMN)), true);
+}
+
+/**
+ * MIX の印（ミックスのあるバンドに付ける）。緑の角丸に白抜きの M・I・X（色と線は CSS の .tag--mix）
+ */
+function mix_tag(string $extraClass = ''): string
+{
+    return '<span class="tag tag--mix' . ($extraClass !== '' ? ' ' . h($extraClass) : '') . '" role="img" aria-label="MIX">'
+        . '<svg viewBox="0 0 25 14" aria-hidden="true" focusable="false"><rect width="25" height="14" rx="3" fill="currentColor"/>'
+        . '<path d="M4 11V3l3 4 3-4v8M13.5 3v8M16.5 3l4.5 8m0-8l-4.5 8"/></svg></span>';
+}
+
+/**
+ * ファイルの容量が分からない音源（size が NULL）を、ドライブに1回ずつ聞いて埋める（再生前にサイズを出すため）
+ *   読めなかったファイルはそのまま（次に開いたときにまた試す）。$files は参照渡しで size も直す
+ */
+function drive_backfill_sizes(PDO $pdo, int $bandId, array &$files): void
+{
+    $up = $pdo->prepare('UPDATE band_drive_file SET size = ? WHERE band_id = ? AND file_id = ?');
+    foreach ($files as &$f) {
+        if ($f['size'] !== null || !str_starts_with((string)$f['mime_type'], 'audio/')) {
+            continue;
+        }
+        try {
+            $size = drive_file_meta((string)$f['file_id'])['size'];
+        } catch (RuntimeException) {
+            $size = null;
+        }
+        // 取れなかったら 0（= 不明）を入れて、ページを開くたびに聞き直さない
+        $up->execute([$size ?? 0, $bandId, $f['file_id']]);
+        $f['size'] = $size ?? 0;
     }
 }
 
@@ -384,32 +459,38 @@ function drive_player_html(string $fileId, string $title): string
 
 /**
  * ファイルの一覧を種類ごとに表示する HTML（band.php と live.php の開いたパネルで共通）
- *   並びは「プレーヤー → 写真 → リンク」。種類ごとに見た目を変える
- *     音源・動画 … プレーヤー（iframe）は1つだけ。2つ以上あるときは上のチップで切り替える（ミックス違いが多いので）
+ *   並びは「音源 → 動画 → 写真 → リンク」。種類ごとに見た目を変える
+ *     音源       … 1ファイルにつき1つのプレーヤー（audio_player_html）。$skipAudio = true なら出さない（band.php は自分で並べる）
+ *     動画       … プレーヤー（iframe）は1つだけ。2つ以上あるときは上のチップで切り替える
  *                  切り替えは JS（setupDriveSwitch）が iframe の src を差し替えるだけ。全部並べるより軽い
  *     写真       … .live-thumbs（ライブ・バンドの添付画像と同じ見た目）。押すとドライブで開く
  *     それ以外   … .chip-list のチップ。押すとドライブで開く
  *   名前はタイトル（バンド編集で付ける）があればタイトル、無ければファイル名
- * @param array $files [['file_id', 'name', 'title', 'mime_type'], ...]
+ * @param array $files [['band_id', 'file_id', 'name', 'title', 'mime_type', 'size'], ...]
  */
-function drive_files_html(array $files): string
+function drive_files_html(array $files, bool $skipAudio = false): string
 {
     static $panel = 0; // 1ページに何個も出るので、ラジオボタンの name が重ならないよう番号を振る
     $panel++;
-    $groups = ['media' => [], 'image' => [], 'other' => []];
+    $groups = ['audio' => [], 'video' => [], 'image' => [], 'other' => []];
     foreach ($files as $f) {
         if (drive_id_valid((string)$f['file_id'])) {
-            $groups[drive_kind((string)$f['mime_type'])][] = $f;
+            $kind = drive_kind((string)$f['mime_type']);
+            $groups[$kind === 'media' ? (str_starts_with((string)$f['mime_type'], 'audio/') ? 'audio' : 'video') : $kind][] = $f;
         }
     }
     $html = '';
-    if ($groups['media']) {
-        $first = $groups['media'][0];
+    foreach ($skipAudio ? [] : $groups['audio'] as $f) {
+        $html .= audio_player_html('drive_audio?band=' . (int)$f['band_id'] . '&f=' . rawurlencode((string)$f['file_id']),
+            drive_file_title($f), isset($f['size']) ? (int)$f['size'] : null);
+    }
+    if ($groups['video']) {
+        $first = $groups['video'][0];
         $html .= '<figure class="drive-player" data-drive-switch>';
-        if (count($groups['media']) > 1) {
+        if (count($groups['video']) > 1) {
             // ラジオボタン（1つだけ選べる）。見た目は既存のチップ（.pick-chip）。選ぶと JS がプレーヤーの src を差し替える
             $html .= '<div class="drive-picks" role="radiogroup" aria-label="再生するファイル">';
-            foreach ($groups['media'] as $i => $f) {
+            foreach ($groups['video'] as $i => $f) {
                 $html .= '<label class="pick-chip pick-chip--who"><input type="radio" name="drive-mix-' . $panel . '"'
                     . ' value="' . h(drive_preview_url((string)$f['file_id'])) . '" data-drive-src' . ($i === 0 ? ' checked' : '') . '>'
                     . drive_type_icon((string)$f['mime_type']) . h(drive_file_title($f)) . '</label>';
