@@ -1801,6 +1801,15 @@ CREATE TABLE sched_google (
         ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+-- Google 連携で取り込むカレンダー（本人が選ぶ。migrations/127）
+CREATE TABLE sched_google_calendar (
+    member_id   INT UNSIGNED NOT NULL,
+    calendar_id VARCHAR(255) NOT NULL,              -- Google のカレンダー id（メインはメールアドレス）
+    PRIMARY KEY (member_id, calendar_id),
+    CONSTRAINT fk_sgcal_member FOREIGN KEY (member_id) REFERENCES member (member_id)
+        ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
 CREATE TABLE sched_studio_short (
     member_id  INT UNSIGNED NOT NULL,
     studio_id  INT UNSIGNED NOT NULL,

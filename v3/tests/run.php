@@ -1101,6 +1101,12 @@ check('google: 取り込むカレンダー = 表示中で、削除されてお�
     ['id' => 'ja.japanese#holiday@group.v.calendar.google.com', 'primary' => false, 'selected' => true, 'deleted' => false],
     ['id' => 'addressbook#contacts@group.v.calendar.google.com', 'primary' => false, 'selected' => true, 'deleted' => false],
 ]), ['me@example.com', 'band@group.calendar.google.com']);
+check('google: 選べるカレンダー = 削除されておらず、祝日・誕生日でないもの（表示中でなくても選べる）', array_column(sched_google_selectable([
+    ['id' => 'me@example.com', 'name' => 'me', 'primary' => true, 'selected' => true, 'deleted' => false],
+    ['id' => 'hidden@group.calendar.google.com', 'name' => 'h', 'primary' => false, 'selected' => false, 'deleted' => false],
+    ['id' => 'gone@group.calendar.google.com', 'name' => 'g', 'primary' => false, 'selected' => true, 'deleted' => true],
+    ['id' => 'ja.japanese#holiday@group.v.calendar.google.com', 'name' => 'j', 'primary' => false, 'selected' => true, 'deleted' => false],
+]), 'id'), ['me@example.com', 'hidden@group.calendar.google.com']);
 check('google: 設定が無ければ使えない（ボタンも出さない・同期もしない）', sched_google_available(), false);
 // 購読するカレンダー: 予定2件 → VEVENT が2つ・UID が別々・カレンダー名と読み直しの合図が入る
 $cal = sched_ics_calendar([

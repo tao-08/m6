@@ -767,6 +767,7 @@ render_header('マイスケジュール', 'tools');
                                 <form method="post" action="sched_google"><?= csrf_field() ?><input type="hidden" name="poll" value="<?= $poll !== null ? $pollId : 0 ?>">
                                     <button class="btn btn--sm btn--primary" type="submit"><?= icon('login') ?> 再連携</button></form>
                             <?php endif; ?>
+                            <?php if (!$g['error']): ?><a class="btn btn--sm" href="sched_google_pick<?= $poll !== null ? '?poll=' . $pollId : '' ?>"><?= icon('event') ?> カレンダーを選ぶ</a><?php endif; ?>
                             <form method="post"><?= csrf_field() ?><input type="hidden" name="action" value="google_refresh"><?= $pollHidden ?>
                                 <button class="btn btn--sm" type="submit"><?= icon('refresh') ?> 読み直す</button></form>
                             <form method="post" data-confirm="Google との連携を解除します。取り込んだ予定も消えます。よろしいですか？"><?= csrf_field() ?><input type="hidden" name="action" value="google_disconnect"><?= $pollHidden ?>

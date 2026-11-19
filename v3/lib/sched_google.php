@@ -284,7 +284,7 @@ function sched_google_access_token(PDO $pdo, int $memberId, ?string &$error = nu
 function sched_google_calendars(string $token): array
 {
     $res = sched_google_api('GET', 'users/me/calendarList', $token, [
-        'minAccessRole' => 'reader', 'maxResults' => 250, 'fields' => 'items(id,primary,selected,deleted)',
+        'minAccessRole' => 'reader', 'maxResults' => 250, 'fields' => 'items(id,summary,summaryOverride,primary,selected,deleted)',
     ]);
     if ($res['status'] !== 200 || !is_array($res['json']['items'] ?? null)) {
         sched_google_log('calendarList', $res);
@@ -293,10 +293,46 @@ function sched_google_calendars(string $token): array
     $out = [];
     foreach ($res['json']['items'] as $it) {
         if (is_array($it) && is_string($it['id'] ?? null)) {
-            $out[] = ['id' => $it['id'], 'primary' => !empty($it['primary']), 'selected' => !empty($it['selected']), 'deleted' => !empty($it['deleted'])];
+            $name = is_string($it['summaryOverride'] ?? null) && $it['summaryOverride'] !== '' ? $it['summaryOverride'] : (is_string($it['summary'] ?? null) ? $it['summary'] : $it['id']);
+            $out[] = ['id' => $it['id'], 'name' => mb_substr($name, 0, 100), 'primary' => !empty($it['primary']), 'selected' => !empty($it['selected']), 'deleted' => !empty($it['deleted'])];
         }
     }
     return $out;
+}
+
+/**
+ * 選べるカレンダー（削除済みと、祝日・誕生日・天気を除く）。選択画面に出すもの
+ *   祝日・誕生日は、終日の予定がぜんぶ「1日予定あり」になってしまうため、選ばせない
+ */
+function sched_google_selectable(array $calendars): array
+{
+    return array_values(array_filter($calendars, static fn($c) => !$c['deleted'] && !preg_match('~#(holiday|weather|contacts)@group\.v\.calendar\.google\.com$~', $c['id'])));
+}
+
+/** 本人が選んだカレンダーの id。まだ選んでいない（選択画面の前に連携した人）は null = 表示中のものをすべて取り込む */
+function sched_google_chosen(PDO $pdo, int $memberId): ?array
+{
+    $st = $pdo->prepare('SELECT calendar_id FROM sched_google_calendar WHERE member_id = ?');
+    $st->execute([$memberId]);
+    $ids = $st->fetchAll(PDO::FETCH_COLUMN);
+    return $ids ? array_map('strval', $ids) : null;
+}
+
+/** 選んだカレンダーを入れ替える（$ids は呼び出し側で、Google の一覧にあるものだけに絞っておく） */
+function sched_google_chosen_save(PDO $pdo, int $memberId, array $ids): void
+{
+    $pdo->beginTransaction();
+    try {
+        $pdo->prepare('DELETE FROM sched_google_calendar WHERE member_id = ?')->execute([$memberId]);
+        $ins = $pdo->prepare('INSERT INTO sched_google_calendar (member_id, calendar_id) VALUES (?, ?)');
+        foreach ($ids as $id) {
+            $ins->execute([$memberId, $id]);
+        }
+        $pdo->commit();
+    } catch (Throwable $e) {
+        $pdo->rollBack();
+        throw $e;
+    }
 }
 
 /**
@@ -445,7 +481,11 @@ function sched_google_refresh_busy(PDO $pdo, int $memberId, bool $force = false)
             $fromAbs = sched_day_abs(date('Y-m-d', strtotime('-1 day'))); // 昨日から（iCal と同じ範囲）
             $toAbs = $fromAbs + (SCHED_ICAL_DAYS + 1) * 1440;
             $raw = [];
-            foreach (array_slice(sched_google_pick_calendars(sched_google_calendars($token)), 0, SCHED_GOOGLE_MAX_CALENDARS) as $calId) {
+            $cals = sched_google_calendars($token);
+            $chosen = sched_google_chosen($pdo, $memberId);
+            $calIds = $chosen === null ? sched_google_pick_calendars($cals)
+                : array_values(array_map(static fn($c) => $c['id'], array_filter(sched_google_selectable($cals), static fn($c) => in_array($c['id'], $chosen, true)))); // 選んだもののうち、いまも一覧にあるものだけ
+            foreach (array_slice($calIds, 0, SCHED_GOOGLE_MAX_CALENDARS) as $calId) {
                 foreach (sched_google_fetch_events($token, $calId, $fromAbs, $toAbs, $deadline) as $ev) {
                     $sp = is_array($ev) ? sched_google_event_to_span($ev, $fromAbs, $toAbs) : null;
                     if ($sp !== null) {
@@ -833,6 +873,7 @@ function sched_google_disconnect(PDO $pdo, int $memberId): void
     $pdo->beginTransaction();
     try {
         $pdo->prepare('DELETE FROM sched_google_event WHERE member_id = ?')->execute([$memberId]);
+        $pdo->prepare('DELETE FROM sched_google_calendar WHERE member_id = ?')->execute([$memberId]);
         $pdo->prepare('DELETE FROM sched_busy WHERE member_id = ? AND source = 1')->execute([$memberId]);
         $pdo->prepare('DELETE FROM sched_google WHERE member_id = ?')->execute([$memberId]);
         // iCal の URL を登録していた人は、また iCal で読み直せるように「読んだ日時」を消しておく（残すと、SCHED_ICAL_TTL の間は読み直されず空のまま）
