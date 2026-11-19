@@ -49,6 +49,12 @@
 .intro-scope [data-scope-label] { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .intro-scope__count { color: var(--muted); font-variant-numeric: tabular-nums; }
 .intro-scope.is-on { color: var(--accent); border-color: var(--accent); }
+/* 範囲ボタンの下の吹き出し。しっぽは疑似要素 ::before の三角（clip-path で切り抜く）。
+ *  しっぽを border や回転した四角で作らないのは、背景が半透明（--accent-soft）で、重なった所だけ濃く見えるのを避けるため */
+.intro-hint { position: relative; margin: 0; padding: 6px 12px; max-width: 100%; border-radius: var(--r-md);
+  background: var(--accent-soft); color: var(--accent); font-size: var(--fs-xs); font-weight: 700; line-height: 1.5; text-align: center; }
+.intro-hint::before { content: ""; position: absolute; bottom: 100%; left: 50%; width: 12px; height: 6px; transform: translateX(-50%);
+  background: var(--accent-soft); clip-path: polygon(50% 0, 0 100%, 100% 100%); }
 
 /* ----- 範囲の小窓 ----- */
 .intro-modal__head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
