@@ -1,5 +1,6 @@
 config.php
 storage/sessions/
+storage/drive_cache/
 # composer の中身（composer install で作る。本番にはこのフォルダごとアップロードする）
 vendor/
 .claude/worktrees/

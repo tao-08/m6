@@ -1236,5 +1236,17 @@ check('WAV: データより前は先頭のデータから', wav_resume($wavInfo,
 check('WAV: データのあとの余分は流さない', wav_resume($wavInfo, $wavSize, $wavInfo['dataStart'] + 1000), null);
 check('WAV: 申告がファイルより大きければ、ファイルの終わりまで', wav_resume($wavInfo, $wavInfo['dataStart'] + 500, $wavInfo['dataStart'] + 100)[2], 400);
 
+// ---------------------------------------------------------------------
+//  ドライブが答えなかったときの理由（lib/drive_cache.php）
+// ---------------------------------------------------------------------
+echo "drive_cache
+";
+check('理由: Google の JSON の reason', drive_upstream_reason('{"error":{"code":403,"errors":[{"reason":"userRateLimitExceeded","domain":"usageLimits"}],"status":"PERMISSION_DENIED"}}'), 'userRateLimitExceeded');
+check('理由: errors が無ければ status', drive_upstream_reason('{"error":{"code":429,"status":"RESOURCE_EXHAUSTED"}}'), 'RESOURCE_EXHAUSTED');
+check('理由: JSON でなければ本文の先頭を、使える文字だけで 80 文字まで', drive_upstream_reason("<html>
+Bad <b>Gateway</b> \"key=AIza\"" . str_repeat('x', 200)), substr('htmlBad bGatewayb keyAIza' . str_repeat('x', 200), 0, 80));
+check('理由: 空の本文は空', drive_upstream_reason(''), '');
+check('キャッシュ: 大きさが分からなければ、あれば流す', [drive_cache_ok(__FILE__, 0), drive_cache_ok(__FILE__, filesize(__FILE__)), drive_cache_ok(__FILE__, 1), drive_cache_ok(__FILE__ . '.none', 0)], [true, true, false, false]);
+
 echo $failed ?"\n{$failed} 件失敗\n" : "\nすべて成功\n";
 exit($failed ? 1 : 0);

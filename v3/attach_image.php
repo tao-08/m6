@@ -63,67 +63,11 @@ if (!$img || !preg_match('/^(t_)?[0-9a-f]{16}\.(jpg|pdf|[a-z0-9]{1,8})$/', $name
 header('X-Content-Type-Options: nosniff');
 header('Cache-Control: private, max-age=86400');
 if ($kind === 'band_audio') {
-    // MP3: ページ内のプレーヤーで再生する。シーク（Range）に答える。長く流すので、先にセッションを手放す（ほかの画面が待たされない）
+    // MP3: ページ内のプレーヤーで再生する。シーク（Range）・from= に答える（lib/audio_stream.php）。長く流すので、先にセッションを手放す
     session_write_close();
-    require_once __DIR__ . '/lib/wav.php';
-    header('Cache-Control: private, no-store'); // 前段のキャッシュが人をまたいで使い回さないように
-    $size = filesize($path);
-    $from = 0;
-    $to = $size - 1;
-    $skip = ctype_digit((string)($_GET['from'] ?? '')) ? (int)$_GET['from'] : 0;
-    $prefix = '';
-    $type = 'audio/mpeg';
-    if ($skip > 0) {
-        // ?from=バイト位置: Range が使えない環境向け。200 で、その位置から先だけを流す（WAV は作り直したヘッダー付き）
-        if ($skip >= $size) {
-            http_response_code(404);
-            exit;
-        }
-        $fp = fopen($path, 'rb');
-        $wav = wav_info((string)fread($fp, 65536));
-        $resume = $wav ? wav_resume($wav, $size, $skip) : null;
-        if ($resume) {
-            [$prefix, $from] = $resume;
-            $to = $from + $resume[2] - 1;
-            $type = 'audio/wav';
-        } else {
-            $from = $skip;
-        }
-        header('Accept-Ranges: none');
-    } elseif (preg_match('/^bytes=(\d*)-(\d*)$/', $_SERVER['HTTP_RANGE'] ?? '', $m) && ($m[1] !== '' || $m[2] !== '')) {
-        if ($m[1] === '') { // bytes=-N: 終わりから N バイト
-            $from = max(0, $size - (int)$m[2]);
-        } else {
-            $from = (int)$m[1];
-            $to = $m[2] !== '' ? min($to, (int)$m[2]) : $to;
-        }
-        if ($from > $to) {
-            http_response_code(416);
-            header("Content-Range: bytes */$size");
-            exit;
-        }
-        http_response_code(206);
-        header("Content-Range: bytes $from-$to/$size");
-    }
-    header('Content-Type: ' . $type);
-    if ($skip === 0) {
-        header('Accept-Ranges: bytes');
-    }
-    header('Content-Length: ' . (strlen($prefix) + $to - $from + 1));
-    if (isset($_GET['dl'])) {
-        header("Content-Disposition: attachment; filename=\"mix.mp3\"; filename*=UTF-8''" . rawurlencode(preg_replace('/[^\p{L}\p{N}_-]+/u', '_', (string)$img['title']) . '_' . (int)$img['image_id'] . '.mp3'));
-    }
-    $fp ??= fopen($path, 'rb');
-    fseek($fp, $from);
-    echo $prefix;
-    for ($left = $to - $from + 1; $left > 0 && !feof($fp);) {
-        $chunk = (string)fread($fp, min(65536, $left));
-        if ($chunk === '') {
-            break;
-        }
-        echo $chunk;
-        $left -= strlen($chunk);
-    }
+    require_once __DIR__ . '/lib/audio_stream.php';
+    audio_stream_file($path, 'audio/mpeg', isset($_GET['dl'])
+        ? preg_replace('/[^\p{L}\p{N}_-]+/u', '_', (string)$img['title']) . '_' . (int)$img['image_id'] . '.mp3' : null);
     exit;
 }
 if (($isPdf || $isOther) && isset($_GET['t'])) {

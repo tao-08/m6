@@ -34,6 +34,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/albums.php';  // album_http（通信）
 require_once __DIR__ . '/youtube.php'; // youtube_match_bands（タイトルとバンド名の突き合わせ）を使い回す
 require_once __DIR__ . '/audio_player.php'; // 音源のプレーヤー
+require_once __DIR__ . '/drive_cache.php'; // 音源のキャッシュ（外したファイルを消す）
 
 /** 読み込むページ数の上限（100件 × 5 = 500ファイル）。変なフォルダで延々と通信しないように */
 const DRIVE_MAX_PAGES = 5;
@@ -355,6 +356,9 @@ function drive_load_files(PDO $pdo, array $bandIds): array
 function drive_save_files(PDO $pdo, int $bandId, array $files): void
 {
     $keep = array_column($files, 'file_id');
+    $st = $pdo->prepare('SELECT file_id FROM band_drive_file WHERE band_id = ?');
+    $st->execute([$bandId]);
+    $gone = array_diff($st->fetchAll(PDO::FETCH_COLUMN), $keep); // 外すファイル（あとでキャッシュを消す）
     if ($keep) {
         $marks = implode(',', array_fill(0, count($keep), '?'));
         $pdo->prepare("DELETE FROM band_drive_file WHERE band_id = ? AND file_id NOT IN ($marks)")->execute([$bandId, ...$keep]);
@@ -365,6 +369,7 @@ function drive_save_files(PDO $pdo, int $bandId, array $files): void
         $pdo->prepare('DELETE FROM band_drive_file WHERE band_id = ?')->execute([$bandId]);
         $pdo->prepare("DELETE FROM band_audio_chapter WHERE band_id = ? AND audio_key LIKE 'd:%'")->execute([$bandId]);
     }
+    drive_cache_forget($pdo, $gone); // 落としてあった音源も消す（ほかのバンドが使っていれば残す）
     // ON DUPLICATE KEY UPDATE: 主キー（band_id, file_id）がもうあれば INSERT の代わりに UPDATE する（MySQL の「あれば更新・無ければ追加」）
     //   is_mix は新しい行の初期値だけ（音源・動画ならミックス）。あるものは UPDATE しない = 付け外しを残す
     //   size は分かったときだけ更新する（フォルダを読み直しても、分かっている値を NULL で消さない）

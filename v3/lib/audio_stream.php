@@ -1,0 +1,75 @@
+<?php
+/**
+ * lib/audio_stream.php — ディスク上の音源を、from=（バイト位置）と Range に答えて流す
+ *   使うのは attach_image.php（直接置いた MP3）と drive_audio.php（ドライブから落としてキャッシュした音源）
+ *   ?from=バイト位置: Range が使えない環境向け。200 で、その位置から先だけを流す（WAV は作り直したヘッダー付き。lib/wav.php）
+ */
+declare(strict_types=1);
+
+require_once __DIR__ . '/wav.php';
+
+/**
+ * @param string      $mime   Content-Type（WAV を途中から流すときは audio/wav に変わる）
+ * @param string|null $dlName ダウンロードさせるときのファイル名（null ならそのまま再生）
+ */
+function audio_stream_file(string $path, string $mime, ?string $dlName = null): void
+{
+    header('X-Content-Type-Options: nosniff');
+    header('Cache-Control: private, no-store'); // 前段のキャッシュが人をまたいで使い回さないように
+    $size = (int)filesize($path);
+    $from = 0;
+    $to = $size - 1;
+    $skip = ctype_digit((string)($_GET['from'] ?? '')) ? (int)$_GET['from'] : 0;
+    $prefix = '';
+    if ($skip > 0) {
+        if ($skip >= $size) {
+            http_response_code(404);
+            return;
+        }
+        $fp = fopen($path, 'rb');
+        $wav = wav_info((string)fread($fp, 65536));
+        $resume = $wav ? wav_resume($wav, $size, $skip) : null;
+        if ($resume) {
+            [$prefix, $from] = $resume;
+            $to = $from + $resume[2] - 1;
+            $mime = 'audio/wav';
+        } else {
+            $from = $skip;
+        }
+        header('Accept-Ranges: none');
+    } elseif (preg_match('/^bytes=(\d*)-(\d*)$/', $_SERVER['HTTP_RANGE'] ?? '', $m) && ($m[1] !== '' || $m[2] !== '')) {
+        if ($m[1] === '') { // bytes=-N: 終わりから N バイト
+            $from = max(0, $size - (int)$m[2]);
+        } else {
+            $from = (int)$m[1];
+            $to = $m[2] !== '' ? min($to, (int)$m[2]) : $to;
+        }
+        if ($from > $to) {
+            http_response_code(416);
+            header("Content-Range: bytes */$size");
+            return;
+        }
+        http_response_code(206);
+        header("Content-Range: bytes $from-$to/$size");
+    }
+    header('Content-Type: ' . $mime);
+    if ($skip === 0) {
+        header('Accept-Ranges: bytes');
+    }
+    header('Content-Length: ' . (strlen($prefix) + $to - $from + 1));
+    if ($dlName !== null) {
+        header("Content-Disposition: attachment; filename=\"mix.mp3\"; filename*=UTF-8''" . rawurlencode($dlName));
+    }
+    $fp ??= fopen($path, 'rb');
+    fseek($fp, $from);
+    echo $prefix;
+    for ($left = $to - $from + 1; $left > 0 && !feof($fp);) {
+        $chunk = (string)fread($fp, min(65536, $left));
+        if ($chunk === '') {
+            break;
+        }
+        echo $chunk;
+        $left -= strlen($chunk);
+    }
+    fclose($fp);
+}

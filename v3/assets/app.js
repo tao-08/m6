@@ -2182,10 +2182,32 @@ function setupAudioPlayers(root = document) {
       jumpTimer = setTimeout(() => seekBox.classList.remove('is-jumping'), dur('--t-base') * 1.5);
     };
 
+    // 読み込めないとき（error / 60 秒たっても始まらない。初回は大きい音源をサーバーに落とすので長めに待つ）は、止めて知らせる
+    let loadTimer = 0;
+    const loadWatch = () => {
+      clearTimeout(loadTimer);
+      loadTimer = setTimeout(loadFail, 60000);
+    };
+    let failed = false; // 一度知らせたら、次に押されるまで黙る（下の load() がまた error を出して繰り返すため）
+    const loadFail = () => {
+      clearTimeout(loadTimer);
+      if (failed) return;
+      failed = true;
+      audio.pause();
+      audio.preload = 'none'; // 読み直しの load() で、また自分から読みに行かない
+      audio.load(); // error の状態を解いて、次に押したときに読み直せるようにする
+      paused();
+      ctrl?.abort(); // 自動で付けている最中なら止める（中止の表示も戻る）
+      flashToast('音源を読み込めませんでした', 'error');
+    };
+    audio.addEventListener('error', loadFail);
+    audio.addEventListener('canplay', () => clearTimeout(loadTimer));
+
     // t 秒へ。読み込み済みの範囲ならそのまま動かし、そうでなければ ?from= で読み直す。play: true で再生する（省略は今のまま）
     const seekTo = (t, play) => {
+      failed = false;
       if (!total) { // まだ長さがわからない: 読み込みを始めて、わかったら動かす
-        if (audio.readyState > 0) { audio.currentTime = Math.max(0, t - base); } else { pending = t; }
+        if (audio.readyState > 0) { audio.currentTime = Math.max(0, t - base); } else { pending = t; loadWatch(); }
         if (play !== false) audio.play().catch(() => {});
         return;
       }
@@ -2202,6 +2224,7 @@ function setupAudioPlayers(root = document) {
         const off = Math.round(t * size / total);
         audio.src = off > 0 ? `${src}${src.includes('?') ? '&' : '?'}from=${off}` : src;
         base = off > 0 ? t : 0;
+        loadWatch();
       }
       if (resume) audio.play().catch(() => {});
       jump();
@@ -2319,6 +2342,7 @@ function setupAudioPlayers(root = document) {
       whenTotal?.();
     };
     audio.addEventListener('loadedmetadata', async () => {
+      clearTimeout(loadTimer);
       if (base === 0 && Number.isFinite(audio.duration) && audio.duration > 0) {
         setTotal(audio.duration);
       } else if (base === 0 && !total && size) {
@@ -2356,9 +2380,13 @@ function setupAudioPlayers(root = document) {
     audio.addEventListener('ended', paused);
 
     playBtn.addEventListener('click', () => {
+      failed = false;
       if (audio.ended) seekTo(0, true); // 最後まで流れたあとは、from 付きの src でも頭から
-      else if (audio.paused) audio.play().catch(() => {});
-      else audio.pause();
+      else if (audio.paused) {
+        if (audio.networkState === HTMLMediaElement.NETWORK_NO_SOURCE) audio.src = audio.src; // 前に読めなかった: 入れ直して読み直す
+        if (audio.readyState === 0) loadWatch();
+        audio.play().catch(() => {});
+      } else audio.pause();
     });
     // つまみを動かしている間は表示だけ。離したら動かす（キーの連打は、少し待って最後の位置へ）
     range.addEventListener('input', () => { dragging = true; update(); });
@@ -2501,6 +2529,7 @@ function setupAudioPlayers(root = document) {
       whenTotal = () => { signal.removeEventListener('abort', stop); whenTotal = null; resolve(); };
       audio.preload = 'metadata';
       audio.load();
+      loadWatch();
     });
     const autoRun = async () => {
       ctrl = new AbortController();
@@ -2520,7 +2549,8 @@ function setupAudioPlayers(root = document) {
         render();
       } catch (e) {
         setMode('idle');
-        if (e.name !== 'AbortError') flashToast('区切りを見つけられませんでした', 'warn');
+        if (e.message === 'none') flashToast('区切りを見つけられませんでした', 'warn');
+        else if (e.name !== 'AbortError') flashToast('音源を読み込めませんでした', 'error'); // 区間の読み込みの失敗
       }
       ctrl = null;
     };
