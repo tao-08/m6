@@ -306,9 +306,9 @@ form.row-form input, form.row-form select { flex: 1; min-width: 10em; }
 .tag--plan { color: var(--headliner); border-color: color-mix(in srgb, var(--headliner) 40%, transparent); background: color-mix(in srgb, var(--headliner) 10%, transparent); }
 .tag--tori { font-size: var(--fs-md); line-height: 1; padding: 2px 6px; } /* トリの🐔は大きめに */
 /* 「MIX」: ミックス音源のあるバンド（mix_tag()）。緑の角丸に白抜きの M・I・X の SVG。高さはラベルの規格（--label-h）に合わせる
-   （規格の padding-top 1px 分だけ svg を低くして、全体が --label-h になるようにする） */
+   （規格の日本語用の padding-top は、規格のすぐ後ろで打ち消している） */
 .tag--mix { padding-inline: 0; border: 0; background: none; color: var(--ok); }
-.tag--mix svg { display: block; height: calc(var(--label-h) - 1px); width: auto; }
+.tag--mix svg { display: block; height: var(--label-h); width: auto; }
 .tag--mix path { fill: none; stroke: var(--surface); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .tag--flag { padding: 0 2px; background: none; border: 0; color: var(--warn); text-decoration: none; } /* 楽器の確認待ちの旗（live.php） */
 .tag--flag .icon { font-size: 18px; vertical-align: 0; }
@@ -558,7 +558,7 @@ button.tab { border: 0; background: none; font: inherit; font-weight: 800; font-
 .band-section > .drive-panel { margin-top: 12px; } /* 見出しの下は、メンバー欄（.lineup）と同じ 12px あける */
 .drive-player { margin: 0; }
 .band-section > .drive-player { margin-top: 12px; } /* 直接置いた MP3 のプレーヤー（band.php） */
-.band-audio { display: block; width: 100%; }
+.band-audio { display: none; } /* 音だけ。操作は自前の .audio-player__bar */
 .drive-player__name { display: flex; align-items: center; gap: 4px; margin-bottom: 4px; color: var(--muted); font-size: var(--fs-sm); overflow-wrap: anywhere; }
 /* 音源のプレーヤー（lib/audio_player.php）: 名前の右に容量・右端に編集の鉛筆。チャプターのチップは下に並べる */
 .audio-player__size { flex: none; font-size: var(--fs-xs); opacity: .75; }
@@ -566,6 +566,37 @@ button.tab { border: 0; background: none; font: inherit; font-weight: 800; font-
   background: none; color: var(--muted); cursor: pointer; }
 .audio-player__edit:hover, .audio-player__edit[aria-pressed="true"] { color: var(--accent); }
 .audio-player__edit[aria-pressed="true"] { background: var(--accent-soft); }
+/* 操作部: 再生ボタン・再生位置の棒・時間。チャプターがあるときは、棒の上に吹き出し（.audio-bubble）を並べる
+   吹き出しは棒の幅の中に収め（端では中身だけ内側へ寄せ）、三角は本当の位置を指す。--x は 0〜1 の位置、--shift は寄せた分 */
+.audio-player__bar { display: flex; align-items: center; gap: 8px; }
+.audio-player__play { flex: none; display: inline-grid; place-items: center; width: var(--ctl-h); height: var(--ctl-h); padding: 0; border: 0; border-radius: var(--r-full);
+  background: var(--accent); color: #fff; cursor: pointer; }
+.audio-player__play .icon { font-size: var(--fs-2xl); }
+.audio-player__play:hover { opacity: .85; }
+.audio-player__time { flex: none; color: var(--muted); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
+.audio-player__seek { --ap-thumb: 14px; position: relative; flex: 1; min-width: 0; }
+.audio-player__bar:has(.has-bubbles) { padding-top: 22px; } /* 吹き出しの分の高さ。再生ボタンと時間は棒に合わせて中央 */
+.audio-player__range { --p: 0%; display: block; width: 100%; height: 20px; margin: 0; padding: 0; background: none; cursor: pointer; -webkit-appearance: none; appearance: none; }
+.audio-player__range:disabled { cursor: default; opacity: .5; }
+.audio-player__range:focus-visible { outline: none; }
+.audio-player__range::-webkit-slider-runnable-track { height: 4px; border-radius: var(--r-full); background: linear-gradient(to right, var(--accent) var(--p), var(--border) var(--p)); }
+.audio-player__range::-moz-range-track { height: 4px; border-radius: var(--r-full); background: var(--border); }
+.audio-player__range::-moz-range-progress { height: 4px; border-radius: var(--r-full); background: var(--accent); }
+.audio-player__range::-webkit-slider-thumb { -webkit-appearance: none; width: var(--ap-thumb); height: var(--ap-thumb); margin-top: -5px; border: 0; border-radius: var(--r-full); background: var(--accent); }
+.audio-player__range::-moz-range-thumb { width: var(--ap-thumb); height: var(--ap-thumb); border: 0; border-radius: var(--r-full); background: var(--accent); }
+.audio-player__range:focus-visible::-webkit-slider-thumb { box-shadow: var(--ring); }
+.audio-player__range:focus-visible::-moz-range-thumb { box-shadow: var(--ring); }
+.audio-player__bubbles { position: absolute; bottom: calc(100% - 6px); left: calc(var(--ap-thumb) / 2); right: calc(var(--ap-thumb) / 2); height: 28px; container-type: inline-size; pointer-events: none; }
+.audio-bubble { --hw: 14px; --shift: clamp(calc(var(--hw) - var(--x) * 100cqw), 0px, calc(100cqw - var(--hw) - var(--x) * 100cqw));
+  position: absolute; left: calc(var(--x) * 100%); bottom: 5px; transform: translateX(calc(-50% + var(--shift)));
+  width: calc(var(--hw) * 2); height: 17px; padding: 0; border: 1px solid var(--border); border-radius: var(--r-sm);
+  background: var(--surface-2); color: var(--text); font: inherit; font-size: var(--fs-2xs); font-weight: 700; line-height: 15px; text-align: center;
+  cursor: pointer; pointer-events: auto; }
+.audio-bubble::after { content: ''; position: absolute; left: calc(50% - var(--shift)); bottom: -4px; width: 6px; height: 6px;
+  border: solid var(--border); border-width: 0 1px 1px 0; background: var(--surface-2); transform: translateX(-50%) rotate(45deg); }
+.audio-bubble:hover { color: var(--accent); }
+.audio-bubble.is-current { z-index: 1; border-color: var(--ok); background: var(--ok-bg); color: var(--ok); }
+.audio-bubble.is-current::after { border-color: var(--ok); background: var(--ok-bg); }
 .audio-player__list { margin-top: 8px; }
 .audio-player__list:empty { display: none; }
 .audio-player__add { display: flex; gap: 8px; margin-top: 8px; }
@@ -3051,6 +3082,7 @@ button.ttb-m { cursor: pointer; text-decoration: underline dotted; }
   padding-top: max(1px, .1em) !important; padding-bottom: 0 !important;
 }
 .pill { min-height: var(--label-h-lg); }
+.tag.tag--mix { padding-top: 0 !important; } /* MIX の印は SVG で字面の偏りが無いので、日本語用の下げを打ち消す */
 /* 名前などのボタン状の .chip: 余白（padding・line-height）は自前のまま、中央揃えと最小高さだけ規格に合わせる。
    inline-flex は文字と子要素の間の空白を消すので、gap で補う */
 .chip:not(.chip--xs) {

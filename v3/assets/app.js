@@ -2009,6 +2009,7 @@ function setupDrivePlayer() {
     // ほかに開いている一覧があれば閉じる
     document.querySelectorAll('[data-drive-toggle][aria-expanded="true"]').forEach(close);
     box.append(tpl.content.cloneNode(true)); // template の中身を複製して入れる（true = 子要素も全部）
+    setupAudioPlayers(box); // 中の音源のプレーヤーを動かす
     box.hidden = false;
     btn.setAttribute('aria-expanded', 'true');
   });
@@ -2032,92 +2033,268 @@ function setupDriveSwitch() {
 }
 
 /* ---------------------------------------------------------------------
- * band.php: 音源のチャプター（MC・曲）。プレーヤーは lib/audio_player.php の figure[data-audio-player][data-chapters]
- *   ・チップ（時間 ＋ MC / 曲名）は data-chapters の JSON から描く。押すとその位置から再生する
- *   ・鉛筆を押すと編集モード: 「MC」「曲」で今の再生位置にチャプターを足し、チップの ✕ で消す（api_audio_chapter.php）
+ * 音源のプレーヤー（lib/audio_player.php の figure[data-audio-player]）。band.php・live.php 共通
+ *   ・本番の前段のキャッシュが Range を落とすので、ブラウザのシークには頼らない。
+ *     まだ読み込んでいない位置へは、src に ?from=バイト位置 を付けて、その位置から流してもらう（サーバー側は lib/wav.php など）
+ *     base … いまの src の先頭の時刻（秒）。表示する時刻 = base ＋ audio.currentTime
+ *     total … 全体の長さ（秒）。最初の読み込み（from なし）の duration だけを使う（from 付きは短く出るので無視）
+ *     バイト位置 = 時刻 × (大きさ ÷ 全体の長さ)。WAV のずれ・サンプルの境界はサーバーが直す
+ *   ・チャプター（band.php だけ。data-chapters）: 再生位置の棒の上の吹き出し（MC / 曲の番号）と、下のチップ（時間 ＋ MC / 曲名）。
+ *     どちらも押すとその位置から再生する。鉛筆を押すと編集モード: 「MC」「曲」で今の再生位置にチャプターを足し、チップの ✕ で消す（api_audio_chapter.php）
  *   ・曲の番号は保存せず、時間順に 1, 2, 3… と数えて songs（セトリの曲名）に当てる
- *   ・イベント委任: click は document で受ける。timeupdate は泡立たないので、捕捉（capture）で受ける
+ *   ・同時に鳴らすのは1つだけ
  * ------------------------------------------------------------------- */
-function setupAudioPlayers() {
-  const players = document.querySelectorAll('[data-audio-player][data-chapters]');
-  if (!players.length) return;
-  const state = new WeakMap(); // figure → { band, key, list: [{id, kind, ms}], songs }
+/**
+ * 音源の長さ（秒）を、先頭 64KB とファイルの大きさから計算する。わからなければ null
+ *   MP3: Xing/Info・VBRI のフレーム数があればそれ（VBR）、無ければビットレートから（CBR）/ WAV: data の大きさ ÷ byteRate
+ */
+async function audioProbeDuration(src, size) {
+  let b;
+  try {
+    const res = await fetch(src);
+    const reader = res.body.getReader();
+    const parts = [];
+    let n = 0;
+    while (n < 65536) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      parts.push(value);
+      n += value.length;
+    }
+    reader.cancel().catch(() => {});
+    b = new Uint8Array(n);
+    let o = 0;
+    parts.forEach((p) => { b.set(p, o); o += p.length; });
+  } catch (e) {
+    return null;
+  }
+  const u32 = (i) => ((b[i] << 24) >>> 0) + (b[i + 1] << 16) + (b[i + 2] << 8) + b[i + 3];
+  const str = (i, len) => String.fromCharCode(...b.subarray(i, i + len));
+  if (str(0, 4) === 'RIFF' && str(8, 4) === 'WAVE') {
+    let byteRate = 0;
+    for (let i = 12; i + 8 <= b.length;) {
+      const len = b[i + 4] + (b[i + 5] << 8) + (b[i + 6] << 16) + (b[i + 7] << 24);
+      if (str(i, 4) === 'fmt ') byteRate = b[i + 16] + (b[i + 17] << 8) + (b[i + 18] << 16) + (b[i + 19] << 24);
+      if (str(i, 4) === 'data') return byteRate ? (size - i - 8) / byteRate : null;
+      i += 8 + len + (len & 1);
+    }
+    return null;
+  }
+  let i = 0;
+  if (str(0, 3) === 'ID3') i = 10 + ((b[6] << 21) | (b[7] << 14) | (b[8] << 7) | b[9]) + (b[5] & 0x10 ? 10 : 0);
+  const KBPS = { 1: [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320], 2: [0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160] };
+  for (; i + 4 < b.length; i++) {
+    if (b[i] !== 0xFF || (b[i + 1] & 0xE0) !== 0xE0) continue;
+    const ver = (b[i + 1] >> 3) & 3; // 3 = MPEG1 / 2 = MPEG2 / 0 = MPEG2.5
+    const layer = (b[i + 1] >> 1) & 3; // 1 = Layer III
+    const bi = b[i + 2] >> 4;
+    const si = (b[i + 2] >> 2) & 3;
+    if (ver === 1 || layer !== 1 || bi === 0 || bi === 15 || si === 3) continue; // Layer III 以外・ありえない値は飛ばす
+    const sr = [44100, 48000, 32000][si] / (ver === 3 ? 1 : ver === 2 ? 2 : 4);
+    const spf = ver === 3 ? 1152 : 576;
+    const mono = (b[i + 3] >> 6) === 3;
+    const xing = i + 4 + (ver === 3 ? (mono ? 17 : 32) : (mono ? 9 : 17));
+    if (xing + 12 <= b.length && ['Xing', 'Info'].includes(str(xing, 4)) && (u32(xing + 4) & 1)) return u32(xing + 8) * spf / sr;
+    if (i + 50 <= b.length && str(i + 36, 4) === 'VBRI') return u32(i + 50) * spf / sr;
+    return (size - i) * 8 / (KBPS[ver === 3 ? 1 : 2][bi] * 1000);
+  }
+  return null;
+}
+
+function setupAudioPlayers(root = document) {
+  const figs = [...root.querySelectorAll('[data-audio-player]:not([data-ap-ready])')]; // live.php は一覧を開くたびに作られるので、root を渡して作った分だけ初期化する
+  if (!figs.length) return;
   const fmtTime = (ms) => {
     const s = Math.floor(ms / 1000);
     const sec = String(s % 60).padStart(2, '0');
     return s >= 3600 ? `${Math.floor(s / 3600)}:${String(Math.floor(s / 60) % 60).padStart(2, '0')}:${sec}` : `${Math.floor(s / 60)}:${sec}`;
   };
-  // 今の再生位置のチャプター（いちばん後ろの「開始が今以前」のチップ）に .is-current
-  const mark = (fig) => {
-    const t = (fig.querySelector('audio')?.currentTime || 0) * 1000;
-    const chips = [...fig.querySelectorAll('.audio-chapter')];
-    const at = chips.findLastIndex((c) => Number(c.dataset.ms) <= t);
-    chips.forEach((c, i) => c.classList.toggle('is-current', i === at));
-  };
-  const render = (fig) => {
-    const st = state.get(fig);
-    let n = 0;
-    fig.querySelector('[data-ap-list]').replaceChildren(...st.list.map((c) => {
-      let text = 'MC';
-      if (c.kind === 'song') {
-        n += 1;
-        text = st.songs[n - 1] ? `${n}.${st.songs[n - 1]}` : String(n);
-      }
-      const chip = mkEl('span', 'chip audio-chapter');
-      chip.dataset.ms = c.ms;
-      chip.dataset.id = c.id;
-      const go = mkEl('button', 'audio-chapter__go');
-      go.type = 'button';
-      go.append(mkEl('span', 'audio-chapter__time', fmtTime(c.ms)), text);
-      const del = mkEl('button', 'audio-chapter__del');
-      del.type = 'button';
-      del.setAttribute('aria-label', '削除');
-      del.title = '削除';
-      del.append(mkEl('span', 'icon', 'close'));
-      del.firstChild.setAttribute('aria-hidden', 'true');
-      chip.append(go, del);
-      return chip;
-    }));
-    mark(fig);
-  };
-  players.forEach((fig) => {
-    try { state.set(fig, JSON.parse(fig.dataset.chapters)); } catch (e) { return; }
-    render(fig);
-  });
-  // 追加・削除。返事は、その音源の今のチャプター全部
-  const send = async (fig, body) => {
-    const st = state.get(fig);
-    try {
-      st.list = (await apiPost('api_audio_chapter.php', { band_id: st.band, ...body }, '保存できませんでした')).chapters;
-      render(fig);
-    } catch (e) {
-      flashToast(e.message, 'error');
-    }
-  };
-  document.addEventListener('timeupdate', (e) => {
-    const fig = e.target.closest?.('[data-audio-player]');
-    if (fig && state.has(fig)) mark(fig);
-  }, true);
-  document.addEventListener('click', (e) => {
-    const fig = e.target.closest('[data-audio-player]');
-    if (!fig || !state.has(fig)) return;
+
+  figs.forEach((fig) => {
+    fig.dataset.apReady = '1';
     const audio = fig.querySelector('audio');
-    const go = e.target.closest('.audio-chapter__go');
-    const del = e.target.closest('.audio-chapter__del');
-    const add = e.target.closest('[data-ap-add]');
-    if (go) {
-      audio.currentTime = Number(go.closest('.audio-chapter').dataset.ms) / 1000;
-      audio.play().catch(() => {}); // 自動再生が止められても、位置だけは動く
-    } else if (del) {
-      send(fig, { action: 'delete', chapter_id: Number(del.closest('.audio-chapter').dataset.id) });
-    } else if (add) {
-      send(fig, { action: 'add', key: state.get(fig).key, kind: add.dataset.apAdd, at_ms: Math.floor(audio.currentTime * 1000) });
-    } else if (e.target.closest('[data-ap-edit]')) {
-      const on = !fig.classList.contains('is-editing');
-      fig.classList.toggle('is-editing', on);
-      fig.querySelector('[data-ap-edit]').setAttribute('aria-pressed', String(on));
-      fig.querySelector('[data-ap-bar]').hidden = !on;
-    }
+    const playBtn = fig.querySelector('[data-ap-play]');
+    const playIcon = mkEl('span', 'icon icon--fill', 'play_arrow');
+    playIcon.setAttribute('aria-hidden', 'true');
+    playBtn.replaceChildren(playIcon);
+    const range = fig.querySelector('[data-ap-seek]');
+    const timeEl = fig.querySelector('[data-ap-time]');
+    const bubbles = fig.querySelector('[data-ap-bubbles]');
+    const src = audio.getAttribute('src');
+    const size = Number(fig.dataset.size) || 0;
+    let chap = null; // { band, key, list: [{id, kind, ms}], songs }
+    try { chap = fig.dataset.chapters ? JSON.parse(fig.dataset.chapters) : null; } catch (e) { /* チャプターなしで動かす */ }
+    let base = 0;
+    let total = 0;
+    let pending = null; // 長さがわかる前に押された位置（秒）
+    let dragging = false;
+    let timer = 0;
+    const now = () => base + audio.currentTime;
+
+    // 今の再生位置のチャプター（いちばん後ろの「開始が今以前」）に .is-current。チップと吹き出しは同じ並び
+    const mark = () => {
+      if (!chap) return;
+      const t = now() * 1000;
+      const at = chap.list.findLastIndex((c) => c.ms <= t);
+      for (const group of [fig.querySelectorAll('.audio-chapter'), bubbles.children]) {
+        [...group].forEach((el, i) => el.classList.toggle('is-current', i === at));
+      }
+    };
+    const update = () => {
+      const t = dragging ? Number(range.value) : now();
+      timeEl.textContent = `${fmtTime(t * 1000)} / ${fmtTime(total * 1000)}`;
+      if (!dragging) range.value = t;
+      range.style.setProperty('--p', total ? `${Math.min(100, t / total * 100)}%` : '0%');
+      mark();
+    };
+
+    // t 秒へ。読み込み済みの範囲ならそのまま動かし、そうでなければ ?from= で読み直す。play: true で再生する（省略は今のまま）
+    const seekTo = (t, play) => {
+      if (!total) { // まだ長さがわからない: 読み込みを始めて、わかったら動かす
+        if (audio.readyState > 0) { audio.currentTime = Math.max(0, t - base); } else { pending = t; }
+        if (play !== false) audio.play().catch(() => {});
+        return;
+      }
+      t = Math.min(Math.max(t, 0), total);
+      const resume = play ?? !audio.paused;
+      const rel = t - base;
+      let buffered = false;
+      for (let i = 0; i < audio.buffered.length; i++) {
+        if (rel >= audio.buffered.start(i) && rel < audio.buffered.end(i) - 0.5) buffered = true;
+      }
+      if (buffered || !size) {
+        audio.currentTime = Math.max(0, rel);
+      } else {
+        const off = Math.round(t * size / total);
+        audio.src = off > 0 ? `${src}${src.includes('?') ? '&' : '?'}from=${off}` : src;
+        base = off > 0 ? t : 0;
+      }
+      if (resume) audio.play().catch(() => {});
+      update();
+    };
+
+    // 吹き出し・チップの描画（追加・削除のたびに作り直す）
+    const render = () => {
+      if (!chap) return;
+      let n = 0;
+      const labels = chap.list.map((c) => {
+        if (c.kind !== 'song') return { short: 'MC', full: 'MC' };
+        n += 1;
+        return { short: String(n), full: chap.songs[n - 1] ? `${n}.${chap.songs[n - 1]}` : String(n) };
+      });
+      fig.querySelector('[data-ap-list]').replaceChildren(...chap.list.map((c, i) => {
+        const chip = mkEl('span', 'chip audio-chapter');
+        chip.dataset.ms = c.ms;
+        chip.dataset.id = c.id;
+        const go = mkEl('button', 'audio-chapter__go');
+        go.type = 'button';
+        go.append(mkEl('span', 'audio-chapter__time', fmtTime(c.ms)), labels[i].full);
+        const del = mkEl('button', 'audio-chapter__del');
+        del.type = 'button';
+        del.setAttribute('aria-label', '削除');
+        del.title = '削除';
+        del.append(mkEl('span', 'icon', 'close'));
+        del.firstChild.setAttribute('aria-hidden', 'true');
+        chip.append(go, del);
+        return chip;
+      }));
+      bubbles.replaceChildren(...(total ? chap.list.map((c, i) => {
+        const b = mkEl('button', 'audio-bubble', labels[i].short);
+        b.type = 'button';
+        b.dataset.ms = c.ms;
+        b.style.setProperty('--x', Math.min(1, c.ms / 1000 / total));
+        b.setAttribute('aria-label', `${labels[i].full} から再生`);
+        b.title = `${labels[i].full} から再生`;
+        return b;
+      }) : []));
+      mark();
+    };
+
+    const setTotal = (d) => {
+      total = d;
+      range.max = Math.ceil(total);
+      range.disabled = false;
+      render();
+    };
+    audio.addEventListener('loadedmetadata', async () => {
+      if (base === 0 && Number.isFinite(audio.duration) && audio.duration > 0) {
+        setTotal(audio.duration);
+      } else if (base === 0 && !total && size) {
+        // 本番は前段のキャッシュで Content-Length が消え、MP3 の長さが Infinity になる。先頭を読んで自分で計算する
+        const d = await audioProbeDuration(src, size);
+        if (d && !total) setTotal(d);
+      }
+      if (pending !== null && total) {
+        const t = pending;
+        pending = null;
+        seekTo(t, true);
+      }
+      update();
+    });
+    audio.addEventListener('durationchange', () => { // MP3 は読み進めると長さの見積もりが変わる
+      if (base === 0 && Number.isFinite(audio.duration) && audio.duration > 0 && audio.duration !== total) {
+        total = audio.duration;
+        range.max = Math.ceil(total);
+        render();
+      }
+    });
+    audio.addEventListener('timeupdate', update);
+    audio.addEventListener('play', () => {
+      document.querySelectorAll('[data-audio-player] audio').forEach((a) => { if (a !== audio) a.pause(); });
+      playIcon.textContent = 'pause';
+      playBtn.setAttribute('aria-label', '一時停止');
+      playBtn.title = '一時停止';
+    });
+    const paused = () => {
+      playIcon.textContent = 'play_arrow';
+      playBtn.setAttribute('aria-label', '再生');
+      playBtn.title = '再生';
+    };
+    audio.addEventListener('pause', paused);
+    audio.addEventListener('ended', paused);
+
+    playBtn.addEventListener('click', () => {
+      if (audio.ended) seekTo(0, true); // 最後まで流れたあとは、from 付きの src でも頭から
+      else if (audio.paused) audio.play().catch(() => {});
+      else audio.pause();
+    });
+    // つまみを動かしている間は表示だけ。離したら動かす（キーの連打は、少し待って最後の位置へ）
+    range.addEventListener('input', () => { dragging = true; update(); });
+    range.addEventListener('change', () => {
+      dragging = true;
+      const v = Number(range.value);
+      clearTimeout(timer);
+      timer = setTimeout(() => { dragging = false; seekTo(v); }, 150);
+    });
+
+    fig.addEventListener('click', (e) => {
+      const go = e.target.closest('.audio-chapter__go');
+      const bubble = e.target.closest('.audio-bubble');
+      const del = e.target.closest('.audio-chapter__del');
+      const add = e.target.closest('[data-ap-add]');
+      if (go || bubble) {
+        seekTo(Number((go ? go.closest('.audio-chapter') : bubble).dataset.ms) / 1000, true);
+      } else if (del) {
+        send({ action: 'delete', chapter_id: Number(del.closest('.audio-chapter').dataset.id) });
+      } else if (add) {
+        send({ action: 'add', key: chap.key, kind: add.dataset.apAdd, at_ms: Math.floor(now() * 1000) });
+      } else if (e.target.closest('[data-ap-edit]')) {
+        const on = !fig.classList.contains('is-editing');
+        fig.classList.toggle('is-editing', on);
+        fig.querySelector('[data-ap-edit]').setAttribute('aria-pressed', String(on));
+        fig.querySelector('[data-ap-bar]').hidden = !on;
+      }
+    });
+    // 追加・削除。返事は、その音源の今のチャプター全部
+    const send = async (body) => {
+      try {
+        chap.list = (await apiPost('api_audio_chapter.php', { band_id: chap.band, ...body }, '保存できませんでした')).chapters;
+        render();
+      } catch (e) {
+        flashToast(e.message, 'error');
+      }
+    };
+    render();
   });
 }
 

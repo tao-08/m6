@@ -7,7 +7,8 @@
  *  ・band.php では再生位置に「MC」「曲」のチャプターを付けられる（band_audio_chapter。説明は migrations/130）
  *      audio_key … 'a:<band_audio の image_id>' か 'd:<ドライブのファイル ID>'
  *      曲の番号は持たない。時間順に 1, 2, 3… と数えて、セットリストの曲名に当てる（曲名の直しに自動で追従する）
- *  ・チップの描画と追加・削除は assets/app.js の setupAudioPlayers。保存は api_audio_chapter.php
+ *  ・チップ・吹き出しの描画と追加・削除は assets/app.js の setupAudioPlayers。保存は api_audio_chapter.php
+ *  ・再生・シークも setupAudioPlayers（自前）。まだ読み込んでいない位置へは、音源に ?from=バイト位置 を付けて、その位置から流してもらう（lib/wav.php）
  * =====================================================================
  */
 declare(strict_types=1);
@@ -62,15 +63,23 @@ function audio_player_html(string $src, string $title, ?int $size, ?array $chapt
             'songs' => array_values($chapterCtx['songs']),
         ], JSON_UNESCAPED_UNICODE)) . '"';
     }
-    $html = '<figure class="drive-player audio-player" data-audio-player' . $data . '>'
+    // 大きさ（バイト）: プレーヤーが「?from=バイト位置」を決めるのに使う（長さは読み込んだ音源から取る）
+    $html = '<figure class="drive-player audio-player" data-audio-player' . ($size ? ' data-size="' . (int)$size . '"' : '') . $data . '>'
         . '<figcaption class="drive-player__name">' . icon('audio_file', 'file-icon file-icon--audio')
         . '<span class="audio-player__title">' . h($title) . '</span>'
         . ($size !== null ? '<small class="audio-player__size">' . h(fmt_bytes($size)) . '</small>' : '');
     if ($chapterCtx !== null) {
         $html .= '<button type="button" class="audio-player__edit no-print" data-ap-edit aria-pressed="false" aria-label="チャプターを編集" title="チャプターを編集">' . icon('edit') . '</button>';
     }
+    // 自前の操作部（ブラウザ標準のコントロールは Range が使えない環境でシークできないため）。吹き出し（チャプター）は再生位置の棒の上に並べる
     $html .= '</figcaption>'
-        . '<audio class="band-audio" controls preload="none" src="' . h($src) . '"></audio>';
+        . '<audio class="band-audio" preload="none" src="' . h($src) . '"></audio>'
+        . '<div class="audio-player__bar">'
+        . '<button type="button" class="audio-player__play" data-ap-play aria-label="再生" title="再生">' . icon('play_arrow', 'icon--fill') . '</button>'
+        . '<div class="audio-player__seek' . ($chapterCtx !== null ? ' has-bubbles' : '') . '">'
+        . ($chapterCtx !== null ? '<div class="audio-player__bubbles" data-ap-bubbles></div>' : '')
+        . '<input type="range" class="audio-player__range" data-ap-seek min="0" max="0" step="1" value="0" disabled aria-label="再生位置"></div>'
+        . '<span class="audio-player__time" data-ap-time>0:00 / 0:00</span></div>';
     if ($chapterCtx !== null) {
         $html .= '<div class="chip-list chip-list--sm audio-player__list" data-ap-list></div>'
             . '<div class="audio-player__add" data-ap-bar hidden>'

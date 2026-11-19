@@ -1210,5 +1210,31 @@ check('AI編集: スキーマに changed を足せる', (static function () {
     return array_keys($s['properties']);
 })() === array_merge(['found'], array_keys(STUDIO_AI_SECTIONS), ['sources', 'caution', 'changed']), true);
 
+// ---------------------------------------------------------------------
+//  WAV を途中から流すヘッダー（lib/wav.php）
+// ---------------------------------------------------------------------
+echo "wav\n";
+require_once __DIR__ . '/../lib/wav.php';
+$wavFmt = pack('vvVVvv', 1, 2, 44100, 176400, 4, 16);
+$wavHead = 'RIFF' . pack('V', 0) . 'WAVE' . 'fmt ' . pack('V', 16) . $wavFmt . 'LIST' . pack('V', 5) . "abcde\0" . 'data' . pack('V', 1000);
+$wavInfo = wav_info($wavHead . str_repeat("\0", 1000));
+check('WAV: 形式とデータの位置（奇数サイズの LIST を飛ばす）', $wavInfo, ['channels' => 2, 'rate' => 44100, 'byteRate' => 176400, 'align' => 4, 'bits' => 16, 'dataStart' => 12 + 24 + 14 + 8, 'dataSize' => 1000]);
+check('WAV: RIFF でなければ null', wav_info(str_repeat('x', 100)), null);
+check('WAV: PCM 以外（IEEE float など）は null', wav_info('RIFF' . pack('V', 0) . 'WAVE' . 'fmt ' . pack('V', 16) . pack('vvVVvv', 3, 2, 44100, 352800, 8, 32) . 'data' . pack('V', 8)), null);
+check('WAV: data より前で途切れたら null', wav_info(substr($wavHead, 0, 50)), null);
+$extFmt = pack('vvVVvv', 0xFFFE, 2, 48000, 192000, 4, 16) . pack('vvV', 22, 16, 3) . pack('v', 1) . str_repeat("\0", 14);
+check('WAV: 拡張形式でも PCM なら読める', wav_info('RIFF' . pack('V', 0) . 'WAVE' . 'fmt ' . pack('V', 40) . $extFmt . 'data' . pack('V', 8))['rate'] ?? null, 48000);
+$hdr = wav_header($wavInfo, 400);
+check('WAV: ヘッダーは44バイト', strlen($hdr), 44);
+check('WAV: 作ったヘッダーを読み直せる', wav_info($hdr . str_repeat("\0", 400)), array_merge($wavInfo, ['dataStart' => 44, 'dataSize' => 400]));
+check('WAV: RIFF の大きさ', unpack('V', $hdr, 4)[1], 436);
+$wavSize = $wavInfo['dataStart'] + 1000 + 20; // データのあとに 20 バイトの余分（LIST など）
+$r = wav_resume($wavInfo, $wavSize, $wavInfo['dataStart'] + 402);
+check('WAV: 途中から: サンプルの境界へ切り下げ', [$r[1] - $wavInfo['dataStart'], $r[2]], [400, 600]);
+check('WAV: 途中から: ヘッダーの長さ = 残りのデータ', unpack('V', $r[0], 40)[1], 600);
+check('WAV: データより前は先頭のデータから', wav_resume($wavInfo, $wavSize, 10)[1], $wavInfo['dataStart']);
+check('WAV: データのあとの余分は流さない', wav_resume($wavInfo, $wavSize, $wavInfo['dataStart'] + 1000), null);
+check('WAV: 申告がファイルより大きければ、ファイルの終わりまで', wav_resume($wavInfo, $wavInfo['dataStart'] + 500, $wavInfo['dataStart'] + 100)[2], 400);
+
 echo $failed ?"\n{$failed} 件失敗\n" : "\nすべて成功\n";
 exit($failed ? 1 : 0);
