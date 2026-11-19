@@ -7,6 +7,7 @@
  *
  *  リクエスト（POST, JSON）:
  *    {"action": "add", "band_id": 12, "key": "a:3", "kind": "mc" | "song", "at_ms": 61000}
+ *    {"action": "replace", "band_id": 12, "key": "a:3", "chapters": [{"kind": "mc", "ms": 0}, ...]}  その音源のチャプターを全部置き換える
  *    {"action": "delete", "band_id": 12, "chapter_id": 5}
  *      key … 'a:<band_audio の image_id>'（アップロードした MP3）か 'd:<ドライブのファイル ID>'（音源だけ）
  *  レスポンス（JSON）: {"chapters": [{"id", "kind", "ms"}, ...]}  その音源の今のチャプター全部（時間順）
@@ -37,12 +38,28 @@ if ($bandId <= 0 || !$st->fetchColumn()) {
     fail(404, 'バンドが見つかりません');
 }
 
-if ($action === 'add') {
+/** 1つのチャプター（kind と ms）が正しいか */
+function audio_chapter_valid(mixed $kind, mixed $ms): bool
+{
+    return in_array($kind, ['mc', 'song'], true) && is_int($ms) && $ms >= 0 && $ms <= AUDIO_CHAPTER_MAX_MS;
+}
+
+if ($action === 'add' || $action === 'replace') {
     $key = (string)($body['key'] ?? '');
-    $kind = (string)($body['kind'] ?? '');
-    $atMs = $body['at_ms'] ?? null;
-    if (!in_array($kind, ['mc', 'song'], true) || !is_int($atMs) || $atMs < 0 || $atMs > AUDIO_CHAPTER_MAX_MS) {
-        fail(400, 'チャプターの指定が正しくありません');
+    $items = [['kind' => $body['kind'] ?? null, 'ms' => $body['at_ms'] ?? null]];
+    if ($action === 'replace') {
+        $items = is_array($body['chapters'] ?? null) ? array_values($body['chapters']) : null;
+        if ($items === null) {
+            fail(400, 'チャプターの指定が正しくありません');
+        }
+        if (count($items) > AUDIO_CHAPTER_MAX) {
+            fail(400, 'チャプターは ' . AUDIO_CHAPTER_MAX . ' つまでです');
+        }
+    }
+    foreach ($items as $c) {
+        if (!is_array($c) || !audio_chapter_valid($c['kind'] ?? null, $c['ms'] ?? null)) {
+            fail(400, 'チャプターの指定が正しくありません');
+        }
     }
     // key が、このバンドの音源を指しているか
     if (preg_match('/^a:([1-9][0-9]{0,9})$/', $key, $m)) {
@@ -57,12 +74,27 @@ if ($action === 'add') {
     if (!$st->fetchColumn()) {
         fail(404, '音源が見つかりません');
     }
-    $st = $pdo->prepare('SELECT COUNT(*) FROM band_audio_chapter WHERE band_id = ? AND audio_key = ?');
-    $st->execute([$bandId, $key]);
-    if ((int)$st->fetchColumn() >= AUDIO_CHAPTER_MAX) {
-        fail(400, 'チャプターは ' . AUDIO_CHAPTER_MAX . ' つまでです');
+    $ins = $pdo->prepare('INSERT INTO band_audio_chapter (band_id, audio_key, kind, at_ms) VALUES (?, ?, ?, ?)');
+    if ($action === 'add') {
+        $st = $pdo->prepare('SELECT COUNT(*) FROM band_audio_chapter WHERE band_id = ? AND audio_key = ?');
+        $st->execute([$bandId, $key]);
+        if ((int)$st->fetchColumn() >= AUDIO_CHAPTER_MAX) {
+            fail(400, 'チャプターは ' . AUDIO_CHAPTER_MAX . ' つまでです');
+        }
+        $ins->execute([$bandId, $key, $items[0]['kind'], $items[0]['ms']]);
+    } else { // 置き換え: 消して入れ直すまでを1つのトランザクションで（途中で失敗したら元のまま）
+        $pdo->beginTransaction();
+        try {
+            $pdo->prepare('DELETE FROM band_audio_chapter WHERE band_id = ? AND audio_key = ?')->execute([$bandId, $key]);
+            foreach ($items as $c) {
+                $ins->execute([$bandId, $key, $c['kind'], $c['ms']]);
+            }
+            $pdo->commit();
+        } catch (Throwable $e) {
+            $pdo->rollBack();
+            throw $e;
+        }
     }
-    $pdo->prepare('INSERT INTO band_audio_chapter (band_id, audio_key, kind, at_ms) VALUES (?, ?, ?, ?)')->execute([$bandId, $key, $kind, $atMs]);
 } elseif ($action === 'delete') {
     $chapterId = is_int($body['chapter_id'] ?? null) ? $body['chapter_id'] : 0;
     // このバンドのチャプターだけ（chapter_id だけでは消さない）

@@ -308,7 +308,7 @@ form.row-form input, form.row-form select { flex: 1; min-width: 10em; }
 /* 「MIX」: ミックス音源のあるバンド（mix_tag()）。緑の角丸に白抜きの M・I・X の SVG。高さはラベルの規格（--label-h）に合わせる
    （規格の日本語用の padding-top は、規格のすぐ後ろで打ち消している） */
 .tag--mix { padding-inline: 0; border: 0; background: none; color: var(--ok); }
-.tag--mix svg { display: block; height: var(--label-h); width: auto; }
+.tag--mix svg { display: block; height: calc((var(--label-h-sm) + var(--label-h)) / 2); width: auto; } /* 規格の sm と標準の間（18px） */
 .tag--mix path { fill: none; stroke: var(--surface); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .tag--flag { padding: 0 2px; background: none; border: 0; color: var(--warn); text-decoration: none; } /* 楽器の確認待ちの旗（live.php） */
 .tag--flag .icon { font-size: 18px; vertical-align: 0; }
@@ -587,7 +587,9 @@ button.tab { border: 0; background: none; font: inherit; font-weight: 800; font-
 .audio-player__range:focus-visible::-webkit-slider-thumb { box-shadow: var(--ring); }
 .audio-player__range:focus-visible::-moz-range-thumb { box-shadow: var(--ring); }
 .audio-player__bubbles { position: absolute; bottom: calc(100% - 6px); left: calc(var(--ap-thumb) / 2); right: calc(var(--ap-thumb) / 2); height: 28px; container-type: inline-size; pointer-events: none; }
-.audio-bubble { --hw: 14px; --shift: clamp(calc(var(--hw) - var(--x) * 100cqw), 0px, calc(100cqw - var(--hw) - var(--x) * 100cqw));
+/* --shift: 端で吹き出しを内側へずらす量。三角が吹き出しの下辺（角丸の内側）から外れないよう ±--edge までにする（残りはつまみの余白にはみ出す） */
+.audio-bubble { --hw: 14px; --edge: calc(var(--hw) - 8px);
+  --shift: clamp(calc(-1 * var(--edge)), clamp(calc(var(--hw) - var(--x) * 100cqw), 0px, calc(100cqw - var(--hw) - var(--x) * 100cqw)), var(--edge));
   position: absolute; left: calc(var(--x) * 100%); bottom: 5px; transform: translateX(calc(-50% + var(--shift)));
   width: calc(var(--hw) * 2); height: 17px; padding: 0; border: 1px solid var(--border); border-radius: var(--r-sm);
   background: var(--surface-2); color: var(--text); font: inherit; font-size: var(--fs-2xs); font-weight: 700; line-height: 15px; text-align: center;
@@ -611,6 +613,10 @@ button.tab { border: 0; background: none; font: inherit; font-weight: 800; font-
 .audio-chapter__del .icon { font-size: var(--fs-sm); }
 .audio-player.is-editing .audio-chapter__del { display: inline-flex; }
 .audio-chapter.is-current { border-color: var(--ok); background: var(--ok-bg); }
+/* 自動で付けた下書き: 破線。保存するまで消せない・直せない */
+.audio-player.is-draft .audio-chapter, .audio-player.is-draft .audio-bubble { border-style: dashed; }
+.audio-player.is-draft .audio-chapter__del { display: none; }
+.audio-player__add .icon { font-size: var(--fs-md); margin-right: 4px; }
 /* 横幅いっぱい・16:9 で、PC で大きくなりすぎないよう上限 */
 .drive-player__frame { display: block; width: 100%; aspect-ratio: 16 / 9; max-height: 360px; border: 0; border-radius: var(--r-md); background: var(--surface-2); }
 .drive-thumbs { margin: 0; justify-content: flex-start; } /* 写真は添付画像と同じ .live-thumbs。左寄せにするだけ */

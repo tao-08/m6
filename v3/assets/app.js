@@ -2110,6 +2110,16 @@ function setupAudioPlayers(root = document) {
     return s >= 3600 ? `${Math.floor(s / 3600)}:${String(Math.floor(s / 60) % 60).padStart(2, '0')}:${sec}` : `${Math.floor(s / 60)}:${sec}`;
   };
 
+  // 自動チャプター（assets/autochapter.js）は、最初に押されたときだけ読み込む
+  let autoScript = null;
+  const loadAutoChapter = (url) => (window.AutoChapter ? Promise.resolve() : autoScript ??= new Promise((resolve, reject) => {
+    const sc = document.createElement('script');
+    sc.src = url;
+    sc.onload = resolve;
+    sc.onerror = () => { autoScript = null; reject(new Error('autochapter.js')); };
+    document.head.append(sc);
+  }));
+
   figs.forEach((fig) => {
     fig.dataset.apReady = '1';
     const audio = fig.querySelector('audio');
@@ -2129,13 +2139,17 @@ function setupAudioPlayers(root = document) {
     let pending = null; // 長さがわかる前に押された位置（秒）
     let dragging = false;
     let timer = 0;
+    let draft = null;     // 自動で付けた下書き [{kind, ms}]。あるあいだは保存済みの代わりにこれを出す
+    let ctrl = null;      // 自動で付けている最中の中止用
+    let whenTotal = null; // 長さがわかったら呼ぶ（自動で付けるのが待っている）
     const now = () => base + audio.currentTime;
+    const shown = () => draft || chap.list;
 
     // 今の再生位置のチャプター（いちばん後ろの「開始が今以前」）に .is-current。チップと吹き出しは同じ並び
     const mark = () => {
       if (!chap) return;
       const t = now() * 1000;
-      const at = chap.list.findLastIndex((c) => c.ms <= t);
+      const at = shown().findLastIndex((c) => c.ms <= t);
       for (const group of [fig.querySelectorAll('.audio-chapter'), bubbles.children]) {
         [...group].forEach((el, i) => el.classList.toggle('is-current', i === at));
       }
@@ -2177,12 +2191,14 @@ function setupAudioPlayers(root = document) {
     const render = () => {
       if (!chap) return;
       let n = 0;
-      const labels = chap.list.map((c) => {
+      const list = shown();
+      fig.classList.toggle('is-draft', !!draft);
+      const labels = list.map((c) => {
         if (c.kind !== 'song') return { short: 'MC', full: 'MC' };
         n += 1;
         return { short: String(n), full: chap.songs[n - 1] ? `${n}.${chap.songs[n - 1]}` : String(n) };
       });
-      fig.querySelector('[data-ap-list]').replaceChildren(...chap.list.map((c, i) => {
+      fig.querySelector('[data-ap-list]').replaceChildren(...list.map((c, i) => {
         const chip = mkEl('span', 'chip audio-chapter');
         chip.dataset.ms = c.ms;
         chip.dataset.id = c.id;
@@ -2198,7 +2214,7 @@ function setupAudioPlayers(root = document) {
         chip.append(go, del);
         return chip;
       }));
-      bubbles.replaceChildren(...(total ? chap.list.map((c, i) => {
+      bubbles.replaceChildren(...(total ? list.map((c, i) => {
         const b = mkEl('button', 'audio-bubble', labels[i].short);
         b.type = 'button';
         b.dataset.ms = c.ms;
@@ -2215,6 +2231,7 @@ function setupAudioPlayers(root = document) {
       range.max = Math.ceil(total);
       range.disabled = false;
       render();
+      whenTotal?.();
     };
     audio.addEventListener('loadedmetadata', async () => {
       if (base === 0 && Number.isFinite(audio.duration) && audio.duration > 0) {
@@ -2278,20 +2295,78 @@ function setupAudioPlayers(root = document) {
         send({ action: 'delete', chapter_id: Number(del.closest('.audio-chapter').dataset.id) });
       } else if (add) {
         send({ action: 'add', key: chap.key, kind: add.dataset.apAdd, at_ms: Math.floor(now() * 1000) });
+      } else if (e.target.closest('[data-ap-auto]')) {
+        autoRun();
+      } else if (e.target.closest('[data-ap-stop]')) {
+        ctrl?.abort();
+      } else if (e.target.closest('[data-ap-save]')) {
+        autoSave();
+      } else if (e.target.closest('[data-ap-discard]')) {
+        autoDiscard();
       } else if (e.target.closest('[data-ap-edit]')) {
         const on = !fig.classList.contains('is-editing');
         fig.classList.toggle('is-editing', on);
         fig.querySelector('[data-ap-edit]').setAttribute('aria-pressed', String(on));
         fig.querySelector('[data-ap-bar]').hidden = !on;
+        if (!on) { ctrl?.abort(); autoDiscard(); } // 編集を閉じたら、途中の自動も下書きも捨てる
       }
     });
-    // 追加・削除。返事は、その音源の今のチャプター全部
+    // 追加・削除。返事は、その音源の今のチャプター全部。成功したら true
     const send = async (body) => {
       try {
         chap.list = (await apiPost('api_audio_chapter.php', { band_id: chap.band, ...body }, '保存できませんでした')).chapters;
         render();
+        return true;
       } catch (e) {
         flashToast(e.message, 'error');
+        return false;
+      }
+    };
+
+    // 自動で付ける: 音量から下書きを作る → 聞いて確かめる → 保存（置き換え）かやめる
+    const setMode = (m) => fig.querySelectorAll('[data-ap-in]').forEach((b) => { b.hidden = b.dataset.apIn !== m; });
+    const pct = fig.querySelector('[data-ap-pct]');
+    const waitTotal = (signal) => new Promise((resolve, reject) => { // 長さがわかるまで、読み込みだけ始めて待つ
+      const stop = () => { whenTotal = null; reject(new DOMException('Aborted', 'AbortError')); };
+      signal.addEventListener('abort', stop, { once: true });
+      whenTotal = () => { signal.removeEventListener('abort', stop); whenTotal = null; resolve(); };
+      audio.preload = 'metadata';
+      audio.load();
+    });
+    const autoRun = async () => {
+      ctrl = new AbortController();
+      const { signal } = ctrl;
+      pct.textContent = '';
+      setMode('busy');
+      try {
+        if (!total) await waitTotal(signal);
+        await loadAutoChapter(fig.dataset.autochapter);
+        const found = await window.AutoChapter.analyze({
+          url: src, size, duration: total, songCount: chap.songs.length, signal,
+          onProgress: (p) => { pct.textContent = `${Math.round(p * 100)}%`; },
+        });
+        if (!found.length) throw new Error('none');
+        draft = found;
+        setMode('draft');
+        render();
+      } catch (e) {
+        setMode('idle');
+        if (e.name !== 'AbortError') flashToast('区切りを見つけられませんでした', 'warn');
+      }
+      ctrl = null;
+    };
+    const autoDiscard = () => {
+      if (!draft) return;
+      draft = null;
+      setMode('idle');
+      render();
+    };
+    const autoSave = async () => {
+      if (chap.list.length && !confirm('今のチャプターを置き換えますか？')) return;
+      if (await send({ action: 'replace', key: chap.key, chapters: draft })) {
+        draft = null;
+        setMode('idle');
+        render();
       }
     };
     render();

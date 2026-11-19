@@ -8,6 +8,7 @@
  *      audio_key … 'a:<band_audio の image_id>' か 'd:<ドライブのファイル ID>'
  *      曲の番号は持たない。時間順に 1, 2, 3… と数えて、セットリストの曲名に当てる（曲名の直しに自動で追従する）
  *  ・チップ・吹き出しの描画と追加・削除は assets/app.js の setupAudioPlayers。保存は api_audio_chapter.php
+ *  ・「自動で付ける」は音量から下書きを作り（assets/autochapter.js）、「保存」で api_audio_chapter.php の replace が置き換える
  *  ・再生・シークも setupAudioPlayers（自前）。まだ読み込んでいない位置へは、音源に ?from=バイト位置 を付けて、その位置から流してもらう（lib/wav.php）
  * =====================================================================
  */
@@ -61,7 +62,7 @@ function audio_player_html(string $src, string $title, ?int $size, ?array $chapt
             'key'   => (string)$chapterCtx['key'],
             'list'  => audio_chapter_list($chapterCtx['chapters']),
             'songs' => array_values($chapterCtx['songs']),
-        ], JSON_UNESCAPED_UNICODE)) . '"';
+        ], JSON_UNESCAPED_UNICODE)) . '" data-autochapter="' . asset_url('assets/autochapter.js') . '"'; // 自動チャプターは押されたときだけ読み込む
     }
     // 大きさ（バイト）: プレーヤーが「?from=バイト位置」を決めるのに使う（長さは読み込んだ音源から取る）
     $html = '<figure class="drive-player audio-player" data-audio-player' . ($size ? ' data-size="' . (int)$size . '"' : '') . $data . '>'
@@ -83,8 +84,12 @@ function audio_player_html(string $src, string $title, ?int $size, ?array $chapt
     if ($chapterCtx !== null) {
         $html .= '<div class="chip-list chip-list--sm audio-player__list" data-ap-list></div>'
             . '<div class="audio-player__add" data-ap-bar hidden>'
-            . '<button type="button" class="btn btn--ghost btn--sm" data-ap-add="mc">MC</button>'
-            . '<button type="button" class="btn btn--ghost btn--sm" data-ap-add="song">曲</button></div>';
+            . '<button type="button" class="btn btn--ghost btn--sm" data-ap-in="idle" data-ap-add="mc">MC</button>'
+            . '<button type="button" class="btn btn--ghost btn--sm" data-ap-in="idle" data-ap-add="song">曲</button>'
+            . '<button type="button" class="btn btn--ghost btn--sm" data-ap-in="idle" data-ap-auto>' . icon('auto_awesome') . '自動で付ける</button>'
+            . '<button type="button" class="btn btn--ghost btn--sm" data-ap-in="busy" data-ap-stop hidden>中止 <span data-ap-pct></span></button>'
+            . '<button type="button" class="btn btn--primary btn--sm" data-ap-in="draft" data-ap-save hidden>保存</button>'
+            . '<button type="button" class="btn btn--ghost btn--sm" data-ap-in="draft" data-ap-discard hidden>やめる</button></div>';
     }
     return $html . '</figure>';
 }
