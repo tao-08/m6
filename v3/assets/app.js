@@ -2337,7 +2337,7 @@ function setupAudioPlayers(root = document) {
     };
 
     // 波形: つまんでいる間だけ棒に変わる。保存済みなら最初から、なければ最初の再生で音量を計算して保存する（1人が計算すれば、次からは全員が使える）
-    const waveEl = chap && fig.querySelector('[data-ap-wave]');
+    const waveEl = fig.querySelector('[data-ap-wave]'); // チャプターのない live.php のプレーヤーにもある
     let waveStarted = false;
     let wavePlayed = false;
     const drawWave = (hex) => {
@@ -2359,7 +2359,7 @@ function setupAudioPlayers(root = document) {
         await loadAutoChapter(fig.dataset.autochapter);
         const levels = await window.AutoChapter.levels({ url: src, size, duration: total, signal });
         drawWave(levels);
-        apiPost('api_audio_chapter.php', { band_id: chap.band, action: 'wave', key: chap.key, levels }, '').catch(() => {}); // 見た目だけのものなので、失敗は知らせない
+        apiPost('api_audio_chapter.php', { band_id: Number(fig.dataset.waveBand), action: 'wave', key: fig.dataset.waveKey, levels }, '').catch(() => {}); // 見た目だけのものなので、失敗は知らせない
       } catch (e) {
         waveStarted = false; // 次に再生したときにやり直す
       }
@@ -2371,17 +2371,30 @@ function setupAudioPlayers(root = document) {
     }
     audio.addEventListener('playing', () => { wavePlayed = true; tryWave(); });
     if (waveEl) { // つまんでいる間（押してから離す・中断まで）だけ棒を波形にする
+      // 離したあとも、波形が縮み終わるまで（.is-settling）細い棒は出さない（先に出ると、縮んでいる波形の上に灰色の棒が重なる）
+      let settleTimer = 0;
       range.addEventListener('pointerdown', () => {
+        clearTimeout(settleTimer);
+        seekBox.classList.remove('is-settling');
         seekBox.classList.add('is-scrubbing');
         const ac = new AbortController();
-        const end = () => { seekBox.classList.remove('is-scrubbing'); ac.abort(); };
+        const end = () => {
+          seekBox.classList.replace('is-scrubbing', 'is-settling');
+          settleTimer = setTimeout(() => seekBox.classList.remove('is-settling'), reduced.matches ? 0 : dur('--t-base'));
+          ac.abort();
+        };
         window.addEventListener('pointerup', end, { signal: ac.signal });
         window.addEventListener('pointercancel', end, { signal: ac.signal });
       });
     }
 
+    // 時間の表示の幅を「全体 / 全体」の文字数で固定する（再生位置が 9:59 → 10:00 になっても幅が変わらない）
+    const fitTime = () => {
+      timeEl.style.minWidth = `${fmtTime(total * 1000).replace(/\d/g, '0').length * 2 + 3}ch`;
+    };
     const setTotal = (d) => {
       total = d;
+      fitTime();
       range.max = Math.ceil(total);
       range.disabled = false;
       render();
@@ -2407,6 +2420,7 @@ function setupAudioPlayers(root = document) {
     audio.addEventListener('durationchange', () => { // MP3 は読み進めると長さの見積もりが変わる
       if (base === 0 && Number.isFinite(audio.duration) && audio.duration > 0 && audio.duration !== total) {
         total = audio.duration;
+        fitTime();
         range.max = Math.ceil(total);
         render();
       }
@@ -2555,14 +2569,15 @@ function setupAudioPlayers(root = document) {
       if (p.length > 3 || p.some((x) => !/^\d{1,5}$/.test(x)) || p.slice(1).some((x) => Number(x) > 59)) return null;
       return p.reduce((sum, x) => sum * 60 + Number(x), 0) * 1000;
     };
-    atInput.addEventListener('blur', () => {
+    atInput?.addEventListener('blur', () => { // チャプターのないプレーヤー（live.php）には時間の入力欄が無い
+
       const c = shown().find((x) => x.id === selId);
       if (!c) return;
       const ms = parseTime(atInput.value);
       if (ms !== null && ms !== Math.floor(c.ms / 1000) * 1000) moveSel(ms, 0);
       else atInput.value = fmtTime(c.ms);
     });
-    atInput.addEventListener('keydown', (e) => {
+    atInput?.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') atInput.value = '';
       if ((e.key === 'Enter' && !e.isComposing) || e.key === 'Escape') atInput.blur();
     });

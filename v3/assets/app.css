@@ -574,7 +574,7 @@ button.tab { border: 0; background: none; font: inherit; font-weight: 800; font-
   background: var(--accent); color: #fff; cursor: pointer; }
 .audio-player__play .icon { font-size: var(--fs-2xl); }
 .audio-player__play:hover { opacity: .85; }
-.audio-player__time { flex: none; color: var(--muted); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
+.audio-player__time { flex: none; color: var(--muted); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; text-align: right; } /* 幅は JS が全体の長さに合わせて固定する（桁が増えてもシークバーが縮まない） */
 .audio-player__seek { --ap-thumb: 14px; position: relative; flex: 1; min-width: 0; }
 /* 位置 --q（0〜1）。押して飛んだとき（JS が .is-jumping を付ける）だけ値を滑らせる。つまみは本物を隠して、同じ位置に滑る丸を出す（本物は滑らせられない） */
 @property --q { syntax: '<number>'; inherits: true; initial-value: 0; }
@@ -600,8 +600,8 @@ button.tab { border: 0; background: none; font: inherit; font-weight: 800; font-
   transform: scaleY(0); transition: transform var(--t-base) var(--ease-out); }
 .audio-wave__bar::before { content: ''; position: absolute; inset: 0; border-radius: inherit; background: var(--accent); opacity: clamp(0, (var(--q) - var(--x)) * 10000, 1); }
 .audio-player__seek.is-scrubbing .audio-wave__bar { transform: scaleY(1); }
-.audio-player__seek.is-scrubbing.has-wave .audio-player__range::-webkit-slider-runnable-track { background: transparent; }
-.audio-player__seek.is-scrubbing.has-wave .audio-player__range::-moz-range-track, .audio-player__seek.is-scrubbing.has-wave .audio-player__range::-moz-range-progress { background: transparent; }
+.audio-player__seek:is(.is-scrubbing, .is-settling).has-wave .audio-player__range::-webkit-slider-runnable-track { background: transparent; }
+.audio-player__seek:is(.is-scrubbing, .is-settling).has-wave .audio-player__range::-moz-range-track, .audio-player__seek:is(.is-scrubbing, .is-settling).has-wave .audio-player__range::-moz-range-progress { background: transparent; }
 /* つまみの丸も、波形に変わる間は縮めて消す（位置は波形の色の境目でわかる）。離すと戻る */
 .audio-player__range::-webkit-slider-thumb { transition: transform var(--t-base) var(--ease-out); }
 .audio-player__range::-moz-range-thumb { transition: transform var(--t-base) var(--ease-out); }

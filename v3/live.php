@@ -72,6 +72,7 @@ $commentCounts = band_comment_counts($pdo, $allBandIds);
 // ドライブのファイル（バンドごと）。これも全バンド分を1回の SQL で取る
 $driveByBand = drive_load_files($pdo, $allBandIds);
 $mixIds = band_mix_ids($pdo, $allBandIds); // ミックスのあるバンド（MIX の印）
+$wavesByBand = audio_waves_by_band($pdo, $allBandIds); // 保存済みの波形（プレーヤーのシークバー）
 // 休憩・転換など（timetable_edit.php で登録したもの / 取り込みで「バンドではない枠」だったもの）
 $breaksByDay = load_breaks_by_day($pdo, $liveId);
 
@@ -268,7 +269,7 @@ render_header($live['name'], 'lives');
                         <!-- 開く枠。中身は <template> に入れておき、ボタンを押したときだけ枠に写す。
                              <template> の中は画面に出ず、iframe も画像も読み込まれない（バンドが20組でもページが重くならない） -->
                         <div class="drive-panel no-print" data-drive-player hidden></div>
-                        <template data-drive-tpl><?= drive_files_html($driveFiles) ?></template>
+                        <template data-drive-tpl><?= drive_files_html($driveFiles, false, $wavesByBand[(int)$b['band_id']] ?? []) ?></template>
                     <?php endif; ?>
                 </div>
             </li>

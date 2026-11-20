@@ -47,9 +47,26 @@ function audio_chapters(PDO $pdo, int $bandId): array
  */
 function audio_waves(PDO $pdo, int $bandId): array
 {
-    $st = $pdo->prepare('SELECT audio_key, levels FROM band_audio_wave WHERE band_id = ?');
-    $st->execute([$bandId]);
-    return $st->fetchAll(PDO::FETCH_KEY_PAIR);
+    return audio_waves_by_band($pdo, [$bandId])[$bandId] ?? [];
+}
+
+/**
+ * いくつかのバンドの波形をまとめて（live.php はバンドが何組もいるので1回で取る）
+ * @return array<int, array<string, string>> band_id => [audio_key => levels]
+ */
+function audio_waves_by_band(PDO $pdo, array $bandIds): array
+{
+    $bandIds = array_values(array_unique(array_map('intval', $bandIds)));
+    if (!$bandIds) {
+        return [];
+    }
+    $st = $pdo->prepare('SELECT band_id, audio_key, levels FROM band_audio_wave WHERE band_id IN (' . implode(',', array_fill(0, count($bandIds), '?')) . ')');
+    $st->execute($bandIds);
+    $out = [];
+    foreach ($st as $r) {
+        $out[(int)$r['band_id']][(string)$r['audio_key']] = (string)$r['levels'];
+    }
+    return $out;
 }
 
 /**
@@ -65,8 +82,9 @@ function audio_chapter_list(array $rows): array
  * プレーヤーの HTML
  *   $src … 音源の URL（attach_image?k=band_audio&id=N / drive_audio?band=N&f=ID）
  *   $chapterCtx … チャプターを出すとき: ['band_id' => int, 'key' => 'a:N' | 'd:ID', 'chapters' => 行の配列, 'songs' => [曲名（SE 以外・セトリ順）], 'wave' => 波形（省略可）]
+ *   $waveCtx … チャプターなしで波形だけ出すとき（live.php）: ['band_id' => int, 'key' => 'a:N' | 'd:ID', 'wave' => 波形（無ければ ''）]
  */
-function audio_player_html(string $src, string $title, ?int $size, ?array $chapterCtx = null): string
+function audio_player_html(string $src, string $title, ?int $size, ?array $chapterCtx = null, ?array $waveCtx = null): string
 {
     $data = '';
     if ($chapterCtx !== null) {
@@ -75,8 +93,13 @@ function audio_player_html(string $src, string $title, ?int $size, ?array $chapt
             'key'   => (string)$chapterCtx['key'],
             'list'  => audio_chapter_list($chapterCtx['chapters']),
             'songs' => array_values($chapterCtx['songs']),
-        ], JSON_UNESCAPED_UNICODE)) . '" data-autochapter="' . asset_url('assets/autochapter.js') . '"' // 自動チャプターは押されたときだけ読み込む
-            . (($chapterCtx['wave'] ?? '') !== '' ? ' data-wave="' . h((string)$chapterCtx['wave']) . '"' : '');
+        ], JSON_UNESCAPED_UNICODE)) . '"';
+        $waveCtx ??= ['band_id' => $chapterCtx['band_id'], 'key' => $chapterCtx['key'], 'wave' => $chapterCtx['wave'] ?? ''];
+    }
+    if ($waveCtx !== null) { // 波形の保存先と、保存済みの波形。計算（autochapter.js）は必要になったときだけ読み込む
+        $data .= ' data-wave-band="' . (int)$waveCtx['band_id'] . '" data-wave-key="' . h((string)$waveCtx['key']) . '"'
+            . ' data-autochapter="' . asset_url('assets/autochapter.js') . '"'
+            . (($waveCtx['wave'] ?? '') !== '' ? ' data-wave="' . h((string)$waveCtx['wave']) . '"' : '');
     }
     // 大きさ（バイト）: プレーヤーが「?from=バイト位置」を決めるのに使う（長さは読み込んだ音源から取る）
     $html = '<figure class="drive-player audio-player" data-audio-player' . ($size ? ' data-size="' . (int)$size . '"' : '') . $data . '>'
@@ -92,7 +115,8 @@ function audio_player_html(string $src, string $title, ?int $size, ?array $chapt
         . '<div class="audio-player__bar">'
         . '<button type="button" class="audio-player__play" data-ap-play aria-label="再生" title="再生">' . icon('play_arrow', 'icon--fill') . '</button>'
         . '<div class="audio-player__seek' . ($chapterCtx !== null ? ' has-bubbles' : '') . '">'
-        . ($chapterCtx !== null ? '<div class="audio-player__bubbles" data-ap-bubbles></div><div class="audio-player__wave" data-ap-wave aria-hidden="true"></div>' : '')
+        . ($chapterCtx !== null ? '<div class="audio-player__bubbles" data-ap-bubbles></div>' : '')
+        . ($waveCtx !== null ? '<div class="audio-player__wave" data-ap-wave aria-hidden="true"></div>' : '')
         . '<input type="range" class="audio-player__range" data-ap-seek min="0" max="0" step="1" value="0" disabled aria-label="再生位置"></div>'
         . '<span class="audio-player__time" data-ap-time>0:00 / 0:00</span></div>';
     if ($chapterCtx !== null) {
