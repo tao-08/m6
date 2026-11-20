@@ -2388,9 +2388,14 @@ function setupAudioPlayers(root = document) {
       });
     }
 
-    // 時間の表示の幅を「全体 / 全体」の文字数で固定する（再生位置が 9:59 → 10:00 になっても幅が変わらない）
+    // 時間の表示の幅を「全体 / 全体」を表示したときの幅で固定する（再生位置が 9:59 → 10:00 になっても幅が変わらない）
     const fitTime = () => {
-      timeEl.style.minWidth = `${fmtTime(total * 1000).replace(/\d/g, '0').length * 2 + 3}ch`;
+      const was = timeEl.textContent;
+      timeEl.style.minWidth = '';
+      timeEl.textContent = `${fmtTime(total * 1000)} / ${fmtTime(total * 1000)}`; // 数字は等幅なので、これがいちばん広い
+      const w = timeEl.getBoundingClientRect().width;
+      timeEl.textContent = was;
+      if (w) timeEl.style.minWidth = `${Math.ceil(w)}px`;
     };
     const setTotal = (d) => {
       total = d;

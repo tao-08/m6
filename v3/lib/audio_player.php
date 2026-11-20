@@ -107,7 +107,7 @@ function audio_player_html(string $src, string $title, ?int $size, ?array $chapt
         . '<span class="audio-player__title">' . h($title) . '</span>'
         . ($size !== null ? '<small class="audio-player__size">' . h(fmt_bytes($size)) . '</small>' : '');
     if ($chapterCtx !== null) {
-        $html .= '<button type="button" class="audio-player__edit no-print" data-ap-edit aria-pressed="false" aria-label="チャプターを編集" title="チャプターを編集">' . icon('edit') . '</button>';
+        $html .= '<button type="button" class="audio-player__edit no-print" data-ap-edit aria-pressed="false">' . icon('edit') . 'チャプターを編集</button>';
     }
     // 自前の操作部（ブラウザ標準のコントロールは Range が使えない環境でシークできないため）。吹き出し（チャプター）は再生位置の棒の上に並べる
     $html .= '</figcaption>'

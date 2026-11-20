@@ -563,8 +563,8 @@ button.tab { border: 0; background: none; font: inherit; font-weight: 800; font-
 .drive-player__name { display: flex; align-items: center; gap: 4px; margin-bottom: 4px; color: var(--muted); font-size: var(--fs-sm); overflow-wrap: anywhere; }
 /* 音源のプレーヤー（lib/audio_player.php）: 名前の右に容量・右端に編集の鉛筆。チャプターのチップは下に並べる */
 .audio-player__size { flex: none; font-size: var(--fs-xs); opacity: .75; }
-.audio-player__edit { flex: none; display: inline-grid; place-items: center; width: 28px; height: 28px; margin-left: auto; padding: 0; border: 0; border-radius: var(--r-md);
-  background: none; color: var(--muted); cursor: pointer; transition: color var(--t-fast) ease, background-color var(--t-fast) ease; }
+.audio-player__edit { flex: none; display: inline-flex; align-items: center; gap: 4px; height: 28px; margin-left: auto; padding: 0 8px; border: 0; border-radius: var(--r-md);
+  background: none; font: inherit; font-size: var(--fs-xs); white-space: nowrap; color: var(--muted); cursor: pointer; transition: color var(--t-fast) ease, background-color var(--t-fast) ease; }
 .audio-player__edit:hover, .audio-player__edit[aria-pressed="true"] { color: var(--accent); }
 .audio-player__edit[aria-pressed="true"] { background: var(--accent-soft); }
 /* 操作部: 再生ボタン・再生位置の棒・時間。チャプターがあるときは、棒の上に吹き出し（.audio-bubble）を並べる
@@ -581,7 +581,7 @@ button.tab { border: 0; background: none; font: inherit; font-weight: 800; font-
 .audio-player__seek.is-jumping { transition: --q var(--t-base) var(--ease-out); }
 .audio-player__seek::after { content: ''; position: absolute; top: 50%; left: calc(var(--ap-thumb) / 2 + (100% - var(--ap-thumb)) * var(--q)); width: var(--ap-thumb); height: var(--ap-thumb);
   margin: calc(var(--ap-thumb) / -2) 0 0 calc(var(--ap-thumb) / -2); border-radius: var(--r-full); background: var(--accent); opacity: 0; pointer-events: none; }
-.audio-player__seek.is-jumping::after { opacity: 1; }
+.audio-player__seek.is-jumping::after { opacity: 1; z-index: 2; } /* 本物の棒（z-index: 1）より上に。下だと滑っている間、灰色の棒が丸に重なる */
 .audio-player__seek.is-jumping .audio-player__range::-webkit-slider-thumb { background: transparent; }
 .audio-player__seek.is-jumping .audio-player__range::-moz-range-thumb { background: transparent; }
 .audio-player__bar:has(.has-bubbles) { padding-top: 22px; } /* 吹き出しの分の高さ。再生ボタンと時間は棒に合わせて中央 */
