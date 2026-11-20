@@ -2143,6 +2143,7 @@ function setupAudioPlayers(root = document) {
     let timer = 0;
     let draft = null;     // 自動で付けた下書き [{kind, ms}]。あるあいだは保存済みの代わりにこれを出す
     let ctrl = null;      // 自動で付けている最中の中止用
+    let waveCtrl = null;  // 波形を計算している最中の中止用
     let whenTotal = null; // 長さがわかったら呼ぶ（自動で付けるのが待っている）
     let selId = null;     // 編集モードで選んだチャプターの id（時間を直す相手）
     let pend = null;      // 保存待ちの時間の直し { id, ms, from }。from = 直す前の時間（失敗したら戻す）
@@ -2198,6 +2199,7 @@ function setupAudioPlayers(root = document) {
       audio.load(); // error の状態を解いて、次に押したときに読み直せるようにする
       paused();
       ctrl?.abort(); // 自動で付けている最中なら止める（中止の表示も戻る）
+      waveCtrl?.abort();
       flashToast('音源を読み込めませんでした', 'error');
     };
     audio.addEventListener('error', loadFail);
@@ -2334,12 +2336,57 @@ function setupAudioPlayers(root = document) {
       mark();
     };
 
+    // 波形: つまんでいる間だけ棒に変わる。保存済みなら最初から、なければ最初の再生で音量を計算して保存する（1人が計算すれば、次からは全員が使える）
+    const waveEl = chap && fig.querySelector('[data-ap-wave]');
+    let waveStarted = false;
+    let wavePlayed = false;
+    const drawWave = (hex) => {
+      const n = hex.length / 2;
+      waveEl.replaceChildren(...Array.from({ length: n }, (_, i) => {
+        const bar = mkEl('span', 'audio-wave__bar');
+        bar.style.setProperty('--h', parseInt(hex.substr(i * 2, 2), 16) / 255);
+        bar.style.setProperty('--x', (i + 0.5) / n);
+        return bar;
+      }));
+      seekBox.classList.add('has-wave');
+    };
+    const tryWave = async () => {
+      if (!waveEl || waveStarted || !wavePlayed || !total || !size) return; // 再生が始まって、長さと大きさがわかってから
+      waveStarted = true;
+      waveCtrl = new AbortController();
+      const { signal } = waveCtrl;
+      try {
+        await loadAutoChapter(fig.dataset.autochapter);
+        const levels = await window.AutoChapter.levels({ url: src, size, duration: total, signal });
+        drawWave(levels);
+        apiPost('api_audio_chapter.php', { band_id: chap.band, action: 'wave', key: chap.key, levels }, '').catch(() => {}); // 見た目だけのものなので、失敗は知らせない
+      } catch (e) {
+        waveStarted = false; // 次に再生したときにやり直す
+      }
+      waveCtrl = null;
+    };
+    if (waveEl && fig.dataset.wave) {
+      drawWave(fig.dataset.wave);
+      waveStarted = true;
+    }
+    audio.addEventListener('playing', () => { wavePlayed = true; tryWave(); });
+    if (waveEl) { // つまんでいる間（押してから離す・中断まで）だけ棒を波形にする
+      range.addEventListener('pointerdown', () => {
+        seekBox.classList.add('is-scrubbing');
+        const ac = new AbortController();
+        const end = () => { seekBox.classList.remove('is-scrubbing'); ac.abort(); };
+        window.addEventListener('pointerup', end, { signal: ac.signal });
+        window.addEventListener('pointercancel', end, { signal: ac.signal });
+      });
+    }
+
     const setTotal = (d) => {
       total = d;
       range.max = Math.ceil(total);
       range.disabled = false;
       render();
       whenTotal?.();
+      tryWave();
     };
     audio.addEventListener('loadedmetadata', async () => {
       clearTimeout(loadTimer);

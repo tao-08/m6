@@ -8,10 +8,11 @@
  *  リクエスト（POST, JSON）:
  *    {"action": "add", "band_id": 12, "key": "a:3", "kind": "mc" | "song", "at_ms": 61000}
  *    {"action": "replace", "band_id": 12, "key": "a:3", "chapters": [{"kind": "mc", "ms": 0}, ...]}  その音源のチャプターを全部置き換える
+ *    {"action": "wave", "band_id": 12, "key": "a:3", "levels": "00ff80…"}  音源の波形を保存する（棒ごとの音量。16 進 2 文字 = 1 本）。最初の1回だけ保存し、あとからは書き換えない
  *    {"action": "delete", "band_id": 12, "chapter_id": 5}
  *    {"action": "move", "band_id": 12, "chapter_id": 5, "at_ms": 62000}  チャプターの時間を直す
  *      key … 'a:<band_audio の image_id>'（アップロードした MP3）か 'd:<ドライブのファイル ID>'（音源だけ）
- *  レスポンス（JSON）: {"chapters": [{"id", "kind", "ms"}, ...]}  その音源の今のチャプター全部（時間順）
+ *  レスポンス（JSON）: {"chapters": [{"id", "kind", "ms"}, ...]}  その音源の今のチャプター全部（時間順）。wave は {"ok": true}
  *  エラー            : {"error": "..."}（400 / 401 / 404 / 405）
  * =====================================================================
  */
@@ -45,10 +46,16 @@ function audio_chapter_valid(mixed $kind, mixed $ms): bool
     return in_array($kind, ['mc', 'song'], true) && is_int($ms) && $ms >= 0 && $ms <= AUDIO_CHAPTER_MAX_MS;
 }
 
-if ($action === 'add' || $action === 'replace') {
+if (in_array($action, ['add', 'replace', 'wave'], true)) {
     $key = (string)($body['key'] ?? '');
     $items = [['kind' => $body['kind'] ?? null, 'ms' => $body['at_ms'] ?? null]];
-    if ($action === 'replace') {
+    $levels = (string)($body['levels'] ?? '');
+    if ($action === 'wave') {
+        $items = [];
+        if (!preg_match('/^(?:[0-9a-f]{2}){16,120}$/', $levels)) {
+            fail(400, '波形の指定が正しくありません');
+        }
+    } elseif ($action === 'replace') {
         $items = is_array($body['chapters'] ?? null) ? array_values($body['chapters']) : null;
         if ($items === null) {
             fail(400, 'チャプターの指定が正しくありません');
@@ -74,6 +81,10 @@ if ($action === 'add' || $action === 'replace') {
     }
     if (!$st->fetchColumn()) {
         fail(404, '音源が見つかりません');
+    }
+    if ($action === 'wave') { // 最初の1つだけ残す（INSERT IGNORE。あとから書き換えられない）
+        $pdo->prepare('INSERT IGNORE INTO band_audio_wave (band_id, audio_key, levels) VALUES (?, ?, ?)')->execute([$bandId, $key, $levels]);
+        api_ok(['ok' => true]);
     }
     $ins = $pdo->prepare('INSERT INTO band_audio_chapter (band_id, audio_key, kind, at_ms) VALUES (?, ?, ?, ?)');
     if ($action === 'add') {

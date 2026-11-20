@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 globalThis.window = globalThis;
 await import('../assets/autochapter.js');
-const { segment, coarseTransitions, fineWindows, mergeCurve } = globalThis.AutoChapter;
+const { segment, coarseTransitions, fineWindows, mergeCurve, toLevels } = globalThis.AutoChapter;
 
 // 決まった揺らぎ（±2 dB）を付けて、[秒数, dB] の並びから配列を作る
 let seed = 1;
@@ -80,6 +80,16 @@ test('mergeCurve: 細かい値があれば上書き、NaN は粗い値のまま'
 test('coarseTransitions: 大小の差がなければ切り替わりなし', () => {
   assert.deepEqual(coarseTransitions([-12, -12.5, -11, -12], 10), []);
   assert.deepEqual(coarseTransitions([-40, -40, -10, -10, -40], 10), [20, 40]);
+});
+
+test('toLevels: 最小が 00・最大が ff、不明は直前の値', () => {
+  assert.equal(toLevels([-40, -20, -30]), '00ff80');
+  assert.equal(toLevels([NaN, -40, NaN, -20]), '000000ff'); // 先頭の不明は最初の値、途中の不明は直前の値
+  assert.equal(toLevels([]), '');
+});
+
+test('toLevels: 差が 1 dB 未満なら全部 80', () => {
+  assert.equal(toLevels([-20, -20.5, -20]), '808080');
 });
 
 console.log(`${n} passed`);

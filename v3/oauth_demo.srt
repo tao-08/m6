@@ -1,0 +1,43 @@
+1
+00:00:00,000 --> 00:00:10,000
+AbbeyRoad.online is a scheduling site for a university band club. Members open "My schedule".
+
+2
+00:00:10,000 --> 00:00:20,000
+The member starts the connection with "Connect with Google".
+
+3
+00:00:20,000 --> 00:00:45,000
+The consent screen requests calendar.events, to read busy times and to add confirmed practices. It also lists calendar.calendarlist.readonly, a non-sensitive scope.
+
+4
+00:00:45,000 --> 00:00:55,000
+The member grants access.
+
+5
+00:00:55,000 --> 00:01:15,000
+The member chooses which calendars to import, including a secondary calendar. Only the selected calendars are read.
+
+6
+00:01:15,000 --> 00:01:30,000
+One calendar is deselected and the choice is saved.
+
+7
+00:01:30,000 --> 00:01:50,000
+Events from the selected calendars are read with calendar.events and shown as busy times, so the band can find a free slot.
+
+8
+00:01:50,000 --> 00:02:15,000
+When a practice is confirmed, one event is created on the member's primary calendar with calendar.events.
+
+9
+00:02:15,000 --> 00:02:35,000
+If the practice time changes, only that event is updated. Other events are never touched.
+
+10
+00:02:35,000 --> 00:02:55,000
+When the member disconnects, the access token is revoked and the imported events are deleted.
+
+11
+00:02:55,000 --> 00:03:05,000
+The privacy policy explains how Google user data is used.

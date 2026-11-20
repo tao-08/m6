@@ -9,6 +9,8 @@
  *      曲の番号は持たない。時間順に 1, 2, 3… と数えて、セットリストの曲名に当てる（曲名の直しに自動で追従する）
  *  ・チップ・吹き出しの描画と追加・削除・時間の直しは assets/app.js の setupAudioPlayers。保存は api_audio_chapter.php
  *  ・「自動で付ける」は音量から下書きを作り（assets/autochapter.js）、「保存」で api_audio_chapter.php の replace が置き換える
+ *  ・再生位置をつまんでいる間は、棒が波形（音量の棒）に変わる。波形は最初に再生した人のブラウザで計算し、api_audio_chapter.php の wave で保存（band_audio_wave。説明は migrations/131）。
+ *    保存済みなら data-wave（16 進。2 文字 = 1 本）で最初から渡す
  *  ・再生・シークも setupAudioPlayers（自前）。まだ読み込んでいない位置へは、音源に ?from=バイト位置 を付けて、その位置から流してもらう（lib/wav.php）
  * =====================================================================
  */
@@ -40,6 +42,17 @@ function audio_chapters(PDO $pdo, int $bandId): array
 }
 
 /**
+ * バンドの音源ごとの波形
+ * @return array<string, string> audio_key => levels（16 進。2 文字 = 1 本）
+ */
+function audio_waves(PDO $pdo, int $bandId): array
+{
+    $st = $pdo->prepare('SELECT audio_key, levels FROM band_audio_wave WHERE band_id = ?');
+    $st->execute([$bandId]);
+    return $st->fetchAll(PDO::FETCH_KEY_PAIR);
+}
+
+/**
  * チャプターを JS に渡す形にする（api_audio_chapter.php の返事と、プレーヤーの data-chapters で共通）
  * @return array<int, array{id: int, kind: string, ms: int}>
  */
@@ -51,7 +64,7 @@ function audio_chapter_list(array $rows): array
 /**
  * プレーヤーの HTML
  *   $src … 音源の URL（attach_image?k=band_audio&id=N / drive_audio?band=N&f=ID）
- *   $chapterCtx … チャプターを出すとき: ['band_id' => int, 'key' => 'a:N' | 'd:ID', 'chapters' => 行の配列, 'songs' => [曲名（SE 以外・セトリ順）]]
+ *   $chapterCtx … チャプターを出すとき: ['band_id' => int, 'key' => 'a:N' | 'd:ID', 'chapters' => 行の配列, 'songs' => [曲名（SE 以外・セトリ順）], 'wave' => 波形（省略可）]
  */
 function audio_player_html(string $src, string $title, ?int $size, ?array $chapterCtx = null): string
 {
@@ -62,7 +75,8 @@ function audio_player_html(string $src, string $title, ?int $size, ?array $chapt
             'key'   => (string)$chapterCtx['key'],
             'list'  => audio_chapter_list($chapterCtx['chapters']),
             'songs' => array_values($chapterCtx['songs']),
-        ], JSON_UNESCAPED_UNICODE)) . '" data-autochapter="' . asset_url('assets/autochapter.js') . '"'; // 自動チャプターは押されたときだけ読み込む
+        ], JSON_UNESCAPED_UNICODE)) . '" data-autochapter="' . asset_url('assets/autochapter.js') . '"' // 自動チャプターは押されたときだけ読み込む
+            . (($chapterCtx['wave'] ?? '') !== '' ? ' data-wave="' . h((string)$chapterCtx['wave']) . '"' : '');
     }
     // 大きさ（バイト）: プレーヤーが「?from=バイト位置」を決めるのに使う（長さは読み込んだ音源から取る）
     $html = '<figure class="drive-player audio-player" data-audio-player' . ($size ? ' data-size="' . (int)$size . '"' : '') . $data . '>'
@@ -78,7 +92,7 @@ function audio_player_html(string $src, string $title, ?int $size, ?array $chapt
         . '<div class="audio-player__bar">'
         . '<button type="button" class="audio-player__play" data-ap-play aria-label="再生" title="再生">' . icon('play_arrow', 'icon--fill') . '</button>'
         . '<div class="audio-player__seek' . ($chapterCtx !== null ? ' has-bubbles' : '') . '">'
-        . ($chapterCtx !== null ? '<div class="audio-player__bubbles" data-ap-bubbles></div>' : '')
+        . ($chapterCtx !== null ? '<div class="audio-player__bubbles" data-ap-bubbles></div><div class="audio-player__wave" data-ap-wave aria-hidden="true"></div>' : '')
         . '<input type="range" class="audio-player__range" data-ap-seek min="0" max="0" step="1" value="0" disabled aria-label="再生位置"></div>'
         . '<span class="audio-player__time" data-ap-time>0:00 / 0:00</span></div>';
     if ($chapterCtx !== null) {

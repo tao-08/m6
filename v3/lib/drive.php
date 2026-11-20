@@ -362,12 +362,16 @@ function drive_save_files(PDO $pdo, int $bandId, array $files): void
     if ($keep) {
         $marks = implode(',', array_fill(0, count($keep), '?'));
         $pdo->prepare("DELETE FROM band_drive_file WHERE band_id = ? AND file_id NOT IN ($marks)")->execute([$bandId, ...$keep]);
-        // 外したファイルのチャプターも消す
-        $pdo->prepare("DELETE FROM band_audio_chapter WHERE band_id = ? AND audio_key LIKE 'd:%' AND audio_key NOT IN ($marks)")
-            ->execute([$bandId, ...array_map(static fn($id) => 'd:' . $id, $keep)]);
+        // 外したファイルのチャプター・波形も消す
+        foreach (['band_audio_chapter', 'band_audio_wave'] as $t) {
+            $pdo->prepare("DELETE FROM $t WHERE band_id = ? AND audio_key LIKE 'd:%' AND audio_key NOT IN ($marks)")
+                ->execute([$bandId, ...array_map(static fn($id) => 'd:' . $id, $keep)]);
+        }
     } else {
         $pdo->prepare('DELETE FROM band_drive_file WHERE band_id = ?')->execute([$bandId]);
-        $pdo->prepare("DELETE FROM band_audio_chapter WHERE band_id = ? AND audio_key LIKE 'd:%'")->execute([$bandId]);
+        foreach (['band_audio_chapter', 'band_audio_wave'] as $t) {
+            $pdo->prepare("DELETE FROM $t WHERE band_id = ? AND audio_key LIKE 'd:%'")->execute([$bandId]);
+        }
     }
     drive_cache_forget($pdo, $gone); // 落としてあった音源も消す（ほかのバンドが使っていれば残す）
     // ON DUPLICATE KEY UPDATE: 主キー（band_id, file_id）がもうあれば INSERT の代わりに UPDATE する（MySQL の「あれば更新・無ければ追加」）
