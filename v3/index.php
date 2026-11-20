@@ -67,6 +67,7 @@ $importantNotices = $st->fetchAll();
 // 📅 呼ばれていて、まだ「回答済み」にしていない日程調整（日時の決まった練習（sched_fix の status 2・3）がまだ無いあいだ。回答すると出なくなるので ✕ は無い）
 require_once __DIR__ . '/lib/repository.php';
 $schedTodo = !empty($user['member_id']) ? sched_todo_polls($pdo, (int)$user['member_id']) : [];
+require_once __DIR__ . '/lib/drive.php'; // mix_tag（ライブのカードの MIX の印）
 
 // 日程1行ごとに、そのライブの情報とバンド数をくっつけて取ってくる
 //   LEFT JOIN: 相手が無くても行を残す（バンドが0組の日程も表示するため）
@@ -85,7 +86,9 @@ $rows = $pdo->query('SELECT l.live_id, l.fiscal_year AS year, l.name AS live_nam
         COUNT(b.start_time) AS timed_bands,
         SUM(b.band_id IS NOT NULL AND b.song_count > 0
             AND (SELECT COUNT(*) FROM song s WHERE s.band_id = b.band_id AND s.is_se = 0) >= b.song_count) AS setlist_done_bands,
-        GROUP_CONCAT(b.note SEPARATOR \' \') AS band_notes
+        GROUP_CONCAT(b.note SEPARATOR \' \') AS band_notes,
+        SUM(EXISTS (SELECT 1 FROM band_drive_file f WHERE f.band_id = b.band_id AND f.is_mix = 1)
+            OR EXISTS (SELECT 1 FROM band_audio a WHERE a.band_id = b.band_id)) AS mix_bands
     FROM live l
     JOIN live_day d ON d.live_id = l.live_id
     LEFT JOIN venue v ON v.venue_id = d.venue_id
@@ -102,6 +105,7 @@ foreach ($rows as $r) {
     $live['youtube_url'] = $r['youtube_url'];
     $live['days'][] = $r;
     $live['bands'] = ($live['bands'] ?? 0) + (int)$r['band_count'];
+    $live['mix'] = ($live['mix'] ?? false) || (int)$r['mix_bands'] > 0; // MIX のあるバンドが1組でもいる（判定は band_mix_ids と同じ）
     // 一番早い開催日（並べ替え用）。NULL は日付なし
     if ($r['date'] !== null && (!isset($live['first_date']) || $r['date'] < $live['first_date'])) {
         $live['first_date'] = $r['date'];
@@ -322,6 +326,7 @@ render_header('ライブ一覧', 'lives');
                             <?php if ($live['youtube_url'] !== null && youtube_url_valid($live['youtube_url'])): // 表示の前にもう一度チェック（live.php と同じ） ?>
                                 <a class="live-card__yt" href="<?= h($live['youtube_url']) ?>" target="_blank" rel="noopener noreferrer" aria-label="「<?= h($live['name']) ?>」を YouTube で見る" title="YouTube で見る"><?= youtube_icon() ?></a>
                             <?php endif; ?>
+                            <?php if ($live['mix']): // YouTube の右 ?><?= mix_tag('live-card__mix') ?><?php endif; ?>
                             <span class="arrow"><?= icon('arrow_forward') ?></span></p>
                     </div>
                 <?php endforeach; ?>
