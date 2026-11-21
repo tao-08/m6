@@ -341,14 +341,11 @@ render_header('アビーボード', 'board');
 <div class="board-secret-door">
     <button type="button" class="secret-door-trigger" data-secret-door aria-label="裏掲示板" title="裏掲示板">
         <svg class="secret-door-icon" viewBox="0 0 48 56" aria-hidden="true" focusable="false">
-            <path fill="currentColor" d="M4 54V23C4 10.85 12.95 2 24 2s20 8.85 20 21v31h-3V23C41 12.55 33.65 5 24 5S7 12.55 7 23v31H4Z"/>
-            <path fill="currentColor" d="M10 54V23c0-8.8 6.1-15 14-15 3.5 0 6.6 1.1 9.1 3.1L31 13c-2-1.5-4.3-2.3-7-2.3-6.5 0-11 5-11 12.3v31H10Z"/>
-            <path fill="currentColor" d="M15 54V23c0-5.4 3.5-9.1 8.5-9.1 1.8 0 3.4.4 4.8 1.3l-1.2 2.3c-.9-.5-2-.8-3.2-.8-3.6 0-5.8 2.5-5.8 6.3v31H15Z"/>
-            <path fill="currentColor" d="M22 54V23c0-1.8.8-3 2.2-3.7l1.1 2.5c-.4.2-.6.6-.6 1.2v31h-2.7Z"/>
-            <path fill="currentColor" d="M24.8 19.3 36.7 10v44h-3V16.1l-7.1 5.5-1.8-2.3Z"/>
-            <path fill="currentColor" d="M24.5 21.8 34 14.5v39.5H24.5V21.8Z"/>
-            <path fill="#fff" d="M24.5 21.8 34 14.5v39.5H24.5V21.8Z" opacity=".0"/>
-            <circle cx="30.5" cy="34" r="1.5" fill="#fff"/>
+            <path fill="currentColor" fill-rule="evenodd" d="M4 54V23C4 11.4 12.9 2 24 2s20 9.4 20 21v31h-5V23c0-8.8-6.7-16-15-16S9 14.2 9 23v31H4Z"/>
+            <path fill="currentColor" d="M10.5 23.5 26 13.8l3.8 2.1v38.1H10.5V23.5Z"/>
+            <path d="m14 25 11.8-7.4v31.8H14V25Z" fill="none" stroke="#fff" stroke-width="1.7" stroke-linejoin="round"/>
+            <path d="m29.8 16.2 3.1 1.7v36.1h-3.1V16.2Z" fill="#fff"/>
+            <circle cx="23" cy="34" r="1.35" fill="#fff"/>
         </svg>
     </button>
 </div>
