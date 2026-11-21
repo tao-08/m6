@@ -64,8 +64,6 @@ if (secret_board_entry_unlocked($user)) {
     .secret-board a{color:#D7C4F5}
     .secret-board .btn--primary{background:#B99AE8;color:#21172E;border-color:#B99AE8}
     .secret-board input,.secret-board textarea{background:#211A2E;color:#F4EFFB;border-color:#57466F}
-    .secret-board .thread-row{display:flex;justify-content:space-between;gap:1rem;padding:.85rem 1rem;border-bottom:1px solid #443657;text-decoration:none}
-    .secret-board .thread-row:last-child{border-bottom:0}
     .secret-board .secret-form{padding:1rem;display:grid;gap:.8rem}
     </style>';
     echo '<div class="secret-board"><nav class="crumbs"><a href="board">アビーボード</a><span>/</span>裏掲示板</nav>';
@@ -75,10 +73,10 @@ if (secret_board_entry_unlocked($user)) {
     echo '<label class="field"><span>本文</span><textarea name="body" rows="3" maxlength="2000" required></textarea></label>';
     echo '<label class="field"><span>個別の合言葉 <small class="muted">設定しない場合は一覧から閲覧できます</small></span><input type="password" name="thread_passphrase" maxlength="200" autocomplete="new-password"></label>';
     echo '<div class="form-actions"><button class="btn btn--primary" type="submit">スレッドを作成</button></div></form></section>';
-    echo '<div class="card" style="margin-top:1rem">';
+    echo '<div class="card board-list" style="margin-top:1rem">';
     if (!$threads) echo '<p class="muted" style="padding:1rem">スレッドはありません</p>';
     foreach ($threads as $t) {
-        echo '<a class="thread-row" href="secret_board_thread?id='.(int)$t['thread_id'].'"><span>'.h($t['title']).($t['protected'] ? '　'.icon('lock') : '').'<small class="muted" style="display:block">'.h(substr($t['updated_at'],0,16)).'</small></span><span class="muted">'.(int)$t['posts'].' '.icon('chat_bubble').'</span></a>';
+        echo '<a class="board-row" href="secret_board_thread?id='.(int)$t['thread_id'].'">'.icon('forum', 'board-row__icon').'<span class="board-row__main"><span class="board-row__title"><span class="board-row__name">'.h($t['title']).'</span>'.($t['protected'] ? ' '.icon('lock', 'board-row__lock') : '').'</span><span class="muted small">'.h(substr($t['updated_at'],0,16)).'</span></span><span class="board-row__count muted small">'.icon('chat_bubble').(int)$t['posts'].'</span></a>';
     }
     echo '</div></div>';
     render_footer();
