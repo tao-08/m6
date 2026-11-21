@@ -338,9 +338,50 @@ render_header('アビーボード', 'board');
 </div>
 </details>
 <?php endif; ?>
-<div class="board-secret-door" style="display:flex;justify-content:center;margin:2rem 0 1rem">
-    <button type="button" class="icon-btn" data-secret-door aria-label="裏掲示板" title="裏掲示板" style="opacity:.55"><?= icon('meeting_room') ?></button>
+<div class="board-secret-door">
+    <button type="button" class="secret-door-trigger" data-secret-door aria-label="裏掲示板" title="裏掲示板">
+        <svg class="secret-door-icon" viewBox="0 0 48 56" aria-hidden="true" focusable="false">
+            <path fill="currentColor" d="M4 54V23C4 10.85 12.95 2 24 2s20 8.85 20 21v31h-3V23C41 12.55 33.65 5 24 5S7 12.55 7 23v31H4Z"/>
+            <path fill="currentColor" d="M10 54V23c0-8.8 6.1-15 14-15 3.5 0 6.6 1.1 9.1 3.1L31 13c-2-1.5-4.3-2.3-7-2.3-6.5 0-11 5-11 12.3v31H10Z"/>
+            <path fill="currentColor" d="M15 54V23c0-5.4 3.5-9.1 8.5-9.1 1.8 0 3.4.4 4.8 1.3l-1.2 2.3c-.9-.5-2-.8-3.2-.8-3.6 0-5.8 2.5-5.8 6.3v31H15Z"/>
+            <path fill="currentColor" d="M22 54V23c0-1.8.8-3 2.2-3.7l1.1 2.5c-.4.2-.6.6-.6 1.2v31h-2.7Z"/>
+            <path fill="currentColor" d="M24.8 19.3 36.7 10v44h-3V16.1l-7.1 5.5-1.8-2.3Z"/>
+            <path fill="currentColor" d="M24.5 21.8 34 14.5v39.5H24.5V21.8Z"/>
+            <path fill="#fff" d="M24.5 21.8 34 14.5v39.5H24.5V21.8Z" opacity=".0"/>
+            <circle cx="30.5" cy="34" r="1.5" fill="#fff"/>
+        </svg>
+    </button>
 </div>
+<style>
+.board-secret-door {
+    display: flex;
+    justify-content: center;
+    margin: 2rem 0 1rem;
+}
+.secret-door-trigger {
+    display: grid;
+    place-items: center;
+    width: 48px;
+    height: 56px;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: #171717;
+    opacity: .62;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+.secret-door-trigger:focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: 5px;
+}
+.secret-door-icon {
+    display: block;
+    width: 34px;
+    height: 40px;
+}
+</style>
 <script>
 (function () {
     const door = document.querySelector('[data-secret-door]');
