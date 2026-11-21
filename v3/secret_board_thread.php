@@ -51,7 +51,7 @@ render_header($thread['title'], 'board');
 echo '<style>body{background:#1C1728;color:#F4EFFB}.container{color:#F4EFFB}.secret-board .card{background:#2C233D;border:1px solid #443657;color:#F4EFFB}.secret-board .muted{color:#B1A6C2!important}.secret-board input,.secret-board textarea{background:#211A2E;color:#F4EFFB;border-color:#57466F}.secret-board .btn--primary{background:#B99AE8;color:#21172E;border-color:#B99AE8}</style>';
 echo '<div class="secret-board"><nav class="crumbs"><a href="secret_board">裏掲示板</a><span>/</span>'.h($thread['title']).'</nav><h1 class="display display--sm">'.h($thread['title']).'</h1>';
 foreach ($posts as $p) {
-    echo '<article class="card" style="padding:1rem;margin:.75rem 0"><div class="muted small">'.h($p['name'] ?? '退会ユーザー').' · '.h(substr($p['created_at'],0,16)).'</div><p>'.nl2br(h($p['body'])).'</p></article>';
+    echo '<article class="card board-post" style="padding:1rem;margin:.75rem 0"><div class="muted small">'.h($p['name'] ?? '退会ユーザー').' · '.h(substr($p['created_at'],0,16)).'</div><p>'.nl2br(h($p['body'])).'</p></article>';
 }
 echo '<form method="post" class="card" style="padding:1rem;margin-top:1rem">'.csrf_field().'<input type="hidden" name="thread_id" value="'.$id.'"><input type="hidden" name="action" value="reply"><label class="field"><span>返信</span><textarea name="body" rows="3" maxlength="2000" required></textarea></label><div class="form-actions"><button class="btn btn--primary" type="submit">送信</button></div></form></div>';
 render_footer();
