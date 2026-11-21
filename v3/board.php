@@ -341,24 +341,26 @@ render_header('アビーボード', 'board');
 <div class="board-secret-door">
     <button type="button" class="secret-door-trigger" data-secret-door aria-label="裏掲示板" title="裏掲示板">
         <svg class="secret-door-icon" viewBox="0 0 64 64" aria-hidden="true" focusable="false">
-            <!-- アーチを囲む石積み -->
+            <!-- アーチ上部の石材 -->
             <g fill="currentColor">
-                <rect x="3" y="38" width="8" height="9" rx="1"/>
-                <rect x="3" y="49" width="8" height="10" rx="1"/>
-                <rect x="53" y="38" width="8" height="9" rx="1"/>
-                <rect x="53" y="49" width="8" height="10" rx="1"/>
-                <path d="M7 33 9 24 17 14 23 19 16 33Z"/>
-                <path d="M18 12 27 6 30 16 24 20Z"/>
-                <path d="M32 5 42 6 40 18 32 16Z"/>
-                <path d="M45 9 54 16 48 24 40 18Z"/>
-                <path d="m55 21 6 11H49l-4-8Z"/>
-                <!-- 扉本体 -->
-                <path d="M15 59V31a17 17 0 0 1 34 0v28Z"/>
+                <path d="M4 31 7 21Q9 16 14 12l7 8-5 11Z"/>
+                <path d="M15 11Q21 6 29 5v13l-7 2Z"/>
+                <path d="M31 5Q39 5 47 10l-7 11-9-3Z"/>
+                <path d="M49 12Q55 16 58 23l-11 8-6-10Z"/>
+                <path d="M58 25q2 3 2 7H49l-2-7Z"/>
+                <!-- 左右の石材 -->
+                <rect x="2" y="34" width="10" height="10" rx="1.5"/>
+                <rect x="2" y="46" width="10" height="10" rx="1.5"/>
+                <rect x="2" y="58" width="10" height="5" rx="1.2"/>
+                <rect x="52" y="34" width="10" height="10" rx="1.5"/>
+                <rect x="52" y="46" width="10" height="10" rx="1.5"/>
+                <rect x="52" y="58" width="10" height="5" rx="1.2"/>
+                <!-- アーチ型の扉 -->
+                <path d="M14 63V32a18 18 0 0 1 36 0v31Z"/>
             </g>
-            <!-- 扉の縦板 -->
-            <path d="M29 15v44M31 15v44" stroke="#fff" stroke-width="1.8"/>
-            <path d="M43 21v38" stroke="#fff" stroke-width="1.8"/>
-            <circle cx="42.5" cy="38" r="2.8" fill="#fff"/>
+            <!-- 扉の3枚の縦板と白い取っ手 -->
+            <path d="M27 17v46M39 17v46" fill="none" stroke="#fff" stroke-width="1.7"/>
+            <circle cx="44" cy="43" r="2.8" fill="#fff"/>
         </svg>
     </button>
 </div>
