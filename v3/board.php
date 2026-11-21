@@ -388,8 +388,8 @@ render_header('アビーボード', 'board');
 }
 .secret-door-icon {
     display: block;
-    width: 34px;
-    height: 40px;
+    width: 42px;
+    height: 42px;
 }
 </style>
 <script>
