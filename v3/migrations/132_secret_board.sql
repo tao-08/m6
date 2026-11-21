@@ -1,6 +1,6 @@
 -- 裏掲示板。通常掲示板のテーブル・通知・添付画像とは分離する。
 -- 既存環境では手動適用済みの場合、このマイグレーションを再実行しないこと。
-CREATE TABLE secret_board_thread (
+CREATE TABLE IF NOT EXISTS secret_board_thread (
     thread_id INT UNSIGNED NOT NULL AUTO_INCREMENT,
     user_id INT UNSIGNED NULL,
     title VARCHAR(100) NOT NULL,
@@ -13,7 +13,7 @@ CREATE TABLE secret_board_thread (
         ON UPDATE CASCADE ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
-CREATE TABLE secret_board_post (
+CREATE TABLE IF NOT EXISTS secret_board_post (
     post_id INT UNSIGNED NOT NULL AUTO_INCREMENT,
     thread_id INT UNSIGNED NOT NULL,
     user_id INT UNSIGNED NULL,
