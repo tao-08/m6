@@ -22,7 +22,7 @@ return [
         // サークルの LINE などで共有しておくと、外部の人がメンバーの実名を見られなくなる
         'invite_code' => '',
         'backup_token' => '', // DB バックアップの合言葉（32文字以上の乱数。GitHub の Secrets「BACKUP_TOKEN」と同じ値。空ならバックアップは使えない）
-        'secret_board_hash' => '', // 裏掲示板の共通合言葉の password_hash()。平文は保存しない
+        'secret_board_hash' => '', // 裏掲示板の共通合言葉の password_hash()。平文は保存しない（生成: php -r 'echo password_hash("合言葉", PASSWORD_DEFAULT), PHP_EOL;'）
         // true: 管理者が1人もいないとき、新規登録した人を管理者にする
         'first_user_is_admin' => true,
         // 好きなアルバムの検索に使う Spotify のキー（https://developer.spotify.com/dashboard でアプリを作ると出る）
