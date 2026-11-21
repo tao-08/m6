@@ -338,4 +338,24 @@ render_header('アビーボード', 'board');
 </div>
 </details>
 <?php endif; ?>
+<div class="board-secret-door" style="display:flex;justify-content:center;margin:2rem 0 1rem">
+    <button type="button" class="icon-btn" data-secret-door aria-label="裏掲示板" title="裏掲示板" style="opacity:.55"><?= icon('meeting_room') ?></button>
+</div>
+<script>
+(function () {
+    const door = document.querySelector('[data-secret-door]');
+    if (!door) return;
+    let taps = 0, timer = 0;
+    door.addEventListener('click', function () {
+        taps++;
+        window.clearTimeout(timer);
+        if (taps >= 5) {
+            taps = 0;
+            window.location.href = 'secret_board';
+            return;
+        }
+        timer = window.setTimeout(function () { taps = 0; }, 1800);
+    });
+})();
+</script>
 <?php render_footer();
