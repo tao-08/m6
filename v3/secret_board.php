@@ -3,8 +3,7 @@ declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 require __DIR__ . '/lib/secret_board.php';
 $user = require_login();
-if (secret_board_entry_unlocked($user)) {
-    $pdo = db();
+$pdo = db();
     if (is_post()) {
         verify_csrf();
         if (($_POST['action'] ?? '') === 'create') {
@@ -60,8 +59,3 @@ if (secret_board_entry_unlocked($user)) {
     echo '</div></div>';
     render_footer();
     exit;
-}
-render_header('裏掲示板', 'board');
-echo '<style>body{background:#1C1728;color:#F4EFFB}.container{color:#F4EFFB}.secret-entry{max-width:28rem;margin:3rem auto;padding:1.5rem;background:#2C233D;border:1px solid #443657;border-radius:var(--r-lg)}.secret-entry input{background:#211A2E;color:#F4EFFB;border-color:#57466F}</style>';
-echo '<form method="post" class="secret-entry">'.csrf_field().'<p class="eyebrow">Abbey Board / Hidden</p><h1>裏掲示板</h1><label class="field"><span>秘密の合言葉</span><input type="password" name="passphrase" autocomplete="current-password" required></label><button class="btn btn--primary" type="submit">入室</button></form>';
-render_footer();

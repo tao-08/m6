@@ -1,6 +1,12 @@
 <?php
 declare(strict_types=1);
 
+/** 共通合言葉は設けない。ログイン済みユーザーは裏掲示板へアクセスできる。 */
+function secret_board_entry_unlocked(array $user): bool
+{
+    return true;
+}
+
 function secret_board_rate_limited(string $key): bool
 {
     $now = time();
