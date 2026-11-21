@@ -340,12 +340,25 @@ render_header('アビーボード', 'board');
 <?php endif; ?>
 <div class="board-secret-door">
     <button type="button" class="secret-door-trigger" data-secret-door aria-label="裏掲示板" title="裏掲示板">
-        <svg class="secret-door-icon" viewBox="0 0 48 56" aria-hidden="true" focusable="false">
-            <path fill="currentColor" fill-rule="evenodd" d="M4 54V23C4 11.4 12.9 2 24 2s20 9.4 20 21v31h-5V23c0-8.8-6.7-16-15-16S9 14.2 9 23v31H4Z"/>
-            <path fill="currentColor" d="M10.5 23.5 26 13.8l3.8 2.1v38.1H10.5V23.5Z"/>
-            <path d="m14 25 11.8-7.4v31.8H14V25Z" fill="none" stroke="#fff" stroke-width="1.7" stroke-linejoin="round"/>
-            <path d="m29.8 16.2 3.1 1.7v36.1h-3.1V16.2Z" fill="#fff"/>
-            <circle cx="23" cy="34" r="1.35" fill="#fff"/>
+        <svg class="secret-door-icon" viewBox="0 0 64 64" aria-hidden="true" focusable="false">
+            <!-- アーチを囲む石積み -->
+            <g fill="currentColor">
+                <rect x="3" y="38" width="8" height="9" rx="1"/>
+                <rect x="3" y="49" width="8" height="10" rx="1"/>
+                <rect x="53" y="38" width="8" height="9" rx="1"/>
+                <rect x="53" y="49" width="8" height="10" rx="1"/>
+                <path d="M7 33 9 24 17 14 23 19 16 33Z"/>
+                <path d="M18 12 27 6 30 16 24 20Z"/>
+                <path d="M32 5 42 6 40 18 32 16Z"/>
+                <path d="M45 9 54 16 48 24 40 18Z"/>
+                <path d="m55 21 6 11H49l-4-8Z"/>
+                <!-- 扉本体 -->
+                <path d="M15 59V31a17 17 0 0 1 34 0v28Z"/>
+            </g>
+            <!-- 扉の縦板 -->
+            <path d="M29 15v44M31 15v44" stroke="#fff" stroke-width="1.8"/>
+            <path d="M43 21v38" stroke="#fff" stroke-width="1.8"/>
+            <circle cx="42.5" cy="38" r="2.8" fill="#fff"/>
         </svg>
     </button>
 </div>
