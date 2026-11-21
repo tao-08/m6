@@ -10,6 +10,8 @@
  */
 /** @var string $pageTitle @var string $activeNav */
 $user = current_user();
+// 裏掲示板ではユーザーのテーマ設定に関係なく、ヘッダー・フッターを紫テーマに固定する。
+$isSecretBoardPage = in_array(basename((string)($_SERVER['SCRIPT_NAME'] ?? '')), ['secret_board.php', 'secret_board_thread.php'], true);
 $unreadNotices = 0;
 if ($user) {
     // 行が無いお知らせ＝未読（notice_read は読んだ記録）。告知（お知らせ）と自動の通知（ベル）は別に数える
@@ -44,7 +46,7 @@ $nav = [
 ];
 ?>
 <!doctype html>
-<html lang="ja">
+<html lang="ja"<?= $isSecretBoardPage ? ' class="secret-board-theme"' : '' ?>>
 <head>
     <meta charset="utf-8">
     <!-- viewport-fit=cover: iPhone の画面の端（下のホームバーの所）まで使う。
@@ -110,7 +112,7 @@ $nav = [
                 theme = 'light';
             }
             document.documentElement.dataset.theme = theme;
-            document.querySelector('meta[name="theme-color"]').content = theme === 'dark' ? '#0d0d11' : '#f6f5f1';
+            document.querySelector('meta[name="theme-color"]').content = document.documentElement.classList.contains('secret-board-theme') ? '#1C1728' : (theme === 'dark' ? '#0d0d11' : '#f6f5f1');
         })();
     </script>
     <!--
@@ -157,6 +159,38 @@ $nav = [
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400..600,0..1,0&icon_names=<?= h(implode(',', require __DIR__ . '/../lib/icon_names.php')) ?>&display=block" rel="stylesheet">
     <!-- ?v= はキャッシュ対策。ファイルの更新時刻が入る（lib/bootstrap.php の asset_url）ので、CSS・JS を変えても数字を上げなくてよい -->
     <link rel="stylesheet" href="<?= asset_url('assets/app.css') ?>">
+    <?php if ($isSecretBoardPage): ?>
+    <style>
+        /* 裏掲示板はライト/ダーク設定に関係なく、ページ全体を専用パープルテーマに固定 */
+        html.secret-board-theme {
+            --bg: #1C1728;
+            --surface: #2C233D;
+            --surface-2: #352A49;
+            --border: #443657;
+            --text: #F4EFFB;
+            --muted: #B1A6C2;
+            --accent: #B99AE8;
+            --accent-2: #D7C4F5;
+            --accent-soft: rgba(185, 154, 232, .16);
+            --on-accent: #21172E;
+            --glow: radial-gradient(1100px 520px at 90% -12%, rgba(185, 154, 232, .10), transparent 60%);
+            color-scheme: dark;
+        }
+        html.secret-board-theme .brand__logo--light { display: none; }
+        html.secret-board-theme .brand__logo--dark { display: block; }
+        html.secret-board-theme [data-theme-toggle] { display: none; }
+        html.secret-board-theme .topbar {
+            background: rgba(28, 23, 40, .88);
+            border-bottom-color: #443657;
+        }
+        html.secret-board-theme .footer {
+            color: #B1A6C2;
+            border-top-color: #443657;
+        }
+        html.secret-board-theme .footer__links a { color: #D7C4F5; }
+        html.secret-board-theme .footer__links a:hover { color: #F4EFFB; }
+    </style>
+    <?php endif; ?>
     <!-- 豪華な演出。app.css の「後」に読む（同じ強さの規則は後に書いたほうが勝つため）。全部 html.fx 始まりなので、fx クラスが無ければ効かない -->
     <link rel="stylesheet" href="<?= asset_url('assets/fx.css') ?>">
     <?php if (($instCss = instrument_color_css()) !== ''): ?>
