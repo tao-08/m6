@@ -1,25 +1,10 @@
 <?php
 declare(strict_types=1);
 
-/** 裏掲示板の共通認証。合言葉のハッシュは本番 config.php または環境変数に置く。 */
-function secret_board_entry_hash(): string
-{
-    $env = getenv('ABBEY_SECRET_BOARD_HASH');
-    $hash = is_string($env) && $env !== '' ? $env : (string)(config('secret_board_hash') ?? '');
-    return $hash;
-}
-
+/** 共通合言葉は設けない。ログイン済みユーザーは裏掲示板へアクセスできる。 */
 function secret_board_entry_unlocked(array $user): bool
 {
-    return !empty($_SESSION['secret_board_entry'])
-        && (int)($_SESSION['secret_board_entry_user'] ?? 0) === (int)$user['user_id'];
-}
-
-function secret_board_require_entry(array $user): void
-{
-    if (!secret_board_entry_unlocked($user)) {
-        redirect('secret_board');
-    }
+    return true;
 }
 
 function secret_board_rate_limited(string $key): bool
