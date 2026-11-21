@@ -339,7 +339,7 @@ render_header('アビーボード', 'board');
 </details>
 <?php endif; ?>
 <div class="board-secret-door" style="display:flex;justify-content:center;margin:2rem 0 1rem">
-    <button type="button" class="icon-btn" data-secret-door aria-label="裏掲示板" title="裏掲示板" style="opacity:.55"><?= icon('door_front') ?></button>
+    <button type="button" class="icon-btn" data-secret-door aria-label="裏掲示板" title="裏掲示板" style="opacity:.55"><?= icon('meeting_room') ?></button>
 </div>
 <script>
 (function () {
