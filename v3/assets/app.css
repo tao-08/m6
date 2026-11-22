@@ -3196,7 +3196,8 @@ button.ttb-m { cursor: pointer; text-decoration: underline dotted; }
 
 /* 管理者用: 歌詞の一部から曲を探す */
 .song-lyrics-search { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; width: 100%; }
-.song-lyrics-search input { min-width: 0; width: 100%; }
+ .song-lyrics-search input { min-width: 0; width: 100%; }
+.song-lyrics-search__credit { grid-column: 1 / -1; color: var(--muted); font-size: var(--fs-2xs); }
 .lyrics-results { margin-top: 6px; }
  .lyrics-result__actions { display: inline-flex; align-items: center; gap: 8px; justify-self: end; white-space: nowrap; }
 .lyrics-preview { border: 0; background: transparent; cursor: pointer; }
