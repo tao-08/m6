@@ -3198,6 +3198,7 @@ button.ttb-m { cursor: pointer; text-decoration: underline dotted; }
 .song-lyrics-search { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; width: 100%; }
 .song-lyrics-search input { min-width: 0; width: 100%; }
 .lyrics-results { margin-top: 6px; }
+ .lyrics-result__actions { display: inline-flex; align-items: center; gap: 8px; justify-self: end; white-space: nowrap; }
 .lyrics-preview { border: 0; background: transparent; cursor: pointer; }
 .lyrics-preview:disabled { opacity: .45; cursor: default; }
 @media (max-width: 520px) {
