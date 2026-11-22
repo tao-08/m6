@@ -1244,6 +1244,8 @@ function setupLyricsSearch() {
         sub.className = 'track-option__sub';
         sub.textContent = [track.artist_name, track.album_title].filter(Boolean).join(' ・ ');
         text.append(title, sub);
+        const actions = document.createElement('span');
+        actions.className = 'lyrics-result__actions';
         const play = document.createElement('button');
         play.type = 'button';
         play.className = 'track-option__preview lyrics-preview';
@@ -1254,7 +1256,24 @@ function setupLyricsSearch() {
         icon.className = 'icon';
         icon.textContent = 'play_arrow';
         play.append(icon, '試聴');
-        row.append(img, text, play);
+        const pick = document.createElement('button');
+        pick.type = 'button';
+        pick.className = 'btn btn--ghost btn--xs';
+        pick.textContent = '選択';
+        pick.addEventListener('click', () => {
+          card.querySelector('[name$="[title]"]').value = track.title;
+          const artist = card.querySelector('[data-song-artist]');
+          if (artist && !artist.readOnly) artist.value = track.artist_name.split(', ')[0];
+          setTrack(card, {
+            key: 'itunes:' + track.track_id,
+            title: track.title,
+            artist_name: track.artist_name,
+            artwork_url: track.artwork_url,
+          });
+          closeResults(results);
+        });
+        actions.append(play, pick);
+        row.append(img, text, actions);
         return row;
       });
       results.replaceChildren(...rows);
