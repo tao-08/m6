@@ -1258,7 +1258,7 @@ function setupLyricsSearch() {
         play.append(icon, '試聴');
         const pick = document.createElement('button');
         pick.type = 'button';
-        pick.className = 'btn btn--ghost btn--xs';
+        pick.className = 'btn btn--ghost btn--sm';
         pick.textContent = '選択';
         pick.addEventListener('click', () => {
           card.querySelector('[name$="[title]"]').value = track.title;
