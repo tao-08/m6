@@ -113,6 +113,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupVenueSuggest();
   setupSongs();
   setupTrackSearch();
+  setupLyricsSearch();
   setupPreview();
   setupLikes();
   setupAlbumTip();
@@ -1167,6 +1168,120 @@ function setupTrackSearch() {
       message(results, err.message || '検索できませんでした');
     } finally {
       searchBtn.disabled = false;
+    }
+  });
+}
+
+/* ---------------------------------------------------------------------
+ * 歌詞の一部から曲を探す（管理者限定）
+ *   検索語はサーバー経由で Musixmatch に送り、曲名・アーティストだけ取得する。
+ *   歌詞本文は取得・表示・保存しない。試聴 URL は iTunes から取得して既存プレイヤーで再生する。
+ * ------------------------------------------------------------------- */
+function setupLyricsSearch() {
+  const list = document.querySelector('[data-song-list]');
+  if (!list) return;
+
+  const showMessage = (results, text) => {
+    const p = document.createElement('p');
+    p.className = 'track-results__msg';
+    p.textContent = text;
+    results.replaceChildren(p);
+    openResults(results);
+  };
+
+  list.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' || e.isComposing || e.keyCode === 229) return;
+    if (!e.target.matches('[data-lyrics-query]')) return;
+    e.preventDefault();
+    e.target.closest('[data-song-card]')?.querySelector('[data-lyrics-search]')?.click();
+  });
+
+  list.addEventListener('click', async (e) => {
+    const button = e.target.closest('[data-lyrics-search]');
+    if (!button) return;
+    const card = button.closest('[data-song-card]');
+    const input = card?.querySelector('[data-lyrics-query]');
+    const results = card?.querySelector('[data-lyrics-results]');
+    if (!input || !results) return;
+    const q = input.value.trim();
+    if (q.length < 3) {
+      showMessage(results, '歌詞を3文字以上入力してください');
+      return;
+    }
+    if (q.length > 100) {
+      showMessage(results, '検索語は100文字以内で入力してください');
+      return;
+    }
+
+    button.disabled = true;
+    showMessage(results, '歌詞から曲を検索中…');
+    try {
+      const res = await fetch('api_lyrics_search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },
+        credentials: 'same-origin',
+        body: JSON.stringify({ q }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '歌詞検索に失敗しました');
+      if (!Array.isArray(data.tracks) || data.tracks.length === 0) {
+        showMessage(results, '試聴できる候補が見つかりませんでした。別の歌詞で検索してください');
+        return;
+      }
+
+      const rows = data.tracks.slice(0, 5).map((track) => {
+        const row = document.createElement('div');
+        row.className = 'track-option';
+        const img = document.createElement('img');
+        img.src = track.artwork_url || '';
+        img.alt = '';
+        img.loading = 'lazy';
+        const text = document.createElement('span');
+        const title = document.createElement('div');
+        title.className = 'track-option__title';
+        title.textContent = track.title;
+        const sub = document.createElement('div');
+        sub.className = 'track-option__sub';
+        sub.textContent = [track.artist_name, track.album_title].filter(Boolean).join(' ・ ');
+        text.append(title, sub);
+        const actions = document.createElement('span');
+        actions.className = 'lyrics-result__actions';
+        const play = document.createElement('button');
+        play.type = 'button';
+        play.className = 'track-option__preview lyrics-preview';
+        play.dataset.preview = 'itunes:' + track.track_id;
+        play.dataset.previewUrl = track.preview_url;
+        play.setAttribute('aria-label', track.title + 'を試聴');
+        const icon = document.createElement('span');
+        icon.className = 'icon';
+        icon.textContent = 'play_arrow';
+        play.append(icon, '試聴');
+        const pick = document.createElement('button');
+        pick.type = 'button';
+        pick.className = 'btn btn--ghost btn--sm';
+        pick.textContent = '選択';
+        pick.addEventListener('click', () => {
+          card.querySelector('[name$="[title]"]').value = track.title;
+          const artist = card.querySelector('[data-song-artist]');
+          if (artist && !artist.readOnly) artist.value = track.artist_name.split(', ')[0];
+          setTrack(card, {
+            key: 'itunes:' + track.track_id,
+            title: track.title,
+            artist_name: track.artist_name,
+            artwork_url: track.artwork_url,
+          });
+          closeResults(results);
+        });
+        actions.append(play, pick);
+        row.append(img, text, actions);
+        return row;
+      });
+      results.replaceChildren(...rows);
+      openResults(results);
+    } catch (err) {
+      showMessage(results, err.message || '歌詞検索に失敗しました');
+    } finally {
+      button.disabled = false;
     }
   });
 }

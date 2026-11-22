@@ -3192,3 +3192,17 @@ button.ttb-m { cursor: pointer; text-decoration: underline dotted; }
   background: #fff; border: 2px solid var(--text); box-shadow: var(--shadow-sm); cursor: pointer; }
 .cpick input[type="range"]::-moz-range-thumb { width: 20px; height: 20px; border-radius: var(--r-full); background: #fff; border: 2px solid var(--text); box-shadow: var(--shadow-sm); cursor: pointer; }
 .cpick input[type="number"] { width: 100%; min-width: 0; padding: 6px 8px; font-size: var(--fs-lg); text-align: right; } /* 16px 以上: iOS は 16px 未満の欄を押すと画面が拡大される */
+
+
+/* 管理者用: 歌詞の一部から曲を探す */
+.song-lyrics-search { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; width: 100%; }
+ .song-lyrics-search input { min-width: 0; width: 100%; }
+.song-lyrics-search__credit { grid-column: 1 / -1; color: var(--muted); font-size: var(--fs-2xs); }
+.lyrics-results { margin-top: 6px; }
+ .lyrics-result__actions { display: inline-flex; align-items: center; gap: 8px; justify-self: end; white-space: nowrap; }
+.lyrics-preview { border: 0; background: transparent; cursor: pointer; }
+.lyrics-preview:disabled { opacity: .45; cursor: default; }
+@media (max-width: 520px) {
+  .song-lyrics-search { grid-template-columns: minmax(0, 1fr) auto; gap: 6px; }
+  .song-lyrics-search .btn { padding-inline: 10px; }
+}
