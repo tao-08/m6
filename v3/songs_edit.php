@@ -395,6 +395,7 @@ render_header('セットリストを編集', 'lives');
                     <div class="song-lyrics-search">
                         <input type="search" maxlength="100" autocomplete="off" placeholder="歌詞の一部を入力" aria-label="歌詞の一部" data-lyrics-query>
                         <button type="button" class="btn btn--ghost btn--sm" data-lyrics-search>歌詞で検索</button>
+                        <span class="song-lyrics-search__credit">Powered by Musixmatch</span>
                     </div>
                     <?php endif; ?>
                     <!-- data-artist: 紐付けた曲のアーティスト（先頭の1人）。「オムニバス」にチェックを付けたとき、連携済みの曲はこの名前をアーティスト欄に残す（assets/app.js の setupSongs） -->
