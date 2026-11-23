@@ -41,7 +41,7 @@ render_header('歌詞検索の検証', 'tools');
 <div id="lyrics-probe-status" class="card" role="status" aria-live="polite" style="padding:12px; margin:12px 0;" hidden></div>
 <section id="lyrics-probe-results" hidden>
     <h2 class="display display--xs">検索結果</h2>
-    <p class="small muted">検索元：<a href="https://lrc.red/api" target="_blank" rel="noopener noreferrer">lrc.red API</a>（歌詞本文は取得せず、曲のメタデータのみ表示）</p>
+    <p class="small muted">Powered by <a href="https://lrc.red/" target="_blank" rel="noopener noreferrer">lrc.red</a>（歌詞本文は取得せず、曲のメタデータのみ表示）</p>
     <div id="lyrics-probe-summary" class="card" style="padding:12px; margin:10px 0;"></div>
     <div id="lyrics-probe-hits" style="display:grid; gap:8px;"></div>
     <h2 class="display display--xs" style="margin-top:22px;">iTunes照合</h2>
