@@ -8,7 +8,7 @@
  *  リクエスト（GET）: ?q=曲名 アーティスト名
  *  レスポンス（JSON）: {"tracks": [{"key": "spotify:xxxx", "title": "...", "artist_name": "...",
  *                                   "album_title": "...", "artwork_url": "https://...",
- *                                   "preview": true（試聴あり）/ false（無し）/ null（わからない）,
+ *                                   "preview_url": 試聴の音源 URL / null（無い・わからない）,
  *                                   "duration": 曲の長さ（秒）/ null}, ...]}
  *                     検索できなかったら {"error": "..."}
  *  並び順: 検索の関連度順を基本に、同じ曲の版違いの中ではオリジナル・アルバムの版を上にする（lib/tracks.php の track_sort_by_version）
@@ -47,7 +47,7 @@ if ($tracks === null) {
 // 同じ曲の中で「オリジナル・アルバム → シングル → ベスト・ライブ等」の順に並べ替えてから、上から10件だけ返す
 //   array_slice(配列, 開始位置, 件数): 配列の一部を切り出す
 $tracks = array_slice(track_sort_by_version($tracks), 0, 10);
-$previews = track_preview_marks(db(), $tracks, $q); // 試聴があるか（true / false / null = わからない）
+$previews = track_preview_marks(db(), $tracks, $q); // 試聴の URL（文字列 / false = 無い / null = わからない）
 
 echo json_encode(['tracks' => array_map(static fn($t, $preview) => [
     'key'         => album_key($t['source'], $t['track_id']),
@@ -55,6 +55,6 @@ echo json_encode(['tracks' => array_map(static fn($t, $preview) => [
     'artist_name' => $t['artist_name'],
     'album_title' => $t['album_title'],
     'artwork_url' => $t['artwork_url'],
-    'preview'     => $preview,
+    'preview_url' => is_string($preview) ? $preview : null,
     'duration'    => isset($t['duration_ms']) ? (int)round($t['duration_ms'] / 1000) : null, // 曲の長さ（秒）。セッティングシートの分数用
 ], $tracks, $previews)], JSON_UNESCAPED_UNICODE);

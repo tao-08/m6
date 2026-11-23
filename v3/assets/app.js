@@ -1151,11 +1151,12 @@ function setupTrackSearch() {
           setTrack(card, track);
         });
         row.append(btn);
-        if (track.preview === true) {
+        if (track.preview_url) {
           const play = document.createElement('button');
           play.type = 'button';
           play.className = 'track-option__play';
           play.dataset.preview = track.key;
+          play.dataset.previewUrl = track.preview_url; // 候補はまだ保存前なので、URL を直接渡す
           play.setAttribute('aria-label', track.title + 'を試聴');
           play.title = '30秒試聴';
           play.append(iconEl('play_arrow'));

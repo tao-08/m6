@@ -396,8 +396,9 @@ function track_preview_find(array $track): string|false|null
 }
 
 /**
- * 検索結果の曲それぞれに試聴があるか（曲の編集の「曲を探す」の候補に出す印。api_track_search.php から呼ぶ）。
- *   戻り値: 結果と同じ順の配列。true = ある / false = 無い / null = わからない（印を出さない）
+ * 検索結果の曲それぞれの試聴の音源 URL（曲の編集の「曲を探す」の候補の ▶ 用。api_track_search.php から呼ぶ）。
+ *   候補はまだ track に入っていないので、▶ は api_track_preview に頼れない。URL をここで渡す。
+ *   戻り値: 結果と同じ順の配列。URL = ある / false = 無い / null = わからない（▶ を出さない）
  *   ・iTunes の結果 → 結果に入っている preview_url でわかる（通信しない）
  *   ・Spotify の結果 → 覚えてある試聴（track_preview）を見る。覚えていない曲は、同じ検索語で iTunes を1回だけ検索して、
  *     同じ曲らしいもの（取り違え防止は track_pick_in_results）に試聴があれば true。
@@ -411,15 +412,15 @@ function track_preview_marks(PDO $pdo, array $tracks, string $q): array
     $itunes = null; // iTunes の検索結果（試聴があるものだけ）。要るときに1回だけ検索する
     foreach ($tracks as $i => $t) {
         if ($t['source'] === 'itunes') {
-            $marks[] = ($t['preview_url'] ?? null) !== null;
+            $marks[] = $t['preview_url'] ?? false;
             continue;
         }
         if (array_key_exists($keys[$i], $cache)) {
-            $marks[] = $cache[$keys[$i]] !== null;
+            $marks[] = $cache[$keys[$i]] ?? false;
             continue;
         }
         $itunes ??= array_values(array_filter(itunes_search_tracks($q, 25) ?? [], static fn($r) => $r['preview_url'] !== null));
-        $marks[] = track_pick_in_results($t, $itunes) !== null ? true : null;
+        $marks[] = track_pick_in_results($t, $itunes)['preview_url'] ?? null;
     }
     return $marks;
 }
