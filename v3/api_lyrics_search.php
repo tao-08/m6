@@ -44,6 +44,8 @@ $prompt = "あなたは楽曲特定アシスタントです。入力された歌
 $request = [
     'contents' => [['role' => 'user', 'parts' => [['text' => $prompt]]]],
     'generationConfig' => ['temperature' => 0.1, 'maxOutputTokens' => 2200],
+    // Gemini 3.8 FlashのGoogle検索グラウンディングを有効化。
+    'tools' => [['google_search' => new stdClass()]],
 ];
 $url = 'https://generativelanguage.googleapis.com/v1beta/models/' . rawurlencode($model) . ':generateContent';
 $response = album_http($url, [
