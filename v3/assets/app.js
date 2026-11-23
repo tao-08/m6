@@ -1237,11 +1237,11 @@ function setupLyricsSearch() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || '歌詞検索に失敗しました');
       if (!Array.isArray(data.tracks) || data.tracks.length === 0) {
-        showMessage(results, '試聴できる候補が見つかりませんでした。別の歌詞で検索してください');
+        showMessage(results, '曲の候補が見つかりませんでした。別の歌詞で検索してください');
         return;
       }
 
-      const rows = data.tracks.slice(0, 5).map((track) => {
+      const rows = data.tracks.slice(0, 10).map((track) => {
         const row = document.createElement('div');
         row.className = 'track-option';
         const img = document.createElement('img');
@@ -1258,16 +1258,24 @@ function setupLyricsSearch() {
         text.append(title, sub);
         const actions = document.createElement('span');
         actions.className = 'lyrics-result__actions';
-        const play = document.createElement('button');
-        play.type = 'button';
-        play.className = 'track-option__preview lyrics-preview';
-        play.dataset.preview = 'itunes:' + track.track_id;
-        play.dataset.previewUrl = track.preview_url;
-        play.setAttribute('aria-label', track.title + 'を試聴');
-        const icon = document.createElement('span');
-        icon.className = 'icon';
-        icon.textContent = 'play_arrow';
-        play.append(icon, '試聴');
+        if (track.preview_url) {
+          const play = document.createElement('button');
+          play.type = 'button';
+          play.className = 'track-option__preview lyrics-preview';
+          play.dataset.preview = 'itunes:' + track.track_id;
+          play.dataset.previewUrl = track.preview_url;
+          play.setAttribute('aria-label', track.title + 'を試聴');
+          const icon = document.createElement('span');
+          icon.className = 'icon';
+          icon.textContent = 'play_arrow';
+          play.append(icon, '試聴');
+          actions.append(play);
+        } else {
+          const unavailable = document.createElement('span');
+          unavailable.className = 'track-option__sub';
+          unavailable.textContent = '試聴なし';
+          actions.append(unavailable);
+        }
         const pick = document.createElement('button');
         pick.type = 'button';
         pick.className = 'btn btn--ghost btn--sm';
@@ -1284,7 +1292,7 @@ function setupLyricsSearch() {
           });
           closeResults(results);
         });
-        actions.append(play, pick);
+        actions.append(pick);
         row.append(img, text, actions);
         return row;
       });

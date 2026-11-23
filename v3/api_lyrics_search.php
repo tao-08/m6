@@ -2,8 +2,8 @@
 /**
  * api_lyrics_search.php — Geminiで歌詞フレーズから曲を検索（管理者限定）。
  *
- * Gemini単体で曲名・アーティスト名を推定し、iTunesで試聴URLを照合する。
- * 歌詞本文は回答・表示・保存しない。
+ * Geminiで最大10曲を推定し、iTunesの曲情報と照合する。
+ * 歌詞本文は回答・表示・保存しない。試聴URLの有無は候補の採否に影響させない。
  */
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
@@ -29,24 +29,19 @@ if (!preg_match('/^gemini-[a-zA-Z0-9.-]+$/', $model)) {
     fail(503, 'Geminiのモデル設定が不正です');
 }
 
-$prompt = "あなたは楽曲を特定するアシスタントです。入力された歌詞の一節と学習済み知識を手掛かりに、該当する曲を特定してください。外部検索・Google Search groundingは使用できません。"
-    . "邦楽・洋楽・インディーズを対象にします。曲を特定できる確信がない場合は無理に推測しないでください。"
-    . "歌詞本文、入力された歌詞の引用、歌詞の続きは回答に含めないでください。"
-    . "曲名・アーティスト名・アルバム名・発売年だけを最大5件、関連度順で返してください。"
-    . "回答はJSONオブジェクトのみとし、形式は {\"candidates\":[{\"title\":\"曲名\",\"artist\":\"アーティスト名\",\"album\":\"アルバム名または空文字\",\"year\":2020}]} です。"
+$prompt = "あなたは楽曲特定アシスタントです。入力された歌詞の一節から該当する曲を推定してください。"
+    . "邦楽・洋楽・インディーズ、メジャー・マイナーを幅広く対象にします。"
+    . "確信度が異なる候補も含め、可能性の高い順に最大10件返してください。"
+    . "曲名・アーティスト名は正式表記を優先し、別バージョンやカバーは区別してください。"
+    . "歌詞本文、入力された歌詞の引用、歌詞の続きは絶対に回答に含めないでください。"
+    . "曲名・アーティスト名・アルバム名・発売年・確信度（high/medium/low）だけを返してください。"
+    . "回答はJSONオブジェクトのみ: {\"candidates\":[{\"title\":\"曲名\",\"artist\":\"アーティスト名\",\"album\":\"アルバム名または空文字\",\"year\":2020,\"confidence\":\"medium\"}]}"
     . "\n検索する歌詞の一節: " . $q;
 
 $request = [
-    'contents' => [[
-        'role' => 'user',
-        'parts' => [['text' => $prompt]],
-    ]],
-    'generationConfig' => [
-        'temperature' => 0,
-        'maxOutputTokens' => 1200,
-    ],
+    'contents' => [['role' => 'user', 'parts' => [['text' => $prompt]]]],
+    'generationConfig' => ['temperature' => 0.1, 'maxOutputTokens' => 2200],
 ];
-
 $url = 'https://generativelanguage.googleapis.com/v1beta/models/' . rawurlencode($model) . ':generateContent';
 $response = album_http($url, [
     'Content-Type: application/json',
@@ -60,21 +55,14 @@ if ($response === null) {
 $status = (int)($response['status'] ?? 0);
 if ($status !== 200 || !is_array($response['json'] ?? null)) {
     error_log('Gemini lyrics search failed: HTTP ' . $status);
-    if ($status === 429) {
-        fail(503, 'Gemini APIの利用上限に達しました。時間をおいて再試行してください');
-    }
-    if ($status === 400 || $status === 404) {
-        fail(502, 'GeminiのモデルまたはAPI設定を確認してください');
-    }
+    if ($status === 429) fail(503, 'Gemini APIの利用上限に達しました。時間をおいて再試行してください');
+    if ($status === 400 || $status === 404) fail(502, 'GeminiのモデルまたはAPI設定を確認してください');
     fail(502, 'Gemini APIで検索できませんでした');
 }
 
-$data = $response['json'];
 $text = '';
-foreach (($data['candidates'][0]['content']['parts'] ?? []) as $part) {
-    if (is_array($part) && is_string($part['text'] ?? null)) {
-        $text .= $part['text'];
-    }
+foreach (($response['json']['candidates'][0]['content']['parts'] ?? []) as $part) {
+    if (is_array($part) && is_string($part['text'] ?? null)) $text .= $part['text'];
 }
 $text = trim($text);
 $text = preg_replace('/^\x60{3}(?:json)?\s*|\s*\x60{3}$/i', '', $text) ?? $text;
@@ -91,52 +79,56 @@ if (!is_array($decoded) || !is_array($decoded['candidates'] ?? null)) {
     fail(502, 'Geminiから曲の候補を読み取れませんでした。別の歌詞で検索してください');
 }
 
-$tracks = [];
+/** 表記ゆれを考慮した曲名・アーティスト名の類似度（0〜100）。 */
+$similarity = static function (string $actual, string $expected): int {
+    $a = album_match_key($actual);
+    $e = album_match_key($expected);
+    if ($a === '' || $e === '') return 0;
+    if ($a === $e) return 100;
+    if (mb_strlen($e, 'UTF-8') >= 3 && (str_contains($a, $e) || str_contains($e, $a))) return 85;
+    similar_text($a, $e, $percent);
+    return (int)round($percent);
+};
+
+$ranked = [];
 $seen = [];
-foreach (array_slice($decoded['candidates'], 0, 5) as $candidate) {
-    if (!is_array($candidate)) {
-        continue;
-    }
+foreach (array_slice($decoded['candidates'], 0, 10) as $candidate) {
+    if (!is_array($candidate)) continue;
     $title = trim((string)($candidate['title'] ?? ''));
     $artist = trim((string)($candidate['artist'] ?? ''));
-    if ($title === '' || $artist === '') {
-        continue;
-    }
+    if ($title === '' || $artist === '') continue;
 
-    // Geminiが特定した曲名・アーティストをiTunesで照合し、プレビュー可能な完全一致だけを返す。
     $found = itunes_search_tracks($title . ' ' . $artist, 10);
-    if (!is_array($found) || $found === []) {
-        continue;
-    }
-    $titleKey = album_match_key(song_title_core($title, $artist));
-    $artistKey = album_match_key($artist);
+    if (!is_array($found) || $found === []) continue;
+
     foreach ($found as $track) {
-        if (!is_array($track) || empty($track['preview_url'])) {
-            continue;
+        if (!is_array($track)) continue;
+        $titleScore = $similarity(song_title_core((string)$track['title'], (string)$track['artist_name']), song_title_core($title, $artist));
+        $artistNames = array_map('trim', explode(', ', (string)$track['artist_name']));
+        $artistScore = 0;
+        foreach ($artistNames as $actualArtist) {
+            $artistScore = max($artistScore, $similarity($actualArtist, $artist));
         }
-        $candidateTitle = album_match_key(song_title_core((string)$track['title'], (string)$track['artist_name']));
-        $candidateArtists = array_map('album_match_key', explode(', ', (string)$track['artist_name']));
-        if ($candidateTitle !== $titleKey || !in_array($artistKey, $candidateArtists, true)) {
-            continue;
-        }
-        $trackId = (string)$track['track_id'];
-        if ($trackId === '' || isset($seen[$trackId])) {
-            break;
-        }
-        $seen[$trackId] = true;
-        $tracks[] = [
-            'track_id' => $trackId,
-            'title' => $track['title'],
-            'artist_name' => $track['artist_name'],
-            'album_title' => $track['album_title'],
-            'artwork_url' => $track['artwork_url'],
-            'preview_url' => $track['preview_url'],
+        // タイトルとアーティストの両方が一定以上一致する候補に限定する。
+        if ($titleScore < 75 || $artistScore < 65) continue;
+
+        $id = (string)$track['track_id'];
+        if ($id === '' || isset($seen[$id])) continue;
+        $seen[$id] = true;
+        $ranked[] = [
+            'score' => (int)round($titleScore * 0.65 + $artistScore * 0.35),
+            'track' => [
+                'track_id' => $id,
+                'title' => $track['title'],
+                'artist_name' => $track['artist_name'],
+                'album_title' => $track['album_title'],
+                'artwork_url' => $track['artwork_url'],
+                'preview_url' => $track['preview_url'] ?? null,
+            ],
         ];
-        break;
-    }
-    if (count($tracks) >= 5) {
-        break;
     }
 }
+usort($ranked, static fn(array $a, array $b): int => $b['score'] <=> $a['score']);
+$tracks = array_map(static fn(array $row): array => $row['track'], array_slice($ranked, 0, 10));
 
 api_ok(['tracks' => $tracks, 'provider' => 'Gemini']);
