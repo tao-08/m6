@@ -32,7 +32,7 @@ return [
             'client_secret' => '',
         ],
         // 管理者限定の歌詞フレーズ検索に使う Gemini API キー（Google AI Studio で取得）
-        //   Google Search grounding を利用するため、現在の料金・利用条件を確認して使う
+        //   Gemini単体で曲候補を推定する（Google Search groundingは使用しない）
         //   ※ API キーは秘密情報なので config.php のみに設定し、GitHub には登録しない
         'gemini' => [
             'api_key' => '',
