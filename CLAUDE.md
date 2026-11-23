@@ -11,7 +11,7 @@
 
 ## ポップアップ（ツールチップ）の基準
 - ラベル・アイコンの説明は `title=` ではなく `data-tip`（PHP は `tip_attr('説明')`）で付ける。PC は乗せる、スマホはタップでフェード表示。外れたらすぐ消える
-- 実装は v3/assets/app.js の `setupTip`、見た目は `.album-tip`。新しく作らず必ずこれを使う
+- 実装は v3/assets/app_ui.js の `setupTip`、見た目は `.album-tip`。新しく作らず必ずこれを使う
 - 長い補足は `data-tip-from="#id"`（リンク付き）、複数の中身は `[data-tip-body]` を使う
 - **操作ボタン（削除・閉じる・検索・追加など、押すと何か実行されるもの）には付けない**。押すたびに出てじゃまになるため。説明は `aria-label` と（PC用の）`title` のままにする
 - `data-tip` を付けてよいのは「ラベル・状態アイコン・補足の ⓘ」など、押しても何も実行されないもの（楽器ラベル、セトリ ✓、メダル、ほか◯人 など）
@@ -25,7 +25,7 @@
 
 ## タブの基準
 - 切り替えのタブは `.tabs > .tab` で作る。選択中は `.is-active`（リンク・JS で切り替える `<button>`）か、中のラジオを checked（絞り込みは `.tabs--filter` + `<label class="tab"><input type="radio">`、即送信は `data-autosubmit`）
-- 赤い丸が滑る動きは v3/assets/app.js の `setupTabGlide` が全ページの `.tabs` に自動で付ける。個別に背景やアニメを書かない
+- 赤い丸が滑る動きは v3/assets/app_ui.js の `setupTabGlide` が全ページの `.tabs` に自動で付ける。個別に背景やアニメを書かない
 - 丸ボタンの並び（ラジオの `.check` など）で選ばせる所はタブにそろえる
 
 ## デザイントークンの基準
