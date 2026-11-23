@@ -37,10 +37,11 @@ const ALBUM_HTTP_TIMEOUT_SEC = 5;
  *   戻り値: ['status' => 200, 'json' => [...]]。通信そのものに失敗したら null
  *
  * @param string[] $headers 追加のヘッダー（'Authorization: Bearer xxx' など）
+ * @param string|null $userAgent 省略時は AbbeyRoad.online。外部APIが識別情報を要求するときだけ指定する
  */
-function album_http(string $url, array $headers = [], ?string $postBody = null): ?array
+function album_http(string $url, array $headers = [], ?string $postBody = null, ?string $userAgent = null): ?array
 {
-    $headers[] = 'User-Agent: AbbeyRoad.online'; // 「誰が叩いているか」の名乗り（マナー）
+    $headers[] = 'User-Agent: ' . ($userAgent !== null && trim($userAgent) !== '' ? trim($userAgent) : 'AbbeyRoad.online'); // 「誰が叩いているか」の名乗り（マナー）
 
     // レンタルサーバーによって「cURL は使えるが file_get_contents で URL は開けない」
     // （allow_url_fopen = Off）ことがあるので、cURL があれば cURL を優先して使う。
