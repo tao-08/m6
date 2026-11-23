@@ -78,6 +78,12 @@ return [
         // TAB の BPM を AI が推定する（tab.php の ✨ボタン）のモデル。省略すると 'claude-sonnet-5-5'。上の anthropic.api_key を共用する
         //   anthropic に 'sched_photo_model' => 'claude-sonnet-5-5' を足すと、マイスケジュールの画像読込のモデルを変えられる（既定は Haiku）
         //   anthropic に 'bpm_model' =>'claude-haiku-5-5'（安い・精度は劣る）/ 'claude-opus-5-5'（高い・マイナーな曲に強い）を足すと変えられる
+        // 管理者向け歌詞検索精度検証で使う Gemini API キー（Google AI Studio で取得）
+        //   空なら Gemini 検証ボタンは利用できない。キーは config.php のみに設定し、GitHubには登録しない
+        'gemini' => [
+            'api_key' => '',
+            'lyrics_search_model' => 'gemini-2.5-flash',
+        ],
         // lrc.red の歌詞フレーズ検索APIにアプリ名・URL・連絡先を通知するための連絡先メールアドレス
         //   lrc.red のAPI利用条件に従って設定する。config.php のみに設定し、GitHubには登録しない
         'lyrics_search' => [
