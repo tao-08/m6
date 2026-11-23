@@ -94,7 +94,7 @@ $started = microtime(true);
 $body = curl_exec($ch);
 $errno = curl_errno($ch);
 $status = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
-"$elapsed = (int)round((microtime(true) - $started) * 1000);
+$elapsed = (int)round((microtime(true) - $started) * 1000);
 $info = curl_getinfo($ch);
 $ms = static fn(string $key): ?int => isset($info[$key]) ? (int)round((float)$info[$key] * 1000) : null;
 $result['dns_time_ms'] = $ms('namelookup_time');
