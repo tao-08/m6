@@ -51,7 +51,7 @@ $url = 'https://generativelanguage.googleapis.com/v1beta/models/' . rawurlencode
 $response = album_http($url, [
     'Content-Type: application/json',
     'x-goog-api-key: ' . $apiKey,
-], json_encode($request, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+], json_encode($request, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), null, 30);
 
 if ($response === null) {
     error_log('Gemini lyrics search failed: no HTTP response');

@@ -39,8 +39,9 @@ const ALBUM_HTTP_TIMEOUT_SEC = 5;
  * @param string[] $headers 追加のヘッダー（'Authorization: Bearer xxx' など）
  * @param string|null $userAgent 省略時は AbbeyRoad.online。外部APIが識別情報を要求するときだけ指定する
  */
-function album_http(string $url, array $headers = [], ?string $postBody = null, ?string $userAgent = null): ?array
+function album_http(string $url, array $headers = [], ?string $postBody = null, ?string $userAgent = null, int $timeoutSec = ALBUM_HTTP_TIMEOUT_SEC): ?array
 {
+    $timeoutSec = max(5, min(60, $timeoutSec)); // 外部APIごとに延長できるが、最大60秒に制限
     $headers[] = 'User-Agent: ' . ($userAgent !== null && trim($userAgent) !== '' ? trim($userAgent) : 'AbbeyRoad.online'); // 「誰が叩いているか」の名乗り（マナー）
 
     // レンタルサーバーによって「cURL は使えるが file_get_contents で URL は開けない」
@@ -49,7 +50,7 @@ function album_http(string $url, array $headers = [], ?string $postBody = null, 
         $ch = curl_init($url);
         $options = [
             CURLOPT_RETURNTRANSFER => true,                   // 結果を画面に出さず、戻り値として受け取る
-            CURLOPT_TIMEOUT        => ALBUM_HTTP_TIMEOUT_SEC, // 全体の待ち時間の上限
+            CURLOPT_TIMEOUT        => $timeoutSec,                 // 全体の待ち時間の上限
             CURLOPT_CONNECTTIMEOUT => 3,                      // 接続するまでの待ち時間の上限
             CURLOPT_FOLLOWLOCATION => true,                   // リダイレクトされたら付いていく
             CURLOPT_HTTPHEADER     => $headers,
@@ -64,12 +65,13 @@ function album_http(string $url, array $headers = [], ?string $postBody = null, 
         // ※ curl_close() は PHP 8.0 から何もしない関数になり、PHP 8.5 で非推奨。
         //   変数が使われなくなった時点で自動で閉じられるので、呼ばない。
         if ($body === false) {
+            error_log('External API cURL failure: errno=' . curl_errno($ch) . ' error=' . substr(curl_error($ch), 0, 300));
             return null;
         }
     } else {
         // stream_context_create: file_get_contents に「通信の設定」を渡すための入れ物
         $http = [
-            'timeout'       => ALBUM_HTTP_TIMEOUT_SEC,
+            'timeout'       => $timeoutSec,
             'ignore_errors' => true, // 404 などでも警告を出さずに中身を返させる
             'header'        => implode("\r\n", $headers) . "\r\n",
         ];
