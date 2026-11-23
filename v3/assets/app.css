@@ -1683,14 +1683,14 @@ code { background: var(--surface-2); padding: 1px 6px; border-radius: var(--r-sm
 /* 曲の編集の「曲を探す」: 曲を紐付けるときに必ず使うボタンなので、枠だけアクセント色（赤）にして少し目立たせる */
 .song-search-btn { border-color: var(--accent); padding-inline: 10px; } /* アイコンだけ */
 /* ドラッグ中（.song-list.is-sorting）: アーティスト欄・検索ボタンも横に縮めて消す（行の隙間ぶんは負の margin で詰める） */
-.song-card__artist, .song-search-btn, .song-card__delete { transition: flex-basis var(--t-base) ease, width var(--t-base) ease, min-width var(--t-base) ease, padding var(--t-base) ease, margin var(--t-base) ease, opacity var(--t-fast) ease, border-width var(--t-base) ease; }
-.song-list.is-sorting .song-card__artist, .song-list.is-sorting .song-search-btn, .song-list.is-sorting .song-card__delete { flex: 0 0 0; min-width: 0; width: 0; padding-inline: 0; border-width: 0; margin-left: -10px; opacity: 0; overflow: hidden; white-space: nowrap; pointer-events: none; }
+.song-card__artist, .song-search-btn, .song-lyrics-search, .song-card__delete { transition: flex-basis var(--t-base) ease, width var(--t-base) ease, min-width var(--t-base) ease, padding var(--t-base) ease, margin var(--t-base) ease, opacity var(--t-fast) ease, border-width var(--t-base) ease; }
+.song-list.is-sorting .song-card__artist, .song-list.is-sorting .song-search-btn, .song-list.is-sorting .song-lyrics-search, .song-list.is-sorting .song-card__delete { flex: 0 0 0; min-width: 0; width: 0; padding-inline: 0; border-width: 0; margin-left: -10px; opacity: 0; overflow: hidden; white-space: nowrap; pointer-events: none; }
 /* スマホ: ドラッグ中は「1行目 ≡・番号・ジャケット / 2行目 曲名だけ」。縮んだ欄は行を作らないよう消す */
 @media (max-width: 600px) {
   .song-list.is-sorting .song-card__title { flex: 1 0 100%; }
-  .song-list.is-sorting .song-card__artist, .song-list.is-sorting .song-search-btn, .song-list.is-sorting .song-card__delete { display: none; }
+  .song-list.is-sorting .song-card__artist, .song-list.is-sorting .song-search-btn, .song-list.is-sorting .song-lyrics-search, .song-list.is-sorting .song-card__delete { display: none; }
 }
-@media (prefers-reduced-motion: reduce) { .song-card__artist, .song-search-btn, .song-card__delete { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .song-card__artist, .song-search-btn, .song-lyrics-search, .song-card__delete { transition: none; } }
 /* 曲の編集: 紐付けた曲のジャケット（紐付けていなければ ♪） */
 .song-thumb { position: relative; width: 40px; height: 40px; flex: none; border-radius: var(--r-sm); overflow: hidden;
   background: var(--surface-2); color: var(--muted); font-size: var(--fs-lg); }
@@ -1712,6 +1712,7 @@ code { background: var(--surface-2); padding: 1px 6px; border-radius: var(--r-sm
 /* 曲の削除（ゴミ箱アイコン）。カードの右上。押すとカードはすぐ消える（データベースから消えるのは保存したとき） */
 .song-card { position: relative; }
 .song-card__head { padding-right: 36px; } /* 右上のゴミ箱と重ならないように */
+@media (max-width: 600px) { .song-card__head { padding-right: 0; } } /* スマホは1行目が短く、2行目以降はゴミ箱の下になるので空けない */
 .song-card__delete { position: absolute; top: 8px; right: 8px; width: 36px; height: 36px; display: grid; place-items: center; padding: 0; cursor: pointer;
   border-radius: var(--r-md); border: 1px solid transparent; background: transparent; color: var(--muted); }
 .song-card__delete:hover, .song-card__delete:focus-visible { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, transparent); }
