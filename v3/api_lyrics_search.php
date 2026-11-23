@@ -2,7 +2,7 @@
 /**
  * api_lyrics_search.php — Geminiで歌詞フレーズから曲を検索（管理者限定）。
  *
- * Gemini + Google Search で曲名・アーティスト名を特定し、iTunesで試聴URLを照合する。
+ * Gemini単体で曲名・アーティスト名を推定し、iTunesで試聴URLを照合する。
  * 歌詞本文は回答・表示・保存しない。
  */
 declare(strict_types=1);
@@ -29,7 +29,7 @@ if (!preg_match('/^gemini-[a-zA-Z0-9.-]+$/', $model)) {
     fail(503, 'Geminiのモデル設定が不正です');
 }
 
-$prompt = "あなたは楽曲を特定する検索エンジンです。入力された歌詞の一節を手掛かりにGoogle検索を行い、該当する曲を特定してください。"
+$prompt = "あなたは楽曲を特定するアシスタントです。入力された歌詞の一節と学習済み知識を手掛かりに、該当する曲を特定してください。外部検索・Google Search groundingは使用できません。"
     . "邦楽・洋楽・インディーズを対象にします。検索結果の根拠が弱い場合は無理に推測しないでください。"
     . "歌詞本文、入力された歌詞の引用、歌詞の続きは回答に含めないでください。"
     . "曲名・アーティスト名・アルバム名・発売年だけを最大5件、関連度順で返してください。"
@@ -41,7 +41,6 @@ $request = [
         'role' => 'user',
         'parts' => [['text' => $prompt]],
     ]],
-    'tools' => [['google_search' => new stdClass()]],
     'generationConfig' => [
         'temperature' => 0,
         'maxOutputTokens' => 1200,
@@ -140,4 +139,4 @@ foreach (array_slice($decoded['candidates'], 0, 5) as $candidate) {
     }
 }
 
-api_ok(['tracks' => $tracks, 'provider' => 'Gemini + Google Search']);
+api_ok(['tracks' => $tracks, 'provider' => 'Gemini']);
