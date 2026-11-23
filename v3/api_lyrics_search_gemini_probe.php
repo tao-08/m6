@@ -105,7 +105,17 @@ foreach (array_slice($decoded['candidates'], 0, 5) as $candidate) {
     ];
 }
 
-$sources = []; // generateContent形式のgroundingMetadataはこの検証APIでは表示しない。
+$sources = [];
+$grounding = $data['candidates'][0]['groundingMetadata'] ?? [];
+foreach (($grounding['groundingChunks'] ?? []) as $chunk) {
+    $web = is_array($chunk['web'] ?? null) ? $chunk['web'] : [];
+    $uri = trim((string)($web['uri'] ?? ''));
+    $title = trim((string)($web['title'] ?? ''));
+    if ($uri !== '' && preg_match('#^https://#i', $uri)) {
+        $sources[$uri] = ['url' => $uri, 'title' => $title !== '' ? $title : parse_url($uri, PHP_URL_HOST)];
+    }
+}
+$sources = array_values($sources);
 
 $rank = null;
 foreach ($candidates as $index => $candidate) {
@@ -116,7 +126,7 @@ foreach ($candidates as $index => $candidate) {
 }
 
 api_ok([
-    'provider' => 'Gemini単体',
+    'provider' => 'Gemini + Google Search',
     'model' => $model,
     'candidates' => $candidates,
     'candidate_count' => count($candidates),
