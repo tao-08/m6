@@ -44,6 +44,8 @@ $prompt = "あなたは楽曲特定アシスタントです。入力された歌
 $request = [
     'contents' => [['role' => 'user', 'parts' => [['text' => $prompt]]]],
     'generationConfig' => ['temperature' => 0.1, 'maxOutputTokens' => 2200],
+    // Gemini 3.8 FlashのGoogle検索グラウンディングを有効化。
+    'tools' => [['google_search' => new stdClass()]],
 ];
 $url = 'https://generativelanguage.googleapis.com/v1beta/models/' . rawurlencode($model) . ':generateContent';
 $response = album_http($url, [
@@ -159,4 +161,4 @@ $ranked = array_values($seen);
 usort($ranked, static fn(array $a, array $b): int => $b['score'] <=> $a['score']);
 $tracks = array_map(static fn(array $row): array => $row['track'], array_slice($ranked, 0, 10));
 
-api_ok(['tracks' => $tracks, 'provider' => 'Gemini']);
+api_ok(['tracks' => $tracks, 'provider' => 'Gemini + Google Search']);

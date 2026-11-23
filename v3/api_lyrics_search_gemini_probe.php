@@ -34,7 +34,7 @@ if (!preg_match('/^gemini-[a-zA-Z0-9.-]+$/', $model)) {
     fail(503, 'Geminiのモデル設定が不正です');
 }
 
-$prompt = "あなたは楽曲の特定を行う検索アシスタントです。ユーザーが入力した歌詞の短い一節から、該当する楽曲を特定してください。外部検索やGoogle Search groundingは使用せず、学習済み知識だけで判断してください。"
+$prompt = "あなたは楽曲の特定を行う検索アシスタントです。ユーザーが入力した歌詞の短い一節から、該当する楽曲を特定してください。必要に応じてGoogle Searchを使い、公式サイト・配信サービス・信頼できる音楽情報サイトを優先して確認してください。"
     . "歌詞本文や続きの歌詞は絶対に出力しないでください。検索結果に歌詞ページがあっても引用しないでください。"
     . "曲名・アーティスト名・アルバム名・リリース年・確信度(0から1)だけを最大5件返してください。"
     . "歌詞の一節が曖昧な場合や根拠が弱い場合は、推測で埋めず候補を空にしてください。"
@@ -50,6 +50,8 @@ $request = [
         'temperature' => 0,
         'maxOutputTokens' => 1200,
     ],
+    // 本番検索と同じくGoogle検索グラウンディングを有効化。
+    'tools' => [['google_search' => new stdClass()]],
 ];
 $url = 'https://generativelanguage.googleapis.com/v1beta/models/' . rawurlencode($model) . ':generateContent';
 $response = album_http($url, [
@@ -103,7 +105,17 @@ foreach (array_slice($decoded['candidates'], 0, 5) as $candidate) {
     ];
 }
 
-$sources = []; // Gemini単体では検索参照元を返さない。
+$sources = [];
+$grounding = $data['candidates'][0]['groundingMetadata'] ?? [];
+foreach (($grounding['groundingChunks'] ?? []) as $chunk) {
+    $web = is_array($chunk['web'] ?? null) ? $chunk['web'] : [];
+    $uri = trim((string)($web['uri'] ?? ''));
+    $title = trim((string)($web['title'] ?? ''));
+    if ($uri !== '' && preg_match('#^https://#i', $uri)) {
+        $sources[$uri] = ['url' => $uri, 'title' => $title !== '' ? $title : parse_url($uri, PHP_URL_HOST)];
+    }
+}
+$sources = array_values($sources);
 
 $rank = null;
 foreach ($candidates as $index => $candidate) {
@@ -114,7 +126,7 @@ foreach ($candidates as $index => $candidate) {
 }
 
 api_ok([
-    'provider' => 'Gemini単体',
+    'provider' => 'Gemini + Google Search',
     'model' => $model,
     'candidates' => $candidates,
     'candidate_count' => count($candidates),
