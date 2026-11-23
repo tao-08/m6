@@ -1152,17 +1152,29 @@ function setupTrackSearch() {
         return;
       }
       results.replaceChildren(...data.tracks.map((track) => {
+        const row = document.createElement('div');
+        row.className = 'track-option-row';
         const btn = optionButton(track);
         btn.addEventListener('click', () => {
           // 選んだ曲の正式な曲名で置き換える（打ち間違い・表記ゆれをそろえる）
           card.querySelector('[name$="[title]"]').value = track.title;
-          // オムニバスのとき（アーティスト欄が編集できるとき）だけ、選んだ曲のアーティストを入れる。
-          //   Spotify は「A, B」と複数人をつないで返すので、先頭の1人だけ（"A, B" という新しいアーティストを作らないため）
-          const artist = card.querySelector('[data-song-artist]'); // SE には無い
+          // オムニバスのときだけ、選んだ曲のアーティストを入れる。
+          const artist = card.querySelector('[data-song-artist]');
           if (artist && !artist.readOnly) artist.value = track.artist_name.split(', ')[0];
           setTrack(card, track);
         });
-        return btn;
+        row.append(btn);
+        if (track.preview === true) {
+          const play = document.createElement('button');
+          play.type = 'button';
+          play.className = 'track-option__play';
+          play.dataset.preview = track.key;
+          play.setAttribute('aria-label', track.title + 'を試聴');
+          play.title = '30秒試聴';
+          play.append(iconEl('play_arrow'));
+          row.append(play);
+        }
+        return row;
       }));
     } catch (err) {
       message(results, err.message || '検索できませんでした');

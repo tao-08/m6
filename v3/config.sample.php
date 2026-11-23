@@ -31,11 +31,12 @@ return [
             'client_id'     => '',
             'client_secret' => '',
         ],
-        // 管理者限定の歌詞フレーズ検索（api_lyrics_search.php）に使う Musixmatch API キー
-        //   https://developer.musixmatch.com/ で取得。空なら歌詞検索は利用できない
+        // 管理者限定の歌詞フレーズ検索に使う Gemini API キー（Google AI Studio で取得）
+        //   Google Search grounding を利用するため、現在の料金・利用条件を確認して使う
         //   ※ API キーは秘密情報なので config.php のみに設定し、GitHub には登録しない
-        'musixmatch' => [
+        'gemini' => [
             'api_key' => '',
+            'lyrics_search_model' => 'gemini-3.8-flash',
         ],
         // ライブのプレイリストの動画をバンドに割り当てる（live_youtube.php）のに使う YouTube Data API v3 のキー
         //   Google Cloud Console でプロジェクトを作り、YouTube Data API v3 を有効にして「APIキー」を作ると出る
@@ -78,6 +79,12 @@ return [
         // TAB の BPM を AI が推定する（tab.php の ✨ボタン）のモデル。省略すると 'claude-sonnet-5-5'。上の anthropic.api_key を共用する
         //   anthropic に 'sched_photo_model' => 'claude-sonnet-5-5' を足すと、マイスケジュールの画像読込のモデルを変えられる（既定は Haiku）
         //   anthropic に 'bpm_model' =>'claude-haiku-5-5'（安い・精度は劣る）/ 'claude-opus-5-5'（高い・マイナーな曲に強い）を足すと変えられる
+        // 管理者向け歌詞検索精度検証で使う Gemini API キー（Google AI Studio で取得）
+        //   空なら Gemini 検証ボタンは利用できない。キーは config.php のみに設定し、GitHubには登録しない
+        'gemini' => [
+            'api_key' => '',
+            'lyrics_search_model' => 'gemini-2.5-flash',
+        ],
         // lrc.red の歌詞フレーズ検索APIにアプリ名・URL・連絡先を通知するための連絡先メールアドレス
         //   lrc.red のAPI利用条件に従って設定する。config.php のみに設定し、GitHubには登録しない
         'lyrics_search' => [
