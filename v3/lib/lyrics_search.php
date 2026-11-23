@@ -19,6 +19,19 @@ function lyrics_search_normalize_text(string $value): string
     return $value;
 }
 
+/** 全角カタカナをひらがなに変換する。漢字の読みは推測しない。 */
+function lyrics_search_to_hiragana(string $value): string
+{
+    return preg_replace_callback(
+        '/[\x{30A1}-\x{30F6}\x{30FD}\x{30FE}]/u',
+        static function (array $match): string {
+            $codepoint = mb_ord($match[0], 'UTF-8');
+            return mb_chr($codepoint - 0x60, 'UTF-8');
+        },
+        $value
+    ) ?? $value;
+}
+
 /**
  * APIに投げる検索語候補。原文を優先し、正規化・句読点除去・かな変換は必要時の予備にする。
  * 同一検索語はまとめ、最大3パターンに制限する。
@@ -50,7 +63,7 @@ function lyrics_search_query_variants(string $query): array
     $add($withoutPunctuation);
 
     // 句読点を整理した後にかな変換する。原文・正規化・かな変換の最大3段階。
-    $hiragana = mb_convert_kana($withoutPunctuation, 'c', 'UTF-8');
+    $hiragana = lyrics_search_to_hiragana($withoutPunctuation);
     $add($hiragana);
 
     return array_slice($variants, 0, 3);
