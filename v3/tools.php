@@ -49,10 +49,6 @@ if (is_executive()) {
 if (is_admin()) {
     $tools[] = ['intro_previews', 'headphones', '試聴の一括調査',
         '試聴を調べていない曲を探して、イントロクイズで出せる曲を増やします。', '管理者'];
-    $tools[] = ['lyrics_search_test', 'manage_search', '歌詞検索の検証',
-        'lrc.red の検索精度と iTunes での照合可否を管理者限定で確認します。', '管理者'];
-    $tools[] = ['gemini_diagnostics', 'cloud_done', 'Gemini接続診断',
-        'サーバーからGemini APIへの通信・認証状態を確認します。', '管理者'];
 }
 // スタ連（スタジオ練習）の日程調整（sched.php）。ログインしていれば誰でも
 $tools[] = ['sched', 'event_available', 'スタジオ練習の日程調整',
@@ -72,8 +68,6 @@ $tabOf = [
     'songs' => 'data', 'venue_list' => 'data', 'studio_list' => 'data',
     'tt_builder' => 'admin', 'studio' => 'admin', 'sheet_templates' => 'admin', 'intro_previews' => 'admin',
     'block' => 'game', 'intro' => 'game',
-    'lyrics_search_test' => 'admin',
-    'gemini_diagnostics' => 'admin',
 ];
 $grouped = array_fill_keys(array_keys($tabs), []);
 foreach ($tools as $t) {

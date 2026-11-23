@@ -5,7 +5,6 @@ declare(strict_types=1);
 function config($key = null) { return null; }
 require __DIR__ . '/../lib/import/parsers.php';
 require __DIR__ . '/../lib/albums.php'; // itunes.php と spotify.php も読み込まれる
-require __DIR__ . '/../lib/lyrics_search.php';
 const DAY_LABELS = ['1日目', '2日目', '3日目', '教室ライブ']; // lib/bootstrap.php の定数（テストでは bootstrap を読まないので同じものを置く）
 function youtube_url_valid(string $url): bool { return true; } // lib/bootstrap.php の関数（テストでは bootstrap を読まないので仮のもの）
 require __DIR__ . '/../lib/youtube.php';
@@ -78,12 +77,6 @@ check('アーティスト: 記号・空白・全角の違い', artists_look_simi
 check('アーティスト: 先頭の The', artists_look_similar(artist_key('The BAWDIES'), artist_key('BAWDIES')), true);
 check('アーティスト: 1文字違い', artists_look_similar(artist_key('Official髭男dism'), artist_key('Offical髭男dism')), true);
 check('アーティスト: 括弧付き', artists_look_similar(artist_key('ヨルシカ'), artist_key('ヨルシカ(安田)')), true);
-check('歌詞検索: 全角英数・記号の正規化', lyrics_search_normalize_text('ＨＥＬＬＯ！') === lyrics_search_normalize_text('hello'), true);
-check('歌詞検索: 空白・句読点の正規化', lyrics_search_normalize_text('君 が、好き') === lyrics_search_normalize_text('君が好き'), true);
-check('歌詞検索: カタカナからひらがな候補を生成', in_array('きみが好き', lyrics_search_query_variants('キミが好き'), true), true);
-check('歌詞検索: 半角カタカナもひらがな候補に変換', in_array('きみが好き', lyrics_search_query_variants('ｷﾐが好き'), true), true);
-check('歌詞検索: 曲名・アーティストの表記ゆれ', lyrics_search_hit_matches(['title' => 'Ｌｅｍｏｎ (Remastered)', 'artist' => '米津玄師'], 'Lemon', '米津玄師'), true);
-check('歌詞検索: 別アーティストを誤一致しない', lyrics_search_hit_matches(['title' => 'Lemon', 'artist' => '別アーティスト'], 'Lemon', '米津玄師'), false);
 check('アーティスト: 別物', artists_look_similar(artist_key('YUI'), artist_key('YUKI')), false);
 check('アーティスト: 短すぎる頭一致は拾わない', artists_look_similar(artist_key('Mr.'), artist_key('Mrs. GREEN APPLE')), false);
 
@@ -1254,6 +1247,19 @@ check('理由: JSON でなければ本文の先頭を、使える文字だけで
 Bad <b>Gateway</b> \"key=AIza\"" . str_repeat('x', 200)), substr('htmlBad bGatewayb keyAIza' . str_repeat('x', 200), 0, 80));
 check('理由: 空の本文は空', drive_upstream_reason(''), '');
 check('キャッシュ: 大きさが分からなければ、あれば流す', [drive_cache_ok(__FILE__, 0), drive_cache_ok(__FILE__, filesize(__FILE__)), drive_cache_ok(__FILE__, 1), drive_cache_ok(__FILE__ . '.none', 0)], [true, true, false, false]);
+
+// ---------------------------------------------------------------------
+//  マイグレーションの番号（migrations/）
+// ---------------------------------------------------------------------
+echo "migrations\n";
+$migDup = [];
+foreach (glob(__DIR__ . '/../migrations/*.sql') as $f) {
+    $n = (int) basename($f); // 先頭の連番
+    $migDup[$n][] = basename($f);
+}
+// 本番に流した記録とずれるのでリネームしない。新しい番号の重複だけ禁止する
+$migDup = array_filter($migDup, fn($v, $n) => count($v) > 1 && !in_array($n, [3, 114], true), ARRAY_FILTER_USE_BOTH);
+check('番号の重複なし（003・114は許可）', array_map(fn($v) => implode(', ', $v), $migDup), []);
 
 echo $failed ?"\n{$failed} 件失敗\n" : "\nすべて成功\n";
 exit($failed ? 1 : 0);
