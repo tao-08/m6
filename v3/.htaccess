@@ -9,7 +9,7 @@ ErrorDocument 500 /error.php
 ErrorDocument 502 /error.php
 ErrorDocument 503 /error.php
 
-<FilesMatch "^(config(\.sample)?\.php|schema\.sql|README\.md)$">
+<FilesMatch "^(config\..*|schema\.sql|README\.md)$">
     Require all denied
 </FilesMatch>
 
