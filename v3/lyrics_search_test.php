@@ -69,6 +69,71 @@ render_header('歌詞検索の検証', 'tools');
     const hitsBox = document.getElementById('lyrics-probe-hits');
     const itunesBox = document.getElementById('lyrics-probe-itunes');
     const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
+    const geminiButton = document.getElementById('lyrics-gemini-submit');
+    const geminiResults = document.getElementById('lyrics-gemini-results');
+    const geminiSummary = document.getElementById('lyrics-gemini-summary');
+    const geminiHits = document.getElementById('lyrics-gemini-hits');
+    const geminiSources = document.getElementById('lyrics-gemini-sources');
+
+    geminiButton?.addEventListener('click', async () => {
+        if (!form.reportValidity()) return;
+        geminiButton.disabled = true;
+        geminiResults.hidden = true;
+        setMessage('Gemini + Google検索で候補を調べています…');
+        const values = Object.fromEntries(new FormData(form).entries());
+        try {
+            const response = await fetch('api_lyrics_search_gemini_probe', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+                body: JSON.stringify(values),
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(data.error || 'Gemini検索に失敗しました');
+
+            geminiSummary.replaceChildren();
+            appendText(geminiSummary, 'strong', '', data.expected_match_rank
+                ? '正解候補を' + data.expected_match_rank + '位で発見'
+                : (values.expected_title && values.expected_artist
+                    ? '入力した正解曲は候補に見つかりませんでした'
+                    : '正解曲名・アーティストを入力すると順位を判定できます'));
+            appendText(geminiSummary, 'p', 'small muted', 'モデル: ' + data.model + ' / 候補 ' + data.candidate_count + '件');
+
+            geminiHits.replaceChildren();
+            if (!Array.isArray(data.candidates) || data.candidates.length === 0) {
+                appendText(geminiHits, 'p', 'muted', '候補が見つかりませんでした。');
+            } else {
+                data.candidates.forEach((hit, index) => {
+                    const card = document.createElement('article');
+                    card.className = 'card';
+                    card.style.padding = '12px';
+                    appendText(card, 'strong', '', (index + 1) + '. ' + hit.title);
+                    appendText(card, 'div', '', hit.artist);
+                    appendText(card, 'div', 'small muted', [hit.album, hit.year || '', hit.confidence == null ? '' : '確信度 ' + Math.round(hit.confidence * 100) + '%'].filter(Boolean).join(' ・ '));
+                    if (hit.expected_match) appendText(card, 'div', 'small', '正解候補');
+                    geminiHits.append(card);
+                });
+            }
+            geminiSources.replaceChildren();
+            appendText(geminiSources, 'strong', '', 'Google検索の参照元');
+            (data.sources || []).forEach((source) => {
+                const link = document.createElement('a');
+                link.href = source.url;
+                link.target = '_blank';
+                link.rel = 'noopener noreferrer';
+                link.textContent = source.title;
+                link.style.display = 'block';
+                geminiSources.append(link);
+            });
+            geminiResults.hidden = false;
+            setMessage('Geminiの検証が完了しました。結果は保存されていません。');
+        } catch (error) {
+            setMessage(error.message || 'Gemini検索に失敗しました');
+        } finally {
+            geminiButton.disabled = false;
+        }
+    });
+
 
     const setMessage = (message) => {
         status.hidden = false;
