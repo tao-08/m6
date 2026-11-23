@@ -27,6 +27,9 @@ if (mb_strlen($expectedTitle, 'UTF-8') > 100 || mb_strlen($expectedArtist, 'UTF-
 
 $lyricsConfig = (array)(config('lyrics_search') ?? []);
 $contactEmail = trim((string)($lyricsConfig['contact_email'] ?? ''));
+if ($contactEmail === '') {
+    $contactEmail = trim((string)config('mail_from'));
+}
 if (!filter_var($contactEmail, FILTER_VALIDATE_EMAIL)) {
     fail(503, 'config.php の common.lyrics_search.contact_email に、連絡先メールアドレスを設定してください');
 }
