@@ -729,7 +729,7 @@ function setupSongs() {
     let n = 1; // SE は数えない（曲の番号は 1, 2, 3...）
     cards().forEach((c, i) => {
       const no = c.querySelector('[data-song-no]'); // SE のカードには番号が無い
-      if (no) no.textContent = String(n++);
+      if (no && !c.classList.contains('is-deleted')) no.textContent = String(n++); // 削除した曲（見えない）は数えない
       const pos = c.querySelector('[data-song-pos]');
       if (pos) pos.value = String(i);
     });
@@ -910,9 +910,6 @@ function setupSongs() {
         if (changed || el.matches('select')) el.dispatchEvent(new Event('change', { bubbles: true })); // 見た目（楽器のボタン・薄い表示）を合わせさせる
       });
       c.classList.toggle('is-deleted', s.deleted);
-      const del = c.querySelector('[data-song-delete-btn]');
-      del.setAttribute('aria-pressed', String(s.deleted));
-      del.setAttribute('aria-label', s.deleted ? '削除を取り消す' : 'この曲を削除');
       s.inst.forEach(({ el, hidden }) => { el.hidden = hidden; });
       c.querySelector('[data-track-thumb]').innerHTML = s.thumb;
       c.querySelector('.song-thumb').title = s.thumbTitle;
@@ -984,12 +981,10 @@ function setupSongs() {
         ], { duration: 220, easing: 'ease-in' }).onfinish = () => card.remove();
         return;
       }
-      // 保存済みの曲: 削除の印を付ける / 外す（消えるのは保存したとき）
-      const on = !card.classList.contains('is-deleted');
-      card.classList.toggle('is-deleted', on);
-      card.querySelector('[data-song-delete]').value = on ? '1' : '';
-      del.setAttribute('aria-pressed', String(on));
-      del.setAttribute('aria-label', on ? '削除を取り消す' : 'この曲を削除');
+      // 保存済みの曲: 画面からはすぐ消す。データベースから消えるのは保存したとき（戻す ↩ で復活できる）
+      card.classList.add('is-deleted');
+      card.querySelector('[data-song-delete]').value = '1';
+      renumber();
     }
   });
   list.addEventListener('change', (e) => {
@@ -1090,14 +1085,6 @@ function setupTrackSearch() {
     sub.textContent = `${track.artist_name} ・ ${track.album_title}`;
     text.append(title, sub);
     btn.append(img, text);
-    // 試聴があるときだけ印を出す（api_track_search.php の preview が true のとき。無い・わからないときは出さない）
-    if (track.preview === true) {
-      const mark = document.createElement('span');
-      mark.className = 'track-option__preview';
-      mark.append(iconEl('play_circle'), '試聴可');
-      mark.title = '30秒試聴があります（バンドページの ▶ で聴けます）';
-      btn.append(mark);
-    }
     return btn;
   };
   const message = (results, text) => {
@@ -1264,20 +1251,13 @@ function setupLyricsSearch() {
         if (track.preview_url) {
           const play = document.createElement('button');
           play.type = 'button';
-          play.className = 'track-option__preview lyrics-preview';
+          play.className = 'track-option__play';
           play.dataset.preview = 'itunes:' + track.track_id;
           play.dataset.previewUrl = track.preview_url;
           play.setAttribute('aria-label', track.title + 'を試聴');
-          const icon = document.createElement('span');
-          icon.className = 'icon';
-          icon.textContent = 'play_arrow';
-          play.append(icon, '試聴');
+          play.title = '30秒試聴';
+          play.append(iconEl('play_arrow'));
           actions.append(play);
-        } else {
-          const unavailable = document.createElement('span');
-          unavailable.className = 'track-option__sub';
-          unavailable.textContent = '試聴なし';
-          actions.append(unavailable);
         }
         const pick = document.createElement('button');
         pick.type = 'button';
@@ -1344,6 +1324,7 @@ function setupPreview() {
     current = null;
   };
   const noPreview = (btn) => {
+    if (btn.closest('.track-results')) { btn.remove(); return; } // 曲の検索結果では、聴けないと分かった ▶ を消す
     btn.disabled = true;
     btn.classList.add('is-none');
     btn.title = '試聴がありません';

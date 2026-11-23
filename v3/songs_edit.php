@@ -347,7 +347,7 @@ render_header('セットリストを編集', 'lives');
 <?php endif; ?>
 <p class="muted small">曲ごとに演奏者と担当楽器が記録できます。 曲を検索して紐づけると対応アプリで開くリンクが作成されます。</p>
 <?php if ($fromSheet): ?>
-    <div class="flash flash--info"><?= icon('description') ?> データベースにはまだ保存されていません。<br>曲を探す ボタンを押して楽曲情報を登録し、演奏者と担当楽器を確認したら保存してください。</div>
+    <div class="flash flash--info"><?= icon('description') ?> データベースにはまだ保存されていません。<br><?= icon('search') ?> を押して楽曲情報を登録し、演奏者と担当楽器を確認したら保存してください。</div>
     <?php if ($droppedTitles): ?>
         <div class="flash flash--warn">シートに無い登録済みの曲は、保存すると消えます: <?= h(implode('、', $droppedTitles)) ?></div>
     <?php endif; ?>
@@ -391,6 +391,14 @@ render_header('セットリストを編集', 'lives');
                     <input autocomplete="off" name="<?= $base ?>[title]" value="<?= h($song['title']) ?>" maxlength="100" placeholder="<?= $isNew ? ($isSe ? 'SE名を入力して追加' : '曲名を入力して追加') : ($isSe ? 'SE名' : '曲名') ?>" class="song-card__title" aria-label="曲名" data-unsaved-key>
                     <?php if ($isSe): ?><input type="hidden" name="<?= $base ?>[artist]" value="">
                     <?php else: ?><input name="<?= $base ?>[artist]" value="<?= h($artist) ?>" maxlength="100" data-suggest-list="artists" autocomplete="off" placeholder="アーティスト" class="song-card__artist" aria-label="アーティスト" data-song-artist<?= $omnibus ? '' : ' readonly' ?>><?php endif; ?>
+                    <!-- data-artist: 紐付けた曲のアーティスト（先頭の1人）。「オムニバス」にチェックを付けたとき、連携済みの曲はこの名前をアーティスト欄に残す（assets/app.js の setupSongs） -->
+                    <input type="hidden" name="<?= $base ?>[track]" value="<?= h($trackKey) ?>" data-track-key data-artist="<?= h($trackKey === '' ? '' : explode(', ', (string)$song['track_artist'])[0]) ?>">
+                    <button type="button" class="btn btn--ghost btn--sm song-search-btn" data-track-search aria-label="曲を探す" title="曲を探す"><?= icon('search') ?></button>
+                    <input type="hidden" name="<?= $base ?>[id]" value="<?= $isNew ? '' : (int)$song['song_id'] ?>">
+                    <!-- 🗑 保存済みの曲: 押すと「削除する」印（隠し項目を 1）が付いてカードが薄くなる。もう一度押すと取り消し。消えるのは保存したとき
+                         追加したばかりの曲: まだ保存していないので、押すとカードごとその場で消える -->
+                    <?php if (!$isNew): ?><input type="hidden" name="<?= $base ?>[delete]" value="" data-song-delete><?php endif; ?>
+                    <button type="button" class="song-card__delete" data-song-delete-btn aria-label="この曲を削除" title="この曲を削除"><?= icon(ICON_TRASH) ?></button>
                     <?php if (!$isSe && is_admin()): ?>
                     <div class="song-lyrics-search">
                         <input type="search" maxlength="100" autocomplete="off" placeholder="歌詞の一部を入力" aria-label="歌詞の一部" data-lyrics-query>
@@ -398,14 +406,6 @@ render_header('セットリストを編集', 'lives');
                         <span class="song-lyrics-search__credit">Powered by Gemini</span>
                     </div>
                     <?php endif; ?>
-                    <!-- data-artist: 紐付けた曲のアーティスト（先頭の1人）。「オムニバス」にチェックを付けたとき、連携済みの曲はこの名前をアーティスト欄に残す（assets/app.js の setupSongs） -->
-                    <input type="hidden" name="<?= $base ?>[track]" value="<?= h($trackKey) ?>" data-track-key data-artist="<?= h($trackKey === '' ? '' : explode(', ', (string)$song['track_artist'])[0]) ?>">
-                    <button type="button" class="btn btn--ghost btn--sm song-search-btn" data-track-search><?= icon('search') ?> 曲を探す</button>
-                    <input type="hidden" name="<?= $base ?>[id]" value="<?= $isNew ? '' : (int)$song['song_id'] ?>">
-                    <!-- 🗑 保存済みの曲: 押すと「削除する」印（隠し項目を 1）が付いてカードが薄くなる。もう一度押すと取り消し。消えるのは保存したとき
-                         追加したばかりの曲: まだ保存していないので、押すとカードごとその場で消える -->
-                    <?php if (!$isNew): ?><input type="hidden" name="<?= $base ?>[delete]" value="" data-song-delete><?php endif; ?>
-                    <button type="button" class="song-card__delete" data-song-delete-btn aria-label="この曲を削除" aria-pressed="false"><?= icon(ICON_TRASH) ?></button>
                 </div>
                 <!-- 🔍 の検索結果（assets/app.js の setupTrackSearch が中身を入れる） -->
                 <div class="track-results" data-track-results hidden></div>

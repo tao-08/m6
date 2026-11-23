@@ -1681,7 +1681,7 @@ code { background: var(--surface-2); padding: 1px 6px; border-radius: var(--r-sm
 .song-card__artist[readonly] { opacity: .45; cursor: not-allowed; }
 .song-omnibus { margin: 0 0 14px; font-weight: 700; }
 /* 曲の編集の「曲を探す」: 曲を紐付けるときに必ず使うボタンなので、枠だけアクセント色（赤）にして少し目立たせる */
-.song-search-btn { border-color: var(--accent); }
+.song-search-btn { border-color: var(--accent); padding-inline: 10px; } /* アイコンだけ */
 /* ドラッグ中（.song-list.is-sorting）: アーティスト欄・検索ボタンも横に縮めて消す（行の隙間ぶんは負の margin で詰める） */
 .song-card__artist, .song-search-btn, .song-card__delete { transition: flex-basis var(--t-base) ease, width var(--t-base) ease, min-width var(--t-base) ease, padding var(--t-base) ease, margin var(--t-base) ease, opacity var(--t-fast) ease, border-width var(--t-base) ease; }
 .song-list.is-sorting .song-card__artist, .song-list.is-sorting .song-search-btn, .song-list.is-sorting .song-card__delete { flex: 0 0 0; min-width: 0; width: 0; padding-inline: 0; border-width: 0; margin-left: -10px; opacity: 0; overflow: hidden; white-space: nowrap; pointer-events: none; }
@@ -1709,16 +1709,13 @@ code { background: var(--surface-2); padding: 1px 6px; border-radius: var(--r-sm
   .song-thumb__clear { inset: auto 0 0 auto; width: 18px; height: 18px; border-radius: var(--r-sm) 0 0 0; opacity: 1; }
   .song-thumb__clear .icon { font-size: 14px; }
 }
-/* 曲の削除（ゴミ箱アイコン）。押すとカードが薄くなり（保存で消える）、ボタンだけ赤く残す */
-.song-card__delete { width: 36px; height: 36px; flex: none; margin-left: auto; display: grid; place-items: center; padding: 0; cursor: pointer;
+/* 曲の削除（ゴミ箱アイコン）。カードの右上。押すとカードはすぐ消える（データベースから消えるのは保存したとき） */
+.song-card { position: relative; }
+.song-card__head { padding-right: 36px; } /* 右上のゴミ箱と重ならないように */
+.song-card__delete { position: absolute; top: 8px; right: 8px; width: 36px; height: 36px; display: grid; place-items: center; padding: 0; cursor: pointer;
   border-radius: var(--r-md); border: 1px solid transparent; background: transparent; color: var(--muted); }
 .song-card__delete:hover, .song-card__delete:focus-visible { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, transparent); }
-.song-card__delete[aria-pressed="true"] { color: #fff; background: var(--danger); }
-.song-card.is-deleted { border-color: var(--danger); }
-.song-card.is-deleted > :not(.song-card__head), .song-card.is-deleted .song-card__head > :not(.song-card__delete) { opacity: .35; }
-/* 削除の印を付けた・外したときに、薄くなるのをパッと切り替えずに少しだけなめらかに */
-.song-card > :not(.song-card__head), .song-card__head > * { transition: opacity var(--t-base) ease; }
-@media (prefers-reduced-motion: reduce) { .song-card > :not(.song-card__head), .song-card__head > * { transition: none; } }
+.song-card.is-deleted { display: none; }
 /* 🔍 の検索結果。押すとその曲を紐付ける */
 .track-results { display: grid; gap: 4px; max-height: 360px; overflow-y: auto; padding: 6px; border-radius: var(--r-md);
   border: 1px solid var(--border); background: var(--surface-2); }
@@ -1735,9 +1732,6 @@ code { background: var(--surface-2); padding: 1px 6px; border-radius: var(--r-sm
 .track-option__title { font-weight: 700; font-size: var(--fs-md); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .track-option__sub { color: var(--muted); font-size: var(--fs-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .track-results__msg { color: var(--muted); font-size: var(--fs-sm); padding: 6px 8px; }
-/* 候補の右の「試聴可」の印（app.js の optionButton。試聴がある曲だけ） */
-.track-option__preview { display: inline-flex; align-items: center; gap: 2px; font-size: var(--fs-2xs); font-weight: 700; color: var(--accent); white-space: nowrap; }
-.track-option__preview .icon { font-size: 16px; }
 /* 検索結果の窓: 開くときに上からふわっと出す。候補は1件ずつ少しずらして出す（最初の8件まで。それ以降はまとめて） */
 .track-results:not([hidden]) { animation: track-results-in var(--t-base) ease-out; transform-origin: top; }
 .track-option { animation: track-option-in var(--t-base) ease-out both; }
@@ -3191,8 +3185,6 @@ button.ttb-m { cursor: pointer; text-decoration: underline dotted; }
 .song-lyrics-search__credit { grid-column: 1 / -1; color: var(--muted); font-size: var(--fs-2xs); }
 .lyrics-results { margin-top: 6px; }
  .lyrics-result__actions { display: inline-flex; align-items: center; gap: 8px; justify-self: end; white-space: nowrap; }
-.lyrics-preview { border: 0; background: transparent; cursor: pointer; }
-.lyrics-preview:disabled { opacity: .45; cursor: default; }
 @media (max-width: 520px) {
   .song-lyrics-search { grid-template-columns: minmax(0, 1fr) auto; gap: 6px; }
   .song-lyrics-search .btn { padding-inline: 10px; }
