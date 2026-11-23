@@ -57,14 +57,17 @@ function setupAlbumTip() {
 }
 
 /* ---------------------------------------------------------------------
- * アプリ化（ホーム画面に追加）した Android で、このサイト以外へのリンクを押したら、標準のブラウザで開く
+ * アプリ化（ホーム画面に追加）した Android・iPhone で、このサイト以外へのリンクを押したら、Chrome で開く
+ *   iPhone は googlechrome(s):// で Chrome を開く（Chrome が無ければ今までどおりアプリ内で開く）
  *   何もしないと、アプリの中の小さなブラウザ（Chrome Custom Tab）で開いてしまう。
  *   → Android の intent:// の URL にして、OS に開く先（標準のブラウザ。YouTube などはそのアプリ）を選ばせる。
  *   アプリとして開いている時（display-mode: standalone）の Android だけ。PC・iPhone・ふつうのブラウザは今までどおり。
  * ------------------------------------------------------------------- */
 function setupExternalLinksToBrowser() {
-  const standalone = window.matchMedia('(display-mode: standalone)').matches;
-  if (!standalone || !/Android/i.test(navigator.userAgent)) return;
+  const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  const android = /Android/i.test(navigator.userAgent);
+  const ios = /iPhone|iPad|iPod/i.test(navigator.userAgent) && !/CriOS/i.test(navigator.userAgent); // iOS 版 Chrome から追加した分は対象外
+  if (!standalone || !(android || ios)) return;
   document.addEventListener('click', (e) => {
     if (e.defaultPrevented || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey) return;
     const a = e.target.closest('a[href]');
@@ -73,9 +76,23 @@ function setupExternalLinksToBrowser() {
     try { u = new URL(a.href, window.location.href); } catch { return; }
     if (!/^https?:$/.test(u.protocol) || u.origin === window.location.origin) return;
     e.preventDefault();
+    if (ios) {
+      // googlechrome(s)://ホスト/パス で Chrome を開く。入っていなくて 1.5 秒たってもこのページが見えたままなら、元のリンクを開く
+      let left = false;
+      const onLeave = () => { left = true; };
+      document.addEventListener('visibilitychange', onLeave, { once: true });
+      window.addEventListener('pagehide', onLeave, { once: true });
+      window.location.href = `googlechrome${u.protocol === 'https:' ? 's' : ''}://${u.href.slice(u.protocol.length + 2)}`;
+      setTimeout(() => {
+        document.removeEventListener('visibilitychange', onLeave);
+        window.removeEventListener('pagehide', onLeave);
+        if (!left && document.visibilityState === 'visible') window.location.href = u.href;
+      }, 1500);
+      return;
+    }
     // intent://ホスト/パス#Intent;scheme=https;…;end（S.browser_fallback_url = 開けなかったときの飛び先）
     const rest = u.href.replace(/#.*$/, '').slice(u.protocol.length + 2); // 「//」より後ろ（# 以降は intent の区切りとぶつかるので落とす）
-    window.location.href = `intent://${rest}#Intent;scheme=${u.protocol.slice(0, -1)};action=android.intent.action.VIEW;category=android.intent.category.BROWSABLE;S.browser_fallback_url=${encodeURIComponent(u.href)};end`;
+    window.location.href = `intent://${rest}#Intent;scheme=${u.protocol.slice(0, -1)};action=android.intent.action.VIEW;category=android.intent.category.BROWSABLE;package=com.android.chrome;S.browser_fallback_url=${encodeURIComponent(u.href)};end`;
   });
 }
 
