@@ -80,7 +80,7 @@ check('アーティスト: 1文字違い', artists_look_similar(artist_key('Offi
 check('アーティスト: 括弧付き', artists_look_similar(artist_key('ヨルシカ'), artist_key('ヨルシカ(安田)')), true);
 check('歌詞検索: 全角英数・記号の正規化', lyrics_search_normalize_text('ＨＥＬＬＯ！') === lyrics_search_normalize_text('hello'), true);
 check('歌詞検索: 空白・句読点の正規化', lyrics_search_normalize_text('君 が、好き') === lyrics_search_normalize_text('君が好き'), true);
-check('歌詞検索: カタカナからひらがな候補を生成', in_array('きみがすき', lyrics_search_query_variants('キミが好き'), true), true);
+check('歌詞検索: カタカナからひらがな候補を生成', in_array('きみが好き', lyrics_search_query_variants('キミが好き'), true), true);
 check('歌詞検索: 曲名・アーティストの表記ゆれ', lyrics_search_hit_matches(['title' => 'Ｌｅｍｏｎ (Remastered)', 'artist' => '米津玄師'], 'Lemon', '米津玄師'), true);
 check('歌詞検索: 別アーティストを誤一致しない', lyrics_search_hit_matches(['title' => 'Lemon', 'artist' => '別アーティスト'], 'Lemon', '米津玄師'), false);
 check('アーティスト: 別物', artists_look_similar(artist_key('YUI'), artist_key('YUKI')), false);
