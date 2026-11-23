@@ -78,6 +78,11 @@ return [
         // TAB の BPM を AI が推定する（tab.php の ✨ボタン）のモデル。省略すると 'claude-sonnet-5-5'。上の anthropic.api_key を共用する
         //   anthropic に 'sched_photo_model' => 'claude-sonnet-5-5' を足すと、マイスケジュールの画像読込のモデルを変えられる（既定は Haiku）
         //   anthropic に 'bpm_model' =>'claude-haiku-5-5'（安い・精度は劣る）/ 'claude-opus-5-5'（高い・マイナーな曲に強い）を足すと変えられる
+        // lrc.red の歌詞フレーズ検索APIにアプリ名・URL・連絡先を通知するための連絡先メールアドレス
+        //   lrc.red のAPI利用条件に従って設定する。config.php のみに設定し、GitHubには登録しない
+        'lyrics_search' => [
+            'contact_email' => '',
+        ],
         // 問い合わせ（contact.php）のメールの差出人。サイトと同じドメインのアドレスにする
         //   （違うドメインだと迷惑メール扱いされやすい）。空ならメールは送らず、サイトの中に残すだけ
         'mail_from' => '',
