@@ -161,4 +161,4 @@ $ranked = array_values($seen);
 usort($ranked, static fn(array $a, array $b): int => $b['score'] <=> $a['score']);
 $tracks = array_map(static fn(array $row): array => $row['track'], array_slice($ranked, 0, 10));
 
-api_ok(['tracks' => $tracks, 'provider' => 'Gemini']);
+api_ok(['tracks' => $tracks, 'provider' => 'Gemini + Google Search']);
