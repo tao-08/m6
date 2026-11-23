@@ -362,16 +362,12 @@ function drive_save_files(PDO $pdo, int $bandId, array $files): void
     if ($keep) {
         $marks = implode(',', array_fill(0, count($keep), '?'));
         $pdo->prepare("DELETE FROM band_drive_file WHERE band_id = ? AND file_id NOT IN ($marks)")->execute([$bandId, ...$keep]);
-        // 外したファイルのチャプター・波形も消す
-        foreach (['band_audio_chapter', 'band_audio_wave'] as $t) {
-            $pdo->prepare("DELETE FROM $t WHERE band_id = ? AND audio_key LIKE 'd:%' AND audio_key NOT IN ($marks)")
-                ->execute([$bandId, ...array_map(static fn($id) => 'd:' . $id, $keep)]);
-        }
+        // 外したファイルのチャプターも消す
+        $pdo->prepare("DELETE FROM band_audio_chapter WHERE band_id = ? AND audio_key LIKE 'd:%' AND audio_key NOT IN ($marks)")
+            ->execute([$bandId, ...array_map(static fn($id) => 'd:' . $id, $keep)]);
     } else {
         $pdo->prepare('DELETE FROM band_drive_file WHERE band_id = ?')->execute([$bandId]);
-        foreach (['band_audio_chapter', 'band_audio_wave'] as $t) {
-            $pdo->prepare("DELETE FROM $t WHERE band_id = ? AND audio_key LIKE 'd:%'")->execute([$bandId]);
-        }
+        $pdo->prepare("DELETE FROM band_audio_chapter WHERE band_id = ? AND audio_key LIKE 'd:%'")->execute([$bandId]);
     }
     drive_cache_forget($pdo, $gone); // 落としてあった音源も消す（ほかのバンドが使っていれば残す）
     // ON DUPLICATE KEY UPDATE: 主キー（band_id, file_id）がもうあれば INSERT の代わりに UPDATE する（MySQL の「あれば更新・無ければ追加」）
@@ -470,7 +466,6 @@ function drive_player_html(string $fileId, string $title): string
  * ファイルの一覧を種類ごとに表示する HTML（band.php と live.php の開いたパネルで共通）
  *   並びは「音源 → 動画 → 写真 → リンク」。種類ごとに見た目を変える
  *     音源       … 1ファイルにつき1つのプレーヤー（audio_player_html）。$skipAudio = true なら出さない（band.php は自分で並べる）
- *                  $waves … 保存済みの波形 [audio_key => levels]（audio_waves_by_band の1バンド分）
  *     動画       … プレーヤー（iframe）は1つだけ。2つ以上あるときは上のチップで切り替える
  *                  切り替えは JS（setupDriveSwitch）が iframe の src を差し替えるだけ。全部並べるより軽い
  *     写真       … .live-thumbs（ライブ・バンドの添付画像と同じ見た目）。押すとドライブで開く
@@ -478,7 +473,7 @@ function drive_player_html(string $fileId, string $title): string
  *   名前はタイトル（バンド編集で付ける）があればタイトル、無ければファイル名
  * @param array $files [['band_id', 'file_id', 'name', 'title', 'mime_type', 'size'], ...]
  */
-function drive_files_html(array $files, bool $skipAudio = false, array $waves = []): string
+function drive_files_html(array $files, bool $skipAudio = false): string
 {
     static $panel = 0; // 1ページに何個も出るので、ラジオボタンの name が重ならないよう番号を振る
     $panel++;
@@ -492,8 +487,7 @@ function drive_files_html(array $files, bool $skipAudio = false, array $waves = 
     $html = '';
     foreach ($skipAudio ? [] : $groups['audio'] as $f) {
         $html .= audio_player_html('drive_audio?band=' . (int)$f['band_id'] . '&f=' . rawurlencode((string)$f['file_id']),
-            drive_file_title($f), isset($f['size']) ? (int)$f['size'] : null, null,
-            ['band_id' => (int)$f['band_id'], 'key' => 'd:' . $f['file_id'], 'wave' => $waves['d:' . $f['file_id']] ?? '']); // 波形はチャプターなしでも出す
+            drive_file_title($f), isset($f['size']) ? (int)$f['size'] : null, null);
     }
     if ($groups['video']) {
         $first = $groups['video'][0];

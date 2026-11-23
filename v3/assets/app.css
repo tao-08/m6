@@ -563,9 +563,11 @@ button.tab { border: 0; background: none; font: inherit; font-weight: 800; font-
 .drive-player__name { display: flex; align-items: center; gap: 4px; margin-bottom: 4px; color: var(--muted); font-size: var(--fs-sm); overflow-wrap: anywhere; }
 /* 音源のプレーヤー（lib/audio_player.php）: 名前の右に容量・右端に編集の鉛筆。チャプターのチップは下に並べる */
 .audio-player__size { flex: none; font-size: var(--fs-xs); opacity: .75; }
-.audio-player__edit { flex: none; display: inline-flex; align-items: center; gap: 4px; height: 28px; margin-left: auto; padding: 0 8px; border: 0; border-radius: var(--r-md);
+.audio-player__dl, .audio-player__edit { flex: none; display: inline-flex; align-items: center; gap: 4px; height: 28px; margin-left: auto; padding: 0 8px; border: 0; border-radius: var(--r-md);
   background: none; font: inherit; font-size: var(--fs-xs); white-space: nowrap; color: var(--muted); cursor: pointer; transition: color var(--t-fast) ease, background-color var(--t-fast) ease; }
-.audio-player__edit:hover, .audio-player__edit[aria-pressed="true"] { color: var(--accent); }
+.audio-player__dl { text-decoration: none; }
+.audio-player__dl + .audio-player__edit { margin-left: 0; }
+.audio-player__dl:hover, .audio-player__edit:hover, .audio-player__edit[aria-pressed="true"] { color: var(--accent); }
 .audio-player__edit[aria-pressed="true"] { background: var(--accent-soft); }
 /* 操作部: 再生ボタン・再生位置の棒・時間。チャプターがあるときは、棒の上に吹き出し（.audio-bubble）を並べる
    吹き出しは棒の幅の中に収め（端では中身だけ内側へ寄せ）、三角は本当の位置を指す。--x は 0〜1 の位置、--shift は寄せた分 */
@@ -593,20 +595,6 @@ button.tab { border: 0; background: none; font: inherit; font-weight: 800; font-
 .audio-player__range::-moz-range-progress { height: 4px; border-radius: var(--r-full); background: var(--accent); }
 .audio-player__range::-webkit-slider-thumb { -webkit-appearance: none; width: var(--ap-thumb); height: var(--ap-thumb); margin-top: -5px; border: 0; border-radius: var(--r-full); background: var(--accent); }
 .audio-player__range::-moz-range-thumb { width: var(--ap-thumb); height: var(--ap-thumb); border: 0; border-radius: var(--r-full); background: var(--accent); }
-/* 波形（.audio-player__wave。棒は JS が作る）: つまんでいる間（.is-scrubbing）だけ、棒が下から伸びて細い棒の代わりになる。色が変わるのは再生位置 --q まで */
-.audio-player__wave { position: absolute; top: 50%; left: calc(var(--ap-thumb) / 2); right: calc(var(--ap-thumb) / 2); height: 24px; transform: translateY(-50%);
-  display: flex; align-items: center; gap: 1px; pointer-events: none; }
-.audio-wave__bar { position: relative; flex: 1; min-width: 0; height: calc(max(.12, var(--h)) * 100%); border-radius: var(--r-full); background: var(--border);
-  transform: scaleY(0); transition: transform var(--t-base) var(--ease-out); }
-.audio-wave__bar::before { content: ''; position: absolute; inset: 0; border-radius: inherit; background: var(--accent); opacity: clamp(0, (var(--q) - var(--x)) * 10000, 1); }
-.audio-player__seek.is-scrubbing .audio-wave__bar { transform: scaleY(1); }
-.audio-player__seek:is(.is-scrubbing, .is-settling).has-wave .audio-player__range::-webkit-slider-runnable-track { background: transparent; }
-.audio-player__seek:is(.is-scrubbing, .is-settling).has-wave .audio-player__range::-moz-range-track, .audio-player__seek:is(.is-scrubbing, .is-settling).has-wave .audio-player__range::-moz-range-progress { background: transparent; }
-/* つまみの丸も、波形に変わる間は縮めて消す（位置は波形の色の境目でわかる）。離すと戻る */
-.audio-player__range::-webkit-slider-thumb { transition: transform var(--t-base) var(--ease-out); }
-.audio-player__range::-moz-range-thumb { transition: transform var(--t-base) var(--ease-out); }
-.audio-player__seek.is-scrubbing.has-wave .audio-player__range::-webkit-slider-thumb { transform: scale(0); }
-.audio-player__seek.is-scrubbing.has-wave .audio-player__range::-moz-range-thumb { transform: scale(0); }
 .audio-player__range:focus-visible::-webkit-slider-thumb { box-shadow: var(--ring); }
 .audio-player__range:focus-visible::-moz-range-thumb { box-shadow: var(--ring); }
 .audio-player__bubbles { z-index: 2; position: absolute; bottom: calc(100% - 6px); left: calc(var(--ap-thumb) / 2); right: calc(var(--ap-thumb) / 2); height: 28px; container-type: inline-size; pointer-events: none; }
@@ -664,9 +652,7 @@ button.tab { border: 0; background: none; font: inherit; font-weight: 800; font-
 .audio-chapter.is-new, .audio-bubble.is-new { animation: ap-pop var(--t-base) var(--ease-out) backwards; animation-delay: calc(min(var(--i, 0), 8) * var(--t-fast) / 5); }
 .audio-chapter.is-leaving, .audio-bubble.is-leaving { animation: ap-out var(--t-base) ease-in forwards; pointer-events: none; }
 @media (prefers-reduced-motion: reduce) {
-  .audio-player__fold, .audio-player__edit, .audio-chapter, .audio-chapter__del, .audio-bubble, .audio-player__seek.is-jumping, .audio-wave__bar { transition: none; }
-  .audio-player__range::-webkit-slider-thumb { transition: none; } /* ブラウザ専用の擬似要素は、まとめて書くと片方で全体が無視される */
-  .audio-player__range::-moz-range-thumb { transition: none; }
+  .audio-player__fold, .audio-player__edit, .audio-chapter, .audio-chapter__del, .audio-bubble, .audio-player__seek.is-jumping { transition: none; }
   .audio-chapter.is-new, .audio-bubble.is-new, .audio-chapter.is-leaving, .audio-bubble.is-leaving { animation: none; }
 }
 .audio-player__add .icon { font-size: var(--fs-md); margin-right: 4px; }

@@ -14,10 +14,6 @@
  *    stats = {} を渡すと、読んだバイト数（stats.bytes）が入る。
  *  AutoChapter.coarseTransitions(coarse) / fineWindows(...) / mergeCurve(...)
  *    → 上の粗く → 細かくの、読まない純粋な部分（テスト用に公開）
- *  AutoChapter.levels({ url, size, duration, bars, concurrency, signal })
- *    → Promise<string>  ファイル全体を bars 本の棒に分けた音量（16 進 2 文字 = 1 本）。再生位置をつまんだときの波形に使う
- *    各棒の真ん中を粗い読みと同じ長さだけ読む。小さいファイルは全体を 1 回で読む
- *  AutoChapter.toLevels(dB の配列) → 16 進の文字列（読まない純粋な部分。テスト用に公開）
  *  AutoChapter.segment(dbPerSec, songCount)
  *    → 音量の配列からチャプターを作るだけの純粋な部分（テスト用に公開）
  */
@@ -82,13 +78,6 @@
     if (first === undefined) return [];
     let last = first;
     return db.map((v) => (Number.isFinite(v) ? (last = v) : last));
-  }
-
-  // dB の配列 → 最小から最大を 0 から 255 に伸ばした 16 進（2 文字 = 1 本）。差が 1 dB 未満なら全部 0x80（平らな波形）
-  function toLevels(db) {
-    const v = fillUnknown(db);
-    const lo = Math.min(...v), hi = Math.max(...v);
-    return v.map((d) => (hi - lo < 1 ? 0x80 : Math.min(255, Math.max(0, Math.round((d - lo) / (hi - lo) * 255)))).toString(16).padStart(2, '0')).join('');
   }
 
   function segment(dbPerSec, songCount) {
@@ -266,31 +255,5 @@
     return segment(mergeCurve(coarse, COARSE_STEP_SEC, fine, secs), songCount);
   }
 
-  async function levels({ url, size, duration, bars = 100, concurrency = 2, signal }) {
-    const step = duration / bars;
-    const bps = size / duration;
-    const readSec = Math.min(COARSE_READ_SEC, step);
-    const readBytes = Math.max(MIN_READ_BYTES, Math.ceil(bps * readSec));
-    const db = new Array(bars).fill(NaN);
-    if (bars * readBytes >= size) { // 小さいファイル: 棒ごとに読むより、全体を 1 回で読むほうが速い
-      const secs = Math.ceil(duration);
-      const sumsq = new Float64Array(secs + 1), cnt = new Float64Array(secs + 1);
-      accumulate(await decode(await fetchChunk(url, 0, size, signal)), 0, sumsq, cnt);
-      for (let k = 0; k < bars; k++) {
-        const a = Math.floor(k * step), b = Math.max(a + 1, Math.ceil((k + 1) * step));
-        let sq = 0, n = 0;
-        for (let s = a; s < b && s < secs; s++) { sq += sumsq[s]; n += cnt[s]; }
-        if (n > 0) db[k] = toDb(sq, n);
-      }
-    } else {
-      await pool(bars, concurrency, signal, async (k) => {
-        db[k] = await readDb(url, size, bps, k * step + (step - readSec) / 2, readBytes, signal);
-      });
-    }
-    const hex = toLevels(db);
-    if (!hex) throw new Error('音量を取れなかった');
-    return hex;
-  }
-
-  root.AutoChapter = { analyze, levels, toLevels, segment, coarseTransitions, fineWindows, mergeCurve };
+  root.AutoChapter = { analyze, segment, coarseTransitions, fineWindows, mergeCurve };
 })();

@@ -1055,16 +1055,6 @@ CREATE TABLE band_audio_chapter (
         ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
--- 音源の波形（再生位置をつまんでいるときに出す。説明は migrations/131）
-CREATE TABLE band_audio_wave (
-    band_id   INT UNSIGNED NOT NULL,
-    audio_key VARCHAR(110) CHARACTER SET ascii COLLATE ascii_bin NOT NULL, -- band_audio_chapter と同じ
-    levels    VARCHAR(255) CHARACTER SET ascii COLLATE ascii_bin NOT NULL, -- 棒ごとの音量（16 進 2 文字 = 1 本）
-    PRIMARY KEY (band_id, audio_key),
-    CONSTRAINT fk_baw_band FOREIGN KEY (band_id) REFERENCES band (band_id)
-        ON UPDATE CASCADE ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
 CREATE TABLE timetable_draft (
     draft_id          INT UNSIGNED NOT NULL AUTO_INCREMENT,
     title             VARCHAR(100) NOT NULL,

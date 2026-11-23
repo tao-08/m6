@@ -302,11 +302,9 @@ if (is_post()) {
                 }
             }
             $removeFiles = array_merge($removeFiles, $isNew ? [] : attach_remove($pdo, 'band_audio', $bandId, $audioRemoveIds));
-            $delChapters = $pdo->prepare('DELETE FROM band_audio_chapter WHERE band_id = ? AND audio_key = ?'); // 外した MP3 のチャプター・波形も消す
-            $delWave = $pdo->prepare('DELETE FROM band_audio_wave WHERE band_id = ? AND audio_key = ?');
+            $delChapters = $pdo->prepare('DELETE FROM band_audio_chapter WHERE band_id = ? AND audio_key = ?'); // 外した MP3 のチャプターも消す
             foreach ($isNew ? [] : $audioRemoveIds as $aid) {
                 $delChapters->execute([$bandId, 'a:' . $aid]);
-                $delWave->execute([$bandId, 'a:' . $aid]);
             }
             attach_add($pdo, 'band_audio', $bandId, $audioUploads, null, $newFiles);
             $pdo->commit();
