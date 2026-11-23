@@ -1228,11 +1228,14 @@ function setupLyricsSearch() {
     button.disabled = true;
     showMessage(results, '歌詞から曲を検索中…');
     try {
+      const omnibus = card.closest('form')?.querySelector('[data-omnibus]')?.checked ?? false;
+      const artistInput = card.querySelector('[data-song-artist]');
+      const artist = !omnibus ? (artistInput?.value.trim() || '') : '';
       const res = await fetch('api_lyrics_search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },
         credentials: 'same-origin',
-        body: JSON.stringify({ q }),
+        body: JSON.stringify({ q, artist }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || '歌詞検索に失敗しました');
