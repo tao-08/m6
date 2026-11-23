@@ -26,7 +26,7 @@ if (mb_strlen($expectedTitle, 'UTF-8') > 100 || mb_strlen($expectedArtist, 'UTF-
 
 $geminiConfig = (array)(config('gemini') ?? []);
 $apiKey = trim((string)($geminiConfig['api_key'] ?? ''));
-$model = trim((string)($geminiConfig['lyrics_search_model'] ?? 'gemini-2.5-flash'));
+$model = trim((string)($geminiConfig['lyrics_search_model'] ?? 'gemini-3.8-flash'));
 if ($apiKey === '') {
     fail(503, 'config.php の common.gemini.api_key に Gemini API キーを設定してください');
 }
