@@ -654,8 +654,9 @@ function setupPreview() {
     btn.querySelector('.icon').textContent = state === 'stop' ? 'play_arrow' : 'pause';
     if (state === 'stop') btn.style.removeProperty('--p');
   };
-  const stop = () => {
-    audio.pause();
+  const stop = (fade = false) => {
+    if (fade) fadePause(audio);
+    else { cancelFade(audio); audio.pause(); }
     if (current) setState(current, 'stop');
     current = null;
   };
@@ -703,7 +704,7 @@ function setupPreview() {
   document.addEventListener('click', (e) => {
     const btn = e.target.closest('[data-preview]');
     if (!btn || btn.disabled) return;
-    if (current === btn) { stop(); return; }
+    if (current === btn) { stop(true); return; }
     stop();
     retried = false;
     if (!btn.dataset.previewUrl) { // URL を聞きに行く間に「押した瞬間」が過ぎるので、先に無音を鳴らしておく

@@ -435,7 +435,7 @@ function setupAudioPlayers(root = document) {
         if (audio.networkState === HTMLMediaElement.NETWORK_NO_SOURCE) audio.src = audio.src; // 前に読めなかった: 入れ直して読み直す
         if (audio.readyState === 0) loadWatch();
         audio.play().catch(() => {});
-      } else audio.pause();
+      } else fadePause(audio);
     });
     // つまみを動かしている間は表示だけ。離したら動かす（キーの連打は、少し待って最後の位置へ）
     range.addEventListener('input', () => { dragging = true; update(); });

@@ -185,6 +185,43 @@ async function apiPost(url, body, fallback, opts) {
   return json;
 }
 
+/** 音を一瞬（ms）でフェードアウトしてから止める。フェード中に止め直す・鳴らし直すときは cancelFade で音量を戻す */
+const volumeLocked = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); // iOS は audio.volume を変えられない
+function fadePause(audio, ms = 150) {
+  if (audio.paused) return;
+  if (volumeLocked) {
+    // Web Audio の GainNode で下げる。別サイトの音は CORS が無いと無音になるので、同じサイトの音だけ（それ以外はすぐ止める）
+    if (!audio.currentSrc.startsWith(location.origin) && !audio.currentSrc.startsWith('/')) { audio.pause(); return; }
+    if (!audio._gain) {
+      const ctx = new AudioContext();
+      audio._gain = ctx.createGain();
+      ctx.createMediaElementSource(audio).connect(audio._gain).connect(ctx.destination);
+    }
+    const g = audio._gain;
+    clearTimeout(audio._fade);
+    audio._gain.context.resume();
+    g.gain.cancelScheduledValues(0);
+    g.gain.setValueAtTime(g.gain.value, g.context.currentTime);
+    g.gain.linearRampToValueAtTime(0, g.context.currentTime + ms / 1000);
+    audio._fade = setTimeout(() => { audio.pause(); cancelFade(audio); }, ms);
+    return;
+  }
+  if (audio._fade === undefined) audio._v = audio.volume;
+  clearInterval(audio._fade);
+  const t0 = performance.now();
+  audio._fade = setInterval(() => {
+    const k = Math.min(1, (performance.now() - t0) / ms);
+    audio.volume = audio._v * (1 - k);
+    if (k === 1) { audio.pause(); cancelFade(audio); }
+  }, 16);
+}
+function cancelFade(audio) {
+  if (audio._fade === undefined) return;
+  clearInterval(audio._fade);
+  audio._fade = undefined;
+  if (audio._gain) { audio._gain.gain.cancelScheduledValues(0); audio._gain.gain.value = 1; } else audio.volume = audio._v;
+}
+
 /** 要素を作る: mkEl('div', 'クラス', '文字')。文字は textContent に入る */
 function mkEl(tag, cls, text) {
   const e = document.createElement(tag);
