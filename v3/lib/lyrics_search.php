@@ -45,12 +45,11 @@ function lyrics_search_query_variants(string $query): array
         }
     }
     $normalized = mb_convert_kana($normalized, 'asKV', 'UTF-8');
-    $add($normalized);
-
     $withoutPunctuation = preg_replace('/[\p{P}\p{S}]+/u', ' ', $normalized) ?? $normalized;
     $withoutPunctuation = preg_replace('/[\p{Z}\s]+/u', ' ', trim($withoutPunctuation)) ?? trim($withoutPunctuation);
     $add($withoutPunctuation);
 
+    // 句読点を整理した後にかな変換する。原文・正規化・かな変換の最大3段階。
     $hiragana = mb_convert_kana($withoutPunctuation, 'c', 'UTF-8');
     $add($hiragana);
 
