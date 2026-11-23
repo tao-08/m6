@@ -98,6 +98,9 @@ function claude_json(string $system, array $content, array $schema, int $maxToke
 最終的な返事は、次の JSON スキーマに合う JSON だけを出力する（前置き・説明・コードブロックは付けない）:
 " . json_encode($schema, JSON_UNESCAPED_UNICODE);
     }
+    // プロンプトキャッシュ: 指示文（ツール + system）までを5分間覚えてもらい、同じ指示での再呼び出し・pause_turn の続きで入力代を約1/10にする
+    //   最小の長さに届かないときは黙ってキャッシュされないだけ（エラーにはならない）
+    $body['system'] = [['type' => 'text', 'text' => $body['system'], 'cache_control' => ['type' => 'ephemeral']]];
     // AI が安全上の理由で断ったとき、自動で別のモデルに回してもらう
     // Haiku にはこの仕組みが無い（送るとエラーになる）ので、Haiku 以外のときだけ付ける
     $useFallback = !str_starts_with($body['model'], 'claude-haiku');
@@ -155,7 +158,13 @@ function claude_json(string $system, array $content, array $schema, int $maxToke
         if (($res['stop_reason'] ?? '') !== 'pause_turn' || $round >= 3) {
             break;
         }
-        $body['messages'][] = ['role' => 'assistant', 'content' => $res['content'] ?? []];
+        $asst = $res['content'] ?? [];
+        // 続きの依頼では、ここまでの検索結果（大きい）をキャッシュさせる。印は system と合わせて最大4つ（続きは最大3回）。thinking には付けられない
+        $last = array_key_last($asst);
+        if ($last !== null && !in_array($asst[$last]['type'] ?? '', ['thinking', 'redacted_thinking'], true)) {
+            $asst[$last]['cache_control'] = ['type' => 'ephemeral'];
+        }
+        $body['messages'][] = ['role' => 'assistant', 'content' => $asst];
     }
 
     $stop = $res['stop_reason'] ?? '';
