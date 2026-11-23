@@ -3,7 +3,7 @@
  * =====================================================================
  *  api_comment_like.php — ライブ・バンドのコメントの ❤ を付ける / 外す API（JSON を返す）
  * =====================================================================
- *  api_board_like.php と同じ作り。assets/app.js の setupLikes が fetch() で呼ぶ。
+ *  api_board_like.php と同じ作り。assets/app_board.js の setupLikes が fetch() で呼ぶ。
  *
  *  リクエスト（POST, JSON）:  {"comment_id": 12}
  *  レスポンス（JSON）      :  {"liked": true, "count": 5}（押すたびに 付ける ⇔ 外す が入れ替わる）

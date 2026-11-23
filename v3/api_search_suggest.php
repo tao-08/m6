@@ -3,7 +3,7 @@
  * =====================================================================
  *  api_search_suggest.php — 検索語の補完 API（JSON を返す）
  * =====================================================================
- *  検索ページ（search.php）の入力欄から、JavaScript（assets/app.js の setupSearchSuggest）が呼ぶ。
+ *  検索ページ（search.php）の入力欄から、JavaScript（assets/app_list.js の setupSearchSuggest）が呼ぶ。
  *
  *  リクエスト（GET）: ?q=入力中の文字
  *  レスポンス（JSON）: {"items": [{"text": "検索語", "kind": "member|band|artist|live|venue|role|faculty|song"}, ...]}

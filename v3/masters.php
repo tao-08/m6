@@ -343,7 +343,7 @@ if ($tab === 'artist') {
 $counts = ['venue' => count($venues), 'day' => count($days), 'role' => count($roles), 'artist' => count($artists)];
 
 /** 消せないときのグレーアウトしたゴミ箱（disabled のボタンはマウスの反応が鈍いので、外側の span でポップアップを出す）
- *  ポップアップは app.js の setupTip（data-tip）が出す。PC は乗せる、スマホは押すと出て、自動で消える。
+ *  ポップアップは app_ui.js の setupTip（data-tip）が出す。PC は乗せる、スマホは押すと出て、自動で消える。
  *  文字は h()（htmlspecialchars）を通して属性に入れ、JS 側は textContent で入れる（XSS 対策の二重がけ） */
 function trash_disabled(string $why): string
 {

@@ -4,7 +4,7 @@
  *  api_instrument.php — 楽器を追加する API（JSON を返す）
  * =====================================================================
  *  名簿の取り込み（import.php）で「etc」を選んだときのモーダルから、
- *  JavaScript（assets/app.js の setupPicks）が fetch() で呼ぶ。
+ *  JavaScript（assets/app_timetable.js の setupPicks）が fetch() で呼ぶ。
  *
  *  リクエスト（POST, JSON）:  {"short_name": "Tp", "name": "トランペット"}
  *  レスポンス（JSON）      :  {"instrument_id": 11, "short_name": "Tp", "name": "トランペット", "existed": false}

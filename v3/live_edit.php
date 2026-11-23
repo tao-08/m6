@@ -569,7 +569,7 @@ if ($isNew) {
 <?php } ?>
 <?php foreach ($errors as $e): ?><div class="flash flash--error"><?= h($e) ?></div><?php endforeach; ?>
 
-<form method="post" enctype="multipart/form-data" class="card form-card" id="live-form" data-same-year<?= unsaved_attr() ?>><!-- 日付の年を変えると、ほかの日程の年もそろう（assets/app.js の setupSameYear） -->
+<form method="post" enctype="multipart/form-data" class="card form-card" id="live-form" data-same-year<?= unsaved_attr() ?>><!-- 日付の年を変えると、ほかの日程の年もそろう（assets/app_import.js の setupSameYear） -->
     <?= csrf_field() ?>
     <input type="hidden" name="live_id" value="<?= $liveId ?>">
     <?php if (!$canMerge): ?>
@@ -582,7 +582,7 @@ if ($isNew) {
             <?php if (!$isNew): ?><?= live_image_field($images) ?><?php endif; ?>
         </div>
     <?php else: ?>
-        <!-- 取り込み画面と同じ「統合」トグル（assets/app.js の setupMergeToggle / setupLiveEditMerge）
+        <!-- 取り込み画面と同じ「統合」トグル（assets/app_import.js の setupMergeToggle / setupLiveEditMerge）
              ON: 年度・ライブ名の欄を隠して disabled（送信されない）にし、統合先のライブを選ばせる -->
         <?php require __DIR__ . '/partials/live_picker.php'; ?>
         <div class="form-grid" data-live-merge>
@@ -672,7 +672,7 @@ if ($isNew) {
     <?php endforeach; ?>
 
     <!-- 追加する日程。新規ライブでは最初の日程（必須）。
-         既存ライブでは「＋ 日程を追加」のチェックボックスだけ見せ、チェックすると入力欄が開く（assets/app.js の setupNewDayToggle） -->
+         既存ライブでは「＋ 日程を追加」のチェックボックスだけ見せ、チェックすると入力欄が開く（assets/app_import.js の setupNewDayToggle） -->
     <?php if ($isNew): ?>
         <h2 class="section-title">日程</h2>
     <?php else: ?>
@@ -686,7 +686,7 @@ if ($isNew) {
         <label class="field field--wide"><span>メモ</span><input autocomplete="off" name="nd[note]" value="<?= h($newDay['note']) ?>"></label>
     </div>
     <?php if ($isNew): ?>
-        <!-- 2つ目以降の日程。「＋ 日程を追加」で <template> を複製して増やす（assets/app.js の setupExtraDays） -->
+        <!-- 2つ目以降の日程。「＋ 日程を追加」で <template> を複製して増やす（assets/app_import.js の setupExtraDays） -->
         <div data-extra-days><?php foreach ($extraDays as $i => $x) echo extra_day_block((string)$i, $x, $venues, $dayLabels); ?></div>
         <template id="extra-day-tpl"><?= extra_day_block('__i__', ['label_sel' => '', 'label_new' => '', 'date' => '', 'venue_sel' => '', 'venue_new' => '', 'note' => '', 'total' => ''], $venues, $dayLabels) ?></template>
         <p class="day-actions"><button type="button" class="btn btn--ghost btn--sm" data-extra-day-add>＋ 日程を追加</button></p>

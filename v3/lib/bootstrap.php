@@ -232,7 +232,7 @@ function notice_body_html(string $body): string
 }
 
 /**
- * 編集フォームに付ける「未保存のまま離れたら警告」の目印（assets/app.js の setupUnsavedGuard）。
+ * 編集フォームに付ける「未保存のまま離れたら警告」の目印（assets/app_form.js の setupUnsavedGuard）。
  *   POST で画面が出ている = 送信したがエラーで戻ってきた（成功なら redirect している）。
  *   入力はまだ保存されていないので、何も触っていなくても「変更あり」として扱う（data-unsaved="posted"）。
  */
@@ -305,7 +305,7 @@ function check_reason_labels(int $bits): array
  * 🚩 の入力部品: 旗のトグル + 旗を立てたときだけ出る「理由」「誰について」のトグルボタン。
  *   送信される名前: {$prefix}[flag] / {$prefix}[reason][] / {$prefix}[who][]
  *   $members: [member_id => 名前]（空なら「誰について」は出さない） / $who: 選んでいる member_id の配列
- *   $vocalIds: ボーカル（Vo / Vo/Gt など）の人の member_id。「VoかVo/Gtか不明」を押すと JS がこの人たちを選ぶ（app.js の setupCheckPicker）
+ *   $vocalIds: ボーカル（Vo / Vo/Gt など）の人の member_id。「VoかVo/Gtか不明」を押すと JS がこの人たちを選ぶ（app_form.js の setupCheckPicker）
  *   チェックボックスを丸いボタンに見せている（assets/app.css の .check-picker）
  */
 function check_picker(string $prefix, int $bits, array $members = [], array $who = [], string $label = '', array $vocalIds = []): string
@@ -394,7 +394,7 @@ function users_url(array $q): string
 }
 
 /*
- * ---- 再読み込みなしの並べ替え（assets/app.js の setupClientSort）----
+ * ---- 再読み込みなしの並べ替え（assets/app_list.js の setupClientSort）----
  *   並び方ごとの各行の位置を PHP が全部計算して、行の data-pos に入れておく。JS はその番号の順に行を並べ直すだけ。
  *   比べ方を PHP にだけ書けば、開いたとき（GET）と押したとき（JS）の並びが必ず同じになる
  *   並び方のキーは '列:asc' / '列:desc'。'' は並べ替えなし（いつもの並び）

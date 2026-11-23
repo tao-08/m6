@@ -120,7 +120,7 @@ function attach_remove(PDO $pdo, string $kind, int $ownerId, array $imageIds): a
     return $files;
 }
 
-/** サムネイルの並び。押すとモーダルで大きく出る（assets/app.js の setupLiveImages）。ライブページと同じ見た目 */
+/** サムネイルの並び。押すとモーダルで大きく出る（assets/app_admin.js の setupLiveImages）。ライブページと同じ見た目 */
 function attach_thumbs_html(string $kind, array $images, callable $extra = null): string
 {
     if (!$images) {
@@ -152,7 +152,7 @@ function attach_modal_html(): string
 
 /**
  * 画像の欄: 添付済みのサムネイル（押して✕で削除にチェック）＋ 追加ボタン。name は images[] / image_remove[]
- * 上限は assets/app.js の setupLiveImages が数える（data-max）
+ * 上限は assets/app_admin.js の setupLiveImages が数える（data-max）
  */
 function attach_field_html(string $kind, array $images = [], ?int $max = null): string
 {

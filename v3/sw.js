@@ -13,7 +13,7 @@
  *  だから「いつもネットから取る。取れなかったときだけ offline.html」。
  *
  *  このファイルを変えたら CACHE の数字を上げる（古いキャッシュを消すため）。
- *  assets/app.js の setupServiceWorker() から登録している。
+ *  assets/app_ui.js の setupServiceWorker() から登録している。
  * =====================================================================
  */
 const CACHE = 'abbey-offline-v4';

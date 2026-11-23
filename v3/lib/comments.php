@@ -221,7 +221,7 @@ function comments_render(string $kind, int $targetId, array $user): void
     <form method="post" class="card board-reply comments__form">
         <?= csrf_field() ?>
         <input type="hidden" name="action" value="comment_add">
-        <!-- 返信先（各コメントの返信ボタンで追加・解除。assets/app.js の setupComments）。選んだ数だけ hidden の reply_to[] が入る -->
+        <!-- 返信先（各コメントの返信ボタンで追加・解除。assets/app_board.js の setupComments）。選んだ数だけ hidden の reply_to[] が入る -->
         <div class="board-reply__to" data-comment-reply-to hidden></div>
         <?= alias_field_html((string)$user['name']) ?>
         <textarea class="board-textarea" name="body" rows="3" maxlength="<?= COMMENT_MAX ?>" required aria-label="コメント"></textarea>

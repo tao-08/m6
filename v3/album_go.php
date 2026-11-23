@@ -69,5 +69,5 @@ if ($app === 'spotify' || $app === 'apple_music') {
 // $found が URL ならそれへ、null なら検索ページへ。アプリを選んでいない人などは登録元のページへ
 //   （ここで false を渡すと album_go.php へのリンクが返ってきて堂々巡りになるので、上で必ず URL か null にしている）
 $url = album_listen_url($app, $album, $found);
-// ?json=1 … スマホの app.js（setupSpotifyAppLinks）が飛び先だけを聞きに来る。Spotify ならアプリ用の URL に置き換えて開くため
+// ?json=1 … スマホの app_ui.js（setupSpotifyAppLinks）が飛び先だけを聞きに来る。Spotify ならアプリ用の URL に置き換えて開くため
 redirect_or_json($url);

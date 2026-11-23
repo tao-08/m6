@@ -3,7 +3,7 @@
  * =====================================================================
  *  api_instrument_save.php — 楽器の色・略称・正式名称を1項目ずつ保存する API（JSON を返す）
  * =====================================================================
- *  instruments.php（楽器の管理）の入力欄から、JavaScript（assets/app.js の setupInstrumentAutosave）が
+ *  instruments.php（楽器の管理）の入力欄から、JavaScript（assets/app_admin.js の setupInstrumentAutosave）が
  *  「入力が止まって約0.8秒後」に fetch() で呼ぶ。保存ボタンは無い。
  *
  *  リクエスト（POST, JSON）:

@@ -1,6 +1,6 @@
 <?php
 /*
- * アルバムのモーダル（フッターに1個だけ置く。開くのは assets/app.js の setupAlbumModal）
+ * アルバムのモーダル（フッターに1個だけ置く。開くのは assets/app_album.js の setupAlbumModal）
  *   [data-album-open] を押すと、暗転した画面に アルバム名・発売年 → 音楽アプリのアイコン・検索・閉じる を出す。
  *   押された要素の data-album-* から中身を入れる（album_open_attrs で作る）。
  *   アイコンは <template> に4アプリぶん入れておき、data-album-app のものを JS が写す。

@@ -284,7 +284,7 @@ render_header('ライブ一覧', 'lives');
     </div>
     <!-- .sorted-list: 並び替えボタンを、一番上の年度の見出しの右に重ねて置く（member.php の出演履歴と同じ） -->
     <div class="sorted-list sorted-list--live">
-    <!-- 並び替え: 押すたびに古い順 ⇔ 新しい順。年度の順と、年度の中のカード（.grid の中）の順を逆にする（assets/app.js の setupSortToggle）
+    <!-- 並び替え: 押すたびに古い順 ⇔ 新しい順。年度の順と、年度の中のカード（.grid の中）の順を逆にする（assets/app_list.js の setupSortToggle）
          最初は新しい順なので aria-pressed="false"（app.js は aria-pressed が true = 古い順 として扱う） -->
     <button type="button" class="btn btn--ghost btn--sm sorted-list__btn" data-sort-toggle="#live-list" data-sort-items=".grid" aria-pressed="false">新しい順 ↓</button>
     <div id="live-list">

@@ -5,7 +5,7 @@
  * =====================================================================
  *  partials/footer.php がログイン中の全ページで require する。
  *  開くのは右上メニューの「ホーム画面に追加する」（[data-a2hs-open]。スマホ・タブレットだけ出す: app.css の .touch-only）。
- *  Safari / Chrome の切り替え・最初にどちらを出すか・Android の「今すぐインストール」は assets/app.js の setupAddToHome。
+ *  Safari / Chrome の切り替え・最初にどちらを出すか・Android の「今すぐインストール」は assets/app_ui.js の setupAddToHome。
  *  （a2hs = Add To Home Screen の略）
  * =====================================================================
  */
@@ -36,7 +36,7 @@
         </div>
 
         <div class="a2hs__panel" role="tabpanel" id="a2hs-chrome" aria-labelledby="a2hs-tab-chrome" data-a2hs-panel="chrome" hidden>
-            <!-- Android の Chrome がインストールできると判断したときだけ出す（beforeinstallprompt。app.js の setupAddToHome） -->
+            <!-- Android の Chrome がインストールできると判断したときだけ出す（beforeinstallprompt。app_ui.js の setupAddToHome） -->
             <button type="button" class="btn btn--primary a2hs__install" data-a2hs-install hidden><?= icon('install_mobile') ?>今すぐインストール</button>
             <ol class="a2hs__steps">
                 <li>

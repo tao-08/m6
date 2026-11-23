@@ -12,7 +12,7 @@
  *  それ以外の楽器（Perc / Vn / Sax / Prog / Harm と、名簿の取り込みで「etc」から追加された楽器）
  *    追加 … 表の一番下の行（略称・正式名称・色を入れて ＋）。create_instrument（lib/repository.php）で作る
     保存 … 保存ボタンは無く、色（'#rrggbb'）・略称（UNIQUE。10文字まで）・正式名称（30文字まで）は
- *            入力が止まって約0.8秒後に1項目ずつ自動保存（api_instrument_save.php / app.js の setupInstrumentAutosave）
+ *            入力が止まって約0.8秒後に1項目ずつ自動保存（api_instrument_save.php / app_admin.js の setupInstrumentAutosave）
  *            色は instrument.color に入り、ページの <head> の <style> で付く（lib/bootstrap.php の instrument_color_css）
  *    削除 … 使われていない楽器はそのまま消す。
  *            出演記録・TAB 譜で使われている楽器は、統合先を選んで「付け替えてから」消す（lib/repository.php の merge_instrument）
@@ -149,7 +149,7 @@ render_header('楽器の管理');
             <?php else:
                 // 色が未設定（NULL）の楽器は、その他と同じグレーを初期値として出す
                 $color = is_hex_color($ins['color']) ? strtolower($ins['color']) : '#6c6a75'; ?>
-                <!-- 表示（プレビュー）: 実際の楽器ラベル（.part）を、ライト・ダークの両方で出す。色・略称を変えると app.js の setupInstrumentPreview がその場で更新する。
+                <!-- 表示（プレビュー）: 実際の楽器ラベル（.part）を、ライト・ダークの両方で出す。色・略称を変えると app_admin.js の setupInstrumentPreview がその場で更新する。
                      --pv に色を入れるだけ。ダークの自動調整（明るさを .78 以上に）は CSS 側で、本番のラベルと同じ式（lib/bootstrap.php の instrument_color_css）にしている -->
                 <td>
                     <span class="inst-pv inst-pv--custom" data-inst-preview style="--pv:<?= h($color) ?>" aria-hidden="true">
@@ -160,7 +160,7 @@ render_header('楽器の管理');
                 <td>
                     <!-- type="color" = ブラウザのカラーピッカー。値は必ず '#rrggbb'（小文字）で送られる。
                          スマホのピッカーは色コードを打てないことがあるので、隣に色コードの入力欄を置く（name が無いので送信はされない。
-                         打った色は assets/app.js の setupInstrumentHex がピッカーに写す＝送られるのはピッカーの値だけ。形の確認はサーバー側の is_hex_color のまま） -->
+                         打った色は assets/app_admin.js の setupInstrumentHex がピッカーに写す＝送られるのはピッカーの値だけ。形の確認はサーバー側の is_hex_color のまま） -->
                     <span class="inst-admin__colorbox">
                         <input type="color" value="<?= h($color) ?>" aria-label="「<?= h($ins['name']) ?>」の色" class="inst-admin__color" data-inst-color data-inst-save="color" data-inst-id="<?= $iid ?>">
                         <input type="text" value="<?= h($color) ?>" maxlength="7" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="「<?= h($ins['name']) ?>」の色コード" class="inst-admin__hex" data-inst-hex>

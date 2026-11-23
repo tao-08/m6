@@ -379,7 +379,7 @@ $page = min($page, $pages);
 // ?modal=まとまりのキー（曲カードを押したとき songs.js が取りに来る）… その1曲のモーダルだけを返す。
 //   絞り込み・ページに関係なく $works から直接探す（キーは配列の添字として使うだけ。SQL にも HTML にも直接は入れない）
 $modalKey = (string)($_GET['modal'] ?? '');
-// ?modalfor=曲キー（他のページのセトリの曲名から。songs.js / app.js の setupSongModalLinks）… その曲がある版のまとまりを探して、?modal= と同じ断片を返す
+// ?modalfor=曲キー（他のページのセトリの曲名から。songs.js / app_ui.js の setupSongModalLinks）… その曲がある版のまとまりを探して、?modal= と同じ断片を返す
 $modalFor = (string)($_GET['modalfor'] ?? '');
 if ($modalFor !== '') {
     if (tab_key_valid($modalFor)) {
@@ -572,7 +572,7 @@ $renderModal = static function (array $g) use ($musicApp, $mvByWork, $ytEnabled,
                             <?php else: ?><span class="muted small"><?= h($g['artist']) ?></span><?php endif; ?>
                         <?php endif; ?>
                     </div>
-                    <?php if ($rep['src'] !== null): // 30秒試聴（app.js の setupPreview。押したときに音源を探す） ?>
+                    <?php if ($rep['src'] !== null): // 30秒試聴（app_songs.js の setupPreview。押したときに音源を探す） ?>
                         <button type="button" class="setlist__play songs-modal__play" data-preview="<?= h(album_key($rep['src'], $rep['tid'])) ?>" aria-label="30秒試聴" title="30秒試聴"><?= icon('play_arrow', 'icon--fill') ?></button>
                     <?php endif; ?>
                 </div>

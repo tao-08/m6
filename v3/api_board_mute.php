@@ -3,7 +3,7 @@
  * =====================================================================
  *  api_board_mute.php — 掲示板のスレのミュートを付ける / 外す API（JSON を返す）
  * =====================================================================
- *  board_thread.php のスレ名の右のベルを押すと、JavaScript（assets/app.js の setupBoardMute）が fetch() で呼ぶ。
+ *  board_thread.php のスレ名の右のベルを押すと、JavaScript（assets/app_board.js の setupBoardMute）が fetch() で呼ぶ。
  *
  *  リクエスト（POST, JSON）:  {"thread_id": 12}
  *  レスポンス（JSON）      :  {"muted": true}（押すたびに 付ける ⇔ 外す が入れ替わる）

@@ -5,7 +5,7 @@
  * =====================================================================
  *  仕組み
  *    1. 端末（ブラウザ）が通知の受け取りを許可すると、送り先の URL（endpoint）と暗号用の鍵が手に入る
- *       → api_push_subscribe.php が push_subscription に保存する（assets/app.js の setupPush）
+ *       → api_push_subscribe.php が push_subscription に保存する（assets/app_ui.js の setupPush）
  *    2. 重要なお知らせが公開されたら、保存した端末すべてに送る（push_dispatch_due）
  *    3. 端末の sw.js が受け取って、OS の通知として出す。押すとお知らせのページが開く
  *

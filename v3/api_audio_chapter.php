@@ -3,7 +3,7 @@
  * =====================================================================
  *  api_audio_chapter.php — 音源のチャプター（MC・曲）を付ける / 消す API（JSON を返す）
  * =====================================================================
- *  band.php のプレーヤー（assets/app.js の setupAudioPlayers）が fetch() で呼ぶ。
+ *  band.php のプレーヤー（assets/app_player.js の setupAudioPlayers）が fetch() で呼ぶ。
  *
  *  リクエスト（POST, JSON）:
  *    {"action": "add", "band_id": 12, "key": "a:3", "kind": "mc" | "song", "at_ms": 61000}

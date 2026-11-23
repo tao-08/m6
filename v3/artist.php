@@ -335,7 +335,7 @@ render_header($artist['name'], 'artists');
         <!-- 候補: ほかのアーティスト名（表記をそろえるときの参考。同じ名前にすると弾かれるので、そのときは下の統合を使う） -->
         <label class="field field--wide"><span>名前</span><input name="name" value="<?= h($artist['name']) ?>" maxlength="100" required data-suggest-list="artist-names" autocomplete="off"></label>
         <label class="field field--wide"><span>ふりがな（任意）</span><input name="name_kana" value="<?= h($artist['name_kana'] ?? '') ?>" maxlength="100" autocomplete="off"></label>
-        <?php if (claude_enabled()): // AI の読みは入力欄に入れるだけ。確かめてから下のボタンで保存する（api_artist_kana.php / app.js の setupKanaAi） ?>
+        <?php if (claude_enabled()): // AI の読みは入力欄に入れるだけ。確かめてから下のボタンで保存する（api_artist_kana.php / app_admin.js の setupKanaAi） ?>
             <div class="form-actions field--wide"><button class="btn btn--ghost btn--sm" type="button" data-kana-ai>AI で読みを入れる</button><span class="muted small" data-kana-ai-status></span></div>
         <?php endif; ?>
         <div class="form-actions field--wide"><button class="btn btn--sm" type="submit">名前・ふりがなを変更</button></div>
@@ -354,7 +354,7 @@ render_header($artist['name'], 'artists');
     </div>
     <form method="post" class="form-grid edit-box__form">
         <?= csrf_field() ?><input type="hidden" name="action" value="alias_add">
-        <!-- data-suggest-list: 打つと、マイアルバムに出てくるアーティスト名を候補に出す（assets/app.js の setupSuggest） -->
+        <!-- data-suggest-list: 打つと、マイアルバムに出てくるアーティスト名を候補に出す（assets/app_form.js の setupSuggest） -->
         <label class="field field--wide"><span>別称を追加</span><input name="alias" maxlength="255" required data-suggest-list="album-artist-names" autocomplete="off"></label>
         <?= render_suggest_datalist('album-artist-names', $albumArtistNames) ?>
         <div class="form-actions field--wide"><button class="btn btn--sm" type="submit">別称を追加</button></div>

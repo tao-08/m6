@@ -2914,7 +2914,7 @@
 
     /** 拡大率 1 のときの表示の幅（枠の幅 − 内側の余白） */
     const fitWidth = () => previewBox.clientWidth - 16;
-    // PC では枠を動かせる・大きさを変えられる（app.js の floatWin）。型紙エディタの中の iframe（画面いっぱい）では使わない
+    // PC では枠を動かせる・大きさを変えられる（app_admin.js の floatWin）。型紙エディタの中の iframe（画面いっぱい）では使わない
     //   大きさを変えたら、拡大していないときは PDF を枠の幅に合わせ直す
     const placePreview = DATA.tplPreview || typeof floatWin !== 'function' ? () => {} : floatWin(previewBox, 'sheet-preview-win', () => {
         if (previewOpen && zoom === 1) previewCanvas.style.width = `${fitWidth()}px`;

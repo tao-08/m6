@@ -4,7 +4,7 @@
  *  api_check_dismiss.php — 🚩 確認依頼のお知らせを ✕ で消したと記録する API（JSON を返す）
  * =====================================================================
  *  トップページ（index.php）のお知らせの ✕ を押したとき、
- *  JavaScript（assets/app.js の setupCheckDismiss）が fetch() で呼ぶ。
+ *  JavaScript（assets/app_form.js の setupCheckDismiss）が fetch() で呼ぶ。
  *
  *  リクエスト（POST）:  band_id=バンドID
  *  レスポンス（JSON）:  {"ok": true}

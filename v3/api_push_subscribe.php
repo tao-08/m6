@@ -3,7 +3,7 @@
  * =====================================================================
  *  api_push_subscribe.php — この端末のプッシュ通知を 登録 / 解除 する API（JSON を返す）
  * =====================================================================
- *  board.php の通知設定のスイッチを押すと、JavaScript（assets/app.js の setupPush）が fetch() で呼ぶ。
+ *  board.php の通知設定のスイッチを押すと、JavaScript（assets/app_ui.js の setupPush）が fetch() で呼ぶ。
  *
  *  リクエスト（POST, JSON）:
  *    登録: {"action": "subscribe",   "endpoint": "https://...", "p256dh": "...", "auth": "..."}

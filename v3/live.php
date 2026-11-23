@@ -114,7 +114,7 @@ render_header($live['name'], 'lives');
     <div>
         <p class="eyebrow"><?= h(fmt_year($live['fiscal_year'])) ?> · <?= count($days) ?> DAYS · <?= $totalBands ?> BANDS</p>
         <h1 class="display"><?= h($live['name']) ?></h1>
-        <?php if ($liveImages): // サムネイルを押すとモーダルで大きく見られる（assets/app.js の setupLiveImages） ?>
+        <?php if ($liveImages): // サムネイルを押すとモーダルで大きく見られる（assets/app_admin.js の setupLiveImages） ?>
             <ul class="live-thumbs no-print">
                 <?php foreach ($liveImages as $im): ?>
                     <li><button type="button" class="live-thumbs__btn" data-live-img="<?= (int)$im['image_id'] ?>" data-taken="<?= $im['taken_at'] ? h(fmt_date(substr($im['taken_at'], 0, 10)) . ' ' . substr($im['taken_at'], 11, 5)) : '' ?>" aria-label="画像を表示">
@@ -158,7 +158,7 @@ render_header($live['name'], 'lives');
     <?php endforeach; ?>
 </div>
 <?php endif; ?>
-<?php if ($mixIds): // MIX のバンドだけ表示（assets/app.js の setupMixFilter） ?>
+<?php if ($mixIds): // MIX のバンドだけ表示（assets/app_list.js の setupMixFilter） ?>
     <button type="button" class="compact-btn compact-btn--mix" data-mix-filter aria-pressed="false" aria-label="MIX のバンドだけ表示" title="MIX のバンドだけ表示"><?= mix_tag() ?></button>
 <?php endif; ?>
 <?php if ($hasBands): ?>

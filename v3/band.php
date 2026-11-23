@@ -273,7 +273,7 @@ foreach ($songs as $s) {
 }
 $linkCache = track_link_cache_for($pdo, $viewerApp, $trackKeys);
 // 30秒試聴（▶）の音源。覚えてある曲は URL を HTML に入れておく（押したらすぐ鳴る）。まだの曲は data-lookup を付けておき、
-//   ページを開いたあとに assets/app.js の setupPreview が裏で 1 曲ずつ api_track_preview.php で探す（押されたときも同じ API で探す）
+//   ページを開いたあとに assets/app_songs.js の setupPreview が裏で 1 曲ずつ api_track_preview.php で探す（押されたときも同じ API で探す）
 $previewCache = track_preview_cache_for($pdo, $trackKeys);
 
 // ---- 演奏したアーティストをマイアルバムに入れているメンバー（artist.php と同じ部品。lib/albums.php） ----
@@ -393,7 +393,7 @@ render_header($band['name'], 'lives');
                     : '<span class="setlist__name">' . h($song['title']) . '</span>';
                 $songText = $songArtist
                     ? '<span class="setlist__text">' . $nameHtml . '<span class="setlist__artist">' . h($songArtist) . '</span></span>'
-                    : $nameHtml; // .setlist__name: 折り返したら少し小さくする（app.js の setupSetlistNames） ?>
+                    : $nameHtml; // .setlist__name: 折り返したら少し小さくする（app_ui.js の setupSetlistNames） ?>
                 <li<?= $isSe ? ' class="setlist__se"' : ' value="' . $songNo . '"' ?>>
                     <?php if ($song['source'] !== null):
                         // 紐付けた曲: 曲名はただの文字。ジャケットにマウスを乗せると音楽アプリのアイコンが重なって出て、押すと聴ける

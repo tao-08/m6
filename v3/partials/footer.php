@@ -8,7 +8,7 @@
 
 /*
  * チュートリアル。ログインしている人には毎回 <dialog> を置いておく（右上メニューの「チュートリアル」からいつでも開ける）。
- *   まだ見ていない人のときだけ data-tutorial-auto を付けて、開いた瞬間に自動で出す（開くのは assets/app.js の setupTutorial）。
+ *   まだ見ていない人のときだけ data-tutorial-auto を付けて、開いた瞬間に自動で出す（開くのは assets/app_tutorial.js の setupTutorial）。
  *   「見たか」は DB の user_account.tutorial_seen_at。毎ページ DB を見ないよう、1回見たらセッションに覚えておく。
  */
 if (!empty($_SESSION['user'])) {

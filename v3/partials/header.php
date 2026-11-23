@@ -53,10 +53,10 @@ $nav = [
     <!-- JavaScript の fetch() から CSRF トークンを送るために置いておく（assets/app.js） -->
     <meta name="csrf-token" content="<?= h(csrf_token()) ?>">
     <title><?= h($pageTitle) ?> | <?= h(APP_NAME) ?></title>
-    <!-- 左下の「← 前のページ」ボタンに出すページ名（assets/app.js の setupBackButton）。
+    <!-- 左下の「← 前のページ」ボタンに出すページ名（assets/app_ui.js の setupBackButton）。
          ログインしていないページ（ログイン・新規登録）には置かない → ボタンが出ない＆戻り先としても覚えない -->
     <?php if ($user): ?><meta name="page-title" content="<?= h($pageTitle) ?>"><?php endif; ?>
-    <!-- セトリの曲名を押したとき、ページ移動せずに曲カードを開くために、最初に使うときだけ読み込むファイル（assets/app.js の setupSongModalLinks） -->
+    <!-- セトリの曲名を押したとき、ページ移動せずに曲カードを開くために、最初に使うときだけ読み込むファイル（assets/app_ui.js の setupSongModalLinks） -->
     <?php if ($user): ?><meta name="songs-modal-assets" content="<?= asset_url('assets/tab.css') ?> <?= asset_url('assets/songs.css') ?> <?= asset_url('assets/songs.js') ?>"><?php endif; ?>
     <!-- アカウント設定で「戻るボタンを表示する」を外した人。戻り先は覚え続ける（また表示にしたとき、すぐ出せるように） -->
     <?php if ($user && ($user['back_button'] ?? true) === false): ?><meta name="back-button" content="off"><?php endif; ?>
@@ -164,7 +164,9 @@ $nav = [
          色は '#rrggbb' の形だけを通しているので、そのまま書き出して安全 -->
     <style><?= $instCss ?></style>
     <?php endif; ?>
-    <script src="<?= asset_url('assets/app.js') ?>" defer></script>
+    <?php foreach (['app', 'app_ui', 'app_songs', 'app_board', 'app_list', 'app_player', 'app_form', 'app_import', 'app_timetable', 'app_album', 'app_tutorial', 'app_admin'] as $appJs) : ?>
+    <script src="<?= asset_url('assets/' . $appJs . '.js') ?>" defer></script>
+    <?php endforeach; ?><!-- app.js を先頭に、分けたファイルを続けて読み込む -->
     <script src="<?= asset_url('assets/fx.js') ?>" defer></script><!-- 演出。app.js の「後」に動かす（defer は書いた順に動く） -->
 </head>
 <body<?= embed_mode() ? ' class="is-embed"' : '' ?>>
@@ -270,7 +272,7 @@ $nav = [
     </div>
 </header>
 <?php endif; ?>
-<!-- お知らせ（「更新しました」など）はヘッダーの下に固定で出し、4秒で消す（assets/app.js の setupToasts） -->
+<!-- お知らせ（「更新しました」など）はヘッダーの下に固定で出し、4秒で消す（assets/app_ui.js の setupToasts） -->
 <div class="toasts" data-toasts aria-live="polite">
 <?php foreach (take_flashes() as $f): ?>
     <div class="flash flash--<?= h($f['type']) ?> toast" role="status"><?= nl2br(h($f['message'])) ?></div>

@@ -9,7 +9,7 @@
  *    action=email    … 問い合わせの通知先メールアドレス（管理者だけ。contact.php）
  *    action=admin_prefs … 匿名・名義の投稿に本名も併記して見るか（管理者だけ。lib/bootstrap.php の sees_real_names()）
  *    action=suggest  … 退会した人をメンバー名の候補（サジェスト）に出さないか（member_name_choices()）
- *    action=back_button … 左下の戻るボタンを出すか（assets/app.js の setupBackButton）
+ *    action=back_button … 左下の戻るボタンを出すか（assets/app_ui.js の setupBackButton）
  *    action=push_prefs  … アプリ通知（プッシュ）で受け取る種類: 掲示板 / 重要なお知らせ / その他のお知らせ（lib/push.php）
  *  メンバーと紐付いている人は、名前の代わりに「プロフィール」（送信先は member_edit.php）。
  *    名前の正は member.name で、アカウント名はそれに自動でそろう（sync_account_names()）。
@@ -96,7 +96,7 @@ if (is_post()) {
         flash('設定を保存しました');
     }
 
-    // アプリ通知（プッシュ通知）で受け取る種類。この端末で受け取るかどうかは、フォームではなくスイッチ（assets/app.js の setupPush）
+    // アプリ通知（プッシュ通知）で受け取る種類。この端末で受け取るかどうかは、フォームではなくスイッチ（assets/app_ui.js の setupPush）
     if ($action === 'push_prefs') {
         $pdo->prepare('UPDATE user_account SET push_board = ?, push_important = ?, push_notice = ? WHERE user_id = ?')
             ->execute([
@@ -190,7 +190,7 @@ render_header('アカウント設定');
     <div class="card form-card push-card">
         <h2 class="section-title section-title--card"><?= icon('notifications_active') ?> アプリ通知</h2>
         <p class="muted small push-card__hint">Webアプリ化していない場合は、右上のメニューの「ホーム画面に追加する」からWebアプリとしてインストールすると利用できます。</p>
-        <!-- この端末で受け取る / 受け取らない。押した瞬間に登録・解除する（assets/app.js の setupPush）。下の保存ボタンとは別 -->
+        <!-- この端末で受け取る / 受け取らない。押した瞬間に登録・解除する（assets/app_ui.js の setupPush）。下の保存ボタンとは別 -->
         <label class="check" data-push="<?= h(push_public_key()) ?>" title="この端末でアプリ通知を受け取る" hidden>
             <input type="checkbox" data-push-toggle> <?= icon('smartphone') ?> アプリ通知オン
         </label>

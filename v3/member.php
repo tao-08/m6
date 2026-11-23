@@ -631,7 +631,7 @@ $yearSlot = static function (string $name, int $selected, array $list, string $l
 <!-- ===== マイアルバム ===== -->
 <!--
     最初は先頭5枚（スマホは4枚）だけ見せて、「さらに表示」で全部（＋自分のページなら一番下に「アルバムを追加」）を出す。
-    開け閉めは JS（assets/app.js の setupAlbumBox）が is-open クラスを付け外しする。
+    開け閉めは JS（assets/app_album.js の setupAlbumBox）が is-open クラスを付け外しする。
     <details> を使わないのは、閉じると中身が全部隠れてしまい「5枚だけ見せる」ができないため。
     JS が無いときは何も隠さない（JS が js-collapsible クラスを付けたときだけ CSS が隠す）。
     検索した直後・自分のページでまだ0枚のときは、最初から開いておく。
@@ -646,7 +646,7 @@ $yearSlot = static function (string $name, int $selected, array $list, string $l
             <span class="muted small" data-album-count><?= count($albums) ?> / <?= FAVORITE_ALBUM_LIMIT ?></span>
         </button>
         <?php if ($isMe): ?>
-            <!-- 並び替えは JS で動く（assets/app.js の setupAlbumSort）。JS が無いと並び替えられないので、案内は JS が出す -->
+            <!-- 並び替えは JS で動く（assets/app_album.js の setupAlbumSort）。JS が無いと並び替えられないので、案内は JS が出す -->
             <span class="album-sort__status muted small" data-album-sort-status role="status"></span>
         <?php endif; ?>
     </div>
@@ -665,7 +665,7 @@ $yearSlot = static function (string $name, int $selected, array $list, string $l
                     <?php $listenUrl = album_listen_url($viewerApp, $a, array_key_exists($k, $linkCache) ? $linkCache[$k] : false); ?>
                     <?php $openAttrs = album_open_attrs($a['title'], $a['release_year'] ? (int)$a['release_year'] : null, $a['artwork_url'], listen_app($viewerApp, $a['source']), $listenUrl, (string)$a['artist_name']); ?>
                     <?php if ($isMe): ?>
-                        <!-- 本人のページ: ジャケットはドラッグで並び替えるためのつかむ場所。動かさずに押すと、アルバムのモーダルが開く（assets/app.js の setupAlbumModal） -->
+                        <!-- 本人のページ: ジャケットはドラッグで並び替えるためのつかむ場所。動かさずに押すと、アルバムのモーダルが開く（assets/app_album.js の setupAlbumModal） -->
                         <img class="album__art" src="<?= h($a['artwork_url']) ?>" alt="<?= h($a['title']) ?> のジャケット" loading="lazy" width="600" height="600"<?= $openAttrs ?>>
                     <?php else: ?>
                         <!-- 他の人のページ: ジャケットを押すとアルバムのモーダル。JS が動かないときは、そのまま聴くページへのリンク -->
@@ -713,7 +713,7 @@ $yearSlot = static function (string $name, int $selected, array $list, string $l
             <p class="muted small">上限の<?= FAVORITE_ALBUM_LIMIT ?>枚に達しています。追加するにはどれかを削除してください。</p>
         <?php else: ?>
             <!-- 検索は GET。送信すると member.php?id=..&album_q=.. に移動し、上の PHP が検索する -->
-            <!-- data-album-search: JS が動くときは移動せず、下の data-album-results の中身だけ差し替える（assets/app.js の setupAlbumSearch） -->
+            <!-- data-album-search: JS が動くときは移動せず、下の data-album-results の中身だけ差し替える（assets/app_album.js の setupAlbumSearch） -->
             <form method="get" action="member#albums" class="album-search__form" data-album-search>
                 <input type="hidden" name="id" value="<?= $memberId ?>">
                 <input class="search" type="search" autocomplete="off" name="album_q" value="<?= h($albumQuery) ?>" placeholder="アルバム名やアーティスト名で検索" maxlength="100" required>
@@ -741,7 +741,7 @@ $yearSlot = static function (string $name, int $selected, array $list, string $l
                                 <span class="pill">登録済み</span>
                             <?php else: ?>
                                 <!-- 送るのはキー（どのサービスの何番か）だけ。タイトルや画像URLはサーバー側で取り直す -->
-                                <!-- data-album-add: JS が動くときはページ移動せずに追加する（assets/app.js の setupAlbumAdd） -->
+                                <!-- data-album-add: JS が動くときはページ移動せずに追加する（assets/app_album.js の setupAlbumAdd） -->
                                 <form method="post" action="member_album_save" data-album-add>
                                     <?= csrf_field() ?>
                                     <input type="hidden" name="action" value="add">
@@ -784,7 +784,7 @@ $yearSlot = static function (string $name, int $selected, array $list, string $l
              ボタンを #history-list の中に入れると、並び替えのときに一緒に動いてしまうので外に置く -->
         <div class="sorted-list sorted-list--history">
         <?php if ($history): ?>
-            <!-- 並び替え: 押すたびに新しい順 ⇔ 古い順（JS で並びを逆にするだけ。assets/app.js の setupSortToggle） -->
+            <!-- 並び替え: 押すたびに新しい順 ⇔ 古い順（JS で並びを逆にするだけ。assets/app_list.js の setupSortToggle） -->
             <?php // 楽器フィルター（トリのバンドがあれば🐔も）。lib/repository.php の inst_filter
             ?>
             <?= inst_filter(array_merge(...array_values($partsByBand)), '#history-list', (bool)array_filter($history, static fn($h) => $h['is_last']), '', (bool)$favBandIds, (bool)$mixIds) ?>

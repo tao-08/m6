@@ -181,7 +181,7 @@ render_header('YouTube の動画を割り当て', 'lives'); ?>
         </div>
 
         <!-- どのバンドにも選ばれていない動画。全部の動画を出しておき、選ばれているものは hidden にする
-             プルダウンを変えるたびに JS（assets/app.js の setupYoutubeLeftover）が出し入れ・本数を数え直す -->
+             プルダウンを変えるたびに JS（assets/app_player.js の setupYoutubeLeftover）が出し入れ・本数を数え直す -->
         <section data-yt-leftover<?= $leftover ? '' : ' hidden' ?>>
             <h2 class="section-title">どのバンドにも入っていない動画（<span data-yt-left-count><?= count($leftover) ?></span> 本）</h2>
             <p class="muted">略称のタイトル（例: エルレ）は、アーティストのページで別称を登録すると次から自動で当たります。</p>

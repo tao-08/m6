@@ -3,7 +3,7 @@
  * =====================================================================
  *  api_board_like.php — 掲示板の書き込みのお気に入り（❤）を付ける / 外す API（JSON を返す）
  * =====================================================================
- *  api_band_like.php と同じ作り。JavaScript（assets/app.js の setupLikes）が fetch() で呼ぶ。
+ *  api_band_like.php と同じ作り。JavaScript（assets/app_board.js の setupLikes）が fetch() で呼ぶ。
  *
  *  リクエスト（POST, JSON）:  {"post_id": 12}
  *  レスポンス（JSON）      :  {"liked": true, "count": 5}（押すたびに 付ける ⇔ 外す が入れ替わる）

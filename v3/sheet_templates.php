@@ -372,7 +372,7 @@ render_header('セッティングシート編集', 'tools');
         <?php if ($editing): ?><input type="hidden" name="template_id" value="<?= (int)$editing['template_id'] ?>"><?php endif; ?>
         <div class="field" data-venue-picker>
             <span>自動選択用の会場名（登録された会場名のとき自動で選択されます。複数選択可）</span>
-            <!-- 会場名を打つと候補が出る（app.js の setupSuggest）。候補を選ぶと下にチップが付く -->
+            <!-- 会場名を打つと候補が出る（app_form.js の setupSuggest）。候補を選ぶと下にチップが付く -->
             <input type="text" data-venue-input data-suggest-list="venue-names" autocomplete="off" placeholder="会場名を入力して選択…" aria-label="会場を選ぶ">
             <?= render_suggest_datalist('venue-names', array_values($venues)) ?>
             <!-- 選んだ会場。× で外す。送るのは中の hidden の venue_ids[] -->

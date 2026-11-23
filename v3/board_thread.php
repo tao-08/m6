@@ -186,7 +186,7 @@ render_header($thread['title'], 'board');
     <?= icon(match ($thread['kind']) { 'active' => 'groups', 'cohort' => 'school', default => 'forum' }) ?>
     <?= h($thread['title']) ?>
     <?php if ($thread['category_name'] !== null): ?><span class="tag board-title-tag tag--c-<?= h($thread['category_color']) ?>"><?= h($thread['category_name']) ?></span><?php endif; ?>
-    <!-- ミュート（トグル）。押すと api_board_mute に送る（assets/app.js の setupBoardMute） -->
+    <!-- ミュート（トグル）。押すと api_board_mute に送る（assets/app_board.js の setupBoardMute） -->
     <button type="button" class="icon-btn icon-btn--sm board-mute<?= $muted ? ' is-active' : '' ?>" data-board-mute="<?= $id ?>" aria-pressed="<?= $muted ? 'true' : 'false' ?>" aria-label="ミュート" title="ミュート"><?= icon($muted ? 'notifications_off' : 'notifications') ?></button>
 </h1>
 <?php if ($thread['deleted_at'] !== null): ?>
@@ -246,7 +246,7 @@ render_header($thread['title'], 'board');
     <?= csrf_field() ?>
     <input type="hidden" name="thread_id" value="<?= $id ?>">
     <input type="hidden" name="action" value="reply">
-    <!-- 返信先（各書き込みの返信ボタンで追加・解除。assets/app.js の setupBoardReply）。選んだ数だけ hidden の reply_to[] が入る -->
+    <!-- 返信先（各書き込みの返信ボタンで追加・解除。assets/app_board.js の setupBoardReply）。選んだ数だけ hidden の reply_to[] が入る -->
     <div class="board-reply__to" data-board-reply-to hidden></div>
     <?= alias_field_html((string)$user['name']) ?>
     <textarea class="board-textarea" name="body" rows="3" maxlength="2000" aria-label="返信"></textarea>

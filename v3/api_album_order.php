@@ -4,7 +4,7 @@
  *  api_album_order.php — 好きなアルバムの並び順を保存する API（JSON を返す）
  * =====================================================================
  *  member.php でアルバムのカードをドラッグして離したときに、
- *  JavaScript（assets/app.js の setupAlbumSort）が fetch() で呼ぶ。
+ *  JavaScript（assets/app_album.js の setupAlbumSort）が fetch() で呼ぶ。
  *
  *  リクエスト（POST, JSON）:  {"member_id": 1, "order": ["spotify:4aawyAB9vmqN3uQ7FjRGTy", "itunes:1441164426", ...]}
  *                             order = アルバムのキー（lib/albums.php）を「新しい並び順」で全部

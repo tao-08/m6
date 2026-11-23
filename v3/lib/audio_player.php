@@ -7,7 +7,7 @@
  *  ・band.php では再生位置に「MC」「曲」のチャプターを付けられる（band_audio_chapter。説明は migrations/130）
  *      audio_key … 'a:<band_audio の image_id>' か 'd:<ドライブのファイル ID>'
  *      曲の番号は持たない。時間順に 1, 2, 3… と数えて、セットリストの曲名に当てる（曲名の直しに自動で追従する）
- *  ・チップ・吹き出しの描画と追加・削除・時間の直しは assets/app.js の setupAudioPlayers。保存は api_audio_chapter.php
+ *  ・チップ・吹き出しの描画と追加・削除・時間の直しは assets/app_player.js の setupAudioPlayers。保存は api_audio_chapter.php
  *  ・「自動で付ける」は Gemini に音源を聴かせて下書きを作り（lib/gemini_chapters.php）、「保存」で api_audio_chapter.php の replace が置き換える
  *  ・再生・シークも setupAudioPlayers（自前）。まだ読み込んでいない位置へは、音源に ?from=バイト位置 を付けて、その位置から流してもらう（lib/wav.php）
  * =====================================================================

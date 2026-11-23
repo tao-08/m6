@@ -3180,12 +3180,9 @@ button.ttb-m { cursor: pointer; text-decoration: underline dotted; }
 
 
 /* 管理者用: 歌詞の一部から曲を探す */
-.song-lyrics-search { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; width: 100%; }
- .song-lyrics-search input { min-width: 0; width: 100%; }
-.song-lyrics-search__credit { grid-column: 1 / -1; color: var(--muted); font-size: var(--fs-2xs); }
+.song-lyrics-search { flex: 1 0 100%; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 8px; align-items: stretch; }
+.song-lyrics-search input { min-width: 0; width: 100%; padding: 9px 12px; border-radius: var(--r-md); border: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: var(--fs-md); }
+.song-lyrics-search .btn { border-radius: var(--r-md); white-space: nowrap; }
+.song-lyrics-search__credit { grid-column: 1 / -1; justify-self: end; color: var(--muted); font-size: var(--fs-2xs); }
 .lyrics-results { margin-top: 6px; }
  .lyrics-result__actions { display: inline-flex; align-items: center; gap: 8px; justify-self: end; white-space: nowrap; }
-@media (max-width: 520px) {
-  .song-lyrics-search { grid-template-columns: minmax(0, 1fr) auto; gap: 6px; }
-  .song-lyrics-search .btn { padding-inline: 10px; }
-}

@@ -49,7 +49,7 @@ function resolve_day_label(string $sel, string $new, array $labels): array
 
 /**
  * 日程名のプルダウン ＋「＋ 新しい日程名を作る」を選んだときだけ出る入力欄（会場と同じ形）。$prefix は d[ID] / nd / tt[番号] など
- *   値は '__new__'（「new」という日程名とぶつからないように）。出し入れは assets/app.js の setupSmallThings
+ *   値は '__new__'（「new」という日程名とぶつからないように）。出し入れは assets/app_ui.js の setupSmallThings
  *   $attrs は select に付ける属性（ライブ編集では重複チェック用の data-day-label など）
  */
 function day_label_control(string $prefix, string $sel, string $newName, array $labels, string $attrs = ''): string
@@ -538,7 +538,7 @@ function chorus_blocked_choices(): array
 
 /**
  * 楽器欄の横の「コーラスあり」トグル（Gt/Cho = ギターを弾きながらコーラス）。バンド編集・タイムテーブル編集・セトリ編集で共通。
- *   押すと aria-pressed と隠し項目の値（0 / 1）が切り替わる（assets/app.js の setupChorusToggle）。
+ *   押すと aria-pressed と隠し項目の値（0 / 1）が切り替わる（assets/app_form.js の setupChorusToggle）。
  *   チェックボックスにしないのは、バンド編集の m_name[] / m_inst[] が並んだ配列なので、
  *   チェックが無い行は送られずに行がずれてしまうから（隠し項目なら必ず 0 か 1 が送られる）
  *   ボーカル系の楽器を選んでいるときは押せない（JS が楽器欄の変更に合わせて切り替える）
@@ -1085,7 +1085,7 @@ function setlist_badge(int $registered, int $planned, int $linked = 0): string
     if ($registered <= 0 || $planned <= 0 || $registered < $planned) { // 曲数が未入力（0）のバンドには出さない
         return '';
     }
-    // ✓ が「登録済」の意味。押すと「セットリスト登録済（◯曲）」のポップアップが出る（app.js の setupTip）。
+    // ✓ が「登録済」の意味。押すと「セットリスト登録済（◯曲）」のポップアップが出る（app_ui.js の setupTip）。
     // スマホでは「セットリスト」の文字を隠して ✓ だけ。押せる部品なので <span> ではなく <button>
     // サブスク連携（song.track_id）済みの曲が半分未満ならくすんだ色（is-dim）
     $label = 'セットリスト登録済（' . $registered . '曲）';
@@ -1224,14 +1224,14 @@ function band_likes(PDO $pdo, array $bandIds, int $userId): array
 }
 
 /**
- * お気に入り（❤）のボタン。吹き出しに数、その右にハート。押すと api_band_like.php に送る（app.js の setupLikes）
+ * お気に入り（❤）のボタン。吹き出しに数、その右にハート。押すと api_band_like.php に送る（app_board.js の setupLikes）
  * @param array{count: int, liked: bool}|null $like band_likes() の1件（無ければ 0件）
  */
 function like_button(int $bandId, ?array $like, string $class = '', string $api = ''): string
 {
     $count = $like['count'] ?? 0;
     $liked = $like['liked'] ?? false;
-    // $api: 送り先の API 名（掲示板の書き込みは 'api_board_like'）。空ならバンド用。assets/app.js の setupLikes が読む
+    // $api: 送り先の API 名（掲示板の書き込みは 'api_board_like'）。空ならバンド用。assets/app_board.js の setupLikes が読む
     return '<button type="button" class="like' . ($class !== '' ? ' ' . h($class) : '') . ($liked ? ' is-liked' : '') . '"'
         . ' data-like="' . $bandId . '"' . ($api !== '' ? ' data-like-api="' . h($api) . '"' : '') . ' aria-pressed="' . ($liked ? 'true' : 'false') . '"'
         . ' aria-label="お気に入り（' . $count . '）" title="お気に入り（匿名）">'
@@ -1382,7 +1382,7 @@ function band_artist_links(array $band, array $omnibusArtists): string
  * @param string $suffix ラベルの後ろに付ける文字（個人ページの「 × 5」など）。付けると兼任ラベルの幅は中身に合わせる
  */
 /**
- * 楽器フィルター（漏斗 → 押すと楽器ラベル → 選ぶと漏斗がその楽器に変わって絞り込む）。app.js の setupInstFilter
+ * 楽器フィルター（漏斗 → 押すと楽器ラベル → 選ぶと漏斗がその楽器に変わって絞り込む）。app_list.js の setupInstFilter
  *   $parts: パート（segments・title・order）の一覧。兼任（Vo/Gt など）がある楽器は「単体・兼任・All」に分ける
  *   $target: 絞り込む範囲 / $tori: 🐔（トリのバンドだけ）も出す / $mix: MIX（ミックスのあるバンドだけ。🐔の右）も出す / $fav: ❤（見ている人がお気に入りにしたバンドだけ。MIX の右）も出す
  *   $items: 行ごとに隠すとき（メンバー一覧の .member-row）。空なら出演履歴の バンド → 日 → 年度 で隠す
@@ -1508,7 +1508,7 @@ function inst_tokens(array $parts): array
 }
 
 /**
- * 共通ポップアップの属性（app.js の setupTip）。ラベル・アイコンの説明は title ではなくこれで付ける。
+ * 共通ポップアップの属性（app_ui.js の setupTip）。ラベル・アイコンの説明は title ではなくこれで付ける。
  *   使い方: <span class="x" <?= tip_attr('説明') ?>>…</span>
  *   スマホで押せるよう、押せない要素（span など）に付けるときは CSS で cursor を指定しておく（iOS 対策）
  *   読み上げ用の aria-label は要素に文字が無いアイコンのときだけ別に付ける
@@ -1522,7 +1522,7 @@ function part_badge(array $part, string $suffix = ''): string
 {
     $segs = $part['segments'];
     if (count($segs) === 1) {
-        // title は使わず data-tip（app.js の setupTip のフェードのポップアップ。スマホはタップで出る）
+        // title は使わず data-tip（app_ui.js の setupTip のフェードのポップアップ。スマホはタップで出る）
         return '<span class="part part--' . h($segs[0]['class']) . '" data-tip="' . h($part['title']) . '">' . h($segs[0]['short'] . $suffix) . '</span>';
     }
     // 背景: 楽器ごとに幅を等分して塗り、境目の前後 10% だけ色を混ぜる
@@ -1564,7 +1564,7 @@ function part_marks(array $tally, bool $withCount = false, string $class = '', i
         $html .= $badge($t);
     }
     if ($rest) {
-        // 押す（PC は乗せる）と、中の [data-tip-body] のバッジをポップアップに写して出す（app.js の setupTip）
+        // 押す（PC は乗せる）と、中の [data-tip-body] のバッジをポップアップに写して出す（app_ui.js の setupTip）
         $names = implode(' ', array_column($rest, 'short'));
         $html .= '<button type="button" class="more-names" data-tip="' . h($names) . '" aria-label="' . h('ほか: ' . $names) . '">ほか'
             . '<span class="partbar" data-tip-body hidden>' . implode('', array_map($badge, $rest)) . '</span></button>';
@@ -1583,7 +1583,7 @@ function partner_medal(int $rank, string $name, string $what = 'よく組むメ�
     // 押すと（PC はマウスを乗せると）出すポップアップの文。画面には書かず、ポップアップと読み上げだけで伝える
     $label = $name . 'の' . $what . '第' . $rank . '位'; // $what = どのランキングか（よく組むメンバー / よく演奏するメンバー）
     // <button> で包む: 指で押せる「部品」にするため（<svg> だけだとキーボードで選べない）。
-    //   data-tip を付けると、セトリの ✓ と同じポップアップ（app.js の setupTip）がこの文を出す
+    //   data-tip を付けると、セトリの ✓ と同じポップアップ（app_ui.js の setupTip）がこの文を出す
     //   h() で " や < を無害な文字に置き換えてから属性に入れる（XSS 対策）
     return '<button type="button" class="medal-btn" data-tip="' . h($label) . '" aria-label="' . h($label) . '">'
         . '<svg class="medal medal--' . $rank . '" viewBox="0 0 16 20" aria-hidden="true">'
@@ -2222,7 +2222,7 @@ function sync_account_names(PDO $pdo, ?int $memberId = null): void
 }
 
 /* =====================================================================
- *  入力候補（assets/app.js の setupSuggest）用のデータ
+ *  入力候補（assets/app_form.js の setupSuggest）用のデータ
  *    <input autocomplete="off" data-suggest-list="datalist の id"> が、同じ id の <datalist> の option を候補にする
  * ===================================================================== */
 
@@ -2326,7 +2326,7 @@ function posted_display_name(bool $anonymous): ?string
     return $anonymous || $n === '' ? null : $n;
 }
 
-/** 本文欄の上に置く、送信元の名義の入力と匿名チェック（匿名のあいだは名義を使えない。assets/app.js の setupAliasField） */
+/** 本文欄の上に置く、送信元の名義の入力と匿名チェック（匿名のあいだは名義を使えない。assets/app_admin.js の setupAliasField） */
 function alias_field_html(string $userName): string
 {
     return '<div class="alias-field" data-alias-field>'

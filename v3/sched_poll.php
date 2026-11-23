@@ -827,7 +827,7 @@ if (!empty($poll['live_id'])) {
 
 <?php if ($reserveGroup): ?>
     <?php
-    /* 予約のうながし: 決定して未予約のあいだ、開くたびに自動で出る（data-auto-open → app.js の setupAutoDialog）。予約で打ち込む日時・部屋を大きく、スタジオ名は小さく
+    /* 予約のうながし: 決定して未予約のあいだ、開くたびに自動で出る（data-auto-open → app_ui.js の setupAutoDialog）。予約で打ち込む日時・部屋を大きく、スタジオ名は小さく
        未予約の決定をスタジオごとにまとめ、最も早い日を含むスタジオだけ出す。1回分 = 日時＋部屋のひとかたまりを、回数ぶん並べる。「予約完了」で、このグループの全部の回をまとめて予約済みにする */
     $rsStudio = $reserveGroup[0]['studio'];
     $rsReserve = $reserveGroup[0]['reserve'];

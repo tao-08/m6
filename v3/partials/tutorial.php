@@ -4,7 +4,7 @@
  *  partials/tutorial.php — 初回ログインのチュートリアル（数ページのスライド）
  * =====================================================================
  *  partials/footer.php がログイン中の全ページで require する（$tutorialAuto = まだ見ていない → 自動で開く）。
- *  ページ送り・閉じたときの記録は assets/app.js の setupTutorial（id="tutorial" は header.php の「チュートリアル」ボタン [data-tutorial-open] の開き先）。
+ *  ページ送り・閉じたときの記録は assets/app_tutorial.js の setupTutorial（id="tutorial" は header.php の「チュートリアル」ボタン [data-tutorial-open] の開き先）。
  *  画像は assets/tutorial/ に置く。ファイル名は中身の名前（setlist.jpg など）にしておくと、並べ替えてもリネームしなくて済む。
  *  同じ名前のまま画像を差し替えたら ?v= の数字を上げる（ブラウザが古い画像を覚えているので）。
  * =====================================================================

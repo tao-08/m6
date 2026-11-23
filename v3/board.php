@@ -206,7 +206,7 @@ render_header('アビーボード', 'board');
         <h1 class="display">アビーボード</h1>
         <p class="muted">アビーの何でも掲示板</p>
     </div>
-    <!-- スレッド作成・通知設定は、アイコンを押すと下のカードが開く（assets/app.js の setupBoardPanels） -->
+    <!-- スレッド作成・通知設定は、アイコンを押すと下のカードが開く（assets/app_board.js の setupBoardPanels） -->
     <div class="hero__actions">
         <button type="button" class="btn btn--sm" data-board-panel-open="create"><?= icon('add_comment') ?> スレッド作成</button>
         <button type="button" class="icon-btn" data-board-panel-open="notify" aria-label="通知設定" title="通知設定"><?= icon('settings') ?></button>
@@ -288,7 +288,7 @@ render_header('アビーボード', 'board');
     <?php endforeach; ?>
 </nav>
 
-<!-- カテゴリのタブを押すと、ここだけ差し替える（assets/app.js の setupBoardTabs。選んでいるカテゴリは data-cat） -->
+<!-- カテゴリのタブを押すと、ここだけ差し替える（assets/app_board.js の setupBoardTabs。選んでいるカテゴリは data-cat） -->
 <div data-board-free data-cat="<?= $cat ?>">
 <?php if ($free): ?>
 <div class="card board-list"><?php foreach ($free as $t) { echo $row($t); } ?></div>

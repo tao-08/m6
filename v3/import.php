@@ -39,7 +39,7 @@ $pdo = db();
  *   $options … [値 => ['label' => 表示, 'title' => 正式名, 'add' => true なら「選ぶと楽器を追加するモーダルが開く」], ...]（「⋯」の中はこの順）
  *   $shown   … 「⋯」にしまわずに見せておく値（この順で並ぶ）
  *   $kind    … 'inst' なら、モーダルで楽器を追加したとき JS がこのボタンにも新しい楽器を足す
- * 開け閉めとモーダルは assets/app.js の setupPicks。
+ * 開け閉めとモーダルは assets/app_timetable.js の setupPicks。
  */
 function render_pick(string $name, array $options, array $shown, string $selected, string $ariaLabel, bool $collapsed, string $kind = ''): string
 {
@@ -76,7 +76,7 @@ function render_pick(string $name, array $options, array $shown, string $selecte
 
 /**
  * 名前欄が黄色（似た人がいる）のときの「もしかして」の候補を data-suggest 属性にする（JSON）。
- * 名前欄をクリックすると、assets/app.js の showHint が「もしかして ◯◯？」を出す。
+ * 名前欄をクリックすると、assets/app_form.js の showHint が「もしかして ◯◯？」を出す。
  */
 function suggest_attr(array $status): string
 {
@@ -401,7 +401,7 @@ if ($plan === null): // ==================== アップロード画面 ==========
         <span class="muted small">クリックしてファイルを選択 · CSV / Excel / PDF<?= ai_reader_enabled() ? ' / 画像' : '' ?> · 最大<?= MAX_FILES ?>ファイル</span>
         <ul class="dropzone__list" data-file-list></ul>
     </label>
-    <!-- 送信したら JS（assets/app.js の setupLoading）が出す。画像があれば AI の読み取りで数十秒かかる -->
+    <!-- 送信したら JS（assets/app_form.js の setupLoading）が出す。画像があれば AI の読み取りで数十秒かかる -->
     <div class="loading" data-loading-box hidden role="status" aria-live="polite">
         <span class="loading__spinner" aria-hidden="true"></span>
         <p class="loading__title" data-loading-title>読み込み中…</p>
@@ -484,7 +484,7 @@ if ($plan === null): // ==================== アップロード画面 ==========
                 <!-- 1日目は固定の区切り（見出しの中なので、ドラッグしてもこの上には行が入らない）。区切りより上の行は 1日目 になる -->
                 <tr class="manual-divider manual-divider--fixed"><td></td><td colspan="3"><span class="manual-divider__label"><?= h(DAY_LABELS[0]) ?></span></td></tr>
             </thead>
-            <!-- data-sortable: ≡ のドラッグで並び替え（assets/app.js の setupSlotSort。プレビューの表と同じ部品） -->
+            <!-- data-sortable: ≡ のドラッグで並び替え（assets/app_timetable.js の setupSlotSort。プレビューの表と同じ部品） -->
             <tbody data-sortable data-manual-rows>
             <?php foreach ($manualRows as $i => $r): ?><?= manual_row_html((string)$i, $r, $rosterChoices, $dayLabels) ?><?php endforeach; ?>
             </tbody>
@@ -683,7 +683,7 @@ if ($plan === null): // ==================== アップロード画面 ==========
     <?= csrf_field() ?>
     <input type="hidden" name="action" value="commit">
 
-    <!-- 入力候補（data-suggest-list で使う。assets/app.js の setupSuggest） -->
+    <!-- 入力候補（data-suggest-list で使う。assets/app_form.js の setupSuggest） -->
     <?= render_suggest_datalist('dl-live-names', $liveNames) ?>
     <?= render_suggest_datalist('member-names', array_keys($memberNames), $memberNames) ?>
     <?= render_suggest_datalist('band-names', $bandNames) ?>
@@ -764,7 +764,7 @@ if ($plan === null): // ==================== アップロード画面 ==========
 
             <!-- name="tt[0][date]" のように書くと、PHP では $_POST['tt'][0]['date'] で受け取れる -->
             <div class="form-grid">
-                <!-- data-merge: 「登録済みのライブと統合」の切り替え（assets/app.js の setupMergeToggle） -->
+                <!-- data-merge: 「登録済みのライブと統合」の切り替え（assets/app_import.js の setupMergeToggle） -->
                 <div class="field field--wide" data-merge>
                     <span class="live-name-head">ライブ名
                         <button type="button" class="merge-toggle" aria-pressed="<?= $merge ? 'true' : 'false' ?>" data-merge-toggle><?= icon('merge') ?> 登録済みのライブと統合</button>
@@ -826,7 +826,7 @@ if ($plan === null): // ==================== アップロード画面 ==========
                         <th title="名簿ファイルのバンド名で検索して選ぶ<?= $attach && !$rosterOnly ? '（メンバー登録済みのバンドには反映しない）' : '' ?>">名簿ファイル内バンド名</th>
                         <?php if (!$rosterOnly): ?><th>曲数</th><th title="バンド全体の補足事項">メモ</th><?php endif; ?>
                     </tr></thead>
-                    <!-- data-sortable: 左端の ≡ をドラッグで行を並び替える（assets/app.js の setupSlotSort）。時間の列は動かない -->
+                    <!-- data-sortable: 左端の ≡ をドラッグで行を並び替える（assets/app_timetable.js の setupSlotSort）。時間の列は動かない -->
                     <tbody<?= $rosterOnly ? '' : ' data-sortable' ?>>
                     <?php
                     // 時間は「表の何行目か」に固定。並び替えると、行（バンド）はその位置の枠の時間を使う
@@ -1094,7 +1094,7 @@ document.addEventListener('change', (e) => {
 <!--
     楽器の「etc」を選んだときに開くモーダル（<dialog> は HTML 標準のモーダル部品）。
     取り込みのフォームの「外」に置いている（フォームの中にフォームは入れられない & 取り込みの送信内容に混ざらないように）。
-    「追加する」で api_instrument.php に送って楽器マスタに登録し、その楽器を選んだ状態にする（assets/app.js の setupPicks）。
+    「追加する」で api_instrument.php に送って楽器マスタに登録し、その楽器を選んだ状態にする（assets/app_timetable.js の setupPicks）。
     「etc のまま」は何も追加せず、etc を選んだ状態で閉じる。
 -->
 <dialog class="modal" data-new-instrument aria-labelledby="new-instrument-title">

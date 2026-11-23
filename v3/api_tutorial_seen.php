@@ -4,7 +4,7 @@
  *  api_tutorial_seen.php — チュートリアルを「見た」と記録する API（JSON を返す）
  * =====================================================================
  *  初回のチュートリアル（partials/tutorial.php）を閉じたとき、
- *  JavaScript（assets/app.js の setupTutorial）が fetch() で呼ぶ。
+ *  JavaScript（assets/app_tutorial.js の setupTutorial）が fetch() で呼ぶ。
  *
  *  リクエスト（POST）:  本文なし
  *  レスポンス（JSON）:  {"ok": true}

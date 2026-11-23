@@ -1,7 +1,7 @@
 <?php
 /**
  * 「登録済みのライブと統合」のポップアップの中身（import.php / live_edit.php で共通）。
- * 1回だけ書いて、JS（assets/app.js の setupMergeToggle）が開くたびに複製して使う。
+ * 1回だけ書いて、JS（assets/app_import.js の setupMergeToggle）が開くたびに複製して使う。
  *
  *   読み込む前に用意する変数:
  *     $lives         … lives_with_labels() の結果

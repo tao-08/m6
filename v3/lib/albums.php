@@ -354,7 +354,7 @@ function album_listen_url(?string $app, array $album, string|false|null $cached 
 }
 
 /**
- * 押すとアルバムのモーダル（partials/album_modal.php）が開く要素に付ける属性。assets/app.js の setupAlbumModal が読む。
+ * 押すとアルバムのモーダル（partials/album_modal.php）が開く要素に付ける属性。assets/app_album.js の setupAlbumModal が読む。
  *   $listenApp  アイコンを出すアプリ（MUSIC_APPS のキー）/ $listenUrl  そのアイコンの行き先
  *   検索は全体の検索（search?q=）へ。アルバム名で探す
  */

@@ -3,7 +3,7 @@
  * =====================================================================
  *  api_artist_save.php — アーティストの名前・ふりがな・別称を1項目ずつ保存する API（JSON を返す）
  * =====================================================================
- *  masters.php（管理 > アーティスト）の入力欄から、JavaScript（assets/app.js の setupArtistAutosave）が
+ *  masters.php（管理 > アーティスト）の入力欄から、JavaScript（assets/app_admin.js の setupArtistAutosave）が
  *  「入力が止まって約0.8秒後」に fetch() で呼ぶ。保存ボタンは無い。
  *
  *  リクエスト（POST, JSON）:

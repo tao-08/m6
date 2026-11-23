@@ -4,7 +4,7 @@
  *  api_band_like.php — バンドのお気に入り（❤）を付ける / 外す API（JSON を返す）
  * =====================================================================
  *  live.php のタイムテーブル・band.php のバンド名の右の ❤ を押すと、
- *  JavaScript（assets/app.js の setupLikes）が fetch() で呼ぶ。
+ *  JavaScript（assets/app_board.js の setupLikes）が fetch() で呼ぶ。
  *
  *  リクエスト（POST, JSON）:  {"band_id": 12}
  *  レスポンス（JSON）      :  {"liked": true, "count": 5}

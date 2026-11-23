@@ -123,7 +123,7 @@
         refresh(); // 最後の行が埋まっていれば空の行を1つ足し、人数の表示も更新する
         // 値を JS で変えても input イベントは出ないので、自分で出す（未保存の警告を効かせるため）
         form.dispatchEvent(new Event('input', { bubbles: true }));
-        // バンドの出るライブも選ぶ。change を出す → 期間の自動入力（applyLead）と、プルダウンの表示（app.js の setupSelectPick）が動く
+        // バンドの出るライブも選ぶ。change を出す → 期間の自動入力（applyLead）と、プルダウンの表示（app_form.js の setupSelectPick）が動く
         if (live && band.liveId) {
           live.value = String(band.liveId);
           live.dispatchEvent(new Event('change', { bubbles: true }));
@@ -361,7 +361,7 @@
       th.title = '1日まるごと予定あり';
       th.setAttribute('aria-label', d.md + ' 1日まるごと予定あり'); // 読み上げで日付が消えないよう、日付も入れる
       // その日にかかる終日の予定（何日も続く予定は、その日数ぶんの見出しに出る）。予定ありには数えない（lib/sched.php）ので、予定名を見せるだけ
-      //   押すと予定名の全文をポップアップ（data-tip = app.js の setupTip。押しても何も実行されないラベルなので data-tip）
+      //   押すと予定名の全文をポップアップ（data-tip = app_ui.js の setupTip。押しても何も実行されないラベルなので data-tip）
       data.busy.filter((b) => isAllDay(b) && b[0] < d.abs + 1440 && b[1] > d.abs).forEach((b) => {
         const name = b[3] || GRID_KIND[b[2]];
         const chip = el('span', 'sch-allday', name);
@@ -1256,7 +1256,7 @@
       const b = el('button', 'btn btn--sm' + (primary ? ' btn--primary' : ' btn--ghost'), label);
       b.type = 'submit';
       f.append(b);
-      // 送信の直前に、選んでいる開始時刻・スタジオ・部屋を入れ、確認の文（data-confirm → app.js の setupConfirm が出す）を作る
+      // 送信の直前に、選んでいる開始時刻・スタジオ・部屋を入れ、確認の文（data-confirm → app_form.js の setupConfirm が出す）を作る
       //   このフォームでの submit は、document で待ち受けている app.js より先に呼ばれる（イベントは内側 → 外側へ伝わる）
       f.dataset.confirm = '';
       f.addEventListener('submit', () => {
@@ -1380,7 +1380,7 @@
           refreshers.forEach((f) => f());
         });
         // ラベル（割引・パック・おすすめ・連続）を押したときのポップアップ（data-tip）が出てすぐ消えるのを防ぐ:
-        //   行は <label> なので、押すとラジオへの2回目のクリックが飛び、app.js の setupTip が「ラベル以外を押した」と見て消してしまう。
+        //   行は <label> なので、押すとラジオへの2回目のクリックが飛び、app_ui.js の setupTip が「ラベル以外を押した」と見て消してしまう。
         //   ラベルでは preventDefault() で、ラジオへの転送（= 行の選択）を止める（行のほかの所を押せば選べる）
         lab.addEventListener('click', (e) => {
           if (e.target.closest('.tag[data-tip], .sch-warn[data-tip]')) e.preventDefault();
@@ -2006,7 +2006,7 @@
         return { table, decorate: (slide) => { applyCheap(slide, table); applyProv(slide, table, idx); } };
       },
       ready: () => true, // 全部の週のデータはもうある
-      onSwipeStart: () => wrap.dispatchEvent(new Event('scroll')), // 出ているポップアップ（data-tip）は、スクロールと同じに消える（app.js の setupTip）
+      onSwipeStart: () => wrap.dispatchEvent(new Event('scroll')), // 出ているポップアップ（data-tip）は、スクロールと同じに消える（app_ui.js の setupTip）
       enter: (dir) => { page += step(dir); draw(); },
     });
     flipper.bindSwipe(wrap); // 表は週ごとに作り直すので、箱に付ける（箱は作り直さない）

@@ -3,7 +3,7 @@
  * =====================================================================
  *  api_track_search.php — 曲の検索 API（JSON を返す）
  * =====================================================================
- *  曲の編集画面（songs_edit.php）の🔍ボタンから、JavaScript（assets/app.js の setupTrackSearch）が呼ぶ。
+ *  曲の編集画面（songs_edit.php）の🔍ボタンから、JavaScript（assets/app_songs.js の setupTrackSearch）が呼ぶ。
  *
  *  リクエスト（GET）: ?q=曲名 アーティスト名
  *  レスポンス（JSON）: {"tracks": [{"key": "spotify:xxxx", "title": "...", "artist_name": "...",

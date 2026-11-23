@@ -1027,7 +1027,7 @@ render_header($studio['name'], 'tools');
             <div class="sinfo-ai__head">
                 <span class="muted small" data-ai-status></span>
             </div>
-            <!-- 使い方の切り替え。タブの赤い丸の動きは app.js の setupTabGlide が付ける。切り替えは JS（studio_info.js の setupAi）。待っている間に切り替えてもよい -->
+            <!-- 使い方の切り替え。タブの赤い丸の動きは app_ui.js の setupTabGlide が付ける。切り替えは JS（studio_info.js の setupAi）。待っている間に切り替えてもよい -->
             <div class="tabs tabs--static sinfo-ai__tabs" role="tablist" aria-label="AIの使い方">
                 <button type="button" class="tab is-active" role="tab" aria-selected="true" data-ai-tab="search">AIで検索</button>
                 <button type="button" class="tab" role="tab" aria-selected="false" data-ai-tab="edit">AIで編集</button>

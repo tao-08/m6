@@ -920,7 +920,7 @@
     let syncing = false; // パネルの表示を設定に合わせている間は、change を「ユーザーの操作」として扱わない
     function syncPanel() {
       syncing = true;
-      // 共通のプルダウン（app.js の setupSelectPick）は change を聞いてボタンの文字を合わせるので、値を入れたら change を出す
+      // 共通のプルダウン（app_form.js の setupSelectPick）は change を聞いてボタンの文字を合わせるので、値を入れたら change を出す
       const put = (el, v) => { el.value = v; el.dispatchEvent(new Event('change', { bubbles: true })); };
       setDlg.querySelectorAll('[data-set-gesture]').forEach((el) => put(el, settings.gesture[el.dataset.setGesture]));
       setDlg.querySelectorAll('[data-set-button]').forEach((el) => put(el, settings.buttons[Number(el.dataset.setButton)]));

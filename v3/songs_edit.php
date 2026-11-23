@@ -15,7 +15,7 @@
  *  アーティスト: 一番上の「オムニバス」にチェックしたときだけ、曲ごとに書ける。
  *    チェックなし → 全曲バンドのアーティスト（song.artist_id は NULL）。
  *    チェックあり → バンドのコピー元アーティストは外す（band.artist_id = NULL）。曲ごとのアーティストだけになる
- *  曲の紐付け: 🔍で Spotify / iTunes の曲を検索して選ぶ（assets/app.js の setupTrackSearch → api_track_search.php）。
+ *  曲の紐付け: 🔍で Spotify / iTunes の曲を検索して選ぶ（assets/app_songs.js の setupTrackSearch → api_track_search.php）。
  *    選んだ曲のキー（"spotify:xxxx"）だけが送られてくるので、曲名・ジャケットはサーバーが取り直す。
  *
  *    セッティングシートから来たときは、紐付けていない曲のうち、アーティスト名と曲名が track テーブルと完全一致するものを自動で紐付ける（track に無ければ🔍と同じ検索で完全一致を探す）。
@@ -250,7 +250,7 @@ foreach ($st as $r) {
 }
 
 // 空のカードは最初は出さない。最後に1枚だけ <template>（画面に出ない・送信もされない）の中に作っておき、
-// 「＋ 曲を追加」を押したら JS がコピーして並べる（assets/app.js の setupSongs）
+// 「＋ 曲を追加」を押したら JS がコピーして並べる（assets/app_songs.js の setupSongs）
 $emptyCard = ['song_id' => null, 'track_no' => 0, 'title' => '', 'is_se' => 0, 'artist_name' => null,
     'track_source' => null, 'track_id' => null, 'track_title' => null, 'track_artist' => null, 'artwork_url' => null];
 $droppedTitles = []; // セッティングシートに無い、登録済みの曲（保存すると消える）
@@ -356,7 +356,7 @@ render_header('セットリストを編集', 'lives');
 <form method="post" class="songs-form"<?= unsaved_attr() ?>>
     <?= csrf_field() ?>
     <input type="hidden" name="band_id" value="<?= $bandId ?>">
-    <!-- チェックなし: アーティスト欄はバンドのアーティストで固定（薄く表示）。チェックあり: 曲ごとに書ける（assets/app.js の setupSongs） -->
+    <!-- チェックなし: アーティスト欄はバンドのアーティストで固定（薄く表示）。チェックあり: 曲ごとに書ける（assets/app_songs.js の setupSongs） -->
     <label class="check song-omnibus"><input type="checkbox" name="omnibus" value="1"<?= $omnibus ? ' checked' : '' ?> data-omnibus> オムニバス （複数アーティストを演奏）</label>
     <!-- 出演まで非公開: 終演30分後まで、メンバーと管理者以外には曲名を見せない（lib/repository.php の setlist_hidden_sql） -->
     <!-- スマホでは「（終演30分後に公開…）」を2行目に（assets/app.css の .song-private__note）。過去のライブには出さない（$canPrivate） -->
@@ -374,7 +374,7 @@ render_header('セットリストを編集', 'lives');
             $artist = $omnibus ? ($song['artist_name'] ?? '') : $defaultArtist; // オムニバスはバンドのアーティストが無いので、曲に付いていなければ空欄
             $trackKey = $song['track_id'] === null ? '' : album_key($song['track_source'], $song['track_id']); ?>
             <?php if ($isTemplate): ?><template <?= $isSe ? 'data-song-template-se' : 'data-song-template' ?>><?php endif; ?>
-            <!-- data-unsaved-blank: 曲名が空の新しい曲は保存されないので、未保存の警告の対象にしない（assets/app.js の setupUnsavedGuard） -->
+            <!-- data-unsaved-blank: 曲名が空の新しい曲は保存されないので、未保存の警告の対象にしない（assets/app_form.js の setupUnsavedGuard） -->
             <section class="card song-card<?= $isNew ? ' song-card--new' : '' ?><?= $isSe ? ' song-card--se' : '' ?>" data-song-card<?= $isNew ? ' data-unsaved-blank' : '' ?>>
                 <div class="song-card__head">
                     <!-- ≡: ドラッグ（↑↓キーでも）で曲の順番を入れ替える。pos = 上から何番目か（JS が振り直す。保存はこの順） -->
@@ -391,7 +391,7 @@ render_header('セットリストを編集', 'lives');
                     <input autocomplete="off" name="<?= $base ?>[title]" value="<?= h($song['title']) ?>" maxlength="100" placeholder="<?= $isNew ? ($isSe ? 'SE名を入力して追加' : '曲名を入力して追加') : ($isSe ? 'SE名' : '曲名') ?>" class="song-card__title" aria-label="曲名" data-unsaved-key>
                     <?php if ($isSe): ?><input type="hidden" name="<?= $base ?>[artist]" value="">
                     <?php else: ?><input name="<?= $base ?>[artist]" value="<?= h($artist) ?>" maxlength="100" data-suggest-list="artists" autocomplete="off" placeholder="アーティスト" class="song-card__artist" aria-label="アーティスト" data-song-artist<?= $omnibus ? '' : ' readonly' ?>><?php endif; ?>
-                    <!-- data-artist: 紐付けた曲のアーティスト（先頭の1人）。「オムニバス」にチェックを付けたとき、連携済みの曲はこの名前をアーティスト欄に残す（assets/app.js の setupSongs） -->
+                    <!-- data-artist: 紐付けた曲のアーティスト（先頭の1人）。「オムニバス」にチェックを付けたとき、連携済みの曲はこの名前をアーティスト欄に残す（assets/app_songs.js の setupSongs） -->
                     <input type="hidden" name="<?= $base ?>[track]" value="<?= h($trackKey) ?>" data-track-key data-artist="<?= h($trackKey === '' ? '' : explode(', ', (string)$song['track_artist'])[0]) ?>">
                     <button type="button" class="btn btn--ghost btn--sm song-search-btn" data-track-search aria-label="曲を探す" title="曲を探す"><?= icon('search') ?></button>
                     <input type="hidden" name="<?= $base ?>[id]" value="<?= $isNew ? '' : (int)$song['song_id'] ?>">
@@ -407,7 +407,7 @@ render_header('セットリストを編集', 'lives');
                     </div>
                     <?php endif; ?>
                 </div>
-                <!-- 🔍 の検索結果（assets/app.js の setupTrackSearch が中身を入れる） -->
+                <!-- 🔍 の検索結果（assets/app_songs.js の setupTrackSearch が中身を入れる） -->
                 <div class="track-results" data-track-results hidden></div>
                 <?php if (!$isSe && is_admin()): ?>
                 <div class="track-results lyrics-results" data-lyrics-results hidden></div>
@@ -440,7 +440,7 @@ render_header('セットリストを編集', 'lives');
     </div>
     <button type="button" class="btn btn--ghost btn--sm" data-add-song>＋ 曲を追加</button>
 
-    <!-- 保存前の操作を戻す / やり直す（assets/app.js の setupSongs）。見た目はタイムテーブル作成と同じ左下の浮きボタン -->
+    <!-- 保存前の操作を戻す / やり直す（assets/app_songs.js の setupSongs）。見た目はタイムテーブル作成と同じ左下の浮きボタン -->
     <div class="ttb-float">
         <button type="button" class="btn btn--sm" data-song-undo aria-label="元に戻す" title="元に戻す" disabled><?= icon('undo') ?></button>
         <button type="button" class="btn btn--sm" data-song-redo aria-label="やり直す" title="やり直す" disabled><?= icon('redo') ?></button>

@@ -7,7 +7,7 @@
  *  日程ごとの最大の play_order をサブクエリ（last = HEADLINER_SQL）で先に求めておき、JOIN して比べている。
  *  総バンド数まで登録されていない日程は last に出てこない（トリなし）ので LEFT JOIN。
  *
- *  上の「学年」タブで表示するメンバーを絞り込める（assets/app.js の setupGradeSlot）
+ *  上の「学年」タブで表示するメンバーを絞り込める（assets/app_list.js の setupGradeSlot）
  *    全学年    … 入学年度が不明な人も含む
  *    現役      … 1〜4年（入学年度が 今年度-3 〜 今年度）
  *    卒業生    … 5年目以上（OB。入学年度が 今年度-4 以前）。入学年度が不明な人はどちらにも入れない
@@ -236,7 +236,7 @@ render_header('メンバー', 'members');
     </div>
 <?php else: ?>
     <!-- 学年の絞り込み。見た目は集計ページと同じ部品（.stats-filter）。
-         タブ・スロットを切り替えると、ページを読み直さずに JS が行を隠す（assets/app.js の setupGradeSlot） -->
+         タブ・スロットを切り替えると、ページを読み直さずに JS が行を隠す（assets/app_list.js の setupGradeSlot） -->
     <div class="card stats-filter no-print<?= $who === 'grade' ? ' is-grade' : '' ?>" data-grade-filter>
         <!-- PC はタブ → スロット → 「退会者を非表示」を1行に、スマホはタブの下の段に スロット・退会者 を並べる（.stats-filter__line） -->
         <div class="stats-filter__line">
@@ -244,7 +244,7 @@ render_header('メンバー', 'members');
             <div class="tabs tabs--filter" role="radiogroup" aria-label="学年">
                 <label class="tab"><input type="radio" name="who" value="all"<?= $who === 'all' ? ' checked' : '' ?>>全学年</label>
                 <label class="tab"><input type="radio" name="who" value="grade"<?= $who === 'grade' ? ' checked' : '' ?>>学年別</label>
-                <?php $fy = current_fiscal_year(); // data-min / data-max: この入学年度の範囲の人だけ出す（app.js の setupGradeSlot。片方だけなら上限・下限なし） ?>
+                <?php $fy = current_fiscal_year(); // data-min / data-max: この入学年度の範囲の人だけ出す（app_list.js の setupGradeSlot。片方だけなら上限・下限なし） ?>
                 <label class="tab"><input type="radio" name="who" value="active"<?= $who === 'active' ? ' checked' : '' ?> data-min="<?= $fy - 3 ?>" data-max="<?= $fy ?>">現役</label>
                 <label class="tab"><input type="radio" name="who" value="alumni"<?= $who === 'alumni' ? ' checked' : '' ?> data-max="<?= $fy - 4 ?>">卒業生</label>
                 <label class="tab<?= $canNear ? '' : ' is-disabled' ?>"<?= $canNear ? '' : ' title="アカウントがメンバーに紐付いていないか、入学年度が未登録のため使えません"' ?>>

@@ -3,7 +3,7 @@
  * =====================================================================
  *  partials/sched_help.php — 「マイスケジュールの使い方」の説明モーダル（見出しの右の ⓘ から開く）
  * =====================================================================
- *  sched_me.php の最後で require する。見た目・動きは初回チュートリアル（partials/tutorial.php）と同じ部品（assets/app.js の setupTutorial）。
+ *  sched_me.php の最後で require する。見た目・動きは初回チュートリアル（partials/tutorial.php）と同じ部品（assets/app_tutorial.js の setupTutorial）。
  *  自動では開かない（ⓘ を押したときだけ）。
  *  画像は assets/tutorial/sched_*.jpg（スマホの画面の切り抜き。縦長 1113×1500 = 371×500 の3倍）。カレンダー連携だけは図なので sched_calendar.svg。同じ名前のまま差し替えたら ?v= の数字を上げる。
  *  縦長なので .tutorial--tall（assets/sched.css）で、画像の枠を横長に固定せず、画面の高さに収まる大きさで出す。

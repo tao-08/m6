@@ -4,7 +4,7 @@
  *  partials/ical_help.php — 「カレンダーの連携方法」の説明モーダル（マイスケジュールの ⓘ から開く）
  * =====================================================================
  *  sched_me.php の #ical セクションの直後で require する。見た目・動きは初回チュートリアル（partials/tutorial.php）と同じ部品。
- *  開くのは [data-tutorial-open="ical-help"]、ページ送り・分岐は assets/app.js の setupTutorial。
+ *  開くのは [data-tutorial-open="ical-help"]、ページ送り・分岐は assets/app_tutorial.js の setupTutorial。
  *  最初のページで端末（Google / iPhone / その他）を選ぶと、その端末の手順だけを送る（data-tutorial-branch）。画像は使わず、文字とアイコンだけ。
  *  手順の文言は、Google・iCloud 側の画面が変わったら直す。
  * =====================================================================

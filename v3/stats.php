@@ -455,7 +455,7 @@ $songLabel = static function (array $g) use ($viewerApp, $trackCache): string {
 
 $maxArtist = $artists ? max(array_column($artists, 'n')) : 1;
 
-// 「Voを合算する」の切り替え。JS があればページ移動なしで切り替わる（assets/app.js の setupVoSum）。
+// 「Voを合算する」の切り替え。JS があればページ移動なしで切り替わる（assets/app_list.js の setupVoSum）。
 //   JS が無いときはふつうのリンクとして、今の絞り込み（?who= や ?period=）はそのままで vo だけ付け外ししたページへ
 //   http_build_query は値が null の項目を書かないので、外すときは null にする
 //   #◯◯ = 押したあと、そのカードの位置に戻る
@@ -486,7 +486,7 @@ render_header('集計', 'stats');
  *   data-autosubmit を付けた入力は、変えた瞬間に送信される（assets/app.js）。
  */
 $entryYears = range($thisYear, $entryMin); // 新しい順
-// 年度スロット（'26 表記・タップでプルダウン）。回したら hidden の name を書き換えて送信する（app.js の setupSlotInput）
+// 年度スロット（'26 表記・タップでプルダウン）。回したら hidden の name を書き換えて送信する（app_list.js の setupSlotInput）
 $yearSlot = static function (string $name, int $selected, array $list, string $label, string $unit = '年度'): string {
     $html = '<div class="year-slot year-slot--grade year-slot--fy" data-slot-input tabindex="0" role="spinbutton" aria-label="' . h($label) . '"><div class="year-slot__reel">';
     foreach ($list as $y) { // 新しい順（単年度のスロットと同じ）
@@ -508,7 +508,7 @@ $yearSlot = static function (string $name, int $selected, array $list, string $l
             </label>
             <label class="tab"><input type="radio" name="who" value="custom" data-autosubmit<?= $who === 'custom' ? ' checked' : '' ?>>範囲指定</label>
         </div>
-        <!-- 学年スロット（メンバー一覧と同じ部品）。回したら hidden の entry を書き換えて送信する（app.js の setupSlotInput） -->
+        <!-- 学年スロット（メンバー一覧と同じ部品）。回したら hidden の entry を書き換えて送信する（app_list.js の setupSlotInput） -->
         <div class="stats-filter__extra" data-show-when="who=grade">
             <div class="year-slot year-slot--grade" data-slot-input tabindex="0" role="spinbutton" aria-label="学年" title="上下にドラッグで学年を切り替え">
                 <div class="year-slot__reel">

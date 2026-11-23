@@ -2000,7 +2000,7 @@
     const previewBox = root.querySelector('[data-ed-preview-box]');
     let frame = null;
     let sendTimer = 0;
-    // PC では枠を動かせる・大きさを変えられる（app.js の floatWin）
+    // PC では枠を動かせる・大きさを変えられる（app_admin.js の floatWin）
     const placePreview = typeof floatWin === 'function' ? floatWin(previewBox, 'tpl-preview-win') : () => {};
     const labelInput = form.querySelector('[data-template-label]');
     function sendPreview() {

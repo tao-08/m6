@@ -729,7 +729,7 @@
     });
 
     // ---- タブ（AIで検索 / AIで編集）----
-    //   選択中のタブに .is-active、もう一方の中身は hidden。赤い丸の動きは app.js の setupTabGlide が .tabs に自動で付ける
+    //   選択中のタブに .is-active、もう一方の中身は hidden。赤い丸の動きは app_ui.js の setupTabGlide が .tabs に自動で付ける
     //   リクエストの最中に切り替えてもよい（結果は届いたらプレビューに出る）
     const tabButtons = [...box.querySelectorAll('[data-ai-tab]')];
     const panels = [...box.querySelectorAll('[data-ai-panel]')];
@@ -1540,7 +1540,7 @@
       if (!box) return;
       const [name, text] = STATES[st.state];
       box.dataset.state = st.state;
-      box.dataset.tip = text; // 共通のポップアップ（app.js の setupTip）が読む
+      box.dataset.tip = text; // 共通のポップアップ（app_ui.js の setupTip）が読む
       box.setAttribute('aria-label', text);
       const icon = box.querySelector('.icon');
       if (icon) icon.textContent = name;
