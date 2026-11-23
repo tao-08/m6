@@ -190,8 +190,8 @@ const volumeLocked = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.pl
 function fadePause(audio, ms = 150) {
   if (audio.paused) return;
   if (volumeLocked) {
-    // Web Audio の GainNode で下げる。別サイトの音は CORS が無いと無音になるので、同じサイトの音だけ（それ以外はすぐ止める）
-    if (!audio.currentSrc.startsWith(location.origin) && !audio.currentSrc.startsWith('/')) { audio.pause(); return; }
+    // Web Audio の GainNode で下げる。別サイトの音は CORS が無いと無音になるので、同じサイトの音か crossOrigin を付けた音だけ（それ以外はすぐ止める）
+    if (!audio.crossOrigin && !audio.currentSrc.startsWith(location.origin)) { audio.pause(); return; }
     if (!audio._gain) {
       const ctx = new AudioContext();
       audio._gain = ctx.createGain();

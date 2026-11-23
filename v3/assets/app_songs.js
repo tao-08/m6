@@ -644,6 +644,7 @@ function setupPreview() {
   const audio = new Audio();
   audio.volume = VOLUME; // 1回設定すれば src を替えても残る
   audio.preload = 'none';
+  audio.crossOrigin = 'anonymous'; // iPhone のフェード（Web Audio）に必要。iTunes の試聴は CORS を許可している
   let current = null;   // 今鳴らしている（読み込み中の）ボタン
   let retried = false;  // 探し直しは1曲につき1回だけ
   const isSilence = () => audio.src.startsWith('data:');
