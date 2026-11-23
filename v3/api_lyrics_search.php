@@ -113,10 +113,25 @@ foreach (array_slice($decoded['candidates'], 0, 10) as $candidate) {
         if ($titleScore < 75 || $artistScore < 65) continue;
 
         $id = (string)$track['track_id'];
-        if ($id === '' || isset($seen[$id])) continue;
-        $seen[$id] = true;
-        $ranked[] = [
-            'score' => (int)round($titleScore * 0.65 + $artistScore * 0.35),
+        if ($id === '') continue;
+
+        // 同じアーティスト・同じ曲の別バージョンは1候補にまとめる。
+        // 既存の曲管理と同じ song_title_key() を使い、Remaster / Live / Acoustic 等の注記を除いて判定する。
+        $mainArtist = trim(explode(', ', (string)$track['artist_name'])[0]);
+        $groupKey = album_match_key($mainArtist) . "\0" . song_title_key((string)$track['title'], $mainArtist);
+        if ($groupKey === "\0" || str_ends_with($groupKey, "\0")) continue;
+
+        $versionRank = song_version_rank(
+            (string)($track['album_title'] ?? ''),
+            (string)$track['title'],
+            $mainArtist
+        );
+        $releaseYear = isset($track['release_year']) ? (int)$track['release_year'] : 9999;
+        $score = (int)round($titleScore * 0.65 + $artistScore * 0.35);
+        $row = [
+            'score' => $score,
+            'version_rank' => $versionRank,
+            'release_year' => $releaseYear,
             'track' => [
                 'track_id' => $id,
                 'title' => $track['title'],
@@ -126,8 +141,15 @@ foreach (array_slice($decoded['candidates'], 0, 10) as $candidate) {
                 'preview_url' => $track['preview_url'] ?? null,
             ],
         ];
+        // 同一曲が複数のアルバム版で見つかった場合は、オリジナル盤に近い版を優先する。
+        // 同順位なら発売年が古いもの、さらに同じなら照合スコアが高いものを残す。
+        if (!isset($seen[$groupKey])
+            || [$versionRank, $releaseYear, -$score] < [$seen[$groupKey]['version_rank'], $seen[$groupKey]['release_year'], -$seen[$groupKey]['score']]) {
+            $seen[$groupKey] = $row;
+        }
     }
 }
+$ranked = array_values($seen);
 usort($ranked, static fn(array $a, array $b): int => $b['score'] <=> $a['score']);
 $tracks = array_map(static fn(array $row): array => $row['track'], array_slice($ranked, 0, 10));
 
