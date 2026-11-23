@@ -1,0 +1,18 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+	{
+		"label": "PHPサーバー起動",
+		"type": "shell",
+		"command": "php -S localhost:8000 -t v3",
+		"isBackground": true,
+		"problemMatcher": []
+	},
+	{
+		"label": "デプロイ",
+		"type": "shell",
+		"command": "powershell -NoProfile -File scripts/deploy.ps1 -Prod",
+		"problemMatcher": []
+	}
+]
+}
