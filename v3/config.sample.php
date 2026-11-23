@@ -31,11 +31,12 @@ return [
             'client_id'     => '',
             'client_secret' => '',
         ],
-        // 管理者限定の歌詞フレーズ検索（api_lyrics_search.php）に使う Musixmatch API キー
-        //   https://developer.musixmatch.com/ で取得。空なら歌詞検索は利用できない
+        // 管理者限定の歌詞フレーズ検索に使う Gemini API キー（Google AI Studio で取得）
+        //   Google Search grounding を利用するため、現在の料金・利用条件を確認して使う
         //   ※ API キーは秘密情報なので config.php のみに設定し、GitHub には登録しない
-        'musixmatch' => [
+        'gemini' => [
             'api_key' => '',
+            'lyrics_search_model' => 'gemini-3.8-flash',
         ],
         // ライブのプレイリストの動画をバンドに割り当てる（live_youtube.php）のに使う YouTube Data API v3 のキー
         //   Google Cloud Console でプロジェクトを作り、YouTube Data API v3 を有効にして「APIキー」を作ると出る
