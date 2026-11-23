@@ -33,10 +33,20 @@ render_header('歌詞検索の検証', 'tools');
         </div>
         <p class="small muted" style="margin:0;">正解の曲名・アーティストも入力すると、検索結果の順位とiTunesでの照合可否を確認できます。両方入力してください。</p>
         <button class="btn" id="lyrics-probe-submit" type="submit">検索して検証</button>
+        <button class="btn btn--secondary" id="lyrics-gemini-submit" type="button">Geminiでも検索</button>
     </form>
 </section>
 
+<p class="small muted">Gemini検証では、入力した歌詞フレーズがGoogle Gemini APIに送信され、Google検索で照合されます。歌詞本文は表示・保存しません。無料枠の入力データはGoogleのサービス改善に使用される場合があります。</p>
+
 <p class="small muted">注意：入力した歌詞フレーズは検索のため lrc.red に送信されます。外部サービス側の取り扱いは lrc.red の規約・プライバシー条件に従います。m6側ではフレーズ・歌詞本文・検証結果を保存しません。</p>
+
+<div id="lyrics-gemini-results" hidden>
+    <h2 class="display display--xs" style="margin-top:22px;">Gemini検索結果</h2>
+    <div id="lyrics-gemini-summary" class="card" style="padding:12px; margin:10px 0;"></div>
+    <div id="lyrics-gemini-hits" style="display:grid; gap:8px;"></div>
+    <div id="lyrics-gemini-sources" class="small muted" style="margin-top:10px;"></div>
+</div>
 
 <div id="lyrics-probe-status" class="card" role="status" aria-live="polite" style="padding:12px; margin:12px 0;" hidden></div>
 <section id="lyrics-probe-results" hidden>
