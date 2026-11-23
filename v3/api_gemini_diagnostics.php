@@ -29,6 +29,15 @@ $result = [
     'model' => $model !== '' ? $model : '(未設定)',
     'http_status' => null,
     'latency_ms' => null,
+    'dns_time_ms' => null,
+    'tcp_connect_time_ms' => null,
+    'tls_handshake_time_ms' => null,
+    'first_byte_time_ms' => null,
+    'primary_ip' => null,
+    'primary_port' => null,
+    'local_ip' => null,
+    'curl_error' => null,
+    'timeout_phase' => null,
     'category' => 'not_run',
     'message' => '',
 ];
@@ -86,13 +95,32 @@ $body = curl_exec($ch);
 $errno = curl_errno($ch);
 $status = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
 $elapsed = (int)round((microtime(true) - $started) * 1000);
+$info = curl_getinfo($ch);
+$ms = static fn(string $key): ?int => isset($info[$key]) ? (int)round((float)$info[$key] * 1000) : null;
+$result['dns_time_ms'] = $ms('namelookup_time');
+$result['tcp_connect_time_ms'] = $ms('connect_time');
+$result['tls_handshake_time_ms'] = $ms('appconnect_time') !== null && $ms('connect_time') !== null
+    ? max(0, $ms('appconnect_time') - $ms('connect_time')) : null;
+$result['first_byte_time_ms'] = $ms('starttransfer_time');
+$result['primary_ip'] = $info['primary_ip'] ?? null;
+$result['primary_port'] = isset($info['primary_port']) ? (int)$info['primary_port'] : null;
+$result['local_ip'] = $info['local_ip'] ?? null;
+$curlError = curl_error($ch);
 curl_close($ch);
 
 $result['latency_ms'] = $elapsed;
 if ($body === false) {
     $result['category'] = 'transport_failed';
     $result['curl_errno'] = $errno;
-    $result['message'] = 'Google APIへのHTTPS通信に失敗しました。cURLエラー番号からサーバー側の通信・TLS設定を確認してください。';
+    $result['curl_error'] = $curlError !== '' ? substr($curlError, 0, 240) : null;
+    $result['timeout_phase'] = $errno === 28
+        ? (($result['tcp_connect_time_ms'] ?? 0) === 0 ? 'dns_or_tcp'
+            : (($result['tls_handshake_time_ms'] ?? 0) === 0 ? 'tls_or_connect'
+                : (($result['first_byte_time_ms'] ?? 0) === 0 ? 'waiting_for_response' : 'response_transfer')))
+        : null;
+    $result['message'] = $errno === 28
+        ? '通信が制限時間内に完了しませんでした。各段階の時間から停止箇所を確認してください。'
+        : 'Google APIへのHTTPS通信に失敗しました。cURLエラーと通信段階の時間を確認してください。';
     api_ok($result);
 }
 
