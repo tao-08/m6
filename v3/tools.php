@@ -84,7 +84,6 @@ $tab = (string)($_GET['tab'] ?? '');
 if (!isset($grouped[$tab])) {
     $tab = (string)array_key_first($grouped);
 }
-$tools = $grouped[$tab];
 
 render_header('ツール', 'tools');
 ?>
@@ -102,13 +101,14 @@ render_header('ツール', 'tools');
     <?php endforeach; ?>
 </div>
 <?php endif; ?>
-<nav class="tabs tabs--static" aria-label="ツールの種類">
+<nav class="tabs tabs--static" aria-label="ツールの種類" data-tool-tabs>
     <?php foreach (array_keys($grouped) as $k): ?>
-        <a class="tab<?= $k === $tab ? ' is-active' : '' ?>" href="tools?tab=<?= h($k) ?>"<?= $k === $tab ? ' aria-current="page"' : '' ?>><?= h($tabs[$k]) ?></a>
+        <a class="tab<?= $k === $tab ? ' is-active' : '' ?>" href="tools?tab=<?= h($k) ?>" data-tab="<?= h($k) ?>"<?= $k === $tab ? ' aria-current="page"' : '' ?>><?= h($tabs[$k]) ?></a>
     <?php endforeach; ?>
 </nav>
-<div class="tool-list">
-    <?php foreach ($tools as $t): [$href, $ic, $name, $desc] = $t; $tag = $t[4] ?? null; ?>
+<?php foreach ($grouped as $k => $list): ?>
+<div class="tool-list" data-tool-pane="<?= h($k) ?>"<?= $k === $tab ? '' : ' hidden' ?>>
+    <?php foreach ($list as $t): [$href, $ic, $name, $desc] = $t; $tag = $t[4] ?? null; ?>
         <a class="card tool-card" href="<?= h($href) ?>">
             <span class="tool-card__icon"><?= icon($ic) ?></span>
             <span class="tool-card__body">
@@ -118,7 +118,6 @@ render_header('ツール', 'tools');
         </a>
     <?php endforeach; ?>
 </div>
-<?php if ($tab === 'useful'): ?>
-<p class="muted small">登録済みのバンドのシートは、バンドのページの「セッティングシート作成」から作ると、メンバーと曲が最初から入ります。</p>
-<?php endif; ?>
+<?php endforeach; ?>
+<p class="muted small" data-tool-pane="useful"<?= $tab === 'useful' ? '' : ' hidden' ?>>登録済みのバンドのシートは、バンドのページの「セッティングシート作成」から作ると、メンバーと曲が最初から入ります。</p>
 <?php render_footer();

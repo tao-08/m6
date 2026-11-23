@@ -1991,6 +1991,23 @@ function setupSmallThings() {
     markRead(tab);
   }));
 
+  // ツールのタブ（data-tool-tabs）: ページを移動せず、data-tool-pane が合う一覧だけ表示する。URL の ?tab= も書きかえる
+  const toolTabs = document.querySelector('[data-tool-tabs]');
+  if (toolTabs) {
+    toolTabs.addEventListener('click', (e) => {
+      const tab = e.target.closest('.tab');
+      if (!tab) return;
+      e.preventDefault();
+      document.querySelectorAll('[data-tool-pane]').forEach((p) => { p.hidden = p.dataset.toolPane !== tab.dataset.tab; });
+      toolTabs.querySelectorAll('.tab').forEach((t) => {
+        const on = t === tab;
+        t.classList.toggle('is-active', on);
+        on ? t.setAttribute('aria-current', 'page') : t.removeAttribute('aria-current');
+      });
+      history.replaceState(null, '', tab.getAttribute('href'));
+    });
+  }
+
   // お知らせのカテゴリタブ（data-notice-tabs）: ページを移動せず、data-notice-cat が合う記事だけ表示する。
   //   表示の動きは CSS（.notice-item:not([hidden]) のアニメーション）。URL の ?cat= も書きかえて、共有・再読み込みしても同じタブになる
   const noticeTabs = document.querySelector('[data-notice-tabs]');
