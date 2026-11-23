@@ -15,6 +15,8 @@ api_user('is_admin', '歌詞検索は管理者のみ利用できます');
 
 $body = api_body();
 $q = trim(is_array($body) && is_string($body['q'] ?? null) ? $body['q'] : '');
+$requestedArtist = trim(is_array($body) && is_string($body['artist'] ?? null) ? $body['artist'] : '');
+$requestedArtist = mb_substr($requestedArtist, 0, 100, 'UTF-8');
 if (mb_strlen($q, 'UTF-8') < 3 || mb_strlen($q, 'UTF-8') > 100) {
     fail(400, '検索語は3〜100文字で入力してください');
 }
@@ -30,6 +32,7 @@ if (!preg_match('/^gemini-[a-zA-Z0-9.-]+$/', $model)) {
 }
 
 $prompt = "あなたは楽曲特定アシスタントです。入力された歌詞の一節から該当する曲を推定してください。"
+    . ($requestedArtist !== '' ? "対象アーティストは「{$requestedArtist}」です。このアーティストの楽曲だけを候補にしてください。別アーティストのカバーや同名曲は候補に含めないでください。" : "アーティスト指定はありません。邦楽・洋楽・インディーズ、メジャー・マイナーを幅広く対象にします。")
     . "邦楽・洋楽・インディーズ、メジャー・マイナーを幅広く対象にします。"
     . "確信度が異なる候補も含め、可能性の高い順に最大10件返してください。"
     . "曲名・アーティスト名は正式表記を優先し、別バージョンやカバーは区別してください。"
@@ -98,7 +101,10 @@ foreach (array_slice($decoded['candidates'], 0, 10) as $candidate) {
     $artist = trim((string)($candidate['artist'] ?? ''));
     if ($title === '' || $artist === '') continue;
 
-    $found = itunes_search_tracks($title . ' ' . $artist, 10);
+    // オムニバスでない場合は、フォームから渡されたバンドのアーティスト名を優先して検索する。
+    // Geminiが別アーティスト名を返しても、検索・照合には指定アーティストを使う。
+    $searchArtist = $requestedArtist !== '' ? $requestedArtist : $artist;
+    $found = itunes_search_tracks($title . ' ' . $searchArtist, 10);
     if (!is_array($found) || $found === []) continue;
 
     foreach ($found as $track) {
@@ -107,7 +113,7 @@ foreach (array_slice($decoded['candidates'], 0, 10) as $candidate) {
         $artistNames = array_map('trim', explode(', ', (string)$track['artist_name']));
         $artistScore = 0;
         foreach ($artistNames as $actualArtist) {
-            $artistScore = max($artistScore, $similarity($actualArtist, $artist));
+            $artistScore = max($artistScore, $similarity($actualArtist, $searchArtist));
         }
         // タイトルとアーティストの両方が一定以上一致する候補に限定する。
         if ($titleScore < 75 || $artistScore < 65) continue;
