@@ -1232,7 +1232,10 @@ function setupLyricsSearch() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },
         credentials: 'same-origin',
-        body: JSON.stringify({ q }),
+        const omnibus = card.closest('form')?.querySelector('[data-omnibus]')?.checked ?? false;
+        const artistInput = card.querySelector('[data-song-artist]');
+        const artist = !omnibus ? (artistInput?.value.trim() || '') : '';
+        body: JSON.stringify({ q, artist }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || '歌詞検索に失敗しました');
