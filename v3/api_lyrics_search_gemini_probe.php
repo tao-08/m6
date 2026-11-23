@@ -50,6 +50,8 @@ $request = [
         'temperature' => 0,
         'maxOutputTokens' => 1200,
     ],
+    // 本番検索と同じくGoogle検索グラウンディングを有効化。
+    'tools' => [['google_search' => new stdClass()]],
 ];
 $url = 'https://generativelanguage.googleapis.com/v1beta/models/' . rawurlencode($model) . ':generateContent';
 $response = album_http($url, [
