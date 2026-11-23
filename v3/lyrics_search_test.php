@@ -13,7 +13,7 @@ if (!is_admin()) {
 render_header('歌詞検索の検証', 'tools');
 ?>
 <h1 class="display display--sm">歌詞検索の検証</h1>
-<p class="muted">lrc.red の検索精度と、iTunes での曲情報・試聴可否を確認します。検証結果はこの画面だけに表示し、m6のデータベースには保存しません。</p>
+<p class="muted">lrc.redとGemini単体の検索精度、およびiTunesでの曲情報・試聴可否を比較します。検証結果はこの画面だけに表示し、m6のデータベースには保存しません。</p>
 
 <section class="card" style="padding:16px; margin:16px 0;">
     <form id="lyrics-probe-form" style="display:grid; gap:12px;">
@@ -37,7 +37,7 @@ render_header('歌詞検索の検証', 'tools');
     </form>
 </section>
 
-<p class="small muted">Gemini検証では、入力した歌詞フレーズがGoogle Gemini APIに送信され、Google検索で照合されます。歌詞本文は表示・保存しません。無料枠の入力データはGoogleのサービス改善に使用される場合があります。</p>
+<p class="small muted">Gemini検証では、入力した歌詞フレーズがGoogle Gemini APIに送信され、Gemini単体の学習済み知識から候補を推定します。外部検索は使用しません。歌詞本文は表示・保存しません。無料枠の入力データはGoogleのサービス改善に使用される場合があります。</p>
 
 <p class="small muted">注意：入力した歌詞フレーズは検索のため lrc.red に送信されます。外部サービス側の取り扱いは lrc.red の規約・プライバシー条件に従います。m6側ではフレーズ・歌詞本文・検証結果を保存しません。</p>
 
@@ -79,7 +79,7 @@ render_header('歌詞検索の検証', 'tools');
         if (!form.reportValidity()) return;
         geminiButton.disabled = true;
         geminiResults.hidden = true;
-        setMessage('Gemini + Google検索で候補を調べています…');
+        setMessage('Gemini単体で候補を推定しています…');
         const values = Object.fromEntries(new FormData(form).entries());
         try {
             const response = await fetch('api_lyrics_search_gemini_probe', {
@@ -115,7 +115,7 @@ render_header('歌詞検索の検証', 'tools');
                 });
             }
             geminiSources.replaceChildren();
-            appendText(geminiSources, 'strong', '', 'Google検索の参照元');
+            appendText(geminiSources, 'strong', '', '検索参照元（Gemini単体のため表示なし）');
             (data.sources || []).forEach((source) => {
                 const link = document.createElement('a');
                 link.href = source.url;
