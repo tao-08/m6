@@ -1,8 +1,10 @@
 name: Deploy
 
-# 手動実行（Actionsタブ → Deploy → Run workflow）
-# push で自動にしたい場合は下の on: に `push: { branches: [main] }` を追加
+# main への push で本番に自動デプロイ
+# 手動実行（Actionsタブ → Deploy → Run workflow）ではドライランを選べる
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       dry_run:
@@ -57,7 +59,8 @@ jobs:
           port: ${{ secrets.FTP_PORT || 21 }}
           local-dir: ./v3/
           server-dir: ${{ secrets.FTP_DIR }}
-          dry-run: ${{ inputs.dry_run }}
+          # push のときは inputs が空なので、手動実行のときだけ入力を見る（push は常に本番）
+          dry-run: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
           exclude: |
             **/.git*
             **/.git*/**
