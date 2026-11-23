@@ -463,6 +463,10 @@ function setupAudioPlayers(root = document) {
       } else if (del) {
         const id = Number(del.closest('.audio-chapter').dataset.id);
         if (pend?.id === id) { clearTimeout(pendTimer); pend = null; }
+        if (draft) { // 下書きは保存前なので、画面から外すだけ
+          leave(els.get(id)).then(() => { draft = draft?.filter((c) => c.id !== id) ?? null; render(); });
+          return;
+        }
         send({ action: 'delete', chapter_id: id }, leave(els.get(id)));
       } else if (nudge) {
         const c = shown().find((x) => x.id === selId);
