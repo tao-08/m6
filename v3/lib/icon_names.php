@@ -153,6 +153,7 @@ return [
     'logout',
     'loop',
     'map',
+    'manage_search',
     'meeting_room',
     'memory',
     'merge',
