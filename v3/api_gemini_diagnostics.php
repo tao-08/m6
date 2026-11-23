@@ -28,6 +28,9 @@ $result = [
     'api_key_configured' => $apiKey !== '',
     'model' => $model !== '' ? $model : '(未設定)',
     'http_status' => null,
+    'google_error_code' => null,
+    'google_error_status' => null,
+    'google_error_message' => null,
     'latency_ms' => null,
     'dns_time_ms' => null,
     'tcp_connect_time_ms' => null,
@@ -125,6 +128,18 @@ if ($body === false) {
 }
 
 $result['http_status'] = $status;
+// Google APIのエラー詳細は診断画面にだけ表示する。APIキー等の秘密情報は除去する。
+$googleError = is_array($decoded = json_decode((string)$body, true))
+    ? (is_array($decoded['error'] ?? null) ? $decoded['error'] : []) : [];
+$errorMessage = trim((string)($googleError['message'] ?? ''));
+if ($errorMessage !== '') {
+    $errorMessage = str_replace($apiKey, '[REDACTED]', $errorMessage);
+    $result['google_error_message'] = mb_substr($errorMessage, 0, 300, 'UTF-8');
+}
+$result['google_error_status'] = isset($googleError['status'])
+    ? mb_substr((string)$googleError['status'], 0, 80, 'UTF-8') : null;
+$result['google_error_code'] = isset($googleError['code'])
+    ? (int)$googleError['code'] : null;
 $result['category'] = match (true) {
     $status >= 200 && $status < 300 => 'ok',
     $status === 400 => 'bad_request',
@@ -143,5 +158,5 @@ $result['message'] = match ($result['category']) {
     'google_server_error' => 'Google API側でサーバーエラーが発生しています。',
     default => 'Google APIから想定外のHTTPステータスが返されました。',
 };
-// レスポンス本文にはGoogle側の詳細情報が含まれる場合があるため、保存も返却もしない。
+// APIキーを除去したGoogle側のエラーコード・状態・メッセージのみ診断画面へ返す。本文全体は保存・返却しない。
 api_ok($result);
