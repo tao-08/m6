@@ -142,3 +142,49 @@ function drive_download(string $fileId, string $dest, int $dbSize): ?array
     $want = $len >= 0 ? $len : $dbSize; // 上流の長さがあればそれ、無ければ DB の大きさ
     return $want > 0 && $got !== $want ? [200, "short got $got want $want"] : null;
 }
+
+/**
+ * キャッシュに無ければ、ドライブから落とす（要 lib/drive.php）。同時の要求は1つだけが落とし、ほかは終わるのを待つ
+ * @param int  $size 期待する大きさ（DB の値）。ドライブ側で変わっていたら DB を直し、ここも実際の値にする
+ * @param bool $miss 落としたとき true
+ * @return array{0: int|string, 1: string, 2: int}|null 失敗したら [上流の状態, 理由, HTTP ステータス]
+ */
+function drive_cache_ensure(string $fileId, int &$size, bool &$miss = false): ?array
+{
+    $dat = drive_cache_path($fileId);
+    $lock = null;
+    $deadline = time() + 90;
+    // shortcut: $size は最初に読んだ DB の値。待っている間に DB の大きさが直されても、この回は古いままで比べる（次の回から合う）
+    while (!drive_cache_ok($dat, $size)) {
+        $lock ??= @fopen(drive_cache_dir() . '/' . $fileId . '.lock', 'c');
+        if (!$lock) {
+            return ['fs', 'cannot create cache', 502];
+        }
+        if (flock($lock, LOCK_EX | LOCK_NB)) { // 落とすのは1つだけ。ほかの同時のリクエストは、下で終わるのを待つ
+            clearstatcache();
+            if (!drive_cache_ok($dat, $size)) {
+                $part = $dat . '.part'; // 最後まで落とせて大きさが合ってから .dat にする
+                if ($err = drive_download($fileId, $part, $size)) {
+                    @unlink($part);
+                    return [$err[0], $err[1], 502];
+                }
+                $got = (int)filesize($part);
+                rename($part, $dat);
+                if ($got !== $size) { // DB の大きさが違う（ドライブ側で差し替わった）。直さないと毎回落とし直しになる
+                    db()->prepare('UPDATE band_drive_file SET size = ? WHERE file_id = ?')->execute([$got, $fileId]);
+                }
+                drive_cache_trim($dat);
+                $miss = true;
+            }
+            flock($lock, LOCK_UN);
+            break;
+        }
+        if (time() >= $deadline) {
+            return ['busy', 'download in progress', 503];
+        }
+        usleep(500000);
+        clearstatcache();
+    }
+    @touch($dat); // 使った印（上限を超えたとき、使われていない順に消す）
+    return null;
+}

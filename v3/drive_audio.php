@@ -36,6 +36,7 @@ if (function_exists('set_time_limit')) {
     @set_time_limit(0);
 }
 
+$miss = false;
 $fail = static function (int|string $code, string $reason, int $http = 502): never {
     http_response_code($http);
     header('X-Upstream-Status: ' . $code);
@@ -44,41 +45,11 @@ $fail = static function (int|string $code, string $reason, int $http = 502): nev
 };
 
 $dat = drive_cache_path($fileId);
-$miss = false;
-$lock = null;
-$deadline = time() + 90;
-// shortcut: $size は最初に読んだ DB の値。待っている間に DB の大きさが直されても、この回は古いままで比べる（次の回から合う）
-while (!drive_cache_ok($dat, $size)) {
-    $lock ??= @fopen(drive_cache_dir() . '/' . $fileId . '.lock', 'c');
-    if (!$lock) {
-        $fail('fs', 'cannot create cache');
-    }
-    if (flock($lock, LOCK_EX | LOCK_NB)) { // 落とすのは1つだけ。ほかの同時のリクエストは、下で終わるのを待つ
-        clearstatcache();
-        if (!drive_cache_ok($dat, $size)) {
-            $part = $dat . '.part'; // 最後まで落とせて大きさが合ってから .dat にする
-            if ($err = drive_download($fileId, $part, $size)) {
-                @unlink($part);
-                $fail($err[0], $err[1]);
-            }
-            $got = (int)filesize($part);
-            rename($part, $dat);
-            if ($got !== $size) { // DB の大きさが違う（ドライブ側で差し替わった）。直さないと毎回落とし直しになる
-                db()->prepare('UPDATE band_drive_file SET size = ? WHERE file_id = ?')->execute([$got, $fileId]);
-            }
-            drive_cache_trim($dat);
-            $miss = true;
-        }
-        flock($lock, LOCK_UN);
-        break;
-    }
-    if (time() >= $deadline) {
+if ($err = drive_cache_ensure($fileId, $size, $miss)) {
+    if ($err[2] === 503) {
         header('Retry-After: 5');
-        $fail('busy', 'download in progress', 503);
     }
-    usleep(500000);
-    clearstatcache();
+    $fail($err[0], $err[1], $err[2]);
 }
-@touch($dat); // 使った印（上限を超えたとき、使われていない順に消す）
 header('X-Cache: ' . ($miss ? 'MISS' : 'HIT'));
 audio_stream_file($dat, $mime, isset($_GET['dl']) ? $dlName : null);

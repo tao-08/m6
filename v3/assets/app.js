@@ -2267,16 +2267,6 @@ function setupAudioPlayers(root = document) {
     return s >= 3600 ? `${Math.floor(s / 3600)}:${String(Math.floor(s / 60) % 60).padStart(2, '0')}:${sec}` : `${Math.floor(s / 60)}:${sec}`;
   };
 
-  // 自動チャプター（assets/autochapter.js）は、最初に押されたときだけ読み込む
-  let autoScript = null;
-  const loadAutoChapter = (url) => (window.AutoChapter ? Promise.resolve() : autoScript ??= new Promise((resolve, reject) => {
-    const sc = document.createElement('script');
-    sc.src = url;
-    sc.onload = resolve;
-    sc.onerror = () => { autoScript = null; reject(new Error('autochapter.js')); };
-    document.head.append(sc);
-  }));
-
   figs.forEach((fig) => {
     fig.dataset.apReady = '1';
     const audio = fig.querySelector('audio');
@@ -2298,7 +2288,6 @@ function setupAudioPlayers(root = document) {
     let timer = 0;
     let draft = null;     // 自動で付けた下書き [{kind, ms}]。あるあいだは保存済みの代わりにこれを出す
     let ctrl = null;      // 自動で付けている最中の中止用
-    let whenTotal = null; // 長さがわかったら呼ぶ（自動で付けるのが待っている）
     let selId = null;     // 編集モードで選んだチャプターの id（時間を直す相手）
     let pend = null;      // 保存待ちの時間の直し { id, ms, from }。from = 直す前の時間（失敗したら戻す）
     let pendTimer = 0;
@@ -2504,7 +2493,6 @@ function setupAudioPlayers(root = document) {
       range.max = Math.ceil(total);
       range.disabled = false;
       render();
-      whenTotal?.();
     };
     audio.addEventListener('loadedmetadata', async () => {
       clearTimeout(loadTimer);
@@ -2687,29 +2675,14 @@ function setupAudioPlayers(root = document) {
       if ((e.key === 'Enter' && !e.isComposing) || e.key === 'Escape') atInput.blur();
     });
 
-    // 自動で付ける: 音量から下書きを作る → 聞いて確かめる → 保存（置き換え）かやめる
+    // 自動で付ける: Gemini に聴かせて下書きを作る → 聞いて確かめる → 保存（置き換え）かやめる
     const setMode = (m) => fig.querySelectorAll('[data-ap-in]').forEach((b) => { b.hidden = b.dataset.apIn !== m; });
-    const pct = fig.querySelector('[data-ap-pct]');
-    const waitTotal = (signal) => new Promise((resolve, reject) => { // 長さがわかるまで、読み込みだけ始めて待つ
-      const stop = () => { whenTotal = null; reject(new DOMException('Aborted', 'AbortError')); };
-      signal.addEventListener('abort', stop, { once: true });
-      whenTotal = () => { signal.removeEventListener('abort', stop); whenTotal = null; resolve(); };
-      audio.preload = 'metadata';
-      audio.load();
-      loadWatch();
-    });
     const autoRun = async () => {
       ctrl = new AbortController();
       const { signal } = ctrl;
-      pct.textContent = '';
       setMode('busy');
       try {
-        if (!total) await waitTotal(signal);
-        await loadAutoChapter(fig.dataset.autochapter);
-        const found = await window.AutoChapter.analyze({
-          url: src, size, duration: total, songCount: chap.songs.length, signal,
-          onProgress: (p) => { pct.textContent = `${Math.round(p * 100)}%`; },
-        });
+        const { draft: found } = await apiPost('api_audio_chapter.php', { action: 'auto', band_id: chap.band, key: chap.key }, '自動で付けられませんでした', { signal });
         if (!found.length) throw new Error('none');
         draft = found.map((c, i) => ({ ...c, id: i - found.length })); // 保存前の印。負の番号（時間順に並ぶ）で、保存済みの id とぶつからない
         setMode('draft');
@@ -2717,7 +2690,7 @@ function setupAudioPlayers(root = document) {
       } catch (e) {
         setMode('idle');
         if (e.message === 'none') flashToast('区切りを見つけられませんでした', 'warn');
-        else if (e.name !== 'AbortError') flashToast('音源を読み込めませんでした', 'error'); // 区間の読み込みの失敗
+        else if (e.name !== 'AbortError') flashToast(e.message, 'error');
       }
       ctrl = null;
     };

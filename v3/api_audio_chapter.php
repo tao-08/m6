@@ -45,9 +45,9 @@ function audio_chapter_valid(mixed $kind, mixed $ms): bool
     return in_array($kind, ['mc', 'song'], true) && is_int($ms) && $ms >= 0 && $ms <= AUDIO_CHAPTER_MAX_MS;
 }
 
-if (in_array($action, ['add', 'replace'], true)) {
+if (in_array($action, ['add', 'replace', 'auto'], true)) {
     $key = (string)($body['key'] ?? '');
-    $items = [['kind' => $body['kind'] ?? null, 'ms' => $body['at_ms'] ?? null]];
+    $items = $action === 'auto' ? [] : [['kind' => $body['kind'] ?? null, 'ms' => $body['at_ms'] ?? null]];
     if ($action === 'replace') {
         $items = is_array($body['chapters'] ?? null) ? array_values($body['chapters']) : null;
         if ($items === null) {
@@ -74,6 +74,43 @@ if (in_array($action, ['add', 'replace'], true)) {
     }
     if (!$st->fetchColumn()) {
         fail(404, '音源が見つかりません');
+    }
+    if ($action === 'auto') { // Gemini に聴かせて、チャプターの下書きだけ返す（保存は replace）
+        require_once __DIR__ . '/lib/gemini_chapters.php';
+        require_once __DIR__ . '/lib/live_image.php'; // LIVE_IMAGE_DIR
+        $gemini = (array)(config('gemini') ?? []);
+        $apiKey = trim((string)($gemini['api_key'] ?? ''));
+        $model = trim((string)($gemini['chapter_model'] ?? $gemini['lyrics_search_model'] ?? 'gemini-3.8-flash'));
+        if ($apiKey === '' || !preg_match('/^gemini-[a-zA-Z0-9.-]+$/', $model)) {
+            fail(503, '自動チャプターは未設定です');
+        }
+        session_write_close(); // 長く待つので、ほかの画面を待たせない
+        @set_time_limit(0);
+        $mime = 'audio/mpeg';
+        if ($m ?? false) { // a:N（アップロードした MP3）
+            $st = $pdo->prepare('SELECT file_name FROM band_audio WHERE image_id = ?');
+            $st->execute([(int)$m[1]]);
+            $path = LIVE_IMAGE_DIR . '/' . live_file_disk_name((string)$st->fetchColumn());
+        } else { // d:ID（ドライブの音源。まだ落としていなければここで落とす）
+            require_once __DIR__ . '/lib/drive_cache.php';
+            $st = $pdo->prepare('SELECT mime_type, size FROM band_drive_file WHERE band_id = ? AND file_id = ?');
+            $st->execute([$bandId, substr($key, 2)]);
+            $row = $st->fetch();
+            $mime = (string)$row['mime_type'];
+            $size = (int)$row['size'];
+            if (drive_cache_ensure(substr($key, 2), $size)) {
+                fail(502, '音源を読み込めませんでした');
+            }
+            $path = drive_cache_path(substr($key, 2));
+        }
+        if (!is_file($path)) {
+            fail(404, '音源が見つかりません');
+        }
+        $found = gemini_audio_chapters($path, $mime, $apiKey, $model);
+        if (is_string($found)) {
+            fail(502, $found);
+        }
+        api_ok(['draft' => $found]);
     }
     $ins = $pdo->prepare('INSERT INTO band_audio_chapter (band_id, audio_key, kind, at_ms) VALUES (?, ?, ?, ?)');
     if ($action === 'add') {
