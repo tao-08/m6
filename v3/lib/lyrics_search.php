@@ -44,7 +44,7 @@ function lyrics_search_query_variants(string $query): array
             $normalized = $nfkc;
         }
     }
-    $normalized = mb_convert_kana($normalized, 'asV', 'UTF-8'); // カタカナは全角のまま保持し、後段のひらがな変換を妨げない
+    $normalized = mb_convert_kana($normalized, 'asKV', 'UTF-8');
     $withoutPunctuation = preg_replace('/[\p{P}\p{S}]+/u', ' ', $normalized) ?? $normalized;
     $withoutPunctuation = preg_replace('/[\p{Z}\s]+/u', ' ', trim($withoutPunctuation)) ?? trim($withoutPunctuation);
     $add($withoutPunctuation);
