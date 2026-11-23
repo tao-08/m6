@@ -32,7 +32,7 @@ if (!preg_match('/^gemini-[a-zA-Z0-9.-]+$/', $model)) {
 }
 
 $prompt = "あなたは楽曲特定アシスタントです。入力された歌詞の一節から該当する曲を推定してください。"
-    . ($requestedArtist !== '' ? "対象アーティストは「{$requestedArtist}」です。このアーティストの楽曲だけを候補にしてください。別アーティストのカバーや同名曲は候補に含めないでください。" : "アーティスト指定はありません。邦楽・洋楽・インディーズ、メジャー・マイナーを幅広く対象にします。")
+    . ($requestedArtist !== '' ? "対象アーティストは「{$requestedArtist}」です。このアーティストの楽曲を優先して候補にしてください。別アーティストの曲は、歌詞がほぼ完全に一致すると確信できる場合だけ confidence を high にして含めてください。" : "アーティスト指定はありません。邦楽・洋楽・インディーズ、メジャー・マイナーを幅広く対象にします。")
     . "確信度が異なる候補も含め、可能性の高い順に最大10件返してください。"
     . "曲名・アーティスト名は正式表記を優先し、別バージョンやカバーは区別してください。"
     . "歌詞本文、入力された歌詞の引用、歌詞の続きは絶対に回答に含めないでください。"
@@ -104,7 +104,10 @@ foreach (array_slice($decoded['candidates'], 0, 10) as $candidate) {
 
     // オムニバスでない場合は、フォームから渡されたバンドのアーティスト名を優先して検索する。
     // Geminiが別アーティスト名を返しても、検索・照合には指定アーティストを使う。
-    $searchArtist = $requestedArtist !== '' ? $requestedArtist : $artist;
+    // 指定アーティスト以外は、Geminiがほぼ完全一致(high)とした曲だけ残す。
+    $isRequested = $requestedArtist === '' || $similarity($artist, $requestedArtist) >= 65;
+    if (!$isRequested && strtolower(trim((string)($candidate['confidence'] ?? ''))) !== 'high') continue;
+    $searchArtist = $isRequested && $requestedArtist !== '' ? $requestedArtist : $artist;
     $found = itunes_search_tracks($title . ' ' . $searchArtist, 10);
     if (!is_array($found) || $found === []) continue;
 
@@ -135,8 +138,15 @@ foreach (array_slice($decoded['candidates'], 0, 10) as $candidate) {
         );
         $releaseYear = isset($track['release_year']) ? (int)$track['release_year'] : 9999;
         $score = (int)round($titleScore * 0.65 + $artistScore * 0.35);
+        $artistMatch = 0;
+        if ($requestedArtist !== '') {
+            foreach ($artistNames as $actualArtist) {
+                if ($similarity($actualArtist, $requestedArtist) >= 65) $artistMatch = 1;
+            }
+        }
         $row = [
             'score' => $score,
+            'artist_match' => $artistMatch,
             'version_rank' => $versionRank,
             'release_year' => $releaseYear,
             'track' => [
@@ -157,7 +167,7 @@ foreach (array_slice($decoded['candidates'], 0, 10) as $candidate) {
     }
 }
 $ranked = array_values($seen);
-usort($ranked, static fn(array $a, array $b): int => $b['score'] <=> $a['score']);
+usort($ranked, static fn(array $a, array $b): int => [$b['artist_match'], $b['score']] <=> [$a['artist_match'], $a['score']]);
 $tracks = array_map(static fn(array $row): array => $row['track'], array_slice($ranked, 0, 10));
 
 api_ok(['tracks' => $tracks, 'provider' => 'Gemini + Google Search']);
