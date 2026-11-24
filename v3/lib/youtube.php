@@ -202,6 +202,7 @@ function youtube_chapters(string $videoId): ?array
  * 概要欄の文字から曲名を取り出す（通信なし → tests/run.php でテストできる）
  *   ① タイムスタンプの行（「0:00 曲名」「12:30 - 曲名 / アーティスト」）→ あればこちらだけ使う
  *   ② 無ければ「曲名 / アーティスト」の形の行（2行以上）
+ *   ③ それも無ければ、曲名だけの行が3行以上並ぶ概要欄（行頭の「1.」は外す）。短い文章が並んだだけのものも拾う
  *   曲名は「/」の前。MC・休憩などの行と、URL の入った行は飛ばす。戻り値: 曲名の配列（最大15曲 = 保存の上限）
  *   shortcut: 「アーティスト / 曲名」の順で書いた概要欄は逆に読む。必要なら順番を選ばせる
  */
@@ -219,8 +220,18 @@ function youtube_parse_songs(string $description): array
             $slashed[] = $m[1];
         }
     }
+    $labels = $timed ?: (count($slashed) >= 2 ? $slashed : []);
+    if (!$labels) {
+        // ③ 曲名だけを1行ずつ並べた概要欄。3〜30行で、全行が短く、URL・@・# が無いときだけ
+        $lines = array_values(array_filter(array_map('trim', preg_split('/\R/u', $description) ?: []), 'strlen'));
+        $plain = count($lines) >= 3 && count($lines) <= 30;
+        foreach ($lines as $l) {
+            $plain = $plain && mb_strlen($l) <= 50 && !preg_match('~https?://|[@＠#＃]~u', $l);
+        }
+        $labels = $plain ? array_map(fn($l) => preg_replace('/^[\d０-９]+[.．)）]\s*/u', '', $l), $lines) : [];
+    }
     $titles = [];
-    foreach ($timed ?: (count($slashed) >= 2 ? $slashed : []) as $label) {
+    foreach ($labels as $label) {
         $title = trim(preg_split('/\s+[\/／]\s+/u', $label)[0]);
         if ($title === '' || mb_strlen($title) > 100 || preg_match('/^(MC|オープニング|エンディング|イントロ|開演|休憩|挨拶|自己紹介|転換)/iu', $title)) {
             continue;
