@@ -3254,7 +3254,7 @@ button.ttb-m { cursor: pointer; text-decoration: underline dotted; }
 
 /* 通報の信号（lib/board.php の board_signal_html）。日本の横型2灯式: 黄が左・赤が右。data-n = 0 は旗、1 は黄、2 は黄と赤。
    LED のドットは .signal--led（外すとなめらかなガラスの灯） */
-.signal { --dots: radial-gradient(circle, rgb(255 255 255 / .25) 0 .6px, transparent .8px); --lamp: 16px; --bezel: 1.5px; /* 灯の黒い縁。0 でなし */ display: inline-flex; align-items: center; gap: 6px; flex: none; padding: 4px 6px; border: 1px solid var(--border-strong, #7d848b); border-radius: calc(var(--r-sm) + 1px); /* 7px */
+.signal { --dots: radial-gradient(circle, rgb(255 255 255 / .25) 0 .6px, transparent .8px); --lamp: 13px; --bezel: 1.5px; /* 灯の黒い縁。0 でなし */ display: inline-flex; align-items: center; gap: 5px; flex: none; padding: 3px 5px; border: 1px solid var(--border-strong, #7d848b); border-radius: calc(var(--r-sm) + 1px); /* 7px */
   background: #c9ced4; font: inherit; color: #5a6168; line-height: 0; }
 button.signal { cursor: pointer; }
 span.signal { cursor: default; }
@@ -3265,11 +3265,11 @@ span.signal { cursor: default; }
 .signal[data-n="0"] .signal__flag { display: inline-flex; }
 .signal[data-n="0"] .signal__lamp { display: none; }
 .signal__lamp { width: var(--lamp); height: var(--lamp); border-radius: 50%; background: #1c2124; box-shadow: 0 0 0 var(--bezel) #2b3034; }
-.signal--led .signal__lamp { background-image: var(--dots); background-size: 2.6px 2.6px; }
-.signal__lamp--y { background-color: #f5b800; background-image: var(--dots), radial-gradient(circle at 50% 42%, #ffe98a, #f5b800 55%, #d39200); background-size: 2.6px 2.6px, auto;
+.signal--led .signal__lamp { background-image: var(--dots); background-size: 2.2px 2.2px; }
+.signal__lamp--y { background-color: #f5b800; background-image: var(--dots), radial-gradient(circle at 50% 42%, #ffe98a, #f5b800 55%, #d39200); background-size: 2.2px 2.2px, auto;
   box-shadow: 0 0 0 var(--bezel) #2b3034, 0 0 5px 1px rgb(245 184 0 / .8), 0 0 13px 2px rgb(245 184 0 / .45); } /* 灯の光: 内側ほど明るく、外へにじむ */
 .signal__lamp--r { background-color: #1c2124; }
-.signal[data-n="2"] .signal__lamp--r { background-color: #d90f0f; background-image: var(--dots), radial-gradient(circle at 50% 42%, #ff7b6b, #e5130f 55%, #b00a0a); background-size: 2.6px 2.6px, auto;
+.signal[data-n="2"] .signal__lamp--r { background-color: #d90f0f; background-image: var(--dots), radial-gradient(circle at 50% 42%, #ff7b6b, #e5130f 55%, #b00a0a); background-size: 2.2px 2.2px, auto;
   box-shadow: 0 0 0 var(--bezel) #2b3034, 0 0 4px 0 rgb(255 40 30 / .6), 0 0 9px 1px rgb(235 20 20 / .3); }
-.signal.is-mine { outline: 2px solid var(--accent); outline-offset: 2px; }
+.signal.is-mine { outline: 2px solid var(--accent); outline-offset: 2px; } /* 自分が通報済み */
 .signal[data-n="0"].is-mine { outline: 0; color: var(--accent); }
