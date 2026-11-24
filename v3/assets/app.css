@@ -3250,3 +3250,4 @@ button.ttb-m { cursor: pointer; text-decoration: underline dotted; }
 .board-poll__label .icon { font-size: var(--fs-lg); color: var(--accent); }
 .board-poll__total { margin: 0; }
 @media (prefers-reduced-motion: reduce) { .board-poll-edit:not([hidden]), .board-poll-edit input:not([hidden]) { animation: none; } }
+
