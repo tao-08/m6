@@ -270,7 +270,7 @@ function board_add_post(int $threadId, int $userId, string $body, bool $anonymou
     return $postId;
 }
 
-const POLL_MAX = 4;        // 選択肢の数（2〜4）
+const POLL_MAX = 10;       // 選択肢の数（2〜10）
 const POLL_LABEL_MAX = 25; // 選択肢の文字数
 
 /** 送られた選択肢（poll[]）を整える。空欄は捨てる。2個未満なら投票なし（[]） */
@@ -289,14 +289,21 @@ function board_poll_add(PDO $pdo, int $postId, array $labels): void
     }
 }
 
-/** 投票フォームの選択肢の入力欄（返信欄・スレッド作成で使う） */
+/** 投票の選択肢の入力欄（返信欄・スレッド作成で使う）。閉じている間は disabled で送らない。開閉は board_poll_button_html（assets/app_board.js の setupBoardPoll） */
 function board_poll_field_html(): string
 {
-    $html = '<details class="board-poll-edit"><summary class="btn btn--ghost btn--sm" aria-label="投票" title="投票">' . icon('poll') . '</summary><div class="board-poll-edit__list">';
+    $html = '<fieldset class="board-poll-edit" data-board-poll hidden disabled><legend class="board-poll-edit__title">投票</legend>';
     for ($i = 1; $i <= POLL_MAX; $i++) {
-        $html .= '<input type="text" name="poll[]" maxlength="' . POLL_LABEL_MAX . '" autocomplete="off" placeholder="選択肢' . $i . '" aria-label="選択肢' . $i . '">';
+        // 最初は2つ。3つ目からは + で1つずつ出す（隠れた空欄は board_poll_labels が捨てる）
+        $html .= '<input type="text" name="poll[]" maxlength="' . POLL_LABEL_MAX . '" autocomplete="off" placeholder="選択肢' . $i . '" aria-label="選択肢' . $i . '"' . ($i > 2 ? ' hidden' : '') . '>';
     }
-    return $html . '</div></details>';
+    return $html . '<button type="button" class="btn btn--ghost btn--sm board-poll-edit__add" data-board-poll-add aria-label="選択肢を追加" title="選択肢を追加">' . icon('add') . '</button></fieldset>';
+}
+
+/** 投票の入力欄を開閉するボタン（画像ボタンの左に置く） */
+function board_poll_button_html(): string
+{
+    return '<button type="button" class="btn btn--ghost btn--sm board-poll-open" data-board-poll-open aria-expanded="false" aria-label="投票" title="投票">' . icon('how_to_vote') . '</button>';
 }
 
 /**

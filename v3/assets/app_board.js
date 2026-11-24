@@ -279,3 +279,31 @@ function setupLikes() {
     }
   });
 }
+
+/* ---------------------------------------------------------------------
+ * 書き込みの投票（返信欄・スレッド作成）
+ *   [data-board-poll-open] を押すと、同じフォームの選択肢の入力欄 [data-board-poll] を開く / 閉じる。
+ *   閉じている間は fieldset ごと disabled にして、入力した選択肢を送らない（もう一度開けば残っている）
+ * ------------------------------------------------------------------- */
+function setupBoardPoll() {
+  document.querySelectorAll('[data-board-poll-open]').forEach((b) => {
+    const box = b.form?.querySelector('[data-board-poll]');
+    if (!box) return;
+    b.addEventListener('click', () => {
+      const on = box.hidden;
+      box.hidden = box.disabled = !on;
+      b.classList.toggle('is-active', on);
+      b.setAttribute('aria-expanded', String(on));
+      if (on) box.querySelector('input')?.focus();
+    });
+    // + で隠れている次の選択肢を出す。全部出たら + を隠す
+    const add = box.querySelector('[data-board-poll-add]');
+    add?.addEventListener('click', () => {
+      const next = box.querySelector('input[hidden]');
+      if (!next) return;
+      next.hidden = false;
+      next.focus();
+      add.hidden = !box.querySelector('input[hidden]');
+    });
+  });
+}

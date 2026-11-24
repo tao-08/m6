@@ -247,7 +247,7 @@ render_header('アビーボード', 'board');
         <textarea class="board-textarea" name="body" rows="4" maxlength="2000"></textarea>
     </label>
     <?= board_poll_field_html() ?>
-    <div class="form-actions"><?= attach_field_html('board') ?><button class="btn btn--primary btn--sm" type="submit"><?= icon('send') ?> 作成</button></div>
+    <div class="form-actions"><?= board_poll_button_html() ?><?= attach_field_html('board') ?><button class="btn btn--primary btn--sm" type="submit"><?= icon('send') ?> 作成</button></div>
 </form>
 </div>
 

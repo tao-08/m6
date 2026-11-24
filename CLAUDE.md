@@ -23,6 +23,10 @@
 - 文中に置くラベルは `.label-inline` を足す（文字サイズに追従して行の中央に揃う）
 - 日本語が上に寄って見える分は規格側で `padding-top: max(1px, .1em)` を足して補正済み。個別に補正しない
 
+## 入力欄の基準
+- 入力欄（input / select / textarea）の見た目は、全部の input ではなく v3/assets/app.css の「`.search, .field input, ...`」のリストに入った入れ物の中だけに付く
+- `.field` 以外の新しい入れ物に入力欄を置いたら、そのリストに `.新しいクラス input` を足す。個別に枠・角丸・余白を書かない（足し忘れるとブラウザ標準の見た目になる）
+
 ## タブの基準
 - 切り替えのタブは `.tabs > .tab` で作る。選択中は `.is-active`（リンク・JS で切り替える `<button>`）か、中のラジオを checked（絞り込みは `.tabs--filter` + `<label class="tab"><input type="radio">`、即送信は `data-autosubmit`）
 - 赤い丸が滑る動きは v3/assets/app_ui.js の `setupTabGlide` が全ページの `.tabs` に自動で付ける。個別に背景やアニメを書かない

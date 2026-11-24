@@ -121,6 +121,7 @@ return [
     'hide',
     'history',
     'host',
+    'how_to_vote',
     'http',
     'https',
     'iframe',

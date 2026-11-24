@@ -122,6 +122,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupInstrumentAutosave();
   setupInstrumentColorPicker();
   setupBoardPanels();
+  setupBoardPoll();
   setupBoardMute();
   setupBoardTabs();
   setupVenueSuggest();

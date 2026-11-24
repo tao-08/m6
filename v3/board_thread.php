@@ -265,7 +265,7 @@ render_header($thread['title'], 'board');
     <?= alias_field_html((string)$user['name']) ?>
     <textarea class="board-textarea" name="body" rows="3" maxlength="2000" aria-label="返信"></textarea>
     <?= board_poll_field_html() ?>
-    <div class="form-actions"><?= attach_field_html('board') ?><button class="btn btn--primary btn--sm" type="submit"><?= icon('send') ?> 送信</button></div>
+    <div class="form-actions"><?= board_poll_button_html() ?><?= attach_field_html('board') ?><button class="btn btn--primary btn--sm" type="submit"><?= icon('send') ?> 送信</button></div>
 </form>
 <?php endif; ?>
 
