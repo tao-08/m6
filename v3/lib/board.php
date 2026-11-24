@@ -269,3 +269,81 @@ function board_add_post(int $threadId, int $userId, string $body, bool $anonymou
     board_mark_read($userId, $threadId, $postId);
     return $postId;
 }
+
+const POLL_MAX = 4;        // 選択肢の数（2〜4）
+const POLL_LABEL_MAX = 25; // 選択肢の文字数
+
+/** 送られた選択肢（poll[]）を整える。空欄は捨てる。2個未満なら投票なし（[]） */
+function board_poll_labels(mixed $raw): array
+{
+    $labels = array_values(array_filter(array_map(static fn($v) => mb_substr(trim((string)$v), 0, POLL_LABEL_MAX), array_slice((array)$raw, 0, POLL_MAX)), static fn($v) => $v !== ''));
+    return count($labels) >= 2 ? $labels : [];
+}
+
+/** 書き込みに選択肢を保存する（トランザクションの中で呼ぶ） */
+function board_poll_add(PDO $pdo, int $postId, array $labels): void
+{
+    $ins = $pdo->prepare('INSERT INTO board_poll_option (post_id, sort, label) VALUES (?, ?, ?)');
+    foreach ($labels as $i => $label) {
+        $ins->execute([$postId, $i, $label]);
+    }
+}
+
+/** 投票フォームの選択肢の入力欄（返信欄・スレッド作成で使う） */
+function board_poll_field_html(): string
+{
+    $html = '<details class="board-poll-edit"><summary class="btn btn--ghost btn--sm" aria-label="投票" title="投票">' . icon('poll') . '</summary><div class="board-poll-edit__list">';
+    for ($i = 1; $i <= POLL_MAX; $i++) {
+        $html .= '<input type="text" name="poll[]" maxlength="' . POLL_LABEL_MAX . '" autocomplete="off" placeholder="選択肢' . $i . '" aria-label="選択肢' . $i . '">';
+    }
+    return $html . '</div></details>';
+}
+
+/**
+ * 書き込みごとの投票。post_id => ['options' => [[id, label, count], ...], 'total' => int, 'mine' => option_id か null]
+ */
+function board_polls(PDO $pdo, int $userId, array $postIds): array
+{
+    if (!$postIds) {
+        return [];
+    }
+    $in = implode(',', array_fill(0, count($postIds), '?'));
+    $st = $pdo->prepare("SELECT o.post_id, o.option_id, o.label, COUNT(v.user_id) AS cnt, MAX(v.user_id = ?) AS mine
+        FROM board_poll_option o LEFT JOIN board_poll_vote v ON v.option_id = o.option_id
+        WHERE o.post_id IN ($in) GROUP BY o.option_id ORDER BY o.post_id, o.sort");
+    $st->execute([$userId, ...$postIds]);
+    $polls = [];
+    foreach ($st->fetchAll() as $r) {
+        $p = &$polls[(int)$r['post_id']];
+        $p['options'][] = ['id' => (int)$r['option_id'], 'label' => $r['label'], 'count' => (int)$r['cnt']];
+        $p['total'] = ($p['total'] ?? 0) + (int)$r['cnt'];
+        $p['mine'] ??= null;
+        if ((int)$r['mine']) {
+            $p['mine'] = (int)$r['option_id'];
+        }
+        unset($p);
+    }
+    return $polls;
+}
+
+/** 投票の表示。投票前は選択肢のボタン、投票後（と書いた本人）は割合のバー */
+function board_poll_html(array $poll, int $postId, bool $showResult, string $hidden): string
+{
+    if (!$showResult) {
+        $html = '<form method="post" class="board-poll">' . csrf_field() . $hidden
+            . '<input type="hidden" name="action" value="vote"><input type="hidden" name="post_id" value="' . $postId . '">';
+        foreach ($poll['options'] as $o) {
+            $html .= '<button class="btn btn--sm board-poll__choice" type="submit" name="option_id" value="' . $o['id'] . '">' . h($o['label']) . '</button>';
+        }
+        return $html . '<p class="muted small board-poll__total">' . $poll['total'] . '票</p></form>';
+    }
+    $max = max(array_column($poll['options'], 'count'));
+    $html = '<div class="board-poll">';
+    foreach ($poll['options'] as $o) {
+        $pct = $poll['total'] ? (int)round($o['count'] * 100 / $poll['total']) : 0;
+        $cls = ($o['count'] === $max && $max > 0 ? ' is-top' : '') . ($o['id'] === $poll['mine'] ? ' is-mine' : '');
+        $html .= '<div class="board-poll__row' . $cls . '" style="--pct: ' . $pct . '%"><span class="board-poll__label">' . h($o['label'])
+            . ($o['id'] === $poll['mine'] ? ' ' . icon('check_circle') : '') . '</span><span class="board-poll__pct">' . $pct . '%</span></div>';
+    }
+    return $html . '<p class="muted small board-poll__total">' . $poll['total'] . '票</p></div>';
+}

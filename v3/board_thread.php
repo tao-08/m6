@@ -45,7 +45,8 @@ if (is_post()) {
     } elseif ($action === 'reply') {
         $body = trim((string)($_POST['body'] ?? ''));
         $uploads = array_slice(live_image_uploads($_FILES['images'] ?? null), 0, ATTACH_KINDS['board']['max']);
-        if (($body === '' && !$uploads) || mb_strlen($body) > 2000) {
+        $poll = board_poll_labels($_POST['poll'] ?? []);
+        if (($body === '' && !$uploads && !$poll) || mb_strlen($body) > 2000) {
             flash('2000文字以内で入力してください（画像のみも可）', 'error');
         } else {
             // 返信先: このスレの書き込みだけ（HTML を書き換えて他のスレの ID を送られても入れない）。最大 REPLY_MAX 件
@@ -66,6 +67,7 @@ if (is_post()) {
                     $ins->execute([$postId, $toId]);
                 }
                 attach_add($pdo, 'board', $postId, $uploads, $uid, $newFiles);
+                board_poll_add($pdo, $postId, $poll);
                 $pdo->commit();
             } catch (RuntimeException $e) { // 画像のエラー（形式・大きさなど）。書き込みごと取り消す
                 $pdo->rollBack();
@@ -76,6 +78,14 @@ if (is_post()) {
             board_push_post($id, $postId); // アプリ通知（lib/push.php）。応答を返し終わってから送る
             $back .= '&page=' . board_post_page($id, $postId) . '#p' . $postId; // 書き込みは最後のページに入る
         }
+    } elseif ($action === 'vote') {
+        // このスレの、削除されていない書き込みの選択肢だけ。1人1票（PRIMARY KEY）なので2回目は無視される
+        $postId = (int)($_POST['post_id'] ?? 0);
+        $pdo->prepare('INSERT IGNORE INTO board_poll_vote (post_id, user_id, option_id)
+            SELECT o.post_id, ?, o.option_id FROM board_poll_option o JOIN board_post p ON p.post_id = o.post_id
+            WHERE o.option_id = ? AND o.post_id = ? AND p.thread_id = ? AND p.deleted_at IS NULL')
+            ->execute([$uid, (int)($_POST['option_id'] ?? 0), $postId, $id]);
+        $back .= '&page=' . board_post_page($id, $postId) . '#p' . $postId;
     } elseif ($action === 'delete_post') {
         // 本人か管理者だけ。条件を UPDATE の WHERE に入れて、他人の書き込みの ID を送られても消えないようにする
         $st = $pdo->prepare('UPDATE board_post SET deleted_at = NOW(), deleted_by = ?
@@ -119,6 +129,7 @@ $st = $pdo->prepare('SELECT p.post_id, p.user_id, p.body, p.anonymous, p.display
 $st->execute([$id]);
 $posts = $st->fetchAll();
 $postImages = attach_images($pdo, 'board', array_map('intval', array_column($posts, 'post_id')));
+$polls = board_polls($pdo, $uid, array_map('intval', array_column($posts, 'post_id')));
 
 /** ページ送り（2ページ以上あるときだけ）。現在のページの前後2つと、最初・最後を出す */
 $pager = static function () use ($page, $pages, $pageUrl): string {
@@ -228,6 +239,9 @@ render_header($thread['title'], 'board');
         <?php if (!$deleted): ?>
             <?php if ($p['body'] !== ''): ?><p class="board-post__body"><?= linkify_body($p['body']) ?></p><?php endif; ?>
             <?= attach_thumbs_html('board', $postImages[(int)$p['post_id']] ?? []) ?>
+            <?php if ($poll = $polls[(int)$p['post_id']] ?? null): ?>
+                <?= board_poll_html($poll, (int)$p['post_id'], $poll['mine'] !== null || (int)$p['user_id'] === $uid || !$canPost, '<input type="hidden" name="thread_id" value="' . $id . '">') ?>
+            <?php endif; ?>
             <div class="board-post__foot"><?= like_button((int)$p['post_id'], $likes[(int)$p['post_id']] ?? null, '', 'api_board_like') ?></div>
         <?php elseif ($user['admin']): ?>
             <p class="small board-post__deleted"><?= icon('admin_panel_settings') ?> <?= h(substr($p['deleted_at'], 0, 16)) ?> に <?= h($p['deleted_by_name'] ?? '不明') ?> が削除</p>
@@ -250,6 +264,7 @@ render_header($thread['title'], 'board');
     <div class="board-reply__to" data-board-reply-to hidden></div>
     <?= alias_field_html((string)$user['name']) ?>
     <textarea class="board-textarea" name="body" rows="3" maxlength="2000" aria-label="返信"></textarea>
+    <?= board_poll_field_html() ?>
     <div class="form-actions"><?= attach_field_html('board') ?><button class="btn btn--primary btn--sm" type="submit"><?= icon('send') ?> 送信</button></div>
 </form>
 <?php endif; ?>

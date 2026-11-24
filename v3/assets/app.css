@@ -3214,3 +3214,18 @@ button.ttb-m { cursor: pointer; text-decoration: underline dotted; }
 .song-lyrics-search__credit { grid-column: 1 / -1; justify-self: end; color: var(--muted); font-size: var(--fs-2xs); }
 .lyrics-results { margin-top: 6px; }
  .lyrics-result__actions { display: inline-flex; align-items: center; gap: 8px; justify-self: end; white-space: nowrap; }
+
+/* 掲示板の投票（lib/board.php の board_poll_html / board_poll_field_html） */
+.board-poll-edit > summary { list-style: none; width: fit-content; }
+.board-poll-edit > summary::-webkit-details-marker { display: none; }
+.board-poll-edit[open] > summary { background: var(--accent-soft); color: var(--accent); }
+.board-poll-edit__list { display: grid; gap: 6px; margin-top: 8px; animation: board-slide var(--t-base) ease-out; }
+.board-poll { display: grid; gap: 6px; margin-top: 10px; }
+.board-poll__choice { justify-content: center; border-radius: var(--r-full); color: var(--accent); border-color: var(--accent); }
+.board-poll__row { display: flex; justify-content: space-between; gap: 8px; padding: 6px 12px; border-radius: var(--r-sm);
+  background: linear-gradient(to right, var(--surface-2) var(--pct), transparent var(--pct)); }
+.board-poll__row.is-top { font-weight: 700; background: linear-gradient(to right, var(--accent-soft) var(--pct), transparent var(--pct)); }
+.board-poll__label { display: flex; align-items: center; gap: 4px; overflow-wrap: anywhere; }
+.board-poll__label .icon { font-size: var(--fs-lg); color: var(--accent); }
+.board-poll__total { margin: 0; }
+@media (prefers-reduced-motion: reduce) { .board-poll-edit__list { animation: none; } }

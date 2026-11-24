@@ -42,9 +42,10 @@ if (is_post()) {
         $yFrom = (int)($_POST['year_from'] ?? 0);
         $yTo = (int)($_POST['year_to'] ?? 0);
         $uploads = array_slice(live_image_uploads($_FILES['images'] ?? null), 0, ATTACH_KINDS['board']['max']);
+        $poll = board_poll_labels($_POST['poll'] ?? []);
         if (!isset($categoryNames[$categoryId])) {
             flash('カテゴリを選択してください', 'error');
-        } elseif ($title === '' || mb_strlen($title) > 100 || ($body === '' && !$uploads) || mb_strlen($body) > 2000) {
+        } elseif ($title === '' || mb_strlen($title) > 100 || ($body === '' && !$uploads && !$poll) || mb_strlen($body) > 2000) {
             flash('タイトルは1〜100文字、本文は2000文字以内で入力してください（画像のみも可）', 'error');
         } elseif ($restrict && ($_POST['only_cohort'] ?? '') === '1' && board_scope($user)['entry_year'] === null) {
             flash('入部年度が未設定のため、同期のみは選べません', 'error');
@@ -68,6 +69,7 @@ if (is_post()) {
             }
             $postId = board_add_post($threadId, (int)$user['user_id'], $body, $anonymous = ($_POST['anonymous'] ?? '') === '1', posted_display_name($anonymous));
             attach_add($pdo, 'board', $postId, $uploads, (int)$user['user_id'], $newFiles);
+            board_poll_add($pdo, $postId, $poll);
             $pdo->commit();
             } catch (RuntimeException $e) { // 画像のエラー（形式・大きさなど）。スレごと取り消す
                 $pdo->rollBack();
@@ -244,6 +246,7 @@ render_header('アビーボード', 'board');
     <label class="field"><span>本文</span>
         <textarea class="board-textarea" name="body" rows="4" maxlength="2000"></textarea>
     </label>
+    <?= board_poll_field_html() ?>
     <div class="form-actions"><?= attach_field_html('board') ?><button class="btn btn--primary btn--sm" type="submit"><?= icon('send') ?> 作成</button></div>
 </form>
 </div>

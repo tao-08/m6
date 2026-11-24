@@ -1251,6 +1251,14 @@ check('キャッシュ: 大きさが分からなければ、あれば流す', [d
 // ---------------------------------------------------------------------
 //  マイグレーションの番号（migrations/）
 // ---------------------------------------------------------------------
+echo "board poll\n";
+require_once __DIR__ . '/../lib/board.php';
+check('投票: 空欄は捨てる', board_poll_labels(['A', ' ', 'B', '']), ['A', 'B']);
+check('投票: 1個だけなら投票なし', board_poll_labels(['A', '']), []);
+check('投票: 5個目以降は捨てる', board_poll_labels(['1', '2', '3', '4', '5']), ['1', '2', '3', '4']);
+check('投票: 25文字まで', mb_strlen(board_poll_labels([str_repeat('あ', 30), 'B'])[0]), 25);
+check('投票: 配列でなくても落ちない', board_poll_labels('x'), []);
+
 echo "migrations\n";
 $migDup = [];
 foreach (glob(__DIR__ . '/../migrations/*.sql') as $f) {
