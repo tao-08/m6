@@ -45,6 +45,15 @@ return [
         'youtube' => [
             'api_key' => '',
         ],
+        // YouTube のライブ動画から演奏曲を自動検出する ACRCloud（File Scanning）の設定
+        //   ACRCloud のコンソールで、スコープ filescanning（と read-metadata）のトークンを作ると出る
+        //   container_id は scripts/acr_poc.php が最初に作って表示する。そのあとここに入れる
+        //   ※ パスワードと同じ。人に見せない・git に入れない
+        'acrcloud' => [
+            'access_token' => '',
+            'container_id' => '',
+            'region'       => 'ap-southeast-1',
+        ],
         // 日程調整の交通費・移動時間（電車の経路と運賃）に使う NAVITIME Route(totalnavi) の RapidAPI キー
         //   https://rapidapi.com/navitimejapan-navitimejapan/api/navitime-route-totalnavi で Basic（無料・月500回）に登録すると出る「X-RapidAPI-Key」
         //   空なら交通費は出さない（移動時間は直線距離の見積もりのまま）
