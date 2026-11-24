@@ -17,10 +17,14 @@ $user = require_login();
 $pdo = db();
 
 // 付け先の候補: 年度 → その年度のライブ（新しい順）
-$lives = $pdo->query('SELECT live_id, fiscal_year, name FROM live ORDER BY fiscal_year DESC, live_id DESC')->fetchAll();
+// ライブは年度内で開催日の早い順（開催日が無いものは最後）
+$lives = $pdo->query('SELECT l.live_id, l.fiscal_year, l.name FROM live l
+    LEFT JOIN live_day d ON d.live_id = l.live_id
+    GROUP BY l.live_id, l.fiscal_year, l.name
+    ORDER BY l.fiscal_year DESC, MIN(d.held_on) IS NULL, MIN(d.held_on), l.live_id')->fetchAll();
 $liveById = array_column($lives, null, 'live_id');
 $years = array_unique(array_merge([current_fiscal_year()], array_map('intval', array_column($lives, 'fiscal_year'))));
-rsort($years);
+sort($years);
 
 if (is_post()) {
     verify_csrf();
@@ -99,12 +103,10 @@ render_header('スペシャルコンテンツ', 'tools');
     <label class="field"><span>年度 / ライブ</span>
         <select name="target" required>
             <?php foreach ($years as $y): ?>
-                <optgroup label="<?= h(fmt_year($y)) ?>">
-                    <option value="y<?= (int)$y ?>"><?= h(fmt_year($y)) ?></option>
-                    <?php foreach ($lives as $l): if ((int)$l['fiscal_year'] !== $y) continue; ?>
-                        <option value="l<?= (int)$l['live_id'] ?>"><?= h($l['name']) ?></option>
-                    <?php endforeach; ?>
-                </optgroup>
+                <option value="y<?= (int)$y ?>"><?= h(fmt_year($y)) ?></option>
+                <?php foreach ($lives as $l): if ((int)$l['fiscal_year'] !== $y) continue; ?>
+                    <option value="l<?= (int)$l['live_id'] ?>">&emsp;└ <?= h($l['name']) ?></option>
+                <?php endforeach; ?>
             <?php endforeach; ?>
         </select>
     </label>
