@@ -2,12 +2,22 @@
 (() => {
   const add = document.querySelector('[data-special-add-dialog]');
   const view = document.querySelector('[data-special-modal]');
-  if (!add || !view) return;
+  const edit = document.querySelector('[data-special-edit-dialog]');
+  if (!add || !view || !edit) return;
   // 背景を押したら閉じる（<dialog> 自身が押された = 中身の外側）
-  [add, view].forEach((d) => d.addEventListener('click', (e) => { if (e.target === d) d.close(); }));
+  [add, view, edit].forEach((d) => d.addEventListener('click', (e) => { if (e.target === d) d.close(); }));
 
   document.querySelector('[data-special-add]').addEventListener('click', () => add.showModal());
   add.querySelector('[data-special-add-close]').addEventListener('click', () => add.close());
+
+  // 編集: 押したカードのタイトル・作者を入れて開く。削除のフォームにも同じ id を入れる
+  document.querySelectorAll('[data-special-edit]').forEach((btn) => btn.addEventListener('click', () => {
+    edit.querySelectorAll('input[name=id]').forEach((i) => { i.value = btn.dataset.id; });
+    edit.querySelector('input[name=title]').value = btn.dataset.title;
+    edit.querySelector('input[name=author]').value = btn.dataset.author;
+    edit.showModal();
+  }));
+  edit.querySelector('[data-special-edit-close]').addEventListener('click', () => edit.close());
 
   const frame = view.querySelector('[data-special-frame]');
   const img = view.querySelector('[data-special-img]');

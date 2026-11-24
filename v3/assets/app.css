@@ -421,7 +421,7 @@ input, select, textarea { font: inherit; color: inherit; }
 /* プルダウンの中身（option）は背景が透明のままだと、Windows の Chrome などで「白い背景に白い文字」になり
    ダークモードで読めなくなる。文字色と背景色を両方テーマの色で指定しておく */
 option, optgroup { background-color: var(--surface); color: var(--text); }
-.search, .field input, .field select, .field textarea, .member-row-edit input, .member-row-edit select, .table--edit input, .table--edit select {
+.search, .field input, .board-poll-edit input, .field select, .field textarea, .member-row-edit input, .member-row-edit select, .table--edit input, .table--edit select {
   width: 100%; padding: 10px 13px; border-radius: var(--r-md); border: 1px solid var(--border);
   background: var(--surface); color: var(--text); font-size: var(--fs-md); min-width: 0;
 }
@@ -481,7 +481,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .special-card__thumb { display: grid; place-items: center; aspect-ratio: 16 / 9; margin-bottom: 6px; background: var(--surface-2); overflow: hidden; }
 .special-card__thumb img { width: 100%; height: 100%; object-fit: cover; }
 .special-card__thumb .icon { font-size: 36px; color: var(--muted); }
-.special-card__del { position: absolute; top: 6px; right: 6px; margin: 0; }
+.special-card__edit { position: absolute; top: 6px; right: 6px; background: var(--surface); }
 .special-modal { width: min(920px, calc(100vw - 24px)); background: var(--surface); }
 .special-modal iframe { display: block; width: 100%; aspect-ratio: 16 / 9; max-height: 78vh; height: auto; border: 0; background: #000; }
 .special-modal img { display: block; width: 100%; max-height: 78vh; object-fit: contain; background: #000; }
@@ -3227,10 +3227,14 @@ button.ttb-m { cursor: pointer; text-decoration: underline dotted; }
  .lyrics-result__actions { display: inline-flex; align-items: center; gap: 8px; justify-self: end; white-space: nowrap; }
 
 /* 掲示板の投票（lib/board.php の board_poll_html / board_poll_field_html） */
-.board-poll-edit > summary { list-style: none; width: fit-content; }
-.board-poll-edit > summary::-webkit-details-marker { display: none; }
-.board-poll-edit[open] > summary { background: var(--accent-soft); color: var(--accent); }
-.board-poll-edit__list { display: grid; gap: 6px; margin-top: 8px; animation: board-slide var(--t-base) ease-out; }
+.board-poll-edit { display: grid; gap: 6px; margin: 0; padding: 0; border: 0; min-width: 0; }
+.board-poll-edit[hidden] { display: none; }
+.board-poll-edit:not([hidden]) { animation: board-slide var(--t-base) ease-out; } /* 開くとき: スレッド作成のカードと同じ動き */
+.board-poll-edit__title { padding: 0; margin-bottom: 2px; font-size: var(--fs-sm); font-weight: 600; color: var(--muted); }
+.board-poll-edit input[hidden], .board-poll-edit__add[hidden] { display: none; }
+.board-poll-edit input:not([hidden]) { animation: board-slide var(--t-base) ease-out; } /* + で足したとき */
+.board-poll-edit__add { justify-self: start; }
+.board-poll-open.is-active { background: var(--accent-soft); color: var(--accent); }
 .board-poll { display: grid; gap: 6px; margin-top: 10px; }
 .board-poll__choice { justify-content: center; border-radius: var(--r-full); color: var(--accent); border-color: var(--accent); }
 .board-poll__row { display: flex; justify-content: space-between; gap: 8px; padding: 6px 12px; border-radius: var(--r-sm);
@@ -3239,4 +3243,4 @@ button.ttb-m { cursor: pointer; text-decoration: underline dotted; }
 .board-poll__label { display: flex; align-items: center; gap: 4px; overflow-wrap: anywhere; }
 .board-poll__label .icon { font-size: var(--fs-lg); color: var(--accent); }
 .board-poll__total { margin: 0; }
-@media (prefers-reduced-motion: reduce) { .board-poll-edit__list { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .board-poll-edit:not([hidden]), .board-poll-edit input:not([hidden]) { animation: none; } }

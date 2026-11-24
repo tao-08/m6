@@ -43,6 +43,22 @@ if (is_post()) {
         redirect('special');
     }
 
+    // 編集（タイトルと作者。追加した人と管理者だけ）
+    if (($_POST['action'] ?? '') === 'edit') {
+        $title = mb_substr(trim(mb_scrub((string)($_POST['title'] ?? ''))), 0, 100);
+        $author = mb_substr(trim(mb_scrub((string)($_POST['author'] ?? ''))), 0, 50) ?: null;
+        $st = $pdo->prepare('SELECT user_id FROM special_content WHERE special_id = ?');
+        $st->execute([(int)($_POST['id'] ?? 0)]);
+        $owner = $st->fetchColumn();
+        if ($title === '') {
+            flash('タイトルを入力してください', 'error');
+        } elseif ($owner !== false && ((int)$owner === (int)$user['user_id'] || is_admin())) {
+            $pdo->prepare('UPDATE special_content SET title = ?, author = ? WHERE special_id = ?')->execute([$title, $author, (int)$_POST['id']]);
+            flash('保存しました');
+        }
+        redirect('special');
+    }
+
     // 追加
     $title = mb_substr(trim(mb_scrub((string)($_POST['title'] ?? ''))), 0, 100);
     $author = mb_substr(trim(mb_scrub((string)($_POST['author'] ?? ''))), 0, 50) ?: null;
@@ -150,6 +166,34 @@ $fileKind = static fn(array $r): string => match (true) {
     </form>
 </dialog>
 
+<?php // 編集（削除もここ）。1つの <dialog> を、押したカードの値で使い回す（assets/special.js） ?>
+<dialog class="modal" data-special-edit-dialog aria-label="編集">
+    <div class="modal__body form-card">
+        <form method="post" class="form-card"<?= unsaved_attr() ?>>
+            <?= csrf_field() ?>
+            <input type="hidden" name="action" value="edit">
+            <input type="hidden" name="id" value="">
+            <h2 class="modal__title">編集</h2>
+            <label class="field"><span>タイトル</span>
+                <input type="text" name="title" maxlength="100" required>
+            </label>
+            <label class="field"><span>作者</span>
+                <input type="text" name="author" maxlength="50">
+            </label>
+            <div class="form-actions">
+                <button class="btn btn--ghost btn--sm" type="button" data-special-edit-close>キャンセル</button>
+                <button class="btn btn--primary btn--sm" type="submit">保存</button>
+            </div>
+        </form>
+        <form method="post" onsubmit="return confirm('削除しますか？')">
+            <?= csrf_field() ?>
+            <input type="hidden" name="action" value="delete">
+            <input type="hidden" name="id" value="">
+            <button type="submit" class="btn btn--ghost btn--sm" aria-label="削除" title="削除"><?= icon('delete') ?> 削除</button>
+        </form>
+    </div>
+</dialog>
+
 <dialog class="modal special-modal" data-special-modal>
     <iframe title="" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen hidden data-special-frame></iframe>
     <img alt="" hidden data-special-img>
@@ -186,12 +230,8 @@ $fileKind = static fn(array $r): string => match (true) {
                     <?php if ($sub !== ''): ?><span class="muted small"><?= h($sub) ?></span><?php endif; ?>
                 <?= $popup ? '</button>' : '</a>' ?>
                 <?php if ((int)$r['user_id'] === (int)$user['user_id'] || is_admin()): ?>
-                    <form method="post" class="special-card__del" onsubmit="return confirm('削除しますか？')">
-                        <?= csrf_field() ?>
-                        <input type="hidden" name="action" value="delete">
-                        <input type="hidden" name="id" value="<?= (int)$r['special_id'] ?>">
-                        <button type="submit" class="btn btn--ghost btn--sm" aria-label="削除" title="削除"><?= icon('delete') ?></button>
-                    </form>
+                    <button type="button" class="btn btn--ghost btn--sm special-card__edit" data-special-edit data-id="<?= (int)$r['special_id'] ?>"
+                        data-title="<?= h($r['title']) ?>" data-author="<?= h((string)$r['author']) ?>" aria-label="編集" title="編集"><?= icon('edit') ?></button>
                 <?php endif; ?>
             </div>
         <?php endforeach; ?>
