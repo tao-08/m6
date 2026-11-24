@@ -483,8 +483,9 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .special-card__thumb .icon { font-size: 36px; color: var(--muted); }
 .special-card__edit { position: absolute; top: 6px; right: 6px; background: var(--surface); }
 .special-modal { width: min(920px, calc(100vw - 24px)); background: var(--surface); }
-.special-modal iframe { display: block; width: 100%; aspect-ratio: 16 / 9; max-height: 78vh; height: auto; border: 0; background: #000; }
-.special-modal img { display: block; width: 100%; max-height: 78vh; object-fit: contain; background: #000; }
+@media (min-width: 900px) { .special-modal { width: min(1400px, calc(100vw - 64px), calc((100vh - 120px) * 16 / 9)); } } /* PC: 画面の高さに収まる範囲でできるだけ大きく（16:9） */
+.special-modal iframe { display: block; width: 100%; aspect-ratio: 16 / 9; max-height: calc(100vh - 120px); height: auto; border: 0; background: #000; }
+.special-modal img { display: block; width: 100%; max-height: calc(100vh - 120px); object-fit: contain; background: #000; }
 .special-modal :is(iframe, img)[hidden] { display: none; }
 .special-modal__title { margin-right: auto; font-weight: 600; overflow-wrap: anywhere; }
 .special-year { margin-top: 24px; }
@@ -1113,6 +1114,7 @@ input[type="checkbox"], .field input[type="radio"] { accent-color: var(--accent)
 .suggest-pop .live-pop__item.is-active { background: var(--accent-soft); }
 .suggest-pop mark { background: none; color: var(--accent); font-weight: 700; }
 .suggest-pop__kana { color: var(--muted); font-size: var(--fs-xs); } /* ふりがなで当たった候補の右に出すふりがな */
+.suggest-pop__kind { margin-left: auto; min-width: 10em; } /* 種類は右端の同じ位置に揃える（最長の「スペシャルコンテンツ」の幅） */
 .merge-note { font-weight: 400; white-space: pre-line; }
 .merge-note:empty { display: none; }
 .merge-note--warn { color: var(--warn); }

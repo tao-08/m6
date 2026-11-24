@@ -37,6 +37,10 @@
       view.showModal();
     });
   });
+  // ほかのページのプルダウンから来たとき（special?open=ID）: そのカードを開く
+  const want = new URLSearchParams(location.search).get('open');
+  const target = want && document.querySelector(`[data-special-open][data-id="${CSS.escape(want)}"]`);
+  if (target) { target.scrollIntoView({ block: 'center' }); target.click(); }
   view.querySelector('[data-special-close]').addEventListener('click', () => view.close());
   // 閉じたら外す（動画の再生を止める）。.modal の閉じるアニメーション（0.2秒）が終わってから
   view.addEventListener('close', () => setTimeout(() => {

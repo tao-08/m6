@@ -109,12 +109,6 @@ foreach ($rows as $r) {
 }
 
 render_header('スペシャルコンテンツ', 'tools');
-$fileKind = static fn(array $r): string => match (true) {
-    $r['file_name'] === null => $r['url'] !== null && youtube_video_id((string)$r['url']) !== null ? 'yt' : 'link',
-    live_file_is_pdf((string)$r['file_name']) => 'pdf',
-    live_file_is_other((string)$r['file_name']) => 'other',
-    default => 'image',
-};
 ?>
 <nav class="crumbs"><a href="tools">ツール</a></nav>
 <h1 class="display display--sm">スペシャルコンテンツ</h1>
@@ -206,11 +200,11 @@ $fileKind = static fn(array $r): string => match (true) {
 </dialog>
 
 <?php foreach ($byYear as $y => $list): ?>
-<section class="special-year" data-year="<?= (int)$y ?>">
-    <h2><?= h(fmt_year($y)) ?></h2>
+<section class="year" data-year="<?= (int)$y ?>">
+    <h2 class="year__title"><?= (int)$y ?><small>年度</small></h2>
     <div class="grid special-grid">
         <?php foreach ($list as $r):
-            $kind = $fileKind($r);
+            $kind = special_kind($r);
             $src = special_href($r);
             $vid = $kind === 'yt' ? youtube_video_id((string)$r['url']) : null;
             $thumb = $vid !== null ? 'https://i.ytimg.com/vi/' . rawurlencode($vid) . '/mqdefault.jpg'
@@ -220,7 +214,7 @@ $fileKind = static fn(array $r): string => match (true) {
             <div class="card special-card" data-text="<?= h($r['title'] . ' ' . $sub) ?>">
                 <?php // 動画・画像・PDF は押すとポップアップで開く。ファイルはダウンロード、リンクは別タブ ?>
                 <?php if ($popup): ?>
-                    <button type="button" class="special-card__open" data-special-open data-kind="<?= h($kind) ?>"
+                    <button type="button" class="special-card__open" data-special-open data-id="<?= (int)$r['special_id'] ?>" data-kind="<?= h($kind) ?>"
                         data-src="<?= h($vid !== null ? 'https://www.youtube.com/embed/' . rawurlencode($vid) . '?autoplay=1&playsinline=1&rel=0' : $src) ?>"
                         data-dl="<?= h($r['file_name'] !== null ? $src . '&dl=1' : (string)$r['url']) ?>" data-title="<?= h($r['title']) ?>">
                 <?php else: ?>

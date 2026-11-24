@@ -9,6 +9,7 @@
  */
 declare(strict_types=1);
 require_once __DIR__ . '/live_image.php';
+require_once __DIR__ . '/youtube.php';
 
 /** @return array{year: array<int, array>, live: array<int, array>} 年度全体のもの / ライブごとのもの（古い順） */
 function special_load(PDO $pdo): array
@@ -30,9 +31,25 @@ function special_href(array $r): string
     return $r['file_name'] !== null ? 'attach_image?k=special&id=' . (int)$r['special_id'] : (string)$r['url'];
 }
 
-/** 1件のリンク（アイコン＋タイトル） */
+/** 種類: yt（YouTube）/ image / pdf / other（その他のファイル）/ link */
+function special_kind(array $r): string
+{
+    return match (true) {
+        $r['file_name'] === null => $r['url'] !== null && youtube_video_id((string)$r['url']) !== null ? 'yt' : 'link',
+        live_file_is_pdf((string)$r['file_name']) => 'pdf',
+        live_file_is_other((string)$r['file_name']) => 'other',
+        default => 'image',
+    };
+}
+
+/** 1件のリンク（アイコン＋タイトル）。動画・画像・PDF は、スペシャルコンテンツのページでポップアップを開く（special.js が ?open=ID を見る） */
 function special_link_html(array $r): string
 {
+    if (in_array(special_kind($r), ['yt', 'image', 'pdf'], true)) {
+        $isYt = special_kind($r) === 'yt';
+        $ic = $isYt ? youtube_icon() : icon(special_kind($r) === 'pdf' ? 'picture_as_pdf' : 'image');
+        return '<a class="special-link" href="special?open=' . (int)$r['special_id'] . '">' . $ic . '<span>' . h($r['title']) . '</span></a>';
+    }
     $isYt = $r['url'] !== null && youtube_url_valid((string)$r['url']);
     $ic = $isYt ? youtube_icon() : icon($r['file_name'] !== null ? 'attach_file' : 'link');
     return '<a class="special-link" href="' . h(special_href($r)) . '" target="_blank" rel="noopener noreferrer">' . $ic . '<span>' . h($r['title']) . '</span></a>';
