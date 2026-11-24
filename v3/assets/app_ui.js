@@ -749,6 +749,13 @@ function setupSmallThings() {
     if (!box.hidden) box.focus();
   });
 
+  // 機材の編集: 区分がアンプのときだけキャビネットの欄を出す（欄の初期の hidden はサーバーが付ける）
+  document.addEventListener('change', (e) => {
+    if (!e.target.matches('select[name="category[]"]')) return;
+    const cab = e.target.parentElement.querySelector('input[name="cabinet[]"]');
+    if (cab) cab.hidden = !['ギターアンプ', 'ベースアンプ'].includes(e.target.value);
+  });
+
   // data-yt-pick … バンド編集の「ライブのプレイリストから選ぶ」。選んだ動画の URL を、同じフォームの URL 欄に入れる（保存はしない）
   //   「— 動画を選ぶ —」（空）に戻しても、URL 欄は消さない
   document.addEventListener('change', (e) => {

@@ -88,6 +88,7 @@ function studio_ai_schema(array $sections = []): array
             'maker' => $str,
             'model' => $str,
             'note' => $str,
+            'cabinet' => $str,
             'quantity' => ['type' => 'integer'],
         ])],
         'sources' => ['type' => 'array', 'items' => $str],
@@ -188,7 +189,7 @@ function studio_ai_format_prompt(): string
         . "- info.student_note は割引の条件（学生証・年齢確認書類の提示など）。info.access は最寄り駅と徒歩分数（例: 立川駅 北口 徒歩5分）。info.hours は営業時間（例: 平日 10:00-23:00 / 土日祝 9:00-22:00。曜日で違うときは1行にまとめる）\n"
         . "- info.reserve_url は予約ページの URL（無ければ空文字）。URL は https:// から始まる完全な形\n"
         . "- rentals: マイク・シールド・機材のレンタル。1行 = 1品目（「SM58、SM57」のように複数をまとめて1行にせず、1つずつ別の行にする）。per_hour は「1時間あたり」の料金なら true、「1回あたり」と明記されているものだけ false（書かれていなければ true）\n"
-        . "- equipment: 部屋の常設機材。1行 = 1機種（1つの model に「、」「/」でつなげない。「+」のセットは1行でよい）。maker はメーカー名（例: Marshall / Roland）、model は型番だけ（例: JCM900 / JC-120。わからなければ空文字）、note は補足（例: キャビネット）。台数は quantity。category は決められた区分から選ぶ。rooms は設置されている部屋名の配列（全部屋共通なら空の配列 []）\n"
+        . "- equipment: 部屋の常設機材。1行 = 1機種（1つの model に「、」「/」でつなげない）。maker はメーカー名（例: Marshall / Roland）、model は型番だけ（例: JCM900 / JC-120。わからなければ空文字）、note は補足。cabinet はヘッドと組み合わせるキャビネット（例: 1960A。メーカーが違うときは aguilar GS412 のようにメーカーも書く）。コンボアンプやアンプ以外は空文字。台数は quantity。category は決められた区分から選ぶ。rooms は設置されている部屋名の配列（全部屋共通なら空の配列 []）\n"
         . "- 部屋名が「1.6st」のように番号をまとめて書いてあるときは、「1st」「6st」のように1部屋ずつ別の行にする（rooms の name、料金・機材の rooms も同じ）\n"
         . "- rooms.area_jo は部屋の広さを「帖」の数値だけで（例: 12 / 9.5）。畳表記もそのまま帖の数値にする。㎡表記しか無いときは 1帖 = 1.62㎡ で換算して小数1桁まで。広さが書かれていなければ 0\n"
         . "- rooms.size_note は広さ以外の備考（定員・階数・設備など。例: 最大8人 / 2階）。広さの数字や「帖」「畳」は書かない。無ければ空文字\n"
@@ -452,6 +453,7 @@ function studio_ai_normalize(array $ai, bool $keepNames = false): array
         $model = studio_ai_str($e['model'] ?? null, 500);
         $note = studio_ai_str($e['note'] ?? null, 100);
         $cat = $e['category'] ?? '';
+        $cab = in_array($cat, EQUIP_AMP_CATEGORIES, true) ? studio_ai_str($e['cabinet'] ?? null, 100) : null;
         $q = $e['quantity'] ?? 1;
         if (($maker !== null || $model !== null) && in_array($cat, STUDIO_EQUIP_CATEGORIES, true)) {
             foreach ($model === null ? [''] : ($keepNames ? [$model] : studio_ai_split($model)) as $one) { // まとめて入っていたら1機種ずつの行にする（部屋・区分・メーカー・メモ・台数は同じ）
@@ -461,6 +463,7 @@ function studio_ai_normalize(array $ai, bool $keepNames = false): array
                     'maker' => $maker,
                     'model_name' => mb_substr($one, 0, 100),
                     'note' => $note,
+                    'cabinet' => $cab,
                     'quantity' => is_int($q) && $q >= 0 && $q <= 99 ? $q : 1,
                 ];
             }
@@ -652,11 +655,11 @@ function studio_ai_current(PDO $pdo, int $studioId): array
     $st->execute([$studioId]);
     $rentals = array_map(fn($r) => ['name' => $r['name'], 'price' => (int)$r['price'], 'per_hour' => (int)(bool)$r['per_hour']], $st->fetchAll());
 
-    $st = $pdo->prepare('SELECT studio_equipment_id, category, maker, model_name, note, quantity FROM studio_equipment WHERE studio_id = ? ORDER BY sort_order, studio_equipment_id');
+    $st = $pdo->prepare('SELECT studio_equipment_id, category, maker, model_name, note, cabinet, quantity FROM studio_equipment WHERE studio_id = ? ORDER BY sort_order, studio_equipment_id');
     $st->execute([$studioId]);
     $equipment = [];
     foreach (studio_attach_rooms($pdo, 'studio_equipment', $studioId, $st->fetchAll(), $order) as $r) {
-        $equipment[] = ['rooms' => $names($r['room_ids']), 'category' => $r['category'], 'maker' => $r['maker'], 'model_name' => $r['model_name'], 'note' => $r['note'], 'quantity' => (int)$r['quantity']];
+        $equipment[] = ['rooms' => $names($r['room_ids']), 'category' => $r['category'], 'maker' => $r['maker'], 'model_name' => $r['model_name'], 'note' => $r['note'], 'cabinet' => $r['cabinet'], 'quantity' => (int)$r['quantity']];
     }
 
     return [
@@ -715,7 +718,7 @@ function studio_ai_to_schema(array $d): array
         'rates' => array_map($slot, array_values($groups)),
         'packs' => array_map(fn($r) => ['name' => $r['name']] + $slot($r) + ['minutes' => (int)($r['minutes'] ?? 0)], $d['packs']),
         'rentals' => array_map(fn($r) => ['name' => $r['name'], 'price' => (int)$r['price'], 'per_hour' => (bool)$r['per_hour']], $d['rentals']),
-        'equipment' => array_map(fn($r) => ['rooms' => array_values($r['rooms']), 'category' => $r['category'], 'maker' => (string)$r['maker'], 'model' => $r['model_name'], 'note' => (string)$r['note'], 'quantity' => (int)$r['quantity']], $d['equipment']),
+        'equipment' => array_map(fn($r) => ['rooms' => array_values($r['rooms']), 'category' => $r['category'], 'maker' => (string)$r['maker'], 'model' => $r['model_name'], 'note' => (string)$r['note'], 'cabinet' => (string)$r['cabinet'], 'quantity' => (int)$r['quantity']], $d['equipment']),
     ];
 }
 
@@ -1000,7 +1003,7 @@ function studio_ai_apply(PDO $pdo, int $studioId, array $prop, array $sections, 
             'rates' => ['studio_rate', ['people', 'day_type', 'start_min', 'end_min', 'price']],
             'packs' => ['studio_pack', ['name', 'people', 'day_type', 'start_min', 'end_min', 'minutes', 'price']],
             'rentals' => ['studio_rental', ['name', 'price', 'per_hour']],
-            'equipment' => ['studio_equipment', ['category', 'maker', 'model_name', 'note', 'quantity']],
+            'equipment' => ['studio_equipment', ['category', 'maker', 'model_name', 'note', 'cabinet', 'quantity']],
         ];
         foreach ($lists as $key => [$table, $cols]) {
             if (!in_array($key, $sections, true)) {

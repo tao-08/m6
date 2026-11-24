@@ -647,10 +647,11 @@ if (is_post()) {
             }
             $rowRooms = studio_post_rooms($i, $roomIds);
             $cat = (string)($_POST['category'][$i] ?? '');
+            $cab = in_array($cat, EQUIP_AMP_CATEGORIES, true) ? trim((string)($_POST['cabinet'][$i] ?? '')) : ''; // キャビネットはアンプだけ
             $q = trim((string)($_POST['quantity'][$i] ?? ''));
             if ($rowRooms === false || !in_array($cat, STUDIO_EQUIP_CATEGORIES, true)
-                || mb_strlen($maker) > 50 || mb_strlen($model) > 100 || mb_strlen($note) > 100 || !studio_uint($q, 99)) {
-                flash('区分・メーカー・型番・メモ・台数が正しくありません', 'error');
+                || mb_strlen($maker) > 50 || mb_strlen($model) > 100 || mb_strlen($note) > 100 || mb_strlen($cab) > 100 || !studio_uint($q, 99)) {
+                flash('区分・メーカー・型番・キャビネット・メモ・台数が正しくありません', 'error');
                 redirect($self . '#equipment');
             }
             $rows[] = [(int)$rawId, [
@@ -658,6 +659,7 @@ if (is_post()) {
                 'maker' => $maker === '' ? null : $maker,
                 'model_name' => $model,
                 'note' => $note === '' ? null : $note,
+                'cabinet' => $cab === '' ? null : $cab,
                 'quantity' => (int)$q,
             ], $rowRooms];
         }
@@ -770,7 +772,7 @@ $rentalPanel = static function (array $r) use ($rentalGroups, $rentalFirst): str
     return ' data-rent-genre="' . $g . '"' . ($g === $rentalFirst ? '' : ' hidden');
 };
 
-$st = $pdo->prepare('SELECT studio_equipment_id, category, maker, model_name, note, quantity
+$st = $pdo->prepare('SELECT studio_equipment_id, category, maker, model_name, note, cabinet, quantity
     FROM studio_equipment WHERE studio_id = ? ORDER BY sort_order, studio_equipment_id');
 $st->execute([$studioId]);
 $equipment = studio_attach_rooms($pdo, 'studio_equipment', $studioId, $st->fetchAll(), array_keys($roomName));
@@ -1840,12 +1842,13 @@ $packRoomLines = function (array $row) use ($packRoomIds): array {
                     <input autocomplete="off" type="text" class="grow" name="maker[]" maxlength="50" value="<?= h($e['maker']) ?>" placeholder="メーカー" aria-label="メーカー" data-suggest-list="equip-makers">
                     <input autocomplete="off" type="text" class="grow" name="model[]" maxlength="100" value="<?= h($e['model_name']) ?>" placeholder="型番" aria-label="型番" data-suggest-list="equip-models">
                     <input autocomplete="off" type="text" class="grow" name="note[]" maxlength="100" value="<?= h($e['note']) ?>" placeholder="メモ" aria-label="メモ">
+                    <input autocomplete="off" type="text" class="grow" name="cabinet[]" maxlength="100" value="<?= h($e['cabinet']) ?>" placeholder="キャビネット" aria-label="キャビネット"<?= in_array($e['category'], EQUIP_AMP_CATEGORIES, true) ? '' : ' hidden' ?>>
                     <input type="number" name="quantity[]" min="0" max="99" value="<?= (int)$e['quantity'] ?>" aria-label="台数" inputmode="numeric">
                     <?= studio_row_del((int)$e['studio_equipment_id']) ?>
                 </div>
                 <?php return ob_get_clean();
             };
-            $equipBlank = ['studio_equipment_id' => 0, 'room_ids' => [], 'category' => '', 'maker' => '', 'model_name' => '', 'note' => '', 'quantity' => 1];
+            $equipBlank = ['studio_equipment_id' => 0, 'room_ids' => [], 'category' => '', 'maker' => '', 'model_name' => '', 'note' => '', 'cabinet' => '', 'quantity' => 1];
             foreach (array_merge($equipment, [$equipBlank, $equipBlank]) as $i => $e) {
                 echo $equipRow($i, $e);
             }

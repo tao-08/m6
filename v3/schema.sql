@@ -198,7 +198,8 @@ CREATE TABLE venue_equipment (
     category           VARCHAR(20)       NOT NULL,         -- 区分（ギターアンプ / ベースアンプ / ドラム / キーボード / PA / その他。一覧は venue.php の VENUE_EQUIP_CATEGORIES）
     maker              VARCHAR(50)       NULL,             -- メーカー（migrations/138）
     model_name         VARCHAR(100)      NOT NULL,         -- 型番（無ければ空文字）
-    note               VARCHAR(100)      NULL,             -- メモ（キャビネット・卓など。migrations/138）
+    note               VARCHAR(100)      NULL,             -- メモ（卓など。migrations/138）
+    cabinet            VARCHAR(100)      NULL,             -- キャビネット（アンプのみ。migrations/139）
     quantity           SMALLINT UNSIGNED NOT NULL DEFAULT 1,
     sort_order         INT UNSIGNED      NOT NULL DEFAULT 0,
     PRIMARY KEY (venue_equipment_id),
@@ -1521,6 +1522,7 @@ CREATE TABLE studio_equipment (
     maker               VARCHAR(50)       NULL,     -- メーカー（migrations/138）
     model_name          VARCHAR(100)      NOT NULL, -- 型番（無ければ空文字）
     note                VARCHAR(100)      NULL,     -- メモ（migrations/138）
+    cabinet             VARCHAR(100)      NULL,     -- キャビネット（アンプのみ。migrations/139）
     quantity            SMALLINT UNSIGNED NOT NULL DEFAULT 1,
     sort_order          INT UNSIGNED      NOT NULL DEFAULT 0,
     PRIMARY KEY (studio_equipment_id),

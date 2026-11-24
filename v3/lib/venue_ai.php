@@ -37,6 +37,7 @@ function venue_ai_schema(array $sections = []): array
             'maker' => $str,
             'model' => $str,
             'note' => $str,
+            'cabinet' => $str,
             'quantity' => ['type' => 'integer'],
         ])],
         'sources' => ['type' => 'array', 'items' => $str],
@@ -74,7 +75,7 @@ function venue_ai_system_prompt(bool $images = false, array $sections = []): str
         . "# 各項目\n"
         . "- info.website_url は公式サイトの URL（https:// から始まる完全な形。無ければ空文字）。info.address は住所（都道府県から）。info.note は収容人数・ステージの広さ・ドリンク代など、ライブをするときに役立つ短い補足（無ければ空文字）\n"
         . "- stations: 最寄り駅と徒歩の分数。name は「駅」を付けない駅名（例: 新大久保）、minutes は徒歩の分数。複数あれば近い順に最大5件\n"
-        . "- equipment: 常設の機材（ステージのバックライン・PA）。1行 = 1機種（複数ある機材は1つずつ別の行にし、1つの model に「、」でつなげない）。maker はメーカー名（例: Marshall / Roland）、model は型番だけ（例: JCM900 / JC-120。わからなければ空文字）、note は補足（例: キャビネット）。category は決められた区分から選ぶ。quantity は台数\n"
+        . "- equipment: 常設の機材（ステージのバックライン・PA）。1行 = 1機種（複数ある機材は1つずつ別の行にし、1つの model に「、」でつなげない）。maker はメーカー名（例: Marshall / Roland）、model は型番だけ（例: JCM900 / JC-120。わからなければ空文字）、note は補足。cabinet はヘッドと組み合わせるキャビネット（例: 1960A。メーカーが違うときは aguilar GS412 のようにメーカーも書く）。コンボアンプやアンプ以外は空文字。category は決められた区分から選ぶ。quantity は台数\n"
         . "- sources: 参考にしたページの URL（最大5件）。caution: 確かめてほしい点（古い情報かもしれない等）を短く。無ければ空文字";
 }
 
@@ -110,6 +111,7 @@ function venue_ai_normalize(array $ai): array
         $model = studio_ai_str($e['model'] ?? null, 500);
         $note = studio_ai_str($e['note'] ?? null, 100);
         $cat = $e['category'] ?? '';
+        $cab = in_array($cat, EQUIP_AMP_CATEGORIES, true) ? studio_ai_str($e['cabinet'] ?? null, 100) : null;
         $q = $e['quantity'] ?? 1;
         if (($maker !== null || $model !== null) && in_array($cat, VENUE_EQUIP_CATEGORIES, true)) {
             foreach ($model === null ? [''] : studio_ai_split($model) as $one) { // まとめて入っていたら1機種ずつの行にする
@@ -118,6 +120,7 @@ function venue_ai_normalize(array $ai): array
                     'maker' => $maker,
                     'model_name' => mb_substr($one, 0, 100),
                     'note' => $note,
+                    'cabinet' => $cab,
                     'quantity' => is_int($q) && $q >= 0 && $q <= 99 ? $q : 1,
                 ];
             }
@@ -217,9 +220,9 @@ function venue_ai_apply(PDO $pdo, int $venueId, array $prop, array $sections): v
         }
         if (in_array('equipment', $sections, true) && $prop['equipment']) {
             $pdo->prepare('DELETE FROM venue_equipment WHERE venue_id = ?')->execute([$venueId]);
-            $ins = $pdo->prepare('INSERT INTO venue_equipment (venue_id, category, maker, model_name, note, quantity, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)');
+            $ins = $pdo->prepare('INSERT INTO venue_equipment (venue_id, category, maker, model_name, note, cabinet, quantity, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
             foreach ($prop['equipment'] as $i => $e) {
-                $ins->execute([$venueId, $e['category'], $e['maker'], $e['model_name'], $e['note'], $e['quantity'], $i + 1]);
+                $ins->execute([$venueId, $e['category'], $e['maker'], $e['model_name'], $e['note'], $e['cabinet'], $e['quantity'], $i + 1]);
             }
         }
         $pdo->commit();

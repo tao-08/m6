@@ -167,6 +167,7 @@ if (is_post()) {
         $makers = (array)($_POST['maker'] ?? []);
         $models = (array)($_POST['model'] ?? []);
         $notes = (array)($_POST['note'] ?? []);
+        $cabs = (array)($_POST['cabinet'] ?? []);
         $qtys = (array)($_POST['quantity'] ?? []);
         $own = $pdo->prepare('SELECT venue_equipment_id FROM venue_equipment WHERE venue_id = ?');
         $own->execute([$venueId]);
@@ -182,34 +183,35 @@ if (is_post()) {
             $maker = trim((string)($makers[$i] ?? ''));
             $model = trim((string)($models[$i] ?? ''));
             $note = trim((string)($notes[$i] ?? ''));
+            $cab = in_array($cat, EQUIP_AMP_CATEGORIES, true) ? trim((string)($cabs[$i] ?? '')) : ''; // キャビネットはアンプだけ
             $q = trim((string)($qtys[$i] ?? ''));
             if ($maker === '' && $model === '') {
-                $rows[] = [$id, '', null, null, null, 0];
+                $rows[] = [$id, '', null, null, null, null, 0];
                 continue;
             }
-            if (!in_array($cat, VENUE_EQUIP_CATEGORIES, true) || mb_strlen($maker) > 50 || mb_strlen($model) > 100 || mb_strlen($note) > 100
+            if (!in_array($cat, VENUE_EQUIP_CATEGORIES, true) || mb_strlen($maker) > 50 || mb_strlen($model) > 100 || mb_strlen($note) > 100 || mb_strlen($cab) > 100
                 || !ctype_digit($q) || (int)$q > 99) {
                 $ok = false;
                 break;
             }
-            $rows[] = [$id, $cat, $maker === '' ? null : $maker, $model, $note === '' ? null : $note, (int)$q];
+            $rows[] = [$id, $cat, $maker === '' ? null : $maker, $model, $note === '' ? null : $note, $cab === '' ? null : $cab, (int)$q];
         }
         if (!$ok) {
-            flash('区分・メーカー・型番・メモ・台数が正しくありません', 'error');
+            flash('区分・メーカー・型番・キャビネット・メモ・台数が正しくありません', 'error');
             redirect($self);
         }
         $pdo->beginTransaction();
         try {
             $order = 0;
-            foreach ($rows as [$id, $cat, $maker, $model, $note, $q]) {
+            foreach ($rows as [$id, $cat, $maker, $model, $note, $cab, $q]) {
                 if ($id !== 0 && $model === null) {
                     $pdo->prepare('DELETE FROM venue_equipment WHERE venue_equipment_id = ? AND venue_id = ?')->execute([$id, $venueId]);
                 } elseif ($id !== 0) {
-                    $pdo->prepare('UPDATE venue_equipment SET category = ?, maker = ?, model_name = ?, note = ?, quantity = ?, sort_order = ? WHERE venue_equipment_id = ? AND venue_id = ?')
-                        ->execute([$cat, $maker, $model, $note, $q, ++$order, $id, $venueId]);
+                    $pdo->prepare('UPDATE venue_equipment SET category = ?, maker = ?, model_name = ?, note = ?, cabinet = ?, quantity = ?, sort_order = ? WHERE venue_equipment_id = ? AND venue_id = ?')
+                        ->execute([$cat, $maker, $model, $note, $cab, $q, ++$order, $id, $venueId]);
                 } elseif ($model !== null) {
-                    $pdo->prepare('INSERT INTO venue_equipment (venue_id, category, maker, model_name, note, quantity, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)')
-                        ->execute([$venueId, $cat, $maker, $model, $note, $q, ++$order]);
+                    $pdo->prepare('INSERT INTO venue_equipment (venue_id, category, maker, model_name, note, cabinet, quantity, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+                        ->execute([$venueId, $cat, $maker, $model, $note, $cab, $q, ++$order]);
                 }
             }
             $pdo->commit();
@@ -232,7 +234,7 @@ $st = $pdo->prepare('SELECT venue_station_id, station_name, walk_minutes FROM ve
 $st->execute([$venueId]);
 $stations = $st->fetchAll();
 
-$st = $pdo->prepare('SELECT venue_equipment_id, category, maker, model_name, note, quantity FROM venue_equipment
+$st = $pdo->prepare('SELECT venue_equipment_id, category, maker, model_name, note, cabinet, quantity FROM venue_equipment
     WHERE venue_id = ? ORDER BY sort_order, venue_equipment_id');
 $st->execute([$venueId]);
 $equipment = $st->fetchAll();
@@ -393,7 +395,7 @@ render_header($venue['name'], 'tools');
             <?= csrf_field() ?>
             <input type="hidden" name="action" value="save_equipment">
             <input type="hidden" name="venue_id" value="<?= $venueId ?>">
-            <?php foreach (array_merge($equipment, [['venue_equipment_id' => 0, 'category' => '', 'maker' => '', 'model_name' => '', 'note' => '', 'quantity' => 1]]) as $e): ?>
+            <?php foreach (array_merge($equipment, [['venue_equipment_id' => 0, 'category' => '', 'maker' => '', 'model_name' => '', 'note' => '', 'cabinet' => '', 'quantity' => 1]]) as $e): ?>
                 <div class="venue-edit__row">
                     <input type="hidden" name="id[]" value="<?= (int)$e['venue_equipment_id'] ?>">
                     <select name="category[]" aria-label="区分">
@@ -404,6 +406,7 @@ render_header($venue['name'], 'tools');
                     <input autocomplete="off" type="text" class="grow" name="maker[]" maxlength="50" value="<?= h($e['maker']) ?>" placeholder="メーカー" aria-label="メーカー" data-suggest-list="equip-makers">
                     <input autocomplete="off" type="text" class="grow" name="model[]" maxlength="100" value="<?= h($e['model_name']) ?>" placeholder="型番" aria-label="型番" data-suggest-list="equip-models">
                     <input autocomplete="off" type="text" class="grow" name="note[]" maxlength="100" value="<?= h($e['note']) ?>" placeholder="メモ" aria-label="メモ">
+                    <input autocomplete="off" type="text" class="grow" name="cabinet[]" maxlength="100" value="<?= h($e['cabinet']) ?>" placeholder="キャビネット" aria-label="キャビネット"<?= in_array($e['category'], EQUIP_AMP_CATEGORIES, true) ? '' : ' hidden' ?>>
                     <input type="number" name="quantity[]" min="0" max="99" value="<?= (int)$e['quantity'] ?>" aria-label="台数">
                 </div>
             <?php endforeach; ?>

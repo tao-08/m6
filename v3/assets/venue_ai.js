@@ -23,7 +23,7 @@
   const LINES = {
     info: (p) => Object.keys(INFO).filter((k) => p.info[k]).map((k) => INFO[k] + ': ' + p.info[k]),
     stations: (p) => p.stations.map((s) => s.name + '駅 徒歩' + s.minutes + '分'),
-    equipment: (p) => p.equipment.map((e) => e.category + ': ' + [e.maker, e.model_name, e.note].filter(Boolean).join(' ') + (e.quantity !== 1 ? ' × ' + e.quantity : '')),
+    equipment: (p) => p.equipment.map((e) => e.category + ': ' + [e.maker, e.model_name].filter(Boolean).join(' ') + (e.cabinet ? ' + ' + e.cabinet : '') + (e.note ? ' ' + e.note : '') + (e.quantity !== 1 ? ' × ' + e.quantity : '')),
   };
 
   const btn = box.querySelector('[data-ai-run]');

@@ -1190,16 +1190,21 @@ function equip_match_sql(string $col): string
     return "REPLACE(REPLACE(REPLACE($col, '-', ''), ' ', ''), '　', '') COLLATE utf8mb4_unicode_520_ci LIKE ?";
 }
 
-/** 機材1行の「メーカー 型番 メモ」をつないだ SQL の式（検索用）。$alias = 機材の表の別名 */
+/** 機材1行の「メーカー 型番 キャビネット メモ」をつないだ SQL の式（検索用）。$alias = 機材の表の別名 */
 function equip_text_sql(string $alias): string
 {
-    return "CONCAT_WS(' ', NULLIF($alias.maker, ''), NULLIF($alias.model_name, ''), NULLIF($alias.note, ''))"; // 空文字は飛ばす（空白が2つ続かないように）
+    return "CONCAT_WS(' ', NULLIF($alias.maker, ''), NULLIF($alias.model_name, ''), NULLIF($alias.cabinet, ''), NULLIF($alias.note, ''))"; // 空文字は飛ばす（空白が2つ続かないように）
 }
 
-/** 機材の表示名「メーカー 型番」（片方が空ならもう片方だけ）。メモは含めない */
+/** キャビネットを持つ機材の区分（編集フォームと保存で使う） */
+const EQUIP_AMP_CATEGORIES = ['ギターアンプ', 'ベースアンプ'];
+
+/** 機材の表示名「メーカー 型番 + キャビネット」（空の欄は飛ばす）。メモは含めない */
 function equip_label(array $e): string
 {
-    return trim(trim((string)($e['maker'] ?? '')) . ' ' . trim((string)($e['model_name'] ?? '')));
+    $label = trim(trim((string)($e['maker'] ?? '')) . ' ' . trim((string)($e['model_name'] ?? '')));
+    $cab = trim((string)($e['cabinet'] ?? ''));
+    return $cab === '' ? $label : ($label === '' ? $cab : $label . ' + ' . $cab);
 }
 
 /** 編集フォームの入力候補（$col = 'maker' か 'model_name'。会場・スタジオの登録済みの値、重複なし） */

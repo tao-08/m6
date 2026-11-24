@@ -490,7 +490,7 @@
     };
 
     /** 機材の「メーカー 型番 メモ」（空の欄は飛ばす） */
-    const equipText = (r) => [r.maker, r.model_name, r.note].filter(Boolean).join(' ');
+    const equipText = (r) => [r.maker, r.model_name].filter(Boolean).join(' ') + (r.cabinet ? ' + ' + r.cabinet : '') + (r.note ? ' ' + r.note : '');
 
     /** 項目ごとに、プレビューの1行の文字を作る関数 */
     const LINES = {
@@ -519,7 +519,7 @@
       rates: (r) => [rooms_(r), r.people, r.day_type, r.start_min, r.end_min].join('|'),
       packs: (r) => [r.name, rooms_(r), r.people, r.day_type, r.start_min, r.end_min].join('|'),
       rentals: (r) => r.name,
-      equipment: (r) => [r.category, r.maker, r.model_name, r.note, rooms_(r)].join('|'),
+      equipment: (r) => [r.category, r.maker, r.model_name, r.cabinet, r.note, rooms_(r)].join('|'),
     };
     /** 1行の文字（検索のプレビューと同じ書き方） */
     const lineOf = (key, row) => LINES[key]({ [key]: [row] })[0];
