@@ -845,7 +845,7 @@ function setupSuggest() {
     });
     // 押した瞬間に入力欄からフォーカスが外れて（blur で）消えないように、フォーカスを移す動きを止める
     ['mousedown', 'pointerdown'].forEach((ev) => pop.addEventListener(ev, (e) => e.preventDefault()));
-    document.body.append(pop);
+    (input.closest('dialog') || document.body).append(pop); // <dialog>（showModal）の中の欄なら中に出す。body の直下だと dialog に隠れる
 
     place(pop, input);
 

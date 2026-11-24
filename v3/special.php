@@ -133,6 +133,7 @@ $fileKind = static fn(array $r): string => match (true) {
     <button type="button" class="btn btn--primary" data-special-add><?= icon('add') ?> 追加</button>
 </div>
 
+<?= render_suggest_datalist('member-names', array_keys($names = member_name_choices($pdo)), $names) ?>
 <dialog class="modal" data-special-add-dialog aria-label="スペシャルコンテンツを追加">
     <form method="post" enctype="multipart/form-data" class="modal__body form-card"<?= unsaved_attr() ?>>
         <?= csrf_field() ?>
@@ -141,7 +142,7 @@ $fileKind = static fn(array $r): string => match (true) {
             <input type="text" name="title" maxlength="100" required>
         </label>
         <label class="field"><span>作者</span>
-            <input type="text" name="author" maxlength="50">
+            <input type="text" name="author" maxlength="50" data-suggest-list="member-names" autocomplete="off">
         </label>
         <label class="field"><span>年度 / ライブ</span>
             <select name="target" required>
@@ -178,7 +179,7 @@ $fileKind = static fn(array $r): string => match (true) {
                 <input type="text" name="title" maxlength="100" required>
             </label>
             <label class="field"><span>作者</span>
-                <input type="text" name="author" maxlength="50">
+                <input type="text" name="author" maxlength="50" data-suggest-list="member-names" autocomplete="off">
             </label>
             <div class="form-actions">
                 <button class="btn btn--ghost btn--sm" type="button" data-special-edit-close>キャンセル</button>
