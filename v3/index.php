@@ -90,7 +90,8 @@ $rows = $pdo->query('SELECT l.live_id, l.fiscal_year AS year, l.name AS live_nam
             AND (SELECT COUNT(*) FROM song s WHERE s.band_id = b.band_id AND s.is_se = 0) >= b.song_count) AS setlist_done_bands,
         GROUP_CONCAT(b.note SEPARATOR \' \') AS band_notes,
         SUM(EXISTS (SELECT 1 FROM band_drive_file f WHERE f.band_id = b.band_id AND f.is_mix = 1)
-            OR EXISTS (SELECT 1 FROM band_audio a WHERE a.band_id = b.band_id)) AS mix_bands
+            OR EXISTS (SELECT 1 FROM band_audio a WHERE a.band_id = b.band_id)) AS mix_bands,
+        SUM(b.youtube_url IS NOT NULL AND b.youtube_url <> \'\') AS yt_bands
     FROM live l
     JOIN live_day d ON d.live_id = l.live_id
     LEFT JOIN venue v ON v.venue_id = d.venue_id
@@ -108,6 +109,7 @@ foreach ($rows as $r) {
     $live['days'][] = $r;
     $live['bands'] = ($live['bands'] ?? 0) + (int)$r['band_count'];
     $live['mix'] = ($live['mix'] ?? false) || (int)$r['mix_bands'] > 0; // MIX のあるバンドが1組でもいる（判定は band_mix_ids と同じ）
+    $live['yt'] = ($live['yt'] ?? false) || (int)$r['yt_bands'] > 0; // YouTube のリンクがあるバンドが1組でもいる
     // 一番早い開催日（並べ替え用）。NULL は日付なし
     if ($r['date'] !== null && (!isset($live['first_date']) || $r['date'] < $live['first_date'])) {
         $live['first_date'] = $r['date'];
@@ -325,8 +327,13 @@ render_header('ライブ一覧', 'lives');
                             <?php endforeach; ?>
                         </ul>
                         <p class="live-card__foot"><strong><?= (int)$live['bands'] ?></strong> バンド出演
-                            <?php if ($live['youtube_url'] !== null && youtube_url_valid($live['youtube_url'])): // 表示の前にもう一度チェック（live.php と同じ） ?>
-                                <a class="live-card__yt" href="<?= h($live['youtube_url']) ?>" target="_blank" rel="noopener noreferrer" aria-label="「<?= h($live['name']) ?>」を YouTube で見る" title="YouTube で見る"><?= youtube_icon() ?></a>
+                            <?php $hasPlaylist = $live['youtube_url'] !== null && youtube_url_valid($live['youtube_url']); // 表示の前にもう一度チェック（live.php と同じ）
+                            if ($live['yt'] || $hasPlaylist): // バンドのリンクが1つでも、またはプレイリストがあれば出す ?>
+                                <?php if ($hasPlaylist): ?>
+                                    <a class="live-card__yt" href="<?= h($live['youtube_url']) ?>" target="_blank" rel="noopener noreferrer" aria-label="「<?= h($live['name']) ?>」を YouTube で見る" title="YouTube で見る"><?= youtube_icon() ?></a>
+                                <?php else: ?>
+                                    <a class="live-card__yt" href="live?id=<?= (int)$liveId ?>" aria-label="「<?= h($live['name']) ?>」のライブ詳細を開く" title="ライブ詳細へ"><?= youtube_icon() ?></a>
+                                <?php endif; ?>
                             <?php endif; ?>
                             <?php if ($live['mix']): // YouTube の右 ?><?= mix_tag('live-card__mix') ?><?php endif; ?>
                             <?= special_button_html('live-' . (int)$liveId, $special['live'][(int)$liveId] ?? [], 'live-card__special') // MIX の右 ?>
