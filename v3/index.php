@@ -68,6 +68,8 @@ $importantNotices = $st->fetchAll();
 require_once __DIR__ . '/lib/repository.php';
 $schedTodo = !empty($user['member_id']) ? sched_todo_polls($pdo, (int)$user['member_id']) : [];
 require_once __DIR__ . '/lib/drive.php'; // mix_tag（ライブのカードの MIX の印）
+require_once __DIR__ . '/lib/special.php'; // スペシャルコンテンツのアイコン
+$special = special_load($pdo);
 
 // 日程1行ごとに、そのライブの情報とバンド数をくっつけて取ってくる
 //   LEFT JOIN: 相手が無くても行を残す（バンドが0組の日程も表示するため）
@@ -290,7 +292,7 @@ render_header('ライブ一覧', 'lives');
     <div id="live-list">
     <?php foreach ($years as $year => $lives): ?>
         <section class="year" data-year="<?= (int)$year ?>">
-            <h2 class="year__title"><?= $year > 0 ? (int)$year . '<small>年度</small>' : '年度未設定' ?></h2>
+            <h2 class="year__title"><?= $year > 0 ? (int)$year . '<small>年度</small>' : '年度未設定' ?><?= special_button_html('year-' . (int)$year, $special['year'][(int)$year] ?? []) ?></h2>
             <div class="grid">
                 <?php foreach ($lives as $liveId => $live):
                     $venues = array_unique(array_filter(array_column($live['days'], 'venue_name')));
@@ -327,6 +329,7 @@ render_header('ライブ一覧', 'lives');
                                 <a class="live-card__yt" href="<?= h($live['youtube_url']) ?>" target="_blank" rel="noopener noreferrer" aria-label="「<?= h($live['name']) ?>」を YouTube で見る" title="YouTube で見る"><?= youtube_icon() ?></a>
                             <?php endif; ?>
                             <?php if ($live['mix']): // YouTube の右 ?><?= mix_tag('live-card__mix') ?><?php endif; ?>
+                            <?= special_button_html('live-' . (int)$liveId, $special['live'][(int)$liveId] ?? [], 'live-card__special') // MIX の右 ?>
                             <span class="arrow"><?= icon('arrow_forward') ?></span></p>
                     </div>
                 <?php endforeach; ?>

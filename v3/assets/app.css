@@ -449,6 +449,34 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .live-card__yt svg { width: 23px; height: 16px; }
 .live-card__yt:hover svg { opacity: .8; }
 .live-card__mix { margin-left: 2px; }
+/* スペシャルコンテンツ（lib/special.php）: 🎁 を押す・乗せると .album-tip にリンクの一覧が出る */
+.special-btn { position: relative; z-index: 1; display: inline-flex; align-items: center; padding: 0 2px; border: 0; background: none; cursor: pointer; line-height: 0; vertical-align: middle; }
+.special-btn:hover .special-icon { opacity: .8; }
+.special-tile { fill: #fff; }
+[data-theme="dark"] .special-tile { fill: #33240f; }
+.special-icon--plus { color: var(--muted); }
+.special-icon--plus .special-tile { fill: #fff; stroke: #cfccc2; }
+[data-theme="dark"] .special-icon--plus .special-tile { fill: #23232c; stroke: #3a3a47; }
+.special-pull summary { transition: color var(--t-fast) ease; }
+.special-pull summary:hover, .special-pull[open] summary { color: var(--accent); }
+.year__title .special-btn, .year__title .special-pull { align-self: center; margin-left: 10px; }
+.year__title .special-icon { width: 26px; height: 26px; }
+.special-pull { display: inline-block; margin-left: 10px; vertical-align: middle; }
+.special-pull summary { line-height: 0; }
+.special-pull__panel { right: auto; left: 0; top: calc(100% + 6px); z-index: 5; width: max-content; max-width: min(320px, calc(100vw - 32px));
+  font: 400 var(--fs-md)/1.5 var(--font); letter-spacing: 0; transform-origin: top left; }
+.special-pull__panel a:hover { background: var(--surface-2); }
+.special-btn.btn--special { padding: 5px 6px; }
+.btn--special .special-icon { width: 34px; height: 34px; } /* ライブページは YouTube のロゴと高さをそろえる */
+.special-list:not([hidden]) { display: grid; gap: 4px; }
+.special-link { display: inline-flex; align-items: center; gap: 6px; color: inherit; overflow-wrap: anywhere; }
+.special-link > span { padding-top: max(1px, .1em); } /* 日本語が上に寄って見える分の補正（ラベルの規格と同じ） */
+.special-link .youtube-icon { width: 20px; height: 14px; flex: none; }
+.special-link .icon { font-size: 18px; flex: none; }
+.special-rows { list-style: none; padding: 0; display: grid; gap: 6px; }
+.special-rows li { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.special-rows form { margin-left: auto; }
+.special-year { margin-top: 24px; }
 .live-card__venue, .live-card__date { position: relative; z-index: 1; color: inherit; }
 .live-card__venue:hover, .live-card__date:hover { color: var(--accent); }
 .live-card__date.day-no:hover { text-decoration: underline; }

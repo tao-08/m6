@@ -767,6 +767,33 @@ function setupSmallThings() {
       { duration: 180, easing: 'cubic-bezier(.2, .9, .3, 1.1)' });
   }));
 
+  // スペシャルコンテンツのプルダウン（年度の横）: マウスを乗せても開く（ギフトのポップアップと同じ）。タッチは押して開く
+  //   乗せて開いたあとに押しても閉じない（閉じるのは外れたとき・外を押したとき）。マウスが外れても 150ms は待つ（アイコンと一覧のすき間を渡れるように）
+  document.querySelectorAll('.special-pull').forEach((pull) => {
+    let timer = 0;
+    let mouse = false;
+    pull.addEventListener('pointerenter', (e) => {
+      if (e.pointerType !== 'mouse') return;
+      clearTimeout(timer);
+      if (pull.open) return;
+      pull.open = true;
+      if (!reduceMotion) {
+        pull.querySelector('.usermenu__panel')?.animate(
+          [{ opacity: 0, transform: 'translateY(-6px) scale(.96)' }, { opacity: 1, transform: 'none' }],
+          { duration: 180, easing: 'cubic-bezier(.2, .9, .3, 1.1)' });
+      }
+    });
+    pull.addEventListener('pointerleave', (e) => {
+      if (e.pointerType !== 'mouse') return;
+      timer = setTimeout(() => { pull.open = false; }, 150);
+    });
+    pull.addEventListener('pointerdown', (e) => { mouse = e.pointerType === 'mouse'; });
+    pull.querySelector('summary').addEventListener('click', (e) => {
+      if (mouse && pull.open) e.preventDefault(); // 乗せて開いたあとのクリックでは閉じない
+      mouse = false;
+    });
+  });
+
   // ベル（data-notice-open）を開いたら・タブ（data-notif-tab）を切り替えたら、そのタブの直近の分を既読にしてバッジを減らす。
   //   どれを既読にするかはサーバーが決める（api_notice_read.php）。メニューは同時に1つだけ開く
   const menus = [...document.querySelectorAll('.usermenu')];

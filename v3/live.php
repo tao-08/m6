@@ -20,6 +20,7 @@ require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/repository.php';
 require_once __DIR__ . '/lib/comments.php';
 require_once __DIR__ . '/lib/live_image.php';
+require_once __DIR__ . '/lib/special.php';
 require_once __DIR__ . '/lib/drive.php'; // バンドに紐付けた Google ドライブのファイル
 $user = require_login();
 
@@ -136,6 +137,7 @@ render_header($live['name'], 'lives');
         <?php if ($live['youtube_url'] !== null && youtube_url_valid($live['youtube_url'])): // 表示の前にもう一度チェック（DB を直接いじられても変なリンクを出さない） ?>
             <a class="btn btn--sm btn--youtube" href="<?= h($live['youtube_url']) ?>" target="_blank" rel="noopener noreferrer" aria-label="YouTube で見る" title="YouTube で見る"><?= youtube_icon() ?></a>
         <?php endif; ?>
+        <?= special_button_html('live', special_load($pdo)['live'][(int)$liveId] ?? [], 'btn btn--sm btn--special') // YouTube の右 ?>
         <a class="btn btn--sm" href="live_edit?id=<?= (int)$liveId ?>"><?= icon('edit') ?> <span>ライブ<span class="pc-only">を</span>編集</span></a>
         <?php // スマホでは「を」を消して「ライブ編集」「タイムテーブル編集」にし、YouTube と3つを1段に収める ?>
         <a class="btn btn--sm" href="timetable_edit?id=<?= (int)$liveId ?>"><?= icon('schedule') ?> <span>タイムテーブル<span class="pc-only">を</span>編集</span></a>

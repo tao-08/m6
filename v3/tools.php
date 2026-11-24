@@ -30,6 +30,8 @@ $tools = [
         '新しい会場のセッティングシートの PDF を登録し要素を配置して、セッティングシート作成用のテンプレートを編集します。'],
     // 会場の最寄り駅・機材・過去のライブ（誰でも見られて、誰でも編集できる）
     ['venue_list', 'location_on', 'ライブ会場リスト', '会場の最寄り駅・機材・過去のライブ'],
+    // 年度・ライブに付けるリンクとファイル（誰でも追加。削除は追加した人と管理者 = special.php）
+    ['special', 'redeem', 'スペシャルコンテンツ', '年度やライブに動画・ファイル・リンクを追加します。'],
     // 練習スタジオの情報・料金シミュレーション・地図（見るのも編集もログインしていれば誰でも。変更は編集履歴から復元できる = studio_info.php）
     ['studio_list', 'piano', 'スタジオ情報', '練習スタジオの料金・学割・機材・予約ページ。料金シミュレーションとスタジオマップ付き。'],
     // 落ちものパズル（ログインしていれば誰でも。点数は自己ベストだけ block_best に残り、ランキングに出る）
@@ -65,7 +67,7 @@ foreach (!empty(current_user()['member_id']) ? sched_todo_polls(db(), (int)curre
 // タブ: 行き先 => タブ。ここに無いツールは「便利ツール」に入る
 $tabs = ['data' => 'データ', 'useful' => '便利ツール', 'admin' => '運営ツール', 'game' => 'ゲーム'];
 $tabOf = [
-    'songs' => 'data', 'venue_list' => 'data', 'studio_list' => 'data',
+    'songs' => 'data', 'venue_list' => 'data', 'studio_list' => 'data', 'special' => 'data',
     'tt_builder' => 'admin', 'studio' => 'admin', 'sheet_templates' => 'admin', 'intro_previews' => 'admin',
     'block' => 'game', 'intro' => 'game',
 ];

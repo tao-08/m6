@@ -1,6 +1,6 @@
 <?php
 /**
- * attach_image.php?k=board|notice|band|venue&id=画像ID[&t=1][&dl=1] — 掲示板・お知らせ・バンドの添付画像を出す
+ * attach_image.php?k=board|notice|band|venue|special&id=画像ID[&t=1][&dl=1] — 掲示板・お知らせ・バンドの添付画像を出す
  *   ログインしている人のうち、その書き込み・お知らせ・バンドを見てよい人だけ。t=1 サムネイル / dl=1 ダウンロード
  */
 declare(strict_types=1);
@@ -40,6 +40,11 @@ if (isset(ATTACH_KINDS[$kind])) {
         }
     } elseif ($kind === 'venue') {
         $st = $pdo->prepare('SELECT i.*, v.name AS title FROM venue_image i JOIN venue v ON v.venue_id = i.venue_id WHERE i.image_id = ?');
+        $st->execute([$id]);
+        $img = $st->fetch() ?: null;
+    } elseif ($kind === 'special') {
+        // ログインしていれば誰でも（special.php の一覧と同じ）
+        $st = $pdo->prepare('SELECT special_id AS image_id, file_name, title FROM special_content WHERE special_id = ? AND file_name IS NOT NULL');
         $st->execute([$id]);
         $img = $st->fetch() ?: null;
     } elseif ($kind === 'band_audio') {

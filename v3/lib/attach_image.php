@@ -21,6 +21,8 @@ const ATTACH_KINDS = [
     // TAB 譜（流れる TAB。tab.php）: パートごと / 曲ごと。TAB を削除しても画像は消さない（復元すると同じ tab_id で戻るため。外部キーなし）
     'song_tab'  => ['table' => 'song_tab_image',  'owner' => 'tab_id',  'max' => 10],
     'song_meta' => ['table' => 'song_meta_image', 'owner' => 'meta_id', 'max' => 10],
+    // スペシャルコンテンツ（special.php）のファイル。1件に1ファイルで、出すのは attach_image.php だけ（attach_add などは使わない）
+    'special'   => ['table' => 'special_content', 'owner' => 'special_id', 'max' => 1],
 ];
 
 /** @return array 持ち主ID => [画像の行, ...]（表示順） */
@@ -47,13 +49,13 @@ function tab_pdf_ids(array $images): array
         array_filter($images, static fn($r) => live_file_is_pdf((string)$r['file_name']))));
 }
 
-/** TAB 譜（song_tab / song_meta）は PDF・その他のファイルも受け付ける。画像として読めるものは画像、%PDF- は PDF、残りはそのまま保存 */
+/** TAB 譜（song_tab / song_meta）・スペシャルコンテンツは PDF・その他のファイルも受け付ける。画像として読めるものは画像、%PDF- は PDF、残りはそのまま保存 */
 function live_attach_store(string $kind, array $up): array
 {
     if ($kind === 'band_audio') {
         return live_audio_store($up);
     }
-    if ($kind !== 'song_tab' && $kind !== 'song_meta') {
+    if (!in_array($kind, ['song_tab', 'song_meta', 'special'], true)) {
         return live_image_store($up);
     }
     if (live_upload_is_pdf($up)) {

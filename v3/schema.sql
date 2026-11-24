@@ -1865,3 +1865,18 @@ CREATE TABLE sched_google_event (
     CONSTRAINT fk_sgevent_member FOREIGN KEY (member_id) REFERENCES member (member_id)
         ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- スペシャルコンテンツ（年度・ライブに付けるリンクとファイル。説明は migrations/135）
+CREATE TABLE special_content (
+    special_id  INT UNSIGNED      NOT NULL AUTO_INCREMENT,
+    fiscal_year SMALLINT UNSIGNED NOT NULL,
+    live_id     INT UNSIGNED      NULL,              -- NULL = 年度全体。外部キーなし（ライブを履歴から戻すと同じ ID で戻るため）
+    title       VARCHAR(100)      NOT NULL,
+    url         VARCHAR(500)      NULL,              -- url か file_name のどちらか一方
+    file_name   VARCHAR(40)       NULL,              -- storage/live_images/ のファイル名
+    user_id     INT UNSIGNED      NULL,
+    created_at  DATETIME          NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (special_id),
+    KEY idx_special_year (fiscal_year),
+    KEY idx_special_live (live_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
