@@ -121,10 +121,10 @@ $autoCount = count(array_filter($rows, fn($r) => $r['status'] === 'auto'));
 $pickCount = count(array_filter($rows, fn($r) => $r['status'] === 'pick'));
 
 const YT_STATUS = [
-    'current' => ['今のまま', 'pill'],
+    'current' => ['変更なし', 'pill'],
     'auto'    => ['自動で選択', 'pill pill--ok'],
-    'pick'    => ['候補が複数。選んでください', 'pill pill--warn'],
-    'none'    => ['見つからない', 'pill muted'],
+    'pick'    => ['候補から選択してください', 'pill pill--warn'],
+    'none'    => ['未登録', 'pill muted'],
 ];
 
 render_header('YouTube の動画を割り当て', 'lives'); ?>
@@ -137,7 +137,7 @@ render_header('YouTube の動画を割り当て', 'lives'); ?>
 <?php else: ?>
     <div class="flash flash--info">
         プレイリストの動画 <?= count($videos) ?> 本を読み込み、<?= $autoCount ?> バンドに自動で割り当てました。
-        <?php if ($pickCount): ?><strong><?= $pickCount ?> バンドは候補が複数あるので選んでください。</strong><?php endif; ?>
+        <?php if ($pickCount): ?><strong><?= $pickCount ?> バンドは候補から選択してください。</strong><?php endif; ?>
         確認してから「保存する」を押してください。
     </div>
 
