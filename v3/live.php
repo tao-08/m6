@@ -137,7 +137,10 @@ render_header($live['name'], 'lives');
         <?php if ($live['youtube_url'] !== null && youtube_url_valid($live['youtube_url'])): // 表示の前にもう一度チェック（DB を直接いじられても変なリンクを出さない） ?>
             <a class="btn btn--sm btn--youtube" href="<?= h($live['youtube_url']) ?>" target="_blank" rel="noopener noreferrer" aria-label="YouTube で見る" title="YouTube で見る"><?= youtube_icon() ?></a>
         <?php endif; ?>
-        <?= special_button_html('live', special_load($pdo)['live'][(int)$liveId] ?? [], 'btn btn--sm btn--special') // YouTube の右 ?>
+        <?php if ($mixIds): // ライブ一覧のカードと同じ並び: YouTube → MIX → スペシャル ?><?= mix_tag() ?><?php endif; ?>
+        <?php $special = special_button_html('live', special_load($pdo)['live'][(int)$liveId] ?? [], 'btn btn--sm btn--special'); ?>
+        <?= $special ?>
+        <?php if ($special !== '' || $mixIds || ($live['youtube_url'] !== null && youtube_url_valid($live['youtube_url']))): // 編集ボタンは2段目から ?><span class="hero__break"></span><?php endif; ?>
         <a class="btn btn--sm" href="live_edit?id=<?= (int)$liveId ?>"><?= icon('edit') ?> <span>ライブ<span class="pc-only">を</span>編集</span></a>
         <?php // スマホでは「を」を消して「ライブ編集」「タイムテーブル編集」にし、YouTube と3つを1段に収める ?>
         <a class="btn btn--sm" href="timetable_edit?id=<?= (int)$liveId ?>"><?= icon('schedule') ?> <span>タイムテーブル<span class="pc-only">を</span>編集</span></a>
