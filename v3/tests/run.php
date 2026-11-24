@@ -1170,13 +1170,15 @@ $sc = [
     ],
     'packs' => [['name' => '深夜', 'rooms' => ['1st', '2st'], 'people' => null, 'day_type' => 0, 'start_min' => 1380, 'end_min' => 2040, 'price' => 4000, 'discounts' => [], 'minutes' => null]],
     'rentals' => [['name' => 'エレキギター／ベース', 'price' => 140, 'per_hour' => 1]],
-    'equipment' => [['rooms' => ['1st'], 'category' => 'ドラム', 'model_name' => 'Pearl Export', 'quantity' => 1]],
+    'equipment' => [['rooms' => ['1st'], 'category' => 'ドラム', 'maker' => 'Pearl', 'model_name' => 'Export', 'note' => null, 'quantity' => 1]],
     'sources' => [], 'caution' => null,
 ];
 $sh = studio_ai_to_schema($sc);
 check('AI編集: 同じ料金の部屋は1行にまとめて AI に見せる', [count($sh['rates']), $sh['rates'][0]['rooms']], [2, ['1st', '2st']]);
 check('AI編集: 時刻は HH:MM・古い25:00は1:00・日またぎは終了が前・バンドは target 0', [$sh['rates'][1]['start'], $sh['rates'][1]['end'], $sh['rates'][1]['target'], $sh['packs'][0]['start'], $sh['packs'][0]['end'], $sh['rates'][0]['target']], ['01:00', '05:00', 1, '23:00', '10:00', 0]);
 check('AI編集: 空の欄は空文字・0（null は使わない）', [$sh['info']['phone'], $sh['rooms'][1]['area_jo'], $sh['rooms'][0]['size_note'], $sh['packs'][0]['minutes']], ['', 0.0, '', 0]);
+check('機材: AI 用の形はメーカー・型番・メモに分かれ、戻すと同じ行になる', [$sh['equipment'][0]['maker'], $sh['equipment'][0]['model'], $sh['equipment'][0]['note'], studio_ai_normalize($sh, true)['equipment'] === $sc['equipment']], ['Pearl', 'Export', '', true]);
+check('機材: 表示名はメーカーと型番を空白でつなぐ（片方が空ならもう片方だけ）', [equip_label(['maker' => 'Marshall', 'model_name' => 'JCM900']), equip_label(['maker' => null, 'model_name' => 'シンバルスタンド']), equip_label(['maker' => 'Ampeg', 'model_name' => ''])], ['Marshall JCM900', 'シンバルスタンド', 'Ampeg']);
 $cur = studio_ai_normalize($sh, true);
 check('AI編集: 今のデータは normalize を通すと部屋ごとの行に戻る', count($cur['rates']), 3);
 check('AI編集: 「／」入りのレンタル名は分けない（keepNames）', [count($cur['rentals']), count(studio_ai_normalize($sh)['rentals'])], [1, 2]);

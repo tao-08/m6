@@ -213,16 +213,16 @@ if ($faculty !== '' || $roleName !== null) {
     //   機材名でも当てる（「JC-120」で置いてある会場・スタジオ）。当たった機材は equip_hit に入れて名前の右に出す
     $eqLike = equip_like(mb_substr($q, 0, 50));
     $st = $pdo->prepare('SELECT v.venue_id, v.name,
-            (SELECT e.model_name FROM venue_equipment e WHERE e.venue_id = v.venue_id AND ' . equip_match_sql('e.model_name') . ' LIMIT 1) AS equip_hit
+            (SELECT ' . equip_text_sql('e') . ' FROM venue_equipment e WHERE e.venue_id = v.venue_id AND ' . equip_match_sql(equip_text_sql('e')) . ' LIMIT 1) AS equip_hit
         FROM venue v WHERE v.name COLLATE utf8mb4_unicode_520_ci LIKE ?
-           OR EXISTS (SELECT 1 FROM venue_equipment e WHERE e.venue_id = v.venue_id AND ' . equip_match_sql('e.model_name') . ')
+           OR EXISTS (SELECT 1 FROM venue_equipment e WHERE e.venue_id = v.venue_id AND ' . equip_match_sql(equip_text_sql('e')) . ')
         ORDER BY v.sort_order, v.name LIMIT 30');
     $st->execute([$eqLike, $like, $eqLike]);
     $venues = $st->fetchAll();
     $st = $pdo->prepare('SELECT s.studio_id, s.name,
-            (SELECT e.model_name FROM studio_equipment e WHERE e.studio_id = s.studio_id AND ' . equip_match_sql('e.model_name') . ' LIMIT 1) AS equip_hit
+            (SELECT ' . equip_text_sql('e') . ' FROM studio_equipment e WHERE e.studio_id = s.studio_id AND ' . equip_match_sql(equip_text_sql('e')) . ' LIMIT 1) AS equip_hit
         FROM studio s WHERE s.name COLLATE utf8mb4_unicode_520_ci LIKE ? OR s.short_name COLLATE utf8mb4_unicode_520_ci LIKE ?
-           OR EXISTS (SELECT 1 FROM studio_equipment e WHERE e.studio_id = s.studio_id AND ' . equip_match_sql('e.model_name') . ')
+           OR EXISTS (SELECT 1 FROM studio_equipment e WHERE e.studio_id = s.studio_id AND ' . equip_match_sql(equip_text_sql('e')) . ')
         ORDER BY s.name LIMIT 30');
     $st->execute([$eqLike, $like, $like, $eqLike]);
     $studios = $st->fetchAll();

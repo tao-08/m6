@@ -66,8 +66,8 @@ $kinds = [
                    WHERE (sc.live_id IS NULL OR l.live_id IS NOT NULL) AND (sc.title $COL LIKE ? OR sc.author $COL LIKE ?)
                    ORDER BY sc.fiscal_year DESC, sc.special_id DESC"],
     // 機材名（会場・スタジオ）。? には equip_like() の値を渡す（2つ目の true。表記ゆれを吸収）
-    'equip' => ['SELECT e.model_name FROM (SELECT model_name FROM venue_equipment UNION ALL SELECT model_name FROM studio_equipment) e
-                 WHERE ' . equip_match_sql('e.model_name') . ' GROUP BY e.model_name ORDER BY COUNT(*) DESC, e.model_name', true],
+    'equip' => ["SELECT e.label FROM (SELECT CONCAT_WS(' ', NULLIF(maker, ''), NULLIF(model_name, '')) AS label FROM venue_equipment UNION ALL SELECT CONCAT_WS(' ', NULLIF(maker, ''), NULLIF(model_name, '')) FROM studio_equipment) e
+                 WHERE " . equip_match_sql('e.label') . ' GROUP BY e.label ORDER BY COUNT(*) DESC, e.label', true],
     'role' => ["SELECT r.name FROM role r WHERE r.name $COL LIKE ? ORDER BY r.sort_order, r.name"],
     // セットリストの曲 + 楽曲データベースの曲（手動登録・TAB・リンク）
     'song' => ["SELECT u.name FROM (

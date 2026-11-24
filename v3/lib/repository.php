@@ -1182,12 +1182,34 @@ function song_db_extra_sql(): string
 }
 
 /**
- * 機材名（venue_equipment / studio_equipment の model_name）の照合。
+ * 機材の照合。$col には機材の表のメーカー・型番・メモをつないだ文字（equip_text_sql）などを渡す。
  * 表記ゆれ（JC-120 / JC120、JCM-900 / JCM900）を吸収するため、ハイフンと空白を外して比べる。? には equip_like() を渡す
  */
 function equip_match_sql(string $col): string
 {
     return "REPLACE(REPLACE(REPLACE($col, '-', ''), ' ', ''), '　', '') COLLATE utf8mb4_unicode_520_ci LIKE ?";
+}
+
+/** 機材1行の「メーカー 型番 メモ」をつないだ SQL の式（検索用）。$alias = 機材の表の別名 */
+function equip_text_sql(string $alias): string
+{
+    return "CONCAT_WS(' ', NULLIF($alias.maker, ''), NULLIF($alias.model_name, ''), NULLIF($alias.note, ''))"; // 空文字は飛ばす（空白が2つ続かないように）
+}
+
+/** 機材の表示名「メーカー 型番」（片方が空ならもう片方だけ）。メモは含めない */
+function equip_label(array $e): string
+{
+    return trim(trim((string)($e['maker'] ?? '')) . ' ' . trim((string)($e['model_name'] ?? '')));
+}
+
+/** 編集フォームの入力候補（$col = 'maker' か 'model_name'。会場・スタジオの登録済みの値、重複なし） */
+function equip_suggest_values(PDO $pdo, string $col): array
+{
+    if (!in_array($col, ['maker', 'model_name'], true)) {
+        throw new InvalidArgumentException($col);
+    }
+    return $pdo->query("SELECT $col FROM (SELECT $col FROM venue_equipment UNION ALL SELECT $col FROM studio_equipment) e
+        WHERE $col IS NOT NULL AND $col <> '' GROUP BY $col ORDER BY COUNT(*) DESC, $col")->fetchAll(PDO::FETCH_COLUMN);
 }
 
 /** equip_match_sql() に渡す部分一致の値。ハイフンと空白だけの入力は何にも当てない（'' は空の機材名にしか当たらない） */

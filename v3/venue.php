@@ -164,7 +164,9 @@ if (is_post()) {
     if ($action === 'save_equipment') {
         $ids = (array)($_POST['id'] ?? []);
         $cats = (array)($_POST['category'] ?? []);
+        $makers = (array)($_POST['maker'] ?? []);
         $models = (array)($_POST['model'] ?? []);
+        $notes = (array)($_POST['note'] ?? []);
         $qtys = (array)($_POST['quantity'] ?? []);
         $own = $pdo->prepare('SELECT venue_equipment_id FROM venue_equipment WHERE venue_id = ?');
         $own->execute([$venueId]);
@@ -177,34 +179,37 @@ if (is_post()) {
                 continue;
             }
             $cat = (string)($cats[$i] ?? '');
+            $maker = trim((string)($makers[$i] ?? ''));
             $model = trim((string)($models[$i] ?? ''));
+            $note = trim((string)($notes[$i] ?? ''));
             $q = trim((string)($qtys[$i] ?? ''));
-            if ($model === '') {
-                $rows[] = [$id, '', null, 0];
+            if ($maker === '' && $model === '') {
+                $rows[] = [$id, '', null, null, null, 0];
                 continue;
             }
-            if (!in_array($cat, VENUE_EQUIP_CATEGORIES, true) || mb_strlen($model) > 100 || !ctype_digit($q) || (int)$q > 99) {
+            if (!in_array($cat, VENUE_EQUIP_CATEGORIES, true) || mb_strlen($maker) > 50 || mb_strlen($model) > 100 || mb_strlen($note) > 100
+                || !ctype_digit($q) || (int)$q > 99) {
                 $ok = false;
                 break;
             }
-            $rows[] = [$id, $cat, $model, (int)$q];
+            $rows[] = [$id, $cat, $maker === '' ? null : $maker, $model, $note === '' ? null : $note, (int)$q];
         }
         if (!$ok) {
-            flash('区分・機種名・台数が正しくありません', 'error');
+            flash('区分・メーカー・型番・メモ・台数が正しくありません', 'error');
             redirect($self);
         }
         $pdo->beginTransaction();
         try {
             $order = 0;
-            foreach ($rows as [$id, $cat, $model, $q]) {
+            foreach ($rows as [$id, $cat, $maker, $model, $note, $q]) {
                 if ($id !== 0 && $model === null) {
                     $pdo->prepare('DELETE FROM venue_equipment WHERE venue_equipment_id = ? AND venue_id = ?')->execute([$id, $venueId]);
                 } elseif ($id !== 0) {
-                    $pdo->prepare('UPDATE venue_equipment SET category = ?, model_name = ?, quantity = ?, sort_order = ? WHERE venue_equipment_id = ? AND venue_id = ?')
-                        ->execute([$cat, $model, $q, ++$order, $id, $venueId]);
+                    $pdo->prepare('UPDATE venue_equipment SET category = ?, maker = ?, model_name = ?, note = ?, quantity = ?, sort_order = ? WHERE venue_equipment_id = ? AND venue_id = ?')
+                        ->execute([$cat, $maker, $model, $note, $q, ++$order, $id, $venueId]);
                 } elseif ($model !== null) {
-                    $pdo->prepare('INSERT INTO venue_equipment (venue_id, category, model_name, quantity, sort_order) VALUES (?, ?, ?, ?, ?)')
-                        ->execute([$venueId, $cat, $model, $q, ++$order]);
+                    $pdo->prepare('INSERT INTO venue_equipment (venue_id, category, maker, model_name, note, quantity, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)')
+                        ->execute([$venueId, $cat, $maker, $model, $note, $q, ++$order]);
                 }
             }
             $pdo->commit();
@@ -227,7 +232,7 @@ $st = $pdo->prepare('SELECT venue_station_id, station_name, walk_minutes FROM ve
 $st->execute([$venueId]);
 $stations = $st->fetchAll();
 
-$st = $pdo->prepare('SELECT venue_equipment_id, category, model_name, quantity FROM venue_equipment
+$st = $pdo->prepare('SELECT venue_equipment_id, category, maker, model_name, note, quantity FROM venue_equipment
     WHERE venue_id = ? ORDER BY sort_order, venue_equipment_id');
 $st->execute([$venueId]);
 $equipment = $st->fetchAll();
@@ -375,7 +380,7 @@ render_header($venue['name'], 'tools');
                 <h3 class="venue-equip__cat"><?= h($cat) ?></h3>
                 <ul class="venue-equip__list">
                     <?php foreach ($equipByCat[$cat] as $e): ?>
-                        <li><?= h($e['model_name']) ?> <span class="muted">× <?= (int)$e['quantity'] ?></span></li>
+                        <li><?= h(equip_label($e)) ?><?php if ($e['note'] !== null): ?> <span class="muted"><?= h($e['note']) ?></span><?php endif; ?> <span class="muted">× <?= (int)$e['quantity'] ?></span></li>
                     <?php endforeach; ?>
                 </ul>
             </div>
@@ -388,7 +393,7 @@ render_header($venue['name'], 'tools');
             <?= csrf_field() ?>
             <input type="hidden" name="action" value="save_equipment">
             <input type="hidden" name="venue_id" value="<?= $venueId ?>">
-            <?php foreach (array_merge($equipment, [['venue_equipment_id' => 0, 'category' => '', 'model_name' => '', 'quantity' => 1]]) as $e): ?>
+            <?php foreach (array_merge($equipment, [['venue_equipment_id' => 0, 'category' => '', 'maker' => '', 'model_name' => '', 'note' => '', 'quantity' => 1]]) as $e): ?>
                 <div class="venue-edit__row">
                     <input type="hidden" name="id[]" value="<?= (int)$e['venue_equipment_id'] ?>">
                     <select name="category[]" aria-label="区分">
@@ -396,11 +401,15 @@ render_header($venue['name'], 'tools');
                             <option value="<?= h($cat) ?>"<?= $cat === $e['category'] ? ' selected' : '' ?>><?= h($cat) ?></option>
                         <?php endforeach; ?>
                     </select>
-                    <input autocomplete="off" type="text" class="grow" name="model[]" maxlength="100" value="<?= h($e['model_name']) ?>" placeholder="機種名" aria-label="機種名">
+                    <input autocomplete="off" type="text" class="grow" name="maker[]" maxlength="50" value="<?= h($e['maker']) ?>" placeholder="メーカー" aria-label="メーカー" data-suggest-list="equip-makers">
+                    <input autocomplete="off" type="text" class="grow" name="model[]" maxlength="100" value="<?= h($e['model_name']) ?>" placeholder="型番" aria-label="型番" data-suggest-list="equip-models">
+                    <input autocomplete="off" type="text" class="grow" name="note[]" maxlength="100" value="<?= h($e['note']) ?>" placeholder="メモ" aria-label="メモ">
                     <input type="number" name="quantity[]" min="0" max="99" value="<?= (int)$e['quantity'] ?>" aria-label="台数">
                 </div>
             <?php endforeach; ?>
-            <div><button type="submit" class="btn btn--primary btn--sm" title="機種名を空にした行は削除"><?= icon('save') ?> 保存</button></div>
+            <?= render_suggest_datalist('equip-makers', equip_suggest_values($pdo, 'maker')) ?>
+            <?= render_suggest_datalist('equip-models', equip_suggest_values($pdo, 'model_name')) ?>
+            <div><button type="submit" class="btn btn--primary btn--sm" title="メーカーと型番を空にした行は削除"><?= icon('save') ?> 保存</button></div>
         </form>
     </details>
 </section>

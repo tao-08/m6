@@ -489,6 +489,9 @@
       return yen(r.price) + (parts.length ? '（' + parts.join('・') + '）' : '');
     };
 
+    /** 機材の「メーカー 型番 メモ」（空の欄は飛ばす） */
+    const equipText = (r) => [r.maker, r.model_name, r.note].filter(Boolean).join(' ');
+
     /** 項目ごとに、プレビューの1行の文字を作る関数 */
     const LINES = {
       info: (p) => Object.keys(INFO).filter((k) => p.info[k]).map((k) => INFO[k] + ': ' + p.info[k]),
@@ -498,7 +501,7 @@
       packs: (p) => p.packs.map((r) => r.name + ': ' + where(r) + ' ' + clock(r.start_min) + '〜' + clock(r.end_min)
         + (r.minutes ? ' のうち ' + hm(r.minutes) : '') + ' ' + price(r)),
       rentals: (p) => p.rentals.map((r) => r.name + ' ' + yen(r.price) + (r.per_hour ? '/h' : '/回')),
-      equipment: (p) => p.equipment.map((r) => (r.rooms.length ? r.rooms.join('・') + ' ' : '') + r.category + ': ' + r.model_name + (r.quantity !== 1 ? ' × ' + r.quantity : '')),
+      equipment: (p) => p.equipment.map((r) => (r.rooms.length ? r.rooms.join('・') + ' ' : '') + r.category + ': ' + equipText(r) + (r.quantity !== 1 ? ' × ' + r.quantity : '')),
     };
 
     // ---- 「AIで編集」のプレビュー: 今の内容（current）と提案を比べて、変わったところだけを出す ----
@@ -516,7 +519,7 @@
       rates: (r) => [rooms_(r), r.people, r.day_type, r.start_min, r.end_min].join('|'),
       packs: (r) => [r.name, rooms_(r), r.people, r.day_type, r.start_min, r.end_min].join('|'),
       rentals: (r) => r.name,
-      equipment: (r) => [r.category, r.model_name, rooms_(r)].join('|'),
+      equipment: (r) => [r.category, r.maker, r.model_name, r.note, rooms_(r)].join('|'),
     };
     /** 1行の文字（検索のプレビューと同じ書き方） */
     const lineOf = (key, row) => LINES[key]({ [key]: [row] })[0];
@@ -964,7 +967,7 @@
 
   const DEL_FIELD = {
     save_rates: 'input[data-price]', save_packs: 'input[name="price[]"]', save_rentals: 'input[name="name[]"]',
-    save_equipment: 'input[name="model[]"]', save_rooms: 'input[name="name[]"]', save_discounts: 'input[name="name[]"]',
+    save_equipment: 'input[name="maker[]"], input[name="model[]"]', save_rooms: 'input[name="name[]"]', save_discounts: 'input[name="name[]"]',
     save_areas: 'input[name="area_name[]"]',
   };
 
@@ -1565,7 +1568,7 @@
         const row = input.closest('.sinfo-rate-room, .sinfo-edit__row'); // 料金表は部屋ごとの行 / ほかは1行
         const id = row?.querySelector('input[type="hidden"][name="id[]"], input[type="hidden"][name$="[id]"]');
         if (!id) return;
-        const filled = input.value.trim() !== '';
+        const filled = [...row.querySelectorAll(sel)].some((el) => el.value.trim() !== ''); // 主な欄が2つ以上ある行（機材のメーカー・型番）は、どれか1つでも入っていればよい
         if (Number(id.value) > 0) {
           if (!filled) out.held = true;
         } else if (filled) {
