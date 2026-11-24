@@ -466,6 +466,8 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .special-pull__panel { right: auto; left: 0; top: calc(100% + 6px); z-index: 5; width: max-content; max-width: min(320px, calc(100vw - 32px));
   font: 400 var(--fs-md)/1.5 var(--font); letter-spacing: 0; transform-origin: top left; }
 .special-pull__panel a:hover { background: var(--surface-2); }
+/* スマホ: ボタンの位置から開くと右にはみ出すので、見出しの左端にそろえる */
+@media (max-width: 760px) { .year__title { position: relative; } .year__title .special-pull { position: static; } }
 .special-btn.btn--special { padding: 5px 6px; }
 .btn--special .special-icon { width: 34px; height: 34px; } /* ライブページは YouTube のロゴと高さをそろえる */
 .special-list:not([hidden]) { display: grid; gap: 4px; }
