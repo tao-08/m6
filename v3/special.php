@@ -24,7 +24,7 @@ $lives = $pdo->query('SELECT l.live_id, l.fiscal_year, l.name FROM live l
     ORDER BY l.fiscal_year DESC, MIN(d.held_on) IS NULL, MIN(d.held_on), l.live_id')->fetchAll();
 $liveById = array_column($lives, null, 'live_id');
 $years = array_unique(array_merge([current_fiscal_year()], array_map('intval', array_column($lives, 'fiscal_year'))));
-sort($years);
+rsort($years);
 
 if (is_post()) {
     verify_csrf();
