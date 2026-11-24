@@ -13,6 +13,7 @@ declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/attach_image.php';
 require_once __DIR__ . '/lib/special.php';
+require_once __DIR__ . '/lib/youtube.php';
 $user = require_login();
 $pdo = db();
 
@@ -44,6 +45,7 @@ if (is_post()) {
 
     // 追加
     $title = mb_substr(trim(mb_scrub((string)($_POST['title'] ?? ''))), 0, 100);
+    $author = mb_substr(trim(mb_scrub((string)($_POST['author'] ?? ''))), 0, 50) ?: null;
     $target = (string)($_POST['target'] ?? '');
     $url = trim((string)($_POST['url'] ?? ''));
     $file = $_FILES['file'] ?? null;
@@ -68,8 +70,8 @@ if (is_post()) {
     if ($error === null) {
         try {
             $fileName = $hasFile ? live_attach_store('special', $file)['file_name'] : null;
-            $pdo->prepare('INSERT INTO special_content (fiscal_year, live_id, title, url, file_name, user_id) VALUES (?, ?, ?, ?, ?, ?)')
-                ->execute([$year, $liveId, $title, $hasFile ? null : $url, $fileName, (int)$user['user_id']]);
+            $pdo->prepare('INSERT INTO special_content (fiscal_year, live_id, title, author, url, file_name, user_id) VALUES (?, ?, ?, ?, ?, ?, ?)')
+                ->execute([$year, $liveId, $title, $author, $hasFile ? null : $url, $fileName, (int)$user['user_id']]);
             flash('追加しました');
             redirect('special');
         } catch (RuntimeException $e) {
@@ -81,8 +83,8 @@ if (is_post()) {
 }
 
 // 一覧: 年度ごと（新しい順）。消えたライブに付いていたものは出さない（履歴から戻すと出る）
-$rows = $pdo->query('SELECT s.*, l.name AS live_name, u.name AS user_name FROM special_content s
-    LEFT JOIN live l ON l.live_id = s.live_id LEFT JOIN user_account u ON u.user_id = s.user_id
+$rows = $pdo->query('SELECT s.*, l.name AS live_name FROM special_content s
+    LEFT JOIN live l ON l.live_id = s.live_id
     WHERE s.live_id IS NULL OR l.live_id IS NOT NULL
     ORDER BY s.fiscal_year DESC, s.live_id IS NOT NULL, s.live_id DESC, s.special_id')->fetchAll();
 $byYear = [];
@@ -91,53 +93,110 @@ foreach ($rows as $r) {
 }
 
 render_header('スペシャルコンテンツ', 'tools');
+$fileKind = static fn(array $r): string => match (true) {
+    $r['file_name'] === null => $r['url'] !== null && youtube_video_id((string)$r['url']) !== null ? 'yt' : 'link',
+    live_file_is_pdf((string)$r['file_name']) => 'pdf',
+    live_file_is_other((string)$r['file_name']) => 'other',
+    default => 'image',
+};
 ?>
 <nav class="crumbs"><a href="tools">ツール</a></nav>
 <h1 class="display display--sm">スペシャルコンテンツ</h1>
 
-<form method="post" enctype="multipart/form-data" class="card form-card"<?= unsaved_attr() ?>>
-    <?= csrf_field() ?>
-    <label class="field"><span>タイトル</span>
-        <input type="text" name="title" maxlength="100" required>
-    </label>
-    <label class="field"><span>年度 / ライブ</span>
-        <select name="target" required>
-            <?php foreach ($years as $y): ?>
-                <option value="y<?= (int)$y ?>"><?= h(fmt_year($y)) ?></option>
-                <?php foreach ($lives as $l): if ((int)$l['fiscal_year'] !== $y) continue; ?>
-                    <option value="l<?= (int)$l['live_id'] ?>">&emsp;<?= h($l['name']) ?></option>
-                <?php endforeach; ?>
+<div class="toolbar">
+    <?php // 年度スロット・検索は index.php（ライブ一覧）と同じ。assets/app_list.js が section[data-year] と [data-filter] を動かす ?>
+    <div class="year-slot year-slot--live" data-year-slot tabindex="0" role="spinbutton" aria-label="年度で絞り込み" title="上下にドラッグで年度を切り替え">
+        <div class="year-slot__reel">
+            <div class="year-slot__item" data-value="">すべて</div>
+            <?php foreach (array_keys($byYear) as $y): ?>
+                <div class="year-slot__item" data-value="<?= (int)$y ?>" data-label="<?= (int)$y ?>年度"><span class="year-slot__full"><?= (int)$y ?><small>年度</small></span><span class="year-slot__short"><?= sprintf("'%02d", $y % 100) ?></span></div>
             <?php endforeach; ?>
-        </select>
-    </label>
-    <label class="field"><span>URL</span>
-        <input type="url" name="url" maxlength="500" placeholder="https://">
-    </label>
-    <label class="field"><span>ファイル</span>
-        <input type="file" name="file">
-    </label>
-    <div class="form-actions"><button class="btn btn--primary btn--sm" type="submit"><?= icon('add') ?> 追加</button></div>
-</form>
+        </div>
+    </div>
+    <input type="search" autocomplete="off" class="search" placeholder="タイトル・ライブ名・作者で検索" data-filter=".special-card" aria-label="検索">
+    <button type="button" class="btn btn--primary" data-special-add><?= icon('add') ?> 追加</button>
+</div>
+
+<dialog class="modal" data-special-add-dialog aria-label="スペシャルコンテンツを追加">
+    <form method="post" enctype="multipart/form-data" class="modal__body form-card"<?= unsaved_attr() ?>>
+        <?= csrf_field() ?>
+        <h2 class="modal__title">追加</h2>
+        <label class="field"><span>タイトル</span>
+            <input type="text" name="title" maxlength="100" required>
+        </label>
+        <label class="field"><span>作者</span>
+            <input type="text" name="author" maxlength="50">
+        </label>
+        <label class="field"><span>年度 / ライブ</span>
+            <select name="target" required>
+                <?php foreach ($years as $y): ?>
+                    <option value="y<?= (int)$y ?>"><?= h(fmt_year($y)) ?></option>
+                    <?php foreach ($lives as $l): if ((int)$l['fiscal_year'] !== $y) continue; ?>
+                        <option value="l<?= (int)$l['live_id'] ?>">&emsp;<?= h($l['name']) ?></option>
+                    <?php endforeach; ?>
+                <?php endforeach; ?>
+            </select>
+        </label>
+        <label class="field"><span>URL</span>
+            <input type="url" name="url" maxlength="500" placeholder="https://">
+        </label>
+        <label class="field"><span>ファイル</span>
+            <input type="file" name="file">
+        </label>
+        <div class="form-actions">
+            <button class="btn btn--ghost btn--sm" type="button" data-special-add-close>キャンセル</button>
+            <button class="btn btn--primary btn--sm" type="submit"><?= icon('add') ?> 追加</button>
+        </div>
+    </form>
+</dialog>
+
+<dialog class="modal special-modal" data-special-modal>
+    <iframe title="" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen hidden data-special-frame></iframe>
+    <img alt="" hidden data-special-img>
+    <p class="live-modal__bar">
+        <span class="special-modal__title" data-special-title></span>
+        <a class="btn btn--sm" href="#" download data-special-dl aria-label="ダウンロード" title="ダウンロード"><?= icon('download') ?></a>
+        <button type="button" class="btn btn--ghost btn--sm" data-special-close aria-label="閉じる" title="閉じる"><?= icon('close') ?></button>
+    </p>
+</dialog>
 
 <?php foreach ($byYear as $y => $list): ?>
-<section class="special-year">
+<section class="special-year" data-year="<?= (int)$y ?>">
     <h2><?= h(fmt_year($y)) ?></h2>
-    <ul class="special-rows">
-        <?php foreach ($list as $r): ?>
-            <li>
-                <?= special_link_html($r) ?>
-                <span class="muted small"><?= h(implode(' · ', array_filter([$r['live_name'], $r['user_name']], 'is_string'))) ?></span>
+    <div class="grid special-grid">
+        <?php foreach ($list as $r):
+            $kind = $fileKind($r);
+            $src = special_href($r);
+            $vid = $kind === 'yt' ? youtube_video_id((string)$r['url']) : null;
+            $thumb = $vid !== null ? 'https://i.ytimg.com/vi/' . rawurlencode($vid) . '/mqdefault.jpg'
+                : ($r['file_name'] !== null ? $src . '&t=1' : null);
+            $sub = implode(' · ', array_filter([$r['live_name'], $r['author']], 'is_string'));
+            $popup = in_array($kind, ['yt', 'image', 'pdf'], true); ?>
+            <div class="card special-card" data-text="<?= h($r['title'] . ' ' . $sub) ?>">
+                <?php // 動画・画像・PDF は押すとポップアップで開く。ファイルはダウンロード、リンクは別タブ ?>
+                <?php if ($popup): ?>
+                    <button type="button" class="special-card__open" data-special-open data-kind="<?= h($kind) ?>"
+                        data-src="<?= h($vid !== null ? 'https://www.youtube.com/embed/' . rawurlencode($vid) . '?autoplay=1&playsinline=1&rel=0' : $src) ?>"
+                        data-dl="<?= h($r['file_name'] !== null ? $src . '&dl=1' : (string)$r['url']) ?>" data-title="<?= h($r['title']) ?>">
+                <?php else: ?>
+                    <a class="special-card__open" href="<?= h($kind === 'other' ? $src . '&dl=1' : $src) ?>"<?= $kind === 'link' ? ' target="_blank" rel="noopener noreferrer"' : '' ?>>
+                <?php endif; ?>
+                    <span class="special-card__thumb"><?= $thumb !== null ? '<img src="' . h($thumb) . '" alt="" loading="lazy">' : icon('link') ?></span>
+                    <span class="special-card__title"><?= h($r['title']) ?></span>
+                    <?php if ($sub !== ''): ?><span class="muted small"><?= h($sub) ?></span><?php endif; ?>
+                <?= $popup ? '</button>' : '</a>' ?>
                 <?php if ((int)$r['user_id'] === (int)$user['user_id'] || is_admin()): ?>
-                    <form method="post" onsubmit="return confirm('削除しますか？')">
+                    <form method="post" class="special-card__del" onsubmit="return confirm('削除しますか？')">
                         <?= csrf_field() ?>
                         <input type="hidden" name="action" value="delete">
                         <input type="hidden" name="id" value="<?= (int)$r['special_id'] ?>">
                         <button type="submit" class="btn btn--ghost btn--sm" aria-label="削除" title="削除"><?= icon('delete') ?></button>
                     </form>
                 <?php endif; ?>
-            </li>
+            </div>
         <?php endforeach; ?>
-    </ul>
+    </div>
 </section>
 <?php endforeach; ?>
+<script src="<?= asset_url('assets/special.js') ?>" defer></script>
 <?php render_footer();

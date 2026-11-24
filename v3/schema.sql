@@ -1899,6 +1899,7 @@ CREATE TABLE special_content (
     fiscal_year SMALLINT UNSIGNED NOT NULL,
     live_id     INT UNSIGNED      NULL,              -- NULL = 年度全体。外部キーなし（ライブを履歴から戻すと同じ ID で戻るため）
     title       VARCHAR(100)      NOT NULL,
+    author      VARCHAR(50)       NULL,              -- 作者（動画・資料を作った人の名前。自由入力。migrations/137）
     url         VARCHAR(500)      NULL,              -- url か file_name のどちらか一方
     file_name   VARCHAR(40)       NULL,              -- storage/live_images/ のファイル名
     user_id     INT UNSIGNED      NULL,

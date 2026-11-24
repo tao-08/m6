@@ -473,9 +473,20 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .special-link > span { padding-top: max(1px, .1em); } /* 日本語が上に寄って見える分の補正（ラベルの規格と同じ） */
 .special-link .youtube-icon { width: 20px; height: 14px; flex: none; }
 .special-link .icon { font-size: 18px; flex: none; }
-.special-rows { list-style: none; padding: 0; display: grid; gap: 6px; }
-.special-rows li { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.special-rows form { margin-left: auto; }
+.special-card { position: relative; padding: 0; overflow: hidden; }
+.special-card__open { display: grid; gap: 4px; width: 100%; padding: 0 0 12px; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.special-card__open > :is(.special-card__title, .muted) { padding: 0 12px; }
+.special-card__title { font-weight: 600; padding-top: max(1px, .1em); overflow-wrap: anywhere; }
+.special-card__open:hover .special-card__title { color: var(--accent); }
+.special-card__thumb { display: grid; place-items: center; aspect-ratio: 16 / 9; margin-bottom: 6px; background: var(--surface-2); overflow: hidden; }
+.special-card__thumb img { width: 100%; height: 100%; object-fit: cover; }
+.special-card__thumb .icon { font-size: 36px; color: var(--muted); }
+.special-card__del { position: absolute; top: 6px; right: 6px; margin: 0; }
+.special-modal { width: min(920px, calc(100vw - 24px)); background: var(--surface); }
+.special-modal iframe { display: block; width: 100%; aspect-ratio: 16 / 9; max-height: 78vh; height: auto; border: 0; background: #000; }
+.special-modal img { display: block; width: 100%; max-height: 78vh; object-fit: contain; background: #000; }
+.special-modal :is(iframe, img)[hidden] { display: none; }
+.special-modal__title { margin-right: auto; font-weight: 600; overflow-wrap: anywhere; }
 .special-year { margin-top: 24px; }
 .live-card__venue, .live-card__date { position: relative; z-index: 1; color: inherit; }
 .live-card__venue:hover, .live-card__date:hover { color: var(--accent); }
