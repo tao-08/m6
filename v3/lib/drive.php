@@ -35,6 +35,7 @@ require_once __DIR__ . '/albums.php';  // album_http（通信）
 require_once __DIR__ . '/youtube.php'; // youtube_match_bands（タイトルとバンド名の突き合わせ）を使い回す
 require_once __DIR__ . '/audio_player.php'; // 音源のプレーヤー
 require_once __DIR__ . '/drive_cache.php'; // 音源のキャッシュ（外したファイルを消す）
+require_once __DIR__ . '/attach_image.php'; // 画像のモーダル（attach_modal_html）
 
 /** 読み込むページ数の上限（100件 × 5 = 500ファイル）。変なフォルダで延々と通信しないように */
 const DRIVE_MAX_PAGES = 5;
@@ -509,14 +510,22 @@ function drive_files_html(array $files, bool $skipAudio = false): string
     if ($groups['image']) {
         $html .= '<ul class="live-thumbs drive-thumbs">';
         foreach ($groups['image'] as $f) {
-            $html .= '<li><a class="live-thumbs__btn" href="' . h(drive_file_url((string)$f['file_id'])) . '" target="_blank" rel="noopener noreferrer" aria-label="' . h(drive_file_title($f)) . '" title="' . h(drive_file_title($f)) . '">'
-                . '<img src="' . h(drive_thumb_url((string)$f['file_id'])) . '" alt="" loading="lazy" referrerpolicy="no-referrer"></a></li>';
+            // 押すとドライブへ飛ばず、添付画像と同じモーダル（app_admin.js の setupLiveImages）で開く
+            $html .= '<li><button type="button" class="live-thumbs__btn" data-live-img="' . h((string)$f['file_id']) . '"'
+                . ' data-live-src="drive_image?band=' . (int)$f['band_id'] . '&amp;f=" aria-label="' . h(drive_file_title($f)) . '" title="' . h(drive_file_title($f)) . '">'
+                . '<img src="' . h(drive_thumb_url((string)$f['file_id'])) . '" alt="" loading="lazy" referrerpolicy="no-referrer"></button></li>';
         }
-        $html .= '</ul>';
+        $html .= '</ul>' . attach_modal_html();
     }
     if ($groups['other']) {
         $html .= '<div class="chip-list chip-list--sm drive-links">';
         foreach ($groups['other'] as $f) {
+            if ((string)$f['mime_type'] === 'application/pdf') { // PDF はドライブへ飛ばず、モーダルの中で開く
+                $html .= '<button type="button" class="chip" data-live-img="' . h((string)$f['file_id']) . '" data-live-pdf="1" data-live-tab="1"'
+                    . ' data-live-src="drive_image?band=' . (int)$f['band_id'] . '&amp;f=">'
+                    . drive_type_icon((string)$f['mime_type']) . h(drive_file_title($f)) . '</button>' . attach_modal_html();
+                continue;
+            }
             $html .= '<a class="chip" href="' . h(drive_file_url((string)$f['file_id'])) . '" target="_blank" rel="noopener noreferrer">'
                 . drive_type_icon((string)$f['mime_type']) . h(drive_file_title($f)) . '</a>';
         }

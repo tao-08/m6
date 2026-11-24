@@ -234,6 +234,8 @@ function setupLiveImages() {
         const id = btn.dataset.liveImg;
         const base = btn.dataset.liveSrc || 'live_image?id='; // 掲示板・お知らせ・バンドは attach_image?k=…&id=
         if (btn.dataset.liveFile) { location.href = `${base}${id}&dl=1`; return; } // TAB 譜の PDF 以外のファイル: ダウンロードだけ
+        // ドライブの PDF: スマホは枠の中で1ページ目しか出ない・拡大できないので、新しいタブで開く
+        if (btn.dataset.liveTab && matchMedia('(pointer: coarse)').matches) { window.open(`${base}${id}`, '_blank', 'noopener'); return; }
         clearTimeout(clearTimer); // 閉じてすぐ開き直したとき、前の「外す」予約で画像が消えないように
         const pdf = !!btn.dataset.livePdf; // TAB 譜に添付した PDF は iframe でプレビュー
         const frame = modal.querySelector('[data-live-modal-pdf]');
