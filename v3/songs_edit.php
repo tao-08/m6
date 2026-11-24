@@ -360,6 +360,10 @@ render_header('セットリストを編集', 'lives');
     <div class="flash flash--warn">先にバンドのメンバーを登録してください（<a href="band_edit?id=<?= $bandId ?>">バンドを編集</a>）</div>
 <?php endif; ?>
 <p class="muted small">曲ごとに演奏者と担当楽器が記録できます。 曲を検索して紐づけると対応アプリで開くリンクが作成されます。</p>
+<?php /* 一時: 登録済みの YouTube リンクから取り込み直す入口。曲名の羅列に対応した後の取りこぼし分を入れ終えたら、このブロックごと消す */ ?>
+<?php if (!$songs && !$fromSheet && youtube_video_id((string)$band['youtube_url']) !== null): ?>
+    <p><a class="btn btn--ghost btn--sm" href="songs_edit?band=<?= $bandId ?>&amp;from_yt=1">YouTube の概要欄から取り込む</a></p>
+<?php endif; ?>
 <?php if ($fromSheet): ?>
     <div class="flash flash--info"><?= icon('description') ?> データベースにはまだ保存されていません。<br><?= icon('search') ?> を押して楽曲情報を登録し、演奏者と担当楽器を確認したら保存してください。</div>
     <?php if ($droppedTitles): ?>
