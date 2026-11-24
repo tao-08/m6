@@ -23,7 +23,7 @@ function setupAutofocusPc() {
 function setupSearchSuggest() {
   const input = document.querySelector('[data-search-suggest]');
   if (!input) return;
-  const KIND = { member: 'メンバー', band: 'バンド', artist: 'アーティスト', live: 'ライブ', venue: '会場', studio: 'スタジオ', special: 'スペシャルコンテンツ', role: '係', faculty: '学部', song: '曲名' };
+  const KIND = { member: 'メンバー', band: 'バンド', artist: 'アーティスト', live: 'ライブ', venue: '会場', studio: 'スタジオ', equip: '機材', special: 'スペシャルコンテンツ', role: '係', faculty: '学部', song: '曲名' };
   const cache = new Map(); // 入力した文字 → 候補の配列
   let ctrl = null;         // 通信中の問い合わせ（新しく打ったら中止する）
   let timer = 0;

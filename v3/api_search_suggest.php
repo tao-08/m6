@@ -6,7 +6,7 @@
  *  検索ページ（search.php）の入力欄から、JavaScript（assets/app_list.js の setupSearchSuggest）が呼ぶ。
  *
  *  リクエスト（GET）: ?q=入力中の文字
- *  レスポンス（JSON）: {"items": [{"text": "検索語", "kind": "member|band|artist|live|venue|studio|special|role|faculty|song"}, ...]}
+ *  レスポンス（JSON）: {"items": [{"text": "検索語", "kind": "member|band|artist|live|venue|studio|special|equip|role|faculty|song"}, ...]}
  *  並び順: 先頭が一致するものを先に、足りなければ途中が一致するものを足す。最大 MAX 件
  *
  *  読むだけなので GET（CSRF 対策のトークンは要らない）。ログイン必須。
@@ -65,6 +65,9 @@ $kinds = [
     'special' => ["SELECT sc.title FROM special_content sc LEFT JOIN live l ON l.live_id = sc.live_id
                    WHERE (sc.live_id IS NULL OR l.live_id IS NOT NULL) AND (sc.title $COL LIKE ? OR sc.author $COL LIKE ?)
                    ORDER BY sc.fiscal_year DESC, sc.special_id DESC"],
+    // 機材名（会場・スタジオ）。? には equip_like() の値を渡す（2つ目の true。表記ゆれを吸収）
+    'equip' => ['SELECT e.model_name FROM (SELECT model_name FROM venue_equipment UNION ALL SELECT model_name FROM studio_equipment) e
+                 WHERE ' . equip_match_sql('e.model_name') . ' GROUP BY e.model_name ORDER BY COUNT(*) DESC, e.model_name', true],
     'role' => ["SELECT r.name FROM role r WHERE r.name $COL LIKE ? ORDER BY r.sort_order, r.name"],
     // セットリストの曲 + 楽曲データベースの曲（手動登録・TAB・リンク）
     'song' => ["SELECT u.name FROM (
@@ -86,6 +89,7 @@ $q_norm = $norm($q);
 
 // 前方一致 → 部分一致の順に集める。前方一致で埋まったら部分一致は引かない（DB への問い合わせを減らす）
 foreach (['' => $esc . '%', 'any' => '%' . $esc . '%'] as $mode => $pattern) {
+    $eqPattern = equip_like($q, $mode === '');
     if (count($items) >= SUGGEST_MAX) {
         break;
     }
@@ -97,14 +101,15 @@ foreach (['' => $esc . '%', 'any' => '%' . $esc . '%'] as $mode => $pattern) {
             $items[] = ['text' => $f, 'kind' => 'faculty'];
         }
     }
-    foreach ($kinds as $kind => [$sql]) {
+    foreach ($kinds as $kind => $def) {
+        [$sql, $isEquip] = $def + [1 => false];
         $perKind = 0;
         $st = $pdo->prepare($sql . ' LIMIT ' . (SUGGEST_PER_KIND + 4)); // 重複で捨てる分の余裕
-        $st->execute(array_fill(0, substr_count($sql, '?'), $pattern)); // ? の数だけ同じ値を渡す
+        $st->execute(array_fill(0, substr_count($sql, '?'), $isEquip ? $eqPattern : $pattern)); // ? の数だけ同じ値を渡す
         foreach ($st->fetchAll(PDO::FETCH_NUM) as $row) {
             $name = (string)$row[0];
             $kana = (string)($row[1] ?? ''); // メンバー・アーティストだけ。ふりがなで当たったときに一緒に出す
-            $key = $norm($name);
+            $key = $isEquip ? str_replace(['-', ' '], '', $norm($name)) : $norm($name); // 機材は JC-120 / JC120 を1つにまとめる
             if ($name === '' || $key === $q_norm || isset($seen[$key])) {
                 continue; // 打った文字そのままの候補は出さない
             }

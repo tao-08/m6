@@ -210,11 +210,21 @@ if ($faculty !== '' || $roleName !== null) {
     $songAlbums = $st->fetchAll();
 
     // ---- 会場・スタジオ・スペシャルコンテンツ（タイトル・作者。消えたライブに付いていたものは special.php と同じく出さない） ----
-    $st = $pdo->prepare('SELECT venue_id, name FROM venue WHERE name COLLATE utf8mb4_unicode_520_ci LIKE ? ORDER BY sort_order, name LIMIT 30');
-    $st->execute([$like]);
+    //   機材名でも当てる（「JC-120」で置いてある会場・スタジオ）。当たった機材は equip_hit に入れて名前の右に出す
+    $eqLike = equip_like(mb_substr($q, 0, 50));
+    $st = $pdo->prepare('SELECT v.venue_id, v.name,
+            (SELECT e.model_name FROM venue_equipment e WHERE e.venue_id = v.venue_id AND ' . equip_match_sql('e.model_name') . ' LIMIT 1) AS equip_hit
+        FROM venue v WHERE v.name COLLATE utf8mb4_unicode_520_ci LIKE ?
+           OR EXISTS (SELECT 1 FROM venue_equipment e WHERE e.venue_id = v.venue_id AND ' . equip_match_sql('e.model_name') . ')
+        ORDER BY v.sort_order, v.name LIMIT 30');
+    $st->execute([$eqLike, $like, $eqLike]);
     $venues = $st->fetchAll();
-    $st = $pdo->prepare('SELECT studio_id, name FROM studio WHERE name COLLATE utf8mb4_unicode_520_ci LIKE ? OR short_name COLLATE utf8mb4_unicode_520_ci LIKE ? ORDER BY name LIMIT 30');
-    $st->execute([$like, $like]);
+    $st = $pdo->prepare('SELECT s.studio_id, s.name,
+            (SELECT e.model_name FROM studio_equipment e WHERE e.studio_id = s.studio_id AND ' . equip_match_sql('e.model_name') . ' LIMIT 1) AS equip_hit
+        FROM studio s WHERE s.name COLLATE utf8mb4_unicode_520_ci LIKE ? OR s.short_name COLLATE utf8mb4_unicode_520_ci LIKE ?
+           OR EXISTS (SELECT 1 FROM studio_equipment e WHERE e.studio_id = s.studio_id AND ' . equip_match_sql('e.model_name') . ')
+        ORDER BY s.name LIMIT 30');
+    $st->execute([$eqLike, $like, $like, $eqLike]);
     $studios = $st->fetchAll();
     $st = $pdo->prepare('SELECT s.* FROM special_content s LEFT JOIN live l ON l.live_id = s.live_id
         WHERE (s.live_id IS NULL OR l.live_id IS NOT NULL)
@@ -348,7 +358,8 @@ render_header($filterLabel ?? ($q !== '' ? "「{$q}」の検索結果" : '検索
             <h2 class="section-title">会場 <span class="muted"><?= count($venues) ?></span></h2>
             <div class="chip-list">
                 <?php foreach ($venues as $v): ?>
-                    <a class="chip chip--lg" href="venue?id=<?= (int)$v['venue_id'] ?>"><?= h($v['name']) ?></a>
+                    <a class="chip chip--lg" href="venue?id=<?= (int)$v['venue_id'] ?>"><?= h($v['name']) ?>
+                        <?php if ($v['equip_hit'] !== null): ?><span class="muted small"><?= h($v['equip_hit']) ?></span><?php endif; ?></a>
                 <?php endforeach; ?>
             </div>
         </section>
@@ -359,7 +370,8 @@ render_header($filterLabel ?? ($q !== '' ? "「{$q}」の検索結果" : '検索
             <h2 class="section-title">スタジオ <span class="muted"><?= count($studios) ?></span></h2>
             <div class="chip-list">
                 <?php foreach ($studios as $s): ?>
-                    <a class="chip chip--lg" href="studio_info?id=<?= (int)$s['studio_id'] ?>"><?= h($s['name']) ?></a>
+                    <a class="chip chip--lg" href="studio_info?id=<?= (int)$s['studio_id'] ?>"><?= h($s['name']) ?>
+                        <?php if ($s['equip_hit'] !== null): ?><span class="muted small"><?= h($s['equip_hit']) ?></span><?php endif; ?></a>
                 <?php endforeach; ?>
             </div>
         </section>

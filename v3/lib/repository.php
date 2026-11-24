@@ -1182,6 +1182,22 @@ function song_db_extra_sql(): string
 }
 
 /**
+ * 機材名（venue_equipment / studio_equipment の model_name）の照合。
+ * 表記ゆれ（JC-120 / JC120、JCM-900 / JCM900）を吸収するため、ハイフンと空白を外して比べる。? には equip_like() を渡す
+ */
+function equip_match_sql(string $col): string
+{
+    return "REPLACE(REPLACE(REPLACE($col, '-', ''), ' ', ''), '　', '') COLLATE utf8mb4_unicode_520_ci LIKE ?";
+}
+
+/** equip_match_sql() に渡す部分一致の値。ハイフンと空白だけの入力は何にも当てない（'' は空の機材名にしか当たらない） */
+function equip_like(string $q, bool $prefix = false): string
+{
+    $k = str_replace(['-', ' ', '　'], '', $q);
+    return $k === '' ? '' : ($prefix ? '' : '%') . addcslashes($k, '\\%_') . '%';
+}
+
+/**
  * 検索で出すアーティストの条件（artist a を artist_plays_sql() に LEFT JOIN した p と一緒に使う）。
  * 演奏したか、楽曲データベースに曲があるアーティストだけ。管理者には全員（重複の統合のため）
  */
