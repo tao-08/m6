@@ -828,6 +828,15 @@ function setupSmallThings() {
       })
       .catch(() => {});
   };
+  // 重要なお知らせは、本文を開く（details）か項目を押したときだけ1件既読にする。keepalive: 押してすぐページを移っても届く
+  const readOne = (el) => {
+    const id = el.dataset.noticeRead;
+    if (!id) return;
+    delete el.dataset.noticeRead;
+    fetch('api_notice_read.php', { method: 'POST', headers: { 'X-CSRF-Token': csrfToken() }, body: new URLSearchParams({ notice_id: id }), keepalive: true }).catch(() => {});
+  };
+  document.querySelectorAll('details[data-notice-read]').forEach((d) => d.addEventListener('toggle', () => { if (d.open) readOne(d); }));
+  document.querySelectorAll('a[data-notice-read]').forEach((a) => a.addEventListener('click', () => readOne(a)));
   bell?.addEventListener('click', (e) => {
     if (e.currentTarget.closest('details').open) return;
     const active = bell.closest('details').querySelector('[data-notif-tab].is-active');

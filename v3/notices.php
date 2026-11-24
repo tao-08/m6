@@ -181,8 +181,8 @@ $noticeImages = attach_images($pdo, 'notice', array_map('intval', array_column($
 // 表示した分だけ既読にする（101件目以降を勝手に既読にしない）。管理者にだけ見えている予約中のものは除く
 $mark = $pdo->prepare('INSERT IGNORE INTO notice_read (user_id, notice_id) VALUES (?, ?)');
 foreach ($notices as $n) {
-    if ($n['is_scheduled']) {
-        continue; // 予約中のものは読んだことにしない（公開されたとき、ほかの人と同じく未読から始める）
+    if ($n['is_scheduled'] || $n['is_important']) {
+        continue; // 予約中は公開まで未読から始める。重要は本文を開いたときに既読（data-notice-read）
     }
     $mark->execute([$user['user_id'], (int)$n['notice_id']]);
 }
@@ -228,7 +228,7 @@ render_header('お知らせ', 'notices');
 
 <p class="muted" data-notice-empty<?= $notices ? ' hidden' : '' ?>>お知らせはありません</p>
 <?php foreach ($notices as $n): ?>
-    <details class="card togglecard notice-item<?= $n['is_important'] ? ' notice--important' : '' ?>" data-notice-cat="<?= (int)$n['category_id'] ?>"<?= $cat !== 0 && $cat !== (int)$n['category_id'] ? ' hidden' : '' ?>>
+    <details class="card togglecard notice-item<?= $n['is_important'] ? ' notice--important' : '' ?>" data-notice-cat="<?= (int)$n['category_id'] ?>"<?= $cat !== 0 && $cat !== (int)$n['category_id'] ? ' hidden' : '' ?><?= $n['is_important'] && $n['is_new'] && !$n['is_scheduled'] ? ' data-notice-read="' . (int)$n['notice_id'] . '"' : '' ?>>
         <summary>
             <span class="notice-summary">
                 <span class="section-title section-title--card notice-title">

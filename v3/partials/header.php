@@ -209,7 +209,7 @@ $nav = [
                 <?php foreach ($notifTabs as $key => $t): ?>
                 <div data-notif-pane="<?= $key ?>"<?= $key === $notifTab ? '' : ' hidden' ?>>
                     <?php foreach ($t['items'] as $n): ?>
-                        <a href="<?= h($n['link_url'] ?? $t['href']) ?>" class="notifmenu__item">
+                        <a href="<?= h($n['link_url'] ?? $t['href']) ?>" class="notifmenu__item"<?= $n['is_important'] && $n['is_new'] ? ' data-notice-read="' . (int)$n['notice_id'] . '"' : '' ?>>
                             <span class="notifmenu__title"><?= $n['is_important'] ? icon('priority_high', 'notice__mark') : '' ?><?= h($n['title']) ?><?= $n['is_new'] ? ' <span class="tag tag--plan">NEW</span>' : '' ?></span>
                             <span class="muted small"><?= h(substr($n['publish_at'], 0, 16)) ?></span>
                         </a>
