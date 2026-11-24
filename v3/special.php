@@ -105,7 +105,7 @@ render_header('スペシャルコンテンツ', 'tools');
             <?php foreach ($years as $y): ?>
                 <option value="y<?= (int)$y ?>"><?= h(fmt_year($y)) ?></option>
                 <?php foreach ($lives as $l): if ((int)$l['fiscal_year'] !== $y) continue; ?>
-                    <option value="l<?= (int)$l['live_id'] ?>">&emsp;└ <?= h($l['name']) ?></option>
+                    <option value="l<?= (int)$l['live_id'] ?>">&emsp;<?= h($l['name']) ?></option>
                 <?php endforeach; ?>
             <?php endforeach; ?>
         </select>
