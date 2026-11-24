@@ -124,6 +124,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupBoardPanels();
   setupBoardPoll();
   setupBoardMute();
+  setupBoardReport();
   setupBoardTabs();
   setupVenueSuggest();
   setupSongs();

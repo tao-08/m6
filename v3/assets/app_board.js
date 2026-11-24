@@ -307,3 +307,54 @@ function setupBoardPoll() {
     });
   });
 }
+
+/* ---------------------------------------------------------------------
+ * 書き込みの通報（board_thread.php の信号。api_board_report に送る）
+ *   押す → 未通報ならモーダルで理由を選んで送信 / 通報済み（.is-mine）なら確認なしで取り消す。
+ *   返ってきた件数で、同じ書き込みの信号を書き直す（data-n が 0 = 旗 / 1 = 黄 / 2 = 黄と赤）
+ * ------------------------------------------------------------------- */
+function setupBoardReport() {
+  const dialog = document.querySelector('[data-board-report-dialog]');
+  if (!dialog) return;
+  const reason = dialog.querySelector('[data-board-report-reason]');
+  let postId = 0;
+  let pending = false;
+
+  const paint = (id, count, mine) => {
+    document.querySelectorAll(`[data-board-report="${id}"]`).forEach((b) => {
+      b.dataset.n = Math.min(2, count);
+      b.classList.toggle('is-mine', mine);
+      const label = mine ? '通報を取り消す' : '通報';
+      b.setAttribute('aria-label', label);
+      b.title = label;
+    });
+  };
+  const send = async (id, body) => {
+    if (pending) return;
+    pending = true;
+    try {
+      const data = await apiPost('api_board_report', { post_id: id, ...body }, '通報できませんでした');
+      paint(id, data.count, data.mine);
+    } catch (err) {
+      toastText(err.message, 'flash flash--error', 'status');
+    } finally {
+      pending = false;
+    }
+  };
+
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-board-report]');
+    if (!btn) return;
+    postId = Number(btn.dataset.boardReport);
+    if (btn.classList.contains('is-mine')) {
+      send(postId, { cancel: true });
+      return;
+    }
+    reason.selectedIndex = 0;
+    dialog.showModal();
+  });
+  dialog.querySelector('[data-board-report-send]').addEventListener('click', () => {
+    dialog.close();
+    send(postId, { reason: Number(reason.value) });
+  });
+}

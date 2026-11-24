@@ -259,6 +259,7 @@ $nav = [
                         <div class="usermenu__admin-label">管理者専用メニュー</div>
                         <a href="users">ユーザー管理</a>
                         <a href="history">変更履歴</a>
+                        <a href="board_reports">通報の管理</a>
                         <a href="sheet_log">PDF作成ログ</a>
                         <a href="members_merge">メンバーの統合</a>
                         <a href="members_entry">メンバープロフィールの一括編集</a>

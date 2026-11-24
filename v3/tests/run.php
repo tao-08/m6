@@ -1266,6 +1266,13 @@ check('投票: 11個目以降は捨てる', board_poll_labels(array_map('strval'
 check('投票: 25文字まで', mb_strlen(board_poll_labels([str_repeat('あ', 30), 'B'])[0]), 25);
 check('投票: 配列でなくても落ちない', board_poll_labels('x'), []);
 
+echo "board report\n";
+check('通報の信号: 0件の他人の書き込みは旗（data-n=0）', str_contains(board_signal_html(5, [], false), 'data-n="0"'), true);
+check('通報の信号: 3件でも赤までの2段', str_contains(board_signal_html(5, ['count' => 3, 'mine' => false], false), 'data-n="2"'), true);
+check('通報の信号: 自分の書き込みの0件は出さない', board_signal_html(5, [], true), '');
+check('通報の信号: 自分の書き込みは押せない', str_contains(board_signal_html(5, ['count' => 1], true), '<button'), false);
+check('通報の信号: 通報済みは取り消せる', str_contains(board_signal_html(5, ['count' => 1, 'mine' => true], false), 'is-mine'), true);
+
 echo "migrations\n";
 $migDup = [];
 foreach (glob(__DIR__ . '/../migrations/*.sql') as $f) {

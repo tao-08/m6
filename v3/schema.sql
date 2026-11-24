@@ -37,7 +37,7 @@ SET NAMES utf8mb4;
 -- まっさらな DB に流すと「Note: #1051 '〜' は不明な表です」が表の数だけ出るが、
 -- これは「消そうとした表が最初から無かった」というだけの“お知らせ”で、エラーではない。
 SET FOREIGN_KEY_CHECKS = 0;
-DROP TABLE IF EXISTS sched_nav_cache, sched_google_event, sched_fix, sched_google, sched_travel, sched_ignore, sched_weekly, sched_poll_studio, sched_poll_member, sched_poll, sched_busy, sched_class, sched_profile, intro_best, block_month_best, block_best, sheet_log, song_link_practice, song_link, song_part, song_work_primary, venue_image, song_catalog, song_tab_ai_usage, song_meta_image, song_tab_image, song_meta, song_tab_practice, song_tab_revision, song_tab, timetable_draft_presence, timetable_draft, band_image, notice_image, board_post_image, live_image, push_subscription, comment_like, comment_reply, comment, board_poll_vote, board_poll_option, board_thread_mute, board_notify_category, board_notify, board_post_like, board_post_reply, board_read, board_post, board_thread, board_category, notice_read, notice, notice_category, change_unit, change_op, inquiry, band_like, app_setting, login_attempt, track_preview, track_link_cache, album_link_cache,
+DROP TABLE IF EXISTS sched_nav_cache, sched_google_event, sched_fix, sched_google, sched_travel, sched_ignore, sched_weekly, sched_poll_studio, sched_poll_member, sched_poll, sched_busy, sched_class, sched_profile, intro_best, block_month_best, block_best, sheet_log, song_link_practice, song_link, song_part, song_work_primary, venue_image, song_catalog, song_tab_ai_usage, song_meta_image, song_tab_image, song_meta, song_tab_practice, song_tab_revision, song_tab, timetable_draft_presence, timetable_draft, band_image, notice_image, board_post_image, live_image, push_subscription, comment_like, comment_reply, comment, board_poll_vote, board_poll_option, board_thread_mute, board_notify_category, board_notify, board_report, board_post_like, board_post_reply, board_read, board_post, board_thread, board_category, notice_read, notice, notice_category, change_unit, change_op, inquiry, band_like, app_setting, login_attempt, track_preview, track_link_cache, album_link_cache,
     check_dismiss, band_check_member, member_role, role, artist_alias, member_favorite_album, song_performer, song, track, band_member, live_break, band,
     artist, live_day, live, venue, instrument, user_account, member;
 SET FOREIGN_KEY_CHECKS = 1;
@@ -854,6 +854,7 @@ CREATE TABLE board_post (
     body       TEXT         NOT NULL,
     anonymous  TINYINT(1)   NOT NULL DEFAULT 0,          -- 1 = 匿名（migrations/061）
     display_name VARCHAR(30) NULL,                       -- 送信元の名義（NULL = 本名。migrations/062）
+    disclosure TINYINT UNSIGNED NOT NULL DEFAULT 0,      -- 本名の開示。0 なし / 1 請求中 / 2 許可 / 3 却下（migrations/140）
     deleted_at DATETIME     NULL,
     deleted_by INT UNSIGNED NULL,
     created_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -921,6 +922,20 @@ CREATE TABLE board_post_like (
     CONSTRAINT fk_bpl_post FOREIGN KEY (post_id) REFERENCES board_post (post_id)
         ON UPDATE CASCADE ON DELETE CASCADE,
     CONSTRAINT fk_bpl_user FOREIGN KEY (user_id) REFERENCES user_account (user_id)
+        ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- 書き込みの通報。書き込み × 通報した人の中間テーブル（migrations/140）
+CREATE TABLE board_report (
+    post_id    INT UNSIGNED     NOT NULL,
+    user_id    INT UNSIGNED     NOT NULL,
+    reason     TINYINT UNSIGNED NOT NULL,
+    created_at DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (post_id, user_id),
+    KEY idx_brp_user (user_id),
+    CONSTRAINT fk_brp_post FOREIGN KEY (post_id) REFERENCES board_post (post_id)
+        ON UPDATE CASCADE ON DELETE CASCADE,
+    CONSTRAINT fk_brp_user FOREIGN KEY (user_id) REFERENCES user_account (user_id)
         ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 

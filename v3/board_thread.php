@@ -121,7 +121,7 @@ $page = isset($_GET['page']) ? min(max(1, (int)$_GET['page']), $pages) : $pages;
 $offset = ($page - 1) * BOARD_PER_PAGE;
 $pageUrl = static fn(int $n): string => 'board_thread?id=' . $id . '&page=' . $n;
 
-$st = $pdo->prepare('SELECT p.post_id, p.user_id, p.body, p.anonymous, p.display_name, p.created_at, p.deleted_at, u.name AS author, u.member_id AS author_member_id, d.name AS deleted_by_name
+$st = $pdo->prepare('SELECT p.post_id, p.user_id, p.body, p.anonymous, p.display_name, p.disclosure, p.created_at, p.deleted_at, p.deleted_by, u.name AS author, u.member_id AS author_member_id, d.name AS deleted_by_name
     FROM board_post p
     LEFT JOIN user_account u ON u.user_id = p.user_id
     LEFT JOIN user_account d ON d.user_id = p.deleted_by
@@ -130,6 +130,7 @@ $st->execute([$id]);
 $posts = $st->fetchAll();
 $postImages = attach_images($pdo, 'board', array_map('intval', array_column($posts, 'post_id')));
 $polls = board_polls($pdo, $uid, array_map('intval', array_column($posts, 'post_id')));
+$reports = board_report_counts($pdo, $uid, array_map('intval', array_column($posts, 'post_id')));
 
 /** ページ送り（2ページ以上あるときだけ）。現在のページの前後2つと、最初・最後を出す */
 $pager = static function () use ($page, $pages, $pageUrl): string {
@@ -181,6 +182,15 @@ $st->execute([$uid, $id]);
 foreach ($st->fetchAll() as $r) {
     $likes[(int)$r['post_id']] = ['count' => (int)$r['cnt'], 'liked' => (int)$r['mine'] > 0];
 }
+// 削除した人が、匿名で立てた本人なら匿名のまま出す（書き込みと同じ）
+$threadDeletedBy = h($thread['deleted_by_name'] ?? '不明');
+if ($thread['deleted_at'] !== null && (int)$thread['deleted_by'] === (int)$thread['user_id']) {
+    $st = $pdo->prepare('SELECT anonymous, display_name FROM board_post WHERE thread_id = ? ORDER BY post_id LIMIT 1');
+    $st->execute([$id]);
+    if ($first = $st->fetch()) {
+        $threadDeletedBy = author_html((bool)$first['anonymous'], $first['display_name'], $thread['deleted_by_name'], null, sees_real_names($user));
+    }
+}
 $canPost = $thread['deleted_at'] === null;
 
 // 既読にするのは、開いているページの最後の書き込みまで（古いページを開いただけで、新着まで既読にしない）
@@ -201,7 +211,7 @@ render_header($thread['title'], 'board');
     <button type="button" class="icon-btn icon-btn--sm board-mute<?= $muted ? ' is-active' : '' ?>" data-board-mute="<?= $id ?>" aria-pressed="<?= $muted ? 'true' : 'false' ?>" aria-label="ミュート" title="ミュート"><?= icon($muted ? 'notifications_off' : 'notifications') ?></button>
 </h1>
 <?php if ($thread['deleted_at'] !== null): ?>
-    <p class="flash flash--error"><?= icon('admin_panel_settings') ?> <?= h(substr($thread['deleted_at'], 0, 16)) ?> に <?= h($thread['deleted_by_name'] ?? '不明') ?> が削除</p>
+    <p class="flash flash--error"><?= icon('admin_panel_settings') ?> <?= h(substr($thread['deleted_at'], 0, 16)) ?> に <?= $threadDeletedBy ?> が削除</p>
 <?php endif; ?>
 
 <?php if (!$posts): ?><p class="muted">書き込みはありません</p><?php endif; ?>
@@ -212,8 +222,9 @@ render_header($thread['title'], 'board');
     <article class="card board-post<?= $deleted ? ' is-deleted' : '' ?><?= (int)$p['user_id'] === $uid ? ' is-mine' : '' ?>" id="p<?= (int)$p['post_id'] ?>">
         <div class="muted small board-post__meta">
             <span class="board-post__no"><?= $no ?></span>
-            <strong><?= author_html((bool)$p['anonymous'], $p['display_name'], $p['author'], $p['author_member_id'] !== null ? (int)$p['author_member_id'] : null, sees_real_names($user)) ?></strong>
+            <strong><?= author_html((bool)$p['anonymous'], $p['display_name'], $p['author'], $p['author_member_id'] !== null ? (int)$p['author_member_id'] : null, sees_real_names($user) || (int)$p['disclosure'] === 2) ?></strong>
             <span><?= h(substr($p['created_at'], 0, 16)) ?></span>
+            <?php if (!$deleted && $thread['deleted_at'] === null): ?><?= board_signal_html((int)$p['post_id'], $reports[(int)$p['post_id']] ?? [], (int)$p['user_id'] === $uid) ?><?php endif; ?>
             <?php if ($canPost && !$deleted): ?>
             <button type="button" class="icon-btn icon-btn--sm board-post__reply" data-board-reply="<?= (int)$p['post_id'] ?>" data-no="<?= $no ?>" aria-label="返信" title="返信" aria-pressed="false"><?= icon('reply') ?></button>
             <?php endif; ?>
@@ -244,7 +255,7 @@ render_header($thread['title'], 'board');
             <?php endif; ?>
             <div class="board-post__foot"><?= like_button((int)$p['post_id'], $likes[(int)$p['post_id']] ?? null, '', 'api_board_like') ?></div>
         <?php elseif ($user['admin']): ?>
-            <p class="small board-post__deleted"><?= icon('admin_panel_settings') ?> <?= h(substr($p['deleted_at'], 0, 16)) ?> に <?= h($p['deleted_by_name'] ?? '不明') ?> が削除</p>
+            <p class="small board-post__deleted"><?= icon('admin_panel_settings') ?> <?= h(substr($p['deleted_at'], 0, 16)) ?> に <?= (int)$p['deleted_by'] === (int)$p['user_id'] ? author_html((bool)$p['anonymous'], $p['display_name'], $p['author'], $p['author_member_id'] !== null ? (int)$p['author_member_id'] : null, sees_real_names($user)) : h($p['deleted_by_name'] ?? '不明') ?> が削除</p>
             <p class="board-post__body muted"><?= nl2br(h($p['body'])) ?></p>
             <?= attach_thumbs_html('board', $postImages[(int)$p['post_id']] ?? []) ?>
         <?php else: ?>
@@ -256,6 +267,7 @@ render_header($thread['title'], 'board');
 <?= $pager() ?>
 
 <?php if ($thread['deleted_at'] === null): ?>
+<?= board_report_modal_html() ?>
 <form method="post" enctype="multipart/form-data" class="card board-reply"<?= unsaved_attr() ?>>
     <?= csrf_field() ?>
     <input type="hidden" name="thread_id" value="<?= $id ?>">

@@ -354,3 +354,106 @@ function board_poll_html(array $poll, int $postId, bool $showResult, string $hid
     }
     return $html . '<p class="muted small board-poll__total">' . $poll['total'] . '票</p></div>';
 }
+
+/** 通報の理由（board_report.reason）。並びは画面に出す順 */
+const BOARD_REPORT_REASONS = [
+    1 => '不適切な投稿',
+    2 => '誹謗中傷',
+    3 => '個人情報が含まれる',
+    4 => 'スパム・宣伝',
+    5 => 'なりすまし',
+    6 => 'その他',
+];
+const BOARD_REPORT_DISCLOSE_AT = 2; // 通報がこの件数になった匿名・名義の書き込みは、本名の開示請求（board_post.disclosure = 1）になる
+
+/** 書き込みごとの通報の数と、自分が通報しているか。post_id => ['count' => int, 'mine' => bool] */
+function board_report_counts(PDO $pdo, int $userId, array $postIds): array
+{
+    if (!$postIds) {
+        return [];
+    }
+    $in = implode(',', array_fill(0, count($postIds), '?'));
+    $st = $pdo->prepare("SELECT post_id, COUNT(*) AS cnt, SUM(user_id = ?) AS mine FROM board_report WHERE post_id IN ($in) GROUP BY post_id");
+    $st->execute([$userId, ...$postIds]);
+    $out = [];
+    foreach ($st->fetchAll() as $r) {
+        $out[(int)$r['post_id']] = ['count' => (int)$r['cnt'], 'mine' => (int)$r['mine'] > 0];
+    }
+    return $out;
+}
+
+/**
+ * 通報の信号。0件 = 旗、1件 = 黄、2件以上 = 黄と赤（見た目は assets/app.css の .signal）。
+ * 自分の書き込みは押せない（件数があるときだけ出す）。通報済みなら .is-mine で、もう一度押すと取り消せる
+ */
+function board_signal_html(int $postId, array $report, bool $own): string
+{
+    $n = min(2, $report['count'] ?? 0);
+    if ($own && $n === 0) {
+        return '';
+    }
+    $mine = !empty($report['mine']);
+    $inner = '<span class="signal__flag">' . icon('flag') . '</span><span class="signal__lamp signal__lamp--y"></span><span class="signal__lamp signal__lamp--r"></span>';
+    if ($own) {
+        return '<span class="signal signal--led" data-n="' . $n . '" role="img" aria-label="通報">' . $inner . '</span>';
+    }
+    $label = $mine ? '通報を取り消す' : '通報';
+    return '<button type="button" class="signal signal--led' . ($mine ? ' is-mine' : '') . '" data-board-report="' . $postId . '" data-n="' . $n
+        . '" aria-label="' . $label . '" title="' . $label . '">' . $inner . '</button>';
+}
+
+/** 通報のモーダル（理由のプルダウンと送信が同じ画面。開閉と送信は assets/app_board.js の setupBoardReport） */
+function board_report_modal_html(): string
+{
+    $opts = '';
+    foreach (BOARD_REPORT_REASONS as $k => $label) {
+        $opts .= '<option value="' . $k . '">' . h($label) . '</option>';
+    }
+    return '<dialog class="modal" data-board-report-dialog aria-labelledby="board-report-title"><form method="dialog" class="modal__body">'
+        . '<h3 id="board-report-title" class="modal__title">' . icon('flag') . ' 通報</h3>'
+        . '<label class="field"><span>理由</span><select data-board-report-reason>' . $opts . '</select></label>'
+        . '<div class="form-actions"><button type="submit" class="btn btn--ghost">キャンセル</button>'
+        . '<button type="button" class="btn btn--primary" data-board-report-send>通報する</button></div>'
+        . '</form></dialog>';
+}
+
+/**
+ * 通報する。書き込みの行（board_thread の列 + p.user_id / p.anonymous / p.display_name）を渡す。通報の数を返す。
+ *   ・初めての通報だけ、書き込んだ人に重要のお知らせを出す（理由は伝える。通報した人は出さない）
+ *   ・匿名・名義の書き込みが BOARD_REPORT_DISCLOSE_AT 件に達したら、開示請求にする（まだ何も決まっていないときだけ）
+ */
+function board_report_add(PDO $pdo, array $post, int $userId, int $reason): int
+{
+    $postId = (int)$post['post_id'];
+    $st = $pdo->prepare('INSERT IGNORE INTO board_report (post_id, user_id, reason) VALUES (?, ?, ?)');
+    $st->execute([$postId, $userId, $reason]);
+    $isNew = $st->rowCount() > 0;
+    $st = $pdo->prepare('SELECT COUNT(*) FROM board_report WHERE post_id = ?');
+    $st->execute([$postId]);
+    $count = (int)$st->fetchColumn();
+    if ($isNew && $post['user_id'] !== null) {
+        $pdo->prepare('INSERT INTO notice (target_user_id, category_id, is_important, title, body, link_url) VALUES (?, ?, 1, ?, ?, ?)')
+            ->execute([(int)$post['user_id'], board_notice_category(), 'あなたの投稿が通報されました',
+                '[[board_thread?id=' . (int)$post['thread_id'] . '|' . $post['title'] . ']] のあなたの書き込みが通報されました
+
+理由: ' . (BOARD_REPORT_REASONS[$reason] ?? ''),
+                'board_thread?id=' . (int)$post['thread_id'] . '&page=' . board_post_page((int)$post['thread_id'], $postId) . '#p' . $postId]);
+    }
+    if ($count >= BOARD_REPORT_DISCLOSE_AT && ((int)$post['anonymous'] === 1 || ($post['display_name'] ?? '') !== '')) {
+        $pdo->prepare('UPDATE board_post SET disclosure = 1 WHERE post_id = ? AND disclosure = 0')->execute([$postId]);
+    }
+    return $count;
+}
+
+/** 自分の通報を取り消す。件数が開示請求の基準を割り、管理者がまだ決めていなければ請求も取り下げる。通報の数を返す */
+function board_report_cancel(PDO $pdo, int $postId, int $userId): int
+{
+    $pdo->prepare('DELETE FROM board_report WHERE post_id = ? AND user_id = ?')->execute([$postId, $userId]);
+    $st = $pdo->prepare('SELECT COUNT(*) FROM board_report WHERE post_id = ?');
+    $st->execute([$postId]);
+    $count = (int)$st->fetchColumn();
+    if ($count < BOARD_REPORT_DISCLOSE_AT) {
+        $pdo->prepare('UPDATE board_post SET disclosure = 0 WHERE post_id = ? AND disclosure = 1')->execute([$postId]);
+    }
+    return $count;
+}
