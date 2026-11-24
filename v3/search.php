@@ -16,6 +16,7 @@ require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/repository.php';
 require_once __DIR__ . '/lib/albums.php';
 require_once __DIR__ . '/lib/tabs.php';
+require_once __DIR__ . '/lib/special.php';
 $user = require_login();
 
 /** LIKE で特別な意味を持つ文字（\ % _）を、ただの文字として扱わせる */
@@ -33,6 +34,7 @@ $lives = $bands = $members = $artists = $matchedFaculties = $matchedRoles = [];
 $albums = ['albums' => [], 'people' => 0]; // マイアルバム（アーティスト名で当たったもの）
 $bandTotal = 0;
 $songs = $songAlbums = []; // 曲名・アルバム（楽曲データベースへのリンク）
+$venues = $studios = $specials = []; // 会場・スタジオ・スペシャルコンテンツ
 
 // 学部・係で絞る（完全一致）。学部は決まった一覧にあるものだけ、係は DB にある ID だけ受け付ける
 $faculty = (string)($_GET['faculty'] ?? '');
@@ -154,13 +156,14 @@ if ($faculty !== '' || $roleName !== null) {
 
     // ---- アーティスト ----
     // 回数はアーティストページと同じ数え方（オムニバスは曲に付いたアーティストを1バンド1回。artist_plays_sql()）
-    // 演奏0回のアーティストは出さない（artists.php と同じ）。管理者には出す（重複して登録されたアーティストを見つけて統合できるように）
+    // 演奏0回で楽曲データベースにも曲が無いアーティストは出さない。管理者には出す（artist_searchable_sql）
     // 別称（artist_alias。エルレ → ELLEGARDEN など）でも当てる。別称だけで当たったときは、どの別称で当たったかも出す（alias_hit）
     $st = $pdo->prepare('SELECT a.artist_id, a.name, COUNT(p.band_id) AS n,
             (SELECT al.name FROM artist_alias al WHERE al.artist_id = a.artist_id AND al.name COLLATE utf8mb4_unicode_520_ci LIKE ? LIMIT 1) AS alias_hit
         FROM artist a
-        ' . (is_admin() ? 'LEFT ' : '') . 'JOIN (' . artist_plays_sql() . ') p ON p.artist_id = a.artist_id
-        WHERE a.name COLLATE utf8mb4_unicode_520_ci LIKE ? OR a.name_kana COLLATE utf8mb4_unicode_520_ci LIKE ? OR EXISTS (SELECT 1 FROM artist_alias al WHERE al.artist_id = a.artist_id AND al.name COLLATE utf8mb4_unicode_520_ci LIKE ?)
+        LEFT JOIN (' . artist_plays_sql() . ') p ON p.artist_id = a.artist_id
+        WHERE (a.name COLLATE utf8mb4_unicode_520_ci LIKE ? OR a.name_kana COLLATE utf8mb4_unicode_520_ci LIKE ? OR EXISTS (SELECT 1 FROM artist_alias al WHERE al.artist_id = a.artist_id AND al.name COLLATE utf8mb4_unicode_520_ci LIKE ?))
+          AND ' . artist_searchable_sql() . '
         GROUP BY a.artist_id ORDER BY n DESC LIMIT 30');
     $st->execute([$like, $like, $like, $like]);
     $artists = $st->fetchAll();
@@ -190,11 +193,35 @@ if ($faculty !== '' || $roleName !== null) {
             break;
         }
     }
+    // セットリストに無い楽曲データベースの曲（手動登録・TAB・リンク）
+    $st = $pdo->prepare('SELECT x.song_key, x.title, x.artist_name FROM (' . song_db_extra_sql() . ') x
+        WHERE x.title COLLATE utf8mb4_unicode_520_ci LIKE ? LIMIT 100');
+    $st->execute([$like]);
+    foreach ($st as $r) {
+        if (count($songs) >= 30) {
+            break;
+        }
+        $songs[$r['song_key']] ??= ['title' => $r['title'], 'artist' => $r['artist_name']];
+    }
     $st = $pdo->prepare('SELECT album_title, artist_name, COUNT(*) AS n FROM track
         WHERE album_title COLLATE utf8mb4_unicode_520_ci LIKE ?
         GROUP BY album_title, artist_name ORDER BY n DESC LIMIT 30');
     $st->execute([$like]);
     $songAlbums = $st->fetchAll();
+
+    // ---- 会場・スタジオ・スペシャルコンテンツ（タイトル・作者。消えたライブに付いていたものは special.php と同じく出さない） ----
+    $st = $pdo->prepare('SELECT venue_id, name FROM venue WHERE name COLLATE utf8mb4_unicode_520_ci LIKE ? ORDER BY sort_order, name LIMIT 30');
+    $st->execute([$like]);
+    $venues = $st->fetchAll();
+    $st = $pdo->prepare('SELECT studio_id, name FROM studio WHERE name COLLATE utf8mb4_unicode_520_ci LIKE ? OR short_name COLLATE utf8mb4_unicode_520_ci LIKE ? ORDER BY name LIMIT 30');
+    $st->execute([$like, $like]);
+    $studios = $st->fetchAll();
+    $st = $pdo->prepare('SELECT s.* FROM special_content s LEFT JOIN live l ON l.live_id = s.live_id
+        WHERE (s.live_id IS NULL OR l.live_id IS NOT NULL)
+          AND (s.title COLLATE utf8mb4_unicode_520_ci LIKE ? OR s.author COLLATE utf8mb4_unicode_520_ci LIKE ?)
+        ORDER BY s.fiscal_year DESC, s.special_id DESC LIMIT 30');
+    $st->execute([$like, $like]);
+    $specials = $st->fetchAll();
 
     // ---- 学部・係（名前で当たったら、その学部・係の一覧ページへのリンクを出す） ----
     $matchedFaculties = array_values(array_filter(FACULTIES, fn($f) => mb_strpos($f, mb_substr($q, 0, 50)) !== false));
@@ -246,7 +273,7 @@ render_header($filterLabel ?? ($q !== '' ? "「{$q}」の検索結果" : '検索
     </section>
 <?php elseif ($q === ''): ?>
     <p class="muted">例: 「ヨルシカ」で過去にヨルシカをコピーしたバンドが全部出ます。</p>
-<?php elseif (!$lives && !$bands && !$members && !$artists && !$matchedFaculties && !$matchedRoles && !$albums['albums'] && !$songs && !$songAlbums): ?>
+<?php elseif (!$lives && !$bands && !$members && !$artists && !$matchedFaculties && !$matchedRoles && !$albums['albums'] && !$songs && !$songAlbums && !$venues && !$studios && !$specials): ?>
     <div class="empty card"><p class="empty__title">見つかりませんでした</p><p class="muted">表記を変えて試してみてください（全角/半角、スペースの有無など）</p></div>
 <?php else: ?>
     <div class="search-results">
@@ -311,6 +338,40 @@ render_header($filterLabel ?? ($q !== '' ? "「{$q}」の検索結果" : '検索
                 <?php foreach ($songAlbums as $al): ?>
                     <a class="chip chip--lg" href="songs?<?= h(http_build_query(['q' => $al['album_title']])) ?>"><?= h($al['album_title']) ?>
                         <?php if ($al['artist_name']): ?><span class="muted small"><?= h($al['artist_name']) ?></span><?php endif; ?></a>
+                <?php endforeach; ?>
+            </div>
+        </section>
+        <?php endif; ?>
+
+        <?php if ($venues): ?>
+        <section>
+            <h2 class="section-title">会場 <span class="muted"><?= count($venues) ?></span></h2>
+            <div class="chip-list">
+                <?php foreach ($venues as $v): ?>
+                    <a class="chip chip--lg" href="venue?id=<?= (int)$v['venue_id'] ?>"><?= h($v['name']) ?></a>
+                <?php endforeach; ?>
+            </div>
+        </section>
+        <?php endif; ?>
+
+        <?php if ($studios): ?>
+        <section>
+            <h2 class="section-title">スタジオ <span class="muted"><?= count($studios) ?></span></h2>
+            <div class="chip-list">
+                <?php foreach ($studios as $s): ?>
+                    <a class="chip chip--lg" href="studio_info?id=<?= (int)$s['studio_id'] ?>"><?= h($s['name']) ?></a>
+                <?php endforeach; ?>
+            </div>
+        </section>
+        <?php endif; ?>
+
+        <?php if ($specials): ?>
+        <section>
+            <h2 class="section-title">スペシャルコンテンツ <span class="muted"><?= count($specials) ?></span></h2>
+            <div class="chip-list">
+                <?php foreach ($specials as $sp): ?>
+                    <a class="chip chip--lg" href="<?= h(special_href($sp)) ?>" target="_blank" rel="noopener noreferrer"><?= h($sp['title']) ?>
+                        <?php if ($sp['author'] !== null && $sp['author'] !== ''): ?><span class="muted small"><?= h($sp['author']) ?></span><?php endif; ?></a>
                 <?php endforeach; ?>
             </div>
         </section>

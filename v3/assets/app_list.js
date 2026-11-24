@@ -23,7 +23,7 @@ function setupAutofocusPc() {
 function setupSearchSuggest() {
   const input = document.querySelector('[data-search-suggest]');
   if (!input) return;
-  const KIND = { member: 'メンバー', band: 'バンド', artist: 'アーティスト', live: 'ライブ', venue: '会場', role: '係', faculty: '学部', song: '曲名' };
+  const KIND = { member: 'メンバー', band: 'バンド', artist: 'アーティスト', live: 'ライブ', venue: '会場', studio: 'スタジオ', special: 'スペシャルコンテンツ', role: '係', faculty: '学部', song: '曲名' };
   const cache = new Map(); // 入力した文字 → 候補の配列
   let ctrl = null;         // 通信中の問い合わせ（新しく打ったら中止する）
   let timer = 0;
@@ -91,14 +91,15 @@ function setupSearchSuggest() {
       b.className = 'live-pop__item';
       b.setAttribute('role', 'option');
       const kind = document.createElement('span');
-      kind.className = 'suggest-pop__kana';
+      kind.className = 'suggest-pop__kana suggest-pop__kind';
       kind.textContent = KIND[it.kind] || '';
-      b.append(label(it.text, q), kind);
-      if (it.kana) { // ふりがなで当たったときは、一致した部分を赤くしたふりがなも右に出す
+      b.append(label(it.text, q));
+      if (it.kana) { // ふりがなで当たったときは、一致した部分を赤くしたふりがなも名前の右に出す
         const k = label(it.kana, q);
         k.className = 'suggest-pop__kana';
         b.append(k);
       }
+      b.append(kind);
       b.addEventListener('click', () => choose(it.text));
       pop.append(b);
       return b;

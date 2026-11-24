@@ -6,7 +6,7 @@
  *  検索ページ（search.php）の入力欄から、JavaScript（assets/app_list.js の setupSearchSuggest）が呼ぶ。
  *
  *  リクエスト（GET）: ?q=入力中の文字
- *  レスポンス（JSON）: {"items": [{"text": "検索語", "kind": "member|band|artist|live|venue|role|faculty|song"}, ...]}
+ *  レスポンス（JSON）: {"items": [{"text": "検索語", "kind": "member|band|artist|live|venue|studio|special|role|faculty|song"}, ...]}
  *  並び順: 先頭が一致するものを先に、足りなければ途中が一致するものを足す。最大 MAX 件
  *
  *  読むだけなので GET（CSRF 対策のトークンは要らない）。ログイン必須。
@@ -54,16 +54,24 @@ $kinds = [
                 WHERE b.name $COL LIKE ?
                 GROUP BY b.name ORDER BY COUNT(*) DESC, b.name"],
     'artist' => ['SELECT a.name, a.name_kana FROM artist a
-                  ' . (is_admin() ? 'LEFT ' : '') . 'JOIN (' . artist_plays_sql() . ") p ON p.artist_id = a.artist_id
-                  WHERE a.name $COL LIKE ? OR a.name_kana $COL LIKE ?
-                     OR EXISTS (SELECT 1 FROM artist_alias al WHERE al.artist_id = a.artist_id AND al.name $COL LIKE ?)
+                  LEFT JOIN (' . artist_plays_sql() . ") p ON p.artist_id = a.artist_id
+                  WHERE (a.name $COL LIKE ? OR a.name_kana $COL LIKE ?
+                     OR EXISTS (SELECT 1 FROM artist_alias al WHERE al.artist_id = a.artist_id AND al.name $COL LIKE ?))
+                    AND " . artist_searchable_sql() . "
                   GROUP BY a.artist_id ORDER BY COUNT(p.band_id) DESC, a.name"],
     'live' => ["SELECT lm.name FROM live lm WHERE lm.name $COL LIKE ? ORDER BY lm.fiscal_year DESC"],
     'venue' => ["SELECT v.name FROM venue v WHERE v.name $COL LIKE ? ORDER BY v.name"],
+    'studio' => ["SELECT s.name FROM studio s WHERE s.name $COL LIKE ? OR s.short_name $COL LIKE ? ORDER BY s.name"],
+    'special' => ["SELECT sc.title FROM special_content sc LEFT JOIN live l ON l.live_id = sc.live_id
+                   WHERE (sc.live_id IS NULL OR l.live_id IS NOT NULL) AND (sc.title $COL LIKE ? OR sc.author $COL LIKE ?)
+                   ORDER BY sc.fiscal_year DESC, sc.special_id DESC"],
     'role' => ["SELECT r.name FROM role r WHERE r.name $COL LIKE ? ORDER BY r.sort_order, r.name"],
-    'song' => ["SELECT s.title AS name FROM song s JOIN band b ON b.band_id = s.band_id
-                WHERE s.is_se = 0 AND s.title <> '' AND NOT " . setlist_hidden_sql('b') . " AND s.title $COL LIKE ?
-                GROUP BY s.title ORDER BY COUNT(*) DESC, s.title"],
+    // セットリストの曲 + 楽曲データベースの曲（手動登録・TAB・リンク）
+    'song' => ["SELECT u.name FROM (
+                  SELECT s.title AS name FROM song s JOIN band b ON b.band_id = s.band_id
+                  WHERE s.is_se = 0 AND NOT " . setlist_hidden_sql('b') . " AND s.title $COL LIKE ?
+                  UNION ALL SELECT x.title FROM (" . song_db_extra_sql() . ") x WHERE x.title $COL LIKE ?
+                ) u WHERE u.name <> '' GROUP BY u.name ORDER BY COUNT(*) DESC, u.name"],
 ];
 
 /** 全角英数・大文字小文字・カタカナ/ひらがなの違いを無視して同じ語か比べるための形 */

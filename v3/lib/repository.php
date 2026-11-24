@@ -1170,6 +1170,27 @@ function artist_plays_sql(): string
 }
 
 /**
+ * 楽曲データベース（songs.php）のうち、セットリスト以外の曲（手動登録・TAB・リンク。MV は除く）。
+ * 列は song_key, title, artist_name。サブクエリとして使う（検索ページ・検索語の候補）
+ */
+function song_db_extra_sql(): string
+{
+    return "SELECT c.song_key, COALESCE(t.title, c.title) AS title, COALESCE(t.artist_name, c.artist_name) AS artist_name
+        FROM song_catalog c LEFT JOIN track t ON t.source = c.track_source AND t.track_id = c.track_id
+    UNION ALL SELECT song_key, title, artist_name FROM song_tab
+    UNION ALL SELECT song_key, title, artist_name FROM song_link WHERE site <> 'mv'";
+}
+
+/**
+ * 検索で出すアーティストの条件（artist a を artist_plays_sql() に LEFT JOIN した p と一緒に使う）。
+ * 演奏したか、楽曲データベースに曲があるアーティストだけ。管理者には全員（重複の統合のため）
+ */
+function artist_searchable_sql(): string
+{
+    return is_admin() ? '1' : '(p.band_id IS NOT NULL OR a.name IN (SELECT x.artist_name FROM (' . song_db_extra_sql() . ') x))';
+}
+
+/**
  * 1つのバンドについて「隠すか」と「公開日時」をまとめて調べる（バンドページ・曲の編集画面用）
  * @return array{hidden: bool, private: bool, open_at: ?string}
  */
