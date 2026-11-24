@@ -505,6 +505,16 @@ function setupTrackSearch() {
       searchBtn.disabled = false;
     }
   });
+
+  // 概要欄から来たとき（data-auto-search）: 紐付いていない曲の 🔍 を順に押して、候補を並べておく
+  //   一度に叩かないよう 400ms ずつずらす
+  if (list.hasAttribute('data-auto-search')) {
+    list.querySelectorAll('[data-song-card]:not([data-template])').forEach((card, i) => {
+      const btn = card.querySelector('[data-track-search]');
+      if (!btn || card.closest('template') || card.querySelector('[name$="[track]"]')?.value) return;
+      setTimeout(() => btn.click(), i * 400);
+    });
+  }
 }
 
 /* ---------------------------------------------------------------------

@@ -27,6 +27,7 @@ declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/repository.php';
 require_once __DIR__ . '/lib/tracks.php';
+require_once __DIR__ . '/lib/youtube.php'; // 概要欄から曲名を読む
 require_once __DIR__ . '/lib/history.php'; // 変更履歴（元に戻すための「変更前の状態」を残す）
 require_login();
 
@@ -239,6 +240,19 @@ $st = $pdo->prepare('SELECT s.song_id, s.track_no, s.title, s.is_se, a.name AS a
 $st->execute([$bandId]);
 $songs = $st->fetchAll();
 
+// バンド編集で YouTube のリンクを入れたあと: セトリが空なら、概要欄の曲名をカードに並べる（シートから来たときと同じ。保存はまだしない）
+if (!is_post() && ($_GET['from_yt'] ?? '') === '1') {
+    $videoId = youtube_video_id((string)$band['youtube_url']);
+    $description = $songs || $videoId === null ? null : youtube_description($videoId);
+    $sheetTitles = $description === null ? [] : youtube_parse_songs($description);
+    if (!$sheetTitles) {
+        redirect($backUrl); // 読み取れなかったときは何も言わずバンドに戻る
+    }
+    $sheetTracks = array_fill(0, count($sheetTitles), null);
+    $fromSheet = true;
+    $fromYt = true; // 画面を開いたら、曲ごとに候補を自動で探す（data-auto-search）
+}
+
 // 曲ごとの演奏者: [song_id][member_id] = [instrument_id, ...]
 $st = $pdo->prepare('SELECT sp.song_id, sp.member_id, sp.instrument_id FROM song_performer sp
     JOIN song s ON s.song_id = sp.song_id JOIN instrument i ON i.instrument_id = sp.instrument_id
@@ -365,7 +379,7 @@ render_header('セットリストを編集', 'lives');
     <?php endif; ?>
     <button type="button" class="btn btn--ghost btn--sm song-add-se" data-add-song-se>＋ SE を追加</button>
     <datalist id="artists"><?php foreach ($artistNames as $n): ?><option value="<?= h($n) ?>"><?php endforeach; ?></datalist>
-    <div class="song-list" data-song-list data-default-artist="<?= h($defaultArtist) ?>">
+    <div class="song-list" data-song-list<?= !empty($fromYt) ? ' data-auto-search' : '' ?> data-default-artist="<?= h($defaultArtist) ?>">
         <?php foreach ($cards as $k => $song):
             $isNew = $song['song_id'] === null;        // まだ DB に無い曲（シートから来た曲も含む）
             $isTemplate = !empty($song['template']);     // 「＋ 曲を追加」「＋ SE を追加」用のひな形（画面には出ない）

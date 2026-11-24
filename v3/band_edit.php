@@ -324,6 +324,14 @@ if (is_post()) {
     }
     if (!$errors) {
         flash('「' . $name . '」を' . ($isNew ? '追加' : '更新') . 'しました');
+        // YouTube のリンクを新しく入れて、セトリがまだ空なら、概要欄の曲名を確認する画面へ（読み取れなければ songs_edit がバンドへ戻す）
+        if ($youtube !== '' && $youtube !== (string)($band['youtube_url'] ?? '') && youtube_video_id($youtube) !== null) {
+            $st = $pdo->prepare('SELECT COUNT(*) FROM song WHERE band_id = ?');
+            $st->execute([$bandId]);
+            if ((int)$st->fetchColumn() === 0) {
+                redirect('songs_edit?band=' . $bandId . '&from_yt=1');
+            }
+        }
         redirect('band?id=' . $bandId);
     }
     // エラーのときは入力した値をそのまま表示し直す

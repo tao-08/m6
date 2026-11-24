@@ -172,20 +172,62 @@ function youtube_parse_chapters(string $description): array
 }
 
 /**
- * 動画のチャプター（概要欄のタイムスタンプ）を取る。videos.list は 1 ユニット
- *   戻り値: チャプターの配列（無ければ []）。キーが無い・通信できないときは null（「無かった」と区別する）
+ * 動画の概要欄の文字を取る。videos.list は 1 ユニット
+ *   キーが無い・通信できない・動画が見つからないときは null
  */
-function youtube_chapters(string $videoId): ?array
+function youtube_description(string $videoId): ?string
 {
     $key = (string)(config('youtube')['api_key'] ?? '');
     if ($key === '' || !youtube_video_id_valid($videoId)) {
         return null;
     }
     $res = album_http('https://www.googleapis.com/youtube/v3/videos?' . http_build_query(['part' => 'snippet', 'id' => $videoId]), ['X-Goog-Api-Key: ' . $key]);
-    if ($res === null || $res['status'] !== 200 || !is_array($res['json'])) {
+    if ($res === null || $res['status'] !== 200 || !is_array($res['json']) || !isset($res['json']['items'][0])) {
         return null;
     }
-    return youtube_parse_chapters((string)($res['json']['items'][0]['snippet']['description'] ?? ''));
+    return (string)($res['json']['items'][0]['snippet']['description'] ?? '');
+}
+
+/**
+ * 動画のチャプター（概要欄のタイムスタンプ）を取る
+ *   戻り値: チャプターの配列（無ければ []）。キーが無い・通信できないときは null（「無かった」と区別する）
+ */
+function youtube_chapters(string $videoId): ?array
+{
+    $description = youtube_description($videoId);
+    return $description === null ? null : youtube_parse_chapters($description);
+}
+
+/**
+ * 概要欄の文字から曲名を取り出す（通信なし → tests/run.php でテストできる）
+ *   ① タイムスタンプの行（「0:00 曲名」「12:30 - 曲名 / アーティスト」）→ あればこちらだけ使う
+ *   ② 無ければ「曲名 / アーティスト」の形の行（2行以上）
+ *   曲名は「/」の前。MC・休憩などの行と、URL の入った行は飛ばす。戻り値: 曲名の配列（最大15曲 = 保存の上限）
+ *   shortcut: 「アーティスト / 曲名」の順で書いた概要欄は逆に読む。必要なら順番を選ばせる
+ */
+function youtube_parse_songs(string $description): array
+{
+    $timed = [];
+    $slashed = [];
+    foreach (preg_split('/\R/u', $description) ?: [] as $line) {
+        if (str_contains($line, 'http')) {
+            continue;
+        }
+        if (preg_match('/^[\s\p{P}\p{S}]*(?:\d{1,2}:)?\d{1,2}:\d{2}[\s\p{P}\p{S}]*(.+)$/u', $line, $m)) {
+            $timed[] = $m[1];
+        } elseif (preg_match('/^\s*(?:[\d０-９]+[.．)）]\s*)?(.+?)\s+[\/／]\s+.+$/u', $line, $m)) {
+            $slashed[] = $m[1];
+        }
+    }
+    $titles = [];
+    foreach ($timed ?: (count($slashed) >= 2 ? $slashed : []) as $label) {
+        $title = trim(preg_split('/\s+[\/／]\s+/u', $label)[0]);
+        if ($title === '' || mb_strlen($title) > 100 || preg_match('/^(MC|オープニング|エンディング|イントロ|開演|休憩|挨拶|自己紹介|転換)/iu', $title)) {
+            continue;
+        }
+        $titles[] = $title;
+    }
+    return array_slice($titles, 0, 15);
 }
 
 /**
