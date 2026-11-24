@@ -475,13 +475,12 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .special-link > span { padding-top: max(1px, .1em); } /* 日本語が上に寄って見える分の補正（ラベルの規格と同じ） */
 .special-link .youtube-icon { width: 20px; height: 14px; flex: none; }
 .special-link .icon { font-size: 18px; flex: none; }
-.special-grid { grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 10px; } /* 一覧より細かく並べる */
 .special-card { position: relative; padding: 0; overflow: hidden; }
-.special-card__open { display: grid; gap: 4px; width: 100%; padding: 0 0 8px; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.special-card__open { display: grid; gap: 4px; width: 100%; padding: 0 0 12px; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .special-card__open > :is(.special-card__title, .muted) { padding: 0 12px; }
 .special-card__title { font-weight: 600; padding-top: max(1px, .1em); overflow-wrap: anywhere; }
 .special-card__open:hover .special-card__title { color: var(--accent); }
-.special-card__thumb { display: grid; place-items: center; aspect-ratio: 16 / 9; margin: 8px 8px 6px; border-radius: var(--r-md); background: var(--surface-2); overflow: hidden; }
+.special-card__thumb { display: grid; place-items: center; aspect-ratio: 16 / 9; margin-bottom: 6px; background: var(--surface-2); overflow: hidden; }
 .special-card__thumb img { width: 100%; height: 100%; object-fit: cover; }
 .special-card__thumb .icon { font-size: 36px; color: var(--muted); }
 .special-card__edit { position: absolute; top: 6px; right: 6px; background: var(--surface); }
