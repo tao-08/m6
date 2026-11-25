@@ -20,10 +20,16 @@ function band_survey_ready(): bool
     return sched_ical_key() !== null;
 }
 
-/** 新しい調査を作れる人か: 幹部（管理者を含む） */
+/** 幹部か。is_executive() と違って管理者を含めない（管理者でも、幹部でなければ調査は見られない） */
+function band_survey_is_exec(): bool
+{
+    return !empty(current_user()['executive']);
+}
+
+/** 新しい調査を作れる人か: 幹部 */
 function band_survey_can_create(): bool
 {
-    return is_executive() && band_survey_ready();
+    return band_survey_is_exec() && band_survey_ready();
 }
 
 /**
@@ -497,7 +503,7 @@ function band_survey_list(PDO $pdo): array
                   EXISTS (SELECT 1 FROM band_survey_view_year y WHERE y.survey_id = s.survey_id AND y.entry_year = ?)
                OR (s.view_role = 'exec' AND NOT EXISTS (SELECT 1 FROM band_survey_view_year y WHERE y.survey_id = s.survey_id))))
         ORDER BY s.survey_id DESC");
-    $st->execute([$memberId, is_executive() ? 1 : 0, $year]);
+    $st->execute([$memberId, band_survey_is_exec() ? 1 : 0, $year]);
     return $st->fetchAll();
 }
 
