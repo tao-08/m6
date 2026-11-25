@@ -1,5 +1,5 @@
 // バンド編集の「動画から曲を検出」（band_edit.php の [data-setlist-detect]）
-//   1. 選んだ動画から、ブラウザの中で ffmpeg.wasm が音声だけ抜いてモノラル MP3 にする（数百MB の動画を送らないため）
+//   1. 選んだ動画から、ブラウザの中で ffmpeg.wasm が音声だけ抜いてモノラル MP3 にする（数百MB の動画を送らないため）。MP3 を選んだらそのまま送る
 //      低音のこもりを削り（highpass）、MC と演奏の音量差をならす（loudnorm）。歌詞を聞き取りやすくするため
 //   2. api_setlist_detect に送る → Gemini が聴いて曲名を返す（1〜2分）
 //   3. 曲が見つかったらセトリの確認画面（songs_edit?from_detect=1）へ
@@ -38,7 +38,9 @@ input?.addEventListener('change', async () => {
   try {
     const body = new FormData();
     body.append('band_id', box.dataset.band);
-    body.append('audio', await extractAudio(file));
+    // MP3 は加工済み（scripts/yt_setlist_audio.php で落としたもの）として、取り出しを飛ばす。60MB を超えるものは小さくするため取り出す
+    const ready = file.type === 'audio/mpeg' && file.size <= 60 * 1024 * 1024;
+    body.append('audio', ready ? file : await extractAudio(file));
     say('解析しています。数分かかります');
     const res = await fetch('api_setlist_detect', { method: 'POST', headers: { 'X-CSRF-Token': csrf }, body });
     const json = await res.json().catch(() => ({}));
