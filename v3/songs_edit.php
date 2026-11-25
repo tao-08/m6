@@ -321,7 +321,7 @@ if ($fromSheet) {
         // まだ紐付いていない曲は、アーティスト名と曲名が完全一致する曲が track テーブル（紐付け済みの曲の情報）にあれば自動で紐付ける
         //   アーティスト: オムニバスは曲ごとのアーティスト（無ければ探さない）、それ以外はバンドのアーティスト
         //   BINARY = 大文字小文字・全半角も区別して比べる。複数あれば Spotify を優先（'spotify' > 'itunes'）
-        if ($card['track_id'] === null && !$card['is_se']) {
+        if ($card['track_id'] === null && !$card['is_se'] && $title !== '') { // 曲名が空（動画から曲を検出して、わからなかった曲）は探さない
             $artistForMatch = $band['is_omnibus'] ? ($card['artist_name'] ?? '') : $defaultArtist;
             if ($artistForMatch !== '') {
                 $autoSt->execute([$title, $artistForMatch]);

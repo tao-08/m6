@@ -1289,15 +1289,23 @@ check('セトリ: 結果なしは空', acr_setlist_titles([]), []);
 
 echo "gemini setlist\n";
 require_once __DIR__ . '/../lib/gemini_setlist.php';
-check('曲: 演奏順・曲名も候補も無い曲は除く', gemini_setlist_songs(['songs' => [
+check('曲: 演奏順・わからない曲は曲名を空で残す', gemini_setlist_songs(['songs' => [
     ['title' => ' 花束 ', 'artist' => 'サンボマスター', 'confident' => true, 'candidates' => [['title' => 'x', 'artist' => '']]],
     ['title' => '', 'artist' => '', 'confident' => false, 'candidates' => []],
     ['title' => '花束', 'artist' => 'サンボマスター'],
-]]), [['title' => '花束', 'candidates' => []], ['title' => '花束', 'candidates' => []]]);
-check('曲: 自信が低い曲は候補を3つまで・曲名が空なら第1候補', gemini_setlist_songs(['songs' => [
-    ['title' => '', 'confident' => false, 'candidates' => [['title' => 'A', 'artist' => 'a'], ['title' => ' '], ['title' => 'B'], ['title' => 'C', 'artist' => 'c'], ['title' => 'D']]],
-]]), [['title' => 'A', 'candidates' => [['title' => 'A', 'artist' => 'a'], ['title' => 'B', 'artist' => ''], ['title' => 'C', 'artist' => 'c']]]]);
-check('曲: 形が違っても落ちない', [gemini_setlist_songs(['songs' => 'x']), gemini_setlist_songs(['songs' => ['x', ['title' => ['y'], 'confident' => false, 'candidates' => 'z']]])], [[], []]);
+]]), [['title' => '花束', 'candidates' => []], ['title' => '', 'candidates' => []], ['title' => '花束', 'candidates' => []]]);
+check('曲: 自信が低い曲は候補を5つまで・曲名が空なら第1候補', gemini_setlist_songs(['songs' => [
+    ['title' => '', 'confident' => false, 'candidates' => [['title' => 'A', 'artist' => 'a'], ['title' => ' '], ['title' => 'B'], ['title' => 'C', 'artist' => 'c'], ['title' => 'D'], ['title' => 'E'], ['title' => 'F']]],
+]]), [['title' => 'A', 'candidates' => [['title' => 'A', 'artist' => 'a'], ['title' => 'B', 'artist' => ''], ['title' => 'C', 'artist' => 'c'], ['title' => 'D', 'artist' => ''], ['title' => 'E', 'artist' => '']]]]);
+check('曲: 形が違っても落ちない', [gemini_setlist_songs(['songs' => 'x']), gemini_setlist_songs(['songs' => ['x', ['title' => ['y'], 'confident' => false, 'candidates' => 'z']]])], [[], [['title' => '', 'candidates' => []]]]);
+$gs = static fn(string ...$t): array => array_map(static fn($x) => ['title' => $x, 'candidates' => []], $t);
+$guess = ['title' => 'G', 'candidates' => [['title' => 'G', 'artist' => '']]];
+check('2回目: 特定できない曲（空・候補つき）があれば流す', [gemini_setlist_has_unknown([]), gemini_setlist_has_unknown($gs('A', '')), gemini_setlist_has_unknown([...$gs('A'), $guess]), gemini_setlist_has_unknown($gs('A', 'B'))], [true, true, true, false]);
+check('2回目: 候補つきの曲も置き換える', gemini_setlist_fill([$guess, ...$gs('B')], $gs('X', 'Y')), $gs('X', 'B'));
+check('2回目: 1回目が候補だけならそのまま', gemini_setlist_fill([$guess], $gs('X')), $gs('X'));
+check('2回目: 空の曲だけ埋める', gemini_setlist_fill($gs('A', '', 'C'), $gs('X', 'B', 'Y')), $gs('A', 'B', 'C'));
+check('2回目: 1回目が全部空ならそのまま', gemini_setlist_fill($gs('', ''), $gs('', '', '遙か彼方')), $gs('', '', '遙か彼方'));
+check('2回目: 曲数が違えば埋めない', gemini_setlist_fill($gs('A', ''), $gs('X', 'B', 'C')), $gs('A', ''));
 
 echo "band survey\n";
 require_once __DIR__ . '/../lib/band_survey.php';

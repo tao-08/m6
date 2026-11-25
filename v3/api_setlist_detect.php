@@ -23,9 +23,11 @@ const SETLIST_AUDIO_MAX_BYTES = 60 * 1024 * 1024; // バンドの MP3 と同じ�
 
 $cfg = gemini_setlist_config() ?? fail(503, '曲の検出は使えません');
 $bandId = (int)($_POST['band_id'] ?? 0);
-$st = db()->prepare('SELECT 1 FROM band WHERE band_id = ?');
+// コピー元のアーティスト（オムニバスのバンドは持たないので NULL）。わからない曲が残ったとき、Gemini に伝えてもう一度聴かせる
+$st = db()->prepare('SELECT IF(b.is_omnibus = 1, NULL, a.name) FROM band b LEFT JOIN artist a ON a.artist_id = b.artist_id WHERE b.band_id = ?');
 $st->execute([$bandId]);
-if (!$st->fetchColumn()) {
+$artist = $st->fetchColumn();
+if ($artist === false) {
     fail(404, 'バンドが見つかりません');
 }
 
@@ -40,11 +42,11 @@ if ($f['size'] > SETLIST_AUDIO_MAX_BYTES || !in_array((new finfo(FILEINFO_MIME_T
 
 session_write_close(); // 長く待つので、ほかの画面を待たせない
 @set_time_limit(0);
-$songs = gemini_setlist($f['tmp_name'], $cfg);
+$songs = gemini_setlist($f['tmp_name'], $cfg, $artist);
 if (is_string($songs)) {
     fail(502, $songs);
 }
-if (!$songs) {
+if (!array_filter(array_column($songs, 'title'), 'strlen')) { // 曲名が1つも無ければ、確認画面を開いても意味がない
     fail(404, '曲が見つかりませんでした');
 }
 session_start(); // 曲名と候補を確認画面に渡すため、もう一度開く

@@ -14,7 +14,7 @@ const GEMINI_SETLIST_PROMPT = <<<'TXT'
 - 歌詞・メロディ・曲調から原曲を特定し、原曲の正式な曲名とアーティスト名を答える
 - MC で曲名が言われたら、それも手がかりにする
 - 曲を特定できる自信があれば confident を true、自信がなければ false にする
-- confident が false の曲は、可能性のある曲を candidates に最大3曲、可能性の高い順に挙げ、title には最も可能性の高い曲を入れる。候補も思い当たらなければ title を空にする
+- confident が false の曲は、可能性のある曲を candidates に5曲、可能性の高い順に挙げ、title には最も可能性の高い曲を入れる。特定できなくても、歌詞・曲調・アレンジが近い曲を挙げる
 - 同じ曲を2回演奏したら2回挙げる
 - 入場の SE・転換中に流れる音源は含めない
 TXT;
@@ -31,11 +31,12 @@ function gemini_setlist_config(): ?array
 }
 
 /** 自信が低い曲に付ける候補の数 */
-const GEMINI_SETLIST_MAX_CANDIDATES = 3;
+const GEMINI_SETLIST_MAX_CANDIDATES = 5;
 
 /**
- * Gemini の返事 → 曲（演奏順）。曲名も候補も無い曲は除く
+ * Gemini の返事 → 曲（演奏順）
  *   自信が低い曲は candidates（[{title, artist}]、可能性の高い順）を付ける。曲名が空なら第1候補を曲名にする
+ *   「曲はあるがわからない」曲は、曲名が空のまま残す（確認画面で何曲目かがわかるように）
  * @return array<int, array{title: string, candidates: array<int, array{title: string, artist: string}>}>
  */
 function gemini_setlist_songs(array $json): array
@@ -56,21 +57,59 @@ function gemini_setlist_songs(array $json): array
             }
         }
         $title = $clean($s['title'] ?? '', 100);
-        if ($title === '') {
-            $title = $cands[0]['title'] ?? '';
-        }
-        if ($title !== '') {
-            $songs[] = ['title' => $title, 'candidates' => $cands];
-        }
+        $songs[] = ['title' => $title !== '' ? $title : ($cands[0]['title'] ?? ''), 'candidates' => $cands];
     }
     return $songs;
 }
 
-/** @return array|string gemini_setlist_songs の形。失敗したら画面に出せる理由 */
-function gemini_setlist(string $path, array $cfg): array|string
+/** 特定できた曲か（曲名があり、候補が付いていない） */
+function gemini_setlist_sure(array $song): bool
+{
+    return $song['title'] !== '' && !$song['candidates'];
+}
+
+/** 特定できなかった曲（曲名が空・候補つき）があるか */
+function gemini_setlist_has_unknown(array $songs): bool
+{
+    return !$songs || count(array_filter($songs, 'gemini_setlist_sure')) < count($songs);
+}
+
+/**
+ * 1回目の結果の、特定できなかった曲だけを2回目（コピー元を伝えて聴かせた結果）で置き換える。1回目で特定できた曲は変えない
+ *   1回目に1曲も特定できていなければ、2回目をそのまま使う
+ *   shortcut: 曲の数が違うと、どの曲がどれに当たるかわからないので埋めない。数がずれる例が多ければ、当たった曲名を目印に合わせる
+ */
+function gemini_setlist_fill(array $first, array $second): array
+{
+    if (!array_filter($first, 'gemini_setlist_sure')) {
+        return $second;
+    }
+    if (count($first) !== count($second)) {
+        return $first;
+    }
+    foreach ($first as $i => $song) {
+        if (!gemini_setlist_sure($song)) {
+            $first[$i] = $second[$i];
+        }
+    }
+    return $first;
+}
+
+/** コピー元を伝える指示。2026-11 に試し、最初から渡すと有名曲の当たりが落ちたので、わからない曲が残ったときだけ使う */
+function gemini_setlist_hint_prompt(string $artist): string
+{
+    return GEMINI_SETLIST_PROMPT . "
+- このバンドは「{$artist}」のコピーバンドとして登録されている。{$artist} の曲を中心に考える";
+}
+
+/**
+ * @param ?string $artist コピー元のアーティスト（オムニバス・不明なら null）。わからない曲が残ったら、これを伝えてもう一度聴かせる
+ * @return array|string gemini_setlist_songs の形。失敗したら画面に出せる理由
+ */
+function gemini_setlist(string $path, array $cfg, ?string $artist = null): array|string
 {
     $pair = ['type' => 'OBJECT', 'properties' => ['title' => ['type' => 'STRING'], 'artist' => ['type' => 'STRING']], 'required' => ['title', 'artist']];
-    $json = gemini_audio_json($path, 'audio/mpeg', $cfg['key'], $cfg['model'], GEMINI_SETLIST_PROMPT, [
+    $schema = [
         'type' => 'OBJECT',
         'properties' => ['songs' => ['type' => 'ARRAY', 'items' => [
             'type' => 'OBJECT',
@@ -81,6 +120,18 @@ function gemini_setlist(string $path, array $cfg): array|string
             'required' => ['title', 'artist', 'confident'],
         ]]],
         'required' => ['songs'],
-    ]);
-    return is_string($json) ? $json : gemini_setlist_songs($json);
+    ];
+    $json = gemini_audio_json($path, 'audio/mpeg', $cfg['key'], $cfg['model'], GEMINI_SETLIST_PROMPT, $schema);
+    if (is_string($json)) {
+        return $json;
+    }
+    $songs = gemini_setlist_songs($json);
+    $artist = trim((string)$artist);
+    if ($artist !== '' && gemini_setlist_has_unknown($songs)) {
+        $again = gemini_audio_json($path, 'audio/mpeg', $cfg['key'], $cfg['model'], gemini_setlist_hint_prompt($artist), $schema);
+        if (is_array($again)) { // 2回目が失敗したら、1回目の結果だけ返す
+            $songs = gemini_setlist_fill($songs, gemini_setlist_songs($again));
+        }
+    }
+    return $songs;
 }

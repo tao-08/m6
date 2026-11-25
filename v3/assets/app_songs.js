@@ -563,7 +563,8 @@ function setupTrackSearch() {
       if (!btn || card.closest('template')) return;
       // 自信が低い曲は、第1候補が自動で紐付いていても、ほかの候補を見せる
       if (card.dataset.candidates) setTimeout(() => showCandidates(card), i * 400);
-      else if (!card.querySelector('[name$="[track]"]')?.value) setTimeout(() => btn.click(), i * 400);
+      // 曲名が空の曲（動画から曲を検出して、わからなかった曲）は探さない
+      else if (!card.querySelector('[name$="[track]"]')?.value && card.querySelector('[name$="[title]"]').value.trim()) setTimeout(() => btn.click(), i * 400);
     });
   }
 }
