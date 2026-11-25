@@ -12,6 +12,8 @@ declare(strict_types=1);
 
 // 見られる人の入部年度。来年はここを書き換える
 const BAND_SURVEY_ENTRY_YEAR = 2023;
+// 名簿の「未定」のセル。人としては数えず、表に「未定」と出す（あとから人を入れる所）
+const BAND_SURVEY_TBD = '未定';
 
 /** 見てよい人か: 幹部 + 入部年度が合う + 暗号化の鍵があるサーバー */
 function band_survey_can_view(): bool
@@ -56,7 +58,8 @@ function band_survey_read_roster(string $path, string $name): array
         foreach ($r['bands'] as $b) {
             $cells = [];
             foreach ($map as $c => $at) {
-                $cells[$at] = split_member_names((string)($b['cells'][$c] ?? ''));
+                $names = split_member_names((string)($b['cells'][$c] ?? ''));
+                $cells[$at] = $names ?: (str_contains((string)($b['raw'][$c] ?? ''), BAND_SURVEY_TBD) ? [BAND_SURVEY_TBD] : []);
             }
             $bands[] = ['band' => $b['band_name'], 'cells' => $cells];
         }
@@ -78,7 +81,7 @@ function band_survey_tidy_roster(array $roster): array
     $seen = [];
     foreach ($roster['bands'] as &$b) {
         foreach ($b['cells'] as &$cell) {
-            $cell = array_map(static function ($m) use (&$seen) { return $seen[member_key($m)] ??= $m; }, $cell);
+            $cell = array_map(static function ($m) use (&$seen) { return $m === BAND_SURVEY_TBD ? $m : ($seen[member_key($m)] ??= $m); }, $cell);
         }
         unset($cell);
     }
@@ -94,10 +97,11 @@ function band_survey_tidy_roster(array $roster): array
     return $roster;
 }
 
-/** バンドのメンバー（名簿の左の列から。同じ人は1回） */
+/** バンドのメンバー（名簿の左の列から。同じ人は1回。「未定」は入れない） */
 function band_survey_band_members(array $band): array
 {
-    return array_values(array_unique(array_map('strval', array_merge(...array_values($band['cells'])))));
+    $all = array_map('strval', array_merge(...array_values($band['cells'])));
+    return array_values(array_unique(array_filter($all, static fn($m) => $m !== BAND_SURVEY_TBD)));
 }
 
 /** 人ごとのバンド: [[メンバー, [バンド, ...]], ...]（名簿に出てきた順） */
@@ -110,6 +114,16 @@ function band_survey_people(array $roster): array
         }
     }
     return array_map(null, array_map('strval', array_keys($of)), array_values($of)); // 「171」のような名前は配列のキーで数値になるので文字列に戻す
+}
+
+/** 名簿の人のうち、DB で入部年度が $entryYear の人（対象のチェックの初期値） */
+function band_survey_default_targets(PDO $pdo, array $roster, int $entryYear): array
+{
+    require_once __DIR__ . '/import/text.php'; // member_key
+    $st = $pdo->prepare('SELECT name FROM member WHERE entry_year = ?');
+    $st->execute([$entryYear]);
+    $keys = array_flip(array_map('member_key', $st->fetchAll(PDO::FETCH_COLUMN)));
+    return array_values(array_filter(array_column(band_survey_people($roster), 0), static fn($m) => isset($keys[member_key($m)])));
 }
 
 /** 名前を置きかえる（$map = [元の名前 => 新しい名前]）。書き間違いを直すと同じ人にまとまる */
@@ -177,16 +191,16 @@ function band_survey_match(array $roster, string $answer): array|string
 
 /**
  * AI の答えを名簿に当てはめる（名簿にない名前・その人のバンドでないものは信じずに issues へ）
- *   $member … 確認画面で選び直した人（null なら AI の答え）
+ *   $member … 確認画面で選び直した人（null なら AI の答え）/ $targets … 調査の対象の人（null ならすべて）
  * @return array{member: string, ranks: array<string, int>, written: array<string, string>, issues: string[]}
  */
-function band_survey_apply(array $roster, array $ai, ?string $member = null): array
+function band_survey_apply(array $roster, array $ai, ?string $member = null, ?array $targets = null): array
 {
     $people = array_column(band_survey_people($roster), 1, 0);
     $member ??= (string)$ai['member'];
     $out = ['member' => '', 'ranks' => [], 'written' => [], 'issues' => []];
-    if (!isset($people[$member])) {
-        $out['issues'][] = '回答した人が名簿に見つかりません';
+    if (!isset($people[$member]) || ($targets !== null && !in_array($member, $targets, true))) {
+        $out['issues'][] = isset($people[$member]) ? "{$member} は調査の対象ではありません" : '回答した人が名簿に見つかりません';
         return $out;
     }
     $out['member'] = $member;
@@ -204,6 +218,78 @@ function band_survey_apply(array $roster, array $ai, ?string $member = null): ar
     return $out;
 }
 
+/** 名簿にもういる人なら、その書き方にそろえる（表記ゆれで別の人にならないように） */
+function band_survey_canonical(array $roster, string $name): string
+{
+    require_once __DIR__ . '/import/text.php'; // member_key
+    foreach (band_survey_people($roster) as [$m]) {
+        if (member_key($m) === member_key($name)) {
+            return $m;
+        }
+    }
+    return $name;
+}
+
+/** 順位を、並びはそのままで 1, 2, 3… に詰める（バンドから外れて順位が抜けたとき） */
+function band_survey_pack_ranks(array $ranks): array
+{
+    asort($ranks);
+    return $ranks ? array_combine(array_keys($ranks), range(1, count($ranks))) : [];
+}
+
+/**
+ * 名簿・順位・対象を、名簿の今の中身に合わせて片付ける。
+ *   その人がもういないバンドの順位を消して詰め、どのバンドにもいない人は対象と順位から外す
+ */
+function band_survey_tidy_data(array $data): array
+{
+    $people = array_column(band_survey_people($data['roster']), 1, 0);
+    $data['targets'] = array_values(array_filter($data['targets'], static fn($m) => isset($people[$m])));
+    foreach ($data['ranks'] as $m => $ranks) {
+        $kept = isset($people[$m]) ? array_intersect_key($ranks, array_flip($people[$m])) : [];
+        if ($kept) {
+            $data['ranks'][$m] = band_survey_pack_ranks($kept);
+        } else {
+            unset($data['ranks'][$m]);
+        }
+    }
+    return $data;
+}
+
+/**
+ * 表の1セルを変える（$bi = バンドの番号、$ci = 列の番号）。
+ *   $old = '' か「未定」なら $new を足す / $new = '' なら $old を外す / 両方あれば入れ替える
+ *   $target … $new を調査の対象にするか
+ */
+function band_survey_set_cell(array $data, int $bi, int $ci, string $old, string $new, bool $target): array
+{
+    if (!isset($data['roster']['bands'][$bi]['cells'][$ci])) {
+        return $data;
+    }
+    $new = $new === '' ? '' : band_survey_canonical($data['roster'], $new);
+    $cell = &$data['roster']['bands'][$bi]['cells'][$ci];
+    $cell = array_values(array_filter($cell, static fn($m) => $m !== BAND_SURVEY_TBD && ($old === '' || $m !== $old)));
+    if ($new !== '' && !in_array($new, $cell, true)) {
+        $cell[] = $new;
+    }
+    unset($cell);
+    if ($new !== '') {
+        $data['targets'] = array_values(array_diff($data['targets'], [$new]));
+        if ($target) {
+            $data['targets'][] = $new;
+        }
+    }
+    return band_survey_tidy_data($data);
+}
+
+/**
+ * 名簿を読み直した調査: 新しい名簿・対象に、前の回答のうち人とバンドが同じものを残す
+ */
+function band_survey_merge(array $old, array $roster, array $targets): array
+{
+    return band_survey_tidy_data(['roster' => $roster, 'targets' => $targets, 'ranks' => $old['ranks']] + $old);
+}
+
 /** 1人の順位（[バンド => 順位]）が 1, 2, 3… の連番か。だめなら理由 */
 function band_survey_check_ranks(array $ranks): ?string
 {
@@ -212,12 +298,12 @@ function band_survey_check_ranks(array $ranks): ?string
     return $list === range(1, count($list)) || $list === [] ? null : '順位が 1〜' . count($list) . ' の連番になっていません';
 }
 
-/** 集計用の行 [[バンド, メンバー, 順位|null], ...]。$data = ['roster' => 名簿, 'ranks' => [メンバー => [バンド => 順位]]] */
+/** 集計用の行 [[バンド, メンバー, 順位|null], ...]。対象の人だけ。$data = ['roster' => 名簿, 'targets' => [メンバー, ...], 'ranks' => [メンバー => [バンド => 順位]]] */
 function band_survey_rows(array $data): array
 {
     $rows = [];
     foreach ($data['roster']['bands'] as $b) {
-        foreach (band_survey_band_members($b) as $m) {
+        foreach (array_intersect(band_survey_band_members($b), $data['targets']) as $m) {
             $rows[] = [$b['band'], $m, $data['ranks'][$m][$b['band']] ?? null];
         }
     }
@@ -279,7 +365,7 @@ function band_survey_summarize(array $rows): array
 function band_survey_save(PDO $pdo, string $title, array $data, int $userId): int
 {
     require_once __DIR__ . '/sched_ical.php';
-    $enc = sched_ical_encrypt(json_encode($data, JSON_UNESCAPED_UNICODE));
+    $enc = sched_ical_encrypt(json_encode($data, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
     $pdo->prepare('INSERT INTO band_survey (title, data_enc, created_by) VALUES (?, ?, ?)')->execute([$title, $enc, $userId]);
     return (int)$pdo->lastInsertId();
 }
@@ -288,7 +374,7 @@ function band_survey_save(PDO $pdo, string $title, array $data, int $userId): in
 function band_survey_update(PDO $pdo, int $id, array $data): void
 {
     require_once __DIR__ . '/sched_ical.php';
-    $enc = sched_ical_encrypt(json_encode($data, JSON_UNESCAPED_UNICODE));
+    $enc = sched_ical_encrypt(json_encode($data, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
     $pdo->prepare('UPDATE band_survey SET data_enc = ? WHERE survey_id = ?')->execute([$enc, $id]);
 }
 
@@ -311,7 +397,10 @@ function band_survey_load(PDO $pdo, int $id): ?array
     $plain = sched_ical_decrypt($r['data_enc']);
     $data = $plain === null ? null : json_decode($plain, true);
     $ok = is_array($data) && isset($data['roster']['bands']);
-    return ['survey_id' => (int)$r['survey_id'], 'title' => $r['title'], 'created_at' => $r['created_at'], 'data' => $ok ? $data + ['ranks' => []] : null];
+    if ($ok) {
+        $data += ['ranks' => [], 'targets' => array_column(band_survey_people($data['roster']), 0)];
+    }
+    return ['survey_id' => (int)$r['survey_id'], 'title' => $r['title'], 'created_at' => $r['created_at'], 'data' => $ok ? $data : null];
 }
 
 function band_survey_delete(PDO $pdo, int $id): void

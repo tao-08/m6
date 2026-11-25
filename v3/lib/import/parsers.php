@@ -339,8 +339,10 @@ function parse_roster(array $rows): array
             continue;
         }
         $cells = [];
+        $raw = []; // 名前にしなかった「未定」なども残した元の文字（バンド希望調査で使う）
         $members = [];
         foreach ($columns as $c => $col) {
+            $raw[$c] = tt_width($row[$c] ?? '');
             $names = split_member_names($row[$c] ?? '');
             $cells[$c] = implode('、', $names); // 1セルに2人いたら「、」でつないで1つの入力欄に
             foreach ($names as $person) {
@@ -352,6 +354,7 @@ function parse_roster(array $rows): array
         $bands[] = [
             'band_name'    => $name,
             'cells'        => $cells,
+            'raw'          => $raw,
             'members'      => $members,
             'song_count'   => $cSongs === null ? null : extract_int($row[$cSongs] ?? ''),
             // 人数は名簿の「人数」列を使わず、書いてある人を数える（ギタボのように同じ人が2つの欄にいても1人）

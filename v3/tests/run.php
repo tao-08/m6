@@ -1321,7 +1321,24 @@ check('希望調査: 照合を名簿に当てはめる', [$bsApply['member'], $b
 check('希望調査: その人のバンドでないものは issues', $bsApply['issues'], ['「びー」が 山田 太郎 のバンドに見つかりません']);
 check('希望調査: 選び直した人で当てはめ直す', band_survey_apply($bsRoster, $bsAi, '鈴木')['ranks'], ['B(鈴木)' => 2]);
 check('希望調査: 名簿にない人', band_survey_apply($bsRoster, ['member' => '謎'] + $bsAi), ['member' => '', 'ranks' => [], 'written' => [], 'issues' => ['回答した人が名簿に見つかりません']]);
-check('希望調査: 集計用の行', band_survey_rows(['roster' => $bsRoster, 'ranks' => ['佐藤' => ['A' => 1]]])[1], ['A', '佐藤', 1]);
+check('希望調査: 集計用の行は対象の人だけ', band_survey_rows(['roster' => $bsRoster, 'targets' => ['佐藤', '鈴木'], 'ranks' => ['佐藤' => ['A' => 1]]]), [['A', '佐藤', 1], ['B(山田 太郎)', '佐藤', null], ['B(鈴木)', '鈴木', null]]);
+$bsData = ['roster' => ['columns' => ['Vo', 'Gt'], 'bands' => [
+    ['band' => 'A', 'cells' => [['山田'], ['未定']]],
+    ['band' => 'B', 'cells' => [['山田'], ['佐藤']]],
+    ['band' => 'C', 'cells' => [['山田'], []]],
+]], 'targets' => ['山田', '佐藤'], 'ranks' => ['山田' => ['A' => 1, 'B' => 2, 'C' => 3], '佐藤' => ['B' => 1]]];
+check('希望調査: 「未定」は人に数えない', band_survey_band_members($bsData['roster']['bands'][0]), ['山田']);
+check('希望調査: 順位を詰める', band_survey_pack_ranks(['A' => 1, 'C' => 3]), ['A' => 1, 'C' => 2]);
+$bsSet = band_survey_set_cell($bsData, 0, 1, '未定', '鈴木', true);
+check('希望調査: 未定に人を足す', [$bsSet['roster']['bands'][0]['cells'][1], $bsSet['targets']], [['鈴木'], ['山田', '佐藤', '鈴木']]);
+$bsSet = band_survey_set_cell($bsData, 1, 0, '山田', '', false);
+check('希望調査: 外すと順位が消えて詰まる', [$bsSet['roster']['bands'][1]['cells'][0], $bsSet['ranks']['山田']], [[], ['A' => 1, 'C' => 2]]);
+$bsSet = band_survey_set_cell($bsData, 1, 1, '佐藤', '田中', false);
+check('希望調査: 入れ替えると前の人は対象と順位から外れる', [$bsSet['roster']['bands'][1]['cells'][1], $bsSet['targets'], isset($bsSet['ranks']['佐藤'])], [['田中'], ['山田'], false]);
+check('希望調査: 名簿にいる人は表記をそろえる', band_survey_set_cell($bsData, 2, 1, '', '佐 藤', true)['roster']['bands'][2]['cells'][1], ['佐藤']);
+$bsMerge = band_survey_merge($bsData, ['columns' => ['Vo'], 'bands' => [['band' => 'A', 'cells' => [['山田']]], ['band' => 'C', 'cells' => [['山田']]]]], ['山田']);
+check('希望調査: 名簿を読み直すと同じ人・バンドの回答が残る', $bsMerge['ranks'], ['山田' => ['A' => 1, 'C' => 2]]);
+check('希望調査: 対象でない人の回答は issues', band_survey_apply($bsRoster, $bsAi, null, ['佐藤'])['issues'], ['山田 太郎 は調査の対象ではありません']);
 
 echo "migrations\n";
 $migDup = [];
