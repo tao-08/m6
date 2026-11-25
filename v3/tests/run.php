@@ -1286,6 +1286,22 @@ check('セトリ: ライブ版とカラオケ版は1曲・当たった順', acr_
     'cover_songs' => [$acrHit(40, 'マリーゴールド【カラオケ】', 'A2'), $acrHit(10, 'マリーゴールド', 'A3')],
 ]), ['マリーゴールド', 'Lemon']);
 check('セトリ: 結果なしは空', acr_setlist_titles([]), []);
+echo "band survey\n";
+require_once __DIR__ . '/../lib/band_survey.php';
+$bsCsv = "\xEF\xBB\xBFバンド,メンバー,順位\nA,山田,1\nB,山田,2\nC,山田,3\nA,佐藤,2\nB,佐藤,1\nC,鈴木,\n\nC,田中,1\n";
+$bsRes = band_survey_parse_csv($bsCsv);
+check('希望調査: 見出し・BOM・空行を飛ばす', [count($bsRes['rows']), $bsRes['errors']], [7, []]);
+$bsSum = array_column(band_survey_summarize($bsRes['rows']), null, 'band');
+check('希望調査: A の熱量', $bsSum['A']['heat'], 0.5);
+check('希望調査: B の熱量', $bsSum['B']['heat'], 0.75);
+check('希望調査: C は n=1 の田中を除く', $bsSum['C']['heat'], 0.0);
+check('希望調査: C は全員が下位', $bsSum['C']['low_all'], true);
+check('希望調査: A は下位でない', $bsSum['A']['low_all'], false);
+check('希望調査: C の回答数', [$bsSum['C']['answered'], $bsSum['C']['total']], [2, 3]);
+check('希望調査: 熱量の高い順', array_column(band_survey_summarize($bsRes['rows']), 'band'), ['B', 'A', 'C']);
+check('希望調査: 重複順位はエラー1件', count(band_survey_parse_csv("A,x,1\nB,x,1\n")['errors']), 1);
+check('希望調査: 数字でない順位はエラー', count(band_survey_parse_csv("A,x,あ\n")['errors']), 1);
+check('希望調査: メンバーが空はエラー', band_survey_parse_csv("A,,1\n")['errors'], ['1行目: バンドかメンバーが空です']);
 
 echo "migrations\n";
 $migDup = [];

@@ -37,7 +37,7 @@ SET NAMES utf8mb4;
 -- まっさらな DB に流すと「Note: #1051 '〜' は不明な表です」が表の数だけ出るが、
 -- これは「消そうとした表が最初から無かった」というだけの“お知らせ”で、エラーではない。
 SET FOREIGN_KEY_CHECKS = 0;
-DROP TABLE IF EXISTS sched_nav_cache, sched_google_event, sched_fix, sched_google, sched_travel, sched_ignore, sched_weekly, sched_poll_studio, sched_poll_member, sched_poll, sched_busy, sched_class, sched_profile, intro_best, block_month_best, block_best, sheet_log, song_link_practice, song_link, song_part, song_work_primary, venue_image, song_catalog, song_tab_ai_usage, song_meta_image, song_tab_image, song_meta, song_tab_practice, song_tab_revision, song_tab, timetable_draft_presence, timetable_draft, band_image, notice_image, board_post_image, live_image, push_subscription, comment_like, comment_reply, comment, board_poll_vote, board_poll_option, board_thread_mute, board_notify_category, board_notify, board_report, board_post_like, board_post_reply, board_read, board_post, board_thread, board_category, notice_read, notice, notice_category, change_unit, change_op, inquiry, band_like, app_setting, login_attempt, track_preview, track_link_cache, album_link_cache,
+DROP TABLE IF EXISTS band_survey, sched_nav_cache, sched_google_event, sched_fix, sched_google, sched_travel, sched_ignore, sched_weekly, sched_poll_studio, sched_poll_member, sched_poll, sched_busy, sched_class, sched_profile, intro_best, block_month_best, block_best, sheet_log, song_link_practice, song_link, song_part, song_work_primary, venue_image, song_catalog, song_tab_ai_usage, song_meta_image, song_tab_image, song_meta, song_tab_practice, song_tab_revision, song_tab, timetable_draft_presence, timetable_draft, band_image, notice_image, board_post_image, live_image, push_subscription, comment_like, comment_reply, comment, board_poll_vote, board_poll_option, board_thread_mute, board_notify_category, board_notify, board_report, board_post_like, board_post_reply, board_read, board_post, board_thread, board_category, notice_read, notice, notice_category, change_unit, change_op, inquiry, band_like, app_setting, login_attempt, track_preview, track_link_cache, album_link_cache,
     check_dismiss, band_check_member, member_role, role, artist_alias, member_favorite_album, song_performer, song, track, band_member, live_break, band,
     artist, live_day, live, venue, instrument, user_account, member;
 SET FOREIGN_KEY_CHECKS = 1;
@@ -1929,4 +1929,17 @@ CREATE TABLE special_content (
     PRIMARY KEY (special_id),
     KEY idx_special_year (fiscal_year),
     KEY idx_special_live (live_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- ---------------------------------------------------------------------
+--  band_survey — バンド希望調査（migrations/142 に説明）
+-- ---------------------------------------------------------------------
+CREATE TABLE band_survey (
+    survey_id  INT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '調査の ID',
+    title      VARCHAR(100) NOT NULL COMMENT '調査名',
+    data_enc   MEDIUMTEXT   NOT NULL COMMENT '回答行 [[バンド, メンバー, 順位]] の JSON を暗号化したもの',
+    created_by INT UNSIGNED NULL COMMENT 'アップロードしたアカウント。消えたら NULL',
+    created_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'アップロード日時',
+    PRIMARY KEY (survey_id),
+    CONSTRAINT fk_band_survey_user FOREIGN KEY (created_by) REFERENCES user_account (user_id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;

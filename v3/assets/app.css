@@ -876,6 +876,8 @@ button.tab { border: 0; background: none; font: inherit; font-weight: 800; font-
 .table tr.is-me td { background: var(--accent-soft); }
 .bar-track { flex: 1; min-width: 48px; }
 .bar { display: block; height: 8px; width: var(--w); min-width: 4px; border-radius: var(--r-full); background: linear-gradient(90deg, var(--accent), var(--accent-2)); }
+/* 表の中（band_survey.php）では棒が細くならないよう幅を確保 */
+.table .bar-track { min-width: 120px; }
 .bar-num { min-width: 1.5em; text-align: right; font-weight: 800; font-variant-numeric: tabular-nums; }
 /* 並べ替えできる列の見出し（members.php の sort_th） */
 .table th.sortable a { color: inherit; text-decoration: none; display: inline-flex; align-items: baseline; }

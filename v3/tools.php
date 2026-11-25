@@ -47,6 +47,11 @@ if (is_executive()) {
     $tools[] = ['studio', 'meeting_room', 'スタジオ割',
         '練習の要否を集め、メンバーが重ならないように練習の順番と部屋を決めて画像にします。', '幹部'];
 }
+// バンド希望調査（lib/band_survey.php の条件を満たす人だけ）
+require_once __DIR__ . '/lib/band_survey.php';
+if (band_survey_can_view()) {
+    $tools[] = ['band_survey', 'poll', 'バンド希望調査', '部員の希望順位から、バンドごとの熱量を集計します。', '幹部'];
+}
 // 試聴の一括調査（管理者だけ。イントロクイズで出せる曲を増やす）
 if (is_admin()) {
     $tools[] = ['intro_previews', 'headphones', '試聴の一括調査',
@@ -68,7 +73,7 @@ foreach (!empty(current_user()['member_id']) ? sched_todo_polls(db(), (int)curre
 $tabs = ['data' => 'データ', 'useful' => '便利ツール', 'admin' => '運営ツール', 'game' => 'ゲーム'];
 $tabOf = [
     'songs' => 'data', 'venue_list' => 'data', 'studio_list' => 'data', 'special' => 'data',
-    'tt_builder' => 'admin', 'studio' => 'admin', 'sheet_templates' => 'admin', 'intro_previews' => 'admin',
+    'tt_builder' => 'admin', 'studio' => 'admin', 'sheet_templates' => 'admin', 'intro_previews' => 'admin', 'band_survey' => 'admin',
     'block' => 'game', 'intro' => 'game',
 ];
 $grouped = array_fill_keys(array_keys($tabs), []);
