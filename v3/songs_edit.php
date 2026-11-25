@@ -259,6 +259,9 @@ if (!is_post() && ($_GET['from_acr'] ?? '') === '1' && is_admin()) {
     $env = acr_config();
     $file = $env === null ? null : acr_fetch_file($env, (string)($band['acr_file_id'] ?? ''));
     $sheetTitles = (int)($file['state'] ?? 0) === 1 && is_array($file['results'] ?? null) ? acr_setlist_titles($file['results']) : [];
+    if ($sheetTitles) {
+        acr_forget($pdo, $env, $bandId, (string)$band['acr_file_id']); // 曲名はもう画面に並べたので、ACRCloud の容量を空ける
+    }
     if (!$sheetTitles) {
         redirect($backUrl);
     }

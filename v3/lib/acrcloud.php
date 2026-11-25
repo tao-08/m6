@@ -169,7 +169,7 @@ function acr_config(): ?array
 }
 
 /** ACRCloud を呼ぶ。戻り値: [HTTP ステータス, JSON]。つながらなければ [0, ['message' => cURL のエラー]] */
-function acr_request(array $env, string $url, mixed $postFields, int $timeout): array
+function acr_request(array $env, string $url, mixed $postFields, int $timeout, string $method = ''): array
 {
     $ch = curl_init($url);
     $opts = [
@@ -181,6 +181,9 @@ function acr_request(array $env, string $url, mixed $postFields, int $timeout): 
     if ($postFields !== null) {
         $opts[CURLOPT_POST] = true;
         $opts[CURLOPT_POSTFIELDS] = $postFields;
+    }
+    if ($method !== '') {
+        $opts[CURLOPT_CUSTOMREQUEST] = $method;
     }
     curl_setopt_array($ch, $opts);
     $body = curl_exec($ch);
@@ -218,4 +221,16 @@ function acr_fetch_file(array $env, string $fileId): ?array
     $res = acr_request($env, $env['files'] . '/' . $fileId, null, 20);
     $file = $res[0] === 200 ? ($res[1]['data'][0] ?? null) : null;
     return is_array($file) ? $file : null;
+}
+
+/**
+ * 使い終わったファイルを ACRCloud から消し、バンドの acr_file_id も外す
+ *   無料の枠ではコンテナの容量が数件分しかないので、結果を読んだら（または結果なし・エラーなら）すぐ消す
+ */
+function acr_forget(PDO $pdo, array $env, int $bandId, string $fileId): void
+{
+    if (acr_valid_file_id($fileId)) {
+        acr_request($env, $env['files'] . '/' . $fileId, null, 20, 'DELETE');
+    }
+    $pdo->prepare('UPDATE band SET acr_file_id = NULL WHERE band_id = ? AND acr_file_id = ?')->execute([$bandId, $fileId]);
 }

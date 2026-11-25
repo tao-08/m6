@@ -56,9 +56,14 @@ if ($fileId === '') {
 }
 $file = acr_fetch_file($env, $fileId);
 $state = (int)($file['state'] ?? 0); // 取れないとき（一時的な通信エラー）は処理中として、もう一度待たせる
-api_ok(['state' => match (true) {
+$result = match (true) {
     $state === 0 => 'processing',
     $state === 1 => acr_setlist_titles(is_array($file['results'] ?? null) ? $file['results'] : []) ? 'done' : 'none',
     $state === -1 => 'none',
     default => 'error',
-}]);
+};
+// done は確認画面（songs_edit?from_acr=1）が結果を読んでから消す。それ以外はもう使わないので、ここで消す
+if ($result === 'none' || $result === 'error') {
+    acr_forget($pdo, $env, $bandId, $fileId);
+}
+api_ok(['state' => $result]);
