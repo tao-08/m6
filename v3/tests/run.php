@@ -1273,6 +1273,20 @@ check('通報の信号: 自分の書き込みの0件は出さない', board_sign
 check('通報の信号: 自分の書き込みは押せない', str_contains(board_signal_html(5, ['count' => 1], true), '<button'), false);
 check('通報の信号: 通報済みは取り消せる', str_contains(board_signal_html(5, ['count' => 1, 'mine' => true], false), 'is-mine'), true);
 
+echo "acrcloud\n";
+require_once __DIR__ . '/../lib/acrcloud.php';
+check('曲名: (Live) を消す', acr_clean_title('マリーゴールド (Live)'), 'マリーゴールド');
+check('曲名: 【カラオケ】を消す', acr_clean_title('マリーゴールド【カラオケ】'), 'マリーゴールド');
+check('曲名: 後ろの - Instrumental を消す', acr_clean_title('Lemon - Instrumental'), 'Lemon');
+check('曲名: 付け足しでない括弧は残す', acr_clean_title('夜に駆ける (YOASOBI)'), '夜に駆ける (YOASOBI)');
+check('曲名: 全部消えるなら元のまま', acr_clean_title('(Live)'), '(Live)');
+$acrHit = fn(float $off, string $title, string $isrc) => ['offset' => $off, 'played_duration' => 10.0, 'result' => ['title' => $title, 'artists' => [], 'external_ids' => ['isrc' => $isrc]]];
+check('セトリ: ライブ版とカラオケ版は1曲・当たった順', acr_setlist_titles([
+    'music'       => [$acrHit(30, 'マリーゴールド (Live)', 'A1'), $acrHit(300, 'Lemon', 'B1')],
+    'cover_songs' => [$acrHit(40, 'マリーゴールド【カラオケ】', 'A2'), $acrHit(10, 'マリーゴールド', 'A3')],
+]), ['マリーゴールド', 'Lemon']);
+check('セトリ: 結果なしは空', acr_setlist_titles([]), []);
+
 echo "migrations\n";
 $migDup = [];
 foreach (glob(__DIR__ . '/../migrations/*.sql') as $f) {

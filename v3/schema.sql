@@ -265,6 +265,7 @@ CREATE TABLE band (
     song_count  TINYINT UNSIGNED  NULL,                -- 曲数。NULL = 不明（未入力）。0 = 0曲（migrations/014）
     note        VARCHAR(255)      NULL,                -- 鍵盤の私物/貸出など
     youtube_url VARCHAR(500)      NULL,                -- このバンドの演奏動画の YouTube のリンク。無ければ NULL（migrations/012）
+    acr_file_id VARCHAR(64)       NULL,                -- 動画から曲を検出した ACRCloud の file_id。NULL = 送っていない（migrations/141）
     is_omnibus  TINYINT(1)        NOT NULL DEFAULT 0,  -- 1 = いろんなアーティストの曲をやるバンド（曲ごとに song.artist_id を持つ。artist_id は NULL）
     needs_check TINYINT UNSIGNED  NOT NULL DEFAULT 0,  -- 🚩 確認依頼の理由のビット（0 = なし / 1 担当楽器 / 2 Vo か Vo/Gt / 4 メンバー。migrations/015, 026）
     setlist_private TINYINT(1)    NOT NULL DEFAULT 0,  -- 1 = セットリストを終演30分後まで非公開（メンバーと管理者には見える。migrations/023）

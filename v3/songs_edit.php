@@ -28,6 +28,7 @@ require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/repository.php';
 require_once __DIR__ . '/lib/tracks.php';
 require_once __DIR__ . '/lib/youtube.php'; // 概要欄から曲名を読む
+require_once __DIR__ . '/lib/acrcloud.php'; // 動画から検出した曲名（from_acr）
 require_once __DIR__ . '/lib/history.php'; // 変更履歴（元に戻すための「変更前の状態」を残す）
 require_login();
 
@@ -251,6 +252,19 @@ if (!is_post() && ($_GET['from_yt'] ?? '') === '1') {
     $sheetTracks = array_fill(0, count($sheetTitles), null);
     $fromSheet = true;
     $fromYt = true; // 画面を開いたら、曲ごとに候補を自動で探す（data-auto-search）
+}
+
+// バンド編集の「動画から曲を検出」が終わったあと: 検出した曲名を同じようにカードに並べる（保存はまだしない）
+if (!is_post() && ($_GET['from_acr'] ?? '') === '1' && is_admin()) {
+    $env = acr_config();
+    $file = $env === null ? null : acr_fetch_file($env, (string)($band['acr_file_id'] ?? ''));
+    $sheetTitles = (int)($file['state'] ?? 0) === 1 && is_array($file['results'] ?? null) ? acr_setlist_titles($file['results']) : [];
+    if (!$sheetTitles) {
+        redirect($backUrl);
+    }
+    $sheetTracks = array_fill(0, count($sheetTitles), null);
+    $fromSheet = true;
+    $fromYt = true;
 }
 
 // 曲ごとの演奏者: [song_id][member_id] = [instrument_id, ...]

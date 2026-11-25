@@ -25,7 +25,7 @@
  */
 declare(strict_types=1);
 
-require_once __DIR__ . '/../v3/lib/albums.php'; // album_http（通信）・album_match_key（曲名の表記ゆれをそろえる）
+require_once __DIR__ . '/../v3/lib/acrcloud.php'; // 結果の統合（acr_merge_results）・album_http（通信）
 
 /** 完了待ちの間隔（秒）と、確認する回数の上限。無制限には待たない（5秒×12 + 10秒×78 = 約14分） */
 const ACR_POLL_FAST_SEC = 5;
@@ -36,10 +36,6 @@ const ACR_POLL_MAX = 90;
 const ACR_POLL_MAX_ERRORS = 5;
 /** 通信の待ち時間の上限（秒） */
 const ACR_HTTP_TIMEOUT_SEC = 30;
-/** この秒数以内の重なり・すき間なら、同じ曲の同じ演奏として1行にまとめる */
-const ACR_MERGE_GAP_SEC = 5.0;
-/** コンテナを作れるリージョン（URL のホスト名に入れるので、この中の値しか使わない） */
-const ACR_REGIONS = ['eu-west-1', 'us-west-2', 'ap-southeast-1'];
 
 /** API を呼んだ回数 */
 $GLOBALS['acr_calls'] = 0;
@@ -47,102 +43,6 @@ $GLOBALS['acr_calls'] = 0;
 /* ---------------------------------------------------------------------
  * 結果の整理（通信なし → selftest で確かめる）
  * ------------------------------------------------------------------- */
-
-/**
- * results.music / results.cover_songs の1要素を、表示用の形にそろえる
- *   戻り値: ['start' => 秒, 'end' => 秒 または null, 'title' => ..., 'artist' => ..., 'src' => 'music'|'cover',
- *           'score' => int または null, 'isrc' => ...]。曲名が取れない要素は null
- */
-function acr_normalize_item(array $e, string $src): ?array
-{
-    $title = trim((string)($e['result']['title'] ?? ''));
-    if ($title === '' || !isset($e['offset']) || !is_numeric($e['offset'])) {
-        return null;
-    }
-    $names = [];
-    foreach ($e['result']['artists'] ?? [] as $a) {
-        $n = trim((string)($a['name'] ?? ''));
-        if ($n !== '') {
-            $names[] = $n;
-        }
-    }
-    $start = (float)$e['offset'];
-    $dur = isset($e['played_duration']) && is_numeric($e['played_duration']) ? (float)$e['played_duration'] : null;
-    // score が無いものは null のまま（確度を推測しない）。music の score は 0〜100 の整数
-    $score = isset($e['result']['score']) && is_numeric($e['result']['score']) ? (int)$e['result']['score'] : null;
-    return [
-        'start'  => $start,
-        'end'    => $dur !== null ? $start + $dur : null,
-        'title'  => $title,
-        'artist' => implode(', ', $names),
-        'src'    => $src,
-        'score'  => $score,
-        'isrc'   => trim((string)($e['result']['external_ids']['isrc'] ?? '')),
-    ];
-}
-
-/** 2つの要素が「同じ曲」か。ISRC が両方あればそれで、無ければ曲名の表記をそろえて比べる */
-function acr_same_song(array $a, array $b): bool
-{
-    if ($a['isrc'] !== '' && $b['isrc'] !== '') {
-        return strcasecmp($a['isrc'], $b['isrc']) === 0;
-    }
-    $ka = album_match_key($a['title']);
-    return $ka !== '' && $ka === album_match_key($b['title']);
-}
-
-/**
- * music と cover_songs をまとめて、開始位置の順に並べる
- *   同じ曲で時間帯が重なる（またはほぼ隣り合う）ものは1行に統合する → 由来は 'music+cover'
- *   同じ曲でも離れた場所なら別の行（再演）
- * @param array $results 取得結果の results（music / cover_songs を持つ）
- * @return array[] acr_normalize_item の形（src は 'music' | 'cover' | 'music+cover'）
- */
-function acr_merge_results(array $results): array
-{
-    $items = [];
-    foreach (['music' => 'music', 'cover_songs' => 'cover'] as $key => $src) {
-        foreach ($results[$key] ?? [] as $e) {
-            $it = is_array($e) ? acr_normalize_item($e, $src) : null;
-            if ($it !== null) {
-                $items[] = $it;
-            }
-        }
-    }
-    usort($items, fn($a, $b) => $a['start'] <=> $b['start']);
-
-    $rows = [];
-    foreach ($items as $it) {
-        $hit = null;
-        foreach ($rows as $i => $r) {
-            // 長さが取れない要素は、開始位置だけで比べる
-            $rEnd = $r['end'] ?? $r['start'];
-            if (acr_same_song($r, $it) && $it['start'] <= $rEnd + ACR_MERGE_GAP_SEC && ($it['end'] ?? $it['start']) >= $r['start'] - ACR_MERGE_GAP_SEC) {
-                $hit = $i;
-                break;
-            }
-        }
-        if ($hit === null) {
-            $rows[] = $it;
-            continue;
-        }
-        $r = $rows[$hit];
-        $r['start'] = min($r['start'], $it['start']);
-        $ends = array_filter([$r['end'], $it['end']], fn($v) => $v !== null);
-        $r['end'] = $ends ? max($ends) : null;
-        if ($r['src'] !== $it['src']) {
-            $r['src'] = 'music+cover';
-        }
-        $r['score'] = $r['score'] ?? $it['score'];
-        $r['isrc'] = $r['isrc'] !== '' ? $r['isrc'] : $it['isrc'];
-        if ($r['artist'] === '') {
-            $r['artist'] = $it['artist'];
-        }
-        $rows[$hit] = $r;
-    }
-    usort($rows, fn($a, $b) => $a['start'] <=> $b['start']);
-    return $rows;
-}
 
 /** 秒 → "m:ss"（1時間を超えても分で数える。取れなければ "-"） */
 function acr_mmss(?float $sec): string
@@ -315,11 +215,6 @@ function acr_files_base(array $env): string
     return 'https://api-' . $env['region'] . '.acrcloud.com/api/fs-containers/' . $env['container_id'] . '/files';
 }
 
-function acr_valid_file_id(string $id): bool
-{
-    return (bool)preg_match('/^[A-Za-z0-9-]{8,64}$/', $id);
-}
-
 /* ---------------------------------------------------------------------
  * コマンド
  * ------------------------------------------------------------------- */
@@ -393,7 +288,7 @@ function acr_show_result(array $file, bool $tsv, bool $raw, ?float $elapsed): in
 }
 
 /** $retryable = true のときは、サーバー側の一時的なエラー（5xx）で止まらず null を返す（完了待ちの途中用） */
-function acr_fetch_file(array $env, string $fileId, bool $retryable = false): ?array
+function acr_poc_fetch_file(array $env, string $fileId, bool $retryable = false): ?array
 {
     $res = acr_call($env, 'GET', acr_files_base($env) . '/' . $fileId);
     if ($retryable && $res['status'] >= 500) {
@@ -427,7 +322,7 @@ function acr_cmd_scan(array $env, string $url, bool $tsv, bool $raw): int
     $errors = 0;
     for ($i = 0; $i < ACR_POLL_MAX; $i++) {
         sleep($i < ACR_POLL_FAST_COUNT ? ACR_POLL_FAST_SEC : ACR_POLL_SLOW_SEC);
-        $file = acr_fetch_file($env, $fileId, true);
+        $file = acr_poc_fetch_file($env, $fileId, true);
         if ($file === null) {
             // 5xx が続くときは諦める（無制限には粘らない）
             if (++$errors >= ACR_POLL_MAX_ERRORS) {
@@ -600,7 +495,7 @@ switch ($cmd) {
             acr_fail('使い方: php scripts/acr_poc.php result <file_id> [--tsv] [--raw]');
         }
         $env = acr_load_env();
-        exit(acr_show_result(acr_fetch_file($env, $args[1]), $tsv, $raw, null));
+        exit(acr_show_result(acr_poc_fetch_file($env, $args[1]), $tsv, $raw, null));
     case 'list':
         acr_cmd_list(acr_load_env());
         break;
