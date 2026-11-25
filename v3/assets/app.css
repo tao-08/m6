@@ -401,6 +401,10 @@ body:has([data-tutorial-auto]) .toasts { display: none; }
 .year-slot::before { content: '▼'; position: absolute; left: 9px; top: 50%; transform: translateY(-50%);
   font-size: 8px; color: var(--muted); pointer-events: none; z-index: 1; }
 .year-slot__item { padding-left: 14px; }
+/* 細いスロット（プルダウンなし・▼なし。タップで次の段）: 幅は中身の長さに合わせて HTML 側の --slot-w で決める */
+.year-slot--slim { width: var(--slot-w, 3.6em); }
+.year-slot--slim::before { content: none; }
+.year-slot--slim .year-slot__item { padding: 0 6px; }
 .year-slot__full { display: none; }
 .year-slot--live { width: 6.4em; } /* ライブ一覧: 高さは検索バーに合わせる（app.js） */
 .year-slot--live .year-slot__item { font-size: var(--fs-2xl); }

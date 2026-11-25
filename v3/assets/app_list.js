@@ -253,6 +253,7 @@ function makeSlot(slot, onSelect) {
   let index = Math.max(0, items.findIndex((el) => el.classList.contains('is-current')));
 
   const clamp = (n) => Math.max(0, Math.min(max, n));
+  const slim = slot.classList.contains('year-slot--slim');
   // 1段の高さと、0番目を真ん中の段に置くためのずらし量（窓は3段ぶんの高さ）
   const itemH = () => items[0].offsetHeight;
   const top = () => (slot.clientHeight - itemH()) / 2;
@@ -342,7 +343,8 @@ function makeSlot(slot, onSelect) {
     startY = null;
     const h = itemH();
     if (Math.abs(dy) < 4) {
-            // ほぼ動いていない = タップ → プルダウンを開く
+      // ほぼ動いていない = タップ → プルダウンを開く（.year-slot--slim はプルダウンなしで次の段へ。最後の次は最初）
+      if (slim) { select(index === max ? 0 : index + 1); return; }
       select(index);
       openMenu();
     } else {
@@ -367,7 +369,7 @@ function makeSlot(slot, onSelect) {
     if (step) { e.preventDefault(); select(index + step); }
     if (e.key === 'Home') { e.preventDefault(); select(0); }
     if (e.key === 'End') { e.preventDefault(); select(max); }
-    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openMenu(); }
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (slim) select(index === max ? 0 : index + 1); else openMenu(); }
     if (e.key === 'Escape') closeMenu();
   });
 

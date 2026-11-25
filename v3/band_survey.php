@@ -455,7 +455,7 @@ if ($id > 0) {
                 <div class="survey-filter" data-survey-filter>
                     <button type="button" class="btn btn--ghost btn--sm" data-survey-filter-toggle aria-expanded="false" aria-label="絞り込み" title="絞り込み"><?= icon('filter_alt', 'icon--fill') ?></button>
                     <div class="survey-filter__body">
-                    <div class="year-slot year-slot--grade" data-survey-filter-slot tabindex="0" role="spinbutton" aria-label="順位">
+                    <div class="year-slot year-slot--grade year-slot--slim" style="--slot-w: 3.4em" data-survey-filter-slot tabindex="0" role="spinbutton" aria-label="順位">
                         <div class="year-slot__reel">
                             <?php for ($r = 1; $r <= $maxRank; $r++): ?>
                                 <?= grade_slot_item((string)$r, $r . '位', '1') ?>
@@ -463,10 +463,17 @@ if ($id > 0) {
                         </div>
                     </div>
                     <span class="small" data-survey-filter-text>に入れた人が</span>
-                    <div class="year-slot year-slot--grade" data-survey-filter-count tabindex="0" role="spinbutton" aria-label="人数">
+                    <div class="year-slot year-slot--grade year-slot--slim" style="--slot-w: 3.4em" data-survey-filter-count tabindex="0" role="spinbutton" aria-label="人数">
                         <div class="year-slot__reel">
-                            <?php foreach (['0' => '0人', '1' => '1人', '2' => '2人', '3' => '3人', '4' => '4人以上'] as $v => $label): ?>
+                            <?php foreach (['0' => '0人', '1' => '1人', '2' => '2人', '3' => '3人', '4' => '4人'] as $v => $label): ?>
                                 <?= grade_slot_item((string)$v, $label, '1') ?>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
+                    <div class="year-slot year-slot--grade year-slot--slim" style="--slot-w: 3.2em" data-survey-filter-more tabindex="0" role="spinbutton" aria-label="範囲">
+                        <div class="year-slot__reel">
+                            <?php foreach (['ge' => '以上', 'le' => '以下', 'eq' => 'のみ'] as $v => $label): ?>
+                                <?= grade_slot_item($v, $label, 'eq') ?>
                             <?php endforeach; ?>
                         </div>
                     </div>

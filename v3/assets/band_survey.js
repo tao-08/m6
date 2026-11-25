@@ -28,12 +28,16 @@
         }
     });
 
-    /* ---------- 表の絞り込み: 「◯位まで入れた人が 0〜3人 / 4人以上」（どちらもスロット）バンドだけ出す ---------- */
-    const filter = { rank: '1', mode: '', last: '1' }; // mode: 人数（'' = 閉じている・絞り込まない）/ last: 開き直したときの人数
+    /* ---------- 表の絞り込み: 「◯位まで入れた人が 0〜4人」＋「以上 / 以下 / のみ」（どれもスロット）（どちらもスロット）バンドだけ出す ---------- */
+    const filter = { rank: '1', mode: '', last: '1', more: 'eq' }; // mode: 人数（'' = 閉じている・絞り込まない）/ last: 開き直したときの人数
     const applyFilter = () => {
+        const zero = filter.mode === '0'; // 0人には「以上 / 以下」がない（隠して「のみ」として扱う）
+        const op = zero ? 'eq' : filter.more;
+        const moreSlot = document.querySelector('[data-survey-filter-more]');
+        if (moreSlot) moreSlot.hidden = zero;
         document.querySelectorAll('[data-survey-pane="table"] tr[data-ranks]').forEach((tr) => {
             const hits = tr.dataset.ranks.split(',').filter((r) => r !== '' && Number(r) <= Number(filter.rank)).length;
-            tr.hidden = filter.mode !== '' && Math.min(hits, 4) !== Number(filter.mode); // mode 4 = 4人以上
+            tr.hidden = filter.mode !== '' && !({ ge: hits >= Number(filter.mode), le: hits <= Number(filter.mode), eq: hits === Number(filter.mode) })[op];
         });
         // バンドの見出しの（出ている数/全部）: 一時削除・絞り込みで隠したバンドは数えない
         const rows = [...document.querySelectorAll('[data-survey-pane="table"] tr[data-ranks]')];
@@ -56,7 +60,7 @@
             toggle.title = toggle.getAttribute('aria-label');
             toggle.querySelector('.icon').textContent = open ? 'filter_alt_off' : 'filter_alt';
         }
-        document.querySelectorAll('[data-survey-filter-slot], [data-survey-filter-count]').forEach((s) => s.classList.toggle('is-filtered', open));
+        document.querySelectorAll('[data-survey-filter-slot], [data-survey-filter-count], [data-survey-filter-more]').forEach((s) => s.classList.toggle('is-filtered', open));
         const text = document.querySelector('[data-survey-filter-text]');
         if (text) text.textContent = filter.rank === '1' ? 'に入れた人が' : 'まで入れた人が'; // 「1位まで」は言わない
     };
@@ -70,6 +74,7 @@
             filter.mode = filter.last = value;
             applyFilter();
         });
+        makeSlot(box.querySelector('[data-survey-filter-more]'), (value) => { filter.more = value; applyFilter(); });
         box.querySelector('[data-survey-filter-toggle]').addEventListener('click', () => { filter.mode = filter.mode ? '' : filter.last; applyFilter(); });
     };
     if (!document.querySelector('[data-survey-pane="table"]')?.hidden) setupFilter();
