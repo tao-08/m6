@@ -33,6 +33,7 @@
 declare(strict_types=1);
 require_once __DIR__ . '/claude.php';
 require_once __DIR__ . '/studio_info.php';
+require_once __DIR__ . '/repository.php'; // EQUIP_AMP_CATEGORIES。POST 時は header.php より先に使うので、ここで読む
 require_once __DIR__ . '/import/ai_reader.php'; // 画像の検証・縮小（ai_prepare_image）と枚数の上限（AI_MAX_IMAGES）
 
 /** 反映できる項目（キー => 表示名）。この順にプレビューに出す */
