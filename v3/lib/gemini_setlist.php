@@ -1,7 +1,7 @@
 <?php
 /**
  * lib/gemini_setlist.php — ライブ音源を Gemini に聴かせて、演奏した曲名を演奏順に取り出す（動画から曲を検出）
- *   バンド編集で選んだ動画から、ブラウザ（assets/setlist_detect.js）が音声だけ抜いた MP3 を api_setlist_detect.php が渡す。
+ *   セットリスト編集の「YouTube から曲を検出」で、api_setlist_detect.php がバンドの YouTube から落とした音声（lib/ytdlp.php）を渡す。
  *   結果はセトリの確認画面（songs_edit.php?from_detect=1）に並べるだけで、保存は人が確かめてから
  */
 declare(strict_types=1);
@@ -131,20 +131,21 @@ function gemini_setlist_schema(): array
 }
 
 /**
+ * @param string $mime 音声の種類（YouTube の m4a は audio/aac）
  * @param ?string $artist コピー元のアーティスト（オムニバス・不明なら null）。わからない曲が残ったら、これを伝えてもう一度聴かせる
  * @return array|string gemini_setlist_songs の形。失敗したら画面に出せる理由
  */
-function gemini_setlist(string $path, array $cfg, ?string $artist = null): array|string
+function gemini_setlist(string $path, string $mime, array $cfg, ?string $artist = null): array|string
 {
     $schema = gemini_setlist_schema();
-    $json = gemini_audio_json($path, 'audio/mpeg', $cfg['key'], $cfg['model'], GEMINI_SETLIST_PROMPT, $schema, GEMINI_SETLIST_THINKING);
+    $json = gemini_audio_json($path, $mime, $cfg['key'], $cfg['model'], GEMINI_SETLIST_PROMPT, $schema, GEMINI_SETLIST_THINKING);
     if (is_string($json)) {
         return $json;
     }
     $songs = gemini_setlist_songs($json);
     $artist = trim((string)$artist);
     if ($artist !== '' && gemini_setlist_has_unknown($songs)) {
-        $again = gemini_audio_json($path, 'audio/mpeg', $cfg['key'], $cfg['model'], gemini_setlist_hint_prompt($artist), $schema, GEMINI_SETLIST_THINKING);
+        $again = gemini_audio_json($path, $mime, $cfg['key'], $cfg['model'], gemini_setlist_hint_prompt($artist), $schema, GEMINI_SETLIST_THINKING);
         if (is_array($again)) { // 2回目が失敗したら、1回目の結果だけ返す
             $songs = gemini_setlist_fill($songs, gemini_setlist_songs($again));
         }

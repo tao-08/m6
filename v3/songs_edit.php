@@ -28,7 +28,7 @@ require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/repository.php';
 require_once __DIR__ . '/lib/tracks.php';
 require_once __DIR__ . '/lib/youtube.php'; // 概要欄から曲名を読む
-require_once __DIR__ . '/lib/gemini_setlist.php'; // 動画から曲を検出（Gemini の設定があるときだけ欄を出す）
+require_once __DIR__ . '/lib/gemini_setlist.php'; // YouTube から曲を検出（Gemini の設定があるときだけボタンを出す）
 require_once __DIR__ . '/lib/history.php'; // 変更履歴（元に戻すための「変更前の状態」を残す）
 require_login();
 
@@ -257,7 +257,7 @@ if (!is_post() && ($_GET['from_yt'] ?? '') === '1') {
     $fromYt = true; // 画面を開いたら、曲ごとに候補を自動で探す（data-auto-search）
 }
 
-// 「動画から曲を検出」（このページの上）が終わったあと: api_setlist_detect がセッションに置いた曲名を、同じようにカードに並べる（保存はまだしない）
+// 「YouTube から曲を検出」（このページの上）が終わったあと: api_setlist_detect がセッションに置いた曲名を、同じようにカードに並べる（保存はまだしない）
 if (!is_post() && ($_GET['from_detect'] ?? '') === '1' && is_admin()) {
     $detected = $_SESSION['setlist_detect'][$bandId] ?? [];
     unset($_SESSION['setlist_detect'][$bandId]); // 1回だけ使う
@@ -386,11 +386,10 @@ render_header('セットリストを編集', 'lives');
 <?php if (!$songs && !$fromSheet && youtube_video_id((string)$band['youtube_url']) !== null): ?>
     <p><a class="btn btn--ghost btn--sm" href="songs_edit?band=<?= $bandId ?>&amp;from_yt=1">YouTube の概要欄から取り込む</a></p>
 <?php endif; ?>
-<?php if (!$fromSheet && is_admin() && gemini_setlist_config() !== null): // 送るたびに Gemini の料金がかかるので管理者だけ ?>
-    <!-- 選ぶと assets/setlist_detect.js が音声だけ抜いて api_setlist_detect に送り、終わったらこのページの確認画面（from_detect=1）へ -->
-    <div class="field" data-setlist-detect data-band="<?= $bandId ?>" data-done-url="songs_edit?band=<?= $bandId ?>&amp;from_detect=1">
-        <span>動画から曲を検出</span>
-        <input type="file" accept="video/*,audio/*" aria-label="動画を選ぶ">
+<?php if (!$fromSheet && is_admin() && gemini_setlist_config() !== null && youtube_video_id((string)$band['youtube_url']) !== null): // 送るたびに Gemini の料金がかかるので管理者だけ ?>
+    <!-- 押すと assets/setlist_detect.js が api_setlist_detect に送る（サーバーがバンドの YouTube から音声を落として Gemini に聴かせる）。終わったらこのページの確認画面（from_detect=1）へ -->
+    <div data-setlist-detect data-band="<?= $bandId ?>" data-done-url="songs_edit?band=<?= $bandId ?>&amp;from_detect=1">
+        <p><button type="button" class="btn btn--ghost btn--sm"><?= icon('smart_display') ?> YouTube から曲を検出</button></p>
         <p class="muted small" data-setlist-status role="status" hidden></p>
     </div>
     <script type="module" src="<?= asset_url('assets/setlist_detect.js') ?>"></script>
