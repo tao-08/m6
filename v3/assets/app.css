@@ -3276,6 +3276,8 @@ span.signal { cursor: default; }
 .survey-written { cursor: default; text-decoration: underline dotted; } /* 名簿のバンド名と回答の書き方がちがう（data-tip で回答を出す） */
 /* バンド希望調査の表（band_survey.php）: 名前のチップを優先度（--heat: 1位 = 1、最下位 = 0）で赤く塗る。未回答は灰色 */
 .survey-map td { white-space: nowrap; }
+.survey-map .survey-off { padding-inline: 10px 0; text-align: center; line-height: 1.2; } /* 一時削除の欄: 見出しを2行にして、バンド名との間を詰める */
+.survey-map .survey-off + :is(th, td) { padding-left: 10px; }
 .survey-map tr.is-off > td:not(:first-child) { opacity: .35; } /* 一時削除したバンド（チェックの欄は押せる見た目のまま） */
 .survey-edit tr.is-off > td:first-child { opacity: .35; } /* 回答タブ: 一時削除したバンドの名前 */
 /* 回答タブ: 1人ずつ開いて順位を直す */

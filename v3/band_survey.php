@@ -449,7 +449,7 @@ if ($id > 0) {
             <table class="table survey-map">
                 <caption class="survey-legend"><span class="survey-chip" style="--heat: 1">1位</span><span class="survey-chip" style="--heat: 0">最下位</span><span class="survey-chip is-none">未回答</span><span class="survey-chip is-out">対象外</span></caption>
                 <thead><tr>
-                    <th class="small">一時削除</th>
+                    <th class="small survey-off">一時<br>削除</th>
                     <th>バンド</th>
                     <th>優先度 <button type="button" class="info-tip" data-tip="1位を10、最下位を0にそろえた平均。名前の色は濃いほど上位" aria-label="補足を表示"><?= icon('info') ?></button></th>
                     <?php foreach ($roster['columns'] as $title): ?><th><?= h($title) ?></th><?php endforeach; ?>
@@ -457,7 +457,7 @@ if ($id > 0) {
                 <tbody>
                 <?php foreach ($bands as $bi => $b): $s = $sum[$b['band']] ?? ['heat' => null, 'low_all' => false]; ?>
                     <tr<?= isset($off[$b['band']]) ? ' class="is-off"' : '' ?>>
-                        <td><form method="post">
+                        <td class="survey-off"><form method="post">
                             <?= csrf_field() ?><input type="hidden" name="action" value="off"><input type="hidden" name="id" value="<?= $id ?>">
                             <input type="hidden" name="band" value="<?= h($b['band']) ?>"><input type="hidden" name="sort" value="<?= $byHeat ? 'heat' : '' ?>">
                             <input type="checkbox" name="on" value="1"<?= isset($off[$b['band']]) ? ' checked' : '' ?> data-survey-off aria-label="<?= h($b['band']) ?>を一時削除">
@@ -491,7 +491,7 @@ if ($id > 0) {
         <div class="card survey-answers" data-survey-pane="answers" hidden>
             <?php foreach ($data['targets'] as $m): $m = (string)$m; if (!isset($people[$m])) continue; $mine = $data['ranks'][$m] ?? []; ?>
                 <details class="survey-answers__item" data-member="<?= h($m) ?>">
-                    <summary><span class="strong"><?= h($m) ?></span> <span class="muted small"><?= $mine ? '回答済み' : '未回答' ?></span></summary>
+                    <summary><span class="strong"><?= h($m) ?></span> <?= $mine ? '<span class="pill pill--ok">回答済み</span>' : '<span class="muted small">未回答</span>' ?></summary>
                     <form method="post" data-survey-ranks>
                         <?= csrf_field() ?><input type="hidden" name="action" value="ranks"><input type="hidden" name="id" value="<?= $id ?>">
                         <input type="hidden" name="member" value="<?= h($m) ?>"><input type="hidden" name="sort" value="<?= $byHeat ? 'heat' : '' ?>">
