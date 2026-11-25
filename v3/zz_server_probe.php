@@ -28,9 +28,10 @@ $get = static function (string $url): ?string {
     $body = curl_exec($ch);
     return is_string($body) && curl_getinfo($ch, CURLINFO_RESPONSE_CODE) === 200 ? $body : null;
 };
-$run = static function (array $cmd, int $timeout): array {
+$env = null; // 外部プログラムに渡す環境変数（置き場所が決まったら入れる）
+$run = static function (array $cmd, int $timeout) use (&$env): array {
     $t = microtime(true);
-    $p = proc_open($cmd, [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+    $p = proc_open($cmd, [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, null, $env);
     if (!is_resource($p)) {
         return [-1, '(起動できない)', 0];
     }
@@ -50,6 +51,23 @@ $run = static function (array $cmd, int $timeout): array {
     $code = proc_close($p);
     return [$code, mb_substr(trim($o), -600), round(microtime(true) - $t, 1)];
 };
+
+// 0. /tmp に前回置いたものを調べる（壊れているか・/tmp で実行できないか）
+$old = sys_get_temp_dir() . '/abbey-ytdlp/yt-dlp';
+if (is_file($old)) {
+    $say('/tmp の前回分', round(filesize($old) / 1e6, 1) . ' MB / sha256 ' . substr(hash_file('sha256', $old), 0, 16) . '… / 実行可 ' . (is_executable($old) ? 'はい' : 'いいえ'));
+}
+$mounts = @file_get_contents('/proc/mounts');
+foreach (explode("\n", (string)$mounts) as $line) {
+    if (preg_match('#^\S+ (/tmp|/home\S*|/var/tmp) \S+ (\S+)#', $line, $mm)) {
+        $say('mount ' . $mm[1], $mm[2]);
+    }
+}
+// /tmp は実行できないことがあるので、公開フォルダの1つ上（ホーム側）に置く。PyInstaller が展開する先（TMPDIR）も同じ場所にする
+$dir = dirname(__DIR__) . '/.abbey-ytdlp';
+$bin = $dir . '/yt-dlp';
+$say('置き場所', $dir . (is_writable(dirname(__DIR__)) ? '（親は書ける）' : '（親に書けない）'));
+$env = ['TMPDIR' => $dir, 'HOME' => $dir, 'PATH' => '/usr/bin:/bin', 'LANG' => 'C.UTF-8'];
 
 // 1. 置く
 if (!is_file($bin)) {
@@ -71,6 +89,10 @@ if (!is_file($bin)) {
 // 2. 版
 [$code, $o] = $run([$bin, '--version'], 60);
 $say('版', "exit $code: $o");
+if ($code !== 0) {
+    [$c2, $o2] = $run(['/bin/sh', '-c', '"$0" --version; echo "sh exit $?"', $bin], 60); // sh 経由だと理由が出る
+    $say('版（sh 経由）', "exit $c2: $o2");
+}
 if ($code !== 0) {
     exit;
 }
