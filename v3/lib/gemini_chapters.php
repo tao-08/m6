@@ -83,6 +83,27 @@ function gemini_chapters_from_events(array $events): array
 /** @return array<int, array{kind: string, ms: int}>|string */
 function gemini_audio_chapters(string $path, string $mime, string $key, string $model): array|string
 {
+    $json = gemini_audio_json($path, $mime, $key, $model, GEMINI_CHAPTER_PROMPT, ['type' => 'OBJECT', 'properties' => ['events' => ['type' => 'ARRAY', 'items' => [
+        'type' => 'OBJECT',
+        'properties' => [
+            'type' => ['type' => 'STRING', 'enum' => ['SONG_START', 'MC_START']],
+            'timestamp' => ['type' => 'STRING'],
+            'trigger_clue' => ['type' => 'STRING'],
+        ],
+        'required' => ['type', 'timestamp', 'trigger_clue'],
+    ]]], 'required' => ['events']]);
+    if (is_string($json)) {
+        return $json;
+    }
+    return is_array($json['events'] ?? null) ? gemini_chapters_from_events($json['events']) : 'Gemini API で解析できませんでした';
+}
+
+/**
+ * 音源を Files API に上げて $prompt で聴かせ、$schema の形の JSON を返す（終わったら音源は消す）。失敗したら文字列（画面に出せる理由）
+ *   自動チャプター（上）と、動画から曲を検出（lib/gemini_setlist.php）で使う
+ */
+function gemini_audio_json(string $path, string $mime, string $key, string $model, string $prompt, array $schema): array|string
+{
     $size = (int)filesize($path);
     $fail = 'Gemini API で解析できませんでした';
     $limit = 'Gemini API の利用上限に達しました。時間をおいて再試行してください';
@@ -133,20 +154,12 @@ function gemini_audio_chapters(string $path, string $mime, string $key, string $
         $req = [
             'contents' => [['role' => 'user', 'parts' => [
                 ['file_data' => ['mime_type' => $mime, 'file_uri' => $file['uri']]],
-                ['text' => GEMINI_CHAPTER_PROMPT],
+                ['text' => $prompt],
             ]]],
             'generationConfig' => [
                 'temperature' => 0,
                 'responseMimeType' => 'application/json',
-                'responseSchema' => ['type' => 'OBJECT', 'properties' => ['events' => ['type' => 'ARRAY', 'items' => [
-                    'type' => 'OBJECT',
-                    'properties' => [
-                        'type' => ['type' => 'STRING', 'enum' => ['SONG_START', 'MC_START']],
-                        'timestamp' => ['type' => 'STRING'],
-                        'trigger_clue' => ['type' => 'STRING'],
-                    ],
-                    'required' => ['type', 'timestamp', 'trigger_clue'],
-                ]]], 'required' => ['events']],
+                'responseSchema' => $schema,
             ],
         ];
         $res = gemini_call(GEMINI_API . '/v1beta/models/' . rawurlencode($model) . ':generateContent', $key, [
@@ -162,8 +175,8 @@ function gemini_audio_chapters(string $path, string $mime, string $key, string $
         foreach (json_decode($res[2], true)['candidates'][0]['content']['parts'] ?? [] as $p) {
             $text .= (string)($p['text'] ?? '');
         }
-        $events = json_decode($text, true)['events'] ?? null;
-        $result = is_array($events) ? gemini_chapters_from_events($events) : $fail;
+        $json = json_decode($text, true);
+        $result = is_array($json) ? $json : $fail;
     } finally {
         gemini_call(GEMINI_API . '/v1beta/' . $file['name'], $key, [CURLOPT_CUSTOMREQUEST => 'DELETE'], 20); // 預けた音源は消す
     }

@@ -16,9 +16,10 @@ declare(strict_types=1);
  * エラーページを出して終わる。
  *   $code   : HTTP ステータス（404 など）
  *   $detail : 見出しに出す文言（空ならステータスごとの標準の文言）。「アルバムが見つかりません」など
+ *   $trace  : 「詳細」を押すと開くエラーの中身。管理者のときだけ呼ぶ側（bootstrap）が渡す
  * 画面を開く人（Accept に text/html がある）にはページを、fetch() など JavaScript からの呼び出しには文字だけを返す
  */
-function render_error_page(int $code, string $detail = ''): never
+function render_error_page(int $code, string $detail = '', string $trace = ''): never
 {
     $titles = [
         400 => '不正なリクエスト',
@@ -74,6 +75,10 @@ function render_error_page(int $code, string $detail = ''): never
         .err__code { margin: 0; font-size: 64px; font-weight: 900; line-height: 1; color: var(--accent); letter-spacing: .02em; }
         .err__title { margin: 14px 0 28px; font-size: 18px; font-weight: 700; line-height: 1.5; }
         .err a { display: inline-block; padding: 10px 28px; border-radius: 999px; background: var(--accent); color: #fff; font-weight: 700; text-decoration: none; }
+        .err details { margin-top: 24px; text-align: left; }
+        .err summary { cursor: pointer; color: var(--muted); font-size: 14px; text-align: center; }
+        .err pre { margin: 12px 0 0; padding: 12px; max-height: 50vh; overflow: auto; border: 1px solid var(--border); border-radius: 12px;
+                   font-size: 12px; line-height: 1.5; white-space: pre-wrap; word-break: break-all; }
         .err a:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
     </style>
 </head>
@@ -85,7 +90,14 @@ function render_error_page(int $code, string $detail = ''): never
         </picture>
         <p class="err__code"><?= (int)$code ?></p>
         <h1 class="err__title"><?= $e($headline) ?></h1>
-        <a href="/">トップ</a>
+        <!-- 前のページが無い（URL を直接開いた）ときはトップへ -->
+        <a href="/" onclick="if (history.length > 1) { history.back(); return false; }">戻る</a>
+<?php if ($trace !== ''): ?>
+        <details>
+            <summary>詳細</summary>
+            <pre><?= $e($trace) ?></pre>
+        </details>
+<?php endif; ?>
     </main>
 </body>
 </html>

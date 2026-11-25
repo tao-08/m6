@@ -91,13 +91,20 @@ if (!config('debug')) {
     set_exception_handler(static function (Throwable $e): void {
         error_log((string)$e);
         while (ob_get_level() > 0) { ob_end_clean(); }
-        error_page(500);
+        // 管理者だけ「詳細」を開ける（セッションだけで判定。DB が落ちていても見られるように）
+        error_page(500, '', is_admin()
+            ? get_class($e) . ': ' . $e->getMessage() . "
+" . $e->getFile() . ':' . $e->getLine() . "
+
+" . $e->getTraceAsString()
+            : '');
     });
     register_shutdown_function(static function (): void {
         $err = error_get_last();
         if ($err !== null && in_array($err['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR], true)) {
             while (ob_get_level() > 0) { ob_end_clean(); }
-            error_page(500);
+            error_page(500, '', is_admin() ? $err['message'] . "
+" . $err['file'] . ':' . $err['line'] : '');
         }
     });
 }
@@ -458,10 +465,10 @@ function sort_button_th(string $col, string $label, string $sort, string $dir, s
  * エラーページを出して終わる（lib/error_page.php）。$detail を渡すと見出しの文言になる（「アルバムが見つかりません」など）。
  * http_response_code() + exit('文字') の代わりに使う
  */
-function error_page(int $code, string $detail = ''): never
+function error_page(int $code, string $detail = '', string $trace = ''): never
 {
     require_once __DIR__ . '/error_page.php';
-    render_error_page($code, $detail);
+    render_error_page($code, $detail, $trace);
 }
 
 function redirect(string $path): never

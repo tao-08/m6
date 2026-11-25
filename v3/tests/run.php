@@ -1286,6 +1286,12 @@ check('セトリ: ライブ版とカラオケ版は1曲・当たった順', acr_
     'cover_songs' => [$acrHit(40, 'マリーゴールド【カラオケ】', 'A2'), $acrHit(10, 'マリーゴールド', 'A3')],
 ]), ['マリーゴールド', 'Lemon']);
 check('セトリ: 結果なしは空', acr_setlist_titles([]), []);
+
+echo "gemini setlist\n";
+require_once __DIR__ . '/../lib/gemini_setlist.php';
+check('曲名: 演奏順・特定できない曲は除く', gemini_setlist_titles(['songs' => [['title' => ' 花束 ', 'artist' => 'サンボマスター'], ['title' => '', 'artist' => ''], ['title' => '花束', 'artist' => 'サンボマスター']]]), ['花束', '花束']);
+check('曲名: 形が違っても落ちない', gemini_setlist_titles(['songs' => 'x']), []);
+
 echo "band survey\n";
 require_once __DIR__ . '/../lib/band_survey.php';
 $bsCsv = "\xEF\xBB\xBFバンド,メンバー,順位\nA,山田,1\nB,山田,2\nC,山田,3\nA,佐藤,2\nB,佐藤,1\nC,鈴木,\n\nC,田中,1\n";

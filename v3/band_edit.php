@@ -21,7 +21,7 @@ require_once __DIR__ . '/lib/youtube.php'; // プレイリストの動画から�
 require_once __DIR__ . '/lib/drive.php'; // Google ドライブのファイル（何個でも。band_drive_file）
 require_once __DIR__ . '/lib/history.php'; // 変更履歴（元に戻すための「変更前の状態」を残す）
 require_once __DIR__ . '/lib/attach_image.php'; // バンドの添付画像（最大5枚）
-require_once __DIR__ . '/lib/acrcloud.php'; // 動画から曲を検出（ACRCloud の設定があるときだけ欄を出す）
+require_once __DIR__ . '/lib/gemini_setlist.php'; // 動画から曲を検出（Gemini の設定があるときだけ欄を出す）
 require_login();
 
 $pdo = db();
@@ -452,14 +452,14 @@ render_header($isNew ? 'バンドを追加' : 'バンドを編集', 'lives');
             <input type="file" name="audio[]" accept="audio/mpeg,.mp3" multiple aria-label="MP3 を追加（60MB まで、<?= ATTACH_KINDS['band_audio']['max'] ?> つまで）">
         </div>
         <label class="field field--wide"><span>YouTube のリンク（任意）</span><span class="field__hint"><a href="live_edit?id=<?= (int)$band['live_id'] ?>">ライブを編集</a>からプレイリストを追加すると各バンドのリンクを一括で登録できます</span><input autocomplete="off" type="url" name="youtube_url" value="<?= h($band['youtube_url']) ?>" maxlength="500" placeholder="https://www.youtube.com/watch?v=…" inputmode="url"></label>
-        <?php if (!$isNew && is_admin() && acr_config() !== null): // 送るたびに ACRCloud の料金がかかるので管理者だけ ?>
-            <!-- name を付けない（フォームでは送信しない）。選ぶと assets/acr_scan.js が音だけ抜いて api_acr_scan に送り、終わったらセトリの確認画面へ -->
-            <div class="field field--wide" data-acr-scan data-band="<?= (int)$band['band_id'] ?>" data-done-url="songs_edit?band=<?= (int)$band['band_id'] ?>&amp;from_acr=1">
+        <?php if (!$isNew && is_admin() && gemini_setlist_config() !== null): // 送るたびに Gemini の料金がかかるので管理者だけ ?>
+            <!-- name を付けない（フォームでは送信しない）。選ぶと assets/setlist_detect.js が音声だけ抜いて api_setlist_detect に送り、終わったらセトリの確認画面へ -->
+            <div class="field field--wide" data-setlist-detect data-band="<?= (int)$band['band_id'] ?>" data-done-url="songs_edit?band=<?= (int)$band['band_id'] ?>&amp;from_detect=1">
                 <span>動画から曲を検出</span>
                 <input type="file" accept="video/*,audio/*" aria-label="動画を選ぶ">
-                <p class="muted small" data-acr-status role="status" hidden></p>
+                <p class="muted small" data-setlist-status role="status" hidden></p>
             </div>
-            <script type="module" src="<?= asset_url('assets/acr_scan.js') ?>"></script>
+            <script type="module" src="<?= asset_url('assets/setlist_detect.js') ?>"></script>
         <?php endif; ?>
         <?php if ($ytVideos): ?>
             <!-- name を付けない（送信しない）。選ぶと JS が上の URL 欄に入れる -->
