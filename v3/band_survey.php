@@ -427,7 +427,7 @@ if ($id > 0) {
                 }
                 $cells[] = $chips;
             }
-            $pdf['rows'][] = ['band' => $b['band'], 'off' => isset($off[$b['band']]), 'heat' => $s['heat'] === null ? '—' : number_format($s['heat'] * 10, 1), 'low' => $s['low_all'], 'cells' => $cells];
+            $pdf['rows'][] = ['band' => $b['band'], 'off' => isset($off[$b['band']]), 'heat' => $s['heat'] === null ? '—' : number_format($s['heat'] * 10, 1), 'low' => $s['low_all'], 'ranks' => implode(',', $given[$b['band']] ?? []), 'cells' => $cells];
         }
         ?>
         <script type="application/json" id="survey-pdf-data"><?= json_encode($pdf, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR) ?></script>

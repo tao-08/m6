@@ -28,17 +28,21 @@
         }
     });
 
-    /* ---------- 表の絞り込み: 「◯位まで入れた人が 0〜4人」＋「以上 / 以下 / のみ」（どれもスロット）（どちらもスロット）バンドだけ出す ---------- */
+    /* ---------- 表の絞り込み: 「◯位まで入れた人が 0〜4人」＋「以上 / 以下 / のみ」（どれもスロット）のバンドだけ出す。プレビューも同じ ---------- */
     const filter = { rank: '1', mode: '', last: '1', more: 'eq' }; // mode: 人数（'' = 閉じている・絞り込まない）/ last: 開き直したときの人数
+    // ranks = そのバンドに対象の人が付けた順位の一覧（"1,3,2"）。絞り込みに合うか（閉じているときは全部合う）
+    const passes = (ranks) => {
+        if (filter.mode === '') return true;
+        const hits = ranks.split(',').filter((r) => r !== '' && Number(r) <= Number(filter.rank)).length;
+        const op = filter.mode === '0' ? 'eq' : filter.more; // 0人には「以上 / 以下」がない（隠して「のみ」として扱う）
+        return { ge: hits >= Number(filter.mode), le: hits <= Number(filter.mode), eq: hits === Number(filter.mode) }[op];
+    };
+    let onFilterChange = () => {}; // プレビューを作り直す（下の PDF の所で入れる）
     const applyFilter = () => {
-        const zero = filter.mode === '0'; // 0人には「以上 / 以下」がない（隠して「のみ」として扱う）
-        const op = zero ? 'eq' : filter.more;
         const moreSlot = document.querySelector('[data-survey-filter-more]');
-        if (moreSlot) moreSlot.hidden = zero;
-        document.querySelectorAll('[data-survey-pane="table"] tr[data-ranks]').forEach((tr) => {
-            const hits = tr.dataset.ranks.split(',').filter((r) => r !== '' && Number(r) <= Number(filter.rank)).length;
-            tr.hidden = filter.mode !== '' && !({ ge: hits >= Number(filter.mode), le: hits <= Number(filter.mode), eq: hits === Number(filter.mode) })[op];
-        });
+        if (moreSlot) moreSlot.hidden = filter.mode === '0';
+        document.querySelectorAll('[data-survey-pane="table"] tr[data-ranks]').forEach((tr) => { tr.hidden = !passes(tr.dataset.ranks); });
+        onFilterChange();
         // バンドの見出しの（出ている数/全部）: 一時削除・絞り込みで隠したバンドは数えない
         const rows = [...document.querySelectorAll('[data-survey-pane="table"] tr[data-ranks]')];
         const count = document.querySelector('[data-survey-band-count]');
@@ -163,8 +167,9 @@
 
         // 列の幅: その列でいちばん長い中身に合わせる
         const head = ['バンド', '優先度', ...DATA.columns];
+        const rows = DATA.rows.filter((row) => passes(row.ranks)); // 表の絞り込みと同じバンドだけ
         const widths = head.map((t) => w(t, FS - 1) + CELL_PAD * 2);
-        DATA.rows.forEach((row) => {
+        rows.forEach((row) => {
             widths[0] = Math.max(widths[0], w(row.band + (row.low ? ' ↓' : '')) + CELL_PAD * 2);
             widths[1] = Math.max(widths[1], w(row.heat) + CELL_PAD * 2);
             row.cells.forEach((cell, i) => {
@@ -175,7 +180,7 @@
         const tableW = widths.reduce((s, x) => s + x, 0);
         const TITLE_H = 30;
         const pageW = Math.max(tableW + M * 2, 420);
-        const pageH = M * 2 + TITLE_H + ROW_H * (DATA.rows.length + 1);
+        const pageH = M * 2 + TITLE_H + ROW_H * (rows.length + 1);
         const page = doc.addPage([pageW, pageH]);
         const Y = (top) => pageH - top; // 上から測った位置 → PDF の座標（下から）
         const mid = (top) => Y(top + ROW_H / 2) - FS * 0.37; // 行の縦の真ん中に文字を置く（setting_sheet.js の GLYPH_MID と同じ）
@@ -210,7 +215,7 @@
             page.drawText(t, { x: x + CELL_PAD, y: mid(top0), size: FS - 1, font, color: muted });
             x += widths[i];
         });
-        DATA.rows.forEach((row, ri) => {
+        rows.forEach((row, ri) => {
             const top = top0 + ROW_H * (ri + 1);
             op = row.off ? 0.35 : 1; // 一時削除したバンドは薄く（表の .is-off と同じ）
             page.drawLine({ start: { x: M, y: Y(top) }, end: { x: M + tableW, y: Y(top) }, thickness: 0.5, color: border });
@@ -288,6 +293,11 @@
     }
 
     let opened = false;
+    onFilterChange = () => { // 次に開いたときに作り直す（絞り込みはプレビューが隠れている表のタブでしか変えられない）
+        pdfBytes = null;
+        opened = false;
+        saveBtn.disabled = true;
+    };
     async function open() {
         if (opened) return;
         opened = true;
