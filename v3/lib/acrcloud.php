@@ -168,8 +168,8 @@ function acr_config(): ?array
     return ['token' => $token, 'files' => 'https://api-' . $region . '.acrcloud.com/api/fs-containers/' . $container . '/files'];
 }
 
-/** ACRCloud を呼ぶ。戻り値: [HTTP ステータス, JSON]。つながらなければ null */
-function acr_request(array $env, string $url, mixed $postFields, int $timeout): ?array
+/** ACRCloud を呼ぶ。戻り値: [HTTP ステータス, JSON]。つながらなければ [0, ['message' => cURL のエラー]] */
+function acr_request(array $env, string $url, mixed $postFields, int $timeout): array
 {
     $ch = curl_init($url);
     $opts = [
@@ -186,25 +186,27 @@ function acr_request(array $env, string $url, mixed $postFields, int $timeout): 
     $body = curl_exec($ch);
     if ($body === false) {
         error_log('ACRCloud cURL failure: errno=' . curl_errno($ch));
-        return null;
+        return [0, ['message' => 'cURL ' . curl_errno($ch) . ' ' . curl_error($ch)]];
     }
     $json = json_decode((string)$body, true);
     return [(int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE), is_array($json) ? $json : []];
 }
 
-/** MP3 を送って解析を始める。戻り値: file_id。失敗したら null（理由はログへ） */
-function acr_upload_audio(array $env, string $path, string $name): ?string
+/** MP3 を送って解析を始める。戻り値: file_id。失敗したら null（$why に HTTP ステータスと ACRCloud の理由。トークンは入らない） */
+function acr_upload_audio(array $env, string $path, string $name, ?string &$why = null): ?string
 {
     $res = acr_request($env, $env['files'], [
         'data_type' => 'audio',
         'file'      => new CURLFile($path, 'audio/mpeg', $name),
     ], 120);
-    if ($res === null || !in_array($res[0], [200, 201], true)) {
-        error_log('ACRCloud upload failed: HTTP ' . ($res[0] ?? 0) . ' ' . substr((string)($res[1]['message'] ?? $res[1]['error'] ?? ''), 0, 200));
+    $id = (string)($res[1]['data']['id'] ?? '');
+    if (!in_array($res[0], [200, 201], true) || !acr_valid_file_id($id)) {
+        $msg = $res[1]['message'] ?? $res[1]['error'] ?? '';
+        $why = 'HTTP ' . $res[0] . ' ' . substr(is_string($msg) ? $msg : json_encode($msg, JSON_UNESCAPED_UNICODE), 0, 200);
+        error_log('ACRCloud upload failed: ' . $why);
         return null;
     }
-    $id = (string)($res[1]['data']['id'] ?? '');
-    return acr_valid_file_id($id) ? $id : null;
+    return $id;
 }
 
 /** 解析の状態と結果。戻り値: ACRCloud の file（state: 0 処理中 / 1 完了 / -1 結果なし / -2, -3 エラー）。取れなければ null */
@@ -214,6 +216,6 @@ function acr_fetch_file(array $env, string $fileId): ?array
         return null;
     }
     $res = acr_request($env, $env['files'] . '/' . $fileId, null, 20);
-    $file = $res !== null && $res[0] === 200 ? ($res[1]['data'][0] ?? null) : null;
+    $file = $res[0] === 200 ? ($res[1]['data'][0] ?? null) : null;
     return is_array($file) ? $file : null;
 }

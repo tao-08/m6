@@ -44,7 +44,8 @@ if (($_POST['action'] ?? '') === 'upload') {
     if (!in_array((new finfo(FILEINFO_MIME_TYPE))->file($f['tmp_name']), ['audio/mpeg', 'audio/mp3', 'application/octet-stream'], true)) {
         fail(400, '音声を受け取れませんでした');
     }
-    $fileId = acr_upload_audio($env, $f['tmp_name'], 'band-' . $bandId . '.mp3') ?? fail(502, '送信できませんでした。時間をおいてもう一度試してください');
+    // 管理者だけの API なので、直すための手がかりとして ACRCloud の理由も出す
+    $fileId = acr_upload_audio($env, $f['tmp_name'], 'band-' . $bandId . '.mp3', $why) ?? fail(502, '送信できませんでした: ' . $why);
     $pdo->prepare('UPDATE band SET acr_file_id = ? WHERE band_id = ?')->execute([$fileId, $bandId]);
     api_ok(['state' => 'processing']);
 }
