@@ -1,7 +1,9 @@
 <?php
 /**
- * zz_server_probe.php — 一時: 本番サーバーで yt-dlp を動かせるかの調査（管理者だけ）。結果を見たら消す
- *   何も入れない・落とさない。外部プログラムは「場所と版を聞く」コマンドだけ動かす
+ * zz_server_probe.php — 一時: 本番サーバーで yt-dlp を動かせるかの試験（管理者だけ）。結果を見たら消す
+ *   1. GitHub の yt-dlp 公式リリース（yt-dlp_linux）を一時フォルダに置く。公式の SHA-256 と合わなければ捨てる
+ *   2. 版を聞く
+ *   3. 限定公開の動画（BUMP OF CHICKEN、約5分）の音声を1本落とし、かかった時間と大きさを出す。落とした音声はすぐ消す
  */
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
@@ -11,50 +13,75 @@ if (!is_admin()) {
     exit('管理者のみ');
 }
 header('Content-Type: text/plain; charset=utf-8');
+@set_time_limit(170);
 
-$out = [];
-$out['PHP'] = PHP_VERSION . ' / ' . PHP_OS_FAMILY . ' / SAPI ' . PHP_SAPI;
-$out['CPU'] = function_exists('php_uname') ? php_uname('m') : '(php_uname なし)';
-$out['disable_functions'] = ini_get('disable_functions') ?: '(なし)';
-$out['open_basedir'] = ini_get('open_basedir') ?: '(なし)';
-$out['max_execution_time'] = ini_get('max_execution_time');
-$out['memory_limit'] = ini_get('memory_limit');
-foreach (['proc_open', 'exec', 'shell_exec', 'popen'] as $f) {
-    $out['使える: ' . $f] = function_exists($f) ? 'はい' : 'いいえ';
-}
-$tmp = sys_get_temp_dir();
-$out['一時フォルダ'] = $tmp . (is_writable($tmp) ? '（書ける）' : '（書けない）');
-$free = @disk_free_space(__DIR__);
-$out['空き容量'] = $free === false ? '(不明)' : round($free / 1e9, 1) . ' GB';
-
-// 外部プログラム: 場所と版を聞くだけ
-$run = static function (array $cmd): string {
-    if (!function_exists('proc_open')) {
-        return '(proc_open なし)';
-    }
-    $p = @proc_open($cmd, [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
-    if (!is_resource($p)) {
-        return '(起動できない)';
-    }
-    $o = trim(stream_get_contents($pipes[1]) . ' ' . stream_get_contents($pipes[2]));
-    $code = proc_close($p);
-    return 'exit ' . $code . ': ' . mb_substr($o, 0, 300);
-};
-$out['uname -srm'] = $run(['uname', '-srm']);
-foreach (['python3', 'ffmpeg', 'ffprobe', 'yt-dlp'] as $bin) {
-    $out['which ' . $bin] = $run(['sh', '-c', 'command -v ' . $bin]);
-}
-$out['python3 --version'] = $run(['python3', '--version']);
-$out['ffmpeg -version'] = $run(['sh', '-c', 'ffmpeg -version 2>&1 | head -1']);
-
-// 外への通信（中身は読まない。ステータスだけ）
-foreach (['https://www.youtube.com/', 'https://github.com/'] as $url) {
-    $ch = curl_init($url);
-    curl_setopt_array($ch, [CURLOPT_NOBODY => true, CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 10, CURLOPT_FOLLOWLOCATION => false]);
-    curl_exec($ch);
-    $out['通信 ' . $url] = 'HTTP ' . curl_getinfo($ch, CURLINFO_RESPONSE_CODE) . (curl_errno($ch) ? ' / ' . curl_error($ch) : '');
-}
-
-foreach ($out as $k => $v) {
+const PROBE_VIDEO = 'https://www.youtube.com/watch?v=4ob6KBRgHvc';
+$dir = sys_get_temp_dir() . '/abbey-ytdlp';
+$bin = $dir . '/yt-dlp';
+$say = static function (string $k, string $v): void {
     echo $k, ': ', $v, "\n";
+    flush();
+};
+$get = static function (string $url): ?string {
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_FOLLOWLOCATION => true, CURLOPT_TIMEOUT => 60, CURLOPT_USERAGENT => 'AbbeyRoad.online']);
+    $body = curl_exec($ch);
+    return is_string($body) && curl_getinfo($ch, CURLINFO_RESPONSE_CODE) === 200 ? $body : null;
+};
+$run = static function (array $cmd, int $timeout): array {
+    $t = microtime(true);
+    $p = proc_open($cmd, [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+    if (!is_resource($p)) {
+        return [-1, '(起動できない)', 0];
+    }
+    stream_set_blocking($pipes[1], false);
+    stream_set_blocking($pipes[2], false);
+    $o = '';
+    while (proc_get_status($p)['running']) {
+        $o .= stream_get_contents($pipes[1]) . stream_get_contents($pipes[2]);
+        if (microtime(true) - $t > $timeout) {
+            proc_terminate($p);
+            $o .= ' (時間切れで止めた)';
+            break;
+        }
+        usleep(200000);
+    }
+    $o .= stream_get_contents($pipes[1]) . stream_get_contents($pipes[2]);
+    $code = proc_close($p);
+    return [$code, mb_substr(trim($o), -600), round(microtime(true) - $t, 1)];
+};
+
+// 1. 置く
+if (!is_file($bin)) {
+    @mkdir($dir, 0700, true);
+    $sums = $get('https://github.com/yt-dlp/yt-dlp/releases/latest/download/SHA2-256SUMS');
+    $data = $get('https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux');
+    $want = $sums !== null && preg_match('/^([0-9a-f]{64})\s+yt-dlp_linux$/m', $sums, $m) ? $m[1] : null;
+    if ($data === null || $want === null || !hash_equals($want, hash('sha256', $data))) {
+        $say('置く', '失敗（取れない、または SHA-256 が合わない）');
+        exit;
+    }
+    file_put_contents($bin, $data);
+    chmod($bin, 0700);
+    $say('置く', 'OK（' . round(strlen($data) / 1e6, 1) . ' MB、SHA-256 一致）');
+} else {
+    $say('置く', 'もうある');
 }
+
+// 2. 版
+[$code, $o] = $run([$bin, '--version'], 60);
+$say('版', "exit $code: $o");
+if ($code !== 0) {
+    exit;
+}
+
+// 3. 1本落とす
+$out = $dir . '/probe';
+[$code, $o, $sec] = $run([$bin, '--no-warnings', '--no-playlist', '--no-progress', '-f', 'bestaudio[ext=m4a]/bestaudio', '-o', $out . '.%(ext)s', PROBE_VIDEO], 140);
+$files = glob($out . '.*') ?: [];
+$say('落とす', "exit $code / {$sec}秒 / " . ($files ? basename($files[0]) . ' ' . round(filesize($files[0]) / 1e6, 1) . ' MB' : 'ファイルなし'));
+$say('ログ', $o);
+foreach ($files as $f) {
+    @unlink($f);
+}
+$say('後片付け', '落とした音声を消した');
