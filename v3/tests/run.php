@@ -1296,16 +1296,18 @@ echo "band survey\n";
 require_once __DIR__ . '/../lib/band_survey.php';
 $bsRows = [['A', '山田', 1], ['B', '山田', 2], ['C', '山田', 3], ['A', '佐藤', 2], ['B', '佐藤', 1], ['C', '鈴木', null], ['C', '田中', 1]];
 $bsSum = array_column(band_survey_summarize($bsRows), null, 'band');
-check('希望調査: A の優先度', $bsSum['A']['heat'], 0.5);
-check('希望調査: B の優先度', $bsSum['B']['heat'], 0.75);
-check('希望調査: C は n=1 の田中を除く', $bsSum['C']['heat'], 0.0);
-check('希望調査: C は全員が下位', $bsSum['C']['low_all'], true);
+// 母数は最低 4: 山田（3バンド）は 1, 2/3, 1/3、佐藤（2バンド）は 1位 = 1・2位 = 2/3、田中（1バンド）の1位 = 1
+check('希望調査: A の優先度', round($bsSum['A']['heat'], 3), 0.833);
+check('希望調査: B の優先度', round($bsSum['B']['heat'], 3), 0.833);
+check('希望調査: C は n=1 の田中も入れる', round($bsSum['C']['heat'], 3), 0.667);
+check('希望調査: C は田中が上位なので全員下位ではない', $bsSum['C']['low_all'], false);
 check('希望調査: A は下位でない', $bsSum['A']['low_all'], false);
 check('希望調査: C の回答数', [$bsSum['C']['answered'], $bsSum['C']['total']], [2, 3]);
-check('希望調査: 優先度の高い順', array_column(band_survey_summarize($bsRows), 'band'), ['B', 'A', 'C']);
+check('希望調査: 優先度の高い順', array_column(band_survey_summarize($bsRows), 'band')[2], 'C');
+check('希望調査: 2バンドの人の2位は下位でない', band_survey_summarize([['A', '佐藤', 2], ['B', '佐藤', 1]])[1]['low_all'], false);
 check('希望調査: 連番なら OK', [band_survey_check_ranks(['A' => 2, 'B' => 1]), band_survey_check_ranks([])], [null, null]);
 check('希望調査: 重複順位はエラー', band_survey_check_ranks(['A' => 1, 'B' => 1]), '順位が 1〜2 の連番になっていません');
-check('希望調査: セルの優先度', [band_survey_score(1, 3), band_survey_score(3, 3), band_survey_score(1, 1), band_survey_score(null, 3)], [1.0, 0.0, 1.0, null]);
+check('希望調査: セルの優先度', array_map(static fn($s) => $s === null ? null : round($s, 3), [band_survey_score(1, 3), band_survey_score(3, 3), band_survey_score(1, 1), band_survey_score(2, 2), band_survey_score(4, 4), band_survey_score(5, 5), band_survey_score(null, 3)]), [1.0, 0.333, 1.0, 0.667, 0.0, 0.0, null]);
 $bsRoster = band_survey_tidy_roster(['columns' => ['Vo', 'Gt'], 'bands' => [
     ['band' => 'A', 'cells' => [['山田 太郎'], ['佐藤']]],
     ['band' => 'B', 'cells' => [['山田太郎'], ['佐藤', '山田太郎']]],

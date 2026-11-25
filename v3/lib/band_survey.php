@@ -411,17 +411,20 @@ function band_survey_set_off(array $data, string $band, bool $on): array
     return $data;
 }
 
-/** 1人の1バンドの優先度（1位 = 1、最下位 = 0）。順位がなければ null。1バンドしか付けていない人は 1 */
+/** 優先度の計算に使う母数。4バンド未満の人は 4 として数える（出演が少ない人の最下位が 0 にならないように） */
+const BAND_SURVEY_MIN_BASE = 4;
+
+/** 1人の1バンドの優先度（1位 = 1、母数の最下位 = 0）。順位がなければ null。$n = その人が順位を付けた数 */
 function band_survey_score(?int $rank, int $n): ?float
 {
     if ($rank === null) {
         return null;
     }
-    return $n < 2 ? 1.0 : 1 - ($rank - 1) / ($n - 1);
+    return 1 - ($rank - 1) / (max($n, BAND_SURVEY_MIN_BASE) - 1);
 }
 
 /**
- * バンドごとの集計。優先度（heat）= 各回答者の 1-(順位-1)/(n-1)（n = その人が順位を付けた数）の平均。n が 1 の人は入れない。
+ * バンドごとの集計。優先度（heat）= 各回答者の band_survey_score の平均（母数は最低 4）。
  * 優先度の高い順（優先度なしは最後）
  */
 function band_survey_summarize(array $rows): array
@@ -440,10 +443,8 @@ function band_survey_summarize(array $rows): array
         $mn = $n[$member] ?? 0;
         if ($rank !== null) {
             $b['answered']++;
-            if ($mn >= 2) {
-                $b['scores'][] = 1 - ($rank - 1) / ($mn - 1);
-                $b['low'] = $b['low'] && $rank > $mn / 2; // 奇数の真ん中は下位に数える
-            }
+            $b['scores'][] = band_survey_score($rank, $mn);
+            $b['low'] = $b['low'] && $rank > max($mn, BAND_SURVEY_MIN_BASE) / 2; // 奇数の真ん中は下位に数える
         }
         $b['members'][] = ['member' => $member, 'rank' => $rank, 'n' => $mn];
         unset($b);
