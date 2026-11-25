@@ -3296,3 +3296,8 @@ span.signal { cursor: default; }
 .survey-chip b { font-variant-numeric: tabular-nums; }
 .survey-low { cursor: default; color: var(--muted); } /* 全員が下位（data-tip） */
 .survey-text { white-space: pre-wrap; font-size: var(--fs-sm); }
+/* プレビュー（assets/band_survey.js が PDF を canvas に描く）。拡大したら枠の中で上下左右にスクロール */
+.survey-pdf { padding: 12px; }
+.survey-pdf__bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.survey-pdf__box { overflow: auto; max-height: 75vh; padding: 8px; background: var(--surface-2); border-radius: var(--r-md); overscroll-behavior: contain; }
+.survey-pdf__box canvas { display: block; margin: 0 auto; background: #fff; box-shadow: var(--shadow-sm); }

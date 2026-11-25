@@ -278,13 +278,49 @@ if ($id > 0) {
                 . '</form></details>';
         };
         ?>
+        <?php
+        // PDF のプレビュー（assets/band_survey.js）に渡す中身。表と同じ並び・同じ色の決め方
+        $pdf = ['title' => $survey['title'], 'columns' => $roster['columns'], 'rows' => []];
+        foreach ($bands as $b) {
+            $s = $sum[$b['band']] ?? ['heat' => null, 'low_all' => false];
+            $cells = [];
+            foreach ($b['cells'] as $cell) {
+                $chips = [];
+                foreach ($cell as $m) {
+                    $m = (string)$m;
+                    if ($m === BAND_SURVEY_TBD) {
+                        $chips[] = ['name' => $m, 'kind' => 'tbd'];
+                        continue;
+                    }
+                    $rank = isset($isTarget[$m]) ? ($data['ranks'][$m][$b['band']] ?? null) : null;
+                    $score = band_survey_score($rank, $n[$m] ?? 0);
+                    $chips[] = ['name' => $m, 'kind' => isset($isTarget[$m]) ? ($score === null ? 'none' : 'ok') : 'out',
+                        'heat' => $score, 'rank' => $rank === null ? '' : $rank . '/' . $n[$m]];
+                }
+                $cells[] = $chips;
+            }
+            $pdf['rows'][] = ['band' => $b['band'], 'heat' => $s['heat'] === null ? '—' : number_format($s['heat'], 2), 'low' => $s['low_all'], 'cells' => $cells];
+        }
+        ?>
+        <script type="application/json" id="survey-pdf-data"><?= json_encode($pdf, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR) ?></script>
         <p class="muted small">回答 <?= count(array_intersect_key($data['ranks'], $isTarget)) ?>/<?= count($data['targets']) ?>人</p>
+        <div class="tabs" role="tablist">
+            <button type="button" class="tab is-active" data-survey-view="table" role="tab" aria-selected="true">表</button>
+            <button type="button" class="tab" data-survey-view="pdf" role="tab" aria-selected="false">プレビュー</button>
+        </div>
         <div class="tabs">
             <a class="tab<?= $byHeat ? '' : ' is-active' ?>" href="band_survey?id=<?= $id ?>">名簿の順</a>
             <a class="tab<?= $byHeat ? ' is-active' : '' ?>" href="band_survey?id=<?= $id ?>&amp;sort=heat">優先度の順</a>
         </div>
-        <div class="card table-card">
-            <div class="table-scroll table-scroll--flush" data-fit-zoom>
+        <div class="card survey-pdf" data-survey-pane="pdf" hidden>
+            <div class="survey-pdf__bar">
+                <span class="muted small" data-pdf-note></span>
+                <button type="button" class="btn btn--sm" data-pdf-save disabled><?= icon('download') ?> PDF を保存</button>
+            </div>
+            <div class="survey-pdf__box" data-pdf-box><canvas data-pdf-canvas></canvas></div>
+        </div>
+        <div class="card table-card" data-survey-pane="table">
+            <div class="table-scroll table-scroll--flush">
             <table class="table survey-map">
                 <caption class="survey-legend"><span class="survey-chip" style="--heat: 1">1位</span><span class="survey-chip" style="--heat: 0">最下位</span><span class="survey-chip is-none">未回答</span><span class="survey-chip is-out">対象外</span></caption>
                 <thead><tr>
@@ -332,6 +368,7 @@ if ($id > 0) {
             <button class="btn" type="submit">読み込む</button>
         </form>
     <?php endif; ?>
+    <script src="<?= asset_url('assets/band_survey.js') ?>" defer></script>
     <form method="post" data-confirm="「<?= h($survey['title']) ?>」を削除します。元に戻せません。よろしいですか？">
         <?= csrf_field() ?><input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="<?= (int)$survey['survey_id'] ?>">
         <button class="btn btn--danger" type="submit"><?= icon('delete') ?> 削除</button>
