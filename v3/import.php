@@ -75,17 +75,6 @@ function render_pick(string $name, array $options, array $shown, string $selecte
 }
 
 /**
- * 名前欄が黄色（似た人がいる）のときの「もしかして」の候補を data-suggest 属性にする（JSON）。
- * 名前欄をクリックすると、assets/app_form.js の showHint が「もしかして ◯◯？」を出す。
- */
-function suggest_attr(array $status): string
-{
-    return !empty($status['suggest'])
-        ? ' data-suggest="' . h(json_encode($status['suggest'], JSON_UNESCAPED_UNICODE)) . '"'
-        : '';
-}
-
-/**
  * タイムテーブル手入力画面の1行。上からの並びがそのまま出演順。
  *   日程の区切りの行（$r['divider'] = '2日目' など）… この行より下のバンドがその日程になる。区切りも ≡ で動かせる
  *     日程名の候補（$dayLabels）に無い名前は「新しい日程名」なので、名前を打てる入力欄にする

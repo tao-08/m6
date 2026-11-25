@@ -46,19 +46,19 @@ if (is_post()) {
     $draft = $_SESSION['band_survey_draft'] ?? null;
     if ($action === 'save' && $draft) {
         // 入力は r[メンバーの番号][バンドの番号]。保存する行は名簿の順に [バンド, メンバー, 順位|null]
+        // 名前は n[メンバーの番号]。直した名前で保存するので、書き間違いを直すと同じ人にまとまる
         $draft['ranks'] = [];
+        $rows = [];
         foreach (band_survey_draft_members($draft['roster']) as $mi => [$member, $bands]) {
+            $name = mb_substr(trim((string)($_POST['n'][$mi] ?? '')), 0, 50);
+            $draft['names'][$member] = $name;
             foreach ($bands as $bi => $band) {
                 $v = trim((string)($_POST['r'][$mi][$bi] ?? ''));
-                if (ctype_digit($v) && (int)$v > 0) {
-                    $draft['ranks'][$member][$band] = (int)$v;
+                $rank = ctype_digit($v) && (int)$v > 0 ? (int)$v : null;
+                if ($rank !== null) {
+                    $draft['ranks'][$member][$band] = $rank;
                 }
-            }
-        }
-        $rows = [];
-        foreach ($draft['roster'] as $b) {
-            foreach ($b['members'] as $member) {
-                $rows[] = [$b['band'], $member, $draft['ranks'][$member][$b['band']] ?? null];
+                $rows[] = [$band, $name === '' ? $member : $name, $rank];
             }
         }
         $_SESSION['band_survey_draft'] = $draft;
@@ -153,18 +153,28 @@ if ($draft) {
     <?php if ($draft['issues']): ?>
         <div class="flash flash--warn"><ul><?php foreach ($draft['issues'] as $is): ?><li><?= h($is) ?></li><?php endforeach; ?></ul></div>
     <?php endif; ?>
+    <?php
+    require_once __DIR__ . '/lib/import/planner.php'; // classify_cells
+    $people = band_survey_draft_members($draft['roster']);
+    $names = array_map(static fn($p) => (string)($draft['names'][$p[0]] ?? $p[0]), $people);
+    $status = $names ? classify_cells($pdo, $names) : [];
+    $memberNames = member_name_choices($pdo);
+    ?>
+    <?= render_suggest_datalist('member-names', array_keys($memberNames), $memberNames) ?>
     <form method="post">
         <?= csrf_field() ?><input type="hidden" name="action" value="save">
         <div class="card table-card"><div class="table-scroll table-scroll--flush">
         <table class="table table--edit">
             <thead><tr><th>メンバー</th><th>バンド</th><th>順位</th></tr></thead>
             <tbody>
-            <?php foreach (band_survey_draft_members($draft['roster']) as $mi => [$member, $bands]): ?>
+            <?php foreach ($people as $mi => [$member, $bands]): $st = $status[$mi]; ?>
                 <?php foreach ($bands as $bi => $band): $written = $draft['written'][$member][$band] ?? null; ?>
                     <tr>
                         <?php if ($bi === 0): ?>
-                            <td rowspan="<?= count($bands) ?>"><span class="strong"><?= h($member) ?></span>
-                                <?php if (isset($draft['sources'][$member])): ?><br><span class="muted small">LINE「<?= h($draft['sources'][$member]) ?>」</span><?php endif; ?></td>
+                            <td rowspan="<?= count($bands) ?>"><input name="n[<?= $mi ?>]" value="<?= h($names[$mi]) ?>" maxlength="50" required
+                                class="name-input<?= $st['status'] ? ' is-' . h($st['status']) : '' ?>" title="<?= h($st['hint']) ?>"
+                                data-name-cell data-suggest-list="member-names" autocomplete="off" aria-label="メンバー"<?= suggest_attr($st) ?>>
+                                <?php if (isset($draft['sources'][$member])): ?><span class="muted small">LINE「<?= h($draft['sources'][$member]) ?>」</span><?php endif; ?></td>
                         <?php endif; ?>
                         <td><?php if ($written !== null && $written !== $band): ?><span class="survey-written" <?= tip_attr('回答: ' . $written) ?>><?= h($band) ?></span><?php else: ?><?= h($band) ?><?php endif; ?></td>
                         <td><input type="number" class="input-num" min="1" name="r[<?= $mi ?>][<?= $bi ?>]" value="<?= h((string)($draft['ranks'][$member][$band] ?? '')) ?>" aria-label="<?= h($member . ' ' . $band) ?>の順位"></td>

@@ -2321,6 +2321,17 @@ function band_name_choices(PDO $pdo): array
 }
 
 /**
+ * 名前欄が黄色（似た人がいる）のときの「もしかして」の候補を data-suggest 属性にする（JSON）。
+ * 名前欄をクリックすると、assets/app_form.js の showHint が「もしかして ◯◯？」を出す。
+ */
+function suggest_attr(array $status): string
+{
+    return !empty($status['suggest'])
+        ? ' data-suggest="' . h(json_encode($status['suggest'], JSON_UNESCAPED_UNICODE)) . '"'
+        : '';
+}
+
+/**
  * <datalist> を作る。$values は候補の文字の配列。
  * $kana（[値 => ふりがな]、member_name_choices の形）を渡すと data-kana に入れる（JS がふりがなでも探す）
  *   例: render_suggest_datalist('member-names', array_keys($names), $names)

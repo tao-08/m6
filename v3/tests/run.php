@@ -1307,6 +1307,7 @@ check('希望調査: 連番なら OK', band_survey_check_ranks($bsRows), []);
 check('希望調査: 重複順位はエラー', band_survey_check_ranks([['A', 'x', 1], ['B', 'x', 1]]), ['x: 順位が 1〜2 の連番になっていません']);
 $bsRoster = band_survey_tidy_roster([['band' => 'A', 'members' => ['山田 太郎', '佐藤']], ['band' => 'B', 'members' => ['山田太郎', '佐藤', '佐藤']]]);
 check('希望調査: 名簿の表記ゆれ・重複をそろえる', array_column($bsRoster, 'members'), [['山田 太郎', '佐藤'], ['山田 太郎', '佐藤']]);
+check('希望調査: 同じ名前のバンドは1人目を付けて分ける', array_column(band_survey_tidy_roster([['band' => 'X', 'members' => ['a']], ['band' => 'X', 'members' => ['b']], ['band' => 'Y', 'members' => ['a']]]), 'band'), ['X(a)', 'X(b)', 'Y']);
 check('希望調査: 確認画面の並び', band_survey_draft_members($bsRoster), [['山田 太郎', ['A', 'B']], ['佐藤', ['A', 'B']]]);
 $bsApply = band_survey_apply($bsRoster, [
     ['member' => '山田 太郎', 'line_name' => 'やまだ', 'ranks' => [['written' => 'えー', 'band' => 'A', 'rank' => 1], ['written' => 'Z', 'band' => 'Z', 'rank' => 2]]],

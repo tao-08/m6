@@ -177,7 +177,10 @@ function pdf_words_to_rows(array $words, ?array &$columns): array
         if (str_contains($text, 'バンド名')) {
             // 見出しセル内で折り返された文字（「持ち時/間」など）も拾うため、上下に近い行も見出しに含める
             $h = $line['words'][0]['y1'] - $line['words'][0]['y0'];
-            $headerLines = array_filter($lines, static fn($l) => abs($l['yc'] - $line['yc']) <= $h * 1.2);
+            // ただし左端が通し番号（見出しの左端より左の数字）の行は1行目のデータ（行を詰めた表だと近すぎて混ざる）
+            $headX0 = min(array_column($line['phrases'], 'x0'));
+            $headerLines = array_filter($lines, static fn($l) => abs($l['yc'] - $line['yc']) <= $h * 1.2
+                && !(preg_match('/^\d+$/', $l['phrases'][0]['text']) && $l['phrases'][0]['x1'] < $headX0));
             $first = min(array_keys($headerLines));
             $last = max(array_keys($headerLines));
             // 見出しより上は「日付・ライブ名・会場」などの前置き行
@@ -298,7 +301,8 @@ function pdf_words_to_rows(array $words, ?array &$columns): array
     $groups = [];
     foreach ($firstCol as $p) {
         $g = array_key_last($groups);
-        if ($g !== null && $p['yc'] - end($groups[$g]) <= $p['h'] * 1.2) {
+        // 通し番号は1つで1行（行を詰めた表だと、番号どうしの間隔が折り返しと同じくらい狭い）
+        if ($g !== null && !($hasNumberCol && $isNumber($p)) && $p['yc'] - end($groups[$g]) <= $p['h'] * 1.2) {
             $groups[$g][] = $p['yc'];
         } else {
             $groups[] = [$p['yc']];

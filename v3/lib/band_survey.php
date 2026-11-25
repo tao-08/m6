@@ -64,6 +64,14 @@ function band_survey_tidy_roster(array $bands): array
         $b['members'] = array_values(array_unique($names));
     }
     unset($b);
+    // 同じ名前のバンドが2つ以上あれば「ELLEGARDEN(箕浦英翔)」のように1人目を付けて分ける（順位はバンド名で持つため）
+    $count = array_count_values(array_column($bands, 'band'));
+    foreach ($bands as &$b) {
+        if ($count[$b['band']] > 1 && $b['members']) {
+            $b['band'] .= '(' . $b['members'][0] . ')';
+        }
+    }
+    unset($b);
     return $bands;
 }
 
