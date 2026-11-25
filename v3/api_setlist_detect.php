@@ -5,7 +5,7 @@
  * =====================================================================
  *  band_edit.php の「動画から曲を検出」（assets/setlist_detect.js）が fetch() で呼ぶ。
  *  リクエスト（POST, multipart/form-data）: band_id, audio（ブラウザが動画から抜いたモノラル MP3）
- *  Gemini が聴き終わるまで待ち（1〜2分）、曲名をセッションに置く → 画面が songs_edit?from_detect=1 で確認画面を開く
+ *  Gemini が聴き終わるまで待ち（1〜2分）、曲名と候補（自信が低い曲だけ）をセッションに置く → 画面が songs_edit?from_detect=1 で確認画面を開く
  *  レスポンス（JSON）: {"count": 見つかった曲数}
  *  エラー: {"error": "..."}（400 / 401 / 403 / 404 / 502 / 503）
  * =====================================================================
@@ -40,13 +40,13 @@ if ($f['size'] > SETLIST_AUDIO_MAX_BYTES || !in_array((new finfo(FILEINFO_MIME_T
 
 session_write_close(); // 長く待つので、ほかの画面を待たせない
 @set_time_limit(0);
-$titles = gemini_setlist($f['tmp_name'], $cfg);
-if (is_string($titles)) {
-    fail(502, $titles);
+$songs = gemini_setlist($f['tmp_name'], $cfg);
+if (is_string($songs)) {
+    fail(502, $songs);
 }
-if (!$titles) {
+if (!$songs) {
     fail(404, '曲が見つかりませんでした');
 }
-session_start(); // 曲名を確認画面に渡すため、もう一度開く
-$_SESSION['setlist_detect'][$bandId] = $titles;
-api_ok(['count' => count($titles)]);
+session_start(); // 曲名と候補を確認画面に渡すため、もう一度開く
+$_SESSION['setlist_detect'][$bandId] = $songs;
+api_ok(['count' => count($songs)]);

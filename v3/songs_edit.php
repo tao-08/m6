@@ -82,6 +82,7 @@ $errors = [];
 //   送られてきた曲名を、いつものカードに並べて表示するだけ（曲の紐付け・演奏者を確認してから「保存」してもらう）
 $fromSheet = is_post() && ($_POST['from_sheet'] ?? '') === '1';
 $sheetTitles = [];
+$detectCandidates = []; // 動画から曲を検出したとき、自信が低い曲の候補（from_detect）
 $sheetTracks = []; // 曲名と同じ順の、シートで紐付けたサブスクの曲 [source, track_id]（無い・形がおかしい = null）
 if ($fromSheet) {
     verify_csrf();
@@ -255,8 +256,10 @@ if (!is_post() && ($_GET['from_yt'] ?? '') === '1') {
 
 // バンド編集の「動画から曲を検出」が終わったあと: api_setlist_detect がセッションに置いた曲名を、同じようにカードに並べる（保存はまだしない）
 if (!is_post() && ($_GET['from_detect'] ?? '') === '1' && is_admin()) {
-    $sheetTitles = $_SESSION['setlist_detect'][$bandId] ?? [];
+    $detected = $_SESSION['setlist_detect'][$bandId] ?? [];
     unset($_SESSION['setlist_detect'][$bandId]); // 1回だけ使う
+    $sheetTitles = array_column($detected, 'title');
+    $detectCandidates = array_column($detected, 'candidates'); // 自信が低い曲の候補（曲の順。無い曲は []）
     if (!$sheetTitles) {
         redirect($backUrl);
     }
@@ -331,6 +334,7 @@ if ($fromSheet) {
                 }
             }
         }
+        $card['candidates'] = $detectCandidates[$i] ?? [];
         $card['track_no'] = $i + 1;
         $cards[] = $card;
     }
@@ -405,7 +409,8 @@ render_header('セットリストを編集', 'lives');
             $trackKey = $song['track_id'] === null ? '' : album_key($song['track_source'], $song['track_id']); ?>
             <?php if ($isTemplate): ?><template <?= $isSe ? 'data-song-template-se' : 'data-song-template' ?>><?php endif; ?>
             <!-- data-unsaved-blank: 曲名が空の新しい曲は保存されないので、未保存の警告の対象にしない（assets/app_form.js の setupUnsavedGuard） -->
-            <section class="card song-card<?= $isNew ? ' song-card--new' : '' ?><?= $isSe ? ' song-card--se' : '' ?>" data-song-card<?= $isNew ? ' data-unsaved-blank' : '' ?>>
+            <!-- data-candidates: 動画から曲を検出して自信が低かった曲の候補 [{title, artist}]。🔍 の候補欄に並べる（assets/app_songs.js の setupTrackSearch） -->
+            <section class="card song-card<?= $isNew ? ' song-card--new' : '' ?><?= $isSe ? ' song-card--se' : '' ?>" data-song-card<?= $isNew ? ' data-unsaved-blank' : '' ?><?= empty($song['candidates']) ? '' : ' data-candidates="' . h(json_encode($song['candidates'], JSON_UNESCAPED_UNICODE)) . '"' ?>>
                 <div class="song-card__head">
                     <!-- ≡: ドラッグ（↑↓キーでも）で曲の順番を入れ替える。pos = 上から何番目か（JS が振り直す。保存はこの順） -->
                     <button type="button" class="drag-handle" data-song-handle aria-label="ドラッグで並び替え（↑↓キーでも動く）" title="ドラッグで並び替え"><?= icon('drag_indicator') ?></button>

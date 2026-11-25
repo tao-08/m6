@@ -1289,8 +1289,15 @@ check('セトリ: 結果なしは空', acr_setlist_titles([]), []);
 
 echo "gemini setlist\n";
 require_once __DIR__ . '/../lib/gemini_setlist.php';
-check('曲名: 演奏順・特定できない曲は除く', gemini_setlist_titles(['songs' => [['title' => ' 花束 ', 'artist' => 'サンボマスター'], ['title' => '', 'artist' => ''], ['title' => '花束', 'artist' => 'サンボマスター']]]), ['花束', '花束']);
-check('曲名: 形が違っても落ちない', gemini_setlist_titles(['songs' => 'x']), []);
+check('曲: 演奏順・曲名も候補も無い曲は除く', gemini_setlist_songs(['songs' => [
+    ['title' => ' 花束 ', 'artist' => 'サンボマスター', 'confident' => true, 'candidates' => [['title' => 'x', 'artist' => '']]],
+    ['title' => '', 'artist' => '', 'confident' => false, 'candidates' => []],
+    ['title' => '花束', 'artist' => 'サンボマスター'],
+]]), [['title' => '花束', 'candidates' => []], ['title' => '花束', 'candidates' => []]]);
+check('曲: 自信が低い曲は候補を3つまで・曲名が空なら第1候補', gemini_setlist_songs(['songs' => [
+    ['title' => '', 'confident' => false, 'candidates' => [['title' => 'A', 'artist' => 'a'], ['title' => ' '], ['title' => 'B'], ['title' => 'C', 'artist' => 'c'], ['title' => 'D']]],
+]]), [['title' => 'A', 'candidates' => [['title' => 'A', 'artist' => 'a'], ['title' => 'B', 'artist' => ''], ['title' => 'C', 'artist' => 'c']]]]);
+check('曲: 形が違っても落ちない', [gemini_setlist_songs(['songs' => 'x']), gemini_setlist_songs(['songs' => ['x', ['title' => ['y'], 'confident' => false, 'candidates' => 'z']]])], [[], []]);
 
 echo "band survey\n";
 require_once __DIR__ . '/../lib/band_survey.php';

@@ -430,6 +430,80 @@ function setupTrackSearch() {
     openResults(results);
   };
 
+  // 候補1件ぶんの行（押すと紐付ける・▶ で試聴）
+  const trackRow = (card, track) => {
+    const row = document.createElement('div');
+    row.className = 'track-option-row';
+    const btn = optionButton(track);
+    btn.addEventListener('click', () => {
+      // 選んだ曲の正式な曲名で置き換える（打ち間違い・表記ゆれをそろえる）
+      card.querySelector('[name$="[title]"]').value = track.title;
+      // オムニバスのときだけ、選んだ曲のアーティストを入れる。
+      const artist = card.querySelector('[data-song-artist]');
+      if (artist && !artist.readOnly) artist.value = track.artist_name.split(', ')[0];
+      setTrack(card, track);
+    });
+    row.append(btn);
+    if (track.preview_url) {
+      const play = document.createElement('button');
+      play.type = 'button';
+      play.className = 'track-option__play';
+      play.dataset.preview = track.key;
+      play.dataset.previewUrl = track.preview_url; // 候補はまだ保存前なので、URL を直接渡す
+      play.setAttribute('aria-label', track.title + 'を試聴');
+      play.title = '30秒試聴';
+      play.append(iconEl('play_arrow'));
+      row.append(play);
+    }
+    return row;
+  };
+
+  // 動画から曲を検出して自信が低かった曲（data-candidates）: Gemini の候補を1曲ずつ探し、最初に当たった曲を候補欄に並べる
+  //   探しても見つからない候補は、曲名だけのボタンにする（押すと曲名を入れる）
+  const showCandidates = async (card) => {
+    const results = card.querySelector('[data-track-results]');
+    let cands = [];
+    try { cands = JSON.parse(card.dataset.candidates); } catch { return; }
+    message(results, '検索中…');
+    const rows = [];
+    const seen = new Set();
+    for (const c of cands) {
+      try {
+        const res = await fetch(`api_track_search?q=${encodeURIComponent(`${c.title} ${c.artist}`.trim())}`, { credentials: 'same-origin' });
+        // 検索は似た曲も返すので、曲名が候補と同じもの（全角半角・大文字小文字・空白は無視）だけ採る
+        const norm = (t) => t.normalize('NFKC').toLowerCase().replace(/\s/g, '');
+        const track = res.ok ? (await res.json()).tracks?.find((t) => norm(t.title).startsWith(norm(c.title))) : null;
+        if (track) {
+          if (!seen.has(track.key)) rows.push(trackRow(card, track));
+          seen.add(track.key);
+          continue;
+        }
+      } catch { /* 見つからないときと同じ扱い */ }
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'track-option';
+      const title = document.createElement('div');
+      title.className = 'track-option__title';
+      title.textContent = c.title;
+      const sub = document.createElement('div');
+      sub.className = 'track-option__sub';
+      sub.textContent = c.artist;
+      const text = document.createElement('span');
+      text.append(title, sub);
+      btn.append(iconEl('music_note'), text); // ジャケットの代わり（紐付いていない曲と同じ ♪）
+      btn.addEventListener('click', () => {
+        card.querySelector('[name$="[title]"]').value = c.title;
+        closeResults(results);
+      });
+      const row = document.createElement('div');
+      row.className = 'track-option-row';
+      row.append(btn);
+      rows.push(row);
+    }
+    results.replaceChildren(...rows);
+    openResults(results);
+  };
+
   // 曲名の欄で Enter → その曲の「曲を探す」を押す（フォームは送信しない）
   //   isComposing: 日本語入力の変換を確定する Enter では探さない
   list.addEventListener('keydown', (e) => {
@@ -473,32 +547,7 @@ function setupTrackSearch() {
         message(results, '見つかりませんでした。曲名やアーティスト名を変えて探してください');
         return;
       }
-      results.replaceChildren(...data.tracks.map((track) => {
-        const row = document.createElement('div');
-        row.className = 'track-option-row';
-        const btn = optionButton(track);
-        btn.addEventListener('click', () => {
-          // 選んだ曲の正式な曲名で置き換える（打ち間違い・表記ゆれをそろえる）
-          card.querySelector('[name$="[title]"]').value = track.title;
-          // オムニバスのときだけ、選んだ曲のアーティストを入れる。
-          const artist = card.querySelector('[data-song-artist]');
-          if (artist && !artist.readOnly) artist.value = track.artist_name.split(', ')[0];
-          setTrack(card, track);
-        });
-        row.append(btn);
-        if (track.preview_url) {
-          const play = document.createElement('button');
-          play.type = 'button';
-          play.className = 'track-option__play';
-          play.dataset.preview = track.key;
-          play.dataset.previewUrl = track.preview_url; // 候補はまだ保存前なので、URL を直接渡す
-          play.setAttribute('aria-label', track.title + 'を試聴');
-          play.title = '30秒試聴';
-          play.append(iconEl('play_arrow'));
-          row.append(play);
-        }
-        return row;
-      }));
+      results.replaceChildren(...data.tracks.map((track) => trackRow(card, track)));
     } catch (err) {
       message(results, err.message || '検索できませんでした');
     } finally {
@@ -506,13 +555,15 @@ function setupTrackSearch() {
     }
   });
 
-  // 概要欄から来たとき（data-auto-search）: 紐付いていない曲の 🔍 を順に押して、候補を並べておく
+  // 概要欄・動画から来たとき（data-auto-search）: 紐付いていない曲の 🔍 を順に押して、候補を並べておく（自信が低い曲は Gemini の候補）
   //   一度に叩かないよう 400ms ずつずらす
   if (list.hasAttribute('data-auto-search')) {
     list.querySelectorAll('[data-song-card]:not([data-template])').forEach((card, i) => {
       const btn = card.querySelector('[data-track-search]');
-      if (!btn || card.closest('template') || card.querySelector('[name$="[track]"]')?.value) return;
-      setTimeout(() => btn.click(), i * 400);
+      if (!btn || card.closest('template')) return;
+      // 自信が低い曲は、第1候補が自動で紐付いていても、ほかの候補を見せる
+      if (card.dataset.candidates) setTimeout(() => showCandidates(card), i * 400);
+      else if (!card.querySelector('[name$="[track]"]')?.value) setTimeout(() => btn.click(), i * 400);
     });
   }
 }
