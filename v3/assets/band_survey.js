@@ -48,7 +48,8 @@
         const body = fbox?.querySelector('.survey-filter__body');
         if (body && open) { // 広がる先の大きさを中身から測る。漏斗の横に入らなければ下の段に出す
             body.style.setProperty('--w', `${body.scrollWidth}px`);
-            body.style.setProperty('--h', `${body.scrollHeight}px`);
+            // 高さは scrollHeight だと測れない（上下中央そろえで上にはみ出した分が入らず、開くたびに少しずつ伸びる）→ 中身の高さ＋上下の padding
+            body.style.setProperty('--h', `${Math.max(...[...body.children].map((el) => el.offsetHeight)) + 6}px`);
             const room = fbox.clientWidth - parseFloat(getComputedStyle(fbox).paddingLeft) * 2 - fbox.querySelector('[data-survey-filter-toggle]').offsetWidth - 8;
             fbox.classList.toggle('is-stacked', body.scrollWidth - 6 > room);
         }
