@@ -312,10 +312,10 @@ if ($id > 0) {
         $n = array_map('count', $live); // その人が順位を付けた数
         $sum = array_column(band_survey_summarize(band_survey_rows($data)), null, 'band');
         $draft = ($_SESSION['band_survey_answer']['id'] ?? 0) === $id ? $_SESSION['band_survey_answer'] : null;
-        $best = []; // バンドごとの、対象の人が付けた最も上の順位（絞り込み「◯位まで入れた人が」に使う）
+        $given = []; // バンドごとの、対象の人が付けた順位の一覧（絞り込み「◯位まで入れた人が ◯人」に使う）
         foreach ($live as $m => $rs) {
             if (!isset($isTarget[$m])) continue;
-            foreach ($rs as $band => $r) $best[$band] = min($best[$band] ?? PHP_INT_MAX, (int)$r);
+            foreach ($rs as $band => $r) $given[$band][] = (int)$r;
         }
         $maxRank = max([0, ...array_values(array_intersect_key($n, $isTarget))]);
         ?>
@@ -463,9 +463,12 @@ if ($id > 0) {
                         </div>
                     </div>
                     <span class="small" data-survey-filter-text>に入れた人が</span>
-                    <div class="tabs">
-                        <button type="button" class="tab is-active" data-survey-filter-mode="yes">1人以上</button>
-                        <button type="button" class="tab" data-survey-filter-mode="no">0人</button>
+                    <div class="year-slot year-slot--grade" data-survey-filter-count tabindex="0" role="spinbutton" aria-label="人数">
+                        <div class="year-slot__reel">
+                            <?php foreach (['0' => '0人', '1' => '1人', '2' => '2人', '3' => '3人', '4' => '4人以上'] as $v => $label): ?>
+                                <?= grade_slot_item((string)$v, $label, '1') ?>
+                            <?php endforeach; ?>
+                        </div>
                     </div>
                     </div>
                 </div>
@@ -481,7 +484,7 @@ if ($id > 0) {
                 </tr></thead>
                 <tbody>
                 <?php foreach ($bands as $bi => $b): $s = $sum[$b['band']] ?? ['heat' => null, 'low_all' => false]; ?>
-                    <tr data-best="<?= $best[$b['band']] ?? '' ?>"<?= isset($off[$b['band']]) ? ' class="is-off"' : '' ?>>
+                    <tr data-ranks="<?= implode(',', $given[$b['band']] ?? []) ?>"<?= isset($off[$b['band']]) ? ' class="is-off"' : '' ?>>
                         <td class="survey-off"><form method="post">
                             <?= csrf_field() ?><input type="hidden" name="action" value="off"><input type="hidden" name="id" value="<?= $id ?>">
                             <input type="hidden" name="band" value="<?= h($b['band']) ?>"><input type="hidden" name="sort" value="<?= $byHeat ? 'heat' : '' ?>">

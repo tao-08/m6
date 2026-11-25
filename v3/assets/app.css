@@ -3312,14 +3312,17 @@ span.signal { cursor: default; }
 .survey-candidates { display: flex; flex-wrap: wrap; gap: 6px; }
 .survey-views { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; } /* 表 / プレビュー と 並び順 を1行に（狭ければ折り返す） */
 .survey-views > .tabs { margin-bottom: 0; }
-.survey-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 14px 0; }
-.survey-filter__body > .tabs { margin-bottom: 0; }
-/* 絞り込み: 漏斗を押すと横にすべって出る。閉じているときも高さは残す（スロットが段の高さを測れるように） */
-.survey-filter__body { --ease: cubic-bezier(.25, .8, .25, 1); display: flex; align-items: center; gap: 8px; overflow: hidden;
-  max-width: 0; padding: 3px; margin: -3px; opacity: 0; visibility: hidden;
-  transition: max-width var(--t-slow) var(--ease), opacity var(--t-slow) ease, visibility var(--t-slow); }
+.survey-filter { display: flex; align-items: center; gap: 8px; padding: 12px 14px 0; }
+/* 絞り込み: 漏斗を押すと横にすべって出る。広がる先の幅・高さ（--w / --h）は JS が中身から測る
+   折り返さない（閉じている途中で折り返すと高さが変わって表が上下する）。漏斗の横に入らない幅では、漏斗の下の段に出す（.is-stacked） */
+.survey-filter__body { --ease: cubic-bezier(.25, .8, .25, 1); display: flex; align-items: center; gap: 8px; overflow: hidden; white-space: nowrap;
+  max-width: 0; max-height: 0; padding: 3px; margin: -3px; opacity: 0; visibility: hidden;
+  transition: max-width var(--t-slow) var(--ease), max-height var(--t-slow) var(--ease), opacity var(--t-slow) ease, visibility var(--t-slow); }
 .survey-filter__body > * { flex: none; }
-.survey-filter.is-open .survey-filter__body { max-width: 40em; opacity: 1; visibility: visible; }
+.survey-filter.is-open .survey-filter__body { max-width: var(--w); max-height: var(--h); opacity: 1; visibility: visible; }
+.survey-filter.is-stacked { flex-direction: column; align-items: flex-start; gap: 0; }
+.survey-filter.is-stacked.is-open .survey-filter__body { margin-top: 5px; }
+.survey-filter.is-stacked .survey-filter__body { transition-property: max-width, max-height, opacity, visibility, margin-top; }
 @media (prefers-reduced-motion: reduce) { .survey-filter__body { transition: none; } }
 .survey-gap { margin-top: 16px; }
 .survey-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }

@@ -28,20 +28,27 @@
         }
     });
 
-    /* ---------- 表の絞り込み: 「◯位まで入れた人が 1人以上 / 0人」バンドだけ出す ---------- */
-    const filter = { rank: '1', mode: '', last: 'yes' }; // mode: '' = 閉じている（絞り込まない）/ last: 開き直したときのタブ
+    /* ---------- 表の絞り込み: 「◯位まで入れた人が 0〜3人 / 4人以上」（どちらもスロット）バンドだけ出す ---------- */
+    const filter = { rank: '1', mode: '', last: '1' }; // mode: 人数（'' = 閉じている・絞り込まない）/ last: 開き直したときの人数
     const applyFilter = () => {
-        document.querySelectorAll('[data-survey-pane="table"] tr[data-best]').forEach((tr) => {
-            const hit = tr.dataset.best !== '' && Number(tr.dataset.best) <= Number(filter.rank);
-            tr.hidden = filter.mode !== '' && hit !== (filter.mode === 'yes');
+        document.querySelectorAll('[data-survey-pane="table"] tr[data-ranks]').forEach((tr) => {
+            const hits = tr.dataset.ranks.split(',').filter((r) => r !== '' && Number(r) <= Number(filter.rank)).length;
+            tr.hidden = filter.mode !== '' && Math.min(hits, 4) !== Number(filter.mode); // mode 4 = 4人以上
         });
-        document.querySelectorAll('[data-survey-filter-mode]').forEach((t) => t.classList.toggle('is-active', t.dataset.surveyFilterMode === filter.last));
         // バンドの見出しの（出ている数/全部）: 一時削除・絞り込みで隠したバンドは数えない
-        const rows = [...document.querySelectorAll('[data-survey-pane="table"] tr[data-best]')];
+        const rows = [...document.querySelectorAll('[data-survey-pane="table"] tr[data-ranks]')];
         const count = document.querySelector('[data-survey-band-count]');
         if (count) count.textContent = `（${rows.filter((tr) => !tr.hidden && !tr.classList.contains('is-off')).length}/${rows.length}）`;
         const open = filter.mode !== '';
-        document.querySelector('[data-survey-filter]')?.classList.toggle('is-open', open);
+        const fbox = document.querySelector('[data-survey-filter]');
+        const body = fbox?.querySelector('.survey-filter__body');
+        if (body && open) { // 広がる先の大きさを中身から測る。漏斗の横に入らなければ下の段に出す
+            body.style.setProperty('--w', `${body.scrollWidth}px`);
+            body.style.setProperty('--h', `${body.scrollHeight}px`);
+            const room = fbox.clientWidth - parseFloat(getComputedStyle(fbox).paddingLeft) * 2 - fbox.querySelector('[data-survey-filter-toggle]').offsetWidth - 8;
+            fbox.classList.toggle('is-stacked', body.scrollWidth - 6 > room);
+        }
+        fbox?.classList.toggle('is-open', open);
         const toggle = document.querySelector('[data-survey-filter-toggle]');
         if (toggle) {
             toggle.setAttribute('aria-expanded', String(open));
@@ -49,7 +56,7 @@
             toggle.title = toggle.getAttribute('aria-label');
             toggle.querySelector('.icon').textContent = open ? 'filter_alt_off' : 'filter_alt';
         }
-        document.querySelector('[data-survey-filter-slot]')?.classList.toggle('is-filtered', filter.mode !== '');
+        document.querySelectorAll('[data-survey-filter-slot], [data-survey-filter-count]').forEach((s) => s.classList.toggle('is-filtered', open));
         const text = document.querySelector('[data-survey-filter-text]');
         if (text) text.textContent = filter.rank === '1' ? 'に入れた人が' : 'まで入れた人が'; // 「1位まで」は言わない
     };
@@ -58,7 +65,11 @@
         if (!box || box.dataset.ready) return;
         box.dataset.ready = '1';
         makeSlot(box.querySelector('[data-survey-filter-slot]'), (value) => { filter.rank = value; applyFilter(); });
-        box.querySelectorAll('[data-survey-filter-mode]').forEach((t) => t.addEventListener('click', () => { filter.mode = filter.last = t.dataset.surveyFilterMode; applyFilter(); }));
+        makeSlot(box.querySelector('[data-survey-filter-count]'), (value, changed) => { // 最初の呼び出し（changed = false）では開かない
+            if (!changed) return;
+            filter.mode = filter.last = value;
+            applyFilter();
+        });
         box.querySelector('[data-survey-filter-toggle]').addEventListener('click', () => { filter.mode = filter.mode ? '' : filter.last; applyFilter(); });
     };
     if (!document.querySelector('[data-survey-pane="table"]')?.hidden) setupFilter();
