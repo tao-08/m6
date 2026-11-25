@@ -18,13 +18,15 @@ const GEMINI_SETLIST_PROMPT = <<<'TXT'
 - 入場の SE・転換中に流れる音源は含めない
 TXT;
 
-/** config.php の Gemini の設定。キーが無い・モデル名が変なら null */
+/** 2026-11 にライブ音源で比べ、2回とも全曲当たった（3.8-flash は 2/3 と 1/3）。モデルが無くなったらここを変える */
+const GEMINI_SETLIST_MODEL = 'gemini-4-hydrogen';
+
+/** config.php の Gemini の API キー。無ければ null */
 function gemini_setlist_config(): ?array
 {
     $g = (array)(config('gemini') ?? []);
     $key = trim((string)($g['api_key'] ?? ''));
-    $model = trim((string)($g['setlist_model'] ?? $g['chapter_model'] ?? $g['lyrics_search_model'] ?? 'gemini-3.8-flash'));
-    return $key !== '' && preg_match('/^gemini-[a-zA-Z0-9.-]+$/', $model) ? ['key' => $key, 'model' => $model] : null;
+    return $key !== '' ? ['key' => $key, 'model' => GEMINI_SETLIST_MODEL] : null;
 }
 
 /** Gemini の返事 → 曲名（演奏順）。特定できなかった曲は除く */
