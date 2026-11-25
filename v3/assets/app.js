@@ -34,6 +34,7 @@
  *    data-pack          … 送信時に全項目を JSON 1個にまとめるフォーム
  *    data-rows          … バンド編集・タイムテーブル編集のメンバー行（追加・削除）
  *    data-autosubmit    … 選んだら即送信
+ *    data-fit-zoom      … 表の全体を枠に収め、ピンチ・Ctrl+ホイール・ダブルタップで拡大縮小（バンド希望調査）
  *    data-loading       … 送信したら「読み込み中」を出す（取り込みの AI 読み取りは数十秒かかる）
  *    <select>           … 全部のプルダウンをボタン + ポップアップの見た目にする（data-native で元のまま）
  *    data-song-list / data-add-song … 曲の編集
@@ -109,6 +110,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupTimetableFollow();
   setupPicks();
   setupLiveImages();
+  setupFitZoom(); // 表を縮めてから、はみ出しているか（つかめるか）を setupDragScroll が見る
   setupDragScroll();
   setupPackedForm();
   setupMemberRows();

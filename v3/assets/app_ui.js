@@ -664,6 +664,90 @@ function setupBackButton() {
 }
 
 /* ---------------------------------------------------------------------
+ * 表の拡大・縮小（data-fit-zoom の枠の中の表。バンド希望調査の表）
+ *   セットリスト作成のプレビュー（setting_sheet.js）と同じ操作:
+ *   最初は表の全体が枠の幅に入る大きさ。ピンチ（PC は Ctrl + ホイール）で拡大・縮小、ダブルタップで全体 ⇔ 拡大
+ *   CSS の zoom で大きさを変える（transform と違い、レイアウトの大きさも変わるので、拡大中はそのまま横にスクロールできる）
+ * ------------------------------------------------------------------- */
+function setupFitZoom() {
+  document.querySelectorAll('[data-fit-zoom]').forEach((box) => {
+    const inner = box.querySelector('table'); // box は横にスクロールする要素（.table-scroll）
+    if (!inner) return;
+    const MAX_SCALE = 2; // 原寸の何倍まで
+    let fitScale = 1; // 全体が入る倍率（原寸より大きくはしない）
+    let scale = 1;
+    const fit = () => fitScale;
+    // 原寸の幅から倍率を出し、実際に縮めた幅で直す（ブラウザの最小の文字サイズで、計算より広くなることがある）
+    const measure = () => {
+      inner.style.zoom = '';
+      const room = box.clientWidth - 1;
+      let s = Math.min(1, room / inner.scrollWidth);
+      for (let i = 0; i < 3; i++) {
+        inner.style.zoom = String(s);
+        const w = inner.getBoundingClientRect().width;
+        if (w <= room + 0.5) break;
+        s *= room / w;
+      }
+      fitScale = s;
+    };
+    /** 倍率を変える。指の真ん中（cx, cy: 枠の左上からの px）の場所が、拡大しても指の下に残るようにスクロールを合わせる */
+    const setScale = (next, cx, cy) => {
+      next = Math.min(Math.max(next, fit()), MAX_SCALE);
+      const f = next / scale;
+      const x = box.scrollLeft + cx;
+      scale = next;
+      inner.style.zoom = String(scale);
+      box.scrollLeft = x * f - cx;
+      window.scrollBy(0, cy * f - cy); // 縦はページのスクロール
+      box.classList.toggle('is-draggable', box.scrollWidth > box.clientWidth); // つかんで動かせるのは、はみ出しているときだけ（setupDragScroll）
+    };
+    measure();
+    scale = fit();
+    inner.style.zoom = String(scale);
+    // 画面の幅が変わったら、全体を見ていたときだけ合わせ直す
+    let wasFit = true;
+    window.addEventListener('resize', () => {
+      wasFit = Math.abs(scale - fit()) < 0.01;
+      measure();
+      scale = wasFit ? fit() : Math.max(scale, fit());
+      inner.style.zoom = String(scale);
+    });
+
+    // ピンチ: 2本の指の距離の変化を倍率にする（Touch Events を使う理由は setting_sheet.js のプレビューと同じ）
+    let pinch = null;
+    const dist = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+    box.addEventListener('touchstart', (e) => { if (e.touches.length === 2) pinch = { d: dist(e.touches), scale }; });
+    box.addEventListener('touchmove', (e) => {
+      if (!pinch || e.touches.length !== 2) return;
+      e.preventDefault(); // ページ全体の拡大にさせない
+      const [a, b] = e.touches;
+      const r = box.getBoundingClientRect();
+      setScale(pinch.scale * (dist(e.touches) / pinch.d), (a.clientX + b.clientX) / 2 - r.left, (a.clientY + b.clientY) / 2 - r.top);
+      wasFit = false;
+    }, { passive: false });
+    const end = (e) => { if (e.touches.length < 2) pinch = null; };
+    box.addEventListener('touchend', end);
+    box.addEventListener('touchcancel', end);
+    // PC: Ctrl + ホイール（トラックパッドのピンチもこれで届く）
+    box.addEventListener('wheel', (e) => {
+      if (!e.ctrlKey) return;
+      e.preventDefault();
+      const r = box.getBoundingClientRect();
+      setScale(scale * Math.exp(-e.deltaY / 300), e.clientX - r.left, e.clientY - r.top);
+      wasFit = false;
+    }, { passive: false });
+    // ダブルタップ: 全体を見ていれば原寸、拡大していれば全体へ。名前（押すと編集が開く）の上では何もしない
+    box.addEventListener('dblclick', (e) => {
+      if (e.target.closest('summary, form')) return;
+      const r = box.getBoundingClientRect();
+      const toFit = scale > fit() + 0.01;
+      setScale(toFit ? fit() : 1, e.clientX - r.left, e.clientY - r.top);
+      wasFit = toFit;
+    });
+  });
+}
+
+/* ---------------------------------------------------------------------
  * こまごました動き
  *   data-autosubmit … セレクトボックスやラジオボタンを変えたらすぐフォームを送信（集計の絞り込み）
  * ------------------------------------------------------------------- */

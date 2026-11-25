@@ -284,7 +284,7 @@ if ($id > 0) {
             <a class="tab<?= $byHeat ? ' is-active' : '' ?>" href="band_survey?id=<?= $id ?>&amp;sort=heat">優先度の順</a>
         </div>
         <div class="card table-card">
-            <div class="table-scroll table-scroll--flush">
+            <div class="table-scroll table-scroll--flush" data-fit-zoom>
             <table class="table survey-map">
                 <caption class="survey-legend"><span class="survey-chip" style="--heat: 1">1位</span><span class="survey-chip" style="--heat: 0">最下位</span><span class="survey-chip is-none">未回答</span><span class="survey-chip is-out">対象外</span></caption>
                 <thead><tr>
@@ -366,7 +366,7 @@ if ($draft) {
                     <td><input name="n[<?= $mi ?>]" value="<?= h($member) ?>" maxlength="50" required
                         class="name-input<?= $st['status'] ? ' is-' . h($st['status']) : '' ?>" title="<?= h($st['hint']) ?>"
                         data-name-cell data-suggest-list="member-names" autocomplete="off" aria-label="メンバー"<?= suggest_attr($st) ?>></td>
-                    <td class="muted small"><?= h(implode('、', $bands)) ?></td>
+                    <td class="muted small survey-bands"><?= h(implode('、', $bands)) ?></td>
                 </tr>
             <?php endforeach; ?>
             </tbody>

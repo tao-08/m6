@@ -3292,6 +3292,7 @@ span.signal { cursor: default; }
 /* 確認画面の表: 名前の欄を広げ、折り返さずに横スクロール（.table-card） */
 .survey-edit td { white-space: nowrap; }
 .survey-edit .name-input { min-width: 10em; }
+.survey-edit td.survey-bands { white-space: normal; min-width: 18em; max-width: 26em; } /* 出演バンドは折り返す（多くの人が3行に収まる幅） */
 .survey-chip b { font-variant-numeric: tabular-nums; }
 .survey-low { cursor: default; color: var(--muted); } /* 全員が下位（data-tip） */
 .survey-text { white-space: pre-wrap; font-size: var(--fs-sm); }
