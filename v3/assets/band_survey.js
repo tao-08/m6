@@ -47,11 +47,14 @@
         const fbox = document.querySelector('[data-survey-filter]');
         const body = fbox?.querySelector('.survey-filter__body');
         if (body && open) { // 広がる先の大きさを中身から測る。漏斗の横に入らなければ下の段に出す
-            body.style.setProperty('--w', `${body.scrollWidth}px`);
-            // 高さは scrollHeight だと測れない（上下中央そろえで上にはみ出した分が入らず、開くたびに少しずつ伸びる）→ 中身の高さ＋上下の padding
-            body.style.setProperty('--h', `${Math.max(...[...body.children].map((el) => el.offsetHeight)) + 6}px`);
+            // scrollWidth / scrollHeight では測れない（はみ出した分や右の padding が入らず、見切れたり測り直すたびに伸びたりする）
+            // → 出ている中身の幅の合計＋すき間（8px）＋左右の padding、高さは中身の最大＋上下の padding
+            const kids = [...body.children].filter((el) => !el.hidden);
+            const width = Math.ceil(kids.reduce((sum, el) => sum + el.getBoundingClientRect().width, 0)) + 8 * (kids.length - 1) + 6;
+            body.style.setProperty('--w', `${width}px`);
+            body.style.setProperty('--h', `${Math.max(...kids.map((el) => el.offsetHeight)) + 6}px`);
             const room = fbox.clientWidth - parseFloat(getComputedStyle(fbox).paddingLeft) * 2 - fbox.querySelector('[data-survey-filter-toggle]').offsetWidth - 8;
-            fbox.classList.toggle('is-stacked', body.scrollWidth - 6 > room);
+            fbox.classList.toggle('is-stacked', width - 6 > room);
         }
         fbox?.classList.toggle('is-open', open);
         const toggle = document.querySelector('[data-survey-filter-toggle]');
