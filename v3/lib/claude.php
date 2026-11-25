@@ -90,13 +90,14 @@ function claude_json(string $system, array $content, array $schema, int $maxToke
     // サーバー側のツール（ウェブ検索など）。検索は Anthropic のサーバーが実行して、結果を踏まえた返事が返ってくる
     //   ツールと一緒だとスキーマの文法が大きすぎて 400 になることがある（大きなスキーマ + 検索）ので、
     //   ツールがあるときは形の固定（output_config.format）をやめ、スキーマを文章で渡して返事の JSON を取り出す
-    if ($tools) {
-        $body['tools'] = $tools;
-        unset($body['output_config']['format']);
-        $body['system'] .= "
+    $schemaText = "
 
 最終的な返事は、次の JSON スキーマに合う JSON だけを出力する（前置き・説明・コードブロックは付けない）:
 " . json_encode($schema, JSON_UNESCAPED_UNICODE);
+    if ($tools) {
+        $body['tools'] = $tools;
+        unset($body['output_config']['format']);
+        $body['system'] .= $schemaText;
     }
     // プロンプトキャッシュ: 指示文（ツール + system）までを5分間覚えてもらい、同じ指示での再呼び出し・pause_turn の続きで入力代を約1/10にする
     //   最小の長さに届かないときは黙ってキャッシュされないだけ（エラーにはならない）
@@ -133,6 +134,12 @@ function claude_json(string $system, array $content, array $schema, int $maxToke
             throw new RuntimeException('AI に接続できませんでした（' . curl_error($ch) . '）。時間をおいて試してください');
         }
         $res = json_decode((string)$raw, true);
+        // スキーマが大きすぎて形の固定ができない（400「compiled grammar is too large」）ときは、ツールありのときと同じくスキーマを文章で渡してやり直す
+        if ($status === 400 && isset($body['output_config']['format']) && str_contains((string)$raw, 'grammar is too large')) {
+            unset($body['output_config']['format']);
+            $body['system'][0]['text'] .= $schemaText;
+            continue;
+        }
         if ($status !== 200 || !is_array($res)) {
             // エラーの中身（API キーの間違いなど）は管理者にしか意味がないので、画面にはざっくり出してログに残す
             error_log('Claude API error ' . $status . ': ' . substr((string)$raw, 0, 1000));
