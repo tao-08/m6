@@ -192,13 +192,21 @@ function band_survey_match(array $roster, string $answer): array|string
 /**
  * AI の答えを名簿に当てはめる（名簿にない名前・その人のバンドでないものは信じずに issues へ）
  *   $member … 確認画面で選び直した人（null なら AI の答え）/ $targets … 調査の対象の人（null ならすべて）
- * @return array{member: string, ranks: array<string, int>, written: array<string, string>, issues: string[]}
+ * @return array{member: string, ranks: array<string, int>, written: array<string, string>, issues: string[], candidates: string[]}
  */
 function band_survey_apply(array $roster, array $ai, ?string $member = null, ?array $targets = null): array
 {
     $people = array_column(band_survey_people($roster), 1, 0);
-    $member ??= (string)$ai['member'];
-    $out = ['member' => '', 'ranks' => [], 'written' => [], 'issues' => []];
+    $out = ['member' => '', 'ranks' => [], 'written' => [], 'issues' => [], 'candidates' => []];
+    if ($member === null) { // AI の答え。名前で決まらなければ、回答に書かれたバンドから決める
+        $guess = band_survey_guess_member($people, $ai['ranks'], $targets, (string)$ai['member']);
+        if (count($guess) !== 1) {
+            $out['issues'][] = '回答した人を1人に決められません';
+            $out['candidates'] = $guess;
+            return $out;
+        }
+        $member = $guess[0];
+    }
     if (!isset($people[$member]) || ($targets !== null && !in_array($member, $targets, true))) {
         $out['issues'][] = isset($people[$member]) ? "{$member} は調査の対象ではありません" : '回答した人が名簿に見つかりません';
         return $out;
@@ -208,7 +216,8 @@ function band_survey_apply(array $roster, array $ai, ?string $member = null, ?ar
         $band = trim((string)($r['band'] ?? ''));
         $written = trim((string)($r['written'] ?? ''));
         $rank = (int)($r['rank'] ?? 0);
-        if (!in_array($band, $people[$member], true) || $rank < 1) {
+        $band = band_survey_find_band($people[$member], $band, $written);
+        if ($band === null || $rank < 1) {
             $out['issues'][] = "「{$written}」が {$member} のバンドに見つかりません";
             continue;
         }
@@ -216,6 +225,64 @@ function band_survey_apply(array $roster, array $ai, ?string $member = null, ?ar
         $out['written'][$band] = $written;
     }
     return $out;
+}
+
+/**
+ * AI が答えたバンドを、その人のバンド（$bands）から決める。
+ *   同じ名前のバンドは名簿で「King Gnu(岩﨑太一)」と分けているため、AI が「King Gnu」と答えることがある。
+ *   完全一致がなければ、大文字・小文字・空白と、名簿の側の後ろの (…) を無視して比べ、1つに決まれば使う（2つ以上なら決めない）
+ */
+function band_survey_find_band(array $bands, string ...$names): ?string
+{
+    $key = static fn(string $s) => mb_strtolower(preg_replace('/\s+/u', '', $s));
+    $base = static fn(string $s) => $key(preg_replace('/[(（][^()（）]*[)）]$/u', '', $s)); // 名簿の側だけ (…) を外す（AI が別の「B(鈴木)」を答えたら取り違え）
+    foreach ($names as $name) {
+        if (in_array($name, $bands, true)) {
+            return $name;
+        }
+    }
+    foreach ($names as $name) {
+        $hit = array_values(array_filter($bands, static fn($b) => $name !== '' && in_array($key($name), [$key((string)$b), $base((string)$b)], true)));
+        if (count($hit) === 1) {
+            return (string)$hit[0];
+        }
+    }
+    return null;
+}
+
+/**
+ * 回答した人を決める。回答にはその人のバンドがすべて書かれるので、書かれたバンドが最も多く当てはまる人を選ぶ。
+ *   同点なら、バンドの数が書かれた数に近い人。AI が答えた人がその最上位にいれば、その人
+ * @return string[] 決まれば1人、決まらなければ候補（最大3人。当てはまるバンドが0の人は入れない）
+ */
+function band_survey_guess_member(array $people, array $ranks, ?array $targets, string $aiMember = ''): array
+{
+    $n = count($ranks);
+    $score = [];
+    foreach ($people as $m => $bands) {
+        $m = (string)$m;
+        $hit = 0;
+        foreach ($ranks as $r) {
+            $hit += band_survey_find_band($bands, trim((string)($r['band'] ?? '')), trim((string)($r['written'] ?? ''))) !== null ? 1 : 0;
+        }
+        if ($hit > 0) {
+            $score[$m] = [$hit, -abs(count($bands) - $n)];
+        }
+    }
+    uasort($score, static fn($a, $b) => $b <=> $a);
+    $top = reset($score);
+    if (isset($score[$aiMember]) && $score[$aiMember][0] === $top[0]) {
+        return [$aiMember]; // 対象でなければ、呼び出し側で「対象ではありません」と出す
+    }
+    if ($targets !== null) {
+        $score = array_intersect_key($score, array_flip(array_map('strval', $targets)));
+        $top = reset($score);
+    }
+    if (!$score) {
+        return [];
+    }
+    $best = array_map('strval', array_keys(array_filter($score, static fn($s) => $s === $top))); // 「171」など数字の名前はキーで int になる
+    return count($best) === 1 ? $best : array_slice(array_map('strval', array_keys($score)), 0, 3);
 }
 
 /** 名簿にもういる人なら、その書き方にそろえる（表記ゆれで別の人にならないように） */

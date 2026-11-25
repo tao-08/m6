@@ -1320,7 +1320,16 @@ $bsApply = band_survey_apply($bsRoster, $bsAi);
 check('希望調査: 照合を名簿に当てはめる', [$bsApply['member'], $bsApply['ranks'], $bsApply['written']], ['山田 太郎', ['A' => 1], ['A' => 'えー']]);
 check('希望調査: その人のバンドでないものは issues', $bsApply['issues'], ['「びー」が 山田 太郎 のバンドに見つかりません']);
 check('希望調査: 選び直した人で当てはめ直す', band_survey_apply($bsRoster, $bsAi, '鈴木')['ranks'], ['B(鈴木)' => 2]);
-check('希望調査: 名簿にない人', band_survey_apply($bsRoster, ['member' => '謎'] + $bsAi), ['member' => '', 'ranks' => [], 'written' => [], 'issues' => ['回答した人が名簿に見つかりません']]);
+check('希望調査: 分けたバンドは (…) なしでも決まる', band_survey_find_band(['andymori(白石)', 'King Gnu(岩﨑)'], 'king gnu', 'キングヌー'), 'King Gnu(岩﨑)');
+check('希望調査: 同じ名前が2つなら決めない', band_survey_find_band(['A(1)', 'A(2)'], 'A'), null);
+check('希望調査: 名前もバンドも決め手がなければ候補', band_survey_apply($bsRoster, ['member' => '謎'] + $bsAi), ['member' => '', 'ranks' => [], 'written' => [], 'issues' => ['回答した人を1人に決められません'], 'candidates' => ['山田 太郎', '佐藤', '鈴木']]);
+check('希望調査: 選んだ人が名簿にない', band_survey_apply($bsRoster, $bsAi, '謎')['issues'], ['回答した人が名簿に見つかりません']);
+$bsGuess = band_survey_tidy_roster(['columns' => ['Vo'], 'bands' => [
+    ['band' => 'P', 'cells' => [['X', 'Y']]], ['band' => 'Q', 'cells' => [['X']]], ['band' => 'R', 'cells' => [['X']]], ['band' => 'S', 'cells' => [['Y']]],
+]]);
+$bsGuessAi = ['member' => '', 'line_name' => '', 'ranks' => [['written' => 'p', 'band' => '', 'rank' => 1], ['written' => 'Q', 'band' => 'Q', 'rank' => 2], ['written' => 'R', 'band' => 'R', 'rank' => 3]]];
+check('希望調査: 名前がなくてもバンドで1人に決まる', band_survey_apply($bsGuess, $bsGuessAi)['ranks'], ['P' => 1, 'Q' => 2, 'R' => 3]);
+check('希望調査: AI の人がバンドで負けていれば選び直す', band_survey_apply($bsGuess, ['member' => 'Y'] + $bsGuessAi)['member'], 'X');
 check('希望調査: 集計用の行は対象の人だけ', band_survey_rows(['roster' => $bsRoster, 'targets' => ['佐藤', '鈴木'], 'ranks' => ['佐藤' => ['A' => 1]]]), [['A', '佐藤', 1], ['B(山田 太郎)', '佐藤', null], ['B(鈴木)', '鈴木', null]]);
 $bsData = ['roster' => ['columns' => ['Vo', 'Gt'], 'bands' => [
     ['band' => 'A', 'cells' => [['山田'], ['未定']]],

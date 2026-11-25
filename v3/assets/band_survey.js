@@ -159,7 +159,20 @@
     let rendering = false;
     let again = false;
     let timer = null;
-    const fitWidth = () => box.clientWidth - 16;
+    const card = box.parentElement;
+    // 拡大していないときの幅（カードの中の幅 - 枠の左右の余白 8px × 2）。拡大中は枠が画面の幅に広がるので、カードから測る
+    const fitWidth = () => {
+        const s = getComputedStyle(card);
+        return card.clientWidth - parseFloat(s.paddingLeft) - parseFloat(s.paddingRight) - 16;
+    };
+    /** 拡大中は、枠を画面の左右いっぱいに広げる（カードとページの余白を使わない） */
+    function wide(on) {
+        box.classList.toggle('is-wide', on);
+        box.style.marginLeft = box.style.width = '';
+        if (!on) return;
+        box.style.marginLeft = `${-box.getBoundingClientRect().left}px`;
+        box.style.width = `${document.documentElement.clientWidth}px`;
+    }
 
     async function render() {
         if (rendering) { again = true; return; }
@@ -215,16 +228,17 @@
         }
     }
 
-    /** 拡大率を変える。指の真ん中（cx, cy: 枠の左上から）の場所が指の下に残るようにスクロールを合わせる。描き直しは指を止めてから */
-    function setZoom(next, cx, cy) {
+    /** 拡大率を変える。指の真ん中（画面の座標 x, y）の場所が指の下に残るようにスクロールを合わせる。描き直しは指を止めてから */
+    function setZoom(next, x, y) {
         next = Math.min(Math.max(next, 1), ZOOM_MAX);
         const f = next / zoom;
-        const x = box.scrollLeft + cx;
-        const y = box.scrollTop + cy;
+        const before = canvas.getBoundingClientRect();
         zoom = next;
+        wide(zoom > 1);
         canvas.style.width = `${fitWidth() * zoom}px`;
-        box.scrollLeft = x * f - cx;
-        box.scrollTop = y * f - cy;
+        const after = canvas.getBoundingClientRect(); // 枠が広がると canvas の位置も動くので、測り直して合わせる
+        box.scrollLeft += after.left + (x - before.left) * f - x;
+        box.scrollTop += after.top + (y - before.top) * f - y;
         clearTimeout(timer);
         timer = setTimeout(render, 300);
     }
@@ -236,20 +250,17 @@
         if (!pinch || e.touches.length !== 2) return;
         e.preventDefault();
         const [a, b] = e.touches;
-        const r = box.getBoundingClientRect();
-        setZoom(pinch.zoom * (dist(e.touches) / pinch.d), (a.clientX + b.clientX) / 2 - r.left, (a.clientY + b.clientY) / 2 - r.top);
+        setZoom(pinch.zoom * (dist(e.touches) / pinch.d), (a.clientX + b.clientX) / 2, (a.clientY + b.clientY) / 2);
     }, { passive: false });
     const end = (e) => { if (e.touches.length < 2) pinch = null; };
     box.addEventListener('touchend', end);
     box.addEventListener('touchcancel', end);
     // ダブルタップ（PC はダブルクリック）: 拡大していなければ 2.5 倍、していれば元に戻す
-    box.addEventListener('dblclick', (e) => {
-        const r = box.getBoundingClientRect();
-        setZoom(zoom > 1 ? 1 : 2.5, e.clientX - r.left, e.clientY - r.top);
-    });
+    box.addEventListener('dblclick', (e) => setZoom(zoom > 1 ? 1 : 2.5, e.clientX, e.clientY));
     // 画面の幅が変わったら描き直す
     window.addEventListener('resize', () => {
         if (!pdfBytes) return;
+        wide(zoom > 1);
         canvas.style.width = `${fitWidth() * zoom}px`;
         clearTimeout(timer);
         timer = setTimeout(render, 300);

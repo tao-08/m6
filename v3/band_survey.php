@@ -212,6 +212,12 @@ if ($id > 0) {
                         </select>
                     </label>
                 </form>
+                <?php if ($draft['candidates'] ?? []): ?>
+                    <form method="post" class="survey-candidates">
+                        <?= csrf_field() ?><input type="hidden" name="action" value="pick"><input type="hidden" name="id" value="<?= $id ?>">
+                        <?php foreach ($draft['candidates'] as $m): ?><button class="btn btn--sm" type="submit" name="member" value="<?= h($m) ?>"><?= h($m) ?></button><?php endforeach; ?>
+                    </form>
+                <?php endif; ?>
                 <?php if ($draft['ai']['line_name'] !== ''): ?><p class="muted small">LINE「<?= h($draft['ai']['line_name']) ?>」</p><?php endif; ?>
                 <?php if ($draft['issues']): ?>
                     <div class="flash flash--warn"><ul><?php foreach ($draft['issues'] as $is): ?><li><?= h($is) ?></li><?php endforeach; ?></ul></div>
