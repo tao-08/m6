@@ -212,19 +212,19 @@ if ($id > 0) {
                         </select>
                     </label>
                 </form>
+                <?php if ($draft['ai']['line_name'] !== ''): ?><p class="muted small">LINE「<?= h($draft['ai']['line_name']) ?>」</p><?php endif; ?>
+                <?php if ($draft['issues']): ?>
+                    <div class="flash flash--warn"><ul><?php foreach ($draft['issues'] as $is): ?><li><?= h($is) ?></li><?php endforeach; ?></ul></div>
+                <?php endif; ?>
                 <?php if ($draft['candidates'] ?? []): ?>
                     <form method="post" class="survey-candidates">
                         <?= csrf_field() ?><input type="hidden" name="action" value="pick"><input type="hidden" name="id" value="<?= $id ?>">
                         <?php foreach ($draft['candidates'] as $m): ?><button class="btn btn--sm" type="submit" name="member" value="<?= h($m) ?>"><?= h($m) ?></button><?php endforeach; ?>
                     </form>
                 <?php endif; ?>
-                <?php if ($draft['ai']['line_name'] !== ''): ?><p class="muted small">LINE「<?= h($draft['ai']['line_name']) ?>」</p><?php endif; ?>
-                <?php if ($draft['issues']): ?>
-                    <div class="flash flash--warn"><ul><?php foreach ($draft['issues'] as $is): ?><li><?= h($is) ?></li><?php endforeach; ?></ul></div>
-                <?php endif; ?>
                 <details><summary class="muted small">貼った回答</summary><p class="survey-text"><?= nl2br(h($draft['text'])) ?></p></details>
                 <?php if ($draft['member'] !== ''): ?>
-                    <form method="post">
+                    <form method="post" id="survey-answer">
                         <?= csrf_field() ?><input type="hidden" name="action" value="answer"><input type="hidden" name="id" value="<?= $id ?>"><input type="hidden" name="member" value="<?= h($draft['member']) ?>">
                         <table class="table table--edit survey-edit">
                             <thead><tr><th>バンド</th><th>順位</th></tr></thead>
@@ -237,13 +237,15 @@ if ($id > 0) {
                             <?php endforeach; ?>
                             </tbody>
                         </table>
-                        <button class="btn btn--primary" type="submit">追加</button>
                     </form>
                 <?php endif; ?>
-                <form method="post">
+                <form method="post" id="survey-cancel">
                     <?= csrf_field() ?><input type="hidden" name="action" value="cancel"><input type="hidden" name="id" value="<?= $id ?>">
-                    <button class="btn" type="submit">やめる</button>
                 </form>
+                <div class="form-actions">
+                    <button class="btn" type="submit" form="survey-cancel">やめる</button>
+                    <?php if ($draft['member'] !== ''): ?><button class="btn btn--primary" type="submit" form="survey-answer">追加</button><?php endif; ?>
+                </div>
             </section>
         <?php else: ?>
             <!-- 1人分の回答を貼る -->
@@ -255,7 +257,7 @@ if ($id > 0) {
                     <p class="loading__title" data-loading-title>照合中…</p>
                     <p class="muted small" data-loading-sub>このままお待ちください</p>
                 </div>
-                <button class="btn btn--primary" type="submit">照合</button>
+                <button class="btn btn--primary" type="submit">送信</button>
             </form>
         <?php endif; ?>
 
@@ -305,18 +307,20 @@ if ($id > 0) {
                 }
                 $cells[] = $chips;
             }
-            $pdf['rows'][] = ['band' => $b['band'], 'heat' => $s['heat'] === null ? '—' : number_format($s['heat'], 2), 'low' => $s['low_all'], 'cells' => $cells];
+            $pdf['rows'][] = ['band' => $b['band'], 'heat' => $s['heat'] === null ? '—' : number_format($s['heat'] * 10, 1), 'low' => $s['low_all'], 'cells' => $cells];
         }
         ?>
         <script type="application/json" id="survey-pdf-data"><?= json_encode($pdf, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR) ?></script>
         <p class="muted small">回答 <?= count(array_intersect_key($data['ranks'], $isTarget)) ?>/<?= count($data['targets']) ?>人</p>
+        <div class="survey-views">
         <div class="tabs" role="tablist">
             <button type="button" class="tab is-active" data-survey-view="table" role="tab" aria-selected="true">表</button>
             <button type="button" class="tab" data-survey-view="pdf" role="tab" aria-selected="false">プレビュー</button>
         </div>
         <div class="tabs">
-            <a class="tab<?= $byHeat ? '' : ' is-active' ?>" href="band_survey?id=<?= $id ?>">名簿の順</a>
-            <a class="tab<?= $byHeat ? ' is-active' : '' ?>" href="band_survey?id=<?= $id ?>&amp;sort=heat">優先度の順</a>
+            <a class="tab<?= $byHeat ? '' : ' is-active' ?>" href="band_survey?id=<?= $id ?>">名簿順</a>
+            <a class="tab<?= $byHeat ? ' is-active' : '' ?>" href="band_survey?id=<?= $id ?>&amp;sort=heat">優先度順</a>
+        </div>
         </div>
         <div class="card survey-pdf" data-survey-pane="pdf" hidden>
             <div class="survey-pdf__bar">
@@ -331,14 +335,14 @@ if ($id > 0) {
                 <caption class="survey-legend"><span class="survey-chip" style="--heat: 1">1位</span><span class="survey-chip" style="--heat: 0">最下位</span><span class="survey-chip is-none">未回答</span><span class="survey-chip is-out">対象外</span></caption>
                 <thead><tr>
                     <th>バンド</th>
-                    <th>優先度 <button type="button" class="info-tip" data-tip="1位を1、最下位を0にそろえた平均。名前の色は濃いほど上位" aria-label="補足を表示"><?= icon('info') ?></button></th>
+                    <th>優先度 <button type="button" class="info-tip" data-tip="1位を10、最下位を0にそろえた平均。名前の色は濃いほど上位" aria-label="補足を表示"><?= icon('info') ?></button></th>
                     <?php foreach ($roster['columns'] as $title): ?><th><?= h($title) ?></th><?php endforeach; ?>
                 </tr></thead>
                 <tbody>
                 <?php foreach ($bands as $bi => $b): $s = $sum[$b['band']] ?? ['heat' => null, 'low_all' => false]; ?>
                     <tr>
                         <td class="strong"><?= h($b['band']) ?><?php if ($s['low_all']): ?> <span class="survey-low" <?= tip_attr('全員が下位') ?>><?= icon('arrow_downward', 'icon--sm') ?></span><?php endif; ?></td>
-                        <td class="num"><?= $s['heat'] === null ? '—' : number_format($s['heat'], 2) ?></td>
+                        <td class="num"><?= $s['heat'] === null ? '—' : number_format($s['heat'] * 10, 1) ?></td>
                         <?php foreach ($b['cells'] as $ci => $cell): ?>
                             <td><?php foreach ($cell as $m):
                                 $m = (string)$m;
@@ -363,7 +367,7 @@ if ($id > 0) {
             </table>
             </div>
         </div>
-        <form method="post" enctype="multipart/form-data" class="card form-card" data-loading>
+        <form method="post" enctype="multipart/form-data" class="card form-card survey-gap" data-loading>
             <?= csrf_field() ?><input type="hidden" name="action" value="reroster"><input type="hidden" name="id" value="<?= $id ?>">
             <label class="field">名簿を読み直す<input type="file" name="roster" accept=".pdf,.xlsx,.xlsm,.csv" required></label>
             <div class="loading" data-loading-box hidden role="status" aria-live="polite">
@@ -375,7 +379,7 @@ if ($id > 0) {
         </form>
     <?php endif; ?>
     <script src="<?= asset_url('assets/band_survey.js') ?>" defer></script>
-    <form method="post" data-confirm="「<?= h($survey['title']) ?>」を削除します。元に戻せません。よろしいですか？">
+    <form method="post" class="survey-gap" data-confirm="「<?= h($survey['title']) ?>」を削除します。元に戻せません。よろしいですか？">
         <?= csrf_field() ?><input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="<?= (int)$survey['survey_id'] ?>">
         <button class="btn btn--danger" type="submit"><?= icon('delete') ?> 削除</button>
     </form>

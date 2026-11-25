@@ -3300,6 +3300,9 @@ span.signal { cursor: default; }
 .survey-pdf { padding: 12px; }
 .survey-pdf__bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
 .survey-pdf__box { overflow: auto; max-height: 75vh; padding: 8px; background: var(--surface-2); border-radius: var(--r-md); overscroll-behavior: contain; }
-.survey-candidates { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.survey-candidates { display: flex; flex-wrap: wrap; gap: 6px; }
+.survey-views { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; } /* 表 / プレビュー と 並び順 を1行に（狭ければ折り返す） */
+.survey-views > .tabs { margin-bottom: 0; }
+.survey-gap { margin-top: 16px; }
 .survey-pdf__box.is-wide { padding: 0; border-radius: 0; }
 .survey-pdf__box canvas { display: block; margin: 0 auto; background: #fff; box-shadow: var(--shadow-sm); }
