@@ -3,7 +3,7 @@
  * =====================================================================
  *  api_setlist_detect.php — 動画から曲を検出する API（JSON を返す）。管理者だけ
  * =====================================================================
- *  band_edit.php の「動画から曲を検出」（assets/setlist_detect.js）が fetch() で呼ぶ。
+ *  songs_edit.php の「動画から曲を検出」（assets/setlist_detect.js）が fetch() で呼ぶ。
  *  リクエスト（POST, multipart/form-data）: band_id, audio（ブラウザが動画から抜いたモノラル MP3）
  *  Gemini が聴き終わるまで待ち（1〜2分）、曲名と候補（自信が低い曲だけ）をセッションに置く → 画面が songs_edit?from_detect=1 で確認画面を開く
  *  レスポンス（JSON）: {"count": 見つかった曲数}

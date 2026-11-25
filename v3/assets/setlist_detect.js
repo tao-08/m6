@@ -1,4 +1,4 @@
-// バンド編集の「動画から曲を検出」（band_edit.php の [data-setlist-detect]）
+// セットリスト編集の「動画から曲を検出」（songs_edit.php の [data-setlist-detect]）
 //   1. 選んだ動画から、ブラウザの中で ffmpeg.wasm が音声だけ抜いてモノラル MP3 にする（数百MB の動画を送らないため）。MP3 を選んだらそのまま送る
 //      低音のこもりを削り（highpass）、MC と演奏の音量差をならす（loudnorm）。歌詞を聞き取りやすくするため
 //   2. api_setlist_detect に送る → Gemini が聴いて曲名を返す（1〜2分）

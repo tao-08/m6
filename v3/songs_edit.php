@@ -28,6 +28,7 @@ require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/repository.php';
 require_once __DIR__ . '/lib/tracks.php';
 require_once __DIR__ . '/lib/youtube.php'; // 概要欄から曲名を読む
+require_once __DIR__ . '/lib/gemini_setlist.php'; // 動画から曲を検出（Gemini の設定があるときだけ欄を出す）
 require_once __DIR__ . '/lib/history.php'; // 変更履歴（元に戻すための「変更前の状態」を残す）
 require_login();
 
@@ -83,6 +84,8 @@ $errors = [];
 $fromSheet = is_post() && ($_POST['from_sheet'] ?? '') === '1';
 $sheetTitles = [];
 $detectCandidates = []; // 動画から曲を検出したとき、自信が低い曲の候補（from_detect）
+$detectStarts = [];     // 同じく、曲が始まる秒（null = 不明）
+$detectVideo = null;    // 同じく、確認しながら流すバンドの YouTube の動画 ID
 $sheetTracks = []; // 曲名と同じ順の、シートで紐付けたサブスクの曲 [source, track_id]（無い・形がおかしい = null）
 if ($fromSheet) {
     verify_csrf();
@@ -254,12 +257,14 @@ if (!is_post() && ($_GET['from_yt'] ?? '') === '1') {
     $fromYt = true; // 画面を開いたら、曲ごとに候補を自動で探す（data-auto-search）
 }
 
-// バンド編集の「動画から曲を検出」が終わったあと: api_setlist_detect がセッションに置いた曲名を、同じようにカードに並べる（保存はまだしない）
+// 「動画から曲を検出」（このページの上）が終わったあと: api_setlist_detect がセッションに置いた曲名を、同じようにカードに並べる（保存はまだしない）
 if (!is_post() && ($_GET['from_detect'] ?? '') === '1' && is_admin()) {
     $detected = $_SESSION['setlist_detect'][$bandId] ?? [];
     unset($_SESSION['setlist_detect'][$bandId]); // 1回だけ使う
     $sheetTitles = array_column($detected, 'title');
     $detectCandidates = array_column($detected, 'candidates'); // 自信が低い曲の候補（曲の順。無い曲は []）
+    $detectStarts = array_map(static fn($s) => $s['start'] ?? null, $detected);
+    $detectVideo = youtube_video_id((string)$band['youtube_url']);
     if (!$sheetTitles) {
         redirect($backUrl);
     }
@@ -335,6 +340,7 @@ if ($fromSheet) {
             }
         }
         $card['candidates'] = $detectCandidates[$i] ?? [];
+        $card['start'] = $detectVideo !== null ? ($detectStarts[$i] ?? null) : null;
         $card['track_no'] = $i + 1;
         $cards[] = $card;
     }
@@ -380,6 +386,15 @@ render_header('セットリストを編集', 'lives');
 <?php if (!$songs && !$fromSheet && youtube_video_id((string)$band['youtube_url']) !== null): ?>
     <p><a class="btn btn--ghost btn--sm" href="songs_edit?band=<?= $bandId ?>&amp;from_yt=1">YouTube の概要欄から取り込む</a></p>
 <?php endif; ?>
+<?php if (!$fromSheet && is_admin() && gemini_setlist_config() !== null): // 送るたびに Gemini の料金がかかるので管理者だけ ?>
+    <!-- 選ぶと assets/setlist_detect.js が音声だけ抜いて api_setlist_detect に送り、終わったらこのページの確認画面（from_detect=1）へ -->
+    <div class="field" data-setlist-detect data-band="<?= $bandId ?>" data-done-url="songs_edit?band=<?= $bandId ?>&amp;from_detect=1">
+        <span>動画から曲を検出</span>
+        <input type="file" accept="video/*,audio/*" aria-label="動画を選ぶ">
+        <p class="muted small" data-setlist-status role="status" hidden></p>
+    </div>
+    <script type="module" src="<?= asset_url('assets/setlist_detect.js') ?>"></script>
+<?php endif; ?>
 <?php if ($fromSheet): ?>
     <div class="flash flash--info"><?= icon('description') ?> データベースにはまだ保存されていません。<br><?= icon('search') ?> を押して楽曲情報を登録し、演奏者と担当楽器を確認したら保存してください。</div>
     <?php if ($droppedTitles): ?>
@@ -398,6 +413,10 @@ render_header('セットリストを編集', 'lives');
     <label class="check song-omnibus song-private"><input type="checkbox" name="setlist_private" value="1"<?= $private ? ' checked' : '' ?>> <?= icon('lock') ?> 出演まで非公開 <span class="muted small song-private__note">（終演30分後に公開<?= $setlistVis['open_at'] ? '：' . h(fmt_datetime($setlistVis['open_at'])) : '' ?>）</span></label>
     <?php endif; ?>
     <button type="button" class="btn btn--ghost btn--sm song-add-se" data-add-song-se>＋ SE を追加</button>
+    <?php if ($detectVideo !== null): ?>
+    <!-- 動画から曲を検出したとき: バンドの動画を上に残し、曲ごとの ▶（data-seek）でその場面へ飛ぶ（assets/app_songs.js の setupDetectPlayer） -->
+    <div class="detect-player" data-detect-player><iframe src="https://www.youtube.com/embed/<?= h($detectVideo) ?>?enablejsapi=1&amp;playsinline=1&amp;rel=0" title="<?= h($band['name']) ?>" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe></div>
+    <?php endif; ?>
     <datalist id="artists"><?php foreach ($artistNames as $n): ?><option value="<?= h($n) ?>"><?php endforeach; ?></datalist>
     <div class="song-list" data-song-list<?= !empty($fromYt) ? ' data-auto-search' : '' ?> data-default-artist="<?= h($defaultArtist) ?>">
         <?php foreach ($cards as $k => $song):
@@ -428,6 +447,7 @@ render_header('セットリストを編集', 'lives');
                     <?php else: ?><input name="<?= $base ?>[artist]" value="<?= h($artist) ?>" maxlength="100" data-suggest-list="artists" autocomplete="off" placeholder="アーティスト" class="song-card__artist" aria-label="アーティスト" data-song-artist<?= $omnibus ? '' : ' readonly' ?>><?php endif; ?>
                     <!-- data-artist: 紐付けた曲のアーティスト（先頭の1人）。「オムニバス」にチェックを付けたとき、連携済みの曲はこの名前をアーティスト欄に残す（assets/app_songs.js の setupSongs） -->
                     <input type="hidden" name="<?= $base ?>[track]" value="<?= h($trackKey) ?>" data-track-key data-artist="<?= h($trackKey === '' ? '' : explode(', ', (string)$song['track_artist'])[0]) ?>">
+                    <?php if (isset($song['start'])): ?><button type="button" class="btn btn--ghost btn--sm song-seek-btn" data-seek="<?= (int)$song['start'] ?>" aria-label="動画のこの曲の場面を再生" title="動画のこの曲の場面を再生"><?= icon('smart_display') ?><?= sprintf('%d:%02d', intdiv($song['start'], 60), $song['start'] % 60) ?></button><?php endif; ?>
                     <button type="button" class="btn btn--ghost btn--sm song-search-btn" data-track-search aria-label="曲を探す" title="曲を探す"><?= icon('search') ?></button>
                     <input type="hidden" name="<?= $base ?>[id]" value="<?= $isNew ? '' : (int)$song['song_id'] ?>">
                     <!-- 🗑 保存済みの曲: 押すと「削除する」印（隠し項目を 1）が付いてカードが薄くなる。もう一度押すと取り消し。消えるのは保存したとき

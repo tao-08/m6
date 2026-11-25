@@ -570,6 +570,27 @@ function setupTrackSearch() {
 }
 
 /* ---------------------------------------------------------------------
+ * 動画から曲を検出したあとの確認画面（songs_edit.php?from_detect=1）
+ *   data-detect-player … バンドの YouTube（enablejsapi=1 の埋め込み）
+ *   data-seek="秒"      … 押すと動画をその曲の場面から流す。鳴っている試聴は止める
+ *   試聴（data-preview）を押したら動画を止める。2つの音が重ならないように
+ *   YouTube へは postMessage で命令だけ送る（IFrame API のスクリプトは読まない）
+ * ------------------------------------------------------------------- */
+function setupDetectPlayer() {
+  const frame = document.querySelector('[data-detect-player] iframe');
+  if (!frame) return;
+  const send = (func, args = []) => frame.contentWindow?.postMessage(JSON.stringify({ event: 'command', func, args }), 'https://www.youtube.com');
+  document.addEventListener('click', (e) => {
+    if (e.target.closest('[data-preview]')) { send('pauseVideo'); return; }
+    const seek = e.target.closest('[data-seek]');
+    if (!seek) return;
+    document.querySelector('[data-preview].is-playing, [data-preview].is-loading')?.click(); // 鳴っている試聴を止める（もう一度押すと止まる）
+    send('seekTo', [Number(seek.dataset.seek), true]);
+    send('playVideo');
+  });
+}
+
+/* ---------------------------------------------------------------------
  * 歌詞の一部から曲を探す（管理者限定）
  *   検索語はサーバー経由で Musixmatch に送り、曲名・アーティストだけ取得する。
  *   歌詞本文は取得・表示・保存しない。試聴 URL は iTunes から取得して既存プレイヤーで再生する。

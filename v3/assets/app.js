@@ -129,6 +129,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupVenueSuggest();
   setupSongs();
   setupTrackSearch();
+  setupDetectPlayer();
   setupLyricsSearch();
   setupPreview();
   setupLikes();

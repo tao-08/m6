@@ -1293,13 +1293,14 @@ check('曲: 演奏順・わからない曲は曲名を空で残す', gemini_setl
     ['title' => ' 花束 ', 'artist' => 'サンボマスター', 'confident' => true, 'candidates' => [['title' => 'x', 'artist' => '']]],
     ['title' => '', 'artist' => '', 'confident' => false, 'candidates' => []],
     ['title' => '花束', 'artist' => 'サンボマスター'],
-]]), [['title' => '花束', 'candidates' => []], ['title' => '', 'candidates' => []], ['title' => '花束', 'candidates' => []]]);
+]]), [['title' => '花束', 'start' => null, 'candidates' => []], ['title' => '', 'start' => null, 'candidates' => []], ['title' => '花束', 'start' => null, 'candidates' => []]]);
 check('曲: 自信が低い曲は候補を5つまで・曲名が空なら第1候補', gemini_setlist_songs(['songs' => [
     ['title' => '', 'confident' => false, 'candidates' => [['title' => 'A', 'artist' => 'a'], ['title' => ' '], ['title' => 'B'], ['title' => 'C', 'artist' => 'c'], ['title' => 'D'], ['title' => 'E'], ['title' => 'F']]],
-]]), [['title' => 'A', 'candidates' => [['title' => 'A', 'artist' => 'a'], ['title' => 'B', 'artist' => ''], ['title' => 'C', 'artist' => 'c'], ['title' => 'D', 'artist' => ''], ['title' => 'E', 'artist' => '']]]]);
-check('曲: 形が違っても落ちない', [gemini_setlist_songs(['songs' => 'x']), gemini_setlist_songs(['songs' => ['x', ['title' => ['y'], 'confident' => false, 'candidates' => 'z']]])], [[], [['title' => '', 'candidates' => []]]]);
-$gs = static fn(string ...$t): array => array_map(static fn($x) => ['title' => $x, 'candidates' => []], $t);
-$guess = ['title' => 'G', 'candidates' => [['title' => 'G', 'artist' => '']]];
+]]), [['title' => 'A', 'start' => null, 'candidates' => [['title' => 'A', 'artist' => 'a'], ['title' => 'B', 'artist' => ''], ['title' => 'C', 'artist' => 'c'], ['title' => 'D', 'artist' => ''], ['title' => 'E', 'artist' => '']]]]);
+check('曲: 形が違っても落ちない', [gemini_setlist_songs(['songs' => 'x']), gemini_setlist_songs(['songs' => ['x', ['title' => ['y'], 'confident' => false, 'candidates' => 'z']]])], [[], [['title' => '', 'start' => null, 'candidates' => []]]]);
+check('曲: 始まる時刻を秒にする（読めなければ null）', array_column(gemini_setlist_songs(['songs' => [['title' => 'A', 'start' => '3:05'], ['title' => 'B', 'start' => '1:02:03'], ['title' => 'C', 'start' => 'x'], ['title' => 'D', 'start' => 65]]]), 'start'), [185, 3723, null, null]);
+$gs = static fn(string ...$t): array => array_map(static fn($x) => ['title' => $x, 'start' => null, 'candidates' => []], $t);
+$guess = ['title' => 'G', 'start' => null, 'candidates' => [['title' => 'G', 'artist' => '']]];
 check('2回目: 特定できない曲（空・候補つき）があれば流す', [gemini_setlist_has_unknown([]), gemini_setlist_has_unknown($gs('A', '')), gemini_setlist_has_unknown([...$gs('A'), $guess]), gemini_setlist_has_unknown($gs('A', 'B'))], [true, true, true, false]);
 check('2回目: 候補つきの曲も置き換える', gemini_setlist_fill([$guess, ...$gs('B')], $gs('X', 'Y')), $gs('X', 'B'));
 check('2回目: 1回目が候補だけならそのまま', gemini_setlist_fill([$guess], $gs('X')), $gs('X'));

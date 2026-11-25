@@ -15,6 +15,7 @@ const GEMINI_SETLIST_PROMPT = <<<'TXT'
 - MC で曲名が言われたら、それも手がかりにする
 - 曲を特定できる自信があれば confident を true、自信がなければ false にする
 - confident が false の曲は、可能性のある曲を candidates に5曲、可能性の高い順に挙げ、title には最も可能性の高い曲を入れる。特定できなくても、歌詞・曲調・アレンジが近い曲を挙げる
+- start には曲が始まる時刻を「分:秒」（1時間を超えたら「時:分:秒」）で答える
 - 同じ曲を2回演奏したら2回挙げる
 - 入場の SE・転換中に流れる音源は含めない
 TXT;
@@ -37,7 +38,8 @@ const GEMINI_SETLIST_MAX_CANDIDATES = 5;
  * Gemini の返事 → 曲（演奏順）
  *   自信が低い曲は candidates（[{title, artist}]、可能性の高い順）を付ける。曲名が空なら第1候補を曲名にする
  *   「曲はあるがわからない」曲は、曲名が空のまま残す（確認画面で何曲目かがわかるように）
- * @return array<int, array{title: string, candidates: array<int, array{title: string, artist: string}>}>
+ *   start: 曲が始まる秒（読めなければ null）。確認画面で YouTube のその場面へ飛ぶのに使う
+ * @return array<int, array{title: string, start: ?int, candidates: array<int, array{title: string, artist: string}>}>
  */
 function gemini_setlist_songs(array $json): array
 {
@@ -57,7 +59,8 @@ function gemini_setlist_songs(array $json): array
             }
         }
         $title = $clean($s['title'] ?? '', 100);
-        $songs[] = ['title' => $title !== '' ? $title : ($cands[0]['title'] ?? ''), 'candidates' => $cands];
+        $ms = is_string($s['start'] ?? null) ? gemini_chapter_ms($s['start']) : null;
+        $songs[] = ['title' => $title !== '' ? $title : ($cands[0]['title'] ?? ''), 'start' => $ms === null ? null : intdiv($ms, 1000), 'candidates' => $cands];
     }
     return $songs;
 }
@@ -114,10 +117,11 @@ function gemini_setlist(string $path, array $cfg, ?string $artist = null): array
         'properties' => ['songs' => ['type' => 'ARRAY', 'items' => [
             'type' => 'OBJECT',
             'properties' => $pair['properties'] + [
+                'start' => ['type' => 'STRING'],
                 'confident' => ['type' => 'BOOLEAN'],
                 'candidates' => ['type' => 'ARRAY', 'items' => $pair],
             ],
-            'required' => ['title', 'artist', 'confident'],
+            'required' => ['title', 'artist', 'start', 'confident'],
         ]]],
         'required' => ['songs'],
     ];
