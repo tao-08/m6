@@ -31,6 +31,12 @@ function gemini_setlist_config(): ?array
     return $key !== '' ? ['key' => $key, 'model' => GEMINI_SETLIST_MODEL] : null;
 }
 
+/**
+ * 考える量の上限（トークン）。2026-11 に試したところ、上限なしだと知らない曲で 1.8万トークン悩み1本 約29円になった。
+ * 1024 でもサンボマスターは全曲当たり、1本 約10円
+ */
+const GEMINI_SETLIST_THINKING = 1024;
+
 /** 自信が低い曲に付ける候補の数 */
 const GEMINI_SETLIST_MAX_CANDIDATES = 5;
 
@@ -105,14 +111,11 @@ function gemini_setlist_hint_prompt(string $artist): string
 - このバンドは「{$artist}」のコピーバンドとして登録されている。{$artist} の曲を中心に考える";
 }
 
-/**
- * @param ?string $artist コピー元のアーティスト（オムニバス・不明なら null）。わからない曲が残ったら、これを伝えてもう一度聴かせる
- * @return array|string gemini_setlist_songs の形。失敗したら画面に出せる理由
- */
-function gemini_setlist(string $path, array $cfg, ?string $artist = null): array|string
+/** Gemini に返させる JSON の形 */
+function gemini_setlist_schema(): array
 {
     $pair = ['type' => 'OBJECT', 'properties' => ['title' => ['type' => 'STRING'], 'artist' => ['type' => 'STRING']], 'required' => ['title', 'artist']];
-    $schema = [
+    return [
         'type' => 'OBJECT',
         'properties' => ['songs' => ['type' => 'ARRAY', 'items' => [
             'type' => 'OBJECT',
@@ -125,14 +128,23 @@ function gemini_setlist(string $path, array $cfg, ?string $artist = null): array
         ]]],
         'required' => ['songs'],
     ];
-    $json = gemini_audio_json($path, 'audio/mpeg', $cfg['key'], $cfg['model'], GEMINI_SETLIST_PROMPT, $schema);
+}
+
+/**
+ * @param ?string $artist コピー元のアーティスト（オムニバス・不明なら null）。わからない曲が残ったら、これを伝えてもう一度聴かせる
+ * @return array|string gemini_setlist_songs の形。失敗したら画面に出せる理由
+ */
+function gemini_setlist(string $path, array $cfg, ?string $artist = null): array|string
+{
+    $schema = gemini_setlist_schema();
+    $json = gemini_audio_json($path, 'audio/mpeg', $cfg['key'], $cfg['model'], GEMINI_SETLIST_PROMPT, $schema, GEMINI_SETLIST_THINKING);
     if (is_string($json)) {
         return $json;
     }
     $songs = gemini_setlist_songs($json);
     $artist = trim((string)$artist);
     if ($artist !== '' && gemini_setlist_has_unknown($songs)) {
-        $again = gemini_audio_json($path, 'audio/mpeg', $cfg['key'], $cfg['model'], gemini_setlist_hint_prompt($artist), $schema);
+        $again = gemini_audio_json($path, 'audio/mpeg', $cfg['key'], $cfg['model'], gemini_setlist_hint_prompt($artist), $schema, GEMINI_SETLIST_THINKING);
         if (is_array($again)) { // 2回目が失敗したら、1回目の結果だけ返す
             $songs = gemini_setlist_fill($songs, gemini_setlist_songs($again));
         }

@@ -101,8 +101,9 @@ function gemini_audio_chapters(string $path, string $mime, string $key, string $
 /**
  * 音源を Files API に上げて $prompt で聴かせ、$schema の形の JSON を返す（終わったら音源は消す）。失敗したら文字列（画面に出せる理由）
  *   自動チャプター（上）と、動画から曲を検出（lib/gemini_setlist.php）で使う
+ *   $thinkingBudget: 考える量（トークン）の上限。null なら上限なし。考えた分は出力と同じ単価で請求される
  */
-function gemini_audio_json(string $path, string $mime, string $key, string $model, string $prompt, array $schema): array|string
+function gemini_audio_json(string $path, string $mime, string $key, string $model, string $prompt, array $schema, ?int $thinkingBudget = null): array|string
 {
     $size = (int)filesize($path);
     $fail = 'Gemini API で解析できませんでした';
@@ -160,7 +161,7 @@ function gemini_audio_json(string $path, string $mime, string $key, string $mode
                 'temperature' => 0,
                 'responseMimeType' => 'application/json',
                 'responseSchema' => $schema,
-            ],
+            ] + ($thinkingBudget === null ? [] : ['thinkingConfig' => ['thinkingBudget' => $thinkingBudget]]),
         ];
         $res = gemini_call(GEMINI_API . '/v1beta/models/' . rawurlencode($model) . ':generateContent', $key, [
             CURLOPT_POST => true,
