@@ -1330,6 +1330,10 @@ $bsGuess = band_survey_tidy_roster(['columns' => ['Vo'], 'bands' => [
 $bsGuessAi = ['member' => '', 'line_name' => '', 'ranks' => [['written' => 'p', 'band' => '', 'rank' => 1], ['written' => 'Q', 'band' => 'Q', 'rank' => 2], ['written' => 'R', 'band' => 'R', 'rank' => 3]]];
 check('希望調査: 名前がなくてもバンドで1人に決まる', band_survey_apply($bsGuess, $bsGuessAi)['ranks'], ['P' => 1, 'Q' => 2, 'R' => 3]);
 check('希望調査: AI の人がバンドで負けていれば選び直す', band_survey_apply($bsGuess, ['member' => 'Y'] + $bsGuessAi)['member'], 'X');
+$bsOff = band_survey_set_off(['roster' => $bsRoster, 'targets' => ['佐藤'], 'ranks' => ['佐藤' => ['A' => 1, 'B(山田 太郎)' => 2]]], 'A', true);
+check('希望調査: 一時削除したバンドを抜いて順位を詰める', band_survey_live_ranks($bsOff), ['佐藤' => ['B(山田 太郎)' => 1]]);
+check('希望調査: 一時削除したバンドは集計しない', band_survey_rows($bsOff), [['B(山田 太郎)', '佐藤', 1]]);
+check('希望調査: 一時削除を外す・名簿にないバンドは付けない', [band_survey_set_off($bsOff, 'A', false)['off'], band_survey_set_off($bsOff, '謎', true)['off']], [[], ['A']]);
 check('希望調査: 集計用の行は対象の人だけ', band_survey_rows(['roster' => $bsRoster, 'targets' => ['佐藤', '鈴木'], 'ranks' => ['佐藤' => ['A' => 1]]]), [['A', '佐藤', 1], ['B(山田 太郎)', '佐藤', null], ['B(鈴木)', '鈴木', null]]);
 $bsData = ['roster' => ['columns' => ['Vo', 'Gt'], 'bands' => [
     ['band' => 'A', 'cells' => [['山田'], ['未定']]],

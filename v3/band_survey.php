@@ -1,30 +1,36 @@
 <?php
 /**
  * =====================================================================
- *  band_survey.php — バンド希望調査（卒業ライブのバンドの優先度。見られる人は lib/band_survey.php の band_survey_can_view）
+ *  band_survey.php — バンド希望調査（卒業ライブのバンドの優先度。作れるのは幹部、見られるのは lib/band_survey.php の band_survey_list）
  * =====================================================================
  *  band_survey              … 一覧 + 追加（名簿のファイル）。読んだ名簿がセッションにあれば名前の確認画面
  *  band_survey?id=12        … 名簿の形の表（優先度で色分け）+ 1人分の LINE の回答を貼る欄。照合した回答がセッションにあれば確認画面
  *  band_survey?id=12&sort=heat … 優先度の高い順
  *  POST（すべて CSRF チェック）:
  *    roster（名簿を読む）/ create（名前を直して調査を作る）/ reset（名簿を読み直す）
- *    match（1人分の回答を照合）/ pick（回答した人を選び直す）/ answer（順位を足す）/ cancel / delete
+ *    match（1人分の回答を照合）/ pick（回答した人を選び直す）/ answer（順位を足す）/ cancel / delete / access（調査名と閲覧可能者）
  * =====================================================================
  */
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/band_survey.php';
 $user = require_login();
-if (!band_survey_can_view()) {
+$pdo = db();
+if (!band_survey_ready() || (!band_survey_can_create() && !band_survey_list($pdo))) {
     error_page(403, 'このページは見られません');
 }
-$pdo = db();
 
 if (is_post()) {
     verify_csrf();
     $action = $_POST['action'] ?? '';
     $id = (int)($_POST['id'] ?? 0);
     $back = $id > 0 ? 'band_survey?id=' . $id : 'band_survey';
+    // 調査への操作は、その調査の閲覧可能者だけ。新しく作るのは幹部だけ（名簿の読み直しは、その調査の閲覧可能者）
+    $draftId = (int)($_SESSION['band_survey_roster']['survey_id'] ?? 0);
+    if ($id > 0 ? !band_survey_can_open($pdo, $id)
+        : (in_array($action, ['roster', 'create'], true) && !($action === 'create' && $draftId > 0 ? band_survey_can_open($pdo, $draftId) : band_survey_can_create()))) {
+        error_page(403, 'この調査は見られません');
+    }
 
     if ($action === 'roster') {
         $title = trim((string)($_POST['title'] ?? ''));
@@ -95,6 +101,34 @@ if (is_post()) {
         }
         $data = band_survey_set_cell($survey['data'], (int)($_POST['bi'] ?? -1), (int)($_POST['ci'] ?? -1), (string)($_POST['old'] ?? ''), $new, !empty($_POST['t']));
         band_survey_update($pdo, $id, $data);
+        redirect($back . (($_POST['sort'] ?? '') === 'heat' ? '&sort=heat' : ''));
+    }
+    if ($action === 'access') {
+        $title = trim((string)($_POST['title'] ?? ''));
+        if ($title === '' || !mb_check_encoding($title, 'UTF-8') || mb_strlen($title) > 100) {
+            flash('調査名は100字までで入力してください', 'error');
+            redirect($back);
+        }
+        $ids = array_map('intval', (array)($_POST['keep'] ?? []));
+        $add = trim((string)($_POST['add'] ?? ''));
+        if ($add !== '') {
+            require_once __DIR__ . '/lib/import/text.php'; // member_key（空白・﨑 / 崎 などの違いを無視して比べる）
+            $key = member_key($add);
+            $found = array_keys(array_filter($pdo->query('SELECT member_id, name FROM member')->fetchAll(PDO::FETCH_KEY_PAIR),
+                static fn($name) => member_key((string)$name) === $key));
+            if (count($found) !== 1) {
+                flash($add . ' をメンバーから1人に決められません', 'error');
+                redirect($back);
+            }
+            $ids[] = (int)$found[0];
+        }
+        $years = array_filter(array_map('intval', (array)($_POST['years'] ?? [])), static fn($y) => $y >= 1950 && $y <= 2100);
+        band_survey_save_access($pdo, $id, $title, (string)($_POST['role'] ?? 'all'), $years, $ids);
+        flash('保存しました');
+        redirect(band_survey_can_open($pdo, $id) ? $back : 'band_survey');
+    }
+    if ($action === 'off') {
+        band_survey_update($pdo, $id, band_survey_set_off($survey['data'], (string)($_POST['band'] ?? ''), !empty($_POST['on'])));
         redirect($back . (($_POST['sort'] ?? '') === 'heat' ? '&sort=heat' : ''));
     }
     if ($action === 'reroster') {
@@ -181,10 +215,58 @@ if ($id > 0) {
     if ($survey === null) {
         error_page(404);
     }
+    if (!band_survey_can_open($pdo, $id)) {
+        error_page(403, 'この調査は見られません');
+    }
+    require_once __DIR__ . '/lib/repository.php'; // member_name_choices
+    $access = band_survey_access($pdo, $id);
+    $memberNames = member_name_choices($pdo);
     render_header($survey['title'] . ' — バンド希望調査', 'tools');
     ?>
     <nav class="crumbs"><a href="tools?tab=admin">ツール</a><span>/</span><a href="band_survey">バンド希望調査</a></nav>
-    <h1 class="display display--sm"><?= h($survey['title']) ?></h1>
+    <div class="survey-head">
+        <h1 class="display display--sm"><?= h($survey['title']) ?></h1>
+        <details class="survey-access">
+            <summary class="btn btn--sm"><?= icon('edit') ?> 編集</summary>
+            <form method="post" class="card form-card">
+                <?= csrf_field() ?><input type="hidden" name="action" value="access"><input type="hidden" name="id" value="<?= $id ?>">
+                <label class="field">調査名<input type="text" name="title" maxlength="100" value="<?= h($survey['title']) ?>" required></label>
+                <fieldset class="field">
+                    <legend>閲覧可能者の年度</legend>
+                    <?php // 選択肢は今年から7年分 + 保存してある年度（古い年度も消えないように）
+                    $fy = current_fiscal_year();
+                    $yearOpts = array_unique(array_merge(range($fy, $fy - 6), $access['years']));
+                    rsort($yearOpts);
+                    $yearText = static fn(array $ys) => $ys ? implode('、', array_map(static fn($y) => $y . '年入部', $ys)) : '選ばない'; ?>
+                    <details class="survey-years" data-survey-years>
+                        <summary data-survey-years-text><?= h($yearText($access['years'])) ?></summary>
+                        <div class="survey-years__list">
+                            <?php foreach ($yearOpts as $y): ?>
+                                <label class="check"><input type="checkbox" name="years[]" value="<?= $y ?>"<?= in_array($y, $access['years'], true) ? ' checked' : '' ?>><?= $y ?>年入部</label>
+                            <?php endforeach; ?>
+                        </div>
+                    </details>
+                    <div class="survey-access__row">
+                        <label class="check"><input type="radio" name="role" value="all"<?= $access['role'] === 'all' ? ' checked' : '' ?>>一般と幹部</label>
+                        <label class="check"><input type="radio" name="role" value="exec"<?= $access['role'] === 'exec' ? ' checked' : '' ?>>幹部のみ</label>
+                        <button type="button" class="info-tip" data-tip="年度を選ばずに「幹部のみ」にすると、すべての年度の幹部が見られます" aria-label="補足を表示"><?= icon('info') ?></button>
+                    </div>
+                </fieldset>
+                <fieldset class="field">
+                    <legend>個別の閲覧可能者</legend>
+                    <?php if ($access['creator'] !== null): ?><p class="muted small">作成者: <?= h($access['creator']) ?></p><?php endif; ?>
+                    <div class="survey-access__row">
+                        <?php foreach ($access['members'] as $mid => $name): ?>
+                            <label class="check"><input type="checkbox" name="keep[]" value="<?= (int)$mid ?>" checked><?= h($name) ?></label>
+                        <?php endforeach; ?>
+                    </div>
+                    <input type="text" name="add" maxlength="50" placeholder="名前で追加" data-suggest-list="member-names" autocomplete="off" aria-label="追加する人">
+                </fieldset>
+                <div class="form-actions"><button class="btn btn--primary" type="submit">保存</button></div>
+            </form>
+        </details>
+    </div>
+    <?= render_suggest_datalist('member-names', array_keys($memberNames), $memberNames) ?>
     <?php if ($survey['data'] === null): ?>
         <p class="card">読み込めませんでした</p>
     <?php else:
@@ -193,7 +275,9 @@ if ($id > 0) {
         $people = array_column(band_survey_people($roster), 1, 0);
         $isTarget = array_flip($data['targets']);
         $byHeat = ($_GET['sort'] ?? '') === 'heat';
-        $n = array_map('count', $data['ranks']); // その人が順位を付けた数
+        $live = band_survey_live_ranks($data); // 一時削除したバンドを抜いて詰めた順位
+        $off = array_flip($data['off'] ?? []);
+        $n = array_map('count', $live); // その人が順位を付けた数
         $sum = array_column(band_survey_summarize(band_survey_rows($data)), null, 'band');
         $draft = ($_SESSION['band_survey_answer']['id'] ?? 0) === $id ? $_SESSION['band_survey_answer'] : null;
         ?>
@@ -269,8 +353,6 @@ if ($id > 0) {
         }
         ?>
         <?php
-        $memberNames = member_name_choices($pdo);
-        echo render_suggest_datalist('member-names', array_keys($memberNames), $memberNames);
         // 表の1セル: 押すと「入れ替える / 外す」（空欄・未定は「追加」）のフォームが開く
         $cellForm = static function (int $bi, int $ci, string $old, string $label, bool $target) use ($id, $byHeat): string {
             $person = $old !== '' && $old !== BAND_SURVEY_TBD;
@@ -300,14 +382,14 @@ if ($id > 0) {
                         $chips[] = ['name' => $m, 'kind' => 'tbd'];
                         continue;
                     }
-                    $rank = isset($isTarget[$m]) ? ($data['ranks'][$m][$b['band']] ?? null) : null;
+                    $rank = isset($isTarget[$m]) ? ($live[$m][$b['band']] ?? null) : null;
                     $score = band_survey_score($rank, $n[$m] ?? 0);
                     $chips[] = ['name' => $m, 'kind' => isset($isTarget[$m]) ? ($score === null ? 'none' : 'ok') : 'out',
                         'heat' => $score, 'rank' => $rank === null ? '' : $rank . '/' . $n[$m]];
                 }
                 $cells[] = $chips;
             }
-            $pdf['rows'][] = ['band' => $b['band'], 'heat' => $s['heat'] === null ? '—' : number_format($s['heat'] * 10, 1), 'low' => $s['low_all'], 'cells' => $cells];
+            $pdf['rows'][] = ['band' => $b['band'], 'off' => isset($off[$b['band']]), 'heat' => $s['heat'] === null ? '—' : number_format($s['heat'] * 10, 1), 'low' => $s['low_all'], 'cells' => $cells];
         }
         ?>
         <script type="application/json" id="survey-pdf-data"><?= json_encode($pdf, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR) ?></script>
@@ -334,13 +416,19 @@ if ($id > 0) {
             <table class="table survey-map">
                 <caption class="survey-legend"><span class="survey-chip" style="--heat: 1">1位</span><span class="survey-chip" style="--heat: 0">最下位</span><span class="survey-chip is-none">未回答</span><span class="survey-chip is-out">対象外</span></caption>
                 <thead><tr>
+                    <th class="small">一時削除</th>
                     <th>バンド</th>
                     <th>優先度 <button type="button" class="info-tip" data-tip="1位を10、最下位を0にそろえた平均。名前の色は濃いほど上位" aria-label="補足を表示"><?= icon('info') ?></button></th>
                     <?php foreach ($roster['columns'] as $title): ?><th><?= h($title) ?></th><?php endforeach; ?>
                 </tr></thead>
                 <tbody>
                 <?php foreach ($bands as $bi => $b): $s = $sum[$b['band']] ?? ['heat' => null, 'low_all' => false]; ?>
-                    <tr>
+                    <tr<?= isset($off[$b['band']]) ? ' class="is-off"' : '' ?>>
+                        <td><form method="post">
+                            <?= csrf_field() ?><input type="hidden" name="action" value="off"><input type="hidden" name="id" value="<?= $id ?>">
+                            <input type="hidden" name="band" value="<?= h($b['band']) ?>"><input type="hidden" name="sort" value="<?= $byHeat ? 'heat' : '' ?>">
+                            <input type="checkbox" name="on" value="1"<?= isset($off[$b['band']]) ? ' checked' : '' ?> data-autosubmit aria-label="<?= h($b['band']) ?>を一時削除">
+                        </form></td>
                         <td class="strong"><?= h($b['band']) ?><?php if ($s['low_all']): ?> <span class="survey-low" <?= tip_attr('全員が下位') ?>><?= icon('arrow_downward', 'icon--sm') ?></span><?php endif; ?></td>
                         <td class="num"><?= $s['heat'] === null ? '—' : number_format($s['heat'] * 10, 1) ?></td>
                         <?php foreach ($b['cells'] as $ci => $cell): ?>
@@ -349,7 +437,7 @@ if ($id > 0) {
                                 if ($m === BAND_SURVEY_TBD) {
                                     continue;
                                 }
-                                $rank = isset($isTarget[$m]) ? ($data['ranks'][$m][$b['band']] ?? null) : null;
+                                $rank = isset($isTarget[$m]) ? ($live[$m][$b['band']] ?? null) : null;
                                 $score = band_survey_score($rank, $n[$m] ?? 0);
                                 $chip = '<span class="survey-chip' . (isset($isTarget[$m]) ? ($score === null ? ' is-none' : '') : ' is-out') . '"'
                                     . ($score === null ? '' : ' style="--heat: ' . round($score, 2) . '"') . '>' . h($m)
@@ -435,6 +523,7 @@ render_header('バンド希望調査', 'tools');
 ?>
 <nav class="crumbs"><a href="tools?tab=admin">ツール</a></nav>
 <h1 class="display display--sm">バンド希望調査</h1>
+<?php if (band_survey_can_create()): ?>
 <form method="post" enctype="multipart/form-data" class="card form-card">
     <?= csrf_field() ?><input type="hidden" name="action" value="roster">
     <label class="field">調査名<input type="text" name="title" maxlength="100" required></label>
@@ -448,6 +537,7 @@ render_header('バンド希望調査', 'tools');
     <label class="field">名簿<input type="file" name="roster" accept=".pdf,.xlsx,.xlsm,.csv" required></label>
     <button class="btn btn--primary" type="submit">読み込む</button>
 </form>
+<?php endif; ?>
 <div class="tool-list">
     <?php foreach (band_survey_list($pdo) as $s): ?>
         <a class="card tool-card" href="band_survey?id=<?= (int)$s['survey_id'] ?>">

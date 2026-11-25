@@ -1938,8 +1938,25 @@ CREATE TABLE band_survey (
     survey_id  INT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '調査の ID',
     title      VARCHAR(100) NOT NULL COMMENT '調査名',
     data_enc   MEDIUMTEXT   NOT NULL COMMENT '回答行 [[バンド, メンバー, 順位]] の JSON を暗号化したもの',
+    view_role  ENUM('all', 'exec') NOT NULL DEFAULT 'all' COMMENT '年度で見られる人: all = 一般と幹部 / exec = 幹部だけ（migrations/143）',
     created_by INT UNSIGNED NULL COMMENT 'アップロードしたアカウント。消えたら NULL',
     created_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'アップロード日時',
     PRIMARY KEY (survey_id),
     CONSTRAINT fk_band_survey_user FOREIGN KEY (created_by) REFERENCES user_account (user_id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+-- 閲覧可能者（migrations/143 に説明）
+CREATE TABLE band_survey_view_year (
+    survey_id  INT UNSIGNED      NOT NULL COMMENT '調査',
+    entry_year SMALLINT UNSIGNED NOT NULL COMMENT 'この入部年度の人が見られる',
+    PRIMARY KEY (survey_id, entry_year),
+    CONSTRAINT fk_band_survey_view_year FOREIGN KEY (survey_id) REFERENCES band_survey (survey_id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE band_survey_viewer (
+    survey_id INT UNSIGNED NOT NULL COMMENT '調査',
+    member_id INT UNSIGNED NOT NULL COMMENT '個別に見られるようにしたメンバー',
+    PRIMARY KEY (survey_id, member_id),
+    KEY idx_band_survey_viewer_member (member_id),
+    CONSTRAINT fk_band_survey_viewer_survey FOREIGN KEY (survey_id) REFERENCES band_survey (survey_id) ON DELETE CASCADE,
+    CONSTRAINT fk_band_survey_viewer_member FOREIGN KEY (member_id) REFERENCES member (member_id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;

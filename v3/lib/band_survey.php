@@ -10,25 +10,20 @@
  */
 declare(strict_types=1);
 
-// 見られる人の入部年度。来年はここを書き換える
-const BAND_SURVEY_ENTRY_YEAR = 2023;
 // 名簿の「未定」のセル。人としては数えず、表に「未定」と出す（あとから人を入れる所）
 const BAND_SURVEY_TBD = '未定';
 
-/** 見てよい人か: 幹部 + 入部年度が合う + 暗号化の鍵があるサーバー */
-function band_survey_can_view(): bool
+/** 暗号化の鍵があるサーバーか（ないと回答を読み書きできない） */
+function band_survey_ready(): bool
 {
-    $user = current_user();
-    if (!is_executive() || empty($user['member_id'])) {
-        return false;
-    }
     require_once __DIR__ . '/sched_ical.php';
-    if (sched_ical_key() === null) {
-        return false;
-    }
-    $st = db()->prepare('SELECT entry_year FROM member WHERE member_id = ?');
-    $st->execute([(int)$user['member_id']]);
-    return (int)$st->fetchColumn() === BAND_SURVEY_ENTRY_YEAR;
+    return sched_ical_key() !== null;
+}
+
+/** 新しい調査を作れる人か: 幹部（管理者を含む） */
+function band_survey_can_create(): bool
+{
+    return is_executive() && band_survey_ready();
 }
 
 /**
@@ -369,12 +364,45 @@ function band_survey_check_ranks(array $ranks): ?string
 function band_survey_rows(array $data): array
 {
     $rows = [];
+    $ranks = band_survey_live_ranks($data);
+    $off = array_flip($data['off'] ?? []);
     foreach ($data['roster']['bands'] as $b) {
+        if (isset($off[$b['band']])) {
+            continue;
+        }
         foreach (array_intersect(band_survey_band_members($b), $data['targets']) as $m) {
-            $rows[] = [$b['band'], $m, $data['ranks'][$m][$b['band']] ?? null];
+            $rows[] = [$b['band'], $m, $ranks[$m][$b['band']] ?? null];
         }
     }
     return $rows;
+}
+
+/**
+ * 一時削除したバンド（$data['off']）を抜いて、残りを 1, 2, 3… に詰めた順位。表と集計に使う（保存している順位は変えない）
+ *   例: 1位のバンドを一時削除すると、2位だったバンドを1位として数える
+ */
+function band_survey_live_ranks(array $data): array
+{
+    $off = array_flip($data['off'] ?? []);
+    $out = [];
+    foreach ($data['ranks'] as $m => $ranks) {
+        $kept = array_diff_key($ranks, $off);
+        if ($kept) {
+            $out[$m] = band_survey_pack_ranks($kept);
+        }
+    }
+    return $out;
+}
+
+/** バンドの一時削除を付ける / 外す */
+function band_survey_set_off(array $data, string $band, bool $on): array
+{
+    $off = array_values(array_diff($data['off'] ?? [], [$band]));
+    if ($on && in_array($band, array_column($data['roster']['bands'], 'band'), true)) {
+        $off[] = $band;
+    }
+    $data['off'] = $off;
+    return $data;
 }
 
 /** 1人の1バンドの優先度（1位 = 1、最下位 = 0）。順位がなければ null。1バンドしか付けていない人は 1 */
@@ -448,7 +476,68 @@ function band_survey_update(PDO $pdo, int $id, array $data): void
 /** 一覧（中身は読まない） */
 function band_survey_list(PDO $pdo): array
 {
-    return $pdo->query('SELECT survey_id, title, created_at FROM band_survey ORDER BY survey_id DESC')->fetchAll();
+    // 見られるのは: 作った人 / 個別に足した人 / 入部年度が合う人（view_role = exec なら幹部だけ）/ 年度なしで exec ならすべての幹部
+    $user = current_user();
+    $memberId = (int)($user['member_id'] ?? 0);
+    $year = 0;
+    if ($memberId > 0) {
+        $st = $pdo->prepare('SELECT entry_year FROM member WHERE member_id = ?');
+        $st->execute([$memberId]);
+        $year = (int)$st->fetchColumn();
+    }
+    $st = $pdo->prepare("SELECT s.survey_id, s.title, s.created_at FROM band_survey s
+        WHERE s.created_by = ?
+           OR EXISTS (SELECT 1 FROM band_survey_viewer v WHERE v.survey_id = s.survey_id AND v.member_id = ?)
+           OR ((s.view_role = 'all' OR ?) AND (
+                  EXISTS (SELECT 1 FROM band_survey_view_year y WHERE y.survey_id = s.survey_id AND y.entry_year = ?)
+               OR (s.view_role = 'exec' AND NOT EXISTS (SELECT 1 FROM band_survey_view_year y WHERE y.survey_id = s.survey_id))))
+        ORDER BY s.survey_id DESC");
+    $st->execute([(int)($user['user_id'] ?? 0), $memberId, is_executive() ? 1 : 0, $year]);
+    return $st->fetchAll();
+}
+
+/** その調査を見られる（すべての操作ができる）か */
+function band_survey_can_open(PDO $pdo, int $id): bool
+{
+    return band_survey_ready() && in_array($id, array_map('intval', array_column(band_survey_list($pdo), 'survey_id')), true);
+}
+
+/** 閲覧可能者: ['role' => all|exec, 'years' => [年度...], 'members' => [member_id => 名前], 'creator' => 作った人の名前|null] */
+function band_survey_access(PDO $pdo, int $id): array
+{
+    $st = $pdo->prepare('SELECT s.view_role, m.name FROM band_survey s
+        LEFT JOIN user_account u ON u.user_id = s.created_by LEFT JOIN member m ON m.member_id = u.member_id WHERE s.survey_id = ?');
+    $st->execute([$id]);
+    $r = $st->fetch() ?: ['view_role' => 'all', 'name' => null];
+    $st = $pdo->prepare('SELECT entry_year FROM band_survey_view_year WHERE survey_id = ? ORDER BY entry_year DESC');
+    $st->execute([$id]);
+    $years = array_map('intval', $st->fetchAll(PDO::FETCH_COLUMN));
+    $st = $pdo->prepare('SELECT m.member_id, m.name FROM band_survey_viewer v JOIN member m ON m.member_id = v.member_id WHERE v.survey_id = ? ORDER BY m.name');
+    $st->execute([$id]);
+    return ['role' => $r['view_role'], 'years' => $years, 'members' => $st->fetchAll(PDO::FETCH_KEY_PAIR), 'creator' => $r['name']];
+}
+
+/** 調査名と閲覧可能者を保存する */
+function band_survey_save_access(PDO $pdo, int $id, string $title, string $role, array $years, array $memberIds): void
+{
+    $pdo->beginTransaction();
+    try {
+        $pdo->prepare('UPDATE band_survey SET title = ?, view_role = ? WHERE survey_id = ?')->execute([$title, $role === 'exec' ? 'exec' : 'all', $id]);
+        $pdo->prepare('DELETE FROM band_survey_view_year WHERE survey_id = ?')->execute([$id]);
+        $ins = $pdo->prepare('INSERT INTO band_survey_view_year (survey_id, entry_year) VALUES (?, ?)');
+        foreach (array_unique(array_map('intval', $years)) as $y) {
+            $ins->execute([$id, $y]);
+        }
+        $pdo->prepare('DELETE FROM band_survey_viewer WHERE survey_id = ?')->execute([$id]);
+        $ins = $pdo->prepare('INSERT INTO band_survey_viewer (survey_id, member_id) VALUES (?, ?)');
+        foreach (array_unique(array_map('intval', $memberIds)) as $m) {
+            $ins->execute([$id, $m]);
+        }
+        $pdo->commit();
+    } catch (Throwable $e) {
+        $pdo->rollBack();
+        throw $e;
+    }
 }
 
 /** 1件を読む。無ければ null。復号できない・前の形式なら data = null */

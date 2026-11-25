@@ -47,9 +47,9 @@ if (is_executive()) {
     $tools[] = ['studio', 'meeting_room', 'スタジオ割',
         '練習の要否を集め、メンバーが重ならないように練習の順番と部屋を決めて画像にします。', '幹部'];
 }
-// バンド希望調査（lib/band_survey.php の条件を満たす人だけ）
+// バンド希望調査（作れる幹部と、見られる調査がある人だけ）
 require_once __DIR__ . '/lib/band_survey.php';
-if (band_survey_can_view()) {
+if (band_survey_ready() && (band_survey_can_create() || band_survey_list(db()))) {
     $tools[] = ['band_survey', 'poll', 'バンド希望調査', '部員の希望順位から、バンドごとの優先度を集計します。', '幹部'];
 }
 // 試聴の一括調査（管理者だけ。イントロクイズで出せる曲を増やす）

@@ -10,6 +10,16 @@
  * =====================================================================
  */
 (() => {
+    /* ---------- 編集: 年度のプルダウン（複数選べる） ---------- */
+    document.querySelectorAll('[data-survey-years]').forEach((dd) => {
+        const text = dd.querySelector('[data-survey-years-text]');
+        dd.addEventListener('change', () => {
+            const ys = [...dd.querySelectorAll('input:checked')].map((i) => `${i.value}年入部`);
+            text.textContent = ys.length ? ys.join('、') : '選ばない';
+        });
+        document.addEventListener('click', (e) => { if (!dd.contains(e.target)) dd.open = false; }); // 外を押したら閉じる
+    });
+
     const DATA_EL = document.getElementById('survey-pdf-data');
     const box = document.querySelector('[data-pdf-box]');
     if (!DATA_EL || !box) return;
@@ -113,16 +123,17 @@
             { name: '未回答', kind: 'none' }, { name: '対象外', kind: 'out' },
         ];
         let lx = M + w(DATA.title, 12) + 16;
+        let op = 1; // 描く濃さ（opacity）
         const drawChip = (ch, x, top) => {
             const cw = chipW(ch);
             const h = FS + 5;
             const y = Y(top + ROW_H / 2 + h / 2);
-            if (ch.kind === 'ok') page.drawRectangle({ x, y, width: cw, height: h, color: heatColor(ch.heat) });
-            if (ch.kind === 'none') page.drawRectangle({ x, y, width: cw, height: h, color: surface2 });
+            if (ch.kind === 'ok') page.drawRectangle({ x, y, width: cw, height: h, color: heatColor(ch.heat), opacity: op });
+            if (ch.kind === 'none') page.drawRectangle({ x, y, width: cw, height: h, color: surface2, opacity: op });
             if (ch.kind === 'out' || ch.kind === 'tbd') {
-                page.drawRectangle({ x, y, width: cw, height: h, borderColor: border, borderWidth: 0.6, borderDashArray: [1.5, 1.5] });
+                page.drawRectangle({ x, y, width: cw, height: h, borderColor: border, borderWidth: 0.6, borderDashArray: [1.5, 1.5], borderOpacity: op });
             }
-            page.drawText(chipLabel(ch), { x: x + PAD, y: mid(top), size: FS, font, color: ch.kind === 'ok' ? text : muted });
+            page.drawText(chipLabel(ch), { x: x + PAD, y: mid(top), size: FS, font, color: ch.kind === 'ok' ? text : muted, opacity: op });
             return cw;
         };
         legend.forEach((ch) => { lx += drawChip(ch, lx, M) + GAP; });
@@ -137,12 +148,13 @@
         });
         DATA.rows.forEach((row, ri) => {
             const top = top0 + ROW_H * (ri + 1);
+            op = row.off ? 0.35 : 1; // 一時削除したバンドは薄く（表の .is-off と同じ）
             page.drawLine({ start: { x: M, y: Y(top) }, end: { x: M + tableW, y: Y(top) }, thickness: 0.5, color: border });
-            page.drawText(row.band, { x: M + CELL_PAD, y: mid(top), size: FS, font, color: text });
+            page.drawText(row.band, { x: M + CELL_PAD, y: mid(top), size: FS, font, color: text, opacity: op });
             if (row.low) {
-                page.drawText('↓', { x: M + CELL_PAD + w(row.band) + 2, y: mid(top), size: FS, font, color: muted });
+                page.drawText('↓', { x: M + CELL_PAD + w(row.band) + 2, y: mid(top), size: FS, font, color: muted, opacity: op });
             }
-            page.drawText(row.heat, { x: M + widths[0] + widths[1] - CELL_PAD - w(row.heat), y: mid(top), size: FS, font, color: text });
+            page.drawText(row.heat, { x: M + widths[0] + widths[1] - CELL_PAD - w(row.heat), y: mid(top), size: FS, font, color: text, opacity: op });
             let cx = M + widths[0] + widths[1];
             row.cells.forEach((cell, i) => {
                 let px = cx + CELL_PAD;
@@ -159,17 +171,16 @@
     let rendering = false;
     let again = false;
     let timer = null;
-    const card = box.parentElement;
-    // 拡大していないときの幅（カードの中の幅 - 枠の左右の余白 8px × 2）。拡大中は枠が画面の幅に広がるので、カードから測る
-    const fitWidth = () => {
-        const s = getComputedStyle(card);
-        return card.clientWidth - parseFloat(s.paddingLeft) - parseFloat(s.paddingRight) - 16;
-    };
+    // 拡大していないときの幅（枠の中 - 左右の余白 8px × 2。縦のスクロールバーの分も引かれる）。拡大中は枠が広がるので、広げる前に測った値を使う
+    let fitCache = 0;
+    const fitWidth = () => (box.classList.contains('is-wide') ? fitCache : box.clientWidth - 16);
     /** 拡大中は、枠を画面の左右いっぱいに広げる（カードとページの余白を使わない） */
     function wide(on) {
-        box.classList.toggle('is-wide', on);
+        box.classList.remove('is-wide');
         box.style.marginLeft = box.style.width = '';
         if (!on) return;
+        fitCache = box.clientWidth - 16;
+        box.classList.add('is-wide');
         box.style.marginLeft = `${-box.getBoundingClientRect().left}px`;
         box.style.width = `${document.documentElement.clientWidth}px`;
     }

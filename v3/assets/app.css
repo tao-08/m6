@@ -421,7 +421,7 @@ input, select, textarea { font: inherit; color: inherit; }
 /* プルダウンの中身（option）は背景が透明のままだと、Windows の Chrome などで「白い背景に白い文字」になり
    ダークモードで読めなくなる。文字色と背景色を両方テーマの色で指定しておく */
 option, optgroup { background-color: var(--surface); color: var(--text); }
-.search, .field input, .board-poll-edit input, .field select, .field textarea, .member-row-edit input, .member-row-edit select, .table--edit input, .table--edit select, .survey-cell-form input:not([type="checkbox"]) {
+.search, .field input, .board-poll-edit input, .field select, .field textarea, .member-row-edit input, .member-row-edit select, .table--edit input, .table--edit select, .survey-cell-form input:not([type="checkbox"]), .survey-access input[name="add"] {
   width: 100%; padding: 10px 13px; border-radius: var(--r-md); border: 1px solid var(--border);
   background: var(--surface); color: var(--text); font-size: var(--fs-md); min-width: 0;
 }
@@ -3276,6 +3276,7 @@ span.signal { cursor: default; }
 .survey-written { cursor: default; text-decoration: underline dotted; } /* 名簿のバンド名と回答の書き方がちがう（data-tip で回答を出す） */
 /* バンド希望調査の表（band_survey.php）: 名前のチップを優先度（--heat: 1位 = 1、最下位 = 0）で赤く塗る。未回答は灰色 */
 .survey-map td { white-space: nowrap; }
+.survey-map tr.is-off > td:not(:first-child) { opacity: .35; } /* 一時削除したバンド（チェックの欄は押せる見た目のまま） */
 .survey-chip { gap: 4px; padding-inline: 6px; margin: 1px 2px; border-radius: var(--r-sm); font-size: var(--fs-sm);
   background: color-mix(in srgb, var(--accent) calc(var(--heat) * 55% + 8%), var(--surface)); }
 .survey-chip.is-none { background: var(--surface-2); color: var(--muted); }
@@ -3299,10 +3300,27 @@ span.signal { cursor: default; }
 /* プレビュー（assets/band_survey.js が PDF を canvas に描く）。拡大したら枠の中で上下左右にスクロール */
 .survey-pdf { padding: 12px; }
 .survey-pdf__bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
-.survey-pdf__box { overflow: auto; max-height: 75vh; padding: 8px; background: var(--surface-2); border-radius: var(--r-md); overscroll-behavior: contain; }
+.survey-pdf__box { overflow: auto; max-height: 75vh; scrollbar-gutter: stable; padding: 8px; background: var(--surface-2); border-radius: var(--r-md); overscroll-behavior: contain; }
 .survey-candidates { display: flex; flex-wrap: wrap; gap: 6px; }
 .survey-views { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; } /* 表 / プレビュー と 並び順 を1行に（狭ければ折り返す） */
 .survey-views > .tabs { margin-bottom: 0; }
 .survey-gap { margin-top: 16px; }
+.survey-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.survey-access > summary { list-style: none; }
+.survey-access > summary::-webkit-details-marker { display: none; }
+.survey-access[open] { flex-basis: 100%; }
+.survey-access > form { margin: 8px 0 16px; }
+.survey-access fieldset { border: 0; padding: 0; margin: 0; }
+.survey-access__row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; }
+/* 年度のプルダウン（複数選べる）: 閉じているときは入力欄と同じ見た目、開くと下にチェックの一覧 */
+.survey-years { position: relative; margin-bottom: 8px; }
+.survey-years > summary { list-style: none; cursor: pointer; padding: 10px 36px 10px 13px; border: 1px solid var(--border); border-radius: var(--r-md);
+  background: var(--surface); font-size: var(--fs-md); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; position: relative; }
+.survey-years > summary::-webkit-details-marker { display: none; }
+.survey-years > summary::after { content: ""; position: absolute; right: 14px; top: 50%; width: 7px; height: 7px; margin-top: -5px;
+  border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(45deg); }
+.survey-years[open] > summary { border-color: var(--accent); box-shadow: var(--ring); }
+.survey-years__list { position: absolute; z-index: 5; left: 0; right: 0; top: calc(100% + 4px); display: grid; gap: 2px; padding: 8px 12px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); box-shadow: var(--shadow); max-height: 260px; overflow: auto; }
 .survey-pdf__box.is-wide { padding: 0; border-radius: 0; }
 .survey-pdf__box canvas { display: block; margin: 0 auto; background: #fff; box-shadow: var(--shadow-sm); }
