@@ -312,6 +312,12 @@ if ($id > 0) {
         $n = array_map('count', $live); // その人が順位を付けた数
         $sum = array_column(band_survey_summarize(band_survey_rows($data)), null, 'band');
         $draft = ($_SESSION['band_survey_answer']['id'] ?? 0) === $id ? $_SESSION['band_survey_answer'] : null;
+        $best = []; // バンドごとの、対象の人が付けた最も上の順位（絞り込み「◯位まで入れた人が」に使う）
+        foreach ($live as $m => $rs) {
+            if (!isset($isTarget[$m])) continue;
+            foreach ($rs as $band => $r) $best[$band] = min($best[$band] ?? PHP_INT_MAX, (int)$r);
+        }
+        $maxRank = max([0, ...array_values(array_intersect_key($n, $isTarget))]);
         ?>
 
         <?php if ($draft): ?>
@@ -445,18 +451,37 @@ if ($id > 0) {
             <div class="survey-pdf__box" data-pdf-box><canvas data-pdf-canvas></canvas></div>
         </div>
         <div class="card table-card" data-survey-pane="table">
+            <?php if ($maxRank > 0): // 絞り込み: 回したら・タブを押したら JS が行を隠す（assets/band_survey.js） ?>
+                <div class="survey-filter" data-survey-filter>
+                    <button type="button" class="btn btn--ghost btn--sm" data-survey-filter-toggle aria-expanded="false" aria-label="絞り込み" title="絞り込み"><?= icon('filter_alt', 'icon--fill') ?></button>
+                    <div class="survey-filter__body">
+                    <div class="year-slot year-slot--grade" data-survey-filter-slot tabindex="0" role="spinbutton" aria-label="順位">
+                        <div class="year-slot__reel">
+                            <?php for ($r = 1; $r <= $maxRank; $r++): ?>
+                                <?= grade_slot_item((string)$r, $r . '位', '1') ?>
+                            <?php endfor; ?>
+                        </div>
+                    </div>
+                    <span class="small" data-survey-filter-text>に入れた人が</span>
+                    <div class="tabs">
+                        <button type="button" class="tab is-active" data-survey-filter-mode="yes">1人以上</button>
+                        <button type="button" class="tab" data-survey-filter-mode="no">0人</button>
+                    </div>
+                    </div>
+                </div>
+            <?php endif; ?>
             <div class="table-scroll table-scroll--flush">
             <table class="table survey-map">
                 <caption class="survey-legend"><span class="survey-chip" style="--heat: 1">1位</span><span class="survey-chip" style="--heat: 0">最下位</span><span class="survey-chip is-none">未回答</span><span class="survey-chip is-out">対象外</span></caption>
                 <thead><tr>
                     <th class="small survey-off">一時<br>削除</th>
-                    <th>バンド</th>
+                    <th>バンド <span class="muted small" data-survey-band-count>（<?= count($bands) - count(array_intersect_key($off, array_flip(array_column($bands, 'band')))) ?>/<?= count($bands) ?>）</span></th>
                     <th>優先度 <button type="button" class="info-tip" data-tip="1位を10、最下位を0にそろえた平均。名前の色は濃いほど上位" aria-label="補足を表示"><?= icon('info') ?></button></th>
                     <?php foreach ($roster['columns'] as $title): ?><th><?= h($title) ?></th><?php endforeach; ?>
                 </tr></thead>
                 <tbody>
                 <?php foreach ($bands as $bi => $b): $s = $sum[$b['band']] ?? ['heat' => null, 'low_all' => false]; ?>
-                    <tr<?= isset($off[$b['band']]) ? ' class="is-off"' : '' ?>>
+                    <tr data-best="<?= $best[$b['band']] ?? '' ?>"<?= isset($off[$b['band']]) ? ' class="is-off"' : '' ?>>
                         <td class="survey-off"><form method="post">
                             <?= csrf_field() ?><input type="hidden" name="action" value="off"><input type="hidden" name="id" value="<?= $id ?>">
                             <input type="hidden" name="band" value="<?= h($b['band']) ?>"><input type="hidden" name="sort" value="<?= $byHeat ? 'heat' : '' ?>">

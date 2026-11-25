@@ -28,6 +28,41 @@
         }
     });
 
+    /* ---------- 表の絞り込み: 「◯位まで入れた人が 1人以上 / 0人」バンドだけ出す ---------- */
+    const filter = { rank: '1', mode: '', last: 'yes' }; // mode: '' = 閉じている（絞り込まない）/ last: 開き直したときのタブ
+    const applyFilter = () => {
+        document.querySelectorAll('[data-survey-pane="table"] tr[data-best]').forEach((tr) => {
+            const hit = tr.dataset.best !== '' && Number(tr.dataset.best) <= Number(filter.rank);
+            tr.hidden = filter.mode !== '' && hit !== (filter.mode === 'yes');
+        });
+        document.querySelectorAll('[data-survey-filter-mode]').forEach((t) => t.classList.toggle('is-active', t.dataset.surveyFilterMode === filter.last));
+        // バンドの見出しの（出ている数/全部）: 一時削除・絞り込みで隠したバンドは数えない
+        const rows = [...document.querySelectorAll('[data-survey-pane="table"] tr[data-best]')];
+        const count = document.querySelector('[data-survey-band-count]');
+        if (count) count.textContent = `（${rows.filter((tr) => !tr.hidden && !tr.classList.contains('is-off')).length}/${rows.length}）`;
+        const open = filter.mode !== '';
+        document.querySelector('[data-survey-filter]')?.classList.toggle('is-open', open);
+        const toggle = document.querySelector('[data-survey-filter-toggle]');
+        if (toggle) {
+            toggle.setAttribute('aria-expanded', String(open));
+            toggle.setAttribute('aria-label', open ? '絞り込みを解除' : '絞り込み');
+            toggle.title = toggle.getAttribute('aria-label');
+            toggle.querySelector('.icon').textContent = open ? 'filter_alt_off' : 'filter_alt';
+        }
+        document.querySelector('[data-survey-filter-slot]')?.classList.toggle('is-filtered', filter.mode !== '');
+        const text = document.querySelector('[data-survey-filter-text]');
+        if (text) text.textContent = filter.rank === '1' ? 'に入れた人が' : 'まで入れた人が'; // 「1位まで」は言わない
+    };
+    const setupFilter = () => {
+        const box = document.querySelector('[data-survey-filter]');
+        if (!box || box.dataset.ready) return;
+        box.dataset.ready = '1';
+        makeSlot(box.querySelector('[data-survey-filter-slot]'), (value) => { filter.rank = value; applyFilter(); });
+        box.querySelectorAll('[data-survey-filter-mode]').forEach((t) => t.addEventListener('click', () => { filter.mode = filter.last = t.dataset.surveyFilterMode; applyFilter(); }));
+        box.querySelector('[data-survey-filter-toggle]').addEventListener('click', () => { filter.mode = filter.mode ? '' : filter.last; applyFilter(); });
+    };
+    if (!document.querySelector('[data-survey-pane="table"]')?.hidden) setupFilter();
+
     const DATA_EL = document.getElementById('survey-pdf-data');
     const box = document.querySelector('[data-pdf-box]');
     if (!DATA_EL || !box) return;
@@ -55,6 +90,7 @@
         });
         history.replaceState(null, '', location.pathname + location.search + (view === 'table' ? '' : '#' + view));
         if (view === 'pdf') open();
+        if (view === 'table') setupFilter(); // 隠れていると段の高さを測れないので、表を開いたときに作る
     };
     views.forEach((b) => b.addEventListener('click', () => show(b.dataset.surveyView)));
 
@@ -322,7 +358,14 @@
                 const scrollers = (el) => [el, el.querySelector('.table-scroll')].filter(Boolean); // 横にスクロールする入れ物（カードと中の枠）
                 const pos = scrollers(old).map((el) => el.scrollLeft);
                 requestAnimationFrame(() => scrollers(fresh).forEach((el, i) => { el.scrollLeft = pos[i] ?? 0; }));
+                // 絞り込みは入れ替えずに持っていく（選んだ順位・タブのまま）
+                // shortcut: スロットの段（最大の順位）は読み直すまで前のまま。順位の数が変わるのは名簿を変えたときくらいなので
+                const box = old.querySelector('[data-survey-filter]');
+                const freshBox = fresh.querySelector('[data-survey-filter]');
+                if (box && freshBox) freshBox.replaceWith(box);
             });
+            setupFilter(); // 回答が初めて入って絞り込みが出たとき
+            applyFilter();
             swap('[data-survey-pane="answers"]', (old, fresh) => {
                 const open = new Set([...old.querySelectorAll('details[open]')].map((d) => d.dataset.member)); // 開いていた人は開いたまま
                 fresh.querySelectorAll('details').forEach((d) => { d.open = open.has(d.dataset.member); });

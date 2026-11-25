@@ -3312,6 +3312,15 @@ span.signal { cursor: default; }
 .survey-candidates { display: flex; flex-wrap: wrap; gap: 6px; }
 .survey-views { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; } /* 表 / プレビュー と 並び順 を1行に（狭ければ折り返す） */
 .survey-views > .tabs { margin-bottom: 0; }
+.survey-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 14px 0; }
+.survey-filter__body > .tabs { margin-bottom: 0; }
+/* 絞り込み: 漏斗を押すと横にすべって出る。閉じているときも高さは残す（スロットが段の高さを測れるように） */
+.survey-filter__body { --ease: cubic-bezier(.25, .8, .25, 1); display: flex; align-items: center; gap: 8px; overflow: hidden;
+  max-width: 0; padding: 3px; margin: -3px; opacity: 0; visibility: hidden;
+  transition: max-width var(--t-slow) var(--ease), opacity var(--t-slow) ease, visibility var(--t-slow); }
+.survey-filter__body > * { flex: none; }
+.survey-filter.is-open .survey-filter__body { max-width: 40em; opacity: 1; visibility: visible; }
+@media (prefers-reduced-motion: reduce) { .survey-filter__body { transition: none; } }
 .survey-gap { margin-top: 16px; }
 .survey-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
 .survey-access > summary { list-style: none; }
