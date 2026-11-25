@@ -86,6 +86,22 @@ function config(?string $key = null): mixed
 ini_set('display_errors', config('debug') ? '1' : '0');
 error_reporting(E_ALL);
 
+// PHP の中で落ちた 500 は Apache の ErrorDocument が出ない（真っ白になる）ので、ここでエラーページを出す
+if (!config('debug')) {
+    set_exception_handler(static function (Throwable $e): void {
+        error_log((string)$e);
+        while (ob_get_level() > 0) { ob_end_clean(); }
+        error_page(500);
+    });
+    register_shutdown_function(static function (): void {
+        $err = error_get_last();
+        if ($err !== null && in_array($err['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR], true)) {
+            while (ob_get_level() > 0) { ob_end_clean(); }
+            error_page(500);
+        }
+    });
+}
+
 /* ---------------------------------------------------------------------
  * セッション開始
  *   httponly: JavaScript から Cookie を読めなくする（XSS されてもセッションを盗まれにくい）
