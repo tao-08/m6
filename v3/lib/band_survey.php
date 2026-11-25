@@ -3,9 +3,9 @@
  * =====================================================================
  *  lib/band_survey.php — バンド希望調査（卒業ライブのバンドの熱量を集計する）
  * =====================================================================
- *  CSV（バンド,メンバー,順位）を読み、バンドごとの熱量を出す。回答は機微情報なので、
- *  行の JSON を sched_ical_encrypt()（lib/sched_ical.php）で暗号化して DB に入れる。
- *  parse / summarize は DB に触れない純粋関数（tests/run.php でテストする）。
+ *  名簿のファイルと LINE の回答を Claude（Haiku）で照合し、確認画面で直してから保存する。回答は機微情報なので、
+ *  行（[バンド, メンバー, 順位|null]）の JSON を sched_ical_encrypt()（lib/sched_ical.php）で暗号化して DB に入れる。
+ *  apply / check_ranks / summarize は DB に触れない純粋関数（tests/run.php でテストする）。
  * =====================================================================
  */
 declare(strict_types=1);
@@ -30,58 +30,148 @@ function band_survey_can_view(): bool
 }
 
 /**
- * CSV を読む。rows = [[バンド, メンバー, 順位(int|null)], ...]
- * @return array{rows: array<int, array{0: string, 1: string, 2: ?int}>, errors: string[]}
+ * 名簿のファイル（PDF / Excel / CSV。取り込みと同じ読み方）→ [['band' => 名前, 'members' => [名前, ...]], ...]
+ *   同じ人は表記ゆれ（member_key）をそろえ、最初に出てきた書き方にする
+ * @throws RuntimeException 読めない・名簿がない
  */
-function band_survey_parse_csv(string $text): array
+function band_survey_read_roster(string $path, string $name): array
 {
-    $text = preg_replace('/^\xEF\xBB\xBF/', '', $text);
-    $fp = fopen('php://memory', 'r+');
-    fwrite($fp, $text);
-    rewind($fp);
-    $rows = [];
-    $errors = [];
-    $line = 0;
-    while (($r = fgetcsv($fp, 0, ',', '"', '')) !== false) {
-        $line++;
-        if ($r === [null] || trim(implode('', $r)) === '') {
-            continue; // 空行
+    require_once __DIR__ . '/import/parsers.php';
+    $bands = [];
+    foreach (read_table_sheets($path, $name) as $rows) {
+        if (detect_table_kind($rows) === 'roster') {
+            foreach (parse_roster($rows)['bands'] as $b) {
+                $bands[] = ['band' => $b['band_name'], 'members' => array_column($b['members'], 'name')];
+            }
         }
-        if ($line === 1 && str_contains((string)$r[0], 'バンド')) {
-            continue; // 見出し
-        }
-        $band = trim((string)($r[0] ?? ''));
-        $member = trim((string)($r[1] ?? ''));
-        $rankRaw = trim((string)($r[2] ?? ''));
-        if ($band === '' || $member === '') {
-            $errors[] = "{$line}行目: バンドかメンバーが空です";
-            continue;
-        }
-        if ($rankRaw === '') {
-            $rank = null;
-        } elseif (ctype_digit($rankRaw) && (int)$rankRaw > 0) {
-            $rank = (int)$rankRaw;
-        } else {
-            $errors[] = "{$line}行目: 順位が正の整数ではありません";
-            continue;
-        }
-        $rows[] = [$band, $member, $rank];
     }
-    fclose($fp);
+    if (!$bands) {
+        throw new RuntimeException('名簿が見つかりませんでした');
+    }
+    return band_survey_tidy_roster($bands);
+}
 
+/** 名簿の名前をそろえる（同じ人は最初の書き方に、バンド内の重複は1人に） */
+function band_survey_tidy_roster(array $bands): array
+{
+    require_once __DIR__ . '/import/text.php'; // member_key
+    $seen = [];
+    foreach ($bands as &$b) {
+        $names = [];
+        foreach ($b['members'] as $m) {
+            $names[] = $seen[member_key($m)] ??= $m;
+        }
+        $b['members'] = array_values(array_unique($names));
+    }
+    unset($b);
+    return $bands;
+}
+
+const BAND_SURVEY_PROMPT = <<<'TXT'
+下の「名簿」は卒業ライブのバンドとメンバー、「回答」は LINE で集めた「自分が組んでいるバンドの優先順位」です。回答ごとに、名簿に照合してください。
+
+- member: 回答した人。LINE の表示名・署名・文中の名前から、名簿のメンバー名をそのまま書く。決められなければ空
+- line_name: 回答に出てくるその人の表示名（そのまま）
+- ranks: 書かれた順位ごとに written（書かれたバンド名そのまま）、band（名簿のバンド名をそのまま。略称・愛称・表記ゆれを寄せる。決められなければ空）、rank（順位の数字）
+- 推測で埋めない。迷ったら空にする
+TXT;
+
+/**
+ * Claude（Haiku）で回答を名簿に照合する。失敗したら文字列（画面に出せる理由）
+ * @return array{ranks: array<string, array<string, int>>, sources: array<string, string>, written: array<string, array<string, string>>, issues: string[]}|string
+ */
+function band_survey_match(array $roster, string $answers): array|string
+{
+    require_once __DIR__ . '/claude.php';
+    if (!claude_enabled()) {
+        return 'Claude API が設定されていません';
+    }
+    $str = ['type' => 'string'];
+    try {
+        $json = claude_json(BAND_SURVEY_PROMPT, [[
+            'type' => 'text',
+            'text' => "# 名簿\n" . json_encode($roster, JSON_UNESCAPED_UNICODE) . "\n\n# 回答\n" . $answers,
+        ]], [
+            'type' => 'object',
+            'properties' => ['answers' => ['type' => 'array', 'items' => [
+                'type' => 'object',
+                'properties' => [
+                    'member' => $str,
+                    'line_name' => $str,
+                    'ranks' => ['type' => 'array', 'items' => [
+                        'type' => 'object',
+                        'properties' => ['written' => $str, 'band' => $str, 'rank' => ['type' => 'integer']],
+                        'required' => ['written', 'band', 'rank'],
+                        'additionalProperties' => false,
+                    ]],
+                ],
+                'required' => ['member', 'line_name', 'ranks'],
+                'additionalProperties' => false,
+            ]]],
+            'required' => ['answers'],
+            'additionalProperties' => false,
+        ], 16000, 180, 'claude-haiku-5-5');
+    } catch (RuntimeException $e) {
+        return $e->getCode() === CLAUDE_ERR_MAX_TOKENS ? '回答が長すぎます。分けて追加してください' : '照合できませんでした。時間をおいて再試行してください';
+    }
+    return band_survey_apply($roster, is_array($json['answers'] ?? null) ? $json['answers'] : []);
+}
+
+/**
+ * 照合の結果を名簿に当てはめる（名簿にない名前・バンドは信じずに issues へ）
+ *   ranks[メンバー][バンド] = 順位、sources[メンバー] = LINE の表示名、written[メンバー][バンド] = 回答の書き方
+ */
+function band_survey_apply(array $roster, array $answers): array
+{
+    $bandsOf = [];
+    foreach ($roster as $b) {
+        foreach ($b['members'] as $m) {
+            $bandsOf[$m][] = $b['band'];
+        }
+    }
+    $out = ['ranks' => [], 'sources' => [], 'written' => [], 'issues' => []];
+    foreach ($answers as $a) {
+        $member = trim((string)($a['member'] ?? ''));
+        $line = trim((string)($a['line_name'] ?? '')) ?: '名前なし';
+        if (!isset($bandsOf[$member]) || isset($out['sources'][$member])) {
+            $out['issues'][] = isset($out['sources'][$member])
+                ? "LINE の「{$line}」: {$member} の回答が2つあります"
+                : "LINE の「{$line}」: 名簿のメンバーに見つかりません";
+            continue;
+        }
+        $out['sources'][$member] = $line;
+        foreach (is_array($a['ranks'] ?? null) ? $a['ranks'] : [] as $r) {
+            $band = trim((string)($r['band'] ?? ''));
+            $written = trim((string)($r['written'] ?? ''));
+            $rank = (int)($r['rank'] ?? 0);
+            if (!in_array($band, $bandsOf[$member], true) || $rank < 1) {
+                $out['issues'][] = "{$member}: 「{$written}」が {$member} のバンドに見つかりません";
+                continue;
+            }
+            $out['ranks'][$member][$band] = $rank;
+            $out['written'][$member][$band] = $written;
+        }
+    }
+    return $out;
+}
+
+/** 1人の順位が 1, 2, 3… の連番か。rows = [[バンド, メンバー, 順位|null], ...] */
+function band_survey_check_ranks(array $rows): array
+{
     $ranks = [];
     foreach ($rows as [, $member, $rank]) {
         if ($rank !== null) {
             $ranks[$member][] = $rank;
         }
     }
+    $errors = [];
     foreach ($ranks as $member => $list) {
         sort($list);
         if ($list !== range(1, count($list))) {
             $errors[] = $member . ': 順位が 1〜' . count($list) . ' の連番になっていません';
         }
     }
-    return ['rows' => $rows, 'errors' => $errors];
+    return $errors;
 }
 
 /**
@@ -159,4 +249,16 @@ function band_survey_load(PDO $pdo, int $id): ?array
 function band_survey_delete(PDO $pdo, int $id): void
 {
     $pdo->prepare('DELETE FROM band_survey WHERE survey_id = ?')->execute([$id]);
+}
+
+/** 確認画面の並び: [[メンバー, [バンド, ...]], ...]（名簿に出てきた順） */
+function band_survey_draft_members(array $roster): array
+{
+    $of = [];
+    foreach ($roster as $b) {
+        foreach ($b['members'] as $m) {
+            $of[$m][] = $b['band'];
+        }
+    }
+    return array_map(null, array_map('strval', array_keys($of)), array_values($of)); // 「171」のような名前は配列のキーで数値になるので文字列に戻す
 }

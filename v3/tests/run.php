@@ -1294,20 +1294,31 @@ check('曲名: 形が違っても落ちない', gemini_setlist_titles(['songs' =
 
 echo "band survey\n";
 require_once __DIR__ . '/../lib/band_survey.php';
-$bsCsv = "\xEF\xBB\xBFバンド,メンバー,順位\nA,山田,1\nB,山田,2\nC,山田,3\nA,佐藤,2\nB,佐藤,1\nC,鈴木,\n\nC,田中,1\n";
-$bsRes = band_survey_parse_csv($bsCsv);
-check('希望調査: 見出し・BOM・空行を飛ばす', [count($bsRes['rows']), $bsRes['errors']], [7, []]);
-$bsSum = array_column(band_survey_summarize($bsRes['rows']), null, 'band');
+$bsRows = [['A', '山田', 1], ['B', '山田', 2], ['C', '山田', 3], ['A', '佐藤', 2], ['B', '佐藤', 1], ['C', '鈴木', null], ['C', '田中', 1]];
+$bsSum = array_column(band_survey_summarize($bsRows), null, 'band');
 check('希望調査: A の熱量', $bsSum['A']['heat'], 0.5);
 check('希望調査: B の熱量', $bsSum['B']['heat'], 0.75);
 check('希望調査: C は n=1 の田中を除く', $bsSum['C']['heat'], 0.0);
 check('希望調査: C は全員が下位', $bsSum['C']['low_all'], true);
 check('希望調査: A は下位でない', $bsSum['A']['low_all'], false);
 check('希望調査: C の回答数', [$bsSum['C']['answered'], $bsSum['C']['total']], [2, 3]);
-check('希望調査: 熱量の高い順', array_column(band_survey_summarize($bsRes['rows']), 'band'), ['B', 'A', 'C']);
-check('希望調査: 重複順位はエラー1件', count(band_survey_parse_csv("A,x,1\nB,x,1\n")['errors']), 1);
-check('希望調査: 数字でない順位はエラー', count(band_survey_parse_csv("A,x,あ\n")['errors']), 1);
-check('希望調査: メンバーが空はエラー', band_survey_parse_csv("A,,1\n")['errors'], ['1行目: バンドかメンバーが空です']);
+check('希望調査: 熱量の高い順', array_column(band_survey_summarize($bsRows), 'band'), ['B', 'A', 'C']);
+check('希望調査: 連番なら OK', band_survey_check_ranks($bsRows), []);
+check('希望調査: 重複順位はエラー', band_survey_check_ranks([['A', 'x', 1], ['B', 'x', 1]]), ['x: 順位が 1〜2 の連番になっていません']);
+$bsRoster = band_survey_tidy_roster([['band' => 'A', 'members' => ['山田 太郎', '佐藤']], ['band' => 'B', 'members' => ['山田太郎', '佐藤', '佐藤']]]);
+check('希望調査: 名簿の表記ゆれ・重複をそろえる', array_column($bsRoster, 'members'), [['山田 太郎', '佐藤'], ['山田 太郎', '佐藤']]);
+check('希望調査: 確認画面の並び', band_survey_draft_members($bsRoster), [['山田 太郎', ['A', 'B']], ['佐藤', ['A', 'B']]]);
+$bsApply = band_survey_apply($bsRoster, [
+    ['member' => '山田 太郎', 'line_name' => 'やまだ', 'ranks' => [['written' => 'えー', 'band' => 'A', 'rank' => 1], ['written' => 'Z', 'band' => 'Z', 'rank' => 2]]],
+    ['member' => '謎', 'line_name' => 'なぞ', 'ranks' => []],
+    ['member' => '山田 太郎', 'line_name' => 'やまだ2', 'ranks' => []],
+]);
+check('希望調査: 照合を名簿に当てはめる', [$bsApply['ranks'], $bsApply['sources'], $bsApply['written']], [['山田 太郎' => ['A' => 1]], ['山田 太郎' => 'やまだ'], ['山田 太郎' => ['A' => 'えー']]]);
+check('希望調査: 名簿にない名前・バンド・2つ目の回答は issues', $bsApply['issues'], [
+    '山田 太郎: 「Z」が 山田 太郎 のバンドに見つかりません',
+    'LINE の「なぞ」: 名簿のメンバーに見つかりません',
+    'LINE の「やまだ2」: 山田 太郎 の回答が2つあります',
+]);
 
 echo "migrations\n";
 $migDup = [];

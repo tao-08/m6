@@ -3,9 +3,9 @@
  * =====================================================================
  *  band_survey.php — バンド希望調査（卒業ライブのバンドの熱量。見られる人は lib/band_survey.php の band_survey_can_view）
  * =====================================================================
- *  band_survey        … 一覧 + アップロード
+ *  band_survey        … 一覧 + 追加（名簿のファイル + LINE の回答）。照合した下書きがセッションにあれば確認画面
  *  band_survey?id=12  … 集計の表
- *  POST（すべて CSRF チェック）: create（CSV を読んで暗号化して保存）/ delete
+ *  POST（すべて CSRF チェック）: read（Claude で照合して下書きに）/ save（直した順位を暗号化して保存）/ reset / delete
  * =====================================================================
  */
 declare(strict_types=1);
@@ -20,26 +20,58 @@ $pdo = db();
 if (is_post()) {
     verify_csrf();
     $action = $_POST['action'] ?? '';
-    if ($action === 'create') {
+    if ($action === 'read') {
         $title = trim((string)($_POST['title'] ?? ''));
-        $file = $_FILES['csv'] ?? null;
-        if ($title === '' || mb_strlen($title) > 100 || !$file || $file['error'] !== UPLOAD_ERR_OK || $file['size'] > 2 * 1024 * 1024) {
-            flash('調査名は100字まで、CSV は2MBまでで指定してください', 'error');
+        $answers = trim((string)($_POST['answers'] ?? ''));
+        $file = $_FILES['roster'] ?? null;
+        if ($title === '' || mb_strlen($title) > 100 || $answers === '' || mb_strlen($answers) > 50000
+            || !$file || $file['error'] !== UPLOAD_ERR_OK || $file['size'] > 5 * 1024 * 1024) {
+            flash('調査名は100字まで、名簿は5MBまでで指定してください', 'error');
             redirect('band_survey');
         }
-        $text = (string)file_get_contents($file['tmp_name']);
-        if (!mb_check_encoding($text, 'UTF-8')) {
-            $text = mb_convert_encoding($text, 'UTF-8', 'SJIS-win'); // Excel の「CSV」で保存したもの
-        }
-        $res = band_survey_parse_csv($text);
-        if (!$res['rows'] && !$res['errors']) {
-            $res['errors'][] = '行がありません';
-        }
-        if ($res['errors']) {
-            flash(implode(' / ', array_slice($res['errors'], 0, 5)) . (count($res['errors']) > 5 ? ' ほか' . (count($res['errors']) - 5) . '件' : ''), 'error');
+        try {
+            $roster = band_survey_read_roster($file['tmp_name'], (string)$file['name']);
+        } catch (Throwable $e) {
+            flash('名簿: ' . $e->getMessage(), 'error');
             redirect('band_survey');
         }
-        redirect('band_survey?id=' . band_survey_save($pdo, $title, $res['rows'], (int)$user['user_id']));
+        $m = band_survey_match($roster, $answers);
+        if (is_string($m)) {
+            flash($m, 'error');
+            redirect('band_survey');
+        }
+        $_SESSION['band_survey_draft'] = ['title' => $title, 'roster' => $roster] + $m;
+        redirect('band_survey');
+    }
+    $draft = $_SESSION['band_survey_draft'] ?? null;
+    if ($action === 'save' && $draft) {
+        // 入力は r[メンバーの番号][バンドの番号]。保存する行は名簿の順に [バンド, メンバー, 順位|null]
+        $draft['ranks'] = [];
+        foreach (band_survey_draft_members($draft['roster']) as $mi => [$member, $bands]) {
+            foreach ($bands as $bi => $band) {
+                $v = trim((string)($_POST['r'][$mi][$bi] ?? ''));
+                if (ctype_digit($v) && (int)$v > 0) {
+                    $draft['ranks'][$member][$band] = (int)$v;
+                }
+            }
+        }
+        $rows = [];
+        foreach ($draft['roster'] as $b) {
+            foreach ($b['members'] as $member) {
+                $rows[] = [$b['band'], $member, $draft['ranks'][$member][$b['band']] ?? null];
+            }
+        }
+        $_SESSION['band_survey_draft'] = $draft;
+        $errors = band_survey_check_ranks($rows);
+        if ($errors) {
+            flash(implode(' / ', array_slice($errors, 0, 5)) . (count($errors) > 5 ? ' ほか' . (count($errors) - 5) . '件' : ''), 'error');
+            redirect('band_survey');
+        }
+        unset($_SESSION['band_survey_draft']);
+        redirect('band_survey?id=' . band_survey_save($pdo, $draft['title'], $rows, (int)$user['user_id']));
+    }
+    if ($action === 'reset') {
+        unset($_SESSION['band_survey_draft']);
     }
     if ($action === 'delete') {
         band_survey_delete($pdo, (int)($_POST['id'] ?? 0));
@@ -111,16 +143,59 @@ if ($id > 0) {
     exit;
 }
 
+/* ==================== 確認（照合の結果を直して保存） ==================== */
+$draft = $_SESSION['band_survey_draft'] ?? null;
+if ($draft) {
+    render_header('確認 — バンド希望調査', 'tools');
+    ?>
+    <nav class="crumbs"><a href="tools?tab=admin">ツール</a><span>/</span><a href="band_survey">バンド希望調査</a></nav>
+    <h1 class="display display--sm"><?= h($draft['title']) ?></h1>
+    <?php if ($draft['issues']): ?>
+        <div class="flash flash--warn"><ul><?php foreach ($draft['issues'] as $is): ?><li><?= h($is) ?></li><?php endforeach; ?></ul></div>
+    <?php endif; ?>
+    <form method="post">
+        <?= csrf_field() ?><input type="hidden" name="action" value="save">
+        <div class="card table-card"><div class="table-scroll table-scroll--flush">
+        <table class="table table--edit">
+            <thead><tr><th>メンバー</th><th>バンド</th><th>順位</th></tr></thead>
+            <tbody>
+            <?php foreach (band_survey_draft_members($draft['roster']) as $mi => [$member, $bands]): ?>
+                <?php foreach ($bands as $bi => $band): $written = $draft['written'][$member][$band] ?? null; ?>
+                    <tr>
+                        <?php if ($bi === 0): ?>
+                            <td rowspan="<?= count($bands) ?>"><span class="strong"><?= h($member) ?></span>
+                                <?php if (isset($draft['sources'][$member])): ?><br><span class="muted small">LINE「<?= h($draft['sources'][$member]) ?>」</span><?php endif; ?></td>
+                        <?php endif; ?>
+                        <td><?php if ($written !== null && $written !== $band): ?><span class="survey-written" <?= tip_attr('回答: ' . $written) ?>><?= h($band) ?></span><?php else: ?><?= h($band) ?><?php endif; ?></td>
+                        <td><input type="number" class="input-num" min="1" name="r[<?= $mi ?>][<?= $bi ?>]" value="<?= h((string)($draft['ranks'][$member][$band] ?? '')) ?>" aria-label="<?= h($member . ' ' . $band) ?>の順位"></td>
+                    </tr>
+                <?php endforeach; ?>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+        </div></div>
+        <button class="btn btn--primary" type="submit">保存</button>
+    </form>
+    <form method="post">
+        <?= csrf_field() ?><input type="hidden" name="action" value="reset">
+        <button class="btn" type="submit">やり直す</button>
+    </form>
+    <?php
+    render_footer();
+    exit;
+}
+
 /* ==================== 一覧 ==================== */
 render_header('バンド希望調査', 'tools');
 ?>
 <nav class="crumbs"><a href="tools?tab=admin">ツール</a></nav>
 <h1 class="display display--sm">バンド希望調査</h1>
 <form method="post" enctype="multipart/form-data" class="card form-card">
-    <?= csrf_field() ?><input type="hidden" name="action" value="create">
+    <?= csrf_field() ?><input type="hidden" name="action" value="read">
     <label class="field">調査名<input type="text" name="title" maxlength="100" required></label>
-    <label class="field">CSV<input type="file" name="csv" accept=".csv,text/csv" required></label>
-    <button class="btn btn--primary" type="submit">追加</button>
+    <label class="field">名簿<input type="file" name="roster" accept=".pdf,.xlsx,.xlsm,.csv" required></label>
+    <label class="field">LINE の回答<textarea name="answers" rows="8" maxlength="50000" required></textarea></label>
+    <button class="btn btn--primary" type="submit">照合</button>
 </form>
 <div class="tool-list">
     <?php foreach (band_survey_list($pdo) as $s): ?>

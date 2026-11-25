@@ -3275,3 +3275,4 @@ span.signal { cursor: default; }
   box-shadow: 0 0 0 var(--bezel) #2b3034, 0 0 4px 0 rgb(255 40 30 / .6), 0 0 9px 1px rgb(235 20 20 / .3); }
 .signal.is-mine { outline: 2px solid var(--accent); outline-offset: 2px; } /* 自分が通報済み */
 .signal[data-n="0"].is-mine { outline: 0; color: var(--accent); }
+.survey-written { cursor: default; text-decoration: underline dotted; } /* 名簿のバンド名と回答の書き方がちがう（data-tip で回答を出す） */
