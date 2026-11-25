@@ -20,10 +20,18 @@
         document.addEventListener('click', (e) => { if (!dd.contains(e.target)) dd.open = false; }); // 外を押したら閉じる
     });
 
+    // 編集: 自分を個別の閲覧可能者から外すときは確かめる（年度の条件に入らなければ、自分も見られなくなる）
+    document.querySelector('[data-survey-access]')?.addEventListener('submit', (e) => {
+        const self = e.target.querySelector('[data-survey-self]');
+        if (self && !self.checked && !confirm('自分を閲覧可能者から外します。年度の条件に入らなければ、この調査を見られなくなります。よろしいですか？')) {
+            e.preventDefault();
+        }
+    });
+
     const DATA_EL = document.getElementById('survey-pdf-data');
     const box = document.querySelector('[data-pdf-box]');
     if (!DATA_EL || !box) return;
-    const DATA = JSON.parse(DATA_EL.textContent);
+    let DATA = JSON.parse(DATA_EL.textContent); // 一時削除のあとに入れ替える
     const canvas = box.querySelector('[data-pdf-canvas]');
     const note = document.querySelector('[data-pdf-note]');
     const saveBtn = document.querySelector('[data-pdf-save]');
@@ -41,11 +49,11 @@
             b.setAttribute('aria-selected', String(on));
         });
         document.querySelectorAll('[data-survey-pane]').forEach((p) => { p.hidden = p.dataset.surveyPane !== view; });
-        // 並び順のタブで読み直しても、同じ方を開く（#pdf）
+        // 並び順のタブで読み直しても、同じ方を開く（#pdf / #answers）
         document.querySelectorAll('a.tab[href*="band_survey?id="]').forEach((a) => {
-            a.href = a.href.split('#')[0] + (view === 'pdf' ? '#pdf' : '');
+            a.href = a.href.split('#')[0] + (view === 'table' ? '' : '#' + view);
         });
-        history.replaceState(null, '', location.pathname + location.search + (view === 'pdf' ? '#pdf' : ''));
+        history.replaceState(null, '', location.pathname + location.search + (view === 'table' ? '' : '#' + view));
         if (view === 'pdf') open();
     };
     views.forEach((b) => b.addEventListener('click', () => show(b.dataset.surveyView)));
@@ -290,5 +298,66 @@
         setTimeout(() => URL.revokeObjectURL(url), 1000);
     });
 
-    if (location.hash === '#pdf') show('pdf');
+    /* ---------- 一時削除・回答タブの保存: ページを移らずに保存して、表・回答・プレビューの中身を入れ替える ---------- */
+    const refresh = async (body) => {
+        try {
+            const res = await fetch(location.href, { method: 'POST', body }); // 保存のあとの転送先（同じ調査のページ）の HTML が返る
+            const doc = new DOMParser().parseFromString(await res.text(), 'text/html');
+            const json = doc.getElementById('survey-pdf-data');
+            if (!res.ok || !json) throw new Error('読み込めませんでした');
+            doc.querySelectorAll('[data-toasts] .flash').forEach((f) => showToast(document.importNode(f, true)));
+            if (doc.querySelector('[data-toasts] .flash--error')) { // 保存しなかった: 入れた順位を消さないように、入れ替えない
+                document.querySelectorAll('[data-survey-ranks] button').forEach((b) => { b.disabled = false; });
+                return;
+            }
+            const swap = (sel, keep) => {
+                const old = document.querySelector(sel);
+                const fresh = doc.querySelector(sel);
+                if (!old || !fresh) throw new Error('読み込めませんでした');
+                if (old.hasAttribute('data-survey-pane')) fresh.hidden = old.hidden;
+                keep?.(old, fresh);
+                old.replaceWith(fresh);
+            };
+            swap('[data-survey-pane="table"]', (old, fresh) => {
+                const scrollers = (el) => [el, el.querySelector('.table-scroll')].filter(Boolean); // 横にスクロールする入れ物（カードと中の枠）
+                const pos = scrollers(old).map((el) => el.scrollLeft);
+                requestAnimationFrame(() => scrollers(fresh).forEach((el, i) => { el.scrollLeft = pos[i] ?? 0; }));
+            });
+            swap('[data-survey-pane="answers"]', (old, fresh) => {
+                const open = new Set([...old.querySelectorAll('details[open]')].map((d) => d.dataset.member)); // 開いていた人は開いたまま
+                fresh.querySelectorAll('details').forEach((d) => { d.open = open.has(d.dataset.member); });
+            });
+            swap('[data-survey-count]');
+            DATA = JSON.parse(json.textContent);
+            DATA_EL.textContent = json.textContent;
+            // プレビューは作り直す（開いていれば今すぐ、閉じていれば次に開いたとき）
+            pdfBytes = null;
+            opened = false;
+            saveBtn.disabled = true;
+            if (!box.closest('[data-survey-pane]').hidden) open();
+        } catch (err) {
+            console.error(err);
+            location.reload(); // うまく入れ替えられなければ、読み直して今の状態を出す
+        }
+    };
+    document.addEventListener('change', (e) => {
+        const cb = e.target.closest('[data-survey-off]');
+        if (!cb) return;
+        const body = new FormData(cb.form); // disabled にする前に読む（disabled の欄は送られない）
+        cb.disabled = true;
+        refresh(body);
+    });
+    document.addEventListener('submit', (e) => {
+        const form = e.target.closest('[data-survey-ranks]');
+        if (!form) return;
+        e.preventDefault();
+        const op = e.submitter?.name === 'op' ? e.submitter.value : '';
+        if (op === 'clear' && !confirm(`${form.elements.member.value} の回答を消します。よろしいですか？`)) return;
+        const body = new FormData(form);
+        if (op) body.set('op', op);
+        form.querySelectorAll('button').forEach((b) => { b.disabled = true; });
+        refresh(body);
+    });
+
+    if (location.hash === '#pdf' || location.hash === '#answers') show(location.hash.slice(1));
 })();

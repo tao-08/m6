@@ -3277,6 +3277,12 @@ span.signal { cursor: default; }
 /* バンド希望調査の表（band_survey.php）: 名前のチップを優先度（--heat: 1位 = 1、最下位 = 0）で赤く塗る。未回答は灰色 */
 .survey-map td { white-space: nowrap; }
 .survey-map tr.is-off > td:not(:first-child) { opacity: .35; } /* 一時削除したバンド（チェックの欄は押せる見た目のまま） */
+.survey-edit tr.is-off > td:first-child { opacity: .35; } /* 回答タブ: 一時削除したバンドの名前 */
+/* 回答タブ: 1人ずつ開いて順位を直す */
+.survey-answers { padding: 0; }
+.survey-answers__item + .survey-answers__item { border-top: 1px solid var(--border); }
+.survey-answers__item > summary { cursor: pointer; padding: 12px 14px; }
+.survey-answers__item > form { padding: 0 14px 14px; }
 .survey-chip { gap: 4px; padding-inline: 6px; margin: 1px 2px; border-radius: var(--r-sm); font-size: var(--fs-sm);
   background: color-mix(in srgb, var(--accent) calc(var(--heat) * 55% + 8%), var(--surface)); }
 .survey-chip.is-none { background: var(--surface-2); color: var(--muted); }

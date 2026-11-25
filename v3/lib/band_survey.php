@@ -462,7 +462,13 @@ function band_survey_save(PDO $pdo, string $title, array $data, int $userId): in
     require_once __DIR__ . '/sched_ical.php';
     $enc = sched_ical_encrypt(json_encode($data, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
     $pdo->prepare('INSERT INTO band_survey (title, data_enc, created_by) VALUES (?, ?, ?)')->execute([$title, $enc, $userId]);
-    return (int)$pdo->lastInsertId();
+    $id = (int)$pdo->lastInsertId();
+    // 最初の閲覧可能者は作った人だけ（個別の閲覧可能者に入れるので、あとから外せる）
+    $memberId = (int)(current_user()['member_id'] ?? 0);
+    if ($memberId > 0) {
+        $pdo->prepare('INSERT INTO band_survey_viewer (survey_id, member_id) VALUES (?, ?)')->execute([$id, $memberId]);
+    }
+    return $id;
 }
 
 /** 中身を書きかえる（回答を足したとき） */
@@ -476,7 +482,7 @@ function band_survey_update(PDO $pdo, int $id, array $data): void
 /** 一覧（中身は読まない） */
 function band_survey_list(PDO $pdo): array
 {
-    // 見られるのは: 作った人 / 個別に足した人 / 入部年度が合う人（view_role = exec なら幹部だけ）/ 年度なしで exec ならすべての幹部
+    // 見られるのは: 個別の閲覧可能者（作った人も最初はここに入る。外せる）/ 入部年度が合う人（view_role = exec なら幹部だけ）/ 年度なしで exec ならすべての幹部
     $user = current_user();
     $memberId = (int)($user['member_id'] ?? 0);
     $year = 0;
@@ -486,13 +492,12 @@ function band_survey_list(PDO $pdo): array
         $year = (int)$st->fetchColumn();
     }
     $st = $pdo->prepare("SELECT s.survey_id, s.title, s.created_at FROM band_survey s
-        WHERE s.created_by = ?
-           OR EXISTS (SELECT 1 FROM band_survey_viewer v WHERE v.survey_id = s.survey_id AND v.member_id = ?)
+        WHERE EXISTS (SELECT 1 FROM band_survey_viewer v WHERE v.survey_id = s.survey_id AND v.member_id = ?)
            OR ((s.view_role = 'all' OR ?) AND (
                   EXISTS (SELECT 1 FROM band_survey_view_year y WHERE y.survey_id = s.survey_id AND y.entry_year = ?)
                OR (s.view_role = 'exec' AND NOT EXISTS (SELECT 1 FROM band_survey_view_year y WHERE y.survey_id = s.survey_id))))
         ORDER BY s.survey_id DESC");
-    $st->execute([(int)($user['user_id'] ?? 0), $memberId, is_executive() ? 1 : 0, $year]);
+    $st->execute([$memberId, is_executive() ? 1 : 0, $year]);
     return $st->fetchAll();
 }
 

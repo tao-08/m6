@@ -123,9 +123,15 @@ if (is_post()) {
             $ids[] = (int)$found[0];
         }
         $years = array_filter(array_map('intval', (array)($_POST['years'] ?? [])), static fn($y) => $y >= 1950 && $y <= 2100);
-        band_survey_save_access($pdo, $id, $title, (string)($_POST['role'] ?? 'all'), $years, $ids);
-        flash('保存しました');
-        redirect(band_survey_can_open($pdo, $id) ? $back : 'band_survey');
+        $role = (string)($_POST['role'] ?? 'all');
+        if (!$years && $role !== 'exec' && !$ids) { // 誰も見られない調査にしない
+            flash('閲覧可能者を1人以上指定してください', 'error');
+            redirect($back);
+        }
+        band_survey_save_access($pdo, $id, $title, $role, $years, $ids);
+        $open = band_survey_can_open($pdo, $id);
+        flash($open ? '保存しました' : '保存しました。この調査は見られなくなりました');
+        redirect($open ? $back : (band_survey_can_create() || band_survey_list($pdo) ? 'band_survey' : 'tools'));
     }
     if ($action === 'off') {
         band_survey_update($pdo, $id, band_survey_set_off($survey['data'], (string)($_POST['band'] ?? ''), !empty($_POST['on'])));
@@ -163,6 +169,45 @@ if (is_post()) {
         $_SESSION['band_survey_answer'] = ['id' => $id, 'ai' => $ai, 'text' => $text] + band_survey_apply($roster, $ai, null, $survey['data']['targets']);
         redirect($back);
     }
+    // 1人分の順位を送られた欄から読む（対象の人でなければ null）
+    $postRanks = static function (array $data, string $member): ?array {
+        $people = array_column(band_survey_people($data['roster']), 1, 0);
+        if (!isset($people[$member]) || !in_array($member, $data['targets'], true)) {
+            return null;
+        }
+        $ranks = [];
+        foreach ($people[$member] as $bi => $band) {
+            $v = trim((string)($_POST['r'][$bi] ?? ''));
+            if (ctype_digit($v) && (int)$v > 0) {
+                $ranks[$band] = (int)$v;
+            }
+        }
+        return $ranks;
+    };
+    $saveRanks = static function (array $data, string $member, array $ranks) use ($pdo, $id): void {
+        if ($ranks) {
+            $data['ranks'][$member] = $ranks;
+        } else {
+            unset($data['ranks'][$member]);
+        }
+        band_survey_update($pdo, $id, $data);
+    };
+    if ($action === 'ranks') { // 回答タブで1人分を直す
+        $member = (string)($_POST['member'] ?? '');
+        $ranks = $postRanks($survey['data'], $member);
+        if ($ranks === null) {
+            redirect($back);
+        }
+        $clear = ($_POST['op'] ?? '') === 'clear';
+        $why = $clear ? null : band_survey_check_ranks($ranks);
+        if ($why !== null) {
+            flash($member . ': ' . $why, 'error');
+            redirect($back);
+        }
+        $saveRanks($survey['data'], $member, $clear ? [] : $ranks);
+        flash($member . ($clear || !$ranks ? ' の回答を消しました' : ' の回答を保存しました'));
+        redirect($back . (($_POST['sort'] ?? '') === 'heat' ? '&sort=heat' : ''));
+    }
     $draft = $_SESSION['band_survey_answer'] ?? null;
     if ($draft === null || $draft['id'] !== $id) {
         redirect($back);
@@ -172,17 +217,10 @@ if (is_post()) {
         redirect($back);
     }
     if ($action === 'answer') {
-        $people = array_column(band_survey_people($roster), 1, 0);
         $member = (string)($_POST['member'] ?? '');
-        if (!isset($people[$member]) || !in_array($member, $survey['data']['targets'], true)) {
+        $ranks = $postRanks($survey['data'], $member);
+        if ($ranks === null) {
             redirect($back);
-        }
-        $ranks = [];
-        foreach ($people[$member] as $bi => $band) {
-            $v = trim((string)($_POST['r'][$bi] ?? ''));
-            if (ctype_digit($v) && (int)$v > 0) {
-                $ranks[$band] = (int)$v;
-            }
         }
         $_SESSION['band_survey_answer']['ranks'] = $ranks;
         $why = band_survey_check_ranks($ranks);
@@ -190,13 +228,7 @@ if (is_post()) {
             flash($why, 'error');
             redirect($back);
         }
-        $data = $survey['data'];
-        if ($ranks) {
-            $data['ranks'][$member] = $ranks;
-        } else {
-            unset($data['ranks'][$member]);
-        }
-        band_survey_update($pdo, $id, $data);
+        $saveRanks($survey['data'], $member, $ranks);
         unset($_SESSION['band_survey_answer']);
         flash($member . ' の回答を追加しました');
         redirect($back);
@@ -228,7 +260,7 @@ if ($id > 0) {
         <h1 class="display display--sm"><?= h($survey['title']) ?></h1>
         <details class="survey-access">
             <summary class="btn btn--sm"><?= icon('edit') ?> 編集</summary>
-            <form method="post" class="card form-card">
+            <form method="post" class="card form-card" data-survey-access>
                 <?= csrf_field() ?><input type="hidden" name="action" value="access"><input type="hidden" name="id" value="<?= $id ?>">
                 <label class="field">調査名<input type="text" name="title" maxlength="100" value="<?= h($survey['title']) ?>" required></label>
                 <fieldset class="field">
@@ -257,7 +289,7 @@ if ($id > 0) {
                     <?php if ($access['creator'] !== null): ?><p class="muted small">作成者: <?= h($access['creator']) ?></p><?php endif; ?>
                     <div class="survey-access__row">
                         <?php foreach ($access['members'] as $mid => $name): ?>
-                            <label class="check"><input type="checkbox" name="keep[]" value="<?= (int)$mid ?>" checked><?= h($name) ?></label>
+                            <label class="check"><input type="checkbox" name="keep[]" value="<?= (int)$mid ?>" checked<?= (int)$mid === (int)($user['member_id'] ?? 0) ? ' data-survey-self' : '' ?>><?= h($name) ?></label>
                         <?php endforeach; ?>
                     </div>
                     <input type="text" name="add" maxlength="50" placeholder="名前で追加" data-suggest-list="member-names" autocomplete="off" aria-label="追加する人">
@@ -393,11 +425,12 @@ if ($id > 0) {
         }
         ?>
         <script type="application/json" id="survey-pdf-data"><?= json_encode($pdf, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR) ?></script>
-        <p class="muted small">回答 <?= count(array_intersect_key($data['ranks'], $isTarget)) ?>/<?= count($data['targets']) ?>人</p>
+        <p class="muted small" data-survey-count>回答 <?= count(array_intersect_key($data['ranks'], $isTarget)) ?>/<?= count($data['targets']) ?>人</p>
         <div class="survey-views">
         <div class="tabs" role="tablist">
             <button type="button" class="tab is-active" data-survey-view="table" role="tab" aria-selected="true">表</button>
             <button type="button" class="tab" data-survey-view="pdf" role="tab" aria-selected="false">プレビュー</button>
+            <button type="button" class="tab" data-survey-view="answers" role="tab" aria-selected="false">回答</button>
         </div>
         <div class="tabs">
             <a class="tab<?= $byHeat ? '' : ' is-active' ?>" href="band_survey?id=<?= $id ?>">名簿順</a>
@@ -427,7 +460,7 @@ if ($id > 0) {
                         <td><form method="post">
                             <?= csrf_field() ?><input type="hidden" name="action" value="off"><input type="hidden" name="id" value="<?= $id ?>">
                             <input type="hidden" name="band" value="<?= h($b['band']) ?>"><input type="hidden" name="sort" value="<?= $byHeat ? 'heat' : '' ?>">
-                            <input type="checkbox" name="on" value="1"<?= isset($off[$b['band']]) ? ' checked' : '' ?> data-autosubmit aria-label="<?= h($b['band']) ?>を一時削除">
+                            <input type="checkbox" name="on" value="1"<?= isset($off[$b['band']]) ? ' checked' : '' ?> data-survey-off aria-label="<?= h($b['band']) ?>を一時削除">
                         </form></td>
                         <td class="strong"><?= h($b['band']) ?><?php if ($s['low_all']): ?> <span class="survey-low" <?= tip_attr('全員が下位') ?>><?= icon('arrow_downward', 'icon--sm') ?></span><?php endif; ?></td>
                         <td class="num"><?= $s['heat'] === null ? '—' : number_format($s['heat'] * 10, 1) ?></td>
@@ -454,6 +487,32 @@ if ($id > 0) {
                 </tbody>
             </table>
             </div>
+        </div>
+        <div class="card survey-answers" data-survey-pane="answers" hidden>
+            <?php foreach ($data['targets'] as $m): $m = (string)$m; if (!isset($people[$m])) continue; $mine = $data['ranks'][$m] ?? []; ?>
+                <details class="survey-answers__item" data-member="<?= h($m) ?>">
+                    <summary><span class="strong"><?= h($m) ?></span> <span class="muted small"><?= $mine ? '回答済み' : '未回答' ?></span></summary>
+                    <form method="post" data-survey-ranks>
+                        <?= csrf_field() ?><input type="hidden" name="action" value="ranks"><input type="hidden" name="id" value="<?= $id ?>">
+                        <input type="hidden" name="member" value="<?= h($m) ?>"><input type="hidden" name="sort" value="<?= $byHeat ? 'heat' : '' ?>">
+                        <table class="table table--edit survey-edit">
+                            <thead><tr><th>バンド</th><th>順位</th></tr></thead>
+                            <tbody>
+                            <?php foreach ($people[$m] as $bi => $band): ?>
+                                <tr<?= isset($off[$band]) ? ' class="is-off"' : '' ?>>
+                                    <td><?= h($band) ?></td>
+                                    <td><input type="number" class="input-num" min="1" name="r[<?= $bi ?>]" value="<?= h((string)($mine[$band] ?? '')) ?>" aria-label="<?= h($band) ?>の順位"></td>
+                                </tr>
+                            <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                        <div class="form-actions">
+                            <?php if ($mine): ?><button class="btn btn--danger" type="submit" name="op" value="clear" formnovalidate>回答を消す</button><?php endif; ?>
+                            <button class="btn btn--primary" type="submit">保存</button>
+                        </div>
+                    </form>
+                </details>
+            <?php endforeach; ?>
         </div>
         <form method="post" enctype="multipart/form-data" class="card form-card survey-gap" data-loading>
             <?= csrf_field() ?><input type="hidden" name="action" value="reroster"><input type="hidden" name="id" value="<?= $id ?>">
