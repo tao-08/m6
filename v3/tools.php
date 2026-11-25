@@ -50,7 +50,7 @@ if (is_executive()) {
 // バンド希望調査（lib/band_survey.php の条件を満たす人だけ）
 require_once __DIR__ . '/lib/band_survey.php';
 if (band_survey_can_view()) {
-    $tools[] = ['band_survey', 'poll', 'バンド希望調査', '部員の希望順位から、バンドごとの熱量を集計します。', '幹部'];
+    $tools[] = ['band_survey', 'poll', 'バンド希望調査', '部員の希望順位から、バンドごとの優先度を集計します。', '幹部'];
 }
 // 試聴の一括調査（管理者だけ。イントロクイズで出せる曲を増やす）
 if (is_admin()) {

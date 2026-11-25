@@ -876,8 +876,6 @@ button.tab { border: 0; background: none; font: inherit; font-weight: 800; font-
 .table tr.is-me td { background: var(--accent-soft); }
 .bar-track { flex: 1; min-width: 48px; }
 .bar { display: block; height: 8px; width: var(--w); min-width: 4px; border-radius: var(--r-full); background: linear-gradient(90deg, var(--accent), var(--accent-2)); }
-/* 表の中（band_survey.php）では棒が細くならないよう幅を確保 */
-.table .bar-track { min-width: 120px; }
 .bar-num { min-width: 1.5em; text-align: right; font-weight: 800; font-variant-numeric: tabular-nums; }
 /* 並べ替えできる列の見出し（members.php の sort_th） */
 .table th.sortable a { color: inherit; text-decoration: none; display: inline-flex; align-items: baseline; }
@@ -3167,7 +3165,7 @@ button.ttb-m { cursor: pointer; text-decoration: underline dotted; }
  *   ・横の余白・文字サイズ・色は各クラスのまま。新しいラベルを作るときは、このリストに足す
  *   ・文中に置くラベルは .label-inline を足す（周りの文字サイズに追従して、行の中央に揃う）
  * ===================================================================== */
-:is(.part, .tag:not(.tag--flag), .se-mark, .setlist-badge, .pill, .sch-step__ok) {
+:is(.part, .tag:not(.tag--flag), .se-mark, .setlist-badge, .pill, .sch-step__ok, .survey-chip) {
   display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box;
   min-height: var(--label-h); line-height: 1;
   padding-top: max(1px, .1em) !important; padding-bottom: 0 !important;
@@ -3276,3 +3274,11 @@ span.signal { cursor: default; }
 .signal.is-mine { outline: 2px solid var(--accent); outline-offset: 2px; } /* 自分が通報済み */
 .signal[data-n="0"].is-mine { outline: 0; color: var(--accent); }
 .survey-written { cursor: default; text-decoration: underline dotted; } /* 名簿のバンド名と回答の書き方がちがう（data-tip で回答を出す） */
+/* バンド希望調査の表（band_survey.php）: 名前のチップを優先度（--heat: 1位 = 1、最下位 = 0）で赤く塗る。未回答は灰色 */
+.survey-map td { white-space: nowrap; }
+.survey-chip { gap: 4px; padding-inline: 6px; margin: 1px 2px; border-radius: var(--r-sm); font-size: var(--fs-sm);
+  background: color-mix(in srgb, var(--accent) calc(var(--heat) * 55% + 8%), var(--surface)); }
+.survey-chip.is-none { background: var(--surface-2); color: var(--muted); }
+.survey-chip b { font-variant-numeric: tabular-nums; }
+.survey-low { cursor: default; color: var(--muted); } /* 全員が下位（data-tip） */
+.survey-text { white-space: pre-wrap; font-size: var(--fs-sm); }

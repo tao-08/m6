@@ -1296,30 +1296,32 @@ echo "band survey\n";
 require_once __DIR__ . '/../lib/band_survey.php';
 $bsRows = [['A', '山田', 1], ['B', '山田', 2], ['C', '山田', 3], ['A', '佐藤', 2], ['B', '佐藤', 1], ['C', '鈴木', null], ['C', '田中', 1]];
 $bsSum = array_column(band_survey_summarize($bsRows), null, 'band');
-check('希望調査: A の熱量', $bsSum['A']['heat'], 0.5);
-check('希望調査: B の熱量', $bsSum['B']['heat'], 0.75);
+check('希望調査: A の優先度', $bsSum['A']['heat'], 0.5);
+check('希望調査: B の優先度', $bsSum['B']['heat'], 0.75);
 check('希望調査: C は n=1 の田中を除く', $bsSum['C']['heat'], 0.0);
 check('希望調査: C は全員が下位', $bsSum['C']['low_all'], true);
 check('希望調査: A は下位でない', $bsSum['A']['low_all'], false);
 check('希望調査: C の回答数', [$bsSum['C']['answered'], $bsSum['C']['total']], [2, 3]);
-check('希望調査: 熱量の高い順', array_column(band_survey_summarize($bsRows), 'band'), ['B', 'A', 'C']);
-check('希望調査: 連番なら OK', band_survey_check_ranks($bsRows), []);
-check('希望調査: 重複順位はエラー', band_survey_check_ranks([['A', 'x', 1], ['B', 'x', 1]]), ['x: 順位が 1〜2 の連番になっていません']);
-$bsRoster = band_survey_tidy_roster([['band' => 'A', 'members' => ['山田 太郎', '佐藤']], ['band' => 'B', 'members' => ['山田太郎', '佐藤', '佐藤']]]);
-check('希望調査: 名簿の表記ゆれ・重複をそろえる', array_column($bsRoster, 'members'), [['山田 太郎', '佐藤'], ['山田 太郎', '佐藤']]);
-check('希望調査: 同じ名前のバンドは1人目を付けて分ける', array_column(band_survey_tidy_roster([['band' => 'X', 'members' => ['a']], ['band' => 'X', 'members' => ['b']], ['band' => 'Y', 'members' => ['a']]]), 'band'), ['X(a)', 'X(b)', 'Y']);
-check('希望調査: 確認画面の並び', band_survey_draft_members($bsRoster), [['山田 太郎', ['A', 'B']], ['佐藤', ['A', 'B']]]);
-$bsApply = band_survey_apply($bsRoster, [
-    ['member' => '山田 太郎', 'line_name' => 'やまだ', 'ranks' => [['written' => 'えー', 'band' => 'A', 'rank' => 1], ['written' => 'Z', 'band' => 'Z', 'rank' => 2]]],
-    ['member' => '謎', 'line_name' => 'なぞ', 'ranks' => []],
-    ['member' => '山田 太郎', 'line_name' => 'やまだ2', 'ranks' => []],
-]);
-check('希望調査: 照合を名簿に当てはめる', [$bsApply['ranks'], $bsApply['sources'], $bsApply['written']], [['山田 太郎' => ['A' => 1]], ['山田 太郎' => 'やまだ'], ['山田 太郎' => ['A' => 'えー']]]);
-check('希望調査: 名簿にない名前・バンド・2つ目の回答は issues', $bsApply['issues'], [
-    '山田 太郎: 「Z」が 山田 太郎 のバンドに見つかりません',
-    'LINE の「なぞ」: 名簿のメンバーに見つかりません',
-    'LINE の「やまだ2」: 山田 太郎 の回答が2つあります',
-]);
+check('希望調査: 優先度の高い順', array_column(band_survey_summarize($bsRows), 'band'), ['B', 'A', 'C']);
+check('希望調査: 連番なら OK', [band_survey_check_ranks(['A' => 2, 'B' => 1]), band_survey_check_ranks([])], [null, null]);
+check('希望調査: 重複順位はエラー', band_survey_check_ranks(['A' => 1, 'B' => 1]), '順位が 1〜2 の連番になっていません');
+check('希望調査: セルの優先度', [band_survey_score(1, 3), band_survey_score(3, 3), band_survey_score(1, 1), band_survey_score(null, 3)], [1.0, 0.0, 1.0, null]);
+$bsRoster = band_survey_tidy_roster(['columns' => ['Vo', 'Gt'], 'bands' => [
+    ['band' => 'A', 'cells' => [['山田 太郎'], ['佐藤']]],
+    ['band' => 'B', 'cells' => [['山田太郎'], ['佐藤', '山田太郎']]],
+    ['band' => 'B', 'cells' => [['鈴木'], []]],
+]]);
+check('希望調査: 名簿の表記ゆれをそろえ、同じ名前のバンドは1人目を付けて分ける', array_column($bsRoster['bands'], 'band'), ['A', 'B(山田 太郎)', 'B(鈴木)']);
+check('希望調査: バンドのメンバー（同じ人は1回）', band_survey_band_members($bsRoster['bands'][1]), ['山田 太郎', '佐藤']);
+check('希望調査: 人ごとのバンド', band_survey_people($bsRoster), [['山田 太郎', ['A', 'B(山田 太郎)']], ['佐藤', ['A', 'B(山田 太郎)']], ['鈴木', ['B(鈴木)']]]);
+check('希望調査: 名前を直すと同じ人にまとまる', band_survey_people(band_survey_rename($bsRoster, ['佐藤' => '山田 太郎']))[0], ['山田 太郎', ['A', 'B(山田 太郎)']]);
+$bsAi = ['member' => '山田 太郎', 'line_name' => 'やまだ', 'ranks' => [['written' => 'えー', 'band' => 'A', 'rank' => 1], ['written' => 'びー', 'band' => 'B(鈴木)', 'rank' => 2]]];
+$bsApply = band_survey_apply($bsRoster, $bsAi);
+check('希望調査: 照合を名簿に当てはめる', [$bsApply['member'], $bsApply['ranks'], $bsApply['written']], ['山田 太郎', ['A' => 1], ['A' => 'えー']]);
+check('希望調査: その人のバンドでないものは issues', $bsApply['issues'], ['「びー」が 山田 太郎 のバンドに見つかりません']);
+check('希望調査: 選び直した人で当てはめ直す', band_survey_apply($bsRoster, $bsAi, '鈴木')['ranks'], ['B(鈴木)' => 2]);
+check('希望調査: 名簿にない人', band_survey_apply($bsRoster, ['member' => '謎'] + $bsAi), ['member' => '', 'ranks' => [], 'written' => [], 'issues' => ['回答した人が名簿に見つかりません']]);
+check('希望調査: 集計用の行', band_survey_rows(['roster' => $bsRoster, 'ranks' => ['佐藤' => ['A' => 1]]])[1], ['A', '佐藤', 1]);
 
 echo "migrations\n";
 $migDup = [];
