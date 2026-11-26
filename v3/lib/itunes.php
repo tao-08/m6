@@ -322,6 +322,22 @@ function itunes_search_tracks_in(string $term, int $limit, string $country): ?ar
     )));
 }
 
+/**
+ * アーティストの曲（200曲まで）を、アーティスト ID の lookup で取る。見つからない・通信失敗なら []
+ *   iTunes の曲検索は曲名を英語で持つ曲がある（ELLEGARDEN「スターフィッシュ」は「Starfish」でしか出ない）。一覧なら日本語の曲名で入っている
+ */
+function itunes_artist_songs(string $artistName): array
+{
+    $key = album_match_key($artistName);
+    foreach (itunes_request('search', ['term' => $artistName, 'entity' => 'musicArtist', 'country' => 'jp', 'limit' => 5]) ?? [] as $a) {
+        if (is_array($a) && album_match_key((string)($a['artistName'] ?? '')) === $key && itunes_valid_id((string)($a['artistId'] ?? ''))) {
+            $results = itunes_request('lookup', ['id' => (string)$a['artistId'], 'entity' => 'song', 'country' => 'jp', 'limit' => 200]) ?? [];
+            return array_values(array_filter(array_map(static fn($r) => is_array($r) ? itunes_normalize_track($r) : null, $results)));
+        }
+    }
+    return [];
+}
+
 /** 曲ID の lookup。日本のストアに無ければアメリカのストア（itunes_search_tracks で見つけた曲を取り直せるように）。通信失敗なら null */
 function itunes_lookup_song(string $trackId): ?array
 {

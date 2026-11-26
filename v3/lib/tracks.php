@@ -391,8 +391,10 @@ function track_preview_find(array $track): string|false|null
         return false;
     }
     // 同じ曲らしいものの中で試聴があるものを選ぶ（いちばん合う版に試聴が無いこともあるので、無いものを外してから選ぶ）
-    $withPreview = array_values(array_filter($results, static fn($r) => $r['preview_url'] !== null));
-    return track_pick_in_results($track, $withPreview)['preview_url'] ?? null;
+    $withPreview = static fn(array $rs) => array_values(array_filter($rs, static fn($r) => $r['preview_url'] !== null));
+    // 検索で出ない曲は、アーティストの曲一覧から探す（itunes_artist_songs の説明）
+    return (track_pick_in_results($track, $withPreview($results))
+        ?? track_pick_in_results($track, $withPreview(itunes_artist_songs(explode(', ', $track['artist_name'])[0]))))['preview_url'] ?? null;
 }
 
 /**
