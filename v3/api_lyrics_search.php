@@ -202,4 +202,6 @@ $ranked = array_values($seen);
 usort($ranked, static fn(array $a, array $b): int => [$b['artist_match'], $b['score']] <=> [$a['artist_match'], $a['score']]);
 $tracks = array_map(static fn(array $row): array => $row['track'], array_slice($ranked, 0, 10));
 
-api_ok(['tracks' => $tracks, 'provider' => 'Gemini + Google Search']);
+// Google 検索を使ったときは、Gemini が返す検索の候補（Google 指定の HTML）を出す決まり。中身は変えずにそのまま渡す
+$suggest = (string)($response['json']['candidates'][0]['groundingMetadata']['searchEntryPoint']['renderedContent'] ?? '');
+api_ok(['tracks' => $tracks, 'provider' => 'Gemini + Google Search', 'search_suggest' => $suggest]);

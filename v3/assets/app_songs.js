@@ -769,6 +769,20 @@ function setupLyricsSearch() {
         row.append(img, text, actions);
         return row;
       });
+      if (data.search_suggest) {
+        // Google 検索の候補（Google 指定の HTML）。中の <style> がページに漏れないよう Shadow DOM に入れる
+        const suggest = document.createElement('div');
+        suggest.className = 'lyrics-suggest';
+        const root = suggest.attachShadow({ mode: 'open' });
+        // 部品は OS の明るさで色が変わるので、サイトの明るさ（data-theme）に合わせる
+        const dark = document.documentElement.dataset.theme === 'dark';
+        root.innerHTML = data.search_suggest
+          .replaceAll('(prefers-color-scheme: dark)', dark ? 'all' : 'not all')
+          .replaceAll('(prefers-color-scheme: light)', dark ? 'not all' : 'all');
+        // そのままだと編集中のページが Google に移ってしまうので、別タブで開く
+        root.querySelectorAll('a').forEach((a) => { a.target = '_blank'; a.rel = 'noopener'; });
+        rows.push(suggest);
+      }
       results.replaceChildren(...rows);
       openResults(results);
     } catch (err) {

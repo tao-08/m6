@@ -475,7 +475,6 @@ render_header('セットリストを編集', 'lives');
                     <div class="song-lyrics-search">
                         <input type="search" maxlength="100" autocomplete="off" placeholder="歌詞の一部を入力" aria-label="歌詞の一部" data-lyrics-query>
                         <button type="button" class="btn btn--ghost btn--sm" data-lyrics-search>歌詞で検索</button>
-                        <span class="song-lyrics-search__credit">Powered by Gemini</span>
                     </div>
                     <?php endif; ?>
                 </div>
