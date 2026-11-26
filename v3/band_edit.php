@@ -455,8 +455,8 @@ render_header($isNew ? 'バンドを追加' : 'バンドを編集', 'lives');
         <label class="field"><span>終了</span><input type="time" step="300" name="end_time" value="<?= h(fmt_time($band['end_time'])) ?>"></label>
         <label class="field field--wide"><span>メモ</span><input autocomplete="off" name="note" value="<?= h($band['note']) ?>" maxlength="255"></label>
         <div class="field field--wide"><span>画像の追加・削除</span><?= attach_field_html('band', $images) ?></div>
+        <?php if ($audios): ?><!-- 追加はやめた。もうあるファイルの名前の変更・外すだけ -->
         <div class="field field--wide"><span>ミックス MP3</span>
-            <?php if ($audios): ?>
                 <!-- 1行 = 1ファイル: タイトルの入力欄・✕（押すと外すにチェック → 行が薄くなる）。ドライブのファイルと同じ見た目 -->
                 <ul class="drive-edit">
                     <?php foreach ($audios as $a): $aid = (int)$a['image_id']; ?>
@@ -467,9 +467,8 @@ render_header($isNew ? 'バンドを追加' : 'バンドを編集', 'lives');
                         </li>
                     <?php endforeach; ?>
                 </ul>
-            <?php endif; ?>
-            <input type="file" name="audio[]" accept="audio/mpeg,.mp3" multiple aria-label="MP3 を追加（60MB まで、<?= ATTACH_KINDS['band_audio']['max'] ?> つまで）">
         </div>
+        <?php endif; ?>
         <div class="field field--wide"><span>YouTube のリンク（任意）</span><span class="field__hint"><a href="live_edit?id=<?= (int)$band['live_id'] ?>">ライブを編集</a>からプレイリストを追加すると各バンドのリンクを一括で登録できます</span>
             <!-- ＋ で下に欄を足す（app_ui.js の data-yt-add）。空欄のまま保存すると消える -->
             <div class="yt-urls" data-yt-urls>
@@ -479,10 +478,11 @@ render_header($isNew ? 'バンドを追加' : 'バンドを編集', 'lives');
             </div>
         </div>
         <?php if ($ytVideos): ?>
-            <!-- name を付けない（送信しない）。選ぶと JS が上の URL 欄に入れる -->
-            <label class="field field--wide"><span>ライブのプレイリストから選ぶ</span>
-                <select data-yt-pick>
-                    <option value="">— 動画を選ぶ —</option>
+            <!-- name を付けない（送信しない）。選ぶと JS が上の URL 欄の同じ順番の欄に入れる。＋ で選択欄を下に足す（app_ui.js の data-yt-pick-add） -->
+            <div class="field field--wide"><span>ライブのプレイリストから選択</span>
+              <div class="yt-urls" data-yt-picks>
+                <select data-yt-pick aria-label="ライブのプレイリストから選択">
+                    <option value="">— 動画を選択 —</option>
                     <?php if ($ytCandidates): ?>
                         <optgroup label="候補（タイトルにバンド名が入っている）">
                             <?php foreach ($ytCandidates as $vid): ?><?= $ytOption($vid, $ytVideos[$vid]) ?><?php endforeach; ?>
@@ -495,7 +495,9 @@ render_header($isNew ? 'バンドを追加' : 'バンドを編集', 'lives');
                         <?php foreach ($ytVideos as $vid => $title): if (in_array($vid, $ytCandidates, true) || !isset($ytTaken[$vid])) continue; ?><?= $ytOption($vid, $title . ' — ' . $ytTaken[$vid]) ?><?php endforeach; ?>
                     </optgroup>
                 </select>
-            </label>
+                <button type="button" class="btn btn--ghost btn--sm" data-yt-pick-add aria-label="動画を追加" title="動画を追加"><?= icon('add') ?></button>
+              </div>
+            </div>
         <?php elseif ($ytError !== null): ?>
             <p class="field--wide muted small">ライブのプレイリストを読めなかったので、動画から選べません（<?= h($ytError) ?>）。リンクを直接貼ってください。</p>
         <?php endif; ?>

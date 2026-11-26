@@ -762,26 +762,43 @@ function setupSmallThings() {
     if (cab) cab.hidden = !['ギターアンプ', 'ベースアンプ'].includes(e.target.value);
   });
 
-  // data-yt-pick … バンド編集の「ライブのプレイリストから選ぶ」。選んだ動画の URL を、同じフォームの URL 欄に入れる（保存はしない）
-  //   「— 動画を選ぶ —」（空）に戻しても、URL 欄は消さない
-  document.addEventListener('change', (e) => {
-    if (!e.target.matches('[data-yt-pick]') || e.target.value === '') return;
-    const input = e.target.form?.querySelector('[name="youtube_url"]');
-    if (input) input.value = e.target.value;
-  });
-
-  // data-yt-add … バンド編集の YouTube の ＋。下に URL 欄を1つ足す（10本まで）
-  document.addEventListener('click', (e) => {
-    const add = e.target.closest('[data-yt-add]');
-    if (!add) return;
-    const box = add.closest('[data-yt-urls]');
+  // バンド編集の YouTube の URL 欄を下に1つ足す（10本まで）。足せなければ null
+  const addYtUrl = (box) => {
+    if (box.querySelectorAll('input').length >= 10) return null;
     const input = box.querySelector('input').cloneNode();
     input.name = 'youtube_extra[]';
     input.removeAttribute('value');
     input.removeAttribute('placeholder');
+    input.value = '';
     box.append(input);
-    input.focus();
-    add.hidden = box.querySelectorAll('input').length >= 10;
+    box.querySelector('[data-yt-add]').hidden = box.querySelectorAll('input').length >= 10;
+    return input;
+  };
+
+  // data-yt-pick … バンド編集の「ライブのプレイリストから選択」。n 番目の選択欄で選んだ動画の URL を、n 番目の URL 欄に入れる（無ければ足す。保存はしない）
+  //   「— 動画を選択 —」（空）に戻しても、URL 欄は消さない
+  document.addEventListener('change', (e) => {
+    if (!e.target.matches('[data-yt-pick]') || e.target.value === '') return;
+    const box = e.target.form?.querySelector('[data-yt-urls]');
+    if (!box) return;
+    const n = [...e.target.closest('[data-yt-picks]').querySelectorAll('[data-yt-pick]')].indexOf(e.target);
+    let input = box.querySelectorAll('input')[n];
+    while (!input && addYtUrl(box)) input = box.querySelectorAll('input')[n];
+    if (input) input.value = e.target.value;
+  });
+
+  // data-yt-add … YouTube の URL 欄の ＋ / data-yt-pick-add … プレイリストの選択欄の ＋（下に選択欄を1つ足す。10本まで）
+  document.addEventListener('click', (e) => {
+    const add = e.target.closest('[data-yt-add]');
+    if (add) addYtUrl(add.closest('[data-yt-urls]'))?.focus();
+    const pickAdd = e.target.closest('[data-yt-pick-add]');
+    if (!pickAdd) return;
+    const picks = pickAdd.closest('[data-yt-picks]');
+    const select = picks.querySelector('select').cloneNode(true);
+    select.value = '';
+    picks.append(select);
+    select.focus();
+    pickAdd.hidden = picks.querySelectorAll('select').length >= 10;
   });
 
   // 右上のメニュー（<details class="usermenu">）: 開くたびに、右上から少し下りながらふわっと出す

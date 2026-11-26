@@ -594,7 +594,7 @@ button.tab { border: 0; background: none; font: inherit; font-weight: 800; font-
 .slot__yt:hover svg { opacity: .8; }
 button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /* YouTube が2本以上: 押すと一覧（band_youtube_html） */
 .yt-urls { display: grid; grid-template-columns: 1fr auto; gap: 6px; } /* バンド編集の YouTube: 1行目の右に ＋、足した欄は下に並ぶ */
-.yt-urls > input { grid-column: 1; }
+.yt-urls > :is(input, select) { grid-column: 1; }
 /* ドライブのファイルの 📂 ボタン（band_drive_file があるときだけ。live.php）。枠・背景は付けずアイコン＋件数
    開いている間（aria-expanded="true"）はアクセントの赤にして、どのバンドを開いているかわかるようにする */
 .slot__drive { display: inline-flex; align-items: center; gap: 2px; padding: 2px; border: 0; background: none;
