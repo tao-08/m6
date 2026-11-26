@@ -1629,6 +1629,13 @@ body.is-row-dragging, body.is-row-dragging * { cursor: grabbing !important; user
 .grade-mix-card__legend b { margin-left: auto; font-size: 1.1em; }
 .grade-mix-card__dot { width: 10px; height: 10px; border-radius: 50%; align-self: center; }
 .stats-filter__extra { display: flex; align-items: center; gap: 6px; }
+/* 検索のバンド: 見出しを押すと絞り込みが開く（search.php）。絞り込み中はマークを赤く */
+.band-filter > summary { list-style: none; cursor: pointer; }
+.band-filter > summary::-webkit-details-marker { display: none; }
+.band-filter > summary .section-title { display: flex; align-items: center; gap: 6px; }
+.band-filter__mark { color: var(--muted); }
+.band-filter__mark.is-on { color: var(--accent); }
+.band-filter > .stats-filter { position: static; }
 .stats-filter__extra select { padding: 7px 10px; border-radius: var(--r-full); border: 1px solid var(--border); background: var(--surface); color: var(--text); font-weight: 700; }
 /* 該当するタブが選ばれていないときは、年度セレクトを隠す */
 .stats-filter:not(:has(input[name="who"][value="custom"]:checked)) [data-show-when="who=custom"],

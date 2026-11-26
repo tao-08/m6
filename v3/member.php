@@ -12,6 +12,7 @@ declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/repository.php';
 require_once __DIR__ . '/lib/albums.php';
+require_once __DIR__ . '/lib/stats_filter.php';
 require_once __DIR__ . '/lib/drive.php'; // MIX の印（mix_tag・band_mix_ids）
 $user = require_login();
 
@@ -70,54 +71,9 @@ $mixIds = band_mix_ids($pdo, array_map(static fn($h) => (int)$h['band_id'], $his
 // ---- 集計の絞り込み（集計ページ stats.php と同じ ?who= / ?period=） ----
 //   期間: その年度のバンドだけ数える。メンバー: 組んだ相手（自分以外）が「対象メンバー」に1人でもいるバンドだけ数える
 //   どちらも「数えないバンド」として $skipBandIds に足すだけ → 以降の集計（楽器・組むメンバー・アーティスト・学年区分・上の数字）が全部そろって絞られる。出演履歴の一覧は絞らない
-$thisYear = current_fiscal_year();
-$getInt = static function (string $key): ?int {
-    $v = filter_var($_GET[$key] ?? null, FILTER_VALIDATE_INT);
-    return is_int($v) ? $v : null;
-};
-$liveYears = array_map('intval', $pdo->query('SELECT DISTINCT fiscal_year FROM live ORDER BY fiscal_year DESC')->fetchAll(PDO::FETCH_COLUMN));
-$myGrade = grade_of(my_entry_year());
-$myEntry = $myGrade !== null ? $thisYear - $myGrade + 1 : null;
-$canNear = $myEntry !== null;
-$activeFrom = $thisYear - 3;
-// メンバーページの集計は、開いたときは全学年・全期間から始める（学年や期間はユーザーが絞り込む）。
-//   集計ページ（stats.php）の初期値（現役 / 上下3学年）とは別。ここだけ 'all' に固定している
-$defaultWho = 'all';
-$who = $_GET['who'] ?? $defaultWho;
-if (!in_array($who, ['all', 'active', 'grade', 'near', 'custom'], true) || ($who === 'near' && !$canNear)) {
-    $who = $defaultWho;
-}
-$slotEntries = array_map('intval', $pdo->query('SELECT DISTINCT entry_year FROM member
-    WHERE entry_year IS NOT NULL ORDER BY entry_year DESC')->fetchAll(PDO::FETCH_COLUMN));
-$fEntry = $getInt('entry');
-if (!in_array($fEntry, $slotEntries, true)) {
-    $fEntry = in_array($myEntry, $slotEntries, true) ? $myEntry : ($slotEntries[0] ?? $thisYear);
-}
-$efrom = $getInt('efrom') ?? $activeFrom;
-$eto   = $getInt('eto')   ?? $thisYear;
-if ($efrom > $eto) {
-    [$efrom, $eto] = [$eto, $efrom];
-}
-[$entryFrom, $entryTo] = match ($who) {
-    'active' => [$activeFrom, $thisYear],
-    'grade'  => [$fEntry, $fEntry],
-    'near'   => [$myEntry - 3, $myEntry + 3],
-    'custom' => [$efrom, $eto],
-    default  => [null, null],
-};
-$period = $_GET['period'] ?? 'all';
-if (!in_array($period, ['all', 'year', 'range'], true)) {
-    $period = 'all';
-}
-$fYear = $getInt('year');
-if ($fYear === null || !in_array($fYear, $liveYears, true)) {
-    $fYear = $liveYears[0] ?? $thisYear;
-}
-$pfrom = $getInt('pfrom') ?? ($liveYears ? min($liveYears) : $thisYear);
-$pto   = $getInt('pto')   ?? ($liveYears ? max($liveYears) : $thisYear);
-if ($pfrom > $pto) {
-    [$pfrom, $pto] = [$pto, $pfrom];
-}
+$sf = stats_filter_read($pdo); // lib/stats_filter.php
+['entryFrom' => $entryFrom, 'entryTo' => $entryTo,
+    'period' => $period, 'fYear' => $fYear, 'pfrom' => $pfrom, 'pto' => $pto] = $sf;
 foreach ($history as $hi) {
     $hy = (int)$hi['year'];
     if (($period === 'year' && $hy !== $fYear) || ($period === 'range' && ($hy < $pfrom || $hy > $pto))) {
@@ -522,71 +478,8 @@ render_header($member['name'], 'members');
     </dl>
 </section>
 
-<?php
-// 集計の絞り込み（stats.php と同じ部品・同じ CSS。スクロールしても浮いて残る）。「メンバー」は組んだ相手の絞り込み
-$entryYears = range($thisYear, $thisYear - 15); // 新しい順
-$yearSlot = static function (string $name, int $selected, array $list, string $label, string $unit): string {
-    $html = '<div class="year-slot year-slot--grade year-slot--fy" data-slot-input tabindex="0" role="spinbutton" aria-label="' . h($label) . '"><div class="year-slot__reel">';
-    foreach ($list as $y) {
-        $y = (int)$y;
-        $html .= '<div class="year-slot__item' . ($y === $selected ? ' is-current' : '') . '" data-value="' . $y . '" data-label="' . $y . h($unit) . '">' . sprintf("'%02d", $y % 100) . '</div>';
-    }
-    return $html . '</div><input type="hidden" name="' . h($name) . '" value="' . $selected . '"></div>';
-};
-?>
-<?php ob_start(); // 右の欄（aside）の一番上に出すので、ここでは出さずに溜めておく ?>
-<form method="get" class="card stats-filter no-print" data-live>
-    <input type="hidden" name="id" value="<?= $memberId ?>">
-    <fieldset class="stats-filter__row">
-        <legend>メンバー</legend>
-        <div class="tabs tabs--filter" role="radiogroup" aria-label="メンバー">
-            <label class="tab"><input type="radio" name="who" value="all" data-autosubmit<?= $who === 'all' ? ' checked' : '' ?>>全メンバー</label>
-            <label class="tab"><input type="radio" name="who" value="active" data-autosubmit<?= $who === 'active' ? ' checked' : '' ?>>現役</label>
-            <label class="tab"><input type="radio" name="who" value="grade" data-autosubmit<?= $who === 'grade' ? ' checked' : '' ?>>学年別</label>
-            <label class="tab<?= $canNear ? '' : ' is-disabled' ?>"<?= $canNear ? '' : ' title="アカウントがメンバーに紐付いていないか、入学年度が未登録のため使えません"' ?>>
-                <input type="radio" name="who" value="near" data-autosubmit<?= $who === 'near' ? ' checked' : '' ?><?= $canNear ? '' : ' disabled' ?>>上下3学年
-            </label>
-            <label class="tab"><input type="radio" name="who" value="custom" data-autosubmit<?= $who === 'custom' ? ' checked' : '' ?>>範囲指定</label>
-        </div>
-        <div class="stats-filter__extra" data-show-when="who=grade">
-            <div class="year-slot year-slot--grade" data-slot-input tabindex="0" role="spinbutton" aria-label="学年" title="上下にドラッグで学年を切り替え">
-                <div class="year-slot__reel">
-                    <?php foreach (array_reverse($slotEntries) as $se): $sg = grade_of($se); ?>
-                        <?= grade_slot_item((string)$se, ($sg !== null ? h(grade_label($sg)) : '') . sprintf("<small>'%02d</small>", $se % 100), (string)$fEntry) ?>
-                    <?php endforeach; ?>
-                </div>
-                <input type="hidden" name="entry" value="<?= $fEntry ?>">
-            </div>
-        </div>
-        <div class="stats-filter__extra" data-show-when="who=custom">
-            <?= $yearSlot('efrom', $efrom, $entryYears, '入学年度（から）', '年入学') ?>
-            <span>〜</span>
-            <?= $yearSlot('eto', $eto, $entryYears, '入学年度（まで）', '年入学') ?>
-            <span class="muted small">年入学</span>
-        </div>
-    </fieldset>
-
-    <fieldset class="stats-filter__row">
-        <legend>集計期間</legend>
-        <div class="tabs tabs--filter" role="radiogroup" aria-label="期間">
-            <label class="tab"><input type="radio" name="period" value="all" data-autosubmit<?= $period === 'all' ? ' checked' : '' ?>>全期間</label>
-            <label class="tab"><input type="radio" name="period" value="year" data-autosubmit<?= $period === 'year' ? ' checked' : '' ?>>単年度</label>
-            <label class="tab"><input type="radio" name="period" value="range" data-autosubmit<?= $period === 'range' ? ' checked' : '' ?>>期間指定</label>
-        </div>
-        <div class="stats-filter__extra" data-show-when="period=year">
-            <?= $yearSlot('year', $fYear, $liveYears, '年度', '年度') ?>
-            <span class="muted small">年度</span>
-        </div>
-        <div class="stats-filter__extra" data-show-when="period=range">
-            <?= $yearSlot('pfrom', $pfrom, $liveYears, '期間（から）', '年度') ?>
-            <span>〜</span>
-            <?= $yearSlot('pto', $pto, $liveYears, '期間（まで）', '年度') ?>
-            <span class="muted small">年度</span>
-        </div>
-    </fieldset>
-    <noscript><button class="btn btn--sm" type="submit">適用</button></noscript>
-</form>
-<?php $filterHtml = ob_get_clean(); ?>
+<?php // 集計の絞り込み（lib/stats_filter.php。スクロールしても浮いて残る）。右の欄（aside）の一番上に出す。「メンバー」は組んだ相手の絞り込み
+$filterHtml = stats_filter_form($sf, ['id' => $memberId], ' data-live'); ?>
 
 <?php if ($isMe): ?>
 <!-- 自分のプロフィールはアカウント設定でまとめて編集する -->

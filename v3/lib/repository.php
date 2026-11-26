@@ -1536,7 +1536,8 @@ function inst_filter(array $parts, string $target, bool $tori = false, string $i
         foreach ($byRank as $r => $list) {
             $c = $start[$r];
             foreach ($list as $key => $p) {
-                $row .= str_replace('<button ', '<button style="grid-column: ' . $c++ . '" ', $opt($key, part_badge($p)));
+                // 押すボタンなので data-tip は外す（押すと閉じたメニューの外、画面の上にポップアップが出てしまう）
+                $row .= str_replace('<button ', '<button style="grid-column: ' . $c++ . '" ', $opt($key, preg_replace('/ data-tip="[^"]*"/', '', part_badge($p)), $p['title']));
             }
         }
         $row .= $opt($cls, '<span class="part part--all part--' . h($cls) . '">' . h($g['short']) . ' All</span>');

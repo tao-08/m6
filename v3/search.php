@@ -17,6 +17,7 @@ require_once __DIR__ . '/lib/repository.php';
 require_once __DIR__ . '/lib/albums.php';
 require_once __DIR__ . '/lib/tabs.php';
 require_once __DIR__ . '/lib/special.php';
+require_once __DIR__ . '/lib/stats_filter.php';
 $user = require_login();
 
 /** LIKE で特別な意味を持つ文字（\ % _）を、ただの文字として扱わせる */
@@ -33,6 +34,7 @@ $bandPage = min(50, max(1, (int)($_GET['bp'] ?? 1)));
 $lives = $bands = $members = $artists = $matchedFaculties = $matchedRoles = [];
 $albums = ['albums' => [], 'people' => 0]; // マイアルバム（アーティスト名で当たったもの）
 $bandTotal = 0;
+$bandFiltered = false; // バンドをメンバー・期間で絞り込み中か
 $songs = $songAlbums = []; // 曲名・アルバム（楽曲データベースへのリンク）
 $venues = $studios = $specials = []; // 会場・スタジオ・スペシャルコンテンツ
 
@@ -73,6 +75,8 @@ if ($faculty !== '' || $roleName !== null) {
     ]));
 } elseif ($q !== '') {
     $pdo = db();
+    $sf = stats_filter_read($pdo);
+    $bandFiltered = stats_filter_query($sf) !== [];
     $like = '%' . escape_like(mb_substr($q, 0, 50)) . '%';
     // 「トリ」「🐔」「🐦」で検索したら、各日程のトリ（HEADLINER_SQL）も出す。🐦️ の後ろの U+FE0F は外して比べる
     $tori = in_array(str_replace("\u{FE0F}", '', $q), ['トリ', '🐔', '🐦'], true) ? 1 : 0;
@@ -112,22 +116,34 @@ if ($faculty !== '' || $roleName !== null) {
     //   メンバーとセトリまで出すと1組が縦に長いので、最初は BANDS_PER_PAGE 組だけ。
     //   「もっと見る」を押すと ?bp=2, 3… になり、その分だけ多く出す（URL に残るので戻る・共有しても同じ表示）
     //   バンド名だけでなくメモ（鍵盤の私物/貸出 など）でも当てる。COUNT と本体の WHERE は必ず同じにする（「もっと見る」の残り数がずれるので）
-    $st = $pdo->prepare('SELECT COUNT(*) FROM band b WHERE b.name COLLATE utf8mb4_unicode_520_ci LIKE ? OR b.note COLLATE utf8mb4_unicode_520_ci LIKE ?' . $toriSql . $mixSql);
-    $st->execute([$like, $like, $tori, $mix]);
+    //   メンバー・期間の絞り込み（lib/stats_filter.php。メンバーページの集計と同じ）: 対象の学年の人が1人でもいるバンド・その年度のライブ
+    //   入学年度が未登録の人はいつも対象（member.php と同じ）
+    $bandWhere = '(b.name COLLATE utf8mb4_unicode_520_ci LIKE ? OR b.note COLLATE utf8mb4_unicode_520_ci LIKE ?' . $toriSql . $mixSql . ')';
+    $bandParams = [$like, $like, $tori, $mix];
+    if ($sf['period'] !== 'all') {
+        $bandWhere .= ' AND lm.fiscal_year BETWEEN ? AND ?';
+        array_push($bandParams, ...($sf['period'] === 'year' ? [$sf['fYear'], $sf['fYear']] : [$sf['pfrom'], $sf['pto']]));
+    }
+    if ($sf['entryFrom'] !== null) {
+        $bandWhere .= ' AND EXISTS (SELECT 1 FROM band_member x JOIN member xm ON xm.member_id = x.member_id
+            WHERE x.band_id = b.band_id AND (xm.entry_year IS NULL OR xm.entry_year BETWEEN ? AND ?))';
+        array_push($bandParams, $sf['entryFrom'], $sf['entryTo']);
+    }
+    $bandFrom = 'FROM band b
+        JOIN live_day ld ON ld.live_day_id = b.live_day_id
+        JOIN live lm ON lm.live_id = ld.live_id
+        WHERE ' . $bandWhere;
+    $st = $pdo->prepare('SELECT COUNT(*) ' . $bandFrom);
+    $st->execute($bandParams);
     $bandTotal = (int)$st->fetchColumn();
 
     $st = $pdo->prepare('SELECT b.band_id, b.name, b.song_count, b.note, ld.live_day_id, ld.label, ld.held_on AS date,
             lm.live_id, lm.fiscal_year AS year, lm.name AS live_name
-        FROM band b
-        JOIN live_day ld ON ld.live_day_id = b.live_day_id
-        JOIN live lm ON lm.live_id = ld.live_id
-        WHERE b.name COLLATE utf8mb4_unicode_520_ci LIKE ? OR b.note COLLATE utf8mb4_unicode_520_ci LIKE ?' . $toriSql . $mixSql . '
+        ' . $bandFrom . '
         ORDER BY ld.held_on DESC, b.play_order LIMIT ?');
-    $st->bindValue(1, $like);
-    $st->bindValue(2, $like);
-    $st->bindValue(3, $tori, PDO::PARAM_INT);
-    $st->bindValue(4, $mix, PDO::PARAM_INT);
-    $st->bindValue(5, BANDS_PER_PAGE * $bandPage, PDO::PARAM_INT); // LIMIT は数値として渡す（文字列 '20' だとエラーになることがある）
+    foreach ([...$bandParams, BANDS_PER_PAGE * $bandPage] as $i => $v) {
+        $st->bindValue($i + 1, $v, is_int($v) ? PDO::PARAM_INT : PDO::PARAM_STR); // LIMIT は数値として渡す（文字列 '20' だとエラーになることがある）
+    }
     $st->execute();
     $bands = $st->fetchAll();
 
@@ -146,11 +162,11 @@ if ($faculty !== '' || $roleName !== null) {
         $lineups = member_lineups_by_band($st);
 
         // 出演まで非公開のバンドの曲は出さない（lib/repository.php の setlist_hidden_sql）
-        $st = $pdo->prepare("SELECT s.band_id, s.title FROM song s JOIN band b ON b.band_id = s.band_id
+        $st = $pdo->prepare("SELECT s.band_id, s.title, s.is_se FROM song s JOIN band b ON b.band_id = s.band_id
             WHERE s.band_id IN ($in) AND NOT " . setlist_hidden_sql('b') . " ORDER BY s.track_no");
         $st->execute($ids);
         foreach ($st as $s) {
-            $setlists[(int)$s['band_id']][] = $s['title'];
+            $setlists[(int)$s['band_id']][] = ['title' => $s['title'], 'se' => (bool)$s['is_se']];
         }
     }
 
@@ -240,7 +256,7 @@ if ($faculty !== '' || $roleName !== null) {
     $matchedRoles = $st->fetchAll();
 
     // ---- メンバー（名前・ふりがな・学部・係） ----
-    $st = $pdo->prepare('SELECT m.member_id, m.name, m.name_kana,
+    $st = $pdo->prepare('SELECT m.member_id, m.name, m.name_kana, m.entry_year,
             (SELECT COUNT(DISTINCT x.band_id) FROM band_member x WHERE x.member_id = m.member_id) AS bands
         FROM member m
         WHERE m.name COLLATE utf8mb4_unicode_520_ci LIKE ? OR m.name_kana COLLATE utf8mb4_unicode_520_ci LIKE ? OR m.faculty COLLATE utf8mb4_unicode_520_ci LIKE ?
@@ -250,6 +266,12 @@ if ($faculty !== '' || $roleName !== null) {
     $st->execute([$like, $like, $like, $like]);
     $members = $st->fetchAll();
 }
+
+// メンバーの名前の横: 現役は「3年」、卒業生は入学年度（未登録は出さない）
+$gradeText = static function ($entryYear): string {
+    $g = grade_of($entryYear === null ? null : (int)$entryYear);
+    return $g === null ? '' : ' <span class="muted small">' . ($g <= 4 ? grade_label($g) : (int)$entryYear) . '</span>';
+};
 
 render_header($filterLabel ?? ($q !== '' ? "「{$q}」の検索結果" : '検索'), 'search');
 ?>
@@ -273,7 +295,7 @@ render_header($filterLabel ?? ($q !== '' ? "「{$q}」の検索結果" : '検索
             <div class="chip-list">
                 <?php foreach ($members as $m): ?>
                     <a class="chip chip--lg<?= (int)$m['member_id'] === $user['member_id'] ? ' chip--me' : '' ?>" href="member?id=<?= (int)$m['member_id'] ?>">
-                        <?= h($m['name']) ?><?php if ((int)$m['entry_year'] > 0): ?> <span class="muted small"><?= (int)$m['entry_year'] ?></span><?php endif; ?>
+                        <?= h($m['name']) ?><?= $gradeText($m['entry_year']) ?>
                     </a>
                 <?php endforeach; ?>
             </div>
@@ -283,7 +305,7 @@ render_header($filterLabel ?? ($q !== '' ? "「{$q}」の検索結果" : '検索
     </section>
 <?php elseif ($q === ''): ?>
     <p class="muted">例: 「ヨルシカ」で過去にヨルシカをコピーしたバンドが全部出ます。</p>
-<?php elseif (!$lives && !$bands && !$members && !$artists && !$matchedFaculties && !$matchedRoles && !$albums['albums'] && !$songs && !$songAlbums && !$venues && !$studios && !$specials): ?>
+<?php elseif (!$lives && !$bands && !$bandFiltered && !$members && !$artists && !$matchedFaculties && !$matchedRoles && !$albums['albums'] && !$songs && !$songAlbums && !$venues && !$studios && !$specials): ?>
     <div class="empty card"><p class="empty__title">見つかりませんでした</p><p class="muted">表記を変えて試してみてください（全角/半角、スペースの有無など）</p></div>
 <?php else: ?>
     <div class="search-results">
@@ -307,7 +329,7 @@ render_header($filterLabel ?? ($q !== '' ? "「{$q}」の検索結果" : '検索
             <div class="chip-list">
                 <?php foreach ($members as $m): ?>
                     <a class="chip chip--lg<?= (int)$m['member_id'] === $user['member_id'] ? ' chip--me' : '' ?>" href="member?id=<?= (int)$m['member_id'] ?>">
-                        <?= h($m['name']) ?> <span class="muted small"><?= (int)$m['bands'] ?></span>
+                        <?= h($m['name']) ?><?= $gradeText($m['entry_year']) ?>
                     </a>
                 <?php endforeach; ?>
             </div>
@@ -389,9 +411,15 @@ render_header($filterLabel ?? ($q !== '' ? "「{$q}」の検索結果" : '検索
         </section>
         <?php endif; ?>
 
-        <?php if ($bands): ?>
+        <?php if ($bands || $bandFiltered): ?>
         <section>
-            <h2 class="section-title">バンド<span class="muted"><?= $bandTotal ?></span></h2>
+            <!-- 見出しを押すと、メンバー・期間の絞り込み（lib/stats_filter.php）が開く。絞り込み中は開いたまま・マークを塗る -->
+            <details class="band-filter"<?= $bandFiltered ? ' open' : '' ?>>
+                <summary><h2 class="section-title">バンド<span class="muted"><?= $bandTotal ?></span>
+                    <?= icon('filter_alt', 'band-filter__mark' . ($bandFiltered ? ' icon--fill is-on' : '')) ?></h2></summary>
+                <?= stats_filter_form($sf, ['q' => $q], '', '期間') ?>
+            </details>
+            <?php if (!$bands): ?><p class="muted">該当するバンドはありません</p><?php else: ?>
             <div class="card table-card">
                 <div class="table-scroll table-scroll--flush">
                 <table class="table">
@@ -416,8 +444,9 @@ render_header($filterLabel ?? ($q !== '' ? "「{$q}」の検索結果" : '検索
                             <td>
                                 <?php if (!empty($setlists[$bandId])): ?>
                                     <ol class="artist-setlist">
-                                        <?php foreach ($setlists[$bandId] as $title): ?>
-                                            <li><?= h($title) ?></li>
+                                        <?php $songNo = 0; // SE は番号を振らない（artist.php と同じ）
+                                        foreach ($setlists[$bandId] as $song): ?>
+                                            <li<?= $song['se'] ? ' class="is-se"' : ' value="' . ++$songNo . '"' ?>><?= h($song['title']) ?></li>
                                         <?php endforeach; ?>
                                     </ol>
                                 <?php else: ?><span class="muted">—</span><?php endif; ?>
@@ -430,8 +459,9 @@ render_header($filterLabel ?? ($q !== '' ? "「{$q}」の検索結果" : '検索
             </div>
             <?php if (count($bands) < $bandTotal && $bandPage < 50): ?>
                 <!-- 次のページは「今の続きの行」に飛ぶ（ページの一番上に戻されない） -->
-                <p class="more-link"><a class="btn btn--sm" href="search?<?= h(http_build_query(['q' => $q, 'bp' => $bandPage + 1])) ?>#band-n<?= count($bands) + 1 ?>">
+                <p class="more-link"><a class="btn btn--sm" href="search?<?= h(http_build_query(['q' => $q] + stats_filter_query($sf) + ['bp' => $bandPage + 1])) ?>#band-n<?= count($bands) + 1 ?>">
                     もっと見る（残り <?= $bandTotal - count($bands) ?> 組）</a></p>
+            <?php endif; ?>
             <?php endif; ?>
         </section>
         <?php endif; ?>

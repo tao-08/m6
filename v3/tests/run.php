@@ -1382,6 +1382,13 @@ $bsMerge = band_survey_merge($bsData, ['columns' => ['Vo'], 'bands' => [['band' 
 check('希望調査: 名簿を読み直すと同じ人・バンドの回答が残る', $bsMerge['ranks'], ['山田' => ['A' => 1, 'C' => 2]]);
 check('希望調査: 対象でない人の回答は issues', band_survey_apply($bsRoster, $bsAi, null, ['佐藤'])['issues'], ['山田 太郎 は調査の対象ではありません']);
 
+echo "stats filter\n";
+require_once __DIR__ . '/../lib/stats_filter.php';
+$sfBase = ['who' => 'all', 'fEntry' => 2024, 'efrom' => 2022, 'eto' => 2025, 'period' => 'all', 'fYear' => 2025, 'pfrom' => 2019, 'pto' => 2025];
+check('絞り込みなしは URL に何も足さない', stats_filter_query($sfBase), []);
+check('学年別・単年度', stats_filter_query(['who' => 'grade', 'period' => 'year'] + $sfBase), ['who' => 'grade', 'entry' => 2024, 'period' => 'year', 'year' => 2025]);
+check('範囲指定・期間指定', stats_filter_query(['who' => 'custom', 'period' => 'range'] + $sfBase), ['who' => 'custom', 'efrom' => 2022, 'eto' => 2025, 'period' => 'range', 'pfrom' => 2019, 'pto' => 2025]);
+
 echo "migrations\n";
 $migDup = [];
 foreach (glob(__DIR__ . '/../migrations/*.sql') as $f) {
