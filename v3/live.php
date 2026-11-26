@@ -21,6 +21,7 @@ require_once __DIR__ . '/lib/repository.php';
 require_once __DIR__ . '/lib/comments.php';
 require_once __DIR__ . '/lib/live_image.php';
 require_once __DIR__ . '/lib/special.php';
+require_once __DIR__ . '/lib/youtube.php'; // バンドの YouTube が2本以上あるときの一覧
 require_once __DIR__ . '/lib/drive.php'; // バンドに紐付けた Google ドライブのファイル
 $user = require_login();
 
@@ -73,6 +74,9 @@ $commentCounts = band_comment_counts($pdo, $allBandIds);
 // ドライブのファイル（バンドごと）。これも全バンド分を1回の SQL で取る
 $driveByBand = drive_load_files($pdo, $allBandIds);
 $mixIds = band_mix_ids($pdo, $allBandIds); // ミックスのあるバンド（MIX の印）
+// バンドの YouTube（2本以上なら一覧のポップアップ。タイトルはその分だけ取る）
+$ytByBand = band_video_urls($pdo, array_merge([], ...array_values($bandsByDay)));
+$ytTitles = youtube_titles($pdo, array_merge([], ...array_values(array_filter($ytByBand, static fn($u) => count($u) > 1))));
 // 休憩・転換など（timetable_edit.php で登録したもの / 取り込みで「バンドではない枠」だったもの）
 $breaksByDay = load_breaks_by_day($pdo, $liveId);
 
@@ -241,9 +245,7 @@ render_header($live['name'], 'lives');
                         <?php if ($isLast): ?><span class="tag tag--tori" aria-label="トリ" title="トリ">🐔</span><?php endif; ?>
                         <?php if ($b['needs_check']): ?><a class="tag tag--flag no-print" href="band?id=<?= (int)$b['band_id'] ?>" title="確認待ち: <?= h(implode(' / ', check_reason_labels((int)$b['needs_check']))) ?>" aria-label="確認待ち"><?= icon('flag', 'icon--fill') ?></a><?php endif; ?>
                         <?php if ($isMine): ?><span class="tag tag--mine">出演</span><?php endif; ?>
-                        <?php if ($b['youtube_url'] !== null && youtube_url_valid($b['youtube_url'])): ?>
-                            <a class="slot__yt no-print" href="<?= h($b['youtube_url']) ?>" target="_blank" rel="noopener noreferrer" aria-label="「<?= h($b['name']) ?>」を YouTube で見る" title="YouTube で見る"><?= youtube_icon() ?></a>
-                        <?php endif; ?>
+                        <?= band_youtube_html($ytByBand[(int)$b['band_id']] ?? [], $ytTitles, 'band-' . (int)$b['band_id'], 'slot__yt no-print', '「' . $b['name'] . '」を YouTube で見る') ?>
                         <?php if (isset($mixIds[(int)$b['band_id']])): // YouTube の右 ?><?= mix_tag() ?><?php endif; ?>
                         <?php // ドライブのファイル: 押すとこのカードの下にファイルの一覧（プレーヤー・写真・リンク）が開く（JS: setupDrivePlayer）
                         $driveFiles = $driveByBand[(int)$b['band_id']] ?? []; ?>

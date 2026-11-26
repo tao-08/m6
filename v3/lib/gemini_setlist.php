@@ -154,14 +154,17 @@ function gemini_setlist_schema(): array
  * @param ?string $artist コピー元のアーティスト（オムニバス・不明なら null）。iTunes に曲があれば一覧から選ばせる（1回）。
  *   無ければ一覧なしで聴かせ、わからない曲が残ったらアーティストだけ伝えてもう一度聴かせる。一覧があれば、曲ごとに歌詞と試聴で確かめる（gemini_setlist_check）
  * @param ?int $count タイムテーブルの曲数（band.song_count。不明なら null）。伝えて聴き落としを減らす
+ * @param ?array $part [何本目, 全部で何本]。1つのライブを「バンド名 1」「バンド名 2」のように分けた動画のとき。1本だけなら null
  * @return array|string gemini_setlist_songs の形。失敗したら画面に出せる理由
  */
-function gemini_setlist(string $path, string $mime, array $cfg, ?string $artist = null, bool $flex = true, ?int $count = null): array|string
+function gemini_setlist(string $path, string $mime, array $cfg, ?string $artist = null, bool $flex = true, ?int $count = null, ?array $part = null): array|string
 {
     $schema = gemini_setlist_schema();
     // shortcut: 曲数を伝えたときの精度は試していない（無い曲を作らないかを10本ほどで試す）
-    $more = $count > 0 ? "
-- タイムテーブルでは{$count}曲。挙げた曲がそれより少なければ、聴き落とした曲がないか確かめる。ただし聴き取れない曲を作らない" : '';
+    $more = $count > 0 ? ($part === null ? "
+- タイムテーブルでは{$count}曲。挙げた曲がそれより少なければ、聴き落とした曲がないか確かめる。ただし聴き取れない曲を作らない" : "
+- タイムテーブルでは{$part[1]}本の動画を合わせて{$count}曲（この動画だけの曲数ではない）。聴き取れない曲を作らない") : '';
+    $more .= $part === null ? '' : gemini_setlist_part_prompt($part[0], $part[1]);
     $artist = trim((string)$artist);
     $titles = $artist !== '' ? itunes_artist_titles($artist) : [];
     // $flex: Flex（半額）で聴かせる。返事まで数分かかるので、api_setlist_detect は画面に先に返してから裏で待つ
@@ -186,6 +189,20 @@ function gemini_setlist(string $path, string $mime, array $cfg, ?string $artist 
         }
     }
     return $songs;
+}
+
+/**
+ * 1つのライブを何本かの動画に分けたときに足す指示（{$k}本目 / 全{$n}本）
+ *   shortcut: 動画の境目で切れた曲を2回数えないかは試していない（分かれた動画のバンドで数本試す）
+ */
+function gemini_setlist_part_prompt(int $k, int $n): string
+{
+    return "
+- この音声は、1つのバンドのライブ演奏を{$n}本の動画に分けたうちの{$k}本目。答えるのはこの動画の中で演奏された曲だけ。start はこの動画の頭からの時刻"
+        . ($k > 1 ? "
+- 冒頭が前の動画の最後の曲の続き（曲の途中から始まる）なら、その曲は答えない" : '')
+        . ($k < $n ? "
+- 最後の曲が途中で切れていても、その曲がこの動画の中で始まっていれば答える" : '');
 }
 
 /** 一覧から選ばせるときに足す指示。曲ごとに聞き取れた歌詞の一節を返させ、gemini_setlist_lyrics で曲名を確かめる */

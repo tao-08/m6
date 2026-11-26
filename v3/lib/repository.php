@@ -1712,6 +1712,7 @@ function sync_band_members(PDO $pdo, array &$index, int $bandId, array $assignme
  *     'artist_id' => その曲のアーティスト / null（= バンドと同じ）,
  *     'track' => 紐付けた曲 [source, track_id] / null（紐付けなし。曲の情報は先に track テーブルに入れておく）,
  *     'video_start' => バンドの YouTube で始まる秒 / null（無ければ null）,
+ *     'video_no' => video_start が何本目の動画か（0 = 1本目。migrations/150）,
  *     'performers' => [[member_id, instrument_id], ...]], ...]
  *
  *  1. フォームから消えた曲を DELETE（演奏者は CASCADE で消える）
@@ -1733,9 +1734,9 @@ function save_songs(PDO $pdo, int $bandId, array $songs): void
     }
 
     $pdo->prepare('UPDATE song SET track_no = track_no + 100 WHERE band_id = ?')->execute([$bandId]);
-    $update = $pdo->prepare('UPDATE song SET track_no = ?, title = ?, is_se = ?, artist_id = ?, track_source = ?, track_id = ?, video_start = ?
+    $update = $pdo->prepare('UPDATE song SET track_no = ?, title = ?, is_se = ?, artist_id = ?, track_source = ?, track_id = ?, video_start = ?, video_no = ?
         WHERE song_id = ? AND band_id = ?');
-    $insert = $pdo->prepare('INSERT INTO song (band_id, track_no, title, is_se, artist_id, track_source, track_id, video_start) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+    $insert = $pdo->prepare('INSERT INTO song (band_id, track_no, title, is_se, artist_id, track_source, track_id, video_start, video_no) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
     $addRole = $pdo->prepare('INSERT IGNORE INTO band_member (band_id, member_id, instrument_id) VALUES (?, ?, ?)');
     $clear = $pdo->prepare('DELETE FROM song_performer WHERE song_id = ?');
     $addPerformer = $pdo->prepare('INSERT IGNORE INTO song_performer (song_id, band_id, member_id, instrument_id) VALUES (?, ?, ?, ?)');
@@ -1743,10 +1744,10 @@ function save_songs(PDO $pdo, int $bandId, array $songs): void
     foreach (array_values($songs) as $i => $song) {
         [$trackSource, $trackId] = $song['track'] ?? [null, null];
         if ($song['song_id'] && in_array($song['song_id'], $existing, true)) {
-            $update->execute([$i + 1, $song['title'], (int)!empty($song['is_se']), $song['artist_id'], $trackSource, $trackId, $song['video_start'] ?? null, $song['song_id'], $bandId]);
+            $update->execute([$i + 1, $song['title'], (int)!empty($song['is_se']), $song['artist_id'], $trackSource, $trackId, $song['video_start'] ?? null, $song['video_no'] ?? 0, $song['song_id'], $bandId]);
             $songId = $song['song_id'];
         } else {
-            $insert->execute([$bandId, $i + 1, $song['title'], (int)!empty($song['is_se']), $song['artist_id'], $trackSource, $trackId, $song['video_start'] ?? null]);
+            $insert->execute([$bandId, $i + 1, $song['title'], (int)!empty($song['is_se']), $song['artist_id'], $trackSource, $trackId, $song['video_start'] ?? null, $song['video_no'] ?? 0]);
             $songId = (int)$pdo->lastInsertId();
         }
         $clear->execute([$songId]);
@@ -2104,6 +2105,9 @@ function merge_band_into(PDO $pdo, int $fromId, int $toId): void
         if ($empty($to[$col]) && !$empty($from[$col])) {
             $set[$col] = $from[$col];
         }
+    }
+    if (isset($set['youtube_url'])) { // 1本目を持ってきたら、2本目以降（band_video）も一緒に
+        $pdo->prepare('UPDATE band_video SET band_id = ? WHERE band_id = ?')->execute([$toId, $fromId]);
     }
     if ($empty($to['start_time']) && $empty($to['end_time'])) {
         $set['start_time'] = $from['start_time'];

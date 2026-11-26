@@ -21,7 +21,8 @@ require_once __DIR__ . '/lib/repository.php';
 require_once __DIR__ . '/lib/comments.php';
 require_once __DIR__ . '/lib/history.php'; // 「確認済み」を誰が押したかを変更履歴に残す
 require_once __DIR__ . '/lib/attach_image.php'; // バンドの添付画像（最大5枚）
-require_once __DIR__ . '/lib/tabs.php'; // 曲ごとの TAB 譜へのリンク（tab_song_key）
+require_once __DIR__ . '/lib/tabs.php';
+require_once __DIR__ . '/lib/youtube.php'; // YouTube が2本以上あるときの一覧（band_youtube_html） // 曲ごとの TAB 譜へのリンク（tab_song_key）
 $user = require_login();
 
 $bandId = (int)($_GET['id'] ?? 0);
@@ -311,9 +312,8 @@ render_header($band['name'], 'lives');
         <?php if ($bandImages): // 追加・削除はバンド編集画面（band_edit.php）。サムネイルは編集ボタンの上 ?>
             <div class="hero__thumbs"><?= attach_thumbs_html('band', $bandImages) ?></div>
         <?php endif; ?>
-        <?php if ($band['youtube_url'] !== null && youtube_url_valid($band['youtube_url'])): // 表示の前にもう一度チェック（DB を直接いじられても変なリンクを出さない） ?>
-            <a class="btn btn--sm btn--youtube" href="<?= h($band['youtube_url']) ?>" target="_blank" rel="noopener noreferrer" aria-label="YouTube で見る" title="YouTube で見る"><?= youtube_icon() ?></a>
-        <?php endif; ?>
+        <?php $ytUrls = band_video_urls($pdo, [$band])[$bandId] ?? []; // 表示の前にもう一度チェック（DB を直接いじられても変なリンクを出さない） ?>
+        <?= band_youtube_html($ytUrls, count($ytUrls) > 1 ? youtube_titles($pdo, $ytUrls) : [], 'band', 'btn btn--sm btn--youtube', 'YouTube で見る') ?>
         <a class="btn btn--sm" href="band_edit?id=<?= $bandId ?>"><?= icon('edit') ?> バンドを編集</a>
         <a class="btn btn--sm" href="songs_edit?band=<?= $bandId ?>"><?= icon('queue_music') ?> セットリストを<?= $songs ? '編集' : '登録' ?></a>
         <?php

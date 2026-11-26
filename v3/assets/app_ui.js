@@ -770,6 +770,20 @@ function setupSmallThings() {
     if (input) input.value = e.target.value;
   });
 
+  // data-yt-add … バンド編集の YouTube の ＋。下に URL 欄を1つ足す（10本まで）
+  document.addEventListener('click', (e) => {
+    const add = e.target.closest('[data-yt-add]');
+    if (!add) return;
+    const box = add.closest('[data-yt-urls]');
+    const input = box.querySelector('input').cloneNode();
+    input.name = 'youtube_extra[]';
+    input.removeAttribute('value');
+    input.removeAttribute('placeholder');
+    box.append(input);
+    input.focus();
+    add.hidden = box.querySelectorAll('input').length >= 10;
+  });
+
   // 右上のメニュー（<details class="usermenu">）: 開くたびに、右上から少し下りながらふわっと出す
   //   toggle イベントは開いて1回描画した後に来る（そこから動かすと、一瞬全部見えてから消えて出直す）ので、
   //   開く直前の summary のクリックで動かし始める（Enter / スペースで開いたときも click が来る）。動きを減らす設定の人には動かさない

@@ -423,6 +423,7 @@ CREATE TABLE song (
     track_source VARCHAR(10) CHARACTER SET ascii COLLATE ascii_bin NULL,
     track_id     VARCHAR(40) CHARACTER SET ascii COLLATE ascii_bin NULL,
     video_start  SMALLINT UNSIGNED NULL,                -- バンドの YouTube で始まる秒（YouTube から曲を検出。migrations/145）
+    video_no     TINYINT UNSIGNED NOT NULL DEFAULT 0,  -- video_start が何本目の動画の秒か（0 = band.youtube_url。migrations/150）
     PRIMARY KEY (song_id),
     UNIQUE KEY uq_song_track (band_id, track_no),
     UNIQUE KEY uq_song_band (song_id, band_id),
@@ -1087,6 +1088,23 @@ CREATE TABLE band_audio (
     KEY idx_ba_band (band_id, sort_order),
     CONSTRAINT fk_ba_band FOREIGN KEY (band_id) REFERENCES band (band_id)
         ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- バンドの2本目以降の YouTube（1本目は band.youtube_url。説明は migrations/150）
+CREATE TABLE band_video (
+    band_id    INT UNSIGNED     NOT NULL,
+    sort_order TINYINT UNSIGNED NOT NULL,  -- 1 = 2本目
+    url        VARCHAR(500)     NOT NULL,
+    PRIMARY KEY (band_id, sort_order),
+    CONSTRAINT fk_bv_band FOREIGN KEY (band_id) REFERENCES band (band_id)
+        ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- YouTube の動画のタイトル（複数の動画のポップアップに出す。migrations/150）
+CREATE TABLE youtube_title (
+    video_id CHAR(11)     NOT NULL,
+    title    VARCHAR(200) NOT NULL,
+    PRIMARY KEY (video_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- 音源の再生位置に付けるチャプター（MC・曲。説明は migrations/130）

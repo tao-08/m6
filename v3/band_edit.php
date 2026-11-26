@@ -56,6 +56,10 @@ $liveUrl = 'live?id=' . (int)$band['live_id'] . '#day-' . $dayId;
 $backUrl = $isNew ? $liveUrl : 'band?id=' . $bandId;
 // 紐付け済みのドライブのファイル（新規バンドは無し）
 $driveFiles = $isNew ? [] : (drive_load_files($pdo, [$bandId])[$bandId] ?? []);
+// 2本目以降の YouTube（band_video。1本目は band.youtube_url）
+$st = $pdo->prepare('SELECT url FROM band_video WHERE band_id = ? ORDER BY sort_order');
+$st->execute([$bandId]);
+$ytExtras = $st->fetchAll(PDO::FETCH_COLUMN);
 
 // 今のメンバー。セトリに出ている人（locked = 1）は楽器をセトリの実績で決めるので、この画面では変えられない
 //   （sync_band_members もその人の行には触らない）
@@ -122,6 +126,11 @@ if (is_post()) {
     $songs = (string)($_POST['song_count'] ?? '');
     $note = trim((string)($_POST['note'] ?? ''));
     $youtube = trim((string)($_POST['youtube_url'] ?? ''));
+    // 2本目以降（＋で足した欄）。空欄は捨てる。1本目が空なら繰り上げる
+    $ytExtras = array_values(array_filter(array_map('trim', array_filter((array)($_POST['youtube_extra'] ?? []), 'is_string')), 'strlen'));
+    if ($youtube === '' && $ytExtras) {
+        $youtube = array_shift($ytExtras);
+    }
     // ドライブ: 外すファイル（チェック）と、追加するリンク（1行に1つ）
     $driveRemove = array_map('strval', (array)($_POST['drive_remove'] ?? []));
     $driveAdd = trim((string)($_POST['drive_add'] ?? ''));
@@ -185,8 +194,11 @@ if (is_post()) {
         $errors[] = 'MP3 は ' . ATTACH_KINDS['band_audio']['max'] . ' つまでです';
     }
     // 空欄はOK（リンクなし）。入れたなら YouTube の https のリンクだけ受け付ける（live_edit.php と同じ）
-    if ($youtube !== '' && !youtube_url_valid($youtube)) {
+    if (array_filter([$youtube, ...$ytExtras], static fn($u) => $u !== '' && (!youtube_url_valid($u) || strlen($u) > 500))) {
         $errors[] = 'YouTube のリンクは https://www.youtube.com/… か https://youtu.be/… の形で入力してください';
+    }
+    if (count($ytExtras) > 9) {
+        $errors[] = 'YouTube のリンクは10本までです';
     }
     // ドライブ: 残すファイル + 追加するリンクで、保存後の一覧を作る
     //   追加分は API で名前と種類を取る（通信なので、DB のトランザクションの前に済ませる）
@@ -221,6 +233,9 @@ if (is_post()) {
         $artistId = !empty($band['is_omnibus']) ? null : find_or_create_artist($pdo, $artistName !== '' ? $artistName : $name);
         $values = [$artistId, $name, $songs !== '' ? (int)$songs : null, $start ?: null, $end ?: null, $note !== '' ? $note : null, $youtube !== '' ? $youtube : null, $flag];
 
+        if ($ytExtras) {
+            youtube_titles_fetch($pdo, [$youtube, ...$ytExtras]); // 一覧のポップアップに出すタイトル（通信なので、トランザクションの前に）
+        }
         $newFiles = [];
         $pdo->beginTransaction();
         try {
@@ -283,6 +298,11 @@ if (is_post()) {
             // 差分だけ更新（全部消すと曲ごとの演奏記録が CASCADE で消えるため。sync_band_members の説明参照）
             sync_band_members($pdo, $index, $bandId, $rows);
             save_check_members($pdo, $bandId, $flag, $checkWho); // メンバーを入れ替えた後に（外した人は入らない）
+            $pdo->prepare('DELETE FROM band_video WHERE band_id = ?')->execute([$bandId]);
+            $addVideo = $pdo->prepare('INSERT INTO band_video (band_id, sort_order, url) VALUES (?, ?, ?)');
+            foreach ($ytExtras as $i => $u) {
+                $addVideo->execute([$bandId, $i + 1, $u]);
+            }
             drive_save_files($pdo, $bandId, $driveNext); // ドライブのファイル（変更前は change_capture で履歴に残っている）
             drive_save_mix($pdo, $bandId, array_column($driveFiles, 'file_id'), $driveMix); // 画面に出したファイルだけ（今回足したものは初期値のまま）
             // タイトルは今回残したファイルの分だけ（外したファイルや、改造されたリクエストの ID は UPDATE が0件で終わる）
@@ -450,7 +470,14 @@ render_header($isNew ? 'バンドを追加' : 'バンドを編集', 'lives');
             <?php endif; ?>
             <input type="file" name="audio[]" accept="audio/mpeg,.mp3" multiple aria-label="MP3 を追加（60MB まで、<?= ATTACH_KINDS['band_audio']['max'] ?> つまで）">
         </div>
-        <label class="field field--wide"><span>YouTube のリンク（任意）</span><span class="field__hint"><a href="live_edit?id=<?= (int)$band['live_id'] ?>">ライブを編集</a>からプレイリストを追加すると各バンドのリンクを一括で登録できます</span><input autocomplete="off" type="url" name="youtube_url" value="<?= h($band['youtube_url']) ?>" maxlength="500" placeholder="https://www.youtube.com/watch?v=…" inputmode="url"></label>
+        <div class="field field--wide"><span>YouTube のリンク（任意）</span><span class="field__hint"><a href="live_edit?id=<?= (int)$band['live_id'] ?>">ライブを編集</a>からプレイリストを追加すると各バンドのリンクを一括で登録できます</span>
+            <!-- ＋ で下に欄を足す（app_ui.js の data-yt-add）。空欄のまま保存すると消える -->
+            <div class="yt-urls" data-yt-urls>
+                <input autocomplete="off" type="url" name="youtube_url" value="<?= h($band['youtube_url']) ?>" maxlength="500" placeholder="https://www.youtube.com/watch?v=…" inputmode="url" aria-label="YouTube のリンク">
+                <button type="button" class="btn btn--ghost btn--sm" data-yt-add aria-label="リンクを追加" title="リンクを追加"<?= count($ytExtras) >= 9 ? ' hidden' : '' ?>><?= icon('add') ?></button>
+                <?php foreach ($ytExtras as $u): ?><input autocomplete="off" type="url" name="youtube_extra[]" value="<?= h($u) ?>" maxlength="500" inputmode="url" aria-label="YouTube のリンク"><?php endforeach; ?>
+            </div>
+        </div>
         <?php if ($ytVideos): ?>
             <!-- name を付けない（送信しない）。選ぶと JS が上の URL 欄に入れる -->
             <label class="field field--wide"><span>ライブのプレイリストから選ぶ</span>

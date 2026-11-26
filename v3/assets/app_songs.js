@@ -81,18 +81,22 @@ function setupSongs() {
     });
     // ↻（1曲だけ検出し直す）の区間: 自分の秒〜次の曲の秒。自分の秒が無ければ、前の曲の秒〜次の曲の秒の最後の曲（data-tail）。
     //   どちらも決まらなければ出さない。秒は data-video-start（空 = わからない）
+    //   動画が2本以上のときは、同じ動画（data-video-no）の曲だけで前後を見る
     const live = cards().filter((c) => !c.classList.contains('is-deleted'));
     const secs = live.map((c) => { const v = c.querySelector('[data-video-start]')?.value ?? ''; return v === '' ? null : Number(v); });
+    const nos = live.map((c) => c.querySelector('[data-video-no]')?.value || '0');
     live.forEach((c, i) => {
       const retry = c.querySelector('[data-detect-retry]');
       if (!retry) return;
-      const prev = secs.slice(0, i).filter((s) => s !== null).pop() ?? 0; // 前に秒のわかる曲が無い（最初の SE など）: 動画の頭から
-      const next = secs.slice(i + 1).find((s) => s !== null) ?? null;
+      const same = (s, j) => s !== null && nos[j] === nos[i];
+      const prev = secs.slice(0, i).filter(same).pop() ?? 0; // 前に秒のわかる曲が無い（最初の SE など）: 動画の頭から
+      const next = secs.slice(i + 1).find((s, j) => same(s, i + 1 + j)) ?? null;
       const from = secs[i] ?? (next === null ? null : prev);
       retry.hidden = from === null;
       retry.dataset.from = from ?? '';
       retry.dataset.to = next ?? '';
       retry.dataset.tail = secs[i] === null ? '1' : '';
+      retry.dataset.video = nos[i];
     });
   };
   renumber();
@@ -589,6 +593,7 @@ function setupTrackSearch() {
       body.append('from', retry.dataset.from);
       body.append('to', retry.dataset.to);
       body.append('tail', retry.dataset.tail);
+      body.append('video', retry.dataset.video || '0');
       exclude(card, [card.querySelector('[name$="[title]"]').value.trim()]); // ↻ を押すのは今の曲名が違うとき
       excluded(card).forEach((t) => body.append('exclude[]', t));
       if (!card.dataset.compared) body.append('compare', '1'); // 試聴との聴き比べは1回目（と「出た候補を戻す」の後）だけ
@@ -659,6 +664,7 @@ function setupTrackSearch() {
  * 動画から曲を検出したあとの確認画面（songs_edit.php?from_detect=1）
  *   data-detect-player … バンドの YouTube（enablejsapi=1 の埋め込み）
  *   data-seek="秒"      … 押すと動画をその曲の場面から流す。鳴っている試聴は止める
+ *   data-video="ID"     … その曲の動画（2本目以降なら動画を切り替えてから流す）
  *   試聴（data-preview）を押したら動画を止める。2つの音が重ならないように
  *   YouTube へは postMessage で命令だけ送る（IFrame API のスクリプトは読まない）
  * ------------------------------------------------------------------- */
@@ -666,11 +672,17 @@ function setupDetectPlayer() {
   const frame = document.querySelector('[data-detect-player] iframe');
   if (!frame) return;
   const send = (func, args = []) => frame.contentWindow?.postMessage(JSON.stringify({ event: 'command', func, args }), 'https://www.youtube.com');
+  let current = frame.parentElement.dataset.video; // 今出している動画
   document.addEventListener('click', (e) => {
     if (e.target.closest('[data-preview]')) { send('pauseVideo'); return; }
     const seek = e.target.closest('[data-seek]');
     if (!seek) return;
     document.querySelector('[data-preview].is-playing, [data-preview].is-loading')?.click(); // 鳴っている試聴を止める（もう一度押すと止まる）
+    if (seek.dataset.video && seek.dataset.video !== current) {
+      current = seek.dataset.video;
+      send('loadVideoById', [current, Number(seek.dataset.seek)]); // 読み込んで、その秒から流す
+      return;
+    }
     send('seekTo', [Number(seek.dataset.seek), true]);
     send('playVideo');
   });
@@ -744,8 +756,9 @@ function setupLyricsSearch() {
         credentials: 'same-origin',
         body: JSON.stringify({ q, artist }),
       });
-      const data = await res.json();
-      if (!res.ok) throw Object.assign(new Error(data.error || '歌詞検索に失敗しました'), { detail: data.detail });
+      // 空の応答（サーバーが途中で切った）でも JSON の読み取りエラーをそのまま出さない
+      const data = await res.json().catch(() => ({ error: '歌詞検索に失敗しました。もう一度検索してください', detail: `HTTP ${res.status}` }));
+      if (!res.ok || data.error) throw Object.assign(new Error(data.error || '歌詞検索に失敗しました'), { detail: data.detail });
       if (!Array.isArray(data.tracks) || data.tracks.length === 0) {
         showMessage(results, '曲の候補が見つかりませんでした。別の歌詞で検索してください');
         return;

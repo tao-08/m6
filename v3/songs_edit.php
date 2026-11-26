@@ -86,7 +86,7 @@ $sheetTitles = [];
 $detectCandidates = []; // 動画から曲を検出したとき、自信が低い曲の候補（from_detect）
 $detectShort = false; // 検出した曲がタイムテーブルの曲数より少ない（from_detect）
 $detectStarts = [];     // 同じく、曲が始まる秒（null = 不明）
-$detectVideo = null;    // 曲の場面（video_start）があるとき、確認しながら流すバンドの YouTube の動画 ID（管理者だけ）
+$detectVideos = [];    // 曲の場面（video_start）があるとき、確認しながら流すバンドの YouTube の動画 ID（管理者だけ。並び = song.video_no）
 $sheetTracks = []; // 曲名と同じ順の、シートで紐付けたサブスクの曲 [source, track_id]（無い・形がおかしい = null）
 if ($fromSheet) {
     verify_csrf();
@@ -160,6 +160,7 @@ if (is_post() && !$fromSheet) {
             'artist' => $artist,
             'track' => $track,
             'video_start' => is_int($vs = filter_var($in['vs'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0, 'max_range' => 65535]])) ? $vs : null,
+            'video_no' => is_int($vn = filter_var($in['vn'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0, 'max_range' => 9]])) ? $vn : 0, // 何本目の動画の秒か
             'k' => (int)$k,
             // 画面の上から何番目か（≡ で並び替えた順。JS が振り直す）。無い・数字でなければ songs[番号] の番号順
             'pos' => is_int($pos = filter_var($in['pos'] ?? null, FILTER_VALIDATE_INT)) ? $pos : (int)$k,
@@ -242,7 +243,7 @@ if (is_post() && !$fromSheet) {
 /* =====================================================================
  *  表示用データ
  * ===================================================================== */
-$st = $pdo->prepare('SELECT s.song_id, s.track_no, s.title, s.is_se, s.video_start, a.name AS artist_name,
+$st = $pdo->prepare('SELECT s.song_id, s.track_no, s.title, s.is_se, s.video_start, s.video_no, a.name AS artist_name,
         s.track_source, s.track_id, t.title AS track_title, t.artist_name AS track_artist, t.artwork_url
     FROM song s
     LEFT JOIN artist a ON a.artist_id = s.artist_id
@@ -271,6 +272,7 @@ if (!is_post() && ($_GET['from_detect'] ?? '') === '1' && is_admin()) {
     // 自信が低い曲の候補（曲の順）。自信ありの曲も、念のため試聴できるよう、その曲だけを候補にする
     $detectCandidates = array_map(static fn($s) => $s['candidates'] ?: ($s['title'] !== '' ? [['title' => $s['title'], 'artist' => $s['artist'] ?? '']] : []), $detected);
     $detectStarts = array_map(static fn($s) => $s['start'] ?? null, $detected);
+    $detectNos = array_map(static fn($s) => (int)($s['video'] ?? 0), $detected); // 何本目の動画か
     $detectShort = (int)($band['song_count'] ?? 0) > count($detected); // タイムテーブルの曲数より少ない = 聴き落としかも
     if (!$sheetTitles) {
         redirect($backUrl);
@@ -292,7 +294,7 @@ foreach ($st as $r) {
 
 // 空のカードは最初は出さない。最後に1枚だけ <template>（画面に出ない・送信もされない）の中に作っておき、
 // 「＋ 曲を追加」を押したら JS がコピーして並べる（assets/app_songs.js の setupSongs）
-$emptyCard = ['song_id' => null, 'track_no' => 0, 'title' => '', 'is_se' => 0, 'video_start' => null, 'artist_name' => null,
+$emptyCard = ['song_id' => null, 'track_no' => 0, 'title' => '', 'is_se' => 0, 'video_start' => null, 'video_no' => 0, 'artist_name' => null,
     'track_source' => null, 'track_id' => null, 'track_title' => null, 'track_artist' => null, 'artwork_url' => null];
 $droppedTitles = []; // セッティングシートに無い、登録済みの曲（保存すると消える）
 if ($fromSheet) {
@@ -348,6 +350,7 @@ if ($fromSheet) {
         }
         $card['candidates'] = $detectCandidates[$i] ?? [];
         $card['video_start'] = $detectStarts[$i] ?? $card['video_start'];
+        $card['video_no'] = $detectNos[$i] ?? $card['video_no'];
         $card['track_no'] = $i + 1;
         $cards[] = $card;
     }
@@ -361,9 +364,9 @@ if ($fromSheet) {
 }
 // 曲の場面（video_start）が1曲でもあれば、管理者には動画と ▶・↻ を出す
 if (is_admin() && array_filter(array_column($cards, 'video_start'), static fn($v) => $v !== null)) {
-    $detectVideo = youtube_video_id((string)$band['youtube_url']);
+    $detectVideos = array_map('youtube_video_id', band_video_urls($pdo, [$band])[$bandId] ?? []);
 }
-$canRetry = $detectVideo !== null && gemini_setlist_config() !== null; // ↻（1曲だけ検出し直す）
+$canRetry = ($detectVideos[0] ?? null) !== null && gemini_setlist_config() !== null; // ↻（1曲だけ検出し直す）
 // 最後の1枚は「＋ 曲を追加」用のひな形（<template> の中に入れる）
 $cards[] = $emptyCard + ['template' => true];
 $cards[] = array_merge($emptyCard, ['template' => true, 'is_se' => 1, 'template_se' => true]); // 「＋ SE を追加」用
@@ -433,9 +436,9 @@ render_header('セットリストを編集', 'lives');
     <?php endif; ?>
     <label class="field song-count"><span>曲数</span><input type="number" class="input-num" min="0" max="255" name="song_count" value="<?= h($songCountValue) ?>"></label>
     <button type="button" class="btn btn--ghost btn--sm song-add-se" data-add-song-se>＋ SE を追加</button>
-    <?php if ($detectVideo !== null): ?>
-    <!-- 曲の場面があるとき: バンドの動画を上に残し、曲ごとの ▶（data-seek）でその場面へ飛ぶ（assets/app_songs.js の setupDetectPlayer） -->
-    <div class="detect-player" data-detect-player data-band="<?= $bandId ?>"><iframe src="https://www.youtube.com/embed/<?= h($detectVideo) ?>?enablejsapi=1&amp;playsinline=1&amp;rel=0" title="<?= h($band['name']) ?>" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe></div>
+    <?php if (($detectVideos[0] ?? null) !== null): ?>
+    <!-- 曲の場面があるとき: バンドの動画を上に残し、曲ごとの ▶（data-seek）でその場面へ飛ぶ（assets/app_songs.js の setupDetectPlayer）。2本目以降の曲は動画を切り替える（data-video） -->
+    <div class="detect-player" data-detect-player data-band="<?= $bandId ?>" data-video="<?= h($detectVideos[0]) ?>"><iframe src="https://www.youtube.com/embed/<?= h($detectVideos[0]) ?>?enablejsapi=1&amp;playsinline=1&amp;rel=0" title="<?= h($band['name']) ?>" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe></div>
     <?php endif; ?>
     <datalist id="artists"><?php foreach ($artistNames as $n): ?><option value="<?= h($n) ?>"><?php endforeach; ?></datalist>
     <div class="song-list" data-song-list<?= !empty($fromYt) ? ' data-auto-search' : '' ?> data-default-artist="<?= h($defaultArtist) ?>">
@@ -469,7 +472,9 @@ render_header('セットリストを編集', 'lives');
                     <input type="hidden" name="<?= $base ?>[track]" value="<?= h($trackKey) ?>" data-track-key data-artist="<?= h($trackKey === '' ? '' : explode(', ', (string)$song['track_artist'])[0]) ?>">
                     <!-- data-video-start: バンドの YouTube で始まる秒（空 = わからない）。保存で残す。↻ の区間は assets/app_songs.js の renumber が前後の曲から決める -->
                     <input type="hidden" name="<?= $base ?>[vs]" value="<?= $song['video_start'] ?? '' ?>" data-video-start>
-                    <?php if ($detectVideo !== null && $song['video_start'] !== null): $vs = (int)$song['video_start']; ?><button type="button" class="btn btn--ghost btn--sm song-seek-btn" data-seek="<?= $vs ?>" aria-label="動画のこの曲の場面を再生" title="動画のこの曲の場面を再生"><?= icon('smart_display') ?><?= sprintf('%d:%02d', intdiv($vs, 60), $vs % 60) ?></button><?php endif; ?>
+                    <input type="hidden" name="<?= $base ?>[vn]" value="<?= (int)($song['video_no'] ?? 0) ?>" data-video-no>
+                    <?php $seekVideo = $detectVideos[(int)($song['video_no'] ?? 0)] ?? null; ?>
+                    <?php if ($seekVideo !== null && $song['video_start'] !== null): $vs = (int)$song['video_start']; ?><button type="button" class="btn btn--ghost btn--sm song-seek-btn" data-seek="<?= $vs ?>" data-video="<?= h($seekVideo) ?>" aria-label="動画のこの曲の場面を再生" title="動画のこの曲の場面を再生"><?= icon('smart_display') ?><?= sprintf('%d:%02d', intdiv($vs, 60), $vs % 60) ?></button><?php endif; ?>
                     <?php if ($canRetry): ?><button type="button" class="btn btn--ghost btn--sm" data-detect-retry hidden aria-label="まだ候補に出ていない曲から検出" title="まだ候補に出ていない曲から検出"><?= icon('refresh') ?></button><?php endif; ?>
                     <button type="button" class="btn btn--ghost btn--sm song-search-btn" data-track-search aria-label="曲を探す" title="曲を探す"><?= icon('search') ?></button>
                     <input type="hidden" name="<?= $base ?>[id]" value="<?= $isNew ? '' : (int)$song['song_id'] ?>">

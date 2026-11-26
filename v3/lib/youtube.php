@@ -314,3 +314,78 @@ function youtube_match_bands(array $videos, array $bands): array
     }
     return $result;
 }
+
+/**
+ * バンドの動画の URL（1本目 = band.youtube_url、2本目以降 = band_video。migrations/150）
+ *   $bands: band_id と youtube_url を持つ行。戻り値: [band_id => [url, ...]]（リンクの無いバンドは入らない）
+ *   並びの番号がそのまま song.video_no（0 = 1本目）
+ */
+function band_video_urls(PDO $pdo, array $bands): array
+{
+    $urls = [];
+    foreach ($bands as $b) {
+        if (($b['youtube_url'] ?? null) !== null && youtube_url_valid((string)$b['youtube_url'])) {
+            $urls[(int)$b['band_id']] = [(string)$b['youtube_url']];
+        }
+    }
+    if ($urls) {
+        $st = $pdo->prepare('SELECT band_id, url FROM band_video WHERE band_id IN (' . implode(',', array_fill(0, count($urls), '?')) . ') ORDER BY band_id, sort_order');
+        $st->execute(array_keys($urls));
+        foreach ($st as $r) {
+            $urls[(int)$r['band_id']][] = (string)$r['url']; // 保存のときに youtube_url_valid を通したものだけ
+        }
+    }
+    return $urls;
+}
+
+/** 動画 ID → タイトル（youtube_title に保存してある分だけ） */
+function youtube_titles(PDO $pdo, array $urls): array
+{
+    $ids = array_values(array_unique(array_filter(array_map('youtube_video_id', $urls))));
+    if (!$ids) {
+        return [];
+    }
+    $st = $pdo->prepare('SELECT video_id, title FROM youtube_title WHERE video_id IN (' . implode(',', array_fill(0, count($ids), '?')) . ')');
+    $st->execute($ids);
+    return $st->fetchAll(PDO::FETCH_KEY_PAIR);
+}
+
+/** タイトルをまだ持っていない動画だけ、oEmbed（API キー不要・無料枠を使わない）で取って保存する。取れなければ飛ばす（番号で出す） */
+function youtube_titles_fetch(PDO $pdo, array $urls): void
+{
+    $have = youtube_titles($pdo, $urls);
+    $ins = $pdo->prepare('INSERT IGNORE INTO youtube_title (video_id, title) VALUES (?, ?)');
+    foreach (array_unique(array_filter(array_map('youtube_video_id', $urls))) as $id) {
+        if (isset($have[$id])) {
+            continue;
+        }
+        $res = album_http('https://www.youtube.com/oembed?' . http_build_query(['url' => youtube_watch_url($id), 'format' => 'json']));
+        $title = trim(is_string($res['json']['title'] ?? null) ? $res['json']['title'] : '');
+        if ($title !== '') {
+            $ins->execute([$id, mb_substr($title, 0, 200)]);
+        }
+    }
+}
+
+/**
+ * バンドの YouTube のアイコン。1本ならそのリンク。2本以上なら、押す・乗せると動画の一覧（スペシャルコンテンツのポップアップと同じ）
+ *   $key はページ内で一意な文字（band-12）
+ */
+function band_youtube_html(array $urls, array $titles, string $key, string $class, string $label): string
+{
+    if (!$urls) {
+        return '';
+    }
+    if (count($urls) === 1) {
+        return '<a class="' . h($class) . '" href="' . h($urls[0]) . '" target="_blank" rel="noopener noreferrer" aria-label="' . h($label) . '" title="YouTube で見る">' . youtube_icon() . '</a>';
+    }
+    $id = 'yt-' . $key;
+    $links = '';
+    foreach (array_values($urls) as $i => $u) {
+        $links .= '<a class="special-link" href="' . h($u) . '" target="_blank" rel="noopener noreferrer">' . youtube_icon()
+            . '<span>' . h($titles[(string)youtube_video_id($u)] ?? ($i + 1) . '本目') . '</span></a>';
+    }
+    // <h3>・<p> の中にも置くので <div> ではなく <span>（special_button_html と同じ）
+    return '<button type="button" class="' . h($class) . '" data-tip data-tip-from="#' . h($id) . '" aria-label="' . h($label) . '">' . youtube_icon() . '</button>'
+        . '<span id="' . h($id) . '" class="special-list" hidden>' . $links . '</span>';
+}

@@ -1300,6 +1300,16 @@ check('セトリ: 結果なしは空', acr_setlist_titles([]), []);
 
 echo "gemini setlist\n";
 require_once __DIR__ . '/../lib/gemini_setlist.php';
+if (!function_exists('h')) { function h(?string $s): string { return htmlspecialchars((string)$s, ENT_QUOTES); } }
+if (!function_exists('youtube_icon')) { function youtube_icon(): string { return '<svg></svg>'; } }
+$ytA = 'https://www.youtube.com/watch?v=aaaaaaaaaaa';
+$ytB = 'https://youtu.be/bbbbbbbbbbb';
+check('動画のアイコン: 無ければ出さない', band_youtube_html([], [], 'k', 'c', 'L'), '');
+check('動画のアイコン: 1本ならリンク', str_starts_with(band_youtube_html([$ytA], [], 'k', 'c', 'L'), '<a '), true);
+$ytHtml = band_youtube_html([$ytA, $ytB], ['aaaaaaaaaaa' => 'A <1>'], 'k', 'c', 'L');
+check('動画のアイコン: 2本なら一覧のポップアップ', [str_contains($ytHtml, 'data-tip-from="#yt-k"'), str_contains($ytHtml, 'A &lt;1&gt;'), str_contains($ytHtml, '2本目')], [true, true, true]);
+check('分けた動画の指示: 1本目は続きの指示なし', [str_contains(gemini_setlist_part_prompt(1, 2), '冒頭'), str_contains(gemini_setlist_part_prompt(1, 2), '途中で切れて')], [false, true]);
+check('分けた動画の指示: 最後は切れた曲の指示なし', [str_contains(gemini_setlist_part_prompt(2, 2), '冒頭'), str_contains(gemini_setlist_part_prompt(2, 2), '途中で切れて')], [true, false]);
 check('曲: 演奏順・わからない曲は曲名を空で残す', gemini_setlist_songs(['songs' => [
     ['title' => ' 花束 ', 'artist' => 'サンボマスター', 'confident' => true, 'candidates' => [['title' => 'x', 'artist' => '']]],
     ['title' => '', 'artist' => '', 'confident' => false, 'candidates' => []],
