@@ -416,7 +416,7 @@ render_header($filterLabel ?? ($q !== '' ? "「{$q}」の検索結果" : '検索
             <!-- 見出しを押すと、メンバー・期間の絞り込み（lib/stats_filter.php）が開く。絞り込み中は開いたまま・マークを塗る -->
             <details class="band-filter"<?= $bandFiltered ? ' open' : '' ?>>
                 <summary><h2 class="section-title">バンド<span class="muted"><?= $bandTotal ?></span>
-                    <?= icon('filter_alt', 'band-filter__mark' . ($bandFiltered ? ' icon--fill is-on' : '')) ?></h2></summary>
+                    <span class="btn btn--ghost btn--sm band-filter__mark<?= $bandFiltered ? ' is-on' : '' ?>" aria-label="絞り込み"><?= icon('filter_alt', 'icon--fill') ?></span></h2></summary>
                 <?= stats_filter_form($sf, ['q' => $q], '', '期間') ?>
             </details>
             <?php if (!$bands): ?><p class="muted">該当するバンドはありません</p><?php else: ?>

@@ -1126,7 +1126,8 @@ input[type="checkbox"], .field input[type="radio"] { accent-color: var(--accent)
 .suggest-pop .live-pop__item.is-active { background: var(--accent-soft); }
 .suggest-pop mark { background: none; color: var(--accent); font-weight: 700; }
 .suggest-pop__kana { color: var(--muted); font-size: var(--fs-xs); } /* ふりがなで当たった候補の右に出すふりがな */
-.suggest-pop__kind { margin-left: auto; min-width: 10em; } /* 種類は右端の同じ位置に揃える（最長の「スペシャルコンテンツ」の幅） */
+.suggest-pop__kind { margin-left: auto; margin-right: 8px; text-align: right; } /* 種類は右端に寄せる（PC は端から少し離す） */
+@media (max-width: 760px) { .suggest-pop__kind { margin-right: -4px; } } /* スマホは画面が狭いので端に寄せる */
 .merge-note { font-weight: 400; white-space: pre-line; }
 .merge-note:empty { display: none; }
 .merge-note--warn { color: var(--warn); }
@@ -1638,7 +1639,6 @@ body.is-row-dragging, body.is-row-dragging * { cursor: grabbing !important; user
 .band-filter > summary { list-style: none; cursor: pointer; }
 .band-filter > summary::-webkit-details-marker { display: none; }
 .band-filter > summary .section-title { display: flex; align-items: center; gap: 6px; }
-.band-filter__mark { color: var(--muted); }
 .band-filter__mark.is-on { color: var(--accent); }
 .band-filter > .stats-filter { position: static; }
 .stats-filter__extra select { padding: 7px 10px; border-radius: var(--r-full); border: 1px solid var(--border); background: var(--surface); color: var(--text); font-weight: 700; }
@@ -3079,10 +3079,10 @@ button.ttb-m { cursor: pointer; text-decoration: underline dotted; }
          ・閉じる側（下の指定）: overflow を 0s で即 clip に（縮み始めから切る）
          ・開く側（[open] の指定）: overflow を .25s 遅らせて visible に（伸び終わってから戻す）
          allow-discrete = 「途中の値が無いプロパティ（clip / visible）も transition の対象にする」指定 */
-    :is(.edit-box, .songs-add, .prac-new, .tab-new-wrap, .tab-new__more, .partner, .sheet-ed__json, .togglecard, .venue-edit)::details-content {
+    :is(.edit-box, .songs-add, .prac-new, .tab-new-wrap, .tab-new__more, .partner, .sheet-ed__json, .togglecard, .venue-edit, .band-filter)::details-content {
       block-size: 0; overflow: clip;
       transition: block-size var(--t-base) var(--ease-out), content-visibility var(--t-base) allow-discrete, overflow 0s allow-discrete; }
-    :is(.edit-box, .songs-add, .prac-new, .tab-new-wrap, .tab-new__more, .partner, .sheet-ed__json, .togglecard, .venue-edit)[open]::details-content {
+    :is(.edit-box, .songs-add, .prac-new, .tab-new-wrap, .tab-new__more, .partner, .sheet-ed__json, .togglecard, .venue-edit, .band-filter)[open]::details-content {
       block-size: auto; overflow: visible;
       transition: block-size var(--t-base) var(--ease-out), content-visibility var(--t-base) allow-discrete, overflow 0s var(--t-base) allow-discrete; }
     /* #c12 や #categories のリンクで来て、JS が自動で開くときだけ動きを止める（app.js の openWithoutAnimation が .is-instant を付ける）。
