@@ -491,7 +491,7 @@ function setupTrackSearch() {
       play.dataset.previewUrl = track.preview_url; // 候補はまだ保存前なので、URL を直接渡す
       play.setAttribute('aria-label', track.title + 'を試聴');
       play.title = '30秒試聴';
-      play.append(iconEl('play_arrow'));
+      play.append(Object.assign(iconEl('play_arrow'), { className: 'icon icon--fill' }));
       row.append(play);
     }
     return row;
@@ -776,7 +776,7 @@ function setupLyricsSearch() {
           play.dataset.previewUrl = track.preview_url;
           play.setAttribute('aria-label', track.title + 'を試聴');
           play.title = '30秒試聴';
-          play.append(iconEl('play_arrow'));
+          play.append(Object.assign(iconEl('play_arrow'), { className: 'icon icon--fill' }));
           actions.append(play);
         } else {
           // 試聴が無い曲は、Google で聴き比べられるように（試聴ボタンと同じ見た目。編集中のページが移らないよう別タブ）
