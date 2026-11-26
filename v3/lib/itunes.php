@@ -160,6 +160,27 @@ function itunes_artist_albums(string $artistName): ?array
 }
 
 /**
+ * アーティストの曲名（人気順・重複なし・200曲まで）。動画から曲を検出するとき、Gemini に選ばせる一覧（lib/gemini_setlist.php）
+ *   「(Live ver.)」などの付け足しは消して、同じ曲を1つにする。見つからない・通信失敗なら []
+ */
+function itunes_artist_titles(string $artistName): array
+{
+    $key = album_match_key($artistName);
+    $titles = [];
+    $results = itunes_request('search', ['term' => $artistName, 'attribute' => 'artistTerm', 'entity' => 'song', 'country' => 'jp', 'lang' => 'ja_jp', 'limit' => 200]);
+    foreach ($results ?? [] as $r) {
+        if (!is_array($r) || album_match_key((string)($r['artistName'] ?? '')) !== $key) {
+            continue; // 名前が一部だけ合う別のアーティスト
+        }
+        $t = trim((string)preg_replace('/\s*[(（\[][^)）\]]*(ver|version|remaster|live|mix|edit|inst|バージョン)[^)）\]]*[)）\]]/iu', '', (string)($r['trackName'] ?? '')));
+        if ($t !== '') {
+            $titles[$t] = true;
+        }
+    }
+    return array_map('strval', array_keys($titles)); // 「1980」などの曲名は配列のキーで数値になるので戻す
+}
+
+/**
  * アルバムID（collectionId）から1件を取り直す（保存するとき用）。
  * 見つからない・通信失敗なら null。
  */

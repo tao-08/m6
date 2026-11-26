@@ -160,8 +160,11 @@ function ytdlp_audio(string $videoId, ?string &$why = null, ?array $section = nu
         return [$code === 0 && is_file($file) && filesize($file) > 0 ? $file : null, "exit $code: $log"];
     };
     [$file, $why] = $fetch();
-    // 落とせず、前に取り替えてから時間がたっていれば、最新版に取り替えて1回だけやり直す
-    if ($file === null && PHP_OS_FAMILY !== 'Windows' && time() - (int)@filemtime($bin) > YTDLP_UPDATE_GAP && ytdlp_install()) {
+    // 落とせなければ1回だけやり直す（YouTube はたまに 403 を返す）。前に取り替えてから時間がたっていれば、先に最新版に取り替える
+    if ($file === null) {
+        if (PHP_OS_FAMILY !== 'Windows' && time() - (int)@filemtime($bin) > YTDLP_UPDATE_GAP) {
+            ytdlp_install();
+        }
         [$file, $why] = $fetch();
     }
     if ($file !== null && $section !== null) {

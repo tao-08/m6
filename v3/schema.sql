@@ -422,6 +422,7 @@ CREATE TABLE song (
     artist_id    INT UNSIGNED     NULL,                -- その曲のアーティスト（NULL = バンドと同じ）
     track_source VARCHAR(10) CHARACTER SET ascii COLLATE ascii_bin NULL,
     track_id     VARCHAR(40) CHARACTER SET ascii COLLATE ascii_bin NULL,
+    video_start  SMALLINT UNSIGNED NULL,                -- バンドの YouTube で始まる秒（YouTube から曲を検出。migrations/145）
     PRIMARY KEY (song_id),
     UNIQUE KEY uq_song_track (band_id, track_no),
     UNIQUE KEY uq_song_band (song_id, band_id),

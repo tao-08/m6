@@ -2,7 +2,7 @@
 /**
  * api_lyrics_search.php — Geminiで歌詞フレーズから曲を検索（管理者限定）。
  *
- * Geminiで最大10曲を推定し、iTunesの曲情報と照合する。
+ * Geminiで最大10曲を推定し、iTunes（無ければ Spotify）の曲情報と照合する。
  * 歌詞本文は回答・表示・保存しない。試聴URLの有無は候補の採否に影響させない。
  */
 declare(strict_types=1);
@@ -108,62 +108,90 @@ foreach (array_slice($decoded['candidates'], 0, 10) as $candidate) {
     $isRequested = $requestedArtist === '' || $similarity($artist, $requestedArtist) >= 65;
     if (!$isRequested && strtolower(trim((string)($candidate['confidence'] ?? ''))) !== 'high') continue;
     $searchArtist = $isRequested && $requestedArtist !== '' ? $requestedArtist : $artist;
-    $found = itunes_search_tracks($title . ' ' . $searchArtist, 10);
-    if (!is_array($found) || $found === []) continue;
+    $term = $title . ' ' . $searchArtist;
+    $matched = false;
 
-    foreach ($found as $track) {
-        if (!is_array($track)) continue;
-        $titleScore = $similarity(song_title_core((string)$track['title'], (string)$track['artist_name']), song_title_core($title, $artist));
-        $artistNames = array_map('trim', explode(', ', (string)$track['artist_name']));
-        $artistScore = 0;
-        foreach ($artistNames as $actualArtist) {
-            $artistScore = max($artistScore, $similarity($actualArtist, $searchArtist));
-        }
-        // タイトルとアーティストの両方が一定以上一致する候補に限定する。
-        if ($titleScore < 75 || $artistScore < 65) continue;
+    // iTunes（試聴あり）で見つからなければ Spotify で探す。Apple Music だけで配信の曲は iTunes Search API に出ない。
+    foreach (['itunes', 'spotify'] as $source) {
+        if ($matched) break;
+        $found = $source === 'itunes' ? itunes_search_tracks($term, 10) : (spotify_enabled() ? spotify_search_tracks($term, 10) : null);
 
-        $id = (string)$track['track_id'];
-        if ($id === '') continue;
-
-        // 同じアーティスト・同じ曲の別バージョンは1候補にまとめる。
-        // 既存の曲管理と同じ song_title_key() を使い、Remaster / Live / Acoustic 等の注記を除いて判定する。
-        $mainArtist = trim(explode(', ', (string)$track['artist_name'])[0]);
-        $groupKey = album_match_key($mainArtist) . "\0" . song_title_key((string)$track['title'], $mainArtist);
-        if ($groupKey === "\0" || str_ends_with($groupKey, "\0")) continue;
-
-        $versionRank = song_version_rank(
-            (string)($track['album_title'] ?? ''),
-            (string)$track['title'],
-            $mainArtist
-        );
-        $releaseYear = isset($track['release_year']) ? (int)$track['release_year'] : 9999;
-        $score = (int)round($titleScore * 0.65 + $artistScore * 0.35);
-        $artistMatch = 0;
-        if ($requestedArtist !== '') {
+        foreach (is_array($found) ? $found : [] as $track) {
+            if (!is_array($track)) continue;
+            $titleScore = $similarity(song_title_core((string)$track['title'], (string)$track['artist_name']), song_title_core($title, $artist));
+            $artistNames = array_map('trim', explode(', ', (string)$track['artist_name']));
+            $artistScore = 0;
             foreach ($artistNames as $actualArtist) {
-                if ($similarity($actualArtist, $requestedArtist) >= 65) $artistMatch = 1;
+                $artistScore = max($artistScore, $similarity($actualArtist, $searchArtist));
+            }
+            // タイトルとアーティストの両方が一定以上一致する候補に限定する。
+            if ($titleScore < 75 || $artistScore < 65) continue;
+
+            $id = (string)$track['track_id'];
+            if ($id === '') continue;
+            $matched = true;
+
+            // 同じアーティスト・同じ曲の別バージョンは1候補にまとめる。
+            // 既存の曲管理と同じ song_title_key() を使い、Remaster / Live / Acoustic 等の注記を除いて判定する。
+            $mainArtist = trim(explode(', ', (string)$track['artist_name'])[0]);
+            $groupKey = album_match_key($mainArtist) . "\0" . song_title_key((string)$track['title'], $mainArtist);
+            if ($groupKey === "\0" || str_ends_with($groupKey, "\0")) continue;
+
+            $versionRank = song_version_rank(
+                (string)($track['album_title'] ?? ''),
+                (string)$track['title'],
+                $mainArtist
+            );
+            $releaseYear = isset($track['release_year']) ? (int)$track['release_year'] : 9999;
+            $score = (int)round($titleScore * 0.65 + $artistScore * 0.35);
+            $artistMatch = 0;
+            if ($requestedArtist !== '') {
+                foreach ($artistNames as $actualArtist) {
+                    if ($similarity($actualArtist, $requestedArtist) >= 65) $artistMatch = 1;
+                }
+            }
+            $row = [
+                'score' => $score,
+                'artist_match' => $artistMatch,
+                'version_rank' => $versionRank,
+                'release_year' => $releaseYear,
+                'track' => [
+                    'source' => $source,
+                    'track_id' => $id,
+                    'title' => $track['title'],
+                    'artist_name' => $track['artist_name'],
+                    'album_title' => $track['album_title'],
+                    'artwork_url' => $track['artwork_url'],
+                    'preview_url' => $track['preview_url'] ?? null,
+                ],
+            ];
+            // 同一曲が複数のアルバム版で見つかった場合は、オリジナル盤に近い版を優先する。
+            // 同順位なら発売年が古いもの、さらに同じなら照合スコアが高いものを残す。
+            if (!isset($seen[$groupKey])
+                || [$versionRank, $releaseYear, -$score] < [$seen[$groupKey]['version_rank'], $seen[$groupKey]['release_year'], -$seen[$groupKey]['score']]) {
+                $seen[$groupKey] = $row;
             }
         }
-        $row = [
-            'score' => $score,
-            'artist_match' => $artistMatch,
-            'version_rank' => $versionRank,
-            'release_year' => $releaseYear,
+    }
+
+    // どちらにも無くても high なら、曲名とアーティストだけの候補にする。
+    if (!$matched && strtolower(trim((string)($candidate['confidence'] ?? ''))) === 'high') {
+        $groupKey = album_match_key($artist) . "\0" . song_title_key($title, $artist);
+        $seen[$groupKey] ??= [
+            'score' => 100,
+            'artist_match' => $requestedArtist !== '' && $similarity($artist, $requestedArtist) >= 65 ? 1 : 0,
+            'version_rank' => 0,
+            'release_year' => 9999,
             'track' => [
-                'track_id' => $id,
-                'title' => $track['title'],
-                'artist_name' => $track['artist_name'],
-                'album_title' => $track['album_title'],
-                'artwork_url' => $track['artwork_url'],
-                'preview_url' => $track['preview_url'] ?? null,
+                'source' => null,
+                'track_id' => null,
+                'title' => $title,
+                'artist_name' => $artist,
+                'album_title' => trim((string)($candidate['album'] ?? '')),
+                'artwork_url' => null,
+                'preview_url' => null,
             ],
         ];
-        // 同一曲が複数のアルバム版で見つかった場合は、オリジナル盤に近い版を優先する。
-        // 同順位なら発売年が古いもの、さらに同じなら照合スコアが高いものを残す。
-        if (!isset($seen[$groupKey])
-            || [$versionRank, $releaseYear, -$score] < [$seen[$groupKey]['version_rank'], $seen[$groupKey]['release_year'], -$seen[$groupKey]['score']]) {
-            $seen[$groupKey] = $row;
-        }
     }
 }
 $ranked = array_values($seen);

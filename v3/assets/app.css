@@ -1782,6 +1782,7 @@ code { background: var(--surface-2); padding: 1px 6px; border-radius: var(--r-sm
   border: 0; border-radius: var(--r-sm); background: transparent; color: var(--text); text-align: left; cursor: pointer; font: inherit; }
 .track-option:hover, .track-option:focus-visible { background: var(--surface); }
 .track-option img { width: 40px; height: 40px; border-radius: var(--r-xs); object-fit: cover; }
+.track-option > .icon { display: grid; place-items: center; width: 40px; height: 40px; border-radius: var(--r-xs); background: var(--surface-2); color: var(--muted); }
 .track-option__title { font-weight: 700; font-size: var(--fs-md); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .track-option__sub { color: var(--muted); font-size: var(--fs-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .track-results__msg { color: var(--muted); font-size: var(--fs-sm); padding: 6px 8px; }

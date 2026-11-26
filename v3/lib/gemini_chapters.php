@@ -121,8 +121,9 @@ function gemini_error_text(?array $res): string
  * 音源を Files API に上げて $prompt で聴かせ、$schema の形の JSON を返す（終わったら音源は消す）。失敗したら文字列（画面に出せる理由）
  *   自動チャプター（上）と、動画から曲を検出（lib/gemini_setlist.php）で使う
  *   $thinkingBudget: 考える量（トークン）の上限。null なら上限なし。考えた分は出力と同じ単価で請求される
+ *   $flex: Flex（半額。返事まで1〜15分。混んでいると 429 / 503 で断られるので、待って3回までやり直す）。画面を待たせない所だけで使う
  */
-function gemini_audio_json(string $path, string $mime, string $key, string $model, string $prompt, array $schema, ?int $thinkingBudget = null): array|string
+function gemini_audio_json(string $path, string $mime, string $key, string $model, string $prompt, array $schema, ?int $thinkingBudget = null, bool $flex = false): array|string
 {
     $size = (int)filesize($path);
     $fail = 'Gemini API で解析できませんでした';
@@ -182,12 +183,18 @@ function gemini_audio_json(string $path, string $mime, string $key, string $mode
                 'responseMimeType' => 'application/json',
                 'responseSchema' => $schema,
             ] + ($thinkingBudget === null ? [] : ['thinkingConfig' => ['thinkingBudget' => $thinkingBudget]]),
-        ];
-        $res = gemini_call(GEMINI_API . '/v1beta/models/' . rawurlencode($model) . ':generateContent', $key, [
-            CURLOPT_POST => true,
-            CURLOPT_POSTFIELDS => json_encode($req, JSON_UNESCAPED_UNICODE),
-            CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
-        ], 280);
+        ] + ($flex ? ['service_tier' => 'flex'] : []);
+        foreach ($flex ? [30, 60, 120, 0] : [0] as $wait) {
+            $res = gemini_call(GEMINI_API . '/v1beta/models/' . rawurlencode($model) . ':generateContent', $key, [
+                CURLOPT_POST => true,
+                CURLOPT_POSTFIELDS => json_encode($req, JSON_UNESCAPED_UNICODE),
+                CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+            ], $flex ? 660 : 280); // Flex は最大 600 秒待つ
+            if (!$res || !in_array($res[0], [429, 503], true) || $wait === 0) {
+                break;
+            }
+            sleep($wait); // Flex が混んでいる
+        }
         if (!$res || $res[0] !== 200) {
             gemini_why('generate HTTP ' . ($res[0] ?? 0) . ' ' . gemini_error_text($res) . ' state=' . ($file['state'] ?? '?'));
             return ($res[0] ?? 0) === 429 ? $limit : $fail;

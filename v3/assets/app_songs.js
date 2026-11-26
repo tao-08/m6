@@ -68,6 +68,21 @@ function setupSongs() {
       const pos = c.querySelector('[data-song-pos]');
       if (pos) pos.value = String(i);
     });
+    // ↻（1曲だけ検出し直す）の区間: 自分の秒〜次の曲の秒。自分の秒が無ければ、前の曲の秒〜次の曲の秒の最後の曲（data-tail）。
+    //   どちらも決まらなければ出さない。秒は data-video-start（空 = わからない）
+    const live = cards().filter((c) => !c.classList.contains('is-deleted'));
+    const secs = live.map((c) => { const v = c.querySelector('[data-video-start]')?.value ?? ''; return v === '' ? null : Number(v); });
+    live.forEach((c, i) => {
+      const retry = c.querySelector('[data-detect-retry]');
+      if (!retry) return;
+      const prev = secs.slice(0, i).filter((s) => s !== null).pop() ?? null;
+      const next = secs.slice(i + 1).find((s) => s !== null) ?? null;
+      const from = secs[i] ?? (next === null ? null : prev);
+      retry.hidden = from === null;
+      retry.dataset.from = from ?? '';
+      retry.dataset.to = next ?? '';
+      retry.dataset.tail = secs[i] === null ? '1' : '';
+    });
   };
   renumber();
 
@@ -533,6 +548,7 @@ function setupTrackSearch() {
       body.append('band_id', document.querySelector('[data-detect-player]')?.dataset.band || '');
       body.append('from', retry.dataset.from);
       body.append('to', retry.dataset.to);
+      body.append('tail', retry.dataset.tail);
       retry.disabled = true;
       message(results, '解析しています');
       try {
@@ -677,10 +693,13 @@ function setupLyricsSearch() {
       const rows = data.tracks.slice(0, 10).map((track) => {
         const row = document.createElement('div');
         row.className = 'track-option';
-        const img = document.createElement('img');
-        img.src = track.artwork_url || '';
-        img.alt = '';
-        img.loading = 'lazy';
+        let img = iconEl('music_note'); // iTunes に無い曲はジャケット無し
+        if (track.artwork_url) {
+          img = document.createElement('img');
+          img.src = track.artwork_url;
+          img.alt = '';
+          img.loading = 'lazy';
+        }
         const text = document.createElement('span');
         const title = document.createElement('div');
         title.className = 'track-option__title';
@@ -695,7 +714,7 @@ function setupLyricsSearch() {
           const play = document.createElement('button');
           play.type = 'button';
           play.className = 'track-option__play';
-          play.dataset.preview = 'itunes:' + track.track_id;
+          play.dataset.preview = track.source + ':' + track.track_id;
           play.dataset.previewUrl = track.preview_url;
           play.setAttribute('aria-label', track.title + 'を試聴');
           play.title = '30秒試聴';
@@ -710,12 +729,12 @@ function setupLyricsSearch() {
           card.querySelector('[name$="[title]"]').value = track.title;
           const artist = card.querySelector('[data-song-artist]');
           if (artist && !artist.readOnly) artist.value = track.artist_name.split(', ')[0];
-          setTrack(card, {
-            key: 'itunes:' + track.track_id,
+          setTrack(card, track.track_id ? {
+            key: track.source + ':' + track.track_id,
             title: track.title,
             artist_name: track.artist_name,
             artwork_url: track.artwork_url,
-          });
+          } : null);
           closeResults(results);
         });
         actions.append(pick);

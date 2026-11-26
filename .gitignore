@@ -9,3 +9,6 @@ src/assets/documents
 
 # graphify の出力（再生成できる）
 **/graphify-out/
+
+# 手元で「YouTube から曲を検出」を動かしたときの途中経過（lib/ytdlp.php の ytdlp_dir）
+.abbey-ytdlp/

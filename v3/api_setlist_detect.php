@@ -5,10 +5,13 @@
  * =====================================================================
  *  songs_edit.php の「YouTube から曲を検出」（assets/setlist_detect.js）が fetch() で呼ぶ。
  *  リクエスト（POST）: band_id
- *  バンドの YouTube（限定公開も）から音声を落とし（lib/ytdlp.php）、Gemini が聴き終わるまで待つ（1〜2分）。
- *  曲名・候補（自信が低い曲だけ）・始まる時刻をセッションに置く → 画面が songs_edit?from_detect=1 で確認画面を開く
- *  レスポンス（JSON）: {"count": 見つかった曲数}
- *  1曲だけ検出し直す（確認画面の ↻）: from, to（秒）も送ると、その区間だけ落として聴かせ、{"candidates": [{title, artist}]} を返す
+ *  すぐ {"state": "running"} を返し、裏でバンドの YouTube（限定公開も）から音声を落とし（lib/ytdlp.php）、
+ *  Gemini（Flex で半額。数分〜15分）が聴き終わるまで待つ。途中経過は setlist_job_*（lib/gemini_setlist.php）
+ *  status=1: 途中経過を見る。{"state": "running"} / 終わっていれば曲名・候補・始まる時刻をセッションに置いて {"state": "done"}
+ *    → 画面が songs_edit?from_detect=1 で確認画面を開く
+ *  終わったら、押した人の端末すべてにプッシュ通知を送る（lib/push.php。画面を閉じていても気づけるように）
+ *  1曲だけ検出し直す（↻）: from, to（秒）も送ると、その区間だけ落として聴かせ、{"candidates": [{title, artist}]} を返す
+ *    tail=1: 区間の最後の曲を答えさせる（その曲の秒がわからず、前の曲の始まりから聴かせるとき）
  *  エラー: {"error": "..."}（400 / 401 / 403 / 404 / 502 / 503）
  * =====================================================================
  */
@@ -18,15 +21,16 @@ require_once __DIR__ . '/lib/api.php';
 require_once __DIR__ . '/lib/youtube.php';
 require_once __DIR__ . '/lib/ytdlp.php';
 require_once __DIR__ . '/lib/gemini_setlist.php';
+require_once __DIR__ . '/lib/push.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
-api_user('is_admin', '管理者のみ使えます'); // 送るたびに Gemini の料金がかかるので管理者だけ
+$user = api_user('is_admin', '管理者のみ使えます'); // 送るたびに Gemini の料金がかかるので管理者だけ
 
 $cfg = gemini_setlist_config() ?? fail(503, '曲の検出は使えません');
 $bandId = (int)($_POST['band_id'] ?? 0);
-// コピー元のアーティスト（オムニバスのバンドは持たないので NULL）。わからない曲が残ったとき、Gemini に伝えてもう一度聴かせる
-$st = db()->prepare('SELECT b.youtube_url, IF(b.is_omnibus = 1, NULL, a.name) AS artist FROM band b LEFT JOIN artist a ON a.artist_id = b.artist_id WHERE b.band_id = ?');
+// コピー元のアーティスト（オムニバスのバンドは持たないので NULL）。iTunes の曲名一覧を Gemini に渡して選ばせる（lib/gemini_setlist.php）
+$st = db()->prepare('SELECT b.name, b.youtube_url, IF(b.is_omnibus = 1, NULL, a.name) AS artist FROM band b LEFT JOIN artist a ON a.artist_id = b.artist_id WHERE b.band_id = ?');
 $st->execute([$bandId]);
 $band = $st->fetch() ?: fail(404, 'バンドが見つかりません');
 $videoId = youtube_video_id((string)$band['youtube_url']) ?? fail(400, 'YouTube のリンクがありません');
@@ -38,13 +42,28 @@ if (isset($_POST['from'])) {
     $section = [$from, $to > $from ? min($to, $from + 900) : $from + 420]; // 最後の曲は次の曲が無いので7分。長すぎる区間は15分で切る
 }
 
+// 途中経過を見る（終わっていればセッションに置いて、途中経過は消す）
+if (!empty($_POST['status'])) {
+    $job = setlist_job_get($bandId) ?? fail(404, '解析していません');
+    if ($job['state'] === 'running') {
+        api_ok(['state' => 'running']);
+    }
+    setlist_job_put($bandId, null);
+    if ($job['state'] !== 'done') {
+        fail(502, (string)($job['error'] ?? '解析に失敗しました'));
+    }
+    $_SESSION['setlist_detect'][$bandId] = $job['songs'];
+    api_ok(['state' => 'done']);
+}
+
 session_write_close(); // 長く待つので、ほかの画面を待たせない
 @set_time_limit(0);
 $why = null;
-$audio = ytdlp_audio($videoId, $why, $section) ?? fail(502, 'YouTube から音声を取得できませんでした / ' . $why); // 管理者だけの画面なので理由も出す
-if ($section !== null) {
+
+if ($section !== null) { // ↻ はその場で待つ（1曲なので約20秒）
+    $audio = ytdlp_audio($videoId, $why, $section) ?? fail(502, 'YouTube から音声を取得できませんでした / ' . $why); // 管理者だけの画面なので理由も出す
     try {
-        $cands = gemini_setlist_one($audio, 'audio/aac', $cfg);
+        $cands = gemini_setlist_one($audio, 'audio/aac', $cfg, !empty($_POST['tail']));
     } finally {
         @unlink($audio);
     }
@@ -56,17 +75,56 @@ if ($section !== null) {
     }
     api_ok(['candidates' => $cands]);
 }
+if ((setlist_job_get($bandId)['state'] ?? '') === 'running') {
+    api_ok(['state' => 'running']); // もう裏で解析している（二重に払わない）
+}
+setlist_job_put($bandId, ['state' => 'running', 'at' => time()]);
+
+// 画面には先に返して、接続を切る。このあとの処理は裏で続く（画面を閉じても止まらない）
+ignore_user_abort(true);
+$body = json_encode(['state' => 'running']);
+header('Content-Length: ' . strlen($body));
+header('Connection: close');
+echo $body;
+if (function_exists('fastcgi_finish_request')) {
+    fastcgi_finish_request();
+} elseif (function_exists('litespeed_finish_request')) {
+    litespeed_finish_request();
+} else {
+    while (ob_get_level() > 0) {
+        ob_end_flush();
+    }
+    flush();
+}
+
 try {
-    $songs = gemini_setlist($audio, 'audio/aac', $cfg, $band['artist']); // m4a（AAC）をそのまま聴かせる
-} finally {
-    @unlink($audio);
+    $audio = ytdlp_audio($videoId, $why);
+    if ($audio === null) {
+        $job = ['state' => 'error', 'error' => 'YouTube から音声を取得できませんでした / ' . $why]; // 管理者だけの画面なので理由も出す
+    } else {
+        try {
+            $songs = gemini_setlist($audio, 'audio/aac', $cfg, $band['artist']); // m4a（AAC）をそのまま聴かせる
+        } finally {
+            @unlink($audio);
+        }
+        $job = match (true) {
+            is_string($songs) => ['state' => 'error', 'error' => $songs . ' / ' . gemini_why()],
+            !array_filter(array_column($songs, 'title'), 'strlen') => ['state' => 'error', 'error' => '曲が見つかりませんでした'], // 確認画面を開いても意味がない
+            default => ['state' => 'done', 'songs' => $songs],
+        };
+    }
+} catch (Throwable $e) {
+    error_log('setlist detect: ' . $e->getMessage());
+    $job = ['state' => 'error', 'error' => '解析に失敗しました'];
 }
-if (is_string($songs)) {
-    fail(502, $songs . " / " . gemini_why()); // 管理者だけの画面なので、直せるように理由も出す
-}
-if (!array_filter(array_column($songs, 'title'), 'strlen')) { // 曲名が1つも無ければ、確認画面を開いても意味がない
-    fail(404, '曲が見つかりませんでした');
-}
-session_start(); // 曲名と候補を確認画面に渡すため、もう一度開く
-$_SESSION['setlist_detect'][$bandId] = $songs;
-api_ok(['count' => count($songs)]);
+setlist_job_put($bandId, $job);
+
+// 押した人に知らせる（アプリ通知の設定によらず、端末があれば送る。押した本人が待っている結果なので）
+$subs = db()->prepare('SELECT subscription_id, endpoint, p256dh, auth FROM push_subscription WHERE user_id = ?');
+$subs->execute([$user['user_id']]);
+push_send($subs->fetchAll(), [
+    'title' => $job['state'] === 'done' ? '曲の検出が終わりました' : '曲の検出に失敗しました',
+    'body' => $band['name'],
+    'url' => 'songs_edit?band=' . $bandId, // 開くと途中経過を見に行き、確認画面へ進む（data-pending）
+    'tag' => 'setlist-detect-' . $bandId,
+]);

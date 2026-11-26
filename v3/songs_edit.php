@@ -85,7 +85,7 @@ $fromSheet = is_post() && ($_POST['from_sheet'] ?? '') === '1';
 $sheetTitles = [];
 $detectCandidates = []; // 動画から曲を検出したとき、自信が低い曲の候補（from_detect）
 $detectStarts = [];     // 同じく、曲が始まる秒（null = 不明）
-$detectVideo = null;    // 同じく、確認しながら流すバンドの YouTube の動画 ID
+$detectVideo = null;    // 曲の場面（video_start）があるとき、確認しながら流すバンドの YouTube の動画 ID（管理者だけ）
 $sheetTracks = []; // 曲名と同じ順の、シートで紐付けたサブスクの曲 [source, track_id]（無い・形がおかしい = null）
 if ($fromSheet) {
     verify_csrf();
@@ -154,6 +154,7 @@ if (is_post() && !$fromSheet) {
             'is_se' => $isSe,
             'artist' => $artist,
             'track' => $track,
+            'video_start' => is_int($vs = filter_var($in['vs'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0, 'max_range' => 65535]])) ? $vs : null,
             'k' => (int)$k,
             // 画面の上から何番目か（≡ で並び替えた順。JS が振り直す）。無い・数字でなければ songs[番号] の番号順
             'pos' => is_int($pos = filter_var($in['pos'] ?? null, FILTER_VALIDATE_INT)) ? $pos : (int)$k,
@@ -235,7 +236,7 @@ if (is_post() && !$fromSheet) {
 /* =====================================================================
  *  表示用データ
  * ===================================================================== */
-$st = $pdo->prepare('SELECT s.song_id, s.track_no, s.title, s.is_se, a.name AS artist_name,
+$st = $pdo->prepare('SELECT s.song_id, s.track_no, s.title, s.is_se, s.video_start, a.name AS artist_name,
         s.track_source, s.track_id, t.title AS track_title, t.artist_name AS track_artist, t.artwork_url
     FROM song s
     LEFT JOIN artist a ON a.artist_id = s.artist_id
@@ -264,7 +265,6 @@ if (!is_post() && ($_GET['from_detect'] ?? '') === '1' && is_admin()) {
     $sheetTitles = array_column($detected, 'title');
     $detectCandidates = array_column($detected, 'candidates'); // 自信が低い曲の候補（曲の順。無い曲は []）
     $detectStarts = array_map(static fn($s) => $s['start'] ?? null, $detected);
-    $detectVideo = youtube_video_id((string)$band['youtube_url']);
     if (!$sheetTitles) {
         redirect($backUrl);
     }
@@ -285,7 +285,7 @@ foreach ($st as $r) {
 
 // 空のカードは最初は出さない。最後に1枚だけ <template>（画面に出ない・送信もされない）の中に作っておき、
 // 「＋ 曲を追加」を押したら JS がコピーして並べる（assets/app_songs.js の setupSongs）
-$emptyCard = ['song_id' => null, 'track_no' => 0, 'title' => '', 'is_se' => 0, 'artist_name' => null,
+$emptyCard = ['song_id' => null, 'track_no' => 0, 'title' => '', 'is_se' => 0, 'video_start' => null, 'artist_name' => null,
     'track_source' => null, 'track_id' => null, 'track_title' => null, 'track_artist' => null, 'artwork_url' => null];
 $droppedTitles = []; // セッティングシートに無い、登録済みの曲（保存すると消える）
 if ($fromSheet) {
@@ -340,8 +340,7 @@ if ($fromSheet) {
             }
         }
         $card['candidates'] = $detectCandidates[$i] ?? [];
-        $card['start'] = $detectVideo !== null ? ($detectStarts[$i] ?? null) : null;
-        $card['end'] = $detectStarts[$i + 1] ?? null; // 1曲だけ検出し直すときに落とす区間の終わり（次の曲の始まり）
+        $card['video_start'] = $detectStarts[$i] ?? $card['video_start'];
         $card['track_no'] = $i + 1;
         $cards[] = $card;
     }
@@ -353,6 +352,11 @@ if ($fromSheet) {
 } else {
     $cards = $songs;
 }
+// 曲の場面（video_start）が1曲でもあれば、管理者には動画と ▶・↻ を出す
+if (is_admin() && array_filter(array_column($cards, 'video_start'), static fn($v) => $v !== null)) {
+    $detectVideo = youtube_video_id((string)$band['youtube_url']);
+}
+$canRetry = $detectVideo !== null && gemini_setlist_config() !== null; // ↻（1曲だけ検出し直す）
 // 最後の1枚は「＋ 曲を追加」用のひな形（<template> の中に入れる）
 $cards[] = $emptyCard + ['template' => true];
 $cards[] = array_merge($emptyCard, ['template' => true, 'is_se' => 1, 'template_se' => true]); // 「＋ SE を追加」用
@@ -388,8 +392,9 @@ render_header('セットリストを編集', 'lives');
     <p><a class="btn btn--ghost btn--sm" href="songs_edit?band=<?= $bandId ?>&amp;from_yt=1">YouTube の概要欄から取り込む</a></p>
 <?php endif; ?>
 <?php if (!$fromSheet && is_admin() && gemini_setlist_config() !== null && youtube_video_id((string)$band['youtube_url']) !== null): // 送るたびに Gemini の料金がかかるので管理者だけ ?>
-    <!-- 押すと assets/setlist_detect.js が api_setlist_detect に送る（サーバーがバンドの YouTube から音声を落として Gemini に聴かせる）。終わったらこのページの確認画面（from_detect=1）へ -->
-    <div data-setlist-detect data-band="<?= $bandId ?>" data-done-url="songs_edit?band=<?= $bandId ?>&amp;from_detect=1">
+    <!-- 押すと assets/setlist_detect.js が api_setlist_detect に送る（サーバーが裏でバンドの YouTube から音声を落として Gemini に聴かせる）。終わったらこのページの確認画面（from_detect=1）へ -->
+    <!-- data-pending: 裏で解析中（または終わったが、まだ見ていない）。開いたらすぐ途中経過を見に行く -->
+    <div data-setlist-detect data-band="<?= $bandId ?>" data-done-url="songs_edit?band=<?= $bandId ?>&amp;from_detect=1"<?= setlist_job_get($bandId) !== null ? ' data-pending' : '' ?>>
         <p><button type="button" class="btn btn--ghost btn--sm"><?= icon('smart_display') ?> YouTube から曲を検出</button></p>
         <p class="muted small" data-setlist-status role="status" hidden></p>
     </div>
@@ -414,7 +419,7 @@ render_header('セットリストを編集', 'lives');
     <?php endif; ?>
     <button type="button" class="btn btn--ghost btn--sm song-add-se" data-add-song-se>＋ SE を追加</button>
     <?php if ($detectVideo !== null): ?>
-    <!-- 動画から曲を検出したとき: バンドの動画を上に残し、曲ごとの ▶（data-seek）でその場面へ飛ぶ（assets/app_songs.js の setupDetectPlayer） -->
+    <!-- 曲の場面があるとき: バンドの動画を上に残し、曲ごとの ▶（data-seek）でその場面へ飛ぶ（assets/app_songs.js の setupDetectPlayer） -->
     <div class="detect-player" data-detect-player data-band="<?= $bandId ?>"><iframe src="https://www.youtube.com/embed/<?= h($detectVideo) ?>?enablejsapi=1&amp;playsinline=1&amp;rel=0" title="<?= h($band['name']) ?>" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe></div>
     <?php endif; ?>
     <datalist id="artists"><?php foreach ($artistNames as $n): ?><option value="<?= h($n) ?>"><?php endforeach; ?></datalist>
@@ -447,8 +452,10 @@ render_header('セットリストを編集', 'lives');
                     <?php else: ?><input name="<?= $base ?>[artist]" value="<?= h($artist) ?>" maxlength="100" data-suggest-list="artists" autocomplete="off" placeholder="アーティスト" class="song-card__artist" aria-label="アーティスト" data-song-artist<?= $omnibus ? '' : ' readonly' ?>><?php endif; ?>
                     <!-- data-artist: 紐付けた曲のアーティスト（先頭の1人）。「オムニバス」にチェックを付けたとき、連携済みの曲はこの名前をアーティスト欄に残す（assets/app_songs.js の setupSongs） -->
                     <input type="hidden" name="<?= $base ?>[track]" value="<?= h($trackKey) ?>" data-track-key data-artist="<?= h($trackKey === '' ? '' : explode(', ', (string)$song['track_artist'])[0]) ?>">
-                    <?php if (isset($song['start'])): ?><button type="button" class="btn btn--ghost btn--sm song-seek-btn" data-seek="<?= (int)$song['start'] ?>" aria-label="動画のこの曲の場面を再生" title="動画のこの曲の場面を再生"><?= icon('smart_display') ?><?= sprintf('%d:%02d', intdiv($song['start'], 60), $song['start'] % 60) ?></button>
-                    <button type="button" class="btn btn--ghost btn--sm" data-detect-retry data-from="<?= (int)$song['start'] ?>" data-to="<?= (int)($song['end'] ?? 0) ?>" aria-label="この曲をもう一度検出" title="この曲をもう一度検出"><?= icon('refresh') ?></button><?php endif; ?>
+                    <!-- data-video-start: バンドの YouTube で始まる秒（空 = わからない）。保存で残す。↻ の区間は assets/app_songs.js の renumber が前後の曲から決める -->
+                    <input type="hidden" name="<?= $base ?>[vs]" value="<?= $song['video_start'] ?? '' ?>" data-video-start>
+                    <?php if ($detectVideo !== null && $song['video_start'] !== null): $vs = (int)$song['video_start']; ?><button type="button" class="btn btn--ghost btn--sm song-seek-btn" data-seek="<?= $vs ?>" aria-label="動画のこの曲の場面を再生" title="動画のこの曲の場面を再生"><?= icon('smart_display') ?><?= sprintf('%d:%02d', intdiv($vs, 60), $vs % 60) ?></button><?php endif; ?>
+                    <?php if ($canRetry): ?><button type="button" class="btn btn--ghost btn--sm" data-detect-retry hidden aria-label="この曲をもう一度検出" title="この曲をもう一度検出"><?= icon('refresh') ?></button><?php endif; ?>
                     <button type="button" class="btn btn--ghost btn--sm song-search-btn" data-track-search aria-label="曲を探す" title="曲を探す"><?= icon('search') ?></button>
                     <input type="hidden" name="<?= $base ?>[id]" value="<?= $isNew ? '' : (int)$song['song_id'] ?>">
                     <!-- 🗑 保存済みの曲: 押すと「削除する」印（隠し項目を 1）が付いてカードが薄くなる。もう一度押すと取り消し。消えるのは保存したとき

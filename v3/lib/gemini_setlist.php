@@ -7,6 +7,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/gemini_chapters.php'; // gemini_audio_json（音源を上げて聴かせる）
+require_once __DIR__ . '/albums.php'; // itunes_artist_titles（コピー元の曲名一覧）
 
 const GEMINI_SETLIST_PROMPT = <<<'TXT'
 添付は学生バンドのライブ音源で、既存の曲のカバー演奏です。演奏された曲を、演奏した順にすべて挙げてください。
@@ -111,6 +112,20 @@ function gemini_setlist_hint_prompt(string $artist): string
 - このバンドは「{$artist}」のコピーバンドとして登録されている。{$artist} の曲を中心に考える";
 }
 
+/**
+ * コピー元の曲名一覧を渡して、その中から選ばせる指示。
+ *   2026-11 に6本で試し、一覧なし（2回聴かせる）より「自信ありで外れ」が7曲→3曲に減った。1回で済むので料金も半分
+ * @param string[] $titles itunes_artist_titles
+ */
+function gemini_setlist_list_prompt(string $artist, array $titles): string
+{
+    return GEMINI_SETLIST_PROMPT . "
+- このバンドは「{$artist}」のコピーバンド。曲名は下の一覧から選ぶ。一覧に無い曲だと確信できるときだけ、一覧外の曲名を答える
+
+【{$artist} の曲一覧】
+" . implode("\n", $titles);
+}
+
 /** Gemini に返させる JSON の形 */
 function gemini_setlist_schema(): array
 {
@@ -132,20 +147,27 @@ function gemini_setlist_schema(): array
 
 /**
  * @param string $mime 音声の種類（YouTube の m4a は audio/aac）
- * @param ?string $artist コピー元のアーティスト（オムニバス・不明なら null）。わからない曲が残ったら、これを伝えてもう一度聴かせる
+ * @param ?string $artist コピー元のアーティスト（オムニバス・不明なら null）。iTunes に曲があれば一覧から選ばせる（1回）。
+ *   無ければ一覧なしで聴かせ、わからない曲が残ったらアーティストだけ伝えてもう一度聴かせる
  * @return array|string gemini_setlist_songs の形。失敗したら画面に出せる理由
  */
 function gemini_setlist(string $path, string $mime, array $cfg, ?string $artist = null): array|string
 {
     $schema = gemini_setlist_schema();
-    $json = gemini_audio_json($path, $mime, $cfg['key'], $cfg['model'], GEMINI_SETLIST_PROMPT, $schema, GEMINI_SETLIST_THINKING);
+    $artist = trim((string)$artist);
+    $titles = $artist !== '' ? itunes_artist_titles($artist) : [];
+    // Flex（半額）で聴かせる。返事まで数分かかるので、api_setlist_detect は画面に先に返してから裏で待つ
+    $prompt = $titles ? gemini_setlist_list_prompt($artist, $titles) : GEMINI_SETLIST_PROMPT;
+    $json = gemini_audio_json($path, $mime, $cfg['key'], $cfg['model'], $prompt, $schema, GEMINI_SETLIST_THINKING, true);
     if (is_string($json)) {
         return $json;
     }
     $songs = gemini_setlist_songs($json);
-    $artist = trim((string)$artist);
+    if ($titles) {
+        return $songs; // 一覧を渡したら、2回目はしない（試験で2回目と同じ以上に当たった）
+    }
     if ($artist !== '' && gemini_setlist_has_unknown($songs)) {
-        $again = gemini_audio_json($path, $mime, $cfg['key'], $cfg['model'], gemini_setlist_hint_prompt($artist), $schema, GEMINI_SETLIST_THINKING);
+        $again = gemini_audio_json($path, $mime, $cfg['key'], $cfg['model'], gemini_setlist_hint_prompt($artist), $schema, GEMINI_SETLIST_THINKING, true);
         if (is_array($again)) { // 2回目が失敗したら、1回目の結果だけ返す
             $songs = gemini_setlist_fill($songs, gemini_setlist_songs($again));
         }
@@ -169,11 +191,58 @@ function gemini_setlist_one_candidates(array $json): array
     return $one[0]['candidates'];
 }
 
-/** @return array|string 候補 [{title, artist}]。失敗したら画面に出せる理由 */
-function gemini_setlist_one(string $path, string $mime, array $cfg): array|string
+/** 曲の始まりがわからず、前の曲から聴かせるとき（区間に2曲以上入る）に足す指示 */
+const GEMINI_SETLIST_TAIL_PROMPT = '
+- ただし、この音源には曲が2曲以上入っている。答えるのは最後に演奏される曲だけ';
+
+/**
+ * @param bool $tail 区間の最後の曲を答えさせる（GEMINI_SETLIST_TAIL_PROMPT）
+ * @return array|string 候補 [{title, artist}]。失敗したら画面に出せる理由
+ */
+function gemini_setlist_one(string $path, string $mime, array $cfg, bool $tail = false): array|string
 {
     $pair = ['type' => 'OBJECT', 'properties' => ['title' => ['type' => 'STRING'], 'artist' => ['type' => 'STRING']], 'required' => ['title', 'artist']];
     $schema = ['type' => 'OBJECT', 'properties' => ['candidates' => ['type' => 'ARRAY', 'items' => $pair]], 'required' => ['candidates']];
-    $json = gemini_audio_json($path, $mime, $cfg['key'], $cfg['model'], GEMINI_SETLIST_ONE_PROMPT, $schema, GEMINI_SETLIST_THINKING);
+    $json = gemini_audio_json($path, $mime, $cfg['key'], $cfg['model'], GEMINI_SETLIST_ONE_PROMPT . ($tail ? GEMINI_SETLIST_TAIL_PROMPT : ''), $schema, GEMINI_SETLIST_THINKING);
     return is_string($json) ? $json : gemini_setlist_one_candidates($json);
+}
+
+/*
+ * 全体の検出の途中経過（Flex は返事まで数分かかるので、api_setlist_detect は画面に先に返して裏で待つ）
+ *   バンドごとに1ファイル（公開フォルダの外 .abbey-ytdlp）。{state: running|done|error, at: 始めた時刻, songs|error}
+ *   画面（assets/setlist_detect.js）が数秒ごとに見に来て、done なら確認画面へ。画面を閉じても裏の処理は続く
+ */
+require_once __DIR__ . '/ytdlp.php'; // ytdlp_dir
+
+/** 裏で待つ上限。これを過ぎても running のままなら、裏の処理が止まったとみなす（Flex は最大 10 分 × 2 回 + やり直しの待ち） */
+const SETLIST_JOB_STALE = 1800;
+
+function setlist_job_path(int $bandId): string
+{
+    return ytdlp_dir() . '/detect-' . $bandId . '.json';
+}
+
+/** 途中経過。無ければ null。止まった running は error にして返す */
+function setlist_job_get(int $bandId): ?array
+{
+    $job = json_decode((string)@file_get_contents(setlist_job_path($bandId)), true);
+    if (!is_array($job)) {
+        return null;
+    }
+    if (($job['state'] ?? '') === 'running' && time() - (int)($job['at'] ?? 0) > SETLIST_JOB_STALE) {
+        return ['state' => 'error', 'error' => '解析が止まりました。もう一度試してください'];
+    }
+    return $job;
+}
+
+function setlist_job_put(int $bandId, ?array $job): void
+{
+    if ($job === null) {
+        @unlink(setlist_job_path($bandId));
+        return;
+    }
+    if (!is_dir(ytdlp_dir())) {
+        @mkdir(ytdlp_dir(), 0700, true);
+    }
+    file_put_contents(setlist_job_path($bandId), json_encode($job, JSON_UNESCAPED_UNICODE), LOCK_EX);
 }

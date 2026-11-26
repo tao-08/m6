@@ -28,28 +28,46 @@ const KANA_AI_BATCH = 150;
 
 // 管理者: ふりがなが空のアーティストに、AI でまとめてふりがなを付ける（lib/claude.php の claude_artist_kana）
 //   演奏0回で一覧に出ないアーティストも対象（artist.php?id= では名前の下に出るので）
-//   AI の読み間違いはあるので、付けた名前を画面に出して、違ったら artist.php で直してもらう
-if (is_admin() && is_post() && ($_POST['action'] ?? '') === 'kana_ai') {
-    verify_csrf();
-    $names = array_slice(artists_needing_kana($pdo), 0, KANA_AI_BATCH);
-    try {
-        $kana = claude_artist_kana($names);
-        $st = $pdo->prepare('UPDATE artist SET name_kana = ? WHERE name = ? AND name_kana IS NULL');
-        $done = [];
-        foreach ($kana as $name => $k) {
-            $st->execute([$k, $name]);
-            $done[] = "{$name}（{$k}）";
+//   AI の読み間違いがそのまま DB に入らないよう、結果はセッションに置いて確認・修正の表を出し、「保存」で初めて書き込む
+//   （POST の結果をそのまま描くと、再読み込みでもう一度 AI を呼んでしまうのでリダイレクトする）
+if (is_admin() && is_post()) {
+    $action = $_POST['action'] ?? '';
+    if ($action === 'kana_ai') {
+        verify_csrf();
+        $names = array_slice(artists_needing_kana($pdo), 0, KANA_AI_BATCH);
+        try {
+            $kana = claude_artist_kana($names);
+            if ($kana) {
+                $_SESSION['kana_review'] = $kana; // 名前 => 読み
+            } else {
+                flash('ふりがなを付けられませんでした', 'error');
+            }
+        } catch (RuntimeException $e) {
+            flash($e->getMessage(), 'error');
         }
-        $left = count(artists_needing_kana($pdo));
-        flash($done
-            ? count($done) . '件にふりがなを付けました。違っていたらアーティストのページで直してください: ' . implode('、', $done)
-              . ($left > 0 ? "（まだ {$left} 件残っています。もう一度押してください）" : '')
-            : 'ふりがなを付けられませんでした', $done ? 'success' : 'error');
-    } catch (RuntimeException $e) {
-        flash($e->getMessage(), 'error');
+        redirect('artists');
     }
-    redirect('artists');
+    if ($action === 'kana_save' || $action === 'kana_cancel') {
+        verify_csrf();
+        $saved = 0;
+        if ($action === 'kana_save') {
+            // 名前はセッションに置いたもの（AI に送ったもの）だけ受け付ける。空欄は保存しない
+            $st = $pdo->prepare('UPDATE artist SET name_kana = ? WHERE name = ? AND name_kana IS NULL');
+            foreach (array_keys($_SESSION['kana_review'] ?? []) as $i => $name) {
+                $k = trim((string)($_POST['kana'][$i] ?? ''));
+                if ($k !== '' && mb_strlen($k) <= 100) {
+                    $st->execute([$k, (string)$name]); // 「1975」のような名前はキーが int になる
+                    $saved += $st->rowCount();
+                }
+            }
+            $left = count(artists_needing_kana($pdo));
+            flash("{$saved}件のふりがなを保存しました" . ($left > 0 ? "。残り {$left} 件" : ''));
+        }
+        unset($_SESSION['kana_review']);
+        redirect('artists');
+    }
 }
+$kanaReview = is_admin() ? ($_SESSION['kana_review'] ?? []) : [];
 // ボタンを出すかどうか（ふりがなが空のアーティストがいるときだけ）
 $kanaMissing = is_admin() && claude_enabled()
     ? count(artists_needing_kana($pdo))
@@ -166,7 +184,18 @@ render_header('アーティスト', 'artists');
     <dl class="stats"><div><dt>総演奏アーティスト数</dt><dd><?= count($rows) ?></dd></div></dl>
 </section>
 
-<?php if ($kanaMissing > 0): ?>
+<?php if ($kanaReview): ?>
+    <form method="post" class="card form-grid">
+        <?= csrf_field() ?>
+        <?php $ki = 0; foreach ($kanaReview as $name => $k): ?>
+            <label class="field"><span><?= h((string)$name) ?></span><input name="kana[<?= $ki++ ?>]" value="<?= h($k) ?>" maxlength="100" autocomplete="off"></label>
+        <?php endforeach; ?>
+        <div class="form-actions field--wide">
+            <button class="btn btn--sm" type="submit" name="action" value="kana_save">保存</button>
+            <button class="btn btn--ghost btn--sm" type="submit" name="action" value="kana_cancel" formnovalidate>破棄</button>
+        </div>
+    </form>
+<?php elseif ($kanaMissing > 0): ?>
     <form method="post" class="form-actions" data-confirm="ふりがなが空の <?= $kanaMissing ?> 件のうち、最大 <?= KANA_AI_BATCH ?> 件の名前を AI（Anthropic のサーバー）に送って、ふりがなを付けます。">
         <?= csrf_field() ?><input type="hidden" name="action" value="kana_ai">
         <button class="btn btn--sm" type="submit">ふりがなが空の <?= $kanaMissing ?> 件に AI でふりがなを付ける</button>
