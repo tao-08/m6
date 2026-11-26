@@ -84,6 +84,7 @@ $errors = [];
 $fromSheet = is_post() && ($_POST['from_sheet'] ?? '') === '1';
 $sheetTitles = [];
 $detectCandidates = []; // 動画から曲を検出したとき、自信が低い曲の候補（from_detect）
+$detectShort = false; // 検出した曲がタイムテーブルの曲数より少ない（from_detect）
 $detectStarts = [];     // 同じく、曲が始まる秒（null = 不明）
 $detectVideo = null;    // 曲の場面（video_start）があるとき、確認しながら流すバンドの YouTube の動画 ID（管理者だけ）
 $sheetTracks = []; // 曲名と同じ順の、シートで紐付けたサブスクの曲 [source, track_id]（無い・形がおかしい = null）
@@ -269,6 +270,7 @@ if (!is_post() && ($_GET['from_detect'] ?? '') === '1' && is_admin()) {
     $sheetTitles = array_column($detected, 'title');
     $detectCandidates = array_column($detected, 'candidates'); // 自信が低い曲の候補（曲の順。無い曲は []）
     $detectStarts = array_map(static fn($s) => $s['start'] ?? null, $detected);
+    $detectShort = (int)($band['song_count'] ?? 0) > count($detected); // タイムテーブルの曲数より少ない = 聴き落としかも
     if (!$sheetTitles) {
         redirect($backUrl);
     }
@@ -410,6 +412,9 @@ render_header('セットリストを編集', 'lives');
 <?php endif; ?>
 <?php if ($fromSheet): ?>
     <div class="flash flash--info"><?= icon('description') ?> データベースにはまだ保存されていません。<br><?= icon('search') ?> を押して楽曲情報を登録し、演奏者と担当楽器を確認したら保存してください。</div>
+    <?php if ($detectShort): ?>
+        <div class="flash flash--warn">曲数は<?= (int)$band['song_count'] ?>曲ですが、検出できたのは<?= count($sheetTitles) ?>曲です</div>
+    <?php endif; ?>
     <?php if ($droppedTitles): ?>
         <div class="flash flash--warn">シートに無い登録済みの曲は、保存すると消えます: <?= h(implode('、', $droppedTitles)) ?></div>
     <?php endif; ?>

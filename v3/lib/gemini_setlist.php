@@ -109,7 +109,8 @@ function gemini_setlist_fill(array $first, array $second): array
 function gemini_setlist_hint_prompt(string $artist): string
 {
     return GEMINI_SETLIST_PROMPT . "
-- このバンドは「{$artist}」のコピーバンドとして登録されている。{$artist} の曲を中心に考える";
+- このバンドは「{$artist}」のコピーバンドとして登録されている。{$artist} の曲を中心に考える
+- candidates の上位3曲は {$artist} の曲にする";
 }
 
 /**
@@ -121,6 +122,7 @@ function gemini_setlist_list_prompt(string $artist, array $titles): string
 {
     return GEMINI_SETLIST_PROMPT . "
 - このバンドは「{$artist}」のコピーバンド。曲名は下の一覧から選ぶ。一覧に無い曲だと確信できるときだけ、一覧外の曲名を答える
+- candidates の上位3曲も一覧から選ぶ
 
 【{$artist} の曲一覧】
 " . implode("\n", $titles);
@@ -150,15 +152,19 @@ function gemini_setlist_schema(): array
  * @param bool $flex Flex（半額・遅い）で聴かせるか。false なら Standard（速い・料金は2倍）
  * @param ?string $artist コピー元のアーティスト（オムニバス・不明なら null）。iTunes に曲があれば一覧から選ばせる（1回）。
  *   無ければ一覧なしで聴かせ、わからない曲が残ったらアーティストだけ伝えてもう一度聴かせる
+ * @param ?int $count タイムテーブルの曲数（band.song_count。不明なら null）。伝えて聴き落としを減らす
  * @return array|string gemini_setlist_songs の形。失敗したら画面に出せる理由
  */
-function gemini_setlist(string $path, string $mime, array $cfg, ?string $artist = null, bool $flex = true): array|string
+function gemini_setlist(string $path, string $mime, array $cfg, ?string $artist = null, bool $flex = true, ?int $count = null): array|string
 {
     $schema = gemini_setlist_schema();
+    // shortcut: 曲数を伝えたときの精度は試していない（無い曲を作らないかを10本ほどで試す）
+    $more = $count > 0 ? "
+- タイムテーブルでは{$count}曲。挙げた曲がそれより少なければ、聴き落とした曲がないか確かめる。ただし聴き取れない曲を作らない" : '';
     $artist = trim((string)$artist);
     $titles = $artist !== '' ? itunes_artist_titles($artist) : [];
     // $flex: Flex（半額）で聴かせる。返事まで数分かかるので、api_setlist_detect は画面に先に返してから裏で待つ
-    $prompt = $titles ? gemini_setlist_list_prompt($artist, $titles) : GEMINI_SETLIST_PROMPT;
+    $prompt = ($titles ? gemini_setlist_list_prompt($artist, $titles) : GEMINI_SETLIST_PROMPT) . $more;
     $json = gemini_audio_json($path, $mime, $cfg['key'], $cfg['model'], $prompt, $schema, GEMINI_SETLIST_THINKING, $flex);
     if (is_string($json)) {
         return $json;
@@ -168,7 +174,7 @@ function gemini_setlist(string $path, string $mime, array $cfg, ?string $artist 
         return $songs; // 一覧を渡したら、2回目はしない（試験で2回目と同じ以上に当たった）
     }
     if ($artist !== '' && gemini_setlist_has_unknown($songs)) {
-        $again = gemini_audio_json($path, $mime, $cfg['key'], $cfg['model'], gemini_setlist_hint_prompt($artist), $schema, GEMINI_SETLIST_THINKING, $flex);
+        $again = gemini_audio_json($path, $mime, $cfg['key'], $cfg['model'], gemini_setlist_hint_prompt($artist) . $more, $schema, GEMINI_SETLIST_THINKING, $flex);
         if (is_array($again)) { // 2回目が失敗したら、1回目の結果だけ返す
             $songs = gemini_setlist_fill($songs, gemini_setlist_songs($again));
         }
@@ -200,11 +206,17 @@ const GEMINI_SETLIST_TAIL_PROMPT = '
  * @param bool $tail 区間の最後の曲を答えさせる（GEMINI_SETLIST_TAIL_PROMPT）
  * @return array|string 候補 [{title, artist}]。失敗したら画面に出せる理由
  */
-function gemini_setlist_one(string $path, string $mime, array $cfg, bool $tail = false): array|string
+function gemini_setlist_one(string $path, string $mime, array $cfg, bool $tail = false, ?string $artist = null): array|string
 {
+    // コピー元がわかれば、候補の上位3曲はその曲から選ばせる（伝えないと別のアーティストの曲ばかり挙がった）
+    $artist = trim((string)$artist);
+    $titles = $artist !== '' ? itunes_artist_titles($artist) : [];
+    $hint = $artist === '' ? '' : ($titles
+        ? "\n- このバンドは「{$artist}」のコピーバンド。上位3曲は下の一覧から選ぶ\n\n【{$artist} の曲一覧】\n" . implode("\n", $titles)
+        : "\n- このバンドは「{$artist}」のコピーバンド。上位3曲は {$artist} の曲にする");
     $pair = ['type' => 'OBJECT', 'properties' => ['title' => ['type' => 'STRING'], 'artist' => ['type' => 'STRING']], 'required' => ['title', 'artist']];
     $schema = ['type' => 'OBJECT', 'properties' => ['candidates' => ['type' => 'ARRAY', 'items' => $pair]], 'required' => ['candidates']];
-    $json = gemini_audio_json($path, $mime, $cfg['key'], $cfg['model'], GEMINI_SETLIST_ONE_PROMPT . ($tail ? GEMINI_SETLIST_TAIL_PROMPT : ''), $schema, GEMINI_SETLIST_THINKING);
+    $json = gemini_audio_json($path, $mime, $cfg['key'], $cfg['model'], GEMINI_SETLIST_ONE_PROMPT . ($tail ? GEMINI_SETLIST_TAIL_PROMPT : '') . $hint, $schema, GEMINI_SETLIST_THINKING);
     return is_string($json) ? $json : gemini_setlist_one_candidates($json);
 }
 

@@ -32,9 +32,10 @@ const post = async (extra = {}) => {
   return json;
 };
 
-const watch = async (flex = true) => {
+const watch = async () => {
   lock(true);
-  say(flex ? '解析しています。15分ほどかかることがあります' : '解析しています');
+  say('解析中… ');
+  status.append(Object.assign(document.createElement('a'), { href: 'setlist_jobs', textContent: '曲の検出の状況' }), 'で進捗を確認できます');
   try {
     for (;;) {
       if ((await post({ status: 1 })).state === 'done') break;
@@ -51,7 +52,7 @@ btns.forEach((btn) => btn.addEventListener('click', async () => {
   lock(true);
   try {
     await post({ flex: btn.dataset.flex });
-    watch(btn.dataset.flex === '1');
+    watch();
   } catch (e) {
     say(e.message, e.detail);
     lock(false);

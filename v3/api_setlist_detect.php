@@ -30,7 +30,7 @@ $user = api_user('is_admin', '管理者のみ使えます'); // 送るたびに 
 $cfg = gemini_setlist_config() ?? fail(503, '曲の検出は使えません');
 $bandId = (int)($_POST['band_id'] ?? 0);
 // コピー元のアーティスト（オムニバスのバンドは持たないので NULL）。iTunes の曲名一覧を Gemini に渡して選ばせる（lib/gemini_setlist.php）
-$st = db()->prepare('SELECT b.name, b.youtube_url, IF(b.is_omnibus = 1, NULL, a.name) AS artist FROM band b LEFT JOIN artist a ON a.artist_id = b.artist_id WHERE b.band_id = ?');
+$st = db()->prepare('SELECT b.name, b.youtube_url, b.song_count, IF(b.is_omnibus = 1, NULL, a.name) AS artist FROM band b LEFT JOIN artist a ON a.artist_id = b.artist_id WHERE b.band_id = ?');
 $st->execute([$bandId]);
 $band = $st->fetch() ?: fail(404, 'バンドが見つかりません');
 $videoId = youtube_video_id((string)$band['youtube_url']) ?? fail(400, 'YouTube のリンクがありません');
@@ -58,12 +58,13 @@ if (!empty($_POST['status'])) {
 
 session_write_close(); // 長く待つので、ほかの画面を待たせない
 @set_time_limit(0);
+ignore_user_abort(true); // 画面を閉じても最後まで続ける（↻ も途中で切れると音声の一時ファイルが残る）
 $why = null;
 
 if ($section !== null) { // ↻ はその場で待つ（1曲なので約20秒）
     $audio = ytdlp_audio($videoId, $why, $section) ?? fail(502, 'YouTube から音声を取得できませんでした', ['detail' => (string)$why]); // 管理者だけの画面なので理由も ⓘ に出す
     try {
-        $cands = gemini_setlist_one($audio, 'audio/aac', $cfg, !empty($_POST['tail']));
+        $cands = gemini_setlist_one($audio, 'audio/aac', $cfg, !empty($_POST['tail']), $band['artist']);
     } finally {
         @unlink($audio);
     }
@@ -82,7 +83,6 @@ $flex = ($_POST['flex'] ?? '1') !== '0';
 setlist_job_put($bandId, ['state' => 'running', 'at' => $startedAt = time(), 'flex' => $flex]); // flex は setlist_jobs.php に出す
 
 // 画面には先に返して、接続を切る。このあとの処理は裏で続く（画面を閉じても止まらない）
-ignore_user_abort(true);
 $body = json_encode(['state' => 'running']);
 header('Content-Length: ' . strlen($body));
 header('Connection: close');
@@ -104,7 +104,7 @@ try {
         $job = ['state' => 'error', 'error' => 'YouTube から音声を取得できませんでした', 'detail' => (string)$why]; // 管理者だけの画面なので理由も ⓘ に出す
     } else {
         try {
-            $songs = gemini_setlist($audio, 'audio/aac', $cfg, $band['artist'], $flex); // m4a（AAC）をそのまま聴かせる
+            $songs = gemini_setlist($audio, 'audio/aac', $cfg, $band['artist'], $flex, isset($band['song_count']) ? (int)$band['song_count'] : null); // m4a（AAC）をそのまま聴かせる
         } finally {
             @unlink($audio);
         }
