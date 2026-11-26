@@ -1029,8 +1029,7 @@ check('iCal: 終日の予定と時間指定の予定は、重なっても別々�
 defined('APP_URL') || define('APP_URL', 'https://abbeyroad.online/'); // 本番は config.php が決める
 $evc = ['poll_id' => 7, 'title' => '定例', 'studio_id' => 3, 'studio' => 'スタジオノア 立川店', 'studio_short' => 'ノア', 'room' => 'Aスタ', 'address' => '東京都立川市', 'names' => ['甲', '乙']];
 check('書式: 初期の書式（タイトルはバンド名 略称 部屋。略称を空にしたら略称なし）', [sched_event_text(SCHED_EVENT_DEFAULTS + ['short' => [3 => 'ぼく用']], $evc)['title'], sched_event_text(SCHED_EVENT_DEFAULTS + ['short' => [3 => '']], $evc)['title']], ['定例 ぼく用 Aスタ', '定例 Aスタ']);
-check('書式: 初期の書式の場所・メモ', sched_event_text(SCHED_EVENT_DEFAULTS + ['short' => []], $evc), ['title' => '定例 ノア Aスタ', 'location' => 'スタジオノア 立川店 Aスタ 東京都立川市', 'details' => "メンバー: 甲・乙
-" . APP_URL . 'sched_poll?id=7']);
+check('書式: 初期の書式の場所・メモ', sched_event_text(SCHED_EVENT_DEFAULTS + ['short' => []], $evc), ['title' => '定例 ノア Aスタ', 'location' => 'スタジオノア 立川店 Aスタ 東京都立川市', 'details' => "メンバー: 甲・乙\n" . APP_URL . 'sched_poll?id=7']);
 check('書式: {スタジオ略称} は 自分で決めたもの（空なら空）→ スタジオ情報の略称 → スタジオ名 の順', [
     sched_event_text(['title' => '{スタジオ略称}', 'location' => '', 'details' => '', 'short' => [3 => 'ぼく用']], $evc)['title'],
     sched_event_text(['title' => '{スタジオ略称}', 'location' => '', 'details' => '', 'short' => [3 => '']], $evc)['title'],
