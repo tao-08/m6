@@ -86,7 +86,7 @@ function setupSongs() {
     live.forEach((c, i) => {
       const retry = c.querySelector('[data-detect-retry]');
       if (!retry) return;
-      const prev = secs.slice(0, i).filter((s) => s !== null).pop() ?? null;
+      const prev = secs.slice(0, i).filter((s) => s !== null).pop() ?? 0; // 前に秒のわかる曲が無い（最初の SE など）: 動画の頭から
       const next = secs.slice(i + 1).find((s) => s !== null) ?? null;
       const from = secs[i] ?? (next === null ? null : prev);
       retry.hidden = from === null;
@@ -507,7 +507,7 @@ function setupTrackSearch() {
     btn.className = 'btn btn--ghost btn--sm';
     btn.title = '↻ で、もう出た候補も探す';
     btn.append(iconEl('restart_alt'), '出た候補を戻す');
-    btn.addEventListener('click', () => { delete card.dataset.exclude; btn.remove(); });
+    btn.addEventListener('click', () => { delete card.dataset.exclude; delete card.dataset.compared; btn.remove(); });
     return [btn];
   };
 
@@ -591,6 +591,9 @@ function setupTrackSearch() {
       body.append('tail', retry.dataset.tail);
       exclude(card, [card.querySelector('[name$="[title]"]').value.trim()]); // ↻ を押すのは今の曲名が違うとき
       excluded(card).forEach((t) => body.append('exclude[]', t));
+      if (!card.dataset.compared) body.append('compare', '1'); // 試聴との聴き比べは1回目（と「出た候補を戻す」の後）だけ
+      card.dataset.compared = '1';
+      if (card.classList.contains('song-card--se')) body.append('se', '1');
       retry.disabled = true;
       message(results, '解析しています');
       try {

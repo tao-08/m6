@@ -347,6 +347,15 @@ const GEMINI_SETLIST_ONE_PROMPT = <<<'TXT'
 - 特定できなくても、歌詞・曲調・アレンジが近い曲を挙げる
 TXT;
 
+/** SE（演奏ではなく、会場で流す音源）を ↻ で検出し直すとき */
+const GEMINI_SETLIST_ONE_SE_PROMPT = <<<'TXT'
+添付はライブ会場で流れた SE（既存の曲の音源。バンドの演奏ではない）の一部です。前後に MC や演奏が少し入っていることがあります。
+この SE の曲として可能性のある曲を10曲、可能性の高い順に挙げてください。
+
+- 歌詞・メロディ・曲調から曲を特定し、正式な曲名とアーティスト名を答える
+- 特定できなくても、歌詞・曲調が近い曲を挙げる
+TXT;
+
 /** Gemini の返事（1曲だけ） → 候補 [{title, artist}]（可能性の高い順、10曲まで。↻ は音声の料金が同じなので多めに出す） */
 function gemini_setlist_one_candidates(array $json): array
 {
@@ -361,9 +370,11 @@ const GEMINI_SETLIST_TAIL_PROMPT = '
 /**
  * @param bool $tail 区間の最後の曲を答えさせる（GEMINI_SETLIST_TAIL_PROMPT）
  * @param string[] $exclude 候補に出さない曲名（↻ を押すたびに、もう出た候補から外す。MBV「thorn」は何度聴かせても候補に出なかった）
+ * @param bool $compare 候補を試聴と聴き比べて並べ直す（↻ の1回目と「出た候補を戻す」の後だけ。1回 約3円増えるので）。区間の頭が別の曲になる $tail では使わない
+ * @param bool $se SE（GEMINI_SETLIST_ONE_SE_PROMPT）。コピー元の曲とは限らないので $artist は渡さない
  * @return array|string 候補 [{title, artist}]。失敗したら画面に出せる理由
  */
-function gemini_setlist_one(string $path, string $mime, array $cfg, bool $tail = false, ?string $artist = null, array $exclude = []): array|string
+function gemini_setlist_one(string $path, string $mime, array $cfg, bool $tail = false, ?string $artist = null, array $exclude = [], bool $compare = false, bool $se = false): array|string
 {
     $ex = [];
     foreach ($exclude as $t) {
@@ -380,13 +391,31 @@ function gemini_setlist_one(string $path, string $mime, array $cfg, bool $tail =
     $pair = ['type' => 'OBJECT', 'properties' => ['title' => ['type' => 'STRING'], 'artist' => ['type' => 'STRING']], 'required' => ['title', 'artist']];
     $schema = ['type' => 'OBJECT', 'properties' => ['candidates' => ['type' => 'ARRAY', 'items' => $pair]], 'required' => ['candidates']];
     $not = $ex ? "\n- 次の曲ではないとわかっている。挙げない: " . implode(' / ', $ex) : '';
-    $json = gemini_audio_json($path, $mime, $cfg['key'], $cfg['model'], GEMINI_SETLIST_ONE_PROMPT . ($tail ? GEMINI_SETLIST_TAIL_PROMPT : '') . $not . $hint, $schema, GEMINI_SETLIST_THINKING);
+    $json = gemini_audio_json($path, $mime, $cfg['key'], $cfg['model'], ($se ? GEMINI_SETLIST_ONE_SE_PROMPT : GEMINI_SETLIST_ONE_PROMPT) . ($tail ? GEMINI_SETLIST_TAIL_PROMPT : '') . $not . $hint, $schema, GEMINI_SETLIST_THINKING);
     if (is_string($json)) {
         return $json;
     }
     // 言っても挙げることがあるので、10曲に絞る前に外す
     $json['candidates'] = array_values(array_filter((array)($json['candidates'] ?? []), static fn($c) => !is_array($c) || $keep((string)($c['title'] ?? ''))));
-    return gemini_setlist_one_candidates($json);
+    $cands = gemini_setlist_one_candidates($json);
+    if (!$compare || $artist === '') {
+        return $cands;
+    }
+    // 試聴がある上位3曲とライブ（区間の頭から）を聴き比べ、合った曲を1番目にする。比べられない・どれでもなければそのまま
+    $previews = [];
+    foreach (itunes_artist_tracks($artist) as $t => $url) {
+        if ($url !== '') {
+            $previews[gemini_setlist_norm((string)$t)] ??= $url;
+        }
+    }
+    $idx = array_slice(array_keys(array_filter($cands, static fn($c) => isset($previews[gemini_setlist_norm($c['title'])]))), 0, 3);
+    $match = count($idx) >= 2 ? gemini_setlist_compare($path, 0, null, array_map(static fn($i) => $previews[gemini_setlist_norm($cands[$i]['title'])], $idx), $cfg, false) : null;
+    if ($match !== null) {
+        $hit = $cands[$idx[$match]];
+        unset($cands[$idx[$match]]);
+        array_unshift($cands, $hit);
+    }
+    return array_values($cands);
 }
 
 /*

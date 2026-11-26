@@ -10,7 +10,7 @@
  *  status=1: 途中経過を見る。{"state": "running"} / 終わっていれば曲名・候補・始まる時刻をセッションに置いて {"state": "done"}
  *    → 画面が songs_edit?from_detect=1 で確認画面を開く
  *  終わったら、押した人の端末すべてにプッシュ通知を送る（lib/push.php。画面を閉じていても気づけるように）
- *  1曲だけ検出し直す（↻）: from, to（秒）も送ると、その区間だけ落として聴かせ、{"candidates": [{title, artist}]} を返す。exclude[] の曲名は候補に出さない
+ *  1曲だけ検出し直す（↻）: from, to（秒）も送ると、その区間だけ落として聴かせ、{"candidates": [{title, artist}]} を返す。exclude[] の曲名は候補に出さない。compare=1 で試聴と聴き比べる。se=1 は SE
  *    tail=1: 区間の最後の曲を答えさせる（その曲の秒がわからず、前の曲の始まりから聴かせるとき）
  *  エラー: {"error": "...", "detail": "理由（あれば。画面の ⓘ に出す）"}（400 / 401 / 403 / 404 / 502 / 503）
  * =====================================================================
@@ -65,8 +65,10 @@ if ($section !== null) { // ↻ はその場で待つ（1曲なので約20秒）
     $audio = ytdlp_audio($videoId, $why, $section) ?? fail(502, 'YouTube から音声を取得できませんでした', ['detail' => (string)$why]); // 管理者だけの画面なので理由も ⓘ に出す
     // exclude[]: もう候補に出た曲名。押すたびに、まだ出ていない曲から探す
     $exclude = array_slice(array_map(static fn($t) => mb_substr(trim((string)$t), 0, 100), array_filter((array)($_POST['exclude'] ?? []), 'is_string')), 0, 60);
+    $se = !empty($_POST['se']);
     try {
-        $cands = gemini_setlist_one($audio, 'audio/aac', $cfg, !empty($_POST['tail']), $band['artist'], $exclude);
+        // compare=1: ↻ の1回目（と「出た候補を戻す」の後）だけ、候補を試聴と聴き比べる。se=1: SE はコピー元の曲とは限らない
+        $cands = gemini_setlist_one($audio, 'audio/aac', $cfg, !empty($_POST['tail']), $se ? null : $band['artist'], $exclude, !empty($_POST['compare']) && empty($_POST['tail']) && !$se, $se);
     } finally {
         @unlink($audio);
     }
