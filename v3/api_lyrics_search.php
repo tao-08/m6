@@ -12,6 +12,8 @@ require_once __DIR__ . '/lib/tracks.php';
 require_once __DIR__ . '/lib/gemini_chapters.php'; // gemini_call
 
 header('Content-Type: application/json; charset=utf-8');
+// Gemini（Google 検索つきで約15秒・やり直し込みで最大120秒）＋候補10曲の iTunes / Spotify 検索で、サーバーの既定 30 秒を超えると空の応答で切れる
+@set_time_limit(180);
 api_user('is_admin', '歌詞検索は管理者のみ利用できます');
 
 $body = api_body();

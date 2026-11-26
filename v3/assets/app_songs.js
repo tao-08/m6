@@ -771,7 +771,11 @@ function setupLyricsSearch() {
         body: JSON.stringify({ q, artist }),
       });
       // 空の応答（サーバーが途中で切った）でも JSON の読み取りエラーをそのまま出さない
-      const data = await res.json().catch(() => ({ error: '歌詞検索に失敗しました。もう一度検索してください', detail: `HTTP ${res.status}` }));
+      const raw = await res.text();
+      let data;
+      try { data = JSON.parse(raw); } catch { // ⓘ に応答の頭を出す（空なら時間切れなどでサーバーが途中で切れた）
+        data = { error: '歌詞検索に失敗しました。もう一度検索してください', detail: `HTTP ${res.status} ${raw.trim() ? raw.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 200) : '（空の応答）'}` };
+      }
       if (!res.ok || data.error) throw Object.assign(new Error(data.error || '歌詞検索に失敗しました'), { detail: data.detail });
       if (!Array.isArray(data.tracks) || data.tracks.length === 0) {
         showMessage(results, '曲の候補が見つかりませんでした。別の歌詞で検索してください');
