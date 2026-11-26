@@ -513,7 +513,8 @@ function setupTrackSearch() {
 
   // 動画から曲を検出して自信が低かった曲（data-candidates）: Gemini の候補を1曲ずつ探し、最初に当たった曲を候補欄に並べる
   //   探しても見つからない候補は、曲名だけのボタンにする（押すと曲名を入れる）
-  const showCandidates = async (card) => {
+  //   afterRetry: ↻ で出した候補のときだけ「出た候補を戻す」を付ける（最初の検出の候補では押す意味がない）
+  const showCandidates = async (card, afterRetry = false) => {
     const results = card.querySelector('[data-track-results]');
     let cands = [];
     try { cands = JSON.parse(card.dataset.candidates); } catch { return; }
@@ -554,7 +555,7 @@ function setupTrackSearch() {
       row.append(btn);
       rows.push(row);
     }
-    results.replaceChildren(...rows, ...resetButton(card));
+    results.replaceChildren(...rows, ...(afterRetry ? resetButton(card) : []));
     openResults(results);
   };
 
@@ -597,7 +598,7 @@ function setupTrackSearch() {
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw Object.assign(new Error(data.error || '解析に失敗しました'), { detail: data.detail });
         card.dataset.candidates = JSON.stringify(data.candidates);
-        await showCandidates(card);
+        await showCandidates(card, true);
       } catch (err) {
         message(results, err.message, err.detail);
         results.append(...resetButton(card)); // 「ほかの候補が見つかりませんでした」のとき
