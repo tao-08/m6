@@ -309,6 +309,10 @@ function album_title_words(string $title): array
 function album_match_key(string $name): string
 {
     $name = mb_strtolower(mb_convert_kana($name, 'asKV'));
+    // アクセントを外す（Spotify は Måneskin、iTunes の曲は Maneskin）。intl が無いサーバーでも動くよう表で置き換える
+    static $plain = null;
+    $plain ??= array_combine(mb_str_split('àáâãäåāèéêëēìíîïīòóôõöøōùúûüūýÿñçšžłđ'), str_split('aaaaaaaeeeeeiiiiiooooooouuuuuyyncszld'));
+    $name = strtr($name, $plain);
     // \p{P} = 句読点・記号、\p{S} = その他の記号。空白と一緒に全部消す
     return preg_replace('/[\s\p{P}\p{S}]+/u', '', $name);
 }

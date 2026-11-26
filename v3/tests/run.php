@@ -215,6 +215,8 @@ check('全部かっこなら元のまま', album_title_core('(What)'), '(What)')
 check('大文字小文字と記号の違い', album_match_key("FLIPPER'S GUITAR"), album_match_key("Flipper's Guitar"));
 check('全角英数字の違い', album_match_key('ＡＢＣ　１２３'), album_match_key('abc 123'));
 check('別の名前は別', album_match_key('くるり') === album_match_key('ゆず'), false);
+check('アクセントの違い', [album_match_key('Måneskin'), album_match_key('BEYONCÉ')], ['maneskin', 'beyonce']);
+check('濁点は消さない', album_match_key('が') === album_match_key('か'), false);
 
 echo "album matching\n";
 // 通信はしない。検索結果・アーティストのアルバム一覧を配列で作って、選び方だけ確かめる
