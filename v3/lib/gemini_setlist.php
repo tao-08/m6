@@ -67,7 +67,8 @@ function gemini_setlist_songs(array $json): array
         }
         $title = $clean($s['title'] ?? '', 100);
         $ms = is_string($s['start'] ?? null) ? gemini_chapter_ms($s['start']) : null;
-        $songs[] = ['title' => $title !== '' ? $title : ($cands[0]['title'] ?? ''), 'start' => $ms === null ? null : intdiv($ms, 1000), 'candidates' => $cands];
+        $songs[] = ['title' => $title !== '' ? $title : ($cands[0]['title'] ?? ''), 'start' => $ms === null ? null : intdiv($ms, 1000), 'candidates' => $cands,
+            'artist' => $clean($s['artist'] ?? '', 100)]; // 自信ありの曲も、念のため試聴できるよう候補を1曲出すのに使う（songs_edit.php）
     }
     return $songs;
 }

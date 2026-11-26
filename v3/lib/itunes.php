@@ -167,14 +167,30 @@ function itunes_artist_titles(string $artistName): array
 {
     $key = album_match_key($artistName);
     $titles = [];
-    $results = itunes_request('search', ['term' => $artistName, 'attribute' => 'artistTerm', 'entity' => 'song', 'country' => 'jp', 'lang' => 'ja_jp', 'limit' => 200]);
-    foreach ($results ?? [] as $r) {
-        if (!is_array($r) || album_match_key((string)($r['artistName'] ?? '')) !== $key) {
-            continue; // 名前が一部だけ合う別のアーティスト
+    // 日本のストアに無い洋楽がある（Pavement など）。1曲も無ければアメリカのストアで探す
+    foreach (['jp' => ['lang' => 'ja_jp'], 'us' => []] as $country => $opt) {
+        $results = array_filter(itunes_request('search', ['term' => $artistName, 'attribute' => 'artistTerm', 'entity' => 'song', 'country' => $country, 'limit' => 200] + $opt) ?? [], 'is_array');
+        $names = array_map(static fn($r) => (string)($r['artistName'] ?? ''), $results);
+        $want = in_array($key, array_map('album_match_key', $names), true) ? $key : '';
+        if ($want === '' && $names) {
+            // 日本のストアはカタカナ名のことがある（NUMBER GIRL → ナンバーガール、Radiohead → レディオヘッド）。結果の過半数を占めるアーティストを本人とみなす
+            $count = array_count_values($names);
+            arsort($count);
+            if (reset($count) * 2 > count($names)) {
+                $want = album_match_key((string)key($count));
+            }
         }
-        $t = trim((string)preg_replace('/\s*[(（\[][^)）\]]*(ver|version|remaster|live|mix|edit|inst|バージョン)[^)）\]]*[)）\]]/iu', '', (string)($r['trackName'] ?? '')));
-        if ($t !== '') {
-            $titles[$t] = true;
+        foreach ($results as $r) {
+            if ($want === '' || album_match_key((string)($r['artistName'] ?? '')) !== $want) {
+                continue; // 名前が一部だけ合う別のアーティスト
+            }
+            $t = trim((string)preg_replace('/\s*[(（\[][^)）\]]*(ver|version|remaster|live|mix|edit|inst|バージョン)[^)）\]]*[)）\]]/iu', '', (string)($r['trackName'] ?? '')));
+            if ($t !== '') {
+                $titles[$t] = true;
+            }
+        }
+        if ($titles) {
+            break;
         }
     }
     return array_map('strval', array_keys($titles)); // 「1980」などの曲名は配列のキーで数値になるので戻す
@@ -258,7 +274,32 @@ function itunes_preview_url(string $url): ?string
 /** 曲を検索する。正常なら曲の配列（0件なら []）、通信失敗なら null */
 function itunes_search_tracks(string $term, int $limit = 10): ?array
 {
-    $results = itunes_request('search', ['term' => $term, 'entity' => 'song', 'country' => 'jp', 'limit' => $limit]);
+    $tracks = itunes_search_tracks_in($term, $limit, 'jp');
+    if ($tracks === null) {
+        return null;
+    }
+    // 日本のストアは洋楽のアーティスト名がカタカナのことがある（Pavement → ペイヴメント）。検索語のアーティスト名と合う曲が無ければ、
+    //   アメリカのストアを見て、そちらで合えばそちらを使う（歌詞検索などがアーティスト名で照合するため）
+    $hasArtist = static function (array $tracks) use ($term): bool {
+        foreach ($tracks as $t) {
+            $artist = trim(explode(', ', $t['artist_name'])[0]);
+            if ($artist !== '' && mb_stripos($term, $artist) !== false) {
+                return true;
+            }
+        }
+        return false;
+    };
+    if ($hasArtist($tracks)) {
+        return $tracks;
+    }
+    $us = itunes_search_tracks_in($term, $limit, 'us');
+    return $us && $hasArtist($us) ? $us : $tracks;
+}
+
+/** itunes_search_tracks の1つの国のストア版 */
+function itunes_search_tracks_in(string $term, int $limit, string $country): ?array
+{
+    $results = itunes_request('search', ['term' => $term, 'entity' => 'song', 'country' => $country, 'limit' => $limit]);
     if ($results === null) {
         return null;
     }
@@ -268,13 +309,20 @@ function itunes_search_tracks(string $term, int $limit = 10): ?array
     )));
 }
 
+/** 曲ID の lookup。日本のストアに無ければアメリカのストア（itunes_search_tracks で見つけた曲を取り直せるように）。通信失敗なら null */
+function itunes_lookup_song(string $trackId): ?array
+{
+    $results = itunes_request('lookup', ['id' => $trackId, 'country' => 'jp']);
+    return $results === [] ? itunes_request('lookup', ['id' => $trackId, 'country' => 'us']) : $results;
+}
+
 /** 曲ID（trackId）から1件を取り直す（保存するとき用）。見つからない・通信失敗なら null */
 function itunes_lookup_track(string $trackId): ?array
 {
     if (!itunes_valid_id($trackId)) {
         return null;
     }
-    foreach (itunes_request('lookup', ['id' => $trackId, 'country' => 'jp']) ?? [] as $r) {
+    foreach (itunes_lookup_song($trackId) ?? [] as $r) {
         $track = is_array($r) ? itunes_normalize_track($r) : null;
         if ($track !== null && $track['track_id'] === $trackId) {
             return $track;

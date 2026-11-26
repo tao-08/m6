@@ -346,7 +346,7 @@ function track_pick_in_results(array $track, array $results): ?array
 {
     $titleKey = song_title_key($track['title'], $track['artist_name']);
     $fullKey = album_match_key($track['title']);
-    $artistKey = album_match_key($track['artist_name']);
+    $artistKey = album_match_key(explode(', ', $track['artist_name'])[0]); // Spotify の「KID FRESINO, NENE」は最初の1人で比べる
     if ($titleKey === '') {
         return null;
     }
@@ -374,7 +374,7 @@ function track_pick_in_results(array $track, array $results): ?array
 function track_preview_find(array $track): string|false|null
 {
     if ($track['source'] === 'itunes') {
-        $results = itunes_request('lookup', ['id' => $track['track_id'], 'country' => 'jp']);
+        $results = itunes_lookup_song((string)$track['track_id']);
         if ($results === null) {
             return false;
         }

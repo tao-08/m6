@@ -268,7 +268,8 @@ if (!is_post() && ($_GET['from_detect'] ?? '') === '1' && is_admin()) {
     $detected = $_SESSION['setlist_detect'][$bandId] ?? [];
     unset($_SESSION['setlist_detect'][$bandId]); // 1回だけ使う
     $sheetTitles = array_column($detected, 'title');
-    $detectCandidates = array_column($detected, 'candidates'); // 自信が低い曲の候補（曲の順。無い曲は []）
+    // 自信が低い曲の候補（曲の順）。自信ありの曲も、念のため試聴できるよう、その曲だけを候補にする
+    $detectCandidates = array_map(static fn($s) => $s['candidates'] ?: ($s['title'] !== '' ? [['title' => $s['title'], 'artist' => $s['artist'] ?? '']] : []), $detected);
     $detectStarts = array_map(static fn($s) => $s['start'] ?? null, $detected);
     $detectShort = (int)($band['song_count'] ?? 0) > count($detected); // タイムテーブルの曲数より少ない = 聴き落としかも
     if (!$sheetTitles) {

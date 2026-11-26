@@ -748,6 +748,17 @@ function setupLyricsSearch() {
           play.title = '30秒試聴';
           play.append(iconEl('play_arrow'));
           actions.append(play);
+        } else {
+          // 試聴が無い曲は、Google で聴き比べられるように（試聴ボタンと同じ見た目。編集中のページが移らないよう別タブ）
+          const find = document.createElement('a');
+          find.className = 'track-option__play';
+          find.href = 'https://www.google.com/search?q=' + encodeURIComponent(`${track.artist_name.split(', ')[0]} ${track.title}`);
+          find.target = '_blank';
+          find.rel = 'noopener';
+          find.setAttribute('aria-label', track.title + 'を Google で検索');
+          find.title = 'Google で検索';
+          find.append(iconEl('search'));
+          actions.append(find);
         }
         const pick = document.createElement('button');
         pick.type = 'button';

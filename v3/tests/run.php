@@ -337,6 +337,8 @@ check('同じアプリは直接', track_listen_url('spotify', $letItBe), 'https:
 $pv = fn(string $id, string $title, ?string $url) => $tr('itunes', $id, $title, 'The Beatles') + ['preview_url' => $url];
 check('試聴: 同じ曲らしいものを選ぶ', track_pick_in_results($letItBe, [$pv('1', 'Let It Be (Live)', 'https://a.apple.com/1.m4a'),
     $pv('2', 'Let It Be (Remastered 2009)', 'https://a.apple.com/2.m4a')])['preview_url'], 'https://a.apple.com/2.m4a');
+check('試聴: Spotify の複数アーティストは最初の1人で比べる', track_pick_in_results($tr('spotify', 'x', 'Arcades (feat. NENE)', 'KID FRESINO, NENE'),
+    [$tr('itunes', '1', 'Arcades (feat. NENE)', 'KID FRESINO')])['track_id'], '1');
 check('試聴は Apple の配信サーバーだけ', itunes_preview_url('https://audio-ssl.itunes.apple.com/itunes-assets/a.m4a'), 'https://audio-ssl.itunes.apple.com/itunes-assets/a.m4a');
 check('試聴: 偽物のホストは通さない', itunes_preview_url('https://apple.com.example.com/a.m4a'), null);
 check('試聴: http は通さない', itunes_preview_url('http://audio-ssl.itunes.apple.com/a.m4a'), null);
@@ -1293,11 +1295,11 @@ check('曲: 演奏順・わからない曲は曲名を空で残す', gemini_setl
     ['title' => ' 花束 ', 'artist' => 'サンボマスター', 'confident' => true, 'candidates' => [['title' => 'x', 'artist' => '']]],
     ['title' => '', 'artist' => '', 'confident' => false, 'candidates' => []],
     ['title' => '花束', 'artist' => 'サンボマスター'],
-]]), [['title' => '花束', 'start' => null, 'candidates' => []], ['title' => '', 'start' => null, 'candidates' => []], ['title' => '花束', 'start' => null, 'candidates' => []]]);
+]]), [['title' => '花束', 'start' => null, 'candidates' => [], 'artist' => 'サンボマスター'], ['title' => '', 'start' => null, 'candidates' => [], 'artist' => ''], ['title' => '花束', 'start' => null, 'candidates' => [], 'artist' => 'サンボマスター']]);
 check('曲: 自信が低い曲は候補を5つまで・曲名が空なら第1候補', gemini_setlist_songs(['songs' => [
     ['title' => '', 'confident' => false, 'candidates' => [['title' => 'A', 'artist' => 'a'], ['title' => ' '], ['title' => 'B'], ['title' => 'C', 'artist' => 'c'], ['title' => 'D'], ['title' => 'E'], ['title' => 'F']]],
-]]), [['title' => 'A', 'start' => null, 'candidates' => [['title' => 'A', 'artist' => 'a'], ['title' => 'B', 'artist' => ''], ['title' => 'C', 'artist' => 'c'], ['title' => 'D', 'artist' => ''], ['title' => 'E', 'artist' => '']]]]);
-check('曲: 形が違っても落ちない', [gemini_setlist_songs(['songs' => 'x']), gemini_setlist_songs(['songs' => ['x', ['title' => ['y'], 'confident' => false, 'candidates' => 'z']]])], [[], [['title' => '', 'start' => null, 'candidates' => []]]]);
+]]), [['title' => 'A', 'start' => null, 'candidates' => [['title' => 'A', 'artist' => 'a'], ['title' => 'B', 'artist' => ''], ['title' => 'C', 'artist' => 'c'], ['title' => 'D', 'artist' => ''], ['title' => 'E', 'artist' => '']], 'artist' => '']]);
+check('曲: 形が違っても落ちない', [gemini_setlist_songs(['songs' => 'x']), gemini_setlist_songs(['songs' => ['x', ['title' => ['y'], 'confident' => false, 'candidates' => 'z']]])], [[], [['title' => '', 'start' => null, 'candidates' => [], 'artist' => '']]]);
 check('曲: 始まる時刻を秒にする（読めなければ null）', array_column(gemini_setlist_songs(['songs' => [['title' => 'A', 'start' => '3:05'], ['title' => 'B', 'start' => '1:02:03'], ['title' => 'C', 'start' => 'x'], ['title' => 'D', 'start' => 65]]]), 'start'), [185, 3723, null, null]);
 $gs = static fn(string ...$t): array => array_map(static fn($x) => ['title' => $x, 'start' => null, 'candidates' => []], $t);
 $guess = ['title' => 'G', 'start' => null, 'candidates' => [['title' => 'G', 'artist' => '']]];

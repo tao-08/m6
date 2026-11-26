@@ -43,7 +43,8 @@ $prompt = "あなたは楽曲特定アシスタントです。入力された歌
 
 $request = [
     'contents' => [['role' => 'user', 'parts' => [['text' => $prompt]]]],
-    'generationConfig' => ['temperature' => 0.1, 'maxOutputTokens' => 2200],
+    // 考える量を絞る。上限なしだと約800トークン考えて16秒かかった。256 にすると同じ答えで約6秒になった（2026-11）
+    'generationConfig' => ['temperature' => 0.1, 'maxOutputTokens' => 2200, 'thinkingConfig' => ['thinkingBudget' => 256]],
     // Gemini 3.8 FlashのGoogle検索グラウンディングを有効化。
     'tools' => [['google_search' => new stdClass()]],
 ];
