@@ -39,7 +39,7 @@ try {
     @unlink($audio);
 }
 if (is_string($songs)) {
-    fail(502, $songs);
+    fail(502, $songs . " / " . gemini_why()); // 管理者だけの画面なので、直せるように理由も出す
 }
 if (!array_filter(array_column($songs, 'title'), 'strlen')) { // 曲名が1つも無ければ、確認画面を開いても意味がない
     fail(404, '曲が見つかりませんでした');

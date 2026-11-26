@@ -26,6 +26,19 @@ MC_START（MCの開始）:
 TXT;
 
 /**
+ * 最後に失敗した理由（ログと、管理者の画面に出す用）。$set を渡すと記録してログにも書く
+ */
+function gemini_why(?string $set = null): string
+{
+    static $why = '';
+    if ($set !== null) {
+        $why = $set;
+        error_log('Gemini: ' . $set);
+    }
+    return $why;
+}
+
+/**
  * curl で1回呼ぶ。返り値は [HTTP ステータス, ヘッダー（小文字の名前 => 値）, 本文]。つながらなければ null
  * @param array<int, mixed> $opts 追加の curl オプション（CURLOPT_HTTPHEADER は追加分だけ書く）
  */
@@ -50,7 +63,7 @@ function gemini_call(string $url, string $key, array $opts, int $timeout): ?arra
     ]);
     $body = curl_exec($ch);
     if ($body === false) {
-        error_log('Gemini chapters cURL failure: errno=' . curl_errno($ch));
+        gemini_why('cURL errno ' . curl_errno($ch));
         return null;
     }
     return [(int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE), $headers, (string)$body];
@@ -98,6 +111,12 @@ function gemini_audio_chapters(string $path, string $mime, string $key, string $
     return is_array($json['events'] ?? null) ? gemini_chapters_from_events($json['events']) : 'Gemini API で解析できませんでした';
 }
 
+/** Google が返したエラー文（短く） */
+function gemini_error_text(?array $res): string
+{
+    return mb_substr((string)(json_decode($res[2] ?? '', true)['error']['message'] ?? ''), 0, 200);
+}
+
 /**
  * 音源を Files API に上げて $prompt で聴かせ、$schema の形の JSON を返す（終わったら音源は消す）。失敗したら文字列（画面に出せる理由）
  *   自動チャプター（上）と、動画から曲を検出（lib/gemini_setlist.php）で使う
@@ -123,7 +142,7 @@ function gemini_audio_json(string $path, string $mime, string $key, string $mode
     ], 30);
     $uploadUrl = $start[1]['x-goog-upload-url'] ?? '';
     if (!$start || $start[0] !== 200 || !str_starts_with($uploadUrl, GEMINI_API . '/')) {
-        error_log('Gemini chapters: upload start HTTP ' . ($start[0] ?? 0));
+        gemini_why('upload start HTTP ' . ($start[0] ?? 0) . ' ' . gemini_error_text($start));
         return ($start[0] ?? 0) === 429 ? $limit : $fail;
     }
     $fp = fopen($path, 'rb');
@@ -137,7 +156,7 @@ function gemini_audio_json(string $path, string $mime, string $key, string $mode
     fclose($fp);
     $file = json_decode($up[2] ?? '', true)['file'] ?? null;
     if (!$up || $up[0] !== 200 || !is_array($file) || !isset($file['name'], $file['uri'])) {
-        error_log('Gemini chapters: upload HTTP ' . ($up[0] ?? 0));
+        gemini_why('upload HTTP ' . ($up[0] ?? 0) . ' ' . gemini_error_text($up));
         return $fail;
     }
     $result = $fail;
@@ -145,6 +164,7 @@ function gemini_audio_json(string $path, string $mime, string $key, string $mode
         // 3. 使える状態（ACTIVE）になるまで待つ
         for ($i = 0; $i < 30 && ($file['state'] ?? '') !== 'ACTIVE'; $i++) {
             if (($file['state'] ?? '') === 'FAILED') {
+                gemini_why('file FAILED');
                 return $fail;
             }
             sleep(2);
@@ -169,15 +189,19 @@ function gemini_audio_json(string $path, string $mime, string $key, string $mode
             CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
         ], 280);
         if (!$res || $res[0] !== 200) {
-            error_log('Gemini chapters: generate HTTP ' . ($res[0] ?? 0));
+            gemini_why('generate HTTP ' . ($res[0] ?? 0) . ' ' . gemini_error_text($res) . ' state=' . ($file['state'] ?? '?'));
             return ($res[0] ?? 0) === 429 ? $limit : $fail;
         }
         $text = '';
-        foreach (json_decode($res[2], true)['candidates'][0]['content']['parts'] ?? [] as $p) {
+        $body = json_decode($res[2], true);
+        foreach ($body['candidates'][0]['content']['parts'] ?? [] as $p) {
             $text .= (string)($p['text'] ?? '');
         }
         $json = json_decode($text, true);
         $result = is_array($json) ? $json : $fail;
+        if (!is_array($json)) {
+            gemini_why('bad JSON finish=' . ($body['candidates'][0]['finishReason'] ?? $body['promptFeedback']['blockReason'] ?? '?') . ' len=' . strlen($text));
+        }
     } finally {
         gemini_call(GEMINI_API . '/v1beta/' . $file['name'], $key, [CURLOPT_CUSTOMREQUEST => 'DELETE'], 20); // 預けた音源は消す
     }
