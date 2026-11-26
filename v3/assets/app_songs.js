@@ -673,14 +673,21 @@ function setupDetectPlayer() {
   if (!frame) return;
   const send = (func, args = []) => frame.contentWindow?.postMessage(JSON.stringify({ event: 'command', func, args }), 'https://www.youtube.com');
   let current = frame.parentElement.dataset.video; // 今出している動画
+  // 動画を替える（①② のタブも合わせる）
+  const show = (video, start) => {
+    current = video;
+    frame.parentElement.querySelectorAll('[data-detect-video]').forEach((t) => t.classList.toggle('is-active', t.dataset.detectVideo === video));
+    send('loadVideoById', [video, start]); // 読み込んで、その秒から流す
+  };
   document.addEventListener('click', (e) => {
     if (e.target.closest('[data-preview]')) { send('pauseVideo'); return; }
+    const tab = e.target.closest('[data-detect-video]');
+    if (tab) { if (tab.dataset.detectVideo !== current) show(tab.dataset.detectVideo, 0); return; }
     const seek = e.target.closest('[data-seek]');
     if (!seek) return;
     document.querySelector('[data-preview].is-playing, [data-preview].is-loading')?.click(); // 鳴っている試聴を止める（もう一度押すと止まる）
     if (seek.dataset.video && seek.dataset.video !== current) {
-      current = seek.dataset.video;
-      send('loadVideoById', [current, Number(seek.dataset.seek)]); // 読み込んで、その秒から流す
+      show(seek.dataset.video, Number(seek.dataset.seek));
       return;
     }
     send('seekTo', [Number(seek.dataset.seek), true]);

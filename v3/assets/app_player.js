@@ -12,7 +12,12 @@ function setupYoutubeLeftover() {
   const box = form?.querySelector('[data-yt-leftover]');
   if (!box) return;
   const update = () => {
-    const picked = new Set([...form.querySelectorAll('select')].map((s) => s.value));
+    const selects = [...form.querySelectorAll('select')];
+    const picked = new Set(selects.map((s) => s.value));
+    // ほかの行で選んでいる動画は薄く（ポップアップにも app_form.js が写す）
+    selects.forEach((s) => [...s.options].forEach((o) => {
+      o.classList.toggle('is-muted', o.value !== '' && o.value !== 'keep' && o.value !== s.value && picked.has(o.value));
+    }));
     let left = 0;
     box.querySelectorAll('[data-yt-video]').forEach((li) => {
       li.hidden = picked.has(li.dataset.ytVideo);
@@ -22,6 +27,7 @@ function setupYoutubeLeftover() {
     box.hidden = left === 0;
   };
   form.addEventListener('change', update); // setupSelectPick のポップアップで選んでも change が出る
+  update();
 }
 
 /* ---------------------------------------------------------------------

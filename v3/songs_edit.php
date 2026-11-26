@@ -438,7 +438,11 @@ render_header('セットリストを編集', 'lives');
     <button type="button" class="btn btn--ghost btn--sm song-add-se" data-add-song-se>＋ SE を追加</button>
     <?php if (($detectVideos[0] ?? null) !== null): ?>
     <!-- 曲の場面があるとき: バンドの動画を上に残し、曲ごとの ▶（data-seek）でその場面へ飛ぶ（assets/app_songs.js の setupDetectPlayer）。2本目以降の曲は動画を切り替える（data-video） -->
-    <div class="detect-player" data-detect-player data-band="<?= $bandId ?>" data-video="<?= h($detectVideos[0]) ?>"><iframe src="https://www.youtube.com/embed/<?= h($detectVideos[0]) ?>?enablejsapi=1&amp;playsinline=1&amp;rel=0" title="<?= h($band['name']) ?>" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe></div>
+    <div class="detect-player" data-detect-player data-band="<?= $bandId ?>" data-video="<?= h($detectVideos[0]) ?>">
+        <?php if (count($detectVideos) > 1): // 2本以上: ①② で動画を切り替える。曲の ▶ で別の動画に飛ぶとタブも変わる ?>
+        <div class="tabs detect-player__tabs"><?php foreach ($detectVideos as $i => $vid): if ($vid === null) continue; ?><button type="button" class="tab<?= $i === 0 ? ' is-active' : '' ?>" data-detect-video="<?= h($vid) ?>" aria-label="<?= $i + 1 ?>本目の動画"><?= mb_chr(0x2460 + $i) ?></button><?php endforeach; ?></div>
+        <?php endif; ?>
+        <iframe src="https://www.youtube.com/embed/<?= h($detectVideos[0]) ?>?enablejsapi=1&amp;playsinline=1&amp;rel=0" title="<?= h($band['name']) ?>" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe></div>
     <?php endif; ?>
     <datalist id="artists"><?php foreach ($artistNames as $n): ?><option value="<?= h($n) ?>"><?php endforeach; ?></datalist>
     <div class="song-list" data-song-list<?= !empty($fromYt) ? ' data-auto-search' : '' ?> data-default-artist="<?= h($defaultArtist) ?>">
