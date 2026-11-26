@@ -11,6 +11,17 @@
  *                         付けると編集できるようにして、前に書いていた名前 → 連携済みの曲のアーティスト → 空欄 の順で入れる
  * ------------------------------------------------------------------- */
 function setupSongs() {
+  // 曲数が空のまま保存するとき、曲名の入った曲（SE・削除した曲を除く）の数で埋めるか聞く。キャンセルなら保存しない
+  document.querySelector('.songs-form')?.addEventListener('submit', (e) => {
+    const count = e.target.querySelector('input[name="song_count"]');
+    if (!count || count.value.trim() !== '') return;
+    const n = [...e.target.querySelectorAll('[data-song-card]:not(.song-card--se)')]
+      .filter((c) => c.querySelector('.song-card__title')?.value.trim() && c.querySelector('[data-song-delete]')?.value !== '1').length;
+    if (!n) return;
+    if (confirm(`曲数が空です。${n}曲で保存しますか？`)) count.value = n;
+    else e.preventDefault();
+  });
+
   // バンド編集の2つ目の楽器の「＋」: 1つ目の楽器の下に開閉。閉じたら値を空（なし）に戻す
   document.addEventListener('click', (e) => {
     const btn = e.target.closest('[data-inst2-toggle]');

@@ -332,7 +332,7 @@ if (is_post()) {
                 redirect('songs_edit?band=' . $bandId . '&from_yt=1');
             }
         }
-        redirect('band?id=' . $bandId);
+        redirect((($_POST['next'] ?? '') === 'setlist' ? 'songs_edit?band=' : 'band?id=') . $bandId);
     }
     // エラーのときは入力した値をそのまま表示し直す
     $band = array_merge($band, ['name' => $name, 'artist_name' => $artistName, 'song_count' => $songs, 'note' => $note, 'youtube_url' => $youtube, 'needs_check' => $flag,
@@ -545,9 +545,10 @@ render_header($isNew ? 'バンドを追加' : 'バンドを編集', 'lives');
     <?= render_suggest_datalist('member-names', array_keys($allNames), $allNames) ?>
 
     <div class="form-actions">
-        <?php if (!$isNew): ?><a class="btn btn--ghost" href="songs_edit?band=<?= (int)$band['band_id'] ?>" data-leave-check="band-form">セットリストを編集</a><?php endif; ?>
         <a class="btn btn--ghost" href="<?= h($backUrl) ?>">キャンセル</a>
         <button class="btn btn--primary" type="submit"><?= $isNew ? '追加する' : '保存する' ?></button>
+        <?php // 保存してからセットリスト編集へ。Enter で送ったときは「保存する」になるよう後ろに置き、見た目だけ先頭に出す ?>
+        <?php if (!$isNew): ?><button class="btn btn--ghost form-actions__first" type="submit" name="next" value="setlist">セットリストを編集</button><?php endif; ?>
     </div>
 </form>
 

@@ -1041,6 +1041,7 @@ td .tag--plan { margin-top: 4px; } /* アーティストの演奏履歴: 日付�
 [data-new-day-fields]:not([hidden]), [data-extra-day] { animation: soft-in var(--t-base) ease-out; }
 .field--wide { grid-column: span 2; }
 .form-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; margin-top: 18px; } /* ボタンが多いとスマホで横に入りきらないので折り返す */
+.form-actions__first { order: -1; } /* Enter で送る「保存する」より後ろに書いた送信ボタンを、見た目だけ先頭に出す */
 .member-rows { display: grid; gap: 8px; margin-bottom: 10px; }
 .member-row-edit { display: grid; grid-template-columns: 232px auto minmax(0, 260px) auto; /* 楽器 / Cho のトグル / 名前 / ✕ */ /* 232px =「Key.Vo キーボードボーカル」が切れない幅 / 名前は 260px まで（人名にそれ以上はいらない） */ gap: 8px; align-items: center;
   justify-content: center; /* 行をカードの中央に置く。これがないと余った幅が auto の列（✕ボタン）に配られて、ボタンが横に伸びる */ }
