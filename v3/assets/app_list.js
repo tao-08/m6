@@ -416,7 +416,23 @@ function setupYearSlot() {
   } else if (search) {
     slot.style.zoom = search.offsetHeight / slot.offsetHeight;
   }
+  // 選んだ年度をタブの間だけ覚え、戻る（ブラウザ・端末・戻るボタン・パンくず）・再読み込みで来たときだけ同じ年度で開く。
+  // ナビゲーションバーなど普通のリンクで来たときは「すべて」から
+  const key = `year-slot:${location.pathname}${location.search}`;
+  const nav = performance.getEntriesByType?.('navigation')[0]?.type;
+  let saved = null;
+  try {
+    const fab = sessionStorage.getItem('back-fab') !== null;
+    sessionStorage.removeItem('back-fab');
+    if (fab || nav === 'back_forward' || nav === 'reload') saved = sessionStorage.getItem(key);
+  } catch { /* 覚えられないだけ */ }
+  const savedItem = saved !== null && [...slot.querySelectorAll('.year-slot__item')].find((el) => el.dataset.value === saved);
+  if (savedItem) {
+    slot.querySelectorAll('.year-slot__item.is-current').forEach((el) => el.classList.remove('is-current'));
+    savedItem.classList.add('is-current');
+  }
   makeSlot(slot, (value, changed) => {
+    try { sessionStorage.setItem(key, value); } catch { /* 覚えられないだけ */ }
     sections.forEach((sec) => { sec.hidden = value !== '' && (sec.dataset.year || sec.dataset.historyYear) !== value; });
     // 年度が変わったときだけ動かす（端でさらに回した・真ん中をタップした、では動かさない）
     //   見出し（h2 / h3）→ カード（ライブ一覧は .grid の中、出演履歴は <ol> の <li>）の順

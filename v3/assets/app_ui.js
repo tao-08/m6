@@ -515,7 +515,13 @@ function setupBackButton() {
   document.addEventListener('submit', (e) => {
     if ((e.target.getAttribute('method') || '').toLowerCase() === 'post') save(SUBMIT, keyOf(location.href));
   }, true);
-  document.addEventListener('click', (e) => { if (e.target.closest?.('a[href]')) drop(SUBMIT); }, true);
+  document.addEventListener('click', (e) => {
+    const a = e.target.closest?.('a[href]');
+    if (!a) return;
+    drop(SUBMIT);
+    // 戻るボタン・パンくずで移ったか（年度スロットが前の年度を戻すのに使う。setupYearSlot）
+    if (a.matches('.back-fab, nav.crumbs a')) save('back-fab', 1); else drop('back-fab');
+  }, true);
 
   const title = document.querySelector('meta[name="page-title"]')?.content;
   const here = keyOf(location.href);
