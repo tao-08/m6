@@ -470,7 +470,7 @@ render_header('セットリストを編集', 'lives');
                     <!-- data-video-start: バンドの YouTube で始まる秒（空 = わからない）。保存で残す。↻ の区間は assets/app_songs.js の renumber が前後の曲から決める -->
                     <input type="hidden" name="<?= $base ?>[vs]" value="<?= $song['video_start'] ?? '' ?>" data-video-start>
                     <?php if ($detectVideo !== null && $song['video_start'] !== null): $vs = (int)$song['video_start']; ?><button type="button" class="btn btn--ghost btn--sm song-seek-btn" data-seek="<?= $vs ?>" aria-label="動画のこの曲の場面を再生" title="動画のこの曲の場面を再生"><?= icon('smart_display') ?><?= sprintf('%d:%02d', intdiv($vs, 60), $vs % 60) ?></button><?php endif; ?>
-                    <?php if ($canRetry): ?><button type="button" class="btn btn--ghost btn--sm" data-detect-retry hidden aria-label="この曲をもう一度検出" title="この曲をもう一度検出"><?= icon('refresh') ?></button><?php endif; ?>
+                    <?php if ($canRetry): ?><button type="button" class="btn btn--ghost btn--sm" data-detect-retry hidden aria-label="まだ候補に出ていない曲から検出" title="まだ候補に出ていない曲から検出"><?= icon('refresh') ?></button><?php endif; ?>
                     <button type="button" class="btn btn--ghost btn--sm song-search-btn" data-track-search aria-label="曲を探す" title="曲を探す"><?= icon('search') ?></button>
                     <input type="hidden" name="<?= $base ?>[id]" value="<?= $isNew ? '' : (int)$song['song_id'] ?>">
                     <!-- 🗑 保存済みの曲: 押すと「削除する」印（隠し項目を 1）が付いてカードが薄くなる。もう一度押すと取り消し。消えるのは保存したとき

@@ -10,7 +10,7 @@
  *  status=1: 途中経過を見る。{"state": "running"} / 終わっていれば曲名・候補・始まる時刻をセッションに置いて {"state": "done"}
  *    → 画面が songs_edit?from_detect=1 で確認画面を開く
  *  終わったら、押した人の端末すべてにプッシュ通知を送る（lib/push.php。画面を閉じていても気づけるように）
- *  1曲だけ検出し直す（↻）: from, to（秒）も送ると、その区間だけ落として聴かせ、{"candidates": [{title, artist}]} を返す
+ *  1曲だけ検出し直す（↻）: from, to（秒）も送ると、その区間だけ落として聴かせ、{"candidates": [{title, artist}]} を返す。exclude[] の曲名は候補に出さない
  *    tail=1: 区間の最後の曲を答えさせる（その曲の秒がわからず、前の曲の始まりから聴かせるとき）
  *  エラー: {"error": "...", "detail": "理由（あれば。画面の ⓘ に出す）"}（400 / 401 / 403 / 404 / 502 / 503）
  * =====================================================================
@@ -63,8 +63,10 @@ $why = null;
 
 if ($section !== null) { // ↻ はその場で待つ（1曲なので約20秒）
     $audio = ytdlp_audio($videoId, $why, $section) ?? fail(502, 'YouTube から音声を取得できませんでした', ['detail' => (string)$why]); // 管理者だけの画面なので理由も ⓘ に出す
+    // exclude[]: もう候補に出た曲名。押すたびに、まだ出ていない曲から探す
+    $exclude = array_slice(array_map(static fn($t) => mb_substr(trim((string)$t), 0, 100), array_filter((array)($_POST['exclude'] ?? []), 'is_string')), 0, 60);
     try {
-        $cands = gemini_setlist_one($audio, 'audio/aac', $cfg, !empty($_POST['tail']), $band['artist']);
+        $cands = gemini_setlist_one($audio, 'audio/aac', $cfg, !empty($_POST['tail']), $band['artist'], $exclude);
     } finally {
         @unlink($audio);
     }
@@ -72,7 +74,7 @@ if ($section !== null) { // ↻ はその場で待つ（1曲なので約20秒）
         fail(502, $cands, ['detail' => gemini_why()]);
     }
     if (!$cands) {
-        fail(404, '曲が見つかりませんでした');
+        fail(404, $exclude ? 'ほかの候補が見つかりませんでした' : '曲が見つかりませんでした');
     }
     api_ok(['candidates' => $cands]);
 }

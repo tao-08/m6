@@ -360,20 +360,33 @@ const GEMINI_SETLIST_TAIL_PROMPT = '
 
 /**
  * @param bool $tail 区間の最後の曲を答えさせる（GEMINI_SETLIST_TAIL_PROMPT）
+ * @param string[] $exclude 候補に出さない曲名（↻ を押すたびに、もう出た候補から外す。MBV「thorn」は何度聴かせても候補に出なかった）
  * @return array|string 候補 [{title, artist}]。失敗したら画面に出せる理由
  */
-function gemini_setlist_one(string $path, string $mime, array $cfg, bool $tail = false, ?string $artist = null): array|string
+function gemini_setlist_one(string $path, string $mime, array $cfg, bool $tail = false, ?string $artist = null, array $exclude = []): array|string
 {
+    $ex = [];
+    foreach ($exclude as $t) {
+        $ex[gemini_setlist_norm($t)] = $t;
+    }
+    unset($ex['']);
+    $keep = static fn(string $t): bool => !isset($ex[gemini_setlist_norm($t)]);
     // コピー元がわかれば、候補の上位3曲はその曲から選ばせる（伝えないと別のアーティストの曲ばかり挙がった）
     $artist = trim((string)$artist);
-    $titles = $artist !== '' ? itunes_artist_titles($artist) : [];
+    $titles = array_values(array_filter($artist !== '' ? itunes_artist_titles($artist) : [], $keep));
     $hint = $artist === '' ? '' : ($titles
         ? "\n- このバンドは「{$artist}」のコピーバンド。上位3曲は下の一覧から選ぶ\n\n【{$artist} の曲一覧】\n" . implode("\n", $titles)
         : "\n- このバンドは「{$artist}」のコピーバンド。上位3曲は {$artist} の曲にする");
     $pair = ['type' => 'OBJECT', 'properties' => ['title' => ['type' => 'STRING'], 'artist' => ['type' => 'STRING']], 'required' => ['title', 'artist']];
     $schema = ['type' => 'OBJECT', 'properties' => ['candidates' => ['type' => 'ARRAY', 'items' => $pair]], 'required' => ['candidates']];
-    $json = gemini_audio_json($path, $mime, $cfg['key'], $cfg['model'], GEMINI_SETLIST_ONE_PROMPT . ($tail ? GEMINI_SETLIST_TAIL_PROMPT : '') . $hint, $schema, GEMINI_SETLIST_THINKING);
-    return is_string($json) ? $json : gemini_setlist_one_candidates($json);
+    $not = $ex ? "\n- 次の曲ではないとわかっている。挙げない: " . implode(' / ', $ex) : '';
+    $json = gemini_audio_json($path, $mime, $cfg['key'], $cfg['model'], GEMINI_SETLIST_ONE_PROMPT . ($tail ? GEMINI_SETLIST_TAIL_PROMPT : '') . $not . $hint, $schema, GEMINI_SETLIST_THINKING);
+    if (is_string($json)) {
+        return $json;
+    }
+    // 言っても挙げることがあるので、5曲に絞る前に外す
+    $json['candidates'] = array_values(array_filter((array)($json['candidates'] ?? []), static fn($c) => !is_array($c) || $keep((string)($c['title'] ?? ''))));
+    return gemini_setlist_one_candidates($json);
 }
 
 /*

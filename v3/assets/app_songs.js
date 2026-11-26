@@ -497,12 +497,27 @@ function setupTrackSearch() {
     return row;
   };
 
+  // ↻ で除外する曲名（data-exclude）: 候補に出た曲を足していき、↻ を押すたびに送る。「出た候補を戻す」で空にする
+  const excluded = (card) => { try { return JSON.parse(card.dataset.exclude || '[]'); } catch { return []; } };
+  const exclude = (card, titles) => { card.dataset.exclude = JSON.stringify([...new Set([...excluded(card), ...titles.filter(Boolean)])]); };
+  const resetButton = (card) => {
+    if (!card.querySelector('[data-detect-retry]') || !excluded(card).length) return [];
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn btn--ghost btn--sm';
+    btn.title = '↻ で、もう出た候補も探す';
+    btn.append(iconEl('restart_alt'), '出た候補を戻す');
+    btn.addEventListener('click', () => { delete card.dataset.exclude; btn.remove(); });
+    return [btn];
+  };
+
   // 動画から曲を検出して自信が低かった曲（data-candidates）: Gemini の候補を1曲ずつ探し、最初に当たった曲を候補欄に並べる
   //   探しても見つからない候補は、曲名だけのボタンにする（押すと曲名を入れる）
   const showCandidates = async (card) => {
     const results = card.querySelector('[data-track-results]');
     let cands = [];
     try { cands = JSON.parse(card.dataset.candidates); } catch { return; }
+    exclude(card, cands.map((c) => c.title));
     message(results, '検索中…');
     const rows = [];
     const seen = new Set();
@@ -539,7 +554,7 @@ function setupTrackSearch() {
       row.append(btn);
       rows.push(row);
     }
-    results.replaceChildren(...rows);
+    results.replaceChildren(...rows, ...resetButton(card));
     openResults(results);
   };
 
@@ -573,6 +588,8 @@ function setupTrackSearch() {
       body.append('from', retry.dataset.from);
       body.append('to', retry.dataset.to);
       body.append('tail', retry.dataset.tail);
+      exclude(card, [card.querySelector('[name$="[title]"]').value.trim()]); // ↻ を押すのは今の曲名が違うとき
+      excluded(card).forEach((t) => body.append('exclude[]', t));
       retry.disabled = true;
       message(results, '解析しています');
       try {
@@ -583,6 +600,7 @@ function setupTrackSearch() {
         await showCandidates(card);
       } catch (err) {
         message(results, err.message, err.detail);
+        results.append(...resetButton(card)); // 「ほかの候補が見つかりませんでした」のとき
       } finally {
         retry.disabled = false;
       }
