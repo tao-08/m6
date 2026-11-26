@@ -152,3 +152,28 @@ function gemini_setlist(string $path, string $mime, array $cfg, ?string $artist 
     }
     return $songs;
 }
+
+/** 1曲だけ検出し直すとき（確認画面の ↻）。区間だけ落とした音声を聴かせる */
+const GEMINI_SETLIST_ONE_PROMPT = <<<'TXT'
+添付は学生バンドのライブ音源の一部で、既存の曲のカバー演奏が1曲入っています。前後の曲や MC が少し入っていることがあります。
+この曲の原曲として可能性のある曲を5曲、可能性の高い順に挙げてください。
+
+- 歌詞・メロディ・曲調から原曲を特定し、原曲の正式な曲名とアーティスト名を答える
+- 特定できなくても、歌詞・曲調・アレンジが近い曲を挙げる
+TXT;
+
+/** Gemini の返事（1曲だけ） → 候補 [{title, artist}]（可能性の高い順、5曲まで） */
+function gemini_setlist_one_candidates(array $json): array
+{
+    $one = gemini_setlist_songs(['songs' => [['title' => '', 'confident' => false, 'candidates' => $json['candidates'] ?? null]]]);
+    return $one[0]['candidates'];
+}
+
+/** @return array|string 候補 [{title, artist}]。失敗したら画面に出せる理由 */
+function gemini_setlist_one(string $path, string $mime, array $cfg): array|string
+{
+    $pair = ['type' => 'OBJECT', 'properties' => ['title' => ['type' => 'STRING'], 'artist' => ['type' => 'STRING']], 'required' => ['title', 'artist']];
+    $schema = ['type' => 'OBJECT', 'properties' => ['candidates' => ['type' => 'ARRAY', 'items' => $pair]], 'required' => ['candidates']];
+    $json = gemini_audio_json($path, $mime, $cfg['key'], $cfg['model'], GEMINI_SETLIST_ONE_PROMPT, $schema, GEMINI_SETLIST_THINKING);
+    return is_string($json) ? $json : gemini_setlist_one_candidates($json);
+}

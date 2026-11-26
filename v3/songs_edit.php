@@ -341,6 +341,7 @@ if ($fromSheet) {
         }
         $card['candidates'] = $detectCandidates[$i] ?? [];
         $card['start'] = $detectVideo !== null ? ($detectStarts[$i] ?? null) : null;
+        $card['end'] = $detectStarts[$i + 1] ?? null; // 1曲だけ検出し直すときに落とす区間の終わり（次の曲の始まり）
         $card['track_no'] = $i + 1;
         $cards[] = $card;
     }
@@ -414,7 +415,7 @@ render_header('セットリストを編集', 'lives');
     <button type="button" class="btn btn--ghost btn--sm song-add-se" data-add-song-se>＋ SE を追加</button>
     <?php if ($detectVideo !== null): ?>
     <!-- 動画から曲を検出したとき: バンドの動画を上に残し、曲ごとの ▶（data-seek）でその場面へ飛ぶ（assets/app_songs.js の setupDetectPlayer） -->
-    <div class="detect-player" data-detect-player><iframe src="https://www.youtube.com/embed/<?= h($detectVideo) ?>?enablejsapi=1&amp;playsinline=1&amp;rel=0" title="<?= h($band['name']) ?>" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe></div>
+    <div class="detect-player" data-detect-player data-band="<?= $bandId ?>"><iframe src="https://www.youtube.com/embed/<?= h($detectVideo) ?>?enablejsapi=1&amp;playsinline=1&amp;rel=0" title="<?= h($band['name']) ?>" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe></div>
     <?php endif; ?>
     <datalist id="artists"><?php foreach ($artistNames as $n): ?><option value="<?= h($n) ?>"><?php endforeach; ?></datalist>
     <div class="song-list" data-song-list<?= !empty($fromYt) ? ' data-auto-search' : '' ?> data-default-artist="<?= h($defaultArtist) ?>">
@@ -446,7 +447,8 @@ render_header('セットリストを編集', 'lives');
                     <?php else: ?><input name="<?= $base ?>[artist]" value="<?= h($artist) ?>" maxlength="100" data-suggest-list="artists" autocomplete="off" placeholder="アーティスト" class="song-card__artist" aria-label="アーティスト" data-song-artist<?= $omnibus ? '' : ' readonly' ?>><?php endif; ?>
                     <!-- data-artist: 紐付けた曲のアーティスト（先頭の1人）。「オムニバス」にチェックを付けたとき、連携済みの曲はこの名前をアーティスト欄に残す（assets/app_songs.js の setupSongs） -->
                     <input type="hidden" name="<?= $base ?>[track]" value="<?= h($trackKey) ?>" data-track-key data-artist="<?= h($trackKey === '' ? '' : explode(', ', (string)$song['track_artist'])[0]) ?>">
-                    <?php if (isset($song['start'])): ?><button type="button" class="btn btn--ghost btn--sm song-seek-btn" data-seek="<?= (int)$song['start'] ?>" aria-label="動画のこの曲の場面を再生" title="動画のこの曲の場面を再生"><?= icon('smart_display') ?><?= sprintf('%d:%02d', intdiv($song['start'], 60), $song['start'] % 60) ?></button><?php endif; ?>
+                    <?php if (isset($song['start'])): ?><button type="button" class="btn btn--ghost btn--sm song-seek-btn" data-seek="<?= (int)$song['start'] ?>" aria-label="動画のこの曲の場面を再生" title="動画のこの曲の場面を再生"><?= icon('smart_display') ?><?= sprintf('%d:%02d', intdiv($song['start'], 60), $song['start'] % 60) ?></button>
+                    <button type="button" class="btn btn--ghost btn--sm" data-detect-retry data-from="<?= (int)$song['start'] ?>" data-to="<?= (int)($song['end'] ?? 0) ?>" aria-label="この曲をもう一度検出" title="この曲をもう一度検出"><?= icon('refresh') ?></button><?php endif; ?>
                     <button type="button" class="btn btn--ghost btn--sm song-search-btn" data-track-search aria-label="曲を探す" title="曲を探す"><?= icon('search') ?></button>
                     <input type="hidden" name="<?= $base ?>[id]" value="<?= $isNew ? '' : (int)$song['song_id'] ?>">
                     <!-- 🗑 保存済みの曲: 押すと「削除する」印（隠し項目を 1）が付いてカードが薄くなる。もう一度押すと取り消し。消えるのは保存したとき

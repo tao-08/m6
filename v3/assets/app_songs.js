@@ -525,6 +525,30 @@ function setupTrackSearch() {
       return;
     }
 
+    // ↻（動画から曲を検出したあと）: この曲の区間だけ Gemini に聴かせ直し、候補を出し直す
+    const retry = e.target.closest('[data-detect-retry]');
+    if (retry) {
+      const results = card.querySelector('[data-track-results]');
+      const body = new FormData();
+      body.append('band_id', document.querySelector('[data-detect-player]')?.dataset.band || '');
+      body.append('from', retry.dataset.from);
+      body.append('to', retry.dataset.to);
+      retry.disabled = true;
+      message(results, '解析しています');
+      try {
+        const res = await fetch('api_setlist_detect', { method: 'POST', headers: { 'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]')?.content || '' }, body });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || '解析に失敗しました');
+        card.dataset.candidates = JSON.stringify(data.candidates);
+        await showCandidates(card);
+      } catch (err) {
+        message(results, err.message);
+      } finally {
+        retry.disabled = false;
+      }
+      return;
+    }
+
     const searchBtn = e.target.closest('[data-track-search]');
     if (!searchBtn) return;
     const results = card.querySelector('[data-track-results]');

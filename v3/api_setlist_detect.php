@@ -8,6 +8,7 @@
  *  バンドの YouTube（限定公開も）から音声を落とし（lib/ytdlp.php）、Gemini が聴き終わるまで待つ（1〜2分）。
  *  曲名・候補（自信が低い曲だけ）・始まる時刻をセッションに置く → 画面が songs_edit?from_detect=1 で確認画面を開く
  *  レスポンス（JSON）: {"count": 見つかった曲数}
+ *  1曲だけ検出し直す（確認画面の ↻）: from, to（秒）も送ると、その区間だけ落として聴かせ、{"candidates": [{title, artist}]} を返す
  *  エラー: {"error": "..."}（400 / 401 / 403 / 404 / 502 / 503）
  * =====================================================================
  */
@@ -30,9 +31,31 @@ $st->execute([$bandId]);
 $band = $st->fetch() ?: fail(404, 'バンドが見つかりません');
 $videoId = youtube_video_id((string)$band['youtube_url']) ?? fail(400, 'YouTube のリンクがありません');
 
+$section = null;
+if (isset($_POST['from'])) {
+    $from = max(0, (int)$_POST['from']);
+    $to = (int)($_POST['to'] ?? 0);
+    $section = [$from, $to > $from ? min($to, $from + 900) : $from + 420]; // 最後の曲は次の曲が無いので7分。長すぎる区間は15分で切る
+}
+
 session_write_close(); // 長く待つので、ほかの画面を待たせない
 @set_time_limit(0);
-$audio = ytdlp_audio($videoId) ?? fail(502, 'YouTube から音声を取得できませんでした');
+$why = null;
+$audio = ytdlp_audio($videoId, $why, $section) ?? fail(502, 'YouTube から音声を取得できませんでした / ' . $why); // 管理者だけの画面なので理由も出す
+if ($section !== null) {
+    try {
+        $cands = gemini_setlist_one($audio, 'audio/aac', $cfg);
+    } finally {
+        @unlink($audio);
+    }
+    if (is_string($cands)) {
+        fail(502, $cands . ' / ' . gemini_why());
+    }
+    if (!$cands) {
+        fail(404, '曲が見つかりませんでした');
+    }
+    api_ok(['candidates' => $cands]);
+}
 try {
     $songs = gemini_setlist($audio, 'audio/aac', $cfg, $band['artist']); // m4a（AAC）をそのまま聴かせる
 } finally {
