@@ -216,7 +216,7 @@ function gemini_setlist_one(string $path, string $mime, array $cfg, bool $tail =
 require_once __DIR__ . '/ytdlp.php'; // ytdlp_dir
 
 /** 裏で待つ上限。これを過ぎても running のままなら、裏の処理が止まったとみなす（Flex は最大 10 分 × 2 回 + やり直しの待ち） */
-const SETLIST_JOB_STALE = 1800;
+const SETLIST_JOB_STALE = 3600; // Flex のやり直し（待つのは合わせて約17分）＋最後の1回（最大11分）が収まる長さ
 
 function setlist_job_path(int $bandId): string
 {
