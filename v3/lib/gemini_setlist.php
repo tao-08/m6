@@ -192,8 +192,8 @@ function gemini_setlist(string $path, string $mime, array $cfg, ?string $artist 
 const GEMINI_SETLIST_PHRASES_PROMPT = '
 - phrases には、その曲ではっきり聞き取れた歌詞の一節を3つまで（各20文字以内）、聞こえたとおりに書く。聞き取れなければ空にする。推測で補わない';
 
-/** 聴き比べで聴かせるライブの長さ（秒。曲の始まりから）。2分だと13曲中、正解1曲が自信なしに・自信なし1曲が自信ありの外れになった */
-const GEMINI_SETLIST_COMPARE_SEC = 240;
+/** 聴き比べで聴かせるライブの長さ（秒。曲の始まりから）。2026-11 の試験で4分より13曲中2曲悪かったが、料金を優先して2分 */
+const GEMINI_SETLIST_COMPARE_SEC = 120;
 
 /** 歌詞の一節から曲名を調べるモデル（Google 検索つき。api_lyrics_search と同じ） */
 const GEMINI_SETLIST_LYRICS_MODEL = 'gemini-3.8-flash';
