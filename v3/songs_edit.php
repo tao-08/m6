@@ -233,6 +233,7 @@ if (is_post() && !$fromSheet) {
         } catch (Throwable $e) {
             // 下調べは任せきりでよいので何もしない
         }
+        unset($_SESSION['setlist_detect'][$bandId]); // 検出の結果は保存するまで残す（確認画面を読み込み直しても消えないように）
         flash('「' . $band['name'] . '」の曲を保存しました（' . count($songs) . '曲）');
         redirect($backUrl);
     }
@@ -266,7 +267,6 @@ if (!is_post() && ($_GET['from_yt'] ?? '') === '1') {
 // 「YouTube から曲を検出」（このページの上）が終わったあと: api_setlist_detect がセッションに置いた曲名を、同じようにカードに並べる（保存はまだしない）
 if (!is_post() && ($_GET['from_detect'] ?? '') === '1' && is_admin()) {
     $detected = $_SESSION['setlist_detect'][$bandId] ?? [];
-    unset($_SESSION['setlist_detect'][$bandId]); // 1回だけ使う
     $sheetTitles = array_column($detected, 'title');
     // 自信が低い曲の候補（曲の順）。自信ありの曲も、念のため試聴できるよう、その曲だけを候補にする
     $detectCandidates = array_map(static fn($s) => $s['candidates'] ?: ($s['title'] !== '' ? [['title' => $s['title'], 'artist' => $s['artist'] ?? '']] : []), $detected);
