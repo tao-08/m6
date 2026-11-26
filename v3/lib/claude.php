@@ -199,6 +199,53 @@ function claude_json(string $system, array $content, array $schema, int $maxToke
 }
 
 /**
+ * 曲名から「ふりがなを付ける部分」だけを取り出す。
+ * 後ろにつく括弧・ダッシュ・フューチャリングと、それ以降は読まない（例: 「群青 (Live)」→「群青」、「Hello（feat. X）」→「Hello」、「Hey Jude - Remastered」→「Hey Jude」）。
+ *   ・括弧は ( （ [ ［ 【 〔 の最初の1つ。そこから最後までを捨てる
+ *   ・ダッシュは - – — の前後に空白があるものだけ（「Re-Birth」のような語中のハイフンは切らない）
+ *   ・feat. / ft. / featuring / フューチャリング / フィーチャリング も、前に空白があればそこから後ろを捨てる（「Hello feat. X」→「Hello」）
+ *   ・先頭が括弧の曲名（「(I Can't Get No) Satisfaction」）は消えないよう、括弧の前に文字があるときだけ切る
+ *   ・曲名のふりがな（song_kana）は元の曲名ごとに保存する。ここで作るのは AI に読ませる部分だけ
+ */
+function song_kana_core(string $title): string
+{
+    // ^(.*?\S) … 先頭から、最初の括弧の手前まで（最低1文字は空白以外を含む）
+    // (?:\s*[括弧]|\s+[ダッシュ]\s) … 括弧、前後が空白のダッシュ、または feat./ft./featuring/フューチャリング/フィーチャリング（前に空白があるもの）のうち、先に出てきた方。そこから最後まで捨てる（s = 改行も . に含める / i = 大文字小文字を区別しない / u = UTF-8）
+    if (preg_match('/^(.*?\S)(?:\s*[(（\[［【〔]|\s+[-–—]\s|\s+(?:(?:feat|ft)\.|(?:feat|ft|featuring|フューチャリング|フィーチャリング)(?=\s|$))).*$/siu', $title, $m)) {
+        return trim($m[1]);
+    }
+    return trim($title);
+}
+
+/**
+ * 曲名のカタカナの部分は、AI がひらがなで返してきても、読みもカタカナに直す。
+ *   例: 「少年ハート」→ AI が「しょうねんはーと」と返しても「しょうねんハート」にする
+ * 曲名にあるカタカナのかたまり（ラン）ごとに、読みの中から同じ音のひらがなを前から順に探して置き換える。
+ *   ・すでにカタカナで入っていたらそのまま（ひらがなの別の場所を誤って直さない）
+ */
+function song_kana_keep_katakana(string $title, string $kana): string
+{
+    if (!preg_match_all('/[\x{30A1}-\x{30FA}ー]+/u', $title, $m)) {
+        return $kana; // カタカナが無い曲名は何もしない
+    }
+    $cursor = 0; // 読みの中で、どこまで見たか（同じ音が2回出てきても順番に直すため）
+    foreach ($m[0] as $run) {
+        $pos = mb_strpos($kana, $run, $cursor);
+        if ($pos !== false) { // すでにカタカナで入っている
+            $cursor = $pos + mb_strlen($run);
+            continue;
+        }
+        $hira = mb_convert_kana($run, 'c'); // カタカナ → ひらがな（探すため）
+        $pos = mb_strpos($kana, $hira, $cursor);
+        if ($pos !== false) {
+            $kana = mb_substr($kana, 0, $pos) . $run . mb_substr($kana, $pos + mb_strlen($hira));
+            $cursor = $pos + mb_strlen($run);
+        }
+    }
+    return $kana;
+}
+
+/**
  * そのアーティスト名にどんなふりがなを付けるか。
  *   'none'     … ひらがな・カタカナだけの名前（ヨルシカ など）。読みはそのままなので付けない
  *   'katakana' … 英字が入っている名前（Oasis → オアシス）。漢字と日本語読みの数字の部分だけはひらがな、かなの部分はそのまま
@@ -234,7 +281,8 @@ function kana_needing(PDO $pdo, string $kind): array
     } else {
         $names = $pdo->query('SELECT name FROM artist WHERE name_kana IS NULL ORDER BY artist_id')->fetchAll(PDO::FETCH_COLUMN);
     }
-    return array_values(array_filter($names, static fn($n) => artist_kana_style((string)$n) !== 'none'));
+    // 曲名は後ろの括弧・ダッシュ以降を除いた部分で判定する（「あいう (Live)」は括弧を除けばかなだけ → 付けない）
+    return array_values(array_filter($names, static fn($n) => artist_kana_style($kind === 'song' ? song_kana_core((string)$n) : (string)$n) !== 'none'));
 }
 
 /**
@@ -244,10 +292,17 @@ function kana_needing(PDO $pdo, string $kind): array
  */
 function claude_artist_kana(array $names, string $kind = 'artist'): array
 {
-    $names = array_values(array_unique(array_filter($names, static fn($n) => is_string($n) && $n !== '' && artist_kana_style($n) !== 'none')));
+    // AI に読ませる文字列。曲名は後ろの括弧・ダッシュ以降を除く（アーティスト名はそのまま）
+    $core = static fn(string $n): string => $kind === 'song' ? song_kana_core($n) : $n;
+    $names = array_values(array_unique(array_filter($names, static fn($n) => is_string($n) && $n !== '' && artist_kana_style($core($n)) !== 'none')));
     if (!$names) {
         return [];
     }
+    $sendMap = []; // AI に送る文字列 => その読みを使う元の名前（「群青」と「群青 (Live)」は同じ読みを共有する）
+    foreach ($names as $n) {
+        $sendMap[$core($n)][] = $n;
+    }
+    $send = array_map('strval', array_keys($sendMap)); // 「1975」のような名前はキーが int になるので文字列に戻す
     $system = <<<'PROMPT'
 あなたは日本の軽音サークルのデータベースで、アーティスト名（バンド名・歌手名）に「ふりがな」を付ける係です。
 ふりがなは、サイトの一覧を名前順（あいうえお順）に並べることと、ひらがなで検索できるようにすることに使います。
@@ -264,9 +319,17 @@ function claude_artist_kana(array $names, string $kind = 'artist'): array
 PROMPT;
     if ($kind === 'song') {
         // 規則はアーティスト名と同じ（英字はカタカナ・それ以外はひらがな）。例が名前向けなので曲名向けの注意を足す
-        $system = str_replace('アーティスト名（バンド名・歌手名）', '曲名', $system) . <<<'PROMPT'
+        $system = str_replace('アーティスト名（バンド名・歌手名）', '曲名', $system);
+        // 「英字が入っていない名前は全部ひらがな」は曲名では当てはまらない（カタカナの部分はカタカナのまま）ので差し替える
+        $system = str_replace(
+            '- 英字が入っていない名前は、全部ひらがなで書く（例: 米津玄師 → よねづけんし、緑黄色社会 → りょくおうしょくしゃかい）',
+            '- 英字が入っていない曲名は、漢字の部分だけひらがなにし、ひらがなの部分はそのまま、カタカナの部分は読みもカタカナのまま書く（ひらがなに直さない）'
+            . '（例: 群青 → ぐんじょう、少年ハート → しょうねんハート、恋するフォーチュンクッキー → こいするフォーチュンクッキー）',
+            $system
+        ) . <<<'PROMPT'
 - 曲名の読みは、その曲で歌われている・公式に示されている読みを使う（例: 残酷な天使のテーゼ → ざんこくなてんしのテーゼ、群青 → ぐんじょう）
-- 「- Remastered」「(Live)」のような版の書き添えも、ほかと同じ規則で読む
+- カタカナの部分は必ずカタカナで書く（ひらがなにしない）
+- 曲名の後ろの括弧・「 - 」・feat.（フューチャリング）以降の書き添えは、あらかじめ除いて渡している（読まなくてよい）
 PROMPT;
     }
     $schema = [
@@ -289,7 +352,7 @@ PROMPT;
         'required' => ['items'],
         'additionalProperties' => false,
     ];
-    $content = [['type' => 'text', 'text' => '次の' . ($kind === 'song' ? '曲名' : 'アーティスト名') . "にふりがなを付けてください。\n" . implode("\n", $names)]];
+    $content = [['type' => 'text', 'text' => '次の' . ($kind === 'song' ? '曲名' : 'アーティスト名') . "にふりがなを付けてください。\n" . implode("\n", $send)]];
     try {
         $data = claude_json($system, $content, $schema, 16000, 120);
     } catch (RuntimeException $e) {
@@ -298,23 +361,28 @@ PROMPT;
         }
         throw $e;
     }
-    $want = array_flip($names);
     $out = [];
     foreach ($data['items'] ?? [] as $it) {
-        $name = (string)($it['name'] ?? '');
+        $name = (string)($it['name'] ?? ''); // AI に送った文字列（曲名なら括弧以降を除いたもの）
         // かな・長音だけにする（AI が記号を混ぜても並べ替えが崩れないように）
         $kana = preg_replace('/[^\p{Hiragana}\p{Katakana}ー]/u', '', (string)($it['kana'] ?? ''));
-        if (artist_kana_style($name) === 'hiragana') {
-            $kana = mb_convert_kana($kana, 'c');        // 英字が無い名前は全部ひらがな
+        $hasKatakana = (bool)preg_match('/[\x{30A1}-\x{30FA}]/u', $name); // 曲名にカタカナがあるか
+        if (artist_kana_style($name) === 'hiragana' && !($kind === 'song' && $hasKatakana)) {
+            $kana = mb_convert_kana($kana, 'c');        // 英字が無い名前は全部ひらがな（曲名はカタカナが入っているとき除く）
         } elseif (!preg_match('/[\x{3041}-\x{309F}\x{3400}-\x{9FFF}0-9０-９]/u', $name)) { // ひらがな・漢字・数字の範囲（\p{Han} だと「・」まで当たる）
             $kana = mb_convert_kana($kana, 'C');        // 英字とカタカナだけの名前は全部カタカナ（漢字・ひらがな・数字が混ざる名前は AI の書き分けのまま）
+        }
+        if ($kind === 'song') {
+            $kana = song_kana_keep_katakana($name, $kana); // 曲名のカタカナの部分は、読みもカタカナ
         }
         // The で始まる名前は「ザ ビートルズ」のように冠詞のあとを空ける（空白は上で消しているので付け直す）
         if (preg_match('/^the\s/i', $name)) {
             $kana = preg_replace('/^(ザ|ジ)(?=.)/u', '$1 ', $kana);
         }
-        if (isset($want[$name]) && $kana !== '' && mb_strlen($kana) <= 100) {
-            $out[$name] = $kana;
+        if (isset($sendMap[$name]) && $kana !== '' && mb_strlen($kana) <= 100) {
+            foreach ($sendMap[$name] as $orig) { // 括弧付きの曲名も含め、元の名前ごとに読みを返す
+                $out[$orig] = $kana;
+            }
         }
     }
     return $out;
