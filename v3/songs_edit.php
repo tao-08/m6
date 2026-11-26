@@ -415,7 +415,7 @@ render_header('セットリストを編集', 'lives');
     <?php endif; ?>
 <?php endif; ?>
 
-<form method="post" class="songs-form"<?= unsaved_attr() ?>>
+<form method="post" class="songs-form" data-tip-lazy<?= unsaved_attr() ?>><?php // data-tip-lazy: AI のエラーの ⓘ をあとから足すので、ポップアップを準備しておく ?>
     <?= csrf_field() ?>
     <input type="hidden" name="band_id" value="<?= $bandId ?>">
     <!-- チェックなし: アーティスト欄はバンドのアーティストで固定（薄く表示）。チェックあり: 曲ごとに書ける（assets/app_songs.js の setupSongs） -->

@@ -8,7 +8,19 @@ const lock = (on) => btns.forEach((b) => { b.disabled = on; });
 const status = box?.querySelector('[data-setlist-status]');
 const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
 
-const say = (text) => { status.hidden = false; status.textContent = text; };
+// detail: AI まわりのエラーの理由（API の detail）。ⓘ（data-tip）に出す
+const say = (text, detail) => {
+  status.hidden = false;
+  status.textContent = text;
+  if (!detail) return;
+  const tip = document.createElement('button');
+  tip.type = 'button';
+  tip.className = 'info-tip';
+  tip.dataset.tip = detail;
+  tip.setAttribute('aria-label', '補足を表示');
+  tip.innerHTML = '<span class="icon" aria-hidden="true">info</span>';
+  status.append(' ', tip);
+};
 
 const post = async (extra = {}) => {
   const body = new FormData();
@@ -16,7 +28,7 @@ const post = async (extra = {}) => {
   Object.entries(extra).forEach(([k, v]) => body.append(k, v));
   const res = await fetch('api_setlist_detect', { method: 'POST', headers: { 'X-CSRF-Token': csrf }, body });
   const json = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(json.error || '解析に失敗しました');
+  if (!res.ok) throw Object.assign(new Error(json.error || '解析に失敗しました'), { detail: json.detail });
   return json;
 };
 
@@ -30,7 +42,7 @@ const watch = async (flex = true) => {
     }
     location.href = box.dataset.doneUrl;
   } catch (e) {
-    say(e.message);
+    say(e.message, e.detail);
     lock(false);
   }
 };
@@ -41,7 +53,7 @@ btns.forEach((btn) => btn.addEventListener('click', async () => {
     await post({ flex: btn.dataset.flex });
     watch(btn.dataset.flex === '1');
   } catch (e) {
-    say(e.message);
+    say(e.message, e.detail);
     lock(false);
   }
 }));

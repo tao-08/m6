@@ -12,7 +12,7 @@
  *  終わったら、押した人の端末すべてにプッシュ通知を送る（lib/push.php。画面を閉じていても気づけるように）
  *  1曲だけ検出し直す（↻）: from, to（秒）も送ると、その区間だけ落として聴かせ、{"candidates": [{title, artist}]} を返す
  *    tail=1: 区間の最後の曲を答えさせる（その曲の秒がわからず、前の曲の始まりから聴かせるとき）
- *  エラー: {"error": "..."}（400 / 401 / 403 / 404 / 502 / 503）
+ *  エラー: {"error": "...", "detail": "理由（あれば。画面の ⓘ に出す）"}（400 / 401 / 403 / 404 / 502 / 503）
  * =====================================================================
  */
 declare(strict_types=1);
@@ -50,7 +50,7 @@ if (!empty($_POST['status'])) {
     }
     setlist_job_put($bandId, null);
     if ($job['state'] !== 'done') {
-        fail(502, (string)($job['error'] ?? '解析に失敗しました'));
+        fail(502, (string)($job['error'] ?? '解析に失敗しました'), ['detail' => (string)($job['detail'] ?? '')]);
     }
     $_SESSION['setlist_detect'][$bandId] = $job['songs'];
     api_ok(['state' => 'done']);
@@ -61,14 +61,14 @@ session_write_close(); // 長く待つので、ほかの画面を待たせない
 $why = null;
 
 if ($section !== null) { // ↻ はその場で待つ（1曲なので約20秒）
-    $audio = ytdlp_audio($videoId, $why, $section) ?? fail(502, 'YouTube から音声を取得できませんでした / ' . $why); // 管理者だけの画面なので理由も出す
+    $audio = ytdlp_audio($videoId, $why, $section) ?? fail(502, 'YouTube から音声を取得できませんでした', ['detail' => (string)$why]); // 管理者だけの画面なので理由も ⓘ に出す
     try {
         $cands = gemini_setlist_one($audio, 'audio/aac', $cfg, !empty($_POST['tail']));
     } finally {
         @unlink($audio);
     }
     if (is_string($cands)) {
-        fail(502, $cands . ' / ' . gemini_why());
+        fail(502, $cands, ['detail' => gemini_why()]);
     }
     if (!$cands) {
         fail(404, '曲が見つかりませんでした');
@@ -101,7 +101,7 @@ if (function_exists('fastcgi_finish_request')) {
 try {
     $audio = ytdlp_audio($videoId, $why);
     if ($audio === null) {
-        $job = ['state' => 'error', 'error' => 'YouTube から音声を取得できませんでした / ' . $why]; // 管理者だけの画面なので理由も出す
+        $job = ['state' => 'error', 'error' => 'YouTube から音声を取得できませんでした', 'detail' => (string)$why]; // 管理者だけの画面なので理由も ⓘ に出す
     } else {
         try {
             $songs = gemini_setlist($audio, 'audio/aac', $cfg, $band['artist'], $flex); // m4a（AAC）をそのまま聴かせる
@@ -109,7 +109,7 @@ try {
             @unlink($audio);
         }
         $job = match (true) {
-            is_string($songs) => ['state' => 'error', 'error' => $songs . ' / ' . gemini_why()],
+            is_string($songs) => ['state' => 'error', 'error' => $songs, 'detail' => gemini_why()],
             !array_filter(array_column($songs, 'title'), 'strlen') => ['state' => 'error', 'error' => '曲が見つかりませんでした'], // 確認画面を開いても意味がない
             default => ['state' => 'done', 'songs' => $songs],
         };

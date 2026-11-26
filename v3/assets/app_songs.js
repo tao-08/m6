@@ -354,6 +354,17 @@ function setupSongs() {
  * ------------------------------------------------------------------- */
 
 /** Material Symbols のアイコン（PHP の icon() と同じ形）を作る。名前は textContent で入れる */
+// AI まわりのエラーの理由（API の detail）を出す ⓘ。押しても何も実行しないので data-tip
+function infoTip(detail) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'info-tip';
+  btn.dataset.tip = detail;
+  btn.setAttribute('aria-label', '補足を表示');
+  btn.append(iconEl('info'));
+  return btn;
+}
+
 function iconEl(name) {
   const span = document.createElement('span');
   span.className = 'icon';
@@ -438,10 +449,11 @@ function setupTrackSearch() {
     btn.append(img, text);
     return btn;
   };
-  const message = (results, text) => {
+  const message = (results, text, detail) => {
     const p = document.createElement('p');
     p.className = 'track-results__msg';
     p.textContent = text;
+    if (detail) p.append(' ', infoTip(detail));
     results.replaceChildren(p);
     openResults(results);
   };
@@ -555,11 +567,11 @@ function setupTrackSearch() {
       try {
         const res = await fetch('api_setlist_detect', { method: 'POST', headers: { 'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]')?.content || '' }, body });
         const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.error || '解析に失敗しました');
+        if (!res.ok) throw Object.assign(new Error(data.error || '解析に失敗しました'), { detail: data.detail });
         card.dataset.candidates = JSON.stringify(data.candidates);
         await showCandidates(card);
       } catch (err) {
-        message(results, err.message);
+        message(results, err.message, err.detail);
       } finally {
         retry.disabled = false;
       }
@@ -654,10 +666,11 @@ function setupLyricsSearch() {
   const list = document.querySelector('[data-song-list]');
   if (!list) return;
 
-  const showMessage = (results, text) => {
+  const showMessage = (results, text, detail) => {
     const p = document.createElement('p');
     p.className = 'track-results__msg';
     p.textContent = text;
+    if (detail) p.append(' ', infoTip(detail));
     results.replaceChildren(p);
     openResults(results);
   };
@@ -699,7 +712,7 @@ function setupLyricsSearch() {
         body: JSON.stringify({ q, artist }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || '歌詞検索に失敗しました');
+      if (!res.ok) throw Object.assign(new Error(data.error || '歌詞検索に失敗しました'), { detail: data.detail });
       if (!Array.isArray(data.tracks) || data.tracks.length === 0) {
         showMessage(results, '曲の候補が見つかりませんでした。別の歌詞で検索してください');
         return;
@@ -759,7 +772,7 @@ function setupLyricsSearch() {
       results.replaceChildren(...rows);
       openResults(results);
     } catch (err) {
-      showMessage(results, err.message || '歌詞検索に失敗しました');
+      showMessage(results, err.message || '歌詞検索に失敗しました', err.detail);
     } finally {
       button.disabled = false;
     }

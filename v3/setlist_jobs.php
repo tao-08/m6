@@ -49,7 +49,7 @@ render_header('曲の検出の状況', 'tools');
                 <?php elseif ($job['state'] === 'done'): ?>
                     確認待ち
                 <?php else: ?>
-                    <span <?= tip_attr((string)($job['error'] ?? '')) ?> style="cursor: help">失敗</span>
+                    <span <?= tip_attr(trim(($job['error'] ?? '') . ' / ' . ($job['detail'] ?? ''), ' /')) ?> style="cursor: help">失敗</span>
                 <?php endif; ?></td>
                 <td><?= isset($job['flex']) ? ($job['flex'] ? '低速' : '高速') : '' ?></td>
                 <td><?= isset($job['at']) ? date('n/j H:i', (int)$job['at']) : '' ?></td>

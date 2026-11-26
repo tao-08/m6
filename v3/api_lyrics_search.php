@@ -9,6 +9,7 @@ declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/api.php';
 require_once __DIR__ . '/lib/tracks.php';
+require_once __DIR__ . '/lib/gemini_chapters.php'; // gemini_call
 
 header('Content-Type: application/json; charset=utf-8');
 api_user('is_admin', '歌詞検索は管理者のみ利用できます');
@@ -47,21 +48,24 @@ $request = [
     'tools' => [['google_search' => new stdClass()]],
 ];
 $url = 'https://generativelanguage.googleapis.com/v1beta/models/' . rawurlencode($model) . ':generateContent';
-$response = album_http($url, [
-    'Content-Type: application/json',
-    'x-goog-api-key: ' . $apiKey,
-], json_encode($request, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), null, 30);
-
-if ($response === null) {
-    error_log('Gemini lyrics search failed: no HTTP response');
-    fail(502, 'Gemini APIに接続できませんでした');
+// album_http は接続を3秒で諦めるので、検出と同じ gemini_call（接続10秒）で呼ぶ。Google 検索つきは15秒ほどかかる。つながらなければ1回だけやり直す
+$opts = [
+    CURLOPT_POST => true,
+    CURLOPT_POSTFIELDS => json_encode($request, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+    CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+];
+$res = gemini_call($url, $apiKey, $opts, 60) ?? gemini_call($url, $apiKey, $opts, 60);
+if ($res === null) {
+    fail(502, 'Gemini APIに接続できませんでした', ['detail' => gemini_why()]); // 管理者だけの画面なので理由も ⓘ に出す
 }
+$response = ['status' => $res[0], 'json' => json_decode($res[2], true)];
 $status = (int)($response['status'] ?? 0);
 if ($status !== 200 || !is_array($response['json'] ?? null)) {
     error_log('Gemini lyrics search failed: HTTP ' . $status);
-    if ($status === 429) fail(503, 'Gemini APIの利用上限に達しました。時間をおいて再試行してください');
-    if ($status === 400 || $status === 404) fail(502, 'GeminiのモデルまたはAPI設定を確認してください');
-    fail(502, 'Gemini APIで検索できませんでした');
+    $detail = ['detail' => trim('HTTP ' . $status . ' ' . gemini_error_text($res))];
+    if ($status === 429) fail(503, 'Gemini APIの利用上限に達しました。時間をおいて再試行してください', $detail);
+    if ($status === 400 || $status === 404) fail(502, 'GeminiのモデルまたはAPI設定を確認してください', $detail);
+    fail(502, 'Gemini APIで検索できませんでした', $detail);
 }
 
 $text = '';
