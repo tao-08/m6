@@ -255,6 +255,14 @@ echo "song titles\n";
 // 版違いを同じ曲にまとめる（lib/tracks.php の song_title_key）。
 // ほとんどは Spotify / iTunes に実際にある曲名（40アーティスト・約4000曲と、有名曲の検索結果で確かめた）
 require_once __DIR__ . '/../lib/tracks.php';
+check('歌詞検索: 1行1曲の答えを読む', lyrics_parse_lines("1. NUM-AMI-DABUTZ | NUMBER GIRL | high
+説明の行
+- **水色の街** | スピッツ | Medium
+曲 | | low
+X | Y | maybe"), [
+    ['title' => 'NUM-AMI-DABUTZ', 'artist' => 'NUMBER GIRL', 'confidence' => 'high'],
+    ['title' => '水色の街', 'artist' => 'スピッツ', 'confidence' => 'medium'],
+]);
 $same = [
     // (2020 Remaster) の書き方いろいろ
     'Let It Be' => ['Let It Be (2020 Remaster)', 'Let It Be (Remastered 2020)', 'Let It Be - 2020 Remaster', 'Let It Be -2020 Remaster-',

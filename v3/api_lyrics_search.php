@@ -37,8 +37,9 @@ $prompt = "あなたは楽曲特定アシスタントです。入力された歌
     . "確信度が異なる候補も含め、可能性の高い順に最大10件返してください。"
     . "曲名・アーティスト名は正式表記を優先し、別バージョンやカバーは区別してください。"
     . "歌詞本文、入力された歌詞の引用、歌詞の続きは絶対に回答に含めないでください。"
-    . "曲名・アーティスト名・アルバム名・発売年・確信度（high/medium/low）だけを返してください。"
-    . "回答はJSONオブジェクトのみ: {\"candidates\":[{\"title\":\"曲名\",\"artist\":\"アーティスト名\",\"album\":\"アルバム名または空文字\",\"year\":2020,\"confidence\":\"medium\"}]}"
+    . "まず歌詞の一節を Google 検索で調べてから答えてください。"
+    // JSON で答えさせると Google 検索を使わなくなる（2026-11 に試した）ので、1行1曲で受け取る
+    . "答えは1行に1曲、「曲名 | アーティスト名 | high・medium・low のどれか」の形だけを書いてください。説明は書かないでください。"
     . "\n検索する歌詞の一節: " . $q;
 
 $request = [
@@ -73,17 +74,8 @@ $text = '';
 foreach (($response['json']['candidates'][0]['content']['parts'] ?? []) as $part) {
     if (is_array($part) && is_string($part['text'] ?? null)) $text .= $part['text'];
 }
-$text = trim($text);
-$text = preg_replace('/^\x60{3}(?:json)?\s*|\s*\x60{3}$/i', '', $text) ?? $text;
-$decoded = json_decode($text, true);
-if (!is_array($decoded)) {
-    $start = strpos($text, '{');
-    $end = strrpos($text, '}');
-    if ($start !== false && $end !== false && $end > $start) {
-        $decoded = json_decode(substr($text, $start, $end - $start + 1), true);
-    }
-}
-if (!is_array($decoded) || !is_array($decoded['candidates'] ?? null)) {
+$decoded = ['candidates' => lyrics_parse_lines($text)];
+if (!$decoded['candidates']) {
     error_log('Gemini lyrics search returned invalid candidate JSON');
     fail(502, 'Geminiから曲の候補を読み取れませんでした。別の歌詞で検索してください');
 }

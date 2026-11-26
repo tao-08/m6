@@ -621,3 +621,22 @@ function song_version_rank(?string $album, string $title, ?string $artist = null
     }
     return 0;
 }
+
+/**
+ * 歌詞検索の Gemini の答え（1行に「曲名 | アーティスト | 確信度」）を候補の配列にする。
+ * 番号・記号の行頭や、形の合わない行（説明など）は読み飛ばす。
+ */
+function lyrics_parse_lines(string $text): array
+{
+    $out = [];
+    foreach (preg_split('/\R/u', $text) ?: [] as $line) {
+        $parts = array_map('trim', explode('|', $line));
+        if (count($parts) < 3) continue;
+        $title = trim(preg_replace('/^\s*(?:\d+[.)．、]|[-*・])\s*/u', '', $parts[0]) ?? '', " *`「」");
+        $artist = trim($parts[1], " *`");
+        $confidence = strtolower(trim($parts[2], " *`"));
+        if ($title === '' || $artist === '' || !in_array($confidence, ['high', 'medium', 'low'], true)) continue;
+        $out[] = ['title' => $title, 'artist' => $artist, 'confidence' => $confidence];
+    }
+    return $out;
+}
