@@ -639,8 +639,8 @@ function setupTrackSearch() {
     try {
       // encodeURIComponent: 日本語や & などを URL で使える形にする
       const res = await fetch(`api_track_search?q=${encodeURIComponent(q)}`, { credentials: 'same-origin' });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      const data = await res.json().catch(() => ({})); // 空の応答でも JSON の読み取りエラーをそのまま出さない
+      if (!res.ok || !Array.isArray(data.tracks)) throw new Error(data.error);
       if (data.tracks.length === 0) {
         message(results, '見つかりませんでした。曲名やアーティスト名を変えて探してください');
         return;
@@ -924,8 +924,8 @@ function setupPreview() {
       try {
         const res = await fetch(`api_track_preview?track=${encodeURIComponent(btn.dataset.preview)}${refresh ? '&refresh=1' : ''}`,
           { credentials: 'same-origin' });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error);
+        const data = await res.json().catch(() => ({})); // 空の応答でも JSON の読み取りエラーをそのまま出さない
+        if (!res.ok || data.url === undefined) throw new Error(data.error);
         url = data.url;
       } catch (err) {
         if (current === btn) stop();

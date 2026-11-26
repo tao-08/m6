@@ -278,7 +278,7 @@ render_header($artist['name'], 'artists');
         <?php foreach ($topSongs as $k => $s): ?>
             <li data-rank="<?= $songRanks[$k] ?>"><?= isset($topArt[$s['title']])
                 ? '<img class="songs-row__art" src="' . h($topArt[$s['title']]) . '" alt="" width="44" height="44" loading="lazy">'
-                : '<span class="songs-row__art songs-row__art--none" aria-hidden="true">♪</span>' ?><span><?= isset($topKey[$s['title']]) ? '<a href="songs?open=' . h(rawurlencode($topKey[$s['title']])) . '">' . h($s['title']) . '</a>' : h($s['title']) ?></span> <span class="pill"><?= (int)$s['n'] ?>回</span></li>
+                : '<span class="songs-row__art songs-row__art--none" aria-hidden="true">' . icon('music_note') . '</span>' ?><span><?= isset($topKey[$s['title']]) ? '<a href="songs?open=' . h(rawurlencode($topKey[$s['title']])) . '">' . h($s['title']) . '</a>' : h($s['title']) ?></span> <span class="pill"><?= (int)$s['n'] ?>回</span></li>
         <?php endforeach; ?>
     </ol>
     <button type="button" class="btn btn--ghost btn--sm album-box__more" data-partner-more hidden>さらに表示</button>

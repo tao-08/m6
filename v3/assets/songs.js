@@ -372,8 +372,8 @@
     list.replaceChildren(mkEl('li', 'muted small', '…'));
     try {
       const res = await fetch(`api_track_search?q=${encodeURIComponent(term)}`, { credentials: 'same-origin' });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || '検索できませんでした');
+      const json = await res.json().catch(() => ({})); // 空の応答でも JSON の読み取りエラーをそのまま出さない
+      if (!res.ok || !Array.isArray(json.tracks)) throw new Error(json.error || '検索できませんでした');
       list.replaceChildren();
       if (json.tracks.length === 0) list.appendChild(mkEl('li', 'muted small', '見つかりません'));
       json.tracks.forEach((t) => {
