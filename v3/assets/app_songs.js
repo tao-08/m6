@@ -392,6 +392,7 @@ function setTrack(card, track) {
 function closeResults(results) {
   if (results.hidden || results.classList.contains('is-closing')) return;
   results.classList.add('is-closing');
+  results.dispatchEvent(new Event('preview-stop', { bubbles: true })); // 中で鳴っている試聴を止める（中身は消えるので、止めないと鳴り続ける）
   const done = () => {
     if (!results.classList.contains('is-closing')) return; // 途中で開き直された
     results.classList.remove('is-closing');
@@ -628,6 +629,20 @@ function setupDetectPlayer() {
     send('seekTo', [Number(seek.dataset.seek), true]);
     send('playVideo');
   });
+  // 動画が流れ始めたら試聴を止める（動画の中の ▶ で流したときも）。listening を送ると、YouTube が状態を知らせてくる
+  const listen = () => frame.contentWindow?.postMessage(JSON.stringify({ event: 'listening', id: 1, channel: 'widget' }), 'https://www.youtube.com');
+  frame.addEventListener('load', listen);
+  listen();
+  let last = null;
+  window.addEventListener('message', (e) => {
+    if (e.origin !== 'https://www.youtube.com' || e.source !== frame.contentWindow) return;
+    let d;
+    try { d = JSON.parse(e.data); } catch { return; }
+    const state = d.event === 'onStateChange' ? d.info : d.info?.playerState;
+    if (state === undefined || state === last) return; // 状態が変わったときだけ（再生中の知らせは何度も来る）
+    last = state;
+    if (state === 1) document.dispatchEvent(new Event('preview-stop')); // 1 = 再生中
+  });
 }
 
 /* ---------------------------------------------------------------------
@@ -839,6 +854,10 @@ function setupPreview() {
       audio.play().catch(() => {});
     }
     start(btn);
+  });
+  // 候補を閉じた・動画が流れ始めたら止める（target の中で鳴っているときだけ。document なら何でも）
+  document.addEventListener('preview-stop', (e) => {
+    if (current && (e.target === document || e.target.contains(current))) stop();
   });
   // モーダルを閉じたら止める（close は伝わらないのでキャプチャで受ける）
   document.addEventListener('close', (e) => {

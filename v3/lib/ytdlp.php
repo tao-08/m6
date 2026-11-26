@@ -4,14 +4,15 @@
  *   サーバーに yt-dlp は入っていないので、GitHub の公式リリース（yt-dlp_linux、Python 込みの単体版）を
  *   公開フォルダの外（ホーム側の .abbey-ytdlp）に置いて動かす。/tmp は実行禁止（noexec）なので使えない。
  *   公式の SHA-256 と合わないものは置かない。落とせなかったら、最新版に取り替えて1回だけやり直す（YouTube の変更でよく壊れるため）
- *   1曲だけ検出し直すときは、全部落としてから ffmpeg で区間を切り出す（yt-dlp に区間だけ取らせると YouTube が遅く、数分かかった）。ffmpeg はyt-dlp 公式の FFmpeg ビルドも同じ所に置く（初回だけ。約2分）
+ *   1曲だけ検出し直すときは、全部落としてから ffmpeg で区間を切り出す（yt-dlp に区間だけ取らせると YouTube が遅く、数分かかった）。ffmpeg も静的ビルドを同じ所に置く（初回だけ）
  *   手元（Windows）は config.php の 'ytdlp' => ['bin' => 'yt-dlp.exe の場所', 'ffmpeg' => 'ffmpeg.exe があるフォルダ'] を使う（winget install yt-dlp.yt-dlp。Apache からは PATH が見えないため）
  */
 declare(strict_types=1);
 
 const YTDLP_RELEASE = 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/';
-const YTDLP_FFMPEG_RELEASE = 'https://github.com/yt-dlp/FFmpeg-Builds/releases/download/latest/';
-const YTDLP_FFMPEG_TAR = 'ffmpeg-master-latest-linux64-gpl.tar.xz';
+// サーバーに xz が無く .tar.xz を開けないので、PHP だけで開ける gzip の静的ビルドを版を決めて使う（SHA-256 は GitHub のリリースの値）
+const YTDLP_FFMPEG_URL = 'https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/ffmpeg-linux-x64.gz';
+const YTDLP_FFMPEG_SHA256 = 'bfe8a8fc511530457b528c48d77b5737527b504a3797a9bc4866aeca69c2dffa';
 /** 落とす音声の上限（バンドの MP3 と同じ） */
 const YTDLP_MAX_BYTES = 60 * 1024 * 1024;
 /** 取り替えてから、次に取り替えてよいまでの秒数（壊れたまま何度も GitHub に取りに行かないため） */
@@ -60,47 +61,43 @@ function ytdlp_install(): bool
     return true;
 }
 
-/** ffmpeg（と ffprobe）があるフォルダ */
+/** ffmpeg があるフォルダ */
 function ytdlp_ffmpeg_dir(): string
 {
     return PHP_OS_FAMILY === 'Windows' ? (string)(config('ytdlp')['ffmpeg'] ?? '') : ytdlp_dir();
 }
 
-/** yt-dlp 公式の FFmpeg ビルドを取ってきて、ffmpeg と ffprobe だけ取り出して置く。SHA-256 が合わなければ置かない。失敗したら理由 */
+/** ffmpeg の静的ビルド（gzip）を取ってきて、PHP で展開して置く。SHA-256 が合わなければ置かない。失敗したら理由 */
 function ytdlp_ffmpeg_install(): ?string
 {
     $dir = ytdlp_dir();
     if (!is_dir($dir) && !@mkdir($dir, 0700, true)) {
         return 'mkdir failed';
     }
-    $tar = $dir . '/ffmpeg.tar.xz';
-    $get = static function (string $name, $fp = null): ?string {
-        $ch = curl_init(YTDLP_FFMPEG_RELEASE . $name);
-        curl_setopt_array($ch, [CURLOPT_FOLLOWLOCATION => true, CURLOPT_TIMEOUT => 300, CURLOPT_USERAGENT => 'AbbeyRoad.online']
-            + ($fp === null ? [CURLOPT_RETURNTRANSFER => true] : [CURLOPT_FILE => $fp]));
-        $body = curl_exec($ch);
-        return $body !== false && curl_getinfo($ch, CURLINFO_RESPONSE_CODE) === 200 ? (is_string($body) ? $body : '') : null;
-    };
-    $sums = $get('checksums.sha256');
-    if ($sums === null || !preg_match('/^([0-9a-f]{64})\s+\*?' . preg_quote(YTDLP_FFMPEG_TAR, '/') . '$/m', $sums, $m)) {
-        return 'ffmpeg checksums';
-    }
-    $fp = fopen($tar, 'wb');
-    $ok = $get(YTDLP_FFMPEG_TAR, $fp) !== null;
-    fclose($fp);
+    $gz = $dir . '/ffmpeg.gz';
+    $tmp = $dir . '/ffmpeg.tmp';
     try {
-        if (!$ok || !hash_equals($m[1], (string)hash_file('sha256', $tar))) {
+        $fp = fopen($gz, 'wb');
+        $ch = curl_init(YTDLP_FFMPEG_URL);
+        curl_setopt_array($ch, [CURLOPT_FILE => $fp, CURLOPT_FOLLOWLOCATION => true, CURLOPT_TIMEOUT => 300, CURLOPT_USERAGENT => 'AbbeyRoad.online']);
+        $ok = curl_exec($ch) !== false && curl_getinfo($ch, CURLINFO_RESPONSE_CODE) === 200;
+        fclose($fp);
+        if (!$ok || !hash_equals(YTDLP_FFMPEG_SHA256, (string)hash_file('sha256', $gz))) {
             return 'ffmpeg download or sha256';
         }
-        [$code, $log] = ytdlp_run(['-xJf', $tar, '-C', $dir, '--strip-components=2', '--wildcards', '*/bin/ffmpeg', '*/bin/ffprobe'], 300, 'tar');
-        if ($code !== 0 || !is_file($dir . '/ffmpeg')) {
-            return "tar exit $code: $log";
+        $in = gzopen($gz, 'rb');
+        $out = fopen($tmp, 'wb');
+        $copied = $in && $out ? stream_copy_to_stream($in, $out) : false;
+        $in && gzclose($in);
+        $out && fclose($out);
+        if (!$copied || !rename($tmp, $dir . '/ffmpeg')) { // 途中まで書いたものを ffmpeg として残さない
+            return 'ffmpeg gunzip';
         }
         @chmod($dir . '/ffmpeg', 0700);
-        @chmod($dir . '/ffprobe', 0700);
         return null;
     } finally {
-        @unlink($tar);
+        @unlink($gz);
+        @unlink($tmp);
     }
 }
 

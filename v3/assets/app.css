@@ -1728,6 +1728,7 @@ code { background: var(--surface-2); padding: 1px 6px; border-radius: var(--r-sm
 /* オムニバスでないとき: バンドのアーティストで固定。薄くして「ここは変えられない」と分かるように */
 .song-card__artist[readonly] { opacity: .45; cursor: not-allowed; }
 .song-omnibus { margin: 0 0 14px; font-weight: 700; }
+.song-count { margin: 0 0 14px; } /* セトリ編集の曲数（タイムテーブルの曲数 = band.song_count）。上のチェックとそろえる */
 /* 曲の編集の「曲を探す」: 曲を紐付けるときに必ず使うボタンなので、枠だけアクセント色（赤）にして少し目立たせる */
 .song-search-btn { border-color: var(--accent); padding-inline: 10px; } /* アイコンだけ */
 .song-seek-btn { gap: 4px; padding-inline: 8px; font-variant-numeric: tabular-nums; } /* 動画のこの曲の場面へ（動画から曲を検出したとき） */

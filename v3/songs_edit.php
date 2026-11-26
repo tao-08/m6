@@ -104,6 +104,10 @@ if (is_post() && !$fromSheet) {
     verify_csrf();
     $omnibus = !empty($_POST['omnibus']);
     $private = !empty($_POST['setlist_private']); // 出演まで非公開
+    $songCount = trim((string)($_POST['song_count'] ?? '')); // タイムテーブルの曲数（band_edit と同じ。空欄 = 不明で NULL）
+    if ($songCount !== '' && (!ctype_digit($songCount) || (int)$songCount > 255)) {
+        $errors[] = '曲数を0〜255の数字で入力してください';
+    }
     $songs = [];
     foreach ((array)($_POST['songs'] ?? []) as $k => $in) {
         $title = trim((string)($in['title'] ?? ''));
@@ -204,8 +208,8 @@ if (is_post() && !$fromSheet) {
             //   アーティストが一覧に残らないようにするため（artists.php は演奏0回のアーティストを出さない）
             // オムニバスを外したとき: コピー元アーティストが無ければ、バンド名から決め直す
             $artistId = $omnibus ? null : ($band['artist_id'] ?? find_or_create_artist($pdo, $band['name']));
-            $pdo->prepare('UPDATE band SET is_omnibus = ?, artist_id = ?, setlist_private = ? WHERE band_id = ?')
-                ->execute([(int)$omnibus, $artistId, (int)$private, $bandId]);
+            $pdo->prepare('UPDATE band SET is_omnibus = ?, artist_id = ?, setlist_private = ?, song_count = ? WHERE band_id = ?')
+                ->execute([(int)$omnibus, $artistId, (int)$private, $songCount !== '' ? (int)$songCount : null, $bandId]);
             save_songs($pdo, $bandId, $songs);
             // オムニバスにしたら、外したコピー元アーティストが他で使われていなければ消す
             //   同じ名前の非オムニバスのバンド（band.artist_id）や、曲のアーティストに使っていれば残す。
@@ -367,6 +371,7 @@ $private = $fromSheet
 if (is_post() && !$fromSheet) {
     $private = !empty($_POST['setlist_private']); // 保存に失敗して画面を出し直すときは、送られてきた値のまま
 }
+$songCountValue = is_post() && !$fromSheet ? (string)($_POST['song_count'] ?? '') : (string)($band['song_count'] ?? '');
 $omnibus = (bool)$band['is_omnibus'];
 // 「出演まで非公開」のチェックは、ライブの日が今日か、これから（または日付未定）のときだけ出す。
 //   終わったライブを今から非公開にする意味はないので。held_on は 'YYYY-MM-DD' の文字列なので >= でそのまま日付を比べられる
@@ -420,6 +425,7 @@ render_header('セットリストを編集', 'lives');
     <?php if ($canPrivate): ?>
     <label class="check song-omnibus song-private"><input type="checkbox" name="setlist_private" value="1"<?= $private ? ' checked' : '' ?>> <?= icon('lock') ?> 出演まで非公開 <span class="muted small song-private__note">（終演30分後に公開<?= $setlistVis['open_at'] ? '：' . h(fmt_datetime($setlistVis['open_at'])) : '' ?>）</span></label>
     <?php endif; ?>
+    <label class="field song-count"><span>曲数</span><input type="number" class="input-num" min="0" max="255" name="song_count" value="<?= h($songCountValue) ?>"></label>
     <button type="button" class="btn btn--ghost btn--sm song-add-se" data-add-song-se>＋ SE を追加</button>
     <?php if ($detectVideo !== null): ?>
     <!-- 曲の場面があるとき: バンドの動画を上に残し、曲ごとの ▶（data-seek）でその場面へ飛ぶ（assets/app_songs.js の setupDetectPlayer） -->
