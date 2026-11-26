@@ -79,6 +79,9 @@ if ($section !== null) { // ↻ はその場で待つ（1曲なので約20秒）
 if ((setlist_job_get($bandId)['state'] ?? '') === 'running') {
     api_ok(['state' => 'running']); // もう裏で解析している（二重に払わない）
 }
+if (setlist_job_running_count() >= SETLIST_JOB_MAX) {
+    fail(429, 'ほかに' . SETLIST_JOB_MAX . 'バンドを検出中です。終わってから試してください'); // サイト全体が重くならないように
+}
 $flex = ($_POST['flex'] ?? '1') !== '0';
 setlist_job_put($bandId, ['state' => 'running', 'at' => $startedAt = time(), 'flex' => $flex]); // flex は setlist_jobs.php に出す
 
