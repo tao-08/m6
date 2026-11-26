@@ -11,15 +11,22 @@
  *                         付けると編集できるようにして、前に書いていた名前 → 連携済みの曲のアーティスト → 空欄 の順で入れる
  * ------------------------------------------------------------------- */
 function setupSongs() {
-  // 曲数が空のまま保存するとき、曲名の入った曲（SE・削除した曲を除く）の数で埋めるか聞く。キャンセルなら保存しない
+  // 保存するとき、曲名の入った曲（SE・削除した曲を除く）の数と曲数を比べる
+  //   曲数が空 → その数で埋めるか聞く（キャンセルなら保存しない）
+  //   曲数と違う → セットリストの数に変えるか聞く（キャンセルなら曲数はそのまま保存）
   document.querySelector('.songs-form')?.addEventListener('submit', (e) => {
     const count = e.target.querySelector('input[name="song_count"]');
-    if (!count || count.value.trim() !== '') return;
+    if (!count) return;
     const n = [...e.target.querySelectorAll('[data-song-card]:not(.song-card--se)')]
       .filter((c) => c.querySelector('.song-card__title')?.value.trim() && c.querySelector('[data-song-delete]')?.value !== '1').length;
     if (!n) return;
-    if (confirm(`曲数が空です。${n}曲で保存しますか？`)) count.value = n;
-    else e.preventDefault();
+    const now = count.value.trim();
+    if (now === '') {
+      if (confirm(`曲数が空です。${n}曲で保存しますか？`)) count.value = n;
+      else e.preventDefault();
+    } else if (Number(now) !== n && confirm(`曲数が${now}曲で登録されています。セットリストの${n}曲に変更しますか？`)) {
+      count.value = n;
+    }
   });
 
   // バンド編集の2つ目の楽器の「＋」: 1つ目の楽器の下に開閉。閉じたら値を空（なし）に戻す
