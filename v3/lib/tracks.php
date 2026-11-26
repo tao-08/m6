@@ -393,8 +393,15 @@ function track_preview_find(array $track): string|false|null
     // 同じ曲らしいものの中で試聴があるものを選ぶ（いちばん合う版に試聴が無いこともあるので、無いものを外してから選ぶ）
     $withPreview = static fn(array $rs) => array_values(array_filter($rs, static fn($r) => $r['preview_url'] !== null));
     // 検索で出ない曲は、アーティストの曲一覧から探す（itunes_artist_songs の説明）
-    return (track_pick_in_results($track, $withPreview($results))
-        ?? track_pick_in_results($track, $withPreview(itunes_artist_songs(explode(', ', $track['artist_name'])[0]))))['preview_url'] ?? null;
+    $found = track_pick_in_results($track, $withPreview($results))
+        ?? track_pick_in_results($track, $withPreview(itunes_artist_songs(explode(', ', $track['artist_name'])[0])));
+    // Spotify がカタカナで返した洋楽（マイ・ブラッディ・ヴァレンタイン）は、英語の名前で曲一覧から探し直す。
+    //   iTunes 側もカタカナのバンド（スピッツ）があるので、最初からは英語にしない
+    if ($found === null && preg_match('/\p{Katakana}/u', $track['artist_name'])
+        && ($en = spotify_track_artist_en((string)$track['track_id'])) !== null && album_match_key($en) !== album_match_key($track['artist_name'])) {
+        $found = track_pick_in_results(['artist_name' => $en] + $track, $withPreview(itunes_artist_songs($en)));
+    }
+    return $found['preview_url'] ?? null;
 }
 
 /**

@@ -84,7 +84,7 @@ function spotify_token(bool $refresh = false): ?string
  *   $path   'search' や 'albums/xxxx'
  *   $params URL の ? 以降に付ける値
  */
-function spotify_request(string $path, array $params): ?array
+function spotify_request(string $path, array $params, string $lang = 'ja'): ?array
 {
     $url = 'https://api.spotify.com/v1/' . $path . '?' . http_build_query($params);
     // 1回目は保存してあるトークンで。401（トークン切れ）が返ってきたら、もらい直して1回だけやり直す
@@ -93,8 +93,8 @@ function spotify_request(string $path, array $params): ?array
         if ($token === null) {
             return null;
         }
-        // Accept-Language: ja … アーティスト名などを日本語の表記で返してもらう
-        $res = album_http($url, ['Authorization: Bearer ' . $token, 'Accept-Language: ja']);
+        // Accept-Language: ja … アーティスト名などを日本語の表記で返してもらう（試聴を探すときだけ英語: spotify_track_artist_en）
+        $res = album_http($url, ['Authorization: Bearer ' . $token, 'Accept-Language: ' . $lang]);
         if ($res === null) {
             return null;
         }
@@ -275,6 +275,19 @@ function spotify_normalize_track(array $t): ?array
         //   in_array(値, 候補, true): 候補のどれかと「型まで同じ」なら true。想定外の値は null にして使わない
         'album_type'   => in_array($album['album_type'] ?? null, ['album', 'single', 'compilation'], true) ? $album['album_type'] : null,
     ];
+}
+
+/**
+ * 曲の最初のアーティストの英語の名前（マイ・ブラッディ・ヴァレンタイン → my bloody valentine）。取れなければ null
+ *   iTunes の日本のストアは洋楽を英語名で持ち、カタカナでは検索できないので、試聴を探すときに使う（lib/tracks.php の track_preview_find）
+ */
+function spotify_track_artist_en(string $trackId): ?string
+{
+    if (!spotify_valid_id($trackId)) {
+        return null;
+    }
+    $name = trim((string)(spotify_request('tracks/' . $trackId, ['market' => SPOTIFY_MARKET], 'en')['artists'][0]['name'] ?? ''));
+    return $name === '' ? null : $name;
 }
 
 /**
