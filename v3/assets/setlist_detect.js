@@ -3,7 +3,8 @@
 //   5秒ごとに途中経過（status=1）を見て、終わったらセトリの確認画面（songs_edit?from_detect=1）へ
 //   画面を閉じても裏の処理は続く。開き直したとき解析中なら（data-pending）すぐ見に行く
 const box = document.querySelector('[data-setlist-detect]');
-const btn = box?.querySelector('button');
+const btns = [...(box?.querySelectorAll('button') ?? [])];
+const lock = (on) => btns.forEach((b) => { b.disabled = on; });
 const status = box?.querySelector('[data-setlist-status]');
 const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
 
@@ -19,9 +20,9 @@ const post = async (extra = {}) => {
   return json;
 };
 
-const watch = async () => {
-  btn.disabled = true;
-  say('解析しています。15分ほどかかることがあります');
+const watch = async (flex = true) => {
+  lock(true);
+  say(flex ? '解析しています。15分ほどかかることがあります' : '解析しています');
   try {
     for (;;) {
       if ((await post({ status: 1 })).state === 'done') break;
@@ -30,19 +31,19 @@ const watch = async () => {
     location.href = box.dataset.doneUrl;
   } catch (e) {
     say(e.message);
-    btn.disabled = false;
+    lock(false);
   }
 };
 
-btn?.addEventListener('click', async () => {
-  btn.disabled = true;
+btns.forEach((btn) => btn.addEventListener('click', async () => {
+  lock(true);
   try {
-    await post();
-    watch();
+    await post({ flex: btn.dataset.flex });
+    watch(btn.dataset.flex === '1');
   } catch (e) {
     say(e.message);
-    btn.disabled = false;
+    lock(false);
   }
-});
+}));
 
 if (box?.hasAttribute('data-pending')) watch();

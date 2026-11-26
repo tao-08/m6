@@ -147,18 +147,19 @@ function gemini_setlist_schema(): array
 
 /**
  * @param string $mime 音声の種類（YouTube の m4a は audio/aac）
+ * @param bool $flex Flex（半額・遅い）で聴かせるか。false なら Standard（速い・料金は2倍）
  * @param ?string $artist コピー元のアーティスト（オムニバス・不明なら null）。iTunes に曲があれば一覧から選ばせる（1回）。
  *   無ければ一覧なしで聴かせ、わからない曲が残ったらアーティストだけ伝えてもう一度聴かせる
  * @return array|string gemini_setlist_songs の形。失敗したら画面に出せる理由
  */
-function gemini_setlist(string $path, string $mime, array $cfg, ?string $artist = null): array|string
+function gemini_setlist(string $path, string $mime, array $cfg, ?string $artist = null, bool $flex = true): array|string
 {
     $schema = gemini_setlist_schema();
     $artist = trim((string)$artist);
     $titles = $artist !== '' ? itunes_artist_titles($artist) : [];
-    // Flex（半額）で聴かせる。返事まで数分かかるので、api_setlist_detect は画面に先に返してから裏で待つ
+    // $flex: Flex（半額）で聴かせる。返事まで数分かかるので、api_setlist_detect は画面に先に返してから裏で待つ
     $prompt = $titles ? gemini_setlist_list_prompt($artist, $titles) : GEMINI_SETLIST_PROMPT;
-    $json = gemini_audio_json($path, $mime, $cfg['key'], $cfg['model'], $prompt, $schema, GEMINI_SETLIST_THINKING, true);
+    $json = gemini_audio_json($path, $mime, $cfg['key'], $cfg['model'], $prompt, $schema, GEMINI_SETLIST_THINKING, $flex);
     if (is_string($json)) {
         return $json;
     }
@@ -167,7 +168,7 @@ function gemini_setlist(string $path, string $mime, array $cfg, ?string $artist 
         return $songs; // 一覧を渡したら、2回目はしない（試験で2回目と同じ以上に当たった）
     }
     if ($artist !== '' && gemini_setlist_has_unknown($songs)) {
-        $again = gemini_audio_json($path, $mime, $cfg['key'], $cfg['model'], gemini_setlist_hint_prompt($artist), $schema, GEMINI_SETLIST_THINKING, true);
+        $again = gemini_audio_json($path, $mime, $cfg['key'], $cfg['model'], gemini_setlist_hint_prompt($artist), $schema, GEMINI_SETLIST_THINKING, $flex);
         if (is_array($again)) { // 2回目が失敗したら、1回目の結果だけ返す
             $songs = gemini_setlist_fill($songs, gemini_setlist_songs($again));
         }

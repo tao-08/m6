@@ -31,6 +31,7 @@ return [
     'auto_awesome',
     'auto_fix_high',
     'block',
+    'bolt',
     'bookmark',
     'bookmark_add',
     'box',

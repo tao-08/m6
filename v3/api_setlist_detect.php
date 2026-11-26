@@ -6,7 +6,7 @@
  *  songs_edit.php の「YouTube から曲を検出」（assets/setlist_detect.js）が fetch() で呼ぶ。
  *  リクエスト（POST）: band_id
  *  すぐ {"state": "running"} を返し、裏でバンドの YouTube（限定公開も）から音声を落とし（lib/ytdlp.php）、
- *  Gemini（Flex で半額。数分〜15分）が聴き終わるまで待つ。途中経過は setlist_job_*（lib/gemini_setlist.php）
+ *  Gemini が聴き終わるまで待つ。flex=0 なら Standard（速い）、それ以外は Flex（半額。数分〜15分）。途中経過は setlist_job_*（lib/gemini_setlist.php）
  *  status=1: 途中経過を見る。{"state": "running"} / 終わっていれば曲名・候補・始まる時刻をセッションに置いて {"state": "done"}
  *    → 画面が songs_edit?from_detect=1 で確認画面を開く
  *  終わったら、押した人の端末すべてにプッシュ通知を送る（lib/push.php。画面を閉じていても気づけるように）
@@ -103,7 +103,7 @@ try {
         $job = ['state' => 'error', 'error' => 'YouTube から音声を取得できませんでした / ' . $why]; // 管理者だけの画面なので理由も出す
     } else {
         try {
-            $songs = gemini_setlist($audio, 'audio/aac', $cfg, $band['artist']); // m4a（AAC）をそのまま聴かせる
+            $songs = gemini_setlist($audio, 'audio/aac', $cfg, $band['artist'], ($_POST['flex'] ?? '1') !== '0'); // m4a（AAC）をそのまま聴かせる
         } finally {
             @unlink($audio);
         }

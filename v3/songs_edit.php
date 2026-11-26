@@ -395,7 +395,10 @@ render_header('セットリストを編集', 'lives');
     <!-- 押すと assets/setlist_detect.js が api_setlist_detect に送る（サーバーが裏でバンドの YouTube から音声を落として Gemini に聴かせる）。終わったらこのページの確認画面（from_detect=1）へ -->
     <!-- data-pending: 裏で解析中（または終わったが、まだ見ていない）。開いたらすぐ途中経過を見に行く -->
     <div data-setlist-detect data-band="<?= $bandId ?>" data-done-url="songs_edit?band=<?= $bandId ?>&amp;from_detect=1"<?= setlist_job_get($bandId) !== null ? ' data-pending' : '' ?>>
-        <p><button type="button" class="btn btn--ghost btn--sm"><?= icon('smart_display') ?> YouTube から曲を検出</button></p>
+        <!-- 低速 = Gemini の Flex（半額。返事まで最大15分） -->
+        <p class="row-form"><?= icon('smart_display') ?> YouTube から曲を検出
+            <button type="button" class="btn btn--ghost btn--sm" data-flex="0"><?= icon('bolt') ?> 高速</button>
+            <button type="button" class="btn btn--ghost btn--sm" data-flex="1"><?= icon('timer') ?> 低速・半額</button></p>
         <p class="muted small" data-setlist-status role="status" hidden></p>
     </div>
     <script type="module" src="<?= asset_url('assets/setlist_detect.js') ?>"></script>
