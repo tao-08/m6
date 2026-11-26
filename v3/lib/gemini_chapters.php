@@ -120,14 +120,28 @@ function gemini_error_text(?array $res): string
 /**
  * 音源を Files API に上げて $prompt で聴かせ、$schema の形の JSON を返す（終わったら音源は消す）。失敗したら文字列（画面に出せる理由）
  *   自動チャプター（上）と、動画から曲を検出（lib/gemini_setlist.php）で使う
- *   $thinkingBudget: 考える量（トークン）の上限。null なら上限なし。考えた分は出力と同じ単価で請求される
- *   $flex: Flex（半額。返事まで1〜15分。混んでいると 429 / 5xx で断られるので、待って6回までやり直す。待つのは合わせて約17分）。画面を待たせない所だけで使う
+ *   $thinkingBudget / $flex は gemini_json と同じ
  */
 function gemini_audio_json(string $path, string $mime, string $key, string $model, string $prompt, array $schema, ?int $thinkingBudget = null, bool $flex = false): array|string
 {
+    $file = gemini_upload($path, $mime, $key);
+    if (is_string($file)) {
+        return $file;
+    }
+    try {
+        return gemini_json([['file_data' => ['mime_type' => $mime, 'file_uri' => $file['uri']]], ['text' => $prompt]], $key, $model, $schema, $thinkingBudget, $flex);
+    } finally {
+        gemini_delete($file, $key); // 預けた音源は消す
+    }
+}
+
+/**
+ * 音源を Files API に上げ、使える状態（ACTIVE）になるまで待つ。戻り値: Files API のファイル（name, uri。使い終わったら gemini_delete）。失敗したら理由
+ */
+function gemini_upload(string $path, string $mime, string $key): array|string
+{
     $size = (int)filesize($path);
     $fail = 'Gemini API で解析できませんでした';
-    $limit = 'Gemini API の利用上限に達しました。時間をおいて再試行してください';
 
     // 1. 上げる場所をもらう → 2. 上げる
     $start = gemini_call(GEMINI_API . '/upload/v1beta/files', $key, [
@@ -144,7 +158,7 @@ function gemini_audio_json(string $path, string $mime, string $key, string $mode
     $uploadUrl = $start[1]['x-goog-upload-url'] ?? '';
     if (!$start || $start[0] !== 200 || !str_starts_with($uploadUrl, GEMINI_API . '/')) {
         gemini_why('upload start HTTP ' . ($start[0] ?? 0) . ' ' . gemini_error_text($start));
-        return ($start[0] ?? 0) === 429 ? $limit : $fail;
+        return ($start[0] ?? 0) === 429 ? 'Gemini API の利用上限に達しました。時間をおいて再試行してください' : $fail;
     }
     $fp = fopen($path, 'rb');
     $up = gemini_call($uploadUrl, $key, [
@@ -160,57 +174,66 @@ function gemini_audio_json(string $path, string $mime, string $key, string $mode
         gemini_why('upload HTTP ' . ($up[0] ?? 0) . ' ' . gemini_error_text($up));
         return $fail;
     }
-    $result = $fail;
-    try {
-        // 3. 使える状態（ACTIVE）になるまで待つ
-        for ($i = 0; $i < 30 && ($file['state'] ?? '') !== 'ACTIVE'; $i++) {
-            if (($file['state'] ?? '') === 'FAILED') {
-                gemini_why('file FAILED');
-                return $fail;
-            }
-            sleep(2);
-            $st = gemini_call(GEMINI_API . '/v1beta/' . $file['name'], $key, [], 20);
-            $file = json_decode($st[2] ?? '', true) ?: $file;
+    // 3. 使える状態（ACTIVE）になるまで待つ
+    for ($i = 0; $i < 30 && ($file['state'] ?? '') !== 'ACTIVE'; $i++) {
+        if (($file['state'] ?? '') === 'FAILED') {
+            gemini_why('file FAILED');
+            gemini_delete($file, $key);
+            return $fail;
         }
-        // 4. 聴かせる
-        $req = [
-            'contents' => [['role' => 'user', 'parts' => [
-                ['file_data' => ['mime_type' => $mime, 'file_uri' => $file['uri']]],
-                ['text' => $prompt],
-            ]]],
-            'generationConfig' => [
-                'temperature' => 0,
-                'responseMimeType' => 'application/json',
-                'responseSchema' => $schema,
-            ] + ($thinkingBudget === null ? [] : ['thinkingConfig' => ['thinkingBudget' => $thinkingBudget]]),
-        ] + ($flex ? ['service_tier' => 'flex'] : []);
-        foreach ($flex ? [30, 60, 120, 240, 300, 300, 0] : [0] as $wait) {
-            $res = gemini_call(GEMINI_API . '/v1beta/models/' . rawurlencode($model) . ':generateContent', $key, [
-                CURLOPT_POST => true,
-                CURLOPT_POSTFIELDS => json_encode($req, JSON_UNESCAPED_UNICODE),
-                CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
-            ], $flex ? 660 : 280); // Flex は最大 600 秒待つ
-            if (!$res || !in_array($res[0], [429, 500, 502, 503, 504], true) || $wait === 0) { // 混雑は 503 以外（502 など）でも返る
-                break;
-            }
-            sleep($wait); // Flex が混んでいる
-        }
-        if (!$res || $res[0] !== 200) {
-            gemini_why('generate HTTP ' . ($res[0] ?? 0) . ' ' . gemini_error_text($res) . ' state=' . ($file['state'] ?? '?'));
-            return ($res[0] ?? 0) === 429 ? $limit : $fail;
-        }
-        $text = '';
-        $body = json_decode($res[2], true);
-        foreach ($body['candidates'][0]['content']['parts'] ?? [] as $p) {
-            $text .= (string)($p['text'] ?? '');
-        }
-        $json = json_decode($text, true);
-        $result = is_array($json) ? $json : $fail;
-        if (!is_array($json)) {
-            gemini_why('bad JSON finish=' . ($body['candidates'][0]['finishReason'] ?? $body['promptFeedback']['blockReason'] ?? '?') . ' len=' . strlen($text));
-        }
-    } finally {
-        gemini_call(GEMINI_API . '/v1beta/' . $file['name'], $key, [CURLOPT_CUSTOMREQUEST => 'DELETE'], 20); // 預けた音源は消す
+        sleep(2);
+        $st = gemini_call(GEMINI_API . '/v1beta/' . $file['name'], $key, [], 20);
+        $file = json_decode($st[2] ?? '', true) ?: $file;
     }
-    return $result;
+    return $file;
+}
+
+/** gemini_upload で上げたファイルを消す */
+function gemini_delete(array $file, string $key): void
+{
+    gemini_call(GEMINI_API . '/v1beta/' . $file['name'], $key, [CURLOPT_CUSTOMREQUEST => 'DELETE'], 20);
+}
+
+/**
+ * $parts（文・gemini_upload した音源）を渡して、$schema の形の JSON を返させる。失敗したら文字列（画面に出せる理由）
+ *   $thinkingBudget: 考える量（トークン）の上限。null なら上限なし。考えた分は出力と同じ単価で請求される
+ *   $flex: Flex（半額。返事まで1〜15分。混んでいると 429 / 5xx で断られるので、待って6回までやり直す。待つのは合わせて約17分）。画面を待たせない所だけで使う
+ */
+function gemini_json(array $parts, string $key, string $model, array $schema, ?int $thinkingBudget = null, bool $flex = false): array|string
+{
+    $fail = 'Gemini API で解析できませんでした';
+    $req = [
+        'contents' => [['role' => 'user', 'parts' => $parts]],
+        'generationConfig' => [
+            'temperature' => 0,
+            'responseMimeType' => 'application/json',
+            'responseSchema' => $schema,
+        ] + ($thinkingBudget === null ? [] : ['thinkingConfig' => ['thinkingBudget' => $thinkingBudget]]),
+    ] + ($flex ? ['service_tier' => 'flex'] : []);
+    foreach ($flex ? [30, 60, 120, 240, 300, 300, 0] : [0] as $wait) {
+        $res = gemini_call(GEMINI_API . '/v1beta/models/' . rawurlencode($model) . ':generateContent', $key, [
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => json_encode($req, JSON_UNESCAPED_UNICODE),
+            CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+        ], $flex ? 660 : 280); // Flex は最大 600 秒待つ
+        if (!$res || !in_array($res[0], [429, 500, 502, 503, 504], true) || $wait === 0) { // 混雑は 503 以外（502 など）でも返る
+            break;
+        }
+        sleep($wait); // Flex が混んでいる
+    }
+    if (!$res || $res[0] !== 200) {
+        gemini_why('generate HTTP ' . ($res[0] ?? 0) . ' ' . gemini_error_text($res));
+        return ($res[0] ?? 0) === 429 ? 'Gemini API の利用上限に達しました。時間をおいて再試行してください' : $fail;
+    }
+    $text = '';
+    $body = json_decode($res[2], true);
+    foreach ($body['candidates'][0]['content']['parts'] ?? [] as $p) {
+        $text .= (string)($p['text'] ?? '');
+    }
+    $json = json_decode($text, true);
+    if (!is_array($json)) {
+        gemini_why('bad JSON finish=' . ($body['candidates'][0]['finishReason'] ?? $body['promptFeedback']['blockReason'] ?? '?') . ' len=' . strlen($text));
+        return $fail;
+    }
+    return $json;
 }

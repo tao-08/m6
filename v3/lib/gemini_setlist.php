@@ -152,7 +152,7 @@ function gemini_setlist_schema(): array
  * @param string $mime 音声の種類（YouTube の m4a は audio/aac）
  * @param bool $flex Flex（半額・遅い）で聴かせるか。false なら Standard（速い・料金は2倍）
  * @param ?string $artist コピー元のアーティスト（オムニバス・不明なら null）。iTunes に曲があれば一覧から選ばせる（1回）。
- *   無ければ一覧なしで聴かせ、わからない曲が残ったらアーティストだけ伝えてもう一度聴かせる
+ *   無ければ一覧なしで聴かせ、わからない曲が残ったらアーティストだけ伝えてもう一度聴かせる。一覧があれば、曲ごとに歌詞と試聴で確かめる（gemini_setlist_check）
  * @param ?int $count タイムテーブルの曲数（band.song_count。不明なら null）。伝えて聴き落としを減らす
  * @return array|string gemini_setlist_songs の形。失敗したら画面に出せる理由
  */
@@ -165,14 +165,19 @@ function gemini_setlist(string $path, string $mime, array $cfg, ?string $artist 
     $artist = trim((string)$artist);
     $titles = $artist !== '' ? itunes_artist_titles($artist) : [];
     // $flex: Flex（半額）で聴かせる。返事まで数分かかるので、api_setlist_detect は画面に先に返してから裏で待つ
-    $prompt = ($titles ? gemini_setlist_list_prompt($artist, $titles) : GEMINI_SETLIST_PROMPT) . $more;
+    $prompt = ($titles ? gemini_setlist_list_prompt($artist, $titles) . GEMINI_SETLIST_PHRASES_PROMPT : GEMINI_SETLIST_PROMPT) . $more;
+    if ($titles) {
+        $schema['properties']['songs']['items']['properties']['phrases'] = ['type' => 'ARRAY', 'items' => ['type' => 'STRING']];
+    }
     $json = gemini_audio_json($path, $mime, $cfg['key'], $cfg['model'], $prompt, $schema, GEMINI_SETLIST_THINKING, $flex);
     if (is_string($json)) {
         return $json;
     }
     $songs = gemini_setlist_songs($json);
-    if ($titles) {
-        return $songs; // 一覧を渡したら、2回目はしない（試験で2回目と同じ以上に当たった）
+    if ($titles) { // 一覧を渡したら、2回目はしない（試験で2回目と同じ以上に当たった）
+        // 歌詞の一節は確かめるのに使うだけ。返す曲（途中経過のファイル・セッションに残る）には入れない
+        $phrases = array_map(static fn($s) => $s['phrases'] ?? [], array_values(array_filter((array)($json['songs'] ?? []), 'is_array')));
+        return gemini_setlist_check($songs, $phrases, $path, $artist, $cfg, $flex);
     }
     if ($artist !== '' && gemini_setlist_has_unknown($songs)) {
         $again = gemini_audio_json($path, $mime, $cfg['key'], $cfg['model'], gemini_setlist_hint_prompt($artist) . $more, $schema, GEMINI_SETLIST_THINKING, $flex);
@@ -181,6 +186,156 @@ function gemini_setlist(string $path, string $mime, array $cfg, ?string $artist 
         }
     }
     return $songs;
+}
+
+/** 一覧から選ばせるときに足す指示。曲ごとに聞き取れた歌詞の一節を返させ、gemini_setlist_lyrics で曲名を確かめる */
+const GEMINI_SETLIST_PHRASES_PROMPT = '
+- phrases には、その曲ではっきり聞き取れた歌詞の一節を3つまで（各20文字以内）、聞こえたとおりに書く。聞き取れなければ空にする。推測で補わない';
+
+/** 聴き比べで聴かせるライブの長さ（秒。曲の始まりから）。2分だと13曲中、正解1曲が自信なしに・自信なし1曲が自信ありの外れになった */
+const GEMINI_SETLIST_COMPARE_SEC = 240;
+
+/** 歌詞の一節から曲名を調べるモデル（Google 検索つき。api_lyrics_search と同じ） */
+const GEMINI_SETLIST_LYRICS_MODEL = 'gemini-3.8-flash';
+
+/** 曲名を比べるときの形（全角半角・大文字小文字・記号・空白の違いを無視する） */
+function gemini_setlist_norm(string $t): string
+{
+    return (string)preg_replace('/[\s\p{P}\p{S}]/u', '', mb_strtolower(mb_convert_kana($t, 'asKV')));
+}
+
+/**
+ * ①（一覧から選ばせた結果）を曲ごとに確かめる。2026-11 に10バンド37曲で試し、自信ありの外れが7曲 → 1曲になった
+ *   1. 聞き取れた歌詞の一節を Google 検索で曲名にする（gemini_setlist_lyrics）。①が自信ありで1位と同じなら確定
+ *   2. 違えば、候補（①・歌詞の上位・①の候補）のうち試聴がある3曲とライブを聴き比べる（gemini_setlist_compare）。合えばその曲で確定
+ *   3. どれでもない・候補が1曲以下・失敗したら、自信なしにして候補を並べる（確認画面で人が選ぶ）
+ * @param array $phrases 曲ごとの歌詞の一節（$songs と同じ順）。ここで使うだけで、返さない
+ */
+function gemini_setlist_check(array $songs, array $phrases, string $path, string $artist, array $cfg, bool $flex): array
+{
+    $previews = []; // 曲名の形 => [曲名, 試聴の URL]
+    foreach (itunes_artist_tracks($artist) as $t => $url) {
+        if ($url !== '') {
+            $previews[gemini_setlist_norm((string)$t)] ??= [(string)$t, $url];
+        }
+    }
+    foreach ($songs as $i => $s) {
+        $phr = [];
+        foreach ((array)($phrases[$i] ?? []) as $p) {
+            if (is_string($p) && trim($p) !== '' && count($phr) < 3) {
+                $phr[] = mb_substr(trim($p), 0, 30);
+            }
+        }
+        $lyr = $phr ? gemini_setlist_lyrics($phr, $artist, $cfg['key']) : [];
+        if (gemini_setlist_sure($s) && gemini_setlist_norm($s['title']) === gemini_setlist_norm($lyr[0] ?? '')) {
+            continue; // 聴き比べなくても、①と歌詞の1位が同じ
+        }
+        $pool = array_merge([$s['title']], array_slice($lyr, 0, 2), array_column($s['candidates'], 'title'), array_slice($lyr, 2));
+        $cset = [];
+        foreach ($pool as $t) {
+            if (isset($previews[$k = gemini_setlist_norm($t)])) {
+                $cset[$k] = $previews[$k];
+            }
+        }
+        $cset = array_values(array_slice($cset, 0, 3));
+        $match = count($cset) >= 2 && $s['start'] !== null // 1曲だけでは比べたことにならない
+            ? gemini_setlist_compare($path, $s['start'], $songs[$i + 1]['start'] ?? null, array_column($cset, 1), $cfg, $flex) : null;
+        if ($match !== null) {
+            $songs[$i] = ['title' => $cset[$match][0], 'candidates' => [], 'artist' => $artist] + $s;
+            continue;
+        }
+        $cands = [];
+        foreach (array_merge([$s['title']], array_column($cset, 0), $lyr, array_column($s['candidates'], 'title')) as $t) {
+            if (($k = gemini_setlist_norm($t)) !== '') {
+                $cands[$k] ??= ['title' => $t, 'artist' => $artist];
+            }
+        }
+        $songs[$i]['candidates'] = array_slice(array_values($cands), 0, GEMINI_SETLIST_MAX_CANDIDATES);
+    }
+    return $songs;
+}
+
+/**
+ * 歌詞の一節（聞き取りなので誤りを含む）を Google 検索つきの Flash で曲名にする。一節は送るだけで、保存も表示もしない
+ * @return string[] 曲名（可能性の高い順、5曲まで）。失敗したら []
+ */
+function gemini_setlist_lyrics(array $phrases, string $artist, string $key): array
+{
+    $req = [
+        'contents' => [['role' => 'user', 'parts' => [['text' => "歌詞の一節から曲を推定し、可能性の高い順に5件、JSON {\"candidates\":[{\"title\":\"\",\"artist\":\"\"}]} だけを返す。歌詞は回答に含めない。アーティストは「{$artist}」の可能性が高い。\n歌詞の一節（聞き取りなので誤りを含む）: " . implode(' / ', $phrases)]]]],
+        'generationConfig' => ['temperature' => 0.1],
+        'tools' => [['google_search' => new stdClass()]], // 検索と JSON の形の指定は一緒に使えないので、文で頼む
+    ];
+    $url = GEMINI_API . '/v1beta/models/' . GEMINI_SETLIST_LYRICS_MODEL . ':generateContent';
+    $opts = [CURLOPT_POST => true, CURLOPT_POSTFIELDS => json_encode($req, JSON_UNESCAPED_UNICODE), CURLOPT_HTTPHEADER => ['Content-Type: application/json']];
+    $res = gemini_call($url, $key, $opts, 60);
+    if (($res[0] ?? 0) !== 200) {
+        $res = gemini_call($url, $key, $opts, 60); // 1回だけやり直す
+    }
+    $text = '';
+    foreach (json_decode($res[2] ?? '', true)['candidates'][0]['content']['parts'] ?? [] as $p) {
+        $text .= is_array($p) ? (string)($p['text'] ?? '') : '';
+    }
+    $json = preg_match('/\{.*\}/s', $text, $m) ? json_decode($m[0], true) : null;
+    $titles = [];
+    foreach ((array)($json['candidates'] ?? []) as $c) {
+        if (is_array($c) && is_string($c['title'] ?? null) && trim($c['title']) !== '' && count($titles) < 5) {
+            $titles[] = mb_substr(trim($c['title']), 0, 100);
+        }
+    }
+    return $titles;
+}
+
+/**
+ * ライブの1曲（$from 秒から GEMINI_SETLIST_COMPARE_SEC 秒）と、原曲の試聴（iTunes の30秒）を聴き比べさせる
+ * @param ?int $to 次の曲の始まり（秒。最後の曲なら null）
+ * @param string[] $urls 試聴の URL（2〜3曲）
+ * @return ?int 合った試聴の番号（0 始まり）。どれでもない・失敗したら null
+ */
+function gemini_setlist_compare(string $path, int $from, ?int $to, array $urls, array $cfg, bool $flex): ?int
+{
+    if (PHP_OS_FAMILY !== 'Windows' && !is_file(ytdlp_ffmpeg_dir() . '/ffmpeg') && ytdlp_ffmpeg_install() !== null) {
+        return null;
+    }
+    $base = sys_get_temp_dir() . '/abbey-cmp-' . bin2hex(random_bytes(6));
+    $len = max(30, min(GEMINI_SETLIST_COMPARE_SEC, ($to ?? PHP_INT_MAX) - $from));
+    $files = [];
+    try {
+        [$code] = ytdlp_run(['-v', 'error', '-y', '-ss', (string)$from, '-t', (string)$len, '-i', $path, '-vn', '-c', 'copy', "$base.live.m4a"], 120, ytdlp_ffmpeg_dir() . '/ffmpeg');
+        if ($code !== 0 || !is_file("$base.live.m4a") || is_string($live = gemini_upload("$base.live.m4a", 'audio/aac', $cfg['key']))) {
+            return null;
+        }
+        $files[] = $live;
+        $parts = [['text' => '1つ目の音声は、学生バンドがライブでカバー演奏した1曲（前後の曲や MC が少し入ることがある）。'], ['file_data' => ['mime_type' => 'audio/aac', 'file_uri' => $live['uri']]]];
+        foreach (array_values($urls) as $k => $url) {
+            if (!preg_match('#^https://[a-z0-9.-]+\.apple\.com/#i', $url)) { // iTunes の試聴以外は取りに行かない
+                return null;
+            }
+            $ch = curl_init($url);
+            curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 20, CURLOPT_CONNECTTIMEOUT => 10, CURLOPT_FOLLOWLOCATION => false]);
+            $body = curl_exec($ch);
+            $ok = curl_getinfo($ch, CURLINFO_RESPONSE_CODE) === 200 && is_string($body) && $body !== '';
+            curl_close($ch);
+            if (!$ok || file_put_contents("$base.p$k.m4a", $body) === false || is_string($f = gemini_upload("$base.p$k.m4a", 'audio/aac', $cfg['key']))) {
+                return null;
+            }
+            $files[] = $f;
+            $parts[] = ['text' => '原曲の試聴 ' . ($k + 1) . '（曲の一部30秒）:'];
+            $parts[] = ['file_data' => ['mime_type' => 'audio/aac', 'file_uri' => $f['uri']]];
+        }
+        $parts[] = ['text' => 'ライブの演奏と同じ曲の原曲を、メロディ・コード進行・リズム・曲の構成・歌詞を聴き比べて選ぶ。match に試聴の番号（1〜' . count($urls) . '）、どれでもなければ 0。曲名や先入観ではなく、音で比べること。'];
+        $schema = ['type' => 'OBJECT', 'properties' => ['match' => ['type' => 'INTEGER'], 'reason' => ['type' => 'STRING']], 'required' => ['match', 'reason']];
+        $json = gemini_json($parts, $cfg['key'], $cfg['model'], $schema, GEMINI_SETLIST_THINKING, $flex);
+        $match = is_array($json) ? (int)($json['match'] ?? 0) : 0;
+        return $match >= 1 && $match <= count($urls) ? $match - 1 : null;
+    } finally {
+        foreach ($files as $f) {
+            gemini_delete($f, $cfg['key']);
+        }
+        foreach (glob("$base.*") ?: [] as $f) {
+            @unlink($f);
+        }
+    }
 }
 
 /** 1曲だけ検出し直すとき（確認画面の ↻）。区間だけ落とした音声を聴かせる */

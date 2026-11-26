@@ -165,6 +165,19 @@ function itunes_artist_albums(string $artistName): ?array
  */
 function itunes_artist_titles(string $artistName): array
 {
+    return array_map('strval', array_keys(itunes_artist_tracks($artistName))); // 「1980」などの曲名は配列のキーで数値になるので戻す
+}
+
+/**
+ * itunes_artist_titles の中身: [曲名 => 試聴の URL（無ければ ''）]。曲の検出の聴き比べ（lib/gemini_setlist.php）も試聴を使う
+ *   同じアーティストを1回の処理で2回引くので覚えておく
+ */
+function itunes_artist_tracks(string $artistName): array
+{
+    static $memo = [];
+    if (isset($memo[$artistName])) {
+        return $memo[$artistName];
+    }
     $key = album_match_key($artistName);
     $titles = [];
     // 日本のストアに無い洋楽がある（Pavement など）。1曲も無ければアメリカのストアで探す
@@ -185,15 +198,15 @@ function itunes_artist_titles(string $artistName): array
                 continue; // 名前が一部だけ合う別のアーティスト
             }
             $t = trim((string)preg_replace('/\s*[(（\[][^)）\]]*(ver|version|remaster|live|mix|edit|inst|バージョン)[^)）\]]*[)）\]]/iu', '', (string)($r['trackName'] ?? '')));
-            if ($t !== '') {
-                $titles[$t] = true;
+            if ($t !== '' && ($titles[$t] ?? '') === '') { // 同じ曲名が何度も出たら、試聴がある方を残す
+                $titles[$t] = (string)($r['previewUrl'] ?? '');
             }
         }
         if ($titles) {
             break;
         }
     }
-    return array_map('strval', array_keys($titles)); // 「1980」などの曲名は配列のキーで数値になるので戻す
+    return $memo[$artistName] = $titles;
 }
 
 /**
