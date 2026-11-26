@@ -32,6 +32,20 @@ function setupConfirm() {
     }
     if (!confirm(message)) e.preventDefault();
   });
+
+  // <form data-busy> … 送信してから次のページが出るまで（AI の処理など）画面全体を「処理中」にする。
+  //   確認ダイアログ（上）より後に登録しているので、キャンセルされた送信（defaultPrevented）では出さない
+  document.addEventListener('submit', (e) => {
+    if (e.defaultPrevented || !e.target.closest('form[data-busy]')) return;
+    const screen = document.createElement('div'); // 見た目は取り込みの「読み込み中」と同じ .loading
+    screen.className = 'loading';
+    screen.dataset.busyScreen = '';
+    screen.setAttribute('role', 'status');
+    screen.innerHTML = '<span class="loading__spinner" aria-hidden="true"></span><p class="loading__title">処理中</p>';
+    document.body.append(screen);
+  });
+  // 戻るボタンでこのページに戻ったとき（ページがそのまま残っている）に消す
+  window.addEventListener('pageshow', () => document.querySelectorAll('[data-busy-screen]').forEach((el) => el.remove()));
 }
 
 /* ---------------------------------------------------------------------

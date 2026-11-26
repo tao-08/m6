@@ -217,12 +217,32 @@ function artist_kana_style(string $name): string
     return 'hiragana';
 }
 
+/** AI で一度にふりがなを付ける数（多すぎると返事が途中で切れる・待ち時間が延びる） */
+const KANA_AI_BATCH = 150;
+
 /**
- * アーティスト名のふりがなを AI に付けてもらう（英字の名前はカタカナ、それ以外はひらがな。かなだけの名前は送らない）。まとめて1回のリクエストで送る。
- * @param string[] $names アーティスト名
+ * ふりがなが空で、付ける必要がある名前（かなだけの名前は付けないので除く。artist_kana_style）。kana.php・artists.php・songs.php が使う
+ * @param string $kind 'artist' = artist.name_kana が空のアーティスト / 'song' = song_kana に無い曲名（セットリスト + 楽曲データベース）
+ * @return string[]
+ */
+function kana_needing(PDO $pdo, string $kind): array
+{
+    if ($kind === 'song') {
+        require_once __DIR__ . '/repository.php'; // song_db_extra_sql()
+        $names = $pdo->query('SELECT u.title FROM (SELECT title FROM song WHERE is_se = 0 UNION SELECT x.title FROM (' . song_db_extra_sql() . ') x) u
+            LEFT JOIN song_kana k ON k.title = u.title WHERE k.title IS NULL AND u.title <> \'\'')->fetchAll(PDO::FETCH_COLUMN);
+    } else {
+        $names = $pdo->query('SELECT name FROM artist WHERE name_kana IS NULL ORDER BY artist_id')->fetchAll(PDO::FETCH_COLUMN);
+    }
+    return array_values(array_filter($names, static fn($n) => artist_kana_style((string)$n) !== 'none'));
+}
+
+/**
+ * アーティスト名（$kind = 'song' なら曲名）のふりがなを AI に付けてもらう（英字の名前はカタカナ、それ以外はひらがな。かなだけの名前は送らない）。まとめて1回のリクエストで送る。
+ * @param string[] $names アーティスト名・曲名
  * @return array<string, string> 名前 => ふりがな（AI が返さなかった名前は入らない）
  */
-function claude_artist_kana(array $names): array
+function claude_artist_kana(array $names, string $kind = 'artist'): array
 {
     $names = array_values(array_unique(array_filter($names, static fn($n) => is_string($n) && $n !== '' && artist_kana_style($n) !== 'none')));
     if (!$names) {
@@ -242,6 +262,13 @@ function claude_artist_kana(array $names): array
 - 読みに自信がない名前は unsure を true にする
 - 渡された名前は全部、name をそのまま（1文字も変えずに）返す
 PROMPT;
+    if ($kind === 'song') {
+        // 規則はアーティスト名と同じ（英字はカタカナ・それ以外はひらがな）。例が名前向けなので曲名向けの注意を足す
+        $system = str_replace('アーティスト名（バンド名・歌手名）', '曲名', $system) . <<<'PROMPT'
+- 曲名の読みは、その曲で歌われている・公式に示されている読みを使う（例: 残酷な天使のテーゼ → ざんこくなてんしのテーゼ、群青 → ぐんじょう）
+- 「- Remastered」「(Live)」のような版の書き添えも、ほかと同じ規則で読む
+PROMPT;
+    }
     $schema = [
         'type' => 'object',
         'properties' => [
@@ -262,7 +289,7 @@ PROMPT;
         'required' => ['items'],
         'additionalProperties' => false,
     ];
-    $content = [['type' => 'text', 'text' => "次のアーティスト名にふりがなを付けてください。\n" . implode("\n", $names)]];
+    $content = [['type' => 'text', 'text' => '次の' . ($kind === 'song' ? '曲名' : 'アーティスト名') . "にふりがなを付けてください。\n" . implode("\n", $names)]];
     try {
         $data = claude_json($system, $content, $schema, 16000, 120);
     } catch (RuntimeException $e) {
@@ -281,6 +308,10 @@ PROMPT;
             $kana = mb_convert_kana($kana, 'c');        // 英字が無い名前は全部ひらがな
         } elseif (!preg_match('/[\x{3041}-\x{309F}\x{3400}-\x{9FFF}0-9０-９]/u', $name)) { // ひらがな・漢字・数字の範囲（\p{Han} だと「・」まで当たる）
             $kana = mb_convert_kana($kana, 'C');        // 英字とカタカナだけの名前は全部カタカナ（漢字・ひらがな・数字が混ざる名前は AI の書き分けのまま）
+        }
+        // The で始まる名前は「ザ ビートルズ」のように冠詞のあとを空ける（空白は上で消しているので付け直す）
+        if (preg_match('/^the\s/i', $name)) {
+            $kana = preg_replace('/^(ザ|ジ)(?=.)/u', '$1 ', $kana);
         }
         if (isset($want[$name]) && $kana !== '' && mb_strlen($kana) <= 100) {
             $out[$name] = $kana;

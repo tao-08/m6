@@ -178,7 +178,7 @@ if ($faculty !== '' || $roleName !== null) {
             (SELECT al.name FROM artist_alias al WHERE al.artist_id = a.artist_id AND al.name COLLATE utf8mb4_unicode_520_ci LIKE ? LIMIT 1) AS alias_hit
         FROM artist a
         LEFT JOIN (' . artist_plays_sql() . ') p ON p.artist_id = a.artist_id
-        WHERE (a.name COLLATE utf8mb4_unicode_520_ci LIKE ? OR a.name_kana COLLATE utf8mb4_unicode_520_ci LIKE ? OR EXISTS (SELECT 1 FROM artist_alias al WHERE al.artist_id = a.artist_id AND al.name COLLATE utf8mb4_unicode_520_ci LIKE ?))
+        WHERE (a.name COLLATE utf8mb4_unicode_520_ci LIKE ? OR REPLACE(a.name_kana, \' \', \'\') COLLATE utf8mb4_unicode_520_ci LIKE ? OR EXISTS (SELECT 1 FROM artist_alias al WHERE al.artist_id = a.artist_id AND al.name COLLATE utf8mb4_unicode_520_ci LIKE ?))
           AND ' . artist_searchable_sql() . '
         GROUP BY a.artist_id ORDER BY n DESC LIMIT 30');
     $st->execute([$like, $like, $like, $like]);

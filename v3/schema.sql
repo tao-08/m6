@@ -1100,6 +1100,13 @@ CREATE TABLE band_video (
         ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+-- 曲名のふりがな（説明は migrations/151）
+CREATE TABLE song_kana (
+    title VARCHAR(100) NOT NULL,
+    kana  VARCHAR(100) NOT NULL,
+    PRIMARY KEY (title)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
 -- YouTube の動画のタイトル（複数の動画のポップアップに出す。migrations/150）
 CREATE TABLE youtube_title (
     video_id CHAR(11)     NOT NULL,

@@ -15,6 +15,7 @@
  *    data-tab           … ライブ詳細の日程タブ
  *    data-timeline-compact … ライブ詳細の縮小ボタン（カードをバンド名だけにする）
  *    data-confirm       … 送信前の確認ダイアログ（data-dirty-check で未保存の変更も警告）
+ *    data-busy          … 送信してから次のページが出るまで、画面全体を「処理中」にする（AI の処理など）
  *    data-unsaved       … 未保存の変更があるままページを離れようとしたら、ブラウザの警告を出す
  *    data-dropzone      … ファイルのドラッグ&ドロップ
  *    data-name-cell     … 名前の入力欄（DB にいるかで色が変わる）

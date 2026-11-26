@@ -16,61 +16,9 @@ require_once __DIR__ . '/lib/repository.php'; // artist_plays_sql()
 require_once __DIR__ . '/lib/claude.php';
 $pdo = db();
 
-/** ふりがなが空で、付ける必要があるアーティスト名（かなだけの名前は付けないので除く。lib/claude.php の artist_kana_style） */
-function artists_needing_kana(PDO $pdo): array
-{
-    $names = $pdo->query('SELECT name FROM artist WHERE name_kana IS NULL ORDER BY artist_id')->fetchAll(PDO::FETCH_COLUMN);
-    return array_values(array_filter($names, static fn($n) => artist_kana_style($n) !== 'none'));
-}
-
-/** AI で一度にふりがなを付けるアーティストの数（多すぎると返事が途中で切れる・待ち時間が延びる） */
-const KANA_AI_BATCH = 150;
-
-// 管理者: ふりがなが空のアーティストに、AI でまとめてふりがなを付ける（lib/claude.php の claude_artist_kana）
-//   演奏0回で一覧に出ないアーティストも対象（artist.php?id= では名前の下に出るので）
-//   AI の読み間違いがそのまま DB に入らないよう、結果はセッションに置いて確認・修正の表を出し、「保存」で初めて書き込む
-//   （POST の結果をそのまま描くと、再読み込みでもう一度 AI を呼んでしまうのでリダイレクトする）
-if (is_admin() && is_post()) {
-    $action = $_POST['action'] ?? '';
-    if ($action === 'kana_ai') {
-        verify_csrf();
-        $names = array_slice(artists_needing_kana($pdo), 0, KANA_AI_BATCH);
-        try {
-            $kana = claude_artist_kana($names);
-            if ($kana) {
-                $_SESSION['kana_review'] = $kana; // 名前 => 読み
-            } else {
-                flash('ふりがなを付けられませんでした', 'error');
-            }
-        } catch (RuntimeException $e) {
-            flash($e->getMessage(), 'error');
-        }
-        redirect('artists');
-    }
-    if ($action === 'kana_save' || $action === 'kana_cancel') {
-        verify_csrf();
-        $saved = 0;
-        if ($action === 'kana_save') {
-            // 名前はセッションに置いたもの（AI に送ったもの）だけ受け付ける。空欄は保存しない
-            $st = $pdo->prepare('UPDATE artist SET name_kana = ? WHERE name = ? AND name_kana IS NULL');
-            foreach (array_keys($_SESSION['kana_review'] ?? []) as $i => $name) {
-                $k = trim((string)($_POST['kana'][$i] ?? ''));
-                if ($k !== '' && mb_strlen($k) <= 100) {
-                    $st->execute([$k, (string)$name]); // 「1975」のような名前はキーが int になる
-                    $saved += $st->rowCount();
-                }
-            }
-            $left = count(artists_needing_kana($pdo));
-            flash("{$saved}件のふりがなを保存しました" . ($left > 0 ? "。残り {$left} 件" : ''));
-        }
-        unset($_SESSION['kana_review']);
-        redirect('artists');
-    }
-}
-$kanaReview = is_admin() ? ($_SESSION['kana_review'] ?? []) : [];
 // ボタンを出すかどうか（ふりがなが空のアーティストがいるときだけ）
 $kanaMissing = is_admin() && claude_enabled()
-    ? count(artists_needing_kana($pdo))
+    ? count(kana_needing($pdo, 'artist'))
     : 0;
 
 // 「アーティスト × 演奏したバンド」の組（lib/repository.php の artist_plays_sql()。アーティストページ・集計・検索と同じ数え方）
@@ -184,20 +132,9 @@ render_header('アーティスト', 'artists');
     <dl class="stats"><div><dt>総演奏アーティスト数</dt><dd><?= count($rows) ?></dd></div></dl>
 </section>
 
-<?php if ($kanaReview): ?>
-    <form method="post" class="card form-grid">
-        <?= csrf_field() ?>
-        <?php $ki = 0; foreach ($kanaReview as $name => $k): ?>
-            <label class="field"><span><?= h((string)$name) ?></span><input name="kana[<?= $ki++ ?>]" value="<?= h($k) ?>" maxlength="100" autocomplete="off"></label>
-        <?php endforeach; ?>
-        <div class="form-actions field--wide">
-            <button class="btn btn--sm" type="submit" name="action" value="kana_save">保存</button>
-            <button class="btn btn--ghost btn--sm" type="submit" name="action" value="kana_cancel" formnovalidate>破棄</button>
-        </div>
-    </form>
-<?php elseif ($kanaMissing > 0): ?>
-    <form method="post" class="form-actions" data-confirm="ふりがなが空の <?= $kanaMissing ?> 件のうち、最大 <?= KANA_AI_BATCH ?> 件の名前を AI（Anthropic のサーバー）に送って、ふりがなを付けます。">
-        <?= csrf_field() ?><input type="hidden" name="action" value="kana_ai">
+<?php if ($kanaMissing > 0): // 押すと処理中の画面 → kana.php の確認画面 ?>
+    <form method="post" action="kana?kind=artist" class="form-actions" data-busy data-confirm="ふりがなが空の <?= $kanaMissing ?> 件のうち、最大 <?= KANA_AI_BATCH ?> 件の名前を AI に送り、ふりがなを付けます。">
+        <?= csrf_field() ?><input type="hidden" name="action" value="ai">
         <button class="btn btn--sm" type="submit">ふりがなが空の <?= $kanaMissing ?> 件に AI でふりがなを付ける</button>
     </form>
 <?php endif; ?>
@@ -220,7 +157,7 @@ render_header('アーティスト', 'artists');
             </tr></thead>
             <tbody>
             <?php foreach ($list as $i => $r): $id = (int)$r['artist_id']; $al = $aliases[$id] ?? []; $ll = $lastLive[$id] ?? null; ?>
-                <tr class="artist-row" data-pos="<?= h(json_encode($positions[$i])) ?>" data-text="<?= h($r['name'] . ' ' . ($r['name_kana'] ?? '') . ' ' . implode(' ', $al)) ?>">
+                <tr class="artist-row" data-pos="<?= h(json_encode($positions[$i])) ?>" data-text="<?= h($r['name'] . ' ' . str_replace(' ', '', $r['name_kana'] ?? '') . ' ' . implode(' ', $al)) ?>">
                     <td class="num muted"><?= $r['rank'] ?? '—' ?></td>
                     <td>
                         <a href="artist?id=<?= $id ?>"<?= $r['rank'] ? ' class="strong"' : '' ?>><?= h($r['name']) ?></a>

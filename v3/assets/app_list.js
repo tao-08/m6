@@ -64,10 +64,15 @@ function setupSearchSuggest() {
   };
 
   // 一致した部分を赤くする（textContent で組むので XSS にならない）
+  // カタカナ → ひらがな、濁点・半濁点・小さい字を外す（DB の照合と同じく「が」「か」「ゃ」「や」を同じに見る）。1文字ずつ置き換えるので位置はずれない
+  const KANA_FROM = 'がぎぐげござじずぜぞだぢづでどばびぶべぼぱぴぷぺぽゔぁぃぅぇぉっゃゅょゎゕゖ';
+  const KANA_TO = 'かきくけこさしすせそたちつてとはひふへほはひふへほうあいうえおつやゆよわかけ';
+  const fold = (s) => s.toLowerCase().replace(/[ァ-ヶ]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0x60))
+    .replace(/[がぎぐげござじずぜぞだぢづでどばびぶべぼぱぴぷぺぽゔぁぃぅぇぉっゃゅょゎゕゖ]/g, (c) => KANA_TO[KANA_FROM.indexOf(c)]);
   const label = (text, q) => {
     const span = document.createElement('span');
     span.className = 'live-pop__name';
-    const at = text.toLowerCase().indexOf(q.toLowerCase());
+    const at = fold(text).indexOf(fold(q));
     if (at < 0) { span.textContent = text; return span; }
     const mark = document.createElement('mark');
     mark.textContent = text.slice(at, at + q.length);

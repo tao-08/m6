@@ -50,12 +50,13 @@ $kinds = [
     'member' => ["SELECT m.name, m.name_kana FROM member m
                   WHERE m.name $COL LIKE ? OR m.name_kana $COL LIKE ?
                   GROUP BY m.member_id ORDER BY (SELECT COUNT(*) FROM band_member x WHERE x.member_id = m.member_id) DESC, m.name"],
+    // バンドはオムニバスだけ。コピーバンドはコピー元のアーティストが候補に出る
     'band' => ["SELECT b.name FROM band b
-                WHERE b.name $COL LIKE ?
+                WHERE b.is_omnibus = 1 AND b.name $COL LIKE ?
                 GROUP BY b.name ORDER BY COUNT(*) DESC, b.name"],
     'artist' => ['SELECT a.name, a.name_kana FROM artist a
                   LEFT JOIN (' . artist_plays_sql() . ") p ON p.artist_id = a.artist_id
-                  WHERE (a.name $COL LIKE ? OR a.name_kana $COL LIKE ?
+                  WHERE (a.name $COL LIKE ? OR REPLACE(a.name_kana, ' ', '') $COL LIKE ?
                      OR EXISTS (SELECT 1 FROM artist_alias al WHERE al.artist_id = a.artist_id AND al.name $COL LIKE ?))
                     AND " . artist_searchable_sql() . "
                   GROUP BY a.artist_id ORDER BY COUNT(p.band_id) DESC, a.name"],
@@ -69,19 +70,21 @@ $kinds = [
     'equip' => ["SELECT e.label FROM (SELECT CONCAT_WS(' ', NULLIF(maker, ''), NULLIF(model_name, '')) AS label FROM venue_equipment UNION ALL SELECT CONCAT_WS(' ', NULLIF(maker, ''), NULLIF(model_name, '')) FROM studio_equipment) e
                  WHERE " . equip_match_sql('e.label') . ' GROUP BY e.label ORDER BY COUNT(*) DESC, e.label', true],
     'role' => ["SELECT r.name FROM role r WHERE r.name $COL LIKE ? ORDER BY r.sort_order, r.name"],
-    // セットリストの曲 + 楽曲データベースの曲（手動登録・TAB・リンク）
-    'song' => ["SELECT u.name FROM (
+    // セットリストの曲 + 楽曲データベースの曲（手動登録・TAB・リンク）。曲名のふりがな（song_kana）でも当てる
+    'song' => ["SELECT u.name, MAX(k.kana) FROM (
                   SELECT s.title AS name FROM song s JOIN band b ON b.band_id = s.band_id
-                  WHERE s.is_se = 0 AND NOT " . setlist_hidden_sql('b') . " AND s.title $COL LIKE ?
-                  UNION ALL SELECT x.title FROM (" . song_db_extra_sql() . ") x WHERE x.title $COL LIKE ?
-                ) u WHERE u.name <> '' GROUP BY u.name ORDER BY COUNT(*) DESC, u.name"],
+                  WHERE s.is_se = 0 AND NOT " . setlist_hidden_sql('b') . " AND (s.title $COL LIKE ? OR s.title IN (SELECT title FROM song_kana WHERE REPLACE(kana, ' ', '') $COL LIKE ?))
+                  UNION ALL SELECT x.title FROM (" . song_db_extra_sql() . ") x WHERE x.title $COL LIKE ? OR x.title IN (SELECT title FROM song_kana WHERE REPLACE(kana, ' ', '') $COL LIKE ?)
+                ) u LEFT JOIN song_kana k ON k.title = u.name WHERE u.name <> '' GROUP BY u.name ORDER BY COUNT(*) DESC, u.name"],
 ];
 
 /** 全角英数・大文字小文字・カタカナ/ひらがなの違いを無視して同じ語か比べるための形 */
 $norm = static fn(string $s): string => mb_strtolower(mb_convert_kana($s, 'KVrnas'), 'UTF-8');
 
 /** ふりがなの照合用（上の $norm に加えて、カタカナもひらがなにそろえる） */
-$nk = static fn(string $s): string => mb_convert_kana($norm($s), 'cs');
+//   濁点・半濁点・小さい字も外す（DB の照合 utf8mb4_unicode_520_ci は「が」と「か」を同じに見て当てるので、こちらもそろえないとふりがなが出ない）
+$kanaFold = array_combine(mb_str_split('がぎぐげござじずぜぞだぢづでどばびぶべぼぱぴぷぺぽゔぁぃぅぇぉっゃゅょゎゕゖ'), mb_str_split('かきくけこさしすせそたちつてとはひふへほはひふへほうあいうえおつやゆよわかけ'));
+$nk = static fn(string $s): string => strtr(str_replace(' ', '', mb_convert_kana($norm($s), 'cs')), $kanaFold); // 「ザ ビートルズ」の空白は無視
 
 $items = [];
 $seen = []; // 同じ文字を2回出さない（バンド名とアーティスト名が同じ、など）
@@ -108,7 +111,7 @@ foreach (['' => $esc . '%', 'any' => '%' . $esc . '%'] as $mode => $pattern) {
         $st->execute(array_fill(0, substr_count($sql, '?'), $isEquip ? $eqPattern : $pattern)); // ? の数だけ同じ値を渡す
         foreach ($st->fetchAll(PDO::FETCH_NUM) as $row) {
             $name = (string)$row[0];
-            $kana = (string)($row[1] ?? ''); // メンバー・アーティストだけ。ふりがなで当たったときに一緒に出す
+            $kana = (string)($row[1] ?? ''); // メンバー・アーティスト・曲だけ。ふりがなで当たったときに一緒に出す
             $key = $isEquip ? str_replace(['-', ' '], '', $norm($name)) : $norm($name); // 機材は JC-120 / JC120 を1つにまとめる
             if ($name === '' || $key === $q_norm || isset($seen[$key])) {
                 continue; // 打った文字そのままの候補は出さない

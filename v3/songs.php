@@ -22,6 +22,7 @@ require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/tracks.php';
 require_once __DIR__ . '/lib/tabs.php';
 require_once __DIR__ . '/lib/youtube.php';
+require_once __DIR__ . '/lib/claude.php'; // 曲名のふりがな（kana.php）のボタン
 $songsT0 = microtime(true); // Server-Timing（開発者ツールの「タイミング」で、サーバー側の所要時間が見える）
 $guestAdd = is_post() && ($_POST['action'] ?? '') === 'add_linked'; // 練習プレイヤーからの曲の登録だけは未ログインでもできる（1時間あたりの回数制限つき）
 if (!$guestAdd) {
@@ -672,11 +673,18 @@ if ($modalKey !== '') {
     exit;
 }
 
+$kanaMissing = is_admin() && claude_enabled() ? count(kana_needing($pdo, 'song')) : 0; // ふりがなが無い曲名（ボタンを出すかどうか）
 render_header('楽曲データベース', 'tools');
 ?>
 <link rel="stylesheet" href="<?= asset_url('assets/tab.css') ?>">
 <link rel="stylesheet" href="<?= asset_url('assets/songs.css') ?>">
 <nav class="crumbs"><a href="tools">ツール</a></nav>
+<?php if ($kanaMissing > 0): // 押すと処理中の画面 → kana.php の確認画面 ?>
+    <form method="post" action="kana?kind=song" class="form-actions" data-busy data-confirm="ふりがなが空の <?= $kanaMissing ?> 曲のうち、最大 <?= KANA_AI_BATCH ?> 曲の曲名を AI に送り、ふりがなを付けます。">
+        <?= csrf_field() ?><input type="hidden" name="action" value="ai">
+        <button class="btn btn--sm" type="submit">ふりがなが空の <?= $kanaMissing ?> 曲に AI でふりがなを付ける</button>
+    </form>
+<?php endif; ?>
 <div class="songs-top"><?php /* スマホ: 見出しの右に新規登録 / PC: 検索バーの右に新規登録（配置は CSS の grid-template-areas） */ ?>
 <h1 class="display display--sm">楽曲データベース</h1>
 <!-- 手動登録: セットリストに無い曲にも TAB を付けられる -->
