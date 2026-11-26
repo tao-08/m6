@@ -594,7 +594,9 @@ button.tab { border: 0; background: none; font: inherit; font-weight: 800; font-
 .slot__yt:hover svg { opacity: .8; }
 button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /* YouTube が2本以上: 押すと一覧（band_youtube_html） */
 .yt-urls { display: grid; grid-template-columns: 1fr auto; gap: 6px; } /* バンド編集の YouTube: 1行目の右に ＋、足した欄は下に並ぶ */
-.yt-urls > :is(input, select) { grid-column: 1; }
+.yt-urls > :is(input, select, .live-pick) { grid-column: 1; } /* select は setupSelectPick が .live-pick に包む */
+:is(optgroup.is-muted option, .live-pop__item.is-muted) { color: var(--muted); } /* ほかのバンドに入っている動画などは薄く（ポップアップは app_form.js が写す） */
+.yt-urls > button { grid-row: 1; grid-column: 2; align-self: center; width: 36px; height: 36px; padding: 0; border-radius: var(--r-full); } /* ＋ は1行目の右に丸で固定 */
 /* ドライブのファイルの 📂 ボタン（band_drive_file があるときだけ。live.php）。枠・背景は付けずアイコン＋件数
    開いている間（aria-expanded="true"）はアクセントの赤にして、どのバンドを開いているかわかるようにする */
 .slot__drive { display: inline-flex; align-items: center; gap: 2px; padding: 2px; border: 0; background: none;
@@ -2767,6 +2769,7 @@ html:has(.board-posts) { scroll-behavior: smooth; }
 .live-img-edit__list { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0; }
 .live-img-edit__item { position: relative; width: 56px; height: 56px; padding: 0; background: none; border-radius: var(--r-md); overflow: clip; cursor: pointer; border: 1px solid var(--border); }
 .live-img-edit__item img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.live-img-edit__file { display: grid; place-items: center; width: 100%; height: 100%; color: var(--muted); } /* 追加予定の PDF・MP3 */
 .live-img-edit__item input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0; border: 0; opacity: 0; pointer-events: none; } /* .field の input の大きさ指定が当たって枠からはみ出すと、タッチでフォーカスしたとき枠の中が勝手にスクロールして画像がずれる */
 .live-img-edit__x { position: absolute; inset: 0; display: grid; place-items: center; color: #fff; background: rgb(0 0 0 / .45); opacity: 0; transition: opacity var(--t-fast); }
 .live-img-edit__item:has(input:checked) .live-img-edit__x { opacity: 1; }

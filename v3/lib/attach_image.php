@@ -55,6 +55,9 @@ function live_attach_store(string $kind, array $up): array
     if ($kind === 'band_audio') {
         return live_audio_store($up);
     }
+    if ($kind === 'band' && live_upload_is_pdf($up)) { // バンドは画像と PDF（MP3 は band_edit.php が band_audio に分ける）
+        return live_pdf_store($up);
+    }
     if (!in_array($kind, ['song_tab', 'song_meta', 'special'], true)) {
         return live_image_store($up);
     }
@@ -165,7 +168,9 @@ function attach_field_html(string $kind, array $images = [], ?int $max = null): 
             . '<input type="checkbox" name="image_remove[]" value="' . $id . '" data-live-img-remove>'
             . '<span class="live-img-edit__x">' . icon('delete') . '</span></label>';
     }
-    return $html . '</div><label class="btn btn--ghost btn--sm live-img-edit__add" title="画像を追加" aria-label="画像を追加">' . icon('add_photo_alternate')
-        . '<input type="file" name="images[]" accept="image/*"' . (ATTACH_KINDS[$kind]['max'] > 1 ? ' multiple' : '') . ' hidden data-live-img-input></label>'
+    $file = $kind === 'band'; // バンドは画像・PDF・MP3
+    return $html . '</div><label class="btn btn--ghost btn--sm live-img-edit__add" title="' . ($file ? 'ファイルを追加' : '画像を追加') . '" aria-label="' . ($file ? 'ファイルを追加' : '画像を追加') . '">'
+        . icon($file ? 'attach_file' : 'add_photo_alternate')
+        . '<input type="file" name="images[]" accept="image/*' . ($file ? ',.pdf,application/pdf,.mp3,audio/mpeg' : '') . '"' . (ATTACH_KINDS[$kind]['max'] > 1 ? ' multiple' : '') . ' hidden data-live-img-input></label>'
         . '<small class="merge-note" data-live-img-note></small></div>';
 }

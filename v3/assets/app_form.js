@@ -412,6 +412,7 @@ function setupSelectPick() {
       name.className = 'live-pop__name';
       name.textContent = o.textContent; // textContent なので XSS にならない
       if (!o.value) item.classList.add('is-empty'); // 「なし」「— 未設定 —」など値が空のものは細く薄く（ボタンの is-placeholder と同じ扱い）
+      if (o.closest('.is-muted')) item.classList.add('is-muted'); // <optgroup class="is-muted"> の中（ほかのバンドに入っている動画など）は薄く
       item.append(name);
       item.addEventListener('click', () => {
         const changed = select.value !== o.value;

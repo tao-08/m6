@@ -282,7 +282,10 @@ function setupLiveImageEdit(edit) {
       shown.add(f);
       el.dataset.url = url;
       el.setAttribute('aria-label', '追加を取り消し');
-      el.innerHTML = `<img src="${url}" alt=""><span class="live-img-edit__x"><span class="icon" aria-hidden="true">close</span></span>`;
+      // 画像以外（バンドの PDF・MP3）はアイコン
+      const thumb = f.type.startsWith('image/') ? `<img src="${url}" alt="">`
+        : `<span class="icon live-img-edit__file" aria-hidden="true">${isAudio(f) ? 'music_note' : 'picture_as_pdf'}</span>`;
+      el.innerHTML = `${thumb}<span class="live-img-edit__x"><span class="icon" aria-hidden="true">close</span></span>`;
       el.addEventListener('click', () => {
         const next = new DataTransfer();
         [...picked.files].forEach((g, j) => { if (j !== i) next.items.add(g); });
@@ -295,16 +298,18 @@ function setupLiveImageEdit(edit) {
     });
     update();
   };
-  const room = () => max - edit.querySelectorAll('[data-live-img-remove]:not(:checked)').length - picked.files.length;
+  // MP3 は別の上限（サーバーが数える）なので、ここでは数えない
+  const isAudio = (f) => /\.mp3$/i.test(f.name);
+  const room = () => max - edit.querySelectorAll('[data-live-img-remove]:not(:checked)').length - [...picked.files].filter((f) => !isAudio(f)).length;
   function update() {
     const left = room();
     addBtn.classList.toggle('is-disabled', left <= 0);
     note.textContent = '';
   }
   input.addEventListener('change', () => {
-    const over = [...input.files].length > room();
+    const over = [...input.files].filter((f) => !isAudio(f)).length > room();
     // 今回選んだ分を足す（上限を超える分は入れない）
-    for (const f of [...input.files]) { if (room() > 0) picked.items.add(f); }
+    for (const f of [...input.files]) { if (isAudio(f) || room() > 0) picked.items.add(f); }
     sync();
     if (over) note.textContent = `${max} 枚までです`;
   });

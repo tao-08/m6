@@ -182,13 +182,16 @@ if (is_post()) {
     }
     // 添付画像: 削除にチェックされた分を引いて、新しく選んだ分を足して5枚まで
     $removeIds = array_values(array_intersect(array_map('intval', array_column($images, 'image_id')), array_map('intval', (array)($_POST['image_remove'] ?? []))));
+    // ファイルの追加: .mp3 はミックス MP3（band_audio）へ、残り（画像・PDF）は band_image へ。中身は保存時に確かめる
     $uploads = live_image_uploads($_FILES['images'] ?? null);
+    $isMp3 = static fn($u) => strtolower(pathinfo($u['name'], PATHINFO_EXTENSION)) === 'mp3';
+    $audioUploads = array_values(array_filter($uploads, $isMp3));
+    $uploads = array_values(array_filter($uploads, static fn($u) => !$isMp3($u)));
     if (count($images) - count($removeIds) + count($uploads) > ATTACH_KINDS['band']['max']) {
-        $errors[] = '画像は ' . ATTACH_KINDS['band']['max'] . ' 枚までです';
+        $errors[] = '画像・PDF は ' . ATTACH_KINDS['band']['max'] . ' つまでです';
     }
     // ミックス MP3: 外すチェックを引いて、新しく選んだ分を足して3つまで。タイトルは audio_title[ID]
     $audioRemoveIds = array_values(array_intersect(array_map('intval', array_column($audios, 'image_id')), array_map('intval', (array)($_POST['audio_remove'] ?? []))));
-    $audioUploads = live_image_uploads($_FILES['audio'] ?? null);
     $audioTitles = array_filter((array)($_POST['audio_title'] ?? []), 'is_string');
     if (count($audios) - count($audioRemoveIds) + count($audioUploads) > ATTACH_KINDS['band_audio']['max']) {
         $errors[] = 'MP3 は ' . ATTACH_KINDS['band_audio']['max'] . ' つまでです';
@@ -426,10 +429,15 @@ if ($ytVideos) {
         $ytCandidates = youtube_match_bands($list, [0 => ['name' => $band['name'], 'names' => $names]])['bands'][0] ?? [];
     }
 }
-$ytCurrent = youtube_video_id((string)$band['youtube_url']); // 今の URL の動画（プレイリストにあれば選んだ状態にする）
+// n 番目の URL 欄の動画（プレイリストにあるものだけ）。n 番目の選択欄をその動画を選んだ状態で出す。最後のプレイリストの動画まで欄を出す（最低1つ）
+$ytPicks = array_map(static fn($u) => isset($ytVideos[$v = (string)youtube_video_id((string)$u)]) ? $v : null, [$band['youtube_url'], ...$ytExtras]);
+while (count($ytPicks) > 1 && end($ytPicks) === null) {
+    array_pop($ytPicks);
+}
+$ytPicks = $ytPicks ?: [null];
 /** プルダウンの1行。value は URL（こちらで組み立てる）、表示はタイトル */
-$ytOption = static fn(string $vid, string $label) => '<option value="' . h(youtube_watch_url($vid)) . '"'
-    . ($vid === $ytCurrent ? ' selected' : '') . '>' . h($label) . '</option>';
+$ytOption = static fn(string $vid, string $label, ?string $sel) => '<option value="' . h(youtube_watch_url($vid)) . '"'
+    . ($vid === $sel ? ' selected' : '') . '>' . h($label) . '</option>';
 
 render_header($isNew ? 'バンドを追加' : 'バンドを編集', 'lives');
 ?>
@@ -454,8 +462,8 @@ render_header($isNew ? 'バンドを追加' : 'バンドを編集', 'lives');
         <label class="field"><span>開始</span><input type="time" step="300" name="start_time" value="<?= h(fmt_time($band['start_time'])) ?>"></label>
         <label class="field"><span>終了</span><input type="time" step="300" name="end_time" value="<?= h(fmt_time($band['end_time'])) ?>"></label>
         <label class="field field--wide"><span>メモ</span><input autocomplete="off" name="note" value="<?= h($band['note']) ?>" maxlength="255"></label>
-        <div class="field field--wide"><span>画像の追加・削除</span><?= attach_field_html('band', $images) ?></div>
-        <?php if ($audios): ?><!-- 追加はやめた。もうあるファイルの名前の変更・外すだけ -->
+        <div class="field field--wide"><span>ファイルの追加・削除</span><?= attach_field_html('band', $images) ?></div>
+        <?php if ($audios): ?><!-- 追加は「ファイルの追加」から（.mp3 はここに入る）。ここは名前の変更・外すだけ -->
         <div class="field field--wide"><span>ミックス MP3</span>
                 <!-- 1行 = 1ファイル: タイトルの入力欄・✕（押すと外すにチェック → 行が薄くなる）。ドライブのファイルと同じ見た目 -->
                 <ul class="drive-edit">
@@ -481,21 +489,23 @@ render_header($isNew ? 'バンドを追加' : 'バンドを編集', 'lives');
             <!-- name を付けない（送信しない）。選ぶと JS が上の URL 欄の同じ順番の欄に入れる。＋ で選択欄を下に足す（app_ui.js の data-yt-pick-add） -->
             <div class="field field--wide"><span>ライブのプレイリストから選択</span>
               <div class="yt-urls" data-yt-picks>
+                <?php foreach ($ytPicks as $sel): ?>
                 <select data-yt-pick aria-label="ライブのプレイリストから選択">
                     <option value="">— 動画を選択 —</option>
                     <?php if ($ytCandidates): ?>
                         <optgroup label="候補（タイトルにバンド名が入っている）">
-                            <?php foreach ($ytCandidates as $vid): ?><?= $ytOption($vid, $ytVideos[$vid]) ?><?php endforeach; ?>
+                            <?php foreach ($ytCandidates as $vid): ?><?= $ytOption($vid, $ytVideos[$vid], $sel) ?><?php endforeach; ?>
                         </optgroup>
                     <?php endif; ?>
                     <optgroup label="まだどのバンドにも入っていない動画">
-                        <?php foreach ($ytVideos as $vid => $title): if (in_array($vid, $ytCandidates, true) || isset($ytTaken[$vid])) continue; ?><?= $ytOption($vid, $title) ?><?php endforeach; ?>
+                        <?php foreach ($ytVideos as $vid => $title): if (in_array($vid, $ytCandidates, true) || isset($ytTaken[$vid])) continue; ?><?= $ytOption($vid, $title, $sel) ?><?php endforeach; ?>
                     </optgroup>
-                    <optgroup label="ほかのバンドに入っている動画">
-                        <?php foreach ($ytVideos as $vid => $title): if (in_array($vid, $ytCandidates, true) || !isset($ytTaken[$vid])) continue; ?><?= $ytOption($vid, $title . ' — ' . $ytTaken[$vid]) ?><?php endforeach; ?>
+                    <optgroup label="ほかのバンドに入っている動画" class="is-muted">
+                        <?php foreach ($ytVideos as $vid => $title): if (in_array($vid, $ytCandidates, true) || !isset($ytTaken[$vid])) continue; ?><?= $ytOption($vid, $title . ' — ' . $ytTaken[$vid], $sel) ?><?php endforeach; ?>
                     </optgroup>
                 </select>
-                <button type="button" class="btn btn--ghost btn--sm" data-yt-pick-add aria-label="動画を追加" title="動画を追加"><?= icon('add') ?></button>
+                <?php endforeach; ?>
+                <button type="button" class="btn btn--ghost btn--sm" data-yt-pick-add aria-label="動画を追加" title="動画を追加"<?= count($ytPicks) >= 10 ? ' hidden' : '' ?>><?= icon('add') ?></button>
               </div>
             </div>
         <?php elseif ($ytError !== null): ?>
