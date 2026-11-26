@@ -56,6 +56,7 @@ if (band_survey_ready() && (band_survey_can_create() || band_survey_list(db())))
 if (is_admin()) {
     $tools[] = ['intro_previews', 'headphones', '試聴の一括調査',
         '試聴を調べていない曲を探して、イントロクイズで出せる曲を増やします。', '管理者'];
+    $tools[] = ['setlist_jobs', 'timer', '曲の検出の状況', 'YouTube から曲を検出しているバンドの状況です。', '管理者'];
 }
 // スタ連（スタジオ練習）の日程調整（sched.php）。ログインしていれば誰でも
 $tools[] = ['sched', 'event_available', 'スタジオ練習の日程調整',
@@ -72,7 +73,7 @@ foreach (!empty(current_user()['member_id']) ? sched_todo_polls(db(), (int)curre
 // タブ: 行き先 => タブ。ここに無いツールは「便利ツール」に入る
 $tabs = ['data' => 'データ', 'useful' => '便利ツール', 'admin' => '運営ツール', 'game' => 'ゲーム'];
 $tabOf = [
-    'songs' => 'data', 'venue_list' => 'data', 'studio_list' => 'data', 'special' => 'data',
+    'songs' => 'data', 'setlist_jobs' => 'data', 'venue_list' => 'data', 'studio_list' => 'data', 'special' => 'data',
     'tt_builder' => 'admin', 'studio' => 'admin', 'sheet_templates' => 'admin', 'intro_previews' => 'admin', 'band_survey' => 'admin',
     'block' => 'game', 'intro' => 'game',
 ];

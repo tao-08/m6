@@ -78,7 +78,8 @@ if ($section !== null) { // ↻ はその場で待つ（1曲なので約20秒）
 if ((setlist_job_get($bandId)['state'] ?? '') === 'running') {
     api_ok(['state' => 'running']); // もう裏で解析している（二重に払わない）
 }
-setlist_job_put($bandId, ['state' => 'running', 'at' => time()]);
+$flex = ($_POST['flex'] ?? '1') !== '0';
+setlist_job_put($bandId, ['state' => 'running', 'at' => $startedAt = time(), 'flex' => $flex]); // flex は setlist_jobs.php に出す
 
 // 画面には先に返して、接続を切る。このあとの処理は裏で続く（画面を閉じても止まらない）
 ignore_user_abort(true);
@@ -103,7 +104,7 @@ try {
         $job = ['state' => 'error', 'error' => 'YouTube から音声を取得できませんでした / ' . $why]; // 管理者だけの画面なので理由も出す
     } else {
         try {
-            $songs = gemini_setlist($audio, 'audio/aac', $cfg, $band['artist'], ($_POST['flex'] ?? '1') !== '0'); // m4a（AAC）をそのまま聴かせる
+            $songs = gemini_setlist($audio, 'audio/aac', $cfg, $band['artist'], $flex); // m4a（AAC）をそのまま聴かせる
         } finally {
             @unlink($audio);
         }
@@ -117,7 +118,7 @@ try {
     error_log('setlist detect: ' . $e->getMessage());
     $job = ['state' => 'error', 'error' => '解析に失敗しました'];
 }
-setlist_job_put($bandId, $job);
+setlist_job_put($bandId, $job + ['at' => $startedAt, 'flex' => $flex]);
 
 // 押した人に知らせる（アプリ通知の設定によらず、端末があれば送る。押した本人が待っている結果なので）
 $subs = db()->prepare('SELECT subscription_id, endpoint, p256dh, auth FROM push_subscription WHERE user_id = ?');
