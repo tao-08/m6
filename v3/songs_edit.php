@@ -477,7 +477,7 @@ render_header('セットリストを編集', 'lives');
                          追加したばかりの曲: まだ保存していないので、押すとカードごとその場で消える -->
                     <?php if (!$isNew): ?><input type="hidden" name="<?= $base ?>[delete]" value="" data-song-delete><?php endif; ?>
                     <button type="button" class="song-card__delete" data-song-delete-btn aria-label="この曲を削除" title="この曲を削除"><?= icon(ICON_TRASH) ?></button>
-                    <?php if (!$isSe && is_admin()): ?>
+                    <?php if (is_admin()): ?>
                     <div class="song-lyrics-search">
                         <input type="search" maxlength="100" autocomplete="off" placeholder="歌詞の一部を入力" aria-label="歌詞の一部" data-lyrics-query>
                         <button type="button" class="btn btn--ghost btn--sm" data-lyrics-search>歌詞で検索</button>
@@ -486,7 +486,7 @@ render_header('セットリストを編集', 'lives');
                 </div>
                 <!-- 🔍 の検索結果（assets/app_songs.js の setupTrackSearch が中身を入れる） -->
                 <div class="track-results" data-track-results hidden></div>
-                <?php if (!$isSe && is_admin()): ?>
+                <?php if (is_admin()): ?>
                 <div class="track-results lyrics-results" data-lyrics-results hidden></div>
                 <?php endif; ?>
                 <div class="performers"<?= $isSe ? ' hidden' : '' ?>>

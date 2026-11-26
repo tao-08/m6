@@ -48,7 +48,7 @@ const GEMINI_SETLIST_MAX_CANDIDATES = 5;
  *   start: 曲が始まる秒（読めなければ null）。確認画面で YouTube のその場面へ飛ぶのに使う
  * @return array<int, array{title: string, start: ?int, candidates: array<int, array{title: string, artist: string}>}>
  */
-function gemini_setlist_songs(array $json): array
+function gemini_setlist_songs(array $json, int $max = GEMINI_SETLIST_MAX_CANDIDATES): array
 {
     $clean = static fn(mixed $v, int $len): string => mb_substr(trim(is_scalar($v) ? (string)$v : ''), 0, $len);
     $songs = [];
@@ -60,7 +60,7 @@ function gemini_setlist_songs(array $json): array
         if (($s['confident'] ?? true) === false) {
             foreach (is_array($s['candidates'] ?? null) ? $s['candidates'] : [] as $c) {
                 $t = is_array($c) ? $clean($c['title'] ?? '', 100) : '';
-                if ($t !== '' && count($cands) < GEMINI_SETLIST_MAX_CANDIDATES) {
+                if ($t !== '' && count($cands) < $max) {
                     $cands[] = ['title' => $t, 'artist' => $clean($c['artist'] ?? '', 100)];
                 }
             }
@@ -341,16 +341,16 @@ function gemini_setlist_compare(string $path, int $from, ?int $to, array $urls, 
 /** 1曲だけ検出し直すとき（確認画面の ↻）。区間だけ落とした音声を聴かせる */
 const GEMINI_SETLIST_ONE_PROMPT = <<<'TXT'
 添付は学生バンドのライブ音源の一部で、既存の曲のカバー演奏が1曲入っています。前後の曲や MC が少し入っていることがあります。
-この曲の原曲として可能性のある曲を5曲、可能性の高い順に挙げてください。
+この曲の原曲として可能性のある曲を10曲、可能性の高い順に挙げてください。
 
 - 歌詞・メロディ・曲調から原曲を特定し、原曲の正式な曲名とアーティスト名を答える
 - 特定できなくても、歌詞・曲調・アレンジが近い曲を挙げる
 TXT;
 
-/** Gemini の返事（1曲だけ） → 候補 [{title, artist}]（可能性の高い順、5曲まで） */
+/** Gemini の返事（1曲だけ） → 候補 [{title, artist}]（可能性の高い順、10曲まで。↻ は音声の料金が同じなので多めに出す） */
 function gemini_setlist_one_candidates(array $json): array
 {
-    $one = gemini_setlist_songs(['songs' => [['title' => '', 'confident' => false, 'candidates' => $json['candidates'] ?? null]]]);
+    $one = gemini_setlist_songs(['songs' => [['title' => '', 'confident' => false, 'candidates' => $json['candidates'] ?? null]]], 10);
     return $one[0]['candidates'];
 }
 
@@ -384,7 +384,7 @@ function gemini_setlist_one(string $path, string $mime, array $cfg, bool $tail =
     if (is_string($json)) {
         return $json;
     }
-    // 言っても挙げることがあるので、5曲に絞る前に外す
+    // 言っても挙げることがあるので、10曲に絞る前に外す
     $json['candidates'] = array_values(array_filter((array)($json['candidates'] ?? []), static fn($c) => !is_array($c) || $keep((string)($c['title'] ?? ''))));
     return gemini_setlist_one_candidates($json);
 }

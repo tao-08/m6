@@ -1318,7 +1318,8 @@ check('2回目: 1回目が候補だけならそのまま', gemini_setlist_fill([
 check('2回目: 空の曲だけ埋める', gemini_setlist_fill($gs('A', '', 'C'), $gs('X', 'B', 'Y')), $gs('A', 'B', 'C'));
 check('2回目: 1回目が全部空ならそのまま', gemini_setlist_fill($gs('', ''), $gs('', '', '遙か彼方')), $gs('', '', '遙か彼方'));
 check('2回目: 曲数が違えば埋めない', gemini_setlist_fill($gs('A', ''), $gs('X', 'B', 'C')), $gs('A', ''));
-check('1曲だけ: 候補を5つまで・空の曲名は捨てる・形が違っても落ちない', [gemini_setlist_one_candidates(['candidates' => [['title' => 'A', 'artist' => 'x'], ['title' => ''], ['title' => 'B'], ['title' => 'C'], ['title' => 'D'], ['title' => 'E'], ['title' => 'F']]]), gemini_setlist_one_candidates(['candidates' => 'x']), gemini_setlist_one_candidates([])], [[['title' => 'A', 'artist' => 'x'], ['title' => 'B', 'artist' => ''], ['title' => 'C', 'artist' => ''], ['title' => 'D', 'artist' => ''], ['title' => 'E', 'artist' => '']], [], []]);
+$moreCands = array_map(static fn($t) => ['title' => $t], range('B', 'K'));
+check('1曲だけ: 候補を10まで・空の曲名は捨てる・形が違っても落ちない', [gemini_setlist_one_candidates(['candidates' => [['title' => 'A', 'artist' => 'x'], ['title' => ''], ...$moreCands]]), gemini_setlist_one_candidates(['candidates' => 'x']), gemini_setlist_one_candidates([])], [[['title' => 'A', 'artist' => 'x'], ...array_map(static fn($t) => ['title' => $t, 'artist' => ''], range('B', 'J'))], [], []]);
 
 echo "band survey\n";
 require_once __DIR__ . '/../lib/band_survey.php';
