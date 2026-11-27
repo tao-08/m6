@@ -477,7 +477,12 @@
 
   on('play', () => { setIcon(true); if (audio === yt && panel.hidden) setPanel(false); }); // 動画は見える所で（閉じていたら小さく出す）
   on('pause', () => { setIcon(false); if (cur()) savePos(nowSec()); });
-  on('playing', () => { fails = 0; });
+  // 読み込み中は再生ボタンの輪を回す（app_player.js と同じ。動画は鳴り始めてから play が来るので回らない）
+  const loading = (v) => playBtns.forEach((b) => b.classList.toggle('is-loading', v));
+  on('play', () => loading(audio.readyState < 3));
+  on('waiting', () => loading(true));
+  ['pause', 'ended', 'error'].forEach((ev) => on(ev, () => loading(false)));
+  on('playing', () => { fails = 0; loading(false); });
   on('ended', next);
   on('error', () => { if (audio.getAttribute('src')) skip(); });
   // バンド単位: シークバーの上に曲（番号）と MC（通しのときだけ）の吹き出し（band.php のチャプターと同じ見た目）。押すとそこから

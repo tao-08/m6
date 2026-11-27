@@ -302,6 +302,11 @@ function setupAudioPlayers(root = document) {
       flashToast('音源を読み込めませんでした', 'error');
     };
     audio.addEventListener('error', loadFail);
+    // 読み込み中は再生ボタンの輪を回す（押したのにまだ鳴らない間 = play で準備ができていない・waiting 〜 playing）
+    const loading = (on) => playBtn.classList.toggle('is-loading', on);
+    audio.addEventListener('play', () => loading(audio.readyState < 3));
+    audio.addEventListener('waiting', () => loading(true));
+    ['playing', 'pause', 'ended', 'error'].forEach((ev) => audio.addEventListener(ev, () => loading(false)));
     audio.addEventListener('canplay', () => clearTimeout(loadTimer));
 
     // t 秒へ。読み込み済みの範囲ならそのまま動かし、そうでなければ ?from= で読み直す。play: true で再生する（省略は今のまま）
