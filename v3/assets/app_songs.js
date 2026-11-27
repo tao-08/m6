@@ -999,7 +999,7 @@ function setupPreview() {
   // ページを開いたあと、試聴をまだ調べていない曲（band.php が data-lookup を付けたボタン）を、裏で 1 曲ずつ探す。
   //   ページの表示は待たせない（表示が終わってから動く）。見つかった URL はボタンに持たせるので、押したらすぐ鳴る。
   //   無かった曲は、押されたときと同じ「試聴がありません」の見た目にする。
-  const LOOKUP_GAP_MS = 3000; // 1 曲ごとの間隔。iTunes は 1 分あたり約 20 回までなので、その範囲に収める
+  const LOOKUP_GAP_MS = 10000; // 1 曲ごとの間隔。1曲で iTunes を最大4回ほど叩くので、サーバー全体の上限（lib/itunes.php の1分15回）に収める
   const LOOKUP_MAX = 10;      // 1 回のページ表示で探す曲の上限
   const lookupAll = async () => {
     const targets = [...document.querySelectorAll('[data-preview][data-lookup]')].slice(0, LOOKUP_MAX);

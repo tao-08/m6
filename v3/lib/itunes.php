@@ -40,13 +40,58 @@ function itunes_request(string $endpoint, array $params): ?array
 {
     // http_build_query: 配列 → "term=abbey+road&entity=album" 形式の文字列。
     //   日本語や記号も自動でエンコード（URL で使える文字に変換）してくれる。
+    $wait = itunes_gate();
+    if ($wait !== null) {
+        itunes_why($wait);
+        return null;
+    }
     $res = album_http('https://itunes.apple.com/' . $endpoint . '?' . http_build_query($params));
     $results = $res['json']['results'] ?? null;
     if ($res === null || $res['status'] !== 200 || !is_array($results)) {
+        if ($res !== null && in_array($res['status'], [403, 429], true)) {
+            itunes_gate(true);
+        }
         itunes_why($res === null ? '応答なし' : 'HTTP ' . $res['status']);
         return null;
     }
     return $results;
+}
+
+const ITUNES_PER_MINUTE = 15;      // Apple の上限は IP ごとに1分約20回。サーバー全体（全員の閲覧・一括調査・歌詞検索）で数える
+const ITUNES_PAUSE_MINUTES = 10;   // 403・429 が来たら叩くのをやめる。叩き続けると制限が解けない
+
+/**
+ * サーバー全体で、いま iTunes を叩いてよいか。よければ回数に数えて null、だめなら理由。
+ * $limited = true … 制限に当たったので、しばらく止める
+ * 回数は一時フォルダーのファイルに置く（全リクエストで共有。flock で同時に書かない）
+ */
+function itunes_gate(bool $limited = false): ?string
+{
+    $fp = @fopen(sys_get_temp_dir() . '/abbey_itunes_gate.json', 'c+');
+    if ($fp === false) {
+        return null; // 数えられないときは止めない
+    }
+    flock($fp, LOCK_EX);
+    $d = json_decode((string)stream_get_contents($fp), true);
+    $now = time();
+    $times = array_values(array_filter((array)($d['times'] ?? []), static fn($t): bool => is_int($t) && $t > $now - 60));
+    $until = (int)($d['until'] ?? 0);
+    $why = null;
+    if ($limited) {
+        $until = $now + ITUNES_PAUSE_MINUTES * 60;
+    } elseif ($until > $now) {
+        $why = '回数制限のため休止中。あと' . (int)ceil(($until - $now) / 60) . '分';
+    } elseif (count($times) >= ITUNES_PER_MINUTE) {
+        $why = '1分あたりの回数の上限';
+    } else {
+        $times[] = $now;
+    }
+    ftruncate($fp, 0);
+    rewind($fp);
+    fwrite($fp, (string)json_encode(['times' => $times, 'until' => $until]));
+    flock($fp, LOCK_UN);
+    fclose($fp);
+    return $why;
 }
 
 /** 最後に iTunes に繋がらなかった理由（管理者の画面に出す。本番だけ繋がらないときの切り分け用） */
