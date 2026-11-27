@@ -2,8 +2,10 @@
 /**
  * api_lyrics_search.php — Geminiで歌詞フレーズから曲を検索（管理者限定）。
  *
- * Geminiで最大10曲を推定し、iTunes（無ければ Spotify）の曲情報と照合する。
- * 歌詞本文は回答・表示・保存しない。試聴URLの有無は候補の採否に影響させない。
+ * Geminiで最大10曲を推定し、曲名とアーティスト名だけ返す。
+ * iTunes（無ければ Spotify）との照合は、候補の ▶・選択が押されたときだけ（action=match）。
+ *   検索のたびに10曲ぶん照合すると、時間がかかってサーバーに切られ、iTunes の回数制限（1分に約20回）にも当たるため。
+ * 歌詞本文は回答・表示・保存しない。
  */
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
@@ -20,6 +22,16 @@ $body = api_body();
 $q = trim(is_array($body) && is_string($body['q'] ?? null) ? $body['q'] : '');
 $requestedArtist = trim(is_array($body) && is_string($body['artist'] ?? null) ? $body['artist'] : '');
 $requestedArtist = mb_substr($requestedArtist, 0, 100, 'UTF-8');
+
+// 候補1曲を iTunes / Spotify と照合する（▶・選択を押したとき）
+if (is_array($body) && ($body['action'] ?? '') === 'match') {
+    $title = trim(is_string($body['title'] ?? null) ? $body['title'] : '');
+    $artist = trim(is_string($body['artist_name'] ?? null) ? $body['artist_name'] : '');
+    if ($title === '' || $artist === '' || mb_strlen($title, 'UTF-8') > 200 || mb_strlen($artist, 'UTF-8') > 200) {
+        fail(400, '曲の指定がおかしいです');
+    }
+    api_ok(['track' => lyrics_match($title, $artist, $requestedArtist)]);
+}
 if (mb_strlen($q, 'UTF-8') < 3 || mb_strlen($q, 'UTF-8') > 100) {
     fail(400, '検索語は3〜100文字で入力してください');
 }
@@ -58,7 +70,10 @@ $opts = [
     CURLOPT_POSTFIELDS => json_encode($request, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
     CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
 ];
-$res = gemini_call($url, $apiKey, $opts, 60) ?? gemini_call($url, $apiKey, $opts, 60);
+$res = gemini_call($url, $apiKey, $opts, 60);
+if ($res === null && gemini_why() !== 'cURL errno 28') { // 時間切れ（28）はやり直さない。やり直すと最大120秒になり、サーバーに途中で切られる
+    $res = gemini_call($url, $apiKey, $opts, 60);
+}
 if ($res === null) {
     fail(502, 'Gemini APIに接続できませんでした', ['detail' => gemini_why()]); // 管理者だけの画面なので理由も ⓘ に出す
 }
@@ -82,8 +97,29 @@ if (!$decoded['candidates']) {
     fail(502, 'Geminiから曲の候補を読み取れませんでした。別の歌詞で検索してください');
 }
 
+// 指定アーティスト以外は、Gemini がほぼ完全一致（high）とした曲だけ残す。同じ曲の別表記は1つにまとめる
+$tracks = [];
+$seen = [];
+foreach (array_slice($decoded['candidates'], 0, 10) as $candidate) {
+    $title = $candidate['title'];
+    $artist = $candidate['artist'];
+    $isRequested = $requestedArtist === '' || lyrics_similarity($artist, $requestedArtist) >= 65;
+    if (!$isRequested && $candidate['confidence'] !== 'high') continue;
+    $groupKey = album_match_key($artist) . "\0" . song_title_key($title, $artist);
+    if (isset($seen[$groupKey])) continue;
+    $seen[$groupKey] = true;
+    $tracks[] = ['title' => $title, 'artist_name' => $artist, 'artist_match' => $requestedArtist !== '' && $isRequested];
+}
+usort($tracks, static fn(array $a, array $b): int => $b['artist_match'] <=> $a['artist_match']); // 同じなら Gemini の順のまま
+$tracks = array_map(static fn(array $t): array => ['title' => $t['title'], 'artist_name' => $t['artist_name']], $tracks);
+
+// Google 検索を使ったときは、Gemini が返す検索の候補（Google 指定の HTML）を出す決まり。中身は変えずにそのまま渡す
+$suggest = (string)($response['json']['candidates'][0]['groundingMetadata']['searchEntryPoint']['renderedContent'] ?? '');
+api_ok(['tracks' => $tracks, 'provider' => 'Gemini + Google Search', 'search_suggest' => $suggest]);
+
 /** 表記ゆれを考慮した曲名・アーティスト名の類似度（0〜100）。 */
-$similarity = static function (string $actual, string $expected): int {
+function lyrics_similarity(string $actual, string $expected): int
+{
     $a = album_match_key($actual);
     $e = album_match_key($expected);
     if ($a === '' || $e === '') return 0;
@@ -91,112 +127,56 @@ $similarity = static function (string $actual, string $expected): int {
     if (mb_strlen($e, 'UTF-8') >= 3 && (str_contains($a, $e) || str_contains($e, $a))) return 85;
     similar_text($a, $e, $percent);
     return (int)round($percent);
-};
+}
 
-$ranked = [];
-$seen = [];
-foreach (array_slice($decoded['candidates'], 0, 10) as $candidate) {
-    if (!is_array($candidate)) continue;
-    $title = trim((string)($candidate['title'] ?? ''));
-    $artist = trim((string)($candidate['artist'] ?? ''));
-    if ($title === '' || $artist === '') continue;
-
-    // オムニバスでない場合は、フォームから渡されたバンドのアーティスト名を優先して検索する。
-    // Geminiが別アーティスト名を返しても、検索・照合には指定アーティストを使う。
-    // 指定アーティスト以外は、Geminiがほぼ完全一致(high)とした曲だけ残す。
-    $isRequested = $requestedArtist === '' || $similarity($artist, $requestedArtist) >= 65;
-    if (!$isRequested && strtolower(trim((string)($candidate['confidence'] ?? ''))) !== 'high') continue;
+/**
+ * Gemini の候補1曲を iTunes（無ければ Spotify）で探し、曲名とアーティストの両方が合う曲を返す。無ければ null
+ * オムニバスでなければ、フォームのアーティスト名で探す（Gemini が別名で返しても）。
+ * 同じ曲が複数のアルバムにあれば、オリジナル盤に近い版 → 発売年が古い版 → 照合スコアが高い版。
+ */
+function lyrics_match(string $title, string $artist, string $requestedArtist): ?array
+{
+    $isRequested = $requestedArtist === '' || lyrics_similarity($artist, $requestedArtist) >= 65;
     $searchArtist = $isRequested && $requestedArtist !== '' ? $requestedArtist : $artist;
     $term = $title . ' ' . $searchArtist;
-    $matched = false;
+    $itunesDown = false;
 
-    // iTunes（試聴あり）で見つからなければ Spotify で探す。Apple Music だけで配信の曲は iTunes Search API に出ない。
+    // Apple Music だけで配信の曲は iTunes Search API に出ないので、Spotify でも探す
     foreach (['itunes', 'spotify'] as $source) {
-        if ($matched) break;
         $found = $source === 'itunes' ? itunes_search_tracks($term, 10) : (spotify_enabled() ? spotify_search_tracks($term, 10) : null);
-
+        if ($source === 'itunes' && $found === null) $itunesDown = true;
+        $best = null;
         foreach (is_array($found) ? $found : [] as $track) {
-            if (!is_array($track)) continue;
-            $titleScore = $similarity(song_title_core((string)$track['title'], (string)$track['artist_name']), song_title_core($title, $artist));
-            $artistNames = array_map('trim', explode(', ', (string)$track['artist_name']));
+            if (!is_array($track) || (string)$track['track_id'] === '') continue;
+            $titleScore = lyrics_similarity(song_title_core((string)$track['title'], (string)$track['artist_name']), song_title_core($title, $artist));
             $artistScore = 0;
-            foreach ($artistNames as $actualArtist) {
-                $artistScore = max($artistScore, $similarity($actualArtist, $searchArtist));
+            foreach (array_map('trim', explode(', ', (string)$track['artist_name'])) as $actualArtist) {
+                $artistScore = max($artistScore, lyrics_similarity($actualArtist, $searchArtist));
             }
-            // タイトルとアーティストの両方が一定以上一致する候補に限定する。
             if ($titleScore < 75 || $artistScore < 65) continue;
-
-            $id = (string)$track['track_id'];
-            if ($id === '') continue;
-            $matched = true;
-
-            // 同じアーティスト・同じ曲の別バージョンは1候補にまとめる。
-            // 既存の曲管理と同じ song_title_key() を使い、Remaster / Live / Acoustic 等の注記を除いて判定する。
             $mainArtist = trim(explode(', ', (string)$track['artist_name'])[0]);
-            $groupKey = album_match_key($mainArtist) . "\0" . song_title_key((string)$track['title'], $mainArtist);
-            if ($groupKey === "\0" || str_ends_with($groupKey, "\0")) continue;
-
-            $versionRank = song_version_rank(
-                (string)($track['album_title'] ?? ''),
-                (string)$track['title'],
-                $mainArtist
-            );
-            $releaseYear = isset($track['release_year']) ? (int)$track['release_year'] : 9999;
-            $score = (int)round($titleScore * 0.65 + $artistScore * 0.35);
-            $artistMatch = 0;
-            if ($requestedArtist !== '') {
-                foreach ($artistNames as $actualArtist) {
-                    if ($similarity($actualArtist, $requestedArtist) >= 65) $artistMatch = 1;
-                }
-            }
-            $row = [
-                'score' => $score,
-                'artist_match' => $artistMatch,
-                'version_rank' => $versionRank,
-                'release_year' => $releaseYear,
-                'track' => [
-                    'source' => $source,
-                    'track_id' => $id,
-                    'title' => $track['title'],
-                    'artist_name' => $track['artist_name'],
-                    'album_title' => $track['album_title'],
-                    'artwork_url' => $track['artwork_url'],
-                    'preview_url' => $track['preview_url'] ?? null,
-                ],
+            $rank = [
+                song_version_rank((string)($track['album_title'] ?? ''), (string)$track['title'], $mainArtist),
+                isset($track['release_year']) ? (int)$track['release_year'] : 9999,
+                -(int)round($titleScore * 0.65 + $artistScore * 0.35),
             ];
-            // 同一曲が複数のアルバム版で見つかった場合は、オリジナル盤に近い版を優先する。
-            // 同順位なら発売年が古いもの、さらに同じなら照合スコアが高いものを残す。
-            if (!isset($seen[$groupKey])
-                || [$versionRank, $releaseYear, -$score] < [$seen[$groupKey]['version_rank'], $seen[$groupKey]['release_year'], -$seen[$groupKey]['score']]) {
-                $seen[$groupKey] = $row;
-            }
+            if ($best === null || $rank < $best[0]) $best = [$rank, $track];
+        }
+        if ($best !== null) {
+            $t = $best[1];
+            return [
+                'source' => $source,
+                'track_id' => (string)$t['track_id'],
+                'title' => $t['title'],
+                'artist_name' => $t['artist_name'],
+                'album_title' => $t['album_title'],
+                'artwork_url' => $t['artwork_url'],
+                'preview_url' => $t['preview_url'] ?? null,
+            ];
         }
     }
-
-    // どちらにも無くても high なら、曲名とアーティストだけの候補にする。
-    if (!$matched && strtolower(trim((string)($candidate['confidence'] ?? ''))) === 'high') {
-        $groupKey = album_match_key($artist) . "\0" . song_title_key($title, $artist);
-        $seen[$groupKey] ??= [
-            'score' => 100,
-            'artist_match' => $requestedArtist !== '' && $similarity($artist, $requestedArtist) >= 65 ? 1 : 0,
-            'version_rank' => 0,
-            'release_year' => 9999,
-            'track' => [
-                'source' => null,
-                'track_id' => null,
-                'title' => $title,
-                'artist_name' => $artist,
-                'album_title' => trim((string)($candidate['album'] ?? '')),
-                'artwork_url' => null,
-                'preview_url' => null,
-            ],
-        ];
+    if ($itunesDown) {
+        fail(502, 'iTunes に接続できませんでした: ' . itunes_why());
     }
+    return null;
 }
-$ranked = array_values($seen);
-usort($ranked, static fn(array $a, array $b): int => [$b['artist_match'], $b['score']] <=> [$a['artist_match'], $a['score']]);
-$tracks = array_map(static fn(array $row): array => $row['track'], array_slice($ranked, 0, 10));
-
-// Google 検索を使ったときは、Gemini が返す検索の候補（Google 指定の HTML）を出す決まり。中身は変えずにそのまま渡す
-$suggest = (string)($response['json']['candidates'][0]['groundingMetadata']['searchEntryPoint']['renderedContent'] ?? '');
-api_ok(['tracks' => $tracks, 'provider' => 'Gemini + Google Search', 'search_suggest' => $suggest]);

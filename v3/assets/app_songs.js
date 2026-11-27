@@ -764,6 +764,7 @@ function setupLyricsSearch() {
       const omnibus = card.closest('form')?.querySelector('[data-omnibus]')?.checked ?? false;
       const artistInput = card.querySelector('[data-song-artist]');
       const artist = !omnibus ? (artistInput?.value.trim() || '') : '';
+      const started = Date.now();
       const res = await fetch('api_lyrics_search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },
@@ -774,7 +775,7 @@ function setupLyricsSearch() {
       const raw = await res.text();
       let data;
       try { data = JSON.parse(raw); } catch { // ⓘ に応答の頭を出す（空なら時間切れなどでサーバーが途中で切れた）
-        data = { error: '歌詞検索に失敗しました。もう一度検索してください', detail: `HTTP ${res.status} ${raw.trim() ? raw.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 200) : '（空の応答）'}` };
+        data = { error: '歌詞検索に失敗しました。もう一度検索してください', detail: `HTTP ${res.status} ${raw.trim() ? raw.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 200) : '（空の応答）'} ${Math.round((Date.now() - started) / 1000)}秒` }; // 秒数で、サーバーに何秒で切られたかがわかる
       }
       if (!res.ok || data.error) throw Object.assign(new Error(data.error || '歌詞検索に失敗しました'), { detail: data.detail });
       if (!Array.isArray(data.tracks) || data.tracks.length === 0) {
@@ -785,58 +786,70 @@ function setupLyricsSearch() {
       const rows = data.tracks.slice(0, 10).map((track) => {
         const row = document.createElement('div');
         row.className = 'track-option';
-        let img = iconEl('music_note'); // iTunes に無い曲はジャケット無し
-        if (track.artwork_url) {
-          img = document.createElement('img');
-          img.src = track.artwork_url;
-          img.alt = '';
-          img.loading = 'lazy';
-        }
+        let img = iconEl('music_note'); // 照合して見つかったらジャケットに替える
         const text = document.createElement('span');
         const title = document.createElement('div');
         title.className = 'track-option__title';
         title.textContent = track.title;
         const sub = document.createElement('div');
         sub.className = 'track-option__sub';
-        sub.textContent = [track.artist_name, track.album_title].filter(Boolean).join(' ・ ');
+        sub.textContent = track.artist_name;
         text.append(title, sub);
         const actions = document.createElement('span');
         actions.className = 'lyrics-result__actions';
-        if (track.preview_url) {
-          const play = document.createElement('button');
-          play.type = 'button';
-          play.className = 'track-option__play';
-          play.dataset.preview = track.source + ':' + track.track_id;
-          play.dataset.previewUrl = track.preview_url;
-          play.setAttribute('aria-label', track.title + 'を試聴');
-          play.title = '30秒試聴';
-          play.append(Object.assign(iconEl('play_arrow'), { className: 'icon icon--fill' }));
-          actions.append(play);
-        } else {
-          // 試聴が無い曲は、Google で聴き比べられるように（試聴ボタンと同じ見た目。編集中のページが移らないよう別タブ）
-          const find = document.createElement('a');
-          find.className = 'track-option__play';
-          find.href = 'https://www.google.com/search?q=' + encodeURIComponent(`${track.artist_name.split(', ')[0]} ${track.title}`);
-          find.target = '_blank';
-          find.rel = 'noopener';
-          find.setAttribute('aria-label', track.title + 'を Google で検索');
-          find.title = 'Google で検索';
-          find.append(iconEl('search'));
-          actions.append(find);
-        }
+        // 試聴が無い曲は、Google で聴き比べられるように（試聴ボタンと同じ見た目。編集中のページが移らないよう別タブ）
+        const find = document.createElement('a');
+        find.className = 'track-option__play';
+        find.href = 'https://www.google.com/search?q=' + encodeURIComponent(`${track.artist_name} ${track.title}`);
+        find.target = '_blank';
+        find.rel = 'noopener';
+        find.setAttribute('aria-label', track.title + 'を Google で検索');
+        find.title = 'Google で検索';
+        find.append(iconEl('search'));
+        const play = document.createElement('button');
+        play.type = 'button';
+        play.className = 'track-option__play';
+        play.dataset.preview = 'lyrics';
+        play.setAttribute('aria-label', track.title + 'を試聴');
+        play.title = '30秒試聴';
+        play.append(Object.assign(iconEl('play_arrow'), { className: 'icon icon--fill' }));
+        actions.append(play);
+        // iTunes / Spotify との照合は ▶・選択を押したときに1回だけ（失敗したら次に押したときにやり直す）
+        let matching = null;
+        const match = () => (matching ??= apiPost('api_lyrics_search', { action: 'match', title: track.title, artist_name: track.artist_name, artist }, '曲を探せませんでした')
+          .then(({ track: found }) => {
+            if (found?.artwork_url) {
+              const cover = Object.assign(document.createElement('img'), { src: found.artwork_url, alt: '' });
+              img.replaceWith(cover);
+              img = cover;
+            }
+            if (found) sub.textContent = [found.artist_name, found.album_title].filter(Boolean).join(' ・ ');
+            if (!found?.preview_url) play.replaceWith(find);
+            return found;
+          })
+          .catch((err) => { matching = null; throw err; }));
+        play.lookupPreview = async () => (await match())?.preview_url ?? null; // setupPreview が ▶ を押したときに呼ぶ
         const pick = document.createElement('button');
         pick.type = 'button';
         pick.className = 'btn btn--ghost btn--sm';
         pick.textContent = '選択';
-        pick.addEventListener('click', () => {
-          card.querySelector('[name$="[title]"]').value = track.title;
-          const artist = card.querySelector('[data-song-artist]');
-          if (artist && !artist.readOnly) artist.value = track.artist_name.split(', ')[0];
-          setTrack(card, track.track_id ? {
-            key: track.source + ':' + track.track_id,
-            title: track.title,
-            artist_name: track.artist_name,
-            artwork_url: track.artwork_url,
+        pick.addEventListener('click', async () => {
+          pick.disabled = true;
+          let found = null;
+          try {
+            found = await match();
+          } catch (err) {
+            toastText(err.message, 'flash flash--warn'); // 曲名とアーティストだけ入れる
+          }
+          pick.disabled = false;
+          card.querySelector('[name$="[title]"]').value = found?.title ?? track.title;
+          const artistInput = card.querySelector('[data-song-artist]');
+          if (artistInput && !artistInput.readOnly) artistInput.value = (found?.artist_name ?? track.artist_name).split(', ')[0];
+          setTrack(card, found ? {
+            key: found.source + ':' + found.track_id,
+            title: found.title,
+            artist_name: found.artist_name,
+            artwork_url: found.artwork_url,
           } : null);
           closeResults(results);
         });
@@ -922,11 +935,15 @@ function setupPreview() {
     let url = refresh ? null : btn.dataset.previewUrl;
     if (!url) {
       try {
-        const res = await fetch(`api_track_preview?track=${encodeURIComponent(btn.dataset.preview)}${refresh ? '&refresh=1' : ''}`,
-          { credentials: 'same-origin' });
-        const data = await res.json().catch(() => ({})); // 空の応答でも JSON の読み取りエラーをそのまま出さない
-        if (!res.ok || data.url === undefined) throw new Error(data.error);
-        url = data.url;
+        if (btn.lookupPreview) { // 歌詞検索の候補: 押したときに初めて照合する
+          url = await btn.lookupPreview();
+        } else {
+          const res = await fetch(`api_track_preview?track=${encodeURIComponent(btn.dataset.preview)}${refresh ? '&refresh=1' : ''}`,
+            { credentials: 'same-origin' });
+          const data = await res.json().catch(() => ({})); // 空の応答でも JSON の読み取りエラーをそのまま出さない
+          if (!res.ok || data.url === undefined) throw new Error(data.error);
+          url = data.url;
+        }
       } catch (err) {
         if (current === btn) stop();
         fail(err.message || '試聴を探せませんでした');
