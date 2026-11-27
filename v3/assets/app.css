@@ -2414,6 +2414,7 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
   /* タブは5つ。「アーティスト」が入りきるよう、左右の余白を小さめにする */
   .nav__link { flex: 1; text-align: center; padding: 10px 2px; font-size: var(--fs-sm); border-radius: var(--r-md); }
   .footer { padding-bottom: 84px; }
+  .in-shell .nav { padding-bottom: 6px; } /* シャッフル再生の中: ホームバーの分は外枠の下のバーが空ける */
   /* iOS は 16px 未満の入力欄を押すと画面を拡大し、戻らないまま（フッターなどが大きく見える）。各入力欄の指定より強くするため !important */
   input, select, textarea { font-size: var(--fs-lg) !important; }
   .sticky-actions { bottom: 76px; } /* 下に固定の保存ボタンは、タブバーの上に出す */

@@ -167,6 +167,9 @@ document.addEventListener('DOMContentLoaded', () => {
  *   studio.js / tt_builder.js からもそのまま呼べる）
  * ------------------------------------------------------------------- */
 
+/** シャッフル再生（player.php）の中で開いているか。下のタブバーのホームバーの分は外枠のバーが空けるので、二重に空けない（app.css の .in-shell） */
+try { if (window.frameElement?.matches('[data-shell-frame]')) document.documentElement.classList.add('in-shell'); } catch (e) { /* 別のサイトの中 */ }
+
 /** CSRF トークン（<meta name="csrf-token">） */
 /** 「動きを減らす」設定の人か（animateIn・タブの滑りなど、アニメーションの前に見る） */
 const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
