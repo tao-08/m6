@@ -170,8 +170,11 @@
   };
   // 通しで MC のチャプターを流している間（曲の終わり end_ms 〜 次の曲 through_end_ms。両方が違う = 間に MC がある）。MC のない曲間は曲のまま
   let mcShown = false;
-  const inMc = (it) => !!it && thru() && it.end_ms !== null && it.through_end_ms !== undefined && it.through_end_ms !== it.end_ms
-    && nowSec() * 1000 >= it.end_ms && (it.through_end_ms === null || nowSec() * 1000 < it.through_end_ms); // 上限: 曲を移った直後の古い位置で MC と出さない
+  const hasMc = (it) => !!it && thru() && it.end_ms !== null && it.through_end_ms !== undefined && it.through_end_ms !== it.end_ms;
+  const inMc = (it) => hasMc(it) && nowSec() * 1000 >= it.end_ms && (it.through_end_ms === null || nowSec() * 1000 < it.through_end_ms); // 上限: 曲を移った直後の古い位置で MC と出さない
+  // シークバー・時間の区間（ms）。MC は別の曲として扱い、曲は end_ms まで・MC は end_ms から次の曲まで（null = ファイルの最後）
+  const segStart = (it) => (inMc(it) ? it.end_ms : it.start_ms);
+  const segEnd = (it) => (inMc(it) ? endOf(it) : hasMc(it) ? it.end_ms : endOf(it));
   const render = () => {
     const it = cur();
     const mc = mcShown = inMc(it); // MC の間は曲名を「MC」にして、アーティスト・アルバム・ジャケットは出さない
@@ -280,14 +283,25 @@
     if (nx && (nx.start_ms > 0 || nx.end_ms !== null)) probe(nx);
     if (nx && nx.band_id !== cur().band_id) refresh(nx); // 次の曲を先に取り直しておく（同じバンドなら開いたときに読んだ分で足りる）
   };
+  // 曲送り・戻しの動き: d = 1（次へ。右から入る）/ -1（前へ。左から入る）。入ってくる側だけ動かす（.2s・--ease-out と同じ）
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)');
+  const slide = (d) => {
+    if (reduced.matches) return;
+    [titleEl, bandEl, $('.shell-panel__head'), $('[data-shell-players]')].forEach((el) => el.animate(
+      [{ opacity: 0, translate: `${d * 24}px 0` }, { opacity: 1, translate: '0 0' }],
+      { duration: 200, easing: 'cubic-bezier(.2, .8, .2, 1)' },
+    ));
+  };
   const next = () => {
     if (pending) { const p = pending; pending = null; switchTo(p.scope, p.id, false); return; }
+    slide(1);
     go(idx + 1, true);
   };
   const prev = () => {
     const it = cur();
     if (!it) return;
-    if (queue.length > 1 && nowSec() - it.start_ms / 1000 < 3) go(idx - 1, true);
+    if (inMc(it)) { playAt((nowSec() - it.end_ms / 1000 < 3 ? it.start_ms : it.end_ms) / 1000, true); return; } // MC の前の曲 = いまの曲
+    if (queue.length > 1 && nowSec() - it.start_ms / 1000 < 3) { slide(-1); go(idx - 1, true); }
     else playAt(it.start_ms / 1000, true);
   };
   const skip = () => { // 流せなかった: 続けて全部だめなら止める
@@ -333,10 +347,11 @@
     const t = sec * 1000;
     const nx = queue[idx + 1];
     const fileEnd = durations.get(it.src) ? durations.get(it.src) * 1000 : null;
-    const end = endOf(it) ?? fileEnd;
+    const end = segEnd(it) ?? fileEnd;
+    const s0 = segStart(it);
     if (end) {
-      const len = (end - it.start_ms) / 1000;
-      const pos = Math.min(len, Math.max(0, (t - it.start_ms) / 1000));
+      const len = (end - s0) / 1000;
+      const pos = Math.min(len, Math.max(0, (t - s0) / 1000));
       progEl.style.width = `${pos / len * 100}%`;
       durEl.textContent = fmt(len);
       seek.max = Math.floor(len);
@@ -356,7 +371,7 @@
     if (Math.abs(t / 1000 - savedAt) >= 3) savePos(t / 1000);
     const end = endOf(it);
     if (end === null || t < end) return; // ファイルの最後まで流す曲は ended で次へ
-    if (!pending && joined(it, queue[idx + 1])) { idx += 1; save(); render(); return; } // 続き: 読み直さず表示だけ進める
+    if (!pending && joined(it, queue[idx + 1])) { idx += 1; save(); render(); slide(1); return; } // 続き: 読み直さず表示だけ進める
     audio.pause(); // 先に止める（次の曲の用意を待つ間に、また呼ばれないように）
     next();
   });
@@ -367,7 +382,7 @@
   });
   seek.addEventListener('change', () => {
     dragging = false;
-    if (cur()) playAt(cur().start_ms / 1000 + Number(seek.value), !audio.paused);
+    if (cur()) playAt(segStart(cur()) / 1000 + Number(seek.value), !audio.paused);
   });
   // ほかの音（中のページの音源・動画・YouTube）が鳴り始めたらフェードで止め、すべて止まって1秒たったらフェードで戻す
   const others = new Set(); // 鳴っているもの: <audio>/<video> か YouTube の iframe の window
@@ -648,7 +663,7 @@
       syncUrl();
       const it = queue[st.idx];
       // 残した位置がその曲の中のときだけ使う
-      const ok = it && pos !== null && pos * 1000 >= it.start_ms && (it.end_ms === null || pos * 1000 < it.end_ms);
+      const ok = it && pos !== null && pos * 1000 >= it.start_ms && (endOf(it) === null || pos * 1000 < endOf(it)); // 通しなら MC の途中も
       await go(st.idx, false, ok ? pos : undefined);
       if (cfg.resume) setPanel(true);
       return;
