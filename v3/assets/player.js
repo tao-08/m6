@@ -167,6 +167,7 @@
     panel.style.top = r && r.width ? `${r.bottom + 8}px` : '';
     // 右端をアイコンにそろえる。ただし画面の左右からはみ出さない（狭い画面ではアイコンより右に寄る）
     panel.style.right = r && r.width ? `${Math.max(12, Math.min(innerWidth - r.right, innerWidth - panel.offsetWidth - 12))}px` : '';
+    if (cur()) showPos(nowSec()); // 吹き出しの被りは開いてから測る
     marqueeAll(); refresh(cur()); // 閉じている間は幅が 0 で測れないので、開いたときに測り直す
   };
   // 通しで MC のチャプターを流している間（曲の終わり end_ms 〜 次の曲 through_end_ms。両方が違う = 間に MC がある）。MC のない曲間は曲のまま
@@ -356,6 +357,60 @@
   audio.addEventListener('playing', () => { fails = 0; });
   audio.addEventListener('ended', next);
   audio.addEventListener('error', () => { if (audio.getAttribute('src')) skip(); });
+  // バンド単位: シークバーの上に曲（番号）と MC（通しのときだけ）の吹き出し（band.php のチャプターと同じ見た目）。押すとそこから
+  //   曲間をスキップするときは、飛ばす所（曲の終わり〜次の曲の頭）を棒の上で薄くする（--gaps）
+  const bubblesEl = $('[data-shell-bubbles]');
+  let bubbleKey = '';
+  const drawBubbles = (it, s0, end) => {
+    const r = bandRange();
+    const marks = [];
+    const gaps = [];
+    if (r && end) {
+      const x = (ms) => Math.min(1, Math.max(0, (ms - s0) / (end - s0)));
+      for (let k = r.a; k <= r.b; k += 1) {
+        const q = queue[k];
+        marks.push({ k, ms: q.start_ms, label: String(k - r.a + 1), full: `${k - r.a + 1}. ${q.title}`, kind: 'song' });
+        if (hasMc(q)) marks.push({ k, ms: q.end_ms, label: 'MC', full: 'MC', kind: 'mc' });
+        const nx = queue[k + 1];
+        if (!thru() && k < r.b && q.end_ms !== null && nx.start_ms > q.end_ms) gaps.push([x(q.end_ms), x(nx.start_ms)]);
+      }
+      marks.forEach((m) => { m.x = x(m.ms); });
+    }
+    const key = JSON.stringify([marks, gaps]);
+    if (key !== bubbleKey) {
+      bubbleKey = key;
+      bubblesEl.replaceChildren(...marks.map((m) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'audio-bubble';
+        b.textContent = m.label;
+        b.dataset.k = m.k;
+        b.dataset.ms = m.ms;
+        b.dataset.kind = m.kind;
+        b.style.setProperty('--x', m.x);
+        b.setAttribute('aria-label', `${m.full} から再生`);
+        b.title = `${m.full} から再生`;
+        return b;
+      }));
+      seekBox.classList.toggle('has-bubbles', marks.length > 0);
+      // MC はシークバーの下、曲は上（MC は次の曲の頭のすぐ手前で、上に並べると被るため）
+      [...bubblesEl.children].forEach((b) => b.classList.toggle('is-below', b.dataset.kind === 'mc'));
+      seekBox.classList.toggle('has-below', !!bubblesEl.querySelector('.is-below'));
+      const thumb = (p) => `calc(var(--ap-thumb) / 2 + (100% - var(--ap-thumb)) * ${p})`; // 棒の上の位置（つまみの半分ずつ内側）
+      seekBox.style.setProperty('--gaps', gaps.length
+        ? `linear-gradient(to right, ${gaps.map(([a, b]) => `transparent ${thumb(a)}, var(--gap) ${thumb(a)}, var(--gap) ${thumb(b)}, transparent ${thumb(b)}`).join(', ')})`
+        : 'none');
+    }
+    const mc = inMc(it);
+    [...bubblesEl.children].forEach((b) => b.classList.toggle('is-current', Number(b.dataset.k) === idx && (b.dataset.kind === 'mc') === mc));
+  };
+  bubblesEl.addEventListener('click', (e) => {
+    const b = e.target.closest('.audio-bubble');
+    if (!b) return;
+    const k = Number(b.dataset.k);
+    if (k !== idx) { idx = k; save(); render(); }
+    playAt(Number(b.dataset.ms) / 1000, !audio.paused);
+  });
   // 再生位置の表示（音源の秒 sec）
   const showPos = (sec) => {
     const it = cur();
@@ -364,6 +419,7 @@
     const fileEnd = durations.get(it.src) ? durations.get(it.src) * 1000 : null;
     const end = segEnd(it) ?? fileEnd;
     const s0 = segStart(it);
+    drawBubbles(it, s0, end);
     if (end) {
       const len = (end - s0) / 1000;
       const pos = Math.min(len, Math.max(0, (t - s0) / 1000));
@@ -539,6 +595,7 @@
     save();
     showCont();
     if (thru() && cur() && audio.getAttribute('src')) playAt(nowSec(), !audio.paused);
+    if (cur()) showPos(nowSec()); // 吹き出しの MC・飛ばす所
     toast(cont ? '曲間も再生します' : '曲間をスキップします');
   });
   // シャッフル: オフは出演順・セトリ順。いまの曲はそのまま、並びだけ変える
@@ -566,6 +623,7 @@
     byBand = !byBand;
     reorder();
     showUnit();
+    if (cur()) showPos(nowSec()); // シークバーの範囲・吹き出し
     toast(byBand ? 'バンド単位で再生します' : '曲単位で再生します');
     if (!was && thru() && cur() && audio.getAttribute('src')) playAt(nowSec(), !audio.paused); // 通しが効き始めたら MC まで受け取れるよう読み直す
   });

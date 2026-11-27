@@ -65,7 +65,7 @@ if (!preg_match('/^[A-Za-z0-9_-]*(\.php)?(\?[^#\s]*)?$/', $u) || preg_match('/^p
             </div>
         </div>
         <ul class="shell-panel__players" data-shell-players></ul>
-        <div class="audio-player__seek" data-shell-seekbox><input type="range" class="audio-player__range" data-shell-seek min="0" max="0" step="1" value="0" aria-label="再生位置"></div>
+        <div class="audio-player__seek" data-shell-seekbox><div class="audio-player__bubbles" data-shell-bubbles></div><input type="range" class="audio-player__range" data-shell-seek min="0" max="0" step="1" value="0" aria-label="再生位置"></div>
         <div class="shell-panel__time"><span data-shell-cur>0:00</span><span data-shell-dur>0:00</span></div>
         <div class="shell-panel__ctl">
             <button type="button" class="icon-btn shell-panel__shuffle" data-shell-shuffle aria-pressed="true" aria-label="シャッフル" title="シャッフル"><?= icon('shuffle') ?></button>
