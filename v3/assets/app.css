@@ -724,6 +724,10 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 .shell-bar__band { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: var(--fs-xs); min-width: 0; flex: 1 1 0; }
 .shell-bar__progress { position: absolute; left: var(--shell-side); right: var(--shell-side); top: -1px; height: 2px; background: var(--surface-2); overflow: hidden; }
 .shell-bar__progress span { display: block; width: 0; height: 100%; background: var(--accent); }
+@media (max-width: 600px) { /* スマホは縦をさらに詰める。ホームバーの分（safe-area）も半分だけ空ける（ボタンは押せる 28px を残す） */
+  .shell-bar { padding-top: 1px; padding-bottom: calc(1px + env(safe-area-inset-bottom) * .5); }
+  .shell-bar > .icon-btn { width: 28px; height: 28px; }
+}
 /* 再生中の曲のポップアップ（player.php）。中のヘッダーのアイコンの下あたりに出す。シークバー・再生ボタンはバンドページのプレーヤーの部品 */
 .shell-panel { position: fixed; top: 56px; right: 12px; z-index: 50; width: 360px; max-width: calc(100vw - 24px); max-height: calc(100dvh - 110px); overflow-y: auto; padding: 14px; display: grid; gap: 8px;
   border-radius: var(--r-lg); background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow-pop); }
@@ -742,7 +746,7 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 .shell-panel__liveline > a { min-width: 0; overflow: hidden; white-space: nowrap; }
 .shell-panel__liveline > .tag { flex: none; }
 .shell-panel__artistline { font-size: var(--fs-sm); color: var(--muted); }
-.shell-panel__artist:not([hidden]) + .shell-panel__album:not([hidden])::before { content: "・"; } /* 両方あるときだけ区切る */
+.shell-panel__artist:not([hidden]) + .shell-panel__album:not([hidden])::before { content: " ・ "; white-space: pre; } /* 両方あるときだけ区切る */
 .shell-panel__live, .shell-panel__artist { font-size: var(--fs-sm); color: var(--muted); }
 .shell-panel__band { font-size: var(--fs-md); font-weight: 600; color: inherit; }
 .shell-panel__song { font-size: var(--fs-xl); }
@@ -774,6 +778,10 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 .shell-panel__later[aria-pressed="true"] { color: var(--accent); }
 .shell-panel__scopes { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; align-self: center; }
 .shell-panel__scopes .chip { padding: 3px 8px; font: inherit; font-size: var(--fs-sm); font-weight: 500; color: inherit; cursor: pointer; } /* 横 8px: 375px で1行に3つ入る */
+.shell-panel__scopes .chip .icon { display: inline-block; max-width: 0; overflow: hidden; opacity: 0; margin-left: 0; font-size: var(--fs-sm); vertical-align: -2px; color: var(--muted);
+  transition: max-width var(--t-base) var(--ease-out), margin-left var(--t-base) var(--ease-out), opacity var(--t-base) ease; } /* シャッフルで流れる範囲の印。シャッフル中だけ幅を広げる */
+.shell-panel__scopes.is-shuffled .chip .icon { max-width: 16px; margin-left: 2px; opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .shell-panel__scopes .chip .icon { transition: none; } }
 .shell-panel__scopes .chip.is-current { background: var(--accent-soft); border-color: var(--accent); } /* いま流している範囲（.chip--me と同じ） */
 .shell-panel__scopes .chip.is-pending { color: var(--accent); font-weight: 700; border-color: var(--accent); border-style: dashed; } /* 次の曲から変える範囲 */
 /* 外枠のお知らせ: 上（.toasts と同じ位置）。ポップアップより手前 */

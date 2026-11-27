@@ -181,7 +181,7 @@
     const mc = mcShown = inMc(it); // MC の間は曲名を「MC」にして、アーティスト・アルバム・ジャケットは出さない
     const title = it && mc ? 'MC' : it?.title;
     titleEl.textContent = it ? title : '再生できる曲がありません';
-    bandEl.textContent = it ? `${it.band}・${it.year ? `${String(it.year % 100).padStart(2, '0')}’ ` : ''}${it.live}` : ''; // 年度は下2桁（26’ 文化祭ライブ）
+    bandEl.textContent = it ? `${it.band} ・ ${it.year ? `${String(it.year % 100).padStart(2, '0')}’ ` : ''}${it.live}` : ''; // 年度は下2桁（26’ 文化祭ライブ）
     titleEl.disabled = !it;
     playBtns.forEach((b) => { b.disabled = !it; });
     nextBtns.forEach((b) => { b.disabled = queue.length < 2; });
@@ -326,6 +326,7 @@
     if (queue.includes(it) && cur()?.band_id === it.band_id) render();
   };
   const load = async (scope, id) => {
+    if (scope === 'band' && shuffled) { shuffled = false; showShuffle(); } // バンドはセトリ順で聞く（ヘッダーのメニューから始めたときも）
     const res = await fetch(`api_shuffle?scope=${encodeURIComponent(scope)}&id=${Number(id) || 0}`);
     const data = await res.json().catch(() => null);
     const items = res.ok && data ? data.items : [];
@@ -478,6 +479,13 @@
     b.addEventListener('click', () => {
       if (later && cur()) { pending = { scope, id }; buildScopes(); } else switchTo(scope, id, true);
     });
+    if (scope !== 'band') { // シャッフルの印。シャッフル中だけ CSS で幅を広げて見せる（バンドは選ぶとシャッフルを外すので付けない）
+      const ic = document.createElement('span');
+      ic.className = 'icon';
+      ic.setAttribute('aria-hidden', 'true');
+      ic.textContent = 'shuffle';
+      b.append(ic);
+    }
     li.append(b);
     return li;
   };
@@ -491,8 +499,13 @@
     innerDoc()?.querySelectorAll('[data-shuffle-menu] a[data-shuffle]').forEach((a) => {
       if (a.dataset.shuffle !== 'all') list.push([a.textContent, a.dataset.shuffle, Number(a.dataset.shuffleId) || 0]);
     });
-    const seen = new Set(); // 「再生中のバンド」と「このバンド」が同じなら再生中のほうだけ
-    scopesEl.replaceChildren(...list.filter(([, sc, id]) => !seen.has(`${sc}:${id}`) && seen.add(`${sc}:${id}`)).map((x) => scopeItem(...x)));
+    // 「再生中のバンド」と「このバンド」が同じなら「この〜」を残す（流している範囲なら is-current で選ばれた見た目になる）
+    const here = new Set(list.filter(([label]) => !label.startsWith('再生中の')).map(([, sc, id]) => `${sc}:${id}`));
+    const seen = new Set();
+    scopesEl.replaceChildren(...list
+      .filter(([label, sc, id]) => !(label.startsWith('再生中の') && here.has(`${sc}:${id}`)))
+      .filter(([, sc, id]) => !seen.has(`${sc}:${id}`) && seen.add(`${sc}:${id}`))
+      .map((x) => scopeItem(...x)));
   };
 
   // 通し: 曲間（MC など）も流す。ON にしたら、いまの曲も MC まで受け取れるよう、いまの位置から読み直す（OFF は timeupdate で止まるだけ）
@@ -507,7 +520,11 @@
   });
   // シャッフル: オフは出演順・セトリ順。いまの曲はそのまま、並びだけ変える
   const shuffleBtn = $('[data-shell-shuffle]');
-  const showShuffle = () => shuffleBtn.setAttribute('aria-pressed', String(shuffled));
+  const showShuffle = () => {
+    shuffleBtn.setAttribute('aria-pressed', String(shuffled));
+    scopesEl.classList.toggle('is-shuffled', shuffled); // チップの印が幅ごと滑って出る・引っ込む
+  };
+  showShuffle();
   shuffleBtn.addEventListener('click', () => {
     shuffled = !shuffled;
     reorder();
