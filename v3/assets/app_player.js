@@ -345,8 +345,8 @@ function setupAudioPlayers(root = document) {
       if (c && document.activeElement !== atInput) atInput.value = fmtTime(c.ms); // 打っている最中は触らない
     };
 
-    // 吹き出しが左の吹き出しと被るものは、シークバーの下へ（.is-below。上下の移動は CSS の top の transition で滑る）
-    //   左から順に、上が空いていれば上、上が被って下が空いていれば下、どちらも被るなら上
+    // 吹き出しの上下（.is-below = シークバーの下。上下の移動は CSS の top の transition で滑る）
+    //   MC・終わりはなるべく下、曲はなるべく上（シャッフル再生と同じ）。左から順に、決めた側が被って反対側が空いていれば反対側
     const stackBubbles = () => {
       const w = bubbles.clientWidth;
       const list = [...bubbles.children].filter((b) => b.offsetParent !== null) // 隠した「終わり」は数えない
@@ -356,7 +356,8 @@ function setupAudioPlayers(root = document) {
       list.forEach((b) => {
         const x = Math.min(1, Number(b.style.getPropertyValue('--x'))) * w;
         const gap = b.offsetWidth + 2;
-        const down = x - top < gap && x - below >= gap;
+        const low = b.dataset.kind !== 'song';
+        const down = low ? x - below >= gap || x - top < gap : x - top < gap && x - below >= gap;
         b.classList.toggle('is-below', down);
         if (down) below = x; else top = x;
       });
