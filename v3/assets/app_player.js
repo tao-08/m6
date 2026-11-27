@@ -315,7 +315,7 @@ function setupAudioPlayers(root = document) {
       fig.classList.toggle('is-draft', !!draft);
       let n = 0;
       const labels = list.map((c) => {
-        if (c.kind === 'end') return { short: '終', full: '終わり' }; // 曲の終わり（番号には数えない）
+        if (c.kind === 'end') return { short: '終', full: n ? `${n}. End` : 'End' }; // 曲の終わり（番号には数えない。チップは直前の曲の番号で「4. End」）
         if (c.kind !== 'song') return { short: 'MC', full: 'MC' };
         n += 1;
         return { short: String(n), full: chap.songs[n - 1] ? `${n}. ${chap.songs[n - 1]}` : String(n) };

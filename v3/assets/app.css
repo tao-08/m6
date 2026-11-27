@@ -737,6 +737,9 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 @starting-style { .shell-panel:not([hidden]) { opacity: 0; scale: .96; } }
 .shell-panel__head { display: flex; gap: 12px; align-items: center; min-width: 0; }
 .shell-panel__art { flex: none; width: 104px; height: 104px; border-radius: var(--r-md); overflow: hidden; display: grid; place-items: center; background: var(--surface-2); color: var(--muted); }
+.shell-panel__video { aspect-ratio: 16 / 9; min-height: 200px; border-radius: var(--r-md); overflow: hidden; background: #000; } /* YouTube の曲: ジャケットの代わりに上に動画（高さ 200px 以上は YouTube の決まり） */
+.shell-panel__video iframe { display: block; width: 100%; height: 100%; border: 0; }
+.shell-panel.is-video .shell-panel__art { display: none; }
 .shell-panel__art img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .shell-panel__art .icon { font-size: 40px; }
 .shell-panel__art img:not([hidden]) ~ .icon { display: none; }
@@ -760,12 +763,12 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 .shell-panel__players a { color: inherit; }
 .shell-panel__players a:hover { color: var(--accent); }
 /* バンド単位の吹き出し（player.js の drawBubbles）: 上（被ったものは下）に吹き出しの分の余白。曲間をスキップするときは飛ばす所を薄く（--gaps） */
-.shell-panel .audio-player__seek { --gap: var(--surface-2); transition: margin var(--t-slow) var(--ease-out); }
+.shell-panel .audio-player__seek { --rest: var(--surface-2); --gap: color-mix(in srgb, var(--border), var(--muted) 25%); /* 未再生は白寄り・飛ばす所はそれより濃い灰色 */ transition: margin var(--t-slow) var(--ease-out); }
 .shell-panel .audio-player__seek.has-bubbles { margin-top: 22px; }
 .shell-panel .audio-bubble.is-current { --bd: var(--accent); --ov: var(--accent-soft); color: var(--accent); } /* 再生中は赤（ポップアップの再生中の色にそろえる） */
 .shell-panel .audio-player__seek.has-below { margin-bottom: 22px; }
-.shell-panel .audio-player__range::-webkit-slider-runnable-track { background: var(--gaps, none), linear-gradient(to right, var(--accent) calc(var(--q) * 100%), var(--border) calc(var(--q) * 100%)); }
-.shell-panel .audio-player__range::-moz-range-track { background: var(--gaps, none), var(--border); }
+.shell-panel .audio-player__range::-webkit-slider-runnable-track { background: var(--gaps, none), linear-gradient(to right, var(--accent) calc(var(--q) * 100%), var(--rest) calc(var(--q) * 100%)); }
+.shell-panel .audio-player__range::-moz-range-track { background: var(--gaps, none), var(--rest); }
 .shell-panel__time { display: flex; justify-content: space-between; margin-top: -6px; color: var(--muted); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
 .shell-panel__ctl { position: relative; display: flex; justify-content: center; align-items: center; gap: 16px; }
 .shell-panel__ctl > .shell-panel__shuffle { position: absolute; left: 0; } /* .icon-btn の position: relative（後ろの行）に負けないように */
@@ -781,13 +784,19 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 .shell-panel__subhead { margin: 4px 0 0; padding-top: 10px; border-top: 1px solid var(--border); font-size: var(--fs-xs); font-weight: 700; color: var(--muted); }
 .shell-panel__scoperow { display: flex; align-items: flex-start; gap: 6px; }
 .shell-panel__later { flex: none; }
+.shell-panel__filter { flex: none; margin-left: auto; color: var(--muted); }
+.shell-panel__filter[aria-pressed="true"] { color: var(--accent); } /* 絞り込み中 */
+.shell-filter .tabs { margin: 12px 0 0; }
+.shell-filter__years { max-height: 50vh; overflow: auto; margin-top: 12px; }
+.shell-filter__years summary { display: flex; align-items: center; gap: 8px; padding: 6px 0; font-weight: 700; cursor: pointer; }
+.shell-filter__years ul { list-style: none; margin: 0 0 6px; padding: 0 0 0 24px; display: grid; gap: 6px; }
 .shell-panel__later[aria-pressed="false"] { color: var(--muted); }
 .shell-panel__later[aria-pressed="true"] { color: var(--accent); }
 .shell-panel__scopes { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; align-self: center; }
 .shell-panel__scopes .chip { padding: 3px 8px; font: inherit; font-size: var(--fs-sm); font-weight: 500; color: inherit; cursor: pointer; } /* 横 8px: 375px で1行に3つ入る */
 .shell-panel__scopes .chip .icon { display: inline-block; max-width: 0; overflow: hidden; opacity: 0; margin-left: 0; font-size: var(--fs-sm); vertical-align: -2px; color: var(--muted);
-  transition: max-width var(--t-base) var(--ease-out), margin-left var(--t-base) var(--ease-out), opacity var(--t-base) ease; } /* シャッフルで流れる範囲の印。シャッフル中だけ幅を広げる */
-.shell-panel__scopes.is-shuffled .chip .icon { max-width: 16px; margin-left: 2px; opacity: 1; }
+  transition: max-width var(--t-base) var(--ease-out), margin-left var(--t-base) var(--ease-out), margin-right var(--t-base) var(--ease-out), opacity var(--t-base) ease; } /* シャッフルで流れる範囲の印。シャッフル中だけ幅を広げる */
+.shell-panel__scopes.is-shuffled .chip .icon { max-width: 16px; margin-left: 2px; margin-right: -3px; opacity: 1; } /* 字形の右の余白の分を詰める */
 @media (prefers-reduced-motion: reduce) { .shell-panel__scopes .chip .icon { transition: none; } }
 .shell-panel__scopes .chip.is-current { background: var(--accent-soft); border-color: var(--accent); } /* いま流している範囲（.chip--me と同じ） */
 .shell-panel__scopes .chip.is-pending { color: var(--accent); font-weight: 700; border-color: var(--accent); border-style: dashed; } /* 次の曲から変える範囲 */

@@ -3,6 +3,8 @@
  * =====================================================================
  *  api_shuffle.php — シャッフル再生する曲の一覧（JSON）。player.php の外枠が呼ぶ。管理者だけ
  * =====================================================================
+ *  MIX の無い曲は、バンドの YouTube（song.video_start = 曲の始まりの秒・video_no = 何本目の動画。migrations/145・150）から流す: video = 動画 ID、src = "yt:動画 ID"、
+ *    終わり = 同じ動画で次に始まる曲（無ければ動画の最後）。曲の始まりが1つも無い動画は、MIX の無いバンドなら動画まるごと1曲（song_id = null、題名 = 動画のタイトル）
  *  リクエスト（GET）: ?scope=all | ?scope=live&id=ライブID | ?scope=band&id=バンドID | ?scope=member&id=メンバーID（その人が演奏した曲） | ?scope=artist&id=アーティストID（そのアーティストの曲）
  *  レスポンス: {"items": [{song_id, title, artist_id, artist, art, album, band_id, band, live_id, live, year, players, src, size, start_ms, end_ms, through_end_ms, mc_ms}, ...]}（並びはライブ・出演順・時間順 = シャッフルしないときの順。混ぜるのは JS）
  *  曲の区切りは音源のチャプター（band_audio_chapter。説明は migrations/130）:
@@ -17,6 +19,7 @@
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/live_image.php'; // LIVE_IMAGE_DIR・live_file_disk_name
+require_once __DIR__ . '/lib/youtube.php';    // band_video_urls・youtube_titles・youtube_video_id
 
 header('Content-Type: application/json; charset=utf-8');
 if (current_user() === null) {
@@ -58,7 +61,21 @@ $groups = []; // "band_id|audio_key" => 時間順のチャプター
 foreach ($st as $r) {
     $groups[$r['band_id'] . '|' . $r['audio_key']][] = $r;
 }
-$bandIds = array_values(array_unique(array_map(static fn($g) => (int)$g[0]['band_id'], $groups)));
+// 範囲のバンド（出演順）。YouTube の曲の情報と、MIX と YouTube を混ぜて並べる順番に使う
+$st = $pdo->prepare("SELECT b.band_id, b.name AS band, b.youtube_url, b.artist_id, a.name AS artist, l.live_id, l.name AS live, l.fiscal_year
+    FROM band b
+    JOIN live_day d ON d.live_day_id = b.live_day_id
+    JOIN live l ON l.live_id = d.live_id
+    LEFT JOIN artist a ON a.artist_id = b.artist_id AND b.is_omnibus = 0
+    WHERE $where
+    ORDER BY l.fiscal_year, l.live_id, d.held_on IS NULL, d.held_on, d.live_day_id, b.play_order, b.band_id");
+$st->execute($params);
+$bandRows = [];
+foreach ($st as $r) {
+    $bandRows[(int)$r['band_id']] = $r + ['rank' => count($bandRows)];
+}
+$videoUrls = band_video_urls($pdo, array_values($bandRows)); // band_id => [URL, ...]（リンクのあるバンドだけ）
+$bandIds = array_values(array_unique([...array_map(static fn($g) => (int)$g[0]['band_id'], $groups), ...array_keys($videoUrls)]));
 if (!$bandIds) {
     echo json_encode(['items' => []]);
     exit;
@@ -67,7 +84,7 @@ $in = implode(',', array_fill(0, count($bandIds), '?'));
 
 // セトリ（SE 以外・セトリ順）
 $songs = [];
-$st = $pdo->prepare("SELECT s.song_id, s.band_id, s.title, t.artwork_url, t.album_title, a.artist_id, a.name AS artist
+$st = $pdo->prepare("SELECT s.song_id, s.band_id, s.title, s.track_no, s.video_start, s.video_no, t.artwork_url, t.album_title, a.artist_id, a.name AS artist
     FROM song s
     JOIN band b ON b.band_id = s.band_id
     LEFT JOIN track t ON t.source = s.track_source AND t.track_id = s.track_id
@@ -174,7 +191,61 @@ foreach ($groups as $key => $chs) {
             'end_ms'   => isset($chs[$i + 1]) ? (int)$chs[$i + 1]['at_ms'] : null,
             'through_end_ms' => $thru,
             'mc_ms'    => $mc,
+            '_o'       => [$bandRows[$bandId]['rank'] ?? 0, (int)$song['track_no']],
         ];
     }
 }
+
+// YouTube（MIX で出なかった曲）
+$titles = $videoUrls ? youtube_titles($pdo, array_merge(...array_values($videoUrls))) : [];
+foreach ($videoUrls as $bandId => $urls) {
+    $b = $bandRows[$bandId];
+    $hasMix = false;
+    foreach ($songs[$bandId] ?? [] as $song) {
+        $hasMix = $hasMix || isset($seen[$song['song_id']]);
+    }
+    foreach ($urls as $no => $url) {
+        $vid = youtube_video_id($url);
+        if ($vid === null) {
+            continue;
+        }
+        $base = ['art' => null, 'album' => null, 'band_id' => $bandId, 'band' => (string)$b['band'], 'live_id' => (int)$b['live_id'], 'live' => (string)$b['live'],
+            'year' => (int)$b['fiscal_year'], 'src' => 'yt:' . $vid, 'video' => $vid, 'size' => 0, 'mc_ms' => null];
+        $inVideo = array_values(array_filter($songs[$bandId] ?? [], static fn($s) => $s['video_start'] !== null && (int)$s['video_no'] === $no));
+        usort($inVideo, static fn($x, $y) => (int)$x['video_start'] <=> (int)$y['video_start']);
+        if (!$inVideo) {
+            // 曲の始まりがわからない動画: MIX の無いバンドなら動画まるごと
+            $players = $bandPlayers[$bandId] ?? [];
+            if ($hasMix || ($scope === 'member' && !isset($players[$id])) || ($scope === 'artist' && (int)$b['artist_id'] !== $id)) {
+                continue;
+            }
+            $items[] = $base + ['song_id' => null, 'title' => (string)($titles[$vid] ?? $b['band']),
+                'artist_id' => $b['artist'] !== null ? (int)$b['artist_id'] : null, 'artist' => $b['artist'] !== null ? (string)$b['artist'] : null,
+                'players' => array_values($players), 'start_ms' => 0, 'end_ms' => null, 'through_end_ms' => null, '_o' => [$b['rank'], 1000 + $no]];
+            continue;
+        }
+        foreach ($inVideo as $k => $song) {
+            $players = $songPlayers[(int)$song['song_id']] ?? $bandPlayers[$bandId] ?? [];
+            if (isset($seen[$song['song_id']]) || ($scope === 'member' && !isset($players[$id])) || ($scope === 'artist' && (int)$song['artist_id'] !== $id)) {
+                continue;
+            }
+            $seen[$song['song_id']] = true;
+            $end = isset($inVideo[$k + 1]) ? (int)$inVideo[$k + 1]['video_start'] * 1000 : null;
+            $items[] = $base + [
+                'song_id' => (int)$song['song_id'], 'title' => (string)$song['title'],
+                'artist_id' => $song['artist_id'] !== null ? (int)$song['artist_id'] : null, 'artist' => $song['artist'] !== null ? (string)$song['artist'] : null,
+                'art' => $song['artwork_url'] ? preg_replace('/\d+x\d+bb/', '300x300bb', (string)$song['artwork_url']) : null,
+                'album' => $song['album_title'] !== null ? (string)$song['album_title'] : null,
+                'players' => array_values($players), 'start_ms' => (int)$song['video_start'] * 1000, 'end_ms' => $end, 'through_end_ms' => $end,
+                '_o' => [$b['rank'], (int)$song['track_no']],
+            ];
+        }
+    }
+}
+// 出演順・セトリ順に（MIX と YouTube が混ざるため並べ直す）
+usort($items, static fn($x, $y) => $x['_o'] <=> $y['_o']);
+foreach ($items as &$it) {
+    unset($it['_o']);
+}
+unset($it);
 echo json_encode(['items' => $items], JSON_UNESCAPED_UNICODE);

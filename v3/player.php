@@ -55,6 +55,7 @@ if (!preg_match('/^[A-Za-z0-9_-]*(\.php)?(\?[^#\s]*)?$/', $u) || preg_match('/^p
 <div class="shell-bar" data-shell>
     <!-- 再生中の曲のポップアップ（下のバーの曲名か、中のヘッダーの丸に再生のアイコンで開く） -->
     <div class="shell-panel" data-shell-panel role="dialog" aria-label="再生中の曲" hidden>
+        <div class="shell-panel__video" data-shell-yt hidden></div><!-- YouTube の曲のときの動画（player.js の yt） -->
         <div class="shell-panel__head">
             <div class="shell-panel__art"><img data-shell-art alt="" width="104" height="104" hidden><?= icon('music_note', 'icon--fill') ?></div>
             <div class="shell-panel__meta">
@@ -81,7 +82,21 @@ if (!preg_match('/^[A-Za-z0-9_-]*(\.php)?(\?[^#\s]*)?$/', $u) || preg_match('/^p
         <div class="shell-panel__scoperow">
             <button type="button" class="icon-btn shell-panel__later" data-shell-later aria-pressed="false" aria-label="次の曲から範囲を変える" title="次の曲から範囲を変える"><?= icon('queue_music') ?></button>
             <ul class="shell-panel__scopes" data-shell-scopes></ul>
+            <button type="button" class="icon-btn shell-panel__filter" data-shell-filter aria-pressed="false" aria-label="絞り込み" title="絞り込み"><?= icon('filter_alt') ?></button>
         </div>
+        <!-- 絞り込み: MIX / YouTube と、年度ごとのライブ（player.js。閉じたら反映） -->
+        <dialog class="modal shell-filter" data-shell-filter-dialog aria-labelledby="shell-filter-title">
+            <form method="dialog" class="modal__body">
+                <h3 id="shell-filter-title" class="modal__title">絞り込み</h3>
+                <div class="tabs tabs--filter" role="radiogroup" aria-label="音源">
+                    <label class="tab"><input type="radio" name="src" value="all" checked>すべて</label>
+                    <label class="tab"><input type="radio" name="src" value="mix">MIX</label>
+                    <label class="tab"><input type="radio" name="src" value="yt">YouTube</label>
+                </div>
+                <div class="shell-filter__years" data-shell-filter-years></div>
+                <div class="form-actions"><button type="submit" class="btn btn--primary">閉じる</button></div>
+            </form>
+        </dialog>
     </div>
     <button type="button" class="icon-btn" data-shell-play aria-label="再生" title="再生"><?= icon('play_arrow', 'icon--fill') ?></button>
     <button type="button" class="icon-btn" data-shell-next aria-label="次の曲" title="次の曲"><?= icon('skip_next', 'icon--fill') ?></button>

@@ -24,7 +24,7 @@
   const frame = document.querySelector('[data-shell-frame]');
   const bar = document.querySelector('[data-shell]');
   const $ = (s) => bar.querySelector(s);
-  const audio = $('[data-shell-audio]');
+  const el = $('[data-shell-audio]');
   const playBtns = bar.querySelectorAll('[data-shell-play]');
   const nextBtns = bar.querySelectorAll('[data-shell-next]');
   const titleEl = $('[data-shell-title]');
@@ -36,6 +36,69 @@
   const seekBox = $('[data-shell-seekbox]');
   const curEl = $('[data-shell-cur]');
   const durEl = $('[data-shell-dur]');
+  // YouTube の曲（MIX の無い曲）: ポップアップの動画（IFrame API）。<audio> と同じ形（play・pause・currentTime・volume・イベント）で扱えるようにする
+  //   動画は見えている所でしか流さない（YouTube の決まり）。流し始めたらポップアップを開き、閉じたら止める
+  const ytBox = $('[data-shell-yt]');
+  const yt = (() => {
+    const t = new EventTarget();
+    const fire = (n) => t.dispatchEvent(new Event(n));
+    let player = null;
+    let ready = null;
+    let src = '';
+    let paused = true;
+    let vol = 1;
+    let timer = 0;
+    const onState = ({ data }) => {
+      if (data === 1) { // 再生中
+        paused = false;
+        fire('play'); fire('playing');
+        clearInterval(timer);
+        timer = setInterval(() => fire('timeupdate'), 250);
+      } else if (data === 2 || data === 0) { // 一時停止・終わり
+        clearInterval(timer);
+        if (!paused) { paused = true; fire('pause'); }
+        if (data === 0) fire('ended');
+      }
+    };
+    const api = () => (ready ??= new Promise((ok, ng) => {
+      window.onYouTubeIframeAPIReady = ok;
+      const sc = document.createElement('script');
+      sc.src = 'https://www.youtube.com/iframe_api';
+      sc.onerror = () => { ready = null; ng(); };
+      document.head.append(sc);
+    }).then(() => new Promise((ok) => {
+      player = new YT.Player(ytBox.appendChild(document.createElement('div')), {
+        width: '100%', height: '100%',
+        playerVars: { playsinline: 1, rel: 0, controls: 0, disablekb: 1 },
+        events: { onReady: () => { player.setVolume(vol * 100); ok(); }, onStateChange: onState, onError: () => fire('error') },
+      });
+    })));
+    return Object.assign(t, {
+      get currentTime() { return player?.getCurrentTime?.() || 0; },
+      get duration() { return player?.getDuration?.() || 0; },
+      get paused() { return paused; },
+      get volume() { return vol; },
+      set volume(v) { vol = v; player?.setVolume?.(v * 100); },
+      getAttribute: () => src || null,
+      play() { return api().then(() => player.playVideo()); },
+      pause() { player?.pauseVideo?.(); if (!paused) { paused = true; clearInterval(timer); fire('pause'); } },
+      // 動画 id の sec 秒から。play: false は頭出しだけ
+      async load(id, sec, play) {
+        const same = src === id && player?.getVideoData?.().video_id === id;
+        src = id;
+        try { await api(); } catch (e) { fire('error'); return; }
+        if (src !== id) return; // 待っている間に別の曲へ
+        if (same) { player.seekTo(sec, true); if (play) player.playVideo(); return; } // 同じ動画の中は読み直さず飛ぶ
+        const o = { videoId: id, startSeconds: sec };
+        if (play) player.loadVideoById(o); else player.cueVideoById(o);
+      },
+      stop() { src = ''; this.pause(); player?.stopVideo?.(); },
+    });
+  })();
+  let audio = el; // いま鳴らしているもの: el（MIX）か yt
+  // イベントは両方に付けて、いま鳴らしている方の分だけ受け取る
+  const on = (name, fn) => [el, yt].forEach((m) => m.addEventListener(name, (e) => { if (e.currentTarget === audio) fn(e); }));
+  const filterDlg = $('[data-shell-filter-dialog]');
   const KEY = 'shuffle_state'; // app_player.js の setupShuffleLinks も見る
   const POS = 'shuffle_pos';   // 止めた位置（音源の秒）。並びより頻繁に書くので分ける
   const BASE = new URL('.', location.href).href; // このサイトのフォルダ（中のページ名を取り出すのに使う）
@@ -49,6 +112,9 @@
   let byBand = false;    // バンド単位: バンドごとにセトリ順でまとめて流す（シャッフルはバンドの順だけ混ぜる）
   let cont = false;      // 通し（バンド単位のときだけ効く）: 曲のあとの MC・曲間も流す（through_end_ms まで）。次に流す曲が同じミックスの続きなら切らずにつなぐ
   let savedAt = 0;       // 最後に位置を残した秒（書きすぎないため）
+  let filter = { src: 'all', off: [] }; // 絞り込み: src = all | mix | yt、off = 外したライブの ID（範囲の上にかける。新しいライブは入る側）
+  try { filter = { ...filter, ...JSON.parse(localStorage.getItem('shuffle_filter') || '{}') }; } catch (e) { /* 無しで */ }
+  const passes = (q) => (filter.src === 'all' || (filter.src === 'yt') === !!q.video) && !filter.off.includes(q.live_id);
   let openOnLoad = cfg.resume; // 開き直したときは、中のページを読み終えてもポップアップを開いたまま
 
   const cur = () => queue[idx] || null;
@@ -71,6 +137,7 @@
     return a;
   };
   const probe = async (it) => {
+    if (it.video) return null; // YouTube は流し始めてから yt.duration
     if (!durations.has(it.src)) durations.set(it.src, await audioProbeDuration(it.src, it.size));
     return durations.get(it.src);
   };
@@ -113,6 +180,8 @@
     };
     step();
   });
+  const TAIL = 250; // 曲の終わりのフェードアウト（ms）
+  let tail = null;    // 終わりのフェードを始めた曲（1曲に1回）
   let fadingOut = false; // 止めるフェードの途中（もう止めたものとして扱う）
   const fadeOut = async () => {
     fadingOut = true;
@@ -162,7 +231,7 @@
     const sum = innerDoc()?.querySelector('[data-shuffle-menu] > summary');
     sum?.classList.toggle('is-active', open);
     // 中のヘッダーのアイコンの真下に、右端をそろえて出す（iframe は外枠の左上にあるので座標はそのまま）。見つからなければ CSS の位置
-    if (!open) return; // 閉じるときは位置を変えない（消える動きの途中で CSS の位置へ飛ぶため）
+    if (!open) { if (audio === yt) yt.pause(); return; } // 閉じるときは位置を変えない（消える動きの途中で CSS の位置へ飛ぶため）。動画は見えない所で流さない
     const r = sum ? sum.getBoundingClientRect() : null;
     panel.style.top = r && r.width ? `${r.bottom + 8}px` : '';
     // 右端をアイコンにそろえる。ただし画面の左右からはみ出さない（狭い画面ではアイコンより右に寄る）
@@ -202,6 +271,9 @@
     buildScopes();
     if (!it) { setPanel(false); return; }
     artImg.hidden = mc || !it.art;
+    panel.classList.toggle('is-video', !!it.video); // ジャケットの代わりに動画
+    ytBox.hidden = !it.video;
+    $('.shell-panel__liveline > .tag--mix').hidden = !!it.video;
     if (it.art) artImg.src = it.art;
     const live = $('[data-shell-live]');
     live.textContent = it.year ? `${it.year}年度 ${it.live}` : it.live;
@@ -258,6 +330,18 @@
   // いまの曲を、音源の t 秒の位置から読み直す。play: true で鳴らす
   const playAt = async (t, play) => {
     const it = cur();
+    if (it.video) {
+      if (audio === el) el.pause();
+      audio = yt;
+      base = 0;
+      ramp += 1;
+      tail = null;
+      yt.volume = 1;
+      if (play) setPanel(true);
+      yt.load(it.video, t, play);
+      return;
+    }
+    if (audio === yt) { yt.stop(); audio = el; }
     let off = 0;
     let to = '';
     if (t > 0 || endOf(it) !== null) {
@@ -274,8 +358,9 @@
     }
     base = off > 0 ? t : 0;
     ramp += 1; // 途中のフェードをやめて、元の音量で
+    tail = null;
     audio.volume = 1;
-    audio.src = off > 0 ? `${it.src}&from=${off}${to}` : it.src + to;
+    el.src = off > 0 ? `${it.src}&from=${off}${to}` : it.src + to;
     if (play) audio.play().catch(() => setIcon(false));
   };
   // i 曲目を用意する。play: true で鳴らす（false は止めておく）。at: 音源の秒（省略 = 曲の頭）
@@ -331,9 +416,9 @@
     const res = await fetch(`api_shuffle?scope=band&id=${Number(it.band_id) || 0}`).catch(() => null);
     const data = res?.ok ? await res.json().catch(() => null) : null;
     if (!data) return;
-    const fresh = new Map(data.items.map((q) => [q.song_id, q]));
+    const fresh = new Map(data.items.map((q) => [q.song_id ?? q.src, q])); // 動画まるごと（song_id なし）は動画で
     queue.forEach((q) => {
-      const f = fresh.get(q.song_id);
+      const f = fresh.get(q.song_id ?? q.src);
       if (f) for (const k of ['title', 'artist_id', 'artist', 'album', 'art', 'band', 'live', 'players', 'through_end_ms', 'mc_ms']) q[k] = f[k]; // 通しの区切り: 前に保存したキューは古い数え方のまま（終わりのチャプターで止まっていた）
     });
     save();
@@ -345,18 +430,18 @@
     const data = await res.json().catch(() => null);
     const items = res.ok && data ? data.items : [];
     items.forEach((q, i) => { q.n = i; }); // シャッフルを切ったときに元の順へ戻す
-    queue = arrange(items, null);
+    queue = arrange(items.filter(passes), null);
     cfg.scope = scope;
     cfg.id = Number(id) || 0;
     fails = 0;
     syncUrl();
   };
 
-  audio.addEventListener('play', () => setIcon(true));
-  audio.addEventListener('pause', () => { setIcon(false); if (cur()) savePos(nowSec()); });
-  audio.addEventListener('playing', () => { fails = 0; });
-  audio.addEventListener('ended', next);
-  audio.addEventListener('error', () => { if (audio.getAttribute('src')) skip(); });
+  on('play', () => { setIcon(true); if (audio === yt && panel.hidden) setPanel(true); }); // 動画は見える所で
+  on('pause', () => { setIcon(false); if (cur()) savePos(nowSec()); });
+  on('playing', () => { fails = 0; });
+  on('ended', next);
+  on('error', () => { if (audio.getAttribute('src')) skip(); });
   // バンド単位: シークバーの上に曲（番号）と MC（通しのときだけ）の吹き出し（band.php のチャプターと同じ見た目）。押すとそこから
   //   曲間をスキップするときは、飛ばす所（曲の終わり〜次の曲の頭）を棒の上で薄くする（--gaps）
   const bubblesEl = $('[data-shell-bubbles]');
@@ -416,7 +501,7 @@
     const it = cur();
     const t = sec * 1000;
     const nx = queue[idx + 1];
-    const fileEnd = durations.get(it.src) ? durations.get(it.src) * 1000 : null;
+    const fileEnd = it.video ? (audio === yt && yt.duration ? yt.duration * 1000 : null) : durations.get(it.src) ? durations.get(it.src) * 1000 : null;
     const end = segEnd(it) ?? fileEnd;
     const s0 = segStart(it);
     drawBubbles(it, s0, end);
@@ -433,7 +518,7 @@
       }
     }
   };
-  audio.addEventListener('timeupdate', () => {
+  on('timeupdate', () => {
     const it = cur();
     if (!it) return;
     const t = nowSec() * 1000;
@@ -441,8 +526,13 @@
     if (inMc(it) !== mcShown) render(); // MC に入った・抜けた
     if (Math.abs(t / 1000 - savedAt) >= 3) savePos(t / 1000);
     const end = endOf(it);
-    if (end === null || t < end) return; // ファイルの最後まで流す曲は ended で次へ
-    if (!pending && joined(it, queue[idx + 1])) { idx += 1; save(); render(); slide(1); return; } // 続き: 読み直さず表示だけ進める
+    if (end === null) return; // ファイルの最後まで流す曲は ended で次へ
+    const goesOn = !pending && joined(it, queue[idx + 1]); // 次が同じミックスの続き（フェードしない）
+    if (t < end) {
+      if (!goesOn && tail !== it && !audio.paused && !fadingOut && end - t <= TAIL) { tail = it; fade(0, end - t); } // 終わりをわずかにフェードアウト（音量は次の playAt で戻す）
+      return;
+    }
+    if (goesOn) { idx += 1; save(); render(); slide(1); return; } // 続き: 読み直さず表示だけ進める
     audio.pause(); // 先に止める（次の曲の用意を待つ間に、また呼ばれないように）
     next();
   });
@@ -504,7 +594,7 @@
   const closeOutside = (e) => {
     if (!panel.hidden && !panel.contains(e.target) && e.target !== titleEl && !e.target.closest?.('[data-shuffle-menu] > summary')) setPanel(false);
   };
-  const closeOnEsc = (e) => { if (e.key === 'Escape') setPanel(false); };
+  const closeOnEsc = (e) => { if (e.key === 'Escape' && !filterDlg.open) setPanel(false); }; // 絞り込みの Esc はモーダルだけ閉じる
   document.addEventListener('click', closeOutside);
   document.addEventListener('keydown', closeOnEsc);
   // 範囲: ポップアップに常に出す（チップ）。サイト全体・再生中のライブ/バンド/アーティスト・中のページの範囲（ヘッダーのメニューと同じもの）
@@ -555,9 +645,7 @@
     b.textContent = label;
     b.classList.toggle('is-current', cfg.scope === scope && cfg.id === id); // いま流している範囲
     b.classList.toggle('is-pending', !!pending && pending.scope === scope && pending.id === id);
-    b.addEventListener('click', () => {
-      if (later && cur()) { pending = { scope, id }; buildScopes(); } else switchTo(scope, id, true);
-    });
+    b.addEventListener('click', () => pick(scope, id));
     if (scope !== 'band') { // シャッフルの印。シャッフル中だけ CSS で幅を広げて見せる（バンドは選ぶとシャッフルを外すので付けない）
       const ic = document.createElement('span');
       ic.className = 'icon';
@@ -586,6 +674,78 @@
       .filter(([, sc, id]) => !seen.has(`${sc}:${id}`) && seen.add(`${sc}:${id}`))
       .map((x) => scopeItem(...x)));
   };
+
+  const pick = (scope, id) => {
+    if (later && cur()) { pending = { scope, id }; buildScopes(); } else switchTo(scope, id, true);
+  };
+
+  // 絞り込み: 開くたびにいまの範囲の曲を読み、年度（開ける）→ ライブのチェックを作る。閉じたら保存して、変わっていれば同じ範囲を読み直す
+  const filterBtn = $('[data-shell-filter]');
+  const yearsEl = $('[data-shell-filter-years]');
+  const showFilter = () => filterBtn.setAttribute('aria-pressed', String(filter.src !== 'all' || filter.off.length > 0));
+  showFilter();
+  const box = (checked, label) => {
+    const c = document.createElement('input');
+    c.type = 'checkbox';
+    c.checked = checked;
+    if (label) c.setAttribute('aria-label', label);
+    return c;
+  };
+  const syncYear = (d) => { // 年度のチェック = 中のライブすべて（一部なら中間）
+    const lives = [...d.querySelectorAll('[data-live]')];
+    const on = lives.filter((c) => c.checked).length;
+    const y = d.querySelector('[data-year]');
+    y.checked = on === lives.length;
+    y.indeterminate = on > 0 && on < lives.length;
+  };
+  filterBtn.addEventListener('click', async () => {
+    filterDlg.querySelector(`input[name="src"][value="${filter.src}"]`).checked = true;
+    yearsEl.replaceChildren();
+    filterDlg.showModal();
+    const res = await fetch(`api_shuffle?scope=${encodeURIComponent(cfg.scope)}&id=${Number(cfg.id) || 0}`).catch(() => null);
+    const data = res?.ok ? await res.json().catch(() => null) : null;
+    const years = new Map(); // 年度 → Map(live_id → ライブ名)（出演順のまま）
+    (data?.items || []).forEach((q) => {
+      if (!years.has(q.year)) years.set(q.year, new Map());
+      years.get(q.year).set(q.live_id, q.live);
+    });
+    yearsEl.replaceChildren(...[...years].reverse().map(([year, lives]) => { // 新しい年度から
+      const d = document.createElement('details');
+      const s = document.createElement('summary');
+      const y = box(false, `${year}年度`);
+      y.dataset.year = '';
+      y.addEventListener('change', () => { d.querySelectorAll('[data-live]').forEach((c) => { c.checked = y.checked; }); });
+      s.append(y, `${year}年度`);
+      const ul = document.createElement('ul');
+      lives.forEach((name, id) => {
+        const li = document.createElement('li');
+        const l = document.createElement('label');
+        l.className = 'check';
+        const c = box(!filter.off.includes(id));
+        c.dataset.live = String(id);
+        c.addEventListener('change', () => syncYear(d));
+        l.append(c, name);
+        li.append(l);
+        ul.append(li);
+      });
+      d.append(s, ul);
+      syncYear(d);
+      return d;
+    }));
+  });
+  filterDlg.addEventListener('close', () => {
+    const shown = [...yearsEl.querySelectorAll('[data-live]')];
+    const shownIds = new Set(shown.map((c) => Number(c.dataset.live)));
+    const next = {
+      src: filterDlg.querySelector('input[name="src"]:checked')?.value || 'all',
+      off: [...filter.off.filter((id) => !shownIds.has(id)), ...shown.filter((c) => !c.checked).map((c) => Number(c.dataset.live))], // ほかの範囲で外したライブは残す
+    };
+    if (JSON.stringify(next) === JSON.stringify(filter)) return;
+    filter = next;
+    try { localStorage.setItem('shuffle_filter', JSON.stringify(filter)); } catch (e) { /* 覚えなくても使える */ }
+    showFilter();
+    pick(cfg.scope, cfg.id);
+  });
 
   // 通し: 曲間（MC など）も流す。ON にしたら、いまの曲も MC まで受け取れるよう、いまの位置から読み直す（OFF は timeupdate で止まるだけ）
   const contBtn = $('[data-shell-cont]');
