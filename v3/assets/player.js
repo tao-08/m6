@@ -754,11 +754,14 @@
     filterDlg.showModal();
     const res = await fetch(`api_shuffle?scope=${encodeURIComponent(cfg.scope)}&id=${Number(cfg.id) || 0}`).catch(() => null);
     const data = res?.ok ? await res.json().catch(() => null) : null;
-    const years = new Map(); // 年度 → Map(live_id → ライブ名)（出演順のまま）
+    const years = new Map(); // 年度 → Map(live_id → { name, mix, yt })（出演順のまま）
     (data?.items || []).forEach((q) => {
       if (!years.has(q.year)) years.set(q.year, new Map());
-      years.get(q.year).set(q.live_id, q.live);
+      const lv = years.get(q.year);
+      if (!lv.has(q.live_id)) lv.set(q.live_id, { name: q.live, mix: false, yt: false });
+      lv.get(q.live_id)[(q.video || q.yt) ? 'yt' : 'mix'] = true; // passes と同じ分け方
     });
+    const mark = (src) => bar.querySelector(`[data-shell-src="${src}"] > *`).cloneNode(true); // 見出しの MIX / YouTube の印を写す
     yearsEl.replaceChildren(...[...years].reverse().map(([year, lives]) => { // 新しい年度から
       const d = document.createElement('details');
       const s = document.createElement('summary');
@@ -771,14 +774,18 @@
       ic.textContent = 'expand_more'; // 開ける印（開くと上向き）
       s.append(y, `${year}年度`, ic);
       const ul = document.createElement('ul');
-      lives.forEach((name, id) => {
+      lives.forEach(({ name, mix, yt }, id) => {
         const li = document.createElement('li');
         const l = document.createElement('label');
         l.className = 'check';
         const c = box(!filter.off.includes(id));
         c.dataset.live = String(id);
         c.addEventListener('change', () => syncYear(d));
-        l.append(c, name);
+        const marks = document.createElement('span');
+        marks.className = 'shell-filter__marks';
+        if (yt) marks.append(mark('yt'));
+        if (mix) marks.append(mark('mix'));
+        l.append(c, name, marks); // ラベルの中 = ライブ名のすぐ横（ラベルの幅に関係なく）
         li.append(l);
         ul.append(li);
       });
@@ -845,7 +852,13 @@
   // 閉じる: 再生をやめて、いま中で開いているページだけにする（止めた位置は残す。アイコンで開き直せる）
   $('[data-shell-close]').addEventListener('click', () => {
     if (cur() && audio.getAttribute('src')) savePos(nowSec());
-    location.href = innerPage() || './';
+    let left = false;
+    const leave = () => { if (!left) { left = true; location.href = innerPage() || './'; } };
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) { leave(); return; }
+    audio.pause();
+    bar.classList.add('is-closing'); // 下へ沈んでから移る（app.css の shell-bar-out）
+    bar.addEventListener('animationend', (e) => { if (e.target === bar) leave(); }); // 中の要素の動きの終わりは数えない
+    setTimeout(leave, 600); // animationend が来なくても移る
   });
 
   // 中のページ名（band?id=3 など）。読めなければ ''

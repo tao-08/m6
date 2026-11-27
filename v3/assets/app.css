@@ -718,7 +718,14 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 .shell { height: 100dvh; min-height: 0; /* body の min-height: 100vh を外す（Android では 100vh が画面より大きく、下が隠れていた） */ margin: 0; display: flex; /* 高さは player.js が innerHeight で上書き: Android では 100dvh が実際の画面より大きいまま残ることがある */ flex-direction: column; overflow: hidden; background: var(--bg); }
 .shell__frame { flex: 1; width: 100%; min-height: 0; border: 0; display: block; }
 .shell-bar { --shell-side: max(8px, calc((100% - 640px) / 2)); /* 中身は中央の 640px 幅に寄せる（進み具合の線も） */
-  position: relative; display: flex; align-items: center; gap: 4px; padding: 3px var(--shell-side) calc(3px + env(safe-area-inset-bottom)); background: var(--surface); border-top: 1px solid var(--border); color: var(--text); font-family: var(--font); }
+  position: relative; display: flex; align-items: center; gap: 4px; padding: 3px var(--shell-side) calc(3px + env(safe-area-inset-bottom)); background: var(--surface); border-top: 1px solid var(--border); color: var(--text); font-family: var(--font);
+  animation: shell-bar-in var(--t-base) var(--ease-out); }
+/* 出る: 下からせり上がる / × で消える: 下へ沈んでからページを移る（player.js が .is-closing）。
+   transform でなく margin: バーの中のポップアップ（position: fixed）の位置がずれないように。中のページも一緒に押し上がる */
+.shell-bar.is-closing { animation: shell-bar-out var(--t-base) ease-in forwards; }
+@keyframes shell-bar-in { from { margin-bottom: -64px; } }
+@keyframes shell-bar-out { to { margin-bottom: -64px; } }
+@media (prefers-reduced-motion: reduce) { .shell-bar, .shell-bar.is-closing { animation: none; } }
 /* 細い1行: ボタンは枠なしの小さい丸、曲名とバンド名は横並び、進み具合はバーの上の線 */
 .shell-bar > .icon-btn { width: 30px; height: 30px; border-color: transparent; background: none; }
 .shell-bar__info { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 8px; }
@@ -813,6 +820,8 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 :is(.shell-filter__years, .chapter-years) summary .icon { margin-left: auto; color: var(--muted); transition: transform var(--t-base) var(--ease-out); }
 :is(.shell-filter__years, .chapter-years) details[open] > summary .icon { transform: rotate(180deg); }
 @media (prefers-reduced-motion: reduce) { :is(.shell-filter__years, .chapter-years) summary .icon { transition: none; } }
+.shell-filter__marks { flex: none; display: inline-flex; align-items: center; gap: 4px; margin-left: 4px; vertical-align: middle; } /* そのライブにある音源（MIX / YouTube） */
+.shell-filter__marks .youtube-icon { width: 25px; height: 18px; }
 .shell-filter__years ul { list-style: none; margin: 0; padding: 0 0 6px 24px; /* 下は padding: margin だと開け閉めの終わりにガクッと飛ぶ */ display: grid; gap: 6px; }
 .chapter-years { margin-top: 12px; }
 .chapter-years details details { margin-left: 16px; }
