@@ -2,7 +2,8 @@
 /**
  * lib/gemini_chapters.php — ライブ音源を Gemini に聴かせて、曲の開始・MC の開始を取り出す（自動チャプター）
  *   音源は Files API に上げて、終わったら消す。前処理はしない（共有サーバーは ffmpeg が使えないため）
- *   結果は [['kind' => 'song'|'end'|'mc', 'ms' => int], ...]（時間順）。失敗したら文字列（画面に出せる理由）
+ *   結果は [['kind' => 'song'|'end'|'mc'|'se', 'ms' => int], ...]（時間順）。失敗したら文字列（画面に出せる理由）
+ *   se は、セトリに SE があるバンドだけ聴かせる（GEMINI_CHAPTER_SE_PROMPT を足す）
  */
 declare(strict_types=1);
 
@@ -28,6 +29,16 @@ MC_START（MCの開始）:
 
 根拠の記載:
 - trigger_clue には、その瞬間に聞こえた具体的な音（例：「スティックのカウント音」「ギターのアルペジオ開始」「『こんばんは』という話し声」など）を簡潔に記述すること。
+TXT;
+
+/** セトリに SE があるときだけ足す。%s = SE 名（1行に1つ） */
+const GEMINI_CHAPTER_SE_PROMPT = <<<'TXT'
+
+SE_START（SEの開始）:
+- このバンドは、演奏とは別に会場で既存曲の音源（SE）を流します。流れる SE は次のとおりです（セトリ順）:
+%s
+- 録音された音源の再生が始まった瞬間をタイムスタンプとする。バンドの生演奏は SE ではない（SONG_START）。
+- SE が聞こえない場合は、絶対に無理に SE_START を作らないこと。
 TXT;
 
 /**
@@ -88,7 +99,7 @@ function gemini_chapters_from_events(array $events): array
 {
     $out = [];
     foreach ($events as $e) {
-        $kind = ['SONG_START' => 'song', 'SONG_END' => 'end', 'MC_START' => 'mc'][(string)($e['type'] ?? '')] ?? null;
+        $kind = ['SONG_START' => 'song', 'SONG_END' => 'end', 'MC_START' => 'mc', 'SE_START' => 'se'][(string)($e['type'] ?? '')] ?? null;
         $ms = gemini_chapter_ms((string)($e['timestamp'] ?? ''));
         if ($kind !== null && $ms !== null) {
             $out[$ms] = ['kind' => $kind, 'ms' => $ms];
@@ -98,13 +109,23 @@ function gemini_chapters_from_events(array $events): array
     return array_values($out);
 }
 
-/** @return array<int, array{kind: string, ms: int}>|string */
-function gemini_audio_chapters(string $path, string $mime, string $key, string $model): array|string
+/**
+ * @param string[] $ses セトリの SE 名。空なら SE は探さない（プロンプトは今までのまま）
+ * @return array<int, array{kind: string, ms: int}>|string
+ */
+function gemini_audio_chapters(string $path, string $mime, string $key, string $model, array $ses = []): array|string
 {
-    $json = gemini_audio_json($path, $mime, $key, $model, GEMINI_CHAPTER_PROMPT, ['type' => 'OBJECT', 'properties' => ['events' => ['type' => 'ARRAY', 'items' => [
+    $types = ['SONG_START', 'SONG_END', 'MC_START'];
+    $prompt = GEMINI_CHAPTER_PROMPT;
+    if ($ses) {
+        $types[] = 'SE_START';
+        $prompt = str_replace('「MCの開始（MC_START）」', '「MCの開始（MC_START）」「SEの開始（SE_START）」', $prompt)
+            . sprintf(GEMINI_CHAPTER_SE_PROMPT, implode("\n", array_map(static fn($t) => '  - ' . $t, $ses)));
+    }
+    $json = gemini_audio_json($path, $mime, $key, $model, $prompt, ['type' => 'OBJECT', 'properties' => ['events' => ['type' => 'ARRAY', 'items' => [
         'type' => 'OBJECT',
         'properties' => [
-            'type' => ['type' => 'STRING', 'enum' => ['SONG_START', 'SONG_END', 'MC_START']],
+            'type' => ['type' => 'STRING', 'enum' => $types],
             'timestamp' => ['type' => 'STRING'],
             'trigger_clue' => ['type' => 'STRING'],
         ],

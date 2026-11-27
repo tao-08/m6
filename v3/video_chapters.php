@@ -37,7 +37,9 @@ if ($videoId === null) {
 }
 $st = $pdo->prepare('SELECT title, is_se, video_no FROM song WHERE band_id = ? ORDER BY track_no');
 $st->execute([$bandId]);
-$songs = array_column(video_chapter_songs($st->fetchAll(), $no, count($urls)), 'title');
+$rows = $st->fetchAll();
+$songs = array_column(video_chapter_songs($rows, $no, count($urls)), 'title');
+$ses = array_column(array_filter($rows, static fn($s) => $s['is_se'] && (count($urls) < 2 || (int)$s['video_no'] === $no)), 'title'); // SE も曲と同じく、その動画の分だけ
 $key = 'y:' . $videoId;
 $titles = count($urls) > 1 ? youtube_titles($pdo, $urls) : [];
 
@@ -53,6 +55,6 @@ render_header('チャプター編集', 'lives');
     </nav>
 <?php endif; ?>
 <section class="card">
-    <?= audio_player_html('', '', null, ['band_id' => $bandId, 'key' => $key, 'chapters' => audio_chapters($pdo, $bandId)[$key] ?? [], 'songs' => $songs, 'job' => chapter_job_get(chapter_job_id($key))]) ?>
+    <?= audio_player_html('', '', null, ['band_id' => $bandId, 'key' => $key, 'chapters' => audio_chapters($pdo, $bandId)[$key] ?? [], 'songs' => $songs, 'ses' => $ses, 'job' => chapter_job_get(chapter_job_id($key))]) ?>
 </section>
 <?php render_footer(); ?>

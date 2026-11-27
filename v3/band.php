@@ -430,10 +430,11 @@ render_header($band['name'], 'lives');
 <?php if ($driveFiles || $bandAudios): ?>
     <?php
     drive_backfill_sizes($pdo, $bandId, $driveFiles); // 容量が分からない音源は、ここで1回だけドライブに聞く
-    // チャプター: 音源ごとの印と、曲の番号に当てるセットリストの曲名（SE 以外・セトリ順。非公開で隠すときは空）
+    // チャプター: 音源ごとの印と、曲の番号に当てるセットリストの曲名（SE 以外・セトリ順。非公開で隠すときは空）と SE 名
     $audioChapters = audio_chapters($pdo, $bandId);
     $chapterSongs = array_column(array_filter($songs, static fn($s) => !$s['is_se']), 'title');
-    $chapterCtx = static fn(string $key): array => ['band_id' => $bandId, 'key' => $key, 'chapters' => $audioChapters[$key] ?? [], 'songs' => $chapterSongs, 'job' => chapter_job_get(chapter_job_id($key))];
+    $chapterSes = array_column(array_filter($songs, static fn($s) => $s['is_se']), 'title');
+    $chapterCtx = static fn(string $key): array => ['band_id' => $bandId, 'key' => $key, 'chapters' => $audioChapters[$key] ?? [], 'songs' => $chapterSongs, 'ses' => $chapterSes, 'job' => chapter_job_get(chapter_job_id($key))];
     ?>
     <!-- ファイル（セットリストの下）: 直接置いた MP3 → ドライブの音源 → そのほか。音源はチャプターを付けられるプレーヤー。バンドのページは1組だけなので最初から並べる（iframe・画像は loading="lazy" で画面に近づいてから読み込む） -->
     <section class="card band-section no-print">

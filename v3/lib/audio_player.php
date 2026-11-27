@@ -51,7 +51,7 @@ function audio_chapter_list(array $rows): array
 /**
  * プレーヤーの HTML
  *   $src … 音源の URL（attach_image?k=band_audio&id=N / drive_audio?band=N&f=ID）
- *   $chapterCtx … チャプターを出すとき: ['band_id' => int, 'key' => 'a:N' | 'd:ID' | 'y:動画ID', 'chapters' => 行の配列, 'songs' => [曲名（SE 以外・セトリ順）]]
+ *   $chapterCtx … チャプターを出すとき: ['band_id' => int, 'key' => 'a:N' | 'd:ID' | 'y:動画ID', 'chapters' => 行の配列, 'songs' => [曲名（SE 以外・セトリ順）], 'ses' => [SE 名（セトリ順。無ければ省略可）]]
  *   key が 'y:動画ID' のとき（video_chapters.php）は、<audio> の代わりに YouTube の埋め込み（app_player.js の apYouTube）を上に置き、最初から編集モード
  */
 function audio_player_html(string $src, string $title, ?int $size, ?array $chapterCtx = null): string
@@ -63,6 +63,7 @@ function audio_player_html(string $src, string $title, ?int $size, ?array $chapt
             'key'   => (string)$chapterCtx['key'],
             'list'  => audio_chapter_list($chapterCtx['chapters']),
             'songs' => array_values($chapterCtx['songs']),
+            'ses'   => array_values($chapterCtx['ses'] ?? []),
             'job'   => $chapterCtx['job'] ?? null, // 裏の解析（lib/chapter_job.php）
         ], JSON_UNESCAPED_UNICODE)) . '"';
     }
@@ -103,6 +104,7 @@ function audio_player_html(string $src, string $title, ?int $size, ?array $chapt
             . '<button type="button" class="btn btn--ghost btn--sm" data-ap-in="idle" data-ap-add="mc">MC</button>'
             . '<button type="button" class="btn btn--ghost btn--sm" data-ap-in="idle" data-ap-add="song">曲</button>'
             . '<button type="button" class="btn btn--ghost btn--sm" data-ap-in="idle" data-ap-add="end">終わり</button>'
+            . (!empty($chapterCtx['ses']) ? '<button type="button" class="btn btn--ghost btn--sm" data-ap-in="idle" data-ap-add="se">SE</button>' : '') // セトリに SE があるときだけ
             . '<button type="button" class="btn btn--ghost btn--sm" data-ap-in="idle" data-ap-auto>' . icon('auto_awesome') . '自動で付ける</button>'
             . '<button type="button" class="btn btn--ghost btn--sm" data-ap-in="busy" data-ap-stop hidden>中止</button></div></div>';
     }

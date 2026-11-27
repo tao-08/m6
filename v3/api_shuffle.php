@@ -188,7 +188,7 @@ foreach ($groups as $key => $chs) {
         for ($j = $i + 1; isset($chs[$j]); $j++) {
             $k = $chs[$j]['kind'];
             if ($k === 'song') { $thru = (int)$chs[$j]['at_ms']; break; }
-            if ($k === 'mc') $mc ??= (int)$chs[$j]['at_ms'];
+            if ($k === 'mc' || $k === 'se') $mc ??= (int)$chs[$j]['at_ms'];
             else $firstEnd ??= (int)$chs[$j]['at_ms'];
         }
         if ($thru === null) {

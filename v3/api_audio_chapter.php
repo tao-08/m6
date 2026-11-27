@@ -6,7 +6,7 @@
  *  band.php のプレーヤー（assets/app_player.js の setupAudioPlayers）が fetch() で呼ぶ。
  *
  *  リクエスト（POST, JSON）:
- *    {"action": "add", "band_id": 12, "key": "a:3", "kind": "mc" | "song" | "end", "at_ms": 61000}
+ *    {"action": "add", "band_id": 12, "key": "a:3", "kind": "mc" | "song" | "end" | "se", "at_ms": 61000}
  *    {"action": "replace", "band_id": 12, "key": "a:3", "chapters": [{"kind": "mc", "ms": 0}, ...]}  その音源のチャプターを全部置き換える
  *    {"action": "delete", "band_id": 12, "chapter_id": 5}
  *    {"action": "move", "band_id": 12, "chapter_id": 5, "at_ms": 62000}  チャプターの時間を直す
@@ -46,7 +46,7 @@ if ($bandId <= 0 || !$st->fetchColumn()) {
 /** 1つのチャプター（kind と ms）が正しいか */
 function audio_chapter_valid(mixed $kind, mixed $ms): bool
 {
-    return in_array($kind, ['mc', 'song', 'end'], true) && is_int($ms) && $ms >= 0 && $ms <= AUDIO_CHAPTER_MAX_MS;
+    return in_array($kind, ['mc', 'song', 'end', 'se'], true) && is_int($ms) && $ms >= 0 && $ms <= AUDIO_CHAPTER_MAX_MS;
 }
 
 if (in_array($action, ['add', 'replace', 'auto', 'status', 'discard'], true)) {

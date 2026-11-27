@@ -111,13 +111,17 @@ function chapter_job_run(string $id, int $bandId, int $at, array $cfg): void
     $key = chapter_job_key($id);
     $found = '解析に失敗しました';
     try {
+        // セトリの SE 名（あれば Gemini に SE も探させる）。shortcut: YouTube が2本以上でも動画ごとに絞らずバンドの SE 全部を渡す。取り違えが出たら video_no で絞る
+        $st = db()->prepare('SELECT title FROM song WHERE band_id = ? AND is_se = 1 ORDER BY track_no');
+        $st->execute([$bandId]);
+        $ses = $st->fetchAll(PDO::FETCH_COLUMN);
         if (str_starts_with($key, 'y:')) {
             $audio = ytdlp_audio($id, $why);
             if ($audio === null) {
                 $found = 'YouTube から音声を取得できませんでした';
             } else {
                 try {
-                    $found = gemini_audio_chapters($audio, 'audio/aac', $cfg[0], $cfg[1]); // m4a（AAC）をそのまま聴かせる
+                    $found = gemini_audio_chapters($audio, 'audio/aac', $cfg[0], $cfg[1], $ses); // m4a（AAC）をそのまま聴かせる
                 } finally {
                     @unlink($audio);
                 }
@@ -127,7 +131,7 @@ function chapter_job_run(string $id, int $bandId, int $at, array $cfg): void
             $st = db()->prepare('SELECT file_name FROM band_audio WHERE image_id = ? AND band_id = ?');
             $st->execute([(int)substr($key, 2), $bandId]);
             $path = LIVE_IMAGE_DIR . '/' . live_file_disk_name((string)$st->fetchColumn());
-            $found = is_file($path) ? gemini_audio_chapters($path, 'audio/mpeg', $cfg[0], $cfg[1]) : '音源が見つかりません';
+            $found = is_file($path) ? gemini_audio_chapters($path, 'audio/mpeg', $cfg[0], $cfg[1], $ses) : '音源が見つかりません';
         } else { // ドライブの音源（まだ落としていなければここで落とす）
             require_once __DIR__ . '/drive.php';
             require_once __DIR__ . '/drive_cache.php';
@@ -140,7 +144,7 @@ function chapter_job_run(string $id, int $bandId, int $at, array $cfg): void
             } else {
                 $path = drive_cache_path(substr($key, 2));
                 $mime = audio_orig_size($path) > filesize($path) ? 'audio/mpeg' : (string)$row['mime_type']; // 160 の MP3 に置き換え済み（lib/audio_stream.php）
-                $found = gemini_audio_chapters($path, $mime, $cfg[0], $cfg[1]);
+                $found = gemini_audio_chapters($path, $mime, $cfg[0], $cfg[1], $ses);
             }
         }
     } catch (Throwable $e) {

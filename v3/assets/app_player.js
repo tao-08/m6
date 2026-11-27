@@ -238,7 +238,7 @@ function setupAudioPlayers(root = document) {
     const bubbles = fig.querySelector('[data-ap-bubbles]');
     const src = audio.getAttribute('src');
     const size = Number(fig.dataset.size) || 0;
-    let chap = null; // { band, key, list: [{id, kind, ms}], songs }
+    let chap = null; // { band, key, list: [{id, kind, ms}], songs, ses }
     try { chap = fig.dataset.chapters ? JSON.parse(fig.dataset.chapters) : null; } catch (e) { /* チャプターなしで動かす */ }
     let base = 0;
     let total = 0;
@@ -370,8 +370,13 @@ function setupAudioPlayers(root = document) {
       const list = chap.list;
       const motion = !reduced.matches;
       let n = 0;
+      let se = 0; // SE は時間順に n 個目 = セトリの n 個目の SE（曲の番号には数えない）
       const labels = list.map((c) => {
         if (c.kind === 'end') return { short: '終', full: n ? `${n}. End` : 'End' }; // 曲の終わり（番号には数えない。チップは直前の曲の番号で「4. End」）
+        if (c.kind === 'se') {
+          const name = chap.ses?.[se++];
+          return { short: 'SE', full: name ? `SE. ${name}` : 'SE' };
+        }
         if (c.kind !== 'song') return { short: 'MC', full: 'MC' };
         n += 1;
         return { short: String(n), full: chap.songs[n - 1] ? `${n}. ${chap.songs[n - 1]}` : String(n) };
