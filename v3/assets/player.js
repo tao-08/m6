@@ -79,10 +79,39 @@
     });
     innerDoc()?.documentElement.classList.toggle('is-shuffle-playing', playing);
   };
+  // 入りきらない文字: 2秒止まる → 端まで流す → 2秒止まる → 戻す、をくり返して全文を見せる（中身を .marquee の span に包んで動かす）
+  const marquee = (el) => {
+    let inner = el.querySelector(':scope > .marquee');
+    if (!inner) {
+      inner = document.createElement('span');
+      inner.className = 'marquee';
+      inner.append(...el.childNodes);
+      el.append(inner);
+    }
+    inner.getAnimations().forEach((a) => a.cancel());
+    const d = inner.scrollWidth - el.clientWidth;
+    if (!el.clientWidth || d <= 1 || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const wait = 2000;
+    const move = d / 40 * 1000; // 1秒に 40px
+    const total = 2 * (wait + move);
+    const x = (px) => ({ transform: `translateX(${px}px)` });
+    inner.animate([
+      { ...x(0), offset: 0 }, { ...x(0), offset: wait / total },
+      { ...x(-d), offset: (wait + move) / total }, { ...x(-d), offset: (2 * wait + move) / total },
+      { ...x(0), offset: 1 },
+    ], { duration: total, iterations: Infinity });
+  };
+  const marqueeAll = () => [titleEl, bandEl, ...panel.querySelectorAll('.shell-panel__meta > *')].forEach(marquee);
   const setPanel = (open) => {
     panel.hidden = !open;
     if (!open) setScopes(false);
-    innerDoc()?.querySelector('[data-shuffle-menu] > summary')?.classList.toggle('is-active', open);
+    const sum = innerDoc()?.querySelector('[data-shuffle-menu] > summary');
+    sum?.classList.toggle('is-active', open);
+    // 中のヘッダーのアイコンの真下に、右端をそろえて出す（iframe は外枠の左上にあるので座標はそのまま）。見つからなければ CSS の位置
+    const r = open && sum ? sum.getBoundingClientRect() : null;
+    panel.style.top = r && r.width ? `${r.bottom + 8}px` : '';
+    panel.style.right = r && r.width ? `${Math.max(12, innerWidth - r.right)}px` : '';
+    if (open) marqueeAll(); // 閉じている間は幅が 0 で測れないので、開いたときに測り直す
   };
   const render = () => {
     const it = cur();
@@ -129,6 +158,7 @@
         artwork: it.art ? [{ src: it.art, sizes: '300x300' }] : [],
       });
     }
+    marqueeAll();
   };
 
   // いまの曲を、音源の t 秒の位置から読み直す。play: true で鳴らす
