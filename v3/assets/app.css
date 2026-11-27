@@ -797,6 +797,7 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 .shell-panel__src { display: inline-flex; align-items: center; padding: 4px; border: 0; border-radius: var(--r-sm); background: none; cursor: pointer; transition: opacity var(--t-fast), filter var(--t-fast); }
 .shell-panel__src .youtube-icon { width: 25px; height: 18px; }
 .shell-panel__src[aria-pressed="false"] { opacity: .35; filter: grayscale(1); } /* 外した音源 */
+[data-theme="dark"] .shell-panel__src[data-shell-src="yt"][aria-pressed="false"] { opacity: .6; } /* 灰色にした赤は暗い背景に沈むので濃く */
 .shell-panel__filter { color: var(--muted); }
 .shell-panel__filter[aria-pressed="true"] { color: var(--accent); } /* 絞り込み中 */
 .shell-filter__years { max-height: 50vh; overflow: hidden auto; margin-top: 12px; } /* 横は出さない（開け閉めの途中に横のバーが出ていた） */
