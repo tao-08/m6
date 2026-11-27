@@ -729,7 +729,7 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 .shell-bar__progress { position: absolute; left: var(--shell-side); right: var(--shell-side); top: -1px; height: 2px; background: var(--surface-2); overflow: hidden; }
 .shell-bar__progress span { display: block; width: 0; height: 100%; background: var(--accent); }
 @media (max-width: 600px) { /* スマホは縦をさらに詰める。ホームバーの分（safe-area）も半分だけ空ける（ボタンは押せる 28px を残す） */
-  .shell-bar { padding-top: 1px; padding-bottom: calc(1px + env(safe-area-inset-bottom) * .5); }
+  .shell-bar { padding-top: 3px; padding-bottom: calc(3px + env(safe-area-inset-bottom) * .5); }
   .shell-bar > .icon-btn { width: 28px; height: 28px; }
 }
 /* 再生中の曲のポップアップ（player.php）。中のヘッダーのアイコンの下あたりに出す。シークバー・再生ボタンはバンドページのプレーヤーの部品 */
@@ -2420,6 +2420,7 @@ body.is-album-dragging, body.is-album-dragging * { cursor: grabbing !important; 
   .nav__link { flex: 1; text-align: center; padding: 10px 2px; font-size: var(--fs-sm); border-radius: var(--r-md); }
   .footer { padding-bottom: 84px; }
   .in-shell .nav { padding-bottom: 6px; } /* シャッフル再生の中: ホームバーの分は外枠の下のバーが空ける */
+  .in-shell .nav__link { padding-block: 8px; } /* 少し低くして、その分を外枠の下のバーに回す */
   /* iOS は 16px 未満の入力欄を押すと画面を拡大し、戻らないまま（フッターなどが大きく見える）。各入力欄の指定より強くするため !important */
   input, select, textarea { font-size: var(--fs-lg) !important; }
   .sticky-actions { bottom: 76px; } /* 下に固定の保存ボタンは、タブバーの上に出す */
