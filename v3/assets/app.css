@@ -773,7 +773,7 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 .shell-panel__players a { color: inherit; }
 .shell-panel__players a:hover { color: var(--accent); }
 /* バンド単位の吹き出し（player.js の drawBubbles）: 上（被ったものは下）に吹き出しの分の余白。曲間をスキップするときは飛ばす所を薄く（--gaps） */
-.shell-panel .audio-player__seek { --rest: var(--surface-2); --gap: color-mix(in srgb, var(--border), var(--muted) 25%); /* 未再生は白寄り・飛ばす所はそれより濃い灰色 */ transition: margin var(--t-slow) var(--ease-out); }
+.shell-panel .audio-player__seek { --rest: color-mix(in srgb, var(--border), var(--muted) 25%); --gap: var(--surface-2); /* 未再生は灰色・飛ばす所はそれより薄い白寄り */ transition: margin var(--t-slow) var(--ease-out); }
 .shell-panel .audio-player__seek.has-bubbles { margin-top: 22px; }
 .shell-panel .audio-bubble.is-current { --bd: var(--accent); --ov: var(--accent-soft); color: var(--accent); } /* 再生中は赤（ポップアップの再生中の色にそろえる） */
 .shell-panel .audio-player__seek.has-below { margin-bottom: 22px; }
@@ -799,17 +799,16 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 .shell-panel__src[aria-pressed="false"] { opacity: .35; filter: grayscale(1); } /* 外した音源 */
 .shell-panel__filter { color: var(--muted); }
 .shell-panel__filter[aria-pressed="true"] { color: var(--accent); } /* 絞り込み中 */
-.shell-filter__years { max-height: 50vh; overflow: auto; margin-top: 12px; }
-/* 絞り込み: 読み込んだ年度がふわっと出る・年度を開くとライブが下りてくる（モーダル自体の出入りは .modal） */
+.shell-filter__years { max-height: 50vh; overflow: hidden auto; margin-top: 12px; } /* 横は出さない（開け閉めの途中に横のバーが出ていた） */
+/* 絞り込み: 読み込んだ年度がふわっと出る。年度の開け閉めは末尾の ::details-content（モーダル自体の出入りは .modal） */
 .shell-filter__years > details { animation: soft-in var(--t-base) var(--ease-out) backwards; }
-.shell-filter__years details[open] > ul { animation: soft-in var(--t-base) var(--ease-out); }
-@media (prefers-reduced-motion: reduce) { .shell-filter__years > details, .shell-filter__years details[open] > ul { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .shell-filter__years > details { animation: none; } }
 :is(.shell-filter__years, .chapter-years) summary { display: flex; align-items: center; gap: 8px; padding: 6px 0; font-weight: 700; cursor: pointer; list-style: none; }
 :is(.shell-filter__years, .chapter-years) summary::-webkit-details-marker { display: none; }
 :is(.shell-filter__years, .chapter-years) summary .icon { margin-left: auto; color: var(--muted); transition: transform var(--t-base) var(--ease-out); }
 :is(.shell-filter__years, .chapter-years) details[open] > summary .icon { transform: rotate(180deg); }
 @media (prefers-reduced-motion: reduce) { :is(.shell-filter__years, .chapter-years) summary .icon { transition: none; } }
-.shell-filter__years ul { list-style: none; margin: 0 0 6px; padding: 0 0 0 24px; display: grid; gap: 6px; }
+.shell-filter__years ul { list-style: none; margin: 0; padding: 0 0 6px 24px; /* 下は padding: margin だと開け閉めの終わりにガクッと飛ぶ */ display: grid; gap: 6px; }
 .chapter-years { margin-top: 12px; }
 .chapter-years details details { margin-left: 16px; }
 .chapter-years ul { list-style: none; margin: 4px 0 8px; padding: 0 0 0 16px; display: grid; gap: 6px; }
@@ -3210,10 +3209,10 @@ button.ttb-m { cursor: pointer; text-decoration: underline dotted; }
          ・閉じる側（下の指定）: overflow を 0s で即 clip に（縮み始めから切る）
          ・開く側（[open] の指定）: overflow を .25s 遅らせて visible に（伸び終わってから戻す）
          allow-discrete = 「途中の値が無いプロパティ（clip / visible）も transition の対象にする」指定 */
-    :is(.edit-box, .songs-add, .prac-new, .tab-new-wrap, .tab-new__more, .partner, .sheet-ed__json, .togglecard, .venue-edit, .band-filter)::details-content {
+    :is(.edit-box, .songs-add, .prac-new, .tab-new-wrap, .tab-new__more, .partner, .sheet-ed__json, .togglecard, .venue-edit, .band-filter, .shell-filter__years details)::details-content {
       block-size: 0; overflow: clip;
       transition: block-size var(--t-base) var(--ease-out), content-visibility var(--t-base) allow-discrete, overflow 0s allow-discrete; }
-    :is(.edit-box, .songs-add, .prac-new, .tab-new-wrap, .tab-new__more, .partner, .sheet-ed__json, .togglecard, .venue-edit, .band-filter)[open]::details-content {
+    :is(.edit-box, .songs-add, .prac-new, .tab-new-wrap, .tab-new__more, .partner, .sheet-ed__json, .togglecard, .venue-edit, .band-filter, .shell-filter__years details)[open]::details-content {
       block-size: auto; overflow: visible;
       transition: block-size var(--t-base) var(--ease-out), content-visibility var(--t-base) allow-discrete, overflow 0s var(--t-base) allow-discrete; }
     /* #c12 や #categories のリンクで来て、JS が自動で開くときだけ動きを止める（app.js の openWithoutAnimation が .is-instant を付ける）。
