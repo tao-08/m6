@@ -125,7 +125,7 @@
   let savedAt = 0;       // 最後に位置を残した秒（書きすぎないため）
   let filter = { src: 'all', off: [] }; // 絞り込み: src = all | mix | yt、off = 外したライブの ID（範囲の上にかける。新しいライブは入る側）
   try { filter = { ...filter, ...JSON.parse(localStorage.getItem('shuffle_filter') || '{}') }; } catch (e) { /* 無しで */ }
-  const passes = (q) => (filter.src === 'all' || (filter.src === 'yt') === !!q.video) && !filter.off.includes(q.live_id);
+  const passes = (q) => (filter.src === 'all' || (filter.src === 'yt') === !!(q.video || q.yt)) && !filter.off.includes(q.live_id);
   let openOnLoad = cfg.resume; // 開き直したときは、中のページを読み終えてもポップアップを開いたまま
 
   const cur = () => queue[idx] || null;
@@ -290,7 +290,7 @@
     artImg.hidden = mc || !it.art;
     panel.classList.toggle('is-video', !!it.video); // ジャケットの代わりに動画
     ytBox.hidden = !it.video;
-    $('.shell-panel__liveline > .tag--mix').hidden = !!it.video;
+    $('.shell-panel__liveline > .tag--mix').hidden = !!(it.video || it.yt);
     if (it.art) artImg.src = it.art;
     const live = $('[data-shell-live]');
     live.textContent = it.year ? `${it.year}年度 ${it.live}` : it.live;
