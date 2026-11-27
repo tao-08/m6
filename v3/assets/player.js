@@ -166,11 +166,17 @@
     panel.style.top = r && r.width ? `${r.bottom + 8}px` : '';
     // 右端をアイコンにそろえる。ただし画面の左右からはみ出さない（狭い画面ではアイコンより右に寄る）
     panel.style.right = r && r.width ? `${Math.max(12, Math.min(innerWidth - r.right, innerWidth - panel.offsetWidth - 12))}px` : '';
-    if (open) marqueeAll(); // 閉じている間は幅が 0 で測れないので、開いたときに測り直す
+    if (open) { marqueeAll(); refresh(cur()); } // 閉じている間は幅が 0 で測れないので、開いたときに測り直す
   };
+  // 通しで MC のチャプターを流している間（曲の終わり end_ms 〜 次の曲 through_end_ms。両方が違う = 間に MC がある）。MC のない曲間は曲のまま
+  let mcShown = false;
+  const inMc = (it) => !!it && thru() && it.end_ms !== null && it.through_end_ms !== undefined && it.through_end_ms !== it.end_ms
+    && nowSec() * 1000 >= it.end_ms && (it.through_end_ms === null || nowSec() * 1000 < it.through_end_ms); // 上限: 曲を移った直後の古い位置で MC と出さない
   const render = () => {
     const it = cur();
-    titleEl.textContent = it ? it.title : '再生できる曲がありません';
+    const mc = mcShown = inMc(it); // MC の間は曲名を「MC」にして、アーティスト・アルバム・ジャケットは出さない
+    const title = it && mc ? 'MC' : it?.title;
+    titleEl.textContent = it ? title : '再生できる曲がありません';
     bandEl.textContent = it ? `${it.band}・${it.live}` : '';
     titleEl.disabled = !it;
     playBtns.forEach((b) => { b.disabled = !it; });
@@ -179,7 +185,7 @@
     seek.disabled = !it;
     buildScopes();
     if (!it) { setPanel(false); return; }
-    artImg.hidden = !it.art;
+    artImg.hidden = mc || !it.art;
     if (it.art) artImg.src = it.art;
     const live = $('[data-shell-live]');
     live.textContent = it.year ? `${it.year}年度 ${it.live}` : it.live;
@@ -187,13 +193,13 @@
     const band = $('[data-shell-bandlink]');
     band.textContent = it.band;
     band.href = `band?id=${it.band_id}`;
-    $('[data-shell-song]').textContent = it.title;
+    $('[data-shell-song]').textContent = title;
     const artist = $('[data-shell-artist]');
     artist.textContent = it.artist || '';
-    artist.hidden = !it.artist;
+    artist.hidden = mc || !it.artist;
     const album = $('[data-shell-album]');
     album.textContent = it.album || '';
-    album.hidden = !it.album;
+    album.hidden = mc || !it.album;
     if (it.artist_id) artist.href = `artist?id=${it.artist_id}`; else artist.removeAttribute('href');
     // 演奏者: 楽器ラベル（サイト共通の .part）と名前（メンバーページへ）
     $('[data-shell-players]').replaceChildren(...(it.players || []).map((p) => {
@@ -226,8 +232,8 @@
     }));
     if ('mediaSession' in navigator) {
       navigator.mediaSession.metadata = new MediaMetadata({
-        title: it.title, artist: it.artist ? `${it.band}（${it.artist}）` : it.band, album: it.live,
-        artwork: it.art ? [{ src: it.art, sizes: '300x300' }] : [],
+        title, artist: !mc && it.artist ? `${it.band}（${it.artist}）` : it.band, album: it.live,
+        artwork: !mc && it.art ? [{ src: it.art, sizes: '300x300' }] : [],
       });
     }
     marqueeAll();
@@ -272,6 +278,7 @@
     if (at) showPos(at);
     const nx = queue[(idx + 1) % queue.length]; // 次の曲の長さを先に調べておく（次へ進むときに待たない）
     if (nx && (nx.start_ms > 0 || nx.end_ms !== null)) probe(nx);
+    if (nx && nx.band_id !== cur().band_id) refresh(nx); // 次の曲を先に取り直しておく（同じバンドなら開いたときに読んだ分で足りる）
   };
   const next = () => {
     if (pending) { const p = pending; pending = null; switchTo(p.scope, p.id, false); return; }
@@ -289,6 +296,20 @@
     next();
   };
 
+  // 曲名・演奏者などを取り直す（キューは保存したものなので、セトリを直しても古いまま）。読むのはその曲のバンドの分だけ。流す位置（src・start_ms など）は変えない
+  const refresh = async (it) => {
+    if (!it) return;
+    const res = await fetch(`api_shuffle?scope=band&id=${Number(it.band_id) || 0}`).catch(() => null);
+    const data = res?.ok ? await res.json().catch(() => null) : null;
+    if (!data) return;
+    const fresh = new Map(data.items.map((q) => [q.song_id, q]));
+    queue.forEach((q) => {
+      const f = fresh.get(q.song_id);
+      if (f) for (const k of ['title', 'artist_id', 'artist', 'album', 'art', 'band', 'live', 'players']) q[k] = f[k];
+    });
+    save();
+    if (queue.includes(it) && cur()?.band_id === it.band_id) render();
+  };
   const load = async (scope, id) => {
     const res = await fetch(`api_shuffle?scope=${encodeURIComponent(scope)}&id=${Number(id) || 0}`);
     const data = await res.json().catch(() => null);
@@ -331,6 +352,7 @@
     if (!it) return;
     const t = nowSec() * 1000;
     showPos(t / 1000);
+    if (inMc(it) !== mcShown) render(); // MC に入った・抜けた
     if (Math.abs(t / 1000 - savedAt) >= 3) savePos(t / 1000);
     const end = endOf(it);
     if (end === null || t < end) return; // ファイルの最後まで流す曲は ended で次へ
