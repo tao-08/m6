@@ -773,7 +773,7 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 .shell-panel__players a { color: inherit; }
 .shell-panel__players a:hover { color: var(--accent); }
 /* バンド単位の吹き出し（player.js の drawBubbles）: 上（被ったものは下）に吹き出しの分の余白。曲間をスキップするときは飛ばす所を薄く（--gaps） */
-.shell-panel .audio-player__seek { --rest: color-mix(in srgb, var(--border), var(--muted) 25%); --gap: var(--surface-2); /* 未再生は灰色・飛ばす所はそれより薄い白寄り */ transition: margin var(--t-slow) var(--ease-out); }
+.shell-panel .audio-player__seek { --rest: color-mix(in srgb, var(--border), var(--muted) 10%); --gap: var(--surface-2); /* 未再生は灰色・飛ばす所はそれより薄い白寄り */ transition: margin var(--t-slow) var(--ease-out); }
 .shell-panel .audio-player__seek.has-bubbles { margin-top: 22px; }
 .shell-panel .audio-bubble.is-current { --bd: var(--accent); --ov: var(--accent-soft); color: var(--accent); } /* 再生中は赤（ポップアップの再生中の色にそろえる） */
 .shell-panel .audio-player__seek.has-below { margin-bottom: 22px; }
