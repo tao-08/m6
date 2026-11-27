@@ -73,7 +73,7 @@
         events: { onReady: () => { player.setVolume(vol * 100); ok(); }, onStateChange: onState, onError: () => fire('error') },
       });
     })));
-    return Object.assign(t, {
+    return Object.defineProperties(t, Object.getOwnPropertyDescriptors({ // Object.assign だと getter が作った時の値で固まる
       get currentTime() { return player?.getCurrentTime?.() || 0; },
       get duration() { return player?.getDuration?.() || 0; },
       get paused() { return paused; },
@@ -93,7 +93,7 @@
         if (play) player.loadVideoById(o); else player.cueVideoById(o);
       },
       stop() { src = ''; this.pause(); player?.stopVideo?.(); },
-    });
+    }));
   })();
   let audio = el; // いま鳴らしているもの: el（MIX）か yt
   // イベントは両方に付けて、いま鳴らしている方の分だけ受け取る
@@ -682,8 +682,22 @@
   // 絞り込み: 開くたびにいまの範囲の曲を読み、年度（開ける）→ ライブのチェックを作る。閉じたら保存して、変わっていれば同じ範囲を読み直す
   const filterBtn = $('[data-shell-filter]');
   const yearsEl = $('[data-shell-filter-years]');
-  const showFilter = () => filterBtn.setAttribute('aria-pressed', String(filter.src !== 'all' || filter.off.length > 0));
+  const srcBtns = bar.querySelectorAll('[data-shell-src]');
+  const saveFilter = () => { try { localStorage.setItem('shuffle_filter', JSON.stringify(filter)); } catch (e) { /* 覚えなくても使える */ } };
+  const showFilter = () => {
+    filterBtn.setAttribute('aria-pressed', String(filter.off.length > 0));
+    srcBtns.forEach((b) => b.setAttribute('aria-pressed', String(filter.src === 'all' || filter.src === b.dataset.shellSrc)));
+  };
   showFilter();
+  // MIX / YouTube: それぞれ入り切り。両方は外せない
+  srcBtns.forEach((b) => b.addEventListener('click', () => {
+    const on = [...srcBtns].filter((x) => (x === b) !== (x.getAttribute('aria-pressed') === 'true')).map((x) => x.dataset.shellSrc);
+    if (!on.length) { toast('MIX と YouTube の両方は外せません'); return; }
+    filter.src = on.length === 2 ? 'all' : on[0];
+    saveFilter();
+    showFilter();
+    pick(cfg.scope, cfg.id);
+  }));
   const box = (checked, label) => {
     const c = document.createElement('input');
     c.type = 'checkbox';
@@ -699,7 +713,6 @@
     y.indeterminate = on > 0 && on < lives.length;
   };
   filterBtn.addEventListener('click', async () => {
-    filterDlg.querySelector(`input[name="src"][value="${filter.src}"]`).checked = true;
     yearsEl.replaceChildren();
     filterDlg.showModal();
     const res = await fetch(`api_shuffle?scope=${encodeURIComponent(cfg.scope)}&id=${Number(cfg.id) || 0}`).catch(() => null);
@@ -715,7 +728,11 @@
       const y = box(false, `${year}年度`);
       y.dataset.year = '';
       y.addEventListener('change', () => { d.querySelectorAll('[data-live]').forEach((c) => { c.checked = y.checked; }); });
-      s.append(y, `${year}年度`);
+      const ic = document.createElement('span');
+      ic.className = 'icon';
+      ic.setAttribute('aria-hidden', 'true');
+      ic.textContent = 'expand_more'; // 開ける印（開くと上向き）
+      s.append(y, `${year}年度`, ic);
       const ul = document.createElement('ul');
       lives.forEach((name, id) => {
         const li = document.createElement('li');
@@ -737,12 +754,12 @@
     const shown = [...yearsEl.querySelectorAll('[data-live]')];
     const shownIds = new Set(shown.map((c) => Number(c.dataset.live)));
     const next = {
-      src: filterDlg.querySelector('input[name="src"]:checked')?.value || 'all',
+      src: filter.src,
       off: [...filter.off.filter((id) => !shownIds.has(id)), ...shown.filter((c) => !c.checked).map((c) => Number(c.dataset.live))], // ほかの範囲で外したライブは残す
     };
     if (JSON.stringify(next) === JSON.stringify(filter)) return;
     filter = next;
-    try { localStorage.setItem('shuffle_filter', JSON.stringify(filter)); } catch (e) { /* 覚えなくても使える */ }
+    saveFilter();
     showFilter();
     pick(cfg.scope, cfg.id);
   });

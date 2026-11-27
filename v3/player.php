@@ -78,21 +78,21 @@ if (!preg_match('/^[A-Za-z0-9_-]*(\.php)?(\?[^#\s]*)?$/', $u) || preg_match('/^p
                 <button type="button" class="icon-btn shell-panel__unit" data-shell-unit aria-label="曲単位" title="曲単位"><?= icon('music_note') ?><?= icon('library_music') ?></button>
             </span>
         </div>
-        <p class="shell-panel__subhead">再生範囲を変更</p>
+        <div class="shell-panel__subhead">再生範囲を変更
+            <span class="shell-panel__srcs"><!-- 流す音源（player.js の filter.src。押すとすぐ読み直す） -->
+                <button type="button" class="shell-panel__src" data-shell-src="mix" aria-pressed="true" aria-label="MIX" title="MIX"><?= mix_tag() ?></button>
+                <button type="button" class="shell-panel__src" data-shell-src="yt" aria-pressed="true" aria-label="YouTube" title="YouTube"><?= youtube_icon() ?></button>
+            </span>
+        </div>
         <div class="shell-panel__scoperow">
             <button type="button" class="icon-btn shell-panel__later" data-shell-later aria-pressed="false" aria-label="次の曲から範囲を変える" title="次の曲から範囲を変える"><?= icon('queue_music') ?></button>
             <ul class="shell-panel__scopes" data-shell-scopes></ul>
             <button type="button" class="icon-btn shell-panel__filter" data-shell-filter aria-pressed="false" aria-label="絞り込み" title="絞り込み"><?= icon('filter_alt') ?></button>
         </div>
-        <!-- 絞り込み: MIX / YouTube と、年度ごとのライブ（player.js。閉じたら反映） -->
+        <!-- 絞り込み: 年度ごとのライブ（player.js。閉じたら反映） -->
         <dialog class="modal shell-filter" data-shell-filter-dialog aria-labelledby="shell-filter-title">
             <form method="dialog" class="modal__body">
                 <h3 id="shell-filter-title" class="modal__title">絞り込み</h3>
-                <div class="tabs tabs--filter" role="radiogroup" aria-label="音源">
-                    <label class="tab"><input type="radio" name="src" value="all" checked>すべて</label>
-                    <label class="tab"><input type="radio" name="src" value="mix">MIX</label>
-                    <label class="tab"><input type="radio" name="src" value="yt">YouTube</label>
-                </div>
                 <div class="shell-filter__years" data-shell-filter-years></div>
                 <div class="form-actions"><button type="submit" class="btn btn--primary">閉じる</button></div>
             </form>
