@@ -46,13 +46,17 @@
   let fails = 0;     // 続けて流せなかった数（全部だめなときに止まるため）
   let dragging = false; // シークバーをつかんでいる間は、再生位置で動かさない
   let shuffled = true;   // シャッフル。オフは出演順・セトリ順
-  let cont = false;      // 通しで再生（シャッフルなしのバンド・ライブ）: ミックスを MC・曲間も切らずに流し、終わったら次のバンドの1曲目へ
+  let byBand = false;    // バンド単位: バンドごとにセトリ順でまとめて流す（シャッフルはバンドの順だけ混ぜる）
+  let cont = false;      // 通し（バンド単位のときだけ効く）: 曲のあとの MC・曲間も流す（through_end_ms まで）。次に流す曲が同じミックスの続きなら切らずにつなぐ
   let savedAt = 0;       // 最後に位置を残した秒（書きすぎないため）
   let openOnLoad = cfg.resume; // 開き直したときは、中のページを読み終えてもポップアップを開いたまま
 
   const cur = () => queue[idx] || null;
+  const thru = () => byBand && cont;
+  const endOf = (it) => (thru() ? (it.through_end_ms === undefined ? it.end_ms : it.through_end_ms) : it.end_ms); // 曲の終わり（ms、null = ファイルの最後）
+  const joined = (it, nx) => thru() && nx && nx.src === it.src && nx.start_ms === endOf(it); // 次の曲が同じミックスの続き
   const save = () => {
-    try { localStorage.setItem(KEY, JSON.stringify({ scope: cfg.scope, id: cfg.id, queue, idx, cont, shuffled })); } catch (e) { /* 残せなくても再生は続ける */ }
+    try { localStorage.setItem(KEY, JSON.stringify({ scope: cfg.scope, id: cfg.id, queue, idx, cont, shuffled, byBand })); } catch (e) { /* 残せなくても再生は続ける */ }
   };
   const savePos = (t) => {
     savedAt = t;
@@ -69,6 +73,27 @@
   const probe = async (it) => {
     if (!durations.has(it.src)) durations.set(it.src, await audioProbeDuration(it.src, it.size));
     return durations.get(it.src);
+  };
+  // 並べる: シャッフルなし = 出演順・セトリ順（n）。曲単位で混ぜる = いまの曲 it を先頭に残りを混ぜる。バンド単位で混ぜる = いまのバンドを先頭にバンドの順だけ混ぜる
+  const arrange = (items, it) => {
+    const sorted = [...items].sort((a, b) => (a.n ?? 0) - (b.n ?? 0));
+    if (!shuffled) return sorted;
+    if (!byBand) {
+      const rest = shuffle(sorted.filter((q) => q !== it));
+      return it ? [it, ...rest] : rest;
+    }
+    const bands = new Map();
+    sorted.forEach((q) => { if (!bands.has(q.band_id)) bands.set(q.band_id, []); bands.get(q.band_id).push(q); });
+    const mine = it ? bands.get(it.band_id) : null;
+    if (mine) bands.delete(it.band_id);
+    const rest = shuffle([...bands.values()]);
+    return (mine ? [mine, ...rest] : rest).flat();
+  };
+  const reorder = () => { // いまの曲はそのまま、並びだけ変える
+    const it = cur();
+    queue = arrange(queue, it);
+    idx = it ? queue.indexOf(it) : 0;
+    save();
   };
   const fmt = (sec) => { const s = Math.max(0, Math.floor(sec)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
   const innerDoc = () => { try { return frame.contentDocument; } catch (e) { return null; } };
@@ -210,13 +235,16 @@
     const it = cur();
     let off = 0;
     let to = '';
-    if (t > 0 || it.end_ms !== null) {
+    if (t > 0 || endOf(it) !== null) {
       const total = await probe(it);
       if (it !== cur()) return; // 待っている間に次へ進んだ
       if (total) {
         off = Math.round(t * it.size / total);
         // 曲の終わり + 3秒分で送るのを止めてもらう（1曲分だけ受け取る。見積もりのずれで早く切れないよう余裕を持たせ、止めるのは timeupdate）
-        if (it.end_ms !== null && !cont) to = `&to=${Math.round((it.end_ms / 1000 + 3) * it.size / total)}`;
+        let last = idx; // 続きでつながる曲の最後まで受け取る
+        while (joined(queue[last], queue[last + 1])) last += 1;
+        const end = endOf(queue[last]);
+        if (end !== null) to = `&to=${Math.round((end / 1000 + 3) * it.size / total)}`;
       } else if (t > 0) { skip(); return; } // 頭からなら長さがわからなくても全部流せる
     }
     base = off > 0 ? t : 0;
@@ -263,8 +291,7 @@
     const data = await res.json().catch(() => null);
     const items = res.ok && data ? data.items : [];
     items.forEach((q, i) => { q.n = i; }); // シャッフルを切ったときに元の順へ戻す
-    queue = shuffled ? shuffle(items) : items;
-    cont = !shuffled && ['band', 'live'].includes(scope);
+    queue = arrange(items, null);
     cfg.scope = scope;
     cfg.id = Number(id) || 0;
     fails = 0;
@@ -282,7 +309,7 @@
     const t = sec * 1000;
     const nx = queue[idx + 1];
     const fileEnd = durations.get(it.src) ? durations.get(it.src) * 1000 : null;
-    const end = cont ? (nx && nx.src === it.src ? nx.start_ms : fileEnd) : it.end_ms ?? fileEnd;
+    const end = endOf(it) ?? fileEnd;
     if (end) {
       const len = (end - it.start_ms) / 1000;
       const pos = Math.min(len, Math.max(0, (t - it.start_ms) / 1000));
@@ -302,12 +329,11 @@
     const t = nowSec() * 1000;
     showPos(t / 1000);
     if (Math.abs(t / 1000 - savedAt) >= 3) savePos(t / 1000);
-    if (cont) { // 通し: 同じ音源の次の曲の頭を過ぎたら表示だけ進める（読み直さない）。音源の最後で ended → 次
-      const nx = queue[idx + 1];
-      if (nx && nx.src === it.src && t >= nx.start_ms) { idx += 1; save(); render(); }
-      return;
-    }
-    if (it.end_ms !== null && t >= it.end_ms) { audio.pause(); next(); } // 先に止める（次の曲の用意を待つ間に、また呼ばれないように）
+    const end = endOf(it);
+    if (end === null || t < end) return; // ファイルの最後まで流す曲は ended で次へ
+    if (!pending && joined(it, queue[idx + 1])) { idx += 1; save(); render(); return; } // 続き: 読み直さず表示だけ進める
+    audio.pause(); // 先に止める（次の曲の用意を待つ間に、また呼ばれないように）
+    next();
   });
   seek.addEventListener('input', () => {
     dragging = true;
@@ -367,7 +393,7 @@
   let later = false;
   try { later = localStorage.getItem('shuffle_when') === 'next'; } catch (e) { /* すぐ */ }
   let pending = null; // 次の曲から変える範囲 {scope, id}
-  // お知らせ: 下のバーの上に4秒（中のページのトーストはポップアップに隠れるので外枠に出す。見た目は app.css の .toast）
+  // お知らせ: 上に2秒（中のページのトーストはポップアップに隠れるので外枠に出す。見た目は app.css の .toast）
   const toast = (text) => {
     const t = document.createElement('div');
     t.className = 'toast flash flash--info';
@@ -376,7 +402,7 @@
     const box = $('[data-shell-toasts]');
     box.replaceChildren(t); // 続けて押したら差し替える
     const close = () => { t.classList.add('is-leaving'); setTimeout(() => t.remove(), 500); };
-    setTimeout(close, 4000);
+    setTimeout(close, 2000);
     t.addEventListener('click', close);
   };
   const showLater = () => laterBtn.setAttribute('aria-pressed', String(later));
@@ -386,7 +412,7 @@
     if (!later) pending = null;
     showLater();
     buildScopes();
-    toast(later ? '次の曲から範囲を変えます' : 'すぐに範囲を変えます');
+    toast(later ? '次の曲から範囲を変えます' : 'すぐに再生されます');
   });
   showLater();
   // 範囲を変える。順番どおり（シャッフルしない）で、いまの曲が新しい範囲にあれば、すぐ = その位置から続ける・次の曲から = その次から
@@ -428,18 +454,39 @@
     scopesEl.replaceChildren(...list.filter(([, sc, id]) => !seen.has(`${sc}:${id}`) && seen.add(`${sc}:${id}`)).map((x) => scopeItem(...x)));
   };
 
-  // シャッフル: オフはセトリ順（バンド・ライブは MC・曲間も切らずに通し）。いまの曲はそのまま、並びだけ変える
+  // 通し: 曲間（MC など）も流す。ON にしたら、いまの曲も MC まで受け取れるよう、いまの位置から読み直す（OFF は timeupdate で止まるだけ）
+  const contBtn = $('[data-shell-cont]');
+  const showCont = () => contBtn.setAttribute('aria-pressed', String(cont));
+  contBtn.addEventListener('click', () => {
+    cont = !cont;
+    save();
+    showCont();
+    if (thru() && cur() && audio.getAttribute('src')) playAt(nowSec(), !audio.paused);
+    toast(cont ? '曲間も再生します' : '曲間をスキップします');
+  });
+  // シャッフル: オフは出演順・セトリ順。いまの曲はそのまま、並びだけ変える
   const shuffleBtn = $('[data-shell-shuffle]');
   const showShuffle = () => shuffleBtn.setAttribute('aria-pressed', String(shuffled));
   shuffleBtn.addEventListener('click', () => {
     shuffled = !shuffled;
-    cont = !shuffled && ['band', 'live'].includes(cfg.scope);
-    const it = cur();
-    const rest = queue.filter((q) => q !== it);
-    queue = shuffled ? (it ? [it, ...shuffle(rest)] : shuffle(rest)) : [...queue].sort((a, b) => (a.n ?? 0) - (b.n ?? 0));
-    idx = it ? queue.indexOf(it) : 0;
-    save();
+    reorder();
     showShuffle();
+  });
+  // 単位: 曲単位 ↔ バンド単位。バンド単位のときだけ通しのボタンを出す（曲単位では通しは効かない）
+  const unitBtn = $('[data-shell-unit]');
+  const showUnit = () => {
+    unitBtn.classList.toggle('is-band', byBand);
+    unitBtn.setAttribute('aria-label', byBand ? 'バンド単位' : '曲単位');
+    unitBtn.title = byBand ? 'バンド単位' : '曲単位';
+    contBtn.hidden = !byBand;
+  };
+  unitBtn.addEventListener('click', () => {
+    const was = thru();
+    byBand = !byBand;
+    reorder();
+    showUnit();
+    toast(byBand ? 'バンド単位で再生します' : '曲単位で再生します');
+    if (!was && thru() && cur() && audio.getAttribute('src')) playAt(nowSec(), !audio.paused); // 通しが効き始めたら MC まで受け取れるよう読み直す
   });
 
   // 閉じる: 再生をやめて、いま中で開いているページだけにする（止めた位置は残す。アイコンで開き直せる）
@@ -568,6 +615,9 @@
       cont = !!st.cont;
       shuffled = st.shuffled ?? !st.cont;
       showShuffle();
+      byBand = !!st.byBand;
+      showCont();
+      showUnit();
       cfg.scope = st.scope;
       cfg.id = st.id;
       syncUrl();

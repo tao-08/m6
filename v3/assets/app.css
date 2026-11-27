@@ -756,10 +756,14 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 .shell-panel__time { display: flex; justify-content: space-between; margin-top: -6px; color: var(--muted); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
 .shell-panel__ctl { position: relative; display: flex; justify-content: center; align-items: center; gap: 16px; }
 .shell-panel__shuffle { position: absolute; left: 0; }
-.shell-panel__shuffle[aria-pressed="false"] { color: var(--muted); opacity: .45; }
-.shell-panel__shuffle[aria-pressed="true"] { color: var(--accent); }
+.shell-panel__right { position: absolute; right: 0; display: flex; gap: 2px; } /* 単位の切り替えと、バンド単位のときだけ通し */
+.shell-panel__unit .icon:last-child, .shell-panel__unit.is-band .icon:first-child { display: none; } /* 曲単位 = 音符 / バンド単位 = 人 */
+.shell-panel__unit.is-band .icon:last-child { display: inline; }
+:is(.shell-panel__shuffle, .shell-panel__cont)[aria-pressed="false"] { color: var(--muted); opacity: .45; }
+:is(.shell-panel__shuffle, .shell-panel__cont)[aria-pressed="true"] { color: var(--accent); }
 .shell-panel__ctl .audio-player__play:disabled, .shell-panel__ctl .icon-btn:disabled { opacity: .5; cursor: default; }
 /* 範囲: チップを折り返して並べる。左の .shell-panel__later で すぐ / 次の曲から（ON は赤） */
+.shell-panel__subhead { margin: 4px 0 0; padding-top: 10px; border-top: 1px solid var(--border); font-size: var(--fs-xs); font-weight: 700; color: var(--muted); }
 .shell-panel__scoperow { display: flex; align-items: flex-start; gap: 6px; }
 .shell-panel__later { flex: none; }
 .shell-panel__later[aria-pressed="false"] { color: var(--muted); }
@@ -768,8 +772,8 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 .shell-panel__scopes .chip { padding: 3px 8px; font: inherit; font-size: var(--fs-sm); font-weight: 500; color: inherit; cursor: pointer; } /* 横 8px: 375px で1行に3つ入る */
 .shell-panel__scopes .chip.is-current { background: var(--accent-soft); border-color: var(--accent); } /* いま流している範囲（.chip--me と同じ） */
 .shell-panel__scopes .chip.is-pending { color: var(--accent); font-weight: 700; border-color: var(--accent); border-style: dashed; } /* 次の曲から変える範囲 */
-/* 外枠のお知らせ: 下のバーのすぐ上（見た目は .toast） */
-.shell-toasts { top: auto; bottom: 56px; z-index: 60; }
+/* 外枠のお知らせ: 上（.toasts と同じ位置）。ポップアップより手前 */
+.shell-toasts { z-index: 60; }
 @media (prefers-reduced-motion: reduce) { .shell-panel, .audio-bubble, .audio-player__bar { transition: none; } }
 /* 中のヘッダーの丸に再生のアイコン: 再生中は時計回りに回す（player.js が中の <html> に .is-shuffle-playing を付ける） */
 @keyframes shuffle-spin { to { rotate: 360deg; } }
