@@ -2,6 +2,7 @@
  * player.js — シャッフル再生の外枠（player.php）の動き。管理者だけ
  *   ・曲の一覧は api_shuffle.php（ミックス音源をチャプターで区切ったもの）。ここで混ぜて、1曲ずつ流す
  *   ・曲の途中から流すときは ?from=バイト位置（band.php のプレーヤー setupAudioPlayers と同じ見積もり: 時刻 × 大きさ ÷ 全体の長さ）
+ *     曲の終わりは &to=バイト位置 で送るのを止めてもらう（1曲分だけ受け取る。lib/audio_stream.php）
  *     全体の長さは audioProbeDuration（app_player.js）。曲の終わり（end_ms）を過ぎたら次の曲へ。シーク・曲の頭へも同じ方法で読み直す
  *   ・中のページ（iframe）を移るたびに、外枠の題名と URL（?u=）を中に合わせる。外のサイト・ログアウトのリンクは外枠ごと移る
  *   ・中のヘッダーの「シャッフル再生」: 範囲のリンクは window.top.abbeyShuffle、アイコンは window.top.abbeyShufflePanel（再生中の曲のポップアップ）
@@ -101,14 +102,18 @@
   const playAt = async (t, play) => {
     const it = cur();
     let off = 0;
-    if (t > 0) {
+    let to = '';
+    if (t > 0 || it.end_ms !== null) {
       const total = await probe(it);
       if (it !== cur()) return; // 待っている間に次へ進んだ
-      if (!total) { skip(); return; }
-      off = Math.round(t * it.size / total);
+      if (total) {
+        off = Math.round(t * it.size / total);
+        // 曲の終わり + 3秒分で送るのを止めてもらう（1曲分だけ受け取る。見積もりのずれで早く切れないよう余裕を持たせ、止めるのは timeupdate）
+        if (it.end_ms !== null) to = `&to=${Math.round((it.end_ms / 1000 + 3) * it.size / total)}`;
+      } else if (t > 0) { skip(); return; } // 頭からなら長さがわからなくても全部流せる
     }
     base = off > 0 ? t : 0;
-    audio.src = off > 0 ? `${it.src}&from=${off}` : it.src;
+    audio.src = off > 0 ? `${it.src}&from=${off}${to}` : it.src + to;
     if (play) audio.play().catch(() => setIcon(false));
   };
   // i 曲目を用意する。play: true で鳴らす（false は頭で止めておく）
@@ -123,7 +128,7 @@
     curEl.textContent = fmt(0);
     await playAt(cur().start_ms / 1000, play);
     const nx = queue[(idx + 1) % queue.length]; // 次の曲の長さを先に調べておく（次へ進むときに待たない）
-    if (nx && nx.start_ms > 0) probe(nx);
+    if (nx && (nx.start_ms > 0 || nx.end_ms !== null)) probe(nx);
   };
   const next = () => go(idx + 1, true);
   const restart = () => { if (cur()) playAt(cur().start_ms / 1000, true); };
