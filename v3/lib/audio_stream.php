@@ -18,7 +18,7 @@ const AUDIO_LIGHT_KBPS = 160;
 /**
  * 再生用の軽い MP3 のパス。使えなければ null（元のファイルを流す）
  *   無ければここで作る。同時の要求は flock で1つだけが作り、ほかは待つ
- *   小さくならなかった（元が 160k 以下）・作れなかったときは空のファイルを印に置き、作り直さない（作り直すときは印を消す）
+ *   1割以上小さくならなかった（元が 160k 前後以下）・作れなかったときは空のファイルを印に置き、作り直さない（作り直すときは印を消す）
  */
 function audio_light(string $path): ?string
 {
@@ -53,7 +53,8 @@ function audio_light_make(string $path, string $light): void
         clearstatcache(true, $part);
         $n = is_file($part) ? (int)filesize($part) : 0;
         $why = $code !== 0 || $n === 0 ? "ffmpeg exit $code: $log" : null;
-        if ($why === null && $n < (int)filesize($path) && rename($part, $light)) {
+        // 1割も減らないなら作らない（元が 160k のときに同じ大きさの複製が増えるため）
+        if ($why === null && $n < (int)filesize($path) * 0.9 && rename($part, $light)) {
             return;
         }
     }

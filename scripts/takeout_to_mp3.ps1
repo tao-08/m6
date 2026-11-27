@@ -2,7 +2,7 @@
 #   powershell -File scripts/takeout_to_mp3.ps1 -Takeout "C:\...\Takeout\YouTube and YouTube Music" -Out "C:\...\mp3"
 #   Takeout の動画のファイル名はタイトルなので、Takeout に入っている動画の一覧 CSV（動画 ID とタイトル）で動画 ID に直す
 #   ファイル名がすでに動画 ID（11文字）のものはそのまま使う。同じタイトルが2本以上ある動画は変換せずに名前を出す（手で「動画ID.mp4」に直してもう一度）
-#   128kbps（25分で約24MB）。60MB（約65分）を超えるとサイトに上げられない
+#   160kbps（25分で約30MB）。60MB（約52分）を超えるとサイトに上げられない
 param(
     [Parameter(Mandatory)][string]$Takeout,
     [Parameter(Mandatory)][string]$Out,
@@ -44,7 +44,7 @@ foreach ($f in Get-ChildItem $Takeout -Recurse -Include *.mp4, *.mov, *.webm, *.
     $dst = Join-Path $Out "$($ids[0]).mp3"
     if (Test-Path $dst) { continue } # 変換済み（やり直すときは消す）
     Write-Host "$($f.Name) → $($ids[0]).mp3"
-    & $Ffmpeg -v error -y -i $f.FullName -vn -map_metadata -1 -c:a libmp3lame -b:a 128k -ar 44100 $dst
+    & $Ffmpeg -v error -y -i $f.FullName -vn -map_metadata -1 -c:a libmp3lame -b:a 160k -ar 44100 $dst
     if ($LASTEXITCODE -ne 0) { $skipped += "$($f.Name)（ffmpeg が失敗）"; Remove-Item $dst -ErrorAction SilentlyContinue; continue }
     if ((Get-Item $dst).Length -gt 60MB) { $skipped += "$($ids[0]).mp3（60MB を超えるので上げられない）" }
 }
