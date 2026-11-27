@@ -227,9 +227,9 @@ $nav = [
             <?= icon('dark_mode', 'icon-moon') ?>
         </button>
         <?php endif; ?>
-        <?php if ($user && $user['admin']): ?>
+        <?php if ($user): ?>
         <?php
-        // シャッフル再生（管理者だけ）: 範囲を選ぶと外枠 player.php に今のページを入れて鳴らす。外枠の中では app_player.js の setupShuffleLinks が外枠に範囲だけ渡し、アイコンは外枠の再生中の曲を開く（再生中は回る）
+        // シャッフル再生: 範囲を選ぶと外枠 player.php に今のページを入れて鳴らす。外枠の中では app_player.js の setupShuffleLinks が外枠に範囲だけ渡し、アイコンは外枠の再生中の曲を開く（再生中は回る）
         $shuffleUri = (string)($_SERVER['REQUEST_URI'] ?? '');
         $shuffleU = preg_replace('~^.*/~', '', (string)parse_url($shuffleUri, PHP_URL_PATH)) . (($q = parse_url($shuffleUri, PHP_URL_QUERY)) ? '?' . $q : '');
         $shuffleScopes = [['all', 0, 'サイト全体']];
@@ -238,7 +238,7 @@ $nav = [
         $shuffleHas = static function (string $page, int $id): bool {
             $w = ['live' => 'd.live_id = ?', 'band' => 'b.band_id = ?', 'member' => 'b.band_id IN (SELECT band_id FROM band_member WHERE member_id = ?)'][$page];
             $st = db()->prepare("SELECT 1 FROM band_audio_chapter c JOIN band b ON b.band_id = c.band_id JOIN live_day d ON d.live_day_id = b.live_day_id
-                WHERE c.kind = 'song' AND $w LIMIT 1");
+                WHERE c.kind = 'song' AND $w" . (is_admin() ? '' : " AND c.audio_key NOT LIKE 'y:%'") . ' LIMIT 1'); // YouTube は準備中（管理者だけ）
             $st->execute([$id]);
             return (bool)$st->fetchColumn();
         };

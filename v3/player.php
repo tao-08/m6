@@ -1,7 +1,7 @@
 <?php
 /**
  * =====================================================================
- *  player.php — シャッフル再生の外枠（管理者だけ）
+ *  player.php — シャッフル再生の外枠
  * =====================================================================
  *  ページを移っても音が切れないように、サイトは全面の <iframe> の中で動かし、この外枠の下のバーで鳴らす。
  *  中のページは今までどおり（リンク・保存・戻る）。外枠ごと読み直したとき（更新・URL を打つ）だけ止まる。
@@ -15,7 +15,7 @@
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/drive.php'; // mix_tag
-require_admin();
+require_login();
 
 $scope = in_array($_GET['scope'] ?? '', ['live', 'band', 'member', 'artist'], true) ? (string)$_GET['scope'] : 'all';
 $id = $scope === 'all' ? 0 : (int)($_GET['id'] ?? 0);
@@ -108,6 +108,6 @@ if (!preg_match('/^[A-Za-z0-9_-]*(\.php)?(\?[^#\s]*)?$/', $u) || preg_match('/^p
     <audio data-shell-audio preload="none"></audio>
     <div class="toasts shell-toasts" data-shell-toasts aria-live="polite"></div>
 </div>
-<script type="application/json" id="shell-data"><?= json_encode(['scope' => $scope, 'id' => $id, 'resume' => isset($_GET['resume'])], JSON_HEX_TAG) ?></script>
+<script type="application/json" id="shell-data"><?= json_encode(['scope' => $scope, 'id' => $id, 'resume' => isset($_GET['resume']), 'admin' => is_admin()], JSON_HEX_TAG) ?></script>
 </body>
 </html>

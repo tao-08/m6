@@ -1,7 +1,7 @@
 <?php
 /**
  * =====================================================================
- *  api_shuffle.php — シャッフル再生する曲の一覧（JSON）。player.php の外枠が呼ぶ。管理者だけ
+ *  api_shuffle.php — シャッフル再生する曲の一覧（JSON）。player.php の外枠が呼ぶ。YouTube の曲は管理者だけ（準備中）
  * =====================================================================
  *  MIX の無い曲は、バンドの YouTube（song.video_start = 曲の始まりの秒・video_no = 何本目の動画。migrations/145・150）から流す: video = 動画 ID、src = "yt:動画 ID"、
  *    終わり = 同じ動画で次に始まる曲（無ければ動画の最後）。曲の始まりが1つも無い動画は流さない（動画まるごとは長いため）
@@ -27,11 +27,6 @@ header('Content-Type: application/json; charset=utf-8');
 if (current_user() === null) {
     http_response_code(401);
     echo json_encode(['error' => 'ログインしてください'], JSON_UNESCAPED_UNICODE);
-    exit;
-}
-if (!is_admin()) {
-    http_response_code(403);
-    echo json_encode(['error' => '管理者のみ実行できます'], JSON_UNESCAPED_UNICODE);
     exit;
 }
 
@@ -207,12 +202,12 @@ foreach ($groups as $key => $chs) {
             'art'      => $song['artwork_url'] ? preg_replace('/\d+x\d+bb/', '300x300bb', (string)$song['artwork_url']) : null, // band.php のセトリと同じ 300px 版
             'album'    => $song['album_title'] !== null ? (string)$song['album_title'] : null,
             'band_id'  => $bandId,
-            'date'     => $c['held_on'], // 出演日（絞り込みでライブを日付順に並べる）
             'band'     => (string)$c['band'],
             'live_id'  => (int)$c['live_id'],
             'live'     => (string)$c['live'],
             'players'  => array_values($players),
             'year'     => (int)$c['fiscal_year'],
+            'date'     => $c['held_on'], // 出演日（絞り込みでライブを日付順に並べる）
             'src'      => $src[$key][0],
             'size'     => $src[$key][1],
             'start_ms' => (int)$c['at_ms'],
@@ -257,6 +252,9 @@ foreach ($videoUrls as $bandId => $urls) {
     }
 }
 // 出演順・セトリ順に（MIX と YouTube が混ざるため並べ直す）
+if (!is_admin()) { // YouTube は準備中: 管理者以外は MIX だけ
+    $items = array_values(array_filter($items, static fn($it) => empty($it['video']) && empty($it['yt'])));
+}
 usort($items, static fn($x, $y) => $x['_o'] <=> $y['_o']);
 foreach ($items as &$it) {
     unset($it['_o']);
