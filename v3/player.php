@@ -49,6 +49,7 @@ if (!preg_match('/^[A-Za-z0-9_-]*(\.php)?(\?[^#\s]*)?$/', $u) || preg_match('/^p
     <?php if (($instCss = instrument_color_css()) !== ''): ?><style><?= $instCss ?></style><?php endif; // 演奏者の楽器ラベルの色（partials/header.php と同じ） ?>
     <script src="<?= asset_url('assets/app_player.js') ?>" defer></script><!-- audioProbeDuration だけ使う（関数の定義だけで、何も動かさない） -->
     <script src="<?= asset_url('assets/player.js') ?>" defer></script>
+    <link rel="preconnect" href="https://www.youtube.com"><link rel="preconnect" href="https://i.ytimg.com"><!-- YouTube の曲の読み込みを早める -->
 </head>
 <body class="shell">
 <iframe class="shell__frame" data-shell-frame name="site" src="<?= h($u !== '' ? $u : './') ?>" title="AbbeyRoad.online"></iframe>

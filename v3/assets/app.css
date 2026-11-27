@@ -736,14 +736,20 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 .shell-panel { position: fixed; top: 56px; right: 12px; z-index: 50; width: 360px; max-width: calc(100vw - 24px); max-height: calc(100dvh - 110px); overflow-y: auto; padding: 14px; display: grid; gap: 8px;
   border-radius: var(--r-lg); background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow-pop); }
 /* 開け閉めの動き: 右上（アイコンの側）から ふわっと。hidden の display: none まで transition で待つ（allow-discrete）。出だしは @starting-style */
-.shell-panel { transform-origin: top right; transition: opacity var(--t-base) ease, scale var(--t-base) var(--ease-out), display var(--t-base) allow-discrete; }
-.shell-panel[hidden] { display: none; opacity: 0; scale: .96; }
+.shell-panel { transform-origin: top right; transition: opacity var(--t-base) ease, scale var(--t-base) var(--ease-out), visibility var(--t-base); }
+/* 閉じても display: none にしない（中の YouTube が iPhone で消えて、開き直すと再生できなくなる）。見えなくして押せなくするだけ */
+.shell-panel[hidden] { display: grid !important; visibility: hidden; pointer-events: none; opacity: 0; scale: .96; }
 @starting-style { .shell-panel:not([hidden]) { opacity: 0; scale: .96; } }
 .shell-panel__head { display: flex; gap: 12px; align-items: center; min-width: 0; }
 .shell-panel__art { flex: none; width: 104px; height: 104px; border-radius: var(--r-md); overflow: hidden; display: grid; place-items: center; background: var(--surface-2); color: var(--muted); }
 .shell-panel__video { width: 100%; aspect-ratio: 16 / 9; min-height: 200px; border-radius: var(--r-md); overflow: hidden; background: #000; } /* YouTube の曲: ジャケットの代わりに上に動画（高さ 200px 以上は YouTube の決まり） */
+.shell-panel__video[hidden] { display: block !important; position: absolute; top: 0; left: 0; width: 356px; visibility: hidden; pointer-events: none; } /* MIX の曲の間も同じ理由で消さない（次の動画を先に読んでおく） */
 .shell-panel__video iframe { display: block; width: 100%; height: 100%; border: 0; }
 .shell-panel.is-video .shell-panel__art { display: none; }
+/* 閉じても YouTube の曲を流すときは、動画だけ右下（下のバーの上）に小さく残す。幅は高さ 200px になる分（YouTube の決まり） */
+.shell-panel.is-mini { width: 356px; padding: 0; overflow: hidden; transform-origin: bottom right; }
+.shell-panel.is-mini > :not([data-shell-yt]) { display: none; }
+.shell-panel.is-mini .shell-panel__video { border-radius: 0; }
 .shell-panel__art img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .shell-panel__art .icon { font-size: 40px; }
 .shell-panel__art img:not([hidden]) ~ .icon { display: none; }

@@ -45,6 +45,7 @@
     let player = null;
     let ready = null;
     let src = '';
+    let cued = ''; // 先に頭出ししておいた動画（cue）
     let paused = true;
     let vol = 1;
     let timer = 0;
@@ -84,8 +85,9 @@
       pause() { player?.pauseVideo?.(); if (!paused) { paused = true; clearInterval(timer); fire('pause'); } },
       // 動画 id の sec 秒から。play: false は頭出しだけ
       async load(id, sec, play) {
-        const same = src === id && player?.getVideoData?.().video_id === id;
+        const same = (src === id || cued === id) && player?.getVideoData?.().video_id === id;
         src = id;
+        cued = '';
         try { await api(); } catch (e) { fire('error'); return; }
         if (src !== id) return; // 待っている間に別の曲へ
         if (same) { player.seekTo(sec, true); if (play) player.playVideo(); return; } // 同じ動画の中は読み直さず飛ぶ
@@ -93,6 +95,13 @@
         if (play) player.loadVideoById(o); else player.cueVideoById(o);
       },
       stop() { src = ''; this.pause(); player?.stopVideo?.(); },
+      // 次の曲の動画を、前の曲（MIX）を流している間に読んでおく（切り替わったときに待たない）
+      async cue(id, sec) {
+        if (cued === id) return;
+        cued = id;
+        try { await api(); } catch (e) { return; }
+        if (cued === id && !src) player.cueVideoById({ videoId: id, startSeconds: sec });
+      },
     }));
   })();
   let audio = el; // いま鳴らしているもの: el（MIX）か yt
@@ -228,12 +237,18 @@
     ], { duration: total, iterations: Infinity });
   };
   const marqueeAll = () => [titleEl, bandEl, ...panel.querySelectorAll('.shell-panel__meta > :not(.shell-panel__liveline), .shell-panel__live')].forEach(marquee);
+  const isOpen = () => !panel.hidden && !panel.classList.contains('is-mini');
   const setPanel = (open) => {
-    panel.hidden = !open;
+    // YouTube の曲は、閉じても動画だけ右下に小さく残して流し続ける（見えない所で流さないのは YouTube の決まり）
+    const mini = !open && audio === yt && !!yt.getAttribute();
+    panel.classList.toggle('is-mini', mini);
+    panel.hidden = !open && !mini;
     const sum = innerDoc()?.querySelector('[data-shuffle-menu] > summary');
     sum?.classList.toggle('is-active', open);
+    if (mini) { panel.style.top = 'auto'; panel.style.right = ''; panel.style.bottom = `${bar.offsetHeight + 8}px`; return; }
+    panel.style.bottom = '';
+    if (!open) return; // 閉じるときは位置を変えない（消える動きの途中で CSS の位置へ飛ぶため）
     // 中のヘッダーのアイコンの真下に、右端をそろえて出す（iframe は外枠の左上にあるので座標はそのまま）。見つからなければ CSS の位置
-    if (!open) { if (audio === yt) yt.pause(); return; } // 閉じるときは位置を変えない（消える動きの途中で CSS の位置へ飛ぶため）。動画は見えない所で流さない
     const r = sum ? sum.getBoundingClientRect() : null;
     panel.style.top = r && r.width ? `${r.bottom + 8}px` : '';
     // 右端をアイコンにそろえる。ただし画面の左右からはみ出さない（狭い画面ではアイコンより右に寄る）
@@ -339,11 +354,11 @@
       ramp += 1;
       tail = null;
       yt.volume = 1;
-      if (play) setPanel(true);
       yt.load(it.video, t, play);
+      if (play && panel.hidden) setPanel(false); // 閉じていたら小さく出す
       return;
     }
-    if (audio === yt) { yt.stop(); audio = el; }
+    if (audio === yt) { yt.stop(); audio = el; if (panel.classList.contains('is-mini')) setPanel(false); }
     // 同じ音源で、読み込み済みの範囲かつこの曲の終わりまで受け取っているなら、読み直さずに動かす（通信量を減らす）
     const rel = t - base;
     if (elSrc === it.src && el.readyState > 0 && (endOf(it) ?? Infinity) / 1000 <= elEnd
@@ -398,6 +413,7 @@
     const nx = queue[(idx + 1) % queue.length]; // 次の曲の長さを先に調べておく（次へ進むときに待たない）
     if (nx && (nx.start_ms > 0 || nx.end_ms !== null)) probe(nx);
     if (nx && nx.band_id !== cur().band_id) refresh(nx); // 次の曲を先に取り直しておく（同じバンドなら開いたときに読んだ分で足りる）
+    if (nx?.video && audio !== yt) yt.cue(nx.video, nx.start_ms / 1000);
   };
   // 曲送り・戻しの動き: d = 1（次へ。右から入る）/ -1（前へ。左から入る）。入ってくる側だけ動かす（.2s・--ease-out と同じ）
   const reduced = matchMedia('(prefers-reduced-motion: reduce)');
@@ -453,7 +469,7 @@
     syncUrl();
   };
 
-  on('play', () => { setIcon(true); if (audio === yt && panel.hidden) setPanel(true); }); // 動画は見える所で
+  on('play', () => { setIcon(true); if (audio === yt && panel.hidden) setPanel(false); }); // 動画は見える所で（閉じていたら小さく出す）
   on('pause', () => { setIcon(false); if (cur()) savePos(nowSec()); });
   on('playing', () => { fails = 0; });
   on('ended', next);
@@ -605,10 +621,10 @@
   }
 
   // ポップアップ: 下のバーの曲名・中のアイコンで開け閉め。外を押す・Esc で閉じる
-  titleEl.addEventListener('click', () => setPanel(panel.hidden));
-  window.abbeyShufflePanel = () => setPanel(panel.hidden);
+  titleEl.addEventListener('click', () => setPanel(!isOpen()));
+  window.abbeyShufflePanel = () => setPanel(!isOpen());
   const closeOutside = (e) => {
-    if (!panel.hidden && !panel.contains(e.target) && e.target !== titleEl && !e.target.closest?.('[data-shuffle-menu] > summary')) setPanel(false);
+    if (isOpen() && !panel.contains(e.target) && e.target !== titleEl && !e.target.closest?.('[data-shuffle-menu] > summary')) setPanel(false);
   };
   const closeOnEsc = (e) => { if (e.key === 'Escape' && !filterDlg.open) setPanel(false); }; // 絞り込みの Esc はモーダルだけ閉じる
   document.addEventListener('click', closeOutside);
