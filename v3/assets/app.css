@@ -759,7 +759,7 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 .shell-panel__ctl { position: relative; display: flex; justify-content: center; align-items: center; gap: 16px; }
 .shell-panel__ctl > .shell-panel__shuffle { position: absolute; left: 0; } /* .icon-btn の position: relative（後ろの行）に負けないように */
 .shell-panel__right { position: absolute; right: 0; display: flex; gap: 2px; } /* 単位の切り替えと、バンド単位のときだけ通し */
-.shell-panel__cont { transition: opacity var(--t-base) ease, translate var(--t-base) var(--ease-out), visibility var(--t-base); }
+.shell-panel__right .shell-panel__cont { transition: opacity var(--t-base) ease, translate var(--t-base) var(--ease-out), visibility var(--t-base), color var(--t-fast) ease, transform var(--t-fast) ease; } /* .icon-btn の transition-property（押したときの縮み。後ろの行）に消されないよう詳しく書く */
 .shell-panel__right:not(.is-band) .shell-panel__cont { opacity: 0; translate: 38px 0; visibility: hidden; } /* 曲単位では単位ボタンの下に隠し、バンド単位で左へ滑り出る */
 .shell-panel__unit .icon:last-child, .shell-panel__unit.is-band .icon:first-child { display: none; } /* 曲単位 = 音符 / バンド単位 = 重なった音符（library_music） */
 .shell-panel__unit.is-band .icon:last-child { display: inline; }
