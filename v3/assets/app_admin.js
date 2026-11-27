@@ -534,3 +534,29 @@ function setupAliasField() {
 
 /* 楽器ラベル（.part）のポップアップは、共通の data-tip（setupTip）に統一した。
    以前ここにあった専用のポップアップ（.part-tip）は二重に出るので削除 */
+
+/**
+ * 解析の状況（setlist_jobs.php?tab=chapter）の「未解析を解析」。api_chapter_bulk.php に頼んで、画面は移らずに状態だけ「順番待ち」にする
+ */
+function setupChapterBulk() {
+  document.querySelectorAll('[data-chapter-bulk]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const live = btn.closest('[data-chapter-live]');
+      btn.disabled = true;
+      try {
+        const { count } = await apiPost('api_chapter_bulk', { live_id: Number(live.dataset.chapterLive) }, '解析を始められませんでした');
+        live.querySelectorAll('[data-chapter-state="none"], [data-chapter-state="error"]').forEach((s) => {
+          s.dataset.chapterState = 'queued';
+          s.textContent = '順番待ち';
+          s.removeAttribute('data-tip');
+          s.style.cursor = '';
+        });
+        flashToast(count ? `${count}本を解析します` : '未解析の動画はありません');
+        btn.remove();
+      } catch (e) {
+        flashToast(e.message, 'error');
+        btn.disabled = false;
+      }
+    });
+  });
+}

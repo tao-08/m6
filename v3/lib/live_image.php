@@ -235,7 +235,9 @@ function live_image_unlink(string $fileName): void
     if (preg_match('/^[0-9a-f]{16}\.pdf$/', $fileName)) {
         @unlink(LIVE_IMAGE_DIR . '/' . $fileName);
     } elseif (live_file_is_other($fileName)) {
-        @unlink(LIVE_IMAGE_DIR . '/' . live_file_disk_name($fileName));
+        foreach ([$p = LIVE_IMAGE_DIR . '/' . live_file_disk_name($fileName), ...(glob($p . '.[0-9]*') ?: [])] as $f) { // 再生用の軽い MP3（lib/audio_stream.php）も
+            @unlink($f);
+        }
     } elseif (preg_match('/^[0-9a-f]{16}\.jpg$/', $fileName)) {
         @unlink(LIVE_IMAGE_DIR . '/' . $fileName);
         @unlink(LIVE_IMAGE_DIR . '/t_' . $fileName);

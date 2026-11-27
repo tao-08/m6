@@ -623,6 +623,10 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 /* 操作部: 再生ボタン・再生位置の棒・時間。チャプターがあるときは、棒の上に吹き出し（.audio-bubble）を並べる
    吹き出しは棒の幅の中に収め（端では中身だけ内側へ寄せ）、三角は本当の位置を指す。--x は 0〜1 の位置、--shift は寄せた分 */
 .audio-player__bar { display: flex; align-items: center; gap: 8px; }
+/* YouTube のチャプター編集（video_chapters.php）: 上に動画。figcaption は編集ボタンだけなので右に寄せる */
+.audio-player__yt { aspect-ratio: 16 / 9; margin-bottom: 8px; overflow: hidden; border-radius: var(--r-md); background: #000; }
+.audio-player__yt > iframe { display: block; width: 100%; height: 100%; }
+.audio-player--yt .drive-player__name { justify-content: flex-end; }
 .audio-player__play { flex: none; display: inline-grid; place-items: center; width: var(--ctl-h); height: var(--ctl-h); padding: 0; border: 0; border-radius: var(--r-full);
   background: var(--accent); color: #fff; cursor: pointer; }
 .audio-player__play .icon { font-size: var(--fs-2xl); }
@@ -782,22 +786,28 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 .shell-panel__ctl .audio-player__play:disabled, .shell-panel__ctl .icon-btn:disabled { opacity: .5; cursor: default; }
 /* 範囲: チップを折り返して並べる。左の .shell-panel__later で すぐ / 次の曲から（ON は赤） */
 .shell-panel__subhead { margin: 4px 0 0; padding-top: 10px; border-top: 1px solid var(--border); font-size: var(--fs-xs); font-weight: 700; color: var(--muted); }
-.shell-panel__scoperow { display: flex; align-items: flex-start; gap: 6px; }
-.shell-panel__later { flex: none; }
 .shell-panel__subhead { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.shell-panel__srcs { display: flex; gap: 4px; }
+.shell-panel__srcs { display: flex; align-items: center; gap: 4px; }
 .shell-panel__src { display: inline-flex; align-items: center; padding: 4px; border: 0; border-radius: var(--r-sm); background: none; cursor: pointer; transition: opacity var(--t-fast), filter var(--t-fast); }
 .shell-panel__src .youtube-icon { width: 25px; height: 18px; }
 .shell-panel__src[aria-pressed="false"] { opacity: .35; filter: grayscale(1); } /* 外した音源 */
-.shell-panel__filter { flex: none; margin-left: auto; color: var(--muted); }
+.shell-panel__filter { color: var(--muted); }
 .shell-panel__filter[aria-pressed="true"] { color: var(--accent); } /* 絞り込み中 */
 .shell-filter__years { max-height: 50vh; overflow: auto; margin-top: 12px; }
-.shell-filter__years summary { display: flex; align-items: center; gap: 8px; padding: 6px 0; font-weight: 700; cursor: pointer; list-style: none; }
-.shell-filter__years summary::-webkit-details-marker { display: none; }
-.shell-filter__years summary .icon { margin-left: auto; color: var(--muted); transition: transform var(--t-base) var(--ease-out); }
-.shell-filter__years details[open] > summary .icon { transform: rotate(180deg); }
-@media (prefers-reduced-motion: reduce) { .shell-filter__years summary .icon { transition: none; } }
+/* 絞り込み: 読み込んだ年度がふわっと出る・年度を開くとライブが下りてくる（モーダル自体の出入りは .modal） */
+.shell-filter__years > details { animation: soft-in var(--t-base) var(--ease-out) backwards; }
+.shell-filter__years details[open] > ul { animation: soft-in var(--t-base) var(--ease-out); }
+@media (prefers-reduced-motion: reduce) { .shell-filter__years > details, .shell-filter__years details[open] > ul { animation: none; } }
+:is(.shell-filter__years, .chapter-years) summary { display: flex; align-items: center; gap: 8px; padding: 6px 0; font-weight: 700; cursor: pointer; list-style: none; }
+:is(.shell-filter__years, .chapter-years) summary::-webkit-details-marker { display: none; }
+:is(.shell-filter__years, .chapter-years) summary .icon { margin-left: auto; color: var(--muted); transition: transform var(--t-base) var(--ease-out); }
+:is(.shell-filter__years, .chapter-years) details[open] > summary .icon { transform: rotate(180deg); }
+@media (prefers-reduced-motion: reduce) { :is(.shell-filter__years, .chapter-years) summary .icon { transition: none; } }
 .shell-filter__years ul { list-style: none; margin: 0 0 6px; padding: 0 0 0 24px; display: grid; gap: 6px; }
+.chapter-years { margin-top: 12px; }
+.chapter-years details details { margin-left: 16px; }
+.chapter-years ul { list-style: none; margin: 4px 0 8px; padding: 0 0 0 16px; display: grid; gap: 6px; }
+.chapter-years li { display: flex; gap: 8px; align-items: baseline; justify-content: space-between; }
 .shell-panel__later[aria-pressed="false"] { color: var(--muted); }
 .shell-panel__later[aria-pressed="true"] { color: var(--accent); }
 .shell-panel__scopes { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; align-self: center; }

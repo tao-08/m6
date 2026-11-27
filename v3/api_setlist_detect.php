@@ -93,21 +93,7 @@ if (setlist_job_running_count() >= SETLIST_JOB_MAX) {
 $flex = ($_POST['flex'] ?? '1') !== '0';
 setlist_job_put($bandId, ['state' => 'running', 'at' => $startedAt = time(), 'flex' => $flex]); // flex は setlist_jobs.php に出す
 
-// 画面には先に返して、接続を切る。このあとの処理は裏で続く（画面を閉じても止まらない）
-$body = json_encode(['state' => 'running']);
-header('Content-Length: ' . strlen($body));
-header('Connection: close');
-echo $body;
-if (function_exists('fastcgi_finish_request')) {
-    fastcgi_finish_request();
-} elseif (function_exists('litespeed_finish_request')) {
-    litespeed_finish_request();
-} else {
-    while (ob_get_level() > 0) {
-        ob_end_flush();
-    }
-    flush();
-}
+api_detach(['state' => 'running']); // 画面には先に返して、接続を切る。このあとの処理は裏で続く
 
 try {
     // 1本ずつ順に聴かせてつなぐ。2本以上のときだけ「何本目か」を伝える（gemini_setlist の $part）

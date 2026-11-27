@@ -10,7 +10,11 @@
  *    {"action": "replace", "band_id": 12, "key": "a:3", "chapters": [{"kind": "mc", "ms": 0}, ...]}  その音源のチャプターを全部置き換える
  *    {"action": "delete", "band_id": 12, "chapter_id": 5}
  *    {"action": "move", "band_id": 12, "chapter_id": 5, "at_ms": 62000}  チャプターの時間を直す
- *      key … 'a:<band_audio の image_id>'（アップロードした MP3）か 'd:<ドライブのファイル ID>'（音源だけ）
+ *      key … 'a:<band_audio の image_id>'（アップロードした MP3）か 'd:<ドライブのファイル ID>'（音源だけ）か 'y:<動画 ID>'（バンドの YouTube。video_chapters.php）
+ *    {"action": "auto", "band_id": 12, "key": "a:3"}  Gemini に聴かせて {"draft": [{kind, ms}, ...]} を返す（保存は replace）
+ *      YouTube（y:）は裏で解析する（lib/chapter_job.php）: すぐ {"state": "running"} を返す。結果は status で見る
+ *    {"action": "status", "band_id": 12, "key": "y:…"}   {"state": "none" | "queued" | "running" | "done" | "error", "draft"?, "error"?}
+ *    {"action": "discard", "band_id": 12, "key": "y:…"}  下書き・解析中のものを消す（「やめる」「中止」）。replace でも消える
  *  レスポンス（JSON）: {"chapters": [{"id", "kind", "ms"}, ...]}  その音源の今のチャプター全部（時間順）
  *  エラー            : {"error": "..."}（400 / 401 / 404 / 405）
  * =====================================================================
@@ -45,9 +49,9 @@ function audio_chapter_valid(mixed $kind, mixed $ms): bool
     return in_array($kind, ['mc', 'song', 'end'], true) && is_int($ms) && $ms >= 0 && $ms <= AUDIO_CHAPTER_MAX_MS;
 }
 
-if (in_array($action, ['add', 'replace', 'auto'], true)) {
+if (in_array($action, ['add', 'replace', 'auto', 'status', 'discard'], true)) {
     $key = (string)($body['key'] ?? '');
-    $items = $action === 'auto' ? [] : [['kind' => $body['kind'] ?? null, 'ms' => $body['at_ms'] ?? null]];
+    $items = in_array($action, ['auto', 'status', 'discard'], true) ? [] : [['kind' => $body['kind'] ?? null, 'ms' => $body['at_ms'] ?? null]];
     if ($action === 'replace') {
         $items = is_array($body['chapters'] ?? null) ? array_values($body['chapters']) : null;
         if ($items === null) {
@@ -69,11 +73,42 @@ if (in_array($action, ['add', 'replace', 'auto'], true)) {
     } elseif (str_starts_with($key, 'd:') && drive_id_valid(substr($key, 2))) {
         $st = $pdo->prepare("SELECT 1 FROM band_drive_file WHERE band_id = ? AND file_id = ? AND mime_type LIKE 'audio/%'");
         $st->execute([$bandId, substr($key, 2)]);
+    } elseif (preg_match('/^y:([A-Za-z0-9_-]{11})$/', $key, $y)) {
+        require_once __DIR__ . '/lib/youtube.php';
+        $st = $pdo->prepare('SELECT band_id, youtube_url FROM band WHERE band_id = ?');
+        $st->execute([$bandId]);
+        $ids = array_map('youtube_video_id', band_video_urls($pdo, $st->fetchAll())[$bandId] ?? []);
+        $st = null;
+        if (!in_array($y[1], $ids, true)) {
+            fail(404, '動画が見つかりません');
+        }
     } else {
         fail(400, '音源の指定が正しくありません');
     }
-    if (!$st->fetchColumn()) {
+    if ($st !== null && !$st->fetchColumn()) {
         fail(404, '音源が見つかりません');
+    }
+    if (in_array($action, ['status', 'discard'], true) || ($action === 'auto' && isset($y))) { // YouTube は裏で（lib/chapter_job.php）
+        require_once __DIR__ . '/lib/chapter_job.php';
+        if (!isset($y)) {
+            fail(400, '音源の指定が正しくありません');
+        }
+        $job = chapter_job_get($y[1]);
+        if ($action === 'discard') {
+            chapter_job_put($y[1], null);
+            api_ok(['state' => 'none']);
+        }
+        if ($action === 'status' || in_array($job['state'] ?? '', ['queued', 'running'], true)) { // もう解析している（二重に払わない）
+            api_ok($job ? array_intersect_key($job, ['state' => 1, 'draft' => 1, 'error' => 1]) : ['state' => 'none']);
+        }
+        $cfg = chapter_job_config() ?? fail(503, '自動チャプターは未設定です');
+        if (chapter_job_running_count() >= CHAPTER_JOB_MAX) {
+            fail(429, 'ほかの動画を解析中です。終わってから試してください');
+        }
+        chapter_job_put($y[1], ['state' => 'running', 'band_id' => $bandId, 'at' => $at = time()]);
+        api_detach(['state' => 'running']);
+        chapter_job_run($y[1], $bandId, $at, $cfg);
+        exit;
     }
     if ($action === 'auto') { // Gemini に聴かせて、チャプターの下書きだけ返す（保存は replace）
         require_once __DIR__ . '/lib/gemini_chapters.php';
@@ -131,6 +166,10 @@ if (in_array($action, ['add', 'replace', 'auto'], true)) {
         } catch (Throwable $e) {
             $pdo->rollBack();
             throw $e;
+        }
+        if (isset($y)) { // 下書きを保存したので消す（lib/chapter_job.php）
+            require_once __DIR__ . '/lib/chapter_job.php';
+            chapter_job_put($y[1], null);
         }
     }
 } elseif ($action === 'delete') {

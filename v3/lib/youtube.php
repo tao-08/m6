@@ -316,6 +316,16 @@ function youtube_match_bands(array $videos, array $bands): array
 }
 
 /**
+ * 動画のチャプター（audio_key 'y:動画ID'）の曲の番号に当てる曲（SE 以外・セトリ順）。video_chapters.php と api_shuffle.php で共通
+ *   動画が1本なら全曲、2本以上ならその動画に割り当てた曲（song.video_no）だけ
+ */
+function video_chapter_songs(array $songs, int $no, int $videoCount): array
+{
+    $songs = array_filter($songs, static fn($s) => !$s['is_se'] && ($videoCount < 2 || (int)$s['video_no'] === $no));
+    return array_values($songs);
+}
+
+/**
  * バンドの動画の URL（1本目 = band.youtube_url、2本目以降 = band_video。migrations/150）
  *   $bands: band_id と youtube_url を持つ行。戻り値: [band_id => [url, ...]]（リンクの無いバンドは入らない）
  *   並びの番号がそのまま song.video_no（0 = 1本目）

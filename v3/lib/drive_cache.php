@@ -31,6 +31,12 @@ function drive_cache_path(string $fileId): string
     return drive_cache_dir() . '/' . $fileId . '.dat';
 }
 
+/** 元のファイルから作ったもの（再生用の軽い MP3。<ID>.dat.160.mp3 など。lib/audio_stream.php）。元を消す・差し替えるときに一緒に消す。落としている途中の .part は含めない */
+function drive_cache_derived(string $dat): array
+{
+    return glob($dat . '.[0-9]*') ?: [];
+}
+
 /** 流してよいキャッシュか。ある、かつ（大きさが分かっているなら）合っている */
 function drive_cache_ok(string $path, int $size): bool
 {
@@ -47,7 +53,9 @@ function drive_cache_forget(PDO $pdo, array $fileIds): void
         }
         $st->execute([$id]);
         if (!$st->fetchColumn()) {
-            @unlink(drive_cache_path((string)$id));
+            foreach ([$dat = drive_cache_path((string)$id), ...drive_cache_derived($dat)] as $f) {
+                @unlink($f);
+            }
         }
     }
 }
@@ -57,9 +65,11 @@ function drive_cache_trim(string $keep): void
 {
     $files = [];
     $total = 0;
+    $bytes = [];
     foreach (glob(drive_cache_dir() . '/*.dat') ?: [] as $f) {
         $files[$f] = (int)filemtime($f);
-        $total += (int)filesize($f);
+        $bytes[$f] = array_sum(array_map('filesize', [$f, ...drive_cache_derived($f)]));
+        $total += $bytes[$f];
     }
     asort($files);
     foreach ($files as $f => $mtime) {
@@ -67,8 +77,10 @@ function drive_cache_trim(string $keep): void
             break;
         }
         if ($f !== $keep) {
-            $total -= (int)filesize($f);
-            @unlink($f);
+            $total -= $bytes[$f];
+            foreach ([$f, ...drive_cache_derived($f)] as $g) {
+                @unlink($g);
+            }
         }
     }
 }
@@ -170,6 +182,9 @@ function drive_cache_ensure(string $fileId, int &$size, bool &$miss = false): ?a
                 }
                 $got = (int)filesize($part);
                 rename($part, $dat);
+                foreach (drive_cache_derived($dat) as $f) { // 前の中身から作った軽い MP3 は使わない
+                    @unlink($f);
+                }
                 if ($got !== $size) { // DB の大きさが違う（ドライブ側で差し替わった）。直さないと毎回落とし直しになる
                     db()->prepare('UPDATE band_drive_file SET size = ? WHERE file_id = ?')->execute([$got, $fileId]);
                 }

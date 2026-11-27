@@ -106,6 +106,8 @@
   let queue = [];
   let idx = -1;
   let base = 0;      // いまの src の先頭の時刻（秒）
+  let elSrc = '';    // el に読ませている音源（from / to を除いた it.src）
+  let elEnd = Infinity; // el に読ませている範囲の終わり（音源の秒。to で止めたとき）
   let fails = 0;     // 続けて流せなかった数（全部だめなときに止まるため）
   let dragging = false; // シークバーをつかんでいる間は、再生位置で動かさない
   let shuffled = true;   // シャッフル。オフは出演順・セトリ順
@@ -342,8 +344,20 @@
       return;
     }
     if (audio === yt) { yt.stop(); audio = el; }
+    // 同じ音源で、読み込み済みの範囲かつこの曲の終わりまで受け取っているなら、読み直さずに動かす（通信量を減らす）
+    const rel = t - base;
+    if (elSrc === it.src && el.readyState > 0 && (endOf(it) ?? Infinity) / 1000 <= elEnd
+      && Array.from({ length: el.buffered.length }, (_, i) => i).some((i) => rel >= el.buffered.start(i) && rel < el.buffered.end(i) - 0.5)) {
+      ramp += 1;
+      tail = null;
+      audio.volume = 1;
+      el.currentTime = rel;
+      if (play) audio.play().catch(() => setIcon(false)); else el.pause();
+      return;
+    }
     let off = 0;
     let to = '';
+    let capSec = Infinity; // 受け取る範囲の終わり（音源の秒）
     if (t > 0 || endOf(it) !== null) {
       const total = await probe(it);
       if (it !== cur()) return; // 待っている間に次へ進んだ
@@ -353,7 +367,7 @@
         let last = idx; // 続きでつながる曲の最後まで受け取る
         while (joined(queue[last], queue[last + 1])) last += 1;
         const end = endOf(queue[last]);
-        if (end !== null) to = `&to=${Math.round((end / 1000 + 3) * it.size / total)}`;
+        if (end !== null) { to = `&to=${Math.round((end / 1000 + 3) * it.size / total)}`; capSec = end / 1000; }
       } else if (t > 0) { skip(); return; } // 頭からなら長さがわからなくても全部流せる
     }
     base = off > 0 ? t : 0;
@@ -361,6 +375,8 @@
     tail = null;
     audio.volume = 1;
     el.src = off > 0 ? `${it.src}&from=${off}${to}` : it.src + to;
+    elSrc = it.src;
+    elEnd = capSec;
     if (play) audio.play().catch(() => setIcon(false));
   };
   // i 曲目を用意する。play: true で鳴らす（false は止めておく）。at: 音源の秒（省略 = 曲の頭）
@@ -416,7 +432,7 @@
     const res = await fetch(`api_shuffle?scope=band&id=${Number(it.band_id) || 0}`).catch(() => null);
     const data = res?.ok ? await res.json().catch(() => null) : null;
     if (!data) return;
-    const fresh = new Map(data.items.map((q) => [q.song_id ?? q.src, q])); // 動画まるごと（song_id なし）は動画で
+    const fresh = new Map(data.items.map((q) => [q.song_id ?? q.src, q])); // song_id が無いものは src で
     queue.forEach((q) => {
       const f = fresh.get(q.song_id ?? q.src);
       if (f) for (const k of ['title', 'artist_id', 'artist', 'album', 'art', 'band', 'live', 'players', 'through_end_ms', 'mc_ms']) q[k] = f[k]; // 通しの区切り: 前に保存したキューは古い数え方のまま（終わりのチャプターで止まっていた）
@@ -927,7 +943,9 @@
       pos = Number(localStorage.getItem(POS)) || null;
     } catch (e) { /* 無ければ新しく */ }
     if (st && (cfg.resume || (st.scope === cfg.scope && st.id === cfg.id)) && Array.isArray(st.queue) && st.queue.length) {
-      queue = st.queue;
+      const was = st.queue[st.idx];
+      queue = st.queue.filter((q) => !(q.video && q.song_id == null)); // 前に保存した動画まるごとの曲は外す（今は流さない）
+      st.idx = Math.max(0, queue.indexOf(was));
       cont = !!st.cont;
       shuffled = st.shuffled ?? !st.cont;
       showShuffle();

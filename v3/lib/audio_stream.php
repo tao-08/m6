@@ -6,10 +6,63 @@
  *   &to=バイト位置: そこまでで止める（シャッフル再生が1曲分だけ受け取るため。player.js）。from なしでも使える
  *   キャッシュ: ETag / Last-Modified を付け、private, no-cache（ブラウザは保存してよいが、使う前に毎回ここへ確認する）。
  *     確認はログインと権限のチェックのあとなので、権限を外された人には届かない。変わっていなければ 304（本体は流さない）
+ *   再生（dl なし）の音源は、通信量を減らすため 160kbps CBR の MP3（元のファイルの横の <元>.160.mp3）を流す。初回の再生で ffmpeg で作る（作り終わるまで待つ）
+ *     from= / to= は元の大きさで数えた位置で来る（player.js / app_player.js の data-size）ので、大きさの比で軽いほうの位置に直す。dl=1 は元のファイル
  */
 declare(strict_types=1);
 
 require_once __DIR__ . '/wav.php';
+
+const AUDIO_LIGHT_KBPS = 160;
+
+/**
+ * 再生用の軽い MP3 のパス。使えなければ null（元のファイルを流す）
+ *   無ければここで作る。同時の要求は flock で1つだけが作り、ほかは待つ
+ *   小さくならなかった（元が 160k 以下）・作れなかったときは空のファイルを印に置き、作り直さない（作り直すときは印を消す）
+ */
+function audio_light(string $path): ?string
+{
+    $light = $path . '.' . AUDIO_LIGHT_KBPS . '.mp3';
+    clearstatcache(true, $light);
+    if (!is_file($light) && ($lock = @fopen($light . '.lock', 'c'))) {
+        if (flock($lock, LOCK_EX)) {
+            clearstatcache(true, $light);
+            if (!is_file($light)) {
+                audio_light_make($path, $light);
+            }
+            flock($lock, LOCK_UN);
+        }
+        fclose($lock);
+        clearstatcache(true, $light);
+    }
+    $n = is_file($light) ? (int)filesize($light) : 0;
+    return $n > 0 && $n < (int)filesize($path) ? $light : null;
+}
+
+function audio_light_make(string $path, string $light): void
+{
+    require_once __DIR__ . '/ytdlp.php';
+    @set_time_limit(0);
+    ignore_user_abort(true); // 途中で切られても作り終える（半端なファイルは .part のまま残さない）
+    $ffmpeg = ytdlp_ffmpeg_dir() . '/ffmpeg';
+    $part = $light . '.part.mp3'; // ffmpeg は出力の形式を拡張子で決める
+    $why = PHP_OS_FAMILY !== 'Windows' && !is_file($ffmpeg) ? ytdlp_ffmpeg_install() : null;
+    if ($why === null) {
+        // CBR（from= のバイト位置で切るため）。タグ・ジャケット画像は落とす
+        [$code, $log] = ytdlp_run(['-v', 'error', '-y', '-i', $path, '-vn', '-map_metadata', '-1', '-c:a', 'libmp3lame', '-b:a', AUDIO_LIGHT_KBPS . 'k', '-ar', '44100', $part], 600, $ffmpeg);
+        clearstatcache(true, $part);
+        $n = is_file($part) ? (int)filesize($part) : 0;
+        $why = $code !== 0 || $n === 0 ? "ffmpeg exit $code: $log" : null;
+        if ($why === null && $n < (int)filesize($path) && rename($part, $light)) {
+            return;
+        }
+    }
+    @unlink($part);
+    if ($why !== null) {
+        error_log('audio_light: ' . basename($path) . ' ' . $why);
+    }
+    touch($light); // 印（空）: 元のファイルを流す
+}
 
 /**
  * @param string      $mime   Content-Type（WAV を途中から流すときは audio/wav に変わる）
@@ -18,13 +71,19 @@ require_once __DIR__ . '/wav.php';
 function audio_stream_file(string $path, string $mime, ?string $dlName = null): void
 {
     header('X-Content-Type-Options: nosniff');
+    $scale = 1.0;
+    if ($dlName === null && str_starts_with($mime, 'audio/') && ($light = audio_light($path)) !== null) {
+        $scale = filesize($light) / filesize($path);
+        $path = $light;
+        $mime = 'audio/mpeg';
+    }
     $size = (int)filesize($path);
     $mtime = (int)filemtime($path);
     $etag = '"' . dechex($size) . '-' . dechex($mtime) . '"';
     $from = 0;
     $to = $size - 1;
-    $skip = ctype_digit((string)($_GET['from'] ?? '')) ? (int)$_GET['from'] : 0;
-    $cap = ctype_digit((string)($_GET['to'] ?? '')) ? (int)$_GET['to'] : null;
+    $skip = ctype_digit((string)($_GET['from'] ?? '')) ? (int)round((int)$_GET['from'] * $scale) : 0;
+    $cap = ctype_digit((string)($_GET['to'] ?? '')) ? (int)round((int)$_GET['to'] * $scale) : null;
     $part = $skip > 0 || $cap !== null; // 一部だけの 200（Range には答えない）
     $prefix = '';
     if ($part) { // 一部だけの 200 は使い回さない

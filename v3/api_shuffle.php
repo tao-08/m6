@@ -4,7 +4,8 @@
  *  api_shuffle.php — シャッフル再生する曲の一覧（JSON）。player.php の外枠が呼ぶ。管理者だけ
  * =====================================================================
  *  MIX の無い曲は、バンドの YouTube（song.video_start = 曲の始まりの秒・video_no = 何本目の動画。migrations/145・150）から流す: video = 動画 ID、src = "yt:動画 ID"、
- *    終わり = 同じ動画で次に始まる曲（無ければ動画の最後）。曲の始まりが1つも無い動画は、MIX の無いバンドなら動画まるごと1曲（song_id = null、題名 = 動画のタイトル）
+ *    終わり = 同じ動画で次に始まる曲（無ければ動画の最後）。曲の始まりが1つも無い動画は流さない（動画まるごとは長いため）
+ *    動画にチャプター（audio_key 'y:動画ID'。video_chapters.php）があれば、video_start の代わりに MIX と同じ区切り（MC・通し）で流す。曲は video_chapter_songs
  *  リクエスト（GET）: ?scope=all | ?scope=live&id=ライブID | ?scope=band&id=バンドID | ?scope=member&id=メンバーID（その人が演奏した曲） | ?scope=artist&id=アーティストID（そのアーティストの曲）
  *  レスポンス: {"items": [{song_id, title, artist_id, artist, art, album, band_id, band, live_id, live, year, players, src, size, start_ms, end_ms, through_end_ms, mc_ms}, ...]}（並びはライブ・出演順・時間順 = シャッフルしないときの順。混ぜるのは JS）
  *  曲の区切りは音源のチャプター（band_audio_chapter。説明は migrations/130）:
@@ -19,7 +20,7 @@
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/live_image.php'; // LIVE_IMAGE_DIR・live_file_disk_name
-require_once __DIR__ . '/lib/youtube.php';    // band_video_urls・youtube_titles・youtube_video_id
+require_once __DIR__ . '/lib/youtube.php';    // band_video_urls・youtube_video_id
 
 header('Content-Type: application/json; charset=utf-8');
 if (current_user() === null) {
@@ -84,7 +85,7 @@ $in = implode(',', array_fill(0, count($bandIds), '?'));
 
 // セトリ（SE 以外・セトリ順）
 $songs = [];
-$st = $pdo->prepare("SELECT s.song_id, s.band_id, s.title, s.track_no, s.video_start, s.video_no, t.artwork_url, t.album_title, a.artist_id, a.name AS artist
+$st = $pdo->prepare("SELECT s.song_id, s.band_id, s.title, s.is_se, s.track_no, s.video_start, s.video_no, t.artwork_url, t.album_title, a.artist_id, a.name AS artist
     FROM song s
     JOIN band b ON b.band_id = s.band_id
     LEFT JOIN track t ON t.source = s.track_source AND t.track_id = s.track_id
@@ -133,6 +134,18 @@ foreach ($st as $r) {
     $src[$r['band_id'] . '|d:' . $r['file_id']] = ['drive_audio?band=' . (int)$r['band_id'] . '&f=' . rawurlencode((string)$r['file_id']), (int)$r['size']];
 }
 
+// YouTube のチャプター（'y:動画ID'）: [動画 ID, 何本目, 全部で何本]
+$ytKeys = [];
+foreach ($videoUrls as $bandId => $urls) {
+    foreach ($urls as $no => $url) {
+        $vid = youtube_video_id($url);
+        if ($vid !== null) {
+            $src[$bandId . '|y:' . $vid] = ['yt:' . $vid, 0];
+            $ytKeys[$bandId . '|y:' . $vid] = [$vid, $no, count($urls)];
+        }
+    }
+}
+
 $items = [];
 $seen = [];
 foreach ($groups as $key => $chs) {
@@ -140,12 +153,14 @@ foreach ($groups as $key => $chs) {
         continue;
     }
     $bandId = (int)$chs[0]['band_id'];
+    $yt = $ytKeys[$key] ?? null;
+    $list = $yt ? video_chapter_songs($songs[$bandId] ?? [], $yt[1], $yt[2]) : $songs[$bandId] ?? [];
     $n = 0;
     foreach ($chs as $i => $c) {
         if ($c['kind'] !== 'song') {
             continue;
         }
-        $song = $songs[$bandId][$n++] ?? null;
+        $song = $list[$n++] ?? null;
         if ($song === null || isset($seen[$song['song_id']])) {
             continue; // チャプターが曲数より多い分・別の音源で出た曲は流さない
         }
@@ -192,38 +207,22 @@ foreach ($groups as $key => $chs) {
             'through_end_ms' => $thru,
             'mc_ms'    => $mc,
             '_o'       => [$bandRows[$bandId]['rank'] ?? 0, (int)$song['track_no']],
-        ];
+        ] + ($yt ? ['video' => $yt[0]] : []);
     }
 }
 
 // YouTube（MIX で出なかった曲）
-$titles = $videoUrls ? youtube_titles($pdo, array_merge(...array_values($videoUrls))) : [];
 foreach ($videoUrls as $bandId => $urls) {
     $b = $bandRows[$bandId];
-    $hasMix = false;
-    foreach ($songs[$bandId] ?? [] as $song) {
-        $hasMix = $hasMix || isset($seen[$song['song_id']]);
-    }
     foreach ($urls as $no => $url) {
         $vid = youtube_video_id($url);
-        if ($vid === null) {
-            continue;
+        if ($vid === null || isset($groups[$bandId . '|y:' . $vid])) {
+            continue; // チャプターのある動画は上で出した
         }
         $base = ['art' => null, 'album' => null, 'band_id' => $bandId, 'band' => (string)$b['band'], 'live_id' => (int)$b['live_id'], 'live' => (string)$b['live'],
             'year' => (int)$b['fiscal_year'], 'src' => 'yt:' . $vid, 'video' => $vid, 'size' => 0, 'mc_ms' => null];
         $inVideo = array_values(array_filter($songs[$bandId] ?? [], static fn($s) => $s['video_start'] !== null && (int)$s['video_no'] === $no));
         usort($inVideo, static fn($x, $y) => (int)$x['video_start'] <=> (int)$y['video_start']);
-        if (!$inVideo) {
-            // 曲の始まりがわからない動画: MIX の無いバンドなら動画まるごと
-            $players = $bandPlayers[$bandId] ?? [];
-            if ($hasMix || ($scope === 'member' && !isset($players[$id])) || ($scope === 'artist' && (int)$b['artist_id'] !== $id)) {
-                continue;
-            }
-            $items[] = $base + ['song_id' => null, 'title' => (string)($titles[$vid] ?? $b['band']),
-                'artist_id' => $b['artist'] !== null ? (int)$b['artist_id'] : null, 'artist' => $b['artist'] !== null ? (string)$b['artist'] : null,
-                'players' => array_values($players), 'start_ms' => 0, 'end_ms' => null, 'through_end_ms' => null, '_o' => [$b['rank'], 1000 + $no]];
-            continue;
-        }
         foreach ($inVideo as $k => $song) {
             $players = $songPlayers[(int)$song['song_id']] ?? $bandPlayers[$bandId] ?? [];
             if (isset($seen[$song['song_id']]) || ($scope === 'member' && !isset($players[$id])) || ($scope === 'artist' && (int)$song['artist_id'] !== $id)) {

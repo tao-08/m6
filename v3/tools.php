@@ -56,7 +56,7 @@ if (band_survey_ready() && (band_survey_can_create() || band_survey_list(db())))
 if (is_admin()) {
     $tools[] = ['intro_previews', 'headphones', '試聴の一括調査',
         '試聴を調べていない曲を探して、イントロクイズで出せる曲を増やします。', '管理者'];
-    $tools[] = ['setlist_jobs', 'timer', '曲の検出の状況', 'YouTube から曲を検出しているバンドの状況です。', '管理者'];
+    $tools[] = ['setlist_jobs', 'timer', '解析の状況', 'YouTube の曲の検出・チャプターの解析の状況です。', '管理者'];
 }
 // スタ連（スタジオ練習）の日程調整（sched.php）。ログインしていれば誰でも
 $tools[] = ['sched', 'event_available', 'スタジオ練習の日程調整',

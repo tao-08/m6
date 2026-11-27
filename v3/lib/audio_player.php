@@ -51,7 +51,8 @@ function audio_chapter_list(array $rows): array
 /**
  * プレーヤーの HTML
  *   $src … 音源の URL（attach_image?k=band_audio&id=N / drive_audio?band=N&f=ID）
- *   $chapterCtx … チャプターを出すとき: ['band_id' => int, 'key' => 'a:N' | 'd:ID', 'chapters' => 行の配列, 'songs' => [曲名（SE 以外・セトリ順）]]
+ *   $chapterCtx … チャプターを出すとき: ['band_id' => int, 'key' => 'a:N' | 'd:ID' | 'y:動画ID', 'chapters' => 行の配列, 'songs' => [曲名（SE 以外・セトリ順）]]
+ *   key が 'y:動画ID' のとき（video_chapters.php）は、<audio> の代わりに YouTube の埋め込み（app_player.js の apYouTube）を上に置き、最初から編集モード
  */
 function audio_player_html(string $src, string $title, ?int $size, ?array $chapterCtx = null): string
 {
@@ -62,21 +63,28 @@ function audio_player_html(string $src, string $title, ?int $size, ?array $chapt
             'key'   => (string)$chapterCtx['key'],
             'list'  => audio_chapter_list($chapterCtx['chapters']),
             'songs' => array_values($chapterCtx['songs']),
+            'job'   => $chapterCtx['job'] ?? null, // YouTube の裏の解析（lib/chapter_job.php）
         ], JSON_UNESCAPED_UNICODE)) . '"';
     }
+    $yt = $chapterCtx !== null && str_starts_with((string)$chapterCtx['key'], 'y:') ? substr((string)$chapterCtx['key'], 2) : null;
     // 大きさ（バイト）: プレーヤーが「?from=バイト位置」を決めるのに使う（長さは読み込んだ音源から取る）
-    $html = '<figure class="drive-player audio-player" data-audio-player' . ($size ? ' data-size="' . (int)$size . '"' : '') . $data . '>'
-        . '<figcaption class="drive-player__name">' . icon('audio_file', 'file-icon file-icon--audio')
-        . '<span class="audio-player__title">' . h($title) . '</span>'
-        . ($size !== null ? '<small class="audio-player__size">' . h(fmt_bytes($size)) . '</small>' : '');
-    // 保存: 元のファイルがそのまま落ちる（同じ権限のチェックを通る）
-    $html .= '<a class="audio-player__dl no-print" href="' . h($src . (str_contains($src, '?') ? '&' : '?') . 'dl=1') . '" download aria-label="ダウンロード" title="ダウンロード">' . icon('download') . '</a>';
-    if ($chapterCtx !== null) {
-        $html .= '<button type="button" class="audio-player__edit no-print" data-ap-edit aria-pressed="false">' . icon('edit') . 'チャプターを編集</button>';
+    $html = '<figure class="drive-player audio-player' . ($yt !== null ? ' audio-player--yt is-editing' : '') . '" data-audio-player' . ($size ? ' data-size="' . (int)$size . '"' : '') . $data . '>';
+    if ($yt !== null) {
+        $html .= '<div class="audio-player__yt" data-ap-yt="' . h($yt) . '"></div><figcaption class="drive-player__name">'
+            . '<button type="button" class="audio-player__edit no-print" data-ap-edit aria-pressed="true">' . icon('edit') . 'チャプターを編集</button>';
+    } else {
+        $html .= '<figcaption class="drive-player__name">' . icon('audio_file', 'file-icon file-icon--audio')
+            . '<span class="audio-player__title">' . h($title) . '</span>'
+            . ($size !== null ? '<small class="audio-player__size">' . h(fmt_bytes($size)) . '</small>' : '');
+        // 保存: 元のファイルがそのまま落ちる（同じ権限のチェックを通る）
+        $html .= '<a class="audio-player__dl no-print" href="' . h($src . (str_contains($src, '?') ? '&' : '?') . 'dl=1') . '" download aria-label="ダウンロード" title="ダウンロード">' . icon('download') . '</a>';
+        if ($chapterCtx !== null) {
+            $html .= '<button type="button" class="audio-player__edit no-print" data-ap-edit aria-pressed="false">' . icon('edit') . 'チャプターを編集</button>';
+        }
     }
     // 自前の操作部（ブラウザ標準のコントロールは Range が使えない環境でシークできないため）。吹き出し（チャプター）は再生位置の棒の上に並べる
     $html .= '</figcaption>'
-        . '<audio class="band-audio" preload="none" src="' . h($src) . '"></audio>'
+        . ($yt === null ? '<audio class="band-audio" preload="none" src="' . h($src) . '"></audio>' : '')
         . '<div class="audio-player__bar">'
         . '<button type="button" class="audio-player__play" data-ap-play aria-label="再生" title="再生">' . icon('play_arrow', 'icon--fill') . '</button>'
         . '<div class="audio-player__seek' . ($chapterCtx !== null ? ' has-bubbles' : '') . '">'

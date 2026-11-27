@@ -159,6 +159,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupPushLogout();
   setupKanaAi();
   setupArtistAutosave();
+  setupChapterBulk();
 });
 
 /* ---------------------------------------------------------------------

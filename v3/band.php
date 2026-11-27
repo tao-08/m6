@@ -316,6 +316,9 @@ render_header($band['name'], 'lives');
         <?= band_youtube_html($ytUrls, count($ytUrls) > 1 ? youtube_titles($pdo, $ytUrls) : [], 'band', 'btn btn--sm btn--youtube', 'YouTube で見る') ?>
         <a class="btn btn--sm" href="band_edit?id=<?= $bandId ?>"><?= icon('edit') ?> バンドを編集</a>
         <a class="btn btn--sm" href="songs_edit?band=<?= $bandId ?>"><?= icon('queue_music') ?> セットリストを<?= $songs ? '編集' : '登録' ?></a>
+        <?php if ($ytUrls && !$setlistVis['hidden']): // YouTube のチャプター（video_chapters.php）。セトリを編集できる人だけ ?>
+            <a class="btn btn--sm" href="video_chapters?band=<?= $bandId ?>"><?= icon('view_timeline') ?> チャプター編集</a>
+        <?php endif; ?>
         <?php
         // 会場の PDF にバンド名・メンバー・セットリストを書き込む（setting_sheet.php）。
         //   出すのは、本番当日まで（開催日が今日以降）。本番の翌日からは終わったライブのシートは作らないので消す

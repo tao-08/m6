@@ -109,7 +109,7 @@ function setupDriveSwitch() {
 async function audioProbeDuration(src, size) {
   let b;
   try {
-    const res = await fetch(src);
+    const res = await fetch(`${src}${src.includes('?') ? '&' : '?'}to=65535`); // 先頭だけ受け取る（cancel までに届く分を減らす）
     const reader = res.body.getReader();
     const parts = [];
     let n = 0;
@@ -159,6 +159,64 @@ async function audioProbeDuration(src, size) {
   return null;
 }
 
+/**
+ * YouTube の埋め込み（lib/audio_player.php の [data-ap-yt]。video_chapters.php）を <audio> と同じ形で扱う。setupAudioPlayers がそのまま使う
+ *   使う所だけ: play・pause・currentTime・duration・paused・ended・readyState・volume と、イベント（loadedmetadata・canplay・play・pause・ended・timeupdate・error）
+ *   buffered は空・大きさ（data-size）も無いので、シークは currentTime を入れるだけになる
+ */
+function apYouTube(box) {
+  const t = new EventTarget();
+  const fire = (n) => t.dispatchEvent(new Event(n));
+  let player = null;
+  let state = -1;
+  let vol = 1;
+  let timer = 0;
+  const ready = new Promise((ok, ng) => {
+    if (window.YT?.Player) { ok(); return; }
+    const prev = window.onYouTubeIframeAPIReady;
+    window.onYouTubeIframeAPIReady = () => { prev?.(); ok(); };
+    const sc = document.createElement('script');
+    sc.src = 'https://www.youtube.com/iframe_api';
+    sc.onerror = ng;
+    document.head.append(sc);
+  }).then(() => new Promise((ok) => {
+    player = new YT.Player(box.appendChild(document.createElement('div')), {
+      width: '100%', height: '100%', videoId: box.dataset.apYt,
+      playerVars: { playsinline: 1, rel: 0 },
+      events: {
+        onReady: () => { fire('canplay'); ok(); },
+        onStateChange: ({ data }) => {
+          state = data;
+          if (player.getDuration() > 0 && !t.meta) { t.meta = true; fire('loadedmetadata'); } // 長さは再生・頭出しのあとでないと 0 のことがある
+          clearInterval(timer);
+          if (data === 1) { fire('play'); timer = setInterval(() => fire('timeupdate'), 250); } else if (data === 2) fire('pause');
+          else if (data === 0) { fire('pause'); fire('ended'); }
+        },
+        onError: () => fire('error'),
+      },
+    });
+  })).catch(() => fire('error'));
+  ready.then(() => { if (player.getDuration() > 0) { t.meta = true; fire('loadedmetadata'); } });
+  return Object.defineProperties(t, Object.getOwnPropertyDescriptors({ // Object.assign だと getter が作った時の値で固まる
+    get currentTime() { return player?.getCurrentTime?.() || 0; },
+    set currentTime(v) { player?.seekTo?.(v, true); fire('timeupdate'); },
+    get duration() { return player?.getDuration?.() || NaN; },
+    get paused() { return state !== 1 && state !== 3; },
+    get ended() { return state === 0; },
+    get readyState() { return player ? 4 : 0; },
+    get volume() { return vol; },
+    set volume(v) { vol = v; player?.setVolume?.(v * 100); },
+    buffered: { length: 0 },
+    networkState: 1,
+    currentSrc: '',
+    preload: 'none',
+    getAttribute: () => null,
+    load() {},
+    play() { return ready.then(() => player.playVideo()); },
+    pause() { player?.pauseVideo?.(); },
+  }));
+}
+
 function setupAudioPlayers(root = document) {
   const figs = [...root.querySelectorAll('[data-audio-player]:not([data-ap-ready])')]; // live.php は一覧を開くたびに作られるので、root を渡して作った分だけ初期化する
   if (!figs.length) return;
@@ -170,7 +228,7 @@ function setupAudioPlayers(root = document) {
 
   figs.forEach((fig) => {
     fig.dataset.apReady = '1';
-    const audio = fig.querySelector('audio');
+    const audio = fig.querySelector('audio') || apYouTube(fig.querySelector('[data-ap-yt]'));
     const playBtn = fig.querySelector('[data-ap-play]');
     const playIcon = mkEl('span', 'icon icon--fill', 'play_arrow');
     playIcon.setAttribute('aria-hidden', 'true');
@@ -515,10 +573,12 @@ function setupAudioPlayers(root = document) {
         autoRun();
       } else if (e.target.closest('[data-ap-stop]')) {
         ctrl?.abort();
+        if (isYt) jobPost('discard').catch(() => {}); // 裏の解析も止める（結果を書かない）
       } else if (e.target.closest('[data-ap-save]')) {
         autoSave();
       } else if (e.target.closest('[data-ap-discard]')) {
         autoDiscard();
+        if (isYt) jobPost('discard').catch(() => {});
       } else if (e.target.closest('[data-ap-edit]')) {
         const on = !fig.classList.contains('is-editing');
         fig.classList.toggle('is-editing', on);
@@ -613,12 +673,32 @@ function setupAudioPlayers(root = document) {
 
     // 自動で付ける: Gemini に聴かせて下書きを作る → 聞いて確かめる → 保存（置き換え）かやめる
     const setMode = (m) => fig.querySelectorAll('[data-ap-in]').forEach((b) => { b.hidden = b.dataset.apIn !== m; });
-    const autoRun = async () => {
+    //   YouTube（y:）は裏で解析する（lib/chapter_job.php）: 頼んだら、終わるまで5秒ごとに見に行く。画面を閉じても解析は続き、次に開くと下書きが出る
+    const isYt = !!chap?.key.startsWith('y:');
+    const jobPost = (action, signal) => apiPost('api_audio_chapter.php', { action, band_id: chap.band, key: chap.key }, '自動で付けられませんでした', { signal });
+    const aborted = () => new DOMException('', 'AbortError');
+    const waitJob = async (signal) => {
+      for (;;) {
+        const job = await jobPost('status', signal);
+        if (job.state === 'done') return job.draft;
+        if (job.state === 'error') throw new Error(job.error);
+        if (job.state === 'none') throw aborted(); // ほかの画面で「やめる」された
+        await new Promise((ok, ng) => {
+          const t = setTimeout(ok, 5000);
+          signal.addEventListener('abort', () => { clearTimeout(t); ng(aborted()); }, { once: true });
+        });
+      }
+    };
+    const autoRun = async (resume = false) => {
       ctrl = new AbortController();
       const { signal } = ctrl;
       setMode('busy');
       try {
-        const { draft: found } = await apiPost('api_audio_chapter.php', { action: 'auto', band_id: chap.band, key: chap.key }, '自動で付けられませんでした', { signal });
+        let found;
+        if (isYt) {
+          if (!resume) await jobPost('auto', signal);
+          found = await waitJob(signal);
+        } else ({ draft: found } = await jobPost('auto', signal));
         if (!found.length) throw new Error('none');
         draft = found.map((c, i) => ({ ...c, id: i - found.length })); // 保存前の印。負の番号（時間順に並ぶ）で、保存済みの id とぶつからない
         setMode('draft');
@@ -647,6 +727,12 @@ function setupAudioPlayers(root = document) {
       }
     };
     render();
+    // YouTube: 開いたときに裏の解析があれば、下書きを出す・終わるのを待つ（chap.job は lib/audio_player.php が渡す）
+    if (isYt && chap.job?.state === 'done') {
+      draft = chap.job.draft.map((c, i) => ({ ...c, id: i - chap.job.draft.length }));
+      setMode('draft');
+      render();
+    } else if (isYt && ['queued', 'running'].includes(chap.job?.state)) autoRun(true);
   });
 }
 

@@ -25,6 +25,30 @@ function api_ok(array $data): never
 }
 
 /**
+ * 成功の JSON を先に返して接続を切る。このあとの処理は裏で続く（画面を閉じても止まらない）。api_setlist_detect.php・api_audio_chapter.php・api_chapter_bulk.php
+ */
+function api_detach(array $data): void
+{
+    session_write_close(); // 長く待つので、ほかの画面を待たせない
+    @set_time_limit(0);
+    ignore_user_abort(true);
+    $body = json_encode($data, JSON_UNESCAPED_UNICODE);
+    header('Content-Length: ' . strlen($body));
+    header('Connection: close');
+    echo $body;
+    if (function_exists('fastcgi_finish_request')) {
+        fastcgi_finish_request();
+    } elseif (function_exists('litespeed_finish_request')) {
+        litespeed_finish_request();
+    } else {
+        while (ob_get_level() > 0) {
+            ob_end_flush();
+        }
+        flush();
+    }
+}
+
+/**
  * 入口のチェック。API なのでログイン画面へのリダイレクトではなく、エラーの JSON を返す。
  * 順番は 401（未ログイン）→ 403（$allow が false）→ 405（POST 以外）→ CSRF。通ればログイン中のユーザーを返す。
  * $allow は 401 を通ったあとで呼ぶので、関数を渡す（例: tab_allowed(...)）
