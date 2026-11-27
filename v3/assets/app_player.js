@@ -287,6 +287,25 @@ function setupAudioPlayers(root = document) {
       if (c && document.activeElement !== atInput) atInput.value = fmtTime(c.ms); // 打っている最中は触らない
     };
 
+    // 吹き出しが左の吹き出しと被るものは、シークバーの下へ（.is-below。上下の移動は CSS の top の transition で滑る）
+    //   左から順に、上が空いていれば上、上が被って下が空いていれば下、どちらも被るなら上
+    const stackBubbles = () => {
+      const w = bubbles.clientWidth;
+      const list = [...bubbles.children].filter((b) => b.offsetParent !== null) // 隠した「終わり」は数えない
+        .sort((a, b) => a.dataset.ms - b.dataset.ms);
+      let top = -Infinity;
+      let below = -Infinity;
+      list.forEach((b) => {
+        const x = Math.min(1, Number(b.style.getPropertyValue('--x'))) * w;
+        const gap = b.offsetWidth + 2;
+        const down = x - top < gap && x - below >= gap;
+        b.classList.toggle('is-below', down);
+        if (down) below = x; else top = x;
+      });
+      fig.classList.toggle('has-below', list.some((b) => b.classList.contains('is-below')));
+    };
+    new ResizeObserver(stackBubbles).observe(bubbles);
+
     // 吹き出し・チップの描画。同じ id のものは使い回して、位置の移り変わり・色の変化を動きにする
     //   新しいもの: ぽんと出る / 順番が変わったチップ: 元の位置から滑る（FLIP）/ 吹き出し: CSS の left の transition で滑る
     const render = () => {
@@ -337,6 +356,7 @@ function setupAudioPlayers(root = document) {
           els.set(c.id, e);
         }
         e.chip.dataset.ms = c.ms;
+        e.chip.dataset.kind = c.kind; // 「終わり」は編集中だけ見せる（app.css）
         const go = e.chip.firstChild;
         go.firstChild.textContent = fmtTime(c.ms);
         go.lastChild.nodeValue = labels[i].full;
@@ -351,6 +371,7 @@ function setupAudioPlayers(root = document) {
           }
           e.bubble.textContent = labels[i].short;
           e.bubble.dataset.ms = c.ms;
+          e.bubble.dataset.kind = c.kind;
           e.bubble.style.setProperty('--x', Math.min(1, c.ms / 1000 / total));
           e.bubble.setAttribute('aria-label', `${labels[i].full} から再生`);
           e.bubble.title = `${labels[i].full} から再生`;
@@ -378,6 +399,7 @@ function setupAudioPlayers(root = document) {
       if (total) seen.bubble = true;
       syncSel();
       mark();
+      stackBubbles();
     };
 
     // 時間の表示の幅を「全体 / 全体」を表示したときの幅で固定する（再生位置が 9:59 → 10:00 になっても幅が変わらない）
@@ -494,6 +516,7 @@ function setupAudioPlayers(root = document) {
         const on = !fig.classList.contains('is-editing');
         fig.classList.toggle('is-editing', on);
         fig.querySelector('[data-ap-edit]').setAttribute('aria-pressed', String(on));
+        stackBubbles(); // 「終わり」が出る・消えるので並べ直す
         if (!on) { // 編集を閉じたら、保存待ちの直しは保存し、途中の自動も下書きも捨てる
           flushMove(false);
           selId = null;

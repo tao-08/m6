@@ -79,7 +79,7 @@ foreach ($st as $r) {
 }
 
 // 演奏者: 曲ごと（song_performer）と、無いときに使うバンドのメンバー（band_member）。楽器の並び順（Vo が先頭）
-$addPlayer = static function (array &$list, array $r): void {
+$addPlayer = static function (?array &$list, array $r): void { // ?array: 初めての曲・バンドは null で来る
     $list[(int)$r['member_id']] ??= ['id' => (int)$r['member_id'], 'name' => (string)$r['name'], 'parts' => []];
     $list[(int)$r['member_id']]['parts'][] = ['s' => (string)$r['short_name'], 'c' => instrument_class((string)$r['short_name']), 't' => (string)$r['inst']];
 };

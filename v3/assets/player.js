@@ -110,7 +110,8 @@
     // 中のヘッダーのアイコンの真下に、右端をそろえて出す（iframe は外枠の左上にあるので座標はそのまま）。見つからなければ CSS の位置
     const r = open && sum ? sum.getBoundingClientRect() : null;
     panel.style.top = r && r.width ? `${r.bottom + 8}px` : '';
-    panel.style.right = r && r.width ? `${Math.max(12, innerWidth - r.right)}px` : '';
+    // 右端をアイコンにそろえる。ただし画面の左右からはみ出さない（狭い画面ではアイコンより右に寄る）
+    panel.style.right = r && r.width ? `${Math.max(12, Math.min(innerWidth - r.right, innerWidth - panel.offsetWidth - 12))}px` : '';
     if (open) marqueeAll(); // 閉じている間は幅が 0 で測れないので、開いたときに測り直す
   };
   const render = () => {

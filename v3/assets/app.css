@@ -652,12 +652,12 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 /* --shift: 端で吹き出しを内側へずらす量。三角が吹き出しの下辺（角丸の内側）から外れないよう ±--edge までにする（残りはつまみの余白にはみ出す） */
 .audio-bubble { --hw: 14px; --edge: calc(var(--hw) - 8px);
   --shift: clamp(calc(-1 * var(--edge)), clamp(calc(var(--hw) - var(--x) * 100cqw), 0px, calc(100cqw - var(--hw) - var(--x) * 100cqw)), var(--edge));
-  position: absolute; left: calc(var(--x) * 100%); bottom: 5px; transform: translateX(calc(-50% + var(--shift)));
+  position: absolute; left: calc(var(--x) * 100%); top: 6px; transform: translateX(calc(-50% + var(--shift)));
   --bd: var(--border); --ov: transparent; --bg: linear-gradient(var(--ov), var(--ov)), var(--surface-2); /* 枠と中の色。中は不透明にする（三角と重なっても濃くならない）。--ov = 中に重ねる色（再生中の緑） */
   width: calc(var(--hw) * 2); height: 17px; padding: 0; border: 1px solid var(--bd); border-radius: var(--r-sm);
   background: var(--bg); color: var(--text); font: inherit; font-size: var(--fs-2xs); font-weight: 700; line-height: 15px; text-align: center;
   cursor: pointer; pointer-events: auto;
-  transition: left var(--t-slow) var(--ease-out), --bd var(--t-base) ease, --ov var(--t-base) ease, color var(--t-base) ease; } /* 並びが変わると滑る・再生中の色は ふわっと変わる */
+  transition: left var(--t-slow) var(--ease-out), top var(--t-slow) var(--ease-out), --bd var(--t-base) ease, --ov var(--t-base) ease, color var(--t-base) ease; } /* 並びが変わると滑る・再生中の色は ふわっと変わる */
 @property --bd { syntax: '<color>'; inherits: true; initial-value: transparent; }
 @property --ov { syntax: '<color>'; inherits: true; initial-value: transparent; }
 /* 三角: 枠の色の三角（::before）の上に、1px 内側の中の色の三角（::after）を重ねる。::after が吹き出しの下の枠線を消して一続きにする */
@@ -666,6 +666,12 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 .audio-bubble::before { width: 10px; height: 6px; margin-top: 0; background: var(--bd); }
 .audio-bubble::after { width: 8px; height: 5px; margin-top: -1px; background: var(--bg); }
 .audio-bubble:hover { color: var(--accent); }
+/* 左と被る吹き出しはシークバーの下へ（app_player.js の stackBubbles）。上の位置（top: 6px）を棒の中心で折り返した位置。三角は上向き */
+.audio-bubble.is-below { top: 41px; }
+.audio-bubble.is-below::before, .audio-bubble.is-below::after { top: auto; bottom: 100%; clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+.audio-bubble.is-below::after { margin-top: 0; margin-bottom: -1px; }
+.audio-player__bar { transition: padding-bottom var(--t-slow) var(--ease-out); }
+.audio-player.has-below .audio-player__bar:has(.has-bubbles) { padding-bottom: 22px; }
 .audio-bubble.is-current { z-index: 1; --bd: var(--ok); --ov: var(--ok-bg); color: var(--ok); }
 .audio-player__list { margin-top: 8px; }
 .audio-player__list:empty { display: none; }
@@ -692,6 +698,8 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 .audio-chapter__del .icon { font-size: var(--fs-sm); }
 .audio-player.is-editing .audio-chapter__del { max-width: 1.5em; margin-left: 0; opacity: 1; visibility: visible;
   transition: max-width var(--t-base) var(--ease-out), margin-left var(--t-base) var(--ease-out), opacity var(--t-base) ease, color var(--t-fast) ease, visibility 0s; }
+/* 「終わり」のチャプターは編集中だけ見せる（ふだんは曲の区切りとして裏で使うだけ。シャッフル再生） */
+.audio-player:not(.is-editing) :is(.audio-chapter, .audio-bubble)[data-kind="end"] { display: none; }
 .audio-chapter.is-current { border-color: var(--ok); background: var(--ok-bg); }
 .audio-chapter.is-selected { border-color: var(--accent); box-shadow: var(--ring); }
 /* 自動で付けた下書き: 破線。保存するまで消せない */
@@ -719,7 +727,10 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 /* 再生中の曲のポップアップ（player.php）。中のヘッダーのアイコンの下あたりに出す。シークバー・再生ボタンはバンドページのプレーヤーの部品 */
 .shell-panel { position: fixed; top: 56px; right: 12px; z-index: 50; width: 360px; max-width: calc(100vw - 24px); max-height: calc(100dvh - 110px); overflow-y: auto; padding: 14px; display: grid; gap: 8px;
   border-radius: var(--r-lg); background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow-pop); }
-.shell-panel[hidden] { display: none; }
+/* 開け閉めの動き: 右上（アイコンの側）から ふわっと。hidden の display: none まで transition で待つ（allow-discrete）。出だしは @starting-style */
+.shell-panel { transform-origin: top right; transition: opacity var(--t-base) ease, scale var(--t-base) var(--ease-out), display var(--t-base) allow-discrete; }
+.shell-panel[hidden] { display: none; opacity: 0; scale: .96; }
+@starting-style { .shell-panel:not([hidden]) { opacity: 0; scale: .96; } }
 .shell-panel__head { display: flex; gap: 12px; align-items: center; min-width: 0; }
 .shell-panel__art { flex: none; width: 104px; height: 104px; border-radius: var(--r-md); overflow: hidden; display: grid; place-items: center; background: var(--surface-2); color: var(--muted); }
 .shell-panel__art img { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -745,7 +756,10 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 .shell-panel [data-shell-scope] { justify-self: center; }
 /* 範囲のメニュー（範囲を変えるの下）。見た目はヘッダーのメニューと同じ並び */
 .shell-panel__scopes { list-style: none; margin: 0; padding: 6px; display: grid; gap: 2px; border: 1px solid var(--border); border-radius: var(--r-md); }
-.shell-panel__scopes[hidden] { display: none; }
+.shell-panel__scopes { transition: opacity var(--t-base) ease, translate var(--t-base) var(--ease-out), display var(--t-base) allow-discrete; }
+.shell-panel__scopes[hidden] { display: none; opacity: 0; translate: 0 -4px; }
+@starting-style { .shell-panel__scopes:not([hidden]) { opacity: 0; translate: 0 -4px; } }
+@media (prefers-reduced-motion: reduce) { .shell-panel, .shell-panel__scopes, .audio-bubble, .audio-player__bar { transition: none; } }
 .shell-panel__scopes li { display: flex; align-items: center; gap: 8px; }
 .shell-panel__scopes button { flex: 1; padding: 8px 10px; border: 0; border-radius: var(--r-md); background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .shell-panel__scopes button:hover { background: var(--surface-2); }
