@@ -6,6 +6,7 @@
  *  MIX の無い曲は、バンドの YouTube（song.video_start = 曲の始まりの秒・video_no = 何本目の動画。migrations/145・150）から流す: video = 動画 ID、src = "yt:動画 ID"、
  *    終わり = 同じ動画で次に始まる曲（無ければ動画の最後）。曲の始まりが1つも無い動画は流さない（動画まるごとは長いため）
  *    動画にチャプター（audio_key 'y:動画ID'。video_chapters.php）があれば、video_start の代わりに MIX と同じ区切り（MC・通し）で流す。曲は video_chapter_songs
+ *    YouTube の区分の音源（band_audio / band_drive_file の video_id。migrations/153）があれば、video を付けずにその音源を MIX と同じに流す（yt = true。絞り込みは YouTube 側）
  *  リクエスト（GET）: ?scope=all | ?scope=live&id=ライブID | ?scope=band&id=バンドID | ?scope=member&id=メンバーID（その人が演奏した曲） | ?scope=artist&id=アーティストID（そのアーティストの曲）
  *  レスポンス: {"items": [{song_id, title, artist_id, artist, art, album, band_id, band, live_id, live, year, players, src, size, start_ms, end_ms, through_end_ms, mc_ms}, ...]}（並びはライブ・出演順・時間順 = シャッフルしないときの順。混ぜるのは JS）
  *  曲の区切りは音源のチャプター（band_audio_chapter。説明は migrations/130）:
@@ -120,28 +121,39 @@ foreach ($st as $r) {
 
 // 音源の URL と大きさ。バンドに紐付いたまま残っているものだけ
 $src = []; // "band_id|audio_key" => [url, size]
-$st = $pdo->prepare("SELECT image_id, band_id, file_name FROM band_audio WHERE band_id IN ($in)");
+$ytFile = []; // "band_id|y:動画ID" => [url, size]（YouTube の区分の音源。先のものだけ）
+$st = $pdo->prepare("SELECT image_id, band_id, file_name, video_id FROM band_audio WHERE band_id IN ($in) ORDER BY sort_order, image_id");
 $st->execute($bandIds);
 foreach ($st as $r) {
     $path = LIVE_IMAGE_DIR . '/' . live_file_disk_name((string)$r['file_name']);
     if (is_file($path)) {
-        $src[$r['band_id'] . '|a:' . $r['image_id']] = ['attach_image?k=band_audio&id=' . (int)$r['image_id'], (int)filesize($path)];
+        $s = ['attach_image?k=band_audio&id=' . (int)$r['image_id'], (int)filesize($path)];
+        if ($r['video_id'] !== null) {
+            $ytFile[$r['band_id'] . '|y:' . $r['video_id']] ??= $s;
+        } else {
+            $src[$r['band_id'] . '|a:' . $r['image_id']] = $s;
+        }
     }
 }
-$st = $pdo->prepare("SELECT band_id, file_id, size FROM band_drive_file WHERE band_id IN ($in) AND mime_type LIKE 'audio/%' AND size IS NOT NULL");
+$st = $pdo->prepare("SELECT band_id, file_id, size, video_id FROM band_drive_file WHERE band_id IN ($in) AND mime_type LIKE 'audio/%' AND size IS NOT NULL ORDER BY sort_order");
 $st->execute($bandIds);
 foreach ($st as $r) {
-    $src[$r['band_id'] . '|d:' . $r['file_id']] = ['drive_audio?band=' . (int)$r['band_id'] . '&f=' . rawurlencode((string)$r['file_id']), (int)$r['size']];
+    $s = ['drive_audio?band=' . (int)$r['band_id'] . '&f=' . rawurlencode((string)$r['file_id']), (int)$r['size']];
+    if ($r['video_id'] !== null) {
+        $ytFile[$r['band_id'] . '|y:' . $r['video_id']] ??= $s;
+    } else {
+        $src[$r['band_id'] . '|d:' . $r['file_id']] = $s;
+    }
 }
 
-// YouTube のチャプター（'y:動画ID'）: [動画 ID, 何本目, 全部で何本]
+// YouTube のチャプター（'y:動画ID'）: [動画 ID, 何本目, 全部で何本, YouTube の区分の音源があるか]
 $ytKeys = [];
 foreach ($videoUrls as $bandId => $urls) {
     foreach ($urls as $no => $url) {
         $vid = youtube_video_id($url);
         if ($vid !== null) {
-            $src[$bandId . '|y:' . $vid] = ['yt:' . $vid, 0];
-            $ytKeys[$bandId . '|y:' . $vid] = [$vid, $no, count($urls)];
+            $src[$bandId . '|y:' . $vid] = $ytFile[$bandId . '|y:' . $vid] ?? ['yt:' . $vid, 0];
+            $ytKeys[$bandId . '|y:' . $vid] = [$vid, $no, count($urls), isset($ytFile[$bandId . '|y:' . $vid])];
         }
     }
 }
@@ -207,7 +219,7 @@ foreach ($groups as $key => $chs) {
             'through_end_ms' => $thru,
             'mc_ms'    => $mc,
             '_o'       => [$bandRows[$bandId]['rank'] ?? 0, (int)$song['track_no']],
-        ] + ($yt ? ['video' => $yt[0]] : []);
+        ] + ($yt ? ($yt[3] ? ['yt' => true] : ['video' => $yt[0]]) : []);
     }
 }
 
@@ -219,8 +231,10 @@ foreach ($videoUrls as $bandId => $urls) {
         if ($vid === null || isset($groups[$bandId . '|y:' . $vid])) {
             continue; // チャプターのある動画は上で出した
         }
+        $file = $ytFile[$bandId . '|y:' . $vid] ?? null;
         $base = ['art' => null, 'album' => null, 'band_id' => $bandId, 'band' => (string)$b['band'], 'live_id' => (int)$b['live_id'], 'live' => (string)$b['live'],
-            'year' => (int)$b['fiscal_year'], 'src' => 'yt:' . $vid, 'video' => $vid, 'size' => 0, 'mc_ms' => null];
+            'year' => (int)$b['fiscal_year'], 'mc_ms' => null]
+            + ($file ? ['src' => $file[0], 'size' => $file[1], 'yt' => true] : ['src' => 'yt:' . $vid, 'video' => $vid, 'size' => 0]);
         $inVideo = array_values(array_filter($songs[$bandId] ?? [], static fn($s) => $s['video_start'] !== null && (int)$s['video_no'] === $no));
         usort($inVideo, static fn($x, $y) => (int)$x['video_start'] <=> (int)$y['video_start']);
         foreach ($inVideo as $k => $song) {

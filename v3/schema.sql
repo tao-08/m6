@@ -629,6 +629,7 @@ CREATE TABLE band_drive_file (
     mime_type  VARCHAR(100)      CHARACTER SET ascii COLLATE ascii_general_ci NOT NULL DEFAULT '',
     size       BIGINT UNSIGNED   NULL,                -- バイト数。NULL = 不明（migrations/130）
     is_mix     TINYINT(1)        NOT NULL DEFAULT 0,  -- 1 = ミックス音源（バンドに MIX の印が付く。migrations/129）
+    video_id   CHAR(11)          CHARACTER SET ascii COLLATE ascii_bin NULL, -- YouTube の区分: どの動画の音声か。NULL = 違う（migrations/153）
     sort_order SMALLINT UNSIGNED NOT NULL DEFAULT 0,
     created_at DATETIME          NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (band_id, file_id),
@@ -1083,6 +1084,7 @@ CREATE TABLE band_audio (
     band_id    INT UNSIGNED NOT NULL,
     file_name  VARCHAR(40)  NOT NULL,
     title      VARCHAR(100) NOT NULL DEFAULT '',
+    video_id   CHAR(11)     CHARACTER SET ascii COLLATE ascii_bin NULL, -- YouTube の区分: どの動画の音声か。NULL = MIX（migrations/153）
     sort_order SMALLINT UNSIGNED NOT NULL DEFAULT 0,
     PRIMARY KEY (image_id),
     KEY idx_ba_band (band_id, sort_order),

@@ -60,6 +60,11 @@ $driveFiles = $isNew ? [] : (drive_load_files($pdo, [$bandId])[$bandId] ?? []);
 $st = $pdo->prepare('SELECT url FROM band_video WHERE band_id = ? ORDER BY sort_order');
 $st->execute([$bandId]);
 $ytExtras = $st->fetchAll(PDO::FETCH_COLUMN);
+// 音源の区分（なし / MIX / YouTube。migrations/153）: 'y:動画ID' はこのバンドの動画だけ通す。ほかは ''（なし）
+$audioKind = static function (mixed $k, array $urls): string {
+    $vids = array_filter(array_map(static fn($u) => youtube_video_id((string)$u), $urls));
+    return $k === 'mix' || (is_string($k) && str_starts_with($k, 'y:') && in_array(substr($k, 2), $vids, true)) ? $k : '';
+};
 
 // 今のメンバー。セトリに出ている人（locked = 1）は楽器をセトリの実績で決めるので、この画面では変えられない
 //   （sync_band_members もその人の行には触らない）
@@ -136,7 +141,15 @@ if (is_post()) {
     $driveAdd = trim((string)($_POST['drive_add'] ?? ''));
     // タイトル: drive_title[ファイル ID] = 入力した文字（空欄ならファイル名を出す）
     $driveTitles = array_filter((array)($_POST['drive_title'] ?? []), 'is_string');
-    $driveMix = array_values(array_filter((array)($_POST['drive_mix'] ?? []), 'is_string')); // ミックスにチェックしたファイルの ID
+    // 区分: drive_kind[ファイル ID] / audio_kind[MP3 の ID] = '' | 'mix' | 'y:動画ID'（MP3 は '' なら MIX）
+    $driveKinds = [];
+    foreach ($driveFiles as $f) {
+        $driveKinds[(string)$f['file_id']] = $audioKind($_POST['drive_kind'][(string)$f['file_id']] ?? '', [$youtube, ...$ytExtras]);
+    }
+    $audioKinds = [];
+    foreach ($audios as $a) {
+        $audioKinds[(int)$a['image_id']] = $audioKind($_POST['audio_kind'][(int)$a['image_id']] ?? '', [$youtube, ...$ytExtras]) ?: 'mix';
+    }
     // 🚩 確認依頼（チェックが無ければ外す）。理由はビットで複数、誰についてはメンバーID の配列
     $chk = is_array($_POST['chk'] ?? null) ? $_POST['chk'] : [];
     $flag = check_bits($chk['flag'] ?? null, $chk['reason'] ?? []);
@@ -307,7 +320,7 @@ if (is_post()) {
                 $addVideo->execute([$bandId, $i + 1, $u]);
             }
             drive_save_files($pdo, $bandId, $driveNext); // ドライブのファイル（変更前は change_capture で履歴に残っている）
-            drive_save_mix($pdo, $bandId, array_column($driveFiles, 'file_id'), $driveMix); // 画面に出したファイルだけ（今回足したものは初期値のまま）
+            drive_save_kind($pdo, $bandId, $driveKinds); // 画面に出したファイルだけ（今回足したものは初期値のまま）
             // タイトルは今回残したファイルの分だけ（外したファイルや、改造されたリクエストの ID は UPDATE が0件で終わる）
             drive_save_titles($pdo, $bandId, array_intersect_key($driveTitles, array_flip(array_column($driveNext, 'file_id'))));
             renumber_bands($pdo, $dayId, $bandId, $isNew ? $position : $order);
@@ -318,11 +331,14 @@ if (is_post()) {
             attach_add($pdo, 'band', $bandId, $uploads, (int)current_user()['user_id'], $newFiles);
             // ミックス MP3: タイトルを直し（このバンドの分だけ）、外す・足す
             $setTitle = $pdo->prepare('UPDATE band_audio SET title = ? WHERE image_id = ? AND band_id = ?');
+            $setVideo = $pdo->prepare('UPDATE band_audio SET video_id = ? WHERE image_id = ? AND band_id = ?');
             foreach ($audios as $a) {
                 $t = $audioTitles[$a['image_id']] ?? null;
                 if ($t !== null) {
                     $setTitle->execute([mb_substr(trim(mb_scrub($t)), 0, 100), $a['image_id'], $bandId]);
                 }
+                $k = $audioKinds[(int)$a['image_id']];
+                $setVideo->execute([str_starts_with($k, 'y:') ? substr($k, 2) : null, $a['image_id'], $bandId]);
             }
             $removeFiles = array_merge($removeFiles, $isNew ? [] : attach_remove($pdo, 'band_audio', $bandId, $audioRemoveIds));
             $delChapters = $pdo->prepare('DELETE FROM band_audio_chapter WHERE band_id = ? AND audio_key = ?'); // 外した MP3 のチャプターも消す
@@ -435,6 +451,19 @@ while (count($ytPicks) > 1 && end($ytPicks) === null) {
     array_pop($ytPicks);
 }
 $ytPicks = $ytPicks ?: [null];
+// 音源の区分のセレクト（ドライブの音源・MP3 の行）。動画が2本以上なら「YouTube 1」「YouTube 2」
+$kindVids = array_values(array_filter(array_map(static fn($u) => youtube_video_id((string)$u), [$band['youtube_url'], ...$ytExtras])));
+$kindSelect = static function (string $name, string $label, string $value, bool $none, bool $audio) use ($kindVids): string {
+    $opts = ($none ? ['' => 'なし'] : []) + ['mix' => 'MIX'];
+    foreach ($audio ? $kindVids : [] as $i => $vid) {
+        $opts['y:' . $vid] = count($kindVids) > 1 ? 'YouTube ' . ($i + 1) : 'YouTube';
+    }
+    $html = '<select class="drive-edit__kind" name="' . h($name) . '" aria-label="' . h($label) . '">';
+    foreach ($opts as $v => $t) {
+        $html .= '<option value="' . h($v) . '"' . ($v === $value ? ' selected' : '') . '>' . h($t) . '</option>';
+    }
+    return $html . '</select>';
+};
 /** プルダウンの1行。value は URL（こちらで組み立てる）、表示はタイトル */
 $ytOption = static fn(string $vid, string $label, ?string $sel) => '<option value="' . h(youtube_watch_url($vid)) . '"'
     . ($vid === $sel ? ' selected' : '') . '>' . h($label) . '</option>';
@@ -464,13 +493,14 @@ render_header($isNew ? 'バンドを追加' : 'バンドを編集', 'lives');
         <label class="field field--wide"><span>メモ</span><input autocomplete="off" name="note" value="<?= h($band['note']) ?>" maxlength="255"></label>
         <div class="field field--wide"><span>ファイルの追加・削除</span><?= attach_field_html('band', $images) ?></div>
         <?php if ($audios): ?><!-- 追加は「ファイルの追加」から（.mp3 はここに入る）。ここは名前の変更・外すだけ -->
-        <div class="field field--wide"><span>ミックス MP3</span>
+        <div class="field field--wide"><span>MP3</span>
                 <!-- 1行 = 1ファイル: タイトルの入力欄・✕（押すと外すにチェック → 行が薄くなる）。ドライブのファイルと同じ見た目 -->
                 <ul class="drive-edit">
                     <?php foreach ($audios as $a): $aid = (int)$a['image_id']; ?>
                         <li>
                             <?= icon('audio_file', 'file-icon file-icon--audio') ?>
                             <input type="text" name="audio_title[<?= $aid ?>]" value="<?= h($audioTitles[$aid] ?? $a['title']) ?>" maxlength="100" aria-label="タイトル" autocomplete="off">
+                            <?= $kindSelect("audio_kind[$aid]", '区分', $audioKinds[$aid] ?? ($a['video_id'] !== null ? 'y:' . $a['video_id'] : 'mix'), false, true) ?>
                             <label class="drive-edit__remove" title="外す"><input type="checkbox" name="audio_remove[]" value="<?= $aid ?>" hidden<?= in_array($aid, $audioRemoveIds ?? [], true) ? ' checked' : '' ?>><?= icon('close') ?></label>
                         </li>
                     <?php endforeach; ?>
@@ -522,7 +552,7 @@ render_header($isNew ? 'バンドを追加' : 'バンドを編集', 'lives');
                             <?= drive_type_icon((string)$f['mime_type']) ?>
                             <input type="text" name="drive_title[<?= h($fid) ?>]" value="<?= h($driveTitles[$fid] ?? $f['title'] ?? '') ?>" maxlength="100"
                                 placeholder="<?= h(drive_strip_ext((string)$f['name'])) ?>" aria-label="「<?= h($f['name']) ?>」のタイトル" autocomplete="off">
-                            <label class="drive-edit__mix" title="ミックス"><input type="checkbox" name="drive_mix[]" value="<?= h($fid) ?>"<?= (isset($driveMix) ? in_array($fid, $driveMix, true) : (bool)$f['is_mix']) ? ' checked' : '' ?>>MIX</label>
+                            <?= $kindSelect("drive_kind[$fid]", '区分', $driveKinds[$fid] ?? ($f['video_id'] !== null ? 'y:' . $f['video_id'] : ($f['is_mix'] ? 'mix' : '')), true, str_starts_with((string)$f['mime_type'], 'audio/')) ?>
                             <label class="drive-edit__remove" title="外す"><input type="checkbox" name="drive_remove[]" value="<?= h($fid) ?>" hidden<?= in_array($fid, $driveRemove ?? [], true) ? ' checked' : '' ?>><?= icon('close') ?></label>
                         </li>
                     <?php endforeach; ?>

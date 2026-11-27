@@ -84,7 +84,7 @@ if ($faculty !== '' || $roleName !== null) {
     // 「MIX」「ミックス」で検索したら、ミックスのあるバンド（ミックスの印を付けたドライブのファイル か MP3）も出す
     $mix = in_array(mb_strtolower($q), ['mix', 'ミックス'], true) ? 1 : 0;
     $mixSql = ' OR (? = 1 AND (EXISTS (SELECT 1 FROM band_drive_file f WHERE f.band_id = b.band_id AND f.is_mix = 1)
-        OR EXISTS (SELECT 1 FROM band_audio a WHERE a.band_id = b.band_id)))';
+        OR EXISTS (SELECT 1 FROM band_audio a WHERE a.band_id = b.band_id AND a.video_id IS NULL)))';
 
     // ---- ライブ（ライブ名・会場名・日程名・日程のメモ） ----
     $st = $pdo->prepare('SELECT DISTINCT lm.live_id, lm.fiscal_year AS year, lm.name

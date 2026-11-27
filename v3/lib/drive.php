@@ -328,7 +328,7 @@ function drive_thumb_url(string $fileId): string
 /**
  * バンドごとのファイル。全バンド分を1回の SQL で取る（バンドごとに SQL を投げない = N+1 問題の回避）
  * @param int[] $bandIds
- * @return array<int, array> band_id => [['band_id', 'file_id', 'name', 'title', 'mime_type', 'size', 'is_mix'], ...]（並び順どおり）
+ * @return array<int, array> band_id => [['band_id', 'file_id', 'name', 'title', 'mime_type', 'size', 'is_mix', 'video_id'], ...]（並び順どおり）
  */
 function drive_load_files(PDO $pdo, array $bandIds): array
 {
@@ -338,7 +338,7 @@ function drive_load_files(PDO $pdo, array $bandIds): array
     }
     // IN (?, ?, ?) の ? を個数ぶん作る（値はプレースホルダで渡すので SQL インジェクションにならない）
     $marks = implode(',', array_fill(0, count($bandIds), '?'));
-    $st = $pdo->prepare("SELECT band_id, file_id, name, title, mime_type, size, is_mix FROM band_drive_file
+    $st = $pdo->prepare("SELECT band_id, file_id, name, title, mime_type, size, is_mix, video_id FROM band_drive_file
         WHERE band_id IN ($marks) ORDER BY band_id, sort_order, name");
     $st->execute($bandIds);
     $out = [];
@@ -393,9 +393,24 @@ function drive_save_files(PDO $pdo, int $bandId, array $files): void
  */
 function drive_save_mix(PDO $pdo, int $bandId, array $shownFileIds, array $mixFileIds): void
 {
-    $st = $pdo->prepare('UPDATE band_drive_file SET is_mix = ? WHERE band_id = ? AND file_id = ?');
+    // MIX にしたファイルは YouTube の区分（video_id。migrations/153）から外す。外したファイルの区分はそのまま
+    $st = $pdo->prepare('UPDATE band_drive_file SET is_mix = ?, video_id = IF(? = 1, NULL, video_id) WHERE band_id = ? AND file_id = ?');
     foreach ($shownFileIds as $fid) {
-        $st->execute([in_array((string)$fid, $mixFileIds, true) ? 1 : 0, $bandId, (string)$fid]);
+        $mix = in_array((string)$fid, $mixFileIds, true) ? 1 : 0;
+        $st->execute([$mix, $mix, $bandId, (string)$fid]);
+    }
+}
+
+/**
+ * ファイルの区分を保存する（バンド編集のセレクト）。'' = なし、'mix' = MIX、'y:動画ID' = その YouTube の音声
+ *   画面に出したファイルだけ渡す。動画 ID は呼ぶ側でバンドの動画か確かめる
+ * @param array<string, string> $kinds file_id => 区分
+ */
+function drive_save_kind(PDO $pdo, int $bandId, array $kinds): void
+{
+    $st = $pdo->prepare('UPDATE band_drive_file SET is_mix = ?, video_id = ? WHERE band_id = ? AND file_id = ?');
+    foreach ($kinds as $fid => $kind) {
+        $st->execute([$kind === 'mix' ? 1 : 0, str_starts_with($kind, 'y:') ? substr($kind, 2) : null, $bandId, (string)$fid]);
     }
 }
 
@@ -412,7 +427,7 @@ function band_mix_ids(PDO $pdo, array $bandIds): array
     }
     $marks = implode(',', array_fill(0, count($bandIds), '?'));
     $st = $pdo->prepare("SELECT band_id FROM band_drive_file WHERE is_mix = 1 AND band_id IN ($marks)
-        UNION SELECT band_id FROM band_audio WHERE band_id IN ($marks)");
+        UNION SELECT band_id FROM band_audio WHERE video_id IS NULL AND band_id IN ($marks)"); // YouTube の区分の MP3 は MIX ではない
     $st->execute([...$bandIds, ...$bandIds]);
     return array_fill_keys(array_map('intval', $st->fetchAll(PDO::FETCH_COLUMN)), true);
 }

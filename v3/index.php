@@ -90,7 +90,7 @@ $rows = $pdo->query('SELECT l.live_id, l.fiscal_year AS year, l.name AS live_nam
             AND (SELECT COUNT(*) FROM song s WHERE s.band_id = b.band_id AND s.is_se = 0) >= b.song_count) AS setlist_done_bands,
         GROUP_CONCAT(b.note SEPARATOR \' \') AS band_notes,
         SUM(EXISTS (SELECT 1 FROM band_drive_file f WHERE f.band_id = b.band_id AND f.is_mix = 1)
-            OR EXISTS (SELECT 1 FROM band_audio a WHERE a.band_id = b.band_id)) AS mix_bands,
+            OR EXISTS (SELECT 1 FROM band_audio a WHERE a.band_id = b.band_id AND a.video_id IS NULL)) AS mix_bands,
         SUM(b.youtube_url IS NOT NULL AND b.youtube_url <> \'\') AS yt_bands
     FROM live l
     JOIN live_day d ON d.live_id = l.live_id
