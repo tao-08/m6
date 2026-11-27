@@ -762,6 +762,7 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 /* バンド単位の吹き出し（player.js の drawBubbles）: 上（被ったものは下）に吹き出しの分の余白。曲間をスキップするときは飛ばす所を薄く（--gaps） */
 .shell-panel .audio-player__seek { --gap: var(--surface-2); transition: margin var(--t-slow) var(--ease-out); }
 .shell-panel .audio-player__seek.has-bubbles { margin-top: 22px; }
+.shell-panel .audio-bubble.is-current { --bd: var(--accent); --ov: var(--accent-soft); color: var(--accent); } /* 再生中は赤（ポップアップの再生中の色にそろえる） */
 .shell-panel .audio-player__seek.has-below { margin-bottom: 22px; }
 .shell-panel .audio-player__range::-webkit-slider-runnable-track { background: var(--gaps, none), linear-gradient(to right, var(--accent) calc(var(--q) * 100%), var(--border) calc(var(--q) * 100%)); }
 .shell-panel .audio-player__range::-moz-range-track { background: var(--gaps, none), var(--border); }
