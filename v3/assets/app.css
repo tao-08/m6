@@ -820,7 +820,10 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 :is(.shell-filter__years, .chapter-years) summary .icon { margin-left: auto; color: var(--muted); transition: transform var(--t-base) var(--ease-out); }
 :is(.shell-filter__years, .chapter-years) details[open] > summary .icon { transform: rotate(180deg); }
 @media (prefers-reduced-motion: reduce) { :is(.shell-filter__years, .chapter-years) summary .icon { transition: none; } }
-.shell-filter__marks { flex: none; display: inline-flex; align-items: center; gap: 4px; margin-left: 4px; vertical-align: middle; } /* そのライブにある音源（MIX / YouTube） */
+/* そのライブにある音源: 右に YouTube の列・MIX の列を作り、種類ごとに縦にそろえる（無い印の所は空ける。MIX の幅 = 高さ 18px × 25/14） */
+.shell-filter__marks { flex: none; margin-left: auto; display: grid; grid-template-columns: 25px 33px; align-items: center; gap: 6px; }
+.shell-filter__marks .youtube-icon { grid-column: 1; }
+.shell-filter__marks .tag--mix { grid-column: 2; }
 .shell-filter__marks .youtube-icon { width: 25px; height: 18px; }
 .shell-filter__years ul { list-style: none; margin: 0; padding: 0 0 6px 24px; /* 下は padding: margin だと開け閉めの終わりにガクッと飛ぶ */ display: grid; gap: 6px; }
 .chapter-years { margin-top: 12px; }

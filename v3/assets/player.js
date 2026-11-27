@@ -754,15 +754,18 @@
     filterDlg.showModal();
     const res = await fetch(`api_shuffle?scope=${encodeURIComponent(cfg.scope)}&id=${Number(cfg.id) || 0}`).catch(() => null);
     const data = res?.ok ? await res.json().catch(() => null) : null;
-    const years = new Map(); // 年度 → Map(live_id → { name, mix, yt })（出演順のまま）
+    const years = new Map(); // 年度 → Map(live_id → { name, date, mix, yt })
     (data?.items || []).forEach((q) => {
       if (!years.has(q.year)) years.set(q.year, new Map());
       const lv = years.get(q.year);
-      if (!lv.has(q.live_id)) lv.set(q.live_id, { name: q.live, mix: false, yt: false });
-      lv.get(q.live_id)[(q.video || q.yt) ? 'yt' : 'mix'] = true; // passes と同じ分け方
+      if (!lv.has(q.live_id)) lv.set(q.live_id, { name: q.live, date: q.date || '9999', mix: false, yt: false });
+      const v = lv.get(q.live_id);
+      if (q.date && q.date < v.date) v.date = q.date; // 何日かあるライブは初日
+      v[(q.video || q.yt) ? 'yt' : 'mix'] = true; // passes と同じ分け方
     });
     const mark = (src) => bar.querySelector(`[data-shell-src="${src}"] > *`).cloneNode(true); // 見出しの MIX / YouTube の印を写す
     yearsEl.replaceChildren(...[...years].reverse().map(([year, lives]) => { // 新しい年度から
+    years.forEach((lv, y) => years.set(y, new Map([...lv].sort((a, b) => a[1].date.localeCompare(b[1].date))))); // 日付順（日付なしは最後）
       const d = document.createElement('details');
       const s = document.createElement('summary');
       const y = box(false, `${year}年度`);

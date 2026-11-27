@@ -51,7 +51,7 @@ $params = match ($scope) {
     default => [],
 };
 
-$st = $pdo->prepare("SELECT c.band_id, c.audio_key, c.kind, c.at_ms, b.name AS band, l.live_id, l.name AS live, l.fiscal_year
+$st = $pdo->prepare("SELECT c.band_id, c.audio_key, c.kind, c.at_ms, b.name AS band, l.live_id, l.name AS live, l.fiscal_year, d.held_on
     FROM band_audio_chapter c
     JOIN band b ON b.band_id = c.band_id
     JOIN live_day d ON d.live_day_id = b.live_day_id
@@ -64,7 +64,7 @@ foreach ($st as $r) {
     $groups[$r['band_id'] . '|' . $r['audio_key']][] = $r;
 }
 // 範囲のバンド（出演順）。YouTube の曲の情報と、MIX と YouTube を混ぜて並べる順番に使う
-$st = $pdo->prepare("SELECT b.band_id, b.name AS band, b.youtube_url, b.artist_id, a.name AS artist, l.live_id, l.name AS live, l.fiscal_year
+$st = $pdo->prepare("SELECT b.band_id, b.name AS band, b.youtube_url, b.artist_id, a.name AS artist, l.live_id, l.name AS live, l.fiscal_year, d.held_on
     FROM band b
     JOIN live_day d ON d.live_day_id = b.live_day_id
     JOIN live l ON l.live_id = d.live_id
@@ -207,6 +207,7 @@ foreach ($groups as $key => $chs) {
             'art'      => $song['artwork_url'] ? preg_replace('/\d+x\d+bb/', '300x300bb', (string)$song['artwork_url']) : null, // band.php のセトリと同じ 300px 版
             'album'    => $song['album_title'] !== null ? (string)$song['album_title'] : null,
             'band_id'  => $bandId,
+            'date'     => $c['held_on'], // 出演日（絞り込みでライブを日付順に並べる）
             'band'     => (string)$c['band'],
             'live_id'  => (int)$c['live_id'],
             'live'     => (string)$c['live'],
@@ -233,7 +234,7 @@ foreach ($videoUrls as $bandId => $urls) {
         }
         $file = $ytFile[$bandId . '|y:' . $vid] ?? null;
         $base = ['art' => null, 'album' => null, 'band_id' => $bandId, 'band' => (string)$b['band'], 'live_id' => (int)$b['live_id'], 'live' => (string)$b['live'],
-            'year' => (int)$b['fiscal_year'], 'mc_ms' => null]
+            'year' => (int)$b['fiscal_year'], 'date' => $b['held_on'], 'mc_ms' => null]
             + ($file ? ['src' => $file[0], 'size' => $file[1], 'yt' => true] : ['src' => 'yt:' . $vid, 'video' => $vid, 'size' => 0]);
         $inVideo = array_values(array_filter($songs[$bandId] ?? [], static fn($s) => $s['video_start'] !== null && (int)$s['video_no'] === $no));
         usort($inVideo, static fn($x, $y) => (int)$x['video_start'] <=> (int)$y['video_start']);
