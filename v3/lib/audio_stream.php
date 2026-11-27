@@ -26,6 +26,16 @@ function audio_mark(string $path): string
     return $path . '.' . AUDIO_LIGHT_KBPS;
 }
 
+/** 先頭の ID3 タグ（ジャケット画像など）の長さ。音の前にあるので、from= / to= の位置からは外して数える */
+function audio_id3_len(string $head): int
+{
+    if (strlen($head) < 10 || !str_starts_with($head, 'ID3')) {
+        return 0;
+    }
+    $b = array_map('ord', str_split(substr($head, 6, 4)));
+    return 10 + (($b[0] & 0x7F) << 21 | ($b[1] & 0x7F) << 14 | ($b[2] & 0x7F) << 7 | ($b[3] & 0x7F)) + (ord($head[5]) & 0x10 ? 10 : 0);
+}
+
 /** 元の大きさ。置き換えていなければ今の大きさ */
 function audio_orig_size(string $path): int
 {
@@ -94,11 +104,11 @@ function audio_shrink_make(string $path, string $mark): void
 function audio_stream_file(string $path, string $mime, ?string $dlName = null): void
 {
     header('X-Content-Type-Options: nosniff');
-    $scale = 1.0;
+    $orig = (int)filesize($path);
     if (str_starts_with($mime, 'audio/')) {
         audio_shrink($path);
-        $scale = filesize($path) / max(1, audio_orig_size($path));
-        if ($scale < 1) {
+        $orig = max(1, audio_orig_size($path));
+        if (filesize($path) < $orig) {
             $mime = 'audio/mpeg';
         }
     }
@@ -107,8 +117,11 @@ function audio_stream_file(string $path, string $mime, ?string $dlName = null): 
     $etag = '"' . dechex($size) . '-' . dechex($mtime) . '"';
     $from = 0;
     $to = $size - 1;
-    $skip = ctype_digit((string)($_GET['from'] ?? '')) ? (int)round((int)$_GET['from'] * $scale) : 0;
-    $cap = ctype_digit((string)($_GET['to'] ?? '')) ? (int)round((int)$_GET['to'] * $scale) : null;
+    // from= / to= は「時刻 ÷ 長さ × 元の大きさ」。音の部分（タグの後ろ）の割合として、今のファイルの位置に直す
+    $hdr = isset($_GET['from']) || isset($_GET['to']) ? audio_id3_len((string)file_get_contents($path, false, null, 0, 10)) : 0;
+    $at = static fn(string $q): ?int => ctype_digit((string)($_GET[$q] ?? '')) ? (int)round($hdr + (int)$_GET[$q] / max(1, $orig) * ($size - $hdr)) : null;
+    $skip = $at('from') ?? 0;
+    $cap = $at('to');
     $part = $skip > 0 || $cap !== null; // 一部だけの 200（Range には答えない）
     $prefix = '';
     if ($part) { // 一部だけの 200 は使い回さない
