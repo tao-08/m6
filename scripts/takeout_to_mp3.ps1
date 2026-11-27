@@ -6,7 +6,8 @@
 param(
     [Parameter(Mandatory)][string]$Takeout,
     [Parameter(Mandatory)][string]$Out,
-    [string]$Ffmpeg = 'ffmpeg'
+    [string]$Ffmpeg = 'ffmpeg',
+    [switch]$DeleteVideo # 変換できた動画を消す（60MB を超えたもの・変換しなかったものは残す）
 )
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
@@ -25,10 +26,11 @@ foreach ($csv in Get-ChildItem $Takeout -Recurse -Filter *.csv) {
     $titleCol = $cols | Where-Object { $_ -match 'タイトル|Title' } | Select-Object -First 1
     if (-not $idCol -or -not $titleCol) { continue }
     foreach ($r in $rows) {
-        if ($r.$idCol -notmatch '^[A-Za-z0-9_-]{11}$') { continue }
+        $id = "$($r.$idCol)".Trim() # 「-」で始まる ID は前に空白が付いている
+        if ($id -notmatch '^[A-Za-z0-9_-]{11}$') { continue }
         $k = Get-Norm $r.$titleCol
         if (-not $byTitle.ContainsKey($k)) { $byTitle[$k] = [Collections.Generic.HashSet[string]]::new() }
-        [void]$byTitle[$k].Add($r.$idCol)
+        [void]$byTitle[$k].Add($id)
     }
 }
 Write-Host "一覧の動画: $($byTitle.Count) 件"
@@ -46,6 +48,8 @@ foreach ($f in Get-ChildItem $Takeout -Recurse -Include *.mp4, *.mov, *.webm, *.
     Write-Host "$($f.Name) → $($ids[0]).mp3"
     & $Ffmpeg -v error -y -i $f.FullName -vn -map_metadata -1 -c:a libmp3lame -b:a 160k -ar 44100 $dst
     if ($LASTEXITCODE -ne 0) { $skipped += "$($f.Name)（ffmpeg が失敗）"; Remove-Item $dst -ErrorAction SilentlyContinue; continue }
-    if ((Get-Item $dst).Length -gt 60MB) { $skipped += "$($ids[0]).mp3（60MB を超えるので上げられない）" }
+    $len = (Get-Item $dst).Length
+    if ($len -gt 60MB) { $skipped += "$($ids[0]).mp3（60MB を超えるので上げられない）" }
+    elseif ($DeleteVideo -and $len -gt 0) { Remove-Item -LiteralPath $f.FullName } # ディスクが足りないとき用。ごみ箱を通さない
 }
 if ($skipped) { Write-Host "`n変換しなかったもの:"; $skipped | ForEach-Object { Write-Host "  $_" } }
