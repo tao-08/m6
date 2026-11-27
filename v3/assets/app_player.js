@@ -503,7 +503,14 @@ function setupAudioPlayers(root = document) {
       } else if (e.target.closest('[data-ap-here]')) {
         moveSel(Math.floor(now() * 1000), 0);
       } else if (add) {
-        send({ action: 'add', key: chap.key, kind: add.dataset.apAdd, at_ms: Math.floor(now() * 1000) });
+        const had = new Set(chap.list.map((c) => c.id));
+        send({ action: 'add', key: chap.key, kind: add.dataset.apAdd, at_ms: Math.floor(now() * 1000) }).then((ok) => {
+          const n = ok && chap.list.find((c) => !had.has(c.id)); // 足したチャプターを選んで、すぐ時間を直せるようにする
+          if (!n) return;
+          if (pend && pend.id !== n.id) flushMove(false);
+          selId = n.id;
+          syncSel();
+        });
       } else if (e.target.closest('[data-ap-auto]')) {
         autoRun();
       } else if (e.target.closest('[data-ap-stop]')) {
