@@ -435,7 +435,10 @@
     const it = cur();
     if (!it) return;
     if (inMc(it)) { playAt((nowSec() - it.mc_ms / 1000 < 3 ? it.start_ms : it.mc_ms) / 1000, true); return; } // MC の前の曲 = いまの曲
-    if (queue.length > 1 && nowSec() - it.start_ms / 1000 < 3) { slide(-1); go(idx - 1, true); }
+    if (queue.length > 1 && nowSec() - it.start_ms / 1000 < 3) {
+      const pv = queue[(idx - 1 + queue.length) % queue.length];
+      slide(-1); go(idx - 1, true, hasMc(pv) ? pv.mc_ms / 1000 : undefined); // 通し: 前の曲のあとの MC へ
+    }
     else playAt(it.start_ms / 1000, true);
   };
   const skip = () => { // 流せなかった: 続けて全部だめなら止める
@@ -984,4 +987,20 @@
     await load(cfg.scope, cfg.id);
     go(0, true);
   })();
+
+  // shortcut: 一時的な計測（Android で下のタブが隠れる件）。原因がわかったら消す
+  const dbg = document.createElement('pre');
+  dbg.style.cssText = 'position:fixed;left:0;top:0;z-index:99;margin:0;padding:4px;font:10px/1.3 monospace;background:rgb(0 0 0/.75);color:#0f0;pointer-events:none';
+  document.body.append(dbg);
+  const rb = (el) => { const r = el?.getBoundingClientRect(); return r ? `${Math.round(r.top)}-${Math.round(r.bottom)}` : '-'; };
+  setInterval(() => {
+    const d = innerDoc();
+    const vv = visualViewport;
+    dbg.textContent = [
+      `win ${innerWidth}x${innerHeight} doc ${document.documentElement.clientHeight} scrollY ${scrollY}`,
+      `vv ${vv ? `${Math.round(vv.height)} top ${Math.round(vv.offsetTop)}` : '-'}`,
+      `body ${rb(document.body)} frame ${rb(frame)} bar ${rb(bar)} pb ${getComputedStyle(bar).paddingBottom}`,
+      `in ${d ? `${d.defaultView.innerHeight} scrollY ${d.defaultView.scrollY} nav ${rb(d.querySelector('.nav'))} ${d.documentElement.className}` : '-'}`,
+    ].join('\n');
+  }, 500);
 })();
