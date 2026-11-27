@@ -140,12 +140,25 @@
     // 演奏者: 楽器ラベル（サイト共通の .part）と名前（メンバーページへ）
     $('[data-shell-players]').replaceChildren(...(it.players || []).map((p) => {
       const li = document.createElement('li');
-      p.parts.forEach((pt) => {
-        const tag = document.createElement('span');
-        tag.className = `part part--${pt.c}`;
-        tag.textContent = pt.s;
-        li.append(tag);
-      });
+      // 楽器が2つ以上（Vo/Gt）は1つのラベルに（lib/repository.php の part_badge と同じ作り: 楽器ごとに色を分けた背景・境目だけ混ぜる）
+      const tag = document.createElement('span');
+      const n = p.parts.length;
+      if (n === 1) {
+        tag.className = `part part--${p.parts[0].c}`;
+        tag.textContent = p.parts[0].s;
+      } else if (n > 1) {
+        tag.className = `part part--split part--${p.parts.map((pt) => pt.c).join('-')}`;
+        const stops = p.parts.flatMap((pt, i) => {
+          const color = `color-mix(in srgb, var(--${pt.c}) 13%, transparent)`;
+          return [`${color} ${i === 0 ? 0 : Math.round(i / n * 100 + 10)}%`, `${color} ${i === n - 1 ? 100 : Math.round((i + 1) / n * 100 - 10)}%`];
+        });
+        tag.style.background = `linear-gradient(90deg, ${stops.join(', ')})`;
+        p.parts.forEach((pt, i) => {
+          if (i > 0) tag.append(Object.assign(document.createElement('span'), { className: 'part__slash', textContent: '/' }));
+          tag.append(Object.assign(document.createElement('span'), { className: `part__seg part--${pt.c}`, textContent: pt.s }));
+        });
+      }
+      if (n) li.append(tag);
       const a = document.createElement('a');
       a.href = `member?id=${p.id}`;
       a.target = 'site';
