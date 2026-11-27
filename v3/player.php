@@ -32,6 +32,9 @@ if (!preg_match('/^[A-Za-z0-9_-]*(\.php)?(\?[^#\s]*)?$/', $u) || preg_match('/^p
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <title><?= h(APP_NAME) ?></title>
     <meta name="theme-color" content="#f6f5f1">
+    <link rel="icon" href="assets/favicons/240.png?v=3" sizes="any"><!-- partials/header.php と同じ（変えたら両方） -->
+    <link rel="icon" type="image/png" href="assets/favicons/48.png?v=3" sizes="48x48">
+    <link rel="apple-touch-icon" href="assets/favicons/apple-touch-icon.png?v=2" sizes="180x180">
     <script>
         // テーマは中のページと同じ（partials/header.php と同じ読み方。中で切り替えたら player.js が写す）
         (function () {
