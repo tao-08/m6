@@ -988,6 +988,11 @@
     go(0, true);
   })();
 
+  // 外枠の高さ = 実際の画面の高さ。Android のアプリで × → 開き直すと、100dvh が 57px 大きいまま残り、下のバーとタブが画面の外に出ていた（innerHeight は正しい）
+  const fitHeight = () => { document.body.style.height = `${innerHeight}px`; };
+  fitHeight();
+  addEventListener('resize', fitHeight);
+
   // shortcut: 一時的な計測（Android で下のタブが隠れる件）。原因がわかったら消す
   const dbg = document.createElement('pre');
   dbg.style.cssText = 'position:fixed;left:0;top:0;z-index:99;margin:0;padding:4px;font:10px/1.3 monospace;background:rgb(0 0 0/.75);color:#0f0;pointer-events:none';

@@ -715,7 +715,7 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 .audio-chapter.is-leaving, .audio-bubble.is-leaving { animation: ap-out var(--t-base) ease-in forwards; pointer-events: none; }
 
 /* シャッフル再生の外枠（player.php・assets/player.js）: サイトを全面の iframe に入れ、下にバー。iPhone のホームバーの分は下に空ける */
-.shell { position: fixed; inset: 0; margin: 0; display: flex; /* 100dvh でなく画面に固定: Android で開き直すと全体がずれて下のタブが画面の下に隠れていた */ flex-direction: column; overflow: hidden; background: var(--bg); }
+.shell { height: 100dvh; margin: 0; display: flex; /* 高さは player.js が innerHeight で上書き: Android では 100dvh が実際の画面より大きいまま残ることがある */ flex-direction: column; overflow: hidden; background: var(--bg); }
 .shell__frame { flex: 1; width: 100%; min-height: 0; border: 0; display: block; }
 .shell-bar { --shell-side: max(8px, calc((100% - 640px) / 2)); /* 中身は中央の 640px 幅に寄せる（進み具合の線も） */
   position: relative; display: flex; align-items: center; gap: 4px; padding: 3px var(--shell-side) calc(3px + env(safe-area-inset-bottom)); background: var(--surface); border-top: 1px solid var(--border); color: var(--text); font-family: var(--font); }
@@ -794,10 +794,14 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 .shell-panel__subhead { margin: 4px 0 0; padding-top: 10px; border-top: 1px solid var(--border); font-size: var(--fs-xs); font-weight: 700; color: var(--muted); }
 .shell-panel__subhead { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .shell-panel__srcs { display: flex; align-items: center; gap: 4px; }
-.shell-panel__src { display: inline-flex; align-items: center; padding: 4px; border: 0; border-radius: var(--r-sm); background: none; cursor: pointer; transition: opacity var(--t-fast), filter var(--t-fast); }
+.shell-panel__src { display: inline-flex; align-items: center; padding: 4px; border: 0; border-radius: var(--r-sm); background: none; cursor: pointer; transition: color var(--t-fast); }
 .shell-panel__src .youtube-icon { width: 25px; height: 18px; }
-.shell-panel__src[aria-pressed="false"] { opacity: .35; filter: grayscale(1); } /* 外した音源 */
-[data-theme="dark"] .shell-panel__src[data-shell-src="yt"][aria-pressed="false"] { opacity: .6; } /* 灰色にした赤は暗い背景に沈むので濃く */
+/* 外した音源: 色をやめて形だけ薄い灰色に（ダークでも背景に沈まない） */
+.shell-panel__src[aria-pressed="false"] { color: color-mix(in srgb, var(--muted), var(--surface) 35%); }
+.shell-panel__src[aria-pressed="false"] .tag--mix { color: inherit; }
+.shell-panel__src .youtube-icon path { transition: fill var(--t-fast); }
+.shell-panel__src[aria-pressed="false"] .youtube-icon path:first-child { fill: currentColor; }
+.shell-panel__src[aria-pressed="false"] .youtube-icon path:last-child { fill: var(--surface); }
 .shell-panel__filter { color: var(--muted); }
 .shell-panel__filter[aria-pressed="true"] { color: var(--accent); } /* 絞り込み中 */
 .shell-filter__years { max-height: 50vh; overflow: hidden auto; margin-top: 12px; } /* 横は出さない（開け閉めの途中に横のバーが出ていた） */
