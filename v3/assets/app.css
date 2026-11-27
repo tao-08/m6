@@ -759,14 +759,18 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 .shell-panel__shuffle[aria-pressed="false"] { color: var(--muted); opacity: .45; }
 .shell-panel__shuffle[aria-pressed="true"] { color: var(--accent); }
 .shell-panel__ctl .audio-player__play:disabled, .shell-panel__ctl .icon-btn:disabled { opacity: .5; cursor: default; }
-/* 範囲のリスト（ポップアップに常に出す）。上のタブ .shell-panel__when で すぐ / 次の曲から */
-.shell-panel__scopes { list-style: none; margin: 0; padding: 6px; display: grid; gap: 2px; border: 1px solid var(--border); border-radius: var(--r-md); }
+/* 範囲: チップを折り返して並べる。左の .shell-panel__later で すぐ / 次の曲から（ON は赤） */
+.shell-panel__scoperow { display: flex; align-items: flex-start; gap: 6px; }
+.shell-panel__later { flex: none; }
+.shell-panel__later[aria-pressed="false"] { color: var(--muted); }
+.shell-panel__later[aria-pressed="true"] { color: var(--accent); }
+.shell-panel__scopes { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; align-self: center; }
+.shell-panel__scopes .chip { padding: 3px 8px; font: inherit; font-size: var(--fs-sm); font-weight: 500; color: inherit; cursor: pointer; } /* 横 8px: 375px で1行に3つ入る */
+.shell-panel__scopes .chip.is-current { background: var(--accent-soft); border-color: var(--accent); } /* いま流している範囲（.chip--me と同じ） */
+.shell-panel__scopes .chip.is-pending { color: var(--accent); font-weight: 700; border-color: var(--accent); border-style: dashed; } /* 次の曲から変える範囲 */
+/* 外枠のお知らせ: 下のバーのすぐ上（見た目は .toast） */
+.shell-toasts { top: auto; bottom: 56px; z-index: 60; }
 @media (prefers-reduced-motion: reduce) { .shell-panel, .audio-bubble, .audio-player__bar { transition: none; } }
-.shell-panel__scopes li { display: flex; align-items: center; gap: 8px; }
-.shell-panel__scopes button { flex: 1; padding: 8px 10px; border: 0; border-radius: var(--r-md); background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
-.shell-panel__scopes button:hover { background: var(--surface-2); }
-.shell-panel__scopes button.is-pending { color: var(--accent); font-weight: 700; }
-.shell-panel__when { margin: 0; justify-self: center; }
 /* 中のヘッダーの丸に再生のアイコン: 再生中は時計回りに回す（player.js が中の <html> に .is-shuffle-playing を付ける） */
 @keyframes shuffle-spin { to { rotate: 360deg; } }
 .is-shuffle-playing [data-shuffle-menu] > summary .icon { animation: shuffle-spin 4s linear infinite; }

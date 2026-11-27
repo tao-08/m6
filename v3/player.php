@@ -70,11 +70,10 @@ if (!preg_match('/^[A-Za-z0-9_-]*(\.php)?(\?[^#\s]*)?$/', $u) || preg_match('/^p
             <button type="button" class="audio-player__play" data-shell-play aria-label="再生" title="再生"><?= icon('play_arrow', 'icon--fill') ?></button>
             <button type="button" class="icon-btn" data-shell-next aria-label="次の曲" title="次の曲"><?= icon('skip_next', 'icon--fill') ?></button>
         </div>
-        <div class="tabs tabs--static shell-panel__when" role="group" aria-label="範囲を変えるとき">
-            <button type="button" class="tab is-active" data-shell-when="now">すぐ</button>
-            <button type="button" class="tab" data-shell-when="next">次の曲から</button>
+        <div class="shell-panel__scoperow">
+            <button type="button" class="icon-btn shell-panel__later" data-shell-later aria-pressed="false" aria-label="次の曲から範囲を変える" title="次の曲から範囲を変える"><?= icon('queue_music') ?></button>
+            <ul class="shell-panel__scopes" data-shell-scopes></ul>
         </div>
-        <ul class="shell-panel__scopes" data-shell-scopes></ul>
     </div>
     <button type="button" class="icon-btn" data-shell-play aria-label="再生" title="再生"><?= icon('play_arrow', 'icon--fill') ?></button>
     <button type="button" class="icon-btn" data-shell-next aria-label="次の曲" title="次の曲"><?= icon('skip_next', 'icon--fill') ?></button>
@@ -85,6 +84,7 @@ if (!preg_match('/^[A-Za-z0-9_-]*(\.php)?(\?[^#\s]*)?$/', $u) || preg_match('/^p
     </div>
     <button type="button" class="icon-btn" data-shell-close aria-label="閉じる" title="閉じる"><?= icon('close') ?></button>
     <audio data-shell-audio preload="none"></audio>
+    <div class="toasts shell-toasts" data-shell-toasts aria-live="polite"></div>
 </div>
 <script type="application/json" id="shell-data"><?= json_encode(['scope' => $scope, 'id' => $id, 'resume' => isset($_GET['resume'])], JSON_HEX_TAG) ?></script>
 </body>

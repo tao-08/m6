@@ -360,22 +360,35 @@
   const closeOnEsc = (e) => { if (e.key === 'Escape') setPanel(false); };
   document.addEventListener('click', closeOutside);
   document.addEventListener('keydown', closeOnEsc);
-  // 範囲: ポップアップに常に出す。サイト全体・再生中のライブ/バンド/アーティスト・中のページの範囲（ヘッダーのメニューと同じもの）
-  // 上のタブで、押したらすぐ変えるか、いまの曲が終わってから変えるか（次の曲から = pending に置いて next で切り替える）
+  // 範囲: ポップアップに常に出す（チップ）。サイト全体・再生中のライブ/バンド/アーティスト・中のページの範囲（ヘッダーのメニューと同じもの）
+  // 左のボタンで、押したらすぐ変えるか、いまの曲が終わってから変えるか（次の曲から = pending に置いて next で切り替える）
   const scopesEl = $('[data-shell-scopes]');
-  const whenTabs = bar.querySelectorAll('[data-shell-when]');
+  const laterBtn = $('[data-shell-later]');
   let later = false;
   try { later = localStorage.getItem('shuffle_when') === 'next'; } catch (e) { /* すぐ */ }
   let pending = null; // 次の曲から変える範囲 {scope, id}
-  const showWhen = () => whenTabs.forEach((t) => t.classList.toggle('is-active', (t.dataset.shellWhen === 'next') === later));
-  whenTabs.forEach((t) => t.addEventListener('click', () => {
-    later = t.dataset.shellWhen === 'next';
+  // お知らせ: 下のバーの上に4秒（中のページのトーストはポップアップに隠れるので外枠に出す。見た目は app.css の .toast）
+  const toast = (text) => {
+    const t = document.createElement('div');
+    t.className = 'toast flash flash--info';
+    t.setAttribute('role', 'status');
+    t.textContent = text;
+    const box = $('[data-shell-toasts]');
+    box.replaceChildren(t); // 続けて押したら差し替える
+    const close = () => { t.classList.add('is-leaving'); setTimeout(() => t.remove(), 500); };
+    setTimeout(close, 4000);
+    t.addEventListener('click', close);
+  };
+  const showLater = () => laterBtn.setAttribute('aria-pressed', String(later));
+  laterBtn.addEventListener('click', () => {
+    later = !later;
     try { localStorage.setItem('shuffle_when', later ? 'next' : 'now'); } catch (e) { /* 覚えなくても使える */ }
     if (!later) pending = null;
-    showWhen();
+    showLater();
     buildScopes();
-  }));
-  showWhen();
+    toast(later ? '次の曲から範囲を変えます' : 'すぐに範囲を変えます');
+  });
+  showLater();
   // 範囲を変える。順番どおり（シャッフルしない）で、いまの曲が新しい範囲にあれば、すぐ = その位置から続ける・次の曲から = その次から
   const switchTo = async (scope, id, now) => {
     const it = cur();
@@ -391,7 +404,9 @@
     const li = document.createElement('li');
     const b = document.createElement('button');
     b.type = 'button';
+    b.className = 'chip';
     b.textContent = label;
+    b.classList.toggle('is-current', cfg.scope === scope && cfg.id === id); // いま流している範囲
     b.classList.toggle('is-pending', !!pending && pending.scope === scope && pending.id === id);
     b.addEventListener('click', () => {
       if (later && cur()) { pending = { scope, id }; buildScopes(); } else switchTo(scope, id, true);
@@ -401,16 +416,16 @@
   };
   const buildScopes = () => {
     const it = cur();
-    const items = [scopeItem('サイト全体', 'all', 0)];
+    const list = [['サイト全体', 'all', 0]];
     if (it) {
-      items.push(scopeItem('再生中のライブ', 'live', it.live_id));
-      items.push(scopeItem('再生中のバンド', 'band', it.band_id));
-      if (it.artist_id) items.push(scopeItem('再生中のアーティスト', 'artist', it.artist_id));
+      list.push(['再生中のライブ', 'live', it.live_id], ['再生中のバンド', 'band', it.band_id]);
+      if (it.artist_id) list.push(['再生中のアーティスト', 'artist', it.artist_id]);
     }
     innerDoc()?.querySelectorAll('[data-shuffle-menu] a[data-shuffle]').forEach((a) => {
-      if (a.dataset.shuffle !== 'all') items.push(scopeItem(a.textContent, a.dataset.shuffle, Number(a.dataset.shuffleId) || 0));
+      if (a.dataset.shuffle !== 'all') list.push([a.textContent, a.dataset.shuffle, Number(a.dataset.shuffleId) || 0]);
     });
-    scopesEl.replaceChildren(...items);
+    const seen = new Set(); // 「再生中のバンド」と「このバンド」が同じなら再生中のほうだけ
+    scopesEl.replaceChildren(...list.filter(([, sc, id]) => !seen.has(`${sc}:${id}`) && seen.add(`${sc}:${id}`)).map((x) => scopeItem(...x)));
   };
 
   // シャッフル: オフはセトリ順（バンド・ライブは MC・曲間も切らずに通し）。いまの曲はそのまま、並びだけ変える
@@ -451,9 +466,14 @@
     const doc = innerDoc();
     if (!doc) return;
     document.title = doc.title;
-    document.documentElement.dataset.theme = doc.documentElement.dataset.theme || 'light';
-    const tc = doc.querySelector('meta[name="theme-color"]');
-    if (tc) document.querySelector('meta[name="theme-color"]').content = tc.content;
+    // テーマ: 読み込んだときと、中で切り替えたとき（<html data-theme> が変わる）に写す
+    const theme = () => {
+      document.documentElement.dataset.theme = doc.documentElement.dataset.theme || 'light';
+      const tc = doc.querySelector('meta[name="theme-color"]');
+      if (tc) document.querySelector('meta[name="theme-color"]').content = tc.content;
+    };
+    theme();
+    new doc.defaultView.MutationObserver(theme).observe(doc.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
     syncUrl();
     setPanel(openOnLoad);
     openOnLoad = false;
