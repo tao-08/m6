@@ -7,8 +7,10 @@
  *   ・中のページ（iframe）を移るたびに、外枠の題名と URL（?u=）を中に合わせる。外のサイト・ログアウトのリンクは外枠ごと移る
  *   ・中のヘッダーの「シャッフル再生」: 範囲のリンクは window.top.abbeyShuffle、アイコンは window.top.abbeyShufflePanel（再生中の曲のポップアップ）
  *     再生中は中の <html> に .is-shuffle-playing を付けて、アイコンを回す
- *   ・並びと何曲目かは sessionStorage に残す。外枠を読み直したら、その曲の頭で止まった状態から（スマホは自動で鳴らせないため）
- *   ・ロック画面・イヤホンの操作に曲名と「最初から再生」「次へ」を出す（Media Session）
+ *   ・並び・何曲目か・止めた位置は localStorage に残す（ブラウザを閉じても残る）。外枠を読み直す・× で閉じたあとアイコンで開き直す（?resume=1）と、
+ *     止めた位置で一時停止した状態から（スマホは自動で鳴らせないため）。アイコンの動きは app_player.js の setupShuffleLinks
+ *   ・ロック画面・イヤホンの操作に曲名と「前の曲」「次へ」を出す（Media Session）
+ *   ・前の曲: 曲の始めの3秒より後なら、その曲の頭へ（音楽アプリと同じ）
  */
 (() => {
   'use strict';
@@ -33,7 +35,8 @@
   const seekBox = $('[data-shell-seekbox]');
   const curEl = $('[data-shell-cur]');
   const durEl = $('[data-shell-dur]');
-  const KEY = 'shuffle_state';
+  const KEY = 'shuffle_state'; // app_player.js の setupShuffleLinks も見る
+  const POS = 'shuffle_pos';   // 止めた位置（音源の秒）。並びより頻繁に書くので分ける
   const BASE = new URL('.', location.href).href; // このサイトのフォルダ（中のページ名を取り出すのに使う）
   const durations = new Map(); // 音源の URL → 全体の長さ（秒）。null = わからない
   let queue = [];
@@ -41,11 +44,19 @@
   let base = 0;      // いまの src の先頭の時刻（秒）
   let fails = 0;     // 続けて流せなかった数（全部だめなときに止まるため）
   let dragging = false; // シークバーをつかんでいる間は、再生位置で動かさない
+  let cont = false;      // 通しで再生: バンドのミックスをセトリ順に、MC・曲間も切らずに流す
+  let savedAt = 0;       // 最後に位置を残した秒（書きすぎないため）
+  let openOnLoad = cfg.resume; // 開き直したときは、中のページを読み終えてもポップアップを開いたまま
 
   const cur = () => queue[idx] || null;
   const save = () => {
-    try { sessionStorage.setItem(KEY, JSON.stringify({ scope: cfg.scope, id: cfg.id, queue, idx })); } catch (e) { /* 残せなくても再生は続ける */ }
+    try { localStorage.setItem(KEY, JSON.stringify({ scope: cfg.scope, id: cfg.id, queue, idx, cont })); } catch (e) { /* 残せなくても再生は続ける */ }
   };
+  const savePos = (t) => {
+    savedAt = t;
+    try { localStorage.setItem(POS, String(t)); } catch (e) { /* 同上 */ }
+  };
+  const nowSec = () => base + audio.currentTime;
   const shuffle = (a) => {
     for (let i = a.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
@@ -70,6 +81,7 @@
   };
   const setPanel = (open) => {
     panel.hidden = !open;
+    if (!open) setScopes(false);
     innerDoc()?.querySelector('[data-shuffle-menu] > summary')?.classList.toggle('is-active', open);
   };
   const render = () => {
@@ -79,17 +91,38 @@
     titleEl.disabled = !it;
     playBtns.forEach((b) => { b.disabled = !it; });
     nextBtns.forEach((b) => { b.disabled = queue.length < 2; });
-    $('[data-shell-restart]').disabled = !it;
+    $('[data-shell-prev]').disabled = !it;
     seek.disabled = !it;
     if (!it) { setPanel(false); return; }
     artImg.hidden = !it.art;
     if (it.art) artImg.src = it.art;
-    $('[data-shell-live]').textContent = it.year ? `${it.year}年度 ${it.live}` : it.live;
+    const live = $('[data-shell-live]');
+    live.textContent = it.year ? `${it.year}年度 ${it.live}` : it.live;
+    if (it.live_id) live.href = `live?id=${it.live_id}`; else live.removeAttribute('href');
     const band = $('[data-shell-bandlink]');
     band.textContent = it.band;
     band.href = `band?id=${it.band_id}`;
     $('[data-shell-song]').textContent = it.title;
-    $('[data-shell-artist]').textContent = it.artist || '';
+    const artist = $('[data-shell-artist]');
+    artist.textContent = it.artist || '';
+    artist.hidden = !it.artist;
+    if (it.artist_id) artist.href = `artist?id=${it.artist_id}`; else artist.removeAttribute('href');
+    // 演奏者: 楽器ラベル（サイト共通の .part）と名前（メンバーページへ）
+    $('[data-shell-players]').replaceChildren(...(it.players || []).map((p) => {
+      const li = document.createElement('li');
+      p.parts.forEach((pt) => {
+        const tag = document.createElement('span');
+        tag.className = `part part--${pt.c}`;
+        tag.textContent = pt.s;
+        li.append(tag);
+      });
+      const a = document.createElement('a');
+      a.href = `member?id=${p.id}`;
+      a.target = 'site';
+      a.textContent = p.name;
+      li.append(a);
+      return li;
+    }));
     if ('mediaSession' in navigator) {
       navigator.mediaSession.metadata = new MediaMetadata({
         title: it.title, artist: it.artist ? `${it.band}（${it.artist}）` : it.band, album: it.live,
@@ -109,15 +142,15 @@
       if (total) {
         off = Math.round(t * it.size / total);
         // 曲の終わり + 3秒分で送るのを止めてもらう（1曲分だけ受け取る。見積もりのずれで早く切れないよう余裕を持たせ、止めるのは timeupdate）
-        if (it.end_ms !== null) to = `&to=${Math.round((it.end_ms / 1000 + 3) * it.size / total)}`;
+        if (it.end_ms !== null && !cont) to = `&to=${Math.round((it.end_ms / 1000 + 3) * it.size / total)}`;
       } else if (t > 0) { skip(); return; } // 頭からなら長さがわからなくても全部流せる
     }
     base = off > 0 ? t : 0;
     audio.src = off > 0 ? `${it.src}&from=${off}${to}` : it.src + to;
     if (play) audio.play().catch(() => setIcon(false));
   };
-  // i 曲目を用意する。play: true で鳴らす（false は頭で止めておく）
-  const go = async (i, play) => {
+  // i 曲目を用意する。play: true で鳴らす（false は止めておく）。at: 音源の秒（省略 = 曲の頭）
+  const go = async (i, play, at) => {
     if (!queue.length) { render(); return; }
     idx = (i + queue.length) % queue.length;
     save();
@@ -126,22 +159,31 @@
     seek.value = 0;
     seekBox.style.setProperty('--q', 0);
     curEl.textContent = fmt(0);
-    await playAt(cur().start_ms / 1000, play);
+    const t = at ?? cur().start_ms / 1000;
+    savePos(t);
+    await playAt(t, play);
+    if (at) showPos(at);
     const nx = queue[(idx + 1) % queue.length]; // 次の曲の長さを先に調べておく（次へ進むときに待たない）
     if (nx && (nx.start_ms > 0 || nx.end_ms !== null)) probe(nx);
   };
   const next = () => go(idx + 1, true);
-  const restart = () => { if (cur()) playAt(cur().start_ms / 1000, true); };
+  const prev = () => {
+    const it = cur();
+    if (!it) return;
+    if (queue.length > 1 && nowSec() - it.start_ms / 1000 < 3) go(idx - 1, true);
+    else playAt(it.start_ms / 1000, true);
+  };
   const skip = () => { // 流せなかった: 続けて全部だめなら止める
     fails += 1;
     if (fails >= Math.min(queue.length, 5)) { audio.pause(); setIcon(false); titleEl.textContent = '音源を読み込めませんでした'; return; }
     next();
   };
 
-  const load = async (scope, id) => {
+  const load = async (scope, id, through) => {
     const res = await fetch(`api_shuffle?scope=${encodeURIComponent(scope)}&id=${Number(id) || 0}`);
     const data = await res.json().catch(() => null);
-    queue = res.ok && data ? shuffle(data.items) : [];
+    queue = res.ok && data ? (through ? data.items : shuffle(data.items)) : [];
+    cont = !!through;
     cfg.scope = scope;
     cfg.id = Number(id) || 0;
     fails = 0;
@@ -149,15 +191,17 @@
   };
 
   audio.addEventListener('play', () => setIcon(true));
-  audio.addEventListener('pause', () => setIcon(false));
+  audio.addEventListener('pause', () => { setIcon(false); if (cur()) savePos(nowSec()); });
   audio.addEventListener('playing', () => { fails = 0; });
   audio.addEventListener('ended', next);
   audio.addEventListener('error', () => { if (audio.getAttribute('src')) skip(); });
-  audio.addEventListener('timeupdate', () => {
+  // 再生位置の表示（音源の秒 sec）
+  const showPos = (sec) => {
     const it = cur();
-    if (!it) return;
-    const t = (base + audio.currentTime) * 1000;
-    const end = it.end_ms ?? (durations.get(it.src) ? durations.get(it.src) * 1000 : null);
+    const t = sec * 1000;
+    const nx = queue[idx + 1];
+    const fileEnd = durations.get(it.src) ? durations.get(it.src) * 1000 : null;
+    const end = cont ? (nx && nx.src === it.src ? nx.start_ms : fileEnd) : it.end_ms ?? fileEnd;
     if (end) {
       const len = (end - it.start_ms) / 1000;
       const pos = Math.min(len, Math.max(0, (t - it.start_ms) / 1000));
@@ -169,6 +213,18 @@
         seekBox.style.setProperty('--q', pos / len);
         curEl.textContent = fmt(pos);
       }
+    }
+  };
+  audio.addEventListener('timeupdate', () => {
+    const it = cur();
+    if (!it) return;
+    const t = nowSec() * 1000;
+    showPos(t / 1000);
+    if (Math.abs(t / 1000 - savedAt) >= 3) savePos(t / 1000);
+    if (cont) { // 通し: 同じ音源の次の曲の頭を過ぎたら表示だけ進める（読み直さない）。音源の最後で ended → 次
+      const nx = queue[idx + 1];
+      if (nx && nx.src === it.src && t >= nx.start_ms) { idx += 1; save(); render(); }
+      return;
     }
     if (it.end_ms !== null && t >= it.end_ms) { audio.pause(); next(); } // 先に止める（次の曲の用意を待つ間に、また呼ばれないように）
   });
@@ -186,11 +242,11 @@
     if (audio.paused) audio.play().catch(() => {}); else audio.pause();
   }));
   nextBtns.forEach((b) => b.addEventListener('click', next));
-  $('[data-shell-restart]').addEventListener('click', restart);
+  $('[data-shell-prev]').addEventListener('click', prev);
   if ('mediaSession' in navigator) {
     navigator.mediaSession.setActionHandler('play', () => audio.play().catch(() => {}));
     navigator.mediaSession.setActionHandler('pause', () => audio.pause());
-    navigator.mediaSession.setActionHandler('previoustrack', restart);
+    navigator.mediaSession.setActionHandler('previoustrack', prev);
     navigator.mediaSession.setActionHandler('nexttrack', next);
   }
 
@@ -203,15 +259,57 @@
   const closeOnEsc = (e) => { if (e.key === 'Escape') setPanel(false); };
   document.addEventListener('click', closeOutside);
   document.addEventListener('keydown', closeOnEsc);
-  // 範囲を変える: 中のヘッダーの範囲のメニューを開く
-  $('[data-shell-scope]').addEventListener('click', () => {
-    setPanel(false);
-    innerDoc()?.querySelector('[data-shuffle-menu]')?.setAttribute('open', '');
-  });
+  // 範囲を変える: ボタンの下にメニュー。サイト全体・再生中のライブ/バンド/アーティスト・中のページの範囲（ヘッダーのメニューと同じもの）
+  const scopeBtn = $('[data-shell-scope]');
+  const scopesEl = $('[data-shell-scopes]');
+  function setScopes(open) {
+    scopesEl.hidden = !open;
+    scopeBtn.setAttribute('aria-expanded', String(open));
+    if (open) buildScopes();
+  }
+  const scopeItem = (label, fn) => {
+    const li = document.createElement('li');
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = label;
+    b.addEventListener('click', () => { setScopes(false); fn(); });
+    li.append(b);
+    return li;
+  };
+  // 再生中のバンドを、いまの曲のいまの位置から通しで
+  const through = async () => {
+    const it = cur();
+    const t = nowSec();
+    audio.pause();
+    await load('band', it.band_id, true);
+    const i = queue.findIndex((q) => q.song_id === it.song_id);
+    go(Math.max(0, i), true, i >= 0 ? t : undefined);
+  };
+  const buildScopes = () => {
+    const it = cur();
+    const items = [scopeItem('サイト全体', () => window.abbeyShuffle('all', 0))];
+    if (it) {
+      items.push(scopeItem('再生中のライブ', () => window.abbeyShuffle('live', it.live_id)));
+      const thru = document.createElement('input');
+      thru.type = 'checkbox';
+      thru.checked = cont;
+      const band = scopeItem('再生中のバンド', () => (thru.checked ? through() : window.abbeyShuffle('band', it.band_id)));
+      const lab = document.createElement('label');
+      lab.append(thru, '通しで再生');
+      band.append(lab);
+      items.push(band);
+      if (it.artist_id) items.push(scopeItem('再生中のアーティスト', () => window.abbeyShuffle('artist', it.artist_id)));
+    }
+    innerDoc()?.querySelectorAll('[data-shuffle-menu] a[data-shuffle]').forEach((a) => {
+      if (a.dataset.shuffle !== 'all') items.push(scopeItem(a.textContent, () => window.abbeyShuffle(a.dataset.shuffle, Number(a.dataset.shuffleId) || 0)));
+    });
+    scopesEl.replaceChildren(...items);
+  };
+  scopeBtn.addEventListener('click', () => setScopes(scopesEl.hidden));
 
-  // 閉じる: 再生をやめて、いま中で開いているページだけにする
+  // 閉じる: 再生をやめて、いま中で開いているページだけにする（止めた位置は残す。アイコンで開き直せる）
   $('[data-shell-close]').addEventListener('click', () => {
-    try { sessionStorage.removeItem(KEY); } catch (e) { /* 無視 */ }
+    if (cur() && audio.getAttribute('src')) savePos(nowSec());
     location.href = innerPage() || './';
   });
 
@@ -237,7 +335,8 @@
     const tc = doc.querySelector('meta[name="theme-color"]');
     if (tc) document.querySelector('meta[name="theme-color"]').content = tc.content;
     syncUrl();
-    setPanel(false);
+    setPanel(openOnLoad);
+    openOnLoad = false;
     setIcon(!audio.paused);
     // 外のサイト・ログアウトは外枠ごと移る（外のサイトは iframe に入れられないことが多く、ログアウトは再生も終わるため）
     doc.addEventListener('click', (e) => {
@@ -255,13 +354,25 @@
     go(0, true);
   };
 
-  // 始め: 同じ範囲の続きがあればその曲から（止めた状態）、無ければ新しく混ぜて鳴らしてみる
+  // 始め: 開き直し（?resume=1）か同じ範囲なら、続きを止めた位置から（止めた状態）。無ければ新しく混ぜて鳴らしてみる
   (async () => {
     let st = null;
-    try { st = JSON.parse(sessionStorage.getItem(KEY) || 'null'); } catch (e) { /* 無ければ新しく */ }
-    if (st && st.scope === cfg.scope && st.id === cfg.id && Array.isArray(st.queue) && st.queue.length) {
+    let pos = null;
+    try {
+      st = JSON.parse(localStorage.getItem(KEY) || 'null');
+      pos = Number(localStorage.getItem(POS)) || null;
+    } catch (e) { /* 無ければ新しく */ }
+    if (st && (cfg.resume || (st.scope === cfg.scope && st.id === cfg.id)) && Array.isArray(st.queue) && st.queue.length) {
       queue = st.queue;
-      go(st.idx, false);
+      cont = !!st.cont;
+      cfg.scope = st.scope;
+      cfg.id = st.id;
+      syncUrl();
+      const it = queue[st.idx];
+      // 残した位置がその曲の中のときだけ使う
+      const ok = it && pos !== null && pos * 1000 >= it.start_ms && (it.end_ms === null || pos * 1000 < it.end_ms);
+      await go(st.idx, false, ok ? pos : undefined);
+      if (cfg.resume) setPanel(true);
       return;
     }
     await load(cfg.scope, cfg.id);

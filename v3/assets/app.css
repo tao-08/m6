@@ -705,33 +705,48 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 /* シャッフル再生の外枠（player.php・assets/player.js）: サイトを全面の iframe に入れ、下にバー。iPhone のホームバーの分は下に空ける */
 .shell { height: 100dvh; margin: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--bg); }
 .shell__frame { flex: 1; width: 100%; min-height: 0; border: 0; display: block; }
-.shell-bar { display: flex; align-items: center; gap: 6px; padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); background: var(--surface); border-top: 1px solid var(--border); color: var(--text); font-family: var(--font); }
-.shell-bar__info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.shell-bar__title { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: var(--fs-md); font-weight: 700; color: inherit; text-decoration: none;
+.shell-bar { position: relative; display: flex; align-items: center; gap: 4px; padding: 3px 8px calc(3px + env(safe-area-inset-bottom)); background: var(--surface); border-top: 1px solid var(--border); color: var(--text); font-family: var(--font); }
+/* 細い1行: ボタンは枠なしの小さい丸、曲名とバンド名は横並び、進み具合はバーの上の線 */
+.shell-bar > .icon-btn { width: 30px; height: 30px; border-color: transparent; background: none; }
+.shell-bar__info { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 8px; }
+.shell-bar__title { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: var(--fs-sm); font-weight: 700; color: inherit; text-decoration: none; min-width: 0; flex: 0 1 auto;
   padding: 0; border: 0; background: none; font-family: inherit; text-align: left; cursor: pointer; }
 .shell-bar__title:disabled { cursor: default; }
-.shell-bar__band { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: var(--fs-xs); }
-.shell-bar__progress { height: 3px; border-radius: var(--r-full); background: var(--surface-2); overflow: hidden; }
+.shell-bar__band { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: var(--fs-xs); min-width: 0; flex: 1 1 0; }
+.shell-bar__progress { position: absolute; left: 0; right: 0; top: -1px; height: 2px; background: var(--surface-2); overflow: hidden; }
 .shell-bar__progress span { display: block; width: 0; height: 100%; background: var(--accent); }
 /* 再生中の曲のポップアップ（player.php）。中のヘッダーのアイコンの下あたりに出す。シークバー・再生ボタンはバンドページのプレーヤーの部品 */
-.shell-panel { position: fixed; top: 56px; right: 12px; z-index: 50; width: 320px; max-width: calc(100vw - 24px); padding: 14px; display: grid; gap: 8px;
+.shell-panel { position: fixed; top: 56px; right: 12px; z-index: 50; width: 360px; max-width: calc(100vw - 24px); max-height: calc(100dvh - 110px); overflow-y: auto; padding: 14px; display: grid; gap: 8px;
   border-radius: var(--r-lg); background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow-pop); }
 .shell-panel[hidden] { display: none; }
 .shell-panel__head { display: flex; gap: 12px; align-items: center; min-width: 0; }
-.shell-panel__art { flex: none; width: 88px; height: 88px; border-radius: var(--r-md); overflow: hidden; display: grid; place-items: center; background: var(--surface-2); color: var(--muted); }
+.shell-panel__art { flex: none; width: 104px; height: 104px; border-radius: var(--r-md); overflow: hidden; display: grid; place-items: center; background: var(--surface-2); color: var(--muted); }
 .shell-panel__art img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .shell-panel__art .icon { font-size: 40px; }
 .shell-panel__art img:not([hidden]) ~ .icon { display: none; }
 .shell-panel__meta { min-width: 0; display: grid; gap: 2px; }
 .shell-panel__meta > * { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.shell-panel__meta small { font-size: var(--fs-xs); }
-.shell-panel__meta small:empty { display: none; }
-.shell-panel__band { font-size: var(--fs-sm); color: inherit; }
-.shell-panel__song { font-size: var(--fs-lg); }
+.shell-panel__live, .shell-panel__artist { font-size: var(--fs-sm); color: var(--muted); }
+.shell-panel__band { font-size: var(--fs-md); font-weight: 600; color: inherit; }
+.shell-panel__song { font-size: var(--fs-xl); }
+.shell-panel__meta a:hover { color: var(--accent); }
+/* 演奏者: 楽器ラベル＋名前を折り返して並べる */
+.shell-panel__players { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 12px; font-size: var(--fs-sm); }
+.shell-panel__players:empty { display: none; }
+.shell-panel__players li { display: inline-flex; align-items: center; gap: 4px; }
+.shell-panel__players a { color: inherit; }
+.shell-panel__players a:hover { color: var(--accent); }
 .shell-panel__time { display: flex; justify-content: space-between; margin-top: -6px; color: var(--muted); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
 .shell-panel__ctl { display: flex; justify-content: center; align-items: center; gap: 16px; }
 .shell-panel__ctl .audio-player__play:disabled, .shell-panel__ctl .icon-btn:disabled { opacity: .5; cursor: default; }
 .shell-panel [data-shell-scope] { justify-self: center; }
+/* 範囲のメニュー（範囲を変えるの下）。見た目はヘッダーのメニューと同じ並び */
+.shell-panel__scopes { list-style: none; margin: 0; padding: 6px; display: grid; gap: 2px; border: 1px solid var(--border); border-radius: var(--r-md); }
+.shell-panel__scopes[hidden] { display: none; }
+.shell-panel__scopes li { display: flex; align-items: center; gap: 8px; }
+.shell-panel__scopes button { flex: 1; padding: 8px 10px; border: 0; border-radius: var(--r-md); background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.shell-panel__scopes button:hover { background: var(--surface-2); }
+.shell-panel__scopes label { flex: none; display: inline-flex; align-items: center; gap: 4px; padding-right: 6px; font-size: var(--fs-sm); color: var(--muted); cursor: pointer; }
 /* 中のヘッダーの丸に再生のアイコン: 再生中は時計回りに回す（player.js が中の <html> に .is-shuffle-playing を付ける） */
 @keyframes shuffle-spin { to { rotate: 360deg; } }
 .is-shuffle-playing [data-shuffle-menu] > summary .icon { animation: shuffle-spin 4s linear infinite; }

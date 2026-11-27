@@ -234,8 +234,16 @@ $nav = [
         $shuffleU = preg_replace('~^.*/~', '', (string)parse_url($shuffleUri, PHP_URL_PATH)) . (($q = parse_url($shuffleUri, PHP_URL_QUERY)) ? '?' . $q : '');
         $shuffleScopes = [['all', 0, 'サイト全体']];
         $shufflePage = basename((string)($_SERVER['SCRIPT_NAME'] ?? ''), '.php');
-        if (in_array($shufflePage, ['live', 'band'], true) && (int)($_GET['id'] ?? 0) > 0) {
-            $shuffleScopes[] = [$shufflePage, (int)$_GET['id'], $shufflePage === 'live' ? 'このライブ' : 'このバンド'];
+        // このライブ・バンド・メンバー: 曲のチャプターが付いた音源が無ければ出さない（流す曲が無い）
+        $shuffleHas = static function (string $page, int $id): bool {
+            $w = ['live' => 'd.live_id = ?', 'band' => 'b.band_id = ?', 'member' => 'b.band_id IN (SELECT band_id FROM band_member WHERE member_id = ?)'][$page];
+            $st = db()->prepare("SELECT 1 FROM band_audio_chapter c JOIN band b ON b.band_id = c.band_id JOIN live_day d ON d.live_day_id = b.live_day_id
+                WHERE c.kind = 'song' AND $w LIMIT 1");
+            $st->execute([$id]);
+            return (bool)$st->fetchColumn();
+        };
+        if (in_array($shufflePage, ['live', 'band', 'member'], true) && (int)($_GET['id'] ?? 0) > 0 && $shuffleHas($shufflePage, (int)$_GET['id'])) {
+            $shuffleScopes[] = [$shufflePage, (int)$_GET['id'], ['live' => 'このライブ', 'band' => 'このバンド', 'member' => 'このメンバー'][$shufflePage]];
         }
         ?>
         <details class="usermenu" data-shuffle-menu>

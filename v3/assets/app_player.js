@@ -676,7 +676,17 @@ function setupShuffleLinks() {
   document.addEventListener('click', (e) => {
     let top = null;
     try { top = window.top !== window ? window.top : null; } catch (err) { /* 別のサイトの中 */ }
-    if (!top?.abbeyShuffle) return;
+    if (!top?.abbeyShuffle) {
+      // 外枠の外: 前に止めた曲があれば、メニューでなくその続き（止めた状態のポップアップ）を開く。キーは player.js と同じ
+      const s = e.target.closest('[data-shuffle-menu] > summary');
+      let has = false;
+      try { has = !!localStorage.getItem('shuffle_state'); } catch (err) { /* 無ければメニュー */ }
+      if (s && has && !s.parentElement.open) {
+        e.preventDefault();
+        location.href = `player?resume=1&u=${encodeURIComponent(location.pathname.split('/').pop() + location.search)}`;
+      }
+      return;
+    }
     // 外枠の中: アイコンは範囲のメニューでなく再生中の曲を開く（範囲のメニューはそこの「範囲を変える」から開く）
     const sum = e.target.closest('[data-shuffle-menu] > summary');
     if (sum && !sum.parentElement.open) {
