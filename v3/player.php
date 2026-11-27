@@ -70,8 +70,8 @@ if (!preg_match('/^[A-Za-z0-9_-]*(\.php)?(\?[^#\s]*)?$/', $u) || preg_match('/^p
             <button type="button" class="audio-player__play" data-shell-play aria-label="再生" title="再生"><?= icon('play_arrow', 'icon--fill') ?></button>
             <button type="button" class="icon-btn" data-shell-next aria-label="次の曲" title="次の曲"><?= icon('skip_next', 'icon--fill') ?></button>
             <span class="shell-panel__right">
-                <button type="button" class="icon-btn shell-panel__cont" data-shell-cont aria-pressed="false" aria-label="曲間も再生" title="曲間も再生" hidden><?= icon('start') ?></button>
-                <button type="button" class="icon-btn shell-panel__unit" data-shell-unit aria-label="曲単位" title="曲単位"><?= icon('music_note') ?><?= icon('groups') ?></button>
+                <button type="button" class="icon-btn shell-panel__cont" data-shell-cont aria-pressed="true" aria-label="曲間をスキップ" title="曲間をスキップ"><?= icon('last_page') ?></button>
+                <button type="button" class="icon-btn shell-panel__unit" data-shell-unit aria-label="曲単位" title="曲単位"><?= icon('music_note') ?><?= icon('library_music') ?></button>
             </span>
         </div>
         <p class="shell-panel__subhead">再生範囲を変更</p>

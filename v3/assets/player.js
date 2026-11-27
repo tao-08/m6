@@ -457,9 +457,9 @@
     scopesEl.replaceChildren(...list.filter(([, sc, id]) => !seen.has(`${sc}:${id}`) && seen.add(`${sc}:${id}`)).map((x) => scopeItem(...x)));
   };
 
-  // 通し: 曲間（MC など）も流す。ON にしたら、いまの曲も MC まで受け取れるよう、いまの位置から読み直す（OFF は timeupdate で止まるだけ）
+  // 通し: 曲間（MC など）も流す。ボタンは裏返しの「曲間をスキップ」。ON にしたら、いまの曲も MC まで受け取れるよう、いまの位置から読み直す（OFF は timeupdate で止まるだけ）
   const contBtn = $('[data-shell-cont]');
-  const showCont = () => contBtn.setAttribute('aria-pressed', String(cont));
+  const showCont = () => contBtn.setAttribute('aria-pressed', String(!cont)); // ボタンは「曲間をスキップ」: 押している = 通しでない
   contBtn.addEventListener('click', () => {
     cont = !cont;
     save();
@@ -481,7 +481,7 @@
     unitBtn.classList.toggle('is-band', byBand);
     unitBtn.setAttribute('aria-label', byBand ? 'バンド単位' : '曲単位');
     unitBtn.title = byBand ? 'バンド単位' : '曲単位';
-    contBtn.hidden = !byBand;
+    contBtn.parentElement.classList.toggle('is-band', byBand); // 通しのボタンが滑って出る・隠れる（CSS）
   };
   unitBtn.addEventListener('click', () => {
     const was = thru();
