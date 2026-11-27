@@ -742,7 +742,7 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 .shell-panel__liveline > a { min-width: 0; overflow: hidden; white-space: nowrap; }
 .shell-panel__liveline > .tag { flex: none; }
 .shell-panel__artistline { font-size: var(--fs-sm); color: var(--muted); }
-.shell-panel__artist:not([hidden]) + .shell-panel__album:not([hidden])::before { content: " / "; } /* 両方あるときだけ区切る */
+.shell-panel__artist:not([hidden]) + .shell-panel__album:not([hidden])::before { content: "・"; } /* 両方あるときだけ区切る */
 .shell-panel__live, .shell-panel__artist { font-size: var(--fs-sm); color: var(--muted); }
 .shell-panel__band { font-size: var(--fs-md); font-weight: 600; color: inherit; }
 .shell-panel__song { font-size: var(--fs-xl); }
