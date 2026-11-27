@@ -8,10 +8,11 @@
  *    動画にチャプター（audio_key 'y:動画ID'。video_chapters.php）があれば、video_start の代わりに MIX と同じ区切り（MC・通し）で流す。曲は video_chapter_songs
  *    YouTube の区分の音源（band_audio / band_drive_file の video_id。migrations/153）があれば、video を付けずにその音源を MIX と同じに流す（yt = true。絞り込みは YouTube 側）
  *  リクエスト（GET）: ?scope=all | ?scope=live&id=ライブID | ?scope=band&id=バンドID | ?scope=member&id=メンバーID（その人が演奏した曲） | ?scope=artist&id=アーティストID（そのアーティストの曲）
- *  レスポンス: {"items": [{song_id, title, artist_id, artist, art, album, band_id, band, live_id, live, year, players, src, size, start_ms, end_ms, through_end_ms, mc_ms}, ...]}（並びはライブ・出演順・時間順 = シャッフルしないときの順。混ぜるのは JS）
+ *  レスポンス: {"items": [{song_id, title, artist_id, artist, art, album, band_id, band, live_id, live, year, players, src, size, start_ms, end_ms, through_end_ms, mc_ms, mc_kind, intro_ms}, ...]}（並びはライブ・出演順・時間順 = シャッフルしないときの順。混ぜるのは JS）
  *  曲の区切りは音源のチャプター（band_audio_chapter。説明は migrations/130）:
  *    曲チャプターの n 番目 = SE を除いた n 番目の曲（band.php のプレーヤーと同じ数え方）。終わり = 次のチャプター（MC も含む）。最後は null（ファイルの最後まで）
  *    MC のチャプターから始まる区間は流さない（MC は自動で飛ぶ）
+ *    通し: mc_ms = 曲のあとの最初の MC・SE（mc_kind = 'mc' | 'se'）。intro_ms = 1曲目より前の最初の SE（オープニング SE。その曲の前から流す。無ければ null）
  *  同じ曲が2つの音源にあるときは先のものだけ。大きさがわからない音源（ドライブの size が NULL）は途中から流せないので除く
  *  art = 紐付けた曲のジャケット（無ければ null）。album = そのアルバム名（無ければ null）。artist = コピー元のアーティスト（オムニバスのバンドは曲ごと。オリジナルなどで無ければ null）
  *  players = 演奏者 [{id, name, parts: [{s: 楽器の略称, c: instrument_class, t: 楽器名}]}]（楽器の並び順）。曲ごとの登録が無い曲はバンドのメンバー全員
@@ -185,15 +186,21 @@ foreach ($groups as $key => $chs) {
         $thru = null;
         $firstEnd = null;
         $mc = null;
+        $mcKind = null;
+        $intro = null; // オープニング SE: この曲より前に曲のチャプターが無いときだけ
+        for ($j = 0; $j < $i; $j++) {
+            if ($chs[$j]['kind'] === 'song') { $intro = null; break; }
+            if ($chs[$j]['kind'] === 'se') $intro ??= (int)$chs[$j]['at_ms'];
+        }
         for ($j = $i + 1; isset($chs[$j]); $j++) {
             $k = $chs[$j]['kind'];
             if ($k === 'song') { $thru = (int)$chs[$j]['at_ms']; break; }
-            if ($k === 'mc' || $k === 'se') $mc ??= (int)$chs[$j]['at_ms'];
+            if (($k === 'mc' || $k === 'se') && $mc === null) { $mc = (int)$chs[$j]['at_ms']; $mcKind = $k; }
             else $firstEnd ??= (int)$chs[$j]['at_ms'];
         }
         if ($thru === null) {
             $thru = $firstEnd;
-            if ($mc !== null && $thru !== null && $mc >= $thru) $mc = null; // 最後の曲の「終わり」より後の MC は流さない
+            if ($mc !== null && $thru !== null && $mc >= $thru) $mc = $mcKind = null; // 最後の曲の「終わり」より後の MC は流さない
         }
         $items[] = [
             'song_id'  => (int)$song['song_id'],
@@ -215,6 +222,8 @@ foreach ($groups as $key => $chs) {
             'end_ms'   => isset($chs[$i + 1]) ? (int)$chs[$i + 1]['at_ms'] : null,
             'through_end_ms' => $thru,
             'mc_ms'    => $mc,
+            'mc_kind'  => $mcKind,
+            'intro_ms' => $intro,
             '_o'       => [$bandRows[$bandId]['rank'] ?? 0, (int)$song['track_no']],
         ] + ($yt ? ($yt[3] ? ['yt' => true] : ['video' => $yt[0]]) : []);
     }
@@ -230,7 +239,7 @@ foreach ($videoUrls as $bandId => $urls) {
         }
         $file = $ytFile[$bandId . '|y:' . $vid] ?? null;
         $base = ['art' => null, 'album' => null, 'band_id' => $bandId, 'band' => (string)$b['band'], 'live_id' => (int)$b['live_id'], 'live' => (string)$b['live'],
-            'year' => (int)$b['fiscal_year'], 'date' => $b['held_on'], 'mc_ms' => null]
+            'year' => (int)$b['fiscal_year'], 'date' => $b['held_on'], 'mc_ms' => null, 'mc_kind' => null, 'intro_ms' => null]
             + ($file ? ['src' => $file[0], 'size' => $file[1], 'yt' => true] : ['src' => 'yt:' . $vid, 'video' => $vid, 'size' => 0]);
         $inVideo = array_values(array_filter($songs[$bandId] ?? [], static fn($s) => $s['video_start'] !== null && (int)$s['video_no'] === $no));
         usort($inVideo, static fn($x, $y) => (int)$x['video_start'] <=> (int)$y['video_start']);

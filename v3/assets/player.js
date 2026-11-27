@@ -258,9 +258,14 @@
     marqueeAll(); refresh(cur()); // 閉じている間は幅が 0 で測れないので、開いたときに測り直す
   };
   // 通しで MC のチャプターを流している間（MC のチャプター mc_ms 〜 次の曲 through_end_ms）。MC のない曲間は曲のまま
-  let mcShown = false;
+  let mcShown = '';
   const hasMc = (it) => !!it && thru() && it.mc_ms != null;
   const inMc = (it) => hasMc(it) && nowSec() * 1000 >= it.mc_ms && (it.through_end_ms === null || nowSec() * 1000 < it.through_end_ms); // 上限: 曲を移った直後の古い位置で MC と出さない
+  // 通しのオープニング SE（1曲目の前の SE チャプター intro_ms 〜 曲の頭）。その曲の前から流す
+  const startOf = (it) => (thru() && it.intro_ms != null ? it.intro_ms : it.start_ms);
+  const inIntro = (it) => !!it && thru() && it.intro_ms != null && nowSec() * 1000 < it.start_ms;
+  const gapKind = (it) => (inIntro(it) ? 'intro' : inMc(it) ? 'mc' : ''); // 曲の外を流しているところ
+  const gapLabel = (it) => (inIntro(it) || (inMc(it) && it.mc_kind === 'se') ? 'SE' : 'MC');
   // シークバー・時間の区間（ms）。MC は別の曲として扱い、曲は mc_ms まで・MC は mc_ms から次の曲まで（null = ファイルの最後）
   // バンド単位: シークバーはバンド全体（キューで続いている同じバンド・同じ音源の曲の、最初の曲の頭〜最後の曲の終わり）
   const bandRange = () => {
@@ -273,12 +278,12 @@
     while (same(queue[b + 1])) b += 1;
     return { a, b };
   };
-  const segStart = (it) => { const r = bandRange(); return r ? queue[r.a].start_ms : inMc(it) ? it.mc_ms : it.start_ms; };
+  const segStart = (it) => { const r = bandRange(); return r ? startOf(queue[r.a]) : inMc(it) ? it.mc_ms : startOf(it); };
   const segEnd = (it) => { const r = bandRange(); return r ? endOf(queue[r.b]) : inMc(it) ? endOf(it) : hasMc(it) ? it.mc_ms : endOf(it); };
   const render = () => {
     const it = cur();
-    const mc = mcShown = inMc(it); // MC の間は曲名を「MC」にして、アーティスト・アルバム・ジャケットは出さない
-    const title = it && mc ? 'MC' : it?.title;
+    const mc = !!(mcShown = it ? gapKind(it) : ''); // MC・SE の間は曲名を「MC」「SE」にして、アーティスト・アルバム・ジャケットは出さない
+    const title = it && mc ? gapLabel(it) : it?.title;
     titleEl.textContent = it ? title : '再生できる曲がありません';
     bandEl.textContent = it ? `${it.band} ・ ${it.year ? `${String(it.year % 100).padStart(2, '0')}’ ` : ''}${it.live}` : ''; // 年度は下2桁（26’ 文化祭ライブ）
     titleEl.disabled = !it;
@@ -407,14 +412,14 @@
       seekBox.style.setProperty('--q', 0);
       curEl.textContent = fmt(0);
     }
-    const t = at ?? cur().start_ms / 1000;
+    const t = at ?? startOf(cur()) / 1000;
     savePos(t);
     await playAt(t, play);
     if (at) showPos(at);
     const nx = queue[(idx + 1) % queue.length]; // 次の曲の長さを先に調べておく（次へ進むときに待たない）
     if (nx && (nx.start_ms > 0 || nx.end_ms !== null)) probe(nx);
     if (nx && nx.band_id !== cur().band_id) refresh(nx); // 次の曲を先に取り直しておく（同じバンドなら開いたときに読んだ分で足りる）
-    if (nx?.video && audio !== yt) yt.cue(nx.video, nx.start_ms / 1000);
+    if (nx?.video && audio !== yt) yt.cue(nx.video, startOf(nx) / 1000);
   };
   // 曲送り・戻しの動き: d = 1（次へ。右から入る）/ -1（前へ。左から入る）。入ってくる側だけ動かす（.2s・--ease-out と同じ）
   const reduced = matchMedia('(prefers-reduced-motion: reduce)');
@@ -457,7 +462,7 @@
     const fresh = new Map(data.items.map((q) => [q.song_id ?? q.src, q])); // song_id が無いものは src で
     queue.forEach((q) => {
       const f = fresh.get(q.song_id ?? q.src);
-      if (f) for (const k of ['title', 'artist_id', 'artist', 'album', 'art', 'band', 'live', 'players', 'through_end_ms', 'mc_ms']) q[k] = f[k]; // 通しの区切り: 前に保存したキューは古い数え方のまま（終わりのチャプターで止まっていた）
+      if (f) for (const k of ['title', 'artist_id', 'artist', 'album', 'art', 'band', 'live', 'players', 'through_end_ms', 'mc_ms', 'mc_kind', 'intro_ms']) q[k] = f[k]; // 通しの区切り: 前に保存したキューは古い数え方のまま（終わりのチャプターで止まっていた）
     });
     save();
     if (queue.includes(it) && cur()?.band_id === it.band_id) render();
@@ -497,8 +502,9 @@
       const x = (ms) => Math.min(1, Math.max(0, (ms - s0) / (end - s0)));
       for (let k = r.a; k <= r.b; k += 1) {
         const q = queue[k];
+        if (thru() && q.intro_ms != null) marks.push({ k, ms: q.intro_ms, label: 'SE', full: 'SE', kind: 'intro' });
         marks.push({ k, ms: q.start_ms, label: String(k - r.a + 1), full: `${k - r.a + 1}. ${q.title}`, kind: 'song' });
-        if (hasMc(q)) marks.push({ k, ms: q.mc_ms, label: 'MC', full: 'MC', kind: 'mc' });
+        if (hasMc(q)) { const l = q.mc_kind === 'se' ? 'SE' : 'MC'; marks.push({ k, ms: q.mc_ms, label: l, full: l, kind: 'mc' }); }
         const nx = queue[k + 1];
         if (!thru() && k < r.b && q.end_ms !== null && nx.start_ms > q.end_ms) gaps.push([x(q.end_ms), x(nx.start_ms)]);
       }
@@ -521,16 +527,16 @@
         return b;
       }));
       seekBox.classList.toggle('has-bubbles', marks.length > 0);
-      // MC はシークバーの下、曲は上（MC は次の曲の頭のすぐ手前で、上に並べると被るため）
-      [...bubblesEl.children].forEach((b) => b.classList.toggle('is-below', b.dataset.kind === 'mc'));
+      // MC・SE はシークバーの下、曲は上（MC は次の曲の頭のすぐ手前で、上に並べると被るため）
+      [...bubblesEl.children].forEach((b) => b.classList.toggle('is-below', b.dataset.kind !== 'song'));
       seekBox.classList.toggle('has-below', !!bubblesEl.querySelector('.is-below'));
       const thumb = (p) => `calc(var(--ap-thumb) / 2 + (100% - var(--ap-thumb)) * ${p})`; // 棒の上の位置（つまみの半分ずつ内側）
       seekBox.style.setProperty('--gaps', gaps.length
         ? `linear-gradient(to right, ${gaps.map(([a, b]) => `transparent ${thumb(a)}, var(--gap) ${thumb(a)}, var(--gap) ${thumb(b)}, transparent ${thumb(b)}`).join(', ')})`
         : 'none');
     }
-    const mc = inMc(it);
-    [...bubblesEl.children].forEach((b) => b.classList.toggle('is-current', Number(b.dataset.k) === idx && (b.dataset.kind === 'mc') === mc));
+    const kind = gapKind(it) || 'song';
+    [...bubblesEl.children].forEach((b) => b.classList.toggle('is-current', Number(b.dataset.k) === idx && b.dataset.kind === kind));
   };
   bubblesEl.addEventListener('click', (e) => {
     const b = e.target.closest('.audio-bubble');
@@ -566,7 +572,7 @@
     if (!it) return;
     const t = nowSec() * 1000;
     showPos(t / 1000);
-    if (inMc(it) !== mcShown) render(); // MC に入った・抜けた
+    if (gapKind(it) !== mcShown) render(); // MC・SE に入った・抜けた
     if (Math.abs(t / 1000 - savedAt) >= 3) savePos(t / 1000);
     const end = endOf(it);
     if (end === null) return; // ファイルの最後まで流す曲は ended で次へ
@@ -593,7 +599,7 @@
       let k = r.a;
       while (k < r.b && t >= (endOf(queue[k]) ?? Infinity)) k += 1;
       if (k !== idx) { idx = k; save(); render(); }
-      playAt(Math.max(t, queue[k].start_ms) / 1000, !audio.paused);
+      playAt(Math.max(t, k === r.a ? startOf(queue[k]) : queue[k].start_ms) / 1000, !audio.paused);
       return;
     }
     playAt(t / 1000, !audio.paused);
@@ -1001,7 +1007,7 @@
       syncUrl();
       const it = queue[st.idx];
       // 残した位置がその曲の中のときだけ使う
-      const ok = it && pos !== null && pos * 1000 >= it.start_ms && (endOf(it) === null || pos * 1000 < endOf(it)); // 通しなら MC の途中も
+      const ok = it && pos !== null && pos * 1000 >= startOf(it) && (endOf(it) === null || pos * 1000 < endOf(it)); // 通しなら MC の途中も
       await go(st.idx, false, ok ? pos : undefined);
       refresh(cur()); // 保存したキューは古いことがある（演奏者・通しの終わり）
       if (cfg.resume) setPanel(true);
