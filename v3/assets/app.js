@@ -138,6 +138,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupTip();
   setupTabGlide();
   setupSetlistNames();
+  setupShuffleLinks();
   setupSpotifyAppLinks();
   setupExternalLinksToBrowser(); // Spotify の処理より後に登録する（先に処理されたリンクは defaultPrevented で見分ける）
   setupSongModalLinks();

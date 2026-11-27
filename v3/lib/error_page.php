@@ -37,7 +37,7 @@ function render_error_page(int $code, string $detail = '', string $trace = ''): 
         http_response_code($code);
         header('Cache-Control: private, no-store');
         header('X-Content-Type-Options: nosniff');
-        header('X-Frame-Options: DENY');
+        header('X-Frame-Options: SAMEORIGIN'); // シャッフル再生の外枠（player.php）の中でもエラーの画面を出す
         header('X-Robots-Tag: noindex, nofollow');
     }
 

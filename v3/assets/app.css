@@ -701,6 +701,16 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 @keyframes ap-out { to { opacity: 0; scale: .8; } }
 .audio-chapter.is-new, .audio-bubble.is-new { animation: ap-pop var(--t-base) var(--ease-out) backwards; animation-delay: calc(min(var(--i, 0), 8) * var(--t-fast) / 5); }
 .audio-chapter.is-leaving, .audio-bubble.is-leaving { animation: ap-out var(--t-base) ease-in forwards; pointer-events: none; }
+
+/* シャッフル再生の外枠（player.php・assets/player.js）: サイトを全面の iframe に入れ、下にバー。iPhone のホームバーの分は下に空ける */
+.shell { height: 100dvh; margin: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--bg); }
+.shell__frame { flex: 1; width: 100%; min-height: 0; border: 0; display: block; }
+.shell-bar { display: flex; align-items: center; gap: 6px; padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); background: var(--surface); border-top: 1px solid var(--border); color: var(--text); font-family: var(--font); }
+.shell-bar__info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.shell-bar__title { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: var(--fs-md); font-weight: 700; color: inherit; text-decoration: none; }
+.shell-bar__band { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: var(--fs-xs); }
+.shell-bar__progress { height: 3px; border-radius: var(--r-full); background: var(--surface-2); overflow: hidden; }
+.shell-bar__progress span { display: block; width: 0; height: 100%; background: var(--accent); }
 @media (prefers-reduced-motion: reduce) {
   .audio-player__fold, .audio-player__edit, .audio-chapter, .audio-chapter__del, .audio-bubble, .audio-player__seek.is-jumping { transition: none; }
   .audio-chapter.is-new, .audio-bubble.is-new, .audio-chapter.is-leaving, .audio-bubble.is-leaving { animation: none; }

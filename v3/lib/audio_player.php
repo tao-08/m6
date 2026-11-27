@@ -94,6 +94,7 @@ function audio_player_html(string $src, string $title, ?int $size, ?array $chapt
             . '<div class="audio-player__fold audio-player__fold--bar"><div class="audio-player__add">'
             . '<button type="button" class="btn btn--ghost btn--sm" data-ap-in="idle" data-ap-add="mc">MC</button>'
             . '<button type="button" class="btn btn--ghost btn--sm" data-ap-in="idle" data-ap-add="song">曲</button>'
+            . '<button type="button" class="btn btn--ghost btn--sm" data-ap-in="idle" data-ap-add="end">終わり</button>'
             . '<button type="button" class="btn btn--ghost btn--sm" data-ap-in="idle" data-ap-auto>' . icon('auto_awesome') . '自動で付ける</button>'
             . '<button type="button" class="btn btn--ghost btn--sm" data-ap-in="busy" data-ap-stop hidden>中止</button>'
             . '<button type="button" class="btn btn--primary btn--sm" data-ap-in="draft" data-ap-save hidden>保存</button>'

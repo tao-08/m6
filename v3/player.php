@@ -1,0 +1,62 @@
+<?php
+/**
+ * =====================================================================
+ *  player.php — シャッフル再生の外枠（管理者だけ）
+ * =====================================================================
+ *  ページを移っても音が切れないように、サイトは全面の <iframe> の中で動かし、この外枠の下のバーで鳴らす。
+ *  中のページは今までどおり（リンク・保存・戻る）。外枠ごと読み直したとき（更新・URL を打つ）だけ止まる。
+ *    ?scope=all | live | band  &id=ライブ/バンドの ID  … 流す範囲（api_shuffle.php）
+ *    ?u=中のページ（band?id=3 など。このサイトの中のページ名だけ）
+ *  iframe に入れられるのは同じサイトからだけ（lib/bootstrap.php の frame-ancestors 'self'）
+ *  動きは assets/player.js。曲の区切りは音源のチャプター（migrations/130・152）
+ * =====================================================================
+ */
+declare(strict_types=1);
+require __DIR__ . '/lib/bootstrap.php';
+require_admin();
+
+$scope = in_array($_GET['scope'] ?? '', ['live', 'band'], true) ? (string)$_GET['scope'] : 'all';
+$id = $scope === 'all' ? 0 : (int)($_GET['id'] ?? 0);
+// 中のページ: このサイトのページ名（とクエリ）だけ。外のサイト・//・player 自身は入れない
+$u = (string)($_GET['u'] ?? '');
+if (!preg_match('/^[A-Za-z0-9_-]*(\.php)?(\?[^#\s]*)?$/', $u) || preg_match('/^player\b/', $u)) {
+    $u = '';
+}
+?>
+<!doctype html>
+<html lang="ja">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title><?= h(APP_NAME) ?></title>
+    <meta name="theme-color" content="#f6f5f1">
+    <script>
+        // テーマは中のページと同じ（partials/header.php と同じ読み方。中で切り替えたら player.js が写す）
+        (function () {
+            var t = null;
+            try { t = localStorage.getItem('theme'); } catch (e) {}
+            document.documentElement.dataset.theme = t === 'dark' ? 'dark' : 'light';
+        })();
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+JP:wght@400;500;700;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400..600,0..1,0&icon_names=<?= h(implode(',', require __DIR__ . '/lib/icon_names.php')) ?>&display=block" rel="stylesheet">
+    <link rel="stylesheet" href="<?= asset_url('assets/app.css') ?>">
+    <script src="<?= asset_url('assets/app_player.js') ?>" defer></script><!-- audioProbeDuration だけ使う（関数の定義だけで、何も動かさない） -->
+    <script src="<?= asset_url('assets/player.js') ?>" defer></script>
+</head>
+<body class="shell">
+<iframe class="shell__frame" data-shell-frame name="site" src="<?= h($u !== '' ? $u : './') ?>" title="AbbeyRoad.online"></iframe>
+<div class="shell-bar" data-shell>
+    <button type="button" class="icon-btn" data-shell-play aria-label="再生" title="再生"><?= icon('play_arrow', 'icon--fill') ?></button>
+    <button type="button" class="icon-btn" data-shell-next aria-label="次の曲" title="次の曲"><?= icon('skip_next', 'icon--fill') ?></button>
+    <div class="shell-bar__info">
+        <a class="shell-bar__title" data-shell-title target="site"></a>
+        <small class="shell-bar__band muted" data-shell-band></small>
+        <div class="shell-bar__progress"><span data-shell-progress></span></div>
+    </div>
+    <button type="button" class="icon-btn" data-shell-close aria-label="閉じる" title="閉じる"><?= icon('close') ?></button>
+    <audio data-shell-audio preload="none"></audio>
+</div>
+<script type="application/json" id="shell-data"><?= json_encode(['scope' => $scope, 'id' => $id], JSON_HEX_TAG) ?></script>
+</body>
+</html>

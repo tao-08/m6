@@ -1119,7 +1119,7 @@ CREATE TABLE band_audio_chapter (
     chapter_id INT UNSIGNED NOT NULL AUTO_INCREMENT,
     band_id    INT UNSIGNED NOT NULL,
     audio_key  VARCHAR(110) CHARACTER SET ascii COLLATE ascii_bin NOT NULL, -- 'a:<band_audio.image_id>' か 'd:<ドライブのファイル ID>'
-    kind       ENUM('mc','song') NOT NULL,
+    kind       ENUM('mc','song','end') NOT NULL, -- end = 曲の終わり（migrations/152）
     at_ms      INT UNSIGNED NOT NULL,
     PRIMARY KEY (chapter_id),
     KEY idx_bac (band_id, audio_key, at_ms),

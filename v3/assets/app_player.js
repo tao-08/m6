@@ -96,7 +96,7 @@ function setupDriveSwitch() {
  *     total … 全体の長さ（秒）。最初の読み込み（from なし）の duration だけを使う（from 付きは短く出るので無視）
  *     バイト位置 = 時刻 × (大きさ ÷ 全体の長さ)。WAV のずれ・サンプルの境界はサーバーが直す
  *   ・チャプター（band.php だけ。data-chapters）: 再生位置の棒の上の吹き出し（MC / 曲の番号）と、下のチップ（時間 ＋ MC / 曲名）。
- *     どちらも押すとその位置から再生する。鉛筆を押すと編集モード: 「MC」「曲」で今の再生位置にチャプターを足し、チップの ✕ で消す（api_audio_chapter.php）
+ *     どちらも押すとその位置から再生する。鉛筆を押すと編集モード: 「MC」「曲」「終わり」で今の再生位置にチャプターを足し、チップの ✕ で消す（api_audio_chapter.php）
  *     編集モードでチップを押すと選ばれて、時間を直せる（入力・−1・+1・今の位置）。直した位置の2秒前から流す。連打は少し待って1回で保存する
  *   ・動き（開け閉め・出入り・並べ替え・つまみの滑り）の時間とイージングは CSS のトークン（--t-* / --ease-out）。減らす設定のときは付けない
  *   ・曲の番号は保存せず、時間順に 1, 2, 3… と数えて songs（セトリの曲名）に当てる
@@ -296,6 +296,7 @@ function setupAudioPlayers(root = document) {
       fig.classList.toggle('is-draft', !!draft);
       let n = 0;
       const labels = list.map((c) => {
+        if (c.kind === 'end') return { short: '終', full: '終わり' }; // 曲の終わり（番号には数えない）
         if (c.kind !== 'song') return { short: 'MC', full: 'MC' };
         n += 1;
         return { short: String(n), full: chap.songs[n - 1] ? `${n}. ${chap.songs[n - 1]}` : String(n) };
@@ -664,4 +665,21 @@ function setupDriveWarmup() {
   };
   if ('requestIdleCallback' in window) requestIdleCallback(warm, { timeout: 4000 });
   else setTimeout(warm, 1500);
+}
+
+/* ---------------------------------------------------------------------
+ * ヘッダーの「シャッフル再生」（管理者だけ。partials/header.php の a[data-shuffle]）
+ *   外枠 player.php の中で押したときは、外枠を読み直さずに範囲だけ渡す（鳴っている音を切らない）
+ *   外枠の外では普通のリンク（target="_top"）として外枠へ移る
+ * ------------------------------------------------------------------- */
+function setupShuffleLinks() {
+  document.addEventListener('click', (e) => {
+    const a = e.target.closest('a[data-shuffle]');
+    let shell = null;
+    try { shell = window.top !== window ? window.top.abbeyShuffle : null; } catch (err) { /* 別のサイトの中 */ }
+    if (!a || !shell) return;
+    e.preventDefault();
+    a.closest('details')?.removeAttribute('open');
+    shell(a.dataset.shuffle, Number(a.dataset.shuffleId) || 0);
+  });
 }

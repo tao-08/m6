@@ -236,6 +236,8 @@ return [
     'select',
     'send',
     'settings',
+    'shuffle',
+    'skip_next',
     'skip_previous',
     'slideshow',
     'slow_motion_video',

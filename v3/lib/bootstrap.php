@@ -168,8 +168,9 @@ if (!defined('APP_NO_SESSION') && session_status() !== PHP_SESSION_ACTIVE) {
 if (!headers_sent()) {
     header_remove('X-Powered-By'); // 「PHP/8.2.12」とバージョンを教えない（古いバージョンの弱点を狙われる手がかりになる）
     header('X-Content-Type-Options: nosniff');
-    header('X-Frame-Options: DENY'); // frame-ancestors を知らない古いブラウザ用
-    header("Content-Security-Policy: frame-ancestors 'none'; base-uri 'self'; form-action 'self' https://accounts.google.com; object-src 'none'");
+    // iframe に入れられるのは同じサイトからだけ（シャッフル再生の外枠 player.php がサイトを中に入れる。ほかのサイトからは今までどおり入れられない）
+    header('X-Frame-Options: SAMEORIGIN'); // frame-ancestors を知らない古いブラウザ用
+    header("Content-Security-Policy: frame-ancestors 'self'; base-uri 'self'; form-action 'self' https://accounts.google.com; object-src 'none'");
     header('Referrer-Policy: strict-origin-when-cross-origin');
     header('Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()');
     header('X-Robots-Tag: noindex, nofollow');

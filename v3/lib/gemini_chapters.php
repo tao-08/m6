@@ -2,19 +2,24 @@
 /**
  * lib/gemini_chapters.php — ライブ音源を Gemini に聴かせて、曲の開始・MC の開始を取り出す（自動チャプター）
  *   音源は Files API に上げて、終わったら消す。前処理はしない（共有サーバーは ffmpeg が使えないため）
- *   結果は [['kind' => 'song'|'mc', 'ms' => int], ...]（時間順）。失敗したら文字列（画面に出せる理由）
+ *   結果は [['kind' => 'song'|'end'|'mc', 'ms' => int], ...]（時間順）。失敗したら文字列（画面に出せる理由）
  */
 declare(strict_types=1);
 
 const GEMINI_API = 'https://generativelanguage.googleapis.com';
 
 const GEMINI_CHAPTER_PROMPT = <<<'TXT'
-添付されたライブ音源を最初から最後まで聴き取り、「曲の開始（SONG_START）」と「MCの開始（MC_START）」のタイムスタンプ（MM:SS形式）を時系列順に抽出してください。
+添付されたライブ音源を最初から最後まで聴き取り、「曲の開始（SONG_START）」「曲の終わり（SONG_END）」「MCの開始（MC_START）」のタイムスタンプ（MM:SS形式）を時系列順に抽出してください。
 
 【判定ルール】
 SONG_START（曲の開始）:
 - ドラムのカウント（声やスティック音）が明確に聞こえる場合は、カウントが始まった瞬間をタイムスタンプとする。
 - カウントが聞こえない場合は、推測せず楽器や歌の演奏（イントロ）が実際に始まった瞬間をタイムスタンプとする。
+
+SONG_END（曲の終わり）:
+- 曲の最後の音（最後のジャーンの残響・シンバルの余韻）が消えた瞬間をタイムスタンプとする。拍手・歓声・チューニングは曲に含めない。
+- 曲が終わってから次の曲・MC までに拍手・チューニング・無音などの間がある場合だけ出力すること。
+- 曲が途切れずに次の曲へつながる場合（メドレー・続けて演奏）は、絶対に無理に SONG_END を作らず、次の SONG_START だけを出力すること。
 
 MC_START（MCの開始）:
 - 演奏が完全に終わった後（または1曲目の演奏前）に、出演者がマイクを通して話し始めた瞬間をタイムスタンプとする。
@@ -83,7 +88,7 @@ function gemini_chapters_from_events(array $events): array
 {
     $out = [];
     foreach ($events as $e) {
-        $kind = ['SONG_START' => 'song', 'MC_START' => 'mc'][(string)($e['type'] ?? '')] ?? null;
+        $kind = ['SONG_START' => 'song', 'SONG_END' => 'end', 'MC_START' => 'mc'][(string)($e['type'] ?? '')] ?? null;
         $ms = gemini_chapter_ms((string)($e['timestamp'] ?? ''));
         if ($kind !== null && $ms !== null) {
             $out[$ms] = ['kind' => $kind, 'ms' => $ms];
@@ -99,7 +104,7 @@ function gemini_audio_chapters(string $path, string $mime, string $key, string $
     $json = gemini_audio_json($path, $mime, $key, $model, GEMINI_CHAPTER_PROMPT, ['type' => 'OBJECT', 'properties' => ['events' => ['type' => 'ARRAY', 'items' => [
         'type' => 'OBJECT',
         'properties' => [
-            'type' => ['type' => 'STRING', 'enum' => ['SONG_START', 'MC_START']],
+            'type' => ['type' => 'STRING', 'enum' => ['SONG_START', 'SONG_END', 'MC_START']],
             'timestamp' => ['type' => 'STRING'],
             'trigger_clue' => ['type' => 'STRING'],
         ],
