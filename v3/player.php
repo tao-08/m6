@@ -58,7 +58,7 @@ if (!preg_match('/^[A-Za-z0-9_-]*(\.php)?(\?[^#\s]*)?$/', $u) || preg_match('/^p
                 <div class="shell-panel__liveline"><a class="shell-panel__live" data-shell-live target="site"></a><?= mix_tag() // 流しているのはミックス（YouTube はまだ流さない） ?></div>
                 <a class="shell-panel__band" data-shell-bandlink target="site"></a>
                 <strong class="shell-panel__song" data-shell-song></strong>
-                <a class="shell-panel__artist" data-shell-artist target="site"></a>
+                <div class="shell-panel__artistline"><a class="shell-panel__artist" data-shell-artist target="site"></a><span class="shell-panel__album" data-shell-album></span></div>
             </div>
         </div>
         <ul class="shell-panel__players" data-shell-players></ul>

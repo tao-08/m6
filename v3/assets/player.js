@@ -191,6 +191,9 @@
     const artist = $('[data-shell-artist]');
     artist.textContent = it.artist || '';
     artist.hidden = !it.artist;
+    const album = $('[data-shell-album]');
+    album.textContent = it.album || '';
+    album.hidden = !it.album;
     if (it.artist_id) artist.href = `artist?id=${it.artist_id}`; else artist.removeAttribute('href');
     // 演奏者: 楽器ラベル（サイト共通の .part）と名前（メンバーページへ）
     $('[data-shell-players]').replaceChildren(...(it.players || []).map((p) => {

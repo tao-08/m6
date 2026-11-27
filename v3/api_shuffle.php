@@ -4,12 +4,12 @@
  *  api_shuffle.php — シャッフル再生する曲の一覧（JSON）。player.php の外枠が呼ぶ。管理者だけ
  * =====================================================================
  *  リクエスト（GET）: ?scope=all | ?scope=live&id=ライブID | ?scope=band&id=バンドID | ?scope=member&id=メンバーID（その人が演奏した曲） | ?scope=artist&id=アーティストID（そのアーティストの曲）
- *  レスポンス: {"items": [{song_id, title, artist_id, artist, art, band_id, band, live_id, live, year, players, src, size, start_ms, end_ms, through_end_ms}, ...]}（並びはライブ・出演順・時間順 = シャッフルしないときの順。混ぜるのは JS）
+ *  レスポンス: {"items": [{song_id, title, artist_id, artist, art, album, band_id, band, live_id, live, year, players, src, size, start_ms, end_ms, through_end_ms}, ...]}（並びはライブ・出演順・時間順 = シャッフルしないときの順。混ぜるのは JS）
  *  曲の区切りは音源のチャプター（band_audio_chapter。説明は migrations/130）:
  *    曲チャプターの n 番目 = SE を除いた n 番目の曲（band.php のプレーヤーと同じ数え方）。終わり = 次のチャプター（MC も含む）。最後は null（ファイルの最後まで）
  *    MC のチャプターから始まる区間は流さない（MC は自動で飛ぶ）
  *  同じ曲が2つの音源にあるときは先のものだけ。大きさがわからない音源（ドライブの size が NULL）は途中から流せないので除く
- *  art = 紐付けた曲のジャケット（無ければ null）。artist = コピー元のアーティスト（オムニバスのバンドは曲ごと。オリジナルなどで無ければ null）
+ *  art = 紐付けた曲のジャケット（無ければ null）。album = そのアルバム名（無ければ null）。artist = コピー元のアーティスト（オムニバスのバンドは曲ごと。オリジナルなどで無ければ null）
  *  players = 演奏者 [{id, name, parts: [{s: 楽器の略称, c: instrument_class, t: 楽器名}]}]（楽器の並び順）。曲ごとの登録が無い曲はバンドのメンバー全員
  *  読むだけなので GET（CSRF のトークンは要らない）
  * =====================================================================
@@ -67,7 +67,7 @@ $in = implode(',', array_fill(0, count($bandIds), '?'));
 
 // セトリ（SE 以外・セトリ順）
 $songs = [];
-$st = $pdo->prepare("SELECT s.song_id, s.band_id, s.title, t.artwork_url, a.artist_id, a.name AS artist
+$st = $pdo->prepare("SELECT s.song_id, s.band_id, s.title, t.artwork_url, t.album_title, a.artist_id, a.name AS artist
     FROM song s
     JOIN band b ON b.band_id = s.band_id
     LEFT JOIN track t ON t.source = s.track_source AND t.track_id = s.track_id
@@ -150,6 +150,7 @@ foreach ($groups as $key => $chs) {
             'artist_id' => $song['artist_id'] !== null ? (int)$song['artist_id'] : null,
             'artist'   => $song['artist'] !== null ? (string)$song['artist'] : null,
             'art'      => $song['artwork_url'] ? preg_replace('/\d+x\d+bb/', '300x300bb', (string)$song['artwork_url']) : null, // band.php のセトリと同じ 300px 版
+            'album'    => $song['album_title'] !== null ? (string)$song['album_title'] : null,
             'band_id'  => $bandId,
             'band'     => (string)$c['band'],
             'live_id'  => (int)$c['live_id'],
