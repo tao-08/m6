@@ -125,7 +125,7 @@
   let savedAt = 0;       // 最後に位置を残した秒（書きすぎないため）
   let filter = { src: 'all', off: [] }; // 絞り込み: src = all | mix | yt、off = 外したライブの ID（範囲の上にかける。新しいライブは入る側）
   try { filter = { ...filter, ...JSON.parse(localStorage.getItem('shuffle_filter') || '{}') }; } catch (e) { /* 無しで */ }
-  const passes = (q) => (filter.src === 'all' || (filter.src === 'yt') === !!(q.video || q.yt)) && !filter.off.includes(q.live_id);
+  const passes = (q) => (filter.src === 'all' || (filter.src === 'yt') === !!q.video) && !filter.off.includes(q.live_id);
   let openOnLoad = cfg.resume; // 開き直したときは、中のページを読み終えてもポップアップを開いたまま
 
   const cur = () => queue[idx] || null;
@@ -290,7 +290,7 @@
     artImg.hidden = mc || !it.art;
     panel.classList.toggle('is-video', !!it.video); // ジャケットの代わりに動画
     ytBox.hidden = !it.video;
-    $('.shell-panel__liveline > .tag--mix').hidden = !!(it.video || it.yt);
+    $('.shell-panel__liveline > .tag--mix').hidden = !!it.video;
     if (it.art) artImg.src = it.art;
     const live = $('[data-shell-live]');
     live.textContent = it.year ? `${it.year}年度 ${it.live}` : it.live;
@@ -984,20 +984,4 @@
     await load(cfg.scope, cfg.id);
     go(0, true);
   })();
-
-  // shortcut: 一時的な計測（Android で下のタブが隠れる件）。原因がわかったら消す
-  const dbg = document.createElement('pre');
-  dbg.style.cssText = 'position:fixed;left:0;top:0;z-index:99;margin:0;padding:4px;font:10px/1.3 monospace;background:rgb(0 0 0/.75);color:#0f0;pointer-events:none';
-  document.body.append(dbg);
-  const rb = (el) => { const r = el?.getBoundingClientRect(); return r ? `${Math.round(r.top)}-${Math.round(r.bottom)}` : '-'; };
-  setInterval(() => {
-    const d = innerDoc();
-    const vv = visualViewport;
-    dbg.textContent = [
-      `win ${innerWidth}x${innerHeight} doc ${document.documentElement.clientHeight} scrollY ${scrollY}`,
-      `vv ${vv ? `${Math.round(vv.height)} top ${Math.round(vv.offsetTop)}` : '-'}`,
-      `body ${rb(document.body)} frame ${rb(frame)} bar ${rb(bar)} pb ${getComputedStyle(bar).paddingBottom}`,
-      `in ${d ? `${d.defaultView.innerHeight} scrollY ${d.defaultView.scrollY} nav ${rb(d.querySelector('.nav'))} ${d.documentElement.className}` : '-'}`,
-    ].join('\n');
-  }, 500);
 })();
