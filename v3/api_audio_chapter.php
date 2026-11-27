@@ -11,10 +11,10 @@
  *    {"action": "delete", "band_id": 12, "chapter_id": 5}
  *    {"action": "move", "band_id": 12, "chapter_id": 5, "at_ms": 62000}  チャプターの時間を直す
  *      key … 'a:<band_audio の image_id>'（アップロードした MP3）か 'd:<ドライブのファイル ID>'（音源だけ）か 'y:<動画 ID>'（バンドの YouTube。video_chapters.php）
- *    {"action": "auto", "band_id": 12, "key": "a:3"}  Gemini に聴かせて {"draft": [{kind, ms}, ...]} を返す（保存は replace）
- *      YouTube（y:）は裏で解析する（lib/chapter_job.php）: すぐ {"state": "running"} を返す。結果は status で見る
- *    {"action": "status", "band_id": 12, "key": "y:…"}   {"state": "none" | "queued" | "running" | "done" | "error", "draft"?, "error"?}
- *    {"action": "discard", "band_id": 12, "key": "y:…"}  下書き・解析中のものを消す（「やめる」「中止」）。replace でも消える
+ *    {"action": "auto", "band_id": 12, "key": "a:3"}  裏で Gemini に聴かせ、終わったらその音源のチャプターを置き換える（lib/chapter_job.php）
+ *      すぐ {"state": "running"} を返す。画面を閉じても続く。結果は status で見る
+ *    {"action": "status", "band_id": 12, "key": "a:3"}   {"state": "none" | "queued" | "running" | "saved" | "error", "error"?, "chapters": [...]}
+ *    {"action": "discard", "band_id": 12, "key": "a:3"}  解析中のものを止める（「中止」。結果を書かない）
  *  レスポンス（JSON）: {"chapters": [{"id", "kind", "ms"}, ...]}  その音源の今のチャプター全部（時間順）
  *  エラー            : {"error": "..."}（400 / 401 / 404 / 405）
  * =====================================================================
@@ -88,64 +88,26 @@ if (in_array($action, ['add', 'replace', 'auto', 'status', 'discard'], true)) {
     if ($st !== null && !$st->fetchColumn()) {
         fail(404, '音源が見つかりません');
     }
-    if (in_array($action, ['status', 'discard'], true) || ($action === 'auto' && isset($y))) { // YouTube は裏で（lib/chapter_job.php）
+    if (in_array($action, ['auto', 'status', 'discard'], true)) { // 裏で解析して、終わったら保存する（lib/chapter_job.php）
         require_once __DIR__ . '/lib/chapter_job.php';
-        if (!isset($y)) {
-            fail(400, '音源の指定が正しくありません');
-        }
-        $job = chapter_job_get($y[1]);
+        $id = chapter_job_id($key);
+        $job = chapter_job_get($id);
         if ($action === 'discard') {
-            chapter_job_put($y[1], null);
+            chapter_job_put($id, null);
             api_ok(['state' => 'none']);
         }
         if ($action === 'status' || in_array($job['state'] ?? '', ['queued', 'running'], true)) { // もう解析している（二重に払わない）
-            api_ok($job ? array_intersect_key($job, ['state' => 1, 'draft' => 1, 'error' => 1]) : ['state' => 'none']);
+            $out = $job ? array_intersect_key($job, ['state' => 1, 'error' => 1]) : ['state' => 'none'];
+            api_ok($out + ['chapters' => audio_chapter_list(audio_chapters($pdo, $bandId)[$key] ?? [])]);
         }
         $cfg = chapter_job_config() ?? fail(503, '自動チャプターは未設定です');
         if (chapter_job_running_count() >= CHAPTER_JOB_MAX) {
-            fail(429, 'ほかの動画を解析中です。終わってから試してください');
+            fail(429, 'ほかの音源を解析中です。終わってから試してください');
         }
-        chapter_job_put($y[1], ['state' => 'running', 'band_id' => $bandId, 'at' => $at = time()]);
+        chapter_job_put($id, ['state' => 'running', 'band_id' => $bandId, 'at' => $at = time()]);
         api_detach(['state' => 'running']);
-        chapter_job_run($y[1], $bandId, $at, $cfg);
+        chapter_job_run($id, $bandId, $at, $cfg);
         exit;
-    }
-    if ($action === 'auto') { // Gemini に聴かせて、チャプターの下書きだけ返す（保存は replace）
-        require_once __DIR__ . '/lib/gemini_chapters.php';
-        require_once __DIR__ . '/lib/live_image.php'; // LIVE_IMAGE_DIR
-        $gemini = (array)(config('gemini') ?? []);
-        $apiKey = trim((string)($gemini['api_key'] ?? ''));
-        $model = trim((string)($gemini['chapter_model'] ?? $gemini['lyrics_search_model'] ?? 'gemini-3.8-flash'));
-        if ($apiKey === '' || !preg_match('/^gemini-[a-zA-Z0-9.-]+$/', $model)) {
-            fail(503, '自動チャプターは未設定です');
-        }
-        session_write_close(); // 長く待つので、ほかの画面を待たせない
-        @set_time_limit(0);
-        $mime = 'audio/mpeg';
-        if ($m ?? false) { // a:N（アップロードした MP3）
-            $st = $pdo->prepare('SELECT file_name FROM band_audio WHERE image_id = ?');
-            $st->execute([(int)$m[1]]);
-            $path = LIVE_IMAGE_DIR . '/' . live_file_disk_name((string)$st->fetchColumn());
-        } else { // d:ID（ドライブの音源。まだ落としていなければここで落とす）
-            require_once __DIR__ . '/lib/drive_cache.php';
-            $st = $pdo->prepare('SELECT mime_type, size FROM band_drive_file WHERE band_id = ? AND file_id = ?');
-            $st->execute([$bandId, substr($key, 2)]);
-            $row = $st->fetch();
-            $mime = (string)$row['mime_type'];
-            $size = (int)$row['size'];
-            if (drive_cache_ensure(substr($key, 2), $size)) {
-                fail(502, '音源を読み込めませんでした');
-            }
-            $path = drive_cache_path(substr($key, 2));
-        }
-        if (!is_file($path)) {
-            fail(404, '音源が見つかりません');
-        }
-        $found = gemini_audio_chapters($path, $mime, $apiKey, $model);
-        if (is_string($found)) {
-            fail(502, $found);
-        }
-        api_ok(['draft' => $found]);
     }
     $ins = $pdo->prepare('INSERT INTO band_audio_chapter (band_id, audio_key, kind, at_ms) VALUES (?, ?, ?, ?)');
     if ($action === 'add') {
@@ -166,10 +128,6 @@ if (in_array($action, ['add', 'replace', 'auto', 'status', 'discard'], true)) {
         } catch (Throwable $e) {
             $pdo->rollBack();
             throw $e;
-        }
-        if (isset($y)) { // 下書きを保存したので消す（lib/chapter_job.php）
-            require_once __DIR__ . '/lib/chapter_job.php';
-            chapter_job_put($y[1], null);
         }
     }
 } elseif ($action === 'delete') {

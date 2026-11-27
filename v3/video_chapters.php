@@ -14,7 +14,7 @@ require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/repository.php';
 require_once __DIR__ . '/lib/youtube.php';
 require_once __DIR__ . '/lib/drive.php'; // audio_player_html・audio_chapters
-require_once __DIR__ . '/lib/chapter_job.php'; // 裏の解析の下書き
+require_once __DIR__ . '/lib/chapter_job.php'; // 裏の解析
 require_login();
 
 $pdo = db();
@@ -53,6 +53,6 @@ render_header('チャプター編集', 'lives');
     </nav>
 <?php endif; ?>
 <section class="card">
-    <?= audio_player_html('', '', null, ['band_id' => $bandId, 'key' => $key, 'chapters' => audio_chapters($pdo, $bandId)[$key] ?? [], 'songs' => $songs, 'job' => chapter_job_get($videoId)]) ?>
+    <?= audio_player_html('', '', null, ['band_id' => $bandId, 'key' => $key, 'chapters' => audio_chapters($pdo, $bandId)[$key] ?? [], 'songs' => $songs, 'job' => chapter_job_get(chapter_job_id($key))]) ?>
 </section>
 <?php render_footer(); ?>

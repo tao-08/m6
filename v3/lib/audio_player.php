@@ -8,7 +8,7 @@
  *      audio_key … 'a:<band_audio の image_id>' か 'd:<ドライブのファイル ID>'
  *      曲の番号は持たない。時間順に 1, 2, 3… と数えて、セットリストの曲名に当てる（曲名の直しに自動で追従する）
  *  ・チップ・吹き出しの描画と追加・削除・時間の直しは assets/app_player.js の setupAudioPlayers。保存は api_audio_chapter.php
- *  ・「自動で付ける」は Gemini に音源を聴かせて下書きを作り（lib/gemini_chapters.php）、「保存」で api_audio_chapter.php の replace が置き換える
+ *  ・「自動で付ける」は 裏で Gemini に音源を聴かせ（lib/chapter_job.php）、終わったらそのまま置き換える。画面を閉じても続く
  *  ・再生・シークも setupAudioPlayers（自前）。まだ読み込んでいない位置へは、音源に ?from=バイト位置 を付けて、その位置から流してもらう（lib/wav.php）
  * =====================================================================
  */
@@ -63,7 +63,7 @@ function audio_player_html(string $src, string $title, ?int $size, ?array $chapt
             'key'   => (string)$chapterCtx['key'],
             'list'  => audio_chapter_list($chapterCtx['chapters']),
             'songs' => array_values($chapterCtx['songs']),
-            'job'   => $chapterCtx['job'] ?? null, // YouTube の裏の解析（lib/chapter_job.php）
+            'job'   => $chapterCtx['job'] ?? null, // 裏の解析（lib/chapter_job.php）
         ], JSON_UNESCAPED_UNICODE)) . '"';
     }
     $yt = $chapterCtx !== null && str_starts_with((string)$chapterCtx['key'], 'y:') ? substr((string)$chapterCtx['key'], 2) : null;
@@ -104,9 +104,7 @@ function audio_player_html(string $src, string $title, ?int $size, ?array $chapt
             . '<button type="button" class="btn btn--ghost btn--sm" data-ap-in="idle" data-ap-add="song">曲</button>'
             . '<button type="button" class="btn btn--ghost btn--sm" data-ap-in="idle" data-ap-add="end">終わり</button>'
             . '<button type="button" class="btn btn--ghost btn--sm" data-ap-in="idle" data-ap-auto>' . icon('auto_awesome') . '自動で付ける</button>'
-            . '<button type="button" class="btn btn--ghost btn--sm" data-ap-in="busy" data-ap-stop hidden>中止</button>'
-            . '<button type="button" class="btn btn--primary btn--sm" data-ap-in="draft" data-ap-save hidden>保存</button>'
-            . '<button type="button" class="btn btn--ghost btn--sm" data-ap-in="draft" data-ap-discard hidden>やめる</button></div></div>';
+            . '<button type="button" class="btn btn--ghost btn--sm" data-ap-in="busy" data-ap-stop hidden>中止</button></div></div>';
     }
     return $html . '</figure>';
 }

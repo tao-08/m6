@@ -22,6 +22,7 @@ declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/live_image.php'; // LIVE_IMAGE_DIR・live_file_disk_name
 require_once __DIR__ . '/lib/youtube.php';    // band_video_urls・youtube_video_id
+require_once __DIR__ . '/lib/audio_stream.php'; // audio_orig_size（音源は 160 に置き換えるので、data-size は元の大きさ）
 
 header('Content-Type: application/json; charset=utf-8');
 if (current_user() === null) {
@@ -122,7 +123,7 @@ $st->execute($bandIds);
 foreach ($st as $r) {
     $path = LIVE_IMAGE_DIR . '/' . live_file_disk_name((string)$r['file_name']);
     if (is_file($path)) {
-        $s = ['attach_image?k=band_audio&id=' . (int)$r['image_id'], (int)filesize($path)];
+        $s = ['attach_image?k=band_audio&id=' . (int)$r['image_id'], audio_orig_size($path)];
         if ($r['video_id'] !== null) {
             $ytFile[$r['band_id'] . '|y:' . $r['video_id']] ??= $s;
         } else {

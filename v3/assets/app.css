@@ -706,8 +706,6 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 .audio-player:not(.is-editing) :is(.audio-chapter, .audio-bubble)[data-kind="end"] { display: none; }
 .audio-chapter.is-current { border-color: var(--ok); background: var(--ok-bg); }
 .audio-chapter.is-selected { border-color: var(--accent); box-shadow: var(--ring); }
-/* 自動で付けた下書き: 破線。保存するまで消せない */
-.audio-player.is-draft .audio-chapter, .audio-player.is-draft .audio-bubble { border-style: dashed; }
 /* 出入り: 新しいものはぽんと出る（--i = 同時に出る順番。少しずつ遅らせる）。消すものは縮みながら消える */
 @keyframes ap-pop { from { opacity: 0; scale: .8; } }
 @keyframes ap-out { to { opacity: 0; scale: .8; } }

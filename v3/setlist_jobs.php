@@ -57,7 +57,7 @@ if ($tab === 'chapter') {
             unset($live);
         }
     }
-    $label = ['saved' => '解析済み', 'done' => '下書きあり', 'running' => '解析中', 'queued' => '順番待ち', 'error' => '失敗', 'none' => '未解析'];
+    $label = ['saved' => '解析済み', 'running' => '解析中', 'queued' => '順番待ち', 'error' => '失敗', 'none' => '未解析'];
 
     render_header('解析の状況', 'tools');
     ?>

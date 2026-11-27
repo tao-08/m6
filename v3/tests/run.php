@@ -1265,6 +1265,14 @@ check('理由: JSON でなければ本文の先頭を、使える文字だけで
 Bad <b>Gateway</b> \"key=AIza\"" . str_repeat('x', 200)), substr('htmlBad bGatewayb keyAIza' . str_repeat('x', 200), 0, 80));
 check('理由: 空の本文は空', drive_upstream_reason(''), '');
 check('キャッシュ: 大きさが分からなければ、あれば流す', [drive_cache_ok(__FILE__, 0), drive_cache_ok(__FILE__, filesize(__FILE__)), drive_cache_ok(__FILE__, 1), drive_cache_ok(__FILE__ . '.none', 0)], [true, true, false, false]);
+$tmp = tempnam(sys_get_temp_dir(), 'shr');
+file_put_contents($tmp, str_repeat('a', 100));
+$o = [audio_orig_size($tmp)];
+file_put_contents(audio_mark($tmp), '1000'); // 160 に置き換えた印（元は 1000 バイト）
+$o[] = audio_orig_size($tmp);
+$o[] = drive_cache_ok($tmp, 1000);
+@unlink(audio_mark($tmp)); @unlink($tmp);
+check('160 に置き換えた音源: 元の大きさは印から。キャッシュは元の大きさで合っていれば流す', $o, [100, 1000, true]);
 
 // ---------------------------------------------------------------------
 //  マイグレーションの番号（migrations/）

@@ -13,6 +13,8 @@
  */
 declare(strict_types=1);
 
+require_once __DIR__ . '/audio_stream.php'; // 音源は 160 に置き換えるので、元の大きさは印から（audio_orig_size）
+
 /** キャッシュの合計の上限（3GB） */
 const DRIVE_CACHE_MAX_BYTES = 3 * 1024 ** 3;
 
@@ -31,7 +33,7 @@ function drive_cache_path(string $fileId): string
     return drive_cache_dir() . '/' . $fileId . '.dat';
 }
 
-/** 元のファイルから作ったもの（再生用の軽い MP3。<ID>.dat.160.mp3 など。lib/audio_stream.php）。元を消す・差し替えるときに一緒に消す。落としている途中の .part は含めない */
+/** 元のファイルに付いたもの（160 に置き換えた印 <ID>.dat.160 など。lib/audio_stream.php）。元を消す・差し替えるときに一緒に消す。落としている途中の .part は含めない */
 function drive_cache_derived(string $dat): array
 {
     return glob($dat . '.[0-9]*') ?: [];
@@ -40,7 +42,7 @@ function drive_cache_derived(string $dat): array
 /** 流してよいキャッシュか。ある、かつ（大きさが分かっているなら）合っている */
 function drive_cache_ok(string $path, int $size): bool
 {
-    return is_file($path) && ($size <= 0 || filesize($path) === $size);
+    return is_file($path) && ($size <= 0 || audio_orig_size($path) === $size);
 }
 
 /** バンドから外したファイルのキャッシュを消す。ほかのバンドがまだ使っているなら残す */
@@ -182,7 +184,7 @@ function drive_cache_ensure(string $fileId, int &$size, bool &$miss = false): ?a
                 }
                 $got = (int)filesize($part);
                 rename($part, $dat);
-                foreach (drive_cache_derived($dat) as $f) { // 前の中身から作った軽い MP3 は使わない
+                foreach (drive_cache_derived($dat) as $f) { // 前の中身の印は使わない
                     @unlink($f);
                 }
                 if ($got !== $size) { // DB の大きさが違う（ドライブ側で差し替わった）。直さないと毎回落とし直しになる

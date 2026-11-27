@@ -6,8 +6,8 @@
  *   &to=バイト位置: そこまでで止める（シャッフル再生が1曲分だけ受け取るため。player.js）。from なしでも使える
  *   キャッシュ: ETag / Last-Modified を付け、private, no-cache（ブラウザは保存してよいが、使う前に毎回ここへ確認する）。
  *     確認はログインと権限のチェックのあとなので、権限を外された人には届かない。変わっていなければ 304（本体は流さない）
- *   再生（dl なし）の音源は、通信量を減らすため 160kbps CBR の MP3（元のファイルの横の <元>.160.mp3）を流す。初回の再生で ffmpeg で作る（作り終わるまで待つ）
- *     from= / to= は元の大きさで数えた位置で来る（player.js / app_player.js の data-size）ので、大きさの比で軽いほうの位置に直す。dl=1 は元のファイル
+ *   音源は初めて流すときに 160kbps CBR の MP3 に置き換える（audio_shrink。作り終わるまで待つ）
+ *     from= / to= は元の大きさで数えた位置で来る（player.js / app_player.js の data-size）ので、大きさの比で直す
  */
 declare(strict_types=1);
 
@@ -16,53 +16,75 @@ require_once __DIR__ . '/wav.php';
 const AUDIO_LIGHT_KBPS = 160;
 
 /**
- * 再生用の軽い MP3 のパス。使えなければ null（元のファイルを流す）
- *   無ければここで作る。同時の要求は flock で1つだけが作り、ほかは待つ
- *   1割以上小さくならなかった（元が 160k 前後以下）・作れなかったときは空のファイルを印に置き、作り直さない（作り直すときは印を消す）
+ * サーバーには再生用の 160kbps CBR の MP3 だけを置く（容量を減らすため）。元のファイルは初めて流すときに 160 に置き換える
+ *   置き換えたら横に印 <元>.160 を置き、中に元の大きさ（バイト数）を書く。from= / to= / data-size は元の大きさで数えたままなので、比で直す
+ *   1割以上小さくならなかった（元が 160k 前後以下）・作れなかったときは、置き換えずに印だけ置く（作り直すときは印を消す）
+ *   ドライブの音源は、元のファイルはドライブに残る（ダウンロードはドライブへ。drive_audio.php）
  */
-function audio_light(string $path): ?string
+function audio_mark(string $path): string
 {
-    $light = $path . '.' . AUDIO_LIGHT_KBPS . '.mp3';
-    clearstatcache(true, $light);
-    if (!is_file($light) && ($lock = @fopen($light . '.lock', 'c'))) {
-        if (flock($lock, LOCK_EX)) {
-            clearstatcache(true, $light);
-            if (!is_file($light)) {
-                audio_light_make($path, $light);
-            }
-            flock($lock, LOCK_UN);
-        }
-        fclose($lock);
-        clearstatcache(true, $light);
-    }
-    $n = is_file($light) ? (int)filesize($light) : 0;
-    return $n > 0 && $n < (int)filesize($path) ? $light : null;
+    return $path . '.' . AUDIO_LIGHT_KBPS;
 }
 
-function audio_light_make(string $path, string $light): void
+/** 元の大きさ。置き換えていなければ今の大きさ */
+function audio_orig_size(string $path): int
+{
+    clearstatcache(true, $path);
+    $n = (int)@file_get_contents(audio_mark($path));
+    return $n > 0 ? $n : (is_file($path) ? (int)filesize($path) : 0);
+}
+
+/** まだなら 160 に置き換える。同時の要求は flock で1つだけが作り、ほかは待つ */
+function audio_shrink(string $path): void
+{
+    $mark = audio_mark($path);
+    clearstatcache(true, $mark);
+    if (is_file($mark) || !($lock = @fopen($mark . '.lock', 'c'))) {
+        return;
+    }
+    if (flock($lock, LOCK_EX)) {
+        clearstatcache(true, $mark);
+        if (!is_file($mark)) {
+            audio_shrink_make($path, $mark);
+        }
+        flock($lock, LOCK_UN);
+    }
+    fclose($lock);
+    @unlink($mark . '.lock');
+}
+
+function audio_shrink_make(string $path, string $mark): void
 {
     require_once __DIR__ . '/ytdlp.php';
     @set_time_limit(0);
     ignore_user_abort(true); // 途中で切られても作り終える（半端なファイルは .part のまま残さない）
-    $ffmpeg = ytdlp_ffmpeg_dir() . '/ffmpeg';
-    $part = $light . '.part.mp3'; // ffmpeg は出力の形式を拡張子で決める
-    $why = PHP_OS_FAMILY !== 'Windows' && !is_file($ffmpeg) ? ytdlp_ffmpeg_install() : null;
-    if ($why === null) {
-        // CBR（from= のバイト位置で切るため）。タグ・ジャケット画像は落とす
-        [$code, $log] = ytdlp_run(['-v', 'error', '-y', '-i', $path, '-vn', '-map_metadata', '-1', '-c:a', 'libmp3lame', '-b:a', AUDIO_LIGHT_KBPS . 'k', '-ar', '44100', $part], 600, $ffmpeg);
-        clearstatcache(true, $part);
-        $n = is_file($part) ? (int)filesize($part) : 0;
-        $why = $code !== 0 || $n === 0 ? "ffmpeg exit $code: $log" : null;
-        // 1割も減らないなら作らない（元が 160k のときに同じ大きさの複製が増えるため）
-        if ($why === null && $n < (int)filesize($path) * 0.9 && rename($part, $light)) {
-            return;
+    $orig = (int)filesize($path);
+    $old = $path . '.' . AUDIO_LIGHT_KBPS . '.mp3'; // 前の作り（元の横に置いていた軽い MP3）。あればそれを使う
+    $part = $old . '.part.mp3'; // ffmpeg は出力の形式を拡張子で決める
+    $why = null;
+    clearstatcache(true, $old);
+    if (is_file($old) && filesize($old) > 0) {
+        rename($old, $part);
+    } else {
+        $ffmpeg = ytdlp_ffmpeg_dir() . '/ffmpeg';
+        $why = PHP_OS_FAMILY !== 'Windows' && !is_file($ffmpeg) ? ytdlp_ffmpeg_install() : null;
+        if ($why === null) {
+            // CBR（from= のバイト位置で切るため）。タグ・ジャケット画像は落とす
+            [$code, $log] = ytdlp_run(['-v', 'error', '-y', '-i', $path, '-vn', '-map_metadata', '-1', '-c:a', 'libmp3lame', '-b:a', AUDIO_LIGHT_KBPS . 'k', '-ar', '44100', $part], 600, $ffmpeg);
+            clearstatcache(true, $part);
+            $why = $code !== 0 || !is_file($part) || filesize($part) === 0 ? "ffmpeg exit $code: $log" : null;
         }
+    }
+    @unlink($old);
+    // 1割も減らないなら置き換えない（元が 160k 以下のとき）
+    if ($why === null && filesize($part) < $orig * 0.9 && file_put_contents($mark, (string)$orig, LOCK_EX) && rename($part, $path)) {
+        return;
     }
     @unlink($part);
     if ($why !== null) {
-        error_log('audio_light: ' . basename($path) . ' ' . $why);
+        error_log('audio_shrink: ' . basename($path) . ' ' . $why);
     }
-    touch($light); // 印（空）: 元のファイルを流す
+    file_put_contents($mark, (string)$orig, LOCK_EX); // 印: 置き換えずにそのまま流す
 }
 
 /**
@@ -73,10 +95,12 @@ function audio_stream_file(string $path, string $mime, ?string $dlName = null): 
 {
     header('X-Content-Type-Options: nosniff');
     $scale = 1.0;
-    if ($dlName === null && str_starts_with($mime, 'audio/') && ($light = audio_light($path)) !== null) {
-        $scale = filesize($light) / filesize($path);
-        $path = $light;
-        $mime = 'audio/mpeg';
+    if (str_starts_with($mime, 'audio/')) {
+        audio_shrink($path);
+        $scale = filesize($path) / max(1, audio_orig_size($path));
+        if ($scale < 1) {
+            $mime = 'audio/mpeg';
+        }
     }
     $size = (int)filesize($path);
     $mtime = (int)filemtime($path);

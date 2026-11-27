@@ -23,6 +23,8 @@ require_once __DIR__ . '/lib/history.php'; // 「確認済み」を誰が押し�
 require_once __DIR__ . '/lib/attach_image.php'; // バンドの添付画像（最大5枚）
 require_once __DIR__ . '/lib/tabs.php';
 require_once __DIR__ . '/lib/youtube.php'; // YouTube が2本以上あるときの一覧（band_youtube_html） // 曲ごとの TAB 譜へのリンク（tab_song_key）
+require_once __DIR__ . '/lib/audio_stream.php'; // audio_orig_size（音源は 160 に置き換えるので、data-size は元の大きさ）
+require_once __DIR__ . '/lib/chapter_job.php'; // 解析中なら開いたときに待つ
 $user = require_login();
 
 $bandId = (int)($_GET['id'] ?? 0);
@@ -431,7 +433,7 @@ render_header($band['name'], 'lives');
     // チャプター: 音源ごとの印と、曲の番号に当てるセットリストの曲名（SE 以外・セトリ順。非公開で隠すときは空）
     $audioChapters = audio_chapters($pdo, $bandId);
     $chapterSongs = array_column(array_filter($songs, static fn($s) => !$s['is_se']), 'title');
-    $chapterCtx = static fn(string $key): array => ['band_id' => $bandId, 'key' => $key, 'chapters' => $audioChapters[$key] ?? [], 'songs' => $chapterSongs];
+    $chapterCtx = static fn(string $key): array => ['band_id' => $bandId, 'key' => $key, 'chapters' => $audioChapters[$key] ?? [], 'songs' => $chapterSongs, 'job' => chapter_job_get(chapter_job_id($key))];
     ?>
     <!-- ファイル（セットリストの下）: 直接置いた MP3 → ドライブの音源 → そのほか。音源はチャプターを付けられるプレーヤー。バンドのページは1組だけなので最初から並べる（iframe・画像は loading="lazy" で画面に近づいてから読み込む） -->
     <section class="card band-section no-print">
@@ -439,7 +441,7 @@ render_header($band['name'], 'lives');
         <?php foreach ($bandAudios as $a): ?>
             <?php $path = LIVE_IMAGE_DIR . '/' . live_file_disk_name((string)$a['file_name']); ?>
             <?= audio_player_html('attach_image?k=band_audio&id=' . (int)$a['image_id'], $a['title'] !== '' ? $a['title'] : 'MP3',
-                is_file($path) ? (int)filesize($path) : null, $chapterCtx('a:' . (int)$a['image_id'])) ?>
+                is_file($path) ? audio_orig_size($path) : null, $chapterCtx('a:' . (int)$a['image_id'])) ?>
         <?php endforeach; ?>
         <?php foreach ($driveFiles as $f): ?>
             <?php if (str_starts_with((string)$f['mime_type'], 'audio/') && drive_id_valid((string)$f['file_id'])): ?>

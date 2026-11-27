@@ -245,7 +245,6 @@ function setupAudioPlayers(root = document) {
     let pending = null; // 長さがわかる前に押された位置（秒）
     let dragging = false;
     let timer = 0;
-    let draft = null;     // 自動で付けた下書き [{kind, ms}]。あるあいだは保存済みの代わりにこれを出す
     let ctrl = null;      // 自動で付けている最中の中止用
     let selId = null;     // 編集モードで選んだチャプターの id（時間を直す相手）
     let pend = null;      // 保存待ちの時間の直し { id, ms, from }。from = 直す前の時間（失敗したら戻す）
@@ -254,7 +253,6 @@ function setupAudioPlayers(root = document) {
     const els = new Map(); // id → { chip, bubble }。描画のたびに作り直さず使い回して、動きをつける
     const seen = { chip: false, bubble: false }; // 最初の描画は、出てくる動きを付けない
     const now = () => base + audio.currentTime;
-    const shown = () => draft || chap.list;
     const reduced = matchMedia('(prefers-reduced-motion: reduce)');
     // 動きの時間・イージングは CSS のトークンから読む（減らす設定のときは、呼ぶ側で動かさない）
     const tok = (name) => getComputedStyle(fig).getPropertyValue(name).trim();
@@ -263,7 +261,7 @@ function setupAudioPlayers(root = document) {
     // 今の再生位置のチャプター（いちばん後ろの「開始が今以前」）に .is-current
     const mark = () => {
       if (!chap) return;
-      const cur = shown().findLast((c) => c.ms <= now() * 1000);
+      const cur = chap.list.findLast((c) => c.ms <= now() * 1000);
       for (const el of [...fig.querySelectorAll('.audio-chapter'), ...bubbles.children]) {
         el.classList.toggle('is-current', !!cur && Number(el.dataset.id) === cur.id);
       }
@@ -338,7 +336,7 @@ function setupAudioPlayers(root = document) {
     const atInput = fig.querySelector('[data-ap-at]');
     const syncSel = () => {
       if (!chap) return;
-      const c = shown().find((x) => x.id === selId);
+      const c = chap.list.find((x) => x.id === selId);
       if (!c) selId = null;
       fig.classList.toggle('has-sel', !!c && fig.classList.contains('is-editing'));
       for (const [id, e] of els) e.chip.classList.toggle('is-selected', id === selId);
@@ -369,9 +367,8 @@ function setupAudioPlayers(root = document) {
     //   新しいもの: ぽんと出る / 順番が変わったチップ: 元の位置から滑る（FLIP）/ 吹き出し: CSS の left の transition で滑る
     const render = () => {
       if (!chap) return;
-      const list = shown();
+      const list = chap.list;
       const motion = !reduced.matches;
-      fig.classList.toggle('is-draft', !!draft);
       let n = 0;
       const labels = list.map((c) => {
         if (c.kind === 'end') return { short: '終', full: n ? `${n}. End` : 'End' }; // 曲の終わり（番号には数えない。チップは直前の曲の番号で「4. End」）
@@ -551,13 +548,9 @@ function setupAudioPlayers(root = document) {
       } else if (del) {
         const id = Number(del.closest('.audio-chapter').dataset.id);
         if (pend?.id === id) { clearTimeout(pendTimer); pend = null; }
-        if (draft) { // 下書きは保存前なので、画面から外すだけ
-          leave(els.get(id)).then(() => { draft = draft?.filter((c) => c.id !== id) ?? null; render(); });
-          return;
-        }
         send({ action: 'delete', chapter_id: id }, leave(els.get(id)));
       } else if (nudge) {
-        const c = shown().find((x) => x.id === selId);
+        const c = chap.list.find((x) => x.id === selId);
         if (c) moveSel(c.ms + Number(nudge.dataset.apNudge) * 1000, 400); // 連打は 400ms 待って1回にまとめる
       } else if (e.target.closest('[data-ap-here]')) {
         moveSel(Math.floor(now() * 1000), 0);
@@ -574,22 +567,15 @@ function setupAudioPlayers(root = document) {
         autoRun();
       } else if (e.target.closest('[data-ap-stop]')) {
         ctrl?.abort();
-        if (isYt) jobPost('discard').catch(() => {}); // 裏の解析も止める（結果を書かない）
-      } else if (e.target.closest('[data-ap-save]')) {
-        autoSave();
-      } else if (e.target.closest('[data-ap-discard]')) {
-        autoDiscard();
-        if (isYt) jobPost('discard').catch(() => {});
+        jobPost('discard').catch(() => {}); // 裏の解析も止める（結果を書かない）
       } else if (e.target.closest('[data-ap-edit]')) {
         const on = !fig.classList.contains('is-editing');
         fig.classList.toggle('is-editing', on);
         fig.querySelector('[data-ap-edit]').setAttribute('aria-pressed', String(on));
         stackBubbles(); // 「終わり」が出る・消えるので並べ直す
-        if (!on) { // 編集を閉じたら、保存待ちの直しは保存し、途中の自動も下書きも捨てる
+        if (!on) { // 編集を閉じたら、保存待ちの直しは保存する（自動で付けている最中なら、閉じても待ち続ける）
           flushMove(false);
           selId = null;
-          ctrl?.abort();
-          autoDiscard();
           syncSel();
         }
       }
@@ -628,7 +614,6 @@ function setupAudioPlayers(root = document) {
       if (!p) return;
       pend = null;
       if (replay) seekTo(Math.max(0, p.ms / 1000 - 2), true);
-      if (draft) return; // 下書きは「保存」でまとめて保存する
       inflight += 1;
       try {
         const res = await apiPost('api_audio_chapter.php', { band_id: chap.band, action: 'move', chapter_id: p.id, at_ms: p.ms }, '保存できませんでした');
@@ -642,13 +627,13 @@ function setupAudioPlayers(root = document) {
       render();
     };
     const moveSel = (ms, wait) => {
-      const c = shown().find((x) => x.id === selId);
+      const c = chap.list.find((x) => x.id === selId);
       if (!c) return;
       if (pend && pend.id !== c.id) flushMove(false);
       ms = Math.max(0, Math.min(Math.round(ms), total ? Math.floor(total * 1000) : 86400000));
       pend = { id: c.id, ms, from: pend?.id === c.id ? pend.from : c.ms };
       c.ms = ms;
-      shown().sort(byTime);
+      chap.list.sort(byTime);
       render();
       clearTimeout(pendTimer);
       pendTimer = setTimeout(flushMove, wait);
@@ -661,7 +646,7 @@ function setupAudioPlayers(root = document) {
     };
     atInput?.addEventListener('blur', () => { // チャプターのないプレーヤー（live.php）には時間の入力欄が無い
 
-      const c = shown().find((x) => x.id === selId);
+      const c = chap.list.find((x) => x.id === selId);
       if (!c) return;
       const ms = parseTime(atInput.value);
       if (ms !== null && ms !== Math.floor(c.ms / 1000) * 1000) moveSel(ms, 0);
@@ -672,18 +657,17 @@ function setupAudioPlayers(root = document) {
       if ((e.key === 'Enter' && !e.isComposing) || e.key === 'Escape') atInput.blur();
     });
 
-    // 自動で付ける: Gemini に聴かせて下書きを作る → 聞いて確かめる → 保存（置き換え）かやめる
+    // 自動で付ける: 裏で Gemini に聴かせ、終わったらサーバーがそのまま置き換える（lib/chapter_job.php）
+    //   頼んだら、終わるまで5秒ごとに見に行く。画面を閉じても解析は続き、次に開くと付いている
     const setMode = (m) => fig.querySelectorAll('[data-ap-in]').forEach((b) => { b.hidden = b.dataset.apIn !== m; });
-    //   YouTube（y:）は裏で解析する（lib/chapter_job.php）: 頼んだら、終わるまで5秒ごとに見に行く。画面を閉じても解析は続き、次に開くと下書きが出る
-    const isYt = !!chap?.key.startsWith('y:');
     const jobPost = (action, signal) => apiPost('api_audio_chapter.php', { action, band_id: chap.band, key: chap.key }, '自動で付けられませんでした', { signal });
     const aborted = () => new DOMException('', 'AbortError');
     const waitJob = async (signal) => {
       for (;;) {
         const job = await jobPost('status', signal);
-        if (job.state === 'done') return job.draft;
+        if (job.state === 'saved') return job.chapters;
         if (job.state === 'error') throw new Error(job.error);
-        if (job.state === 'none') throw aborted(); // ほかの画面で「やめる」された
+        if (job.state === 'none') { chap.list = job.chapters; render(); throw aborted(); } // ほかの画面で「中止」された
         await new Promise((ok, ng) => {
           const t = setTimeout(ok, 5000);
           signal.addEventListener('abort', () => { clearTimeout(t); ng(aborted()); }, { once: true });
@@ -691,49 +675,27 @@ function setupAudioPlayers(root = document) {
       }
     };
     const autoRun = async (resume = false) => {
+      if (!resume && chap.list.length && !confirm('今のチャプターを置き換えますか？')) return;
       ctrl = new AbortController();
       const { signal } = ctrl;
       setMode('busy');
       try {
-        let found;
-        if (isYt) {
-          if (!resume) await jobPost('auto', signal);
-          found = await waitJob(signal);
-        } else ({ draft: found } = await jobPost('auto', signal));
-        if (!found.length) throw new Error('none');
-        draft = found.map((c, i) => ({ ...c, id: i - found.length })); // 保存前の印。負の番号（時間順に並ぶ）で、保存済みの id とぶつからない
-        setMode('draft');
+        if (!resume) await jobPost('auto', signal);
+        const list = await waitJob(signal);
+        clearTimeout(pendTimer); // 置き換わったので、前のチャプターへの直しは捨てる
+        pend = null;
+        selId = null;
+        chap.list = list;
         render();
+        syncSel();
       } catch (e) {
-        setMode('idle');
-        if (e.message === 'none') flashToast('区切りを見つけられませんでした', 'warn');
-        else if (e.name !== 'AbortError') flashToast(e.message, 'error');
+        if (e.name !== 'AbortError') flashToast(e.message, 'error');
       }
+      setMode('idle');
       ctrl = null;
     };
-    const autoDiscard = () => {
-      if (!draft) return;
-      draft = null;
-      if (pend?.id < 0) { clearTimeout(pendTimer); pend = null; } // 下書きの直しは捨てる
-      setMode('idle');
-      render();
-    };
-    const autoSave = async () => {
-      if (chap.list.length && !confirm('今のチャプターを置き換えますか？')) return;
-      if (await send({ action: 'replace', key: chap.key, chapters: draft.map(({ kind, ms }) => ({ kind, ms })) })) {
-        draft = null;
-        if (pend?.id < 0) { clearTimeout(pendTimer); pend = null; }
-        setMode('idle');
-        render();
-      }
-    };
     render();
-    // YouTube: 開いたときに裏の解析があれば、下書きを出す・終わるのを待つ（chap.job は lib/audio_player.php が渡す）
-    if (isYt && chap.job?.state === 'done') {
-      draft = chap.job.draft.map((c, i) => ({ ...c, id: i - chap.job.draft.length }));
-      setMode('draft');
-      render();
-    } else if (isYt && ['queued', 'running'].includes(chap.job?.state)) autoRun(true);
+    if (['queued', 'running'].includes(chap?.job?.state)) autoRun(true); // 開いたときに解析中なら、終わるのを待つ（chap.job は lib/audio_player.php が渡す）
   });
 }
 
