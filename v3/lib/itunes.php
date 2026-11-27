@@ -43,9 +43,21 @@ function itunes_request(string $endpoint, array $params): ?array
     $res = album_http('https://itunes.apple.com/' . $endpoint . '?' . http_build_query($params));
     $results = $res['json']['results'] ?? null;
     if ($res === null || $res['status'] !== 200 || !is_array($results)) {
+        itunes_why($res === null ? '応答なし' : 'HTTP ' . $res['status']);
         return null;
     }
     return $results;
+}
+
+/** 最後に iTunes に繋がらなかった理由（管理者の画面に出す。本番だけ繋がらないときの切り分け用） */
+function itunes_why(?string $set = null): string
+{
+    static $why = '';
+    if ($set !== null) {
+        $why = $set;
+        error_log('iTunes: ' . $set);
+    }
+    return $why;
 }
 
 /**

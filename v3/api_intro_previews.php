@@ -40,7 +40,7 @@ if ($action === 'search') {
     }
     $found = itunes_search_tracks($q, 15);
     if ($found === null) {
-        fail(502, 'iTunes に接続できませんでした');
+        fail(502, 'iTunes に接続できませんでした: ' . itunes_why());
     }
     $candidates = [];
     foreach ($found as $t) {
@@ -88,7 +88,7 @@ if ($track === null) {
 }
 $url = track_preview_remember($pdo, $track); // 探して覚える。false = 通信できなかった（覚えない）
 if ($url === false) {
-    fail(502, 'iTunes に接続できませんでした');
+    fail(502, 'iTunes に接続できませんでした: ' . itunes_why());
 }
 api_ok([
     'remaining' => track_preview_pending_count($pdo),
