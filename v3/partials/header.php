@@ -229,7 +229,7 @@ $nav = [
         <?php endif; ?>
         <?php if ($user && $user['admin']): ?>
         <?php
-        // シャッフル再生（管理者だけ）: 範囲を選ぶと外枠 player.php に今のページを入れて鳴らす。外枠の中では app_player.js の setupShuffleLinks が外枠に範囲だけ渡す
+        // シャッフル再生（管理者だけ）: 範囲を選ぶと外枠 player.php に今のページを入れて鳴らす。外枠の中では app_player.js の setupShuffleLinks が外枠に範囲だけ渡し、アイコンは外枠の再生中の曲を開く（再生中は回る）
         $shuffleUri = (string)($_SERVER['REQUEST_URI'] ?? '');
         $shuffleU = preg_replace('~^.*/~', '', (string)parse_url($shuffleUri, PHP_URL_PATH)) . (($q = parse_url($shuffleUri, PHP_URL_QUERY)) ? '?' . $q : '');
         $shuffleScopes = [['all', 0, 'サイト全体']];
@@ -238,8 +238,8 @@ $nav = [
             $shuffleScopes[] = [$shufflePage, (int)$_GET['id'], $shufflePage === 'live' ? 'このライブ' : 'このバンド'];
         }
         ?>
-        <details class="usermenu">
-            <summary class="icon-btn" aria-label="シャッフル再生" title="シャッフル再生"><?= icon('shuffle') ?></summary>
+        <details class="usermenu" data-shuffle-menu>
+            <summary class="icon-btn" aria-label="シャッフル再生" title="シャッフル再生"><?= icon('play_circle') ?></summary>
             <div class="usermenu__panel">
                 <?php foreach ($shuffleScopes as [$sc, $sid, $label]): ?>
                     <a href="player?<?= h(http_build_query(['scope' => $sc] + ($sid ? ['id' => $sid] : []) + ['u' => $shuffleU])) ?>" target="_top" data-shuffle="<?= h($sc) ?>" data-shuffle-id="<?= (int)$sid ?>"><?= h($label) ?></a>

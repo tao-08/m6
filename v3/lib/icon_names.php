@@ -236,7 +236,6 @@ return [
     'select',
     'send',
     'settings',
-    'shuffle',
     'skip_next',
     'skip_previous',
     'slideshow',

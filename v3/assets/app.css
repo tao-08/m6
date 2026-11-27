@@ -707,10 +707,35 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 .shell__frame { flex: 1; width: 100%; min-height: 0; border: 0; display: block; }
 .shell-bar { display: flex; align-items: center; gap: 6px; padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); background: var(--surface); border-top: 1px solid var(--border); color: var(--text); font-family: var(--font); }
 .shell-bar__info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.shell-bar__title { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: var(--fs-md); font-weight: 700; color: inherit; text-decoration: none; }
+.shell-bar__title { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: var(--fs-md); font-weight: 700; color: inherit; text-decoration: none;
+  padding: 0; border: 0; background: none; font-family: inherit; text-align: left; cursor: pointer; }
+.shell-bar__title:disabled { cursor: default; }
 .shell-bar__band { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: var(--fs-xs); }
 .shell-bar__progress { height: 3px; border-radius: var(--r-full); background: var(--surface-2); overflow: hidden; }
 .shell-bar__progress span { display: block; width: 0; height: 100%; background: var(--accent); }
+/* 再生中の曲のポップアップ（player.php）。中のヘッダーのアイコンの下あたりに出す。シークバー・再生ボタンはバンドページのプレーヤーの部品 */
+.shell-panel { position: fixed; top: 56px; right: 12px; z-index: 50; width: 320px; max-width: calc(100vw - 24px); padding: 14px; display: grid; gap: 8px;
+  border-radius: var(--r-lg); background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow-pop); }
+.shell-panel[hidden] { display: none; }
+.shell-panel__head { display: flex; gap: 12px; align-items: center; min-width: 0; }
+.shell-panel__art { flex: none; width: 88px; height: 88px; border-radius: var(--r-md); overflow: hidden; display: grid; place-items: center; background: var(--surface-2); color: var(--muted); }
+.shell-panel__art img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.shell-panel__art .icon { font-size: 40px; }
+.shell-panel__art img:not([hidden]) ~ .icon { display: none; }
+.shell-panel__meta { min-width: 0; display: grid; gap: 2px; }
+.shell-panel__meta > * { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.shell-panel__meta small { font-size: var(--fs-xs); }
+.shell-panel__meta small:empty { display: none; }
+.shell-panel__band { font-size: var(--fs-sm); color: inherit; }
+.shell-panel__song { font-size: var(--fs-lg); }
+.shell-panel__time { display: flex; justify-content: space-between; margin-top: -6px; color: var(--muted); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
+.shell-panel__ctl { display: flex; justify-content: center; align-items: center; gap: 16px; }
+.shell-panel__ctl .audio-player__play:disabled, .shell-panel__ctl .icon-btn:disabled { opacity: .5; cursor: default; }
+.shell-panel [data-shell-scope] { justify-self: center; }
+/* 中のヘッダーの丸に再生のアイコン: 再生中は時計回りに回す（player.js が中の <html> に .is-shuffle-playing を付ける） */
+@keyframes shuffle-spin { to { rotate: 360deg; } }
+.is-shuffle-playing [data-shuffle-menu] > summary .icon { animation: shuffle-spin 4s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .is-shuffle-playing [data-shuffle-menu] > summary .icon { animation: none; } }
 @media (prefers-reduced-motion: reduce) {
   .audio-player__fold, .audio-player__edit, .audio-chapter, .audio-chapter__del, .audio-bubble, .audio-player__seek.is-jumping { transition: none; }
   .audio-chapter.is-new, .audio-bubble.is-new, .audio-chapter.is-leaving, .audio-bubble.is-leaving { animation: none; }

@@ -47,10 +47,30 @@ if (!preg_match('/^[A-Za-z0-9_-]*(\.php)?(\?[^#\s]*)?$/', $u) || preg_match('/^p
 <body class="shell">
 <iframe class="shell__frame" data-shell-frame name="site" src="<?= h($u !== '' ? $u : './') ?>" title="AbbeyRoad.online"></iframe>
 <div class="shell-bar" data-shell>
+    <!-- 再生中の曲のポップアップ（下のバーの曲名か、中のヘッダーの丸に再生のアイコンで開く） -->
+    <div class="shell-panel" data-shell-panel role="dialog" aria-label="再生中の曲" hidden>
+        <div class="shell-panel__head">
+            <div class="shell-panel__art"><img data-shell-art alt="" width="88" height="88" hidden><?= icon('music_note', 'icon--fill') ?></div>
+            <div class="shell-panel__meta">
+                <small class="muted" data-shell-live></small>
+                <a class="shell-panel__band" data-shell-bandlink target="site"></a>
+                <strong class="shell-panel__song" data-shell-song></strong>
+                <small class="muted" data-shell-artist></small>
+            </div>
+        </div>
+        <div class="audio-player__seek" data-shell-seekbox><input type="range" class="audio-player__range" data-shell-seek min="0" max="0" step="1" value="0" aria-label="再生位置"></div>
+        <div class="shell-panel__time"><span data-shell-cur>0:00</span><span data-shell-dur>0:00</span></div>
+        <div class="shell-panel__ctl">
+            <button type="button" class="icon-btn" data-shell-restart aria-label="最初から再生" title="最初から再生"><?= icon('skip_previous', 'icon--fill') ?></button>
+            <button type="button" class="audio-player__play" data-shell-play aria-label="再生" title="再生"><?= icon('play_arrow', 'icon--fill') ?></button>
+            <button type="button" class="icon-btn" data-shell-next aria-label="次の曲" title="次の曲"><?= icon('skip_next', 'icon--fill') ?></button>
+        </div>
+        <button type="button" class="btn btn--sm btn--ghost" data-shell-scope>範囲を変える</button>
+    </div>
     <button type="button" class="icon-btn" data-shell-play aria-label="再生" title="再生"><?= icon('play_arrow', 'icon--fill') ?></button>
     <button type="button" class="icon-btn" data-shell-next aria-label="次の曲" title="次の曲"><?= icon('skip_next', 'icon--fill') ?></button>
     <div class="shell-bar__info">
-        <a class="shell-bar__title" data-shell-title target="site"></a>
+        <button type="button" class="shell-bar__title" data-shell-title aria-haspopup="dialog"></button>
         <small class="shell-bar__band muted" data-shell-band></small>
         <div class="shell-bar__progress"><span data-shell-progress></span></div>
     </div>
