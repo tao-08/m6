@@ -174,8 +174,19 @@
   const hasMc = (it) => !!it && thru() && it.end_ms !== null && it.through_end_ms !== undefined && it.through_end_ms !== it.end_ms;
   const inMc = (it) => hasMc(it) && nowSec() * 1000 >= it.end_ms && (it.through_end_ms === null || nowSec() * 1000 < it.through_end_ms); // 上限: 曲を移った直後の古い位置で MC と出さない
   // シークバー・時間の区間（ms）。MC は別の曲として扱い、曲は end_ms まで・MC は end_ms から次の曲まで（null = ファイルの最後）
-  const segStart = (it) => (inMc(it) ? it.end_ms : it.start_ms);
-  const segEnd = (it) => (inMc(it) ? endOf(it) : hasMc(it) ? it.end_ms : endOf(it));
+  // バンド単位: シークバーはバンド全体（キューで続いている同じバンド・同じ音源の曲の、最初の曲の頭〜最後の曲の終わり）
+  const bandRange = () => {
+    const it = cur();
+    if (!byBand || !it) return null;
+    const same = (q) => q && q.band_id === it.band_id && q.src === it.src;
+    let a = idx;
+    let b = idx;
+    while (same(queue[a - 1])) a -= 1;
+    while (same(queue[b + 1])) b += 1;
+    return { a, b };
+  };
+  const segStart = (it) => { const r = bandRange(); return r ? queue[r.a].start_ms : inMc(it) ? it.end_ms : it.start_ms; };
+  const segEnd = (it) => { const r = bandRange(); return r ? endOf(queue[r.b]) : inMc(it) ? endOf(it) : hasMc(it) ? it.end_ms : endOf(it); };
   const render = () => {
     const it = cur();
     const mc = mcShown = inMc(it); // MC の間は曲名を「MC」にして、アーティスト・アルバム・ジャケットは出さない
@@ -272,10 +283,12 @@
     idx = (i + queue.length) % queue.length;
     save();
     render();
-    progEl.style.width = '0';
-    seek.value = 0;
-    seekBox.style.setProperty('--q', 0);
-    curEl.textContent = fmt(0);
+    if (!bandRange()) { // バンド全体のバーは続きなので 0 に戻さない
+      progEl.style.width = '0';
+      seek.value = 0;
+      seekBox.style.setProperty('--q', 0);
+      curEl.textContent = fmt(0);
+    }
     const t = at ?? cur().start_ms / 1000;
     savePos(t);
     await playAt(t, play);
@@ -320,7 +333,7 @@
     const fresh = new Map(data.items.map((q) => [q.song_id, q]));
     queue.forEach((q) => {
       const f = fresh.get(q.song_id);
-      if (f) for (const k of ['title', 'artist_id', 'artist', 'album', 'art', 'band', 'live', 'players']) q[k] = f[k];
+      if (f) for (const k of ['title', 'artist_id', 'artist', 'album', 'art', 'band', 'live', 'players', 'through_end_ms']) q[k] = f[k]; // through_end_ms: 通しを足す前に保存したキューには無く、通しにしても曲間を飛ばしていた
     });
     save();
     if (queue.includes(it) && cur()?.band_id === it.band_id) render();
@@ -384,7 +397,17 @@
   });
   seek.addEventListener('change', () => {
     dragging = false;
-    if (cur()) playAt(segStart(cur()) / 1000 + Number(seek.value), !audio.paused);
+    if (!cur()) return;
+    const t = segStart(cur()) + Number(seek.value) * 1000;
+    const r = bandRange();
+    if (r) { // バンド全体のバーでは、その位置の曲へ移る（曲間を飛ばす設定で曲の外なら、次の曲の頭）
+      let k = r.a;
+      while (k < r.b && t >= (endOf(queue[k]) ?? Infinity)) k += 1;
+      if (k !== idx) { idx = k; save(); render(); }
+      playAt(Math.max(t, queue[k].start_ms) / 1000, !audio.paused);
+      return;
+    }
+    playAt(t / 1000, !audio.paused);
   });
   // ほかの音（中のページの音源・動画・YouTube）が鳴り始めたらフェードで止め、すべて止まって1秒たったらフェードで戻す
   const others = new Set(); // 鳴っているもの: <audio>/<video> か YouTube の iframe の window
@@ -683,6 +706,7 @@
       // 残した位置がその曲の中のときだけ使う
       const ok = it && pos !== null && pos * 1000 >= it.start_ms && (endOf(it) === null || pos * 1000 < endOf(it)); // 通しなら MC の途中も
       await go(st.idx, false, ok ? pos : undefined);
+      refresh(cur()); // 保存したキューは古いことがある（演奏者・通しの終わり）
       if (cfg.resume) setPanel(true);
       return;
     }
