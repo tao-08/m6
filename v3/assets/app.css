@@ -715,7 +715,7 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 .audio-chapter.is-leaving, .audio-bubble.is-leaving { animation: ap-out var(--t-base) ease-in forwards; pointer-events: none; }
 
 /* シャッフル再生の外枠（player.php・assets/player.js）: サイトを全面の iframe に入れ、下にバー。iPhone のホームバーの分は下に空ける */
-.shell { height: 100dvh; margin: 0; display: flex; /* 高さは player.js が innerHeight で上書き: Android では 100dvh が実際の画面より大きいまま残ることがある */ flex-direction: column; overflow: hidden; background: var(--bg); }
+.shell { height: 100dvh; min-height: 0; /* body の min-height: 100vh を外す（Android では 100vh が画面より大きく、下が隠れていた） */ margin: 0; display: flex; /* 高さは player.js が innerHeight で上書き: Android では 100dvh が実際の画面より大きいまま残ることがある */ flex-direction: column; overflow: hidden; background: var(--bg); }
 .shell__frame { flex: 1; width: 100%; min-height: 0; border: 0; display: block; }
 .shell-bar { --shell-side: max(8px, calc((100% - 640px) / 2)); /* 中身は中央の 640px 幅に寄せる（進み具合の線も） */
   position: relative; display: flex; align-items: center; gap: 4px; padding: 3px var(--shell-side) calc(3px + env(safe-area-inset-bottom)); background: var(--surface); border-top: 1px solid var(--border); color: var(--text); font-family: var(--font); }
