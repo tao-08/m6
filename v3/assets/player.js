@@ -992,20 +992,4 @@
   const fitHeight = () => { document.body.style.height = `${innerHeight}px`; };
   fitHeight();
   addEventListener('resize', fitHeight);
-
-  // shortcut: 一時的な計測（Android で下のタブが隠れる件）。原因がわかったら消す
-  const dbg = document.createElement('pre');
-  dbg.style.cssText = 'position:fixed;left:0;top:0;z-index:99;margin:0;padding:4px;font:10px/1.3 monospace;background:rgb(0 0 0/.75);color:#0f0;pointer-events:none';
-  document.body.append(dbg);
-  const rb = (el) => { const r = el?.getBoundingClientRect(); return r ? `${Math.round(r.top)}-${Math.round(r.bottom)}` : '-'; };
-  setInterval(() => {
-    const d = innerDoc();
-    const vv = visualViewport;
-    dbg.textContent = [
-      `win ${innerWidth}x${innerHeight} doc ${document.documentElement.clientHeight} scrollY ${scrollY}`,
-      `vv ${vv ? `${Math.round(vv.height)} top ${Math.round(vv.offsetTop)}` : '-'}`,
-      `body ${rb(document.body)} frame ${rb(frame)} bar ${rb(bar)} pb ${getComputedStyle(bar).paddingBottom}`,
-      `in ${d ? `${d.defaultView.innerHeight} scrollY ${d.defaultView.scrollY} nav ${rb(d.querySelector('.nav'))} ${d.documentElement.className}` : '-'}`,
-    ].join('\n');
-  }, 500);
 })();
