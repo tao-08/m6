@@ -162,11 +162,12 @@
     const sum = innerDoc()?.querySelector('[data-shuffle-menu] > summary');
     sum?.classList.toggle('is-active', open);
     // 中のヘッダーのアイコンの真下に、右端をそろえて出す（iframe は外枠の左上にあるので座標はそのまま）。見つからなければ CSS の位置
-    const r = open && sum ? sum.getBoundingClientRect() : null;
+    if (!open) return; // 閉じるときは位置を変えない（消える動きの途中で CSS の位置へ飛ぶため）
+    const r = sum ? sum.getBoundingClientRect() : null;
     panel.style.top = r && r.width ? `${r.bottom + 8}px` : '';
     // 右端をアイコンにそろえる。ただし画面の左右からはみ出さない（狭い画面ではアイコンより右に寄る）
     panel.style.right = r && r.width ? `${Math.max(12, Math.min(innerWidth - r.right, innerWidth - panel.offsetWidth - 12))}px` : '';
-    if (open) { marqueeAll(); refresh(cur()); } // 閉じている間は幅が 0 で測れないので、開いたときに測り直す
+    marqueeAll(); refresh(cur()); // 閉じている間は幅が 0 で測れないので、開いたときに測り直す
   };
   // 通しで MC のチャプターを流している間（曲の終わり end_ms 〜 次の曲 through_end_ms。両方が違う = 間に MC がある）。MC のない曲間は曲のまま
   let mcShown = false;
@@ -180,7 +181,7 @@
     const mc = mcShown = inMc(it); // MC の間は曲名を「MC」にして、アーティスト・アルバム・ジャケットは出さない
     const title = it && mc ? 'MC' : it?.title;
     titleEl.textContent = it ? title : '再生できる曲がありません';
-    bandEl.textContent = it ? `${it.band}・${it.live}` : '';
+    bandEl.textContent = it ? `${it.band}・${it.year ? `${String(it.year % 100).padStart(2, '0')}’ ` : ''}${it.live}` : ''; // 年度は下2桁（26’ 文化祭ライブ）
     titleEl.disabled = !it;
     playBtns.forEach((b) => { b.disabled = !it; });
     nextBtns.forEach((b) => { b.disabled = queue.length < 2; });
