@@ -11,6 +11,7 @@
  *     止めた位置で一時停止した状態から（スマホは自動で鳴らせないため）。アイコンの動きは app_player.js の setupShuffleLinks
  *   ・ロック画面・イヤホンの操作に曲名と「前の曲」「次へ」を出す（Media Session）
  *   ・前の曲: 曲の始めの3秒より後なら、その曲の頭へ（音楽アプリと同じ）
+ *   ・再生・一時停止はフェード。中のページでほかの音（MIX・試聴・YouTube）が鳴ったらフェードで止め、すべて止まって1秒後にフェードで戻す（watchOthers）
  */
 (() => {
   'use strict';
@@ -44,13 +45,14 @@
   let base = 0;      // いまの src の先頭の時刻（秒）
   let fails = 0;     // 続けて流せなかった数（全部だめなときに止まるため）
   let dragging = false; // シークバーをつかんでいる間は、再生位置で動かさない
-  let cont = false;      // 通しで再生: バンドのミックスをセトリ順に、MC・曲間も切らずに流す
+  let shuffled = true;   // シャッフル。オフは出演順・セトリ順
+  let cont = false;      // 通しで再生（シャッフルなしのバンド・ライブ）: ミックスを MC・曲間も切らずに流し、終わったら次のバンドの1曲目へ
   let savedAt = 0;       // 最後に位置を残した秒（書きすぎないため）
   let openOnLoad = cfg.resume; // 開き直したときは、中のページを読み終えてもポップアップを開いたまま
 
   const cur = () => queue[idx] || null;
   const save = () => {
-    try { localStorage.setItem(KEY, JSON.stringify({ scope: cfg.scope, id: cfg.id, queue, idx, cont })); } catch (e) { /* 残せなくても再生は続ける */ }
+    try { localStorage.setItem(KEY, JSON.stringify({ scope: cfg.scope, id: cfg.id, queue, idx, cont, shuffled })); } catch (e) { /* 残せなくても再生は続ける */ }
   };
   const savePos = (t) => {
     savedAt = t;
@@ -70,6 +72,34 @@
   };
   const fmt = (sec) => { const s = Math.max(0, Math.floor(sec)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
   const innerDoc = () => { try { return frame.contentDocument; } catch (e) { return null; } };
+  // フェード: 音量を ms かけて to へ。新しいフェード・読み直しで前のは止まる（false で終わる）。
+  // 裏のタブでも止まらないよう rAF でなく setTimeout
+  // shortcut: iOS は audio.volume を変えられないので、フェードせずに止まる・鳴る。要るなら app.js の GainNode の方法へ（裏で鳴らすときに止まりやすくなる）
+  let ramp = 0;
+  const fade = (to, ms) => new Promise((done) => {
+    const id = ++ramp;
+    const from = audio.volume;
+    const t0 = performance.now();
+    const step = () => {
+      if (id !== ramp) { done(false); return; }
+      const k = Math.min(1, (performance.now() - t0) / ms);
+      audio.volume = from + (to - from) * k;
+      if (k < 1) setTimeout(step, 16); else done(true);
+    };
+    step();
+  });
+  let fadingOut = false; // 止めるフェードの途中（もう止めたものとして扱う）
+  const fadeOut = async () => {
+    fadingOut = true;
+    const ok = await fade(0, 300);
+    fadingOut = false;
+    if (ok) { audio.pause(); audio.volume = 1; }
+  };
+  const fadeIn = (ms) => {
+    if (audio.paused) audio.volume = 0;
+    audio.play().catch(() => { ramp += 1; audio.volume = 1; });
+    fade(1, ms);
+  };
 
   const setIcon = (playing) => {
     playBtns.forEach((b) => {
@@ -92,7 +122,7 @@
     const d = inner.scrollWidth - el.clientWidth;
     if (!el.clientWidth || d <= 1 || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     const wait = 2000;
-    const move = d / 40 * 1000; // 1秒に 40px
+    const move = d / 25 * 1000; // 1秒に 25px
     const total = 2 * (wait + move);
     const x = (px) => ({ transform: `translateX(${px}px)` });
     inner.animate([
@@ -101,10 +131,9 @@
       { ...x(0), offset: 1 },
     ], { duration: total, iterations: Infinity });
   };
-  const marqueeAll = () => [titleEl, bandEl, ...panel.querySelectorAll('.shell-panel__meta > *')].forEach(marquee);
+  const marqueeAll = () => [titleEl, bandEl, ...panel.querySelectorAll('.shell-panel__meta > :not(.shell-panel__liveline), .shell-panel__live')].forEach(marquee);
   const setPanel = (open) => {
     panel.hidden = !open;
-    if (!open) setScopes(false);
     const sum = innerDoc()?.querySelector('[data-shuffle-menu] > summary');
     sum?.classList.toggle('is-active', open);
     // 中のヘッダーのアイコンの真下に、右端をそろえて出す（iframe は外枠の左上にあるので座標はそのまま）。見つからなければ CSS の位置
@@ -123,6 +152,7 @@
     nextBtns.forEach((b) => { b.disabled = queue.length < 2; });
     $('[data-shell-prev]').disabled = !it;
     seek.disabled = !it;
+    buildScopes();
     if (!it) { setPanel(false); return; }
     artImg.hidden = !it.art;
     if (it.art) artImg.src = it.art;
@@ -190,6 +220,8 @@
       } else if (t > 0) { skip(); return; } // 頭からなら長さがわからなくても全部流せる
     }
     base = off > 0 ? t : 0;
+    ramp += 1; // 途中のフェードをやめて、元の音量で
+    audio.volume = 1;
     audio.src = off > 0 ? `${it.src}&from=${off}${to}` : it.src + to;
     if (play) audio.play().catch(() => setIcon(false));
   };
@@ -210,7 +242,10 @@
     const nx = queue[(idx + 1) % queue.length]; // 次の曲の長さを先に調べておく（次へ進むときに待たない）
     if (nx && (nx.start_ms > 0 || nx.end_ms !== null)) probe(nx);
   };
-  const next = () => go(idx + 1, true);
+  const next = () => {
+    if (pending) { const p = pending; pending = null; switchTo(p.scope, p.id, false); return; }
+    go(idx + 1, true);
+  };
   const prev = () => {
     const it = cur();
     if (!it) return;
@@ -223,11 +258,13 @@
     next();
   };
 
-  const load = async (scope, id, through) => {
+  const load = async (scope, id) => {
     const res = await fetch(`api_shuffle?scope=${encodeURIComponent(scope)}&id=${Number(id) || 0}`);
     const data = await res.json().catch(() => null);
-    queue = res.ok && data ? (through ? data.items : shuffle(data.items)) : [];
-    cont = !!through;
+    const items = res.ok && data ? data.items : [];
+    items.forEach((q, i) => { q.n = i; }); // シャッフルを切ったときに元の順へ戻す
+    queue = shuffled ? shuffle(items) : items;
+    cont = !shuffled && ['band', 'live'].includes(scope);
     cfg.scope = scope;
     cfg.id = Number(id) || 0;
     fails = 0;
@@ -281,15 +318,35 @@
     dragging = false;
     if (cur()) playAt(cur().start_ms / 1000 + Number(seek.value), !audio.paused);
   });
+  // ほかの音（中のページの音源・動画・YouTube）が鳴り始めたらフェードで止め、すべて止まって1秒たったらフェードで戻す
+  const others = new Set(); // 鳴っているもの: <audio>/<video> か YouTube の iframe の window
+  let interrupted = false;  // ほかの音で止めた（自分で再生・一時停止したら解除）
+  let resumeTimer = 0;
+  const othersChanged = () => {
+    clearTimeout(resumeTimer);
+    if (others.size) {
+      if (!audio.paused && !fadingOut) { interrupted = true; fadeOut(); }
+    } else if (interrupted) {
+      resumeTimer = setTimeout(() => { if (interrupted && !others.size) { interrupted = false; fadeIn(1000); } }, 1000);
+    }
+  };
+  const mediaOn = (e) => { if (!e.target.muted && !others.has(e.target)) { others.add(e.target); othersChanged(); } };
+  const mediaOff = (e) => { if (others.delete(e.target)) othersChanged(); };
+  const byHand = (play) => {
+    interrupted = false;
+    clearTimeout(resumeTimer);
+    if (play) fadeIn(300); else fadeOut();
+  };
+
   playBtns.forEach((b) => b.addEventListener('click', () => {
     if (!audio.getAttribute('src')) { go(idx < 0 ? 0 : idx, true); return; }
-    if (audio.paused) audio.play().catch(() => {}); else audio.pause();
+    byHand(audio.paused || fadingOut);
   }));
   nextBtns.forEach((b) => b.addEventListener('click', next));
   $('[data-shell-prev]').addEventListener('click', prev);
   if ('mediaSession' in navigator) {
-    navigator.mediaSession.setActionHandler('play', () => audio.play().catch(() => {}));
-    navigator.mediaSession.setActionHandler('pause', () => audio.pause());
+    navigator.mediaSession.setActionHandler('play', () => byHand(true));
+    navigator.mediaSession.setActionHandler('pause', () => byHand(false));
     navigator.mediaSession.setActionHandler('previoustrack', prev);
     navigator.mediaSession.setActionHandler('nexttrack', next);
   }
@@ -303,53 +360,72 @@
   const closeOnEsc = (e) => { if (e.key === 'Escape') setPanel(false); };
   document.addEventListener('click', closeOutside);
   document.addEventListener('keydown', closeOnEsc);
-  // 範囲を変える: ボタンの下にメニュー。サイト全体・再生中のライブ/バンド/アーティスト・中のページの範囲（ヘッダーのメニューと同じもの）
-  const scopeBtn = $('[data-shell-scope]');
+  // 範囲: ポップアップに常に出す。サイト全体・再生中のライブ/バンド/アーティスト・中のページの範囲（ヘッダーのメニューと同じもの）
+  // 上のタブで、押したらすぐ変えるか、いまの曲が終わってから変えるか（次の曲から = pending に置いて next で切り替える）
   const scopesEl = $('[data-shell-scopes]');
-  function setScopes(open) {
-    scopesEl.hidden = !open;
-    scopeBtn.setAttribute('aria-expanded', String(open));
-    if (open) buildScopes();
-  }
-  const scopeItem = (label, fn) => {
+  const whenTabs = bar.querySelectorAll('[data-shell-when]');
+  let later = false;
+  try { later = localStorage.getItem('shuffle_when') === 'next'; } catch (e) { /* すぐ */ }
+  let pending = null; // 次の曲から変える範囲 {scope, id}
+  const showWhen = () => whenTabs.forEach((t) => t.classList.toggle('is-active', (t.dataset.shellWhen === 'next') === later));
+  whenTabs.forEach((t) => t.addEventListener('click', () => {
+    later = t.dataset.shellWhen === 'next';
+    try { localStorage.setItem('shuffle_when', later ? 'next' : 'now'); } catch (e) { /* 覚えなくても使える */ }
+    if (!later) pending = null;
+    showWhen();
+    buildScopes();
+  }));
+  showWhen();
+  // 範囲を変える。順番どおり（シャッフルしない）で、いまの曲が新しい範囲にあれば、すぐ = その位置から続ける・次の曲から = その次から
+  const switchTo = async (scope, id, now) => {
+    const it = cur();
+    const t = it ? nowSec() : 0;
+    if (now) audio.pause();
+    await load(scope, id);
+    const i = it && !shuffled ? queue.findIndex((q) => q.song_id === it.song_id) : -1;
+    if (i >= 0) { if (now) go(i, true, t); else go(i + 1, true); return; }
+    if (it && queue.length > 1 && queue[0].song_id === it.song_id) { go(1, true); return; } // 混ぜた先頭がいまの曲
+    go(0, true);
+  };
+  const scopeItem = (label, scope, id) => {
     const li = document.createElement('li');
     const b = document.createElement('button');
     b.type = 'button';
     b.textContent = label;
-    b.addEventListener('click', () => { setScopes(false); fn(); });
+    b.classList.toggle('is-pending', !!pending && pending.scope === scope && pending.id === id);
+    b.addEventListener('click', () => {
+      if (later && cur()) { pending = { scope, id }; buildScopes(); } else switchTo(scope, id, true);
+    });
     li.append(b);
     return li;
   };
-  // 再生中のバンドを、いまの曲のいまの位置から通しで
-  const through = async () => {
-    const it = cur();
-    const t = nowSec();
-    audio.pause();
-    await load('band', it.band_id, true);
-    const i = queue.findIndex((q) => q.song_id === it.song_id);
-    go(Math.max(0, i), true, i >= 0 ? t : undefined);
-  };
   const buildScopes = () => {
     const it = cur();
-    const items = [scopeItem('サイト全体', () => window.abbeyShuffle('all', 0))];
+    const items = [scopeItem('サイト全体', 'all', 0)];
     if (it) {
-      items.push(scopeItem('再生中のライブ', () => window.abbeyShuffle('live', it.live_id)));
-      const thru = document.createElement('input');
-      thru.type = 'checkbox';
-      thru.checked = cont;
-      const band = scopeItem('再生中のバンド', () => (thru.checked ? through() : window.abbeyShuffle('band', it.band_id)));
-      const lab = document.createElement('label');
-      lab.append(thru, '通しで再生');
-      band.append(lab);
-      items.push(band);
-      if (it.artist_id) items.push(scopeItem('再生中のアーティスト', () => window.abbeyShuffle('artist', it.artist_id)));
+      items.push(scopeItem('再生中のライブ', 'live', it.live_id));
+      items.push(scopeItem('再生中のバンド', 'band', it.band_id));
+      if (it.artist_id) items.push(scopeItem('再生中のアーティスト', 'artist', it.artist_id));
     }
     innerDoc()?.querySelectorAll('[data-shuffle-menu] a[data-shuffle]').forEach((a) => {
-      if (a.dataset.shuffle !== 'all') items.push(scopeItem(a.textContent, () => window.abbeyShuffle(a.dataset.shuffle, Number(a.dataset.shuffleId) || 0)));
+      if (a.dataset.shuffle !== 'all') items.push(scopeItem(a.textContent, a.dataset.shuffle, Number(a.dataset.shuffleId) || 0));
     });
     scopesEl.replaceChildren(...items);
   };
-  scopeBtn.addEventListener('click', () => setScopes(scopesEl.hidden));
+
+  // シャッフル: オフはセトリ順（バンド・ライブは MC・曲間も切らずに通し）。いまの曲はそのまま、並びだけ変える
+  const shuffleBtn = $('[data-shell-shuffle]');
+  const showShuffle = () => shuffleBtn.setAttribute('aria-pressed', String(shuffled));
+  shuffleBtn.addEventListener('click', () => {
+    shuffled = !shuffled;
+    cont = !shuffled && ['band', 'live'].includes(cfg.scope);
+    const it = cur();
+    const rest = queue.filter((q) => q !== it);
+    queue = shuffled ? (it ? [it, ...shuffle(rest)] : shuffle(rest)) : [...queue].sort((a, b) => (a.n ?? 0) - (b.n ?? 0));
+    idx = it ? queue.indexOf(it) : 0;
+    save();
+    showShuffle();
+  });
 
   // 閉じる: 再生をやめて、いま中で開いているページだけにする（止めた位置は残す。アイコンで開き直せる）
   $('[data-shell-close]').addEventListener('click', () => {
@@ -389,10 +465,71 @@
       if (a && !a.target && (a.origin !== location.origin || /\/logout(\.php)?$/.test(a.pathname))) a.target = '_top';
     }, true);
     doc.addEventListener('keydown', closeOnEsc);
+    watchOthers(doc);
+    buildScopes();
   });
+
+  // 中のページの音を見張る（ページを移るたび。前のページの音は止まったものとする）
+  const YT_ORIGIN = /^https:\/\/www\.youtube(-nocookie)?\.com$/;
+  const YT_EMBED = /^https:\/\/www\.youtube(-nocookie)?\.com\/embed\//;
+  const watchOthers = (doc) => {
+    const win = doc.defaultView;
+    others.clear();
+    othersChanged();
+    // <audio>/<video>: play などは泡立たないので、捕まえる側（capture）で
+    doc.addEventListener('play', mediaOn, true);
+    ['pause', 'ended', 'emptied'].forEach((ev) => doc.addEventListener(ev, mediaOff, true));
+    // ページに置かない new Audio()（試聴など）は上に届かないので、play() のときに直接聞く
+    const P = win.HTMLMediaElement.prototype;
+    const play = P.play;
+    const watched = new WeakSet();
+    P.play = function (...args) {
+      if (!this.isConnected && !watched.has(this)) {
+        watched.add(this);
+        this.addEventListener('play', mediaOn);
+        ['pause', 'ended', 'emptied'].forEach((ev) => this.addEventListener(ev, mediaOff));
+      }
+      return play.apply(this, args);
+    };
+    // YouTube: 埋め込みに状態を送ってもらう（enablejsapi=1 と listening の合図。YT.Player で作ったもの＝widgetid 付きは送ってくる）
+    const ytPrep = (f) => {
+      if (!YT_EMBED.test(f.src) || /[?&]widgetid=/.test(f.src)) return;
+      if (!/[?&]enablejsapi=1/.test(f.src)) {
+        const u = new URL(f.src);
+        u.searchParams.set('enablejsapi', '1');
+        f.src = u.href; // 読み直す（まだ鳴っていないうちに）。load でもう一度ここへ
+        return;
+      }
+      [0, 1000].forEach((ms) => setTimeout(() => {
+        f.contentWindow?.postMessage(JSON.stringify({ event: 'listening', id: 'abbey-shell', channel: 'widget' }), '*');
+        f.contentWindow?.postMessage(JSON.stringify({ event: 'command', func: 'addEventListener', args: ['onStateChange'], id: 'abbey-shell', channel: 'widget' }), '*');
+      }, ms));
+    };
+    doc.querySelectorAll('iframe').forEach(ytPrep);
+    doc.addEventListener('load', (e) => { if (e.target.tagName === 'IFRAME') ytPrep(e.target); }, true);
+    new win.MutationObserver((list) => {
+      list.forEach((m) => {
+        if (m.type === 'attributes') ytPrep(m.target);
+        m.addedNodes.forEach((n) => { if (n.nodeType === 1) (n.tagName === 'IFRAME' ? [n] : n.querySelectorAll('iframe')).forEach(ytPrep); });
+      });
+      // 消えた埋め込みは止まったものとする（閉じた window は closed）
+      const n = others.size;
+      others.forEach((s) => { if (s.closed) others.delete(s); });
+      if (others.size !== n) othersChanged();
+    }).observe(doc.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['src'] });
+    win.addEventListener('message', (e) => {
+      if (!YT_ORIGIN.test(e.origin) || typeof e.data !== 'string' || !e.source) return;
+      let d;
+      try { d = JSON.parse(e.data); } catch (err) { return; }
+      const s = d.event === 'onStateChange' ? d.info : d.event === 'infoDelivery' ? d.info?.playerState : undefined;
+      if (s === 1 && !others.has(e.source)) { others.add(e.source); othersChanged(); }
+      else if ([0, 2, 5, -1].includes(s) && others.delete(e.source)) othersChanged(); // 終わり・一時停止・頭出し・未再生
+    });
+  };
 
   // 中のヘッダーから範囲を変える（押した操作のまま鳴らすので、スマホでも止められにくい）
   window.abbeyShuffle = async (scope, id) => {
+    pending = null;
     audio.pause();
     await load(scope, id);
     go(0, true);
@@ -409,6 +546,8 @@
     if (st && (cfg.resume || (st.scope === cfg.scope && st.id === cfg.id)) && Array.isArray(st.queue) && st.queue.length) {
       queue = st.queue;
       cont = !!st.cont;
+      shuffled = st.shuffled ?? !st.cont;
+      showShuffle();
       cfg.scope = st.scope;
       cfg.id = st.id;
       syncUrl();

@@ -14,6 +14,7 @@
  */
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
+require_once __DIR__ . '/lib/drive.php'; // mix_tag
 require_admin();
 
 $scope = in_array($_GET['scope'] ?? '', ['live', 'band', 'member', 'artist'], true) ? (string)$_GET['scope'] : 'all';
@@ -54,7 +55,7 @@ if (!preg_match('/^[A-Za-z0-9_-]*(\.php)?(\?[^#\s]*)?$/', $u) || preg_match('/^p
         <div class="shell-panel__head">
             <div class="shell-panel__art"><img data-shell-art alt="" width="104" height="104" hidden><?= icon('music_note', 'icon--fill') ?></div>
             <div class="shell-panel__meta">
-                <a class="shell-panel__live" data-shell-live target="site"></a>
+                <div class="shell-panel__liveline"><a class="shell-panel__live" data-shell-live target="site"></a><?= mix_tag() // 流しているのはミックス（YouTube はまだ流さない） ?></div>
                 <a class="shell-panel__band" data-shell-bandlink target="site"></a>
                 <strong class="shell-panel__song" data-shell-song></strong>
                 <a class="shell-panel__artist" data-shell-artist target="site"></a>
@@ -64,12 +65,16 @@ if (!preg_match('/^[A-Za-z0-9_-]*(\.php)?(\?[^#\s]*)?$/', $u) || preg_match('/^p
         <div class="audio-player__seek" data-shell-seekbox><input type="range" class="audio-player__range" data-shell-seek min="0" max="0" step="1" value="0" aria-label="再生位置"></div>
         <div class="shell-panel__time"><span data-shell-cur>0:00</span><span data-shell-dur>0:00</span></div>
         <div class="shell-panel__ctl">
+            <button type="button" class="icon-btn shell-panel__shuffle" data-shell-shuffle aria-pressed="true" aria-label="シャッフル" title="シャッフル"><?= icon('shuffle') ?></button>
             <button type="button" class="icon-btn" data-shell-prev aria-label="前の曲" title="前の曲"><?= icon('skip_previous', 'icon--fill') ?></button>
             <button type="button" class="audio-player__play" data-shell-play aria-label="再生" title="再生"><?= icon('play_arrow', 'icon--fill') ?></button>
             <button type="button" class="icon-btn" data-shell-next aria-label="次の曲" title="次の曲"><?= icon('skip_next', 'icon--fill') ?></button>
         </div>
-        <button type="button" class="btn btn--sm btn--ghost" data-shell-scope aria-expanded="false">範囲を変える</button>
-        <ul class="shell-panel__scopes" data-shell-scopes hidden></ul>
+        <div class="tabs tabs--static shell-panel__when" role="group" aria-label="範囲を変えるとき">
+            <button type="button" class="tab is-active" data-shell-when="now">すぐ</button>
+            <button type="button" class="tab" data-shell-when="next">次の曲から</button>
+        </div>
+        <ul class="shell-panel__scopes" data-shell-scopes></ul>
     </div>
     <button type="button" class="icon-btn" data-shell-play aria-label="再生" title="再生"><?= icon('play_arrow', 'icon--fill') ?></button>
     <button type="button" class="icon-btn" data-shell-next aria-label="次の曲" title="次の曲"><?= icon('skip_next', 'icon--fill') ?></button>

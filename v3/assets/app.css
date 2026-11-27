@@ -738,6 +738,9 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 .shell-panel__art img:not([hidden]) ~ .icon { display: none; }
 .shell-panel__meta { min-width: 0; display: grid; gap: 2px; }
 .shell-panel__meta > * { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.shell-panel__liveline { display: flex; align-items: center; gap: 6px; }
+.shell-panel__liveline > a { min-width: 0; overflow: hidden; white-space: nowrap; }
+.shell-panel__liveline > .tag { flex: none; }
 .shell-panel__live, .shell-panel__artist { font-size: var(--fs-sm); color: var(--muted); }
 .shell-panel__band { font-size: var(--fs-md); font-weight: 600; color: inherit; }
 .shell-panel__song { font-size: var(--fs-xl); }
@@ -751,19 +754,19 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 .shell-panel__players a { color: inherit; }
 .shell-panel__players a:hover { color: var(--accent); }
 .shell-panel__time { display: flex; justify-content: space-between; margin-top: -6px; color: var(--muted); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
-.shell-panel__ctl { display: flex; justify-content: center; align-items: center; gap: 16px; }
+.shell-panel__ctl { position: relative; display: flex; justify-content: center; align-items: center; gap: 16px; }
+.shell-panel__shuffle { position: absolute; left: 0; }
+.shell-panel__shuffle[aria-pressed="false"] { color: var(--muted); opacity: .45; }
+.shell-panel__shuffle[aria-pressed="true"] { color: var(--accent); }
 .shell-panel__ctl .audio-player__play:disabled, .shell-panel__ctl .icon-btn:disabled { opacity: .5; cursor: default; }
-.shell-panel [data-shell-scope] { justify-self: center; }
-/* 範囲のメニュー（範囲を変えるの下）。見た目はヘッダーのメニューと同じ並び */
+/* 範囲のリスト（ポップアップに常に出す）。上のタブ .shell-panel__when で すぐ / 次の曲から */
 .shell-panel__scopes { list-style: none; margin: 0; padding: 6px; display: grid; gap: 2px; border: 1px solid var(--border); border-radius: var(--r-md); }
-.shell-panel__scopes { transition: opacity var(--t-base) ease, translate var(--t-base) var(--ease-out), display var(--t-base) allow-discrete; }
-.shell-panel__scopes[hidden] { display: none; opacity: 0; translate: 0 -4px; }
-@starting-style { .shell-panel__scopes:not([hidden]) { opacity: 0; translate: 0 -4px; } }
-@media (prefers-reduced-motion: reduce) { .shell-panel, .shell-panel__scopes, .audio-bubble, .audio-player__bar { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .shell-panel, .audio-bubble, .audio-player__bar { transition: none; } }
 .shell-panel__scopes li { display: flex; align-items: center; gap: 8px; }
 .shell-panel__scopes button { flex: 1; padding: 8px 10px; border: 0; border-radius: var(--r-md); background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .shell-panel__scopes button:hover { background: var(--surface-2); }
-.shell-panel__scopes label { flex: none; display: inline-flex; align-items: center; gap: 4px; padding-right: 6px; font-size: var(--fs-sm); color: var(--muted); cursor: pointer; }
+.shell-panel__scopes button.is-pending { color: var(--accent); font-weight: 700; }
+.shell-panel__when { margin: 0; justify-self: center; }
 /* 中のヘッダーの丸に再生のアイコン: 再生中は時計回りに回す（player.js が中の <html> に .is-shuffle-playing を付ける） */
 @keyframes shuffle-spin { to { rotate: 360deg; } }
 .is-shuffle-playing [data-shuffle-menu] > summary .icon { animation: shuffle-spin 4s linear infinite; }

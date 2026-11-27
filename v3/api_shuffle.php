@@ -4,7 +4,7 @@
  *  api_shuffle.php — シャッフル再生する曲の一覧（JSON）。player.php の外枠が呼ぶ。管理者だけ
  * =====================================================================
  *  リクエスト（GET）: ?scope=all | ?scope=live&id=ライブID | ?scope=band&id=バンドID | ?scope=member&id=メンバーID（その人が演奏した曲） | ?scope=artist&id=アーティストID（そのアーティストの曲）
- *  レスポンス: {"items": [{song_id, title, artist_id, artist, art, band_id, band, live_id, live, year, players, src, size, start_ms, end_ms}, ...]}（並びはバンド・時間順。混ぜるのは JS）
+ *  レスポンス: {"items": [{song_id, title, artist_id, artist, art, band_id, band, live_id, live, year, players, src, size, start_ms, end_ms}, ...]}（並びはライブ・出演順・時間順 = シャッフルしないときの順。混ぜるのは JS）
  *  曲の区切りは音源のチャプター（band_audio_chapter。説明は migrations/130）:
  *    曲チャプターの n 番目 = SE を除いた n 番目の曲（band.php のプレーヤーと同じ数え方）。終わり = 次のチャプター（MC も含む）。最後は null（ファイルの最後まで）
  *    MC のチャプターから始まる区間は流さない（MC は自動で飛ぶ）
@@ -52,7 +52,7 @@ $st = $pdo->prepare("SELECT c.band_id, c.audio_key, c.kind, c.at_ms, b.name AS b
     JOIN live_day d ON d.live_day_id = b.live_day_id
     JOIN live l ON l.live_id = d.live_id
     WHERE $where
-    ORDER BY c.band_id, c.audio_key, c.at_ms, c.chapter_id");
+    ORDER BY l.fiscal_year, l.live_id, d.held_on IS NULL, d.held_on, d.live_day_id, b.play_order, b.band_id, c.audio_key, c.at_ms, c.chapter_id"); // 出演順（live.php と同じ）→ 時間順
 $st->execute($params);
 $groups = []; // "band_id|audio_key" => 時間順のチャプター
 foreach ($st as $r) {
