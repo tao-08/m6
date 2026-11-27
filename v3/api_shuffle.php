@@ -4,7 +4,7 @@
  *  api_shuffle.php — シャッフル再生する曲の一覧（JSON）。player.php の外枠が呼ぶ。管理者だけ
  * =====================================================================
  *  リクエスト（GET）: ?scope=all | ?scope=live&id=ライブID | ?scope=band&id=バンドID | ?scope=member&id=メンバーID（その人が演奏した曲） | ?scope=artist&id=アーティストID（そのアーティストの曲）
- *  レスポンス: {"items": [{song_id, title, artist_id, artist, art, album, band_id, band, live_id, live, year, players, src, size, start_ms, end_ms, through_end_ms}, ...]}（並びはライブ・出演順・時間順 = シャッフルしないときの順。混ぜるのは JS）
+ *  レスポンス: {"items": [{song_id, title, artist_id, artist, art, album, band_id, band, live_id, live, year, players, src, size, start_ms, end_ms, through_end_ms, mc_ms}, ...]}（並びはライブ・出演順・時間順 = シャッフルしないときの順。混ぜるのは JS）
  *  曲の区切りは音源のチャプター（band_audio_chapter。説明は migrations/130）:
  *    曲チャプターの n 番目 = SE を除いた n 番目の曲（band.php のプレーヤーと同じ数え方）。終わり = 次のチャプター（MC も含む）。最後は null（ファイルの最後まで）
  *    MC のチャプターから始まる区間は流さない（MC は自動で飛ぶ）
@@ -140,9 +140,20 @@ foreach ($groups as $key => $chs) {
             continue; // 別のアーティストの曲（オムニバスのバンドなど）
         }
         $seen[$song['song_id']] = true;
-        $thru = null; // 通し（曲間も流す）の終わり = 次の曲か「終わり」のチャプター（MC は越える）。無ければファイルの最後
+        // 通し（曲間も流す）の終わり = 次の曲のチャプター（間の「終わり」・MC は越える）。後ろに曲が無ければ最初の「終わり」、それも無ければファイルの最後（null）
+        // mc = 次の曲までの最初の MC のチャプター（その位置から曲名を「MC」に）。無ければ null
+        $thru = null;
+        $firstEnd = null;
+        $mc = null;
         for ($j = $i + 1; isset($chs[$j]); $j++) {
-            if ($chs[$j]['kind'] !== 'mc') { $thru = (int)$chs[$j]['at_ms']; break; }
+            $k = $chs[$j]['kind'];
+            if ($k === 'song') { $thru = (int)$chs[$j]['at_ms']; break; }
+            if ($k === 'mc') $mc ??= (int)$chs[$j]['at_ms'];
+            else $firstEnd ??= (int)$chs[$j]['at_ms'];
+        }
+        if ($thru === null) {
+            $thru = $firstEnd;
+            if ($mc !== null && $thru !== null && $mc >= $thru) $mc = null; // 最後の曲の「終わり」より後の MC は流さない
         }
         $items[] = [
             'song_id'  => (int)$song['song_id'],
@@ -162,6 +173,7 @@ foreach ($groups as $key => $chs) {
             'start_ms' => (int)$c['at_ms'],
             'end_ms'   => isset($chs[$i + 1]) ? (int)$chs[$i + 1]['at_ms'] : null,
             'through_end_ms' => $thru,
+            'mc_ms'    => $mc,
         ];
     }
 }

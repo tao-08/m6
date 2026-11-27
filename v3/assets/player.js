@@ -170,11 +170,11 @@
     if (cur()) showPos(nowSec()); // 吹き出しの被りは開いてから測る
     marqueeAll(); refresh(cur()); // 閉じている間は幅が 0 で測れないので、開いたときに測り直す
   };
-  // 通しで MC のチャプターを流している間（曲の終わり end_ms 〜 次の曲 through_end_ms。両方が違う = 間に MC がある）。MC のない曲間は曲のまま
+  // 通しで MC のチャプターを流している間（MC のチャプター mc_ms 〜 次の曲 through_end_ms）。MC のない曲間は曲のまま
   let mcShown = false;
-  const hasMc = (it) => !!it && thru() && it.end_ms !== null && it.through_end_ms !== undefined && it.through_end_ms !== it.end_ms;
-  const inMc = (it) => hasMc(it) && nowSec() * 1000 >= it.end_ms && (it.through_end_ms === null || nowSec() * 1000 < it.through_end_ms); // 上限: 曲を移った直後の古い位置で MC と出さない
-  // シークバー・時間の区間（ms）。MC は別の曲として扱い、曲は end_ms まで・MC は end_ms から次の曲まで（null = ファイルの最後）
+  const hasMc = (it) => !!it && thru() && it.mc_ms != null;
+  const inMc = (it) => hasMc(it) && nowSec() * 1000 >= it.mc_ms && (it.through_end_ms === null || nowSec() * 1000 < it.through_end_ms); // 上限: 曲を移った直後の古い位置で MC と出さない
+  // シークバー・時間の区間（ms）。MC は別の曲として扱い、曲は mc_ms まで・MC は mc_ms から次の曲まで（null = ファイルの最後）
   // バンド単位: シークバーはバンド全体（キューで続いている同じバンド・同じ音源の曲の、最初の曲の頭〜最後の曲の終わり）
   const bandRange = () => {
     const it = cur();
@@ -186,8 +186,8 @@
     while (same(queue[b + 1])) b += 1;
     return { a, b };
   };
-  const segStart = (it) => { const r = bandRange(); return r ? queue[r.a].start_ms : inMc(it) ? it.end_ms : it.start_ms; };
-  const segEnd = (it) => { const r = bandRange(); return r ? endOf(queue[r.b]) : inMc(it) ? endOf(it) : hasMc(it) ? it.end_ms : endOf(it); };
+  const segStart = (it) => { const r = bandRange(); return r ? queue[r.a].start_ms : inMc(it) ? it.mc_ms : it.start_ms; };
+  const segEnd = (it) => { const r = bandRange(); return r ? endOf(queue[r.b]) : inMc(it) ? endOf(it) : hasMc(it) ? it.mc_ms : endOf(it); };
   const render = () => {
     const it = cur();
     const mc = mcShown = inMc(it); // MC の間は曲名を「MC」にして、アーティスト・アルバム・ジャケットは出さない
@@ -315,7 +315,7 @@
   const prev = () => {
     const it = cur();
     if (!it) return;
-    if (inMc(it)) { playAt((nowSec() - it.end_ms / 1000 < 3 ? it.start_ms : it.end_ms) / 1000, true); return; } // MC の前の曲 = いまの曲
+    if (inMc(it)) { playAt((nowSec() - it.mc_ms / 1000 < 3 ? it.start_ms : it.mc_ms) / 1000, true); return; } // MC の前の曲 = いまの曲
     if (queue.length > 1 && nowSec() - it.start_ms / 1000 < 3) { slide(-1); go(idx - 1, true); }
     else playAt(it.start_ms / 1000, true);
   };
@@ -334,7 +334,7 @@
     const fresh = new Map(data.items.map((q) => [q.song_id, q]));
     queue.forEach((q) => {
       const f = fresh.get(q.song_id);
-      if (f) for (const k of ['title', 'artist_id', 'artist', 'album', 'art', 'band', 'live', 'players', 'through_end_ms']) q[k] = f[k]; // through_end_ms: 通しを足す前に保存したキューには無く、通しにしても曲間を飛ばしていた
+      if (f) for (const k of ['title', 'artist_id', 'artist', 'album', 'art', 'band', 'live', 'players', 'through_end_ms', 'mc_ms']) q[k] = f[k]; // 通しの区切り: 前に保存したキューは古い数え方のまま（終わりのチャプターで止まっていた）
     });
     save();
     if (queue.includes(it) && cur()?.band_id === it.band_id) render();
@@ -370,7 +370,7 @@
       for (let k = r.a; k <= r.b; k += 1) {
         const q = queue[k];
         marks.push({ k, ms: q.start_ms, label: String(k - r.a + 1), full: `${k - r.a + 1}. ${q.title}`, kind: 'song' });
-        if (hasMc(q)) marks.push({ k, ms: q.end_ms, label: 'MC', full: 'MC', kind: 'mc' });
+        if (hasMc(q)) marks.push({ k, ms: q.mc_ms, label: 'MC', full: 'MC', kind: 'mc' });
         const nx = queue[k + 1];
         if (!thru() && k < r.b && q.end_ms !== null && nx.start_ms > q.end_ms) gaps.push([x(q.end_ms), x(nx.start_ms)]);
       }
