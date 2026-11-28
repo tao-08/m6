@@ -293,7 +293,8 @@ final class AudioLiveStream
 
     public function __construct(private int $size, private bool $quiet)
     {
-        $range = (string)($_SERVER['HTTP_RANGE'] ?? '');
+        // from= / to= 付きは Range を見ない（audio_stream_file と同じ）。iPhone は最初に bytes=0-1 を頼むので、ここで断ると落とし終わるまで待たされる
+        $range = isset($_GET['from']) || isset($_GET['to']) ? '' : (string)($_SERVER['HTTP_RANGE'] ?? '');
         if ($size <= 0 || ($_SERVER['REQUEST_METHOD'] ?? '') === 'HEAD' || ($range !== '' && $range !== 'bytes=0-')) {
             $this->ok = false;
         }
