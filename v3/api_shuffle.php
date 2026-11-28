@@ -11,7 +11,7 @@
  *    曲チャプターの n 番目 = SE を除いた n 番目の曲（band.php のプレーヤーと同じ数え方）。終わり = 次のチャプター（MC も含む）。最後は null（ファイルの最後まで）
  *    MC のチャプターから始まる区間は流さない（MC は自動で飛ぶ）
  *    通し: mc_ms = 曲のあとの最初の MC・SE（mc_kind = 'mc' | 'se'）。intro_ms = 1曲目より前の最初の SE（オープニング SE。その曲の前から流す。無ければ null）
- *  同じ曲が2つの音源にあるときは先のものだけ。大きさがわからない音源（ドライブの size が NULL）は途中から流せないので除く
+ *  同じ曲が2つの音源にあるときは先のものだけ。MIX（a: / d:）を YouTube（y:）より先に読むので、MIX にある曲は MIX で、MIX にチャプターの無い曲だけ YouTube で流す。大きさがわからない音源（ドライブの size が NULL）は途中から流せないので除く
  *  art = 紐付けた曲のジャケット（無ければ null）。album = そのアルバム名（無ければ null）。artist = コピー元のアーティスト（オムニバスのバンドは曲ごと。オリジナルなどで無ければ null）
  *  players = 演奏者 [{id, name, parts: [{s: 楽器の略称, c: instrument_class, t: 楽器名}]}]（楽器の並び順）。曲ごとの登録が無い曲はバンドのメンバー全員
  *  読むだけなので GET（CSRF のトークンは要らない）
@@ -55,7 +55,7 @@ $st = $pdo->prepare("SELECT c.band_id, c.audio_key, c.kind, c.song_no, c.at_ms, 
     JOIN live_day d ON d.live_day_id = b.live_day_id
     JOIN live l ON l.live_id = d.live_id
     WHERE $where
-    ORDER BY l.fiscal_year, l.live_id, d.held_on IS NULL, d.held_on, d.live_day_id, b.play_order, b.band_id, c.audio_key, c.at_ms, c.chapter_id"); // 出演順（live.php と同じ）→ 時間順
+    ORDER BY l.fiscal_year, l.live_id, d.held_on IS NULL, d.held_on, d.live_day_id, b.play_order, b.band_id, c.audio_key LIKE 'y:%', c.audio_key, c.at_ms, c.chapter_id"); // 出演順（live.php と同じ）→ MIX が先 → 時間順
 $st->execute($params);
 $groups = []; // "band_id|audio_key" => 時間順のチャプター
 foreach ($st as $r) {
