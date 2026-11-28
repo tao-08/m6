@@ -55,9 +55,10 @@
   let byBand = false;    // バンド単位: バンドごとにセトリ順でまとめて流す（シャッフルはバンドの順だけ混ぜる）
   let cont = false;      // 通し（バンド単位のときだけ効く）: 曲のあとの MC・曲間も流す（through_end_ms まで）。次に流す曲が同じミックスの続きなら切らずにつなぐ
   let savedAt = 0;       // 最後に位置を残した秒（書きすぎないため）
-  let filter = { src: 'all', off: [] }; // 絞り込み: src = all | mix | yt、off = 外したライブの ID（範囲の上にかける。新しいライブは入る側）
+  let filter = { src: 'all', off: [], bands: [] }; // 絞り込み: src = all | mix | yt、off = 外したライブの ID、bands = 一部だけ外したライブの、外したバンドの ID（範囲の上にかける。新しいライブ・バンドは入る側）
   try { filter = { ...filter, ...JSON.parse(localStorage.getItem('shuffle_filter') || '{}') }; } catch (e) { /* 無しで */ }
-  const passes = (q) => (filter.src === 'all' || (filter.src === 'yt') === !!q.yt) && !filter.off.includes(q.live_id);
+  const kept = (q) => !filter.off.includes(q.live_id) && !filter.bands.includes(q.band_id);
+  const passes = (q) => (filter.src === 'all' || (filter.src === 'yt') === !!q.yt) && kept(q);
   let openOnLoad = cfg.resume; // 開き直したときは、中のページを読み終えてもポップアップを開いたまま
 
   const cur = () => queue[idx] || null;
@@ -479,7 +480,7 @@
     const items = res.ok && data ? data.items : [];
     items.forEach((q, i) => { q.n = i; }); // シャッフルを切ったときに元の順へ戻す
     // 外した音源（MIX / YouTube）にしか曲が無い範囲なら、その音源も入れて流す
-    if (filter.src !== 'all' && !items.some(passes) && items.some((q) => !filter.off.includes(q.live_id))) { filter.src = 'all'; saveFilter(); showFilter(); }
+    if (filter.src !== 'all' && !items.some(passes) && items.some(kept)) { filter.src = 'all'; saveFilter(); showFilter(); }
     queue = arrange(items.filter(passes), null);
     cfg.scope = scope;
     cfg.id = Number(id) || 0;
@@ -775,17 +776,17 @@
   // 閉じたら保存して、変わっていれば読み直す。範囲の外にチェックを入れたら、チェックしたライブだけ（scope all・id -1 = どのチップでもない）
   const filterBtn = $('[data-shell-filter]');
   const yearsEl = $('[data-shell-filter-years]');
-  let scopeLives = null; // 絞り込みを開いたときの、いまの範囲にあるライブの ID（null = すべて）
+  let scopeBands = null; // 絞り込みを開いたときの、いまの範囲にあるバンドの ID（null = すべて）
   const srcBtns = bar.querySelectorAll('[data-shell-src]');
   const saveFilter = () => { try { localStorage.setItem('shuffle_filter', JSON.stringify(filter)); } catch (e) { /* 覚えなくても使える */ } };
   const showFilter = () => {
-    filterBtn.setAttribute('aria-pressed', String(filter.off.length > 0 || cfg.scope !== 'all')); // 外したライブがある・チップでサイト全体より狭めた
+    filterBtn.setAttribute('aria-pressed', String(filter.off.length > 0 || filter.bands.length > 0 || cfg.scope !== 'all')); // 外したライブ・バンドがある・チップでサイト全体より狭めた
     srcBtns.forEach((b) => b.setAttribute('aria-pressed', String(filter.src === 'all' || filter.src === b.dataset.shellSrc)));
   };
   showFilter();
   // チップで範囲を替えるとき、外したライブを戻す: 絞り込みで選んだライブから（id -1）・再生中のライブ / バンドから（ライブ1つの範囲で外したものが、広い範囲の曲を減らさないように）
   const leaveScope = () => {
-    if (cfg.id === -1 || cfg.scope === 'live' || cfg.scope === 'band') { filter.off = []; saveFilter(); showFilter(); }
+    if (cfg.id === -1 || cfg.scope === 'live' || cfg.scope === 'band') { filter.off = []; filter.bands = []; saveFilter(); showFilter(); }
   };
   // MIX / YouTube: それぞれ入り切り。両方は外せない
   srcBtns.forEach((b) => b.addEventListener('click', () => {
@@ -803,12 +804,25 @@
     if (label) c.setAttribute('aria-label', label);
     return c;
   };
-  const syncYear = (d) => { // 年度のチェック = 中のライブすべて（一部なら中間）
-    const lives = [...d.querySelectorAll('[data-live]')];
-    const on = lives.filter((c) => c.checked).length;
-    const y = d.querySelector('[data-year]');
-    y.checked = on === lives.length;
-    y.indeterminate = on > 0 && on < lives.length;
+  const tri = (c, boxes) => { // 中のバンドすべてならチェック、一部なら中間
+    const on = boxes.filter((b) => b.checked).length;
+    c.checked = on === boxes.length;
+    c.indeterminate = on > 0 && on < boxes.length;
+  };
+  const syncYear = (d) => { // 年度・ライブのチェック = 中のバンドから
+    d.querySelectorAll('[data-live-box]').forEach((c) => tri(c, [...c.closest('details').querySelectorAll('[data-band]')]));
+    tri(d.querySelector('[data-year]'), [...d.querySelectorAll('[data-band]')]);
+  };
+  const fold = (c, ...label) => { // 開ける段: チェック・開閉の印・名前
+    const d = document.createElement('details');
+    const s = document.createElement('summary');
+    const ic = document.createElement('span');
+    ic.className = 'icon';
+    ic.setAttribute('aria-hidden', 'true');
+    ic.textContent = 'expand_more'; // 開ける印（開くと上向き）
+    s.append(c, ic, ...label); // 開閉の印はチェックの右
+    d.append(s);
+    return d;
   };
   const livesCache = new Map(); // URL → Promise（絞り込みの中身）
   filterBtn.addEventListener('click', async () => {
@@ -822,71 +836,89 @@
       get('api_shuffle?scope=all&lives=1'),
       cfg.scope === 'all' ? null : get(`api_shuffle?scope=${encodeURIComponent(cfg.scope)}&id=${Number(cfg.id) || 0}&lives=1`),
     ]);
-    scopeLives = inScope ? new Set(inScope.items.map((q) => q.live_id)) : null; // null = すべて範囲の中
-    const years = new Map(); // 年度 → Map(live_id → { name, date, mix, yt })
+    scopeBands = inScope ? new Set(inScope.items.map((q) => q.band_id)) : null; // null = すべて範囲の中
+    const years = new Map(); // 年度 → Map(live_id → { name, date, mix, yt, bands: Map(band_id → 名前) })
     (data?.items || []).forEach((q) => {
       if (!years.has(q.year)) years.set(q.year, new Map());
       const lv = years.get(q.year);
-      if (!lv.has(q.live_id)) lv.set(q.live_id, { name: q.live, date: q.date || '9999', mix: false, yt: false });
+      if (!lv.has(q.live_id)) lv.set(q.live_id, { name: q.live, date: q.date || '9999', mix: false, yt: false, bands: new Map() });
       const v = lv.get(q.live_id);
+      v.bands.set(q.band_id, q.band); // 出演順（api_shuffle の並び）
       if (q.date && q.date < v.date) v.date = q.date; // 何日かあるライブは初日
       v[q.yt ? 'yt' : 'mix'] = true; // passes と同じ分け方
     });
     years.forEach((lv, y) => years.set(y, new Map([...lv].sort((a, b) => a[1].date.localeCompare(b[1].date))))); // 日付順（日付なしは最後）
     const mark = (src) => bar.querySelector(`[data-shell-src="${src}"] > *`).cloneNode(true); // 見出しの MIX / YouTube の印を写す
     yearsEl.replaceChildren(...[...years].reverse().map(([year, lives]) => { // 新しい年度から
-      const d = document.createElement('details');
-      const s = document.createElement('summary');
       const y = box(false, `${year}年度`);
       y.dataset.year = '';
-      y.addEventListener('change', () => { d.querySelectorAll('[data-live]').forEach((c) => { c.checked = y.checked; }); });
-      const ic = document.createElement('span');
-      ic.className = 'icon';
-      ic.setAttribute('aria-hidden', 'true');
-      ic.textContent = 'expand_more'; // 開ける印（開くと上向き）
-      s.append(y, `${year}年度`, ic);
+      const d = fold(y, `${year}年度`);
+      const sync = () => syncYear(d);
+      y.addEventListener('change', () => { d.querySelectorAll('[data-band]').forEach((c) => { c.checked = y.checked; }); sync(); });
       const ul = document.createElement('ul');
-      lives.forEach(({ name, mix, yt }, id) => {
-        const li = document.createElement('li');
-        const l = document.createElement('label');
-        l.className = 'check';
-        const c = box(!filter.off.includes(id) && (!scopeLives || scopeLives.has(id)));
-        c.dataset.live = String(id);
-        c.addEventListener('change', () => syncYear(d));
+      lives.forEach(({ name, mix, yt, bands }, id) => {
+        const lc = box(false, name);
+        lc.dataset.liveBox = '';
         const marks = document.createElement('span');
         marks.className = 'shell-filter__marks';
         if (yt) marks.append(mark('yt'));
         if (mix) marks.append(mark('mix'));
-        l.append(c, name, marks); // ラベルの中 = ライブ名のすぐ横（ラベルの幅に関係なく）
-        li.append(l);
+        const ld = fold(lc, name, marks);
+        lc.addEventListener('change', () => { ld.querySelectorAll('[data-band]').forEach((c) => { c.checked = lc.checked; }); sync(); });
+        const bl = document.createElement('ul');
+        bands.forEach((band, bid) => {
+          const li = document.createElement('li');
+          const l = document.createElement('label');
+          l.className = 'check';
+          const c = box(!filter.off.includes(id) && !filter.bands.includes(bid) && (!scopeBands || scopeBands.has(bid)));
+          c.dataset.band = String(bid);
+          c.dataset.live = String(id);
+          c.addEventListener('change', sync);
+          l.append(c, band);
+          li.append(l);
+          bl.append(li);
+        });
+        ld.append(bl);
+        const li = document.createElement('li');
+        li.append(ld);
         ul.append(li);
       });
-      d.append(s, ul);
-      syncYear(d);
+      d.append(ul);
+      sync();
+      d.querySelectorAll('[data-live-box]').forEach((c) => { c.closest('details').open = c.indeterminate; }); // 一部だけ外れた段は開いて見せる
+      d.open = y.indeterminate;
       return d;
     }));
   });
-  $('[data-shell-filter-clear]').addEventListener('click', () => { // 外したライブを戻して閉じる（MIX / YouTube はそのまま）
-    const had = filter.off.length > 0 || cfg.id === -1;
-    yearsEl.replaceChildren(); // close の反映をしない
-    filterDlg.close();
-    if (!had) return;
+  $('[data-shell-filter-clear]').addEventListener('click', () => { // すべてのバンドにチェックを入れ、範囲をサイト全体に（MIX / YouTube はそのまま。モーダルは開いたまま）
+    scopeBands = null;
+    yearsEl.querySelectorAll('[data-band]').forEach((c) => { c.checked = true; });
+    yearsEl.querySelectorAll(':scope > details').forEach(syncYear);
+    const changed = filter.off.length > 0 || filter.bands.length > 0;
     filter.off = [];
+    filter.bands = [];
     saveFilter();
+    if (changed || cfg.scope !== 'all' || cfg.id !== 0) pick('all', 0);
     showFilter();
-    if (cfg.id === -1) pick('all', 0); else pick(cfg.scope, cfg.id);
   });
   filterDlg.addEventListener('close', () => {
-    const shown = [...yearsEl.querySelectorAll('[data-live]')];
+    const shown = [...yearsEl.querySelectorAll('[data-band]')];
     if (!shown.length) return; // 読み終わる前に閉じた
-    const idOf = (c) => Number(c.dataset.live);
-    const inside = (c) => !scopeLives || scopeLives.has(idOf(c));
+    const bandOf = (c) => Number(c.dataset.band);
+    const liveOf = (c) => Number(c.dataset.live);
+    const inside = (c) => !scopeBands || scopeBands.has(bandOf(c));
     const widen = shown.some((c) => c.checked && !inside(c)); // 範囲の外にチェックを入れた
-    const shownIds = new Set(shown.map(idOf));
-    const off = widen
-      ? shown.filter((c) => !c.checked).map(idOf)
-      : [...filter.off.filter((id) => !shownIds.has(id) || scopeLives?.has(id) === false), ...shown.filter((c) => !c.checked && inside(c)).map(idOf)]; // 範囲の外で前に外したライブは残す
-    const next = { src: filter.src, off };
+    const on = (c) => (widen || inside(c) ? c.checked : !filter.off.includes(liveOf(c)) && !filter.bands.includes(bandOf(c))); // 範囲の外は前の絞り込みのまま
+    const byLive = new Map();
+    shown.forEach((c) => byLive.set(liveOf(c), [...(byLive.get(liveOf(c)) || []), c]));
+    const shownBands = new Set(shown.map(bandOf));
+    const off = filter.off.filter((id) => !byLive.has(id)); // 一覧に無いライブ・バンドは前のまま
+    const bands = filter.bands.filter((id) => !shownBands.has(id));
+    byLive.forEach((cs, id) => {
+      if (!cs.some(on)) off.push(id); // ライブごと外した（あとで入るバンドも外す）
+      else bands.push(...cs.filter((c) => !on(c)).map(bandOf));
+    });
+    const next = { src: filter.src, off, bands };
     if (!widen && JSON.stringify(next) === JSON.stringify(filter)) return;
     filter = next;
     saveFilter();

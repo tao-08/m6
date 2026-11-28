@@ -843,7 +843,8 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 @media (prefers-reduced-motion: reduce) { .shell-filter__years > details { animation: none; } }
 :is(.shell-filter__years, .chapter-years, .job-fold) summary { display: flex; align-items: center; gap: 8px; padding: 6px 0; font-weight: 700; cursor: pointer; list-style: none; }
 :is(.shell-filter__years, .chapter-years, .job-fold) summary::-webkit-details-marker { display: none; }
-:is(.shell-filter__years, .chapter-years, .job-fold) summary > .icon { order: -1; color: var(--muted); transition: transform var(--t-base) var(--ease-out); } /* 開閉の印は名前の左 */
+:is(.shell-filter__years, .chapter-years, .job-fold) summary > .icon { color: var(--muted); transition: transform var(--t-base) var(--ease-out); } /* 開閉の印は名前の左（絞り込みはチェックの右。player.js） */
+:is(.chapter-years, .job-fold) summary > .icon { order: -1; }
 :is(.shell-filter__years, .chapter-years, .job-fold) details[open] > summary > .icon { transform: rotate(180deg); }
 @media (prefers-reduced-motion: reduce) { :is(.shell-filter__years, .chapter-years, .job-fold) summary > .icon { transition: none; } }
 /* そのライブにある音源: 右に YouTube の列・MIX の列を作り、種類ごとに縦にそろえる（無い印の所は空ける。MIX の幅 = 高さ 18px × 25/14） */
@@ -851,6 +852,7 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 .shell-filter__marks .youtube-icon { grid-column: 1; }
 .shell-filter__marks .tag--mix { grid-column: 2; }
 .shell-filter__marks .youtube-icon { width: 25px; height: 18px; }
+.shell-filter__years details details > summary { font-weight: 400; } /* ライブの段 */
 .shell-filter__years ul { list-style: none; margin: 0; padding: 0 0 6px 24px; /* 下は padding: margin だと開け閉めの終わりにガクッと飛ぶ */ display: grid; gap: 6px; }
 .chapter-years { margin-top: 12px; }
 .yt-drive { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
@@ -859,16 +861,16 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 .yt-drive-folders { margin-top: 24px; }
 .yt-drive__miss summary { cursor: pointer; }
 .yt-drive__miss ul { margin: 4px 0 0; padding-left: 16px; display: grid; gap: 4px; }
-.chapter-years details details { margin-left: 16px; }
+.chapter-years details details { margin-left: 24px; } /* 年度の名前の下にそろえる（左に開閉の印） */
 .chapter-years details details + details { border-top: 1px solid var(--border); }
-.chapter-years ul { list-style: none; margin: 4px 0 8px; padding: 0; }
+.chapter-years ul { list-style: none; margin: 4px 0 8px; padding: 0 0 0 14px; } /* バンド名（li の左 10px と合わせて）をライブの名前の下に */
 /* 1行 = 名前と状態。区切り線、乗せたら面を沈める */
 .chapter-years li { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 36px; padding: 4px 10px; border-radius: var(--r-sm); }
 .chapter-years li + li { box-shadow: 0 -1px 0 var(--border); }
 .chapter-years li:hover { background: var(--surface-2); }
 .chapter-years li > a { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chapter-years li.is-dim > a { color: var(--muted); } /* MP3 が無い: 解析できない */
-.chapter-years .btn { margin: 4px 0 4px 10px; }
+.chapter-years .btn { margin: 4px 0 4px 24px; }
 /* 解析の状態（setlist_jobs.php。data-chapter-state は app_admin.js の未解析を解析でも書き換える） */
 .job-state { display: inline-flex; align-items: center; flex-shrink: 0; padding: 3px 8px; border-radius: var(--r-full); font-size: var(--fs-2xs); font-weight: 700; white-space: nowrap; color: var(--muted); background: var(--surface-2); }
 .job-state[data-chapter-state="error"] { color: var(--danger); background: var(--danger-bg); cursor: help; }
