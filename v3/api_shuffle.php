@@ -27,6 +27,9 @@ require_once __DIR__ . '/lib/audio_stream.php'; // audio_orig_size（音源は 1
 require_once __DIR__ . '/lib/tabs.php';          // tab_song_key（曲名を押すと楽曲データベースのモーダル）
 
 header('Content-Type: application/json; charset=utf-8');
+if (function_exists('ob_gzhandler')) {
+    ob_start('ob_gzhandler'); // サイト全体で 300KB を超える（絞り込みを開くたびに読む）。圧縮すると 1 割ほどになる
+}
 if (current_user() === null) {
     http_response_code(401);
     echo json_encode(['error' => 'ログインしてください'], JSON_UNESCAPED_UNICODE);

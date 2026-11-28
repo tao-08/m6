@@ -485,6 +485,7 @@
     cfg.id = Number(id) || 0;
     fails = 0;
     syncUrl();
+    showFilter();
   };
 
   on('play', () => setIcon(true));
@@ -778,7 +779,7 @@
   const srcBtns = bar.querySelectorAll('[data-shell-src]');
   const saveFilter = () => { try { localStorage.setItem('shuffle_filter', JSON.stringify(filter)); } catch (e) { /* 覚えなくても使える */ } };
   const showFilter = () => {
-    filterBtn.setAttribute('aria-pressed', String(filter.off.length > 0));
+    filterBtn.setAttribute('aria-pressed', String(filter.off.length > 0 || cfg.scope !== 'all')); // 外したライブがある・チップでサイト全体より狭めた
     srcBtns.forEach((b) => b.setAttribute('aria-pressed', String(filter.src === 'all' || filter.src === b.dataset.shellSrc)));
   };
   showFilter();
@@ -877,7 +878,7 @@
 
   // 通し: 曲間（MC など）も流す。ON にしたら、いまの曲も MC まで受け取れるよう、いまの位置から読み直す（OFF は timeupdate で止まるだけ）
   const contBtn = $('[data-shell-cont]');
-  const showCont = () => contBtn.setAttribute('aria-pressed', String(cont));
+  const showCont = () => contBtn.setAttribute('aria-pressed', String(!cont)); // 光る = 曲間をスキップしている
   contBtn.addEventListener('click', () => {
     cont = !cont;
     save();
@@ -1057,6 +1058,7 @@
       cfg.scope = st.scope;
       cfg.id = st.id;
       syncUrl();
+      showFilter();
       const it = queue[st.idx];
       // 残した位置がその曲の中のときだけ使う
       const ok = it && pos !== null && pos * 1000 >= startOf(it) && (endOf(it) === null || pos * 1000 < endOf(it)); // 通しなら MC の途中も
