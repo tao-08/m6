@@ -735,7 +735,7 @@
     b.classList.toggle('is-current', cfg.scope === scope && cfg.id === id); // いま流している範囲
     b.classList.toggle('is-pending', !!pending && pending.scope === scope && pending.id === id);
     b.addEventListener('click', () => {
-      if (cfg.id === -1) { filter.off = []; saveFilter(); showFilter(); } // 絞り込みで選んだライブから、チップの範囲へ戻る
+      leaveScope();
       pick(scope, id);
     });
     if (scope !== 'band') { // シャッフルの印。シャッフル中だけ CSS で幅を広げて見せる（バンドは選ぶとシャッフルを外すので付けない）
@@ -783,6 +783,10 @@
     srcBtns.forEach((b) => b.setAttribute('aria-pressed', String(filter.src === 'all' || filter.src === b.dataset.shellSrc)));
   };
   showFilter();
+  // チップで範囲を替えるとき、外したライブを戻す: 絞り込みで選んだライブから（id -1）・再生中のライブ / バンドから（ライブ1つの範囲で外したものが、広い範囲の曲を減らさないように）
+  const leaveScope = () => {
+    if (cfg.id === -1 || cfg.scope === 'live' || cfg.scope === 'band') { filter.off = []; saveFilter(); showFilter(); }
+  };
   // MIX / YouTube: それぞれ入り切り。両方は外せない
   srcBtns.forEach((b) => b.addEventListener('click', () => {
     const on = [...srcBtns].filter((x) => (x === b) !== (x.getAttribute('aria-pressed') === 'true')).map((x) => x.dataset.shellSrc);
@@ -861,6 +865,16 @@
       syncYear(d);
       return d;
     }));
+  });
+  $('[data-shell-filter-clear]').addEventListener('click', () => { // 外したライブを戻して閉じる（MIX / YouTube はそのまま）
+    const had = filter.off.length > 0 || cfg.id === -1;
+    yearsEl.replaceChildren(); // close の反映をしない
+    filterDlg.close();
+    if (!had) return;
+    filter.off = [];
+    saveFilter();
+    showFilter();
+    if (cfg.id === -1) pick('all', 0); else pick(cfg.scope, cfg.id);
   });
   filterDlg.addEventListener('close', () => {
     const shown = [...yearsEl.querySelectorAll('[data-live]')];
@@ -1036,7 +1050,7 @@
   window.abbeyShuffle = async (scope, id) => {
     pending = null;
     audio.pause();
-    if (cfg.id === -1) { filter.off = []; saveFilter(); showFilter(); } // チップと同じ: 選んだライブだけから、範囲へ戻る
+    leaveScope();
     await load(scope, id);
     go(0, true);
   };

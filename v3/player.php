@@ -95,7 +95,7 @@ if (!preg_match('/^[A-Za-z0-9_-]*(\.php)?(\?[^#\s]*)?$/', $u) || preg_match('/^p
             <form method="dialog" class="modal__body">
                 <h3 id="shell-filter-title" class="modal__title">絞り込み</h3>
                 <div class="shell-filter__years" data-shell-filter-years></div>
-                <div class="form-actions"><button type="submit" class="btn btn--primary">閉じる</button></div>
+                <div class="form-actions"><button type="button" class="btn" data-shell-filter-clear>クリア</button><button type="submit" class="btn btn--primary">閉じる</button></div>
             </form>
         </dialog>
     </div>

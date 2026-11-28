@@ -842,7 +842,7 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 @media (prefers-reduced-motion: reduce) { .shell-filter__years > details { animation: none; } }
 :is(.shell-filter__years, .chapter-years, .job-fold) summary { display: flex; align-items: center; gap: 8px; padding: 6px 0; font-weight: 700; cursor: pointer; list-style: none; }
 :is(.shell-filter__years, .chapter-years, .job-fold) summary::-webkit-details-marker { display: none; }
-:is(.shell-filter__years, .chapter-years, .job-fold) summary > .icon { margin-left: auto; color: var(--muted); transition: transform var(--t-base) var(--ease-out); }
+:is(.shell-filter__years, .chapter-years, .job-fold) summary > .icon { order: -1; color: var(--muted); transition: transform var(--t-base) var(--ease-out); } /* 開閉の印は名前の左 */
 :is(.shell-filter__years, .chapter-years, .job-fold) details[open] > summary > .icon { transform: rotate(180deg); }
 @media (prefers-reduced-motion: reduce) { :is(.shell-filter__years, .chapter-years, .job-fold) summary > .icon { transition: none; } }
 /* そのライブにある音源: 右に YouTube の列・MIX の列を作り、種類ごとに縦にそろえる（無い印の所は空ける。MIX の幅 = 高さ 18px × 25/14） */
