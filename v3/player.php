@@ -51,14 +51,12 @@ if (!preg_match('/^[A-Za-z0-9_-]*(\.php)?(\?[^#\s]*)?$/', $u) || preg_match('/^p
     <script>var reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches; // app_album.js が使う（中のページは app.js が持つ）</script>
     <script src="<?= asset_url('assets/app_album.js') ?>" defer></script><!-- setupAlbumModal だけ使う（player.js が呼ぶ） -->
     <script src="<?= asset_url('assets/player.js') ?>" defer></script>
-    <link rel="preconnect" href="https://www.youtube.com"><link rel="preconnect" href="https://i.ytimg.com"><!-- YouTube の曲の読み込みを早める -->
 </head>
 <body class="shell">
 <iframe class="shell__frame" data-shell-frame name="site" src="<?= h($u !== '' ? $u : './') ?>" title="AbbeyRoad.online"></iframe>
 <div class="shell-bar" data-shell>
     <!-- 再生中の曲のポップアップ（下のバーの曲名か、中のヘッダーの丸に再生のアイコンで開く） -->
     <div class="shell-panel" data-shell-panel role="dialog" aria-label="再生中の曲" hidden>
-        <div class="shell-panel__video" data-shell-yt hidden></div><!-- YouTube の曲のときの動画（player.js の yt） -->
         <div class="shell-panel__head">
             <button type="button" class="shell-panel__art" data-shell-artbtn aria-haspopup="dialog" aria-label="アルバム" disabled><img data-shell-art alt="" width="104" height="104" hidden><?= icon('music_note', 'icon--fill') ?></button><!-- 押すとアルバムのモーダル（セトリと同じ） -->
             <div class="shell-panel__meta">
