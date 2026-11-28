@@ -14,6 +14,25 @@ require_once __DIR__ . '/lib/drive.php';
 require_once __DIR__ . '/lib/audio_stream.php';
 require_login();
 
+// shortcut: 一時的な計測。PHP が音源を送り終えるまでの秒数を残す（nginx が受け止めて EP をすぐ空けるかを見る）。答えが出たら外す
+const AUDIO_TIME_LOG = __DIR__ . '/storage/audio_time.log';
+if (isset($_GET['timelog']) && is_admin()) {
+    header('Content-Type: text/plain; charset=utf-8');
+    @readfile(AUDIO_TIME_LOG);
+    exit;
+}
+$audioT0 = microtime(true);
+register_shutdown_function(static function () use ($audioT0): void {
+    if (!isset($_GET['f']) || isset($_GET['state']) || isset($_GET['dl'])) {
+        return;
+    }
+    file_put_contents(AUDIO_TIME_LOG, sprintf("%s	%.1f秒	%s	%s	Range=%s	abort=%d
+",
+        date('m-d H:i:s'), microtime(true) - $audioT0, http_response_code(),
+        implode(' ', preg_grep('/^X-Cache:/i', headers_list()) ?: ['-']),
+        $_SERVER['HTTP_RANGE'] ?? '-', connection_aborted()), FILE_APPEND | LOCK_EX);
+});
+
 $bandId = (int)($_GET['band'] ?? 0);
 $fileId = (string)($_GET['f'] ?? '');
 $mime = '';

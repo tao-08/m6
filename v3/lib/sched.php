@@ -1044,7 +1044,7 @@ function sched_collect_busy(PDO $pdo, array $memberIds, string $from, string $to
 
 /**
  * 調整の部員にお知らせ（＋プッシュ通知）を出す。自分（操作した人）には出さない
- *   お知らせは notice テーブルに宛先つきで入れる。プッシュ通知は partials/header.php の push_dispatch_after_response() が拾って送る
+ *   お知らせは notice テーブルに宛先つきで入れる。プッシュ通知は cron（lib/cron_worker.php）の push_dispatch_due() が拾って送る
  */
 function sched_notify(PDO $pdo, int $pollId, string $title, string $body, int $exceptUserId): void
 {

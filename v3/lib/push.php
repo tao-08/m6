@@ -10,10 +10,8 @@
  *    3. 端末の sw.js が受け取って、OS の通知として出す。押すとお知らせのページが開く
  *
  *  送るタイミング
- *    予約投稿も公開日時が来たらすぐ送りたいので、ページが表示されたあとに
- *    「公開済みで未処理のお知らせ」を探して送る（partials/header.php から register_shutdown_function）。
- *    ・応答を返し終わってから送るので、ページの表示は遅くならない
- *    ・notice.pushed_at を UPDATE で先に取った 1 リクエストだけが送る（同時に開かれても二重に飛ばない）
+ *    cron（lib/cron_worker.php）が1分ごとに「公開済みで未処理のお知らせ」を探して送る。予約投稿も誰も開かなくても届く
+ *    ・notice.pushed_at を UPDATE で先に取った 1 回だけが送る（二重に飛ばない）
  *
  *  対象（受け取る種類は、人ごとに account.php の「アプリ通知」で ON / OFF。user_account.push_◯◯）
  *    ・重要なお知らせ（push_important。初期 ON）/ その他のお知らせ（push_notice。初期 ON）
@@ -223,17 +221,6 @@ function push_defer(callable $job): void
             }
         }
     });
-}
-
-/** ページを返し終わってから、公開済みのお知らせの通知を送る（partials/header.php から） */
-function push_dispatch_after_response(): void
-{
-    static $registered = false;
-    if ($registered || !push_enabled()) {
-        return;
-    }
-    $registered = true;
-    push_defer('push_dispatch_due');
 }
 
 /** 掲示板に書き込んだあと、ページを返し終わってから通知（お知らせ＋アプリ通知）を出す（board.php・board_thread.php から） */

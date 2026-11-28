@@ -7,6 +7,7 @@
  *     曲の検出: api_setlist_detect.php・api_setlist_bulk.php → setlist_job_run（lib/gemini_setlist.php）
  *     チャプター: api_audio_chapter.php・api_chapter_bulk.php → chapter_job_run（lib/chapter_job.php）
  *   同時に動くのは BG_WORKERS 本まで（worker-1〜N.lock の flock。空きが無ければすぐ終わる）。1本は順番待ちが無くなるまで古い順に続ける
+ *   お知らせのプッシュ通知（push_dispatch_due）も、解析の枠が空いていなくても毎回ここで送る
  *   lib/ は .htaccess で外から開けない。念のため、コマンドライン以外では何もしない
  */
 declare(strict_types=1);
@@ -18,7 +19,13 @@ define('APP_NO_SESSION', true);
 require __DIR__ . '/bootstrap.php';
 require_once __DIR__ . '/chapter_job.php';
 require_once __DIR__ . '/gemini_setlist.php';
+require_once __DIR__ . '/push.php';
 @set_time_limit(0);
+try {
+    push_dispatch_due();
+} catch (Throwable $e) {
+    error_log("cron push: " . $e->getMessage()); // 通知が失敗しても解析は止めない
+}
 if (!is_dir(ytdlp_dir())) {
     @mkdir(ytdlp_dir(), 0700, true);
 }
