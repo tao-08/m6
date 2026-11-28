@@ -265,7 +265,7 @@ foreach ($groups as $key => $chs) {
             'intro_se' => $introJ !== null ? $seInfo($seList[$seNo[$introJ]] ?? null) : null,
             'mc_se'    => $mc !== null && $mcKind === 'se' ? $seInfo($seList[$seNo[$mcJ]] ?? null) : null,
             '_o'       => [$bandRows[$bandId]['rank'] ?? 0, (int)$song['track_no']],
-        ] + ($yt ? ['yt' => true] : []);
+        ] + ($yt ? ['yt' => substr($key, strpos($key, '|y:') + 3)] : []); // 動画ID（プレイヤーの YouTube の印から動画へ）
     }
 }
 

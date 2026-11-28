@@ -60,7 +60,7 @@ if (!preg_match('/^[A-Za-z0-9_-]*(\.php)?(\?[^#\s]*)?$/', $u) || preg_match('/^p
         <div class="shell-panel__head">
             <button type="button" class="shell-panel__art" data-shell-artbtn aria-haspopup="dialog" aria-label="アルバム" disabled><img data-shell-art alt="" width="104" height="104" hidden><?= icon('music_note', 'icon--fill') ?></button><!-- 押すとアルバムのモーダル（セトリと同じ） -->
             <div class="shell-panel__meta">
-                <div class="shell-panel__liveline"><a class="shell-panel__live" data-shell-live target="site"></a><?= mix_tag() // 流しているのはミックス（YouTube はまだ流さない） ?></div>
+                <div class="shell-panel__liveline"><a class="shell-panel__live" data-shell-live target="site"></a><?= mix_tag() ?><a class="shell-panel__yt" data-shell-yt target="_blank" rel="noopener" aria-label="YouTube で見る" title="YouTube で見る" hidden><?= youtube_icon() ?><?= icon('open_in_new') ?></a></div>
                 <div class="shell-panel__liveline"><a class="shell-panel__band" data-shell-bandlink target="site"></a><span class="se-mark" data-shell-se hidden>SE</span></div>
                 <strong class="shell-panel__song" data-shell-song></strong>
                 <div class="shell-panel__artistline"><a class="shell-panel__artist" data-shell-artist target="site"></a><span class="shell-panel__album" data-shell-album></span></div>

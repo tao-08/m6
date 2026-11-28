@@ -225,8 +225,14 @@
     seek.disabled = !it;
     buildScopes();
     if (!it) { setPanel(false); return; }
-    artImg.hidden = !show.art;
+    // 画像を変えると読み終わるまで前の画像が出たままなので、読み終わるまで隠して音符を出す
+    if (!show.art) artImg.hidden = true;
+    else if (artImg.getAttribute('src') !== show.art) { artImg.hidden = true; artImg.onload = () => { artImg.hidden = false; }; }
+    else artImg.hidden = !artImg.complete;
     $('.shell-panel__liveline > .tag--mix').hidden = !!it.yt;
+    const yt = $('[data-shell-yt]'); // YouTube の区分の音源: 動画へのリンク（前に保存したキューの yt: true は refresh で動画ID になる）
+    yt.hidden = typeof it.yt !== 'string';
+    if (!yt.hidden) yt.href = `https://www.youtube.com/watch?v=${encodeURIComponent(it.yt)}`;
     if (show.art) artImg.src = show.art;
     const artBtn = $('[data-shell-artbtn]'); // ジャケットを押すとアルバムのモーダル（app_album.js の setupAlbumModal）
     artBtn.disabled = !(show.art && show.alb);
@@ -397,7 +403,7 @@
     const fresh = new Map(data.items.map((q) => [q.song_id ?? q.src, q])); // song_id が無いものは src で
     queue.forEach((q) => {
       const f = fresh.get(q.song_id ?? q.src);
-      if (f) for (const k of ['title', 'artist_id', 'artist', 'album', 'art', 'band', 'live', 'players', 'through_end_ms', 'mc_ms', 'mc_kind', 'intro_ms', 'intro_se', 'mc_se', 'alb']) q[k] = f[k]; // 通しの区切り: 前に保存したキューは古い数え方のまま（終わりのチャプターで止まっていた）
+      if (f) for (const k of ['title', 'artist_id', 'artist', 'album', 'art', 'band', 'live', 'players', 'through_end_ms', 'mc_ms', 'mc_kind', 'intro_ms', 'intro_se', 'mc_se', 'alb', 'yt']) q[k] = f[k]; // 通しの区切り: 前に保存したキューは古い数え方のまま（終わりのチャプターで止まっていた）
     });
     save();
     if (queue.includes(it) && cur()?.band_id === it.band_id) render();

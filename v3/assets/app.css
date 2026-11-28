@@ -774,6 +774,11 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 .shell-panel__liveline { display: flex; align-items: center; gap: 6px; }
 .shell-panel__liveline > a { min-width: 0; overflow: hidden; white-space: nowrap; }
 .shell-panel__liveline > .tag { flex: none; }
+.shell-panel__liveline > .shell-panel__yt { flex: none; display: inline-flex; align-items: center; gap: 2px; color: var(--muted); text-decoration: none; transition: color var(--t-fast); } /* YouTube の区分の音源: 押すと動画へ（外へ出る矢印でリンクとわかる） */
+.shell-panel__yt[hidden] { display: none; }
+.shell-panel__yt .youtube-icon { width: 25px; height: 18px; } /* MIX の印と同じ高さ */
+.shell-panel__yt .icon { font-size: var(--fs-sm); }
+.shell-panel__yt:hover { color: var(--accent); }
 .shell-panel__artistline { font-size: var(--fs-sm); color: var(--muted); }
 .shell-panel__artist:not([hidden]) + .shell-panel__album:not([hidden])::before { content: " ・ "; white-space: pre; } /* 両方あるときだけ区切る */
 .shell-panel__live, .shell-panel__artist { font-size: var(--fs-sm); color: var(--muted); }
