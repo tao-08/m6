@@ -751,6 +751,8 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 @media (prefers-reduced-motion: reduce) { .shell-bar, .shell-bar.is-closing { animation: none; } }
 /* 細い1行: ボタンは枠なしの小さい丸、曲名とバンド名は横並び、進み具合はバーの上の線 */
 .shell-bar > .icon-btn { width: 30px; height: 30px; border-color: transparent; background: none; }
+.shell-bar { cursor: pointer; } /* ボタン以外を押すとポップアップ */
+.shell-panel { cursor: auto; }
 .shell-bar__info { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 8px; }
 .shell-bar__title { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: var(--fs-sm); font-weight: 700; color: inherit; text-decoration: none; min-width: 0; flex: 0 1 auto;
   padding: 0; border: 0; background: none; font-family: inherit; text-align: left; cursor: pointer; }
@@ -898,6 +900,13 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 .shell-panel__scopes .chip__name { display: inline-block; max-width: 8em; margin-left: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; font-weight: 700; } /* 長い名前は … で切る（全体は title） */
 .shell-panel__scopes .chip.is-current { background: var(--accent-soft); border-color: var(--accent); } /* いま流している範囲（.chip--me と同じ） */
 .shell-panel__scopes .chip.is-pending { color: var(--accent); font-weight: 700; border-color: var(--accent); border-style: dashed; } /* 次の曲から変える範囲 */
+/* 範囲を変えたとき、赤い枠が前のチップから滑る（player.js の glideChip。着くまでチップ自身の枠は消す） */
+.shell-panel__scopes { position: relative; }
+.shell-panel__glide { position: absolute; left: 0; top: 0; z-index: 1; border: 1px solid var(--accent); border-radius: var(--r-full); pointer-events: none; }
+.shell-panel__glide.is-pending { border-style: dashed; }
+.shell-panel__glide.is-moving { transition: transform var(--t-slow) var(--ease-out), width var(--t-slow) var(--ease-out), height var(--t-slow) var(--ease-out); }
+.shell-panel__scopes .chip.is-gliding { border-color: transparent; }
+@media (prefers-reduced-motion: reduce) { .shell-panel__glide.is-moving { transition: none; } }
 /* 外枠のお知らせ: 上（.toasts と同じ位置）。ポップアップより手前 */
 .shell-toasts { z-index: 60; }
 @media (prefers-reduced-motion: reduce) { .shell-panel, .audio-bubble, .audio-player__bar { transition: none; } }

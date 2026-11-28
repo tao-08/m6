@@ -654,8 +654,9 @@
     navigator.mediaSession.setActionHandler('nexttrack', next);
   }
 
-  // ポップアップ: 下のバーの曲名・中のアイコンで開け閉め。外を押す・Esc で閉じる
-  titleEl.addEventListener('click', () => setPanel(!isOpen()));
+  // ポップアップ: 下のバー（ボタン以外のどこでも）・中のアイコンで開け閉め。外を押す・Esc で閉じる
+  const opensPanel = (t) => bar.contains(t) && !panel.contains(t) && !t.closest('button:not([data-shell-title]), .toasts');
+  bar.addEventListener('click', (e) => { if (opensPanel(e.target)) setPanel(!isOpen()); });
   // 曲名: 中のページで楽曲データベースのモーダルを開く（app_ui.js の songs?open= のリンクの仕組み。押したときだけ1曲分を取る）。無いページなら songs へ移る
   // 中のページの見えないリンクに type のイベントを送る（mouseover = 先読み、click = 開く）。送れたら true
   function songLinkEvent(el, type) { // 宣言を上げる（setPanel から呼ぶ）
@@ -682,7 +683,7 @@
   window.abbeyShufflePanel = () => setPanel(!isOpen());
   const closeOutside = (e) => {
     // isConnected: 押したあとに作り直して消えたもの（範囲のチップ）は外ではない
-    if (isOpen() && e.target.isConnected && !panel.contains(e.target) && e.target !== titleEl && !e.target.closest?.('[data-shuffle-menu] > summary, [data-album-modal]')) setPanel(false); // アルバムのモーダルの中は外ではない
+    if (isOpen() && e.target.isConnected && !panel.contains(e.target) && !opensPanel(e.target) && !e.target.closest?.('[data-shuffle-menu] > summary, [data-album-modal]')) setPanel(false); // アルバムのモーダルの中は外ではない
   };
   const closeOnEsc = (e) => { if (e.key === 'Escape' && !filterDlg.open && !document.querySelector('[data-album-modal]').open) setPanel(false); }; // モーダル（絞り込み・アルバム）の Esc はモーダルだけ閉じる
   document.addEventListener('click', closeOutside);
@@ -733,8 +734,11 @@
     return livesCache.get(url);
   };
   const livesUrl = (scope, id) => `api_shuffle?scope=${encodeURIComponent(scope)}&id=${Number(id) || 0}&lives=1`;
+  const livesDone = new Map(); // 読み終えた分（曲数をすぐ出す = チップを作り直しても幅が跳ねず、赤い枠の滑る先がずれない）
   const showCounts = () => scopesEl.querySelectorAll('[data-count]').forEach(async (n) => { // チップの曲数 = 絞り込みを通る曲
-    const data = await getLives(n.dataset.count);
+    const url = n.dataset.count;
+    const data = livesDone.get(url) ?? await getLives(url);
+    if (data) livesDone.set(url, data);
     n.textContent = data ? `${data.items.filter(passes).reduce((a, q) => a + q.n, 0)}曲` : '';
   });
   const scopeItem = (label, scope, id, name) => {
@@ -770,7 +774,29 @@
     li.append(b);
     return li;
   };
+  // 選んだ範囲の赤い枠を、前のチップから滑らせる（チップは作り直すので、作る前の位置を覚えておいて動かす）
+  const glideChip = (cls, from) => {
+    const to = scopesEl.querySelector(`.chip.${cls}`);
+    if (!from?.width || !to) return;
+    const r = to.getBoundingClientRect();
+    const box = scopesEl.getBoundingClientRect();
+    if (!r.width || (Math.abs(from.left - r.left) < 1 && Math.abs(from.top - r.top) < 1)) return;
+    const g = document.createElement('li');
+    g.className = `shell-panel__glide ${cls}`;
+    g.setAttribute('aria-hidden', 'true');
+    const at = (q) => Object.assign(g.style, { width: `${q.width}px`, height: `${q.height}px`, transform: `translate(${q.left - box.left}px, ${q.top - box.top}px)` });
+    at(from);
+    to.classList.add('is-gliding');
+    scopesEl.append(g);
+    g.offsetWidth; // 前の位置を確定させてから動かす
+    g.classList.add('is-moving');
+    at(r);
+    const done = () => { g.remove(); to.classList.remove('is-gliding'); };
+    g.addEventListener('transitionend', done, { once: true });
+    setTimeout(done, 600); // 動かないとき（動きを減らす設定など）も消す
+  };
   const buildScopes = () => {
+    const before = ['is-current', 'is-pending'].map((c) => scopesEl.querySelector(`.chip.${c}`)?.getBoundingClientRect());
     const it = cur();
     const list = [['サイト全体', 'all', 0]];
     if (it) {
@@ -787,7 +813,8 @@
       .filter(([label, sc, id]) => !(label.startsWith('再生中の') && here.has(`${sc}:${id}`)))
       .filter(([, sc, id]) => !seen.has(`${sc}:${id}`) && seen.add(`${sc}:${id}`))
       .map((x) => scopeItem(...x)));
-    showCounts();
+    showCounts(); // 先に曲数を入れてから（読み終えた分はすぐ入る）滑らせる
+    ['is-current', 'is-pending'].forEach((c, i) => glideChip(c, before[i]));
   };
 
   const pick = (scope, id) => {
