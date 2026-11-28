@@ -189,6 +189,7 @@
     // 右端をアイコンにそろえる。ただし画面の左右からはみ出さない（狭い画面ではアイコンより右に寄る）
     panel.style.right = r && r.width ? `${Math.max(12, Math.min(innerWidth - r.right, innerWidth - panel.offsetWidth - 12))}px` : '';
     if (cur()) showPos(nowSec()); // 吹き出しの被りは開いてから測る
+    songLinkEvent($('[data-shell-song]'), 'mouseover'); // 曲名のモーダルを先に取る（中のページで曲ごとに1回だけ）
     marqueeAll(); refresh(cur()); // 閉じている間は幅が 0 で測れないので、開いたときに測り直す
   };
   // 通しで MC のチャプターを流している間（MC のチャプター mc_ms 〜 次の曲 through_end_ms）。MC のない曲間は曲のまま
@@ -648,18 +649,27 @@
   // ポップアップ: 下のバーの曲名・中のアイコンで開け閉め。外を押す・Esc で閉じる
   titleEl.addEventListener('click', () => setPanel(!isOpen()));
   // 曲名: 中のページで楽曲データベースのモーダルを開く（app_ui.js の songs?open= のリンクの仕組み。押したときだけ1曲分を取る）。無いページなら songs へ移る
-  $('[data-shell-song]').addEventListener('click', (e) => {
+  // 中のページの見えないリンクに type のイベントを送る（mouseover = 先読み、click = 開く）。送れたら true
+  function songLinkEvent(el, type) { // 宣言を上げる（setPanel から呼ぶ）
     const doc = innerDoc();
-    const href = e.currentTarget.getAttribute('href');
-    if (!doc?.body || !href) return;
-    e.preventDefault();
-    setPanel(false);
+    const href = el.getAttribute('href');
+    if (!doc?.body || !href) return false;
     const a = doc.createElement('a');
     a.href = href;
     a.hidden = true;
     doc.body.append(a);
-    a.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }));
+    a.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, button: 0 }));
     a.remove();
+    return true;
+  }
+  const songLink = $('[data-shell-song]');
+  // 触れた・乗せた瞬間に取り始める（押したときには取り終わっている）
+  songLink.addEventListener('pointerenter', () => songLinkEvent(songLink, 'mouseover'));
+  songLink.addEventListener('pointerdown', () => songLinkEvent(songLink, 'mouseover'));
+  songLink.addEventListener('click', (e) => {
+    if (!songLinkEvent(songLink, 'click')) return;
+    e.preventDefault();
+    setPanel(false);
   });
   window.abbeyShufflePanel = () => setPanel(!isOpen());
   const closeOutside = (e) => {
