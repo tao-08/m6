@@ -4,7 +4,7 @@
  *   音源ごとに1ファイル（公開フォルダの外 .abbey-ytdlp/chapter-<ID>.json）。lib/gemini_setlist.php の setlist_job_* と同じ作り
  *     ID … YouTube は動画 ID、アップロードした MP3 は a-<band_audio の image_id>、ドライブの音源は d-<ファイル ID>（chapter_job_id）
  *     {state: queued|running|saved|edited|error, band_id, at: 状態が変わった時刻, error?: 理由}
- *   queued … まとめて解析（api_chapter_bulk.php）の順番待ち。running … 解析中。saved … 保存した（band_audio_chapter を置き換えた）
+ *   queued … 順番待ち（api_audio_chapter.php・api_chapter_bulk.php が積み、cron の lib/cron_worker.php が動かす）。running … 解析中。saved … 保存した（band_audio_chapter を置き換えた）
  *   edited … そのあと人が直した（api_audio_chapter.php。setlist_jobs.php で「編集済み」）
  *   「中止」（discard）で消す（api_audio_chapter.php）。前の作りの下書き（done）は、読んだときに保存する
  */
@@ -69,27 +69,8 @@ function chapter_job_get(string $id): ?array
     return $job;
 }
 
-/** 今、裏で解析している数（1つの裏の処理が同時に running にするのは1本だけなので、裏の処理の数と同じ） */
-function chapter_job_running_count(): int
-{
-    $n = 0;
-    foreach (glob(ytdlp_dir() . '/chapter-*.json') ?: [] as $file) {
-        if (preg_match('/chapter-([A-Za-z0-9_-]+)\.json$/', $file, $m) && (chapter_job_get($m[1])['state'] ?? '') === 'running') {
-            $n++;
-        }
-    }
-    return $n;
-}
-
-/** 裏で同時に動かす Gemini の処理（曲の検出＋チャプター）の合計の上限。1本が数分〜30分、サーバーの同時に処理できる数（Entry Processes）を1つふさぐ（上限は10。2026-11 に2回 508 で落ちた） */
-const BG_JOB_MAX = 2;
-
-/** 曲の検出とチャプターの裏の処理が、合わせて上限に達しているか */
-function bg_job_full(): bool
-{
-    require_once __DIR__ . '/gemini_setlist.php'; // setlist_job_running_count
-    return chapter_job_running_count() + setlist_job_running_count() >= BG_JOB_MAX;
-}
+/** 順番待ちの解析（曲の検出＋チャプター）を同時に動かす本数（lib/cron_worker.php）。1本が数分〜30分、数百MB のメモリを使う */
+const BG_WORKERS = 3;
 
 function chapter_job_put(string $id, ?array $job): void
 {

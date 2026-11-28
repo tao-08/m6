@@ -451,14 +451,16 @@ function gemini_setlist_one(string $path, string $mime, array $cfg, bool $tail =
 }
 
 /*
- * 全体の検出の途中経過（Flex は返事まで数分かかるので、api_setlist_detect は画面に先に返して裏で待つ）
- *   バンドごとに1ファイル（公開フォルダの外 .abbey-ytdlp）。{state: running|done|error, at: 始めた時刻, songs|error}
+ * 全体の検出の途中経過。api_setlist_detect・api_setlist_bulk は順番待ち（queued）に積むだけで、cron の lib/cron_worker.php が動かす
+ *   バンドごとに1ファイル（公開フォルダの外 .abbey-ytdlp）。{state: queued|running|done|error, at: 状態が変わった時刻, songs|error}
+ *   queued は src・flex・user（押した人。終わったら通知）・batch / batch_name（まとめて検出したライブ）も持つ
  *   画面（assets/setlist_detect.js）が数秒ごとに見に来て、done なら確認画面へ。画面を閉じても裏の処理は続く
  */
 require_once __DIR__ . '/ytdlp.php'; // ytdlp_dir
 
 /** 裏で待つ上限。これを過ぎても running のままなら、裏の処理が止まったとみなす（Flex は最大 10 分 × 2 回 + やり直しの待ち） */
 const SETLIST_JOB_STALE = 3600; // Flex のやり直し（待つのは合わせて約17分）＋最後の1回（最大11分）が収まる長さ
+const SETLIST_QUEUE_STALE = 21600; // 順番待ち（cron が止まっていると進まない）
 
 function setlist_job_path(int $bandId): string
 {
@@ -472,22 +474,11 @@ function setlist_job_get(int $bandId): ?array
     if (!is_array($job)) {
         return null;
     }
-    if (($job['state'] ?? '') === 'running' && time() - (int)($job['at'] ?? 0) > SETLIST_JOB_STALE) {
+    $limit = ['running' => SETLIST_JOB_STALE, 'queued' => SETLIST_QUEUE_STALE][$job['state'] ?? ''] ?? null;
+    if ($limit !== null && time() - (int)($job['at'] ?? 0) > $limit) {
         return ['state' => 'error', 'error' => '解析が止まりました。もう一度試してください'];
     }
     return $job;
-}
-
-/** 今、裏で検出しているバンドの数（止まったものは数えない） */
-function setlist_job_running_count(): int
-{
-    $n = 0;
-    foreach (glob(ytdlp_dir() . '/detect-*.json') ?: [] as $file) {
-        if (preg_match('/detect-(\d+)\.json$/', $file, $m) && (setlist_job_get((int)$m[1])['state'] ?? '') === 'running') {
-            $n++;
-        }
-    }
-    return $n;
 }
 
 /** 検出の結果を途中経過の形に。曲名が1つも無ければ失敗（確認画面を開いても意味がない） */
@@ -520,6 +511,71 @@ function setlist_detect_videos(int $bandId, array $band, array $mp3s, int $video
         }
     }
     return setlist_detect_result($songs);
+}
+
+/**
+ * 順番待ちの検出を1つ動かす（lib/cron_worker.php）。呼ぶ前に running にしておく（$job はそのときの中身）
+ *   終わったら押した人の端末にプッシュ通知（まとめて検出は、そのライブの分が全部終わったときに1回）
+ */
+function setlist_job_run(int $bandId, array $job): void
+{
+    require_once __DIR__ . '/chapter_job.php'; // band_mix_file・band_video_mp3
+    require_once __DIR__ . '/youtube.php';
+    require_once __DIR__ . '/push.php';
+    $flex = (bool)($job['flex'] ?? true);
+    $src = (string)($job['src'] ?? '');
+    $st = db()->prepare('SELECT b.band_id, b.name, b.youtube_url, b.song_count, IF(b.is_omnibus = 1, NULL, a.name) AS artist FROM band b LEFT JOIN artist a ON a.artist_id = b.artist_id WHERE b.band_id = ?');
+    $st->execute([$bandId]);
+    $band = $st->fetch();
+    try {
+        $cfg = gemini_setlist_config();
+        if (!$cfg || !$band) {
+            $res = ['state' => 'error', 'error' => $band ? '曲の検出は使えません' : 'バンドが見つかりません'];
+        } elseif ($src !== '') { // MIX: 1本だけ聴かせる。曲の終わりと MC も聞く（チャプター用）
+            $mcs = [];
+            $file = band_mix_file($bandId, $src);
+            $part = is_string($file) ? $file : gemini_setlist($file[0], $file[1], $cfg, $band['artist'], $flex, isset($band['song_count']) ? (int)$band['song_count'] : null, null, $mcs);
+            $res = is_string($part) ? ['state' => 'error', 'error' => $part, 'detail' => is_string($file) ? '' : gemini_why()]
+                : setlist_detect_result(array_map(static fn($s) => ['start' => null, 'mix_start' => $s['start']] + $s, $part)) + ['mcs' => $mcs]; // 秒は MIX のチャプターに（api_setlist_detect の status=1）
+        } else {
+            $videoIds = array_map('youtube_video_id', band_video_urls(db(), [$band])[$bandId] ?? []);
+            $mp3s = array_map(static fn($v) => band_video_mp3($bandId, $v), array_filter($videoIds)); // 何本目 => 音源キー
+            $res = !$mp3s || in_array(null, $mp3s, true) ? ['state' => 'error', 'error' => 'MP3 がない動画があります']
+                : setlist_detect_videos($bandId, $band, $mp3s, count($videoIds), $cfg, $flex);
+        }
+    } catch (Throwable $e) {
+        error_log('setlist job: ' . $e->getMessage());
+        $res = ['state' => 'error', 'error' => '解析に失敗しました'];
+    }
+    setlist_job_put($bandId, $res + ['at' => time(), 'flex' => $flex] + array_intersect_key($job, ['src' => 1, 'batch' => 1]));
+
+    $userId = (int)($job['user'] ?? 0);
+    if (!$userId || !$band) {
+        return;
+    }
+    if (isset($job['batch'])) { // まとめて検出: そのライブの分が全部終わったときだけ
+        $done = 0;
+        foreach (glob(ytdlp_dir() . '/detect-*.json') ?: [] as $file) {
+            $other = preg_match('/detect-(\d+)\.json$/', $file, $m) ? setlist_job_get((int)$m[1]) : null;
+            if (($other['batch'] ?? null) === $job['batch']) {
+                if (in_array($other['state'], ['queued', 'running'], true)) {
+                    return;
+                }
+                $done++;
+            }
+        }
+        $payload = ['title' => $job['batch_name'] . 'の曲の検出が終わりました', 'body' => $done . 'バンド', 'url' => 'setlist_jobs', 'tag' => 'setlist-bulk-' . $job['batch']];
+    } else {
+        $payload = [
+            'title' => $res['state'] === 'done' ? '曲の検出が終わりました' : '曲の検出に失敗しました',
+            'body' => $band['name'],
+            'url' => 'songs_edit?band=' . $bandId, // 開くと途中経過を見に行き、確認画面へ進む（data-pending）
+            'tag' => 'setlist-detect-' . $bandId,
+        ];
+    }
+    $subs = db()->prepare('SELECT subscription_id, endpoint, p256dh, auth FROM push_subscription WHERE user_id = ?');
+    $subs->execute([$userId]);
+    push_send($subs->fetchAll(), $payload);
 }
 
 function setlist_job_put(int $bandId, ?array $job): void

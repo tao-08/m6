@@ -5,11 +5,11 @@
  * =====================================================================
  *  songs_edit.php の「YouTube から曲を検出」（assets/setlist_detect.js）が fetch() で呼ぶ。
  *  リクエスト（POST）: band_id
- *  すぐ {"state": "running"} を返し、裏で動画ごとの MP3（YouTube の区分。lib/chapter_job.php の band_video_mp3）を聴かせ、
- *  Gemini が聴き終わるまで待つ。MP3 の無い動画が1本でもあれば検出しない（YouTube からは落とさない）。flex=0 なら Standard（速い）、それ以外は Flex（半額。数分〜15分）。途中経過は setlist_job_*（lib/gemini_setlist.php）
+ *  順番待ちに積んで {"state": "running"} を返す。cron の lib/cron_worker.php が動画ごとの MP3（YouTube の区分。lib/chapter_job.php の band_video_mp3）を聴かせ、
+ *  Gemini が聴き終わるまで待つ（setlist_job_run）。MP3 の無い動画が1本でもあれば検出しない（YouTube からは落とさない）。flex=0 なら Standard（速い）、それ以外は Flex（半額。数分〜15分）。途中経過は setlist_job_*（lib/gemini_setlist.php）
  *  status=1: 途中経過を見る。{"state": "running"} / 終わっていれば曲名・候補・始まる時刻をセッションに置いて {"state": "done"}
  *    → 画面が songs_edit?from_detect=1 で確認画面を開く
- *  終わったら、押した人の端末すべてにプッシュ通知を送る（lib/push.php。画面を閉じていても気づけるように）
+ *  終わったら、押した人の端末すべてにプッシュ通知を送る（setlist_job_run。画面を閉じていても気づけるように）
  *  src=a:N / d:ファイルID: YouTube の代わりにバンドの MIX（アップロードした MP3 / ドライブ）を聴かせる。始まりの秒は YouTube の秒ではないので、セトリには入れない（確認画面の ▶ だけに使う）
  *    代わりに、その MIX の曲のチャプター（band_audio_chapter）にする。status=1 で終わったとき、チャプターが無ければすぐ保存
  *    あれば保存せず {"state": "done", "overwrite": true} を返す → 画面が上書きを聞き、はいなら chapters=1 で保存（それまでセッションに置く）
@@ -25,7 +25,6 @@ require_once __DIR__ . '/lib/api.php';
 require_once __DIR__ . '/lib/youtube.php';
 require_once __DIR__ . '/lib/ytdlp.php'; // audio_cut_mp3
 require_once __DIR__ . '/lib/gemini_setlist.php';
-require_once __DIR__ . '/lib/push.php';
 require_once __DIR__ . '/lib/chapter_job.php'; // band_mix_file・band_video_mp3
 
 header('Content-Type: application/json; charset=utf-8');
@@ -53,7 +52,7 @@ if (isset($_POST['from'])) {
 // 途中経過を見る（終わっていればセッションに置いて、途中経過は消す）
 if (!empty($_POST['status'])) {
     $job = setlist_job_get($bandId) ?? fail(404, '解析していません');
-    if ($job['state'] === 'running') {
+    if (in_array($job['state'], ['queued', 'running'], true)) {
         api_ok(['state' => 'running']);
     }
     setlist_job_put($bandId, null);
@@ -117,41 +116,13 @@ if ($section !== null) { // ↻ はその場で待つ（1曲なので約20秒）
     }
     api_ok(['candidates' => $cands]);
 }
-if ((setlist_job_get($bandId)['state'] ?? '') === 'running') {
-    api_ok(['state' => 'running']); // もう裏で解析している（二重に払わない）
-}
-if (bg_job_full()) { // サイト全体が重くならないように（lib/chapter_job.php の BG_JOB_MAX）
-    fail(429, 'ほかの解析が終わってから試してください');
+if (in_array(setlist_job_get($bandId)['state'] ?? '', ['queued', 'running'], true)) {
+    api_ok(['state' => 'running']); // もう順番待ち・解析中（二重に払わない）
 }
 $src !== '' || ($videoIds[0] ?? null) !== null || fail(400, 'YouTube のリンクがありません');
-$mp3s = $src !== '' ? [] : array_map(static fn($v) => band_video_mp3($bandId, $v), array_filter($videoIds)); // 何本目 => 音源キー
+$mp3s = $src !== '' ? [] : array_map(static fn($v) => band_video_mp3($bandId, $v), array_filter($videoIds));
 in_array(null, $mp3s, true) && fail(400, 'MP3 がない動画があります'); // 全部そろうまで検出しない
-$flex = ($_POST['flex'] ?? '1') !== '0';
-setlist_job_put($bandId, ['state' => 'running', 'at' => $startedAt = time(), 'flex' => $flex]); // flex は setlist_jobs.php に出す
-
-api_detach(['state' => 'running']); // 画面には先に返して、接続を切る。このあとの処理は裏で続く
-
-try {
-    if ($src !== '') { // MIX: 1本だけ聴かせる。曲の終わりと MC も聞く（チャプター用）
-        $mcs = [];
-        $file = band_mix_file($bandId, $src);
-        $part = is_string($file) ? $file : gemini_setlist($file[0], $file[1], $cfg, $band['artist'], $flex, isset($band['song_count']) ? (int)$band['song_count'] : null, null, $mcs);
-        $job = is_string($part) ? ['state' => 'error', 'error' => $part, 'detail' => is_string($file) ? '' : gemini_why()] : null;
-        $songs = is_string($part) ? [] : array_map(static fn($s) => ['start' => null, 'mix_start' => $s['start']] + $s, $part); // 秒は MIX のチャプターに（status=1）
-    }
-    $job ??= $src !== '' ? setlist_detect_result($songs) + ['mcs' => $mcs] : setlist_detect_videos($bandId, $band, $mp3s, count($videoIds), $cfg, $flex);
-} catch (Throwable $e) {
-    error_log('setlist detect: ' . $e->getMessage());
-    $job = ['state' => 'error', 'error' => '解析に失敗しました'];
-}
-setlist_job_put($bandId, $job + ['at' => $startedAt, 'flex' => $flex] + ($src !== '' ? ['src' => $src] : []));
-
-// 押した人に知らせる（アプリ通知の設定によらず、端末があれば送る。押した本人が待っている結果なので）
-$subs = db()->prepare('SELECT subscription_id, endpoint, p256dh, auth FROM push_subscription WHERE user_id = ?');
-$subs->execute([$user['user_id']]);
-push_send($subs->fetchAll(), [
-    'title' => $job['state'] === 'done' ? '曲の検出が終わりました' : '曲の検出に失敗しました',
-    'body' => $band['name'],
-    'url' => 'songs_edit?band=' . $bandId, // 開くと途中経過を見に行き、確認画面へ進む（data-pending）
-    'tag' => 'setlist-detect-' . $bandId,
-]);
+// 順番待ちに積むだけ。cron の lib/cron_worker.php が setlist_job_run で検出し、終わったら押した人に通知する
+setlist_job_put($bandId, ['state' => 'queued', 'at' => time(), 'q' => microtime(true), 'flex' => ($_POST['flex'] ?? '1') !== '0', 'user' => (int)$user['user_id']]
+    + ($src !== '' ? ['src' => $src] : []));
+api_ok(['state' => 'running']);

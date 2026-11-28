@@ -6,9 +6,8 @@
  *  setlist_jobs.php の「チャプター」タブの「未解析を解析」が fetch() で呼ぶ。
  *  リクエスト（POST, JSON）: {"live_id": 3}
  *  未解析 = チャプターが1つも無く、解析中・順番待ちでもない動画（失敗したものはやり直す）。その動画の MP3（YouTube の区分）がある動画だけ
- *  全部を順番待ち（queued）にして、すぐ {"count": 本数} を返し、裏で出演順に1本ずつ解析する（lib/chapter_job.php）。
- *  終わったものから保存する
- *  エラー: {"error": "..."}（400 / 401 / 403 / 404 / 405 / 429 / 503）
+ *  全部を順番待ち（queued）にして {"count": 本数} を返す。cron の lib/cron_worker.php が出演順に解析し、終わったものから保存する
+ *  エラー: {"error": "..."}（400 / 401 / 403 / 404 / 405 / 503）
  * =====================================================================
  */
 declare(strict_types=1);
@@ -49,19 +48,8 @@ foreach (band_video_urls($pdo, $bands) as $bandId => $urls) {
 if (!$todo) {
     api_ok(['count' => 0]);
 }
-$cfg = chapter_job_config() ?? fail(503, '自動チャプターは未設定です');
-if (bg_job_full()) { // 曲の検出と合わせた上限（lib/chapter_job.php の BG_JOB_MAX）
-    fail(429, 'ほかの動画を解析中です。終わってから試してください');
-}
+chapter_job_config() ?? fail(503, '自動チャプターは未設定です');
 foreach ($todo as [$vid, $bandId]) {
-    chapter_job_put($vid, ['state' => 'queued', 'band_id' => $bandId, 'at' => time()]);
+    chapter_job_put($vid, ['state' => 'queued', 'band_id' => $bandId, 'at' => time(), 'q' => microtime(true)]); // q: 出演順に動かす
 }
-api_detach(['count' => count($todo)]);
-
-foreach ($todo as [$vid, $bandId]) {
-    if ((chapter_job_get($vid)['state'] ?? '') !== 'queued') {
-        continue; // 待っている間に「中止」・1本ずつの解析が始まった
-    }
-    chapter_job_put($vid, ['state' => 'running', 'band_id' => $bandId, 'at' => $at = time()]);
-    chapter_job_run($vid, $bandId, $at, $cfg);
-}
+api_ok(['count' => count($todo)]);

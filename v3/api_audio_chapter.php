@@ -12,7 +12,7 @@
  *    {"action": "move", "band_id": 12, "chapter_id": 5, "at_ms": 62000}  チャプターの時間を直す
  *      key … 'a:<band_audio の image_id>'（アップロードした MP3）か 'd:<ドライブのファイル ID>'（音源だけ）か 'y:<動画 ID>'（バンドの YouTube と、その YouTube の区分の音源。band.php のカード・video_chapters.php）
  *    {"action": "auto", "band_id": 12, "key": "a:3"}  裏で Gemini に聴かせ、終わったらその音源のチャプターを置き換える（lib/chapter_job.php）
- *      すぐ {"state": "running"} を返す。画面を閉じても続く。結果は status で見る
+ *      順番待ちに積んで {"state": "queued"} を返す（cron の lib/cron_worker.php が動かす）。画面を閉じても続く。結果は status で見る
  *    {"action": "status", "band_id": 12, "key": "a:3"}   {"state": "none" | "queued" | "running" | "saved" | "error", "error"?, "chapters": [...]}
  *    {"action": "discard", "band_id": 12, "key": "a:3"}  解析中のものを止める（「中止」。結果を書かない）
  *    {"action": "numbers", "band_id": 12, "key": "a:3", "numbers": {"5": 3, "8": 4}}  曲のチャプター（chapter_id）ごとに当たるセトリの何曲目か（migrations/157）
@@ -103,14 +103,9 @@ if (in_array($action, ['add', 'replace', 'auto', 'status', 'discard', 'numbers']
             $out = $job ? array_intersect_key($job, ['state' => 1, 'error' => 1]) : ['state' => 'none'];
             api_ok($out + ['chapters' => audio_chapter_list(audio_chapters($pdo, $bandId)[$key] ?? [])]);
         }
-        $cfg = chapter_job_config() ?? fail(503, '自動チャプターは未設定です');
-        if (bg_job_full()) {
-            fail(429, 'ほかの音源を解析中です。終わってから試してください');
-        }
-        chapter_job_put($id, ['state' => 'running', 'band_id' => $bandId, 'at' => $at = time()]);
-        api_detach(['state' => 'running']);
-        chapter_job_run($id, $bandId, $at, $cfg);
-        exit;
+        chapter_job_config() ?? fail(503, '自動チャプターは未設定です');
+        chapter_job_put($id, ['state' => 'queued', 'band_id' => $bandId, 'at' => time(), 'q' => microtime(true)]); // cron の lib/cron_worker.php が動かす
+        api_ok(['state' => 'queued']);
     }
     if ($action === 'numbers') {
         $nums = $body['numbers'] ?? null;

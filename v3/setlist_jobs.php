@@ -4,7 +4,7 @@
  *  setlist_jobs.php — 「YouTube から曲を検出」の途中経過の一覧（管理者のみ。tools.php のデータタブから入る）
  * =====================================================================
  *  api_setlist_detect.php が置く途中経過（lib/gemini_setlist.php の setlist_job_*）を全部並べる。
- *  解析中・終わって確認待ち・失敗。確認待ちはバンドの曲編集を開くと確認画面へ進み、ここから消える。
+ *  順番待ち（cron の lib/cron_worker.php が動かす）・解析中・終わって確認待ち・失敗。確認待ちはバンドの曲編集を開くと確認画面へ進み、ここから消える。
  *  下に、曲の場面（song.video_start）が入ったバンドを並べる。開くとセットリスト編集の ▶ で秒が合っているか確かめられる
  *  「チャプター」タブ（?tab=chapter）: 年度→ライブ→動画で、YouTube のチャプターの状態（lib/chapter_job.php）を並べる。
  *    ライブの「未解析を解析」は api_chapter_bulk.php を fetch で呼ぶ（assets/app_admin.js の setupChapterBulk）。画面は移らない
@@ -217,6 +217,8 @@ render_header('解析の状況', 'tools');
                 <td><a href="songs_edit?band=<?= $id ?>"><?= h((string)($names[$id] ?? '#' . $id)) ?></a></td>
                 <td><?php if ($job['state'] === 'running'): ?>
                     <span class="job-state" data-chapter-state="running">解析中 <?= (int)floor((time() - (int)$job['at']) / 60) ?>分</span>
+                <?php elseif ($job['state'] === 'queued'): ?>
+                    <span class="job-state" data-chapter-state="queued">順番待ち</span>
                 <?php elseif ($job['state'] === 'done'): ?>
                     <span class="job-state" data-chapter-state="review">確認待ち</span>
                 <?php else: ?>

@@ -596,7 +596,7 @@ function setupYtDrive() {
 }
 
 /**
- * 解析の状況（setlist_jobs.php）の失敗の再試行。通常の速度（flex=1）で曲の検出をやり直し、状態を「解析中」にする
+ * 解析の状況（setlist_jobs.php）の失敗の再試行。通常の速度（flex=1）で曲の検出をやり直し、状態を「順番待ち」にする
  * api_setlist_detect.php は $_POST を読むので FormData で送る（setlist_detect.js と同じ）
  */
 function setupDetectRetry() {
@@ -616,8 +616,8 @@ function setupDetectRetry() {
       }
       const row = btn.closest('tr');
       const s = row.querySelector('[data-chapter-state]');
-      s.dataset.chapterState = 'running';
-      s.textContent = '解析中';
+      s.dataset.chapterState = 'queued';
+      s.textContent = '順番待ち';
       s.removeAttribute('data-tip');
       const speed = row.querySelector('[data-detect-flex]');
       if (speed) speed.textContent = '通常';

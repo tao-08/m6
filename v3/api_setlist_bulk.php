@@ -6,9 +6,9 @@
  *  setlist_jobs.php の「チャプター」タブの「未解析を解析」が、api_chapter_bulk.php と一緒に fetch() で呼ぶ（チャプターとは別の裏の処理で並んで進む）
  *  リクエスト（POST, JSON）: {"live_id": 3}
  *  対象 = 曲が1つも無く、動画が全部 MP3（YouTube の区分）を持ち、検出中・確認待ちでもないバンド（失敗したものはやり直す）
- *  すぐ {"count": バンド数} を返し、裏で出演順に1バンドずつ検出する（通常 = Flex）。結果は確認待ち（songs_edit.php で開く）
+ *  順番待ちに積んで {"count": バンド数} を返す。cron の lib/cron_worker.php が出演順に検出する（通常 = Flex）。結果は確認待ち（songs_edit.php で開く）
  *  全部終わったら、押した人の端末に「◯◯の曲の検出が終わりました」とプッシュ通知を1回送る
- *  エラー: {"error": "..."}（401 / 403 / 404 / 405 / 429 / 503）
+ *  エラー: {"error": "..."}（401 / 403 / 404 / 405 / 503）
  * =====================================================================
  */
 declare(strict_types=1);
@@ -17,7 +17,6 @@ require_once __DIR__ . '/lib/api.php';
 require_once __DIR__ . '/lib/youtube.php';
 require_once __DIR__ . '/lib/gemini_setlist.php';
 require_once __DIR__ . '/lib/chapter_job.php'; // band_video_mp3
-require_once __DIR__ . '/lib/push.php';
 
 header('Content-Type: application/json; charset=utf-8');
 $user = api_user('is_admin', '管理者のみ使えます');
@@ -49,36 +48,9 @@ foreach (band_video_urls($pdo, $bands) as $bandId => $urls) {
 if (!$todo) {
     api_ok(['count' => 0]);
 }
-$cfg = gemini_setlist_config() ?? fail(503, '曲の検出は使えません');
-if (bg_job_full()) {
-    fail(429, 'ほかの解析が終わってから試してください');
+gemini_setlist_config() ?? fail(503, '曲の検出は使えません');
+foreach ($todo as [$band]) { // cron の lib/cron_worker.php が出演順に動かし、全部終わったら通知する（setlist_job_run）
+    setlist_job_put((int)$band['band_id'], ['state' => 'queued', 'at' => time(), 'q' => microtime(true), 'flex' => true,
+        'user' => (int)$user['user_id'], 'batch' => $liveId, 'batch_name' => (string)$liveName]);
 }
-api_detach(['count' => count($todo)]);
-
-$done = 0;
-foreach ($todo as [$band, $mp3s, $videos]) {
-    $bandId = (int)$band['band_id'];
-    if (in_array(setlist_job_get($bandId)['state'] ?? 'error', ['running', 'done'], true)) {
-        continue; // 待っている間に、バンドの画面から検出を始めた
-    }
-    setlist_job_put($bandId, ['state' => 'running', 'at' => $at = time(), 'flex' => true]);
-    try {
-        $job = setlist_detect_videos($bandId, $band, $mp3s, $videos, $cfg, true);
-    } catch (Throwable $e) {
-        error_log('setlist bulk: ' . $e->getMessage());
-        $job = ['state' => 'error', 'error' => '解析に失敗しました'];
-    }
-    setlist_job_put($bandId, $job + ['at' => $at, 'flex' => true]);
-    $done++;
-}
-
-if ($done) {
-    $subs = $pdo->prepare('SELECT subscription_id, endpoint, p256dh, auth FROM push_subscription WHERE user_id = ?');
-    $subs->execute([$user['user_id']]);
-    push_send($subs->fetchAll(), [
-        'title' => $liveName . 'の曲の検出が終わりました',
-        'body' => $done . 'バンド',
-        'url' => 'setlist_jobs', // 確認待ちが並ぶ
-        'tag' => 'setlist-bulk-' . $liveId,
-    ]);
-}
+api_ok(['count' => count($todo)]);
