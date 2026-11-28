@@ -518,7 +518,8 @@
         const q = queue[k];
         if (thru() && q.intro_ms != null) marks.push({ k, ms: q.intro_ms, label: 'SE', full: q.intro_se ? `SE. ${q.intro_se.title}` : 'SE', kind: 'intro' });
         marks.push({ k, ms: q.start_ms, label: String(k - r.a + 1), full: `${k - r.a + 1}. ${q.title}`, kind: 'song' });
-        if (hasMc(q)) { const l = gapName(q.mc_kind); marks.push({ k, ms: q.mc_ms, label: l, full: q.mc_se ? `SE. ${q.mc_se.title}` : l, kind: 'mc' }); }
+        if (hasMc(q)) { const l = gapName(q.mc_kind); marks.push({ k, ms: q.mc_ms, label: q.mc_kind === 'blank' ? '—' : l, // 曲なしの吹き出しはチャプターのチップと同じ「—」
+           full: q.mc_se ? `SE. ${q.mc_se.title}` : l, kind: 'mc' }); }
         const nx = queue[k + 1];
         if (!thru() && k < r.b && q.end_ms !== null && nx.start_ms > q.end_ms) gaps.push([x(q.end_ms), x(nx.start_ms)]);
       }
