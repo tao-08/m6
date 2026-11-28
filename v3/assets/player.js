@@ -253,7 +253,9 @@
     band.textContent = it.band;
     band.href = `band?id=${it.band_id}`;
     $('[data-shell-se]').hidden = !(inIntro(it) || (inMc(it) && it.mc_kind === 'se'));
-    $('[data-shell-song]').textContent = title;
+    const song = $('[data-shell-song]');
+    song.textContent = title;
+    if (!mc && it.key) song.href = `songs?open=${encodeURIComponent(it.key)}`; else song.removeAttribute('href');
     const artist = $('[data-shell-artist]');
     artist.textContent = show.artist || '';
     artist.hidden = !show.artist;
@@ -460,7 +462,7 @@
     const fresh = new Map(data.items.map((q) => [q.song_id ?? q.src, q])); // song_id が無いものは src で
     queue.forEach((q) => {
       const f = fresh.get(q.song_id ?? q.src);
-      if (f) for (const k of ['title', 'artist_id', 'artist', 'album', 'art', 'band', 'live', 'players', 'through_end_ms', 'mc_ms', 'mc_kind', 'intro_ms', 'intro_se', 'mc_se', 'alb', 'yt']) q[k] = f[k]; // 通しの区切り: 前に保存したキューは古い数え方のまま（終わりのチャプターで止まっていた）
+      if (f) for (const k of ['title', 'key', 'artist_id', 'artist', 'album', 'art', 'band', 'live', 'players', 'through_end_ms', 'mc_ms', 'mc_kind', 'intro_ms', 'intro_se', 'mc_se', 'alb', 'yt']) q[k] = f[k]; // 通しの区切り: 前に保存したキューは古い数え方のまま（終わりのチャプターで止まっていた）
     });
     save();
     if (queue.includes(it) && cur()?.band_id === it.band_id) render();
@@ -645,6 +647,20 @@
 
   // ポップアップ: 下のバーの曲名・中のアイコンで開け閉め。外を押す・Esc で閉じる
   titleEl.addEventListener('click', () => setPanel(!isOpen()));
+  // 曲名: 中のページで楽曲データベースのモーダルを開く（app_ui.js の songs?open= のリンクの仕組み。押したときだけ1曲分を取る）。無いページなら songs へ移る
+  $('[data-shell-song]').addEventListener('click', (e) => {
+    const doc = innerDoc();
+    const href = e.currentTarget.getAttribute('href');
+    if (!doc?.body || !href) return;
+    e.preventDefault();
+    setPanel(false);
+    const a = doc.createElement('a');
+    a.href = href;
+    a.hidden = true;
+    doc.body.append(a);
+    a.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }));
+    a.remove();
+  });
   window.abbeyShufflePanel = () => setPanel(!isOpen());
   const closeOutside = (e) => {
     if (isOpen() && !panel.contains(e.target) && e.target !== titleEl && !e.target.closest?.('[data-shuffle-menu] > summary, [data-album-modal]')) setPanel(false); // アルバムのモーダルの中は外ではない

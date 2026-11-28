@@ -782,8 +782,8 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 .shell-panel__artistline { font-size: var(--fs-sm); color: var(--muted); }
 .shell-panel__artist:not([hidden]) + .shell-panel__album:not([hidden])::before { content: " ・ "; white-space: pre; } /* 両方あるときだけ区切る */
 .shell-panel__live, .shell-panel__artist { font-size: var(--fs-sm); color: var(--muted); }
-.shell-panel__band { font-size: var(--fs-md); font-weight: 600; color: inherit; }
-.shell-panel__song { font-size: var(--fs-xl); }
+.shell-panel__band { font-size: var(--fs-xl); font-weight: 600; color: inherit; }
+.shell-panel__song { font-size: var(--fs-2xl); font-weight: 700; color: inherit; }
 .shell-panel__diag { font-size: var(--fs-xs); color: var(--muted); }
 .shell-panel__diag[hidden] { display: none; }
 .shell-panel__meta a:hover { color: var(--accent); }

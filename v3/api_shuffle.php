@@ -23,6 +23,7 @@ require_once __DIR__ . '/lib/live_image.php'; // LIVE_IMAGE_DIR・live_file_disk
 require_once __DIR__ . '/lib/youtube.php';    // band_video_urls・youtube_video_id
 require_once __DIR__ . '/lib/tracks.php';       // track_listen_url（ジャケットを押したときのアルバムのモーダル）
 require_once __DIR__ . '/lib/audio_stream.php'; // audio_orig_size（音源は 160 に置き換えるので、data-size は元の大きさ）
+require_once __DIR__ . '/lib/tabs.php';          // tab_song_key（曲名を押すと楽曲データベースのモーダル）
 require_once __DIR__ . '/lib/chapter_job.php';   // chapter_job_get（YouTube はチャプターが編集済みの動画だけ）
 
 header('Content-Type: application/json; charset=utf-8');
@@ -243,6 +244,7 @@ foreach ($groups as $key => $chs) {
         $items[] = [
             'song_id'  => (int)$song['song_id'],
             'title'    => (string)$song['title'],
+            'key'      => tab_song_key($song['source'], $song['track_id'], $song['artist_id'] !== null ? (int)$song['artist_id'] : null, $bandId, (string)$song['title'], $song['artist']), // band.php のセトリの曲名リンクと同じ
             'artist_id' => $song['artist_id'] !== null ? (int)$song['artist_id'] : null,
             'artist'   => $song['artist'] !== null ? (string)$song['artist'] : null,
             'art'      => $song['artwork_url'] ? preg_replace('/\d+x\d+bb/', '300x300bb', (string)$song['artwork_url']) : null, // band.php のセトリと同じ 300px 版
