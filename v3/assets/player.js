@@ -756,7 +756,9 @@
     const url = n.dataset.count;
     const data = livesDone.get(url) ?? await getLives(url);
     if (data) livesDone.set(url, data);
-    n.textContent = data ? `${data.items.filter(passes).reduce((a, q) => a + q.n, 0)}曲` : '';
+    const items = data ? data.items.filter(passes) : [];
+    const bands = byBand && !url.includes('scope=band&'); // バンド単位はバンドの数（バンドの範囲は曲数のまま）
+    n.textContent = !data ? '' : bands ? `${new Set(items.map((q) => q.band_id)).size}バンド` : `${items.reduce((a, q) => a + q.n, 0)}曲`;
   });
   const scopeItem = (label, scope, id, name) => {
     const li = document.createElement('li');
@@ -1009,6 +1011,7 @@
     unitBtn.setAttribute('aria-label', byBand ? 'バンド単位' : '曲単位');
     unitBtn.title = byBand ? 'バンド単位' : '曲単位';
     contBtn.parentElement.classList.toggle('is-band', byBand); // 通しのボタンが滑って出る・隠れる（CSS）
+    showCounts(); // チップの「◯曲」⇔「◯バンド」
   };
   unitBtn.addEventListener('click', () => {
     const was = thru();
