@@ -220,7 +220,7 @@
     while (same(queue[b + 1])) b += 1;
     return { a, b };
   };
-  const segStart = (it) => { const r = bandRange(); return r ? (queue[r.a].intro_ms != null ? 0 : queue[r.a].start_ms) : // バンド全体のバーは、冒頭の MC・SE があれば音源の頭から（流さない所は灰色）
+  const segStart = (it) => { const r = bandRange(); return r ? queue[r.a].intro_ms ?? queue[r.a].start_ms : // バンド全体のバーは冒頭の MC・SE から（飛ばすときは灰色）
      inMc(it) ? it.mc_ms : startOf(it); };
   const segEnd = (it) => { const r = bandRange(); return r ? endOf(queue[r.b]) : inMc(it) ? endOf(it) : hasMc(it) ? it.mc_ms : endOf(it); };
   const render = () => {
@@ -271,7 +271,10 @@
     album.hidden = !show.album;
     if (!mc && it.artist_id) artist.href = `artist?id=${it.artist_id}`; else artist.removeAttribute('href');
     // 演奏者: 楽器ラベル（サイト共通の .part）と名前（メンバーページへ）
-    $('[data-shell-players]').replaceChildren(...(it.players || []).map((p) => {
+    const playersEl = $('[data-shell-players]');
+    const h0 = playersEl.offsetHeight;
+    const p0 = panel.offsetHeight;
+    playersEl.replaceChildren(...(it.players || []).map((p) => {
       const li = document.createElement('li');
       // 楽器が2つ以上（Vo/Gt）は1つのラベルに（lib/repository.php の part_badge と同じ作り: 楽器ごとに色を分けた背景・境目だけ混ぜる）
       const tag = document.createElement('span');
@@ -299,6 +302,14 @@
       li.append(a);
       return li;
     }));
+    // 演奏者の行数が変わったら、下（シークバーから下）を前の位置から滑らせ、ポップアップの高さも合わせて動かす
+    const dh = playersEl.offsetHeight - h0;
+    if (dh && isOpen() && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      const css = getComputedStyle(document.documentElement);
+      const opt = { duration: (parseFloat(css.getPropertyValue('--t-slow')) || .3) * 1000, easing: css.getPropertyValue('--ease-out').trim() || 'ease-out' };
+      for (let e = playersEl.nextElementSibling; e; e = e.nextElementSibling) e.animate({ translate: [`0 ${-dh}px`, '0 0'] }, opt);
+      if (panel.offsetHeight !== p0) panel.animate({ height: [`${p0}px`, `${panel.offsetHeight}px`], overflow: ['hidden', 'hidden'] }, opt);
+    }
     if ('mediaSession' in navigator) {
       navigator.mediaSession.metadata = new MediaMetadata({
         title, artist: !mc && it.artist ? `${it.band}（${it.artist}）` : it.band, album: it.live,
@@ -390,25 +401,27 @@
       { duration: 200, easing: 'cubic-bezier(.2, .8, .2, 1)' },
     ));
   };
+  // 同じ曲の中で飛ぶ（MC・冒頭の SE・曲の頭）。バンド全体のバーはつまみを滑らせる（go と同じ）
+  const jump = (sec) => { jumpNext = !!bandRange(); playAt(sec, true); };
   const next = () => {
     if (pending) { const p = pending; pending = null; switchTo(p.scope, p.id, false); return; }
     const it = cur();
-    if (inIntro(it)) { playAt(it.start_ms / 1000, true); return; } // 通し: オープニング SE → その曲（飛ばさない）
-    if (hasMc(it) && !inMc(it) && nowSec() * 1000 < it.mc_ms) { playAt(it.mc_ms / 1000, true); return; } // 通し: 曲のあとの MC へ
+    if (inIntro(it)) { jump(it.start_ms / 1000); return; } // 通し: オープニング SE → その曲（飛ばさない）
+    if (hasMc(it) && !inMc(it) && nowSec() * 1000 < it.mc_ms) { jump(it.mc_ms / 1000); return; } // 通し: 曲のあとの MC へ
     slide(1);
     go(idx + 1, true);
   };
   const prev = () => {
     const it = cur();
     if (!it) return;
-    if (inMc(it)) { playAt((nowSec() - it.mc_ms / 1000 < 3 ? it.start_ms : it.mc_ms) / 1000, true); return; } // MC の前の曲 = いまの曲
+    if (inMc(it)) { jump((nowSec() - it.mc_ms / 1000 < 3 ? it.start_ms : it.mc_ms) / 1000); return; } // MC の前の曲 = いまの曲
     const head = nowSec() - it.start_ms / 1000 < 3;
-    if (head && !inIntro(it) && thru() && it.intro_ms != null) { playAt(it.intro_ms / 1000, true); return; } // 曲の頭 → その前のオープニング SE
+    if (head && !inIntro(it) && thru() && it.intro_ms != null) { jump(it.intro_ms / 1000); return; } // 曲の頭 → その前のオープニング SE
     if (queue.length > 1 && head) {
       const pv = queue[(idx - 1 + queue.length) % queue.length];
       slide(-1); go(idx - 1, true, (hasMc(pv) ? pv.mc_ms : pv.start_ms) / 1000); // 前の曲の最後の区切り（MC か曲の頭。オープニング SE からではない）
     }
-    else playAt(it.start_ms / 1000, true);
+    else jump(it.start_ms / 1000);
   };
   // 管理者だけ: 止まっている理由を曲名の下に出す（待っているもの + 秒 / 最後に飛ばした理由）。流れ始めたら消す
   const diagEl = $('[data-shell-diag]');
@@ -526,7 +539,7 @@
         marks.push({ k, ms: q.start_ms, label: String(k - r.a + 1), full: `${k - r.a + 1}. ${q.title}`, kind: 'song' });
         if (hasMc(q)) { const l = gapName(q.mc_kind); marks.push({ k, ms: q.mc_ms, label: q.mc_kind === 'blank' ? '—' : l, // 曲なしの吹き出しはチャプターのチップと同じ「—」
            full: q.mc_se ? `SE. ${q.mc_se.title}` : l, kind: 'mc' }); }
-        if (k === r.a && q.intro_ms != null && q.intro_ms < q.start_ms) gaps.push([0, x(q.intro_ms), true], [x(q.intro_ms), x(q.start_ms)]); // 音源の頭〜冒頭の MC・SE（通しでも流さない）・冒頭の MC・SE
+        if (k === r.a && q.intro_ms != null && q.intro_ms < q.start_ms) gaps.push([x(q.intro_ms), x(q.start_ms)]); // 冒頭の MC・SE
         const nx = queue[k + 1];
         if (k < r.b && q.end_ms !== null && nx.start_ms > q.end_ms) gaps.push([x(q.end_ms), x(nx.start_ms)]);
       }
@@ -573,13 +586,13 @@
       seekBox.classList.toggle('has-bubbles', marks.length > 0);
       // MC・SE はシークバーの下、曲は上（MC は次の曲の頭のすぐ手前で、上に並べると被るため）
       [...bubblesEl.children].forEach((b) => b.classList.toggle('is-below', b.dataset.kind !== 'song'));
-      seekBox.classList.toggle('has-below', !!bubblesEl.querySelector('.is-below'));
+      seekBox.classList.toggle('has-below', !!bubblesEl.querySelector('.is-below:not(.is-leaving)')); // 消えていく吹き出しは数えない（残ると下の余白が空いたまま）
       const thumb = (p) => `calc(var(--ap-thumb) / 2 + (100% - var(--ap-thumb)) * ${p})`; // 棒の上の位置（つまみの半分ずつ内側）
       seekBox.style.setProperty('--gaps', gaps.length
-        ? `linear-gradient(to right, ${gaps.map(([a, b, fix]) => { // 流した所（赤の塗りの端 = --q まで）は --gap-done。fix = 通しでも消さない
-          const q = `clamp(${thumb(a)}, var(--q) * 100%, ${thumb(b)})`;
-          const [done, rest] = fix ? ['var(--gap-fix-done)', 'var(--gap-fix)'] : ['var(--gap-done)', 'var(--gap)'];
-          return `transparent ${thumb(a)}, ${done} ${thumb(a)}, ${done} ${q}, ${rest} ${q}, ${rest} ${thumb(b)}, transparent ${thumb(b)}`;
+        ? `linear-gradient(to right, ${gaps.map(([a, b]) => { // 流した所（赤の塗りの端 = --q まで）は --gap-done
+          const [l, r] = [a <= 0 ? '0%' : thumb(a), b >= 1 ? '100%' : thumb(b)]; // 棒の端に接する所は端まで（つまみの半分の赤が残らないように）
+          const q = `clamp(${l}, var(--q) * 100%, ${r})`;
+          return `transparent ${l}, var(--gap-done) ${l}, var(--gap-done) ${q}, var(--gap) ${q}, var(--gap) ${r}, transparent ${r}`;
         }).join(', ')})`
         : 'none');
     }
@@ -1061,6 +1074,10 @@
         const [dx, dy] = [from[i].left - to.left, from[i].top - to.top];
         if (to.width && from[i].width && (dx || dy)) e.animate({ translate: [`${dx}px ${dy}px`, '0 0'] }, { duration: ms('--t-slow'), easing: ease });
       });
+      if (motion) { // 滑る間は枠の外を切る（行が減ると、下の行から上がるチップの分だけ一瞬ポップアップに縦のスクロールバーが出る）
+        scopesEl.classList.add('is-moving');
+        setTimeout(() => scopesEl.classList.remove('is-moving'), ms('--t-slow'));
+      }
     };
     if (!motion) flip();
     else if (byBand) chip.animate({ opacity: [1, 0], scale: [1, .8] }, { duration: ms('--t-base'), easing: 'ease-in', fill: 'forwards' }).finished.then((a) => { // ap-out と同じ
