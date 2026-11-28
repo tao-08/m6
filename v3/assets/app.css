@@ -808,8 +808,9 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 .shell-panel__players a { color: inherit; }
 .shell-panel__players a:hover { color: var(--accent); }
 /* バンド単位の吹き出し（player.js の drawBubbles）: 上（被ったものは下）に吹き出しの分の余白。曲間をスキップするときは飛ばす所を薄く（--gaps） */
-.shell-panel .audio-player__seek { --rest: color-mix(in srgb, var(--border), var(--muted) 10%); --gap: var(--surface-2); --gap-done: color-mix(in srgb, var(--accent) 45%, var(--gap)); /* 未再生は灰色・飛ばす所はそれより薄い白寄り・流したあとの飛ばした所は赤と混ぜる */ transition: margin var(--t-slow) var(--ease-out); }
+.shell-panel .audio-player__seek { --rest: color-mix(in srgb, var(--border), var(--muted) 10%); --gap: var(--surface-2); --gap-done: color-mix(in srgb, var(--accent) 25%, var(--gap)); /* 未再生は灰色・飛ばす所はそれより薄い白寄り・流したあとの飛ばした所は赤と混ぜる */ transition: margin var(--t-slow) var(--ease-out); }
 .shell-panel .audio-player__seek.has-bubbles { margin-top: 22px; }
+.shell-panel .audio-player__seek.is-jumping { transition: margin var(--t-slow) var(--ease-out), --q var(--t-base) var(--ease-out); } /* 上の transition: margin が .is-jumping の --q を消すので両方書く */
 .shell-panel .audio-bubble.is-current { --bd: var(--accent); --ov: var(--accent-soft); color: var(--accent); } /* 再生中は赤（ポップアップの再生中の色にそろえる） */
 .shell-panel .audio-player__seek.has-below { margin-bottom: 22px; }
 .shell-panel .audio-player__range::-webkit-slider-runnable-track { background: var(--gaps, none), linear-gradient(to right, var(--accent) calc(var(--q) * 100%), var(--rest) calc(var(--q) * 100%)); }
@@ -903,7 +904,12 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 /* 範囲を変えたとき、新しく選ばれたチップの色をフェードで出す（player.js が .is-fresh を付ける） */
 .shell-panel__scopes .chip.is-fresh { animation: chip-fresh var(--t-slow) ease; }
 @keyframes chip-fresh { from { background-color: var(--surface-2); border-color: var(--border); color: inherit; } }
-@media (prefers-reduced-motion: reduce) { .shell-panel__scopes .chip.is-fresh { animation: none; } }
+/* 外れたチップは前の色・枠からフェードで戻す */
+.shell-panel__scopes .chip.was-current { animation: chip-was-current var(--t-slow) ease; }
+.shell-panel__scopes .chip.was-pending { animation: chip-was-pending var(--t-slow) ease; }
+@keyframes chip-was-current { from { background-color: var(--accent-soft); border-color: var(--accent); } }
+@keyframes chip-was-pending { from { color: var(--accent); border-color: var(--accent); } }
+@media (prefers-reduced-motion: reduce) { .shell-panel__scopes .chip:is(.is-fresh, .was-current, .was-pending) { animation: none; } }
 /* 外枠のお知らせ: 上（.toasts と同じ位置）。ポップアップより手前 */
 .shell-toasts { z-index: 60; }
 @media (prefers-reduced-motion: reduce) { .shell-panel, .audio-bubble, .audio-player__bar { transition: none; } }

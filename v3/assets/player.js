@@ -791,7 +791,7 @@
   };
   // 選んだ範囲が変わったら、新しいチップの色をフェードで出す（チップは作り直すので CSS の transition が効かない。.is-fresh = app.css）
   const buildScopes = () => {
-    const before = ['is-current', 'is-pending'].map((c) => scopesEl.querySelector(`.chip.${c}`)?.dataset.key);
+    const before = ['is-current', 'is-pending'].map((c) => scopesEl.querySelector(`.chip.${c}`)?.dataset.key ?? (scopesEl.children.length ? '' : undefined)); // '' = どれも選ばれていなかった、undefined = 初めて作る
     const it = cur();
     const list = [['サイト全体', 'all', 0]];
     if (it) {
@@ -810,7 +810,9 @@
       .map((x) => scopeItem(...x)));
     ['is-current', 'is-pending'].forEach((c, i) => {
       const to = scopesEl.querySelector(`.chip.${c}`);
-      if (to && before[i] !== undefined && to.dataset.key !== before[i]) to.classList.add('is-fresh');
+      if (before[i] === undefined || to?.dataset.key === before[i]) return;
+      to?.classList.add('is-fresh');
+      if (before[i]) scopesEl.querySelector(`.chip[data-key="${before[i]}"]:not(.is-current, .is-pending)`)?.classList.add(`was-${c.slice(3)}`); // 外れたチップは前の色・枠から戻す
     });
     showCounts();
   };
