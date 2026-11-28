@@ -239,6 +239,23 @@ function gemini_setlist_norm(string $t): string
 }
 
 /**
+ * 候補 [{title, artist}] に、アーティストの曲一覧にある試聴を preview として付ける。
+ *   候補の ▶ は曲の検索から試聴を探すが、iTunes の検索で出ない曲（「きみとぼく go!go!vanillas」は0件）は曲一覧まで探すので回数制限に当たる
+ */
+function gemini_setlist_with_previews(array $cands): array
+{
+    foreach ($cands as &$c) {
+        foreach (($c['artist'] ?? '') !== '' ? itunes_artist_tracks($c['artist']) : [] as $t => $url) {
+            if (gemini_setlist_norm((string)$t) === gemini_setlist_norm($c['title']) && ($url = itunes_preview_url($url)) !== null) {
+                $c['preview'] = $url;
+                break;
+            }
+        }
+    }
+    return $cands;
+}
+
+/**
  * ①（一覧から選ばせた結果）を曲ごとに確かめる。2026-11 に10バンド37曲で試し、自信ありの外れが7曲 → 1曲になった
  *   1. 聞き取れた歌詞の一節を Google 検索で曲名にする（gemini_setlist_lyrics）。①が自信ありで1位と同じなら確定
  *   2. 違えば、候補（①・歌詞の上位・①の候補）のうち試聴がある3曲とライブを聴き比べる（gemini_setlist_compare）。合えばその曲で確定

@@ -547,6 +547,7 @@ function setupTrackSearch() {
         const norm = (t) => t.normalize('NFKC').toLowerCase().replace(/\s/g, '');
         const track = res.ok ? (await res.json()).tracks?.find((t) => norm(t.title).startsWith(norm(c.title))) : null;
         if (track) {
+          track.preview_url ||= c.preview; // 検索で試聴を探しきれなかった曲は、検出のときに曲一覧で見つけた試聴
           if (!seen.has(track.key)) rows.push(trackRow(card, track));
           seen.add(track.key);
           continue;

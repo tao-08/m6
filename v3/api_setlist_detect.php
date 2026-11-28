@@ -114,7 +114,7 @@ if ($section !== null) { // ↻ はその場で待つ（1曲なので約20秒）
     if (!$cands) {
         fail(404, $exclude ? 'ほかの候補が見つかりませんでした' : '曲が見つかりませんでした');
     }
-    api_ok(['candidates' => $cands]);
+    api_ok(['candidates' => gemini_setlist_with_previews($cands)]);
 }
 if (in_array(setlist_job_get($bandId)['state'] ?? '', ['queued', 'running'], true)) {
     api_ok(['state' => 'running']); // もう順番待ち・解析中（二重に払わない）
