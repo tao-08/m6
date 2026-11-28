@@ -362,11 +362,18 @@ function album_listen_url(?string $app, array $album, string|false|null $cached 
  *   $listenApp  アイコンを出すアプリ（MUSIC_APPS のキー）/ $listenUrl  そのアイコンの行き先
  *   検索は全体の検索（search?q=）へ。アルバム名で探す
  */
+/**
+ * モーダルは大きく出すので、保存済みの小さいジャケット（200〜300px）を高画質版にする。
+ *   iTunes は 600px、Spotify は 640px の同じ画像に書き換える（songs.php の songs_large_art と同じ）
+ */
+function album_large_art(?string $art): ?string
+{
+    return $art === null ? null : str_replace('/ab67616d00001e02', '/ab67616d0000b273', preg_replace('/\d+x\d+bb/', '600x600bb', $art));
+}
+
 function album_open_attrs(string $title, ?int $year, ?string $art, string $listenApp, string $listenUrl, string $artist = ''): string
 {
-    // モーダルは大きく出すので、保存済みの小さいジャケット（200〜300px）を高画質版にする。
-    // iTunes は 600px、Spotify は 640px の同じ画像に書き換える（songs.php の songs_large_art と同じ）
-    $art = $art === null ? null : str_replace('/ab67616d00001e02', '/ab67616d0000b273', preg_replace('/\d+x\d+bb/', '600x600bb', $art));
+    $art = album_large_art($art);
     return ' data-album-open data-album-title="' . h($title) . '" data-album-artist="' . h($artist) . '" data-album-year="' . ($year ? (int)$year : '')
         . '" data-album-art="' . h($art) . '" data-album-app="' . h($listenApp) . '" data-album-url="' . h($listenUrl) . '"';
 }

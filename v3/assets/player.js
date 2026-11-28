@@ -301,6 +301,12 @@
     ytBox.hidden = !it.video;
     $('.shell-panel__liveline > .tag--mix').hidden = !!(it.video || it.yt);
     if (show.art) artImg.src = show.art;
+    const artBtn = $('[data-shell-artbtn]'); // ジャケットを押すとアルバムのモーダル（app_album.js の setupAlbumModal）
+    artBtn.disabled = !(show.art && show.alb);
+    if (show.alb) {
+      const a = show.alb;
+      Object.assign(artBtn.dataset, { albumOpen: '', albumTitle: a.title, albumArtist: a.artist, albumYear: a.year || '', albumArt: a.art || '', albumApp: a.app, albumUrl: a.url });
+    }
     const live = $('[data-shell-live]');
     live.textContent = it.year ? `${it.year}年度 ${it.live}` : it.live;
     if (it.live_id) live.href = `live?id=${it.live_id}`; else live.removeAttribute('href');
@@ -469,7 +475,7 @@
     const fresh = new Map(data.items.map((q) => [q.song_id ?? q.src, q])); // song_id が無いものは src で
     queue.forEach((q) => {
       const f = fresh.get(q.song_id ?? q.src);
-      if (f) for (const k of ['title', 'artist_id', 'artist', 'album', 'art', 'band', 'live', 'players', 'through_end_ms', 'mc_ms', 'mc_kind', 'intro_ms', 'intro_se', 'mc_se']) q[k] = f[k]; // 通しの区切り: 前に保存したキューは古い数え方のまま（終わりのチャプターで止まっていた）
+      if (f) for (const k of ['title', 'artist_id', 'artist', 'album', 'art', 'band', 'live', 'players', 'through_end_ms', 'mc_ms', 'mc_kind', 'intro_ms', 'intro_se', 'mc_se', 'alb']) q[k] = f[k]; // 通しの区切り: 前に保存したキューは古い数え方のまま（終わりのチャプターで止まっていた）
     });
     save();
     if (queue.includes(it) && cur()?.band_id === it.band_id) render();
@@ -648,9 +654,9 @@
   titleEl.addEventListener('click', () => setPanel(!isOpen()));
   window.abbeyShufflePanel = () => setPanel(!isOpen());
   const closeOutside = (e) => {
-    if (isOpen() && !panel.contains(e.target) && e.target !== titleEl && !e.target.closest?.('[data-shuffle-menu] > summary')) setPanel(false);
+    if (isOpen() && !panel.contains(e.target) && e.target !== titleEl && !e.target.closest?.('[data-shuffle-menu] > summary, [data-album-modal]')) setPanel(false); // アルバムのモーダルの中は外ではない
   };
-  const closeOnEsc = (e) => { if (e.key === 'Escape' && !filterDlg.open) setPanel(false); }; // 絞り込みの Esc はモーダルだけ閉じる
+  const closeOnEsc = (e) => { if (e.key === 'Escape' && !filterDlg.open && !document.querySelector('[data-album-modal]').open) setPanel(false); }; // モーダル（絞り込み・アルバム）の Esc はモーダルだけ閉じる
   document.addEventListener('click', closeOutside);
   document.addEventListener('keydown', closeOnEsc);
   // 範囲: ポップアップに常に出す（チップ）。サイト全体・再生中のライブ/バンド/アーティスト・中のページの範囲（ヘッダーのメニューと同じもの）
@@ -1042,4 +1048,5 @@
   const fitHeight = () => { document.body.style.height = `${innerHeight}px`; };
   fitHeight();
   addEventListener('resize', fitHeight);
+  setupAlbumModal(); // ジャケットを押したときのアルバムのモーダル（app_album.js）
 })();

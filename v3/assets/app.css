@@ -751,7 +751,8 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 .shell-panel[hidden] { display: grid !important; visibility: hidden; pointer-events: none; opacity: 0; scale: .96; }
 @starting-style { .shell-panel:not([hidden]) { opacity: 0; scale: .96; } }
 .shell-panel__head { display: flex; gap: 12px; align-items: center; min-width: 0; }
-.shell-panel__art { flex: none; width: 104px; height: 104px; border-radius: var(--r-md); overflow: hidden; display: grid; place-items: center; background: var(--surface-2); color: var(--muted); }
+.shell-panel__art { flex: none; width: 104px; height: 104px; padding: 0; border: 0; font: inherit; cursor: pointer; border-radius: var(--r-md); overflow: hidden; display: grid; place-items: center; background: var(--surface-2); color: var(--muted); } /* 押すとアルバムのモーダル */
+.shell-panel__art:disabled { cursor: default; }
 .shell-panel__video { width: 100%; aspect-ratio: 16 / 9; min-height: 200px; border-radius: var(--r-md); overflow: hidden; background: #000; } /* YouTube の曲: ジャケットの代わりに上に動画（高さ 200px 以上は YouTube の決まり） */
 .shell-panel__video[hidden] { display: block !important; position: absolute; top: 0; left: 0; width: 356px; visibility: hidden; pointer-events: none; } /* MIX の曲の間も同じ理由で消さない（次の動画を先に読んでおく） */
 .shell-panel__video iframe { display: block; width: 100%; height: 100%; border: 0; }

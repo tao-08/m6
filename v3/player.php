@@ -48,6 +48,8 @@ if (!preg_match('/^[A-Za-z0-9_-]*(\.php)?(\?[^#\s]*)?$/', $u) || preg_match('/^p
     <link rel="stylesheet" href="<?= asset_url('assets/app.css') ?>">
     <?php if (($instCss = instrument_color_css()) !== ''): ?><style><?= $instCss ?></style><?php endif; // 演奏者の楽器ラベルの色（partials/header.php と同じ） ?>
     <script src="<?= asset_url('assets/app_player.js') ?>" defer></script><!-- audioProbeDuration だけ使う（関数の定義だけで、何も動かさない） -->
+    <script>var reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches; // app_album.js が使う（中のページは app.js が持つ）</script>
+    <script src="<?= asset_url('assets/app_album.js') ?>" defer></script><!-- setupAlbumModal だけ使う（player.js が呼ぶ） -->
     <script src="<?= asset_url('assets/player.js') ?>" defer></script>
     <link rel="preconnect" href="https://www.youtube.com"><link rel="preconnect" href="https://i.ytimg.com"><!-- YouTube の曲の読み込みを早める -->
 </head>
@@ -58,10 +60,10 @@ if (!preg_match('/^[A-Za-z0-9_-]*(\.php)?(\?[^#\s]*)?$/', $u) || preg_match('/^p
     <div class="shell-panel" data-shell-panel role="dialog" aria-label="再生中の曲" hidden>
         <div class="shell-panel__video" data-shell-yt hidden></div><!-- YouTube の曲のときの動画（player.js の yt） -->
         <div class="shell-panel__head">
-            <div class="shell-panel__art"><img data-shell-art alt="" width="104" height="104" hidden><?= icon('music_note', 'icon--fill') ?></div>
+            <button type="button" class="shell-panel__art" data-shell-artbtn aria-haspopup="dialog" aria-label="アルバム" disabled><img data-shell-art alt="" width="104" height="104" hidden><?= icon('music_note', 'icon--fill') ?></button><!-- 押すとアルバムのモーダル（セトリと同じ） -->
             <div class="shell-panel__meta">
                 <div class="shell-panel__liveline"><a class="shell-panel__live" data-shell-live target="site"></a><?= mix_tag() // 流しているのはミックス（YouTube はまだ流さない） ?></div>
-                <div class="shell-panel__liveline"><a class="shell-panel__band" data-shell-bandlink target="site"></a><span class="tag" data-shell-se hidden>SE</span></div>
+                <div class="shell-panel__liveline"><a class="shell-panel__band" data-shell-bandlink target="site"></a><span class="se-mark" data-shell-se hidden>SE</span></div>
                 <strong class="shell-panel__song" data-shell-song></strong>
                 <div class="shell-panel__artistline"><a class="shell-panel__artist" data-shell-artist target="site"></a><span class="shell-panel__album" data-shell-album></span></div>
             </div>
@@ -108,6 +110,7 @@ if (!preg_match('/^[A-Za-z0-9_-]*(\.php)?(\?[^#\s]*)?$/', $u) || preg_match('/^p
     <audio data-shell-audio preload="none"></audio>
     <div class="toasts shell-toasts" data-shell-toasts aria-live="polite"></div>
 </div>
+<?php require __DIR__ . '/partials/album_modal.php'; ?>
 <script type="application/json" id="shell-data"><?= json_encode(['scope' => $scope, 'id' => $id, 'resume' => isset($_GET['resume']), 'admin' => is_admin()], JSON_HEX_TAG) ?></script>
 </body>
 </html>

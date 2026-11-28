@@ -23,6 +23,7 @@ declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/live_image.php'; // LIVE_IMAGE_DIR・live_file_disk_name
 require_once __DIR__ . '/lib/youtube.php';    // band_video_urls・youtube_video_id
+require_once __DIR__ . '/lib/tracks.php';       // track_listen_url（ジャケットを押したときのアルバムのモーダル）
 require_once __DIR__ . '/lib/audio_stream.php'; // audio_orig_size（音源は 160 に置き換えるので、data-size は元の大きさ）
 
 header('Content-Type: application/json; charset=utf-8');
@@ -83,7 +84,8 @@ $in = implode(',', array_fill(0, count($bandIds), '?'));
 
 // セトリ（SE 以外・セトリ順）
 $songs = [];
-$st = $pdo->prepare("SELECT s.song_id, s.band_id, s.title, s.is_se, s.track_no, s.video_start, s.video_no, t.artwork_url, t.album_title, a.artist_id, a.name AS artist
+$st = $pdo->prepare("SELECT s.song_id, s.band_id, s.title, s.is_se, s.track_no, s.video_start, s.video_no, t.artwork_url, t.album_title,
+    t.source, t.track_id, t.title AS track_title, t.artist_name AS track_artist, t.release_year, a.artist_id, a.name AS artist
     FROM song s
     JOIN band b ON b.band_id = s.band_id
     LEFT JOIN track t ON t.source = s.track_source AND t.track_id = s.track_id
@@ -94,8 +96,19 @@ $ses = []; // バンドの SE（セトリの順。アーティストは曲ごと
 foreach ($st as $r) {
     if ($r['is_se']) $ses[(int)$r['band_id']][] = $r; else $songs[(int)$r['band_id']][] = $r;
 }
+// ジャケットを押したときのアルバムのモーダル（band.php のセトリの album_open_attrs と同じ中身）
+$viewerApp = member_music_app($pdo, current_user()['member_id'] ?? null);
+$albumOf = static fn(array $s): ?array => $s['source'] === null ? null : [
+    'title' => (string)($s['album_title'] ?? $s['track_title']),
+    'artist' => (string)$s['track_artist'],
+    'year' => $s['release_year'] ? (int)$s['release_year'] : null,
+    'art' => album_large_art($s['artwork_url']),
+    'app' => listen_app($viewerApp, (string)$s['source']),
+    'url' => track_listen_url($viewerApp, ['source' => $s['source'], 'track_id' => $s['track_id'], 'title' => $s['track_title'], 'artist_name' => $s['track_artist']]),
+];
 // SE の間に出す曲名・ジャケット
 $seInfo = static fn(?array $s): ?array => $s === null ? null : [
+    'alb' => $albumOf($s),
     'title' => (string)$s['title'],
     'art' => $s['artwork_url'] ? preg_replace('/\d+x\d+bb/', '300x300bb', (string)$s['artwork_url']) : null,
     'artist' => $s['artist'] !== null ? (string)$s['artist'] : null,
@@ -223,6 +236,7 @@ foreach ($groups as $key => $chs) {
             'artist'   => $song['artist'] !== null ? (string)$song['artist'] : null,
             'art'      => $song['artwork_url'] ? preg_replace('/\d+x\d+bb/', '300x300bb', (string)$song['artwork_url']) : null, // band.php のセトリと同じ 300px 版
             'album'    => $song['album_title'] !== null ? (string)$song['album_title'] : null,
+            'alb'      => $albumOf($song),
             'band_id'  => $bandId,
             'band'     => (string)$c['band'],
             'live_id'  => (int)$c['live_id'],
@@ -270,7 +284,7 @@ foreach ($videoUrls as $bandId => $urls) {
                 'song_id' => (int)$song['song_id'], 'title' => (string)$song['title'],
                 'artist_id' => $song['artist_id'] !== null ? (int)$song['artist_id'] : null, 'artist' => $song['artist'] !== null ? (string)$song['artist'] : null,
                 'art' => $song['artwork_url'] ? preg_replace('/\d+x\d+bb/', '300x300bb', (string)$song['artwork_url']) : null,
-                'album' => $song['album_title'] !== null ? (string)$song['album_title'] : null,
+                'album' => $song['album_title'] !== null ? (string)$song['album_title'] : null, 'alb' => $albumOf($song),
                 'players' => array_values($players), 'start_ms' => (int)$song['video_start'] * 1000, 'end_ms' => $end, 'through_end_ms' => $end,
                 '_o' => [$b['rank'], (int)$song['track_no']],
             ];
