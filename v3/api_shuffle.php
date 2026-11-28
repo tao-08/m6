@@ -3,7 +3,7 @@
  * =====================================================================
  *  api_shuffle.php — シャッフル再生する曲の一覧（JSON）。player.php の外枠が呼ぶ。YouTube の曲は管理者だけ（準備中）
  * =====================================================================
- *  YouTube は、MP3（YouTube の区分の音源。band_audio / band_drive_file の video_id。migrations/153）とセットリストとチャプター（audio_key 'y:動画ID'）がそろった動画だけ
+ *  YouTube は、MP3（YouTube の区分の音源。band_audio / band_drive_file の video_id。migrations/153）とセットリストとチャプター（audio_key 'y:動画ID'）がそろい、チャプターが編集済み（lib/chapter_job.php の edited）の動画だけ
  *    その MP3 を MIX と同じ区切り（MC・通し）で流す（yt = true。絞り込みは YouTube 側）。曲は video_chapter_songs
  *  リクエスト（GET）: ?scope=all | ?scope=live&id=ライブID | ?scope=band&id=バンドID | ?scope=member&id=メンバーID（その人が演奏した曲） | ?scope=artist&id=アーティストID（そのアーティストの曲）
  *  レスポンス: {"items": [{song_id, title, artist_id, artist, art, album, band_id, band, live_id, live, year, players, src, size, start_ms, end_ms, through_end_ms, mc_ms, mc_kind, intro_ms}, ...]}（並びはライブ・出演順・時間順 = シャッフルしないときの順。混ぜるのは JS）
@@ -23,6 +23,7 @@ require_once __DIR__ . '/lib/live_image.php'; // LIVE_IMAGE_DIR・live_file_disk
 require_once __DIR__ . '/lib/youtube.php';    // band_video_urls・youtube_video_id
 require_once __DIR__ . '/lib/tracks.php';       // track_listen_url（ジャケットを押したときのアルバムのモーダル）
 require_once __DIR__ . '/lib/audio_stream.php'; // audio_orig_size（音源は 160 に置き換えるので、data-size は元の大きさ）
+require_once __DIR__ . '/lib/chapter_job.php';   // chapter_job_get（YouTube はチャプターが編集済みの動画だけ）
 
 header('Content-Type: application/json; charset=utf-8');
 if (current_user() === null) {
@@ -162,12 +163,12 @@ foreach ($st as $r) {
     }
 }
 
-// YouTube のチャプター（'y:動画ID'）: [動画 ID, 何本目, 全部で何本]。流すのは YouTube の区分の音源（MP3）がある動画だけ
+// YouTube のチャプター（'y:動画ID'）: [動画 ID, 何本目, 全部で何本]。流すのは YouTube の区分の音源（MP3）があり、チャプターを人が直した（編集済み。setlist_jobs.php の ✓）動画だけ
 $ytKeys = [];
 foreach ($videoUrls as $bandId => $urls) {
     foreach ($urls as $no => $url) {
         $vid = youtube_video_id($url);
-        if ($vid !== null && isset($ytFile[$bandId . '|y:' . $vid])) {
+        if ($vid !== null && isset($ytFile[$bandId . '|y:' . $vid]) && (chapter_job_get($vid)['state'] ?? '') === 'edited') {
             $src[$bandId . '|y:' . $vid] = $ytFile[$bandId . '|y:' . $vid];
             $ytKeys[$bandId . '|y:' . $vid] = [$vid, $no, count($urls)];
         }
