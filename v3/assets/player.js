@@ -316,6 +316,7 @@
     let capSec = Infinity; // 受け取る範囲の終わり（音源の秒）
     // 読み直す間は前の曲を止めておく（鳴り続けると、表示だけ次の曲で音は前の曲になり、古い位置で終わりを判定して勝手に進む）
     busy = true;
+    if (play) loading(true); // 長さを調べている間も輪を回す（止めた pause では消さない）
     if (!el.paused) el.pause();
     if (t > 0 || endOf(it) !== null) {
       const total = await probe(it);
@@ -422,13 +423,13 @@
   };
 
   on('play', () => setIcon(true));
-  on('pause', () => { setIcon(false); if (cur() && !busy) savePos(nowSec()); });
+  on('pause', () => { if (busy) return; setIcon(false); if (cur()) savePos(nowSec()); }); // 読み直しのために止めたときは、一時停止の表示にしない
   on('loadstart', () => { if (srcSeq === loadSeq) busy = false; }); // 連打で前の呼び出しが入れた src の loadstart では戻さない
   // 読み込み中は再生ボタンの輪を回す（app_player.js と同じ）
   const loading = (v) => playBtns.forEach((b) => b.classList.toggle('is-loading', v));
   on('play', () => loading(audio.readyState < 3));
   on('waiting', () => loading(true));
-  ['pause', 'ended', 'error'].forEach((ev) => on(ev, () => loading(false)));
+  ['pause', 'ended', 'error'].forEach((ev) => on(ev, () => { if (!(ev === 'pause' && busy)) loading(false); }));
   on('playing', () => { fails = 0; loading(false); });
   on('ended', next);
   on('error', () => { if (audio.getAttribute('src')) skip(); });
