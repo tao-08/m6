@@ -903,6 +903,13 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 @media (prefers-reduced-motion: reduce) { .shell-panel__scopes .chip .icon { transition: none; } }
 .shell-panel__scopes .chip__count { margin-left: 4px; color: var(--muted); }
 .shell-panel__scopes .chip__count:empty { display: none; }
+.shell-panel__scopes .chip__count.is-new { animation: chip-count-in var(--t-slow) ease; } /* 曲単位 ⇔ バンド単位で変わった数 */
+@keyframes chip-count-in { from { opacity: 0; } }
+/* バンド単位では再生中のバンドを隠す（幅を縮めてフェード。右の gap の分も詰める） */
+.shell-panel__scopes > .is-playing-band { max-width: 20em; overflow: hidden;
+  transition: max-width var(--t-slow) var(--ease-out), margin-right var(--t-slow) var(--ease-out), opacity var(--t-base) ease, visibility var(--t-slow); }
+.shell-panel__scopes.is-band > .is-playing-band { max-width: 0; margin-right: -6px; opacity: 0; visibility: hidden; }
+@media (prefers-reduced-motion: reduce) { .shell-panel__scopes > .is-playing-band, .shell-panel__scopes .chip__count.is-new { transition: none; animation: none; } }
 .shell-panel__scopes .chip__name { display: inline-block; max-width: 8em; margin-left: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; font-weight: 700; } /* 長い名前は … で切る（全体は title） */
 .shell-panel__scopes .chip.is-current { background: var(--accent-soft); border-color: var(--accent); } /* いま流している範囲（.chip--me と同じ） */
 .shell-panel__scopes .chip.is-pending { color: var(--accent); font-weight: 700; border-color: var(--accent); border-style: dashed; } /* 次の曲から変える範囲 */

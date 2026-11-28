@@ -340,9 +340,11 @@
       if (total) {
         off = Math.round(t * it.size / total);
         // 曲の終わり + 3秒分で送るのを止めてもらう（1曲分だけ受け取る。見積もりのずれで早く切れないよう余裕を持たせ、止めるのは timeupdate）
+        // バンド単位は通しが OFF でも MC の終わりまで受け取る（通しの切り替えで読み直して音が途切れないように。止めるのは timeupdate）
+        const fullEnd = (q) => (byBand && q.through_end_ms !== undefined ? q.through_end_ms : endOf(q));
         let last = idx; // 続きでつながる曲の最後まで受け取る
-        while (joined(queue[last], queue[last + 1])) last += 1;
-        const end = endOf(queue[last]);
+        while (byBand && queue[last + 1]?.src === it.src && queue[last + 1].start_ms === fullEnd(queue[last])) last += 1;
+        const end = fullEnd(queue[last]);
         if (end !== null) { to = `&to=${Math.round((end / 1000 + 3) * it.size / total)}`; capSec = end / 1000; }
       } else if (t > 0) { skip(); return; } // 頭からなら長さがわからなくても全部流せる
     }
@@ -758,7 +760,13 @@
     if (data) livesDone.set(url, data);
     const items = data ? data.items.filter(passes) : [];
     const bands = byBand && !url.includes('scope=band&'); // バンド単位はバンドの数（バンドの範囲は曲数のまま）
-    n.textContent = !data ? '' : bands ? `${new Set(items.map((q) => q.band_id)).size}バンド` : `${items.reduce((a, q) => a + q.n, 0)}曲`;
+    const txt = !data ? '' : bands ? `${new Set(items.map((q) => q.band_id)).size}バンド` : `${items.reduce((a, q) => a + q.n, 0)}曲`;
+    if (n.textContent && txt && n.textContent !== txt) { // 変わった数はフェードで出す（app.css .is-new）
+      n.classList.remove('is-new');
+      void n.offsetWidth; // 続けて変わってもアニメを頭から
+      n.classList.add('is-new');
+    }
+    n.textContent = txt;
   });
   const scopeItem = (label, scope, id, name) => {
     const li = document.createElement('li');
@@ -792,6 +800,7 @@
       b.append(nm);
     }
     li.append(b);
+    if (label === '再生中のバンド' && !b.classList.contains('is-current')) li.className = 'is-playing-band'; // バンド単位では隠す（app.css。選んでいる範囲なら残す）
     return li;
   };
   // 選んだ範囲が変わったら、新しいチップの色をフェードで出す（チップは作り直すので CSS の transition が効かない。.is-fresh = app.css）
@@ -983,12 +992,14 @@
 
   // 通し: 曲間（MC など）も流す。ON にしたら、いまの曲も MC まで受け取れるよう、いまの位置から読み直す（OFF は timeupdate で止まるだけ）
   const contBtn = $('[data-shell-cont]');
+  // 通しで流す所まで受け取っていないときだけ読み直す（読み直すと一瞬途切れる）
+  const needMore = () => thru() && cur() && audio.getAttribute('src') && (endOf(cur()) ?? Infinity) / 1000 > elEnd;
   const showCont = () => contBtn.setAttribute('aria-pressed', String(!cont)); // 光る = 曲間をスキップしている
   contBtn.addEventListener('click', () => {
     cont = !cont;
     save();
     showCont();
-    if (thru() && cur() && audio.getAttribute('src')) playAt(nowSec(), !audio.paused);
+    if (needMore()) playAt(nowSec(), !audio.paused);
     if (cur()) showPos(nowSec()); // 吹き出しの MC・飛ばす所
     toast(cont ? '曲間も再生します' : '曲間をスキップします');
   });
@@ -1011,6 +1022,7 @@
     unitBtn.setAttribute('aria-label', byBand ? 'バンド単位' : '曲単位');
     unitBtn.title = byBand ? 'バンド単位' : '曲単位';
     contBtn.parentElement.classList.toggle('is-band', byBand); // 通しのボタンが滑って出る・隠れる（CSS）
+    scopesEl.classList.toggle('is-band', byBand); // 再生中のバンドのチップが縮んで消える・戻る（CSS）
     showCounts(); // チップの「◯曲」⇔「◯バンド」
   };
   unitBtn.addEventListener('click', () => {
@@ -1020,7 +1032,7 @@
     showUnit();
     if (cur()) showPos(nowSec()); // シークバーの範囲・吹き出し
     toast(byBand ? 'バンド単位で再生します' : '曲単位で再生します');
-    if (!was && thru() && cur() && audio.getAttribute('src')) playAt(nowSec(), !audio.paused); // 通しが効き始めたら MC まで受け取れるよう読み直す
+    if (!was && needMore()) playAt(nowSec(), !audio.paused); // 通しが効き始めたら MC まで受け取れるよう読み直す
   });
 
   // 閉じる: 再生をやめて、いま中で開いているページだけにする（止めた位置は残す。アイコンで開き直せる）
