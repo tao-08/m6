@@ -339,6 +339,20 @@ function setupAudioPlayers(root = document) {
 
     // 選んだチップに印を付け、時間の入力欄（選んだときだけ開く）を今の値にそろえる
     const atInput = fig.querySelector('[data-ap-at]');
+    const firstSel = fig.querySelector('[data-ap-first]');
+    firstSel?.addEventListener('change', async () => {
+      const was = chap.first || 1;
+      chap.first = Number(firstSel.value);
+      render();
+      try {
+        await apiPost('api_audio_chapter.php', { band_id: chap.band, action: 'first', key: chap.key, first: chap.first }, '保存できませんでした');
+      } catch (e) {
+        flashToast(e.message, 'error');
+        chap.first = was;
+        render();
+        syncSel();
+      }
+    });
     const syncSel = () => {
       if (!chap) return;
       const c = chap.list.find((x) => x.id === selId);
@@ -346,6 +360,10 @@ function setupAudioPlayers(root = document) {
       fig.classList.toggle('has-sel', !!c && fig.classList.contains('is-editing'));
       for (const [id, e] of els) e.chip.classList.toggle('is-selected', id === selId);
       if (c && document.activeElement !== atInput) atInput.value = fmtTime(c.ms); // 打っている最中は触らない
+      if (firstSel) { // 開始の曲: 1つ目の曲のチップを選んだときだけ
+        firstSel.hidden = !c || c !== chap.list.find((x) => x.kind === 'song');
+        firstSel.value = String(chap.first || 1);
+      }
     };
 
     // 吹き出しの上下（.is-below = シークバーの下。上下の移動は CSS の top の transition で滑る）
@@ -374,8 +392,8 @@ function setupAudioPlayers(root = document) {
       if (!chap) return;
       const list = chap.list;
       const motion = !reduced.matches;
-      let n = 0;
-      let se = 0; // SE は時間順に n 個目 = セトリの n 個目の SE（曲の番号には数えない）
+      let n = (chap.first || 1) - 1; // 途中の曲から始まる音源は、開始の曲から数える（lib/audio_player.php の first）
+      let se = chap.se_before?.[n] ?? 0; // SE は時間順に n 個目 = セトリの n 個目の SE（曲の番号には数えない）。開始の曲より前の SE は飛ばす
       const labels = list.map((c) => {
         if (c.kind === 'end') return { short: '終', full: n ? `${n}. End` : 'End' }; // 曲の終わり（番号には数えない。チップは直前の曲の番号で「4. End」）
         if (c.kind === 'se') {

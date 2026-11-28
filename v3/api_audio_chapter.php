@@ -15,6 +15,7 @@
  *      すぐ {"state": "running"} を返す。画面を閉じても続く。結果は status で見る
  *    {"action": "status", "band_id": 12, "key": "a:3"}   {"state": "none" | "queued" | "running" | "saved" | "error", "error"?, "chapters": [...]}
  *    {"action": "discard", "band_id": 12, "key": "a:3"}  解析中のものを止める（「中止」。結果を書かない）
+ *    {"action": "first", "band_id": 12, "key": "a:3", "first": 3}  開始の曲（途中の曲から始まる音源。migrations/156）。返事に "first" も付く
  *  レスポンス（JSON）: {"chapters": [{"id", "kind", "ms"}, ...]}  その音源の今のチャプター全部（時間順）
  *  エラー            : {"error": "..."}（400 / 401 / 404 / 405）
  * =====================================================================
@@ -49,9 +50,9 @@ function audio_chapter_valid(mixed $kind, mixed $ms): bool
     return in_array($kind, ['mc', 'song', 'end', 'se'], true) && is_int($ms) && $ms >= 0 && $ms <= AUDIO_CHAPTER_MAX_MS;
 }
 
-if (in_array($action, ['add', 'replace', 'auto', 'status', 'discard'], true)) {
+if (in_array($action, ['add', 'replace', 'auto', 'status', 'discard', 'first'], true)) {
     $key = (string)($body['key'] ?? '');
-    $items = in_array($action, ['auto', 'status', 'discard'], true) ? [] : [['kind' => $body['kind'] ?? null, 'ms' => $body['at_ms'] ?? null]];
+    $items = in_array($action, ['auto', 'status', 'discard', 'first'], true) ? [] : [['kind' => $body['kind'] ?? null, 'ms' => $body['at_ms'] ?? null]];
     if ($action === 'replace') {
         $items = is_array($body['chapters'] ?? null) ? array_values($body['chapters']) : null;
         if ($items === null) {
@@ -108,6 +109,18 @@ if (in_array($action, ['add', 'replace', 'auto', 'status', 'discard'], true)) {
         api_detach(['state' => 'running']);
         chapter_job_run($id, $bandId, $at, $cfg);
         exit;
+    }
+    if ($action === 'first') {
+        $first = $body['first'] ?? null;
+        if (!is_int($first) || $first < 1 || $first > 999) {
+            fail(400, '曲の指定が正しくありません');
+        }
+        if ($first === 1) { // 1曲目からは行を持たない
+            $pdo->prepare('DELETE FROM band_audio_first WHERE band_id = ? AND audio_key = ?')->execute([$bandId, $key]);
+        } else {
+            $pdo->prepare('INSERT INTO band_audio_first (band_id, audio_key, first_song) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE first_song = VALUES(first_song)')->execute([$bandId, $key, $first]);
+        }
+        api_ok(['first' => $first, 'chapters' => audio_chapter_list(audio_chapters($pdo, $bandId)[$key] ?? [])]);
     }
     $ins = $pdo->prepare('INSERT INTO band_audio_chapter (band_id, audio_key, kind, at_ms) VALUES (?, ?, ?, ?)');
     if ($action === 'add') {

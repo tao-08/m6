@@ -706,6 +706,7 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 .audio-player__at { width: 6em; padding: 6px 10px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); color: var(--text);
   font-size: var(--fs-md); font-variant-numeric: tabular-nums; text-align: center; }
 .audio-player__at:invalid { border-color: var(--danger); }
+.audio-player__first { max-width: 100%; padding: 6px 10px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); color: var(--text); font-size: var(--fs-md); }
 @media (pointer: coarse) { .audio-player__move > * { min-height: var(--ctl-h); } } /* 指で押しやすい高さ */
 /* チャプターのチップ: 本体を押すとその位置から再生（編集モードでは選ぶ）。再生中のものは緑・選んだものは赤い輪。✕ は編集モード（.is-editing）のときだけ横から出る */
 .audio-chapter { gap: 6px; transition: border-color var(--t-fast) ease, background-color var(--t-fast) ease, box-shadow var(--t-fast) ease; }
