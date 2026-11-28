@@ -585,7 +585,9 @@
     if (!it) return;
     const t = nowSec() * 1000;
     showPos(t / 1000);
-    if (gapKind(it) !== mcShown) render(); // MC・SE に入った・抜けた
+    const g = gapKind(it);
+    const over = endOf(it) !== null && t >= endOf(it); // 曲の終わりを越えた: 下で次の曲へ進めるので、ここでは動かさない（MC を抜けたと見て逆向きに動くため）
+    if (g !== mcShown && !over) { const d = g === 'mc' || mcShown === 'intro' ? 1 : -1; render(); slide(d); } // MC・SE に入った・抜けた（先へ進んだら右から、戻ったら左から）
     if (Math.abs(t / 1000 - savedAt) >= 3) savePos(t / 1000);
     const end = endOf(it);
     if (end === null) return; // ファイルの最後まで流す曲は ended で次へ
