@@ -19,11 +19,12 @@ $fileId = (string)($_GET['f'] ?? '');
 $mime = '';
 $size = 0;
 if ($bandId > 0 && drive_id_valid($fileId)) {
-    $st = db()->prepare('SELECT mime_type, size FROM band_drive_file WHERE band_id = ? AND file_id = ?');
+    $st = db()->prepare('SELECT mime_type, size, video_id FROM band_drive_file WHERE band_id = ? AND file_id = ?');
     $st->execute([$bandId, $fileId]);
     $row = $st->fetch();
     $mime = (string)($row['mime_type'] ?? '');
     $size = (int)($row['size'] ?? 0);
+    $mix = $row && $row['video_id'] === null;
 }
 if (!str_starts_with($mime, 'audio/')) {
     http_response_code(404);
@@ -55,4 +56,4 @@ if ($err = drive_cache_ensure($fileId, $size, $miss)) {
     $fail($err[0], $err[1], $err[2]);
 }
 header('X-Cache: ' . ($miss ? 'MISS' : 'HIT'));
-audio_stream_file($dat, $mime);
+audio_stream_file($dat, $mime, null, $mix); // MIX は音量を下げる（lib/audio_stream.php）

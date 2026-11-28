@@ -73,7 +73,8 @@ if ($kind === 'band_audio') {
     session_write_close();
     require_once __DIR__ . '/lib/audio_stream.php';
     audio_stream_file($path, 'audio/mpeg', isset($_GET['dl'])
-        ? preg_replace('/[^\p{L}\p{N}_-]+/u', '_', (string)$img['title']) . '_' . (int)$img['image_id'] . '.mp3' : null);
+        ? preg_replace('/[^\p{L}\p{N}_-]+/u', '_', (string)$img['title']) . '_' . (int)$img['image_id'] . '.mp3' : null,
+        $img['video_id'] === null); // MIX は音量を下げる
     exit;
 }
 if (($isPdf || $isOther) && isset($_GET['t'])) {

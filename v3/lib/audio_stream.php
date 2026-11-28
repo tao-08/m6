@@ -44,18 +44,34 @@ function audio_orig_size(string $path): int
     return $n > 0 ? $n : (is_file($path) ? (int)filesize($path) : 0);
 }
 
-/** まだなら 160 に置き換える。同時の要求は flock で1つだけが作り、ほかは待つ */
-function audio_shrink(string $path): void
+/**
+ * MIX（YouTube の区分でない音源）を下げる量。シャッフル再生で YouTube の音源より大きく聞こえるため。iPhone は再生側で音量を変えられないので、ファイルを作るときに下げる
+ *   下げたら横に印 <元>.160q を置く（中身 ok / 作れなかったら fail）。印の無い MIX は、もう 160 にしてあっても次に流すときに作り直す
+ *   印は数字で始める: 元を消す・差し替えるときに .[0-9]* でまとめて消される（drive_cache_derived・live_image.php）
+ *   shortcut: 区分をあとから YouTube に変えても下げたまま。気になるなら区分の変更で印とファイルを作り直す
+ */
+const AUDIO_MIX_GAIN_DB = -4;
+
+function audio_quiet_mark(string $path): string
+{
+    return audio_mark($path) . 'q';
+}
+
+/** まだなら 160 に置き換える（$quiet: MIX なので音量も下げる）。同時の要求は flock で1つだけが作り、ほかは待つ */
+function audio_shrink(string $path, bool $quiet = false): void
 {
     $mark = audio_mark($path);
-    clearstatcache(true, $mark);
-    if (is_file($mark) || !($lock = @fopen($mark . '.lock', 'c'))) {
+    $todo = static function () use ($path, $mark, $quiet): bool {
+        clearstatcache(true, $mark);
+        clearstatcache(true, audio_quiet_mark($path));
+        return !is_file($mark) || ($quiet && !is_file(audio_quiet_mark($path)));
+    };
+    if (!$todo() || !($lock = @fopen($mark . '.lock', 'c'))) {
         return;
     }
     if (flock($lock, LOCK_EX)) {
-        clearstatcache(true, $mark);
-        if (!is_file($mark)) {
-            audio_shrink_make($path, $mark);
+        if ($todo()) {
+            audio_shrink_make($path, $mark, $quiet);
         }
         flock($lock, LOCK_UN);
     }
@@ -63,31 +79,36 @@ function audio_shrink(string $path): void
     @unlink($mark . '.lock');
 }
 
-function audio_shrink_make(string $path, string $mark): void
+function audio_shrink_make(string $path, string $mark, bool $quiet = false): void
 {
     require_once __DIR__ . '/ytdlp.php';
     @set_time_limit(0);
     ignore_user_abort(true); // 途中で切られても作り終える（半端なファイルは .part のまま残さない）
-    $orig = (int)filesize($path);
-    $old = $path . '.' . AUDIO_LIGHT_KBPS . '.mp3'; // 前の作り（元の横に置いていた軽い MP3）。あればそれを使う
+    $orig = audio_orig_size($path); // MIX の作り直し（もう 160 にしてある）でも、元の大きさで数えたまま（from= / to= / data-size）
+    $old = $path . '.' . AUDIO_LIGHT_KBPS . '.mp3'; // 前の作り（元の横に置いていた軽い MP3）。あればそれを使う（MIX は音量を下げるので作り直す）
     $part = $old . '.part.mp3'; // ffmpeg は出力の形式を拡張子で決める
     $why = null;
     clearstatcache(true, $old);
-    if (is_file($old) && filesize($old) > 0) {
+    if (!$quiet && is_file($old) && filesize($old) > 0) {
         rename($old, $part);
     } else {
         $ffmpeg = ytdlp_ffmpeg_dir() . '/ffmpeg';
         $why = PHP_OS_FAMILY !== 'Windows' && !is_file($ffmpeg) ? ytdlp_ffmpeg_install() : null;
         if ($why === null) {
             // CBR（from= のバイト位置で切るため）。タグ・ジャケット画像は落とす
-            [$code, $log] = ytdlp_run(['-v', 'error', '-y', '-i', $path, '-vn', '-map_metadata', '-1', '-c:a', 'libmp3lame', '-b:a', AUDIO_LIGHT_KBPS . 'k', '-ar', '44100', $part], 600, $ffmpeg);
+            [$code, $log] = ytdlp_run(['-v', 'error', '-y', '-i', $path, '-vn', '-map_metadata', '-1',
+                ...($quiet ? ['-af', 'volume=' . AUDIO_MIX_GAIN_DB . 'dB'] : []),
+                '-c:a', 'libmp3lame', '-b:a', AUDIO_LIGHT_KBPS . 'k', '-ar', '44100', $part], 600, $ffmpeg);
             clearstatcache(true, $part);
             $why = $code !== 0 || !is_file($part) || filesize($part) === 0 ? "ffmpeg exit $code: $log" : null;
         }
     }
     @unlink($old);
-    // 1割も減らないなら置き換えない（元が 160k 以下のとき）
-    if ($why === null && filesize($part) < $orig * 0.9 && file_put_contents($mark, (string)$orig, LOCK_EX) && rename($part, $path)) {
+    // 1割も減らないなら置き換えない（元が 160k 以下のとき）。MIX は音量を変えたので必ず置き換える
+    if ($why === null && ($quiet || filesize($part) < $orig * 0.9) && file_put_contents($mark, (string)$orig, LOCK_EX) && rename($part, $path)) {
+        if ($quiet) {
+            file_put_contents(audio_quiet_mark($path), 'ok', LOCK_EX);
+        }
         return;
     }
     @unlink($part);
@@ -95,20 +116,24 @@ function audio_shrink_make(string $path, string $mark): void
         error_log('audio_shrink: ' . basename($path) . ' ' . $why);
     }
     file_put_contents($mark, (string)$orig, LOCK_EX); // 印: 置き換えずにそのまま流す
+    if ($quiet) {
+        file_put_contents(audio_quiet_mark($path), 'fail', LOCK_EX); // 作れなかった: 流すたびに作り直そうとしない（作り直すときは印を消す）
+    }
 }
 
 /**
  * @param string      $mime   Content-Type（WAV を途中から流すときは audio/wav に変わる）
  * @param string|null $dlName ダウンロードさせるときのファイル名（null ならそのまま再生）
+ * @param bool        $quiet  MIX（YouTube の区分でない音源）: 音量を下げたものを流す
  */
-function audio_stream_file(string $path, string $mime, ?string $dlName = null): void
+function audio_stream_file(string $path, string $mime, ?string $dlName = null, bool $quiet = false): void
 {
     header('X-Content-Type-Options: nosniff');
     $orig = (int)filesize($path);
     if (str_starts_with($mime, 'audio/')) {
-        audio_shrink($path);
+        audio_shrink($path, $quiet);
         $orig = max(1, audio_orig_size($path));
-        if (filesize($path) < $orig) {
+        if (filesize($path) < $orig || @file_get_contents(audio_quiet_mark($path)) === 'ok') { // 下げて作り直したものは元より大きくても MP3
             $mime = 'audio/mpeg';
         }
     }
