@@ -80,11 +80,21 @@
     }
     return a;
   };
-  const probe = async (it) => {
-    if (durations.has(it.src)) return durations.get(it.src);
-    const d = await audioProbeDuration(it.src, it.size);
-    if (d) durations.set(it.src, d); // 失敗は覚えない（一度の通信の失敗で、そのファイルの曲をずっと飛ばさない）
-    return d;
+  const probing = new Map(); // 調べている途中の音源 → Promise（先読みと曲送りで同じ音源を2回取りに行かない）
+  const probe = (it) => {
+    if (durations.has(it.src)) return Promise.resolve(durations.get(it.src));
+    if (!probing.has(it.src)) {
+      probing.set(it.src, audioProbeDuration(it.src, it.size).then((d) => {
+        probing.delete(it.src);
+        if (d) durations.set(it.src, d); // 失敗は覚えない（一度の通信の失敗で、そのファイルの曲をずっと飛ばさない）
+        return d;
+      }));
+    }
+    return probing.get(it.src);
+  };
+  // 2つ先の曲まで、裏でサーバーに音源を用意させる（ドライブから落とす・160 に作るのは初めの1回だけ。調べる要求で済む）。共用サーバーなので1つずつ
+  const warm = async () => {
+    for (let k = 1; k <= 2 && k < queue.length; k += 1) await probe(queue[(idx + k) % queue.length]);
   };
   // 並べる: シャッフルなし = 出演順・セトリ順（n）。曲単位で混ぜる = いまの曲 it を先頭に残りを混ぜる。バンド単位で混ぜる = いまのバンドを先頭にバンドの順だけ混ぜる
   const arrange = (items, it) => {
@@ -356,8 +366,8 @@
     savePos(t);
     await playAt(t, play);
     if (at) showPos(at);
-    const nx = queue[(idx + 1) % queue.length]; // 次の曲の長さを先に調べておく（次へ進むときに待たない）
-    if (nx && (nx.start_ms > 0 || nx.end_ms !== null)) probe(nx);
+    warm();
+    const nx = queue[(idx + 1) % queue.length];
     if (nx && nx.band_id !== cur().band_id) refresh(nx); // 次の曲を先に取り直しておく（同じバンドなら開いたときに読んだ分で足りる）
   };
   // 曲送り・戻しの動き: d = 1（次へ。右から入る）/ -1（前へ。左から入る）。入ってくる側だけ動かす（.2s・--ease-out と同じ）
