@@ -106,6 +106,7 @@ function confirm_button_html(string $action, string $key = ''): string
  *     'embed' => true … <audio> の代わりに YouTube の埋め込み（app_player.js の apYouTube）を上に置き、最初から編集モード（video_chapters.php。MP3 の無い動画だけ）
  *     'editing' => true … 最初から編集モード（band.php?chap=キー。解析の状況から開く）
  *     'video' => 動画ID … YouTube の区分の音源: アイコンを YouTube にして、名前をその動画へのリンクにする
+ *     'mix' => true … ミックスの区分の音源: アイコンを MIX の印にする
  *     'unconfirmed' => true … 自動で付けて未確認: 名前の右に「確認済みにする」
  *   figure の id は ch-キー（: は -）。band.php?chap=キー#ch-… で飛んでくる
  */
@@ -136,7 +137,7 @@ function audio_player_html(string $src, string $title, ?int $size, ?array $chapt
         $html .= '<figcaption class="drive-player__name">'
             . ($video !== null
                 ? '<a class="audio-player__title audio-player__title--yt" href="' . h(youtube_watch_url((string)$video)) . '" target="_blank" rel="noopener noreferrer">' . youtube_icon() . h($title) . '</a>'
-                : icon('audio_file', 'file-icon file-icon--audio') . '<span class="audio-player__title">' . h($title) . '</span>')
+                : (!empty($chapterCtx['mix']) ? mix_tag('audio-player__mix') : icon('audio_file', 'file-icon file-icon--audio')) . '<span class="audio-player__title">' . h($title) . '</span>')
             . ($size !== null ? '<small class="audio-player__size">' . h(fmt_bytes($size)) . '</small>' : '');
         // 保存: 元のファイルがそのまま落ちる（同じ権限のチェックを通る）
         $html .= '<a class="audio-player__dl no-print" href="' . h($src . (str_contains($src, '?') ? '&' : '?') . 'dl=1') . '" download aria-label="ダウンロード" title="ダウンロード">' . icon('download') . '</a>';

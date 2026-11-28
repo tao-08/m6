@@ -622,6 +622,7 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 .audio-player__title--yt { display: inline-flex; align-items: center; gap: 4px; color: inherit; text-decoration: none; } /* YouTube の区分の音源: 名前が動画へのリンク */
 .audio-player__title--yt:hover { color: var(--accent); }
 .audio-player__title--yt .youtube-icon { flex: none; width: 20px; height: 14px; }
+.audio-player__mix svg { height: 14px; } /* YouTube の印と同じ高さ */
 .audio-player__size { flex: none; font-size: var(--fs-xs); opacity: .75; }
 .audio-player__dl, .audio-player__edit { flex: none; display: inline-flex; align-items: center; gap: 4px; height: 28px; margin-left: auto; padding: 0 8px; border: 0; border-radius: var(--r-md);
   background: none; font: inherit; font-size: var(--fs-xs); white-space: nowrap; color: var(--muted); cursor: pointer; transition: color var(--t-fast) ease, background-color var(--t-fast) ease; }
