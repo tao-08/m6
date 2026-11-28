@@ -425,7 +425,7 @@ input, select, textarea { font: inherit; color: inherit; }
 /* プルダウンの中身（option）は背景が透明のままだと、Windows の Chrome などで「白い背景に白い文字」になり
    ダークモードで読めなくなる。文字色と背景色を両方テーマの色で指定しておく */
 option, optgroup { background-color: var(--surface); color: var(--text); }
-.search, .field input, .board-poll-edit input, .field select, .field textarea, .member-row-edit input, .member-row-edit select, .table--edit input, .table--edit select, .survey-cell-form input:not([type="checkbox"]), .survey-access input[name="add"], .setlist-detect select {
+.search, .field input, .board-poll-edit input, .field select, .field textarea, .member-row-edit input, .member-row-edit select, .table--edit input, .table--edit select, .survey-cell-form input:not([type="checkbox"]), .survey-access input[name="add"], .setlist-detect select, .yt-drive input {
   width: 100%; padding: 10px 13px; border-radius: var(--r-md); border: 1px solid var(--border);
   background: var(--surface); color: var(--text); font-size: var(--fs-md); min-width: 0;
 }
@@ -843,6 +843,9 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 .shell-filter__marks .youtube-icon { width: 25px; height: 18px; }
 .shell-filter__years ul { list-style: none; margin: 0; padding: 0 0 6px 24px; /* 下は padding: margin だと開け閉めの終わりにガクッと飛ぶ */ display: grid; gap: 6px; }
 .chapter-years { margin-top: 12px; }
+.yt-drive { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
+.yt-drive input { flex: 1 1 240px; }
+.yt-drive ul { flex-basis: 100%; margin: 0; padding-left: 16px; }
 .chapter-years details details { margin-left: 16px; }
 .chapter-years ul { list-style: none; margin: 4px 0 8px; padding: 0 0 0 16px; display: grid; gap: 6px; }
 .chapter-years li { display: flex; gap: 8px; align-items: baseline; justify-content: space-between; }

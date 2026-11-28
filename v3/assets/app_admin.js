@@ -536,6 +536,29 @@ function setupAliasField() {
    以前ここにあった専用のポップアップ（.part-tip）は二重に出るので削除 */
 
 /**
+ * 解析の状況（setlist_jobs.php?tab=chapter）の「MP3 を紐付け」。ドライブのフォルダの「動画ID.mp3」をバンドに紐付け（api_yt_drive.php）、当たらなかったファイル名を下に並べる
+ */
+function setupYtDrive() {
+  const form = document.querySelector('[data-yt-drive]');
+  if (!form) return;
+  const miss = form.querySelector('[data-yt-drive-miss]');
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = form.querySelector('button');
+    btn.disabled = true;
+    try {
+      const { count, unmatched } = await apiPost('api_yt_drive', { url: form.url.value }, '紐付けられませんでした');
+      flashToast(`${count}本を紐付けました`);
+      miss.replaceChildren(...unmatched.map((name) => Object.assign(document.createElement('li'), { textContent: name })));
+      miss.hidden = !unmatched.length;
+    } catch (err) {
+      flashToast(err.message, 'error');
+    }
+    btn.disabled = false;
+  });
+}
+
+/**
  * 解析の状況（setlist_jobs.php?tab=chapter）の「未解析を解析」。api_chapter_bulk.php に頼んで、画面は移らずに状態だけ「順番待ち」にする
  */
 function setupChapterBulk() {

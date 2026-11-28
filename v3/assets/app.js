@@ -160,6 +160,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupKanaAi();
   setupArtistAutosave();
   setupChapterBulk();
+  setupYtDrive();
 });
 
 /* ---------------------------------------------------------------------

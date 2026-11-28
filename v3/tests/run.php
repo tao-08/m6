@@ -429,6 +429,16 @@ check('直下とサブフォルダのファイルが両方当たる', $dm['bands
 check('フォルダ名でも当たる', $dm['bands'][2], ['fileMrsLine1']);
 check('拡張子はバンド名に当たらない', $dm['bands'][3], []);
 check('どれにも当たらないファイル', $dm['unmatched'], ['fileGroup001', 'fileWav00001']);
+// YouTube の音声のファイル（動画ID.mp3）を、その動画を貼っているバンドに割り当てる
+$ym = drive_yt_match([
+    ['file_id' => 'fileYtA00001', 'name' => 'abcdefghijk.mp3'],
+    ['file_id' => 'fileYtB00001', 'name' => '-bcdefghijk.MP3'],
+    ['file_id' => 'fileYtC00001', 'name' => 'zzzzzzzzzzz.mp3'],
+    ['file_id' => 'fileYtD00001', 'name' => 'メモ.txt'],
+], [1 => ['abcdefghijk'], 2 => ['-bcdefghijk', 'abcdefghijk']]);
+check('動画 ID のファイルがバンドに当たる', array_column($ym['bands'][1], 'video_id'), ['abcdefghijk']);
+check('同じ動画を貼った2つのバンドに入る', array_column($ym['bands'][2], 'file_id'), ['fileYtA00001', 'fileYtB00001']);
+check('当たらないファイル名を返す', $ym['unmatched'], ['zzzzzzzzzzz.mp3', 'メモ.txt']);
 // 種類 → 表示の仕方
 check('種類の振り分け', [drive_kind('audio/wav'), drive_kind('video/mp4'), drive_kind('image/jpeg'), drive_kind('application/pdf')], ['media', 'media', 'image', 'other']);
 function h($s) { return htmlspecialchars((string)$s, ENT_QUOTES); } // lib/bootstrap.php の関数（テスト用の仮のもの）

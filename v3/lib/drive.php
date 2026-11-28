@@ -415,6 +415,54 @@ function drive_save_kind(PDO $pdo, int $bandId, array $kinds): void
 }
 
 /**
+ * YouTube の音声のファイル（名前が「動画ID.mp3」。scripts/takeout_to_mp3.ps1 で作る）を、その動画を貼っているバンドに割り当てる（DB も通信も使わない）
+ *   同じ動画を2つのバンドが貼っていれば両方に入れる
+ * @param array $files drive_folder_tree の戻り値
+ * @param array<int, string[]> $bandVideos band_id => そのバンドの動画 ID
+ * @return array{bands: array<int, array>, unmatched: string[]} bands: band_id => [ファイル + video_id, ...]、unmatched: 当たらなかったファイル名
+ */
+function drive_yt_match(array $files, array $bandVideos): array
+{
+    $owners = []; // 動画 ID => [band_id, ...]
+    foreach ($bandVideos as $bandId => $vids) {
+        foreach ($vids as $vid) {
+            $owners[$vid][] = (int)$bandId;
+        }
+    }
+    $out = ['bands' => [], 'unmatched' => []];
+    foreach ($files as $f) {
+        $vid = preg_match('/^([A-Za-z0-9_-]{11})\.mp3$/i', (string)$f['name'], $m) ? $m[1] : '';
+        if (!isset($owners[$vid])) {
+            $out['unmatched'][] = (string)$f['name'];
+            continue;
+        }
+        foreach ($owners[$vid] as $bandId) {
+            $out['bands'][$bandId][] = $f + ['video_id' => $vid];
+        }
+    }
+    return $out;
+}
+
+/**
+ * drive_yt_match で割り当てたファイルを、YouTube の区分でバンドのファイルの後ろに足す。もう紐付けてあるファイルは区分と大きさだけ直す
+ * @param array $files [['file_id', 'name', 'mime_type', 'size', 'video_id'], ...]
+ */
+function drive_add_yt(PDO $pdo, int $bandId, array $files): void
+{
+    $st = $pdo->prepare('SELECT COALESCE(MAX(sort_order), 0) FROM band_drive_file WHERE band_id = ?');
+    $st->execute([$bandId]);
+    $order = (int)$st->fetchColumn();
+    $up = $pdo->prepare('INSERT INTO band_drive_file (band_id, file_id, name, mime_type, size, is_mix, video_id, sort_order) VALUES (?, ?, ?, ?, ?, 0, ?, ?)
+        ON DUPLICATE KEY UPDATE size = COALESCE(VALUES(size), size), is_mix = 0, video_id = VALUES(video_id)');
+    foreach ($files as $f) {
+        if (drive_id_valid((string)$f['file_id'])) {
+            $up->execute([$bandId, $f['file_id'], mb_substr((string)$f['name'], 0, 255), substr((string)$f['mime_type'], 0, 100),
+                isset($f['size']) ? (int)$f['size'] : null, $f['video_id'], ++$order]);
+        }
+    }
+}
+
+/**
  * ミックスのあるバンド（ミックスの印を付けたドライブのファイル か、アップロードした MP3 がある）
  * @param int[] $bandIds
  * @return array<int, true> band_id => true

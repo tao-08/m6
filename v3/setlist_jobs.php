@@ -8,6 +8,7 @@
  *  下に、曲の場面（song.video_start）が入ったバンドを並べる。開くとセットリスト編集の ▶ で秒が合っているか確かめられる
  *  「チャプター」タブ（?tab=chapter）: 年度→ライブ→動画で、YouTube のチャプターの状態（lib/chapter_job.php）を並べる。
  *    ライブの「未解析を解析」は api_chapter_bulk.php を fetch で呼ぶ（assets/app_admin.js の setupChapterBulk）。画面は移らない
+ *    上の「MP3 を紐付け」はドライブのフォルダの「動画ID.mp3」をバンドに紐付ける（api_yt_drive.php。setupYtDrive）
  *  表示するだけ（POST を受けない）。バンド名・エラー文は h() でエスケープする。
  * =====================================================================
  */
@@ -63,6 +64,11 @@ if ($tab === 'chapter') {
     ?>
     <h1>解析の状況</h1>
     <?php $tabNav(); ?>
+    <form class="yt-drive" data-yt-drive>
+        <input type="url" name="url" required maxlength="500" inputmode="url" autocomplete="off" placeholder="https://drive.google.com/drive/folders/…" aria-label="MP3 のフォルダのリンク">
+        <button type="submit" class="btn btn--sm">MP3 を紐付け</button>
+        <ul class="muted small" data-yt-drive-miss hidden></ul>
+    </form>
     <?php if (!$years): ?>
         <div class="empty card"><p class="empty__title">YouTube のあるバンドはありません</p></div>
     <?php endif; ?>
