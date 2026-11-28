@@ -673,7 +673,8 @@
   });
   window.abbeyShufflePanel = () => setPanel(!isOpen());
   const closeOutside = (e) => {
-    if (isOpen() && !panel.contains(e.target) && e.target !== titleEl && !e.target.closest?.('[data-shuffle-menu] > summary, [data-album-modal]')) setPanel(false); // アルバムのモーダルの中は外ではない
+    // isConnected: 押したあとに作り直して消えたもの（範囲のチップ）は外ではない
+    if (isOpen() && e.target.isConnected && !panel.contains(e.target) && e.target !== titleEl && !e.target.closest?.('[data-shuffle-menu] > summary, [data-album-modal]')) setPanel(false); // アルバムのモーダルの中は外ではない
   };
   const closeOnEsc = (e) => { if (e.key === 'Escape' && !filterDlg.open && !document.querySelector('[data-album-modal]').open) setPanel(false); }; // モーダル（絞り込み・アルバム）の Esc はモーダルだけ閉じる
   document.addEventListener('click', closeOutside);
@@ -750,7 +751,7 @@
     innerDoc()?.querySelectorAll('[data-shuffle-menu] a[data-shuffle]').forEach((a) => {
       if (a.dataset.shuffle !== 'all') list.push([a.textContent, a.dataset.shuffle, Number(a.dataset.shuffleId) || 0]);
     });
-    // 「再生中のバンド」と「このバンド」が同じなら「この〜」を残す（流している範囲なら is-current で選ばれた見た目になる）
+    // 「再生中のバンド」と「表示中のバンド」が同じなら「表示中の〜」を残す（流している範囲なら is-current で選ばれた見た目になる）
     const here = new Set(list.filter(([label]) => !label.startsWith('再生中の')).map(([, sc, id]) => `${sc}:${id}`));
     const seen = new Set();
     scopesEl.replaceChildren(...list

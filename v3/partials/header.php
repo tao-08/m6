@@ -234,16 +234,17 @@ $nav = [
         $shuffleU = preg_replace('~^.*/~', '', (string)parse_url($shuffleUri, PHP_URL_PATH)) . (($q = parse_url($shuffleUri, PHP_URL_QUERY)) ? '?' . $q : '');
         $shuffleScopes = [['all', 0, 'サイト全体']];
         $shufflePage = basename((string)($_SERVER['SCRIPT_NAME'] ?? ''), '.php');
-        // このライブ・バンド・メンバー: 曲のチャプターが付いた音源が無ければ出さない（流す曲が無い）
+        // 表示中のライブ・バンド・メンバー・アーティスト: 曲のチャプターが付いた音源が無ければ出さない（流す曲が無い）
         $shuffleHas = static function (string $page, int $id): bool {
-            $w = ['live' => 'd.live_id = ?', 'band' => 'b.band_id = ?', 'member' => 'b.band_id IN (SELECT band_id FROM band_member WHERE member_id = ?)'][$page];
+            $w = ['live' => 'd.live_id = ?', 'band' => 'b.band_id = ?', 'member' => 'b.band_id IN (SELECT band_id FROM band_member WHERE member_id = ?)',
+                'artist' => '(b.artist_id = ? OR b.band_id IN (SELECT band_id FROM song WHERE artist_id = ?))'][$page]; // api_shuffle.php と同じ
             $st = db()->prepare("SELECT 1 FROM band_audio_chapter c JOIN band b ON b.band_id = c.band_id JOIN live_day d ON d.live_day_id = b.live_day_id
                 WHERE c.kind = 'song' AND $w" . (is_admin() ? '' : " AND c.audio_key NOT LIKE 'y:%'") . ' LIMIT 1'); // YouTube は準備中（管理者だけ）
-            $st->execute([$id]);
+            $st->execute(array_fill(0, substr_count($w, '?'), $id));
             return (bool)$st->fetchColumn();
         };
-        if (in_array($shufflePage, ['live', 'band', 'member'], true) && (int)($_GET['id'] ?? 0) > 0 && $shuffleHas($shufflePage, (int)$_GET['id'])) {
-            $shuffleScopes[] = [$shufflePage, (int)$_GET['id'], ['live' => 'このライブ', 'band' => 'このバンド', 'member' => 'このメンバー'][$shufflePage]];
+        if (in_array($shufflePage, ['live', 'band', 'member', 'artist'], true) && (int)($_GET['id'] ?? 0) > 0 && $shuffleHas($shufflePage, (int)$_GET['id'])) {
+            $shuffleScopes[] = [$shufflePage, (int)$_GET['id'], ['live' => '表示中のライブ', 'band' => '表示中のバンド', 'member' => '表示中のメンバー', 'artist' => '表示中のアーティスト'][$shufflePage]];
         }
         ?>
         <details class="usermenu" data-shuffle-menu>
