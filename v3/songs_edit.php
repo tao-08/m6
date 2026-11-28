@@ -89,6 +89,8 @@ $detectCandidates = []; // 動画から曲を検出したとき、自信が低�
 $detectShort = false; // 検出した曲がタイムテーブルの曲数より少ない（from_detect）
 $detectStarts = [];     // 同じく、曲が始まる秒（null = 不明）
 $detectVideos = [];    // 曲の場面（video_start）があるとき、確認しながら流すバンドの YouTube の動画 ID（管理者だけ。並び = song.video_no）
+$detectMixUrl = null;  // MIX から検出したとき、確認しながら流す MIX の URL（このときは YouTube を出さない）
+$detectMixStarts = []; // 同じく、MIX で曲が始まる秒（保存しない）
 $sheetTracks = []; // 曲名と同じ順の、シートで紐付けたサブスクの曲 [source, track_id]（無い・形がおかしい = null）
 if ($fromSheet) {
     verify_csrf();
@@ -277,6 +279,14 @@ if (!is_post() && ($_GET['from_detect'] ?? '') === '1' && is_admin()) {
     $detectStarts = array_map(static fn($s) => $s['start'] ?? null, $detected);
     $detectNos = array_map(static fn($s) => (int)($s['video'] ?? 0), $detected); // 何本目の動画か
     $detectShort = (int)($band['song_count'] ?? 0) > count($detected); // タイムテーブルの曲数より少ない = 聴き落としかも
+    // MIX（a:N = アップロードした MP3 / d:ファイルID = ドライブ。band.php のプレーヤーと同じ URL）
+    $mixSrc = (string)($_SESSION['setlist_detect_src'][$bandId] ?? '');
+    $detectMixUrl = match (true) {
+        str_starts_with($mixSrc, 'a:') => 'attach_image?k=band_audio&id=' . (int)substr($mixSrc, 2),
+        str_starts_with($mixSrc, 'd:') => 'drive_audio?band=' . $bandId . '&f=' . rawurlencode(substr($mixSrc, 2)),
+        default => null,
+    };
+    $detectMixStarts = array_map(static fn($s) => $s['mix_start'] ?? null, $detected);
     if (!$sheetTitles) {
         redirect($backUrl);
     }
@@ -354,6 +364,7 @@ if ($fromSheet) {
         $card['candidates'] = $detectCandidates[$i] ?? [];
         $card['video_start'] = $detectStarts[$i] ?? $card['video_start'];
         $card['video_no'] = $detectNos[$i] ?? $card['video_no'];
+        $card['mix_start'] = $detectMixStarts[$i] ?? null;
         $card['track_no'] = $i + 1;
         $cards[] = $card;
     }
@@ -366,7 +377,7 @@ if ($fromSheet) {
     $cards = $songs;
 }
 // 曲の場面（video_start）が1曲でもあれば、管理者には動画と ▶・↻ を出す
-if (is_admin() && array_filter(array_column($cards, 'video_start'), static fn($v) => $v !== null)) {
+if (is_admin() && $detectMixUrl === null && array_filter(array_column($cards, 'video_start'), static fn($v) => $v !== null)) {
     $detectVideos = array_map('youtube_video_id', band_video_urls($pdo, [$band])[$bandId] ?? []);
 }
 // YouTube から曲を検出できるのは、動画ごとの MP3（YouTube の区分）が全部そろったときだけ（api_setlist_detect.php）
@@ -467,6 +478,8 @@ if (!$fromSheet && is_admin() && gemini_setlist_config() !== null) {
         <div class="tabs detect-player__tabs"><?php foreach ($detectVideos as $i => $vid): if ($vid === null) continue; ?><button type="button" class="tab<?= $i === 0 ? ' is-active' : '' ?>" data-detect-video="<?= h($vid) ?>" aria-label="<?= $i + 1 ?>本目の動画"><?= mb_chr(0x2460 + $i) ?></button><?php endforeach; ?></div>
         <?php endif; ?>
         <iframe src="https://www.youtube.com/embed/<?= h($detectVideos[0]) ?>?enablejsapi=1&amp;playsinline=1&amp;rel=0" title="<?= h($band['name']) ?>" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe></div>
+    <?php elseif ($detectMixUrl !== null): // MIX から検出したとき: 同じ場所に MIX を置き、曲ごとの ▶ でその秒へ飛ぶ ?>
+    <div class="detect-player" data-detect-player data-band="<?= $bandId ?>"><audio src="<?= h($detectMixUrl) ?>" controls preload="metadata"></audio></div>
     <?php endif; ?>
     <datalist id="artists"><?php foreach ($artistNames as $n): ?><option value="<?= h($n) ?>"><?php endforeach; ?></datalist>
     <div class="song-list" data-song-list<?= !empty($fromYt) ? ' data-auto-search' : '' ?> data-default-artist="<?= h($defaultArtist) ?>">
@@ -503,6 +516,7 @@ if (!$fromSheet && is_admin() && gemini_setlist_config() !== null) {
                     <input type="hidden" name="<?= $base ?>[vn]" value="<?= (int)($song['video_no'] ?? 0) ?>" data-video-no>
                     <?php $seekVideo = $detectVideos[(int)($song['video_no'] ?? 0)] ?? null; ?>
                     <?php if ($seekVideo !== null && $song['video_start'] !== null): $vs = (int)$song['video_start']; ?><button type="button" class="btn btn--ghost btn--sm song-seek-btn" data-seek="<?= $vs ?>" data-video="<?= h($seekVideo) ?>" aria-label="動画のこの曲の場面を再生" title="動画のこの曲の場面を再生"><?= icon('smart_display') ?><?= sprintf('%d:%02d', intdiv($vs, 60), $vs % 60) ?></button><?php endif; ?>
+                    <?php if ($detectMixUrl !== null && is_int($song['mix_start'] ?? null)): $ms = $song['mix_start']; ?><button type="button" class="btn btn--ghost btn--sm song-seek-btn" data-seek="<?= $ms ?>" aria-label="MIX のこの曲を再生" title="MIX のこの曲を再生"><?= icon('graphic_eq') ?><?= sprintf('%d:%02d', intdiv($ms, 60), $ms % 60) ?></button><?php endif; ?>
                     <?php if ($canRetry): ?><button type="button" class="btn btn--ghost btn--sm" data-detect-retry hidden aria-label="まだ候補に出ていない曲から検出" title="まだ候補に出ていない曲から検出"><?= icon('refresh') ?></button><?php endif; ?>
                     <button type="button" class="btn btn--ghost btn--sm song-search-btn" data-track-search aria-label="曲を探す" title="曲を探す"><?= icon('search') ?></button>
                     <input type="hidden" name="<?= $base ?>[id]" value="<?= $isNew ? '' : (int)$song['song_id'] ?>">

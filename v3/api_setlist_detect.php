@@ -10,7 +10,7 @@
  *  status=1: 途中経過を見る。{"state": "running"} / 終わっていれば曲名・候補・始まる時刻をセッションに置いて {"state": "done"}
  *    → 画面が songs_edit?from_detect=1 で確認画面を開く
  *  終わったら、押した人の端末すべてにプッシュ通知を送る（lib/push.php。画面を閉じていても気づけるように）
- *  src=a:N / d:ファイルID: YouTube の代わりにバンドの MIX（アップロードした MP3 / ドライブ）を聴かせる。始まりの秒は YouTube の秒ではないので、セトリには入れない
+ *  src=a:N / d:ファイルID: YouTube の代わりにバンドの MIX（アップロードした MP3 / ドライブ）を聴かせる。始まりの秒は YouTube の秒ではないので、セトリには入れない（確認画面の ▶ だけに使う）
  *    代わりに、その MIX の曲のチャプター（band_audio_chapter）にする。status=1 で終わったとき、チャプターが無ければすぐ保存
  *    あれば保存せず {"state": "done", "overwrite": true} を返す → 画面が上書きを聞き、はいなら chapters=1 で保存（それまでセッションに置く）
  *  動画が2本以上（band_video）なら1本ずつ順に聴かせてつなぐ。曲ごとに何本目か（video = song.video_no）を付ける
@@ -60,7 +60,9 @@ if (!empty($_POST['status'])) {
     if ($job['state'] !== 'done') {
         fail(502, (string)($job['error'] ?? '解析に失敗しました'), ['detail' => (string)($job['detail'] ?? '')]);
     }
-    $_SESSION['setlist_detect'][$bandId] = array_map(static fn($s) => array_diff_key($s, ['mix_start' => 0, 'end' => 0]), $job['songs']);
+    // mix_start と src: 確認画面で MIX を鳴らし、曲ごとの ▶ でその秒へ飛ぶ（songs_edit.php）
+    $_SESSION['setlist_detect'][$bandId] = array_map(static fn($s) => array_diff_key($s, ['end' => 0]), $job['songs']);
+    $_SESSION['setlist_detect_src'][$bandId] = $job['src'] ?? null;
     // MIX: 曲の始まり・終わりと MC の秒を、その MIX のチャプターにする（セトリには入れない）。同じ秒は1つ（曲の始まり > MC > 終わり）
     $chapters = [];
     $marks = isset($job['src']) ? [['song', array_column($job['songs'], 'mix_start')], ['mc', $job['mcs'] ?? []], ['end', array_column($job['songs'], 'end')]] : [];

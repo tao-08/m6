@@ -683,6 +683,19 @@ function setupTrackSearch() {
  *   YouTube へは postMessage で命令だけ送る（IFrame API のスクリプトは読まない）
  * ------------------------------------------------------------------- */
 function setupDetectPlayer() {
+  // MIX から検出したとき（<audio>）: ▶ でその秒から流す。試聴とは重ねない
+  const audio = document.querySelector('[data-detect-player] audio');
+  if (audio) {
+    document.addEventListener('click', (e) => {
+      if (e.target.closest('[data-preview]')) { audio.pause(); return; }
+      const seek = e.target.closest('[data-seek]');
+      if (!seek) return;
+      audio.currentTime = Number(seek.dataset.seek);
+      audio.play();
+    });
+    audio.addEventListener('play', () => document.dispatchEvent(new Event('preview-stop'))); // 鳴っている試聴を止める
+    return;
+  }
   const frame = document.querySelector('[data-detect-player] iframe');
   if (!frame) return;
   const send = (func, args = []) => frame.contentWindow?.postMessage(JSON.stringify({ event: 'command', func, args }), 'https://www.youtube.com');

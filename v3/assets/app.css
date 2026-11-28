@@ -1958,6 +1958,7 @@ code { background: var(--surface-2); padding: 1px 6px; border-radius: var(--r-sm
 /* 動画から曲を検出したとき: バンドの動画をヘッダーの下に浮かせて残し、試聴と聴き比べる */
 .detect-player { position: sticky; top: 70px; z-index: 6; width: min(100%, 360px); margin: 0 0 12px auto; border-radius: var(--r-md); overflow: hidden; box-shadow: var(--shadow-pop); background: var(--surface); }
 .detect-player iframe { display: block; width: 100%; aspect-ratio: 16 / 9; border: 0; background: #000; }
+.detect-player audio { display: block; width: 100%; } /* MIX から検出したとき */
 .detect-player__tabs { position: static; margin: 4px; padding: 2px; gap: 2px; box-shadow: none; } /* 2本以上のときの ①②（動画の上） */
 .detect-player__tabs .tab { padding: 2px 10px; font-size: var(--fs-xs); }
 /* ドラッグ中（.song-list.is-sorting）: アーティスト欄・検索ボタンも横に縮めて消す（行の隙間ぶんは負の margin で詰める） */
