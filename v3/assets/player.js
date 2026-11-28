@@ -356,12 +356,15 @@
     if (play) audio.play().catch(() => setIcon(false));
   };
   // i 曲目を用意する。play: true で鳴らす（false は止めておく）。at: 音源の秒（省略 = 曲の頭）
+  let jumpNext = false; // 次に位置を出すとき、シークバーのつまみを滑らせる
+  let jumpTimer = 0;
   const go = async (i, play, at) => {
     if (!queue.length) { render(); return; }
     idx = (i + queue.length) % queue.length;
     save();
     render();
-    if (!bandRange()) { // バンド全体のバーは続きなので 0 に戻さない
+    jumpNext = !!bandRange(); // バンド全体のバーは、次の位置が出たときにつまみを滑らせる
+    if (!jumpNext) { // バンド全体のバーは続きなので 0 に戻さない
       progEl.style.width = '0';
       seek.value = 0;
       seekBox.style.setProperty('--q', 0);
@@ -547,7 +550,10 @@
       seekBox.classList.toggle('has-below', !!bubblesEl.querySelector('.is-below'));
       const thumb = (p) => `calc(var(--ap-thumb) / 2 + (100% - var(--ap-thumb)) * ${p})`; // 棒の上の位置（つまみの半分ずつ内側）
       seekBox.style.setProperty('--gaps', gaps.length
-        ? `linear-gradient(to right, ${gaps.map(([a, b]) => `transparent ${thumb(a)}, var(--gap) ${thumb(a)}, var(--gap) ${thumb(b)}, transparent ${thumb(b)}`).join(', ')})`
+        ? `linear-gradient(to right, ${gaps.map(([a, b]) => { // 流した所（赤の塗りの端 = --q まで）は --gap-done
+          const q = `clamp(${thumb(a)}, var(--q) * 100%, ${thumb(b)})`;
+          return `transparent ${thumb(a)}, var(--gap-done) ${thumb(a)}, var(--gap-done) ${q}, var(--gap) ${q}, var(--gap) ${thumb(b)}, transparent ${thumb(b)}`;
+        }).join(', ')})`
         : 'none');
     }
     const kind = gapKind(it) || 'song';
@@ -576,6 +582,14 @@
       durEl.textContent = fmt(len);
       seek.max = Math.floor(len);
       if (!dragging) {
+        if (jumpNext) { // 曲送りで飛んだ: 位置の変化を滑らせる（app_player.js の jump と同じ .is-jumping）
+          jumpNext = false;
+          if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+            seekBox.classList.add('is-jumping');
+            clearTimeout(jumpTimer);
+            jumpTimer = setTimeout(() => seekBox.classList.remove('is-jumping'), (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--t-base')) || .2) * 1500);
+          }
+        }
         seek.value = pos;
         seekBox.style.setProperty('--q', pos / len);
         curEl.textContent = fmt(pos);
@@ -746,6 +760,7 @@
     const b = document.createElement('button');
     b.type = 'button';
     b.className = 'chip';
+    b.dataset.key = `${scope}:${id}`;
     b.textContent = label;
     b.classList.toggle('is-current', cfg.scope === scope && cfg.id === id); // いま流している範囲
     b.classList.toggle('is-pending', !!pending && pending.scope === scope && pending.id === id);
@@ -774,29 +789,9 @@
     li.append(b);
     return li;
   };
-  // 選んだ範囲の赤い枠を、前のチップから滑らせる（チップは作り直すので、作る前の位置を覚えておいて動かす）
-  const glideChip = (cls, from) => {
-    const to = scopesEl.querySelector(`.chip.${cls}`);
-    if (!from?.width || !to) return;
-    const r = to.getBoundingClientRect();
-    const box = scopesEl.getBoundingClientRect();
-    if (!r.width || (Math.abs(from.left - r.left) < 1 && Math.abs(from.top - r.top) < 1)) return;
-    const g = document.createElement('li');
-    g.className = `shell-panel__glide ${cls}`;
-    g.setAttribute('aria-hidden', 'true');
-    const at = (q) => Object.assign(g.style, { width: `${q.width}px`, height: `${q.height}px`, transform: `translate(${q.left - box.left}px, ${q.top - box.top}px)` });
-    at(from);
-    to.classList.add('is-gliding');
-    scopesEl.append(g);
-    g.offsetWidth; // 前の位置を確定させてから動かす
-    g.classList.add('is-moving');
-    at(r);
-    const done = () => { g.remove(); to.classList.remove('is-gliding'); };
-    g.addEventListener('transitionend', done, { once: true });
-    setTimeout(done, 600); // 動かないとき（動きを減らす設定など）も消す
-  };
+  // 選んだ範囲が変わったら、新しいチップの色をフェードで出す（チップは作り直すので CSS の transition が効かない。.is-fresh = app.css）
   const buildScopes = () => {
-    const before = ['is-current', 'is-pending'].map((c) => scopesEl.querySelector(`.chip.${c}`)?.getBoundingClientRect());
+    const before = ['is-current', 'is-pending'].map((c) => scopesEl.querySelector(`.chip.${c}`)?.dataset.key);
     const it = cur();
     const list = [['サイト全体', 'all', 0]];
     if (it) {
@@ -813,8 +808,11 @@
       .filter(([label, sc, id]) => !(label.startsWith('再生中の') && here.has(`${sc}:${id}`)))
       .filter(([, sc, id]) => !seen.has(`${sc}:${id}`) && seen.add(`${sc}:${id}`))
       .map((x) => scopeItem(...x)));
-    showCounts(); // 先に曲数を入れてから（読み終えた分はすぐ入る）滑らせる
-    ['is-current', 'is-pending'].forEach((c, i) => glideChip(c, before[i]));
+    ['is-current', 'is-pending'].forEach((c, i) => {
+      const to = scopesEl.querySelector(`.chip.${c}`);
+      if (to && before[i] !== undefined && to.dataset.key !== before[i]) to.classList.add('is-fresh');
+    });
+    showCounts();
   };
 
   const pick = (scope, id) => {

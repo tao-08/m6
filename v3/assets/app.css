@@ -808,7 +808,7 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 .shell-panel__players a { color: inherit; }
 .shell-panel__players a:hover { color: var(--accent); }
 /* バンド単位の吹き出し（player.js の drawBubbles）: 上（被ったものは下）に吹き出しの分の余白。曲間をスキップするときは飛ばす所を薄く（--gaps） */
-.shell-panel .audio-player__seek { --rest: color-mix(in srgb, var(--border), var(--muted) 10%); --gap: var(--surface-2); /* 未再生は灰色・飛ばす所はそれより薄い白寄り */ transition: margin var(--t-slow) var(--ease-out); }
+.shell-panel .audio-player__seek { --rest: color-mix(in srgb, var(--border), var(--muted) 10%); --gap: var(--surface-2); --gap-done: color-mix(in srgb, var(--accent) 45%, var(--gap)); /* 未再生は灰色・飛ばす所はそれより薄い白寄り・流したあとの飛ばした所は赤と混ぜる */ transition: margin var(--t-slow) var(--ease-out); }
 .shell-panel .audio-player__seek.has-bubbles { margin-top: 22px; }
 .shell-panel .audio-bubble.is-current { --bd: var(--accent); --ov: var(--accent-soft); color: var(--accent); } /* 再生中は赤（ポップアップの再生中の色にそろえる） */
 .shell-panel .audio-player__seek.has-below { margin-bottom: 22px; }
@@ -900,13 +900,10 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 .shell-panel__scopes .chip__name { display: inline-block; max-width: 8em; margin-left: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; font-weight: 700; } /* 長い名前は … で切る（全体は title） */
 .shell-panel__scopes .chip.is-current { background: var(--accent-soft); border-color: var(--accent); } /* いま流している範囲（.chip--me と同じ） */
 .shell-panel__scopes .chip.is-pending { color: var(--accent); font-weight: 700; border-color: var(--accent); border-style: dashed; } /* 次の曲から変える範囲 */
-/* 範囲を変えたとき、赤い枠が前のチップから滑る（player.js の glideChip。着くまでチップ自身の枠は消す） */
-.shell-panel__scopes { position: relative; }
-.shell-panel__glide { position: absolute; left: 0; top: 0; z-index: 1; border: 1px solid var(--accent); border-radius: var(--r-full); pointer-events: none; }
-.shell-panel__glide.is-pending { border-style: dashed; }
-.shell-panel__glide.is-moving { transition: transform var(--t-slow) var(--ease-out), width var(--t-slow) var(--ease-out), height var(--t-slow) var(--ease-out); }
-.shell-panel__scopes .chip.is-gliding { border-color: transparent; }
-@media (prefers-reduced-motion: reduce) { .shell-panel__glide.is-moving { transition: none; } }
+/* 範囲を変えたとき、新しく選ばれたチップの色をフェードで出す（player.js が .is-fresh を付ける） */
+.shell-panel__scopes .chip.is-fresh { animation: chip-fresh var(--t-slow) ease; }
+@keyframes chip-fresh { from { background-color: var(--surface-2); border-color: var(--border); color: inherit; } }
+@media (prefers-reduced-motion: reduce) { .shell-panel__scopes .chip.is-fresh { animation: none; } }
 /* 外枠のお知らせ: 上（.toasts と同じ位置）。ポップアップより手前 */
 .shell-toasts { z-index: 60; }
 @media (prefers-reduced-motion: reduce) { .shell-panel, .audio-bubble, .audio-player__bar { transition: none; } }
