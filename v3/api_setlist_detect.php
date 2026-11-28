@@ -10,7 +10,9 @@
  *  status=1: 途中経過を見る。{"state": "running"} / 終わっていれば曲名・候補・始まる時刻をセッションに置いて {"state": "done"}
  *    → 画面が songs_edit?from_detect=1 で確認画面を開く
  *  終わったら、押した人の端末すべてにプッシュ通知を送る（lib/push.php。画面を閉じていても気づけるように）
- *  src=a:N / d:ファイルID: YouTube の代わりにバンドの MIX（アップロードした MP3 / ドライブ）を聴かせる。始まりの秒は YouTube の秒ではないので捨てる（曲名と候補だけ）
+ *  src=a:N / d:ファイルID: YouTube の代わりにバンドの MIX（アップロードした MP3 / ドライブ）を聴かせる。始まりの秒は YouTube の秒ではないので、セトリには入れない
+ *    代わりに、その MIX の曲のチャプター（band_audio_chapter）にする。status=1 で終わったとき、チャプターが無ければすぐ保存
+ *    あれば保存せず {"state": "done", "overwrite": true} を返す → 画面が上書きを聞き、はいなら chapters=1 で保存（それまでセッションに置く）
  *  動画が2本以上（band_video）なら1本ずつ順に聴かせてつなぐ。曲ごとに何本目か（video = song.video_no）を付ける
  *  1曲だけ検出し直す（↻）: from, to（秒）と video（何本目。0 = 1本目）も送ると、その区間だけ落として聴かせ、{"candidates": [{title, artist}]} を返す。exclude[] の曲名は候補に出さない。compare=1 で試聴と聴き比べる。se=1 は SE
  *    tail=1: 区間の最後の曲を答えさせる（その曲の秒がわからず、前の曲の始まりから聴かせるとき）
@@ -58,8 +60,32 @@ if (!empty($_POST['status'])) {
     if ($job['state'] !== 'done') {
         fail(502, (string)($job['error'] ?? '解析に失敗しました'), ['detail' => (string)($job['detail'] ?? '')]);
     }
-    $_SESSION['setlist_detect'][$bandId] = $job['songs'];
+    $_SESSION['setlist_detect'][$bandId] = array_map(static fn($s) => array_diff_key($s, ['mix_start' => 0]), $job['songs']);
+    // MIX: 始まりの秒を、その MIX の曲のチャプターにする（セトリには入れない）
+    $chapters = [];
+    foreach (isset($job['src']) ? $job['songs'] : [] as $s) {
+        if (is_int($s['mix_start'] ?? null)) {
+            $chapters[$s['mix_start']] = ['kind' => 'song', 'ms' => $s['mix_start'] * 1000]; // 同じ秒は1つ
+        }
+    }
+    if ($chapters) {
+        ksort($chapters);
+        $st = db()->prepare('SELECT COUNT(*) FROM band_audio_chapter WHERE band_id = ? AND audio_key = ?');
+        $st->execute([$bandId, $job['src']]);
+        if ((int)$st->fetchColumn() > 0) {
+            $_SESSION['setlist_detect_chapters'][$bandId] = [$job['src'], array_values($chapters)];
+            api_ok(['state' => 'done', 'overwrite' => true]);
+        }
+        chapter_job_save($bandId, $job['src'], array_values($chapters));
+    }
     api_ok(['state' => 'done']);
+}
+// MIX のチャプターを上書きする（status=1 が overwrite を返し、はいを押したとき）
+if (!empty($_POST['chapters'])) {
+    [$key, $chapters] = $_SESSION['setlist_detect_chapters'][$bandId] ?? fail(404, '保存するチャプターがありません');
+    unset($_SESSION['setlist_detect_chapters'][$bandId]);
+    chapter_job_save($bandId, $key, $chapters);
+    api_ok(['saved' => true]);
 }
 
 session_write_close(); // 長く待つので、ほかの画面を待たせない
@@ -104,7 +130,7 @@ try {
         $file = band_mix_file($bandId, $src);
         $part = is_string($file) ? $file : gemini_setlist($file[0], $file[1], $cfg, $band['artist'], $flex, isset($band['song_count']) ? (int)$band['song_count'] : null);
         $job = is_string($part) ? ['state' => 'error', 'error' => $part, 'detail' => is_string($file) ? '' : gemini_why()] : null;
-        $songs = is_string($part) ? [] : array_map(static fn($s) => ['start' => null] + $s, $part);
+        $songs = is_string($part) ? [] : array_map(static fn($s) => ['start' => null, 'mix_start' => $s['start']] + $s, $part); // 秒は MIX のチャプターに（status=1）
         $videoIds = []; // 下の YouTube は聴かせない
     }
     // 1本ずつ順に聴かせてつなぐ。2本以上のときだけ「何本目か」を伝える（gemini_setlist の $part）
@@ -137,7 +163,7 @@ try {
     error_log('setlist detect: ' . $e->getMessage());
     $job = ['state' => 'error', 'error' => '解析に失敗しました'];
 }
-setlist_job_put($bandId, $job + ['at' => $startedAt, 'flex' => $flex]);
+setlist_job_put($bandId, $job + ['at' => $startedAt, 'flex' => $flex] + ($src !== '' ? ['src' => $src] : []));
 
 // 押した人に知らせる（アプリ通知の設定によらず、端末があれば送る。押した本人が待っている結果なので）
 $subs = db()->prepare('SELECT subscription_id, endpoint, p256dh, auth FROM push_subscription WHERE user_id = ?');

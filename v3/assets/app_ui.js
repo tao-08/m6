@@ -4,6 +4,27 @@
  */
 
 /* ---------------------------------------------------------------------
+ * askYesNo('メッセージ') … 「はい / いいえ」で聞くモーダル。はいなら true（いいえ・Esc・外側は false）
+ *   ブラウザの confirm() はボタンが「OK / キャンセル」から変えられないため。見た目はバンド編集の確認（.modal）と同じ
+ *   文字は textContent で入れる（曲名などが入っても HTML として読まない）
+ * ------------------------------------------------------------------- */
+function askYesNo(message) {
+  const dialog = document.createElement('dialog');
+  dialog.className = 'modal';
+  dialog.innerHTML = '<form method="dialog" class="modal__body"><p></p><div class="form-actions">'
+    + '<button type="submit" class="btn btn--ghost" value="no">いいえ</button>'
+    + '<button type="submit" class="btn btn--primary" value="yes">はい</button></div></form>';
+  dialog.querySelector('p').textContent = message;
+  dialog.addEventListener('click', (e) => { if (e.target === dialog) dialog.close(); }); // 外側を押したら いいえ
+  document.body.append(dialog);
+  dialog.showModal();
+  return new Promise((resolve) => dialog.addEventListener('close', () => {
+    resolve(dialog.returnValue === 'yes');
+    dialog.remove();
+  }));
+}
+
+/* ---------------------------------------------------------------------
  * メンバー一覧のジャケットにマウスを乗せたら、アルバム名とアーティスト名をポップアップで出す（[data-album-tip]）
  *   表のカード（.table-card）は overflow: hidden なので、ジャケットの中に置くと端で切れる。
  *   → ページに1個だけ position: fixed のポップアップを作り、乗せたジャケットの上に動かして使い回す。

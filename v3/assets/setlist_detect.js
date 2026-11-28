@@ -39,7 +39,12 @@ const watch = async () => {
   status.append(Object.assign(document.createElement('a'), { href: 'setlist_jobs', textContent: '曲の検出の状況' }), 'で進捗を確認できます');
   try {
     for (;;) {
-      if ((await post({ status: 1 })).state === 'done') break;
+      const res = await post({ status: 1 });
+      if (res.state === 'done') {
+        // MIX の解析: その MIX にチャプターがあれば、上書きするか聞く（無ければサーバーがもう保存した）
+        if (res.overwrite && await askYesNo('この MIX のチャプターを上書きしますか？')) await post({ chapters: 1 });
+        break;
+      }
       await new Promise((r) => setTimeout(r, 5000));
     }
     location.href = box.dataset.doneUrl;

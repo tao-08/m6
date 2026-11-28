@@ -12,21 +12,28 @@
  * ------------------------------------------------------------------- */
 function setupSongs() {
   // 保存するとき、曲名の入った曲（SE・削除した曲を除く）の数と曲数を比べる
-  //   曲数が空 → その数で埋めるか聞く（キャンセルなら保存しない）
-  //   曲数と違う → セットリストの数に変えるか聞く（キャンセルなら曲数はそのまま保存）
-  document.querySelector('.songs-form')?.addEventListener('submit', (e) => {
+  //   曲数が空 → その数で埋めるか聞く（いいえなら保存しない）
+  //   曲数と違う → セットリストの数に変えるか聞く（いいえなら曲数はそのまま保存）
+  //   はい / いいえ（askYesNo）は答えを待つので、いったん送信を止め、答えたら同じボタンで送り直す（asked: 2回目は聞かない）
+  let asked = false;
+  document.querySelector('.songs-form')?.addEventListener('submit', async (e) => {
     const count = e.target.querySelector('input[name="song_count"]');
-    if (!count) return;
+    if (!count || asked) { asked = false; return; }
     const n = [...e.target.querySelectorAll('[data-song-card]:not(.song-card--se)')]
       .filter((c) => c.querySelector('.song-card__title')?.value.trim() && c.querySelector('[data-song-delete]')?.value !== '1').length;
-    if (!n) return;
     const now = count.value.trim();
+    if (!n || (now !== '' && Number(now) === n)) return;
+    e.preventDefault();
+    const form = e.target;
+    const submitter = e.submitter;
     if (now === '') {
-      if (confirm(`曲数が空です。${n}曲で保存しますか？`)) count.value = n;
-      else e.preventDefault();
-    } else if (Number(now) !== n && confirm(`曲数が${now}曲で登録されています。セットリストの${n}曲に変更しますか？`)) {
+      if (!(await askYesNo(`曲数が空です。${n}曲で保存しますか？`))) return;
+      count.value = n;
+    } else if (await askYesNo(`曲数が${now}曲で登録されています。セットリストの${n}曲に変更しますか？`)) {
       count.value = n;
     }
+    asked = true;
+    form.requestSubmit(submitter);
   });
 
   // バンド編集の2つ目の楽器の「＋」: 1つ目の楽器の下に開閉。閉じたら値を空（なし）に戻す
