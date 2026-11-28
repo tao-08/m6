@@ -8,7 +8,7 @@
  *  下に、曲の場面（song.video_start）が入ったバンドを並べる。開くとセットリスト編集の ▶ で秒が合っているか確かめられる
  *  「チャプター」タブ（?tab=chapter）: 年度→ライブ→動画で、YouTube のチャプターの状態（lib/chapter_job.php）を並べる。
  *    ライブの「未解析を解析」は api_chapter_bulk.php を fetch で呼ぶ（assets/app_admin.js の setupChapterBulk）。画面は移らない
- *    動画ごとに、YouTube の区分の MP3 があれば「MP3」の印（見出しは MP3 のある本数 / 全部）
+ *    動画ごとに、YouTube の区分の MP3 があれば「MP3」の印（見出しは 全部の本数・解析済み・MP3 のある本数）
  *    上の「MP3 を紐付け」はドライブのフォルダの「動画ID.mp3」をバンドに紐付ける（api_yt_drive.php。setupYtDrive）
  *  表示するだけ（POST を受けない）。バンド名・エラー文は h() でエスケープする。
  * =====================================================================
@@ -65,6 +65,10 @@ if ($tab === 'chapter') {
             unset($live);
         }
     }
+    // 見出しの数: 全部の本数・解析済み・MP3 のある本数
+    $counts = static fn(int $all, int $done, int $mp3): string => '<span class="chapter-counts muted small"><span>' . $all . '本</span>'
+        . '<span ' . tip_attr('解析済み') . '>' . icon('view_timeline', 'icon--sm') . $done . '</span>'
+        . '<span ' . tip_attr('MP3 がある動画') . '><span class="tag label-inline">MP3</span>' . $mp3 . '</span></span>';
     $label = ['saved' => '解析済み', 'running' => '解析中', 'queued' => '順番待ち', 'error' => '失敗', 'none' => '未解析'];
 
     render_header('解析の状況', 'tools');
@@ -74,7 +78,7 @@ if ($tab === 'chapter') {
     <form class="yt-drive" data-yt-drive>
         <input type="url" name="url" required maxlength="500" inputmode="url" autocomplete="off" placeholder="https://drive.google.com/drive/folders/…" aria-label="MP3 のフォルダのリンク">
         <button type="submit" class="btn btn--sm">MP3 を紐付け</button>
-        <ul class="muted small" data-yt-drive-miss hidden></ul>
+        <details class="yt-drive__miss small" data-yt-drive-miss hidden><summary></summary><ul></ul></details>
     </form>
     <?php if (!$years): ?>
         <div class="empty card"><p class="empty__title">YouTube のあるバンドはありません</p></div>
@@ -83,10 +87,10 @@ if ($tab === 'chapter') {
     <?php $first = true; foreach ($years as $fy => $lives): ?>
         <details<?= $first ? ' open' : '' ?>>
             <?php $first = false; $all = array_sum(array_map(static fn($l) => count($l['videos']), $lives)); ?>
-            <summary><?= h(fmt_year($fy)) ?> <span class="muted small"><?= array_sum(array_column($lives, 'done')) ?> / <?= $all ?></span> <span class="muted small">MP3 <?= array_sum(array_column($lives, 'mp3')) ?> / <?= $all ?></span><?= icon('expand_more') ?></summary>
+            <summary><?= h(fmt_year($fy)) ?> <?= $counts($all, array_sum(array_column($lives, 'done')), array_sum(array_column($lives, 'mp3'))) ?><?= icon('expand_more') ?></summary>
             <?php foreach ($lives as $liveId => $l): ?>
                 <details class="chapter-live" data-chapter-live="<?= $liveId ?>">
-                    <summary><?= h($l['name']) ?> <span class="muted small"><?= $l['done'] ?> / <?= count($l['videos']) ?></span> <span class="muted small">MP3 <?= $l['mp3'] ?> / <?= count($l['videos']) ?></span><?= icon('expand_more') ?></summary>
+                    <summary><?= h($l['name']) ?> <?= $counts(count($l['videos']), $l['done'], $l['mp3'] ?? 0) ?><?= icon('expand_more') ?></summary>
                     <?php if (array_filter($l['videos'], static fn($v) => in_array($v[3], ['none', 'error'], true))): ?>
                         <button type="button" class="btn btn--sm" data-chapter-bulk>未解析を解析</button>
                     <?php endif; ?>

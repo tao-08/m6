@@ -833,9 +833,9 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 @media (prefers-reduced-motion: reduce) { .shell-filter__years > details { animation: none; } }
 :is(.shell-filter__years, .chapter-years) summary { display: flex; align-items: center; gap: 8px; padding: 6px 0; font-weight: 700; cursor: pointer; list-style: none; }
 :is(.shell-filter__years, .chapter-years) summary::-webkit-details-marker { display: none; }
-:is(.shell-filter__years, .chapter-years) summary .icon { margin-left: auto; color: var(--muted); transition: transform var(--t-base) var(--ease-out); }
-:is(.shell-filter__years, .chapter-years) details[open] > summary .icon { transform: rotate(180deg); }
-@media (prefers-reduced-motion: reduce) { :is(.shell-filter__years, .chapter-years) summary .icon { transition: none; } }
+:is(.shell-filter__years, .chapter-years) summary > .icon { margin-left: auto; color: var(--muted); transition: transform var(--t-base) var(--ease-out); }
+:is(.shell-filter__years, .chapter-years) details[open] > summary > .icon { transform: rotate(180deg); }
+@media (prefers-reduced-motion: reduce) { :is(.shell-filter__years, .chapter-years) summary > .icon { transition: none; } }
 /* そのライブにある音源: 右に YouTube の列・MIX の列を作り、種類ごとに縦にそろえる（無い印の所は空ける。MIX の幅 = 高さ 18px × 25/14） */
 .shell-filter__marks { flex: none; margin-left: auto; display: grid; grid-template-columns: 25px 33px; align-items: center; gap: 6px; }
 .shell-filter__marks .youtube-icon { grid-column: 1; }
@@ -845,11 +845,16 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 .chapter-years { margin-top: 12px; }
 .yt-drive { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
 .yt-drive input { flex: 1 1 240px; }
-.yt-drive ul { flex-basis: 100%; margin: 0; padding-left: 16px; }
+.yt-drive__miss { flex-basis: 100%; }
+.yt-drive__miss summary { cursor: pointer; }
+.yt-drive__miss ul { margin: 4px 0 0; padding-left: 16px; display: grid; gap: 4px; }
 .chapter-years details details { margin-left: 16px; }
 .chapter-years ul { list-style: none; margin: 4px 0 8px; padding: 0 0 0 16px; display: grid; gap: 6px; }
 .chapter-years li { display: flex; gap: 8px; align-items: baseline; justify-content: space-between; }
 .chapter-years li .tag { margin-left: auto; }
+.chapter-counts { display: inline-flex; align-items: center; gap: 14px; margin-left: 8px; font-weight: 400; }
+.chapter-counts > span { display: inline-flex; align-items: center; gap: 4px; }
+.chapter-counts > [data-tip] { cursor: help; }
 .shell-panel__later[aria-pressed="false"] { color: var(--muted); }
 .shell-panel__later[aria-pressed="true"] { color: var(--accent); }
 .shell-panel__scopes { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; align-self: center; }

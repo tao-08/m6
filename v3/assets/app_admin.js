@@ -536,7 +536,8 @@ function setupAliasField() {
    以前ここにあった専用のポップアップ（.part-tip）は二重に出るので削除 */
 
 /**
- * 解析の状況（setlist_jobs.php?tab=chapter）の「MP3 を紐付け」。ドライブのフォルダの「動画ID.mp3」をバンドに紐付け（api_yt_drive.php）、当たらなかったファイル名を下に並べる
+ * 解析の状況（setlist_jobs.php?tab=chapter）の「MP3 を紐付け」。ドライブのフォルダの「動画ID.mp3」をバンドに紐付け（api_yt_drive.php）、
+ * バンドにもスペシャルコンテンツにも無い動画を、開け閉めできる欄に動画のタイトルで並べる（タイトルが無ければファイル名）
  */
 function setupYtDrive() {
   const form = document.querySelector('[data-yt-drive]');
@@ -549,7 +550,12 @@ function setupYtDrive() {
     try {
       const { count, unmatched } = await apiPost('api_yt_drive', { url: form.url.value }, '紐付けられませんでした');
       flashToast(`${count}本を紐付けました`);
-      miss.replaceChildren(...unmatched.map((name) => Object.assign(document.createElement('li'), { textContent: name })));
+      miss.querySelector('summary').textContent = `紐付けなかった動画 ${unmatched.length}本`;
+      miss.querySelector('ul').replaceChildren(...unmatched.map(({ name, video_id: vid, title }) => {
+        const li = document.createElement('li');
+        li.append(vid ? Object.assign(document.createElement('a'), { href: `https://www.youtube.com/watch?v=${vid}`, target: '_blank', rel: 'noopener noreferrer', textContent: title || name }) : name);
+        return li;
+      }));
       miss.hidden = !unmatched.length;
     } catch (err) {
       flashToast(err.message, 'error');

@@ -6,7 +6,8 @@
  *  setlist_jobs.php の「チャプター」タブのフォームが fetch() で呼ぶ（assets/app_admin.js の setupYtDrive）
  *  MP3 は scripts/takeout_to_mp3.ps1 で作り、「リンクを知っている全員」に共有したフォルダに置く
  *  リクエスト（POST, JSON）: {"url": "フォルダのリンク"}
- *  返す: {"count": 紐付けた数, "unmatched": [当たらなかったファイル名, ...]}
+ *  返す: {"count": 紐付けた数, "unmatched": [{"name": ファイル名, "video_id": 動画 ID か null, "title": 動画のタイトルか null}, ...]}
+ *    unmatched はバンドにもスペシャルコンテンツにも無い動画だけ。タイトルは youtube_title（無ければ oEmbed で取って保存）
  *  もう紐付けてあるファイルは区分だけ直すので、何回押してもよい（バンドに YouTube を貼ってから押し直せば入る）
  *  エラー: {"error": "..."}（400 / 401 / 403 / 405 / 502）
  * =====================================================================
@@ -38,4 +39,22 @@ foreach ($match['bands'] as $bandId => $list) {
     drive_add_yt($pdo, $bandId, $list);
 }
 $pdo->commit();
-api_ok(['count' => array_sum(array_map('count', $match['bands'])), 'unmatched' => $match['unmatched']]);
+$special = []; // スペシャルコンテンツの動画 ID => true
+foreach ($pdo->query('SELECT url FROM special_content WHERE url IS NOT NULL') as $r) {
+    if (($v = youtube_video_id((string)$r['url'])) !== null) {
+        $special[$v] = true;
+    }
+}
+$miss = [];
+foreach ($match['unmatched'] as $name) {
+    $vid = preg_match('/^([A-Za-z0-9_-]{11})\.mp3$/i', $name, $m) ? $m[1] : null;
+    if ($vid === null || !isset($special[$vid])) {
+        $miss[] = ['name' => $name, 'video_id' => $vid];
+    }
+}
+$urls = array_map(static fn($m) => youtube_watch_url($m['video_id']), array_filter($miss, static fn($m) => $m['video_id'] !== null));
+@set_time_limit(0); // タイトルを初めて取るときは1本ずつ oEmbed に聞く
+youtube_titles_fetch($pdo, $urls);
+$titles = youtube_titles($pdo, $urls);
+$miss = array_map(static fn($m) => $m + ['title' => $titles[$m['video_id']] ?? null], $miss);
+api_ok(['count' => array_sum(array_map('count', $match['bands'])), 'unmatched' => $miss]);
