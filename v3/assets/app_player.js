@@ -342,7 +342,9 @@ function setupAudioPlayers(root = document) {
     const songSel = fig.querySelector('[data-ap-song]');
     let songNo = new Map(); // チャプターの id → 当たる曲（render が数える）
     // 曲を選んだら、ほかの曲のチップは今の番号のまま（番号を全部保存する。選んだチップだけ変わる）
+    let quiet = false; // チップを選んで値を合わせたときの change（見た目のプルダウンの文字を合わせるだけ。保存しない）
     songSel?.addEventListener('change', () => {
+      if (quiet) return;
       const numbers = Object.fromEntries(chap.list.filter((c) => c.kind === 'song').map((c) => [c.id, c.id === selId ? Number(songSel.value) : songNo.get(c.id)]));
       send({ action: 'numbers', key: chap.key, numbers });
     });
@@ -353,10 +355,17 @@ function setupAudioPlayers(root = document) {
       fig.classList.toggle('has-sel', !!c && fig.classList.contains('is-editing'));
       for (const [id, e] of els) e.chip.classList.toggle('is-selected', id === selId);
       if (c && document.activeElement !== atInput) atInput.value = fmtTime(c.ms); // 打っている最中は触らない
-      if (songSel) { // 曲のチップを選んだときだけ。ほかのチップと同じ曲なら赤く
-        songSel.hidden = c?.kind !== 'song';
-        if (c?.kind === 'song') songSel.value = String(songNo.get(c.id));
-        songSel.classList.toggle('is-dup', !!c && !!els.get(c.id)?.chip.classList.contains('is-dup'));
+      if (songSel) { // 曲のチップを選んだときだけ。ほかのチップと同じ曲なら赤く。表示は app_form.js の setupSelectPick がかぶせたボタン
+        const box = songSel.closest('[data-select-pick]') || songSel;
+        box.hidden = c?.kind !== 'song';
+        box.classList.toggle('is-dup', !!c && !!els.get(c.id)?.chip.classList.contains('is-dup'));
+        const v = c?.kind === 'song' ? String(songNo.get(c.id)) : null;
+        if (v !== null && songSel.value !== v) {
+          songSel.value = v;
+          quiet = true;
+          songSel.dispatchEvent(new Event('change', { bubbles: true })); // ボタンの文字を合わせる（setupSelectPick は change で読み直す）
+          quiet = false;
+        }
       }
     };
 
