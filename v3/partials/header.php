@@ -242,7 +242,7 @@ $nav = [
             return (bool)$st->fetchColumn();
         };
         if (in_array($shufflePage, ['live', 'band', 'member', 'artist'], true) && (int)($_GET['id'] ?? 0) > 0 && $shuffleHas($shufflePage, (int)$_GET['id'])) {
-            $st = db()->prepare(['live' => 'SELECT name FROM live WHERE live_id = ?', 'band' => 'SELECT name FROM band WHERE band_id = ?',
+            $st = db()->prepare(['live' => "SELECT CONCAT(LPAD(fiscal_year % 100, 2, '0'), '’ ', name) FROM live WHERE live_id = ?", 'band' => 'SELECT name FROM band WHERE band_id = ?',
                 'member' => 'SELECT name FROM member WHERE member_id = ?', 'artist' => 'SELECT name FROM artist WHERE artist_id = ?'][$shufflePage]);
             $st->execute([(int)$_GET['id']]);
             $shuffleScopes[] = [$shufflePage, (int)$_GET['id'], ['live' => '表示中のライブ', 'band' => '表示中のバンド', 'member' => '表示中のメンバー', 'artist' => '表示中のアーティスト'][$shufflePage], (string)$st->fetchColumn()];

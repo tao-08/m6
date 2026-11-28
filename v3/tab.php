@@ -724,7 +724,7 @@ render_header($tab['title'] . ' ' . $tab['part'], 'lives');
 <template data-yt-icon><?= youtube_icon() ?></template>
 <script type="application/json" id="tab-data"><?= $json ?></script>
 
-<div class="tab" data-tab>
+<div class="tab-player" data-tab>
     <header class="tab-head">
         <?php if ($tab['artwork_url']): ?>
             <img class="tab-head__art" src="<?= h($tab['artwork_url']) ?>" alt="" width="44" height="44">

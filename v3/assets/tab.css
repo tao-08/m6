@@ -176,19 +176,19 @@ details[open] > .tab-summary > .tab-summary__chev { transform: rotate(180deg); }
 @media (max-width: 719px) { .tab-new__submit { justify-self: stretch; } } /* スマホは横いっぱい（親指で押しやすい） */
 
 /* ===== プレイヤー ===== */
-.tab[data-tab] { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; margin-top: 12px; padding: 0; } /* 列を中身の幅に広げない（canvas・操作バーでページが横にはみ出す）
-   [data-tab] … 曲カードのために tab.css が他のページにも読まれるので、ページ内のタブ（.tabs > .tab）に当てない
-   padding: 0 … app.css の汎用 .tab（日程タブ）の padding: 8px 16px も当たっていて、パンくずより左右 16px ずつ内側に寄っていた。スマホの 16px は、グリッド（マス）の幅に響くので消す */
+.tab-player { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; margin-top: 12px;
+  font-weight: 800; font-size: var(--fs-sm); color: var(--muted); white-space: nowrap; } /* 列を中身の幅に広げない（canvas・操作バーでページが横にはみ出す）
+   太字・小さめ・薄い色・折り返し禁止 … 以前は class="tab" で app.css のページ内タブの見た目を受け継いでいた。その見た目のまま（下の「普通に戻す」所はこれを打ち消している） */
+.tab-player small { font-weight: 500; }
 .tab-head { display: flex; align-items: center; gap: 10px; }
 .tab-head__art { width: 44px; height: 44px; border-radius: var(--r-md); object-fit: cover; flex: none; }
 /* 曲名・アーティスト・パートの文字ブロック（左の画像と右のボタンの間）。
    flex: 1        … 余った横幅をすべてもらう
    min-width: 0   … flex の子は「中身の幅」より縮まない初期値なので、0 にして縮めるようにする（これが無いと、はみ出したまま）
    white-space: normal … 【スマホでボタンが文字に被る不具合の修正】
-     プレイヤーのルート <div class="tab"> に、app.css の汎用 .tab（ライブ詳細の日程タブ用。white-space: nowrap = 折り返し禁止）が
-     偶然当たっていて、white-space は子へ「継承」されるため、下の p（アーティスト · パート · カポ）が折り返せず、
-     右へはみ出して右端のボタン（？・履歴・編集）の下に潜り込んでいた。ここだけ通常の折り返しに戻す。
-     ※ 同じクラス名を別の用途で使い回すと起きる「CSS のクラス名衝突」。根本的には app.css 側のタブを .tabs > .tab に絞る方法もある */
+     プレイヤーのルート .tab-player の white-space: nowrap（折り返し禁止）が
+     子へ「継承」されるため、下の p（アーティスト · パート · カポ）が折り返せず、
+     右へはみ出して右端のボタン（？・履歴・編集）の下に潜り込んでいた。ここだけ通常の折り返しに戻す。 */
 .tab-head__text { flex: 1; min-width: 0; white-space: normal; }
 .tab-head__title { margin: 0; font-size: var(--fs-xl); font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tab-head__text p { margin: 2px 0 0; overflow-wrap: anywhere; }
@@ -237,16 +237,16 @@ details[open] > .tab-summary > .tab-summary__chev { transform: rotate(180deg); }
 .tab-stage canvas { display: block; }
 
 /* ===== 編集中 / 練習中の出し分け =====
-   .is-editing は JS（setMode）が編集モードのあいだ <div class="tab"> に付ける。
+   .is-editing は JS（setMode）が編集モードのあいだ .tab-player に付ける。
    ・data-practice-only … 練習用の操作（速度・練習 BPM・A/B・ループごとの BPM 増加・マーカー・同期解除・練習用マーカー一覧）。編集中は隠して、画面を片付ける
      編集中でも耳コピに要る速度・リピートは、キーボードの上のミニバー（.tab-pad__mini。tab.js の renderKeyboard）から使える
    ・data-edit-only     … 編集用（準備ステップ・詳細設定）。練習中は隠す
    !important を付けるのは、.tab-bar__group { display: flex } のような、ほかの指定（同じ強さで後ろにあるもの）に負けないため */
-.tab.is-editing [data-practice-only] { display: none !important; }
-.tab:not(.is-editing) [data-edit-only] { display: none !important; }
+.tab-player.is-editing [data-practice-only] { display: none !important; }
+.tab-player:not(.is-editing) [data-edit-only] { display: none !important; }
 
 /* ===== 準備ステップ（編集モードの上。① 音源 → ② 開始位置 → ③ テンポ → ④ 入力）===== */
-/* app.css の汎用 .tab（日程タブ）の「太字・薄い色・折り返し禁止」が子へ継承されるので（このファイルの .tab-head__text のコメント参照）、この枠の中では普通に戻す */
+/* .tab-player の「太字・薄い色・折り返し禁止」が子へ継承されるので、この枠の中では普通に戻す */
 .tab-setup, .tab-more { padding: 0 16px; white-space: normal; font-weight: 400; font-size: var(--fs-md); color: var(--text); }
 .tab-setup__dots { display: inline-flex; gap: 5px; margin-left: 4px; }
 .tab-setup__dot { width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid var(--border); } /* 未完了は輪だけ、完了は accent で塗る */
@@ -275,9 +275,9 @@ details[open] > .tab-summary > .tab-summary__chev { transform: rotate(180deg); }
 .tab-step__mini--fit { flex-wrap: nowrap; gap: 4px; }
 .tab-step__mini--fit .btn { flex: 1 1 0; min-width: 0; padding-inline: 2px; }
 /* ボタン名を表示中（初めて開いたときは ON）も、± の数字のボタンには名前を出さない: 数字の横に「開始位置 -0.1秒」が並んで 3行に崩れる。何の ± かは上の見出し・入力欄のラベルでわかる */
-.tab.is-help .tab-step__mini.tab-step__mini--fit .btn[aria-label]::after { content: none; }
+.tab-player.is-help .tab-step__mini.tab-step__mini--fit .btn[aria-label]::after { content: none; }
 /* ボタン名を表示中は「開始位置から確認」などの名前でアイコンのボタンが広がるので、± は文字を小さくして 1行に収める */
-.tab.is-help .tab-step__mini--fit .btn { padding-inline: 0; font-size: var(--fs-sm); }
+.tab-player.is-help .tab-step__mini--fit .btn { padding-inline: 0; font-size: var(--fs-sm); }
 /* ③ の後半の確認（拍をタップと、拍子・分割の間）: ② の開始位置の ±（秒）と見た目が似るので、上下の区切り線と見出し（現在の BPM 付き）で別物だと分かるようにする */
 .tab-late { display: grid; gap: 8px; padding-block: 12px; border-block: 1px solid var(--border); }
 .tab-late__head { display: flex; justify-content: space-between; align-items: baseline; margin: 0; font-weight: 600; }
@@ -287,7 +287,7 @@ details[open] > .tab-summary > .tab-summary__chev { transform: rotate(180deg); }
 .tab-beat-tap .btn { min-height: 44px; }
 .tab-beat-tap__pad { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; height: 72px; padding: 0 12px;
   border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface); color: var(--text); cursor: pointer;
-  font: 700 var(--fs-md)/1 var(--font); font-variant-numeric: tabular-nums; white-space: nowrap; /* .tab の太字・薄い色・折り返し禁止を、ここで読みやすく戻す */
+  font: 700 var(--fs-md)/1 var(--font); font-variant-numeric: tabular-nums; white-space: nowrap; /* .tab-player の太字・薄い色・折り返し禁止を、ここで読みやすく戻す */
   touch-action: manipulation; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent;
   transition: background-color var(--t-fast) ease, border-color var(--t-fast) ease; }
 .tab-beat-tap__pad .icon { font-size: var(--fs-3xl); color: var(--accent); }
@@ -564,12 +564,12 @@ details[open] > .tab-summary > .tab-summary__chev { transform: rotate(180deg); }
 .tab-pad--practice:not([hidden]) { display: none; }
 .tab-pad--practice .tab-pad__mini { position: static; margin: 0; padding: 0; background: none; border: 0; }
 @media (max-width: 899px) {
-  .tab:not(.is-editing) .tab-pad--practice:not([hidden]) { display: grid; left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom)); padding: 6px;
+  .tab-player:not(.is-editing) .tab-pad--practice:not([hidden]) { display: grid; left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom)); padding: 6px;
     border-width: 1px; border-radius: var(--r-lg); max-height: none; overflow: visible; }
-  body:has(.tab:not(.is-editing) .tab-pad--practice) { padding-bottom: calc(72px + env(safe-area-inset-bottom)); }
+  body:has(.tab-player:not(.is-editing) .tab-pad--practice) { padding-bottom: calc(72px + env(safe-area-inset-bottom)); }
 }
 @media (max-width: 760px) {
-  .tab:not(.is-editing) .tab-pad--practice:not([hidden]) { bottom: calc(76px + env(safe-area-inset-bottom)); }
+  .tab-player:not(.is-editing) .tab-pad--practice:not([hidden]) { bottom: calc(76px + env(safe-area-inset-bottom)); }
 }
 /* 下のナビ（.nav）は app.css が 760px 以下で画面の下に固定している。キーボードと重なるので隠す（761px 以上のナビは上のヘッダーの中なので隠さない） */
 @media (max-width: 760px) {
@@ -592,7 +592,7 @@ details[open] > .tab-summary > .tab-summary__chev { transform: rotate(180deg); }
 .modal.tab-import { width: min(520px, calc(100vw - 32px)); }
 
 /* ===== 使い方のモーダル（ヘッダーの ？） ===== */
-.modal.tab-guide { width: min(520px, calc(100vw - 32px)); white-space: normal; font-weight: 400; } /* app.css の .tab（タブ切替のボタン）の nowrap・太字が親から継承されるので戻す */
+.modal.tab-guide { width: min(520px, calc(100vw - 32px)); white-space: normal; font-weight: 400; } /* .tab-player の nowrap・太字が親から継承されるので戻す */
 .tab-guide .modal__body { max-height: calc(100dvh - 48px); overflow-y: auto; }
 .tab-guide__h { margin: 14px 0 6px; font-size: var(--fs-sm); font-weight: 800; color: var(--muted); }
 .tab-guide .icon { font-size: 18px; vertical-align: -.25em; }
@@ -608,27 +608,27 @@ details[open] > .tab-summary > .tab-summary__chev { transform: rotate(180deg); }
 .tab-guide .form-actions { justify-content: space-between; align-items: center; }
 .tab-guide__labels { font-size: var(--fs-sm); }
 /* モーダルの中では、ボタン名の文字（::after）を出さない */
-.tab.is-help .tab-guide .btn::after { content: none; }
+.tab-player.is-help .tab-guide .btn::after { content: none; }
 
 /* ---- 説明の表示（使い方のモーダルの「ボタン名を表示」。assets/tab.js の setupHelp）----
    アイコンだけのボタンの下に、aria-label（無ければ title）を小さい文字で出す。
    グリッドのマス（.tg）は数が多く、文字を出すと譜面が読めなくなるので出さない。
    画面内キーボード（.tab-pad）も出さない: すでに文字のボタンが多く、出すと高さが倍になって譜面を隠してしまう（そのぶん ↶ ↷ ◀ ▶ などはアイコンで分かるようにしてある） */
-.tab.is-help :is(.icon-btn, .tab-chip, .btn)[aria-label]:not(.tg *)::after,
-.tab.is-help :is(.icon-btn, .tab-chip, .btn)[title]:not([aria-label]):not(.tg *)::after {
+.tab-player.is-help :is(.icon-btn, .tab-chip, .btn)[aria-label]:not(.tg *)::after,
+.tab-player.is-help :is(.icon-btn, .tab-chip, .btn)[title]:not([aria-label]):not(.tg *)::after {
   content: attr(aria-label);
   display: block; margin-top: 2px;
   font-size: 10px; font-weight: 600; line-height: 1.2; white-space: nowrap; color: var(--muted);
 }
-.tab.is-help :is(.icon-btn, .tab-chip, .btn)[title]:not([aria-label]):not(.tg *)::after { content: attr(title); }
+.tab-player.is-help :is(.icon-btn, .tab-chip, .btn)[title]:not([aria-label]):not(.tg *)::after { content: attr(title); }
 /* 丸いアイコンボタンは文字が入る分だけ縦に伸ばす（幅は文字に合わせる） */
-.tab.is-help .icon-btn[aria-label]:not(.tg *) {
+.tab-player.is-help .icon-btn[aria-label]:not(.tg *) {
   width: auto; min-width: 36px; height: auto; min-height: 36px; padding: 4px 6px;
   border-radius: var(--r-md); display: inline-flex; flex-direction: column; align-items: center; justify-content: center;
 }
 /* 入力欄・セレクトの説明（::after が付かないので外側の span に出す） */
 .tab-help-field { display: inline-flex; flex-direction: column; align-items: center; }
-.tab.is-help .tab-help-field::after {
+.tab-player.is-help .tab-help-field::after {
   content: attr(data-help);
   margin-top: 2px; font-size: var(--fs-2xs); font-weight: 600; line-height: 1.2; white-space: nowrap; color: var(--muted);
 }

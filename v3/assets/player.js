@@ -508,7 +508,7 @@
   on('ended', next);
   on('error', () => { if (audio.getAttribute('src')) skip(audio.error?.code); });
   // バンド単位: シークバーの上に曲（番号）と MC（通しのときだけ）の吹き出し（band.php のチャプターと同じ見た目）。押すとそこから
-  //   曲間をスキップするときは、飛ばす所（曲の終わり〜次の曲の頭）を棒の上で薄くする（--gaps）
+  //   曲間をスキップするときは、飛ばす所（曲の終わり〜次の曲の頭）を棒の上で薄くする（--gaps。通しでは .is-thru で色だけ消す）
   const bubblesEl = $('[data-shell-bubbles]');
   let bubbleKey = '';
   const drawBubbles = (it, s0, end) => {
@@ -524,7 +524,7 @@
         if (hasMc(q)) { const l = gapName(q.mc_kind); marks.push({ k, ms: q.mc_ms, label: q.mc_kind === 'blank' ? '—' : l, // 曲なしの吹き出しはチャプターのチップと同じ「—」
            full: q.mc_se ? `SE. ${q.mc_se.title}` : l, kind: 'mc' }); }
         const nx = queue[k + 1];
-        if (!thru() && k < r.b && q.end_ms !== null && nx.start_ms > q.end_ms) gaps.push([x(q.end_ms), x(nx.start_ms)]);
+        if (k < r.b && q.end_ms !== null && nx.start_ms > q.end_ms) gaps.push([x(q.end_ms), x(nx.start_ms)]);
       }
       marks.forEach((m) => { m.x = x(m.ms); });
     }
@@ -556,6 +556,7 @@
         }).join(', ')})`
         : 'none');
     }
+    seekBox.classList.toggle('is-thru', thru()); // 通しでは曲間も流すので、飛ばす所の色をフェードで消す（--gap-a）
     const kind = gapKind(it) || 'song';
     [...bubblesEl.children].forEach((b) => b.classList.toggle('is-current', Number(b.dataset.k) === idx && b.dataset.kind === kind));
   };
@@ -795,7 +796,7 @@
     const it = cur();
     const list = [['サイト全体', 'all', 0]];
     if (it) {
-      list.push(['再生中のライブ', 'live', it.live_id, it.live], ['再生中のバンド', 'band', it.band_id, it.band]);
+      list.push(['再生中のライブ', 'live', it.live_id, `${it.year ? `${String(it.year % 100).padStart(2, '0')}’ ` : ''}${it.live}`], ['再生中のバンド', 'band', it.band_id, it.band]);
       if (it.artist_id) list.push(['再生中のアーティスト', 'artist', it.artist_id, it.artist]);
     }
     innerDoc()?.querySelectorAll('[data-shuffle-menu] a[data-shuffle]').forEach((a) => {

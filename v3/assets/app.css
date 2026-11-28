@@ -659,6 +659,7 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 .audio-player__seek { --ap-thumb: 14px; position: relative; flex: 1; min-width: 0; }
 /* 位置 --q（0〜1）。押して飛んだとき（JS が .is-jumping を付ける）だけ値を滑らせる。つまみは本物を隠して、同じ位置に滑る丸を出す（本物は滑らせられない） */
 @property --q { syntax: '<number>'; inherits: true; initial-value: 0; }
+@property --gap-a { syntax: '<number>'; inherits: true; initial-value: 1; } /* シークバーの飛ばす所の濃さ（通しの切り替えでフェード） */
 .audio-player__seek.is-jumping { transition: --q var(--t-base) var(--ease-out); }
 .audio-player__seek::after { content: ''; position: absolute; top: 50%; left: calc(var(--ap-thumb) / 2 + (100% - var(--ap-thumb)) * var(--q)); width: var(--ap-thumb); height: var(--ap-thumb);
   margin: calc(var(--ap-thumb) / -2) 0 0 calc(var(--ap-thumb) / -2); border-radius: var(--r-full); background: var(--accent); opacity: 0; pointer-events: none; }
@@ -808,9 +809,13 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 .shell-panel__players a { color: inherit; }
 .shell-panel__players a:hover { color: var(--accent); }
 /* バンド単位の吹き出し（player.js の drawBubbles）: 上（被ったものは下）に吹き出しの分の余白。曲間をスキップするときは飛ばす所を薄く（--gaps） */
-.shell-panel .audio-player__seek { --rest: color-mix(in srgb, var(--border), var(--muted) 10%); --gap: var(--surface-2); --gap-done: color-mix(in srgb, var(--accent) 25%, var(--gap)); /* 未再生は灰色・飛ばす所はそれより薄い白寄り・流したあとの飛ばした所は赤と混ぜる */ transition: margin var(--t-slow) var(--ease-out); }
+.shell-panel .audio-player__seek { --rest: color-mix(in srgb, var(--border), var(--muted) 10%); --gap-a: 1;
+  --gap: color-mix(in srgb, var(--surface-2) calc(var(--gap-a) * 100%), transparent); --gap-done: color-mix(in srgb, color-mix(in srgb, var(--accent) 25%, var(--surface-2)) calc(var(--gap-a) * 100%), transparent); /* 未再生は灰色・飛ばす所はそれより薄い白寄り・流したあとの飛ばした所は赤と混ぜる。--gap-a = 濃さ（通しで 0） */
+  transition: margin var(--t-slow) var(--ease-out), --gap-a var(--t-slow) ease; }
+.shell-panel .audio-player__seek.is-thru { --gap-a: 0; }
 .shell-panel .audio-player__seek.has-bubbles { margin-top: 22px; }
-.shell-panel .audio-player__seek.is-jumping { transition: margin var(--t-slow) var(--ease-out), --q var(--t-base) var(--ease-out); } /* 上の transition: margin が .is-jumping の --q を消すので両方書く */
+.shell-panel .audio-player__seek.is-jumping { transition: margin var(--t-slow) var(--ease-out), --gap-a var(--t-slow) ease, --q var(--t-base) var(--ease-out); } /* 上の transition が .is-jumping の --q を消すので全部書く */
+@media (prefers-reduced-motion: reduce) { .shell-panel .audio-player__seek { transition: none; } }
 .shell-panel .audio-bubble.is-current { --bd: var(--accent); --ov: var(--accent-soft); color: var(--accent); } /* 再生中は赤（ポップアップの再生中の色にそろえる） */
 .shell-panel .audio-player__seek.has-below { margin-bottom: 22px; }
 .shell-panel .audio-player__range::-webkit-slider-runnable-track { background: var(--gaps, none), linear-gradient(to right, var(--accent) calc(var(--q) * 100%), var(--rest) calc(var(--q) * 100%)); }

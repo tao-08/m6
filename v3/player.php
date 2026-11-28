@@ -63,8 +63,7 @@ if (!preg_match('/^[A-Za-z0-9_-]*(\.php)?(\?[^#\s]*)?$/', $u) || preg_match('/^p
                 <div class="shell-panel__liveline"><a class="shell-panel__live" data-shell-live target="site"></a><?= mix_tag() ?><a class="shell-panel__yt" data-shell-yt target="_blank" rel="noopener" aria-label="YouTube で見る" title="YouTube で見る" hidden><?= youtube_icon() ?><?= icon('open_in_new') ?></a></div>
                 <div class="shell-panel__liveline"><a class="shell-panel__band" data-shell-bandlink target="site"></a><span class="se-mark" data-shell-se hidden>SE</span></div>
                 <a class="shell-panel__song" data-shell-song target="site"></a>
-<?php if (is_admin()): ?>                <small class="shell-panel__diag" data-shell-diag hidden></small><!-- 管理者だけ: 止まっている理由（player.js の diag） -->
-<?php endif; ?>
+<?php // 管理者だけ: 止まっている理由（player.js の diag）。いまは出さない。戻すときは if (is_admin()) で <small class="shell-panel__diag" data-shell-diag hidden></small> を置く ?>
                 <div class="shell-panel__artistline"><a class="shell-panel__artist" data-shell-artist target="site"></a><span class="shell-panel__album" data-shell-album></span></div>
             </div>
         </div>
