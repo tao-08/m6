@@ -46,34 +46,119 @@ function audio_orig_size(string $path): int
 
 /**
  * MIX（YouTube の区分でない音源）を下げる量。シャッフル再生で YouTube の音源より大きく聞こえるため。iPhone は再生側で音量を変えられないので、ファイルを作るときに下げる
- *   下げたら横に印 <元>.256q を置く（中身 ok / 作れなかったら fail）。印の無い MIX は、もう 160 にしてあっても次に流すときに作り直す
+ *   MP3（MPEG-1 Layer III の CBR）は、各フレームの音量の値（global_gain）だけ書き換える（audio_mp3_gain。mp3gain と同じ。音は作り直さないので劣化せず速い）。1 段 = 1.5dB
+ *   それ以外（WAV・VBR など）は ffmpeg で 256k に作り直す（MIX は元が 256k。160 だと高音が削れる）
+ *   下げたら横に印 <元>.160g を置く（中身 ok / 作れなかったら fail）。印の無い MIX は、もう 160 にしてあっても次に流すときに作り直す
+ *   前の作りの印 .256q（ffmpeg で 256k）・.160q（ffmpeg で 160k）も「下げてある」とみなす（もう一度下げない）。.160q のドライブの音源は落とし直す（drive_audio.php）
  *   印は数字で始める: 元を消す・差し替えるときに .[0-9]* でまとめて消される（drive_cache_derived・live_image.php）
  *   shortcut: 区分をあとから YouTube に変えても下げたまま。気になるなら区分の変更で印とファイルを作り直す
  */
-const AUDIO_MIX_GAIN_DB = -4;
-/** MIX は元が 256k。160 にすると高音が削れるので、元と同じ 256k で作る（印は <元>.256q） */
+const AUDIO_MIX_GAIN_STEPS = -3; // -4.5dB
 const AUDIO_MIX_KBPS = 256;
+const AUDIO_QUIET_MARKS = ['160g', '256q', '160q']; // 今の作り, 前の作り（ffmpeg で 256k / 160k）
 
 function audio_quiet_mark(string $path): string
 {
-    return $path . '.' . AUDIO_MIX_KBPS . 'q';
+    return $path . '.' . AUDIO_QUIET_MARKS[0];
 }
 
-/** 前の作り（160k で下げた MIX）の印。ドライブの音源は落とし直して作り直す（drive_audio.php）。直接置いた MP3 は元が残っていないのでそのまま */
-function audio_quiet_mark_160(string $path): string
+/** 下げてあるか: 印の中身（ok / fail）。どの作りの印も無ければ null */
+function audio_quiet_state(string $path): ?string
 {
-    return audio_mark($path) . 'q';
+    foreach (AUDIO_QUIET_MARKS as $m) {
+        clearstatcache(true, "$path.$m");
+        if (is_file("$path.$m")) {
+            return (string)file_get_contents("$path.$m");
+        }
+    }
+    return null;
 }
 
-/** まだなら 160 に置き換える（$quiet: MIX なので音量も下げる）。同時の要求は flock で1つだけが作り、ほかは待つ */
+/**
+ * MPEG-1 Layer III の CBR の MP3 を、各フレームの global_gain を $steps 段（1 段 1.5dB）変えて $out に書く。できない MP3 なら false（ffmpeg で作る）
+ *   CRC 付き・VBR（Xing）・MPEG-2 は扱わない。先頭の ID3・最後の ID3v1 / APE タグはそのまま写す
+ */
+function audio_mp3_gain(string $in, string $out, int $steps): bool
+{
+    $src = @fopen($in, 'rb');
+    $dst = @fopen($out, 'wb');
+    if (!$src || !$dst) {
+        return false;
+    }
+    $rate = null;
+    $first = true;
+    try {
+        $id3 = audio_id3_len((string)fread($src, 10));
+        fseek($src, 0);
+        if ($id3 > 0) {
+            stream_copy_to_stream($src, $dst, $id3);
+        }
+        while (strlen($h = (string)fread($src, 4)) === 4) {
+            $b = unpack('N', $h)[1];
+            if (($b & 0xFFE00000) !== 0xFFE00000) {
+                if (!in_array(substr($h, 0, 3), ['TAG', 'APE', 'LYR'], true)) {
+                    return false; // フレームの間にわからないものがある
+                }
+                fwrite($dst, $h);
+                stream_copy_to_stream($src, $dst); // 最後のタグ
+                break;
+            }
+            $bri = ($b >> 12) & 15;
+            $sri = ($b >> 10) & 3;
+            $mono = (($b >> 6) & 3) === 3;
+            // MPEG-1（11）・Layer III（01）・CRC なし（1）だけ
+            if ((($b >> 16) & 0xF) !== 0xB || $bri === 0 || $bri === 15 || $sri === 3) {
+                return false;
+            }
+            $len = intdiv(144000 * [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320][$bri], [44100, 48000, 32000][$sri]) + (($b >> 9) & 1);
+            $body = (string)fread($src, $len - 4);
+            $side = $mono ? 17 : 32; // サイド情報の長さ
+            if ($first) {
+                $first = false;
+                $tag = substr($body, $side, 4);
+                if ($tag === 'Xing') {
+                    return false; // VBR: from= のバイト位置が時刻と比例しない
+                }
+                if ($tag === 'Info') { // 音の無い先頭のフレーム（LAME の情報）: そのまま
+                    fwrite($dst, $h . $body);
+                    continue;
+                }
+            }
+            if ($rate !== null && $rate !== $bri) {
+                return false; // VBR
+            }
+            $rate = $bri;
+            if (strlen($body) === $len - 4) { // 途中で切れた最後のフレームはそのまま
+                $nch = $mono ? 1 : 2;
+                for ($g = 0; $g < 2 * $nch; $g++) { // 2 グラニュール × チャンネル。global_gain は各 59 ビットの 21 ビット目から 8 ビット
+                    $pos = 9 + ($mono ? 5 : 3) + 4 * $nch + $g * 59 + 21;
+                    $i = $pos >> 3;
+                    $sh = 8 - ($pos & 7);
+                    $w = (ord($body[$i]) << 8) | ord($body[$i + 1]);
+                    $v = ($w >> $sh) & 0xFF;
+                    if ($v > 0) { // 0 は無音
+                        $w = ($w & ~(0xFF << $sh)) | (max(0, min(255, $v + $steps)) << $sh);
+                        $body[$i] = chr(($w >> 8) & 0xFF);
+                        $body[$i + 1] = chr($w & 0xFF);
+                    }
+                }
+            }
+            fwrite($dst, $h . $body);
+        }
+        return $rate !== null;
+    } finally {
+        fclose($src);
+        fclose($dst);
+    }
+}
+
+/** まだなら 160 に置き換える（$quiet: MIX なので音量を下げる。160 にはしない）。同時の要求は flock で1つだけが作り、ほかは待つ */
 function audio_shrink(string $path, bool $quiet = false): void
 {
     $mark = audio_mark($path);
     $todo = static function () use ($path, $mark, $quiet): bool {
         clearstatcache(true, $mark);
-        clearstatcache(true, audio_quiet_mark($path));
-        clearstatcache(true, audio_quiet_mark_160($path));
-        return !is_file($mark) || ($quiet && !is_file(audio_quiet_mark($path)) && !is_file(audio_quiet_mark_160($path)));
+        return !is_file($mark) || ($quiet && audio_quiet_state($path) === null);
     };
     if (!$todo() || !($lock = @fopen($mark . '.lock', 'c'))) {
         return;
@@ -100,13 +185,15 @@ function audio_shrink_make(string $path, string $mark, bool $quiet = false): voi
     clearstatcache(true, $old);
     if (!$quiet && is_file($old) && filesize($old) > 0) {
         rename($old, $part);
+    } elseif ($quiet && audio_mp3_gain($path, $part, AUDIO_MIX_GAIN_STEPS)) {
+        // 音量の値だけ書き換えた（ffmpeg は使わない）
     } else {
         $ffmpeg = ytdlp_ffmpeg_dir() . '/ffmpeg';
         $why = PHP_OS_FAMILY !== 'Windows' && !is_file($ffmpeg) ? ytdlp_ffmpeg_install() : null;
         if ($why === null) {
             // CBR（from= のバイト位置で切るため）。タグ・ジャケット画像は落とす
             [$code, $log] = ytdlp_run(['-v', 'error', '-y', '-i', $path, '-vn', '-map_metadata', '-1',
-                ...($quiet ? ['-af', 'volume=' . AUDIO_MIX_GAIN_DB . 'dB'] : []),
+                ...($quiet ? ['-af', 'volume=' . (AUDIO_MIX_GAIN_STEPS * 1.5) . 'dB'] : []),
                 '-c:a', 'libmp3lame', '-b:a', ($quiet ? AUDIO_MIX_KBPS : AUDIO_LIGHT_KBPS) . 'k', '-ar', '44100', $part], 600, $ffmpeg);
             clearstatcache(true, $part);
             $why = $code !== 0 || !is_file($part) || filesize($part) === 0 ? "ffmpeg exit $code: $log" : null;
@@ -133,7 +220,7 @@ function audio_shrink_make(string $path, string $mark, bool $quiet = false): voi
 /**
  * 管理者向け: 流す前にサーバーが何をしているか（player.js の diag。&state=1）。ファイルの有無だけで見る（記録は増やさない）
  *   download … ドライブから落としている途中（<元>.part。lib/drive_cache.php）。total は DB の大きさ
- *   convert … ffmpeg が 160 / 256 に作っている途中（audio_shrink_make の .part.mp3）
+ *   convert … 160 に作っている・MIX の音量を下げている途中（audio_shrink_make の .part.mp3）
  *   ready … 元はある（変換を待っている・もう終わった）/ none … まだ何も無い
  */
 function audio_prep_state(string $path, int $size = 0): array
@@ -159,7 +246,7 @@ function audio_stream_file(string $path, string $mime, ?string $dlName = null, b
     if (str_starts_with($mime, 'audio/')) {
         audio_shrink($path, $quiet);
         $orig = max(1, audio_orig_size($path));
-        if (filesize($path) < $orig || @file_get_contents(audio_quiet_mark($path)) === 'ok' || @file_get_contents(audio_quiet_mark_160($path)) === 'ok') { // 下げて作り直したものは元より大きくても MP3
+        if (filesize($path) < $orig || audio_quiet_state($path) === 'ok') { // 下げて作り直したものは元より大きくても MP3
             $mime = 'audio/mpeg';
         }
     }

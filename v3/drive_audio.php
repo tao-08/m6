@@ -54,7 +54,7 @@ $fail = static function (int|string $code, string $reason, int $http = 502): nev
 };
 
 $dat = drive_cache_path($fileId);
-if ($mix && is_file(audio_mark($dat)) && !is_file(audio_quiet_mark($dat))) { // 前に 160k で作った MIX: 160 から作ると高音が戻らないので、元（256k）を落とし直して作り直す
+if ($mix && is_file(audio_mark($dat)) && (audio_quiet_state($dat) === null || is_file("$dat.160q"))) { // 前に 160k で作った MIX: 160 から作ると高音が戻らないので、元を落とし直して作り直す
     foreach ([$dat, ...drive_cache_derived($dat)] as $f) {
         @unlink($f);
     }

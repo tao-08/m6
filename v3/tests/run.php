@@ -1281,11 +1281,25 @@ $o = [audio_orig_size($tmp)];
 file_put_contents(audio_mark($tmp), '1000'); // 160 に置き換えた印（元は 1000 バイト）
 $o[] = audio_orig_size($tmp);
 $o[] = drive_cache_ok($tmp, 1000);
-file_put_contents(audio_quiet_mark_160($tmp), 'ok'); // 前に 160k で下げた MIX（元が無い）: もう一度下げない
+file_put_contents("$tmp.160q", 'ok'); // 前に 160k で下げた MIX（元が無い）: もう一度下げない
 audio_shrink($tmp, true);
 $o[] = filesize($tmp);
-@unlink(audio_quiet_mark_160($tmp)); @unlink(audio_mark($tmp)); @unlink($tmp);
+@unlink("$tmp.160q"); @unlink(audio_mark($tmp)); @unlink($tmp);
 check('160 に置き換えた音源: 元の大きさは印から。キャッシュは元の大きさで合っていれば流す。160k で下げた MIX は作り直さない', $o, [100, 1000, true, 100]);
+// MIX の音量: global_gain だけ書き換える。MPEG-1 Layer III 128k 44.1kHz ステレオ CRC なし（417 バイト）を2つ + ID3v1
+$frame = static function (int $gain): string {
+    $bits = str_repeat('0', 9 + 3 + 8) . str_repeat(str_repeat('0', 21) . sprintf('%08b', $gain) . str_repeat('0', 30), 4); // サイド情報 32 バイト
+    $side = implode('', array_map(static fn($c) => chr(bindec($c)), str_split(str_pad($bits, 256, '0'), 8)));
+    return "\xFF\xFB\x90\x00" . $side . str_repeat("\x55", 417 - 4 - 32);
+};
+$gIn = tempnam(sys_get_temp_dir(), 'gin');
+$gOut = tempnam(sys_get_temp_dir(), 'gout');
+file_put_contents($gIn, $frame(200) . $frame(2) . 'TAG' . str_repeat('t', 125));
+$o = [audio_mp3_gain($gIn, $gOut, -3), file_get_contents($gOut) === $frame(197) . $frame(0) . 'TAG' . str_repeat('t', 125)];
+file_put_contents($gIn, $frame(200) . "\xFF\xFB\xA0\x00" . substr($frame(200), 4)); // 途中でビットレートが変わる（VBR）
+$o[] = audio_mp3_gain($gIn, $gOut, -3);
+@unlink($gIn); @unlink($gOut);
+check('MIX の音量: 各フレームの global_gain だけ下げる（0 で止める）。最後のタグはそのまま。VBR は扱わない', $o, [true, true, false]);
 check('MP3 の先頭のタグの長さ（from= の位置から外す）', [audio_id3_len("ID3    "), audio_id3_len("ID3    
 "), audio_id3_len("ÿû       ")], [10 + 255, 30, 0]);
 

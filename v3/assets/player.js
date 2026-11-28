@@ -429,7 +429,7 @@
       asking = false;
       if (src !== prepSrc || !s) return;
       if (s.step === 'download') diagWait('ドライブから取得中', s.total ? `${Math.round(s.done * 100 / s.total)}%` : MB(s.done), true);
-      else if (s.step === 'convert') diagWait('ffmpeg で変換中', MB(s.done), true);
+      else if (s.step === 'convert') diagWait('変換中', MB(s.done), true);
       else diagWait(prepPhase, '', true);
     }, 2000);
   }
