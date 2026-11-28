@@ -565,8 +565,7 @@ render_header($tabs[$tab][0] . 'の管理');
                 <td class="num"><a href="artist?id=<?= (int)$a['artist_id'] ?>"><?= (int)$a['used'] ?></a></td>
                 <td>
                     <?php if ((int)$a['used'] > 0 && (int)$a['setlist'] === (int)$a['used']): // 全部のバンドが登録済 → ✓ ?>
-                        <?php $label = 'セットリスト登録済（全' . (int)$a['used'] . '組）'; // 見た目と押したときのポップアップは setlist_badge と同じ ?>
-                        <button type="button" class="setlist-badge" data-tip="<?= h($label) ?>" aria-label="<?= h($label) ?>"><?= icon('check') ?><span class="setlist-badge__text">セットリスト</span></button>
+                        <?= check_badge('セットリスト登録済（全' . (int)$a['used'] . '組）', 'セットリスト') ?>
                     <?php elseif ((int)$a['setlist'] > 0): ?>
                         <span class="muted small"><?= (int)$a['setlist'] ?>/<?= (int)$a['used'] ?> 組</span>
                     <?php endif; ?>

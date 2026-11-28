@@ -1,5 +1,5 @@
 // セットリスト編集の「YouTube から曲を検出」（MIX があればセレクトで音源を選ぶ）（songs_edit.php の [data-setlist-detect]）
-//   押すと api_setlist_detect に送る → サーバーが裏でバンドの YouTube から音声を落とし、Gemini が聴いて曲名を返す（数分〜15分）
+//   押すと api_setlist_detect に送る → サーバーが裏で動画ごとの MP3 を Gemini に聴かせ、曲名を返す（数分〜15分）
 //   5秒ごとに途中経過（status=1）を見て、終わったらセトリの確認画面（songs_edit?from_detect=1）へ
 //   画面を閉じても裏の処理は続く。開き直したとき解析中なら（data-pending）すぐ見に行く
 const box = document.querySelector('[data-setlist-detect]');

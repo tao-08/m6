@@ -5,7 +5,7 @@
  * =====================================================================
  *  setlist_jobs.php の「チャプター」タブの「未解析を解析」が fetch() で呼ぶ。
  *  リクエスト（POST, JSON）: {"live_id": 3}
- *  未解析 = チャプターが1つも無く、解析中・順番待ちでもない動画（失敗したものはやり直す）
+ *  未解析 = チャプターが1つも無く、解析中・順番待ちでもない動画（失敗したものはやり直す）。その動画の MP3（YouTube の区分）がある動画だけ
  *  全部を順番待ち（queued）にして、すぐ {"count": 本数} を返し、裏で出演順に1本ずつ解析する（lib/chapter_job.php）。
  *  終わったものから保存する
  *  エラー: {"error": "..."}（400 / 401 / 403 / 404 / 405 / 429 / 503）
@@ -41,7 +41,7 @@ $todo = []; // [[動画ID, band_id], ...]
 foreach (band_video_urls($pdo, $bands) as $bandId => $urls) {
     foreach ($urls as $url) {
         $vid = youtube_video_id($url);
-        if ($vid !== null && !isset($done[$bandId . '|' . $vid]) && (chapter_job_get($vid)['state'] ?? 'error') === 'error') {
+        if ($vid !== null && !isset($done[$bandId . '|' . $vid]) && in_array(chapter_job_get($vid)['state'] ?? 'error', ['error', 'edited'], true) && band_video_mp3($bandId, $vid) !== null) { // MP3 の無い動画は聴かせられない
             $todo[$vid] = [$vid, $bandId]; // 同じ動画を2つのバンドが持つときは1回だけ
         }
     }

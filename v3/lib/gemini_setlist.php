@@ -1,7 +1,7 @@
 <?php
 /**
  * lib/gemini_setlist.php — ライブ音源を Gemini に聴かせて、演奏した曲名を演奏順に取り出す（動画から曲を検出）
- *   セットリスト編集の「YouTube から曲を検出」で、api_setlist_detect.php がバンドの YouTube から落とした音声（lib/ytdlp.php）を渡す。
+ *   セットリスト編集の「YouTube から曲を検出」で、api_setlist_detect.php が動画ごとの MP3（YouTube の区分）を渡す。
  *   結果はセトリの確認画面（songs_edit.php?from_detect=1）に並べるだけで、保存は人が確かめてから
  */
 declare(strict_types=1);
@@ -311,19 +311,17 @@ function gemini_setlist_lyrics(array $phrases, string $artist, string $key): arr
  */
 function gemini_setlist_compare(string $path, int $from, ?int $to, array $urls, array $cfg, bool $flex): ?int
 {
-    if (PHP_OS_FAMILY !== 'Windows' && !is_file(ytdlp_ffmpeg_dir() . '/ffmpeg') && ytdlp_ffmpeg_install() !== null) {
-        return null;
-    }
     $base = sys_get_temp_dir() . '/abbey-cmp-' . bin2hex(random_bytes(6));
     $len = max(30, min(GEMINI_SETLIST_COMPARE_SEC, ($to ?? PHP_INT_MAX) - $from));
     $files = [];
     try {
-        [$code] = ytdlp_run(['-v', 'error', '-y', '-ss', (string)$from, '-t', (string)$len, '-i', $path, '-vn', '-c', 'copy', "$base.live.m4a"], 120, ytdlp_ffmpeg_dir() . '/ffmpeg');
-        if ($code !== 0 || !is_file("$base.live.m4a") || is_string($live = gemini_upload("$base.live.m4a", 'audio/aac', $cfg['key']))) {
+        $cut = audio_cut_mp3($path, $from, $len);
+        if ($cut === null || !rename($cut, "$base.live.mp3") || is_string($live = gemini_upload("$base.live.mp3", 'audio/mpeg', $cfg['key']))) {
+            $cut && @unlink($cut);
             return null;
         }
         $files[] = $live;
-        $parts = [['text' => '1つ目の音声は、学生バンドがライブでカバー演奏した1曲（前後の曲や MC が少し入ることがある）。'], ['file_data' => ['mime_type' => 'audio/aac', 'file_uri' => $live['uri']]]];
+        $parts = [['text' => '1つ目の音声は、学生バンドがライブでカバー演奏した1曲（前後の曲や MC が少し入ることがある）。'], ['file_data' => ['mime_type' => 'audio/mpeg', 'file_uri' => $live['uri']]]];
         foreach (array_values($urls) as $k => $url) {
             if (!preg_match('#^https://[a-z0-9.-]+\.apple\.com/#i', $url)) { // iTunes の試聴以外は取りに行かない
                 return null;
@@ -355,7 +353,7 @@ function gemini_setlist_compare(string $path, int $from, ?int $to, array $urls, 
     }
 }
 
-/** 1曲だけ検出し直すとき（確認画面の ↻）。区間だけ落とした音声を聴かせる */
+/** 1曲だけ検出し直すとき（確認画面の ↻）。区間だけ切り出した音声（audio_cut_mp3）を聴かせる */
 const GEMINI_SETLIST_ONE_PROMPT = <<<'TXT'
 添付は学生バンドのライブ音源の一部で、既存の曲のカバー演奏が1曲入っています。前後の曲や MC が少し入っていることがあります。
 この曲の原曲として可能性のある曲を10曲、可能性の高い順に挙げてください。

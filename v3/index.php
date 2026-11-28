@@ -320,7 +320,7 @@ render_header('ライブ一覧', 'lives');
                                     <span class="day-missing">
                                         <?php if ((int)$d['no_roster_bands'] > 0): ?><span title="名簿未登録（<?= (int)$d['no_roster_bands'] ?>バンド）" aria-label="名簿未登録"><?= icon('group_off') ?></span><?php endif; ?>
                                         <?php // 全バンドのセトリが入っている日程は、ライブ詳細の「登録済 ✓」と同じ緑の ✓（アイコンだけ。バンドが0組の日程は出さない）
-                                        if ((int)$d['band_count'] > 0 && (int)$d['setlist_done_bands'] === (int)$d['band_count']): ?><span class="setlist-badge setlist-badge--icon" title="セットリスト登録済" aria-label="セットリスト登録済"><?= icon('check') ?></span><?php endif; ?>
+                                        if ((int)$d['band_count'] > 0 && (int)$d['setlist_done_bands'] === (int)$d['band_count']): ?><?= check_badge('セットリスト登録済') ?><?php endif; ?>
                                         <?php if ((int)$d['timed_bands'] === 0): ?><span title="タイムテーブル未登録" aria-label="タイムテーブル未登録"><?= icon('timer_off') ?></span><?php endif; ?>
                                     </span>
                                 </li>

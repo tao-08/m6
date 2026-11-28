@@ -16,6 +16,7 @@
  *    {"action": "status", "band_id": 12, "key": "a:3"}   {"state": "none" | "queued" | "running" | "saved" | "error", "error"?, "chapters": [...]}
  *    {"action": "discard", "band_id": 12, "key": "a:3"}  解析中のものを止める（「中止」。結果を書かない）
  *    {"action": "numbers", "band_id": 12, "key": "a:3", "numbers": {"5": 3, "8": 4}}  曲のチャプター（chapter_id）ごとに当たるセトリの何曲目か（migrations/157）
+ *  付ける・消す・直すと、解析の状況に「編集済み」と出す（chapter_job_edited）
  *  レスポンス（JSON）: {"chapters": [{"id", "kind", "ms"}, ...]}  その音源の今のチャプター全部（時間順）
  *  エラー            : {"error": "..."}（400 / 401 / 404 / 405）
  * =====================================================================
@@ -24,6 +25,7 @@ declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/api.php';
 require_once __DIR__ . '/lib/drive.php'; // drive_id_valid・audio_chapter_list
+require_once __DIR__ . '/lib/chapter_job.php'; // chapter_job_edited
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -127,6 +129,7 @@ if (in_array($action, ['add', 'replace', 'auto', 'status', 'discard', 'numbers']
             $up->execute([$no, (int)$id, $bandId, $key]);
         }
         $pdo->commit();
+        chapter_job_edited($key, $bandId);
         api_ok(['chapters' => audio_chapter_list(audio_chapters($pdo, $bandId)[$key] ?? [])]);
     }
     $ins = $pdo->prepare('INSERT INTO band_audio_chapter (band_id, audio_key, kind, at_ms) VALUES (?, ?, ?, ?)');
@@ -176,5 +179,6 @@ if (in_array($action, ['add', 'replace', 'auto', 'status', 'discard', 'numbers']
 } else {
     fail(400, '操作の指定が正しくありません');
 }
+chapter_job_edited($key, $bandId); // 解析の状況に「編集済み」と出す
 
 api_ok(['chapters' => audio_chapter_list(audio_chapters($pdo, $bandId)[$key] ?? [])]);

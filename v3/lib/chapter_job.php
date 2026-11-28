@@ -3,11 +3,12 @@
  * lib/chapter_job.php — 音源のチャプターを裏で自動で付ける（Gemini）。終わったらそのまま保存する（画面を閉じても続く）
  *   音源ごとに1ファイル（公開フォルダの外 .abbey-ytdlp/chapter-<ID>.json）。lib/gemini_setlist.php の setlist_job_* と同じ作り
  *     ID … YouTube は動画 ID、アップロードした MP3 は a-<band_audio の image_id>、ドライブの音源は d-<ファイル ID>（chapter_job_id）
- *     {state: queued|running|saved|error, band_id, at: 状態が変わった時刻, error?: 理由}
+ *     {state: queued|running|saved|edited|error, band_id, at: 状態が変わった時刻, error?: 理由}
  *   queued … まとめて解析（api_chapter_bulk.php）の順番待ち。running … 解析中。saved … 保存した（band_audio_chapter を置き換えた）
+ *   edited … そのあと人が直した（api_audio_chapter.php。setlist_jobs.php で「編集済み」）
  *   「中止」（discard）で消す（api_audio_chapter.php）。前の作りの下書き（done）は、読んだときに保存する
  */
-require_once __DIR__ . '/ytdlp.php';           // ytdlp_dir・ytdlp_audio
+require_once __DIR__ . '/ytdlp.php';           // ytdlp_dir
 require_once __DIR__ . '/gemini_chapters.php'; // gemini_audio_chapters
 
 /** 音源（audio_key: y:動画ID / a:N / d:ファイルID）の解析の ID。ファイル名に使える文字だけ */
@@ -93,6 +94,15 @@ function chapter_job_put(string $id, ?array $job): void
     file_put_contents(chapter_job_path($id), json_encode($job, JSON_UNESCAPED_UNICODE), LOCK_EX);
 }
 
+/** 人がチャプターを直した印（edited）を付ける。解析中・順番待ちは、終わると置き換わるので付けない */
+function chapter_job_edited(string $key, int $bandId): void
+{
+    $id = chapter_job_id($key);
+    if (!in_array(chapter_job_get($id)['state'] ?? '', ['queued', 'running'], true)) {
+        chapter_job_put($id, ['state' => 'edited', 'band_id' => $bandId, 'at' => time()]);
+    }
+}
+
 /** Gemini の設定（自動チャプター）。無ければ null */
 function chapter_job_config(): ?array
 {
@@ -130,6 +140,19 @@ function band_mix_file(int $bandId, string $key): array|string
 }
 
 /**
+ * バンドの YouTube の動画の音声（区分が YouTube の MP3。migrations/153）の音源キー（a:N / d:ファイルID）。無ければ null
+ *   動画と同じ長さの前提（始まりの秒をそのまま動画の秒として使う）
+ */
+function band_video_mp3(int $bandId, string $videoId): ?string
+{
+    $st = db()->prepare("SELECT CONCAT('a:', image_id) FROM band_audio WHERE band_id = ? AND video_id = ?
+        UNION ALL SELECT CONCAT('d:', file_id) FROM band_drive_file WHERE band_id = ? AND video_id = ? AND mime_type LIKE 'audio/%' LIMIT 1");
+    $st->execute([$bandId, $videoId, $bandId, $videoId]);
+    $key = $st->fetchColumn();
+    return $key === false ? null : (string)$key;
+}
+
+/**
  * 1本を解析して、見つけた区切りで保存する。途中で「中止」で消されていたら（running でなくなったら）書かない
  *   呼ぶ前に chapter_job_put で running にしておく（$at はそのときの時刻）
  */
@@ -142,21 +165,10 @@ function chapter_job_run(string $id, int $bandId, int $at, array $cfg): void
         $st = db()->prepare('SELECT title FROM song WHERE band_id = ? AND is_se = 1 ORDER BY track_no');
         $st->execute([$bandId]);
         $ses = $st->fetchAll(PDO::FETCH_COLUMN);
-        if (str_starts_with($key, 'y:')) {
-            $audio = ytdlp_audio($id, $why);
-            if ($audio === null) {
-                $found = 'YouTube から音声を取得できませんでした';
-            } else {
-                try {
-                    $found = gemini_audio_chapters($audio, 'audio/aac', $cfg[0], $cfg[1], $ses); // m4a（AAC）をそのまま聴かせる
-                } finally {
-                    @unlink($audio);
-                }
-            }
-        } else {
-            $file = band_mix_file($bandId, $key);
-            $found = is_string($file) ? $file : gemini_audio_chapters($file[0], $file[1], $cfg[0], $cfg[1], $ses);
-        }
+        // YouTube は、その動画の MP3 を聴かせる（YouTube からは落とさない）
+        $src = str_starts_with($key, 'y:') ? band_video_mp3($bandId, $id) : $key;
+        $file = $src === null ? 'MP3 がありません' : band_mix_file($bandId, $src);
+        $found = is_string($file) ? $file : gemini_audio_chapters($file[0], $file[1], $cfg[0], $cfg[1], $ses);
     } catch (Throwable $e) {
         error_log('chapter job: ' . $e->getMessage());
     }

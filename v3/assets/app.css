@@ -513,8 +513,6 @@ html:has(:is([data-special-modal], [data-special-add-dialog], [data-special-edit
 /* 名簿・タイムテーブル未登録のアイコン（index.php）。カード全体のリンク（::after）より上に出して、title のポップアップを出せるようにする */
 .day-missing { position: relative; z-index: 1; display: inline-flex; gap: 2px; color: var(--warn); line-height: 0; }
 .day-missing .icon { font-size: 16px; }
-/* セットリストが全部入っている日程の ✓。ライブ詳細のバッジ（.setlist-badge）と同じ緑の丸で、文字なしのアイコンだけ */
-.day-missing .setlist-badge--icon { padding: 3px; cursor: default; line-height: 1; }
 .day-no { font-weight: 800; font-size: var(--fs-xs); color: var(--accent); }
 .live-card__foot { margin: auto 0 0; padding-top: 12px; border-top: 1px solid var(--border); font-size: var(--fs-sm); color: var(--muted); display: flex; align-items: center; gap: 4px; }
 .live-card__foot strong { color: var(--text); font-size: var(--fs-lg); }
@@ -1015,7 +1013,7 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 /* 縮小中も SE と セットリスト登録済のラベルだけは残す（バンド名の右）。それ以外の曲数・名前などは隠す。
    font-size: 0 は、タグに包まれていない文字（アーティスト名の区切りなど）を見えなくするため */
 .timeline--compact .slot__meta { margin: 0 0 0 8px; flex-wrap: nowrap; gap: 6px; font-size: 0; }
-.timeline--compact .slot__meta > :not(.se-mark):not(.setlist-badge) { display: none; }
+.timeline--compact .slot__meta > :not(.se-mark):not(.check-badge) { display: none; }
 
 .lineup { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px 16px; }
 .lineup li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
@@ -1142,25 +1140,26 @@ td .tag--plan { margin-top: 4px; } /* アーティストの演奏履歴: 日付�
 /* SE ありのマーク（live.php のバンドカード）。透け感のある青地（登録済バッジと同じ作り） */
 .se-mark { display: inline-flex; align-items: center; flex-shrink: 0; padding: 3px 7px; border-radius: var(--r-xs); font-size: var(--fs-2xs); font-weight: 800; line-height: 1; letter-spacing: .03em; color: var(--se); background: var(--se-bg); }
 @media print { .se-mark { background: none; border: 1px solid currentColor; } }
-/* セットリスト登録済み（live.php のバンドカード / member.php の出演履歴） */
-.setlist-badge { display: inline-flex; align-items: center; gap: 3px; flex-shrink: 0;
+/* 緑の ✓（済んだ印。lib/repository.php の check_badge で出す。セットリスト登録済・チャプター編集済みなど） */
+.check-badge { display: inline-flex; align-items: center; gap: 3px; flex-shrink: 0;
   border-radius: var(--r-full); font-size: var(--fs-2xs); font-weight: 700; white-space: nowrap;
   color: var(--ok); background: var(--ok-bg); }
 /* 文字が上にずれないように: アイコンと文字の行の高さを両方 1 にして、flex の中央揃えだけで縦位置を合わせる
  *  （.icon の vertical-align: -.22em は文章中のアイコン用。flex の中では効かないので 0 に戻しておく） */
-.setlist-badge { line-height: 1; padding: 4px 8px 4px 5px; }
-.setlist-badge .icon { font-size: 14px; vertical-align: 0; }
-@media print { .setlist-badge { background: none; border: 1px solid currentColor; } }
-/* <button> になったので、ボタンの枠線・文字の大きさの初期値を消す */
-.setlist-badge { border: 0; font-family: inherit; cursor: pointer; }
-/* サブスク連携済みの曲が半分未満: くすんだ色（緑と補足の灰色の中間。ライト/ダーク両対応） */
-.setlist-badge.is-dim { color: color-mix(in srgb, var(--ok) 20%, var(--muted)); background: color-mix(in srgb, var(--ok-bg) 15%, var(--surface-2)); }
-.setlist-badge:focus-visible { outline: 2px solid var(--ok); outline-offset: 2px; }
-/* スマホでは「セットリスト」の文字を隠して緑の丸に ✓ だけ（バンド名の幅を取らないように）。
- *  文字は display: none ではなく画面の外に逃がして、読み上げでは「セットリスト」と読まれるようにする */
+.check-badge { line-height: 1; padding: 4px 8px 4px 5px; }
+.check-badge .icon { font-size: 14px; vertical-align: 0; }
+.check-badge--icon { padding: 3px; } /* 文字なし: 緑の丸に ✓ だけ */
+@media print { .check-badge { background: none; border: 1px solid currentColor; } }
+/* <button> なので、ボタンの枠線・文字の大きさの初期値を消す */
+.check-badge { border: 0; font-family: inherit; cursor: pointer; }
+/* くすんだ色（緑と補足の灰色の中間。ライト/ダーク両対応） */
+.check-badge.is-dim { color: color-mix(in srgb, var(--ok) 20%, var(--muted)); background: color-mix(in srgb, var(--ok-bg) 15%, var(--surface-2)); }
+.check-badge:focus-visible { outline: 2px solid var(--ok); outline-offset: 2px; }
+/* スマホでは文字を隠して緑の丸に ✓ だけ（名前の幅を取らないように）。
+ *  文字は display: none ではなく画面の外に逃がして、読み上げでは読まれるようにする */
 @media (max-width: 600px) {
-  .setlist-badge { padding: 3px; }
-  .setlist-badge__text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .check-badge { padding: 3px; }
+  .check-badge__text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 }
 /* アーティスト一覧の最多演奏の「ほか◯人」（乗せる・押すと残りの名前をポップアップ） */
 .more-names { margin-left: 2px; padding: 0 2px; border: 0; background: none; font: inherit; font-size: var(--fs-2xs); color: var(--muted);
@@ -3367,7 +3366,7 @@ button.ttb-m { cursor: pointer; text-decoration: underline dotted; }
  *   ・横の余白・文字サイズ・色は各クラスのまま。新しいラベルを作るときは、このリストに足す
  *   ・文中に置くラベルは .label-inline を足す（周りの文字サイズに追従して、行の中央に揃う）
  * ===================================================================== */
-:is(.part, .tag:not(.tag--flag), .se-mark, .setlist-badge, .pill, .sch-step__ok, .survey-chip) {
+:is(.part, .tag:not(.tag--flag), .se-mark, .check-badge, .pill, .sch-step__ok, .survey-chip) {
   display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box;
   min-height: var(--label-h); line-height: 1;
   padding-top: max(1px, .1em) !important; padding-bottom: 0 !important;

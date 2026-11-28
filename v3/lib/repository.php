@@ -1076,6 +1076,18 @@ function sort_tally_by_count(array $tally): array
 }
 
 /**
+ * 緑の ✓（済んだ印）。セットリスト登録済・チャプター編集済みなどで共通。見た目は app.css の .check-badge
+ *   $tip … 押す・乗せると出る説明（app_ui.js の setupTip）。読み上げにも使う
+ *   $text … ✓ の右の文字（スマホでは隠して ✓ だけ）。'' なら ✓ だけの丸
+ *   $dim … くすんだ色（済んだが足りないものがある）
+ */
+function check_badge(string $tip, string $text = '', bool $dim = false): string
+{
+    return '<button type="button" class="check-badge' . ($dim ? ' is-dim' : '') . ($text === '' ? ' check-badge--icon' : '') . '" ' . tip_attr($tip) . ' aria-label="' . h($tip) . '">'
+        . icon('check') . ($text !== '' ? '<span class="check-badge__text">' . h($text) . '</span>' : '') . '</button>';
+}
+
+/**
  * 「セットリスト登録済」のバッジ（live.php のバンドカード / member.php の出演履歴）。
  *   登録した曲数（song の行数）がタイムテーブルの曲数（band.song_count）以上のときに出す（曲数が未入力のバンドは出さない）。
  *   途中まで（3/5）は何も出さない。多め（6/5）は出す。
@@ -1085,16 +1097,9 @@ function setlist_badge(int $registered, int $planned, int $linked = 0): string
     if ($registered <= 0 || $planned <= 0 || $registered < $planned) { // 曲数が未入力（0）のバンドには出さない
         return '';
     }
-    // ✓ が「登録済」の意味。押すと「セットリスト登録済（◯曲）」のポップアップが出る（app_ui.js の setupTip）。
-    // スマホでは「セットリスト」の文字を隠して ✓ だけ。押せる部品なので <span> ではなく <button>
-    // サブスク連携（song.track_id）済みの曲が半分未満ならくすんだ色（is-dim）
-    $label = 'セットリスト登録済（' . $registered . '曲）';
-    $dim = $linked * 2 < $registered ? ' is-dim' : '';
-    if ($dim !== '') {
-        $label .= '・楽曲情報未登録あり';
-    }
-    return '<button type="button" class="setlist-badge' . $dim . '" data-tip="' . h($label) . '" aria-label="' . h($label) . '">'
-        . icon('check') . '<span class="setlist-badge__text">セットリスト</span></button>';
+    // サブスク連携（song.track_id）済みの曲が半分未満ならくすんだ色
+    $dim = $linked * 2 < $registered;
+    return check_badge('セットリスト登録済（' . $registered . '曲）' . ($dim ? '・楽曲情報未登録あり' : ''), 'セットリスト', $dim);
 }
 
 /* =====================================================================

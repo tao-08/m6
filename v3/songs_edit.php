@@ -30,6 +30,7 @@ require_once __DIR__ . '/lib/tracks.php';
 require_once __DIR__ . '/lib/youtube.php'; // 概要欄から曲名を読む
 require_once __DIR__ . '/lib/gemini_setlist.php'; // YouTube から曲を検出（Gemini の設定があるときだけボタンを出す）
 require_once __DIR__ . '/lib/drive.php'; // 曲の検出に選べるドライブの MIX
+require_once __DIR__ . '/lib/chapter_job.php'; // band_video_mp3（曲の検出は動画ごとの MP3 を聴かせる）
 require_once __DIR__ . '/lib/history.php'; // 変更履歴（元に戻すための「変更前の状態」を残す）
 require_login();
 
@@ -367,7 +368,10 @@ if ($fromSheet) {
 if (is_admin() && array_filter(array_column($cards, 'video_start'), static fn($v) => $v !== null)) {
     $detectVideos = array_map('youtube_video_id', band_video_urls($pdo, [$band])[$bandId] ?? []);
 }
-$canRetry = ($detectVideos[0] ?? null) !== null && gemini_setlist_config() !== null; // ↻（1曲だけ検出し直す）
+// YouTube から曲を検出できるのは、動画ごとの MP3（YouTube の区分）が全部そろったときだけ（api_setlist_detect.php）
+$ytIds = is_admin() ? array_filter(array_map('youtube_video_id', band_video_urls($pdo, [$band])[$bandId] ?? [])) : [];
+$detectYt = $ytIds && !in_array(null, array_map(static fn($v) => band_video_mp3($bandId, $v), $ytIds), true);
+$canRetry = $detectYt && ($detectVideos[0] ?? null) !== null && gemini_setlist_config() !== null; // ↻（1曲だけ検出し直す）
 // 最後の1枚は「＋ 曲を追加」用のひな形（<template> の中に入れる）
 $cards[] = $emptyCard + ['template' => true];
 $cards[] = array_merge($emptyCard, ['template' => true, 'is_se' => 1, 'template_se' => true]); // 「＋ SE を追加」用
@@ -418,10 +422,9 @@ if (!$fromSheet && is_admin() && gemini_setlist_config() !== null) {
         }
     }
 }
-$detectYt = youtube_video_id((string)$band['youtube_url']) !== null;
 ?>
 <?php if (!$fromSheet && is_admin() && gemini_setlist_config() !== null && ($detectYt || $detectMixes)): // 送るたびに Gemini の料金がかかるので管理者だけ ?>
-    <!-- 押すと assets/setlist_detect.js が api_setlist_detect に送る（サーバーが裏でバンドの YouTube から音声を落として Gemini に聴かせる）。終わったらこのページの確認画面（from_detect=1）へ -->
+    <!-- 押すと assets/setlist_detect.js が api_setlist_detect に送る（サーバーが裏で動画ごとの MP3 を Gemini に聴かせる）。終わったらこのページの確認画面（from_detect=1）へ -->
     <!-- data-pending: 裏で解析中（または終わったが、まだ見ていない）。開いたらすぐ途中経過を見に行く -->
     <div data-setlist-detect data-band="<?= $bandId ?>" data-done-url="songs_edit?band=<?= $bandId ?>&amp;from_detect=1"<?= setlist_job_get($bandId) !== null ? ' data-pending' : '' ?>>
         <!-- 低速 = Gemini の Flex（半額。返事まで最大15分） -->

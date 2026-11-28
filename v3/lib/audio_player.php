@@ -130,7 +130,7 @@ function audio_player_html(string $src, string $title, ?int $size, ?array $chapt
             . '<button type="button" class="btn btn--ghost btn--sm" data-ap-in="idle" data-ap-add="song">曲</button>'
             . '<button type="button" class="btn btn--ghost btn--sm" data-ap-in="idle" data-ap-add="end">終わり</button>'
             . (!empty($chapterCtx['ses']) ? '<button type="button" class="btn btn--ghost btn--sm" data-ap-in="idle" data-ap-add="se">SE</button>' : '') // セトリに SE があるときだけ
-            . '<button type="button" class="btn btn--ghost btn--sm" data-ap-in="idle" data-ap-auto>' . icon('auto_awesome') . '自動で付ける</button>'
+            . (($chapterCtx['auto'] ?? true) ? '<button type="button" class="btn btn--ghost btn--sm" data-ap-in="idle" data-ap-auto>' . icon('auto_awesome') . '自動で付ける</button>' : '') // YouTube は MP3 があるときだけ（video_chapters.php）
             . '<button type="button" class="btn btn--ghost btn--sm" data-ap-in="busy" data-ap-stop hidden>中止</button></div></div>';
     }
     return $html . '</figure>';
