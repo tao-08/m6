@@ -799,9 +799,9 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 .shell-panel__meta a:hover { color: var(--accent); }
 /* 入りきらない文字を流す中身（player.js の marquee） */
 .shell-bar .marquee, .shell-panel .marquee { display: inline-block; white-space: nowrap; }
-/* ポップアップの入りきらない曲名・バンド名は1段階小さく（それでも入りきらなければ流す） */
-.shell-panel__song.is-shrunk { font-size: var(--fs-xl); }
-.shell-panel__band.is-shrunk { font-size: var(--fs-md); }
+/* ポップアップの入りきらない曲名・バンド名は1段階小さく（それでも入りきらなければ流す）。小さくするのは中の文字だけで、行の高さは元のまま（下の演奏者を動かさない） */
+.shell-panel__song.is-shrunk > .marquee { font-size: var(--fs-xl); }
+.shell-panel__band.is-shrunk > .marquee { font-size: var(--fs-md); }
 /* 演奏者: 楽器ラベル＋名前を折り返して並べる */
 .shell-panel__players { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 12px; font-size: var(--fs-sm); }
 .shell-panel__players:empty { display: none; }

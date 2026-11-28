@@ -201,12 +201,12 @@
   let mcShown = '';
   const hasMc = (it) => !!it && thru() && it.mc_ms != null;
   const inMc = (it) => hasMc(it) && nowSec() * 1000 >= it.mc_ms && (it.through_end_ms === null || nowSec() * 1000 < it.through_end_ms); // 上限: 曲を移った直後の古い位置で MC と出さない
-  // 通しのオープニング SE（1曲目の前の SE チャプター intro_ms 〜 曲の頭）。その曲の前から流す
+  // 通しの冒頭の MC・SE（1曲目の前の MC・SE のチャプター intro_ms 〜 曲の頭）。その曲の前から流す
   const startOf = (it) => (thru() && it.intro_ms != null ? it.intro_ms : it.start_ms);
   const inIntro = (it) => !!it && thru() && it.intro_ms != null && nowSec() * 1000 < it.start_ms;
   const gapKind = (it) => (inIntro(it) ? 'intro' : inMc(it) ? 'mc' : ''); // 曲の外を流しているところ
   const gapName = (k) => ({ se: 'SE', blank: '未登録' })[k] || 'MC'; // blank = 曲なしのチャプター（api_shuffle.php）
-  const gapLabel = (it) => (inIntro(it) ? 'SE' : inMc(it) ? gapName(it.mc_kind) : 'MC');
+  const gapLabel = (it) => (inIntro(it) ? gapName(it.intro_kind || 'se') : inMc(it) ? gapName(it.mc_kind) : 'MC');
   const seOf = (it) => (inIntro(it) ? it.intro_se : inMc(it) && it.mc_kind === 'se' ? it.mc_se : null); // 流している SE の曲名・ジャケット（セトリにあれば）
   // シークバー・時間の区間（ms）。MC は別の曲として扱い、曲は mc_ms まで・MC は mc_ms から次の曲まで（null = ファイルの最後）
   // バンド単位: シークバーはバンド全体（キューで続いている同じバンド・同じ音源の曲の、最初の曲の頭〜最後の曲の終わり）
@@ -220,7 +220,8 @@
     while (same(queue[b + 1])) b += 1;
     return { a, b };
   };
-  const segStart = (it) => { const r = bandRange(); return r ? startOf(queue[r.a]) : inMc(it) ? it.mc_ms : startOf(it); };
+  const segStart = (it) => { const r = bandRange(); return r ? queue[r.a].intro_ms ?? queue[r.a].start_ms : // バンド全体のバーは冒頭の MC・SE から（飛ばすときは灰色）
+     inMc(it) ? it.mc_ms : startOf(it); };
   const segEnd = (it) => { const r = bandRange(); return r ? endOf(queue[r.b]) : inMc(it) ? endOf(it) : hasMc(it) ? it.mc_ms : endOf(it); };
   const render = () => {
     const it = cur();
@@ -258,7 +259,7 @@
     const band = $('[data-shell-bandlink]');
     band.textContent = it.band;
     band.href = `band?id=${it.band_id}`;
-    $('[data-shell-se]').hidden = !(inIntro(it) || (inMc(it) && it.mc_kind === 'se'));
+    $('[data-shell-se]').hidden = !((inIntro(it) && it.intro_kind !== 'mc') || (inMc(it) && it.mc_kind === 'se'));
     const song = $('[data-shell-song]');
     song.textContent = title;
     if (!mc && it.key) song.href = `songs?open=${encodeURIComponent(it.key)}`; else song.removeAttribute('href');
@@ -471,7 +472,7 @@
     const fresh = new Map(data.items.map((q) => [q.song_id ?? q.src, q])); // song_id が無いものは src で
     queue.forEach((q) => {
       const f = fresh.get(q.song_id ?? q.src);
-      if (f) for (const k of ['title', 'key', 'artist_id', 'artist', 'album', 'art', 'band', 'live', 'players', 'through_end_ms', 'mc_ms', 'mc_kind', 'intro_ms', 'intro_se', 'mc_se', 'alb', 'yt']) q[k] = f[k]; // 通しの区切り: 前に保存したキューは古い数え方のまま（終わりのチャプターで止まっていた）
+      if (f) for (const k of ['title', 'key', 'artist_id', 'artist', 'album', 'art', 'band', 'live', 'players', 'through_end_ms', 'mc_ms', 'mc_kind', 'intro_ms', 'intro_kind', 'intro_se', 'mc_se', 'alb', 'yt']) q[k] = f[k]; // 通しの区切り: 前に保存したキューは古い数え方のまま（終わりのチャプターで止まっていた）
     });
     save();
     if (queue.includes(it) && cur()?.band_id === it.band_id) render();
@@ -519,10 +520,11 @@
       const x = (ms) => Math.min(1, Math.max(0, (ms - s0) / (end - s0)));
       for (let k = r.a; k <= r.b; k += 1) {
         const q = queue[k];
-        if (thru() && q.intro_ms != null) marks.push({ k, ms: q.intro_ms, label: 'SE', full: q.intro_se ? `SE. ${q.intro_se.title}` : 'SE', kind: 'intro' });
+        if (thru() && q.intro_ms != null) { const l = gapName(q.intro_kind || 'se'); marks.push({ k, ms: q.intro_ms, label: l, full: q.intro_se ? `SE. ${q.intro_se.title}` : l, kind: 'intro' }); }
         marks.push({ k, ms: q.start_ms, label: String(k - r.a + 1), full: `${k - r.a + 1}. ${q.title}`, kind: 'song' });
         if (hasMc(q)) { const l = gapName(q.mc_kind); marks.push({ k, ms: q.mc_ms, label: q.mc_kind === 'blank' ? '—' : l, // 曲なしの吹き出しはチャプターのチップと同じ「—」
            full: q.mc_se ? `SE. ${q.mc_se.title}` : l, kind: 'mc' }); }
+        if (k === r.a && q.intro_ms != null && q.intro_ms < q.start_ms) gaps.push([x(q.intro_ms), x(q.start_ms)]); // 冒頭の MC・SE
         const nx = queue[k + 1];
         if (k < r.b && q.end_ms !== null && nx.start_ms > q.end_ms) gaps.push([x(q.end_ms), x(nx.start_ms)]);
       }

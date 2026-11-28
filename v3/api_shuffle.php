@@ -11,7 +11,7 @@
  *  曲の区切りは音源のチャプター（band_audio_chapter。説明は migrations/130）:
  *    曲チャプターの n 番目 = SE を除いた n 番目の曲（band.php のプレーヤーと同じ数え方）。終わり = 次のチャプター（MC も含む）。最後は null（ファイルの最後まで）
  *    MC のチャプターから始まる区間は流さない（MC は自動で飛ぶ）
- *    通し: mc_ms = 曲のあとの最初の MC・SE（mc_kind = 'mc' | 'se'）。intro_ms = 1曲目より前の最初の SE（オープニング SE。その曲の前から流す。無ければ null）
+ *    通し: mc_ms = 曲のあとの最初の MC・SE（mc_kind = 'mc' | 'se'）。intro_ms = 1曲目より前の最初の MC・SE（冒頭。intro_kind = 'mc' | 'se'。その曲の前から流す。無ければ null）
  *  同じ曲が2つの音源にあるときは先のものだけ。MIX（a: / d:）を YouTube（y:）より先に読むので、MIX にある曲は MIX で、MIX にチャプターの無い曲だけ YouTube で流す。大きさがわからない音源（ドライブの size が NULL）は途中から流せないので除く
  *  art = 紐付けた曲のジャケット（無ければ null）。album = そのアルバム名（無ければ null）。artist = コピー元のアーティスト（オムニバスのバンドは曲ごと。オリジナルなどで無ければ null）
  *  players = 演奏者 [{id, name, parts: [{s: 楽器の略称, c: instrument_class, t: 楽器名}]}]（楽器の並び順）。曲ごとの登録が無い曲はバンドのメンバー全員
@@ -194,13 +194,17 @@ foreach ($groups as $key => $chs) {
     $blank = static fn($ch) => $ch['kind'] === 'song' && $ch['song_no'] !== null && (int)$ch['song_no'] === 0;
     $n = 0;
     $firstNo = null;
+    $introSe = 0; // 1つ目の曲より前の SE のチャプターの数（冒頭の SE）
     foreach ($chs as $ch) {
         if ($ch['kind'] === 'song') {
             $firstNo ??= (int)($ch['song_no'] ?: 1);
+        } elseif ($ch['kind'] === 'se' && $firstNo === null) {
+            $introSe++;
         }
     }
     $start = (int)($list[($firstNo ?? 1) - 1]['track_no'] ?? PHP_INT_MAX);
-    $seSkip = count(array_filter($seList, static fn($s) => (int)$s['track_no'] < $start)); // 1つ目の曲より前の SE は飛ばす
+    // 1つ目の曲より前の SE は、冒頭の SE のチャプターに当たる分（1つ目の曲の直前から）だけ残して飛ばす（録音が途中から始まるときのため）
+    $seSkip = max(0, count(array_filter($seList, static fn($s) => (int)$s['track_no'] < $start)) - $introSe);
     $seNo = []; // チャプターの番号 => この音源の何個目の SE か
     foreach ($chs as $j => $ch) {
         if ($ch['kind'] === 'se') $seNo[$j] = $seSkip + count($seNo);
@@ -229,10 +233,10 @@ foreach ($groups as $key => $chs) {
         $mc = null;
         $mcKind = null;
         $mcJ = null;
-        $intro = $introJ = null; // オープニング SE: この曲より前に曲のチャプターが無いときだけ
+        $intro = $introJ = $introKind = null; // 冒頭の MC・SE: この曲より前に曲のチャプターが無いときだけ
         for ($j = 0; $j < $i; $j++) {
-            if ($chs[$j]['kind'] === 'song') { $intro = $introJ = null; break; }
-            if ($chs[$j]['kind'] === 'se' && $intro === null) { $intro = (int)$chs[$j]['at_ms']; $introJ = $j; }
+            if ($chs[$j]['kind'] === 'song') { $intro = $introJ = $introKind = null; break; }
+            if (($chs[$j]['kind'] === 'se' || $chs[$j]['kind'] === 'mc') && $intro === null) { $intro = (int)$chs[$j]['at_ms']; $introJ = $j; $introKind = $chs[$j]['kind']; }
         }
         for ($j = $i + 1; isset($chs[$j]); $j++) {
             $k = $chs[$j]['kind'];
@@ -269,7 +273,8 @@ foreach ($groups as $key => $chs) {
             'mc_ms'    => $mc,
             'mc_kind'  => $mcKind,
             'intro_ms' => $intro,
-            'intro_se' => $introJ !== null ? $seInfo($seList[$seNo[$introJ]] ?? null) : null,
+            'intro_kind' => $introKind,
+            'intro_se' => $introKind === 'se' ? $seInfo($seList[$seNo[$introJ]] ?? null) : null,
             'mc_se'    => $mc !== null && $mcKind === 'se' ? $seInfo($seList[$seNo[$mcJ]] ?? null) : null,
             '_o'       => [$bandRows[$bandId]['rank'] ?? 0, (int)$song['track_no']],
         ] + ($yt ? ['yt' => substr($key, strpos($key, '|y:') + 3)] : []); // 動画ID（プレイヤーの YouTube の印から動画へ）
