@@ -220,7 +220,7 @@
     while (same(queue[b + 1])) b += 1;
     return { a, b };
   };
-  const segStart = (it) => { const r = bandRange(); return r ? queue[r.a].intro_ms ?? queue[r.a].start_ms : // バンド全体のバーは冒頭の MC・SE から（飛ばすときは灰色）
+  const segStart = (it) => { const r = bandRange(); return r ? (queue[r.a].intro_ms != null ? 0 : queue[r.a].start_ms) : // バンド全体のバーは、冒頭の MC・SE があれば音源の頭から（流さない所は灰色）
      inMc(it) ? it.mc_ms : startOf(it); };
   const segEnd = (it) => { const r = bandRange(); return r ? endOf(queue[r.b]) : inMc(it) ? endOf(it) : hasMc(it) ? it.mc_ms : endOf(it); };
   const render = () => {
@@ -526,7 +526,7 @@
         marks.push({ k, ms: q.start_ms, label: String(k - r.a + 1), full: `${k - r.a + 1}. ${q.title}`, kind: 'song' });
         if (hasMc(q)) { const l = gapName(q.mc_kind); marks.push({ k, ms: q.mc_ms, label: q.mc_kind === 'blank' ? '—' : l, // 曲なしの吹き出しはチャプターのチップと同じ「—」
            full: q.mc_se ? `SE. ${q.mc_se.title}` : l, kind: 'mc' }); }
-        if (k === r.a && q.intro_ms != null && q.intro_ms < q.start_ms) gaps.push([x(q.intro_ms), x(q.start_ms)]); // 冒頭の MC・SE
+        if (k === r.a && q.intro_ms != null && q.intro_ms < q.start_ms) gaps.push([0, x(q.intro_ms), true], [x(q.intro_ms), x(q.start_ms)]); // 音源の頭〜冒頭の MC・SE（通しでも流さない）・冒頭の MC・SE
         const nx = queue[k + 1];
         if (k < r.b && q.end_ms !== null && nx.start_ms > q.end_ms) gaps.push([x(q.end_ms), x(nx.start_ms)]);
       }
@@ -535,10 +535,25 @@
     const key = JSON.stringify([marks, gaps]);
     if (key !== bubbleKey) {
       bubbleKey = key;
-      bubblesEl.replaceChildren(...marks.map((m) => {
-        const b = document.createElement('button');
-        b.type = 'button';
-        b.className = 'audio-bubble';
+      // チャプター（app_player.js）と同じく、残る吹き出しは使い回して位置を滑らせ、新しいものは ap-pop で出し、消えるものは ap-out で消す
+      const old = new Map([...bubblesEl.children].filter((e) => !e.classList.contains('is-leaving')).map((e) => [e.dataset.id, e]));
+      const motion = !matchMedia('(prefers-reduced-motion: reduce)').matches;
+      let fresh = 0;
+      const els = marks.map((m) => {
+        const id = `${queue[m.k].song_id}|${m.kind}`;
+        let b = old.get(id);
+        old.delete(id);
+        if (!b) {
+          b = document.createElement('button');
+          b.type = 'button';
+          b.dataset.id = id;
+          b.className = 'audio-bubble';
+          if (motion) {
+            b.style.setProperty('--i', fresh++);
+            b.classList.add('is-new');
+            b.addEventListener('animationend', () => b.classList.remove('is-new'), { once: true });
+          }
+        }
         b.textContent = m.label;
         b.dataset.k = m.k;
         b.dataset.ms = m.ms;
@@ -547,16 +562,24 @@
         b.setAttribute('aria-label', `${m.full} から再生`);
         b.title = `${m.full} から再生`;
         return b;
-      }));
+      });
+      const gone = [...old.values()];
+      gone.forEach((e) => {
+        if (!motion) return;
+        e.classList.add('is-leaving');
+        e.addEventListener('animationend', () => e.remove(), { once: true });
+      });
+      bubblesEl.replaceChildren(...els, ...(motion ? gone : []));
       seekBox.classList.toggle('has-bubbles', marks.length > 0);
       // MC・SE はシークバーの下、曲は上（MC は次の曲の頭のすぐ手前で、上に並べると被るため）
       [...bubblesEl.children].forEach((b) => b.classList.toggle('is-below', b.dataset.kind !== 'song'));
       seekBox.classList.toggle('has-below', !!bubblesEl.querySelector('.is-below'));
       const thumb = (p) => `calc(var(--ap-thumb) / 2 + (100% - var(--ap-thumb)) * ${p})`; // 棒の上の位置（つまみの半分ずつ内側）
       seekBox.style.setProperty('--gaps', gaps.length
-        ? `linear-gradient(to right, ${gaps.map(([a, b]) => { // 流した所（赤の塗りの端 = --q まで）は --gap-done
+        ? `linear-gradient(to right, ${gaps.map(([a, b, fix]) => { // 流した所（赤の塗りの端 = --q まで）は --gap-done。fix = 通しでも消さない
           const q = `clamp(${thumb(a)}, var(--q) * 100%, ${thumb(b)})`;
-          return `transparent ${thumb(a)}, var(--gap-done) ${thumb(a)}, var(--gap-done) ${q}, var(--gap) ${q}, var(--gap) ${thumb(b)}, transparent ${thumb(b)}`;
+          const [done, rest] = fix ? ['var(--gap-fix-done)', 'var(--gap-fix)'] : ['var(--gap-done)', 'var(--gap)'];
+          return `transparent ${thumb(a)}, ${done} ${thumb(a)}, ${done} ${q}, ${rest} ${q}, ${rest} ${thumb(b)}, transparent ${thumb(b)}`;
         }).join(', ')})`
         : 'none');
     }
@@ -1022,7 +1045,32 @@
     unitBtn.setAttribute('aria-label', byBand ? 'バンド単位' : '曲単位');
     unitBtn.title = byBand ? 'バンド単位' : '曲単位';
     contBtn.parentElement.classList.toggle('is-band', byBand); // 通しのボタンが滑って出る・隠れる（CSS）
-    scopesEl.classList.toggle('is-band', byBand); // 再生中のバンドのチップが縮んで消える・戻る（CSS）
+    // 再生中のバンドのチップ: バンド単位で消してから残りを詰める・曲単位で場所を空けてから出す（CSS の display: none）
+    const chip = scopesEl.querySelector('.is-playing-band');
+    if (scopesEl.classList.contains('is-band') === byBand) return showCounts();
+    const motion = chip && !matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const css = getComputedStyle(document.documentElement);
+    const ms = (t) => (parseFloat(css.getPropertyValue(t)) || .2) * 1000;
+    const ease = css.getPropertyValue('--ease-out').trim() || 'ease-out';
+    const flip = () => { // 並びが変わったチップを前の位置から滑らせる
+      const lis = [...scopesEl.children];
+      const from = lis.map((e) => e.getBoundingClientRect());
+      scopesEl.classList.toggle('is-band', byBand);
+      if (motion) lis.forEach((e, i) => {
+        const to = e.getBoundingClientRect();
+        const [dx, dy] = [from[i].left - to.left, from[i].top - to.top];
+        if (to.width && from[i].width && (dx || dy)) e.animate({ translate: [`${dx}px ${dy}px`, '0 0'] }, { duration: ms('--t-slow'), easing: ease });
+      });
+    };
+    if (!motion) flip();
+    else if (byBand) chip.animate({ opacity: [1, 0], scale: [1, .8] }, { duration: ms('--t-base'), easing: 'ease-in', fill: 'forwards' }).finished.then((a) => { // ap-out と同じ
+      if (byBand && !scopesEl.classList.contains('is-band')) flip();
+      a.cancel();
+    }).catch(() => {}); // 途中で作り直された
+    else {
+      flip();
+      chip.animate({ opacity: [0, 1], scale: [.8, 1] }, { duration: ms('--t-base'), easing: ease, delay: ms('--t-fast'), fill: 'backwards' }); // ap-pop と同じ
+    }
     showCounts(); // チップの「◯曲」⇔「◯バンド」
   };
   unitBtn.addEventListener('click', () => {

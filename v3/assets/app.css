@@ -810,7 +810,8 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 .shell-panel__players a:hover { color: var(--accent); }
 /* バンド単位の吹き出し（player.js の drawBubbles）: 上（被ったものは下）に吹き出しの分の余白。曲間をスキップするときは飛ばす所を薄く（--gaps） */
 .shell-panel .audio-player__seek { --rest: color-mix(in srgb, var(--border), var(--muted) 10%); --gap-a: 1;
-  --gap: color-mix(in srgb, var(--surface-2) calc(var(--gap-a) * 100%), transparent); --gap-done: color-mix(in srgb, color-mix(in srgb, var(--accent) 25%, var(--surface-2)) calc(var(--gap-a) * 100%), transparent); /* 未再生は灰色・飛ばす所はそれより薄い白寄り・流したあとの飛ばした所は赤と混ぜる。--gap-a = 濃さ（通しで 0） */
+  --gap: color-mix(in srgb, var(--surface-2) calc(var(--gap-a) * 100%), transparent); --gap-done: color-mix(in srgb, color-mix(in srgb, var(--accent) 25%, var(--surface-2)) calc(var(--gap-a) * 100%), transparent);
+  --gap-fix: var(--surface-2); --gap-fix-done: color-mix(in srgb, var(--accent) 25%, var(--surface-2)); /* 音源の頭〜冒頭の MC・SE は通しでも流さないので消さない */ /* 未再生は灰色・飛ばす所はそれより薄い白寄り・流したあとの飛ばした所は赤と混ぜる。--gap-a = 濃さ（通しで 0） */
   transition: margin var(--t-slow) var(--ease-out), --gap-a var(--t-slow) ease; }
 .shell-panel .audio-player__seek.is-thru { --gap-a: 0; }
 .shell-panel .audio-player__seek.has-bubbles { margin-top: 22px; }
@@ -905,12 +906,14 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 .shell-panel__scopes .chip__count:empty { display: none; }
 .shell-panel__scopes .chip__count.is-new { animation: chip-count-in var(--t-slow) ease; } /* 曲単位 ⇔ バンド単位で変わった数 */
 @keyframes chip-count-in { from { opacity: 0; } }
-/* バンド単位では再生中のバンドを隠す（幅を縮めてフェード。右の gap の分も詰める） */
-.shell-panel__scopes > .is-playing-band { max-width: 20em; overflow: hidden;
-  transition: max-width var(--t-slow) var(--ease-out), margin-right var(--t-slow) var(--ease-out), opacity var(--t-base) ease, visibility var(--t-slow); }
-.shell-panel__scopes.is-band > .is-playing-band { max-width: 0; margin-right: -6px; opacity: 0; visibility: hidden; }
-@media (prefers-reduced-motion: reduce) { .shell-panel__scopes > .is-playing-band, .shell-panel__scopes .chip__count.is-new { transition: none; animation: none; } }
-.shell-panel__scopes .chip__name { display: inline-block; max-width: 8em; margin-left: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; font-weight: 700; } /* 長い名前は … で切る（全体は title） */
+/* バンド単位では再生中のバンドを隠す（消える・出る動きと、ほかのチップが滑るのは player.js の showUnit） */
+.shell-panel__scopes.is-band > .is-playing-band { display: none; }
+@media (prefers-reduced-motion: reduce) { .shell-panel__scopes .chip__count.is-new { animation: none; } }
+/* 名前は行に入るだけ出し、入らない分だけ … で切る（全体は title）。チップは行の幅まで、縮むのは名前だけ */
+.shell-panel__scopes > li { min-width: 0; max-width: 100%; }
+.shell-panel__scopes .chip { max-width: 100%; white-space: nowrap; }
+.shell-panel__scopes .chip > :not(.chip__name) { flex-shrink: 0; }
+.shell-panel__scopes .chip__name { min-width: 0; margin-left: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; }
 .shell-panel__scopes .chip.is-current { background: var(--accent-soft); border-color: var(--accent); } /* いま流している範囲（.chip--me と同じ） */
 .shell-panel__scopes .chip.is-pending { color: var(--accent); font-weight: 700; border-color: var(--accent); border-style: dashed; } /* 次の曲から変える範囲 */
 /* 範囲を変えたとき、新しく選ばれたチップの色をフェードで出す（player.js が .is-fresh を付ける） */
