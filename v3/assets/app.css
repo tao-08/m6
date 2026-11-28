@@ -627,6 +627,12 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 .audio-player__dl + .audio-player__edit { margin-left: 0; }
 .audio-player__dl:hover, .audio-player__edit:hover, .audio-player__edit[aria-pressed="true"] { color: var(--accent); }
 .audio-player__edit[aria-pressed="true"] { background: var(--accent-soft); }
+/* スマホ: 名前と、ダウンロード・編集・確認済みのボタンを別の行に */
+@media (max-width: 600px) {
+  .audio-player .drive-player__name { flex-wrap: wrap; }
+  .audio-player .drive-player__name::after { content: ""; flex-basis: 100%; order: 1; }
+  .audio-player__dl, .audio-player__edit, .audio-player .confirm-form { order: 2; }
+}
 /* 操作部: 再生ボタン・再生位置の棒・時間。チャプターがあるときは、棒の上に吹き出し（.audio-bubble）を並べる
    吹き出しは棒の幅の中に収め（端では中身だけ内側へ寄せ）、三角は本当の位置を指す。--x は 0〜1 の位置、--shift は寄せた分 */
 .audio-player__bar { display: flex; align-items: center; gap: 8px; }
@@ -789,6 +795,9 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 .shell-panel__meta a:hover { color: var(--accent); }
 /* 入りきらない文字を流す中身（player.js の marquee） */
 .shell-bar .marquee, .shell-panel .marquee { display: inline-block; white-space: nowrap; }
+/* ポップアップの入りきらない曲名・バンド名は1段階小さく（それでも入りきらなければ流す） */
+.shell-panel__song.is-shrunk { font-size: var(--fs-xl); }
+.shell-panel__band.is-shrunk { font-size: var(--fs-md); }
 /* 演奏者: 楽器ラベル＋名前を折り返して並べる */
 .shell-panel__players { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 12px; font-size: var(--fs-sm); }
 .shell-panel__players:empty { display: none; }

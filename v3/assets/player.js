@@ -163,7 +163,12 @@
       el.append(inner);
     }
     inner.getAnimations().forEach((a) => a.cancel());
-    const d = inner.scrollWidth - el.clientWidth;
+    el.classList.remove('is-shrunk');
+    let d = inner.scrollWidth - el.clientWidth;
+    if (el.clientWidth && d > 1 && el.matches('.shell-panel__song, .shell-panel__band')) { // ポップアップの曲名・バンド名は1段階だけ小さくしてから測り直す（下のバーは流す前提）
+      el.classList.add('is-shrunk');
+      d = inner.scrollWidth - el.clientWidth;
+    }
     if (!el.clientWidth || d <= 1 || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     const wait = 2000;
     const move = d / 25 * 1000; // 1秒に 25px
@@ -175,7 +180,7 @@
       { ...x(0), offset: 1 },
     ], { duration: total, iterations: Infinity });
   };
-  const marqueeAll = () => [titleEl, bandEl, ...panel.querySelectorAll('.shell-panel__meta > :not(.shell-panel__liveline), .shell-panel__live')].forEach(marquee);
+  const marqueeAll = () => [titleEl, bandEl, ...panel.querySelectorAll('.shell-panel__meta > :not(.shell-panel__liveline), .shell-panel__live, .shell-panel__band')].forEach(marquee);
   const isOpen = () => !panel.hidden;
   const setPanel = (open) => {
     panel.hidden = !open;
