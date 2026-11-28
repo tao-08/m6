@@ -900,6 +900,9 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 .shell-panel__scopes .chip .icon { display: inline-block; max-width: 0; overflow: hidden; opacity: 0; margin-left: 0; font-size: var(--fs-sm); vertical-align: -2px; color: var(--muted);
   transition: max-width var(--t-base) var(--ease-out), margin-left var(--t-base) var(--ease-out), margin-right var(--t-base) var(--ease-out), opacity var(--t-base) ease; } /* シャッフルで流れる範囲の印。シャッフル中だけ幅を広げる */
 .shell-panel__scopes.is-shuffled .chip .icon { max-width: 16px; margin-left: 2px; margin-right: -3px; opacity: 1; } /* 字形の右の余白の分を詰める */
+/* 絞り込みを外して流すチップの印（player.js の showCounts が .is-unfilter）。シャッフルの印と同じ出し方 */
+.shell-panel__scopes .chip:not(.is-unfilter) > .chip__unfilter { max-width: 0; margin-left: 0; margin-right: 0; opacity: 0; }
+.shell-panel__scopes .chip.is-unfilter > .chip__unfilter { max-width: 16px; margin-left: 2px; margin-right: -3px; opacity: 1; }
 @media (prefers-reduced-motion: reduce) { .shell-panel__scopes .chip .icon { transition: none; } }
 .shell-panel__scopes .chip__count { margin-left: 4px; color: var(--muted); }
 .shell-panel__scopes .chip__count:empty { display: none; }

@@ -794,7 +794,11 @@
     const url = n.dataset.count;
     const data = livesDone.get(url) ?? await getLives(url);
     if (data) livesDone.set(url, data);
-    const items = data ? data.items.filter(passes) : [];
+    const b = n.closest('.chip');
+    const hit = data ? data.items.filter((q) => !kept(q)).length : 0; // 絞り込みで外れている曲
+    const unfilter = !!data && hit > 0 && (b.dataset.clear === 'always' || (b.dataset.clear === 'out' && hit === data.items.length));
+    b.classList.toggle('is-unfilter', unfilter);
+    const items = data ? data.items.filter(unfilter ? (q) => filter.src === 'all' || (filter.src === 'yt') === !!q.yt : passes) : []; // 外して流すなら外したあとの数
     const bands = byBand && !url.includes('scope=band&'); // バンド単位はバンドの数（バンドの範囲は曲数のまま）
     const txt = !data ? '' : bands ? `${new Set(items.map((q) => q.band_id)).size}バンド` : `${items.reduce((a, q) => a + q.n, 0)}曲`;
     if (n.textContent && txt && n.textContent !== txt) { // 変わった数はフェードで出す（app.css .is-new）
@@ -813,8 +817,11 @@
     b.textContent = label;
     b.classList.toggle('is-current', cfg.scope === scope && cfg.id === id); // いま流している範囲
     b.classList.toggle('is-pending', !!pending && pending.scope === scope && pending.id === id);
+    // 絞り込みを外して流すチップ: always = いつも、out = 絞り込みで全部外れているとき（表示中のバンド）。外すときは印（.is-unfilter。showCounts）
+    if ((label.startsWith('表示中の') && scope !== 'band') || label === '再生中のアーティスト') b.dataset.clear = 'always';
+    else if (label.startsWith('表示中の')) b.dataset.clear = 'out';
     b.addEventListener('click', () => {
-      if ((label.startsWith('表示中の') && scope !== 'band') || label === '再生中のアーティスト') clearFilter(); else leaveScope();
+      if (b.dataset.clear === 'always' || b.classList.contains('is-unfilter')) clearFilter(); else leaveScope();
       pick(scope, id);
     });
     if (scope !== 'band') { // シャッフルの印。シャッフル中だけ CSS で幅を広げて見せる（バンドは選ぶとシャッフルを外すので付けない）
@@ -822,6 +829,13 @@
       ic.className = 'icon';
       ic.setAttribute('aria-hidden', 'true');
       ic.textContent = 'shuffle';
+      b.append(ic);
+    }
+    if (b.dataset.clear) { // 絞り込みを外す印（シャッフルの印と同じ出し方）
+      const ic = document.createElement('span');
+      ic.className = 'icon icon--fill chip__unfilter'; // 絞り込みのボタンと同じ塗りつぶし
+      ic.setAttribute('aria-hidden', 'true');
+      ic.textContent = 'filter_alt_off';
       b.append(ic);
     }
     const n = document.createElement('span');
