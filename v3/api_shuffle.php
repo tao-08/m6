@@ -3,10 +3,8 @@
  * =====================================================================
  *  api_shuffle.php — シャッフル再生する曲の一覧（JSON）。player.php の外枠が呼ぶ。YouTube の曲は管理者だけ（準備中）
  * =====================================================================
- *  MIX の無い曲は、バンドの YouTube（song.video_start = 曲の始まりの秒・video_no = 何本目の動画。migrations/145・150）から流す: video = 動画 ID、src = "yt:動画 ID"、
- *    終わり = 同じ動画で次に始まる曲（無ければ動画の最後）。曲の始まりが1つも無い動画は流さない（動画まるごとは長いため）
- *    動画にチャプター（audio_key 'y:動画ID'。YouTube の区分の音源のカードと共有）があれば、video_start の代わりに MIX と同じ区切り（MC・通し）で流す。曲は video_chapter_songs
- *    YouTube の区分の音源（band_audio / band_drive_file の video_id。migrations/153）があれば、video を付けずにその音源を MIX と同じに流す（yt = true。絞り込みは YouTube 側）
+ *  YouTube は、MP3（YouTube の区分の音源。band_audio / band_drive_file の video_id。migrations/153）とセットリストとチャプター（audio_key 'y:動画ID'）がそろった動画だけ
+ *    その MP3 を MIX と同じ区切り（MC・通し）で流す（yt = true。絞り込みは YouTube 側）。曲は video_chapter_songs
  *  リクエスト（GET）: ?scope=all | ?scope=live&id=ライブID | ?scope=band&id=バンドID | ?scope=member&id=メンバーID（その人が演奏した曲） | ?scope=artist&id=アーティストID（そのアーティストの曲）
  *  レスポンス: {"items": [{song_id, title, artist_id, artist, art, album, band_id, band, live_id, live, year, players, src, size, start_ms, end_ms, through_end_ms, mc_ms, mc_kind, intro_ms}, ...]}（並びはライブ・出演順・時間順 = シャッフルしないときの順。混ぜるのは JS）
  *  曲の区切りは音源のチャプター（band_audio_chapter。説明は migrations/130）:
@@ -164,14 +162,14 @@ foreach ($st as $r) {
     }
 }
 
-// YouTube のチャプター（'y:動画ID'）: [動画 ID, 何本目, 全部で何本, YouTube の区分の音源があるか]
+// YouTube のチャプター（'y:動画ID'）: [動画 ID, 何本目, 全部で何本]。流すのは YouTube の区分の音源（MP3）がある動画だけ
 $ytKeys = [];
 foreach ($videoUrls as $bandId => $urls) {
     foreach ($urls as $no => $url) {
         $vid = youtube_video_id($url);
-        if ($vid !== null) {
-            $src[$bandId . '|y:' . $vid] = $ytFile[$bandId . '|y:' . $vid] ?? ['yt:' . $vid, 0];
-            $ytKeys[$bandId . '|y:' . $vid] = [$vid, $no, count($urls), isset($ytFile[$bandId . '|y:' . $vid])];
+        if ($vid !== null && isset($ytFile[$bandId . '|y:' . $vid])) {
+            $src[$bandId . '|y:' . $vid] = $ytFile[$bandId . '|y:' . $vid];
+            $ytKeys[$bandId . '|y:' . $vid] = [$vid, $no, count($urls)];
         }
     }
 }
@@ -267,42 +265,10 @@ foreach ($groups as $key => $chs) {
             'intro_se' => $introJ !== null ? $seInfo($seList[$seNo[$introJ]] ?? null) : null,
             'mc_se'    => $mc !== null && $mcKind === 'se' ? $seInfo($seList[$seNo[$mcJ]] ?? null) : null,
             '_o'       => [$bandRows[$bandId]['rank'] ?? 0, (int)$song['track_no']],
-        ] + ($yt ? ($yt[3] ? ['yt' => true] : ['video' => $yt[0]]) : []);
+        ] + ($yt ? ['yt' => true] : []);
     }
 }
 
-// YouTube（MIX で出なかった曲）
-foreach ($videoUrls as $bandId => $urls) {
-    $b = $bandRows[$bandId];
-    foreach ($urls as $no => $url) {
-        $vid = youtube_video_id($url);
-        if ($vid === null || isset($groups[$bandId . '|y:' . $vid])) {
-            continue; // チャプターのある動画は上で出した
-        }
-        $file = $ytFile[$bandId . '|y:' . $vid] ?? null;
-        $base = ['art' => null, 'album' => null, 'band_id' => $bandId, 'band' => (string)$b['band'], 'live_id' => (int)$b['live_id'], 'live' => (string)$b['live'],
-            'year' => (int)$b['fiscal_year'], 'date' => $b['held_on'], 'mc_ms' => null, 'mc_kind' => null, 'intro_ms' => null]
-            + ($file ? ['src' => $file[0], 'size' => $file[1], 'yt' => true] : ['src' => 'yt:' . $vid, 'video' => $vid, 'size' => 0]);
-        $inVideo = array_values(array_filter($songs[$bandId] ?? [], static fn($s) => $s['video_start'] !== null && (int)$s['video_no'] === $no));
-        usort($inVideo, static fn($x, $y) => (int)$x['video_start'] <=> (int)$y['video_start']);
-        foreach ($inVideo as $k => $song) {
-            $players = $songPlayers[(int)$song['song_id']] ?? $bandPlayers[$bandId] ?? [];
-            if (isset($seen[$song['song_id']]) || ($scope === 'member' && !isset($players[$id])) || ($scope === 'artist' && (int)$song['artist_id'] !== $id)) {
-                continue;
-            }
-            $seen[$song['song_id']] = true;
-            $end = isset($inVideo[$k + 1]) ? (int)$inVideo[$k + 1]['video_start'] * 1000 : null;
-            $items[] = $base + [
-                'song_id' => (int)$song['song_id'], 'title' => (string)$song['title'],
-                'artist_id' => $song['artist_id'] !== null ? (int)$song['artist_id'] : null, 'artist' => $song['artist'] !== null ? (string)$song['artist'] : null,
-                'art' => $song['artwork_url'] ? preg_replace('/\d+x\d+bb/', '300x300bb', (string)$song['artwork_url']) : null,
-                'album' => $song['album_title'] !== null ? (string)$song['album_title'] : null, 'alb' => $albumOf($song),
-                'players' => array_values($players), 'start_ms' => (int)$song['video_start'] * 1000, 'end_ms' => $end, 'through_end_ms' => $end,
-                '_o' => [$b['rank'], (int)$song['track_no']],
-            ];
-        }
-    }
-}
 // 出演順・セトリ順に（MIX と YouTube が混ざるため並べ直す）
 if (!is_admin()) { // YouTube は準備中: 管理者以外は MIX だけ
     $items = array_values(array_filter($items, static fn($it) => empty($it['video']) && empty($it['yt'])));

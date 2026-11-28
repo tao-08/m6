@@ -1025,7 +1025,7 @@
     } catch (e) { /* 無ければ新しく */ }
     if (st && (cfg.resume || (st.scope === cfg.scope && st.id === cfg.id)) && Array.isArray(st.queue) && st.queue.length) {
       const was = st.queue[st.idx];
-      queue = st.queue.filter((q) => !(q.video && q.song_id == null)); // 前に保存した動画まるごとの曲は外す（今は流さない）
+      queue = st.queue.filter((q) => !q.video); // 前に保存した動画（埋め込み）で流す曲は外す。YouTube も MP3 だけ流す（api_shuffle.php）
       st.idx = Math.max(0, queue.indexOf(was));
       cont = !!st.cont;
       shuffled = st.shuffled ?? !st.cont;
