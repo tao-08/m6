@@ -49,6 +49,7 @@
   let elSrc = '';    // el に読ませている音源（from / to を除いた it.src）
   let elEnd = Infinity; // el に読ませている範囲の終わり（音源の秒。to で止めたとき）
   let fails = 0;     // 続けて流せなかった数（全部だめなときに止まるため）
+  let busy = false;  // 曲を読み直している途中（前の曲の位置で timeupdate・pause を見ない。新しい src の loadstart で戻す）
   let dragging = false; // シークバーをつかんでいる間は、再生位置で動かさない
   let shuffled = true;   // シャッフル。オフは出演順・セトリ順
   let byBand = false;    // バンド単位: バンドごとにセトリ順でまとめて流す（シャッフルはバンドの順だけ混ぜる）
@@ -80,8 +81,10 @@
     return a;
   };
   const probe = async (it) => {
-    if (!durations.has(it.src)) durations.set(it.src, await audioProbeDuration(it.src, it.size));
-    return durations.get(it.src);
+    if (durations.has(it.src)) return durations.get(it.src);
+    const d = await audioProbeDuration(it.src, it.size);
+    if (d) durations.set(it.src, d); // 失敗は覚えない（一度の通信の失敗で、そのファイルの曲をずっと飛ばさない）
+    return d;
   };
   // 並べる: シャッフルなし = 出演順・セトリ順（n）。曲単位で混ぜる = いまの曲 it を先頭に残りを混ぜる。バンド単位で混ぜる = いまのバンドを先頭にバンドの順だけ混ぜる
   const arrange = (items, it) => {
@@ -285,12 +288,16 @@
   };
 
   // いまの曲を、音源の t 秒の位置から読み直す。play: true で鳴らす
+  let loadSeq = 0; // 最後に呼んだ playAt（連打で古い呼び出しが後から音源を差し替えないように）
+  let srcSeq = 0;  // el に src を入れた playAt
   const playAt = async (t, play) => {
     const it = cur();
+    const my = ++loadSeq;
     // 同じ音源で、読み込み済みの範囲かつこの曲の終わりまで受け取っているなら、読み直さずに動かす（通信量を減らす）
     const rel = t - base;
     if (elSrc === it.src && el.readyState > 0 && (endOf(it) ?? Infinity) / 1000 <= elEnd
       && Array.from({ length: el.buffered.length }, (_, i) => i).some((i) => rel >= el.buffered.start(i) && rel < el.buffered.end(i) - 0.5)) {
+      busy = false;
       ramp += 1;
       tail = null;
       audio.volume = 1;
@@ -301,9 +308,12 @@
     let off = 0;
     let to = '';
     let capSec = Infinity; // 受け取る範囲の終わり（音源の秒）
+    // 読み直す間は前の曲を止めておく（鳴り続けると、表示だけ次の曲で音は前の曲になり、古い位置で終わりを判定して勝手に進む）
+    busy = true;
+    if (!el.paused) el.pause();
     if (t > 0 || endOf(it) !== null) {
       const total = await probe(it);
-      if (it !== cur()) return; // 待っている間に次へ進んだ
+      if (my !== loadSeq || it !== cur()) return; // 待っている間に次へ進んだ
       if (total) {
         off = Math.round(t * it.size / total);
         // 曲の終わり + 3秒分で送るのを止めてもらう（1曲分だけ受け取る。見積もりのずれで早く切れないよう余裕を持たせ、止めるのは timeupdate）
@@ -320,6 +330,7 @@
     el.src = off > 0 ? `${it.src}&from=${off}${to}` : it.src + to;
     elSrc = it.src;
     elEnd = capSec;
+    srcSeq = my;
     if (play) audio.play().catch(() => setIcon(false));
   };
   // i 曲目を用意する。play: true で鳴らす（false は止めておく）。at: 音源の秒（省略 = 曲の頭）
@@ -373,7 +384,7 @@
   };
   const skip = () => { // 流せなかった: 続けて全部だめなら止める
     fails += 1;
-    if (fails >= Math.min(queue.length, 5)) { audio.pause(); setIcon(false); titleEl.textContent = '音源を読み込めませんでした'; return; }
+    if (fails >= Math.min(queue.length, 5)) { busy = false; audio.pause(); setIcon(false); titleEl.textContent = '音源を読み込めませんでした'; return; }
     next();
   };
 
@@ -405,7 +416,8 @@
   };
 
   on('play', () => setIcon(true));
-  on('pause', () => { setIcon(false); if (cur()) savePos(nowSec()); });
+  on('pause', () => { setIcon(false); if (cur() && !busy) savePos(nowSec()); });
+  on('loadstart', () => { if (srcSeq === loadSeq) busy = false; }); // 連打で前の呼び出しが入れた src の loadstart では戻さない
   // 読み込み中は再生ボタンの輪を回す（app_player.js と同じ）
   const loading = (v) => playBtns.forEach((b) => b.classList.toggle('is-loading', v));
   on('play', () => loading(audio.readyState < 3));
@@ -494,7 +506,7 @@
   };
   on('timeupdate', () => {
     const it = cur();
-    if (!it) return;
+    if (!it || busy) return;
     const t = nowSec() * 1000;
     showPos(t / 1000);
     const g = gapKind(it);
