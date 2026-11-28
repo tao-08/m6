@@ -18,7 +18,7 @@ require_once __DIR__ . '/lib/drive.php'; // mix_tag
 require_login();
 
 $scope = in_array($_GET['scope'] ?? '', ['live', 'band', 'member', 'artist'], true) ? (string)$_GET['scope'] : 'all';
-$id = $scope === 'all' ? 0 : (int)($_GET['id'] ?? 0);
+$id = $scope === 'all' ? (((int)($_GET['id'] ?? 0)) === -1 ? -1 : 0) : (int)($_GET['id'] ?? 0); // all の -1 = 絞り込みで選んだライブだけ（どのチップでもない）
 // 中のページ: このサイトのページ名（とクエリ）だけ。外のサイト・//・player 自身は入れない
 $u = (string)($_GET['u'] ?? '');
 if (!preg_match('/^[A-Za-z0-9_-]*(\.php)?(\?[^#\s]*)?$/', $u) || preg_match('/^player\b/', $u)) {

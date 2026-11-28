@@ -694,7 +694,10 @@
     b.textContent = label;
     b.classList.toggle('is-current', cfg.scope === scope && cfg.id === id); // いま流している範囲
     b.classList.toggle('is-pending', !!pending && pending.scope === scope && pending.id === id);
-    b.addEventListener('click', () => pick(scope, id));
+    b.addEventListener('click', () => {
+      if (cfg.id === -1) { filter.off = []; saveFilter(); showFilter(); } // 絞り込みで選んだライブから、チップの範囲へ戻る
+      pick(scope, id);
+    });
     if (scope !== 'band') { // シャッフルの印。シャッフル中だけ CSS で幅を広げて見せる（バンドは選ぶとシャッフルを外すので付けない）
       const ic = document.createElement('span');
       ic.className = 'icon';
@@ -728,9 +731,11 @@
     if (later && cur()) { pending = { scope, id }; buildScopes(); } else switchTo(scope, id, true);
   };
 
-  // 絞り込み: 開くたびにいまの範囲の曲を読み、年度（開ける）→ ライブのチェックを作る。閉じたら保存して、変わっていれば同じ範囲を読み直す
+  // 絞り込み: 開くたびに全ライブを読み、年度（開ける）→ ライブのチェックを作る。いまの範囲の外のライブはチェックなし
+  // 閉じたら保存して、変わっていれば読み直す。範囲の外にチェックを入れたら、チェックしたライブだけ（scope all・id -1 = どのチップでもない）
   const filterBtn = $('[data-shell-filter]');
   const yearsEl = $('[data-shell-filter-years]');
+  let scopeLives = null; // 絞り込みを開いたときの、いまの範囲にあるライブの ID（null = すべて）
   const srcBtns = bar.querySelectorAll('[data-shell-src]');
   const saveFilter = () => { try { localStorage.setItem('shuffle_filter', JSON.stringify(filter)); } catch (e) { /* 覚えなくても使える */ } };
   const showFilter = () => {
@@ -765,8 +770,12 @@
   filterBtn.addEventListener('click', async () => {
     yearsEl.replaceChildren();
     filterDlg.showModal();
-    const res = await fetch(`api_shuffle?scope=${encodeURIComponent(cfg.scope)}&id=${Number(cfg.id) || 0}`).catch(() => null);
-    const data = res?.ok ? await res.json().catch(() => null) : null;
+    const get = async (url) => { const res = await fetch(url).catch(() => null); return res?.ok ? res.json().catch(() => null) : null; };
+    const [data, inScope] = await Promise.all([
+      get('api_shuffle?scope=all'),
+      cfg.scope === 'all' ? null : get(`api_shuffle?scope=${encodeURIComponent(cfg.scope)}&id=${Number(cfg.id) || 0}`),
+    ]);
+    scopeLives = inScope ? new Set(inScope.items.map((q) => q.live_id)) : null; // null = すべて範囲の中
     const years = new Map(); // 年度 → Map(live_id → { name, date, mix, yt })
     (data?.items || []).forEach((q) => {
       if (!years.has(q.year)) years.set(q.year, new Map());
@@ -794,7 +803,7 @@
         const li = document.createElement('li');
         const l = document.createElement('label');
         l.className = 'check';
-        const c = box(!filter.off.includes(id));
+        const c = box(!filter.off.includes(id) && (!scopeLives || scopeLives.has(id)));
         c.dataset.live = String(id);
         c.addEventListener('change', () => syncYear(d));
         const marks = document.createElement('span');
@@ -812,16 +821,20 @@
   });
   filterDlg.addEventListener('close', () => {
     const shown = [...yearsEl.querySelectorAll('[data-live]')];
-    const shownIds = new Set(shown.map((c) => Number(c.dataset.live)));
-    const next = {
-      src: filter.src,
-      off: [...filter.off.filter((id) => !shownIds.has(id)), ...shown.filter((c) => !c.checked).map((c) => Number(c.dataset.live))], // ほかの範囲で外したライブは残す
-    };
-    if (JSON.stringify(next) === JSON.stringify(filter)) return;
+    if (!shown.length) return; // 読み終わる前に閉じた
+    const idOf = (c) => Number(c.dataset.live);
+    const inside = (c) => !scopeLives || scopeLives.has(idOf(c));
+    const widen = shown.some((c) => c.checked && !inside(c)); // 範囲の外にチェックを入れた
+    const shownIds = new Set(shown.map(idOf));
+    const off = widen
+      ? shown.filter((c) => !c.checked).map(idOf)
+      : [...filter.off.filter((id) => !shownIds.has(id) || scopeLives?.has(id) === false), ...shown.filter((c) => !c.checked && inside(c)).map(idOf)]; // 範囲の外で前に外したライブは残す
+    const next = { src: filter.src, off };
+    if (!widen && JSON.stringify(next) === JSON.stringify(filter)) return;
     filter = next;
     saveFilter();
     showFilter();
-    pick(cfg.scope, cfg.id);
+    if (widen) pick('all', -1); else pick(cfg.scope, cfg.id);
   });
 
   // 通し: 曲間（MC など）も流す。ON にしたら、いまの曲も MC まで受け取れるよう、いまの位置から読み直す（OFF は timeupdate で止まるだけ）
@@ -886,7 +899,7 @@
   };
   const syncUrl = () => {
     const q = new URLSearchParams({ scope: cfg.scope });
-    if (cfg.scope !== 'all') q.set('id', cfg.id);
+    if (cfg.scope !== 'all' || cfg.id) q.set('id', cfg.id);
     const u = innerPage();
     if (u) q.set('u', u);
     history.replaceState(null, '', `player?${q}`);
@@ -980,6 +993,7 @@
   window.abbeyShuffle = async (scope, id) => {
     pending = null;
     audio.pause();
+    if (cfg.id === -1) { filter.off = []; saveFilter(); showFilter(); } // チップと同じ: 選んだライブだけから、範囲へ戻る
     await load(scope, id);
     go(0, true);
   };
