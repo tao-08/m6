@@ -23,13 +23,56 @@ require_once __DIR__ . '/lib/youtube.php';
 require_once __DIR__ . '/lib/chapter_job.php';
 require_admin();
 
-$tab = ($_GET['tab'] ?? '') === 'chapter' ? 'chapter' : 'detect';
+$tab = in_array($_GET['tab'] ?? '', ['chapter', 'usage'], true) ? (string)$_GET['tab'] : 'detect';
 $tabNav = static function () use ($tab): void { ?>
     <nav class="tabs">
         <a class="tab<?= $tab === 'detect' ? ' is-active' : '' ?>" href="setlist_jobs">曲の検出</a>
         <a class="tab<?= $tab === 'chapter' ? ' is-active' : '' ?>" href="setlist_jobs?tab=chapter">チャプター</a>
+        <a class="tab<?= $tab === 'usage' ? ' is-active' : '' ?>" href="setlist_jobs?tab=usage">使用量</a>
     </nav>
 <?php };
+
+// 「使用量」タブ: Gemini に送った回数とトークン数（lib/gemini_chapters.php の gemini_usage_log）。30日分を処理ごとに
+if ($tab === 'usage') {
+    $names = ['gemini_setlist' => '曲の検出', 'gemini_setlist_one' => '1曲の検出し直し', 'gemini_setlist_compare' => '聴き比べ',
+        'gemini_setlist_check' => '歌詞で確認', 'gemini_setlist_lyrics' => '歌詞で確認', 'gemini_audio_chapters' => 'チャプター検出', 'api_lyrics_search' => '歌詞検索'];
+    $sum = [];
+    $since = time() - 30 * 86400;
+    foreach (is_file($path = gemini_usage_path()) ? file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) : [] as $line) {
+        $r = json_decode($line, true);
+        if (!is_array($r) || (int)($r['t'] ?? 0) < $since) {
+            continue;
+        }
+        $k = ($names[$r['f'] ?? ''] ?? (string)($r['f'] ?? '')) . "	" . ($r['m'] ?? '') . "	" . (int)($r['x'] ?? 0);
+        $sum[$k] ??= ['n' => 0, 'a' => 0, 'p' => 0, 'o' => 0, 'th' => 0];
+        $sum[$k]['n']++;
+        foreach (['a', 'p', 'o', 'th'] as $c) $sum[$k][$c] += (int)($r[$c] ?? 0);
+    }
+    ksort($sum);
+    render_header('解析の状況', 'tools');
+    ?>
+    <h1>解析の状況</h1>
+    <?php $tabNav(); ?>
+    <?php if (!$sum): ?>
+        <div class="empty card"><p class="empty__title">30日以内の記録はありません</p></div>
+    <?php else: ?>
+        <p class="muted small">30日分。トークン数は1回あたりの平均</p>
+        <table class="table">
+            <thead><tr><th>処理</th><th>モデル</th><th>速度</th><th>回数</th><th>音声</th><th>文</th><th>出力</th><th>思考</th></tr></thead>
+            <tbody>
+            <?php foreach ($sum as $k => $s): [$label, $model, $flex] = explode("	", $k); ?>
+                <tr>
+                    <td><?= h($label) ?></td><td><?= h($model) ?></td><td><?= $flex ? '通常' : '高速' ?></td><td><?= $s['n'] ?></td>
+                    <?php foreach (['a', 'p', 'o', 'th'] as $c): ?><td><?= number_format(intdiv($s[$c], $s['n'])) ?></td><?php endforeach; ?>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+    <?php endif; ?>
+    <?php
+    render_footer();
+    exit;
+}
 
 if ($tab === 'chapter') {
     chapter_unconfirmed_migrate();
@@ -179,7 +222,7 @@ render_header('解析の状況', 'tools');
                 <?php else: ?>
                     <span class="job-state" data-chapter-state="error" <?= tip_attr(trim(($job['error'] ?? '') . ' / ' . ($job['detail'] ?? ''), ' /')) ?>>失敗</span>
                 <?php endif; ?></td>
-                <td><?= isset($job['flex']) ? ($job['flex'] ? '低速' : '高速') : '' ?></td>
+                <td><?= isset($job['flex']) ? ($job['flex'] ? '通常' : '高速') : '' ?></td>
                 <td><?= isset($job['at']) ? date('n/j H:i', (int)$job['at']) : '' ?></td>
             </tr>
         <?php endforeach; ?>

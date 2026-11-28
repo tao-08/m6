@@ -478,6 +478,8 @@
     const data = await res.json().catch(() => null);
     const items = res.ok && data ? data.items : [];
     items.forEach((q, i) => { q.n = i; }); // シャッフルを切ったときに元の順へ戻す
+    // 外した音源（MIX / YouTube）にしか曲が無い範囲なら、その音源も入れて流す
+    if (filter.src !== 'all' && !items.some(passes) && items.some((q) => !filter.off.includes(q.live_id))) { filter.src = 'all'; saveFilter(); showFilter(); }
     queue = arrange(items.filter(passes), null);
     cfg.scope = scope;
     cfg.id = Number(id) || 0;

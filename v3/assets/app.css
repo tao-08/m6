@@ -268,6 +268,8 @@ h3 { font-size: var(--fs-lg); }
    スマホで表が狭くなると入力欄が 20px まで潰れて名前が見えなくなる（会場・係の管理） */
 form.row-form input, form.row-form select { flex: 1; min-width: 10em; }
 .row-form .btn { flex: none; white-space: nowrap; }
+.setlist-detect__btns { display: flex; gap: 6px; }
+@media (max-width: 600px) { .setlist-detect { flex-wrap: wrap; } .setlist-detect__btns { flex-basis: 100%; } } /* スマホは検出のボタンを下の行に */
 
 /* ゴミ箱マークの削除ボタン（venues.php）。消せないときは disabled でグレーアウト */
 .btn-trash { width: 32px; height: 32px; border-radius: var(--r-md); display: inline-grid; place-items: center; cursor: pointer;

@@ -428,12 +428,12 @@ if (!$fromSheet && is_admin() && gemini_setlist_config() !== null) {
     <!-- 押すと assets/setlist_detect.js が api_setlist_detect に送る（サーバーが裏で動画ごとの MP3 を Gemini に聴かせる）。終わったらこのページの確認画面（from_detect=1）へ -->
     <!-- data-pending: 裏で解析中（または終わったが、まだ見ていない）。開いたらすぐ途中経過を見に行く -->
     <div data-setlist-detect data-band="<?= $bandId ?>" data-done-url="songs_edit?band=<?= $bandId ?>&amp;from_detect=1"<?= setlist_job_get($bandId) !== null ? ' data-pending' : '' ?>>
-        <!-- 低速 = Gemini の Flex（半額。返事まで最大15分） -->
+        <!-- 通常 = Gemini の Flex（半額。返事まで最大15分）。高速 = 通常の料金 -->
         <p class="row-form setlist-detect"><?php if ($detectMixes): ?><?= icon('graphic_eq') ?> 曲を検出
             <select data-setlist-src aria-label="音源"><?php if ($detectYt): ?><option value="">YouTube</option><?php endif; ?><?php foreach ($detectMixes as $k => $name): ?><option value="<?= h($k) ?>">MIX: <?= h($name) ?></option><?php endforeach; ?></select>
             <?php else: ?><?= icon('smart_display') ?> YouTube から曲を検出<?php endif; ?>
-            <button type="button" class="btn btn--ghost btn--sm" data-flex="0"><?= icon('bolt') ?> 高速</button>
-            <button type="button" class="btn btn--ghost btn--sm" data-flex="1"><?= icon('timer') ?> 低速・半額</button></p>
+            <span class="setlist-detect__btns"><button type="button" class="btn btn--ghost btn--sm" data-flex="1"><?= icon('troubleshoot') ?> 通常</button>
+            <button type="button" class="btn btn--ghost btn--sm" data-flex="0"><?= icon('bolt') ?> 高速</button></span></p>
         <p class="muted small" data-setlist-status role="status" hidden></p>
     </div>
     <script type="module" src="<?= asset_url('assets/setlist_detect.js') ?>"></script>

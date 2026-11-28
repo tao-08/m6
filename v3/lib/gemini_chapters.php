@@ -82,7 +82,48 @@ function gemini_call(string $url, string $key, array $opts, int $timeout): ?arra
         gemini_why('cURL errno ' . curl_errno($ch));
         return null;
     }
-    return [(int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE), $headers, (string)$body];
+    $res = [(int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE), $headers, (string)$body];
+    if ($res[0] === 200 && str_contains($url, ':generateContent')) {
+        gemini_usage_log($url, (string)($opts[CURLOPT_POSTFIELDS] ?? ''), $res[2]);
+    }
+    return $res;
+}
+
+/** 使ったトークン数を残すファイル（1行1回の JSON。setlist_jobs.php の「使用量」タブが読む） */
+function gemini_usage_path(): string
+{
+    require_once __DIR__ . '/ytdlp.php';
+    return ytdlp_dir() . '/gemini-usage.log';
+}
+
+/**
+ * generateContent の1回分の使用量（usageMetadata）を1行足す。何の処理かは、呼び出し元のいちばん外の gemini_* 関数の名前（無ければ PHP のファイル名）
+ * shortcut: ファイルは消さずに増え続ける（1回 約150バイト）。大きくなったら古い行を消す処理を足す
+ */
+function gemini_usage_log(string $url, string $req, string $body): void
+{
+    $u = json_decode($body, true)['usageMetadata'] ?? null;
+    if (!is_array($u)) {
+        return;
+    }
+    $func = basename((string)($_SERVER['SCRIPT_NAME'] ?? ''), '.php');
+    foreach (debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS) as $f) {
+        if (str_starts_with($f['function'], 'gemini_') && !in_array($f['function'], ['gemini_call', 'gemini_usage_log', 'gemini_json', 'gemini_audio_json'], true)) {
+            $func = $f['function'];
+        }
+    }
+    $audio = 0;
+    foreach ($u['promptTokensDetails'] ?? [] as $d) {
+        if (($d['modality'] ?? '') === 'AUDIO') $audio += (int)($d['tokenCount'] ?? 0);
+    }
+    $line = json_encode([
+        't' => time(), 'f' => $func, 'm' => preg_match('#/models/([^:]+):#', $url, $m) ? rawurldecode($m[1]) : '',
+        'x' => str_contains($req, '"service_tier":"flex"') ? 1 : 0, // Flex（半額）
+        'a' => $audio, 'p' => (int)($u['promptTokenCount'] ?? 0) - $audio, // 入力: 音声 / 音声以外（文）
+        'o' => (int)($u['candidatesTokenCount'] ?? 0), 'th' => (int)($u['thoughtsTokenCount'] ?? 0), // 出力 / 考えた分（出力と同じ単価）
+    ]);
+    @file_put_contents(gemini_usage_path(), $line . "
+", FILE_APPEND | LOCK_EX); // 残せなくても解析は続ける
 }
 
 /** "MM:SS"（または "H:MM:SS"）→ ミリ秒。読めなければ null */
