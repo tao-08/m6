@@ -132,7 +132,7 @@ a.tab-parts__item:hover { border-color: var(--accent); }
 @media (max-height: 480px) { .ytp.is-full .ytp__dock > .ytp__row { flex-wrap: nowrap; gap: 2px; } .ytp.is-full .ytp__dock .ytp__label { display: none; } }
 body.ytp-lock { overflow: hidden; }
 .ytp__open { justify-self: end; display: inline-flex; align-items: center; gap: 4px; }
-.is-loading .icon { animation: tab-spin 1s linear infinite; }
+[data-link-ai].is-loading .icon { animation: tab-spin 1s linear infinite; }
 @keyframes tab-spin { to { transform: rotate(360deg); } }
 
 /* ---- 共通の小さな部品 ---- */
