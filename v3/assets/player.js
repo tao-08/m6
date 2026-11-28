@@ -92,10 +92,6 @@
     }
     return probing.get(it.src);
   };
-  // 2つ先の曲まで、裏でサーバーに音源を用意させる（ドライブから落とす・160 に作るのは初めの1回だけ。調べる要求で済む）。共用サーバーなので1つずつ
-  const warm = async () => {
-    for (let k = 1; k <= 2 && k < queue.length; k += 1) await probe(queue[(idx + k) % queue.length]);
-  };
   // 並べる: シャッフルなし = 出演順・セトリ順（n）。曲単位で混ぜる = いまの曲 it を先頭に残りを混ぜる。バンド単位で混ぜる = いまのバンドを先頭にバンドの順だけ混ぜる
   const arrange = (items, it) => {
     const sorted = [...items].sort((a, b) => (a.n ?? 0) - (b.n ?? 0));
@@ -366,8 +362,8 @@
     savePos(t);
     await playAt(t, play);
     if (at) showPos(at);
-    warm();
-    const nx = queue[(idx + 1) % queue.length];
+    const nx = queue[(idx + 1) % queue.length]; // 次の曲の長さを先に調べておく（次へ進むときに待たない）。先の曲の音源をサーバーに用意させるのはしない（ffmpeg が重なってサーバーの上限に当たった）
+    if (nx && (nx.start_ms > 0 || nx.end_ms !== null)) probe(nx);
     if (nx && nx.band_id !== cur().band_id) refresh(nx); // 次の曲を先に取り直しておく（同じバンドなら開いたときに読んだ分で足りる）
   };
   // 曲送り・戻しの動き: d = 1（次へ。右から入る）/ -1（前へ。左から入る）。入ってくる側だけ動かす（.2s・--ease-out と同じ）
