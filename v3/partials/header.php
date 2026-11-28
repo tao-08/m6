@@ -242,14 +242,17 @@ $nav = [
             return (bool)$st->fetchColumn();
         };
         if (in_array($shufflePage, ['live', 'band', 'member', 'artist'], true) && (int)($_GET['id'] ?? 0) > 0 && $shuffleHas($shufflePage, (int)$_GET['id'])) {
-            $shuffleScopes[] = [$shufflePage, (int)$_GET['id'], ['live' => '表示中のライブ', 'band' => '表示中のバンド', 'member' => '表示中のメンバー', 'artist' => '表示中のアーティスト'][$shufflePage]];
+            $st = db()->prepare(['live' => 'SELECT name FROM live WHERE live_id = ?', 'band' => 'SELECT name FROM band WHERE band_id = ?',
+                'member' => 'SELECT name FROM member WHERE member_id = ?', 'artist' => 'SELECT name FROM artist WHERE artist_id = ?'][$shufflePage]);
+            $st->execute([(int)$_GET['id']]);
+            $shuffleScopes[] = [$shufflePage, (int)$_GET['id'], ['live' => '表示中のライブ', 'band' => '表示中のバンド', 'member' => '表示中のメンバー', 'artist' => '表示中のアーティスト'][$shufflePage], (string)$st->fetchColumn()];
         }
         ?>
         <details class="usermenu" data-shuffle-menu>
             <summary class="icon-btn" aria-label="シャッフル再生" title="シャッフル再生"><?= icon('play_circle') ?></summary>
             <div class="usermenu__panel">
-                <?php foreach ($shuffleScopes as [$sc, $sid, $label]): ?>
-                    <a href="player?<?= h(http_build_query(['scope' => $sc] + ($sid ? ['id' => $sid] : []) + ['u' => $shuffleU])) ?>" target="_top" data-shuffle="<?= h($sc) ?>" data-shuffle-id="<?= (int)$sid ?>"><?= h($label) ?></a>
+                <?php foreach ($shuffleScopes as $s): [$sc, $sid, $label] = $s; ?>
+                    <a href="player?<?= h(http_build_query(['scope' => $sc] + ($sid ? ['id' => $sid] : []) + ['u' => $shuffleU])) ?>" target="_top" data-shuffle="<?= h($sc) ?>" data-shuffle-id="<?= (int)$sid ?>" data-shuffle-name="<?= h($s[3] ?? '') ?>"><?= h($label) ?></a>
                 <?php endforeach; ?>
             </div>
         </details>

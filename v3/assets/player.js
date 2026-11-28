@@ -727,7 +727,17 @@
     if (it && queue.length > 1 && queue[0].song_id === it.song_id) { go(1, true); return; } // 混ぜた先頭がいまの曲
     go(0, true);
   };
-  const scopeItem = (label, scope, id) => {
+  const livesCache = new Map(); // URL → Promise（api_shuffle の ?lives=1。絞り込みの中身・チップの曲数）
+  const getLives = (url) => { // 開くたびに取り直さない（失敗したときだけ次に取り直す）
+    if (!livesCache.has(url)) livesCache.set(url, fetch(url).then((res) => (res.ok ? res.json() : null)).catch(() => null).then((j) => { if (!j) livesCache.delete(url); return j; }));
+    return livesCache.get(url);
+  };
+  const livesUrl = (scope, id) => `api_shuffle?scope=${encodeURIComponent(scope)}&id=${Number(id) || 0}&lives=1`;
+  const showCounts = () => scopesEl.querySelectorAll('[data-count]').forEach(async (n) => { // チップの曲数 = 絞り込みを通る曲
+    const data = await getLives(n.dataset.count);
+    n.textContent = data ? `${data.items.filter(passes).reduce((a, q) => a + q.n, 0)}曲` : '';
+  });
+  const scopeItem = (label, scope, id, name) => {
     const li = document.createElement('li');
     const b = document.createElement('button');
     b.type = 'button';
@@ -746,6 +756,16 @@
       ic.textContent = 'shuffle';
       b.append(ic);
     }
+    const n = document.createElement('span');
+    n.className = 'chip__count';
+    n.dataset.count = livesUrl(scope, id);
+    b.append(n);
+    if (name) {
+      const nm = document.createElement('span');
+      nm.className = 'chip__name';
+      nm.textContent = name;
+      b.append(nm);
+    }
     li.append(b);
     return li;
   };
@@ -753,11 +773,11 @@
     const it = cur();
     const list = [['サイト全体', 'all', 0]];
     if (it) {
-      list.push(['再生中のライブ', 'live', it.live_id], ['再生中のバンド', 'band', it.band_id]);
-      if (it.artist_id) list.push(['再生中のアーティスト', 'artist', it.artist_id]);
+      list.push(['再生中のライブ', 'live', it.live_id, it.live], ['再生中のバンド', 'band', it.band_id, it.band]);
+      if (it.artist_id) list.push(['再生中のアーティスト', 'artist', it.artist_id, it.artist]);
     }
     innerDoc()?.querySelectorAll('[data-shuffle-menu] a[data-shuffle]').forEach((a) => {
-      if (a.dataset.shuffle !== 'all') list.push([a.textContent, a.dataset.shuffle, Number(a.dataset.shuffleId) || 0]);
+      if (a.dataset.shuffle !== 'all') list.push([a.textContent, a.dataset.shuffle, Number(a.dataset.shuffleId) || 0, a.dataset.shuffleName]);
     });
     // 「再生中のバンド」と「表示中のバンド」が同じなら「表示中の〜」を残す（流している範囲なら is-current で選ばれた見た目になる）
     const here = new Set(list.filter(([label]) => !label.startsWith('再生中の')).map(([, sc, id]) => `${sc}:${id}`));
@@ -766,6 +786,7 @@
       .filter(([label, sc, id]) => !(label.startsWith('再生中の') && here.has(`${sc}:${id}`)))
       .filter(([, sc, id]) => !seen.has(`${sc}:${id}`) && seen.add(`${sc}:${id}`))
       .map((x) => scopeItem(...x)));
+    showCounts();
   };
 
   const pick = (scope, id) => {
@@ -782,6 +803,7 @@
   const showFilter = () => {
     filterBtn.setAttribute('aria-pressed', String(filter.off.length > 0 || filter.bands.length > 0 || cfg.scope !== 'all')); // 外したライブ・バンドがある・チップでサイト全体より狭めた
     srcBtns.forEach((b) => b.setAttribute('aria-pressed', String(filter.src === 'all' || filter.src === b.dataset.shellSrc)));
+    showCounts();
   };
   showFilter();
   // チップで範囲を替えるとき、外したライブを戻す: 絞り込みで選んだライブから（id -1）・再生中のライブ / バンドから（ライブ1つの範囲で外したものが、広い範囲の曲を減らさないように）
@@ -824,17 +846,12 @@
     d.append(s);
     return d;
   };
-  const livesCache = new Map(); // URL → Promise（絞り込みの中身）
   filterBtn.addEventListener('click', async () => {
     yearsEl.replaceChildren();
     filterDlg.showModal();
-    const get = (url) => { // 開くたびに取り直さない（失敗したときだけ次に取り直す）
-      if (!livesCache.has(url)) livesCache.set(url, fetch(url).then((res) => (res.ok ? res.json() : null)).catch(() => null).then((j) => { if (!j) livesCache.delete(url); return j; }));
-      return livesCache.get(url);
-    };
     const [data, inScope] = await Promise.all([
-      get('api_shuffle?scope=all&lives=1'),
-      cfg.scope === 'all' ? null : get(`api_shuffle?scope=${encodeURIComponent(cfg.scope)}&id=${Number(cfg.id) || 0}&lives=1`),
+      getLives(livesUrl('all', 0)),
+      cfg.scope === 'all' ? null : getLives(livesUrl(cfg.scope, cfg.id)),
     ]);
     scopeBands = inScope ? new Set(inScope.items.map((q) => q.band_id)) : null; // null = すべて範囲の中
     const years = new Map(); // 年度 → Map(live_id → { name, date, mix, yt, bands: Map(band_id → 名前) })

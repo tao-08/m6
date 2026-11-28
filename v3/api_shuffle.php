@@ -15,7 +15,7 @@
  *  同じ曲が2つの音源にあるときは先のものだけ。MIX（a: / d:）を YouTube（y:）より先に読むので、MIX にある曲は MIX で、MIX にチャプターの無い曲だけ YouTube で流す。大きさがわからない音源（ドライブの size が NULL）は途中から流せないので除く
  *  art = 紐付けた曲のジャケット（無ければ null）。album = そのアルバム名（無ければ null）。artist = コピー元のアーティスト（オムニバスのバンドは曲ごと。オリジナルなどで無ければ null）
  *  players = 演奏者 [{id, name, parts: [{s: 楽器の略称, c: instrument_class, t: 楽器名}]}]（楽器の並び順）。曲ごとの登録が無い曲はバンドのメンバー全員
- *  ?lives=1: バンド・日付・YouTube かの組ごとに1つ（year, live_id, live, date, band_id, band, yt だけ）。絞り込みのモーダル用
+ *  ?lives=1: バンド・日付・YouTube かの組ごとに1つ（year, live_id, live, date, band_id, band, yt と曲数 n だけ）。絞り込みのモーダルとチップの曲数用
  *  読むだけなので GET（CSRF のトークンは要らない）
  * =====================================================================
  */
@@ -285,7 +285,9 @@ unset($it);
 if (isset($_GET['lives'])) { // 絞り込み（player.js）が使う分だけ。サイト全体の一覧は 300KB を超え、本番は圧縮されない
     $lives = [];
     foreach ($items as $it) {
-        $lives[$it['band_id'] . '|' . $it['date'] . '|' . isset($it['yt'])] ??= ['year' => $it['year'], 'live_id' => $it['live_id'], 'live' => $it['live'], 'date' => $it['date'], 'band_id' => $it['band_id'], 'band' => $it['band']] + (isset($it['yt']) ? ['yt' => true] : []);
+        $k = $it['band_id'] . '|' . $it['date'] . '|' . isset($it['yt']);
+        $lives[$k] ??= ['year' => $it['year'], 'live_id' => $it['live_id'], 'live' => $it['live'], 'date' => $it['date'], 'band_id' => $it['band_id'], 'band' => $it['band'], 'n' => 0] + (isset($it['yt']) ? ['yt' => true] : []);
+        $lives[$k]['n']++;
     }
     $items = array_values($lives);
 }
