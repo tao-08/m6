@@ -33,6 +33,8 @@ function chapter_job_save(int $bandId, string $key, array $found): void
         foreach ($found as $c) {
             $ins->execute([$bandId, $key, $c['kind'], $c['ms']]);
         }
+        // 人が確認するまでシャッフル再生に流さない（band.php の「確認済みにする」で外す。migrations/160）
+        $pdo->prepare('INSERT IGNORE INTO band_audio_unconfirmed (band_id, audio_key) VALUES (?, ?)')->execute([$bandId, $key]);
         $pdo->commit();
     } catch (Throwable $e) {
         $pdo->rollBack();
@@ -101,6 +103,26 @@ function chapter_job_edited(string $key, int $bandId): void
     if (!in_array(chapter_job_get($id)['state'] ?? '', ['queued', 'running'], true)) {
         chapter_job_put($id, ['state' => 'edited', 'band_id' => $bandId, 'at' => time()]);
     }
+}
+
+/**
+ * migrations/160 の続き: 160 より前に人が直した（edited）YouTube の動画を確認済みにする。1回だけ（済んだら印のファイルを置く）
+ *   shortcut: setlist_jobs?tab=chapter を開いたときに走る。本番で一度開いたら、この関数と呼び出しは消してよい
+ */
+function chapter_unconfirmed_migrate(): void
+{
+    $mark = ytdlp_dir() . '/unconfirmed-160.done';
+    if (is_file($mark)) {
+        return;
+    }
+    $del = db()->prepare('DELETE FROM band_audio_unconfirmed WHERE band_id = ? AND audio_key = ?');
+    foreach (glob(ytdlp_dir() . '/chapter-*.json') ?: [] as $file) {
+        if (preg_match('/chapter-([A-Za-z0-9_-]+)\.json$/', $file, $m) && !preg_match('/^[ad]-/', $m[1])
+            && ($job = chapter_job_get($m[1])) !== null && $job['state'] === 'edited') {
+            $del->execute([(int)($job['band_id'] ?? 0), 'y:' . $m[1]]);
+        }
+    }
+    @touch($mark);
 }
 
 /** Gemini の設定（自動チャプター）。無ければ null */

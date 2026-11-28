@@ -32,6 +32,7 @@ $tabNav = static function () use ($tab): void { ?>
 <?php };
 
 if ($tab === 'chapter') {
+    chapter_unconfirmed_migrate();
     $pdo = db();
     $bands = $pdo->query('SELECT b.band_id, b.name, b.youtube_url, l.live_id, l.name AS live_name, l.fiscal_year
         FROM band b JOIN live_day d ON d.live_day_id = b.live_day_id JOIN live l ON l.live_id = d.live_id

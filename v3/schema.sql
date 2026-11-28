@@ -269,6 +269,7 @@ CREATE TABLE band (
     is_omnibus  TINYINT(1)        NOT NULL DEFAULT 0,  -- 1 = いろんなアーティストの曲をやるバンド（曲ごとに song.artist_id を持つ。artist_id は NULL）
     needs_check TINYINT UNSIGNED  NOT NULL DEFAULT 0,  -- 🚩 確認依頼の理由のビット（0 = なし / 1 担当楽器 / 2 Vo か Vo/Gt / 4 メンバー。migrations/015, 026）
     setlist_private TINYINT(1)    NOT NULL DEFAULT 0,  -- 1 = セットリストを終演30分後まで非公開（メンバーと管理者には見える。migrations/023）
+    setlist_unconfirmed TINYINT(1) NOT NULL DEFAULT 0, -- 1 = 曲の検出から保存して未確認。シャッフル再生に流さない（migrations/160）
     PRIMARY KEY (band_id),
     UNIQUE KEY uq_band_order (live_day_id, play_order), -- 同じ日に「3番目」が2組できない
     KEY idx_band_artist (artist_id),
@@ -1136,6 +1137,15 @@ CREATE TABLE band_audio_chapter (
     PRIMARY KEY (chapter_id),
     KEY idx_bac (band_id, audio_key, at_ms),
     CONSTRAINT fk_bac_band FOREIGN KEY (band_id) REFERENCES band (band_id)
+        ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- 自動で付けたチャプターのうち、まだ人が確認していない音源（migrations/160）。行があればシャッフル再生に流さない
+CREATE TABLE band_audio_unconfirmed (
+    band_id   INT UNSIGNED NOT NULL,
+    audio_key VARCHAR(110) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+    PRIMARY KEY (band_id, audio_key),
+    CONSTRAINT fk_bau_band FOREIGN KEY (band_id) REFERENCES band (band_id)
         ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 

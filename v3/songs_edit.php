@@ -212,8 +212,9 @@ if (is_post() && !$fromSheet) {
             //   アーティストが一覧に残らないようにするため（artists.php は演奏0回のアーティストを出さない）
             // オムニバスを外したとき: コピー元アーティストが無ければ、バンド名から決め直す
             $artistId = $omnibus ? null : ($band['artist_id'] ?? find_or_create_artist($pdo, $band['name']));
-            $pdo->prepare('UPDATE band SET is_omnibus = ?, artist_id = ?, setlist_private = ?, song_count = ? WHERE band_id = ?')
-                ->execute([(int)$omnibus, $artistId, (int)$private, $songCount !== '' ? (int)$songCount : null, $bandId]);
+            // 曲の検出の結果から保存したら未確認（シャッフル再生に流さない。band.php の「確認済みにする」で外す）
+            $pdo->prepare('UPDATE band SET is_omnibus = ?, artist_id = ?, setlist_private = ?, song_count = ?, setlist_unconfirmed = setlist_unconfirmed OR ? WHERE band_id = ?')
+                ->execute([(int)$omnibus, $artistId, (int)$private, $songCount !== '' ? (int)$songCount : null, (int)isset($_SESSION['setlist_detect'][$bandId]), $bandId]);
             save_songs($pdo, $bandId, $songs);
             // オムニバスにしたら、外したコピー元アーティストが他で使われていなければ消す
             //   同じ名前の非オムニバスのバンド（band.artist_id）や、曲のアーティストに使っていれば残す。

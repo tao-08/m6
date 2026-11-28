@@ -111,6 +111,6 @@ if (!preg_match('/^[A-Za-z0-9_-]*(\.php)?(\?[^#\s]*)?$/', $u) || preg_match('/^p
     <div class="toasts shell-toasts" data-shell-toasts aria-live="polite"></div>
 </div>
 <?php require __DIR__ . '/partials/album_modal.php'; ?>
-<script type="application/json" id="shell-data"><?= json_encode(['scope' => $scope, 'id' => $id, 'resume' => isset($_GET['resume']), 'admin' => is_admin()], JSON_HEX_TAG) ?></script>
+<script type="application/json" id="shell-data"><?= json_encode(['scope' => $scope, 'id' => $id, 'resume' => isset($_GET['resume'])], JSON_HEX_TAG) ?></script>
 </body>
 </html>

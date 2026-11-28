@@ -67,6 +67,19 @@ if (is_post() && ($_POST['action'] ?? '') === 'checked') {
     redirect('band?id=' . $bandId);
 }
 
+// 解析で入れたセトリ・チャプターの「確認済みにする」（未確認はシャッフル再生に流さない。migrations/160）
+if (is_post() && in_array($_POST['action'] ?? '', ['confirm_setlist', 'confirm_chapters'], true)) {
+    verify_csrf();
+    $key = (string)($_POST['key'] ?? '');
+    if ($_POST['action'] === 'confirm_setlist') {
+        $pdo->prepare('UPDATE band SET setlist_unconfirmed = 0 WHERE band_id = ?')->execute([$bandId]);
+    } else {
+        $pdo->prepare('DELETE FROM band_audio_unconfirmed WHERE band_id = ? AND audio_key = ?')->execute([$bandId, $key]);
+    }
+    flash('確認済みにしました');
+    redirect('band?id=' . $bandId . ($key !== '' ? '#ch-' . rawurlencode(str_replace(':', '-', $key)) : ''));
+}
+
 // トリ = その日程で出演順が一番うしろ。組数（COUNT）は「7/14」の分母に使う（MAX だと欠番があるとずれる）
 //   総バンド数（live_day.total_bands）が入っていれば分母はそちら。登録済みが総バンド数に足りない日程は、
 //   登録済みの最後が本当の最後ではないのでトリにしない。出演順が未確定（order_unset）の日程も同じ
@@ -366,7 +379,8 @@ render_header($band['name'], 'lives');
 <section class="card band-section">
     <?php // 曲が未登録のときは band.song_count（タイムテーブルの曲数）を「予定」として出す。登録済みの曲数と混ぜない ?>
     <h2 class="section-title section-title--card">セットリスト <small class="muted"><?= $songs ? count(array_filter($songs, static fn($s) => !$s['is_se'])) . '曲' : ($hiddenSongCount ? $hiddenSongCount . '曲' : '') ?></small>
-        <?php if ($setlistVis['private']): ?><span class="tag" title="出演まで非公開"><?= icon('lock') ?> 非公開</span><?php endif; ?></h2>
+        <?php if ($setlistVis['private']): ?><span class="tag" title="出演まで非公開"><?= icon('lock') ?> 非公開</span><?php endif; ?>
+        <?php if ($band['setlist_unconfirmed'] && $songs): ?><?= confirm_button_html('confirm_setlist') ?><?php endif; ?></h2>
     <?php if ($setlistVis['private'] && !$setlistVis['hidden'] && $songs): // メンバー・管理者には見えている。いつ公開されるかを案内 ?>
         <p class="muted small"><?= icon('lock') ?> <?= $setlistVis['open_at'] ? h(fmt_datetime($setlistVis['open_at'])) . ' に公開されます。' : '公開する時刻が決まっていません（出演日が未登録）。' ?>メンバーと管理者だけに見えています。</p>
     <?php endif; ?>
@@ -439,6 +453,9 @@ render_header($band['name'], 'lives');
     $chapterSongs = array_column(array_filter($songs, static fn($s) => !$s['is_se']), 'title');
     $chapterSes = array_column(array_filter($songs, static fn($s) => $s['is_se']), 'title');
     $seBefore = chapter_se_before($songs);
+    $st = $pdo->prepare('SELECT audio_key FROM band_audio_unconfirmed WHERE band_id = ?');
+    $st->execute([$bandId]);
+    $unconfirmed = array_flip($st->fetchAll(PDO::FETCH_COLUMN));
     // YouTube の区分の音源は、動画のチャプター（'y:動画ID'）を共有する。曲・SE はその動画の分だけ（video_chapters.php と同じ）
     $ytNos = []; // 動画 ID => 何本目
     foreach ($ytUrls as $i => $u) {
@@ -446,7 +463,7 @@ render_header($band['name'], 'lives');
             $ytNos[$v] ??= $i;
         }
     }
-    $chapterCtx = static function (string $key, ?string $vid) use ($bandId, $audioChapters, $chapterSongs, $chapterSes, $seBefore, $songs, $ytNos, $ytUrls): array {
+    $chapterCtx = static function (string $key, ?string $vid) use ($bandId, $audioChapters, $chapterSongs, $chapterSes, $seBefore, $songs, $ytNos, $ytUrls, $unconfirmed): array {
         $ctx = ['band_id' => $bandId, 'key' => $key, 'chapters' => $audioChapters[$key] ?? [], 'songs' => $chapterSongs, 'ses' => $chapterSes, 'se_before' => $seBefore];
         if ($vid !== null && isset($ytNos[$vid])) {
             $no = $ytNos[$vid];
@@ -454,7 +471,7 @@ render_header($band['name'], 'lives');
             $ctx = ['key' => $key = 'y:' . $vid, 'chapters' => $audioChapters[$key] ?? [], 'songs' => array_column(video_chapter_songs($mine, $no, count($ytUrls)), 'title'),
                 'ses' => array_column(array_filter($mine, static fn($s) => $s['is_se']), 'title'), 'se_before' => chapter_se_before($mine), 'video' => $vid] + $ctx;
         }
-        return $ctx + ['job' => chapter_job_get(chapter_job_id($ctx['key'])), 'editing' => ($_GET['chap'] ?? '') === $ctx['key']]; // 解析の状況から開くと編集モード
+        return $ctx + ['unconfirmed' => isset($unconfirmed[$ctx['key']]) && $ctx['chapters'], 'job' => chapter_job_get(chapter_job_id($ctx['key'])), 'editing' => ($_GET['chap'] ?? '') === $ctx['key']]; // 解析の状況から開くと編集モード
     };
     ?>
     <!-- ファイル（セットリストの下）: 直接置いた MP3 → ドライブの音源 → そのほか。音源はチャプターを付けられるプレーヤー。バンドのページは1組だけなので最初から並べる（iframe・画像は loading="lazy" で画面に近づいてから読み込む） -->

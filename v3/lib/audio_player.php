@@ -87,6 +87,18 @@ function audio_chapter_list(array $rows): array
 }
 
 /**
+ * 解析で入れたセトリ・チャプターの「確認済みにする」（小見出しの右。band.php が受ける。migrations/160）
+ *   $action … confirm_setlist | confirm_chapters。$key … チャプターの音源キー
+ */
+function confirm_button_html(string $action, string $key = ''): string
+{
+    return '<form method="post" class="confirm-form no-print">' . csrf_field()
+        . '<input type="hidden" name="action" value="' . h($action) . '">'
+        . ($key !== '' ? '<input type="hidden" name="key" value="' . h($key) . '">' : '')
+        . '<button type="submit" class="btn btn--sm btn--ghost">' . icon('flag', 'icon--fill flag-icon') . '確認済み</button></form>';
+}
+
+/**
  * プレーヤーの HTML
  *   $src … 音源の URL（attach_image?k=band_audio&id=N / drive_audio?band=N&f=ID）
  *   $chapterCtx … チャプターを出すとき: ['band_id' => int, 'key' => 'a:N' | 'd:ID' | 'y:動画ID', 'chapters' => 行の配列, 'songs' => [曲名（SE 以外・セトリ順）], 'ses' => [SE 名（セトリ順。無ければ省略可）]]
@@ -94,6 +106,7 @@ function audio_chapter_list(array $rows): array
  *     'embed' => true … <audio> の代わりに YouTube の埋め込み（app_player.js の apYouTube）を上に置き、最初から編集モード（video_chapters.php。MP3 の無い動画だけ）
  *     'editing' => true … 最初から編集モード（band.php?chap=キー。解析の状況から開く）
  *     'video' => 動画ID … YouTube の区分の音源: アイコンを YouTube にして、名前をその動画へのリンクにする
+ *     'unconfirmed' => true … 自動で付けて未確認: 名前の右に「確認済みにする」
  *   figure の id は ch-キー（: は -）。band.php?chap=キー#ch-… で飛んでくる
  */
 function audio_player_html(string $src, string $title, ?int $size, ?array $chapterCtx = null): string
@@ -129,6 +142,9 @@ function audio_player_html(string $src, string $title, ?int $size, ?array $chapt
         $html .= '<a class="audio-player__dl no-print" href="' . h($src . (str_contains($src, '?') ? '&' : '?') . 'dl=1') . '" download aria-label="ダウンロード" title="ダウンロード">' . icon('download') . '</a>';
         if ($chapterCtx !== null) {
             $html .= '<button type="button" class="audio-player__edit no-print" data-ap-edit aria-pressed="' . ($editing ? 'true' : 'false') . '">' . icon('edit') . 'チャプターを編集</button>';
+        }
+        if (!empty($chapterCtx['unconfirmed'])) {
+            $html .= confirm_button_html('confirm_chapters', (string)$chapterCtx['key']);
         }
     }
     // 自前の操作部（ブラウザ標準のコントロールは Range が使えない環境でシークできないため）。吹き出し（チャプター）は再生位置の棒の上に並べる

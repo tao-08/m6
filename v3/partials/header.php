@@ -239,7 +239,8 @@ $nav = [
             $w = ['live' => 'd.live_id = ?', 'band' => 'b.band_id = ?', 'member' => 'b.band_id IN (SELECT band_id FROM band_member WHERE member_id = ?)',
                 'artist' => '(b.artist_id = ? OR b.band_id IN (SELECT band_id FROM song WHERE artist_id = ?))'][$page]; // api_shuffle.php と同じ
             $st = db()->prepare("SELECT 1 FROM band_audio_chapter c JOIN band b ON b.band_id = c.band_id JOIN live_day d ON d.live_day_id = b.live_day_id
-                WHERE c.kind = 'song' AND $w" . (is_admin() ? '' : " AND c.audio_key NOT LIKE 'y:%'") . ' LIMIT 1'); // YouTube は準備中（管理者だけ）
+                WHERE c.kind = 'song' AND b.setlist_unconfirmed = 0 AND $w
+                AND NOT EXISTS (SELECT 1 FROM band_audio_unconfirmed u WHERE u.band_id = c.band_id AND u.audio_key = c.audio_key) LIMIT 1"); // 未確認は流さない（api_shuffle.php と同じ）
             $st->execute(array_fill(0, substr_count($w, '?'), $id));
             return (bool)$st->fetchColumn();
         };

@@ -1,9 +1,10 @@
 <?php
 /**
  * =====================================================================
- *  api_shuffle.php — シャッフル再生する曲の一覧（JSON）。player.php の外枠が呼ぶ。YouTube の曲は管理者だけ（準備中）
+ *  api_shuffle.php — シャッフル再生する曲の一覧（JSON）。player.php の外枠が呼ぶ
  * =====================================================================
- *  YouTube は、MP3（YouTube の区分の音源。band_audio / band_drive_file の video_id。migrations/153）とセットリストとチャプター（audio_key 'y:動画ID'）がそろい、チャプターが編集済み（lib/chapter_job.php の edited）の動画だけ
+ *  YouTube は、MP3（YouTube の区分の音源。band_audio / band_drive_file の video_id。migrations/153）とセットリストとチャプター（audio_key 'y:動画ID'）がそろった動画だけ
+ *  解析で入れて未確認のセトリ（band.setlist_unconfirmed）・チャプター（band_audio_unconfirmed）は流さない（migrations/160。band.php の「確認済みにする」で外れる）
  *    その MP3 を MIX と同じ区切り（MC・通し）で流す（yt = true。絞り込みは YouTube 側）。曲は video_chapter_songs
  *  リクエスト（GET）: ?scope=all | ?scope=live&id=ライブID | ?scope=band&id=バンドID | ?scope=member&id=メンバーID（その人が演奏した曲） | ?scope=artist&id=アーティストID（そのアーティストの曲）
  *  レスポンス: {"items": [{song_id, title, artist_id, artist, art, album, band_id, band, live_id, live, year, players, src, size, start_ms, end_ms, through_end_ms, mc_ms, mc_kind, intro_ms}, ...]}（並びはライブ・出演順・時間順 = シャッフルしないときの順。混ぜるのは JS）
@@ -24,7 +25,6 @@ require_once __DIR__ . '/lib/youtube.php';    // band_video_urls・youtube_video
 require_once __DIR__ . '/lib/tracks.php';       // track_listen_url（ジャケットを押したときのアルバムのモーダル）
 require_once __DIR__ . '/lib/audio_stream.php'; // audio_orig_size（音源は 160 に置き換えるので、data-size は元の大きさ）
 require_once __DIR__ . '/lib/tabs.php';          // tab_song_key（曲名を押すと楽曲データベースのモーダル）
-require_once __DIR__ . '/lib/chapter_job.php';   // chapter_job_get（YouTube はチャプターが編集済みの動画だけ）
 
 header('Content-Type: application/json; charset=utf-8');
 if (current_user() === null) {
@@ -62,7 +62,7 @@ foreach ($st as $r) {
     $groups[$r['band_id'] . '|' . $r['audio_key']][] = $r;
 }
 // 範囲のバンド（出演順）。YouTube の曲の情報と、MIX と YouTube を混ぜて並べる順番に使う
-$st = $pdo->prepare("SELECT b.band_id, b.name AS band, b.youtube_url, b.artist_id, a.name AS artist, l.live_id, l.name AS live, l.fiscal_year, d.held_on
+$st = $pdo->prepare("SELECT b.band_id, b.name AS band, b.youtube_url, b.setlist_unconfirmed, b.artist_id, a.name AS artist, l.live_id, l.name AS live, l.fiscal_year, d.held_on
     FROM band b
     JOIN live_day d ON d.live_day_id = b.live_day_id
     JOIN live l ON l.live_id = d.live_id
@@ -81,6 +81,9 @@ if (!$bandIds) {
     exit;
 }
 $in = implode(',', array_fill(0, count($bandIds), '?'));
+$st = $pdo->prepare("SELECT CONCAT(band_id, '|', audio_key) FROM band_audio_unconfirmed WHERE band_id IN ($in)");
+$st->execute($bandIds);
+$unconfirmed = array_flip($st->fetchAll(PDO::FETCH_COLUMN)); // "band_id|audio_key"（未確認のチャプター）
 
 // セトリ（SE 以外・セトリ順）
 $songs = [];
@@ -164,12 +167,12 @@ foreach ($st as $r) {
     }
 }
 
-// YouTube のチャプター（'y:動画ID'）: [動画 ID, 何本目, 全部で何本]。流すのは YouTube の区分の音源（MP3）があり、チャプターを人が直した（編集済み。setlist_jobs.php の ✓）動画だけ
+// YouTube のチャプター（'y:動画ID'）: [動画 ID, 何本目, 全部で何本]。流すのは YouTube の区分の音源（MP3）がある動画だけ
 $ytKeys = [];
 foreach ($videoUrls as $bandId => $urls) {
     foreach ($urls as $no => $url) {
         $vid = youtube_video_id($url);
-        if ($vid !== null && isset($ytFile[$bandId . '|y:' . $vid]) && (chapter_job_get($vid)['state'] ?? '') === 'edited') {
+        if ($vid !== null && isset($ytFile[$bandId . '|y:' . $vid])) {
             $src[$bandId . '|y:' . $vid] = $ytFile[$bandId . '|y:' . $vid];
             $ytKeys[$bandId . '|y:' . $vid] = [$vid, $no, count($urls)];
         }
@@ -179,10 +182,10 @@ foreach ($videoUrls as $bandId => $urls) {
 $items = [];
 $seen = [];
 foreach ($groups as $key => $chs) {
-    if (!isset($src[$key])) {
-        continue;
-    }
     $bandId = (int)$chs[0]['band_id'];
+    if (!isset($src[$key]) || isset($unconfirmed[$key]) || !empty($bandRows[$bandId]['setlist_unconfirmed'])) {
+        continue; // 音源が無い・未確認
+    }
     $yt = $ytKeys[$key] ?? null;
     $list = $yt ? video_chapter_songs($songs[$bandId] ?? [], $yt[1], $yt[2]) : $songs[$bandId] ?? [];
     $seList = array_values(array_filter($ses[$bandId] ?? [], static fn($s) => !$yt || $yt[2] < 2 || (int)$s['video_no'] === $yt[1])); // shortcut: MIX の音源が2本以上でも分けない
@@ -273,9 +276,6 @@ foreach ($groups as $key => $chs) {
 }
 
 // 出演順・セトリ順に（MIX と YouTube が混ざるため並べ直す）
-if (!is_admin()) { // YouTube は準備中: 管理者以外は MIX だけ
-    $items = array_values(array_filter($items, static fn($it) => empty($it['video']) && empty($it['yt'])));
-}
 usort($items, static fn($x, $y) => $x['_o'] <=> $y['_o']);
 foreach ($items as &$it) {
     unset($it['_o']);

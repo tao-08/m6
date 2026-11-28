@@ -57,7 +57,6 @@
   let savedAt = 0;       // 最後に位置を残した秒（書きすぎないため）
   let filter = { src: 'all', off: [] }; // 絞り込み: src = all | mix | yt、off = 外したライブの ID（範囲の上にかける。新しいライブは入る側）
   try { filter = { ...filter, ...JSON.parse(localStorage.getItem('shuffle_filter') || '{}') }; } catch (e) { /* 無しで */ }
-  if (!cfg.admin) filter.src = 'mix'; // YouTube は準備中（api_shuffle.php も管理者以外には返さない）
   const passes = (q) => (filter.src === 'all' || (filter.src === 'yt') === !!q.yt) && !filter.off.includes(q.live_id);
   let openOnLoad = cfg.resume; // 開き直したときは、中のページを読み終えてもポップアップを開いたまま
 
@@ -778,7 +777,6 @@
   showFilter();
   // MIX / YouTube: それぞれ入り切り。両方は外せない
   srcBtns.forEach((b) => b.addEventListener('click', () => {
-    if (!cfg.admin && b.dataset.shellSrc === 'yt') { toast('準備中です'); return; }
     const on = [...srcBtns].filter((x) => (x === b) !== (x.getAttribute('aria-pressed') === 'true')).map((x) => x.dataset.shellSrc);
     if (!on.length) { toast('MIX と YouTube の両方は外せません'); return; }
     filter.src = on.length === 2 ? 'all' : on[0];
