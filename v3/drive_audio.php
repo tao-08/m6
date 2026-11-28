@@ -34,6 +34,11 @@ if (isset($_GET['dl'])) { // 保存は元の音質のドライブから（サー
     header('Location: https://drive.google.com/uc?export=download&id=' . rawurlencode($fileId));
     exit;
 }
+if (isset($_GET['state']) && is_admin()) { // 管理者だけ: いまドライブから落としているか、変換しているか（player.js）
+    header('Content-Type: application/json');
+    echo json_encode(audio_prep_state(drive_cache_path($fileId), $size));
+    exit;
+}
 // 長く待つので、先にセッションを手放す（ほかの画面が待たされない）。時間制限も外す
 session_write_close();
 if (function_exists('set_time_limit')) {

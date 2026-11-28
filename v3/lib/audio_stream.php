@@ -131,6 +131,23 @@ function audio_shrink_make(string $path, string $mark, bool $quiet = false): voi
 }
 
 /**
+ * 管理者向け: 流す前にサーバーが何をしているか（player.js の diag。&state=1）。ファイルの有無だけで見る（記録は増やさない）
+ *   download … ドライブから落としている途中（<元>.part。lib/drive_cache.php）。total は DB の大きさ
+ *   convert … ffmpeg が 160 / 256 に作っている途中（audio_shrink_make の .part.mp3）
+ *   ready … 元はある（変換を待っている・もう終わった）/ none … まだ何も無い
+ */
+function audio_prep_state(string $path, int $size = 0): array
+{
+    clearstatcache();
+    $part = $path . '.' . AUDIO_LIGHT_KBPS . '.mp3.part.mp3';
+    return match (true) {
+        is_file($path . '.part') => ['step' => 'download', 'done' => (int)filesize($path . '.part'), 'total' => $size],
+        is_file($part) => ['step' => 'convert', 'done' => (int)filesize($part)],
+        default => ['step' => is_file($path) ? 'ready' : 'none'],
+    };
+}
+
+/**
  * @param string      $mime   Content-Type（WAV を途中から流すときは audio/wav に変わる）
  * @param string|null $dlName ダウンロードさせるときのファイル名（null ならそのまま再生）
  * @param bool        $quiet  MIX（YouTube の区分でない音源）: 音量を下げたものを流す

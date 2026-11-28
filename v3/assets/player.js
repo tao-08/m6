@@ -323,6 +323,7 @@
     // 読み直す間は前の曲を止めておく（鳴り続けると、表示だけ次の曲で音は前の曲になり、古い位置で終わりを判定して勝手に進む）
     busy = true;
     if (play) loading(true); // 長さを調べている間も輪を回す（止めた pause では消さない）
+    prepWait(it.src, 'サーバーが用意中'); // 長さを調べる要求は、サーバーがドライブから落とす・変換するのを待つ
     if (!el.paused) el.pause();
     if (t > 0 || endOf(it) !== null) {
       const total = await probe(it);
@@ -395,9 +396,58 @@
     }
     else playAt(it.start_ms / 1000, true);
   };
-  const skip = () => { // 流せなかった: 続けて全部だめなら止める
+  // 管理者だけ: 止まっている理由を曲名の下に出す（待っているもの + 秒 / 最後に飛ばした理由）。流れ始めたら消す
+  const diagEl = $('[data-shell-diag]');
+  let waitMsg = '';
+  let waitDetail = ''; // 進み具合（45% / 12.3MB）
+  let waitAt = 0;
+  let failMsg = '';
+  let prepSrc = ''; // サーバーの用意を待っている音源（2秒ごとに &state=1 で様子を見る）
+  const showDiag = () => {
+    if (!diagEl) return;
+    const msg = [waitMsg && `${waitMsg} ${waitDetail ? `${waitDetail} ` : ''}${Math.round((Date.now() - waitAt) / 1000)}秒`, failMsg].filter(Boolean).join(' / ');
+    diagEl.hidden = !msg;
+    diagEl.textContent = msg;
+  };
+  const diagWait = (msg, detail = '', prep = false) => {
+    if (!prep) prepSrc = '';
+    if (msg !== waitMsg) { waitMsg = msg; waitAt = Date.now(); }
+    waitDetail = detail;
+    showDiag();
+  };
+  let prepPhase = '';
+  const prepWait = (src, phase) => { diagWait(phase); prepSrc = src; prepPhase = phase; };
+  const MB = (n) => `${(n / 1048576).toFixed(1)}MB`;
+  let asking = false;
+  if (diagEl) {
+    setInterval(() => { if (waitMsg) showDiag(); }, 1000);
+    setInterval(async () => {
+      if (!prepSrc || asking) return; // 前の様子見が返るまで次を送らない（サーバーが重いときに積まない）
+      const src = prepSrc;
+      asking = true;
+      const s = await fetch(`${src}${src.includes('?') ? '&' : '?'}state=1`).then((r) => r.json()).catch(() => null);
+      asking = false;
+      if (src !== prepSrc || !s) return;
+      if (s.step === 'download') diagWait('ドライブから取得中', s.total ? `${Math.round(s.done * 100 / s.total)}%` : MB(s.done), true);
+      else if (s.step === 'convert') diagWait('ffmpeg で変換中', MB(s.done), true);
+      else diagWait(prepPhase, '', true);
+    }, 2000);
+  }
+  // 流せなかった理由: 同じ音源に 1 バイトだけ頼んで、HTTP の番号とドライブの理由を見る（音源の error には番号が無い）
+  const why = async (src, mediaErr) => {
+    const res = await fetch(`${src}${src.includes('?') ? '&' : '?'}to=0`).catch(() => null);
+    if (!res) return '通信できない';
+    if (res.ok) return { 2: '途中で切れた', 3: '音源が壊れている', 4: '再生できない形式' }[mediaErr] ?? '長さを読めない';
+    const up = res.headers.get('X-Upstream-Reason');
+    return `${res.status} ${{ 404: 'ファイルがない', 502: 'ドライブ', 503: 'ドライブから取得中', 508: 'サーバーの上限' }[res.status] ?? ''}${up ? ` ${up}` : ''}`;
+  };
+  const skip = (mediaErr) => { // 流せなかった（mediaErr: 音源の error の番号）: 続けて全部だめなら止める
     fails += 1;
-    if (fails >= Math.min(queue.length, 5)) { busy = false; audio.pause(); setIcon(false); titleEl.textContent = '音源を読み込めませんでした'; return; }
+    if (diagEl && cur()) {
+      const prefix = fails >= Math.min(queue.length, 5) ? '止めた' : '飛ばした';
+      why(cur().src, mediaErr).then((m) => { failMsg = `${prefix} ${m}`; showDiag(); });
+    }
+    if (fails >= Math.min(queue.length, 5)) { busy = false; audio.pause(); setIcon(false); titleEl.textContent = '音源を読み込めませんでした'; waitMsg = ''; prepSrc = ''; showDiag(); return; }
     next();
   };
 
@@ -434,11 +484,15 @@
   // 読み込み中は再生ボタンの輪を回す（app_player.js と同じ）
   const loading = (v) => playBtns.forEach((b) => b.classList.toggle('is-loading', v));
   on('play', () => loading(audio.readyState < 3));
-  on('waiting', () => loading(true));
+  on('waiting', () => { loading(true); diagWait('読み込み中'); });
+  on('loadstart', () => { if (srcSeq === loadSeq && cur()) prepWait(cur().src, '読み込み中'); }); // 初めの1回は、この要求もサーバーの用意を待つ
+  on('loadeddata', () => { prepSrc = ''; });
+  on('playing', () => { waitMsg = ''; failMsg = ''; prepSrc = ''; showDiag(); });
+  on('pause', () => { if (!busy) { waitMsg = ''; prepSrc = ''; showDiag(); } });
   ['pause', 'ended', 'error'].forEach((ev) => on(ev, () => { if (!(ev === 'pause' && busy)) loading(false); }));
   on('playing', () => { fails = 0; loading(false); });
   on('ended', next);
-  on('error', () => { if (audio.getAttribute('src')) skip(); });
+  on('error', () => { if (audio.getAttribute('src')) skip(audio.error?.code); });
   // バンド単位: シークバーの上に曲（番号）と MC（通しのときだけ）の吹き出し（band.php のチャプターと同じ見た目）。押すとそこから
   //   曲間をスキップするときは、飛ばす所（曲の終わり〜次の曲の頭）を棒の上で薄くする（--gaps）
   const bubblesEl = $('[data-shell-bubbles]');

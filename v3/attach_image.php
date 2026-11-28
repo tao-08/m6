@@ -72,6 +72,11 @@ if ($kind === 'band_audio') {
     // MP3: ページ内のプレーヤーで再生する。シーク（Range）・from= に答える（lib/audio_stream.php）。長く流すので、先にセッションを手放す
     session_write_close();
     require_once __DIR__ . '/lib/audio_stream.php';
+    if (isset($_GET['state']) && is_admin()) { // 管理者だけ: いま変換しているか（player.js）
+        header('Content-Type: application/json');
+        echo json_encode(audio_prep_state($path));
+        exit;
+    }
     audio_stream_file($path, 'audio/mpeg', isset($_GET['dl'])
         ? preg_replace('/[^\p{L}\p{N}_-]+/u', '_', (string)$img['title']) . '_' . (int)$img['image_id'] . '.mp3' : null,
         $img['video_id'] === null); // MIX は音量を下げる
