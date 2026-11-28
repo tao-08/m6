@@ -95,7 +95,7 @@ function confirm_button_html(string $action, string $key = ''): string
     return '<form method="post" class="confirm-form no-print">' . csrf_field()
         . '<input type="hidden" name="action" value="' . h($action) . '">'
         . ($key !== '' ? '<input type="hidden" name="key" value="' . h($key) . '">' : '')
-        . '<button type="submit" class="btn btn--sm btn--ghost">' . icon('flag', 'icon--fill flag-icon') . '確認済み</button></form>';
+        . '<button type="submit" class="btn btn--sm btn--ghost" aria-label="確認済みにする" title="確認済みにする">' . icon('flag', 'icon--fill flag-icon') . '未確認</button></form>';
 }
 
 /**

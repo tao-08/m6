@@ -629,11 +629,9 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 .audio-player__dl + .audio-player__edit { margin-left: 0; }
 .audio-player__dl:hover, .audio-player__edit:hover, .audio-player__edit[aria-pressed="true"] { color: var(--accent); }
 .audio-player__edit[aria-pressed="true"] { background: var(--accent-soft); }
-/* スマホ: 名前と、ダウンロード・編集・確認済みのボタンを別の行に */
+/* スマホ: 1行に入らなければ、ダウンロード・編集・確認済みのボタンを名前の下の行へ（名前は折り返さずに測って並べる） */
 @media (max-width: 600px) {
   .audio-player .drive-player__name { flex-wrap: wrap; }
-  .audio-player .drive-player__name::after { content: ""; flex-basis: 100%; order: 1; }
-  .audio-player__dl, .audio-player__edit, .audio-player .confirm-form { order: 2; }
 }
 /* 操作部: 再生ボタン・再生位置の棒・時間。チャプターがあるときは、棒の上に吹き出し（.audio-bubble）を並べる
    吹き出しは棒の幅の中に収め（端では中身だけ内側へ寄せ）、三角は本当の位置を指す。--x は 0〜1 の位置、--shift は寄せた分 */
