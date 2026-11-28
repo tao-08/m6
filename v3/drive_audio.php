@@ -26,10 +26,14 @@ register_shutdown_function(static function () use ($audioT0): void {
     if (!isset($_GET['f']) || isset($_GET['state']) || isset($_GET['dl'])) {
         return;
     }
+    while (ob_get_level() > 0) { // PHP が溜めている分も送り切ってから測る（溜めたままだと、この関数のあとに送られて 0 秒に見える）
+        ob_end_flush();
+    }
+    flush();
     file_put_contents(AUDIO_TIME_LOG, sprintf("%s	%.1f秒	%s	%s	Range=%s	abort=%d
 ",
         date('m-d H:i:s'), microtime(true) - $audioT0, http_response_code(),
-        implode(' ', preg_grep('/^X-Cache:/i', headers_list()) ?: ['-']),
+        implode(' ', preg_grep('/^(X-Cache|Content-Length):/i', headers_list()) ?: ['-']),
         $_SERVER['HTTP_RANGE'] ?? '-', connection_aborted()), FILE_APPEND | LOCK_EX);
 });
 
