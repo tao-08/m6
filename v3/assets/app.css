@@ -637,10 +637,15 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
   background: var(--accent); color: #fff; cursor: pointer; }
 .audio-player__play .icon { font-size: var(--fs-2xl); }
 .audio-player__play:hover { opacity: .85; }
-/* 音源の読み込み中（app_player.js・player.js が .is-loading を付ける）: ボタンの外側の輪が回る。keyframes spin は .loading__spinner と共用 */
+/* 音源の読み込み中（app_player.js・player.js が .is-loading を付ける）: ボタンの外側の輪が回る
+   輪そのものは回さず、色の付いた弧の角度（--ring-a）だけ動かす（iOS Safari でボタンの中の要素を回すと、中のアイコンまで回って見えるため） */
+@property --ring-a { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
+@keyframes ring-spin { to { --ring-a: 360deg; } }
 .audio-player__play { position: relative; }
-.audio-player__play.is-loading::after { content: ''; position: absolute; inset: -4px; border-radius: var(--r-full); border: 3px solid transparent;
-  border-top-color: var(--accent); animation: spin .9s linear infinite; pointer-events: none; }
+.audio-player__play.is-loading::after { content: ''; position: absolute; inset: -4px; border-radius: var(--r-full); pointer-events: none;
+  background: conic-gradient(from var(--ring-a), var(--accent) 0 90deg, transparent 90deg);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px)); mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px));
+  animation: ring-spin .9s linear infinite; }
 @media (prefers-reduced-motion: reduce) { .audio-player__play.is-loading::after { animation-duration: 3s; } }
 .audio-player__time { flex: none; color: var(--muted); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; text-align: right; } /* 幅は JS が全体の長さに合わせて固定する（桁が増えてもシークバーが縮まない） */
 .audio-player__seek { --ap-thumb: 14px; position: relative; flex: 1; min-width: 0; }
