@@ -186,12 +186,13 @@ foreach ($groups as $key => $chs) {
     $yt = $ytKeys[$key] ?? null;
     $list = $yt ? video_chapter_songs($songs[$bandId] ?? [], $yt[1], $yt[2]) : $songs[$bandId] ?? [];
     $seList = array_values(array_filter($ses[$bandId] ?? [], static fn($s) => !$yt || $yt[2] < 2 || (int)$s['video_no'] === $yt[1])); // shortcut: MIX の音源が2本以上でも分けない
-    // 曲のチャプターが当たる曲: song_no（migrations/157）、無ければ前の曲 + 1。app_player.js の render と同じ
+    // 曲のチャプターが当たる曲: song_no（migrations/157）、無ければ前の曲 + 1。0 = 曲なし（番号は1つ数え、曲としては流さない）。app_player.js の render と同じ
+    $blank = static fn($ch) => $ch['kind'] === 'song' && $ch['song_no'] !== null && (int)$ch['song_no'] === 0;
     $n = 0;
     $firstNo = null;
     foreach ($chs as $ch) {
         if ($ch['kind'] === 'song') {
-            $firstNo ??= (int)($ch['song_no'] ?? 1);
+            $firstNo ??= (int)($ch['song_no'] ?: 1);
         }
     }
     $start = (int)($list[($firstNo ?? 1) - 1]['track_no'] ?? PHP_INT_MAX);
@@ -204,8 +205,8 @@ foreach ($groups as $key => $chs) {
         if ($c['kind'] !== 'song') {
             continue;
         }
-        $n = $c['song_no'] !== null ? (int)$c['song_no'] : $n + 1;
-        $song = $list[$n - 1] ?? null;
+        $n = $c['song_no'] !== null && !$blank($c) ? (int)$c['song_no'] : $n + 1;
+        $song = $blank($c) ? null : $list[$n - 1] ?? null;
         if ($song === null || isset($seen[$song['song_id']])) {
             continue; // チャプターが曲数より多い分・別の音源で出た曲は流さない
         }
@@ -231,8 +232,9 @@ foreach ($groups as $key => $chs) {
         }
         for ($j = $i + 1; isset($chs[$j]); $j++) {
             $k = $chs[$j]['kind'];
+            if ($blank($chs[$j])) $k = 'blank'; // 曲なしは通しで流し、曲名を「未登録」に（player.js の gapLabel）
             if ($k === 'song') { $thru = (int)$chs[$j]['at_ms']; break; }
-            if (($k === 'mc' || $k === 'se') && $mc === null) { $mc = (int)$chs[$j]['at_ms']; $mcKind = $k; $mcJ = $j; }
+            if (($k === 'mc' || $k === 'se' || $k === 'blank') && $mc === null) { $mc = (int)$chs[$j]['at_ms']; $mcKind = $k; $mcJ = $j; }
             else $firstEnd ??= (int)$chs[$j]['at_ms'];
         }
         if ($thru === null) {

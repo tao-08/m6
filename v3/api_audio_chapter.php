@@ -118,7 +118,7 @@ if (in_array($action, ['add', 'replace', 'auto', 'status', 'discard', 'numbers']
             fail(400, '曲の指定が正しくありません');
         }
         foreach ($nums as $id => $no) {
-            if (!ctype_digit((string)$id) || !is_int($no) || $no < 1 || $no > 999) {
+            if (!ctype_digit((string)$id) || !is_int($no) || $no < 0 || $no > 999) {
                 fail(400, '曲の指定が正しくありません');
             }
         }

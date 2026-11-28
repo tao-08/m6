@@ -121,7 +121,7 @@ function audio_player_html(string $src, string $title, ?int $size, ?array $chapt
             . '<button type="button" class="btn btn--ghost btn--sm" data-ap-nudge="-1" aria-label="1秒前へ" title="1秒前へ">−1</button>'
             . '<button type="button" class="btn btn--ghost btn--sm" data-ap-nudge="1" aria-label="1秒後へ" title="1秒後へ">+1</button>'
             . '<button type="button" class="btn btn--ghost btn--sm" data-ap-here aria-label="今の位置" title="今の位置">今の位置</button>'
-            . (count($chapterCtx['songs']) > 1 ? '<select class="audio-player__song" data-ap-song aria-label="曲" title="曲" hidden>' // 曲のチップを選んだときだけ（app_player.js）
+            . (count($chapterCtx['songs']) > 1 ? '<select class="audio-player__song" data-ap-song aria-label="曲" title="曲" hidden><option value="0">—</option>' // 曲のチップを選んだときだけ（app_player.js）。0 = 曲なし（わからない曲など。シャッフルでは流さない）
                 . implode('', array_map(static fn($t, $i) => '<option value="' . ($i + 1) . '">' . ($i + 1) . '. ' . h((string)$t) . '</option>', array_values($chapterCtx['songs']), array_keys(array_values($chapterCtx['songs']))))
                 . '</select>' : '')
             . '</div></div>'

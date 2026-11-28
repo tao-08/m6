@@ -397,11 +397,12 @@ function setupAudioPlayers(root = document) {
       const motion = !reduced.matches;
       // 曲のチップが当たる曲: 選んだ番号（c.no）か、前の曲 + 1。途中の曲から始まる・抜けがある MIX のため（migrations/157。api_shuffle.php と同じ）
       let n = 0;
-      songNo = new Map(list.filter((c) => c.kind === 'song').map((c) => [c.id, n = c.no ?? n + 1]));
+      // 0 = 曲なし（わからない曲など）: 番号は1つ数え、チップは「—」
+      songNo = new Map(list.filter((c) => c.kind === 'song').map((c) => { n = c.no || n + 1; return [c.id, c.no === 0 ? 0 : n]; }));
       const counts = new Map();
-      for (const v of songNo.values()) counts.set(v, (counts.get(v) || 0) + 1);
+      for (const v of songNo.values()) if (v) counts.set(v, (counts.get(v) || 0) + 1);
       n = 0;
-      let se = chap.se_before?.[(songNo.values().next().value ?? 1) - 1] ?? 0; // SE は時間順に n 個目 = セトリの n 個目の SE（曲の番号には数えない）。1つ目の曲より前の SE は飛ばす
+      let se = chap.se_before?.[(songNo.values().next().value || 1) - 1] ?? 0; // SE は時間順に n 個目 = セトリの n 個目の SE（曲の番号には数えない）。1つ目の曲より前の SE は飛ばす
       const labels = list.map((c) => {
         if (c.kind === 'end') return { short: '終', full: n ? `${n}. End` : 'End' }; // 曲の終わり（番号には数えない。チップは直前の曲の番号で「4. End」）
         if (c.kind === 'se') {
@@ -409,6 +410,7 @@ function setupAudioPlayers(root = document) {
           return { short: 'SE', full: name ? `SE. ${name}` : 'SE' };
         }
         if (c.kind !== 'song') return { short: 'MC', full: 'MC' };
+        if (!songNo.get(c.id)) { n = 0; return { short: '—', full: '—' }; }
         n = songNo.get(c.id);
         return { dup: counts.get(n) > 1, short: String(n), full: chap.songs[n - 1] ? `${n}. ${chap.songs[n - 1]}` : String(n) };
       });

@@ -847,9 +847,11 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 .yt-drive__miss summary { cursor: pointer; }
 .yt-drive__miss ul { margin: 4px 0 0; padding-left: 16px; display: grid; gap: 4px; }
 .chapter-years details details { margin-left: 16px; }
-.chapter-years ul { list-style: none; margin: 4px 0 8px; padding: 0 0 0 16px; display: grid; gap: 6px; }
-.chapter-years li { display: flex; gap: 8px; align-items: baseline; justify-content: space-between; }
-.chapter-years li .tag { margin-left: auto; }
+.chapter-years ul { list-style: none; margin: 4px 0 8px; padding: 0 0 0 16px; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 6px 8px; }
+/* 名前・MP3・状態の3列。状態の列は一番広いもの（編集済みのバッジ）に合わせて、MP3 の位置をそろえる */
+.chapter-years li { display: grid; grid-template-columns: subgrid; grid-column: 1 / -1; align-items: baseline; }
+.chapter-years li .tag { grid-column: 2; }
+.chapter-years li > :last-child { grid-column: 3; justify-self: end; }
 .chapter-counts { display: inline-flex; align-items: center; gap: 14px; margin-left: 8px; font-weight: 400; }
 .chapter-counts > span { display: inline-flex; align-items: center; gap: 4px; }
 .chapter-counts > [data-tip] { cursor: help; }

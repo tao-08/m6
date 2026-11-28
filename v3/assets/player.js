@@ -265,7 +265,8 @@
   const startOf = (it) => (thru() && it.intro_ms != null ? it.intro_ms : it.start_ms);
   const inIntro = (it) => !!it && thru() && it.intro_ms != null && nowSec() * 1000 < it.start_ms;
   const gapKind = (it) => (inIntro(it) ? 'intro' : inMc(it) ? 'mc' : ''); // 曲の外を流しているところ
-  const gapLabel = (it) => (inIntro(it) || (inMc(it) && it.mc_kind === 'se') ? 'SE' : 'MC');
+  const gapName = (k) => ({ se: 'SE', blank: '未登録' })[k] || 'MC'; // blank = 曲なしのチャプター（api_shuffle.php）
+  const gapLabel = (it) => (inIntro(it) ? 'SE' : inMc(it) ? gapName(it.mc_kind) : 'MC');
   const seOf = (it) => (inIntro(it) ? it.intro_se : inMc(it) && it.mc_kind === 'se' ? it.mc_se : null); // 流している SE の曲名・ジャケット（セトリにあれば）
   // シークバー・時間の区間（ms）。MC は別の曲として扱い、曲は mc_ms まで・MC は mc_ms から次の曲まで（null = ファイルの最後）
   // バンド単位: シークバーはバンド全体（キューで続いている同じバンド・同じ音源の曲の、最初の曲の頭〜最後の曲の終わり）
@@ -517,7 +518,7 @@
         const q = queue[k];
         if (thru() && q.intro_ms != null) marks.push({ k, ms: q.intro_ms, label: 'SE', full: q.intro_se ? `SE. ${q.intro_se.title}` : 'SE', kind: 'intro' });
         marks.push({ k, ms: q.start_ms, label: String(k - r.a + 1), full: `${k - r.a + 1}. ${q.title}`, kind: 'song' });
-        if (hasMc(q)) { const l = q.mc_kind === 'se' ? 'SE' : 'MC'; marks.push({ k, ms: q.mc_ms, label: l, full: q.mc_se ? `SE. ${q.mc_se.title}` : l, kind: 'mc' }); }
+        if (hasMc(q)) { const l = gapName(q.mc_kind); marks.push({ k, ms: q.mc_ms, label: l, full: q.mc_se ? `SE. ${q.mc_se.title}` : l, kind: 'mc' }); }
         const nx = queue[k + 1];
         if (!thru() && k < r.b && q.end_ms !== null && nx.start_ms > q.end_ms) gaps.push([x(q.end_ms), x(nx.start_ms)]);
       }
