@@ -29,6 +29,7 @@ require_once __DIR__ . '/lib/repository.php';
 require_once __DIR__ . '/lib/tracks.php';
 require_once __DIR__ . '/lib/youtube.php'; // 概要欄から曲名を読む
 require_once __DIR__ . '/lib/gemini_setlist.php'; // YouTube から曲を検出（Gemini の設定があるときだけボタンを出す）
+require_once __DIR__ . '/lib/drive.php'; // 曲の検出に選べるドライブの MIX
 require_once __DIR__ . '/lib/history.php'; // 変更履歴（元に戻すための「変更前の状態」を残す）
 require_login();
 
@@ -402,12 +403,31 @@ render_header('セットリストを編集', 'lives');
 <?php if (!$songs && !$fromSheet && youtube_video_id((string)$band['youtube_url']) !== null): ?>
     <p><a class="btn btn--ghost btn--sm" href="songs_edit?band=<?= $bandId ?>&amp;from_yt=1">YouTube の概要欄から取り込む</a></p>
 <?php endif; ?>
-<?php if (!$fromSheet && is_admin() && gemini_setlist_config() !== null && youtube_video_id((string)$band['youtube_url']) !== null): // 送るたびに Gemini の料金がかかるので管理者だけ ?>
+<?php
+// 曲の検出に選べる MIX（a:N = アップロードした MP3 / d:ファイルID = ドライブ）=> 名前
+$detectMixes = [];
+if (!$fromSheet && is_admin() && gemini_setlist_config() !== null) {
+    $st = $pdo->prepare('SELECT image_id, title FROM band_audio WHERE band_id = ? AND video_id IS NULL ORDER BY sort_order, image_id');
+    $st->execute([$bandId]);
+    foreach ($st as $r) {
+        $detectMixes['a:' . $r['image_id']] = $r['title'] !== '' ? $r['title'] : 'MP3';
+    }
+    foreach (drive_load_files($pdo, [$bandId])[$bandId] ?? [] as $f) {
+        if ($f['is_mix'] && str_starts_with((string)$f['mime_type'], 'audio/')) {
+            $detectMixes['d:' . $f['file_id']] = drive_file_title($f);
+        }
+    }
+}
+$detectYt = youtube_video_id((string)$band['youtube_url']) !== null;
+?>
+<?php if (!$fromSheet && is_admin() && gemini_setlist_config() !== null && ($detectYt || $detectMixes)): // 送るたびに Gemini の料金がかかるので管理者だけ ?>
     <!-- 押すと assets/setlist_detect.js が api_setlist_detect に送る（サーバーが裏でバンドの YouTube から音声を落として Gemini に聴かせる）。終わったらこのページの確認画面（from_detect=1）へ -->
     <!-- data-pending: 裏で解析中（または終わったが、まだ見ていない）。開いたらすぐ途中経過を見に行く -->
     <div data-setlist-detect data-band="<?= $bandId ?>" data-done-url="songs_edit?band=<?= $bandId ?>&amp;from_detect=1"<?= setlist_job_get($bandId) !== null ? ' data-pending' : '' ?>>
         <!-- 低速 = Gemini の Flex（半額。返事まで最大15分） -->
-        <p class="row-form"><?= icon('smart_display') ?> YouTube から曲を検出
+        <p class="row-form setlist-detect"><?php if ($detectMixes): ?><?= icon('graphic_eq') ?> 曲を検出
+            <select data-setlist-src aria-label="音源"><?php if ($detectYt): ?><option value="">YouTube</option><?php endif; ?><?php foreach ($detectMixes as $k => $name): ?><option value="<?= h($k) ?>">MIX: <?= h($name) ?></option><?php endforeach; ?></select>
+            <?php else: ?><?= icon('smart_display') ?> YouTube から曲を検出<?php endif; ?>
             <button type="button" class="btn btn--ghost btn--sm" data-flex="0"><?= icon('bolt') ?> 高速</button>
             <button type="button" class="btn btn--ghost btn--sm" data-flex="1"><?= icon('timer') ?> 低速・半額</button></p>
         <p class="muted small" data-setlist-status role="status" hidden></p>

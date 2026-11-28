@@ -10,6 +10,7 @@
  *  status=1: 途中経過を見る。{"state": "running"} / 終わっていれば曲名・候補・始まる時刻をセッションに置いて {"state": "done"}
  *    → 画面が songs_edit?from_detect=1 で確認画面を開く
  *  終わったら、押した人の端末すべてにプッシュ通知を送る（lib/push.php。画面を閉じていても気づけるように）
+ *  src=a:N / d:ファイルID: YouTube の代わりにバンドの MIX（アップロードした MP3 / ドライブ）を聴かせる。始まりの秒は YouTube の秒ではないので捨てる（曲名と候補だけ）
  *  動画が2本以上（band_video）なら1本ずつ順に聴かせてつなぐ。曲ごとに何本目か（video = song.video_no）を付ける
  *  1曲だけ検出し直す（↻）: from, to（秒）と video（何本目。0 = 1本目）も送ると、その区間だけ落として聴かせ、{"candidates": [{title, artist}]} を返す。exclude[] の曲名は候補に出さない。compare=1 で試聴と聴き比べる。se=1 は SE
  *    tail=1: 区間の最後の曲を答えさせる（その曲の秒がわからず、前の曲の始まりから聴かせるとき）
@@ -23,6 +24,7 @@ require_once __DIR__ . '/lib/youtube.php';
 require_once __DIR__ . '/lib/ytdlp.php';
 require_once __DIR__ . '/lib/gemini_setlist.php';
 require_once __DIR__ . '/lib/push.php';
+require_once __DIR__ . '/lib/chapter_job.php'; // band_mix_file
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -36,7 +38,8 @@ $st->execute([$bandId]);
 $band = $st->fetch() ?: fail(404, 'バンドが見つかりません');
 // 動画 ID（並びの番号 = song.video_no）。保存のときに確かめた URL だけなので、ID が取れないもの（再生リストなど）は null のまま番号を保つ
 $videoIds = array_map('youtube_video_id', band_video_urls(db(), [$band])[$bandId] ?? []);
-($videoIds[0] ?? null) !== null || fail(400, 'YouTube のリンクがありません');
+$src = (string)($_POST['src'] ?? '');
+preg_match('/^(a:\d+|d:[\w-]+)?$/', $src) || fail(400, '音源が正しくありません');
 
 $section = null;
 if (isset($_POST['from'])) {
@@ -90,15 +93,23 @@ if ((setlist_job_get($bandId)['state'] ?? '') === 'running') {
 if (setlist_job_running_count() >= SETLIST_JOB_MAX) {
     fail(429, 'ほかに' . SETLIST_JOB_MAX . 'バンドを検出中です。終わってから試してください'); // サイト全体が重くならないように
 }
+$src !== '' || ($videoIds[0] ?? null) !== null || fail(400, 'YouTube のリンクがありません');
 $flex = ($_POST['flex'] ?? '1') !== '0';
 setlist_job_put($bandId, ['state' => 'running', 'at' => $startedAt = time(), 'flex' => $flex]); // flex は setlist_jobs.php に出す
 
 api_detach(['state' => 'running']); // 画面には先に返して、接続を切る。このあとの処理は裏で続く
 
 try {
+    if ($src !== '') { // MIX: 1本だけ聴かせる
+        $file = band_mix_file($bandId, $src);
+        $part = is_string($file) ? $file : gemini_setlist($file[0], $file[1], $cfg, $band['artist'], $flex, isset($band['song_count']) ? (int)$band['song_count'] : null);
+        $job = is_string($part) ? ['state' => 'error', 'error' => $part, 'detail' => is_string($file) ? '' : gemini_why()] : null;
+        $songs = is_string($part) ? [] : array_map(static fn($s) => ['start' => null] + $s, $part);
+        $videoIds = []; // 下の YouTube は聴かせない
+    }
     // 1本ずつ順に聴かせてつなぐ。2本以上のときだけ「何本目か」を伝える（gemini_setlist の $part）
-    $songs = [];
-    $job = null;
+    $songs ??= [];
+    $job ??= null;
     foreach (array_filter($videoIds) as $no => $videoId) {
         $audio = ytdlp_audio($videoId, $why);
         if ($audio === null) {

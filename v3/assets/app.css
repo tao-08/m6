@@ -425,7 +425,7 @@ input, select, textarea { font: inherit; color: inherit; }
 /* プルダウンの中身（option）は背景が透明のままだと、Windows の Chrome などで「白い背景に白い文字」になり
    ダークモードで読めなくなる。文字色と背景色を両方テーマの色で指定しておく */
 option, optgroup { background-color: var(--surface); color: var(--text); }
-.search, .field input, .board-poll-edit input, .field select, .field textarea, .member-row-edit input, .member-row-edit select, .table--edit input, .table--edit select, .survey-cell-form input:not([type="checkbox"]), .survey-access input[name="add"] {
+.search, .field input, .board-poll-edit input, .field select, .field textarea, .member-row-edit input, .member-row-edit select, .table--edit input, .table--edit select, .survey-cell-form input:not([type="checkbox"]), .survey-access input[name="add"], .setlist-detect select {
   width: 100%; padding: 10px 13px; border-radius: var(--r-md); border: 1px solid var(--border);
   background: var(--surface); color: var(--text); font-size: var(--fs-md); min-width: 0;
 }

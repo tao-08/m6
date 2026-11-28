@@ -103,6 +103,33 @@ function chapter_job_config(): ?array
 }
 
 /**
+ * バンドの音源（a:N = アップロードした MP3 / d:ファイルID = ドライブ）の手元のファイル。ドライブはまだ落としていなければここで落とす
+ * @return array{0: string, 1: string}|string [パス, MIME]。無ければ画面に出せる理由
+ */
+function band_mix_file(int $bandId, string $key): array|string
+{
+    if (str_starts_with($key, 'a:')) {
+        require_once __DIR__ . '/live_image.php';
+        $st = db()->prepare('SELECT file_name FROM band_audio WHERE image_id = ? AND band_id = ?');
+        $st->execute([(int)substr($key, 2), $bandId]);
+        $name = $st->fetchColumn();
+        $path = LIVE_IMAGE_DIR . '/' . live_file_disk_name((string)$name);
+        return $name !== false && is_file($path) ? [$path, 'audio/mpeg'] : '音源が見つかりません';
+    }
+    require_once __DIR__ . '/drive.php';
+    require_once __DIR__ . '/drive_cache.php';
+    $st = db()->prepare("SELECT mime_type, size FROM band_drive_file WHERE band_id = ? AND file_id = ? AND mime_type LIKE 'audio/%'");
+    $st->execute([$bandId, substr($key, 2)]);
+    $row = $st->fetch();
+    $size = (int)($row['size'] ?? 0);
+    if (!$row || !drive_id_valid(substr($key, 2)) || drive_cache_ensure(substr($key, 2), $size)) {
+        return '音源を読み込めませんでした';
+    }
+    $path = drive_cache_path(substr($key, 2));
+    return [$path, audio_orig_size($path) > filesize($path) ? 'audio/mpeg' : (string)$row['mime_type']]; // 160 の MP3 に置き換え済み（lib/audio_stream.php）
+}
+
+/**
  * 1本を解析して、見つけた区切りで保存する。途中で「中止」で消されていたら（running でなくなったら）書かない
  *   呼ぶ前に chapter_job_put で running にしておく（$at はそのときの時刻）
  */
@@ -126,26 +153,9 @@ function chapter_job_run(string $id, int $bandId, int $at, array $cfg): void
                     @unlink($audio);
                 }
             }
-        } elseif (str_starts_with($key, 'a:')) { // アップロードした MP3
-            require_once __DIR__ . '/live_image.php';
-            $st = db()->prepare('SELECT file_name FROM band_audio WHERE image_id = ? AND band_id = ?');
-            $st->execute([(int)substr($key, 2), $bandId]);
-            $path = LIVE_IMAGE_DIR . '/' . live_file_disk_name((string)$st->fetchColumn());
-            $found = is_file($path) ? gemini_audio_chapters($path, 'audio/mpeg', $cfg[0], $cfg[1], $ses) : '音源が見つかりません';
-        } else { // ドライブの音源（まだ落としていなければここで落とす）
-            require_once __DIR__ . '/drive.php';
-            require_once __DIR__ . '/drive_cache.php';
-            $st = db()->prepare('SELECT mime_type, size FROM band_drive_file WHERE band_id = ? AND file_id = ?');
-            $st->execute([$bandId, substr($key, 2)]);
-            $row = $st->fetch();
-            $size = (int)($row['size'] ?? 0);
-            if (!$row || drive_cache_ensure(substr($key, 2), $size)) {
-                $found = '音源を読み込めませんでした';
-            } else {
-                $path = drive_cache_path(substr($key, 2));
-                $mime = audio_orig_size($path) > filesize($path) ? 'audio/mpeg' : (string)$row['mime_type']; // 160 の MP3 に置き換え済み（lib/audio_stream.php）
-                $found = gemini_audio_chapters($path, $mime, $cfg[0], $cfg[1], $ses);
-            }
+        } else {
+            $file = band_mix_file($bandId, $key);
+            $found = is_string($file) ? $file : gemini_audio_chapters($file[0], $file[1], $cfg[0], $cfg[1], $ses);
         }
     } catch (Throwable $e) {
         error_log('chapter job: ' . $e->getMessage());
