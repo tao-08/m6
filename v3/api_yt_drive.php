@@ -26,6 +26,9 @@ try {
 } catch (RuntimeException $e) {
     fail(502, $e->getMessage());
 }
+if (!$files) { // 共有していないフォルダは、エラーではなく空で返ってくる
+    fail(400, 'フォルダの中を読めません。「リンクを知っている全員」に共有してください');
+}
 $pdo = db();
 $bands = $pdo->query('SELECT band_id, youtube_url FROM band WHERE youtube_url IS NOT NULL')->fetchAll();
 $videos = array_map(static fn($urls) => array_values(array_filter(array_map('youtube_video_id', $urls))), band_video_urls($pdo, $bands));

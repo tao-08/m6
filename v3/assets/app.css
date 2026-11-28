@@ -849,6 +849,7 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 .chapter-years details details { margin-left: 16px; }
 .chapter-years ul { list-style: none; margin: 4px 0 8px; padding: 0 0 0 16px; display: grid; gap: 6px; }
 .chapter-years li { display: flex; gap: 8px; align-items: baseline; justify-content: space-between; }
+.chapter-years li .tag { margin-left: auto; }
 .shell-panel__later[aria-pressed="false"] { color: var(--muted); }
 .shell-panel__later[aria-pressed="true"] { color: var(--accent); }
 .shell-panel__scopes { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; align-self: center; }

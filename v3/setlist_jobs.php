@@ -8,6 +8,7 @@
  *  下に、曲の場面（song.video_start）が入ったバンドを並べる。開くとセットリスト編集の ▶ で秒が合っているか確かめられる
  *  「チャプター」タブ（?tab=chapter）: 年度→ライブ→動画で、YouTube のチャプターの状態（lib/chapter_job.php）を並べる。
  *    ライブの「未解析を解析」は api_chapter_bulk.php を fetch で呼ぶ（assets/app_admin.js の setupChapterBulk）。画面は移らない
+ *    動画ごとに、YouTube の区分の MP3 があれば「MP3」の印（見出しは MP3 のある本数 / 全部）
  *    上の「MP3 を紐付け」はドライブのフォルダの「動画ID.mp3」をバンドに紐付ける（api_yt_drive.php。setupYtDrive）
  *  表示するだけ（POST を受けない）。バンド名・エラー文は h() でエスケープする。
  * =====================================================================
@@ -38,7 +39,11 @@ if ($tab === 'chapter') {
     foreach ($pdo->query("SELECT DISTINCT band_id, audio_key FROM band_audio_chapter WHERE audio_key LIKE 'y:%'") as $r) {
         $saved[$r['band_id'] . '|' . $r['audio_key']] = true;
     }
-    $years = []; // 年度 => ライブID => [name, videos => [[band, no, count, state, error]], done]
+    $mp3 = []; // "band_id|動画ID" => true（YouTube の区分の MP3 がある。migrations/153）
+    foreach ($pdo->query('SELECT band_id, video_id FROM band_drive_file WHERE video_id IS NOT NULL UNION SELECT band_id, video_id FROM band_audio WHERE video_id IS NOT NULL') as $r) {
+        $mp3[$r['band_id'] . '|' . $r['video_id']] = true;
+    }
+    $years = []; // 年度 => ライブID => [name, videos => [[band, no, count, state, error, MP3 があるか]], done, mp3]
     foreach ($bands as $b) {
         $list = $urls[(int)$b['band_id']] ?? [];
         foreach ($list as $no => $url) {
@@ -53,8 +58,10 @@ if ($tab === 'chapter') {
             }
             $live = &$years[(int)$b['fiscal_year']][(int)$b['live_id']];
             $live['name'] = (string)$b['live_name'];
-            $live['videos'][] = [$b, $no, count($list), $state, (string)($job['error'] ?? '')];
+            $hasMp3 = isset($mp3[$b['band_id'] . '|' . $vid]);
+            $live['videos'][] = [$b, $no, count($list), $state, (string)($job['error'] ?? ''), $hasMp3];
             $live['done'] = ($live['done'] ?? 0) + ($state === 'saved' ? 1 : 0);
+            $live['mp3'] = ($live['mp3'] ?? 0) + ($hasMp3 ? 1 : 0);
             unset($live);
         }
     }
@@ -76,17 +83,18 @@ if ($tab === 'chapter') {
     <?php $first = true; foreach ($years as $fy => $lives): ?>
         <details<?= $first ? ' open' : '' ?>>
             <?php $first = false; $all = array_sum(array_map(static fn($l) => count($l['videos']), $lives)); ?>
-            <summary><?= h(fmt_year($fy)) ?> <span class="muted small"><?= array_sum(array_column($lives, 'done')) ?> / <?= $all ?></span><?= icon('expand_more') ?></summary>
+            <summary><?= h(fmt_year($fy)) ?> <span class="muted small"><?= array_sum(array_column($lives, 'done')) ?> / <?= $all ?></span> <span class="muted small">MP3 <?= array_sum(array_column($lives, 'mp3')) ?> / <?= $all ?></span><?= icon('expand_more') ?></summary>
             <?php foreach ($lives as $liveId => $l): ?>
                 <details class="chapter-live" data-chapter-live="<?= $liveId ?>">
-                    <summary><?= h($l['name']) ?> <span class="muted small"><?= $l['done'] ?> / <?= count($l['videos']) ?></span><?= icon('expand_more') ?></summary>
+                    <summary><?= h($l['name']) ?> <span class="muted small"><?= $l['done'] ?> / <?= count($l['videos']) ?></span> <span class="muted small">MP3 <?= $l['mp3'] ?> / <?= count($l['videos']) ?></span><?= icon('expand_more') ?></summary>
                     <?php if (array_filter($l['videos'], static fn($v) => in_array($v[3], ['none', 'error'], true))): ?>
                         <button type="button" class="btn btn--sm" data-chapter-bulk>未解析を解析</button>
                     <?php endif; ?>
                     <ul>
-                    <?php foreach ($l['videos'] as [$b, $no, $count, $state, $error]): ?>
+                    <?php foreach ($l['videos'] as [$b, $no, $count, $state, $error, $hasMp3]): ?>
                         <li>
                             <a href="video_chapters?band=<?= (int)$b['band_id'] ?>&amp;v=<?= $no ?>"><?= h((string)$b['name']) ?><?= $count > 1 ? ' ' . ($no + 1) . '本目' : '' ?></a>
+                            <?php if ($hasMp3): ?><span class="tag">MP3</span><?php endif; ?>
                             <span class="muted small" data-chapter-state="<?= $state ?>"<?= $error !== '' ? ' ' . tip_attr($error) . ' style="cursor: help"' : '' ?>><?= $label[$state] ?? '' ?></span>
                         </li>
                     <?php endforeach; ?>
