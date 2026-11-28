@@ -480,12 +480,12 @@ render_header($band['name'], 'lives');
         <?php foreach ($bandAudios as $a): ?>
             <?php $path = LIVE_IMAGE_DIR . '/' . live_file_disk_name((string)$a['file_name']); ?>
             <?= audio_player_html('attach_image?k=band_audio&id=' . (int)$a['image_id'], $a['title'] !== '' ? $a['title'] : 'MP3',
-                is_file($path) ? audio_orig_size($path) : null, $chapterCtx('a:' . (int)$a['image_id'], $a['video_id'])) ?>
+                is_file($path) ? audio_orig_size($path) : null, $chapterCtx('a:' . (int)$a['image_id'], $a['video_id']) + ['mix' => $a['video_id'] === null]) ?>
         <?php endforeach; ?>
         <?php foreach ($driveFiles as $f): ?>
             <?php if (str_starts_with((string)$f['mime_type'], 'audio/') && drive_id_valid((string)$f['file_id'])): ?>
                 <?= audio_player_html('drive_audio?band=' . $bandId . '&f=' . rawurlencode((string)$f['file_id']), drive_file_title($f),
-                    $f['size'] ? (int)$f['size'] : null, $chapterCtx('d:' . $f['file_id'], $f['video_id'])) ?>
+                    $f['size'] ? (int)$f['size'] : null, $chapterCtx('d:' . $f['file_id'], $f['video_id']) + ['mix' => (bool)$f['is_mix']]) ?>
             <?php endif; ?>
         <?php endforeach; ?>
         <?php $driveRest = drive_files_html($driveFiles, true); ?>
