@@ -46,13 +46,21 @@ function audio_orig_size(string $path): int
 
 /**
  * MIX（YouTube の区分でない音源）を下げる量。シャッフル再生で YouTube の音源より大きく聞こえるため。iPhone は再生側で音量を変えられないので、ファイルを作るときに下げる
- *   下げたら横に印 <元>.160q を置く（中身 ok / 作れなかったら fail）。印の無い MIX は、もう 160 にしてあっても次に流すときに作り直す
+ *   下げたら横に印 <元>.256q を置く（中身 ok / 作れなかったら fail）。印の無い MIX は、もう 160 にしてあっても次に流すときに作り直す
  *   印は数字で始める: 元を消す・差し替えるときに .[0-9]* でまとめて消される（drive_cache_derived・live_image.php）
  *   shortcut: 区分をあとから YouTube に変えても下げたまま。気になるなら区分の変更で印とファイルを作り直す
  */
 const AUDIO_MIX_GAIN_DB = -4;
+/** MIX は元が 256k。160 にすると高音が削れるので、元と同じ 256k で作る（印は <元>.256q） */
+const AUDIO_MIX_KBPS = 256;
 
 function audio_quiet_mark(string $path): string
+{
+    return $path . '.' . AUDIO_MIX_KBPS . 'q';
+}
+
+/** 前の作り（160k で下げた MIX）の印。ドライブの音源は落とし直して作り直す（drive_audio.php）。直接置いた MP3 は元が残っていないのでそのまま */
+function audio_quiet_mark_160(string $path): string
 {
     return audio_mark($path) . 'q';
 }
@@ -64,7 +72,8 @@ function audio_shrink(string $path, bool $quiet = false): void
     $todo = static function () use ($path, $mark, $quiet): bool {
         clearstatcache(true, $mark);
         clearstatcache(true, audio_quiet_mark($path));
-        return !is_file($mark) || ($quiet && !is_file(audio_quiet_mark($path)));
+        clearstatcache(true, audio_quiet_mark_160($path));
+        return !is_file($mark) || ($quiet && !is_file(audio_quiet_mark($path)) && !is_file(audio_quiet_mark_160($path)));
     };
     if (!$todo() || !($lock = @fopen($mark . '.lock', 'c'))) {
         return;
@@ -98,7 +107,7 @@ function audio_shrink_make(string $path, string $mark, bool $quiet = false): voi
             // CBR（from= のバイト位置で切るため）。タグ・ジャケット画像は落とす
             [$code, $log] = ytdlp_run(['-v', 'error', '-y', '-i', $path, '-vn', '-map_metadata', '-1',
                 ...($quiet ? ['-af', 'volume=' . AUDIO_MIX_GAIN_DB . 'dB'] : []),
-                '-c:a', 'libmp3lame', '-b:a', AUDIO_LIGHT_KBPS . 'k', '-ar', '44100', $part], 600, $ffmpeg);
+                '-c:a', 'libmp3lame', '-b:a', ($quiet ? AUDIO_MIX_KBPS : AUDIO_LIGHT_KBPS) . 'k', '-ar', '44100', $part], 600, $ffmpeg);
             clearstatcache(true, $part);
             $why = $code !== 0 || !is_file($part) || filesize($part) === 0 ? "ffmpeg exit $code: $log" : null;
         }
@@ -133,7 +142,7 @@ function audio_stream_file(string $path, string $mime, ?string $dlName = null, b
     if (str_starts_with($mime, 'audio/')) {
         audio_shrink($path, $quiet);
         $orig = max(1, audio_orig_size($path));
-        if (filesize($path) < $orig || @file_get_contents(audio_quiet_mark($path)) === 'ok') { // 下げて作り直したものは元より大きくても MP3
+        if (filesize($path) < $orig || @file_get_contents(audio_quiet_mark($path)) === 'ok' || @file_get_contents(audio_quiet_mark_160($path)) === 'ok') { // 下げて作り直したものは元より大きくても MP3
             $mime = 'audio/mpeg';
         }
     }

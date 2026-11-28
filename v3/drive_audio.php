@@ -49,6 +49,11 @@ $fail = static function (int|string $code, string $reason, int $http = 502): nev
 };
 
 $dat = drive_cache_path($fileId);
+if ($mix && is_file(audio_mark($dat)) && !is_file(audio_quiet_mark($dat))) { // 前に 160k で作った MIX: 160 から作ると高音が戻らないので、元（256k）を落とし直して作り直す
+    foreach ([$dat, ...drive_cache_derived($dat)] as $f) {
+        @unlink($f);
+    }
+}
 if ($err = drive_cache_ensure($fileId, $size, $miss)) {
     if ($err[2] === 503) {
         header('Retry-After: 5');

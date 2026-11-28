@@ -1281,8 +1281,11 @@ $o = [audio_orig_size($tmp)];
 file_put_contents(audio_mark($tmp), '1000'); // 160 に置き換えた印（元は 1000 バイト）
 $o[] = audio_orig_size($tmp);
 $o[] = drive_cache_ok($tmp, 1000);
-@unlink(audio_mark($tmp)); @unlink($tmp);
-check('160 に置き換えた音源: 元の大きさは印から。キャッシュは元の大きさで合っていれば流す', $o, [100, 1000, true]);
+file_put_contents(audio_quiet_mark_160($tmp), 'ok'); // 前に 160k で下げた MIX（元が無い）: もう一度下げない
+audio_shrink($tmp, true);
+$o[] = filesize($tmp);
+@unlink(audio_quiet_mark_160($tmp)); @unlink(audio_mark($tmp)); @unlink($tmp);
+check('160 に置き換えた音源: 元の大きさは印から。キャッシュは元の大きさで合っていれば流す。160k で下げた MIX は作り直さない', $o, [100, 1000, true, 100]);
 check('MP3 の先頭のタグの長さ（from= の位置から外す）', [audio_id3_len("ID3    "), audio_id3_len("ID3    
 "), audio_id3_len("ÿû       ")], [10 + 255, 30, 0]);
 
