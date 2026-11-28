@@ -266,6 +266,7 @@
   const inIntro = (it) => !!it && thru() && it.intro_ms != null && nowSec() * 1000 < it.start_ms;
   const gapKind = (it) => (inIntro(it) ? 'intro' : inMc(it) ? 'mc' : ''); // 曲の外を流しているところ
   const gapLabel = (it) => (inIntro(it) || (inMc(it) && it.mc_kind === 'se') ? 'SE' : 'MC');
+  const seOf = (it) => (inIntro(it) ? it.intro_se : inMc(it) && it.mc_kind === 'se' ? it.mc_se : null); // 流している SE の曲名・ジャケット（セトリにあれば）
   // シークバー・時間の区間（ms）。MC は別の曲として扱い、曲は mc_ms まで・MC は mc_ms から次の曲まで（null = ファイルの最後）
   // バンド単位: シークバーはバンド全体（キューで続いている同じバンド・同じ音源の曲の、最初の曲の頭〜最後の曲の終わり）
   const bandRange = () => {
@@ -282,8 +283,10 @@
   const segEnd = (it) => { const r = bandRange(); return r ? endOf(queue[r.b]) : inMc(it) ? endOf(it) : hasMc(it) ? it.mc_ms : endOf(it); };
   const render = () => {
     const it = cur();
-    const mc = !!(mcShown = it ? gapKind(it) : ''); // MC・SE の間は曲名を「MC」「SE」にして、アーティスト・アルバム・ジャケットは出さない
-    const title = it && mc ? gapLabel(it) : it?.title;
+    const mc = !!(mcShown = it ? gapKind(it) : ''); // MC・SE の間は曲名を「MC」「SE」に（セトリに SE の曲名があればその曲名・ジャケット）
+    const se = it && mc ? seOf(it) : null;
+    const title = it && mc ? se?.title || gapLabel(it) : it?.title;
+    const show = mc ? se || {} : it || {}; // ジャケット・アーティスト・アルバムを出す元
     titleEl.textContent = it ? title : '再生できる曲がありません';
     bandEl.textContent = it ? `${it.band} ・ ${it.year ? `${String(it.year % 100).padStart(2, '0')}’ ` : ''}${it.live}` : ''; // 年度は下2桁（26’ 文化祭ライブ）
     titleEl.disabled = !it;
@@ -293,25 +296,26 @@
     seek.disabled = !it;
     buildScopes();
     if (!it) { setPanel(false); return; }
-    artImg.hidden = mc || !it.art;
+    artImg.hidden = !show.art;
     panel.classList.toggle('is-video', !!it.video); // ジャケットの代わりに動画
     ytBox.hidden = !it.video;
     $('.shell-panel__liveline > .tag--mix').hidden = !!(it.video || it.yt);
-    if (it.art) artImg.src = it.art;
+    if (show.art) artImg.src = show.art;
     const live = $('[data-shell-live]');
     live.textContent = it.year ? `${it.year}年度 ${it.live}` : it.live;
     if (it.live_id) live.href = `live?id=${it.live_id}`; else live.removeAttribute('href');
     const band = $('[data-shell-bandlink]');
     band.textContent = it.band;
     band.href = `band?id=${it.band_id}`;
+    $('[data-shell-se]').hidden = !(inIntro(it) || (inMc(it) && it.mc_kind === 'se'));
     $('[data-shell-song]').textContent = title;
     const artist = $('[data-shell-artist]');
-    artist.textContent = it.artist || '';
-    artist.hidden = mc || !it.artist;
+    artist.textContent = show.artist || '';
+    artist.hidden = !show.artist;
     const album = $('[data-shell-album]');
-    album.textContent = it.album || '';
-    album.hidden = mc || !it.album;
-    if (it.artist_id) artist.href = `artist?id=${it.artist_id}`; else artist.removeAttribute('href');
+    album.textContent = show.album || '';
+    album.hidden = !show.album;
+    if (!mc && it.artist_id) artist.href = `artist?id=${it.artist_id}`; else artist.removeAttribute('href');
     // 演奏者: 楽器ラベル（サイト共通の .part）と名前（メンバーページへ）
     $('[data-shell-players]').replaceChildren(...(it.players || []).map((p) => {
       const li = document.createElement('li');
@@ -433,6 +437,7 @@
   const next = () => {
     if (pending) { const p = pending; pending = null; switchTo(p.scope, p.id, false); return; }
     const it = cur();
+    if (inIntro(it)) { playAt(it.start_ms / 1000, true); return; } // 通し: オープニング SE → その曲（飛ばさない）
     if (hasMc(it) && !inMc(it) && nowSec() * 1000 < it.mc_ms) { playAt(it.mc_ms / 1000, true); return; } // 通し: 曲のあとの MC へ
     slide(1);
     go(idx + 1, true);
@@ -441,9 +446,11 @@
     const it = cur();
     if (!it) return;
     if (inMc(it)) { playAt((nowSec() - it.mc_ms / 1000 < 3 ? it.start_ms : it.mc_ms) / 1000, true); return; } // MC の前の曲 = いまの曲
-    if (queue.length > 1 && nowSec() - it.start_ms / 1000 < 3) {
+    const head = nowSec() - it.start_ms / 1000 < 3;
+    if (head && !inIntro(it) && thru() && it.intro_ms != null) { playAt(it.intro_ms / 1000, true); return; } // 曲の頭 → その前のオープニング SE
+    if (queue.length > 1 && head) {
       const pv = queue[(idx - 1 + queue.length) % queue.length];
-      slide(-1); go(idx - 1, true, hasMc(pv) ? pv.mc_ms / 1000 : undefined); // 通し: 前の曲のあとの MC へ
+      slide(-1); go(idx - 1, true, (hasMc(pv) ? pv.mc_ms : pv.start_ms) / 1000); // 前の曲の最後の区切り（MC か曲の頭。オープニング SE からではない）
     }
     else playAt(it.start_ms / 1000, true);
   };
@@ -462,7 +469,7 @@
     const fresh = new Map(data.items.map((q) => [q.song_id ?? q.src, q])); // song_id が無いものは src で
     queue.forEach((q) => {
       const f = fresh.get(q.song_id ?? q.src);
-      if (f) for (const k of ['title', 'artist_id', 'artist', 'album', 'art', 'band', 'live', 'players', 'through_end_ms', 'mc_ms', 'mc_kind', 'intro_ms']) q[k] = f[k]; // 通しの区切り: 前に保存したキューは古い数え方のまま（終わりのチャプターで止まっていた）
+      if (f) for (const k of ['title', 'artist_id', 'artist', 'album', 'art', 'band', 'live', 'players', 'through_end_ms', 'mc_ms', 'mc_kind', 'intro_ms', 'intro_se', 'mc_se']) q[k] = f[k]; // 通しの区切り: 前に保存したキューは古い数え方のまま（終わりのチャプターで止まっていた）
     });
     save();
     if (queue.includes(it) && cur()?.band_id === it.band_id) render();
@@ -502,9 +509,9 @@
       const x = (ms) => Math.min(1, Math.max(0, (ms - s0) / (end - s0)));
       for (let k = r.a; k <= r.b; k += 1) {
         const q = queue[k];
-        if (thru() && q.intro_ms != null) marks.push({ k, ms: q.intro_ms, label: 'SE', full: 'SE', kind: 'intro' });
+        if (thru() && q.intro_ms != null) marks.push({ k, ms: q.intro_ms, label: 'SE', full: q.intro_se ? `SE. ${q.intro_se.title}` : 'SE', kind: 'intro' });
         marks.push({ k, ms: q.start_ms, label: String(k - r.a + 1), full: `${k - r.a + 1}. ${q.title}`, kind: 'song' });
-        if (hasMc(q)) { const l = q.mc_kind === 'se' ? 'SE' : 'MC'; marks.push({ k, ms: q.mc_ms, label: l, full: l, kind: 'mc' }); }
+        if (hasMc(q)) { const l = q.mc_kind === 'se' ? 'SE' : 'MC'; marks.push({ k, ms: q.mc_ms, label: l, full: q.mc_se ? `SE. ${q.mc_se.title}` : l, kind: 'mc' }); }
         const nx = queue[k + 1];
         if (!thru() && k < r.b && q.end_ms !== null && nx.start_ms > q.end_ms) gaps.push([x(q.end_ms), x(nx.start_ms)]);
       }

@@ -87,12 +87,20 @@ $st = $pdo->prepare("SELECT s.song_id, s.band_id, s.title, s.is_se, s.track_no, 
     FROM song s
     JOIN band b ON b.band_id = s.band_id
     LEFT JOIN track t ON t.source = s.track_source AND t.track_id = s.track_id
-    LEFT JOIN artist a ON a.artist_id = IF(b.is_omnibus = 1, s.artist_id, b.artist_id)
-    WHERE s.is_se = 0 AND s.band_id IN ($in) ORDER BY s.band_id, s.track_no");
+    LEFT JOIN artist a ON a.artist_id = IF(b.is_omnibus = 1 OR s.is_se = 1, s.artist_id, b.artist_id)
+    WHERE s.band_id IN ($in) ORDER BY s.band_id, s.track_no");
 $st->execute($bandIds);
+$ses = []; // バンドの SE（セトリの順。アーティストは曲ごと）。n 個目の SE のチャプター = n 個目の SE（assets/app_player.js と同じ当て方）
 foreach ($st as $r) {
-    $songs[(int)$r['band_id']][] = $r;
+    if ($r['is_se']) $ses[(int)$r['band_id']][] = $r; else $songs[(int)$r['band_id']][] = $r;
 }
+// SE の間に出す曲名・ジャケット
+$seInfo = static fn(?array $s): ?array => $s === null ? null : [
+    'title' => (string)$s['title'],
+    'art' => $s['artwork_url'] ? preg_replace('/\d+x\d+bb/', '300x300bb', (string)$s['artwork_url']) : null,
+    'artist' => $s['artist'] !== null ? (string)$s['artist'] : null,
+    'album' => $s['album_title'] !== null ? (string)$s['album_title'] : null,
+];
 
 // 演奏者: 曲ごと（song_performer）と、無いときに使うバンドのメンバー（band_member）。楽器の並び順（Vo が先頭）
 $addPlayer = static function (?array &$list, array $r): void { // ?array: 初めての曲・バンドは null で来る
@@ -164,6 +172,11 @@ foreach ($groups as $key => $chs) {
     $bandId = (int)$chs[0]['band_id'];
     $yt = $ytKeys[$key] ?? null;
     $list = $yt ? video_chapter_songs($songs[$bandId] ?? [], $yt[1], $yt[2]) : $songs[$bandId] ?? [];
+    $seList = array_values(array_filter($ses[$bandId] ?? [], static fn($s) => !$yt || $yt[2] < 2 || (int)$s['video_no'] === $yt[1])); // shortcut: MIX の音源が2本以上でも分けない
+    $seNo = []; // チャプターの番号 => この音源の何個目の SE か
+    foreach ($chs as $j => $ch) {
+        if ($ch['kind'] === 'se') $seNo[$j] = count($seNo);
+    }
     $n = 0;
     foreach ($chs as $i => $c) {
         if ($c['kind'] !== 'song') {
@@ -187,15 +200,16 @@ foreach ($groups as $key => $chs) {
         $firstEnd = null;
         $mc = null;
         $mcKind = null;
-        $intro = null; // オープニング SE: この曲より前に曲のチャプターが無いときだけ
+        $mcJ = null;
+        $intro = $introJ = null; // オープニング SE: この曲より前に曲のチャプターが無いときだけ
         for ($j = 0; $j < $i; $j++) {
-            if ($chs[$j]['kind'] === 'song') { $intro = null; break; }
-            if ($chs[$j]['kind'] === 'se') $intro ??= (int)$chs[$j]['at_ms'];
+            if ($chs[$j]['kind'] === 'song') { $intro = $introJ = null; break; }
+            if ($chs[$j]['kind'] === 'se' && $intro === null) { $intro = (int)$chs[$j]['at_ms']; $introJ = $j; }
         }
         for ($j = $i + 1; isset($chs[$j]); $j++) {
             $k = $chs[$j]['kind'];
             if ($k === 'song') { $thru = (int)$chs[$j]['at_ms']; break; }
-            if (($k === 'mc' || $k === 'se') && $mc === null) { $mc = (int)$chs[$j]['at_ms']; $mcKind = $k; }
+            if (($k === 'mc' || $k === 'se') && $mc === null) { $mc = (int)$chs[$j]['at_ms']; $mcKind = $k; $mcJ = $j; }
             else $firstEnd ??= (int)$chs[$j]['at_ms'];
         }
         if ($thru === null) {
@@ -224,6 +238,8 @@ foreach ($groups as $key => $chs) {
             'mc_ms'    => $mc,
             'mc_kind'  => $mcKind,
             'intro_ms' => $intro,
+            'intro_se' => $introJ !== null ? $seInfo($seList[$seNo[$introJ]] ?? null) : null,
+            'mc_se'    => $mc !== null && $mcKind === 'se' ? $seInfo($seList[$seNo[$mcJ]] ?? null) : null,
             '_o'       => [$bandRows[$bandId]['rank'] ?? 0, (int)$song['track_no']],
         ] + ($yt ? ($yt[3] ? ['yt' => true] : ['video' => $yt[0]]) : []);
     }
