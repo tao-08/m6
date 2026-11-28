@@ -69,6 +69,9 @@ function gemini_setlist_songs(array $json, int $max = GEMINI_SETLIST_MAX_CANDIDA
         $ms = is_string($s['start'] ?? null) ? gemini_chapter_ms($s['start']) : null;
         $songs[] = ['title' => $title !== '' ? $title : ($cands[0]['title'] ?? ''), 'start' => $ms === null ? null : intdiv($ms, 1000), 'candidates' => $cands,
             'artist' => $clean($s['artist'] ?? '', 100)]; // 自信ありの曲も、念のため試聴できるよう候補を1曲出すのに使う（songs_edit.php）
+        if (is_string($s['end'] ?? null) && ($end = gemini_chapter_ms($s['end'])) !== null) { // MIX のときだけ聞く（gemini_setlist の $mcs）
+            $songs[array_key_last($songs)]['end'] = intdiv($end, 1000);
+        }
     }
     return $songs;
 }
@@ -155,16 +158,26 @@ function gemini_setlist_schema(): array
  *   無ければ一覧なしで聴かせ、わからない曲が残ったらアーティストだけ伝えてもう一度聴かせる。一覧があれば、曲ごとに歌詞と試聴で確かめる（gemini_setlist_check）
  * @param ?int $count タイムテーブルの曲数（band.song_count。不明なら null）。伝えて聴き落としを減らす
  * @param ?array $part [何本目, 全部で何本]。1つのライブを「バンド名 1」「バンド名 2」のように分けた動画のとき。1本だけなら null
+ * @param ?array $mcs 渡すと、曲の終わり（曲の end）と MC の始まりの秒（$mcs に入れる）も聞く。MIX のチャプター用（api_setlist_detect.php）
  * @return array|string gemini_setlist_songs の形。失敗したら画面に出せる理由
  */
-function gemini_setlist(string $path, string $mime, array $cfg, ?string $artist = null, bool $flex = true, ?int $count = null, ?array $part = null): array|string
+function gemini_setlist(string $path, string $mime, array $cfg, ?string $artist = null, bool $flex = true, ?int $count = null, ?array $part = null, ?array &$mcs = null): array|string
 {
     $schema = gemini_setlist_schema();
+    $marks = $mcs !== null;
     // shortcut: 曲数を伝えたときの精度は試していない（無い曲を作らないかを10本ほどで試す）
     $more = $count > 0 ? ($part === null ? "
 - タイムテーブルでは{$count}曲。挙げた曲がそれより少なければ、聴き落とした曲がないか確かめる。ただし聴き取れない曲を作らない" : "
 - タイムテーブルでは{$part[1]}本の動画を合わせて{$count}曲（この動画だけの曲数ではない）。聴き取れない曲を作らない") : '';
     $more .= $part === null ? '' : gemini_setlist_part_prompt($part[0], $part[1]);
+    if ($marks) {
+        $more .= "
+- end には曲の最後の音が消えた時刻を「分:秒」で答える。拍手・チューニングは曲に含めない。途切れずに次の曲へつながるときは空にする
+- mcs には、出演者がマイクで話し始めた時刻（MC の始まり）を「分:秒」ですべて挙げる。演奏中の掛け声・煽りは含めない";
+        $schema['properties']['songs']['items']['properties']['end'] = ['type' => 'STRING'];
+        $schema['properties']['mcs'] = ['type' => 'ARRAY', 'items' => ['type' => 'STRING']];
+        $schema['required'][] = 'mcs';
+    }
     $artist = trim((string)$artist);
     $titles = $artist !== '' ? itunes_artist_titles($artist) : [];
     // $flex: Flex（半額）で聴かせる。返事まで数分かかるので、api_setlist_detect は画面に先に返してから裏で待つ
@@ -177,6 +190,10 @@ function gemini_setlist(string $path, string $mime, array $cfg, ?string $artist 
         return $json;
     }
     $songs = gemini_setlist_songs($json);
+    if ($marks) {
+        $mcs = array_values(array_filter(array_map(static fn($t) => is_string($t) ? gemini_chapter_ms($t) : null, (array)($json['mcs'] ?? [])), 'is_int'));
+        $mcs = array_map(static fn($ms) => intdiv($ms, 1000), $mcs);
+    }
     if ($titles) { // 一覧を渡したら、2回目はしない（試験で2回目と同じ以上に当たった）
         // 歌詞の一節は確かめるのに使うだけ。返す曲（途中経過のファイル・セッションに残る）には入れない
         $phrases = array_map(static fn($s) => $s['phrases'] ?? [], array_values(array_filter((array)($json['songs'] ?? []), 'is_array')));

@@ -60,12 +60,13 @@ if (!empty($_POST['status'])) {
     if ($job['state'] !== 'done') {
         fail(502, (string)($job['error'] ?? '解析に失敗しました'), ['detail' => (string)($job['detail'] ?? '')]);
     }
-    $_SESSION['setlist_detect'][$bandId] = array_map(static fn($s) => array_diff_key($s, ['mix_start' => 0]), $job['songs']);
-    // MIX: 始まりの秒を、その MIX の曲のチャプターにする（セトリには入れない）
+    $_SESSION['setlist_detect'][$bandId] = array_map(static fn($s) => array_diff_key($s, ['mix_start' => 0, 'end' => 0]), $job['songs']);
+    // MIX: 曲の始まり・終わりと MC の秒を、その MIX のチャプターにする（セトリには入れない）。同じ秒は1つ（曲の始まり > MC > 終わり）
     $chapters = [];
-    foreach (isset($job['src']) ? $job['songs'] : [] as $s) {
-        if (is_int($s['mix_start'] ?? null)) {
-            $chapters[$s['mix_start']] = ['kind' => 'song', 'ms' => $s['mix_start'] * 1000]; // 同じ秒は1つ
+    $marks = isset($job['src']) ? [['song', array_column($job['songs'], 'mix_start')], ['mc', $job['mcs'] ?? []], ['end', array_column($job['songs'], 'end')]] : [];
+    foreach ($marks as [$kind, $secs]) {
+        foreach (array_filter($secs, 'is_int') as $sec) {
+            $chapters[$sec] ??= ['kind' => $kind, 'ms' => $sec * 1000];
         }
     }
     if ($chapters) {
@@ -129,13 +130,14 @@ setlist_job_put($bandId, ['state' => 'running', 'at' => $startedAt = time(), 'fl
 api_detach(['state' => 'running']); // 画面には先に返して、接続を切る。このあとの処理は裏で続く
 
 try {
-    if ($src !== '') { // MIX: 1本だけ聴かせる
+    if ($src !== '') { // MIX: 1本だけ聴かせる。曲の終わりと MC も聞く（チャプター用）
+        $mcs = [];
         $file = band_mix_file($bandId, $src);
-        $part = is_string($file) ? $file : gemini_setlist($file[0], $file[1], $cfg, $band['artist'], $flex, isset($band['song_count']) ? (int)$band['song_count'] : null);
+        $part = is_string($file) ? $file : gemini_setlist($file[0], $file[1], $cfg, $band['artist'], $flex, isset($band['song_count']) ? (int)$band['song_count'] : null, null, $mcs);
         $job = is_string($part) ? ['state' => 'error', 'error' => $part, 'detail' => is_string($file) ? '' : gemini_why()] : null;
         $songs = is_string($part) ? [] : array_map(static fn($s) => ['start' => null, 'mix_start' => $s['start']] + $s, $part); // 秒は MIX のチャプターに（status=1）
     }
-    $job ??= $src !== '' ? setlist_detect_result($songs) : setlist_detect_videos($bandId, $band, $mp3s, count($videoIds), $cfg, $flex);
+    $job ??= $src !== '' ? setlist_detect_result($songs) + ['mcs' => $mcs] : setlist_detect_videos($bandId, $band, $mp3s, count($videoIds), $cfg, $flex);
 } catch (Throwable $e) {
     error_log('setlist detect: ' . $e->getMessage());
     $job = ['state' => 'error', 'error' => '解析に失敗しました'];
