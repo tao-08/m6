@@ -248,7 +248,8 @@ render_header($live['name'], 'lives');
                         <?= band_youtube_html($ytByBand[(int)$b['band_id']] ?? [], $ytTitles, 'band-' . (int)$b['band_id'], 'slot__yt no-print', '「' . $b['name'] . '」を YouTube で見る') ?>
                         <?php if (isset($mixIds[(int)$b['band_id']])): // YouTube の右 ?><?= mix_tag() ?><?php endif; ?>
                         <?php // ドライブのファイル: 押すとこのカードの下にファイルの一覧（プレーヤー・写真・リンク）が開く（JS: setupDrivePlayer）
-                        $driveFiles = $driveByBand[(int)$b['band_id']] ?? []; ?>
+                        //   区分（YouTube・MIX）のあるファイルは YouTube のアイコンと MIX の印で足りるので、区分なしのファイルだけ
+                        $driveFiles = array_values(array_filter($driveByBand[(int)$b['band_id']] ?? [], fn($f) => !$f['is_mix'] && $f['video_id'] === null)); ?>
                         <?php if ($driveFiles): ?>
                             <button type="button" class="slot__drive no-print" data-drive-toggle aria-expanded="false" aria-label="「<?= h($b['name']) ?>」のファイル（<?= count($driveFiles) ?>）" title="ファイル"><?= drive_icon() ?><span class="slot__drive-count"><?= count($driveFiles) ?></span></button>
                         <?php endif; ?>

@@ -73,14 +73,14 @@ if ($tab === 'chapter') {
                 $state = 'nomp3'; // 聴かせる音源が無い（まとめて解析の対象外）
             }
             $live['videos'][] = [$b, $no, count($list), $state, (string)($job['error'] ?? ''), $hasMp3];
-            $live['done'] = ($live['done'] ?? 0) + (in_array($state, ['saved', 'edited'], true) ? 1 : 0);
+            $live['done'] = ($live['done'] ?? 0) + ($state === 'edited' ? 1 : 0);
             $live['mp3'] = ($live['mp3'] ?? 0) + ($hasMp3 ? 1 : 0);
             unset($live);
         }
     }
-    // 見出しの数: 全部の本数・解析済み（進み具合のバー）・MP3 のある本数
+    // 見出しの数: 全部の本数・編集済み（人が直した本数。進み具合のバー）・MP3 のある本数
     $counts = static fn(int $all, int $done, int $mp3): string => '<span class="chapter-counts muted small"><span>' . $all . '本</span>'
-        . '<span ' . tip_attr('解析済み') . '><span class="job-progress"><span style="width: ' . ($all ? round($done / $all * 100) : 0) . '%"></span></span>' . $done . '</span>'
+        . '<span ' . tip_attr('編集済み') . '><span class="job-progress"><span style="width: ' . ($all ? round($done / $all * 100) : 0) . '%"></span></span>' . $done . '</span>'
         . '<span ' . tip_attr('MP3 がある動画') . '><span class="tag label-inline">MP3</span>' . $mp3 . '</span></span>';
     $label = ['saved' => '解析済み', 'running' => '解析中', 'queued' => '順番待ち', 'error' => '失敗', 'none' => '未解析', 'nomp3' => 'MP3 なし'];
 
@@ -117,7 +117,7 @@ if ($tab === 'chapter') {
                     <?php foreach ($l['videos'] as [$b, $no, $count, $state, $error, $hasMp3]): ?>
                         <li<?= $state === 'nomp3' ? ' class="is-dim"' : '' ?>>
                             <a href="video_chapters?band=<?= (int)$b['band_id'] ?>&amp;v=<?= $no ?>"><?= h((string)$b['name']) ?><?= $count > 1 ? ' ' . ($no + 1) . '本目' : '' ?></a>
-                            <?php if ($state === 'edited'): ?><?= check_badge('編集済み', '編集済み') ?><?php elseif ($state === 'saved'): ?><?= check_badge('解析済み') ?><?php else: ?>
+                            <?php if ($state === 'edited'): ?><?= check_badge('編集済み', '編集済み') ?><?php else: ?>
                             <span class="job-state" data-chapter-state="<?= $state ?>"<?= $error !== '' ? ' ' . tip_attr($error) . ' style="cursor: help"' : '' ?>><?= $label[$state] ?? '' ?></span>
                             <?php endif; ?>
                         </li>

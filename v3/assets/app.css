@@ -866,6 +866,7 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 .job-state:is([data-chapter-state="running"], [data-chapter-state="review"]) { color: var(--warn); background: var(--warn-bg); }
 .job-state[data-chapter-state="queued"] { background: none; box-shadow: inset 0 0 0 1px var(--border); }
 .job-state[data-chapter-state="nomp3"] { background: none; }
+.job-state[data-chapter-state="saved"] { color: color-mix(in srgb, var(--ok) 55%, var(--muted)); background: color-mix(in srgb, var(--ok-bg) 50%, var(--surface-2)); } /* 編集済みの緑の ✓ より控えめ */
 /* 見出しの進み具合（解析済み / 全本数） */
 .job-progress { display: inline-block; width: 48px; height: 4px; border-radius: var(--r-full); background: var(--surface-2); overflow: hidden; }
 .job-progress > span { display: block; height: 100%; background: var(--ok); }
