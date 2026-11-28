@@ -135,28 +135,7 @@ try {
         $job = is_string($part) ? ['state' => 'error', 'error' => $part, 'detail' => is_string($file) ? '' : gemini_why()] : null;
         $songs = is_string($part) ? [] : array_map(static fn($s) => ['start' => null, 'mix_start' => $s['start']] + $s, $part); // 秒は MIX のチャプターに（status=1）
     }
-    // 1本ずつ順に聴かせてつなぐ。2本以上のときだけ「何本目か」を伝える（gemini_setlist の $part）
-    $songs ??= [];
-    $job ??= null;
-    foreach ($mp3s as $no => $key) {
-        $file = band_mix_file($bandId, $key); // 元のファイル（消さない）
-        if (is_string($file)) {
-            $job = ['state' => 'error', 'error' => $file];
-            break;
-        }
-        $part = gemini_setlist($file[0], $file[1], $cfg, $band['artist'], $flex, isset($band['song_count']) ? (int)$band['song_count'] : null,
-            count($videoIds) > 1 ? [$no + 1, count($videoIds)] : null);
-        if (is_string($part)) {
-            $job = ['state' => 'error', 'error' => $part, 'detail' => gemini_why()];
-            break;
-        }
-        foreach ($part as $s) {
-            $songs[] = $s + ['video' => $no];
-        }
-    }
-    $job ??= !array_filter(array_column($songs, 'title'), 'strlen')
-        ? ['state' => 'error', 'error' => '曲が見つかりませんでした'] // 確認画面を開いても意味がない
-        : ['state' => 'done', 'songs' => $songs];
+    $job ??= $src !== '' ? setlist_detect_result($songs) : setlist_detect_videos($bandId, $band, $mp3s, count($videoIds), $cfg, $flex);
 } catch (Throwable $e) {
     error_log('setlist detect: ' . $e->getMessage());
     $job = ['state' => 'error', 'error' => '解析に失敗しました'];

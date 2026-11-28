@@ -476,6 +476,38 @@ function setlist_job_running_count(): int
     return $n;
 }
 
+/** 検出の結果を途中経過の形に。曲名が1つも無ければ失敗（確認画面を開いても意味がない） */
+function setlist_detect_result(array $songs): array
+{
+    return array_filter(array_column($songs, 'title'), 'strlen') ? ['state' => 'done', 'songs' => $songs] : ['state' => 'error', 'error' => '曲が見つかりませんでした'];
+}
+
+/**
+ * バンドの動画ごとの MP3 を1本ずつ順に聴かせてつなぐ（api_setlist_detect.php・api_setlist_bulk.php）。2本以上のときだけ「何本目か」を伝える
+ *   $band: artist・song_count。$mp3s: 何本目 => 音源キー（band_video_mp3）
+ * @return array 途中経過（setlist_job_put に渡す形。at・flex は呼ぶ側で足す）
+ */
+function setlist_detect_videos(int $bandId, array $band, array $mp3s, int $videos, array $cfg, bool $flex): array
+{
+    require_once __DIR__ . '/chapter_job.php'; // band_mix_file
+    $songs = [];
+    foreach ($mp3s as $no => $key) {
+        $file = band_mix_file($bandId, $key); // 元のファイル（消さない）
+        if (is_string($file)) {
+            return ['state' => 'error', 'error' => $file];
+        }
+        $part = gemini_setlist($file[0], $file[1], $cfg, $band['artist'], $flex, isset($band['song_count']) ? (int)$band['song_count'] : null,
+            $videos > 1 ? [$no + 1, $videos] : null);
+        if (is_string($part)) {
+            return ['state' => 'error', 'error' => $part, 'detail' => gemini_why()];
+        }
+        foreach ($part as $s) {
+            $songs[] = $s + ['video' => $no];
+        }
+    }
+    return setlist_detect_result($songs);
+}
+
 function setlist_job_put(int $bandId, ?array $job): void
 {
     if ($job === null) {

@@ -597,26 +597,35 @@ function setupYtDrive() {
 
 /**
  * 解析の状況（setlist_jobs.php?tab=chapter）の「未解析を解析」。api_chapter_bulk.php に頼んで、画面は移らずに状態だけ「順番待ち」にする
+ * セトリの無いバンドの曲の検出（api_setlist_bulk.php）も一緒に頼む
  */
 function setupChapterBulk() {
   document.querySelectorAll('[data-chapter-bulk]').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const live = btn.closest('[data-chapter-live]');
       btn.disabled = true;
-      try {
-        const { count } = await apiPost('api_chapter_bulk', { live_id: Number(live.dataset.chapterLive) }, '解析を始められませんでした');
+      const body = { live_id: Number(live.dataset.chapterLive) };
+      // チャプターと、セトリの無いバンドの曲の検出（api_setlist_bulk.php）は別の裏の処理で並んで進む
+      const [chap, det] = await Promise.allSettled([
+        apiPost('api_chapter_bulk', body, '解析を始められませんでした'),
+        apiPost('api_setlist_bulk', body, '曲の検出を始められませんでした'),
+      ]);
+      if (chap.status === 'fulfilled' && chap.value.count) {
         live.querySelectorAll('[data-chapter-state="none"], [data-chapter-state="error"]').forEach((s) => {
           s.dataset.chapterState = 'queued';
           s.textContent = '順番待ち';
           s.removeAttribute('data-tip');
           s.style.cursor = '';
         });
-        flashToast(count ? `${count}本を解析します` : '未解析の動画はありません');
-        btn.remove();
-      } catch (e) {
-        flashToast(e.message, 'error');
-        btn.disabled = false;
       }
+      const msg = [
+        chap.status === 'fulfilled' ? (chap.value.count ? `${chap.value.count}本を解析します` : '') : chap.reason.message,
+        det.status === 'fulfilled' ? (det.value.count ? `${det.value.count}バンドの曲を検出します` : '') : det.reason.message,
+      ].filter(Boolean);
+      const failed = chap.status === 'rejected' || det.status === 'rejected';
+      flashToast(msg.join('・') || '未解析の動画はありません', failed ? 'error' : undefined);
+      if (failed) btn.disabled = false;
+      else btn.remove();
     });
   });
 }

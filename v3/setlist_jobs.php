@@ -45,9 +45,15 @@ if ($tab === 'chapter') {
     foreach ($pdo->query('SELECT band_id, video_id FROM band_drive_file WHERE video_id IS NOT NULL UNION SELECT band_id, video_id FROM band_audio WHERE video_id IS NOT NULL') as $r) {
         $mp3[$r['band_id'] . '|' . $r['video_id']] = true;
     }
+    $hasSongs = array_flip($pdo->query('SELECT DISTINCT band_id FROM song')->fetchAll(PDO::FETCH_COLUMN));
     $years = []; // 年度 => ライブID => [name, videos => [[band, no, count, state, error, MP3 があるか]], done, mp3]
     foreach ($bands as $b) {
         $list = $urls[(int)$b['band_id']] ?? [];
+        // セトリが無く、動画が全部 MP3 を持つ: 「未解析を解析」で曲も検出する（api_setlist_bulk.php と同じ条件）
+        if ($list && !isset($hasSongs[$b['band_id']]) && (setlist_job_get((int)$b['band_id'])['state'] ?? 'error') === 'error'
+            && !array_filter($list, static fn($u) => !isset($mp3[$b['band_id'] . '|' . youtube_video_id($u)]))) {
+            $years[(int)$b['fiscal_year']][(int)$b['live_id']]['detect'] = true;
+        }
         foreach ($list as $no => $url) {
             $vid = youtube_video_id($url);
             if ($vid === null) {
@@ -104,7 +110,7 @@ if ($tab === 'chapter') {
             <?php foreach ($lives as $liveId => $l): ?>
                 <details class="chapter-live" data-chapter-live="<?= $liveId ?>">
                     <summary><?= h($l['name']) ?> <?= $counts(count($l['videos']), $l['done'], $l['mp3'] ?? 0) ?><?= icon('expand_more') ?></summary>
-                    <?php if (array_filter($l['videos'], static fn($v) => in_array($v[3], ['none', 'error'], true))): ?>
+                    <?php if (!empty($l['detect']) || array_filter($l['videos'], static fn($v) => in_array($v[3], ['none', 'error'], true))): ?>
                         <button type="button" class="btn btn--sm" data-chapter-bulk>未解析を解析</button>
                     <?php endif; ?>
                     <ul>
