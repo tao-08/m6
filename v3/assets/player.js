@@ -746,7 +746,7 @@
     b.classList.toggle('is-current', cfg.scope === scope && cfg.id === id); // いま流している範囲
     b.classList.toggle('is-pending', !!pending && pending.scope === scope && pending.id === id);
     b.addEventListener('click', () => {
-      leaveScope();
+      if ((label.startsWith('表示中の') && scope !== 'band') || label === '再生中のアーティスト') clearFilter(); else leaveScope();
       pick(scope, id);
     });
     if (scope !== 'band') { // シャッフルの印。シャッフル中だけ CSS で幅を広げて見せる（バンドは選ぶとシャッフルを外すので付けない）
@@ -808,14 +808,22 @@
   };
   showFilter();
   // チップで範囲を替えるとき、外したライブを戻す: 絞り込みで選んだライブから（id -1）・再生中のライブ / バンドから（ライブ1つの範囲で外したものが、広い範囲の曲を減らさないように）
+  const clearFilter = () => { // 外したライブ・バンドを戻す（MIX / YouTube はそのまま）。変わったら true
+    const changed = filter.off.length > 0 || filter.bands.length > 0;
+    filter.off = [];
+    filter.bands = [];
+    saveFilter();
+    showFilter();
+    return changed;
+  };
   const leaveScope = () => {
-    if (cfg.id === -1 || cfg.scope === 'live' || cfg.scope === 'band') { filter.off = []; filter.bands = []; saveFilter(); showFilter(); }
+    if (cfg.id === -1 || cfg.scope === 'live' || cfg.scope === 'band') clearFilter();
   };
   // MIX / YouTube: それぞれ入り切り。両方は外せない
   srcBtns.forEach((b) => b.addEventListener('click', () => {
     const on = [...srcBtns].filter((x) => (x === b) !== (x.getAttribute('aria-pressed') === 'true')).map((x) => x.dataset.shellSrc);
-    if (!on.length) { toast('MIX と YouTube の両方は外せません'); return; }
-    filter.src = on.length === 2 ? 'all' : on[0];
+    // 片方だけのときにそれを外したら、もう片方だけにする
+    filter.src = on.length === 2 ? 'all' : on[0] ?? [...srcBtns].find((x) => x !== b).dataset.shellSrc;
     saveFilter();
     showFilter();
     pick(cfg.scope, cfg.id);
@@ -908,16 +916,13 @@
       return d;
     }));
   });
-  $('[data-shell-filter-clear]').addEventListener('click', () => { // すべてのバンドにチェックを入れ、範囲をサイト全体に（MIX / YouTube はそのまま。モーダルは開いたまま）
-    scopeBands = null;
-    yearsEl.querySelectorAll('[data-band]').forEach((c) => { c.checked = true; });
+  $('[data-shell-filter-clear]').addEventListener('click', () => { // 外したライブ・バンドを戻す。アーティスト・メンバーの範囲はそのまま、ほかはサイト全体に（MIX / YouTube はそのまま。モーダルは開いたまま）
+    const keep = cfg.scope === 'artist' || cfg.scope === 'member';
+    if (!keep) scopeBands = null;
+    yearsEl.querySelectorAll('[data-band]').forEach((c) => { c.checked = !scopeBands || scopeBands.has(Number(c.dataset.band)); });
     yearsEl.querySelectorAll(':scope > details').forEach(syncYear);
-    const changed = filter.off.length > 0 || filter.bands.length > 0;
-    filter.off = [];
-    filter.bands = [];
-    saveFilter();
-    if (changed || cfg.scope !== 'all' || cfg.id !== 0) pick('all', 0);
-    showFilter();
+    const changed = clearFilter();
+    if (keep) { if (changed) pick(cfg.scope, cfg.id); } else if (changed || cfg.scope !== 'all' || cfg.id !== 0) pick('all', 0);
   });
   filterDlg.addEventListener('close', () => {
     const shown = [...yearsEl.querySelectorAll('[data-band]')];
@@ -1100,7 +1105,7 @@
   window.abbeyShuffle = async (scope, id) => {
     pending = null;
     audio.pause();
-    leaveScope();
+    if (['live', 'member', 'artist'].includes(scope)) clearFilter(); else leaveScope(); // 表示中の〜（バンド以外）は絞り込みを外す
     await load(scope, id);
     go(0, true);
   };
