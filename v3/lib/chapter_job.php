@@ -81,8 +81,15 @@ function chapter_job_running_count(): int
     return $n;
 }
 
-/** 同時に裏で解析する数の上限（サーバーの同時に処理できる数をふさがないように。setlist の SETLIST_JOB_MAX と同じ考え） */
-const CHAPTER_JOB_MAX = 2;
+/** 裏で同時に動かす Gemini の処理（曲の検出＋チャプター）の合計の上限。1本が数分〜30分、サーバーの同時に処理できる数（Entry Processes）を1つふさぐ（2026-11 に2回 508 で落ちた） */
+const BG_JOB_MAX = 3;
+
+/** 曲の検出とチャプターの裏の処理が、合わせて上限に達しているか */
+function bg_job_full(): bool
+{
+    require_once __DIR__ . '/gemini_setlist.php'; // setlist_job_running_count
+    return chapter_job_running_count() + setlist_job_running_count() >= BG_JOB_MAX;
+}
 
 function chapter_job_put(string $id, ?array $job): void
 {

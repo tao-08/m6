@@ -275,6 +275,7 @@ return [
     'task_alt',
     'text_snippet',
     'timeline',
+    'timer',
     'timer_off',
     'title',
     'toast',

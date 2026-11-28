@@ -596,6 +596,37 @@ function setupYtDrive() {
 }
 
 /**
+ * 解析の状況（setlist_jobs.php）の失敗の再試行。通常の速度（flex=1）で曲の検出をやり直し、状態を「解析中」にする
+ * api_setlist_detect.php は $_POST を読むので FormData で送る（setlist_detect.js と同じ）
+ */
+function setupDetectRetry() {
+  document.querySelectorAll('[data-detect-retry]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      const body = new FormData();
+      body.append('band_id', btn.dataset.detectRetry);
+      body.append('src', btn.dataset.src || '');
+      body.append('flex', '1');
+      const res = await fetch('api_setlist_detect', { method: 'POST', headers: { 'X-CSRF-Token': csrfToken() }, body }).catch(() => null);
+      const json = res ? await res.json().catch(() => ({})) : {};
+      if (!res?.ok) {
+        flashToast(json.error || '検出を始められませんでした', 'error');
+        btn.disabled = false;
+        return;
+      }
+      const row = btn.closest('tr');
+      const s = row.querySelector('[data-chapter-state]');
+      s.dataset.chapterState = 'running';
+      s.textContent = '解析中';
+      s.removeAttribute('data-tip');
+      const speed = row.querySelector('[data-detect-flex]');
+      if (speed) speed.textContent = '通常';
+      btn.remove();
+    });
+  });
+}
+
+/**
  * 解析の状況（setlist_jobs.php?tab=chapter）の「未解析を解析」。api_chapter_bulk.php に頼んで、画面は移らずに状態だけ「順番待ち」にする
  * セトリの無いバンドの曲の検出（api_setlist_bulk.php）も一緒に頼む
  */

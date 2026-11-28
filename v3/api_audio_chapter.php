@@ -104,7 +104,7 @@ if (in_array($action, ['add', 'replace', 'auto', 'status', 'discard', 'numbers']
             api_ok($out + ['chapters' => audio_chapter_list(audio_chapters($pdo, $bandId)[$key] ?? [])]);
         }
         $cfg = chapter_job_config() ?? fail(503, '自動チャプターは未設定です');
-        if (chapter_job_running_count() >= CHAPTER_JOB_MAX) {
+        if (bg_job_full()) {
             fail(429, 'ほかの音源を解析中です。終わってから試してください');
         }
         chapter_job_put($id, ['state' => 'running', 'band_id' => $bandId, 'at' => $at = time()]);

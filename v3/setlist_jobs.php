@@ -51,13 +51,13 @@ if ($tab === 'usage') {
     ksort($sum);
     render_header('解析の状況', 'tools');
     ?>
-    <h1>解析の状況</h1>
+    <h1 class="display display--sm">解析の状況</h1>
     <?php $tabNav(); ?>
     <?php if (!$sum): ?>
         <div class="empty card"><p class="empty__title">30日以内の記録はありません</p></div>
     <?php else: ?>
         <p class="muted small">30日分。トークン数は1回あたりの平均</p>
-        <table class="table">
+        <div class="table-scroll table-scroll--flush"><table class="table">
             <thead><tr><th>処理</th><th>モデル</th><th>速度</th><th>回数</th><th>音声</th><th>文</th><th>出力</th><th>思考</th></tr></thead>
             <tbody>
             <?php foreach ($sum as $k => $s): [$label, $model, $flex] = explode("	", $k); ?>
@@ -67,7 +67,7 @@ if ($tab === 'usage') {
                 </tr>
             <?php endforeach; ?>
             </tbody>
-        </table>
+        </table></div>
     <?php endif; ?>
     <?php
     render_footer();
@@ -130,7 +130,7 @@ if ($tab === 'chapter') {
 
     render_header('解析の状況', 'tools');
     ?>
-    <h1>解析の状況</h1>
+    <h1 class="display display--sm">解析の状況</h1>
     <?php $tabNav(); ?>
     <?php // 「MP3 を紐付け」のフォーム。$folder = 紐付けたフォルダの ID（下の一覧で URL の編集・解除）。'' = 新しく紐付ける
     $ytDriveForm = static function (string $folder): void { ?>
@@ -204,12 +204,12 @@ uasort($jobs, static fn($a, $b) => ((int)($b['at'] ?? 0)) <=> ((int)($a['at'] ??
 
 render_header('解析の状況', 'tools');
 ?>
-<h1>解析の状況</h1>
+<h1 class="display display--sm">解析の状況</h1>
 <?php $tabNav(); ?>
 <?php if (!$jobs): ?>
     <div class="empty card"><p class="empty__title">検出中のバンドはありません</p></div>
 <?php else: ?>
-    <table class="table">
+    <div class="table-scroll table-scroll--flush"><table class="table">
         <thead><tr><th>バンド</th><th>ステータス</th><th>速度</th><th>開始</th></tr></thead>
         <tbody>
         <?php foreach ($jobs as $id => $job): ?>
@@ -221,18 +221,20 @@ render_header('解析の状況', 'tools');
                     <span class="job-state" data-chapter-state="review">確認待ち</span>
                 <?php else: ?>
                     <span class="job-state" data-chapter-state="error" <?= tip_attr(trim(($job['error'] ?? '') . ' / ' . ($job['detail'] ?? ''), ' /')) ?>>失敗</span>
+                    <?php // 再試行: 通常の速度で検出し直す（assets/app_admin.js の setupDetectRetry） ?>
+                    <button type="button" class="btn btn--sm btn--ghost" data-detect-retry="<?= $id ?>" data-src="<?= h((string)($job['src'] ?? '')) ?>" aria-label="再試行" title="再試行"><?= icon('refresh') ?></button>
                 <?php endif; ?></td>
-                <td><?= isset($job['flex']) ? ($job['flex'] ? '通常' : '高速') : '' ?></td>
+                <td data-detect-flex><?= isset($job['flex']) ? ($job['flex'] ? '通常' : '高速') : '' ?></td>
                 <td><?= isset($job['at']) ? date('n/j H:i', (int)$job['at']) : '' ?></td>
             </tr>
         <?php endforeach; ?>
         </tbody>
-    </table>
+    </table></div>
 <?php endif; ?>
 <?php if ($seeks): ?>
     <details class="job-fold">
     <summary>曲の場面があるバンド <span class="muted small"><?= count($seeks) ?>組</span><?= icon('expand_more') ?></summary>
-    <table class="table">
+    <div class="table-scroll table-scroll--flush"><table class="table">
         <thead><tr><th>バンド</th><th>曲</th></tr></thead>
         <tbody>
         <?php foreach ($seeks as $b): ?>
@@ -242,7 +244,7 @@ render_header('解析の状況', 'tools');
             </tr>
         <?php endforeach; ?>
         </tbody>
-    </table>
+    </table></div>
     </details>
 <?php endif; ?>
 <?php render_footer();

@@ -118,8 +118,8 @@ if ($section !== null) { // ↻ はその場で待つ（1曲なので約20秒）
 if ((setlist_job_get($bandId)['state'] ?? '') === 'running') {
     api_ok(['state' => 'running']); // もう裏で解析している（二重に払わない）
 }
-if (setlist_job_running_count() >= SETLIST_JOB_MAX) {
-    fail(429, 'ほかに' . SETLIST_JOB_MAX . 'バンドを検出中です。終わってから試してください'); // サイト全体が重くならないように
+if (bg_job_full()) { // サイト全体が重くならないように（lib/chapter_job.php の BG_JOB_MAX）
+    fail(429, 'ほかの解析が終わってから試してください');
 }
 $src !== '' || ($videoIds[0] ?? null) !== null || fail(400, 'YouTube のリンクがありません');
 $mp3s = $src !== '' ? [] : array_map(static fn($v) => band_video_mp3($bandId, $v), array_filter($videoIds)); // 何本目 => 音源キー

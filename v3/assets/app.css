@@ -1022,6 +1022,12 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 /* PC: 日程タブの横に置くボタン（タブと一緒に上へ貼り付く）。スマホではこのボタンを隠して、右下に浮かせたほうを出す */
 .day-bar { position: sticky; top: 70px; z-index: 5; display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
 .day-bar .tabs { position: static; margin: 0; }
+/* PC: live.php の編集ボタンの段を日程タブと同じ高さに下ろす（hero の下余白 28px + タブの半分 - ボタンの半分）。重なる day-bar の空き部分は押せるように素通しにする */
+@media (min-width: 761px) {
+  .hero--live:has(+ .day-bar .tabs) .hero__actions { margin-bottom: -74px; }
+  .hero--live + .day-bar { pointer-events: none; }
+  .hero--live + .day-bar > * { pointer-events: auto; }
+}
 .compact-btn { display: grid; place-items: center; flex: none; padding: 0; border-radius: 50%; border: 1px solid var(--border); background: var(--surface); color: var(--text); box-shadow: var(--shadow); cursor: pointer;
   transition: transform var(--t-fast) ease, color var(--t-fast), border-color var(--t-fast); }
 .compact-fab { display: none; }

@@ -50,8 +50,8 @@ if (!$todo) {
     api_ok(['count' => 0]);
 }
 $cfg = gemini_setlist_config() ?? fail(503, '曲の検出は使えません');
-if (setlist_job_running_count() >= SETLIST_JOB_MAX) {
-    fail(429, 'ほかに' . SETLIST_JOB_MAX . 'バンドを検出中です。終わってから試してください');
+if (bg_job_full()) {
+    fail(429, 'ほかの解析が終わってから試してください');
 }
 api_detach(['count' => count($todo)]);
 

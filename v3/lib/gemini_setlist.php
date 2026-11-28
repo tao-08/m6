@@ -478,9 +478,6 @@ function setlist_job_get(int $bandId): ?array
     return $job;
 }
 
-/** 同時に裏で検出できるバンドの数。1本で数分〜60分、サーバーの同時に処理できる数（Entry Processes）を1つふさぐ（2026-11 に上限に達した） */
-const SETLIST_JOB_MAX = 4;
-
 /** 今、裏で検出しているバンドの数（止まったものは数えない） */
 function setlist_job_running_count(): int
 {

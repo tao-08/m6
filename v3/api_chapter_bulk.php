@@ -50,7 +50,7 @@ if (!$todo) {
     api_ok(['count' => 0]);
 }
 $cfg = chapter_job_config() ?? fail(503, '自動チャプターは未設定です');
-if (chapter_job_running_count() >= CHAPTER_JOB_MAX) {
+if (bg_job_full()) { // 曲の検出と合わせた上限（lib/chapter_job.php の BG_JOB_MAX）
     fail(429, 'ほかの動画を解析中です。終わってから試してください');
 }
 foreach ($todo as [$vid, $bandId]) {
