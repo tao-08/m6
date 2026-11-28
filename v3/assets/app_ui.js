@@ -284,7 +284,9 @@ function setupTabGlide() {
       else later();
     });
     new MutationObserver(later).observe(tabs, { subtree: true, attributes: true, attributeFilter: ['class'], childList: true });
-    new ResizeObserver(() => { placed = false; later(); }).observe(tabs);
+    // タブ自身も見る: 幅いっぱい（max-width: 100%）の .tabs は、文字（Web フォント）が後から読まれてタブが広がっても大きさが変わらない
+    const ro = new ResizeObserver(() => { placed = false; later(); });
+    [tabs, ...tabs.querySelectorAll(':scope > .tab')].forEach((el) => ro.observe(el));
     place();
   });
 }

@@ -895,7 +895,7 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 @media (prefers-reduced-motion: reduce) { .shell-panel__scopes .chip .icon { transition: none; } }
 .shell-panel__scopes .chip__count { margin-left: 4px; color: var(--muted); }
 .shell-panel__scopes .chip__count:empty { display: none; }
-.shell-panel__scopes .chip__name { margin-left: 4px; font-weight: 700; }
+.shell-panel__scopes .chip__name { display: inline-block; max-width: 8em; margin-left: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; font-weight: 700; } /* 長い名前は … で切る（全体は title） */
 .shell-panel__scopes .chip.is-current { background: var(--accent-soft); border-color: var(--accent); } /* いま流している範囲（.chip--me と同じ） */
 .shell-panel__scopes .chip.is-pending { color: var(--accent); font-weight: 700; border-color: var(--accent); border-style: dashed; } /* 次の曲から変える範囲 */
 /* 外枠のお知らせ: 上（.toasts と同じ位置）。ポップアップより手前 */

@@ -691,8 +691,8 @@
   // 左のボタンで、押したらすぐ変えるか、いまの曲が終わってから変えるか（次の曲から = pending に置いて next で切り替える）
   const scopesEl = $('[data-shell-scopes]');
   const laterBtn = $('[data-shell-later]');
-  let later = false;
-  try { later = localStorage.getItem('shuffle_when') === 'next'; } catch (e) { /* すぐ */ }
+  let later = true; // 最初は次の曲から（外した人だけすぐ）
+  try { later = localStorage.getItem('shuffle_when') !== 'now'; } catch (e) { /* 次の曲から */ }
   let pending = null; // 次の曲から変える範囲 {scope, id}
   // お知らせ: 上に2秒（中のページのトーストはポップアップに隠れるので外枠に出す。見た目は app.css の .toast）
   const toast = (text) => {
@@ -764,6 +764,7 @@
       const nm = document.createElement('span');
       nm.className = 'chip__name';
       nm.textContent = name;
+      nm.title = name;
       b.append(nm);
     }
     li.append(b);
