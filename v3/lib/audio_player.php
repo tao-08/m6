@@ -5,7 +5,7 @@
  * =====================================================================
  *  ・直接置いた MP3（attach_image.php?k=band_audio）もドライブの音源（drive_audio.php）も、同じプレーヤーで鳴らす
  *  ・band.php では再生位置に「MC」「曲」のチャプターを付けられる（band_audio_chapter。説明は migrations/130）
- *      audio_key … 'a:<band_audio の image_id>' か 'd:<ドライブのファイル ID>'
+ *      audio_key … 'a:<band_audio の image_id>' か 'd:<ドライブのファイル ID>'。YouTube の区分の音源は動画と共有する 'y:<動画 ID>'
  *      曲の番号は持たない。時間順に 1, 2, 3… と数えて、セットリストの曲名に当てる（曲名の直しに自動で追従する）
  *  ・チップ・吹き出しの描画と追加・削除・時間の直しは assets/app_player.js の setupAudioPlayers。保存は api_audio_chapter.php
  *  ・「自動で付ける」は 裏で Gemini に音源を聴かせ（lib/chapter_job.php）、終わったらそのまま置き換える。画面を閉じても続く
@@ -37,6 +37,25 @@ function audio_chapters(PDO $pdo, int $bandId): array
         $out[(string)$r['audio_key']][] = $r;
     }
     return $out;
+}
+
+/**
+ * YouTube の区分の音源（video_id。migrations/153）のチャプターを、動画の 'y:動画ID' に寄せる（ファイルと動画で同じチャプターを使う）
+ *   動画の側にもうあれば動画の側を残してファイルの分を消す。区分を変えた保存（band_edit.php）・まとめて紐付け（api_yt_drive.php）のあとに呼ぶ
+ *   同じ処理を今までの分に流したのが migrations/159
+ */
+function audio_chapters_to_video(PDO $pdo, int $bandId): void
+{
+    $st = $pdo->prepare("SELECT CONCAT('a:', image_id) AS k, video_id FROM band_audio WHERE band_id = ? AND video_id IS NOT NULL
+        UNION ALL SELECT CONCAT('d:', file_id), video_id FROM band_drive_file WHERE band_id = ? AND video_id IS NOT NULL");
+    $st->execute([$bandId, $bandId]);
+    $has = $pdo->prepare('SELECT 1 FROM band_audio_chapter WHERE band_id = ? AND audio_key = ? LIMIT 1');
+    $del = $pdo->prepare('DELETE FROM band_audio_chapter WHERE band_id = ? AND audio_key = ?');
+    $move = $pdo->prepare('UPDATE band_audio_chapter SET audio_key = ? WHERE band_id = ? AND audio_key = ?');
+    foreach ($st->fetchAll() as $r) {
+        $has->execute([$bandId, 'y:' . $r['video_id']]);
+        $has->fetchColumn() ? $del->execute([$bandId, $r['k']]) : $move->execute(['y:' . $r['video_id'], $bandId, $r['k']]);
+    }
 }
 
 /**
@@ -72,7 +91,10 @@ function audio_chapter_list(array $rows): array
  *   $src … 音源の URL（attach_image?k=band_audio&id=N / drive_audio?band=N&f=ID）
  *   $chapterCtx … チャプターを出すとき: ['band_id' => int, 'key' => 'a:N' | 'd:ID' | 'y:動画ID', 'chapters' => 行の配列, 'songs' => [曲名（SE 以外・セトリ順）], 'ses' => [SE 名（セトリ順。無ければ省略可）]]
  *     'se_before' => chapter_se_before()（省略可）
- *   key が 'y:動画ID' のとき（video_chapters.php）は、<audio> の代わりに YouTube の埋め込み（app_player.js の apYouTube）を上に置き、最初から編集モード
+ *     'embed' => true … <audio> の代わりに YouTube の埋め込み（app_player.js の apYouTube）を上に置き、最初から編集モード（video_chapters.php。MP3 の無い動画だけ）
+ *     'editing' => true … 最初から編集モード（band.php?chap=キー。解析の状況から開く）
+ *     'video' => 動画ID … YouTube の区分の音源: アイコンを YouTube にして、名前をその動画へのリンクにする
+ *   figure の id は ch-キー（: は -）。band.php?chap=キー#ch-… で飛んでくる
  */
 function audio_player_html(string $src, string $title, ?int $size, ?array $chapterCtx = null): string
 {
@@ -88,20 +110,25 @@ function audio_player_html(string $src, string $title, ?int $size, ?array $chapt
             'se_before' => array_values($chapterCtx['se_before'] ?? []), // chapter_se_before
         ], JSON_UNESCAPED_UNICODE)) . '"';
     }
-    $yt = $chapterCtx !== null && str_starts_with((string)$chapterCtx['key'], 'y:') ? substr((string)$chapterCtx['key'], 2) : null;
+    $yt = !empty($chapterCtx['embed']) ? substr((string)$chapterCtx['key'], 2) : null;
+    $editing = $yt !== null || !empty($chapterCtx['editing']);
+    $video = $chapterCtx['video'] ?? null;
+    $id = $chapterCtx !== null ? ' id="ch-' . h(str_replace(':', '-', (string)$chapterCtx['key'])) . '"' : '';
     // 大きさ（バイト）: プレーヤーが「?from=バイト位置」を決めるのに使う（長さは読み込んだ音源から取る）
-    $html = '<figure class="drive-player audio-player' . ($yt !== null ? ' audio-player--yt is-editing' : '') . '" data-audio-player' . ($size ? ' data-size="' . (int)$size . '"' : '') . $data . '>';
+    $html = '<figure' . $id . ' class="drive-player audio-player' . ($yt !== null ? ' audio-player--yt' : '') . ($editing ? ' is-editing' : '') . '" data-audio-player' . ($size ? ' data-size="' . (int)$size . '"' : '') . $data . '>';
     if ($yt !== null) {
         $html .= '<div class="audio-player__yt" data-ap-yt="' . h($yt) . '"></div><figcaption class="drive-player__name">'
             . '<button type="button" class="audio-player__edit no-print" data-ap-edit aria-pressed="true">' . icon('edit') . 'チャプターを編集</button>';
     } else {
-        $html .= '<figcaption class="drive-player__name">' . icon('audio_file', 'file-icon file-icon--audio')
-            . '<span class="audio-player__title">' . h($title) . '</span>'
+        $html .= '<figcaption class="drive-player__name">'
+            . ($video !== null
+                ? '<a class="audio-player__title audio-player__title--yt" href="' . h(youtube_watch_url((string)$video)) . '" target="_blank" rel="noopener noreferrer">' . youtube_icon() . h($title) . '</a>'
+                : icon('audio_file', 'file-icon file-icon--audio') . '<span class="audio-player__title">' . h($title) . '</span>')
             . ($size !== null ? '<small class="audio-player__size">' . h(fmt_bytes($size)) . '</small>' : '');
         // 保存: 元のファイルがそのまま落ちる（同じ権限のチェックを通る）
         $html .= '<a class="audio-player__dl no-print" href="' . h($src . (str_contains($src, '?') ? '&' : '?') . 'dl=1') . '" download aria-label="ダウンロード" title="ダウンロード">' . icon('download') . '</a>';
         if ($chapterCtx !== null) {
-            $html .= '<button type="button" class="audio-player__edit no-print" data-ap-edit aria-pressed="false">' . icon('edit') . 'チャプターを編集</button>';
+            $html .= '<button type="button" class="audio-player__edit no-print" data-ap-edit aria-pressed="' . ($editing ? 'true' : 'false') . '">' . icon('edit') . 'チャプターを編集</button>';
         }
     }
     // 自前の操作部（ブラウザ標準のコントロールは Range が使えない環境でシークできないため）。吹き出し（チャプター）は再生位置の棒の上に並べる

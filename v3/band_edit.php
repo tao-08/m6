@@ -346,6 +346,7 @@ if (is_post()) {
                 $delChapters->execute([$bandId, 'a:' . $aid]);
             }
             attach_add($pdo, 'band_audio', $bandId, $audioUploads, null, $newFiles);
+            audio_chapters_to_video($pdo, $bandId); // 区分を YouTube にした音源のチャプターを動画と共有する
             $pdo->commit();
             array_map('live_image_unlink', $removeFiles);
         } catch (RuntimeException $e) { // 画像のエラー（形式・大きさなど）。保存ごと取り消して、入力を表示し直す

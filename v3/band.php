@@ -104,7 +104,7 @@ $bandImages = attach_images($pdo, 'band', [$bandId])[$bandId] ?? [];
 
 // ---- 3. 曲 ----
 // オムニバスのときだけ曲ごとのアーティストを出す。song.artist_id が NULL = バンドのアーティストと同じ
-$st = $pdo->prepare('SELECT s.song_id, s.track_no, s.title, s.is_se, s.artist_id, a.name AS artist_name,
+$st = $pdo->prepare('SELECT s.song_id, s.track_no, s.title, s.is_se, s.video_no, s.artist_id, a.name AS artist_name,
         t.source, t.track_id, t.title AS track_title, t.artist_name AS track_artist, t.artwork_url, t.album_title, t.release_year
     FROM song s
     LEFT JOIN artist a ON a.artist_id = s.artist_id
@@ -318,8 +318,12 @@ render_header($band['name'], 'lives');
         <?= band_youtube_html($ytUrls, count($ytUrls) > 1 ? youtube_titles($pdo, $ytUrls) : [], 'band', 'btn btn--sm btn--youtube', 'YouTube で見る') ?>
         <a class="btn btn--sm" href="band_edit?id=<?= $bandId ?>"><?= icon('edit') ?> バンドを編集</a>
         <a class="btn btn--sm" href="songs_edit?band=<?= $bandId ?>"><?= icon('queue_music') ?> セットリストを<?= $songs ? '編集' : '登録' ?></a>
-        <?php if ($ytUrls && !$setlistVis['hidden']): // YouTube のチャプター（video_chapters.php）。セトリを編集できる人だけ ?>
-            <a class="btn btn--sm" href="video_chapters?band=<?= $bandId ?>"><?= icon('view_timeline') ?> チャプター編集</a>
+        <?php
+        // YouTube のチャプター（video_chapters.php）は MP3 の無い動画だけ。MP3 があればファイルのカードで編集する。セトリを編集できる人だけ
+        $ytNoMp3 = $setlistVis['hidden'] ? null : array_key_first(array_filter($ytUrls, static fn($u) => ($v = youtube_video_id($u)) !== null && band_video_mp3($bandId, $v) === null));
+        ?>
+        <?php if ($ytNoMp3 !== null): ?>
+            <a class="btn btn--sm" href="video_chapters?band=<?= $bandId ?>&amp;v=<?= (int)$ytNoMp3 ?>"><?= icon('view_timeline') ?> チャプター編集</a>
         <?php endif; ?>
         <?php
         // 会場の PDF にバンド名・メンバー・セットリストを書き込む（setting_sheet.php）。
@@ -435,7 +439,23 @@ render_header($band['name'], 'lives');
     $chapterSongs = array_column(array_filter($songs, static fn($s) => !$s['is_se']), 'title');
     $chapterSes = array_column(array_filter($songs, static fn($s) => $s['is_se']), 'title');
     $seBefore = chapter_se_before($songs);
-    $chapterCtx = static fn(string $key): array => ['band_id' => $bandId, 'key' => $key, 'chapters' => $audioChapters[$key] ?? [], 'songs' => $chapterSongs, 'ses' => $chapterSes, 'job' => chapter_job_get(chapter_job_id($key)), 'se_before' => $seBefore];
+    // YouTube の区分の音源は、動画のチャプター（'y:動画ID'）を共有する。曲・SE はその動画の分だけ（video_chapters.php と同じ）
+    $ytNos = []; // 動画 ID => 何本目
+    foreach ($ytUrls as $i => $u) {
+        if (($v = youtube_video_id($u)) !== null) {
+            $ytNos[$v] ??= $i;
+        }
+    }
+    $chapterCtx = static function (string $key, ?string $vid) use ($bandId, $audioChapters, $chapterSongs, $chapterSes, $seBefore, $songs, $ytNos, $ytUrls): array {
+        $ctx = ['band_id' => $bandId, 'key' => $key, 'chapters' => $audioChapters[$key] ?? [], 'songs' => $chapterSongs, 'ses' => $chapterSes, 'se_before' => $seBefore];
+        if ($vid !== null && isset($ytNos[$vid])) {
+            $no = $ytNos[$vid];
+            $mine = array_filter($songs, static fn($s) => count($ytUrls) < 2 || (int)$s['video_no'] === $no);
+            $ctx = ['key' => $key = 'y:' . $vid, 'chapters' => $audioChapters[$key] ?? [], 'songs' => array_column(video_chapter_songs($mine, $no, count($ytUrls)), 'title'),
+                'ses' => array_column(array_filter($mine, static fn($s) => $s['is_se']), 'title'), 'se_before' => chapter_se_before($mine), 'video' => $vid] + $ctx;
+        }
+        return $ctx + ['job' => chapter_job_get(chapter_job_id($ctx['key'])), 'editing' => ($_GET['chap'] ?? '') === $ctx['key']]; // 解析の状況から開くと編集モード
+    };
     ?>
     <!-- ファイル（セットリストの下）: 直接置いた MP3 → ドライブの音源 → そのほか。音源はチャプターを付けられるプレーヤー。バンドのページは1組だけなので最初から並べる（iframe・画像は loading="lazy" で画面に近づいてから読み込む） -->
     <section class="card band-section no-print">
@@ -443,12 +463,12 @@ render_header($band['name'], 'lives');
         <?php foreach ($bandAudios as $a): ?>
             <?php $path = LIVE_IMAGE_DIR . '/' . live_file_disk_name((string)$a['file_name']); ?>
             <?= audio_player_html('attach_image?k=band_audio&id=' . (int)$a['image_id'], $a['title'] !== '' ? $a['title'] : 'MP3',
-                is_file($path) ? audio_orig_size($path) : null, $chapterCtx('a:' . (int)$a['image_id'])) ?>
+                is_file($path) ? audio_orig_size($path) : null, $chapterCtx('a:' . (int)$a['image_id'], $a['video_id'])) ?>
         <?php endforeach; ?>
         <?php foreach ($driveFiles as $f): ?>
             <?php if (str_starts_with((string)$f['mime_type'], 'audio/') && drive_id_valid((string)$f['file_id'])): ?>
                 <?= audio_player_html('drive_audio?band=' . $bandId . '&f=' . rawurlencode((string)$f['file_id']), drive_file_title($f),
-                    $f['size'] ? (int)$f['size'] : null, $chapterCtx('d:' . $f['file_id'])) ?>
+                    $f['size'] ? (int)$f['size'] : null, $chapterCtx('d:' . $f['file_id'], $f['video_id'])) ?>
             <?php endif; ?>
         <?php endforeach; ?>
         <?php $driveRest = drive_files_html($driveFiles, true); ?>

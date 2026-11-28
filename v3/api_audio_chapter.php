@@ -10,7 +10,7 @@
  *    {"action": "replace", "band_id": 12, "key": "a:3", "chapters": [{"kind": "mc", "ms": 0}, ...]}  その音源のチャプターを全部置き換える
  *    {"action": "delete", "band_id": 12, "chapter_id": 5}
  *    {"action": "move", "band_id": 12, "chapter_id": 5, "at_ms": 62000}  チャプターの時間を直す
- *      key … 'a:<band_audio の image_id>'（アップロードした MP3）か 'd:<ドライブのファイル ID>'（音源だけ）か 'y:<動画 ID>'（バンドの YouTube。video_chapters.php）
+ *      key … 'a:<band_audio の image_id>'（アップロードした MP3）か 'd:<ドライブのファイル ID>'（音源だけ）か 'y:<動画 ID>'（バンドの YouTube と、その YouTube の区分の音源。band.php のカード・video_chapters.php）
  *    {"action": "auto", "band_id": 12, "key": "a:3"}  裏で Gemini に聴かせ、終わったらその音源のチャプターを置き換える（lib/chapter_job.php）
  *      すぐ {"state": "running"} を返す。画面を閉じても続く。結果は status で見る
  *    {"action": "status", "band_id": 12, "key": "a:3"}   {"state": "none" | "queued" | "running" | "saved" | "error", "error"?, "chapters": [...]}

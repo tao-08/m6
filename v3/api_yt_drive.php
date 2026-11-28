@@ -11,6 +11,7 @@
  *    unmatched はバンドにもスペシャルコンテンツにも無い動画だけ。タイトルは youtube_title（無ければ oEmbed で取って保存）
  *  紐付けの解除: {"remove": "フォルダ ID"} → {"count": 外したファイルの数}（drive_remove_yt_folder）
  *  紐付けたフォルダは yt_drive_folder に残り、setlist_jobs.php のチャプタータブの下に並ぶ（migrations/158）
+ *  名前は動画のタイトル（youtube_title。名前を付け直したものは触らない）。チャプターは動画と共有する（audio_chapters_to_video）
  *  もう紐付けてあるファイルは区分だけ直すので、何回押してもよい（バンドに YouTube を貼ってから押し直せば入る）
  *  エラー: {"error": "..."}（400 / 401 / 403 / 405 / 502）
  * =====================================================================
@@ -57,8 +58,21 @@ if ($old !== '' && $old !== $folderId) { // 新しいフォルダを読めてか
 $pdo->prepare('INSERT IGNORE INTO yt_drive_folder (folder_id) VALUES (?)')->execute([$folderId]);
 foreach ($match['bands'] as $bandId => $list) {
     drive_add_yt($pdo, $bandId, $list, $folderId);
+    audio_chapters_to_video($pdo, $bandId);
 }
 $pdo->commit();
+@set_time_limit(0); // タイトルを初めて取るときは1本ずつ oEmbed に聞く
+// 名前は動画のタイトルにする（ファイル名は「動画ID.mp3」）。名前を付け直したものはそのまま
+$linked = array_merge([], ...array_values($match['bands']));
+$linkedUrls = array_map(static fn($f) => youtube_watch_url($f['video_id']), $linked);
+youtube_titles_fetch($pdo, $linkedUrls);
+$titles = youtube_titles($pdo, $linkedUrls);
+$setTitle = $pdo->prepare("UPDATE band_drive_file SET title = ? WHERE file_id = ? AND video_id = ? AND (title IS NULL OR title = '')");
+foreach ($linked as $f) {
+    if (isset($titles[$f['video_id']])) {
+        $setTitle->execute([mb_substr($titles[$f['video_id']], 0, 100), $f['file_id'], $f['video_id']]);
+    }
+}
 $special = []; // スペシャルコンテンツの動画 ID => true
 foreach ($pdo->query('SELECT url FROM special_content WHERE url IS NOT NULL') as $r) {
     if (($v = youtube_video_id((string)$r['url'])) !== null) {
@@ -73,7 +87,6 @@ foreach ($match['unmatched'] as $name) {
     }
 }
 $urls = array_map(static fn($m) => youtube_watch_url($m['video_id']), array_filter($miss, static fn($m) => $m['video_id'] !== null));
-@set_time_limit(0); // タイトルを初めて取るときは1本ずつ oEmbed に聞く
 youtube_titles_fetch($pdo, $urls);
 $titles = youtube_titles($pdo, $urls);
 $miss = array_map(static fn($m) => $m + ['title' => $titles[$m['video_id']] ?? null], $miss);

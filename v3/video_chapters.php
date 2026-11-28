@@ -1,12 +1,13 @@
 <?php
 /**
  * =====================================================================
- *  video_chapters.php — バンドの YouTube のチャプター編集（?band=バンドID&v=何本目。0 = 1本目）
+ *  video_chapters.php — バンドの YouTube のチャプター編集（?band=バンドID&v=何本目。0 = 1本目）。MP3 の無い動画だけ
+ *  その動画の MP3（YouTube の区分）があれば、バンド詳細のそのファイルのカードを編集モードで開く（チャプターは同じ 'y:動画ID' を共有する）
  * =====================================================================
  *  上に動画、下に MIX と同じシークバー・「MC」「曲」「終わり」「自動で付ける」（lib/audio_player.php・assets/app_player.js）。
  *  保存は MIX と同じ band_audio_chapter（audio_key = 'y:動画ID'。api_audio_chapter.php）。シャッフル再生の区切りにも使う（api_shuffle.php）
  *  曲の番号に当てる曲は video_chapter_songs（動画が2本以上なら、その動画に割り当てた曲だけ）
- *  入口はバンド詳細の「チャプター編集」。開けるのはセットリストを編集できる人（songs_edit.php と同じ）
+ *  入口はバンド詳細の「チャプター編集」と解析の状況。開けるのはセットリストを編集できる人（songs_edit.php と同じ）
  * =====================================================================
  */
 declare(strict_types=1);
@@ -35,6 +36,9 @@ $videoId = isset($urls[$no]) ? youtube_video_id($urls[$no]) : null;
 if ($videoId === null) {
     error_page(404, '動画が見つかりません');
 }
+if (band_video_mp3($bandId, $videoId) !== null) {
+    redirect('band?id=' . $bandId . '&chap=y:' . rawurlencode($videoId) . '#ch-y-' . rawurlencode($videoId));
+}
 $st = $pdo->prepare('SELECT title, is_se, video_no FROM song WHERE band_id = ? ORDER BY track_no');
 $st->execute([$bandId]);
 $rows = $st->fetchAll();
@@ -55,6 +59,6 @@ render_header('チャプター編集', 'lives');
     </nav>
 <?php endif; ?>
 <section class="card">
-    <?= audio_player_html('', '', null, ['band_id' => $bandId, 'key' => $key, 'chapters' => audio_chapters($pdo, $bandId)[$key] ?? [], 'songs' => $songs, 'ses' => $ses, 'job' => chapter_job_get(chapter_job_id($key)), 'auto' => band_video_mp3($bandId, $videoId) !== null, 'se_before' => chapter_se_before(array_filter($rows, static fn($s) => count($urls) < 2 || (int)$s['video_no'] === $no))]) ?>
+    <?= audio_player_html('', '', null, ['band_id' => $bandId, 'key' => $key, 'chapters' => audio_chapters($pdo, $bandId)[$key] ?? [], 'songs' => $songs, 'ses' => $ses, 'job' => chapter_job_get(chapter_job_id($key)), 'auto' => false, 'embed' => true, 'se_before' => chapter_se_before(array_filter($rows, static fn($s) => count($urls) < 2 || (int)$s['video_no'] === $no))]) ?>
 </section>
 <?php render_footer(); ?>
