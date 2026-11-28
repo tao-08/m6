@@ -538,18 +538,49 @@ function setupAliasField() {
 /**
  * 解析の状況（setlist_jobs.php?tab=chapter）の「MP3 を紐付け」。ドライブのフォルダの「動画ID.mp3」をバンドに紐付け（api_yt_drive.php）、
  * バンドにもスペシャルコンテンツにも無い動画を、開け閉めできる欄に動画のタイトルで並べる（タイトルが無ければファイル名）
+ * 紐付けたフォルダは下の一覧（[data-yt-drive-folders]）に並ぶ。一覧のフォームは data-yt-drive にフォルダ ID を持ち、
+ * 「紐付け直す」で古いフォルダを解除して URL のフォルダを紐付け、「紐付けを解除」でそのフォルダの MP3 をバンドから外す
  */
 function setupYtDrive() {
-  const form = document.querySelector('[data-yt-drive]');
-  if (!form) return;
-  const miss = form.querySelector('[data-yt-drive-miss]');
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const btn = form.querySelector('button');
+  const box = document.querySelector('[data-yt-drive-folders]');
+  if (!box) return;
+  const list = box.querySelector('[data-yt-drive-list]');
+  const rowOf = (folder) => [...list.querySelectorAll('[data-yt-drive]')].find((f) => f.dataset.ytDrive === folder);
+  document.addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-yt-drive-remove]');
+    if (!btn || !(await askYesNo('このフォルダの MP3 をバンドから外しますか？'))) return;
+    const form = btn.closest('[data-yt-drive]');
     btn.disabled = true;
     try {
-      const { count, unmatched } = await apiPost('api_yt_drive', { url: form.url.value }, '紐付けられませんでした');
+      const { count } = await apiPost('api_yt_drive', { remove: form.dataset.ytDrive }, '解除できませんでした');
+      flashToast(`${count}本の紐付けを解除しました`);
+      form.remove();
+      box.hidden = !list.children.length;
+    } catch (err) {
+      flashToast(err.message, 'error');
+      btn.disabled = false;
+    }
+  });
+  document.addEventListener('submit', async (e) => {
+    const form = e.target.closest('[data-yt-drive]');
+    if (!form) return;
+    e.preventDefault();
+    const miss = form.querySelector('[data-yt-drive-miss]');
+    const btn = form.querySelector('button[type="submit"]');
+    btn.disabled = true;
+    try {
+      const { count, folder, unmatched } = await apiPost('api_yt_drive', { url: form.url.value, old: form.dataset.ytDrive }, '紐付けられませんでした');
       flashToast(`${count}本を紐付けました`);
+      if (form.dataset.ytDrive) {
+        form.dataset.ytDrive = folder;
+      } else if (!rowOf(folder)) { // 新しいフォルダは一覧に足す
+        const row = box.querySelector('[data-yt-drive-row]').content.firstElementChild.cloneNode(true);
+        row.dataset.ytDrive = folder;
+        row.url.value = form.url.value;
+        list.append(row);
+        box.hidden = false;
+        form.url.value = '';
+      }
       miss.querySelector('summary').textContent = `紐付けなかった動画 ${unmatched.length}本`;
       miss.querySelector('ul').replaceChildren(...unmatched.map(({ name, video_id: vid, title }) => {
         const li = document.createElement('li');

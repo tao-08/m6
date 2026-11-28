@@ -445,21 +445,42 @@ function drive_yt_match(array $files, array $bandVideos): array
 
 /**
  * drive_yt_match で割り当てたファイルを、YouTube の区分でバンドのファイルの後ろに足す。もう紐付けてあるファイルは区分と大きさだけ直す
+ *   $folder … 足したフォルダ（yt_drive_folder）。解除するとこのフォルダの分を外す（drive_remove_yt_folder）
  * @param array $files [['file_id', 'name', 'mime_type', 'size', 'video_id'], ...]
  */
-function drive_add_yt(PDO $pdo, int $bandId, array $files): void
+function drive_add_yt(PDO $pdo, int $bandId, array $files, string $folder): void
 {
     $st = $pdo->prepare('SELECT COALESCE(MAX(sort_order), 0) FROM band_drive_file WHERE band_id = ?');
     $st->execute([$bandId]);
     $order = (int)$st->fetchColumn();
-    $up = $pdo->prepare('INSERT INTO band_drive_file (band_id, file_id, name, mime_type, size, is_mix, video_id, sort_order) VALUES (?, ?, ?, ?, ?, 0, ?, ?)
-        ON DUPLICATE KEY UPDATE size = COALESCE(VALUES(size), size), is_mix = 0, video_id = VALUES(video_id)');
+    $up = $pdo->prepare('INSERT INTO band_drive_file (band_id, file_id, name, mime_type, size, is_mix, video_id, yt_folder, sort_order) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE size = COALESCE(VALUES(size), size), is_mix = 0, video_id = VALUES(video_id), yt_folder = VALUES(yt_folder)');
     foreach ($files as $f) {
         if (drive_id_valid((string)$f['file_id'])) {
             $up->execute([$bandId, $f['file_id'], mb_substr((string)$f['name'], 0, 255), substr((string)$f['mime_type'], 0, 100),
-                isset($f['size']) ? (int)$f['size'] : null, $f['video_id'], ++$order]);
+                isset($f['size']) ? (int)$f['size'] : null, $f['video_id'], $folder, ++$order]);
         }
     }
+}
+
+/**
+ * 紐付けたフォルダを解除する: そのフォルダから足したファイルをバンドから外し、一覧（yt_drive_folder）から消す
+ *   チャプターは動画の 'y:動画ID' に付くので消さない（ファイルの 'd:' の分だけ消す）
+ * @return int 外したファイルの数
+ */
+function drive_remove_yt_folder(PDO $pdo, string $folder): int
+{
+    $st = $pdo->prepare('SELECT band_id, file_id FROM band_drive_file WHERE yt_folder = ?');
+    $st->execute([$folder]);
+    $rows = $st->fetchAll();
+    $chap = $pdo->prepare('DELETE FROM band_audio_chapter WHERE band_id = ? AND audio_key = ?');
+    foreach ($rows as $r) {
+        $chap->execute([$r['band_id'], 'd:' . $r['file_id']]);
+    }
+    $pdo->prepare('DELETE FROM band_drive_file WHERE yt_folder = ?')->execute([$folder]);
+    $pdo->prepare('DELETE FROM yt_drive_folder WHERE folder_id = ?')->execute([$folder]);
+    drive_cache_forget($pdo, array_unique(array_column($rows, 'file_id')));
+    return count($rows);
 }
 
 /**

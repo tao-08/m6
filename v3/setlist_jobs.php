@@ -11,6 +11,7 @@
  *    解析のあと人がチャプターを直した動画は「解析済み」の代わりに緑の ✓「編集済み」（check_badge）
  *    動画ごとに、YouTube の区分の MP3 があれば「MP3」の印（見出しは 全部の本数・解析済み・MP3 のある本数）
  *    上の「MP3 を紐付け」はドライブのフォルダの「動画ID.mp3」をバンドに紐付ける（api_yt_drive.php。setupYtDrive）
+ *    紐付けたフォルダ（yt_drive_folder）は下に並べ、URL を直して「紐付け直す」・「紐付けを解除」ができる（migrations/158）
  *  表示するだけ（POST を受けない）。バンド名・エラー文は h() でエスケープする。
  * =====================================================================
  */
@@ -81,11 +82,17 @@ if ($tab === 'chapter') {
     ?>
     <h1>解析の状況</h1>
     <?php $tabNav(); ?>
-    <form class="yt-drive" data-yt-drive>
-        <input type="url" name="url" required maxlength="500" inputmode="url" autocomplete="off" placeholder="https://drive.google.com/drive/folders/…" aria-label="MP3 のフォルダのリンク">
-        <button type="submit" class="btn btn--sm">MP3 を紐付け</button>
-        <details class="yt-drive__miss small" data-yt-drive-miss hidden><summary></summary><ul></ul></details>
-    </form>
+    <?php // 「MP3 を紐付け」のフォーム。$folder = 紐付けたフォルダの ID（下の一覧で URL の編集・解除）。'' = 新しく紐付ける
+    $ytDriveForm = static function (string $folder): void { ?>
+        <form class="yt-drive" data-yt-drive="<?= h($folder) ?>">
+            <input type="url" name="url" required maxlength="500" inputmode="url" autocomplete="off" placeholder="https://drive.google.com/drive/folders/…" aria-label="MP3 のフォルダのリンク"<?= $folder !== '' ? ' value="https://drive.google.com/drive/folders/' . h($folder) . '"' : '' ?>>
+            <button type="submit" class="btn btn--sm"><?= $folder !== '' ? '紐付け直す' : 'MP3 を紐付け' ?></button>
+            <?php if ($folder !== ''): ?><button type="button" class="btn btn--sm btn--ghost" data-yt-drive-remove>紐付けを解除</button><?php endif; ?>
+            <details class="yt-drive__miss small" data-yt-drive-miss hidden><summary></summary><ul></ul></details>
+        </form>
+    <?php };
+    $ytDriveForm('');
+    ?>
     <?php if (!$years): ?>
         <div class="empty card"><p class="empty__title">YouTube のあるバンドはありません</p></div>
     <?php endif; ?>
@@ -115,6 +122,14 @@ if ($tab === 'chapter') {
         </details>
     <?php endforeach; ?>
     </div>
+    <?php $folders = $pdo->query('SELECT folder_id FROM yt_drive_folder ORDER BY created_at, folder_id')->fetchAll(PDO::FETCH_COLUMN); ?>
+    <section class="yt-drive-folders" data-yt-drive-folders<?= $folders ? '' : ' hidden' ?>>
+        <h2>紐付けたフォルダ</h2>
+        <div data-yt-drive-list>
+            <?php foreach ($folders as $f) { $ytDriveForm((string)$f); } ?>
+        </div>
+        <template data-yt-drive-row><?php $ytDriveForm('_'); ?></template>
+    </section>
     <?php
     render_footer();
     exit;

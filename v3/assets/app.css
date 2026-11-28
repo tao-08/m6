@@ -844,6 +844,7 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 .yt-drive { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
 .yt-drive input { flex: 1 1 240px; }
 .yt-drive__miss { flex-basis: 100%; }
+.yt-drive-folders { margin-top: 24px; }
 .yt-drive__miss summary { cursor: pointer; }
 .yt-drive__miss ul { margin: 4px 0 0; padding-left: 16px; display: grid; gap: 4px; }
 .chapter-years details details { margin-left: 16px; }

@@ -630,11 +630,20 @@ CREATE TABLE band_drive_file (
     size       BIGINT UNSIGNED   NULL,                -- バイト数。NULL = 不明（migrations/130）
     is_mix     TINYINT(1)        NOT NULL DEFAULT 0,  -- 1 = ミックス音源（バンドに MIX の印が付く。migrations/129）
     video_id   CHAR(11)          CHARACTER SET ascii COLLATE ascii_bin NULL, -- YouTube の区分: どの動画の音声か。NULL = 違う（migrations/153）
+    yt_folder  VARCHAR(100)      CHARACTER SET ascii COLLATE ascii_bin NULL, -- 足した yt_drive_folder。NULL = 手で足した（migrations/158）
     sort_order SMALLINT UNSIGNED NOT NULL DEFAULT 0,
     created_at DATETIME          NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (band_id, file_id),
+    KEY idx_bdf_yt_folder (yt_folder),
     CONSTRAINT fk_bdf_band FOREIGN KEY (band_id) REFERENCES band (band_id)
         ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- 「MP3 を紐付け」で紐付けたドライブのフォルダ（migrations/158。api_yt_drive.php）
+CREATE TABLE yt_drive_folder (
+    folder_id  VARCHAR(100) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+    created_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (folder_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- ---------------------------------------------------------------------
