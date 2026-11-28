@@ -62,17 +62,20 @@ if ($tab === 'chapter') {
             $live = &$years[(int)$b['fiscal_year']][(int)$b['live_id']];
             $live['name'] = (string)$b['live_name'];
             $hasMp3 = isset($mp3[$b['band_id'] . '|' . $vid]);
+            if (!$hasMp3 && in_array($state, ['none', 'error'], true)) {
+                $state = 'nomp3'; // 聴かせる音源が無い（まとめて解析の対象外）
+            }
             $live['videos'][] = [$b, $no, count($list), $state, (string)($job['error'] ?? ''), $hasMp3];
             $live['done'] = ($live['done'] ?? 0) + (in_array($state, ['saved', 'edited'], true) ? 1 : 0);
             $live['mp3'] = ($live['mp3'] ?? 0) + ($hasMp3 ? 1 : 0);
             unset($live);
         }
     }
-    // 見出しの数: 全部の本数・解析済み・MP3 のある本数
+    // 見出しの数: 全部の本数・解析済み（進み具合のバー）・MP3 のある本数
     $counts = static fn(int $all, int $done, int $mp3): string => '<span class="chapter-counts muted small"><span>' . $all . '本</span>'
-        . '<span ' . tip_attr('解析済み') . '>' . icon('view_timeline', 'icon--sm') . $done . '</span>'
+        . '<span ' . tip_attr('解析済み') . '><span class="job-progress"><span style="width: ' . ($all ? round($done / $all * 100) : 0) . '%"></span></span>' . $done . '</span>'
         . '<span ' . tip_attr('MP3 がある動画') . '><span class="tag label-inline">MP3</span>' . $mp3 . '</span></span>';
-    $label = ['saved' => '解析済み', 'running' => '解析中', 'queued' => '順番待ち', 'error' => '失敗', 'none' => '未解析'];
+    $label = ['saved' => '解析済み', 'running' => '解析中', 'queued' => '順番待ち', 'error' => '失敗', 'none' => '未解析', 'nomp3' => 'MP3 なし'];
 
     render_header('解析の状況', 'tools');
     ?>
@@ -99,11 +102,10 @@ if ($tab === 'chapter') {
                     <?php endif; ?>
                     <ul>
                     <?php foreach ($l['videos'] as [$b, $no, $count, $state, $error, $hasMp3]): ?>
-                        <li>
+                        <li<?= $state === 'nomp3' ? ' class="is-dim"' : '' ?>>
                             <a href="video_chapters?band=<?= (int)$b['band_id'] ?>&amp;v=<?= $no ?>"><?= h((string)$b['name']) ?><?= $count > 1 ? ' ' . ($no + 1) . '本目' : '' ?></a>
-                            <?php if ($hasMp3): ?><span class="tag">MP3</span><?php endif; ?>
-                            <?php if ($state === 'edited'): ?><?= check_badge('編集済み', '編集済み') ?><?php else: ?>
-                            <span class="muted small" data-chapter-state="<?= $state ?>"<?= $error !== '' ? ' ' . tip_attr($error) . ' style="cursor: help"' : '' ?>><?= $label[$state] ?? '' ?></span>
+                            <?php if ($state === 'edited'): ?><?= check_badge('編集済み', '編集済み') ?><?php elseif ($state === 'saved'): ?><?= check_badge('解析済み') ?><?php else: ?>
+                            <span class="job-state" data-chapter-state="<?= $state ?>"<?= $error !== '' ? ' ' . tip_attr($error) . ' style="cursor: help"' : '' ?>><?= $label[$state] ?? '' ?></span>
                             <?php endif; ?>
                         </li>
                     <?php endforeach; ?>
@@ -149,11 +151,11 @@ render_header('解析の状況', 'tools');
             <tr>
                 <td><a href="songs_edit?band=<?= $id ?>"><?= h((string)($names[$id] ?? '#' . $id)) ?></a></td>
                 <td><?php if ($job['state'] === 'running'): ?>
-                    解析中 <?= (int)floor((time() - (int)$job['at']) / 60) ?>分
+                    <span class="job-state" data-chapter-state="running">解析中 <?= (int)floor((time() - (int)$job['at']) / 60) ?>分</span>
                 <?php elseif ($job['state'] === 'done'): ?>
-                    確認待ち
+                    <span class="job-state" data-chapter-state="review">確認待ち</span>
                 <?php else: ?>
-                    <span <?= tip_attr(trim(($job['error'] ?? '') . ' / ' . ($job['detail'] ?? ''), ' /')) ?> style="cursor: help">失敗</span>
+                    <span class="job-state" data-chapter-state="error" <?= tip_attr(trim(($job['error'] ?? '') . ' / ' . ($job['detail'] ?? ''), ' /')) ?>>失敗</span>
                 <?php endif; ?></td>
                 <td><?= isset($job['flex']) ? ($job['flex'] ? '低速' : '高速') : '' ?></td>
                 <td><?= isset($job['at']) ? date('n/j H:i', (int)$job['at']) : '' ?></td>
@@ -163,7 +165,8 @@ render_header('解析の状況', 'tools');
     </table>
 <?php endif; ?>
 <?php if ($seeks): ?>
-    <h2 class="section-title">曲の場面があるバンド</h2>
+    <details class="job-fold">
+    <summary>曲の場面があるバンド <span class="muted small"><?= count($seeks) ?>組</span><?= icon('expand_more') ?></summary>
     <table class="table">
         <thead><tr><th>バンド</th><th>曲</th></tr></thead>
         <tbody>
@@ -175,5 +178,6 @@ render_header('解析の状況', 'tools');
         <?php endforeach; ?>
         </tbody>
     </table>
+    </details>
 <?php endif; ?>
 <?php render_footer();

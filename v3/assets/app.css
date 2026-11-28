@@ -829,11 +829,11 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 /* 絞り込み: 読み込んだ年度がふわっと出る。年度の開け閉めは末尾の ::details-content（モーダル自体の出入りは .modal） */
 .shell-filter__years > details { animation: soft-in var(--t-base) var(--ease-out) backwards; }
 @media (prefers-reduced-motion: reduce) { .shell-filter__years > details { animation: none; } }
-:is(.shell-filter__years, .chapter-years) summary { display: flex; align-items: center; gap: 8px; padding: 6px 0; font-weight: 700; cursor: pointer; list-style: none; }
-:is(.shell-filter__years, .chapter-years) summary::-webkit-details-marker { display: none; }
-:is(.shell-filter__years, .chapter-years) summary > .icon { margin-left: auto; color: var(--muted); transition: transform var(--t-base) var(--ease-out); }
-:is(.shell-filter__years, .chapter-years) details[open] > summary > .icon { transform: rotate(180deg); }
-@media (prefers-reduced-motion: reduce) { :is(.shell-filter__years, .chapter-years) summary > .icon { transition: none; } }
+:is(.shell-filter__years, .chapter-years, .job-fold) summary { display: flex; align-items: center; gap: 8px; padding: 6px 0; font-weight: 700; cursor: pointer; list-style: none; }
+:is(.shell-filter__years, .chapter-years, .job-fold) summary::-webkit-details-marker { display: none; }
+:is(.shell-filter__years, .chapter-years, .job-fold) summary > .icon { margin-left: auto; color: var(--muted); transition: transform var(--t-base) var(--ease-out); }
+:is(.shell-filter__years, .chapter-years, .job-fold) details[open] > summary > .icon { transform: rotate(180deg); }
+@media (prefers-reduced-motion: reduce) { :is(.shell-filter__years, .chapter-years, .job-fold) summary > .icon { transition: none; } }
 /* そのライブにある音源: 右に YouTube の列・MIX の列を作り、種類ごとに縦にそろえる（無い印の所は空ける。MIX の幅 = 高さ 18px × 25/14） */
 .shell-filter__marks { flex: none; margin-left: auto; display: grid; grid-template-columns: 25px 33px; align-items: center; gap: 6px; }
 .shell-filter__marks .youtube-icon { grid-column: 1; }
@@ -847,11 +847,25 @@ button.slot__yt { padding: 0; border: 0; background: none; cursor: pointer; } /*
 .yt-drive__miss summary { cursor: pointer; }
 .yt-drive__miss ul { margin: 4px 0 0; padding-left: 16px; display: grid; gap: 4px; }
 .chapter-years details details { margin-left: 16px; }
-.chapter-years ul { list-style: none; margin: 4px 0 8px; padding: 0 0 0 16px; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 6px 8px; }
-/* 名前・MP3・状態の3列。状態の列は一番広いもの（編集済みのバッジ）に合わせて、MP3 の位置をそろえる */
-.chapter-years li { display: grid; grid-template-columns: subgrid; grid-column: 1 / -1; align-items: baseline; }
-.chapter-years li .tag { grid-column: 2; }
-.chapter-years li > :last-child { grid-column: 3; justify-self: end; }
+.chapter-years details details + details { border-top: 1px solid var(--border); }
+.chapter-years ul { list-style: none; margin: 4px 0 8px; padding: 0; }
+/* 1行 = 名前と状態。区切り線、乗せたら面を沈める */
+.chapter-years li { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 36px; padding: 4px 10px; border-radius: var(--r-sm); }
+.chapter-years li + li { box-shadow: 0 -1px 0 var(--border); }
+.chapter-years li:hover { background: var(--surface-2); }
+.chapter-years li > a { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chapter-years li.is-dim > a { color: var(--muted); } /* MP3 が無い: 解析できない */
+.chapter-years .btn { margin: 4px 0 4px 10px; }
+/* 解析の状態（setlist_jobs.php。data-chapter-state は app_admin.js の未解析を解析でも書き換える） */
+.job-state { display: inline-flex; align-items: center; flex-shrink: 0; padding: 3px 8px; border-radius: var(--r-full); font-size: var(--fs-2xs); font-weight: 700; white-space: nowrap; color: var(--muted); background: var(--surface-2); }
+.job-state[data-chapter-state="error"] { color: var(--danger); background: var(--danger-bg); cursor: help; }
+.job-state:is([data-chapter-state="running"], [data-chapter-state="review"]) { color: var(--warn); background: var(--warn-bg); }
+.job-state[data-chapter-state="queued"] { background: none; box-shadow: inset 0 0 0 1px var(--border); }
+.job-state[data-chapter-state="nomp3"] { background: none; }
+/* 見出しの進み具合（解析済み / 全本数） */
+.job-progress { display: inline-block; width: 48px; height: 4px; border-radius: var(--r-full); background: var(--surface-2); overflow: hidden; }
+.job-progress > span { display: block; height: 100%; background: var(--ok); }
+.job-fold { margin-top: 24px; }
 .chapter-counts { display: inline-flex; align-items: center; gap: 14px; margin-left: 8px; font-weight: 400; }
 .chapter-counts > span { display: inline-flex; align-items: center; gap: 4px; }
 .chapter-counts > [data-tip] { cursor: help; }
@@ -3368,7 +3382,7 @@ button.ttb-m { cursor: pointer; text-decoration: underline dotted; }
  *   ・横の余白・文字サイズ・色は各クラスのまま。新しいラベルを作るときは、このリストに足す
  *   ・文中に置くラベルは .label-inline を足す（周りの文字サイズに追従して、行の中央に揃う）
  * ===================================================================== */
-:is(.part, .tag:not(.tag--flag), .se-mark, .check-badge, .pill, .sch-step__ok, .survey-chip) {
+:is(.part, .tag:not(.tag--flag), .se-mark, .check-badge, .job-state, .pill, .sch-step__ok, .survey-chip) {
   display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box;
   min-height: var(--label-h); line-height: 1;
   padding-top: max(1px, .1em) !important; padding-bottom: 0 !important;
