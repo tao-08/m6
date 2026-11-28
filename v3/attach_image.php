@@ -43,8 +43,9 @@ if (isset(ATTACH_KINDS[$kind])) {
         $st->execute([$id]);
         $img = $st->fetch() ?: null;
     } elseif ($kind === 'special') {
-        // ログインしていれば誰でも（special.php の一覧と同じ）
-        $st = $pdo->prepare('SELECT special_id AS image_id, file_name, title FROM special_content WHERE special_id = ? AND file_name IS NOT NULL');
+        // 見られる人だけ（special.php の一覧と同じ）
+        require_once __DIR__ . '/lib/special.php';
+        $st = $pdo->prepare('SELECT special_id AS image_id, file_name, title FROM special_content WHERE special_id = ? AND file_name IS NOT NULL AND ' . special_visible_sql());
         $st->execute([$id]);
         $img = $st->fetch() ?: null;
     } elseif ($kind === 'band_audio') {

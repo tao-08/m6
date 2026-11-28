@@ -17,6 +17,7 @@
 declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 require_once __DIR__ . '/lib/repository.php';
+require_once __DIR__ . '/lib/special.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: private, max-age=30'); // 同じ文字の問い合わせはブラウザが少しのあいだ覚える
@@ -64,7 +65,7 @@ $kinds = [
     'venue' => ["SELECT v.name FROM venue v WHERE v.name $COL LIKE ? ORDER BY v.name"],
     'studio' => ["SELECT s.name FROM studio s WHERE s.name $COL LIKE ? OR s.short_name $COL LIKE ? ORDER BY s.name"],
     'special' => ["SELECT sc.title FROM special_content sc LEFT JOIN live l ON l.live_id = sc.live_id
-                   WHERE (sc.live_id IS NULL OR l.live_id IS NOT NULL) AND (sc.title $COL LIKE ? OR sc.author $COL LIKE ?)
+                   WHERE (sc.live_id IS NULL OR l.live_id IS NOT NULL) AND " . special_visible_sql('sc') . " AND (sc.title $COL LIKE ? OR sc.author $COL LIKE ?)
                    ORDER BY sc.fiscal_year DESC, sc.special_id DESC"],
     // 機材名（会場・スタジオ）。? には equip_like() の値を渡す（2つ目の true。表記ゆれを吸収）
     'equip' => ["SELECT e.label FROM (SELECT CONCAT_WS(' ', NULLIF(maker, ''), NULLIF(model_name, '')) AS label FROM venue_equipment UNION ALL SELECT CONCAT_WS(' ', NULLIF(maker, ''), NULLIF(model_name, '')) FROM studio_equipment) e

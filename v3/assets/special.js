@@ -10,11 +10,23 @@
   document.querySelector('[data-special-add]').addEventListener('click', () => add.showModal());
   add.querySelector('[data-special-add-close]').addEventListener('click', () => add.close());
 
-  // 編集: 押したカードのタイトル・作者を入れて開く。削除のフォームにも同じ id を入れる
+  // 見られる人のプルダウン: 選んだ入部年度を summary に出す（未選択は全員）
+  const showYears = (dd) => {
+    const ys = [...dd.querySelectorAll('input:checked')].map((i) => `${i.value}年入部`);
+    dd.querySelector('[data-special-years-text]').textContent = ys.length ? ys.join('、') : '全員';
+  };
+  document.querySelectorAll('[data-special-years]').forEach((dd) => dd.addEventListener('change', () => showYears(dd)));
+
+  // 編集: 押したカードのタイトル・作者・見られる入部年度を入れて開く。削除のフォームにも同じ id を入れる
   document.querySelectorAll('[data-special-edit]').forEach((btn) => btn.addEventListener('click', () => {
     edit.querySelectorAll('input[name=id]').forEach((i) => { i.value = btn.dataset.id; });
     edit.querySelector('input[name=title]').value = btn.dataset.title;
     edit.querySelector('input[name=author]').value = btn.dataset.author;
+    const years = btn.dataset.years.split(',');
+    const dd = edit.querySelector('[data-special-years]');
+    dd.querySelectorAll('input').forEach((i) => { i.checked = years.includes(i.value); });
+    dd.open = false;
+    showYears(dd);
     edit.showModal();
   }));
   edit.querySelector('[data-special-edit-close]').addEventListener('click', () => edit.close());

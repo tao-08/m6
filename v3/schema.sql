@@ -1958,6 +1958,13 @@ CREATE TABLE special_content (
     KEY idx_special_year (fiscal_year),
     KEY idx_special_live (live_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+-- 見られる入部年度（migrations/155 に説明）
+CREATE TABLE special_view_year (
+    special_id INT UNSIGNED      NOT NULL COMMENT 'スペシャルコンテンツ',
+    entry_year SMALLINT UNSIGNED NOT NULL COMMENT 'この入部年度の人が見られる',
+    PRIMARY KEY (special_id, entry_year),
+    CONSTRAINT fk_special_view_year FOREIGN KEY (special_id) REFERENCES special_content (special_id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- ---------------------------------------------------------------------
 --  band_survey — バンド希望調査（migrations/142 に説明）

@@ -54,6 +54,7 @@ if (is_post()) {
             flash('タイトルを入力してください', 'error');
         } elseif ($owner !== false && ((int)$owner === (int)$user['user_id'] || is_admin())) {
             $pdo->prepare('UPDATE special_content SET title = ?, author = ? WHERE special_id = ?')->execute([$title, $author, (int)$_POST['id']]);
+            special_save_years($pdo, (int)$_POST['id'], (array)($_POST['years'] ?? []));
             flash('保存しました');
         }
         redirect('special');
@@ -88,6 +89,7 @@ if (is_post()) {
             $fileName = $hasFile ? live_attach_store('special', $file)['file_name'] : null;
             $pdo->prepare('INSERT INTO special_content (fiscal_year, live_id, title, author, url, file_name, user_id) VALUES (?, ?, ?, ?, ?, ?, ?)')
                 ->execute([$year, $liveId, $title, $author, $hasFile ? null : $url, $fileName, (int)$user['user_id']]);
+            special_save_years($pdo, (int)$pdo->lastInsertId(), (array)($_POST['years'] ?? []));
             flash('追加しました');
             redirect('special');
         } catch (RuntimeException $e) {
@@ -101,12 +103,25 @@ if (is_post()) {
 // 一覧: 年度ごと（新しい順）。消えたライブに付いていたものは出さない（履歴から戻すと出る）
 $rows = $pdo->query('SELECT s.*, l.name AS live_name FROM special_content s
     LEFT JOIN live l ON l.live_id = s.live_id
-    WHERE s.live_id IS NULL OR l.live_id IS NOT NULL
+    WHERE (s.live_id IS NULL OR l.live_id IS NOT NULL) AND ' . special_visible_sql('s') . '
     ORDER BY s.fiscal_year DESC, s.live_id IS NOT NULL, s.live_id DESC, s.special_id')->fetchAll();
 $byYear = [];
 foreach ($rows as $r) {
     $byYear[(int)$r['fiscal_year']][] = $r;
 }
+$viewYears = special_view_years($pdo);
+// 見られる入部年度の選択肢: 今年から7年分 + 保存してある年度（band_survey.php と同じ）
+$fy = current_fiscal_year();
+$yearOpts = array_unique(array_merge(range($fy, $fy - 6), ...array_values($viewYears ?: [[]])));
+rsort($yearOpts);
+// 追加・編集で使う、見られる入部年度のプルダウン（見た目は .survey-years。選んだ年度を summary に出すのは special.js）
+$yearPicker = static function () use ($yearOpts): string {
+    $html = '<div class="field"><span>見られる人</span><details class="survey-years" data-special-years><summary data-special-years-text>全員</summary><div class="survey-years__list">';
+    foreach ($yearOpts as $y) {
+        $html .= '<label class="check"><input type="checkbox" name="years[]" value="' . (int)$y . '">' . (int)$y . '年入部</label>';
+    }
+    return $html . '</div></details></div>';
+};
 
 render_header('スペシャルコンテンツ', 'tools');
 ?>
@@ -148,6 +163,7 @@ render_header('スペシャルコンテンツ', 'tools');
                 <?php endforeach; ?>
             </select>
         </label>
+        <?= $yearPicker() ?>
         <label class="field"><span>URL</span>
             <input type="url" name="url" maxlength="500" placeholder="https://">
         </label>
@@ -175,6 +191,7 @@ render_header('スペシャルコンテンツ', 'tools');
             <label class="field"><span>作者</span>
                 <input type="text" name="author" maxlength="50" data-suggest-list="member-names" autocomplete="off">
             </label>
+            <?= $yearPicker() ?>
             <div class="form-actions">
                 <button class="btn btn--ghost btn--sm" type="button" data-special-edit-close>キャンセル</button>
                 <button class="btn btn--primary btn--sm" type="submit">保存</button>
@@ -226,7 +243,7 @@ render_header('スペシャルコンテンツ', 'tools');
                 <?= $popup ? '</button>' : '</a>' ?>
                 <?php if ((int)$r['user_id'] === (int)$user['user_id'] || is_admin()): ?>
                     <button type="button" class="btn btn--ghost btn--sm special-card__edit" data-special-edit data-id="<?= (int)$r['special_id'] ?>"
-                        data-title="<?= h($r['title']) ?>" data-author="<?= h((string)$r['author']) ?>" aria-label="編集" title="編集"><?= icon('edit') ?></button>
+                        data-title="<?= h($r['title']) ?>" data-author="<?= h((string)$r['author']) ?>" data-years="<?= h(implode(',', $viewYears[(int)$r['special_id']] ?? [])) ?>" aria-label="編集" title="編集"><?= icon('edit') ?></button>
                 <?php endif; ?>
             </div>
         <?php endforeach; ?>

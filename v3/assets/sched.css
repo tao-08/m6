@@ -383,7 +383,6 @@
   .sch-terms .sch-row input[type="date"], .sch-periods .sch-row input[type="time"] { padding: 6px; font-size: var(--fs-sm); }
 }
 .sch-sec .sch-row input[type="file"] { flex: 1; max-width: 100%; }
-.sch-sec .sch-row input[type="file"]::file-selector-button { margin-right: 8px; padding: 4px 10px; border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--surface-2); color: var(--text); font: inherit; cursor: pointer; }
 .sch-set-studio .check { flex-wrap: wrap; } /* 注意: .sch-studio はスタジオ情報のモーダル（高さ・幅が大きい）なので、設定の一覧には使わない */
 
 @media (max-width: 560px) {

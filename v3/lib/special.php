@@ -11,11 +11,48 @@ declare(strict_types=1);
 require_once __DIR__ . '/live_image.php';
 require_once __DIR__ . '/youtube.php';
 
+/**
+ * 見られるものだけに絞る WHERE の条件（$a は special_content の別名）。
+ * 入部年度の指定が無い・自分の入部年度が入っている・自分が追加した・管理者なら見られる。値は int にしてから埋め込む
+ */
+function special_visible_sql(string $a = 'special_content'): string
+{
+    if (is_admin()) {
+        return '1';
+    }
+    $years = "SELECT entry_year FROM special_view_year v WHERE v.special_id = $a.special_id";
+    $ey = my_entry_year();
+    return "(NOT EXISTS ($years) OR $a.user_id = " . (int)(current_user()['user_id'] ?? 0)
+        . ($ey !== null ? " OR $ey IN ($years)" : '') . ')';
+}
+
+/** @return array<int, int[]> special_id => 見られる入部年度（新しい順） */
+function special_view_years(PDO $pdo): array
+{
+    $out = [];
+    foreach ($pdo->query('SELECT special_id, entry_year FROM special_view_year ORDER BY entry_year DESC') as $r) {
+        $out[(int)$r['special_id']][] = (int)$r['entry_year'];
+    }
+    return $out;
+}
+
+/** 見られる入部年度を入れ直す（空なら全員） */
+function special_save_years(PDO $pdo, int $id, array $years): void
+{
+    $pdo->prepare('DELETE FROM special_view_year WHERE special_id = ?')->execute([$id]);
+    $ins = $pdo->prepare('INSERT INTO special_view_year (special_id, entry_year) VALUES (?, ?)');
+    foreach (array_unique(array_map('intval', $years)) as $y) {
+        if ($y >= 1900 && $y <= 2100) {
+            $ins->execute([$id, $y]);
+        }
+    }
+}
+
 /** @return array{year: array<int, array>, live: array<int, array>} 年度全体のもの / ライブごとのもの（古い順） */
 function special_load(PDO $pdo): array
 {
     $out = ['year' => [], 'live' => []];
-    foreach ($pdo->query('SELECT * FROM special_content ORDER BY special_id') as $r) {
+    foreach ($pdo->query('SELECT * FROM special_content WHERE ' . special_visible_sql() . ' ORDER BY special_id') as $r) {
         if ($r['live_id'] === null) {
             $out['year'][(int)$r['fiscal_year']][] = $r;
         } else {

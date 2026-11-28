@@ -243,7 +243,7 @@ if ($faculty !== '' || $roleName !== null) {
     $st->execute([$eqLike, $like, $like, $eqLike]);
     $studios = $st->fetchAll();
     $st = $pdo->prepare('SELECT s.* FROM special_content s LEFT JOIN live l ON l.live_id = s.live_id
-        WHERE (s.live_id IS NULL OR l.live_id IS NOT NULL)
+        WHERE (s.live_id IS NULL OR l.live_id IS NOT NULL) AND ' . special_visible_sql('s') . '
           AND (s.title COLLATE utf8mb4_unicode_520_ci LIKE ? OR s.author COLLATE utf8mb4_unicode_520_ci LIKE ?)
         ORDER BY s.fiscal_year DESC, s.special_id DESC LIMIT 30');
     $st->execute([$like, $like]);

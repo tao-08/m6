@@ -429,6 +429,10 @@ option, optgroup { background-color: var(--surface); color: var(--text); }
   width: 100%; padding: 10px 13px; border-radius: var(--r-md); border: 1px solid var(--border);
   background: var(--surface); color: var(--text); font-size: var(--fs-md); min-width: 0;
 }
+/* 「ファイルを選択」のボタン: 全ページ共通で .btn--sm と同じ見た目（ブラウザ標準の灰色のボタンを出さない） */
+input[type="file"]::file-selector-button { margin-right: 10px; padding: 7px 12px; border: 1px solid var(--border); border-radius: var(--r-full);
+  background: var(--surface-2); color: var(--text); font: 700 var(--fs-sm)/1 var(--font); cursor: pointer; transition: background var(--t-fast) ease; }
+input[type="file"]::file-selector-button:hover { background: var(--surface); }
 .search { flex: 1; padding-left: 38px;
   background: var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%238a8894' stroke-width='2'%3E%3Ccircle cx='7' cy='7' r='5'/%3E%3Cpath d='m11 11 4 4'/%3E%3C/svg%3E") no-repeat 14px center; }
 .search.search--plain { padding-left: 13px; background-image: none; } /* 検索ではない入力欄（検索マークを出さない） */
@@ -480,7 +484,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .special-link .youtube-icon { width: 20px; height: 14px; flex: none; }
 .special-link .icon { font-size: 18px; flex: none; }
 .special-grid { grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 10px; } /* 一覧より細かく並べる */
-.special-card { position: relative; padding: 0; overflow: hidden; }
+.card.special-card { position: relative; padding: 0; overflow: hidden; } /* .special-card だけだとスマホの .card { padding: 16px } に負ける */
 .special-card__open { display: grid; gap: 4px; width: 100%; padding: 0 0 8px; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .special-card__open > :is(.special-card__title, .muted) { padding: 0 12px; }
 .special-card__title { font-weight: 600; padding-top: max(1px, .1em); overflow-wrap: anywhere; }
@@ -488,7 +492,9 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .special-card__thumb { display: grid; place-items: center; aspect-ratio: 16 / 9; margin: 4px 4px 6px; border-radius: var(--r-md); background: var(--surface-2); overflow: hidden; }
 .special-card__thumb img { width: 100%; height: 100%; object-fit: cover; }
 .special-card__thumb .icon { font-size: 36px; color: var(--muted); }
-.special-card__edit { position: absolute; top: 6px; right: 6px; background: var(--surface); }
+.special-card__edit { position: absolute; bottom: 6px; right: 6px; background: var(--surface); }
+.special-card:has(.special-card__edit) .special-card__open > :is(.special-card__title, .muted) { padding-right: 44px; } /* 文字を右下の編集ボタンの下に潜らせない */
+html:has(:is([data-special-modal], [data-special-add-dialog], [data-special-edit-dialog])[open]) { overflow: hidden; } /* 開いている間は後ろをスクロールさせない */
 .special-modal { width: min(920px, calc(100vw - 24px)); background: var(--surface); }
 @media (min-width: 900px) { .special-modal { width: min(1400px, calc(100vw - 64px), calc((100vh - 120px) * 16 / 9)); } } /* PC: 画面の高さに収まる範囲でできるだけ大きく（16:9） */
 .special-modal iframe { display: block; width: 100%; aspect-ratio: 16 / 9; max-height: calc(100vh - 120px); height: auto; border: 0; background: #000; }
