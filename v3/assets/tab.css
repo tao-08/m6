@@ -176,7 +176,8 @@ details[open] > .tab-summary > .tab-summary__chev { transform: rotate(180deg); }
 @media (max-width: 719px) { .tab-new__submit { justify-self: stretch; } } /* スマホは横いっぱい（親指で押しやすい） */
 
 /* ===== プレイヤー ===== */
-.tab { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; margin-top: 12px; padding: 0; } /* 列を中身の幅に広げない（canvas・操作バーでページが横にはみ出す）
+.tab[data-tab] { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; margin-top: 12px; padding: 0; } /* 列を中身の幅に広げない（canvas・操作バーでページが横にはみ出す）
+   [data-tab] … 曲カードのために tab.css が他のページにも読まれるので、ページ内のタブ（.tabs > .tab）に当てない
    padding: 0 … app.css の汎用 .tab（日程タブ）の padding: 8px 16px も当たっていて、パンくずより左右 16px ずつ内側に寄っていた。スマホの 16px は、グリッド（マス）の幅に響くので消す */
 .tab-head { display: flex; align-items: center; gap: 10px; }
 .tab-head__art { width: 44px; height: 44px; border-radius: var(--r-md); object-fit: cover; flex: none; }
