@@ -806,13 +806,17 @@
     y.checked = on === lives.length;
     y.indeterminate = on > 0 && on < lives.length;
   };
+  const livesCache = new Map(); // URL → Promise（絞り込みの中身）
   filterBtn.addEventListener('click', async () => {
     yearsEl.replaceChildren();
     filterDlg.showModal();
-    const get = async (url) => { const res = await fetch(url).catch(() => null); return res?.ok ? res.json().catch(() => null) : null; };
+    const get = (url) => { // 開くたびに取り直さない（失敗したときだけ次に取り直す）
+      if (!livesCache.has(url)) livesCache.set(url, fetch(url).then((res) => (res.ok ? res.json() : null)).catch(() => null).then((j) => { if (!j) livesCache.delete(url); return j; }));
+      return livesCache.get(url);
+    };
     const [data, inScope] = await Promise.all([
-      get('api_shuffle?scope=all'),
-      cfg.scope === 'all' ? null : get(`api_shuffle?scope=${encodeURIComponent(cfg.scope)}&id=${Number(cfg.id) || 0}`),
+      get('api_shuffle?scope=all&lives=1'),
+      cfg.scope === 'all' ? null : get(`api_shuffle?scope=${encodeURIComponent(cfg.scope)}&id=${Number(cfg.id) || 0}&lives=1`),
     ]);
     scopeLives = inScope ? new Set(inScope.items.map((q) => q.live_id)) : null; // null = すべて範囲の中
     const years = new Map(); // 年度 → Map(live_id → { name, date, mix, yt })
