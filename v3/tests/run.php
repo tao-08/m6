@@ -1298,7 +1298,37 @@ file_put_contents($gIn, $frame(200) . $frame(2) . 'TAG' . str_repeat('t', 125));
 $o = [audio_mp3_gain($gIn, $gOut, -3), file_get_contents($gOut) === $frame(197) . $frame(0) . 'TAG' . str_repeat('t', 125)];
 file_put_contents($gIn, $frame(200) . "\xFF\xFB\xA0\x00" . substr($frame(200), 4)); // 途中でビットレートが変わる（VBR）
 $o[] = audio_mp3_gain($gIn, $gOut, -3);
+$o2 = [];
+foreach ([$frame(200), substr($frame(200), 0, 36) . 'Xing' . str_repeat("\x55", 377), str_repeat('x', 417)] as $f) { // 128k CBR / VBR / MP3 でない
+    file_put_contents($gIn, $f);
+    $o2[] = audio_mp3_kbps($gIn);
+}
 @unlink($gIn); @unlink($gOut);
+check('MP3 のビットレート（CBR だけ。もう 160k 以下なら ffmpeg を動かさない）', $o2, [128, null, null]);
+// 落としながら流す（AudioLiveStream）: 少しずつ届いても、送る中身は落とし終えてから下げたもの（audio_mp3_gain）の from〜to と同じ
+$file = "ID3\x03\x00\x00\x00\x00\x00\x14" . str_repeat('i', 20) . $frame(200) . $frame(150) . $frame(3) . $frame(200) . 'TAG' . str_repeat('t', 125);
+file_put_contents($gIn, $file);
+audio_mp3_gain($gIn, $gOut, AUDIO_MIX_GAIN_STEPS);
+$want = (string)file_get_contents($gOut);
+$live = static function (string $file, array $get, string $range = ''): array {
+    $_GET = $get;
+    $_SERVER['HTTP_RANGE'] = $range;
+    $s = new AudioLiveStream(strlen($file), true);
+    $e = error_reporting(E_ALL & ~E_WARNING); // CLI はもう出力しているので header() が警告を出す
+    ob_start();
+    foreach (str_split($file, 7) as $c) {
+        $s->feed($c);
+    }
+    $s->end();
+    error_reporting($e);
+    return [$s->ok(), ob_get_clean()];
+};
+$at = static fn(int $q): int => (int)round(30 + $q / strlen($file) * (strlen($file) - 30));
+$o3 = [$live($file, []) === [true, $want], $live($file, ['from' => '500', 'to' => '1200']) === [true, substr($want, $at(500), $at(1200) - $at(500) + 1)], $live(str_repeat('x', 2000), []), $live($file, [], 'bytes=500-')];
+$_GET = [];
+unset($_SERVER['HTTP_RANGE']);
+@unlink($gIn); @unlink($gOut);
+check('落としながら流す: 届いた分から下げて送る。from= / to= は落とし終えたあとと同じ位置。MP3 でない・Range の続きは流さない', $o3, [true, true, [false, ''], [false, '']]);
 check('MIX の音量: 各フレームの global_gain だけ下げる（0 で止める）。最後のタグはそのまま。VBR は扱わない', $o, [true, true, false]);
 check('MP3 の先頭のタグの長さ（from= の位置から外す）', [audio_id3_len("ID3    "), audio_id3_len("ID3    
 "), audio_id3_len("ÿû       ")], [10 + 255, 30, 0]);

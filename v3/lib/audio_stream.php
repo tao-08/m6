@@ -74,6 +74,35 @@ function audio_quiet_state(string $path): ?string
     return null;
 }
 
+/** MPEG-1 Layer III・CRC なしのフレームの長さ（ヘッダー 4 バイトを含む）。ほかのフレーム・フレームでないなら null */
+function audio_mp3_frame_len(int $b): ?int
+{
+    $bri = ($b >> 12) & 15;
+    $sri = ($b >> 10) & 3;
+    if (($b & 0xFFE00000) !== 0xFFE00000 || (($b >> 16) & 0xF) !== 0xB || $bri === 0 || $bri === 15 || $sri === 3) { // 同期・MPEG-1（11）・Layer III（01）・CRC なし（1）
+        return null;
+    }
+    return intdiv(144000 * [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320][$bri], [44100, 48000, 32000][$sri]) + (($b >> 9) & 1);
+}
+
+/** 1 フレームの global_gain を $steps 段変える。$body はヘッダーの後ろ */
+function audio_mp3_frame_gain(string &$body, bool $mono, int $steps): void
+{
+    $nch = $mono ? 1 : 2;
+    for ($g = 0; $g < 2 * $nch; $g++) { // 2 グラニュール × チャンネル。global_gain は各 59 ビットの 21 ビット目から 8 ビット
+        $pos = 9 + ($mono ? 5 : 3) + 4 * $nch + $g * 59 + 21;
+        $i = $pos >> 3;
+        $sh = 8 - ($pos & 7);
+        $w = (ord($body[$i]) << 8) | ord($body[$i + 1]);
+        $v = ($w >> $sh) & 0xFF;
+        if ($v > 0) { // 0 は無音
+            $w = ($w & ~(0xFF << $sh)) | (max(0, min(255, $v + $steps)) << $sh);
+            $body[$i] = chr(($w >> 8) & 0xFF);
+            $body[$i + 1] = chr($w & 0xFF);
+        }
+    }
+}
+
 /**
  * MPEG-1 Layer III の CBR の MP3 を、各フレームの global_gain を $steps 段（1 段 1.5dB）変えて $out に書く。できない MP3 なら false（ffmpeg で作る）
  *   CRC 付き・VBR（Xing）・MPEG-2 は扱わない。先頭の ID3・最後の ID3v1 / APE タグはそのまま写す
@@ -104,13 +133,10 @@ function audio_mp3_gain(string $in, string $out, int $steps): bool
                 break;
             }
             $bri = ($b >> 12) & 15;
-            $sri = ($b >> 10) & 3;
             $mono = (($b >> 6) & 3) === 3;
-            // MPEG-1（11）・Layer III（01）・CRC なし（1）だけ
-            if ((($b >> 16) & 0xF) !== 0xB || $bri === 0 || $bri === 15 || $sri === 3) {
+            if (($len = audio_mp3_frame_len($b)) === null) {
                 return false;
             }
-            $len = intdiv(144000 * [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320][$bri], [44100, 48000, 32000][$sri]) + (($b >> 9) & 1);
             $body = (string)fread($src, $len - 4);
             $side = $mono ? 17 : 32; // サイド情報の長さ
             if ($first) {
@@ -129,19 +155,7 @@ function audio_mp3_gain(string $in, string $out, int $steps): bool
             }
             $rate = $bri;
             if (strlen($body) === $len - 4) { // 途中で切れた最後のフレームはそのまま
-                $nch = $mono ? 1 : 2;
-                for ($g = 0; $g < 2 * $nch; $g++) { // 2 グラニュール × チャンネル。global_gain は各 59 ビットの 21 ビット目から 8 ビット
-                    $pos = 9 + ($mono ? 5 : 3) + 4 * $nch + $g * 59 + 21;
-                    $i = $pos >> 3;
-                    $sh = 8 - ($pos & 7);
-                    $w = (ord($body[$i]) << 8) | ord($body[$i + 1]);
-                    $v = ($w >> $sh) & 0xFF;
-                    if ($v > 0) { // 0 は無音
-                        $w = ($w & ~(0xFF << $sh)) | (max(0, min(255, $v + $steps)) << $sh);
-                        $body[$i] = chr(($w >> 8) & 0xFF);
-                        $body[$i + 1] = chr($w & 0xFF);
-                    }
-                }
+                audio_mp3_frame_gain($body, $mono, $steps);
             }
             fwrite($dst, $h . $body);
         }
@@ -150,6 +164,26 @@ function audio_mp3_gain(string $in, string $out, int $steps): bool
         fclose($src);
         fclose($dst);
     }
+}
+
+/** MPEG-1 Layer III の CBR の MP3 なら、そのビットレート（kbps）。それ以外（VBR・WAV など）・読めなければ null */
+function audio_mp3_kbps(string $path): ?int
+{
+    $id3 = audio_id3_len((string)@file_get_contents($path, false, null, 0, 10));
+    return audio_mp3_head_kbps((string)@file_get_contents($path, false, null, 0, $id3 + 64));
+}
+
+/** audio_mp3_kbps の、ファイルの先頭（ID3 + 64 バイト）から読む版 */
+function audio_mp3_head_kbps(string $head): ?int
+{
+    $f = substr($head, audio_id3_len($head), 64);
+    if (strlen($f) < 64 || (unpack('N', $f)[1] & 0xFFFE0000) !== 0xFFFA0000) { // 同期 + MPEG-1 + Layer III
+        return null;
+    }
+    $b = unpack('N', $f)[1];
+    $bri = ($b >> 12) & 15;
+    $side = ((($b >> 6) & 3) === 3 ? 17 : 32) + (($b >> 16) & 1 ? 0 : 2); // サイド情報（+ CRC）の後ろに VBR の印 Xing が来る
+    return $bri === 0 || $bri === 15 || substr($f, 4 + $side, 4) === 'Xing' ? null : [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320][$bri];
 }
 
 /** まだなら 160 に置き換える（$quiet: MIX なので音量を下げる。160 にはしない）。同時の要求は flock で1つだけが作り、ほかは待つ */
@@ -183,6 +217,11 @@ function audio_shrink_make(string $path, string $mark, bool $quiet = false): voi
     $part = $old . '.part.mp3'; // ffmpeg は出力の形式を拡張子で決める
     $why = null;
     clearstatcache(true, $old);
+    $kbps = $quiet || is_file($old) ? null : audio_mp3_kbps($path);
+    if ($kbps !== null && $kbps <= AUDIO_LIGHT_KBPS) { // もう 160k 以下の CBR（YouTube の MP3 は takeout_to_mp3.ps1 で 160k）: 作っても小さくならないので ffmpeg を動かさない
+        file_put_contents($mark, (string)$orig, LOCK_EX);
+        return;
+    }
     if (!$quiet && is_file($old) && filesize($old) > 0) {
         rename($old, $part);
     } elseif ($quiet && audio_mp3_gain($path, $part, AUDIO_MIX_GAIN_STEPS)) {
@@ -232,6 +271,143 @@ function audio_prep_state(string $path, int $size = 0): array
         is_file($part) => ['step' => 'convert', 'done' => (int)filesize($part)],
         default => ['step' => is_file($path) ? 'ready' : 'none'],
     };
+}
+
+/**
+ * 落としている途中の音源を、届いた分から流す（drive_audio.php。lib/drive_cache.php の drive_cache_ensure が、ファイルの頭から順に feed する）
+ *   流すのは MPEG-1 Layer III・CRC なしの CBR の MP3 だけ。ほかは流さず（ok() が false）、落とし終わるのを待って今までどおり audio_stream_file
+ *   from= / to= の位置は audio_stream_file と同じ計算（落としている途中は元の大きさのまま）。Range の続き・HEAD は扱わない
+ *   $quiet（MIX）: 各フレームの音量を下げて送る（audio_mp3_gain と同じ。大きさは変わらないので位置はずれない）
+ *   shortcut: Content-Length は DB の大きさ。ドライブ側で差し替わって大きさが違うと、短く切れる・余りは送らない（次からはキャッシュから正しく流れる）
+ */
+final class AudioLiveStream
+{
+    private string $buf = '';    // まだ送っていない分（フレームの途中まで）
+    private int $pos = 0;        // $buf の頭のファイル位置
+    private ?bool $ok = null;    // 流せるか（null: まだわからない）
+    private bool $raw = false;   // フレームが読めなくなった（最後のタグなど）: あとはそのまま送る
+    private bool $first = true;  // 先頭のフレーム（LAME の Info は音量を変えない）
+    private bool $done = false;  // 送り終えた・相手が切った
+    private int $from = 0;
+    private int $to = 0;
+
+    public function __construct(private int $size, private bool $quiet)
+    {
+        $range = (string)($_SERVER['HTTP_RANGE'] ?? '');
+        if ($size <= 0 || ($_SERVER['REQUEST_METHOD'] ?? '') === 'HEAD' || ($range !== '' && $range !== 'bytes=0-')) {
+            $this->ok = false;
+        }
+    }
+
+    public function ok(): ?bool
+    {
+        return $this->ok;
+    }
+
+    /** もう送るものが無い（落とすのは続けてよい） */
+    public function done(): bool
+    {
+        return $this->done || $this->ok === false;
+    }
+
+    /** ファイルの続きのバイト */
+    public function feed(string $chunk): void
+    {
+        if ($this->done()) {
+            return;
+        }
+        $this->buf .= $chunk;
+        if ($this->ok === null && !$this->start()) {
+            return;
+        }
+        $i = 0;
+        $n = strlen($this->buf);
+        $out = '';
+        while (!$this->raw && $i + 4 <= $n) {
+            $h = substr($this->buf, $i, 4);
+            $b = unpack('N', $h)[1];
+            if (($len = audio_mp3_frame_len($b)) === null) {
+                $this->raw = true; // 最後のタグ・わからないもの: そのまま
+                break;
+            }
+            if ($i + $len > $n) {
+                break; // フレームの残りを待つ
+            }
+            $body = substr($this->buf, $i + 4, $len - 4);
+            $mono = (($b >> 6) & 3) === 3;
+            if ($this->quiet && !($this->first && substr($body, $mono ? 17 : 32, 4) === 'Info')) {
+                audio_mp3_frame_gain($body, $mono, AUDIO_MIX_GAIN_STEPS);
+            }
+            $this->first = false;
+            $out .= $h . $body;
+            $i += $len;
+        }
+        if ($this->raw) {
+            $out .= substr($this->buf, $i);
+            $i = $n;
+        }
+        $this->buf = substr($this->buf, $i);
+        $this->send($out);
+    }
+
+    /** 落とし終えた: 残り（途中で切れたフレーム）をそのまま送る */
+    public function end(): void
+    {
+        if ($this->ok && !$this->done) {
+            $this->send($this->buf);
+            $this->buf = '';
+        }
+    }
+
+    /** 頭が届いたら、流せる形式か決めてヘッダーを送る */
+    private function start(): bool
+    {
+        $id3 = audio_id3_len($this->buf);
+        if (strlen($this->buf) < 10 || strlen($this->buf) < $id3 + 64) {
+            return false;
+        }
+        $b = unpack('N', substr($this->buf, $id3, 4))[1];
+        if (audio_mp3_head_kbps($this->buf) === null || audio_mp3_frame_len($b) === null) {
+            $this->ok = false;
+            return false;
+        }
+        $at = fn(string $q): ?int => ctype_digit((string)($_GET[$q] ?? '')) ? (int)round($id3 + (int)$_GET[$q] / $this->size * ($this->size - $id3)) : null; // audio_stream_file と同じ
+        $this->from = $at('from') ?? 0;
+        $this->to = min($this->size - 1, $at('to') ?? $this->size - 1);
+        if ($this->from > $this->to) {
+            $this->ok = false;
+            return false;
+        }
+        $this->ok = true;
+        header('X-Content-Type-Options: nosniff');
+        header('Content-Type: audio/mpeg');
+        header('Cache-Control: private, no-store'); // 途中の分は使い回さない
+        header('Accept-Ranges: none');
+        header('X-Cache: STREAM');
+        header('Content-Length: ' . ($this->to - $this->from + 1));
+        while (PHP_SAPI !== 'cli' && ob_get_level() > 0) { // 溜めずにすぐ送る（テストは溜めて受け取る）
+            ob_end_flush();
+        }
+        $head = substr($this->buf, 0, $id3); // ID3 はそのまま
+        $this->buf = substr($this->buf, $id3);
+        $this->send($head);
+        return true;
+    }
+
+    /** ファイル位置 $pos から続く $out のうち、from〜to の分だけ送る */
+    private function send(string $out): void
+    {
+        $a = max($this->pos, $this->from);
+        $z = min($this->pos + strlen($out) - 1, $this->to);
+        if ($z >= $a) {
+            echo substr($out, $a - $this->pos, $z - $a + 1);
+            flush();
+        }
+        $this->pos += strlen($out);
+        if ($this->pos > $this->to || connection_aborted()) {
+            $this->done = true;
+        }
+    }
 }
 
 /**

@@ -59,7 +59,16 @@ if ($mix && is_file(audio_mark($dat)) && (audio_quiet_state($dat) === null || is
         @unlink($f);
     }
 }
-if ($err = drive_cache_ensure($fileId, $size, $miss)) {
+$live = new AudioLiveStream($size, $mix); // まだ落としていないなら、届いた分から流す（MP3 の CBR だけ）
+$err = drive_cache_ensure($fileId, $size, $miss, $live);
+if ($live->ok()) {
+    $live->end();
+    if ($miss && !$err) {
+        audio_shrink($dat, $mix); // 次に流すときのために、今のうちに音量を下げる・160 にする
+    }
+    exit;
+}
+if ($err) {
     if ($err[2] === 503) {
         header('Retry-After: 5');
     }

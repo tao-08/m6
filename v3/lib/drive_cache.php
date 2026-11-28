@@ -103,7 +103,7 @@ function drive_upstream_reason(string $body): string
  *   全体の時間制限は付けない（大きいファイル）。止まったままなら 60 秒で切る
  *   リダイレクトには付いていかない（API キーのヘッダーがリダイレクト先にも送られるため）
  */
-function drive_download(string $fileId, string $dest, int $dbSize): ?array
+function drive_download(string $fileId, string $dest, int $dbSize, ?AudioLiveStream $live = null): ?array
 {
     try {
         $key = drive_api_key();
@@ -132,15 +132,20 @@ function drive_download(string $fileId, string $dest, int $dbSize): ?array
             }
             return strlen($line);
         },
-        CURLOPT_WRITEFUNCTION   => static function ($c, string $chunk) use (&$status, &$errBody, $fp): int {
+        CURLOPT_WRITEFUNCTION   => static function ($c, string $chunk) use (&$status, &$errBody, $fp, $live): int {
             if ($status === 200) {
-                return (int)fwrite($fp, $chunk); // 書けなかったら 0 を返して止める（ディスクが一杯など）
+                $w = (int)fwrite($fp, $chunk); // 書けなかったら 0 を返して止める（ディスクが一杯など）
+                fflush($fp); // 待っているほかの要求が、書いた分から流す（drive_cache_follow）
+                $live?->feed($chunk);
+                return $w;
             }
             $errBody .= $chunk; // エラーの本文は 4KB だけ取っておく（理由を読むため）
             return strlen($errBody) > 4096 ? 0 : strlen($chunk);
         },
     ]);
+    $abort = ignore_user_abort(true); // 聞く人が切っても（届いた分から流しているとき）、落とすのは最後まで続ける
     curl_exec($ch);
+    ignore_user_abort((bool)$abort);
     $errno = curl_errno($ch);
     $curlError = curl_error($ch);
     curl_close($ch);
@@ -158,12 +163,52 @@ function drive_download(string $fileId, string $dest, int $dbSize): ?array
 }
 
 /**
+ * ほかの要求が落としている <ID>.dat.part に付いていき、伸びた分を $live に渡す。落とし終わる（$lock が取れる）・送り終える・流せない形式・60 秒伸びないで戻る
+ *   rename されても開いたファイルはそのまま読める
+ */
+function drive_cache_follow(string $dat, $lock, AudioLiveStream $live): void
+{
+    if (!($fp = @fopen($dat . '.part', 'rb'))) {
+        return; // まだ始まっていない・もう終わった
+    }
+    $idle = time();
+    $pos = 0;
+    while (!$live->done()) {
+        fseek($fp, $pos); // 前に末尾まで読んでも、伸びた分を読めるように
+        $chunk = (string)fread($fp, 65536);
+        if ($chunk !== '') {
+            $pos += strlen($chunk);
+            $live->feed($chunk);
+            $idle = time();
+            continue;
+        }
+        if (flock($lock, LOCK_EX | LOCK_NB)) { // 落とし終わった（失敗も）。残りを読み切る
+            flock($lock, LOCK_UN);
+            clearstatcache();
+            if (is_file($dat)) {
+                while (!$live->done() && ($chunk = (string)fread($fp, 65536)) !== '') {
+                    $live->feed($chunk);
+                }
+                $live->end();
+            }
+            break;
+        }
+        if (time() - $idle > 60) {
+            break;
+        }
+        usleep(200000);
+    }
+    fclose($fp);
+}
+
+/**
  * キャッシュに無ければ、ドライブから落とす（要 lib/drive.php）。同時の要求は1つだけが落とし、ほかは終わるのを待つ
  * @param int  $size 期待する大きさ（DB の値）。ドライブ側で変わっていたら DB を直し、ここも実際の値にする
  * @param bool $miss 落としたとき true
+ * @param AudioLiveStream|null $live 落としている途中なら、届いた分から流す（自分で落としていても、ほかの要求が落としていても）
  * @return array{0: int|string, 1: string, 2: int}|null 失敗したら [上流の状態, 理由, HTTP ステータス]
  */
-function drive_cache_ensure(string $fileId, int &$size, bool &$miss = false): ?array
+function drive_cache_ensure(string $fileId, int &$size, bool &$miss = false, ?AudioLiveStream $live = null): ?array
 {
     $dat = drive_cache_path($fileId);
     $lock = null;
@@ -178,7 +223,7 @@ function drive_cache_ensure(string $fileId, int &$size, bool &$miss = false): ?a
             clearstatcache();
             if (!drive_cache_ok($dat, $size)) {
                 $part = $dat . '.part'; // 最後まで落とせて大きさが合ってから .dat にする
-                if ($err = drive_download($fileId, $part, $size)) {
+                if ($err = drive_download($fileId, $part, $size, $live)) {
                     @unlink($part);
                     return [$err[0], $err[1], 502];
                 }
@@ -195,6 +240,12 @@ function drive_cache_ensure(string $fileId, int &$size, bool &$miss = false): ?a
             }
             flock($lock, LOCK_UN);
             break;
+        }
+        if ($live && !$live->done()) { // ほかの要求が落としている: 待たずに、届いた分から流す
+            drive_cache_follow($dat, $lock, $live);
+            if ($live->ok()) {
+                return null; // 流した（落とし終わったかは問わない）
+            }
         }
         if (time() >= $deadline) {
             return ['busy', 'download in progress', 503];
