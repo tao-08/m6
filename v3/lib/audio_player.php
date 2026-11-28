@@ -30,24 +30,13 @@ function fmt_bytes(int $b): string
  */
 function audio_chapters(PDO $pdo, int $bandId): array
 {
-    $st = $pdo->prepare('SELECT chapter_id, audio_key, kind, at_ms FROM band_audio_chapter WHERE band_id = ? ORDER BY at_ms, chapter_id');
+    $st = $pdo->prepare('SELECT chapter_id, audio_key, kind, song_no, at_ms FROM band_audio_chapter WHERE band_id = ? ORDER BY at_ms, chapter_id');
     $st->execute([$bandId]);
     $out = [];
     foreach ($st as $r) {
         $out[(string)$r['audio_key']][] = $r;
     }
     return $out;
-}
-
-/**
- * 音源ごとの開始の曲（migrations/156。1つ目の曲のチャプター = セトリの何曲目か。無い音源は 1）
- * @return array<string, int> audio_key => first_song
- */
-function audio_first_songs(PDO $pdo, int $bandId): array
-{
-    $st = $pdo->prepare('SELECT audio_key, first_song FROM band_audio_first WHERE band_id = ?');
-    $st->execute([$bandId]);
-    return array_map('intval', $st->fetchAll(PDO::FETCH_KEY_PAIR));
 }
 
 /**
@@ -71,18 +60,18 @@ function chapter_se_before(array $rows): array
 
 /**
  * チャプターを JS に渡す形にする（api_audio_chapter.php の返事と、プレーヤーの data-chapters で共通）
- * @return array<int, array{id: int, kind: string, ms: int}>
+ * @return array<int, array{id: int, kind: string, ms: int, no: ?int}>
  */
 function audio_chapter_list(array $rows): array
 {
-    return array_map(static fn($r) => ['id' => (int)$r['chapter_id'], 'kind' => (string)$r['kind'], 'ms' => (int)$r['at_ms']], $rows);
+    return array_map(static fn($r) => ['id' => (int)$r['chapter_id'], 'kind' => (string)$r['kind'], 'ms' => (int)$r['at_ms'], 'no' => $r['song_no'] === null ? null : (int)$r['song_no']], $rows); // no = 当たる曲（NULL = 前の曲 + 1）
 }
 
 /**
  * プレーヤーの HTML
  *   $src … 音源の URL（attach_image?k=band_audio&id=N / drive_audio?band=N&f=ID）
  *   $chapterCtx … チャプターを出すとき: ['band_id' => int, 'key' => 'a:N' | 'd:ID' | 'y:動画ID', 'chapters' => 行の配列, 'songs' => [曲名（SE 以外・セトリ順）], 'ses' => [SE 名（セトリ順。無ければ省略可）]]
- *     'first' => 開始の曲、'se_before' => chapter_se_before()（どちらも省略可）
+ *     'se_before' => chapter_se_before()（省略可）
  *   key が 'y:動画ID' のとき（video_chapters.php）は、<audio> の代わりに YouTube の埋め込み（app_player.js の apYouTube）を上に置き、最初から編集モード
  */
 function audio_player_html(string $src, string $title, ?int $size, ?array $chapterCtx = null): string
@@ -96,7 +85,6 @@ function audio_player_html(string $src, string $title, ?int $size, ?array $chapt
             'songs' => array_values($chapterCtx['songs']),
             'ses'   => array_values($chapterCtx['ses'] ?? []),
             'job'   => $chapterCtx['job'] ?? null, // 裏の解析（lib/chapter_job.php）
-            'first' => (int)($chapterCtx['first'] ?? 1), // 開始の曲（audio_first_songs）
             'se_before' => array_values($chapterCtx['se_before'] ?? []), // chapter_se_before
         ], JSON_UNESCAPED_UNICODE)) . '"';
     }
@@ -133,7 +121,7 @@ function audio_player_html(string $src, string $title, ?int $size, ?array $chapt
             . '<button type="button" class="btn btn--ghost btn--sm" data-ap-nudge="-1" aria-label="1秒前へ" title="1秒前へ">−1</button>'
             . '<button type="button" class="btn btn--ghost btn--sm" data-ap-nudge="1" aria-label="1秒後へ" title="1秒後へ">+1</button>'
             . '<button type="button" class="btn btn--ghost btn--sm" data-ap-here aria-label="今の位置" title="今の位置">今の位置</button>'
-            . (count($chapterCtx['songs']) > 1 ? '<select class="audio-player__first" data-ap-first aria-label="開始の曲" title="開始の曲" hidden>' // 1つ目の曲のチップを選んだときだけ（app_player.js）
+            . (count($chapterCtx['songs']) > 1 ? '<select class="audio-player__song" data-ap-song aria-label="曲" title="曲" hidden>' // 曲のチップを選んだときだけ（app_player.js）
                 . implode('', array_map(static fn($t, $i) => '<option value="' . ($i + 1) . '">' . ($i + 1) . '. ' . h((string)$t) . '</option>', array_values($chapterCtx['songs']), array_keys(array_values($chapterCtx['songs']))))
                 . '</select>' : '')
             . '</div></div>'

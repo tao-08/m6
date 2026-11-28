@@ -1122,19 +1122,11 @@ CREATE TABLE band_audio_chapter (
     band_id    INT UNSIGNED NOT NULL,
     audio_key  VARCHAR(110) CHARACTER SET ascii COLLATE ascii_bin NOT NULL, -- 'a:<band_audio.image_id>' か 'd:<ドライブのファイル ID>'
     kind       ENUM('mc','song','end','se') NOT NULL, -- end = 曲の終わり（migrations/152）、se = SE（migrations/154）
+    song_no    SMALLINT UNSIGNED NULL, -- 曲のチャプターが当たるセトリの何曲目か（SE 以外）。NULL = 前の曲 + 1（migrations/157）
     at_ms      INT UNSIGNED NOT NULL,
     PRIMARY KEY (chapter_id),
     KEY idx_bac (band_id, audio_key, at_ms),
     CONSTRAINT fk_bac_band FOREIGN KEY (band_id) REFERENCES band (band_id)
-        ON UPDATE CASCADE ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
-CREATE TABLE band_audio_first ( -- 音源ごとの開始の曲（migrations/156。行が無い = 1曲目から）
-    band_id    INT UNSIGNED NOT NULL,
-    audio_key  VARCHAR(110) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-    first_song SMALLINT UNSIGNED NOT NULL,
-    PRIMARY KEY (band_id, audio_key),
-    CONSTRAINT fk_baf_band FOREIGN KEY (band_id) REFERENCES band (band_id)
         ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 

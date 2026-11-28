@@ -339,19 +339,12 @@ function setupAudioPlayers(root = document) {
 
     // 選んだチップに印を付け、時間の入力欄（選んだときだけ開く）を今の値にそろえる
     const atInput = fig.querySelector('[data-ap-at]');
-    const firstSel = fig.querySelector('[data-ap-first]');
-    firstSel?.addEventListener('change', async () => {
-      const was = chap.first || 1;
-      chap.first = Number(firstSel.value);
-      render();
-      try {
-        await apiPost('api_audio_chapter.php', { band_id: chap.band, action: 'first', key: chap.key, first: chap.first }, '保存できませんでした');
-      } catch (e) {
-        flashToast(e.message, 'error');
-        chap.first = was;
-        render();
-        syncSel();
-      }
+    const songSel = fig.querySelector('[data-ap-song]');
+    let songNo = new Map(); // チャプターの id → 当たる曲（render が数える）
+    // 曲を選んだら、ほかの曲のチップは今の番号のまま（番号を全部保存する。選んだチップだけ変わる）
+    songSel?.addEventListener('change', () => {
+      const numbers = Object.fromEntries(chap.list.filter((c) => c.kind === 'song').map((c) => [c.id, c.id === selId ? Number(songSel.value) : songNo.get(c.id)]));
+      send({ action: 'numbers', key: chap.key, numbers });
     });
     const syncSel = () => {
       if (!chap) return;
@@ -360,9 +353,10 @@ function setupAudioPlayers(root = document) {
       fig.classList.toggle('has-sel', !!c && fig.classList.contains('is-editing'));
       for (const [id, e] of els) e.chip.classList.toggle('is-selected', id === selId);
       if (c && document.activeElement !== atInput) atInput.value = fmtTime(c.ms); // 打っている最中は触らない
-      if (firstSel) { // 開始の曲: 1つ目の曲のチップを選んだときだけ
-        firstSel.hidden = !c || c !== chap.list.find((x) => x.kind === 'song');
-        firstSel.value = String(chap.first || 1);
+      if (songSel) { // 曲のチップを選んだときだけ。ほかのチップと同じ曲なら赤く
+        songSel.hidden = c?.kind !== 'song';
+        if (c?.kind === 'song') songSel.value = String(songNo.get(c.id));
+        songSel.classList.toggle('is-dup', !!c && !!els.get(c.id)?.chip.classList.contains('is-dup'));
       }
     };
 
@@ -392,8 +386,13 @@ function setupAudioPlayers(root = document) {
       if (!chap) return;
       const list = chap.list;
       const motion = !reduced.matches;
-      let n = (chap.first || 1) - 1; // 途中の曲から始まる音源は、開始の曲から数える（lib/audio_player.php の first）
-      let se = chap.se_before?.[n] ?? 0; // SE は時間順に n 個目 = セトリの n 個目の SE（曲の番号には数えない）。開始の曲より前の SE は飛ばす
+      // 曲のチップが当たる曲: 選んだ番号（c.no）か、前の曲 + 1。途中の曲から始まる・抜けがある MIX のため（migrations/157。api_shuffle.php と同じ）
+      let n = 0;
+      songNo = new Map(list.filter((c) => c.kind === 'song').map((c) => [c.id, n = c.no ?? n + 1]));
+      const counts = new Map();
+      for (const v of songNo.values()) counts.set(v, (counts.get(v) || 0) + 1);
+      n = 0;
+      let se = chap.se_before?.[(songNo.values().next().value ?? 1) - 1] ?? 0; // SE は時間順に n 個目 = セトリの n 個目の SE（曲の番号には数えない）。1つ目の曲より前の SE は飛ばす
       const labels = list.map((c) => {
         if (c.kind === 'end') return { short: '終', full: n ? `${n}. End` : 'End' }; // 曲の終わり（番号には数えない。チップは直前の曲の番号で「4. End」）
         if (c.kind === 'se') {
@@ -401,8 +400,8 @@ function setupAudioPlayers(root = document) {
           return { short: 'SE', full: name ? `SE. ${name}` : 'SE' };
         }
         if (c.kind !== 'song') return { short: 'MC', full: 'MC' };
-        n += 1;
-        return { short: String(n), full: chap.songs[n - 1] ? `${n}. ${chap.songs[n - 1]}` : String(n) };
+        n = songNo.get(c.id);
+        return { dup: counts.get(n) > 1, short: String(n), full: chap.songs[n - 1] ? `${n}. ${chap.songs[n - 1]}` : String(n) };
       });
       const before = new Map([...els].map(([id, e]) => [id, e.chip.getBoundingClientRect()]));
       const keep = new Set(list.map((c) => c.id));
@@ -444,6 +443,7 @@ function setupAudioPlayers(root = document) {
         const go = e.chip.firstChild;
         go.firstChild.textContent = fmtTime(c.ms);
         go.lastChild.nodeValue = labels[i].full;
+        e.chip.classList.toggle('is-dup', !!labels[i].dup); // ほかのチップと同じ曲
         if (isNew && seen.chip) pop(e.chip);
         if (total) {
           if (!e.bubble) {

@@ -49,7 +49,7 @@ $params = match ($scope) {
     default => [],
 };
 
-$st = $pdo->prepare("SELECT c.band_id, c.audio_key, c.kind, c.at_ms, b.name AS band, l.live_id, l.name AS live, l.fiscal_year, d.held_on
+$st = $pdo->prepare("SELECT c.band_id, c.audio_key, c.kind, c.song_no, c.at_ms, b.name AS band, l.live_id, l.name AS live, l.fiscal_year, d.held_on
     FROM band_audio_chapter c
     JOIN band b ON b.band_id = c.band_id
     JOIN live_day d ON d.live_day_id = b.live_day_id
@@ -60,12 +60,6 @@ $st->execute($params);
 $groups = []; // "band_id|audio_key" => 時間順のチャプター
 foreach ($st as $r) {
     $groups[$r['band_id'] . '|' . $r['audio_key']][] = $r;
-}
-$firsts = []; // "band_id|audio_key" => 開始の曲（途中の曲から始まる音源。migrations/156）
-if ($groups) {
-    foreach ($pdo->query('SELECT band_id, audio_key, first_song FROM band_audio_first') as $r) {
-        $firsts[$r['band_id'] . '|' . $r['audio_key']] = (int)$r['first_song'];
-    }
 }
 // 範囲のバンド（出演順）。YouTube の曲の情報と、MIX と YouTube を混ぜて並べる順番に使う
 $st = $pdo->prepare("SELECT b.band_id, b.name AS band, b.youtube_url, b.artist_id, a.name AS artist, l.live_id, l.name AS live, l.fiscal_year, d.held_on
@@ -192,9 +186,16 @@ foreach ($groups as $key => $chs) {
     $yt = $ytKeys[$key] ?? null;
     $list = $yt ? video_chapter_songs($songs[$bandId] ?? [], $yt[1], $yt[2]) : $songs[$bandId] ?? [];
     $seList = array_values(array_filter($ses[$bandId] ?? [], static fn($s) => !$yt || $yt[2] < 2 || (int)$s['video_no'] === $yt[1])); // shortcut: MIX の音源が2本以上でも分けない
-    $n = ($firsts[$key] ?? 1) - 1; // 開始の曲から数える
-    $start = (int)($list[$n]['track_no'] ?? PHP_INT_MAX);
-    $seSkip = count(array_filter($seList, static fn($s) => (int)$s['track_no'] < $start)); // 開始の曲より前の SE は飛ばす（app_player.js と同じ）
+    // 曲のチャプターが当たる曲: song_no（migrations/157）、無ければ前の曲 + 1。app_player.js の render と同じ
+    $n = 0;
+    $firstNo = null;
+    foreach ($chs as $ch) {
+        if ($ch['kind'] === 'song') {
+            $firstNo ??= (int)($ch['song_no'] ?? 1);
+        }
+    }
+    $start = (int)($list[($firstNo ?? 1) - 1]['track_no'] ?? PHP_INT_MAX);
+    $seSkip = count(array_filter($seList, static fn($s) => (int)$s['track_no'] < $start)); // 1つ目の曲より前の SE は飛ばす
     $seNo = []; // チャプターの番号 => この音源の何個目の SE か
     foreach ($chs as $j => $ch) {
         if ($ch['kind'] === 'se') $seNo[$j] = $seSkip + count($seNo);
@@ -203,7 +204,8 @@ foreach ($groups as $key => $chs) {
         if ($c['kind'] !== 'song') {
             continue;
         }
-        $song = $list[$n++] ?? null;
+        $n = $c['song_no'] !== null ? (int)$c['song_no'] : $n + 1;
+        $song = $list[$n - 1] ?? null;
         if ($song === null || isset($seen[$song['song_id']])) {
             continue; // チャプターが曲数より多い分・別の音源で出た曲は流さない
         }

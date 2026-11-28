@@ -434,9 +434,8 @@ render_header($band['name'], 'lives');
     $audioChapters = audio_chapters($pdo, $bandId);
     $chapterSongs = array_column(array_filter($songs, static fn($s) => !$s['is_se']), 'title');
     $chapterSes = array_column(array_filter($songs, static fn($s) => $s['is_se']), 'title');
-    $firstSongs = audio_first_songs($pdo, $bandId);
     $seBefore = chapter_se_before($songs);
-    $chapterCtx = static fn(string $key): array => ['band_id' => $bandId, 'key' => $key, 'chapters' => $audioChapters[$key] ?? [], 'songs' => $chapterSongs, 'ses' => $chapterSes, 'job' => chapter_job_get(chapter_job_id($key)), 'first' => $firstSongs[$key] ?? 1, 'se_before' => $seBefore];
+    $chapterCtx = static fn(string $key): array => ['band_id' => $bandId, 'key' => $key, 'chapters' => $audioChapters[$key] ?? [], 'songs' => $chapterSongs, 'ses' => $chapterSes, 'job' => chapter_job_get(chapter_job_id($key)), 'se_before' => $seBefore];
     ?>
     <!-- ファイル（セットリストの下）: 直接置いた MP3 → ドライブの音源 → そのほか。音源はチャプターを付けられるプレーヤー。バンドのページは1組だけなので最初から並べる（iframe・画像は loading="lazy" で画面に近づいてから読み込む） -->
     <section class="card band-section no-print">

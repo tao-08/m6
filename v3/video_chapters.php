@@ -55,6 +55,6 @@ render_header('チャプター編集', 'lives');
     </nav>
 <?php endif; ?>
 <section class="card">
-    <?= audio_player_html('', '', null, ['band_id' => $bandId, 'key' => $key, 'chapters' => audio_chapters($pdo, $bandId)[$key] ?? [], 'songs' => $songs, 'ses' => $ses, 'job' => chapter_job_get(chapter_job_id($key)), 'first' => audio_first_songs($pdo, $bandId)[$key] ?? 1, 'se_before' => chapter_se_before(array_filter($rows, static fn($s) => count($urls) < 2 || (int)$s['video_no'] === $no))]) ?>
+    <?= audio_player_html('', '', null, ['band_id' => $bandId, 'key' => $key, 'chapters' => audio_chapters($pdo, $bandId)[$key] ?? [], 'songs' => $songs, 'ses' => $ses, 'job' => chapter_job_get(chapter_job_id($key)), 'se_before' => chapter_se_before(array_filter($rows, static fn($s) => count($urls) < 2 || (int)$s['video_no'] === $no))]) ?>
 </section>
 <?php render_footer(); ?>
